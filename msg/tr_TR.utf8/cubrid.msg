@@ -26,1189 +26,1189 @@ $
 $set 1 MSGCAT_SET_GENERAL
 1 \n%s\n\n
 2 Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.\n
-3 Copyright Information\n
-5 Non integer argument value `%s'
-6 Non floating argument value `%s'
-7 Missing argument `%s'
-8 Duplicate argument `%s'
-9 Missing value for argument `%s'
-10 Unknown argument `%s'
-11 Unexpected positional argument `%s'
-12 No argument definitions given
-13 Couldn't allocate storage for argument parsing
-14 Argument string exceeds maximum length: %s
-15 Invalid message number %d within catalog for argument parsing
-16 [options]
-17 Options:
+3 Telif Hakkı Bilgisi \n
+5 tamsayı argüman değeri bulunmamaktadır "%s"\n
+6 floating argüman değeri bulunmamaktadır "%s"\n
+7 kayıp argüman %s\n
+8 argüman çoğaltın `%s'
+9 Argüman için kayıp değer `%s'
+10 Bilinmeyen argüman `%s'
+11 Beklenmeyen konumsal argüman`%s'
+12 Verilen hiçbir argüman tanımlanmıyor
+13 Argüman ayrıştırma için depolama ayıramadı
+14 Argüman dize maksimum uzunluğu aşıyor:% s
+15 Argüman ayrıştırma için katalog içindeki geçersiz ileti numarası% d.
+16 [ayarlar]
+17 Ayarlar:
 
 $set 4 MSGCAT_SET_PARAMETER
-2 %s is not a directory.  Creating %s in ".".
-3 Cannot open %s.  configuration file not created.
-4 Unable to write line %d to configuration file %s.
-6 Can't access system configuration file "%s": %s
-7 HOME not set
-8 Required parameter "%s" has no value.
-9 Cannot open configuration file "%s": %s
-10 The '%s' parameter at line %d in file '%s' : 
-11 Environment variable %s: 
-12 Unrecognized keyword.
-13 Value type does not match parameter type.
-14 Cannot allocate memory to store value.
-15 Unterminated string value.
-16 Value is out of range.
-17 UNIX error: %s
-18 No message available.
-19 Value is out of range. Resetting to the default value.
-20 Keyword = '%s'    Value = %d    Default Value = %d\n
-21 Keyword = '%s'    Value = %f    Default Value = %f\n
-22 Deprecated parameter
-23 The '%s' and '%s' parameters can not be used together.\n
+2 %s rehber içinde bulunmamakta.  Oluşturma %s içinde ".".
+3 Açılmıyor %s. Yapılandırma dosyası oluşturulamıyor.
+4 Yapılandırma dosyası %s satır %d yazılamıyor.
+6 Sistem yapılandırma dosyası "%s" erişilemiyor: %s
+7 HOME ayarlanmadı
+8 Gerekli parametre "%s" hiçbir değeri yoktur.
+9 Konfigürasyon dosyası "%s" açılamıyor: %s
+10 Dosya '%s' içinde '%s' parametresinde satır %d : 
+11 Çevre değişkeni %s: 
+12 Tanınmayan anahtar kelime.
+13 Değer türü,parametresi türü ile eşleşmiyor.
+14 Değeri saklamak için bellek ayrılamıyor.
+15 Dize değeri Sonlandırılmamış.
+16 Değer aralığı dışındadır.
+17 UNIX hatası: %s
+18 Görüntülenebilir mesaj yok.
+19 Değer aralığı dışındadır.Varsayılan değere sıfırlama.
+20 Anahtar = '%s' değeri = %d Varsayılan Değer = %d\n
+21 Anahtar = '%s' değeri = %f varsayılan değer = %f\n
+22 Reddedilen parametre
+23 '%s' ve '%s' parametreler birlikte kullanılamaz. \n
 
 $set 5 MSGCAT_SET_ERROR
-1 Missing message for error code %1$d.
-2 Internal system failure: no more specific information is available.
-3 Out of virtual memory: unable to allocate %1$ld memory bytes.
-4 Has been interrupted.
-5 Key = "%1$s" was not found in hash table "%2$s".
-6 A NULL memory hash table was supplied to a hash table function.
-7 Trying to format disk volume "%1$s" with an incorrect value %2$d for number of pages.
-8 Unable to format disk volume "%1$s" with %2$d pages (%3$ld bytes).
-9 Unable to format disk volume "%1$s" with %2$d pages (%3$ld Kbytes) due to insufficient space. Current space available is %4$d pages (%5$ld Kbytes).
-10 Unable to mount disk volume "%1$s".
-11 Unable to mount disk volume "%1$s". The database "%2$s", to which the disk volume belongs, is in use by user %3$s on process %4$d of host %5$s since %6$s.
-12 Problems dismounting volume "%1$s".
-13 An I/O error occurred while reading page %1$d of volume "%2$s".
-14 An I/O error occurred while writing page %1$d of volume "%2$s".
-15 Unable to write page %1$d of volume "%2$s" due to insufficient space in operating system device.
-16 Unable to rename disk volume "%1$s" to "%2$s".
-17 Internal error: fetching deallocated pageid %1$d of volume "%2$s".
-18 All page buffers are fixed (LRU: %1$d).
-19 Internal error: pageptr = %1$p of page %2$d of volume "%3$s" is not fixed.
-20 Internal error: unknown pageptr = %1$p.
-21 Internal error: unknown sector %1$d of volume "%2$s".
-22 Internal error: unknown page %1$d of volume "%2$s".
-23 Internal error: trying to deallocate disk system page %1$d of volume "%2$s".
-24 Almost out of space in volume "%1$s". Total number of pages = %2$d, total number of free pages = %3$d.
-25 Almost out of space in volumes with data as the main storage purpose. Total number of pages = %1$d, total number of free pages = %2$d.
-26 Almost out of space in volumes with index as the main storage purpose. Total number of pages = %1$d, total number of free pages = %2$d.
-27 Almost out of space in volumes with generic storage purpose. Total number of pages = %1$d, total number of free pages = %2$d.
-28 Almost out of space in volumes with temporary data as the main storage purpose. Total number of pages = %1$d, total number of free pages = %2$d.
-29 Last out of space notification for volume "%1$s". Total number of pages = %2$d, total number of free pages = %3$d.
-30 Last out of space notification for volumes with data as the main storage purpose. Total number of pages = %1$d, total number of free pages = %2$d.
-31 Last out of space notification for volumes with index as the main storage purpose. Total number of pages = %1$d, total number of free pages = %2$d.
-32 Last out of space notification for volumes with generic storage purpose. Total number of pages = %1$d, total number of free pages = %2$d.
-33 Last out of space notification for volumes with temporary data as the main storage purpose. Total number of pages = %1$d, total number of free pages = %2$d.
-34 Internal error: %1$d nthpage is out of range for file %2$d in volume "%3$s". Current number of pages are %4$d.
-35 Internal error: Unknown volume identifier %1$d.
-36 Out of disk space in database. Number of requested page(s) = %1$d.
-37 Out of disk space in volume "%1$s". Number of requested page(s) = %2$d.
-38 Internal error: Unknown file VFID %1$d|%2$d.
-39 Internal error: Page %1$d|%2$d(volume "%3$s") of file VFID %4$d|%5$d(volume "%6$s") is invalid/deallocated according to allocation map.
-40 Internal error: %1$d expected pages, %2$d found pages for file VFID %3$d|%4$d(volume "%5$s").
-41 Internal error: Page %1$d|%2$d(volume "%3$s") is not part of file VFID %4$d|%5$d(volume "%6$s").
-42 Cannot reorder anchored records on page %1$d of volume "%2$s".
-43 Internal error: The page %1$d of volume "%2$s" may be corrupted. %3$d records was found when %4$d was expected.
-44 No space available in slotted page %1$d of volume "%2$s".
-45 Slot %1$d on page %2$d of volume "%3$s" is allocated to an anchored record. A new record cannot be inserted here.
-46 Internal error: slot %1$d on page %2$d of volume "%3$s" is not allocated.
-47 Unable to create a heap file in volume "%1$s".
-48 Accessing deleted object %1$d|%2$d|%3$d.
-49 Internal error: class of object %1$d|%2$d|%3$d is unknown.
-50 Internal error: relocation record of object %1$d|%2$d|%3$d may be corrupted.
-51 Internal error: object %1$d|%2$d|%3$d may be corrupted.
-52 Internal error: object overflow address %1$d|%2$d|%3$d may be corrupted.
-53 Fetching object %1$d|%2$d|%3$d when only its OID has been assigned.
-54 Internal error: trying to manipulate an object of %1$d pages long. The maximum size allowed for an object is %2$d pages.
-55 Internal error: A page cycle reference was detected on page %1$d|%2$d of heap file %3$d|%4$d|%5$d.
-56 Internal error: unknown extendible hashing file (Volid: %1$d Fileid: %2$d) page (Volid: %3$d Pageid: %4$d) was specified.
-57 Key does not exist in the extendible hashing structure.
-58 String "%1$s" is too long to fit in a slotted page.
-59 Internal error: the specified key type %1$d is not valid for the extendible hashing structure.
-60 Internal error: the extendible hashing structure has been corrupted.
-61 Internal error: the directory root page of the extendible hashing structure (Volid: %1$d Fileid: %2$d Pageid: %3$d) has been corrupted.
-62 Internal error: sorting record %1$d (size %2$d) does not fit in a page; the maximum allowable size is %3$d.
-63 Internal error: a temporary page was corrupted during sorting.
-64 Unknown class "%1$s".
-65 Class "%1$s" already exists.
-66 Internal error: unknown force operation %1$d for object %2$d|%3$d|%4$d.
-67 Internal error: a heap file has not been allocated to store object %1$d|%2$d|%3$d.
-68 Internal error: different classnames for class with oid = %1$d|%2$d|%3$d were found. Found classnames are "%4$s", "%5$s" using classname hash table and heap, respectively.
-69 Internal error: different class object identifiers were found for class with name "%1$s". Found OIDS are %2$d|%3$d|%4$d, %5$d|%6$d|%7$d using classname hash table and heap, respectively.
-70 Internal error: Class with name "%1$s" and oid = %2$d|%3$d|%4$d does not exist in classname hash table.
-71 Internal error: Class with name "%1$s" and oid = %2$d|%3$d|%4$d does not exist in its heap.
-72 Your transaction (index %1$d, %2$s@%3$s|%4$d) has been unilaterally aborted by the system.
-73 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on object %6$d|%7$d|%8$d. You are waiting for user(s) %9$s to finish.
-74 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on class %6$s. You are waiting for user(s) %7$s to finish.
-75 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on instance %6$d|%7$d|%8$d of class %9$s. You are waiting for user(s) %10$s to finish.
-76 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s on page %6$d|%7$d. You are waiting for user(s) %8$s to release the page lock.
-77 Internal error: all buffers are fixed.
-78 Internal error: an I/O error occurred while reading logical log page %1$lld (physical page %2$lld) of "%3$s".
-79 Internal error: an I/O error occurred while writing logical log page %1$lld (physical page %2$lld) of "%3$s".
-80 Insufficient space in operating system device when writing logical log page %1$lld (physical page %2$lld) of "%3$s". Could not write more than %4$d bytes.
-81 Internal error: logical log page %1$lld may be corrupted.
-82 Unable to mount log disk volume/file "%1$s".
-83 Length of path "%1$s" plus length of prefix logname "%2$s" is too long; the combined length must be less than %3$d.
-84 Length of prefix logname "%1$s" is too long; the length must be less than %2$d.
-85 The prefix name "%1$s" is not the same as "%2$s" on the log disk. The log may have been renamed outside the database domain.
-86 Database is incompatible with current "%1$s" release "%2$s".
-87 There are recovery actions that must recovered using "%1$s" release "%2$s" instead of release "%3$s". After the recovery, the database can be run on release "%4$s".
-88 Internal error: Release string "%1$s" cannot exceed %2$d. Must change header log.
-89 Log "%1$s" does not belong to the given database.
-90 Redo logging is always a page level logging operation. A data page pointer must be given as part of the address.
-91 Postpone logging is always a page level logging operation. A data page pointer must be given as part of the address.
-92 Compensate logging is always a page level logging operation. A data page pointer must be given as part of the address.
-93 Warning: redo logging is ignored during redo recovery and normal rollbacks.
-94 Warning: postpone logging is ignored during redo recovery and normal rollbacks.
-95 Warning: undo logging is ignored during recovery and normal rollback.
-96 Media recovery may be needed on volume "%1$s".
-97 Internal error: unable to find log page %1$lld in log archives.
-98 Unable to create archive log "%1$s" to archive pages from %2$lld to %3$lld.
-99 Unable to create backup directory information file "%1$s".
-100 Unable to backup database "%1$s".
-101 Unknown user file "%1$s".
-102 File "%1$s" does not have enough entries: %2$d entries expected.
-103 File "%1$s" seems to have unordered entries. Entry %2$d with values: %3$d %4$s %5$s, was found when entry with values %6$d %7$s was expected.
-104 File "%1$s" seems to have an incorrect entry for database name (main volume). Entry %2$d with values: %3$d %4$s %5$s, was found when entry with values %6$d %7$s %8$s was expected.
-105 Cannot access backup file "%1$s". Restore or Backup is cancelled.
-106 Cannot prepare to commit the current transaction with global transaction identifier %1$d because that transaction identifier is in use by another transaction.
-107 There is no global distributed transaction associated with transaction identifier %1$d.
-108 Current transaction %1$d must be committed or aborted before attempting to join to the distributed transaction with global identifier %2$d.
-109 Your transaction %1$d has been unilaterally aborted by the system because a participant (remote) site went down or unilaterally aborted the transaction.
-110 Isolation level value must be between %1$d and %2$d.
-111 Your transaction has been aborted by the system due to server failure or mode change.
-112 Host "%1$s" is not authorized to run database.
-113 Unable to restart/initialize the database server. %1$s
-114 Unable to interpret "%1$s" as a database. The database volumes/files may have been renamed/copied outside the database domain.
-115 Database "%1$s" already exists.
-116 Database "%1$s" is unknown, or the file "databases.txt" cannot be accessed.
-117 Absolute pathname for the database is too long. The combined length of the path "%1$s" plus the name "%2$s" is %3$d; the combined length must be less than %4$d.
-118 Failed to locate current working directory.
-119 Unable to find local hostname.
-120 The maximum number of volumes (%1$d) has been exceeded.
-121 Trying to remove "%1$s" a permanent volume from the database.
-122 Unable to access system message catalog.
-123 Unable to create "%1$s" for database "%2$s".
-124 Volume "%1$s" already exists.
-125 An automatic volume extension "%1$s" of %2$d pages and generic storage purpose was created.
-126 Unknown purpose "%1$s" given on line %2$d.
-127 Incorrect value %1$d for number of pages given on line %2$d.
-128 Number of pages was not given on line %1$d.
-129 Unknown token "%1$s" was found on line %2$d.
-130 Out of virtual memory.
-131 Database system error.
-132 Feature not implemented in the current release: %1$s.
-133 Nested set constant not allowed.
-134 Not allowed to use both class attributes and non-class attributes in a single update.
-135 Invalid statement for oid columns: %1$s.
-136 Unimplemented function "%1$s".
-137 Corrupted authorization objects.
-138 Authorization class "%1$s" not found.
-139 Access error on authorization attribute "%2$s" of class "%1$s".
-140 Operation "%1$s" can only be performed by the DBA or a DBA group member.
-141 Cannot add "%1$s" as a member of "%2$s".
-142 Adding member causes the user hierarchy to become a cyclic graph.
-143 Encountered a class with no owner.
-144 Unable to access user object.
-145 Cannot issue grant/revoke commands to yourself.
-146 Cannot issue GRANT/REVOKE to owner of a class.
-147 No GRANT option.
-148 Cannot obtain write lock on authorization object.
-149 Cannot create instance of authorization object.
-150 Cannot revoke privileges from self.
-151 Cannot revoke privileges from owner of a class.
-152 GRANT not found.
-153 No authorization privileges in effect for the database.
-154 Incomplete authorization installation - no authorization privileges in effect for the database.
-155 Multiple authorization roots.
-156 Authorization failure.
-157 SELECT authorization failure.
-158 ALTER authorization failure.
-159 UPDATE authorization failure.
-160 INSERT authorization failure.
-161 DELETE authorization failure.
-162 INDEX authorization failure.
-163 EXECUTE authorization failure.
-164 User "%1$s" already exists.
-165 User "%1$s" is invalid.
-166 Invalid user specified.
-167 DBA, members of DBA group and class owner can perform the operation.
-168 Member not found.
-169 Cannot remove user %s from the database.
-170 No user logged in.
-171 Incorrect or missing password.
-172 Password string cannot have more than 31 bytes.
-173 Could not locate database file "%1$s".
-174 Could not obtain write access to database file "%1$s".
-175 Badly formatted database file "%1$s".
-176 Conversion error in date format.
-177 Cannot create large object for internal storage.
-178 Temporary OID encountered without MOP.
-179 Domain "%1$s" is not compatible with domain "%2$s".
-180 Domain "%1$s" of supplied value is not compatible with destination domain "%2$s".
-181 Cannot coerce value of domain "%1$s" to domain "%2$s".
-182 Cannot coerce value of domain "%1$s" to domain "%2$s" without overflow.
-183 Unexpected amount of received data; %1$d expected, %2$d received.
-184 Cannot allocate communications buffer.
-185 Error receiving data from client.
-186 Error receiving data from server.
-187 Communications buffer not used.
-188 Unknown database "%1$s".
-189 Invalid host name "%1$s".
-190 Server host not identified.
-191 Cannot connect to server "%1$s" on "%2$s".
-192 Could not load network configuration file.
-193 Server received shutdown command from client.
-194 Unknown server request id %1$d.
-195 Server communications error: %1$s.
-196 Server name not identified.
-197 Could not make contact with master server.
-198 Receive buffer too small, data truncated.
-199 Server no longer responding.
-200 Not properly removing set from object after free.
-201 Removed incorrect UNIQUE table entry.
-202 Attribute "%1$s" was not found.
-203 Value for attribute "%1$s" must be of type "%2$s", not type "%3$s".
-204 Function called with missing or invalid arguments.
-205 Attribute "%1$s" cannot be made NULL.
-206 Attribute "%1$s" does not have the UNIQUE constraint.
-207 Class "%1$s" has a zero-size object.
-208 Method "%1$s" not found.
-209 No attribute or method with name "%1$s" was found.
-210 Internal error: processing object template.
-211 Attribute was deleted while building object template.
-212 Attribute "%1$s" violates the UNIQUE constraint.
-213 Invalid UNIQUE table entry encountered.
-214 A domain conflict exists on attribute "%1$s".
-215 Attribute with id %1$d not found.
-216 Invalid object ownership tag on value.
-217 Operation can only be performed on class objects.
-218 Invalid object in db_get path expression.
-219 Invalid db_get path expression.
-220 Invalid set in db_get path expression.
-221 Invalid set index in db_get path expression.
-222 Attempt to assign string value greater than %2$d characters to attribute "%1$s".
-223 Value %2$d is too large for smallint attribute "%1$s".
-224 A database has not been restarted.
-225 Missing value for attribute "%1$s" with the NOT NULL constraint.
-226 Empty component list in class.
-227 Attempt to assign value to attribute "%1$s" more than once.
-228 Method "%1$s" called with %2$d arguments. The system allows a maximum of %3$d arguments.
-229 Method "%1$s" requires argument %2$d to be within the domain "%3$s". An invalid value of domain "%4$s" was given.
-230 Attribute "%1$s" cannot be assigned a string of length %2$d. The maximum allowable string length is %3$d.
-231 Invalid API operation attempted on a temporary object.
-232 Not allowed to use object templates over multiple transactions.
-233 Cannot create class with basic type name "%1$s".
-234 Method file "%1$s" not found.
-235 %1$d unresolved method functions after linking.
-236 Unresolved method "%1$s".
-237 Severe problems were encountered during dynamic linking.
-238 Could not access method file "%1$s".
-239 Attribute "%1$s" was not found.
-240 Method "%1$s" was not found.
-241 There is no attribute or method with name "%1$s".
-242 Signature for %2$s not found for method "%1$s".
-243 Argument %2$d of method "%1$s" is undefined.
-244 Domain name "%1$s" is not the name of a class or basic type.
-245 The name "%1$s" has already been used as an attribute name.
-246 The name "%1$s" has already been used as a method name.
-247 Invalid arguments to schema manager internal function.
-248 The attribute domain "%1$s" is not suitable for use with the %2$s constraint.
-249 The requested operation on class "%1$s" can only be performed before instances are created.
-250 Cannot create index on attribute "%1$s", defined with a shared value.
-251 Signature %2$s already exists for method "%1$s".
-252 Attribute "%1$s" must have a set domain for that operation.
-253 Attribute "%1$s" cannot be defined with a nested set domain.
-254 Unable to remove domain "%2$s" from attribute "%1$s".
-255 Attribute "%1$s" is not of a variable sized domain.
-256 Superclass already exists.
-257 Superclass addition would cause cycles in class hierarchy.
-258 Superclass not found.
-259 Multiple signatures exist for method "%1$s".
-260 Argument %2$d of method "%1$s" is not of a set domain.
-261 Resolution for "%1$s" not found.
-262 Value domain "%2$s" not suitable for attribute "%1$s".
-263 Schema manager internal corruption detected.
-264 Alias "%2$s" for attribute/method "%1$s" is not unique.
-265 Shadowing attribute "%1$s" with conflicting domain "%2$s".
-266 Name conflict on attribute "%1$s" with classes "%2$s" and "%3$s".
-267 Shadowing method "%1$s" with conflicting signature.
-268 Name conflict on method "%1$s" with classes "%2$s" and "%3$s".
-269 Cannot define index on domain "%1$s".
-270 Cannot define UNIQUE constraint on domain "%1$s".
-271 Detected cycle in class hierarchy; "%1$s" is a super class of "%2$s".
-272 Index "%2$s" already defined for class "%1$s".
-273 Index "%1$s" does not exist.
-274 Illegal characters in name: "%1$s".
-275 Illegal operation on attribute "%1$s", inherited from class "%2$s".
-276 Illegal operation on method "%1$s", inherited from class "%2$s".
-277 Illegal operation on "%1$s", inherited from class "%2$s".
-278 Class "%4$s" has incompatible domains for "%1$s", inherited from classes "%2$s" and "%3$s".
-279 In class "%4$s", "%1$s" inherited from class "%2$s" cannot be used as requested. The definition from class "%3$s" has a more specific domain.
-280 In class "%3$s", "%1$s" cannot be inherited from class "%2$s" because there is a local definition with an incompatible domain.
-281 In class "%3$s", "%1$s" inherited from class "%2$s" is aliased but no substitute from another source was found.
-282 In class "%4$s", "%1$s" inherited from class "%3$s" cannot serve as an alias substitute for class "%2$s". The domains are incompatible.
-283 In class "%4$s", "%1$s" inherited from class "%3$s" cannot serve as an alias substitute for class "%2$s". It has a less specific domain.
-284 Cannot request inheritance of "%1$s" because it is defined locally in the class.
-285 Cannot use "%1$s" as an alias for inherited component "%2$s" because there is already a locally defined component with that name.
-286 Cannot use "%1$s" as an alias for "%2$s" of "%3$s". A component with that name is already inherited from "%4$s".
-287 In class "%1$s", cannot define attribute "%2$s" because it would shadow a method inherited from "%3$s".
-288 In class "%1$s", cannot define method "%2$s" because it would shadow an attribute inherited from "%3$s".
-289 Subclass "%1$s" cannot inherit method "%2$s" from class "%3$s" because there is already an attribute with that name.
-290 Subclass "%1$s" cannot inherit attribute "%2$s" from class "%3$s" because there is already a method with that name.
-291 "%1$s" is defined in class "%2$s" as an attribute and in class "%3$s" as a method.
-292 No populate specification with index "%1$s".
-293 Operation not allowed for this class type.
-294 Undefined environment variable "%1$s" referenced in method file.
-295 Unable to alter class "%1$s". The system catalog is out of space. To reclaim space, compact the database with the compactdb utility.
-296 Invalid property list encountered.
-297 Alias name "%1$s" is used more than once.
-298 In class "%1$s", a resolution for "%2$s" of "%3$s"' is not allowed. That class is not a super class.
-299 "%1$s" is a reserved word and cannot be used as an attribute, method, or class name.
-300 Attribute "%1$s" cannot be defined with DEFAULT and UNIQUE constraints together.
-301 Attribute "%1$s" cannot be defined with a length constraint of %2$d. The maximum length constraint is %3$d.
-302 Cannot add element to a set.
-303 Value already exists in set.
-304 Set index %1$d is out of bounds.
-305 Sequence index %1$d is out of bounds.
-306 Requested operation can only be performed on sequences.
-307 Requested operation can only be performed on sets.
-308 Element value is not within the domain of the set.
-309 Illegal set element index given: %1$d.
-310 Element not found in set.
-311 Element not found in sequence.
-312 "%1$s" is not a valid set domain.
-313 Object buffer underflow while reading.
-314 Object buffer overflow while writing.
-315 Illegal metaclass definition encountered.
-316 Transformer size calculation mismatch, expected %1$d calculated %2$d.
-317 Invalid disk representation encountered for class "%1$s".
-318 Out of sync during object loading. Database is likely corrupted or out of date.
-319 Ignoring unknown attribute extension.
-320 Encountered corrupted disk representation of object.
-321 Possible corruption in the workspace detected.
-322 MOP not found in the workspace.
-323 Attempt to upgrade non-temporary MOP in workspace.
-324 Object found in workspace without class.
-325 Attempt to garbage collect a MOP in the dirty list.
-326 Changing class pointer for object in workspace.
-327 Cannot create MOP with NULL OID.
-328 Instance encountered in workspace without class.
-329 Object list link not allocated in workspace.
-330 Workspace pin violation.
-331 Could not allocate workspace block from OS, out of virtual memory. Aborting transaction.
-332 Original workspace size estimate exceeded. An automatic extension has been made.
-333 Out of memory during workspace storage allocation. Aborting transaction.
-334 Attempted allocation of %1$d bytes is larger than maximum workspace block size. Try adjusting max_block_size parameter. Transaction aborted.
-335 Ignoring attempt to free object not allocated within the workspace.
-336 Ignoring attempt to free an object more than once.
-337 Ignoring attempt to allocate object with negative size.
-338 Map entry identifier overrun.
-339 Cannot exit critical section, since it is not owned by transaction %1$d.
-340 Cannot fork child process.
-341 Cannot exec child process.
-342 Cannot change process group.
-343 Request_id is already used.
+1 Hata kodu %1$d eksik mesaj.
+2 Dahili sistem hatası: daha fazla ayrıntılı bilgi mevcut bulunmamaktadır.
+3 Sanal bellek harici: %1$ld bayt bellek ayıramadı.
+4 Kesildi.
+5 Anahtar = "%1$s" karma tablosu "%2$s" bulunamadı.
+6 NULL bellek karma tablo bir karma tablo işlevi sağlanmıştır.
+7 Sayfa sayısı için yanlış bir değer %2$d ile disk birimi "%1$s" biçimlendirmek için çalışıyorum.
+8 Formatında disk birimi için açılamıyor "%1$s" %2$d sayfaları (%3$ld bayt).
+9 Yeterli boş alan formatta disk birimi için açılamıyor "%1$s" %2$d sayfaları (%3$ld Kbyte). Kullanılabilir alanı %4$d sayfa (%5$ld Kbyte) olduğunu.
+10 Disk birimi "%1$s" monte etmeye uygun değil.
+11 Disk birimi "%1$s" monte etmeye uygun değil. Veritabanı "%2$s", hangi disk birimi ait, %6$s yılından bu yana ev sahibi %5$s süreci %4$d kullanıcı %3$s tarafından kullanılıyor.
+12 Problem sökme değeri "%1$s".
+13 I/O hatası oluştu %1$d sayfası degeri "%2$s" okunurken.
+14 I/O hatası oluştu %1$d sayfası değeri "%2$s" yazılırken.
+15 Sayfa yazmaya uygun değil %1$d değeri "%2$s" işletim sistemi cihazı için yeterli boş alan.
+16 Disk birimini "%1$s" den "%2$s" yeniden adlandırmak uygun değil.
+17 İç Hata: ayırmanın sayfa id %1$d "%2$s" hacim getiriliyor.
+18 Tüm sayfa bufferlar onarıldı(LRU: %1$d).
+19 İç hata: sayfa ptr = %1$p %2$d sayfanın hacimi "%3$s" onarılmadı.
+20 İç hata: bilinmeyen sayfa ptr = %1$p.
+21 İç hata: bilinmiyor sektörü %1$d hacim "%2$s".
+22 İç hata: bilinmeyen sayfa %1$d hacim "%2$s".
+23 İç hata: disk sistemi sayfa ayırması için çalışıyor %1$d "%2$s" değeri.
+24 Alan dışı yoğunluklar "%1$s". toplam sayfa numarası = %2$d, toplam boş sayfa sayısı = %3$d.
+25 Alan dışı yoğunluklar veri ile ana depolama amaçlı olarak. toplam sayfa sayısı = %1$d, toplam boş sayfa sayısı = %2$d.
+26 Alan dışı yoğunluklar indeks ile ana depolama amaçlı olarak. toplam sayfa sayısı = %1$d, toplam boş sayfa sayısı = %2$d.
+27 Alan dışı yoğunluklar genel depolama amaı ile. toplam sayfa sayısı = %1$d, toplam boş sayfa sayısı = %2$d.
+28 Alan dışı yoğunluklar ana depolama amaçlı olarak geçici veri ile. toplam sayfa sayısı = %1$d, toplam boş sayfa sayısı = %2$d.
+29 Yoğunluklar için yer bildirimi dışında sürecek "%1$s". toplam sayfa sayısı = %2$d, toplam boş sayfa sayısı = %3$d.
+30 Yoğunluklar için yer bildirimi dışında sürecek ana depolama amaçlı olarak veri ile.. toplam sayfa sayısı = %1$d, toplam boş sayfa sayısı = %2$d.
+31 Yoğunluklar için yer bildirimi dışında sürecek ana depolama amaçlı olarak indeks. toplam sayfa sayısı = %1$d, toplam boş sayfa sayısı = %2$d.
+32 Yoğunluklar için yer bildirimi dışında sürecek genel depolama amacı ile. toplam sayfa sayısı = %1$d, toplam boş sayfa sayısı = %2$d.
+33 Yoğunluklar için yer bildirimi dışında sürecek ana depolama amaçlı olarak geçici veri ile. toplam sayfa sayısı = %1$d, toplam boş sayfa sayısı = %2$d.
+34 İç hata: %1$d nth sayfa dosyası %2d$ yoğunluk "%3$s" için aralık dışında. Sayfa sayısı %4$d vardır.
+35 İç hata: Bilinmeyen hacmi belirteç %1$d.
+36 Veritabanı içinde alandışı disk alanı. İstenen sayfa(lar) sayısı = %1$d.
+37 Yoğunluk içinde alandısşı disk alanı "%1$s". İstenen sayfa(lar) sayısı = %2$d.
+38 İç hata: Bilinmeyen dosya VFID %1$d|%2$d.
+39 İç hata: Page %1$d|%2$d(yoğunluk "%3$s") odosya VFID %4$d|%5$d(yoğunluk "%6$s") geçersiz/tahsisi haritaya göre ayrılmamış.
+40 İç hata: %1$d beklenen sonuçlar, %2$d dosya için bulunan sayfaları VFID %3$d|%4$d(yoğunluk "%5$s").
+41 İç hata: Page %1$d|%2$d(yoğunluk "%3$s") dosya VFID parçası değildir %4$d|%5$d(yoğunluk "%6$s").
+42 Sayfasına bağlantılı kayıtları yenilenmez %1$d yoğunluğu "%2$s".
+43 İç hata: %1$d sayfa hacmi "%2$s" bozuk olabilir. %3d kayıtları% 4$d beklenen zaman kuruldu.
+44 Yerleşmiş sayfada uygun alan bulunmamakta %1$d yoğunluk "%2$s".
+45 Yer %1$d safada %2$d yoğunluğu "%3$s" demirlemiş bir kayıt tahsis edilir. Yeni bir kayıt buraya işlenemez.
+46 İç hata: yer %1$d sayfada %2$d yuğunluğu "%3$s" ayrılmamaktadır.
+47 Yoğunluğunda bir yığın dosya oluşturulamıyor "%1$s".
+48 Silinen nesneye erişim %1$d|%2$d|%3$d.
+49 İç hata: nesne sınıfı %1$d|%2$d|%3$d bilinmeyen.
+50 İç hata: nesne taşınma kaydı %1$d|%2$d|%3$d bozulmuş olabilir.
+51 İç hata: nesne %1$d|%2$d|%3$d bozulmuş olabilir.
+52 İç hata: nesne taşması adresi %1$d|%2$d|%3$d bozulmuş olabilir.
+53 Nesne getiriliyor %1$d|%2$d|%3$d sadece kendi OID atanmıştır.
+54 İç hata: %1$d sayfa uzunluğunda bir nesne işlemek için çalışıyor.Bir nesne için izin verilen maksimum boyutu %2$d sayfadır.
+55 İç hata: Bir sayfa döngüsü başvuru sayfasında tespit edildi %1$d|%2$d yardım dosyası %3$d|%4$d|%5$d.
+56 İç hata: bilinmeyen uzatılabilen karma dosyası (Yoğunluk id: %1$d Dosya id: %2$d) sayfa (Yoğunluk id: %3$d Sayfa id: %4$d) belirtildi.
+57 Anahtar uzatılabilen karma yapısı mevcut değildir.
+58 Dize "%1$s" yerleşmiş sayfaya sığmayacak kadar uzun.
+59 İç hata: Belirtilen anahtar türü %1$d uzatılabilen karma yapısı için geçerli değildir.
+60 İç hata: uzatılabilen karma yapısı bozulmuş olabilir.
+61 İç hata: uzatılabilen karma yapının dizini kök sayfası(Yoğunluk id: %1$d Dosya id: %2$d Sayfa id: %3$d) bozulmuş olabilir.
+62 İç hata: kayıt sıralama %1$d (boyut %2$d) sayfa içine uygun değil; izin verilen maksimum boyutu %3$d.
+63 İç hata: geçici bir sayfa sıralama sırasında bozulmuş olabilir.
+64 Bilinmeyen sınıf "%1$s".
+65 Sınıf "%1$s" zaten bulunmakta.
+66 İç hata: bilinmeyen bir güç operasyonu %1$d nese için %2$d|%3$d|%4$d.
+67 İç hata: bir yığın dosya nesnesi depolamak için tahsis edilmemiştir %1$d|%2$d|%3$d.
+68 İç hata: oid sınıf için farklı sınıf adları = %1$d|%2$d|%3$d bulundu. Bulunan sınıf adları "%4$s", "%5$s" sırasıyla, sınıf adını karma tablo ve yığın kullanarak.
+69 İç hata: farklı sınıf nesne tanımlayıcıları ismi sınıf için bulundu "%1$s". Bulunan OID ler %2$d|%3$d|%4$d, %5$d|%6$d|%7$d sırasıyla, sınıf adını karma tablo ve yığın kullanarak.
+70 İç hata: Adında sınıf "%1$s" ve oid = %2$d|%3$d|%4$d sınıf adı karma tabloda bulunmamamktadır.
+71 İç hata: adında sınıf "%1$s" ve oid = %2$d|%3$d|%4$d kendi yığınında bulunmamaktadır.
+72 İşleminiz (index %1$d, %2$s@%3$s|%4$d) tek taraflı sistem tarafından iptal edildi.
+73 İşleminiz (index %1$d, %2$s@%3$s|%4$d) üzerinde beklerken zaman aşımına uğradı %5$s nesne üzerinde kilit %6$d|%7$d|%8$d. Bu kullanıcı için bekliyor(s) %9$s bitirmek için.
+74 İşleminiz (index %1$d, %2$s@%3$s|%4$d) üzerinde beklerken zaman aşımına uğradı %5$s nesne üzerinde kilir %6$s. Bu kullanıcı için bekliyor(s) %7$s bitirmek için.
+75 İşleminiz (index %1$d, %2$s@%3$s|%4$d) üzerinde beklerken zaman aşımına uğradı %5$s örneği üzerinde kilitlemek %6$d|%7$d|%8$d of class %9$s. Bu kullanıcı için bekliyor(s) %10$s bitirmek çin.
+76 İşleminiz (index %1$d, %2$s@%3$s|%4$d) üzerinde beklerken zaman aşımına uğradı %5$s sayfa üzerinde %6$d|%7$d. Bu kullanıcı için bekliyor(s) %8$s sayfa kilidi serbest bırakmak için.
+77 İç hata: tüm bufferlar onarıldı.
+78 İç hata: an I/O mantıksal günlük sayfa okurken hata oluştu %1$lld (fiziksel sayfa %2$lld) nın "%3$s".
+79 İç hata: an I/O mantıksal günlük sayfa yazarken hata oluştu %1$lld (fiziksel sayfa %2$lld) nın "%3$s".
+80 Mantıksal günlük sayfa yazarken sistem aygıt işletim yeterli yer %1$lld (fiziksel sayfa %2$lld) nın "%3$s". %4$d bayt tan daha fazla yazılamaz.
+81 İç hata: mantıksal log sayfa %1$lld bozulabilir.
+82 Günlük disk biriminin yooğunluğu monte edilemiyor/dosya "%1$s".
+83 Yol uzunluğu "%1$s" önek log adının artı uzunluğu "%2$s" çok uzun; Kombine uzunluğundan daha az olması gerekir %3$d.
+84 Önek log adının uzunluğu "%1$s" çok uzun; uzunluğundan daha az olması gerekir %2$d.
+85 Önek adı "%1$s" aynı değildir "%2$s" log diskte.Log veritabanı alanı dışında yeniden adlandırılmış olabilir.
+86 Veritabanı akım ile uyumsuz "%1$s" serbest "%2$s".
+87 Kullanılarak kurtarıldı gerekir kurtarma eylemleri vardır "%1$s" serbest "%2$s" yerine sürüm "%3$s". İyileştikten sonra veritabanı sürüm çalıştırılabilir "%4$s".
+88 İç hata: Yayın dize "%1$s" geçemez %2$d. Başlığı değiştirmeniz gerekir log.
+89 Log "%1$s" Verilen veritabanına ait değildir.
+90 Yinele günlüğü her işlem için bir sayfa seviyesidir. Bir veri sayfası işaretçi adresinin bir parçası olarak verilmelidir.
+91 Giriş Tecil her zaman bir sayfa düzeyinde günlük bir operasyondur. Bir veri sayfası işaretçi adresinin bir parçası olarak verilmelidir.
+92 Telafi günlüğü her zaman işlem için bir sayfa seviyesidir. Bir veri sayfası işaretçi adresinin bir parçası olarak verilmelidir.
+93 Uyarı: yenile günlüğü kokan kurtarma ve normal sadeleştirmek sırasında göz ardı edilir.
+94 Uyarı: günlüğü erteleme yenileme kurtarma ve normal sadeleştirmek sırasında göz ardı edilir.
+95 Uyarı: günlüğü geri kurtarma ve normal geri alma sırasında göz ardı edilir.
+96 Medya kurtarma biriminde gerekli olabilir "%1$s".
+97 İç hata: günlük sayfa bulamadı %1$lld günlük arşivlerinde.
+98 Arşiv log oluşturulamıyor "%1$s" arşivleme sayfalarında %2$lld to %3$lld.
+99 Yedekleme dizini bilgi dosyası oluşturulamıyor"%1$s".
+100 Veritabanı yedekleme yapılamıyor"%1$s".
+101 Bilinmeyen kullanıcı dosya "%1$s".
+102 Dosya "%1$s" yeterli mesajı yok: %2$d girdileri beklenir.
+103 Dosya "%1$s" girişleri sırasız gibi görünüyor. Giriş %2$d değerler ile birlikte: %3$d %4$s %5$s, beklenen %6$d %7$s değerler ile birlikte bulundu.
+104 Dosya "%1$s" veritabanı adı yanlış bir giriş (ana birim) sahip görünüyor. Giriş %2$d değerler ile birlikte: %3$d %4$s %5$s, beklenen %6$d %7$s değerler ile birlikte bulundu .
+105 Yedekleme dosyası erişemiyor "%1$s". Yeniden Depolandı veya Yedekleme iptal edildi.
+106 Genel işlem tanımlayıcı ile cari işlem işlemek için hazırlayamaz %1$d Bu işlem tanımlayıcı başka bir işlem tarafından kullanımda olduğundan dolayı.
+107 İşlem tanımlayıcı ile ilişkili hiçbir küresel dağıtılmış işlem yoktur. %1$d.
+108 Geçerli işlem %1$d küresel tanımlayıcı ile dağıtılan işlem katılmaya çalışırken önce işlenen veya iptal edilmelidir %2$d.
+109 İşleminiz %1$d tek taraflı sistem tarafından iptal edilmiştir çünki bir katılımcı (uzak) yere indi veya tek taraflı olarak iptal işlemi.
+110 İzolasyon seviyesi değeri %1$d ve %2$ arasında olmalıdır.
+111 İşleminiz sunucu hatası veya mod değişikliği nedeniyle sistem tarafından iptal edildi.
+112 Host "%1$s" veritabanı çalıştırmak için yetkili değil.
+113 Yeniden / veritabanı sunucusu başlatılamadı. %1$s
+114 Yorumlamak için uygun değil "%1$s" bir veritabanı gibi. Veritabanı değeri /dosyalar yeniden adlandırılmış olmalı/veritabanı alanı dışında kopyalanmış.
+115 Veritabanı "%1$s" zaten var.
+116 Veritabanı "%1$s" bilinmiyor veya dosya "databases.txt" erişilemiyor.
+117 Veritabanı için mutlak Pathadı çok uzun. Path in birleştirilmiş toplam uzunluğu "%1$s" artı adı "%2$s" is %3$d; Kombine uzunluğundan daha az olması gerekir %4$d.
+118 Geçerli çalışma dizinini bulamadı.
+119 Yerel hostadı bulunamıyor.
+120 Yoğunlukların maksimum sayısı (%1$d) değerini aştı.
+121 "%1$s" kaldırmak için çalışılıyor veritabanından kalıcı bir yoğunluk.
+122 Sistem mesajı kataloguna erişilemiyor.
+123 "%1$s" veritabanı için "%2$s" oluşturulamıyor .
+124 Yoğunluk "%1$s" zaten bulunmakta.
+125 Otomatik yoğunluk uzantısı "%1$s" nın %2$d sayfaları ve genel depolama amaçlı oluşturuldu.
+126 Bilinmeyen amaç "%1$s" satırında verilen %2$d.
+127 Doğru olmayan değer %1$d satırında verilen sayfa numaraları %2$d.
+128 Satırında verilmeyen sayfaların numaraları %1$d.
+129 Bilinmeyen simge "%1$s" satırında bulundu %2$d.
+130 Sanal bellek dışında.
+131 Veritabanı sistem hatası.
+132 Mevcut sürümde özellik uygulanmadı: %1$s.
+133 Sürekli iç içe ayar izin verilmedi.
+134 Sınıf öznitelikleri her ikisini de kullanmak için izin verilmedi ve tek bir güncelleştirme olmayan sınıf öznitelikleri.
+135 OİD sütunlar için geçersiz ifade : %1$s.
+136 Uygulanmayan fonksiyon "%1$s".
+137 Yetki nesneleri bozulmuş.
+138 Yetkilendirme sınıfı "%1$s" bulunamadı.
+139 Yetkilendirme öznitelik üzerinde erişim hatası "%2$s" ın sınıfı "%1$s".
+140 İşlem "%1$s" sadece DBA veya bir DBA grubu üyesi tarafından gerçekleştirilebilir.
+141 "%1$s" üyesi gibi "%2$s" eklenemez.
+142 Üyesi ekleme kullanıcı hiyerarşisi döngüsel bir grafik haline neden olur.
+143 Sahipli bir sınıf ile karşılaşılmadı.
+144 Kullanıcı nesnesi erişilemiyor.
+145 Sorun kabul edilemez/kendisi için komutları geri alamaz.
+146 Sorun kabul edilemez/bir sınıf sahibi için geri alamaz.
+147 Kabul Etme seçenekleri bulunmamakta.
+148 Yetki nesne üzerinde yazma kilidi edinilemez.
+149 Yetkilendirme nesne örneğini oluşturamaz.
+150 Kendi kendine ayrıcalıkları geri alamaz.
+151 Bir sınıfın sahibi ayrıcalıkları geri alamaz.
+152 GRANT bulunamadı.
+153 Veritabanı için geçerli yetkilendirme ayrıcalıkları bulunmamaktadır.
+154 Eksik yetkilendirme kurulum - Veritabanı için geçerli yetkilendirme ayrıcalıkları bulunmamaktadır.
+155 Çoklu yetkilendirme kökleri.
+156 Yetkilendirme hatası.
+157 SELECT yetkilendirme hatası.
+158 ALTER yetkilendirme hatası.
+159 UPDATE yetkilendirme hatası.
+160 INSERT yetkilendirme hatası.
+161 DELETE yetkilendirme hatası.
+162 İNDEKS yetkilendirme hatası.
+163 EXECUTE yetkilendirme hatası.
+164 Kullanıcı "%1$s" zaten bulunmakta.
+165 Kullanıcı "%1$s" geçersiz.
+166 Geçersiz kullanıcı özelleştirmesi.
+167 DBA, DBA grup ve sınıf sahibi üyeleri işlemi gerçekleştirebilirsiniz.
+168 Üye bulunamadı.
+169 %s veritabanından kullanıcı silinemiyor.
+170 İçeride kullanıcı girişi bulunmamaktadır.
+171 Yanlış veya kayıp şifre.
+172 Şifre dize 31 bayt den fazla olmaz.
+173 Veritabanı dosyası bulunamadı "%1$s".
+174 Veritabanı dosyası yazma erişimi alamadı "%1$s".
+175 Kötü biçimlendirilmiş veritabanı dosyası "%1$s".
+176 Tarih biçiminde dönüşüm hatası.
+177 Dahili depolama için büyük nesne oluşturulamıyor.
+178 Geçici OID MOP olmadan karşılaştı.
+179 "%1$s" Alanı "%2$s" etki alanı ile uyumlu değil.
+180 "%1$s" Alanı "%2$s" verilen değerin hedef etki alanı ile uyumlu değil.
+181 Etki değeri zorlanamaz "%1$s" alan için "%2$s".
+182 Etki değeri zorlanamaz "%1$s" alan için "%2$s" taşmaksızın.
+183 Alınan veri beklenmedik bir miktarı; %1$d beklenen, %2$d alınan.
+184 İletişim buffer ayrılamadı.
+185 İstemciden veri alma hatası.
+186 Sunucudan veri alma hatası.
+187 İletişim buffer kullanılmaz.
+188 Bilinmeyen veritabanı "%1$s".
+189 Geçersiz host adı "%1$s".
+190 Sunucu host tespit edilememiştir.
+191 Sunucuya bağlanamıyor "%1$s" üzerinde "%2$s".
+192 Ağ yapılandırma dosyası yüklenemedi.
+193 Sunucu istemciden kapatma komutu aldı.
+194 Bilinmeyen sunucu isteği id %1$d.
+195 Sunucu iletişim hatası: %1$s.
+196 Sunucu adı tespit edilmemiştir.
+197 Ana sunucu ile temas kurulamadı.
+198 Kesilmiş çok küçük, verileri arabelleğe alma.
+199 Sunucu yanıt vermemektedir.
+200 Nesneden bağımsız olarak uygun şekilde kaldrıma ayarlanmamıştır.
+201 Doğru olmayan UNIQUE tablo girişi kaldırıldı.
+202 Öznitelik "%1$s" bulunamadı.
+203 Öznitelik "%1$s" için değer mutlaka "%2$s" türü olamalı, türü değil "%3$s".
+204 Fonksiyon eksik veya geçersiz argüman adı ile adlandırılır.
+205 Öznitelik "%1$s" NULL yapamaz.
+206 Öznitelik "%1$s" UNIQUE sınırlaması yoktur.
+207 Sınıf "%1$s" bir sıfır-boyut nesne bulunmakta.
+208 Yöntem "%1$s" bulunamadı.
+209 "%1$s" adı ile hiçbir niteliği veya yöntem olduğu bulunamamıştır.
+210 İç hata: nesne şablonu işleme.
+211 Nesne şablonu oluşturma sırasında öznitelik silindi.
+212 "%1$s" öznitelik UNIQUE sınırlaması ihlal ediyor.
+213 Geçersiz UNIQUE tablo girişi karşılaştı.
+214 "%1$s" öznitelik bir etki alanı çatışması bulunmakta.
+215 id %1$d öznitelik bulunamadı.
+216 Değeri üzerinde geçersiz nesne sahipliğini etiketi.
+217 Operasyon sadece sınıf nesneleri üzerinde yapılabilir.
+218 db_get path ifadesi içinde geçersiz nesne.
+219 Geçersiz db_get path ifadesi.
+220 Geçersiz ayar in db_get path ifadesi.
+221 db_get path ifadesi içinde geçersiz ayar indeksi.
+222 Dize değerini atamaya çalışırsanız  %2$d daha fazla karakter atanabilir "%1$s".
+223 Değer %2$d çok fazla büyük küçük int niteliği "%1$s" için.
+224 Bir veritabanı yeniden başlatılamadı.
+225 Öznitelik eksik değeri "%1$s" NOT NULL kısıtlaması ile.
+226 Sınıf ta boş bileşen listesi.
+227 "%1$s" Öznitelik değerini birden fazla atamaya çalışırsanız.
+228 Yöntem "%1$s" %2$d ile adlandırılan argümanlar. Sistem %3$d argümanların birden fazlasına izin verir.
+229 Yöntem "%1$s" %2$d argüman gerektirir "%3$s" alan ile birlikte. Alanı "%4$s" geçersiz bir değer verildi.
+230 Öznitelik "%1$s" uzunlukta bir dize atanamaz %2$d. İzin verilen maksimum dizi uzunluğu %3$d.
+231 Geçersiz API işlemi geçici bir nesne üzerinde çalıştı.
+232 Birden çok işlem üzerinden nesne şablonları kullanmak için izin verilmedi.
+233 "%1$s" temel türü adı ile sınıfı oluşturulamıyor.
+234 Yöntem dosyası "%1$s" bulunamadı.
+235 %1$d bağladıktan sonra çözülmemiş yöntem fonksiyonları.
+236 Çözülemeyen yöntem "%1$s".
+237 Ciddi sorunlar dinamik bağlama sırasında karşılaşılan edildi.
+238 Yöntem dosyalarına "%1$s" erişilemiyor.
+239 Öznitelik "%1$s" bulunamadı.
+240 Yöntem "%1$s" bulunamadı .
+241 "%1$s" adında yöntem veya öznitelik bulunmamaktadır.
+242 "%1$s" yöntem için %2$s için işaret bulunamadı .
+243 Yöntem "%1$s" in %2$d argümanı tanımsız.
+244 "%1$s" alan adı bir sınıf veya basit tür adı değildir.
+245 "%1$s" adı zaten bir öznitelik adı olarak kullanılmıştır.
+246 "%1$s" adı zaten bir yöntem adı olarak kullanılmıştır.
+247 Şema yöneticisi iç fonksiyon için geçersiz argüman.
+248 Öznitelik alanı "%1$s" %2$s kısıtlaması ile birlikte kullanmaya uygun değildir.
+249 Sınıf üzerinde istenen işlem "%1$s" örnekleri yalnızca daha önce oluşturulan ile gerçekleştirilebilir.
+250 "%1$s" özniteliği üzerinde indeks oluşturulamaz,paylaşılan bir değer ile tanımlanır.
+251 Yöntem "%1$s" için zaten %2$s işarti bulunmaktadır.
+252 Öznitelik "%1$s" işlemi için bir etki alanı olmalıdır.
+253 Öznitelik "%1$s" iç içe bir dizi etki alanı ile tanımlanamaz.
+254 "%1$s" özniteliğinden "%2$s" etki alanı kaldırılamıyor.
+255 "%1$s" özniteliği bir değişken boyutlu etki değildir.
+256 Süpersınıf zaten bulunmaktadır
+257 Süpersınıf ek hiyerarşisinde döngülere neden olur.
+258 Süpersınıf bulunamadı
+259 "%1$s" yöntemi için çoklu imzalar uygundur.
+260 "%1$s" yöntemin %2$d özniteliği alanın bir alan ayarı değildir.
+261 "%1$s" için karar bulunamadı.
+262 "%2$s" değer alanı "%1$s" öznitelik için uygun değildir.
+263 Şema yöneticisi iç bozulma tespit edildi.
+264 "%1$s" öznitelik/metod için "%2$s" takma adı benzersiz değildir.
+265 "%2$s" alan ile çakışan "%1$s" öznitelik gölgeleme.
+266 "%1$s" öznitelik üzerinde "%2$s" ve "%3$s" sınıflar ile adlar çatışmakta.
+267 Çelişkili imza ile"%1$s" gölgeleme metodu .
+268 "%1$s" metod üzerinde "%2$s" ve "%3$s" sınıflar ile ad çatışması.
+269 "%1$s" alan üzerinde indeksi tanımlayamazsınız.
+270 "%1$s" alan üzerinde BENZERSİZ sınırlaması tanımlayamazsınız.
+271 Sınıf hiyerarşisinde algılama döngüsü; "%1$s" , "%2$s" ın süper sınıfıdır.
+272 Sınıf "%1$s" için indeks "%2$s" zaten tanımlanmış .
+273 İndeks "%1$s" bulunmamaktadır.
+274 Ad içinde kural dışı karakter: "%1$s".
+275 Öznitelik "%1$s" üzerinde kural dışı işlem, "%2$s" sınıfından arta kalan.
+276 Metod "%1$s" üzerinde kural dışı işlem, "%2$s" sınıfından arta kalan.
+277 "%1$s" üzerinde kural dışı işlem, "%2$s" sınıfından arta kalan.
+278 "%4$s" sınıf "%1$s" için uyumsuz etki vardır, "%2$s" ve "%3$s" sınıflarından arta kalandır.
+279 "%4$s" sınıf içinde, "%1$s" sınıf "%2$s" içinden arta kalan isteğe bağlı olarak kullanılamaz. "%3$s" sınıfında tanımlı daha belirli bir etki alanına sahiptir.
+280 "%3$s" sınıf içinde, "%1$s" sınıf "%2$s" içinden arta kalamaz çünki uyumsuz bir etki alanı ile yerel bir tanımlama yoktur.
+281 "%3$s" sınıf içinde, "%1$s" sınıf "%2$s" içinden arta kalana takma ad verilmiş ama başka bir kaynaktan yedek bulunamamıştır.
+282 "%4$s" sınıf içinde, "%1$s" sınıf "%3$s" içinden arta kalan bir takma ad olarak sınıf "%2$s" yerine hizmet veremez. Etki alanı uyumsuzdur.
+283 "%4$s" sınıf içinde, "%1$s" sınıf "%3$s" içinden arta kalan bir takma ad olarak sınıf "%2$s" yerine hizmet veremez. Daha az özellikli bir etki alanına sahiptir.
+284 "%1$s" dan arta kalan kabul edemzler çünki because bu sınıfta yerel olarak tanımlanır.
+285 Kalıtsal bileşen "%2$s" için takma ad gibi "%1$s" kullanılamaz çünki bu ada sahip bir yerel olarak tanımlanmış bileşeni zaten var.
+286 "%3$s" nun "%2$s" için takma ad gibi "%1$s" kullanılamaz. Bu ada sahip bir bileşeni zaten "%4$s" arta kalan olarak alınır.
+287 "%1$s" sınıf içinde, "%2$s" özniteliği tanımlayamazsınız çünki bu "%3$s" devralınan bir yöntem gölgesi olacaktır.
+288 "%1$s" sınıf içinde, "%2$s" yöntemi tanımlayamazsınız çünki bu "%3$s" devralınan bir öznitelik gölgesi olacaktır.
+289 "%1$s" alt sınıf "%2$s" yöntemi sınıf "%3$s" den devralamaz çünki bu isimde bir öznitelik zaten var.
+290 "%1$s" alt sınıf "%2$s" öznitelik sınıf "%3$s" den devralamaz çünki bu isimde bir metod zaten var.
+291 "%2$s" sınıf içinde "%1$s" öznitelik ve sınıf "%3$s" de olduğu gibi bir metod olarak tanımlıdır.
+292 "%1$s" indeks ile şartname doldurma bulunmamaktadır.
+293 İşlem bu sınıf türü için izin verilmiyor.
+294 Tanımsız ortam değişkeni "%1$s" yöntem dosyasından başvurulmuştur.
+295 "%1$s" sınıf değiştirilemedi. Sistem katalog alan dışında. Alanı geri almak için, CompactDB programı ile veritabanı sıkıştırmalı.
+296 Geçersiz özellik listesi ile karşılaşıldı.
+297 Takma ad "%1$s" birden fazla kullanılmıştır.
+298 "%1$s" sınıf içinde, "%2$s" için "%3$s"' ın bir kararı onaylanmadı. Bu sınıf bir süper sınıf değildir.
+299 "%1$s" ayrılmış bir sözcüktür ve bir öznitelik,metod veya sınıf adı gibi kullanılamaz.
+300 Öznitelik "%1$s" VARSAYILAN ve BENZERSİZ kısıtlamaları ile birlikte tanımlanamaz.
+301 Öznitelik "%1$s" %2$d un kısıtlama uzunluğu ile tanımlanamaz. En fazla kısıtlama uzunluk değeri %3$d tür.
+302 Bir dizi elemanı eklenemiyor.
+303 Değer kümesi içinde zaten var.
+304 %1$d sınırları dışında indeksi ayarlayın.
+305 Sıra indeksi %1$d sınırlar dışında.
+306 İstenen işlem yalnızca dizileri üzerinde gerçekleştirilebilir.
+307 İstenen işlem yalnızca setleri üzerinde yapılabilir.
+308 Eleman değeri kümesi etki alanı içinde değildir.
+309 Verilen yasadışı kümesi öğe indeksi: %1$d.
+310 Öğe küme içinde bulunamadı.
+311 Öğe sıra içinde bulunamadı.
+312 "%1$s" geçerli bir dizi alanı değildir.
+313 Nesne buffer yetersizlik okurken.
+314 Nesne buffer yazarken taşması.
+315 Yasadışı metaclass tanımı karşılaşıldı.
+316 Dönüştürücü boyutu hesaplama uyumsuzluğu, kabul edilen %1$d hesaplanan %2$d.
+317 Karşılaşılan "%1$s" sınıf için disk temsili geçersiz.
+318 Nesne yükleme sırasında tekleme. Veritabanı tarihi olasılıkla bozuk veya alan dışında.
+319 Bilinmeyen bir öznitelik uzantısı önemsemiyor.
+320 Nesnenin karşılaştığı bozuk disk gösterimi.
+321 Çalışma alanında olası bozulma tespit edildi.
+322 MOP çalışma alanında bulunamadı.
+323 Çalışma dışı geçici MOP yükseltmek için deneyin.
+324 Çalışma alanında sınıf dışı nesne bulundu.
+325 Kirli listesinde MOB çöp toplama girişimi.
+326 Çalışma alanında bir nesne için sınıf gösterici değiştirme.
+327 NULL OID ile MOP oluşturulamıyor.
+328 Örnek sınıfı olmadan çalışma alanında karşılaştı.
+329 Nesne listesi bağlantısını çalışma alanında ayrılmamış.
+330 Çalışma Alanı pin ihlali.
+331 Sanal bellek dışında, OS çalışma blok ayıramadı. İşlem iptal ediliyor.
+332 Orijinal çalışma alanı büyüklüğü tahmini aştı. Otomatik bir uzantısı yapılmıştır.
+333 Depolama alanı tahsisi sırasında bellek yetersiz. İşlem iptal ediliyor.
+334 %1$d girişimi tahsisi d bayt maksimum çalışma blok boyutu daha büyüktür. max_block_size parametre değiştirmeyi deneyin. İşlem iptal edildi.
+335 Ücretsiz nesneye girişimi görmezden gelerek çalışma alanı içinde ayrılmamış.
+336 Bir kereden fazla bir nesne serbest girişimi önemsenmez.
+337 Negatif boyut ile nesne tahsis etme girişiminde önemsenmez.
+338 Harita giriş tanımlayıcı taşması.
+339 Bu işlem  %1$d ait değilse bu yana, kritik bölüm çkamazsnz.
+340 Çocuk süreç çatal olamaz.
+341 Çocuk süreç çalışma olamaz.
+342 Süreç grubu değiştirilemez.
+343 Request_id zaten kullanılıyor.
 344 %1$s.
-345 Error occurred during reading a shutdown message from master.
-346 Error occurred during reading a stop shutdown message from master.
-347 Could not establish a pipe to the master server.
-348 Must specify either service or port identifier.
-349 Unknown service for TCP: %1$s.
-350 Error getting local host by name for host "%1$s". Host not found.
-351 Cannot create TCP socket.
-352 tcp_open: cannot get a reserved TCP port.
-353 Cannot make connection to master server on host "%1$s".
-354 Cannot set new process owner for socket.
-355 Cannot create socket stream.
-356 '%1$s' file for UNIX domain socket exist.
-357 Cannot bind local address... aborting.
-358 Accept failed.
-359 Datagram bind error.
-360 Datagram accept error.
-361 Datagram connect error.
-362 Datagram socket error.
-363 Recvmsg from master socket failed.
-364 Sending a new request to server.
-365 Sending a broadcast message to client.
-366 Error from server: %1$s
-367 Server %1$s already exists.
-368 Communication error during connect for %1$s.
-369 Unused error code.
-370 Unused error code.
-371 Unused error code.
-372 Unused error code.
-373 Premature EOF during read: %1$d.
-374 Premature EOF during read of %1$d or %2$d.
-375 Conversion error on (0x%1$c%2$c) %3$d and %4$d converted to %5$d.
-376 No public class found.
-377 Error %1$d: failed to add attribute "%2$s" to multimedia hierarchy.
-378 Error %1$d: failed to add method "%2$s" implemented as "%3$s" to multimedia hierarchy.
-379 Error %1$d: failed to add a superclass to multimedia hierarchy.
-380 Dynamic loader already initialized.
-381 Dynamic loader not initialized.
-382 Dynamic loader improperly initialized.
-383 "%1$s" is not an object file or an archive.
-384 Cannot determine absolute path for "%1$s".
-385 ld process exited with code %1$d.
-386 ld process exited due to signal %1$d.
-387 ld process exited with unknown waitval 0x%1$lx.
-388 Cannot access initial image for "%1$s".
-389 System error: %1$s.
-390 Problem with "%1$s": %2$s.
-391 Conflict with other SIGPIPE handler.
-392 Unable to spawn dynamic loader daemon.
-393 Dynamic loader daemon has disappeared.
-394 Range endpoint not between 0 and 256.
-395 Illegal subexpression specified.
-396 Octal digit out of range exists in escape.
-397 Regular expression not delimited properly.
-398 Text search called before expression compiled.
-399 A unmatched parenthesis is found in the regular expression.
-400 Parentheses too deeply nested in the regular expression.
-401 More than two numbers specified in a range.
-402 A unmatched curly brace is found in the regular expession.
-403 First number in range expression is larger than second.
-404 A unmatched bracket is found in the regular expression.
-405 The regular expression was too long to compile.
-406 Invalid B+tree index identifier: (vfid = (%1$d, %2$d), rt_pgid: %3$d).
-407 Unknown key %1$s referenced in B+tree index {vfid: (%2$d, %3$d), rt_pgid: %4$d, key_type: %5$s}.
-408 Unknown value (oid) %1$d|%2$d|%3$d referenced.
-409 Duplicate value (oid) %1$d|%2$d|%3$d referenced.
-410 Null key referenced.
-411 Invalid B+tree index key type "%1$s".
-412 Invalid range search specification.
-413 Unknown attribute identifier: %1$d.
-414 Unknown class identifier: %1$d|%2$d|%3$d.
-415 Invalid class identifier: %1$d|%2$d|%3$d.
-416 Unknown representation identifier: %1$d.
-417 Invalid representation identifier: %1$d.
-418 Record descriptor does not have enough space: %1$d.
-419 Class has reached maximum representations count: %1$d.
-420 Class %1$d|%2$d|%3$d already had representations.
-421 Representations Directory Missing in Catalog for Class: %1$d|%2$d|%3$d.
-422 Representation Information Record Missing in Catalog for Class - Repr_Id: %1$d|%2$d|%3$d - %4$d.
-423 Invalid session.
-424 No statement to execute.
-425 Incompatible data type for attribute "%1$s" of class "%2$s".
-426 Incompatible data type on attribute "%1$s".
-427 Data overflow on data type "%1$s".
-428 Statement is not updatable.
-429 Unknown command.
-430 Unknown variable "%1$s".
-431 Error in SQL/X interpreter or parser.
-432 Unknown class "%1$s".
-433 Unknown attribute "%1$s" in class "%2$s".
-434 Cannot find correct column names from a query.
-435 Multiple statements not allowed.
-436 Statement is not a query.
-437 Invalid long object ID (%1$s,%2$d, %3$s, %4$s).
-438 Conflict exists in the long object descriptor.
-439 Offset %1$d is larger than length of long object %2$d.
-440 Invalid cursor position.
-441 Invalid cursor operation.
-442 Unknown cursor position.
-443 Tuple value index %1$d is out of range.
-444 Invalid attribute name: "%1$s".
-445 Value list index %1$d is out of range.
-446 There are query result structures closed by transaction manager but not closed by the application. 
-447 Attempted to operate a query result structure already closed.
-448 Tuple sizes are currently restricted to be no larger than a page.
-449 Unknown query identifier: %1$d.
-450 Invalid set operator: %1$d.
-451 Heap file with no instances.
-452 Invalid XASL tree node content.
-453 No more acess specification nodes.
-454 Invalid data type referenced.
-455 No more query file pages left.
-456 Data type references are incompatible.
-457 Invalid query result type.
-458 Overflow occurred in addition context.
-459 Query result contains more than a single tuple. 
-460 Too few input host variables provided.
-461 More host variables are given than result columns.
-462 Result value is NULL, but there is no indicator variable.
-463 Cursor statement has not yet been prepared.
-464 Cursor should be a SELECT statement.
-465 The cursor is not yet opened.
-466 The cursor should be closed before re-opening.
-467 Result should return a single object.
+345 Kalıpta bir kapatma mesajı okuma sırasında hata oluştu.
+346 Kalıpta bir durak kapatma mesajı okuma sırasında hata oluştu.
+347 Ana sunucuya bir kanal kurulamadı.
+348 Servis veya port tanımlayıcı da belirtmeniz gerekir.
+349 TCP için bilinmeyen hizmet: %1$s.
+350 Hata "%1$s"  konağın adıyla yerel bilgisayardan alınıyor. Host bulunamadı.
+351 TCP soketi oluşturulamıyor.
+352 tcp_open: Ayrılmış bir TCP bağlantı noktası alınamıyor.
+353 Ana sunucuya bağlantı yapamazsınız "%1$s".
+354 Soketi için yeni süreç sahibi ayarlanamıyor.
+355 Soket akımı oluşturulamıyor.
+356 UNIX alan soketi için '%1$s' dosya mevcut.
+357 Yerel adres bağlanamıyor ... durduruluyor.
+358 Onaylama başarısız.
+359 Datagram bağlama hatası.
+360 Datagram onaylama hatası.
+361 Datagram bağlantı hatası.
+362 Datagram soket hatası.
+363 Ana soketten Recvmsg başarısız oldu.
+364 Sunucuya yeni bir istek gönderiliyor.
+365 İstemciye bir yayın mesajı gönderme.
+366 Sunucudan hata: %1$s
+367 Sunucu %1$s zaten bulunmakta.
+368 %1$s için bağlantı sırasında iletişim hatası.
+369 Kullanılmayan hata kodu.
+370 Kullanılmayan hata kodu.
+371 Kullanılmayan hata kodu.
+372 Kullanılmayan hata kodu.
+373 Okuma esnasında erken EOF: %1$d.
+374 Okuma esnasında erken EOF %1$d veya %2$d.
+375 Dönüşüm hatası (0x%1$c%2$c) %3$d ve %4$d dönüştürülür %5$d.
+376 Genel sınıf bulunamadı.
+377 Hata %1$d: "%2$s" multimedya hiyerarşiye öznitelik eklemek için başarısız oldu.
+378 Hata %1$d: "%3$s" multimedya hiyerarşiye "%2$s" olarak uygulanan metod eklemek için başarısız oldu .
+379 Hata %1$d: multimedya hiyerarşi için bir üst sınıf eklemek için başarısız oldu.
+380 Dinamik yükleyici zaten başlatıldı.
+381 Dinamik yükleyici başlatılamadı.
+382 Dinamik yükleyici yanlış başlatıldı.
+383 "%1$s" bir nesne dosyasını veya bir arşiv değil.
+384 "%1$s" için mutlak yol belirlenemiyor.
+385 ld işlem %1$d kodu ile çıkıldı.
+386 ld süreci %1$d sinyal nedeniyle çıkıldı.
+387 ld süreci bilinmeyen 0x%1$lx waitval ile çıkıldı.
+388 "%1$s" için ilk görüntü erişilemiyor.
+389 Sistem hatası: %1$s.
+390 "%1$s" ile sorun : %2$s.
+391 Diğer SIGPIPE işleyicisi ile çatışma.
+392 Dinamik yükleyici daemon spawn için açılamıyor.
+393 Dinamik yükleyici daemon kayboldu.
+394 Aralık bitiş noktası 0 ile 256 arasında değildir.
+395 Kural dışı alt ifade belirtildi.
+396 Aralık dışından sekizli haneli dışarı kaçış bulunmaktadır.
+397 Düzenli ifade düzgün ayrılmamış.
+398 Metin arama ifadesi derleme önce çağrılır.
+399 Bir eşsiz parantez normal ifadede bulunur.
+400 Parantezler çok derinden normal ifadede iç içe.
+401 Aralığında belirtilen ikiden fazla numara.
+402 Bir eşsiz küme ayracı düzenli ifade bulunur.
+403 Aralık ifadesindeki ilk sayı ikinciden daha büyüktür.
+404 Bir benzersiz ayraç düzenli ifade bulunur.
+405 Düzenli ifade derlemek için çok uzun oldu.
+406 Geçersiz B+tree indeksi tanımlayıcı: (vfid = (%1$d, %2$d), rt_pgid: %3$d).
+407 Başvurulan bilinmeyen anahtar %1$s B+tree index {vfid: (%2$d, %3$d), rt_pgid: %4$d, key_type: %5$s}.
+408 Başvurulan bilinmeyen değeri (oid) %1$d|%2$d|%3$d.
+409 Başvurulan yinelenen değer (oid) %1$d|%2$d|%3$d.
+410 Başvurulan Null anahtar.
+411 Geçersiz B+tree indeks anahtar türü "%1$s".
+412 Geçersiz aralık arama özellikleri.
+413 Bilinmeyen nitelik tanımlayıcısı: %1$d.
+414 Bilinmeyen sınıf tanımlayıcısı: %1$d|%2$d|%3$d.
+415 Geçersiz sınıf tanımlayıcısı: %1$d|%2$d|%3$d.
+416 Bilinmeyen temsil tanımlayıcı: %1$d.
+417 Geçersiz temsil tanımlayıcı: %1$d.
+418 Kayıt tanıtıcı yeterli alan yok: %1$d.
+419 Sınıf maksimum temsilleri sayısına ulaştı: %1$d.
+420 Sınıf %1$d|%2$d|%3$d zaten temsilcilikleri bulunmakta.
+421 Temsilcilikler Directory Sınıf Kataloğu için eksik: %1$d|%2$d|%3$d.
+422 Katalog içinde Sınıf - Repr_Id için Temsil Bilgisi Kayıdı eksik: %1$d|%2$d|%3$d - %4$d.
+423 Oturum Geçersiz.
+424 Yürütmek hiç bir açıklama bulunmamakta.
+425 Öznitelik için "%1$s" sınıfın "%2$s" uyumsuz veri tipi .
+426 "%1$s" Öznitelik Uyumsuz veri türü.
+427 "%1$s" Veri türüne veri taşması.
+428 Bildirimi güncelleştirilebilir değil.
+429 Bilinmeyen komut.
+430 Bilinmeyen değişken"%1$s".
+431 SQL/X te hata çevirmende ya da çözümleyicide.
+432 Bilinmeyen sınıf "%1$s".
+433 Bilinmeyen öznitelik "%1$s" sınıf "%2$s" içinde.
+434 Sorgudan doğru sütun adlarını bulunamıyor.
+435 Çoklu ifadeleri izin verilmez.
+436 Bildirimi bir sorgu değil.
+437 Geçersiz uzun nesne kimliği(%1$s,%2$d, %3$s, %4$s).
+438 Uzun nesne tanımlayıcısında çatışma bulunmaktadır.
+439 Uzantı %1$d %2$d uzun nesnenin uzunluğundan daha büyüktür.
+440 Geçersiz imleç konumu.
+441 Geçersiz imleç işlemi.
+442 Bilinmeyen imleç durumu.
+443 Tuple değer indeksi %1$d aralık dışında.
+444 Geçersiz öznitelik adı: "%1$s".
+445 Değer listesi endeksi %1$d aralık dışında.
+446 Sorgu sonucu yapılar bulunmaktadır işlem yöneticisi tarafından kapatıldı ancak uygulama tarafından kapalı değildir.
+447 Zaten kapalı bir sorgu sonucu yapı çalışması denendi.
+448 Tuple boyutları bir sayfadan daha büyük olmaması ile sınırlıdır.
+449 Bilinmeyen sorgu tanımlayıcı: %1$d.
+450 Geçersiz set operatörü: %1$d.
+451 Yığın dosyası ile örnek bulunmamaktadır.
+452 Geçersiz XML ağaç düğümü içerik.
+453 Daha fazla erişim özellikleri düğümleri bulunmamakta.
+454 Başvurulan geçersiz veri türü.
+455 Daha fazla sorgu dosyası sayfaları kalmamıştır.
+456 Veri türü referanslar uyumsuzdur.
+457 Geçersiz sorgu sonucu türü.
+458 Taşma ek bağlamında oluştu.
+459 Sorgu sonucu tek bir başlığın daha fazlasını içerir.
+460 Çok az girdi ana değişkenler sağladı.
+461 Daha fazla ana değişkenler sonucu sütunlarda verilir.
+462 Sonuç değeri NULL, ama hiçbir gösterge değişkeni bulunmamaktadir.
+463 İmleç deyimi henüz hazırlanmış değil.
+464 İmleç bir SEÇ ifadesi olmalıdır.
+465 İmleç henüz açılmamıştır.
+466 İmleç yeniden açılması öncesinde kapatılmalıdır.
+467 Sonuç için tek bir nesneyi döndürmek gerekir.
 468 No positional markers are allowed in EXECUTE IMMEDIATE statements.
-469 Invalid data type used.
-470 Query involves too many items for optimizer.
-471 Memory exhausted in line %1$d of file %2$s.
-472 %1$s connector for local database '%2$s' on host '%3$s' has died.
-473 Reported from local database '%1$s' on host '%2$s': %3$s.
-474 Error %1$s detected during %2$s.
-475 No query specification with index %1$s.
-476 LDB %1$s already exists.
-477 Could not connect to master on host %2$s to access LDB %1$s.
-478 The local database "%1$s" is not a registered LDB.
-479 The local database "%1$s" is currently being accessed by other clients, alteration or drop is not allowed.
-480 The local database "%1$s" is not empty and cannot be dropped.
-481 "%1$s" is not a proxy virtual class.
-482 "%1$s" is not a virtual class.
-483 "%1$s" is not an attribute of the class "%2$s".
-484 The object_id for proxy virtual class "%1$s" is already set.
-485 One or more object_id attributes are NULL for instance of proxy class "%1$s".
-486 Object is not an updatable virtual class instance.
-487 Object is not an instance.
-488 An attribute of a class may not be a virtual class or a proxy virtual class.
-489 An attribute of a proxy virtual class may not be a class, virtual class, or object.
-490 The superclass "%1$s" must be of the same type of class as "%2$s".
-491 Cannot extract entity name from proxy query specification "%1$s".
+469 Invalid data type used.DERHAL YÜRÜTME ifadelerinde izin verilen hiçbir pozisyon işaretleri bulunmamaktadır.
+470 Sorgu iyileştirici için çok fazla öğe içerir.
+471 %2$s dosyanın %1$d satır içinde bellek tükendi.
+472 '%2$s'yerel veritabanı için '%3$s' host üzerinde %1$s konektörü iptal olmuştur.
+473 '%2$s' host üzerinde '%1$s' yerel veritabanından raporlar: %3$s.
+474 %2$s sırasında hata %1$s tespit edildi.
+475 %1$s indeksi ile hiçbir sorgu özellikleri bulunmamaktadır.
+476 LDB %1$s zaten bulunmaktadır.
+477 LDB %1$s giriş için %2$s host ana bağlantı kurulamadı.
+478 Yerel veritabanı "%1$s" tescilli LDB değildir.
+479 Yerel veritabanı "%1$s" diğer istemciler tarafından erişiliyor, değişiklik veya iptal etmeye izin verilmez.
+480 Yerel veritabanı "%1$s" boş değil ve iptal edilemez.
+481 "%1$s" bir proxy sanal sınıf değildir.
+482 "%1$s" sanal sınıf değildir.
+483 "%1$s", "%2$s" sınıfının bir özelliği değildir.
+484 object_id "%1$s" Proxy sanal sınıf için zaten ayarlandı.
+485 Bir veya birden fazla object_id "%1$s" proxy sınıfı örneği için öznitelikleri NULL dur .
+486 Nesne güncelleştirilebilir bir sanal sınıf örneği değil.
+487 Nesne bir örnek değildir.
+488 Bir sınıfın bir özelliği sanal bir sınıf veya bir proxy sanal sınıf olmayabilir.
+489 Bir proxy sanal sınıf bir özelliği bir sınıf, sanal sınıf veya nesne olmayabilir.
+490 Süper sınıf "%1$s" gibi "%2$s" sınıfının aynı türden olması gerekir.
+491 "%1$s" proxy sorgu özelliklerinden varlık adı ayıklanamaz.
 492 %1$s
 493 Syntax: %1$s %2$s
-494 Semantic: %1$s %2$s
-495 Execute: %1$s %2$s
-496 Unknown key referenced.
-497 Unknown value (oid) %1$d|%2$d|%3$d referenced.
-498 Duplicate value (oid) %1$d|%2$d|%3$d referenced.
-499 Null key referenced.
-500 Duplicate key referenced.
-501 Invalid trigger priority.
-502 Missing target class in trigger.
-503 Trigger "%1$s" was not found.
-504 Internal error: processing trigger "%1$s".
-505 A trigger with the name "%1$s" already exists.
-506 A trigger cannot be defined on "%1$s" because it is a virtual class.
-507 Inappropriate trigger target class "%1$s".
-508 Inappropriate trigger target attribute "%1$s".
-509 Invalid trigger condition "%1$s".
-510 Invalid trigger action "%1$s".
-511 Not authorized to access trigger "%1$s".
-512 Not authorized to delete trigger "%1$s".
-513 Not authorized to update trigger "%1$s".
-514 Not authorized to alter trigger "%1$s".
-515 Trigger action execution time of %2$s cannot be earlier than condition execution time of %1$s.
-516 Maximum trigger depth %1$d exceeded at trigger "%2$s".
-517 The operation has been rejected by trigger "%1$s".
-518 Internal error: processing trigger "%1$s".
-519 Illegal trigger condition type.
-520 The REJECT action cannot be used with an action time of AFTER or DEFERRED.
-521 The REJECT action cannot be used with the ABORT or TIMEOUT events.
-522 Trigger condition expression was not given.
-523 Trigger action expression was not given.
-524 The specified activity cannot be removed because it is owned by another user.
-525 Error compiling condition for "%1$s": %2$s
-526 Error compiling action for "%1$s", %2$s
-527 Error evaluating condition for "%1$s": %2$s
-528 Error evaluating action for "%1$s", %2$s
-529 Transaction cannot be committed, it was invalidated by trigger "%1$s".
-530 Missing regular expression.
-531 Regular expression is too long or complex.
-532 Unbalanced parenthesis or brackets in regular expression.
-533 Reference is out of range in regular expression.
-534 Illegal character or syntax in regular expression.
-535 No text given for regular expression search.
-536 Illegal opcode found in regular expression.
-537 Illegal search command code for regular expression compiler.
-538 Regular expression working buffer needs to be initialized.
-539 Attempt to divide by zero.
+494 Anlamsal: %1$s %2$s
+495 Yürütme: %1$s %2$s
+496 Başvuruluna bilinmeyen anahtar.
+497 %1$d|%2$d|%3$d başvurulan bilinmeyen değer (oid).
+498 %1$d|%2$d|%3$d başvurulan yenilenen değer (oid).
+499 Baçvurulan Null anahtar.
+500 Başvurulan yenilenen anahtar.
+501 Geçersiz tetikleyici önceliği.
+502 Tetikleyicide kayıp hedef sınıf.
+503 Tetikleyici "%1$s" bulunamadı.
+504 İç hata: "%1$s" tetikleyici işlemi .
+505 "%1$s" adı ile bir tetikleyici zaten bulunmakta.
+506 Bir sanal sınıf olduğundan bir tetikleyici "%1$s" tanımlanamaz.
+507 Sakıncalı tetikleyici hedef sınıf "%1$s".
+508 Sakıncalı tetikleyici hedef öznitelik "%1$s".
+509 Geçersiz tetikleyici durumu "%1$s".
+510 Geçersiz tetikleyici hareketi "%1$s".
+511 "%1$s" tetikleyici erişim yetkiniz yok.
+512 "%1$s" tetikleyici silme yetkiniz yok.
+513 "%1$s" tetikleyici güncelleme yetkiniz yok.
+514 "%1$s" tetikleyici değiştirme yetkiniz yok.
+515 Tetikleyici eylem yürütme zamanı %2$s durumu yürütme zamanı %1$s dan daha erken olamaz .
+516 Maksimum tetikleyici derinliği %1$d tetikleyici "%2$s" den aşıldı.
+517 İşlem tetikleyici "%1$s" tarafından reddedildi.
+518 İç hata: "%1$s" tetikleyici işlemi .
+519 Kuraldışı tetikleyici koşul türü.
+520 REDDETME eylemi SONRASI veya ERTELENEN bir eylem süresi ile birlikte kullanılamaz.
+521 REDDETME eylemi İPTALETME veya ZAMAN AŞIMI olayları ile kullanılamaz.
+522 Tetikleyici durumu ifadesi verilmemiştir.
+523 Tetikleyici eylemi ifadesi verilmemiştir.
+524 Başka bir kullanıcı tarafından ait olduğundan belirtilen faaliyet kaldırılamaz.
+525 "%1$s" için koşul derleme hatası: %2$s
+526 "%1$s" için eylem derleme hatası, %2$s
+527 "%1$s" için hata değerlendirilmesi koşulu: %2$s
+528 "%1$s" için eylem değerlendiren hata, %2$s
+529 İşlem tamamlanmış olamaz, bu "%1$s" tetikleyici tarafından geçersiz bırakıldı.
+530 Düzenli ifade eksik.
+531 Düzenli ifade çok uzun veya karmaşık.
+532 Düzenli ifadede dengesiz parantez veya parantez.
+533 Başvurulan düzenli ifadede aralık dışında.
+534 Kuraldışı karakter veya düzenli ifade sözdizimi.
+535 Düzenli ifade arama için metin verilmiştir.
+536 Geçersiz işlem kodu normal ifadede bulundu.
+537 Düzenli ifade derleyici için geçersiz arama komutu kodu.
+538 Düzenli ifade çalışıyor buffer başlatılması gerekir.
+539 Sıfıra bölme girişimi.
 540 %1$s.
-541 Number of free pages for volume "%1$s" is inconsistent. %2$d and %3$d were found according to volume header and bitmap, respectively.
-542 Number of free sectors for volume "%1$s" is inconsistent. %2$d and %3$d were found according to volume header and bitmap, respectively.
-543 Disk header for volume "%1$s" is inconsistent.
-544 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). B+tree key %6$s entry for object OID: %7$d|%8$d|%9$d was not found on B+tree: %10$d|%11$d|%12$d.
-545 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). Key and OID: %6$d|%7$d|%8$d entry on B+tree: %9$d|%10$d|%11$d is incorrect. The object does not exist.
-546 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). Expecting %6$d OID entry values, but %7$d were found on B+tree: %8$d|%9$d|%10$d.
-547 Server release %1$s is different from client release %2$s.
-548 There is no object_id defined for proxy class "%1$s".
-549 The proxy instance was not found.
-550 Unknown savepoint name %1$s
-551 Unable to locate volume information path file "%1$s"... Continue reading from internal tables
-552 Date arithmetic underflow.
-553 Time arithmetic underflow.
+541 "%1$s" yoğunluk için boş sayfa sayısı tutarsız. %2$d ve %3$d sırasıyla, yoğunluk başlık ve bitmapa göre tespit edildi.
+542 "%1$s" yoğunluk için serbest sektör sayısı tutarsız. %2$d ve %3$d sırasıyla, yoğunluk başlık ve bitmapa göre tespit edildi.
+543 "%1$s" yoğunluk için disk başlığı tutarsız.
+544 İç hata: İNDEKS %1$s SINIF ÜZERİNDE %2$s (CLASS_OID: %3$d|%4$d|%5$d). OİD nesne için B+tree anahtar %6$s girişi: B+tree üzerinde %7$d|%8$d|%9$d bulunamadı: %10$d|%11$d|%12$d.
+545 İç hata: İNDEKS %1$s SINIF ÜZERİNDE %2$s (CLASS_OID: %3$d|%4$d|%5$d). Anahtar ve OİD: B+tree izerinde %6$d|%7$d|%8$d girişi : %9$d|%10$d|%11$d doğru değil. Nesne bulunmamaktadır.
+546 İç hata: İNDEKS %1$s SINIF ÜZERİNDE %2$s (CLASS_OID: %3$d|%4$d|%5$d). Beklenilen %6$d OID giriş değerleri, ama B+tree izerinde %7$d bulundu: %8$d|%9$d|%10$d.
+547 Sunucu sürümü %1$s istemci sürümü %2$s den farklı .
+548 Proxy sınıfı "%1$s" için tanımlı hiçbir object_id yoktur.
+549 Proxy örneği bulunamadı.
+550 Bilinmeyen kayıt noktası adı %1$s
+551 Yoğunluk bilgisinin path dosyası "%1$s" bulunamıyor. İç tablolardan okumaya devam edin.
+552 Tarih aritmetiği yetersiz.
+553 Zaman aritmetiği tetersizlik.
 $ LOADDB
-554 The loader has entered an invalid state. No further operations are possible.
-555 Memory allocation error during database loading.
-556 Too many values supplied. Expecting %d.
-557 For attribute %1$s of %2$s, type %3$s is not allowed in the domain of the set.
-558 For attribute %1$s of %2$s, expected type %3$s, got a set constant.
-559 For attribute %1$s of %2$s, expected type %3$s, got %4$s.
-560 For attribute %1$s of %2$s, domain is not specific enough to support\n unqualified object references.
-561 Nested sets are not allowed.
-562 System class %1$s cannot be populated using the database loader.
-563 Reference to internal class %1$s converted to NULL.
-564 Violated the UNIQUE constraint for attribute %1$s of %2$s.
-565 Constructor method %1$s is not defined on class %2$s.
-566 No class specified or no attribute in class.
-567 Too many constructor method arguments supplied. Expected %1$d.
-568 Missing constructor method parameters. Expected %1$d, found %2$d.
-569 Missing attribute values.  Expected %1$d, found %2$d.
-570 Could not access Glo data file "%1$s".
-571 Instance was previously created through a forward reference.\nThis is not allowed for instances created using constructor methods.
-572 INTERNAL ERROR: Cannot build disk representation of instance.
-573 INTERNAL ERROR: Cannot insert new instance in database.
-574 INTERNAL ERROR: Cannot update new instance in database.
-575 For argument %1$d of constructor %2$s, expected type %3$s, got %4$s.
-576 Reference to class %3$s is not compatible with the domain of %1$s of %2$s.
-577 For argument %1$d of constructor %2$s, domain is not specific enough to support\n unqualified object references.
-578 Reference to class %3$s is not compatible with the domain of argument %1$d \n of constructor %2$s.
-579 Target domain must include type "object" to allow references to classes.
-580 Attribute %1$s is not defined for class %2$s.
-581 Attempted to update the database when updates are disabled. 
-582 Unknown storage purpose %1$d. Valid range is from %2$d to %3$d.
-583 Trying to allocate an invalid number (%1$d) of pages.
-584 Internal Error: A loop was detected in the file table of file %1$d in volume "%2$s". The loop may be caused by page %3$d|%4$d.
-585 Unknown heap %1$s|%2$d|%3$d
-586 Internal Error: Unable to update chain header in VPID %1$d|%2$d for heap %3$d in volume "%4$s".
-587 Entries of permanent volumes are unsorted in your "%1$s" volinfo file. Entry %2$d: %3$d %4$s is out of sequence.
-588 INTERNAL ERROR: Assertion '%1$s' failed.
-589 Invalid user name "%1$s".
-590 The attribute domain "%1$s" of a class may not be a \nvirtual class or a proxy virtual class.
-591 The attribute domain "%1$s" of a proxy virtual class \nmust be a proxy virtual class.
-592 The attribute domain "%1$s" of a proxy virtual class \nand the proxy virtual class must be on the same local database.
-593 A non-updatable virtual instance has been reclaimed and cannot be rebuilt.
-594 An object_id clause must be supplied without using attributes (%1$s) of approximate data types (float or double).
-595 The database name "%1$s" is too long. Database name should be less than %2$d characters.
-596 The %1$d pages of total temporary space allowed have been exceeded.
-597 Number of pages for heap file %1$d|%2$d|%3$d is inconsistent. \n%4$d and %5$d were found according to heap chain and file table, respectively.
-598 Number of files is inconsistent. %1$d were expected, %2$d were found
-599 An I/O error occurred while synchronizing state of volume "%1$s".
-600 Function "%1$s" not implemented on the PC.
+554 Yükleyici geçersiz bir durum girmiştir. Başka işlemler yapılabilir.
+555 Veritabanı yükleme sırasında bellek ayırma hatası.
+556 Çok fazla değer verilmiştir . %d beklemektir.
+557 Öznitelik için %1$s of %2$s, tür %3$s is not allowed in the domain of the set.
+558 Öznitelik için %1$s of %2$s, kabul edilen tür %3$s, got a set constant.
+559 Öznitelik için %1$s of %2$s, kabul edilen tür %3$s, got %4$s.
+560 Öznitelik için %1$s of %2$s, etki alanı desteklemek için kadar belirgin değildir\n niteliksiz nesne başvuruları.
+561 İç içe kümeler izin verilmez.
+562 Sistem sınıfı %1$s veritabanı yükleyici doldurulamaz.
+563 %1$s dahili sınıf için başvuru NULL'a dönüştürülür.
+564 %2$s in %1$s öznitelik için BENZERSİZ kısıtı aşılıyorsa.
+565 %1$s kurucu yöntemi %2$s sınıfı üzerinde tanımlı değil.
+566 Karakteristik düzeyini belirlenmemiş veya düzeyinde özelliği olmayan.
+567 Çok fazla kurucu yöntemi argümanları sağlanmıştır. Tahmini %1$d.
+568 Kurucu yöntemi parametresi eksik. Kabul edilen %1$d, bulunan %2$d.
+569 Öznitelik değerleri eksik. Kabul edilen %1$d, bulunan %2$d.
+570 "%1$s" Glo veri dosyasına erişilemiyor.
+571 Örneğini daha önce ileriye doğru bir başvuru sonucu ortaya çıktı.\nBu kurucu yöntemler kullanılarak oluşturulmuş örnekleri için izin verilmiyor.
+572 İç hata: Örneğinin diski gösterimi inşa edilemez.
+573 İç hata: Veritabanındaki yeni örneği eklenemiyor.
+574 İç hata: Veritabanındaki yeni örneği güncelleştiremez.
+575 %1$d bağımsız değişken için kurucu %2$s ile, beklenen türü %3$s, %4$s.
+576 Sınıf %3$sReferans %2$s %1$s alanı ile uyumlu değildir.
+577 Kurucu %2$s bağımsız değişken %1$d için, etki alanı \n niteliksiz nesne kadar başvuruları desteklemek için belirgin değildir.
+578 Sınıf %3$s başvurusu kurucu %2$s bağımsız değişken %1$d \n etki alanı uyumlu değildir.
+579 Hedef etki alanı sınıfları için başvurular izin türü "nesne" içermelidir.
+580 Özellik %1$s sınıf %2$s için tanımlı değil.
+581 Güncelleştirmeler devre dışı bırakıldığında veritabanını güncelleştirmek için denendi.
+582 Bilinmeyen depolama amacı %1$d. Geçerli aralık %2$d için %3$d uzaklıktadır.
+583 Bir geçersiz sayfa numarası (%1$d) ayırmaya çalışılıyor.
+584 İç hata: %1$d döngü dosyanın tablosu "%2$s" yoğunluğunda tespit edilmiştir. %3$d|%4$d döngü sayfasından kaynaklanıyor olabilir.
+585 Bilinmeyen yığın %1$s|%2$d|%3$d
+586 İç hata: "%4$s" yoğunluk içinde %3$d yığın için %1$d|%2$d VPID zinciri başlığı güncelleştirilemiyor.
+587 Daimi birimlerin girişleri "%1$s" yoğunluk bilgileri dosyasında sıralanmamış olarak bulunur. Giriş %2$d: %3$d %4$s sırası dışındadır.
+588 İç hata: '%1$s' Bildirim başarısız.
+589 Geçersiz kullanıcı adı "%1$s".
+590 Öznitelik etki alanı "%1$s" bir sınıf \n sanal sınıf veya proxy sanal sınıf olmayabilir.
+591 Öznitelik etki alanı "%1$s" proxy sanal sınıf \n mutlaka proxy sanal sınıf olmslı.
+592 Öznitelik etki alanı "%1$s" proxy sanal sınıf \n ve proxy sanal sınıf mutlaka aynı yerel veri tabanında olamlı.
+593 Olmayan bir güncellenebilir sanal örnek iadesi edilmiş ve yeniden inşa edilemez.
+594 Bir object_id maddesi yaklaşık veri türleri (float ya da double) özellikleri (%1$s) kullanmadan sağlanmalıdır.
+595 Veritabanı adı "%1$s" cok fazla uzun. Veritabanı adı %2$d karakterden daha az olmalıdır.
+596 Toplam geçici alanı sayfaları %1$d verilen izin aşılmıştır.
+597 %1$d|%2$d|%3$d heap dosyaları için sayfaların sayısı tutarsızdır. \n%4$d ve %5$d sırasıyla, bir yığın zinciri ve dosya tablosuna göre tespit edildi.
+598 Dosyaların sayısı tutarsız. %1$d beklenen, %2$d bulunulan
+599 "%1$s" yoğunluk durumu eşitleme yaparken I/O hatası oluştu .
+600 Fonksiyon "%1$s" PC'de uygulanamadı.
 601 "%1$s".
-602 dl error: "%1$s" is defined more than once.
-603 Internal Error: Sector/page table of file VFID %1$d|%2$d seems corrupted.
-604 Internal Error: An allocation set for file VFID %1$d|%2$d(Volume "%3$s") seems inconsistent in %4$d deleted or marked deleted pages and %5$d page holes in table
-605 Internal Error: Inconsistent number of marked deleted pages for file VFID %1$d|%2$d(Volume "%3$s"). Expected %4$d, Found %5$d.
-606 Could not locate odbc.ini with path "%1$s".
-607 Database "%1$s" was not found in odbc.ini.
-608 Database "%1$s" does not have a Host specification in the odbc.ini file.
-609 Your transaction cannot be rolled back since logging was ignored. Your database may be corrupted.
-610 Your database is likely to be corrupted since logging was turned off when your database crashed.
-611 %s cannot be executed in client/server mode.
-612 Logging cannot be disabled at this moment since there are pending actions to recover.
-613 In class "%3$s", local component "%1$s" cannot serve as an alias substitute for class "%2$s". The domains are incompatible.
-614 Number of active log archives has been exceeded the max desired number of %1$d.
-615 Cannot establish contact with the Winsock interface. Winsock error: %1$d.
-616 Cannot determine machine name using Winsock interface. Winsock error: %1$d.
-617 Cannot determine machine id using Winsock interface. There must be an entry in the host name table for this machine. Winsock error: %1$d.
-618 Attribute is not updatable.
-619 Bad source codeset.
-620 Bad destination codeset.
-621 Invalid data type. The arguments contain an invalid data type.
-622 Incompatible code sets. The code sets of the arguments are incompatible.
-623 Invalid escape sequence. An invalid escape sequence has caused an error in the regular expression compiler.
-624 Invalid escape character. The escape character is non-NULL with a length greater than 1.
-625 Internal Error. Trying to update the wrong instance object %1$d|%2$d|%3$d attribute information template with instance object %4$d|%5$d|%6$d.
-626 Internal Error. %1$d requested attributes were not found.
-627 Invalid trim operand.  The trim operand has a length greater than 1.
-628 Invalid currency type: %1$d.
-629 Pagesize %1$d is not a power of 2 or pagesize is too small. Pagesize of %2$d is used instead.
-630 Conversion not supported by %1$s.
-631 SQL statement violated NOT NULL constraint.
-632 %1$s is not a backup volume.
-633 %1$s is a backup of database %2$s created on %3$s instead of given database %4$s created on %5$s
-634 A database volume/file was expected in backup.
-635 WARNING: Log Buffer pool of %1$d buffers seems very small for current environment.\n It is possible that some buffers are not freed by the system due to an UNKNOWN ERROR\n or that there are many concurrent transactions being aborted at the same time. The log buffer pool is expanded with %2$d more buffers.
-636 WARNING Num_buffers %1$d is too small. The minimum value of %2$d was assumed.
-637 System error: freeing a log buffer too much. Fix count is set to zero.
-638 Warning: Flushing an unupdatable log archive pageid = %1$d
-639 System error: Previous log sequence page %1$d is not the delayed flush page %2$d.
-640 System Error: a savepoint cannot be added when the transaction is not active (e.g., during commit or rollback).
-641 A name must be given for a savepoint.
-642 System Error: there is not an active top system operation for current transaction.
-643 May be a system error: Committing/Aborting transaction = %1$d (index = %2$d) which has permanent operations\n attached to it. Will attach those system operations to the transaction
+602 dl hatası: "%1$s" bir kereden fazla tanımlanmış.
+603 İç hata: VFID dosyasının sektör/sayfa tablosu %1$d|%2$d bozuk görünüyor.
+604 İç hata: VFID için ayarlanmış bir ayırma dosyası %1$d|%2$d(yoğunluk "%3$s") %4$d işaretlenen veya silinen içinde tutarsız görünüyor sayfalar ve %5$d tablosunda sayfa delikleri silinmiş.
+605 İç hata: %1$d|%2$d(yoğunluk "%3$s") VFID dosyası için işaretlenen silinen sayfaların tutarsız numarası. Tahmini %4$d, Bulunan %5$d.
+606 "%1$s" path ile odbc.ini birlikte bulunmaz .
+607 odbc.ini içinde veritabanı "%1$s" bulunamaz. 
+608 odbc.ini içinde Veritabanı "%1$s" host özelliği yoktur.
+609 Günlük kaydı yoksayıldığından beri işlem geri alınamaz. Veritabanınız bozulmuş olabilir.
+610 Veritabanı bozulmuş olabilir, Veritabanı çöktüğünden beri günlük kaydı kapatılmış.
+611 %s istemci / sunucu modunda yürütülemez.
+612 Kurtarmak için beklemede olan eylemler var olduğu Logging şu anda devre dışı bırakılamıyor.
+613 Sınıf "%3$s" içinde, "%1$s" yerel bileşeni "%2$s" sınıf için bir takma ad yerine hizmet veremez. Etki alanları uyumsuzdur.
+614 Etkin günlük arşiv sayısı %1$d in max istenilen sayısı aşıldı.
+615 Winsock arayüzü ile temas kurulamaz. Winsock hata: %1$d.
+616 Winsock arabirimini kullanarak makine adını belirleyemiyor. Winsock hata: %1$d.
+617 Winsock arabirimini kullanarak makine kimliği belirlenemiyor. Bu makine için ana bilgisayar adı tablo girdisi olmalıdır. Winsock hata: %1$d.
+618 Öznitelik güncelleştirilebilir değil.
+619 Kötü kaynak karakter kümesi.
+620 Kötü hedef karakter kümesi.
+621 Geçersiz veri türü. Bağımsız değişkenleri geçersiz veri türü içerir.
+622 Tamamlanamayan karakter kümeleri. Bağımsız değişken kod kümeleri uyumsuzdur.
+623 Geçersiz kaçış dizisi. Geçersiz bir kaçış dizisi düzenli ifade derleyici bir hataya neden oldu.
+624 Geçersiz kaçış karakteri .Kaçış karakteri 1 den daha büyük bir uzunluğa sahip olmayan NULL olur.
+625 Dahili hata. Örneğin bir nesne %4$d|%5$d|%6$d yanlış örneği nesne %1$d|%2$d|%3$d öznitelik bilgi şablonu güncellemek için çalışıyor.
+626 Dahili hata. %1$d İstenen nitelikler bulunmamıştır.
+627 Geçersiz kaplama işleneni. Kaplama işleneni 1'den büyük bir uzunluğa sahiptir.
+628 Geçersiz Kur tipi: %1$d.
+629 Sayfa boyutu %1$d 2 nin kuvveti değildir veya sayfa boyutu çok küçüktür. %2$d nin sayfa boyutu yerine kullanılmıştır.
+630 Dönüşüm %1$s tarafından desteklenmiyor .
+631 SQL ifadesi NULL kısıtlamasına aykırı.
+632 %1$s bir yedekleme yoğunluğu değildir.
+633 %1$s bir %2$s veritabanı yedeklemesi %3$s üzerinde oluşturulmuş yerine verilen veritabanı %4$s %5$s üzerinde oluşturulmuştur.
+634 Bir veritabanı yoğunluğu/dosya yedekleme içinde beklenen.
+635 UYARI: Log Buffer %1$d havuzunun arabellekleri güncel ortamı için çok küçük görünüyor.\n Bazı arabellekleri bir BİLİNMEYEN HATA nedeniyle sistem tarafından serbest bırakılmamış olması mümkündür.\n veya aynı zamanda iptal edilen çok sayıda eşzamanlı işlem bulunmakta. Log arabellek havuzundan %2$d daha arabellekleri ile genişletilir.
+636 UYARI Num_buffers %1$d çok küçük. En az değer %2$d varsayıldı.
+637 Sistem Hatası: bir log arabellek çok fazla boşaltma. Saptama sayısı sıfır olarak ayarlanır.
+638 Uyarı: Güncellenemez log arşiv sayfası kimliği yıkama = %1$d
+639 Sistem Hatası: Bir önceki log sıra sayfası %1$d geciktirilmiş yıkama sayfası %2$d değildir.
+640 Sistem Hatası: işlem etkin olmadığında bir kayıt noktası eklenemez (örn., yada gerialma sırasında ).
+641 Bir kayıt noktası için bir ad verilmelidir.
+642 Sistem Hatası: geçerli işlem için aktif bir üst sistem çalışması yoktur.
+643 Belki bir sistem hatası:  İşlem İşleniyor/İşlem İptal ediliyor = %1$d (indeks = %2$d) daimi işlemleri sahip olduğu \n ona bağlı. İşlem için sistem işlemler eklenecek.
 644 LOG FATAL ERROR: %1$s
-645 SYSTEM ERROR: State = %1$s of Transaction = %2$d (index = %3$d) \n is not the correct state to apply client postpone/undo actions... ignored
-646 SYSTEM ERROR: It seems that a compensating record is missing for logical logging rcvindex = %s\n. Without this compensating record crash recovery will not be done correctly
-647 Backup "%1$s" does not belong to the given database.
-648 Backup is incompatible with current "%1$s" release "%2$s".
-649 Given precision of %1$d is invalid; it should be greater than %2$d and no greater than %3$d.
-650 Cannot create enough threads for 'max_clients=%1$d'.
-651 There is not virtual memory to preallocate %1$d sort buffers for each of %2$d threads.
-652 Wrong offset %1$d was given to split the record of length %2$d stored on slot %3$d
-653 Wrong offset %1$d or length %2$d was given to remove a portion of the data of the record of length %3$d stored on slot %4$d
-654 Wrong offset %1$d or length %2$d was given to overwrite a portion of the data of the record of length %3$d stored on slot %4$d
-655 Cannot open the event handler configuration file, "%1$s".
-656 Warning: Null id/name in event handler configuration file, "%1$s", line %2$d
-657 Warning: Illegal event name, "%1$s", in event handler configuration file, "%2$s", line %3$d
-658 Warning: event id %1$d, not in error id range %2$d <> %3$d, file "%4$s", line %5$d
-659 Cannot access the event handler program, "%1$s".
-660 Cannot open/connect the event handler process, "%1$s".
-661 Failed to write to the event handler process, "%1$s".
-662 Failed to initialize event handling mechanism.
-663 Warning: Line too long in event handler configuration file, "%1$s", line %2$d, truncating
-664 Event handling mechanism started.
-665 Event handler pipe broken, "%1$s"
-666 Event handling mechanism stopped.
-667 Cannot match class '%1$s' with corresponding C++ class.
-668 Internal error: Unknown domain type '%1$d'.
-669 Server refused client connection: max clients, (%1$d), exceeded.
-670 Operation would have caused one or more unique constraint violations. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-671 A network read/write error occurred for socket %1$d associated with your transaction (index %2$d, %3$s@%4$s|%5$d)
-672 Socket %1$d associated with your transaction (index %2$d, %3$s@%4$s|%5$d) is closed.
-673 Your connection to the server has been closed since the server is going down immediately.
-674 There is not enough active threads to continue current server execution. Current number of active threads is %1$d. You may need up to %2$d threads for clean server execution in your environment. Transaction index %3$d has been timed out to continue server execution.
-675 Cannot read the database location file, '%1$s'.
-676 Database '%1$s', cannot be found in the database location file, '%2$s'
-677 Failed to connect to database server, '%1$s', on the following host(s): %2$s
-678 Internal error. Client restart module received NULL database server name.
-679 This C++ transaction has already begun.
-680 Attempted to exceed maximum C++ transaction nesting level (%d).
-681 %s transaction was attempted on a C++ transaction that hasn't begun.
-682 Cannot %s C++ transaction until all subordinate transactions are completed.
-683 Attempted to create string with illegal length - %d
-684 Method returned user-defined error code %d.
-685 Class "%1$s" is invalid.
-686 Notification: the event handler has been restarted.
-687 Not allows to cast (%s *) to (%s *).
-688 Subscript out of range. Attempt to access element %ld. Collection size = %ld.
-689 Internal error. Iterator contains corrupt state.
-690 Attempt to dereference an uninitialized instance of odb_Ref<>.
-691 Attempt to use an invalid iterator.
-692 Attempt to use an iterator with an unrelated collection.
-693 Overflow occurred on data type Numeric.
-694 SYSTEM ERROR: Unable to load B+tree.
-695 Wrong interface has been used to kill a client.
-696 Unknown transaction (index %1$d, %2$s@%3$s|%4$d).
-697 Given transaction index (index %1$d, %2$s@%3$s|%4$d) does not match with current transaction index (index %5$d, %6$s@%7$s|%8$d). Likely, the given transaction has finished and its transaction index was re-assigned to another transaction.
-698 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). the number of OIDs in the unique hierarchy: %6$d does not equal the number of OIDs: %7$d found in the unique B+tree plus the number of NULLs: %8$d found in the unique hierarchy for B+tree: %9$d|%10$d|%11$d.
-699 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). the number of OIDs in the unique hierarchy: %6$d does not equal the number of OIDs: %7$d found in the unique B+tree root statistics for B+tree: %8$d|%9$d|%10$d.
-700 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). the number of OIDs: %6$d does not equal the number of NULLs: %7$d plus the number of keys: %8$d in the unique B+tree: %9$d|%10$d|%11$d.
-701 No proxy is defined on "%1$s" at ldb "%2$s".
-702 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). the number of NULLs in the unique hierarchy: %6$d does not equal the number of NULLs: %7$d found in the unique B+tree root statistics for B+tree: %8$d|%9$d|%10$d.
-703 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). OID: %6$d|%7$d|%8$d found in unique B+tree: %9$d|%10$d|%11$d does not belong to one of the classes for the unique constraint.
-704 Evaluation of generic server function failed.
-705 Inconsistent %1$d permanent volumes were found when %2$d were expected.
-706 Cannot expand permanent volumes. Permanent volume "%1$s" with purpose %2$s was given.
-707 Unable to expand temporary volume "%1$s" with %2$d pages
-708 Unable to expand temporary disk volume "%1$s" with %2$d pages (%3$ld Kbytes) due to insufficient space. Current space available is %4$d pages (%5$ld Kbytes).
-709 Constraint "%1$s" not found.
-710 Invalid constraint.
-711 An object with the supplied attribute value doesn't exist.
-712 Constraint" %1$s" already exists.
-713 An index does not exist on this attribute.
-714 Query failed due to insufficient temporary file space.
-715 Failed to verify schema: %1$s
-716 NOT NULL constraints are not allowed in virtual or proxy classes.
-717 UNIQUE constraints are not allowed in virtual or proxy classes.
-718 Invalid gadget.
-719 The number of attributes(%d) and values(%d) are not equal.
-720 Cannot use a gadget to insert into a virtual or proxy class.
-721 Insert query yields more than one row.
-722 Wrong number of attributes for NOT NULL constraint.
-723 Cannot modify the domain of an existing attribute.
-724 Invalid parameter(s) for default constraint name generation.
-725 Internal error: expected temporary oid and encountered permanent oid.
-726 UNIQUE constraint must be added using a separate alter statement\nonce instances have been created. For example, instead of:\n\talter table1 add attribute a int unique;\nuse:\n\talter table1 add attribute a int;\n\talter table1 add unique(a);
-727 Invalid trigger event.
-728 Query failed because temporary file vfid is invalid for transaction %1$d.
-729 Overflow occurred in subtraction context.
-730 Overflow occurred in multiplication context.
-731 Overflow occurred in division context.
-732 Overflow occurred in unary minus context.
-733 Overflow occurred in coercion context.
-734 Internal Error: Header of file VFID %1$d|%2$d(Volume "%3$s") is corrupted.
-735 Unknown transaction index %1$d.
-736 Must specify either service or port identifier. Winsock error: %1$d.
-737 Unknown service for TCP: %1$s. Winsock error: %2$d.
-738 Cannot create socket stream. Winsock error: %1$d.
-739 Cannot bind local address... retrying. Winsock error: %1$d.
-740 Cannot bind local address... aborting. Winsock error: %1$d.
-741 Accept failed. Winsock error: %1$d.
-742 Sending a broadcast message to client. Winsock error: %1$d.
-743 Failed on handshake between client and server. (peer host %s)
-744 Error in rehashing a proxy/vclass MOP.
-745 Invalid garbage collection phase.
-746 Invalid garbage collection callback.
-747 Invalid garbage collection callback ticket.
-748 Invalid object pointer encountered by db_gc_mark_object.
-749 The number of fetched instances are not matched: %1$d expected, %2$d received.
-750 The number of fetched instances are not matched: %1$d expected, %2$d received.
-751 The OID of a new object isn't available in a BEFORE INSERT trigger.
-752 Error restoring backup unit_num %d.
-753 Error restoring backup unit_num %d, pageid %d exceeds total number of pages %d for volid %d.
-754 OO proxy instance has non-string-type or null key.
-755 %s cannot be executed in stand-alone mode.
-756 Specified string buffer is too small to encode this object.
-757 Internal Error: cannot assign permanent OID during object encode.
-758 Specified string is not valid for decoding object.
-759 The target object has been deleted.
-760 Internal error: proxy object instance has NULL key during object encode.
-761 Internal error: vclass object instance maps to invalid real instance.
-762 Internal error in resolving vclass instance to a real instance.
-763 Internal error in encoding nonupdatable object instance.
-764 Internal error in encoding object into internal vobj form.
-765 Output object argument has a NULL address.
-766 Internal error in decoding object.
-767 Cannot create a level %d backup without first creating a level %d backup.
-768 The local database "%1$s" has been accessed in this session, alteration or drop is not allowed.
-769 Attribute "%s", of class "%s" is not a valid class or shared attribute.
-770 No table functions.
-771 Invalid parameter for function.
-772 db_serial class not found.
-773 Serial "%s" not found.
-774 Serial "%s" already exist.
-775 Next value exceeds MAX(MIN) value.
-776 Cannot fetch serial object.
-777 Cannot update serial object.
-778 Cannot create a symbolic link "%s" to the file "%s".
-779 Result exceeds limit: year of Date MUST be in 1 and 9999.
-780 Internal system failure: unable to get system time.
-781 Format string is too long. It must be less than 16K.
-782 Empty string not allowed here.
-783 Invalid format.
-784 Two arguments are mismatched.
-785 First argument string is too long. It must be less than 16K.
-786 Format is duplicated.
-787 Conversion error in time format.
-788 Conversion error in timestamp format.
-789 Wrong number.
-790 Query execution has been interrupted by user.
-791 Invalid serial value.
-792 Cannot allocate memory for css.
-793 pthread_attr_init() failed.
-794 pthread_attr_destroy() failed.
-795 pthread_attr_setdetachstate() failed.
-796 pthread_attr_setscope() failed.
-797 pthread_attr_setstacksize() failed.
-798 pthread_create() failed.
-799 pthread_join() failed.
-800 pthread_mutex_init() failed.
-801 pthread_mutex_destroy() failed.
-802 pthread_mutex_lock() failed.
-803 pthread_mutex_trylock() failed.
-804 pthread_mutex_unlock() failed.
-805 pthread_mutexattr_init() failed.
-806 pthread_mutexattr_destroy() failed.
-807 pthread_mutexattr_settype() failed.
-808 pthread_mutexattr_gettype() failed.
-809 pthread_cond_init() failed.
-810 pthread_cond_destroy() failed.
-811 pthread_cond_wait() failed.
-812 pthread_cond_timedwait() failed.
-813 pthread_cond_signal() failed.
-814 pthread_cond_broadcast() failed.
-815 pthread_key_create() failed.
-816 pthread_key_delete() failed.
-817 pthread_setspecific() failed.
-818 pthread_getspecific() failed.
-819 pthread_once() failed.
-820 Cannot initialize a connection.
-821 Shutdown a connection.
-822 Mutex operation failed while getting next client id.
-823 Mutex operation failed while initializing connection list.
-824 Cannot destroy mutex while finalizing connection list.
-825 pread() call failed.
-826 pwrite() call failed.
-827 Connection list traverse function returned invalid value.
-828 Invalid critical section of the index was given.
-829 This mutex lock has been unlocked already.
-830 Cannot allocate query entry any more. Maximum allocatable entries are %d.
-831 All transaction descriptors(%d) are in use. Raise up max_clients parameter.
-832 Backup is already running. Backup cannot be run by two processes.
-833 The index name "%1$s" is ambiguous. Specify the class name of the index.
-834 There are some mismatches between source string "%1$s" and format string "%2$s" given in to_number().
-835 Undefined statistics item.
-836 LATCH ON PAGE(%d|%d) TIMEDOUT
-837 Cannot drop the user who owns database objects(class/trigger/serial etc). 
-838 Cannot open more than %d index scans simultaneously.
-839 "%s": Unknown system parameter or bad value.
-840 Cannot change system parameter "%s".
-841 Requested operation can be executed by only sole client(transaction).
-842 Cannot cache lock of object %1$d|%2$d|%3$d.
-843 Wrong arguments in %s, a %s was passed.
-844 Unknown isolation(%d) is found. The transaction index is %d.
-845 Invalid object type(%d) is found. The lockable object is %d|%d|%d.
-846 %s of tran(%d) is not found in the holder list of an object(%d|%d|%d).
-847 %s on a %s(%d|%d|%d) is not found in the transaction(%d) hold list(cnt=%d).
-848 %s on an object(%d|%d|%d) is not found in the transaction(%d) non2pl list.
-849 Trying to abort a transaction(%d) twice.
-850 Tran(%d) is neither lock holder nor lock waiter of an object(%d|%d|%d).
-851 Failed to allocate lock resource (%s). 
-852 Total holders mode(%d) of an empty lock holder list is not NULL_LOCK.
-853 For an object(%d|%d|%d), tran(%d) of Uncommitted Read held fault lock(%s).
-854 WARNING: No lock holder, but lock waiters exist. refer to %s.
-855 WARNING: Two or more threads are lock-waiting for one transaction(%d).
-856 WARNING: Strange lockwait state(%d|%d), thread(%d|%d) and transaction(%d).
-857 An I/O error occurred while truncating page %1$d of volume "%2$s".
-858 Volume "%1$s" is unknown at server restart.
-859 LATCH ON PAGE(%d|%d) ABORTED
-860 Cannot make current transaction as a part of a global transaction because its state is '%1$s'.
-861 Cannot prepare to commit the current transaction with transaction identifier %1$d because that transaction is not made as a part of a global transaction.
-862 Cannot set the user information of the global transaction with the identifier %1$d because its state is '%2$s'.
-863 Cannot get the user information of the global transaction with the identifier %1$d because it is not set.
-864 Cannot open backupdb/restoredb verbose file '%s'.
-865 Cannot execute statement due to unknown type input markers.
-866 Unused error code.
-867 Unused error code.
-868 Unused error code.
-869 Unused error code.
-870 Unused error code.
-871 Unused error code.
-872 Unused error code.
-873 PKI authentication error "%1$s".
-874 Argument of power() is out of range.
-875 Overflow happened in power context.
-876 Unused error code.
-877 No data to be unloaded.
-878 Invalid database location file, '%1$s'.
-879 Cannot get permission: '%s'.
-880 Cannot change permission '%s'.
-881 Cannot get lock file '%s(FILE ID:%d)'.
-882 Cannot release lock file 'FILE ID:%d'.
-883 Failed to get '%s' file status.
-884 Volext-pathname '%s' is not permitted to write.
-885 Failure to move from '%s' to '%s'. Use the same device(disk).
-886 "%1$s" caused unique constraint violation.
-887 Stored procedure '%s' is already exist.
-888 Parameter count is invalid. expected: %d, actual: %d
-889 Stored procedure execute error: %s
-890 Partition failed.
-891 Appropriate partition does not exist.
-892 Primary key "%2$s" already defined for class "%1$s".
-893 Attribute '%1$s', a member of the primary key, could not be dropped.
-894 Stored procedure/function '%s' does not exist.
-895 Invalid stored procedure type: '%s' is the '%s'.
-896 Compression failed. Zip Method: %d (%s), Zip Level: %d (%s)
-897 Decompression failed.
-898 Replication error: "%1$s"
-899 Invalid partition requests.
-900 Java VM library is not found: %s. \nConsequently, calling java stored procedure is not allowed.
-901 Java VM can not be started: %s. \nConsequently, calling java stored procedure is not allowed.
-902 Java VM is not running.
-903 Can't connect Java VM: %s
-904 Invalid stored procedure name.
-905 Networking with JVM failed: %d
-906 Invalid java method signature.
-907 The owner or a member of DBA group can drop stored procedure.
-908 Too many arguments of stored procedure '%s'.
-909 Missing or invalid catalog class/vclass is found.
-910 Not allowed access to partition.
-911 Invalid call: it can not return ResultSet.
-912 ResultSet can not be used input parameter.
-913 Too many nested stored procedure call.
-914 A serial object already exists as an auto increment constraint.
-915 Increase value of an auto increment constraint should be greater than 0.
-916 Active log volume is not included in this backup volume(%s).
-917 Active log volume already exists.
-918 The class '%s' referred by the foreign key does not exist.
-919 The class '%s' referred by the foreign key does not have the primary key.
-920 The foreign key '%s' does not include the primary key member '%s'.
-921 The domain of the foreign key member '%s' is different from that of the primary key member '%s'.
-922 The constraint of the foreign key '%s' is invalid, due to value '%s'.
-923 The primary key '%s' referred by a foreign key '%s' is not supposed to be dropped.
-924 Update/Delete operations are restricted by the foreign key '%s'.
-925 Acquiring lock for the foreign key '%s' has failed.
-926 The instance having the foreign key '%s' cannot be dropped.
-927 The number of keys of the foreign key '%s' is different from that of the primary key '%s'.
-928 Not a user but the system can assign the attribute '%s' created by 'ON CACHE OBJECT' of foreign key.
-929 A foreign key cannot be defined in virtual class.
-930 It is able to drop the attribute '%s' created by 'ON CACHE OBJECT' of foreign key only after removing the constraint of the foreign key.
-931 Start value of an auto increment constraint should be less then max value.
-932 It is not able to repair an inconsistency of the number of free pages for the volume "%1$s". Because %2$d pages obtained from the volume header is inconsistent with %3$d pages from the bitmap.
-933 It is not able to repair an inconsistency of the number of free sectors for the volume "%1$s". Because %2$d sectors obtained from the volume header is inconsistent with %3$d sectors from the bitmap.
-934 Null domain referenced.
-935 Argument of %s function is out of range.
-936 Overflow occurred in exp context.
-937 Database error.
-938 Invalid argument.
-939 There are too many connection.
-940 The handle is invalid.
-941 The operation is not supported.
-942 Handle timed out waiting for locks.
-943 Generic error.
-944 The statement is not prepared.
-945 The statement has no result set.
-946 The statement is not executed.
-947 There is no more result set.
-948 The size of buffer is not enough.
-949 There is no available information.
-950 The name not valid.
-951 The resultset is not updatable.
-952 The row is deleted.
-953 Parameters of the prepared statement is not set.
-954 The statement is not batch statement.
-955 Can not clear this batch statement.
-956 Can not batch execute.
-957 The statement is prepared statement.
-958 The statement is not prepared statement.
-959 The statement is batch statement.
-960 There is no more error.
-961 There is no more result.
-962 Out of memory
-963 Broker error.
-964 The result set handle is closed.
-965 Cannot use duplicate attribute names in index key list. Attribute name '%s' listed more than once.
-966 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on object %6$d|%7$d|%8$d because of deadlock. You are waiting for user(s) %9$s to finish.
-967 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on class %6$s because of deadlock. You are waiting for user(s) %7$s to finish.
-968 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on instance %6$d|%7$d|%8$d of class %9$s because of deadlock. You are waiting for user(s) %10$s to finish.
-969 Server bit platform (%1$d) is different from client bit platform (%2$d).
-970 Server HA mode is changed from '%1$s' to '%2$s'.
-971 Program '%1$s' (pid %2$d) connected to database server '%3$s' on the host '%4$s' (port %5$d).
-972 Program '%1$s' (pid %2$d) was connected from the host '%3$s'. (transaction index %4$d)
-973 Server status is %1$s.
-974 Archive log "%1$s" is created to archive pages from %2$lld to %3$lld.
-975 Current version of replication does not allow changing multiple rows with a single UPDATE statement which can violate the UNIQUE constraint.
-976 Internal error: Table size overflow (allocated size: %1$d, accessed size: %2$d) at file table page %3$d|%4$d(volume "%5$s")
-977 Checkpoint started (previous checkpoint page id: %lld, previous redo page id: %lld).
-978 Checkpoint finished (checkpoint page id: %lld, checkpoint redo page id: %lld).
-979 CONNECT BY loop in user data.
-980 A thread is waiting in %1$s more than %2$d msec.
-981 Transaction %1$d has reached to the threshold of monitoring statistics %2$s.
-982 Set interrupt to the transaction %1$d.
-983 Instances of a reusable OID class are non-referable. This operation is not permitted on non-referable instances.
-984 Cannot set %3$s to "%6$s" in the "[%5$s]" section when it is set to "%4$s" in the "[%2$s]" section of the configuration file "%1$s".
-985 The hostname on the database connection string should be specified when multihost is set in "databases.txt".
-986 CUBRID heartbeat feature started. 
-987 CUBRID heartbeat feature stopped.
-988 Node event: %1$s.
-989 Process event: %1$s. %2$s
-990 Command execution: %1$s. %2$s
-991 Flush victim candidates of page buffer started.
-992 Flush victim candidates of page buffer finished (count: %d).
-993 Overflow happened in bit operation context.
-994 This statement cannot be a prepared statement.
-995 A prepared statement with the name %1$s does not exist.
-996 Incorrect number of values given. %1$d values were given but %2$d values are required.
-997 Cannot add the foreign key constraint %1$s to the partitioned %2$s. Referential actions that update attributes are not yet supported on partitioned classes.
-998 Cannot add the foreign key constraint %1$s on the attribute %2$s. The attribute cannot have a NOT NULL constraint because it has to match the SET NULL referential action.
-999 Cannot create table '%1$s' like table '%2$s' because the existing table has features that will not be duplicated (%3$s).
-1000 '%1$s' is a CLASS or SHARED attribute but only normal attributes are allowed in this context.
-1001 An unexpected condition or state has been reached. '%1$s'
-1002 The current transaction could not aquire a database lock it requires to continue processing.
-1003 The constraint '%1$s' exists but has a different type.
-1004 Please note that when using ALTER TABLE DROP FOREIGN KEY, CUBRID drops both the constraint and its associated index.
-1005 Unused error code.
-1006 Unused error code.
-1007 Cannot create index with prefix length on unique, foreign key or primary key constraints.
-1008 Cannot create index with prefix length on partitioned class.
-1009 COMPACTDB already started.
-1010 Cannot define index with prefix length on domain "%1$s".
-1011 Cannot add the foreign key constraint %1$s on the shared attribute %2$s.
-1012 Cannot create table with NULL column type.
-1013 Set DEFAULT or SHARED on %s typed column is not allowed.
-1014 Set NOT NULL on %s typed column is not allowed.
-1015 Specified directory '%s' does not exist.
-1016 %1$s external storage error: %2$s
-1017 Path for external storage '%s' is invalid.
-1018 Cannot copy the external file to the different type of storage. (source %1$s dest %2$s)
-1019 External storage is not initialized because the path is not specified in "databases.txt".
-1020 External file "%s" was not found.
-1021 A deadlock cycle is detected. %1$s.
-1022 Invalid value "%ld" for prefix length of the index.
-1023 Reserved error code for HA.
-1024 Reserved error code for HA.
-1025 Reserved error code for HA.
-1026 Reserved error code for HA.
-1027 log applier: failed to change apply state from '%1$s' to '%2$s'.
-1028 log applier: unexpected EOF record in archive log. LSA: %1$lld|%2$d.
-1029 log applier: invalid replication log page/offset. page HDR: %1$1lld|%2$d, final: %3$lld|%4$d, append LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, ha file status: %9$d, is end-of-log: %10$d.
-1030 log applier: invalid replication record. LSA: %1$lld|%2$d, forw LSA: %3$lld|%4$d, backw LSA: %5$lld|%6$d, Trid: %7$d, prev tran LSA: %8$lld|%9$d, type: %10$d.
-1031 log applier: failed to apply schema replication log. class: "%1$s", schema: "%2$s", internal error: %$3d. 
-1032 log applier: failed to apply insert replication log. class: "%1$s", key: "%2$s", internal error: %3$d.  
-1033 log applier: failed to apply update replication log. class: "%1$s", key: "%2$s", internal error: %3$d.  
-1034 log applier: failed to apply delete replication log. class: "%1$s", key: "%2$s", internal error: %3$d.  
-1035 log applier: mem size(%1$d MB) of log applier is greater than max mem size (%2$d MB) or has been grow more than 2 times (%3$d MB). required LSA: %4$lld|%5$d. last committed LSA: %6$lld|%7$d.
-1036 log applier: log applier shut itself down by signal.
-1037 log writer: log writer shut itself down by signal.
-1038 log applier: log applier started. required LSA: %1$lld|%2$d. last committed LSA: %3$lld|%4$d. last committed repl LSA: %5$lld|%6$d.
-1039 log writer: log writer started. mode: %1$d.
-1040 HA generic: %1$s. 
-1041 A string was truncated in context of "%1$s".
-1042 Trying to create a string requiring %1$d bytes of memory, while the maximum allowed is %2$d bytes.
-1043 Cannot change attribute "%1$s". CUBRID cannot change the requested attribute's properties if the class has subclasses.
-1044 Cannot change attribute "%1$s". CUBRID cannot change attributes that are partitioning keys.
-1045 Cannot change attribute "%1$s". CUBRID cannot change attributes used in foreign keys (either referenced or referencing).
-1046 Cannot change attribute "%1$s". CUBRID cannot change the attribute's domain. This change of domain is not supported.
-1047 Cannot change attribute "%1$s". CUBRID cannot change the attribute's domain. The new domain may not correctly represent all the existing attribute values.
-1048 Cannot change attribute "%1$s". CUBRID cannot currently change an attribute's AUTO_INCREMENT if the attribute's domain also changes.
-1049 Cannot change attribute "%1$s". CUBRID cannot currently change the attribute's domain. The domain conversion is possible but this feature is not allowed by configuration.
-1050 Cannot change attribute "%1$s". CUBRID cannot currently change the attribute's domain. The attribute has an index on it.
-1051 Cannot change attribute "%1$s". CUBRID cannot currently change the attribute to add a constraint. Existing attribute values may not check the constraint.
-1052 Attribute "%1$s" was not changed. CUBRID did not detect any effective changes in the attribute representation.
-1053 The Statements REPLACE INTO... and INSERT ... ON DUPLICATE KEY UPDATE are not allowed for partitioned classes or for classes that are part of an inheritance chain.
-1054 The new value of an auto increment constraint should be greater than or equal to the current value.
-1055 The new value of an auto increment constraint should be lower than the maximum value.
-1056 To avoid ambiguity, the AUTO_INCREMENT table option requires the table to have exactly one AUTO_INCREMENT column and no seed/increment specification.
-1057 Cannot add a NOT NULL '%s' typed attribute without a DEFAULT value.
-1058 ALTER TABLE .. CHANGE : changing to new domain : cast failed, current configuration doesn't allow truncation or overflow.
-1059 ALTER TABLE .. CHANGE : changing to new domain : cast failed, default value of new domain was set.
-1060 ALTER TABLE .. CHANGE : changing to new domain : cast failed, minimum value of new domain was set.
-1061 ALTER TABLE .. CHANGE : changing to new domain : cast failed, maximum value of new domain was set.
-1062 Cannot change attribute "%1$s". The change would result in multiple primary keys being defined.
-1063 Cannot add NOT NULL constraint for attribute "%1$s": there are existing NULL values for this attribute.
-1064 ALTER TABLE .. CHANGE : adding NOT NULL : all existing NULL values were changed to domain's hard default.
-1065 Cannot change attribute "%1$s". CUBRID cannot add NOT NULL constraint : a hard default value doesn't exist for the new domain.
-1066 Session expired.
-1067 Column '%s' cannot have a NOT NULL constraint and a NULL default value.
-1068 Maximum trigger depth cannot exceed %d.
-1069 Too many prepared statements.
-1070 Session variable '@%s' not defined.
-1071 Too many session variables.
-1072 IP address(%1$s) is not authorized.
-1073 Invalid format in file(%1$s).
-1074 Cannot read access list file(%1$s).
-1075 Descending index scan aborted because of lower priority on B+tree with index identifier: (vfid = (%1$d, %2$d), rt_pgid: %3$d).
-1076 Could not load system parameter.
-1077 The '%s' parameter at line %d in file '%s' : Unknown parameter
-1078 Character at offset %d is invalid with current codeset.
-1079 Codesets of database and server configuration are incompatible.
-1080 The maximum length of filter predicate string must be %1$d.
-1081 Cannot alter an attribute involved in a filter or function index.
-1082 All page buffers are dirty (LRU: %1$d).
-1083 Specific information about deadlock.
-1084 Skip invalid page in checkpoint. (page id: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, previous checkpoint redo lsa: %5$lld|%6$d)
-1085 Cannot compile regular expression: '%s'
-1086 Cannot execute regular expression: '%s'
-1087 Locale initialization: %s.
-1088 Locale generation: %s.
-1089 Cannot prepare statement of type '%s' with host variables.
-1090 The arg '%s' for inet_aton is not a valid string formatted ipv4 address.
-1091 The arg '%lld' for inet_ntoa is not a valid number formatted ipv4 address.
-1092 Backup active log '%s' started.
-1093 Backup active log '%s' finished.
-1094 User name is too long.
-1095 Resources allocation failed. Raise up 'max_bestspace_entries=%1$d'.
-1096 Altering partitioning schema is not allowed when the partitioned class is referenced by a foreign key.
-1097 Column '%s' cannot have a PRIMARY KEY constraint and a NULL default value.
-1098 Locales for language '%s' are not available with charset '%s'.
-1099 DDL statement is not allowed by configuration (block_ddl_statement=yes).
-1100 Statement without WHERE clause is not allowed by configuration (block_nowhere_statement=yes).
-1101 The current transaction could not acquire a key lock on PSEUDO-OID (%1$d|%2$d|%3$d) attached to OID (%4$d|%5$d|%6$d)
+645 SİSTEM HATASI: Durum = %1$s İşlem = %2$d (index = %3$d) \n istemci geri alma / erteleme eylemleri uygulamak için doğru durumda değil... gözardı edildi.
+646 SİSTEM HATASI: Bu bir dengeleme kaydı mantıksal bir günlük kaydı rcvindex eksik olduğunu görünüyor. = %s\n.Bu dengeleme kaydı olmadan hata kurtarma düzgün yapılmayacaktır.
+647 Yedek "%1$s" verilen veritabanına ait değildir.
+648 Yedekleme akımı ile uyumsuz "%1$s" serbest bırakma "%2$s".
+649 Göz önüne alındığında hassas %1$d geçersiz; %2$d daha büyük olmalıdır ve %3$d daha büyük olmamalıdır.
+650 'max_clients=%1$d'İçin yeterli konuları oluşturulamıyor.
+651 %2$d 'nin her parçacıkları için %1$d tür arabellekleri ayrışım yapan sanal bellek bulunmamaktadır.
+652 Hatalı offset %1$d yuvaya depolanan %2$d uzunluğu dair %3$d kayıtları bölünmüş verildi.
+653 Hatalı offset %1$d veya %2$d uzunluk kaydın verilerinin bir kısım uzunluğu %3$d yuvaya %4$d depolanan kaldırmak için verildi.
+654 Hatalı offset %1$d veya %2$d uzunluk kaydın verilerinin bir kısım uzunluğu %3$d yuvaya %4$d depolanan üzerine yazmak için verildi.
+655 Olay işleyicisi yapılandırma dosyası açılamıyor, "%1$s".
+656 Uyarı: Null id/adı "%1$s", satır %2$d olay işleyicisi yapılandırma dosyasında.
+657 Uyarı: geçersiz eylem adı, "%1$s", "%2$s", satır %3$d olay işleyicisi yapılandırma dosyasında.
+658 Uyarı: olay id %1$d, hatalı id kapsamında değil %2$d <> %3$d, dosya "%4$s", satır %5$d
+659 Olay işleyicisi program erişemiyor, "%1$s".
+660 Olay işleyicisi sürecine açılmıyor/bağlanamıyor, "%1$s".
+661 Olay işleyici süreci yazma işleminde hata verdi, "%1$s".
+662 Olay işleme mekanizması başlatılamadı.
+663 Uyarı: olay işleyici yapılandırma dosyasında çok uzun satır, "%1$s", satır %2$d, kesiliyor
+664 Olay işleme mekanizması başladı.
+665 Olay işleyici pipe bozuk, "%1$s"
+666 Olay işleme mekanizması durdu.
+667 '%1$s' sınıf karşılık gelen C++ sınıfı ile eşleşemez.
+668 İç hata: Bilinmeyen alan adı '%1$d'.
+669 Sunucu istemci bağlantısını reddetti:maksimum istemci (%1$d), aşıldı.
+670 İşletme nedeniyle görülecek olan bir ya da çok sayıda özel olan zorunlu düzensizlikler. %3$s%4$s düzeyini CLASS %1$s%2$s INDEX.Anahtar kelime: %5$s%6$s.
+671 Bir ağ ile bağlantılı soket %1$d için okuma/yazma hatası meydana geldi işleminiz (indeks %2$d, %3$s@%4$s|%5$d)
+672 İşleminiz Soket %1$d ilişkili (indeks %2$d, %3$s@%4$s|%5$d) kapalı.
+673 Sunucu düşüşe geçtiğinden beri sunucu ile bağlantınız kapatılmıştır.
+674 Geçerli sunucu yürütülmesine devam etmek için yeterince aktif konuları yoktur.Aktif konuları güncel %1$d numara. Bu yukarı Çalışma ortamınızda temiz sunucuya yürütülmesine %2$d konuları gerekebilir. İşlem İndeks %3$d sunucuya çalışmaya devam edebileceği zaman aşımına uğradı.
+675 Veritabanı konumu dosyası okunamiyor, '%1$s'.
+676 Veritabanı '%1$s', '%2$s' veritabanı konumu dosyasında bulunabilir değildir.
+677 Veritabanı sunucusuna bağlantı kurulamadı, '%1$s',Aşağıdaki ana bilgisayar (lar): %2$s
+678 Dahili hata. Müşteri yeniden başlatma modülü NULL veritabanı sunucusu adını aldı.
+679 Bu C++ işlem çoktan başladı.
+680 Aşması girişimi maksimum C++ iç içe geçmiş hareket düzeyi (%d).
+681 %s işlem üzerinde denendi C++ işlem başlamamıştır .
+682 %s C++ işlem tüm alt işlemler tamamlanıncaya kadar olmaz.
+683 Geçersiz - %d uzunluğu ile dizesi oluşturmak için denendi
+684 Metod dönüşü kullanıcı tanımlı hata kodu %d.
+685 Sınıf "%1$s" geçersiz.
+686 Bildirim: olay işleyici olarak başlangıç durumuna getirilir.
+687 (%s *) için (%s *) atama için izin bulunmamakta.
+688 Aralık dışında. öğesine %ld erişmek için deneyin. Toplama boyut = %ld.
+689 Dahili hata. Yineleyici bozulmuş durum içerir.
+690 Çözümlenmiş başlangıç değeri olmayan odb_Ref<> bir örneğini çalışıldı.
+691 Geçersiz bir yineleyici kullanmaya çalışıldı.
+692 İlişkisi olmayan bir koleksiyon ile bir yineleyici kullanmaya çalışıldı.
+693 Sayısal veri türü üzerinde taşma meydana geldi.
+694 SİSTEM HATA: B+tree yüklenemiyor.
+695 Hatalı arayüz bir istemci iptal etmek için kullanılmıştır.
+696 Bilinmeyen işlem(indeks %1$d, %2$s@%3$s|%4$d).
+697 Verilen işlem indeksi(index %1$d, %2$s@%3$s|%4$d) (indeks %5$d, %6$s@%7$s|%8$d)geçerli işlem indeksi ile eşleşmiyor. Olasılıkla, verilen işlem tamamlandıktan ve işlem dizin başka bir işlem için yeniden atandı.
+698 İç hata: İNDEKS %1$s SINIF ÜZERİNDE %2$s (CLASS_OID: %3$d|%4$d|%5$d). benzersiz hiyerarşisinde OIDs sayısı: %6$d OIDler sayısına eşit değildir: %7$d benzersiz B+tree artı NULL'ları sayısı bulundu: %8$d B+tree için benzersiz hiyerarşi içinde bulundu: %9$d|%10$d|%11$d.
+699 İç hata: İNDEKS %1$s SINIF ÜZERİNDE %2$s (CLASS_OID: %3$d|%4$d|%5$d). benzersiz hiyerarşisinde OIDs sayısı: %6$d OIDler sayısına eşit değildir: %7$d B+tree için benzersiz B+tree kök istatistikleri bulundu: %8$d|%9$d|%10$d.
+700 İç hata: İNDEKS %1$s SINIF ÜZERİNDE %2$s (CLASS_OID: %3$d|%4$d|%5$d). OIDs sayısı: %6$d NULL'ları sayısına eşit değildir: %7$d artı anahtar numarası: %8$d benzersiz B+tree: %9$d|%10$d|%11$d.
+701 Hiçbir proxy üzerinde tanımlanmaktadır "%1$s" de ldb "%2$s".
+702 İç hata: İNDEKS %1$s SINIF ÜZERİNDE %2$s (CLASS_OID: %3$d|%4$d|%5$d). benzersiz hiyerarşi içinde NULL'ları sayısı: %6$d NULL'ları sayısına eşit değildir: %7$d B+tree için benzersiz B+tree kök istatistikleri bulundu: %8$d|%9$d|%10$d.
+703 İç hata: İNDEKS %1$s SINIF ÜZERİNDE %2$s (CLASS_OID: %3$d|%4$d|%5$d). OID: %6$d|%7$d|%8$d benzersiz B+tree içinde bulundu: %9$d|%10$d|%11$d benzersiz kısıtlama için sınıflar birine ait değil.
+704 Genel sunucu fonksiyonlarının değerlendirilmesi başarısız oldu.
+705 Tutarsız %1$d daimi yoğunlukları %2$d beklenen edildiğinde bulundu.
+706 Daimi yoğunlukların arttırılamaz. Daimi yoğunluk amacı ile "%1$s" %2$s  verildi.
+707 "%1$s" ile %2$d sayfaları geçici yoğunluk genişletmek için açılamıyor.
+708 Geçici disk birimi genişletmek için açılamıyor "%1$s" ile %2$d sayfaları (%3$ld Kbytes) yeterli boş alan. Şu kullanılabilir alanı %4$d sayfaları ise (%5$ld Kbytes).
+709 Kısıtlama "%1$s" bulunamadı.
+710 Geçersiz kısıt.
+711 Verilen öznitelik değeri olan bir nesne bulunmamaktadır.
+712 Ksısıtlama " %1$s" zaten bulunmakta.
+713 Bu öznitelik içerisinde bir indeks mevcut değildir.
+714 Sorgu yetersiz geçici dosya alanı nedeniyle başarısız oldu.
+715 Şema doğrulanma başarısız: %1$s
+716 NOT NULL kısıtlamaları sanal ya da proxy sınıfları izin verilmez.
+717 BENZERSİZ kısıtlamaları sanal ya da proxy sınıfları izin verilmez.
+718 Gadget geçersiz.
+719 Öznitelikleri (%d) ve değerler (%d) sayısı eşit değildir.
+720 Sanal veya proxy sınıfı eklemek için bir gadget kullanamazsınız.
+721 Sorgu verimleri birden fazla satır ekler.
+722 NO NULL kısıtlaması özniteliklerinin numarası yanlış.
+723 Mevcut bir öznitelik alanı değiştiremezsiniz.
+724 Varsayılan kısıtlama adı üretimi için geçersiz parametre (ler).
+725 İç hata: Geçici oid beklenen ve kalıcı oid karşılaştı.
+726 UNIQUE sınırlaması ayrı bir alter ifadesi kullanılarak eklenmiş olması gerekir\tek olay için bulunmuş örnekleri yaratılmıştır. Örneğin, yerine:\n\t tablo1 eklenti bir int benzersiz öznitelik değişiklik yapılmalı;\nuse:\n\ttablo1 ekleme bir int öznitelik değiştirebilir;\n\ tablo1 değişiklik yapma benzersiz (a) ekler;
+727 Geçersiz tetikleyici eylemi.
+728 Geçici dosya vf id işlemi %1$d için geçersiz olduğundan sorgusu başarısız oldu.
+729 Taşma çıkarma bağlamında oluştu.
+730 Taşma çarpma bağlamında oluştu.
+731 Taşma bölümü bağlamında oluştu.
+732 Taşma tekil eksi bağlamında oluştu.
+733 Taşma zorlama bağlamında oluştu.
+734 İç hata: Dosya VFID başlığının %1$d|%2$d(Yoğunluk "%3$s") bozulmuş.
+735 Bilinmeyen işlem indeksi %1$d.
+736 Servis veya port tanımlayıcı da belirtmeniz gerekir. Winsock hata: %1$d.
+737 TCP Bilinmeyen hizmet: %1$s. Winsock hata: %2$d.
+738 Soket akımı oluşturulamıyor. Winsock hata: %1$d.
+739 Yerel adres bağlanamıyor... yeniden deneniyor. Winsock hata: %1$d.
+740 Yerel adres bağlanamıyor... durduruluyor. Winsock hata: %1$d.
+741 Başarısız onaylama. Winsock hata: %1$d.
+742 İstemciye bir yayın mesajı gönderme.Winsock hata: %1$d.
+743 İstemci ile sunucu arasındaki karşılama başarısız oldu.(emsal host %s)
+744 Rehashing Proxy / vclass MOP Hata .
+745 Geçersiz çöp ​​toplama aşaması.
+746 Geçersiz geri çöp ​​toplama.
+747 Geçersiz atık toplama geri çağırma bileti.
+748 Geçersiz nesne işaretçisi karşılaştı by db_gc_mark_object.
+749 Getirilen örneklerin sayısı uymuyor: %1$d beklenen, %2$d alınan.
+750 Getirilen örneklerin sayısı uymuyor: %1$d beklenen, %2$d alınan.
+751 Yeni bir nesne OID INSERT tetikleyicisi ÖNCESİ mevcut değildir.
+752 Yedekleme unit_num %d geri yükleme hatası.
+753 Yedekleme unit_num %d, %d sayfa id geri yükleme hatası toplam sayfa sayısı %d volid için %d.
+754 OO Proxy örneği olmayan dize tipi veya boş anahtar vardır.
+755 %s stand-alone modu yürütülülemez.
+756 Belirtilen dize arabellek bu nesne kodlamak için çok küçük.
+757 İç hata: nesne kodlamak içinde sürekli OID atayamazsınız.
+758 Belirtilen dize çözümleme nesnesi için geçerli değil.
+759 Hedef nesne silindi.
+760 İç hata: Proxy nesne örneği nesne kodlama sırasında NULL anahtar vardır.
+761 İç hata: geçersiz bir gerçek örneği için vclass nesne örneğini haritalar.
+762 Bir gerçek örneği için vclass örneğinin çözülmesinde iç hata oluştu.
+763 Olmayan güncellenebilir nesne örneğini kodlama iç hata oluştu.
+764 İç vobj formda nesnenin kodlama iç hatası oluştu.
+765 Çıkış nesnesinin argümanı bir NULL adresi vardır.
+766 Çözümleme nesnesi içinde iç hata oluştu.
+767 İlk seviye %d yedekleme oluşturmadan %d düzeyi yedekleme oluşturulamıyor.
+768 Yerel veritabanında "%1$s" bu oturumda erişilmiş, değişiklik veya bırakmaya izin verilmez.
+769 Öznitelik "%s", sınıf "%s" geçerli bir sınıf ya da paylaşılan bir özniteliği değil.
+770 Tablo fonksiyonları yoktur.
+771 Fonksiyonu için geçersiz parametre.
+772 db_serial sınıf bulunamadı.
+773 Seri "%s" bulunamadı.
+774 Seri "%s" zaten var.
+775 Bir sonraki değeri MAX(MIN) değerini aşıyor.
+776 Seri nesnesi alamaz.
+777 Seri nesneyi güncelleştiremez.
+778 Dosya "%s" dosyasına simgesel bir bağlantı "%s" oluşturulamıyor.
+779 Sınırı aşan sonuç:Tarih içindeki Yıl, 1-9999 arasında olmalıdır.
+780 Dahili sistem hatası: sistem zamanı alınamadı.
+781 Format dizesi çok uzun. 16K dan daha kısa olmalıdır.
+782 Boş dizeye burada izin verilmiyor.
+783 Geçersiz biçim.
+784 İki bağımsız değişken uyumsuzdur.
+785 Birinci dizge çok uzun. 16K dan daha kısa olmalıdır.
+786 Biçim yineleniyor.
+787 Zaman biçiminde dönüştürme hatası.
+788 Timestamp biçiminde dönüştürme hatası.
+789 Yanlış numara.
+790 Sorgu yürütme kullanıcı tarafından kesildi.
+791 Geçersiz seri değeri.
+792 Css için bellek ayrılamıyor.
+793 pthread_attr_init() başarısız oldu.
+794 pthread_attr_destroy() başarısız oldu.
+795 pthread_attr_setdetachstate() başarısız oldu.
+796 pthread_attr_setscope() başarısız oldu.
+797 pthread_attr_setstacksize() başarısız oldu.
+798 pthread_create() başarısız oldu.
+799 pthread_join() başarısız oldu.
+800 pthread_mutex_init() başarısız oldu.
+801 pthread_mutex_destroy() başarısız oldu.
+802 pthread_mutex_lock() başarısız oldu.
+803 pthread_mutex_trylock() başarısız oldu.
+804 pthread_mutex_unlock() başarısız oldu.
+805 pthread_mutexattr_init() başarısız oldu.
+806 pthread_mutexattr_destroy() başarısız oldu.
+807 pthread_mutexattr_settype() başarısız oldu.
+808 pthread_mutexattr_gettype() başarısız oldu.
+809 pthread_cond_init() başarısız oldu.
+810 pthread_cond_destroy() başarısız oldu.
+811 pthread_cond_wait() başarısız oldu.
+812 pthread_cond_timedwait() başarısız oldu.
+813 pthread_cond_signal() başarısız oldu.
+814 pthread_cond_broadcast() başarısız oldu.
+815 pthread_key_create() başarısız oldu.
+816 pthread_key_delete() başarısız oldu.
+817 pthread_setspecific() başarısız oldu.
+818 pthread_getspecific() başarısız oldu.
+819 pthread_once() başarısız oldu.
+820 Bağlantı başlatamıyor.
+821 Bir bağlantı kapandı .
+822 Sonraki istemci id alırken Mutex işlemi başarısız oldu.
+823 Bağlantı listesi başlatılırken Mutex işlemi başarısız oldu.
+824 Bağlantı listesi sonlandırılırken mutex yok edilemez.
+825 pread işlevinin () çağrısı başarısız oldu.
+826 pwrite işlevinin () çağrısı başarısız oldu.
+827 Bağlantı listesi hareket fonksiyonu geçersiz bir değere döndürdü.
+828 İndeksin geçersiz bir kritik kısmı verildi.
+829 Mutex kilidi zaten kaldırılmıştır.
+830 Sorgu girdi bir daha ayrılamıyor. Maksimum ayrılabilir girdileri %d vardır.
+831 Tüm işlem tanımlayıcılar (%d) kullanılmaktadır. max_clients parametresini yukarı kaldırın.
+832 Yedekleme zaten çalışıyor. Yedekleme iki süreç tarafından idare edilemez.
+833 Dizin adı "%1$s" belirsiz. İndeksi sınıf adını belirtin.
+834 Kaynak dizesi arasında bazı uyumsuzluklar "%1$s" ve verilen "%2$s" biçim dizesi vardır to_number() .
+835 Tanımlanmamış istatistikler öğesi.
+836 SAYFASINDA LATCH (%d|%d) ZAMAN AŞIMI.
+837 Veritabanı nesneleri (sınıf / tetik / seri vs) sahibi olan kullanıcılara aittir iptal edemezsiniz.. 
+838 Eşzamanlı olarak taranan indeksi %d den daha fazla açılamaz .
+839 "%s": Bilinmeyen sistem parametresi veya bozuk bir değer.
+840 Sistem parametresi değiştiremezsiniz "%s".
+841 İstenen işlem yalnızca tek istemci (işlem) tarafından yürütülebilir.
+842 Nesne kilit önbelleğe alamıyor %1$d|%2$d|%3$d.
+843 %s yanlış argümanlar, %s bir geçmiş 
+844 Bilinmeyen izolasyon (%d) bulunur.işlem indeksi %d.
+845 Geçersiz bir nesne türü (%d) bulunur.Kilitlenebilir nesne %d|%d|%d.
+846 tran (%d) %s bir nesnenin sahibi listesinde bulunmayan (%d|%d|%d).
+847 %s üzerinde %s (%d|%d|%d) işlem (%d) beklemeye listede bulunmayan (cnt=%d).
+848 İşlem (%d) non2pl listede bulunmaz.bir %s üzerinde (%d|%d|%d)
+849 İki kez iptal bir işlem (%d) çalışıyorum.
+850 Tran (%d) bir nesnenin kilit sahibi, ne de kilit bekleyen ne olduğunu (%d|%d|%d).
+851 Kilit kaynak (%s) ayrılamadı. 
+852 Boş bir kilit sahibi listesinde Toplam sahipleri modu (%d) NULL_LOCK değildir.
+853 Bir nesne için (%d|%d|%d), Okuma kaydedilmemiş düzenlenen arıza kilidi (%s) tran (%d).
+854 UYARI: kilit sahibi bulunmamaktadır, ama kilit bekleyenler mevcut. %s e başvurun.
+855 UYARI: İki veya daha fazla iş parçacığı kilit bekleyen bir işlem (%d) içindir.
+856 UYARI: Strange LOCKWAIT durumu (%d|%d), iplik (%d|%d) ve işlemler (%d).
+857 Sayfa %1$d yoğunluk "%2$s" kesilmesi sırasında başka bir I/O hata oluştu.
+858 Cilt "%1$s" sunucu yeniden başlatma sırasında bilinmiyor.
+859 SAYFASINDA LATCH (%d|%d) BAŞARISISZLIĞA UĞRAMIŞ
+860 Durumu '%1$s' olduğundan küresel bir işlemin bir parçası olarak geçerli işlemi yapamazsınız.
+861 Bu işlemi bir küresel işlemin bir parçası olarak yapılamaması nedeniyle işlemin tanımlayıcısı %1$d ile geçerli işlem tamamlamaya hazırlayamaz.
+862 Durumu '%2$s' olduğundan tanımlayıcı %1$d küresel işlemin kullanıcı bilgileri ayarlanamıyor.
+863 Belirteç %1$d olarak ayarlayın çünkü küresel işlemin kullanıcı bilgileri alınamıyor.
+864 backupdb/restoredb ayrıntılı dosya '%s' açılamıyor.
+865 Bilinmeyen tip giriş işaretleri nedeniyle bildirimi yürütülemiyor.
+866 Kullanılmayan hata kodu.
+867 Kullanılmayan hata kodu.
+868 Kullanılmayan hata kodu.
+869 Kullanılmayan hata kodu.
+870 Kullanılmayan hata kodu.
+871 Kullanılmayan hata kodu.
+872 Kullanılmayan hata kodu.
+873 PKI kimlik doğrulama hatası "%1$s".
+874 Bağımsız değişken gücü () aralık dışında.
+875 Taşma gücü kapsamında gerçekleşti.
+876 Kullanılmayan hata kodu.
+877 Verilerin bellekten kaldırılacak biçimde bulunmamakta.
+878 Geçersiz veritabanı konumu dosyası, '%1$s'.
+879 İzni alınamıyor: '%s'.
+880 İzni değiştirilemiyor '%s'.
+881 Kilit dosyası alınamıyor '%s(FILE ID:%d)'.
+882 Kilit dosyası serbest bırakılamıyor 'FILE ID:%d'.
+883 '%s' dosya durumu alınamadı.
+884 Volext-path adı '%s' yazmak için izin verilmez.
+885 '%s' '%s' arasında geçiş yerine getirilmedi.Aynı aygıt (disk) kullanın.
+886 "%1$s" benzersiz kısıtlama ihlaline neden oldu.
+887 Saklı prosedür '%s' zaten var olur.
+888 Parametre sayısı geçersiz. beklenen: %d, güncel: %d
+889 Saklı prosedür yürütme hatası: %s
+890 Bölme başarısız oldu.
+891 Uygun bir bölüm yok.
+892 Birincil anahtar "%2$s" zaten "%1$s" sınıf için tanımlanmış.
+893 Öznitelik '%1$s', birincil anahtarın bir üyesidir,iptal edilemedi.
+894 Saklı procedure/function '%s' bulunmamaktadır .
+895 Geçersiz saklı prosedür türü: '%s' olan '%s'.
+896 Sıkıştırma başarısız oldu. Zip Yöntemi: %d (%s), Zip Seviyesi: %d (%s)
+897 Sıkıştırmayı açma başarısız oldu.
+898 Çoğaltma hatası: "%1$s"
+899 Geçersiz bölüm talepleri.
+900 Java VM kitaplığı bulunanadı: %s. \nSonuç olarak, çağrı java saklı prosedür izin verilmez.
+901 Java VM başlayan olamaz: %s. \nSonuç olarak, çağrı java saklı prosedür izin verilmez.
+902 Java VM çalışmıyor.
+903 Java VM bağlanamıyor: %s
+904 Geçersiz saklı prosedür adı.
+905 JVM ile Ağ başarısız oldu: %d
+906 Geçersiz java yöntem imzası.
+907 DBA grubun sahibi ya da üye saklı prosedür iptal edebilirsiniz.
+908 Saklı prosedürün çok fazla bağımsız değişkeni bulunmakta '%s'.
+909 Eksik veya geçersiz katalog class/vclass bulunur.
+910 Bölüm erişimine izin verilmez.
+911 Geçersiz çağrı: Bu Resultset geri döndüremez.
+912 ResultSet giriş parametresinde kullanılamaz.
+913 Çok fazla iç içe stored procedure çağrısı.
+914 Bir seri nesnesi önceden otomatik artış kısıtlaması olarak bulunmaktadır.
+915 Otomatik artış kısıtlaması değeri artırım 0'dan büyük olmalıdır.
+916 Aktif log yoğunluğa bu yedek yoğunluk dahil edilmemiştir(%s).
+917 Aktif log yoğunluğu zaten var.
+918 Yabancı anahtar tarafından yönlendirilen sınıf '%s' bulunmamaktadır.
+919 Yabancı anahtarının tarafından yönlendirilen birincil anahtarın sınıf '%s' bulunmamaktadır.
+920 Yabancı anahtar '%s' birincil anahtar üye '%s' içermez.
+921 Yabancı anahtar üye '%s' alanı birincil anahtar üye '%s' farklıdır.
+922 Dış anahtar kelime: '%sdeğeri'nedeniyle,'%s'sınırı geçersiz.
+923 Birincil anahtar '%s' yabancı anahtar '%s' tarafından yönlendirilen iptal olması gerekmiyor.
+924 Güncelle/Sil işlemleri yabancı anahtar '%s' tarafından kısıtlanmıştır.
+925 Yabancı anahtar '%s' için kilit edinilmesi başarısız oldu.
+926 Yabancı anahtar '%s' sahip olan örneğini iptal edemezsiniz.
+927 Yabancı anahtar '%s' anahtar sayısı birincil anahtar '%s' farklıdır.
+928 Bir kullanıcı değil ancak sistem özniteliği '%s' yabancı anahtar 'ON CACHE OBJECT' tarafından oluşturulan atayabilirsiniz.
+929 Yabancı anahtar sanal sınıf içinde tanımlanamaz.
+930 Bu özniteliği '%s' sadece yabancı anahtar kısıtlaması çıkardıktan sonra yabancı anahtar 'ON CACHE OBJECT' tarafından oluşturulan iptal edilebilir.
+931 Otomatik artış kısıtlama değeri Başlat değeri max değeriden daha az olmalıdır.
+932 Bu "%1$s" yoğunluk için ücretsiz sayfaların sayısını bir tutarsızlığı onarmak mümkün değildir.Etiketli yoğunluk başlığına elde edilen %2$d sayfaları bitmap %3$d sayfaları ile bağdaşmayan olduğundan.
+933 Bu "%1$s" yoğunluk için ücretsiz sayfaların sayısını bir tutarsızlığı onarmak mümkün değildir.Etiketli yoğunluk başlığına elde edilen %2$d sektörlerde bitmap %3$d sektörler ile bağdaşmayan olduğundan.
+934 Başvurulan Null etki alanı.
+935 %s fonksiyonunun bağımsız değişkeni aralık dışındadır.
+936 Taşma exp bağlamında oluştu.
+937 Veritabanı hatası.
+938 Geçersiz bağımsız değişkeni.
+939 Çok fazla bağlantı vardır.
+940 Tanıtıcı geçersiz.
+941 İşlemi desteklenen değildir.
+942 İşlemi kilitleri beklerken zaman aşımına uğradı.
+943 Genel hata.
+944 Açıklamada hazır değildir.
+945 Açıklamasında herhangi bir sonuç kümesi bulunmamaktadır.
+946 Açıklaması yürütülmez.
+947 Daha fazla sonuç kümesi bulunmamaktadır.
+948 Buffer boyutu yeterli değildir.
+949 Mevcut herhangi bir bilgi bulunmamaktadır.
+950 Ad geçersiz.
+951 Resultset güncelleştirilebilir değil.
+952 Satır silindi.
+953 Parametrelerin hazırlanmış açıklaması ayarlı değil.
+954 Açıklaması toplu açıklama değil.
+955 Bu toplu açıklamasını temizleyemezsiniz.
+956 Toplu yürütülemiyor.
+957 Açıklama açıklaması hazırlanır.
+958 Açıklama hazırlanımış açıklama değildir.
+959 Açıklaması toplu açıklamadır.
+960 Daha fazla hata bulunmamaktadır.
+961 Daha fazla sonuç bulunmamaktadır.
+962 Bellek yetersiz.
+963 Broker Hatası.
+964 Sonuç kümesindeki tanıtıcı kapalı.
+965 Dizin anahtarı listesi yinelenen öznitelik adlarını kullanamazsınız. Öznitelik adı '%s' bir kereden fazla listelenmiştir.
+966 İşleminiz (index %1$d, %2$s@%3$s|%4$d) %5$s üzerinde beklerken zaman aşımına uğradı %6$d|%7$d|%8$d nesne üzerinde kilitleyin çünki tıkanıklık var. Bu kullanıcı için bekliyor(s) %9$s bitirmek için.
+967 İşleminiz (index %1$d, %2$s@%3$s|%4$d) %5$s üzerinde beklerken zaman aşımına uğradı %6$ssınıf üzerinde kilitleyin çünki tıkanıklık var. Bu kullanıcı için bekliyor(s) %7$s bitirmek için.
+968 İşleminiz (index %1$d, %2$s@%3$s|%4$d) %5$s üzerinde beklerken zaman aşımına uğradı %9$s sınıf %6$d|%7$d|%8$d örneği üzerinde kilitleyin çünki tıkanıklık var. Bu kullanıcı için bekliyor(s) %10$s bitirmek için.
+969 Sunucu bit platformu (%1$d) (%2$d) istemci bit platformundan farklıdır.
+970 Sunucu HA modunda '%1$s' '%2$s' değiştirildi.
+971 Programı'%1$s' (pid %2$d) host'%4$s' (port %5$d) veritabanı sunucusu '%3$s' bağlanmış).
+972 Programı'%1$s' (pid %2$d) '%3$s'bir ana bilgisayardan bağlandı. (işlem indeksi %4$d)
+973 Sunucu durumu %1$s.
+974 Arşiv log "%1$s" gelen arşiv sayfaları için oluşturulur %2$lld dan %3$lld.
+975 Çoğaltması şu anki sürümü BENZERSİZ sınırlamasına ihlal tek bir GÜNCELLEŞTİRME deyimi ile çoklu satır ayarlanmasına olanak sağlamaz.
+976 İç hata: Dosya tablosu sayfa %3$d|%4$d(yoğunluk "%5$s") Tablo boyutu taşması (ayrılan boyutu:%1$d, erişilen boyutu:%2$d).
+977 Kontrol noktası çalıştırma (önceki kontrol noktası page id: %lld,daha önce yeniden yapılan pageid: %lld)
+978 Tamamlandıktan sonraki kontrol noktası(kontrol noktası page id: %lld,kontrol noktası yeniden yapalan pageid: %lld)
+979 Kullanıcı verileri döngüsü ile Bağlanın.
+980 Bir iş parçacığı %2$d msn %1$s den daha fazla bekleniliyor.
+981 İşlem %1$d izleme istatistiklerine %2$s eşiğine ulaşmıştır.
+982 İşlem %1$d ile kesme ayarlayın.
+983 Yeniden kullanılabilir bir OID sınıfının örnekleri olmayan başvurulabilir . Bu işleme olmayan başvurulabilir örnekler üzerinde izin verilmez.
+984 Bu yapılandırma dosyası "%1$s" "[%2$s]" bölümünde "%4$s" ayarlanır "[%5$s]" bölümde "%6$s"'ye %3$s ayarlayamazsınız.
+985 Multi ana bilgisayar "databases.txt" olarak ayarlandığında veritabanı bağlantısının dizesinde ana bilgisayar adı belirtilmelidir.
+986 CUBRID sinyal özelliği başladı.
+987 CUBRID sinyal özelliği durdu.
+988 Düğüm olayı: %1$s.
+989 Süreç olayı: %1$s. %2$s
+990 Komut yürütme: %1$s. %2$s
+991 Sayfa buffer Flush mağdur adayları başlatıldı.
+992 Sayfa buffer Flush mağdur adayları bitirdi (sayı:%d).
+993 Taşma bit işletim bağlamında oldu.
+994 Bu açıklama hazırlanmış bir açıklama olamaz.
+995 %1$s adında hazırlanmış bir açıklama bulunmamaktadır.
+996 Verilen değerlerin sayısı yanlış. %1$d değerleri verilmiştir ama %2$d değerleri gereklidir.
+997 %2$s bölümlendirilmiş için yabancı anahtar kısıtlaması eklenemiyor %1$s . Başvurusal eylemler güncelleme özellikleri henüz bölümlendirilmiş sınıfları desteklenmiyor.
+998 %2$s özniteliğinde yabancı anahtar kısıtlaması eklenemiyor %1$s . Tekrar SET NULL başvuru eylem eşleşecek şekilde çünkü özniteliği bir NOT NULL kısıtlaması olamaz.
+999 '%2$s'tablo gibi '%1$s' tablo oluşturulamıyor çünki mevcut tablo (%3$s) çoğaltılamaz edilmeyecek özelliklere sahip.
+1000 '%1$s' CLASS veya SHARED özniteliği fakat yalnızca normal özniteliklerini bu kapsamda izin verilir.
+1001 Beklenmedik bir koşul ya da durum ulaşıldı. '%1$s'
+1002 Geçerli işlem bu işleme devam etmek için gereken bir veri tabanı kilidi aquire bulunamamamıştır.
+1003 Kısıtlaması '%1$s' var ama farklı bir türü vardır.
+1004 TABLO DEĞİŞTİRME DROP FOREIGN KEY( değiştirebilir yabancı anahtar tablo iptal) kullanırken, CUBRID kısıtlaması ve ilişkili tüm indeksi iptal ediliyor unutmayın.
+1005 Kullanılmayan hata kodu.
+1006 Kullanılmayan hata kodu.
+1007 Benzersiz, yabancı anahtar veya birincil anahtar kısıtlamaları üzerine önek uzunluğu dizin oluşturulamıyor.
+1008 Bölümlendirilmiş sınıfı önek uzunluğu dizin oluşturulamıyor.
+1009 COMPACTDB zaten başlamış durumda.
+1010 Etki alanı "%1$s" önek uzunluğu indeksi tanımlayamazsınız.
+1011 Paylaşılan özniteliği %2$s yabancı anahtar kısıtlaması %1$s eklenemiyor.
+1012 NULL sütun türü ile tablo oluşturulamıyor.
+1013 VARSAYILAN veya ORTAK ayarlayın veya %s yazılı sütun üzerindeizin verilmez.
+1014 %s yazılı sütun üzerinde NOT NULL olarak ayarlamaya izin verilmez.
+1015 Belirtilen dizin '%s' yok.
+1016 %1$s harici veri depolama hatası: %2$s
+1017 Harici veri depolama '%s' için path geçersiz.
+1018 Depolama farklı tipte dış dosyaya kopyalanamıyor. (kaynak %1$s hedef %2$s)
+1019 Path "databases.txt" belirlenen olmadığı için harici veri depolama başlatılmaz.
+1020 Harici dosya "%s" bulunamadı.
+1021 Bir deadlock döngüsü algılandı. %1$s.
+1022 İndeksin önek uzunluğu için geçersiz değer "%ld".
+1023 HA hata kodu saklıdır.
+1024 HA hata kodu saklıdır.
+1025 HA hata kodu saklıdır.
+1026 HA hata kodu saklıdır.
+1027 uygulayıcı log: '%2$s' için '%1$s' durum onayı değiştirme başarısız oldu.
+1028 uygulayıcı log: arşiv log beklenmedik EOF kaydı. LSA: %1$lld|%2$d.
+1029 uygulayıcı log: geçersiz çoğaltma log page/offset. sayfa HDR: %1$1lld|%2$d, final: %3$lld|%4$d, ekleme LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, ha dosya durumu: %9$d, is end-of-log: %10$d.
+1030 uygulayıcı log: geçersiz çoğaltma kayıt. LSA: %1$lld|%2$d, forw LSA: %3$lld|%4$d, backw LSA: %5$lld|%6$d, Trid: %7$d, önceki tran LSA: %8$lld|%9$d, tür: %10$d.
+1031 uygulayıcı log: şema çoğaltma log uygulanması başarısız oldu. sınıfı: "%1$s", şema: "%2$s", İç hata: %$3d.
+1032 uygulayıcı log: ekleme çoğaltma log uygulanması başarısız oldu. sınıfı: "%1$s", anahtar: "%2$s", İç hata: %3$d.
+1033 uygulayıcı log: güncelleme çoğaltma log uygulanması başarısız oldu. sınıfı: "%1$s", anahtar: "%2$s", İç hata: %3$d.
+1034 uygulayıcı log: silme çoğaltma log uygulanması başarısız oldu. sınıfı:  "%1$s", anahtar: "%2$s", İç hata: %3$d.
+1035 uygulayıcı log: hafıza boyutu(%1$d MB) log uygulayıcısı max hafıza boyutu büyükse (%2$d MB) veya daha az 2 kat büyümesini edilmiştir (%3$d MB). gereken LSA: %4$lld|%5$d. son kararlı LSA: %6$lld|%7$d.
+1036 uygulayıcı log: log uygulayıcısı sinyal kendini kapattı.
+1037 yazıcı log: log yazar sinyal kendini kapattı.
+1038 Landed kullanıcı: landed kullanıcının çalıştırılması. Gereksinimleri LSA: %1$lld|%2$d. son uygulama LSA: %3$lld|%4$d. son uygulama repl LSA: %5$lld|%6$d.
+1039 log writer: log yazar başladı. modu: %1$d.
+1040 HA genel: %1$s.
+1041 Bir dize "%1$s" çerçevesinde eksik kalırdı.
+1042 Izin verilen maksimum %2$d bayt iken, bellek %1$d byte gerektiren bir dize oluşturmak için çalışıyorum.
+1043 "%1$s" özniteliği değiştirilemiyor. Sınıfın alt sınıfları varsa CUBRID istenen nitelik özelliklerini değiştiremezsiniz.
+1044 "%1$s" özniteliği değiştirilemiyor. CUBRID anahtarları bölümleme öznitelikleri değiştiremezsiniz.
+1045 "%1$s" özniteliği değiştirilemiyor. CUBRID (ya başvurulan veya başvuran) yabancı tuşları kullanılan niteliklerini değiştiremezsiniz.
+1046 "%1$s" özniteliği değiştirilemiyor. CUBRID özniteliğin alanı değiştiremezsiniz. Alanı ile desteklenir bu değişiklik yoktur.
+1047 "%1$s" özniteliği değiştirilemiyor. CUBRID öznitelikleri alanı değiştiremezsiniz.Yeni etki doğru tüm mevcut öznitelik değerleri temsil edemez.
+1048 "%1$s" özniteliği değiştirilemiyor. CUBRID henüz bir özniteliğin auto_increment özniteliğin etki alanı da değiştirmesi durumunda değiştiremezsiniz.
+1049 "%1$s" özniteliği değiştirilemiyor. CUBRID özniteliğin etki alanı henüz değiştiremezsiniz. Etki alanı dönüşüm mümkün ama bu özelliği yapılandırması tarafından izin verilmiyor.
+1050 "%1$s" özniteliği değiştirilemiyor. CUBRID özniteliğin etki alanı henüz değiştiremezsiniz.Özniteliği üzerinde bir dizin vardır.
+1051 "%1$s" özniteliği değiştirilemiyor. CUBRID kısıtlama eklemek için öznitelik henüz değiştiremezsiniz. Mevcut öznitelik değerleri kısıtlaması kontrol edilmeyebilir.
+1052 Öznitelik "%1$s" değişmedi. CUBRID did not detect any effective changes in the attribute representation.
+1053 İfadeler (REPLACE INTO)içinde değiştirin...ve takın (INSERT) ... YENİLENEN ANAHTAR GÜNCELLEMEDE bölümlendirilmiş sınıflar için veya bir kalıtım zincirinin parçası olan sınıfları için izin verilmez.
+1054 Otomatik artış kısıtlama yeni değeri veya daha büyük mevcut değerine eşit olmalıdır.
+1055 Otomatik artış kısıtlama yeni değeri maksimum değerden daha düşük olmalıdır.
+1056 Karışıklığı önlemek için auto_increment tablosu seçeneğini tablo tam olarak bir tane AUTO_INCREMENT sütunu ve herhangi bir çekirdek/artırma özellikleri olması gerekir.
+1057 VARSAYILAN değer içermeyen bir NOT NULL '%s' yazılmış özniteliği eklenemiyor.
+1058 TABLO DEĞİŞTİRME .. DEĞİŞİM: Yeni bir etki alanı için değiştirme: döküm başarısız oldu, mevcut yapılandırma kesme veya taşmaya izin vermez.
+1059 TABLO DEĞİŞTİRME .. DEĞİŞİM: Yeni bir etki alanı için değiştirme: döküm başarısız oldu, yeni bir etki alanının varsayılan değer kuruldu.
+1060 TABLO DEĞİŞTİRME .. DEĞİŞİM: Yeni bir etki alanı için değiştirme: döküm başarısız oldu, yeni bir etki alanının minimum değeri ayarlandı.
+1061 TABLO DEĞİŞTİRME .. DEĞİŞİM: Yeni bir etki alanı için değiştirme: döküm başarısız oldu, yeni bir etki alanının maksimum değeri ayarlandı.
+1062 "%1$s" özniteliği değiştirilemiyor.Değişiklik tanımlanan birden fazla birincil anahtarları neden olacaktır.
+1063 Öznitelik "%1$s" için NULL kısıtlaması eklenemiyor:Bu özellik için mevcut NULL değerleri vardır.
+1064 TABLO DEĞİŞTİRME .. DEĞİŞİM: NOT NULL ekleme:Varolan tüm NULL değerleri etki alanı sabit varsayılan değiştirildi.
+1065 "%1$s" özniteliği değiştirilemiyor. CUBRID NULL kısıtlaması ekleyemezsiniz:sert bir varsayılan değer yeni etki alanı için mevcut değil.
+1066 Aktif kalma süresi dolmuş.
+1067 Sütun '%s' bir NOT NULL kısıtlaması ve bir NULL değeri olamaz.
+1068 Maksimum tetikleyici derinliği %d geçemez.
+1069 Çok fazla sayıda hazırlanmış durum.
+1070 Aktif kalma değişkeni '@%s' tanımlı değil.
+1071 Çok fazla sayıda oturum değişkenleri bulunmakta.
+1072 IP adresi (%1$s) yetkili değil.
+1073 Dosya biçimi geçersiz (%1$s).
+1074 Erişim listesi dosyası okunamıyor(%1$s).
+1075 Azalan indeks taraması nedeniyle indeksi tanımlayıcısı ile B+tree üzerinde düşük öncelik iptal edildi:(vfid = (%1$d, %2$d), rt_pgid: %3$d).
+1076 Sistem parametresi yüklenemedi.
+1077 Dosya '%s' satır %d '%s' parametresi: Bilinmeyen parametre
+1078 Başlangıç yerideki %d özellikleri güncel kod ayarını geçersiz.
+1079 Veritabanı kodu kümesi ve sonucu yapılarına uymuyor.
+1080 Fitre dizesi uzunluğu en fazla %1$d olmalıdır.
+1081 Filtre veya fonksiyon indeksi özellikleri ile ilgili değişiklik yapılamaz.
+1082 Tüm sayfa tamponlar kirlidir (LRU: %1$d).
+1083 Bilgisayar çöker hakkında belirli koşullar.
+1084 Kontrol noktasındaki geçersiz sayfa numasından atlamak. (page id: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, önceki kontrol redo lsa: %5$lld|%6$d)
+1085 Düzenlenemez Konvansiyonel ifadesi: düzenlemesi : '%s'
+1086 Konvansiyonel ifadesi gerçekleştiremiyor: '%s'
+1087 Konum ilklendimesi: %s.
+1088 Konumun var olması: %s.
+1089 Bigisayar değişken'%s' türünün ifadesi hazırlanmamalıdır.
+1090 inet_aton'ın arg '%s, ipv4 adresinde ayarlanan geçerli dizesi değildir.
+1091 inet_aton'ın arg '%11d, ipv4 adresinde ayarlananr geçerli dijital değildi.
+1092 Yedek inisiyatif günlükcü çalıştırımalı'%s'
+1093 Yedek inisiyatif günlükcü'%s' tamamlanmıştır
+1094 Kullanıcı adı çok uzun
+1095 Kaynak ayırma hatası. Yüksetilmiş max_bestspace_entries=%1$d '.
+1096 Ne zaman bölğm düzeyinde dış anahtar kelimeler referans için kullandığı zamanda, Değişiklik yapılmakta olan bölüm yapısına izin vermez.
+1097 '%s'kapısitesinde bir ilk PRIMARY KEY kelimelerde bir sınırlama ile geçersiz NULL değeri olamaz. 
+1098 Dil '%s'konumu karakter kümesindeki'%s' kullanılmaz.
+1099 DDL deyimini yapılandırma (block_ddl_statement = yes) tarafından izin verilmiyor.
+1100 Jümlelerde görülmeyen konumun ifadesi dış boyutlar tarafından izin verilmez(block_nowhere_statementi=yes)
+1101 Şu anki işlem yapışıkları elde ederekOID (%4$d|%5$d|%6$d)nın PSEUDO-OID üzerindeki bir tuş kilidine verelmez.
 1102 Unknown system parameter or bad value.
 1103 Cannot change system parameter.
-1104 Last Error
+1104 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
-1 Error in error subsystem (line %d):
-2 No error message available.
-3 Can't allocate %d bytes.
-4 Can't find message catalog "%s".
-5 Missing message for error code %d.
-6 ... ABORT/EXIT IMMEDIATELY ...\n
-7 Do you want to exit? 1/0
-8 Unknown file.
-9 No message available; this message substituted for erroneously formatted original.
-10 er_init: *** Incorrect exit_ask value = %d; will assume %s instead. ***\n
-11 er_start: *** WARNING: Unable to open message log "%s"; will assume stderr instead. ***\n
-12 er_study_fmt: suspect message for error code %d.
-13 er_estimate_size: unknown conversion code (%d).
-14 \n\n*** Message log wraparound. Messages will continue at top of the file. ***\n\n
-15 \nTime: %s - %s *** %s CODE = %d, Tran = %d%s\n%s\n
-16 CUBRID (pid: %d) *** %s *** %s CODE = %d, Tran = %d %s
-17 \nTime: %s - %s *** file %s, line %d %s CODE = %d Tran = %d%s\n%s\n
-18 CUBRID (pid: %d) *** %s *** file %s, line %d, %s CODE = %d, Tran = %d. %s
-19 \n*** The previous error message is the last one. ***\n\n
-20 \nTime: %s - DEBUG *** file %s, line %d\n
-21 Mail -s "Server has been stopped"
-22 --->>>\n %s has been stopped at your request when the following error was set:\n errid = %d, %s\nUser: %s, pid: %d, host: %s, time: %s<<<---\n
-23 %s has been stopped on errid = %d. User: %s, pid: %d
-24 er_init: cannot install event handler "%s"\n
+1 Alt Hata içinde hata (satır %d):
+2 Uygun hata mesajı bulunmamakta.
+3 %d byte tahsis edemez.
+4 "%s" mesaj kataloğu bukunamıyor .
+5 %d hata kodu için mesaj kayıp.
+6 ... İPTAL ETMEK /DERHAL ÇIK ...\n
+7 Çıkmak istiyor musunuz? 1/0
+8 Bilinmeyen dosya.
+9 Uygun mesaj bulunmamakta; Bu mesajı yanlışlıkla orijinal yerine biçimlendirilmiş.
+10 er_init: *** doğru değil exit_ask değer = %d; %s yerine üstlenecek . ***\n
+11 er_start: *** UYARI:Mesaj log açılamıyor "%s"; stderr yerine üstlenecek. ***\n
+12 er_study_fmt: %d hata kodu için şüpheli mesaj.
+13 er_estimate_size:bilinmeyen dönüşüm kodu (%d).
+14 \n\n*** Mesaj log panaromik. Mesajlar dosyanın üstünde devam edecektir. ***\n\n
+15 \nTime: %s - %s *** %s KOD = %d, Tran = %d%s\n%s\n
+16 CUBRID (pid: %d) *** %s *** %s KOD = %d, Tran = %d %s
+17 \nTime: %s - %s *** dosya %s, satır %d %s KOD = %d Tran = %d%s\n%s\n
+18 CUBRID (pid: %d) *** %s *** dosya %s, satır %d, %s KOD = %d, Tran = %d. %s
+19 \n*** Önceki hata mesajı sonuncusudur. ***\n\n
+20 \nTime: %s - DEBUG *** dosya %s, satır %d\n
+21 Mail -s "Sunucu Durduruldu"
+22 --->>>\n Aşağıdaki hata kurulduğunda %s sizin isteğiniz üzerine durduruldu:\n errid = %d, %s\nKullanıcı: %s, pid: %d, host: %s, zaman: %s<<<---\n
+23 %s ,errid = %d üzerine durduruldu. Kullanıcı: %s, pid: %d
+24 er_init: "%s" olay işleyicisi yükleyemezsiniz \n
 
 $set 7 MSGCAT_SET_PARSER_SYNTAX
-1 please check syntax at '%s', expecting %s.
-2 please check syntax at '%s', expecting %s in %s.
-3 please check correctness of token '%s'.
-4 'read uncommitted schema' is not acceptable, using \n'read committed schema' instead.
-5 Maximum char string length is 16383.
-6 %s exceeds limit of %ld.
-7 Maximum bit string length is %d bits.
-8 Cannot use a subquery in join condition clause.
-9 Cannot specify attribute "(%s)" in update privilege clause of grant/revoke statement.
-10 invalid use of keyword '%s', expecting %s.
-11 Token length is too long.
+1 Lütfen '%s' sözdizimi kısmını kontrol edin, beklenen %s.
+2 Lütfen '%s' sözdizimi kısmını kontrol edin, %s içinde beklenen %s.
+3 Lütfen '%s' belirteç doğruluğunu kontrol edin.
+4 'kaydedilmemiş şema okuma' kabul edilemez, kullanarak \n'kaydedilmemiş şema okuma' yerine.
+5 Maksimum karakter dize uzunluğu 16383.
+6 %s, %ld sınırını aşarsa .
+7 En fazla bit dize uzunluğu %d bits.
+8 Join koşulu yan tümcesinde bir alt sorgu kullanamazsınız.
+9 Güncelleştirme ayrıcalığı maddesinin öznitelik "(%s)" belirlemek durumu grant/revoke edemezsiniz.
+10 '%s' anahtar kelime kullanımı geçersiz , beklenen %s.
+11 Token boyu çok uzun.
 12 invalid data type
 13 invalid attach statement\n  attach_statement: ATTACH unsigned_integer
 14 invalid prepare statement\n  prepare_statement:  PREPARE {to} COMMIT unsigned_integer
@@ -1300,433 +1300,433 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 100 invalid use of week\n WEEK( expression ), WEEK( expression, expression)
 101 invalid use of time\n TIME(expression)
 102 invalid use of group_concat\n GROUP_CONCAT (([DISTINCT] {col | expr} \n [ORDER BY {col | unsigned_int} [ASC | DESC] ] \n [SEPARATOR str_val])
-103 invalid use of index hint
-104 Maximum byte string length is %d bytes.
-105 Syntax error: unexpected
-106 , expecting '{'
-107 , expecting SELECT or '('
-108 , expecting
-109 unexpected
-110 END OF STATEMENT
-111 In line %d, column %d before '%c%s'\n
-112 In line %d, column %d before %s\n
-113 before ' %s'\n
-114 before END OF STATEMENT\n
-115 invalid set names\n  set_names: SET NAMES charset [{COLLATE | COLLATION} collation]\n
-116 invalid use of chr\n  CHR ( number [using charset] )\n
+103 Dizin ipuçlarının geçersiz kullanımı
+104 Bit dizgesinin uzunluğu en fazla %d bittir.
+105 Sözdizim hatası: Beklemeyen
+106 , Beklemekte '{'
+107 , Seçim SELECT veya '('
+108 , Beklemek
+109 Beklemeyen
+110 İfade sonaermesi
+111 Hat＇ın %d iç tarafı, '%c%s'\n ön tarafın %d kapasitesi
+112 Hat＇ın %d iç tarafı, ' %s'\n ön tarafın %d kapasites
+113 %s'\n önnünde
+114 İfade sonaerdikten sonra\n
+115 Geçersiz grup\n adı: SET NAMES charset [{COLLATE | COLLATION} collation]\n
+116 chr\n  CHR ( number [using charset] )\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
-1 Out of memory.
-2 Function %s is undefined.
-3 Cannot find ldb '%s' in the database.
-4 The number of columns, %d, in the left query do not match\nthe number of columns, %d, in the right query.
-5 '%s' is not union compatible with '%s'.
-6 %s is not defined.
-7 The domain of %s cannot be a vclass.
-8 The domain of %s cannot be a proxy vclass.
-9 The domain of %s cannot be a class.
-10 %s is not an attribute of %s.
-11 %s cannot be changed from this class.\nIt was inherited from %s.
-12 Class %s does not exist.
-13 %s is not a %s.
-14 %s is not a method or attribute of %s.
-15 %s does not have and must not have any query specifications.
-16 %s is not defined in the database.
-17 %s is not a superclass of %s.
-18 Class %s inherits from non-class %s.
-19 VClass %s inherits from non-vclass %s.
-20 Proxy vclass %s inherits from non-proxy vclass %s.
-21 %s is already a superclass of %s.
-22 %s may not be a superclass of itself.
-23 %s is already a subclass of %s.
-24 %s is not single valued. Attributes exposed in\naggregate queries must also appear in the group by clause.
-25 The number of columns(%d) and into_names(%d) are not equal.
-26 Class %s already exists.
-27 Super class %s in '%s' does not exist.
-28 Expecting a SUBCLASS clause to make INHERIT clause '%s' meaningful.
-29 INHERIT clause '%s' references a class that is not in the SUBCLASS clause '%s'.
-30 Class CANNOT have a query specification.
-31 %s is not a registered ldb.
-32 A proxy heir may not have its own object_id clause.  It cannot override its inherited object_id attribute(s).
-33 Proxy vclass has more than one query specification.
-34 The number of attributes, %d, does not match the number of columns, \n%d, in the query specification.
-35 Missing an expected attribute name for %s.
-36 Attribute '%s' is not compatible with column '%s' of the query specification.
-37 %s is not a class.
-38 Indices may not be created on virtual classes.
-39 Indices can only be created on a single attribute.
-40 Illegal use of multiple classes in the from clause.
-41 System error -- Resolution failed on %s.
-42 You may not delete from a derived table.
-43 User %s is not in the database.
-44 Update cannot have aggregation.
-45 Attribute names in each class must be unique. Attribute name '%s' in class '%s' is specified more than once.
-46 There are multiple assignments to %s.
-47 Number in sort spec is not an integer.
-48 %d in sort spec is out of range.
-49 Order by item is not an integer.
-50 %s in sort spec doesn't match any select column.
-51 There are conflicting sort directions for column %s.
-52 %s in sort spec is not a number, name or path expression.
-53 Insert expression may only appear in insert statement.
-54 The number of attributes(%d) and select columns(%d) are not equal.
-55 The number of attributes(%d) and values(%d) are not equal.
-56 Data overflow on data type %s.
-57 Incompatible data type on attribute %s.
-58 %s\n is not a SELECT from a single class.
-59 `*' is not a valid select list in a proxy vclass query specification.
-60 %s is neither a vclass nor a proxy vclass.
-61 There are more than one isolation level clauses.
-62 There are more than one timeout clauses.
-63 No isolation level was entered.
-64 BETWEEN operator is not defined on types %s, %s and %s.
-65 '%s' operator is not defined on types %s and %s.
-66 Function must have arguments: %s.
-67 Incompatible operands: %s(%s).
-68 Aggregate function must have 1 argument: %s.
-69 Attempt to divide by zero.
-70 Data overflow coercing %s to type %s.
-71 Cannot coerce %s to type %s.
-72 The type of '%s' must be SET, MULTISET, or SEQUENCE.
-73 '%s' should have exactly one set element type.
-74 %s has more than one derived column name.
-75 %s has no derived column name.
-76 %s does not have a corresponding number of columns (%d) and column names (%d).
-77 There are no attributes in %s.
-78 Expecting single table in %s.
-79 Exposed name %s is ambiguous.
-80 Derived column names '%s' are not allowed for simple class specifications.
-81 Derived table '%s' must have a correlation name.
-82 Select authorization failure, class %s.
-83 Class instance reference %s to a derived table name is not allowed.
-84 Path correlation (%s) appears outside an inner path term.
-85 Reference to %s is ambiguous.
-86 Class of %s does not have attribute %s.
-87 Classes (%s) do not all have attribute %s.
-88 Class (%s) does not have attribute %s.
-89 %s is a %s type, not an object type.
-90 Selector {%s} does not resolve to an exposed class specification in\n the required context (%s).
-91 Selector {%s} refers to non-class specification (%s).
-92 Selector {%s} cannot root the path expression defining itself.
-93 Selector {%s} is circularly defined in terms of selector {%s}.
-94 Selector {%s} is redefined at %s.
-95 %s (domain object) does not have attribute %s.
-96 %s in EXCEPT spec is not a subclass.
-97 ALL ... EXCEPT list excludes EVERYTHING in class.
-98 '%s' is inconsistent with\nother use of path selector '%s' or of path root '%s'.
-99 Undefined argument.
-100 Argument is not an object.
-101 %s is not a class method or attribute of %s.
-102 Query specification must not have an into-clause.
-103 Proxy query specification must have no aggregate expression,\nno group-by-clause, and no having-clause.
-104 Proxy query specification must not have the DISTINCT nor UNIQUE \nkeyword in the select list.
-105 Proxy query specification must be a simple SELECT statement.
-106 Proxy query specification must reference only one table or class \nfrom the local database.
-107 User '%s' is not the owner of %s.
-108 Proxy '%s' is already defined on class '%s' of ldb '%s'.
-109 CUBRID does not support proxy's with objects in heterogeneous sets.
-110 Where-clause must be a logical type expression.
-111 Like escape clause must be a literal string or a host variable.
-112 Invalid combination of precision (%d) and scale (%d).
-113 Given precision of %1$d is invalid; it should be greater than %2$d and no greater than %3$d.
-114 Precision (%d) too large. Maximum precision is %d.
-115 Method %s must have a return type.
-116 Number of arguments supplied to the method does not equal the \nnumber defined for the method.
-117 Method call must have a target.
-118 Method %s is undefined for the supplied target.
-119 Instance methods cannot be called on class objects.
-120 Class methods cannot be called on instance objects.
-121 Class methods require a class object as their target.
-122 Methods require an object as their target.
-123 Method %s is not fully typed, check method definition in class schema.
-124 Time arithmetic underflow.
-125 Date arithmetic underflow.
-126 Illegal left hand side of an assignment clause.
-127 Method calls on set derived tables correlated to an outer scope are \nnot supported unless the set expression is wrapped in a subquery.
-128 The query specification column that corresponds to the \nshared attribute '%s' must be NULL or NA.
-129 A NULL column is not allowed on the select list of the view query specification if the attribute definition is omitted.
-130 Vclass objects in sets are not supported.
-131 Expecting a string value.
-132 Expecting a statement or a string value.
-133 Proxy object_id attribute '%s' must not map to \na query specification column expression.
-134 %s constraint ignored.
-135 Constraint declarations not allowed in this context.
-136 Casting %s to type %s is not supported.
-137 %s is not a valid bit string.
-138 '%s' operator is not defined on type %s.
-139 '%s' operator is not defined on types %s with %s and %s.
-140 Operands of operator '%s' cannot both be dynamic host variables.
-141 Too many aguments to generic function %s.\nOnly %d arguments are allowed for generic functions.
-142 Selector {%s} class '%s' is not a subclass of '%s'.
-143 Cannot extract '%s' field from type %s.
-144 Query specification must not have an ORDER BY clause.
-145 Case condition must be a logical type expression.
-146 Expression should be of type %s.
-147 Serial '%s' already exist.
-148 Serial '%s' not defined.
-149 Increment value must not be zero.
-150 Maximum value exceeds 1.0e37.
-151 Minimum value is invalid.
-152 Increment value is invalid.
-153 Minimum value exceeds -1.0e36.
-154 Maximum value is invalid.
-155 Specify alter serial option.
-156 The second argument of serial_next_value function should be greater than 0.
-157 Serial values cannot exceeds its minimum or maximum
-158 Internal I/O error for serial
-159 Cannot find the index '%s'.
-160 The qualified index name '%s' refers to a class, but it isn't specified in from clause.
-161 Two or more classes have the same index '%s'. Use the qualified index names.
-162 Invalid use of %s.\n%s expression cannot be used with attribute or correlated subquery.
-163 Current release restricts a expression containing ORDERBY_NUM() in select list.
-164 Path expression '%s' in join condition.
-165 '%s' in join condition is not defined.
-166 Current release restricts set derived table for right outer join.
-167 Cannot insert with query on other ldb.
-168 Only one column can be specified in the select list when the subquery is not introduced with EXISTS.
-169 Illegal right hand side of an assignment clause. Context requires query to be single column.
-170 Cannot use a subquery in join condition clause.
-171 Invalid partition definition.
-172 Partition column must be specified.
-173 Only one column can be specified as partition column.
-174 Unsupported partition column type.
-175 Partition definition is duplicated. '%s'
-176 Constant type mismatch. '%s'
-177 Invalid partition size.
-178 '%s' is not partitioned class.
-179 '%s' is already partitioned class.
-180 Invalid partition requests.
-181 %s cannot be changed from this class(partition key column).
-182 %s cannot be partition-managed under active triggers.
-183 Partition %s does not exist.
-184 Partition type mismatches. '%s'
-185 Partition information is invalid.
-186 Partition addition is to set with a bigger range than the existing.
-187 Reorganization of partitions is not permitted because it may cause data loss.
-188 The range of the partition '%s' is invalid.
-189 A class attribute cannot have an auto increment constraint.
-190 An attribute of virtual class cannot have an auto increment constraint.
-191 The domain of the attribute '%s' having an auto increment constraint is invalid.
-192 Not a user but the system can assign the attribute '%s' created by 'ON CACHE OBJECT' of foreign key.
-193 Cannot use duplicate attribute names in index key list. Attribute name '%s' listed more than once.
-194 Function %s is undefined or given wrong number of parameter.
-195 '%s' can only be used in hierarchical queries. Specify a CONNECT BY clause.
-196 '%s' is not allowed here.
-197 Using CONNECT_BY_ISCYCLE is only allowed if the query has a CONNECT BY NOCYCLE clause.
-198 No tables used.
-199 ORDER BY NULL requires GROUP BY.
-200 The number to CACHE must be less than one cycle (%s).
-201 '%s' is not allowed in a query with LIMIT clause.
-202 WITH ROLLUP requires GROUP BY.
-203 A column name parameter should be passed to the DEFAULT function. Path expressions are not yet supported.
-204 Duplicate table option '%s'
-205 The class '%s' is marked as REUSE_OID and is non-referable. Non-referable classes can't be the domain of an attribute and their instances' OIDs cannot be returned.
-206 Duplicate 'serial %s' option.
-207 The column '%s' in ordering clause is ambiguous.
-208 Attribute '%s' doesn't have a default value.
-209 ORDER BY items must appear in the select list if SELECT DISTINCT is specified.
-210 Host variable is not allowed on columns in the query specification.
-211 %s can not be an ORDER BY column
-212 %s can not be an GROUP BY column
-213 Can not define '%1$s of %2$s' as an column type.
-214 Invalid value "%s" for prefix length of the index.
-215 '%s' function is not defined on types %s, %s, %s and %s.
-216 '%s' function is not defined on types %s, %s and %s.
-217 '%s' function is not defined on types %s and %s.
-218 '%s' function is not defined on type %s.
-219 '%s' function is not defined for an index argument of type %s.
-220 ALTER VIEW '%s' AS SELECT is not allowed for views that have subclasses or superclasses. Use ALTER VIEW CHANGE QUERY instead.
-221 View attributes cannot be changed using this statement. 'ALTER VIEW name AS query' might help instead.
-222 CUBRID requires ORDER BY item to be the same expression as GROUP_CONCAT argument or an integer (argument position).
-223 The LIKE predicate requires an escape character to be specified. See the documentation for the '%1$s' and '%2$s' configuration parameters.
-224 KEYLIMIT can not be used in INDEX NONE clause.
-225 Session variable not allowed in this context.
-226 Index hint conflict between '%s' and '%s'.
-227 '%s' function can not be used in DEFAULT clause.
-228 Updating derived tables is not allowed.
-229 Updating class attributes and instance attributes not allowed in the same statement.
-230 Updating virtual class hierarchies is not allowed.
-231 Host variables not allowed in DDL statement.
-232 Invalid filter expression (%s) for index.
-233 Multiple or nested functions are not allowed in a function index definition.
-234 Invalid index specification.
-235 SHARED, DEFAULT and AUTO_INCREMENT cannot be defined with each other.
-236 Too many enumeration values (%d). An enumeration type can have a maximum of %d values.
-237 Duplicate values in enum type.
-238 Cannot MERGE into a derived table.
-239 Cannot affect the source table in a MERGE statement.
-240 MERGE with class hierarchies is not allowed.
-241 User name is too long.
-242 Constant expression cannot be used as function index.
-243 Class name or alias is not unique in list: '%s'
-244 Invalid DEFAULT clause. '%s' cannot be used in a nested expression.
-245 '%s' requires arguments with compatible collations.
-246 Invalid character set.
-247 Required character set and collation are not compatible.
-248 Unknown collation '%s'.
-249 Context requires collection with elements having identical codesets and collations.
-250 Prefix index is not allowed on attribute '%s' (has collation with expansions).
-251 Initial value is invalid.
-252 Multi-column prefix index is not allowed.
-253 '%s' function cannot be used for function based index.
-254 Invalid index column definition: %s
-255 '%s' is not allowed in a filter expression for index.
-256 Cannot use GROUPBY_NUM() and WITH ROLLUP clause in same query.
-257 Cannot MERGE UPDATE column %s referenced in ON clause.
-258 The number of columns, %d, in ( %s ) do not match\nthe number of columns, %d, in ( %s ).
-259 Prefixes of columns not allowed in function index expression.
-260 %s cannot be a PARTITION BY or ORDER BY column
-261 Query must evaluate to a single value\n(%s).
-262 Nested analytic functions are not allowed.
-263 An inherited attribute cannot be used as the partitioning key.
-264 The aggregate size of enumeration elements is too large.
-265 Cannot use target table in source spec.
+1 Bellek yetersiz.
+2 Function %s tanımsız.
+3 ldb '%s' veritabında bulunamıyor.
+4 Sütunların sayısı, %d, sol sorgulama içinde eşleşmiyor\nSütunların sayısı, %d, sağ sorgulama içinde.
+5 '%s'ile uyumlu birleşme '%s' değil.
+6 %s tanımlı değil.
+7 %s etki alanı bir vclass olamaz.
+8 %s etki alanı bir proxy vclass olamaz.
+9 %s etki alanı bir class olamaz.
+10 %s nin bir özniteliği '%s' değildir.
+11 %s bu sınıftan değiştirilemez.\n %s dan bir artakalandır.
+12 Class %s bulunmamaktadır.
+13 %s bir %s değildir.
+14 %s bir metod veya öznitelik %s değildir.
+15 %s olmayan ve herhangi bir sorgu özellikleri olmamalıdır.
+16 %s veritabanında tanımlı değildir.
+17 %s bir %s süpersınıfı değildir.
+18 Class %s non-class %s dan devralır.
+19 VClass %s non-vclass %s dan devralır.
+20 Proxy vclass %s non-proxy vclass %s dan devralır.
+21 %s zaten bir %s süpersınıfı.
+22 %s kendisinin bir süper sınıfı olamaz.
+23 %s zaten bir %s altsınıfıdır.
+24 %s tek değerli değildir. Naggregate sorgularında maruz kalan öznitelikler yan tümcesi tarafından grubunda yer almalıdır.
+25 Sütünların sayısı(%d) ve into_names(%d) eşit değildir.
+26 Class %s zaten bulunmakta.
+27 Super class %s '%s' içinde bulunmamaktadır.
+28 Yan tümcesi '%s' anlamlı bir INHERIT yapmak için bir SUBCLASS yan tümcesi beklemektir.
+29 INHERIT yan tümcesi '%s' başvuruları SUBCLASS yan tümcesi '%s' bulunmayan bir sınıf.
+30 Class bir sorgu özelliklerine sahip olamaz.
+31 %s bir kayıtlı ldb değil.
+32 Bir proxy varisi kendine ait object_id yan tümcesi olmayabilir. Kalıtımsal object_id öznitelik (ler) geçersiz yapılamaz.
+33 Proxy vclass birden fazla sorgu özelliklerine sahiptir.
+34 Özniteliklerin sayısı, %d, sütunların sayısı ile eşleşmemektedir, \n%d, sorgu özellikleri içinde.
+35 %s için beklenen bir öznitelik adı eksik.
+36 Öznitelik '%s' sütun '%s' sorgu özelliği ile uyumlu değildir.
+37 %s sınıf değildir.
+38 Endeksleri sanal sınıflar da oluşturulmuş olmayabilir.
+39 Endeksleri, sadece tek bir özniteliği oluşturulabilir.
+40 Yan tümcesi birden fazla sınıflar da geçersiz kullanımı.
+41 Sistem hatası - Çözünürlük %s başarısız oldu.
+42 Türetilmiş bir tablo silemeye bilirsiniz.
+43 Kullanıcı %s veritabanında değil.
+44 Güncelleme kümeleme içeremez.
+45 Her sınıfta özniteliği adlarının benzersiz olması gerekir. Öznitelik adı '%s' sınıf '%s' bir kereden fazla belirtildi.
+46 %s birden fazla atama var..
+47 Sıralama özellikleri sayısı bir tamsayı değildir.
+48 Sıralama özellikleri %d aralık dışında.
+49 Öğe tarafindan bir tamsayı değildir.
+50 Sıralama özellikleri %s herhangi bir seçeneği sütununda eşleşmiyor.
+51 Sütun %s için çelişkili sıralama yönü bulunmaktadır.
+52 Sıralama özellikleri %s bir numarası, adı veya path anlatım değildir.
+53 Ekleme anlatım sadece ekleme açıklamasında görünebilir.
+54 Seçilen özniteliklerin (%d) ve sütunların (%d) sayısı eşit değildir.
+55 Özniteliklerin (%d) ve değerlerin (%d) sayısı eşit değildir.
+56 Veri türü %s üzerinde veri taşması.
+57 Özniteliğin %s üzerinde uyumsuz veri türü.
+58 %s\n tek bir sınıfında bir SELECT değildir.
+59 `*' proxy vclass dizayn edilmiş sorgu belirleme geçerli bir seçim listesi değildir.
+60 %s ne bir vclass ne de proxy vclass değildir.
+61 Birden fazla yalıtım düzeyinde yan tümceleri vardır.
+62 Birden fazla zaman aşımı yan tümceleri bulunmaktadır.
+63 Hiçbir yalıtım düzeyine girilemedi.
+64 Operatör BETWEEN türleri %s, %s ve %s tanımlı değildir.
+65 '%s' operatör tiplerinin %s ve %s tanımlı değildir.
+66 Fonksiyon argümanları olması gerekir: %s.
+67 Uyumsuz işlenenler: %s(%s).
+68 Toplama işlevi 1 argüman olması gerekir: %s.
+69 Sıfıra bölme girişimi.
+70 Veri taşması %s yazmak için %s zorluyor.
+71 %s yazmak için %s zorlama olamaz.
+72 '%s' tipi SET, MULTISET veya SEQUENCE olması gerekir.
+73 '%s' tam olarak bir dizi öğe türü olmalıdır.
+74 %s birden fazla türetilmiş sütun adı vardır.
+75 %s türetilmiş sütun adı vardır.
+76 %s sütunlar (%d) ve sütun adlarının (%d) karşılık gelen bir numarası bulunmamaktadır.
+77 %s içinde herhangi bir öznitelikleri bulunmaktadır.
+78 %s içinde tek bir tablo bekleniyor.
+79 Açıkta kalan adı %s belirsiz.
+80 Türetilmiş sütun adları '%s' basit sınıf özellikleri için izin verilmez.
+81 Türetilmiş tablo '%s' bir ilişki adı olmalıdır.
+82 Yetkilendirme hatası, %s sınıfı seçin.
+83 Türetilmiş bir tablo adı için sınıf örneği başvurusu %s izin verilmez.
+84 Path bağıntı (%s) içsel path dönem dışında görünür.
+85 %s Referans belirsiz.
+86 %s Class özniteliği %s bulunmamaktadır.
+87 Classes (%s) tüm öznitelik %s bulunmamakta.
+88 Class (%s) %s özniteliği bulunmamaktadır.
+89 %s %s türü değil, bir nesne türüdür.
+90 Seçici {%s} gerekli içerik (%s) bir maruz sınıf özelliklerine gidermez.
+91 Seçici {%s} olmayan sınıf özellikleri (%s) ifade eder.
+92 Seçici {%s} kendisini tanımlayan path ifade kök olamaz.
+93 Seçici {%s} dairesel seçici {%s} açısından tanımlanır.
+94 Seçici {%s} %s olarak yeniden tanımlandı.
+95 %s (etki alanı nesnesi) özniteliği %s bulunmamaktadır.
+96 özellikleri HARİÇ %s alt sınıfı değildir.
+97 ALL ... EXCEPT Listede sınıfındaki EVERYTHING kapsamaz .
+98 '%s' path seçici '%s' başka bir kullanımı ile veya path kök '%s' tutarsız.
+99 Tanımsız argüman.
+100 Argüman bir nesne değildir.
+101 %s bir sınıf yöntemi veya %s özniteliği değildir.
+102 Sorgu özellikleri bir içinde-yan tümcesi olmamalıdır.
+103 Proxy dizayn edilmiş sorgu belirleme, hiçbir toplama ifadesi bulunmalıdır,\nhiçbir gurup-tarafından-yan tümcesi, ve herhangi bir sahipolan-yan tümcesi.
+104 Proxy dizayn edilmiş sorgu belirleme DISTINCT veya UNIQUE olmaması gerekir \nSeçim listesinde anahtar kelime.
+105 Proxy dizayn edilmiş sorgu belirleme basit bir SELECT anlatımı olmalıdır.
+106 Proxy sorgu özellikleri tek bir tabloya veya sınıfa başvurması gerekir \nlokal veri tabanından.
+107 User '%s' %s sahibi değil.
+108 Proxy '%s' zaten sınıf '%s' üzerinde ldb '%s' tanımlanır.
+109 CUBRID türdeş olmayan setleri nesneleri ile proxy desteklemiyor.
+110 Nerede-yan tümcesi mantıksal bir tür anlatımı olması gerekir.
+111 Çıkış yan tümcesi gibi bir değişmez dize ya da bir ana değişken olmalıdır.
+112 Geçersiz hassas birleşimi (%d) ve ölçek (%d).
+113 %1$d göz önüne alındığında kesinlik geçersiz;%2$d den daha büyük olmalı ve %3$d den daha büyük olmamalıdır.
+114 Hassas (%d) çok büyük. Maksimum kesinlik %d.
+115 %s yöntemi bir dönüş türüne sahip olmalıdır.
+116 Metodu ile birlikte bağımsız sayısı yöntemi için tanımlanan \n sayısına eşit değildir.
+117 Yöntem çağrısı bir hedefi olmalıdır.
+118 %s yöntemi verilen hedef için tanımsızdır.
+119 Örnek yöntemleri sınıf nesneleri olarak adlandırılan olamaz.
+120 Sınıf yöntemler örnek nesneler üzerinde çağrılamaz.
+121 Sınıf metotları, hedef olarak bir sınıf nesnesi gerektirir.
+122 Yöntem, hedef olarak bir nesne gerektirir.
+123 %s yöntemi tam olarak yazılmış değil, sınıf şeması yöntemi tanımını kontrol edin.
+124 Zaman aritmetiği alttan taşma.
+125 Tarih aritmetiği alttan taşma.
+126 Bir atama yan tümcesi sol tarafta geçersiz.
+127 Yöntem bir dış kapsamı ile bağlantılıdır ayarlanmış türetilen tablolar çağrısında dizi bir alt sorgu ile sarılmış olmadıkça \n desteklenmez.
+128 Karşılık gelen dizayn edilmiş sorgu belirleme sütununda \n paylaşılan özniteliği '%s' NULL veya NA olmalıdır.
+129 Öznitelik tanımı atlanırsa bir NULL sütun görünümünde sorgu şartname seçim listesi üzerinde izin verilmez.
+130 Setlerle Vclass nesneleri desteklenir.
+131 Bir dize değeri bekleniyor.
+132 Bir deyim ya da bir dize değeri bekleniyor.
+133 Proxy object_id özniteliği '%s' \na dizayn edilmiş sorgu belirleme sütununda ifade eşleştirilir olmamalıdır.
+134 %s kısıtlama gözardı edildi.
+135 Kısıt bildirimleri bu bağlamda izin verilmez.
+136 %s yazmak için %s çevrim desteklenmemektedir.
+137 %s geçerli bir bit dizgesi değil.
+138 '%s' operatör tipi %s tanımlı değildir.
+139 '%s' operatör %s ve %s ile türleri %s tanımlı değildir.
+140 Operatör '%s' işlenenler hem Dinamik Ana Bilgisayar değişkeni olamaz.
+141 '%s' genel işlevlerde çok fazla argüman bulunmakta.\nSadece %d argümanları genel işlevler için izin verilir.
+142 Seçici {%s} class '%s' '%s' bir alt sınıf değildir.
+143 Türü %s '%s' alanından ayıklayamazsınız.
+144 Sorgu özellikleri ORDER BY yan tümcesine sahip olmamalıdır.
+145 Olgu durumu mantıksal bir tür anlatımı olması gerekir.
+146 İfade türü %s olmalıdır.
+147 Serial '%s' zaten var.
+148 Serial '%s' tanımlı değil.
+149 Increment değeri sıfır olmamalıdır.
+150 Maximum değeri 1.0e37 aşıyor.
+151 Minimum değeri geçersiz.
+152 Increment değeri geçersiz.
+153 Minimum değer -1.0e36 aşıyor.
+154 Maximum değeri geçersiz.
+155 Belirtilen değiştirebilir seri seçeneğini.
+156 serial_next_value fonksiyonunun ikinci kez tartışması 0 den büyük olmalıdır.
+157 Serial değerleri minimum veya maksimum aşan olamaz.
+158 Serial için Dahili I/O hatası
+159 İndeks '%s' bulunamıyor.
+160 Nitelikli dizin adı '%s' bir sınıf için başvuruyor, ancak bu yan tümcesi belirtilen değildir.
+161 İki veya daha fazla sınıfların aynı indeksi '%s' var.Nitelikli dizin adlarını kullanabilirsiniz.
+162 %S geçersiz kullanımı. \n%s anlatımı öznitelik veya ilişkili alt sorgu kullanilamaz.
+163 Güncel sürüm seçim listesinde ORDERBY_NUM() içeren bir anlatımı kısıtlar.
+164 Path anlatımı '%s' birleştirme koşulu.
+165 '%s' birleştirme koşulu tanımlı değil.
+166 Güncel sürümü sağ dış birleştirme için ayarlanmış türetilmiş bir tablo kısıtlar.
+167 Diğer ldb üzerindeki sorgusu ile eklenemiyor.
+168 Alt sorgu EXISTS ile sunulan olmadığında yalnızca tek bir sütunu seçim listesinde belirtilebilir.
+169 Sağ tarafta bir atama yan tümcesi geçersiz .Sorgu bağlam tek sütun olmasını gerektirir.
+170 Join koşulu yan tümcesinde bir alt sorgu kullanamazsınız.
+171 Geçersiz bölüm tanımı.
+172 Bölüm sütununda belirtilmelidir.
+173 Sadece tek bir sütununda bölüm sütun olarak belirtilebilir.
+174 Desteklenmeyen bölüm sütun türü.
+175 Bölüm tanımı yineleniyor.'%s'
+176 Sabit tür uyuşmazlığı. '%s'
+177 Geçersiz bölüm boyutu.
+178 '%s' sınıf bölümlenmiş değil.
+179 '%s' zaten sınıf bölümlenmiş.
+180 Geçersiz bölüm istekleri.
+181 %s bu sınıfa (bölüm anahtar sütun) ile değiştirilemez.
+182 %s aktif bir tetikleyiciler kapsamında bölüm -yönetilen olarak ayarlanamaz.
+183 %s bölümü yok.
+184 Bölüm türü uyumsuzlukları. '%s'
+185 Bölüm bilgileri geçersiz.
+186 Bölüm yanı sıra mevcut daha büyük bir aralığı ile ayarlanmaktadır.
+187 Bu veri kaybına neden olabilir, çünkü bölümleri tekrar düzenlenmesine izin verilmez.
+188 Bölüm '%s' aralığı geçersiz.
+189 A sınıfı özellik bir otomatik artış kısıtlaması olamaz.
+190 Sanal sınıf bir özniteliği otomatik artış kısıtlamasına sahip olamaz.
+191 Özniteliği '%s' bir otomatik artış kısıtlamasına sahip olmasının süreli etki alanı geçersiz.
+192 Bir kullanıcı olmayan ancak sistem özniteliği '%s' yabancı anahtarın 'ON CACHE OBJECT' tarafından oluşturulmuş atayabilirsiniz.
+193 Dizin anahtarı'nı listesinde içinde yinelenen öznitelik adları kullanamazsınız. Öznitelik adı '%s' bir kereden fazla listelenmiştir.
+194 Fonksiyon %s tanımsızdır veya parametresi yanlış numara verilmiştir.
+195 '%s' yalnızca hiyerarşik bir sorguları kullanılabilmektedir. Yan tümcesi CONNECT BY belirleyin.
+196 '%s' buradan izin verilmez.
+197 Sorgu yan tümcesi CONNECT BY NOCYCLE yoksa sadece CONNECT_BY_ISCYCLEne kullanılabilmesine izin verilir.
+198 Tabloların hiçbiri kullanılmamaktadır.
+199 ORDER BY NULL, GROUP BY gerektirir.
+200 CACHE için bir numaralı döngüsü (%s) daha az olmalıdır.
+201 '%s' LIMIT anlatımı içeren bir sorgu içinde izin verilmez.
+202 WITH ROLLUP, GROUP BY gerektirir.
+203 Bir sütun adı parametresi DEFAULT işlevine aktarılan olmalıdır. Path ifadeleri henüz desteklenmemektedir.
+204 '%s' tablosu seçeneği Duplicate
+205 Sınıf '%s' REUSE_OID olarak işaretlenmiş ve olmayan-başvurulabilir konumundadır . Olmayan- başvurulabilir sınıfların bir öznitelik süreli etki alanı olamaz ve bunların örneklerini 'OID'lere geri iade edilemez.
+206 'seri bağlantı% s' seçeneğini çoğaltın.
+207 Sıralama yan tümcesinde sütununda '%s' belirsiz.
+208 Öznitelik '%s' varsayılan bir değeri yoktur.
+209 SELECT DISTINCT belirtilmişse öğelerin ORDER BY seçim listesinde görünmesi gerekir.
+210 Ana değişken sorgu özelliklerindeki sütunların izin verilmemektedir.
+211 %s sütununda ORDER BY olamaz
+212 %s sütununda GROUP BY olamaz
+213 Bir sütun türü olarak '%2$s'lik %1$s' tanımlayamazsınız.
+214 İndeksin önek uzunluğu için geçersiz değer "%s".
+215 '%s'fonksiyonu türleri %s, %s, %s ve %s tanımlı değildir.
+216 '%s' fonksiyonu türleri %s, %s ve %s tanımlı değildir.
+217 '%s' fonksiyonu türleri %s ve %s tanımlı değildir.
+218 '%s' fonksiyonu türleri %s tanımlı değildir.
+219 '%s' fonksiyon türü %s bir indeks bağımsız değişkeni için tanımlı değildir.
+220 DEĞİŞTİRME GÖRÜNÜMÜ '%s' SEÇ gibi alt sınıflara veya süper sınıf vardır görünümleri için izin verilmez. Yerine DEĞİŞİM SORGU DEĞİŞTİRME GÖRÜNÜMÜ kullanabilirsiniz.
+221 Görünüm öznitelikleri bu açıklamayı kullanarak değişiklik yapılamaz. 'sorgu gibi DEĞİŞTİRME GÖRÜNÜMÜ adı' yerine yardımcı olabilir.
+222 CUBRID öğesi ORDER BY group_concat bağımsız değişken veya bir tamsayıdır (bağımsız değişken konumu) aynı ifade olmasını gerektirir.
+223 LIKE doğrulama bir çıkış karakteri belirlenen gerektirir.'%1$s' için belgelere başvurun ve '%2$s' yapılandırma parametrelerine bakın.
+224 KEYLIMIT, INDEX NONE olarak kullanilamaz
+225 Oturum değişkenine bu çerçevede izin verilmez.
+226  '%s've '%s'arasındaki dizin ipucu tatışması
+227 '%s'fonksiyonu DEFAULT cümle içine kullanmamalıdır
+228 Ekstre formunun güncelenmesine izin verilmez
+229 Düzeyin özellikleri ve örnek özelliklerinin aynı ifadesini güncelemesine izin vermez. 
+230 Sanal hiyerarşini güncelemeye izin verilmez
+231 Sunucu değişkenleri DDL deyimini izin verilmez.
+232 İndeks geçersiz filtre ifadesi için
+233 Çeşitlilik veya yuvalanmış işlemleri fonksiyon dizini tanımlarında izin verilmez.
+234 Geçersiz dizin özellikleri
+235 SHARED, DEFAULT and AUTO_INCREMENT -büyüme arası tanımlanamaz.
+236 Çok fazla sayım değeri(%d)。Sayım tipindeki kopyalama değeri (%d)。
+237 Sayım tipindeki kopyalama değeri
+238 MERGE ayıklamak için kombine edilemez.
+239 MERGE ifadesindeki kaynak formu etkilememelidir
+240 MERGE taşıyankombineye izin verilmez.
+241 Kullanıcı adı çok uzun
+242 Uzun süreli ifade fonksiyon dizini olarak kullanılamaz. 
+243 Düzey adı veya takma adı listede özgü değildir: '%s'
+244 Geçersiz DEFAULT cümle. '%s' yuvalanmış ifadede kullanılamaz
+245 '%s' Bir eşleme onaylı tartışma gerektirir
+246 Geçersiz özellik grubu
+247 Gereksinimlerde bulunan özellik grubu ile onay eşlemeli değildir
+248 Bilinmeyen onay '%s'.
+249 Bağlamı onaylanmış kod grubuna gerektirir ve kontrol edilen eleman grupları
+250 Ön dizini '%s' üzerinde izin vermez (Temel üzerindeki tontrolu genişletmek)
+251 Başlangıç değeri geçersiz
+252 Çok fonksiyonlu kapasite dizinine izinvermez
+253 '%s' fonksiyonu talimat temeli üzerindeki fonksiyon için kullanılamaz
+254 Geçersiz dizin kapasitesinin tanımlanması: %s
+255 Dizin filtre ifadesindeki '%s' izinverilmez.
+256 Aynı sorunlar içinde GROUPBY_NUM() ve WITH ROLLUP cümleleri kullanamaz.
+257 ON cümlelerinde bir referans rolü oynayan ve MERGE UPDATE kapasitesinin %s kombine edilemez.
+258 Kapasite sayısı, %d, ( %s ) içi\n kapasite sayısı ile eşleşmez, %d, in ( %s ). 
+259 Kapasite öneki fonksiyon dizin ifadesinde izinvermez.
+260 %s kapasite komutunun PARTITION BY or ORDER BY 
+261 Şüphe mutlaka tek bir değer\n(%s) üzerinde olmamalıdır
+262 Yuvalanmış analız fonksiyonlarına izin verilmez.
+263 Miras alan özellik bölünme için kullanılmaz.
+264 Sayım elemanının toplam büyüklüğü
+265 Kaynak numunelerinde hedef formu kullanılmayacak
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
-1 Out of virtual memory: unable to allocate %d bytes.
-2 Transaction isolation level must be 1, 2, 3, 4, 5 or 6.
-3 Timeout value must be -1, 0, or >0.
-4 Isolation level set to:\n
+1 Sanal bellek yetersiz: %d bayt bölüm ayıramadı.
+2 İşlemin yalıtım düzeyi 1, 2, 3, 4, 5 veya 6 olması gerekir.
+3 Zaman aşımı değeri -1, 0, veya >0 olması gerekir .
+4 Yalıtım düzeyi olarak ayarlandığında:\n
 5          READ COMMITTED SCHEMA, READ UNCOMMITTED INSTANCES.\n
 6          READ COMMITTED SCHEMA, READ COMMITTED INSTANCES.\n
 7          REPEATABLE READ SCHEMA, READ UNCOMMITTED INSTANCES.\n
 8          REPEATABLE READ SCHEMA, READ COMMITTED INSTANCES.\n
 9          REPEATABLE READ SCHEMA, REPEATABLE READ INSTANCES.\n
-10 A non-updatable query is not allowed in a db_query_execute_oid call.
-11 Transaction timed out waiting for locks.
-12 Attempted to access host variable with index %ld when only %ld \ninput host variables were given.
-13 Unimplemented conversion.
-14 Internal error, undefined conversion.
-15 '%s' yields no results.
-16 '%s' yields more than one row.
-17 Interpreter variable %s is not defined.
-18 Cannot evaluate '%s'.
-19 Unknown variable %s.
-20 Unknown shared attribute %s.
-21 '%s' yields more than one column.
-22 Nested or invalid use of aggregate function.
-23 Function %s is not defined.
-24 Context requires query to be single column\n(%s).
-25 Too many values have been specified.
-26 Virtual assignment target (%s) is not invertible.
-27 There are more columns in the query specification than attributes in class %s.
-28 There are more attributes in class %s than columns in the query specification.
-29 Current release restricts aggregation to vclasses WITHOUT \naggregate query specifications.
-30 Current release restricts aggregation to vclasses WITHOUT \nunion query specifications.
-31 Use of vclass (%s) in a composition hierarchy requires it to be updatable.\nIt cannot be updated with respect to real class %s.
-32 not used
-33 Illegal construct in path expression '%s'.
-34 path expression '%s' crosses db boundary to %s, with vclass %s.
-35 path expression '%s' crosses db boundary from %s, to class %s.
-36 %s is not authorized on %s.
-37 Select is not authorized on %s.
-38 Vclass %s is not updatable.
-39 %s is not a proxy vclass.
-40 query spec of proxy vclass must not be a join.
-41 %s has no object id set.
-42 Classes (%s) with multiple object_id fields in a composition \nhierarchy are not supported.
-43 Object attribute %s of %s is not a vclass on ldb %s.
-44 Query spec type incompatible with attribute %s.
-45 The query specification of %s has a cyclic reference to itself.
-46 No expression given to evaluate.
-47 No real class found for vclass %s.
-48 Executing '%s' on ldb '%s' \nreturned: %s.
-49 Putting value '%s' into attribute '%s' returned: %s.
-50 Ldb name must not be null in %s.
-51 Ldb name at host must not be null in %s.
-53 Host name must not be null in %s.
-54 User name must not be null in %s.
-55 User password must not be null in %s.
-56 Insert translates to empty statement.
-57 Update translates to empty statement.
+10 Güncellenebilir-olmayan sorgusu db_query_execute_oid çağrısı izin verilmemektedir.
+11 İşlem kilitleri beklerken zaman aşımına uğradı.
+12 Sadece %ld \ n giriş ana bilgisayar değişkenleri verildiğinde indeks %ld sahip ana bilgisayar değişkenine erişilmeye çalışıldı.
+13 Dönüştürme gerçekleşmemiş.
+14 Dahili hata, tanımsız dönüştürme.
+15 '%s' yields uygun sonuç bulunamad.
+16 '%s' yields bir satırdan daha fazla.
+17 Yorumlayıcısı değişkeni %s tanımlanmış değildir.
+18 '%s'Değerlendiremiyor.
+19 Bilinmeyen değişken %s.
+20 Bilinmeyen ortak öznitelik %s.
+21 '%s' yields birden fazla sütun.
+22 Toplama fonksiyonu yuvalanmış veya kullanımı geçersiz.
+23 Fonksiyon %s tanımlanmış değildir.
+24 Bağlamda tek sütun için sorgu gerektirmektedir \n(%s).
+25 Değerler çok fazla belirtildi.
+26 Sanal atama hedefi (%s) ters çevrilebilir değildir.
+27 %s sınıfı içinde özniteliklerinde sorgu özelliklerinden daha fazla sütun vardır.
+28 Sorgusu özelliklerinde sütunlar dan %s sınıfı daha fazla öznitelikleri vardır.
+29 Mevcut sürümde vclasses için kümeleme kısıtlamaktadır OLMADAN\nToplama sorgusu özellikleri.
+30 Mevcut sürümde vclasses için kümeleme kısıtlamaktadır OLMADAN\nBirlik sorgusu özellikleri.
+31 Bir bileşimin hiyerarşisindeki vclass kullanılması (%s) güncellenebilen olmasını gerektirir.\nBu gerçek bir sınıf %s açısından güncelleştirilemez .
+32 Kullanılmamıştır.
+33 '%s' path ifade özelliğinde geçersiz yapı.
+34 Path ifadesi '%s' vclass %s, %s db sınırını geçiyor.
+35 Path ifadesi '%s' %s sınıfı için, %s db sınırını geçiyor.
+36 %s %s üzerinde yetkili değil.
+37 Select %s üzerinde yetkili değil.
+38 Vclass %s güncelleştirilebilir değil.
+39 %s bir proxy vclass değildir.
+40 Proxy vclass sorgu spec bir birleştirme olmamalıdır.
+41 %s nesne kimliği belirledi.
+42 Bir bileşimde birden fazla object_id alanlarıyla sınıfları (%s) \n hiyerarşisi desteklenmez.
+43 %s nesne özniteliği %s ldb %s üzerinde bir vclass değildir.
+44 Sorgu özellikleri tür özniteliği %s ile uyumsuzdur.
+45 %s sorgusu özellikleri kendisi için bir döngüsel başvuru var.
+46 Hiçbir ifade değerlendirmek için verilmemiştir.
+47 Gerçek bir sınıf olmayan vclass %s bulundu.
+48 Yürütme '%s' ldb '%s' \n döndürdü: %s.
+49 Özniteliği '%s' içine değeri '%s' koyarak döndü: %s.
+50 Ldb adı %s içinde null olmamalıdır.
+51 Ana bilgisayar da ldb ad %s null olmamalıdır.
+53 Host adı %s içinde null olmamalıdır.
+54 Kullanıcı adı %s içinde null olmamalıdır.
+55 Kullanıcı şifresi %s içinde null olmamalıdır.
+56 Boş açıklamaya çeviri yerleştirin.
+57 Boş açıklamaya çeviri güncelleyin.
 58 Delete translates to empty statement.
-59 INGRES does not support dates (%s) before January 1, 1582.
-60 Resources exhausted in query generation.
-61 Query yields no result, so variable '%s' is not set.
-62 With LOCAL check option is not supported.
-63 Check option exception on view %s.
-64 Invalid date: '%s'.
-65 Invalid time: '%s'.
-66 Invalid utime: '%s'.
-67 Subqueries in a proxy's query specification are not supported.
-68 Ldb function argument is not compatible with ldb in '%s'.
-69 Invalid numeric: '%s'.
-70 Outer join query optimization failed.
+59 Ingres 1 Ocak 1582 öncesi tarihleri ​​(%s) desteklemiyor.
+60 Kaynaklar sorgu üretiminde bitmiş.
+61 Sorgu verimi sonuçsuz, böylece değişken '%s' ayarlı değil.
+62 YEREL ile kontrol seçeneği desteklenmiyor.
+63 Görünümünde %s seçeneği dışında kontrol edin.
+64 Geçersiz tarih: '%s'.
+65 Geçersiz zaman: '%s'.
+66 Geçersiz U zaman: '%s'.
+67 Bir proxy sorgu belirtiminde alt sorgular desteklenmez.
+68 Ldb fonksiyonu bağımsız değişken '%s' ldb ile uyumlu değildir.
+69 Geçersiz bir sayısal: '%s'.
+70 Harici join sorgu iyileştirme başarısız oldu.
 71         SERIALIZABLE.\n
-72 Vclass %s is not updatable. Only updatable vclasses are allowed to select VIDs.
-73 Partitioning failed.
-74 Partition does not exist.
-75 Not allowed access to partition: '%s'.
-76 The serial '%s' is not defined yet.
-77 The owner or DBA can only alter the definition of the target serial.
-78 It is not allowed for users to modify the serial object created by an auto increment constraint.
-79 Invalid isolation level: %s schema, %s instances.
+72 Vclass %s güncelleştirilebilir değil. Sadece güncellenebilir vsınıflar VIDs seçmesine izin verilir.
+73 Bölümleme başarısız oldu.
+74 Bölme bulunmamaktadır.
+75 Bölümünün erişim izni bulunmamaktadır: '%s'.
+76 Seri '%s' henüz tanımlanmamış.
+77 Sahibi veya DBA yalnızca hedef seri tanımını değiştirebilir.
+78 Kullanıcılar otomatik artış kısıtlaması tarafından oluşturulan seri nesneyi değiştirmek için izin verilmez.
+79 Geçersiz yalıtım düzeyi: %s şema, %s örnekleri.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
-1 *** invalid cache ***
-2    class %s
-3 from %s :
-4 Authorization for user %s\n
-5 Authorization for undefined user\n
-6 User : %s\n
+1 *** geçersiz önbellek ***
+2    sınıf %s
+3 %s dan :
+4 Kullanıcı Yetkilendirme %s\n
+5 Tanımsız kullanıcı için Yetkilendirme \n
+6 Kullanıcı : %s\n
 7            id : %d\n
-8       members :
-9        groups :
-10 User %s\n
-11 Current user is : %s\n
-12 Root authorization object :\n
-13   users :
-14 *** Couldn't issue all grants for user "%s"*** \n
-15 AUTHORIZATIONS\n
+8       üye :
+9       gurup :
+10 Kullanıcı %s\n
+11 Mevcut kullanıcı : %s\n
+12 Kök yetkilendirme nesnesi :\n
+13   kullanıcılar :
+14 *** Kullanıcı için tüm bağışları sorunu bulunamadı "%s"*** \n
+15 YETKİLENDİRME\n
 16 direct_groups :
 
 $set 12 MSGCAT_SET_HELP
-1 Rootclass
+1 Köksınıf
 2 %s %s\n
-3 Super classes :\n
-4 Sub classes :\n
-5 Attributes: \n
-6 Methods: \n
-7 Class attributes: \n
-8 Class methods: \n
-9 Conflict resolutions:\n
-10 Method files:\n
-11 Query specification:\n
-12 OBJECT of %s\n
-13 \nDescription:\n
-14 \nStructure:\n
-15 \nExample:\n
-16 META CLASS Name
-17 Class Name
-18 VClass Name
+3 Süper sınıflar :\n
+4 Alt sınıflar :\n
+5 Öznitelikler : \n
+6 Yöntemler : \n
+7 Sınıf öznitelikleri : \n
+8 Sınıf yöntemleri : \n
+9 Çatışma çözünürlükleri :\n
+10 Yöntem dosyası :\n
+11 Sorgu özelleştirme :\n
+12 %s Nesnesi \n
+13 \nTanım :\n
+14 \nYapı :\n
+15 \nÖrnek :\n
+16 META CLASS Adı
+17 Sınıf Adı
+18 VSınıf Adı
 $  Don't delete the space at the end of the next message
-19 VClass on ldb
+19 ldb izerinde VSınıf
 20 GENERAL
 
 $set 13 MSGCAT_SET_TRIGGER
-1 TRACE: Evaluating condition for trigger '%s'.
-2 TRACE: Executing action for trigger '%s'.
+1 İŞARET: Tetik için durum değerlendirilmesi '%s'.
+2 İŞARET: Tetik için eylem yürütme '%s'.
 
 $set 14 MSGCAT_SET_LOCK
 1 \n
-2 Thread (index %3d) of transaction (index %3d, %s, %s@%s|%d) has been suspended.\n
-3 Thread (index %3d) of transaction (index %3d, %s, %s@%s|%d) has been resumed.\n
-4 Transaction index %3d ACQUIRED %s lock on object %d|%d|%d.\n
-5 Transaction index %3d ACQUIRED %s lock on page %d|%d.\n
-6 Transaction index %3d CONVERTED its lock to %s lock on object %d|%d|%d.\n
-7 Transaction index %3d CONVERTED its lock to %s lock on page %d|%d.\n
-8 Transaction index %3d WAIT FOR %s lock on object %d|%d|%d.\n
-9 Transaction index %3d WAIT FOR %s lock on page %d|%d.\n
-10 Transaction index %3d RELEASE %s lock on object %d|%d|%d.\n
-11 Transaction index %3d RELEASE %s lock on page %d|%d.\n
-12 Transaction index %3d DEMOTE lock to %s on object %d|%d|%d.\n
-13 Transaction index %3d DEMOTE lock to %s on page %d|%d.\n
+2 Hat (indeks %3d) işlemin (indeks %3d, %s, %s@%s|%d) askıya alındı.\n
+3 Hat (indeks %3d) işleminin (indeks %3d, %s, %s@%s|%d) devam edilmiştir.\n
+4 İşlem endeksi %3d nesne %s kilit ACQUIRED %d|%d|%d.\n
+5 İşlem endeksi %3d sayfa %s kilit ACQUIRED %d|%d.\n
+6 İşlem endeksi %3d nesne %s kilit, kilit CONVERTED %d|%d|%d.\n
+7 İşlem endeksi %3d sayfa %s kilit, kilit CONVERTED %d|%d|%d.\n
+8 İşlem endeksi %3d nesne %s kilit WAIT FOR %d|%d|%d.\n
+9 İşlem endeksi %3d sayfa %s kilit WAIT FOR %d|%d.\n
+10 İşlem endeksi %3d nesne %s kilit RELEASE %d|%d|%d.\n
+11 İşlem endeksi %3d sayfa %s kilit RELEASE %d|%d.\n
+12 İşlem endeksi %3d nesne %s kilit DEMOTE %d|%d|%d.\n
+13 İşlem endeksi %3d sayfa %s kilit DEMOTE %d|%d.\n
 14 OID = %2d|%6d|%4d\n
-15 Object type: Root class.\n
-16 Object type: Class = %s.\n
-17 Object type: Instance of class (%2d|%6d|%4d) = %s.\n
-18 Object type: Unknown.\n
-19 Total mode of holders = %8s, Total mode of waiters = %8s.\n
+15 Nesne türü: Kök sınıf.\n
+16 Nesne türü: Sınıf = %s.\n
+17 Nesne türü: Sınıfın bir örneği (%2d|%6d|%4d) = %s.\n
+18 Nesne türü: Bilinmeyen.\n
+19 Tutucular Toplam modu = %8s, Bekleyenler Toplam modu = %8s.\n
 20 Num holders=%3d, Num blocked-holders=%3d, Num waiters=%3d\n
 21 LOCK HOLDERS:\n
 22 BLOCKED LOCK HOLDERS:\n
@@ -1734,126 +1734,126 @@ $set 14 MSGCAT_SET_LOCK
 24 NON_2PL_RELEASED:\n
 25 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d\n
 26 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d, Nsubgranules = %2d\n
-27 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d\n\t%13s Blocked_mode = %8s\n\t%17s Start_waiting_at = %-30s\n\t%17s Wait_for_secs = %.2f\n
-28 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d, Nsubgranules = %2d\n\t%13s Blocked_mode =%8s\n\t%13s Start_waiting_at = %-30s\n\t%13s Wait_for_secs = %.2f\n
-29 %4sTran_index = %3d, Blocked_mode =%8s \n\t%13s Start_waiting_at = %-30s \n\t%13s Wait_for_secs = %.2f\n
+27 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d\n\t%13s Blocked_mode = %8s\n\t%17s Start_waiting_at = %-30s\n\t%17s Wait_for_nsecs = %d\n
+28 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d, Nsubgranules = %2d\n\t%13s Blocked_mode =%8s\n\t%13s Start_waiting_at = %-30s\n\t%13s Wait_for_nsecs = %d\n
+29 %4sTran_index = %3d, Blocked_mode =%8s \n\t%13s Start_waiting_at = %-30s \n\t%13s Wait_for_nsecs = %d\n
 30 %4sTran_index = %3d, Non_2_phase_lock =%8s\n
 31 VPID (volid|pageid) = %3d|%6d.\n
-32 *** Lock Table Dump ***\n Lock Escalation at = %d, Run Deadlock interval = %d\n
-33 Transaction (index %2d, %s, %s@%s|%d)\n
-34 Isolation %s\n
-35 State %s\n
-36 Timeout_period %s\n
-37 Unilaterally aborted transactions with indices:\n
+32 *** Tablo Dökümü Kilit ***\n Yükseltme Kilidi = %d, Kilitlenme aralığı çalıştırın = %d\n
+33 İşlem (indeks %2d, %s, %s@%s|%d)\n
+34 Ayırma %s\n
+35 Durum %s\n
+36 Timeout_period %d\n
+37 İndeksleri ile tek taraflı olarak iptal işlemleri:\n
 38 %d ,
-39 Timed_out transactions with indices:\n
+39 Timed_out endeksleri ile işlemler:\n
 40 %d ,
-41 Solving the deadlock by selecting a transaction and a function \n to break the deadlock: %d %s
+41 Bir işlem ve bir işlevi seçeneğini belirleyerek kilitlenme çözülmesi \n çıkmazdan kurtarmak için: %d %s
 42 , %d %s
-43 Object type: Index key of class (%2d|%6d|%4d) = %s.\n
-44 Index name: %s\n
+43 Hedef türü: Düzeyinin dizin anahtar cümlesi  (%2d|%6d|%4d) = %s.\n
+44 Dizin adı: %s\n
 
 $set 15 MSGCAT_SET_IO
 1 \n*************************************************************************\n
-2 Backup = %s is needed. \n It must be mounted/loaded to continue.\n Type 1 to continue after the backup is mounted/loaded.\n Type 0 to quit.\n
-3 \n\n*** BACKUP HEADER INFORMATION ***\n\n
-4 Backup magic file identification %s,\n
-5          Release: %s\n\
-     Disk Version: %g\n
-6    Database Name: %s\n\
- DB Creation Time: %s\
-         Pagesize: %d\n
-7     Backup Level: %d (%s)\n\
-        Start_lsa: %lld|%d\n\
-         Last_lsa: %lld|%d\n
-8      Backup Time: %s\
-  Backup Unit Num: %d\n
-9  Database Volume name: %s\n\
-   Volume Identifier: %d, Size: %ld bytes (%d pages)\n
-10   Database Name: %s\n\
-     Volume Name: %s\n\
-        Unit Num: %d\n\
-    Backup Level: %d (%s)\n\
-Enter one of the following options:\n
-11 Type\n \
-  -  %d to quit.\n \
-  -  %d to continue after the volume is mounted/loaded. (retry) \n \
-  -  %d to continue after changing the volume's directory or device.\n
-12 Enter new directory or device for backup volume.\n
-13 Error in input, choose a value between %d and %d.\n
-14 ** WARNING ** Incorrect backup volume mounted.\n
-15 Backup volume %s is from another backup level\n   (Level: %d, expecting %d).\n\n
-16 Backup volume %s has incorrect page or magic identifier.\n\n
-17 Backup volume %s is from another database\n  (Name: %s, expecting %s).\n\n
-18 Backup volume %s out of sequence\n  (Unit Num: %d, expecting %d).\n\n
-19 Backup volume %s timestamp mismatch\n  (Timestamp: %s, expecting %s).\n\n
-20 Backup volume information file error, line %d.\n
-21 Backup Volume Label: Level: %d, Unit: %d, Database %s, Backup Time: %s\n
-22     Previous Backup level: %d Time: %s (start_lsa was %lld|%d)\n
-23 The following database backup volume is needed to continue restoring:\n\n
-24 Backup destination is full, a new destination is required to continue:\n\n
-25 Preceding Backup Volume Name: %s\n
-26     Next Backup Volume Name: %s\n
-27  Backup Pagesize: %d\n
-28       Zip Method: %d (%s)\n\
-        Zip Level: %d (%s)\n
-29 Include Active Log: %s\n
+2 Yedekleme = %s ihtiyaç var. \n Bu bağlanmış olmalıdır/devam etmek için yüklendi.\n Yedekleme sonra devam etmek için Tip 1 bağlanmış / yüklenir.\n Çıkmak için 0 yazın.\n
+3 \n\n*** YEDEKLEME BAŞLIĞI BİLGİLERİ ***\n\n
+4 Yedekleme Magic dosya tanımlama gerçekleştirmesi %s,\n
+5           Serbest Bırakma: %s\n\
+                 Disk Sürüm: %g\n
+6            Veritabanı Adı: %s\n\
+        DB Oluşturma Zamanı: %s\
+               Sayfa boyutu: %d\n
+7        Yedekleme Seviyesi: %d (%s)\n\
+                  Start_lsa: %lld|%d\n\
+                   Last_lsa: %lld|%d\n
+8          Yedekleme Zamanı: %s\
+  Yedekleme Birimi Numarası: %d\n
+9   Veritabanı Yoğunluk Adı: %s\n\
+       Yoğunluk Tanımlayıcı: %d, Boyut: %ld bytes (%d Sayfalar)\n
+10           Veritabanı Adı: %s\n\
+               Yoğunluk Adı: %s\n\
+                  Birim Adı: %d\n\
+         Yedekleme Seviyesi: %d (%s)\n\
+Aşağıdaki seçeneklerden birini girin:\n
+11 Tür\n \
+  -  %d çıkmak için.\n \
+  -  %d yoğunluğa sonra devam etmek için bağlanmış / yüklenir (yeniden deneyin) \n \
+  -  %d birimdeki dizin veya cihaz değiştirdikten sonra devam etmek için.\n
+12 Yedekleme birimi için yeni bir dizin veya aygıt girin.\n
+13 Giriş hatası,%d ve %d arasında bir değer seçin.\n
+14 ** UYARI ** Yanlış yedek yoğunluğu bağlanmış.\n
+15 Yedekleme yoğunluğu %s başka bir yedekleme seviyesinden olan\n   (Seviye: %d, beklenen %d).\n\n
+16 Yedekleme yoğunluğu %s yanlış sayfa ya da magic bir kimliğe sahiptir.\n\n
+17 Yedekleme yoğunluğu %s başka bir veritabanından\n  (Ad: %s, beklenen %s).\n\n
+18 Yedekleme yoğunluğu %s sırası dışında\n  (Unit Num: %d, beklenen %d).\n\n
+19 Yedekleme yoğunluğu %s timestamp uyumsuzluğu\n  (Timestamp: %s, beklenen %s).\n\n
+20 Yedekleme yoğunluğu bilgi dosyası hatası, satır %d.\n
+21 Yedekleme yoğunluğu Label: Level: %d, Unit: %d, Database %s, Backup Time: %s\n
+22                    Önceki Yedekleme düzeyi: %d Zaman: %s (start_lsa was %lld|%d)\n
+23 Aşağıdaki Veritabanı yedekleme yoğunluğu geri döndürmeye devam etmek gerekmektedir:\n\n
+24 Yedekleme hedefi dolu, yeni bir hedefe devam etmek için gereklidir:
+25 Yedekleme yoğunluğu adı öncesindeki: %s\n
+26     Sonraki yedekleme yoğunluğu adı: %s\n
+27              Yedekleme Sayfa boyutu: %d\n
+28                         Zip Yöntemi: %d (%s)\n\
+                          Zip Seviyesi: %d (%s)\n
+29                     Aktif Log Dahil: %s\n
 
 $set 16 MSGCAT_SET_LOG
 1 \n*************************************************************************\n
-2 Log Archive %s \n is needed to continue normal execution.   \n \
-  Type\n \
-  -  0 to quit.\n \
-  -  1 to continue without present archive. (Partial recovery)\n \
-  -  2 to continue after the archive is mounted/loaded.       \n \
-  -  3 to continue after changing location/name of archive.   \n
-3 Backup information file %s \n is needed to continue the restore process. \n \
-  Type\n \
-  -  0 to quit.\n \
-  -  1 to continue after the file is mounted/loaded.       \n \
-  -  2 to continue after changing location/name of file.   \n
-4 Enter new location/name.\n
-5 COMMENT: %s for database %s\n
-6 COMMENT: Log archive %s is not needed any longer unless a database media crash occurs.\n
-7 COMMENT: Log archives from %s to %s are not needed any longer unless a database media crash occurs.\n
-8 COMMENT: from renamed database = %s\n
-9 ARCHIVE: %d %s %lld %lld\n
-10 ARCHIVE:
-11 REMOVE: %d %s to \n \
+2 Arşiv log %s \n normal yürütülmesine devam etmek için gereklidir.   \n \
+  Tür\n \
+  -  0 çıkmak için.\n \
+  -  1 mevcut arşiv olmadan devam etmek için. (Kısmi kurtarma)\n \
+  -  2 arşivi sonra devam etmek için bağlanmış / yüklenir.       \n \
+  -  3 konumu / arşivi adını değiştirildikten sonra devam etmek için.   \n
+3 Yedekleme bilgi dosyası %s \ n geri yükleme işlemine devam etmek gereklidir.\n \
+  Tür\n \
+  -  0 çıkmak için.\n \
+  -  1 dosya bağlanmış / yüklendikten sonra devam etmek için.      \n \
+  -  2 konumu / dosya adını değiştirildikten sonra devam etmek için.  \n
+4 Enter yeni konum / adı.\n
+5 YORUM: %s veritabanı için %s\n
+6 YORUM: Bir veritabanı ortamı kilitlenme gerçekleşmediği sürece arşiv %s log artık gerekli değildir.\n
+7 YORUM: Bir veritabanı ortamı kilitlenme oluşmadığı takdirde %s den %s log arşivleri artık gerekli değildir.\n
+8 YORUM: yeniden adlandırılan veritabanından = %s\n
+9 ARŞİV: %d %s %lld %lld\n
+10 ARŞİV:
+11 KALDIR: %d %s to \n \
        %d %s.\n \
-       REASON: %s\n
-12 ACTIVE: %s %d pages\n
-13  Finish commit of tran_index %d with tranid = %d,\n just before LSA= %lld|%d and at %s
-14  Finish abort of tran_index %d with tranid = %d,\n just before LSA= %lld|%d and at %s
-15  Incomplete Media Recovery is in effect. The database will be \n \
- recovered up to LSA point address of %lld|%d. Last commit/abort \n \
- point time is approximately at %s \n \
- The database has lost all information of transactions committed \n \
- after this time.\n
-16 Reset of log due to incomplete recovery.
-17 Database backup was taken.
-18 Media crash is not important for the application.
-19 Backing up to directory %s which seems to have an earlier backup in it.\n\
-Obsolete backup volumes of this database in this location will be removed,\n\
-including those from the current backup level and higher.\n
-20 Enter 'y' to continue or any other key to cancel.\n
-21 Database backup was aborted by the user.\n
-22 DELETE POSTPONED: Archives %d %s to \n \
-        %d %s \n \
-        are no longer needed unless a restore from current backup occurs.\n
-23 A newer backup has released archives previously marked DELETE POSTPONED.\n
-24 COMMENT: Log archive %s is not DELETE POSTPONED any longer due to more recent\n \
-   backup and therefore is not needed unless a database media crash occurs.\n
-25 COMMENT: Log archives from %s to %s are not DELETE POSTPONED any longer due to\n \
-   more recent backup and therefore are not needed unless a database media\n \
-   crash occurs.\n
-26 An error occurred during a database restore, while processing\n\
-     Backup Volume: %s\n\
-          Unit Num: %d\n\
-   Database Volume: %s\n\
-    Database Volid: %d\n\
-** WARNING: Do not use the database until an error-free restore is achieved.\n
-27 Error in input, choose a value between %d and %d.\n
-28 The time(%s) specified must be after the time(%s) of the specified backup.\n
-29 COMMENT: Log archive %s, which contains log pages before %lld, is not needed any longer by any HA utilities.\n
-30 Number of active log archives has been exceeded the max desired number.
+       SEBEP: %s\n
+12 AKTİF: %s %d sayfalar\n
+13  Tranid= %d tran_index %d işlemeyi bitirin, Sadece LSA = %lld|%d öncesinde ve %s
+14  Tranid= %d tran_index %d iptali bitirin, Sadece LSA = %lld|%d öncesinde ve %s
+15  Eksik Ortam Kurtarma etkilidir.Veri tabanı Tamamlanmamış olacaktır\n \
+ %lld|%d LSA noktası adresine kadar iyileşmiş. Son işleme / iptal \n \
+ nokta süresi yaklaşık olarak %s konumundadır\n \
+ veritabanında işlenen işlemlerin tüm bilgileri kaybetmiştir\n \
+ bu zaman sonunda.\n 
+16 Tamamlanmamış kurtarma nedeniyle log sıfırlayın.
+17 Veritabanı yedeklemesi alındı.
+18 Ortam kilitlenme uygulaması için önemli değildir.
+19 İçinde daha önceki bir yedeğe varmış gibi görünüyor dizini% s yedekleme. \n\
+Bu yerde bu veritabanınızın kullanılmayan yedekleme yoğunlukları silinecektir,\n\
+geçerli yedeğe düzeyi yüksek ve de dahil olmak üzere.\n
+20 Devam etmek için 'y' veya iptal etmek için herhangi bir diğer tuşa basın.\n
+21 Veritabanı yedeklemesi kullanıcı tarafından iptal edildi.\n
+22 DELETE POSTPONED Mevcut yedekten geri yükleme meydana gelmedikçe\n \
+        Arşivleri %d %s için %d %s \n \
+        artık ihtiyaç vardır.\n
+23 Daha yeni bir yedeğini daha önceden DELETE POSTPONED işaretli arşivlerinde yayımladı.\n
+24 YORUM: Log arşivi %s artık daha güncel bağlı DELETE POSTPONED değil\n \
+   bir veritabanı ortamı kilitlenme gerçekleşmediği sürece bu yüzden yedekleme gerekli değildir.\n
+25 YORUM: %s %s arşivlerinde Log bağlı artık DELETE POSTPONED değil\n \
+   daha güncel yedeğini ve bu nedenle bir veritabanında ortam olmadıkça gerekli değildir\n \
+   kilitlenme oluşuyor.\n
+26 Bir veritabanına geri yükleme işlemi sırasında bir hata oluştu, \n\
+     Yedekleme yoğunluğu: %s\n\
+          Birim Numarası: %d\n\
+    Veritabanı Yoğunluğu: %s\n\
+  Veritabanı Yoğunluk id: %d\n\
+** Uyarı: Bir hatasız geri yükleme elde edilinceye kadar veritabanı kullanmayın.\n
+27 Girişte Hata, %d ve %d arasında bir değer seçin.\n
+28 Belirtilen zaman (%s) Belirtilen yedekleme süresi (%s) dan sonra olmalıdır.\n
+29 YORUM: LLog arşivi %s yapın, önce %lld Log sayfaları içeren, herhangi HA programları tarafından artık gerekli değildir.\n
+30 Aktif log arşivlerinde sayısı maksimum istenen sayısı aşıldı.

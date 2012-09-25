@@ -24,50 +24,50 @@ $ esql.msg
 $
 
 $set 1
-1 Non integer argument value "%s"\n
-2 Non floating argument value "%s"\n
-3 Missing argument %s\n
-4 [options] 
-5 Options: \n
-6 Missing argument value for key %s\n
-7 Unknown option "%s"\n
-8 Unexpected positional argument "%s"\n
+1 tamsayı argüman değeri bulunmamaktadır "%s"\n
+2 floating argüman değeri bulunmamaktadır "%s"\n
+3 kayıp argüman %s\n
+4 [ayarlar] 
+5 Ayarlar: \n
+6 Anahtar için kayıp argüman değeri %s\n
+7 Bilinmeyen ayarlar "%s"\n
+8 Beklenmeyen konumsal argüman "%s"\n
 
 $set 2
-1 Redefinition of cursor "%s"
-2  *\tfor statement %s\n
-3  *\n * Cursor table:\n
+1 İmlecin yeniden tanımlanması "%s"
+2  *\tfor ifade %s\n
+3  *\n * imleç tablosu:\n
 
 $set 3
-1 (INTERNAL ERROR in set_class_bit): bad storage class (%d)
-2 (INTERNAL ERROR in add_spec_to_decl()): malformed chain (no specifier)
-3 storage class specifier not allowed in this context
-4 illegal storage class combination
-5 illegal type combination
-6 illegal modifier combination
-7 (INTERNAL ERROR in pp_add_type_spec): unexpected case (%d)
-8 (INTERNAL ERROR in pp_add_type_adj): unexpected case (%d)
-9 improperly formed %s declaration
+1 (set_class_bit içinde DAHİLİ HATA): kötü saklama sınıfı(%d)
+2 (add_spec_to_decl() içinde DAHİLİ HATA): bozuk zinciri (belirtici bulunmamaktadır)
+3 saklama sınıfı belirteci bu bağlamda izin verilmez
+4 yasadışı depolama sınıfı kombinasyonu
+5 yasadışı tür kombinasyonu
+6 yasadışı değiştirici kombinasyonu
+7 (pp_add_type_spec içinde DAHİLİ HATA): Beklenmedik durum (%d)
+8 (pp_add_type_adj içinde DAHİLİ HATA): Beklenmedik durum (%d)
+9 bozuk biçim %s beyanı
 
 $set 4
 1 %s
-2 %s: Not a directory\n
-3 %s: Bad installation root?\n
+2 %s: Bir dizin değil\n
+3 %s: Kotü yüklenmiş kök?\n
 
 $set 5
 1 ?
-2 please check correctness of token
-3 USING part not permitted for static cursor "%s"
-4 cursor "%s" is undefined
-5 pointer to a descriptor
-6 pointer to a DB_OBJECT
-7 character string
-8 indicator variable for "%s" not allowed in this context
-9 "%s" not declared in BEGIN DECLARE section
-52 %s (text was "%s")
-53 Lexical error
-54 syntax error at "%s": missing %s in %s
-55 syntax error at "%s": missing %s
+2 simge doğruluğunu kontrol ediniz
+3 Parçası USING statik imleç için izin "%s"
+4 iöleç "%s" tanımsız
+5 Bir tanımlayıcı göstericisi
+6 Bir DB_OBJECT göstericisi
+7 Karakterseti dizini
+8 "%s" için gösterge değişkeni bu bağlamda izin verilmez
+9 "%s" bölümünde BEGIN DECLARE içinde bildirilmemiş
+52 %s ( metin "%s")
+53 Sözcüksel Hata
+54 sözdizimi hatası "%s": %s içinde %s kayıp
+55 sözdizimi hatası "%s": %s kayıp
 
 $set 6
 1 suppress-line-directive
@@ -84,52 +84,52 @@ $set 6
 12 input-file
 
 $set 7
-1 suppress #line directives in output file, default off
-2 output file name, default <input-file>.c or stdout
-3 include file containing uci_ prototypes, default "esqlx.h"
-4 dump scope debugging information, default off
-5 dump final malloc debugging information, default off
-6 print out version number information, default off
-7 enable UCI function trace, default off
-8 disable length initialization of VARCHAR host variable, default off
-9 use different VARCHAR style, default off
-10 ignore -462(null indicator needed) error, default off
-11 use internal NULL indicator to prevent -462(null indicator needed) error, default off
-12 input file name, default stdin
+1 çıktı dosyasında #satır yönergeleri çıktı dosyası, varsayılan kapalı
+2 çıktı dosyası adı, varsayılan <input-file>.c veya stdout
+3 dahili dosya iöermekte uci_ prototipler, varsayılan "esqlx.h"
+4 dump kapsamı hata ayıklama bilgisi, varsayılan kapalı
+5 dump final malloc hata ayıklama bilgileri, varsayılan kapalı
+6 sürüm numarası bilgilerini yazdırabilirsiniz, varsayılan kapalı
+7 UCI fonksiyonu iz sağlar, varsayılan kapalı
+8 VARCHAR ana değişken uzunluğu başlatma devre dışı bırakın, varsayılan kapalı
+9 Farklı VARCHAR stili kullanabilirsiniz, varsayılan kapalı
+10 -462 (null göstergesi gerekli) hatası görmezden geliyor., varsayılan kapalı
+11 -462 (null göstergesi gerekli) hatayı önlemek için iç NULL gösterge kullanabilirsiniz, varsayılan kapalı
+12 Girdi dosyası adı, default stdin
 
 $set 8
-1 REPEATED option ignored
-2 %s version %s\n
+1 REPEATED seçeneği göz ardı edildi.
+2 %s sürüm %s\n
 
 $set 9
-1 (yy_pop_mode) internal error: empty mode stack
-2 "%s" is not permitted in this context
+1 (yy_pop_mode) iç hata: boş mod yığını
+2 "%s" bu bağlamda izin verilmez
 
 $set 10
-1 internal error in %s: %s\n
-2 table overflow
+1 iç hata %s: %s\n
+2 tablo taşma
 
 $set 11
-1 indicator variable "%s" must be a short int
-2 cannot use an indicator variable with a structure
-3 "%s" has incomplete struct definition
-4 "%s" must be a valid %s
-5 %s is not an acceptable type for "%s"
-6 unanticipated host variable type: %s
-7 (pp_addr_expr): attempt to find address of NULL variable
-8 "%s" is not a pointer
-9 "%s" does not point to a struct
-10 "%s" is not a struct
-11 %s has no field "%s"
-12 "%s" cannot be dereferenced by "%s"
+1 gösterge değişkeni "%s" kısa bir int olmalı
+2 bir yapıya sahip bir gösterge değişken kullanamaz
+3 "%s" eksik yapı tanımı vardır
+4 "%s" mutlaka geçerli olamalı %s
+5 %s için kabul edilebilir tür değil "%s"
+6 beklenmeyen ana değişken tipi: %s
+7 (pp_addr_expr): NULL değişkenin adresini bulma girişimi
+8 "%s" bir işaretçi değildir.
+9 "%s" bir yapı işaret değildir.
+10 "%s" bir yapı değildir.
+11 %s herhangi bir alan yoktur "%s"
+12 "%s" tarafından başvurusu çözülemiyor "%s"
 
 $set 12
-1 out of memory
+1 bellek yetersiz
 
 $set 13
-1 array of functions is illegal, assuming function pointers
-2 (pp_the_same_type) unknown link class
-3 (pp_get_sizeof): bad noun (%d)
+1 fonksiyonların dizi yasaktır, işlev işaretçileri varsayarak.
+2 (pp_the_same_type) bilinmeyen bağlantı sınıfı
+3 (pp_get_sizeof): kötü isim (%d)
 
 $set 14
-1 (INTERNAL ERROR in %s): impossible case
+1 (%s DAHİLİ HATA): imkansız durumda

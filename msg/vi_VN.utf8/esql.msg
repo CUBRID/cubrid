@@ -24,50 +24,50 @@ $ esql.msg
 $
 
 $set 1
-1 Non integer argument value "%s"\n
-2 Non floating argument value "%s"\n
-3 Missing argument %s\n
-4 [options] 
-5 Options: \n
-6 Missing argument value for key %s\n
-7 Unknown option "%s"\n
-8 Unexpected positional argument "%s"\n
+1 giá trị của đối số "%s" không phải kiểu số nguyên \n
+2 giá trị của đối số "%s" không phải kiểu float\n
+3 Thiếu đối số %s\n
+4 [tùy chọn]
+5 Tùy chọn: \n
+6 Thiếu giá trị đối số cho khóa %s\n
+7 Tùy chọn "%s" không biết\n
+8 Ðối số vị trí "%s" không mong đợi\n
 
 $set 2
-1 Redefinition of cursor "%s"
-2  *\tfor statement %s\n
-3  *\n * Cursor table:\n
+1 Ðịnh nghĩa lại của con chạy "%s"
+2  *\tcho câu lệnh %s\n
+3  *\n * Bảng con chạy:\n
 
 $set 3
-1 (INTERNAL ERROR in set_class_bit): bad storage class (%d)
-2 (INTERNAL ERROR in add_spec_to_decl()): malformed chain (no specifier)
-3 storage class specifier not allowed in this context
-4 illegal storage class combination
-5 illegal type combination
-6 illegal modifier combination
-7 (INTERNAL ERROR in pp_add_type_spec): unexpected case (%d)
-8 (INTERNAL ERROR in pp_add_type_adj): unexpected case (%d)
-9 improperly formed %s declaration
+1 (LỖI NỘI TẠI trong set_class_bit): lớp lưu trữ (%d) tồi
+2 (LỖI NỘI TẠI trong add_spec_to_decl()): chuỗi không đúng dạng (no specifier)
+3 bộ chỉ định lớp lưu trữ không được phép trong ngữ cảnh này
+4 kết hợp lớp lưu trữ không hợp lệ
+5 kết hợp kiểu không hợp lệ
+6 kết hợp bộ sửa đổi không hợp lệ
+7 (LỖI NỘI TẠI trong pp_add_type_spec): trường hợp không mong đợi (%d)
+8 (LỖI NỘI TẠI trong pp_add_type_adj): trường hợp không mong đợi (%d)
+9 khai báo %s được định dạng không đúng cách
 
 $set 4
 1 %s
-2 %s: Not a directory\n
-3 %s: Bad installation root?\n
+2 %s: Không phải một thư mục\n
+3 %s: Gốc cài đặt tồi?\n
 
 $set 5
 1 ?
-2 please check correctness of token
-3 USING part not permitted for static cursor "%s"
-4 cursor "%s" is undefined
-5 pointer to a descriptor
-6 pointer to a DB_OBJECT
-7 character string
-8 indicator variable for "%s" not allowed in this context
-9 "%s" not declared in BEGIN DECLARE section
-52 %s (text was "%s")
-53 Lexical error
-54 syntax error at "%s": missing %s in %s
-55 syntax error at "%s": missing %s
+2 xin vui lòng kiểm tra sự chính xác của mã thông báo
+3 Phần USING không được phép cho con chạy static "%s"
+4 con chạy "%s" chưa được định nghĩa
+5 con trỏ đến một bộ mô tả
+6 con trỏ đến một DB_OBJECT
+7 chuỗi ký tự
+8 biến số chỉ báo cho "%s" không được phép trong ngữ cảnh này
+9 "%s" chưa được khai báo trong BEGIN DECLARE section
+52 %s (văn bản là "%s")
+53 Lỗi Lexical
+54 lỗi cú pháp tại "%s": thiếu %s trong %s
+55 lỗi cú pháp tại "%s": thiếu %s
 
 $set 6
 1 suppress-line-directive
@@ -84,52 +84,52 @@ $set 6
 12 input-file
 
 $set 7
-1 suppress #line directives in output file, default off
-2 output file name, default <input-file>.c or stdout
-3 include file containing uci_ prototypes, default "esqlx.h"
-4 dump scope debugging information, default off
-5 dump final malloc debugging information, default off
-6 print out version number information, default off
-7 enable UCI function trace, default off
-8 disable length initialization of VARCHAR host variable, default off
-9 use different VARCHAR style, default off
-10 ignore -462(null indicator needed) error, default off
-11 use internal NULL indicator to prevent -462(null indicator needed) error, default off
-12 input file name, default stdin
+1 không hiện chỉ thị #line trong tệp tin đầu ra, mặc định off
+2 tên tệp tin đầu ra, mặc định <input-file>.c hoặc stdout
+3 tệp tin include chứa uci_ prototypes, mặc định "esqlx.h"
+4 kết xuất thông tin gỡ lỗi scope, mặc định off
+5 kết xuất thông tin gỡ lỗi malloc cuối, mặc định off
+6 in ra thông tin số phiên bản, mặc định off
+7 bật theo dõi chức năng UCI, mặc định off
+8 tắt khởi tạo length của biến máy chủ VARCHAR, mặc định off
+9 dùng kiểu VARCHAR khác, mặc định off
+10 bỏ qua lỗi -462(null indicator needed), mặc định off
+11 dùng chỉ báo NULL nội tại để tránh lỗi -462(null indicator needed), mặc định off
+12 tên tệp tin đầu vào, mặc định stdin
 
 $set 8
-1 REPEATED option ignored
-2 %s version %s\n
+1 tùy chọn REPEATED bị bỏ qua
+2 %s phiên bản %s\n
 
 $set 9
-1 (yy_pop_mode) internal error: empty mode stack
-2 "%s" is not permitted in this context
+1 (yy_pop_mode) lỗi nội tại: chế độ xếp chồng rỗng
+2 "%s" không được cho phép trong ngữ cảnh này
 
 $set 10
-1 internal error in %s: %s\n
-2 table overflow
+1 lỗi nội tại trong %s: %s\n
+2 bảng tràn
 
 $set 11
-1 indicator variable "%s" must be a short int
-2 cannot use an indicator variable with a structure
-3 "%s" has incomplete struct definition
-4 "%s" must be a valid %s
-5 %s is not an acceptable type for "%s"
-6 unanticipated host variable type: %s
-7 (pp_addr_expr): attempt to find address of NULL variable
-8 "%s" is not a pointer
-9 "%s" does not point to a struct
-10 "%s" is not a struct
-11 %s has no field "%s"
-12 "%s" cannot be dereferenced by "%s"
+1 biến số chỉ báo "%s" phải là một short int
+2 không thể dùng biến số chỉ báo có một cấu trúc
+3 "%s" có một định nghĩa cấu trúc không đầy đủ
+4 "%s" phải là một %s hợp lệ
+5 %s không phải một kiểu có thể chấp nhận cho "%s"
+6 kiểu biến số máy chủ không mong đợi: %s
+7 (pp_addr_expr): cố gắng để tìm địa chỉ của biến số NULL
+8 "%s" không phải một con trỏ
+9 "%s" không chỉ đến một cấu trúc
+10 "%s" không phải một cấu trúc
+11 %s không có trường "%s"
+12 "%s" không thể được bỏ tham chiếu bởi "%s"
 
 $set 12
-1 out of memory
+1 hết bộ nhớ
 
 $set 13
-1 array of functions is illegal, assuming function pointers
-2 (pp_the_same_type) unknown link class
-3 (pp_get_sizeof): bad noun (%d)
+1 mảng của các chức năng không hợp lệ, giả định các con trỏ chức năng
+2 (pp_the_same_type) lớp liên kết không rõ
+3 (pp_get_sizeof): danh từ sai (%d)
 
 $set 14
-1 (INTERNAL ERROR in %s): impossible case
+1 (LỖI NỘI TẠI trong %s): trường hợp không thể
