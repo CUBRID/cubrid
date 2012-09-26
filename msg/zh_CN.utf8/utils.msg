@@ -67,22 +67,22 @@ $       46      genlocale
 $       47      dumplocale
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
-1 无效的长度或字符 `%c' 在数据库名 `%s' 中\n
-2 无法打开输出文件 `%s'\n
-3 应用工具名缺失或无效\n
-4 无效的应用工具名 `%s'\n
-5 下面的列表包含了已识别的工具名:\n
-6 无效字符 `%c' 在卷名 `%s' 中\n
+1 Invalid length or character `%c' in database name `%s'\n
+2 Couldn't open output file `%s'\n
+3 Missing or invalid utility name.\n
+4 Invalid utility name `%s'\n
+5 The following list contains the recognized utility names:\n
+6 Invalid character `%c' in volume name `%s'\n
 9 \
-%s (CUBRID 应用工具)\n\
+%s (CUBRID utilities)\n\
 %s\n\
 Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.\n
 10 \
-cubrid 管理工具，版本 %s\n\
-用法: %s <工具名> [参数]\n\
-输入 '%s <工具名>' 来查看工具的详细帮助.\n\
+cubrid administrator utility, version %s\n\
+usage: %s <utility-name> [args]\n\
+Type '%s <utility-name>' for help on a specific utility.\n\
 \n\
-可用的管理工具名:\n\
+Available admin utility-name:\n\
     createdb\n\
     deletedb\n\
     installdb\n\
@@ -112,24 +112,24 @@ cubrid 管理工具，版本 %s\n\
     genlocale\n\
     dumplocale\n\
 \n\
-%s 是一个 DBMS 工具.\n\
-要寻找额外的信息, 可浏览 http://www.cubrid.com\n
-12 '%s' 应用工具名是无效的.\n输入 'cubrid --help' 查询帮助.\n
-13 '%s' 命令无效.\n输入 'cubrid --help' 查询帮助.\n
-14 无法读取从配置文件中读取一个或多个强制属性.\n
+%s is a tool for DBMS.\n\
+For additional information, see http://www.cubrid.com\n
+12 '%s' utility-name is invalid.\nType 'cubrid --help' to see usage.\n
+13 '%s' command is invalid.\nType 'cubrid --help' to see usage.\n
+14 Could not load one or more mandatory properties in configuration files.\n
 15 @ %s %s: %s\n
 16 @ %s %s\n
-17 ++ %s '%s' 没有运行.\n
-18 ++ %s 没有运行.\n
-19 ++ %s '%s' 正在运行.\n
-20 ++ %s 正在运行.\n
+17 ++ %s '%s' is not running.\n
+18 ++ %s is not running.\n
+19 ++ %s '%s' is running.\n
+20 ++ %s is running.\n
 21 ++ %s %s: %s\n
-22 缺少一个或多个参数.\n输入 'cubrid --help' 查询帮助.\n
-23 cubrid 应用工具, 版本 %s\n\
-用法: %s <工具名> [参数]\n\
-输入 '%s <工具名>' 来查看工具的详细帮助.\n\
+22 One or more arguments are missing.\nType 'cubrid --help' to see usage.\n
+23 cubrid utility, version %s\n\
+usage: %s <utility-name> [args]\n\
+Type '%s <utility-name>' for help on a specific utility.\n\
 \n\
-可用的服务工具:\n\
+Available service's utilities:\n\
     service\n\
     server\n\
     broker\n\
@@ -137,7 +137,7 @@ cubrid 管理工具，版本 %s\n\
     heartbeat\n\
     shard\n\
 \n\
-可用的管理员工具:\n\
+Available administrator's utilities:\n\
     addvoldb\n\
     alterdbhost\n\
     backupdb\n\
@@ -166,29 +166,30 @@ cubrid 管理工具，版本 %s\n\
     genlocale\n\
     dumplocale\n\
 \n\
-%s 是一个 DBMS 工具.\n\
-要寻找额外的信息, 可浏览 http://www.cubrid.com\n
-24 cubrid 应用工具, 版本 %s\n\
-用法: %s service <命令>\n\
+%s is a tool for DBMS.\n\
+For additional information, see http://www.cubrid.com\n
+24 cubrid utility, version %s\n\
+usage: %s service <command>\n\
 \n\
-可用命令:\n\
+Available command:\n\
     start\n\
     stop\n\
     restart\n\
     status\n
-25 cubrid 应用工具, 版本 %s\n\
-用法: %s server <命令> [参数]\n\
+25 cubrid utility, version %s\n\
+usage: %s server <command> [args]\n\
 \n\
-可用命令:\n\
-    start       [数据库名]\n\
-    stop        [数据库名]\n\
-    restart     [数据库名]\n\
+Available command:\n\
+    start       [database-name]\n\
+    stop        [database-name]\n\
+    restart     [database-name]\n\
     status\n\
-    acl         <status|reload> 数据库名\n
-26 cubrid 应用工具, 版本 %s\n\
-用法: %s broker <命令> [参数]\n\
+    acl         <status|reload> database-name\n
+37 The server was configured for HA.\n
+26 cubrid utility, version %s\n\
+usage: %s broker <command> [args]\n\
 \n\
-可用命令:\n\
+Available command:\n\
     start\n\
     stop\n\
     restart\n\
@@ -197,35 +198,35 @@ cubrid 管理工具，版本 %s\n\
     off         broker-name\n\
     reset       broker-name\n\
     acl         <status|reload> [broker-name]\n
-27 cubrid 应用工具, 版本 %s\n\
-用法: %s manager <命令>\n\
+27 cubrid utility, version %s\n\
+usage: %s manager <command>\n\
 \n\
-可用命令:\n\
+Available command:\n\
     start\n\
     stop\n\
     status\n
-28 cubrid 应用工具, 版本 %s\n\
-用法: %s heartbeat <命令> [参数]\n\
+28 cubrid utility, version %s\n\
+usage: %s heartbeat <command> [args]\n\
 \n\
-可用命令:\n\
-    start       [数据库名]\n\
-    stop        [数据库名]\n\
-    copylogdb   <start|stop> 数据库名 节点名\n\
-    applylogdb  <start|stop> 数据库名 节点名\n\
+Available command:\n\
+    start       [database-name]\n\
+    stop        [database-name]\n\
+    copylogdb   <start|stop> database-name node-name\n\
+    applylogdb  <start|stop> database-name node-name\n\
     status\n\
     reload\n
-31 不需要参数 '%s' .\n
-32 缺少数据库名.\n
-33 %s: 这个选项已经被废弃.\n
-34 非法参数. %s %s\n
-35 不能分配内存.\n
-36 服务器没有为HA进行设置.\n
-38 为HA配置的服务器没有列在 ha_db_list 列表中.\n
-39 为HA配置的服务器没有列在 ha_node_list 列表中.\n
-62 cubrid 工具, 版本 %s\n\
-用法: %s shard <命令> [参数]\n\
+31 '%s' argument is not needed.\n
+32 A database-name is missing.\n
+33 %s: Such option is deprecated.\n
+34 Invalid Parameter. %s %s\n
+35 Cannot allocate memory.\n
+36 The server was not configured for HA.\n
+38 The server configured for HA is not listed in ha_db_list.\n
+39 The server configured for HA is not listed in ha_node_list.\n
+62 cubrid utility, version %s\n\
+usage: %s shard <command> [args]\n\
 \n\
-可用命令:\n\
+Available command:\n\
     start\n\
     stop\n\
     restart\n\
@@ -236,738 +237,738 @@ cubrid 管理工具，版本 %s\n\
     acl         <status|reload> [shard-name]\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
-30 警告: 在单机模式下 -t 选项将被忽略.\n
+30 WARNING: -t option is ignored in stand-alone mode execution.\n
 60 \
-backupdb: 备份一个数据库.\n\
-usage: %s backupdb [选项] 数据库名\n\
+backupdb: Backup a database.\n\
+usage: %s backupdb [OPTION] database-name\n\
 \n\
-可用选项:\n\
-  -D, --destination-path=PATH  将备份卷存到 PATH 目录; 目录的默认值: 数据库的日志目录\n\
-  -r, --remove-archive         删除不必要的日志档案; 请参考说明并小心使用\n\
-  -l, --level=LEVEL            备份级别; 默认: full level\n\
-                               允许的级别:\n\
+valid options:\n\
+  -D, --destination-path=PATH  store backup volumes to directory PATH; default: database's log directory\n\
+  -r, --remove-archive         delete unnecessary log-archives; use carefully and consult manual\n\
+  -l, --level=LEVEL            backup level; default: full level\n\
+                               LEVEL is allowed:\n\
                                    0 - full\n\
                                    1 - incremental 1\n\
                                    2 - incremental 2\n\
-  -o, --output-file=FILE       将备份的细节信息打印到文件 FILE\n\
-  -S, --SA-mode                单机模式执行\n\
-  -C, --CS-mode                客户端-服务器模式执行\n\
-      --no-check               不检测数据库的一致性; 默认: 检测\n\
-  -t, --thread-count=COUNT     线程数; 默认: 0(auto)\n\
-  -z, --compress               压缩备份卷; 默认: 不压缩\n\
-  -e, --except-active-log      不包括活动日志卷; 默认: 包括\n\
-      --sleep-msecs=N          每读 1M 休眠 N  毫秒; 默认: 0\n
-71 不兼容的参数, \"%s\", 和 \"%s\"\n
+  -o, --output-file=FILE       print detailed backup messages to FILE\n\
+  -S, --SA-mode                stand-alone mode execution\n\
+  -C, --CS-mode                client-server mode execution\n\
+      --no-check               don't check a consistency of the database; default: check\n\
+  -t, --thread-count=COUNT     number of threads; default: 0(auto)\n\
+  -z, --compress               compress backup volumes; default: uncompress\n\
+  -e, --except-active-log      don't include an active log volume; default: include\n\
+      --sleep-msecs=N          sleep N millisecond per 1M read; default: 0\n
+71 Incompatible arguments, \"%s\", and \"%s\"\n
 
 
 $set 3 MSGCAT_UTIL_SET_COPYDB
-30 错误: 目的名与源名相同.\n
-31 错误: volext-pathname不存在或不可写.\n
-32 错误: vols-tofrom-paths_file不存在或不可读.\n
+30 ERROR: Destination name is identical to source name.\n
+31 ERROR: volext-pathname does not exist or is not writeable.\n
+32 ERROR: vols-tofrom-paths_file does not exist or is not readable.\n
 60 \
-copydb: 复制一个数据库.\n\
-用法: %s copydb [选项] 源数据库名 目的数据库名\n\
+copydb: Copy a database.\n\
+usage: %s copydb [OPTION] src-database-name dest-database-name\n\
 \n\
-可用选项:\n\
-      --server-name=HOST          指定服务器的主机名为HOST; 默认: 当前主机名\n\
-  -F, --file-path=PATH            指定数据库的卷路径为 PATH; 默认: 当前目录\n\
-  -L, --log-path=PATH             指定日志卷的路径为 PATH; 默认: 等于file-path\n\
-  -B, --lob-base-path=PATH        指定外部LOB数据基准路径为 PATH; 默认: <file-path>/lob\n\
-  -E, --extended-volume-path=PATH 指定 PATH 作为复制/重命名 扩展卷的目录; 默认: 等于原始卷的路径或给定的control-file路径\n\
-  -i, --control-file=FILE         FILE 用来控制 复制/重命名 在多个位置上的卷\n\
-  -r, --replace                   替换一个存在的数据库; 默认: 不替换\n\
-  -d, --delete-source             删除一个源数据库; 默认: 不删除\n
-      --copy-lob-path             从源数据库复制LOB数据到外部存储路径. 不能与-B 参数一起使用; 默认: 不拷贝\n
+valid options:\n\
+      --server-name=HOST          server's HOST name; default: current host name\n\
+  -F, --file-path=PATH            directory PATH for database volumes; default: current directory\n\
+  -L, --log-path=PATH             directory PATH for log volumes; default: same as file-path\n\
+  -B, --lob-base-path=PATH        base directory PATH for external LOB data; default: <file-path>/lob\n\
+  -E, --extended-volume-path=PATH directory PATH for extended information volumes; default: same path as the database volumes or the given path in control-file\n\
+  -i, --control-file=FILE         copying volumes over several locations written in the control file; default: none\n\
+  -r, --replace                   replace an existing database; default: don't replace\n\
+  -d, --delete-source             delete a source database; default: don't delete\n\
+      --copy-lob-path             copy external storage PATH for LOB data from source database. cannot be used with -B option; default: don't copy\n
 
 
 $set 4 MSGCAT_UTIL_SET_CREATEDB
-40 组 `%s' 不存在\n
-41 用户 `%s' 不存在\n
-42 未知的命令 `%s'\n
-43 无法打开输出文件 `%s'\n
-44 无法移除已存在的数据库.\n
-45 创建一个 %d 大小的数据库.\n
-46 无法创建数据库.\n
-47 用户文件 `%s' 存在问题\n
-48 '%s' 必须在 %s 与 %s 中间\n
-49 %s '%s'的值是非法的.\n
+40 Group `%s' does not exist\n
+41 User `%s' does not exist\n
+42 Unknown command `%s'\n
+43 Couldn't open output file `%s'\n
+44 Couldn't removing existing database.\n
+45 Creating database with %s size.\n
+46 Couldn't create database.\n
+47 Problem with user file `%s'\n
+48 The '%s' must be between %s and %s\n
+49 The value of %s '%s' is invalid.\n
 60 \
-createdb: 创建一个数据库.\n\
-用法: %s createdb [选项] 数据库名\n\
+createdb: Create a database.\n\
+usage: %s createdb [OPTION] database-name\n\
 \n\
-可用选项:\n\
-      --db-volume-size=SIZE           设置数据卷大小\n\
-                                      默认: db_volume_size 在 cubrid.conf 文件中\n\
-      --db-page-size=SIZE             设设置数据库的页大小为SIZE字节; 默认: 16K\n\
-      --log-volume-size=SIZE          设置日志卷大小\n\
-                                      默认: log_volume_size 在 cubrid.conf 文件中\n\
-      --log-page-size=SIZE            设置日志页的大小为SIZE字节; 默认: 数据库的页大小\n\
-      --comment=COMMENT               用COMMENT来注释一个数据库; 默认: 空\n\
-  -F, --file-path=PATH                用PATH作为数据库的卷目录; 默认: 当前目录\n\
-  -L, --log-path=PATH                 用PATH作为日志卷的目录; 默认: 与file-path相同\n\
-  -B, --lob-base-path=PATH            用PATH作为外部LOB数据基准目录; 默认: <file-path>/lob\n\
-      --server-name=HOST              用HOST作为服务器的主机名; 默认: 当前主机名\n\
-  -r, --replace                       替换一个已存在的数据库; 默认: 不替换\n\
-      --more-volume-file=FILE         使用 FILE 中用于创建附加卷的详述; 默认: 无\n\
-      --user-definition-file=FILE     使用 FILE 中包含的关于用户的定义; 默认: 无\n\
-      --csql-initialization-file=FILE 使用 FILE 中包含的用于初始化数据库的SQls; 默认: 无\n\
-  -o, --output-file=FILE              重定向输出信息到FILE; 默认: 无\n\
-  -v, --verbose                       使用详细状态信息; 默认: 不可用\n
+valid options:\n\
+      --db-volume-size=SIZE           size of first information volume\n\
+                                      default: db_volume_size in cubrid.conf\n\
+      --db-page-size=SIZE             database page SIZE in bytes; default: 16K\n\
+      --log-volume-size=SIZE          size of log archives\n\
+                                      default: log_volume_size in cubrid.conf\n\
+      --log-page-size=SIZE            log page SIZE in bytes; default: database page size\n\
+      --comment=COMMENT               COMMENT for a database; default: none\n\
+  -F, --file-path=PATH                directory PATH for database volumes; default: current directory\n\
+  -L, --log-path=PATH                 directory PATH for log volumes; default: same as file-path\n\
+  -B, --lob-base-path=PATH            base directory PATH for external LOB data; default: <file-path>/lob\n\
+      --server-name=HOST              server's HOST name; default: current host name\n\
+  -r, --replace                       replace an existing database; default: don't replace\n\
+      --more-volume-file=FILE         FILE contain specifications for creation of additional volumes; default: none\n\
+      --user-definition-file=FILE     FILE contain user definitions; default: none\n\
+      --csql-initialization-file=FILE FILE contain SQLs for an initialization of the database; default: none\n\
+  -o, --output-file=FILE              redirect output messages to FILE; default: none\n\
+  -v, --verbose                       enable verbose status messages; default: disabled\n
 
 
 $set 6 MSGCAT_UTIL_SET_DELETEDB
 60 \
-deletedb: 删除一个数据库.\n\
-用法: %s deletedb [选项] 数据库名\n\
+deletedb: Delete a database.\n\
+usage: %s deletedb [OPTION] database-name\n\
 \n\
-可用选项:\n\
-  -o, --output-file=FILE       重定向输出信息到 FILE; 默认: 无\n\
-  -d, --delete-backup          删除备份卷; 默认: 不删除\n
+valid options:\n\
+  -o, --output-file=FILE       redirect output messages to FILE; default: none\n\
+  -d, --delete-backup          delete backup volumes; default: don't delete\n
 
 $set 7 MSGCAT_UTIL_SET_RENAMEDB
-31 错误: volext-pathname 不存在或不可写.\n
-32 ERROR: vols-tofrom-paths_file 不存在或不可写.\n
+31 ERROR: volext-pathname does not exist or is not writeable.\n
+32 ERROR: vols-tofrom-paths_file does not exist or is not readable.\n
 60 \
-renamedb: 重命名数据库.\n\
-usage: %s renamedb [选项] 源数据库名 目的数据库名\n\
+renamedb: Rename a database.\n\
+usage: %s renamedb [OPTION] src-database-name dest-database-name\n\
 \n\
-有效的选项:\n\
-  -E, --extended-volume-path=PATH 指定 PATH 作为扩展卷的目录; 默认: 等于数据卷的路径或给定的控制文件路径\n\
-  -i, --control-file=FILE         重命名并写入控制文件的多个位置; 默认: 无\n\
-  -d, --delete-backup             删除备份卷; 默认: 不删除\n
+valid options:\n\
+  -E, --extended-volume-path=PATH directory PATH for extended information volumes; default: same path as the database volumes or the given path in control-file\n\
+  -i, --control-file=FILE         renaming volumes over several locations written in the control file; default: none\n\
+  -d, --delete-backup             delete backup volumes; default: don't delete\n
 
 $set 9 MSGCAT_UTIL_SET_MASTER
-11 一个 %s 进程 已经在运行.\n
-12 MASTER服务运行. \n
-13 MASTER服务退出.\n
-14 查找本地主机名错误\n
-15 无法找到参数文件\n
-16 无法初始化主进程\n
-17 服务 %s 在 %d 分钟后停止
-18 服务 %s 被通知要关闭.\n这可能会占用几分钟. 请等待.
-19 服务 %s 没有找到.
-20 Master将在 %d 分钟内停止\n
+11 A %s process is already running.\n
+12 MASTER SERVER starting. \n
+13 MASTER SERVER exiting.\n
+14 Error finding local host name\n
+15 Could not find parameter file\n
+16 Could not initialize master process\n
+17 Server %s going down in %d minutes
+18 Server %s notified of shutdown.\nThis may take several minutes. Please wait.
+19 Server %s not found.
+20 Master going down in %d minutes\n
 
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
-11 无法打开输出文件 `%s'\n
+11 Couldn't open output file `%s'\n
 60 \
-optimizedb: 优化一个数据库.\n\
-usage: %s optimizedb [选项] 数据库名\n\
+optimizedb: Optimize a database.\n\
+usage: %s optimizedb [OPTION] database-name\n\
 \n\
-可用选项:\n\
-  -n, --class-name=NAME        更新名为NAME的类的统计信息; 默认: 所有类\n
+valid options:\n\
+  -n, --class-name=NAME        update statistics for the NAME class; default: all classes\n
 
 
 $set 11 MSGCAT_UTIL_SET_RESTOREDB
-19 无效的日期格式, 有效地日期格式是 dd-mm-yyyy:hh:mm:ss or 'backuptime'\n
-20 Restoredb 被取消或发生了一个错误.\n
+19 Invalid date format, valid format is dd-mm-yyyy:hh:mm:ss or 'backuptime'\n
+20 Restoredb cancelled or an error occurred.\n
 60 \
-restoredb: 恢复一个数据库.\n\
-usage: %s restoredb [选项] 数据库名\n\
+restoredb: Restore a database.\n\
+usage: %s restoredb [OPTION] database-name\n\
 \n\
-可用选项:\n\
-  -d, --up-to-date=DATE             将数据库恢复到给定日期DATE时的情况. DATE 为如下形式: dd-mm-yyyy:hh:mm:ss 或 'backuptime' 关键字\n\
-      --list                        列出不恢复的卷n\
-  -B, --backup-file-path=PATH       PATH 备份卷被保存的目录\n\
-  -l, --level=LEVEL                 指定将要被恢复的备份的等级为 LEVEL ; 查看 backup 的使用说明; 默认: 0(full backup)\n\
-  -p, --partial-recovery            执行部分恢复，如果有任何日志档案存在\n\
-  -o, --output-file=FILE            将输出信息重定向到FILE; 默认: 空\n\
-  -u, --use-database-location-path  将数据库和日志文件恢复到数据库位置文件中指定的路径中去\n
+valid options:\n\
+  -d, --up-to-date=DATE             restore the database up to its condition at given DATE. DATE is given as follows: dd-mm-yyyy:hh:mm:ss or 'backuptime' keyword\n\
+      --list                        display a list of backup volumes without restoring\n\
+  -B, --backup-file-path=PATH       PATH is a directory of backup volumes to be restored\n\
+  -l, --level=LEVEL                 LEVEL of backup to be restored; see backup usage; default: 0(full backup)\n\
+  -p, --partial-recovery            perform partial recovery if any log archive is absent\n\
+  -o, --output-file=FILE            redirect output messages to FILE; default: none\n\
+  -u, --use-database-location-path  restore the database and log volumes to the path specified in the database location file\n
 
 
 $set 12 MSGCAT_UTIL_SET_LOADDB
-19 数据库名缺失.\n
-20 '%s' 文件没有 %d 行.\n
-21 中断 ... \n
-22 中断读取 - 当前事务被提交\n
-23 中断读取 - 当前事务被终止\n
-24 无法打开文件 `%s'\n
-25 \n*** 语法检测 ***\n\n
-26 %d 个错误被检测到\n
-27 \n*** 插入对象 ***\n\n
-28 总共 %8d 个对象被插入.\n
-29 总共 %8d 个被涉及的对象以默认内容被插入.\n
-30 \n*** 提交事务中 ***\n
-31 \n*** 关闭数据库 ***\n
-32 行 %d:
-33 解析错误 `%s' 作为一个 `%s' 值 关于属性 `%s' of `%s'\n
-34 缺少域关于属性 %s of %s\n
-35 对于属性 %s of %s, 类型 %s 在域的集合中是不被允许的\n
-36 对于属性 %s of %s, 期望类型 %s, 得到一个set常量\n
-37 对于属性 %s of %s, 期望类型 %s, 得到 %s\n
-38 没有名为 %s 的类被属性 %s of %s 所引用\n
-39 没有名为 %s 的类, 忽略元组\n
-40 没有以 %d 为表示的类被属性 %s of %s 所引用\n
-41 在加载器输入文件中类 %s 不被允许\n
-42 以错误而终止.\n
-43 警告: 更新已存在的实例 !\n
-44 警告: 重定义实例 %d 属于类 %s\n
-45 实例 %d 属于类 %s 已经被定义\n
-46 实例 %d 属于类 %s 已经被保留\n
-47 在属性 `%s' 上违反了唯一性, 转化为 NULL\n
-48   %d 个实例\n
-49 类 %s\n
-50 密码:
-51 \n*** 更新类统计信息 ***\n
-52 %s 在行 %d 附近(文本是 '%s')\n
-53 词法错误
-54 行 %d: 语法错误， 在 \"%s\"
-55 丢失
-56 在 %s
-57 不兼容的参数, \"%s\", 和 \"%s\"\n
-58 %d 个实例被提交\n
-59 \n无法调用非优化版本的loaddb.\n
-60 处理错误 \"%s\", 作为 %s 类型.\n
-112   %d 个实例\r
-113 最后提交的行 : %d
-114 错误控制文件
-115 在加载过程中输入文件来控制错误
+19 Tha database name is missing.\n
+20 '%s' file does not have %d lines.\n
+21 interrupt ... \n
+22 Interrupted load - current transaction committed\n
+23 Interrupted load - current transaction aborted\n
+24 Can't open file `%s'\n
+25 \n*** Checking syntax ***\n\n
+26 %d errors detected.\n
+27 \n*** Inserting objects ***\n\n
+28 Total %8d objects inserted.\n
+29 Total %8d referenced objects inserted with default contents.\n
+30 \n*** Committing the transaction ***\n
+31 \n*** Closing the database ***\n
+32 Line %d:
+33 Error parsing `%s' as a `%s' value for attribute `%s' of `%s'\n
+34 Missing domain for attribute %s of %s\n
+35 For attribute %s of %s, type %s is not allowed in the domain of the set\n
+36 For attribute %s of %s, expected type %s, got a set constant\n
+37 For attribute %s of %s, expected type %s, got %s\n
+38 No class named %s referenced by attribute %s of %s\n
+39 No class named %s, ignoring tuples\n
+40 No class with identifier %d referenced by attribute %s of %s\n
+41 Class %s is not allowed in the loader input file\n
+42 Stopped with error.\n
+43 WARNING: updated existing instance !\n
+44 WARNING: redefining Instance %d of class %s\n
+45 Instance %d of class %s has already been defined\n
+46 Instance %d of class %s has already been reserved\n
+47 UNIQUE violation on attribute `%s', converted to NULL\n
+48   %d instances\n
+49 Class %s\n
+50 Password:
+51 \n*** Updating class statistics ***\n
+52 %s near line %d (text was '%s')\n
+53 Lexical error
+54 line %d: syntax error at \"%s\"
+55 missing
+56 in %s
+57 Incompatible arguments, \"%s\", and \"%s\"\n
+58 %d instances committed\n
+59 \nCannot invoke non-optimized version of loaddb.\n
+60 Error parsing \"%s\", as %s type.\n
+112   %d instances\r
+113 Last committed line : %d
+114 error-control-file
+115 input file to control error(s) during loading
 120 \
-loaddb: 将对象和结构导入到数据库.\n\
-usage: %s loaddb [选项] 数据库名\n\
+loaddb: Import objects and schemas to the database.\n\
+usage: %s loaddb [OPTION] database-name\n\
 \n\
-可用选项:\n\
-  -u, --user=ID                 用于访问数据库的用户ID; 默认: "public"\n\
-  -p, --password=PASS           用户密码; 默认: 空\n\
-      --data-file-check-only    对数据文件进行语法检测而不加载; 默认: 检测之后加载\n\
-  -l, --load-only               加载数据文件而不检测语法; 默认: 检测之后加载\n\
-      --estimated-size=NUMBER   用NUMBER作为估计的实例数目; 默认: 5000\n\
-  -v, --verbose                 开启详细状态信息; 默认: 关闭\n\
-  -c, --periodic-commit=COUNT   每插入COUNT个实例进行周期性的提交; 默认: 在读取时不提交\n\
-      --no-oid                  不使用 OID\n\
-      --no-statistics           在读取时不更新统计信息\n\
-  -s, --schema-file=FILE[:LINE] 从文件 FILE 的第 LINE 行创建结构(schema)\n\
-  -i, --index-file=FILE[:LINE]  从文件 FILE 的第 LINE 行创建索引\n\
-  -d, --data-file=FILE          从文件 FILE 读取数据\n\
-  -t, --table=TABLE             用TABLE名替代数据文件中找不到表头的表\n\
-      --error-control-file=FILE 指定文件 FILE 用来描述在读取数据过程中如何处理特定的错误\n\
-      --ignore-class-file=FILE  指定文件 FILE 用来描述要忽略掉的类\n
+valid options:\n\
+  -u, --user=ID                 user ID for database access; default: "public"\n\
+  -p, --password=PASS           user password; default: none\n\
+      --data-file-check-only    check syntax for data file without load; default: loading after checking\n\
+  -l, --load-only               load data file without checking syntax; default: loading after checking\n\
+      --estimated-size=NUMBER   estimated NUMBER of instances; default: 5000\n\
+  -v, --verbose                 enable verbose status messages; default: disabled\n\
+  -c, --periodic-commit=COUNT   insertion COUNT for periodic commit; default: no commit during loading\n\
+      --no-oid                  don't use OID\n\
+      --no-statistics           do not update the statistics while loading\n\
+  -s, --schema-file=FILE[:LINE] create schema from LINE with FILE\n\
+  -i, --index-file=FILE[:LINE]  create index from LINE with FILE\n\
+  -d, --data-file=FILE          load data with FILE\n\
+  -t, --table=TABLE             table name that is substituted for missing class header in data file\n\
+      --error-control-file=FILE FILE to control error(s) during loading\n\
+      --ignore-class-file=FILE  input file of class names that skip load\n
 121 \
-load_noopt: 不赞成使用这个工具. 小心使用.\n\
-usage: load_noopt [选项] 数据库名\n\
+load_noopt: This utility is deprecated. Be careful to use.\n\
+usage: load_noopt [OPTION] database-name\n\
 \n\
-可用选项:\n\
-  -u, --user=ID                 访问数据库的用户ID; 默认: "public"\n\
-  -p, --password=PASS           用户密码; 默认: 空\n\
-      --data-file-check-only    对数据文件进行语法检测而不加载; 默认: 检测后读取\n\
-  -l, --load-only               读取数据而不进行语法检测; 默认: 检测后读取\n\
-      --estimated-size=NUMBER   用NUMBER作为估计的实例数目; 默认: 5000\n\
-  -v, --verbose                 启用详细状态信息; 默认: 不可用\n\
-  -c, --periodic-commit=COUNT   当插入COUNT个实例进行周期性的提交; 默认: 读取是不提交\n\
-      --no-oid                  不使用OID\n\
-  -s, --schema-file=FILE[:LINE] 从文件 FILE 的第 LINE 行创建结构(schema)\n\
-  -i, --index-file=FILE[:LINE]  从文件 FILE 的第 LINE 行创建索引\n\
-  -d, --data-file=FILE          从文件 FILE 读取数据\n\
-      --error-control-file=FILE 指定文件 FILE 用来描述在读取数据过程中如何处理特定的错误\n
+valid options:\n\
+  -u, --user=ID                 user ID for database access; default: "public"\n\
+  -p, --password=PASS           user password; default: none\n\
+      --data-file-check-only    check syntax for data file without load; default: loading after checking\n\
+  -l, --load-only               load data file without checking syntax; default: loading after checking\n\
+      --estimated-size=NUMBER   estimated NUMBER of instances; default: 5000\n\
+  -v, --verbose                 enable verbose status messages; default: disabled\n\
+  -c, --periodic-commit=COUNT   insertion COUNT for periodic commit; default: no commit during loading\n\
+      --no-oid                  don't use OID\n\
+  -s, --schema-file=FILE[:LINE] create schema from LINE with FILE\n\
+  -i, --index-file=FILE[:LINE]  create index from LINE with FILE\n\
+  -d, --data-file=FILE          load data with FILE\n\
+      --error-control-file=FILE FILE to control error(s) during loading\n
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
-41 缓存页数值无效.\n
-42 缓存页大小无效.\n
-43 %d 个对象被转储.\n
-44 类 %s
-45 , %d 个实例.\n
-46 只有 %d 个对象在 %d 个对象之中被成功转储.\n
-47 输出目录过长.\n
+41 cached-pages value is invalid.\n
+42 cached-page-size value is invalid.\n
+43 %d objects dumped.\n
+44 Class %s
+45 , %d instances.\n
+46 Only %d out of %d objects dumped successfully.\n
+47 output directory is too long.\n
 48 LSA : %d %d \n
 60 \
-unloaddb: 从数据库导出对象和结构.\n\
-usage: %s unloaddb [选项] 数据库名\n\
+unloaddb: Export objects and schemas from the database.\n\
+usage: %s unloaddb [OPTION] database-name\n\
 \n\
-可用选项:\n\
-  -i, --input-class-file=FILE 指定包含表名的输入文件; 默认: 转储所有类\n\
-      --include-reference     和-i选项一起使用.当卸载了指定数据库类，卸载对象的引用; 默认: disabled\n\
-      --input-class-only      和-i选项一起使用. 只创建与输入文件中的表相关的方案(schema)文件; 默认: 未启用\n\
-      --lo-count=COUNT        指明一个目录中要被创建的大对象(large object)文件的数目; 默认: 0\n\
-      --estimated-size=NUMBER 指定预期的实例数目; 默认: 自动计算\n\
-      --cached-pages=NUMBER   配置要被缓存进内存的对象数目; 默认: 100\n\
-  -O, --output-path=PATH      用 PATH 作为输出目录; 默认: 工作目录\n\
-  -s, --schema-only           只转储结构(schema); 默认: 结构和对象\n\
-  -d, --data-only             只转储对象; 默认: 结构和对象\n\
-      --output-prefix=PREFIEX 指定输出文件的前缀; 默认: 数据库名\n\
-      --hash-file=FILE        指定hash文件名称; 默认: 由 tmpnam() 生成\n\
-  -v, --verbose               开启详细状态信息; 默认: 不可用\n\
-      --use-delimiter         用 '"' 作为一个标示符的开始和结束; 默认: 不使用\n\
-  -S, --SA-mode               单机模式执行\n\
-  -C, --CS-mode               客户端-服务器模式执行\n\
-      --datafile-per-class    为每个表创建一个对象文件; 默认: 禁止\n
+valid options:\n\
+  -i, --input-class-file=FILE input FILE of table names; default: dump all classes\n\
+      --include-reference     include referenced tables; with -i option; default: disabled\n\
+      --input-class-only      include specified class only; with -i option; default: disabled\n\
+      --lo-count=COUNT        lo file COUNT per a directory; default: 0\n\
+      --estimated-size=NUMBER estimated NUMBER of instances; default: auto computed\n\
+      --cached-pages=NUMBER   NUMBER of cached pages; default: 100\n\
+  -O, --output-path=PATH      PATH of output directory; default: working directory\n\
+  -s, --schema-only           dump schema only; default: schema and objects\n\
+  -d, --data-only             dump objects only; default: schema and objects\n\
+      --output-prefix=PREFIEX PREFIX for output files; default: the database name\n\
+      --hash-file=FILE        FILE for hash; default: generate by tmpnam()\n\
+  -v, --verbose               enable verbose status messages; default: disabled\n\
+      --use-delimiter         use '"' where an identifier begins and ends; default: don't use\n\
+  -S, --SA-mode               stand-alone mode execution\n\
+  -C, --CS-mode               client-server mode execution\n\
+      --datafile-per-class    create a object file for each class; default: disabled\n
 
 
 
 $set 14 MSGCAT_UTIL_SET_COMPACTDB
-11 \n传递 1\n\n
-12 %d 个对象被处理.\n
-13 \n传递 2\n\n
-14 类 %s\n
+11 \nPass 1\n\n
+12 %d objects processed.\n
+13 \nPass 2\n\n
+14 Class %s\n
 15 oid:  %d|%d|%d,\n
-16 %d 个对象.\n
-17 更新对象.\n
+16 %d instances.\n
+17 Updating object.\n
 18 ref_oid:  %d.%d.%d, ref_class_oid:  %d.%d.%d\n
-19 无法转换对象\n
-20 类的heap文件缺失\n
-21 无法更新对象\n
-22 只有 %d 个对象在 %d 个对象之中被成功处理.\n
-23 COMPACTDB 已经启动.\n
-24 页的数目必须在 %d 和 %d 之间.\n
-25 实例锁的超时时间必须在 %d 和 %d 之间.\n
-26 对象总数: %d\n
-27 失败的对象: %d\n
-28 修改的对象: %d\n
-29 大对象: %d\n
-30 旧的类表述从目录中删除.\n
-31 旧的类表述在目录中保留.\n
-32 无法设置隔离级别.\n
-33 无法压缩数据库.\n
-34 类锁的超时必须在 %d 和 %d 之间.\n
-35 类被锁住... 不完全的处理...\n
-36 未处理的类...\n
-37 处理错误... 不完全的处理...\n
-38 没有什么可被处理...\n
-39 无效的参数...\n
-40 未知的类名...\n
-41 未使用的类OID和页已被回收.\n
-42 回收OID和页已经被跳过.\n
-43 在处理类时出错, 类被跳过.\n
-44 \n传递 3\n\n
-45 heap压缩失败...\n
-46 heap压缩成功...\n
+19 Couldn't transform object\n
+20 Missing class heap file\n
+21 Couldn't update object\n
+22 Only %d out of %d objects processed successfully.\n
+23 COMPACTDB already started.\n
+24 The number of pages must be between %d and %d.\n
+25 The instance lock timeout must be between %d and %d.\n
+26 Total objects: %d\n
+27 Failed objects: %d\n
+28 Modified objects: %d\n
+29 Big objects: %d\n
+30 Old class representations deleted from catalog.\n
+31 Old class representations preserved in catalog.\n
+32 Can't set isolation level.\n
+33 Couldn't compact database.\n
+34 The class lock timeout must be between %d and %d.\n
+35 Locked class... Incomplete processing...\n
+36 Unprocessed class...\n
+37 Process error... Incomplete processing...\n
+38 Nothing to process...\n
+39 Invalid parameters...\n
+40 Unknown class name...\n
+41 The unused class OIDs and pages have been reclaimed.\n
+42 Reclaiming of OIDs and pages skipped.\n
+43 Error while processing class, class skipped.\n
+44 \nPass 3\n\n
+45 Heap compact failed...\n
+46 Heap compact succedeed...\n
 60 \
-compactdb: 释放数据库中未使用的空间.\n\
-usage: %s compactdb [选项] 数据库名 [类名1 类名2 ...]\n\
+compactdb: Free unused space in a database.\n\
+usage: %s compactdb [OPTION] database-name [class_name1 class_name2 ...]\n\
 \n\
-可用选项:\n\
-  -v, --verbose                     开启详细状态信息; 默认: 不可用\n\
-  -i, --input-class-file=FILE       类名的输入文件\n\
-                                    class_name 列表必须为空\n\
-                                    默认: 压缩所有的类\n\
-                                    只在CS模式中有效\n\
-  -p, --pages-commited-once=NUMBER  一次提交的最大页数目\n\
-                                    默认: 10\n\
-                                    只在CS模式中可用\n\
-  -S, --SA-mode                     单机模式执行\n\
-  -C, --CS-mode                     客户端-服务端模式执行\n\
-  -d, --delete-old-repr             从目录中删除旧的类表述; 默认: 不使用\n\
-  class_name_list                   只在CS模式中有效\n\
-  -I, --Instance-lock-timeout       实例锁的超时\n\
-  -c, --class-lock-timeout          类锁的超时\n
+valid options:\n\
+  -v, --verbose                     enable verbose status messages; default: disabled\n\
+  -i, --input-class-file=FILE       input FILE of table names\n\
+                                    class_name list must be empty\n\
+                                    default: compact all classes\n\
+                                    enabled in CS-mode only\n\
+  -p, --pages-commited-once=NUMBER  maximum number of pages to commit once\n\
+                                    default: 10\n\
+                                    enabled in CS-mode only\n\
+  -S, --SA-mode                     stand-alone mode execution\n\
+  -C, --CS-mode                     client-server mode execution\n\
+  -d, --delete-old-repr             delete old class representations from catalog; default: disabled\n\
+  class_name_list                   enabled in CS-mode only\n\
+  -I, --Instance-lock-timeout       timeout for instance lock\n\
+  -c, --class-lock-timeout          timeout for class lock\n
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
-21 CUBRID 主进程运行在主机 %s \n被启动在 %s
-22 收到了 %d 请求. %d 个服务在运行.\n
-23 在 %s 分钟内关闭\n
+21 The CUBRID master running on host %s \nwas started at %s
+22 has serviced %d requests. %d server(s) running.\n
+23 SHUTTING DOWN in %s minutes\n
 24 %s
-25 要关闭的服务名 :
-26 多少分钟后关闭? :
+25 Name of server to shutdown :
+26 How many minutes until shutdown? :
 27 \
-cub_commdb: 这个工具不赞成使用. 用 'cubrid' 命令来代替.\n\
-usage: cub_commdb [选项]\n\
+cub_commdb: This utility is deprecated. Use 'cubrid' command instead.\n\
+usage: cub_commdb [OPTION]\n\
 \n\
-可用选项:\n\
-  -P, --server-list                打印服务进程\n\
-  -O, --all-list                   打印所有进程\n\
-  -S, --shutdown-server=NAME       关闭名为 NAME 的数据库服务\n\
-  -A, --shutdown-all               关闭所有进程\n\
-  -c, --server-mode=NAME           打印名为 NAME 的数据库的HA 模式\n\
-  -N, --node-list                  列出由 CUBRID heartbeat 所管理的结点\n\
-  -L, --process-list               列出由 CUBRID heartbeat 所管理的本地进程\n\
-  -D, --dereg-process=PID          退出目标进程并从被管理的进程条目中将其移除\n\
-  -F, --reconfig-node-list         应用最近改变的 CUBRID heartbeat 配置\n\
-  -U, --deactivate-heartbeat       撤销 CUBRID heartbeat 特征并从节点组中移除当前节点\n\
-  -T, --activate-heartbeat         激活CUBRID heartbeat 特征并将当前节点加入到节点组中\n\
-  -V, --verbose                    开启详细状态信息; 默认: 不可用\n
-28 对不起，未知的命令: %s\n
-29 无法得到主机名或本地主机 - 终止\n
-30 找不到参数文件\n
-31 无法在 %s 连接主服务\n
-32 多少分钟后关闭? :
-33 主进程(Master) 将在 %d 分钟内关闭\n
-34 从客户端那里收到了错误的数据
-35 数据库服务 %s 当前没有运行
-36 无法执行 shell (%s) 关于 %s, %s
-37 进程 fork %s, 返回 %d, %s
-38 无法执行 %s
+valid options:\n\
+  -P, --server-list                print server processes\n\
+  -O, --all-list                   print all processes\n\
+  -S, --shutdown-server=NAME       shutdown NAME database server\n\
+  -A, --shutdown-all               shutdown all processes\n\
+  -c, --server-mode=NAME           print NAME database server's HA mode\n\
+  -N, --node-list                  list nodes managed by CUBRID heartbeat\n\
+  -L, --process-list               list local process managed by CUBRID heartbeat\n\
+  -D, --dereg-process=PID          exit the target process and remove it from managed process entries\n\
+  -F, --reconfig-node-list         apply CUBRID heartbeat configuration recently changed\n\
+  -U, --deactivate-heartbeat       deactivate CUBRID heartbeat feature and remove the current node from node group\n\
+  -T, --activate-heartbeat         activate CUBRID heartbeat feature and current node becomes a member of node group\n\
+  -V, --verbose                    enable verbose status messages; default: disabled\n
+28 Sorry, unknown command: %s\n
+29 Could not get host name for local host - aborting\n
+30 Could not find parameter file\n
+31 Could not connect to master server on %s\n
+32 How many minutes until shutdown? :
+33 Master will shutdown in %d minutes\n
+34 Error receiving data from client
+35 the database server %s is not currently running
+36 can't exec shell (%s) for %s, %s
+37 process fork %s, returned %d, %s
+38 can't execute %s
 
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \
-emergency_patchlog: 紧急情况下修补一个数据库.\n\
-usage: %s emergency_patchlog [选项] 数据库名\n\
+emergency_patchlog: Patch a database in case of emergency.\n\
+usage: %s emergency_patchlog [OPTION] database-name\n\
 \n\
-可用选项:\n\
-  -r, --recreate-log           重建日志文件; 小心使用\n
+valid options:\n\
+  -r, --recreate-log           recreate log files; use carefully\n
 
 
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB
-20 错误的值 %d 对于 页的数目\n
-21 错误的值 '%s' 对于卷存储目的.\n
+20 Wrong value %d for npages\n
+21 Wrong value '%s' for volume storage purpose.\n
 60 \
-addvoldb: 为数据库添加一个卷文件.\n\
-usage: %s addvoldb [选项] 数据库名\n\
+addvoldb: Add a volume-file for the database.\n\
+usage: %s addvoldb [OPTION] database-name\n\
 \n\
-可用选项:\n\
-      --db-volume-size=SIZE    指定附加卷大小; 默认: db_volume_size 在 cubrid.conf 文件中\n\
-  -n, --volume-name=NAME       信息卷的名称; 默认: 像这样生成 "db"_ext1)\n\
-  -F, --file-path=PATH         为将被添加的卷文件指定一个创建目录; 默认: 工作目录\n\
-      --comment=COMMENT        给添加的卷文件加注释; 默认: 无\n\
-  -p, --purpose=PURPOSE        指明添加卷文件的目的; 允许的值:\n\
-                                       DATA - 为了数据\n\
-                                       INDEX - 为了索引\n\
-                                       TEMP - 临时的\n\
-                                       GENERIC - 通用的\n\
-  -S, --SA-mode                单机模式执行\n\
-  -C, --CS-mode                客户端-服务器模式执行\n
+valid options:\n\
+      --db-volume-size=SIZE    size of additional volume; default: db_volume_size in cubrid.conf\n\
+  -n, --volume-name=NAME       NAME of information volume; default: generate such as "db"_ext1)\n\
+  -F, --file-path=PATH         PATH for adding volume file; default: working directory\n\
+      --comment=COMMENT        COMMENT for adding volume file; default: none\n\
+  -p, --purpose=PURPOSE        PURPOSE for adding volume file; allowed:\n\
+                                       DATA - only for data\n\
+                                       INDEX - only for indices\n\
+                                       TEMP - only for temporary\n\
+                                       GENERIC - for all purposes\n\
+  -S, --SA-mode                stand-alone mode execution\n\
+  -C, --CS-mode                client-server mode execution\n
 
 $set 18 MSGCAT_UTIL_SET_CHECKDB
-20 一些不一致性在你的数据库中被检测出来.\n 请在错误日志文件 %s 中查阅额外的信息.\n
-21 %s: 无法找到该表. 它将被忽略.\n
+20 Some inconsistencies were detected in your database.\n Please consult error_log_file %s for additional information.\n
+21 %s: Cannot find the class. It will be ommitted.\n
 60 \
-checkdb: 监测数据库一致性.\n\
-用法: %s checkdb [选项] 数据库名 [class_name1 class_name2 ...]\n\
+checkdb: Check consistency of the database.\n\
+usage: %s checkdb [OPTION] database-name [class_name1 class_name2 ...]\n\
 \n\
-可用选项:\n\
-  -S, --SA-mode                单机模式执行\n\
-  -C, --CS-mode                客户端-服务器模式执行\n\
-  -r, --repair                 修复找到的不一致性\n\
-  -i, --input-class-file=FILE  输入包含表名的FILE\n\
-                               默认: 检查所有表\n
+valid options:\n\
+  -S, --SA-mode                stand-alone mode execution\n\
+  -C, --CS-mode                client-server mode execution\n\
+  -r, --repair                 repair when inconsistency is found\n\
+  -i, --input-class-file=FILE  input FILE of class names\n\
+                               default: check all classes\n
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
-15 数据库 '%s' 的空间描述 页大小 %s. (日志页大小: %s)\n\n
+15 Space description for database '%s' with pagesize %s. (log pagesize: %s)\n\n
 16 %5d %8s  %s %s  %s\n
-17 无法打开输出文件 `%s'\n
-18 数据库 '%s' 临时卷的空间描述 页大小 %s.\n\n
-19 卷标识  用途  页总数  空闲页  卷名\n\n
-20 卷标识  用途  总大小  空闲空间  卷名\n\n
-21 LOB 空间描述 %s \n\n
-30 数据 '%s' 的 汇总空间描述 页大小 %s. (日志页大小: %s)\n\n
-31 设定的    总页数  已用页数  空闲页数  卷数\n
-32 设定的     总大小   已用大小   空闲大小  卷数\n
+17 Couldn't open output file `%s'\n
+18 Space description for temporary volumes for database '%s' with pagesize %s.\n\n
+19 Volid  Purpose  total_pages  free_pages  Vol Name\n\n
+20 Volid  Purpose   total_size   free_size  Vol Name\n\n
+21 LOB space description %s \n\n
+30 Summarized space description for database '%s' with pagesize %s. (log pagesize: %s)\n\n
+31 Purpose    total_pages  used_pages  free_pages  volume_count\n
+32 Purpose     total_size   used_size   free_size  volume_count\n
 33 %10s %s %s %s %10d\n
 60 \
-spacedb: 显示数据库的使用/空闲空间.\n\
-usage: %s spacedb [选项] 数据库名\n\
+spacedb: Display usage/free space of the database.\n\
+usage: %s spacedb [OPTION] database-name\n\
 \n\
-可用选项:\n\
-  -o, --output-file=FILE       重定向输出信息到文件 FILE; 默认: 无\n\
-  -S, --SA-mode                单机模式执行\n\
-  -C, --CS-mode                客户端服务端模式执行\n\
+valid options:\n\
+  -o, --output-file=FILE       redirect output messages to FILE; default: none\n\
+  -S, --SA-mode                stand-alone mode execution\n\
+  -C, --CS-mode                client-server mode execution\n\
       --size-unit={PAGE|M|G|T|H}\n\
-                               设置显示单元 (页, M, G, T, 人类可读);默认 : 人类可读\n\
-  -s, --summarize              为每个设定的卷只显示一个总结\n
+                               set the display unit (page, mega, giga, tera, human readable); default: H\n\
+  -s, --summarize              display only a summary for each volume purpose\n
 
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
-15 预计页的数目 = %d\n
+15 Estimated Number of Pages = %d\n
 60 \
-估算数据: 估算数据的大小.\n\
-用法: %s 估算数据 实例的数目 实例的平均大小 属性的数目 可变属性数目\n
+estimate_data: Estimate size of data.\n\
+usage: %s estimate_data number-of-instances average-instance-size number-of-attributes variable-number-of-attributes\n
 
 
 $set 21 MSGCAT_UTIL_SET_ESTIMATEDB_INDEX
-15 指定了不正确的索引键类型 = %s\n
-16 指定了不正确的平均键长度 = %d when precision = %d\n
-17 指定了错误的参数\n
-20 估算的全部索引页数目 = %d\n (在实例被写入后，索引被创建.)\n
-21 估算的全部索引页数目 = %d\n (在实例被写入前(平均情况)，索引被创建)\n
-22 估算的全部索引页数目 = %d\n (在实例被写入前(最坏情况)，索引被创建)\n
-23 用于给定的输入...\n
-24 实例的总数               :%d\n
-25 不同键的数目             : %d\n
-26 键的平均大小             : %d\n
-27 键的类型                 : %s\n\n
+15 Bad index key type specified = %s\n
+16 Bad average key length specified = %d when precision = %d\n
+17 Bad arguments specified\n
+20 Estimated number of total index pages = %d\n (When index created, after instances have been populated.)\n
+21 Estimated number of total index pages = %d\n (When index created, before instances have been populated (average case))\n
+22 Estimated number of total index pages = %d\n (When index created, before instances have been populated (worst case))\n
+23 For the given input...\n
+24 Total number of instances: %d\n
+25 Number of different keys : %d\n
+26 Average key size         : %d\n
+27 Key Type                 : %s\n\n
 60 \
-估算索引: 估算一个索引的大小.\n\
-用法: %s 估算索引 实例的数目 不同键的数目 平均键长 键类型\n
+estimate_index: Estimate size of an index.\n\
+usage: %s estimate_index number-of-instances number-of-different-keys average-key-size key-type\n
 
 $set 22 MSGCAT_UTIL_SET_INSTALLDB
 60 \
-installdb: 安装一个数据库.\n\
-usage: %s installdb [选项] 数据库名\n\
+installdb: Install a database.\n\
+usage: %s installdb [OPTION] database-name\n\
 \n\
-可用选项:\n\
-      --server-name=HOST       指定服务端的主机名; 默认: 当前主机名e\n\
-  -F, --file-path=PATH         注册数据库的卷目录 PATH 到databases.txt; 默认: 当前目录\n\
-  -L, --log-path=PATH          注册数据库的日志卷目录 PATH 到databases.txt; 默认: 和 file-path 相同\n
+valid options:\n\
+      --server-name=HOST       server HOST name; default: current host name\n\
+  -F, --file-path=PATH         directory PATH for database volumes; default: current directory\n\
+  -L, --log-path=PATH          directory PATH for log volumes; default: same as file-path\n
 
 $set 23 MSGCAT_UTIL_SET_MIGDB
-1 临时类OID\n
-2 无法打印 elo 数值\n
-3 访问用于迁移的长对象错误\n
-4 打开用于迁移长对象的输出文件错误\n
-5 读错误\n
-6 写错误\n
-7 打开ELO输入文件错误 "%s"\n
-8 类:
-9 哈希文件
-10 名称:                         %s\n
-11 大小:                         %d\n
-12 页大小:                       %d\n
-13 数据大小:                     %d\n
-14 条目大小:                     %d\n
-15 每一页的条目:                 %d\n
-16 缓存的页:                     %d\n
-17 条目的数目:                   %d\n
-18 冲突的数目:                   %d\n
-19 哈希文件名:                   %s\n
-20 下一个溢出条目:               %d\n
-21 键的类型:                     %s\n
-22 页头的地址:                   %x\n
-23 最后的页头地址:               %x\n
-24 空闲页的头地址:               %x\n
-25 页位图的地址:                 %x\n
-26 页位图的大小:                 %d\n
+1 Temporary class OID\n
+2 Can't print elo values\n
+3 Error accessing long object for migration\n
+4 Error opening output file for long object migration \n
+5 Read error\n
+6 Write error\n
+7 Error opening ELO input file "%s"\n
+8 CLASSES:
+9 hash filename
+10 Name:                         %s\n
+11 Size:                         %d\n
+12 Page size:                    %d\n
+13 Data size:                    %d\n
+14 Entry size:                   %d\n
+15 Entries per page:             %d\n
+16 Cached pages:                 %d\n
+17 Number of entries:            %d\n
+18 Number of collisions:         %d\n
+19 Hash filename:                %s\n
+20 Next overflow entry:          %d\n
+21 Key type:                     %s\n
+22 Address of page headers:      %x\n
+23 Address of last page header:  %x\n
+24 Address of free page header:  %x\n
+25 Address of page bitmap:       %x\n
+26 Page bitmap size:             %d\n
 
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 60 \
-diagdb: 转储一个数据库.\n\
-usage: %s diagdb [选项] 数据库名\n\
+diagdb: Dump a database.\n\
+usage: %s diagdb [OPTION] database-name\n\
 \n\
-可用选项:\n\
-  -d, --dump-type=TYPE         转储类型\n\
-                               -1 转储所有\n\
-                                1 转储文件表\n\
-                                2 转储文件容量\n\
-                                3 转储堆容量\n\
-                                4 转储索引容量\n\
-                                5 转储类名\n\
-                                6 转储磁盘位图\n\
-                                7 转储目录\n\
-                                8 转储日志\n\
-                                9 转储堆\n
+valid options:\n\
+  -d, --dump-type=TYPE         TYPE of dump\n\
+                               -1 dump all\n\
+                                1 dump file tables\n\
+                                2 dump file capacities\n\
+                                3 dump heap capacities\n\
+                                4 dump index capacities\n\
+                                5 dump classnames\n\
+                                6 dump disk bitmaps\n\
+                                7 dump catalog\n\
+                                8 dump log\n\
+                                9 dump heap\n
 
 
 $set 25 MSGCAT_UTIL_SET_LOCKDB
-15 无法打开输出文件 `%s'\n
-59 lockdb 无法在单机模式下运行.\n
+15 Couldn't open output file `%s'\n
+59 lockdb cannot run as standalone mode.\n
 60 \
-lockdb: 显示数据库的锁状态.\n\
-usage: %s lockdb [选项] 数据库名\n\
+lockdb: Display lock-status of the database.\n\
+usage: %s lockdb [OPTION] database-name\n\
 \n\
-可用选项:\n\
-  -o, --output-file=FILE       重定向输出信息到文件 FILE ; 默认: 空\n
+valid options:\n\
+  -o, --output-file=FILE       redirect output messages to FILE; default: none\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
-20 在事务索引，用户名，主机，程序名之间，只能指定一个参数\n
-21 输入 DBA 密码:
-22 事务索引        用户名         主机名         进程 id         程序名   \n
+20 Only one argument must be given among: tran-index, user, host, progname\n
+21 Enter DBA password:
+22 Tran index      User name      Host name      Process id      Program name\n
 23 -------------------------------------------------------------------------------\n
 24 %7d(%1c) %14s %14s %15d %17s\n
-25 没有事务\n
-26 没有一个事务带有指定的参数值.\n
-27 准备取消下面的事务:\n\n
-28 你希望进行吗 ? (Y/N)
-29 取消与事务索引 %d相关联的事务\n
-30 取消如下事务失败\n\n
-31 事务目前还没有终止，但是可能在做一些回滚工作.\n 请稍等片刻，如果有必要，可以稍后再做尝试.\n
-59 无法在单机模式下取消事务.\n
+25 There are no transactions\n
+26 There is not a transaction with the specified argument values.\n
+27 Ready to kill the following transactions:\n\n
+28 Do you wish to proceed ? (Y/N)
+29 Killing transaction associated with transaction index %d\n
+30 Killing of the following transactions has failed\n\n
+31 The transaction does not finish yet, but it may be doing the rollback work.\n Please, wait a second and try it later if needed.\n
+59 killrtan cannot run as standalone mode.\n
 60 \
-killtran: 管理数据库的事务.\n\
-usage: %s killtran [选项] 数据库名\n\
+killtran: Manage transactions of the database.\n\
+usage: %s killtran [OPTION] database-name\n\
 \n\
-可用选项:\n\
-  -i, --kill-transaction-index=INDEX 通过事务索引取消事务\n\
-      --kill-user-name=ID            通过用户ID取消所有事务\n\
-      --kill-host-name=HOST          通过客户端主机名取消所有事务\n\
-      --kill-program-name=NAME       通过客户端程序名取消所有事务\n\
-  -p, --dba-password=PASS            DBA用户的密码; 如果没有指定将提示输入\n\
-  -d, --display-information          显示关于活动事务的信息\n\
-  -f, --force                        取消事务而不需要核对提示\n
+valid options:\n\
+  -i, --kill-transaction-index=INDEX kill transaction with transaction INDEX\n\
+      --kill-user-name=ID            kill all transactions with user ID\n\
+      --kill-host-name=HOST          kill all transactions with client HOST\n\
+      --kill-program-name=NAME       kill all transactions with client program NAME\n\
+  -p, --dba-password=PASS            password of the DBA user; will prompt if don't specify\n\
+  -d, --display-information          display information about active transactions\n\
+  -f, --force                        kill the transaction without a prompt for verification\n
 
 
 $set 31 MSGCAT_UTIL_SET_MIGRATE
-1 数据库名
-2 需要参数, 没有默认值
-3 兼容性检测
-4 只进行兼容性检测
-5 备份目的地
-6 一个用于备份卷目文件的目录或设备
-20 数据库 '%s' 不存在.
-21 '%s' 无法被迁移到 %s, 因为数据库的版本太低.\n
-22 '%s' 不需要被迁移.\n
-23 '%s' 需要被迁移.\n
-24 推荐在迁移后进行备份. 你希望现在就备份数据库吗? (y/n):
-25 我们推荐在迁移后用backupdb命令备份你的新数据库.
-26 \n*** 警告: 在迁移到 %s 前备份你的数据库***\n\n为了恢复可能在迁移中产生的错误，我们强烈推荐备份你的数据库.\n你已经备份了你的数据库吗? (y/n):
-27 \n1. 运行 backupdb \n2. 为新的数据库输入新的备份路径.(当前路径是: %s)\n3. 退出 \n
-28 \n数据库的新备份路径:
-29 \n迁移和备份成功的完成.
-30 备份失败. 请再次尝试备份数据库.
-31 \n\n*** 警告 : 一旦迁移完成, 您不能用以前的备份卷来恢复数据.\n注意，只有在restoredb版本正确的情况下，之前版本的备份文件才可以被恢复.\n请确保之前的备份卷被安全的保存.\n
+1 database-name
+2 required argument, no default
+3 compatibility-check
+4 compatibility check only
+5 backup-destination
+6 a directory path or device for the destination of the backup volumes
+20 database '%s' does not exist.
+21 '%s' can't be migrated to %s, because its DB version is too low.\n
+22 '%s' don't need to be migrated.\n
+23 '%s' needs to be migrated.\n
+24 Backup is recommended after migration. Do you want to back up your database now? (y/n):
+25 We recommend to back up your new database with backupdb command after migration.
+26 \n*** WARNING: Backup your database before you start migrating to %s ***\n\nTo recover errors which might be occurred during migration, we strongly recommend to back up your database.\nHave you already backed up your database? (y/n):
+27 \n1. Run backupdb \n2. Enter the new backup path for the new database.(current path: %s)\n3. Exit \n
+28 \nThe new backup path for the database:
+29 \nMigration and backup have been successfully completed.
+30 Backup failed. Please, retry to back up your database.
+31 \n\n*** WARNING : Once the migration is completed, you cannot restore the database with the former backup volumes.\nNotice that the previous version of backup files can be restored only on the corresponding version of restoredb.\nPlease, check the former backup volumes is securely kept.\n
 
 $set 33 MSGCAT_UTIL_SET_ALTERDBHOST
 60 \
-alterdbhost: 改变数据库的主机.\n\
-用法: %s alterdbhost [选项] 数据库名\n\
+alterdbhost: Alter a host of the database.\n\
+usage: %s alterdbhost [OPTION] database-name\n\
 \n\
-可用选项:\n\
-  -h, --host=HOST              指定HOST为新的主机; 默认: 当前主机名\n
+valid options:\n\
+  -h, --host=HOST              new HOST name; default: current host name\n
 
 
 $set 34 MSGCAT_UTIL_SET_LOADJAVA
-1 数据库名
-2 必选参数, no default
-3 java类文件
-4 必选参数, no default
-5 强制重写
-6 如果类存在则进行重写, 默认 不
+1 database-name
+2 required argument, no default
+3 java-class-file
+4 required argument, no default
+5 force-overwrite
+6 overwrite class file if exist, default no
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
-15 无法打开输出文件 `%s'\n
-59 plandump 无法运行在单机模式.\n
+15 Cannot open output file `%s'\n
+59 plandump cannot run as standalone mode.\n
 60 \
-plandump: 显示或控制缓存的查询计划.\n\
-usage: %s plandump [选项] 数据库名\n\
+plandump: Display or control cached query plans.\n\
+usage: %s plandump [OPTION] database-name\n\
 \n\
-可用选项:\n\
-  -d, --drop                   丢弃服务端缓存中的所有计划\n\
-  -o, --output-file=FILE       重定向输出信息到FILE; 默认: 空\n
+valid options:\n\
+  -d, --drop                   drop all plans in the server's cache\n\
+  -o, --output-file=FILE       redirect output messages to FILE; default: none\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
-11 无法打开输出文件 `%s'\n
-21 系统参数将被客户端程序使用.\n
-22 系统参数被服务 '%s' 读取\n
-23 系统参数将被用于单机模式.\n
+11 Cannot open output file `%s'\n
+21 System parameters to be used by the client program.\n
+22 System parameters loaded by the server '%s'\n
+23 System parameters to be used in standalone mode.\n
 60 \
-paramdump: 转储系统参数设置.\n\
-usage: %s paramdump [选项] 数据库名\n\
+paramdump: Dump system parameter settings.\n\
+usage: %s paramdump [OPTION] database-name\n\
 \n\
-可用选项:\n\
-  -o, --output-file=FILE       重定向输出信息到FILE; 默认: 无\n\
-  -b, --both                   转储客户端和服务端的参数\n\
-  -S, --SA-mode                单机模式执行\n\
-  -C, --CS-mode                客户端-服务端模式执行\n
+valid options:\n\
+  -o, --output-file=FILE       redirect output message to FILE; default: none\n\
+  -b, --both                   dump both client and server parameters\n\
+  -S, --SA-mode                stand-alone mode execution\n\
+  -C, --CS-mode                client-server mode execution\n
 
 $set 39 MSGCAT_UTIL_SET_CHANGEMODE
-11 错误的值 \"%s\" 对于服务端的HA运行模式.\n
-12 无法改变服务端的HA运行模式.\n
-21 输入DBA密码:
-22 服务 `%s'的当前HA运行模式是 %s.\n
-23 服务 `%s'的 HA运行模式被改变为\"%s\".\n
-24 服务没有被设置为HA模式.\n
-58 HA 特性在这个平台上不被支持.\n
-59 changemode 无法以单机模式运行.\n
+11 Wrong value \"%s\" for the server's HA running mode.\n
+12 Cannot change the server's HA running mode.\n
+21 Enter DBA password:
+22 The server `%s''s current HA running mode is %s.\n
+23 The server `%s''s HA running mode is changed to \"%s\".\n
+24 The server was not configured for HA.\n
+58 HA feature is not supported in this platform.\n
+59 changemode cannot run as standalone mode.\n
 60 \
-changemode: 显示或改变服务的HA运行模式.\n\
-usage: %s changemode [选项] 数据库名\n\
+changemode: Display or change the server's HA running mode.\n\
+usage: %s changemode [OPTION] database-name\n\
 \n\
-可用选项:\n\
-  -m, --mode=MODE             将服务模式改变为MODE; 默认: 空\n\
-  -f, --force                 强制改变\n\
-  -t, --timeout=S             当活动事务被正常终止时 等待 S 秒\n\
-                              -t 选项只在用户改变服务模式为维护时有效\n\
-                              默认: 5\n
+valid options:\n\
+  -m, --mode=MODE             change the server mode to MODE; default: none\n\
+  -f, --force                 force to change\n\
+  -t, --timeout=S             waiting S second while active transaction is terminated normally\n\
+                              -t option is effective only when the user changes server mode to maintenance\n\
+                              default: 5\n
 
 $set 40 MSGCAT_UTIL_SET_COPYLOGDB
-11 错误的值 \"%s\" 对于copylogdb的运行模式.\n
-21 输入DBA的密码:
-22 服务被设置为HA模式.\n
-58 HA 特性在这个平台上不被支持.\n
-59 copylogdb 无法以单机模式运行.\n
+11 Wrong value \"%s\" for the copylogdb's running mode.\n
+21 Enter DBA password:
+22 The server was not configured for HA.\n
+58 HA feature is not supported in this platform.\n
+59 copylogdb cannot run as standalone mode.\n
 60 \
-copylogdb: 从服务端拷贝日志页.\n\
-usage: %s copylogdb [选项] 数据库名\n\
+copylogdb: Copy log pages from the server.\n\
+usage: %s copylogdb [OPTION] database-name\n\
 \n\
-可用选项:\n\
-  -L, --log-path=PATH         指定目录PATH用于拷贝日志卷\n\
-  -m, --mode=MODE             操作模式; 默认: 同步\n\
-                              模式: 同步 或 半同步 或 异步\n
+valid options:\n\
+  -L, --log-path=PATH         directory PATH for copied log volumes\n\
+  -m, --mode=MODE             operation mode; default: sync\n\
+                              MODE: sync or semisync or async\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
-21 输入DBA密码:
-22 服务没有被设置为HA模式.\n
-58 HA 特性在这个平台上不被支持.\n
-59 applylogdb 无法以单机模式运行.\n
+21 Enter DBA password:
+22 The server was not configured for HA.\n
+58 HA feature is not supported in this platform.\n
+59 applylogdb cannot run as standalone mode.\n
 60 \
-applylogdb: 将已拷贝的日志应用到服务端.\n\
-usage: %s applylogdb [选项] 数据库名\n\
+applylogdb: Apply copied log to the server.\n\
+usage: %s applylogdb [OPTION] database-name\n\
 \n\
-可用选项:\n\
-  -L, --log-path=PATH         将被读取的事务日志的目录\n\
-      --max-mem-size=SIZE     进程可用的最大内存数, 以MB为单位; 最大为 500\n
+valid options:\n\
+  -L, --log-path=PATH         directory PATH of copied log volumes\n\
+      --max-mem-size=SIZE     maximum process SIZE in MB; max 500\n
 
 $set 43 MSGCAT_UTIL_SET_STATDUMP
-11 无法打开输出文件 `%s'\n
-59 statdump 无法以单机模式运行.\n
+11 Cannot open output file `%s'\n
+59 statdump cannot run as standalone mode.\n
 60 \
-statdump: 转储全局统计信息.\n\
-用法: %s statdump [选项] 数据库名\n\
+statdump: Dump global statistics.\n\
+usage: %s statdump [OPTION] database-name\n\
 \n\
-可用选项:\n\
-  -o, --output-file=FILE       重定向输出信息到文件FILE; 默认: 无\n\
-  -c, --cumulative             打印累计状态\n\
-  -i, --interval=S             每 S 秒打印一次状态\n\
-  -s, --substr=STRING          只为匹配上得 子字符串打印状态\n
+valid options:\n\
+  -o, --output-file=FILE       redirect output message to FILE; default: none\n\
+  -c, --cumulative             print cumulative stats\n\
+  -i, --interval=S             print stats every S secs\n\
+  -s, --substr=STRING          print stat item only that match the substring\n
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
-21 输入 DBA 密码:
-22 服务没有被设置为HA模式.\n
-58 HA 特性在这个平台上不被支持..\n
-59 applylogdb 无法以单机模式运行.\n
+21 Enter DBA password:
+22 The server was not configured for HA.\n
+58 HA feature is not supported in this platform.\n
+59 applyinfo cannot run as standlone mode.\n
 60 \
-applyinfo: 显示 CUBRID HA 应用信息.\n\
-用法: %s applyinfo [选项] 数据库名\n\
+applyinfo: display CUBRID HA Apply information.\n\
+usage: %s applyinfo [OPTION] database-name\n\
 \n\
-可用选项:\n\
-  -r, --remote-host-name      远程主机名; 显示远程节点的活动日志信息 \n\
-  -a, --applied-info 	      显示运用的信息 \n\
-  -L, --copied-log-path=PATH  设置复制的日志卷路径; 显示复制的日志信息 \n\
-  -p, --pageid=ID             页 id; 默认: 0(活动页)\n\
-  -v, --verbose               显示详细状态信息; 默认 : 关闭\n
+valid options:\n\
+  -r, --remote-host-name      remote host name; display remote node's active log information \n\
+  -a, --applied-info 	      display applied information \n\
+  -L, --copied-log-path=PATH  path of copied log volumes; display copied log information \n\
+  -p, --pageid=ID             page id; default : 0(active page)\n\
+  -v, --verbose               enable verbose status messages; default : disable\n
 
 $set 45 MSGCAT_UTIL_SET_ACLDB
-59 acldb 无法在单机模式下运行.\n
+59 acldb cannot run as standalone mode.\n
 60 \
-acldb: 显示和加载数据的访问控制设置.\n\
-用法: %s acldb [选项] 数据库名\n\
+acldb: Display or reload access control setting of the database.\n\
+usage: %s acldb [OPTION] database-name\n\
 \n\
-可用选项:\n\
-  -r, --reload       加载IP 控制文件\n
+valid options:\n\
+  -r, --reload       reload ip control file\n
 
 $set 46 MSGCAT_UTIL_SET_GENLOCALE
 60 \
-genlocale: 使用LDML 输入文件 生成区域共享库.\n\
-用法: %s genlocale [选项] [language-string]\n\
+genlocale: Generates locale shared library using LDML input file(s).\n\
+usage: %s genlocale [OPTION] [language-string]\n\
 \n\
-language-string	      区域语言字符串用于生成指定共享库.\n\
-		      如果没有指定语言字符串，所有在 'cubrid_locales.txt'文件中的语言\n\
-		      都会被处理.\n\
-可用选项:\n\
-  -v, --verbose	              显示详细状态信息; 默认 : 关闭\n\
-  -i, --input-ldml-file       输入LDML文件路径. 只在language-string被给定的时候使用.\n
-61 非法的区域设置名称参数.\n
+language-string	      locale language string for which to generate shared library.\n\
+		      If no language-string is given all languages in 'cubrid_locales.txt'\n\
+		      will be processed.\n\
+valid options:\n\
+  -v, --verbose	              enable verbose status messages; default : disable\n\
+  -i, --input-ldml-file       path for input LDML file. Only when language-string is given.\n
+61 Invalid locale name argument.\n
 
 $set 47 MSGCAT_UTIL_SET_DUMPLOCALE
-57 不能同时使用 -i/--input-file 和 本地标示.\n
-58 非法 codepoint 范围 (-s -e).\n
-59 非法的区域设置名称参数.\n
+57 Cannot simultaneously use -i/--input-file and locale identifier.\n
+58 Invalid codepoint range (-s -e).\n
+59 Invalid locale name argument.\n
 60 \
-dumplocale: 输入LDML 文件输出以前生成的区域共享库的内容.\n\
-用法: %s dumplocale [选项] [language-string]\n\
+dumplocale: Dumps the contents of locale shared library previously generated using LDML input file(s).\n\
+usage: %s dumplocale [OPTION] [language-string]\n\
 \n\
-language-string	 区域语言字符串用于输出区域共享库.\n\
-		         如果没有指定语言字符串，所有在 'cubrid_locales.txt'文件中的语言\n\
-		         都会被处理.\n\
-可用选项:\n\
-  -i, --input-file    指定(先前生成的)区域共享库的路径.\n\
-                      仅在language-string没有指定的时候使用.\n\
-  -d, --calendar      输出日历和 日期/时间 信息; 默认 : 关闭\n\
-  -n, --numeric		  输出 数字 信息; 默认 : 关闭\n\
-  -a, --alphabet=l|lower|u|upper|both	     输出 字母和转换 信息; 默认 : 关闭\n\
-      --identifier-alphabet=l|lower|u|upper	 为标识符输出 字母和转换 信息; 默认 : 关闭\n\
-  -c, --codepoint-order	 基于codepoint输出排序后的核对信息\n\
+language-string	 locale language string for which to dump locale shared library.\n\
+		         If no language-string is given all languages in 'cubrid_locales.txt'\n\
+		         will be processed.\n\
+valid options:\n\
+  -i, --input-file    path for input locale shared library (previously generated).\n\
+                      Can be used only when language-string is not given.\n\
+  -d, --calendar      dump calendar and date/time information; default : disable\n\
+  -n, --numeric		  dump numeric information; default : disable\n\
+  -a, --alphabet=l|lower|u|upper|both	     dump alphabet and casing information; default : disable\n\
+      --identifier-alphabet=l|lower|u|upper	 dump alphabet and casing information for identifiers; default : disable\n\
+  -c, --codepoint-order	 dump collation info sorted based on codepoint values\n\
                          (cp, char, weight, next-cp, char and weight);\n\
-                         默认 : 关闭\n\
-  -w, --weight-order  基于权重值输出排序后的核对信息\n\
-                      (weight, cp, char); 默认 : 关闭\n\
-  -s, --start-value	  过滤选项; 开始的 codepoint\n\
-                      -a, --identifier-alphabet, -c, -w; 默认 : 0\n\
-  -e, --end-value     过滤选项; 结束的 codepoint\n\
+                         default : disable\n\
+  -w, --weight-order  dump collation info sorted based on weight values\n\
+                      (weight, cp, char); default : disable\n\
+  -s, --start-value	  filtering option; starting codepoint for\n\
+                      -a, --identifier-alphabet, -c, -w; default : 0\n\
+  -e, --end-value     filtering option; ending codepoint for \n\
                       -a, --identifier-alphabet, -c, -w; \n\
-                      默认 : 从区域共享库中读到的最大值\n\
-  -k, --console-conversion  dump console conversion data; 默认 : 关闭\n\
-  -z, --normalization   dump normalization data; 默认 : 关闭\n
+                      default : maximum value read from locale shared library\n\
+  -k, --console-conversion  dump console conversion data; default : disable\n\
+  -z, --normalization   dump normalization data; default : disable\n
 

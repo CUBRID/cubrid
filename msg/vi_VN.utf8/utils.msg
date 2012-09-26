@@ -67,22 +67,22 @@ $       46      genlocale
 $       47      dumplocale
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
-1 Độ dài hoặc ký tự `%c' không hợp lệ trong tên cơ sở dữ liệu `%s'\n
-2 Không thể mở tệp tin đầu ra `%s'\n
-3 Tên tiện ích bị thiếu hoặc không hợp lệ.\n
-4 Tên tiện ích không hợp lệ `%s'\n
-5 Danh sách sau đây chứa các tên tiện ích được nhận biết:\n
-6 Ký tự `%c' không hợp lệ trong tên bộ đĩa `%s'\n
+1 Invalid length or character `%c' in database name `%s'\n
+2 Couldn't open output file `%s'\n
+3 Missing or invalid utility name.\n
+4 Invalid utility name `%s'\n
+5 The following list contains the recognized utility names:\n
+6 Invalid character `%c' in volume name `%s'\n
 9 \
-%s (Tiện ích CUBRID)\n\
+%s (CUBRID utilities)\n\
 %s\n\
 Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.\n
 10 \
-tiện ích quản trị viên, phiên bản %s\n\
-cách sử dụng: %s <tên-tiện ích> [đối số]\n\
-Gõ '%s <tên-tiện ích>' để có trợ giúp trên một tiện ích chỉ định.\n\
+cubrid administrator utility, version %s\n\
+usage: %s <utility-name> [args]\n\
+Type '%s <utility-name>' for help on a specific utility.\n\
 \n\
-Các tên-tiện ích quản trị có thể dùng:\n\
+Available admin utility-name:\n\
     createdb\n\
     deletedb\n\
     installdb\n\
@@ -112,24 +112,24 @@ Các tên-tiện ích quản trị có thể dùng:\n\
     genlocale\n\
     dumplocale\n\
 \n\
-%s là một công cụ cho DBMS.\n\
-Để biết thêm thông tin, truy cập http://www.cubrid.com\n
-12 tên-tiện ích '%s' không hợp lệ.\nGõ 'cubrid --help' để xem cách sử dụng.\n
-13 Lệnh '%s' không hợp lệ.\nGõ 'cubrid --help' để xem cách sử dụng.\n
-14 Không thể tải một hoặc nhiều thuộc tính bắt buộc trong tệp tin cấu hình.\n
+%s is a tool for DBMS.\n\
+For additional information, see http://www.cubrid.com\n
+12 '%s' utility-name is invalid.\nType 'cubrid --help' to see usage.\n
+13 '%s' command is invalid.\nType 'cubrid --help' to see usage.\n
+14 Could not load one or more mandatory properties in configuration files.\n
 15 @ %s %s: %s\n
 16 @ %s %s\n
-17 ++ %s '%s' đang không chạy.\n
-18 ++ %s đang không chạy.\n
-19 ++ %s '%s' đang chạy.\n
-20 ++ %s đang chạy.\n
+17 ++ %s '%s' is not running.\n
+18 ++ %s is not running.\n
+19 ++ %s '%s' is running.\n
+20 ++ %s is running.\n
 21 ++ %s %s: %s\n
-22 Thiếu một hoặc nhiều đối số.\nGõ 'cubrid --help' để xem cách sử dụng.\n
-23 tiện ích cubrid, phiên bản %s\n\
-cách sử dụng: %s <tên-tiện ích> [đối số]\n\
-Gõ '%s <tên-tiện ích>' để có trợ giúp trên một tiện ích chỉ định.\n\
+22 One or more arguments are missing.\nType 'cubrid --help' to see usage.\n
+23 cubrid utility, version %s\n\
+usage: %s <utility-name> [args]\n\
+Type '%s <utility-name>' for help on a specific utility.\n\
 \n\
-Các tiện ích của dịch vụ có thể dùng:\n\
+Available service's utilities:\n\
     service\n\
     server\n\
     broker\n\
@@ -137,7 +137,7 @@ Các tiện ích của dịch vụ có thể dùng:\n\
     heartbeat\n\
     shard\n\
 \n\
-Các tiện ích của quản trị viên có thể dùng:\n\
+Available administrator's utilities:\n\
     addvoldb\n\
     alterdbhost\n\
     backupdb\n\
@@ -166,809 +166,809 @@ Các tiện ích của quản trị viên có thể dùng:\n\
     genlocale\n\
     dumplocale\n\
 \n\
-%s là một công cụ cho DBMS.\n\
-Để biết thêm thông tin, truy cập http://www.cubrid.com\n
-24 tiện ích cubrid, phiên bản %s\n\
-cách sử dụng: %s service <lệnh>\n\
+%s is a tool for DBMS.\n\
+For additional information, see http://www.cubrid.com\n
+24 cubrid utility, version %s\n\
+usage: %s service <command>\n\
 \n\
-Lệnh có thể dùng:\n\
+Available command:\n\
     start\n\
     stop\n\
     restart\n\
     status\n
-25 tiện ích cubrid, phiên bản %s\n\
-cách sử dụng: %s server <lệnh> [đối số]\n\
+25 cubrid utility, version %s\n\
+usage: %s server <command> [args]\n\
 \n\
-Lệnh có thể dùng :\n\
-    start       [tên-cơ sở dữ liệu]\n\
-    stop        [tên-cơ sở dữ liệu]\n\
-    restart     [tên-cơ sở dữ liệu]\n\
+Available command:\n\
+    start       [database-name]\n\
+    stop        [database-name]\n\
+    restart     [database-name]\n\
     status\n\
-    acl         <status|reload> tên-cơ sở dữ liệu\n
-37 máy chủ được cấu hình cho HA.\n
-26 tiện ích cubrid, phiên bản %s\n\
-cách sử dụng: %s broker <lệnh> [đối số]\n\
+    acl         <status|reload> database-name\n
+37 The server was configured for HA.\n
+26 cubrid utility, version %s\n\
+usage: %s broker <command> [args]\n\
 \n\
-Lệnh có thể dùng :\n\
+Available command:\n\
     start\n\
     stop\n\
     restart\n\
     status      [-b] [-f] [-q] [-t] [-s <sec>] [<expr>]\n\
-    on          tên-trung gian\n\
-    off         tên-trung gian\n\
-    reset       tên-trung gian\n\
-    acl         <status|reload> [tên-trung gian]\n
-27 tiện ích cubrid, phiên bản %s\n\
-cách sử dụng: %s manager <lệnh>\n\
+    on          broker-name\n\
+    off         broker-name\n\
+    reset       broker-name\n\
+    acl         <status|reload> [broker-name]\n
+27 cubrid utility, version %s\n\
+usage: %s manager <command>\n\
 \n\
-Lệnh có thể dùng :\n\
+Available command:\n\
     start\n\
     stop\n\
     status\n
-28 tiện ích cubrid, phiên bản %s\n\
-cách sử dụng: %s heartbeat <lệnh> [đối số]\n\
+28 cubrid utility, version %s\n\
+usage: %s heartbeat <command> [args]\n\
 \n\
-Lệnh có thể dùng :\n\
-    start       [tên cơ sở dữ liệu]\n\
-    stop        [tên cơ sở dữ liệu]\n\
-    copylogdb   <start|stop> <tên cơ sở dữ> <liệu tên> node\n\
-    applylogdb  <start|stop> <tên cơ sở dữ> <liệu tên> node\n\
+Available command:\n\
+    start       [database-name]\n\
+    stop        [database-name]\n\
+    copylogdb   <start|stop> database-name node-name\n\
+    applylogdb  <start|stop> database-name node-name\n\
     status\n\
     reload\n
-31 Đối số'%s' không cần thiết.\n
-32 Thiếu một tên-cơ sở dữ liệu.\n
-33 %s: tùy chọn này không được chấp nhận.\n
-34 Tham số không hợp lệ. %s %s\n
-35 Không thể cấp phát bộ nhớ.\n
+31 '%s' argument is not needed.\n
+32 A database-name is missing.\n
+33 %s: Such option is deprecated.\n
+34 Invalid Parameter. %s %s\n
+35 Cannot allocate memory.\n
 36 The server was not configured for HA.\n
-38 Máy chủ được cấu hình cho HA không được liệt kê trong ha_db_list.\n
-39 Máy chủ được cấu hình cho HA không được liệt kê trong ha_node_list.\n
-62 cubrid utility, phiên bản %s\n\
-sử dụng: %s mảnh <lệnh> [args]\n\
+38 The server configured for HA is not listed in ha_db_list.\n
+39 The server configured for HA is not listed in ha_node_list.\n
+62 cubrid utility, version %s\n\
+usage: %s shard <command> [args]\n\
 \n\
-Lệnh khả dụng:\n\
+Available command:\n\
     start\n\
     stop\n\
     restart\n\
     status      [-b] [-f] [-t] [-s <sec>] [<expr>]\n\
-    on          tên mảnh\n\
-    off         tên mảnh\n\
-    reset       tên mảnh\n\
-    acl         <status|reload> [tên mảnh]\n
+    on          shard-name\n\
+    off         shard-name\n\
+    reset       shard-name\n\
+    acl         <status|reload> [shard-name]\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
-30 CẢNH BÁO: tùy chọn -t bị bỏ qua trong thực thi chế độ độc lập.\n
+30 WARNING: -t option is ignored in stand-alone mode execution.\n
 60 \
-backupdb: Sao lưu một cơ sở dữ liệu.\n\
-cách sử dụng: %s backupdb [TÙY CHỌN] tên-cơ sở dữ liệu\n\
+backupdb: Backup a database.\n\
+usage: %s backupdb [OPTION] database-name\n\
 \n\
-các tùy chọn hợp lệ:\n\
-  -D, --destination-path=PATH  lưu trữ bộ đĩa sao lưu đến đường dẫn thư mục; mặc định: thư mục bản ghi của cơ sở dữ liệu\n\
-  -r, --remove-archive         xóa các lưu trữ-bản ghi không cần thiết; sử dụng cẩn thận và tham khảo hướng dẫn\n\
-  -l, --level=LEVEL            cấp độ sao lưu; mặc định: cấp độ đầy\n\
-                               LEVEL được cho phép:\n\
-                                   0 - đầy\n\
-                                   1 - tăng dần 1\n\
-                                   2 - tăng dần 2\n\
-  -o, --output-file=FILE       in các thông báo sao lưu chi tiết vào FILE\n\
-  -S, --SA-mode                thực thi chế độ độc lập\n\
-  -C, --CS-mode                thực thi chế độ client-server\n\
-      --no-check               không kiểm tra tính đồng nhất của cơ sở dữ liệu; mặc định: kiểm tra\n\
-  -t, --thread-count=COUNT     số tuyến đoạn; mặc định: 0(tự động)\n\
-  -z, --compress               nén các bộ đĩa sao lưu; mặc định: không nén\n\
-  -e, --except-active-log      không bao gồm một bộ đĩa bản ghi đang hoạt động; mặc định: bao gồm\n\
-     --sleep-msecs=N           ngủ N mili giây trên tốc độ đọc 1M; mặc định: 0\n
-71 Các đối số không tương thích, \"%s\", và \"%s\"\n
+valid options:\n\
+  -D, --destination-path=PATH  store backup volumes to directory PATH; default: database's log directory\n\
+  -r, --remove-archive         delete unnecessary log-archives; use carefully and consult manual\n\
+  -l, --level=LEVEL            backup level; default: full level\n\
+                               LEVEL is allowed:\n\
+                                   0 - full\n\
+                                   1 - incremental 1\n\
+                                   2 - incremental 2\n\
+  -o, --output-file=FILE       print detailed backup messages to FILE\n\
+  -S, --SA-mode                stand-alone mode execution\n\
+  -C, --CS-mode                client-server mode execution\n\
+      --no-check               don't check a consistency of the database; default: check\n\
+  -t, --thread-count=COUNT     number of threads; default: 0(auto)\n\
+  -z, --compress               compress backup volumes; default: uncompress\n\
+  -e, --except-active-log      don't include an active log volume; default: include\n\
+      --sleep-msecs=N          sleep N millisecond per 1M read; default: 0\n
+71 Incompatible arguments, \"%s\", and \"%s\"\n
 
 
 $set 3 MSGCAT_UTIL_SET_COPYDB
-30 LỖI: Tên đích nhận trùng với tên nguồn.\n
-31 LỖI: volext-pathname không tồn tại hoặc không thể được ghi.\n
-32 LỖI: vols-tofrom-paths_file không tồn tại hoặc không thể được đọc.\n
+30 ERROR: Destination name is identical to source name.\n
+31 ERROR: volext-pathname does not exist or is not writeable.\n
+32 ERROR: vols-tofrom-paths_file does not exist or is not readable.\n
 60 \
-copydb: Sao chép một cơ sở dữ liệu.\n\
-cách sử dụng: %s copydb [TÙY CHỌN] tên-cơ sở dữ liệu-nguồn  tên-cơ sở dữ liệu-đích nhận\n\
+copydb: Copy a database.\n\
+usage: %s copydb [OPTION] src-database-name dest-database-name\n\
 \n\
-các tùy chọn hợp lệ:\n\
-      --server-name=HOST          tên HOST của server; mặc định: tên máy chủ hiện tại\n\
-  -F, --file-path=PATH            đường dẫn thư mục cho bộ đĩa cơ sở dữ liệu; mặc định: thư mục hiện tại\n\
-  -L, --log-path=PATH             đường dẫn thư mục cho bộ đĩa bản ghi; mặc định: giống với file-path\n\
-  -B, --lob-base-path=PATH        đường dẫn thư mục cơ sở cho dữ liệu LOB bên ngoài; mặc định: <file-path>/lob\n\
-  -E, --extended-volume-path=PATH đường dẫn thư mục cho bộ đĩa thông tin mở rộng; mặc định: đường dẫn giống với bộ đĩa cơ sở dữ liệu hoặc đường dẫn đã cho trong control-file\n\
-  -i, --control-file=FILE         sao chép bộ đĩa trên một số vị trí được ghi trong tệp tin kiểm soát; mặc định: không có\n\
-  -r, --replace                   thay thế một cơ sở dữ liệu hiện có; mặc định: không thay thế\n\
-  -d, --delete-source             xóa một cơ sở dữ liệu nguồn; mặc định: không xóa\n\
-      --copy-lob-path             sao chép đường dẫn kho lưu trữ bên ngoài cho dữ liệu LOB từ cơ sở dữ liệu nguồn. không thể được sử dụng với tùy chọn -B; mặc định: không sao chép\n
+valid options:\n\
+      --server-name=HOST          server's HOST name; default: current host name\n\
+  -F, --file-path=PATH            directory PATH for database volumes; default: current directory\n\
+  -L, --log-path=PATH             directory PATH for log volumes; default: same as file-path\n\
+  -B, --lob-base-path=PATH        base directory PATH for external LOB data; default: <file-path>/lob\n\
+  -E, --extended-volume-path=PATH directory PATH for extended information volumes; default: same path as the database volumes or the given path in control-file\n\
+  -i, --control-file=FILE         copying volumes over several locations written in the control file; default: none\n\
+  -r, --replace                   replace an existing database; default: don't replace\n\
+  -d, --delete-source             delete a source database; default: don't delete\n\
+      --copy-lob-path             copy external storage PATH for LOB data from source database. cannot be used with -B option; default: don't copy\n
 
 
 $set 4 MSGCAT_UTIL_SET_CREATEDB
-40 Nhóm `%s' không tồn tại\n
-41 Người dùng `%s' không tồn tại\n
-42 Lệnh `%s' không rõ\n
-43 Không thể mở tệp tin đầu ra `%s'\n
-44 Không thể gỡ bỏ cơ sở dữ liệu hiện có.\n
-45 Tạo cơ sở dữ liệu với kích cỡ %s.\n
-46 Không thể tạo cơ sở dữ liệu.\n
-47 Vấn đề với tệp tin người dùng `%s'\n
-48 '%s' phải nằm giữa %s và %s\n
-49 Giá trị %s '%s' vô hiệu.\n
+40 Group `%s' does not exist\n
+41 User `%s' does not exist\n
+42 Unknown command `%s'\n
+43 Couldn't open output file `%s'\n
+44 Couldn't removing existing database.\n
+45 Creating database with %s size.\n
+46 Couldn't create database.\n
+47 Problem with user file `%s'\n
+48 The '%s' must be between %s and %s\n
+49 The value of %s '%s' is invalid.\n
 60 \
-createdb: Tạo một cơ sở dữ liệu.\n\
-cách sử dụng: %s createdb [TÙY CHỌN] tên-cơ sở dữ liệu\n\
+createdb: Create a database.\n\
+usage: %s createdb [OPTION] database-name\n\
 \n\
-các tùy chọn hợp lệ:\n\
-      --db-volume-size=SIZE           kích cỡ của bộ đĩa thông tin đầu tiên\n\
-                                      mặc định: db_volume_size trong cubrid.conf\n\
-      --db-page-size=SIZE             kích cỡ trang cơ sở dữ liệu theo byte; mặc định: 16K\n\
-      --log-volume-size=SIZE          kích cỡ của lưu trữ bản ghi\n\
-                                      mặc định: log_volume_size trong cubrid.conf\n\
-      --log-page-size=SIZE            kích cỡ trang bản ghi theo byte; mặc định: kích cỡ trang cơ sở dữ liệu\n\
-      --comment=COMMENT               Chú thích cho cơ sở dữ liệu; mặc định: không có\n\
-  -F, --file-path=PATH                đường dẫn thư mục cho bộ đĩa cơ sở dữ liệu; mặc định: thư mục hiện tại\n\
-  -L, --log-path=PATH                 đường dẫn thư mục cho bộ đĩa bản ghi; mặc định: giống với file-path\n\
-  -B, --lob-base-path=PATH            đường dẫn thư mục cơ sở cho dữ liệu LOB bên ngoài; mặc định: <file-path>/lob\n\
-      --server-name=HOST              tên HOST của server; mặc định: tên máy chủ hiện tại\n\
-  -r, --replace                       thay thế một cơ sở dữ liệu hiện có; mặc định: không thay thế\n\
-      --more-volume-file=FILE         Tệp tin chứa các thông tin kỹ thuật để tạo ra bộ đĩa bổ sung; mặc định: không có\n\
-      --user-definition-file=FILE     Tệp tin chứa các định nghĩa người dùng; mặc định: không có\n\
-      --csql-initialization-file=FILE Tệp tin chứa SQLs cho một khởi tạo của cơ sở dữ liệu; mặc định: không có\n\
-  -o, --output-file=FILE              chuyển hướng thông báo đầu ra đến tệp tin; mặc định: không có\n\
-  -v, --verbose                       bật các thông báo trạng thái chi tiết; mặc định: tắt\n
+valid options:\n\
+      --db-volume-size=SIZE           size of first information volume\n\
+                                      default: db_volume_size in cubrid.conf\n\
+      --db-page-size=SIZE             database page SIZE in bytes; default: 16K\n\
+      --log-volume-size=SIZE          size of log archives\n\
+                                      default: log_volume_size in cubrid.conf\n\
+      --log-page-size=SIZE            log page SIZE in bytes; default: database page size\n\
+      --comment=COMMENT               COMMENT for a database; default: none\n\
+  -F, --file-path=PATH                directory PATH for database volumes; default: current directory\n\
+  -L, --log-path=PATH                 directory PATH for log volumes; default: same as file-path\n\
+  -B, --lob-base-path=PATH            base directory PATH for external LOB data; default: <file-path>/lob\n\
+      --server-name=HOST              server's HOST name; default: current host name\n\
+  -r, --replace                       replace an existing database; default: don't replace\n\
+      --more-volume-file=FILE         FILE contain specifications for creation of additional volumes; default: none\n\
+      --user-definition-file=FILE     FILE contain user definitions; default: none\n\
+      --csql-initialization-file=FILE FILE contain SQLs for an initialization of the database; default: none\n\
+  -o, --output-file=FILE              redirect output messages to FILE; default: none\n\
+  -v, --verbose                       enable verbose status messages; default: disabled\n
 
 
 $set 6 MSGCAT_UTIL_SET_DELETEDB
 60 \
-deletedb: Xóa một cơ sở dữ liệu.\n\
-cách sử dụng: %s deletedb [TÙY CHỌN] tên-cơ sở dữ liệu\n\
+deletedb: Delete a database.\n\
+usage: %s deletedb [OPTION] database-name\n\
 \n\
-các tùy chọn hợp lệ:\n\
-  -o, --output-file=FILE       chuyển hướng thông báo đầu ra đến FILE; mặc định: không có\n\
-  -d, --delete-backup          xóa bộ đĩa sao lưu; mặc định: không xóa\n
+valid options:\n\
+  -o, --output-file=FILE       redirect output messages to FILE; default: none\n\
+  -d, --delete-backup          delete backup volumes; default: don't delete\n
 
 $set 7 MSGCAT_UTIL_SET_RENAMEDB
-31 LỖI: volext-pathname không tồn tại hoặc không thể ghi.\n
-32 LỖI: vols-tofrom-paths_file không tồn tại hoặc không thể đọc.\n
+31 ERROR: volext-pathname does not exist or is not writeable.\n
+32 ERROR: vols-tofrom-paths_file does not exist or is not readable.\n
 60 \
-renamedb: Đổi tên một cơ sở dữ liệu.\n\
-cách sử dụng: %s renamedb [TÙY CHỌN] tên-cơ sở dữ liệu-nguồn tên-cơ sở dữ liệu-đích nhận\n\
+renamedb: Rename a database.\n\
+usage: %s renamedb [OPTION] src-database-name dest-database-name\n\
 \n\
-các tùy chọn hợp lệ:\n\
-  -E, --extended-volume-path=PATH đường dẫn thư mục cho bộ đĩa thông tin mở rộng; mặc định: đường dẫn giống với bộ đĩa cơ sở dữ liệu hoặc đường dẫn đã cho trong control-file\n\
-  -i, --control-file=FILE         đổi tên bộ đĩa trên một số vị trí được ghi trong tệp tin kiểm soát; mặc định: không có \n\
-  -d, --delete-backup             xóa bộ đĩa sao lưu; mặc định: không xóa\n
+valid options:\n\
+  -E, --extended-volume-path=PATH directory PATH for extended information volumes; default: same path as the database volumes or the given path in control-file\n\
+  -i, --control-file=FILE         renaming volumes over several locations written in the control file; default: none\n\
+  -d, --delete-backup             delete backup volumes; default: don't delete\n
 
 $set 9 MSGCAT_UTIL_SET_MASTER
-11 Một tiến trình  %s đã chạy.\n
-12 MASTER SERVER đang bắt đầu. \n
-13 MASTER SERVER đang tồn tại.\n
-14 Lỗi tìm tên máy chủ cục bộ\n
-15 Không thể tìm tệp tin tham số\n
-16 Không thể khởi tạo tiến trình master\n
-17 Server %s đi xuống trong %d phút
-18 Server %s được thông báo tắt.\nĐiều này có thể mất vài phút. Xin vui lòng chờ.
-19 Server %s không được tìm thấy.
-20 Master đi xuống trong %d phút\n
+11 A %s process is already running.\n
+12 MASTER SERVER starting. \n
+13 MASTER SERVER exiting.\n
+14 Error finding local host name\n
+15 Could not find parameter file\n
+16 Could not initialize master process\n
+17 Server %s going down in %d minutes
+18 Server %s notified of shutdown.\nThis may take several minutes. Please wait.
+19 Server %s not found.
+20 Master going down in %d minutes\n
 
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
-11 Không thể mở tệp tin đầu ra `%s'\n
+11 Couldn't open output file `%s'\n
 60 \
-optimizedb: Tối ưu hóa một cơ sở dữ liệu.\n\
-cách sử dụng: %s optimizedb [TÙY CHỌN] tên-cơ sở dữ liệu\n\
+optimizedb: Optimize a database.\n\
+usage: %s optimizedb [OPTION] database-name\n\
 \n\
-các tùy chọn hợp lệ:\n\
-  -n, --class-name=NAME        cập nhật thống kê cho lớp NAME; mặc định: tất cả các lớp\n
+valid options:\n\
+  -n, --class-name=NAME        update statistics for the NAME class; default: all classes\n
 
 
 $set 11 MSGCAT_UTIL_SET_RESTOREDB
-19 Dạng thức ngày tháng không hợp lệ, dạng thức hợp lệ là dd-mm-yyyy:hh:mm:ss hoặc 'backuptime'\n
-20 Restoredb bị hủy hoặc một lỗi đã phát sinh.\n
+19 Invalid date format, valid format is dd-mm-yyyy:hh:mm:ss or 'backuptime'\n
+20 Restoredb cancelled or an error occurred.\n
 60 \
-restoredb: Khôi phục một cơ sở dữ liệu.\n\
-cách sử dụng: %s restoredb [TÙY CHỌN] tên-cơ sở dữ liệu\n\
+restoredb: Restore a database.\n\
+usage: %s restoredb [OPTION] database-name\n\
 \n\
-các tùy chọn hợp lệ:\n\
-  -d, --up-to-date=DATE             khôi phục cơ sở dữ liệu về điều kiện của nó tại DATE được đưa ra. DATE được đưa ra như sau dây: dd-mm-yyyy:hh:mm:ss hoặc từ khóa 'backuptime'\n\
-      --list                        hiện một danh sách của bộ đĩa sao lưu mà không khôi phục\n\
-  -B, --backup-file-path=PATH       PATH là một thư mục của bộ đĩa sao lưu cần được khôi phục\n\
-  -l, --level=LEVEL                 cấp độ của sao lưu cần được khôi phục; xem cách sử dụng sao lưu; mặc định: 0(sao lưu đầy)\n\
-  -p, --partial-recovery            thực hiện khôi phục từng phần nếu bất kỳ lưu trữ bản ghi nào bị thiếu\n\
-  -o, --output-file=FILE            chuyển hướng thông báo đầu ra đến FILE; mặc định: không có\n\
-  -u, --use-database-location-path  khôi phục cơ sở dữ liệu và bộ đĩa bản ghi đến đường dẫn được chỉ định trong tệp tin vị trí cơ sở dữ liệu\n
+valid options:\n\
+  -d, --up-to-date=DATE             restore the database up to its condition at given DATE. DATE is given as follows: dd-mm-yyyy:hh:mm:ss or 'backuptime' keyword\n\
+      --list                        display a list of backup volumes without restoring\n\
+  -B, --backup-file-path=PATH       PATH is a directory of backup volumes to be restored\n\
+  -l, --level=LEVEL                 LEVEL of backup to be restored; see backup usage; default: 0(full backup)\n\
+  -p, --partial-recovery            perform partial recovery if any log archive is absent\n\
+  -o, --output-file=FILE            redirect output messages to FILE; default: none\n\
+  -u, --use-database-location-path  restore the database and log volumes to the path specified in the database location file\n
 
 
 $set 12 MSGCAT_UTIL_SET_LOADDB
-19 Thiếu tên cơ sở dữ liệu.\n
-20 Tệp tin '%s' không có %d dòng.\n
-21 ngắt ... \n
-22 Tải bị ngắt - giao dịch hiện tại đã được cam kết\n
-23 Tải bị ngắt - giao dịch hiện tại đã bị bỏ dở\n
-24 Không thể mở tệp tin `%s'\n
-25 \n*** Kiểm tra cú pháp ***\n\n
-26 %d lỗi được phát hiện.\n
-27 \n*** Chèn đối tượng ***\n\n
-28 Tổng cộng %8d đối tượng được chèn.\n
-29 Tổng cộng %8d đối tượng tham chiếu được chèn với nội dung mặc định.\n
-30 \n*** Cam kết giao dịch ***\n
-31 \n*** Đóng cơ sở dữ liệu ***\n
-32 Dòng %d:
-33 Lỗi phân tích `%s' như một giá trị `%s' cho thuộc tính `%s' của `%s'\n
-34 Thiếu miền cho thuộc tính %s của %s\n
-35 Đối với thuộc tính %s của %s, kiểu %s không được cho phép trong miền của tập hợp\n
-36 Đối với thuộc tính %s của %s, kiểu mong đợi %s, lấy được một tập hợp không đổi\n
-37  Đối với thuộc tính %s của %s, kiểu mong đợi %s, lấy được %s\n
-38 Không có lớp có tên %s được tham chiếu bởi thuộc tính %s của %s\n
-39 Không có lớp có tên %s, đang bỏ qua các tuple\n
-40 Không có lớp có mã định danh %d tham chiếu bởi thuộc tính %s của %s\n
-41 Lớp %s không được cho phép trong tệp tin đầu vào bộ tải\n
-42 Bị dừng với lỗi.\n
-43 CẢNH BÁO: thực thể hiện có đã được cập nhật !\n
-44 CẢNH BÁO: định nghĩa lại thực thể %d của lớp %s\n
-45 Thực thể %d của lớp %s đã được định nghĩa\n
-46 Thực thể %d của lớp %s đã được bảo lưu\n
-47 Vi phạm UNIQUE trên thuộc tính `%s', chuyển đổi đến NULL\n
-48   %d thực thể\n
-49 Lớp %s\n
-50 Mật mã:
-51 \n*** Cập nhật thống kê lớp ***\n
-52 %s gần dòng %d (văn bản là '%s')\n
-53 Lỗi Lexical
-54 dòng %d: lỗi cú pháp tại \"%s\"
-55 thiếu
-56 trong in %s
-57 Các đối số không tương thích, \"%s\", và \"%s\"\n
-58 %d thực thể được cam kết\n
-59 \nKhông thể hủy quyền phiên bản chưa tối ưu hóa của loaddb.\n
-60 Lỗi phân tích \"%s\", như kiểu %s.\n
-112   %d thực thể\r
-113 Dòng cam kết cuối : %d
-114 lỗi-kiểm soát-tệp tin
-115 tệp tin đầu vào đến lỗi kiểm soát trong quá trình tải
+19 Tha database name is missing.\n
+20 '%s' file does not have %d lines.\n
+21 interrupt ... \n
+22 Interrupted load - current transaction committed\n
+23 Interrupted load - current transaction aborted\n
+24 Can't open file `%s'\n
+25 \n*** Checking syntax ***\n\n
+26 %d errors detected.\n
+27 \n*** Inserting objects ***\n\n
+28 Total %8d objects inserted.\n
+29 Total %8d referenced objects inserted with default contents.\n
+30 \n*** Committing the transaction ***\n
+31 \n*** Closing the database ***\n
+32 Line %d:
+33 Error parsing `%s' as a `%s' value for attribute `%s' of `%s'\n
+34 Missing domain for attribute %s of %s\n
+35 For attribute %s of %s, type %s is not allowed in the domain of the set\n
+36 For attribute %s of %s, expected type %s, got a set constant\n
+37 For attribute %s of %s, expected type %s, got %s\n
+38 No class named %s referenced by attribute %s of %s\n
+39 No class named %s, ignoring tuples\n
+40 No class with identifier %d referenced by attribute %s of %s\n
+41 Class %s is not allowed in the loader input file\n
+42 Stopped with error.\n
+43 WARNING: updated existing instance !\n
+44 WARNING: redefining Instance %d of class %s\n
+45 Instance %d of class %s has already been defined\n
+46 Instance %d of class %s has already been reserved\n
+47 UNIQUE violation on attribute `%s', converted to NULL\n
+48   %d instances\n
+49 Class %s\n
+50 Password:
+51 \n*** Updating class statistics ***\n
+52 %s near line %d (text was '%s')\n
+53 Lexical error
+54 line %d: syntax error at \"%s\"
+55 missing
+56 in %s
+57 Incompatible arguments, \"%s\", and \"%s\"\n
+58 %d instances committed\n
+59 \nCannot invoke non-optimized version of loaddb.\n
+60 Error parsing \"%s\", as %s type.\n
+112   %d instances\r
+113 Last committed line : %d
+114 error-control-file
+115 input file to control error(s) during loading
 120 \
-loaddb: Nhập đối tượng và lược đồ đến cơ sở dữ liệu.\n\
-cách sử dụng: %s loaddb [TÙY CHỌN] tên-cơ sở dữ liệu\n\
+loaddb: Import objects and schemas to the database.\n\
+usage: %s loaddb [OPTION] database-name\n\
 \n\
-các tùy chọn hợp lệ:\n\
-  -u, --user=ID                 ID người dùng để truy cập cơ sở dữ liệu; mặc định: "public"\n\
-  -p, --password=PASS           mật mã người dùng; mặc định: không có \n\
-      --data-file-check-only    kiểm tra cú pháp cho tệp tin dữ liệu mà không tải; mặc định: tải sau khi kiểm tra\n\
-  -l, --load-only               tải tệp tin dữ liệu mà không kiểm tra cú pháp; mặc định: tải sau khi kiểm tra\n\
-      --estimated-size=NUMBER   số thực thể được ước tính; mặc định: 5000\n\
-  -v, --verbose                 bật thông báo trạng thái chi tiết; mặc định: tắt\n\
-  -c, --periodic-commit=COUNT   đếm chèn cho cam kết định kỳ; mặc định: không cam kết trong quá trình tải\n\
-      --no-oid                  không dùng OID\n\
-      --no-statistics           không cập nhật thống kê trong khi đang tải\n\
-  -s, --schema-file=FILE[:LINE] tạo lược đồ từ dòng LINE với tệp tin FILE\n\
-  -i, --index-file=FILE[:LINE]  tạo chỉ mục từ dòng LINE với tệp tin FILE\n\
-  -d, --data-file=FILE          tải dữ liệu với tệp tin FILE\n\
-  -t, --table=TABLE             tên bảng được thay thế cho tiêu đề đầu hạng bị thiếu trong file dữ liệu\n\
-      --error-control-file=FILE tệp tin đến (các)lỗi kiểm soát trong quá trình tải\n\
-      --ignore-class-file=FILE  tệp tin đầu vào của tên lớp mà bỏ qua tải\n
+valid options:\n\
+  -u, --user=ID                 user ID for database access; default: "public"\n\
+  -p, --password=PASS           user password; default: none\n\
+      --data-file-check-only    check syntax for data file without load; default: loading after checking\n\
+  -l, --load-only               load data file without checking syntax; default: loading after checking\n\
+      --estimated-size=NUMBER   estimated NUMBER of instances; default: 5000\n\
+  -v, --verbose                 enable verbose status messages; default: disabled\n\
+  -c, --periodic-commit=COUNT   insertion COUNT for periodic commit; default: no commit during loading\n\
+      --no-oid                  don't use OID\n\
+      --no-statistics           do not update the statistics while loading\n\
+  -s, --schema-file=FILE[:LINE] create schema from LINE with FILE\n\
+  -i, --index-file=FILE[:LINE]  create index from LINE with FILE\n\
+  -d, --data-file=FILE          load data with FILE\n\
+  -t, --table=TABLE             table name that is substituted for missing class header in data file\n\
+      --error-control-file=FILE FILE to control error(s) during loading\n\
+      --ignore-class-file=FILE  input file of class names that skip load\n
 121 \
-load_noopt: Tiện ích này không được chấp nhận. Cẩn thận khi sử dụng.\n\
-cách sử dụng: load_noopt [TÙY CHỌN] tên-cơ sở dữ liệu\n\
+load_noopt: This utility is deprecated. Be careful to use.\n\
+usage: load_noopt [OPTION] database-name\n\
 \n\
-các tùy chọn hợp lệ:\n\
-  -u, --user=ID                 ID người dùng cho truy cập cơ sở dữ liệu; mặc định: "public"\n\
-  -p, --password=PASS           mật mã người dùng; mặc định: không có \n\
-      --data-file-check-only    kiểm tra cú pháp cho tệp tin dữ liệu mà không tải; mặc định: tải sau khi kiểm tra\n\
-  -l, --load-only               tải tệp tin dữ liệu mà không kiểm tra cú pháp; mặc định: tải sau khi kiểm tra\n\
-      --estimated-size=NUMBER   số thực thể được ước tính; mặc định: 5000\n\
-  -v, --verbose                 bật thông báo trạng thái chi tiết; mặc định: tắt\n\
-  -c, --periodic-commit=COUNT   đếm chèn cho cam kết định kỳ; mặc định: không cam kết trong quá trình tải\n\
-      --no-oid                  không dùng OID\n\
-  -s, --schema-file=FILE[:LINE] tạo lược đồ từ dòng LINE với tệp tin\n\
-  -i, --index-file=FILE[:LINE]  tạo chỉ mục từ dòng LINE với tệp tin FILE\n\
-  -d, --data-file=FILE          tải dữ liệu với tệp tin FILE\n\
-      --error-control-file=FILE tệp tin đến (các) lỗi kiểm soát trong quá trình tải\n
+valid options:\n\
+  -u, --user=ID                 user ID for database access; default: "public"\n\
+  -p, --password=PASS           user password; default: none\n\
+      --data-file-check-only    check syntax for data file without load; default: loading after checking\n\
+  -l, --load-only               load data file without checking syntax; default: loading after checking\n\
+      --estimated-size=NUMBER   estimated NUMBER of instances; default: 5000\n\
+  -v, --verbose                 enable verbose status messages; default: disabled\n\
+  -c, --periodic-commit=COUNT   insertion COUNT for periodic commit; default: no commit during loading\n\
+      --no-oid                  don't use OID\n\
+  -s, --schema-file=FILE[:LINE] create schema from LINE with FILE\n\
+  -i, --index-file=FILE[:LINE]  create index from LINE with FILE\n\
+  -d, --data-file=FILE          load data with FILE\n\
+      --error-control-file=FILE FILE to control error(s) during loading\n
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
-41 giá trị cached-pages không hợp lệ.\n
-42 giá trị cached-page-size không hợp lệ.\n
-43 %d đối tượng được kết xuất.\n
-44 Lớp %s
-45 , %d thực thể.\n
-46 Chỉ %d trong số %d đối tượng được kết xuất thành công.\n
-47 thư mục đầu ra quá dài.\n
+41 cached-pages value is invalid.\n
+42 cached-page-size value is invalid.\n
+43 %d objects dumped.\n
+44 Class %s
+45 , %d instances.\n
+46 Only %d out of %d objects dumped successfully.\n
+47 output directory is too long.\n
 48 LSA : %d %d \n
 60 \
-unloaddb: Xuất đối tượng và lược đồ từ cơ sở dữ liệu.\n\
-cách sử dụng: %s unloaddb [TÙY CHỌN] tên-cơ sở dữ liệu\n\
+unloaddb: Export objects and schemas from the database.\n\
+usage: %s unloaddb [OPTION] database-name\n\
 \n\
-các tùy chọn hợp lệ:\n\
-  -i, --input-class-file=FILE tệp tin đầu vào của tên bảng; mặc định: kết xuất tất cả các lớp\n\
-      --include-reference     bao gồm các bảng đã tham chiếu; với tùy chọn -i; mặc định: tắt\n\
-      --input-class-only      chỉ bao gồm lớp được chỉ định; với tùy chọn -i; mặc định: tắt\n\
-      --lo-count=COUNT        tệp tin lo đếm trên một thư mục; mặc định: 0\n\
-      --estimated-size=NUMBER số thực thể được ước tính; mặc định: tự động tính toán\n\
-      --cached-pages=NUMBER   số trang lưu ẩn; mặc định: 100\n\
-  -O, --output-path=PATH      đường dẫn của thư mục đầu ra; mặc định: thư mục đang làm việc\n\
-  -s, --schema-only           chỉ kết xuất lược đồ; mặc định: lược đồ và đối tượng\n\
-  -d, --data-only             chỉ kết xuất đối tượng; mặc định: lược đồ và đối tượng\n\
-      --output-prefix=PREFIEX prefix cho tệp tin đầu ra; mặc định: tên cơ sở dữ liệu\n\
-      --hash-file=FILE        tệp tin cho hash; mặc định: tạo bởi tmpnam()\n\
-  -v, --verbose               bật thông báo trạng thái chi tiết; mặc định: tắt\n\
-      --use-delimiter         dùng '"' tại nơi mã định danh bắt đầu và kết thúc; mặc định: không dùng\n\
-  -S, --SA-mode               thực thi chế độ độc lập\n\
-  -C, --CS-mode               thực thi chế độ client-server\n\
-      --datafile-per-class    tạo một tệp tin đối tượng cho mỗi lớp; mặc định: tắt\n
+valid options:\n\
+  -i, --input-class-file=FILE input FILE of table names; default: dump all classes\n\
+      --include-reference     include referenced tables; with -i option; default: disabled\n\
+      --input-class-only      include specified class only; with -i option; default: disabled\n\
+      --lo-count=COUNT        lo file COUNT per a directory; default: 0\n\
+      --estimated-size=NUMBER estimated NUMBER of instances; default: auto computed\n\
+      --cached-pages=NUMBER   NUMBER of cached pages; default: 100\n\
+  -O, --output-path=PATH      PATH of output directory; default: working directory\n\
+  -s, --schema-only           dump schema only; default: schema and objects\n\
+  -d, --data-only             dump objects only; default: schema and objects\n\
+      --output-prefix=PREFIEX PREFIX for output files; default: the database name\n\
+      --hash-file=FILE        FILE for hash; default: generate by tmpnam()\n\
+  -v, --verbose               enable verbose status messages; default: disabled\n\
+      --use-delimiter         use '"' where an identifier begins and ends; default: don't use\n\
+  -S, --SA-mode               stand-alone mode execution\n\
+  -C, --CS-mode               client-server mode execution\n\
+      --datafile-per-class    create a object file for each class; default: disabled\n
 
 
 
 $set 14 MSGCAT_UTIL_SET_COMPACTDB
-11 \nQua 1\n\n
-12 %d đối tượng được xử lý.\n
-13 \nQua 2\n\n
-14 Lớp %s\n
+11 \nPass 1\n\n
+12 %d objects processed.\n
+13 \nPass 2\n\n
+14 Class %s\n
 15 oid:  %d|%d|%d,\n
-16 %d thực thể.\n
-17 Đang cập nhật đối tượng.\n
+16 %d instances.\n
+17 Updating object.\n
 18 ref_oid:  %d.%d.%d, ref_class_oid:  %d.%d.%d\n
-19 Không thể chuyển đổi đối tượng\n
-20 Thiếu tệp tin class heap\n
-21 Không thể cập nhật đối tượng\n
-22 Chỉ %d trong số %d đối tượng được xử lý thành công.\n
-23 COMPACTDB đã được bắt đầu.\n
-24 Số trang phải ở giữa %d và %d.\n
+19 Couldn't transform object\n
+20 Missing class heap file\n
+21 Couldn't update object\n
+22 Only %d out of %d objects processed successfully.\n
+23 COMPACTDB already started.\n
+24 The number of pages must be between %d and %d.\n
 25 The instance lock timeout must be between %d and %d.\n
-26 Tổng đối tượng: %d\n
-27 Đối tượng thất bại: %d\n
-28 Đối tượng sửa đổi: %d\n
-29 Đối tượng lớn: %d\n
-30 Đại diện lớp cũ bị xóa khỏi catalog.\n
-31 Đại diện lớp cũ được bảo lưu trong catalog.\n
-32 Không thể thiết lập cấp độ cô lập.\n
-33 Không thể nén cơ sở dữ liệu.\n
+26 Total objects: %d\n
+27 Failed objects: %d\n
+28 Modified objects: %d\n
+29 Big objects: %d\n
+30 Old class representations deleted from catalog.\n
+31 Old class representations preserved in catalog.\n
+32 Can't set isolation level.\n
+33 Couldn't compact database.\n
 34 The class lock timeout must be between %d and %d.\n
-35 Lớp bị khóa ... Xử lý chưa hoàn thành ...\n
-36 Lớp chưa được xử lý ...\n
-37 Lỗi xử lý ... Xử lý chưa hoàn thành ...\n
-38 Không có gì để xử lý ...\n
-39 Tham số không hợp lệ ...\n
-40 Tên lớp không biết ...\n
+35 Locked class... Incomplete processing...\n
+36 Unprocessed class...\n
+37 Process error... Incomplete processing...\n
+38 Nothing to process...\n
+39 Invalid parameters...\n
+40 Unknown class name...\n
 41 The unused class OIDs and pages have been reclaimed.\n
 42 Reclaiming of OIDs and pages skipped.\n
-43 Lỗi khi xử lý lớp, lớp đã bị bỏ qua.\n
-44 \nQua 3\n\n
-45 Nén heap thất bại ...\n
-46 Nén heap thành công ...\n
+43 Error while processing class, class skipped.\n
+44 \nPass 3\n\n
+45 Heap compact failed...\n
+46 Heap compact succedeed...\n
 60 \
-compactdb: Không gian chưa dùng còn trống trong một cơ sở dữ liệu.\n\
-cách sử dụng: %s compactdb [TÙY CHỌN] tên-cơ sở dữ liệu [class_name1 class_name2 ...]\n\
+compactdb: Free unused space in a database.\n\
+usage: %s compactdb [OPTION] database-name [class_name1 class_name2 ...]\n\
 \n\
-các tùy chọn hợp lệ:\n\
-  -v, --verbose                     bật thông báo trạng thái chi tiết; mặc định: tắt\n\
-  -i, --input-class-file=FILE       tệp tin đầu vào của tên bảng\n\
-                                    danh sách class_name phải là rỗng\n\
-                                    mặc định: nén tất cả các lớp\n\
-                                    chỉ bật trong CS-mode\n\
-  -p, --pages-commited-once=NUMBER  số trang tối đa để cam kết một lần\n\
-                                    mặc định: 10\n\
-                                    chỉ bật trong CS-mode\n\
-  -S, --SA-mode                     thực thi chế độ độc lập\n\
-  -C, --CS-mode                     thực thi chế độ client-server\n\
-  -d, --delete-old-repr             xóa đại diện lớp cũ khỏi catalog; mặc định: tắt\n\
-  class_name_list                   chỉ bật trong CS-mode\n\
-  -I, --Instance-lock-timeout       thời gian chờ cho khóa thực thể\n\
-  -c, --class-lock-timeout          thời gian chờ cho khóa lớp\n
+valid options:\n\
+  -v, --verbose                     enable verbose status messages; default: disabled\n\
+  -i, --input-class-file=FILE       input FILE of table names\n\
+                                    class_name list must be empty\n\
+                                    default: compact all classes\n\
+                                    enabled in CS-mode only\n\
+  -p, --pages-commited-once=NUMBER  maximum number of pages to commit once\n\
+                                    default: 10\n\
+                                    enabled in CS-mode only\n\
+  -S, --SA-mode                     stand-alone mode execution\n\
+  -C, --CS-mode                     client-server mode execution\n\
+  -d, --delete-old-repr             delete old class representations from catalog; default: disabled\n\
+  class_name_list                   enabled in CS-mode only\n\
+  -I, --Instance-lock-timeout       timeout for instance lock\n\
+  -c, --class-lock-timeout          timeout for class lock\n
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
-21 CUBRID master đang chạy trên máy chủ %s \nđã được bắt đầu tại %s
-22 đã phục vụ %d yêu cầu. %d server(s) đang chạy.\n
-23 SHUTTING DOWN trong %s phút\n
+21 The CUBRID master running on host %s \nwas started at %s
+22 has serviced %d requests. %d server(s) running.\n
+23 SHUTTING DOWN in %s minutes\n
 24 %s
-25 Tên của server để shutdown :
-26 Còn bao nhiêu phút cho đến khi shutdown? :
+25 Name of server to shutdown :
+26 How many minutes until shutdown? :
 27 \
-cub_commdb: Tính năng này không được chấp nhận. Dùng lệnh 'cubrid' để thay thế.\n\
-cách sử dụng: cub_commdb [TÙY CHỌN]\n\
+cub_commdb: This utility is deprecated. Use 'cubrid' command instead.\n\
+usage: cub_commdb [OPTION]\n\
 \n\
-các tùy chọn hợp lệ:\n\
-  -P, --server-list                in các tiến trình server\n\
-  -O, --all-list                   in tất cả các tiến trình\n\
-  -S, --shutdown-server=NAME       tắt server cơ sở dữ liệu NAME\n\
-  -A, --shutdown-all               tắt tất cả tiến trình\n\
-  -c, --server-mode=NAME           in chế độ HA của server cơ sở dữ liệu NAME\n\
-  -N, --node-list                  liệt kê các nút quản lý bởi CUBRID heartbeat\n\
-  -L, --process-list               liệt kê tiến trình cục bộ quản lý bởi CUBRID heartbeat\n\
-  -D, --dereg-process=PID          thoát tiến trình đích và gỡ bỏ nó từ các mục tiến trình được quản lý\n\
-  -F, --reconfig-node-list         áp dụng cấu hình CUBRID heartbeat vừa được thay đổi\n\
-  -U, --deactivate-heartbeat       bỏ kích hoạt tính năng CUBRID heartbeat và gỡ bỏ nút hiện tại từ nhóm nút\n\
-  -T, --activate-heartbeat         kích hoạt tính năng CUBRID heartbeat và nút hiện tại trở thành một thành viên của nhóm nút\n\
-  -V, --verbose                    bật thông báo trạng thái chi tiết; mặc định: tắt\n
-28 Xin lỗi, câu lệnh không rõ: %s\n
-29 Không thể lấy tên máy chủ cho máy chủ cục bộ - bỏ dở\n
-30 Không thể tìm thấy tệp tin tham số\n
-31 Không thể kết nối đến server chủ trên %s\n
-32 Còn bao nhiêu phút cho đến khi tắt? :
-33 Master sẽ tắt trong %d phút\n
-34 Lỗi nhận dữ liệu từ máy khách
-35 server cơ sở dữ liệu %s hiện tại đang không chạy
-36 không thể thực thi shell (%s) cho %s, %s
-37 xử lý fork %s, trả về %d, %s
-38 không thể thực thi %s
+valid options:\n\
+  -P, --server-list                print server processes\n\
+  -O, --all-list                   print all processes\n\
+  -S, --shutdown-server=NAME       shutdown NAME database server\n\
+  -A, --shutdown-all               shutdown all processes\n\
+  -c, --server-mode=NAME           print NAME database server's HA mode\n\
+  -N, --node-list                  list nodes managed by CUBRID heartbeat\n\
+  -L, --process-list               list local process managed by CUBRID heartbeat\n\
+  -D, --dereg-process=PID          exit the target process and remove it from managed process entries\n\
+  -F, --reconfig-node-list         apply CUBRID heartbeat configuration recently changed\n\
+  -U, --deactivate-heartbeat       deactivate CUBRID heartbeat feature and remove the current node from node group\n\
+  -T, --activate-heartbeat         activate CUBRID heartbeat feature and current node becomes a member of node group\n\
+  -V, --verbose                    enable verbose status messages; default: disabled\n
+28 Sorry, unknown command: %s\n
+29 Could not get host name for local host - aborting\n
+30 Could not find parameter file\n
+31 Could not connect to master server on %s\n
+32 How many minutes until shutdown? :
+33 Master will shutdown in %d minutes\n
+34 Error receiving data from client
+35 the database server %s is not currently running
+36 can't exec shell (%s) for %s, %s
+37 process fork %s, returned %d, %s
+38 can't execute %s
 
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \
-emergency_patchlog: Vá lỗi một cơ sở dữ liệu trong trường hợp khẩn cấp.\n\
-cách sử dụng: %s emergency_patchlog [TÙY CHỌN] tên-cơ sở dữ liệu\n\
+emergency_patchlog: Patch a database in case of emergency.\n\
+usage: %s emergency_patchlog [OPTION] database-name\n\
 \n\
-các tùy chọn hợp lệ:\n\
-  -r, --recreate-log           tạo lại tệp tin bản ghi; sử dụng cẩn thận\n
+valid options:\n\
+  -r, --recreate-log           recreate log files; use carefully\n
 
 
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB
-20 Giá trị sai %d cho npages\n
-21 Giá trị sai '%s' cho mục đích lưu trữ bộ đĩa.\n
+20 Wrong value %d for npages\n
+21 Wrong value '%s' for volume storage purpose.\n
 60 \
-addvoldb: Thêm một tệp tin bộ đĩa cho cơ sở dữ liệu.\n\
-cách sử dụng: %s addvoldb [TÙY CHỌN] tên-cơ sở dữ liệu\n\
+addvoldb: Add a volume-file for the database.\n\
+usage: %s addvoldb [OPTION] database-name\n\
 \n\
-các tùy chọn hợp lệ:\n\
-      --db-volume-size=SIZE    kích cỡ của bộ đĩa bổ sung; mặc định: db_volume_size trong cubrid.conf\n\
-  -n, --volume-name=NAME       tên của bộ đĩa thông tin; mặc định: tạo như "db"_ext1)\n\
-  -F, --file-path=PATH         đường dẫn cho thêm tệp tin bộ đĩa; mặc định: thư mục đang làm việc\n\
-      --comment=COMMENT        Chú thích cho thêm tệp tin bộ đĩa; mặc định: không có \n\
-  -p, --purpose=PURPOSE        Mục đích cho thêm tệp tin bộ đĩa; được phép:\n\
-                                       DATA - chỉ cho dữ liệu\n\
-                                       INDEX - chỉ cho thư mục\n\
-                                       TEMP - chỉ cho tạm thời\n\
-                                       GENERIC - cho tất cả mục đích\n\
-  -S, --SA-mode                thực thi chế độ độc lập\n\
-  -C, --CS-mode                thực thi chế độ client-server\n
+valid options:\n\
+      --db-volume-size=SIZE    size of additional volume; default: db_volume_size in cubrid.conf\n\
+  -n, --volume-name=NAME       NAME of information volume; default: generate such as "db"_ext1)\n\
+  -F, --file-path=PATH         PATH for adding volume file; default: working directory\n\
+      --comment=COMMENT        COMMENT for adding volume file; default: none\n\
+  -p, --purpose=PURPOSE        PURPOSE for adding volume file; allowed:\n\
+                                       DATA - only for data\n\
+                                       INDEX - only for indices\n\
+                                       TEMP - only for temporary\n\
+                                       GENERIC - for all purposes\n\
+  -S, --SA-mode                stand-alone mode execution\n\
+  -C, --CS-mode                client-server mode execution\n
 
 $set 18 MSGCAT_UTIL_SET_CHECKDB
-20 Một vài sự không đồng nhất được phát hiện trong cơ sở dữ liệu của bạn.\n Xin vui lòng tham khảo error_log_file %s để biết thêm thông tin.\n
-21 %s: Không thể tìm thấy lớp. Nó sẽ bị bỏ qua.\n
+20 Some inconsistencies were detected in your database.\n Please consult error_log_file %s for additional information.\n
+21 %s: Cannot find the class. It will be ommitted.\n
 60 \
-checkdb: Kiểm tra tính đồng nhất của cơ sở dữ liệu.\n\
-cách sử dụng: %s checkdb [TÙY CHỌN] tên-cơ sở dữ liệu [class_name1 class_name2 ...]\n\
+checkdb: Check consistency of the database.\n\
+usage: %s checkdb [OPTION] database-name [class_name1 class_name2 ...]\n\
 \n\
-các tùy chọn hợp lệ:\n\
-  -S, --SA-mode                thực thi chế độ độc lập\n\
-  -C, --CS-mode                thực thi chế độ client-server\n\
-  -r, --repair                 sửa chữa khi tìm thấy sự không đồng nhất\n\
-  -i, --input-class-file=FILE  tệp tin đầu vào của tên lớp\n\
-                               mặc định: kiểm tra tất cả các lớp\n
+valid options:\n\
+  -S, --SA-mode                stand-alone mode execution\n\
+  -C, --CS-mode                client-server mode execution\n\
+  -r, --repair                 repair when inconsistency is found\n\
+  -i, --input-class-file=FILE  input FILE of class names\n\
+                               default: check all classes\n
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
-15 Mô tả không gian cho cơ sở dữ liệu '%s' với kích cỡ trang %s. (kích cỡ trang bản ghi: %s)\n\n
+15 Space description for database '%s' with pagesize %s. (log pagesize: %s)\n\n
 16 %5d %8s  %s %s  %s\n
-17 Không thể mở tệp tin đầu vào `%s'\n
-18 Mô tả không gian cho bộ đĩa tạm thời cho cơ sở dữ liệu '%s' với kích cỡ trang %s.\n\n
-19 id bộ đĩa  Mục đích  tổng số trang  trang còn trống  Tên bộ đĩa\n\n
-20 id bộ đĩa  Mục đích  tổng dung lượng  dung lượng còn trống  Tên bộ đĩa\n\n
-21 Mô tả không gian LOB %s \n\n
-30 Mô tả tóm tắt không gian cho cơ sở dữ liệu '%s' với kích cỡ trang %s. (kích cỡ bản ghi: %s)\n\n
-31 Mục đích    tổng số trangt  số trang đã dùng   số trang còn trống  đếm bộ đĩa\n
-32 Mục đích     tổng dung lượng   dung lượng đã dùng   dung lượng còn trống  đếm bộ đĩa\n
+17 Couldn't open output file `%s'\n
+18 Space description for temporary volumes for database '%s' with pagesize %s.\n\n
+19 Volid  Purpose  total_pages  free_pages  Vol Name\n\n
+20 Volid  Purpose   total_size   free_size  Vol Name\n\n
+21 LOB space description %s \n\n
+30 Summarized space description for database '%s' with pagesize %s. (log pagesize: %s)\n\n
+31 Purpose    total_pages  used_pages  free_pages  volume_count\n
+32 Purpose     total_size   used_size   free_size  volume_count\n
 33 %10s %s %s %s %10d\n
 60 \
-spacedb: Hiển thị cách sử dụng/không gian trống của cơ sở dữ liệu.\n\
-cách sử dụng: %s spacedb [TÙY CHỌN] tên-cơ sở dữ liệu\n\
+spacedb: Display usage/free space of the database.\n\
+usage: %s spacedb [OPTION] database-name\n\
 \n\
-các tùy chọn hợp lệ:\n\
-  -o, --output-file=FILE       chuyển hướng thông báo đầu ra đến tệp tin FILE; mặc định: không có\n\
-  -S, --SA-mode                thực thi chế độ độc lập\n\
-  -C, --CS-mode                thực thi chế độ client-server\n\
+valid options:\n\
+  -o, --output-file=FILE       redirect output messages to FILE; default: none\n\
+  -S, --SA-mode                stand-alone mode execution\n\
+  -C, --CS-mode                client-server mode execution\n\
       --size-unit={PAGE|M|G|T|H}\n\
-                               thiết lập đơn vị hiển thị (page, mega, giga, tera, human readable); mặc định: H\n\
-  -s, --summarize              chỉ hiển thị một tóm tắt cho mỗi mục đích ổ\n
+                               set the display unit (page, mega, giga, tera, human readable); default: H\n\
+  -s, --summarize              display only a summary for each volume purpose\n
 
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
-15 Số trang được ước tính = %d\n
+15 Estimated Number of Pages = %d\n
 60 \
-estimate_data: Ước tính kích cỡ của dữ liệu.\n\
-cách sử dụng: %s estimate_data number-of-instances average-instance-size number-of-attributes variable-number-of-attributes\n
+estimate_data: Estimate size of data.\n\
+usage: %s estimate_data number-of-instances average-instance-size number-of-attributes variable-number-of-attributes\n
 
 
 $set 21 MSGCAT_UTIL_SET_ESTIMATEDB_INDEX
-15 Kiểu khóa chỉ mục sai được chỉ định = %s\n
-16 Độ dài khóa trung bình sai được chỉ định = %d when precision = %d\n
-17 Đối số sai được chỉ định\n
-20 Tổng số trang chỉ mục được ước tính = %d\n (Khi chỉ mục được tạo, sai khi trường hợp đã được cư trú.)\n
-21 Tổng số trang chỉ mục được ước tính = %d\n (Khi chỉ mục được tạo, trước khi trường hợp đã được cư trú (trường hợp chung))\n
-22 Tổng số trang chỉ mục được ước tính = %d\n (Khi chỉ mục được tạo, trước khi trường hợp đã được cư trú (trường hợp xấu nhất))\n
-23 Đối với đầu vào đã cho ...\n
-24 Tổng số thực thể: %d\n
-25 Số các khóa khác nhau : %d\n
-26 Kích cỡ khóa trung bình         : %d\n
-27 Kiểu khóa                : %s\n\n
+15 Bad index key type specified = %s\n
+16 Bad average key length specified = %d when precision = %d\n
+17 Bad arguments specified\n
+20 Estimated number of total index pages = %d\n (When index created, after instances have been populated.)\n
+21 Estimated number of total index pages = %d\n (When index created, before instances have been populated (average case))\n
+22 Estimated number of total index pages = %d\n (When index created, before instances have been populated (worst case))\n
+23 For the given input...\n
+24 Total number of instances: %d\n
+25 Number of different keys : %d\n
+26 Average key size         : %d\n
+27 Key Type                 : %s\n\n
 60 \
-estimate_index: Ước tính kích cỡ của một chỉ mục.\n\
-cách sử dụng: %s estimate_index number-of-instances number-of-different-keys average-key-size key-type\n
+estimate_index: Estimate size of an index.\n\
+usage: %s estimate_index number-of-instances number-of-different-keys average-key-size key-type\n
 
 $set 22 MSGCAT_UTIL_SET_INSTALLDB
 60 \
-installdb: Cài đặt một cơ sở dữ liệu.\n\
-cách sử dụng: %s installdb [TÙY CHỌN] tên-cơ sở dữ liệu\n\
+installdb: Install a database.\n\
+usage: %s installdb [OPTION] database-name\n\
 \n\
-các tùy chọn hợp lệ:\n\
-      --server-name=HOST       tên máy chủ server; mặc định: tên máy chủ hiện tại\n\
-  -F, --file-path=PATH         đường dẫn thư mục cho bộ đĩa cơ sở dữ liệu; mặc định: thư mục hiện tại\n\
-  -L, --log-path=PATH          đường dẫn thư mục cho bộ đĩa bản ghi; mặc định: giống với đường dẫn tệp tin\n
+valid options:\n\
+      --server-name=HOST       server HOST name; default: current host name\n\
+  -F, --file-path=PATH         directory PATH for database volumes; default: current directory\n\
+  -L, --log-path=PATH          directory PATH for log volumes; default: same as file-path\n
 
 $set 23 MSGCAT_UTIL_SET_MIGDB
-1 OID lớp tạm thời OID\n
-2 Không thể in giá trị elo\n
-3 Lỗi truy cập long object cho di cư\n
-4 Lỗi mở tệp tin đầu ra cho di cư long object \n
-5 Lỗi đọc\n
-6 Lỗi ghi\n
-7 Lỗi mở tệp tin đầu vào ELO "%s"\n
-8 LỚP:
-9 băm tên tập tin
-10 Tên:                                %s\n
-11 Kích cỡ:                            %d\n
-12 Kích cỡ trang:                      %d\n
-13 Kích cỡ dữ liệu:                    %d\n
-14 Kích cỡ mục nhập:                   %d\n
-15 Mục nhập trên trang:                %d\n
-16 Trang lưu ẩn:                       %d\n
-17 Số mục nhập:                        %d\n
-18 Số xung đột:                        %d\n
-19 Hash filename:                      %s\n
-20 Mục nhập tràn tiếp theo:            %d\n
-21 Kiểu khóa:                          %s\n
-22 Địa chỉ của đề mục trang:           %x\n
-23 Địa chỉ của đề mục trang cuối cùng: %x\n
-24 Địa chỉ của đề mục trang trống:     %x\n
-25 Địa chỉ của page bitmap:            %x\n
-26 Kích cỡ Page bitmap:                %d\n
+1 Temporary class OID\n
+2 Can't print elo values\n
+3 Error accessing long object for migration\n
+4 Error opening output file for long object migration \n
+5 Read error\n
+6 Write error\n
+7 Error opening ELO input file "%s"\n
+8 CLASSES:
+9 hash filename
+10 Name:                         %s\n
+11 Size:                         %d\n
+12 Page size:                    %d\n
+13 Data size:                    %d\n
+14 Entry size:                   %d\n
+15 Entries per page:             %d\n
+16 Cached pages:                 %d\n
+17 Number of entries:            %d\n
+18 Number of collisions:         %d\n
+19 Hash filename:                %s\n
+20 Next overflow entry:          %d\n
+21 Key type:                     %s\n
+22 Address of page headers:      %x\n
+23 Address of last page header:  %x\n
+24 Address of free page header:  %x\n
+25 Address of page bitmap:       %x\n
+26 Page bitmap size:             %d\n
 
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 60 \
-diagdb: Kết xuất một cơ sở dữ liệu.\n\
-cách sử dụng: %s diagdb [TÙY CHỌN] tên-cơ sở dữ liệu\n\
+diagdb: Dump a database.\n\
+usage: %s diagdb [OPTION] database-name\n\
 \n\
-các tùy chọn hợp lệ:\n\
-  -d, --dump-type=TYPE         Kiểu của kết xuất\n\
-                               -1 kết xuất tất cả\n\
-                                1 kết xuất bảng tệp tin\n\
-                                2 kết xuất dung lượng tệp tin\n\
-                                3 kết xuất dung lượng heap\n\
-                                4 kết xuất dung lượng chỉ mục\n\
-                                5 kết xuất classnames\n\
-                                6 kết xuất disk bitmaps\n\
-                                7 kết xuất catalog\n\
-                                8 kết xuất bản ghi\n\
-                                9 kết xuất heap\n
+valid options:\n\
+  -d, --dump-type=TYPE         TYPE of dump\n\
+                               -1 dump all\n\
+                                1 dump file tables\n\
+                                2 dump file capacities\n\
+                                3 dump heap capacities\n\
+                                4 dump index capacities\n\
+                                5 dump classnames\n\
+                                6 dump disk bitmaps\n\
+                                7 dump catalog\n\
+                                8 dump log\n\
+                                9 dump heap\n
 
 
 $set 25 MSGCAT_UTIL_SET_LOCKDB
-15 Không thể mở tệp tin đầu ra `%s'\n
-59 lockdb không thể chạy như chế độ độc lập.\n
+15 Couldn't open output file `%s'\n
+59 lockdb cannot run as standalone mode.\n
 60 \
-lockdb: Hiển thị trạng thái khóa của cơ sở dữ liệu.\n\
-cách sử dụng: %s lockdb [TÙY CHỌN] tên-cơ sở dữ liệu\n\
+lockdb: Display lock-status of the database.\n\
+usage: %s lockdb [OPTION] database-name\n\
 \n\
-các tùy chọn hợp lệ:\n\
-  -o, --output-file=FILE       chuyển hướng tệp tin đầu ra đến tệp tin FILE; mặc định: không có\n
+valid options:\n\
+  -o, --output-file=FILE       redirect output messages to FILE; default: none\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
-20 Chỉ một đối số phải được đưa ra trong các: tran-index, user, host, progname\n
-21 Nhập mật mã DBA:
-22 Chỉ mục giao dịch      Tên người dùng      Tên máy chủ      Id tiến trình      Tên chương trình\n
+20 Only one argument must be given among: tran-index, user, host, progname\n
+21 Enter DBA password:
+22 Tran index      User name      Host name      Process id      Program name\n
 23 -------------------------------------------------------------------------------\n
 24 %7d(%1c) %14s %14s %15d %17s\n
-25 Không có giao dịch nào\n
-26 Không có giao dịch nào với giá trị đối số đã chỉ định.\n
-27 Sẵn sàng xóa bỏ các giao dịch sau đây:\n\n
-28 Bạn có muốn tiếp tuc không ? (Y/N)
-29 Xóa bỏ giao dịch kết nối với chỉ mục giao dịch %d\n
-30 Thất bại xóa bỏ các giao dịch sau đây\n\n
-31 Giao dịch chưa được hoàn thành, nhưng nó có thể thực hiện việc quay lui lại.\n Xin vui lòng chờ một lát và thử lại sau đó nếu cần.\n
-59 killrtan không thể chạy như chế độ độc lập.\n
+25 There are no transactions\n
+26 There is not a transaction with the specified argument values.\n
+27 Ready to kill the following transactions:\n\n
+28 Do you wish to proceed ? (Y/N)
+29 Killing transaction associated with transaction index %d\n
+30 Killing of the following transactions has failed\n\n
+31 The transaction does not finish yet, but it may be doing the rollback work.\n Please, wait a second and try it later if needed.\n
+59 killrtan cannot run as standalone mode.\n
 60 \
-killtran: Quản lý giao dịch của cơ sở dữ liệu.\n\
-cách sử dụng: %s killtran [TÙY CHỌN] tên-cơ sở dữ liệu\n\
+killtran: Manage transactions of the database.\n\
+usage: %s killtran [OPTION] database-name\n\
 \n\
-các tùy chọn hợp lệ:\n\
-  -i, --kill-transaction-index=INDEX xóa bỏ giao dịch với chỉ mục INDEX giao dịch\n\
-      --kill-user-name=ID            xóa bỏ tất cả giao dịch với ID người dùng\n\
-      --kill-host-name=HOST          xóa bỏ tất cả giao dịch với client HOST\n\
-      --kill-program-name=NAME       xóa bỏ tất cả giao dịch với tên chương trình máy khách NAME\n\
-  -p, --dba-password=PASS            mật mã cho người dùng DBA; sẽ nhắc nếu không chỉ định\n\
-  -d, --display-information          hiển thị thông tin về các giao dịch đang hoạt động\n\
-  -f, --force                        xóa bỏ giao dịch mà không có nhắc nhở kiểm chứng\n
+valid options:\n\
+  -i, --kill-transaction-index=INDEX kill transaction with transaction INDEX\n\
+      --kill-user-name=ID            kill all transactions with user ID\n\
+      --kill-host-name=HOST          kill all transactions with client HOST\n\
+      --kill-program-name=NAME       kill all transactions with client program NAME\n\
+  -p, --dba-password=PASS            password of the DBA user; will prompt if don't specify\n\
+  -d, --display-information          display information about active transactions\n\
+  -f, --force                        kill the transaction without a prompt for verification\n
 
 
 $set 31 MSGCAT_UTIL_SET_MIGRATE
-1 tên-cơ sở dữ liệu
-2 đối số được đòi hỏi, mặc định: không có
-3 kiểm tra khả năng tương thích
-4 chỉ kiểm tra khả năng tương thích
-5 đích nhận-sao lưu
-6 một đường dẫn thư mục hoặc device cho đích nhận của bộ đĩa sao lưu
-20 cơ sở dữ liệu '%s' không tồn tại.
-21 '%s' không thể được di cư đến %s, bởi vì phiên bản DB của nó quá thấp.\n
-22 '%s' không cần thiết phải di cư.\n
-23 '%s' cần được di cư.\n
-24 Sao lưu được được khuyến nghị sau khi di cư. Bạn có muốn sao lưu cơ sở dữ liệu của bạn bây giờ không? (y/n):
-25 Chúng tôi khuyến nghị sao lưu cơ sở dữ liệu mới của bạn với lệnh backupdb sau khi di cư.
-26 \n*** CẢNH BÁO: Sao lưu cơ sở dữ liệu của bạn trước khi bạn bắt đầu di cư đến %s ***\n\nĐể khôi phục các lỗi có thể xảy ra trong quá trình di cư, chúng tôi khuyến nghị sao lưu cơ sở dữ liệu của bạn.\nBạn đã sao lưu cơ sở dữ liệu của bạn chưa? (y/n):
-27 \n1. Chạy backupdb \n2. Nhập đường dẫn sao lưu mới cho cơ sở dữ liệu mới.(đường dẫn hiện tại: %s)\n3. Thoát \n
-28 \nĐường dẫn sao lưu mới cho cơ sở dữ liệu:
-29 \nDi cư và sao lưu đã được hoàn tất thành công.
-30 Sao lưu thất bại. Xin vui lòng thử lại sao lưu cơ sở dữ liệu của bạn.
-31 \n\n*** CẢNH BÁO : Một khi di cư hoàn tất, bạn không thể khôi phục lại cơ sở dữ liệu với bộ đĩa sao lưu trước đây.\nLưu ý rằng phiên bản trước đó của tệp tin sao lưu có thể được khôi phục lại chỉ trên phiên bản tương ứng của restotedb.\nXin vui lòng kiểm tra bộ đĩa sao lưu trước đây được giữ an toàn.\n
+1 database-name
+2 required argument, no default
+3 compatibility-check
+4 compatibility check only
+5 backup-destination
+6 a directory path or device for the destination of the backup volumes
+20 database '%s' does not exist.
+21 '%s' can't be migrated to %s, because its DB version is too low.\n
+22 '%s' don't need to be migrated.\n
+23 '%s' needs to be migrated.\n
+24 Backup is recommended after migration. Do you want to back up your database now? (y/n):
+25 We recommend to back up your new database with backupdb command after migration.
+26 \n*** WARNING: Backup your database before you start migrating to %s ***\n\nTo recover errors which might be occurred during migration, we strongly recommend to back up your database.\nHave you already backed up your database? (y/n):
+27 \n1. Run backupdb \n2. Enter the new backup path for the new database.(current path: %s)\n3. Exit \n
+28 \nThe new backup path for the database:
+29 \nMigration and backup have been successfully completed.
+30 Backup failed. Please, retry to back up your database.
+31 \n\n*** WARNING : Once the migration is completed, you cannot restore the database with the former backup volumes.\nNotice that the previous version of backup files can be restored only on the corresponding version of restoredb.\nPlease, check the former backup volumes is securely kept.\n
 
 $set 33 MSGCAT_UTIL_SET_ALTERDBHOST
 60 \
-alterdbhost: Sửa đổi một máy chủ của cơ sở dữ liệu.\n\
-cách sử dụng: %s alterdbhost [TÙY CHỌN] tên-cơ sở dữ liệu\n\
+alterdbhost: Alter a host of the database.\n\
+usage: %s alterdbhost [OPTION] database-name\n\
 \n\
-các tùy chọn hợp lệ:\n\
-  -h, --host=HOST              tên máy chủ mới; mặc định: tên máy chủ hiện tại\n
+valid options:\n\
+  -h, --host=HOST              new HOST name; default: current host name\n
 
 
 $set 34 MSGCAT_UTIL_SET_LOADJAVA
-1 tên-cơ sở dữ liệu
-2 đối số được đòi hỏi, mặc định: không có
+1 database-name
+2 required argument, no default
 3 java-class-file
-4 đối số được đòi hỏi, mặc định: không có
-5 ép ghi đè lên
-6 ghi đè tệp tin lớp nếu tồn tại, mặc định: không
+4 required argument, no default
+5 force-overwrite
+6 overwrite class file if exist, default no
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
-15 Không thể mở tệp tin đầu ra `%s'\n
-59 plandump không thể chạy như chế độ độc lập.\n
+15 Cannot open output file `%s'\n
+59 plandump cannot run as standalone mode.\n
 60 \
-plandump: Hiển thị hoặc kiểm soát kế hoạch truy vấn được lưu ẩn.\n\
-cách sử dụng: %s plandump [TÙY CHỌN] tên-cơ sở dữ liệu\n\
+plandump: Display or control cached query plans.\n\
+usage: %s plandump [OPTION] database-name\n\
 \n\
-các tùy chọn hợp lệ:\n\
-  -d, --drop                   xóa tất cả kế hoạch trong bộ lưu ẩn của server\n\
-  -o, --output-file=FILE       chuyển hướng thông báo đầu ra đến tệp tin FILE; mặc định: không có \n
+valid options:\n\
+  -d, --drop                   drop all plans in the server's cache\n\
+  -o, --output-file=FILE       redirect output messages to FILE; default: none\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
-11 Không thể mở tệp tin đầu ra `%s'\n
-21 Tham số hệ thống cần được sử dụng bởi chương trình máy khách.\n
-22 Tham số hệ thống được tải bởi server '%s'\n
-23 Tham số hệ thống cần được sử dụng trong chế độ độc lập.\n
+11 Cannot open output file `%s'\n
+21 System parameters to be used by the client program.\n
+22 System parameters loaded by the server '%s'\n
+23 System parameters to be used in standalone mode.\n
 60 \
-paramdump: Kết xuất cài đặt tham số hệ thống.\n\
-cách sử dụng: %s paramdump [TÙY CHỌN] tên-cơ sở dữ liệu\n\
+paramdump: Dump system parameter settings.\n\
+usage: %s paramdump [OPTION] database-name\n\
 \n\
-các tùy chọn hợp lệ:\n\
-  -o, --output-file=FILE       chuyển hướng thông báo đầu ra đến tệp tin FILE; mặc định: không có \n\
-  -b, --both                   kết xuất cả tham sô server và máy khách\n\
-  -S, --SA-mode                thực thi chế độ độc lập\n\
-  -C, --CS-mode                thực thi chế độ client-server\n
+valid options:\n\
+  -o, --output-file=FILE       redirect output message to FILE; default: none\n\
+  -b, --both                   dump both client and server parameters\n\
+  -S, --SA-mode                stand-alone mode execution\n\
+  -C, --CS-mode                client-server mode execution\n
 
 $set 39 MSGCAT_UTIL_SET_CHANGEMODE
-11 Giá trị sai \"%s\" cho chế độ HA đang chạy của server.\n
-12 Không thể thay đổi chế đô HA đang chạy của server.\n
-21 Nhập mật mã DBA:
-22 Chế độ HA hiện tại đang chạy của server `%s'' là %s.\n
-23 Chế độ HA đang chạy của `%s'' được thay đổi thành \"%s\".\n
-24 Máy chủ này không cấu hình cho HA.\n
-58 Tính năng HA không được hỗ trợ trong nền tảng này.\n
-59 changemode không thể chạy như chế độ độc lập.\n
+11 Wrong value \"%s\" for the server's HA running mode.\n
+12 Cannot change the server's HA running mode.\n
+21 Enter DBA password:
+22 The server `%s''s current HA running mode is %s.\n
+23 The server `%s''s HA running mode is changed to \"%s\".\n
+24 The server was not configured for HA.\n
+58 HA feature is not supported in this platform.\n
+59 changemode cannot run as standalone mode.\n
 60 \
-changemode: Hiển thi hoặc thay đổi chế độ HA đang chạy của server.\n\
-cách sử dụng: %s changemode [TÙY CHỌN] tên-cơ sở dữ liệu\n\
+changemode: Display or change the server's HA running mode.\n\
+usage: %s changemode [OPTION] database-name\n\
 \n\
-các tùy chọn hợp lệ:\n\
-  -m, --mode=MODE             thay đổi chế độ server thành MODE; mặc định: không có \n\
-  -f, --force                 bắt buộc thay đổi\n\
-  -t, --timeout=S             chờ S giây trong khi giao dịch đang hoạt động được kết thúc bình thường\n\
-                              tùy chọn -t chỉ có hiệu lực khi người dùng thay đổi chế độ server thành bảo trì\n\
-                              mặc định: 5\n
+valid options:\n\
+  -m, --mode=MODE             change the server mode to MODE; default: none\n\
+  -f, --force                 force to change\n\
+  -t, --timeout=S             waiting S second while active transaction is terminated normally\n\
+                              -t option is effective only when the user changes server mode to maintenance\n\
+                              default: 5\n
 
 $set 40 MSGCAT_UTIL_SET_COPYLOGDB
-11 Giá trị sai \"%s\" cho chế độ đang chạy của copylogdb.\n
-21 Nhập mật mã DBA:
-22 Máy chủ này không cấu hình cho HA.\n
-58 Tính năng HA không được hỗ trợ trong nền tảng này.\n
-59 copylogdb không thể chạy như chế độ độc lập.\n
+11 Wrong value \"%s\" for the copylogdb's running mode.\n
+21 Enter DBA password:
+22 The server was not configured for HA.\n
+58 HA feature is not supported in this platform.\n
+59 copylogdb cannot run as standalone mode.\n
 60 \
-copylogdb: Sao chép trang bản ghi từ server.\n\
-cách sử dụng: %s copylogdb [TÙY CHỌN] tên-cơ sở dữ liệu\n\
+copylogdb: Copy log pages from the server.\n\
+usage: %s copylogdb [OPTION] database-name\n\
 \n\
-các tùy chọn hợp lệ:\n\
-  -L, --log-path=PATH         đường dẫn thư mục cho bộ đĩa bản ghi được sao chép\n\
-  -m, --mode=MODE             chế độ thao tác; mặc định: sync\n\
-                              MODE: sync hoặc semisync hoặc async\n
+valid options:\n\
+  -L, --log-path=PATH         directory PATH for copied log volumes\n\
+  -m, --mode=MODE             operation mode; default: sync\n\
+                              MODE: sync or semisync or async\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
-21 Nhập mật mã DBA:
-22 Máy chủ này không cấu hình cho HA.\n
-58 Tính năng HA không được hỗ trợ trong nền tảng này.\n
-59 applylogdb không thể chạy như chế độ độc lập.\n
+21 Enter DBA password:
+22 The server was not configured for HA.\n
+58 HA feature is not supported in this platform.\n
+59 applylogdb cannot run as standalone mode.\n
 60 \
-applylogdb: Áp dụng bản ghi đã sao chép đến server.\n\
-cách sử dụng: %s applylogdb [TÙY CHỌN] tên-cơ sở dữ liệu\n\
+applylogdb: Apply copied log to the server.\n\
+usage: %s applylogdb [OPTION] database-name\n\
 \n\
-các tùy chọn hợp lệ:\n\
-  -L, --log-path=PATH         đường dẫn thư mục cho bộ đĩa bản ghi được sao chép\n\
-      --max-mem-size=SIZE     kích cỡ tiến trình lớn nhất theo MB; tối đa 500\n
+valid options:\n\
+  -L, --log-path=PATH         directory PATH of copied log volumes\n\
+      --max-mem-size=SIZE     maximum process SIZE in MB; max 500\n
 
 $set 43 MSGCAT_UTIL_SET_STATDUMP
-11 Không thể mở tệp tin đầu ra `%s'\n
-59 statdump không thể chạy như chế độ độc lập.\n
+11 Cannot open output file `%s'\n
+59 statdump cannot run as standalone mode.\n
 60 \
-statdump: Kết xuất thống kê toàn cục.\n\
-cách sử dụng: %s statdump [TÙY CHỌN] tên-cơ sở dữ liệu\n\
+statdump: Dump global statistics.\n\
+usage: %s statdump [OPTION] database-name\n\
 \n\
-các tùy chọn hợp lệ:\n\
-  -o, --output-file=FILE       chuyển hướng thông báo đầu ra đến tệp tin FILE; mặc định: không có \n\
-  -c, --cumulative             in thống kê tích lũy\n\
-  -i, --interval=S             in thống kê mỗi S giây\n\
-  -s, --substr=STRING          in mục thống kê chỉ khi nó khớp với chuỗi con\n
+valid options:\n\
+  -o, --output-file=FILE       redirect output message to FILE; default: none\n\
+  -c, --cumulative             print cumulative stats\n\
+  -i, --interval=S             print stats every S secs\n\
+  -s, --substr=STRING          print stat item only that match the substring\n
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
-21 Nhập mật mã DBA:
-22 Máy chủ này không cấu hình cho HA.\n
-58 Tính năng HA không được hỗ trợ trong nền tảng này.\n
-59 applyinfo không thể chạy như chế độ độc lập.\n
+21 Enter DBA password:
+22 The server was not configured for HA.\n
+58 HA feature is not supported in this platform.\n
+59 applyinfo cannot run as standlone mode.\n
 60 \
-applyinfo: hiển thị thông tin CUBRID HA Apply.\n\
-cách sử dụng: %s applyinfo [TÙY CHỌN] tên-cơ sở dữ liệu\n\
+applyinfo: display CUBRID HA Apply information.\n\
+usage: %s applyinfo [OPTION] database-name\n\
 \n\
-các tùy chọn hợp lệ:\n\
-  -r, --remote-host-name      tên máy chủ từ xa, thông tin đăng nhập hoạt động hiển thị từ xa của nút \n\
-  -a, --applied-info 	      hiển thị thông tin áp dụng \n\
-  -L, --copied-log-path=PATH  đường dẫn của ổ ghi sao chép, hiển thị đăng nhập sao chép thông tin \n\
-  -p, --pageid=ID             page id; mặc định : 0(active page)\n\
-  -v, --verbose               kích hoạt các thông báo trạng thái tiết; mặc định : vô hiệu hóa\n
+valid options:\n\
+  -r, --remote-host-name      remote host name; display remote node's active log information \n\
+  -a, --applied-info 	      display applied information \n\
+  -L, --copied-log-path=PATH  path of copied log volumes; display copied log information \n\
+  -p, --pageid=ID             page id; default : 0(active page)\n\
+  -v, --verbose               enable verbose status messages; default : disable\n
 
 $set 45 MSGCAT_UTIL_SET_ACLDB
-59 acldb không thể chạy như chế độ độc lập.\n
+59 acldb cannot run as standalone mode.\n
 60 \
-acldb: Hiển thị hoặc tải lại cài đặt kiểm soát truy cập của cơ sở dữ liệu.\n\
-cách sử dụng: %s acldb [TÙY CHỌN] tên-cơ sở dữ liệu\n\
+acldb: Display or reload access control setting of the database.\n\
+usage: %s acldb [OPTION] database-name\n\
 \n\
-các tùy chọn hợp lệ:\n\
-  -r, --reload       tải lại tệp tin kiểm soát ip\n
+valid options:\n\
+  -r, --reload       reload ip control file\n
 
 $set 46 MSGCAT_UTIL_SET_GENLOCALE
 60 \
-genlocale: Khởi tạo thư viện chia sẻ cục bộ sử dụng (các) file đầu vào LDML.\n\
-sử dụng: %s genlocale [tùy chọn] [ngôn ngư - chuỗi]\n\
+genlocale: Generates locale shared library using LDML input file(s).\n\
+usage: %s genlocale [OPTION] [language-string]\n\
 \n\
-ngôn ngư - chuỗi      chuỗi ngôn ngữ cục bộ dùng để khởi tạo thư viện chia sẻ.\n\
-		      Nếu không cho language-sring, tất cả ngôn ngữ trong 'cubrid_locales.txt'\n\
-		      sẽ được xử lý.\n\
-các tùy chọn khả dụng:\n\
-  -v, --verbose	              cho phép các thông điệp trạng thái dài dòng; mặc định : tắt\n\
-  -i, --input-ldml-file       đường dẫn cho file đầu vòa LDML. Chỉ có khi cho language-string.\n
-61 Mệnh đề tên cục bộ vô hiệu.\n
+language-string	      locale language string for which to generate shared library.\n\
+		      If no language-string is given all languages in 'cubrid_locales.txt'\n\
+		      will be processed.\n\
+valid options:\n\
+  -v, --verbose	              enable verbose status messages; default : disable\n\
+  -i, --input-ldml-file       path for input LDML file. Only when language-string is given.\n
+61 Invalid locale name argument.\n
 
 $set 47 MSGCAT_UTIL_SET_DUMPLOCALE
-57 Không thể đồng thời sử dụng -i/--input-file vào và bộ nhận diện cục bộ.\n
-58 Khoảng điểm mã vô hiệu (-s -e).\n
-59 Mệnh đề tên cục bộ vô hiệu.\n
+57 Cannot simultaneously use -i/--input-file and locale identifier.\n
+58 Invalid codepoint range (-s -e).\n
+59 Invalid locale name argument.\n
 60 \
-dumplocale: Xóa bỏ các nội dung của thư viện chia sẻ cục bộ được khởi tạo trước đó bằng các file đầu vào LDML.\n\
-sử dụng: %s dumplocale [tùy chọn] [ngôn ngư - chuỗi]\n\
+dumplocale: Dumps the contents of locale shared library previously generated using LDML input file(s).\n\
+usage: %s dumplocale [OPTION] [language-string]\n\
 \n\
-ngôn ngư - chuỗi	chuỗi ngôn ngữ cục bộ để xóa bỏ thư viện chia sẻ cục bộ.\n\
-		         Nếu không cho language-sring, tất cả ngôn ngữ trong 'cubrid_locales.txt'\n\
-		         sẽ được xử lý.\n\
-các tùy chọn khả dụng:\n\
-  -i, --input-file    đường dẫn cho thư viện chia sẻ cục bộ đầu vào (đã được khởi tạo).\n\
-                      Chỉ có thể sử dụng khi không cho chuỗi ký tự.\n\
-  -d, --calendar      xóa bỏ thông tin lịch và ngày/thời gian; mặc định : tắt\n\
-  -n, --numeric	      xóa bỏ thông tin số; mặc định : tắt \n\
-  -a, --alphabet=l|lower|u|upper|both	     xóa bỏ thông tin số chữ cái và in hoa; mặc định : tắt \n\
-      --identifier-alphabet=l|lower|u|upper	 xóa bỏ thông tin số chữ cái và in hoa cho bộ nhận diện; mặc định : tắt\n\
-  -c, --codepoint-order xóa bỏ thông tin đối chiếu được sắp xếp dựa trên các giá trị điểm mã\n\
-                         (cp, char, trọng lượng, tiếp theo -cp, char và trọng lượng);\n\
-                         Mặc định : tắt\n\
-  -w, --weight-order - để  xóa bỏ thông tin đối chiếu được sắp xếp dựa trên các giá trị khối lượng\n\
-                      (trọng lượng, cp, char); Mặc định : tắt\n\
-  -s, --start-value	  tùy chọn lọc; bắt đầu điểm mã cho\n\
-                      -a, -- định danh - bảng chữ cái, -c, -w; mặc định : 0\n\
-  -e, --end-value     tùy chọn lọc; kết thúc điểm mã cho \n\
-                      -a, -- định danh - bảng chữ cái, -c, -w; \n\
-                      Mặc định : tối đa giá trị đọc từ miền địa phương chia sẻ thư viện \n\
-  -k, --console-conversion  xóa bỏ dữ liệu chuyển đổi; mặc định : tắt\n\
-  -z, --normalization   xóa bỏ dữ liệu chuẩn tắc; mặc định : tắt\n
+language-string	 locale language string for which to dump locale shared library.\n\
+		         If no language-string is given all languages in 'cubrid_locales.txt'\n\
+		         will be processed.\n\
+valid options:\n\
+  -i, --input-file    path for input locale shared library (previously generated).\n\
+                      Can be used only when language-string is not given.\n\
+  -d, --calendar      dump calendar and date/time information; default : disable\n\
+  -n, --numeric		  dump numeric information; default : disable\n\
+  -a, --alphabet=l|lower|u|upper|both	     dump alphabet and casing information; default : disable\n\
+      --identifier-alphabet=l|lower|u|upper	 dump alphabet and casing information for identifiers; default : disable\n\
+  -c, --codepoint-order	 dump collation info sorted based on codepoint values\n\
+                         (cp, char, weight, next-cp, char and weight);\n\
+                         default : disable\n\
+  -w, --weight-order  dump collation info sorted based on weight values\n\
+                      (weight, cp, char); default : disable\n\
+  -s, --start-value	  filtering option; starting codepoint for\n\
+                      -a, --identifier-alphabet, -c, -w; default : 0\n\
+  -e, --end-value     filtering option; ending codepoint for \n\
+                      -a, --identifier-alphabet, -c, -w; \n\
+                      default : maximum value read from locale shared library\n\
+  -k, --console-conversion  dump console conversion data; default : disable\n\
+  -z, --normalization   dump normalization data; default : disable\n
 
