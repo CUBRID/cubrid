@@ -25,82 +25,82 @@ $
 
 $set 1 MSGCAT_CSQL_SET_CSQL
 40 \
-interactive SQL utility, version %s\n\
-usage: %s [OPTION] database-name[@host]\n\
+Etkileşimli SQL programı, sürüm %s\n\
+kullanım: %s [OPTION] veritabanı-adı[@host]\n\
 \n\
-valid options:\n\
-  -S, --SA-mode                standalone mode execution\n\
-  -C, --CS-mode                client-server mode execution\n\
-  -u, --user=ARG               alternate user name\n\
-  -p, --password=ARG           password string, give "" for none\n\
-  -e, --error-continue         don't exit on statement error\n\
-  -i, --input-file=ARG         input-file-name\n\
-  -o, --output-file=ARG        output-file-name\n\
-  -s, --single-line            single line oriented execution\n\
-  -c, --command=ARG            CSQL-commands\n\
-  -l, --line-output            display each value in a line\n\
-  -r, --read-only              read-only mode\n\
-      --no-auto-commit         disable auto commit mode execution\n\
+geçerli ayarlar:\n\
+  -S, --SA-mode                bağımsız modu yürütme\n\
+  -C, --CS-mode                istemci-sunucu modunda yürütme\n\
+  -u, --user=ARG               alternatif kullanıcı adı\n\
+  -p, --password=ARG            şifre dizini, "" kimseye vermemek için \n\
+  -e, --error-continue         ifade hatası üzerinde iken çıkış yapmayın\n\
+  -i, --input-file=ARG         dosya-adı-girin\n\
+  -o, --output-file=ARG        dosya-adı-çıkın\n\
+  -s, --single-line            tek satır odaklı yürütülmesi\n\
+  -c, --command=ARG            CSQL-komutları\n\
+  -l, --line-output            bir çizgi üzerinde her değeri görüntüle\n\
+  -r, --read-only              sadece-oku modu\n\
+      --no-auto-commit         Otomatik tamamlama modu yürütme devre dışı\n\
       --no-pager               do not use pager\n\
-      --no-single-line         turn off single line oriented execution\n\
+      --no-single-line         tek satır odaklı yürütmeyi kapatın\n\
 \n\
-For additional information, see http://www.cubrid.com\n
-41 %s: the environment value of %s_MODE is incorrect. \nIt should be either %s or %s.\n
-42 %s: too many arguments given. maximum is %d.\n
-43 %s: The root directory environment variable ($CUBRID) should be set.\n
-44 %s: the attempt to execute "%s" has failed.\n
-45 %s: cannot use -sa and -cs options simultaneously.\n
-46 %d command(s) successfully processed.
-47 In the command from line %d,
-48 In line %d, column %d,
-49 Type `;help' for help messages.
-50 ERROR: 
-51 CUBRID SQL Interpreter
-52 There have been updates. Do you want to commit ? (`Y' or `N') 
-53 Enter `Y' to commit, `N' to abort. 
-54 Current transaction has been committed.
-55 Current transaction has been rolled back.
-56 Command buffer has been saved.
-57 The file has been read into the command buffer.
-58 Command buffer has been sent to the printer.
-59 Current directory changed to 
-61 Enter Password : 
-62 <Result of %s Command in Line %d>
-63 There are no results.
-64 Checkpoint has been issued.
-65 The database has been restarted.
-66 Tran index      User name      Host name      Process id      Program name\n
+Ek bilgi için, adresine bakın http://www.cubrid.com\n
+41 %s: doğru olmayan %s_MODE ortam değeri. \n%s veya %s olmalıdır.\n
+42 %s: çok fazla argüman verildi.en fazla %d.\n
+43 %s: Kök dizin ortam değişkeni ($CUBRID) ayarlanmalıdır.\n
+44 %s: "%s" çalıştırılma denemesi başarısız oldu.\n
+45 %s: aynı anda -sa ve -cs seçeneklerini kullanamazsınız.\n
+46 %d komut (lar) başarıyla işlendi.
+47 kommand içinde %d satırından,
+48 %d satırında , sütun %d,
+49 Tür `;Yardım' yardım mesajları için.
+50 HATA: 
+51 CUBRID SQL Yorumlayıcı
+52 Güncellemeler bulunmaktadır. İşlemek istiyormusunuz ? (`E' or `H') 
+53 Giriş `E' İşlemek, `H' İptal etmk. 
+54 İşlem tamamlanmış oldu.
+55 İşlem geri alındığı.
+56 Komut buffera kaydedildi.
+57 Komut buffer içinden dosya okundu.
+58 Komut buffer yazıyıcıya gönderildi.
+59 Geçerli dizin değiştirildi 
+61 Şifre girin : 
+62 <Sonuçlar %s komut satırları içinde %d>
+63 Sonuç bulunmamaktadır.
+64 Kontrol noktası yayımlanmıştır
+65 Veritabanı yeniden başlatıldı.
+66 İşlem indeks      Kullanıcı Adı      Host Adı      Süreç id      Program Adı\n
 67 %7d(%1c) %14s %14s %15d %17s\n
-68 The specified transaction has been killed.
-69 Killing of the specified transaction has failed.
-70 %d rows %s.
-71 %d row %s.
-$ These 3 should be blank
-75 Automated API tester
-76 Invalid Automated API tester
+68 Özelleıtirilmiı İşlem iptal edildi.
+69 Özelleıtirilmiı İşlem iptal etme başarısız.
+70 %d Satırlar %s.
+71 %d Satır %s.
+$  Bu 3 boş bırakılmalı
+75 Otomatik APİ test edici
+76 Geçersiz Otomatik APİ test edici
 79 csql>
 80 csql
 81 sysadm>
 
-145 <Help: Schema of a Class>
+145 <Help: Bir Sınıf Şeması>
 146 none
-147 <Help: All Triggers>
-148 <Help: No Triggers Defined>
-150 <Help: Trigger Definition>
-151 <Help: Command Syntax>
-152 <Help: Session Command Summary>
-178 A file name is required.
-179 Cannot execute the pager.
-180 There is not enough memory allocated.
-184 The line being entered is too long.
-185 Too many lines have been entered.
-188 Too many file names have been entered.
-190 No such session command. Type `;help' for help messages.
-191 More than one session command matched. Please specify more.
-193 More than one command matched. Please specify more.
-194 Invalid combination of command line arguments (options).
-196 An undefined error has occurred.
-197 ';edit' is not allowed when output has been redirected.
+147 <Help: Tüm Tetikleyiciler>
+148 <Help: Tanımlı Tetikleyici Yok>
+150 <Help: Tetikleyici Tanımı>
+151 <Help: Komut Sözdizini>
+152 <Help: Özet Komut Oturumu>
+178 Bir dosya adı gereklidir.
+179 Çağrı cihazı yürütülemiyor.
+180 Yeterli bellek tahsisi yok.
+184 Girilen satır çok uzun.
+185 Çok fazla satır kaydedilmiıtir.
+188 Çok fazla dosya adı kaydedilmiıtir.
+190 Gibi oturum komutu bulunmamakta.Tür `;help' yardım mesajları için.
+191 Birden fazla oturum komutu eşleşti. Lütfen daha fazla özelleştirin.
+193 Birden fazla komut eşleşti. Lütfen daha fazla özelleştirin.
+194 Komut satırı argümanlarının geçersiz kombinasyonu (seçenekler).
+196 Tanımlanamayan bir hata oluıtu.
+197 Çıkış yönlendirildişinde ';edit' izin verilmez.
 
 203 <%s> 
 204 <Super Classes> 
@@ -129,61 +129,61 @@ $ These 3 should be blank
 $ csql help messages
 231 \
 \n\
-   All session commands should be prefixed by `;' and only blanks/tabs\n\
-   can precede the prefix. Capitalized characters represent the minimum\n\
-   abbreviation that you need to enter to execute the specified command.\n\
+   Tüm oturum komutları `;' ve sadece boşluklar/sekmeler ile başlayan olmalıdır\n\
+   önek önce gelebilir. Aktifleıtirilen karakterleri az temsil eder.\n\
+   Belirtilen komutu çalıştırmak için girmeniz gereken kısaltma.\n\
 \n\
-   ;REAd   [<file-name>]       - read a file into command buffer.\n\
-   ;Write  [<file-name>]       - (over)write command buffer into a file.\n\
-   ;APpend [<file-name>]       - append command buffer into a file.\n\
-   ;PRINT                      - print command buffer.\n\
-   ;SHELL                      - invoke shell.\n\
-   ;CD                         - change current working directory.\n\
-   ;EXit                       - exit program.\n\
+   ;REAd   [<file-name>]       - komut buffer içinden bir dosyayı oku.\n\
+   ;Write  [<file-name>]       - bir dosya içinden komut buffer (üzerine)yaz.\n\
+   ;APpend [<file-name>]       - bir dosya içinden komut buffer açılmış.\n\
+   ;PRINT                      - komut buffer yazdır.\n\
+   ;SHELL                      - dış kabuk çağırma.\n\
+   ;CD                         - Geçerli çalışma dizini değiştirin.\n\
+   ;EXit                       - programdan çık.\n\
 \n\
-   ;CLear                      - clear command buffer.\n\
-   ;EDIT                       - invoke system editor with command buffer.\n\
-   ;List                       - display the content of command buffer.\n\
+   ;CLear                      - komut buffer temizle.\n\
+   ;EDIT                       - komut buffer ile sistem editörü çağırmak.\n\
+   ;List                       - komut buffwe içerik görüntüle.\n\
 \n\
-   ;RUn                        - execute sql in command buffer.\n\
-   ;Xrun                       - execute sql in command buffer,\n\
-                                 and clear the command buffer.\n\
-   ;COmmit                     - commit the current transaction.\n\
-   ;ROllback                   - roll back the current transaction.\n\
-   ;AUtocommit [ON|OFF]        - enable/disable auto commit mode.\n\
-   ;REStart                    - restart database.\n\
+   ;RUn                        - komut buffer içinde SQL yürüt.\n\
+   ;Xrun                       - komut buffer içinde SQL yürüt,\n\
+                                 ve komut buffer temizle.\n\
+   ;COmmit                     - geçerli işlemleri iıle.\n\
+   ;ROllback                   - geçerli işlemleri geri iıle.\n\
+   ;AUtocommit [ON|OFF]        - otomatik tamamlama modunu etkinleştirme / devre dışı bırakma.\n\
+   ;REStart                    - veritabanını yeniden başlat.\n\
 \n\
-   ;SHELL_Cmd  [shell-cmd]     - set default shell, editor, print and pager\n\
-   ;EDITOR_Cmd [editor-cmd]      command to new one, or display the current\n\
-   ;PRINT_Cmd  [print-cmd]       one, respectively.\n\
+   ;SHELL_Cmd  [shell-cmd]     - varsayılan dış kabuğu ayarla, editör, yazdır ve çağrı cihazı\n\
+   ;EDITOR_Cmd [editor-cmd]      yeni bir tane komut ver veya geçerli olanı görüntüle\n\
+   ;PRINT_Cmd  [print-cmd]       bir, sırasıyla.\n\
    ;PAger_cmd  [pager-cmd]\n\
 \n\
-   ;DATE                       - display the local time, date.\n\
-   ;DATAbase                   - display the name of database being accessed.\n\
-   ;SChema class-name          - display schema information of a class.\n\
-   ;TRigger [`*'|trigger-name] - display trigger definition.\n\
-   ;Get system_parameter       - get the value of a system parameter.\n\
-   ;SEt system_parameter=value - set the value of a system parameter.\n\
-   ;PLan [simple/detail/off]   - show query execution plan.\n\
-   ;Info <command>             - display internal information.\n\
-   ;TIme [ON/OFF]              - enable/disable to display the query\n\
-                                 execution time.\n\
-   ;HISTORYList                - display list of the executed queries.\n\
-   ;HISTORYRead <history_num>  - read entry on the history number into command buffer.\n\
-   ;HElp                       - display this help message.\n\n
+   ;DATE                       - yerel saat görüntüle, tarih.\n\
+   ;DATAbase                   - veritabanı erişilen adını görüntüler.\n\
+   ;SChema class-name          - bir sınıfın şema bilgilerini görüntüler.\n\
+   ;TRigger [`*'|trigger-name] - tetik tanımı görüntüler.\n\
+   ;Get system_parameter       - bir sistem parametre değeri edinin.\n\
+   ;SEt system_parameter=value - bir sistem parametre değeri ayarla.\n\
+   ;PLan [simple/detail/off]   - sorgu yürütme planı göster.\n\
+   ;Info <command>             - iç bilgileri görüntüler.\n\
+   ;TIme [ON/OFF]              - Sorgu görüntülemek için etkin / devre dışı\n\
+                                 yürütme zamanı.\n\
+   ;HISTORYList                - çalıştırılan sorguların listesini görüntüleyebilir.\n\
+   ;HISTORYRead <history_num>  - komut buffer içine geçmiş numarası üzerinde giriş okuyun.\n\
+   ;HElp                       - yardım mesajını görüntüler.\n\n
 
 232 <Constraints> 
 233 Info {schema|trigger|deferred|workspace|lock|stats}\n\
-\tschema [class-name]    - schema information\n\
-\ttrigger [trigger-name] - trigger information\n\
-\tdeferred               - deferred trigger information\n\
-\tworkspace              - workspace information\n\
-\tlock                   - lock information (client-server mode)\n\
-\tstats class-name       - class statistics information\n\
-\ttrantable              - transaction information\n\
-\tlogstat                - log information\n\
-\tcsstat                 - critical section information\n\
-\tplan                   - plan cache information\n\
-\tqcache                 - query cache information\n
+\tschema [class-name]    - şema bilgileri\n\
+\ttrigger [trigger-name] - tetikleyici bilgileri\n\
+\tdeferred               - ertelenen tetikleyici bilgileri\n\
+\tworkspace              - çalışma alanı bilgileri\n\
+\tlock                   - kilit bilgileri (istemci-sunucu modunda)\n\
+\tstats class-name       - sınıf istatistik bilgileri\n\
+\ttrantable              - işlem bilgileri\n\
+\tlogstat                - log bilgileri\n\
+\tcsstat                 - kritik bölüm bilgileri\n\
+\tplan                   - önbellek plan bilgileri\n\
+\tqcache                 - sorgu önbellek bilgileri\n
 235 <Partitions>
-236 A class name is required.
+236 Bir sınıf adı gereklidir.

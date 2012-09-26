@@ -21,7 +21,7 @@ $ $Id$
 $
 $ utils.msg
 $
-$ The following set numbers have been assigned:
+$ Aşağıdaki dizi sayıları tahsis edilmiştir:
 $
 $       1       generic
 $       2       backupdb
@@ -67,22 +67,22 @@ $       46      genlocale
 $       47      dumplocale
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
-1 Invalid length or character `%c' in database name `%s'\n
-2 Couldn't open output file `%s'\n
-3 Missing or invalid utility name.\n
-4 Invalid utility name `%s'\n
-5 The following list contains the recognized utility names:\n
-6 Invalid character `%c' in volume name `%s'\n
+1 Geçersiz uzunluk veya karakter `%c' veritabanı adı `%s' \n
+2 Çıktı dosyası `%s' açılamadı \n
+3 Eksik veya geçersiz yardımcı programı adı.\n
+4 Geçersiz yardımcı programı adı  `%s'\n
+5 Aşağıdaki liste tanınan yardımcı programı adlarını içerir:\n
+6 Geçersiz karakter `%c'ses adına`%s'\n
 9 \
-%s (CUBRID utilities)\n\
+%s (CUBRID yardımcı programları)\n\
 %s\n\
 Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.\n
 10 \
-cubrid administrator utility, version %s\n\
-usage: %s <utility-name> [args]\n\
-Type '%s <utility-name>' for help on a specific utility.\n\
+cubrid yönetici yardımcı programı, sürüm% s\n\
+kullanım: %s <yardımcı programı-adı> [args]\n\
+Tür '%s <yardımcı programı-adı>' belirli bir yardımcı programı hakkında yardım alın.\n\
 \n\
-Available admin utility-name:\n\
+Mevcut yönetici yardımcı programı-adı:\n\
     createdb\n\
     deletedb\n\
     installdb\n\
@@ -112,24 +112,24 @@ Available admin utility-name:\n\
     genlocale\n\
     dumplocale\n\
 \n\
-%s is a tool for DBMS.\n\
-For additional information, see http://www.cubrid.com\n
-12 '%s' utility-name is invalid.\nType 'cubrid --help' to see usage.\n
-13 '%s' command is invalid.\nType 'cubrid --help' to see usage.\n
-14 Could not load one or more mandatory properties in configuration files.\n
+%s DBMS için bir araçtır.\n\
+Daha fazla bilgi için bkz:http://www.cubrid.com\n
+12 '%s' yardımcı programı-adı geçersiz.\nTür 'cubrid --help' kullanıma bak.\n
+13 '%s' komutu geçersiz.\nTür 'cubrid --help' kullanıma bak.\n
+14 Yapılandırma dosyaları bir veya daha fazla zorunlu özellikleri yüklenemedi.\n
 15 @ %s %s: %s\n
 16 @ %s %s\n
-17 ++ %s '%s' is not running.\n
-18 ++ %s is not running.\n
-19 ++ %s '%s' is running.\n
+17 ++ %s '%s'çalışmıyor.\n
+18 ++ %s çalışmıyor.\n
+19 ++ %s '%s' çalışmıyor.\n
 20 ++ %s is running.\n
 21 ++ %s %s: %s\n
-22 One or more arguments are missing.\nType 'cubrid --help' to see usage.\n
-23 cubrid utility, version %s\n\
-usage: %s <utility-name> [args]\n\
-Type '%s <utility-name>' for help on a specific utility.\n\
+22 Bir veya daha fazla bağımsız değişkeni eksik.\nTür 'cubrid --help' kullanıma bak.\n
+23 cubrid yardımcı programı, sürüm %s\n\
+kullanım: %s <yardımcı programı-adı> [args]\n\
+Tür '%s <yardımcı programı-adı>' belirli bir yardımcı programı hakkında yardım alın.\n\
 \n\
-Available service's utilities:\n\
+Mevcut hizmetin programları:\n\
     service\n\
     server\n\
     broker\n\
@@ -137,7 +137,7 @@ Available service's utilities:\n\
     heartbeat\n\
     shard\n\
 \n\
-Available administrator's utilities:\n\
+Mevcut yönetici programları:\n\
     addvoldb\n\
     alterdbhost\n\
     backupdb\n\
@@ -166,30 +166,30 @@ Available administrator's utilities:\n\
     genlocale\n\
     dumplocale\n\
 \n\
-%s is a tool for DBMS.\n\
-For additional information, see http://www.cubrid.com\n
-24 cubrid utility, version %s\n\
-usage: %s service <command>\n\
+%s DBMS için bir araçtır.\n\
+Daha fazla bilgi için bkz: http://www.cubrid.com\n
+24 cubrid yardımcı programı, sürüm %s\n\
+kullanım: %s service <komut>\n\
 \n\
-Available command:\n\
+Mevcut komut:\n\
     start\n\
     stop\n\
     restart\n\
     status\n
-25 cubrid utility, version %s\n\
-usage: %s server <command> [args]\n\
+25 cubrid yardımcı programı, sürüm %s\n\
+kullanım: %s server <komut> [args]\n\
 \n\
-Available command:\n\
+Mevcut komut:\n\
     start       [database-name]\n\
     stop        [database-name]\n\
     restart     [database-name]\n\
     status\n\
     acl         <status|reload> database-name\n
-37 The server was configured for HA.\n
-26 cubrid utility, version %s\n\
-usage: %s broker <command> [args]\n\
+37 Sunucu HA için yapılandırıldı.\n
+26 cubrid yardımcı programı, sürüm %s\n\
+kullanım: %s broker <komut> [args]\n\
 \n\
-Available command:\n\
+Mevcut komut:\n\
     start\n\
     stop\n\
     restart\n\
@@ -198,777 +198,776 @@ Available command:\n\
     off         broker-name\n\
     reset       broker-name\n\
     acl         <status|reload> [broker-name]\n
-27 cubrid utility, version %s\n\
-usage: %s manager <command>\n\
+27 cubrid yardımcı programı, sürüm %s\n\
+kullanım: %s manager <komut>\n\
 \n\
-Available command:\n\
+Mevcut komut:\n\
     start\n\
     stop\n\
     status\n
-28 cubrid utility, version %s\n\
-usage: %s heartbeat <command> [args]\n\
+28 cubrid yardımcı programı, sürüm %s\n\
+kullanım: %s heartbeat <komut> [args]\n\
 \n\
-Available command:\n\
+Mevcut komut:\n\
     start       [database-name]\n\
     stop        [database-name]\n\
     copylogdb   <start|stop> database-name node-name\n\
     applylogdb  <start|stop> database-name node-name\n\
     status\n\
     reload\n
-31 '%s' argument is not needed.\n
-32 A database-name is missing.\n
-33 %s: Such option is deprecated.\n
-34 Invalid Parameter. %s %s\n
-35 Cannot allocate memory.\n
-36 The server was not configured for HA.\n
-38 The server configured for HA is not listed in ha_db_list.\n
-39 The server configured for HA is not listed in ha_node_list.\n
-62 cubrid utility, version %s\n\
-usage: %s shard <command> [args]\n\
+31 '% s' argümanı gerekli değildir.\n
+32 Bir veritabanı-adı eksik.\n
+33 %s: Böyle seçeneği önerilmiyor.\n
+34 Geçersiz Parametre. %s %s\n
+35 Bellek ayrılamadı.\n
+36 Sunucu HA için yapılandırıldı.\n
+38 HA için ayarlanan sunucu ha_db_list.\n görülmedi. \n Listesinde
+39 HA için ayarlanan sunucu in_ ha_node_list.\n görülmedi. \n Listesinde
+62 Cubrid kullanım amacı, Versiyon %s\n\
+usage: %s shard <komut> [args]\n\
 \n\
-Available command:\n\
+Mevcut komut:\n\
     start\n\
     stop\n\
     restart\n\
     status      [-b] [-f] [-t] [-s <sec>] [<expr>]\n\
-    on          shard-name\n\
-    off         shard-name\n\
-    reset       shard-name\n\
-    acl         <status|reload> [shard-name]\n
+    on          shard-adı\n\
+    off         shard-adı\n\
+    reset       shard-adı\n\
+    acl         <status|reload> [shard-adı]\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
-30 WARNING: -t option is ignored in stand-alone mode execution.\n
+30 UYARI: -t seçeneği stand-alone modu yürütülmesine göz ardı edilir.\n
 60 \
-backupdb: Backup a database.\n\
-usage: %s backupdb [OPTION] database-name\n\
+backupdb: Bir veritabanı yedeklemesi.\n\
+kullanım: %s backupdb [SEÇENEK] veritabanı-adı\n\
 \n\
-valid options:\n\
-  -D, --destination-path=PATH  store backup volumes to directory PATH; default: database's log directory\n\
-  -r, --remove-archive         delete unnecessary log-archives; use carefully and consult manual\n\
-  -l, --level=LEVEL            backup level; default: full level\n\
-                               LEVEL is allowed:\n\
-                                   0 - full\n\
-                                   1 - incremental 1\n\
-                                   2 - incremental 2\n\
-  -o, --output-file=FILE       print detailed backup messages to FILE\n\
-  -S, --SA-mode                stand-alone mode execution\n\
-  -C, --CS-mode                client-server mode execution\n\
-      --no-check               don't check a consistency of the database; default: check\n\
-  -t, --thread-count=COUNT     number of threads; default: 0(auto)\n\
-  -z, --compress               compress backup volumes; default: uncompress\n\
-  -e, --except-active-log      don't include an active log volume; default: include\n\
+geçerli opsiyonlar:\n\
+  -D, --destination-path=PATH  dizin PATH yedekleme birimleri saklamak; varsayılan: veritabanının günlük dizini\n\
+  -r, --remove-archive         dikkatli kullanın ve başvuru kılavuzu; gereksiz log -arşivleri sil\n\
+  -l, --level=LEVEL            yedekleme düzeyi; varsayılan: tam düzey\n\
+                               LEVEL izin verilir:\n\
+                                   0 - tam\n\
+                                   1 - artımlı 1\n\
+                                   2 - artımlı 2\n\
+  -o, --output-file=FILE       DOSYA detaylı yedekleme mesaj yayınlar\n\
+  -S, --SA-mode                stand-alone modu yürütme\n\
+  -C, --CS-mode                istemci-sunucu modunda yürütme\n\
+      --no-check               veritabanının tutarlılığını kontrol etmez; varsayılan: kontrol edin\n\
+  -t, --thread-count=COUNT     Konu sayısı; Varsayılan olarak: 0 (otomatik)\n\
+  -z, --compress               yedekleme birimleri sıkıştırmak; varsayılan: sıkıştırmayı açma\n\
+  -e, --except-active-log      şunlardır: varsayılan; aktif bir log yoğunluğu içermez\n\
       --sleep-msecs=N          sleep N millisecond per 1M read; default: 0\n
-71 Incompatible arguments, \"%s\", and \"%s\"\n
+71 Uyumsuz bağımsız değişkenleri, \"%s\", and \"%s\"\n
 
 
 $set 3 MSGCAT_UTIL_SET_COPYDB
-30 ERROR: Destination name is identical to source name.\n
-31 ERROR: volext-pathname does not exist or is not writeable.\n
-32 ERROR: vols-tofrom-paths_file does not exist or is not readable.\n
+30 HATA: Hedef adı kaynak adı ile aynıdır.\n
+31 HATA: volext-pathadı mevcut değil veya yazılabilir değildir.\n
+32 HATA: vols-tofrom-paths_file yok veya okunabilir değil değil.\n
 60 \
-copydb: Copy a database.\n\
-usage: %s copydb [OPTION] src-database-name dest-database-name\n\
+copydb: Bir veritabanı kpyala.\n\
+kullanım: %s copydb [SEÇENEK] src-database-name dest-database-name\n\
 \n\
-valid options:\n\
-      --server-name=HOST          server's HOST name; default: current host name\n\
-  -F, --file-path=PATH            directory PATH for database volumes; default: current directory\n\
-  -L, --log-path=PATH             directory PATH for log volumes; default: same as file-path\n\
-  -B, --lob-base-path=PATH        base directory PATH for external LOB data; default: <file-path>/lob\n\
-  -E, --extended-volume-path=PATH directory PATH for extended information volumes; default: same path as the database volumes or the given path in control-file\n\
-  -i, --control-file=FILE         copying volumes over several locations written in the control file; default: none\n\
-  -r, --replace                   replace an existing database; default: don't replace\n\
-  -d, --delete-source             delete a source database; default: don't delete\n\
-      --copy-lob-path             copy external storage PATH for LOB data from source database. cannot be used with -B option; default: don't copy\n
+geçerli seçenekler:\n\
+      --server-name=HOST          Sunucunun HOST adı; Varsayılan olarak: geçerli ana bilgisayar adı\n\
+  -F, --file-path=PATH            veritabanı yoğunlukları için dizin PATH; varsayılan: geçerli dizin\n\
+  -L, --log-path=PATH             log yoğunlukları için dizin PATH; varsayılan: dosya-path aynı\n\
+  -B, --lob-base-path=PATH        Dış LOB veri tabanı dizin PATH; varsayılan: <file-path>/lob\n\
+  -E, --extended-volume-path=PATH genişletilmiş bilgi yoğunlukları için dizin PATH; varsayılan: veritabanı yoğunlukları aynı path veya verilen path kontrol-dosyasında\n\
+  -i, --control-file=FILE         kontrol dosyası yazılmış birkaç yerle yoğunlukları kopyalama; varsayılan: hiçbir\n\
+  -r, --replace                   yerine geçmez: varsayılan; mevcut bir veritabanını değiştirme\n\
+  -d, --delete-source             bir kaynak veritabanı silme ;varsayılan :silmeyin \n\
+      --copy-lob-path             kaynak veritabanından LOB veri için harici depolama PATH kopyalayın.seçeneği-B ile kullanılamaz;varsayılan : kopya değil \n
 
 
 $set 4 MSGCAT_UTIL_SET_CREATEDB
-40 Group `%s' does not exist\n
-41 User `%s' does not exist\n
-42 Unknown command `%s'\n
-43 Couldn't open output file `%s'\n
-44 Couldn't removing existing database.\n
-45 Creating database with %s size.\n
-46 Couldn't create database.\n
-47 Problem with user file `%s'\n
-48 The '%s' must be between %s and %s\n
-49 The value of %s '%s' is invalid.\n
+40 Group `%s' bulunmamaktadır\n
+41 User `%s' bulunmamaktadır\n
+42 Bilinmeyen komut `%s'\n
+43 Çıktı dosyası `%s' açılamadı\n
+44 Varolan veritabanı kaldırılamadı\n
+45 %s boyutu ile veri tabanı oluşturma..\n
+46 Veritabanı oluşturulamadı.\n
+47 `%s' Kullanıcı dosya ile ilgili sorun\n
+48 '%S' olması gerekir %s ve %s arasında\n
+49 %s Sayısal değeri '%s' geçersiz. \n
 60 \
-createdb: Create a database.\n\
-usage: %s createdb [OPTION] database-name\n\
+createdb: Bir veritabanı oluştur.\n\
+kullanım: %s createdb [SEÇENEK] database-name\n\
 \n\
-valid options:\n\
-      --db-volume-size=SIZE           size of first information volume\n\
-                                      default: db_volume_size in cubrid.conf\n\
-      --db-page-size=SIZE             database page SIZE in bytes; default: 16K\n\
-      --log-volume-size=SIZE          size of log archives\n\
-                                      default: log_volume_size in cubrid.conf\n\
-      --log-page-size=SIZE            log page SIZE in bytes; default: database page size\n\
-      --comment=COMMENT               COMMENT for a database; default: none\n\
-  -F, --file-path=PATH                directory PATH for database volumes; default: current directory\n\
-  -L, --log-path=PATH                 directory PATH for log volumes; default: same as file-path\n\
-  -B, --lob-base-path=PATH            base directory PATH for external LOB data; default: <file-path>/lob\n\
-      --server-name=HOST              server's HOST name; default: current host name\n\
-  -r, --replace                       replace an existing database; default: don't replace\n\
-      --more-volume-file=FILE         FILE contain specifications for creation of additional volumes; default: none\n\
-      --user-definition-file=FILE     FILE contain user definitions; default: none\n\
-      --csql-initialization-file=FILE FILE contain SQLs for an initialization of the database; default: none\n\
-  -o, --output-file=FILE              redirect output messages to FILE; default: none\n\
-  -v, --verbose                       enable verbose status messages; default: disabled\n
+geçerli seçenekler:\n\
+      --db-volume-size=SIZE           ilk bilgi yoğunluğunun büyüklüğün\
+                                      varsayılan: cubrid.conf içinde db_volume_size\n\
+      --db-page-size=SIZE             byte olarak veritabanı sayfası BOYUTU; varsayılan: 16KB\n\
+      --log-volume-size=SIZE          log arşiv boyutu\n\
+                                      varsayılan: cubrid.conf içinde log_volume_size\n\
+      --log-page-size=SIZE            veritabanı sayfa boyutu: varsayılan; byte olarak log sayfa BOYUTU\n\
+      --comment=COMMENT               Bir veritabanı için YORUM; varsayılan: hiçbir\n\
+  -F, --file-path=PATH                veritabanı yoğunlukları için dizin PATH; varsayılan: geçerli dizin\n\
+  -L, --log-path=PATH                 log yoğunlukları için dizin PATH; varsayılan: dosya-path aynı\n\
+  -B, --lob-base-path=PATH            Dış LOB veri tabanı dizin PATH; varsayılan: <file-path>/lob\n\
+      --server-name=HOST              Sunucunun HOST adı; varsayılan: geçerli ana bilgisayar adı\n\
+  -r, --replace                       yerine geçmez: varsayılan; mevcut bir veritabanını değiştirme\n\
+      --more-volume-file=FILE         Ek birimler oluşturulması için özellikleri içeren FILE; varsayılan: hiçbir\n\
+      --user-definition-file=FILE     Kullanıcı tanımlarını içeren DOSYA; varsayılan: hiçbir\n\
+      --csql-initialization-file=FILE Veritabanının başlatılması için sqls içeren DOSYA; varsayılan: hiçbir\n\
+  -o, --output-file=FILE              DOSYA çıktı mesajları yönlendirmek; varsayılan: hiçbir\n\
+  -v, --verbose                       Ayrıntılı durum mesajları sağlamak; varsayılan: devre dışı\n
 
 
 $set 6 MSGCAT_UTIL_SET_DELETEDB
 60 \
-deletedb: Delete a database.\n\
-usage: %s deletedb [OPTION] database-name\n\
+deletedb: Bir veritabanı sil.\n\
+kullanım: %s deletedb [SEÇENEK] database-name\n\
 \n\
-valid options:\n\
-  -o, --output-file=FILE       redirect output messages to FILE; default: none\n\
-  -d, --delete-backup          delete backup volumes; default: don't delete\n
+geçerli seçenekler:\n\
+  -o, --output-file=FILE       DOSYA çıktı mesajları yönlendirme; varsayılan: hiçbir\n\
+  -d, --delete-backup          yedekleme birimleri silin; varsayılan: silmeyin\n
 
 $set 7 MSGCAT_UTIL_SET_RENAMEDB
-31 ERROR: volext-pathname does not exist or is not writeable.\n
-32 ERROR: vols-tofrom-paths_file does not exist or is not readable.\n
+31 HATA: volext-pathadı mevcut değil veya yazılabilir değildir.\n
+32 HATA: vols-tofrom-paths_file yok veya okunabilir değil değil.\n
 60 \
-renamedb: Rename a database.\n\
-usage: %s renamedb [OPTION] src-database-name dest-database-name\n\
+renamedb: Bir veritabanı yeniden adlandırın.\n\
+kullanım: %s renamedb [SEÇENEK] src-database-name dest-database-name\n\
 \n\
-valid options:\n\
-  -E, --extended-volume-path=PATH directory PATH for extended information volumes; default: same path as the database volumes or the given path in control-file\n\
-  -i, --control-file=FILE         renaming volumes over several locations written in the control file; default: none\n\
-  -d, --delete-backup             delete backup volumes; default: don't delete\n
+geçerli seçenekler:\n\
+  -E, --extended-volume-path=PATH genişletilmiş bilgi yoğunlukları için dizin PATH; varsayılan: veritabanı yoğunlukları aynı path veya verilen path kontrol- dosyasında\n\
+  -i, --control-file=FILE         kontrol dosyası yazılmış birkaç yerle adlandırma yoğunlukları; varsayılan: hiçbir\n\
+  -d, --delete-backup             yedekleme birimleri silin; varsayılan: silmeyin\n
 
 $set 9 MSGCAT_UTIL_SET_MASTER
-11 A %s process is already running.\n
-12 MASTER SERVER starting. \n
-13 MASTER SERVER exiting.\n
-14 Error finding local host name\n
-15 Could not find parameter file\n
-16 Could not initialize master process\n
-17 Server %s going down in %d minutes
-18 Server %s notified of shutdown.\nThis may take several minutes. Please wait.
-19 Server %s not found.
-20 Master going down in %d minutes\n
+11 A %s süreç zaten çalışıyor.\n
+12 MASTER SERVER başlangıç​​. \n
+13 MASTER SERVER çıkarken.\n
+14 Hata yerel ana bilgisayar adı bulmakta\n
+15 Parametre dosyası bulunamadı\n
+16 Ana işlemi başlatılamadı\n
+17 Sunucu %s 1 dakika içinde aşağı gidiyor
+18 Sunucu %s kapatma bildirilir. \n Bu işlem birkaç dakika sürebilir. Lütfen bekleyiniz.
+19 Sunucu %s bulunamadı.
+20 Master %d dakika aşağı gidiyor\n
 
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
-11 Couldn't open output file `%s'\n
+11 Çıktı dosyası `%s' açılamadı\n
 60 \
-optimizedb: Optimize a database.\n\
-usage: %s optimizedb [OPTION] database-name\n\
+optimizedb: Bir veritabanı optimize edin.\n\
+kullanım: %s optimizedb [SEÇENEK] database-name\n\
 \n\
-valid options:\n\
-  -n, --class-name=NAME        update statistics for the NAME class; default: all classes\n
+geçerli seçenekler:\n\
+  -n, --class-name=NAME        NAME sınıf için güncelleştirme istatistikleri; varsayılan: tüm sınıflar\n
 
 
 $set 11 MSGCAT_UTIL_SET_RESTOREDB
-19 Invalid date format, valid format is dd-mm-yyyy:hh:mm:ss or 'backuptime'\n
-20 Restoredb cancelled or an error occurred.\n
+19 Geçersiz tarih biçimi, geçerli biçimi dd-mm-yyyy:hh:mm:ss veya 'backuptime'\n
+20 Restoredb iptal edildi veya bir hata oluştu.\n
 60 \
-restoredb: Restore a database.\n\
-usage: %s restoredb [OPTION] database-name\n\
+restoredb: Bir veritabanı geri yükleyin.\n\
+kullanım: %s restoredb [SEÇENEK] database-name\n\
 \n\
-valid options:\n\
-  -d, --up-to-date=DATE             restore the database up to its condition at given DATE. DATE is given as follows: dd-mm-yyyy:hh:mm:ss or 'backuptime' keyword\n\
-      --list                        display a list of backup volumes without restoring\n\
-  -B, --backup-file-path=PATH       PATH is a directory of backup volumes to be restored\n\
-  -l, --level=LEVEL                 LEVEL of backup to be restored; see backup usage; default: 0(full backup)\n\
-  -p, --partial-recovery            perform partial recovery if any log archive is absent\n\
-  -o, --output-file=FILE            redirect output messages to FILE; default: none\n\
-  -u, --use-database-location-path  restore the database and log volumes to the path specified in the database location file\n
+geçerli seçenekler:\n\
+  -d, --up-to-date=DATE             Verilen TARİH yukarı durumuna veritabanı geri yükleme. TARİHİ aşağıdaki gibi verilir: gg-aa-yyyy:ss:dd:ss veya 'yedekleme zamanı' anahtar kelime\n\
+      --list                        geri yüklemeden yedek birimlerin listesini görüntüler\n\
+  -B, --backup-file-path=PATH       PATH geri yüklenecek yedek yoğunluk bir dizinidir\n\
+  -l, --level=LEVEL                 Yedekleme SEVİYE geri yüklenecek; yedekleme kullanımını görmek; varsayılan: 0 (tam yedekleme)\n\
+  -p, --partial-recovery            herhangi bir log arşiv bulunmayışı halinde kısmi kurtarma işlemi\n\
+  -o, --output-file=FILE            DOSYA çıktı mesajları yönlendirme; varsayılan: hiçbir\n\
+  -u, --use-database-location-path  veritabanı konumu dosyasında belirtilen yoluna veritabanı ve günlük yoğunlukları geri yükleme.\n
 
 
 $set 12 MSGCAT_UTIL_SET_LOADDB
-19 Tha database name is missing.\n
-20 '%s' file does not have %d lines.\n
-21 interrupt ... \n
-22 Interrupted load - current transaction committed\n
-23 Interrupted load - current transaction aborted\n
-24 Can't open file `%s'\n
-25 \n*** Checking syntax ***\n\n
-26 %d errors detected.\n
-27 \n*** Inserting objects ***\n\n
-28 Total %8d objects inserted.\n
-29 Total %8d referenced objects inserted with default contents.\n
-30 \n*** Committing the transaction ***\n
-31 \n*** Closing the database ***\n
-32 Line %d:
-33 Error parsing `%s' as a `%s' value for attribute `%s' of `%s'\n
-34 Missing domain for attribute %s of %s\n
-35 For attribute %s of %s, type %s is not allowed in the domain of the set\n
-36 For attribute %s of %s, expected type %s, got a set constant\n
-37 For attribute %s of %s, expected type %s, got %s\n
-38 No class named %s referenced by attribute %s of %s\n
-39 No class named %s, ignoring tuples\n
-40 No class with identifier %d referenced by attribute %s of %s\n
-41 Class %s is not allowed in the loader input file\n
-42 Stopped with error.\n
-43 WARNING: updated existing instance !\n
-44 WARNING: redefining Instance %d of class %s\n
-45 Instance %d of class %s has already been defined\n
-46 Instance %d of class %s has already been reserved\n
-47 UNIQUE violation on attribute `%s', converted to NULL\n
-48   %d instances\n
-49 Class %s\n
-50 Password:
-51 \n*** Updating class statistics ***\n
-52 %s near line %d (text was '%s')\n
-53 Lexical error
-54 line %d: syntax error at \"%s\"
-55 missing
-56 in %s
-57 Incompatible arguments, \"%s\", and \"%s\"\n
-58 %d instances committed\n
-59 \nCannot invoke non-optimized version of loaddb.\n
-60 Error parsing \"%s\", as %s type.\n
-112   %d instances\r
-113 Last committed line : %d
-114 error-control-file
-115 input file to control error(s) during loading
+19 Tha veritabanı adı eksik.\n
+20 '%s' dosyası %d satır yoktur.\n
+21 ara verme ... \n
+22 ara verilen yük - mevcut işlem tamamlanmış\n
+23 ara verilen yük - durduruldu mevcut işlem\n
+24 `%s' dosyası açılamıyor\n
+25 \n*** syntax kontrolü ***\n\n
+26 %d hataları algılandı.\n
+27 \n*** Ekleme nesneleri ***\n\n
+28 Toplam %8d nesneleri eklenir.\n
+29 Toplam %8d varsayılan içeriği ile eklenen nesneleri başvurulan.\n
+30 \n*** İşlem İşlemek ***\n
+31 \n*** Veritabanı Kapama ***\n
+32 Satır %d:
+33 Hata `%s' özniteliği `%s' için `%s' değer olarak `%s' ayrıştırma\n
+34 %s özniteliği %s için eksik alanı\n
+35 %s özniteliği %s için, tip %s set etki alanında izin verilmez\n
+36 %s özniteliği %s için, tip %s beklenen, bir dizi sabiti var\n
+37 %s özniteliği %s için, tip %s beklenen, %s var\n
+38 %s özniteliği %s %s başvurulan adında bir sınıf\n
+39 Hiçbir sınıf dizilerini görmezden gelerek, %s adlı\n
+40 Tanımlayıcısı %d ile hiçbir sınıf %s özniteliği %s tarafından başvurulan\n
+41 Class %s yükleyici girdi dosyasında izin verilmiyor\n
+42 Hata ile Durduruldu.\n
+43 UYARI: varolan örneği güncellendi!\n
+44 UYARI: Sınıf %s Derece %d yeniden tanımlıyor\n
+45 Sınıf %s Derece %d zaten tanımlanmış\n
+46 Sınıf %s Derece %d zaten ayrılmıştır\n
+47 Özniteliği `%s 'EŞSİZ aykırı, NULL'a dönüştürülür\n
+48   %d örnekleri\n
+49 Sınıf %s\n
+50 Şifre:
+51 \n*** Sınıf istatistikleri güncelleniyor ***\n
+52 %d hat yakınlarındaki %s (metin '%s' oldu)\n
+53 Sözcüksel hata
+54 satır %d: \"%s\" içinde syntax hata
+55 eksik
+56 %s de
+57 Uyumsuz bağımsız değişkenleri, \"%s\", ve \"%s\"\n
+58 %d taahhüt örnekleri\n
+59 \nLoaddb olmayan-optimize edilmiş sürümü çağırılamaz.\n
+60 Hata ayrıştırma \"%s\", gibi %s tür.\n
+112   %d örnekleri\r
+113 Son kararlı hattı: %d
+114 hata-kontrol-dosyası
+115 yükleme sırasında bir hata(lar) kontrol etmek için giriş dosyası
 120 \
-loaddb: Import objects and schemas to the database.\n\
-usage: %s loaddb [OPTION] database-name\n\
+loaddb: Veritabanına veri alma nesneler ve şemalar.\n\
+kullanım: %s loaddb [SEÇENEK] database-name\n\
 \n\
-valid options:\n\
-  -u, --user=ID                 user ID for database access; default: "public"\n\
-  -p, --password=PASS           user password; default: none\n\
-      --data-file-check-only    check syntax for data file without load; default: loading after checking\n\
-  -l, --load-only               load data file without checking syntax; default: loading after checking\n\
-      --estimated-size=NUMBER   estimated NUMBER of instances; default: 5000\n\
-  -v, --verbose                 enable verbose status messages; default: disabled\n\
-  -c, --periodic-commit=COUNT   insertion COUNT for periodic commit; default: no commit during loading\n\
-      --no-oid                  don't use OID\n\
-      --no-statistics           do not update the statistics while loading\n\
-  -s, --schema-file=FILE[:LINE] create schema from LINE with FILE\n\
-  -i, --index-file=FILE[:LINE]  create index from LINE with FILE\n\
-  -d, --data-file=FILE          load data with FILE\n\
-  -t, --table=TABLE             table name that is substituted for missing class header in data file\n\
-      --error-control-file=FILE FILE to control error(s) during loading\n\
-      --ignore-class-file=FILE  input file of class names that skip load\n
+geçerli seçenekler:\n\
+  -u, --user=ID                 veritabanı erişimi için kullanıcı kimliği; varsayılan: "public"\n\
+  -p, --password=PASS           kullanıcı şifresi; varsayılan: hiçbir\n\
+      --data-file-check-only    yük olmadan veri dosyası için sözdizimi kontrol edin; varsayılan: yükleme kontrol ettikten sonra\n\
+  -l, --load-only               sözdizimi denetimi olmadan veri dosyası yükleyebilir; varsayılan: yükleme kontrol ettikten sonra\n\
+      --estimated-size=NUMBER   örneklerini tahmin NUMBER; varsayılan: 5000\n\
+  -v, --verbose                 Ayrıntılı durum mesajları sağlamak; varsayılan: devre dışı\n\
+  -c, --periodic-commit=COUNT   Periyodik tamamlama için ekleme COUNT; varsayılan: yükleme sırasında taahhüt yok\n\
+      --no-oid                  OID kullanmayın\n\
+      --no-statistics           yüklerken istatistikleri güncelleştirmeyin\n\
+  -s, --schema-file=FILE[:LINE] FILE ile LINE şeması oluşturun\n\
+  -i, --index-file=FILE[:LINE]  FILE ile LINE dizin oluşturun\n\
+  -d, --data-file=FILE          FILE ile yük verileri\n\
+  -t, --table=TABLE             Veri belgeleri içi kaybolan düzeyindeki şeflerin forum adıdır\n\
+      --error-control-file=FILE Yükleme sırasında bir hata (lar) kontrol etmek için FILE\n\
+      --ignore-class-file=FILE  yük atlamak sınıf adları girdi dosyası\n
 121 \
-load_noopt: This utility is deprecated. Be careful to use.\n\
-usage: load_noopt [OPTION] database-name\n\
+load_noopt: Bu yardımcı önerilmiyor. Kullanırken dikkatli olun.\n\
+kullanım: load_noopt [SEÇENEK] database-name\n\
 \n\
-valid options:\n\
-  -u, --user=ID                 user ID for database access; default: "public"\n\
-  -p, --password=PASS           user password; default: none\n\
-      --data-file-check-only    check syntax for data file without load; default: loading after checking\n\
-  -l, --load-only               load data file without checking syntax; default: loading after checking\n\
-      --estimated-size=NUMBER   estimated NUMBER of instances; default: 5000\n\
-  -v, --verbose                 enable verbose status messages; default: disabled\n\
-  -c, --periodic-commit=COUNT   insertion COUNT for periodic commit; default: no commit during loading\n\
-      --no-oid                  don't use OID\n\
-  -s, --schema-file=FILE[:LINE] create schema from LINE with FILE\n\
-  -i, --index-file=FILE[:LINE]  create index from LINE with FILE\n\
-  -d, --data-file=FILE          load data with FILE\n\
-      --error-control-file=FILE FILE to control error(s) during loading\n
+geçerli seçenekler:\n\
+  -u, --user=ID                 veritabanı erişimi için kullanıcı kimliği; varsayılan: "public"\n\
+  -p, --password=PASS           kullanıcı şifresi; varsayılan: hiçbir\n\
+      --data-file-check-only    yük olmadan veri dosyası için sözdizimi kontrol edin; varsayılan: yükleme kontrol ettikten sonra\n\
+  -l, --load-only               sözdizimi denetimi olmadan veri dosyası yükleyebilir; varsayılan: yükleme kontrol ettikten sonra\n\
+      --estimated-size=NUMBER   örneklerini tahmin NUMBER; varsayılan: 5000\n\
+  -v, --verbose                 Ayrıntılı durum mesajları sağlamak; varsayılan: devre dışı\n\
+  -c, --periodic-commit=COUNT   Periyodik tamamlama için ekleme COUNT; varsayılan: yükleme sırasında taahhüt yok\n\
+      --no-oid                  OID kullanmayın\n\
+  -s, --schema-file=FILE[:LINE] FILE ile LINE şeması oluşturun\n\
+  -i, --index-file=FILE[:LINE]  FILE ile LINE dizin oluşturun\n\
+  -d, --data-file=FILE          FILE ile yük verileri\n\
+      --error-control-file=FILE Yükleme sırasında bir hata(lar) kontrol etmek için FILE\n\
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
-41 cached-pages value is invalid.\n
-42 cached-page-size value is invalid.\n
-43 %d objects dumped.\n
+41 önbelleğe alınmış sayfaları değeri geçersiz.\n
+42 önbelleğe alınmış sayfa boyutu değeri geçersiz.\n
+43 %d nesneler atılıyor.\n
 44 Class %s
-45 , %d instances.\n
-46 Only %d out of %d objects dumped successfully.\n
-47 output directory is too long.\n
+45 , %d örnekleri.\n
+46 %d nesneleri yalnızca %d tanesinde başarılı atılıyor.\n
+47 çıkış dizin çok uzun.\n
 48 LSA : %d %d \n
 60 \
-unloaddb: Export objects and schemas from the database.\n\
-usage: %s unloaddb [OPTION] database-name\n\
+unloaddb: Veritabanındaki nesneleri ve şemalar verin.\n\
+kullanım: %s unloaddb [SEÇENEK] database-name\n\
 \n\
-valid options:\n\
-  -i, --input-class-file=FILE input FILE of table names; default: dump all classes\n\
-      --include-reference     include referenced tables; with -i option; default: disabled\n\
-      --input-class-only      include specified class only; with -i option; default: disabled\n\
-      --lo-count=COUNT        lo file COUNT per a directory; default: 0\n\
-      --estimated-size=NUMBER estimated NUMBER of instances; default: auto computed\n\
-      --cached-pages=NUMBER   NUMBER of cached pages; default: 100\n\
-  -O, --output-path=PATH      PATH of output directory; default: working directory\n\
-  -s, --schema-only           dump schema only; default: schema and objects\n\
-  -d, --data-only             dump objects only; default: schema and objects\n\
-      --output-prefix=PREFIEX PREFIX for output files; default: the database name\n\
-      --hash-file=FILE        FILE for hash; default: generate by tmpnam()\n\
-  -v, --verbose               enable verbose status messages; default: disabled\n\
-      --use-delimiter         use '"' where an identifier begins and ends; default: don't use\n\
-  -S, --SA-mode               stand-alone mode execution\n\
-  -C, --CS-mode               client-server mode execution\n\
-      --datafile-per-class    create a object file for each class; default: disabled\n
+geçerli seçenekler:\n\
+  -i, --input-class-file=FILE tablo adlarının giriş FILE varsayılan: tüm sınıflar dökümü\n\
+      --include-reference     başvurulan tablolar arasında; ile-i seçeneği; varsayılan: Engelli\n\
+      --input-class-only      sadece belirtilen sınıf arasında; ile-i seçeneği; varsayılan: devre dışı\n\
+      --lo-count=COUNT        Bir dizin başına lo dosya COUNT; varsayılan: 0\n\
+      --estimated-size=NUMBER örnekleri tahmini NUMBER; varsayılan: otomatik bilgisayarlı\n\
+      --cached-pages=NUMBER   Önbelleğe alınmış sayfaları NUMBER; varsayılan: 100\n\
+  -O, --output-path=PATH      Çıktı dizininin PATH; varsayılan: çalışma dizini\n\
+  -s, --schema-only           şema dökümü sadece; varsayılan: şema ve objeler\n\
+  -d, --data-only             dökümü nesneleri yalnızca; varsayılan: şema ve objeler\n\
+      --output-prefix=PREFIEX Çıktı dosyaları için PREFIEX; varsayılan: veritabanı adı\n\
+      --hash-file=FILE        Karma için FILE varsayılan: tmpnam tarafından oluşturmak ()\n\
+  -v, --verbose               Ayrıntılı durum mesajları sağlamak; varsayılan: devre dışı\n\
+      --use-delimiter         kullanımı '"' bir tanımlayıcı nereden başlayıp nerede bittiği; varsayılan: kullanmayın\n\
+  -S, --SA-mode               stand-alone modu yürütme\n\
+  -C, --CS-mode               istemci-sunucu modunda yürütme\n\
+      --datafile-per-class    her sınıf için bir nesne dosyası oluşturmak; varsayılan: devre dışı\n
 
 
 
 $set 14 MSGCAT_UTIL_SET_COMPACTDB
 11 \nPass 1\n\n
-12 %d objects processed.\n
+12 %d işlenmiş nesneler.\n
 13 \nPass 2\n\n
 14 Class %s\n
 15 oid:  %d|%d|%d,\n
-16 %d instances.\n
-17 Updating object.\n
+16 %d örnekleri.\n
+17 nesne güncelleniyor.\n
 18 ref_oid:  %d.%d.%d, ref_class_oid:  %d.%d.%d\n
-19 Couldn't transform object\n
-20 Missing class heap file\n
-21 Couldn't update object\n
-22 Only %d out of %d objects processed successfully.\n
-23 COMPACTDB already started.\n
-24 The number of pages must be between %d and %d.\n
-25 The instance lock timeout must be between %d and %d.\n
-26 Total objects: %d\n
-27 Failed objects: %d\n
-28 Modified objects: %d\n
-29 Big objects: %d\n
-30 Old class representations deleted from catalog.\n
-31 Old class representations preserved in catalog.\n
-32 Can't set isolation level.\n
-33 Couldn't compact database.\n
-34 The class lock timeout must be between %d and %d.\n
-35 Locked class... Incomplete processing...\n
-36 Unprocessed class...\n
-37 Process error... Incomplete processing...\n
-38 Nothing to process...\n
-39 Invalid parameters...\n
-40 Unknown class name...\n
-41 The unused class OIDs and pages have been reclaimed.\n
-42 Reclaiming of OIDs and pages skipped.\n
-43 Error while processing class, class skipped.\n
+19 Nesne dönüşümü bulunamadı\n
+20 Eksik sınıf yığın dosyası\n
+21 Nesneyi güncelleştirme bulunamadı\n
+22 Başarıyla işlenmiş %d nesnelerin sadece %d tanesi.\n
+23 COMPACTDB Zaten başladı.\n
+24 Sayfa sayısı %d ve %d arasında olmalıdır.\n
+25 Örneğin kilit zaman aşımı %d ile %d arasında olmalıdır.
+26 Toplam nesneler: %d\n
+27 Başarısız nesneler: %d\n
+28 Değiştirilmiş nesneler: %d\n
+29 Büyük nesneler: %d\n
+30 Alt sınıf temsilleri katalog silinir.\n
+31 Alt sınıf temsilleri katalogda korunmuş.\n
+32 Yalıtım düzeyi ayarlanamıyor.\n
+33 Veritabanını düzenleme bulunamadı.\n
+34 Sınıf kilit zaman aşımı %d ile %d arasında olmalıdır.\n
+35 Kilitli sınıf ... Eksik işlem ...\n
+36 İşlenmemiş sınıf ...\n
+37 İşlem hatası ... Eksik işlem ...\n
+38 Sürecine hiçbir şey ...\n
+39 Geçersiz parametreler ...\n
+40 Bilinmeyen sınıf ismi ...\n
+41 Kullanılmayan sınıf OSB ile sayfaları geri edilmiştir.\n
+42 OSB ile sayfaları geri istemek atlanır.\n
+43 Sınıf işlenirken hata, sınıf atlandı.\n
 44 \nPass 3\n\n
-45 Heap compact failed...\n
-46 Heap compact succedeed...\n
+45 Öbek kompakt başarısız oldu ...\n
+46 Öbek kompakt başarıldı ...\n
 60 \
-compactdb: Free unused space in a database.\n\
-usage: %s compactdb [OPTION] database-name [class_name1 class_name2 ...]\n\
+compactdb: Bir veritabanı Serbest kullanılmayan alanı.\n\
+kullanım: %s compactdb [SEÇENEK] database-name [class_name1 class_name2 ...]\n\
 \n\
-valid options:\n\
-  -v, --verbose                     enable verbose status messages; default: disabled\n\
-  -i, --input-class-file=FILE       input FILE of table names\n\
-                                    class_name list must be empty\n\
-                                    default: compact all classes\n\
-                                    enabled in CS-mode only\n\
-  -p, --pages-commited-once=NUMBER  maximum number of pages to commit once\n\
-                                    default: 10\n\
-                                    enabled in CS-mode only\n\
-  -S, --SA-mode                     stand-alone mode execution\n\
-  -C, --CS-mode                     client-server mode execution\n\
-  -d, --delete-old-repr             delete old class representations from catalog; default: disabled\n\
-  class_name_list                   enabled in CS-mode only\n\
-  -I, --Instance-lock-timeout       timeout for instance lock\n\
-  -c, --class-lock-timeout          timeout for class lock\n
+geçerli seçenekler:\n\
+  -v, --verbose                     Ayrıntılı durum mesajları sağlamak; varsayılan: devre dışı\n\
+  -i, --input-class-file=FILE       tablo adlarının girişi FILE\n\
+                                    class_name liste boş olmalıdır\n\
+                                    varsayılan: kompakt tüm sınıflar\n\
+                                    CS-mode sadece etkinleştirilmiş,\n\
+  -p, --pages-commited-once=NUMBER  maksimum sayfa sayısı bir kez işlemek için\n\
+                                    varsayılan: 10\n\
+                                    CS-mode sadece etkinleştirilmiş\n\
+  -S, --SA-mode                     stand-alone modu yürütme\n\
+  -C, --CS-mode                     istemci-sunucu modunda yürütme\n\
+  -d, --delete-old-repr             katalogdan eski sınıf temsilleri silmek; varsayılan: devre dışı\n\
+  class_name_list                   CS-mode sadece etkinleştirilmiş\n\
+  -I, --Instance-lock-timeout       Örneğin kilidi için zaman aşımı\n\
+  -c, --class-lock-timeout          sınıf kilidi için zaman aşımı\n
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
-21 The CUBRID master running on host %s \nwas started at %s
-22 has serviced %d requests. %d server(s) running.\n
-23 SHUTTING DOWN in %s minutes\n
+21 Host üzerinde çalışan CUBRID Master %s \n başlandı %s
+22 servisli %d  isteklerde bulunur. %d  sunucu (lar) çalışıyor.\n
+23 %s dakika AŞAĞI KAPATIYOR\n
 24 %s
-25 Name of server to shutdown :
-26 How many minutes until shutdown? :
+25 Kapatmak için sunucunun adı:
+26 Kaç dakika kapatılmasına dek? :
 27 \
-cub_commdb: This utility is deprecated. Use 'cubrid' command instead.\n\
-usage: cub_commdb [OPTION]\n\
+cub_commdb: Bu yardımcı programı önerilmiyor. Yerine 'cubrid' komutunu kullanın.\n\
+kullanım: cub_commdb [SEÇENEK]\n\
 \n\
-valid options:\n\
-  -P, --server-list                print server processes\n\
-  -O, --all-list                   print all processes\n\
-  -S, --shutdown-server=NAME       shutdown NAME database server\n\
-  -A, --shutdown-all               shutdown all processes\n\
-  -c, --server-mode=NAME           print NAME database server's HA mode\n\
-  -N, --node-list                  list nodes managed by CUBRID heartbeat\n\
-  -L, --process-list               list local process managed by CUBRID heartbeat\n\
-  -D, --dereg-process=PID          exit the target process and remove it from managed process entries\n\
-  -F, --reconfig-node-list         apply CUBRID heartbeat configuration recently changed\n\
-  -U, --deactivate-heartbeat       deactivate CUBRID heartbeat feature and remove the current node from node group\n\
-  -T, --activate-heartbeat         activate CUBRID heartbeat feature and current node becomes a member of node group\n\
-  -V, --verbose                    enable verbose status messages; default: disabled\n
-28 Sorry, unknown command: %s\n
-29 Could not get host name for local host - aborting\n
-30 Could not find parameter file\n
-31 Could not connect to master server on %s\n
-32 How many minutes until shutdown? :
-33 Master will shutdown in %d minutes\n
-34 Error receiving data from client
-35 the database server %s is not currently running
-36 can't exec shell (%s) for %s, %s
-37 process fork %s, returned %d, %s
-38 can't execute %s
+geçerli seçenekler:\n\
+  -P, --server-list                sunucu işlemleri yazdırma\n\
+  -O, --all-list                   Tüm süreçlerde yazdırmak\n\
+  -S, --shutdown-server=NAME       kapanma ADI veritabanı sunucusu\n\
+  -A, --shutdown-all               Kapatma tüm süreçleri\n\
+  -c, --server-mode=NAME           Yazdırma NAME veritabanı sunucusunun HA modunda\n\
+  -N, --node-list                  CUBRID sinyal tarafından yönetilen listesi düğümleri\n\
+  -L, --process-list               CUBRID sinyal tarafından yönetilen listesi yerel süreç\n\
+  -D, --dereg-process=PID          hedef işlemi çıkmak ve yönetilen süreç girdileri kaldırmak\n\
+  -F, --reconfig-node-list         yakın zamanda değişenleri CUBRID sinyal yapılandırmayı uygulamak\n\
+  -U, --deactivate-heartbeat       CUBRID sinyal özelliği devre dışı bırakmak ve düğüm grubundan geçerli düğüm kaldırmak\n\
+  -T, --activate-heartbeat         etkinleştirme CUBRID sinyal özelliği ve geçerli düğüm düğümün grubunun bir üyesi olur\n\
+  -V, --verbose                    Ayrıntılı durum Mesajını sağlamak; varsayılan: Devre Dışı\n
+28 Üzgünüz, bilinmeyen komut: %s\n
+29 Yerel bilgisayar için ana bilgisayar adı alınamadı - durduruluyor\n
+30 Parametre dosyası bulunamadı\n
+31 %s ana sunucuya bağlantı kurulamadı\n
+32 Kaç dakika kapatılmasına dek? :
+33 Master %d dakika içinde kapanacaktır\n
+34 İstemciden veri alma hatası
+35 veritabanı sunucusu %s şu anda çalışmıyor
+36 %s kabuk çalıştırma (%s), %s yapamam
+37 süreç çatalı %s,%d,%s döndürülen
+38 %s yürütemez
 
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \
-emergency_patchlog: Patch a database in case of emergency.\n\
-usage: %s emergency_patchlog [OPTION] database-name\n\
+emergency_patchlog: Patch acil durumlarda bir veritabanı.\n\
+kullanım: %s emergency_patchlog [SEÇENEK] database-name\n\
 \n\
-valid options:\n\
-  -r, --recreate-log           recreate log files; use carefully\n
+geçerli seçenekler:\n\
+  -r, --recreate-log           log dosyalarını yeniden; dikkatli bir şekilde kullanın\n
 
 
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB
-20 Wrong value %d for npages\n
-21 Wrong value '%s' for volume storage purpose.\n
+20 Npages için yanlış değer %d\n
+21 Yoğunlaştırma depolama amacıyla yanlış bir değeri '%s'.\n
 60 \
 addvoldb: Add a volume-file for the database.\n\
-usage: %s addvoldb [OPTION] database-name\n\
+kullanım: %s addvoldb [SEÇENEK] database-name\n\
 \n\
-valid options:\n\
-      --db-volume-size=SIZE    size of additional volume; default: db_volume_size in cubrid.conf\n\
-  -n, --volume-name=NAME       NAME of information volume; default: generate such as "db"_ext1)\n\
-  -F, --file-path=PATH         PATH for adding volume file; default: working directory\n\
-      --comment=COMMENT        COMMENT for adding volume file; default: none\n\
-  -p, --purpose=PURPOSE        PURPOSE for adding volume file; allowed:\n\
-                                       DATA - only for data\n\
-                                       INDEX - only for indices\n\
-                                       TEMP - only for temporary\n\
-                                       GENERIC - for all purposes\n\
-  -S, --SA-mode                stand-alone mode execution\n\
-  -C, --CS-mode                client-server mode execution\n
+geçerli seçenekler:\n\
+      --db-volume-size=SIZE    ilave yoğunluk büyüklüğü; varsayılan: cubrid.conf içinde db_volume_size\n\
+  -n, --volume-name=NAME       Bilgi yoğunluğunun NAME; varsayılan: örneğin, "db"_ext%d olarak oluşturmak\n\
+  -F, --file-path=PATH         yoğunluk dosyası eklemek için PATH; varsayılan: çalışma dizini\n\
+      --comment=COMMENT        yoğunluk dosyası eklemek için COMMENT; varsayılan: hiçbir\n\
+  -p, --purpose=PURPOSE        yoğunluk dosyası eklemek için PURPOSE; izin:\n\
+                                       DATA - sadece veri için\n\
+                                       INDEX - yalnızca endeksler için\n\
+                                       TEMP - sadece geçici için\n\
+                                       GENERIC - tüm amaçlar için\n\
+  -S, --SA-mode                stand-alone modu yürütme\n\
+  -C, --CS-mode                istemci-sunucu modunda yürütme\n
 
 $set 18 MSGCAT_UTIL_SET_CHECKDB
-20 Some inconsistencies were detected in your database.\n Please consult error_log_file %s for additional information.\n
-21 %s: Cannot find the class. It will be ommitted.\n
+20 Bazı tutarsızlıklar veritabanı tespit edildi.\n ek bilgi için error_log_file %s başvurun.\n
+21 %s: Sınıf bulamıyor. Bu dahil edilmeyecektir.\n
 60 \
-checkdb: Check consistency of the database.\n\
-usage: %s checkdb [OPTION] database-name [class_name1 class_name2 ...]\n\
+checkdb:Veritabanının tutarlılığını denetleyin.\n\
+kullanım: %s checkdb [SEÇENEK] database-name [class_name1 class_name2 ...]\n\
 \n\
-valid options:\n\
-  -S, --SA-mode                stand-alone mode execution\n\
-  -C, --CS-mode                client-server mode execution\n\
-  -r, --repair                 repair when inconsistency is found\n\
-  -i, --input-class-file=FILE  input FILE of class names\n\
-                               default: check all classes\n
+geçerli seçenekler:\n\
+  -S, --SA-mode                stand-alone modu yürütme\n\
+  -C, --CS-mode                istemci-sunucu modunda yürütme\n\
+  -r, --repair                 tutarsızlık bulunduğu zaman onar\n\
+  -i, --input-class-file=FILE  sınıf adları girişi FILE\n\
+                               varsayılan: tüm sınıfları kontrol edin\n
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
-15 Space description for database '%s' with pagesize %s. (log pagesize: %s)\n\n
+15 Sayfa boyutu %s ile veritabanı '%s' için alan açıklaması. (log sayfa boyutu:%s)\n\n
 16 %5d %8s  %s %s  %s\n
-17 Couldn't open output file `%s'\n
-18 Space description for temporary volumes for database '%s' with pagesize %s.\n\n
-19 Volid  Purpose  total_pages  free_pages  Vol Name\n\n
-20 Volid  Purpose   total_size   free_size  Vol Name\n\n
-21 LOB space description %s \n\n
-30 Summarized space description for database '%s' with pagesize %s. (log pagesize: %s)\n\n
-31 Purpose    total_pages  used_pages  free_pages  volume_count\n
-32 Purpose     total_size   used_size   free_size  volume_count\n
+17 Çıktı dosyası `%s' açılamadı\n
+18 Veritabanı '%s' sayfa boyutu %s için geçici yoğunlukları için alan açıklaması.\n\n
+19 Volid Amacı toplam_sayfa free_pages Vol Name\n\n
+20 Volid Amacı total_size free_size Vol Name\n\n
+21 LOB alanı açıklaması %s\n\n
+30 sayfa boyutu %s ile veritabanı '%s' için özet alan açıklama. (sayfa boyutu log:%s)\n\n
+31 Amaç toplam_sayfa used_pages free_pages volume_count\n
+32 Amaç total_size used_size free_size volume_count\n
 33 %10s %s %s %s %10d\n
 60 \
-spacedb: Display usage/free space of the database.\n\
-usage: %s spacedb [OPTION] database-name\n\
+spacedb: Kullanım / veritabanı boş alanı gösterir.\n\
+kullanım: %s spacedb [SEÇENEK] database-name\n\
 \n\
-valid options:\n\
-  -o, --output-file=FILE       redirect output messages to FILE; default: none\n\
-  -S, --SA-mode                stand-alone mode execution\n\
-  -C, --CS-mode                client-server mode execution\n\
+geçerli seçenekler:\n\
+  -o, --output-file=FILE       FILE çıktı mesajları yönlendirme; varsayılan: hiçbir\n\
+  -S, --SA-mode                stand-alone modu yürütme\n\
+  -C, --CS-mode                istemci-sunucu modunda yürütme\n\
       --size-unit={PAGE|M|G|T|H}\n\
-                               set the display unit (page, mega, giga, tera, human readable); default: H\n\
-  -s, --summarize              display only a summary for each volume purpose\n
+                               gösterge ünitesi (sayfa, mega, giga, tera, insanların okuyabileceği); varsayılan: H\n\
+  -s, --summarize              her birim bir amaç için sadece özet görüntüler\n
 
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
-15 Estimated Number of Pages = %d\n
+15 Tahmini Sayfa Sayısı = %d\n
 60 \
-estimate_data: Estimate size of data.\n\
-usage: %s estimate_data number-of-instances average-instance-size number-of-attributes variable-number-of-attributes\n
+estimate_data: Veri Tahmini boyutu.\n\
+kullanım: %s estimate_data sayı-örnekleri ortalama örnekli-boyut numarası-öznitelikleri değişken sayı-öznitelikleri\n
 
 
 $set 21 MSGCAT_UTIL_SET_ESTIMATEDB_INDEX
-15 Bad index key type specified = %s\n
-16 Bad average key length specified = %d when precision = %d\n
-17 Bad arguments specified\n
-20 Estimated number of total index pages = %d\n (When index created, after instances have been populated.)\n
-21 Estimated number of total index pages = %d\n (When index created, before instances have been populated (average case))\n
-22 Estimated number of total index pages = %d\n (When index created, before instances have been populated (worst case))\n
-23 For the given input...\n
-24 Total number of instances: %d\n
-25 Number of different keys : %d\n
-26 Average key size         : %d\n
-27 Key Type                 : %s\n\n
+15 Belirtilen Kötü indeks anahtar türü = %s\n
+16 Kötü ortalama anahtar uzunluğu belirtilen = %d olduğunda hassasiyet= %d\n
+17 Belirtilen Kötü bağımsız değişkenleri\n
+20 Toplam dizin sayfaları Tahmini sayısı = %d\n (Endeksi yarattığı zaman, örnekler sonra doldurulacaktır edilmiştir.)\n
+21 Toplam dizin sayfaları Tahmini sayısı = %d\n (Endeksi yarattığı zaman, örnekler önce doldurulması edilmiştir (ortalama durumda))\n
+22 Toplam dizin sayfaları Tahmini sayısı = %d\n (Örnekleri doldurulan endeksi yarattığı zaman, önce (en kötü durumda))\n
+23 Verilen giriş için...\n
+24 Örneklerinin sayısı: %d\n
+25 Farklı anahtar numarası: %d\n
+26 Ortalama anahtar boyutu: %d\n
+27 Anahtar Türü			  : %s\n\n
 60 \
-estimate_index: Estimate size of an index.\n\
-usage: %s estimate_index number-of-instances number-of-different-keys average-key-size key-type\n
+estimate_index: Bir dizinin boyutu tahmin.\n\
+kullanım: %s estimate_index sayı-örnekleri sayısı-farklı-tuşları ortalama-key-size anahtar-tipi\n
 
 $set 22 MSGCAT_UTIL_SET_INSTALLDB
 60 \
-installdb: Install a database.\n\
-usage: %s installdb [OPTION] database-name\n\
+installdb: Bir veritabanı yükleyin.\n\
+kullanım: %s installdb [SEÇENEK] database-name\n\
 \n\
-valid options:\n\
-      --server-name=HOST       server HOST name; default: current host name\n\
-  -F, --file-path=PATH         directory PATH for database volumes; default: current directory\n\
-  -L, --log-path=PATH          directory PATH for log volumes; default: same as file-path\n
+geçerli seçenekler:\n\
+      --server-name=HOST       Sunucu HOST adı; varsayılan: geçerli ana bilgisayar adı\n\
+  -F, --file-path=PATH         veritabanı yoğunlukları için dizin PATH; varsayılan: geçerli dizin\n\
+  -L, --log-path=PATH          log yoğunlukları için dizin PATH; varsayılan: file-path aynı\n
 
 $set 23 MSGCAT_UTIL_SET_MIGDB
-1 Temporary class OID\n
-2 Can't print elo values\n
-3 Error accessing long object for migration\n
-4 Error opening output file for long object migration \n
-5 Read error\n
-6 Write error\n
-7 Error opening ELO input file "%s"\n
+1 Geçici sınıf OID\n
+2 Elo değerleri yazdırılamıyor\n
+3 Geçiş için uzun nesne erişim hatası\n
+4 Uzun nesne geçiş için açılırken hata çıktı dosyası\n
+5 Okuma hatası\n
+6 Yazma hatası\n
+7 Açılırken hata ELO girdi dosyası "%s"\n
 8 CLASSES:
-9 hash filename
-10 Name:                         %s\n
-11 Size:                         %d\n
-12 Page size:                    %d\n
-13 Data size:                    %d\n
-14 Entry size:                   %d\n
-15 Entries per page:             %d\n
-16 Cached pages:                 %d\n
-17 Number of entries:            %d\n
-18 Number of collisions:         %d\n
-19 Hash filename:                %s\n
-20 Next overflow entry:          %d\n
-21 Key type:                     %s\n
-22 Address of page headers:      %x\n
-23 Address of last page header:  %x\n
-24 Address of free page header:  %x\n
-25 Address of page bitmap:       %x\n
-26 Page bitmap size:             %d\n
+9 karma Dosya adı
+10 Ad:                         		%s\n
+11 Boyut:                         	%d\n
+12 Sayfa Boyutu:                    %d\n
+13 Veri Boyutu:                   	%d\n
+14 Giriş Boyutu:                  	%d\n
+15 Her Sayfa İçin Giriş:            %d\n
+16 Önbelleğe alınan sayfaları:      %d\n
+17 Girişlerinin sayısı:             %d\n
+18 Çarpışmalar sayısı:              %d\n
+19 Karma Dosya:                     %s\n
+20 Sonraki taşma girişi:            %d\n
+21 Anahtar türü:                    %s\n
+22 Sayfa başlıkları Adresi:         %x\n
+23 Son sayfa başlığının Adresi:     %x\n
+24 Ücretsiz sayfa başlığının Adresi:%x\n
+25 Sayfa bitmap Adresi:             %x\n
+26 Sayfa bitmap boyutu:             %d\n
 
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 60 \
-diagdb: Dump a database.\n\
-usage: %s diagdb [OPTION] database-name\n\
+diagdb: Bir veritabanı dökümü.\n\
+kullanım: %s diagdb [SEÇENEK] database-name\n\
 \n\
-valid options:\n\
+geçerli seçenekler:\n\
   -d, --dump-type=TYPE         TYPE of dump\n\
-                               -1 dump all\n\
-                                1 dump file tables\n\
-                                2 dump file capacities\n\
-                                3 dump heap capacities\n\
-                                4 dump index capacities\n\
-                                5 dump classnames\n\
-                                6 dump disk bitmaps\n\
-                                7 dump catalog\n\
-                                8 dump log\n\
-                                9 dump heap\n
+                               -1 tüm dökümü\n\
+                                1 dosya tabloları dökümü\n\
+                                2 dosya kapasiteleri dökümü\n\
+                                3 yığın kapasiteleri dökümü\n\
+                                4 endeksi kapasiteleri dökümü\n\
+                                5 sınıf adları dökümü\n\
+                                6 disk bitmapler dökümü\n\
+                                7 katalog dökümü\n\
+                                8 log dökümü\n\
+                                9 yığın dökümü\n
 
 
 $set 25 MSGCAT_UTIL_SET_LOCKDB
-15 Couldn't open output file `%s'\n
-59 lockdb cannot run as standalone mode.\n
+15 Çıktı dosyası `%s' açılmaadı \n
+59 lockdb bağımsız modu olarak çalıştıramazsınız.\n
 60 \
-lockdb: Display lock-status of the database.\n\
-usage: %s lockdb [OPTION] database-name\n\
+lockdb: veritabanının kilit durumunu görüntüler.\n\
+kullanım: %s lockdb [SEÇENEK] database-name\n\
 \n\
-valid options:\n\
-  -o, --output-file=FILE       redirect output messages to FILE; default: none\n
+geçerli seçenekler:\n\
+  -o, --output-file=FILE      FILE çıktı mesajları yönlendirme; varsayılan: hiçbir\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
-20 Only one argument must be given among: tran-index, user, host, progname\n
-21 Enter DBA password:
+20 Sadece tek bir bağımsız değişkeni arasında verilmelidir: tran-index, user, host, progname\n
+21 DBA şifrenizi girin:
 22 Tran index      User name      Host name      Process id      Program name\n
 23 -------------------------------------------------------------------------------\n
 24 %7d(%1c) %14s %14s %15d %17s\n
-25 There are no transactions\n
-26 There is not a transaction with the specified argument values.\n
-27 Ready to kill the following transactions:\n\n
-28 Do you wish to proceed ? (Y/N)
-29 Killing transaction associated with transaction index %d\n
-30 Killing of the following transactions has failed\n\n
-31 The transaction does not finish yet, but it may be doing the rollback work.\n Please, wait a second and try it later if needed.\n
-59 killrtan cannot run as standalone mode.\n
+25 Hiçbir işlem bulunmamaktadır\n
+26 Belirtilen bağımsız değişken değerleri ile bir işlem yoktur.\n
+27 Aşağıdaki işlemleri iptal etmek için hazır:\n\n
+28 Devam etmek istiyor musunuz? (Y/N)
+29 İptal etme işlemi işlemin endeksi %d ile ilişkili\n
+30 Aşağıdaki işlemleri İptal etme başarısız oldu\n\n
+31 işlemin henüz bitmiş değil, ama geri alma işi olabilir.\n bir saniye bekleyin ve gerekirse daha sonra deneyin.\n
+59 killrtan bağımsız modu olarak çalıştıramazsınız.\n
 60 \
-killtran: Manage transactions of the database.\n\
-usage: %s killtran [OPTION] database-name\n\
+killtran: Veritabanı işlemleri yönetin.\n\
+kullanım: %s killtran [SEÇENEK] database-name\n\
 \n\
-valid options:\n\
-  -i, --kill-transaction-index=INDEX kill transaction with transaction INDEX\n\
-      --kill-user-name=ID            kill all transactions with user ID\n\
-      --kill-host-name=HOST          kill all transactions with client HOST\n\
-      --kill-program-name=NAME       kill all transactions with client program NAME\n\
-  -p, --dba-password=PASS            password of the DBA user; will prompt if don't specify\n\
-  -d, --display-information          display information about active transactions\n\
-  -f, --force                        kill the transaction without a prompt for verification\n
+geçerli seçenekler:\n\
+  -i, --kill-transaction-index=INDEX işlemi İNDEX ile işlemi iptal etme\n\
+      --kill-user-name=ID            kullanıcı ID ile tüm işlemleri iptal etme\n\
+      --kill-host-name=HOST          istemci HOST ile tüm işlemleri iptal etme\n\
+      --kill-program-name=NAME       istemci programı NAME ile tüm işlemleri iptal etme\n\
+  -p, --dba-password=PASS            DBA kullanıcı şifresi; belirtmezseniz isteyecektir\n\
+  -d, --display-information          etkin işlemler hakkında bilgi görüntülemek\n\
+  -f, --force                        doğrulaması için bir istemi olmadan işlemi iptal etme\n
 
 
 $set 31 MSGCAT_UTIL_SET_MIGRATE
 1 database-name
-2 required argument, no default
-3 compatibility-check
-4 compatibility check only
-5 backup-destination
-6 a directory path or device for the destination of the backup volumes
-20 database '%s' does not exist.
-21 '%s' can't be migrated to %s, because its DB version is too low.\n
-22 '%s' don't need to be migrated.\n
-23 '%s' needs to be migrated.\n
-24 Backup is recommended after migration. Do you want to back up your database now? (y/n):
-25 We recommend to back up your new database with backupdb command after migration.
-26 \n*** WARNING: Backup your database before you start migrating to %s ***\n\nTo recover errors which might be occurred during migration, we strongly recommend to back up your database.\nHave you already backed up your database? (y/n):
-27 \n1. Run backupdb \n2. Enter the new backup path for the new database.(current path: %s)\n3. Exit \n
-28 \nThe new backup path for the database:
-29 \nMigration and backup have been successfully completed.
-30 Backup failed. Please, retry to back up your database.
-31 \n\n*** WARNING : Once the migration is completed, you cannot restore the database with the former backup volumes.\nNotice that the previous version of backup files can be restored only on the corresponding version of restoredb.\nPlease, check the former backup volumes is securely kept.\n
+2 Gerekli bağımsız değişkeni, varsayılan yok
+3 uyumluluk - denetimi
+4 uyumluluk yalnızca kontrol edin
+5 yedekleme-hedefi
+6 yedekleme yoğunluk hedef için bir dizin veya aygıt
+20 veritabanı '%s' yok.
+21 DB sürüm çok düşük olduğundan, '%s',%s geçirilemez.\n
+22 '%s' taşınmasına olanak gerekmez.\n
+23 '%s' taşıma gerekir.\n
+24 Yedekleme geçişten sonra önerilir. Şimdi veritabanınızı yedeklemek ister misiniz? (e/ h):
+25 Bu taşınmanın ardından backupdb komutu ile yeni bir veritabanı yedeklemek için önerilir.
+26 \n*** UYARI:taşıma başlamadan önce veritabanı yedekleme %s*** \n\nBu taşıması sırasında meydana gelen olabilecek hataları kurtarabilirsiniz, şiddetle veritabanınızı yedeklemenizi önerilir \n zaten veritabanı yedeklendiyse Varmı.? (e/h):
+27 \n%d. Backupdb\n2 çalıştırın..\n3: yeni veritabanı için yeni bir yedekleme path (%s geçerli path) girin. Çıkış
+28 \nVeritabanı için yeni bir yedekleme path:
+29 \nTaşınması ve yedekleme başarıyla tamamlandı.
+30 Yedekleme başarısız oldu. Lütfen , Veritabanı yedeklemenizi yeniden deneyin.
+31 \n\n*** UYARI: Bir kez geçiş tamamlandığında, eski yedekleme yoğunlukları ile veritabanını geri yüklemek yapamazsınız yedekleme dosyalarının önceki sürümü sadece restoredb ilgili sürümü restore edilebilir \n NOT..\n Lütfen, güvenli bir şekilde tutulmasını önceki yedekleme yoğunlukları kontrol edin.\n
 
 $set 33 MSGCAT_UTIL_SET_ALTERDBHOST
 60 \
-alterdbhost: Alter a host of the database.\n\
-usage: %s alterdbhost [OPTION] database-name\n\
+alterdbhost: Veritabanının bir ana bilgisayar değiştirebilir.\n\
+kullanım: %s alterdbhost [SEÇENEK] database-name\n\
 \n\
-valid options:\n\
-  -h, --host=HOST              new HOST name; default: current host name\n
+geçerli seçenekler:\n\
+  -h, --host=HOST              Yeni HOST adı; varsayılan: geçerli ana bilgisayar adı\n
 
 
 $set 34 MSGCAT_UTIL_SET_LOADJAVA
 1 database-name
-2 required argument, no default
-3 java-class-file
-4 required argument, no default
-5 force-overwrite
-6 overwrite class file if exist, default no
+2 Gerekli bağımsız değişkeni, bir varsayılanı yok
+3 java sınıf dosyası
+4 Gerekli bağımsız değişkeni, bir varsayılanı yok
+5 zorlamak - üzerine yazmak
+6 varsa sınıf dosyanın üzerine yazmak, varsayılan yok
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
-15 Cannot open output file `%s'\n
-59 plandump cannot run as standalone mode.\n
+15 Çıktı dosyası `%s' açılamıyor \n
+59 plandump bağımsız modu olarak çalıştıramazsınız.\n
 60 \
-plandump: Display or control cached query plans.\n\
-usage: %s plandump [OPTION] database-name\n\
+plandump: Önbelleğe alınan sorgu planlarını görüntüleme ya da kontrol etmek.\n\
+kullanım: %s plandump [SEÇENEK] database-name\n\
 \n\
-valid options:\n\
-  -d, --drop                   drop all plans in the server's cache\n\
-  -o, --output-file=FILE       redirect output messages to FILE; default: none\n
+geçerli seçenekler:\n\
+  -d, --drop                   sunucunun önbelleğine tüm planları bırakın\n\
+  -o, --output-file=FILE       FILE çıktı mesajları yönlendirme; varsayılan: hiçbir\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
-11 Cannot open output file `%s'\n
-21 System parameters to be used by the client program.\n
-22 System parameters loaded by the server '%s'\n
-23 System parameters to be used in standalone mode.\n
+11 Çıktı dosyası açılamıyor`%s'\n
+21 Sistem parametreleri istemci programı tarafından kullanılacak.\n
+22 Sistem parametreleri sunucu '%s' tarafından yüklenen\n
+23 Sistem parametrelerinin bağımsız modda kullanılır.\n
 60 \
-paramdump: Dump system parameter settings.\n\
-usage: %s paramdump [OPTION] database-name\n\
+paramdump: Sistem parametre ayarları dökümü.\n\
+kullanım: %s paramdump [SEÇENEK] database-name\n\
 \n\
-valid options:\n\
-  -o, --output-file=FILE       redirect output message to FILE; default: none\n\
-  -b, --both                   dump both client and server parameters\n\
-  -S, --SA-mode                stand-alone mode execution\n\
-  -C, --CS-mode                client-server mode execution\n
+geçerli seçenekler:\n\
+  -o, --output-file=FILE       FILE çıktı iletiyi yönlendirmek; varsayılan: hiçbir\n\
+  -b, --both                   istemci ve sunucu parametreleri tüm dökümü\n\
+  -S, --SA-mode                stand-alone modu yürütme\n\
+  -C, --CS-mode                istemci-sunucu modunda yürütme\n
 
 $set 39 MSGCAT_UTIL_SET_CHANGEMODE
-11 Wrong value \"%s\" for the server's HA running mode.\n
-12 Cannot change the server's HA running mode.\n
-21 Enter DBA password:
-22 The server `%s''s current HA running mode is %s.\n
-23 The server `%s''s HA running mode is changed to \"%s\".\n
-24 The server was not configured for HA.\n
-58 HA feature is not supported in this platform.\n
-59 changemode cannot run as standalone mode.\n
+11 yanlış bir değeri \"%s\" sunucunun HA çalışan modu için.\n
+12 Sunucunun HA modunda çalışması değiştirilemez.\n
+21 DBA şifrenizi girin:
+22 Modunda çalışırken sunucu `%s'' şu andaki HA %s dir.\n
+23 Sunucu `%s'' HA modunda çalışırken \"%s\"olarak değiştirildi.\n
+24 Sunucu modunda HA ayarlı değil.\n
+58 HA özelliği bu platformda desteklenmiyor.\n
+59 changemode bağımsız modu olarak çalıştıramazsınız.\n
 60 \
-changemode: Display or change the server's HA running mode.\n\
-usage: %s changemode [OPTION] database-name\n\
+changemode: Sunucunun HA çalışma modunda görüntülemek veya değiştirmek.\n\
+kullanım: %s changemode [SEÇENEK] database-name\n\
 \n\
-valid options:\n\
-  -m, --mode=MODE             change the server mode to MODE; default: none\n\
-  -f, --force                 force to change\n\
-  -t, --timeout=S             waiting S second while active transaction is terminated normally\n\
-                              -t option is effective only when the user changes server mode to maintenance\n\
-                              default: 5\n
+geçerli seçenekler:\n\
+  -m, --mode=MODE             MODE sunucu modunu değiştirmek; varsayılan: hiçbir\n\
+  -f, --force                 değiştirmeye zorlamak\n\
+  -t, --timeout=S             etkin işlem normalde sonlandırılmış iken S saniye bekliyor\n\
+                              kullanıcı bakımı için sunucu modunda değiştirir sadece -t seçeneği etkilidir\n\
+                              varsayılan: 5\n
 
 $set 40 MSGCAT_UTIL_SET_COPYLOGDB
-11 Wrong value \"%s\" for the copylogdb's running mode.\n
-21 Enter DBA password:
-22 The server was not configured for HA.\n
-58 HA feature is not supported in this platform.\n
-59 copylogdb cannot run as standalone mode.\n
+11 yanlış bir değeri \"%s\" copylogdb çalışan modu.\n
+21 DBA şifrenizi girin:
+22 Sunucu modunda HA ayarlı değil.\n
+58 HA özelliği bu platformda desteklenmiyor.\n
+59 copylogdb bağımsız modu olarak çalıştıramazsınız.\n
 60 \
-copylogdb: Copy log pages from the server.\n\
-usage: %s copylogdb [OPTION] database-name\n\
+copylogdb: Sunucu günlük sayfaları kopyalayın.\n\
+kullanım: %s copylogdb [SEÇENEK] database-name\n\
 \n\
-valid options:\n\
-  -L, --log-path=PATH         directory PATH for copied log volumes\n\
-  -m, --mode=MODE             operation mode; default: sync\n\
-                              MODE: sync or semisync or async\n
+geçerli seçenekler:\n\
+  -L, --log-path=PATH         Kopyalanan log yoğunlukları için dizin PATH\n\
+  -m, --mode=MODE             çalışma modu, varsayılan: sync\n\
+                              MODE: sync veya semisync veya async\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
-21 Enter DBA password:
-22 The server was not configured for HA.\n
-58 HA feature is not supported in this platform.\n
-59 applylogdb cannot run as standalone mode.\n
+21 DBA şifrenizi girin:
+22 Sunucu modunda HA ayarlı değil.\n
+58 HA özelliği bu platformda desteklenmiyor.\n
+59 applylogdb bağımsız modu olarak çalıştıramazsınız.\n
 60 \
-applylogdb: Apply copied log to the server.\n\
-usage: %s applylogdb [OPTION] database-name\n\
+applylogdb: sunucuya kopyalanmaz log uygulayın.\n\
+kullanım: %s applylogdb [SEÇENEK] database-name\n\
 \n\
-valid options:\n\
-  -L, --log-path=PATH         directory PATH of copied log volumes\n\
-      --max-mem-size=SIZE     maximum process SIZE in MB; max 500\n
+geçerli seçenekler:\n\
+  -L, --log-path=PATH         Kopyalanan log yoğunlukların dizininde PATH\n\
+      --max-mem-size=SIZE     MB maksimum işlem SIZE; max 1000\n
 
 $set 43 MSGCAT_UTIL_SET_STATDUMP
-11 Cannot open output file `%s'\n
-59 statdump cannot run as standalone mode.\n
+11 Çıktı dosyası `%s' açılamıyor\n
+59 statdump bağımsız modu olarak çalıştıramazsınız.\n
 60 \
-statdump: Dump global statistics.\n\
-usage: %s statdump [OPTION] database-name\n\
+statdump: Genel istatistiklere dökümü.\n\
+kullanım: %s statdump [SEÇENEK] database-name\n\
 \n\
-valid options:\n\
-  -o, --output-file=FILE       redirect output message to FILE; default: none\n\
-  -c, --cumulative             print cumulative stats\n\
-  -i, --interval=S             print stats every S secs\n\
-  -s, --substr=STRING          print stat item only that match the substring\n
+geçerli seçenekler:\n\
+  -o, --output-file=FILE       FILE çıktı iletiyi yönlendirmek; varsayılan: hiçbir\n\
+  -c, --cumulative             kümülatif istatistikler Yazdırma\n\
+  -i, --interval=S             istatistikleri her S saniye Yazdırma\n\
+  -s, --substr=STRING          substring eşleşen, stat öğeyi Yazdırma\n
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
-21 Enter DBA password:
-22 The server was not configured for HA.\n
-58 HA feature is not supported in this platform.\n
-59 applyinfo cannot run as standlone mode.\n
+21 DBA şifrenizi girin:
+22 Sunucu modunda HA ayarlı değil.\n
+58 HA özelliği bu platformda desteklenmiyor.\n
+59 applyinfo standlone modu olarak çalıştıramazsınız.\n
 60 \
-applyinfo: display CUBRID HA Apply information.\n\
-usage: %s applyinfo [OPTION] database-name\n\
+applyinfo: Ekran CUBRID HA bilgileri uygulayın.\n\
+kullanım: %s applyinfo [SEÇENEK] database-name\n\
 \n\
-valid options:\n\
-  -r, --remote-host-name      remote host name; display remote node's active log information \n\
-  -a, --applied-info 	      display applied information \n\
-  -L, --copied-log-path=PATH  path of copied log volumes; display copied log information \n\
-  -p, --pageid=ID             page id; default : 0(active page)\n\
-  -v, --verbose               enable verbose status messages; default : disable\n
+geçerli seçenekler:\n\
+  -r, --remote-host-name      Uzak ana bilgisayar adı; görüntü uzak düğüm aktif log bilgileri\n\
+  -a, --applied-info 	      uygulamalı bilgilerde görüntü \n\
+  -L, --copied-log-path=PATH  Kopyalanan log yoğunlukların path; görüntü kopyalanan log bilgileri \n\
+  -p, --pageid=ID             sayfa id; varsayılan: 0 (etkin sayfa)\n\
+  -v, --verbose               Ayrıntılı durum mesajları sağlamak; varsayılan: devre dışı bırakmak\n
 
 $set 45 MSGCAT_UTIL_SET_ACLDB
-59 acldb cannot run as standalone mode.\n
+59 acldb bağımsız modu olarak çalıştıramazsınız.\n
 60 \
-acldb: Display or reload access control setting of the database.\n\
-usage: %s acldb [OPTION] database-name\n\
+acldb: Görüntüleme veya veritabanı erişim kontrol ayarı yeniden yükleyin.\n\
+kullanım: %s acldb [SEÇENEK] database-name\n\
 \n\
-valid options:\n\
-  -r, --reload       reload ip control file\n
+geçerli seçenekler:\n\
+  -r, --reload       ip kontrol dosyası yeniden yükleyin\n
 
 $set 46 MSGCAT_UTIL_SET_GENLOCALE
 60 \
-genlocale: Generates locale shared library using LDML input file(s).\n\
-usage: %s genlocale [OPTION] [language-string]\n\
+Mevcut komutlar:konum oluşturarak paylaşan kütüphane, Bu kütüphane LDML Giriş belgesi(s).\n\
+Kullanımı: %s Mevcut komutlar[seçmiş] [Dil-Dizeler]\n\
 \n\
-language-string	      locale language string for which to generate shared library.\n\
-		      If no language-string is given all languages in 'cubrid_locales.txt'\n\
-		      will be processed.\n\
-valid options:\n\
-  -v, --verbose	              enable verbose status messages; default : disable\n\
-  -i, --input-ldml-file       path for input LDML file. Only when language-string is given.\n
-61 Invalid locale name argument.\n
+Dil –Dizeler	      Konum dil dizeleri, Paylaşmak için kullanacak olan kütüphane.\n\
+		      Eğer Dil dizeleri verilmemiş se, 'cubrid_konum.txt'\n\
+		      içindeki tüm diller işlenecektir\n\
+geçerli seçenekler:\n\
+  -v, --verbose               Çok uzun durumlardaki bilgi işlemlerini yapabilen; Hata: Hayır\n\
+  -i, --input-ldml-file       LDML dosya yolunu giriş yapın, Ama sadece Dil dizileri verdiği zamanda \n
+61 Geçersiz konum adı tartışması. \n
 
 $set 47 MSGCAT_UTIL_SET_DUMPLOCALE
-57 Cannot simultaneously use -i/--input-file and locale identifier.\n
-58 Invalid codepoint range (-s -e).\n
-59 Invalid locale name argument.\n
+57 -i/--input-file vkonum onaylayıcı aynı  zamanda kullanılmaz.\n
+58 Geçersiz kod noktası alanı (-s -e).\n
+59 Geçersiz nokta dı tartışması.\n
 60 \
-dumplocale: Dumps the contents of locale shared library previously generated using LDML input file(s).\n\
-usage: %s dumplocale [OPTION] [language-string]\n\
+Kopyalama yeri: yeri bırakıp kütüphane içeklerini paylaşmak, önce LDMLgiriş yapılan doyalar neden olmuştur\n\
+Kullanımı: %s dumplocale [seçmiş] [Dil-Dizeler]\n\
 \n\
-language-string	 locale language string for which to dump locale shared library.\n\
-		         If no language-string is given all languages in 'cubrid_locales.txt'\n\
-		         will be processed.\n\
-valid options:\n\
-  -i, --input-file    path for input locale shared library (previously generated).\n\
-                      Can be used only when language-string is not given.\n\
-  -d, --calendar      dump calendar and date/time information; default : disable\n\
-  -n, --numeric		  dump numeric information; default : disable\n\
-  -a, --alphabet=l|lower|u|upper|both	     dump alphabet and casing information; default : disable\n\
-      --identifier-alphabet=l|lower|u|upper	 dump alphabet and casing information for identifiers; default : disable\n\
-  -c, --codepoint-order	 dump collation info sorted based on codepoint values\n\
-                         (cp, char, weight, next-cp, char and weight);\n\
-                         default : disable\n\
-  -w, --weight-order  dump collation info sorted based on weight values\n\
-                      (weight, cp, char); default : disable\n\
-  -s, --start-value	  filtering option; starting codepoint for\n\
-                      -a, --identifier-alphabet, -c, -w; default : 0\n\
-  -e, --end-value     filtering option; ending codepoint for \n\
+Dil-Dizeler	 yeri ve dil dizeleri, yeri bırakıp kütüphane paylaşmak.\n\
+		         Ele çalıştığında hiçbir dil dizesi vermemiştir, 'cubrid_konum.txt' \n\
+			 deki tüm diller için işlem yapılacaktır\n\
+geçerli seçenekler: \n\
+  -i, --input-file    giriş yerinde kütüphane paylaşmanın yolu (Daha önce neden olmuştur). \n\
+                      sadece dil dizeler ortaya çıkmadığı zamanda kullanabilir. \n\
+  -d, --calendar      takvim ve Tarih/zaman bilgisini bırakmak; Hata: Hayır\n\
+  -n, --numeric		  sayım bilgilerini bırakmak; Hata: Hayır\n\
+  -a, --alphabet=l|lower|u|upper|both	     alfabe bırakılır,bilgilere neden olur; Hata: Hayır\n\
+      --identifier-alphabet=l|lower|u|upper	 alfabe bırakılır, Onaylayıcı bilgilere neden olur; Hata: Hayır\n\
+  -c, --codepoint-order	 kodlama noktası sayısal değeri temeli üzerinde kontrol edilecektir \n\
+                         (cp, char,Ağırlık miktarı, yakından-cp, char veAğırlık miktarı);\n\
+                         hata: hayır\n\
+  -w, --weight-order  ağırlık miktarı temelini bırakma üzerinde kontrol edilmelidr\n\
+                      (ağırlık, cp, char); Hata: Hayır\n\
+  -s, --start-value	  filtre seçimi; Çalıştırma Kodlama noktası\n\
+                      -a, --identifier-alphabet, -c, -w; Hata: 0\n\
+  -e, --end-value     filtre seçimi; Çalıştırma Kodlama noktası\n\
                       -a, --identifier-alphabet, -c, -w; \n\
-                      default : maximum value read from locale shared library\n\
-  -k, --console-conversion  dump console conversion data; default : disable\n\
-  -z, --normalization   dump normalization data; default : disable\n
-
+                      hata: konumda verilerin en büyük sayısal değerinin okunmasını paylaşmak\n\
+  -k, --console-conversion  verilerini bırakmak ; Hata: Hayır\n\
+  -z, --normalization   Normalleştirilen verileri bırakmak; Hata: Hayır\n
