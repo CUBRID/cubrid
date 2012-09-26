@@ -410,7 +410,10 @@ get_line (int fd)
 	}
       if (cptr == cend)
 	{
-	  cptr = curline = xrealloc (curline, curlen *= 2);
+	  /* relocate cptr to hold the offset from curline */
+	  int offset = cptr - curline;
+	  curline = xrealloc (curline, curlen *= 2);
+	  cptr = curline + offset;
 	  cend = curline + curlen;
 	}
       if (bptr == bend)
