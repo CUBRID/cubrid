@@ -3,8 +3,11 @@ CUBRID Database Management System
 CUBRID is a DBMS being supported by an active community of open source developers 
 and provides better performance and features necessary for Web services. 
 
-CUBRID is distributed under two licenses, 
-Database engine is under GPL v2 or later and the APIs are under BSD license.
+CUBRID is distributed under three licenses according to its component, 
+Database engine is under GPL v2 or later and 
+APIs and Connectors are under BSD license and
+CUBRID Web Manager is under GPL v3 or later.
+
 Copyright and license information can be found in the file COPYING.
 For more information about CUBRID, visit http://www.cubrid.org/about
 
@@ -12,39 +15,39 @@ Below You will see the brief list of sections to guide You to easily get started
 
 MAJOR REFERENCES
 ================
-- CUBRID Community Site in English: http://www.cubrid.org
-- CUBRID Community Site in Korean: http://www.cubrid.com
-- CUBRID Development Site(Global): http://sourceforge.net/projects/cubrid
-- CUBRID Development Site(Korea) : http://dev.naver.com/projects/cubrid
+- CUBRID Official Site: http://www.cubrid.org ,  http://www.cubrid.com
+- CUBRID Development Site(Global): http://jira.cubrid.org
+- CUBRID Release Note: http://release.cubrid.org/en , http://release.cubrid.org/ko 
+- CUBRID Manuals: http://www.cubrid.org/manual 
+
+DOWNLOADS and FILE REPOSITORIES
+=====================
+- http://www.cubrid.org/downloads
+- http://ftp.cubrid.org
+- http://sourceforge.net/projects/cubrid/files/
 
 HOW TO BUILD/INSTALL CUBRID
 =====================
 - CUBRID Source Build Guide
     http://www.cubrid.org/download_source_and_build
-- CUBRID Installation Guide for Windows Users
-	http://wiki.cubrid.org/index.php/Install_CUBRID_on_Windows
-- CUBRID Installation Guide for Linux Users
-	http://wiki.cubrid.org/index.php/Install_CUBRID_on_Linux
+- CUBRID Installation Guide for Windows/Linux Users
+	http://www.cubrid.org/wiki_tutorials/entry/cubrid-installation-instructions
 
 GETTING STARTED
 ===============
 - Absolute Beginners' Guide to CUBRID
-	http://wiki.cubrid.org/index.php/Absolute_Beginners'_Guide_to_CUBRID
-- Tutorial for CUBRID Manager(GUI Management Tool)
-	http://wiki.cubrid.org/index.php/CUBRID_Manager
-- Tutorial for CSQL Interpreter(Command Line SQL tool)
-	http://wiki.cubrid.org/index.php/CSQL_Interpreter
-
-CUBRID ARCHITECTURE & ADMINISTRATION
-=============
-- Architecture of CUBRID
-	http://blog.cubrid.org/cubrid-story/architecture-of-cubrid/
-- Database Administrators' Guide
-	http://wiki.cubrid.org/index.php/Database_Administrators'_Guide
-
+	http://www.cubrid.org/wiki_tutorials/entry/cubrid-tutorials
+- Tutorial for CUBRID Manager(Client-side GUI Tool)
+	http://www.cubrid.org/wiki_tools/entry/cubrid-manager
+- Tutorial for CUBRID Web Manager(Server-side GUI Tool)
+	http://www.cubrid.org/wiki_tools/entry/cubrid-web-manager
+- Tutorial for CUBRID Other Tools
+	http://www.cubrid.org/wiki_tools
+	
 PROGRAMMING APIs and APPLICATIONs
 ================
 - CUBRID APIs and Applications 
+	http://www.cubrid.org/wiki_apis/
 	http://www.cubrid.org/apps_and_tools
 
 GETTING HELP
