@@ -1823,6 +1823,21 @@ er_log (void)
     }
 #endif /* !SERVER_MODE */
 
+  /* If file is not exist, it will recreate er_Msglog file. */
+  if ((access (er_Msglog_file_name, F_OK) == -1) && er_Msglog != stderr
+      && er_Msglog != stdout)
+    {
+      (void) fclose (er_Msglog);
+      er_Msglog = er_file_open (er_Msglog_file_name);
+
+      if (er_Msglog == NULL)
+        {
+          er_Msglog = stderr;
+          er_log_debug (ARG_FILE_LINE, er_cached_msg[ER_LOG_MSGLOG_WARNING],
+                        er_Msglog_file_name);
+        }
+    }
+
   fprintf (er_Msglog, er_cached_msg[ER_LOG_MSG_WRAPPER_D], time_array,
 	   ER_SEVERITY_STRING (severity), file_name, line_no,
 	   ER_ERROR_WARNING_STRING (severity), err_id, tran_index,
