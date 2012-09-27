@@ -22,8 +22,10 @@ for ($i = 0; $i < 10; $i++) {
 }
 cubrid_commit($conn);
 
-cubrid_execute($conn, "DELETE FROM php_cubrid_test WHERE d='php-test'", CUBRID_ASYNC);
+$req = cubrid_execute($conn, "DELETE FROM php_cubrid_test WHERE d='php-test'", CUBRID_ASYNC);
 var_dump(cubrid_affected_rows());
+var_dump(cubrid_affected_rows($conn));
+var_dump(cubrid_affected_rows($req));
 
 cubrid_disconnect($conn);
 
@@ -34,5 +36,7 @@ print "done!";
 require_once("clean_table.inc");
 ?>
 --EXPECTF--
+int(10)
+int(10)
 int(10)
 done!

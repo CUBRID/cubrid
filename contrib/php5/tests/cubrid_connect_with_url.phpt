@@ -1,10 +1,6 @@
 --TEST--
 cubrid_connect_with_url
 --SKIPIF--
-<?php
-require_once('skipif.inc');
-require_once('skipifconnectfailure.inc')
-?>
 --FILE--
 <?php
 
@@ -39,6 +35,45 @@ cubrid_close($conn2);
 
 print "done!";
 ?>
+
+<?php
+$host = "localhost";
+$port = 33000;
+$db = "demodb";
+$user = "public_error_user";
+$passwd = "";
+$connect_url = "CUBRID:$host:$port:$db:::";
+$skip_on_connect_failure  = getenv("CUBRID_TEST_SKIP_CONNECT_FAILURE") ? getenv("CUBRID_TEST_SKIP_CONNECT_FAILURE") : true;
+
+$conn = cubrid_connect_with_url($connect_url, $user, $passwd);
+if (!$conn) {
+    printf("[005] [%d] %s\n", cubrid_error_code(), cubrid_error_msg());
+}
+
+
+
+$host = "localhost";
+$port = 33000;
+$db = "demodb";
+$user = "public";
+$passwd = "wrong_password";
+$connect_url = "CUBRID:$host:$port:$db:::";
+$skip_on_connect_failure  = getenv("CUBRID_TEST_SKIP_CONNECT_FAILURE") ? getenv("CUBRID_TEST_SKIP_CONNECT_FAILURE") : true;
+
+$conn = cubrid_connect_with_url($connect_url, $user, $passwd);
+if (!$conn) {
+    printf("[006] [%d] %s\n", cubrid_error_code(), cubrid_error_msg());
+}
+
+?>
+
+
 --CLEAN--
 --EXPECTF--
 done!
+
+Warning: Error: DBMS, -165, User "%s" is invalid. in %s on line %d
+[005] [-165] User "%s" is invalid.
+
+Warning: Error: DBMS, -171, Incorrect or missing password. in %s on line %d
+[006] [-171] Incorrect or missing password.

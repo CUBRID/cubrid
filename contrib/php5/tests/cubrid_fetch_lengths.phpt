@@ -77,7 +77,7 @@ Field lengths: 1 0 0 30 0 0
 The second row: 2 varchar22                     
 Field lengths: 1 0 0 30 0 0 
 
-Warning: Error: CLIENT, -2003, Cannot get column info in %s on line %d
+Warning: Error: CLIENT, -30003, Cannot get column info in %s on line %d
 
 The third row: X Mixed
 Field lengths: 1 5 

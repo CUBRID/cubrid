@@ -148,7 +148,8 @@ function get_result_info($req_handle)
 --CLEAN--
 --EXPECTF--
 
-Warning: Error: DBMS, -493, Syntax: syntax error, unexpected UNKNOWN  in %s on line %d
+Warning: Error: DBMS, -493, Syntax: In line 1, column 35 before END OF STATEMENT
+Syntax error: unexpected 'unknown'  in %s on line %d
 
 ------------ get_result_info --------------------
 Row count:                     6

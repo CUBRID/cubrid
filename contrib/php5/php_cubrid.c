@@ -63,11 +63,6 @@
 * PRIVATE DEFINITIONS
 ************************************************************************/
 
-#if defined(WINDOWS)
-#define snprintf _snprintf
-#define strncasecmp _strnicmp
-#endif
-
 #ifndef TRUE
 # define TRUE 1
 #endif
@@ -135,14 +130,15 @@ typedef enum
 } T_FACILITY_CODE;
 
 /* error codes */
-#define CUBRID_ER_INVALID_SQL_TYPE 		-2002
-#define CUBRID_ER_CANNOT_GET_COLUMN_INFO 	-2003
-#define CUBRID_ER_INVALID_PARAM 		-2006
-#define CUBRID_ER_NOT_SUPPORTED_TYPE 		-2008
-#define CUBRID_ER_TRANSFER_FAIL 		-2011
-#define CUBRID_ER_PHP				-2012
-#define CUBRID_ER_PARAM_UNBIND                  -2015
-#define CUBRID_ER_INVALID_PARAM_TYPE            -2022
+#define CUBRID_ER_INVALID_SQL_TYPE 		-30002
+#define CUBRID_ER_CANNOT_GET_COLUMN_INFO 	-30003
+#define CUBRID_ER_INVALID_PARAM 		-30006
+#define CUBRID_ER_NOT_SUPPORTED_TYPE 		-30008
+#define CUBRID_ER_TRANSFER_FAIL 		-30011
+#define CUBRID_ER_PHP				-30012
+#define CUBRID_ER_PARAM_UNBIND                  -30015
+#define CUBRID_ER_INVALID_PARAM_TYPE            -30022
+#define CUBRID_ER_END                           -31000
 /* CAUTION! Also add the error message string to db_error[] */
 
 /* Maximum length for the Cubrid data types. 
@@ -169,9 +165,6 @@ typedef enum
 
 /* Max Cubrid supported charsets */
 #define MAX_DB_CHARSETS 6
-
-/* Max Cubrid unescaped string len */
-#define MAX_UNESCAPED_STR_LEN 4096
 
 typedef struct
 {
@@ -1273,8 +1266,8 @@ static void php_cubrid_do_connect(INTERNAL_FUNCTION_PARAMETERS, int persistent)
         if (zend_hash_find(&EG(persistent_list), hashed_details, hashed_details_length+1, (void **) &le) == FAILURE) { /* we don't */
             zend_rsrc_list_entry new_le;
     
-            if ((cubrid_conn = cci_connect(host, port, dbname, userid, passwd)) < 0) {
-                handle_error(cubrid_conn, NULL, NULL);
+            if ((cubrid_conn = cci_connect_ex(host, port, dbname, userid, passwd, &error)) < 0) {
+                handle_error(cubrid_conn, &error, NULL);
                 RETURN_FALSE;
             }
     
@@ -1284,6 +1277,7 @@ static void php_cubrid_do_connect(INTERNAL_FUNCTION_PARAMETERS, int persistent)
             }
     
             connect = new_cubrid_connect(1);
+            if (!connect) RETURN_FALSE;
             connect->handle = cubrid_conn;
     
             Z_TYPE(new_le) = le_pconnect;
@@ -1301,7 +1295,7 @@ static void php_cubrid_do_connect(INTERNAL_FUNCTION_PARAMETERS, int persistent)
             connect = (T_CUBRID_CONNECT *) le->ptr;
     
             if (!check_connect_alive(connect)) {
-                if ((cubrid_conn = cci_connect(host, port, dbname, userid, passwd)) < 0) {
+                if ((cubrid_conn = cci_connect_ex(host, port, dbname, userid, passwd, &error)) < 0) {
                     php_error_docref(NULL TSRMLS_CC, E_WARNING, "Link to server lost, unable to reconnect");
                     zend_hash_del(&EG(persistent_list), hashed_details, hashed_details_length+1);
                     RETURN_FALSE;
@@ -1347,8 +1341,8 @@ static void php_cubrid_do_connect(INTERNAL_FUNCTION_PARAMETERS, int persistent)
             }
         }
     
-        if ((cubrid_conn = cci_connect(host, port, dbname, userid, passwd)) < 0) {
-    	handle_error(cubrid_conn, NULL, NULL);
+        if ((cubrid_conn = cci_connect_ex(host, port, dbname, userid, passwd, &error)) < 0) {
+    	handle_error(cubrid_conn, &error, NULL);
     	RETURN_FALSE;
         }
     
@@ -1361,6 +1355,7 @@ static void php_cubrid_do_connect(INTERNAL_FUNCTION_PARAMETERS, int persistent)
         }
     
         connect = new_cubrid_connect(0);
+        if (!connect) RETURN_FALSE;
         connect->handle = cubrid_conn;
         
         ZEND_REGISTER_RESOURCE(return_value, connect, le_connect);
@@ -1432,8 +1427,8 @@ static void php_cubrid_do_connect_with_url(INTERNAL_FUNCTION_PARAMETERS, int per
         if (zend_hash_find(&EG(persistent_list), hashed_details, hashed_details_length + 1, (void **) &le) == FAILURE) { /* we don't */
             zend_rsrc_list_entry new_le;
     
-            if ((cubrid_conn = cci_connect_with_url(buf, userid, passwd)) < 0) {
-                handle_error(cubrid_conn, NULL, NULL);
+            if ((cubrid_conn = cci_connect_with_url_ex(buf, userid, passwd, &error)) < 0) {
+                handle_error(cubrid_conn, &error, NULL);
                 RETURN_FALSE;
             }
     
@@ -1444,6 +1439,7 @@ static void php_cubrid_do_connect_with_url(INTERNAL_FUNCTION_PARAMETERS, int per
             }
     
             connect = new_cubrid_connect(1);
+            if (!connect) RETURN_FALSE;
             connect->handle = cubrid_conn;
     
             Z_TYPE(new_le) = le_pconnect;
@@ -1462,7 +1458,7 @@ static void php_cubrid_do_connect_with_url(INTERNAL_FUNCTION_PARAMETERS, int per
             connect = (T_CUBRID_CONNECT *) le->ptr;
     
             if (!check_connect_alive(connect)) {
-                if ((cubrid_conn = cci_connect_with_url(buf, userid, passwd)) < 0) {
+                if ((cubrid_conn = cci_connect_with_url_ex(buf, userid, passwd, &error)) < 0) {
                     php_error_docref(NULL TSRMLS_CC, E_WARNING, "Link to server lost, unable to reconnect");
                     zend_hash_del(&EG(persistent_list), hashed_details, hashed_details_length+1);
                     RETURN_FALSE;
@@ -1508,8 +1504,8 @@ static void php_cubrid_do_connect_with_url(INTERNAL_FUNCTION_PARAMETERS, int per
             }
         }
     
-        if ((cubrid_conn = cci_connect_with_url(buf, userid, passwd)) < 0) {
-    	handle_error(cubrid_conn, NULL, NULL);
+        if ((cubrid_conn = cci_connect_with_url_ex(buf, userid, passwd, &error)) < 0) {
+    	handle_error(cubrid_conn, &error, NULL);
     	RETURN_FALSE;
         }
     
@@ -1522,6 +1518,7 @@ static void php_cubrid_do_connect_with_url(INTERNAL_FUNCTION_PARAMETERS, int per
         }
     
         connect = new_cubrid_connect(0);
+        if (!connect) RETURN_FALSE;
         connect->handle = cubrid_conn;
     
         ZEND_REGISTER_RESOURCE(return_value, connect, le_connect);
@@ -1611,10 +1608,14 @@ ZEND_FUNCTION(cubrid_prepare)
     init_error_link(connect);
 
     request = new_cubrid_request();
+    if (!request) {
+        handle_error(CCI_ER_REQ_HANDLE, NULL, connect);
+        RETURN_FALSE;
+    }
     request->conn = connect;
 
     if ((cubrid_retval = cci_prepare(connect->handle, query, 
-		    (char) ((option & CUBRID_INCLUDE_OID) ? CCI_PREPARE_INCLUDE_OID : 0), &error)) < 0) {
+                    (char) ((option & CUBRID_INCLUDE_OID) ? CCI_PREPARE_INCLUDE_OID : 0), &error)) < 0) {
         close_cubrid_request_internal(request);
         handle_error(cubrid_retval, &error, connect);
         RETURN_FALSE;
@@ -1768,6 +1769,10 @@ ZEND_FUNCTION(cubrid_bind)
             cubrid_retval = cci_bind_param(request->handle, bind_index, a_type, (void *) lob, u_type, CCI_BIND_PTR); 
 
             request->lob = new_cubrid_lob();
+            if (!request->lob) {
+                handle_error(CCI_ER_NO_MORE_MEMORY, NULL, request->conn);
+                RETURN_FALSE;
+            }
             request->lob->lob = lob;
             request->lob->type = u_type;
         } else if (u_type == CCI_U_TYPE_BIT) {
@@ -1869,29 +1874,33 @@ ZEND_FUNCTION(cubrid_execute)
 
     if (connect == NULL && request != NULL) {
         connect = request->conn;
-	req_handle = request->handle;
+        req_handle = request->handle;
 
         init_error_link(connect);
 
-	if (!request->l_prepare) {
+        if (!request->l_prepare) {
             handle_error(CCI_ER_REQ_HANDLE, NULL, connect);
             RETURN_FALSE;
-	}
+        }
 
-	l_prepare = request->l_prepare;
+        l_prepare = request->l_prepare;
 
         if (request->bind_num > 0) {
-            for (i = 0; i < request->bind_num; i++) {
-                if (!request->l_bind[i]) {
+	    for (i = 0; i < request->bind_num; i++) {
+		if (!request->l_bind[i]) {
                     handle_error(CUBRID_ER_PARAM_UNBIND, NULL, connect);
-                    RETURN_FALSE;
-                }
-            }
-        }
+		    RETURN_FALSE;
+		}
+	    }
+	}
     } else if (connect != NULL && request == NULL) {
         init_error_link(connect);
 
         request = new_cubrid_request();
+        if (!request) {
+            handle_error(CCI_ER_REQ_HANDLE, NULL, connect);
+            RETURN_FALSE;
+        }
         request->conn = connect;
 
         if (!is_prepare_and_execute_mode) {
@@ -1924,7 +1933,7 @@ ZEND_FUNCTION(cubrid_execute)
         if (option & CUBRID_EXEC_QUERY_ALL) {
             exec_flag |= CCI_EXEC_QUERY_ALL;
         } else if (option & CUBRID_ASYNC) {
-           exec_flag |= CCI_EXEC_ASYNC;
+            exec_flag |= CCI_EXEC_ASYNC;
         }
     
         if ((exec_retval = cci_execute(req_handle, exec_flag, 0, &error)) < 0) {
@@ -1947,7 +1956,7 @@ ZEND_FUNCTION(cubrid_execute)
     request->sql_type = res_sql_type;
     request->col_count = res_col_count;
 
-    connect->sql_type = request->sql_type;
+    connect->sql_type = res_sql_type;
 
     switch (request->sql_type) {
     case CUBRID_STMT_SELECT:
@@ -1960,7 +1969,7 @@ ZEND_FUNCTION(cubrid_execute)
         if (cubrid_retval < 0 && cubrid_retval != CCI_ER_NO_MORE_DATA) {
             goto ERR_CUBRID_EXECUTE;
         } 
-
+        
         break;
     case CUBRID_STMT_INSERT:
     case CUBRID_STMT_UPDATE:
@@ -1970,7 +1979,7 @@ ZEND_FUNCTION(cubrid_execute)
     case CUBRID_STMT_CALL:
         request->row_count = exec_retval;
         connect->affected_rows = exec_retval;
-    default:
+    default: 
         break;
     }
 
@@ -2006,7 +2015,7 @@ ZEND_FUNCTION(cubrid_next_result)
     init_error();
 
     if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "r", &req_id) == FAILURE) {
-        return;
+	return;
     }
 
     ZEND_FETCH_RESOURCE(request, T_CUBRID_REQUEST *, &req_id, -1, "CUBRID-Request", le_request);
@@ -2043,7 +2052,7 @@ ZEND_FUNCTION(cubrid_next_result)
 
     res_col_info = cci_get_result_info(request->handle, &res_sql_type, &res_col_count);
     if (res_sql_type == CUBRID_STMT_SELECT && !res_col_info) {
-        RETURN_FALSE;
+	RETURN_FALSE;
     }
 
     request->col_info = res_col_info;
@@ -2052,9 +2061,8 @@ ZEND_FUNCTION(cubrid_next_result)
 
     switch (request->sql_type) {
     case CUBRID_STMT_SELECT:
-        request->row_count = cubrid_retval;
+	request->row_count = cubrid_retval;
         request->field_lengths = (int *) emalloc (sizeof(int) * res_col_count); 
-
         break;
     case CUBRID_STMT_INSERT:
     case CUBRID_STMT_UPDATE:
@@ -2082,20 +2090,35 @@ ZEND_FUNCTION(cubrid_next_result)
 
 ZEND_FUNCTION(cubrid_affected_rows)
 {
-    zval *conn_id = NULL;
-    T_CUBRID_CONNECT *connect= NULL;
+    zval *id = NULL;
+    void *ptr = NULL;
+    int type;
+    T_CUBRID_CONNECT *connect = NULL;
+    T_CUBRID_REQUEST *request = NULL;
 
     init_error();
 
-    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "|r", &conn_id) == FAILURE) {
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "|r", &id) == FAILURE) {
 	return;
     }
 
-    if (conn_id) {
-        ZEND_FETCH_RESOURCE2(connect, T_CUBRID_CONNECT *, &conn_id, -1, "CUBRID-Connect", le_connect, le_pconnect);
+    if (id) {
+        ptr = (void *)zend_fetch_resource(&id TSRMLS_CC, -1, NULL, &type, 3, le_connect, le_pconnect, le_request);
+
+        if (type == le_request) {
+            request = (T_CUBRID_REQUEST *) ptr;
+            connect = request->conn;
+
+        } else if (type == le_connect || type == le_pconnect) {
+            connect = (T_CUBRID_CONNECT *) ptr;
+
+        } else {
+            php_error_docref(NULL TSRMLS_CC, E_WARNING, "A invalid resource has been input.\n");
+            RETURN_FALSE;
+        }
+
     } else {
-	if (CUBRID_G(last_connect_id) == -1)
-	{
+	if (CUBRID_G(last_connect_id) == -1) {
 	  RETURN_FALSE;
 	}
         
@@ -2183,7 +2206,7 @@ ZEND_FUNCTION(cubrid_column_types)
     zval *req_id= NULL;
     T_CUBRID_REQUEST *request;
 
-    char full_type_name[128];
+    char full_type_name[128] = {'\0'};
     int i;
 
     init_error();
@@ -3376,7 +3399,7 @@ ZEND_FUNCTION(cubrid_field_type)
     zval *req_id = NULL;
     long offset = -1;
     T_CUBRID_REQUEST *request;
-    char string_type[128];
+    char string_type[128] = {'\0'};
 
     init_error();
 
@@ -3409,7 +3432,7 @@ ZEND_FUNCTION(cubrid_field_flags)
     long offset = -1;
     T_CUBRID_REQUEST *request;
     int n;
-    char sz[1024];
+    char sz[1024] = {'\0'};
 
     init_error();
 
@@ -3425,8 +3448,6 @@ ZEND_FUNCTION(cubrid_field_flags)
 	handle_error(CCI_ER_COLUMN_INDEX, NULL, request->conn);
 	RETURN_FALSE;
     }
-
-    strlcpy(sz, "", sizeof(sz));
 
     if (request->col_info[offset].is_non_null) {
 	strcat(sz, "not_null ");
@@ -3899,6 +3920,10 @@ ZEND_FUNCTION(cubrid_unbuffered_query)
     init_error_link(connect);
 
     request = new_cubrid_request();
+    if (!request) {
+        handle_error(CCI_ER_REQ_HANDLE, NULL, connect);
+        RETURN_FALSE;
+    }
     request->conn = connect;
 
     if ((cubrid_retval = cci_prepare(connect->handle, query, 0, &error)) < 0) {
@@ -3946,7 +3971,7 @@ ZEND_FUNCTION(cubrid_unbuffered_query)
     case CUBRID_STMT_INSERT:
     case CUBRID_STMT_UPDATE:
     case CUBRID_STMT_DELETE:
-        connect->affected_rows = cubrid_retval; 
+        connect->affected_rows = cubrid_retval;
         break;
     case CUBRID_STMT_CALL:
         request->row_count = cubrid_retval;
@@ -4009,6 +4034,10 @@ ZEND_FUNCTION(cubrid_query)
     init_error_link(connect);
 
     request = new_cubrid_request();
+    if (!request) {
+        handle_error(CCI_ER_REQ_HANDLE, NULL, connect);
+        RETURN_FALSE;
+    }
     request->conn = connect;
 
     if ((cubrid_retval =
@@ -4057,7 +4086,7 @@ ZEND_FUNCTION(cubrid_query)
         connect->affected_rows = exec_retval;
         break;
     case CUBRID_STMT_CALL:
-	request->row_count = exec_retval;
+        request->row_count = exec_retval;
         connect->affected_rows = exec_retval;
     default:
         break;
@@ -4182,7 +4211,6 @@ ZEND_FUNCTION(cubrid_get_server_info)
 ZEND_FUNCTION(cubrid_real_escape_string)
 {
     zval *conn_id = NULL;
-    zend_bool no_backslash_escapes = TRUE;
 
     char *unescaped_str = NULL;
     int unescaped_str_len = 0;
@@ -4190,8 +4218,9 @@ ZEND_FUNCTION(cubrid_real_escape_string)
     char *escaped_str;
     int escaped_str_len = 0;
 
-    char *s1, *s2;
-    int i;
+    int cubrid_retval = 0;
+    T_CUBRID_CONNECT *connect = NULL;
+    T_CCI_ERROR error;
 
     init_error();
 
@@ -4200,87 +4229,32 @@ ZEND_FUNCTION(cubrid_real_escape_string)
 	return;
     }
 
-    if (unescaped_str_len > MAX_UNESCAPED_STR_LEN) {
-	RETURN_FALSE; 
-    }
-
-    s1 = unescaped_str;
-    for (i = 0; i < unescaped_str_len; i++) {
-        switch (s1[i]) {
-        case '\'':
-            escaped_str_len++;
-
-            break;
-        case '\n':
-        case '\r':
-        case '\t':
-        case '_':
-        case '%':
-        case '`':
-        case '"':
-        case '\\':
-            if (!no_backslash_escapes) {
-                escaped_str_len++;
-            }
-
-            break;
-        default:
-            break;
-        }
-        
-        escaped_str_len++;
-    }
-
-    escaped_str = safe_emalloc(escaped_str_len + 1, sizeof(char), 0);
-
-    s1 = unescaped_str;
-    s2 = escaped_str;
-    for (i = 0; i < unescaped_str_len; i++) {
-        switch (s1[i]) {
-        case '\'':
-            if (!no_backslash_escapes) {
-                *s2++ = '\\';
-            } else {
-                *s2++ = '\'';
-            }
-
-            break;
-        case '\n':
-        case '\r':
-        case '\t':
-        case '_':
-        case '%':
-        case '`':
-        case '"':
-        case '\\':
-            if (!no_backslash_escapes) {
-                *s2++ = '\\';
-            }
-
-            break;
-        default:
-            break;
+    if (conn_id){
+        ZEND_FETCH_RESOURCE2(connect, T_CUBRID_CONNECT *, &conn_id, -1, "CUBRID-Connect", le_connect, le_pconnect);
+    } else {
+        if (CUBRID_G(last_connect_id) == -1) {
+            RETURN_FALSE;
         }
 
-        switch (s1[i]) {
-        case '\r':
-            *s2++ = no_backslash_escapes ? s1[i] : 'r';
-            break;
-        case '\n':
-            *s2++ = no_backslash_escapes ? s1[i] : 'n';
-            break;
-        case '\t':
-            *s2++ = no_backslash_escapes ? s1[i] : 't';
-            break;
-        default:
-            *s2++ = s1[i]; 
-            break;
-        } 
+        ZEND_FETCH_RESOURCE2(connect, T_CUBRID_CONNECT *, NULL, CUBRID_G(last_connect_id), "CUBRID-Connect", le_connect, le_pconnect);
     }
 
-    *s2 = '\0';
-    
-    RETURN_STRINGL(escaped_str, escaped_str_len, 0);
+    escaped_str = (char *) emalloc(2 * unescaped_str_len + 16);
+    if (!escaped_str) {
+        handle_error(CCI_ER_NO_MORE_MEMORY, NULL, connect);
+        RETURN_FALSE;
+    }
+
+    memset(escaped_str, 0, 2 * unescaped_str_len + 16);
+
+    if ((cubrid_retval = cci_escape_string (connect->handle,
+                    escaped_str, unescaped_str, unescaped_str_len, &error)) < 0) {
+        free (escaped_str);
+        handle_error(cubrid_retval, &error, connect);
+        RETURN_FALSE;
+    }
+
+    RETURN_STRINGL(escaped_str, cubrid_retval, 0);
 }
 
 ZEND_FUNCTION(cubrid_get_db_parameter)
@@ -4347,9 +4321,6 @@ ZEND_FUNCTION(cubrid_set_db_parameter)
 
         break;
     case CUBRID_PARAM_LOCK_TIMEOUT:
-        /* msec -> sec */
-        param_value *= 1000;
-
         if ((cubrid_retval = cci_set_db_parameter(connect->handle, param_type, (void *) &param_value, &error)) < 0) {
             handle_error(cubrid_retval, &error, connect);
             RETURN_FALSE;
@@ -4500,13 +4471,13 @@ ZEND_FUNCTION(cubrid_insert_id)
     }
 
     if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "|r", &conn_id) == FAILURE) {
-	return;
+        return;
     }
 
     if (conn_id){
         ZEND_FETCH_RESOURCE2(connect, T_CUBRID_CONNECT *, &conn_id, -1, "CUBRID-Connect", le_connect, le_pconnect);
     } else {
-	if (CUBRID_G(last_connect_id) == -1) {
+        if (CUBRID_G(last_connect_id) == -1) {
             RETURN_FALSE; 
         } 
 
@@ -4524,8 +4495,8 @@ ZEND_FUNCTION(cubrid_insert_id)
         if ((cubrid_retval = cci_last_insert_id(connect->handle, &last_id, &error)) < 0) {
             handle_error(cubrid_retval, &error, connect);
             RETURN_FALSE;
-        }
-
+        } 
+        
         if (last_id == NULL) {
             RETURN_LONG(0);
         } else {
@@ -5295,6 +5266,10 @@ ZEND_FUNCTION(cubrid_lob_get)
         }
 
         cubrid_lob = new_cubrid_lob();
+        if (!cubrid_lob) {
+            handle_error(CCI_ER_NO_MORE_MEMORY, NULL, connect);
+            RETURN_FALSE;
+        }
         cubrid_lob->lob = lob;
         cubrid_lob->type = u_type;
         cubrid_lob->size = cubrid_lob_size(lob, u_type);
@@ -5733,7 +5708,7 @@ static int get_error_msg(int err_code, char *buf, int buf_size)
     int size = sizeof(db_error) / sizeof(db_error[0]);
     int i;
 
-    if (err_code > -2000) {
+    if (err_code > CCI_ER_END) {
 	return cci_get_err_msg(err_code, buf, buf_size);
     }
 
@@ -5774,13 +5749,13 @@ static int handle_error(int err_code, T_CCI_ERROR * error, T_CUBRID_CONNECT *con
 	    real_err_msg = "Unknown DBMS error";
 	}
     } else {
-	if (err_code > -1000) {
-	    facility = CUBRID_FACILITY_CCI;
-	    facility_msg = "CCI";
-	} else if (err_code > -2000) {
+	if (err_code > CAS_ER_IS) {
 	    facility = CUBRID_FACILITY_CAS;
 	    facility_msg = "CAS";
-	} else if (err_code > -3000) {
+	} else if (err_code > CCI_ER_END) {
+	    facility = CUBRID_FACILITY_CCI;
+	    facility_msg = "CCI";
+	} else if (err_code > CUBRID_ER_END) {
 	    facility = CUBRID_FACILITY_CLIENT;
 	    facility_msg = "CLIENT";
 	} else {
@@ -5949,7 +5924,7 @@ static T_CUBRID_CONNECT *new_cubrid_connect(int persistent)
     if (persistent) {
         connect = (T_CUBRID_CONNECT *) malloc(sizeof(T_CUBRID_CONNECT));
         if (!connect) {
-            goto ERR_CUBRID_CONNECT;
+            return NULL;
         }
 
         connect->unclosed_requests = 
@@ -5966,7 +5941,7 @@ static T_CUBRID_CONNECT *new_cubrid_connect(int persistent)
     } else {
         connect = (T_CUBRID_CONNECT *) emalloc(sizeof(T_CUBRID_CONNECT));
         if (!connect) {
-            goto ERR_CUBRID_CONNECT;
+            return NULL;
         }
 
         connect->unclosed_requests = 
@@ -6021,6 +5996,8 @@ ERR_CUBRID_CONNECT:
 static T_CUBRID_REQUEST *new_cubrid_request(void)
 {
     T_CUBRID_REQUEST *request = (T_CUBRID_REQUEST *) emalloc (sizeof(T_CUBRID_REQUEST));
+    
+    if (!request) return NULL;
 
     request->lob2_list = NULL;
 
@@ -6041,6 +6018,8 @@ static T_CUBRID_REQUEST *new_cubrid_request(void)
 static T_CUBRID_LOB *new_cubrid_lob(void)
 {
     T_CUBRID_LOB *lob = (T_CUBRID_LOB *) emalloc(sizeof(T_CUBRID_LOB));
+
+    if (!lob) return NULL;
 
     lob->lob = NULL;
     lob->size = 0;
@@ -6232,91 +6211,91 @@ static int type2str(T_CCI_COL_INFO * column_info, char *type_name, int type_name
 
     switch (CCI_GET_COLLECTION_DOMAIN(column_info->type)) {
     case CCI_U_TYPE_UNKNOWN:
-        strncpy(buf, "unknown", 7);
+        snprintf(buf, sizeof(buf), "unknown");
 	break;
     case CCI_U_TYPE_CHAR:
-        strncpy(buf, "char", 4);
+        snprintf(buf, sizeof(buf), "char");
 	break;
     case CCI_U_TYPE_STRING:
-        strncpy(buf, "varchar", 7);
+        snprintf(buf, sizeof(buf), "varchar");
 	break;
     case CCI_U_TYPE_NCHAR:
-        strncpy(buf, "nchar", 5);
+        snprintf(buf, sizeof(buf), "nchar");
 	break;
     case CCI_U_TYPE_VARNCHAR:
-        strncpy(buf, "varnchar", 8);
+        snprintf(buf, sizeof(buf), "varnchar");
 	break;
     case CCI_U_TYPE_BIT:
-        strncpy(buf, "bit", 3);
+        snprintf(buf, sizeof(buf), "bit");
 	break;
     case CCI_U_TYPE_VARBIT:
-        strncpy(buf, "varbit", 6);
+        snprintf(buf, sizeof(buf), "varbit");
 	break;
     case CCI_U_TYPE_NUMERIC:
-        strncpy(buf, "numeric", 7);
+        snprintf(buf, sizeof(buf), "numeric");
 	break;
     case CCI_U_TYPE_INT:
-        strncpy(buf, "integer", 7);
+        snprintf(buf, sizeof(buf), "integer");
 	break;
     case CCI_U_TYPE_SHORT:
-        strncpy(buf, "smallint", 8);
+        snprintf(buf, sizeof(buf), "smallint");
 	break;
     case CCI_U_TYPE_MONETARY:
-        strncpy(buf, "monetary", 8);
+        snprintf(buf, sizeof(buf), "monetary");
 	break;
     case CCI_U_TYPE_FLOAT:
-        strncpy(buf, "float", 5);
+        snprintf(buf, sizeof(buf), "float");
 	break;
     case CCI_U_TYPE_DOUBLE:
-        strncpy(buf, "double", 6);
+        snprintf(buf, sizeof(buf), "double");
 	break;
     case CCI_U_TYPE_DATE:
-        strncpy(buf, "date", 4);
+        snprintf(buf, sizeof(buf), "date");
 	break;
     case CCI_U_TYPE_TIME:
-        strncpy(buf, "time", 4);
+        snprintf(buf, sizeof(buf), "time");
 	break;
     case CCI_U_TYPE_TIMESTAMP:
-        strncpy(buf, "timestamp", 9);
+        snprintf(buf, sizeof(buf), "timestamp");
 	break;
     case CCI_U_TYPE_SET:
-        strncpy(buf, "set", 3);
+        snprintf(buf, sizeof(buf), "set");
 	break;
     case CCI_U_TYPE_MULTISET:
-        strncpy(buf, "multiset", 8);
+        snprintf(buf, sizeof(buf), "multiset");
 	break;
     case CCI_U_TYPE_SEQUENCE:
-        strncpy(buf, "sequence", 8);
+        snprintf(buf, sizeof(buf), "sequence");
 	break;
     case CCI_U_TYPE_OBJECT:
-        strncpy(buf, "object", 6);
+        snprintf(buf, sizeof(buf), "object");
 	break;
     case CCI_U_TYPE_BIGINT:
-        strncpy(buf, "bigint", 6);
+        snprintf(buf, sizeof(buf), "bigint");
 	break;
     case CCI_U_TYPE_DATETIME:
-        strncpy(buf, "datetime", 8);
+        snprintf(buf, sizeof(buf), "datetime");
 	break;
     case CCI_U_TYPE_BLOB:
-        strncpy(buf, "blob", 4);
+        snprintf(buf, sizeof(buf), "blob");
         break;
     case CCI_U_TYPE_CLOB:
-        strncpy(buf, "clob", 4);
+        snprintf(buf, sizeof(buf), "clob");
         break;
     default:
 	/* should not enter here */
-        strncpy(buf, "[unknown]", 9);
+        snprintf(buf, sizeof(buf), "[unknown]");
 	return -1;
     }
 
     if (CCI_IS_SET_TYPE(column_info->type)) {
-        strncpy(type_name, "set", type_name_len);
+        snprintf(type_name, type_name_len, "set(%s)", buf);
     } else if (CCI_IS_MULTISET_TYPE(column_info->type)) {
-        strncpy(type_name, "multiset", type_name_len);
+        snprintf(type_name, type_name_len, "multiset(%s)", buf);
     } else if (CCI_IS_SEQUENCE_TYPE(column_info->type)) {
-        strncpy(type_name, "sequence", type_name_len);
+        snprintf(type_name, type_name_len, "sequence(%s)", buf);
     } else {
-        strncpy(type_name, buf, type_name_len);
+        snprintf(type_name, type_name_len, "%s", buf);
     }
 
     return 0;

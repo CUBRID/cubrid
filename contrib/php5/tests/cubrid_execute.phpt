@@ -65,8 +65,8 @@ print "done!";
 ?>
 --CLEAN--
 --EXPECTF--
-
-Warning: Error: DBMS, -493, Syntax: syntax error, unexpected IdName  in %s on line %d
+Warning: Error: DBMS, -493, Syntax: In line 1, column 1 before ' IS NOT SQL'
+Syntax error: unexpected 'THIS', expecting SELECT or VALUE or VALUES or '('  in %s on line %d
 array(2) {
   [0]=>
   string(1) "X"
@@ -104,7 +104,7 @@ array(2) {
   string(4) "Gold"
 }
 
-Warning: Error: CLIENT, -2015, Some parameter not binded in %s on line %d
+Warning: Error: CLIENT, -30015, Some parameter not binded in %s on line %d
 array(4) {
   [0]=>
   string(1) "M"

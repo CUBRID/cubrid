@@ -56,7 +56,7 @@ print "done!";
 --CLEAN--
 --EXPECTF--
 
-Warning: Error: CAS, -1015, Invalid T_CCI_SCH_TYPE value in %s on line %d
+Warning: Error: CAS, -10015, Invalid T_CCI_SCH_TYPE value in %s on line %d
 array(3) {
   [0]=>
   array(4) {
@@ -96,27 +96,6 @@ array(2) {
   [0]=>
   array(9) {
     ["PKTABLE_NAME"]=>
-    string(7) "athlete"
-    ["PKCOLUMN_NAME"]=>
-    string(4) "code"
-    ["FKTABLE_NAME"]=>
-    string(4) "game"
-    ["FKCOLUMN_NAME"]=>
-    string(12) "athlete_code"
-    ["KEY_SEQ"]=>
-    string(1) "1"
-    ["UPDATE_RULE"]=>
-    string(1) "1"
-    ["DELETE_RULE"]=>
-    string(1) "1"
-    ["FK_NAME"]=>
-    string(20) "fk_game_athlete_code"
-    ["PK_NAME"]=>
-    string(15) "pk_athlete_code"
-  }
-  [1]=>
-  array(9) {
-    ["PKTABLE_NAME"]=>
     string(5) "event"
     ["PKCOLUMN_NAME"]=>
     string(4) "code"
@@ -134,6 +113,27 @@ array(2) {
     string(18) "fk_game_event_code"
     ["PK_NAME"]=>
     string(13) "pk_event_code"
+  }
+  [1]=>
+  array(9) {
+    ["PKTABLE_NAME"]=>
+    string(7) "athlete"
+    ["PKCOLUMN_NAME"]=>
+    string(4) "code"
+    ["FKTABLE_NAME"]=>
+    string(4) "game"
+    ["FKCOLUMN_NAME"]=>
+    string(12) "athlete_code"
+    ["KEY_SEQ"]=>
+    string(1) "1"
+    ["UPDATE_RULE"]=>
+    string(1) "1"
+    ["DELETE_RULE"]=>
+    string(1) "1"
+    ["FK_NAME"]=>
+    string(20) "fk_game_athlete_code"
+    ["PK_NAME"]=>
+    string(15) "pk_athlete_code"
   }
 }
 array(1) {
