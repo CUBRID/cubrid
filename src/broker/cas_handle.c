@@ -59,10 +59,6 @@ static int max_handle_id = 0;
 static int current_handle_count = 0;
 #endif
 
-static T_SRV_HANDLE **active_handle_table = NULL;
-static int active_handle_table_size = 0;
-static int active_handle_count = 0;
-
 int
 hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
 {
@@ -118,7 +114,6 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
   srv_handle->query_seq_num = seq_num;
   srv_handle->use_plan_cache = false;
   srv_handle->use_query_cache = false;
-  srv_handle->is_fetch_completed = false;
   srv_handle->is_holdable = false;
   srv_handle->is_from_current_transaction = true;
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
@@ -466,84 +461,6 @@ srv_handle_rm_tmp_file (int h_id, T_SRV_HANDLE * srv_handle)
 	}
     }
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
-}
-
-int
-hm_srv_handle_append_active (T_SRV_HANDLE * srv_handle)
-{
-  if (srv_handle == NULL)
-    {
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-      return 0;
-#else
-      return CCI_ER_NO_ERROR;
-#endif
-    }
-
-  if (active_handle_table == NULL
-      || active_handle_count >=
-      (int) (active_handle_table_size / sizeof (T_SRV_HANDLE *)))
-    {
-      if (active_handle_table_size == 0)
-	{
-	  active_handle_table_size =
-	    sizeof (T_SRV_HANDLE *) * SRV_HANDLE_ALLOC_SIZE;
-	}
-      else
-	{
-	  active_handle_table_size *= 2;
-	}
-
-      active_handle_table = (T_SRV_HANDLE **) REALLOC (active_handle_table,
-						       active_handle_table_size);
-
-      if (active_handle_table == NULL)
-	{
-	  active_handle_count = 0;
-	  active_handle_table_size = 0;
-	  return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
-	}
-    }
-
-  active_handle_table[active_handle_count] = srv_handle;
-  active_handle_count++;
-  srv_handle->is_fetch_completed = false;
-
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-  return 0;
-#else /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
-  return CCI_ER_NO_ERROR;
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
-}
-
-void
-hm_srv_handle_set_fetch_completed (T_SRV_HANDLE * srv_handle)
-{
-  srv_handle->is_fetch_completed = true;
-}
-
-bool
-hm_srv_handle_is_all_active_fetch_completed (void)
-{
-  int i;
-  T_SRV_HANDLE *srv_handle;
-
-  for (i = 0; i < active_handle_count; i++)
-    {
-      srv_handle = active_handle_table[i];
-      if (srv_handle->is_fetch_completed != true)
-	{
-	  return false;
-	}
-    }
-
-  return true;
-}
-
-void
-hm_srv_handle_reset_active (void)
-{
-  active_handle_count = 0;
 }
 
 int

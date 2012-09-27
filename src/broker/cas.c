@@ -317,7 +317,6 @@ static SOCKET srv_sock_fd;
 static int cas_req_count = 1;
 #endif /* !LIBCAS_FOR_JSP */
 
-#ifndef LIBCAS_FOR_JSP
 #if defined(CUBRID_SHARD)
 #if defined(WINDOWS)
 int WINAPI
@@ -676,6 +675,7 @@ conn_proxy_retry:
   return 0;
 }
 #else /* CUBRID_SHARD */
+#ifndef LIBCAS_FOR_JSP
 #if defined(WINDOWS)
 int WINAPI
 WinMain (HINSTANCE hInstance,	// handle to current instance
@@ -1262,18 +1262,12 @@ main (int argc, char *argv[])
 
   return 0;
 }
-#endif /* CUBRID_SHARD */
 #else /* !LIBCAS_FOR_JSP */
 int
 libcas_main (SOCKET jsp_sock_fd)
 {
   T_NET_BUF net_buf;
   SOCKET client_sock_fd;
-
-#if defined(CUBRID_SHARD)
-  /* not support LIBCAS_FOR_JSP in CUBRID_SHARD */
-  return 0;
-#endif
 
   memset (&req_info, 0, sizeof (req_info));
 
@@ -1308,11 +1302,6 @@ libcas_get_db_result_set (int h_id)
 {
   T_SRV_HANDLE *srv_handle;
 
-#if defined(CUBRID_SHARD)
-  /* not support LIBCAS_FOR_JSP in CUBRID_SHARD */
-  return 0;
-#endif
-
   srv_handle = hm_find_srv_handle (h_id);
   if (srv_handle == NULL || srv_handle->cur_result == NULL)
     {
@@ -1325,14 +1314,10 @@ libcas_get_db_result_set (int h_id)
 void
 libcas_srv_handle_free (int h_id)
 {
-#if defined(CUBRID_SHARD)
-  /* not support LIBCAS_FOR_JSP in CUBRID_SHARD */
-  return 0;
-#endif
-
   hm_srv_handle_free (h_id);
 }
 #endif /* !LIBCAS_FOR_JSP */
+#endif /* CUBRID_SHARD */
 
 #ifndef LIBCAS_FOR_JSP
 static void
@@ -1398,10 +1383,6 @@ cas_free (bool free_srv_handle)
       close (fd);
     }
 #endif
-
-  /* At here, can not free alloced net_buf->data;
-   * simply exit
-   */
 }
 
 static void
@@ -1723,9 +1704,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	}
       CON_STATUS_UNLOCK (as_info, CON_STATUS_LOCK_CAS);
     }
-#endif /* !LIBCAS_FOR_JSP */
 
-#ifndef LIBCAS_FOR_JSP
   if ((func_code == CAS_FC_EXECUTE) || (func_code == CAS_FC_SCHEMA_INFO))
     {
       as_info->num_requests_received %= MAX_DIAG_DATA_VALUE;
@@ -1736,9 +1715,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       as_info->num_transactions_processed %= MAX_DIAG_DATA_VALUE;
       as_info->num_transactions_processed++;
     }
-#endif /* !LIBCAS_FOR_JSP */
 
-#ifndef LIBCAS_FOR_JSP
   as_info->log_msg[0] = '\0';
   if (as_info->con_status == CON_STATUS_IN_TRAN)
     {
@@ -1897,7 +1874,6 @@ cas_init ()
 #endif /* !LIBCAS_FOR_JSP */
 
 
-#ifndef LIBCAS_FOR_JSP
 #if defined(CUBRID_SHARD)
 static int
 net_read_process (SOCKET proxy_sock_fd,
@@ -1996,7 +1972,8 @@ net_read_process (SOCKET proxy_sock_fd,
 
   return ret_value;
 }
-#else
+#else /* CUBRID_SHARD */
+#ifndef LIBCAS_FOR_JSP
 static int
 net_read_int_keep_con_auto (SOCKET clt_sock_fd,
 			    MSG_HEADER * client_msg_header,
@@ -2091,8 +2068,8 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd,
 
   return ret_value;
 }
-#endif
 #endif /* !LIBCAS_FOR_JSP */
+#endif /* CUBRID_SHARD */
 
 void
 set_cas_info_size (void)

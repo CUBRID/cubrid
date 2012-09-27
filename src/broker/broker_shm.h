@@ -456,7 +456,6 @@ struct t_shm_appl_server
   char jdbc_cache;
   char jdbc_cache_only_hint;
   char cci_pconnect;
-  char select_auto_commit;
   char cci_default_autocommit;
   bool access_control;
   int jdbc_cache_life_time;

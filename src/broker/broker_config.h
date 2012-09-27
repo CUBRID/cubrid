@@ -203,7 +203,6 @@ struct t_broker_info
   char jdbc_cache;
   char jdbc_cache_only_hint;
   char cci_pconnect;
-  char select_auto_commit;
   int jdbc_cache_life_time;
   char ready_to_service;
   char cci_default_autocommit;

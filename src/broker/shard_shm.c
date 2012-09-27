@@ -116,8 +116,6 @@ shard_shm_set_shm_as (T_SHM_APPL_SERVER * shm_as_p, T_BROKER_INFO * br_info_p)
   shm_as_p->statement_pooling = br_info_p->statement_pooling;
   shm_as_p->access_mode = br_info_p->access_mode;
   shm_as_p->cci_pconnect = br_info_p->cci_pconnect;
-  shm_as_p->select_auto_commit = br_info_p->select_auto_commit;
-
   shm_as_p->access_log = br_info_p->access_log;
 
   shm_as_p->jdbc_cache = br_info_p->jdbc_cache;
@@ -388,8 +386,8 @@ shard_shm_initialize (T_BROKER_INFO * br_info_p, char *shm_metadata_cp)
   for (i = 0, proxy_offset = 0; i < shm_proxy_p->max_num_proxy;
        i++, proxy_offset += proxy_info_size)
     {
-      /* 
-       * SHARD TODO : what to do when min_num_proxy is different 
+      /*
+       * SHARD TODO : what to do when min_num_proxy is different
        *              from max_num_proxy ?
        */
       proxy_info_p =

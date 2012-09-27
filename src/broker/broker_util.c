@@ -58,10 +58,10 @@
 #include "broker_filename.h"
 #include "environment_variable.h"
 
-#if !defined(LIBCAS_FOR_JSP)
 static char db_err_log_file[PATH_MAX];
 static char as_pid_file_name[PATH_MAX] = "";
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 int
 ut_access_log (int as_index, struct timeval *start_time, char error_flag,
 	       int error_log_offset)
@@ -143,6 +143,7 @@ ut_access_log (int as_index, struct timeval *start_time, char error_flag,
   fclose (fp);
   return (end_time.tv_sec - start_time->tv_sec);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 char *
 trim (char *str)
@@ -482,7 +483,6 @@ as_get_my_as_info (char *br_name, int *as_index)
 
   return 0;
 }
-#endif /* LIBCAS_FOR_JSP */
 
 int
 ut_time_string (char *buf, struct timeval *time_val)

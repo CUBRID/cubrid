@@ -658,16 +658,6 @@ broker_config_read_internal (const char *conf_file,
 	  goto conf_error;
 	}
 
-      br_info[num_brs].select_auto_commit =
-	conf_get_value_table_on_off (ini_getstr (ini, sec_name,
-						 "SELECT_AUTO_COMMIT", "OFF",
-						 &lineno));
-      if (br_info[num_brs].select_auto_commit < 0)
-	{
-	  errcode = PARAM_BAD_VALUE;
-	  goto conf_error;
-	}
-
       tmp_int =
 	conf_get_value_table_on_off (ini_getstr (ini, sec_name,
 						 "READ_ONLY_BROKER", "OFF",

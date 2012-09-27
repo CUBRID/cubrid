@@ -341,10 +341,6 @@ ux_end_tran (int tran_type, bool reset_con_status)
 {
   int ret = 0;
 
-  if (shm_appl->select_auto_commit == ON)
-    {
-      hm_srv_handle_reset_active ();
-    }
   if (!as_info->cur_statement_pooling)
     {
       hm_srv_handle_free_all (true);
@@ -377,12 +373,10 @@ ux_end_tran (int tran_type, bool reset_con_status)
       ret = cas_oracle_get_errno ();
     }
 
-#ifndef LIBCAS_FOR_JSP
   if (get_db_connect_status () == DB_CONNECTION_STATUS_RESET)
     {
       as_info->reset_flag = TRUE;
     }
-#endif /* !LIBCAS_FOR_JSP */
 
   return ret;
 }
@@ -1573,21 +1567,17 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 		     net_buf, req_info, clt_cache_time, clt_cache_reusable);
 }
 
-#ifndef LIBCAS_FOR_JSP
 static bool
 check_auto_commit_after_fetch_done (T_SRV_HANDLE * srv_handle)
 {
-  if (((srv_handle->stmt_type == CUBRID_STMT_SELECT
-	&& srv_handle->auto_commit_mode == TRUE
-	&& srv_handle->forward_only_cursor == TRUE)
-       || (shm_appl->select_auto_commit == ON
-	   && hm_srv_handle_is_all_active_fetch_completed () == true)))
+  if (srv_handle->stmt_type == CUBRID_STMT_SELECT
+      && srv_handle->auto_commit_mode == TRUE
+      && srv_handle->forward_only_cursor == TRUE)
     {
       return true;
     }
   return false;
 }
-#endif /* !LIBCAS_FOR_JSP */
 
 static void
 add_res_data_bytes (T_NET_BUF * net_buf, char *str, int size, char type)
@@ -2091,10 +2081,6 @@ ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
       ret = OCIStmtFetch2 (stmt, ORA_ERR, 1, OCI_DEFAULT, 0, OCI_DEFAULT);
       if (ret == OCI_NO_DATA)
 	{
-	  if (shm_appl->select_auto_commit == ON)
-	    {
-	      hm_srv_handle_set_fetch_completed (srv_handle);
-	    }
 	  if (check_auto_commit_after_fetch_done (srv_handle) == true)
 	    {
 	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
@@ -2130,17 +2116,16 @@ ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 
 fetch_error:
   NET_BUF_ERR_SET (net_buf);
+
 #if defined(CUBRID_SHARD)
-#ifndef LIBCAS_FOR_JSP
   if (srv_handle->auto_commit_mode == TRUE
       && srv_handle->forward_only_cursor == TRUE)
     {
       req_info->need_auto_commit = TRAN_AUTOROLLBACK;
     }
-#endif /* !LIBCAS_FOR_JSP */
 #endif /* CUBRID_SHARD */
-  errors_in_transaction++;
 
+  errors_in_transaction++;
   return err_code;
 }
 
@@ -2257,7 +2242,6 @@ ux_db_type_to_cas_type (int db_type)
 int
 ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
-#ifndef LIBCAS_FOR_JSP
   int err_code;
   int elapsed_sec = 0, elapsed_msec = 0;
 
@@ -2338,7 +2322,6 @@ ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	}
       return 0;
     }
-#endif /* !LIBCAS_FOR_JSP */
 
   return -1;
 }

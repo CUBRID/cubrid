@@ -209,9 +209,5 @@ extern void hm_srv_handle_set_holdable (T_SRV_HANDLE * srv_handle);
 extern void hm_srv_handle_set_pooled (void);
 #endif
 
-extern int hm_srv_handle_append_active (T_SRV_HANDLE * srv_handle);
-extern void hm_srv_handle_set_fetch_completed (T_SRV_HANDLE * srv_handle);
-extern bool hm_srv_handle_is_all_active_fetch_completed (void);
-extern void hm_srv_handle_reset_active (void);
 extern int hm_srv_handle_get_current_count (void);
 #endif /* _CAS_HANDLE_H_ */

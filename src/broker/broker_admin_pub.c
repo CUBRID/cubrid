@@ -1853,19 +1853,6 @@ admin_shard_conf_change (int master_shm_id, const char *sh_name,
       br_info_p->cci_pconnect = val;
       shm_as_p->cci_pconnect = val;
     }
-  else if (strcasecmp (conf_name, "SELECT_AUTO_COMMIT") == 0)
-    {
-      int val;
-
-      val = conf_get_value_table_on_off (conf_value);
-      if (val < 0)
-	{
-	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
-	  goto set_shard_conf_error;
-	}
-      br_info_p->select_auto_commit = val;
-      shm_as_p->select_auto_commit = val;
-    }
   else if (strcasecmp (conf_name, "MAX_QUERY_TIMEOUT") == 0)
     {
       int val;
@@ -2368,19 +2355,6 @@ admin_broker_conf_change (int master_shm_id, const char *br_name,
 	}
       shm_br->br_info[br_index].cci_pconnect = val;
       shm_appl->cci_pconnect = val;
-    }
-  else if (strcasecmp (conf_name, "SELECT_AUTO_COMMIT") == 0)
-    {
-      int val;
-
-      val = conf_get_value_table_on_off (conf_value);
-      if (val < 0)
-	{
-	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
-	  goto set_broker_conf_error;
-	}
-      shm_br->br_info[br_index].select_auto_commit = val;
-      shm_appl->select_auto_commit = val;
     }
   else if (strcasecmp (conf_name, "MAX_QUERY_TIMEOUT") == 0)
     {
@@ -2971,7 +2945,6 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
   shm_appl->statement_pooling = br_info->statement_pooling;
   shm_appl->access_mode = br_info->access_mode;
   shm_appl->cci_pconnect = br_info->cci_pconnect;
-  shm_appl->select_auto_commit = br_info->select_auto_commit;
 
   shm_appl->access_log = br_info->access_log;
 

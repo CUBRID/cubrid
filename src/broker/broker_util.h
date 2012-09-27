@@ -45,14 +45,13 @@
 #define SHARD_INVALID_ID	(PROXY_INVALID_SHARD)
 #define CAS_INVALID_ID		(PROXY_INVALID_CAS)
 
-#if !defined(LIBCAS_FOR_JSP)
 extern char *trim (char *str);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int ut_file_lock (char *lock_file);
 extern void ut_file_unlock (char *);
-#endif
 extern int ut_access_log (int as_index, struct timeval *start_time,
 			  char err_flag, int e_offset);
+#endif
 extern int ut_kill_process (int pid, char *br_name, int proxy_index,
 			    int shard_index, int as_index);
 extern void ut_cd_work_dir (void);
@@ -68,7 +67,6 @@ extern void as_pid_file_create (char *br_name, int proxy_index, int shard_id,
 				int as_index);
 extern void as_db_err_log_set (char *br_name, int proxy_index, int shard_id,
 			       int as_index);
-#endif
 
 extern int ut_time_string (char *buf, struct timeval *log_time);
 extern char *ut_get_ipv4_string (char *ip_str, int len,

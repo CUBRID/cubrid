@@ -426,11 +426,6 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv,
       as_info->num_error_queries %= MAX_DIAG_DATA_VALUE;
       as_info->num_error_queries++;
     }
-
-  if (shm_appl->select_auto_commit == ON)
-    {
-      (void) hm_srv_handle_append_active (srv_handle);
-    }
 #endif /* !LIBCAS_FOR_JSP */
 
   return FN_KEEP_CONN;
@@ -658,11 +653,6 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv,
 	  *s = *t;
 	}
       *s = '\0';
-    }
-
-  if (shm_appl->select_auto_commit == ON)
-    {
-      (void) hm_srv_handle_append_active (srv_handle);
     }
 #endif /* !LIBCAS_FOR_JSP */
 
