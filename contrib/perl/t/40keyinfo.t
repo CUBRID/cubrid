@@ -29,7 +29,7 @@ ok($dbh->do("DROP TABLE IF EXISTS $table"), "Dropped table");
 
 # Non-primary key is there as a regression test for Bug #26786.
 ok($dbh->do("CREATE TABLE $table (a int, b varchar(20), c int,
-                                primary key (a,b), key (c))"),
+                                primary key (a,b))"),
    "Created table $table");
 
 my $sth= $dbh->primary_key_info(undef, undef, $table);

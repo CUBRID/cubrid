@@ -52,11 +52,13 @@ DBISTATE_DECLARE;
 
 /* CUBRID types */
 
-#define CUBRID_ER_CANNOT_GET_COLUMN_INFO    -2001
-#define CUBRID_ER_CANNOT_FETCH_DATA         -2002
-#define CUBRID_ER_WRITE_FILE                -2003
-#define CUBRID_ER_READ_FILE                 -2004
-#define CUBRID_ER_NOT_LOB_TYPE              -2005
+#define CUBRID_ER_START                     -30000
+#define CUBRID_ER_CANNOT_GET_COLUMN_INFO    -30001
+#define CUBRID_ER_CANNOT_FETCH_DATA         -30002
+#define CUBRID_ER_WRITE_FILE                -30003
+#define CUBRID_ER_READ_FILE                 -30004
+#define CUBRID_ER_NOT_LOB_TYPE              -30005
+#define CUBRID_ER_END                       -31000
 
 /* end of cubrid.h */
 

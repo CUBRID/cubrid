@@ -96,6 +96,7 @@ SV * _cubrid_foreign_key (SV *dbh, char *pk_table, char *fk_table);
 #define dbd_bind_ph		cubrid_bind_ph
 #define dbd_db_ping             cubrid_db_ping
 #define dbd_db_last_insert_id   cubrid_db_last_insert_id
+#define dbd_db_quote            cubrid_db_quote
 
 int cubrid_st_lob_get (SV *sth, int col);
 int cubrid_st_lob_export (SV *sth, int index, char *file);

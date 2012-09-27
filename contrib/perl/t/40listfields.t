@@ -52,7 +52,7 @@ $res = $sth->{'NUM_OF_FIELDS'};
 ok $res, "$sth->{NUM_OF_FIELDS} defined";
 
 is_deeply $sth->{'SCALE'}, [0, 0], "get scacle";
-is_deeply $sth->{'PRECISION'}, [0, 64], "get precision";
+is_deeply $sth->{'PRECISION'}, [10, 64], "get precision";
 
 is $res, 2, "\$res $res == 2";
 

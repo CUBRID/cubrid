@@ -79,6 +79,21 @@ _foreign_key_info( dbh, pk_table = Nullsv, fk_table = Nullsv)
     ST(0) = _cubrid_foreign_key (dbh, pktable, fktable);
 }
 
+void
+quote(dbh, str, type=NULL)
+    SV* dbh
+    SV* str
+    SV* type
+    PROTOTYPE: $$;$
+    CODE:
+{
+    D_imp_dbh(dbh);
+
+    SV* quoted = dbd_db_quote(dbh, str, type);
+    ST(0) = quoted ? sv_2mortal(quoted) : str;
+    XSRETURN(1);
+}
+
 MODULE = DBD::cubrid    PACKAGE = DBD::cubrid::st
 
 void

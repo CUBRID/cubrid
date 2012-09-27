@@ -41,7 +41,7 @@ use strict;
 
     require_version DBI 1.61;
 
-    $VERSION = '8.4.1.0001';
+    $VERSION = '9.1.0.0001';
 
     bootstrap DBD::cubrid $VERSION;
 
@@ -125,11 +125,11 @@ use strict;
             $dbname = '';
         }
 
-        my $connect_dsn = "cci:CUBRID:$host:$port:$dbname";
+        my $connect_dsn = "cci:cubrid:$host:$port:$dbname" . ':::';
         my $is_connect_attr = 0;
 
         if ($connect_attr{ALTHOSTS}) {
-            $connect_dsn .= ":::?alhosts=$connect_attr{ALTHOSTS}";
+            $connect_dsn .= "?alhosts=$connect_attr{ALTHOSTS}";
             $is_connect_attr = 1;
         }
 
@@ -137,25 +137,16 @@ use strict;
             if ($is_connect_attr) {
                 $connect_dsn .= "&rctime=$connect_attr{RCTIME}";
             } else {
-                $connect_dsn .= ":::?rctime=$connect_attr{RCTIME}";
+                $connect_dsn .= "?rctime=$connect_attr{RCTIME}";
                 $is_connect_attr = 1;
             }
-        }
-
-        if ($connect_attr{AUTOCOMMIT}) {
-           if ($is_connect_attr) {
-               $connect_dsn .= "&autocommit=$connect_attr{AUTOCOMMIT}";
-           } else {
-               $connect_dsn .= ":::?autocommit=$connect_attr{AUTOCOMMIT}";
-               $is_connect_attr = 1;
-           }
         }
 
         if ($connect_attr{LOGIN_TIMEOUT}) {
             if ($is_connect_attr) {
                 $connect_dsn .= "&login_timeout=$connect_attr{LOGIN_TIMEOUT}";
             } else {
-                $connect_dsn .= ":::?login_timeout=$connect_attr{LOGIN_TIMEOUT}";
+                $connect_dsn .= "?login_timeout=$connect_attr{LOGIN_TIMEOUT}";
                 $is_connect_attr = 1;
             }
         }
@@ -164,7 +155,7 @@ use strict;
             if ($is_connect_attr) {
                 $connect_dsn .= "&query_timeout=$connect_attr{QUERY_TIMEOUT}";
             } else {
-                $connect_dsn .= ":::?query_timeout=$connect_attr{QUERY_TIMEOUT}";
+                $connect_dsn .= "?query_timeout=$connect_attr{QUERY_TIMEOUT}";
                 $is_connect_attr = 1;
             }
         }
@@ -173,7 +164,7 @@ use strict;
             if ($is_connect_attr) {
                 $connect_dsn .= "&disconnect_on_query_timeout=$connect_attr{DISCONNECT_ON_QUERY_TIMEOUT}";
             } else {
-                $connect_dsn .= ":::?disconnect_on_query_timeout=$connect_attr{DISCONNECT_ON_QUERY_TIMEOUT}";
+                $connect_dsn .= "?disconnect_on_query_timeout=$connect_attr{DISCONNECT_ON_QUERY_TIMEOUT}";
                 $is_connect_attr = 1;
             }
         }
@@ -274,7 +265,7 @@ use strict;
                 $want_tables = $want_views = 1;
             }
 
-            my $sql = "SELECT class_name, class_type FROM db_class where class_name like '$table'";
+            my $sql = "SELECT class_name, class_type FROM db_class where class_name like " . $dbh->quote($table);
             my $sth = $dbh->prepare ($sql) or return undef;
             $sth->execute or return DBI::set_err($dbh, $sth->err(), $sth->errstr());
 
