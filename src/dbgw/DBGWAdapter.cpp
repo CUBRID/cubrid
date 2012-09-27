@@ -18,9 +18,9 @@
  */
 #include "DBGWCommon.h"
 #include "DBGWError.h"
+#include "DBGWPorting.h"
 #include "DBGWValue.h"
 #include "DBGWLogger.h"
-#include "DBGWPorting.h"
 #include "DBGWQuery.h"
 #include "DBGWDataBaseInterface.h"
 #include "DBGWConfiguration.h"

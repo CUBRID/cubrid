@@ -21,8 +21,9 @@
 #include <boost/lexical_cast.hpp>
 #include "DBGWCommon.h"
 #include "DBGWError.h"
-#include "DBGWValue.h"
+#include "DBGWPorting.h"
 #include "DBGWLogger.h"
+#include "DBGWValue.h"
 
 namespace dbgw
 {

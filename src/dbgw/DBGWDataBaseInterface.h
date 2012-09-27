@@ -37,8 +37,9 @@ namespace dbgw
     class DBGWPreparedStatement;
     class DBGWResult;
 
-    typedef hash_map<string, string, hash<string> , dbgwStringCompareFunc>
-    DBGWDBInfoHashMap;
+    typedef boost::unordered_map<string, string,
+            boost::hash<string>, dbgwStringCompareFunc> DBGWDBInfoHashMap;
+
     typedef shared_ptr<DBGWPreparedStatement> DBGWPreparedStatementSharedPtr;
     typedef shared_ptr<DBGWResult> DBGWResultSharedPtr;
 

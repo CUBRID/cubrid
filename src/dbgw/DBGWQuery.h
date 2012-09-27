@@ -43,8 +43,9 @@ namespace dbgw
     int nIndex;
   };
 
-  typedef hash_map<string, DBGWQueryParameter, hash<string> ,
-          dbgwStringCompareFunc> DBGWQueryParameterHashMap;
+  typedef boost::unordered_map<string, DBGWQueryParameter,
+          boost::hash<string>, dbgwStringCompareFunc>
+          DBGWQueryParameterHashMap;
 
   class DBGWQuery;
 

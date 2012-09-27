@@ -18,6 +18,7 @@
  */
 #include "DBGWCommon.h"
 #include "DBGWError.h"
+#include "DBGWPorting.h"
 #include "DBGWValue.h"
 #include "DBGWLogger.h"
 #include "DBGWQuery.h"
@@ -107,7 +108,7 @@ namespace dbgw
             free(m_szNamespace);
           }
 
-        if (close() < 0)
+        if (close() == false)
           {
             throw getLastException();
           }
@@ -539,7 +540,7 @@ namespace dbgw
             pReturnResult->first();
           }
       }
-    catch (DBGWException &e)
+    catch (DBGWException &)
       {
         /**
          * if select query is executed,

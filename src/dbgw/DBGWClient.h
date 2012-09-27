@@ -21,6 +21,7 @@
 
 #include "DBGWCommon.h"
 #include "DBGWError.h"
+#include "DBGWPorting.h"
 #include "DBGWValue.h"
 #include "DBGWLogger.h"
 #include "DBGWQuery.h"
@@ -30,9 +31,8 @@
 
 namespace dbgw
 {
-
-  typedef hash_map<string, DBGWResultSharedPtr, hash<string> ,
-          dbgwStringCompareFunc> DBGWResultHashMap;
+  typedef boost::unordered_map<string, DBGWResultSharedPtr,
+          boost::hash<string>, dbgwStringCompareFunc> DBGWResultHashMap;
 
   /**
    * External access class.

@@ -580,6 +580,19 @@ AM_CONDITIONAL([BUILD_SHARD], [test "$enable_shard" != "no"])
 AM_CONDITIONAL([BUILD_SHARD_FOR_MYSQL], [test "$with_mysql" != "no" && test "$enable_shard" != "no"])
 #AM_CONDITIONAL([BUILD_SHARD_FOR_MYSQL], [test "$enable_shard" = "yes"])
 
+AC_ARG_ENABLE([dbgw],
+       [AS_HELP_STRING([--enable-dbgw],
+               [build as dbgw lib @<:@default=no@:>@])],
+       [enable_dbgw=$enableval],
+       [enable_dbgw=no])
+AM_CONDITIONAL([BUILD_DBGW], [test "$enable_dbgw" != "no"])
+if test "$enable_dbgw" = "yes"
+then
+	AC_LANG_PUSH([C++])
+	AC_CHECK_HEADERS([boost/property_tree/ptree.hpp], [], [AC_MSG_ERROR(Boost library is required.(version 1.41.0 or higher))])
+	AC_LANG_POP([C++])
+fi
+
 AC_MSG_CHECKING([for cubrid manager server])
 AC_ARG_WITH([cmserver],
 	AS_HELP_STRING([--with-cmserver=PATH],

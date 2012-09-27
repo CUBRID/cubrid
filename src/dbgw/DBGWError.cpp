@@ -19,6 +19,7 @@
 #include <boost/format.hpp>
 #include "DBGWCommon.h"
 #include "DBGWError.h"
+#include "DBGWPorting.h"
 #include "DBGWValue.h"
 
 namespace dbgw

@@ -19,9 +19,14 @@
 #include <boost/random/uniform_int.hpp>
 #include <boost/random/variate_generator.hpp>
 #include <boost/random/mersenne_twister.hpp>
+#if defined(WINDOWS)
+#include <expat/expat.h>
+#else /* WINDOWS */
 #include <expat.h>
+#endif /* !WINDOWS */
 #include "DBGWCommon.h"
 #include "DBGWError.h"
+#include "DBGWPorting.h"
 #include "DBGWLogger.h"
 #include "DBGWValue.h"
 #include "DBGWQuery.h"
@@ -274,7 +279,8 @@ namespace dbgw
   }
 
   DBGWExecuterPool::DBGWExecuterPool(DBGWGroup &group) :
-    m_group(group), m_bAutocommit(true), m_isolation(DBGW_TRAN_UNKNOWN)
+    m_group(group), m_bAutocommit(true), m_isolation(DBGW_TRAN_UNKNOWN),
+    m_poolMutex(MutexFactory::create())
   {
   }
 
@@ -298,9 +304,9 @@ namespace dbgw
         pExecuter = DBGWExecuterSharedPtr(
             new DBGWExecuter(*this, m_group.getConnection()));
 
-        m_poolMutex.lock();
+        m_poolMutex->lock();
         m_executerList.push_back(pExecuter);
-        m_poolMutex.unlock();
+        m_poolMutex->unlock();
         usleep(1000);
       }
   }
@@ -312,20 +318,20 @@ namespace dbgw
       {
         try
           {
-            m_poolMutex.lock();
+            m_poolMutex->lock();
             if (m_executerList.empty())
               {
-                m_poolMutex.unlock();
+                m_poolMutex->unlock();
                 break;
               }
 
             pExecuter = m_executerList.front();
             m_executerList.pop_front();
-            m_poolMutex.unlock();
+            m_poolMutex->unlock();
 
             pExecuter->init(m_bAutocommit, m_isolation);
           }
-        catch (DBGWException &e)
+        catch (DBGWException &)
           {
             pExecuter = DBGWExecuterSharedPtr();
           }
@@ -358,7 +364,7 @@ namespace dbgw
         return;
       }
 
-    MutexLock lock(&m_poolMutex);
+    MutexLock lock(m_poolMutex);
     m_executerList.push_back(pExecuter);
   }
 
@@ -371,7 +377,7 @@ namespace dbgw
 
     m_bClosed = true;
 
-    MutexLock lock(&m_poolMutex);
+    MutexLock lock(m_poolMutex);
     m_executerList.clear();
   }
 
@@ -577,20 +583,20 @@ namespace dbgw
   const int DBGWVersionedResource::INVALID_VERSION = -1;
 
   DBGWVersionedResource::DBGWVersionedResource() :
-    m_nVersion(INVALID_VERSION)
+    m_nVersion(INVALID_VERSION), m_mutex(MutexFactory::create())
   {
   }
 
   DBGWVersionedResource::~DBGWVersionedResource()
   {
-    MutexLock lock(&m_mutex);
+    MutexLock lock(m_mutex);
 
     m_resourceMap.clear();
   }
 
   int DBGWVersionedResource::getVersion()
   {
-    MutexLock lock(&m_mutex);
+    MutexLock lock(m_mutex);
 
     if (m_nVersion > INVALID_VERSION)
       {
@@ -607,7 +613,7 @@ namespace dbgw
         return;
       }
 
-    MutexLock lock(&m_mutex);
+    MutexLock lock(m_mutex);
 
     DBGWResource *pResource = getResourceWithUnlock(nVersion);
     pResource->modifyRefCount(-1);
@@ -628,7 +634,7 @@ namespace dbgw
 
   void DBGWVersionedResource::putResource(DBGWResourceSharedPtr pResource)
   {
-    MutexLock lock(&m_mutex);
+    MutexLock lock(m_mutex);
 
     if (m_pResource != NULL && m_nVersion > INVALID_VERSION
         && m_pResource->getRefCount() > 0)
@@ -642,7 +648,7 @@ namespace dbgw
 
   DBGWResource *DBGWVersionedResource::getNewResource()
   {
-    MutexLock lock(&m_mutex);
+    MutexLock lock(m_mutex);
 
     if (m_nVersion <= INVALID_VERSION)
       {
@@ -654,7 +660,7 @@ namespace dbgw
 
   DBGWResource *DBGWVersionedResource::getResource(int nVersion)
   {
-    MutexLock lock(&m_mutex);
+    MutexLock lock(m_mutex);
 
     return getResourceWithUnlock(nVersion);
   }
@@ -703,7 +709,7 @@ namespace dbgw
           {
             (*it)->initPool(nCount);
           }
-        catch (DBGWException &e)
+        catch (DBGWException &)
           {
             if ((*it)->isIgnoreResult() == false)
               {
@@ -737,7 +743,7 @@ namespace dbgw
           {
             executerList.push_back((*it)->getExecuter());
           }
-        catch (DBGWException &e)
+        catch (DBGWException &)
           {
             if ((*it)->isIgnoreResult() == false)
               {

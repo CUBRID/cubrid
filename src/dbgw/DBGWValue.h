@@ -103,8 +103,9 @@ namespace dbgw
 
   typedef shared_ptr<DBGWValue> DBGWValueSharedPtr;
   typedef vector<DBGWValueSharedPtr> DBGWValueList;
-  typedef hash_map<string, int, hash<string> , dbgwStringCompareFunc>
-  DBGWValueIndexMap;
+
+  typedef boost::unordered_map<string, int, boost::hash<string>,
+          dbgwStringCompareFunc> DBGWValueIndexMap;
 
   /**
    * External access class.

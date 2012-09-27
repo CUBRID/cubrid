@@ -21,6 +21,7 @@
 #include <stdarg.h>
 #include "DBGWCommon.h"
 #include "DBGWError.h"
+#include "DBGWPorting.h"
 #include "DBGWLogger.h"
 
 namespace dbgw
@@ -28,7 +29,7 @@ namespace dbgw
 
   static const char *DBGW_LOG_PATH = "log/cci_dbgw.log";
   static const int LOG_BUFFER_SIZE = 1024 * 20;
-  static Mutex g_logMutex;
+  static MutexSharedPtr g_logMutex = MutexFactory::create();
 
   Logger DBGWLogger::m_logger = NULL;
   string DBGWLogger::m_logPath = DBGW_LOG_PATH;
@@ -81,7 +82,7 @@ namespace dbgw
 
   void DBGWLogger::setLogPath(const char *szLogPath)
   {
-    g_logMutex.lock();
+    g_logMutex->lock();
     if (szLogPath != NULL)
       {
         if (m_logger != NULL)
@@ -92,7 +93,7 @@ namespace dbgw
         m_logPath = szLogPath;
         m_logger = cci_log_get(m_logPath.c_str());
       }
-    g_logMutex.unlock();
+    g_logMutex->unlock();
   }
 
   void DBGWLogger::setLogLevel(CCI_LOG_LEVEL level)
@@ -113,13 +114,13 @@ namespace dbgw
 
   void DBGWLogger::finalize()
   {
-    g_logMutex.lock();
+    g_logMutex->lock();
     if (m_logger != NULL)
       {
         cci_log_remove(m_logPath.c_str());
         m_logger = NULL;
       }
-    g_logMutex.unlock();
+    g_logMutex->unlock();
   }
 
   void DBGWLogger::writeLogF(const char *szFile, int nLine, CCI_LOG_LEVEL level,

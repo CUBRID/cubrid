@@ -60,8 +60,8 @@ namespace dbgw
 
   class DBGWGroup;
 
-  typedef hash_map<string, DBGWPreparedStatementSharedPtr, hash<string> ,
-          dbgwStringCompareFunc> DBGWPreparedStatementHashMap;
+  typedef boost::unordered_map<string, DBGWPreparedStatementSharedPtr,
+          boost::hash<string>, dbgwStringCompareFunc> DBGWPreparedStatementHashMap;
 
   class DBGWExecuter
   {
@@ -126,7 +126,7 @@ namespace dbgw
     bool m_bClosed;
     DBGWGroup &m_group;
     DBGWExecuterList m_executerList;
-    Mutex m_poolMutex;
+    MutexSharedPtr m_poolMutex;
     bool m_bAutocommit;
     DBGW_TRAN_ISOLATION m_isolation;
   };
@@ -236,8 +236,8 @@ namespace dbgw
 
   typedef vector<DBGWQuerySharedPtr> DBGWQueryGroupList;
 
-  typedef hash_map<string, DBGWQueryGroupList, hash<string> ,
-          dbgwStringCompareFunc> DBGWQuerySqlHashMap;
+  typedef boost::unordered_map<string, DBGWQueryGroupList,
+          boost::hash<string>, dbgwStringCompareFunc> DBGWQuerySqlHashMap;
 
   typedef list<string> DBGWQueryNameList;
 
@@ -266,8 +266,8 @@ namespace dbgw
 
   typedef shared_ptr<DBGWQueryMapper> DBGWQueryMapperSharedPtr;
 
-  typedef hash_map<int, DBGWResourceSharedPtr, hash<int> , dbgwIntCompareFunc>
-  DBGWResourceMap;
+  typedef boost::unordered_map<int, DBGWResourceSharedPtr,
+          boost::hash<int>, dbgwIntCompareFunc> DBGWResourceMap;
 
   class DBGWVersionedResource
   {
@@ -291,7 +291,7 @@ namespace dbgw
     DBGWResource *getResourceWithUnlock(int nVersion);
 
   private:
-    Mutex m_mutex;
+    MutexSharedPtr m_mutex;
     int m_nVersion;
     DBGWResourceSharedPtr m_pResource;
     DBGWResourceMap m_resourceMap;
@@ -303,11 +303,11 @@ namespace dbgw
     int nQueryMapperVersion;
   };
 
-  typedef hash_map<int, DBGWConnectorSharedPtr, hash<int> , dbgwIntCompareFunc>
-  DBGWConnectorHashMap;
+  typedef boost::unordered_map<int, DBGWConnectorSharedPtr,
+          boost::hash<int>, dbgwIntCompareFunc> DBGWConnectorHashMap;
 
-  typedef hash_map<int, DBGWQueryMapperSharedPtr, hash<int> , dbgwIntCompareFunc>
-  DBGWQueryMapperHashMap;
+  typedef boost::unordered_map<int, DBGWQueryMapperSharedPtr,
+          boost::hash<int>, dbgwIntCompareFunc> DBGWQueryMapperHashMap;
 
   /**
    * External access class.

@@ -31,26 +31,16 @@
 #include <iostream>
 #include <sstream>
 #include <exception>
-#include <tr1/memory>
-#include <ext/hash_map>
 #include <cci_log.h>
 #include <cas_cci.h>
-
-namespace __gnu_cxx
-{
-  template<> struct hash<std::string>
-  {
-    size_t operator()(const std::string &x) const
-    {
-      return hash<const char *> ()(x.c_str());
-    }
-  };
-}
+#if defined(WINDOWS)
+#include <boost/tr1/memory.hpp>
+#else /* WINDOWS */
+#include <tr1/memory>
+#endif /* !WINDOWS */
 
 namespace dbgw
 {
-
-  using namespace __gnu_cxx;
   using namespace std;
   using namespace std::tr1;
 
@@ -79,38 +69,6 @@ namespace dbgw
   };
 
   typedef vector<string> DBGWStringList;
-  typedef int64_t int64;
-
-  class Mutex
-  {
-  public:
-    Mutex();
-    ~ Mutex();
-
-    void lock();
-    void unlock();
-
-  private:
-    pthread_mutex_t m_stMutex;
-
-    Mutex(const Mutex &);
-    void operator=(const Mutex &);
-  };
-
-  class MutexLock
-  {
-  public:
-    explicit MutexLock(Mutex *pMutex);
-    ~MutexLock();
-    void unlock();
-
-  private:
-    Mutex *m_pMutex;
-    bool m_bUnlocked;
-
-    MutexLock(const MutexLock &);
-    void operator=(const MutexLock &);
-  };
 
 }
 

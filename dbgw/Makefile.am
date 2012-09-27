@@ -24,6 +24,14 @@ BROKER_DIR = $(SRC)/broker
 
 AM_CPPFLAGS = @EXT_INC@ @DBGW_DEFS@ @VERSION_DEFS@
 
+if BUILD_DBGW
+  DBGW_LIB = libdbgw3.la
+  DBGW_TESTER = dbgw3_query_tester
+else
+  DBGW_LIB =
+  DBGW_TESTER = 
+endif
+
 # DBGW Season 3 Library
 dbgw3_includedir = $(includedir)
 dbgw3_include_HEADERS = \
@@ -41,7 +49,6 @@ dbgw3_include_HEADERS = \
         $(DBGW_DIR)/DBGWClient.h
 dbgw3_SOURCES = \
         $(DBGW_DIR)/DBGWMock.cpp \
-        $(DBGW_DIR)/DBGWCommon.cpp \
         $(DBGW_DIR)/DBGWError.cpp \
         $(DBGW_DIR)/DBGWValue.cpp \
         $(DBGW_DIR)/DBGWDataBaseInterface.cpp \
@@ -53,7 +60,7 @@ dbgw3_SOURCES = \
         $(DBGW_DIR)/DBGWLogger.cpp \
         $(DBGW_DIR)/DBGWConfiguration.cpp \
         $(DBGW_DIR)/DBGWClient.cpp
-lib_LTLIBRARIES = libdbgw3.la
+lib_LTLIBRARIES = $(DBGW_LIB)
 libdbgw3_la_SOURCES = \
         $(dbgw3_SOURCES)
 libdbgw3_la_CPPFLAGS = \
@@ -64,13 +71,12 @@ libdbgw3_la_LINK = $(CXXLINK)
 
 # DBGW Season 3 Query Tester
 bin_PROGRAMS = \
-		dbgw3_query_tester
+		$(DBGW_TESTER)
 dbgw3_query_tester_includedir = $(includedir)
 dbgw3_query_tester_include_HEADERS = \
 		$(DBGW_DIR)/DBGWQueryTester.h	
 dbgw3_query_tester_SOURCES = \
         $(DBGW_DIR)/DBGWMock.cpp \
-        $(DBGW_DIR)/DBGWCommon.cpp \
         $(DBGW_DIR)/DBGWError.cpp \
         $(DBGW_DIR)/DBGWValue.cpp \
         $(DBGW_DIR)/DBGWDataBaseInterface.cpp \

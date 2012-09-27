@@ -19,8 +19,73 @@
 #ifndef DBGWPORTING_H_
 #define DBGWPORTING_H_
 
+#include <boost/unordered_set.hpp>
+#include <boost/unordered_map.hpp>
+
+#if defined(WINDOWS)
+#define usleep(usec)                    dbgw::system::sleepMilliSecond((usec)/1000)
+#define snprintf                        _snprintf
+#define strcasecmp(str1, str2)          _stricmp(str1, str2)
+#define strncasecmp(str1, str2, size)   _strnicmp(str1, str2, size)
+#define __thread                        __declspec( thread )
+#define __func__                        __FUNCTION__
+#define __FILENAME__                    (strrchr(__FILE__,'\\')+1)
+
+typedef __int64   int64;
+
+#else /* WINDOWS */
+#define __FILENAME__                    __FILE__
+
+typedef int64_t   int64;
+
+#endif /* !WINDOWS */
+
 namespace dbgw
 {
+#if !defined(WINDOWS)
+  using namespace __gnu_cxx;
+#endif /* !WINDOWS */
+
+  class Mutex
+  {
+  public:
+    Mutex();
+    virtual ~Mutex();
+
+    virtual void lock() = 0;
+    virtual void unlock() = 0;
+
+  private:
+
+    Mutex(const Mutex &);
+    void operator=(const Mutex &);
+  };
+
+  typedef shared_ptr<Mutex> MutexSharedPtr;
+
+  class MutexFactory
+  {
+  public:
+    static MutexSharedPtr create();
+
+  private:
+    ~MutexFactory();
+  };
+
+  class MutexLock
+  {
+  public:
+    explicit MutexLock(MutexSharedPtr pMutex);
+    ~MutexLock();
+    void unlock();
+
+  private:
+    MutexSharedPtr m_pMutex;
+    bool m_bUnlocked;
+
+    MutexLock(const MutexLock &);
+    void operator=(const MutexLock &);
+  };
 
   namespace system
   {
@@ -35,6 +100,8 @@ namespace dbgw
 #define __stdcall
 #define DECLSPECIFIER
 #endif
+
+    void sleepMilliSecond(unsigned int ms);
 
     const string getFileExtension(const string &fileName);
 
@@ -64,19 +131,8 @@ namespace dbgw
       virtual ~DirectoryFactory();
     };
 
-    class PosixDirectory : public Directory
-    {
-    public:
-      PosixDirectory(const char *szPath);
-      virtual ~PosixDirectory();
-
-    public:
-      bool isDirectory() const;
-      void getFileFullPathList(DBGWStringList &fileNameList);
-    };
-
   }
 
 }
 
-#endif				/* DBGWLogger.h */
+#endif				/* DBGWPORTING_H_ */

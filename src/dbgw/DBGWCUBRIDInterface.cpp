@@ -19,6 +19,7 @@
 #include <boost/format.hpp>
 #include "DBGWCommon.h"
 #include "DBGWError.h"
+#include "DBGWPorting.h"
 #include "DBGWValue.h"
 #include "DBGWLogger.h"
 #include "DBGWQuery.h"
@@ -191,7 +192,7 @@ namespace dbgw
 
       try
         {
-          if (close() < 0)
+          if (close() == false)
             {
               throw getLastException();
             }
@@ -455,7 +456,7 @@ namespace dbgw
 
       try
         {
-          if (close() < 0)
+          if (close() == false)
             {
               throw getLastException();
             }

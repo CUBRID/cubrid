@@ -17,6 +17,7 @@
  *
  */
 #include "DBGWCommon.h"
+#include "DBGWPorting.h"
 #include "DBGWMock.h"
 
 namespace dbgw

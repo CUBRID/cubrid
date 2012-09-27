@@ -18,17 +18,21 @@
  */
 #include <boost/lexical_cast.hpp>
 #include <boost/algorithm/string.hpp>
+#if defined(WINDOWS)
+#include <expat/expat.h>
+#else /* WINDOWS */
 #include <expat.h>
+#endif /* !WINDOWS */
 #include <fstream>
 #include <errno.h>
 #include "DBGWCommon.h"
 #include "DBGWError.h"
+#include "DBGWPorting.h"
 #include "DBGWLogger.h"
 #include "DBGWValue.h"
 #include "DBGWQuery.h"
 #include "DBGWDataBaseInterface.h"
 #include "DBGWConfiguration.h"
-#include "DBGWPorting.h"
 #include "DBGWXMLParser.h"
 
 namespace dbgw
@@ -321,11 +325,11 @@ namespace dbgw
       {
         return boost::lexical_cast<int>(szProperty);
       }
-    catch (boost::bad_lexical_cast &e)
+    catch (boost::bad_lexical_cast &)
       {
-        InvalidPropertyValueException e(szProperty, "NUMERIC");
-        DBGW_LOG_ERROR(e.what());
-        throw e;
+        InvalidPropertyValueException ie(szProperty, "NUMERIC");
+        DBGW_LOG_ERROR(ie.what());
+        throw ie;
       }
   }
 

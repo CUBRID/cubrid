@@ -17,7 +17,13 @@
  *
  */
 #include <boost/lexical_cast.hpp>
+#if defined(WINDOWS)
+#include <expat/expat.h>
+#else /* WINDOWS */
 #include <expat.h>
+#endif /* !WINDOWS */
+#include "DBGWCommon.h"
+#include "DBGWPorting.h"
 #include "DBGWClient.h"
 #include "DBGWXMLParser.h"
 #include "DBGWQueryTester.h"
@@ -206,7 +212,7 @@ namespace dbgw
                     ++m_nPassCount;
                   }
               }
-            catch (DBGWException &e)
+            catch (DBGWException &)
               {
                 nResult = 1;
               }
