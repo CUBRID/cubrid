@@ -8,23 +8,24 @@
 #define PyString_Check PyBytes_Check
 #endif
 
-#define CUBRID_ER_NO_MORE_MEMORY	    -2001
-#define CUBRID_ER_INVALID_SQL_TYPE	    -2002
-#define CUBRID_ER_CANNOT_GET_COLUMN_INFO    -2003
-#define CUBRID_ER_INIT_ARRAY_FAIL           -2004
-#define CUBRID_ER_UNKNOWN_TYPE              -2005
-#define CUBRID_ER_INVALID_PARAM             -2006
-#define CUBRID_ER_INVALID_ARRAY_TYPE        -2007
-#define CUBRID_ER_NOT_SUPPORTED_TYPE        -2008
-#define CUBRID_ER_OPEN_FILE                 -2009
-#define CUBRID_ER_CREATE_TEMP_FILE          -2010
-#define CUBRID_ER_INVALID_CURSOR_POS	    -2012
-#define CUBRID_ER_SQL_UNPREPARE		    -2013
-#define CUBRID_ER_PARAM_UNBIND		    -2014
-#define CUBRID_ER_SCHEMA_TYPE               -2015
-#define CUBRID_ER_READ_FILE                 -2016
-#define CUBRID_ER_WRITE_FILE                -2017
-#define CUBRID_ER_LOB_NOT_EXIST             -2018
+#define CUBRID_ER_NO_MORE_MEMORY	    -30001
+#define CUBRID_ER_INVALID_SQL_TYPE	    -30002
+#define CUBRID_ER_CANNOT_GET_COLUMN_INFO    -30003
+#define CUBRID_ER_INIT_ARRAY_FAIL           -30004
+#define CUBRID_ER_UNKNOWN_TYPE              -30005
+#define CUBRID_ER_INVALID_PARAM             -30006
+#define CUBRID_ER_INVALID_ARRAY_TYPE        -30007
+#define CUBRID_ER_NOT_SUPPORTED_TYPE        -30008
+#define CUBRID_ER_OPEN_FILE                 -30009
+#define CUBRID_ER_CREATE_TEMP_FILE          -30010
+#define CUBRID_ER_INVALID_CURSOR_POS	    -30012
+#define CUBRID_ER_SQL_UNPREPARE		    -30013
+#define CUBRID_ER_PARAM_UNBIND		    -30014
+#define CUBRID_ER_SCHEMA_TYPE               -30015
+#define CUBRID_ER_READ_FILE                 -30016
+#define CUBRID_ER_WRITE_FILE                -30017
+#define CUBRID_ER_LOB_NOT_EXIST             -30018
+#define CUBRID_ER_END                       -31000
 
 #define CUBRID_EXEC_ASYNC           CCI_EXEC_ASYNC
 #define CUBRID_EXEC_QUERY_ALL       CCI_EXEC_QUERY_ALL

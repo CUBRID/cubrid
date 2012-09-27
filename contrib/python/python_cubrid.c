@@ -69,39 +69,39 @@ static struct _error_message
 } cubrid_err_msgs[] =
 {
   {
-  -2001, "Memory allocation error"},
+  CUBRID_ER_NO_MORE_MEMORY, "Memory allocation error"},
   {
-  -2002, "Invalid API call"},
+  CUBRID_ER_INVALID_SQL_TYPE, "Invalid API call"},
   {
-  -2003, "Cannot get column info"},
+  CUBRID_ER_CANNOT_GET_COLUMN_INFO, "Cannot get column info"},
   {
-  -2004, "Array initializing error"},
+  CUBRID_ER_INIT_ARRAY_FAIL, "Array initializing error"},
   {
-  -2005, "Unknown column type"},
+  CUBRID_ER_UNKNOWN_TYPE, "Unknown column type"},
   {
-  -2006, "Invalid parameter"},
+  CUBRID_ER_INVALID_PARAM, "Invalid parameter"},
   {
-  -2007, "Invalid array type"},
+  CUBRID_ER_INVALID_ARRAY_TYPE, "Invalid array type"},
   {
-  -2008, "Invalid type"},
+  CUBRID_ER_NOT_SUPPORTED_TYPE, "Invalid type"},
   {
-  -2009, "File open error"},
+  CUBRID_ER_OPEN_FILE, "File open error"},
   {
-  -2010, "Temporary file open error"},
+  CUBRID_ER_CREATE_TEMP_FILE, "Temporary file open error"},
   {
-  -2012, "Invalid cursor position"},
+  CUBRID_ER_INVALID_CURSOR_POS, "Invalid cursor position"},
   {
-  -2013, "SQL statement not prepared"},
+  CUBRID_ER_SQL_UNPREPARE, "SQL statement not prepared"},
   {
-  -2014, "Some parameter not binded"},
+  CUBRID_ER_PARAM_UNBIND, "Some parameter not binded"},
   {
-  -2015, "Invalid schema type"},
+  CUBRID_ER_SCHEMA_TYPE, "Invalid schema type"},
   {
-  -2016, "Can not read file"},
+  CUBRID_ER_READ_FILE, "Can not read file"},
   {
-  -2017, "Can not write file"},
+  CUBRID_ER_WRITE_FILE, "Can not write file"},
   {
-  -2018, "LOB not exist"},
+  CUBRID_ER_LOB_NOT_EXIST, "LOB not exist"},
   {
   0, ""}
 };
@@ -131,7 +131,7 @@ get_error_msg (int err_code, char *err_msg)
 {
   int i;
 
-  if (err_code >= -2000)
+  if (err_code > CCI_ER_END)
     {
       return cci_get_err_msg (err_code, err_msg, CUBRID_ER_MSG_LEN);
     }
@@ -179,15 +179,15 @@ handle_error (int e, T_CCI_ERROR * error)
 	}
       err_code = e;
 
-      if (e > -1000)
-	{
-	  facility_msg = "CCI";
-	}
-      else if (e > -2000)
+      if (e > CAS_ER_IS)
 	{
 	  facility_msg = "CAS";
 	}
-      else if (e > -3000)
+      else if (e > CCI_ER_END)
+	{
+	  facility_msg = "CCI";
+	}
+      else if (e > CUBRID_ER_END)
 	{
 	  facility_msg = "CLIENT";
 	}
@@ -359,10 +359,10 @@ _cubrid_ConnectionObject_init (_cubrid_ConnectionObject * self,
 
   snprintf (buf, 1024, "cci:%s", url);
 
-  con = cci_connect_with_url (buf, user, passwd);
+  con = cci_connect_with_url_ex (buf, user, passwd, &error);
   if (con < 0)
     {
-      handle_error (con, NULL);
+      handle_error (con, &error);
       return -1;
     }
 
@@ -1509,7 +1509,6 @@ _cubrid_CursorObject_set_description (_cubrid_CursorObject * self)
 {
   PyObject *desc, *item;
   int i;
-  char colName[128] = { '\0' };
   int datatype, precision, scale, nullable;
 
   if (self->col_count == 0)
@@ -1523,8 +1522,11 @@ _cubrid_CursorObject_set_description (_cubrid_CursorObject * self)
 
   for (i = 1; i <= self->col_count; i++)
     {
+      char *colName = NULL;
+
       item = PyTuple_New (7);
-      strcpy (colName, CCI_GET_RESULT_INFO_NAME (self->col_info, i));
+
+      colName = CCI_GET_RESULT_INFO_NAME (self->col_info, i);
       precision = CCI_GET_RESULT_INFO_PRECISION (self->col_info, i);
       scale = CCI_GET_RESULT_INFO_SCALE (self->col_info, i);
       nullable = CCI_GET_RESULT_INFO_IS_NON_NULL (self->col_info, i);
@@ -1612,12 +1614,6 @@ _cubrid_CursorObject_result_info (_cubrid_CursorObject * self,
 {
   PyObject *result, *item;
   int i, j, n = 0, len = 0;
-  char col_name[128] = { '\0' };
-  char real_attr[128] = { '\0' };
-  char class_name[128] = { '\0' };
-  char default_value[128] = { '\0' };
-  int type, precision, scale, not_null, auto_increment, unique_key,
-    primary_key, foreign_key, reverse_index, resverse_unique, shared;
 
   if (!PyArg_ParseTuple (args, "|i", &n))
     {
@@ -1650,49 +1646,43 @@ _cubrid_CursorObject_result_info (_cubrid_CursorObject * self,
 
   for (j = 0; i <= len; i++, j++)
     {
+      char *col_name = NULL, *real_attr = NULL;
+      char *class_name = NULL, *default_value = NULL;
+      int type, precision, scale, not_null, auto_increment, unique_key,
+        primary_key, foreign_key, reverse_index, resverse_unique, shared;
+
       item = PyTuple_New (15);
 
       type = CCI_GET_RESULT_INFO_TYPE (self->col_info, i);
       not_null = CCI_GET_RESULT_INFO_IS_NON_NULL (self->col_info, i);
       scale = CCI_GET_RESULT_INFO_SCALE (self->col_info, i);
       precision = CCI_GET_RESULT_INFO_PRECISION (self->col_info, i);
-      strcpy (col_name, CCI_GET_RESULT_INFO_NAME (self->col_info, i));
-      strcpy (real_attr, CCI_GET_RESULT_INFO_ATTR_NAME (self->col_info, i));
-      strcpy (class_name, CCI_GET_RESULT_INFO_CLASS_NAME (self->col_info, i));
-      strcpy (default_value,
-	      CCI_GET_RESULT_INFO_DEFAULT_VALUE (self->col_info, i));
-      auto_increment =
-	CCI_GET_RESULT_INFO_IS_AUTO_INCREMENT (self->col_info, i);
+      col_name = CCI_GET_RESULT_INFO_NAME (self->col_info, i);
+      real_attr = CCI_GET_RESULT_INFO_ATTR_NAME (self->col_info, i);
+      class_name = CCI_GET_RESULT_INFO_CLASS_NAME (self->col_info, i);
+      default_value = CCI_GET_RESULT_INFO_DEFAULT_VALUE (self->col_info, i);
+      auto_increment = CCI_GET_RESULT_INFO_IS_AUTO_INCREMENT (self->col_info, i);
       unique_key = CCI_GET_RESULT_INFO_IS_UNIQUE_KEY (self->col_info, i);
       primary_key = CCI_GET_RESULT_INFO_IS_PRIMARY_KEY (self->col_info, i);
       foreign_key = CCI_GET_RESULT_INFO_IS_FOREIGN_KEY (self->col_info, i);
-      reverse_index =
-	CCI_GET_RESULT_INFO_IS_REVERSE_INDEX (self->col_info, i);
-      resverse_unique =
-	CCI_GET_RESULT_INFO_IS_REVERSE_UNIQUE (self->col_info, i);
+      reverse_index = CCI_GET_RESULT_INFO_IS_REVERSE_INDEX (self->col_info, i);
+      resverse_unique = CCI_GET_RESULT_INFO_IS_REVERSE_UNIQUE (self->col_info, i);
       shared = CCI_GET_RESULT_INFO_IS_SHARED (self->col_info, i);
 
       PyTuple_SetItem (item, 0, _cubrid_return_PyInt_FromLong (type));
       PyTuple_SetItem (item, 1, _cubrid_return_PyInt_FromLong (not_null));
       PyTuple_SetItem (item, 2, _cubrid_return_PyInt_FromLong (scale));
       PyTuple_SetItem (item, 3, _cubrid_return_PyInt_FromLong (precision));
-      PyTuple_SetItem (item, 4,
-		       _cubrid_return_PyString_FromString (col_name));
-      PyTuple_SetItem (item, 5,
-		       _cubrid_return_PyString_FromString (real_attr));
-      PyTuple_SetItem (item, 6,
-		       _cubrid_return_PyString_FromString (class_name));
-      PyTuple_SetItem (item, 7,
-		       _cubrid_return_PyString_FromString (default_value));
-      PyTuple_SetItem (item, 8,
-		       _cubrid_return_PyInt_FromLong (auto_increment));
+      PyTuple_SetItem (item, 4, _cubrid_return_PyString_FromString (col_name));
+      PyTuple_SetItem (item, 5, _cubrid_return_PyString_FromString (real_attr));
+      PyTuple_SetItem (item, 6, _cubrid_return_PyString_FromString (class_name));
+      PyTuple_SetItem (item, 7, _cubrid_return_PyString_FromString (default_value));
+      PyTuple_SetItem (item, 8, _cubrid_return_PyInt_FromLong (auto_increment));
       PyTuple_SetItem (item, 9, _cubrid_return_PyInt_FromLong (unique_key));
       PyTuple_SetItem (item, 10, _cubrid_return_PyInt_FromLong (primary_key));
       PyTuple_SetItem (item, 11, _cubrid_return_PyInt_FromLong (foreign_key));
-      PyTuple_SetItem (item, 12,
-		       _cubrid_return_PyInt_FromLong (reverse_index));
-      PyTuple_SetItem (item, 13,
-		       _cubrid_return_PyInt_FromLong (resverse_unique));
+      PyTuple_SetItem (item, 12, _cubrid_return_PyInt_FromLong (reverse_index));
+      PyTuple_SetItem (item, 13, _cubrid_return_PyInt_FromLong (resverse_unique));
       PyTuple_SetItem (item, 14, _cubrid_return_PyInt_FromLong (shared));
 
       PyTuple_SetItem (result, j, item);
@@ -1925,7 +1915,7 @@ _cubrid_CursorObject_dbset_to_pyvalue (_cubrid_CursorObject * self, int index)
 }
 
 static PyObject *
-_cubrid_CursorObject_fetch_row (_cubrid_CursorObject * self)
+_cubrid_row_to_tuple (_cubrid_CursorObject * self)
 {
   int i, type;
   PyObject *row, *val;
@@ -1945,6 +1935,37 @@ _cubrid_CursorObject_fetch_row (_cubrid_CursorObject * self)
 	  val = _cubrid_CursorObject_dbval_to_pyvalue (self, type, i + 1);
 	}
       PyList_SetItem (row, i, val);
+    }
+
+  return row;
+}
+
+static PyObject *
+_cubrid_row_to_dict (_cubrid_CursorObject * self)
+{
+  PyObject *row, *val;
+  int i, type;
+
+  if (!(row = PyDict_New ()))
+    {
+      return NULL;
+    }
+
+  for (i = 0; i < self->col_count; i++)
+    {
+      char *col_name = CCI_GET_RESULT_INFO_NAME(self->col_info, i + 1);
+
+      type = CCI_GET_RESULT_INFO_TYPE (self->col_info, i + 1);
+
+      if (CCI_IS_COLLECTION_TYPE (type))
+	{
+	  val = _cubrid_CursorObject_dbset_to_pyvalue (self, i + 1);
+	}
+      else
+	{
+	  val = _cubrid_CursorObject_dbval_to_pyvalue (self, type, i + 1);
+	}
+      PyMapping_SetItemString(row, col_name, val);
     }
 
   return row;
@@ -1971,13 +1992,18 @@ Example::\n\
 static PyObject *
 _cubrid_CursorObject_fetch (_cubrid_CursorObject * self, PyObject * args)
 {
-  int res;
+  int res, how = 0;
   T_CCI_ERROR error;
   PyObject *row;
 
-  if (!PyArg_ParseTuple (args, ""))
+  if (!PyArg_ParseTuple (args, "|i", &how))
     {
       return NULL;
+    }
+
+  if (how < 0 || how > 1)
+    {
+      return handle_error(CUBRID_ER_INVALID_PARAM, NULL);
     }
 
   res = cci_cursor (self->handle, 0, CCI_CURSOR_CURRENT, &error);
@@ -1997,8 +2023,14 @@ _cubrid_CursorObject_fetch (_cubrid_CursorObject * self, PyObject * args)
       return handle_error (res, &error);
     }
 
-
-  row = _cubrid_CursorObject_fetch_row (self);
+  if (how == 0)
+    {
+      row = _cubrid_row_to_tuple (self);
+    }
+  else
+    {
+      row = _cubrid_row_to_dict (self);
+    }
 
   res = cci_cursor (self->handle, 1, CCI_CURSOR_CURRENT, &error);
   if (res < 0 && res != CCI_ER_NO_MORE_DATA)
@@ -3255,7 +3287,7 @@ PyTypeObject _cubrid_CursorObject_type = {
   0,				/* tp_free */
 };
 
-#define _CUBRID_VERSION_	"8.4.9.0001"
+#define _CUBRID_VERSION_	"9.1.0.0001"
 static char _cubrid_doc[] = "CUBRID API Module for Python";
 
 #if PY_MAJOR_VERSION >= 3

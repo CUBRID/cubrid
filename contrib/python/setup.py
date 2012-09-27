@@ -11,7 +11,7 @@ else:
 
 setup(
     name = "CUBRID-Python", 
-    version = "8.4.9.0001",
+    version = "9.1.0.0001",
     description = "Python interface to CUBRID",
     long_description = \
             "Python interface to CUBRID conforming to the python DB API 2.0 "

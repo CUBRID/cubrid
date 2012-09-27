@@ -21,10 +21,13 @@ class Connection(object):
     def __del__(self):
         pass
 
-    def cursor(self):
-        return Cursor(self._db.cursor())
+    def cursor(self, dictCursor = None):
+        if dictCursor:
+            cursorClass = DictCursor
+        else:
+            cursorClass = Cursor
+        return cursorClass(self._db.cursor())
         
-
     def commit(self):
         self._db.commit()
 

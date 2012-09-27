@@ -1,7 +1,7 @@
 import sys
 import types
 
-class Cursor(object):
+class BaseCursor(object):
     """
     A base for Cursor classes. Useful attributes:
 
@@ -71,9 +71,11 @@ class Cursor(object):
         for p in args:
             self.execute(query, *(p,))
 
+    def _fetch_row(self):
+        return self._cs.fetch_row(self._fetch_type)
     
     def fetchone(self):
-        return self._cs.fetch_row()
+        return self._fetch_row()
 
     def _fetch_many(self, size):
         rlist = []
@@ -122,3 +124,22 @@ class Cursor(object):
         """
         pass
 
+class CursorTupleRowsMixIn(object):
+
+    _fetch_type = 0
+
+class CursorDictTupleMixIn(object):
+
+    _fetch_type = 1
+
+class Cursor(CursorTupleRowsMixIn, BaseCursor):
+    '''
+    This is the standard Cursor class that returns rows as tuples
+    and stores the result set in the client.
+    '''
+
+class DictCursor(CursorDictTupleMixIn, BaseCursor):
+    '''
+    This is a Cursor class that returns rows as dictionaries and
+    stores the result set in the client.
+    '''
