@@ -268,7 +268,58 @@ hm_con_handle_free (int con_id)
 }
 
 static int
-hm_pool_add_node_to_lru (T_CON_HANDLE * connection, int statement_id)
+hm_pool_add_node_to_list (T_REQ_HANDLE ** head, T_REQ_HANDLE ** tail,
+			  T_REQ_HANDLE * target)
+{
+  target->next = NULL;
+  target->prev = *tail;
+  if (*tail == NULL)
+    {
+      *head = target;
+    }
+  else
+    {
+      (*tail)->next = target;
+    }
+  *tail = target;
+
+  return CCI_ER_NO_ERROR;
+}
+
+static int
+hm_pool_drop_node_from_list (T_REQ_HANDLE ** head, T_REQ_HANDLE ** tail,
+			     T_REQ_HANDLE * target)
+{
+  T_REQ_HANDLE *prev_target, *next_target;
+
+  assert (*head != NULL && *tail != NULL);
+
+  prev_target = target->prev;
+  next_target = target->next;
+  if (prev_target != NULL)
+    {
+      prev_target->next = next_target;
+    }
+  if (next_target != NULL)
+    {
+      next_target->prev = prev_target;
+    }
+
+  if (target == *head)
+    {
+      *head = next_target;
+    }
+  if (target == *tail)
+    {
+      *tail = prev_target;
+    }
+
+  return CCI_ER_NO_ERROR;
+}
+
+static int
+hm_pool_move_node_from_use_to_lru (T_CON_HANDLE * connection,
+				   int statement_id)
 {
   T_REQ_HANDLE *target;
 
@@ -276,20 +327,36 @@ hm_pool_add_node_to_lru (T_CON_HANDLE * connection, int statement_id)
   target = connection->req_handle_table[statement_id - 1];
   assert (target != NULL);
 
-  target->next = NULL;
-  if (connection->pool_lru_tail == NULL)
-    {
-      target->prev = NULL;
-      connection->pool_lru_head = target;
-    }
-  else
-    {
-      target->prev = connection->pool_lru_tail;
-      connection->pool_lru_tail->next = target;
-    }
-  connection->pool_lru_tail = target;
+  /* cut from use */
+  hm_pool_drop_node_from_list (&connection->pool_use_head,
+			       &connection->pool_use_tail, target);
 
+  /* add to lru */
+  hm_pool_add_node_to_list (&connection->pool_lru_head,
+			    &connection->pool_lru_tail, target);
   connection->open_prepared_statement_count++;
+
+  return CCI_ER_NO_ERROR;
+}
+
+static int
+hm_pool_move_node_from_lru_to_use (T_CON_HANDLE * connection,
+				   int statement_id)
+{
+  T_REQ_HANDLE *target;
+
+  statement_id = statement_id % CON_HANDLE_ID_FACTOR;
+  target = connection->req_handle_table[statement_id - 1];
+  assert (target != NULL);
+
+  /* cut from lru */
+  hm_pool_drop_node_from_list (&connection->pool_lru_head,
+			       &connection->pool_lru_tail, target);
+  connection->open_prepared_statement_count--;
+
+  /* add to use */
+  hm_pool_add_node_to_list (&connection->pool_use_head,
+			    &connection->pool_use_tail, target);
 
   return CCI_ER_NO_ERROR;
 }
@@ -305,52 +372,46 @@ hm_pool_victimize_last_node_from_lru (T_CON_HANDLE * connection)
     }
 
   victim = connection->pool_lru_head;
-  connection->pool_lru_head = victim->next;
-  if (connection->pool_lru_head == NULL)
-    {
-      /* all nodes are dropped */
-      connection->pool_lru_tail = NULL;
-    }
-  else
-    {
-      connection->pool_lru_head->prev = NULL;
-    }
+  hm_pool_drop_node_from_list (&connection->pool_lru_head,
+			       &connection->pool_lru_tail, victim);
 
   connection->open_prepared_statement_count--;
 
   return victim;
 }
 
-static int
-hm_pool_drop_node_from_lru (T_CON_HANDLE * connection, int statement_id)
+int
+hm_pool_restore_used_statements (T_CON_HANDLE * connection)
 {
-  T_REQ_HANDLE *target, *next_target, *prev_target;
+  T_REQ_HANDLE *r;
+
+  r = connection->pool_use_head;
+  while (r != NULL)
+    {
+      int statement = r->req_handle_index;
+
+      req_handle_content_free_for_pool (r);
+      r = r->next;
+      hm_pool_move_node_from_use_to_lru (connection, statement);
+    }
+
+  connection->pool_use_head = NULL;
+  connection->pool_use_tail = NULL;
+
+  return CCI_ER_NO_ERROR;
+}
+
+int
+hm_pool_add_statement_to_use (T_CON_HANDLE * connection, int statement_id)
+{
+  T_REQ_HANDLE *statement;
 
   statement_id = statement_id % CON_HANDLE_ID_FACTOR;
-  target = connection->req_handle_table[statement_id - 1];
+  statement = connection->req_handle_table[statement_id - 1];
+  assert (statement != NULL);
 
-  /* cut a node */
-  prev_target = target->prev;
-  next_target = target->next;
-  if (prev_target != NULL)
-    {
-      prev_target->next = next_target;
-    }
-  if (next_target != NULL)
-    {
-      next_target->prev = prev_target;
-    }
-
-  if (target == connection->pool_lru_head)
-    {
-      connection->pool_lru_head = next_target;
-    }
-  if (target == connection->pool_lru_tail)
-    {
-      connection->pool_lru_tail = prev_target;
-    }
-
-  connection->open_prepared_statement_count--;
+  hm_pool_add_node_to_list (&connection->pool_use_head,
+			    &connection->pool_use_tail, statement);
 
   return CCI_ER_NO_ERROR;
 }
@@ -445,7 +506,7 @@ hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int req_id)
       return CCI_ER_NO_MORE_MEMORY;
     }
 
-  hm_pool_add_node_to_lru (con, req_id);
+  hm_pool_move_node_from_use_to_lru (con, req_id);
 
   return CCI_ER_NO_ERROR;
 }
@@ -464,7 +525,7 @@ hm_req_get_from_pool (T_CON_HANDLE * con, char *sql)
   req_id = *((int *) data);
   FREE_MEM (data);
 
-  hm_pool_drop_node_from_lru (con, req_id);
+  hm_pool_move_node_from_lru_to_use (con, req_id);
 
   return req_id;
 }

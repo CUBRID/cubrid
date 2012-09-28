@@ -225,6 +225,8 @@ typedef struct
   int rc_time;			/* failback try duration */
   T_REQ_HANDLE *pool_lru_head;
   T_REQ_HANDLE *pool_lru_tail;
+  T_REQ_HANDLE *pool_use_head;
+  T_REQ_HANDLE *pool_use_tail;
   int login_timeout;
   int query_timeout;
   char disconnect_on_query_timeout;
@@ -292,6 +294,10 @@ extern int hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int req_id);
 extern int hm_req_get_from_pool (T_CON_HANDLE * con, char *sql);
 
 extern int cci_conn_set_properties (T_CON_HANDLE * handle, char *properties);
+
+extern int hm_pool_restore_used_statements (T_CON_HANDLE * connection);
+extern int hm_pool_add_statement_to_use (T_CON_HANDLE * connection,
+					 int statement_id);
 /************************************************************************
  * PUBLIC VARIABLES							*
  ************************************************************************/

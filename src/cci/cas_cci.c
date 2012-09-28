@@ -940,6 +940,12 @@ cci_prepare (int con_id, char *sql_stmt, char flag, T_CCI_ERROR * err_buf)
       goto prepare_error;
     }
 
+  if (DOES_CONNECTION_HAVE_STMT_POOL (con_handle))
+    {
+      /* add new allocated statement to use list */
+      hm_pool_add_statement_to_use (con_handle, req_handle_id);
+    }
+
 prepare_end:
   RESET_START_TIME (con_handle);
   con_handle->ref_count = 0;
@@ -6458,6 +6464,8 @@ cci_datasource_release (T_CCI_DATASOURCE * ds, T_CCI_CONN conn,
 			T_CCI_ERROR * err_buf)
 {
   int i;
+  T_CON_HANDLE *con_handle;
+  T_CCI_ERROR cci_error;
 
   if (ds == NULL || !ds->is_init)
     {
@@ -6466,28 +6474,33 @@ cci_datasource_release (T_CCI_DATASOURCE * ds, T_CCI_CONN conn,
       return CCI_ER_INVALID_DATASOURCE;
     }
 
+  con_handle = hm_find_con_handle (conn);
+  assert (con_handle != NULL);
+
+  if (con_handle->datasource != ds)
+    {
+      err_buf->err_code = CCI_ER_INVALID_DATASOURCE;
+      snprintf (err_buf->err_msg, 1023,
+		"The connection does not belong to this data source.");
+      return 0;
+    }
+
+  if (ds->pool_prepared_statement == true)
+    {
+      hm_pool_restore_used_statements (con_handle);
+    }
+  else
+    {
+      qe_close_req_handle_all (con_handle);
+    }
+  cci_end_tran (conn, CCI_TRAN_ROLLBACK, &cci_error);
+
   /* critical section begin */
   pthread_mutex_lock ((pthread_mutex_t *) ds->mutex);
   for (i = 0; i < ds->pool_size; i++)
     {
       if (ds->con_handles[i] == -conn)
 	{
-	  T_CCI_ERROR err_buf;
-
-	  if (ds->pool_prepared_statement == false)
-	    {
-	      T_CON_HANDLE *con_handle;
-
-	      con_handle = hm_find_con_handle (conn);
-	      if (con_handle == NULL)
-		{
-		  continue;
-		}
-
-	      qe_close_req_handle_all (con_handle);
-	    }
-
-	  cci_end_tran (conn, CCI_TRAN_ROLLBACK, &err_buf);
 	  ds->con_handles[i] = conn;
 	  break;
 	}
