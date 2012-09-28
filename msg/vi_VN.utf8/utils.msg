@@ -67,12 +67,12 @@ $       46      genlocale
 $       47      dumplocale
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
-1 Độ dài hoặc ký tự `%c' không hợp lệ trong tên cơ sở dữ liệu `%s'\n
-2 Không thể mở tệp tin đầu ra `%s'\n
+1 Độ dài hoặc ký tự '%c' không hợp lệ trong tên cơ sở dữ liệu '%s'\n
+2 Không thể mở tệp tin đầu ra '%s'\n
 3 Tên tiện ích bị thiếu hoặc không hợp lệ.\n
-4 Tên tiện ích không hợp lệ `%s'\n
+4 Tên tiện ích không hợp lệ '%s'\n
 5 Danh sách sau đây chứa các tên tiện ích được nhận biết:\n
-6 Ký tự `%c' không hợp lệ trong tên bộ đĩa `%s'\n
+6 Ký tự '%c' không hợp lệ trong tên bộ đĩa '%s'\n
 9 \
 %s (Tiện ích CUBRID)\n\
 %s\n\
@@ -282,14 +282,14 @@ các tùy chọn hợp lệ:\n\
 
 
 $set 4 MSGCAT_UTIL_SET_CREATEDB
-40 Nhóm `%s' không tồn tại\n
-41 Người dùng `%s' không tồn tại\n
-42 Lệnh `%s' không rõ\n
-43 Không thể mở tệp tin đầu ra `%s'\n
+40 Nhóm '%s' không tồn tại\n
+41 Người dùng '%s' không tồn tại\n
+42 Lệnh '%s' không rõ\n
+43 Không thể mở tệp tin đầu ra '%s'\n
 44 Không thể gỡ bỏ cơ sở dữ liệu hiện có.\n
 45 Tạo cơ sở dữ liệu với kích cỡ %s.\n
 46 Không thể tạo cơ sở dữ liệu.\n
-47 Vấn đề với tệp tin người dùng `%s'\n
+47 Vấn đề với tệp tin người dùng '%s'\n
 48 '%s' phải nằm giữa %s và %s\n
 49 Giá trị %s '%s' vô hiệu.\n
 60 \
@@ -351,7 +351,7 @@ $set 9 MSGCAT_UTIL_SET_MASTER
 
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
-11 Không thể mở tệp tin đầu ra `%s'\n
+11 Không thể mở tệp tin đầu ra '%s'\n
 60 \
 optimizedb: Tối ưu hóa một cơ sở dữ liệu.\n\
 cách sử dụng: %s optimizedb [TÙY CHỌN] tên-cơ sở dữ liệu\n\
@@ -383,7 +383,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 21 ngắt ... \n
 22 Tải bị ngắt - giao dịch hiện tại đã được cam kết\n
 23 Tải bị ngắt - giao dịch hiện tại đã bị bỏ dở\n
-24 Không thể mở tệp tin `%s'\n
+24 Không thể mở tệp tin '%s'\n
 25 \n*** Kiểm tra cú pháp ***\n\n
 26 %d lỗi được phát hiện.\n
 27 \n*** Chèn đối tượng ***\n\n
@@ -392,7 +392,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 30 \n*** Cam kết giao dịch ***\n
 31 \n*** Đóng cơ sở dữ liệu ***\n
 32 Dòng %d:
-33 Lỗi phân tích `%s' như một giá trị `%s' cho thuộc tính `%s' của `%s'\n
+33 Lỗi phân tích '%s' như một giá trị '%s' cho thuộc tính '%s' của '%s'\n
 34 Thiếu miền cho thuộc tính %s của %s\n
 35 Đối với thuộc tính %s của %s, kiểu %s không được cho phép trong miền của tập hợp\n
 36 Đối với thuộc tính %s của %s, kiểu mong đợi %s, lấy được một tập hợp không đổi\n
@@ -406,7 +406,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 44 CẢNH BÁO: định nghĩa lại thực thể %d của lớp %s\n
 45 Thực thể %d của lớp %s đã được định nghĩa\n
 46 Thực thể %d của lớp %s đã được bảo lưu\n
-47 Vi phạm UNIQUE trên thuộc tính `%s', chuyển đổi đến NULL\n
+47 Vi phạm UNIQUE trên thuộc tính '%s', chuyển đổi đến NULL\n
 48   %d thực thể\n
 49 Lớp %s\n
 50 Mật mã:
@@ -637,7 +637,7 @@ các tùy chọn hợp lệ:\n\
 $set 19 MSGCAT_UTIL_SET_SPACEDB
 15 Mô tả không gian cho cơ sở dữ liệu '%s' với kích cỡ trang %s. (kích cỡ trang bản ghi: %s)\n\n
 16 %5d %8s  %s %s  %s\n
-17 Không thể mở tệp tin đầu vào `%s'\n
+17 Không thể mở tệp tin đầu vào '%s'\n
 18 Mô tả không gian cho bộ đĩa tạm thời cho cơ sở dữ liệu '%s' với kích cỡ trang %s.\n\n
 19 id bộ đĩa  Mục đích  tổng số trang  trang còn trống  Tên bộ đĩa\n\n
 20 id bộ đĩa  Mục đích  tổng dung lượng  dung lượng còn trống  Tên bộ đĩa\n\n
@@ -741,7 +741,7 @@ các tùy chọn hợp lệ:\n\
 
 
 $set 25 MSGCAT_UTIL_SET_LOCKDB
-15 Không thể mở tệp tin đầu ra `%s'\n
+15 Không thể mở tệp tin đầu ra '%s'\n
 59 lockdb không thể chạy như chế độ độc lập.\n
 60 \
 lockdb: Hiển thị trạng thái khóa của cơ sở dữ liệu.\n\
@@ -817,7 +817,7 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 6 ghi đè tệp tin lớp nếu tồn tại, mặc định: không
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
-15 Không thể mở tệp tin đầu ra `%s'\n
+15 Không thể mở tệp tin đầu ra '%s'\n
 59 plandump không thể chạy như chế độ độc lập.\n
 60 \
 plandump: Hiển thị hoặc kiểm soát kế hoạch truy vấn được lưu ẩn.\n\
@@ -828,7 +828,7 @@ các tùy chọn hợp lệ:\n\
   -o, --output-file=FILE       chuyển hướng thông báo đầu ra đến tệp tin FILE; mặc định: không có \n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
-11 Không thể mở tệp tin đầu ra `%s'\n
+11 Không thể mở tệp tin đầu ra '%s'\n
 21 Tham số hệ thống cần được sử dụng bởi chương trình máy khách.\n
 22 Tham số hệ thống được tải bởi server '%s'\n
 23 Tham số hệ thống cần được sử dụng trong chế độ độc lập.\n
@@ -846,8 +846,8 @@ $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 11 Giá trị sai \"%s\" cho chế độ HA đang chạy của server.\n
 12 Không thể thay đổi chế đô HA đang chạy của server.\n
 21 Nhập mật mã DBA:
-22 Chế độ HA hiện tại đang chạy của server `%s'' là %s.\n
-23 Chế độ HA đang chạy của `%s'' được thay đổi thành \"%s\".\n
+22 Chế độ HA hiện tại đang chạy của server '%s'' là %s.\n
+23 Chế độ HA đang chạy của '%s'' được thay đổi thành \"%s\".\n
 24 Máy chủ này không cấu hình cho HA.\n
 58 Tính năng HA không được hỗ trợ trong nền tảng này.\n
 59 changemode không thể chạy như chế độ độc lập.\n
@@ -891,7 +891,7 @@ các tùy chọn hợp lệ:\n\
       --max-mem-size=SIZE     kích cỡ tiến trình lớn nhất theo MB; tối đa 500\n
 
 $set 43 MSGCAT_UTIL_SET_STATDUMP
-11 Không thể mở tệp tin đầu ra `%s'\n
+11 Không thể mở tệp tin đầu ra '%s'\n
 59 statdump không thể chạy như chế độ độc lập.\n
 60 \
 statdump: Kết xuất thống kê toàn cục.\n\

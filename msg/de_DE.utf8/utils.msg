@@ -67,12 +67,12 @@ $       46      genlocale
 $       47      dumplocale
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
-1 Invalid length or character `%c' in database name `%s'\n
-2 Couldn't open output file `%s'\n
+1 Invalid length or character '%c' in database name '%s'\n
+2 Couldn't open output file '%s'\n
 3 Missing or invalid utility name.\n
-4 Invalid utility name `%s'\n
+4 Invalid utility name '%s'\n
 5 The following list contains the recognized utility names:\n
-6 Invalid character `%c' in volume name `%s'\n
+6 Invalid character '%c' in volume name '%s'\n
 9 \
 %s (CUBRID utilities)\n\
 %s\n\
@@ -282,14 +282,14 @@ valid options:\n\
 
 
 $set 4 MSGCAT_UTIL_SET_CREATEDB
-40 Group `%s' does not exist\n
-41 User `%s' does not exist\n
-42 Unknown command `%s'\n
-43 Couldn't open output file `%s'\n
+40 Group '%s' does not exist\n
+41 User '%s' does not exist\n
+42 Unknown command '%s'\n
+43 Couldn't open output file '%s'\n
 44 Couldn't removing existing database.\n
 45 Creating database with %s size.\n
 46 Couldn't create database.\n
-47 Problem with user file `%s'\n
+47 Problem with user file '%s'\n
 48 The '%s' must be between %s and %s\n
 49 The value of %s '%s' is invalid.\n
 60 \
@@ -351,7 +351,7 @@ $set 9 MSGCAT_UTIL_SET_MASTER
 
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
-11 Couldn't open output file `%s'\n
+11 Couldn't open output file '%s'\n
 60 \
 optimizedb: Optimize a database.\n\
 usage: %s optimizedb [OPTION] database-name\n\
@@ -383,7 +383,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 21 interrupt ... \n
 22 Interrupted load - current transaction committed\n
 23 Interrupted load - current transaction aborted\n
-24 Can't open file `%s'\n
+24 Can't open file '%s'\n
 25 \n*** Checking syntax ***\n\n
 26 %d errors detected.\n
 27 \n*** Inserting objects ***\n\n
@@ -392,7 +392,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 30 \n*** Committing the transaction ***\n
 31 \n*** Closing the database ***\n
 32 Line %d:
-33 Error parsing `%s' as a `%s' value for attribute `%s' of `%s'\n
+33 Error parsing '%s' as a '%s' value for attribute '%s' of '%s'\n
 34 Missing domain for attribute %s of %s\n
 35 For attribute %s of %s, type %s is not allowed in the domain of the set\n
 36 For attribute %s of %s, expected type %s, got a set constant\n
@@ -406,7 +406,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 44 WARNING: redefining Instance %d of class %s\n
 45 Instance %d of class %s has already been defined\n
 46 Instance %d of class %s has already been reserved\n
-47 UNIQUE violation on attribute `%s', converted to NULL\n
+47 UNIQUE violation on attribute '%s', converted to NULL\n
 48   %d instances\n
 49 Class %s\n
 50 Password:
@@ -637,7 +637,7 @@ valid options:\n\
 $set 19 MSGCAT_UTIL_SET_SPACEDB
 15 Space description for database '%s' with pagesize %s. (log pagesize: %s)\n\n
 16 %5d %8s  %s %s  %s\n
-17 Couldn't open output file `%s'\n
+17 Couldn't open output file '%s'\n
 18 Space description for temporary volumes for database '%s' with pagesize %s.\n\n
 19 Volid  Purpose  total_pages  free_pages  Vol Name\n\n
 20 Volid  Purpose   total_size   free_size  Vol Name\n\n
@@ -741,7 +741,7 @@ valid options:\n\
 
 
 $set 25 MSGCAT_UTIL_SET_LOCKDB
-15 Couldn't open output file `%s'\n
+15 Couldn't open output file '%s'\n
 59 lockdb cannot run as standalone mode.\n
 60 \
 lockdb: Display lock-status of the database.\n\
@@ -817,7 +817,7 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 6 overwrite class file if exist, default no
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
-15 Cannot open output file `%s'\n
+15 Cannot open output file '%s'\n
 59 plandump cannot run as standalone mode.\n
 60 \
 plandump: Display or control cached query plans.\n\
@@ -828,7 +828,7 @@ valid options:\n\
   -o, --output-file=FILE       redirect output messages to FILE; default: none\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
-11 Cannot open output file `%s'\n
+11 Cannot open output file '%s'\n
 21 System parameters to be used by the client program.\n
 22 System parameters loaded by the server '%s'\n
 23 System parameters to be used in standalone mode.\n
@@ -846,8 +846,8 @@ $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 11 Wrong value \"%s\" for the server's HA running mode.\n
 12 Cannot change the server's HA running mode.\n
 21 Enter DBA password:
-22 The server `%s''s current HA running mode is %s.\n
-23 The server `%s''s HA running mode is changed to \"%s\".\n
+22 The server '%s''s current HA running mode is %s.\n
+23 The server '%s''s HA running mode is changed to \"%s\".\n
 24 The server was not configured for HA.\n
 58 HA feature is not supported in this platform.\n
 59 changemode cannot run as standalone mode.\n
@@ -891,7 +891,7 @@ valid options:\n\
       --max-mem-size=SIZE     maximum process SIZE in MB; max 500\n
 
 $set 43 MSGCAT_UTIL_SET_STATDUMP
-11 Cannot open output file `%s'\n
+11 Cannot open output file '%s'\n
 59 statdump cannot run as standalone mode.\n
 60 \
 statdump: Dump global statistics.\n\

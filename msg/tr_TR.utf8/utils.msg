@@ -67,12 +67,12 @@ $       46      genlocale
 $       47      dumplocale
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
-1 Geçersiz uzunluk veya karakter `%c' veritabanı adı `%s' \n
-2 Çıktı dosyası `%s' açılamadı \n
+1 Geçersiz uzunluk veya karakter '%c' veritabanı adı '%s' \n
+2 Çıktı dosyası '%s' açılamadı \n
 3 Eksik veya geçersiz yardımcı programı adı.\n
-4 Geçersiz yardımcı programı adı  `%s'\n
+4 Geçersiz yardımcı programı adı  '%s'\n
 5 Aşağıdaki liste tanınan yardımcı programı adlarını içerir:\n
-6 Geçersiz karakter `%c'ses adına`%s'\n
+6 Geçersiz karakter '%c'ses adına'%s'\n
 9 \
 %s (CUBRID yardımcı programları)\n\
 %s\n\
@@ -282,14 +282,14 @@ geçerli seçenekler:\n\
 
 
 $set 4 MSGCAT_UTIL_SET_CREATEDB
-40 Group `%s' bulunmamaktadır\n
-41 User `%s' bulunmamaktadır\n
-42 Bilinmeyen komut `%s'\n
-43 Çıktı dosyası `%s' açılamadı\n
+40 Group '%s' bulunmamaktadır\n
+41 User '%s' bulunmamaktadır\n
+42 Bilinmeyen komut '%s'\n
+43 Çıktı dosyası '%s' açılamadı\n
 44 Varolan veritabanı kaldırılamadı\n
 45 %s boyutu ile veri tabanı oluşturma..\n
 46 Veritabanı oluşturulamadı.\n
-47 `%s' Kullanıcı dosya ile ilgili sorun\n
+47 '%s' Kullanıcı dosya ile ilgili sorun\n
 48 '%S' olması gerekir %s ve %s arasında\n
 49 %s Sayısal değeri '%s' geçersiz. \n
 60 \
@@ -351,7 +351,7 @@ $set 9 MSGCAT_UTIL_SET_MASTER
 
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
-11 Çıktı dosyası `%s' açılamadı\n
+11 Çıktı dosyası '%s' açılamadı\n
 60 \
 optimizedb: Bir veritabanı optimize edin.\n\
 kullanım: %s optimizedb [SEÇENEK] database-name\n\
@@ -383,7 +383,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 21 ara verme ... \n
 22 ara verilen yük - mevcut işlem tamamlanmış\n
 23 ara verilen yük - durduruldu mevcut işlem\n
-24 `%s' dosyası açılamıyor\n
+24 '%s' dosyası açılamıyor\n
 25 \n*** syntax kontrolü ***\n\n
 26 %d hataları algılandı.\n
 27 \n*** Ekleme nesneleri ***\n\n
@@ -392,7 +392,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 30 \n*** İşlem İşlemek ***\n
 31 \n*** Veritabanı Kapama ***\n
 32 Satır %d:
-33 Hata `%s' özniteliği `%s' için `%s' değer olarak `%s' ayrıştırma\n
+33 Hata '%s' özniteliği '%s' için '%s' değer olarak '%s' ayrıştırma\n
 34 %s özniteliği %s için eksik alanı\n
 35 %s özniteliği %s için, tip %s set etki alanında izin verilmez\n
 36 %s özniteliği %s için, tip %s beklenen, bir dizi sabiti var\n
@@ -406,7 +406,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 44 UYARI: Sınıf %s Derece %d yeniden tanımlıyor\n
 45 Sınıf %s Derece %d zaten tanımlanmış\n
 46 Sınıf %s Derece %d zaten ayrılmıştır\n
-47 Özniteliği `%s 'EŞSİZ aykırı, NULL'a dönüştürülür\n
+47 Özniteliği '%s 'EŞSİZ aykırı, NULL'a dönüştürülür\n
 48   %d örnekleri\n
 49 Sınıf %s\n
 50 Şifre:
@@ -637,7 +637,7 @@ geçerli seçenekler:\n\
 $set 19 MSGCAT_UTIL_SET_SPACEDB
 15 Sayfa boyutu %s ile veritabanı '%s' için alan açıklaması. (log sayfa boyutu:%s)\n\n
 16 %5d %8s  %s %s  %s\n
-17 Çıktı dosyası `%s' açılamadı\n
+17 Çıktı dosyası '%s' açılamadı\n
 18 Veritabanı '%s' sayfa boyutu %s için geçici yoğunlukları için alan açıklaması.\n\n
 19 Volid Amacı toplam_sayfa free_pages Vol Name\n\n
 20 Volid Amacı total_size free_size Vol Name\n\n
@@ -741,7 +741,7 @@ geçerli seçenekler:\n\
 
 
 $set 25 MSGCAT_UTIL_SET_LOCKDB
-15 Çıktı dosyası `%s' açılmaadı \n
+15 Çıktı dosyası '%s' açılmaadı \n
 59 lockdb bağımsız modu olarak çalıştıramazsınız.\n
 60 \
 lockdb: veritabanının kilit durumunu görüntüler.\n\
@@ -817,7 +817,7 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 6 varsa sınıf dosyanın üzerine yazmak, varsayılan yok
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
-15 Çıktı dosyası `%s' açılamıyor \n
+15 Çıktı dosyası '%s' açılamıyor \n
 59 plandump bağımsız modu olarak çalıştıramazsınız.\n
 60 \
 plandump: Önbelleğe alınan sorgu planlarını görüntüleme ya da kontrol etmek.\n\
@@ -828,7 +828,7 @@ geçerli seçenekler:\n\
   -o, --output-file=FILE       FILE çıktı mesajları yönlendirme; varsayılan: hiçbir\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
-11 Çıktı dosyası açılamıyor`%s'\n
+11 Çıktı dosyası açılamıyor'%s'\n
 21 Sistem parametreleri istemci programı tarafından kullanılacak.\n
 22 Sistem parametreleri sunucu '%s' tarafından yüklenen\n
 23 Sistem parametrelerinin bağımsız modda kullanılır.\n
@@ -846,8 +846,8 @@ $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 11 yanlış bir değeri \"%s\" sunucunun HA çalışan modu için.\n
 12 Sunucunun HA modunda çalışması değiştirilemez.\n
 21 DBA şifrenizi girin:
-22 Modunda çalışırken sunucu `%s'' şu andaki HA %s dir.\n
-23 Sunucu `%s'' HA modunda çalışırken \"%s\"olarak değiştirildi.\n
+22 Modunda çalışırken sunucu '%s'' şu andaki HA %s dir.\n
+23 Sunucu '%s'' HA modunda çalışırken \"%s\"olarak değiştirildi.\n
 24 Sunucu modunda HA ayarlı değil.\n
 58 HA özelliği bu platformda desteklenmiyor.\n
 59 changemode bağımsız modu olarak çalıştıramazsınız.\n
@@ -891,7 +891,7 @@ geçerli seçenekler:\n\
       --max-mem-size=SIZE     MB maksimum işlem SIZE; max 1000\n
 
 $set 43 MSGCAT_UTIL_SET_STATDUMP
-11 Çıktı dosyası `%s' açılamıyor\n
+11 Çıktı dosyası '%s' açılamıyor\n
 59 statdump bağımsız modu olarak çalıştıramazsınız.\n
 60 \
 statdump: Genel istatistiklere dökümü.\n\

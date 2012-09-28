@@ -235,7 +235,7 @@ $set 5 MSGCAT_SET_ERROR
 169 데이터베이스에서 사용자를 제거할 수 없습니다.
 170 로그인된 사용자가 없습니다.
 171 패스워드를 확인하십시오.
-172 Password string cannot have more than 31 bytes.
+172 패스워드 문자열 길이는 31 바이트를 초과할 수 없습니다.
 173 데이터베이스 파일 "%1$s"을(를) 찾을 수 없습니다.
 174 데이터베이스 파일 "%1$s"에 대한 쓰기 권한을 얻을 수 없습니다.
 175 데이터베이스 파일 "%1$s"의 포맷이 잘못되어 있습니다.
@@ -416,7 +416,7 @@ $set 5 MSGCAT_SET_ERROR
 350 호스트 "%1$s"의 이름을 이용하여 호스트를 찾을 수 없습니다.
 351 TCP socket을 생성할 수 없습니다.
 352 tcp_open: 예약된 TCP 포트를 얻을 수 없습니다.
-353 master 서버 "%1$s" 에 접속할 수 없습니다.
+353 호스트 "%1$s"의 master 서버에 접속할 수 없습니다.
 354 socket에 새로운 프로세스 소유자를 지정할 수 없습니다. 
 355 socket 스트림을 생성할 수 없습니다.
 356 UNIX 도메인 소켓을 위한 파일 '%1$s' (이)가 존재하지 않습니다.
@@ -438,7 +438,7 @@ $set 5 MSGCAT_SET_ERROR
 372 사용하지 않는 에러코드입니다.
 373 읽는 도중 예기치 않은 EOF입니다: %1$d.
 374 %1$d 또는 %2$d을(를) 읽는 도중 예기치 않은 EOF입니다.
-375 Conversion error on (0x%1$c%2$c) %3$d and %4$d converted to %5$d.
+375 (0x%1$c%2$c) %3$d에서 변환 에러가 발생했으며, %4$d는 %5$d로 변환되었습니다.
 376 public 클래스가 없습니다.
 377 에러 %1$d: 멀티미디어 계층 구조에 애트리뷰트 "%2$s" 추가 에러 
 378 에러 %1$d: 멀티미디어 계층 구조에 "%3$s"로 구현된 메소드 "%2$s" 추가 에러 
@@ -453,11 +453,11 @@ $set 5 MSGCAT_SET_ERROR
 387 ld 프로세스가 종료되었습니다. 알 수 없는 waitval 0x%1$lx입니다. 
 388 "%1$s"의 초기 이미지를 액세스할 수 없습니다.
 389 시스템 에러: %1$s.
-390 Problem with "%1$s": %2$s.
+390 "%1$s"에서 문제: %2$s.
 391 다른 SIGPIPE 핸들러와의 충돌 발생.
 392 동적 로더 daemon을 생성할 수 없습니다.
 393 동적 로더 daemon이 사라졌습니다.
-394 Range endpoint not between 0 and 256.
+394 범위의 끝 지점이 0과 256 사이가 아닙니다.
 395 잘못된 subexpression이 명시되었습니다.
 396 escape내에 범위를 벗어난 8진 숫자가 있습니다.
 397 regular expression이 제대로 구분되지 않았습니다. 
@@ -556,7 +556,7 @@ $set 5 MSGCAT_SET_ERROR
 490 슈퍼 클래스 "%1$s"은(는) "%2$s"와(과) 같은 클래스 타입이어야 합니다.
 491 프락시 질의 명세 "%1$s"(으)로부터 개체 이름을 추출할 수 없습니다.
 492 %1$s
-493 문법: %1$s %2$s
+493 구문: %1$s %2$s
 494 시멘틱: %1$s %2$s
 495 실행: %1$s %2$s
 496 정의되지 않은 키가 사용되었습니다.
@@ -597,7 +597,7 @@ $set 5 MSGCAT_SET_ERROR
 531 regular expression이 너무 길거나 복잡합니다.
 532 regular expression에 괄호 또는 대괄호의 짝이 맞지 않습니다.
 533 regular expression 내의 참조가 범위를 벗어났습니다.
-534 regular expression에 잘못된 문자가 포함되었거나 문법이 틀렸습니다.
+534 regular expression에 잘못된 문자가 포함되었거나 구문이 틀렸습니다.
 535 regular expression 검색을 위한 텍스트가 주어지지 않았습니다.
 536 잘못된 opcode가 regular expression 내에 포함되어 있습니다.
 537 regular expression 컴파일러에 잘못된 검색 명령 코드가 발생하였습니다.
@@ -630,7 +630,7 @@ $ LOADDB
 563 내부 클래스 %1$s에 대한 참조가 NULL로 변환되었습니다.
 564 %2$s의 애트리뷰트 %1$s은(는) UNIQUE 제약 조건에 위배됩니다.
 565 constructor 메소드 %1$s이(가) 클래스 %2$s에 정의되어 있지 않습니다.
-566 No class specified or no attribute in class.
+566 클래스가 없거나 클래스의 애트리뷰트가 없습니다.
 567 너무 많은 constructor 메소드 인자가 주어졌습니다. %1$d 개를 예상합니다.
 568 constructor 메소드 인자가 부족합니다. %1$d 개를 예상했으나, %2$d 개가 주어졌습니다. 
 569 애트리뷰트 값이 부족합니다. %1$d 개를 예상했으나, %2$d 개가 주어졌습니다.
@@ -678,7 +678,7 @@ $ LOADDB
 611 클라이언트 서버 모드에서는 %s (을)를 실행 할 수 없습니다.
 612 복구해야 할 pending action이 있기 때문에 이 시점에서는 로깅을 disable할 수 없습니다.
 613 도메인이 다르므로 클래스 "%3$s"의 "%1$s"을(를) 클래스 "%2$s"의 alias substitute로 활용할 수 없습니다. 
-614 아카이브 로그의 개수가 허용 최대치 %1$d을(를) 초과했습니다.
+614 보관 로그의 개수가 허용 최대치 %1$d을(를) 초과했습니다.
 615 윈속으로 연결할 수 없습니다. 윈속 에러: %1$d.
 616 윈속을 통해 머신 이름을 알 수 없습니다. 윈속 에러: %1$d.
 617 윈속을 통해 머신 ID를 알 수 없습니다. 호스트 이름 테이블에 이 머신에 대한 엔트리가 있어야 합니다. 윈속 에러: %1$d.
@@ -702,12 +702,12 @@ $ LOADDB
 635 경고: %1$d 버퍼의 로그 버퍼 풀이 현재 환경에 비해 너무 작은 것 같습니다.\n 알 수 없는 에러 때문이거나 너무 많은 동시 트랜잭션이 한꺼번에 취소되면서\n 시스템에 의해 버퍼들이 free 되지 않았을 가능성이 있습니다.\n  로그 버퍼 풀이 %2$d 버퍼 이상으로 확장되었습니다.
 636 경고: Num_buffers %1$d이(가) 너무 작습니다. 최소값 %2$d이(가) 취해졌습니다. 
 637 시스템 에러: 로그 버퍼를 너무 많이 free했습니다. Fix count가 0으로 되었습니다.
-638 경고: 수정할 수 없는 로그 아카이브 페이지 ID:%1$d을(를) flush했습니다. 
+638 경고: 수정할 수 없는 보관 로그 페이지 ID:%1$d을(를) flush했습니다. 
 639 시스템 에러: Previous log sequence page %1$d is not the delayed flush page %2$d.
 640 시스템 에러: 트랜잭션이 active한 상태가 아닐 때에는 세이브포인트를 설정할 수 없습니다.
 641 세이브포인트 이름이 주어져야 합니다. 
 642 시스템 에러: there is not an active top system operation for current transaction.
-643 May be a system error: Committing/Aborting transaction = %1$d (index = %2$d) which has permanent operations\n attached to it. Will attach those system operations to the transaction
+643 시스템 에러일 수 있음: Committing/Aborting transaction = %1$d (index = %2$d) which has permanent operations\n attached to it. Will attach those system operations to the transaction
 644 LOG FATAL ERROR: %1$s
 645 시스템 에러: State = %1$s of Transaction = %2$d (index = %3$d) \n is not the correct state to apply client postpone/undo actions... ignored
 646 시스템 에러: It seems that a compensating record is missing for logical logging rcvindex = %s\n. Without this compensating record crash recovery will not be done correctly
@@ -744,7 +744,7 @@ $ LOADDB
 677 호스트 %2$s에서 "%1$s" 데이터베이스 서버로 연결 설정할 수 없습니다.
 678 내부 에러: Client restart module received NULL database server name.
 679 해당 C++ 트랜잭션은 이미 시작된 상태입니다.
-680 C++ 트랜잭션의 최대 내포 허용 값(%d)를 넘어서려고 하고 있습니다.
+680 C++ 트랜잭션의 최대 중첩 허용 값(%d)를 넘어서려고 하고 있습니다.
 681 시작되지 않은 C++ 트랜잭션에서 %s 트랜잭션을 시도하고 있습니다.
 682 모든 서브 트랜잭션들이 완료되지 않는 한 C++ 트랜잭션을 %s할 수 없습니다.
 683 유효하지 않은 길이(%d)의 문자열을 생성하려고 하고 있습니다.
@@ -768,7 +768,7 @@ $ LOADDB
 701 ldb "%2$s"의 "%1$s"에서 프락시가 정의되지 않았습니다.
 702 내부 에러: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). the number of NULLs in the unique hierarchy: %6$d does not equal the number of NULLs: %7$d found in the unique B+tree root statistics for B+tree: %8$d|%9$d|%10$d.
 703 내부 에러: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). OID: %6$d|%7$d|%8$d found in unique B+tree: %9$d|%10$d|%11$d does not belong to one of the classes for the unique constraint.
-704 Evaluation of generic server function failed.
+704 일반 서버 함수를 계산하는데 실패했습니다.
 705 %2$d 개이어야 하나 %1$d 개의 영구 볼륨이 발견되었습니다.
 706 볼륨 용도 %2$s의 영구 볼륨 "%1$s"을(를) 확장할 수 없습니다. 
 707 %2$d 페이지의 임시 볼륨 "%1$s"을(를) 확장할 수 없습니다.
@@ -808,16 +808,16 @@ $ LOADDB
 741 Accept 실패. 윈속 에러: %1$d.
 742 클라이언트에 broadcast 메시지를 보내고 있습니다. 윈속 에러: %1$d.
 743 클라이언트와 서버 사이의 handshake 실패. (peer host %s)
-744 Error in rehashing a proxy/vclass MOP.
-745 Invalid garbage collection phase.
-746 Invalid garbage collection callback.
-747 Invalid garbage collection callback ticket.
-748 Invalid object pointer encountered by db_gc_mark_object.
+744 프락시/가상 클래스 MOP 리해싱 도중 에러 발생.
+745 유효하지 않은 가비지 컬렉션 단계.
+746 유효하지 않은 가비지 컬렉션 콜백.
+747 유효하지 않은 가비지 컬렉션 콜백 티켓.
+748 db_gc_mark_object에 의해 발생한 유효하지 않은 오브젝트 포인터.
 749 fetch된 인스턴스 수가 정확하지 않습니다: %1$d 개를 예상했으나, %2$d 개를 얻었습니다.
 750 fetch된 애트리뷰트 수가 정확하지 않습니다: %1$d 개를 예상했으나, %2$d 개를 얻었습니다.
 751 BEFORE INSERT 트리거에서는 새 오브젝트의 OID를 알 수 없습니다.
-752 Error restoring backup unit_num %d.
-753 Error restoring backup unit_num %d, pageid %d exceeds total number of pages %d for volid %d.
+752 백업 unit_num %d를 복구하는 도중 에러가 발생했습니다.
+753 백업 unit_num %d를 복구하는 도중 에러가 발생했습니다. pageid %d 는 페이지의 전체 개수 %d (volid %d)를 초과했습니다.
 754 OO 프락시 인스턴스가 문자열 타입이 아니거나 NULL 키를 가지고 있습니다.
 755 스탠드-얼론 모드에서는 %s 을(를) 실행 할 수 없습니다.
 756 지정된 문자열 버퍼가 해당 오브젝트를 인코딩 하기에는 너무 작습니다. 
@@ -954,8 +954,8 @@ $ LOADDB
 887 Stored Procedure '%s' 가 이미 존재합니다.
 888 매개변수 개수가 일치하지 않습니다. 기대: %d, 실제: %d
 889 Stored procedure 실행 오류: %s 
-890 파티션 작업 오류입니다.
-891 해당되는 파티션이 존재하지 않습니다.
+890 분할 작업 오류입니다.
+891 해당 분할이 존재하지 않습니다.
 892 클래스 "%1$s"에 primary key "%2$s"가 이미 존재합니다.
 893 애트리뷰트 '%1$s'는 primary key의 멤버이므로 삭제할 수 없습니다.
 894 Stored procedure/function '%s' 가 존재하지 않습니다.
@@ -963,7 +963,7 @@ $ LOADDB
 896 압축 오류입니다. 압축 방법: %d (%s), 압축 레벨: %d (%s)
 897 압축 해제 오류입니다.
 898 복제 오류가 발생했습니다: "%1$s"
-899 잘못된 파티션 작업 요구입니다.
+899 잘못된 분할 작업 요구입니다.
 900 Java 가상 머신 라이브러리를 찾을 수 없습니다: %s. \n그러므로, java stored procedure를 호출할 수 없습니다.
 901 Java 가상 머신을 시작할 수 없습니다: %s. \n그러므로, java stored procedure를 호출할 수 없습니다.
 902 Java 가상 머신이 실행되지 않았습니다.
@@ -974,7 +974,7 @@ $ LOADDB
 907 소유자나 DBA 그룹의 멤버만이 대상 stored procedure를 삭제(drop)할 수 있습니다.
 908 Stored procedure '%s'의 매개변수가 너무 많습니다.
 909 카탈로그 클래스/가상 클래스를 찾을 수 없거나, 잘못된 엔트리입니다.
-910 허용되지 않는 파티션 접근 입니다.
+910 허용되지 않는 분할 접근 입니다.
 911 허용되지 않는 호출: ResultSet을 반환할 수 없습니다.
 912 ResultSet는 입력 매개변수로 사용할 수 없습니다.
 913 중첩된 Stored Procedure 호출이 허용된 횟수를 초과하였습니다.
@@ -986,7 +986,7 @@ $ LOADDB
 919 외래키가 참조하는 클래스 '%s'가 기본키를 가지고 있지 않습니다.
 920 외래키 '%s'에 기본키 멤버 '%s'가 포함되어 있지 않습니다.
 921 외래키 멤버 '%s'의 도메인이 기본키 멤버 '%s'의 도메인과 다릅니다.
-922 외래키 '%s' 제약조건에 위배되었습니다, due to value '%s'.
+922 외래키 '%s'는 제약조건에 위배되었습니다. 위배된 값 '%s'.
 923 외래키 '%2$s'에 참조되는 기본키 '%1$s'는 삭제할 수 없습니다.
 924 수정/삭제 연산이 외래키 '%s'에 의해 제약되었습니다.
 925 외래키 '%s'를 위한 잠금 획득에 실패했습니다.
@@ -1008,7 +1008,7 @@ $ LOADDB
 941 해당 operation은 지원되지 않습니다.
 942 핸들을 얻기 위한 lock에서 타임아웃 발생.
 943 에러.
-944 문장이 준비 되지 않았습니다.
+944 문장이 prepare되지 않았습니다.
 945 문장에 결과 집합이 없습니다.
 946 문장이 실행되지 않았습니다.
 947 더 이상의 결과 집합이 없습니다.
@@ -1017,7 +1017,7 @@ $ LOADDB
 950 이름이 유효하지 않습니다.
 951 결과 집합이 수정 가능하지 않습니다.
 952 행이 지워졌습니다.
-953 준비된 문장의 인자가 설정되지 않았습니다.
+953 prepare된 문장의 인자가 설정되지 않았습니다.
 954 문장이 batch 문장이 아닙니다.
 955 해당 batch 문장을 비울 수 없습니다.
 956 batch 수행 에러.
@@ -1061,7 +1061,7 @@ $ LOADDB
 994 prepared statement로 사용될 수 없는 질의문입니다.
 995 %1$s 이름이 지정된 prepared statement가 존재하지 않습니다.
 996 주어진 값의 개수가 정확하지 않습니다. %1$d 개의 값이 아니라, %2$d 개의 값이 지정되어야 합니다.
-997 외래 키 제약 조건 %1$s 를 파티션 테이블 %2$s에 추가할 수 없습니다. 파티션 테이블에서는 업데이트 연산에 대해 참조 동작을 정의할 수 없습니다.
+997 외래 키 제약 조건 %1$s 를 분할 테이블 %2$s에 추가할 수 없습니다. 분할 테이블에서는 업데이트 연산에 대해 참조 동작을 정의할 수 없습니다.
 998 외래 키 제약 조건 %1$s 를 컬럼 %2$s에 추가할 수 없습니다. NOT NULL 제약 조건이 정의된 컬럼에 대해 참조 동작 옵션으로 SET NULL을 정의할 수 없습니다.
 999 원본 테이블'%2$s'에서 테이블 '%1$s'를 생성할 수 없습니다. 원본 테이블에 복제할 수 없는 스키마가 정의되어 있습니다(%3$s).
 1000 '%1$s'은 CLASS 또는 SHARED 속성 컬럼입니다. 일반적인 컬럼에만 허용되는 작업입니다.
@@ -1072,7 +1072,7 @@ $ LOADDB
 1005 사용하지 않는 에러코드입니다.
 1006 사용하지 않는 에러코드입니다. 
 1007 UNIQUE, FOREIGN KEY, PRIMARY KEY 생성 시 컬럼에 prefix length를 명시할 수 없습니다.
-1008 파티션 테이블에 대해 인덱스 생성 시 컬럼에 prefix length를 명시할 수 없습니다.
+1008 분할 테이블에 대해 인덱스 생성 시 컬럼에 prefix length를 명시할 수 없습니다.
 1009 COMPACTDB 작업이 이미 시작되었습니다. 
 1010 "%1$s" 타입 컬럼에 대해 prefix length를 명시하여 인덱스를 정의할 수 없습니다.
 1011 외래 키 제약 조건 %1$s 를 SHARED 속성 컬럼 %2$s에 추가할 수 없습니다.
@@ -1141,33 +1141,33 @@ $ LOADDB
 1074 접근 권한 파일(%1$s)을 읽을 수 없습니다.
 1075 B+tree(vfid = (%1$d, %2$d), rt_pgid: %3$d)에 대한 내림차순 스캔이 우선순위에 의해 실패되었습니다.
 1076 시스템 설정을 읽을 수 없습니다.
-1077 '%3$s' 파일 %2$d 줄의 '%1$s' 파라미터 : 알수 없는 파라미터
-1078 Character at offset %d is invalid with current codeset.
-1079 Codesets of database and server configuration are incompatible.
-1080 The maximum length of filter predicate string must be %1$d.
-1081 Cannot alter an attribute involved in a filter or function index.
+1077 '%3$s' 파일 %2$d 줄의 '%1$s' 파라미터: 알 수 없는 파라미터
+1078 오프셋 %d에 위치한 문자는 현재의 코드셋에서 유효하지 않습니다.
+1079 데이터베이스의 코드셋과 서버에서 설정한 코드셋이 호환되지 않습니다.
+1080 필터 조건의 최대 길이는 %1$d이어야 합니다.
+1081 필터링된 인덱스나 함수 기반 인덱스에 포함된 애트리뷰트를 변경할 수 없습니다.
 1082 모든 페이지 버퍼가 dirty 되었습니다 (LRU: %1$d).
 1083 교착상태에 대한 상세정보.
 1084 체크포인트에서 사용할 수 없는 페이지가 존재합니다. (page id: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, previous checkpoint redo lsa: %5$lld|%6$d)
 1085 정규 표현식을 컴파일할 수 없습니다: '%s'
 1086 정규 표현식을 실행할 수 없습니다: '%s'
-1087 Locale initialization: %s.
-1088 Locale generation: %s.
-1089 Cannot prepare statement of type '%s' with host variables.
-1090 The arg '%s' for inet_aton is not a valid string formatted ipv4 address.
-1091 The arg '%lld' for inet_ntoa is not a valid number formatted ipv4 address.
-1092 Backup active log '%s' started.
-1093 Backup active log '%s' finished.
-1094 User name is too long.
+1087 로캘 초기화: %s.
+1088 로캘 생성: %s.
+1089 호스트 변수를 갖는 '%s' 타입의 문장을 prepare할 수 없습니다.
+1090 inet_aton의 인자 '%s'은  ipv4 주소 형식에 유효한 문자열이 아닙니다.
+1091 inet_ntoa의 인자 '%lld'은 ipv4 주소 형식에 유효한 숫자가 아닙니다.
+1092 활성 로그 '%s'의 백업이 시작되었습니다.
+1093 활성 로그 '%s'의 백업이 종료되었습니다.
+1094 사용자 이름이 너무 깁니다.
 1095 'max_bestspace_entries=%1$d'를 초과하여 자원 할당이 실패했습니다.
-1096 Altering partitioning schema is not allowed when the partitioned class is referenced by a foreign key.
-1097 Column '%s' cannot have a PRIMARY KEY constraint and a NULL default value.
-1098 Locales for language '%s' are not available with charset '%s'.
+1096 분할 테이블이 외래키에 의해 참조되면 해당 분할 테이블을 변경할 수 없습니다.
+1097 컬럼 '%s'는 기본키 제약 조건과 NULL 기본값을 동시에 가질 수 없습니다.
+1098 언어 '%s'에 대한 로캘들은 문자셋 '%s'에서 사용할 수 없습니다.
 1099 시스템 파라미터 block_ddl_statement=yes의 설정으로 인해 DDL 질의문을 실행할 수 없습니다.
 1100 시스템 파라미터 block_nowhere_statement=yes의 설정으로 인해 WHERE 절이 없는 질의문을 실행할 수 없습니다.
-1101 The current transaction could not acquire a key lock on PSEUDO-OID (%1$d|%2$d|%3$d) attached to OID (%4$d|%5$d|%6$d)
-1102 Unknown system parameter or bad value.
-1103 Cannot change system parameter.
+1101 현재의 트랜잭션이 OID (%4$d|%5$d|%6$d)와 연관된 PSEUDO-OID (%1$d|%2$d|%3$d)에 대한 키 잠금을 획득할 수 없습니다.
+1102 시스템 파라미터가 존재하지 않거나 값이 잘못되었습니다.
+1103 시스템 파라미터를 변경할 수 없습니다.
 1104 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
@@ -1192,9 +1192,9 @@ $set 6 MSGCAT_SET_INTERNAL
 19 \n*** 이전 에러 메시지가 마지막 입니다.  ***\n\n
 20 \nTime: %s - DEBUG *** 파일 %s, 라인 %d\n<<<---\n
 21 Mail -s "Server가 멈추었습니다."
-22 --->>>\n %s has been stopped at your request when the following error was set:\n errid = %d, %s\nUser: %s, pid: %d, host: %s, time: %s<<<---\n
-23 %s has been stopped on errid = %d. User: %s, pid: %d
-24 er_init: cannot install event handler "%s"\n
+22 --->>>\n %s 가 다음 에러의 발생과 함께 멈추었습니다. :\n errid = %d, %s\nUser: %s, pid: %d, host: %s, time: %s<<<---\n
+23 %s 가 다음 에러에서 멈추었습니다. errid = %d. User: %s, pid: %d
+24 er_init: 이벤트 핸들러 "%s"를 설치할 수 없습니다. \n
 
 $set 7 MSGCAT_SET_PARSER_SYNTAX
 1 '%s'의 문법을 점검해 주십시오. %s가(이) 기대됩니다.
@@ -1301,7 +1301,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 102 잘못된 형식의 group_concat 함수입니다.\n GROUP_CONCAT (([DISTINCT] {col | expr} \n [ORDER BY {col | unsigned_int} [ASC | DESC] ] \n [SEPARATOR str_val])
 103 잘못된 형식의 인덱스 힌트입니다.
 104 바이트 문자열의 최대 크기는 %d 바이트입니다.
-105 Syntax error: unexpected
+105 구문 에러: unexpected
 106 , expecting '{'
 107 , expecting SELECT or '('
 108 , expecting
@@ -1311,8 +1311,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 112 In line %d, column %d before %s\n
 113 before ' %s'\n
 114 before END OF STATEMENT\n
-115 invalid set names\n  set_names: SET NAMES charset [{COLLATE | COLLATION} collation]\n
-116 invalid use of chr\n  CHR ( number [using charset] )\n
+115 잘못된 형식의 set names입니다.\n  set_names: SET NAMES charset [{COLLATE | COLLATION} collation]\n
+116 잘못된 형식의 chr 함수입니다.\n  CHR ( number [using charset] )\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다
@@ -1485,24 +1485,24 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 168 EXISTS와 함께 쓰지 않는 부질의의 select list에는 한 개의 컬럼만을 사용할 수 있습니다.
 169 Assignment 절의 오른쪽이 잘못되어 있습니다. 문맥상 질의문에 하나의 컬럼이 지정되어야 합니다.
 170 조인 조건에는 부 질의를 사용할 수 없습니다.
-171 잘못된 파티션 정의입니다.
-172 파티션 컬럼이 지정되어야 합니다. 
-173 파티션 컬럼은 1개만 지정할 수 있습니다.
-174 지원되지 않는 파티션 컬럼 타입입니다.
-175 중복된 파티션 정의 입니다. '%s'
+171 잘못된 분할 정의입니다.
+172 분할 컬럼이 지정되어야 합니다. 
+173 분할 컬럼은 1개만 지정할 수 있습니다.
+174 지원되지 않는 분할 컬럼 타입입니다.
+175 중복된 분할 정의 입니다. '%s'
 176 상수의 타입이 일치하지 않습니다. '%s'
-177 파티션의 크기가 잘못 지정되었습니다.
-178 파티션이 적용되지 않은 클래스입니다. '%s'
-179 이미 파티션이 적용된 클래스입니다. '%s'
-180 잘못된 파티션 작업 요구입니다.
-181 %s은(는) 이 클래스에서 변경할 수 없습니다.(파티션 기준 컬럼).
-182 %s은(는) 활성 트리거로 인하여 파티션 작업을 할 수 없습니다.
-183 %s은(는) 존재하지 않는 파티션입니다.
-184 %s은(는) 파티션 타입이 일치 하지 않습니다.
-185 파티션 정보에 오류가 있습니다.
-186 파티션 추가는 기존 범위보다 큰 값으로 지정해야 합니다
+177 분할의 크기가 잘못 지정되었습니다.
+178 분할이 적용되지 않은 클래스입니다. '%s'
+179 이미 분할이 적용된 클래스입니다. '%s'
+180 잘못된 분할 작업 요구입니다.
+181 %s은(는) 이 클래스에서 변경할 수 없습니다.(분할 기준 컬럼).
+182 %s은(는) 활성 트리거로 인하여 분할 작업을 할 수 없습니다.
+183 %s은(는) 존재하지 않는 분할입니다.
+184 %s은(는) 분할 타입이 일치 하지 않습니다.
+185 분할 정보에 오류가 있습니다.
+186 분할 추가는 기존 범위보다 큰 값으로 지정해야 합니다
 187 데이터 소실 가능성이 있는 재구성은 허용하지 않습니다.
-188 %s에 대한 파티션 범위 지정 오류 입니다.
+188 %s에 대한 분할 범위 지정 오류 입니다.
 189 클래스 속성에 auto increment 제약 조건을 정의할 수 없습니다.
 190 가상 클래스 속성에 auto increment 제약 조건을 정의할 수 없습니다.
 191 Auto increment 제약 조건을 가진 속성 '%s'에 사용할 수 없는 도메인입니다.
@@ -1540,46 +1540,46 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 223 LIKE 구문에 이스케이프 문자가 지정되어야 합니다. '%1$s'과 '%2$s' 시스템 파라미터에 대해서는 매뉴얼을 참고하시기 바랍니다.
 224 INDEX NONE 절에서는 KEYLIMIT을 사용할 수 없습니다.
 225 이 구문에서는 세션 변수를 사용할 수 없습니다.
-226 '%s'와 '%s' 의 인덱스 힌트가 충돌합니다.
-227 '%s' function can not be used in DEFAULT clause.
-228 Updating derived tables is not allowed.
-229 Updating class attributes and instance attributes not allowed in the same statement.
-230 Updating virtual class hierarchies is not allowed.
-231 Host variables not allowed in DDL statement.
-232 Invalid filter expression (%s) for index.
-233 Multiple or nested functions are not allowed in a function index definition.
-234 Invalid index specification.
-235 SHARED, DEFAULT and AUTO_INCREMENT cannot be defined with each other.
-236 Too many enumeration values (%d). An enumeration type can have a maximum of %d values.
-237 Duplicate values in enum type.
-238 Cannot MERGE into a derived table.
-239 Cannot affect the source table in a MERGE statement.
-240 MERGE with class hierarchies is not allowed.
-241 User name is too long.
-242 Constant expression cannot be used as function index.
-243 Class name or alias is not unique in list: '%s'
-244 Invalid DEFAULT clause. '%s' cannot be used in a nested expression.
-245 '%s' requires arguments with compatible collations.
-246 Invalid character set.
-247 Required character set and collation are not compatible.
-248 Unknown collation '%s'.
-249 Context requires collection with elements having identical codesets and collations.
-250 Prefix index is not allowed on attribute '%s' (has collation with expansions).
+226 '%s'와 '%s'의 인덱스 힌트가 충돌합니다.
+227 DEFAULT 절에 '%s' 함수를 사용할 수 없습니다.
+228 derived table을 업데이트할 수 없습니다.
+229 같은 문장에서 클래스 애트리뷰트와 인스턴스 애트리뷰트를 함께 업데이트할 수 없습니다.
+230 가상 클래스 계층을 업데이트할 수 없습니다.
+231 DDL 문에 호스트 변수를 사용할 수 없습니다.
+232 인덱스에 대한 유효하지 않은 필터 표현식 (%s).
+233 함수 기반 인덱스를 정의할 때 함수를 여러 개 혹은 중첩하여 사용할 수 없습니다.
+234 유효하지 않은 인덱스 명세.
+235 SHARED, DEFAULT, AUTO_INCREMENT는 한 컬럼에 동시에 지정될 수 없습니다.
+236 너무 많은 ENUM 값들 (%d). ENUM 타입은 최대 %d 개의 값을 가질 수 있습니다.
+237 ENUM 타입에서 값이 중복되었습니다.
+238 derived table로 MERGE할 수 없습니다.
+239 MERGE 문으로 원본 테이블을 수정할 수 없습니다.
+240 클래스 계층에 대한 MERGE 문을 허용하지 않습니다.
+241 사용자 이름이 너무 깁니다.
+242 함수 기반 인덱스에 상수 표현식을 사용할 수 없습니다.
+243 클래스 이름 혹은 별칭이 리스트('%s')에서 유일하지 않습니다.
+244 유효하지 않은 DEFAULT 절. '%s'은 중첩된 표현식에 사용할 수 없습니다.
+245 '%s'은 호환되는 콜레이션을 지닌 인자를 요구합니다.
+246 유효하지 않은 문자셋.
+247 요구되는 문자셋과 콜레이션이 호환되지 않습니다.
+248 알 수 없는 콜레이션 '%s'.
+249 동일한 코드셋과 콜레이션을 가진 원소를 포함한 컬렉션을 요구합니다.
+250 확장된 콜레이션을 가지는 애트리뷰트 '%s'에 prefix 인덱스를 허용하지 않습니다.
 251 초기값이 잘못되었습니다.
-252 Multi-column prefix index is not allowed.
-253 '%s' function cannot be used for function based index.
-254 Invalid index column definition: %s
-255 '%s' is not allowed in a filter expression for index.
-256 Cannot use GROUPBY_NUM() and WITH ROLLUP clause in same query.
-257 Cannot MERGE UPDATE column %s referenced in ON clause.
-258 The number of columns, %d, in ( %s ) do not match\nthe number of columns, %d, in ( %s ).
-259 Prefixes of columns not allowed in function index expression.
-260 %s cannot be a PARTITION BY or ORDER BY column
-261 Query must evaluate to a single value\n(%s).
-262 Nested analytic functions are not allowed.
-263 An inherited attribute cannot be used as the partitioning key.
-264 The aggregate size of enumeration elements is too large.
-265 Cannot use target table in source spec.
+252 다중 컬럼 인덱스에 prefix 컬럼을 포함할 수 없습니다.
+253 '%s' 함수는 함수 기반 인덱스에 사용할 수 없습니다.
+254 유효하지 않은 인덱스 컬럼 정의: %s
+255 필터링된 인덱스 표현식으로 '%s'을 허용하지 않습니다.
+256 GROUPBY_NUM()과 WITH ROLLUP 절을 함께 사용할 수 없습니다.
+257 ON 절에 명시된 컬럼 %s을 MERGE UPDATE 문으로 업데이트할 수 없습니다.
+258 컬럼 개수 %d ( %s )은 컬럼 개수 %d ( %s )와 일치하지 않습니다.
+259 함수 기반 인덱스 표현식에서는 prefix 컬럼을 허용하지 않습니다.
+260 %s은  PARTITION BY 혹은  ORDER BY 컬럼일 수 없습니다.
+261 질의가 하나의 값(%s)으로 계산되어야 합니다.
+262 중첩된 분석 함수를 사용할 수 없습니다.
+263 상속된 애트리뷰트는 분할 키로 사용할 수 없습니다.
+264 ENUM 원소들의 문자열을 모두 더한 바이트 크기가 너무 큽니다.
+265 원본 테이블에 명시된 것을 대상 테이블에 명시할 수 없습니다.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %d 바이트를 할당할 수 없습니다.
@@ -1653,9 +1653,9 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 70 외부 조인 쿼리 최적화 실패.
 71         SERIALIZABLE.\n
 72 Vclass %s는 updatable vclass가 아닙니다. updatable vclass에 대해서만 VID를 select할 수 있습니다.
-73 파티션 작업 오류입니다.
-74 해당되는 파티션이 존재하지 않습니다.
-75 허용되지 않는 파티션 접근입니다: '%s'
+73 분할 작업 오류입니다.
+74 해당되는 분할이 존재하지 않습니다.
+75 허용되지 않는 분할 접근입니다: '%s'
 76 serial '%s'는(은) 정의되어 있지 않습니다.
 77 소유자나 DBA만이 대상 시리얼의 정의를 변경(Alter)할 수 있습니다. 
 78 Auto increment 제약 조건으로 생성된 시리얼 객체는 임의로 변경할 수 없습니다. 
@@ -1754,7 +1754,7 @@ $set 14 MSGCAT_SET_LOCK
 
 $set 15 MSGCAT_SET_IO
 1 \n*************************************************************************\n
-2 Backup = %s is needed. \n It must be mounted/loaded to continue.\n Type 1 to continue after the backup is mounted/loaded.\n Type 0 to quit.\n
+2 백업 = %s 이(가) 필요합니다. \n 계속하려면 마운트/로드되어야 합니다.\n 마운트/로드 이후 계속하려면 1을 입력하세요.\n 종료하려면 0을 입력하세요.\n
 3 \n\n*** BACKUP HEADER INFORMATION ***\n\n
 4 Backup magic file identification %s,\n
 5           Release: %s\n\
@@ -1786,9 +1786,9 @@ $set 15 MSGCAT_SET_IO
 17 백업 볼륨 %s은(는) 다른 데이터베이스를 백업한 것입니다.\n   (이름: %s, 예상: %s).\n\n
 18 백업 볼륨 %s의 순서가 올바르지 않습니다.\n  (Unit Num: %d, 예상: %d).\n\n
 19 백업 볼륨 %s의 timestamp가 올바르지 않습니다.\n   (Timestamp: %s, 예상: %s).\n\n
-20 Backup volume information file error, line %d.\n
-21 Backup Volume Label: Level: %d, Unit: %d, Database %s, Backup Time: %s\n
-22      Previous Backup level: %d Time: %s (start_lsa was %lld|%d)\n
+20 백업 볼륨 정보 파일 에러, 라인 %d.\n
+21 백업 볼륨 라벨: Level: %d, Unit: %d, Database %s, Backup Time: %s\n
+22      이전 백업 Level: %d Time: %s (start_lsa was %lld|%d)\n
 23 데이터베이스 복구를 위해서 다음의 백업 볼륨이 필요합니다:\n\n
 24 백업 장치의 여유 공간이 없습니다. 계속 진행하기 위해서 새로운 백업 장치가 필요합니다:\n\n
 25 이전 백업 볼륨 이름: %s\n
@@ -1800,12 +1800,12 @@ $set 15 MSGCAT_SET_IO
 
 $set 16 MSGCAT_SET_LOG
 1 \n*************************************************************************\n
-2 정상 진행을 위해 아카이브 로그 %s \n이(가) 필요합니다. \n \
+2 정상 진행을 위해 보관 로그 %s \n이(가) 필요합니다. \n \
   Type\n \
   -  0: 종료\n \
-  -  1: 아카이브 로그 없이 진행 (Partial recovery)\n \
-  -  2: 아카이브 로그 마운트/로드 후 진행\n \
-  -  3: 아카이브 로그 위치/이름 변경 후 진행\n 
+  -  1: 보관 로그 없이 진행 (Partial recovery)\n \
+  -  2: 보관 로그 마운트/로드 후 진행\n \
+  -  3: 보관 로그 위치/이름 변경 후 진행\n 
 3 데이터베이스 복구 작업을 위해 백업 정보 파일 %s\n이(가) 필요합니다. \n \
   Type\n \
   -  0: 종료\n \
@@ -1813,8 +1813,8 @@ $set 16 MSGCAT_SET_LOG
   -  2: 파일 위치/이름 변경 후 진행\n 
 4 새로운 위치/이름을 입력하시오.\n
 5 COMMENT: %s for database %s\n
-6 COMMENT: 아카이브 로그 %s는 media crash가 발생하지 않는 한 필요하지 않습니다. \n
-7 COMMENT: 아카이브 로그 %s 부터 %s 까지는 media crash가 발생하지 않는 한 필요하지 않습니다. \n
+6 COMMENT: 보관 로그 %s는 media crash가 발생하지 않는 한 필요하지 않습니다. \n
+7 COMMENT: 보관 로그 %s 부터 %s 까지는 media crash가 발생하지 않는 한 필요하지 않습니다. \n
 8 COMMENT: from renamed database = %s\n
 9 ARCHIVE: %d %s %lld %lld\n
 10 ARCHIVE:
@@ -1851,5 +1851,5 @@ $set 16 MSGCAT_SET_LOG
 ** 경고: 에러 없이 데이터베이스가 복구되기 전까지는 데이터베이스를 사용하지 마시오. 
 27 입력 오류, %d와 %d 사이의 값을 선택하시오.\n
 28 복구 시점(%s)은 반드시 백업 시점(%s) 이후로 지정해야 합니다. \n
-29 COMMENT: 아카이브 로그 %s는 로그 페이지 %lld 이전까지만 포함되어 HA 유틸리티에서 더 이상 사용되지 않습니다.
-30 아카이브 로그의 개수가 허용 최대치를 초과했습니다.
+29 COMMENT: 보관 로그 %s는 로그 페이지 %lld 이전까지만 포함되어 HA 유틸리티에서 더 이상 사용되지 않습니다.
+30 보관 로그의 개수가 허용 최대치를 초과했습니다.

@@ -67,12 +67,12 @@ $       46      genlocale
 $       47      dumplocale
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
-1 크기가 잘못되었거나, 잘못된 문자 `%c'이(가) 데이터베이스 이름 `%s'에 포함되어 있습니다\n
+1 크기가 잘못되었거나, 잘못된 문자 '%c'이(가) 데이터베이스 이름 '%s'에 포함되어 있습니다\n
 2 출력 파일 '%s'을(를) 열 수 없습니다.\n
 3 유틸리티 이름이 빠져 있거나 혹은 잘못 되어 있습니다.\n
-4 잘못된 유틸리티 이름 `%s'\n
+4 잘못된 유틸리티 이름 '%s'\n
 5 다음 리스트는 올바른 유틸리티 이름입니다:\n
-6 잘못된 문자 `%c'이(가) 볼륨 이름 `%s'에 포함되어 있습니다.\n
+6 잘못된 문자 '%c'이(가) 볼륨 이름 '%s'에 포함되어 있습니다.\n
 9 \
 %s (CUBRID 유틸리티)\n\
 %s\n\
@@ -251,8 +251,8 @@ backupdb: 데이터베이스를 백업합니다.\n\
                                    1 - 증분 1\n\
                                    2 - 증분 2\n\
   -o, --output-file=<파일> 자세한 백업 메시지를 파일에 출력합니다.\n\
-  -S, --SA-mode                독립 실행 모드\n\
-  -C, --CS-mode                클라이언트 서버 실행 모드\n\
+  -S, --SA-mode                독립 모드 실행\n\
+  -C, --CS-mode                클라이언트 서버 모드 실행\n\
       --no-check               데이터베이스의 정합성 확인 작업을 수행하지 않습니다; 기본값: 수행\n\
   -t, --thread-count=COUNT     백업을 수행하는 스레드 개수; 기본값: 자동\n\
   -z, --compress               백업 볼륨을 압축합니다; 기본값: 압축하지 않음\n\
@@ -282,16 +282,16 @@ copydb: 데이터베이스 복사.\n\
 
 
 $set 4 MSGCAT_UTIL_SET_CREATEDB
-40 그룹 `%s'는 존재하지 않습니다\n
-41 사용자 `%s'는 존재하지 않습니다\n 
-42 알 수 없는 명령어 `%s'\n
+40 그룹 '%s'는 존재하지 않습니다\n
+41 사용자 '%s'는 존재하지 않습니다\n 
+42 알 수 없는 명령어 '%s'\n
 43 출력 파일 '%s' 을(를) 열 수 없습니다.\n
 44 기존 데이터베이스를 삭제할 수 없습니다.\n
 45 %s 크기의 데이터베이스 생성 중.\n
 46 데이터베이스를 생성할 수 없습니다.\n
-47 user file `%s'에 오류가 있습니다.\n
+47 user file '%s'에 오류가 있습니다.\n
 48 '%s'는 %s와 %s 사이 값이어야 합니다.\n
-49 The value of %s '%s' is invalid.\n
+49 %s의 값 '%s'은 유효하지 않습니다.\n
 60 \
 createdb: 데이터베이스 생성.\n\
 사용법: %s createdb [옵션] <데이터베이스 이름>\n\
@@ -384,7 +384,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 21 인터럽트... \n
 22 로드가 인터럽트 됨 - 현재 트랜잭션은 커밋됩니다\n
 23 로드가 인터럽트 됨 - 현재 트랜잭션은 철회됩니다\n
-24 파일 `%s'를 열 수 없습니다.\n
+24 파일 '%s'를 열 수 없습니다.\n
 25 \n*** 문법 검사 ***\n\n
 26 %d 개의 에러가 검출되었습니다.\n
 27 \n*** 객체 삽입 중 ***\n\n
@@ -508,50 +508,50 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 19 객체를 변환할 수 없습니다\n
 20 클래스의 힙 파일이 없습니다\n
 21 객체를 갱신하지 못했습니다\n
-22 %d 개의 객체 (전체 %d 객체)이 성공적으로  처리되었습니다.\n
-23 COMPACTDB already started.\n
-24 The number of pages must be between %d and %d.\n
-25 The instance lock timeout must be between %d and %d.\n
-26 Total objects: %d\n
-27 Failed objects: %d\n
-28 Modified objects: %d\n
-29 Big objects: %d\n
-30 Old class representations deleted from catalog.\n
-31 Old class representations preserved in catalog.\n
-32 Can't set isolation level.\n
-33 Couldn't compact database.\n
-34 The class lock timeout must be between %d and %d.\n
-35 Locked class... Incomplete processing...\n
-36 Unprocessed class...\n
-37 Process error... Incomplete processing...\n
-38 Nothing to process...\n
-39 Invalid parameters...\n
-40 Unknown class name...\n
-41 The unused class OIDs and pages have been reclaimed.\n
-42 Reclaiming of OIDs and pages skipped.\n
-43 Error while processing class, class skipped.\n
+22 %d 개의 객체(전체 %d 객체)가 성공적으로 처리되었습니다.\n
+23 COMPACTDB가 이미 시작되었습니다.\n
+24 페이지 개수는 %d와 %d 사이가 되어야 합니다.\n
+25 인스턴스 잠금 타임아웃은 %d와 %d 사이가 되어야 합니다.\n
+26 전체 오브젝트 수: %d\n
+27 실패한 오브젝트 수: %d\n
+28 수정된 오브젝트 수: %d\n
+29 큰 오브젝트 수: %d\n
+30 카탈로그에서 과거 클래스 표현이 삭제되었습니다.\n
+31 카탈로그에 과거 클래스 표현이 보존되어 있습니다.\n
+32 트랜잭션 고립 수준을 설정할 수 없습니다.\n
+33 데이터베이스의 공간을 정리할 수 없습니다.\n
+34 클래스 잠금 타임아웃은 %d와 %d 사이가 되어야 합니다.\n
+35 잠긴 클래스... 불완전한 처리...\n
+36 처리되지 않은 클래스...\n
+37 처리 에러... 불완전한 처리...\n
+38 처리할 것이 없음...\n
+39 유효하지 않은 파라미터...\n
+40 알 수 없는 클래스 이름...\n
+41 사용되지 않은 클래스 OID와 페이지가 회수되었습니다.\n
+42 OID와 페이지에 대한 회수가 생략되었습니다.\n
+43 클래스를 처리하는 도중 에러로 인해 클래스의 처리가 생략되었습니다.\n
 44 Pass 3\n\n
-45 Heap compact failed...\n
-46 Heap compact succedeed...\n
+45 힙 공간 정리에 실패했습니다.\n
+46 힙 공간 정리에 성공했습니다.\n
 60 \
 compactdb: 데이터베이스에서 사용되지 않는 영역을 해제.\n\
-사용법: %s compactdb [옵션] <데이터베이스 이름>\n\
+사용법: %s compactdb [옵션] <데이터베이스 이름> [테이블1 테이블2 ...]\n\
 \n\
 옵션:\n\
   -v, --verbose                     많은 상태 정보 출력; 기본값: 출력 안 함\n\
-  -i, --input-class-file=FILE       input FILE of table names\n\
-                                    class_name list must be empty\n\
-                                    default: compact all classes\n\
-                                    enabled in CS-mode only\n\
-  -p, --pages-commited-once=NUMBER  maximum number of pages to commit once\n\
-                                    default: 10\n\
-                                    enabled in CS-mode only\n\
-  -S, --SA-mode                     stand-alone mode execution\n\
-  -C, --CS-mode                     client-server mode execution\n\
-  -d, --delete-old-repr             delete old class representations from catalog; default: disabled\n\
-  class_name_list                   enabled in CS-mode only\n\
-  -I, --Instance-lock-timeout       timeout for instance lock\n\
-  -c, --class-lock-timeout          timeout for class lock\n
+  -i, --input-class-file=FILE       테이블 이름을 포함하는 FILE 이름\n\
+                                    해당 옵션 사용 시 [테이블1 테이블2 ...]이 생략되어야 함\n\
+                                    기본값: 모든 테이블들의 공간을 정리함\n\
+                                    클라이언트 서버 모드에서만 가능\n\
+  -p, --pages-commited-once=NUMBER  한 번에 커밋할 수 있는 최대 페이지 개수\n\
+                                    기본값: 10\n\
+                                    클라이언트 서버 실행 모드에서만 가능\n\
+  -S, --SA-mode                     독립 모드 실행\n\
+  -C, --CS-mode                     클라이언트 서버 모드 실행\n\
+  -d, --delete-old-repr             카탈로그에서 과거 테이블 표현을 삭제; 기본값: 사용 안 함\n\
+  [테이블1 테이블2 ...]             클라이언트 서버 모드에서만 가능\n\
+  -I, --Instance-lock-timeout       인스턴스 잠금에 대한 타임아웃\n\
+  -c, --class-lock-timeout          클래스 잠금에 대한 타임아웃\n
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
 21 CUBRID master가 호스트 %s 에서 수행 중입니다. %s 에 시작되어  
@@ -561,7 +561,7 @@ $set 15 MSGCAT_UTIL_SET_COMMDB
 25 Shutdown 할 서버의 이름 :
 26 Shutdown 할 때까지의 시간(분)? :
 27 \
-cub_commdb: This utility is deprecated. Use 'cubrid' command instead.\n\
+cub_commdb: 이 유틸리티는 더 이상 사용하지 않습니다. 'cubrid' 명령을 사용하십시오.\n\
 사용법: cub_commdb [옵션]\n\
 \n\
 옵션:\n\
@@ -617,10 +617,10 @@ addvoldb: 데이터베이스 볼륨 파일을 추가\n\
                                        TEMP - 임시 데이터 볼륨\n\
                                        GENERIC - 임의 데이터 볼륨\n\
   -S, --SA-mode                독립 모드 실행\n\
-  -C, --CS-mode                클라이언트 서버 실행\n
+  -C, --CS-mode                클라이언트 서버 모드 실행\n
 
 $set 18 MSGCAT_UTIL_SET_CHECKDB
-20 데이터베이스에서 비 일관성이 발견되었습니다.\n추가적인 정보는 error_log_file %s 을(를) 참고 하십시오\n
+20 데이터베이스에서 비일관성이 발견되었습니다.\n추가적인 정보는 error_log_file %s 을(를) 참고 하십시오\n
 21 %s: 클래스를 찾을 수 없어 무시합니다.\n
 60 \
 checkdb: 데이터베이스 일관성 검사.\n\
@@ -628,7 +628,7 @@ checkdb: 데이터베이스 일관성 검사.\n\
 \n\
 옵션:\n\
   -S, --SA-mode                독립 모드 실행\n\
-  -C, --CS-mode                클라이언트 서버 실행\n\
+  -C, --CS-mode                클라이언트 서버 모드 실행\n\
   -r, --repair                 비 일관성 발견 시 복구\n\
   -i, --input-class-file=FILE  클래스 이름이 나열된 입력 파일 명시\n\
                                기본값: 모든 클래스를 검사\n
@@ -637,7 +637,7 @@ checkdb: 데이터베이스 일관성 검사.\n\
 $set 19 MSGCAT_UTIL_SET_SPACEDB
 15 데이터베이스 '%s'의 (페이지 크기 %s) 볼륨 정의 (로그 페이지 크기 %s)\n\n
 16 %5d %8s  %s %s  %s\n
-17 출력파일 `%s' 을(를) 열 수 없습니다\n
+17 출력파일 '%s' 을(를) 열 수 없습니다\n
 18 \n데이터베이스 '%s'의 (페이지크기 %s) 임시 볼륨\n\n
 19 번호  용도       페이지수  여유페이지  볼륨이름\n\n
 20 번호  용도       전체크기    여유공간  볼륨이름\n\n
@@ -660,7 +660,7 @@ spacedb: 데이터베이스 디스크 공간 정보 출력\n\
 
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
-15 Estimated Number of Pages = %d\n
+15 추정되는 페이지 개수 = %d\n
 60 \
 estimate_data: 데이터 크기 추정\n\
 사용법: %s estimate_data number-of-instances average-instance-size number-of-attributes variable-number-of-attributes\n
@@ -742,8 +742,8 @@ diagdb: 데이터베이스 정보 덤프\n\
 
 
 $set 25 MSGCAT_UTIL_SET_LOCKDB
-15 출력 파일 `%s'을 열 수 없습니다.\n
-59 lockdb는 스탠드얼론 모드에서 실행할 수 없습니다.\n
+15 출력 파일 '%s'을 열 수 없습니다.\n
+59 lockdb는 독립 모드에서 실행할 수 없습니다.\n
 60 \
 lockdb: 데이터베이스의 lock 정보 출력\n\
 사용법: %s lockdb [옵션] <데이터베이스 이름>\n\
@@ -765,7 +765,7 @@ $set 26 MSGCAT_UTIL_SET_KILLTRAN
 29 트랜잭션 인덱스 %d로 지정된 트랜잭션들을 종료시킵니다\n
 30 다음 트랜잭션들의 종료에 실패했습니다\n\n
 31 트랜잭션이 종료되지 않았습니다. 롤백 진행 중일 수 있습니다.\n 잠시 기다렸다가 확인하고 재시도하시기 바랍니다.\n
-59 killtran은 스탠드얼론 모드에서 실행할 수 없습니다.\n
+59 killtran은 독립 모드에서 실행할 수 없습니다.\n
 60 \
 killtran: 데이터베이스 transaction 제거 관리\n\
 사용법: %s killtran [옵션] <데이터베이스 이름>\n\
@@ -818,8 +818,8 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 6 클래스 파일이 이미 존재하면 덮어씀; 기본값: 덮어쓰지 않음
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
-15 출력 파일 `%s'을 열 수 없습니다\n
-59 plandump는 스탠드얼론 모드에서 실행할 수 없습니다.\n
+15 출력 파일 '%s'을 열 수 없습니다\n
+59 plandump는 독립 모드에서 실행할 수 없습니다.\n
 60 \
 plandump: 쿼리 플랜 표시 및 관리\n\
 사용법: %s plandump [옵션] <데이터베이스 이름>\n\
@@ -829,75 +829,75 @@ plandump: 쿼리 플랜 표시 및 관리\n\
   -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
-11 출력 파일 `%s'을 열 수 없습니다.\n
-21 System parameters to be used by the client program.\n
-22 System parameters loaded by the server '%s'\n
-23 System parameters to be used in standalone mode.\n
-59 paramdump는 스탠드얼론 모드에서 실행할 수 없습니다.\n
+11 출력 파일 '%s'을 열 수 없습니다.\n
+21 클라이언트 프로그램에 의해 사용되는 시스템 파라미터\n
+22 서버 '%s'에 의해 로딩된 시스템 파라미터\n
+23 독립 모드에서 사용되는 시스템 파라미터\n
+59 paramdump는 독립 모드에서 실행할 수 없습니다.\n
 60 \
-paramdump: Dump system parameter settings.\n\
-usage: %s paramdump [OPTION] database-name\n\
+paramdump: 시스템 파라미터 설정을 덤프\n\
+사용법: %s paramdump [옵션] database-name\n\
 \n\
 valid options:\n\
   -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n\
   -b, --both                   dump both client and server parameters\n\
-  -S, --SA-mode                stand-alone mode execution\n\
-  -C, --CS-mode                client-server mode execution\n
+  -S, --SA-mode                독립 모드 실행\n\
+  -C, --CS-mode                클라이언트 서버 모드 실행\n
 
 $set 39 MSGCAT_UTIL_SET_CHANGEMODE
-11 Wrong value \"%s\" for the server's HA running mode.\n
-12 Cannot change the server's HA running mode.\n
-21 Enter DBA password:
-22 The server `%s''s current HA running mode is %s.\n
-23 The server `%s''s HA running mode is changed to \"%s\".\n
-24 서버가 HA 모드로 설정되지 않았습니다.\n
+11 서버의 HA 모드에 대해 잘못된 값 \"%s\"입니다.\n
+12 서버의 HA 모드를 바꿀 수 없습니다.\n
+21 DBA 암호 입력:
+22 서버 '%s'의 현재 HA 모드는 %s입니다.\n
+23 서버 '%s'의 HA 모드는 \"%s\"로 바뀌었습니다.\n
+24 서버가 HA를 사용할 수 있도록 설정되지 않았습니다.\n
 58 HA 기능이 지원되지 않는 플랫폼입니다.\n
-59 changemode는 스탠드얼론 모드에서 실행할 수 없습니다.\n
+59 changemode는 독립 모드에서 실행할 수 없습니다.\n
 60 \
-changemode: Display or change the server's HA running mode.\n\
-usage: %s changemode [OPTION] database-name\n\
+changemode: 서버의 HA 모드 출력 또는 변경\n\
+사용법: %s changemode [옵션] <데이터베이스 이름>\n\
 \n\
 valid options:\n\
-  -m, --mode=MODE             change the server mode to MODE; default: none\n\
-  -f, --force                 force to change\n\
-  -t, --timeout=S             waiting S second while active transaction is terminated normally\n\
-                              -t option is effective only when the user changes server mode to maintenance\n\
-                              default: 5\n
+  -m, --mode=MODE             서버의 HA 모드를 지정한 MODE로 변경; 기본값: 없음\n\
+  -f, --force                 강제 변경\n\
+  -t, --timeout=S             트랜잭션이 정상 종료될 때까지 S초 대기\n\
+                              -t 옵션은 사용자가 서버의 HA 모드를 maintenance로 변경할 때만 유효\n\
+                              기본값: 5\n
 
 $set 40 MSGCAT_UTIL_SET_COPYLOGDB
-11 Wrong value \"%s\" for the copylogdb's running mode.\n
-21 Enter DBA password:
+11 copylogdb의 실행 모드에 대해 잘못된 값 \"%s\"\n
+21 DBA 암호 입력:
 22 서버가 HA 모드로 설정되지 않았습니다.\n
 58 HA 기능이 지원되지 않는 플랫폼입니다.\n
-59 copylogdb는 스탠드얼론 모드에서 실행할 수 없습니다.\n
+59 copylogdb는 독립 모드에서 실행할 수 없습니다.\n
 60 \
-copylogdb: Copy log pages from the server.\n\
-usage: %s copylogdb [OPTION] database-name\n\
+copylogdb: 서버에서 로그 페이지 복사\n\
+사용법: %s copylogdb [옵션] <데이터베이스 이름>\n\
 \n\
 valid options:\n\
-  -L, --log-path=PATH         directory PATH for copied log volumes\n\
-  -m, --mode=MODE             operation mode; default: sync\n\
+  -L, --log-path=PATH         복사된 로그 볼륨에 대한 디렉터리 PATH\n\
+  -m, --mode=MODE             동작 모드; 기본값: sync\n\
                               MODE: sync or semisync or async\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
-21 Enter DBA password:
+21 DBA 암호 입력:
 22 서버가 HA 모드로 설정되지 않았습니다.\n
 58 HA 기능이 지원되지 않는 플랫폼입니다.\n
-59 applylogdb는 스탠드얼론 모드에서 실행할 수 없습니다.\n
+59 applylogdb는 독립 모드에서 실행할 수 없습니다.\n
 60 \
-applylogdb: Apply copied log to the server.\n\
-usage: %s applylogdb [OPTION] database-name\n\
+applylogdb: 복사된 로그를 서버에 반영\n\
+사용법: %s applylogdb [옵션] <데이터베이스 이름>\n\
 \n\
 valid options:\n\
-  -L, --log-path=PATH         directory PATH of copied log volumes\n\
-      --max-mem-size=SIZE     maximum process SIZE in MB; max 500\n
+  -L, --log-path=PATH         복사된 로그 볼륨의 디렉터리 PATH\n\
+      --max-mem-size=SIZE     MB 단위의 최대 프로세스 크기(SIZE); 최대값 500\n
 
 $set 43 MSGCAT_UTIL_SET_STATDUMP
-11 출력 파일 `%s'을 열 수 없습니다.\n
-59 statdump는 스탠드얼론 모드에서 실행할 수 없습니다.\n
+11 출력 파일 '%s'을 열 수 없습니다.\n
+59 statdump는 독립 모드에서 실행할 수 없습니다.\n
 60 \
 statdump: 전역 통계를 출력.\n\
-usage: %s statdump [옵션] <데이터베이스 이름>\n\
+사용법: %s statdump [옵션] <데이터베이스 이름>\n\
 \n\
 valid options:\n\
   -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n\
@@ -906,71 +906,69 @@ valid options:\n\
   -s, --substr=STRING          지정한 문자열이 포함된 항목만 출력\n
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
-21 Enter DBA password:
+21 DBA 암호 입력:
 22 서버가 HA 모드로 설정되지 않았습니다.\n
 58 HA 기능이 지원되지 않는 플랫폼입니다.\n
-59 applyinfo는 스탠드얼론 모드에서 실행할 수 없습니다.\n
+59 applyinfo는 독립 모드에서 실행할 수 없습니다.\n
 60 \
-applyinfo: display CUBRID HA Apply information.\n\
-usage: %s applyinfo [OPTION] database-name\n\
+applyinfo: display CUBRID HA 복제 상태 출력\n\
+사용법: %s applyinfo [옵션] database-name\n\
 \n\
 valid options:\n\
-  -r, --remote-host-name      remote host name; display remote node's active log information \n\
-  -a, --applied-info          display applied information \n\
-  -L, --copied-log-path=PATH  path of copied log volumes; display copied log information \n\
-  -p, --pageid=ID             page id; default : 0(active page)\n\
-  -v, --verbose               enable verbose status messages; default : disable\n
+  -r, --remote-host-name      원격 호스트 이름; 원격 노드의 활성 로그 정보 출력\n\
+  -a, --applied-info          반영된 정보 출력\n\
+  -L, --copied-log-path=PATH  복사된 로그 볼륨의 경로; 복사된 로그 정보 출력\n\
+  -p, --pageid=ID             페이지 id; 기본값: 0(활성 페이지)\n\
+  -v, --verbose               상세 상태 정보 출력; 기본값: 사용하지 않음\n
 
 $set 45 MSGCAT_UTIL_SET_ACLDB
-59  acldb는 스탠드얼론 모드에서 실행할 수 없습니다.\n
+59  acldb는 독립 모드에서 실행할 수 없습니다.\n
 60 \
 acldb: 서버의 접근권한 목록을 출력하거나 다시 읽습니다.\n\
-usage: %s acldb [옵션] <데이터베이스 이름>\n\
+사용법: %s acldb [옵션] <데이터베이스 이름>\n\
 \n\
 valid options:\n\
   -r, --reload       접근 권한 파일 다시 읽기.\n
 
 $set 46 MSGCAT_UTIL_SET_GENLOCALE
 60 \
-genlocale: Generates locale shared library using LDML input file(s).\n\
-usage: %s genlocale [OPTION] [language-string]\n\
+genlocale: LDML 입력 파일을 사용하는 LDML 공유 라이브러리를 생성\n\
+사용법: %s genlocale [옵션] [language-string]\n\
 \n\
-language-string	      locale language string for which to generate shared library.\n\
-		      If no language-string is given all languages in 'cubrid_locales.txt'\n\
-		      will be processed.\n\
+language-string	      공유 라이브러리를 생성할 로캘 언어의 문자열.\n\
+		      language-string이 생략되면 'cubrid_locales.txt'에 정의된 모든 언어에 대해 생성합니다.\n\
 valid options:\n\
-  -v, --verbose	              enable verbose status messages; default : disable\n\
-  -i, --input-ldml-file       path for input LDML file. Only when language-string is given.\n
-61 Invalid locale name argument.\n
+  -v, --verbose	              상세 정보 출력; 기본값: 사용 안 함\n\
+  -i, --input-ldml-file       입력 LDML 파일에 대한 경로. language-string이 주어질 때만 사용.\n
+61 유효하지 않은 로캘 인자.\n
 
 $set 47 MSGCAT_UTIL_SET_DUMPLOCALE
-57 Cannot simultaneously use -i/--input-file and locale identifier.\n
-58 Invalid codepoint range (-s -e).\n
-59 Invalid locale name argument.\n
+57 -i/--input-file과 로캘 식별자를 동시에 사용할 수 없습니다.\n
+58 유효하지 않은 코드포인트 범위(-s -e).\n
+59 유효하지 않은 로캘 인자.\n
 60 \
-dumplocale: Dumps the contents of locale shared library previously generated using LDML input file(s).\n\
-usage: %s dumplocale [OPTION] [language-string]\n\
+dumplocale: LDML 입력 파일을 사용하여 미리 생성된 로캘 공유 라이브러리의 내용을 덤프\n\
+사용법: %s dumplocale [옵션] [language-string]\n\
 \n\
-language-string	 locale language string for which to dump locale shared library.\n\
-		         If no language-string is given all languages in 'cubrid_locales.txt'\n\
-		         will be processed.\n\
+language-string	 로캘 공유 라이브러리에 대해 덤프할 로캘 언어 문자열\n\
+		         no language-string이 생략되면 'cubrid_locales.txt'에 있는 모든 언어에 대해 덤프합니다.\n\
 valid options:\n\
-  -i, --input-file    path for input locale shared library (previously generated).\n\
-                      Can be used only when language-string is not given.\n\
-  -d, --calendar      dump calendar and date/time information; default : disable\n\
-  -n, --numeric		  dump numeric information; default : disable\n\
-  -a, --alphabet=l|lower|u|upper|both	     dump alphabet and casing information; default : disable\n\
-      --identifier-alphabet=l|lower|u|upper	 dump alphabet and casing information for identifiers; default : disable\n\
-  -c, --codepoint-order	 dump collation info sorted based on codepoint values\n\
+  -i, --input-file    입력할 로캘 공유 라이브러리(미리 생성됨) 파일에 대한 경로.\n\
+                      language-string이 생략될 때만 사용 가능.\n\
+  -d, --calendar      캘린더와 날짜/시간 정보 덤프; 기본값: 사용 안 함\n\
+  -n, --numeric		  숫자 정보 덤프; 기본값: 사용 안 함\n\
+  -a, --alphabet=l|lower|u|upper|both	     알파벳과 대소문자 정보 덤프; 기본값: 사용 안 함\n\
+      --identifier-alphabet=l|lower|u|upper	 알파벳과 식별자에 대한 대소문자 정보 덤프; 기본값: 사용 안 함\n\
+  -c, --codepoint-order	 코드포인트 값을 기반으로 정렬한 콜레이션 정보를 덤프\n\
                          (cp, char, weight, next-cp, char and weight);\n\
-                         default : disable\n\
-  -w, --weight-order  dump collation info sorted based on weight values\n\
-                      (weight, cp, char); default : disable\n\
-  -s, --start-value	  filtering option; starting codepoint for\n\
+                         기본값: 사용 안 함\n\
+  -w, --weight-order  가중치 값을 기반으로 정렬한 콜레이션 정보를 덤프\n\
+                      (weight, cp, char); 기본값: 사용 안 함\n\
+  -s, --start-value	  필터링 옵션; 아래 옵션들에 대한 시작 코드포인트\n\
                       -a, --identifier-alphabet, -c, -w; default : 0\n\
-  -e, --end-value     filtering option; ending codepoint for \n\
+  -e, --end-value     필터링 옵션; 아래 옵션들에 대한 끝 코드 포인트\n\
                       -a, --identifier-alphabet, -c, -w; \n\
-                      default : maximum value read from locale shared library\n\
-  -k, --console-conversion  dump console conversion data; default : disable\n\
-  -z, --normalization   dump normalization data; default : disable\n
+                      기본값: 로캘 공유 라이브러리에서 읽어들인 최대 값\n\
+  -k, --console-conversion  콘솔 변환 데이터를 덤프; 기본값: 사용 안 함\n\
+  -z, --normalization   정규화 데이터를 덤프; 기본값: 사용 안 함\n
 

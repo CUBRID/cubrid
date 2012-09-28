@@ -67,12 +67,12 @@ $       46      genlocale
 $       47      dumplocale
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
-1 无效的长度或字符 `%c' 在数据库名 `%s' 中\n
-2 无法打开输出文件 `%s'\n
+1 无效的长度或字符 '%c' 在数据库名 '%s' 中\n
+2 无法打开输出文件 '%s'\n
 3 应用工具名缺失或无效\n
-4 无效的应用工具名 `%s'\n
+4 无效的应用工具名 '%s'\n
 5 下面的列表包含了已识别的工具名:\n
-6 无效字符 `%c' 在卷名 `%s' 中\n
+6 无效字符 '%c' 在卷名 '%s' 中\n
 9 \
 %s (CUBRID 应用工具)\n\
 %s\n\
@@ -281,14 +281,14 @@ copydb: 复制一个数据库.\n\
 
 
 $set 4 MSGCAT_UTIL_SET_CREATEDB
-40 组 `%s' 不存在\n
-41 用户 `%s' 不存在\n
-42 未知的命令 `%s'\n
-43 无法打开输出文件 `%s'\n
+40 组 '%s' 不存在\n
+41 用户 '%s' 不存在\n
+42 未知的命令 '%s'\n
+43 无法打开输出文件 '%s'\n
 44 无法移除已存在的数据库.\n
 45 创建一个 %d 大小的数据库.\n
 46 无法创建数据库.\n
-47 用户文件 `%s' 存在问题\n
+47 用户文件 '%s' 存在问题\n
 48 '%s' 必须在 %s 与 %s 中间\n
 49 %s '%s'的值是非法的.\n
 60 \
@@ -350,7 +350,7 @@ $set 9 MSGCAT_UTIL_SET_MASTER
 
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
-11 无法打开输出文件 `%s'\n
+11 无法打开输出文件 '%s'\n
 60 \
 optimizedb: 优化一个数据库.\n\
 usage: %s optimizedb [选项] 数据库名\n\
@@ -382,7 +382,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 21 中断 ... \n
 22 中断读取 - 当前事务被提交\n
 23 中断读取 - 当前事务被终止\n
-24 无法打开文件 `%s'\n
+24 无法打开文件 '%s'\n
 25 \n*** 语法检测 ***\n\n
 26 %d 个错误被检测到\n
 27 \n*** 插入对象 ***\n\n
@@ -391,7 +391,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 30 \n*** 提交事务中 ***\n
 31 \n*** 关闭数据库 ***\n
 32 行 %d:
-33 解析错误 `%s' 作为一个 `%s' 值 关于属性 `%s' of `%s'\n
+33 解析错误 '%s' 作为一个 '%s' 值 关于属性 '%s' of '%s'\n
 34 缺少域关于属性 %s of %s\n
 35 对于属性 %s of %s, 类型 %s 在域的集合中是不被允许的\n
 36 对于属性 %s of %s, 期望类型 %s, 得到一个set常量\n
@@ -405,7 +405,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 44 警告: 重定义实例 %d 属于类 %s\n
 45 实例 %d 属于类 %s 已经被定义\n
 46 实例 %d 属于类 %s 已经被保留\n
-47 在属性 `%s' 上违反了唯一性, 转化为 NULL\n
+47 在属性 '%s' 上违反了唯一性, 转化为 NULL\n
 48   %d 个实例\n
 49 类 %s\n
 50 密码:
@@ -636,7 +636,7 @@ checkdb: 监测数据库一致性.\n\
 $set 19 MSGCAT_UTIL_SET_SPACEDB
 15 数据库 '%s' 的空间描述 页大小 %s. (日志页大小: %s)\n\n
 16 %5d %8s  %s %s  %s\n
-17 无法打开输出文件 `%s'\n
+17 无法打开输出文件 '%s'\n
 18 数据库 '%s' 临时卷的空间描述 页大小 %s.\n\n
 19 卷标识  用途  页总数  空闲页  卷名\n\n
 20 卷标识  用途  总大小  空闲空间  卷名\n\n
@@ -740,7 +740,7 @@ usage: %s diagdb [选项] 数据库名\n\
 
 
 $set 25 MSGCAT_UTIL_SET_LOCKDB
-15 无法打开输出文件 `%s'\n
+15 无法打开输出文件 '%s'\n
 59 lockdb 无法在单机模式下运行.\n
 60 \
 lockdb: 显示数据库的锁状态.\n\
@@ -816,7 +816,7 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 6 如果类存在则进行重写, 默认 不
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
-15 无法打开输出文件 `%s'\n
+15 无法打开输出文件 '%s'\n
 59 plandump 无法运行在单机模式.\n
 60 \
 plandump: 显示或控制缓存的查询计划.\n\
@@ -827,7 +827,7 @@ usage: %s plandump [选项] 数据库名\n\
   -o, --output-file=FILE       重定向输出信息到FILE; 默认: 空\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
-11 无法打开输出文件 `%s'\n
+11 无法打开输出文件 '%s'\n
 21 系统参数将被客户端程序使用.\n
 22 系统参数被服务 '%s' 读取\n
 23 系统参数将被用于单机模式.\n
@@ -845,8 +845,8 @@ $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 11 错误的值 \"%s\" 对于服务端的HA运行模式.\n
 12 无法改变服务端的HA运行模式.\n
 21 输入DBA密码:
-22 服务 `%s'的当前HA运行模式是 %s.\n
-23 服务 `%s'的 HA运行模式被改变为\"%s\".\n
+22 服务 '%s'的当前HA运行模式是 %s.\n
+23 服务 '%s'的 HA运行模式被改变为\"%s\".\n
 24 服务没有被设置为HA模式.\n
 58 HA 特性在这个平台上不被支持.\n
 59 changemode 无法以单机模式运行.\n
@@ -890,7 +890,7 @@ usage: %s applylogdb [选项] 数据库名\n\
       --max-mem-size=SIZE     进程可用的最大内存数, 以MB为单位; 最大为 500\n
 
 $set 43 MSGCAT_UTIL_SET_STATDUMP
-11 无法打开输出文件 `%s'\n
+11 无法打开输出文件 '%s'\n
 59 statdump 无法以单机模式运行.\n
 60 \
 statdump: 转储全局统计信息.\n\
