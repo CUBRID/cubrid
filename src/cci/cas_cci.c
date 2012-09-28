@@ -2086,6 +2086,9 @@ cci_close_req_handle (int req_h_id)
 
   if (DOES_CONNECTION_HAVE_STMT_POOL (con_handle))
     {
+      /* free req_handle resources */
+      req_handle_content_free_for_pool (req_handle);
+
       if (con_handle->autocommit_mode == CCI_AUTOCOMMIT_TRUE &&
 	  con_handle->con_status != CCI_CON_STATUS_OUT_TRAN)
 	{

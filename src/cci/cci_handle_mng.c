@@ -808,10 +808,21 @@ req_handle_content_free (T_REQ_HANDLE * req_handle, int reuse)
   hm_conv_value_buf_clear (&(req_handle->conv_value_buffer));
   if (!reuse)
     {
+      qe_bind_value_free (req_handle->num_bind, req_handle->bind_value);
       FREE_MEM (req_handle->bind_mode);
     }
   req_handle->valid = 0;
 }
+
+void
+req_handle_content_free_for_pool (T_REQ_HANDLE * req_handle)
+{
+  QUERY_RESULT_FREE (req_handle);
+  hm_req_handle_fetch_buf_free (req_handle);
+  hm_conv_value_buf_clear (&(req_handle->conv_value_buffer));
+  qe_bind_value_free (req_handle->num_bind, req_handle->bind_value);
+}
+
 
 static int
 hm_find_ha_status_index (T_CON_HANDLE * con_handle)
