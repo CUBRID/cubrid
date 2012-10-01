@@ -24,50 +24,50 @@ $ esql.msg
 $
 
 $set 1
-1 Non integer argument value "%s"\n
-2 Non floating argument value "%s"\n
-3 Missing argument %s\n
+1 Valeur "%s" d'argument n'est pas un entier\n
+2 Valeur "%s" d'argument n'est pas de type float\n
+3 Argument %s manquant\n
 4 [options] 
 5 Options: \n
-6 Missing argument value for key %s\n
-7 Unknown option "%s"\n
-8 Unexpected positional argument "%s"\n
+6 Valeur d'argument manquant pour clé %s\n
+7 Option inconnue "%s"\n
+8 Argument positionnel inconnu "%s"\n
 
 $set 2
-1 Redefinition of cursor "%s"
-2  *\tfor statement %s\n
-3  *\n * Cursor table:\n
+1 Redéfinition du curseur "%s"
+2  *\tpour instruction %s\n
+3  *\n * Table du curseur:\n
 
 $set 3
-1 (INTERNAL ERROR in set_class_bit): bad storage class (%d)
-2 (INTERNAL ERROR in add_spec_to_decl()): malformed chain (no specifier)
-3 storage class specifier not allowed in this context
-4 illegal storage class combination
-5 illegal type combination
-6 illegal modifier combination
-7 (INTERNAL ERROR in pp_add_type_spec): unexpected case (%d)
-8 (INTERNAL ERROR in pp_add_type_adj): unexpected case (%d)
-9 improperly formed %s declaration
+1 (ERREUR INTERNE dans set_class_bit): classe de stockage incorrecte (%d)
+2 (ERREUR INTERNE dans add_spec_to_decl()): chaîne mal formée (pas de spécificateur)
+3 spécificateur de classe de stockage est interdit dans ce contexte
+4 association incorrecte des classes de stockage
+5 association incorrecte des types
+6 association incorrecte des modificateurs
+7 (ERREUR INTERNE dans pp_add_type_spec): cas inattendu (%d)
+8 (ERREUR INTERNE dans pp_add_type_adj): cas inattendu (%d)
+9 déclaration %s mal formée
 
 $set 4
 1 %s
-2 %s: Not a directory\n
-3 %s: Bad installation root?\n
+2 %s: Pas un répertoire\n
+3 %s: racine de l'installation incorrecte?\n
 
 $set 5
 1 ?
-2 please check correctness of token
-3 USING part not permitted for static cursor "%s"
-4 cursor "%s" is undefined
-5 pointer to a descriptor
-6 pointer to a DB_OBJECT
-7 character string
-8 indicator variable for "%s" not allowed in this context
-9 "%s" not declared in BEGIN DECLARE section
-52 %s (text was "%s")
-53 Lexical error
-54 syntax error at "%s": missing %s in %s
-55 syntax error at "%s": missing %s
+2 s'il vous plaît vérifier l'exactitude de token
+3 La partie USING est interdite pour le curseur statique "%s"
+4 curseur "%s" n'est pas défini
+5 pointeur vers un descripteur
+6 pointeur vers une DB_OBJECT
+7 Chaîne de caractères
+8 variable indicatrice pour "%s" est interdite dans ce contexte
+9 "%s" n'est pas déclaré dans la section BEGIN DECLARE
+52 %s (texte était "%s")
+53 Erreur lexicale
+54 Erreur de syntaxe à "%s": manquant %s dans %s
+55 Erreur de syntaxe à "%s": manquant %s
 
 $set 6
 1 suppress-line-directive
@@ -84,52 +84,52 @@ $set 6
 12 input-file
 
 $set 7
-1 suppress #line directives in output file, default off
-2 output file name, default <input-file>.c or stdout
-3 include file containing uci_ prototypes, default "esqlx.h"
-4 dump scope debugging information, default off
-5 dump final malloc debugging information, default off
-6 print out version number information, default off
-7 enable UCI function trace, default off
-8 disable length initialization of VARCHAR host variable, default off
-9 use different VARCHAR style, default off
-10 ignore -462(null indicator needed) error, default off
-11 use internal NULL indicator to prevent -462(null indicator needed) error, default off
-12 input file name, default stdin
+1 supprime les directives #line dans le fichier de sortie, désactivé par défaut
+2 Nom du fichier de sortie, par défaut <input-file>.c ou stdout
+3 inclue le fichier contenant les prototypes uci_, par défaut "esqlx.h"
+4 sauvegarde des informations de débogage du but, désactivé par défaut
+5 sauvegarde des informations de débogage de malloc finale, désactivé par défaut
+6 affiche des informations sur le numéro de version, désactivé par défaut
+7 active le suivi de fonction UCI, désactivé par défaut
+8 désactive l'initialisation de la longueur de la variable hôte VARCHAR, désactivé par défaut
+9 utilise style différent pour VARCHAR, désactivé par défaut
+10 ignore l'erreur -462(indicateur nul nécessaire) error, désactivé par défaut
+11 utiliser l'indicateur interne NULL pour prévenir l'erreur -462 (indicateur nul nécessaire), désactivé par défaut
+12 nom du fichier d'entrée, par défaut stdin
 
 $set 8
-1 REPEATED option ignored
+1 option REPEATED ignorée
 2 %s version %s\n
 
 $set 9
-1 (yy_pop_mode) internal error: empty mode stack
-2 "%s" is not permitted in this context
+1 (yy_pop_mode) erreur interne: pile des modes vide
+2 "%s" est interdit dans ce contexte
 
 $set 10
-1 internal error in %s: %s\n
-2 table overflow
+1 erreur interne dans %s: %s\n
+2 dépassement de table
 
 $set 11
-1 indicator variable "%s" must be a short int
-2 cannot use an indicator variable with a structure
-3 "%s" has incomplete struct definition
-4 "%s" must be a valid %s
-5 %s is not an acceptable type for "%s"
-6 unanticipated host variable type: %s
-7 (pp_addr_expr): attempt to find address of NULL variable
-8 "%s" is not a pointer
-9 "%s" does not point to a struct
-10 "%s" is not a struct
-11 %s has no field "%s"
-12 "%s" cannot be dereferenced by "%s"
+1 variable indicatrice "%s" doit être de type short int
+2 ne peut pas utiliser une variable indicatrice avec une structure
+3 "%s" a une définition incomplète pour la structure
+4 "%s" doit être un(e) %s valid(e)
+5 %s n'est pas un type acceptable pour "%s"
+6 Type de variable d'hôte inattendu: %s
+7 (pp_addr_expr): tentative de trouver l'adresse de la variable NULL
+8 "%s" n'est pas un pointeur
+9 "%s" ne pointe pas vers une struct
+10 "%s" n'est pas une struct
+11 %s n'a pas le champ "%s"
+12 "%s" ne peut pas être déréférencé par "%s"
 
 $set 12
-1 out of memory
+1 mémoire épuisée
 
 $set 13
-1 array of functions is illegal, assuming function pointers
-2 (pp_the_same_type) unknown link class
-3 (pp_get_sizeof): bad noun (%d)
+1 tableau des fonctions est interdit, en supposant des pointeurs de fonction
+2 (pp_the_same_type) classe de lien inconnu
+3 (pp_get_sizeof): nom incorrect (%d)
 
 $set 14
-1 (INTERNAL ERROR in %s): impossible case
+1 (ERREUR INTERNE dans %s): cas impossible

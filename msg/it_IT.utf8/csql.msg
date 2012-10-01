@@ -5,7 +5,7 @@ $
 $   This program is free software; you can redistribute it and/or modify 
 $   it under the terms of the GNU General Public License as published by 
 $   the Free Software Foundation; either version 2 of the License, or
-$   (at your option) any later version. 
+$   (at your option) any later version.
 $
 $  This program is distributed in the hope that it will be useful, 
 $  but WITHOUT ANY WARRANTY; without even the implied warranty of 
@@ -25,165 +25,165 @@ $
 
 $set 1 MSGCAT_CSQL_SET_CSQL
 40 \
-interactive SQL utility, version %s\n\
-usage: %s [OPTION] database-name[@host]\n\
+utilità interattiva SQL, versione %s\n\
+uso: %s [OPZIONE] nome-base-di-dati[@host]\n\
 \n\
-valid options:\n\
-  -S, --SA-mode                standalone mode execution\n\
-  -C, --CS-mode                client-server mode execution\n\
-  -u, --user=ARG               alternate user name\n\
-  -p, --password=ARG           password string, give "" for none\n\
-  -e, --error-continue         don't exit on statement error\n\
-  -i, --input-file=ARG         input-file-name\n\
-  -o, --output-file=ARG        output-file-name\n\
-  -s, --single-line            single line oriented execution\n\
-  -c, --command=ARG            CSQL-commands\n\
-  -l, --line-output            display each value in a line\n\
-  -r, --read-only              read-only mode\n\
-      --no-auto-commit         disable auto commit mode execution\n\
-      --no-pager               do not use pager\n\
-      --no-single-line         turn off single line oriented execution\n\
+opzioni valide:\n\
+  -S, --SA-mode                modalità di esecuzione autonoma\n\
+  -C, --CS-mode                modalità di esecuzione client-server\n\
+  -u, --user=ARG               nome alternativo utente\n\
+  -p, --password=ARG           password, usa "" per nessuna\n\
+  -e, --error-continue         non uscire su errore\n\
+  -i, --input-file=ARG         nome-file-input\n\
+  -o, --output-file=ARG        nome-file-output\n\
+  -s, --single-line            mode esecuzione singola riga\n\
+  -c, --command=ARG            commandi-CSQL\n\
+  -l, --line-output            ogni valore visualizzato in una riga\n\
+  -r, --read-only              modalità read-only\n\
+      --no-auto-commit         disattivare modalità di esecuzione auto-commit\n\
+      --no-pager               non utilizzare pager\n\
+      --no-single-line         disattivare l'esecuzione orientata singola riga\n\
 \n\
-For additional information, see http://www.cubrid.com\n
-41 %s: the environment value of %s_MODE is incorrect. \nIt should be either %s or %s.\n
-42 %s: too many arguments given. maximum is %d.\n
-43 %s: The root directory environment variable ($CUBRID) should be set.\n
-44 %s: the attempt to execute "%s" has failed.\n
-45 %s: cannot use -sa and -cs options simultaneously.\n
-46 %d command(s) successfully processed.
-47 In the command from line %d,
-48 In line %d, column %d,
-49 Type `;help' for help messages.
-50 ERROR: 
-51 CUBRID SQL Interpreter
-52 There have been updates. Do you want to commit ? (`Y' or `N') 
-53 Enter `Y' to commit, `N' to abort. 
-54 Current transaction has been committed.
-55 Current transaction has been rolled back.
-56 Command buffer has been saved.
-57 The file has been read into the command buffer.
-58 Command buffer has been sent to the printer.
-59 Current directory changed to 
-61 Enter Password : 
-62 <Result of %s Command in Line %d>
-63 There are no results.
-64 Checkpoint has been issued.
-65 The database has been restarted.
-66 Tran index      User name      Host name      Process id      Program name\n
+Per ulteriori informazioni, vedere http://www.cubrid.com\n
+41 %s: non è corretto il valore di ambiente di %s_MODE. \nDovrebbe essere %s o %s.\n
+42 %s: troppi argomenti trovati. massimo è %d.\n
+43 %s: Deve essere impostata la variabile di ambiente di root directory ($CUBRID).\n
+44 %s: il tentativo di esecuzione "%s" è fallito.\n
+45 %s: non è possibile utilizzare opzioni -sa e -cs contemporaneamente.\n
+46 %d comando(i) elaborato(i) correttamente.
+47 Nel comando dalla linea %d,
+48 In linea %d, colonna %d,
+49 Digitare `;help' per i messaggi di aiuto.
+50 ERRORE: 
+51 Interprete CUBRID SQL
+52 Ci sono stati aggiornamenti. Si desidera eseguire il commit? (`Y' o `N') 
+53 Immettere 'Y' per commit, 'N' per annullare. 
+54 Transazione corrente è stato commesso.
+55 Transazione corrente è stato rolled back.
+56 Buffer dei comandi è stato salvato.
+57 Il file è stato letto nel buffer dei comandi.
+58 Buffer di comando è stato inviato alla stampante.
+59 Directory corrente è cambiato in 
+61 Inserire la Password: 
+62 <Risultato di %s Comando in Linea %d>
+63 Non ci sono risultati.
+64 Checkpoint è stato emesso.
+65 Il database è stato riavviato.
+66 Tran index      Utente         Nome Host      Processo        Nome programma\n
 67 %7d(%1c) %14s %14s %15d %17s\n
-68 The specified transaction has been killed.
-69 Killing of the specified transaction has failed.
-70 %d rows %s.
-71 %d row %s.
-$ These 3 should be blank
+68 La transazione specificata è stata cancellata.
+69 Annullamento della transazione specificata non riuscita.
+70 %d righe %s.
+71 %d riga %s.
+$ Questi 3 dovrebbe essere vuoto
 75 Automated API tester
 76 Invalid Automated API tester
 79 csql>
 80 csql
 81 sysadm>
 
-145 <Help: Schema of a Class>
-146 none
-147 <Help: All Triggers>
-148 <Help: No Triggers Defined>
-150 <Help: Trigger Definition>
-151 <Help: Command Syntax>
-152 <Help: Session Command Summary>
-178 A file name is required.
-179 Cannot execute the pager.
-180 There is not enough memory allocated.
-184 The line being entered is too long.
-185 Too many lines have been entered.
-188 Too many file names have been entered.
-190 No such session command. Type `;help' for help messages.
-191 More than one session command matched. Please specify more.
-193 More than one command matched. Please specify more.
-194 Invalid combination of command line arguments (options).
-196 An undefined error has occurred.
-197 ';edit' is not allowed when output has been redirected.
+145 <Aiuto: Schema di Classe>
+146 nessuno
+147 <Aiuto: Tutti i Trigger>
+148 <Aiuto: Trigger non Definiti>
+150 <Aiuto: Definizione Trigger>
+151 <Aiuto: Sintassi del Comando>
+152 <Aiuto: Riepilogo dei Comandi Sessione>
+178 Un nome di file è necessario.
+179 Impossibile eseguire il pager.
+180 Non è sufficiente memoria allocata.
+184 La riga inserita è troppo lunga.
+185 Troppe righe sono state inserite.
+188 Troppi nomi di file sono stati inseriti.
+190 Tale comando sessione. Digitare '; aiuto ' per i messaggi di aiuto.
+191 Più di un comando di sessione corrispondenza. Si prega di specificare più.
+193 Più di un comando corrispondenza. Si prega di specificare più.
+194 Combinazione non valida di argomenti della riga di comando (opzioni).
+196 Un errore sconosciuto si è verificato.
+197 ';edit' non è consentita quando l'output è stato reindirizzato.
 
 203 <%s> 
 204 <Super Classes> 
 205 <Sub Classes> 
-206 <Attributes> 
-207 <Class Attributes> 
-208 <Methods> 
-209 <Class Methods> 
-210 <Resolutions> 
+206 <Attributi> 
+207 <Attributi di classe> 
+208 <Metodi> 
+209 <Metodi della classe> 
+210 <Risoluzioni> 
 211 <Method files> 
-212 <Query_specifications> 
+212 <Specifiche_query> 
 213 <Triggers> 
-214 <Name> 
-215 <Event> 
-216 <Condition Time> 
-217 <Condition> 
-218 <Action Time> 
-219 <Action> 
-220 <Status> 
-221 <Priority> 
-222 <Name> 
-223 <Description> 
-224 <Syntax> 
-225 <Example> 
+214 <Nome> 
+215 <Evento> 
+216 <Tempo di condizione> 
+217 <Condizione> 
+218 <Tempo dell'azione> 
+219 <Azione> 
+220 <Stato> 
+221 <Priorità> 
+222 <Nome> 
+223 <Descrizione> 
+224 <Sintassi> 
+225 <Esempio> 
 
-$ csql help messages
+$ messaggi di aiuto csql
 231 \
 \n\
-   All session commands should be prefixed by `;' and only blanks/tabs\n\
-   can precede the prefix. Capitalized characters represent the minimum\n\
-   abbreviation that you need to enter to execute the specified command.\n\
+   Tutti i comandi della sessione devono essere preceduti da ';' e solo spazi vuoti/tabs\n\
+   può precedere il prefisso. Caratteri in maiuscolo rappresentano l'abbreviazione minima\n\
+   che deve inserire per eseguire il comando specificato.\n\
 \n\
-   ;REAd   [<file-name>]       - read a file into command buffer.\n\
-   ;Write  [<file-name>]       - (over)write command buffer into a file.\n\
-   ;APpend [<file-name>]       - append command buffer into a file.\n\
-   ;PRINT                      - print command buffer.\n\
-   ;SHELL                      - invoke shell.\n\
-   ;CD                         - change current working directory.\n\
-   ;EXit                       - exit program.\n\
+   ;REAd   [<file-name>]       - leggere un file nel buffer dei comandi.\n\
+   ;Write  [<file-name>]       - (sovra)scrivere il buffer dei comandi in un file.\n\
+   ;APpend [<file-name>]       - aggiungere buffer dei comandi in un file.\n\
+   ;PRINT                      - stampa buffer dei comandi.\n\
+   ;SHELL                      - richiamare shell.\n\
+   ;CD                         - cambiare directory di lavoro corrente.\n\
+   ;EXit                       - uscire dal programma.\n\
 \n\
-   ;CLear                      - clear command buffer.\n\
-   ;EDIT                       - invoke system editor with command buffer.\n\
-   ;List                       - display the content of command buffer.\n\
+   ;CLear                      - pulire il buffer di comando.\n\
+   ;EDIT                       - invocare editor di sistema con buffer di comando.\n\
+   ;List                       - visualizzare il contenuto del buffer dei comandi.\n\
 \n\
-   ;RUn                        - execute sql in command buffer.\n\
-   ;Xrun                       - execute sql in command buffer,\n\
-                                 and clear the command buffer.\n\
-   ;COmmit                     - commit the current transaction.\n\
-   ;ROllback                   - roll back the current transaction.\n\
-   ;AUtocommit [ON|OFF]        - enable/disable auto commit mode.\n\
-   ;REStart                    - restart database.\n\
+   ;RUn                        - eseguire sql nel buffer dei comandi.\n\
+   ;Xrun                       - eseguire sql nel buffer dei comandi,\n\
+                                 e pulire il buffer di comando.\n\
+   ;COmmit                     - commit della transazione corrente.\n\
+   ;ROllback                   - roll back della transazione corrente.\n\
+   ;AUtocommit [ON|OFF]        - attivare/disattivare la modalità di auto-commit.\n\
+   ;REStart                    - riavviare il database.\n\
 \n\
-   ;SHELL_Cmd  [shell-cmd]     - set default shell, editor, print and pager\n\
-   ;EDITOR_Cmd [editor-cmd]      command to new one, or display the current\n\
-   ;PRINT_Cmd  [print-cmd]       one, respectively.\n\
+   ;SHELL_Cmd  [shell-cmd]     - impostare la shell predefinito, editor, stampa e pager\n\
+   ;EDITOR_Cmd [editor-cmd]      comando a uno nuovo, o la visualizzazione corrente\n\
+   ;PRINT_Cmd  [print-cmd]       uno, rispettivamente.\n\
    ;PAger_cmd  [pager-cmd]\n\
 \n\
-   ;DATE                       - display the local time, date.\n\
-   ;DATAbase                   - display the name of database being accessed.\n\
-   ;SChema class-name          - display schema information of a class.\n\
-   ;TRigger [`*'|trigger-name] - display trigger definition.\n\
-   ;Get system_parameter       - get the value of a system parameter.\n\
-   ;SEt system_parameter=value - set the value of a system parameter.\n\
-   ;PLan [simple/detail/off]   - show query execution plan.\n\
-   ;Info <command>             - display internal information.\n\
-   ;TIme [ON/OFF]              - enable/disable to display the query\n\
-                                 execution time.\n\
-   ;HISTORYList                - display list of the executed queries.\n\
-   ;HISTORYRead <history_num>  - read entry on the history number into command buffer.\n\
-   ;HElp                       - display this help message.\n\n
+   ;DATE                        - visualizzare l'ora locale, data.\n\
+   ;DATAbase                    - visualizzare il nome del database a cui si accede.\n\
+   ;SChema nome-classe          - visualizzare le informazioni sullo schema di una classe.\n\
+   ;TRigger [`*'|nome-trigger]  - visualizzare la definizione di trigger.\n\
+   ;Get parametro_sistema       - ottenere il valore di un parametro di sistema.\n\
+   ;SEt parametro_sistema=value - impostare il valore di un parametro di sistema.\n\
+   ;PLan [simple/detail/off]    - visualizza il piano di esecuzione di query.\n\
+   ;Info <comando>              - visualizzare informazioni interne.\n\
+   ;TIme [ON/OFF]               - attivare/disattivare visualizzazione di query\n\
+                                  tempo di esecuzione.\n\
+   ;HISTORYList                 - visualizzare l'elenco delle query eseguite.\n\
+   ;HISTORYRead <history_num>   - leggere la voce del numero storia in buffer dei comandi.\n\
+   ;HElp                        - visualizza questo messaggio di aiuto.\n\n
 
-232 <Constraints> 
+232 <Vincoli> 
 233 Info {schema|trigger|deferred|workspace|lock|stats}\n\
-\tschema [class-name]    - schema information\n\
-\ttrigger [trigger-name] - trigger information\n\
+\tschema [class-name]    - informazioni sullo schema\n\
+\ttrigger [trigger-name] - informazioni di trigger\n\
 \tdeferred               - deferred trigger information\n\
-\tworkspace              - workspace information\n\
-\tlock                   - lock information (client-server mode)\n\
-\tstats class-name       - class statistics information\n\
-\ttrantable              - transaction information\n\
-\tlogstat                - log information\n\
-\tcsstat                 - critical section information\n\
-\tplan                   - plan cache information\n\
-\tqcache                 - query cache information\n
-235 <Partitions>
-236 A class name is required.
+\tworkspace              - informazioni dell'workspace\n\
+\tlock                   - informazioni di lock (modalità client-server)\n\
+\tstats class-name       - informazioni statistiche di classe\n\
+\ttrantable              - informazioni sulla transazione\n\
+\tlogstat                - informazioni del log\n\
+\tcsstat                 - informazioni sezione critica\n\
+\tplan                   - informazioni del cache plan\n\
+\tqcache                 - informazioni sulla cache di query\n
+235 <Partizioni>
+236 È necessario un nome di classe.

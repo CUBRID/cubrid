@@ -5,7 +5,7 @@ $
 $   This program is free software; you can redistribute it and/or modify 
 $   it under the terms of the GNU General Public License as published by 
 $   the Free Software Foundation; either version 2 of the License, or
-$   (at your option) any later version. 
+$   (at your option) any later version.
 $
 $  This program is distributed in the hope that it will be useful, 
 $  but WITHOUT ANY WARRANTY; without even the implied warranty of 
@@ -25,165 +25,165 @@ $
 
 $set 1 MSGCAT_CSQL_SET_CSQL
 40 \
-interactive SQL utility, version %s\n\
-usage: %s [OPTION] database-name[@host]\n\
+Utilidad SQL interactiva, version %s\n\
+uso: %s [OPCION] nombre-de-base de datos [@host] \n\
 \n\
-valid options:\n\
-  -S, --SA-mode                standalone mode execution\n\
-  -C, --CS-mode                client-server mode execution\n\
-  -u, --user=ARG               alternate user name\n\
-  -p, --password=ARG           password string, give "" for none\n\
-  -e, --error-continue         don't exit on statement error\n\
-  -i, --input-file=ARG         input-file-name\n\
-  -o, --output-file=ARG        output-file-name\n\
-  -s, --single-line            single line oriented execution\n\
-  -c, --command=ARG            CSQL-commands\n\
-  -l, --line-output            display each value in a line\n\
-  -r, --read-only              read-only mode\n\
-      --no-auto-commit         disable auto commit mode execution\n\
-      --no-pager               do not use pager\n\
-      --no-single-line         turn off single line oriented execution\n\
+opciones validas:\n\
+  -S, --SA-mode                modo de ejecucion independiente\n\
+  -C, --CS-mode                modo de ejecucion cliente-servidor\n\
+  -u, --user=ARG               nombre de utilizador suplente\n\
+  -p, --password=ARG           string de contrasena, de "" para ninguna\n\
+  -e, --error-continue         no salga a error de declaracion\n\
+  -i, --input-file=ARG         nombre-de-archivo-de-entrada\n\
+  -o, --output-file=ARG        nombre-de-archivo-de-salida\n\
+  -s, --single-line            ejecucion linea suelta\n\
+  -c, --command=ARG            CSQL-comandos\n\
+  -l, --line-output            muestra cada valor en una linea\n\
+  -r, --read-only              modo read-only\n\
+      --no-auto-commit         inhabilitar modo de ejecucion cometer automaticamente\n\
+      --no-pager               no utilize pager\n\
+      --no-single-line         desactivar modo de ejecucion linea suelta\n\
 \n\
-For additional information, see http://www.cubrid.com\n
-41 %s: the environment value of %s_MODE is incorrect. \nIt should be either %s or %s.\n
-42 %s: too many arguments given. maximum is %d.\n
-43 %s: The root directory environment variable ($CUBRID) should be set.\n
-44 %s: the attempt to execute "%s" has failed.\n
-45 %s: cannot use -sa and -cs options simultaneously.\n
-46 %d command(s) successfully processed.
-47 In the command from line %d,
-48 In line %d, column %d,
-49 Type `;help' for help messages.
+Para mas informacion, vea http://www.cubrid.com\n
+41 %s: el valor de entorno de %s_MODE es incorrecto. \nDeberia ser sea %s o %s.\n
+42 %s: demasiados argumentos dados. maximo es %d.\n
+43 %s: La variable ($CUBRID) de entorno del directorio de raiz deberia ser ajustada.\n
+44 %s: el intente de ejecutar "%s" ha fracasado.\n
+45 %s: no se puede utilizar las opciones -sa y -cs simultaneamente.\n
+46 %d comando (s) procesados con éxito.
+47 En el comando de la linea %d,
+48 En linea %d, columna %d,
+49 Escriba `;help' para mensajes de ayuda.
 50 ERROR: 
-51 CUBRID SQL Interpreter
-52 There have been updates. Do you want to commit ? (`Y' or `N') 
-53 Enter `Y' to commit, `N' to abort. 
-54 Current transaction has been committed.
-55 Current transaction has been rolled back.
-56 Command buffer has been saved.
-57 The file has been read into the command buffer.
-58 Command buffer has been sent to the printer.
-59 Current directory changed to 
-61 Enter Password : 
-62 <Result of %s Command in Line %d>
-63 There are no results.
-64 Checkpoint has been issued.
-65 The database has been restarted.
-66 Tran index      User name      Host name      Process id      Program name\n
+51 Interpretador CUBRID SQL
+52 Hay actualizaciones. Quiere cometer? (`Y' or `N') 
+53 Introduzca 'Y' para cometer, 'N' para abortar.
+54 Transaccion actual ha sido cometida.
+55 Transaccion actual ha sido retrocedida.
+56 Bufer de comando ha sido guardado.
+57 El archivo ha sido leido en el bufer de comando.
+58 Bufer de comando ha sido mandado a la impresora.
+59 Directorio actual cambiado a
+61 Introduzca contrasena:
+62 <Resultado de %s Comanda en Linea %d>
+63 No hay resultados.
+64 Punto de control se ha emitido.
+65 La base de datos ha sido reinicializada.
+66 Indice de Tran   Nombre de utilizador   Nombre de host   Identificador de Proceso   Nombre de programa\n
 67 %7d(%1c) %14s %14s %15d %17s\n
-68 The specified transaction has been killed.
-69 Killing of the specified transaction has failed.
-70 %d rows %s.
-71 %d row %s.
-$ These 3 should be blank
-75 Automated API tester
-76 Invalid Automated API tester
+68 La transaccion especificada ha sido matada.
+69 Fracaso al matar la transaccion especificada.
+70 %d filas %s.
+71 %d fila %s.
+$ Estos 3 deberian ser vacias.
+75 Tester API automatizado.
+76 Tester API automatizado no valido.
 79 csql>
 80 csql
 81 sysadm>
 
-145 <Help: Schema of a Class>
-146 none
-147 <Help: All Triggers>
-148 <Help: No Triggers Defined>
-150 <Help: Trigger Definition>
-151 <Help: Command Syntax>
-152 <Help: Session Command Summary>
-178 A file name is required.
-179 Cannot execute the pager.
-180 There is not enough memory allocated.
-184 The line being entered is too long.
-185 Too many lines have been entered.
-188 Too many file names have been entered.
-190 No such session command. Type `;help' for help messages.
-191 More than one session command matched. Please specify more.
-193 More than one command matched. Please specify more.
-194 Invalid combination of command line arguments (options).
-196 An undefined error has occurred.
-197 ';edit' is not allowed when output has been redirected.
+145 <Ayuda: Esquema de una Clase>
+146 ninguna
+147 <Ayuda: Todos Disparadores>
+148 <Ayuda: Sin Disparadores Definidos>
+150 <Ayuda: Definicion de Disparador>
+151 <Ayuda: Sintaxis de Comando>
+152 <Ayuda: Resumen de Comando de Sesion>
+178 Un nombre de archivo es requierido.
+179 No se puede ejecutar el pager.
+180 No hay suficiente memoria asignada.
+184 La linea que se esta introduciendo es demasiado larga.
+185 Demasiadas lineas han sido introducidas.
+188 Demasiados nombres de archivo han sido introducidos.
+190 No hay tal comandos de sesion. Escriba `;help' para mensajes de ayuda.
+191 Mas de un comando de session ha emparejado. Por favor especifique mas.
+193 Mas de un comando ha emparejado. Por favor especifique mas.
+194 Combinacion no valida de argumentos de linea de comando (opciones).
+196 Un error no definido ha ocurrido.
+197 ';edit' no es permitido cuando salida ha sido redireccionada.
 
 203 <%s> 
-204 <Super Classes> 
-205 <Sub Classes> 
-206 <Attributes> 
-207 <Class Attributes> 
-208 <Methods> 
-209 <Class Methods> 
-210 <Resolutions> 
-211 <Method files> 
-212 <Query_specifications> 
-213 <Triggers> 
-214 <Name> 
-215 <Event> 
-216 <Condition Time> 
-217 <Condition> 
-218 <Action Time> 
-219 <Action> 
-220 <Status> 
-221 <Priority> 
-222 <Name> 
-223 <Description> 
-224 <Syntax> 
-225 <Example> 
+204 <Super Clases> 
+205 <Sub Clases> 
+206 <Atributos> 
+207 <Atributos de Clase> 
+208 <Metodos> 
+209 <Metodos de Clase> 
+210 <Resoluciones> 
+211 <Archivos de Metodo> 
+212 <Especificaciones de Consulta> 
+213 <Disparadores> 
+214 <Nombre> 
+215 <Evento> 
+216 <Tiempo de Condicion> 
+217 <Condicion> 
+218 <Tiempo de Accion> 
+219 <Accion> 
+220 <Estado> 
+221 <Prioridad> 
+222 <Nombre> 
+223 <Descripcion> 
+224 <Sintaxis> 
+225 <Ejemplo> 
 
 $ csql help messages
 231 \
 \n\
-   All session commands should be prefixed by `;' and only blanks/tabs\n\
-   can precede the prefix. Capitalized characters represent the minimum\n\
-   abbreviation that you need to enter to execute the specified command.\n\
+   Todos los comandos de sesion tendrian que utilizar `;' como prefijo y solo blanks/tabs\n\
+   pueden preceder el prefijo. Caracteres mayúsculas representan la abreviacion minima\n\
+   que necesita introducir para ejecutar el comando especificado.\n\
 \n\
-   ;REAd   [<file-name>]       - read a file into command buffer.\n\
-   ;Write  [<file-name>]       - (over)write command buffer into a file.\n\
-   ;APpend [<file-name>]       - append command buffer into a file.\n\
-   ;PRINT                      - print command buffer.\n\
-   ;SHELL                      - invoke shell.\n\
-   ;CD                         - change current working directory.\n\
-   ;EXit                       - exit program.\n\
+   ;REAd   [<file-name>]       - leer un archivo en el bufer de comando.\n\
+   ;Write  [<file-name>]       - (sobre)escribe bufer de comando en un archivo.\n\
+   ;APpend [<file-name>]       - añadir bufer de comando en un archivo.\n\
+   ;PRINT                      - imprimir bufer de comando.\n\
+   ;SHELL                      - invocar shell.\n\
+   ;CD                         - cambiar directorio de trabajo actual.\n\
+   ;EXit                       - salir del programa.\n\
 \n\
-   ;CLear                      - clear command buffer.\n\
-   ;EDIT                       - invoke system editor with command buffer.\n\
-   ;List                       - display the content of command buffer.\n\
+   ;CLear                      - limpia bufer de comando.\n\
+   ;EDIT                       - invocar editor de sistema con bufer de comando.\n\
+   ;List                       - mostrar el contenido del bufer de comando.\n\
 \n\
-   ;RUn                        - execute sql in command buffer.\n\
-   ;Xrun                       - execute sql in command buffer,\n\
-                                 and clear the command buffer.\n\
-   ;COmmit                     - commit the current transaction.\n\
-   ;ROllback                   - roll back the current transaction.\n\
-   ;AUtocommit [ON|OFF]        - enable/disable auto commit mode.\n\
-   ;REStart                    - restart database.\n\
+   ;RUn                        - ejecutar sql en bufer de comando.\n\
+   ;Xrun                       - ejecutar sql en bufer de comando,\n\
+                                 y limpia el bufer de comando.\n\
+   ;COmmit                     - cometer transaccion actual.\n\
+   ;ROllback                   - hacer retroceder la transaccion actual.\n\
+   ;AUtocommit [ON|OFF]        - habilitar / deshabilitar modo cometer auto.\n\
+   ;REStart                    - reinicializar base de datos.\n\
 \n\
-   ;SHELL_Cmd  [shell-cmd]     - set default shell, editor, print and pager\n\
-   ;EDITOR_Cmd [editor-cmd]      command to new one, or display the current\n\
-   ;PRINT_Cmd  [print-cmd]       one, respectively.\n\
+   ;SHELL_Cmd  [shell-cmd]     - ajusta estandar shell, editor, impresora y pager\n\
+   ;EDITOR_Cmd [editor-cmd]      comandar a una nueva, o mostrar la actual\n\
+   ;PRINT_Cmd  [print-cmd]       respectivamente.\n\
    ;PAger_cmd  [pager-cmd]\n\
 \n\
-   ;DATE                       - display the local time, date.\n\
-   ;DATAbase                   - display the name of database being accessed.\n\
-   ;SChema class-name          - display schema information of a class.\n\
-   ;TRigger [`*'|trigger-name] - display trigger definition.\n\
-   ;Get system_parameter       - get the value of a system parameter.\n\
-   ;SEt system_parameter=value - set the value of a system parameter.\n\
-   ;PLan [simple/detail/off]   - show query execution plan.\n\
-   ;Info <command>             - display internal information.\n\
-   ;TIme [ON/OFF]              - enable/disable to display the query\n\
-                                 execution time.\n\
-   ;HISTORYList                - display list of the executed queries.\n\
-   ;HISTORYRead <history_num>  - read entry on the history number into command buffer.\n\
-   ;HElp                       - display this help message.\n\n
+   ;DATE                       - mostrar el tiempo local, fecha.\n\
+   ;DATAbase                   - mostrar el nombre de la base de datos que esta accesada.\n\
+   ;SChema class-name          - mostrar informacion de esquema de una clase.\n\
+   ;TRigger [`*'|trigger-name] - mostrar informacion de disparador.\n\
+   ;Get system_parameter       - obtener el valor de un parametro de sistema.\n\
+   ;SEt system_parameter=value - ajustar el valor de un parametro de sistema.\n\
+   ;PLan [simple/detail/off]   - mostrar el plan de ejecucion de la consulta.\n\
+   ;Info <command>             - mostrar informacion interna.\n\
+   ;TIme [ON/OFF]              - habilitar/inhabilitar para mostrar la consulta \n\
+                                 tiempo de ejecucion.\n\
+   ;HISTORYList                - mostrar lista de las consultas ejecutadas.\n\
+   ;HISTORYRead <history_num>  - leer entrada sobre el numero de historia en bufer de comando.\n\
+   ;HElp                       - mostrar este mensaje de ayuda.\n\n
 
-232 <Constraints> 
+232 <Restricciones>
 233 Info {schema|trigger|deferred|workspace|lock|stats}\n\
-\tschema [class-name]    - schema information\n\
-\ttrigger [trigger-name] - trigger information\n\
-\tdeferred               - deferred trigger information\n\
-\tworkspace              - workspace information\n\
-\tlock                   - lock information (client-server mode)\n\
-\tstats class-name       - class statistics information\n\
-\ttrantable              - transaction information\n\
-\tlogstat                - log information\n\
-\tcsstat                 - critical section information\n\
-\tplan                   - plan cache information\n\
-\tqcache                 - query cache information\n
-235 <Partitions>
-236 A class name is required.
+\tschema [class-name]    - informacion de esquema\n\
+\ttrigger [trigger-name] - informacion de disparador\n\
+\tdeferred               - information de disparador diferido\n\
+\tworkspace              - informacion de espacio de trabajo\n\
+\tlock                   - informacion de bloqueo(modo cliente-servidor)\n\
+\tstats class-name       - informacion de estadisticas de clase\n\
+\ttrantable              - informacion de transaccion\n\
+\tlogstat                - information de registro\n\
+\tcsstat                 - information de seccion critica\n\
+\tplan                   - informacion de cache de plan\n\
+\tqcache                 - informacion de cache de consulta\n
+235 <Particiones>
+236 Un nombre de clase es requierido.

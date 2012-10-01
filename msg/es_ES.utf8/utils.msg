@@ -67,22 +67,22 @@ $       46      genlocale
 $       47      dumplocale
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
-1 Invalid length or character '%c' in database name '%s'\n
-2 Couldn't open output file '%s'\n
-3 Missing or invalid utility name.\n
-4 Invalid utility name '%s'\n
-5 The following list contains the recognized utility names:\n
-6 Invalid character '%c' in volume name '%s'\n
+1 Longitud o caracter '%c' en el nombre de la base de datos '%s'\n no valida.
+2 No se puede abrir archivo de salida '%s'\n
+3 Nombre de utilidad falta o no valido.\n
+4 Nombre de utilidad no valido '%s'\n
+5 La siguente lista contiene los nombres de utilidad reconocidos:\n
+6 Caracter no valido '%c' en nombre de volumen '%s'\n
 9 \
-%s (CUBRID utilities)\n\
+%s (CUBRID utilidades)\n\
 %s\n\
 Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.\n
 10 \
-cubrid administrator utility, version %s\n\
-usage: %s <utility-name> [args]\n\
-Type '%s <utility-name>' for help on a specific utility.\n\
+utilidad de administrador de cubrid, version %s\n\
+uso: %s <nombre-de-utilidad> [args]\n\
+Escriba '%s <nombre-de-utilidad>' para ayuda sobre una utilidad especifica.\n\
 \n\
-Available admin utility-name:\n\
+Nombre de utilidad admin disponible:\n\
     createdb\n\
     deletedb\n\
     installdb\n\
@@ -112,24 +112,24 @@ Available admin utility-name:\n\
     genlocale\n\
     dumplocale\n\
 \n\
-%s is a tool for DBMS.\n\
-For additional information, see http://www.cubrid.com\n
-12 '%s' utility-name is invalid.\nType 'cubrid --help' to see usage.\n
-13 '%s' command is invalid.\nType 'cubrid --help' to see usage.\n
-14 Could not load one or more mandatory properties in configuration files.\n
+%s es una hieramenta para DBMS.\n\
+Para informacion adicional, vea http://www.cubrid.com\n
+12 '%s' nombre de utilidad es invalido.\nEscriba 'cubrid --help' para ver uso.\n
+13 '%s' comando es invalido.\nEscriba 'cubrid --help' para ver uso.\n
+14 No se pueden cargar una o más propiedades obligatorias en los archivos de configuración.\n
 15 @ %s %s: %s\n
 16 @ %s %s\n
-17 ++ %s '%s' is not running.\n
-18 ++ %s is not running.\n
-19 ++ %s '%s' is running.\n
-20 ++ %s is running.\n
+17 ++ %s '%s' no se esta ejecutando.\n
+18 ++ %s no se esta ejecutando.\n
+19 ++ %s '%s' se esta ejecutando.\n
+20 ++ %s se esta ejecutando.\n
 21 ++ %s %s: %s\n
-22 One or more arguments are missing.\nType 'cubrid --help' to see usage.\n
-23 cubrid utility, version %s\n\
-usage: %s <utility-name> [args]\n\
-Type '%s <utility-name>' for help on a specific utility.\n\
+22 Uno o mas argumentos faltan.\nEscriba 'cubrid --help' para ver uso.\n
+23 utilidad de cubrid, version %s\n\
+uso: %s <nombre-de-utilidad> [args]\n\
+Escriba '%s <nombre-de-utilidad>' para ayuda sobre una utilidad especifica.\n\
 \n\
-Available service's utilities:\n\
+Utilidades de servicio disponible:\n\
     service\n\
     server\n\
     broker\n\
@@ -137,7 +137,7 @@ Available service's utilities:\n\
     heartbeat\n\
     shard\n\
 \n\
-Available administrator's utilities:\n\
+Utilidades de administrador disponible:\n\
     addvoldb\n\
     alterdbhost\n\
     backupdb\n\
@@ -166,30 +166,30 @@ Available administrator's utilities:\n\
     genlocale\n\
     dumplocale\n\
 \n\
-%s is a tool for DBMS.\n\
-For additional information, see http://www.cubrid.com\n
-24 cubrid utility, version %s\n\
-usage: %s service <command>\n\
+%s es una hieramenta para DBMS.\n\
+Para informacion adicional, vea http://www.cubrid.com\n
+24 utilidad de cubrid, version %s\n\
+uso: %s service <command>\n\
 \n\
-Available command:\n\
+Comando disponible:\n\
     start\n\
     stop\n\
     restart\n\
     status\n
-25 cubrid utility, version %s\n\
-usage: %s server <command> [args]\n\
+25 utilidad de cubrid, version %s\n\
+uso: %s server <command> [args]\n\
 \n\
-Available command:\n\
+Comando disponible:\n\
     start       [database-name]\n\
     stop        [database-name]\n\
     restart     [database-name]\n\
     status\n\
     acl         <status|reload> database-name\n
-37 The server was configured for HA.\n
-26 cubrid utility, version %s\n\
-usage: %s broker <command> [args]\n\
+37 El servidor ha sido configurado para HA.\n
+26 utilidad de cubrid, version %s\n\
+uso: %s broker <command> [args]\n\
 \n\
-Available command:\n\
+Comando disponible:\n\
     start\n\
     stop\n\
     restart\n\
@@ -198,35 +198,35 @@ Available command:\n\
     off         broker-name\n\
     reset       broker-name\n\
     acl         <status|reload> [broker-name]\n
-27 cubrid utility, version %s\n\
-usage: %s manager <command>\n\
+27 utilidad de cubrid, version %s\n\
+uso: %s manager <command>\n\
 \n\
-Available command:\n\
+Comando disponible: \n\
     start\n\
     stop\n\
     status\n
-28 cubrid utility, version %s\n\
-usage: %s heartbeat <command> [args]\n\
+28 utilidad de cubrid, version %s\n\
+uso: %s heartbeat <command> [args]\n\
 \n\
-Available command:\n\
+Comando disponible: \n\
     start       [database-name]\n\
     stop        [database-name]\n\
     copylogdb   <start|stop> database-name node-name\n\
     applylogdb  <start|stop> database-name node-name\n\
     status\n\
     reload\n
-31 '%s' argument is not needed.\n
-32 A database-name is missing.\n
-33 %s: Such option is deprecated.\n
-34 Invalid Parameter. %s %s\n
-35 Cannot allocate memory.\n
-36 The server was not configured for HA.\n
-38 The server configured for HA is not listed in ha_db_list.\n
-39 The server configured for HA is not listed in ha_node_list.\n
-62 cubrid utility, version %s\n\
-usage: %s shard <command> [args]\n\
+31 Argumento '%s' no es necesario.\n
+32 Falta de un nombre de base de datos.\n
+33 %s: Tal opcion es depreciada.\n
+34 Parametro no valido. %s %s\n
+35 No se puede asignar memoria.\n
+36 El servidor no ha sido configurado para HA.\n
+38 El servidor configurado para HA no es listado en ha_db_list.\n
+39 El servidor configurado para HA no es listado en ha_node_list.\n
+62 utilidad de cubrid, version %s\n\
+uso: %s shard <command> [args]\n\
 \n\
-Available command:\n\
+Comando disponible:\n\
     start\n\
     stop\n\
     restart\n\
@@ -237,738 +237,738 @@ Available command:\n\
     acl         <status|reload> [shard-name]\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
-30 WARNING: -t option is ignored in stand-alone mode execution.\n
+30 ADVERTENCIA: -t opcion es ignorada en modo de ejecucion independiente.\n
 60 \
-backupdb: Backup a database.\n\
-usage: %s backupdb [OPTION] database-name\n\
+backupdb: Respaldar una base de datos.\n\
+uso: %s backupdb [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -D, --destination-path=PATH  store backup volumes to directory PATH; default: database's log directory\n\
-  -r, --remove-archive         delete unnecessary log-archives; use carefully and consult manual\n\
-  -l, --level=LEVEL            backup level; default: full level\n\
-                               LEVEL is allowed:\n\
-                                   0 - full\n\
+opciones validas:\n\
+  -D, --destination-path=PATH  almacenar volumenes de respaldo al directorio de RAIZ; estandar: directorio de registro de la base de datos\n\
+  -r, --remove-archive         eliminar carpetas de registro no necesidatas; usar con cuidado y consultar manual\n\
+  -l, --level=LEVEL            nivel de respaldo; estandar: nivel completo\n\
+                               NIVEL es permitido:\n\
+                                   0 - completo\n\
                                    1 - incremental 1\n\
                                    2 - incremental 2\n\
-  -o, --output-file=FILE       print detailed backup messages to FILE\n\
-  -S, --SA-mode                stand-alone mode execution\n\
-  -C, --CS-mode                client-server mode execution\n\
-      --no-check               don't check a consistency of the database; default: check\n\
-  -t, --thread-count=COUNT     number of threads; default: 0(auto)\n\
-  -z, --compress               compress backup volumes; default: uncompress\n\
-  -e, --except-active-log      don't include an active log volume; default: include\n\
-      --sleep-msecs=N          sleep N millisecond per 1M read; default: 0\n
-71 Incompatible arguments, \"%s\", and \"%s\"\n
+  -o, --output-file=FILE       imprimir mensajes de respaldo detalados al ARCHIVO\n\
+  -S, --SA-mode                modo de ejecucion independiente\n\
+  -C, --CS-mode                modo de ejecucion cliente-servidor\n\
+      --no-check               no verificar una consistencia de la base de datos; estandar: verificar\n\
+  -t, --thread-count=COUNT     numero de hilos; estandar: 0(auto)\n\
+  -z, --compress               comprimir volumenes de respaldo; estandar: descomprimir\n\
+  -e, --except-active-log      no incluir un volumen de registro activo; estandar: incluir\n\
+      --sleep-msecs=N          dormir N milisecondas para cada 1M leido estandar: 0\n
+71 Argumentos incompatibles, \"%s\", y \"%s\"\n
 
 
 $set 3 MSGCAT_UTIL_SET_COPYDB
-30 ERROR: Destination name is identical to source name.\n
-31 ERROR: volext-pathname does not exist or is not writeable.\n
-32 ERROR: vols-tofrom-paths_file does not exist or is not readable.\n
+30 ERROR: Nombre de destino es identico con el nombre de origen.\n
+31 ERROR: volext-pathname no existe o no se puede escribir.\n
+32 ERROR: vols-tofrom-paths_file no existe o no se puede leer.\n
 60 \
-copydb: Copy a database.\n\
-usage: %s copydb [OPTION] src-database-name dest-database-name\n\
+copydb: Copiar una base de datos.\n\
+uso: %s copydb [OPTION] src-database-name dest-database-name\n\
 \n\
-valid options:\n\
-      --server-name=HOST          server's HOST name; default: current host name\n\
-  -F, --file-path=PATH            directory PATH for database volumes; default: current directory\n\
-  -L, --log-path=PATH             directory PATH for log volumes; default: same as file-path\n\
-  -B, --lob-base-path=PATH        base directory PATH for external LOB data; default: <file-path>/lob\n\
-  -E, --extended-volume-path=PATH directory PATH for extended information volumes; default: same path as the database volumes or the given path in control-file\n\
-  -i, --control-file=FILE         copying volumes over several locations written in the control file; default: none\n\
-  -r, --replace                   replace an existing database; default: don't replace\n\
-  -d, --delete-source             delete a source database; default: don't delete\n\
-      --copy-lob-path             copy external storage PATH for LOB data from source database. cannot be used with -B option; default: don't copy\n
+opciones validas:\n\
+      --server-name=HOST          nombre de HOST del servidor; estandar: nombre de host actual\n\
+  -F, --file-path=PATH            RUTA de directorio para volumenes de base de datos; estandar: directorio actual\n\
+  -L, --log-path=PATH             RUTA de directorio para volumenes de registro; estandar: la misma que la ruta de archivo\n\
+  -B, --lob-base-path=PATH        RUTA de directorio de base para datos LOB externos; estandar: <file-path>/lob\n\
+  -E, --extended-volume-path=PATH RUTA de directorio para volumenes de informacion extendidos; estandar: la misma ruta que los volumenes de base de datos o la ruta dada en el archivo de control\n\
+  -i, --control-file=FILE         copiar volumenes sobre varias ubicaciones escritas en el archivo de control; estandar: ninguno\n\
+  -r, --replace                   sustituir una base de datos existente; estandar: no sustituir\n\
+  -d, --delete-source             eliminar una base de datos de origen; estandar: no eliminar\n\
+      --copy-lob-path             copiar ruta de almacenamiento externa para datos LOB de la base de datos de origen. no puede ser utilizado con la opcion -B; estandar: no copiar\n
 
 
 $set 4 MSGCAT_UTIL_SET_CREATEDB
-40 Group '%s' does not exist\n
-41 User '%s' does not exist\n
-42 Unknown command '%s'\n
-43 Couldn't open output file '%s'\n
-44 Couldn't removing existing database.\n
-45 Creating database with %s size.\n
-46 Couldn't create database.\n
-47 Problem with user file '%s'\n
-48 The '%s' must be between %s and %s\n
-49 The value of %s '%s' is invalid.\n
+40 Grupo '%s' no existe\n
+41 Utilizador '%s' no existe\n
+42 Comando desconocido '%s'\n
+43 No se puede abrir archivo de salida '%s'\n
+44 No se puede eliminar base de datos existente.\n
+45 Creando base de datos con tamano %s.\n
+46 No se pudo crear base de datos.\n
+47 Problema con el archivo de utilizador '%s'\n
+48 El '%s' debe ser entre %s y %s\n
+49 El valor de %s '%s' no es valido.\n
 60 \
-createdb: Create a database.\n\
-usage: %s createdb [OPTION] database-name\n\
+createdb: Crear una base de datos.\n\
+uso: %s createdb [OPTION] database-name\n\
 \n\
-valid options:\n\
-      --db-volume-size=SIZE           size of first information volume\n\
-                                      default: db_volume_size in cubrid.conf\n\
-      --db-page-size=SIZE             database page SIZE in bytes; default: 16K\n\
-      --log-volume-size=SIZE          size of log archives\n\
-                                      default: log_volume_size in cubrid.conf\n\
-      --log-page-size=SIZE            log page SIZE in bytes; default: database page size\n\
-      --comment=COMMENT               COMMENT for a database; default: none\n\
-  -F, --file-path=PATH                directory PATH for database volumes; default: current directory\n\
-  -L, --log-path=PATH                 directory PATH for log volumes; default: same as file-path\n\
-  -B, --lob-base-path=PATH            base directory PATH for external LOB data; default: <file-path>/lob\n\
-      --server-name=HOST              server's HOST name; default: current host name\n\
-  -r, --replace                       replace an existing database; default: don't replace\n\
-      --more-volume-file=FILE         FILE contain specifications for creation of additional volumes; default: none\n\
-      --user-definition-file=FILE     FILE contain user definitions; default: none\n\
-      --csql-initialization-file=FILE FILE contain SQLs for an initialization of the database; default: none\n\
-  -o, --output-file=FILE              redirect output messages to FILE; default: none\n\
-  -v, --verbose                       enable verbose status messages; default: disabled\n
+opciones validas:\n\
+      --db-volume-size=SIZE           tamano del primer volumen de informacion\n\
+                                      estandar: db_volume_size en cubrid.conf\n\
+      --db-page-size=SIZE             TAMANO de pagina de base de datos en bytes; estandar: 16K\n\
+      --log-volume-size=SIZE          tamano de carpetas de registro\n\
+                                      estandar: log_volume_size en cubrid.conf\n\
+      --log-page-size=SIZE            TAMANO de pagina de registro en bytes; estandar: tamano de pagina de base de datos\n\
+      --comment=COMMENT               COMENTARIO para una base de datos; estandar: ninguno\n\
+  -F, --file-path=PATH                RUTA de directorio para volumenes de base de datos; estandar: directorio actual\n\
+  -L, --log-path=PATH                 RUTA de directorio para volumenes de registro; estandar: la misma que la ruta de archivo\n\
+  -B, --lob-base-path=PATH            RUTA de directorio de base para datos LOB externos; estandar: <file-path>/lob\n\
+      --server-name=HOST              nombre HOST del servidor; estandar: nombre de host actual\n\
+  -r, --replace                       sustituir una base de datos existente; estandar: no sustituir\n\
+      --more-volume-file=FILE         ARCHIVO contiene especificaciones para la creacion de volumenes adicionales; estandar: ninguna\n\
+      --user-definition-file=FILE     ARCHIVO contiene definiciones de utilizador; estandar: ninguna\n\
+      --csql-initialization-file=FILE ARCHIVO contiene SQLs para una inicializacion de la base de datos; estandar: ningun\n\
+  -o, --output-file=FILE              redireccionar mensajes de salida al ARCHIVO; estandar: ninguno\n\
+  -v, --verbose                       habilitar mensajes de estado verbose; estandar: inhabilitado\n
 
 
 $set 6 MSGCAT_UTIL_SET_DELETEDB
 60 \
-deletedb: Delete a database.\n\
-usage: %s deletedb [OPTION] database-name\n\
+deletedb: Eliminar una base de datos.\n\
+uso: %s deletedb [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -o, --output-file=FILE       redirect output messages to FILE; default: none\n\
-  -d, --delete-backup          delete backup volumes; default: don't delete\n
+opciones validas:\n\
+  -o, --output-file=FILE       redireccionar mensajes de salida al ARCHIVO; estandar: ninguno\n\
+  -d, --delete-backup          eliminar volumenes de respaldo; estandar: no eliminar\n
 
 $set 7 MSGCAT_UTIL_SET_RENAMEDB
-31 ERROR: volext-pathname does not exist or is not writeable.\n
-32 ERROR: vols-tofrom-paths_file does not exist or is not readable.\n
+31 ERROR: volext-pathname no existe o no se puede escribir.\n
+32 ERROR: vols-tofrom-paths_file no existe o no se puede leer.\n
 60 \
-renamedb: Rename a database.\n\
-usage: %s renamedb [OPTION] src-database-name dest-database-name\n\
+renamedb: Renombrar una base de datos.\n\
+uso: %s renamedb [OPTION] src-database-name dest-database-name\n\
 \n\
-valid options:\n\
-  -E, --extended-volume-path=PATH directory PATH for extended information volumes; default: same path as the database volumes or the given path in control-file\n\
-  -i, --control-file=FILE         renaming volumes over several locations written in the control file; default: none\n\
-  -d, --delete-backup             delete backup volumes; default: don't delete\n
+opciones validas:\n\
+  -E, --extended-volume-path=PATH RUTA de directorio para volumenes de informacion extendidos; estandar: la misma ruta que la de los volumenes de base de datos o la ruta dada en el archivo de control\n\
+  -i, --control-file=FILE         renombrar volumenes sobre varias ubicaciones escritas en el archivo de control; estandar: ninguno\n\
+  -d, --delete-backup             eliminar volumenes de respaldo; estandar: no eliminar\n
 
 $set 9 MSGCAT_UTIL_SET_MASTER
-11 A %s process is already running.\n
-12 MASTER SERVER starting. \n
-13 MASTER SERVER exiting.\n
-14 Error finding local host name\n
-15 Could not find parameter file\n
-16 Could not initialize master process\n
-17 Server %s going down in %d minutes
-18 Server %s notified of shutdown.\nThis may take several minutes. Please wait.
-19 Server %s not found.
-20 Master going down in %d minutes\n
+11 Ejecutando ya un proceso %s.\n
+12 SERVIDOR MAESTRO inicializando. \n
+13 SERVIDOR MAESTRO saliendo.\n
+14 Error al encontrar nombre de host local\n
+15 No se puede encontrar archivo de parametros\n
+16 No se puede inicializar proceso maestro\n
+17 Servidor %s apagando en %d minutos
+18 Servidor %s notificado del cierre.\nEsto puede durar unos minutos. Por favor espere.
+19 Server %s no encontrado.
+20 Maestro apagando en %d minutos\n
 
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
-11 Couldn't open output file '%s'\n
+11 No se puede abrir archivo de salida '%s'\n
 60 \
-optimizedb: Optimize a database.\n\
-usage: %s optimizedb [OPTION] database-name\n\
+optimizedb: Optimizar una base de datos.\n\
+uso: %s optimizedb [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -n, --class-name=NAME        update statistics for the NAME class; default: all classes\n
+opciones validas:\n\
+  -n, --class-name=NAME        actualizar estadisticas para la clase NOMBRE; estandar: todas clases\n
 
 
 $set 11 MSGCAT_UTIL_SET_RESTOREDB
-19 Invalid date format, valid format is dd-mm-yyyy:hh:mm:ss or 'backuptime'\n
-20 Restoredb cancelled or an error occurred.\n
+19 Formato de fecha no valido, formato valido es dd-mm-yyyy:hh:mm:ss o 'backuptime'\n
+20 Restoredb cancelado o un error ha ocurrido.\n
 60 \
-restoredb: Restore a database.\n\
-usage: %s restoredb [OPTION] database-name\n\
+restoredb: Restablecer una base de datos.\n\
+uso: %s restoredb [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -d, --up-to-date=DATE             restore the database up to its condition at given DATE. DATE is given as follows: dd-mm-yyyy:hh:mm:ss or 'backuptime' keyword\n\
-      --list                        display a list of backup volumes without restoring\n\
-  -B, --backup-file-path=PATH       PATH is a directory of backup volumes to be restored\n\
-  -l, --level=LEVEL                 LEVEL of backup to be restored; see backup usage; default: 0(full backup)\n\
-  -p, --partial-recovery            perform partial recovery if any log archive is absent\n\
-  -o, --output-file=FILE            redirect output messages to FILE; default: none\n\
-  -u, --use-database-location-path  restore the database and log volumes to the path specified in the database location file\n
+opciones validas:\n\
+  -d, --up-to-date=DATE             restablecer la base de datos a la altura de su condicion en FECHA determinada. FECHA es dada como sigue: dd-mm-yyyy:hh:mm:ss o palabra clave 'backuptime'\n\
+      --list                        mostrar una lista de volumenes de respaldo sin restablecer\n\
+  -B, --backup-file-path=PATH       RUTA es un directorio de volumenes de respaldo que necesitan ser restablecidos\n\
+  -l, --level=LEVEL                 NIVEL de respaldo a restablecer; vea uso de respaldo; estandar: 0(respaldo completo)\n\
+  -p, --partial-recovery            realizar recuperacion parcial si alguna carpeta de registro falta\n\
+  -o, --output-file=FILE            redireccionar mensajes de salida al ARCHIVO; estandar: ninguno\n\
+  -u, --use-database-location-path  restablecer la base de datos y volumenes de registro a la ruta especificada en el archivo de ubicacion de la base de datos\n
 
 
 $set 12 MSGCAT_UTIL_SET_LOADDB
-19 Tha database name is missing.\n
-20 '%s' file does not have %d lines.\n
-21 interrupt ... \n
-22 Interrupted load - current transaction committed\n
-23 Interrupted load - current transaction aborted\n
-24 Can't open file '%s'\n
-25 \n*** Checking syntax ***\n\n
-26 %d errors detected.\n
-27 \n*** Inserting objects ***\n\n
-28 Total %8d objects inserted.\n
-29 Total %8d referenced objects inserted with default contents.\n
-30 \n*** Committing the transaction ***\n
-31 \n*** Closing the database ***\n
-32 Line %d:
-33 Error parsing '%s' as a '%s' value for attribute '%s' of '%s'\n
-34 Missing domain for attribute %s of %s\n
-35 For attribute %s of %s, type %s is not allowed in the domain of the set\n
-36 For attribute %s of %s, expected type %s, got a set constant\n
-37 For attribute %s of %s, expected type %s, got %s\n
-38 No class named %s referenced by attribute %s of %s\n
-39 No class named %s, ignoring tuples\n
-40 No class with identifier %d referenced by attribute %s of %s\n
-41 Class %s is not allowed in the loader input file\n
-42 Stopped with error.\n
-43 WARNING: updated existing instance !\n
-44 WARNING: redefining Instance %d of class %s\n
-45 Instance %d of class %s has already been defined\n
-46 Instance %d of class %s has already been reserved\n
-47 UNIQUE violation on attribute '%s', converted to NULL\n
-48   %d instances\n
-49 Class %s\n
-50 Password:
-51 \n*** Updating class statistics ***\n
-52 %s near line %d (text was '%s')\n
-53 Lexical error
-54 line %d: syntax error at \"%s\"
-55 missing
-56 in %s
-57 Incompatible arguments, \"%s\", and \"%s\"\n
-58 %d instances committed\n
-59 \nCannot invoke non-optimized version of loaddb.\n
-60 Error parsing \"%s\", as %s type.\n
-112   %d instances\r
-113 Last committed line : %d
+19 El nombre de base de datos falta.\n
+20 Archivo '%s' no tiene %d lineas.\n
+21 interrumpir ... \n
+22 Carga interrumpida - transaccion actual cometida\n
+23 Carga interrumpida - transaccion actual abortada\n
+24 No se puede abrir archivo '%s'\n
+25 \n*** Verificar sintaxis ***\n\n
+26 %d errores detectados.\n
+27 \n*** Insertando objetos ***\n\n
+28 Total %8d objetos insertados. \n
+29 Total %8d objetos referenciados insertados con contenidos estandar.\n
+30 \n*** Cometiendo la transaccion ***\n
+31 \n*** Cerrando la base de datos ***\n
+32 Linea %d:
+33 Error al analizar '%s' como un valor '%s' para atributo '%s' de '%s'\n
+34 Falta dominio para atributo %s de %s\n
+35 Para atributo %s de %s, tipo %s no es permitido en el dominio del conjunto\n
+36 Para atributo %s de %s, tipo esperado %s, ha obtenido una constante de conjunto\n
+37 Para atributo %s de %s, tipo esperado %s, ha obtenido %s\n
+38 Ninguna clase con el nombre %s referenciada por el atributo %s de %s\n
+39 Ninguna clase con el nombre %s, ignorando tuplas\n
+40 Ninguna clase con identificador %d referenciada por el atributo %s de %s\n
+41 Clase %s no es permitida en el archivo de entrada del cargador\n
+42 Terminado con error.\n
+43 ADVERTENCIA: actualizado instancia existente!\n
+44 ADVERTENCIA: redefiniendo Instancia %d de la clase %s\n
+45 Instancia %d de la clase %s ha sido ya definida\n
+46 Instancia %d de la clase %s ha sido ya reservada\n
+47 Violacion UNIQUE en atributo '%s', convertida en NULL\n
+48 %d instancias\n
+49 Clase %s\n
+50 Contrasena:
+51 \n*** Actualizando estadisticas de clase ***\n
+52 %s cerca de la linea %d (texto era '%s')\n
+53 Error lexical
+54 linea %d: error de sintaxis en \"%s\"
+55 faltando
+56 en %s
+57 Argumentos incompatibles, \"%s\", y \"%s\"\n
+58 %d instancias cometidas\n
+59 No se pueden apelar versiones no-optimizadas de loaddb.\n
+60 Error al analizar \"%s\", como tipo %s.\n
+112 %d instancias\r
+113 Ultima linea cometida: %d
 114 error-control-file
-115 input file to control error(s) during loading
+115 archivo de entrada para controlar error(es) al cargar
 120 \
-loaddb: Import objects and schemas to the database.\n\
-usage: %s loaddb [OPTION] database-name\n\
+loaddb: Importar objetos y esquemas en la base de datos.\n\
+uso: %s loaddb [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -u, --user=ID                 user ID for database access; default: "public"\n\
-  -p, --password=PASS           user password; default: none\n\
-      --data-file-check-only    check syntax for data file without load; default: loading after checking\n\
-  -l, --load-only               load data file without checking syntax; default: loading after checking\n\
-      --estimated-size=NUMBER   estimated NUMBER of instances; default: 5000\n\
-  -v, --verbose                 enable verbose status messages; default: disabled\n\
-  -c, --periodic-commit=COUNT   insertion COUNT for periodic commit; default: no commit during loading\n\
-      --no-oid                  don't use OID\n\
-      --no-statistics           do not update the statistics while loading\n\
-  -s, --schema-file=FILE[:LINE] create schema from LINE with FILE\n\
-  -i, --index-file=FILE[:LINE]  create index from LINE with FILE\n\
-  -d, --data-file=FILE          load data with FILE\n\
-  -t, --table=TABLE             table name that is substituted for missing class header in data file\n\
-      --error-control-file=FILE FILE to control error(s) during loading\n\
-      --ignore-class-file=FILE  input file of class names that skip load\n
+opciones validas:\n\
+  -u, --user=ID                 ID de utilizador para acceso a la base de datos; estandar: "public"\n\
+  -p, --password=PASS           contrasena de utilizador; estandar: ninguna\n\
+      --data-file-check-only    verificar sintaxis para archivo de datos sin cargar; estandar: cargar despues de verificar\n\
+  -l, --load-only               cargar archivo de datos sin verificar sintaxis; estandar: cargar despues de verificar\n\
+      --estimated-size=NUMBER   NUMERO estimado de instancias; estandar: 5000\n\
+  -v, --verbose                 habilitar mensajes de estado verbose; estandar: inhabilitado\n\
+  -c, --periodic-commit=COUNT   insertar COUNT al cometer periodicamente; estandar: no cometer mientras cargando\n\
+      --no-oid                  no utilizar OID\n\
+      --no-statistics           no actualizar las estadisticas mientras cargando\n\
+  -s, --schema-file=FILE[:LINE] crear esquema de la LINEA con ARCHIVO\n\
+  -i, --index-file=FILE[:LINE]  crear indice de la LINEA CON ARCHIVO\n\
+  -d, --data-file=FILE          cargar datos con ARCHIVO\n\
+  -t, --table=TABLE             nombre de tabla que es sustituido por falta de encabezamiento de clase en archivo de datos\n\
+      --error-control-file=FILE ARCHIVO para controlar error(es) al cargar\n\
+      --ignore-class-file=FILE  archivo de entrada de nombres de clase que saltan carga\n
 121 \
-load_noopt: This utility is deprecated. Be careful to use.\n\
-usage: load_noopt [OPTION] database-name\n\
+load_noopt: Esta utilidad es depreciada. Sea atento al utilizar.\n\
+uso: load_noopt [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -u, --user=ID                 user ID for database access; default: "public"\n\
-  -p, --password=PASS           user password; default: none\n\
-      --data-file-check-only    check syntax for data file without load; default: loading after checking\n\
-  -l, --load-only               load data file without checking syntax; default: loading after checking\n\
-      --estimated-size=NUMBER   estimated NUMBER of instances; default: 5000\n\
-  -v, --verbose                 enable verbose status messages; default: disabled\n\
-  -c, --periodic-commit=COUNT   insertion COUNT for periodic commit; default: no commit during loading\n\
-      --no-oid                  don't use OID\n\
-  -s, --schema-file=FILE[:LINE] create schema from LINE with FILE\n\
-  -i, --index-file=FILE[:LINE]  create index from LINE with FILE\n\
-  -d, --data-file=FILE          load data with FILE\n\
-      --error-control-file=FILE FILE to control error(s) during loading\n
+opciones validos:\n\
+  -u, --user=ID                 ID de utilizador para acceso a la base de datos; estandar: "public"\n\
+  -p, --password=PASS           contrasena de utilizador; estandar: ninguna\n\
+      --data-file-check-only    verificar sintaxis para archivo de datos sin carga; estandar: cargar despues de verificar\n\
+  -l, --load-only               cargar archivo de datos sin verificar sintaxis; estandar: cargar despues de verificar\n\
+      --estimated-size=NUMBER   NUMERO estimado de instancias; estandar: 5000\n\
+  -v, --verbose                 habilitar mensajes de estado verbose; estandar: inhabilitado\n\
+  -c, --periodic-commit=COUNT   insertar COUNT al cometer periodicamente; estandar: no cometer mientras cargando\n\
+      --no-oid                  no utilizar OID\n\
+  -s, --schema-file=FILE[:LINE] crear esquema de la LINEA con ARCHIVO\n\
+  -i, --index-file=FILE[:LINE]  crear indice de la LINEA con ARCHIVO\n\
+  -d, --data-file=FILE          cargar datos con ARCHIVO\n\
+      --error-control-file=FILE ARCHIVO para controlar error(es) mientras cargando\n
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
-41 cached-pages value is invalid.\n
-42 cached-page-size value is invalid.\n
-43 %d objects dumped.\n
-44 Class %s
-45 , %d instances.\n
-46 Only %d out of %d objects dumped successfully.\n
-47 output directory is too long.\n
+41 valor de cached-pages no es valido.\n
+42 valor de cached-page-size no es valido.\n
+43 %d objetos botados.\n
+44 Clase %s
+45 , %d instancias.\n
+46 Solo %d de %d objetos botados con exito.\n
+47 directorio de salida es demasiado largo.\n
 48 LSA : %d %d \n
 60 \
-unloaddb: Export objects and schemas from the database.\n\
-usage: %s unloaddb [OPTION] database-name\n\
+unloaddb: Exportar objetos y esquemas de la base de datos.\n\
+uso: %s unloaddb [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -i, --input-class-file=FILE input FILE of table names; default: dump all classes\n\
-      --include-reference     include referenced tables; with -i option; default: disabled\n\
-      --input-class-only      include specified class only; with -i option; default: disabled\n\
-      --lo-count=COUNT        lo file COUNT per a directory; default: 0\n\
-      --estimated-size=NUMBER estimated NUMBER of instances; default: auto computed\n\
-      --cached-pages=NUMBER   NUMBER of cached pages; default: 100\n\
-  -O, --output-path=PATH      PATH of output directory; default: working directory\n\
-  -s, --schema-only           dump schema only; default: schema and objects\n\
-  -d, --data-only             dump objects only; default: schema and objects\n\
-      --output-prefix=PREFIEX PREFIX for output files; default: the database name\n\
-      --hash-file=FILE        FILE for hash; default: generate by tmpnam()\n\
-  -v, --verbose               enable verbose status messages; default: disabled\n\
-      --use-delimiter         use '"' where an identifier begins and ends; default: don't use\n\
-  -S, --SA-mode               stand-alone mode execution\n\
-  -C, --CS-mode               client-server mode execution\n\
-      --datafile-per-class    create a object file for each class; default: disabled\n
+opciones validas:\n\
+  -i, --input-class-file=FILE entrar ARCHIVO de nombres de tablas; estandar: botar todas clases\n\
+      --include-reference     incluir tablas referenciadas; con opcion -i; estandar: inhabilitado\n\
+      --input-class-only      incluir solo la clase especificada; con opcion -i; estandar: inhabilitado\n\
+      --lo-count=COUNT        lo file COUNT para un directorio: estandar: 0\n\
+      --estimated-size=NUMBER NUMERO estimado de instancias; estandar: auto calculado\n\
+      --cached-pages=NUMBER   NUMERO de paginas almacenadas; estandar: 100\n\
+  -O, --output-path=PATH      RUTA de directorio de salida; estandar: directorio de trabajo\n\
+  -s, --schema-only           botar solo esquema; estandar: esquema y objetos\n\
+  -d, --data-only             botar solo objetos; estandar: esquema y objetos\n\
+      --output-prefix=PREFIEX PREFIJO para archivos de salida; estandar: el nombre de la base de datos\n\
+      --hash-file=FILE        ARCHIVO para hash; estandar: generar por tmpnam()\n\
+  -v, --verbose               habilitar mensajes de estado verbose; estandar: inhabilitado\n\
+      --use-delimiter         utilizar '"' donde un identificador empieza y acaba; estandar: no utilizar\n\
+  -S, --SA-mode               modo de ejecucion independiente\n\
+  -C, --CS-mode               modo de ejecucion cliente-servidor\n\
+      --datafile-per-class    crear un archivo de objeto para cada clase; estandar: inhabilitado\n
 
 
 
 $set 14 MSGCAT_UTIL_SET_COMPACTDB
 11 \nPass 1\n\n
-12 %d objects processed.\n
+12 %d objetos procesados.\n
 13 \nPass 2\n\n
-14 Class %s\n
+14 Clase %s\n
 15 oid:  %d|%d|%d,\n
-16 %d instances.\n
-17 Updating object.\n
+16 %d instancias.\n
+17 Actualizando objeto.\n
 18 ref_oid:  %d.%d.%d, ref_class_oid:  %d.%d.%d\n
-19 Couldn't transform object\n
-20 Missing class heap file\n
-21 Couldn't update object\n
-22 Only %d out of %d objects processed successfully.\n
-23 COMPACTDB already started.\n
-24 The number of pages must be between %d and %d.\n
-25 The instance lock timeout must be between %d and %d.\n
-26 Total objects: %d\n
-27 Failed objects: %d\n
-28 Modified objects: %d\n
-29 Big objects: %d\n
-30 Old class representations deleted from catalog.\n
-31 Old class representations preserved in catalog.\n
-32 Can't set isolation level.\n
-33 Couldn't compact database.\n
-34 The class lock timeout must be between %d and %d.\n
-35 Locked class... Incomplete processing...\n
-36 Unprocessed class...\n
-37 Process error... Incomplete processing...\n
-38 Nothing to process...\n
-39 Invalid parameters...\n
-40 Unknown class name...\n
-41 The unused class OIDs and pages have been reclaimed.\n
-42 Reclaiming of OIDs and pages skipped.\n
-43 Error while processing class, class skipped.\n
+19 No se pudo transformar objeto\n
+20 Falta de archivo heap de clase\n
+21 No se pudo actualizar objeto\n
+22 Solo %d de %d objetos procesados con exito.\n
+23 COMPACTDB ya inicializado.\n
+24 El numero de paginas tiene que ser entre %d y %d.\n
+25 El tiempo de expirar para el bloqueo de instancia tiene que ser entre %d y %d.\n
+26 Total objetos: %d\n
+27 Objetos fracasados: %d\n
+28 Objetos modificados: %d\n
+29 Objetos grandes: %d\n
+30 Representaciones viejas de clase eliminadas del catalogo.\n
+31 Representaciones viejas de clase preservadas en catalogo.\n
+32 No se puede ajustar el nivel de aislamiento.\n
+33 No se puede compactar la base de datos.\n
+34 El tiempo de expirar del bloqueo de clase tiene que ser entre %d y %d.\n
+35 Clase bloqueada... Procesamiento incompleto...\n
+36 Clase no procesada...\n
+37 Error de proceso... Procesamiento incompleto...\n
+38 Nada para procesar...\n
+39 Parametros no validos...\n
+40 Nombre de clase desconocido...\n
+41 Los OIDs y las paginas no utilizadas de la clase han sido reclamadas.\n
+42 Saltado la recuperacion de los OIDs y paginas.\n
+43 Error al procesar la clase, clase saltada.\n
 44 \nPass 3\n\n
-45 Heap compact failed...\n
-46 Heap compact succedeed...\n
+45 Fracaso al compactar el heap...\n
+46 Exito al compactar el heap...\n
 60 \
-compactdb: Free unused space in a database.\n\
-usage: %s compactdb [OPTION] database-name [class_name1 class_name2 ...]\n\
+compactdb: Spacio libre no utilizado en una base de datos.\n\
+uso: %s compactdb [OPTION] database-name [class_name1 class_name2 ...]\n\
 \n\
-valid options:\n\
-  -v, --verbose                     enable verbose status messages; default: disabled\n\
-  -i, --input-class-file=FILE       input FILE of table names\n\
-                                    class_name list must be empty\n\
-                                    default: compact all classes\n\
-                                    enabled in CS-mode only\n\
-  -p, --pages-commited-once=NUMBER  maximum number of pages to commit once\n\
-                                    default: 10\n\
-                                    enabled in CS-mode only\n\
-  -S, --SA-mode                     stand-alone mode execution\n\
-  -C, --CS-mode                     client-server mode execution\n\
-  -d, --delete-old-repr             delete old class representations from catalog; default: disabled\n\
-  class_name_list                   enabled in CS-mode only\n\
-  -I, --Instance-lock-timeout       timeout for instance lock\n\
-  -c, --class-lock-timeout          timeout for class lock\n
+opciones validas:\n\
+  -v, --verbose                     habilitar mensajes de estado verbose; estandar: inhabilitado\n\
+  -i, --input-class-file=FILE       ARCHIVO de entrada de nombres de tabla\n\
+                                    lista class_name debe ser vacia\n\
+                                    estandar: compactar todas clases\n\
+                                    habilitado solo en modo CS\n\
+  -p, --pages-commited-once=NUMBER  numero maximo de paginas para cometer a la vez\n\
+                                    estandar: 10\n\
+                                    habilitado solo en modo CS\n\
+  -S, --SA-mode                     modo de ejecucion independiente\n\
+  -C, --CS-mode                     modo de ejecucion cliente-servidor\n\
+  -d, --delete-old-repr             eliminar representaciones viejas de clase del catalogo; estandar: inhabilitado\n\
+  class_name_list                   habilitado solo en modo CS\n\
+  -I, --Instance-lock-timeout       tiempo de expirar para bloqueo de instancia\n\
+  -c, --class-lock-timeout          tiempo de expirar para bloqueo de clase\n
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
-21 The CUBRID master running on host %s \nwas started at %s
-22 has serviced %d requests. %d server(s) running.\n
-23 SHUTTING DOWN in %s minutes\n
+21 CUBRID master ejecutado en host %s \nha sido reinicializado a %s
+22 ha servido %d peticiones. %d servidor(es) que ejecutan.\n
+23 APAGANDO en %s minutos\n
 24 %s
-25 Name of server to shutdown :
-26 How many minutes until shutdown? :
+25 Nombre del servidor para apagar:
+26 Cuantos minutos hasta el cierre? :
 27 \
-cub_commdb: This utility is deprecated. Use 'cubrid' command instead.\n\
-usage: cub_commdb [OPTION]\n\
+cub_commdb: Esta utilidad es depreciada. En cambio, utilizar comando 'cubrid'.\n\
+uso: cub_commdb [OPTION]\n\
 \n\
-valid options:\n\
-  -P, --server-list                print server processes\n\
-  -O, --all-list                   print all processes\n\
-  -S, --shutdown-server=NAME       shutdown NAME database server\n\
-  -A, --shutdown-all               shutdown all processes\n\
-  -c, --server-mode=NAME           print NAME database server's HA mode\n\
-  -N, --node-list                  list nodes managed by CUBRID heartbeat\n\
-  -L, --process-list               list local process managed by CUBRID heartbeat\n\
-  -D, --dereg-process=PID          exit the target process and remove it from managed process entries\n\
-  -F, --reconfig-node-list         apply CUBRID heartbeat configuration recently changed\n\
-  -U, --deactivate-heartbeat       deactivate CUBRID heartbeat feature and remove the current node from node group\n\
-  -T, --activate-heartbeat         activate CUBRID heartbeat feature and current node becomes a member of node group\n\
-  -V, --verbose                    enable verbose status messages; default: disabled\n
-28 Sorry, unknown command: %s\n
-29 Could not get host name for local host - aborting\n
-30 Could not find parameter file\n
-31 Could not connect to master server on %s\n
-32 How many minutes until shutdown? :
-33 Master will shutdown in %d minutes\n
-34 Error receiving data from client
-35 the database server %s is not currently running
-36 can't exec shell (%s) for %s, %s
-37 process fork %s, returned %d, %s
-38 can't execute %s
+opciones validas:\n\
+  -P, --server-list                imprimir procesos de servidor\n\
+  -O, --all-list                   imprimir todos los procesos\n\
+  -S, --shutdown-server=NAME       apagar servidor NOMBRE de la base de datos\n\
+  -A, --shutdown-all               cerrar todos los procesos\n\
+  -c, --server-mode=NAME           imprimir el modo HA del servidor NOMBRE de la base de datos\n\
+  -N, --node-list                  listar nodos patrocinados por CUBRID heartbeat\n\
+  -L, --process-list               listar proceso local patrocinado por CUBRID heartbeat\n\
+  -D, --dereg-process=PID          salir del proceso de destino y eliminarlo de las entradas de proceso patrocinadas\n\
+  -F, --reconfig-node-list         aplicar la configuracion CUBRID heartbeat recien cambiada\n\
+  -U, --deactivate-heartbeat       inhabilitar caracteristica CUBRID heartbeat y eliminar el nodo actual del grupo de nodos\n\
+  -T, --activate-heartbeat         habilitar caracteristica CUBRID heartbeat y nodo actual se convierte en un miembro del grupo de nodos\n\
+  -V, --verbose                    habilitar mensajes de estado verbose; estandar: inhabilitado\n
+28 Disculpe, comando desconocido: %s\n
+29 No se puede obtener el nombre de host para el host local - abortando\n
+30 No se puede encontrar archivo de parametro\n
+31 No se puede conectar al servidor maestro en %s\n
+32 Cuantos minutos para el cierre? :
+33 Maestro se va a apagar en %d minutos\n
+34 Error al recibir datos del cliente
+35 el servidor de base de datos %s no esta actualmente ejecutando
+36 no se puede ejecutar shell (%s) para %s, %s
+37 proceso fork %s, regreso %d, %s
+38 no se puede ejecutar %s
 
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \
-emergency_patchlog: Patch a database in case of emergency.\n\
-usage: %s emergency_patchlog [OPTION] database-name\n\
+emergency_patchlog: Parchar una base de datos en caso de emergencia.\n\
+uso: %s emergency_patchlog [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -r, --recreate-log           recreate log files; use carefully\n
+opciones validas:\n\
+  -r, --recreate-log           recrear archivo de registro; utilizar atentamente\n
 
 
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB
-20 Wrong value %d for npages\n
-21 Wrong value '%s' for volume storage purpose.\n
+20 Valor equivocado %d para npages\n
+21 Valor equivocado '%s' para proposito de almacenamiento de volumen.\n
 60 \
-addvoldb: Add a volume-file for the database.\n\
-usage: %s addvoldb [OPTION] database-name\n\
+addvoldb: Agregar un archivo de volumen para la base de datos.\n\
+uso: %s addvoldb [OPTION] database-name\n\
 \n\
-valid options:\n\
-      --db-volume-size=SIZE    size of additional volume; default: db_volume_size in cubrid.conf\n\
-  -n, --volume-name=NAME       NAME of information volume; default: generate such as "db"_ext1)\n\
-  -F, --file-path=PATH         PATH for adding volume file; default: working directory\n\
-      --comment=COMMENT        COMMENT for adding volume file; default: none\n\
-  -p, --purpose=PURPOSE        PURPOSE for adding volume file; allowed:\n\
-                                       DATA - only for data\n\
-                                       INDEX - only for indices\n\
-                                       TEMP - only for temporary\n\
-                                       GENERIC - for all purposes\n\
-  -S, --SA-mode                stand-alone mode execution\n\
-  -C, --CS-mode                client-server mode execution\n
+opciones validas:\n\
+      --db-volume-size=SIZE    tamano de volumen adicional; estandar: db_volume_size en cubrid.conf\n\
+  -n, --volume-name=NAME       NOMBRE de volumen de informacion; estandar: generar como "db"_ext1)\n\
+  -F, --file-path=PATH         RUTA para archivo de agregacion volumen; estandar: directorio de trabajo\n\
+      --comment=COMMENT        COMENTARIO para archivo de agregacion volumen; estandar: ninguno\n\
+  -p, --purpose=PURPOSE        PROPOSITO para archivo de agregacion volumen; permitido:\n\
+                                       DATA - solo para datos\n\
+                                       INDEX - solo para indice\n\
+                                       TEMP - solo para temporario\n\
+                                       GENERIC - para todos propositos\n\
+  -S, --SA-mode                modo de ejecucion independiente\n\
+  -C, --CS-mode                modo de ejecucion cliente-servidor\n
 
 $set 18 MSGCAT_UTIL_SET_CHECKDB
-20 Some inconsistencies were detected in your database.\n Please consult error_log_file %s for additional information.\n
-21 %s: Cannot find the class. It will be ommitted.\n
+20 Algunas inconsistencias han sido detectadas en su base de datos.\n Por favor consulte error_log_file %s para informacion adicional.\n
+21 %s: No se puede encontrar la clase. Va a ser omitida.\n
 60 \
-checkdb: Check consistency of the database.\n\
-usage: %s checkdb [OPTION] database-name [class_name1 class_name2 ...]\n\
+checkdb: Verificar consistencia de la base de datos.\n\
+uso: %s checkdb [OPTION] database-name [class_name1 class_name2 ...]\n\
 \n\
-valid options:\n\
-  -S, --SA-mode                stand-alone mode execution\n\
-  -C, --CS-mode                client-server mode execution\n\
-  -r, --repair                 repair when inconsistency is found\n\
-  -i, --input-class-file=FILE  input FILE of class names\n\
-                               default: check all classes\n
+opciones validas:\n\
+  -S, --SA-mode                modo de ejecucion independiente\n\
+  -C, --CS-mode                modo de ejecucion cliente-servidor\n\
+  -r, --repair                 reparar cuando se encuentran inconsistencias\n\
+  -i, --input-class-file=FILE  entrar ARCHIVO de nombres de clase\n\
+                               estandar: verificar todas clases\n
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
-15 Space description for database '%s' with pagesize %s. (log pagesize: %s)\n\n
+15 Descripcion de espacio para la base de datos '%s' con pagesize %s. (log pagesize: %s)\n\n
 16 %5d %8s  %s %s  %s\n
-17 Couldn't open output file '%s'\n
-18 Space description for temporary volumes for database '%s' with pagesize %s.\n\n
+17 No se puede abrir archivo de salida '%s'\n
+18 Descripcion de espacio para volumenes temporarios para la base de datos '%s' con pagesize %s.\n\n
 19 Volid  Purpose  total_pages  free_pages  Vol Name\n\n
 20 Volid  Purpose   total_size   free_size  Vol Name\n\n
-21 LOB space description %s \n\n
-30 Summarized space description for database '%s' with pagesize %s. (log pagesize: %s)\n\n
+21 Descripcion de espacio LOB %s \n\n
+30 Descripcion de espacio resumida para la base de datos '%s' con pagesize %s. (log pagesize: %s)\n\n
 31 Purpose    total_pages  used_pages  free_pages  volume_count\n
 32 Purpose     total_size   used_size   free_size  volume_count\n
 33 %10s %s %s %s %10d\n
 60 \
-spacedb: Display usage/free space of the database.\n\
-usage: %s spacedb [OPTION] database-name\n\
+spacedb: Mostrar espacio usado/libre de la base de datos.\n\
+uso: %s spacedb [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -o, --output-file=FILE       redirect output messages to FILE; default: none\n\
-  -S, --SA-mode                stand-alone mode execution\n\
-  -C, --CS-mode                client-server mode execution\n\
+opciones validas:\n\
+  -o, --output-file=FILE       redireccionar mensajes de salida al ARCHIVO; estandar: ninguno\n\
+  -S, --SA-mode                modo de ejecucion independiente\n\
+  -C, --CS-mode                modo de ejecucion cliente-servidor\n\
       --size-unit={PAGE|M|G|T|H}\n\
-                               set the display unit (page, mega, giga, tera, human readable); default: H\n\
-  -s, --summarize              display only a summary for each volume purpose\n
+                               ajustar la unidad de visualizacion (pagina, mega, giga, tera, legible por humanos); estandar: H\n\
+  -s, --summarize              mostrar solo un resumen para cada proposito de volumen\n
 
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
-15 Estimated Number of Pages = %d\n
+15 Numero estimado de Paginas = %d\n
 60 \
-estimate_data: Estimate size of data.\n\
-usage: %s estimate_data number-of-instances average-instance-size number-of-attributes variable-number-of-attributes\n
+estimate_data: Estimar tamano de datos.\n\
+uso: %s estimate_data number-of-instances average-instance-size number-of-attributes variable-number-of-attributes\n
 
 
 $set 21 MSGCAT_UTIL_SET_ESTIMATEDB_INDEX
-15 Bad index key type specified = %s\n
-16 Bad average key length specified = %d when precision = %d\n
-17 Bad arguments specified\n
-20 Estimated number of total index pages = %d\n (When index created, after instances have been populated.)\n
-21 Estimated number of total index pages = %d\n (When index created, before instances have been populated (average case))\n
-22 Estimated number of total index pages = %d\n (When index created, before instances have been populated (worst case))\n
-23 For the given input...\n
-24 Total number of instances: %d\n
-25 Number of different keys : %d\n
-26 Average key size         : %d\n
-27 Key Type                 : %s\n\n
+15 Tipo malo de clave del indice especificado = %s\n
+16 Mala longitud media de clave especificada = %d cuando precision = %d\n
+17 Argumentos malos especificados\n
+20 Numero estimado del total de paginas de indice = %d\n (Cuando indice creado, despues de que las instancias sean pobladas.)\n
+21 Numero estimado del total de paginas de indice = %d\n (Cuando indice creado, antes de que las instancias sean pobladas (caso medio))\n
+22 Numero estimado del total de paginas de indice = %d\n (Cuando indice creado, antes de que las instancias sean pobladas (peor caso))\n
+23 Para la entrada dada...\n
+24 Numero total de instancias : %d\n
+25 Numero de claves diferentes: %d\n
+26 Tamano medio de clave      : %d\n
+27 Tipo de clave              : %s\n\n
 60 \
-estimate_index: Estimate size of an index.\n\
-usage: %s estimate_index number-of-instances number-of-different-keys average-key-size key-type\n
+estimate_index: Tamano estimado de un indice.\n\
+uso: %s estimate_index number-of-instances number-of-different-keys average-key-size key-type\n
 
 $set 22 MSGCAT_UTIL_SET_INSTALLDB
 60 \
-installdb: Install a database.\n\
-usage: %s installdb [OPTION] database-name\n\
+installdb: Instalar una base de datos.\n\
+uso: %s installdb [OPTION] database-name\n\
 \n\
-valid options:\n\
-      --server-name=HOST       server HOST name; default: current host name\n\
-  -F, --file-path=PATH         directory PATH for database volumes; default: current directory\n\
-  -L, --log-path=PATH          directory PATH for log volumes; default: same as file-path\n
+opciones validas:\n\
+      --server-name=HOST       nombre HOST del servidor; estandar: nombre actual de host\n\
+  -F, --file-path=PATH         RUTA de directorio para volumenes de base de datos; estandar: directorio actual\n\
+  -L, --log-path=PATH          RUTA de directorio para volumenes de registro; estandar: la misma que la ruta de archivo\n
 
 $set 23 MSGCAT_UTIL_SET_MIGDB
-1 Temporary class OID\n
-2 Can't print elo values\n
-3 Error accessing long object for migration\n
-4 Error opening output file for long object migration \n
-5 Read error\n
-6 Write error\n
-7 Error opening ELO input file "%s"\n
-8 CLASSES:
-9 hash filename
-10 Name:                         %s\n
-11 Size:                         %d\n
-12 Page size:                    %d\n
-13 Data size:                    %d\n
-14 Entry size:                   %d\n
-15 Entries per page:             %d\n
-16 Cached pages:                 %d\n
-17 Number of entries:            %d\n
-18 Number of collisions:         %d\n
-19 Hash filename:                %s\n
-20 Next overflow entry:          %d\n
-21 Key type:                     %s\n
-22 Address of page headers:      %x\n
-23 Address of last page header:  %x\n
-24 Address of free page header:  %x\n
-25 Address of page bitmap:       %x\n
-26 Page bitmap size:             %d\n
+1 OID de clase temporaria\n
+2 No se pueden imprimir valores elo\n
+3 Error al accesar objeto largo para migracion\n
+4 Error al abrir archivo de salida para migracion de objeto largo\n
+5 Error de leer\n
+6 Error de escribir\n
+7 Error al abrir archivo de entrada ELO "%s"\n
+8 CLASES:
+9 Nombre de archivo hash
+10 Nombre: 			 %s\n
+11 Tamano:                       %d\n
+12 Tamano de pagina:             %d\n
+13 Tamano de datos:              %d\n
+14 Tamano de entrada:            %d\n
+15 Entradas por pagina:          %d\n
+16 Paginas almacenadas:          %d\n
+17 Numero de entradas:           %d\n
+18 Numero de colisiones:         %d\n
+19 Nombre de archivo hash:       %s\n
+20 Siguente entrada de sobreflujo: %d\n
+21 Tipo de clave:                %s\n
+22 Direccion de encabezamientos de pagina: %x\n
+23 Direccion del ultimo encabezamiento de pagina: %x\n
+24 Direccion del encabezamiento de pagina libre: %x\n
+25 Direccion del mapa de bits de la pagina: %x\n
+26 Tamano del mapa de bits de la pagina: %d\n
 
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 60 \
-diagdb: Dump a database.\n\
-usage: %s diagdb [OPTION] database-name\n\
+diagdb: Abandonar una base de datos.\n\
+uso: %s diagdb [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -d, --dump-type=TYPE         TYPE of dump\n\
-                               -1 dump all\n\
-                                1 dump file tables\n\
-                                2 dump file capacities\n\
-                                3 dump heap capacities\n\
-                                4 dump index capacities\n\
-                                5 dump classnames\n\
-                                6 dump disk bitmaps\n\
-                                7 dump catalog\n\
-                                8 dump log\n\
-                                9 dump heap\n
+opciones validas:\n\
+  -d, --dump-type=TYPE         TIPO de abandono\n\
+                               -1 abandonar todo\n\
+                                1 abandonar tablas de archivo\n\
+                                2 abandonar capacidades de archivo\n\
+                                3 abandonar capacidades de heap\n\
+                                4 abandonar capacidades de indice\n\
+                                5 abandonar nombres de clase\n\
+                                6 abandonar mapas de bits de disco\n\
+                                7 abandonar catalogo\n\
+                                8 abandonar registro\n\
+                                9 abandonar heap\n
 
 
 $set 25 MSGCAT_UTIL_SET_LOCKDB
-15 Couldn't open output file '%s'\n
-59 lockdb cannot run as standalone mode.\n
+15 No se puede abrir archivo de salida '%s'\n
+59 lockdb no puede ser ejecutado en modo independiente.\n
 60 \
-lockdb: Display lock-status of the database.\n\
-usage: %s lockdb [OPTION] database-name\n\
+lockdb: Mostrar estado de bloqueo de la base de datos.\n\
+uso : %s lockdb [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -o, --output-file=FILE       redirect output messages to FILE; default: none\n
+opciones validas:\n\
+  -o, --output-file=FILE       redireccionar mensajes de salida al ARCHIVO; estandar: ninguno\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
-20 Only one argument must be given among: tran-index, user, host, progname\n
-21 Enter DBA password:
+20 Solo un argumento debe ser dado entre: tran-index, user, host, progname\n
+21 Introducir contrasena DBA:
 22 Tran index      User name      Host name      Process id      Program name\n
 23 -------------------------------------------------------------------------------\n
 24 %7d(%1c) %14s %14s %15d %17s\n
-25 There are no transactions\n
-26 There is not a transaction with the specified argument values.\n
-27 Ready to kill the following transactions:\n\n
-28 Do you wish to proceed ? (Y/N)
-29 Killing transaction associated with transaction index %d\n
-30 Killing of the following transactions has failed\n\n
-31 The transaction does not finish yet, but it may be doing the rollback work.\n Please, wait a second and try it later if needed.\n
-59 killrtan cannot run as standalone mode.\n
+25 No hay transacciones\n
+26 No hay ninguna transaccion con los valores de argumento especificados.\n
+27 Listo para matar las siguentes transacciones:\n
+28 Desea continuar? (Y/N)
+29 Matando transaccion asociada con el indice de transaccion %d\n
+30 Fracaso al matar las siguentes transacciones\n\n
+31 La transaccion todavia no acaba, pero puede que haga trabajo de reversion.\n Por favor, espere un segundo y reintentar luego si todavia necesario.\n
+59 killtran no puede ejecutar en modo independiente.\n
 60 \
-killtran: Manage transactions of the database.\n\
-usage: %s killtran [OPTION] database-name\n\
+killtran: Patrocinar transacciones de una base de datos.\n\
+uso: %s killtran [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -i, --kill-transaction-index=INDEX kill transaction with transaction INDEX\n\
-      --kill-user-name=ID            kill all transactions with user ID\n\
-      --kill-host-name=HOST          kill all transactions with client HOST\n\
-      --kill-program-name=NAME       kill all transactions with client program NAME\n\
-  -p, --dba-password=PASS            password of the DBA user; will prompt if don't specify\n\
-  -d, --display-information          display information about active transactions\n\
-  -f, --force                        kill the transaction without a prompt for verification\n
+opciones validas:\n\
+  -i, --kill-transaction-index=INDEX matar transaccion con INDICE de transaccion\n\
+      --kill-user-name=ID            matar todas transacciones con ID de utilizador\n\
+      --kill-host-name=HOST          matar todas transacciones con HOST de cliente\n\
+      --kill-program-name=NAME       matar todas transacciones con NOMBRE de programa de cliente\n\
+  -p, --dba-password=PASS            contrasena del utilizador DBA; va a ser pedida si no es especificado\n\
+  -d, --display-information          mostrar informacion relacionada a las transacciones activas\n\
+  -f, --force                        matar la transaccion sin un aviso para verificar\n
 
 
 $set 31 MSGCAT_UTIL_SET_MIGRATE
-1 database-name
-2 required argument, no default
-3 compatibility-check
-4 compatibility check only
-5 backup-destination
-6 a directory path or device for the destination of the backup volumes
-20 database '%s' does not exist.
-21 '%s' can't be migrated to %s, because its DB version is too low.\n
-22 '%s' don't need to be migrated.\n
-23 '%s' needs to be migrated.\n
-24 Backup is recommended after migration. Do you want to back up your database now? (y/n):
-25 We recommend to back up your new database with backupdb command after migration.
-26 \n*** WARNING: Backup your database before you start migrating to %s ***\n\nTo recover errors which might be occurred during migration, we strongly recommend to back up your database.\nHave you already backed up your database? (y/n):
-27 \n1. Run backupdb \n2. Enter the new backup path for the new database.(current path: %s)\n3. Exit \n
-28 \nThe new backup path for the database:
-29 \nMigration and backup have been successfully completed.
-30 Backup failed. Please, retry to back up your database.
-31 \n\n*** WARNING : Once the migration is completed, you cannot restore the database with the former backup volumes.\nNotice that the previous version of backup files can be restored only on the corresponding version of restoredb.\nPlease, check the former backup volumes is securely kept.\n
+1 nombre-de-base-de-datos
+2 argumento pedido, no hay estandar
+3 verificacion de compatibilidad
+4 solo verificacion de compatibilidad
+5 destino de respaldo
+6 una ruta de directorio o dispositivo para la destinacion de los volumenes de respaldo
+20 la base de datos '%s' no existe.
+21 '%s' no puede ser migrada a %s, porque su version DB es demasiado baja.\n
+22 '%s' no necesitan ser migrados.\n
+23 '%s' necesita ser migrado.\n
+24 Respaldar es recomendado despues de migracion. Quiere respaldar su base de datos ahora? (si/no):
+25 Le recomendamos respaldar su nueva base de datos con el comando backupdb despues de la migracion.
+26 \n*** ADVERTENCIA: Respaldar su base de datos antes de inicializar la migracion hacia %s ***\n\nPara recuperar errores que pueden haber ocurrido durante la migracion, le recomendamos muy fuerte respaldar su base de datos.\nHa ya creado un respaldo para su base de datos? (si/no):
+27 \n1. Ejecutar respaldo \n2. Introducir la nueva ruta de respaldo para la base de datos nueva. (ruta actual: %s)\n3. Salir \n
+28 \n La nueva ruta de respaldo para la base de datos:
+29 \nMigracion y respaldo han sido finalizados con exito.
+30 Fracaso al respaldar. Por favor, reintente respaldar su base de datos.
+31 \n\n*** ADVERTENCIA : Una vez que la migracion es finalizada, Ud no puede restablecer la base de datos con volumenes de respaldo anteriores.\nNotar que la version anterior de los archivos de respaldo pueden ser restablecidos solo en versiones correspondientes de restoredb.\nPor favor, verifique que los volumenes de respaldo anteriores son guardados a un nivel alto de seguridad.\n
 
 $set 33 MSGCAT_UTIL_SET_ALTERDBHOST
 60 \
-alterdbhost: Alter a host of the database.\n\
-usage: %s alterdbhost [OPTION] database-name\n\
+alterdbhost: Alterar una host de la base de datos.\n\
+uso: %s alterdbhost [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -h, --host=HOST              new HOST name; default: current host name\n
+opciones validas:\n\
+  -h, --host=HOST              nombre nuevo de HOST; estandar: nombre actual de host\n
 
 
 $set 34 MSGCAT_UTIL_SET_LOADJAVA
-1 database-name
-2 required argument, no default
-3 java-class-file
-4 required argument, no default
-5 force-overwrite
-6 overwrite class file if exist, default no
+1 nombre-de-base-de-datos
+2 argumento pedido, no hay estandar
+3 archivo-de-clase-java
+4 argumento pedido, no hay estandar
+5 forzar sobrescribir
+6 sobrescribir archivo de clase si existe, estandar no
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
-15 Cannot open output file '%s'\n
-59 plandump cannot run as standalone mode.\n
+15 No se puede abrir archivo de salida '%s'\n
+59 plandump no puede ejecutar como modo independiente.\n
 60 \
-plandump: Display or control cached query plans.\n\
-usage: %s plandump [OPTION] database-name\n\
+plandump: Mostrar o controlar planos de consulta almacenados.\n\
+uso: %s plandump [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -d, --drop                   drop all plans in the server's cache\n\
-  -o, --output-file=FILE       redirect output messages to FILE; default: none\n
+opciones validas:\n\
+  -d, --drop                   soltar todos planes en la memoria cache del servidor\n\
+  -o, --output-file=FILE       redireccionar mensajes de salida al ARCHIVO; estandar: ninguno\n  
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
-11 Cannot open output file '%s'\n
-21 System parameters to be used by the client program.\n
-22 System parameters loaded by the server '%s'\n
-23 System parameters to be used in standalone mode.\n
+11 No se puede abrir archivo de salida '%s'\n
+21 Parametros de sistema a ser utilizados por el programa cliente.\n
+22 Parametros de sistema cargados por el servidor '%s'\n
+23 Parametros de sistema a ser utilizados en modo independiente.\n
 60 \
-paramdump: Dump system parameter settings.\n\
-usage: %s paramdump [OPTION] database-name\n\
+paramdump: Abandonar ajustes de los parametros de sistema.\n\
+uso: %s paramdump [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -o, --output-file=FILE       redirect output message to FILE; default: none\n\
-  -b, --both                   dump both client and server parameters\n\
-  -S, --SA-mode                stand-alone mode execution\n\
-  -C, --CS-mode                client-server mode execution\n
+opciones validas:\n\
+  -o, --output-file=FILE       redireccionar mensaje de salida al ARCHIVO; estandar: ninguno\n\
+  -b, --both                   abandonar parametros de cliente y servidor\n\
+  -S, --SA-mode                modo de ejecucion independiente\n\
+  -C, --CS-mode                modo de ejecucion cliente-servidor\n
 
 $set 39 MSGCAT_UTIL_SET_CHANGEMODE
-11 Wrong value \"%s\" for the server's HA running mode.\n
-12 Cannot change the server's HA running mode.\n
-21 Enter DBA password:
-22 The server '%s''s current HA running mode is %s.\n
-23 The server '%s''s HA running mode is changed to \"%s\".\n
-24 The server was not configured for HA.\n
-58 HA feature is not supported in this platform.\n
-59 changemode cannot run as standalone mode.\n
+11 Valor equivocado \"%s\" para el modo HA de ejecucion del servidor.\n
+12 No se puede cambiar el modo de ejecucion HA del servidor.\n
+21 Introducir contrasena DBA:
+22 El modo HA actual de ejecucion del servidor '%s' es %s.\n
+23 El modo HA de ejecucion del servidor '%s' cambiado a \"%s\".\n
+24 El servidor no ha sido configurado para HA.\n
+58 Caracteristica HA no soportada en esta plataforma.\n
+59 changemode no puede ejecutar como modo independiente.\n
 60 \
-changemode: Display or change the server's HA running mode.\n\
-usage: %s changemode [OPTION] database-name\n\
+changemode: Mostrar o cambiar el modo HA de ejecucion del servidor.\n\
+uso: %s changemode [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -m, --mode=MODE             change the server mode to MODE; default: none\n\
-  -f, --force                 force to change\n\
-  -t, --timeout=S             waiting S second while active transaction is terminated normally\n\
-                              -t option is effective only when the user changes server mode to maintenance\n\
-                              default: 5\n
+opciones validas:\n\
+  -m, --mode=MODE             cambiar el modo de servidore en MODE; estandar: ninguno\n\
+  -f, --force                 forzar cambiar\n\
+  -t, --timeout=S             espedando S segundos mientras la transaccion activa es terminada normalmente\n\
+                              opcion -t es eficaz solo cuando el utilizador cambia el modo del servidor en mantenimiento\n\
+                              estandar: 5\n
 
 $set 40 MSGCAT_UTIL_SET_COPYLOGDB
-11 Wrong value \"%s\" for the copylogdb's running mode.\n
-21 Enter DBA password:
-22 The server was not configured for HA.\n
-58 HA feature is not supported in this platform.\n
-59 copylogdb cannot run as standalone mode.\n
+11 Valor equivocado \"%s\" para el modo de ejecucion de copylogdb.\n
+21 Introducir contrasena DBA:
+22 El servidor no ha sido configurado para HA.\n
+58 Caracteristica HA no es soportada en esta plataforma.\n
+59 copylogdb no puede ejecutar en modo independiente.\n
 60 \
-copylogdb: Copy log pages from the server.\n\
-usage: %s copylogdb [OPTION] database-name\n\
+copylogdb: Copiar paginas de registro del servidor.\n\
+uso: %s copylogdb [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -L, --log-path=PATH         directory PATH for copied log volumes\n\
-  -m, --mode=MODE             operation mode; default: sync\n\
-                              MODE: sync or semisync or async\n
+opciones validas: \n\
+  -L, --log-path=PATH         RUTA de directorio para los volumenes de registro copiadas\n\
+  -m, --mode=MODE             modo de operacion; estandar: sync\n\
+                              MODO: sync o semisync o async\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
-21 Enter DBA password:
-22 The server was not configured for HA.\n
-58 HA feature is not supported in this platform.\n
-59 applylogdb cannot run as standalone mode.\n
+21 Introducir contrasena DBA:
+22 El servidor no ha sido configurado para HA. \n
+58 Caracteristica HA no es soportada en esta plataforma.\n
+59 applylogdb no puede ejecutar como modo independiente.\n
 60 \
-applylogdb: Apply copied log to the server.\n\
-usage: %s applylogdb [OPTION] database-name\n\
+applylogdb: Aplicar registro copiado al servidor.\n\
+uso: %s applylogdb [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -L, --log-path=PATH         directory PATH of copied log volumes\n\
-      --max-mem-size=SIZE     maximum process SIZE in MB; max 500\n
+opciones validas:\n\
+  -L, --log-path=PATH         RUTA de directorio de los volumenes de registro copiados\n\
+      --max-mem-size=SIZE     TAMANO maximo de proceso en MB; max 500\n
 
 $set 43 MSGCAT_UTIL_SET_STATDUMP
-11 Cannot open output file '%s'\n
-59 statdump cannot run as standalone mode.\n
+11 No se puede abrir archivo de salida '%s'\n
+59 statdump no puede ejecutar como modo independiente.\n
 60 \
-statdump: Dump global statistics.\n\
-usage: %s statdump [OPTION] database-name\n\
+statdump: Abandonar estadisticas globales.\n\
+uso: %s statdump [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -o, --output-file=FILE       redirect output message to FILE; default: none\n\
-  -c, --cumulative             print cumulative stats\n\
-  -i, --interval=S             print stats every S secs\n\
-  -s, --substr=STRING          print stat item only that match the substring\n
+opciones validas:\n\
+  -o, --output-file=FILE       redireccionar mensaje de salida al ARCHIVO; estandar: ninguno\n\
+  -c, --cumulative             imprimir estadisticas cumulativas\n\
+  -i, --interval=S             imprimir estadisticas casa S segundos\n\
+  -s, --substr=STRING          imprimir solo aquellos articulos de estadistica que emparejan con el substring\n
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
-21 Enter DBA password:
-22 The server was not configured for HA.\n
-58 HA feature is not supported in this platform.\n
-59 applyinfo cannot run as standlone mode.\n
+21 Introducir contrasena DBA:
+22 El servidor no ha sido configurado para HA. \n
+58 Caracteristica HA no es soportada en esta plataforma.\n
+59 applyinfo no puede ejecutar como modo independiente.\n
 60 \
-applyinfo: display CUBRID HA Apply information.\n\
-usage: %s applyinfo [OPTION] database-name\n\
+applyinfo: mostrar informacion HA Apply de CUBRID.\n\
+uso: %s applyinfo [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -r, --remote-host-name      remote host name; display remote node's active log information \n\
-  -a, --applied-info 	      display applied information \n\
-  -L, --copied-log-path=PATH  path of copied log volumes; display copied log information \n\
-  -p, --pageid=ID             page id; default : 0(active page)\n\
-  -v, --verbose               enable verbose status messages; default : disable\n
+opciones validas:\n\
+  -r, --remote-host-name      nombre de host remote; mostrar la informacion de registro activa del nodo remote \n\
+  -a, --applied-info 	      mostrar informacion aplicada \n\
+  -L, --copied-log-path=PATH  ruta de los volumenes de registro copiados; mostrar informacion de registro copiado \n\
+  -p, --pageid=ID             id de pagina; estandar : 0(pagina activa)\n\
+  -v, --verbose               habilitar mensajes de estado verbose; estandar : inhabilitar\n
 
 $set 45 MSGCAT_UTIL_SET_ACLDB
-59 acldb cannot run as standalone mode.\n
+59 acldb no puede ejecutar como modo independiente.\n
 60 \
-acldb: Display or reload access control setting of the database.\n\
-usage: %s acldb [OPTION] database-name\n\
+acldb: Mostrar o recargar ajuste de control de acceso de la base de datos.\n\
+uso: %s acldb [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -r, --reload       reload ip control file\n
+opciones validas:\n\
+  -r, --reload       recargar archivo de control ip\n
 
 $set 46 MSGCAT_UTIL_SET_GENLOCALE
 60 \
-genlocale: Generates locale shared library using LDML input file(s).\n\
-usage: %s genlocale [OPTION] [language-string]\n\
+genlocale: Genera biblioteca local compartida utilizando el archivo de entrada LDML.\n\
+uso: %s genlocale [OPTION] [language-string]\n\
 \n\
-language-string	      locale language string for which to generate shared library.\n\
-		      If no language-string is given all languages in 'cubrid_locales.txt'\n\
-		      will be processed.\n\
-valid options:\n\
-  -v, --verbose	              enable verbose status messages; default : disable\n\
-  -i, --input-ldml-file       path for input LDML file. Only when language-string is given.\n
-61 Invalid locale name argument.\n
+language-string	      string de idioma local para cual generar biblioteca compartida.\n\
+		      Si no hay ningun string de idioma dado, todos los idiomas en 'cubrid_locales.txt'\n\
+		      van a ser procesados.\n\
+opciones validas:\n\
+  -v, --verbose	              habilitar mensajes de estado verbose; estandar : inhabilitar\n\
+  -i, --input-ldml-file       ruta para archivo de entrada LDML. Solo cuando el string de idioma es dado.\n
+61 Argumento de nombre local no valido.\n
 
 $set 47 MSGCAT_UTIL_SET_DUMPLOCALE
-57 Cannot simultaneously use -i/--input-file and locale identifier.\n
-58 Invalid codepoint range (-s -e).\n
-59 Invalid locale name argument.\n
+57 No se pueden utilizar simultaneamente -i/--input-file y el identificador local.\n
+58 Rango codepoint no valido (-s -e).\n
+59 Argumento de nombre local no valido.\n
 60 \
-dumplocale: Dumps the contents of locale shared library previously generated using LDML input file(s).\n\
-usage: %s dumplocale [OPTION] [language-string]\n\
+dumplocale: Abandona el contenido de la biblioteca local compartida generada anteriormente utilizando el archivo de entrada LDML.\n\
+uso: %s dumplocale [OPTION] [language-string]\n\
 \n\
-language-string	 locale language string for which to dump locale shared library.\n\
-		         If no language-string is given all languages in 'cubrid_locales.txt'\n\
-		         will be processed.\n\
-valid options:\n\
-  -i, --input-file    path for input locale shared library (previously generated).\n\
-                      Can be used only when language-string is not given.\n\
-  -d, --calendar      dump calendar and date/time information; default : disable\n\
-  -n, --numeric		  dump numeric information; default : disable\n\
-  -a, --alphabet=l|lower|u|upper|both	     dump alphabet and casing information; default : disable\n\
-      --identifier-alphabet=l|lower|u|upper	 dump alphabet and casing information for identifiers; default : disable\n\
-  -c, --codepoint-order	 dump collation info sorted based on codepoint values\n\
-                         (cp, char, weight, next-cp, char and weight);\n\
-                         default : disable\n\
-  -w, --weight-order  dump collation info sorted based on weight values\n\
-                      (weight, cp, char); default : disable\n\
-  -s, --start-value	  filtering option; starting codepoint for\n\
-                      -a, --identifier-alphabet, -c, -w; default : 0\n\
-  -e, --end-value     filtering option; ending codepoint for \n\
-                      -a, --identifier-alphabet, -c, -w; \n\
-                      default : maximum value read from locale shared library\n\
-  -k, --console-conversion  dump console conversion data; default : disable\n\
-  -z, --normalization   dump normalization data; default : disable\n
+language-string	 string de idiomas local para cual abandonar biblioteca compartida local.\n\
+		         Si no hay ningun string de idioma dado, todos los idiomas en 'cubrid_locales.txt'\n\
+		         van a ser procesados.\n\
+opciones validas:\n\
+  -i, --input-file    ruta para biblioteca local compartida de entrada (generada anteriormente).\n\
+                      Puede ser utilizada solo cuando no hay ningun string de idioma dado.\n\
+  -d, --calendar      abandonar calendar y la informacion fecha/tiempo; estandar : inhabilitar\n\
+  -n, --numeric		  abandonar informacion numerica; estandar : inhabilitar\n\
+  -a, --alphabet=l|lower|u|upper|both	     abandonar alfabeto y informacion de carcasa; estandar : inhabilitar\n\
+      --identifier-alphabet=l|lower|u|upper	 abandonar alfabeto y informacion de carcasapara identificadores; estandar : inhabilitar\n\
+  -c, --codepoint-order	 abandonar informacion de colacion ordenada basado en valores codepoint\n\
+                         (cp, char, weight, next-cp, char y weight);\n\
+                         estandar : inhabilitar\n\
+  -w, --weight-order  abandonar informacion de colacion ordenada basado en valores weight\n\
+                      (weight, cp, char); estandar : disable\n\
+  -s, --start-value	  opcion de filtrar; inicializando codepoint para\n\
+                      -a, --identificador-alfabeto, -c, -w; estandar : 0\n\
+  -e, --end-value     opcion de filtrar; terminando codepoint para \n\
+                      -a, --identificador-alfabeto, -c, -w; \n\
+                      estandar : valor maximo leido de la biblioteca compartida local\n\
+  -k, --console-conversion  abandonar datos de la conversion de consola; estandar : inhabilitar\n\
+  -z, --normalization   abandonar datos de normalizacion; estandar : inhabilitar\n
 

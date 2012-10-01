@@ -24,112 +24,112 @@ $ esql.msg
 $
 
 $set 1
-1 Non integer argument value "%s"\n
-2 Non floating argument value "%s"\n
-3 Missing argument %s\n
-4 [options] 
-5 Options: \n
-6 Missing argument value for key %s\n
-7 Unknown option "%s"\n
-8 Unexpected positional argument "%s"\n
+1 Valor de argumento no entero "%s"\n.
+2 Valor de argumento no flotante "%s"\n
+3 Faltando argumento %s\n
+4 [opciones]
+5 Opciones: \n
+6 Falta valor de argumento para clave %s\n
+7 Opcion desconocida "%s"\n
+8 Argumento posicional inesperado "%s"\n
 
 $set 2
-1 Redefinition of cursor "%s"
-2  *\tfor statement %s\n
-3  *\n * Cursor table:\n
+1 Redefinicion del cursor "%s"
+2 *\tfor declaracion %s\n
+3 *\n * Tabla de cursor:\n
 
 $set 3
-1 (INTERNAL ERROR in set_class_bit): bad storage class (%d)
-2 (INTERNAL ERROR in add_spec_to_decl()): malformed chain (no specifier)
-3 storage class specifier not allowed in this context
-4 illegal storage class combination
-5 illegal type combination
-6 illegal modifier combination
-7 (INTERNAL ERROR in pp_add_type_spec): unexpected case (%d)
-8 (INTERNAL ERROR in pp_add_type_adj): unexpected case (%d)
-9 improperly formed %s declaration
+1 (INTERNAL ERROR in set_class_bit): clase de mal almacenamiento (%d)
+2 (INTERNAL ERROR in add_spec_to_decl()): cadena malformado (sin especificador)
+3 especificador de clase de almacenamiento no permitido en este contexto.
+4 combinacion de clase de almacenamiento ilegal
+5 combinacion de tipo ilegal
+6 combinacion de modificador ilegal
+7 (INTERNAL ERROR in pp_add_type_spec): caso inesperado (%d)
+8 (INTERNAL ERROR in pp_add_type_adj): caso inesperado (%d)
+9 declaracion %s formada impropiamente 
 
 $set 4
 1 %s
-2 %s: Not a directory\n
-3 %s: Bad installation root?\n
+2 %s: No es un directorio\n
+3 %s: Raiz de instalacion mala?\n
 
 $set 5
 1 ?
-2 please check correctness of token
-3 USING part not permitted for static cursor "%s"
-4 cursor "%s" is undefined
-5 pointer to a descriptor
-6 pointer to a DB_OBJECT
-7 character string
-8 indicator variable for "%s" not allowed in this context
-9 "%s" not declared in BEGIN DECLARE section
-52 %s (text was "%s")
-53 Lexical error
-54 syntax error at "%s": missing %s in %s
-55 syntax error at "%s": missing %s
+2 por favor verifique la corectitud del token
+3 UTILIZAR parte no permitido para cursor statico "%s"
+4 cursor "%s" no es definido
+5 puntero hacia un descriptor
+6 puntero hacia un DB_OBJECT
+7 string de caracteres
+8 variable de indicador para "%s" no permitida en este contexto
+9 "%s" no declarado en seccion BEGIN DECLARE
+52 %s (texto era "%s")
+53 Error lexical
+54 error de sintaxis a "%s": faltando %s en %s
+55 error de sintaxis a "%s": faltando %s
 
 $set 6
-1 suppress-line-directive
-2 output-file
-3 include-file
-4 dump-scope-info
-5 dump-malloc-info
-6 announce-version
-7 enable-uci-trace
-8 disable-varchar-length
-9 varchar2-style
+1 suprimir-directiva-de-linea
+2 archivo-de-salida
+3 incluye-archivo
+4 abandonar-informacion-de-alcance
+5 abandonar-informacion-malloc
+6 anunciar-version
+7 habilitar-uci-rastro
+8 deshabilitar-longitud-de-caracter-variable
+9 estilo-varchar2
 10 unsafe-null
-11 internal-indicator
-12 input-file
+11 indicador-interno
+12 archivo-de-entrada
 
 $set 7
-1 suppress #line directives in output file, default off
-2 output file name, default <input-file>.c or stdout
-3 include file containing uci_ prototypes, default "esqlx.h"
-4 dump scope debugging information, default off
-5 dump final malloc debugging information, default off
-6 print out version number information, default off
-7 enable UCI function trace, default off
-8 disable length initialization of VARCHAR host variable, default off
-9 use different VARCHAR style, default off
-10 ignore -462(null indicator needed) error, default off
-11 use internal NULL indicator to prevent -462(null indicator needed) error, default off
-12 input file name, default stdin
+1 suprimir #directivas de linea en archivo de salida, estandar off
+2 nombre de archivo de salida, default <input-file>.c o stdout
+3 incluye archivo conteniendo uci_ prototypes, estandar "esqlx.h"
+4 abandonar alcance informacion de debugging, estandar off
+5 abandonar informacion final de debugging malloc, estandar off
+6 imprimir informacion de numero de version, estandar off
+7 habilitar rastro de funcion UCI, estandar off
+8 deshabilitar inicializacion de longitud de la variable de host VARCHAR, estandar off
+9 utilizar estilo VARCHAR diferente, estandar off
+10 ignorar error -462(indicador null necesitado), estandar off
+11 utilizar indicador interno NULL para evitar error -462 (indicador null necesitado), estandar off
+12 nombre de archivo de entrada, estandar stdin
 
 $set 8
-1 REPEATED option ignored
+1 Opcion REPEATED ignorada
 2 %s version %s\n
 
 $set 9
-1 (yy_pop_mode) internal error: empty mode stack
-2 "%s" is not permitted in this context
+1 error interno (yy_pop_mode): pila de modo vacio
+2 "%s" no es permitido en este contexto
 
 $set 10
-1 internal error in %s: %s\n
-2 table overflow
+1 error interno en %s: %s\n
+2 sobreflujo de tabla
 
 $set 11
-1 indicator variable "%s" must be a short int
-2 cannot use an indicator variable with a structure
-3 "%s" has incomplete struct definition
-4 "%s" must be a valid %s
-5 %s is not an acceptable type for "%s"
-6 unanticipated host variable type: %s
-7 (pp_addr_expr): attempt to find address of NULL variable
-8 "%s" is not a pointer
-9 "%s" does not point to a struct
-10 "%s" is not a struct
-11 %s has no field "%s"
-12 "%s" cannot be dereferenced by "%s"
+1 variable de indicador "%s" tiene que ser un entero tipo short
+2 no se puede utilizar una variable de indicador con una estructura
+3 "%s" tiene definicion de estructura incompleta
+4 "%s" tiene que ser un %s valido
+5 %s no es un tipo acceptable para "%s"
+6 tipo de variable de host no anticipado: %s
+7 (pp_addr_expr): intente buscar direccion de variable NULL
+8 "%s" no es un puntero
+9 "%s" no apunta a una estructura
+10 "%s" no es una estructura
+11 %s no tiene campo "%s"
+12 "%s" nu puede ser dereferenciado por "%s"
 
 $set 12
-1 out of memory
+1 sin memoria
 
 $set 13
-1 array of functions is illegal, assuming function pointers
-2 (pp_the_same_type) unknown link class
-3 (pp_get_sizeof): bad noun (%d)
+1 matriz de funciones es ilegal, asumando punteros de funcion
+2 (pp_the_same_type) clase de enlace desconocida
+3 (pp_get_sizeof): sustantivo malo (%d)
 
 $set 14
-1 (INTERNAL ERROR in %s): impossible case
+1 (INTERNAL ERROR in %s): caso imposible

@@ -24,50 +24,50 @@ $ esql.msg
 $
 
 $set 1
-1 Non integer argument value "%s"\n
-2 Non floating argument value "%s"\n
-3 Missing argument %s\n
-4 [options] 
-5 Options: \n
-6 Missing argument value for key %s\n
-7 Unknown option "%s"\n
-8 Unexpected positional argument "%s"\n
+1 Non è un valore di argomento intero "%s"\n
+2 Non un valore a virgola mobile argomento "%s"\n
+3 Argomento mancante %s\n
+4 [opzioni] 
+5 Opzioni: \n
+6 Valore dell'argomento mancante per chiave %s\n
+7 Opzione sconosciuta "%s"\n
+8 Argomento posizionale inaspettato "%s"\n
 
 $set 2
-1 Redefinition of cursor "%s"
-2  *\tfor statement %s\n
-3  *\n * Cursor table:\n
+1 Ridefinizione del cursore "%s"
+2  *\tper istruzione %s\n
+3  *\n * Tabella cursore:\n
 
 $set 3
-1 (INTERNAL ERROR in set_class_bit): bad storage class (%d)
-2 (INTERNAL ERROR in add_spec_to_decl()): malformed chain (no specifier)
-3 storage class specifier not allowed in this context
-4 illegal storage class combination
-5 illegal type combination
-6 illegal modifier combination
-7 (INTERNAL ERROR in pp_add_type_spec): unexpected case (%d)
-8 (INTERNAL ERROR in pp_add_type_adj): unexpected case (%d)
-9 improperly formed %s declaration
+1 (ERRORE INTERNO nel set_class_bit): storage class (%d) sbagliato
+2 (ERRORE INTERNO nel add_spec_to_decl()): malformed chain (senza identificatore)
+3 storage class identificatore non consentito in questo contesto
+4 illegale combinazione storage class
+5 illegale combinazione tipo
+6 illegale combinazione modifier
+7 (ERRORE INTERNO nel pp_add_type_spec): caso imprevisto (%d)
+8 (ERRORE INTERNO nel pp_add_type_adj): caso imprevisto (%d)
+9 Dichiarazione di %s in formato errato
 
 $set 4
 1 %s
-2 %s: Not a directory\n
-3 %s: Bad installation root?\n
+2 %s: Non è una directory\n
+3 %s: Installation root sbagliato?\n
 
 $set 5
 1 ?
-2 please check correctness of token
-3 USING part not permitted for static cursor "%s"
-4 cursor "%s" is undefined
-5 pointer to a descriptor
-6 pointer to a DB_OBJECT
-7 character string
-8 indicator variable for "%s" not allowed in this context
-9 "%s" not declared in BEGIN DECLARE section
-52 %s (text was "%s")
-53 Lexical error
-54 syntax error at "%s": missing %s in %s
-55 syntax error at "%s": missing %s
+2 si prega di verificare la correttezza di token
+3 USING parte non consentito per cursore statico "%s"
+4 cursor "%s" non è definito
+5 pointer a un descriptor
+6 pointer a un DB_OBJECT
+7 stringa di caratteri
+8 variabile indicatore per "%s" non è consentito in questo contesto
+9 "%s" non dichiarata nella sezione BEGIN DECLARE
+52 %s (testo era "%s")
+53 errore lessicale
+54 errore di sintassi in "%s": manca di %s in %s
+55 errore di sintassi in "%s": manca di %s
 
 $set 6
 1 suppress-line-directive
@@ -84,52 +84,52 @@ $set 6
 12 input-file
 
 $set 7
-1 suppress #line directives in output file, default off
-2 output file name, default <input-file>.c or stdout
-3 include file containing uci_ prototypes, default "esqlx.h"
-4 dump scope debugging information, default off
-5 dump final malloc debugging information, default off
-6 print out version number information, default off
-7 enable UCI function trace, default off
-8 disable length initialization of VARCHAR host variable, default off
-9 use different VARCHAR style, default off
-10 ignore -462(null indicator needed) error, default off
-11 use internal NULL indicator to prevent -462(null indicator needed) error, default off
-12 input file name, default stdin
+1 disattivare le direttive #line nel file di output, predefinito off
+2 nome file di output, predefinito <input-file>.c o stdout
+3 includere file contenenti prototipi uci_, predefinito "esqlx.h"
+4 discarica scopo informazioni di debugging, predefinito off
+5 discarica informazioni finale di malloc debugging, predefinito off
+6 stampare le informazioni sul numero di versione, predefinito off
+7 abilitare la traccia funzione di UCI, predefinito off
+8 disabilitare inizializzazione lunghezza variabile host tipo VARCHAR, predefinito off
+9 uso diverso stile VARCHAR, predefinito off
+10 ignorare errore -462(indicatore null necessario), predefinito off
+11 uso interno indicatore NULL per prevenire errore -462(indicatore null necessario), predefinito off
+12 nome file di input, predefinito stdin
 
 $set 8
-1 REPEATED option ignored
-2 %s version %s\n
+1 opzione REPEATED ignorato
+2 %s versione %s\n
 
 $set 9
-1 (yy_pop_mode) internal error: empty mode stack
-2 "%s" is not permitted in this context
+1 (yy_pop_mode) errore interno: modalità stack vuoto
+2 "%s" non è consentito in questo contesto
 
 $set 10
-1 internal error in %s: %s\n
-2 table overflow
+1 errore interno nel %s: %s\n
+2 tabella overflow
 
 $set 11
-1 indicator variable "%s" must be a short int
-2 cannot use an indicator variable with a structure
-3 "%s" has incomplete struct definition
-4 "%s" must be a valid %s
-5 %s is not an acceptable type for "%s"
-6 unanticipated host variable type: %s
-7 (pp_addr_expr): attempt to find address of NULL variable
-8 "%s" is not a pointer
-9 "%s" does not point to a struct
-10 "%s" is not a struct
-11 %s has no field "%s"
-12 "%s" cannot be dereferenced by "%s"
+1 variabile indicatore "%s" deve essere un short int
+2 non è possibile utilizzare una variabile indicatore con una struttura
+3 "%s" ha incompleta definizione di struttura
+4 "%s" deve essere un valido %s
+5 %s non è un tipo accettabile per "%s"
+6 tipo di variabile host imprevisto: %s
+7 (pp_addr_expr): tentare di trovare l'indirizzo della variabile NULL
+8 "%s" non è un pointer
+9 "%s" non punta a una struttura
+10 "%s" non è una struttura
+11 %s non ha alcun campo "%s"
+12 "%s" non può essere dereferenziato da "%s"
 
 $set 12
-1 out of memory
+1 memoria insufficiente
 
 $set 13
-1 array of functions is illegal, assuming function pointers
-2 (pp_the_same_type) unknown link class
-3 (pp_get_sizeof): bad noun (%d)
+1 matrice delle funzioni è illegale, assumendo puntatori a funzione
+2 (pp_the_same_type) sconosciuto link class
+3 (pp_get_sizeof): sostantivo sbagliato (%d)
 
 $set 14
-1 (INTERNAL ERROR in %s): impossible case
+1 (ERRORE INTERNO nel %s): caso impossibile

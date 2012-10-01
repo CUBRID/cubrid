@@ -24,112 +24,112 @@ $ esql.msg
 $
 
 $set 1
-1 Non integer argument value "%s"\n
-2 Non floating argument value "%s"\n
-3 Missing argument %s\n
+1 Non-Integer-Argument Wert "%s"\n
+2 Non-Gleitzahl-Argument value "%s"\n
+3 Fehlender Argument %s\n
 4 [options] 
-5 Options: \n
-6 Missing argument value for key %s\n
-7 Unknown option "%s"\n
-8 Unexpected positional argument "%s"\n
+5 Optionen: \n
+6 Fehlender Argumentwert für Schlüssel %s\n
+7 Unbekannte Option "%s"\n
+8 Unerwartetes Positionsargument "%s"\n
 
 $set 2
 1 Redefinition of cursor "%s"
-2  *\tfor statement %s\n
-3  *\n * Cursor table:\n
+2  *\t für Anweisung %s\n
+3  *\n * Cursor-Tabelle:\n
 
 $set 3
-1 (INTERNAL ERROR in set_class_bit): bad storage class (%d)
-2 (INTERNAL ERROR in add_spec_to_decl()): malformed chain (no specifier)
-3 storage class specifier not allowed in this context
-4 illegal storage class combination
-5 illegal type combination
-6 illegal modifier combination
-7 (INTERNAL ERROR in pp_add_type_spec): unexpected case (%d)
-8 (INTERNAL ERROR in pp_add_type_adj): unexpected case (%d)
-9 improperly formed %s declaration
+1 (INTERNER FEHLER in set_class_bit): ungültige Speicherungsklasse (%d)
+2 (INTERNER FEHLER in add_spec_to_decl()): ungültige Kette (kein Spezifikationssymbol)
+3 Spezifikationssymbol der Speicherungsklasse nicht erlaubt in diesem Kontext 
+4 ungültige Speicherungsklassekombination
+5 ungültige Kombination der Typen
+6 ungültige Modifikator-Kombination
+7 (INTERNER FEHLER in pp_add_type_spec): unerwarteter Zustand (%d)
+8 (INTERNER FEHLER in pp_add_type_adj): unerwarteter Zustand (%d)
+9 ungültige %s Deklaration
 
 $set 4
 1 %s
-2 %s: Not a directory\n
-3 %s: Bad installation root?\n
+2 %s: Kein Ordner\n
+3 %s: Ungültiger Installationspfad?\n
 
 $set 5
 1 ?
-2 please check correctness of token
-3 USING part not permitted for static cursor "%s"
-4 cursor "%s" is undefined
-5 pointer to a descriptor
-6 pointer to a DB_OBJECT
-7 character string
-8 indicator variable for "%s" not allowed in this context
-9 "%s" not declared in BEGIN DECLARE section
-52 %s (text was "%s")
-53 Lexical error
-54 syntax error at "%s": missing %s in %s
-55 syntax error at "%s": missing %s
+2 überprüfen Sie bitte die Richtigkeit des Tokens
+3 USING-Teil nicht für den statischen Cursor "%s" gestattet 
+4 Cursor "%s" ist nicht definiert worden
+5 Zeiger an einen Deskriptor
+6 Zeiger an ein DB_OBJECT
+7 Zeichen-String
+8 Indikator-Variable für "%s" nicht erlaubt in diesem Kontext
+9 "%s" nicht deklariert in der BEGIN DECLARE Sektion
+52 %s (Text war "%s")
+53 lexikalischer Fehler
+54 Syntax-Fehler an "%s": %s fehlt in %s
+55 Syntax-Fehler an "%s": %s fehlt
 
 $set 6
-1 suppress-line-directive
-2 output-file
-3 include-file
+1 Suppress-Line-Direktive
+2 Ausgabe-Datei
+3 Include-Datei
 4 dump-scope-info
 5 dump-malloc-info
-6 announce-version
+6 announce-Version
 7 enable-uci-trace
 8 disable-varchar-length
 9 varchar2-style
 10 unsafe-null
-11 internal-indicator
-12 input-file
+11 interner Indikator
+12 Input-Datei
 
 $set 7
-1 suppress #line directives in output file, default off
-2 output file name, default <input-file>.c or stdout
-3 include file containing uci_ prototypes, default "esqlx.h"
-4 dump scope debugging information, default off
-5 dump final malloc debugging information, default off
-6 print out version number information, default off
-7 enable UCI function trace, default off
-8 disable length initialization of VARCHAR host variable, default off
-9 use different VARCHAR style, default off
-10 ignore -462(null indicator needed) error, default off
-11 use internal NULL indicator to prevent -462(null indicator needed) error, default off
-12 input file name, default stdin
+1 #line-Direktiven in Ausgabedatei unterdrücken, standardmäßig ausgeschaltet
+2 Ausgabe-Date-Name, standardmäßig <input-file>.c oder stdout
+3 Include-Datei enthält uci_ Prototypen, standardmäßig "esqlx.h"
+4 Scope Debugging-Informationen Anzeigen, standardmäßig ausgeschaltet
+5 Malloc Debugging-Information Anzeigen, standardmäßig ausgeschaltet
+6 Version Information drucken, standardmäßig ausgeschaltet
+7 UCI-Funktion verfolgen, standardmäßig ausgeschaltet
+8 deaktivierung der Länge-Initialisierung der VARCHAR Hostvariable, standardmäßig ausgeschaltet
+9 ein anderer VARCHAR Styl benutzen, standardmäßig ausgeschaltet
+10 -462(Null-Indicator erforderlich) Fehler ignorieren, standardmäßig ausgeschaltet
+11 Internes NULL Indicator verwenden, um den Fehler -462(Null-Indicator erforderlich) zu verhindern, standardmäßig ausgeschaltet
+12 Input-Datei-Name, standardmäßig stdin
 
 $set 8
-1 REPEATED option ignored
-2 %s version %s\n
+1 REPEATED Option wurde ignoriert
+2 %s Version %s\n
 
 $set 9
-1 (yy_pop_mode) internal error: empty mode stack
-2 "%s" is not permitted in this context
+1 (yy_pop_mode) interner Fehler: leerer Modus-Stapel
+2 "%s" ist nicht erlaubt in diesem Kontext
 
 $set 10
-1 internal error in %s: %s\n
-2 table overflow
+1 interner Fehler in %s: %s\n
+2 Tabellenüberlauf
 
 $set 11
-1 indicator variable "%s" must be a short int
-2 cannot use an indicator variable with a structure
-3 "%s" has incomplete struct definition
-4 "%s" must be a valid %s
-5 %s is not an acceptable type for "%s"
-6 unanticipated host variable type: %s
-7 (pp_addr_expr): attempt to find address of NULL variable
-8 "%s" is not a pointer
-9 "%s" does not point to a struct
-10 "%s" is not a struct
-11 %s has no field "%s"
-12 "%s" cannot be dereferenced by "%s"
+1 Indicator-Variable "%s" soll ein short int sein
+2 Eine Indicator-Variable darf mit einer Struktur nicht verwendet werden 
+3 "%s" hat inkomplette struct Definition
+4 "%s" muss ein valides %s sein
+5 %s ist kein erlaubtes Typ für "%s"
+6 unerwartets Host-Variablen-Typ: %s
+7 (pp_addr_expr): Versuch, die Adresse der NULL-Variable zu finden 
+8 "%s" ist kein Zeiger
+9 "%s" zeigt an einem struct nicht
+10 "%s" ist kein struct
+11 %s hat keinen Feld "%s"
+12 "%s" kann durch "%s" nicht de-referenziert werden
 
 $set 12
-1 out of memory
+1 außer Speicher
 
 $set 13
-1 array of functions is illegal, assuming function pointers
-2 (pp_the_same_type) unknown link class
-3 (pp_get_sizeof): bad noun (%d)
+1 Reihe von Funktionen ist nicht erlaubt, interpretiert wie Funktionszeiger
+2 (pp_the_same_type) unbekannte Klasse von Links
+3 (pp_get_sizeof): ungültiger noun (%d)
 
 $set 14
-1 (INTERNAL ERROR in %s): impossible case
+1 (INTERNER FEHLER in %s): unmöglicher Fall

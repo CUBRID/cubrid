@@ -26,1834 +26,1834 @@ $
 $set 1 MSGCAT_SET_GENERAL
 1 \n%s\n\n
 2 Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.\n
-3 Copyright Information\n
-5 Non integer argument value `%s'
-6 Non floating argument value `%s'
-7 Missing argument `%s'
-8 Duplicate argument `%s'
-9 Missing value for argument `%s'
-10 Unknown argument `%s'
-11 Unexpected positional argument `%s'
-12 No argument definitions given
-13 Couldn't allocate storage for argument parsing
-14 Argument string exceeds maximum length: %s
-15 Invalid message number %d within catalog for argument parsing
-16 [options]
-17 Options:
+3 Informazioni sul copyright\n
+5 Valore non intera `%s' per l'argomento
+6 Valore non flottante `%s' per l'argomento
+7 Argomento assente `%s'
+8 Argomento duplicato `%s'
+9 Valore mancante per l'argomento `%s'
+10 Argomento sconosciuto `%s'
+11 Aargomento posizionale Inaspettato `%s'
+12 Nessuna definizione degli argomenti
+13 Impossibile allocare memoria per il parsing dell'argomento
+14 Stringa di argomento supera la lunghezza massima: %s.
+15 Numero non valido di messaggio %d all'interno del catalogo per il parsing del l'argomento
+16 [opzioni]
+17 Opzioni:
 
 $set 4 MSGCAT_SET_PARAMETER
-2 %s is not a directory.  Creating %s in ".".
-3 Cannot open %s.  configuration file not created.
-4 Unable to write line %d to configuration file %s.
-6 Can't access system configuration file "%s": %s
-7 HOME not set
-8 Required parameter "%s" has no value.
-9 Cannot open configuration file "%s": %s
-10 The '%s' parameter at line %d in file '%s' : 
-11 Environment variable %s: 
-12 Unrecognized keyword.
-13 Value type does not match parameter type.
-14 Cannot allocate memory to store value.
-15 Unterminated string value.
-16 Value is out of range.
-17 UNIX error: %s
-18 No message available.
-19 Value is out of range. Resetting to the default value.
-20 Keyword = '%s'    Value = %d    Default Value = %d\n
-21 Keyword = '%s'    Value = %f    Default Value = %f\n
-22 Deprecated parameter
-23 The '%s' and '%s' parameters can not be used together.\n
+2 %s non è una directory. Creazione di %s in ".".
+3 Impossibile aprire %s. File di configurazione non creato.
+4 Impossibile scrivere la linea %d alla file di configurazione %s
+6 Impossibile accedere al file di configurazione di sistema "%s": %s
+7 HOME non impostato
+8 Parametro obbligatorio "%s" non ha alcun valore.
+9 Impossibile aprire il file di configurazione "%s": %s
+10 Il parametro '%s': alla linea %d in '%s': file
+11 Variabile di ambiente %s:
+12 Parola chiave non riconosciuta.
+13 Tipo di valore non corrisponde al tipo di parametro.
+14 Impossibile allocare memoria per immagazzinare il valore.
+15 Valore della stringa non terminata.
+16 Il valore è fuori intervallo.
+17 Errore UNIX: %s
+18 Nessuna informazione disponibile.
+19 Il valore è fuori intervallo. Reimpostazione al valore di default.
+20 Parola riservate = '%s':    Valore = %d    Valore default = %d\n
+21 Parola riservate = '%s':    Valore = %f    Valore default = %f\n
+22 Parametro obsoleto
+23 I parametri '%s' e '%s' non possono essere utilizzati insieme.\n
 
 $set 5 MSGCAT_SET_ERROR
-1 Missing message for error code %1$d.
-2 Internal system failure: no more specific information is available.
-3 Out of virtual memory: unable to allocate %1$ld memory bytes.
-4 Has been interrupted.
-5 Key = "%1$s" was not found in hash table "%2$s".
-6 A NULL memory hash table was supplied to a hash table function.
-7 Trying to format disk volume "%1$s" with an incorrect value %2$d for number of pages.
-8 Unable to format disk volume "%1$s" with %2$d pages (%3$ld bytes).
-9 Unable to format disk volume "%1$s" with %2$d pages (%3$ld Kbytes) due to insufficient space. Current space available is %4$d pages (%5$ld Kbytes).
-10 Unable to mount disk volume "%1$s".
-11 Unable to mount disk volume "%1$s". The database "%2$s", to which the disk volume belongs, is in use by user %3$s on process %4$d of host %5$s since %6$s.
-12 Problems dismounting volume "%1$s".
-13 An I/O error occurred while reading page %1$d of volume "%2$s".
-14 An I/O error occurred while writing page %1$d of volume "%2$s".
-15 Unable to write page %1$d of volume "%2$s" due to insufficient space in operating system device.
-16 Unable to rename disk volume "%1$s" to "%2$s".
-17 Internal error: fetching deallocated pageid %1$d of volume "%2$s".
-18 All page buffers are fixed (LRU: %1$d).
-19 Internal error: pageptr = %1$p of page %2$d of volume "%3$s" is not fixed.
-20 Internal error: unknown pageptr = %1$p.
-21 Internal error: unknown sector %1$d of volume "%2$s".
-22 Internal error: unknown page %1$d of volume "%2$s".
-23 Internal error: trying to deallocate disk system page %1$d of volume "%2$s".
-24 Almost out of space in volume "%1$s". Total number of pages = %2$d, total number of free pages = %3$d.
-25 Almost out of space in volumes with data as the main storage purpose. Total number of pages = %1$d, total number of free pages = %2$d.
-26 Almost out of space in volumes with index as the main storage purpose. Total number of pages = %1$d, total number of free pages = %2$d.
-27 Almost out of space in volumes with generic storage purpose. Total number of pages = %1$d, total number of free pages = %2$d.
-28 Almost out of space in volumes with temporary data as the main storage purpose. Total number of pages = %1$d, total number of free pages = %2$d.
-29 Last out of space notification for volume "%1$s". Total number of pages = %2$d, total number of free pages = %3$d.
-30 Last out of space notification for volumes with data as the main storage purpose. Total number of pages = %1$d, total number of free pages = %2$d.
-31 Last out of space notification for volumes with index as the main storage purpose. Total number of pages = %1$d, total number of free pages = %2$d.
-32 Last out of space notification for volumes with generic storage purpose. Total number of pages = %1$d, total number of free pages = %2$d.
-33 Last out of space notification for volumes with temporary data as the main storage purpose. Total number of pages = %1$d, total number of free pages = %2$d.
-34 Internal error: %1$d nthpage is out of range for file %2$d in volume "%3$s". Current number of pages are %4$d.
-35 Internal error: Unknown volume identifier %1$d.
-36 Out of disk space in database. Number of requested page(s) = %1$d.
-37 Out of disk space in volume "%1$s". Number of requested page(s) = %2$d.
-38 Internal error: Unknown file VFID %1$d|%2$d.
-39 Internal error: Page %1$d|%2$d(volume "%3$s") of file VFID %4$d|%5$d(volume "%6$s") is invalid/deallocated according to allocation map.
-40 Internal error: %1$d expected pages, %2$d found pages for file VFID %3$d|%4$d(volume "%5$s").
-41 Internal error: Page %1$d|%2$d(volume "%3$s") is not part of file VFID %4$d|%5$d(volume "%6$s").
-42 Cannot reorder anchored records on page %1$d of volume "%2$s".
-43 Internal error: The page %1$d of volume "%2$s" may be corrupted. %3$d records was found when %4$d was expected.
-44 No space available in slotted page %1$d of volume "%2$s".
-45 Slot %1$d on page %2$d of volume "%3$s" is allocated to an anchored record. A new record cannot be inserted here.
-46 Internal error: slot %1$d on page %2$d of volume "%3$s" is not allocated.
-47 Unable to create a heap file in volume "%1$s".
-48 Accessing deleted object %1$d|%2$d|%3$d.
-49 Internal error: class of object %1$d|%2$d|%3$d is unknown.
-50 Internal error: relocation record of object %1$d|%2$d|%3$d may be corrupted.
-51 Internal error: object %1$d|%2$d|%3$d may be corrupted.
-52 Internal error: object overflow address %1$d|%2$d|%3$d may be corrupted.
-53 Fetching object %1$d|%2$d|%3$d when only its OID has been assigned.
-54 Internal error: trying to manipulate an object of %1$d pages long. The maximum size allowed for an object is %2$d pages.
-55 Internal error: A page cycle reference was detected on page %1$d|%2$d of heap file %3$d|%4$d|%5$d.
-56 Internal error: unknown extendible hashing file (Volid: %1$d Fileid: %2$d) page (Volid: %3$d Pageid: %4$d) was specified.
-57 Key does not exist in the extendible hashing structure.
-58 String "%1$s" is too long to fit in a slotted page.
-59 Internal error: the specified key type %1$d is not valid for the extendible hashing structure.
-60 Internal error: the extendible hashing structure has been corrupted.
-61 Internal error: the directory root page of the extendible hashing structure (Volid: %1$d Fileid: %2$d Pageid: %3$d) has been corrupted.
-62 Internal error: sorting record %1$d (size %2$d) does not fit in a page; the maximum allowable size is %3$d.
-63 Internal error: a temporary page was corrupted during sorting.
-64 Unknown class "%1$s".
-65 Class "%1$s" already exists.
-66 Internal error: unknown force operation %1$d for object %2$d|%3$d|%4$d.
-67 Internal error: a heap file has not been allocated to store object %1$d|%2$d|%3$d.
-68 Internal error: different classnames for class with oid = %1$d|%2$d|%3$d were found. Found classnames are "%4$s", "%5$s" using classname hash table and heap, respectively.
-69 Internal error: different class object identifiers were found for class with name "%1$s". Found OIDS are %2$d|%3$d|%4$d, %5$d|%6$d|%7$d using classname hash table and heap, respectively.
-70 Internal error: Class with name "%1$s" and oid = %2$d|%3$d|%4$d does not exist in classname hash table.
-71 Internal error: Class with name "%1$s" and oid = %2$d|%3$d|%4$d does not exist in its heap.
-72 Your transaction (index %1$d, %2$s@%3$s|%4$d) has been unilaterally aborted by the system.
-73 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on object %6$d|%7$d|%8$d. You are waiting for user(s) %9$s to finish.
-74 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on class %6$s. You are waiting for user(s) %7$s to finish.
-75 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on instance %6$d|%7$d|%8$d of class %9$s. You are waiting for user(s) %10$s to finish.
-76 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s on page %6$d|%7$d. You are waiting for user(s) %8$s to release the page lock.
-77 Internal error: all buffers are fixed.
-78 Internal error: an I/O error occurred while reading logical log page %1$lld (physical page %2$lld) of "%3$s".
-79 Internal error: an I/O error occurred while writing logical log page %1$lld (physical page %2$lld) of "%3$s".
-80 Insufficient space in operating system device when writing logical log page %1$lld (physical page %2$lld) of "%3$s". Could not write more than %4$d bytes.
-81 Internal error: logical log page %1$lld may be corrupted.
-82 Unable to mount log disk volume/file "%1$s".
-83 Length of path "%1$s" plus length of prefix logname "%2$s" is too long; the combined length must be less than %3$d.
-84 Length of prefix logname "%1$s" is too long; the length must be less than %2$d.
-85 The prefix name "%1$s" is not the same as "%2$s" on the log disk. The log may have been renamed outside the database domain.
-86 Database is incompatible with current "%1$s" release "%2$s".
-87 There are recovery actions that must recovered using "%1$s" release "%2$s" instead of release "%3$s". After the recovery, the database can be run on release "%4$s".
-88 Internal error: Release string "%1$s" cannot exceed %2$d. Must change header log.
-89 Log "%1$s" does not belong to the given database.
-90 Redo logging is always a page level logging operation. A data page pointer must be given as part of the address.
-91 Postpone logging is always a page level logging operation. A data page pointer must be given as part of the address.
-92 Compensate logging is always a page level logging operation. A data page pointer must be given as part of the address.
-93 Warning: redo logging is ignored during redo recovery and normal rollbacks.
-94 Warning: postpone logging is ignored during redo recovery and normal rollbacks.
-95 Warning: undo logging is ignored during recovery and normal rollback.
-96 Media recovery may be needed on volume "%1$s".
-97 Internal error: unable to find log page %1$lld in log archives.
-98 Unable to create archive log "%1$s" to archive pages from %2$lld to %3$lld.
-99 Unable to create backup directory information file "%1$s".
-100 Unable to backup database "%1$s".
-101 Unknown user file "%1$s".
-102 File "%1$s" does not have enough entries: %2$d entries expected.
-103 File "%1$s" seems to have unordered entries. Entry %2$d with values: %3$d %4$s %5$s, was found when entry with values %6$d %7$s was expected.
-104 File "%1$s" seems to have an incorrect entry for database name (main volume). Entry %2$d with values: %3$d %4$s %5$s, was found when entry with values %6$d %7$s %8$s was expected.
-105 Cannot access backup file "%1$s". Restore or Backup is cancelled.
-106 Cannot prepare to commit the current transaction with global transaction identifier %1$d because that transaction identifier is in use by another transaction.
-107 There is no global distributed transaction associated with transaction identifier %1$d.
-108 Current transaction %1$d must be committed or aborted before attempting to join to the distributed transaction with global identifier %2$d.
-109 Your transaction %1$d has been unilaterally aborted by the system because a participant (remote) site went down or unilaterally aborted the transaction.
-110 Isolation level value must be between %1$d and %2$d.
-111 Your transaction has been aborted by the system due to server failure or mode change.
-112 Host "%1$s" is not authorized to run database.
-113 Unable to restart/initialize the database server. %1$s
-114 Unable to interpret "%1$s" as a database. The database volumes/files may have been renamed/copied outside the database domain.
-115 Database "%1$s" already exists.
-116 Database "%1$s" is unknown, or the file "databases.txt" cannot be accessed.
-117 Absolute pathname for the database is too long. The combined length of the path "%1$s" plus the name "%2$s" is %3$d; the combined length must be less than %4$d.
-118 Failed to locate current working directory.
-119 Unable to find local hostname.
-120 The maximum number of volumes (%1$d) has been exceeded.
-121 Trying to remove "%1$s" a permanent volume from the database.
-122 Unable to access system message catalog.
-123 Unable to create "%1$s" for database "%2$s".
-124 Volume "%1$s" already exists.
-125 An automatic volume extension "%1$s" of %2$d pages and generic storage purpose was created.
-126 Unknown purpose "%1$s" given on line %2$d.
-127 Incorrect value %1$d for number of pages given on line %2$d.
-128 Number of pages was not given on line %1$d.
-129 Unknown token "%1$s" was found on line %2$d.
-130 Out of virtual memory.
-131 Database system error.
-132 Feature not implemented in the current release: %1$s.
-133 Nested set constant not allowed.
-134 Not allowed to use both class attributes and non-class attributes in a single update.
-135 Invalid statement for oid columns: %1$s.
-136 Unimplemented function "%1$s".
-137 Corrupted authorization objects.
-138 Authorization class "%1$s" not found.
-139 Access error on authorization attribute "%2$s" of class "%1$s".
-140 Operation "%1$s" can only be performed by the DBA or a DBA group member.
-141 Cannot add "%1$s" as a member of "%2$s".
-142 Adding member causes the user hierarchy to become a cyclic graph.
-143 Encountered a class with no owner.
-144 Unable to access user object.
-145 Cannot issue grant/revoke commands to yourself.
-146 Cannot issue GRANT/REVOKE to owner of a class.
-147 No GRANT option.
-148 Cannot obtain write lock on authorization object.
-149 Cannot create instance of authorization object.
-150 Cannot revoke privileges from self.
-151 Cannot revoke privileges from owner of a class.
-152 GRANT not found.
-153 No authorization privileges in effect for the database.
-154 Incomplete authorization installation - no authorization privileges in effect for the database.
-155 Multiple authorization roots.
-156 Authorization failure.
-157 SELECT authorization failure.
-158 ALTER authorization failure.
-159 UPDATE authorization failure.
-160 INSERT authorization failure.
-161 DELETE authorization failure.
-162 INDEX authorization failure.
-163 EXECUTE authorization failure.
-164 User "%1$s" already exists.
-165 User "%1$s" is invalid.
-166 Invalid user specified.
-167 DBA, members of DBA group and class owner can perform the operation.
-168 Member not found.
-169 Cannot remove user %s from the database.
-170 No user logged in.
-171 Incorrect or missing password.
-172 Password string cannot have more than 31 bytes.
-173 Could not locate database file "%1$s".
-174 Could not obtain write access to database file "%1$s".
-175 Badly formatted database file "%1$s".
-176 Conversion error in date format.
-177 Cannot create large object for internal storage.
-178 Temporary OID encountered without MOP.
-179 Domain "%1$s" is not compatible with domain "%2$s".
-180 Domain "%1$s" of supplied value is not compatible with destination domain "%2$s".
-181 Cannot coerce value of domain "%1$s" to domain "%2$s".
-182 Cannot coerce value of domain "%1$s" to domain "%2$s" without overflow.
-183 Unexpected amount of received data; %1$d expected, %2$d received.
-184 Cannot allocate communications buffer.
-185 Error receiving data from client.
-186 Error receiving data from server.
-187 Communications buffer not used.
-188 Unknown database "%1$s".
-189 Invalid host name "%1$s".
-190 Server host not identified.
-191 Cannot connect to server "%1$s" on "%2$s".
-192 Could not load network configuration file.
-193 Server received shutdown command from client.
-194 Unknown server request id %1$d.
-195 Server communications error: %1$s.
-196 Server name not identified.
-197 Could not make contact with master server.
-198 Receive buffer too small, data truncated.
-199 Server no longer responding.
-200 Not properly removing set from object after free.
-201 Removed incorrect UNIQUE table entry.
-202 Attribute "%1$s" was not found.
-203 Value for attribute "%1$s" must be of type "%2$s", not type "%3$s".
-204 Function called with missing or invalid arguments.
-205 Attribute "%1$s" cannot be made NULL.
-206 Attribute "%1$s" does not have the UNIQUE constraint.
-207 Class "%1$s" has a zero-size object.
-208 Method "%1$s" not found.
-209 No attribute or method with name "%1$s" was found.
-210 Internal error: processing object template.
-211 Attribute was deleted while building object template.
-212 Attribute "%1$s" violates the UNIQUE constraint.
-213 Invalid UNIQUE table entry encountered.
-214 A domain conflict exists on attribute "%1$s".
-215 Attribute with id %1$d not found.
-216 Invalid object ownership tag on value.
-217 Operation can only be performed on class objects.
-218 Invalid object in db_get path expression.
-219 Invalid db_get path expression.
-220 Invalid set in db_get path expression.
-221 Invalid set index in db_get path expression.
-222 Attempt to assign string value greater than %2$d characters to attribute "%1$s".
-223 Value %2$d is too large for smallint attribute "%1$s".
-224 A database has not been restarted.
-225 Missing value for attribute "%1$s" with the NOT NULL constraint.
-226 Empty component list in class.
-227 Attempt to assign value to attribute "%1$s" more than once.
-228 Method "%1$s" called with %2$d arguments. The system allows a maximum of %3$d arguments.
-229 Method "%1$s" requires argument %2$d to be within the domain "%3$s". An invalid value of domain "%4$s" was given.
-230 Attribute "%1$s" cannot be assigned a string of length %2$d. The maximum allowable string length is %3$d.
-231 Invalid API operation attempted on a temporary object.
-232 Not allowed to use object templates over multiple transactions.
-233 Cannot create class with basic type name "%1$s".
-234 Method file "%1$s" not found.
-235 %1$d unresolved method functions after linking.
-236 Unresolved method "%1$s".
-237 Severe problems were encountered during dynamic linking.
-238 Could not access method file "%1$s".
-239 Attribute "%1$s" was not found.
-240 Method "%1$s" was not found.
-241 There is no attribute or method with name "%1$s".
-242 Signature for %2$s not found for method "%1$s".
-243 Argument %2$d of method "%1$s" is undefined.
-244 Domain name "%1$s" is not the name of a class or basic type.
-245 The name "%1$s" has already been used as an attribute name.
-246 The name "%1$s" has already been used as a method name.
-247 Invalid arguments to schema manager internal function.
-248 The attribute domain "%1$s" is not suitable for use with the %2$s constraint.
-249 The requested operation on class "%1$s" can only be performed before instances are created.
-250 Cannot create index on attribute "%1$s", defined with a shared value.
-251 Signature %2$s already exists for method "%1$s".
-252 Attribute "%1$s" must have a set domain for that operation.
-253 Attribute "%1$s" cannot be defined with a nested set domain.
-254 Unable to remove domain "%2$s" from attribute "%1$s".
-255 Attribute "%1$s" is not of a variable sized domain.
-256 Superclass already exists.
-257 Superclass addition would cause cycles in class hierarchy.
-258 Superclass not found.
-259 Multiple signatures exist for method "%1$s".
-260 Argument %2$d of method "%1$s" is not of a set domain.
-261 Resolution for "%1$s" not found.
-262 Value domain "%2$s" not suitable for attribute "%1$s".
-263 Schema manager internal corruption detected.
-264 Alias "%2$s" for attribute/method "%1$s" is not unique.
-265 Shadowing attribute "%1$s" with conflicting domain "%2$s".
-266 Name conflict on attribute "%1$s" with classes "%2$s" and "%3$s".
-267 Shadowing method "%1$s" with conflicting signature.
-268 Name conflict on method "%1$s" with classes "%2$s" and "%3$s".
-269 Cannot define index on domain "%1$s".
-270 Cannot define UNIQUE constraint on domain "%1$s".
-271 Detected cycle in class hierarchy; "%1$s" is a super class of "%2$s".
-272 Index "%2$s" already defined for class "%1$s".
-273 Index "%1$s" does not exist.
-274 Illegal characters in name: "%1$s".
-275 Illegal operation on attribute "%1$s", inherited from class "%2$s".
-276 Illegal operation on method "%1$s", inherited from class "%2$s".
-277 Illegal operation on "%1$s", inherited from class "%2$s".
-278 Class "%4$s" has incompatible domains for "%1$s", inherited from classes "%2$s" and "%3$s".
-279 In class "%4$s", "%1$s" inherited from class "%2$s" cannot be used as requested. The definition from class "%3$s" has a more specific domain.
-280 In class "%3$s", "%1$s" cannot be inherited from class "%2$s" because there is a local definition with an incompatible domain.
-281 In class "%3$s", "%1$s" inherited from class "%2$s" is aliased but no substitute from another source was found.
-282 In class "%4$s", "%1$s" inherited from class "%3$s" cannot serve as an alias substitute for class "%2$s". The domains are incompatible.
-283 In class "%4$s", "%1$s" inherited from class "%3$s" cannot serve as an alias substitute for class "%2$s". It has a less specific domain.
-284 Cannot request inheritance of "%1$s" because it is defined locally in the class.
-285 Cannot use "%1$s" as an alias for inherited component "%2$s" because there is already a locally defined component with that name.
-286 Cannot use "%1$s" as an alias for "%2$s" of "%3$s". A component with that name is already inherited from "%4$s".
-287 In class "%1$s", cannot define attribute "%2$s" because it would shadow a method inherited from "%3$s".
-288 In class "%1$s", cannot define method "%2$s" because it would shadow an attribute inherited from "%3$s".
-289 Subclass "%1$s" cannot inherit method "%2$s" from class "%3$s" because there is already an attribute with that name.
-290 Subclass "%1$s" cannot inherit attribute "%2$s" from class "%3$s" because there is already a method with that name.
-291 "%1$s" is defined in class "%2$s" as an attribute and in class "%3$s" as a method.
-292 No populate specification with index "%1$s".
-293 Operation not allowed for this class type.
-294 Undefined environment variable "%1$s" referenced in method file.
-295 Unable to alter class "%1$s". The system catalog is out of space. To reclaim space, compact the database with the compactdb utility.
-296 Invalid property list encountered.
-297 Alias name "%1$s" is used more than once.
-298 In class "%1$s", a resolution for "%2$s" of "%3$s"' is not allowed. That class is not a super class.
-299 "%1$s" is a reserved word and cannot be used as an attribute, method, or class name.
-300 Attribute "%1$s" cannot be defined with DEFAULT and UNIQUE constraints together.
-301 Attribute "%1$s" cannot be defined with a length constraint of %2$d. The maximum length constraint is %3$d.
-302 Cannot add element to a set.
-303 Value already exists in set.
-304 Set index %1$d is out of bounds.
-305 Sequence index %1$d is out of bounds.
-306 Requested operation can only be performed on sequences.
-307 Requested operation can only be performed on sets.
-308 Element value is not within the domain of the set.
-309 Illegal set element index given: %1$d.
-310 Element not found in set.
-311 Element not found in sequence.
-312 "%1$s" is not a valid set domain.
-313 Object buffer underflow while reading.
-314 Object buffer overflow while writing.
-315 Illegal metaclass definition encountered.
-316 Transformer size calculation mismatch, expected %1$d calculated %2$d.
-317 Invalid disk representation encountered for class "%1$s".
-318 Out of sync during object loading. Database is likely corrupted or out of date.
-319 Ignoring unknown attribute extension.
-320 Encountered corrupted disk representation of object.
-321 Possible corruption in the workspace detected.
-322 MOP not found in the workspace.
-323 Attempt to upgrade non-temporary MOP in workspace.
-324 Object found in workspace without class.
-325 Attempt to garbage collect a MOP in the dirty list.
-326 Changing class pointer for object in workspace.
-327 Cannot create MOP with NULL OID.
-328 Instance encountered in workspace without class.
-329 Object list link not allocated in workspace.
-330 Workspace pin violation.
-331 Could not allocate workspace block from OS, out of virtual memory. Aborting transaction.
-332 Original workspace size estimate exceeded. An automatic extension has been made.
-333 Out of memory during workspace storage allocation. Aborting transaction.
-334 Attempted allocation of %1$d bytes is larger than maximum workspace block size. Try adjusting max_block_size parameter. Transaction aborted.
-335 Ignoring attempt to free object not allocated within the workspace.
-336 Ignoring attempt to free an object more than once.
-337 Ignoring attempt to allocate object with negative size.
-338 Map entry identifier overrun.
-339 Cannot exit critical section, since it is not owned by transaction %1$d.
-340 Cannot fork child process.
-341 Cannot exec child process.
-342 Cannot change process group.
-343 Request_id is already used.
+1 Messaggio mancante per il codice di errore %1$d.
+2 Guasto interno del sistema: nessuna informazione più specifiche è disponibile.
+3 Memoria virtuale esaurita: Impossibile allocare %1$ld byte di memoria.
+4 è stato interrotto.
+5 Chiave = "%1$s" non è stato trovato in tabella hash "%2$s".
+6 Una tabella di memoria hash è stato fornito a una funzione della tabella hash.
+7 Cercando di formattare il volume del disco "%1$s" con una %2$d valore non corretto per il numero di pagine.
+8 Impossibile formattare il volume del disco "%1$s" con %2$d pagine (%3$ld byte).
+9 Impossibile formattare il volume del disco "%1$s" con %2$d pagine (%3$ld Kbytes) a causa di spazio insufficiente. Lo spazio attuale disponibile è %4$d pagine (%5$ld Kbytes).
+10 Impossibile montare il volume del disco "%1$s".
+11 Impossibile montare il volume del disco "%1$s". La database "%2$s", a cui appartiene il volume del disco, è in uso da utente %3$s su processo %4$d dell'host %5$s dal %6$s.
+12 Problemi smontaggio del volume "%1$s".
+13 Un errore I/O durante la lettura della pagina %1$d del volume "%2$s".
+14 Un errore I/O durante la scrittura della pagina %1$d del volume "%2$s".
+15 Impossibile scrivere pagina %1$d del volume "%2$s" a causa di spazio insufficiente nel dispositivo del sistema operativo.
+16 Impossibile rinominare il volume del disco "%1$s" a "%2$s".
+17 Errore interno: il recupero di pageid deallocato %1$d del volume "%2$s".
+18 Tutti i bufferi di pagina sono fissi (LRU: %1$d).
+19 Errore interno: pageptr = %1$p da pagina %2$d del volume "%3$s" non è fisso.
+20 Errore interno: pageptr = %1$p sconosciuto.
+21 Errore interno: settore sconosciuto %1$d del volume "%2$s"
+22 Errore interno: pagina sconosciuta %1$d del volume "%2$s"
+23 Errore interno: tentativo di deallocare di pagina %1$d di sistema del disco del volume "%2$s"
+24 Pressoché esaurito lo spazio in volume "%1$s" Numero totale di pagine = %2$d, il numero totale di pagine libere = %3$d.
+25 Pressoché esaurito lo spazio in volumi con dati come lo scopo principale di stoccaggio. Numero totale di pagine = %1$d, il numero totale di pagine libere = %2$d.
+26 Pressoché esaurito lo spazio in volumi con l'index come lo scopo principale di stoccaggio. Numero totale di pagine = %1$d, il numero totale di pagine libere = %2$d.
+27 Pressoché esaurito lo spazio in volumi con scopo di stoccaggio generico. Numero totale di pagine = %1$d, il numero totale di pagine libere = %2$d.
+28 Pressoché esaurito lo spazio dei volumi con dati temporanei come lo scopo di stoccaggio principale. Numero totale di pagine = %1$d, il numero totale di pagine libere = %2$d.
+29 All'ultima notificazione dell'esaurimento dello spazio per volume "%1$s". Numero totale di pagine = %2$d, il numero totale di pagine libere = %3$d.
+30 All'ultima notificazione dell'esaurimento dello spazio per i volumi con dati come lo scopo di stoccaggio principale. Numero totale di pagine = %1$d, il numero totale di pagine libere = %2$d.
+31 All'ultima notificazione dell'esaurimento dello spazio per i volumi con index come lo scopo principale di stoccaggio. Numero totale di pagine = %1$d, il numero totale di pagine libere = %2$d.
+32 All'ultima notificazione dell'esaurimento dello spazio per i volumi con scopo di stoccaggio generico. Numero totale di pagine = %1$d, il numero totale di pagine libere = %2$d.
+33 All'ultima notificazione dell'esaurimento dello spazio per i volumi con i dati provvisori come lo scopo di stoccaggio principale. Numero totale di pagine = %1$d, il numero totale di pagine libere = %2$d.
+34 Errore interno: %1$d nthpage è fuori intervallo per il file %2$d in volume "%3$s". Numero attuale di pagine è %4$d.
+35 Errore interno: identificativo del volume sconosciuto %1$d.
+36 Spazio su disco esaurito nel database. Numero di pagine richieste = %1$d.
+37 Spazio su disco esaurito in volume "%1$s". Numero di pagine richieste = %2$d.
+38 Errore interno: file sconosciuto VFID %1$d|%2$d.
+39 Errore interno: Pagina %1$d|%2$d (volume "%3$s") del file VFID %4$d|%5$d (volume "%6$s") non è valido/è deallocato in base alla mappa di allocazione.
+40 Errore interno: %1$d pagine attesi, %2$d pagine trovate per il file VFID %3$d|%4$d (volume "%5$s").
+41 Errore interno: Pagina %1$d|%2$d ("%3$s") volume non fa parte del file VFID %4$d|%5$d (volume "%6$s").
+42 Non è possibile riordinare le registrazioni ancorate alla pagina %1$d del volume "%2$s".
+43 Errore interno: la pagina %1$d del volume "%2$s" potrebbe essere corrotto. %3$d registrazioni sono stato trovati quando %4$d si aspettava.
+44 Nessuno spazio disponibile nella slotted page %1$d del volume "%2$s".
+45 Slot %1$d alla pagina %2$d del volume "%3$s" è assegnato a una voce ancorata. Una nuova voce non può essere inserito qui.
+46 Errore interno: slot %1$d alla pagina %2$d del volume "%3$s" non è allocato.
+47 Impossibile creare un file di heap in volume "%1$s".
+48 Accesso all'oggetto eliminato %1$d|%2$d|%3$d.
+49 Errore interno: classe dell'oggetto %1$d|%2$d|%3$d è sconosciuto.
+50 Errore interno: record di trasferimento dell'oggetto %1$d|%2$d|%3$d potrebbe essere corrotto.
+51 Errore interno: oggetto %1$d|%2$d|%3$d potrebbe essere corrotto.
+52 Errore interno: indirizzo dell'oggetto di overflow %1$d|%2$d|%3$d potrebbe essere corrotto.
+53 Recupero dell'oggetto %1$d|%2$d|%3$d quando solo il suo OID è stato assegnato.
+54 Errore interno: cercando di manipolare un oggetto del %1$d pagine. La dimensione massima permessa per un oggetto è %2$d pagine.
+55 Errore interno: Un ciclo di riferimento dei pagini rilevato nella pagina %1$d|%2$d di file di heap %3$d|%4$d|%5$d.
+56 Errore interno: file sconosciuto del hashing estendibile (VOLID: %1$d fileid: %2$d) pagina (VOLID: %3$d pageid: %4$d) è stato specificato.
+57 Chiave non esiste nella struttura di hashing estendibile.
+58 Stringa "%1$s" è troppo lunga per rientrare in una slotted page.
+59 Errore interno: il tipo di chiave specificato %1$d non è valida per la struttura di hashing estendibile.
+60 Errore interno: la struttura di hashing estendibile è stata corrotta.
+61 Errore interno: la pagina di directory radice della struttura di hashing estendibile (VOLID: %1$d fileid: %2$d pageid: %3$d) è stata corrotta.
+62 Errore interno: record di ordinamento %1$d (dimensione %2$d) non rientra in una pagina, la dimensione massima permessa è di %3$d.
+63 Errore interno: una pagina temporanea e stata corotta durante l'ordinamento.
+64 Classe "%1$s" sconosciuta.
+65 Classe "%1$s" esiste già.
+66 Errore interno: operazione forzata sconosciuta %1$d per oggetto %2$d|%3$d|%4$d.
+67 Errore interno: un file di heap non è stata allocata per stoccaggio dell'oggetto %1$d|%2$d|%3$d.
+68 Errore interno: nomi di classi differenti per classe con oid = %1$d|%2$d|%3$d sono stati trovati. Le nomi di classi trovati sono "%4$s", "%5$s" utilizzando l'heap e la tabella di hash per lei nomi di classi, rispettivamente.
+69 Errore interno: identificatori differenti di oggetti di classe sono stati trovati per la classe con il nome "%1$s". Le OID trovati sono %2$d|%3$d|%4$d, %5$d|%6$d|%7$d utilizzando l'heap e la tabella hash per lei nomi di classi, rispettivamente.
+70 Errore interno: Classe con il nome "%1$s" e oid = %2$d|%3$d|%4$d non esiste nella della tabella hash di nome di classe.
+71 Errore interno: Classe con il nome "%1$s" e oid = %2$d|%3$d|%4$d non esiste nel suo heap.
+72 Vostra transazione (indice %1$d, %2$s @ %3$s|%4$d) è stato interrotto unilateralmente da parte del sistema.
+73 Vostra transazione (indice %1$d, %2$s @ %3$s|%4$d) scaduto in attesa sul blocco %5$s sull'oggetto %6$d|%7$d|%8$d. State aspettando per l'utente (s) %9$s per terminare.
+74 Vostra transazione (indice %1$d, %2$s @ %3$s|%4$d) scaduto in attesa sul blocco %5$s sulla classe %6$s. State aspettando per l'utente (s) %7$s per terminare.
+75 Vostra transazione (indice %1$d, %2$s @ %3$s|%4$d) scaduto in attesa sul blocco %5$s nell'istanza %6$d|%7$d|%8$d di classe %9$s. State aspettando per l'utente (s) %10$s per terminare.
+76 Vostra transazione (indice %1$d, %2$s @ %3$s|%4$d) scaduto in attesa sulla %5$s alla pagina %6$d|%7$d. State aspettando per l'utente (s) %8$s per rilasciare il blocco della pagina.
+77 Errore interno: tutti i buffer sono fissi.
+78 Errore interno: un errore I/O durante la lettura della pagina logica di log %1$lld (pagina fisica %2$lld) del "%3$s".
+79 Errore interno: un errore I/O durante la scrittura pagina logica di log %1$lld (pagina fisica %2$lld) del "%3$s".
+80 Spazio insufficiente nel dispositivo del sistema operativo durante la scrittura di pagina logica di log %1$lld (pagina fisica %2$lld) del "%3$s". Impossibile scrivere più di %4$d bytes.
+81 Errore interno: Pagina di log logico %1$lld potrebbe essere corrotto.
+82 Impossibile montare il volume del disco di log/file "%1$s".
+83 Lunghezza del path "%1$s" più la lunghezza del nome del log del prefisso "%2$s" è troppo lungo, la lunghezza cumulata deve essere inferiore a %3$d.
+84 Lunghezza del nome del log del prefisso "%1$s" è troppo lungo, la lunghezza deve essere inferiore a %2$d.
+85 Il nome del prefisso "%1$s" non è lo stesso di "%2$s" sul disco di log. Il log è stato probabilmente rinominato all'esterno del dominio del database.
+86 Database è incompatibile con il corrente "%1$s", rilascio "%2$s".
+87 Ci sono azioni di recupero che devono essere recuperati utilizzando "%1$s" rilascio "%2$s" invece di rilascio "%3$s". Dopo il recupero, il database può essere eseguito sul rilascio "%4$s".
+88 Errore interno: La "%1$s" stringa di rilascio non può eccedere %2$d. Deve cambiare log del colpo di testa
+89 Log "%1$s" non appartiene al database indicato.
+90 Redo di logging è sempre una operazione di logging a livello di pagina. Un puntatore a una pagina di dati deve essere dato come parte dell'indirizzo.
+91 Postpone logging è sempre un'operazione di logging a livello di pagina. Un puntatore a una pagina di dati deve essere dato come parte dell'indirizzo.
+92 Compensate logging è sempre una operazione di logging a livello di pagina. Un puntatore a una pagina di dati deve essere dato come parte dell'indirizzo.
+93 Attenzione: logging redo viene ignorato durante il recupero redo e rollback normali.
+94 Attenzione: postpone logging viene ignorato durante il recupero redo e rollback normali.
+95 Attenzione: undo logging viene ignorato durante il recupero e rollback normali.
+96 Ripristino dei supporti può essere necessario sul volume "%1$s"
+97 Errore interno: impossibile trovare la pagina di log %1$lld nel log delle transazioni.
+98 Impossibile creare il log delle transazioni "%1$s" alle pagine di archivio %2$lld-%3$lld.
+99 Impossibile creare il file di backup per le informazioni per directory "%1$s"
+100 Impossibile eseguire il backup del database "%1$s".
+101 File sconosciuto "%1$s" dell'utente.
+102 File "%1$s" non dispone di voci abbastanza: %2$d voci previsto.
+103 "%1$s" file sembra avere le voci non ordinate. Entrata %2$d con valori: %3$d %4$s %5$s, è stato trovato quando la voce con i valori %6$d %7$s era atteso.
+104 File "%1$s" sembra avere una voce non corretta per il nome del database (volume principale). Entrata %2$d con valori: %3$d %4$s %5$s, è stato trovato quando la voce con i valori %6$d %7$s %8$s era atteso.
+105 Impossibile accedere al file di backup "%1$s". Restore o backup viene annullato.
+106 Impossibile preparare di commit della transazione corrente con identificatore di transazione globale, %1$d perché questo identificatore di transazione è utilizzato da un'altra transazione.
+107 Non c'è alcuna transazione globale distribuita con identificatore di transazione %1$d.
+108 Transazione corrente %1$d deve essere comessa o interrotta prima di tentare di partecipare alla transazione distribuita con identificatore globale %2$d.
+109 Vostra transazione %1$d è stato unilateralmente interrotto dal sistema perché una (remota) sito partecipante è andato giù o unilateralmente interrotto la transazione.
+110 Valore del livello di isolamento deve essere compreso tra %1$d e %2$d.
+111 Vostra transazione è stata interrotta dal sistema a causa di un errore del server o di di cambiamento di modo.
+112 host "%1$s" non è autorizzato per l'esecuzione del database.
+113 Impossibile riavviare/inizializzare il server di database. %1$s
+114 Impossibile interpretare "%1$s" come un database. Le volumi di database/file potrebbero essere stati rinominati/copiati all'esterno del dominio del database.
+115 Database "%1$s" esiste già.
+116 Database "%1$s" è sconosciuto, o la "databases.txt" file non è accessibile.
+117 Percorso assoluto per il database è troppo lungo. La lunghezza cumulata del path "%1$s" più il "%2$s" nome è %3$d, la lunghezza combinata deve essere inferiore a %4$d.
+118 Impossibile localizzare directory di lavoro corrente.
+119 Impossibile trovare nome dell'host locale.
+120 Il numero massimo di volumi (%1$d) è stato superato.
+121 Cercando di rimuovere un volume "%1$s" permanente dal database.
+122 Impossibile accedere al catalogo di messaggi di sistema.
+123 Impossibile creare "%1$s" per il database "%2$s".
+124 Volume "%1$s" esiste già.
+125 Una estensione automatica di volume "%1$s" di %2$d pagine e scopo di stoccaggio generico è stato creato.
+126 scopo sconosciuto "%1$s" dato sulla linea %2$d.
+127 Valore non corretto per il numero di %1$d pagine indicate sulla linea %2$d.
+128 Numero di pagine non è stata data sulla linea %1$d.
+129 Token sconosciuto "%1$s" è stato trovato sulla linea %2$d.
+130 Memoria virtuale esaurita.
+131 Errore di sistema per il database.
+132 Funzionalità non implementata nella versione corrente: %1$s.
+133 Set annidato costante non permessa.
+134 Non è permesso di usare entrambi gli attributi di classe e gli attributi di non-classe in un unico aggiornamento.
+135 Istruzione non valida per le colonne di oid: %1$s.
+136 Funzione non implementata "%1$s".
+137 Oggetti di autorizzazione corrotti.
+138 Classe di autorizzazione "%1$s" non trovata.
+139 Errore di accesso sull'attributo di autorizzazione "%2$s" di classe "%1$s".
+140 Operazione "%1$s" può essere eseguita solo dal DBA o un membro del gruppo DBA.
+141 Impossibile aggiungere "%1$s" come membro del "%2$s".
+142 Aggiungendo membro provoca la gerarchia degli utenti a diventare un grafico ciclico.
+143 Rilevato una classe senza proprietario.
+144 Impossibile accedere all'oggetto utente.
+145 Non è possibile eseguire i comandi GRANT/REVOKE a te stesso.
+146 Non è possibile eseguire i comandi GRANT/REVOKE al proprietario di una classe.
+147 Nessuna opzione GRANT.
+148 Impossibile ottenere blocco in scrittura sull'oggetto di autorizzazione.
+149 Impossibile creare l'istanza dell'oggetto di autorizzazione.
+150 Non è possibile revocare i privilegi da te stesso.
+151 Non è possibile revocare i privilegi del proprietario di una classe.
+152 GRANT non trovato.
+153 Non ci sono dei privilegi di autorizzazione in vigore per il database.
+154 Autorizzazione incompleta dell'installazione - senza privilegi di autorizzazione in vigore per il database.
+155 Il contenuto della classe di autorizzazione non è valido (conti di root multipli).
+156 Guasto di autorizzazione
+157 Errore di autorizzazione di SELECT.
+158 Errore di autorizzazione dell'ALTER.
+159 Errore di autorizzazione dell'UPDATE.
+160 Errore di autorizzazione del INSERT.
+161 Errore di autorizzazione di DELETE.
+162 Errore di autorizzazione del INDEX.
+163 Errore di autorizzazione di EXECUTE.
+164 Utente "%1$s" esiste già.
+165 Utente "%1$s" non è valido.
+166 Utente specificato non valido.
+167 DBA, i membri del gruppo DBA e proprietario di classe possono eseguire l'operazione.
+168 Utente non trovato.
+169 Non è possibile rimuovere l'utente %s dal database.
+170 Nessun utente loggato.
+171 Password errata o mancante.
+172 Stringa di password non può avere più di 31 byte.
+173 Impossibile individuare il file di database "%1$s".
+174 Impossibile ottenere l'accesso in scrittura al file di database "%1$s".
+175 File di database malamente formattato. "%1$s"
+176 Errore di conversione nel formato di data.
+177 Impossibile creare l'oggetto di grandi dimensioni per stoccaggio interno.
+178 Temporaneo OID incontrato senza MOP.
+179 Dominio "%1$s" non è compatibile con dominio "%2$s".
+180 Dominio "%1$s" di valore fornito non è compatibile con il dominio di destinazione "%2$s".
+181 Non è possibile convertire il valore del dominio "%1$s" al dominio "%2$s".
+182 Non è possibile convertire il valore del dominio "%1$s" al dominio "%2$s" senza overflow.
+183 Quantità inattesa di dati ricevuti, %1$d previsto, %2$d ricevuto.
+184 Impossibile allocare il buffer di comunicazione.
+185 Errore di ricezione dei dati dal client.
+186 Errore di ricezione dei dati dal server.
+187 Buffer di comunicazione non utilizzato.
+188 Database "%1$s" sconosciuto.
+189 Nome non valido per l'host "%1$s".
+190 Host del server non identificato.
+191 Impossibile connettersi al server "%1$s" "%2$s".
+192 Impossibile caricare il file di configurazione della rete.
+193 Server ha ricevuto il comando di arresto dal client.
+194 Server di richiesta sconosciuto id %1$d.
+195 Errore di comunicazione del server: %1$s.
+196 Nome del server non identificato.
+197 Impossibile entrare in contatto con il server principale.
+198 Buffer di ricezione troppo piccole, i dati troncati.
+199 Server non risponde.
+200 Non rimuovendo correttamente il set dall'oggetto dopo libero.
+201 Rimosso una voce UNIQUE non corretta nella tabella.
+202 Attributo "%1$s" non è stato trovato.
+203 Valore per l'attributo "%1$s" deve essere di tipo "%2$s", non di tipo "%3$s".
+204 Funzione chiamata con argomenti mancanti o non validi.
+205 Attributo "%1$s" non può essere fatto NULL.
+206 Attributo "%1$s" non ha il vincolo UNIQUE.
+207 Classe "%1$s" ha un oggetto di dimensione zero.
+208 Il metodo "%1$s" non trovato.
+209 Nessun attributo o metodo con il nome "%1$s" è stato trovato.
+210 Errore interno: elaborazione del modello di oggetto.
+211 Attributo è stato eliminato durante la costruzione di modello di oggetto.
+212 Attributo "%1$s" viola il vincolo UNIQUE.
+213 Voce UNIQUE non valido di tabella è stato incontrato.
+214 Un conflitto di dominio esiste sull'attributo "%1$s".
+215 Attributo con ID %1$d non trovato.
+216 Tag non valido di proprietà dell'oggetto trovato sul valore.
+217 L'operazione può essere eseguita solo su oggetti di classe.
+218 Oggetto non valido nell'espressione del percorso db_get.
+219 Espressione di percorso non valida db_get.
+220 Insieme non valida nell'espressione del percorso db_get.
+221 Indice non valido dell'insieme nell'espressione del percorso db_get.
+222 Tentativo di assegnare il valore stringa maggiore di %2$d caratteri per attributo "%1$s".
+223 Valore %2$d è troppo grande per attributo smallint "%1$s".
+224 Una database non è stata riavviata.
+225 Valore mancante per attributo "%1$s" con il vincolo NOT NULL.
+226 Lista dei componenti vuota nella classe.
+227 Tentativo di assegnare il valore per attributo "%1$s" più di una volta.
+228 Metodo "%1$s" chiamato con %2$d argomenti. Il sistema permette un massimo di %3$d argomenti.
+229 Metodo "%1$s" richiede argomento %2$d a trovarsi nel dominio "%3$s". Un valore non valido di dominio "%4$s" è stata data.
+230 Attributo "%1$s" non può essere attribuito una stringa di lunghezza %2$d. La lunghezza massima permessa per la stringa è %3$d.
+231 Operazione non valida dell'API tentata su un oggetto temporaneo.
+232 Non è permesso utilizzare i modelli di oggetti sulle transazioni multiple.
+233 Impossibile creare una classe con nome di tipo di base "%1$s".
+234 File di metodo "%1$s" non è stato trovato.
+235 %1$d metodo funziona irrisolti dopo il linking.
+236 Metodo "%1$s" irrisolto.
+237 Gravi problemi sono stati riscontrati durante il linking dinamico.
+238 Impossibile accedere al file di metodi "%1$s"
+239 Attributo "%1$s" non è stato trovato.
+240 Metodo "%1$s" non è stato trovato.
+241 Non esiste un attributo o un metodo con il nome "%1$s"
+242 Signature per %2$s non trovata per metodo "%1$s"
+243 Argomento %2$d di metodo "%1$s" non è definito.
+244 Il nome di dominio "%1$s" non è il nome di un tipo di classe o di base.
+245 Il nome "%1$s" è già stato utilizzato come un nome di attributo.
+246 Il nome "%1$s" è già stato utilizzato come un nome di metodo.
+247 Argomenti non validi alla funzione interna del gestore dello schema.
+248 Il dominio "%1$s" dell'attributo non è adatto per l'uso con il vincolo %2$s.
+249 L'operazione richiesta sulla classe "%1$s" può essere eseguita solo prima le istanze vengono create.
+250 Impossibile creare l'index sull'attributo "%1$s", definito con un valore condiviso.
+251 Signature %2$s già esiste per metodo "%1$s"
+252 Attributo "%1$s" deve avere un dominio dell'insieme per tale operazione.
+253 Attributo "%1$s" non può essere definito con un dominio dell'insieme annidato.
+254 Impossibile rimuovere il dominio "%2$s" dall'attributo "%1$s".
+255 Attributo "%1$s" non è di un dominio di dimensioni variabili.
+256 Superclasse esiste già.
+257 Addizione della superclasse causerebbe cicli nella gerarchia di classi.
+258 Superclasse non trovato.
+259 Signature multipli esistono per metodo "%1$s"
+260 Argomento %2$d del metodo "%1$s" non è di un dominio dell'insieme.
+261 Risoluzione per "%1$s" non trovato.
+262 Dominio "%2$s" non è adatto per attributo "%1$s".
+263 Corruzione interna dello schema rilevata nel gestore.
+264 Alias "%2$s"  per l'attributo/metodo "%1$s" non è unico
+265 Oscurare attributo "%1$s" con dominio conflittualo "%2$s".
+266 Conflitto di nome sull'attributo "%1$s" con le classi "%2$s" e "%3$s".
+267 Oscurare metodo "%1$s" con signature conflittuale.
+268 Conflitto di nome sul metodo "%1$s" con le classi "%2$s" e "%3$s".
+269 Impossibile definire index sul dominio "%1$s".
+270 Impossibile definire vincolo UNIQUE sul dominio "%1$s".
+271 Ciclo rilevato nella gerarchia di classi, "%1$s" è una superclasse di "%2$s".
+272 Index "%2$s" già definito per la classe "%1$s"
+273 Index "%1$s" non esiste.
+274 Caratteri non validi nel nome: "%1$s".
+275 Operazione non valida su attributo "%1$s", ereditato dalla classe "%2$s".
+276 Operazione non valida su metodo "%1$s", ereditato dalla classe "%2$s".
+277 Operazione non valida su "%1$s", ereditato dalla classe "%2$s".
+278 Classe "%4$s" ha domini incompatibili per "%1$s", ereditati dalle classi "%2$s" e "%3$s".
+279 Nella classe "%4$s", "%1$s" ereditato dalla classe "%2$s" non può essere utilizzato come richiesto. La definizione di classe "%3$s" ha un dominio più specifico.
+280 Nella classe "%3$s", "%1$s" non può essere ereditato dalla classe "%2$s" perché existe una definizione locale con un dominio incompatibile.
+281 Nella classe "%3$s", "%1$s" ereditato dalla classe "%2$s" ha un alias, ma alcun sostituto da un'altra origine è stato trovato.
+282 Nella classe "%4$s", "%1$s" ereditato dalla classe "%3$s" non può servire come un sostituto di alias per classe "%2$s". I domini sono incompatibili.
+283 Nella classe "%4$s", "%1$s" ereditato dalla classe "%3$s" non può servire come un sostituto di alias per classe "%2$s". Ha un dominio meno specifico.
+284 Non è possibile richiedere l'eredità del "%1$s" perché è definito a livello locale nella classe.
+285 Non è possibile utilizzare "%1$s" come alias per il componente ereditaria "%2$s", perché c'è già un componente definita a livello locale con lo stesso nome.
+286 Non è possibile utilizzare "%1$s" come alias per "%2$s" del "%3$s". Un componente con quel nome è già ereditato dal "%4$s".
+287 Nella classe "%1$s", non è possibile definire l'attributo "%2$s" perché sarebbe oscurato da un metodo ereditato dal "%3$s".
+288 Nella classe "%1$s", non è possibile definire il metodo "%2$s" perché sarebbe oscurato da un attributo ereditato dal "%3$s".
+289 Sottoclasse "%1$s" non può ereditare il metodo "%2$s" dalla classe "%3$s" perché existe già un attributo con lo stesso nome.
+290 Sottoclasse "%1$s" non può ereditare il attributo "%2$s" della classe "%3$s" perché existe già un metodo con lo stesso nome.
+291 "%1$s" è definito nella classe "%2$s" come attributo e nella classe "%3$s" come metodo.
+292 Nessuna specificazione per popolare con index "%1$s".
+293 Operazione non permessa per questo tipo di classe.
+294 Variabile di ambiente non definita "%1$s" viene fatto riferimento nel file di metodo
+295 Impossibile modificare la classe "%1$s". Lo spazio è esaurito all'interno del catalogo di sistema. Per recuperare spazio, compattare il database con l'utilità compactdb.
+296 Lista di proprietà non valido incontrata.
+297 Nome dell'alias "%1$s" viene utilizzato più di una volta.
+298 Nella classe "%1$s", una risoluzione per "%2$s" del "%3$s"' non è permessa. Questa classe non è una superclasse.
+299 "%1$s" è una parola riservata e non può essere utilizzata come attributo, metodo, o nome di una classe.
+300 Il attributo "%1$s" non può essere definito con DEFAULT e vincoli UNIQUE insieme.
+301 Il attributo "%1$s" non può essere definito con un vincolo di lunghezza di %2$d. Il vincolo di lunghezza massima è di %3$d.
+302 Impossibile aggiungere elementi a un insieme.
+303 Valore già esiste nell'insieme.
+304 Index dell'insieme %1$d è fuori dai limiti.
+305 Index di sequenza %1$d è fuori dei limiti.
+306 L'operazione richiesta può essere eseguita solo su sequenze.
+307 L'operazione richiesta può essere eseguita solo su collezioni.
+308 Valore dell'elemento non è all'interno del dominio dell'insieme.
+309 Indice dell'elemento illegale dell'insieme è stato dato: %1$d.
+310 Elemento non trovato nell'insieme.
+311 Elemento non trovato nella sequenza.
+312 "%1$s" non è un dominio valido per l'insieme.
+313 underflow del buffer dell'oggetto durante la lettura.
+314 overflow del buffer dell'oggetto durante la scrittura.
+315 Definizione di metaclasse illegale incontrato.
+316 Discordanza di dimensione di calcolo del trasformatore, previsto %1$d calcolato %2$d.
+317 Rappresentazione non valida del disco incontrato per classe "%1$s".
+318 Non sincronizzato durante il caricamento dell'oggetto. Il database è probabilmente danneggiato o non aggiornate.
+319 Ignorando estensione sconosciuta dell'attributo.
+320 Incontrato rappresentazione danneggiata di oggetto sul disco.
+321 Possibile corruzione nello spazio di lavoro è stata rilevata.
+322 MOP non trovato nello spazio di lavoro.
+323 Tentativo di aggiornare un MOP non temporaneo nello spazio di lavoro.
+324 Oggetto senza classe è stato trovato nello spazio di lavoro.
+325 Tentativo di garbage collect uno MOP nella lista dirty
+326 Cambiare puntatore alla classe per oggetto nello spazio di lavoro.
+327 Impossibile creare MOP con NULL OID.
+328 Istanza senza classe incontrata nel spazio di lavoro.
+329 Link per elenco di oggetti non allocato nello spazio di lavoro.
+330 Violazione di blocco per slot di memoria nello spazio di lavoro.
+331 Impossibile allocare spazio di lavoro blocco di dal sistema operativo, saturato la memoria virtuale. Interruzione dell'operazione.
+332 Le dimensioni originali stimati dello spazio di lavoro sono stati superati. Un'estensione automatica è stato fatto.
+333 Memoria esaurita durante l'allocazione di memoria di lavoro. Interruzione dell'operazione.
+334 Tentativo di assegnazione del %1$d bytes è più grande di dimensione massima blocco di di lavoro. Provate a regolare il parametro max_block_size. Transazione interrotta.
+335 Ignorando tentativo di liberare un oggetto non allocato all'interno dell'area di lavoro.
+336 Ignorando tentativo di liberare un oggetto più di una volta.
+337 Ignorando tentativo di allocare oggetto con dimensioni negative.
+338 Sovraccarico dell'identificatore dell'entrata nella mappa.
+339 Impossibile uscire dalla sezione critica, dal momento che non è di proprietà di transazione %1$d.
+340 fork del processo figlio non è possibile.
+341 exec del processo figlio non è possibile.
+342 Non è possibile cambiare il gruppo di processo.
+343 Request_id è già in uso.
 344 %1$s.
-345 Error occurred during reading a shutdown message from master.
-346 Error occurred during reading a stop shutdown message from master.
-347 Could not establish a pipe to the master server.
-348 Must specify either service or port identifier.
-349 Unknown service for TCP: %1$s.
-350 Error getting local host by name for host "%1$s". Host not found.
-351 Cannot create TCP socket.
-352 tcp_open: cannot get a reserved TCP port.
-353 Cannot make connection to master server on host "%1$s".
-354 Cannot set new process owner for socket.
-355 Cannot create socket stream.
-356 '%1$s' file for UNIX domain socket exist.
-357 Cannot bind local address... aborting.
-358 Accept failed.
-359 Datagram bind error.
-360 Datagram accept error.
-361 Datagram connect error.
-362 Datagram socket error.
-363 Recvmsg from master socket failed.
-364 Sending a new request to server.
-365 Sending a broadcast message to client.
-366 Error from server: %1$s
-367 Server %1$s already exists.
-368 Communication error during connect for %1$s.
-369 Unused error code.
-370 Unused error code.
-371 Unused error code.
-372 Unused error code.
-373 Premature EOF during read: %1$d.
-374 Premature EOF during read of %1$d or %2$d.
-375 Conversion error on (0x%1$c%2$c) %3$d and %4$d converted to %5$d.
-376 No public class found.
-377 Error %1$d: failed to add attribute "%2$s" to multimedia hierarchy.
-378 Error %1$d: failed to add method "%2$s" implemented as "%3$s" to multimedia hierarchy.
-379 Error %1$d: failed to add a superclass to multimedia hierarchy.
-380 Dynamic loader already initialized.
-381 Dynamic loader not initialized.
-382 Dynamic loader improperly initialized.
-383 "%1$s" is not an object file or an archive.
-384 Cannot determine absolute path for "%1$s".
-385 ld process exited with code %1$d.
-386 ld process exited due to signal %1$d.
-387 ld process exited with unknown waitval 0x%1$lx.
-388 Cannot access initial image for "%1$s".
-389 System error: %1$s.
-390 Problem with "%1$s": %2$s.
-391 Conflict with other SIGPIPE handler.
-392 Unable to spawn dynamic loader daemon.
-393 Dynamic loader daemon has disappeared.
-394 Range endpoint not between 0 and 256.
-395 Illegal subexpression specified.
-396 Octal digit out of range exists in escape.
-397 Regular expression not delimited properly.
-398 Text search called before expression compiled.
-399 A unmatched parenthesis is found in the regular expression.
-400 Parentheses too deeply nested in the regular expression.
-401 More than two numbers specified in a range.
-402 A unmatched curly brace is found in the regular expession.
-403 First number in range expression is larger than second.
-404 A unmatched bracket is found in the regular expression.
-405 The regular expression was too long to compile.
-406 Invalid B+tree index identifier: (vfid = (%1$d, %2$d), rt_pgid: %3$d).
-407 Unknown key %1$s referenced in B+tree index {vfid: (%2$d, %3$d), rt_pgid: %4$d, key_type: %5$s}.
-408 Unknown value (oid) %1$d|%2$d|%3$d referenced.
-409 Duplicate value (oid) %1$d|%2$d|%3$d referenced.
-410 Null key referenced.
-411 Invalid B+tree index key type "%1$s".
-412 Invalid range search specification.
-413 Unknown attribute identifier: %1$d.
-414 Unknown class identifier: %1$d|%2$d|%3$d.
-415 Invalid class identifier: %1$d|%2$d|%3$d.
-416 Unknown representation identifier: %1$d.
-417 Invalid representation identifier: %1$d.
-418 Record descriptor does not have enough space: %1$d.
-419 Class has reached maximum representations count: %1$d.
-420 Class %1$d|%2$d|%3$d already had representations.
-421 Representations Directory Missing in Catalog for Class: %1$d|%2$d|%3$d.
-422 Representation Information Record Missing in Catalog for Class - Repr_Id: %1$d|%2$d|%3$d - %4$d.
-423 Invalid session.
-424 No statement to execute.
-425 Incompatible data type for attribute "%1$s" of class "%2$s".
-426 Incompatible data type on attribute "%1$s".
-427 Data overflow on data type "%1$s".
-428 Statement is not updatable.
-429 Unknown command.
-430 Unknown variable "%1$s".
-431 Error in SQL/X interpreter or parser.
-432 Unknown class "%1$s".
-433 Unknown attribute "%1$s" in class "%2$s".
-434 Cannot find correct column names from a query.
-435 Multiple statements not allowed.
-436 Statement is not a query.
-437 Invalid long object ID (%1$s,%2$d, %3$s, %4$s).
-438 Conflict exists in the long object descriptor.
-439 Offset %1$d is larger than length of long object %2$d.
-440 Invalid cursor position.
-441 Invalid cursor operation.
-442 Unknown cursor position.
-443 Tuple value index %1$d is out of range.
-444 Invalid attribute name: "%1$s".
-445 Value list index %1$d is out of range.
-446 There are query result structures closed by transaction manager but not closed by the application. 
-447 Attempted to operate a query result structure already closed.
-448 Tuple sizes are currently restricted to be no larger than a page.
-449 Unknown query identifier: %1$d.
-450 Invalid set operator: %1$d.
-451 Heap file with no instances.
-452 Invalid XASL tree node content.
-453 No more acess specification nodes.
-454 Invalid data type referenced.
-455 No more query file pages left.
-456 Data type references are incompatible.
-457 Invalid query result type.
-458 Overflow occurred in addition context.
-459 Query result contains more than a single tuple. 
-460 Too few input host variables provided.
-461 More host variables are given than result columns.
-462 Result value is NULL, but there is no indicator variable.
-463 Cursor statement has not yet been prepared.
-464 Cursor should be a SELECT statement.
-465 The cursor is not yet opened.
-466 The cursor should be closed before re-opening.
-467 Result should return a single object.
-468 No positional markers are allowed in EXECUTE IMMEDIATE statements.
-469 Invalid data type used.
-470 Query involves too many items for optimizer.
-471 Memory exhausted in line %1$d of file %2$s.
-472 %1$s connector for local database '%2$s' on host '%3$s' has died.
-473 Reported from local database '%1$s' on host '%2$s': %3$s.
-474 Error %1$s detected during %2$s.
-475 No query specification with index %1$s.
-476 LDB %1$s already exists.
-477 Could not connect to master on host %2$s to access LDB %1$s.
-478 The local database "%1$s" is not a registered LDB.
-479 The local database "%1$s" is currently being accessed by other clients, alteration or drop is not allowed.
-480 The local database "%1$s" is not empty and cannot be dropped.
-481 "%1$s" is not a proxy virtual class.
-482 "%1$s" is not a virtual class.
-483 "%1$s" is not an attribute of the class "%2$s".
-484 The object_id for proxy virtual class "%1$s" is already set.
-485 One or more object_id attributes are NULL for instance of proxy class "%1$s".
-486 Object is not an updatable virtual class instance.
-487 Object is not an instance.
-488 An attribute of a class may not be a virtual class or a proxy virtual class.
-489 An attribute of a proxy virtual class may not be a class, virtual class, or object.
-490 The superclass "%1$s" must be of the same type of class as "%2$s".
-491 Cannot extract entity name from proxy query specification "%1$s".
+345 Errore durante la lettura di un messaggio di arresto da master.
+346 Errore durante la lettura di un messaggio di interruzione dell'arresto da master.
+347 Impossibile stabilire una pipe per il server master.
+348 è necessario specificare un servizio o un identificatore di porta.
+349 Servizio sconosciuto per TCP: %1$s.
+350 Errore durante il recupero dell'host locale per nome per host "%1$s". Host non trovato.
+351 Impossibile creare un socket TCP.
+352 tcp_open: non è possibile ottenere una porta TCP riservata.
+353 Impossibile stabilire una connessione al server master sul host "%1$s".
+354 Impossibile impostare il nuovo proprietario del processo per il socket.
+355 Impossibile creare il flusso di socket.
+356 File '%1$s' per UNIX domain socket esiste.
+357 Impossibile associare l'indirizzo locale ... interrompere.
+358 Accept non è riuscito.
+359 Bbind non è riuscito per datagramma.
+360 Accept non è riuscito per datagramma.
+361 Connect non è riuscito per datagramma.
+362 Socket non è riuscito per datagramma.
+363 Recvmsg dal socket di master non riuscito.
+364 Invio di una nuova richiesta al server.
+365 Invio di un messaggio broadcast al client.
+366 Errore dal server: %1$s
+367 Server %1$s esiste già.
+368 Errore di comunicazione durante la connessione per %1$s.
+369 Codice di errore non utilizzato.
+370 Codice di errore non utilizzato.
+371 Codice di errore non utilizzato.
+372 Codice di errore non utilizzato.
+373 EOF prematuro durante la lettura: %1$d.
+374 EOF prematuro durante la lettura del %1$d o %2$d.
+375 Errore di conversione a (0x%1$c%2$c) %3$d e %4$d convertiti in %5$d.
+376 Nessuna classe pubblica trovata.
+377 Errore %1$d: Impossibile aggiungere l'attributo "%2$s" alla gerarchia multimedia.
+378 Errore %1$d: Impossibile aggiungere il metodo "%2$s" implementato come "%3$s" alla gerarchia multimedia.
+379 Errore %1$d: impossibile aggiungere una superclasse alla gerarchia multimedia.
+380 Caricatore dinamico già inizializzato.
+381 Caricatore dinamico non inizializzato.
+382 Caricatore dinamico inizializzato impropriamente.
+383 "%1$s" non è un file oggetto o un archivio.
+384 Impossibile determinare il percorso assoluto per "%1$s".
+385 processo ld terminato con il codice %1$d.
+386 processo ld terminato a causa di segnale %1$d.
+387 processo ld terminato con waitval sconosciuto 0x%1$lx.
+388 Impossibile accedere immagine iniziale per "%1$s".
+389 Errore di sistema: %1$s.
+390 Problemi con "%1$s": %2$s.
+391 Conflitto con altro handler SIGPIPE.
+392 Impossibile generare demone del caricamento dinamico.
+393 Demone del caricatore dinamico è scomparso.
+394 Punto finale dell'intervallo non compreso tra 0 e 256.
+395 Sottoespressione illegale specificato.
+396 Cifra ottale fuori dei limiti esiste nell'escape.
+397 Espressione regolare non delimitato in modo corretto.
+398 Ricerca di testo chiamato prima che l'espressione è stato compilato.
+399 Una parentesi senza pari si trova nell'espressione regolare.
+400 Parentesi troppo profondamente annidati nell'espressione regolare.
+401 Più di due numeri specificati in un intervallo.
+402 Una parentesi graffa senza pari si trova nel expession regolare.
+403 Il primo numero nell'espressione di intervallo è maggiore del secondo.
+404 Una staffa senza pari si trova nell'espressione regolare.
+405 L'espressione regolare è troppo lunga per la compilazione.
+406 Identificatore dell'index del B+tree non valido: (vfid = (%1$d, %2$d), rt_pgid: %3$d).
+407 Chiave %1$s sconosciuto si fa riferimento nell'index del B+tree {vfid: (%2$d, %3$d), rt_pgid: %4$d, key_type: %5$s}.
+408 Valore sconisciuto (oid) %1$d|%2$d|%3$d riferimento.
+409 Valore duplicato (oid) %1$d|%2$d|%3$d riferimento.
+410 Chiave NULL è stato fatto riferimento.
+411 Tipo di chiave non valido "%1$s" nell'index del B+tree.
+412 Campo non valido delle specifiche di ricerca.
+413 Identificatore di attributo sconosciuto: %1$d.
+414 Identificatore di classe sconosciuto: %1$d|%2$d|%3$d.
+415 Identificatore di classe non valido: %1$d|%2$d|%3$d.
+416 Identificatore di rappresentazione sconosciuto: %1$d.
+417 Identificatore di rappresentazione non valido: %1$d.
+418 Descrittore di voce non ha abbastanza spazio: %1$d.
+419 Classe ha raggiunto il massimo numero di rappresentazioni: %1$d.
+420 Classe %1$d|%2$d|%3$d già avuto rappresentazioni.
+421 Repertorio dei rappresentazioni mancante nel catalogo per la classe: %1$d|%2$d|%3$d.
+422 Voce d'informazione del repertorio dei rappresentazioni mancanta nel catalogo per la classe - Repr_Id: %1$d|%2$d|%3$d-%4$d.
+423 Sessione non valido.
+424 Nessuna dichiarazione da eseguire.
+425 Tipo di dati incompatibile per l'attributo "%1$s" della classe "%2$s".
+426 Tipo di dati incompatibile per l'attributo "%1$s".
+427 Overflow dei dati su tipo di dati "%1$s".
+428 Dichiarazione non è aggiornabile.
+429 Comando sconosciuto.
+430 Variabile sconosciuta "%1$s".
+431 Errore dell'interprete o parser di SQL/X.
+432 Classe sconosciuta "%1$s".
+433 l'attributo sconosciuto "%1$s" nella classe "%2$s".
+434 Non riesci a trovare i nomi di colonna corretti da una query.
+435 Istruzioni multiple non sono permessi.
+436 Dichiarazione non è una query.
+437 ID dell'oggetto lungo non valido (%1$s, %2$d, %3$s, %4$s).
+438 Conflitto esiste nel descrittore dell'oggetto lungo.
+439 Offset %1$d è maggiore della lunghezza di oggetto lungo %2$d.
+440 Posizione di cursore non valida.
+441 Operazione del cursore non valida.
+442 Posizione del cursore sconosciuta.
+443 Indice di valore per tupla %1$d è fuori portata.
+444 Nome non valido per l'attributo: "%1$s".
+445 Indice della lista dei valori %1$d è fuori portata.
+446 Ci sono delle strutture di risultati delle query chiuse dal gestore delle transazioni, ma non chiuse dall'applicazione.
+447 Tentativo di utilizzare una struttura di risultati della query già chiusa.
+448 Dimensioni delle tuple sono attualmente limitate ad essere non più grande di una pagina.
+449 Identificatore dell'interrogazione sconosciuto: %1$d.
+450 Operatore dell'insieme non valido: %1$d.
+451 Heapfile senza istanze.
+452 Contenuto del nodo non valido dell'albero XASL.
+453 Senza più di nodi di specificazione dell'accesso.
+454 Tipo di dati non valido è stato fatto riferimento.
+455 Senza più delle pagine del file di query.
+456 Riferimenti a tipi di dati sono incompatibili.
+457 Tipo non valido per il risultato della query.
+458 Overflow nel contesto di aggiunta.
+459 Risultato della query contiene più di una singola tupla.
+460 Troppo poche variabili host di input sono forniti.
+461 Le variabili host indicate sono più che le colonne dei risultati.
+462 Il risultato è il valore NULL, ma non c'è nessuna variabile indicatore.
+463 Istruzione del cursore non è stato ancora preparato.
+464 Il cursore dovrebbe essere un'istruzione SELECT.
+465 Il cursore non è ancora aperto.
+466 Il cursore deve essere chiuso prima di riapertura.
+467 Risultato dovrebbe tornare un singolo oggetto.
+468 Nessun marcatore di posizione non è ammesso nelle istruzioni EXECUTE IMMEDIATE.
+469 Tipo di dati non valido viene utilizzato.
+470 Query implica troppo molti articoli per ottimizzatore.
+471 Memoria esaurita, in linea %1$d nella file %2$s.
+472 Connettore %1$s per database locale '%2$s' su un host '%3$s' è morto.
+473 Segnalato dalla database locale '%1$s' su host '%2$s': %3$s.
+474 Errore %1$s rilevato durante %2$s.
+475 Nessuna specificazione della query con index %1$s.
+476 LDB %1$s esiste già.
+477 Impossibile connettersi al master su l'host host %2$s per accedere LDB %1$s.
+478 Il database locale "%1$s" non è un LDB registrato.
+479 Il database locale "%1$s" è attualmente in corso l'accesso da altri clienti, la modifica o l'eliminazione non è permessa.
+480 Il database locale "%1$s" non è vuoto e non può essere eliminata.
+481 "%1$s" non è una classe proxy virtuale.
+482 "%1$s" non è una classe virtuale.
+483 "%1$s" non è un attributo della classe "%2$s".
+484 Il object_id per il classe proxy virtuale "%1$s" è già impostato.
+485 Uno o più dei attributi dell'object_id sono NULL per l'istanza della classe proxy "%1$s".
+486 L'oggetto non è un'istanza aggiornabile di classe virtuale.
+487 L'oggetto non è un'istanza.
+488 Un attributo di una classe non può essere una classe virtuale o una classe proxy virtuale.
+489 Un attributo di una classe proxy virtuale non può essere una classe, una classe virtuale, o di un oggetto.
+490 La superclasse "%1$s" deve essere dello stesso tipo di classe come "%2$s".
+491 Impossibile estrarre il nome dell'ente dalla specificazione proxy della query "%1$s".
 492 %1$s
-493 Syntax: %1$s %2$s
-494 Semantic: %1$s %2$s
-495 Execute: %1$s %2$s
-496 Unknown key referenced.
-497 Unknown value (oid) %1$d|%2$d|%3$d referenced.
-498 Duplicate value (oid) %1$d|%2$d|%3$d referenced.
-499 Null key referenced.
-500 Duplicate key referenced.
-501 Invalid trigger priority.
-502 Missing target class in trigger.
-503 Trigger "%1$s" was not found.
-504 Internal error: processing trigger "%1$s".
-505 A trigger with the name "%1$s" already exists.
-506 A trigger cannot be defined on "%1$s" because it is a virtual class.
-507 Inappropriate trigger target class "%1$s".
-508 Inappropriate trigger target attribute "%1$s".
-509 Invalid trigger condition "%1$s".
-510 Invalid trigger action "%1$s".
-511 Not authorized to access trigger "%1$s".
-512 Not authorized to delete trigger "%1$s".
-513 Not authorized to update trigger "%1$s".
-514 Not authorized to alter trigger "%1$s".
-515 Trigger action execution time of %2$s cannot be earlier than condition execution time of %1$s.
-516 Maximum trigger depth %1$d exceeded at trigger "%2$s".
-517 The operation has been rejected by trigger "%1$s".
-518 Internal error: processing trigger "%1$s".
-519 Illegal trigger condition type.
-520 The REJECT action cannot be used with an action time of AFTER or DEFERRED.
-521 The REJECT action cannot be used with the ABORT or TIMEOUT events.
-522 Trigger condition expression was not given.
-523 Trigger action expression was not given.
-524 The specified activity cannot be removed because it is owned by another user.
-525 Error compiling condition for "%1$s": %2$s
-526 Error compiling action for "%1$s", %2$s
-527 Error evaluating condition for "%1$s": %2$s
-528 Error evaluating action for "%1$s", %2$s
-529 Transaction cannot be committed, it was invalidated by trigger "%1$s".
-530 Missing regular expression.
-531 Regular expression is too long or complex.
-532 Unbalanced parenthesis or brackets in regular expression.
-533 Reference is out of range in regular expression.
-534 Illegal character or syntax in regular expression.
-535 No text given for regular expression search.
-536 Illegal opcode found in regular expression.
-537 Illegal search command code for regular expression compiler.
-538 Regular expression working buffer needs to be initialized.
-539 Attempt to divide by zero.
+493 Sintassi: %1$s %2$s
+494 Semantica: %1$s %2$s
+495 Eseguire: %1$s %2$s
+496 Chiave sconosciuta viene fatto riferimento.
+497 Valore sconosciuto (oid) %1$d|%2$d|%3$d viene fatto riferimento.
+498 Valore duplicato (oid) %1$d|%2$d|%3$d viene fatto riferimento.
+499 Chiave NULL viene fatto riferimento.
+500 Duplicare chiave viene fatto riferimento.
+501 Priorità non valido per il trigger.
+502 Manca classe target nel trigger.
+503 Trigger "%1$s" non è stato trovato.
+504 Errore interno: elaborazione del trigger "%1$s".
+505 Un trigger con il nome "%1$s" esiste già.
+506 Un trigger non può essere definito su "%1$s" perché è una classe virtuale.
+507 Classe "%1$s" di destinazione di trigger non adatta.
+508 Attributo "%1$s" di destinazione di trigger non adatto.
+509 Condizione di trigger non valida: "%1$s".
+510 Azione di trigger non valida: "%1$s".
+511 Non autorizzato ad accedere trigger "%1$s".
+512 Non autorizzato ad eliminare trigger "%1$s".
+513 Non autorizzato ad aggiornare trigger "%1$s".
+514 Non autorizzato a modificare trigger "%1$s".
+515 Tempo di esecuzione %2$s per l'azione del trigger non può essere antecedente a quella del tempo di esecuzione %1$s di condizione.
+516 Profondità massima %1$d di trigger superato al trigger "%2$s".
+517 L'operazione è stata respinta dal trigger "%1$s".
+518 Errore interno: elaborazione del trigger "%1$s".
+519 Tipo di condizione di trigger non ammesso.
+520 L'azione di rifiuto non può essere utilizzato con un tempo di azione di AFTER o DEFFERED.
+521 L'azione di rifiuto non può essere utilizzato con gli eventi ABORT o TIMEOUT.
+522 Espressione per la condizione di trigger non è stata data.
+523 Espressione per l'azione di trigger non è stata data.
+524 L'attività specificato non può essere rimosso perché è di proprietà di un altro utente.
+525 Errore nella compilazione di condizione per "%1$s": %2$s
+526 Errore nella compilazione d'azione per "%1$s", %2$s
+527 Errore nella valutazione di condizione per "%1$s": %2$s
+528 Errore nella valutazione dell'azione per "%1$s", %2$s
+529 Transazione non può essere commesso, è stata invalidata da trigger "%1$s".
+530 Espressione regolare assente.
+531 Espressione regolare è troppo lunga o complessa.
+532 Sbilanciato parentesi o staffe nel un'espressione regolare.
+533 Di riferimento è fuori portata nel un'espressione regolare.
+534 Carattere o sintassi non ammesso nel un'espressione regolare.
+535 Nessun testo dato per la ricerca di espressioni regolari.
+536 Codice operativo non valido trovato in un'espressione regolare.
+537 Codice non ammesso di comando di ricerca per compilatore dei espressioni regolari.
+538 Buffer di lavoro dei espressioni regolari ha bisogno di essere inizializzato.
+539 Tentativo di dividere per zero.
 540 %1$s.
-541 Number of free pages for volume "%1$s" is inconsistent. %2$d and %3$d were found according to volume header and bitmap, respectively.
-542 Number of free sectors for volume "%1$s" is inconsistent. %2$d and %3$d were found according to volume header and bitmap, respectively.
-543 Disk header for volume "%1$s" is inconsistent.
-544 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). B+tree key %6$s entry for object OID: %7$d|%8$d|%9$d was not found on B+tree: %10$d|%11$d|%12$d.
-545 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). Key and OID: %6$d|%7$d|%8$d entry on B+tree: %9$d|%10$d|%11$d is incorrect. The object does not exist.
-546 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). Expecting %6$d OID entry values, but %7$d were found on B+tree: %8$d|%9$d|%10$d.
-547 Server release %1$s is different from client release %2$s.
-548 There is no object_id defined for proxy class "%1$s".
-549 The proxy instance was not found.
-550 Unknown savepoint name %1$s
-551 Unable to locate volume information path file "%1$s"... Continue reading from internal tables
-552 Date arithmetic underflow.
-553 Time arithmetic underflow.
+541 Numero di pagine libere per volume "%1$s" è incoerente. %2$d e %3$d sono stati trovati secondo il colpo di testa del volume e bitmap, rispettivamente.
+542 Numero di settori liberi per volume "%1$s" è incoerente. %2$d e %3$d sono stati trovati secondo il colpo di testa del volume e bitmap, rispettivamente.
+543 Colpo di testa del disco per volume "%1$s" è incoerente.
+544 Errore interno: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). Chiave %6$s del B+tree per OID dell'oggetto: %7$d|%8$d|%9$d  non è stato trovato sul B+tree: %10$d|%11$d|%12$d.
+545 Errore interno: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). Chiave e OID: %6$d|%7$d|%8$d sul B+tree: %9$d|%10$d|%11$d non sono corretti. L'oggetto non esiste.
+546 Errore interno: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d).  In attesa di %6$d valori delle voce OID, ma %7$d sono stati trovati sul B+tree: %8$d|%9$d|%10$d.
+547 Versione %1$s del server è diverso dal rilascio %2$s del client.
+548 Non vi è alcun object_id definito per classe proxy "%1$s".
+549 L'istanza proxy non è stata trovata.
+550 Nome sconosciuto %1$s del punto di salvataggio
+551 Impossibile trovare il file di percorso "%1$s" dei informazioni sul volume ... Continua a leggere dalle tabelle interne
+552 Underflow aritmetico per data.
+553 Underflow aritmetico per tempo.
 $ LOADDB
-554 The loader has entered an invalid state. No further operations are possible.
-555 Memory allocation error during database loading.
-556 Too many values supplied. Expecting %d.
-557 For attribute %1$s of %2$s, type %3$s is not allowed in the domain of the set.
-558 For attribute %1$s of %2$s, expected type %3$s, got a set constant.
-559 For attribute %1$s of %2$s, expected type %3$s, got %4$s.
-560 For attribute %1$s of %2$s, domain is not specific enough to support\n unqualified object references.
-561 Nested sets are not allowed.
-562 System class %1$s cannot be populated using the database loader.
-563 Reference to internal class %1$s converted to NULL.
-564 Violated the UNIQUE constraint for attribute %1$s of %2$s.
-565 Constructor method %1$s is not defined on class %2$s.
-566 No class specified or no attribute in class.
-567 Too many constructor method arguments supplied. Expected %1$d.
-568 Missing constructor method parameters. Expected %1$d, found %2$d.
-569 Missing attribute values.  Expected %1$d, found %2$d.
-570 Could not access Glo data file "%1$s".
-571 Instance was previously created through a forward reference.\nThis is not allowed for instances created using constructor methods.
-572 INTERNAL ERROR: Cannot build disk representation of instance.
-573 INTERNAL ERROR: Cannot insert new instance in database.
-574 INTERNAL ERROR: Cannot update new instance in database.
-575 For argument %1$d of constructor %2$s, expected type %3$s, got %4$s.
-576 Reference to class %3$s is not compatible with the domain of %1$s of %2$s.
-577 For argument %1$d of constructor %2$s, domain is not specific enough to support\n unqualified object references.
-578 Reference to class %3$s is not compatible with the domain of argument %1$d \n of constructor %2$s.
-579 Target domain must include type "object" to allow references to classes.
-580 Attribute %1$s is not defined for class %2$s.
-581 Attempted to update the database when updates are disabled. 
-582 Unknown storage purpose %1$d. Valid range is from %2$d to %3$d.
-583 Trying to allocate an invalid number (%1$d) of pages.
-584 Internal Error: A loop was detected in the file table of file %1$d in volume "%2$s". The loop may be caused by page %3$d|%4$d.
-585 Unknown heap %1$s|%2$d|%3$d
-586 Internal Error: Unable to update chain header in VPID %1$d|%2$d for heap %3$d in volume "%4$s".
-587 Entries of permanent volumes are unsorted in your "%1$s" volinfo file. Entry %2$d: %3$d %4$s is out of sequence.
-588 INTERNAL ERROR: Assertion '%1$s' failed.
-589 Invalid user name "%1$s".
-590 The attribute domain "%1$s" of a class may not be a \nvirtual class or a proxy virtual class.
-591 The attribute domain "%1$s" of a proxy virtual class \nmust be a proxy virtual class.
-592 The attribute domain "%1$s" of a proxy virtual class \nand the proxy virtual class must be on the same local database.
-593 A non-updatable virtual instance has been reclaimed and cannot be rebuilt.
-594 An object_id clause must be supplied without using attributes (%1$s) of approximate data types (float or double).
-595 The database name "%1$s" is too long. Database name should be less than %2$d characters.
-596 The %1$d pages of total temporary space allowed have been exceeded.
-597 Number of pages for heap file %1$d|%2$d|%3$d is inconsistent. \n%4$d and %5$d were found according to heap chain and file table, respectively.
-598 Number of files is inconsistent. %1$d were expected, %2$d were found
-599 An I/O error occurred while synchronizing state of volume "%1$s".
-600 Function "%1$s" not implemented on the PC.
+554 Il caricatore è entrato in uno stato non valido. Nessuna altra operazione è possibile.
+555 Errore di allocazione della memoria durante il caricamento del database.
+556 Troppi valori forniti. In attesa di %d.
+557 Per attributo %1$s di %2$s, %3$s tipo non è ammesso nel dominio dell'insieme.
+558 Per attributo %1$s di %2$s, tipo previsto %3$s, ha ottenuto una serie costante.
+559 Per attributo %1$s di %2$s, tipo previsto %3$s, ha ottenuto %4$s.
+560 Per attributo %1$s di %2$s, dominio non è abbastanza specifico per\n supportare riferimenti a oggetti non qualificati.
+561 Collezioni annidati non sono ammessi.
+562 Classe System %1$s non può essere popolato con il caricamento del database.
+563 Riferimento alla classe interna %1$s convertito a null.
+564 Violato il vincolo UNIQUE per attributo %1$s di %2$s.
+565 Metodo di costruttore %1$s non è definito sulla classe %2$s.
+566 Nessuna classe specificata o nessun attributo nella classe.
+567 Troppi argomenti di metodo costruttore forniti. Previsto %1$d.
+568 Parametri mancanti per il metodo costruttore. Previsto %1$d, trovata %2$d.
+569 Valori mancanti degli attributi. Previsto %1$d, trovata %2$d.
+570 Impossibile accedere al file di dati Glo "%1$s".
+571 Istanza è stata precedentemente creata tramite un riferimento forward.\nQuesto non è permesso per le istanze create con metodi costruttore.
+572 Errore interno: Impossibile costruire la rappresentazione del disco di istanza.
+573 Errore interno: Impossibile inserire nuova istanza nel database.
+574 Errore interno: Impossibile aggiornare nuova istanza nel database.
+575 Per l'argomento %1$d di construttore %2$s, tipo previsto %3$s, ricevuto %4$s.
+576 Riferimento alla classe %3$s non è compatibile con il dominio di %1$s di %2$s.
+577 Per argomento %1$d del costruttore %2$s, dominio non è abbastanza specifico\n per supportare dei riferimenti non qualificati agli oggetti.
+578 Riferimento alla classe %3$s non è compatibile con il dominio dell'argmento %1$d \n del construttore %2$s.
+579 Dominio di destinazione deve includere tipo di "oggetto" per permettere riferimenti a classi.
+580 Attributo %1$s non è definito per la classe %2$s.
+581 Tentativo di aggiornare il database quando gli aggiornamenti sono disabilitati.
+582 Target di stoccaggio sconosciuto %1$d. L'intervallo valido è %2$d-%3$d.
+583 Cercando di assegnare un numero non valido (%1$d) di pagine.
+584 Errore interno: Un ciclo è stato rilevato nella tabella file di file %1$d nel volume "%2$s". Il ciclo può essere causato da pagina %3$d|%4$d.
+585 Heap sconosciuto %1$s|%2$d|%3$d
+586 Errore interno: impossibile aggiornare il colpo di testa di catena in VPID %1$d|%2$d per l'heap %3$d nel volume "%4$s".
+587 Voci di volumi permanenti non sono ordinati nel file volinfo "%1$s". Voce %2$d: %3$d %4$s è fuori sequenza.
+588 Errore interno: Asserzione non riuscita '%1$s'.
+589 Nome dell'utente non valido "%1$s".
+590 Il dominio "%1$s" dell'attributo di una classe non \npuò essere una classe virtuale o una classe proxy virtuale.
+591 Il dominio "%1$s" dell'attributo di una classe proxy virtuale \ndeve essere una classe proxy virtuale.
+592 Il dominio "%1$s" dell'attributo di una classe proxy virtuale \ne la classe proxy virtuale deve essere sullo stesso database locale.
+593 Una istanza virtuale non-aggiornabile è stata recuperata e non può essere ricostruito.
+594 Una clausola object_id deve essere fornita senza l'utilizzo di attributi (%1$s) di tipi di dati approssimativi (float o double).
+595 Il nome del database "%1$s" è troppo lungo. Nome del database deve essere inferiore a %2$d caratteri.
+596 Gli %1$d pagine del totale spazio temporaneo permesso sono stati superati.
+597 Numero di pagine per heapfile %1$d|%2$d|%3$d è incoerente. \n%4$d e %5$d sono stati trovati seconda la catena heap e tabella dei file, rispettivamente.
+598 Numero di file non è coerente. Ci si aspettava %1$d, %2$d sono stati trovati.
+599 Un errore I/O durante lo stato di sincronizzazione del volume "%1$s".
+600 Funzione "%1$s" non implementata sul PC.
 601 "%1$s".
-602 dl error: "%1$s" is defined more than once.
-603 Internal Error: Sector/page table of file VFID %1$d|%2$d seems corrupted.
-604 Internal Error: An allocation set for file VFID %1$d|%2$d(Volume "%3$s") seems inconsistent in %4$d deleted or marked deleted pages and %5$d page holes in table
-605 Internal Error: Inconsistent number of marked deleted pages for file VFID %1$d|%2$d(Volume "%3$s"). Expected %4$d, Found %5$d.
-606 Could not locate odbc.ini with path "%1$s".
-607 Database "%1$s" was not found in odbc.ini.
-608 Database "%1$s" does not have a Host specification in the odbc.ini file.
-609 Your transaction cannot be rolled back since logging was ignored. Your database may be corrupted.
-610 Your database is likely to be corrupted since logging was turned off when your database crashed.
-611 %s cannot be executed in client/server mode.
-612 Logging cannot be disabled at this moment since there are pending actions to recover.
-613 In class "%3$s", local component "%1$s" cannot serve as an alias substitute for class "%2$s". The domains are incompatible.
-614 Number of active log archives has been exceeded the max desired number of %1$d.
-615 Cannot establish contact with the Winsock interface. Winsock error: %1$d.
-616 Cannot determine machine name using Winsock interface. Winsock error: %1$d.
-617 Cannot determine machine id using Winsock interface. There must be an entry in the host name table for this machine. Winsock error: %1$d.
-618 Attribute is not updatable.
-619 Bad source codeset.
-620 Bad destination codeset.
-621 Invalid data type. The arguments contain an invalid data type.
-622 Incompatible code sets. The code sets of the arguments are incompatible.
-623 Invalid escape sequence. An invalid escape sequence has caused an error in the regular expression compiler.
-624 Invalid escape character. The escape character is non-NULL with a length greater than 1.
-625 Internal Error. Trying to update the wrong instance object %1$d|%2$d|%3$d attribute information template with instance object %4$d|%5$d|%6$d.
-626 Internal Error. %1$d requested attributes were not found.
-627 Invalid trim operand.  The trim operand has a length greater than 1.
-628 Invalid currency type: %1$d.
-629 Pagesize %1$d is not a power of 2 or pagesize is too small. Pagesize of %2$d is used instead.
-630 Conversion not supported by %1$s.
-631 SQL statement violated NOT NULL constraint.
-632 %1$s is not a backup volume.
-633 %1$s is a backup of database %2$s created on %3$s instead of given database %4$s created on %5$s
-634 A database volume/file was expected in backup.
-635 WARNING: Log Buffer pool of %1$d buffers seems very small for current environment.\n It is possible that some buffers are not freed by the system due to an UNKNOWN ERROR\n or that there are many concurrent transactions being aborted at the same time. The log buffer pool is expanded with %2$d more buffers.
-636 WARNING Num_buffers %1$d is too small. The minimum value of %2$d was assumed.
-637 System error: freeing a log buffer too much. Fix count is set to zero.
-638 Warning: Flushing an unupdatable log archive pageid = %1$d
-639 System error: Previous log sequence page %1$d is not the delayed flush page %2$d.
-640 System Error: a savepoint cannot be added when the transaction is not active (e.g., during commit or rollback).
-641 A name must be given for a savepoint.
-642 System Error: there is not an active top system operation for current transaction.
-643 May be a system error: Committing/Aborting transaction = %1$d (index = %2$d) which has permanent operations\n attached to it. Will attach those system operations to the transaction
-644 LOG FATAL ERROR: %1$s
-645 SYSTEM ERROR: State = %1$s of Transaction = %2$d (index = %3$d) \n is not the correct state to apply client postpone/undo actions... ignored
-646 SYSTEM ERROR: It seems that a compensating record is missing for logical logging rcvindex = %s\n. Without this compensating record crash recovery will not be done correctly
-647 Backup "%1$s" does not belong to the given database.
-648 Backup is incompatible with current "%1$s" release "%2$s".
-649 Given precision of %1$d is invalid; it should be greater than %2$d and no greater than %3$d.
-650 Cannot create enough threads for 'max_clients=%1$d'.
-651 There is not virtual memory to preallocate %1$d sort buffers for each of %2$d threads.
-652 Wrong offset %1$d was given to split the record of length %2$d stored on slot %3$d
-653 Wrong offset %1$d or length %2$d was given to remove a portion of the data of the record of length %3$d stored on slot %4$d
-654 Wrong offset %1$d or length %2$d was given to overwrite a portion of the data of the record of length %3$d stored on slot %4$d
-655 Cannot open the event handler configuration file, "%1$s".
-656 Warning: Null id/name in event handler configuration file, "%1$s", line %2$d
-657 Warning: Illegal event name, "%1$s", in event handler configuration file, "%2$s", line %3$d
-658 Warning: event id %1$d, not in error id range %2$d <> %3$d, file "%4$s", line %5$d
-659 Cannot access the event handler program, "%1$s".
-660 Cannot open/connect the event handler process, "%1$s".
-661 Failed to write to the event handler process, "%1$s".
-662 Failed to initialize event handling mechanism.
-663 Warning: Line too long in event handler configuration file, "%1$s", line %2$d, truncating
-664 Event handling mechanism started.
-665 Event handler pipe broken, "%1$s"
-666 Event handling mechanism stopped.
-667 Cannot match class '%1$s' with corresponding C++ class.
-668 Internal error: Unknown domain type '%1$d'.
-669 Server refused client connection: max clients, (%1$d), exceeded.
-670 Operation would have caused one or more unique constraint violations. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-671 A network read/write error occurred for socket %1$d associated with your transaction (index %2$d, %3$s@%4$s|%5$d)
-672 Socket %1$d associated with your transaction (index %2$d, %3$s@%4$s|%5$d) is closed.
-673 Your connection to the server has been closed since the server is going down immediately.
-674 There is not enough active threads to continue current server execution. Current number of active threads is %1$d. You may need up to %2$d threads for clean server execution in your environment. Transaction index %3$d has been timed out to continue server execution.
-675 Cannot read the database location file, '%1$s'.
-676 Database '%1$s', cannot be found in the database location file, '%2$s'
-677 Failed to connect to database server, '%1$s', on the following host(s): %2$s
-678 Internal error. Client restart module received NULL database server name.
-679 This C++ transaction has already begun.
-680 Attempted to exceed maximum C++ transaction nesting level (%d).
-681 %s transaction was attempted on a C++ transaction that hasn't begun.
-682 Cannot %s C++ transaction until all subordinate transactions are completed.
-683 Attempted to create string with illegal length - %d
-684 Method returned user-defined error code %d.
-685 Class "%1$s" is invalid.
-686 Notification: the event handler has been restarted.
-687 Not allows to cast (%s *) to (%s *).
-688 Subscript out of range. Attempt to access element %ld. Collection size = %ld.
-689 Internal error. Iterator contains corrupt state.
-690 Attempt to dereference an uninitialized instance of odb_Ref<>.
-691 Attempt to use an invalid iterator.
-692 Attempt to use an iterator with an unrelated collection.
-693 Overflow occurred on data type Numeric.
-694 SYSTEM ERROR: Unable to load B+tree.
-695 Wrong interface has been used to kill a client.
-696 Unknown transaction (index %1$d, %2$s@%3$s|%4$d).
-697 Given transaction index (index %1$d, %2$s@%3$s|%4$d) does not match with current transaction index (index %5$d, %6$s@%7$s|%8$d). Likely, the given transaction has finished and its transaction index was re-assigned to another transaction.
-698 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). the number of OIDs in the unique hierarchy: %6$d does not equal the number of OIDs: %7$d found in the unique B+tree plus the number of NULLs: %8$d found in the unique hierarchy for B+tree: %9$d|%10$d|%11$d.
-699 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). the number of OIDs in the unique hierarchy: %6$d does not equal the number of OIDs: %7$d found in the unique B+tree root statistics for B+tree: %8$d|%9$d|%10$d.
-700 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). the number of OIDs: %6$d does not equal the number of NULLs: %7$d plus the number of keys: %8$d in the unique B+tree: %9$d|%10$d|%11$d.
-701 No proxy is defined on "%1$s" at ldb "%2$s".
-702 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). the number of NULLs in the unique hierarchy: %6$d does not equal the number of NULLs: %7$d found in the unique B+tree root statistics for B+tree: %8$d|%9$d|%10$d.
-703 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). OID: %6$d|%7$d|%8$d found in unique B+tree: %9$d|%10$d|%11$d does not belong to one of the classes for the unique constraint.
-704 Evaluation of generic server function failed.
-705 Inconsistent %1$d permanent volumes were found when %2$d were expected.
-706 Cannot expand permanent volumes. Permanent volume "%1$s" with purpose %2$s was given.
-707 Unable to expand temporary volume "%1$s" with %2$d pages
-708 Unable to expand temporary disk volume "%1$s" with %2$d pages (%3$ld Kbytes) due to insufficient space. Current space available is %4$d pages (%5$ld Kbytes).
-709 Constraint "%1$s" not found.
-710 Invalid constraint.
-711 An object with the supplied attribute value doesn't exist.
-712 Constraint" %1$s" already exists.
-713 An index does not exist on this attribute.
-714 Query failed due to insufficient temporary file space.
-715 Failed to verify schema: %1$s
-716 NOT NULL constraints are not allowed in virtual or proxy classes.
-717 UNIQUE constraints are not allowed in virtual or proxy classes.
-718 Invalid gadget.
-719 The number of attributes(%d) and values(%d) are not equal.
-720 Cannot use a gadget to insert into a virtual or proxy class.
-721 Insert query yields more than one row.
-722 Wrong number of attributes for NOT NULL constraint.
-723 Cannot modify the domain of an existing attribute.
-724 Invalid parameter(s) for default constraint name generation.
-725 Internal error: expected temporary oid and encountered permanent oid.
-726 UNIQUE constraint must be added using a separate alter statement\nonce instances have been created. For example, instead of:\n\talter table1 add attribute a int unique;\nuse:\n\talter table1 add attribute a int;\n\talter table1 add unique(a);
-727 Invalid trigger event.
-728 Query failed because temporary file vfid is invalid for transaction %1$d.
-729 Overflow occurred in subtraction context.
-730 Overflow occurred in multiplication context.
-731 Overflow occurred in division context.
-732 Overflow occurred in unary minus context.
-733 Overflow occurred in coercion context.
-734 Internal Error: Header of file VFID %1$d|%2$d(Volume "%3$s") is corrupted.
-735 Unknown transaction index %1$d.
-736 Must specify either service or port identifier. Winsock error: %1$d.
-737 Unknown service for TCP: %1$s. Winsock error: %2$d.
-738 Cannot create socket stream. Winsock error: %1$d.
-739 Cannot bind local address... retrying. Winsock error: %1$d.
-740 Cannot bind local address... aborting. Winsock error: %1$d.
-741 Accept failed. Winsock error: %1$d.
-742 Sending a broadcast message to client. Winsock error: %1$d.
-743 Failed on handshake between client and server. (peer host %s)
-744 Error in rehashing a proxy/vclass MOP.
-745 Invalid garbage collection phase.
-746 Invalid garbage collection callback.
-747 Invalid garbage collection callback ticket.
-748 Invalid object pointer encountered by db_gc_mark_object.
-749 The number of fetched instances are not matched: %1$d expected, %2$d received.
-750 The number of fetched instances are not matched: %1$d expected, %2$d received.
-751 The OID of a new object isn't available in a BEFORE INSERT trigger.
-752 Error restoring backup unit_num %d.
-753 Error restoring backup unit_num %d, pageid %d exceeds total number of pages %d for volid %d.
-754 OO proxy instance has non-string-type or null key.
-755 %s cannot be executed in stand-alone mode.
-756 Specified string buffer is too small to encode this object.
-757 Internal Error: cannot assign permanent OID during object encode.
-758 Specified string is not valid for decoding object.
-759 The target object has been deleted.
-760 Internal error: proxy object instance has NULL key during object encode.
-761 Internal error: vclass object instance maps to invalid real instance.
-762 Internal error in resolving vclass instance to a real instance.
-763 Internal error in encoding nonupdatable object instance.
-764 Internal error in encoding object into internal vobj form.
-765 Output object argument has a NULL address.
-766 Internal error in decoding object.
-767 Cannot create a level %d backup without first creating a level %d backup.
-768 The local database "%1$s" has been accessed in this session, alteration or drop is not allowed.
-769 Attribute "%s", of class "%s" is not a valid class or shared attribute.
-770 No table functions.
-771 Invalid parameter for function.
-772 db_serial class not found.
-773 Serial "%s" not found.
-774 Serial "%s" already exist.
-775 Next value exceeds MAX(MIN) value.
-776 Cannot fetch serial object.
-777 Cannot update serial object.
-778 Cannot create a symbolic link "%s" to the file "%s".
-779 Result exceeds limit: year of Date MUST be in 1 and 9999.
-780 Internal system failure: unable to get system time.
-781 Format string is too long. It must be less than 16K.
-782 Empty string not allowed here.
-783 Invalid format.
-784 Two arguments are mismatched.
-785 First argument string is too long. It must be less than 16K.
-786 Format is duplicated.
-787 Conversion error in time format.
-788 Conversion error in timestamp format.
-789 Wrong number.
-790 Query execution has been interrupted by user.
-791 Invalid serial value.
-792 Cannot allocate memory for css.
-793 pthread_attr_init() failed.
-794 pthread_attr_destroy() failed.
-795 pthread_attr_setdetachstate() failed.
-796 pthread_attr_setscope() failed.
-797 pthread_attr_setstacksize() failed.
-798 pthread_create() failed.
-799 pthread_join() failed.
-800 pthread_mutex_init() failed.
-801 pthread_mutex_destroy() failed.
-802 pthread_mutex_lock() failed.
-803 pthread_mutex_trylock() failed.
-804 pthread_mutex_unlock() failed.
-805 pthread_mutexattr_init() failed.
-806 pthread_mutexattr_destroy() failed.
-807 pthread_mutexattr_settype() failed.
-808 pthread_mutexattr_gettype() failed.
-809 pthread_cond_init() failed.
-810 pthread_cond_destroy() failed.
-811 pthread_cond_wait() failed.
-812 pthread_cond_timedwait() failed.
-813 pthread_cond_signal() failed.
-814 pthread_cond_broadcast() failed.
-815 pthread_key_create() failed.
-816 pthread_key_delete() failed.
-817 pthread_setspecific() failed.
-818 pthread_getspecific() failed.
-819 pthread_once() failed.
-820 Cannot initialize a connection.
-821 Shutdown a connection.
-822 Mutex operation failed while getting next client id.
-823 Mutex operation failed while initializing connection list.
-824 Cannot destroy mutex while finalizing connection list.
-825 pread() call failed.
-826 pwrite() call failed.
-827 Connection list traverse function returned invalid value.
-828 Invalid critical section of the index was given.
-829 This mutex lock has been unlocked already.
-830 Cannot allocate query entry any more. Maximum allocatable entries are %d.
-831 All transaction descriptors(%d) are in use. Raise up max_clients parameter.
-832 Backup is already running. Backup cannot be run by two processes.
-833 The index name "%1$s" is ambiguous. Specify the class name of the index.
-834 There are some mismatches between source string "%1$s" and format string "%2$s" given in to_number().
-835 Undefined statistics item.
-836 LATCH ON PAGE(%d|%d) TIMEDOUT
-837 Cannot drop the user who owns database objects(class/trigger/serial etc). 
-838 Cannot open more than %d index scans simultaneously.
-839 "%s": Unknown system parameter or bad value.
-840 Cannot change system parameter "%s".
-841 Requested operation can be executed by only sole client(transaction).
-842 Cannot cache lock of object %1$d|%2$d|%3$d.
-843 Wrong arguments in %s, a %s was passed.
-844 Unknown isolation(%d) is found. The transaction index is %d.
-845 Invalid object type(%d) is found. The lockable object is %d|%d|%d.
-846 %s of tran(%d) is not found in the holder list of an object(%d|%d|%d).
-847 %s on a %s(%d|%d|%d) is not found in the transaction(%d) hold list(cnt=%d).
-848 %s on an object(%d|%d|%d) is not found in the transaction(%d) non2pl list.
-849 Trying to abort a transaction(%d) twice.
-850 Tran(%d) is neither lock holder nor lock waiter of an object(%d|%d|%d).
-851 Failed to allocate lock resource (%s). 
-852 Total holders mode(%d) of an empty lock holder list is not NULL_LOCK.
-853 For an object(%d|%d|%d), tran(%d) of Uncommitted Read held fault lock(%s).
-854 WARNING: No lock holder, but lock waiters exist. refer to %s.
-855 WARNING: Two or more threads are lock-waiting for one transaction(%d).
-856 WARNING: Strange lockwait state(%d|%d), thread(%d|%d) and transaction(%d).
-857 An I/O error occurred while truncating page %1$d of volume "%2$s".
-858 Volume "%1$s" is unknown at server restart.
-859 LATCH ON PAGE(%d|%d) ABORTED
-860 Cannot make current transaction as a part of a global transaction because its state is '%1$s'.
-861 Cannot prepare to commit the current transaction with transaction identifier %1$d because that transaction is not made as a part of a global transaction.
-862 Cannot set the user information of the global transaction with the identifier %1$d because its state is '%2$s'.
-863 Cannot get the user information of the global transaction with the identifier %1$d because it is not set.
-864 Cannot open backupdb/restoredb verbose file '%s'.
-865 Cannot execute statement due to unknown type input markers.
-866 Unused error code.
-867 Unused error code.
-868 Unused error code.
-869 Unused error code.
-870 Unused error code.
-871 Unused error code.
-872 Unused error code.
-873 PKI authentication error "%1$s".
-874 Argument of power() is out of range.
-875 Overflow happened in power context.
-876 Unused error code.
-877 No data to be unloaded.
-878 Invalid database location file, '%1$s'.
-879 Cannot get permission: '%s'.
-880 Cannot change permission '%s'.
-881 Cannot get lock file '%s(FILE ID:%d)'.
-882 Cannot release lock file 'FILE ID:%d'.
-883 Failed to get '%s' file status.
-884 Volext-pathname '%s' is not permitted to write.
-885 Failure to move from '%s' to '%s'. Use the same device(disk).
-886 "%1$s" caused unique constraint violation.
-887 Stored procedure '%s' is already exist.
-888 Parameter count is invalid. expected: %d, actual: %d
-889 Stored procedure execute error: %s
-890 Partition failed.
-891 Appropriate partition does not exist.
-892 Primary key "%2$s" already defined for class "%1$s".
-893 Attribute '%1$s', a member of the primary key, could not be dropped.
-894 Stored procedure/function '%s' does not exist.
-895 Invalid stored procedure type: '%s' is the '%s'.
-896 Compression failed. Zip Method: %d (%s), Zip Level: %d (%s)
-897 Decompression failed.
-898 Replication error: "%1$s"
-899 Invalid partition requests.
-900 Java VM library is not found: %s. \nConsequently, calling java stored procedure is not allowed.
-901 Java VM can not be started: %s. \nConsequently, calling java stored procedure is not allowed.
-902 Java VM is not running.
-903 Can't connect Java VM: %s
-904 Invalid stored procedure name.
-905 Networking with JVM failed: %d
-906 Invalid java method signature.
-907 The owner or a member of DBA group can drop stored procedure.
-908 Too many arguments of stored procedure '%s'.
-909 Missing or invalid catalog class/vclass is found.
-910 Not allowed access to partition.
-911 Invalid call: it can not return ResultSet.
-912 ResultSet can not be used input parameter.
-913 Too many nested stored procedure call.
-914 A serial object already exists as an auto increment constraint.
-915 Increase value of an auto increment constraint should be greater than 0.
-916 Active log volume is not included in this backup volume(%s).
-917 Active log volume already exists.
-918 The class '%s' referred by the foreign key does not exist.
-919 The class '%s' referred by the foreign key does not have the primary key.
-920 The foreign key '%s' does not include the primary key member '%s'.
-921 The domain of the foreign key member '%s' is different from that of the primary key member '%s'.
-922 The constraint of the foreign key '%s' is invalid, due to value '%s'.
-923 The primary key '%s' referred by a foreign key '%s' is not supposed to be dropped.
-924 Update/Delete operations are restricted by the foreign key '%s'.
-925 Acquiring lock for the foreign key '%s' has failed.
-926 The instance having the foreign key '%s' cannot be dropped.
-927 The number of keys of the foreign key '%s' is different from that of the primary key '%s'.
-928 Not a user but the system can assign the attribute '%s' created by 'ON CACHE OBJECT' of foreign key.
-929 A foreign key cannot be defined in virtual class.
-930 It is able to drop the attribute '%s' created by 'ON CACHE OBJECT' of foreign key only after removing the constraint of the foreign key.
-931 Start value of an auto increment constraint should be less then max value.
-932 It is not able to repair an inconsistency of the number of free pages for the volume "%1$s". Because %2$d pages obtained from the volume header is inconsistent with %3$d pages from the bitmap.
-933 It is not able to repair an inconsistency of the number of free sectors for the volume "%1$s". Because %2$d sectors obtained from the volume header is inconsistent with %3$d sectors from the bitmap.
-934 Null domain referenced.
-935 Argument of %s function is out of range.
-936 Overflow occurred in exp context.
-937 Database error.
-938 Invalid argument.
-939 There are too many connection.
-940 The handle is invalid.
-941 The operation is not supported.
-942 Handle timed out waiting for locks.
-943 Generic error.
-944 The statement is not prepared.
-945 The statement has no result set.
-946 The statement is not executed.
-947 There is no more result set.
-948 The size of buffer is not enough.
-949 There is no available information.
-950 The name not valid.
-951 The resultset is not updatable.
-952 The row is deleted.
-953 Parameters of the prepared statement is not set.
-954 The statement is not batch statement.
-955 Can not clear this batch statement.
-956 Can not batch execute.
-957 The statement is prepared statement.
-958 The statement is not prepared statement.
-959 The statement is batch statement.
-960 There is no more error.
-961 There is no more result.
-962 Out of memory
-963 Broker error.
-964 The result set handle is closed.
-965 Cannot use duplicate attribute names in index key list. Attribute name '%s' listed more than once.
-966 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on object %6$d|%7$d|%8$d because of deadlock. You are waiting for user(s) %9$s to finish.
-967 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on class %6$s because of deadlock. You are waiting for user(s) %7$s to finish.
-968 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on instance %6$d|%7$d|%8$d of class %9$s because of deadlock. You are waiting for user(s) %10$s to finish.
-969 Server bit platform (%1$d) is different from client bit platform (%2$d).
-970 Server HA mode is changed from '%1$s' to '%2$s'.
-971 Program '%1$s' (pid %2$d) connected to database server '%3$s' on the host '%4$s' (port %5$d).
-972 Program '%1$s' (pid %2$d) was connected from the host '%3$s'. (transaction index %4$d)
-973 Server status is %1$s.
-974 Archive log "%1$s" is created to archive pages from %2$lld to %3$lld.
-975 Current version of replication does not allow changing multiple rows with a single UPDATE statement which can violate the UNIQUE constraint.
-976 Internal error: Table size overflow (allocated size: %1$d, accessed size: %2$d) at file table page %3$d|%4$d(volume "%5$s")
-977 Checkpoint started (previous checkpoint page id: %lld, previous redo page id: %lld).
-978 Checkpoint finished (checkpoint page id: %lld, checkpoint redo page id: %lld).
-979 CONNECT BY loop in user data.
-980 A thread is waiting in %1$s more than %2$d msec.
-981 Transaction %1$d has reached to the threshold of monitoring statistics %2$s.
-982 Set interrupt to the transaction %1$d.
-983 Instances of a reusable OID class are non-referable. This operation is not permitted on non-referable instances.
-984 Cannot set %3$s to "%6$s" in the "[%5$s]" section when it is set to "%4$s" in the "[%2$s]" section of the configuration file "%1$s".
-985 The hostname on the database connection string should be specified when multihost is set in "databases.txt".
-986 CUBRID heartbeat feature started. 
-987 CUBRID heartbeat feature stopped.
-988 Node event: %1$s.
-989 Process event: %1$s. %2$s
-990 Command execution: %1$s. %2$s
-991 Flush victim candidates of page buffer started.
-992 Flush victim candidates of page buffer finished (count: %d).
-993 Overflow happened in bit operation context.
-994 This statement cannot be a prepared statement.
-995 A prepared statement with the name %1$s does not exist.
-996 Incorrect number of values given. %1$d values were given but %2$d values are required.
-997 Cannot add the foreign key constraint %1$s to the partitioned %2$s. Referential actions that update attributes are not yet supported on partitioned classes.
-998 Cannot add the foreign key constraint %1$s on the attribute %2$s. The attribute cannot have a NOT NULL constraint because it has to match the SET NULL referential action.
-999 Cannot create table '%1$s' like table '%2$s' because the existing table has features that will not be duplicated (%3$s).
-1000 '%1$s' is a CLASS or SHARED attribute but only normal attributes are allowed in this context.
-1001 An unexpected condition or state has been reached. '%1$s'
-1002 The current transaction could not aquire a database lock it requires to continue processing.
-1003 The constraint '%1$s' exists but has a different type.
-1004 Please note that when using ALTER TABLE DROP FOREIGN KEY, CUBRID drops both the constraint and its associated index.
-1005 Unused error code.
-1006 Unused error code.
-1007 Cannot create index with prefix length on unique, foreign key or primary key constraints.
-1008 Cannot create index with prefix length on partitioned class.
-1009 COMPACTDB already started.
-1010 Cannot define index with prefix length on domain "%1$s".
-1011 Cannot add the foreign key constraint %1$s on the shared attribute %2$s.
-1012 Cannot create table with NULL column type.
-1013 Set DEFAULT or SHARED on %s typed column is not allowed.
-1014 Set NOT NULL on %s typed column is not allowed.
-1015 Specified directory '%s' does not exist.
-1016 %1$s external storage error: %2$s
-1017 Path for external storage '%s' is invalid.
-1018 Cannot copy the external file to the different type of storage. (source %1$s dest %2$s)
-1019 External storage is not initialized because the path is not specified in "databases.txt".
-1020 External file "%s" was not found.
-1021 A deadlock cycle is detected. %1$s.
-1022 Invalid value "%ld" for prefix length of the index.
-1023 Reserved error code for HA.
-1024 Reserved error code for HA.
-1025 Reserved error code for HA.
-1026 Reserved error code for HA.
-1027 log applier: failed to change apply state from '%1$s' to '%2$s'.
-1028 log applier: unexpected EOF record in archive log. LSA: %1$lld|%2$d.
-1029 log applier: invalid replication log page/offset. page HDR: %1$1lld|%2$d, final: %3$lld|%4$d, append LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, ha file status: %9$d, is end-of-log: %10$d.
-1030 log applier: invalid replication record. LSA: %1$lld|%2$d, forw LSA: %3$lld|%4$d, backw LSA: %5$lld|%6$d, Trid: %7$d, prev tran LSA: %8$lld|%9$d, type: %10$d.
-1031 log applier: failed to apply schema replication log. class: "%1$s", schema: "%2$s", internal error: %$3d. 
-1032 log applier: failed to apply insert replication log. class: "%1$s", key: "%2$s", internal error: %3$d.  
-1033 log applier: failed to apply update replication log. class: "%1$s", key: "%2$s", internal error: %3$d.  
-1034 log applier: failed to apply delete replication log. class: "%1$s", key: "%2$s", internal error: %3$d.  
-1035 log applier: mem size(%1$d MB) of log applier is greater than max mem size (%2$d MB) or has been grow more than 2 times (%3$d MB). required LSA: %4$lld|%5$d. last committed LSA: %6$lld|%7$d.
-1036 log applier: log applier shut itself down by signal.
-1037 log writer: log writer shut itself down by signal.
-1038 log applier: log applier started. required LSA: %1$lld|%2$d. last committed LSA: %3$lld|%4$d. last committed repl LSA: %5$lld|%6$d.
-1039 log writer: log writer started. mode: %1$d.
-1040 HA generic: %1$s. 
-1041 A string was truncated in context of "%1$s".
-1042 Trying to create a string requiring %1$d bytes of memory, while the maximum allowed is %2$d bytes.
-1043 Cannot change attribute "%1$s". CUBRID cannot change the requested attribute's properties if the class has subclasses.
-1044 Cannot change attribute "%1$s". CUBRID cannot change attributes that are partitioning keys.
-1045 Cannot change attribute "%1$s". CUBRID cannot change attributes used in foreign keys (either referenced or referencing).
-1046 Cannot change attribute "%1$s". CUBRID cannot change the attribute's domain. This change of domain is not supported.
-1047 Cannot change attribute "%1$s". CUBRID cannot change the attribute's domain. The new domain may not correctly represent all the existing attribute values.
-1048 Cannot change attribute "%1$s". CUBRID cannot currently change an attribute's AUTO_INCREMENT if the attribute's domain also changes.
-1049 Cannot change attribute "%1$s". CUBRID cannot currently change the attribute's domain. The domain conversion is possible but this feature is not allowed by configuration.
-1050 Cannot change attribute "%1$s". CUBRID cannot currently change the attribute's domain. The attribute has an index on it.
-1051 Cannot change attribute "%1$s". CUBRID cannot currently change the attribute to add a constraint. Existing attribute values may not check the constraint.
-1052 Attribute "%1$s" was not changed. CUBRID did not detect any effective changes in the attribute representation.
-1053 The Statements REPLACE INTO... and INSERT ... ON DUPLICATE KEY UPDATE are not allowed for partitioned classes or for classes that are part of an inheritance chain.
-1054 The new value of an auto increment constraint should be greater than or equal to the current value.
-1055 The new value of an auto increment constraint should be lower than the maximum value.
-1056 To avoid ambiguity, the AUTO_INCREMENT table option requires the table to have exactly one AUTO_INCREMENT column and no seed/increment specification.
-1057 Cannot add a NOT NULL '%s' typed attribute without a DEFAULT value.
-1058 ALTER TABLE .. CHANGE : changing to new domain : cast failed, current configuration doesn't allow truncation or overflow.
-1059 ALTER TABLE .. CHANGE : changing to new domain : cast failed, default value of new domain was set.
-1060 ALTER TABLE .. CHANGE : changing to new domain : cast failed, minimum value of new domain was set.
-1061 ALTER TABLE .. CHANGE : changing to new domain : cast failed, maximum value of new domain was set.
-1062 Cannot change attribute "%1$s". The change would result in multiple primary keys being defined.
-1063 Cannot add NOT NULL constraint for attribute "%1$s": there are existing NULL values for this attribute.
-1064 ALTER TABLE .. CHANGE : adding NOT NULL : all existing NULL values were changed to domain's hard default.
-1065 Cannot change attribute "%1$s". CUBRID cannot add NOT NULL constraint : a hard default value doesn't exist for the new domain.
-1066 Session expired.
-1067 Column '%s' cannot have a NOT NULL constraint and a NULL default value.
-1068 Maximum trigger depth cannot exceed %d.
-1069 Too many prepared statements.
-1070 Session variable '@%s' not defined.
-1071 Too many session variables.
-1072 IP address(%1$s) is not authorized.
-1073 Invalid format in file(%1$s).
-1074 Cannot read access list file(%1$s).
-1075 Descending index scan aborted because of lower priority on B+tree with index identifier: (vfid = (%1$d, %2$d), rt_pgid: %3$d).
-1076 Could not load system parameter.
-1077 The '%s' parameter at line %d in file '%s' : Unknown parameter
-1078 Character at offset %d is invalid with current codeset.
-1079 Codesets of database and server configuration are incompatible.
-1080 The maximum length of filter predicate string must be %1$d.
-1081 Cannot alter an attribute involved in a filter or function index.
-1082 All page buffers are dirty (LRU: %1$d).
-1083 Specific information about deadlock.
-1084 Skip invalid page in checkpoint. (page id: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, previous checkpoint redo lsa: %5$lld|%6$d)
-1085 Cannot compile regular expression: '%s'
-1086 Cannot execute regular expression: '%s'
-1087 Locale initialization: %s.
-1088 Locale generation: %s.
-1089 Cannot prepare statement of type '%s' with host variables.
-1090 The arg '%s' for inet_aton is not a valid string formatted ipv4 address.
-1091 The arg '%lld' for inet_ntoa is not a valid number formatted ipv4 address.
-1092 Backup active log '%s' started.
-1093 Backup active log '%s' finished.
-1094 User name is too long.
-1095 Resources allocation failed. Raise up 'max_bestspace_entries=%1$d'.
-1096 Altering partitioning schema is not allowed when the partitioned class is referenced by a foreign key.
-1097 Column '%s' cannot have a PRIMARY KEY constraint and a NULL default value.
-1098 Locales for language '%s' are not available with charset '%s'.
-1099 DDL statement is not allowed by configuration (block_ddl_statement=yes).
-1100 Statement without WHERE clause is not allowed by configuration (block_nowhere_statement=yes).
-1101 The current transaction could not acquire a key lock on PSEUDO-OID (%1$d|%2$d|%3$d) attached to OID (%4$d|%5$d|%6$d)
-1102 Unknown system parameter or bad value.
-1103 Cannot change system parameter.
-1104 Last Error
+602 Errore dl: "%1$s" è definito più di una volta.
+603 Errore interno: Tabella a settore/pagina di file VFID %1$d|%2$d sembra corrotto.
+604 Errore interno: L'allocazione impostato per il file VFID %1$d|%2$d (volume "%3$s") sembra inconsistente nel %4$d pagine eliminate o marcate come eliminate e %5$d fori di pagina nella tabella.
+605 Errore interno: numero inconsistente di pagine marcate come eliminate per file VFID %1$d|%2$d (volume "%3$s"). Previsto %4$d, Trovato %5$d.
+606 Impossibile trovare odbc.ini con percorso "%1$s".
+607 Database "%1$s" non è stato trovato nel odbc.ini.
+608 Database "%1$s" non ha una specificazione Host nel file odbc.ini.
+609 La transazione non può essere annullato in quanto logging è stato ignorato. Il database potrebbe essere corrotta.
+610 Il database è suscettibile di essere corrotta da quando logging è stato disattivato quando il database si è crollato.
+611 %s non può essere eseguito in modo client/server.
+612 Logging non può essere disattivato in questo momento in quanto ci sono le azioni in sospeso per recuperare.
+613 Nella classe "%3$s", componente locale "%1$s" non può servire come un sostituto di alias per classe "%2$s". I domini sono incompatibili.
+614 Numero di archivi attivi di log è stato superato per il numero massimo desiderato di %1$d.
+615 Impossibile stabilire un contatto con l'interfaccia Winsock. Errore di Winsock: %1$d.
+616 Impossibile determinare il nome del computer utilizzando l'interfaccia Winsock. Errore di Winsock: %1$d.
+617 Impossibile determinare l'ID della macchina utilizzando l'interfaccia Winsock. Ci deve essere una voce nella tabella dei nomi di host per questa macchina. Errore di Winsock: %1$d.
+618 Attributo non è aggiornabile.
+619 Codeset di origine è male
+620 Codeset di destinazione è male
+621 Tipo di dati non valido. Gli argomenti contiene un tipo di dati non valido.
+622 Insiemi di codici incompatibili. Gli insiemi di codici degli argomenti sono incompatibili.
+623 Sequenza di escape non valido. Una sequenza di escape non valida ha causato un errore nel compilatore espressione regolare.
+624 Carattere di escape non valido. Il carattere di escape non è NULL con una lunghezza maggiore di 1.
+625 Errore interno. Cercando di aggiornare l'istanza sbagliata per l'oggetto %1$d|%2$d|%3$d dal modello di informazioni relative agli attributi di oggetto istanza %4$d|%5$d|%6$d.
+626 Errore interno. %1$d attributi richiesti non sono stati trovati.
+627 Operando non valido TRIM. L'operando del TRIM ha una lunghezza maggiore di 1.
+628 Valuta di tipo non valido: %1$d.
+629 Pagesize %1$d non è una potenza di 2 o pagesize è troppo piccolo. PageSize pari a %2$d è usato al posto.
+630 La conversione non è supportata da %1$s.
+631 Istruzione SQL violato vincolo NOT NULL.
+632 %1$s non è un volume di backup.
+633 %1$s è un backup del database creato nel %2$s %3$s invece di database specificato %4$s creato su %5$s
+634 Un volume/di database file è stato atteso nel backup.
+635 ATTENZIONE: pool di Log Buffer di %1$d tamponi sembra molto piccolo per l'ambiente corrente.\n E 'possibile che alcuni buffer non vengono liberati dal sistema a causa di un errore sconosciuto\n o che vi sono diverse transazioni concorrenti di essere abortiti, allo stesso tempo. Lo pool di buffer di log è espanso con %2$d più tamponi.
+636 ATTENZIONE: Num_buffers %1$d è troppo piccolo. La valore minimo di %2$d stata assunta.
+637 Errore di sistema: liberando di memoria eccessiva per un buffer di log. Fisso conteggio viene impostato a zero.
+638 Attenzione: Flush per una pagina di log non aggiornabile dei tranzationi, pageid = %1$d
+639 Errore di sistema: Pagina precedente %1$d di sequenza di log non è la pagina di flush ritardato %2$d.
+640 Errore di sistema: un punto di salvataggio non può essere aggiunto quando la transazione non è attivo (ad esempio, durante il commit o rollback).
+641 Il nome deve essere dato per un punto di salvataggio.
+642 Errore di sistema: non c'è un'operazione attiva del sistemo superiore per la transazione corrente.
+643 Può essere un errore di sistema: Commit/Interruzione di transazione = %1$d (indice = %2$d), che ha dei operazxioni\n permanenti collegati ad esso. Allegherà le operazioni di sistema per la transazione
+644 ERRORE FATALE DEL LOG: %1$s
+645 ERRORE DI SISTEMA: Stato = %1$s di transazione = %2$d (indice = %3$d) \n non è lo stato corretto di applicare dei azioni di postpone/cancel del client ... ignorato
+646 ERRORE DI SISTEMA: Sembra che un record di compensazione manca per rcvindex %s di logging logico.\n Senza questo record di compensazione, crash recovery non viene eseguita correttamente
+647 Backup "%1$s" non appartiene al database indicato.
+648 Backup non è compatibile con l'attuale "%1$s" versione "%2$s".
+649 Precisione indicate di %1$d non è valido, ma dovrebbe essere maggiore di %2$d e non superiore a %3$d.
+650 Impossibile creare abbastanza threads per 'max_clients = %1$d'.
+651 Non c'è memoria virtuale per preallocare %1$d buffers di ordinamento per ciascuno dei %2$d threads.
+652 Offset errato %1$d è stato dato per dividere il record di lunghezza %2$d memorizzato sullo slot %3$d
+653 Offset errato %1$d o lunghezza %2$d è stata data per rimuovere una porzione dei dati del record della lunghezza %3$d memorizzato sullo slot %4$d
+654 Offset errato %1$d o lunghezza %2$d è stata data a sovrascrivere una porzione dei dati del record della lunghezza %3$d memorizzati sulla slot %4$d
+655 Impossibile aprire il file di configurazione del handler dei eventi, "%1$s".
+656 Attenzione: Null id/nome nel file di configurazione dell'Event Manager, "%1$s", linea %2$d
+657 Attenzione: nome dell'evento "%1$s" non permesso, nel file di configurazione dell'Event Manager, "%2$s", linea %3$d
+658 Attenzione: ID di evento %1$d, non nel campo di errore id %2$d <> %3$d, file "%4$s", linea %5$d
+659 Non è possibile accedere al programma di Event Manager, "%1$s".
+660 Impossibile aprire il/collegare al processo di Event Manager, "%1$s".
+661 Impossibile scrivere al processo di Event Manager, "%1$s".
+662 Impossibile inizializzare il meccanismo di gestione di eventi.
+663 Attenzione: Linea troppo lunga nel file di configurazione dell'Event Manager, "%1$s", linea %2$d, troncamento
+664 Meccanismo di gestione di eventi iniziato.
+665 Pipe rotto per Event Manager, "%1$s"
+666 Meccanismo di gestione degli eventi arrestato.
+667 Classe '%1$s' non può corrispondere a classe C++ corrispondente.
+668 Errore interno: tipo di dominio sconosciuto '%1$d'.
+669 Server ha rifiutato connessione client: numero massimo dei client, (%1$d), superato.
+670 Operazione avrebbe causato uno o più violazioni dei vincoli UNIQUE. INDEX %1$s%2$s ON CLASS %3$s%4$s. Chiave: %5$s%6$s.
+671 Una errore di nete durante la lettura/scrittura per il socket %1$d associato con la transazione (indice %2$d, %3$s @ %4$s|%5$d)
+672 Socket %1$d associato con la transazione (indice %2$d, %3$s @ %4$s|%5$d) è chiuso.
+673 La connessione al server è stata chiusa in quanto il server sta andando giù immediatamente.
+674 Non ci sono abbastanza threads attivi per continuare l'esecuzione corrente del server. Numero attuale di threads attivi è %1$d. Si può richiedere fino a %2$d threads per l'esecuzione pulita del server nel vostro ambiente. Indice della transazione %3$d è inibito per continuare l'esecuzione del server.
+675 Impossibile leggere il file di percorso del database, '%1$s'.
+676 Database '%1$s', non può essere trovato nel file di percorso del database, '%2$s'
+677 Impossibile connettersi al server di database, '%1$s', sul host(i) seguente: %2$s
+678 Errore interno. modulo di riavvio del cliente a ricevuto il nome del server database NULL.
+679 La transazione C++ è già iniziata.
+680 Ha tentato di superare il massimo livello di nidificazione dei transazioni C++ (%d).
+681 Transazione %s è stata tentata su una transazione C++ che non è iniziato.
+682 Impossibile %s la transazione C++ fino a quando tutte le transazioni subordinati sono stati completati.
+683 Tentativo di creare stringa con lunghezza illegale - %d
+684 Metodo restituito codice di errore definito dall'utente %d.
+685 Classe "%1$s" non è valido.
+686 Notifica: il Event Manager è stato riavviato.
+687 Non permette di lanciare (%s *) a (%s *).
+688 Indice fuori intervallo. Tentativo di accedere all'elemento %ld. Dimensione dell'insieme : %ld.
+689 Errore interno. Iterator contiene lo stato corrotto.
+690 Tentativo di dereferenziare un'istanza non inizializzata odb_Ref <>.
+691 Tentativo di utilizzare un iteratore non valido.
+692 Tentativo di utilizzare un iteratore con un insieme non correlata.
+693 Overflow avvenuto nel tipo di dati numerico.
+694 Errore di sistema: Impossibile caricare B+tree.
+695 Interfaccia errata è stata usata per uccidere un cliente.
+696 Transazione sconosciuta (indice %1$d, %2$s @ %3$s|%4$d).
+697 L'indice di transazione fornito (indice %1$d, %2$s @ %3$s|%4$d) non corrisponde all'indice della transazione corrente (indice %5$d, %6$s @ %7$s|%8$d). Probabilmente, la transazione fornita è terminata e il suo indice di transazione è stato ri-assegnato ad un'altra transazione.
+698 Errore interno: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). il numero di OID nella gerarchia unica: %6$d non è uguale al numero di OID: %7$d trovato nel B+tree unico più il numero di NULL: %8$d trovato nella gerarchia unico per il B+tree: %9$d|%10$d|%11$d .
+699 Errore interno: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). il numero di OID nella gerarchia unica: %6$d non è uguale al numero di OID: %7$d trovato nella statistiche del B+tree radice unico: %8$d|%9$d|%10$d.
+700 Errore interno: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). il numero di OID: %6$d non è uguale al numero di NULL: %7$d più il numero di chiavi: %8$d nel B+tree unico: %9$d|%10$d|%11$d.
+701 Nessun proxy è definita sul "%1$s" a LDB "%2$s".
+702 Errore interno: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). Il numero di NULL nella gerarchia unica: %6$d non è uguale al numero di NULL: %7$d trovato nella statistiche del B+tree radice unico per il B+tree: %8$d|%9$d|%10$d.
+703 Errore interno: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). OID: %6$d|%7$d|%8$d trovato nel B+tree unico: %9$d|%10$d|%11$d non appartiene a una delle classi per il vincolo UNIQUE.
+704 Valutazione della funzione server generico non riuscita.
+705 %1$d volumi permanenti inconsistenti sono stati trovati quando %2$d erano attesi.
+706 Non è possibile espandere i volumi permanenti. volume permanente "%1$s" con scopo %2$s è stato dato.
+707 Impossibile espandere volume temporaneo "%1$s" con %2$d pagine
+708 Impossibile espandere volume temporaneo del disco "%1$s" con %2$d pagine (%3$ld Kbytes) a causa di spazio insufficiente. Lo spazio attuale disponibile è %4$d pagine (%5$ld Kbytes).
+709 Vincolo "%1$s" non trovato.
+710 Vincolo non valido.
+711 Un oggetto con il valore dell'attributo fornito non esiste.
+712 Vincolo "%1$s" esiste già.
+713 Un index non esiste su questo attributo.
+714 Query non riuscita per mancanza di spazio di file temporanei.
+715 Impossibile verificare schema: %1$s
+716 Vincoli NOT NULL non sono ammessi nelle classi virtuali o proxy.
+717 Vincoli UNIQUE non sono ammessi nelle classi virtuali o proxy.
+718 Gadget non valido.
+719 Il numero di attributi (%d) e valori (%d) non sono uguali.
+720 Non è possibile utilizzare un gadget da inserire nel una classe virtuale o proxy.
+721 Query d'INSERT cede più di una riga.
+722 Numero errato di attributi per vincolo NOT NULL.
+723 Non è possibile modificare il dominio di un attributo esistente.
+724 Parametro non valido/parametri non validi per la generazione di nome del vincolo predefinito.
+725 Errore interno: oid temporaneo atteso ma incontrato oid permanente.
+726 Vincolo UNIQUE deve essere aggiunto con una dichiarazione separata\ndopo che le istanze sono state create. Ad esempio, invece di: \n\tALTER TABLE1 ADD ATTRIBUTE A INT UNIQUE;\nuso:\nALTER TABLE1 ADD ATTRIBUTE A INT;\n\tALTER TABLE1 ADD UNIQUE(A);
+727 Evento di trigger non valido.
+728 Query non riuscita perché vfid di file temporanei non è valido per la transazione %1$d.
+729 Overflow avvenuto nel contesto di sottrazione.
+730 Overflow avvenuto nel contesto di moltiplicazione.
+731 Overflow avvenuto nel contesto di divisione.
+732 Overflow avvenuto nel contesto di minus unario.
+733 Overflow avvenuto nel contesto di coercizione.
+734 Errore interno: Colpo di testa del file VFID %1$d|%2$d (Volume "%3$s") è danneggiato.
+735 Indice di transazione sconosciuto %1$d.
+736 è necessario specificare il servizio o il identificatore di porta. Errore di Winsock: %1$d.
+737 Servizio sconosciuto per TCP: %1$s. Errore di Winsock: %2$d.
+738 Impossibile creare il flusso di socket. Errore di Winsock: %1$d.
+739 Impossibile associare l'indirizzo locale ... riprovare. Errore di Winsock: %1$d.
+740 Impossibile associare l'indirizzo locale ... interruzione. Errore di Winsock: %1$d.
+741 Accetta non riuscita. Errore di Winsock: %1$d.
+742 Invio di un messaggio broadcast al client. Errore di Winsock: %1$d.
+743 Handshake impossibilo tra il client e il server. (host peer %s)
+744 Errore in ri-hashing un MOP di proxy/vclass.
+745 Fase di Garbage Collection non valida.
+746 Callback di Garbage Collection non valido.
+747 Ticket non valido di callback di Garbage Collection.
+748 Puntatore non valido dell'oggetto incontrato dal db_gc_mark_object.
+749 Il numero d'istanze recuperati non corrispondano: %1$d previsto, %2$d ricevuto.
+750 Il numero d'istanze recuperati non corrispondano: %1$d previsto, %2$d ricevuto.
+751 L'OID di un oggetto nuovo non è disponibile nel un trigger BEFORE INSERT.
+752 Errore durante il ripristino di backup unit_num %d.
+753 Errore durante il ripristino di backup unit_num %d, pageid %d supera il numero totale di pagine %d per VOLID %d.
+754 Istanza del proxy OO ha di tipo non-string o chiave null.
+755 %s non può essere eseguito in modo stand-alone.
+756 Buffer di stringa specificato è troppo piccolo per codificare questo oggetto.
+757 Errore interno: impossibile assegnare OID permanente durante la codifica dell'oggetto.
+758 Stringa specificata non è valida per la decodifica dell'oggetto.
+759 L'oggetto di destinazione è stato eliminato.
+760 Errore interno: istanza di un oggetto proxy ha chiave NULL durante la codifica dell'oggetto.
+761 Errore interno: istanza di un oggetto vclass corrisponde a un'istanza non valido reale.
+762 Errore interno nel risolvere un'istanza vclass a un'istanza reale.
+763 Errore interno nella codifica dell'istanza non aggiornabile di oggetto.
+764 Errore interno nella codifica dell'oggetto nella forma vobj interna.
+765 Oggetto argomento di uscita ha un indirizzo NULL.
+766 Errore interno nella decodifica dell'oggetto.
+767 Impossibile creare un backup a livello %d senza prima creare un backup a livello %d.
+768 Il "%1$s" database locale è stata letta in questa sessione, la modifica o la soppressione non è permesa.
+769 "%s" attributo, di classe "%s" non è un'attributo condiviso o di una classe valida.
+770 Nessuna funzione di tabella.
+771 Parametro non valido per la funzione.
+772 db_serial di classe non trovato.
+773 Serial "%s" non trovato.
+774 Serial "%s" esiste già.
+775 Prossimo valore supera la valore MAX (MIN).
+776 Impossibile recuperare l'oggetto serial.
+777 Impossibile aggiornare l'oggetto serial.
+778 Non è possibile creare un link simbolico "%s" al file "%s".
+779 Risultato supera il limite: anno della data deve essere nel 1 e 9999.
+780 Errore interno di sistema: impossibile ottenere il tempo di sistema.
+781 Stringa di formato è troppo lunga. Deve essere inferiore a 16K.
+782 Stringa vuota non ammessa qui.
+783 Formato non valido.
+784 Due argomenti non corrispondono.
+785 Stringa del primo argomento è troppo lungo. Deve essere inferiore a 16K.
+786 Formato è duplicato.
+787 Errore di conversione nel formato tempo.
+788 Errore di conversione nel formato timestamp.
+789 Numero errato.
+790 L'esecuzione della query è stata interrotta dall'utente.
+791 Valore seriale non valida.
+792 Impossibile allocare la memoria per css.
+793 pthread_attr_init() non riuscito.
+794 pthread_attr_destroy() non riuscito.
+795 pthread_attr_setdetachstate() non riuscito.
+796 pthread_attr_setscope() non riuscito.
+797 pthread_attr_setstacksize() non riuscito.
+798 pthread_create() non riuscito.
+799 pthread_join() non riuscito.
+800 pthread_mutex_init() non riuscito.
+801 pthread_mutex_destroy() non riuscito.
+802 pthread_mutex_lock() non riuscito.
+803 pthread_mutex_trylock() non riuscito.
+804 pthread_mutex_unlock() non riuscito.
+805 pthread_mutexattr_init() non riuscito.
+806 pthread_mutexattr_destroy() non riuscito.
+807 pthread_mutexattr_settype() non riuscito.
+808 pthread_mutexattr_gettype() non riuscito.
+809 pthread_cond_init() non riuscito.
+810 pthread_cond_destroy() non riuscito.
+811 pthread_cond_wait() non riuscito.
+812 pthread_cond_timedwait() non riuscito.
+813 pthread_cond_signal() non riuscito.
+814 pthread_cond_broadcast() non riuscito.
+815 pthread_key_create() non riuscito.
+816 pthread_key_delete() non riuscito.
+817 pthread_setspecific() non riuscito.
+818 pthread_getspecific() non riuscito.
+819 pthread_once() non riuscito.
+820 Impossibile inizializzare una connessione.
+821 Arresto di una connessione.
+822 Operazione del mutex non riuscita durante la prendere dell'id del prossimo cliente.
+823 Operazione del mutex non riuscita durante l'inizializzazione della lista dei connessioni.
+824 Non è possibile distruggere il mutex durante la finalizzazione della lista dei connessioni.
+825 Chiamata di pread() non riuscita.
+826 Chiamata di pwrite() non riuscita.
+827 Funzioni di trasversa della lista dei conessioni ha data una valore non valido.
+828 Sezione critica non valida dell'indice è stato dato.
+829 Questo blocco mutex è già stato sbloccato.
+830 Impossibile allocare più dei voci della query. Numero massimo di voci definibili è %d.
+831 Tutti i descrittori delle transazioni (%d) sono in uso. Sollevare il parametro max_clients.
+832 Backup è già in esecuzione. Di backup non può essere eseguito da due processi.
+833 Il nome dell'index "%1$s" è ambiguo. Specificati il nome della classe dell'index.
+834 Ci sono delle discrepanze tra stringa di origine "%1$s" e la stringa di formato "%2$s" dato nel to_number().
+835 Artocolo non definito di statistiche.
+836 Blocco sulla pagina (%d|%d) è scaduto.
+837 Impossibile eliminare l'utente che possiede oggetti di database (classe/trigger/seriale etc.)
+838 Non è possibile aprire più di %d scansioni di index contemporaneamente.
+839 "%s": parametro di sistema sconosciuto o valore non valido.
+840 Non è possibile modificare il parametro di sistema "%s".
+841 L'operazione richiesta può essere eseguita solo da un unico cliente (transazione).
+842 Non è possibile memorizzare nella cache il blocco dell'oggetto %1$d|%2$d|%3$d.
+843 Argomenti errati nel %s, un %s è stato passato.
+844 Isolamento sconosciuto (%d) è stato trovato. L'indice di transazione è %d.
+845 Tipo di oggetto non valido (%d) è stato trovato. L'oggetto bloccabile è %d|%d|%d.
+846 %s di transazione (%d) non si trova nell'elenco dei possessori dell'oggetto (%d|%d|%d).
+847 %s su un %s (%d|%d|%d) non è stato trovato nella transazione (%d) nella sua lista dei possessori (cnt = %d).
+848 %s su un oggetto (%d|%d|%d) non si trova nella lista non2pl della transazione (%d).
+849 Cercando di interrompere una transazione (%d) due volte.
+850 Transazione (%d) non è né titolare del blocco né waiter di blocco di un oggetto (%d|%d|%d).
+851 Impossibile allocare risorsa di blocco (%s).
+852 Modo dei possessori totali (%d) di una lista vuota dei possessori di blocco non è NULL_LOCK.
+853 Per un oggetto (%d|%d|%d), transazione (%d) di una lettura non commessa stava tenendo uno blocco diffetoso (%s).
+854 ATTENZIONE: Nessun possessore di blocco, ma waiters di blocco esistono. Fare riferimento a %s.
+855 ATTENZIONE: Due o più dei threads sono in attesa di blocco per una operazione (%d).
+856 ATTENZIONE: Strano stato di lockwait (%d|%d), thread (%d|%d) e transazione (%d).
+857 Un errore I/O durante il troncamento della pagina %1$d di volume "%2$s".
+858 Volume "%1$s" è sconosciuto al riavvio del server.
+859 Blocco sulla pagina (%d|%d) è annulatto.
+860 Non è possibile effettuare transazione in corso come parte di una transazione globale, perché il suo stato è '%1$s'.
+861 Impossibile preparare il commit della transazione corrente con identificatore di transazione %1$d, perché tale operazione non è fatta come parte di una transazione globale.
+862 Impossibile impostare le informazioni utente della transazione globale con l'identificatore %1$d, perché il suo stato è '%2$s'.
+863 Impossibile ottenere le informazioni di utente della transazione globale con l'identificativo %1$d, perché non è impostato.
+864 Impossibile aprire la file verbose '%s' di BackupDB/RestoreDB.
+865 Non è possibile eseguire l'istruzione a causa di marcatori di ingresso del tipo sconosciuto.
+866 Codice di errore non utilizzato.
+867 Codice di errore non utilizzato.
+868 Codice di errore non utilizzato.
+869 Codice di errore non utilizzato.
+870 Codice di errore non utilizzato.
+871 Codice di errore non utilizzato.
+872 Codice di errore non utilizzato.
+873 Errore di autenticazione PKI: "%1$s".
+874 Argomento di power() è fuori portata.
+875 Overflow è successo nel contesto di power.
+876 Codice di errore non utilizzato.
+877 Non ci sono dei dati a scaricare.
+878 File del percorso di database non valido, '%1$s'.
+879 Non è possibile ottenere l'autorizzazione: '%s'.
+880 Impossibile modificare l'autorizzazione. '%s'
+881 Non è possibile ottenere il file '%s di blocco (ID file: %d) '.
+882 Non è possibile rilasciare file di blocco 'FILE ID:%d'.
+883 Impossibile ottenere lo stato del file '%s'.
+884 Percorso del volext '%s' non è permesso a scrivere.
+885 Errore di passare da '%s' a '%s'. Utilizza lo stesso dispositivo (disco).
+886 "%1$s" causato violazione del vincolo UNIQUE.
+887 Stored procedure '%s' già esiste.
+888 Conteggio dei parametri non è valido. Attesi: %d, effettivi: %d
+889 Errore: L'esecuzione del stored procedure %s
+890 Partizione non riuscita.
+891 Partizione adeguata non esiste.
+892 Chiave primaria "%2$s" già definita per la classe "%1$s".
+893 Attributo '%1$s', un membro della chiave primaria, non può essere eliminato.
+894 Stored procedure/funzione '%s' non esiste.
+895 Tipo di stored procedure non valido: '%s' è il '%s'.
+896 Compressione non riuscita. Metodo Zip: %d (%s), Livello Zip: %d (%s)
+897 Decompressione non riuscita.
+898 Errore di replicazione: "%1$s"
+899 Richieste di partizione non valide.
+900 Java VM non si trova: %s.\n Di conseguenza, chiamata della stored procedure Java non è permessa.
+901 Java VM non può essere avviato: %s.\n Di conseguenza, chiamata alla stored procedure Java non è permessa.
+902 Java VM non è in esecuzione.
+903 Non è possibile connettersi a Java VM: %s
+904 Nome non valido del stored procedure.
+905 Connessioni di rete con JVM non riusciti: %d
+906 Firma del metodo Java non valida.
+907 Il proprietario o un membro del gruppo DBA può eliminare stored procedure.
+908 Troppi argomenti di stored procedure '%s'.
+909 Catalogo classe/vclass è mancante o non valido.
+910 L'accesso alla partizione non è permesso.
+911 Chiamata non valida: non può tornare ResultSet.
+912 ResultSet non può essere utilizzato come parametro d'ingresso.
+913 Troppi chiamati nidificati del stored procedure.
+914 Un oggetto serial esiste già come un vincolo di incremento automatico.
+915 Valore di incremento di un vincolo di incremento automatico deve essere maggiore di 0.
+916 Volume di log attivo non è incluso in questo volume di backup (%s).
+917 Volume di log attivo esiste già.
+918 La classe '%s' referita dalla chiave esterna non esiste.
+919 La classe '%s' referita dalla chiave esterna non ha la chiave primaria.
+920 La chiave esterna '%s' non comprende il membro '%s' del chiave primaria.
+921 Il dominio del membro '%s' della chiave esterna è diverso dal quello del membro '%s' della chiave primaria.
+922 Il vincolo della chiave esterna '%s' non è valido, a causa di valore '%s'.
+923 La chiave primaria '%s' referita dal una chiave esterna '%s' non dovrebbe essere eliminata.
+924 Operazioni di UPDATE/DELETE sono limitate dalla chiave esterna '%s'.
+925 L'acquisizione di blocco per la chiave esterna '%s' non è riuscita.
+926 L'istanza avente la chiave esterna '%s' non può essere eliminata.
+927 Il numero di chiavi della chiave esterna '%s' è diverso da quello della chiave primaria '%s'.
+928 Non un utente, ma il sistema può assegnare l'attributo '%s' creato da 'ON CACHE OBJECT' di chiave esterna.
+929 Una chiave esterna non può essere definita nella classe virtuale.
+930 è possibile eliminare la attributo '%s' creato da 'ON CACHE OJECT' di chiave esterna solo dopo aver rimosso il vincolo della chiave esterna.
+931 Valore iniziale di un vincolo di incremento automatico dovrebbe essere inferiore al valore massimo.
+932 Non è possibile riparare un inconsistenza del numero di pagine libere per il volume "%1$s" perché %2$d pagine ottenuti dal colpo di testa del volume non sono consistenti con %3$d pagine del bitmap.
+933 Non é possibile riparare un'incoerenza del numero di settori liberi per il volume "%1$s" perché %2$d settori ottenuti dal colpo di testa del volume non sono consistenti con %3$d settori della bitmap.
+934 Dominio NULL viene fatto riferimento.
+935 L'argomento della funzione %s è fuori portata.
+936 Overflow è avvenuto nel contesto di exp.
+937 Errore di database.
+938 Argomento non valido.
+939 Ci sono troppi di connessioni.
+940 Il handle non è valido.
+941 L'operazione non è supportata.
+942 Handle è scaduto in attesa per i blocchi.
+943 Errore generico.
+944 L'istruzione non è preparata.
+945 L'istruzione non ha alcun ResultSet.
+946 L'istruzione non viene eseguita.
+947 Non vi è alcun ResultSet più.
+948 La dimensione del buffer non è sufficiente.
+949 Non ci sono informazioni disponibili.
+950 Il nome non è valido.
+951 Il ResultSet non è aggiornabile.
+952 La riga viene eliminata.
+953 Parametri del'istruzione preparata non sono impostati.
+954 L'istruzione non è un'istruzione batch.
+955 Impossibile cancellare questa istruzione batch.
+956 L'esecuzione in batch non è possibile.
+957 L'istruzione è un'istruzione preparata.
+958 L'istruzione non è un'istruzione preparata.
+959 L'istruzione è un'istruzione batch.
+960 Non ci sono più di errori.
+961 Non ci sono più di risultati.
+962 Memoria esaurita.
+963 Errore di broker.
+964 L'handle di ResultSet è chiuso.
+965 Non è possibile utilizzare i nomi degli attributi duplicati nella lista delle chiave di index. Nome dell'attributo '%s' elencato più di una volta.
+966 La transazione (indice %1$d, %2$s @ %3$s|%4$d) scaduto in attesa sul blocco %5$s sull'oggetto %6$d|%7$d|%8$d a causa della situazione di stallo. Si è in attesa per l'utente %9$s per terminare.
+967 La transazione (indice %1$d, %2$s @ %3$s|%4$d) scaduto in attesa sul blocco %5$s sulla classe %6$s a causa della situazione di stallo. Si è in attesa per l'utente %7$s per terminare.
+968 La transazione (indice %1$d, %2$s @ %3$s|%4$d) scaduto in attesa sul blocco %5$s nell'istanza %6$d|%7$d|%8$d di classe %9$s a causa della situazione di stallo. Si è in attesa per l'utente %10$s alla fine.
+969 Piattaforma del server (%1$d) è differente dal piattaforma del client (%2$d).
+970 Server in modo HA passa da '%1$s' a '%2$s'.
+971 Programma '%1$s' (pid %2$d) si è connesso al server del database '%3$s' sull'host '%4$s' (porta %5$d).
+972 Programma '%1$s' (pid %2$d) si è connesso dall'host '%3$s'. (indice di transazione %4$d)
+973 Stato del server è %1$s.
+974 Log "%1$s" dei transazioni è stato creato per le pagine di archivio %2$lld-%3$lld.
+975 La versione attuale di replicazione non permette modificare righe multiple con una singola istruzione UPDATE che può violare il vincolo UNIQUE.
+976 Errore interno: tabella troppo piena (dimensione allocata: %1$d, dimensione accessibile: %2$d) a pagina della tabella di file %3$d|%4$d (volume "%5$s")
+977 Checkpoint ha iniziato (id della pagina precedente di checkpoint: %lld, id della pagina REDO precedente: %lld).
+978 Checkpoint finito (id della pagina di checkpoint: %lld, id della pagina REDO di checkpoint: %lld).
+979 Ciclo CONNECT BY nelle dati dell'utente.
+980 Un thread è in attesa nel %1$s più di %2$d msec.
+981 Transazione %1$d ha raggiunto alla soglia di statistiche di monitoraggio %2$s.
+982 Impostare l'interruzione alla transazione %1$d.
+983 Le istanze di una classe OID riutilizzabile non sono riferibili. Questa operazione non è permessa sulle istanze non riferibile.
+984 Impossibile impostare %3$s a "%6$s" nella sezione "[%5$s]" quando è impostato a "%4$s" nella sezione "[%2$s]" del file di configurazione "%1$s".
+985 L'hostname nella stringa di connessione al database deve essere specificato quando multihost è impostato in "databases.txt".
+986 Funzionalità di CUBRID heartbeat iniziato.
+987 Funzionalità di CUBRID heartbeat fermato.
+988 Evento del nodo: %1$s.
+989 Evento di processo: %1$s. %2$s
+990 Esecuzione di comando: %1$s. %2$s
+991 Candidati vittimi del Flush del buffer di pagina sono iniziati.
+992 Candidati vittimi del Flush del buffer di pagina sono finiti (conteggio: %d).
+993 Overflow è successo nel contesto dell'operazione bit.
+994 Questa istruzione non può essere una istruzione preparata.
+995 Un'istruzione preparata con il nome %1$s non esiste.
+996 Numero errato di valori dati. %1$d valori sono stati dati, ma %2$d valori sono necessari.
+997 Impossibile aggiungere il vincolo di chiave esterna %1$s al %2$s partizionato. Azioni referenziale che aggiorno degli attributi non sono ancora supportati sulle classi partizionati.
+998 Impossibile aggiungere il vincolo di chiave esterna %1$s sull'attributo. L'attributo %2$s non può avere un vincolo NOT NULL perché deve corrispondere all'azione referenziale SET NULL.
+999 Impossibile creare tabella '%1$s' come tabella '%2$s' perché la tabella esistente ha caratteristiche che non saranno duplicati (%3$s).
+1000 '%1$s' è un attributo SHARED o del CLASS, ma solo gli attributi normali sono ammessi nel questo contesto.
+1001 Una condizione imprevista o uno stato sono stati raggiunti. '%1$s'
+1002 L'operazione corrente non può acquisire un blocco di database che è necessario per continuare l'elaborazione.
+1003 Il vincolo '%1$s' esiste ma ha un diverso tipo.
+1004 Si prega di notare che quando si usa ALTER TABLE DROP FOREIGN KEY, CUBRID elimina sia il vincolo e l'index associato.
+1005 Codice di errore non utilizzato.
+1006 Codice di errore non utilizzato.
+1007 Impossibile creare l'index con lunghezza del prefisso sul UNIQUE, sul vincolo di chiave esterna o di chiave primaria.
+1008 Impossibile creare l'index con lunghezza del prefisso su una classe partizionata.
+1009 COMPACTDB già cominciato.
+1010 Impossibile definire l'index con lunghezza del prefisso sul dominio "%1$s".
+1011 Impossibile aggiungere il vincolo di chiave esterna %1$s sull'attributo shared %2$s.
+1012 Impossibile creare tabella con tipo di colonna NULL.
+1013 Impostare DEFAULT o SHARED su colonna di tipo %s non è permesso.
+1014 Impostare NOT NULL sulla colonna di tipo %s non è permesso.
+1015 Directory specificato '%s' non esiste.
+1016 Errori di storage esterno %1$s: %2$s
+1017 Percorso per storage esterno '%s' non è valido.
+1018 Impossibile copiare il file esterno sui diversi tipi di memoria. (origine %1$s dest %2$s)
+1019 Storage esterno non è inizializzato perché il percorso non è specificato nel "databases.txt".
+1020 File esterno "%s" non è stato trovato.
+1021 Un ciclo di deadlock viene rilevato. %1$s.
+1022 Valore "%ld" non valido per lunghezza del prefisso dell'index.
+1023 Codice di errore riservato per HA.
+1024 Codice di errore riservato per HA.
+1025 Codice di errore riservato per HA.
+1026 Codice di errore riservato per HA.
+1027 log applier: non è riuscito a cambiare stato dell'applicare dal '%1$s' a '%2$s'.
+1028 log applier: voce EOF imprevisto nel log dei transazioni. LSA: %1$lld|%2$d.
+1029 log applier: offset/pagina non valida del log di replicazione . HDR della pagina: %1$1lld|%2$d, final: %3$lld|%4$d, Append LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, stato del file HA: %9$d, is end-of-log: %10$d.
+1030 log applier: voce di replicazione don valida. LSA: %1$lld|%2$d, forw LSA: %3$lld|%4$d, backw LSA: %5$lld|%6$d, Trid: %7$d, prev tran LSA: %8$lld|%9$d, type: %10$d.
+1031 log applier: non riuscito ad applicare il log del replicazione della schema. classe: "%1$s", schema: "%2$s", Errore interno: %3$d. 
+1032 log applier: non riuscito ad applicare il log del replicazione della schema. classe: "%1$s", chiave: "%2$s", Errore interno: %3$d.  
+1033 log applier: non riuscito ad applicare il log del replicazione dell'UPDATE. classe: "%1$s", chiave: "%2$s", Errore interno: %3$d.  
+1034 log applier: non riuscito ad applicare il log del replicazione del DELETE. classe: "%1$s", chiave: "%2$s", Errore interno: %3$d.  
+1035 log applier: dimensione della memoria (%1$d MB) dell'applicatore di log è maggiore della dimensione massima di memoria (%2$d MB) o è stato aumentato più di 2 volte (%3$d MB). LSA richiesto: %4$lld|%5$d. ultimo LSA commesso : %6$lld|%7$d.
+1036 log applier: log applier sé arrestato dal segnale.
+1037 log writer: log writer sé arrestato dal segnale.
+1038 log applier: log applier iniziato. LSA necessario: %1$lld|%2$d. ultimo LSA commesso: %3$lld|%4$d. ultimo repl LSA comesso: %5$lld|%6$d.
+1039 log writer: log writer iniziato. Modo: %1$d.
+1040 HA generico: %1$s. 
+1041 Una stringa è stata troncata in un contesto di "%1$s".
+1042 Cercando di creare una stringa che richiede %1$d byte di memoria, mentre il massimo permesso è di %2$d byte.
+1043 Impossibile modificare attributo "%1$s". CUBRID non può modificare le proprietà dell'attributo richiesto, se la classe ha sottoclassi.
+1044 Impossibile modificare attributo "%1$s". CUBRID non può modificare gli attributi che sono chiavi di partizionamento.
+1045 Impossibile modificare attributo "%1$s". CUBRID non può modificare gli attributi utilizzati nelle chiavi esterne (sia riferimento o di riferimento).
+1046 Impossibile modificare attributo "%1$s". CUBRID non può cambiare il dominio dell'attributo. Questo cambiamento di dominio non è supportato.
+1047 Impossibile modificare attributo "%1$s". CUBRID non può cambiare il dominio dell'attributo. Il nuovo dominio non può correttamente rappresentare tutti i valori degli attributi esistenti.
+1048 Impossibile modificare attributo "%1$s". CUBRID non può attualmente modificare un attributo AUTO_INCREMENT se il dominio dell'attributo cambia anche.
+1049 Impossibile modificare attributo "%1$s". CUBRID non può attualmente cambiare il dominio dell'attributo. La conversione del dominio è possibile, ma questa funzione non è permessa dalla configurazione.
+1050 Impossibile modificare attributo "%1$s". CUBRID non può attualmente cambiare il dominio dell'attributo. L'attributo ha un index su esso.
+1051 Impossibile modificare attributo "%1$s". CUBRID non può attualmente modificare l'attributo per aggiungere un vincolo. Valori degli attributi esistenti non possono soddisfare il vincolo.
+1052 Attributo "%1$s" non è stato modificato. CUBRID non ha riscontrato cambiamenti effettivi nella rappresentazione dell'attributo.
+1053 L'instruzioni REPLACE INTO ... e INSERT ... ON DUPLICATE KEY UPDATE non sono ammessi per le classi partizionati o per le classi che fanno parte di una catena di ereditarietà.
+1054 Il nuovo valore di un vincolo di incremento automatico deve essere maggiore o uguale al valore corrente.
+1055 Il nuovo valore di un vincolo di incremento automatico deve essere inferiore al valore massimo.
+1056 Per evitare ambiguità, l'opzione AUTO_INCREMENT di tabella richiede che la tabella ha esattamente una colonna AUTO_INCREMENT e nessun specificazione per seed/increment.
+1057 Non è possibile aggiungere un attributo '%s' di tipo NOT NULL senza un valore predefinito.
+1058 ALTER TABLE .. CHANGE: cambiando al nuovo dominio: cast non riuscito, la configurazione attuale non permette di troncamento o di overflow.
+1059 ALTER TABLE .. CHANGE: cambiando al nuovo dominio: cast non riuscito, il valore predefinito di nuovo dominio è stato impostato.
+1060 ALTER TABLE .. CHANGE: cambiando al nuovo dominio: cast non riuscito, il valore minimo del nuovo dominio è stato impostato.
+1061 ALTER TABLE .. CHANGE: cambiando al nuovo dominio: cast non riuscito, il valore massimo del nuovo dominio è stato impostato.
+1062 Impossibile modificare l'attributo "%1$s". Il cambiamento si tradurrebbe in più chiavi primarie definite.
+1063 Impossibile aggiungere il vincolo NOT NULL per l'attributo "%1$s": ci sono già dei valori NULL per questo attributo.
+1064 ALTER TABLE .. CHANGE: aggiungendo NOT NULL: tutti i valori NULL esistenti sono stati modificati per il valore di default fisso del dominio.
+1065 Impossibile modificare l'attributo "%1$s". CUBRID non può aggiungere il vincolo NOT NULL: il valore di default fisso non esiste per il nuovo dominio.
+1066 Sessione scaduta.
+1067 Colonna '%s' non può avere un vincolo NOT NULL e un valore predefinito NULL.
+1068 Profondità massima di trigger non può superare %d.
+1069 Troppi d'instruzioni preparati
+1070 Variabile di sessione '@%s' non definita.
+1071 Troppi di variabili di sessione.
+1072 Indirizzo IP (%1$s) non è autorizzato.
+1073 Formato non valido nel file (%1$s).
+1074 Impossibile leggere la fila dell'elenco di accesso (%1$s).
+1075 Index di scansione discendente interrotto a causa di priorità inferiore sul B+tree con l'identificatore di index: (vfid = (%1$d, %2$d), rt_pgid: %3$d).
+1076 Impossibile caricare i parametri del sistema.
+1077 Il parametro '%s' alla linea %d nel file '%s': parametro sconosciuto
+1078 Carattere all'offset %d non è valido con il codeset corrente.
+1079 Codeset di database e codeset dello server non sono compatibili.
+1080 La lunghezza massima della stringa del predicato del filtro deve essere %1$d.
+1081 Non è possibile modificare un attributo coinvolto nell'un index di filtro o di funzione.
+1082 Tutti i tamponi di pagina sono sporchi (LRU: %1$d).
+1083 Informazioni specifiche sulla situazione di stallo.
+1084 Ignorando pagina non valida nel checkpoint. (pagina id: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, LSA REDO precedente del checkpoint: %5$lld|%6$d)
+1085 Impossibile compilare l'espressione regolare: '%s'
+1086 Impossibile eseguire l'espressione regolare: '%s'
+1087 Inizializzazione dei impostazioni internazionali: %s.
+1088 Generazione dei impostazioni internazionali: %s.
+1089 Impossibile preparare l'instruzione di tipo '%s' con variabili host.
+1090 L'argomento '%s' per inet_aton non è una stringa valida formattata come un'indirizzo IPv4.
+1091 L'argomento '%lld' per inet_ntoa non è un numero valido formattato come un'ndirizzo IPv4.
+1092 Log attivo di backup '%s' cominciato.
+1093 Log attivo di backup '%s' finito.
+1094 Nome di utente è troppo lungo.
+1095 Allocazione delle risorse non riuscito. Aumentate 'max_bestspace_entries= %1$d'.
+1096 Modificazione dello schema di partizionamento non è permessa quando la classe partizionata fa riferimento a una chiave esterna.
+1097 Colonna '%s' non può avere un vincolo PRIMARY KEY e un valore predefinito NULL.
+1098 Impostazioni internazionali per la lingua '%s' non sono disponibili con charset '%s'.
+1099 Istruzione DDL non è permessa dalla configurazione (block_ddl_statement=yes).
+1100 Instruzione senza clausola WHERE non è permessa dalla configurazione (block_nowhere_statementi=yes).
+1101 La transazione corrente non può acquisire un blocco a chiave PSEUDO-OID (%1$d|%2$d|%3$d) allegata alla OID (%4$d|%5$d|%6$d)
+1102 Parametro di sistema sconosciuto o valore non valido.
+1103 Impossibile modificare i parametri del sistema.
+1104 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
-1 Error in error subsystem (line %d):
-2 No error message available.
-3 Can't allocate %d bytes.
-4 Can't find message catalog "%s".
-5 Missing message for error code %d.
-6 ... ABORT/EXIT IMMEDIATELY ...\n
-7 Do you want to exit? 1/0
-8 Unknown file.
-9 No message available; this message substituted for erroneously formatted original.
-10 er_init: *** Incorrect exit_ask value = %d; will assume %s instead. ***\n
-11 er_start: *** WARNING: Unable to open message log "%s"; will assume stderr instead. ***\n
-12 er_study_fmt: suspect message for error code %d.
-13 er_estimate_size: unknown conversion code (%d).
-14 \n\n*** Message log wraparound. Messages will continue at top of the file. ***\n\n
-15 \nTime: %s - %s *** %s CODE = %d, Tran = %d%s\n%s\n
-16 CUBRID (pid: %d) *** %s *** %s CODE = %d, Tran = %d %s
-17 \nTime: %s - %s *** file %s, line %d %s CODE = %d Tran = %d%s\n%s\n
-18 CUBRID (pid: %d) *** %s *** file %s, line %d, %s CODE = %d, Tran = %d. %s
-19 \n*** The previous error message is the last one. ***\n\n
-20 \nTime: %s - DEBUG *** file %s, line %d\n
-21 Mail -s "Server has been stopped"
-22 --->>>\n %s has been stopped at your request when the following error was set:\n errid = %d, %s\nUser: %s, pid: %d, host: %s, time: %s<<<---\n
-23 %s has been stopped on errid = %d. User: %s, pid: %d
-24 er_init: cannot install event handler "%s"\n
+1 Errore nel sottosistema di errore (linea %d):
+2 Nessun messaggio di errore disponibile.
+3 Impossibile allocare %d bytes.
+4 Non riesci a trovare catalogo dei messaggi "%s".
+5 Messaggio mancante per il codice di errore %d.
+6 ... ANNULLA/ESCI IMMEDIATAMENTE ...\n
+7 Vuoi uscire? 1/0
+8 File sconosciuto.
+9 Nessun messaggio disponibile; questo messaggio è stato sostituito con il messaggio originale erroneamente formattato.
+10 er_init: *** Valore errato di exit_ask = %d; assumerà invece %s. ***\n
+11 er_start: *** ATTENZIONE: Impossibile aprire il messaggio di log "%s"; assumerà invece stderr. ***\n
+12 er_study_fmt: messaggio sospetto per il codice di errore %d.
+13 er_estimate_size: codice di conversione sconosciuto (%d).
+14 \n\n*** Wraparound di log dei messaggi.  I messaggi continueranno nella parte superiore del file. ***\n\n
+15 \nOra: %s - %s *** %s CODICE = %d, Tran = %d%s\n%s\n
+16 CUBRID (pid: %d) *** %s *** %s CODICE = %d, Tran = %d %s
+17 \nOra: %s - %s *** file %s, linea %d %s CODICE = %d Tran = %d%s\n%s\n
+18 CUBRID (pid: %d) *** %s *** file %s, linea %d, %s CODICE = %d, Tran = %d. %s
+19 \n*** Il messaggio di errore precedente è l'ultimo. ***\n\n
+20 \nOra: %s - DEBUG *** file %s, linea %d\n
+21 Mail -s "Server è stato fermato"
+22 --->>>\n %s è stato fermato su vostra richiesta quando l'errore seguente è stato fissato:\n errid = %d, %s\nUtente: %s, pid: %d, host: %s, ora: %s<<<---\n
+23 %s è stato fermato su on errid = %d. User: %s, pid: %d
+24 er_init: non è possibile installare handler per evento "%s"\n
 
 $set 7 MSGCAT_SET_PARSER_SYNTAX
-1 please check syntax at '%s', expecting %s.
-2 please check syntax at '%s', expecting %s in %s.
-3 please check correctness of token '%s'.
-4 'read uncommitted schema' is not acceptable, using \n'read committed schema' instead.
-5 Maximum char string length is 16383.
-6 %s exceeds limit of %ld.
-7 Maximum bit string length is %d bits.
-8 Cannot use a subquery in join condition clause.
-9 Cannot specify attribute "(%s)" in update privilege clause of grant/revoke statement.
-10 invalid use of keyword '%s', expecting %s.
-11 Token length is too long.
-12 invalid data type
-13 invalid attach statement\n  attach_statement: ATTACH unsigned_integer
-14 invalid prepare statement\n  prepare_statement:  PREPARE {to} COMMIT unsigned_integer
-15 invalid execute statement\n  execute_statement:  EXECUTE DEFERRED TRIGGER [identifier {, identifier}* | ALL TRIGGERS]
-16 invalid scope statement\n  scope_statement: SCOPE trigger_action { FROM table_spec_list }
-17 invalid set system parameter\n  set_system: SET SYSTEM PARAMETERS 'STRING' {, 'STRING_N'}*
-18 invalid set transaction\n  set_transaction: SET TRANSACTION ISOLATION LEVEL expression {, expression}\n                 | SET TRANSACTION LOCK TIMEOUT timeout_spec
-19 invalid set trigger trace\n  set_trigger: SET TRIGGER TRACE [ON|OFF|unsigned_integer|parameter|host_param]
-20 invalid set trigger depth\n  set_trigger: SET TRIGGER {MAXIMUM} DEPTH [unsigned_integer|parameter|host_param]
-21 invalid set optimization level\n  SET OPTIMIZATION LEVEL {=|to} [ON|OFF|unsigned_integer|parameter|host_param]
-22 invalid set optimization cost\n  SET OPTIMIZATION COST {of} 'STRING' {=|to} literal_
-23 invalid get optimization level\n  GET OPTIMIZATION LEVEL {[INTO|TO] [host_param|parameter|identifier]}
-24 invalid get optimization cost\n  GET OPTIMIZATION COST {of} 'STRING' {[INTO|TO] [host_param|parameter|identifier]}
-25 invalid get transaction isol\n  GET TRANSACTION ISOL LEVEL {[INTO|TO] [host_param|parameter|identifier]}
-26 invalid get transaction lock\n  GET TRANSACTION LOCK TIMEOUT {[INTO|TO] [host_param|parameter|identifier]}
-27 invalid get trigger trace\n  GET TRIGGER TRACE {[INTO|TO] [host_param|parameter|identifier]}
-28 invalid get trigger depth\n  GET TRIGGER {MAXIMUM} DEPTH {[INTO|TO] [host_param|parameter|identifier]}
-29 invalid get stat\n  GET STATISTICS 'STRING' {[INTO|TO] [host_param|parameter|identifier]}
-30 invalid create index\n  CREATE {REVERSE} {UNIQUE} INDEX identifier ON {only} class_name index_column_name_list {WHERE where_clause}
-31 invalid create user\n  CREATE USER identifier {PASSWORD 'STRING'} {GROUPS identifier {, identifier}* } {MEMBERS identifier {, identifier}* }
-32 invalid create trigger\n  CREATE TRIGGER identifier {STATE [ACTIVE|INACTIVE]} {PRIORITY unsigned_real}\n    [BEFORE|AFTER|DEFERRED] event_spec {IF trigger_condition}\n    EXECUTE {AFTER|DEFERRED} trigger_action
-33 invalid create serial\n  CREATE SERIAL identifier {START WITH integer} {INCREMENT BY integer}\n    serial_min_max {CYCLE|NOCYCLE} {CACHE unsigned_integer|NOCACHE}
-34 invalid create procedure\n  CREATE PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} LANGUAGE JAVA NAME 'STRING'
-35 invalid create function\n  CREATE FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} LANGUAGE JAVA NAME 'STRING'
-36 invalid groups\n  groups spec: GROUPS identifier {, identifier}*
-37 invalid members\n  member spec: MEMBERS identifier {, identifier}*
-38 invalid password\n  password spec: PASSWORD 'STRING'
-39 missing authorized command list\n  authorized command = SELECT, INSERT, INDEX, DELETE, UPDATE, ALTER, ADD, DROP, EXECUTE, REFERENCES, ALL PRIVILEGES, ALL 
-40 missing class spec list
-41 missing identifier list
-42 missing expression
-43 invalid identifier
-44 invalid use of substring\n  SUBSTRING( expression FROM expression FOR expression )\n  SUBSTRING( expression FROM expression )
-45 invalid use of trim\n  TRIM ( [LEADING|TRAILING|BOTH] expression FROM expression )\n  TRIM ( [LEADING|TRAILING|BOTH] FROM expression )\n  TRIM ( expression FROM expression )\n  TRIM ( expression )
-46 invalid use of cast\n  CAST ( expression AS data_type )
-47 function add_months needs two parameters
-48 octet_length needs one parameter
-49 bit_length needs one parameter
-50 lower needs one parameter
-51 upper needs one parameter
-52 translate needs three parameters
-53 replace needs two or three parameters
-54 invalid use of to_number\n  TO_NUMBER ( expression , char_string )\n  TO_NUMBER ( expression )
-55 string bind operator is not '|' but '||'
-56 invalid alter statement
-57 invalid drop statement
-58 invalid create statement
-59 invalid relational operator
-60 equal operator is not '==' but '='
-61 not equal operator is not '!=' but '<>'
-62 invalid minus value (or minus value in list)
-63 duplicated reference rule
-64 SYS_CONNECT_BY_PATH needs two parameters and the second must be a string literal.
-65 Invalid unsigned integer %s.
-66 IF needs three parameters: the first must be a logical expression, the second and third must be expressions evaluating to either a numeric or a string type.
-67 IFNULL needs two parameters which must be expressions evaluating to either a numeric or a string type.
-68 invalid use of isnull\n  ISNULL ( expression )
-69 invalid use of left\n  LEFT ( str , len )
-70 invalid use of right\n  RIGHT ( str , len )
-71 invalid use of mod\n MOD( expression, expression )
-72 invalid use of adddate\n ADDDATE( expression, expression )
-73 invalid use of date_add\n DATE_ADD( expression, INTERVAL expression unit)
-74 invalid use of subdate\n SUBDATE( expression, expression )
-75 invalid use of date_sub\n DATE_SUB( expression, INTERVAL expression unit)
-76 invalid use of user / system_user\n USER() / SYSTEM_USER()
-77 invalid use of timestamp\n TIMESTAMP( expression ), TIMESTAMP( expression, expression )
-78 invalid use of database\n DATABASE()
-79 invalid use of current_time\n CURRENT_TIME()
-80 invalid use of current_date\n CURRENT_DATE()
-81 invalid use of current_timestamp\n CURRENT_TIMESTAMP()
-82 invalid use of now\n NOW()
-83 invalid use of default\n DEFAULT(column_name)
-84 invalid use of date\n DATE(expression)
-85 invalid use of localtime\n LOCALTIME()
-86 invalid use of localtimestamp\n LOCALTIMESTAMP()
-87 invalid use of schema\n SCHEMA()
-88 invalid use of truncate\n TRUNCATE( expression, expression )
-89 invalid use of str_to_date\n STR_TO_DATE( expression, string_literal )
-90 invalid use of current_datetime\n CURRENT_DATETIME()
-91 invalid use of insert\n INSERT( expression, expression , expression, expression )
-92 invalid use of elt\n ELT(expression [, expression]...)
-93 invalid use of year\n YEAR( expression )
-94 invalid use of month\n MONTH( expression )
-95 invalid use of day\n DAY( expression )
-96 invalid use of hour\n HOUR( expression )
-97 invalid use of minute\n MINUTE( expression )
-98 invalid use of second\n SECOND( expression )
-99 invalid use of quarter\n QUARTER( expression )
-100 invalid use of week\n WEEK( expression ), WEEK( expression, expression)
-101 invalid use of time\n TIME(expression)
-102 invalid use of group_concat\n GROUP_CONCAT (([DISTINCT] {col | expr} \n [ORDER BY {col | unsigned_int} [ASC | DESC] ] \n [SEPARATOR str_val])
-103 invalid use of index hint
-104 Maximum byte string length is %d bytes.
-105 Syntax error: unexpected
-106 , expecting '{'
-107 , expecting SELECT or '('
-108 , expecting
-109 unexpected
-110 END OF STATEMENT
-111 In line %d, column %d before '%c%s'\n
-112 In line %d, column %d before %s\n
-113 before ' %s'\n
-114 before END OF STATEMENT\n
-115 invalid set names\n  set_names: SET NAMES charset [{COLLATE | COLLATION} collation]\n
-116 invalid use of chr\n  CHR ( number [using charset] )\n
+1 si prega di controllare la sintassi a '%s', aspettandosi %s.
+2 si prega di controllare la sintassi a '%s', aspettandosi %s nel %s.
+3 si prega di controlare la correttezza del token '%s'.
+4 'read uncommitted schema' non è accettabile, usando\n 'read committed schema' al posto.
+5 Massima lunghezza della stringa di caratteri è 16383.
+6 %s supera il limite di %ld.
+7 La lunghezza massima della stringa di bit è %d.
+8 Non è possibile utilizzare una sottoquery nella condizione di clausola JOIN.
+9 Non è possibile specificare l'attributo "(%s)" nella clausola di aggiornamento dei privilegi dell'instruzione grant/revoke.
+10 Uso di parola chiave '%s' non valido. Aspettavo %s.
+11 Lunghezza del token è troppo lungo.
+12 Tipo di dati non valido.
+13 Istruzione non valida "attach statement"\n  attach_statement: ATTACH unsigned_integer
+14 Istruzione non valida "prepare statement"\n  prepare_statement:  PREPARE {to} COMMIT unsigned_integer
+15 Istruzione non valida "execute statement"\n  execute_statement:  EXECUTE DEFERRED TRIGGER [identifier {, identifier}*|ALL TRIGGERS]
+16 Istruzione non valida "scope statement"\n  scope_statement: SCOPE trigger_action { FROM table_spec_list }
+17 Istruzione non valida "set system parameter"\n  set_system: SET SYSTEM PARAMETERS 'STRING' {, 'STRING_N'}*
+18 Istruzione non valida "set transaction"\n  set_transaction: SET TRANSACTION ISOLATION LEVEL expression {, expression}\n                |SET TRANSACTION LOCK TIMEOUT timeout_spec
+19 Istruzione non valida "set trigger trace"\n  set_trigger: SET TRIGGER TRACE [ON|OFF|unsigned_integer|parameter|host_param]
+20 Istruzione non valida "set trigger depth"\n  set_trigger: SET TRIGGER {MAXIMUM} DEPTH [unsigned_integer|parameter|host_param]
+21 Istruzione non valida "set optimization level"\n  SET OPTIMIZATION LEVEL {=|to} [ON|OFF|unsigned_integer|parameter|host_param]
+22 Istruzione non valida "set optimization cost"\n  SET OPTIMIZATION COST {of} 'STRING' {=|to} literal_
+23 Istruzione non valida "get optimization level"\n  GET OPTIMIZATION LEVEL {[INTO|TO] [host_param|parameter|identifier]}
+24 Istruzione non valida "get optimization cost"\n  GET OPTIMIZATION COST {of} 'STRING' {[INTO|TO] [host_param|parameter|identifier]}
+25 Istruzione non valida "get transaction isol"\n  GET TRANSACTION ISOL LEVEL {[INTO|TO] [host_param|parameter|identifier]}
+26 Istruzione non valida "get transaction lock"\n  GET TRANSACTION LOCK TIMEOUT {[INTO|TO] [host_param|parameter|identifier]}
+27 Istruzione non valida "get trigger trace"\n  GET TRIGGER TRACE {[INTO|TO] [host_param|parameter|identifier]}
+28 Istruzione non valida "get trigger depth"\n  GET TRIGGER {MAXIMUM} DEPTH {[INTO|TO] [host_param|parameter|identifier]}
+29 Istruzione non valida "get stat"\n  GET STATISTICS 'STRING' {[INTO|TO] [host_param|parameter|identifier]}
+30 Istruzione non valida "create index"\n  CREATE {REVERSE} {UNIQUE} INDEX identifier ON {only} class_name index_column_name_list {WHERE where_clause}
+31 Istruzione non valida "create user"\n  CREATE USER identifier {PASSWORD 'STRING'} {GROUPS identifier {, identifier}* } {MEMBERS identifier {, identifier}* }
+32 Istruzione non valida "create trigger"\n  CREATE TRIGGER identifier {STATE [ACTIVE|INACTIVE]} {PRIORITY unsigned_real}\n    [BEFORE|AFTER|DEFERRED] event_spec {IF trigger_condition}    EXECUTE {AFTER|DEFERRED} trigger_action
+33 Istruzione non valida "create serial"\n  CREATE SERIAL identifier {START WITH integer} {INCREMENT BY integer}\n    serial_min_max {CYCLE|NOCYCLE} {CACHE unsigned_integer|NOCACHE}
+34 Istruzione non valida "create procedure"\n  CREATE PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} LANGUAGE JAVA NAME 'STRING'
+35 Istruzione non valida "create function"\n  CREATE FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} LANGUAGE JAVA NAME 'STRING'
+36 Istruzione non valida "groups"\n  groups spec: GROUPS identifier {, identifier}*
+37 Istruzione non valida "members"\n  member spec: MEMBERS identifier {, identifier}*
+38 Istruzione non valida "password"\n  password spec: PASSWORD 'STRING'
+39 manca l 'elenco dei comandi autorizzati\n  authorized command = SELECT, INSERT, INDEX, DELETE, UPDATE, ALTER, ADD, DROP, EXECUTE, REFERENCES, ALL PRIVILEGES, ALL 
+40 Manca l'elenco dei specificazioni della classe
+41 Manca l'elenco d'identificatori
+42 Manca espressione
+43 identificatore non valido
+44 uso non valido di substring\n  SUBSTRING( expression FROM expression FOR expression )\n  SUBSTRING( expression FROM expression )
+45 uso non valido di trim\n  TRIM ( [LEADING|TRAILING|BOTH] expression FROM expression )\n  TRIM ( [LEADING|TRAILING|BOTH] FROM expression )  TRIM ( expression FROM expression )  TRIM ( expression )
+46 uso non valido di cast\n  CAST ( expression AS data_type )
+47 function add_months ha bisogno di due parametri
+48 octet_length ha bisogno di un parametro
+49 bit_length ha bisogno di un parametro
+50 lower ha bisogno di un parametro
+51 upper ha bisogno di un parametro
+52 translate ha bisogno di tre parametro
+53 replace ha bisogno di due o tre parametro
+54 uso non valido di to_number\n  TO_NUMBER ( expression , char_string )\n  TO_NUMBER ( expression )
+55 operatore di stringa di concatenazione non è '|' ma '||'
+56 Istruzione "alter" non valida
+57 Istruzione "drop" non valida
+58 Istruzione "create" non valida
+59 operatore relazionale non valido
+60 operatore di uguaglianza non è '==' ma '='
+61 operatore di disuguaglianza non è '!=' ma '<>'
+62 valore negativo non valido(o il valore negativo nella lista)
+63 regola duplicata di riferimento
+64 SYS_CONNECT_BY_PATH ha bisogno di due parametri e il secondo deve essere una stringa letterale.
+65 intero senza segno %s non valido.
+66 IF ha bisogno di tre parametri: il primo deve essere un'espressione logica, il secondo e il terzo devono essere espressioni valutando sia ad un valore numerico o un tipo stringa.
+67 IFNULL ha bisogno di due parametri che devono essere espressioni valutando sia un valore numerico o un tipo stringa.
+68 uso non valido di "isnull"\n  ISNULL ( expression )
+69 uso non valido di "left"\n  LEFT ( str , len )
+70 uso non valido di "right"\n  RIGHT ( str , len )
+71 uso non valido di "mod"\n MOD( expression, expression )
+72 uso non valido di "adddate"\n ADDDATE( expression, expression )
+73 uso non valido di "date_add"\n DATE_ADD( expression, INTERVAL expression unit)
+74 uso non valido di "subdate"\n SUBDATE( expression, expression )
+75 uso non valido di "date_sub"\n DATE_SUB( expression, INTERVAL expression unit)
+76 uso non valido di "user"/"system_user"\n USER()/SYSTEM_USER()
+77 uso non valido di "timestamp"\n TIMESTAMP( expression ), TIMESTAMP( expression, expression )
+78 uso non valido di "database"\n DATABASE()
+79 uso non valido di "current_time"\n CURRENT_TIME()
+80 uso non valido di "current_date"\n CURRENT_DATE()
+81 uso non valido di "current_timestamp"\n CURRENT_TIMESTAMP()
+82 uso non valido di "now"\n NOW()
+83 uso non valido di "default"\n DEFAULT(column_name)
+84 uso non valido di "date"\n DATE(expression)
+85 uso non valido di "localtime"\n LOCALTIME()
+86 uso non valido di "localtimestamp"\n LOCALTIMESTAMP()
+87 uso non valido di "schema"\n SCHEMA()
+88 uso non valido di "truncate"\n TRUNCATE( expression, expression )
+89 uso non valido di "str_to_date"\n STR_TO_DATE( expression, string_literal )
+90 uso non valido di "current_datetime"\n CURRENT_DATETIME()
+91 uso non valido di "insert"\n INSERT( expression, expression , expression, expression )
+92 uso non valido di "elt"\n ELT(expression [, expression]...)
+93 uso non valido di "year"\n YEAR( expression )
+94 uso non valido di "month"\n MONTH( expression )
+95 uso non valido di "day"\n DAY( expression )
+96 uso non valido di "hour"\n HOUR( expression )
+97 uso non valido di "minute"\n MINUTE( expression )
+98 uso non valido di "second"\n SECOND( expression )
+99 uso non valido di "quarter"\n QUARTER( expression )
+100 uso non valido di "week"\n WEEK( expression ), WEEK( expression, expression)
+101 uso non valido di "time"\n TIME(expression)
+102 uso non valido di "group_concat"\n GROUP_CONCAT (([DISTINCT] {col|expr}\n  [ORDER BY {col|unsigned_int} [ASC|DESC] ] \n [SEPARATOR str_val])
+103 uso non valido di "index hint"
+104 Lunghezza massima stringa di byte è %d byte.
+105 Errore di sintassi: imprevisto
+106 , aspettando '{'
+107 , aspettando SELECT o '('
+108 , aspettando
+109 imprevisto
+110 FINE DELLA DICHIARAZIONE
+111 In linea %d, colonna %d prima di '%c%s'\n
+112 In linea %d, colonna %d prima di %s\n
+113 prima di ' %s'\n
+114 prima del FINE DELLA DICHIARAZIONE\n
+115 uso non valido di "set names"\n  set_names: SET NAMES charset [{COLLATE|COLLATION} collation]\n
+116 uso non valido di "chr"\n  CHR ( number [using charset] )\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
-1 Out of memory.
-2 Function %s is undefined.
-3 Cannot find ldb '%s' in the database.
-4 The number of columns, %d, in the left query do not match\nthe number of columns, %d, in the right query.
-5 '%s' is not union compatible with '%s'.
-6 %s is not defined.
-7 The domain of %s cannot be a vclass.
-8 The domain of %s cannot be a proxy vclass.
-9 The domain of %s cannot be a class.
-10 %s is not an attribute of %s.
-11 %s cannot be changed from this class.\nIt was inherited from %s.
-12 Class %s does not exist.
-13 %s is not a %s.
-14 %s is not a method or attribute of %s.
-15 %s does not have and must not have any query specifications.
-16 %s is not defined in the database.
-17 %s is not a superclass of %s.
-18 Class %s inherits from non-class %s.
-19 VClass %s inherits from non-vclass %s.
-20 Proxy vclass %s inherits from non-proxy vclass %s.
-21 %s is already a superclass of %s.
-22 %s may not be a superclass of itself.
-23 %s is already a subclass of %s.
-24 %s is not single valued. Attributes exposed in\naggregate queries must also appear in the group by clause.
-25 The number of columns(%d) and into_names(%d) are not equal.
-26 Class %s already exists.
-27 Super class %s in '%s' does not exist.
-28 Expecting a SUBCLASS clause to make INHERIT clause '%s' meaningful.
-29 INHERIT clause '%s' references a class that is not in the SUBCLASS clause '%s'.
-30 Class CANNOT have a query specification.
-31 %s is not a registered ldb.
-32 A proxy heir may not have its own object_id clause.  It cannot override its inherited object_id attribute(s).
-33 Proxy vclass has more than one query specification.
-34 The number of attributes, %d, does not match the number of columns, \n%d, in the query specification.
-35 Missing an expected attribute name for %s.
-36 Attribute '%s' is not compatible with column '%s' of the query specification.
-37 %s is not a class.
-38 Indices may not be created on virtual classes.
-39 Indices can only be created on a single attribute.
-40 Illegal use of multiple classes in the from clause.
-41 System error -- Resolution failed on %s.
-42 You may not delete from a derived table.
-43 User %s is not in the database.
-44 Update cannot have aggregation.
-45 Attribute names in each class must be unique. Attribute name '%s' in class '%s' is specified more than once.
-46 There are multiple assignments to %s.
-47 Number in sort spec is not an integer.
-48 %d in sort spec is out of range.
-49 Order by item is not an integer.
-50 %s in sort spec doesn't match any select column.
-51 There are conflicting sort directions for column %s.
-52 %s in sort spec is not a number, name or path expression.
-53 Insert expression may only appear in insert statement.
-54 The number of attributes(%d) and select columns(%d) are not equal.
-55 The number of attributes(%d) and values(%d) are not equal.
-56 Data overflow on data type %s.
-57 Incompatible data type on attribute %s.
-58 %s\n is not a SELECT from a single class.
-59 `*' is not a valid select list in a proxy vclass query specification.
-60 %s is neither a vclass nor a proxy vclass.
-61 There are more than one isolation level clauses.
-62 There are more than one timeout clauses.
-63 No isolation level was entered.
-64 BETWEEN operator is not defined on types %s, %s and %s.
-65 '%s' operator is not defined on types %s and %s.
-66 Function must have arguments: %s.
-67 Incompatible operands: %s(%s).
-68 Aggregate function must have 1 argument: %s.
-69 Attempt to divide by zero.
-70 Data overflow coercing %s to type %s.
-71 Cannot coerce %s to type %s.
-72 The type of '%s' must be SET, MULTISET, or SEQUENCE.
-73 '%s' should have exactly one set element type.
-74 %s has more than one derived column name.
-75 %s has no derived column name.
-76 %s does not have a corresponding number of columns (%d) and column names (%d).
-77 There are no attributes in %s.
-78 Expecting single table in %s.
-79 Exposed name %s is ambiguous.
-80 Derived column names '%s' are not allowed for simple class specifications.
-81 Derived table '%s' must have a correlation name.
-82 Select authorization failure, class %s.
-83 Class instance reference %s to a derived table name is not allowed.
-84 Path correlation (%s) appears outside an inner path term.
-85 Reference to %s is ambiguous.
-86 Class of %s does not have attribute %s.
-87 Classes (%s) do not all have attribute %s.
-88 Class (%s) does not have attribute %s.
-89 %s is a %s type, not an object type.
-90 Selector {%s} does not resolve to an exposed class specification in\n the required context (%s).
-91 Selector {%s} refers to non-class specification (%s).
-92 Selector {%s} cannot root the path expression defining itself.
-93 Selector {%s} is circularly defined in terms of selector {%s}.
-94 Selector {%s} is redefined at %s.
-95 %s (domain object) does not have attribute %s.
-96 %s in EXCEPT spec is not a subclass.
-97 ALL ... EXCEPT list excludes EVERYTHING in class.
-98 '%s' is inconsistent with\nother use of path selector '%s' or of path root '%s'.
-99 Undefined argument.
-100 Argument is not an object.
-101 %s is not a class method or attribute of %s.
-102 Query specification must not have an into-clause.
-103 Proxy query specification must have no aggregate expression,\nno group-by-clause, and no having-clause.
-104 Proxy query specification must not have the DISTINCT nor UNIQUE \nkeyword in the select list.
-105 Proxy query specification must be a simple SELECT statement.
-106 Proxy query specification must reference only one table or class \nfrom the local database.
-107 User '%s' is not the owner of %s.
-108 Proxy '%s' is already defined on class '%s' of ldb '%s'.
-109 CUBRID does not support proxy's with objects in heterogeneous sets.
-110 Where-clause must be a logical type expression.
-111 Like escape clause must be a literal string or a host variable.
-112 Invalid combination of precision (%d) and scale (%d).
-113 Given precision of %1$d is invalid; it should be greater than %2$d and no greater than %3$d.
-114 Precision (%d) too large. Maximum precision is %d.
-115 Method %s must have a return type.
-116 Number of arguments supplied to the method does not equal the \nnumber defined for the method.
-117 Method call must have a target.
-118 Method %s is undefined for the supplied target.
-119 Instance methods cannot be called on class objects.
-120 Class methods cannot be called on instance objects.
-121 Class methods require a class object as their target.
-122 Methods require an object as their target.
-123 Method %s is not fully typed, check method definition in class schema.
-124 Time arithmetic underflow.
-125 Date arithmetic underflow.
-126 Illegal left hand side of an assignment clause.
-127 Method calls on set derived tables correlated to an outer scope are \nnot supported unless the set expression is wrapped in a subquery.
-128 The query specification column that corresponds to the \nshared attribute '%s' must be NULL or NA.
-129 A NULL column is not allowed on the select list of the view query specification if the attribute definition is omitted.
-130 Vclass objects in sets are not supported.
-131 Expecting a string value.
-132 Expecting a statement or a string value.
-133 Proxy object_id attribute '%s' must not map to \na query specification column expression.
-134 %s constraint ignored.
-135 Constraint declarations not allowed in this context.
-136 Casting %s to type %s is not supported.
-137 %s is not a valid bit string.
-138 '%s' operator is not defined on type %s.
-139 '%s' operator is not defined on types %s with %s and %s.
-140 Operands of operator '%s' cannot both be dynamic host variables.
-141 Too many aguments to generic function %s.\nOnly %d arguments are allowed for generic functions.
-142 Selector {%s} class '%s' is not a subclass of '%s'.
-143 Cannot extract '%s' field from type %s.
-144 Query specification must not have an ORDER BY clause.
-145 Case condition must be a logical type expression.
-146 Expression should be of type %s.
-147 Serial '%s' already exist.
-148 Serial '%s' not defined.
-149 Increment value must not be zero.
-150 Maximum value exceeds 1.0e37.
-151 Minimum value is invalid.
-152 Increment value is invalid.
-153 Minimum value exceeds -1.0e36.
-154 Maximum value is invalid.
-155 Specify alter serial option.
-156 The second argument of serial_next_value function should be greater than 0.
-157 Serial values cannot exceeds its minimum or maximum
-158 Internal I/O error for serial
-159 Cannot find the index '%s'.
-160 The qualified index name '%s' refers to a class, but it isn't specified in from clause.
-161 Two or more classes have the same index '%s'. Use the qualified index names.
-162 Invalid use of %s.\n%s expression cannot be used with attribute or correlated subquery.
-163 Current release restricts a expression containing ORDERBY_NUM() in select list.
-164 Path expression '%s' in join condition.
-165 '%s' in join condition is not defined.
-166 Current release restricts set derived table for right outer join.
-167 Cannot insert with query on other ldb.
-168 Only one column can be specified in the select list when the subquery is not introduced with EXISTS.
-169 Illegal right hand side of an assignment clause. Context requires query to be single column.
-170 Cannot use a subquery in join condition clause.
-171 Invalid partition definition.
-172 Partition column must be specified.
-173 Only one column can be specified as partition column.
-174 Unsupported partition column type.
-175 Partition definition is duplicated. '%s'
-176 Constant type mismatch. '%s'
-177 Invalid partition size.
-178 '%s' is not partitioned class.
-179 '%s' is already partitioned class.
-180 Invalid partition requests.
-181 %s cannot be changed from this class(partition key column).
-182 %s cannot be partition-managed under active triggers.
-183 Partition %s does not exist.
-184 Partition type mismatches. '%s'
-185 Partition information is invalid.
-186 Partition addition is to set with a bigger range than the existing.
-187 Reorganization of partitions is not permitted because it may cause data loss.
-188 The range of the partition '%s' is invalid.
-189 A class attribute cannot have an auto increment constraint.
-190 An attribute of virtual class cannot have an auto increment constraint.
-191 The domain of the attribute '%s' having an auto increment constraint is invalid.
-192 Not a user but the system can assign the attribute '%s' created by 'ON CACHE OBJECT' of foreign key.
-193 Cannot use duplicate attribute names in index key list. Attribute name '%s' listed more than once.
-194 Function %s is undefined or given wrong number of parameter.
-195 '%s' can only be used in hierarchical queries. Specify a CONNECT BY clause.
-196 '%s' is not allowed here.
-197 Using CONNECT_BY_ISCYCLE is only allowed if the query has a CONNECT BY NOCYCLE clause.
-198 No tables used.
-199 ORDER BY NULL requires GROUP BY.
-200 The number to CACHE must be less than one cycle (%s).
-201 '%s' is not allowed in a query with LIMIT clause.
-202 WITH ROLLUP requires GROUP BY.
-203 A column name parameter should be passed to the DEFAULT function. Path expressions are not yet supported.
-204 Duplicate table option '%s'
-205 The class '%s' is marked as REUSE_OID and is non-referable. Non-referable classes can't be the domain of an attribute and their instances' OIDs cannot be returned.
-206 Duplicate 'serial %s' option.
-207 The column '%s' in ordering clause is ambiguous.
-208 Attribute '%s' doesn't have a default value.
-209 ORDER BY items must appear in the select list if SELECT DISTINCT is specified.
-210 Host variable is not allowed on columns in the query specification.
-211 %s can not be an ORDER BY column
-212 %s can not be an GROUP BY column
-213 Can not define '%1$s of %2$s' as an column type.
-214 Invalid value "%s" for prefix length of the index.
-215 '%s' function is not defined on types %s, %s, %s and %s.
-216 '%s' function is not defined on types %s, %s and %s.
-217 '%s' function is not defined on types %s and %s.
-218 '%s' function is not defined on type %s.
-219 '%s' function is not defined for an index argument of type %s.
-220 ALTER VIEW '%s' AS SELECT is not allowed for views that have subclasses or superclasses. Use ALTER VIEW CHANGE QUERY instead.
-221 View attributes cannot be changed using this statement. 'ALTER VIEW name AS query' might help instead.
-222 CUBRID requires ORDER BY item to be the same expression as GROUP_CONCAT argument or an integer (argument position).
-223 The LIKE predicate requires an escape character to be specified. See the documentation for the '%1$s' and '%2$s' configuration parameters.
-224 KEYLIMIT can not be used in INDEX NONE clause.
-225 Session variable not allowed in this context.
-226 Index hint conflict between '%s' and '%s'.
-227 '%s' function can not be used in DEFAULT clause.
-228 Updating derived tables is not allowed.
-229 Updating class attributes and instance attributes not allowed in the same statement.
-230 Updating virtual class hierarchies is not allowed.
-231 Host variables not allowed in DDL statement.
-232 Invalid filter expression (%s) for index.
-233 Multiple or nested functions are not allowed in a function index definition.
-234 Invalid index specification.
-235 SHARED, DEFAULT and AUTO_INCREMENT cannot be defined with each other.
-236 Too many enumeration values (%d). An enumeration type can have a maximum of %d values.
-237 Duplicate values in enum type.
-238 Cannot MERGE into a derived table.
-239 Cannot affect the source table in a MERGE statement.
-240 MERGE with class hierarchies is not allowed.
-241 User name is too long.
-242 Constant expression cannot be used as function index.
-243 Class name or alias is not unique in list: '%s'
-244 Invalid DEFAULT clause. '%s' cannot be used in a nested expression.
-245 '%s' requires arguments with compatible collations.
-246 Invalid character set.
-247 Required character set and collation are not compatible.
-248 Unknown collation '%s'.
-249 Context requires collection with elements having identical codesets and collations.
-250 Prefix index is not allowed on attribute '%s' (has collation with expansions).
-251 Initial value is invalid.
-252 Multi-column prefix index is not allowed.
-253 '%s' function cannot be used for function based index.
-254 Invalid index column definition: %s
-255 '%s' is not allowed in a filter expression for index.
-256 Cannot use GROUPBY_NUM() and WITH ROLLUP clause in same query.
-257 Cannot MERGE UPDATE column %s referenced in ON clause.
-258 The number of columns, %d, in ( %s ) do not match\nthe number of columns, %d, in ( %s ).
-259 Prefixes of columns not allowed in function index expression.
-260 %s cannot be a PARTITION BY or ORDER BY column
-261 Query must evaluate to a single value\n(%s).
-262 Nested analytic functions are not allowed.
-263 An inherited attribute cannot be used as the partitioning key.
-264 The aggregate size of enumeration elements is too large.
-265 Cannot use target table in source spec.
+1 Memoria esaurita.
+2 Funzione %s non è definita.
+3 Impossibile trovare LDB '%s' nel database.
+4 Il numero di colonne, %d, nella query di sinistra non corrisponde\nal numero di colonne, %d, nella query a destra.
+5 '%s' non è unione-compatibile con '%s'.
+6 %s non è definito.
+7 Il dominio di %s non può essere un vclass.
+8 Il dominio di %s non può essere un vclass proxy.
+9 Il dominio di %s non può essere una classe.
+10 %s non è un attributo di %s.
+11 %s non può essere modificato da questa classe.\nE 'stato ereditato da %s.
+12 Classe %s non esiste.
+13 %s non è un %s.
+14 %s non è un metodo o un attributo di %s.
+15 %s non ha e non deve avere alcuna specificazione della query.
+16 %s non è definito nel database.
+17 %s non è una superclasse di %s.
+18 Classe %s eredita dalla non classe %s.
+19 VClass %s eredita dal non vclass %s.
+20 Vclass proxy %s eredita dal vclass non proxy %s.
+21 %s è già una superclasse di %s.
+22 %s non può essere una superclasse di se stesso.
+23 %s è già una sottoclasse di %s.
+24 %s non è valore singolo. Attributi esposti in query\ndi aggregazione devono inoltre figurare nella clausola GROUP BY.
+25 Il numero di colonne (%d) e into_names (%d) non sono uguali.
+26 Classe %s esiste già.
+27 Superclasse %s nel '%s' non esiste.
+28 In attesa di una clausola SUBCLASS per rendere significativa la clausola INHERIT '%s'.
+29 Clausola INHERIT '%s' fa riferimento a una classe che non è nel clausola SUBCLASS '%s'.
+30 Classe non può avere una specificazione della query.
+31 %s non è un LDB registrato.
+32 Un erede delegato non può avere la sua propria clausola di object_id. Non si può sovrascrivere sui attributi ereditati dall'object_id.
+33 Vclass proxy ha più di una specificazione della query.
+34 Il numero di attributi, %d, non corrisponde al numero di colonne, \n%d, nella specificazione della query.
+35 Manca un nome di attributo previsto per %s.
+36 L'attributo '%s' non è compatibile con la colonna '%s' della specificazione della query.
+37 %s non è una classe.
+38 Gli indici non possono essere creati su classi virtuali.
+39 Indici possono essere creati solo su un singolo attributo.
+40 Utilizzo non valido di più classi nella clausola FROM.
+41 Errore di sistema - Risoluzione non riuscita su %s.
+42 L'utente non può eliminare da una tabella derivata.
+43 utente %s non è nel database.
+44 Aggiornamento non può avere l'aggregazione.
+45 I nomi degli attributi di ciascuna classe devono essere unici. Nome dell'attributo '%s' nella classe '%s' viene specificato più di una volta.
+46 Ci sono più assegnazioni per %s.
+47 Numero nella specificazione di ordinamento non è un numero intero.
+48 %d nella specificazione di ordinamento è fuori portata.
+49 Oggetto nell'ORDER BY non è un numero intero.
+50 %s nella specificazione di ordinamento non corrisponde a nessuna colonna di selezione.
+51 Esistono indicazioni di ordinamento in conflitto per colonna %s.
+52 %s nella specificazione di ordinamento non è un'espressione di numero, nome o percorso.
+53 Espressione d'inserire può apparire solo nell'instruzione INSERT.
+54 Il numero di attributi (%d) e delle colonne di selezione (%d) non sono uguali.
+55 Il numero di attributi (%d) e dei valori (%d) non sono uguali.
+56 Overflow dei dati sul tipo di dati %s.
+57 Tipo di dati incompatibile sull'attributo %s.
+58 %s\n non è un SELECT da una sola classe.
+59 `*' Non è un elenco valido di selezione nel una specificazione della query di vclass proxy.
+60 %s non è né un vclass né un vclass proxy.
+61 C'è più di una clausola ISOLATION LEVEL.
+62 C'è più di una clausola TIMEOUT.
+63 Nessun livello di isolamento è stato inserito.
+64 Operatore BETWEEN non è definito su tipi %s, %s e %s.
+65 Operatore '%s' non è definito sui tipi %s e %s.
+66 Funzione deve avere argoment: %s.
+67 Operandi incompatibili: %s(%s).
+68 Funzione di aggregazione deve avere 1 argomento: %s.
+69 Tentativo di dividere per zero.
+70 Overflow dei dati alla coercizione di %s al tipo %s.
+71 Coercizione di %s al tipo %s non è possibile.
+72 Il tipo di '%s' deve essere SET, MULTISET, o SEQUENCE.
+73 '%s' dovrebbe avere esattamente un tipo di elemento d'insieme.
+74 %s ha più di un nome di colonna derivata.
+75 %s non ha un nome di colonna derivata.
+76 %s non ha un numero delle colonne corrispondente(%d) e nomi di colonna (%d).
+77 Non ci sono dei attributi nel %s.
+78 In attesa di una singola tabella nel %s.
+79 Nome esposto %s è ambiguo.
+80 Nomi delle colonne derivati '%s' non sono ammessi per le specificazioni semplici delle classe.
+81 Tabella derivata '%s' deve avere un nome di correlazione.
+82 Errore di selezionare dell'autorizzazione, classe %s.
+83 Referenza a l'istanza della classe %s a un nome di tabella derivata non è permesso.
+84 Correlazione di percorso (%s) appare all'esterno di un termine interiore di percorso.
+85 Riferimento a %s è ambiguo.
+86 Classe di %s non ha l'attributo %s.
+87 Classi (%s) non tutti hanno l'attributo %s.
+88 Classe (%s) non ha l'attributo %s.
+89 %s è un tipo %s, non un tipo di oggetto.
+90 Selettore {%s} non risolve ad una specifica classe esposta nel\n contesto necessario (%s).
+91 Selettore {%s} si riferisce alla non-classe specifica (%s).
+92 Selettore {%s} non può fare riferimento alla radice dell'espressione di percorso si definisce.
+93 Selettore {%s} è circolarmente definito in termini di selettore {%s}.
+94 Selettore {%s} viene ridefinito a %s.
+95 %s (oggetto di dominio) non ha l'attributo %s.
+96 %s nel specificazione EXCEPT non è una sottoclasse.
+97 Lista dell'instruzione ALL ... EXCEPT esclude TUTTO della classe.
+98 '%s' è incompatibile con altro uso di\nselettore del percorso '%s' o di percorso principale '%s'.
+99 Argomento non definito.
+100 L'argomento non è un oggetto.
+101 %s non è un metodo o un attributo della classe di %s.
+102 Specificazione della query non deve avere un clausola INTO.
+103 Specificazione della query proxy non deve avere un'espressione di aggregazione,\nnessuna clausola GRUOP BY, e nessuna clausola HAVING.
+104 Specificazione della query proxy non deve avere la parola \nchiave DISTINCT, né UNIQUE nell'elenco di selezione.
+105 Specificazione della query proxy deve essere una semplice istruzione SELECT.
+106 Specificazione della query proxy deve fare riferimento a una sola tabella o classe dal database locale.
+107 Utente '%s' non è il proprietario di %s.
+108 Proxy '%s' è già stato definito sulla classe '%s' di LDB '%s'.
+109 CUBRID non supporta il proxy con gli oggetti nei gruppi eterogenei.
+110 Clausola WHERE deve essere un'espressione di tipo logico.
+111 Token di escape della clausola LIKE deve essere una stringa letterale o una variabile host.
+112 Combinazione non valida di precisione (%d) e scala (%d).
+113 Precisione indicate di %1$d non è valido, ma dovrebbe essere maggiore di %2$d e non superiore a %3$d.
+114 Di precisione (%d) troppo grande. Precisione massima è di %d.
+115 Metodo %s deve avere un tipo di ritorno.
+116 Numero di argomenti forniti al metodo non è uguale al numero \ndefinito per il metodo.
+117 Chiamata al metodo deve avere un target.
+118 Metodo %s non è definito per il target fornito.
+119 I metodi di istanza non possono essere chiamati su gli oggetti di classe.
+120 I metodi di classe non possono essere chiamati su gli oggetti d'istanza.
+121 I metodi di classe richiedono un'oggetto di classe come loro target.
+122 Metodi richiedono un'oggetto come loro target.
+123 Metodo %s non è completamente tipizzato, controlla definizione di metodo nello schema di classe.
+124 underflow di aritmetica per la data.
+125 underflow di aritmetica per il tempo.
+126 Lato sinistro di una clausola di assegnazione non è valida.
+127 Le chiamate a metodo su tabelle derivati, correlati a un scopo esterno,\nsono supportate solo se l'espressione dell'insieme è fasciata nel una sottoquery.
+128 La colonna di specificazione della query che corrisponde\nall'attributo shared '%s' deve essere NULL o NA.
+129 Una colonna NULL non è permessa nel l'elenco di selezione della specificazione della query del vista se il definizione di attributo viene omesso.
+130 Oggetti Vclass nel'insiemi non sono supportati.
+131 In attesa di un valore stringa.
+132 In attesa di un'istruzione o un valore di stringa.
+133 L'attributo object_id proxy '%s' non deve essere mappato\na una colonna di specificazione d'una espressione di una query.
+134 Vincolo %s ignorato.
+135 Dichiarazioni di vincolo non sono ammessi in questo contesto.
+136 Conversione di tipo di %s al tipo %s non è supportata.
+137 %s non è una stringa di bit valido.
+138 Operatore '%s' non è definito sul tipo %s.
+139 Operatore '%s' non è definito su tipi %s con %s e %s.
+140 Operandi di operatore '%s' non possono essere entrambi variabili host dinamici.
+141 Troppo molti argomenti per funzione generica %s.\nSolo %d gli argomenti sono permessi per le funzioni generiche.
+142 Selettore {%s} di classe '%s' non è una sottoclasse di '%s'.
+143 Impossibile estrarre campo '%s' dal tipo %s.
+144 Specificazione della query non deve avere una clausola ORDER BY.
+145 Condizione di CASE deve essere un'espressione di tipo logico.
+146 L'espressione deve essere di tipo %s.
+147 Serial '%s' esiste già.
+148 Serial '%s' non definito.
+149 Valore di incremento non deve essere zero.
+150 Valore massimo supera 1.0e37.
+151 Il valore minimo non è valido.
+152 Valore di incremento non è valido.
+153 Valore minimo supera -1.0e36.
+154 Il valore massimo non è valido.
+155 Specificate l'opzione per ALTER SERIAL.
+156 Il secondo argomento della funzione serial_next_value dovrebbe essere maggiore di 0.
+157 I valori seriali non possono supera il minimo o massimo.
+158 Errore I/O interni per serial.
+159 Impossibile trovare il index '%s'.
+160 Il nome qualificato dell'index '%s' si riferisce a una classe, ma non è specificato nella clausola FROM.
+161 Due o più classi hanno lo stesso index di '%s'. Utilizzate i nomi qualificati dei index.
+162 Utilizzo non valido di %s.\n Espressione %s non può essere utilizzato con attributo o una subquery correlata.
+163 La versione attuale limita un'espressione contenente ORDERBY_NUM() nella lista di selezione.
+164 Espressione del percorso '%s' nella condizione di JOIN.
+165 '%s' nel condizione di JOIN non è definita.
+166 La versione attuale limita dei tabelle derivati dell'insieme per il RIGHT OUTER JOIN.
+167 Non è possibile inserire con query su altro LDB.
+168 Una sola colonna può essere specificata nell'elenco di selezione quando la sottoquery non è introdotta da EXISTS.
+169 Lato destro non permessa per una clausola di assegnazione. Contesto richiede query per essere singola colonna.
+170 Non è possibile utilizzare una sottoquery nella condizione di clausola JOIN.
+171 Definizione di partizione non valida.
+172 Colonna di partizione deve essere specificato.
+173 Solo una colonna può essere specificata come colonna di partizione.
+174 Tipo di colonna dipartizione non supportato.
+175 Definizione della partizione è duplicato. '%s'
+176 Discordanza di tipo costante. '%s'
+177 Dimensione della partizione non valido.
+178 '%s' è una classe non partizionata.
+179 '%s' è una classe già partizionato.
+180 Richieste di partizione non valide.
+181 %s non può essere modificato da questa classe (colonna di chiave di partizione).
+182 %s non può essere gestita come una partizione sotto trigger attivi.
+183 Partizione %s non esiste.
+184 Discordanza di tipo di partizione. '%s'
+185 Informazioni di partizione non sono validi.
+186 Aggiunta del partizione può essere fatto solo con una gamma più grande di quello esistente.
+187 Riorganizzazione delle partizioni non è permesso perché può causare la perdita di dati.
+188 La gamma del partizione '%s' non è valida.
+189 Un attributo di classe non può avere un vincolo di incremento automatico.
+190 Un attributo di classe virtuale non può avere un vincolo di incremento automatico.
+191 Il dominio dell'attributo '%s' con un vincolo di incremento automatico non è valido.
+192 Non un utente, ma il sistema può assegnare l'attributo '%s' creato da 'ON CACHE OBJECT' di chiave esterna.
+193 Non è possibile utilizzare i nomi duplicati degli attributi nell'elenco delle chiave di index. Nome dell'attributo '%s' elencato più di una volta.
+194 Funzione %s non è definito o ha il numero sbagliato di parametri.
+195 '%s' può essere utilizzato solo nelle query gerarchiche. Specificate una clausola CONNECT BY.
+196 '%s' non è permesso qui.
+197 Utilizzando CONNECT_BY_ISCYCLE è permesso soltanto se la query ha una clausola CONNECT BY NOCYCLE.
+198 Nessuna tabella utilizzata.
+199 ORDER BY NULL richiede GROUP BY.
+200 Il numero a CACHE deve essere meno di un ciclo (%s).
+201 '%s' non è permesso in una query con clausola LIMIT.
+202 WITH ROLLUP richiede GROUP BY.
+203 Un parametro nome di colonna deve essere passato alla funzione DEFAULT. Le espressioni di percorso non sono ancora supportati.
+204 L'opzione '%s' della tabella è duplicata.
+205 La classe '%s' viene contrassegnata come REUSE_OID e non è riferibile. Le classi non riferibili non possono essere il dominio di un attributo e loro istanze OID non possono essere ritornate.
+206 L'opzione serial %s' e duplicato.
+207 La colonna '%s' nella clausola di ordinamento è ambiguo.
+208 L'attributo '%s' non ha un valore predefinito.
+209 Elementi ORDER BY devono apparire nell'elenco di selezione, se si specifica SELECT DISTINCT.
+210 Variabile host non è permessa dalle colonne della specificazione della query.
+211 %s non può essere una colonna ORDER BY
+212 %s non può essere un colonna GROUP BY
+213 Impossibile definire '%1$s di %2$s' come tipo di colonna.
+214 Valore non valida "%s" per la lunghezza del prefisso dell'index.
+215 Funzione '%s' non è definita su tipi %s, %s, %s e %s.
+216 Funzione '%s' non è definita su tipi %s, %s e %s.
+217 Funzione '%s' non è definita sui tipi %s e %s.
+218 Funzione '%s' non è definita sul tipo %s.
+219 Funzione '%s' non è definita per un argomento dell'index di tipo %s.
+220 ALTER VIEW '%s' AS SELECT non è permesso per le viste che hanno sottoclassi o superclassi. Utilizzate ALTER VIEW CHANGE QUERY al posto.
+221 Attributi della vista non possono essere modificati utilizzando questa dichiarazione. 'ALTER VIEW name AS QUERY' potrebbe aiutare invece.
+222 CUBRID richiede l'elemento ORDER BY di essere la stessa espressione come l'argomento di GROUP_CONCAT o un numero intero (posizione di argomento).
+223 Il predicato LIKE richiede un carattere di escape da specificare. Vedeti la documentazione per '%1$s' e i parametri di configurazione '%2$s'.
+224 KEYLIMIT non può essere utilizzato nella clausola INDEX NONE.
+225 Le variabili di sessione non sono permesse nel questo contesto.
+226 Conflitto tra hint dell'index '%s' e '%s'.
+227 Funzione '%s' non può essere utilizzata nella clausola DEFAULT.
+228 Aggiornamento delle tabelle derivate non è permesso.
+229 Aggiornamento dei attributi di classe e gli attributi dell'istanza non è permesso nella stessa istruzione.
+230 Aggiornamento delle gerarchie di classi virtuali non è permesso.
+231 Le variabili host non sonno permesse nel un'istruzione DDL.
+232 Espressione di filtro non valida (%s) per index.
+233 Funzioni multiple o nidificati non sono permessi nel una definizione di index di funzione.
+234 Specificazione di index non valida.
+235 SHARED, DEFAULT e AUTO_INCREMENT non possono essere definiti uno con l'altro.
+236 Troppi valori di enumerazione (%d). Un tipo di enumerazione può avere un massimo di %d valori.
+237 Valori duplicati per il tipo enum.
+238 MERGE impossibile in una tabella derivata.
+239 Non è possibile modificare la tabella di origine nel un'istruzione MERGE.
+240 MERGE con gerarchie di classi non è permesso.
+241 Nome di utente è troppo lungo.
+242 Espressione costante non può essere utilizzata come index di funzione.
+243 Nome della classe o l'alias non è unico nella lista: '%s'
+244 Clausola DEFAULT non valida. '%s' non può essere utilizzato nel una espressione nidificata.
+245 '%s' richiede argomenti con regole di confronto compatibili.
+246 Insieme di caratteri Non valido.
+247 Insieme di caratteri e regole di confronto richiesti non sono compatibili.
+248 Regole di confronto '%s' sconosciuto.
+249 Contesto richiede un insieme con elementi che hanno dei codeset e di regole di confronto identici.
+250 Index di prefisso non è ammesso per l'attributo '%s' (ha regola di confronto con espansioni).
+251 Il valore iniziale non è valido.
+252 Index multi-colonna di prefisso non è permesso.
+253 La funzione '%s' non può essere utilizzata per index di funzione.
+254 Definizione non valida della colonna dell'index: %s
+255 '%s' non è ammesso nel un'espressione di filtro per index.
+256 Impossibile utilizzare GROUPBY_NUM() e clausola WITH ROLLUP nella stessa query.
+257 Impossibile MERGE UPDATE della colonna %s fatto riferimento nella clausola ON.
+258 Il numero di colonne, %d, nel ( %s ) non corrisponde\nal numero di colonne, %d, nel ( %s ).
+259 Prefissi di colonne non sonno permessi nel un'espressione d'index di funzione.
+260 %s non può essere una colonne di PARTITION BY o ORDER BY.
+261 Query deve restituire un valore singolo\n(%s).
+262 Funzioni analitiche nidificati non sono ammessi.
+263 Un attributo ereditato non può essere utilizzato come chiave di partizionamento.
+264 La dimensione aggregata degli elementi di enumerazione è troppo grande.
+265 Impossibile utilizzare la tabella di destinazione nella specificazione di origine.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
-1 Out of virtual memory: unable to allocate %d bytes.
-2 Transaction isolation level must be 1, 2, 3, 4, 5 or 6.
-3 Timeout value must be -1, 0, or >0.
-4 Isolation level set to:\n
+1 Fuori di memoria virtuale: Impossibile allocare %d byte.
+2 Livello di isolamento di transazione deve essere 1, 2, 3, 4, 5 o 6.
+3 Il valore di timeout deve essere -1, 0 o >0.
+4 Livello di isolamento impostato a:\n
 5          READ COMMITTED SCHEMA, READ UNCOMMITTED INSTANCES.\n
 6          READ COMMITTED SCHEMA, READ COMMITTED INSTANCES.\n
 7          REPEATABLE READ SCHEMA, READ UNCOMMITTED INSTANCES.\n
 8          REPEATABLE READ SCHEMA, READ COMMITTED INSTANCES.\n
 9          REPEATABLE READ SCHEMA, REPEATABLE READ INSTANCES.\n
-10 A non-updatable query is not allowed in a db_query_execute_oid call.
-11 Transaction timed out waiting for locks.
-12 Attempted to access host variable with index %ld when only %ld \ninput host variables were given.
-13 Unimplemented conversion.
-14 Internal error, undefined conversion.
-15 '%s' yields no results.
-16 '%s' yields more than one row.
-17 Interpreter variable %s is not defined.
-18 Cannot evaluate '%s'.
-19 Unknown variable %s.
-20 Unknown shared attribute %s.
-21 '%s' yields more than one column.
-22 Nested or invalid use of aggregate function.
-23 Function %s is not defined.
-24 Context requires query to be single column\n(%s).
-25 Too many values have been specified.
-26 Virtual assignment target (%s) is not invertible.
-27 There are more columns in the query specification than attributes in class %s.
-28 There are more attributes in class %s than columns in the query specification.
-29 Current release restricts aggregation to vclasses WITHOUT \naggregate query specifications.
-30 Current release restricts aggregation to vclasses WITHOUT \nunion query specifications.
-31 Use of vclass (%s) in a composition hierarchy requires it to be updatable.\nIt cannot be updated with respect to real class %s.
-32 not used
-33 Illegal construct in path expression '%s'.
-34 path expression '%s' crosses db boundary to %s, with vclass %s.
-35 path expression '%s' crosses db boundary from %s, to class %s.
-36 %s is not authorized on %s.
-37 Select is not authorized on %s.
-38 Vclass %s is not updatable.
-39 %s is not a proxy vclass.
-40 query spec of proxy vclass must not be a join.
-41 %s has no object id set.
-42 Classes (%s) with multiple object_id fields in a composition \nhierarchy are not supported.
-43 Object attribute %s of %s is not a vclass on ldb %s.
-44 Query spec type incompatible with attribute %s.
-45 The query specification of %s has a cyclic reference to itself.
-46 No expression given to evaluate.
-47 No real class found for vclass %s.
-48 Executing '%s' on ldb '%s' \nreturned: %s.
-49 Putting value '%s' into attribute '%s' returned: %s.
-50 Ldb name must not be null in %s.
-51 Ldb name at host must not be null in %s.
-53 Host name must not be null in %s.
-54 User name must not be null in %s.
-55 User password must not be null in %s.
-56 Insert translates to empty statement.
-57 Update translates to empty statement.
-58 Delete translates to empty statement.
-59 INGRES does not support dates (%s) before January 1, 1582.
-60 Resources exhausted in query generation.
-61 Query yields no result, so variable '%s' is not set.
-62 With LOCAL check option is not supported.
-63 Check option exception on view %s.
-64 Invalid date: '%s'.
-65 Invalid time: '%s'.
-66 Invalid utime: '%s'.
-67 Subqueries in a proxy's query specification are not supported.
-68 Ldb function argument is not compatible with ldb in '%s'.
-69 Invalid numeric: '%s'.
-70 Outer join query optimization failed.
+10 Un query non-aggiornabile non è permesso nel una chiamata db_query_execute_oid.
+11 Transazione scaduto in attesa per i blocchi.
+12 Tentativo di accesso variabile host con indice %ld in cui solo\n%ld variabili host di input sono stati dati.
+13 Conversione non implementata.
+14 Errore interno, conversione non definito.
+15 '%s' produce alcun risultato.
+16 '%s' produce più di una riga.
+17 Variabile %s d'interpreter non è definita.
+18 Non può valutare '%s'.
+19 Variabile sconosciuta %s.
+20 Attributo shared sconosciuto %s
+21 '%s' produce più di una colonna.
+22 Uso nidificato o non valido di funzione di aggregazione.
+23 Funzione %s non è definita.
+24 Contesto richiede query per essere singola colonna\n(%s).
+25 Troppi valori sono stati specificati.
+26 Target di assegnazione virtuale (%s) non è invertibilo.
+27 Ci sono più colonne nella specificazione della query che attributi nella classe %s.
+28 Ci sono più attributi nella classe %s che colonne nella specificazione della query.
+29 La versione attuale limita aggregazione per vclasses SENZA \nspecificazioni della query dell'aggregazione.
+30 La versione attuale limita aggregazione per vclasses SENZA \nspecificazioni della query del unione.
+31 Uso di vclass (%s) in una gerarchia di composizione richiede che sia aggiornabile.\nNon può essere aggiornate per quanto riguarda di vera classe %s.
+32 non usato
+33 Costrutto illegale nell'espressione di percorso '%s'.
+34 Espressione di percorso '%s' attraversa db limite a %s, con vclass %s.
+35 Espressione di percorso '%s' attraversa db limite da %s, alla classe %s.
+36 %s non è autorizzato sul %s.
+37 Select non è autorizzato sul %s.
+38 Vclass %s non è aggiornabile.
+39 %s non è un vclass proxy.
+40 Specificazione della query di vclass proxy non deve essere un JOIN.
+41 %s non ha una ID oggetto.
+42 Classi (%s) con più campi object_id nel una gerarchia di \ncomposizione non sono supportati.
+43 Attributo dell'oggetto %s di %s non è un vclass su LDB %s.
+44 Tipo di specificazione della query non è compatibile con attributo %s
+45 La specificazione della query di %s ha un riferimento ciclico a se stesso.
+46 Nessuna espressione dato da valutare.
+47 Nessuna classe vera trovata per vclass %s.
+48 Esecuzione di '%s' su LDB '%s' \ntornato: %s.
+49 Mettere valore '%s' nel attributo '%s' tornato: %s.
+50 Nome dell'LDB non deve essere nullo nel %s.
+51 Nome dell'LDB a host non deve essere nullo in %s.
+53 Nome host non deve essere nullo in %s.
+54 Nome utente non deve essere nullo in %s.
+55 Password utente non deve essere nullo in %s.
+56 Inserire si traduce in un'istruzione vuota.
+57 Aggiorna traduce in un'istruzione vuota.
+58 Elimina si traduce in un'istruzione vuota.
+59 INGRES non supporta le date (%s) prima del 1 gennaio 1582.
+60 Risorse esaurisce nella generazione della query.
+61 Query produce alcun risultato, quindi variabile '%s' non è impostata.
+62 L'opzione di controllo WITH LOCAL non è supportato.
+63 Eccezione dell'opzione CHECK sulla vista %s.
+64 Data non valida: '%s'.
+65 Ora non valida: '%s'.
+66 Non valido utime: '%s'.
+67 Le sottoquery nel specificazione della query proxy non sono supportati.
+68 Argomento della funzione dell'LDB non è compatibile con LDB in '%s'.
+69 Numerico non valido: '%s'.
+70 Ottimizzazione delle query OUTER JOIN non è riuscita.
 71         SERIALIZABLE.\n
-72 Vclass %s is not updatable. Only updatable vclasses are allowed to select VIDs.
-73 Partitioning failed.
-74 Partition does not exist.
-75 Not allowed access to partition: '%s'.
-76 The serial '%s' is not defined yet.
-77 The owner or DBA can only alter the definition of the target serial.
-78 It is not allowed for users to modify the serial object created by an auto increment constraint.
-79 Invalid isolation level: %s schema, %s instances.
+72 Vclass %s non è aggiornabile. Solo le vclasse aggiornabile sono autorizzati a selezionare VID.
+73 Partizionamento non è riuscita.
+74 Partizione non esiste.
+75 Non è permesso l'accesso a partizioni: '%s'.
+76 Il serial '%s' non è ancora definito.
+77 Il proprietario o DBA può modificare la definizione di target di serial.
+78 Non é permesso agli utenti di modificare l'oggetto serial creato da un vincolo di incremento automatico.
+79 Livello di isolamento non valido, schema %s, istanze %s.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
-1 *** invalid cache ***
-2    class %s
-3 from %s :
-4 Authorization for user %s\n
-5 Authorization for undefined user\n
-6 User : %s\n
+1 *** cache non valido ***
+2    classe %s
+3 da %s :
+4 Autorizzazione per l'utente %s\n
+5 Autorizzazione per un utente non definito\n
+6 Utente : %s\n
 7            id : %d\n
-8       members :
-9        groups :
-10 User %s\n
-11 Current user is : %s\n
-12 Root authorization object :\n
-13   users :
-14 *** Couldn't issue all grants for user "%s"*** \n
-15 AUTHORIZATIONS\n
+8        membri :
+9        gruppi :
+10 Utente %s\n
+11 Utente attuale è: %s\n
+12 Oggetto di autorizzazione Root:\n
+13   gli utenti :
+14 *** Impossibile rilasciare tutti i diritti per utente "%s"*** \n
+15 AUTORIZZAZIONI\n
 16 direct_groups :
 
 $set 12 MSGCAT_SET_HELP
 1 Rootclass
 2 %s %s\n
-3 Super classes :\n
-4 Sub classes :\n
-5 Attributes: \n
-6 Methods: \n
-7 Class attributes: \n
-8 Class methods: \n
-9 Conflict resolutions:\n
-10 Method files:\n
-11 Query specification:\n
-12 OBJECT of %s\n
-13 \nDescription:\n
-14 \nStructure:\n
-15 \nExample:\n
-16 META CLASS Name
-17 Class Name
-18 VClass Name
+3 Superclassi:\n
+4 Sottoclassi:\n
+5 Attributi:\n
+6 Metodi:\n
+7 Attributi di classe:\n
+8 Metodi di classe:\n
+9 Risoluzioni del conflitto:\n
+10 File di metodo:\n
+11 Specificazione della query:\n
+12 OGGETTO di %s\n
+13 Descrizione:\n
+14 Struttura:\n
+15 Esempio:\n
+16 Nome di META CLASS
+17 Nome di classe
+18 Nome di VClass
 $  Don't delete the space at the end of the next message
-19 VClass on ldb
-20 GENERAL
+19 VClass su LDB
+20 GENERALE
 
 $set 13 MSGCAT_SET_TRIGGER
-1 TRACE: Evaluating condition for trigger '%s'.
-2 TRACE: Executing action for trigger '%s'.
+1 TRACE: Valutare condizione per trigger '%s'.
+2 TRACE: Esecuzione di azione per trigger '%s'.
 
 $set 14 MSGCAT_SET_LOCK
 1 \n
-2 Thread (index %3d) of transaction (index %3d, %s, %s@%s|%d) has been suspended.\n
-3 Thread (index %3d) of transaction (index %3d, %s, %s@%s|%d) has been resumed.\n
-4 Transaction index %3d ACQUIRED %s lock on object %d|%d|%d.\n
-5 Transaction index %3d ACQUIRED %s lock on page %d|%d.\n
-6 Transaction index %3d CONVERTED its lock to %s lock on object %d|%d|%d.\n
-7 Transaction index %3d CONVERTED its lock to %s lock on page %d|%d.\n
-8 Transaction index %3d WAIT FOR %s lock on object %d|%d|%d.\n
-9 Transaction index %3d WAIT FOR %s lock on page %d|%d.\n
-10 Transaction index %3d RELEASE %s lock on object %d|%d|%d.\n
-11 Transaction index %3d RELEASE %s lock on page %d|%d.\n
-12 Transaction index %3d DEMOTE lock to %s on object %d|%d|%d.\n
-13 Transaction index %3d DEMOTE lock to %s on page %d|%d.\n
+2 Thread (indice %3d) della transazione (indice %3d, %s, %s@%s|%d) è stato sospeso.\n
+3 Thread (indice %3d) della transazione (indice %3d, %s, %s@%s|%d) è stato ripreso.\n
+4 Indice di transazione %3d ACQUIRED %s blocco sull'oggetto %d|%d|%d.\n
+5 Indice di transazione %3d ACQUIRED %s blocco a pagina %d|%d.\n
+6 Indice di transazione %3d CONVERTED suo blocco to %s blocco sull'oggetto %d|%d|%d.\n
+7 Indice di transazione %3d CONVERTED suo blocco to %s blocco a pagina %d|%d.\n
+8 Indice di transazione %3d WAIT FOR %s blocco sull'oggetto %d|%d|%d.\n
+9 Indice di transazione %3d WAIT FOR %s blocco a pagina %d|%d.\n
+10 Indice di transazione %3d RELEASE %s blocco sull'oggetto %d|%d|%d.\n
+11 Indice di transazione %3d RELEASE %s blocco a pagina %d|%d.\n
+12 Indice di transazione %3d DEMOTE blocco a %s sull'oggetto %d|%d|%d.\n
+13 Indice di transazione %3d DEMOTE blocco a %s a pagina %d|%d.\n
 14 OID = %2d|%6d|%4d\n
-15 Object type: Root class.\n
-16 Object type: Class = %s.\n
-17 Object type: Instance of class (%2d|%6d|%4d) = %s.\n
-18 Object type: Unknown.\n
-19 Total mode of holders = %8s, Total mode of waiters = %8s.\n
-20 Num holders=%3d, Num blocked-holders=%3d, Num waiters=%3d\n
+15 Tipo di oggetto: Classe Root.\n
+16 Tipo di oggetto: Classe = %s.\n
+17 Tipo di oggetto: Instanza della classe (%2d|%6d|%4d) = %s.\n
+18 Tipo di oggetto: sconosciuto.\n
+19 Modo totale di holders = %8s, modo totale di waiters = %8s.\n
+20 Numero di holders=%3d, Numero di holders bloccati=%3d, Numero di waiters=%3d\n
 21 LOCK HOLDERS:\n
 22 BLOCKED LOCK HOLDERS:\n
 23 LOCK WAITERS:\n
 24 NON_2PL_RELEASED:\n
-25 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d\n
-26 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d, Nsubgranules = %2d\n
-27 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d\n\t%13s Blocked_mode = %8s\n\t%17s Start_waiting_at = %-30s\n\t%17s Wait_for_secs = %.2f\n
-28 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d, Nsubgranules = %2d\n\t%13s Blocked_mode =%8s\n\t%13s Start_waiting_at = %-30s\n\t%13s Wait_for_secs = %.2f\n
+25 %4sTran_index = %3d, Granted_mode =%8s, Conteggio = %3d\n
+26 %4sTran_index = %3d, Granted_mode =%8s, Conteggio = %3d, Nsubgranules = %2d\n
+27 %4sTran_index = %3d, Granted_mode =%8s, Conteggio = %3d\n\t%13s Blocked_mode = %8s\n\t%17s Start_waiting_at = %-30s\n\t%17s Wait_for_secs = %.2f\n
+28 %4sTran_index = %3d, Granted_mode =%8s, Conteggio = %3d, Nsubgranules = %2d\n\t%13s Blocked_mode =%8s\n\t%13s Start_waiting_at = %-30s\n\t%13s Wait_for_secs = %.2f\n
 29 %4sTran_index = %3d, Blocked_mode =%8s \n\t%13s Start_waiting_at = %-30s \n\t%13s Wait_for_secs = %.2f\n
 30 %4sTran_index = %3d, Non_2_phase_lock =%8s\n
 31 VPID (volid|pageid) = %3d|%6d.\n
 32 *** Lock Table Dump ***\n Lock Escalation at = %d, Run Deadlock interval = %d\n
-33 Transaction (index %2d, %s, %s@%s|%d)\n
-34 Isolation %s\n
-35 State %s\n
+33 Transazione  (index %2d, %s, %s@%s|%d)\n
+34 Isolamento %s\n
+35 Stato %s\n
 36 Timeout_period %s\n
-37 Unilaterally aborted transactions with indices:\n
+37 Transazioni unilateralmente interrotte con indici:\n
 38 %d ,
-39 Timed_out transactions with indices:\n
+39 Transazioni scadute con indici:\n
 40 %d ,
-41 Solving the deadlock by selecting a transaction and a function \n to break the deadlock: %d %s
+41 Risolvere la situazione di stallo, selezionando una transazione \ne una funzione per superare lo stallo: %d %s
 42 , %d %s
-43 Object type: Index key of class (%2d|%6d|%4d) = %s.\n
-44 Index name: %s\n
+43 Tipo di oggetto: chiave dell'index di classe (%2d|%6d|%4d) = %s.\n
+44 Nome dell'index: %s\n
 
 $set 15 MSGCAT_SET_IO
 1 \n*************************************************************************\n
-2 Backup = %s is needed. \n It must be mounted/loaded to continue.\n Type 1 to continue after the backup is mounted/loaded.\n Type 0 to quit.\n
-3 \n\n*** BACKUP HEADER INFORMATION ***\n\n
-4 Backup magic file identification %s,\n
-5          Release: %s\n\
-     Disk Version: %g\n
-6    Database Name: %s\n\
- DB Creation Time: %s\
-         Pagesize: %d\n
-7     Backup Level: %d (%s)\n\
-        Start_lsa: %lld|%d\n\
-         Last_lsa: %lld|%d\n
-8      Backup Time: %s\
-  Backup Unit Num: %d\n
-9  Database Volume name: %s\n\
-   Volume Identifier: %d, Size: %ld bytes (%d pages)\n
-10   Database Name: %s\n\
-     Volume Name: %s\n\
-        Unit Num: %d\n\
-    Backup Level: %d (%s)\n\
-Enter one of the following options:\n
-11 Type\n \
-  -  %d to quit.\n \
-  -  %d to continue after the volume is mounted/loaded. (retry) \n \
-  -  %d to continue after changing the volume's directory or device.\n
-12 Enter new directory or device for backup volume.\n
-13 Error in input, choose a value between %d and %d.\n
-14 ** WARNING ** Incorrect backup volume mounted.\n
-15 Backup volume %s is from another backup level\n   (Level: %d, expecting %d).\n\n
-16 Backup volume %s has incorrect page or magic identifier.\n\n
-17 Backup volume %s is from another database\n  (Name: %s, expecting %s).\n\n
-18 Backup volume %s out of sequence\n  (Unit Num: %d, expecting %d).\n\n
-19 Backup volume %s timestamp mismatch\n  (Timestamp: %s, expecting %s).\n\n
-20 Backup volume information file error, line %d.\n
-21 Backup Volume Label: Level: %d, Unit: %d, Database %s, Backup Time: %s\n
-22     Previous Backup level: %d Time: %s (start_lsa was %lld|%d)\n
-23 The following database backup volume is needed to continue restoring:\n\n
-24 Backup destination is full, a new destination is required to continue:\n\n
-25 Preceding Backup Volume Name: %s\n
-26     Next Backup Volume Name: %s\n
-27  Backup Pagesize: %d\n
-28       Zip Method: %d (%s)\n\
-        Zip Level: %d (%s)\n
-29 Include Active Log: %s\n
+2 Backup = %s è necessario.\n Deve essere montato/caricato per continuare.\n Immettere 1 per continuare dopo che il backup è montato/caricato.\n Digitare 0 per uscire.\n
+3 \n\n*** INFORMAZIONI DEL COLPO DI TESTA DI BACKUP ***\n\n
+4 File di identificazione magica di backup %s,\n
+5                      Rilascio: %s\n\
+            Versione di disco: %g\n
+6             Nome del Database: %s\n\
+      Ora di creazione del DB: %s\
+                     Pagesize: %d\n
+7             Livello di backup: %d (%s)\n\
+                    Start_lsa: %lld|%d\n\
+                     Last_lsa: %lld|%d\n
+8               Tempo de backup: %s\
+  Numero dell'unità di backup: %d\n
+9         Nome di volume del DB: %s\n\
+     Identificatore di volume: %d, Size: %ld bytes (%d pages)\n
+10             Nome del Database: %s\n\
+              Nome del volume: %s\n\
+            Numero dell'unità: %d\n\
+            Livello di backup: %d (%s)\n\
+Inserisci una delle seguenti opzioni:\n
+11 Premi\n \
+  -  %d per uscire.\n \
+  -  %d per continuare dopo il volume è montato/caricato. (riprova)\n \
+  -  %d per continuare dopo aver cambiato directory del volume o il dispositivo.\n
+12 Inserisci nuova directory o dispositivo per il volume di backup.\n
+13 Errore nell'input, scegliere un valore compreso tra %d e %d.\n
+14 ** ATTENZIONE ** volume di backup errato montato.\n
+15 Volume di backup %s è di un altro livello di backup\n   (Livello: %d, aspettandosi %d).\n\n
+16 Volume di backup %s ha identificatore magico o di pagina incorreto.\n\n
+17 Volume di backup %s è di un altro database\n  (nome: %s, aspettandosi %s).\n\n
+18 Volume di backup %s fuori sequenza\n  (numero dell'unità: %d, aspettando %d).\n\n
+19 Discordanza di timestamp per il volume di backup %s\n  (Timestamp: %s, aspettandosi %s).\n\n
+20 Errore di file per volume di backup, linea %d.\n
+21 Etichetta del volume di backup: Livello: %d, Unità: %d, Database %s, Tempo di backup: %s\n
+22     Livello precedente di backup: %d Tempo: %s (start_lsa era %lld|%d)\n
+23 Il seguente volume di backup del database è necessario per continuare il ripristino:\n\n
+24 Destinazione di backup è pieno, una nuova destinazione è necessaria per continuare:\n\n
+25   Nome del volume precedente di backup: %s\n
+26   Nome del volume successivo di backup: %s\n
+27                   Pagesize del basckup: %d\n
+28                            Methodo Zip: %d (%s)\n\
+                           Livello Zip: %d (%s)\n
+29                     Includi Log Attivo: %s\n
 
 $set 16 MSGCAT_SET_LOG
 1 \n*************************************************************************\n
-2 Log Archive %s \n is needed to continue normal execution.   \n \
-  Type\n \
-  -  0 to quit.\n \
-  -  1 to continue without present archive. (Partial recovery)\n \
-  -  2 to continue after the archive is mounted/loaded.       \n \
-  -  3 to continue after changing location/name of archive.   \n
-3 Backup information file %s \n is needed to continue the restore process. \n \
-  Type\n \
-  -  0 to quit.\n \
-  -  1 to continue after the file is mounted/loaded.       \n \
-  -  2 to continue after changing location/name of file.   \n
-4 Enter new location/name.\n
-5 COMMENT: %s for database %s\n
-6 COMMENT: Log archive %s is not needed any longer unless a database media crash occurs.\n
-7 COMMENT: Log archives from %s to %s are not needed any longer unless a database media crash occurs.\n
-8 COMMENT: from renamed database = %s\n
-9 ARCHIVE: %d %s %lld %lld\n
-10 ARCHIVE:
-11 REMOVE: %d %s to \n \
+2 Log dei transazioni %s\n è necessario per continuare l'esecuzione normale.\n \
+  Premi\n \
+  -  0 per uscire.\n \
+  -  1 per continuare senza archivio presente. (Recupero parziale)\n \
+  -  2 per continuare dopo che l'archivio è montato/caricato.\n \
+  -  3 per continuare dopo aver cambiato posizione/nome dell'archivio.\n
+3 File di informazioni di basckup %s\n è necessario per continuare il processo di ripristino.\n \
+  Premi\n \
+  -  0 per uscire.\n \
+  -  1 per continuare dopo che il file è montato/caricato.\n \
+  -  2 per continuare dopo aver cambiato posizione/nome del file.  \n
+4 Inserisci nuova posizione/nome.\n
+5 COMMENTO: %s per il database %s\n
+6 COMMENTO: Log dei transazioni %s non serve più a meno che un crash di media di database avviene.\n
+7 COMMENTO: Log dei transazioni da %s a %s non servono più a meno che un incidente per la media della database avviene.\n
+8 COMMENTO: dal database rinominato = %s\n
+9 ARCHIVIO: %d %s %lld %lld\n
+10 ARCHIVIO:
+11 RIMUOVERE: %d %s a \n \
        %d %s.\n \
-       REASON: %s\n
-12 ACTIVE: %s %d pages\n
-13  Finish commit of tran_index %d with tranid = %d,\n just before LSA= %lld|%d and at %s
-14  Finish abort of tran_index %d with tranid = %d,\n just before LSA= %lld|%d and at %s
-15  Incomplete Media Recovery is in effect. The database will be \n \
- recovered up to LSA point address of %lld|%d. Last commit/abort \n \
- point time is approximately at %s \n \
- The database has lost all information of transactions committed \n \
- after this time.\n
-16 Reset of log due to incomplete recovery.
-17 Database backup was taken.
-18 Media crash is not important for the application.
-19 Backing up to directory %s which seems to have an earlier backup in it.\n\
-Obsolete backup volumes of this database in this location will be removed,\n\
-including those from the current backup level and higher.\n
-20 Enter 'y' to continue or any other key to cancel.\n
-21 Database backup was aborted by the user.\n
-22 DELETE POSTPONED: Archives %d %s to \n \
+       RAGIONE: %s\n
+12 ATTIVO: %s %d pagine\n
+13 Fine di commit di tran_index %d con tranid = %d,\n poco prima LSA = %lld|%d e %s
+14 Fine d'annullare di tran_index %d con tranid = %d,\n poco prima LSA = %lld|%d e %s
+15 Ripristino di supporti incompleto è in vigore. Il database sarà\n \
+ recuperato fino al indirizzo del punto LSA di %lld|%d. Ultimo \n \
+ punto tempo di commit/abort è approssimativamente %s\n \
+ Il database ha perso tutte le informazioni delle operazioni\n \
+ comessi dopo tale orario.\n
+16 Reset del log a causa di recupero incompleto.
+17 Backup del database è stato preso.
+18 Crash di media non è importante per l'applicazione.
+19 Backup su directory %s che sembra avere un backup precedente in esso.\n\
+Volumi di backup obsoleti di questo database nel questa posizione saranno rimossi,\n\
+tra cui quelli del livello di backup corrente e superiore.\n
+20 Premi 'y' per continuare o qualsiasi altro tasto per annullare.\n
+21 Backup del database è stato interrotto dall'utente.\n
+22 DELETE POSTPONED: Archivio log %d %s a \n \
         %d %s \n \
-        are no longer needed unless a restore from current backup occurs.\n
-23 A newer backup has released archives previously marked DELETE POSTPONED.\n
-24 COMMENT: Log archive %s is not DELETE POSTPONED any longer due to more recent\n \
-   backup and therefore is not needed unless a database media crash occurs.\n
-25 COMMENT: Log archives from %s to %s are not DELETE POSTPONED any longer due to\n \
-   more recent backup and therefore are not needed unless a database media\n \
-   crash occurs.\n
-26 An error occurred during a database restore, while processing\n\
-     Backup Volume: %s\n\
-          Unit Num: %d\n\
-   Database Volume: %s\n\
-    Database Volid: %d\n\
-** WARNING: Do not use the database until an error-free restore is achieved.\n
-27 Error in input, choose a value between %d and %d.\n
-28 The time(%s) specified must be after the time(%s) of the specified backup.\n
-29 COMMENT: Log archive %s, which contains log pages before %lld, is not needed any longer by any HA utilities.\n
-30 Number of active log archives has been exceeded the max desired number.
+        non sono più necessari a meno che un ripristino da backup corrente avviene.\n
+23 Un backup più recente ha rilasciato gli archivi di log precedentemente segnati come DELETE POSTPONED.\n
+24 COMMENTO: archivio di log %s non è DELETE POSTPONED più a causa di backup più \n \
+   recente e quindi non è necessaria a meno che un crash del database multimediale avviene.\n
+25 COMMENTO: gli archivi di log da %s a %s non sono DELETE POSTPONED più\n \
+   a causa di backup più recente e quindi non sono necessari a meno che un crash\n \
+   del database multimediale avviene.\n
+26 Errore durante un ripristino del database, durante l'elaborazione\n\
+     Volume di basckup: %s\n\
+    Numero dell'unità : %d\n\
+    Volume di Database: %s\n\
+     Volid di Database: %d\n\
+** ATTENZIONE: Non utilizzate il database fino a quando un ripristino privo di errori è realizzato.\n
+27 Errore nell'input, scegliere un valore compreso tra %d e %d.\n
+28 Il tempo (%s) deve essere specificato dopo il tempo (%s) del backup specificato.\n
+29 COMMENTO: archivio di log %s, che contiene pagine di log prima di %lld, non è necessario più di alcuna utilità HA.\n
+30 Numero di archivi di log dei transazioni è stato superato il numero massimo desiderato.
