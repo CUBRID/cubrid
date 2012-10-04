@@ -795,17 +795,17 @@ req_handle_content_free (T_REQ_HANDLE * req_handle, int reuse)
    */
 
   QUERY_RESULT_FREE (req_handle);
-  if (!reuse)
-    {
-      FREE_MEM (req_handle->sql_text);
-    }
   req_handle_col_info_free (req_handle);
   hm_req_handle_fetch_buf_free (req_handle);
   hm_conv_value_buf_clear (&(req_handle->conv_value_buffer));
+
   if (!reuse)
     {
+      FREE_MEM (req_handle->sql_text);
+
       qe_bind_value_free (req_handle);
       FREE_MEM (req_handle->bind_mode);
+      FREE_MEM (req_handle->bind_value);
     }
   req_handle->valid = 0;
 }

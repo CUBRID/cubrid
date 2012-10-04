@@ -1050,10 +1050,9 @@ qe_bind_value_free (T_REQ_HANDLE * req_handle)
       if (req_handle->bind_value[i].flag == BIND_PTR_DYNAMIC)
 	{
 	  FREE_MEM (req_handle->bind_value[i].value);
+	  req_handle->bind_value[i].flag = BIND_PTR_STATIC;
 	}
     }
-  FREE_MEM (req_handle->bind_value);
-  req_handle->num_bind = 0;
 }
 
 int
