@@ -656,10 +656,10 @@ hm_req_handle_close_all_resultsets (T_CON_HANDLE * con_handle)
 	}
 
       if ((req_handle->prepare_flag & CCI_PREPARE_HOLDABLE) != 0
-          && !req_handle->is_from_current_transaction)
-        {
-          continue;
-        }
+	  && !req_handle->is_from_current_transaction)
+	{
+	  continue;
+	}
 
       req_handle->is_closed = 1;
     }
@@ -682,7 +682,7 @@ hm_req_handle_close_all_unholdable_resultsets (T_CON_HANDLE * con_handle)
       if ((req_handle->prepare_flag & CCI_PREPARE_HOLDABLE) != 0)
 	{
 	  /* skip holdable req_handles */
-          req_handle->is_from_current_transaction = 0;
+	  req_handle->is_from_current_transaction = 0;
 	  continue;
 	}
 
@@ -800,15 +800,11 @@ req_handle_content_free (T_REQ_HANDLE * req_handle, int reuse)
       FREE_MEM (req_handle->sql_text);
     }
   req_handle_col_info_free (req_handle);
-  if (!reuse)
-    {
-      qe_bind_value_free (req_handle->num_bind, req_handle->bind_value);
-    }
   hm_req_handle_fetch_buf_free (req_handle);
   hm_conv_value_buf_clear (&(req_handle->conv_value_buffer));
   if (!reuse)
     {
-      qe_bind_value_free (req_handle->num_bind, req_handle->bind_value);
+      qe_bind_value_free (req_handle);
       FREE_MEM (req_handle->bind_mode);
     }
   req_handle->valid = 0;
@@ -820,7 +816,7 @@ req_handle_content_free_for_pool (T_REQ_HANDLE * req_handle)
   QUERY_RESULT_FREE (req_handle);
   hm_req_handle_fetch_buf_free (req_handle);
   hm_conv_value_buf_clear (&(req_handle->conv_value_buffer));
-  qe_bind_value_free (req_handle->num_bind, req_handle->bind_value);
+  qe_bind_value_free (req_handle);
 }
 
 

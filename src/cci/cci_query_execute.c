@@ -1036,19 +1036,24 @@ prepare_and_execute_error:
 
 
 void
-qe_bind_value_free (int num_bind, T_BIND_VALUE * bind_value)
+qe_bind_value_free (T_REQ_HANDLE * req_handle)
 {
   int i;
 
-  if (bind_value == NULL)
-    return;
-
-  for (i = 0; i < num_bind; i++)
+  if (req_handle->bind_value == NULL)
     {
-      if (bind_value[i].flag == BIND_PTR_DYNAMIC)
-	FREE_MEM (bind_value[i].value);
+      return;
     }
-  FREE_MEM (bind_value);
+
+  for (i = 0; i < req_handle->num_bind; i++)
+    {
+      if (req_handle->bind_value[i].flag == BIND_PTR_DYNAMIC)
+	{
+	  FREE_MEM (req_handle->bind_value[i].value);
+	}
+    }
+  FREE_MEM (req_handle->bind_value);
+  req_handle->num_bind = 0;
 }
 
 int
