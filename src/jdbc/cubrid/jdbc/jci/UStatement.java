@@ -936,9 +936,11 @@ public class UStatement {
 			for (int i = 0; i < batchResult.getResultNumber(); i++) {
 				batchResult.setStatementType(i, statementType);
 				result = inBuffer.readInt();
-				if (result < 0)
-					batchResult.setResultError(i, result, inBuffer.readString(
+				if (result < 0) {
+					int err_code = inBuffer.readInt();
+					batchResult.setResultError(i, err_code, inBuffer.readString(
 							inBuffer.readInt(), UJCIManager.sysCharsetName));
+				}
 				else {
 					batchResult.setResult(i, result);
 					// jci 3.0

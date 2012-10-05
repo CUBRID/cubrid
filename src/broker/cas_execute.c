@@ -2022,6 +2022,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
   DB_VALUE val;
   DB_OBJECT *ins_obj_p;
   T_OBJECT ins_oid;
+  T_BROKER_VERSION client_version = req_info->client_version;
 
   net_arg_get_char (auto_commit_mode, argv[0]);
   argc--;			/* real query num is argc-1 (because auto commit) */
@@ -2123,8 +2124,13 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
 
       net_buf_cp_byte (net_buf, stmt_type);
 
-      ERROR_INFO_SET_WITH_MSG (err_code, DBMS_ERROR_INDICATOR, err_msg);
-      NET_BUF_ERR_SET (net_buf);
+      if (client_version >= CAS_MAKE_VER (8, 4, 3))
+	{
+	  net_buf_cp_int (net_buf, DBMS_ERROR_INDICATOR, NULL);
+	}
+      net_buf_cp_int (net_buf, err_code, NULL);
+      net_buf_cp_int (net_buf, strlen (err_msg) + 1, NULL);
+      net_buf_cp_str (net_buf, err_msg, strlen (err_msg) + 1);
 
       if (session)
 	{
@@ -2157,6 +2163,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
   char auto_commit_mode;
   DB_VALUE val;
   DB_OBJECT *ins_obj_p;
+  T_BROKER_VERSION client_version = req_info->client_version;
 
   net_arg_get_char (auto_commit_mode, argv[1]);
 
@@ -2303,8 +2310,14 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
 	  err_code = -1;
 	  err_msg = (char *) "";
 	}
-      ERROR_INFO_SET_WITH_MSG (err_code, DBMS_ERROR_INDICATOR, err_msg);
-      NET_BUF_ERR_SET (net_buf);
+
+      if (client_version >= CAS_MAKE_VER (8, 4, 3))
+	{
+	  net_buf_cp_int (net_buf, DBMS_ERROR_INDICATOR, NULL);
+	}
+      net_buf_cp_int (net_buf, err_code, NULL);
+      net_buf_cp_int (net_buf, strlen (err_msg) + 1, NULL);
+      net_buf_cp_str (net_buf, err_msg, strlen (err_msg) + 1);
 
       if (is_prepared == FALSE && session != NULL)
 	{

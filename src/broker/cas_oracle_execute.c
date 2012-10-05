@@ -1431,21 +1431,17 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
   OCIStmt *stmt;
   OCIBind **bind;
   ub4 bind_count, row_count, iters, mode;
-  int ret;
+  int ret, err_code;
   ub2 type;
   size_t size;
+  char *err_msg;
   T_OBJECT ins_oid;
   T_PREPARE_CALL_INFO *call_info;
   DB_VALUE *value_array;
   ub4 i, va, num_value, num_query, num_query_msg_offset;
+  T_BROKER_VERSION client_version = req_info->client_version;
 
   num_value = 0;
-
-  value_array = make_value_array (argc - 2, argv + 2, net_buf);
-  if (value_array == NULL)
-    {
-      return CAS_ER_INTERNAL;
-    }
 
   hm_qresult_end (srv_handle, FALSE);
   stmt = (OCIStmt *) srv_handle->session;
@@ -1457,8 +1453,8 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
       bind = (OCIBind **) call_info->bind;
       if ((bind == NULL))
 	{
-	  ret = ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
-	  goto execute_error_internal;
+	  err_code = ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
+	  goto execute_array_error;
 	}
     }
 
@@ -1469,8 +1465,18 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
   net_buf_cp_int (net_buf, num_query, (int *) &num_query_msg_offset);
 
   num_value = (argc - 2) / 2;
+
+  value_array = make_value_array (argc - 2, argv + 2, net_buf);
+  if (value_array == NULL)
+    {
+      err_code = CAS_ER_INTERNAL;
+      goto execute_array_error;
+    }
+
   for (va = 0; va < num_value; va += bind_count)
     {
+      num_query++;
+
       for (i = 0; i < bind_count; i++)
 	{
 	  int index = va + i;
@@ -1479,7 +1485,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
 			      value_array[index].size,
 			      value_array[index].db_type, 0, 0, 0, 0, 0,
 			      OCI_DEFAULT);
-	  GOTO_ORA_ERROR (ret, execute_error);
+	  GOTO_ORA_ERROR (ret, exec_db_error);
 	}
 
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, 1);
@@ -1499,7 +1505,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
       as_info->num_queries_processed %= MAX_DIAG_DATA_VALUE;
       as_info->num_queries_processed++;
       SQL_LOG2_EXEC_END (as_info->cur_sql_log2, 1, ret);
-      GOTO_ORA_ERROR (ret, execute_error);
+      GOTO_ORA_ERROR (ret, exec_db_error);
 
       if (srv_handle->stmt_type == CUBRID_STMT_SELECT)
 	{
@@ -1513,7 +1519,22 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
 
       net_buf_cp_int (net_buf, row_count, NULL);
       net_buf_cp_object (net_buf, &ins_oid);
-      num_query++;
+
+      continue;
+
+    exec_db_error:
+      cas_oracle_get_errno ();
+      err_code = err_info.err_number;
+      err_msg = err_info.err_string;
+
+      if (client_version >= CAS_MAKE_VER (8, 4, 3))
+	{
+	  net_buf_cp_int (net_buf, DBMS_ERROR_INDICATOR, NULL);
+	}
+      net_buf_cp_int (net_buf, err_code, NULL);
+      net_buf_cp_int (net_buf, strlen (err_msg) + 1, NULL);
+      net_buf_cp_str (net_buf, err_msg, strlen (err_msg) + 1);
+
     }
 
   net_buf_overwrite_int (net_buf, num_query_msg_offset, num_query);
@@ -1524,9 +1545,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
   FREE_MEM (value_array);
   return 0;
 
-execute_error:
-  ret = cas_oracle_get_errno ();
-execute_error_internal:
+execute_array_error:
   NET_BUF_ERR_SET (net_buf);
   if (srv_handle->auto_commit_mode)
     {
@@ -1541,7 +1560,7 @@ execute_error_internal:
 	}
       FREE_MEM (value_array);
     }
-  return ret;
+  return err_code;
 }
 
 void

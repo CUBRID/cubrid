@@ -5495,11 +5495,22 @@ execute_array_info_decode (char *buf, int size, char flag,
       remain_size -= 4;
       cur_p += 4;
 
-      qr[i].result_count = res_count;
-
       if (res_count < 0)
 	{
+	  int err_code;
 	  int err_msg_size;
+
+	  if (remain_size < 4)
+	    {
+	      qe_query_result_free (i, qr);
+	      return CCI_ER_COMMUNICATION;
+	    }
+
+	  NET_STR_TO_INT (err_code, cur_p);
+	  remain_size -= 4;
+	  cur_p += 4;
+
+	  qr[i].result_count = err_code;
 
 	  if (remain_size < 4)
 	    {
@@ -5526,6 +5537,8 @@ execute_array_info_decode (char *buf, int size, char flag,
 	}
       else
 	{
+	  qr[i].result_count = res_count;
+
 	  if (remain_size < NET_SIZE_OBJECT)
 	    {
 	      qe_query_result_free (i, qr);
