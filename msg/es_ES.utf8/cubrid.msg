@@ -389,7 +389,7 @@ $set 5 MSGCAT_SET_ERROR
 322 MOP no encontrado en el área de trabajo.
 323 Intente actualizar MOP non-temporal en el área de trabajo.
 324 Objeto encontrado en el área de trabajo sin clase.
-325 Intente recoger un MOP como basura en la lista sucia.
+325 Intento ejecutar el Garbage Collector para un MOP de la lista de objetos "sucios".
 326 Cambiando puntero de clase para objeto en el área de trabajo.
 327 No se puede crear MOP con NULL OID.
 328 Instancia encontrada en el área de trabajo sin clase.
@@ -917,8 +917,8 @@ $ LOADDB
 849 Intentando abortar una transaccion (%d) dos veces.
 850 Transaccion (%d) no es ni un holder de bloqueo ni un waiter de bloqueo de un objeto (%d|%d|%d).
 851 Fracaso al asignar recurso de bloqueo (%s).
-852 Total holders mode(%d) of an empty lock holder list is not NULL_LOCK.
-852 Total holders mode(%d) of an empty lock holder list is not NULL_LOCK.
+852 El modo (%d) de todos los propietarios de una lista vacia de propietarios de lock no es NULL_LOCK.
+853 Para un objeto (%d|%d|%d), transaccion (%d) de tipo Uncomitted Read, contenia un error de "lock" (%s).
 854 ADVERTENCIA: Ningun holder de bloqueo existente, en cambio hay waiters de bloqueo. Referir a %s.
 855 ADVERTENCIA: Dos o mas hilos estan en la espera de bloqueo para una transaccion (%d).
 856 ADVERTENCIA: Estado (%d|%d) extrano de espera de bloqueo, hilo (%d|%d) y transaccion (%d).
@@ -1056,8 +1056,8 @@ $ LOADDB
 988 Evento de nodo: %1$s. 
 989 Evento de proceso: %1$s. %2$s
 990 Ejecucion de comando: %1$s. %2$s
-991 Flush victim candidates of page buffer started.
-992 Flush victim candidates of page buffer finished (count: %d).
+991 La seleccion de objetos para los cuales ejecutar flushing del bufer de pagina ha sido inicializado.
+992 La seleccion de objetos para los cuales ejecutar flushing del bufer de pagina ha sido terminado (contador: %d).
 993 Sobrefujo ocurrido en contexto de operacion de bit.
 994 Esta declaracion no puede ser una declaracion preparada.
 995 Una declaracion preparada con el nombre %1$s no existe.
@@ -1210,26 +1210,26 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 10 Uso no valido de la palabra clave '%s', esperando %s.
 11 Longitud del token es demasiado larga.
 12 Tipo de datos no valido.
-13 Declaracion de adjunto no valido\n attach_statement: ATTACH unsigned_integer
-14 Declaracion prepara no valido\n prepare_statement:  PREPARE {to} COMMIT unsigned_integer
-15 Declaracion ejecuta no valido\n execute_statement:  EXECUTE DEFERRED TRIGGER [identifier {, identifier}* | ALL TRIGGERS]
-16 Declaracion de proposito no valido\n scope_statement: SCOPE trigger_action { FROM table_spec_list }
-17 Parametro de ajuste sistema no valido\n set_system: SET SYSTEM PARAMETERS 'STRING' {, 'STRING_N'}*
+13 Declaracion de adjunto no valida\n attach_statement: ATTACH unsigned_integer
+14 Declaracion prepara no valida\n prepare_statement:  PREPARE {to} COMMIT unsigned_integer
+15 Declaracion ejecuta no valida\n execute_statement:  EXECUTE DEFERRED TRIGGER [identifier {, identifier}* | ALL TRIGGERS]
+16 Declaracion de proposito no valida\n scope_statement: SCOPE trigger_action { FROM table_spec_list }
+17 Parametro de ajuste de sistema no valido\n set_system: SET SYSTEM PARAMETERS 'STRING' {, 'STRING_N'}*
 18 Ajusta transaccion no valido\n set_transaction: SET TRANSACTION ISOLATION LEVEL expression {, expression}\n                 | SET TRANSACTION LOCK TIMEOUT timeout_spec
-19 Ajusta rastro del disparador no valido\n set_trigger: SET TRIGGER TRACE [ON|OFF|unsigned_integer|parameter|host_param]
-20 Ajusta profundidad del disparador no valido\n set_trigger: SET TRIGGER {MAXIMUM} DEPTH [unsigned_integer|parameter|host_param]
+19 Ajusta rastro del trigger no valido\n set_trigger: SET TRIGGER TRACE [ON|OFF|unsigned_integer|parameter|host_param]
+20 Ajusta profundidad del trigger no valido\n set_trigger: SET TRIGGER {MAXIMUM} DEPTH [unsigned_integer|parameter|host_param]
 21 Ajusta nivel de optimizacion no valido\n SET OPTIMIZATION LEVEL {=|to} [ON|OFF|unsigned_integer|parameter|host_param]
 22 Ajusta costo de optimizacion no valido\n  SET OPTIMIZATION COST {of} 'STRING' {=|to} literal_
 23 Obtiene nivel de optimizacion no valido\n GET OPTIMIZATION LEVEL {[INTO|TO] [host_param|parameter|identifier]}
 24 Obtiene costo de optimizacion no valido\n GET OPTIMIZATION COST {of} 'STRING' {[INTO|TO] [host_param|parameter|identifier]}
-25 Obtiene isol de la transaccion no valido\n GET TRANSACTION ISOL LEVEL {[INTO|TO] [host_param|parameter|identifier]}
+25 Obtiene aislamiento de transaccion no valido\n GET TRANSACTION ISOL LEVEL {[INTO|TO] [host_param|parameter|identifier]}
 26 Obtiene el bloqueo de la transaccion no valido\n GET TRANSACTION LOCK TIMEOUT {[INTO|TO] [host_param|parameter|identifier]}
-27 Obtiene rastro del disparador no valido\n GET TRIGGER TRACE {[INTO|TO] [host_param|parameter|identifier]}
-28 Obtiene profundidad del disparador no valido\n GET TRIGGER {MAXIMUM} DEPTH {[INTO|TO] [host_param|parameter|identifier]}
+27 Obtiene rastro del trigger no valido\n GET TRIGGER TRACE {[INTO|TO] [host_param|parameter|identifier]}
+28 Obtiene profundidad del trigger no valido\n GET TRIGGER {MAXIMUM} DEPTH {[INTO|TO] [host_param|parameter|identifier]}
 29 Obtiene estadisticas no valido \n GET STATISTICS 'STRING' {[INTO|TO] [host_param|parameter|identifier]}
 30 Crear indice no valido \n CREATE {REVERSE} {UNIQUE} INDEX identifier ON {only} class_name index_column_name_list {WHERE where_clause}
 31 Crear utilizador no valido\n CREATE USER identifier {PASSWORD 'STRING'} {GROUPS identifier {, identifier}* } {MEMBERS identifier {, identifier}* }
-32 Crear disparador no valido\n CREATE TRIGGER identifier {STATE [ACTIVE|INACTIVE]} {PRIORITY unsigned_real}\n    [BEFORE|AFTER|DEFERRED] event_spec {IF trigger_condition}\n    EXECUTE {AFTER|DEFERRED} trigger_action
+32 Crear trigger no valido\n CREATE TRIGGER identifier {STATE [ACTIVE|INACTIVE]} {PRIORITY unsigned_real}\n    [BEFORE|AFTER|DEFERRED] event_spec {IF trigger_condition}\n    EXECUTE {AFTER|DEFERRED} trigger_action
 33 Crear serial no valido\n CREATE SERIAL identifier {START WITH integer} {INCREMENT BY integer}\n    serial_min_max {CYCLE|NOCYCLE} {CACHE unsigned_integer|NOCACHE}
 34 Crear procedimiento no valido\n CREATE PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} LANGUAGE JAVA NAME 'STRING'
 35 Crear funcion no valido\n CREATE FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} LANGUAGE JAVA NAME 'STRING'
@@ -1242,15 +1242,15 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 42 Faltando expresion
 43 Identificador no valido
 44 Uso de substring no valido\n SUBSTRING( expression FROM expression FOR expression )\n  SUBSTRING( expression FROM expression )
-45 Uso del recorte invalido\n TRIM ( [LEADING|TRAILING|BOTH] expression FROM expression )\n  TRIM ( [LEADING|TRAILING|BOTH] FROM expression )\n  TRIM ( expression FROM expression )\n  TRIM ( expression )
+45 Uso de recorte no valido\n TRIM ( [LEADING|TRAILING|BOTH] expression FROM expression )\n  TRIM ( [LEADING|TRAILING|BOTH] FROM expression )\n  TRIM ( expression FROM expression )\n  TRIM ( expression )
 46 Uso de emitir no valido\n CAST ( expression AS data_type )
 47 Funcion add_months necesita dos parametros
 48 octet_length necesita un parametro
 49 bit_length necesita un parametro
 50 lower necesita un parametro
 51 upper necesita un parametro
-52 Translate necesita tres parametros
-53 Replace necesita dos o tres parametros
+52 translate necesita tres parametros
+53 replace necesita dos o tres parametros
 54 Uso no valido del to_number\n TO_NUMBER ( expression , char_string )\n  TO_NUMBER ( expression )
 55 Operador de union del string es '||' y no '|'
 56 Declaracion alterar no valida
@@ -1262,7 +1262,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 62 Valor negativo no valido (valor negativo en lista)
 63 Regla de referencia duplicada.
 64 SYS_CONNECT_BY_PATH necesita dos parametros y el segundo necesita ser un literal de string.
-65 Entero no asignado invalido %s.
+65 Entero no asignado no valido %s.
 66 IF necesita tres parametros: el primero tiene que ser una expresion logica, el segundo y el tercero tienen que ser expresiones evaluando sea a un tipo numerico o a uno de string.
 67 IFNULL necesita dos parametros cuales tienen que ser expresiones evaluando a sea un tipo numerico o a uno de string.
 68 Uso de isnull no valido\n ISNULL ( expression )
@@ -1276,29 +1276,29 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 76 Uso de utilizador no valido / system_user\n USER() / SYSTEM_USER()
 77 Uso de timestamp no valido\n TIMESTAMP( expression ), TIMESTAMP( expression, expression )
 78 Uso de base de datos no valido\n DATABASE()
-79 Uso de tiempo actual no valido\n CURRENT_TIME()
-80 Uso de fecha actual no valido\n CURRENT_DATE()
-81 Uso de sello de tiempo actual no valido\n CURRENT_TIMESTAMP()
+79 Uso de current_time no valido\n CURRENT_TIME()
+80 Uso de current_date no valido\n CURRENT_DATE()
+81 Uso de current_timestamp no valido\n CURRENT_TIMESTAMP()
 82 Uso de now invalido\n NOW()
-83 Uso de estandar no valido\n DEFAULT(column_name)
-84 Uso de fecha no valido\n DATE(expression)
-85 Uso de tiempo local no valido\n LOCALTIME()
-86 Uso de sello de tiempo local no valido\n LOCALTIMESTAMP()
+83 Uso de default no valido\n DEFAULT(column_name)
+84 Uso de date no valido\n DATE(expression)
+85 Uso de localtime local no valido\n LOCALTIME()
+86 Uso de localtimestamp local no valido\n LOCALTIMESTAMP()
 87 Uso de esquema no valido\n SCHEMA()
-88 Uso de truncar no valido\n TRUNCATE( expression, expression )
+88 Uso de truncate no valido\n TRUNCATE( expression, expression )
 89 Uso de str_to_date no valido\n STR_TO_DATE( expression, string_literal )
-90 Uso de fecha y tiempo actual no valido\n CURRENT_DATETIME()
-91 Uso de insertar no valido\n INSERT( expression, expression , expression, expression )
+90 Uso de current_date_time no valido\n CURRENT_DATETIME()
+91 Uso de insert no valido\n INSERT( expression, expression , expression, expression )
 92 Uso de elt no valido\n ELT(expression [, expression]...)
-93 Uso de ano no valido\n YEAR( expression )
-94 Uso de mes no valido\n MONTH( expression )
-95 Uso de dia no valido\n DAY( expression )
-96 Uso de hora no valido\n HOUR( expression )
-97 Uso de minuto no valido\n MINUTE( expression )
-98 Uso de seconda no valido\n SECOND( expression )
-99 Uso de cuarto no valido\n QUARTER( expression )
-100 Uso de semana no valido\n WEEK( expression ), WEEK( expression, expression)
-101 Uso de tiempo no valido\n TIME(expression)
+93 Uso de year no valido\n YEAR( expression )
+94 Uso de month no valido\n MONTH( expression )
+95 Uso de day no valido\n DAY( expression )
+96 Uso de hour no valido\n HOUR( expression )
+97 Uso de minute no valido\n MINUTE( expression )
+98 Uso de second no valido\n SECOND( expression )
+99 Uso de quarter no valido\n QUARTER( expression )
+100 Uso de week no valido\n WEEK( expression ), WEEK( expression, expression)
+101 Uso de time no valido\n TIME(expression)
 102 Uso de group_concat no valido\n GROUP_CONCAT (([DISTINCT] {col | expr} \n [ORDER BY {col | unsigned_int} [ASC | DESC] ] \n [SEPARATOR str_val])
 103 Uso de indicacion de indice no valido.
 104 Longitud maxima del string de bytes es %d bytes.
@@ -1322,7 +1322,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 4 El numero de columnas, %d, en la consulta izquierda no empareja\nel numero de columnas, %d, el la consulta derecha.
 5 '%s' no es compatible de union con '%s'.
 6 %s no es definido.
-7 El dominion de %s no puede ser una vclass.
+7 El dominio de %s no puede ser una vclass.
 8 El dominio de %s no puede ser una proxy vclass.
 9 El dominio de %s no puede ser una clase.
 10 %s no es un atributo de %s.
@@ -1334,12 +1334,12 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 16 %s no es definido en la base de datos.
 17 %s no es una superclase de %s.
 18 Clase %s toma herencia de la non-clase %s.
-19 VClass %s toma herencia de la non-vclase %s.
-20 Proxy vclass %s toma herencia de la vclasse non-proxy %s.
+19 VClass %s toma herencia de la clase non virtual %s.
+20 Proxy vclass %s toma herencia de la clase virtual non-proxy %s.
 21 %s ya es una superclase de %s.
 22 %s no puede ser una superclase de si misma.
 23 %s ya es una subclase de %s.
-24 %s tiene mas que un solo valor. Atributos exponidos en\n consultas de agregacion tienen que aparecer tambien en el grupo por clausula.
+24 %s tiene mas que un solo valor. Atributos exponidos en\nconsultas de agregacion tienen que aparecer tambien en el grupo por clausula.
 25 El numero de columnas (%d) y into_names(%d) no son iguales.
 26 Clase %s ya existe.
 27 Superclase %s en '%s' no existe.
@@ -1376,9 +1376,9 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 58 %s\n no es un SELECT de una clase individual.
 59 `*' no es una lista de seleccion valida en una especificacion de consulta de proxy vclass.
 60 %s no es ni una vclass ni una proxy vclass.
-61 Hay mas de una clausula de nivel de isolacion.
-62 Hay mas de una clausula de timeout.
-63 Ningun nivel de isolacion metido.
+61 Hay mas de una clausula de nivel de aislacion.
+62 Hay mas de una clausula timeout.
+63 Ningun nivel de aislacion metido.
 64 El operador BETWEEN no es definido en tipos %s, %s y %s.
 65 Operador '%s' no es definido en tipos %s y %s.
 66 Funcion debe tener argumentos: %s.
@@ -1402,14 +1402,14 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 84 Correlacion (%s) de ruta aparece fuera de un plazo de ruta interna.
 85 Referencia a %s es ambigua.
 86 Clase de %s no tiene atributo %s.
-87 Clases (%s) no tienen todas el atributo %s.
+87 No todas clases (%s) tienen al atributo %s.
 88 Clase (%s) no tiene atributo %s.
 89 %s es un tipo %s, no un tipo de objeto.
 90 Selector {%s} no resuelve a una especificacion de clase expuesta en\n el contexto requierido (%s).
 91 Selector {%s} refiere a una especificacion de non-clase (%s).
 92 Selector {%s} no puede arrancar de raíz la expresión de ruta de definirse a sí misma.
 93 Selector {%s} es definido circularmente en terminos de selector {%s}.
-94 Selector {%s} es refefinido a %s.
+94 Selector {%s} es redefinido a %s.
 95 %s (objeto de dominio) no tiene atributo %s.
 96 %s en la especificacion EXCEPT no es una subclase.
 97 Lista ALL... EXCEPT excluye EVERYTHING en clase.
@@ -1421,7 +1421,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 103 Especificacion de consulta del proxy no debe de tener ninguna expresion agregada,\n ningun group-by-clausula, y no having-clausula.
 104 Especificacion de consulta del proxy no debe de tener ni DISTINCT ni UNIQUE\npalabras claves en la lista select.
 105 Especificacion de consulta del proxy tiene que ser una declaracion SELECT simple.
-106 Especificacion de consulta del proxy debe referencias solo una tabla o clase\n de la base de datos local.
+106 Especificacion de consulta del proxy debe referenciar solo una tabla o clase\n de la base de datos local.
 107 Utilizador '%s' no es el patrocinador de %s.
 108 Proxy '%s' es ya definido en clase '%s' de ldb '%s'.
 109 CUBRID no soporta proxy con objetos en conjuntos heterogéneos.
@@ -1442,20 +1442,20 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 124 Bajoflujo de aritmetica de tiempo.
 125 Bajoflujo de aritmetica de datos.
 126 Lado izquierdo ilegal de una clausula de asignacion.
-127 Llamadas de metodo en tablas derivadas ajustadas correladas con un ambito externo no son\n soportadas a menos que la expresion ajustada sea envuelta en una subconsulta.
+127 Llamadas de metodo en tablas derivadas ajustadas, correladas con un ambito externo no son\n soportadas a menos que la expresion ajustada sea envuelta en una subconsulta.
 128 La columna de especificacion de consulta que corresponde al\n atributo compardito '%s' tiene que ser NULL o NA.
 129 Una columna NULL no es permitida en la lista select de la especificacion de ver consulta si la definicion del atributo es omitida.
 130 Objetos vclass en conjuntos no son soportados.
 131 Esperando un valor de string.
 132 Esperando una declaracion o un valor de string.
-133 Atributo object_id '%s' de proxy no debe asignar a\n una expresion de columna de especificacion de consulta.
+133 Atributo object_id '%s' de proxy no debe mapar a\n una expresion de columna de especificacion de consulta.
 134 %s restriccion ignorada.
 135 Declaraciones de restriccion no permitidas en este conexto.
 136 Emitir %s al tipo %s no es soportado.
 137 %s no es un string de bits valido.
-138 Operados '%s' no es definido en el tipo %s.
+138 Operador '%s' no es definido en el tipo %s.
 139 Operador '%s' no es definido en tipos %s con %s y %s.
-140 Operandos de operador '%s' no pueden ser los dos variables de host dinamicas.
+140 Operandos del operador '%s' no pueden ser los dos variables de host dinamicas.
 141 Demasiados argumentos a la funcion generica %s.\nSolo %d argumentos son permitidos para funciones genericas.
 142 Selector {%s} clase '%s' no es una subclase de '%s'.
 143 No se puede extraer campo '%s' del tipo %s.
@@ -1466,22 +1466,22 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 148 Serial '%s' no definido.
 149 Valor de incremento no debe ser cero.
 150 Valor maximo excede 1.0e37.
-151 Valor minimo es invalido.
+151 Valor minimo no es valido.
 152 Valor de incremento es invalido.
 153 Valor minimo excede -1.0e36.
-154 Valor maximo es invalido.
-155 Especifique la opcion de alterar serial.
+154 Valor maximo no es valido.
+155 Especificar la opcion de alterar serial.
 156 El segundo argumento de la funcion serial_next_value deberia ser superior a 0.
 157 Valores seriales no pueden exceder su minimo o maximo.
 158 Error interno de I/O para serial.
 159 No se puede encontrar indice '%s'.
 160 El nombre '%s' de índice calificado refiere a una clase, pero no es especificado en la clausula.
-161 Dos o mas clases tienen el mismo indice '%s'. Utilize el nombre de indice calificado.
+161 Dos o mas clases tienen el mismo indice '%s'. Utilizar el nombre de indice calificado.
 162 Uso de %s no valido.\n%s expresion no puede ser utilizada con atributo o subconsulta correlada.
-163 Release actual restringe una expresion conteniento ORDERBY_NUM() en una lista select.
+163 Release actual restringe una expresion conteniendo ORDERBY_NUM() en una lista select.
 164 Expresion de ruta '%s' en condicion JOIN.
 165 '%s' en condicion de JOIN no es definido.
-166 Current release restricts set derived table for right outer join.
+166 Version actual no permite tablas derivadas en RIGHT OUTER JOIN.
 167 No se puede insertar con consulta en otra ldb.
 168 Solo una columna puede ser especificada en la lista select cuando la subconsulta no es introducida con EXISTS.
 169 Lado derecho ilegal de una clausula de asignamento. El contexto requiere que la consulta sea de columna unica.
@@ -1496,7 +1496,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 178 '%s' no es clase particionada.
 179 '%s' ya es clase particionada.
 180 Solicitudes de particion no validas.
-181 %s no puede ser cambiado de este clase (columna de clave de particion).
+181 %s no puede ser cambiado de esta clase (columna de clave de particion).
 182 %s no puede ser administrada por particion bajo disparadores activos.
 183 Particion %s no existe.
 184 Tipo de particion desajusta. '%s'
@@ -1524,7 +1524,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 206 Opcion 'serial %s' duplicada.
 207 La columna '%s' en la clausula de ordenacion es ambigua.
 208 Atributo '%s' no tiene un valor estandar.
-209 Articulos ORDER BY deben aparecere en la lista select si SELECT DISTINCT es especificada.
+209 Articulos ORDER BY deben aparecer en la lista select si SELECT DISTINCT es especificada.
 210 Variable de host no es permitida en columnas en la especificacion de consulta.
 211 %s no puede ser una columna tipo ORDER BY
 212 %s no puede ser una columna tipo GROUP BY
@@ -1538,17 +1538,17 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 220 ALTER VIEW '%s' AS SELECT no es permitido para vistas que tienen subclases o superclases. Utilize ALTER VIEW CHANGE QUERY en vez.
 221 Ver atributos no puede ser cambiada utilizando esta declaracion. En vez, 'ALTER VIEW name AS query' podria ayudar.
 222 CUBRID requiere articulo ORDER BY para ser la misma expresion que el argumento GROUP_CONCAT o un entero (posicion de argumento).
-223 El predicado LIKE requiere que un caracter de escapa sea especificado. Vea la documentacion para los parametros de configuracion '%1$s' y '%2$s'.
-224 KEYLIMIT no pueden ser utilizados en clausula INDEX NONE.
+223 El predicado LIKE requiere que un caracter de escapa sea especificado. Ver la documentacion para los parametros de configuracion '%1$s' y '%2$s'.
+224 KEYLIMIT no puede ser utilizado en clausula INDEX NONE.
 225 Variable de sesion no permitida en este contexto.
-226 Conflict de indicio de indice entre '%s' y '%s'.
+226 Conflicto de indicio de indice entre '%s' y '%s'.
 227 Funcion '%s' no puede ser utilizada en clausula DEFAULT.
-228 Actualizar tablas derivadas no es permitido.
+228 Actualizando tablas derivadas no es permitido.
 229 Actualizar atributos de clase y atributos de instancia no permitido en la misma declaracion.
 230 Actualizando jerquias de clase virtual no es permitido.
-231 Variables de host no permitido en declaracion DDL.
-232 Espresion (%s) de filtro no valida para indice.
-233 Funciones multiplas o anidadas no son permitidas en la definicion de indice de funcion.
+231 Variables de host no permitidas en declaracion DDL.
+232 Expresion (%s) de filtro no valida para indice.
+233 Funciones multiples o anidadas no son permitidas en la definicion de indice de funcion.
 234 Especificacion de indice no valida.
 235 SHARED, DEFAULT y AUTO_INCREMENT no pueden ser definidos uno con el otro.
 236 Demasiados valores (%d) de enumeracion. Un tipo de enumeracion puede tener un maximo de %d valores.
@@ -1584,17 +1584,17 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sin memoria virtual: incapaz de asignar %d bytes.
-2 Nivel de isolacion de transaccion debe ser 1, 2, 3, 4, 5 o 6.
+2 Nivel de aislacion de transaccion debe ser 1, 2, 3, 4, 5 o 6.
 3 Valor del tiempo de expiracion debe ser -1, 0, o >0.
-4 Nivel de isolacion ajustado a:\n
+4 Nivel de aislacion ajustado a:\n
 5          READ COMMITTED SCHEMA, READ UNCOMMITTED INSTANCES.\n
 6          READ COMMITTED SCHEMA, READ COMMITTED INSTANCES.\n
 7          REPEATABLE READ SCHEMA, READ UNCOMMITTED INSTANCES.\n
 8          REPEATABLE READ SCHEMA, READ COMMITTED INSTANCES.\n
 9          REPEATABLE READ SCHEMA, REPEATABLE READ INSTANCES.\n
 10 Una consulta no actualizable no es permitida en una llamada db_query_execute_oid.
-11 Transaccion expiro esperando bloqueos.
-12 Intentado accesar variable de host con indice %ld cuando solamente %ld \nvariable de host de entrada fueron dadas.
+11 Transaccion ha expiro esperando bloqueos.
+12 Intentado accesar variable de host con indice %ld cuando solamente %ld \nvariables de host de entrada fueron dadas.
 13 Conversacion no implementada.
 14 Error interno, conversion no definida.
 15 '%s' no produce resultados.
@@ -1611,8 +1611,8 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 26 Destino de asignacion virtual (%s) no es invertible.
 27 Hay mas columnas en la especificacion de consulta que atributos en clase %s.
 28 Hay mas atributos en clase %s que columnas en la especificacion de consulta.
-29 Version actual restringe agregacion a vclasses WITHOUT\n especificaciones de consulta agregadas.
-30 Version actual restringe agregacion a vclases WITHOUT\n especificacions de consulta de union.
+29 Version actual restringe agregacion a las vclasses WITHOUT\n especificaciones de consulta agregadas.
+30 Version actual restringe agregacion a vclases WITHOUT\n especificaciones de consulta de union.
 31 Uso de vclass (%s) en una jeraquia de composicion requiere que sea actualizable. \n No puede ser actualizable con respeto a la clase real %s.
 32 No utilizado
 33 Construct ilegal en expresion de ruta '%s'.
@@ -1622,7 +1622,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 37 Select no es autorizado en %s.
 38 Vclass %s no es actualizable.
 39 %s no es una vclass de tipo proxy.
-40 Especificacion de consulta de la vclass tipo proxy no debe ser una join.
+40 Especificacion de consulta de la proxy vclass no debe ser una de tipo join.
 41 %s no tiene conjunto de identificacion de objeto.
 42 Clases (%s) con campos object_id multiples en una composicion \n de jerquia no son soportadas.
 43 Atributo de objeto %s de %s no es una vclass en 1db %s.
@@ -1643,7 +1643,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 59 INGRES no soporta fechas (%s) antes de Enero 1, 1582.
 60 Recursos agotados en generacion de consulta.
 61 Consulta no produce resultados, asi que variable '%s' no es ajustada.
-62 Con LOCAL opcion de verificar no es soportada.
+62 Con opcion de verificar LOCAL no es soportada.
 63 Excepcion de opcion de verificar en vista %s.
 64 Fecha no valida: '%s'.
 65 Tiempo no valido: '%s'.
@@ -1654,13 +1654,13 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 70 Fracaso de optimizacion de consulta de union externa.
 71         SERIALIZABLE.\n
 72 Vclass %s no es actualizable. Solo vclasses actualizables son permitidas para selectar VIDs.
-73 Particionar fracaso.
+73 Particionar ha fracasado.
 74 Particion no existe.
 75 Acceso a la particion no permitido: '%s'.
 76 El serial '%s' no es todavia definido.
-77 El patrocinador o DBA pude solamente alterar la definicion de un serial de destino.
+77 El patrocinador o DBA puede solamente alterar la definicion de un serial de destino.
 78 Los utilizadores no son permitidos modificar el objeto serial creado por una restriccion de incremento automatico.
-79 Nivel de isolacion no valido: %s esquema, %s instancias.
+79 Nivel de aislamiento no valido: %s esquema, %s instancias.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** Cache no valida. ***
@@ -1676,7 +1676,7 @@ $set 11 MSGCAT_SET_AUTHORIZATION
 11 Utilizador actual es : %s\n
 12 Objeto de autorizacion de raiz :\n
 13   utilizadores :
-14 *** No se pudo emitir todas las subvenciones para el usuario "%s"*** \n
+14 *** No se pudieron emitir todas las subvenciones para el usuario "%s"*** \n
 15 AUTHORIZATIONS\n
 16 direct_groups :
 
@@ -1704,8 +1704,8 @@ $  No borre el espacio al final del siguente mensaje.
 20 GENERAL
 
 $set 13 MSGCAT_SET_TRIGGER
-1 TRACE: Evaluando condicion para disparador '%s'.
-2 TRACE: Ejecutando accion para disparador '%s'.
+1 TRACE: Evaluando condicion para trigger '%s'.
+2 TRACE: Ejecutando accion para trigger '%s'.
 
 $set 14 MSGCAT_SET_LOCK
 1 \n
@@ -1739,9 +1739,9 @@ $set 14 MSGCAT_SET_LOCK
 29 %4sTran_index = %3d, Blocked_mode =%8s \n\t%13s Start_waiting_at = %-30s \n\t%13s Wait_for_secs = %.2f\n
 30 %4sTran_index = %3d, Non_2_phase_lock =%8s\n
 31 VPID (volid|pageid) = %3d|%6d.\n
-32 *** vertedero de tabla de bloqueo ***\n Escalacion de bloque a = %d, intervalo de ejecutar deadlock = %d\n
+32 *** vertedero de tabla de bloqueo ***\n Escalacion de bloqueo a = %d, intervalo de ejecutar deadlock = %d\n
 33 Transaccion (index %2d, %s, %s@%s|%d)\n
-34 Isolacion %s\n
+34 Aislamiento %s\n
 35 Estado %s\n
 36 Periodo de expiracion %s\n
 37 Transacciones abortadas unilateralmente con indices:\n
@@ -1774,13 +1774,13 @@ $set 15 MSGCAT_SET_IO
 		Nombre de volumen: %s\n\
 		Numero de unidad: %d\n\
 		Nivel de respaldo: %d (%s)\n\
-		Introduzca una de las siguentes opciones:\n
-11 Escriba\n\
+		Introducir una de las siguentes opciones:\n
+11 Escribir\n\
   - %d para abandonar.\n\
   - %d para continuar despues de que el volumen sea montado/cargado. (reintentar) \n \
   - %d para continuar despues de cambiar el directorio del volumen o el dispositivo.\n
-12 Introduzca nuevo directorio o dispositivo para el volumen de respaldo.\n
-13 Error en entrada, escoge un valor entre %d t %d.\n
+12 Introducir nuevo directorio o dispositivo para el volumen de respaldo.\n
+13 Error en entrada, escoger un valor entre %d t %d.\n
 14 ** ADVERTENCIA ** Volumen de respaldo incorrecto montado.\n
 15 Volumen de respaldo %s es de un otro nivel de respaldo\n (Nivel: %d, esperando %d) . \n\n
 16 Volumen de respaldo %s tiene pagina incorrecta o identificador magico.\n\n
@@ -1797,7 +1797,7 @@ $set 15 MSGCAT_SET_IO
 27  Tamano de pagina de respaldo: %d\n
 28       Zip Method: %d (%s)\n\
         Zip Level: %d (%s)\n
-29 Incluye Registro Activo: %s\n
+29 Incluir Registro Activo: %s\n
 
 $set 16 MSGCAT_SET_LOG
 1 \n*************************************************************************\n
@@ -1812,13 +1812,13 @@ $set 16 MSGCAT_SET_LOG
   - 0 para abandonar.\n \
   - 1 para continuar despues de que el archivo sea montado/cargado. \n\
   - 2 para continuar despues de cambiar ubicacion/nombre del archivo \n
-4 Introduzca nueva ubicacion/nombre.\n
+4 Introducir nueva ubicacion/nombre.\n
 5 COMENTARIO: %s para base de datos %s\n
 6 COMENTARIO: Carpeta de registro %s no es mas necesario a menos que ocurre una caida de la media de la base de datos.\n
 7 COMENTARIO: Carpetas de registro de %s a %s no son necesarias mas, a menos que ocurre una caida de la media de la base de datos.
 8 COMENTARIO: de la base de datos renombrada = %s\n
-9 ARCHIVA: %d %s %lld %lld\n
-10 ARCHIVA:
+9 CARPETA: %d %s %lld %lld\n
+10 CARPETA:
 11  ELIMINA: %d %s to \n \
 	   %d %s.\n \
 	   RAZON: %s\n   
@@ -1836,7 +1836,7 @@ $set 16 MSGCAT_SET_LOG
 19 Regresando al directorio %s cual parece tener un respaldo anterior en el. \n\
  Volumenes de respaldo obsoletos de esta base de datos en esta locacion van a ser eliminados, \n\
  incluyendo los del nivel de respaldo actual y superior.\n
-20 Introduzca 'y' para continuar o cualquier otra clase para cancelar.\n
+20 Introducir 'y' para continuar o cualquier otra clase para cancelar.\n
 21 Respaldo de base de datos ha sido abortado por el utilizador. \n
 22 DELETE posponido: Carpetas %d %s to \n \
 	%d %s \n \
@@ -1853,7 +1853,7 @@ $set 16 MSGCAT_SET_LOG
 	             Volumen de base de datos: %s\n\
    Identificacion de volumen de base de datos: %d\n\
 ** ADVERTENCIA: No utilize la base de datos hasta una restauracion sin errores es lograda.\n
-27 Error en entrada, escoja un valor entr %d y %d.\n
+27 Error en entrada, escoja un valor entre %d y %d.\n
 28 El tiempo (%s) especificado tiene que ser despues del tiempo (%s) del respaldo especificado.\n
 29 COMENTARIO: Carpeta de registro %s, que contiene paginas de registro antes de %lld, no es necesaria mas para ninguna de las utilidades HA.\n
 30 Numero de carpetas de registro activas ha excedido el numero maximo deseado.
