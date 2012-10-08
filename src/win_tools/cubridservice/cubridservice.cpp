@@ -45,6 +45,7 @@ void vHandler (DWORD opcode);
 void vSetStatus (DWORD dwState, DWORD dwAccept =
 		 SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_PAUSE_CONTINUE);
 void SetCUBRIDEnvVar ();
+char *read_string_value_in_registry (HKEY key, char *sub_key, char *name);
 SERVICE_STATUS_HANDLE g_hXSS;	//서비스 환경 글로벌 핸들
 DWORD g_XSS;			//서비스의 현재 상태를 저장하는 변수
 BOOL g_bPause;			//서비스가 중지인가 아닌가
@@ -245,6 +246,7 @@ vHandler (DWORD opcode)
 {
   char *args[6];
   char command[100];
+  char *db_name;
 
   if (opcode == g_XSS)
     {
@@ -256,38 +258,20 @@ vHandler (DWORD opcode)
   args[0] = command;
 
   if (opcode == SERVICE_CONTROL_SERVER_START ||
-      opcode == SERVICE_CONTROL_SERVER_STOP  ||
-      opcode == SERVICE_CONTROL_BROKER_ON    ||
+      opcode == SERVICE_CONTROL_SERVER_STOP ||
+      opcode == SERVICE_CONTROL_BROKER_ON ||
       opcode == SERVICE_CONTROL_BROKER_OFF)
     {
-      DWORD dwBytesNeeded;
-      LPSERVICE_DESCRIPTION lpsd;
 
-      SC_HANDLE scmHandle = OpenSCManager (NULL, NULL, SC_MANAGER_ALL_ACCESS);
-
-      if (scmHandle == NULL)
+      db_name = read_string_value_in_registry (HKEY_LOCAL_MACHINE,
+					       "SOFTWARE\\CUBRID\\CUBRID",
+					       "CUBRID_DBNAME_FOR_SERVICE");
+      if (db_name == NULL)
 	{
+	  WriteLog (sLogFile, "read_string_value_in_registry : error \n");
 	  return;
 	}
-
-      SC_HANDLE scHandle =
-	OpenServiceA (scmHandle, "CUBRIDService", SERVICE_ALL_ACCESS);
-
-      lpsd = (LPSERVICE_DESCRIPTION) LocalAlloc (LMEM_FIXED, 256);
-
-      if (!QueryServiceConfig2 (scHandle,
-				SERVICE_CONFIG_DESCRIPTION,
-				(LPBYTE) lpsd, 256, &dwBytesNeeded))
-	{
-	  return;
-	}
-
-      args[3] = strdup (lpsd->lpDescription);
-
-      LocalFree (lpsd);
-
-      CloseServiceHandle (scHandle);
-      CloseServiceHandle (scmHandle);
+      args[3] = db_name;
     }
 
   switch (opcode)
@@ -396,8 +380,8 @@ vHandler (DWORD opcode)
   proc_execute (command, args, true, true, NULL);
 
   if (opcode == SERVICE_CONTROL_SERVER_START ||
-      opcode == SERVICE_CONTROL_SERVER_STOP  ||
-      opcode == SERVICE_CONTROL_BROKER_ON    ||
+      opcode == SERVICE_CONTROL_SERVER_STOP ||
+      opcode == SERVICE_CONTROL_BROKER_ON ||
       opcode == SERVICE_CONTROL_BROKER_OFF)
     {
       free (args[3]);
@@ -687,4 +671,43 @@ proc_execute (const char *file, char *args[], bool wait_child,
   CloseHandle (pi.hProcess);
   CloseHandle (pi.hThread);
   return ret_code;
+}
+
+char *
+read_string_value_in_registry (HKEY key, char *sub_key, char *name)
+{
+  char *value = NULL;
+  HKEY output_key = NULL;
+
+  // open the key
+  if (RegOpenKeyEx (key, sub_key, 0, KEY_READ, &output_key) == ERROR_SUCCESS)
+    {
+      DWORD buf_size = 0;
+
+      if (RegQueryValueEx (output_key, name, NULL, NULL, NULL, &buf_size) ==
+	  ERROR_SUCCESS)
+	{
+	  char *buf = (char *) malloc (buf_size * sizeof (char) + 1);
+	  if (buf == NULL)
+	    {
+	      RegCloseKey (output_key);
+	      return value;
+	    }
+
+	  if (RegQueryValueEx
+	      (output_key, name, NULL, NULL, (LPBYTE) buf,
+	       &buf_size) == ERROR_SUCCESS)
+	    {
+	      value = buf;
+	    }
+	  else
+	    {
+	      free (buf);
+	    }
+	}
+
+      RegCloseKey (output_key);
+    }
+
+  return value;
 }

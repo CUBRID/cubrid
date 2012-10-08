@@ -66,6 +66,8 @@ void vDelService (void);
 void vStartService (void);
 void vStopService (void);
 void vPrintServiceStatus (void);
+bool write_string_value_in_registry (HKEY key, char *sub_key, char *name,
+				     char *value);
 
 int
 _tmain (int argc, char *argv[])
@@ -211,12 +213,13 @@ _tmain (int argc, char *argv[])
 	  // send control code
 	  rc = ControlService (scHandle, service_control_code, &ss);
 	  if (!rc && ss.dwCurrentState == SERVICE_RUNNING
-	    && GetLastError () == ERROR_SERVICE_REQUEST_TIMEOUT)
+	      && GetLastError () == ERROR_SERVICE_REQUEST_TIMEOUT)
 	    {
-	      if (!ControlService (scHandle, SERVICE_CONTROL_INTERROGATE, &ss))
+	      if (!ControlService
+		  (scHandle, SERVICE_CONTROL_INTERROGATE, &ss))
 		{
 		  WriteLog (sLogFile,
-		      "ControlService error. check status manually.\n");
+			    "ControlService error. check status manually.\n");
 		}
 	    }
 	  CloseServiceHandle (scHandle);
@@ -226,11 +229,10 @@ _tmain (int argc, char *argv[])
   else if (argc == 4)
     {
       if (_stricmp (argv[1], CUBRID_UTIL_SERVER) == 0 ||
-          _stricmp (argv[1], CUBRID_UTIL_BROKER) == 0)
+	  _stricmp (argv[1], CUBRID_UTIL_BROKER) == 0)
 	{
 	  SERVICE_STATUS ss;
 	  int service_control_code;
-	  SERVICE_DESCRIPTION service_description;
 
 	  SC_HANDLE scmHandle =
 	    OpenSCManager (NULL, NULL, SC_MANAGER_ALL_ACCESS);
@@ -251,17 +253,17 @@ _tmain (int argc, char *argv[])
 	      service_control_code = SERVICE_CONTROL_SERVER_START;
 	    }
 	  else if (_stricmp (argv[1], CUBRID_UTIL_SERVER) == 0 &&
-	           _stricmp (argv[2], CUBRID_COMMAND_STOP) == 0)
+		   _stricmp (argv[2], CUBRID_COMMAND_STOP) == 0)
 	    {
 	      service_control_code = SERVICE_CONTROL_SERVER_STOP;
 	    }
 	  else if (_stricmp (argv[1], CUBRID_UTIL_BROKER) == 0 &&
-	           _stricmp (argv[2], CUBRID_COMMAND_ON) == 0)
+		   _stricmp (argv[2], CUBRID_COMMAND_ON) == 0)
 	    {
 	      service_control_code = SERVICE_CONTROL_BROKER_ON;
 	    }
 	  else if (_stricmp (argv[1], CUBRID_UTIL_BROKER) == 0 &&
-	           _stricmp (argv[2], CUBRID_COMMAND_OFF) == 0)
+		   _stricmp (argv[2], CUBRID_COMMAND_OFF) == 0)
 	    {
 	      service_control_code = SERVICE_CONTROL_BROKER_OFF;
 	    }
@@ -289,28 +291,30 @@ _tmain (int argc, char *argv[])
 	      while (ss.dwCurrentState == SERVICE_START_PENDING);
 	    }
 
-	  // register server name
-	  service_description.lpDescription = TEXT (argv[3]);
-
-	  if (ChangeServiceConfig2 (scHandle,
-				    SERVICE_CONFIG_DESCRIPTION,
-				    (LPVOID) & service_description) == 0)
+	  char *db_name = TEXT (argv[3]);
+	  if (write_string_value_in_registry (HKEY_LOCAL_MACHINE,
+					      "SOFTWARE\\CUBRID\\CUBRID",
+					      "CUBRID_DBNAME_FOR_SERVICE",
+					      db_name) == false)
 	    {
-	      WriteLog (sLogFile, "ChangeServiceConfig error.\n");
+	      WriteLog (sLogFile, "write_string_value_in_registry error.\n");
+
 	      CloseServiceHandle (scHandle);
 	      CloseServiceHandle (scmHandle);
+
 	      return 0;
 	    }
 
 	  // send control code
 	  rc = ControlService (scHandle, service_control_code, &ss);
 	  if (!rc && ss.dwCurrentState == SERVICE_RUNNING
-	    && GetLastError () == ERROR_SERVICE_REQUEST_TIMEOUT)
+	      && GetLastError () == ERROR_SERVICE_REQUEST_TIMEOUT)
 	    {
-	      if (!ControlService (scHandle, SERVICE_CONTROL_INTERROGATE, &ss))
+	      if (!ControlService
+		  (scHandle, SERVICE_CONTROL_INTERROGATE, &ss))
 		{
 		  WriteLog (sLogFile,
-		      "ControlService error. check status manually.\n");
+			    "ControlService error. check status manually.\n");
 		}
 	    }
 	  CloseServiceHandle (scHandle);
@@ -330,6 +334,7 @@ vctrlService (void)
   char ServiceFilePath[1024] = "";
 
   SC_HANDLE scmHandle = OpenSCManager (NULL, NULL, SC_MANAGER_ALL_ACCESS);
+  SERVICE_DESCRIPTION service_description;
 
   if (scmHandle == NULL)	// Perform error handling.
     {
@@ -361,6 +366,24 @@ vctrlService (void)
       WriteLog (sLogFile,
 		"(%d)Cannot add a Windows Service for CUBRID to the Windows Service Control Manager.\n",
 		GetLastError ());
+      return;
+    }
+
+  service_description.lpDescription =
+    "Service to execute master,broker,database server and manager server processes for CUBRID.\r\n"
+    "Service start/stop menu is equal to the command of \"cubrid service start/stop\".\r\n"
+    "If you setup \"startup type\" of this service to \"Disabled\", you can't use \"cubrid service\" command.";
+
+
+  if (ChangeServiceConfig2 (scHandle,
+			    SERVICE_CONFIG_DESCRIPTION,
+			    (LPVOID) & service_description) == 0)
+    {
+      WriteLog (sLogFile, "ChangeServiceConfig error.\n");
+
+      CloseServiceHandle (scHandle);
+      CloseServiceHandle (scmHandle);
+
       return;
     }
 
@@ -579,4 +602,25 @@ GetCurDateTime (char *p_buf, char *p_form)
   time (&c_time);
   localtime_s (&l_time, &c_time);
   strftime (p_buf, 24, p_form, &l_time);
+}
+
+bool
+write_string_value_in_registry (HKEY key, char *sub_key, char *name,
+				char *value)
+{
+  HKEY output_key = NULL;
+
+  if (RegCreateKeyEx
+      (key, sub_key, 0, name, REG_OPTION_NON_VOLATILE, KEY_WRITE, NULL,
+       &output_key, NULL) == ERROR_SUCCESS)
+    {
+      DWORD size = (DWORD) strlen (value) + 1;
+
+      RegSetValueEx (output_key, name, NULL, REG_SZ, (BYTE *) value, size);
+      RegCloseKey (output_key);
+
+      return true;
+    }
+
+  return false;
 }
