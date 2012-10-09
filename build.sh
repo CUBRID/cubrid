@@ -382,7 +382,7 @@ else
 fi
 
 . ./version.sh
-echo "In case a different version of the ${PRODUCT_NAME} product is being used in other machines, please note that the ${PRODUCT_NAME} ${version} servers are only compatible with the ${PRODUCT_NAME} ${version} clients and vice versa."
+echo "Since CUBRID broker and server versions should match, please make sure that you are running the same version if you operate them in separate machines. For installation of CUBRID tools like Query Browser, Manager and Web Manager, please refer to http://www.cubrid.org/wiki_tools."
 echo -n "Do you want to continue? (yes or no) [Default: yes] : "
 read cont
 if [ "$cont" = "n" ] || [ "$cont" = "no" ]; then

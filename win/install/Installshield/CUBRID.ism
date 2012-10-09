@@ -179,8 +179,8 @@
 		<row><td>DesktopFolder</td><td/><td>Desktop</td><td/><td>3</td><td/></row>
 		<row><td>FOLDER_FONTS</td><td>WINDIR</td><td>Fonts Folder</td><td/><td>0</td><td/></row>
 		<row><td>ISRUNTIMETEXTSUBS</td><td/><td>Script-defined Folders</td><td/><td>0</td><td/></row>
-		<row><td>LOCALES</td><td>TARGETDIR</td><td>locales</td><td/><td>0</td><td/></row>
 		<row><td>JDBC</td><td>TARGETDIR</td><td>jdbc</td><td/><td>0</td><td/></row>
+		<row><td>LOCALES</td><td>TARGETDIR</td><td>locales</td><td/><td>0</td><td/></row>
 		<row><td>MSG</td><td>TARGETDIR</td><td>msg</td><td/><td>0</td><td/></row>
 		<row><td>PLUGINS</td><td>CUBRIDMANAGER</td><td>plugins</td><td/><td>0</td><td/></row>
 		<row><td>PROGRAMFILES</td><td/><td>Program Files</td><td/><td>0</td><td/></row>
@@ -280,24 +280,24 @@
 		<row><td>cub_broker.exe</td><td>CUBRID</td><td>cub_broker.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_broker.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_cas.exe</td><td>CUBRID</td><td>cub_cas.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_cas.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_commdb.exe</td><td>CUBRID</td><td>cub_commdb.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_commdb.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>cub_ftproc.exe</td><td>CUBRID</td><td>cub_ftproc.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_ftproc.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_job.exe</td><td>CUBRID</td><td>cub_job.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_job.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_jobsa.exe</td><td>CUBRID</td><td>cub_jobsa.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_jobsa.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_js.exe</td><td>CUBRID</td><td>cub_js.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_js.exe</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>cub_ftproc.exe</td><td>CUBRID</td><td>cub_ftproc.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_ftproc.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_master.exe</td><td>CUBRID</td><td>cub_master.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_master.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_sainfo.exe</td><td>CUBRID</td><td>cub_sainfo.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_sainfo.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_server.exe</td><td>CUBRID</td><td>cub_server.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_server.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cubrid.conf.large</td><td>CUBRID</td><td>cubrid.conf.large</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cubrid.conf.large</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>cubrid.conf.small</td><td>CUBRID</td><td>cubrid.conf.small</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cubrid.conf.small</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>cubrid.conf_dist</td><td>CUBRID</td><td>cubrid.conf-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cubrid.conf-dist</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>cubrid_locales.all.txt</td><td>CUBRID</td><td>cubrid_locales.all.txt</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cubrid_locales.all.txt</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>cubrid_locales.txt</td><td>CUBRID</td><td>cubrid_locales.txt</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cubrid_locales.txt</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>cubrid.exe</td><td>CUBRID</td><td>cubrid.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubrid.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cubrid_broker.conf_dist</td><td>CUBRID</td><td>cubrid_broker.conf-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cubrid_broker.conf-dist</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>cubrid_broker.exe</td><td>CUBRID</td><td>cubrid_broker.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubrid_broker.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cubrid_esql.exe</td><td>CUBRID</td><td>cubrid_esql.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubrid_esql.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cubrid_esql.h</td><td>CUBRID</td><td>cubrid_esql.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\cubrid_esql.h</td><td>1</td><td>NewSubFolder6</td></row>
 		<row><td>cubrid_jdbc.jar</td><td>JDBC</td><td>cubrid_jdbc.jar</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\jdbc\cubrid_jdbc.jar</td><td>1</td><td/></row>
+		<row><td>cubrid_locales.all.txt</td><td>CUBRID</td><td>cubrid_locales.all.txt</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cubrid_locales.all.txt</td><td>1</td><td>NewSubFolder4</td></row>
+		<row><td>cubrid_locales.txt</td><td>CUBRID</td><td>cubrid_locales.txt</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cubrid_locales.txt</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>cubrid_odbc.dll</td><td>ODBC</td><td>cubrid_odbc.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubrid_odbc.dll</td><td>1</td><td/></row>
 		<row><td>cubrid_rel.exe</td><td>CUBRID</td><td>cubrid_rel.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubrid_rel.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cubrid_service_tray.exe</td><td>CUBRID</td><td>CUBRID_Service_Tray.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\CUBRID_Service_Tray.exe</td><td>1</td><td>NewSubFolder5</td></row>
@@ -1247,8 +1247,8 @@
 		<row><td>SCRIPT_STR_0019</td><td>1042</td><td>설치유형: CUBRID 서버 컴포넌트와 클라이언트 컴포넌트</td><td>0</td><td/><td>-1323328437</td></row>
 		<row><td>SCRIPT_STR_0020</td><td>1033</td><td>Setup Type : CUBRID Client Components</td><td>0</td><td/><td>-1323342357</td></row>
 		<row><td>SCRIPT_STR_0020</td><td>1042</td><td>설치유형: CUBRID 클라이언트 컴포넌트</td><td>0</td><td/><td>-1323328437</td></row>
-		<row><td>SCRIPT_STR_0021</td><td>1033</td><td>In case a different version of the CUBRID product is being used in other machines,\nplease note that the CUBRID TOKEN servers are only compatible with the CUBRID TOKEN clients and vice versa.\nDo you want to continue?</td><td>0</td><td/><td>-1323342357</td></row>
-		<row><td>SCRIPT_STR_0021</td><td>1042</td><td>다른 버전의 CUBRID가 각각 다른 기기에서 이용될 경우, \nCUBRID TOKEN 서버는 CUBRID TOKEN 클라이언트 이상에서만 호환됩니다.\n계속 진행하시겠습니까?</td><td>0</td><td/><td>1914678194</td></row>
+		<row><td>SCRIPT_STR_0021</td><td>1033</td><td>Since CUBRID broker and server versions should match, please make sure that\nyou are running the same version if you operate them in separate machines.\nFor installation of CUBRID tools like Query Browser, Manager and Web Manager,\nplease refer to http://www.cubrid.org/wiki_tools.\nDo you want to continue?</td><td>0</td><td/><td>1293995696</td></row>
+		<row><td>SCRIPT_STR_0021</td><td>1042</td><td>브로커 버전과 데이터베이스 서버 버전은 서로 일치해야 합니다.\n브로커와 데이터베이스 서버를 서로 다른 장비에 설치하려는 경우 주의해 주십시오.\nQuery Browser, Manager, Web Manager등 CUBRID Tool들을 설치하려면\nhttp://www.cubrid.org/wiki_tools를 참고해 주십시오.\n계속 진행하시겠습니까?</td><td>0</td><td/><td>1293946576</td></row>
 		<row><td>SCRIPT_STR_0022</td><td>1033</td><td>Compatibility information</td><td>0</td><td/><td>-1323342357</td></row>
 		<row><td>SCRIPT_STR_0022</td><td>1042</td><td>호환성 정보</td><td>0</td><td/><td>-1323328437</td></row>
 		<row><td>SCRIPT_STR_0028</td><td>1033</td><td>Setup is starting</td><td>0</td><td/><td>-1323342357</td></row>
