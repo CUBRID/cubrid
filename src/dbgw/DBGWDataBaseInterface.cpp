@@ -436,6 +436,16 @@ namespace dbgw
       LogBuffer paramLogBuf("Parameters:");
       for (size_t i = 0; i < m_parameter.size(); i++)
         {
+#ifdef ENABLE_LOB
+          if (m_parameter.getValue(i)->getType() == DBGW_VAL_TYPE_CLOB)
+            {
+              paramLogBuf.addLog("(CLOB)");
+            }
+          else
+            {
+              paramLogBuf.addLog(m_parameter.getValue(i)->toString());
+            }
+#endif
           paramLogBuf.addLog(m_parameter.getValue(i)->toString());
         }
 
@@ -477,6 +487,16 @@ namespace dbgw
                           throw getLastException();
                         }
 
+#ifdef ENABLE_LOB
+                      if (pValue->getType() == DBGW_VAL_TYPE_CLOB)
+                        {
+                          paramLogBuf.addLog("(CLOB)");
+                        }
+                      else
+                        {
+                          paramLogBuf.addLog(pValue->toString());
+                        }
+#endif
                       paramLogBuf.addLog(pValue->toString());
                       typeLogBuf.addLog(
                           getDBGWValueTypeString(pValue->getType()));
@@ -539,6 +559,46 @@ namespace dbgw
        * }
        */
       return m_bReuesed;
+    }
+
+    void DBGWPreparedStatement::bind()
+    {
+      int nResult = 0;
+      const DBGWValue *pValue = NULL;
+      DBGWQueryParameter stParam;
+      const DBGWParameter &parameter = getParameter();
+      for (int i = 0, size = getQuery()->getBindNum(); i < size; i++)
+        {
+          stParam = getQuery()->getBindParam(i);
+          pValue = parameter.getValue(stParam.name.c_str(), stParam.nIndex);
+          if (pValue == NULL)
+            {
+              throw getLastException();
+            }
+
+          switch (pValue->getType())
+            {
+            case DBGW_VAL_TYPE_INT:
+            case DBGW_VAL_TYPE_STRING:
+            case DBGW_VAL_TYPE_DATETIME:
+            case DBGW_VAL_TYPE_DATE:
+            case DBGW_VAL_TYPE_TIME:
+            case DBGW_VAL_TYPE_LONG:
+            case DBGW_VAL_TYPE_CHAR:
+            case DBGW_VAL_TYPE_FLOAT:
+            case DBGW_VAL_TYPE_DOUBLE:
+#ifdef ENABLE_LOB
+            case DBGW_VAL_TYPE_CLOB:
+            case DBGW_VAL_TYPE_BLOB:
+#endif
+              doBind(i + 1, pValue);
+              break;
+            default:
+              InvalidValueTypeException e(pValue->getType());
+              DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+              throw e;
+            }
+        }
     }
 
     DBGWResult::DBGWResult(const DBGWLogger &logger, int nAffectedRow,
@@ -771,23 +831,12 @@ namespace dbgw
       for (MetaDataList::const_iterator it = pMetaList->begin(); it
           != pMetaList->end(); it++, i++)
         {
-          if (it->type == DBGW_VAL_TYPE_INT)
-            {
-              doMakeInt(it->name.c_str(), i, it->orgType);
-            }
-          else if (it->type == DBGW_VAL_TYPE_LONG)
-            {
-              doMakeLong(it->name.c_str(), i, it->orgType);
-            }
-          else
-            {
-              doMakeString(it->name.c_str(), i, it->type, it->orgType);
-            }
+          makeColumnValue(*it, i);
         }
     }
 
-    void DBGWResult::makeValue(bool bReplace, const char *szColName, int nColNo,
-        DBGWValueType type, void *pValue, bool bNull, int nSize)
+    void DBGWResult::makeValue(bool bReplace, const char *szColName,
+        int nColNo, DBGWValueType type, void *pValue, bool bNull, int nSize)
     {
       if (bReplace)
         {
@@ -799,6 +848,24 @@ namespace dbgw
           put(szColName, p);
         }
     }
+
+#ifdef ENABLE_LOB
+    const DBGWValue *DBGWResult::makeValueBuffer(bool bReplace, const char *szColName,
+        int nColNo, DBGWValueType type, bool bNull, int nSize)
+    {
+      if (bReplace)
+        {
+          replace(nColNo - 1, type, bNull, nSize);
+        }
+      else
+        {
+          DBGWValueSharedPtr p(new DBGWValue(type, bNull, nSize));
+          put(szColName, p);
+        }
+
+      return DBGWValueSet::getValue(nColNo - 1);
+    }
+#endif
 
     bool DBGWResult::isNeedFetch() const
     {

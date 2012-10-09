@@ -47,6 +47,7 @@ namespace dbgw
       VALUE_MISMATCH_VALUE_TYPE                 = -22301,
       VALUE_INVALID_VALUE_TYPE                  = -22302,
       VALUE_INVALID_VALUE_FORMAT                = -22303,
+      VALUE_INVALID_SIZE                        = -22304,
 
       CLIENT_MULTISET_IGNORE_FLAG_FALSE         = -22400,
       CLIENT_INVALID_CLIENT                     = -22401,
@@ -220,12 +221,20 @@ namespace dbgw
   public:
     InvalidValueTypeException(int type) throw();
     InvalidValueTypeException(const char *szType) throw();
+    InvalidValueTypeException(int type,
+        const char *szExpectedType) throw();
   };
 
   class InvalidValueFormatException : public DBGWException
   {
   public:
     InvalidValueFormatException(const char *szType, const char *szFormat) throw();
+  };
+
+  class InvalidValueSizeException : public DBGWException
+  {
+  public:
+    InvalidValueSizeException(int nSize) throw();
   };
 
   class MultisetIgnoreResultFlagFalseException : public DBGWException

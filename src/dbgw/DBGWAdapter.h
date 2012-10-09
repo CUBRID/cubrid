@@ -162,21 +162,21 @@ namespace dbgw
             int64 nParamValue);
         DECLSPECIFIER bool __stdcall SetParameter(Handle hParam,
             const char *szParamName, float fParamValue);
-#ifdef ENABLE_UNUSED_FUNCTION
-        /**
-         * DBGW 3.0 cannot support this feature.
-         */
         DECLSPECIFIER bool __stdcall SetParameter(Handle hParam, int nIndex,
             float fParamValue);
         DECLSPECIFIER bool __stdcall SetParameter(Handle hParam,
             const char *szParamName, double dParamValue);
         DECLSPECIFIER bool __stdcall SetParameter(Handle hParam, int nIndex,
             double dParamValue);
-#endif
         DECLSPECIFIER bool __stdcall SetParameter(Handle hParam,
             const char *szParamName, const char *szParamValue, size_t nLen);
         DECLSPECIFIER bool __stdcall SetParameter(Handle hParam, int nIndex,
             const char *szParamValue, size_t nLen);
+        DECLSPECIFIER bool __stdcall SetParameter(Handle hParam, int nIndex,
+            DBGWValueType type, void *pValue, bool bNull = false, int nSize = -1);
+        DECLSPECIFIER bool __stdcall SetParameter(Handle hParam,
+            const char *szParamName, DBGWValueType type, void *pValue,
+            bool bNull = false, int nSize = -1);
 
       }
 
@@ -228,10 +228,6 @@ namespace dbgw
             int64 *pValue);
         DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, const char *szName,
             int64 *pValue);
-#ifdef ENABLE_UNUSED_FUNCTION
-        /**
-         * DBGW 3.0 cannot support this feature.
-         */
         DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, int nIndex,
             float *pValue);
         DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, const char *szName,
@@ -240,7 +236,6 @@ namespace dbgw
             double *pValue);
         DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, const char *szName,
             double *pValue);
-#endif
         DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, int nIndex,
             char *szBuffer, int BufferSize, size_t *pLen);
         DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, const char *szName,

@@ -328,11 +328,27 @@ namespace dbgw
   {
   }
 
+  InvalidValueTypeException::InvalidValueTypeException(int type,
+      const char *szExpectedType) throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(DBGWErrorCode::VALUE_INVALID_VALUE_TYPE,
+            (boost::format("The value type (%s) must be one of types (%s).")
+                % getDBGWValueTypeString(type) % szExpectedType).str()))
+  {
+  }
+
   InvalidValueFormatException::InvalidValueFormatException(const char *szType,
       const char *szFormat) throw() :
     DBGWException(
-        DBGWExceptionFactory::create(DBGWErrorCode::VALUE_INVALID_VALUE_TYPE,
+        DBGWExceptionFactory::create(DBGWErrorCode::VALUE_INVALID_VALUE_FORMAT,
             (boost::format("The %s is not valid %s type.") % szFormat % szType).str()))
+  {
+  }
+
+  InvalidValueSizeException::InvalidValueSizeException(int nSize) throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(DBGWErrorCode::VALUE_INVALID_SIZE,
+            (boost::format("Cannot allocate memory (%d size)") % nSize).str()))
   {
   }
 

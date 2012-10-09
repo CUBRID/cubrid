@@ -468,6 +468,119 @@ namespace dbgw
             }
         }
 
+
+        DECLSPECIFIER bool __stdcall SetParameter(Handle hParam,
+            const char *szParamName, float fParamValue)
+        {
+          clearException();
+
+          try
+            {
+              if (hParam == NULL)
+                {
+                  InvalidHandleException e;
+                  DBGW_LOG_ERROR(e.what());
+                  throw e;
+                }
+
+              if (hParam->put(szParamName, fParamValue) == false)
+                {
+                  throw getLastException();
+                }
+
+              return true;
+            }
+          catch (DBGWException &e)
+            {
+              CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+              return false;
+            }
+        }
+
+        DECLSPECIFIER bool __stdcall SetParameter(Handle hParam, int nIndex,
+            float fParamValue)
+        {
+          clearException();
+
+          try
+            {
+              if (hParam == NULL)
+                {
+                  InvalidHandleException e;
+                  DBGW_LOG_ERROR(e.what());
+                  throw e;
+                }
+
+              if (hParam->set(nIndex, fParamValue) == false)
+                {
+                  throw getLastException();
+                }
+
+              return true;
+            }
+          catch (DBGWException &e)
+            {
+              CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+              return false;
+            }
+        }
+
+        DECLSPECIFIER bool __stdcall SetParameter(Handle hParam,
+            const char *szParamName, double dParamValue)
+        {
+          clearException();
+
+          try
+            {
+              if (hParam == NULL)
+                {
+                  InvalidHandleException e;
+                  DBGW_LOG_ERROR(e.what());
+                  throw e;
+                }
+
+              if (hParam->put(szParamName, dParamValue) == false)
+                {
+                  throw getLastException();
+                }
+
+              return true;
+            }
+          catch (DBGWException &e)
+            {
+              CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+              return false;
+            }
+        }
+
+        DECLSPECIFIER bool __stdcall SetParameter(Handle hParam, int nIndex,
+            double dParamValue)
+        {
+          clearException();
+
+          try
+            {
+              if (hParam == NULL)
+                {
+                  InvalidHandleException e;
+                  DBGW_LOG_ERROR(e.what());
+                  throw e;
+                }
+
+              if (hParam->set(nIndex, dParamValue) == false)
+                {
+                  throw getLastException();
+                }
+
+              return true;
+            }
+          catch (DBGWException &e)
+            {
+              CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+              return false;
+            }
+        }
+
         DECLSPECIFIER bool __stdcall SetParameter(Handle hParam,
             const char *szParamName, const char *szParamValue, size_t nLen)
         {
@@ -513,6 +626,63 @@ namespace dbgw
 
               if (hParam->set(nIndex, DBGW_VAL_TYPE_STRING,
                   (void *) szParamValue, szParamValue == NULL, nLen) == false)
+                {
+                  throw getLastException();
+                }
+
+              return true;
+            }
+          catch (DBGWException &e)
+            {
+              CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+              return false;
+            }
+        }
+
+        DECLSPECIFIER bool __stdcall SetParameter(Handle hParam, int nIndex,
+            DBGWValueType type, void *pValue, bool bNull, int nSize)
+        {
+          clearException();
+
+          try
+            {
+              if (hParam == NULL)
+                {
+                  InvalidHandleException e;
+                  DBGW_LOG_ERROR(e.what());
+                  throw e;
+                }
+
+              if (hParam->set(nIndex, type, pValue, bNull, nSize) == false)
+                {
+                  throw getLastException();
+                }
+
+              return true;
+            }
+          catch (DBGWException &e)
+            {
+              CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+              return false;
+            }
+        }
+
+        DECLSPECIFIER bool __stdcall SetParameter(Handle hParam,
+            const char *szParamName, DBGWValueType type, void *pValue, bool bNull,
+            int nSize)
+        {
+          clearException();
+
+          try
+            {
+              if (hParam == NULL)
+                {
+                  InvalidHandleException e;
+                  DBGW_LOG_ERROR(e.what());
+                  throw e;
+                }
+
+              if (hParam->put(szParamName, type, pValue, bNull, nSize) == false)
                 {
                   throw getLastException();
                 }
@@ -844,6 +1014,118 @@ namespace dbgw
                 }
 
               if ((*hResult)->getLong(szName, pValue) == false)
+                {
+                  throw getLastException();
+                }
+
+              return true;
+            }
+          catch (DBGWException &e)
+            {
+              CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+              return false;
+            }
+        }
+
+        DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, int nIndex,
+            float *pValue)
+        {
+          clearException();
+
+          try
+            {
+              if (hResult == NULL)
+                {
+                  InvalidHandleException e;
+                  DBGW_LOG_ERROR(e.what());
+                  throw e;
+                }
+
+              if ((*hResult)->getFloat(nIndex, pValue) == false)
+                {
+                  throw getLastException();
+                }
+
+              return true;
+            }
+          catch (DBGWException &e)
+            {
+              CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+              return false;
+            }
+        }
+
+        DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, const char *szName,
+            float *pValue)
+        {
+          clearException();
+
+          try
+            {
+              if (hResult == NULL)
+                {
+                  InvalidHandleException e;
+                  DBGW_LOG_ERROR(e.what());
+                  throw e;
+                }
+
+              if ((*hResult)->getFloat(szName, pValue) == false)
+                {
+                  throw getLastException();
+                }
+
+              return true;
+            }
+          catch (DBGWException &e)
+            {
+              CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+              return false;
+            }
+        }
+
+        DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, int nIndex,
+            double *pValue)
+        {
+          clearException();
+
+          try
+            {
+              if (hResult == NULL)
+                {
+                  InvalidHandleException e;
+                  DBGW_LOG_ERROR(e.what());
+                  throw e;
+                }
+
+              if ((*hResult)->getDouble(nIndex, pValue) == false)
+                {
+                  throw getLastException();
+                }
+
+              return true;
+            }
+          catch (DBGWException &e)
+            {
+              CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+              return false;
+            }
+        }
+
+        DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, const char *szName,
+            double *pValue)
+        {
+          clearException();
+
+          try
+            {
+              if (hResult == NULL)
+                {
+                  InvalidHandleException e;
+                  DBGW_LOG_ERROR(e.what());
+                  throw e;
+                }
+
+              if ((*hResult)->getDouble(szName, pValue) == false)
                 {
                   throw getLastException();
                 }

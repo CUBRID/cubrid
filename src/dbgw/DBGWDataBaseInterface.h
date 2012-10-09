@@ -112,7 +112,8 @@ namespace dbgw
       virtual bool isReused() const;
 
     protected:
-      virtual void bind() = 0;
+      void bind();
+      virtual void doBind(int nIndex, const DBGWValue *pValue) = 0;
       virtual DBGWResultSharedPtr doExecute() = 0;
       const DBGWBoundQuerySharedPtr getQuery() const;
       const DBGWParameter &getParameter() const;
@@ -161,12 +162,13 @@ namespace dbgw
 
     protected:
       void makeColumnValues();
+      virtual void makeColumnValue(const Metadata &md, int nColNo) = 0;
       void makeValue(bool bReplace, const char *szColName, int nColNo,
           DBGWValueType type, void *pValue, bool bNull, int nSize);
-      virtual void doMakeInt(const char *szColName, int nColNo, int orgType) = 0;
-      virtual void doMakeLong(const char *szColName, int nColNo, int orgType) = 0;
-      virtual void doMakeString(const char *szColName, int nColNo,
-          DBGWValueType type, int orgType) = 0;
+#ifdef ENABLE_LOB
+      const DBGWValue *makeValueBuffer(bool bReplace, const char *szColName,
+          int nColNo, DBGWValueType type, bool bNull, int nSize);
+#endif
       void makeMetaData();
       virtual void doMakeMetadata(MetaDataList &metaList) = 0;
       virtual void doFirst() = 0;

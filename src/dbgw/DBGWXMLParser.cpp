@@ -279,6 +279,33 @@ namespace dbgw
       {
         return DBGW_VAL_TYPE_LONG;
       }
+    if (!strcasecmp(szType, "float"))
+      {
+        return DBGW_VAL_TYPE_FLOAT;
+      }
+    if (!strcasecmp(szType, "double"))
+      {
+        return DBGW_VAL_TYPE_DOUBLE;
+      }
+    if (!strcasecmp(szType, "date"))
+      {
+        return DBGW_VAL_TYPE_DATE;
+      }
+    if (!strcasecmp(szType, "time"))
+      {
+        return DBGW_VAL_TYPE_TIME;
+      }
+    if (!strcasecmp(szType, "datetime"))
+      {
+        return DBGW_VAL_TYPE_DATETIME;
+      }
+#ifdef ENABLE_LOB
+    if (!strcasecmp(szType, "clob"))
+      {
+        return DBGW_VAL_TYPE_CLOB;
+      }
+#endif
+
     InvalidValueTypeException e(szType);
     DBGW_LOG_ERROR(e.what());
     throw e;
