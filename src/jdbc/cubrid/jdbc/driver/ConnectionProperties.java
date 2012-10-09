@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Properties;
 import java.util.StringTokenizer;
 
+import cubrid.jdbc.jci.BrokerHeathCheck;
 import cubrid.jdbc.jci.UConnection;
 
 public class ConnectionProperties {
@@ -74,6 +75,12 @@ public class ConnectionProperties {
 		throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_url,
 			" illegal access properties", null);
 	    }
+	}
+	if (this.getConnLoadBal() && this.getAltHosts() == null){
+		this.connLoadBal.setValue("false");
+	}
+	if (this.getReconnectTime() < (BrokerHeathCheck.MONITORING_INTERVAL / 1000)) {
+		this.rcTime.setValue((Integer)(BrokerHeathCheck.MONITORING_INTERVAL / 1000));
 	}
     }
 
@@ -299,6 +306,9 @@ public class ConnectionProperties {
 
     StringConnectionProperty altHosts = new StringConnectionProperty(
 	    "altHosts", null);
+    
+    BooleanConnectionProperty connLoadBal = new BooleanConnectionProperty(
+    		"loadBalance", false);
 
     ZeroDateTimeBehaviorConnectionProperty zeroDateTimeBehavior = new ZeroDateTimeBehaviorConnectionProperty(
 	    "zeroDateTimeBehavior", UConnection.ZERO_DATETIME_BEHAVIOR_EXCEPTION);
@@ -342,6 +352,9 @@ public class ConnectionProperties {
 	return altHosts.getValueAsString();
     }
 
+    public boolean getConnLoadBal() {
+   return connLoadBal.getValueAsBoolean();
+    }
     public String getZeroDateTimeBehavior() {
 	return zeroDateTimeBehavior.getValueAsString();
     }

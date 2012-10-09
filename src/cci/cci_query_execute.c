@@ -261,7 +261,7 @@ qe_end_tran (T_CON_HANDLE * con_handle, char type, T_CCI_ERROR * err_buf)
   char func_code = CAS_FC_END_TRAN;
   int err_code;
   bool keep_connection;
-  time_t cur_time, last_rc_time;
+  time_t cur_time, failure_time;
 #ifdef END_TRAN2
   char type_str[2];
 #endif
@@ -326,16 +326,20 @@ qe_end_tran (T_CON_HANDLE * con_handle, char type, T_CCI_ERROR * err_buf)
   keep_connection = (con_handle->broker_info[BROKER_INFO_KEEP_CONNECTION]
 		     == CAS_KEEP_CONNECTION_ON);
 
-  if (con_handle->alter_host_id >= 0 && con_handle->rc_time > 0)
+  if (con_handle->alter_host_id > 0 && con_handle->rc_time > 0)
     {
       cur_time = time (NULL);
-      last_rc_time = hm_get_ha_last_rc_time (con_handle);
+      failure_time = con_handle->last_failure_time;
 
-      if (last_rc_time > 0 && (cur_time - last_rc_time) > con_handle->rc_time)
+      if (failure_time > 0 && (cur_time - failure_time) > con_handle->rc_time)
 	{
-	  keep_connection = false;
-	  con_handle->alter_host_id = -1;
-	  hm_set_ha_status (con_handle, true);
+	  if (hm_is_host_reachable (con_handle, 0))
+	    {
+	      keep_connection = false;
+	      con_handle->alter_host_id = -1;
+	      con_handle->force_failback = 0;
+	      con_handle->last_failure_time = 0;
+	    }
 	}
     }
 

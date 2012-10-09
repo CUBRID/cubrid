@@ -113,6 +113,7 @@ int wsa_initialize ();
 #define IS_BROKER_STMT_POOL(c) \
   ((c)->broker_info[BROKER_INFO_STATEMENT_POOLING] == CAS_STATEMENT_POOLING_ON)
 #define IS_OUT_TRAN(c) ((c)->con_status == CCI_CON_STATUS_OUT_TRAN)
+#define IS_FORCE_FAILBACK(c) ((c)->force_failback == 1)
 #define IS_ER_COMMUNICATION(e) \
   ((e) == CCI_ER_COMMUNICATION || (e) == CAS_ER_COMMUNICATION)
 #define IS_SERVER_DOWN(e) \
@@ -191,6 +192,7 @@ static bool cci_datasource_make_url (T_CCI_PROPERTIES * prop, char *new_url,
 				     char *url, T_CCI_ERROR * err_buf);
 
 static int cci_time_string (char *buf, struct timeval *time_val);
+static void force_close_connection (T_CON_HANDLE * con_handle);
 /************************************************************************
  * INTERFACE VARIABLES							*
  ************************************************************************/
@@ -206,14 +208,15 @@ static const char *build_number = "VERSION=" MAKE_STR (BUILD_NUMBER);
 
 #if defined(WINDOWS)
 static HANDLE con_handle_table_mutex;
-extern HANDLE ha_status_mutex;
+static HANDLE health_check_th_mutex;
 #else
 static T_MUTEX con_handle_table_mutex = PTHREAD_MUTEX_INITIALIZER;
-extern T_MUTEX ha_status_mutex;
+static T_MUTEX health_check_th_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
 static char init_flag = 0;
 static char cci_init_flag = 1;
+static char is_health_check_th_started = 0;
 #if !defined(WINDOWS)
 static int cci_SIGPIPE_ignore = 0;
 #endif
@@ -299,7 +302,6 @@ cci_init ()
       cci_init_flag = 0;
 #if defined(WINDOWS)
       MUTEX_INIT (con_handle_table_mutex);
-      MUTEX_INIT (ha_status_mutex);
 #endif
     }
 }
@@ -509,6 +511,15 @@ cci_connect_with_url_internal (char *url, char *user, char *pass,
       /* A user don't exist in the parameter and url */
       user = (char *) "PUBLIC";
     }
+
+  /* start health check thread */
+  MUTEX_LOCK (health_check_th_mutex);
+  if (!is_health_check_th_started)
+    {
+      hm_create_health_check_th ();
+      is_health_check_th_started = 1;
+    }
+  MUTEX_UNLOCK (health_check_th_mutex);
 
   conn_id = cci_get_new_handle_id (host, port, dbname, user, pass);
   if (conn_id < 0)
@@ -814,6 +825,11 @@ cci_end_tran (int con_h_id, char type, T_CCI_ERROR * err_buf)
     }
   API_ELOG (con_handle, err_code);
 
+  if (IS_OUT_TRAN (con_handle))
+    {
+      hm_check_rc_time (con_handle);
+    }
+
 ret:
   if (con_handle != NULL)
     {
@@ -842,6 +858,22 @@ reset_connect (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle)
   return CCI_ER_NO_ERROR;
 }
 
+static void
+force_close_connection (T_CON_HANDLE * con_handle)
+{
+  con_handle->alter_host_id = -1;
+  CLOSE_SOCKET (con_handle->sock_fd);
+  con_handle->sock_fd = INVALID_SOCKET;
+  con_handle->force_failback = 0;
+}
+
+/*
+ * For the purpose of re-balancing existing connections, cci_prepare,
+ * cci_execute, cci_execute_array, cci_prepare_and_execute,
+ * cci_execute_batch require to forcefully disconnect the current
+ * connection when it is in the OUT_TRAN state and the time elapsed
+ * after the last failure of a host is over rc_time.
+ */
 int
 cci_prepare (int con_id, char *sql_stmt, char flag, T_CCI_ERROR * err_buf)
 {
@@ -908,6 +940,11 @@ cci_prepare (int con_id, char *sql_stmt, char flag, T_CCI_ERROR * err_buf)
       goto prepare_error;
     }
 
+  if (IS_OUT_TRAN (con_handle) && IS_FORCE_FAILBACK (con_handle)
+      && !IS_INVALID_SOCKET (con_handle->sock_fd))
+    {
+      force_close_connection (con_handle);
+    }
   SET_START_TIME_FOR_QUERY (con_handle, req_handle);
 
   err_code = qe_prepare (req_handle, con_handle, sql_stmt, flag, err_buf, 0);
@@ -965,7 +1002,6 @@ prepare_error:
     {
       hm_req_handle_free (con_handle, req_handle);
     }
-  con_handle->ref_count = 0;
 
   if (err_code == CCI_ER_QUERY_TIMEOUT &&
       con_handle->disconnect_on_query_timeout)
@@ -974,6 +1010,12 @@ prepare_error:
       con_handle->sock_fd = INVALID_SOCKET;
       con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
     }
+
+  if (IS_OUT_TRAN (con_handle))
+    {
+      hm_check_rc_time (con_handle);
+    }
+  con_handle->ref_count = 0;
 
   API_ELOG (con_handle, err_code);
 #ifdef CCI_DEBUG
@@ -1270,6 +1312,13 @@ cci_bind_param_array (int req_h_id, int index, T_CCI_A_TYPE a_type,
   return err_code;
 }
 
+/*
+ * For the purpose of re-balancing existing connections, cci_prepare,
+ * cci_execute, cci_execute_array, cci_prepare_and_execute,
+ * cci_execute_batch require to forcefully disconnect the current
+ * connection when it is in the OUT_TRAN state and the time elapsed
+ * after the last failure of a host is over rc_time.
+ */
 int
 cci_execute (int req_h_id, char flag, int max_col_size, T_CCI_ERROR * err_buf)
 {
@@ -1330,6 +1379,11 @@ cci_execute (int req_h_id, char flag, int max_col_size, T_CCI_ERROR * err_buf)
       flag |= CCI_EXEC_QUERY_INFO;
     }
 
+  if (IS_OUT_TRAN (con_handle) && IS_FORCE_FAILBACK (con_handle)
+      && !IS_INVALID_SOCKET (con_handle->sock_fd))
+    {
+      force_close_connection (con_handle);
+    }
   SET_START_TIME_FOR_QUERY (con_handle, req_handle);
 
   if (IS_BROKER_STMT_POOL (con_handle))
@@ -1419,6 +1473,11 @@ execute_end:
       con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
     }
 
+  if (IS_OUT_TRAN (con_handle))
+    {
+      hm_check_rc_time (con_handle);
+    }
+
   API_ELOG (con_handle, err_code);
   if (con_handle->log_slow_queries)
     {
@@ -1445,6 +1504,13 @@ thread_end:
   return err_code;
 }
 
+/*
+ * For the purpose of re-balancing existing connections, cci_prepare,
+ * cci_execute, cci_execute_array, cci_prepare_and_execute,
+ * cci_execute_batch require to forcefully disconnect the current
+ * connection when it is in the OUT_TRAN state and the time elapsed
+ * after the last failure of a host is over rc_time.
+ */
 int
 cci_prepare_and_execute (int con_id, char *sql_stmt,
 			 int max_col_size, int *exec_retval,
@@ -1519,11 +1585,16 @@ cci_prepare_and_execute (int con_id, char *sql_stmt,
       goto prepare_execute_error;
     }
 
+  if (IS_OUT_TRAN (con_handle) && IS_FORCE_FAILBACK (con_handle)
+      && !IS_INVALID_SOCKET (con_handle->sock_fd))
+    {
+      force_close_connection (con_handle);
+    }
+
   SET_START_TIME_FOR_QUERY (con_handle, req_handle);
 
   err_code = qe_prepare_and_execute (req_handle, con_handle, sql_stmt,
 				     max_col_size, err_buf);
-
   if (err_code < 0)
     {
       if (IS_OUT_TRAN (con_handle))
@@ -1541,7 +1612,6 @@ cci_prepare_and_execute (int con_id, char *sql_stmt,
 		{
 		  goto prepare_execute_error;
 		}
-
 	    }
 	}
       else
@@ -1580,6 +1650,12 @@ cci_prepare_and_execute (int con_id, char *sql_stmt,
     }
 
   RESET_START_TIME (con_handle);
+
+  if (IS_OUT_TRAN (con_handle))
+    {
+      hm_check_rc_time (con_handle);
+    }
+
   con_handle->ref_count = 0;
   return req_handle_id;
 
@@ -1591,8 +1667,6 @@ prepare_execute_error:
       hm_req_handle_free (con_handle, req_handle);
     }
 
-  con_handle->ref_count = 0;
-
   if (err_code == CCI_ER_QUERY_TIMEOUT &&
       con_handle->disconnect_on_query_timeout)
     {
@@ -1600,6 +1674,12 @@ prepare_execute_error:
       con_handle->sock_fd = INVALID_SOCKET;
       con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
     }
+
+  if (IS_OUT_TRAN (con_handle))
+    {
+      hm_check_rc_time (con_handle);
+    }
+  con_handle->ref_count = 0;
 
 error:
   CCI_SET_ERROR_BUFFER (err_code, err_buf);
@@ -1647,6 +1727,13 @@ cci_next_result (int req_h_id, T_CCI_ERROR * err_buf)
   return (next_result_cmd (req_h_id, CCI_CLOSE_CURRENT_RESULT, err_buf));
 }
 
+/*
+ * For the purpose of re-balancing existing connections, cci_prepare,
+ * cci_execute, cci_execute_array, cci_prepare_and_execute,
+ * cci_execute_batch require to forcefully disconnect the current
+ * connection when it is in the OUT_TRAN state and the time elapsed
+ * after the last failure of a host is over rc_time.
+ */
 int
 cci_execute_array (int req_h_id, T_CCI_QUERY_RESULT ** qr,
 		   T_CCI_ERROR * err_buf)
@@ -1690,6 +1777,11 @@ cci_execute_array (int req_h_id, T_CCI_QUERY_RESULT ** qr,
 	}
     }
 
+  if (IS_OUT_TRAN (con_handle) && IS_FORCE_FAILBACK (con_handle)
+      && !IS_INVALID_SOCKET (con_handle->sock_fd))
+    {
+      force_close_connection (con_handle);
+    }
   SET_START_TIME_FOR_QUERY (con_handle, req_handle);
 
   if (IS_BROKER_STMT_POOL (con_handle))
@@ -1749,8 +1841,6 @@ cci_execute_array (int req_h_id, T_CCI_QUERY_RESULT ** qr,
 execute_end:
   RESET_START_TIME (con_handle);
 
-  con_handle->ref_count = 0;
-
   if (err_code == CCI_ER_QUERY_TIMEOUT &&
       con_handle->disconnect_on_query_timeout)
     {
@@ -1758,6 +1848,12 @@ execute_end:
       con_handle->sock_fd = INVALID_SOCKET;
       con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
     }
+
+  if (IS_OUT_TRAN (con_handle))
+    {
+      hm_check_rc_time (con_handle);
+    }
+  con_handle->ref_count = 0;
 
 ret:
   CCI_SET_ERROR_BUFFER (err_code, err_buf);
@@ -2115,6 +2211,11 @@ cci_close_req_handle (int req_h_id)
       err_code = CCI_ER_NO_ERROR;
     }
   hm_req_handle_free (con_handle, req_handle);
+
+  if (IS_OUT_TRAN (con_handle))
+    {
+      hm_check_rc_time (con_handle);
+    }
 
   con_handle->ref_count = 0;
 
@@ -3292,6 +3393,13 @@ ret:
   return err_code;
 }
 
+/*
+ * For the purpose of re-balancing existing connections, cci_prepare,
+ * cci_execute, cci_execute_array, cci_prepare_and_execute,
+ * cci_execute_batch require to forcefully disconnect the current
+ * connection when it is in the OUT_TRAN state and the time elapsed
+ * after the last failure of a host is over rc_time.
+ */
 int
 cci_execute_batch (int con_h_id, int num_query, char **sql_stmt,
 		   T_CCI_QUERY_RESULT ** qr, T_CCI_ERROR * err_buf)
@@ -3337,6 +3445,11 @@ cci_execute_batch (int con_h_id, int num_query, char **sql_stmt,
 	}
     }
 
+  if (IS_OUT_TRAN (con_handle) && IS_FORCE_FAILBACK (con_handle)
+      && !IS_INVALID_SOCKET (con_handle->sock_fd))
+    {
+      force_close_connection (con_handle);
+    }
   SET_START_TIME_FOR_QUERY (con_handle, NULL);
 
   if (IS_OUT_TRAN_STATUS (con_handle))
@@ -5039,6 +5152,11 @@ fetch_cmd (int req_h_id, char flag, T_CCI_ERROR * err_buf)
 			   err_buf);
     }
 
+  if (IS_OUT_TRAN (con_handle))
+    {
+      hm_check_rc_time (con_handle);
+    }
+
 ret:
   if (con_handle != NULL)
     {
@@ -5090,6 +5208,7 @@ cas_connect_internal (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
   int error;
   int i;
   int remained_time = 0;
+  int retry = 0;
 
   assert (connect != NULL);
 
@@ -5120,25 +5239,50 @@ cas_connect_internal (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
       return CCI_ER_NO_ERROR;
     }
 
-  /* first, try to connect to a last connected host */
-  error = net_connect_srv (con_handle, con_handle->alter_host_id, err_buf,
-			   remained_time);
-  if (error == CCI_ER_NO_ERROR)
+  if (con_handle->alter_host_count == 0)
     {
-      *connect = 1;
-      return CCI_ER_NO_ERROR;
-    }
-
-  /* second, try to connect all hosts */
-  for (i = 0; i < con_handle->alter_host_count; i++)
-    {
-      error = net_connect_srv (con_handle, i, err_buf, remained_time);
+      error = net_connect_srv (con_handle, con_handle->alter_host_id, err_buf,
+			       remained_time);
       if (error == CCI_ER_NO_ERROR)
 	{
 	  *connect = 1;
 	  return CCI_ER_NO_ERROR;
 	}
     }
+
+  do
+    {
+      for (i = 0; i < con_handle->alter_host_count; i++)
+	{
+	  /* if all hosts turn out to be unreachable,
+	   *  ignore host reachability and try one more time
+	   */
+	  if (hm_is_host_reachable (con_handle, i) || retry)
+	    {
+	      error = net_connect_srv (con_handle, i, err_buf, remained_time);
+	      if (error == CCI_ER_NO_ERROR)
+		{
+		  *connect = 1;
+		  return CCI_ER_NO_ERROR;
+		}
+
+	      if (error == CCI_ER_COMMUNICATION || error == CCI_ER_CONNECT)
+		{
+		  hm_set_host_status (con_handle, i, false);
+		}
+	      else
+		{
+		  break;
+		}
+	    }
+	  else
+	    {
+	      con_handle->last_failure_time = time (NULL);
+	    }
+	}
+      retry++;
+    }
+  while (retry < 2);
 
   if (error == CCI_ER_QUERY_TIMEOUT)
     {

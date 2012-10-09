@@ -102,7 +102,7 @@ static void init_msg_header (MSG_HEADER * header);
 static int net_send_msg_header (SOCKET sock_fd, MSG_HEADER * header);
 static int net_recv_msg_header (SOCKET sock_fd, int port, MSG_HEADER * header,
 				int timeout);
-static bool net_peer_alive (SOCKET sd, int port, int timeout);
+static bool net_peer_socket_alive (SOCKET sd, int port, int timeout_msec);
 static int net_cancel_request_internal (unsigned char *ip_addr, int port,
 					char *msg, int msglen);
 static int net_cancel_request_w_local_port (unsigned char *ip_addr, int port,
@@ -313,7 +313,6 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id,
 
   if (con_handle->alter_host_count > 0)
     {
-      hm_set_ha_status (con_handle, false);
       con_handle->is_retry = 0;
     }
   else
@@ -699,6 +698,41 @@ net_recv_msg (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
   return net_recv_msg_timeout (con_handle, msg, msg_size, err_buf, 0);
 }
 
+bool
+net_peer_alive (unsigned char *ip_addr, int port, int timeout_msec)
+{
+  SOCKET sock_fd;
+  int ret, dummy;
+  const char *ping_msg = "PING_TEST!";
+
+  if (connect_srv (ip_addr, port, 0, &sock_fd, timeout_msec) !=
+      CCI_ER_NO_ERROR)
+    {
+      CLOSE_SOCKET (sock_fd);
+      return false;
+    }
+
+  ret = WRITE_TO_SOCKET (sock_fd, ping_msg, strlen (ping_msg));
+
+  if (ret < 0)
+    {
+      CLOSE_SOCKET (sock_fd);
+      return false;
+    }
+
+  ret = READ_FROM_SOCKET (sock_fd, (char *) &dummy, sizeof (int));
+
+  if (ret < 0)
+    {
+      CLOSE_SOCKET (sock_fd);
+      return false;
+    }
+
+  CLOSE_SOCKET (sock_fd);
+
+  return true;
+}
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 int
 net_send_file (SOCKET sock_fd, char *filename, int filesize)
@@ -855,7 +889,7 @@ net_recv_stream (SOCKET sock_fd, int port, char *buf, int size, int timeout)
 		}
 	    }
 
-	  if (net_peer_alive (sock_fd, port, SOCKET_TIMEOUT) == true)
+	  if (net_peer_socket_alive (sock_fd, port, SOCKET_TIMEOUT) == true)
 	    {
 	      continue;
 	    }
@@ -890,13 +924,11 @@ net_recv_stream (SOCKET sock_fd, int port, char *buf, int size, int timeout)
 }
 
 static bool
-net_peer_alive (SOCKET sd, int port, int timeout)
+net_peer_socket_alive (SOCKET sd, int port, int timeout_msec)
 {
-  SOCKET nsd;
-  int n, dummy;
+  unsigned char ip_addr[4];
   struct sockaddr_in saddr;
   socklen_t slen;
-  const char *ping_msg = "PING_TEST!";
 
   slen = sizeof (saddr);
   if (getpeername (sd, (struct sockaddr *) &saddr, &slen) < 0)
@@ -910,38 +942,9 @@ net_peer_alive (SOCKET sd, int port, int timeout)
       return true;
     }
 
-  nsd = socket (AF_INET, SOCK_STREAM, 0);
-  if (IS_INVALID_SOCKET (nsd))
-    {
-      return false;
-    }
+  memcpy (ip_addr, &saddr.sin_addr, 4);
 
-  saddr.sin_port = htons (port);
-  n = connect (nsd, (struct sockaddr *) &saddr, slen);
-
-  if (n < 0)
-    {
-      close (nsd);
-      return false;
-    }
-
-  /* turn off negal algorithm for fast response */
-  dummy = 1;
-  setsockopt (nsd, IPPROTO_TCP, TCP_NODELAY, &dummy, sizeof (dummy));
-
-  n = WRITE_TO_SOCKET (nsd, ping_msg, strlen (ping_msg));
-
-  if (n < 0)
-    {
-      close (nsd);
-      return false;
-    }
-
-  READ_FROM_SOCKET (nsd, (char *) &dummy, sizeof (int));
-
-  CLOSE_SOCKET (nsd);
-
-  return true;
+  return net_peer_alive (ip_addr, port, timeout_msec);
 }
 
 static int

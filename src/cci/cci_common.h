@@ -58,9 +58,7 @@ extern "C"
  ************************************************************************/
 #include "system.h"
 #include "cas_cci.h"
-#if defined(WINDOWS)
 #include "porting.h"
-#endif
 
 /************************************************************************
  * PUBLIC DEFINITIONS							*
@@ -246,10 +244,6 @@ extern "C"
 
 #if defined(WINDOWS)
   typedef unsigned long in_addr_t;
-#else
-  typedef int SOCKET;
-#define INVALID_SOCKET (-1)
-#define IS_INVALID_SOCKET(socket) ((socket) < 0)
 #endif
 
 /************************************************************************
@@ -350,7 +344,7 @@ extern "C"
 				CMP_FUNC cmp_func);
   extern void mht_destroy (MHT_TABLE * ht, bool free_key, bool free_data);
   extern void *mht_rem (MHT_TABLE * ht, void *key, bool free_key,
-		        bool free_data);
+			bool free_data);
   extern void *mht_get (MHT_TABLE * ht, void *key);
   extern void *mht_put (MHT_TABLE * ht, void *key, void *data);
   extern void *mht_put_data (MHT_TABLE * ht, void *key, void *data);

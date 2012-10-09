@@ -79,6 +79,7 @@ static int cci_url_set_properties (T_URL_PROPERTY props[], int len,
 static int cci_url_set_value (T_URL_PROPERTY * property, char *value);
 static int cci_url_get_int (char *str, int *value);
 static int cci_url_get_bool (char *str, bool * value);
+static void cci_shuffle_althosts (T_CON_HANDLE * handle);
 
 /*
  * INTERFACE VARIABLES
@@ -288,8 +289,35 @@ cci_url_set_althosts (T_CON_HANDLE * handle, char *data)
       hosts[i].port = v;
     }
   handle->alter_host_count = i;
+  if (handle->load_balance)
+    {
+      cci_shuffle_althosts (handle);
+    }
 
   return error;
+}
+
+static void
+cci_shuffle_althosts (T_CON_HANDLE * handle)
+{
+  struct timeval t;
+  int i, j;
+  long int r;
+  struct drand48_data buf;
+  T_ALTER_HOST temp_host;
+
+  /* Fisher-Yates shuffle */
+  for (i = handle->alter_host_count - 1; i > 0; i--)
+    {
+      gettimeofday (&t, NULL);
+      srand48_r (t.tv_usec, &buf);
+      lrand48_r (&buf, &r);
+      j = (int) (r % (i + 1));
+
+      temp_host = handle->alter_hosts[j];
+      handle->alter_hosts[j] = handle->alter_hosts[i];
+      handle->alter_hosts[i] = temp_host;
+    }
 }
 
 int
@@ -300,6 +328,7 @@ cci_conn_set_properties (T_CON_HANDLE * handle, char *properties)
 
   T_URL_PROPERTY props[] = {
     {"altHosts", STRING_PROPERTY, &althosts},
+    {"loadBalance", BOOL_PROPERTY, &handle->load_balance},
     {"rcTime", INT_PROPERTY, &handle->rc_time},
     {"loginTimeout", INT_PROPERTY, &handle->login_timeout},
     {"queryTimeout", INT_PROPERTY, &handle->query_timeout},
@@ -327,6 +356,11 @@ cci_conn_set_properties (T_CON_HANDLE * handle, char *properties)
       goto set_properties_end;
     }
 
+  if (handle->rc_time < MONITORING_INTERVAL)
+    {
+      handle->rc_time = MONITORING_INTERVAL;
+    }
+
   if (althosts != NULL)
     {
       error = cci_url_set_althosts (handle, althosts);
@@ -334,6 +368,11 @@ cci_conn_set_properties (T_CON_HANDLE * handle, char *properties)
 	{
 	  goto set_properties_end;
 	}
+    }
+
+  if (althosts == NULL && handle->load_balance)
+    {
+      handle->load_balance = false;
     }
 
   /* for logging */

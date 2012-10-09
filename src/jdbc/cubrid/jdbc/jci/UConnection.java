@@ -176,7 +176,7 @@ public class UConnection {
 	public static byte[] driverInfo;
 
 	private ConnectionProperties connectionProperties = new ConnectionProperties();
-	private long lastRCTime = 0;
+	private long lastFailureTime = 0;
 	private int sessionId = 0;
 
 	private Log log;
@@ -536,10 +536,12 @@ public class UConnection {
 		boolean keepConnection = brokerInfoKeepConnection();
 		long currentTime = System.currentTimeMillis() / 1000;
 		int reconnectTime = connectionProperties.getReconnectTime();
-		if (connectedHostId > 0 && lastRCTime != 0 && reconnectTime > 0
-				&& currentTime - lastRCTime > reconnectTime) {
-			keepConnection = false;
-			lastRCTime = currentTime;
+		if (connectedHostId > 0 && lastFailureTime != 0 && reconnectTime > 0
+				&& currentTime - lastFailureTime > reconnectTime) {
+			if (!CUBRIDDriver.unreachableHosts.contains(altHosts.get(0))) {
+				keepConnection = false;
+				lastFailureTime = 0;
+			}
 		}
 
 		if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR
@@ -1521,14 +1523,10 @@ public class UConnection {
 		}
 		connectDB(timeout);
 
-		CUBRIDDriver.setLastConnectInfo(url, makeConnectInfo(CASIp, CASPort));
-
 		client.setTcpNoDelay(true);
 		client.setSoTimeout(SOCKET_TIMEOUT);
 		needReconnection = false;
 		isClosed = false;
-		if (connectionProperties.getReconnectTime() > 0)
-			lastRCTime = System.currentTimeMillis() / 1000;
 
 		if (lastIsolationLevel != CUBRIDIsolationLevel.TRAN_UNKNOWN_ISOLATION)
 			setIsolationLevel(lastIsolationLevel);
@@ -1537,10 +1535,6 @@ public class UConnection {
 		/*
 		 * if(!lastAutoCommit) setAutoCommit(lastAutoCommit);
 		 */
-	}
-
-	private String makeConnectInfo(String ip, int port) {
-		return String.format("%s:%d", ip, port);
 	}
 
 	private void connectDB(int timeout) throws IOException, UJciException {
@@ -1596,41 +1590,43 @@ public class UConnection {
 	}
 
 	private void reconnect() throws IOException, UJciException {
-		String info = CUBRIDDriver.getLastConnectInfo(url);
-		if (info != null) {
-			setConnectInfo(info);
-			try {
-				reconnectWorker();
-				return;
-			} catch (Exception e) {
-				// continue
-			}
-		}
-
 		if (altHosts == null) {
 			reconnectWorker();
 		} else {
-			for (int hostId = 0; hostId < altHosts.size(); hostId++) {
-				try {
-					setActiveHost(hostId);
-					reconnectWorker();
-					connectedHostId = hostId;
-					return; // success to connect
-				} catch (IOException e) {
-				    	logException(e);
-					// continue to connect to next host
-				} catch (UJciException e) {
-				    	logException(e);
-					int errno = e.getJciError();
-					if (errno == UErrorCode.ER_COMMUNICATION ||
-					// errno == UErrorCode.ER_DBMS ||
-							errno == UErrorCode.ER_CONNECTION) {
-						// continue to connect to next host
+			int retry = 0;
+			do {
+				for (int hostId = 0; hostId < altHosts.size(); hostId++) {
+					/*
+					 * if all hosts turn out to be unreachable, ignore host
+					 * reachability and try one more time
+					 */
+					if (!CUBRIDDriver.unreachableHosts.contains(altHosts
+							.get(hostId)) || retry == 1) {
+						try {
+							setActiveHost(hostId);
+							reconnectWorker();
+							connectedHostId = hostId;
+							return; // success to connect
+						} catch (IOException e) {
+							logException(e);
+							throw e;
+						} catch (UJciException e) {
+							logException(e);
+							int errno = e.getJciError();
+							if (errno == UErrorCode.ER_COMMUNICATION
+									|| errno == UErrorCode.ER_CONNECTION) {
+								CUBRIDDriver.addToUnreachableHosts(altHosts
+										.get(hostId));
+							} else {
+								throw e;
+							}
+						}
 					} else {
-						throw e;
+						lastFailureTime = System.currentTimeMillis() / 1000;
 					}
 				}
-			}
+				retry++;
+			} while (retry < 2);
 			// failed to connect to neither hosts
 			throw createJciException(UErrorCode.ER_CONNECTION);
 		}

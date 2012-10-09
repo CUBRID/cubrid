@@ -70,6 +70,7 @@
 #define ALTER_HOST_MAX_SIZE                     256
 #define DEFERRED_CLOSE_HANDLE_ALLOC_SIZE        256
 #define CON_HANDLE_ID_FACTOR			1000000
+#define MONITORING_INTERVAL		    	60
 
 #define GET_CON_ID(H) ((H) / CON_HANDLE_ID_FACTOR)
 #define GET_REQ_ID(H) ((H) % CON_HANDLE_ID_FACTOR)
@@ -222,7 +223,10 @@ typedef struct
 
   /* connection properties */
   T_ALTER_HOST alter_hosts[ALTER_HOST_MAX_SIZE];
+  char load_balance;
+  char force_failback;
   int rc_time;			/* failback try duration */
+  int last_failure_time;
   T_REQ_HANDLE *pool_lru_head;
   T_REQ_HANDLE *pool_lru_tail;
   T_REQ_HANDLE *pool_use_head;
@@ -282,9 +286,6 @@ extern int hm_get_con_from_pool (unsigned char *ip_addr, int port,
 				 char *dbname, char *dbuser, char *dbpasswd);
 extern int hm_put_con_to_pool (int con);
 
-extern void hm_set_ha_status (T_CON_HANDLE * con_handle, bool reset_rctime);
-extern int hm_get_ha_connected_host (T_CON_HANDLE * con_handle);
-extern time_t hm_get_ha_last_rc_time (T_CON_HANDLE * con_handle);
 extern T_BROKER_VERSION hm_get_broker_version (T_CON_HANDLE * con_handle);
 
 extern void hm_set_con_handle_holdable (T_CON_HANDLE * con_handle,
@@ -295,6 +296,12 @@ extern int hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int req_id);
 extern int hm_req_get_from_pool (T_CON_HANDLE * con, char *sql);
 
 extern int cci_conn_set_properties (T_CON_HANDLE * handle, char *properties);
+
+extern void hm_set_host_status (T_CON_HANDLE * con_handle, int host_id,
+				bool is_reachable);
+extern bool hm_is_host_reachable (T_CON_HANDLE * con_handle, int host_id);
+extern void hm_check_rc_time (T_CON_HANDLE * con_handle);
+extern void hm_create_health_check_th (void);
 
 extern int hm_pool_restore_used_statements (T_CON_HANDLE * connection);
 extern int hm_pool_add_statement_to_use (T_CON_HANDLE * connection,

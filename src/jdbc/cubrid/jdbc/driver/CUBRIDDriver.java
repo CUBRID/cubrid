@@ -41,13 +41,17 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Hashtable;
+import java.util.List;
 import java.util.Properties;
 import java.util.StringTokenizer;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import cubrid.jdbc.jci.BrokerHeathCheck;
 import cubrid.jdbc.jci.UConnection;
 import cubrid.jdbc.jci.UJCIManager;
 import cubrid.jdbc.jci.UJCIUtil;
@@ -80,6 +84,7 @@ public class CUBRIDDriver implements Driver {
 	public static final int default_port = 30000;
 	public static final String default_user = "public";
 	public static final String default_password = "";
+	public static List<String> unreachableHosts;
 
 	private final static String URL_PATTERN =
 	    "jdbc:cubrid(-oracle|-mysql)?:([a-zA-Z_0-9\\.-]*):([0-9]*):([^:]+):([^:]*):([^:]*):(\\?[a-zA-Z_0-9]+=[^&=?]+(&[a-zA-Z_0-9]+=[^&=?]+)*)?";
@@ -93,7 +98,7 @@ public class CUBRIDDriver implements Driver {
 	}
 
 	private static PrintStream debugOutput;
-	private static Hashtable<String, String> connInfoTable;
+	
 	static {
 		if (UJCIUtil.isConsoleDebug()) {
 			try {
@@ -102,7 +107,10 @@ public class CUBRIDDriver implements Driver {
 				debugOutput = System.out;
 			}
 		}
-		connInfoTable = new Hashtable<String, String>();
+		unreachableHosts = new CopyOnWriteArrayList<String>();
+		Thread brokerHealthCheck = new Thread(new BrokerHeathCheck());
+		brokerHealthCheck.setDaemon(true);
+		brokerHealthCheck.start();
 	}
 
 	public static void printDebug(String msg) {
@@ -112,25 +120,15 @@ public class CUBRIDDriver implements Driver {
 		String line = String.format("%s %s", fmt.format(timestamp), msg);
 		debugOutput.println(line);
 	}
-
-	public static void setLastConnectInfo(String url, String info) {
-		if (url != null) {
-			connInfoTable.put(url, info);
-
-			if (UJCIUtil.isConsoleDebug()) {
-				printDebug(String.format("S[K,V]=(%s,%s)", url, info));
+	
+	public static void addToUnreachableHosts(String host) {
+		synchronized (unreachableHosts) {
+			if (!unreachableHosts.contains(host)) {
+				unreachableHosts.add(host);
 			}
 		}
 	}
-
-	public static String getLastConnectInfo(String url) {
-		String info = connInfoTable.get(url);
-		if (UJCIUtil.isConsoleDebug()) {
-			printDebug(String.format("G[K,V]=(%s,%s)", url, info));
-		}
-		return info;
-	}
-
+	
 	/*
 	 * java.sql.Driver interface
 	 */
@@ -208,6 +206,10 @@ public class CUBRIDDriver implements Driver {
 		StringTokenizer st = new StringTokenizer(dummy, ",", false);
 		while (st.hasMoreTokens()) {
 		    altHostList.add(st.nextToken());
+		}
+		
+		if (connProperties.getConnLoadBal()) {
+			Collections.shuffle(altHostList);
 		}
 		try {
 		    u_con = UJCIManager.connect(altHostList, db, user, pass, resolvedUrl);

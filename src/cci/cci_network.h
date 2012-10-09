@@ -94,6 +94,8 @@ extern int net_recv_file (SOCKET sock_fd, int port, int file_size,
 #endif
 extern int net_cancel_request (T_CON_HANDLE * con_handle);
 extern int net_check_cas_request (T_CON_HANDLE * con_handle);
+extern bool net_peer_alive (unsigned char *ip_addr, int port,
+			    int timeout_msec);
 /************************************************************************
  * EXPORTED VARIABLES							*
  ************************************************************************/

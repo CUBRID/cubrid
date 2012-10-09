@@ -62,6 +62,7 @@
 #include "cci_util.h"
 #include "cci_query_execute.h"
 #include "cas_protocol.h"
+#include "cci_network.h"
 
 /************************************************************************
  * PRIVATE DEFINITIONS							*
@@ -73,7 +74,6 @@
 
 #define CCI_MAX_CONNECTION_POOL         256
 
-
 /************************************************************************
  * PRIVATE TYPE DEFINITIONS						*
  ************************************************************************/
@@ -81,17 +81,16 @@
 typedef struct
 {
   T_ALTER_HOST host;		/* host info (ip, port) */
-  int cur_host_id;		/* now connected host id */
-  time_t last_rc_time;		/* last failback try time */
-} T_HA_STATUS;
+  bool is_reachable;
+} T_HOST_STATUS;
 
-static T_HA_STATUS ha_status[MAX_CON_HANDLE];
-static int ha_status_count = 0;
+static T_HOST_STATUS host_status[MAX_CON_HANDLE];
+static int host_status_count = 0;
 
 #if defined(WINDOWS)
-HANDLE ha_status_mutex;
+HANDLE host_status_mutex;
 #else
-T_MUTEX ha_status_mutex = PTHREAD_MUTEX_INITIALIZER;
+T_MUTEX host_status_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
 static int conn_pool[CCI_MAX_CONNECTION_POOL];
@@ -113,7 +112,11 @@ static void con_handle_content_free (T_CON_HANDLE * con_handle);
 static void ipstr2uchar (char *ip_str, unsigned char *ip_addr);
 static int is_ip_str (char *ip_str);
 
-static int hm_find_ha_status_index (T_CON_HANDLE * con_handle);
+static int hm_find_host_status_index (unsigned char *ip_addr, int port);
+static void hm_set_host_status_by_addr (unsigned char *ip_addr, int port,
+					bool is_reachable);
+static THREAD_RET_T THREAD_CALLING_CONVENTION hm_thread_health_checker (void
+									*arg);
 
 /************************************************************************
  * INTERFACE VARIABLES							*
@@ -821,14 +824,14 @@ req_handle_content_free_for_pool (T_REQ_HANDLE * req_handle)
 
 
 static int
-hm_find_ha_status_index (T_CON_HANDLE * con_handle)
+hm_find_host_status_index (unsigned char *ip_addr, int port)
 {
   int i, index = -1;
 
-  for (i = 0; i < ha_status_count; i++)
+  for (i = 0; i < host_status_count; i++)
     {
-      if (memcmp (ha_status[i].host.ip_addr, con_handle->ip_addr, 4) == 0
-	  && ha_status[i].host.port == con_handle->port)
+      if (memcmp (host_status[i].host.ip_addr, ip_addr, 4) == 0
+	  && host_status[i].host.port == port)
 	{
 	  index = i;
 	  break;
@@ -837,6 +840,7 @@ hm_find_ha_status_index (T_CON_HANDLE * con_handle)
 
   return index;
 }
+
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 int
@@ -857,49 +861,34 @@ hm_get_ha_connected_host (T_CON_HANDLE * con_handle)
 }
 #endif
 
-time_t
-hm_get_ha_last_rc_time (T_CON_HANDLE * con_handle)
+bool
+hm_is_host_reachable (T_CON_HANDLE * con_handle, int host_id)
 {
   int i;
-  time_t rc_time = 0;
+  unsigned char *ip_addr = con_handle->alter_hosts[host_id].ip_addr;
+  int port = con_handle->alter_hosts[host_id].port;
+  bool is_reachable = true;
 
-  MUTEX_LOCK (ha_status_mutex);
-  i = hm_find_ha_status_index (con_handle);
-
+  i = hm_find_host_status_index (ip_addr, port);
   if (i >= 0)
     {
-      rc_time = ha_status[i].last_rc_time;
+      is_reachable = host_status[i].is_reachable;
     }
 
-  MUTEX_UNLOCK (ha_status_mutex);
-  return rc_time;
+  return is_reachable;
 }
 
 void
-hm_set_ha_status (T_CON_HANDLE * con_handle, bool reset_rctime)
+hm_set_host_status (T_CON_HANDLE * con_handle, int host_id, bool is_reachable)
 {
-  int i;
+  unsigned char *ip_addr = con_handle->alter_hosts[host_id].ip_addr;
+  int port = con_handle->alter_hosts[host_id].port;
 
-  MUTEX_LOCK (ha_status_mutex);
-  i = hm_find_ha_status_index (con_handle);
-
-  if (i < 0)
+  hm_set_host_status_by_addr (ip_addr, port, is_reachable);
+  if (!is_reachable)
     {
-      i = ha_status_count;
-      memcpy (ha_status[i].host.ip_addr, con_handle->ip_addr, 4);
-      ha_status[i].host.port = con_handle->port;
-      ha_status_count++;
+      con_handle->last_failure_time = time (NULL);
     }
-
-  if (reset_rctime == true ||
-      (con_handle->alter_host_id >= 0 && ha_status[i].cur_host_id == -1))
-    {
-      ha_status[i].last_rc_time = time (NULL);
-    }
-
-  ha_status[i].cur_host_id = con_handle->alter_host_id;
-
-  MUTEX_UNLOCK (ha_status_mutex);
 }
 
 void
@@ -935,6 +924,48 @@ hm_get_broker_version (T_CON_HANDLE * con_handle)
     }
 
   return version;
+}
+
+void
+hm_check_rc_time (T_CON_HANDLE * con_handle)
+{
+  time_t cur_time, failure_time;
+
+  if (IS_INVALID_SOCKET (con_handle->sock_fd))
+    {
+      return;
+    }
+
+  if (con_handle->alter_host_id > 0 && con_handle->rc_time > 0)
+    {
+      cur_time = time (NULL);
+      failure_time = con_handle->last_failure_time;
+      if (failure_time > 0 && con_handle->rc_time < (cur_time - failure_time))
+	{
+	  if (hm_is_host_reachable (con_handle, 0))
+	    {
+	      con_handle->force_failback = true;
+	      con_handle->last_failure_time = 0;
+	    }
+	}
+    }
+}
+
+void
+hm_create_health_check_th (void)
+{
+  int rv;
+  pthread_attr_t thread_attr;
+  pthread_t health_check_th;
+
+#if !defined(WINDOWS)
+  rv = pthread_attr_init (&thread_attr);
+  rv = pthread_attr_setdetachstate (&thread_attr, PTHREAD_CREATE_DETACHED);
+  rv = pthread_attr_setscope (&thread_attr, PTHREAD_SCOPE_SYSTEM);
+#endif /* WINDOWS */
+  rv =
+    pthread_create (&health_check_th, &thread_attr, hm_thread_health_checker,
+		    (void *) NULL);
 }
 
 /************************************************************************
@@ -1013,9 +1044,12 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
 
   memset (con_handle->alter_hosts, 0,
 	  sizeof (T_ALTER_HOST) * ALTER_HOST_MAX_SIZE);
+  con_handle->load_balance = false;
+  con_handle->force_failback = false;
   con_handle->alter_host_count = 0;
   con_handle->alter_host_id = -1;
   con_handle->rc_time = 600;
+  con_handle->last_failure_time = 0;
   con_handle->datasource = NULL;
   con_handle->login_timeout = 0;
   con_handle->query_timeout = 0;
@@ -1146,4 +1180,55 @@ is_ip_str (char *ip_str)
     }
 
   return 1;
+}
+
+static void
+hm_set_host_status_by_addr (unsigned char *ip_addr, int port,
+			    bool is_reachable)
+{
+  int i;
+
+  MUTEX_LOCK (host_status_mutex);
+  i = hm_find_host_status_index (ip_addr, port);
+
+  if (i < 0)
+    {
+      i = host_status_count;
+      memcpy (host_status[i].host.ip_addr, ip_addr, 4);
+      host_status[i].host.port = port;
+      host_status_count++;
+    }
+  host_status[i].is_reachable = is_reachable;
+
+  MUTEX_UNLOCK (host_status_mutex);
+
+}
+
+static THREAD_RET_T THREAD_CALLING_CONVENTION
+hm_thread_health_checker (void *arg)
+{
+  int i;
+  unsigned char *ip_addr;
+  int port;
+  time_t start_time;
+  time_t elapsed_time;
+  while (1)
+    {
+      start_time = time (NULL);
+      for (i = 0; i < host_status_count; i++)
+	{
+	  ip_addr = host_status[i].host.ip_addr;
+	  port = host_status[i].host.port;
+	  if (net_peer_alive (ip_addr, port, 5000))
+	    {
+	      hm_set_host_status_by_addr (ip_addr, port, true);
+	    }
+	}
+      elapsed_time = time (NULL) - start_time;
+      if (elapsed_time < MONITORING_INTERVAL)
+	{
+	  SLEEP_MILISEC (MONITORING_INTERVAL - elapsed_time, 0);
+	}
+    }
+  return (THREAD_RET_T) 0;
 }
