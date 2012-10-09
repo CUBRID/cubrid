@@ -25,165 +25,165 @@ $
 
 $set 1 MSGCAT_CSQL_SET_CSQL
 40 \
-½»»¥ÐÍSQL¹¤¾ß, °æ±¾ %s\n\
-ÓÃ·¨ %s [Ñ¡Ïî] Êý¾Ý¿âÃû[Ö÷»úÃû]\n\
+äº¤äº’åž‹SQLå·¥å…·, ç‰ˆæœ¬ %s\n\
+ç”¨æ³• %s [é€‰é¡¹] æ•°æ®åº“å[ä¸»æœºå]\n\
 \n\
-¿ÉÓÃÑ¡Ïî:\n\
-  -S, --SA-mode                µ¥»úÄ£Ê½Ö´ÐÐ\n\
-  -C, --CS-mode                ¿Í»§¶Ë·þÎñÆ÷Ä£Ê½Ö´ÐÐ\n\
-  -u, --user=ARG               ÓÃ»§Ãû\n\
-  -p, --password=ARG           ÃÜÂë×Ö·û´®£¬ÓÃ""±íÊ¾ÃÜÂëÎª¿Õ\n\
-  -e, --error-continue         ÔÚ³ö´íÎóÊ±¼ÌÐøÔËÐÐ\n\
-  -i, --input-file=ARG         ÊäÈëÎÄ¼þÃû\n\
-  -o, --output-file=ARG        Êä³öÎÄ¼þÃû\n\
-  -s, --single-line            ÃæÏòµ¥ÐÐµÄÖ´ÐÐ\n\
-  -c, --command=ARG            CSQLÃüÁî\n\
-  -l, --line-output            Ã¿¸öÖµ¶¼ÓÃµ¥¶ÀµÄÐÐ±íÊ¾\n\
-  -r, --read-only              Ö»¶ÁÄ£Ê½\n\
-      --no-auto-commit         ½ûÓÃ×Ô¶¯Ìá½»Ö´ÐÐÄ£Ê½\n\
-      --no-pager               ²»Òª½«²éÑ¯½á¹û·ÖÒ³\n\
-      --no-single-line         ¹Ø±Õµ¥ÐÐÖ´ÐÐÄ£Ê½\n\
+å¯ç”¨é€‰é¡¹:\n\
+  -S, --SA-mode                å•æœºæ¨¡å¼æ‰§è¡Œ\n\
+  -C, --CS-mode                å®¢æˆ·ç«¯æœåŠ¡å™¨æ¨¡å¼æ‰§è¡Œ\n\
+  -u, --user=ARG               ç”¨æˆ·å\n\
+  -p, --password=ARG           å¯†ç å­—ç¬¦ä¸²ï¼Œç”¨""è¡¨ç¤ºå¯†ç ä¸ºç©º\n\
+  -e, --error-continue         åœ¨å‡ºé”™è¯¯æ—¶ç»§ç»­è¿è¡Œ\n\
+  -i, --input-file=ARG         è¾“å…¥æ–‡ä»¶å\n\
+  -o, --output-file=ARG        è¾“å‡ºæ–‡ä»¶å\n\
+  -s, --single-line            é¢å‘å•è¡Œçš„æ‰§è¡Œ\n\
+  -c, --command=ARG            CSQLå‘½ä»¤\n\
+  -l, --line-output            æ¯ä¸ªå€¼éƒ½ç”¨å•ç‹¬çš„è¡Œè¡¨ç¤º\n\
+  -r, --read-only              åªè¯»æ¨¡å¼\n\
+      --no-auto-commit         ç¦ç”¨è‡ªåŠ¨æäº¤æ‰§è¡Œæ¨¡å¼\n\
+      --no-pager               ä¸è¦å°†æŸ¥è¯¢ç»“æžœåˆ†é¡µ\n\
+      --no-single-line         å…³é—­å•è¡Œæ‰§è¡Œæ¨¡å¼\n\
 \n\
-¶îÍâµÄÐÅÏ¢, Çëä¯ÀÀ http://www.cubrid.com\n
-41 %s: »·¾³±äÁ¿ %s_MODE µÄÖµ²»ÕýÈ·. \nÓ¦¸ÃÊÇ %s »ò %s.\n
-42 %s: Ö¸¶¨µÄ²ÎÊýÌ«¶à. ×î´ó²ÎÊý¸öÊýÊÇ %d.\n
-43 %s: ¸ùÄ¿Â¼»·¾³±äÁ¿($CUBRID) Ã»ÓÐÉèÖÃ.\n
-44 %s: ³¢ÊÔÖ´ÐÐ "%s" Ê§°Ü.\n
-45 %s: ÎÞ·¨Í¬Ê±Ê¹ÓÃ -sa ºÍ -cs Ñ¡Ïî.\n
-46 %d ÌõÖ¸Áî±»³É¹¦´¦Àí.
-47 ÔÚÐÐ %d ÖÐµÄÃüÁî,
-48 ÔÚÐÐ %d, ÁÐ %d,
-49 ÊäÈë `;help' À´ÏÔÊ¾°ïÖúÏûÏ¢.
-50 ´íÎó: 
-51 CUBRID SQL ½âÊÍÆ÷
-52 ´æÔÚÎ´Ìá½»µÄ¸üÐÂ. ÄãÏëÌá½»Âð ? (`Y' »ò `N') 
-53 ÊäÈë `Y' À´Ìá½», `N' À´È¡Ïû. 
-54 µ±Ç°ÊÂÎñÒÑÌá½».
-55 µ±Ç°ÊÂÎñÒÑ»Ø¹ö.
-56 ÃüÁî»º³åÇøÒÑ¾­±£´æ.
-57 ÎÄ¼þÒÑ±»¶ÁÈ¡µ½ÃüÁî»º³åÇø.
-58 ÃüÁî»º³åÇøµÄÄÚÈÝÒÑ±»·¢ËÍµ½´òÓ¡»ú.
-59 µ±Ç°Ä¿Â¼±»¸Ä±äµ½: 
-61 ÊäÈëÃÜÂë: 
-62 <ÃüÁî %s ÔÚÐÐ %d µÄ½á¹û>
-63 Ã»ÓÐ½á¹û.
-64 CheckpointÒÑ¾­±»Ó¦ÓÃ.
-65 Êý¾Ý¿âÒÑ±»ÖØÆô.
-66 ÊÂÎñË÷Òý        ÓÃ»§Ãû         Ö÷»úÃû         ½ø³Ì±êÊ¶·û      ³ÌÐòÃû\n
+é¢å¤–çš„ä¿¡æ¯, è¯·æµè§ˆ http://www.cubrid.com\n
+41 %s: çŽ¯å¢ƒå˜é‡ %s_MODE çš„å€¼ä¸æ­£ç¡®. \nåº”è¯¥æ˜¯ %s æˆ– %s.\n
+42 %s: æŒ‡å®šçš„å‚æ•°å¤ªå¤š. æœ€å¤§å‚æ•°ä¸ªæ•°æ˜¯ %d.\n
+43 %s: æ ¹ç›®å½•çŽ¯å¢ƒå˜é‡($CUBRID) æ²¡æœ‰è®¾ç½®.\n
+44 %s: å°è¯•æ‰§è¡Œ "%s" å¤±è´¥.\n
+45 %s: æ— æ³•åŒæ—¶ä½¿ç”¨ -sa å’Œ -cs é€‰é¡¹.\n
+46 %d æ¡æŒ‡ä»¤è¢«æˆåŠŸå¤„ç†.
+47 åœ¨è¡Œ %d ä¸­çš„å‘½ä»¤,
+48 åœ¨è¡Œ %d, åˆ— %d,
+49 è¾“å…¥ `;help' æ¥æ˜¾ç¤ºå¸®åŠ©æ¶ˆæ¯.
+50 é”™è¯¯: 
+51 CUBRID SQL è§£é‡Šå™¨
+52 å­˜åœ¨æœªæäº¤çš„æ›´æ–°. ä½ æƒ³æäº¤å— ? (`Y' æˆ– `N') 
+53 è¾“å…¥ `Y' æ¥æäº¤, `N' æ¥å–æ¶ˆ. 
+54 å½“å‰äº‹åŠ¡å·²æäº¤.
+55 å½“å‰äº‹åŠ¡å·²å›žæ»š.
+56 å‘½ä»¤ç¼“å†²åŒºå·²ç»ä¿å­˜.
+57 æ–‡ä»¶å·²è¢«è¯»å–åˆ°å‘½ä»¤ç¼“å†²åŒº.
+58 å‘½ä»¤ç¼“å†²åŒºçš„å†…å®¹å·²è¢«å‘é€åˆ°æ‰“å°æœº.
+59 å½“å‰ç›®å½•è¢«æ”¹å˜åˆ°: 
+61 è¾“å…¥å¯†ç : 
+62 <å‘½ä»¤ %s åœ¨è¡Œ %d çš„ç»“æžœ>
+63 æ²¡æœ‰ç»“æžœ.
+64 Checkpointå·²ç»è¢«åº”ç”¨.
+65 æ•°æ®åº“å·²è¢«é‡å¯.
+66 äº‹åŠ¡ç´¢å¼•        ç”¨æˆ·å         ä¸»æœºå         è¿›ç¨‹æ ‡è¯†ç¬¦      ç¨‹åºå\n
 67 %7d(%1c) %14s %14s %15d %17s\n
-68 Ö¸¶¨µÄÊÂÎñÒÑ±»kill.
-69 Ö¸¶¨µÄÊÂÎñkillÊ§°Ü.
-70 %d ÐÐ %s.
-71 %d ÐÐ %s.
+68 æŒ‡å®šçš„äº‹åŠ¡å·²è¢«kill.
+69 æŒ‡å®šçš„äº‹åŠ¡killå¤±è´¥.
+70 %d è¡Œ %s.
+71 %d è¡Œ %s.
 $ These 3 should be blank
-75 ×Ô¶¯»¯API²âÊÔÆ÷
-76 ÎÞÐ§µÄ×Ô¶¯»¯API²âÊÔÆ÷
+75 è‡ªåŠ¨åŒ–APIæµ‹è¯•å™¨
+76 æ— æ•ˆçš„è‡ªåŠ¨åŒ–APIæµ‹è¯•å™¨
 79 csql>
 80 csql
 81 sysadm>
 
-145 <°ïÖú: ÀàµÄ½á¹¹>
-146 ÎÞ
-147 <°ïÖú: ËùÓÐµÄ´¥·¢Æ÷>
-148 <°ïÖú: Ã»ÓÐÒÑ¶¨ÒåµÄ´¥·¢Æ÷>
-150 <°ïÖú: ´¥·¢Æ÷¶¨Òå>
-151 <°ïÖú: ÃüÁîÓï·¨>
-152 <°ïÖú: »á»°ÃüÁî×Ü½á>
-178 ÐèÒªÒ»¸öÎÄ¼þÃû.
-179 ÎÞ·¨Ö´ÐÐ·ÖÒ³³ÌÐò.
-180 Ã»ÓÐÉêÇëµ½×ã¹»µÄÄÚ´æ.
-184 ÊäÈëµÄÐÐÌ«³¤.
-185 ÊäÈëÁËÌ«¶àµÄÐÐ.
-188 ÊäÈëÁËÌ«¶àµÄÎÄ¼þÃû.
-190 Ã»ÓÐÕâ¸ö»á»°ÃüÁî. ÊäÈë`;help' À´ÏÔÊ¾°ïÖúÐÅÏ¢.
-191 Ò»¸öÒÔÉÏµÄ»á»°ÃüÁî±»Æ¥Åä. Çë¸üÏêÏ¸µÄÖ¸Ã÷.
-193 Ò»¸öÒÔÉÏµÄÃüÁî±»Æ¥Åä. Çë¸üÏêÏ¸µÄÖ¸Ã÷.
-194 ÎÞÐ§µÄÃüÁîÑ¡Ïî×éºÏ.
-196 ·¢ÉúÁËÒ»¸öÎ´¶¨ÒåµÄ´íÎó.
-197 µ±Êä³ö±»ÖØ¶¨ÏòÊ±£¬';edit' ÊÇ²»±»ÔÊÐíµÄ.
+145 <å¸®åŠ©: ç±»çš„ç»“æž„>
+146 æ— 
+147 <å¸®åŠ©: æ‰€æœ‰çš„è§¦å‘å™¨>
+148 <å¸®åŠ©: æ²¡æœ‰å·²å®šä¹‰çš„è§¦å‘å™¨>
+150 <å¸®åŠ©: è§¦å‘å™¨å®šä¹‰>
+151 <å¸®åŠ©: å‘½ä»¤è¯­æ³•>
+152 <å¸®åŠ©: ä¼šè¯å‘½ä»¤æ€»ç»“>
+178 éœ€è¦ä¸€ä¸ªæ–‡ä»¶å.
+179 æ— æ³•æ‰§è¡Œåˆ†é¡µç¨‹åº.
+180 æ²¡æœ‰ç”³è¯·åˆ°è¶³å¤Ÿçš„å†…å­˜.
+184 è¾“å…¥çš„è¡Œå¤ªé•¿.
+185 è¾“å…¥äº†å¤ªå¤šçš„è¡Œ.
+188 è¾“å…¥äº†å¤ªå¤šçš„æ–‡ä»¶å.
+190 æ²¡æœ‰è¿™ä¸ªä¼šè¯å‘½ä»¤. è¾“å…¥`;help' æ¥æ˜¾ç¤ºå¸®åŠ©ä¿¡æ¯.
+191 ä¸€ä¸ªä»¥ä¸Šçš„ä¼šè¯å‘½ä»¤è¢«åŒ¹é…. è¯·æ›´è¯¦ç»†çš„æŒ‡æ˜Ž.
+193 ä¸€ä¸ªä»¥ä¸Šçš„å‘½ä»¤è¢«åŒ¹é…. è¯·æ›´è¯¦ç»†çš„æŒ‡æ˜Ž.
+194 æ— æ•ˆçš„å‘½ä»¤é€‰é¡¹ç»„åˆ.
+196 å‘ç”Ÿäº†ä¸€ä¸ªæœªå®šä¹‰çš„é”™è¯¯.
+197 å½“è¾“å‡ºè¢«é‡å®šå‘æ—¶ï¼Œ';edit' æ˜¯ä¸è¢«å…è®¸çš„.
 
 203 <%s> 
-204 <¸¸Àà> 
-205 <×ÓÀà> 
-206 <ÊôÐÔ> 
-207 <ÀàÊôÐÔ> 
-208 <·½·¨> 
-209 <Àà·½·¨> 
-210 <½â¾ö·½°¸> 
-211 <·½·¨ÎÄ¼þ> 
-212 <²éÑ¯ÏêÊö> 
-213 <´¥·¢Æ÷> 
-214 <Ãû×Ö> 
-215 <ÊÂ¼þ> 
-216 <Ìõ¼þÊ±¼ä> 
-217 <Ìõ¼þ> 
-218 <¶¯×÷Ê±¼ä> 
-219 <¶¯×÷> 
-220 <×´Ì¬> 
-221 <ÓÅÏÈ¼¶> 
-222 <Ãû×Ö> 
-223 <ÃèÊö> 
-224 <Óï·¨> 
-225 <Àý×Ó> 
+204 <çˆ¶ç±»> 
+205 <å­ç±»> 
+206 <å±žæ€§> 
+207 <ç±»å±žæ€§> 
+208 <æ–¹æ³•> 
+209 <ç±»æ–¹æ³•> 
+210 <è§£å†³æ–¹æ¡ˆ> 
+211 <æ–¹æ³•æ–‡ä»¶> 
+212 <æŸ¥è¯¢è¯¦è¿°> 
+213 <è§¦å‘å™¨> 
+214 <åå­—> 
+215 <äº‹ä»¶> 
+216 <æ¡ä»¶æ—¶é—´> 
+217 <æ¡ä»¶> 
+218 <åŠ¨ä½œæ—¶é—´> 
+219 <åŠ¨ä½œ> 
+220 <çŠ¶æ€> 
+221 <ä¼˜å…ˆçº§> 
+222 <åå­—> 
+223 <æè¿°> 
+224 <è¯­æ³•> 
+225 <ä¾‹å­> 
 
 $ csql help messages
 231 \
 \n\
-   ËùÓÐµÄ»á»°ÃüÁîÓ¦µ±ÒÔ`;' ¿ªÍ·£¬µ«¿Õ¸ñ/ÖÆ±í·û¿ÉÒÔÔÚ`;'Ö®Ç°.\n\
-   ´óÐ´µÄ×ÖÄ¸´ú±íÎªÁËÖ´ÐÐÒ»ÌõÌØ¶¨µÄÃüÁî,\n\
-   ËùÐèµÄ×îÉÙµÄËõÐ´.\n\
+   æ‰€æœ‰çš„ä¼šè¯å‘½ä»¤åº”å½“ä»¥`;' å¼€å¤´ï¼Œä½†ç©ºæ ¼/åˆ¶è¡¨ç¬¦å¯ä»¥åœ¨`;'ä¹‹å‰.\n\
+   å¤§å†™çš„å­—æ¯ä»£è¡¨ä¸ºäº†æ‰§è¡Œä¸€æ¡ç‰¹å®šçš„å‘½ä»¤,\n\
+   æ‰€éœ€çš„æœ€å°‘çš„ç¼©å†™.\n\
 \n\
-   ;REAd   [<file-name>]       - ½«Ò»¸öÎÄ¼þ¶ÁÈ¡µ½ÃüÁî»º³åÇø.\n\
-   ;Write  [<file-name>]       - ÓÃÃüÁî»º³åÇøµÄÄÚÈÝÖØÐ´Ò»¸öÎÄ¼þ.\n\
-   ;APpend [<file-name>]       - ½«ÃüÁî»º³åÇøµÄÄÚÈÝ×·¼Óµ½Ò»¸öÎÄ¼þ.\n\
-   ;PRINT                      - ´òÓ¡ÃüÁî»º³åÇø.\n\
-   ;SHELL                      - µ÷ÓÃshell.\n\
-   ;CD                         - ¸Ä±äµ±Ç°¹¤×÷Ä¿Â¼.\n\
-   ;EXit                       - ÍË³ö³ÌÐò.\n\
+   ;REAd   [<file-name>]       - å°†ä¸€ä¸ªæ–‡ä»¶è¯»å–åˆ°å‘½ä»¤ç¼“å†²åŒº.\n\
+   ;Write  [<file-name>]       - ç”¨å‘½ä»¤ç¼“å†²åŒºçš„å†…å®¹é‡å†™ä¸€ä¸ªæ–‡ä»¶.\n\
+   ;APpend [<file-name>]       - å°†å‘½ä»¤ç¼“å†²åŒºçš„å†…å®¹è¿½åŠ åˆ°ä¸€ä¸ªæ–‡ä»¶.\n\
+   ;PRINT                      - æ‰“å°å‘½ä»¤ç¼“å†²åŒº.\n\
+   ;SHELL                      - è°ƒç”¨shell.\n\
+   ;CD                         - æ”¹å˜å½“å‰å·¥ä½œç›®å½•.\n\
+   ;EXit                       - é€€å‡ºç¨‹åº.\n\
 \n\
-   ;CLear                      - ÇåÀíÃüÁî»º³åÇø.\n\
-   ;EDIT                       - ¶ÔÃüÁî»º³åÇøµ÷ÓÃÏµÍ³±à¼­Æ÷.\n\
-   ;List                       - ÏÔÊ¾µ±Ç°ÃüÁî»º³åÇøµÄÄÚÈÝ.\n\
+   ;CLear                      - æ¸…ç†å‘½ä»¤ç¼“å†²åŒº.\n\
+   ;EDIT                       - å¯¹å‘½ä»¤ç¼“å†²åŒºè°ƒç”¨ç³»ç»Ÿç¼–è¾‘å™¨.\n\
+   ;List                       - æ˜¾ç¤ºå½“å‰å‘½ä»¤ç¼“å†²åŒºçš„å†…å®¹.\n\
 \n\
-   ;RUn                        - Ö´ÐÐÃüÁî»º³åÇøµÄsql.\n\
-   ;Xrun                       - Ö´ÐÐÃüÁî»º³åÇøµÄsql,\n\
-                                 ²¢ÇåÀíÃüÁî»º³åÇø.\n\
-   ;COmmit                     - Ìá½»µ±Ç°ÊÂÎñ.\n\
-   ;ROllback                   - »Ø¹öµ±Ç°ÊÂÎñ.\n\
-   ;AUtocommit [ON|OFF]        - ÆôÓÃ/Í£ÓÃ×Ô¶¯Ìá½»Ä£Ê½.\n\
-   ;REStart                    - ÖØÐÂÆô¶¯Êý¾Ý¿â.\n\
+   ;RUn                        - æ‰§è¡Œå‘½ä»¤ç¼“å†²åŒºçš„sql.\n\
+   ;Xrun                       - æ‰§è¡Œå‘½ä»¤ç¼“å†²åŒºçš„sql,\n\
+                                 å¹¶æ¸…ç†å‘½ä»¤ç¼“å†²åŒº.\n\
+   ;COmmit                     - æäº¤å½“å‰äº‹åŠ¡.\n\
+   ;ROllback                   - å›žæ»šå½“å‰äº‹åŠ¡.\n\
+   ;AUtocommit [ON|OFF]        - å¯ç”¨/åœç”¨è‡ªåŠ¨æäº¤æ¨¡å¼.\n\
+   ;REStart                    - é‡æ–°å¯åŠ¨æ•°æ®åº“.\n\
 \n\
-   ;SHELL_Cmd  [shell-cmd]     - ÉèÖÃÄ¬ÈÏµÄshell»òÏÔÊ¾µ±Ç°ÉèÖÃ.\n\
-   ;EDITOR_Cmd [editor-cmd]    - ÉèÖÃÄ¬ÈÏ±à¼­Æ÷»òÏÔÊ¾µ±Ç°ÉèÖÃ.\n\
-   ;PRINT_Cmd  [print-cmd]     - ÉèÖÃÄ¬ÈÏprint»òÏÔÊ¾µ±Ç°ÉèÖÃ.\n\
-   ;PAger_cmd  [pager-cmd]     - ÉèÖÃÄ¬ÈÏ·ÖÒ³³ÌÐò»òÏÔÊ¾µ±Ç°ÉèÖÃ\n\
+   ;SHELL_Cmd  [shell-cmd]     - è®¾ç½®é»˜è®¤çš„shellæˆ–æ˜¾ç¤ºå½“å‰è®¾ç½®.\n\
+   ;EDITOR_Cmd [editor-cmd]    - è®¾ç½®é»˜è®¤ç¼–è¾‘å™¨æˆ–æ˜¾ç¤ºå½“å‰è®¾ç½®.\n\
+   ;PRINT_Cmd  [print-cmd]     - è®¾ç½®é»˜è®¤printæˆ–æ˜¾ç¤ºå½“å‰è®¾ç½®.\n\
+   ;PAger_cmd  [pager-cmd]     - è®¾ç½®é»˜è®¤åˆ†é¡µç¨‹åºæˆ–æ˜¾ç¤ºå½“å‰è®¾ç½®\n\
 \n\
-   ;DATE                       - ÏÔÊ¾±¾µØÊ±¼ä,ÈÕÆÚ.\n\
-   ;DATAbase                   - ÏÔÊ¾Õý±»·ÃÎÊµÄÊý¾Ý¿âÃû.\n\
-   ;SChema class-name          - ÏÔÊ¾ÀàµÄ½á¹¹ÐÅÏ¢.\n\
-   ;TRigger [`*'|trigger-name] - ÏÔÊ¾´¥·¢Æ÷µÄ¶¨Òå.\n\
-   ;Get system_parameter       - »ñÈ¡Ò»¸öÏµÍ³²ÎÊýµÄÖµ.\n\
-   ;SEt system_parameter=value - ÉèÖÃÒ»¸öÏµÍ³²ÎÊýµÄÖµ.\n\
-   ;PLan [simple/detail/off]   - ÏÔÊ¾²éÑ¯Ö´ÐÐ¼Æ»®.\n\
-   ;Info <command>             - ÏÔÊ¾ÄÚ²¿ÐÅÏ¢.\n\
-   ;TIme [ON/OFF]              - ÆôÓÃ/Í£ÓÃ ÏÔÊ¾²éÑ¯\n\
-                                 Ö´ÐÐÊ±¼ä.\n\
-   ;HISTORYList                - ÏÔÊ¾ÒÑ¾­Ö´ÐÐµÄ²éÑ¯ÁÐ±í.\n\
-   ;HISTORYRead <history_num>  - ½«histroy_numËù¶ÔÓ¦µÄÄÚÈÝ¶ÁÈ¡µ½ÃüÁî»º³åÇø.\n\
-   ;HElp                       - ÏÔÊ¾°ïÖúÐÅÏ¢.\n\n
+   ;DATE                       - æ˜¾ç¤ºæœ¬åœ°æ—¶é—´,æ—¥æœŸ.\n\
+   ;DATAbase                   - æ˜¾ç¤ºæ­£è¢«è®¿é—®çš„æ•°æ®åº“å.\n\
+   ;SChema class-name          - æ˜¾ç¤ºç±»çš„ç»“æž„ä¿¡æ¯.\n\
+   ;TRigger [`*'|trigger-name] - æ˜¾ç¤ºè§¦å‘å™¨çš„å®šä¹‰.\n\
+   ;Get system_parameter       - èŽ·å–ä¸€ä¸ªç³»ç»Ÿå‚æ•°çš„å€¼.\n\
+   ;SEt system_parameter=value - è®¾ç½®ä¸€ä¸ªç³»ç»Ÿå‚æ•°çš„å€¼.\n\
+   ;PLan [simple/detail/off]   - æ˜¾ç¤ºæŸ¥è¯¢æ‰§è¡Œè®¡åˆ’.\n\
+   ;Info <command>             - æ˜¾ç¤ºå†…éƒ¨ä¿¡æ¯.\n\
+   ;TIme [ON/OFF]              - å¯ç”¨/åœç”¨ æ˜¾ç¤ºæŸ¥è¯¢\n\
+                                 æ‰§è¡Œæ—¶é—´.\n\
+   ;HISTORYList                - æ˜¾ç¤ºå·²ç»æ‰§è¡Œçš„æŸ¥è¯¢åˆ—è¡¨.\n\
+   ;HISTORYRead <history_num>  - å°†histroy_numæ‰€å¯¹åº”çš„å†…å®¹è¯»å–åˆ°å‘½ä»¤ç¼“å†²åŒº.\n\
+   ;HElp                       - æ˜¾ç¤ºå¸®åŠ©ä¿¡æ¯.\n\n
 
-232 <ÏµÍ³¹æ¶¨²ÎÊý> 
+232 <ç³»ç»Ÿè§„å®šå‚æ•°> 
 233 Info {schema|trigger|deferred|workspace|lock|stats}\n\
-\tschema [class-name]    - ½á¹¹ÐÅÏ¢\n\
-\ttrigger [trigger-name] - ´¥·¢Æ÷ÐÅÏ¢\n\
-\tdeferred               - ÑÓ³Ù´¥·¢ÐÅÏ¢\n\
-\tworkspace              - ¹¤×÷¿Õ¼äÐÅÏ¢\n\
-\tlock                   - ËøÐÅÏ¢(¿Í»§¶Ë-·þÎñ¶ËÄ£Ê½)\n\
-\tstats class-name       - ÀàÍ³¼ÆÐÅÏ¢\n\
-\ttrantable              - ÊÂÎñÐÅÏ¢\n\
-\tlogstat                - ÈÕÖ¾ÐÅÏ¢\n\
-\tcsstat                 - ÁÙ½çÇøÐÅÏ¢\n\
-\tplan                   - ¼Æ»®»º´æÐÅÏ¢\n\
-\tqcache                 - ²éÑ¯»º´æÐÅÏ¢\n
-235 <·ÖÇø>
-236 ÐèÒªÒ»¸öÀàÃû.
+\tschema [class-name]    - ç»“æž„ä¿¡æ¯\n\
+\ttrigger [trigger-name] - è§¦å‘å™¨ä¿¡æ¯\n\
+\tdeferred               - å»¶è¿Ÿè§¦å‘ä¿¡æ¯\n\
+\tworkspace              - å·¥ä½œç©ºé—´ä¿¡æ¯\n\
+\tlock                   - é”ä¿¡æ¯(å®¢æˆ·ç«¯-æœåŠ¡ç«¯æ¨¡å¼)\n\
+\tstats class-name       - ç±»ç»Ÿè®¡ä¿¡æ¯\n\
+\ttrantable              - äº‹åŠ¡ä¿¡æ¯\n\
+\tlogstat                - æ—¥å¿—ä¿¡æ¯\n\
+\tcsstat                 - ä¸´ç•ŒåŒºä¿¡æ¯\n\
+\tplan                   - è®¡åˆ’ç¼“å­˜ä¿¡æ¯\n\
+\tqcache                 - æŸ¥è¯¢ç¼“å­˜ä¿¡æ¯\n
+235 <åˆ†åŒº>
+236 éœ€è¦ä¸€ä¸ªç±»å.

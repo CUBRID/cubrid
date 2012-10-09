@@ -24,50 +24,50 @@ $ esql.msg
 $
 
 $set 1
-1 ·ÇÕûÐÎµÄ²ÎÊýÖµ "%s"\n
-2 ·Ç¸¡µãÐÍ²ÎÊýÖµ "%s"\n
-3 ¶ªÊ§²ÎÊý %s\n
-4 [Ñ¡Ïî] 
-5 Ñ¡Ïî: \n
-6 ¶ÔÓÚ¼ü %s ¶ªÊ§²ÎÊýÊýÖµ\n
-7 Î´ÖªµÄÑ¡Ïî "%s"\n
-8 ÒâÍâµÄÎ»ÖÃ²ÎÊý "%s"\n
+1 éžæ•´å½¢çš„å‚æ•°å€¼ "%s"\n
+2 éžæµ®ç‚¹åž‹å‚æ•°å€¼ "%s"\n
+3 ä¸¢å¤±å‚æ•° %s\n
+4 [é€‰é¡¹] 
+5 é€‰é¡¹: \n
+6 å¯¹äºŽé”® %s ä¸¢å¤±å‚æ•°æ•°å€¼\n
+7 æœªçŸ¥çš„é€‰é¡¹ "%s"\n
+8 æ„å¤–çš„ä½ç½®å‚æ•° "%s"\n
 
 $set 2
-1 ÓÎ±êµÄÖØ¶¨Òå "%s"
-2  *\t¶ÔÓÚÓï¾ä %s\n
-3  *\n * ÓÎ±ê±í:\n
+1 æ¸¸æ ‡çš„é‡å®šä¹‰ "%s"
+2  *\tå¯¹äºŽè¯­å¥ %s\n
+3  *\n * æ¸¸æ ‡è¡¨:\n
 
 $set 3
-1 (ÄÚ²¿´íÎó ÔÚ set_class_bit): ´íÎóµÄ´æ´¢Àà (%d)
-2 (ÄÚ²¿´íÎó ÔÚ add_spec_to_decl()): Á´¸ñÊ½²»ÕýÈ· (no specifier)
-3 ÔÚÕâ¸ö³¡¾°ÖÐ´æ´¢ÀàÃèÊö·ûÊÇ²»ÔÊÐíµÄ
-4 ·Ç·¨µÄ´æ´¢Àà×éºÏ
-5 ·Ç·¨µÄÀàÐÍ×éºÏ
-6 ·Ç·¨µÄÐÞ¸ÄÕß×éºÏ
-7 (ÄÚ²¿´íÎó ÔÚ pp_add_type_spec): ÒâÍâµÄÇé¿ö (%d)
-8 (ÄÚ²¿´íÎó ÔÚ pp_add_type_adj): ÒâÍâµÄÇé¿ö (%d)
-9 %s : ÉùÃ÷ÎÞÐ§
+1 (å†…éƒ¨é”™è¯¯ åœ¨ set_class_bit): é”™è¯¯çš„å­˜å‚¨ç±» (%d)
+2 (å†…éƒ¨é”™è¯¯ åœ¨ add_spec_to_decl()): é“¾æ ¼å¼ä¸æ­£ç¡® (no specifier)
+3 åœ¨è¿™ä¸ªåœºæ™¯ä¸­å­˜å‚¨ç±»æè¿°ç¬¦æ˜¯ä¸å…è®¸çš„
+4 éžæ³•çš„å­˜å‚¨ç±»ç»„åˆ
+5 éžæ³•çš„ç±»åž‹ç»„åˆ
+6 éžæ³•çš„ä¿®æ”¹è€…ç»„åˆ
+7 (å†…éƒ¨é”™è¯¯ åœ¨ pp_add_type_spec): æ„å¤–çš„æƒ…å†µ (%d)
+8 (å†…éƒ¨é”™è¯¯ åœ¨ pp_add_type_adj): æ„å¤–çš„æƒ…å†µ (%d)
+9 %s : å£°æ˜Žæ— æ•ˆ
 
 $set 4
 1 %s
-2 %s: ²»ÊÇÒ»¸öÄ¿Â¼\n
-3 %s: ´íÎóµÄ°²×°ÇþµÀ?\n
+2 %s: ä¸æ˜¯ä¸€ä¸ªç›®å½•\n
+3 %s: é”™è¯¯çš„å®‰è£…æ¸ é“?\n
 
 $set 5
 1 ?
-2 Çë¼ì²â·ûºÅµÄÕýÈ·ÐÔ
-3 ¶ÔÓÚ¾²Ì¬ÓÎ±ê "%s", USING ²¿·Ö²»±»ÔÊÐí
-4 ÓÎ±ê "%s" Î´¶¨Òå
-5 Ö¸ÏòÒ»¸öÃèÊö·ûµÄÖ¸Õë
-6 Ö¸ÏòÒ»¸öDB_OBJECTµÄÖ¸Õë
-7 ×Ö·ûµÄ×Ö·û´®
-8 ÎªÁË "%s" µÄÖ¸Ê¾±äÁ¿ÔÚÕâ¸ö³¡¾°ÖÐ²»±»ÔÊÐí
-9 "%s" ÔÚ BEGIN DECLARE ¶ÎÖÐÃ»ÓÐ±»ÉùÃ÷
-52 %s (ÎÄ±¾ÊÇ "%s")
-53 ´Ê·¨´íÎó
-54 Óï·¨´íÎó ÔÚ "%s": ¶ªÊ§ %s ÔÚ %s ÄÚ
-55 Óï·¨´íÎó ÔÚ "%s": ¶ªÊ§ %s
+2 è¯·æ£€æµ‹ç¬¦å·çš„æ­£ç¡®æ€§
+3 å¯¹äºŽé™æ€æ¸¸æ ‡ "%s", USING éƒ¨åˆ†ä¸è¢«å…è®¸
+4 æ¸¸æ ‡ "%s" æœªå®šä¹‰
+5 æŒ‡å‘ä¸€ä¸ªæè¿°ç¬¦çš„æŒ‡é’ˆ
+6 æŒ‡å‘ä¸€ä¸ªDB_OBJECTçš„æŒ‡é’ˆ
+7 å­—ç¬¦çš„å­—ç¬¦ä¸²
+8 ä¸ºäº† "%s" çš„æŒ‡ç¤ºå˜é‡åœ¨è¿™ä¸ªåœºæ™¯ä¸­ä¸è¢«å…è®¸
+9 "%s" åœ¨ BEGIN DECLARE æ®µä¸­æ²¡æœ‰è¢«å£°æ˜Ž
+52 %s (æ–‡æœ¬æ˜¯ "%s")
+53 è¯æ³•é”™è¯¯
+54 è¯­æ³•é”™è¯¯ åœ¨ "%s": ä¸¢å¤± %s åœ¨ %s å†…
+55 è¯­æ³•é”™è¯¯ åœ¨ "%s": ä¸¢å¤± %s
 
 $set 6
 1 suppress-line-directive
@@ -84,52 +84,52 @@ $set 6
 12 input-file
 
 $set 7
-1 ÔÚÊä³öÎÄ¼þÖÐ·ÏÖ¹ #line Ö¸Áî, Ä¬ÈÏ ¹Ø±Õ
-2 Êä³öÎÄ¼þÃû, Ä¬ÈÏ <input-file>.c »òÕß stdout
-3 include ÎÄ¼þ°üº¬uci_ Ô­ÐÍ, Ä¬ÈÏ "esqlx.h"
-4 ×ª´¢ scopeµ÷ÊÔÐÅÏ¢, Ä¬ÈÏ ¹Ø±Õ
-5 ×ª´¢×îÖÕmallocµ÷ÊÔÐÅÏ¢, Ä¬ÈÏ ¹Ø±Õ
-6 ´òÓ¡³ö°æ±¾ºÅÐÅÏ¢, Ä¬ÈÏ ¹Ø±Õ
-7 Æô¶¯ UCI function trace, Ä¬ÈÏ ¹Ø±Õ
-8 ½ûÖ¹³õÊ¼»¯VARCHAR host variableµÄ³¤¶È, Ä¬ÈÏ ¹Ø±Õ
-9 Ê¹ÓÃ²»Í¬µÄ VARCHAR ·ç¸ñ, Ä¬ÈÏ ¹Ø±Õ
-10 ºöÂÔ -462(null indicator needed)´íÎó, Ä¬ÈÏ ¹Ø±Õ
-11 Ê¹ÓÃÄÚ²¿ NULL Ö¸Ê¾Æ÷À´×èÖ¹ -462(null indicator needed)´íÎó, Ä¬ÈÏ ¹Ø±Õ
-12 ÊäÈëÎÄ¼þÃû, Ä¬ÈÏ stdin
+1 åœ¨è¾“å‡ºæ–‡ä»¶ä¸­åºŸæ­¢ #line æŒ‡ä»¤, é»˜è®¤ å…³é—­
+2 è¾“å‡ºæ–‡ä»¶å, é»˜è®¤ <input-file>.c æˆ–è€… stdout
+3 include æ–‡ä»¶åŒ…å«uci_ åŽŸåž‹, é»˜è®¤ "esqlx.h"
+4 è½¬å‚¨ scopeè°ƒè¯•ä¿¡æ¯, é»˜è®¤ å…³é—­
+5 è½¬å‚¨æœ€ç»ˆmallocè°ƒè¯•ä¿¡æ¯, é»˜è®¤ å…³é—­
+6 æ‰“å°å‡ºç‰ˆæœ¬å·ä¿¡æ¯, é»˜è®¤ å…³é—­
+7 å¯åŠ¨ UCI function trace, é»˜è®¤ å…³é—­
+8 ç¦æ­¢åˆå§‹åŒ–VARCHAR host variableçš„é•¿åº¦, é»˜è®¤ å…³é—­
+9 ä½¿ç”¨ä¸åŒçš„ VARCHAR é£Žæ ¼, é»˜è®¤ å…³é—­
+10 å¿½ç•¥ -462(null indicator needed)é”™è¯¯, é»˜è®¤ å…³é—­
+11 ä½¿ç”¨å†…éƒ¨ NULL æŒ‡ç¤ºå™¨æ¥é˜»æ­¢ -462(null indicator needed)é”™è¯¯, é»˜è®¤ å…³é—­
+12 è¾“å…¥æ–‡ä»¶å, é»˜è®¤ stdin
 
 $set 8
-1 REPEATED Ñ¡Ïî±»ºöÂÔ
-2 %s °æ±¾ %s\n
+1 REPEATED é€‰é¡¹è¢«å¿½ç•¥
+2 %s ç‰ˆæœ¬ %s\n
 
 $set 9
-1 (yy_pop_mode) ÄÚ²¿´íÎó: mode¶ÑÕ»Îª¿Õ
-2 "%s" ÔÚÕâ¸ö³¡¾°ÖÐ²»±»ÔÊÐí
+1 (yy_pop_mode) å†…éƒ¨é”™è¯¯: modeå †æ ˆä¸ºç©º
+2 "%s" åœ¨è¿™ä¸ªåœºæ™¯ä¸­ä¸è¢«å…è®¸
 
 $set 10
-1 ÄÚ²¿´íÎó ÔÚ %s: %s\n
-2 ±íÒç³ö
+1 å†…éƒ¨é”™è¯¯ åœ¨ %s: %s\n
+2 è¡¨æº¢å‡º
 
 $set 11
-1 Ö¸Ê¾Æ÷±äÁ¿ "%s" ±ØÐëÊÇÒ»¸ö¶ÌÕûÐÍ
-2 ÎÞ·¨¶Ô½á¹¹Ê¹ÓÃÖ¸Ê¾Æ÷±äÁ¿
-3 "%s" ÓÐ²»ÍêÕûµÄ½á¹¹¶¨Òå
-4 "%s" ±ØÐëÊÇÒ»¸öÓÐÐ§µÄ %s
-5 %s ÊÇÒ»¸ö²»¿É½ÓÊÜµÄÀàÐÍ¶ÔÓÚ "%s"
-6 ÒâÁÏÖ®ÍâµÄhost variableÀàÐÍ: %s
-7 (pp_addr_expr): ³¢ÊÔÕÒµ½NULL±äÁ¿µÄµØÖ·
-8 "%s" ²»ÊÇÒ»¸öÖ¸Õë
-9 "%s" Ã»ÓÐÖ¸ÏòÒ»¸ö½á¹¹
-10 "%s" ²»ÊÇ¸ö½á¹¹
-11 %s Ã»ÓÐÓò "%s"
-12 "%s" ÎÞ·¨±» "%s" ½âÒýÓÃ
+1 æŒ‡ç¤ºå™¨å˜é‡ "%s" å¿…é¡»æ˜¯ä¸€ä¸ªçŸ­æ•´åž‹
+2 æ— æ³•å¯¹ç»“æž„ä½¿ç”¨æŒ‡ç¤ºå™¨å˜é‡
+3 "%s" æœ‰ä¸å®Œæ•´çš„ç»“æž„å®šä¹‰
+4 "%s" å¿…é¡»æ˜¯ä¸€ä¸ªæœ‰æ•ˆçš„ %s
+5 %s æ˜¯ä¸€ä¸ªä¸å¯æŽ¥å—çš„ç±»åž‹å¯¹äºŽ "%s"
+6 æ„æ–™ä¹‹å¤–çš„host variableç±»åž‹: %s
+7 (pp_addr_expr): å°è¯•æ‰¾åˆ°NULLå˜é‡çš„åœ°å€
+8 "%s" ä¸æ˜¯ä¸€ä¸ªæŒ‡é’ˆ
+9 "%s" æ²¡æœ‰æŒ‡å‘ä¸€ä¸ªç»“æž„
+10 "%s" ä¸æ˜¯ä¸ªç»“æž„
+11 %s æ²¡æœ‰åŸŸ "%s"
+12 "%s" æ— æ³•è¢« "%s" è§£å¼•ç”¨
 
 $set 12
-1 ÄÚ´æÓÃ¾¡
+1 å†…å­˜ç”¨å°½
 
 $set 13
-1 º¯ÊýÊý×éÊÇ·Ç·¨µÄ, ¼Ù¶¨Îªº¯ÊýÖ¸Õë
-2 (pp_the_same_type) Î´ÖªµÄÁ´½ÓÀà
-3 (pp_get_sizeof): ´íÎóµÄÃû´Ê (%d)
+1 å‡½æ•°æ•°ç»„æ˜¯éžæ³•çš„, å‡å®šä¸ºå‡½æ•°æŒ‡é’ˆ
+2 (pp_the_same_type) æœªçŸ¥çš„é“¾æŽ¥ç±»
+3 (pp_get_sizeof): é”™è¯¯çš„åè¯ (%d)
 
 $set 14
-1 (ÄÚ²¿´íÎó ÔÚ %s): ²»¿ÉÄÜµÄÇé¿ö
+1 (å†…éƒ¨é”™è¯¯ åœ¨ %s): ä¸å¯èƒ½çš„æƒ…å†µ
