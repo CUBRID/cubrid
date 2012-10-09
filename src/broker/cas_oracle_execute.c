@@ -54,6 +54,8 @@
 #include "broker_filename.h"
 #include "release_string.h"
 
+#include "error_code.h"
+
 #define ORA_ENV     _db_info.env
 #define ORA_ERR     _db_info.err
 #define ORA_SVC     _db_info.svc
@@ -1183,6 +1185,25 @@ ux_execute_internal (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   stmt = (OCIStmt *) srv_handle->session;
   call_info = srv_handle->prepare_call_info;
 
+  if (srv_handle->stmt_type == CUBRID_STMT_SELECT)
+    {
+      iters = 0;
+      mode = OCI_DEFAULT;
+    }
+  else
+    {
+      if (shm_appl->access_mode == READ_ONLY_ACCESS_MODE)
+	{
+	  err_code =
+	    ERROR_INFO_SET_WITH_MSG (ER_DB_NO_MODIFICATIONS,
+				     DBMS_ERROR_INDICATOR,
+				     "Attempted to update the database when updates are disabled.");
+	  goto execute_error_internal;
+	}
+      iters = 1;
+      mode = OCI_DEFAULT;
+    }
+
   memset ((char *) &locp_list, 0, sizeof (LOCATOR_LIST));
 
   bind_count = call_info->num_args;
@@ -1272,16 +1293,6 @@ ux_execute_internal (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
     }
 
   SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, 1);
-  if (srv_handle->stmt_type == CUBRID_STMT_SELECT)
-    {
-      iters = 0;
-      mode = OCI_DEFAULT;
-    }
-  else
-    {
-      iters = 1;
-      mode = OCI_DEFAULT;
-    }
   err_code = OCIStmtExecute (ORA_SVC, stmt, ORA_ERR, iters, 0, 0, 0, mode);
 
   as_info->num_queries_processed %= MAX_DIAG_DATA_VALUE;
@@ -1446,6 +1457,15 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
   hm_qresult_end (srv_handle, FALSE);
   stmt = (OCIStmt *) srv_handle->session;
   call_info = srv_handle->prepare_call_info;
+
+  if (srv_handle->stmt_type != CUBRID_STMT_SELECT
+      && shm_appl->access_mode == READ_ONLY_ACCESS_MODE)
+    {
+      ret =
+	ERROR_INFO_SET_WITH_MSG (ER_DB_NO_MODIFICATIONS, DBMS_ERROR_INDICATOR,
+				 "Attempted to update the database when updates are disabled.");
+      goto execute_array_error;
+    }
 
   bind_count = call_info->num_args;
   if (bind_count > 0)

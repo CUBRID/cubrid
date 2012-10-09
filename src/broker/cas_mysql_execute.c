@@ -56,6 +56,8 @@
 #include "release_string.h"
 #include "cas_error_log.h"
 
+#include "error_code.h"
+
 #if !defined(WINDOWS)
 #define STRING_APPEND(buffer_p, avail_size_holder, ...) \
   do {                                                          \
@@ -498,6 +500,15 @@ ux_execute_internal (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   stmt = (MYSQL_STMT *) srv_handle->session;
   stmt_id = stmt->stmt_id;
   call_info = srv_handle->prepare_call_info;
+
+  if (srv_handle->stmt_type != CUBRID_STMT_SELECT
+      && shm_appl->access_mode == READ_ONLY_ACCESS_MODE)
+    {
+      err_code =
+	ERROR_INFO_SET_WITH_MSG (ER_DB_NO_MODIFICATIONS, DBMS_ERROR_INDICATOR,
+				 "Attempted to update the database when updates are disabled.");
+      goto execute_all_error;
+    }
 
   num_bind = call_info->num_args;
   if (num_bind > 0)
