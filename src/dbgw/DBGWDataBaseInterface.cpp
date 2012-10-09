@@ -412,7 +412,7 @@ namespace dbgw
       return m_pQuery;
     }
 
-    const DBGWParameter &DBGWPreparedStatement::getParameter() const
+    DBGWParameter &DBGWPreparedStatement::getParameter()
     {
       /**
        * We don't need to clear error because this api will not make error.
@@ -468,6 +468,8 @@ namespace dbgw
         {
           DBGW_LOG_DEBUG(m_logger.getLogMessage(m_pQuery->getSQL()).c_str());
 
+          beforeBind();
+
           if (m_parameter.size() > 0)
             {
               if (DBGWLogger::isWritable(CCI_LOG_LEVEL_INFO))
@@ -479,7 +481,7 @@ namespace dbgw
                   DBGWQueryParameter stParam;
                   for (int i = 0, size = getQuery()->getBindNum(); i < size; i++)
                     {
-                      stParam = getQuery()->getBindParam(i);
+                      stParam = getQuery()->getQueryParamByPlaceHolderIndex(i);
                       pValue = m_parameter.getValue(stParam.name.c_str(),
                           stParam.index);
                       if (pValue == NULL)
@@ -561,15 +563,19 @@ namespace dbgw
       return m_bReuesed;
     }
 
+    void DBGWPreparedStatement::beforeBind()
+    {
+    }
+
     void DBGWPreparedStatement::bind()
     {
       int nResult = 0;
       const DBGWValue *pValue = NULL;
       DBGWQueryParameter stParam;
       const DBGWParameter &parameter = getParameter();
-      for (int i = 0, size = getQuery()->getBindNum(); i < size; i++)
+      for (size_t i = 0, size = getQuery()->getBindNum(); i < size; i++)
         {
-          stParam = getQuery()->getBindParam(i);
+          stParam = getQuery()->getQueryParamByPlaceHolderIndex(i);
           pValue = parameter.getValue(stParam.name.c_str(), stParam.index);
           if (pValue == NULL)
             {
@@ -591,7 +597,7 @@ namespace dbgw
             case DBGW_VAL_TYPE_CLOB:
             case DBGW_VAL_TYPE_BLOB:
 #endif
-              doBind(i + 1, pValue);
+              doBind(stParam, i + 1, pValue);
               break;
             default:
               InvalidValueTypeException e(pValue->getType());
@@ -627,7 +633,8 @@ namespace dbgw
        * 		setLastException(e);
        * }
        */
-      if (m_pStmt->getQuery()->getType() == DBGWQueryType::SELECT)
+      if (m_pStmt->getQuery()->getType() == DBGWQueryType::SELECT
+          || m_pStmt->getQuery()->getType() == DBGWQueryType::PROCEDURE)
         {
           m_bNeedFetch = true;
         }
@@ -838,6 +845,11 @@ namespace dbgw
         }
     }
 
+    const DBGWPreparedStatement *DBGWResult::getPreparedStatement() const
+    {
+      return m_pStmt.get();
+    }
+
     void DBGWResult::makeColumnValues()
     {
       int i = 0;
@@ -911,14 +923,17 @@ namespace dbgw
       if (DBGWLogger::isWritable(CCI_LOG_LEVEL_INFO))
         {
           LogBuffer headerLogBuf("Header:");
+          LogBuffer typeLogBuf("Type:");
 
           for (size_t i = 0; i < m_metaList.size(); i++)
             {
               headerLogBuf.addLog(m_metaList[i].name);
+              typeLogBuf.addLog(getDBGWValueTypeString(m_metaList[i].type));
             }
 
           DBGW_LOG_INFO(m_logger.getLogMessage("ResultSet").c_str());
           DBGW_LOG_INFO(m_logger.getLogMessage(headerLogBuf.getLog().c_str()).c_str());
+          DBGW_LOG_INFO(m_logger.getLogMessage(typeLogBuf.getLog().c_str()).c_str());
         }
     }
 

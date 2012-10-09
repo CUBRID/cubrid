@@ -103,11 +103,13 @@ namespace dbgw
       bool close();
 
     protected:
-      void doBind(int nIndex, const DBGWValue *pValue);
+      void beforeBind();
+      void doBind(const DBGWQueryParameter &queryParam, size_t nIndex,
+          const DBGWValue *pValue);
       DBGWResultSharedPtr doExecute();
 
     private:
-      DBGWCUBRIDPreparedStatement(const DBGWBoundQuerySharedPtr p_query,
+      DBGWCUBRIDPreparedStatement(const DBGWBoundQuerySharedPtr pQuery,
           int hCCIConnection);
       void doBindInt(int nIndex, const DBGWValue *pValue);
       void doBindLong(int nIndex, const DBGWValue *pValue);
@@ -150,6 +152,7 @@ namespace dbgw
       void doMakeLong(const MetaData &md, int nColNo);
       void doMakeFloat(const MetaData &md, int nColNo);
       void doMakeDouble(const MetaData &md, int nColNo);
+      void doMakeNULL(const MetaData &md, int nColNo);
 #ifdef ENABLE_LOB
       void doMakeClob(const MetaData &md, int nColNo);
       void doMakeBlob(const MetaData &md, int nColNo);

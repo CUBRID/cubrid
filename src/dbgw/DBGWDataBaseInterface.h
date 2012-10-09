@@ -114,10 +114,12 @@ namespace dbgw
       const DBGWBoundQuerySharedPtr getQuery() const;
 
     protected:
+      virtual void beforeBind();
       void bind();
-      virtual void doBind(int nIndex, const DBGWValue *pValue) = 0;
+      virtual void doBind(const DBGWQueryParameter &queryParam,
+          size_t nIndex, const DBGWValue *pValue) = 0;
       virtual DBGWResultSharedPtr doExecute() = 0;
-      const DBGWParameter &getParameter() const;
+      DBGWParameter &getParameter();
 
     protected:
       const DBGWLogger m_logger;
@@ -140,6 +142,7 @@ namespace dbgw
       DBGWValueType type;
       int orgType;
       size_t length;
+      bool unused;
     };
 
     typedef vector<MetaData> MetaDataList;
@@ -165,6 +168,7 @@ namespace dbgw
       int getAffectedRow() const;
 
     protected:
+      const DBGWPreparedStatement *getPreparedStatement() const;
       void makeColumnValues();
       virtual void makeColumnValue(const MetaData &md, int nColNo) = 0;
       void makeValue(const char *szColName, int nColNo, DBGWValueType type,

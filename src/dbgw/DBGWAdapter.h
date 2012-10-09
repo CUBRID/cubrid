@@ -195,10 +195,6 @@ namespace dbgw
         DECLSPECIFIER size_t __stdcall GetAffectedCount(Handle hResult);
         DECLSPECIFIER bool __stdcall IsNeedFetch(Handle hResult);
         DECLSPECIFIER const MetaDataList *__stdcall GetMetaDataList(Handle hResult);
-#ifdef ENABLE_UNUSED_FUNCTION
-        /**
-         * DBGW 3.0 cannot support this feature.
-         */
         DECLSPECIFIER bool __stdcall GetParameter(Handle hResult, int nIndex,
             int *pValue);
         DECLSPECIFIER bool __stdcall GetParameter(Handle hResult,
@@ -220,7 +216,6 @@ namespace dbgw
             int BufferSize, size_t *pLen);
         DECLSPECIFIER bool __stdcall GetParameter(Handle hResult,
             const char *szName, char *szBuffer, int BufferSize, size_t *pLen);
-#endif
         DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, int nIndex,
             int *pValue);
         DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, const char *szName,

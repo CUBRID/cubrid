@@ -60,13 +60,12 @@ namespace dbgw
 
     CUBRIDException CUBRIDExceptionFactory::create(const string &errorMessage)
     {
-      DBGWExceptionContext context =
+      T_CCI_ERROR cciError =
       {
-        DBGWErrorCode::INTERFACE_ERROR, DBGWErrorCode::NO_ERROR,
-        errorMessage, "", false
+        DBGWErrorCode::NO_ERROR, ""
       };
 
-      return CUBRIDException(context);
+      return CUBRIDExceptionFactory::create(-1, cciError, errorMessage);
     }
 
     CUBRIDException CUBRIDExceptionFactory::create(int nInterfaceErrorCode,
@@ -87,7 +86,7 @@ namespace dbgw
       DBGWExceptionContext context =
       {
         DBGWErrorCode::INTERFACE_ERROR, nInterfaceErrorCode,
-        errorMessage, "", false
+        "", "", false
       };
 
       stringstream buffer;
@@ -166,8 +165,7 @@ namespace dbgw
           DBGWDBInfoHashMap::const_iterator cit = dbInfoMap.find("dbname");
           if (cit == dbInfoMap.end())
             {
-              CUBRIDException e = CUBRIDExceptionFactory::create(
-                  "Not exist required property in dataabse info map.");
+              SQLNotExistPropertyException e("dbname");
               DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
               throw e;
             }
@@ -175,8 +173,7 @@ namespace dbgw
           cit = dbInfoMap.find("dbuser");
           if (cit == dbInfoMap.end())
             {
-              CUBRIDException e = CUBRIDExceptionFactory::create(
-                  "Not exist required property in dataabse info map.");
+              SQLNotExistPropertyException e("dbuser");
               DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
               throw e;
             }
@@ -184,8 +181,7 @@ namespace dbgw
           cit = dbInfoMap.find("dbpasswd");
           if (cit == dbInfoMap.end())
             {
-              CUBRIDException e = CUBRIDExceptionFactory::create(
-                  "Not exist required property in dataabse info map.");
+              SQLNotExistPropertyException e("dbpasswd");
               DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
               throw e;
             }
@@ -490,13 +486,21 @@ namespace dbgw
     }
 
     DBGWCUBRIDPreparedStatement::DBGWCUBRIDPreparedStatement(
-        const DBGWBoundQuerySharedPtr p_query, int hCCIConnection) :
-      DBGWPreparedStatement(p_query), m_hCCIConnection(hCCIConnection),
+        const DBGWBoundQuerySharedPtr pQuery, int hCCIConnection) :
+      DBGWPreparedStatement(pQuery), m_hCCIConnection(hCCIConnection),
       m_hCCIRequest(-1), m_bClosed(false)
     {
       T_CCI_ERROR cciError;
+      char flag = 0;
+
+      if (pQuery->getType() == DBGWQueryType::PROCEDURE
+          && pQuery->isExistOutBindParam())
+        {
+          flag = CCI_PREPARE_CALL;
+        }
+
       m_hCCIRequest = cci_prepare(m_hCCIConnection,
-          const_cast<char *>(p_query->getSQL()), 0, &cciError);
+          const_cast<char *>(pQuery->getSQL()), flag, &cciError);
       if (m_hCCIRequest < 0)
         {
           CUBRIDException e = CUBRIDExceptionFactory::create(m_hCCIRequest,
@@ -508,40 +512,100 @@ namespace dbgw
           m_logger.getLogMessage("prepare statement.").c_str(), m_hCCIRequest);
     }
 
-    void DBGWCUBRIDPreparedStatement::doBind(int nIndex, const DBGWValue *pValue)
+    void DBGWCUBRIDPreparedStatement::beforeBind()
     {
-      switch (pValue->getType())
+      if (getQuery()->getType() != DBGWQueryType::PROCEDURE)
         {
-        case DBGW_VAL_TYPE_INT:
-          doBindInt(nIndex, pValue);
-          break;
-        case DBGW_VAL_TYPE_LONG:
-          doBindLong(nIndex, pValue);
-          break;
-        case DBGW_VAL_TYPE_CHAR:
-          doBindChar(nIndex, pValue);
-          break;
-        case DBGW_VAL_TYPE_FLOAT:
-          doBindFloat(nIndex, pValue);
-          break;
-        case DBGW_VAL_TYPE_DOUBLE:
-          doBindDouble(nIndex, pValue);
-          break;
+          return;
+        }
+
+      DBGWParameter &parameter = getParameter();
+      const DBGWQueryParameterList &queryParamList = getQuery()->getQueryParamList();
+      if (queryParamList.size() <= parameter.size())
+        {
+          return;
+        }
+
+      /**
+       * We must bind NULL even if the parameter mode is out.
+       *
+       * expected : [0:in, 1:out, 2:in, 3:out, 4:in]
+       *
+       * real     : [0:in, 2:in, 4:in] ==> [OK]
+       * real     : [0:in, 1:out, 2:in, 4:in] ==> [OK]
+       * real     : [0:in, 4:in] ==> [FAIL]
+       * real     : [0:in, 1:in, 2:in] ==> [FAIL]
+       */
+      DBGWParameter newParameter;
+      DBGWValueSharedPtr pValue;
+      DBGWQueryParameterList::const_iterator it = queryParamList.begin();
+      for (; it != queryParamList.end(); it++)
+        {
+          if (it->mode == DBGW_BIND_MODE_IN)
+            {
+              pValue = parameter.getValueSharedPtr(it->name.c_str(), it->index);
+              if (pValue == NULL)
+                {
+                  throw getLastException();
+                }
+
+              newParameter.put(it->name.c_str(), pValue);
+            }
+          else
+            {
+              newParameter.put(it->name.c_str(), it->type, NULL);
+            }
+        }
+
+      parameter = newParameter;
+    }
+
+    void DBGWCUBRIDPreparedStatement::doBind(const DBGWQueryParameter &queryParam,
+        size_t nIndex, const DBGWValue *pValue)
+    {
+
+      if (queryParam.mode == DBGW_BIND_MODE_IN
+          || queryParam.mode == DBGW_BIND_MODE_INOUT)
+        {
+          switch (pValue->getType())
+            {
+            case DBGW_VAL_TYPE_INT:
+              doBindInt(nIndex, pValue);
+              break;
+            case DBGW_VAL_TYPE_LONG:
+              doBindLong(nIndex, pValue);
+              break;
+            case DBGW_VAL_TYPE_CHAR:
+              doBindChar(nIndex, pValue);
+              break;
+            case DBGW_VAL_TYPE_FLOAT:
+              doBindFloat(nIndex, pValue);
+              break;
+            case DBGW_VAL_TYPE_DOUBLE:
+              doBindDouble(nIndex, pValue);
+              break;
 #ifdef ENABLE_LOB
-        case DBGW_VAL_TYPE_CLOB:
-          doBindClob(nIndex, pValue);
-          break;
-        case DBGW_VAL_TYPE_BLOB:
-          doBindBlob(nIndex, pValue);
-          break;
+            case DBGW_VAL_TYPE_CLOB:
+              doBindClob(nIndex, pValue);
+              break;
+            case DBGW_VAL_TYPE_BLOB:
+              doBindBlob(nIndex, pValue);
+              break;
 #endif
-        case DBGW_VAL_TYPE_STRING:
-        case DBGW_VAL_TYPE_DATETIME:
-        case DBGW_VAL_TYPE_DATE:
-        case DBGW_VAL_TYPE_TIME:
-        default:
-          doBindString(nIndex, pValue);
-          break;
+            case DBGW_VAL_TYPE_STRING:
+            case DBGW_VAL_TYPE_DATETIME:
+            case DBGW_VAL_TYPE_DATE:
+            case DBGW_VAL_TYPE_TIME:
+            default:
+              doBindString(nIndex, pValue);
+              break;
+            }
+        }
+
+      if (queryParam.mode == DBGW_BIND_MODE_OUT
+          || queryParam.mode == DBGW_BIND_MODE_INOUT)
+        {
+          cci_register_out_param(m_hCCIRequest, nIndex);
         }
     }
 
@@ -963,87 +1027,138 @@ namespace dbgw
     void DBGWCUBRIDResult::doMakeMetadata(MetaDataList &metaList,
         const MetaDataList &userDefinedMetaList)
     {
-      T_CCI_SQLX_CMD cciCmdType;
-      int nColNum;
-      T_CCI_COL_INFO *pCCIColInfo = cci_get_result_info(m_hCCIRequest,
-          &cciCmdType, &nColNum);
-      if (pCCIColInfo == NULL)
-        {
-          CUBRIDException e = CUBRIDExceptionFactory::create(
-              "Cannot get the cci col info.");
-          DBGW_LOG_ERROR(getLogger().getLogMessage(e.what()).c_str());
-          throw e;
-        }
+      const DBGWBoundQuerySharedPtr pQuery = getPreparedStatement()->getQuery();
 
-      metaList.clear();
-
-      MetaData md;
-      for (int i = 0; i < nColNum; i++)
+      if (pQuery->getType() == DBGWQueryType::SELECT
+          || (pQuery->getType() == DBGWQueryType::PROCEDURE
+              && pQuery->isExistOutBindParam() == false))
         {
-          if (userDefinedMetaList.size() > i
-              && userDefinedMetaList[i].type != DBGW_VAL_TYPE_UNDEFINED)
+          T_CCI_SQLX_CMD cciCmdType;
+          int nColNum;
+          T_CCI_COL_INFO *pCCIColInfo = cci_get_result_info(m_hCCIRequest,
+              &cciCmdType, &nColNum);
+          if (pCCIColInfo == NULL)
             {
-              metaList.push_back(userDefinedMetaList[i]);
-              continue;
+              CUBRIDException e = CUBRIDExceptionFactory::create(
+                  "Cannot get the cci col info.");
+              DBGW_LOG_ERROR(getLogger().getLogMessage(e.what()).c_str());
+              throw e;
             }
 
-          md.colNo = i + 1;
-          md.name = CCI_GET_RESULT_INFO_NAME(pCCIColInfo, i + 1);
-          md.orgType = CCI_GET_RESULT_INFO_TYPE(pCCIColInfo, i + 1);
-          switch (md.orgType)
+          metaList.clear();
+
+          MetaData md;
+          md.unused = false;
+
+          for (size_t i = 0; i < (size_t) nColNum; i++)
             {
+              if (userDefinedMetaList.size() > i
+                  && userDefinedMetaList[i].type != DBGW_VAL_TYPE_UNDEFINED)
+                {
+                  metaList.push_back(userDefinedMetaList[i]);
+                  continue;
+                }
+
+              md.colNo = i + 1;
+              md.name = CCI_GET_RESULT_INFO_NAME(pCCIColInfo, i + 1);
+              md.orgType = CCI_GET_RESULT_INFO_TYPE(pCCIColInfo, i + 1);
+              switch (md.orgType)
+                {
 #ifdef ENABLE_LOB
-            case CCI_U_TYPE_CLOB:
-              return DBGW_VAL_TYPE_CLOB;
-            case CCI_U_TYPE_BLOB:
-              return DBGW_VAL_TYPE_BLOB;
+                case CCI_U_TYPE_CLOB:
+                  return DBGW_VAL_TYPE_CLOB;
+                case CCI_U_TYPE_BLOB:
+                  return DBGW_VAL_TYPE_BLOB;
 #endif
-            case CCI_U_TYPE_CHAR:
-              md.type = DBGW_VAL_TYPE_CHAR;
-              break;
-            case CCI_U_TYPE_INT:
-            case CCI_U_TYPE_SHORT:
-              md.type = DBGW_VAL_TYPE_INT;
-              break;
-            case CCI_U_TYPE_BIGINT:
-              md.type = DBGW_VAL_TYPE_LONG;
-              break;
-            case CCI_U_TYPE_STRING:
-            case CCI_U_TYPE_NCHAR:
-            case CCI_U_TYPE_VARNCHAR:
-              md.type = DBGW_VAL_TYPE_STRING;
-              break;
-            case CCI_U_TYPE_FLOAT:
-              md.type = DBGW_VAL_TYPE_FLOAT;
-              break;
-            case CCI_U_TYPE_DOUBLE:
-              md.type = DBGW_VAL_TYPE_DOUBLE;
-              break;
-            case CCI_U_TYPE_DATE:
-              md.type = DBGW_VAL_TYPE_DATE;
-              break;
-            case CCI_U_TYPE_TIME:
-              md.type = DBGW_VAL_TYPE_TIME;
-              break;
-            case CCI_U_TYPE_DATETIME:
-            case CCI_U_TYPE_TIMESTAMP:
-              md.type = DBGW_VAL_TYPE_DATETIME;
-              break;
-            default:
-              DBGW_LOG_WARN((
-                  boost:: format(
-                      "%d type is not yet supported. so converted string.")
-                  % md.orgType).str().c_str());
-              md.type = DBGW_VAL_TYPE_STRING;
-              break;
+                case CCI_U_TYPE_CHAR:
+                  md.type = DBGW_VAL_TYPE_CHAR;
+                  break;
+                case CCI_U_TYPE_INT:
+                case CCI_U_TYPE_SHORT:
+                  md.type = DBGW_VAL_TYPE_INT;
+                  break;
+                case CCI_U_TYPE_BIGINT:
+                  md.type = DBGW_VAL_TYPE_LONG;
+                  break;
+                case CCI_U_TYPE_STRING:
+                case CCI_U_TYPE_NCHAR:
+                case CCI_U_TYPE_VARNCHAR:
+                  md.type = DBGW_VAL_TYPE_STRING;
+                  break;
+                case CCI_U_TYPE_FLOAT:
+                  md.type = DBGW_VAL_TYPE_FLOAT;
+                  break;
+                case CCI_U_TYPE_DOUBLE:
+                  md.type = DBGW_VAL_TYPE_DOUBLE;
+                  break;
+                case CCI_U_TYPE_DATE:
+                  md.type = DBGW_VAL_TYPE_DATE;
+                  break;
+                case CCI_U_TYPE_TIME:
+                  md.type = DBGW_VAL_TYPE_TIME;
+                  break;
+                case CCI_U_TYPE_DATETIME:
+                case CCI_U_TYPE_TIMESTAMP:
+                  md.type = DBGW_VAL_TYPE_DATETIME;
+                  break;
+                default:
+                  DBGW_LOG_WARN((
+                      boost:: format(
+                          "%d type is not yet supported. so converted string.")
+                      % md.orgType).str().c_str());
+                  md.type = DBGW_VAL_TYPE_STRING;
+                  break;
+                }
+              metaList.push_back(md);
             }
-          metaList.push_back(md);
+        }
+      else if (pQuery->getType() == DBGWQueryType::PROCEDURE
+          && pQuery->isExistOutBindParam())
+        {
+          /**
+           * We cannot get the meta info if we execute procedure.
+           * so we make metadata based on query paramter info.
+           */
+
+          const DBGWQueryParameterList &queryParamList = pQuery->getQueryParamList();
+
+          MetaData md;
+          metaList.clear();
+
+          DBGWQueryParameterList::const_iterator it = queryParamList.begin();
+          for (int i = 0; it != queryParamList.end(); it++, i++)
+            {
+              md.name = it->name;
+              if (it->mode == DBGW_BIND_MODE_IN)
+                {
+                  md.unused = true;
+                  md.colNo = -1;
+                }
+              else
+                {
+                  md.unused = false;
+                  md.colNo = it->firstPlaceHolderIndex + 1;
+                }
+              md.type = it->type;
+              md.orgType = it->type;
+              metaList.push_back(md);
+            }
         }
     }
 
     void DBGWCUBRIDResult::makeColumnValue(const MetaData &md, int nColNo)
     {
-      if (md.type == DBGW_VAL_TYPE_INT)
+
+      if (md.unused)
+        {
+          /**
+           * we make null value to support dbgw 2.0 compatibility
+           * if parameter mode is 'in'.
+           */
+
+          doMakeNULL(md, nColNo);
+        }
+      else if (md.type == DBGW_VAL_TYPE_INT)
         {
           doMakeInt(md, nColNo);
         }
@@ -1149,6 +1264,11 @@ namespace dbgw
 
       makeValue(md.name.c_str(), nColNo, md.type, (void *) &dValue,
           nIndicator == -1, nIndicator);
+    }
+
+    void DBGWCUBRIDResult::doMakeNULL(const MetaData &md, int nColNo)
+    {
+      makeValue(md.name.c_str(), nColNo, md.type, NULL, true, 0);
     }
 
 #ifdef ENABLE_LOB

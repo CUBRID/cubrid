@@ -2305,6 +2305,27 @@ namespace dbgw
       }
   }
 
+  DBGWValueSharedPtr DBGWValueSet::getValueSharedPtr(const char *szKey)
+  {
+    DBGWValueIndexMap::const_iterator it = m_indexMap.find(szKey);
+    if (it == m_indexMap.end())
+      {
+        return DBGWValueSharedPtr();
+      }
+
+    return m_valueList[it->second];
+  }
+
+  DBGWValueSharedPtr DBGWValueSet::getValueSharedPtr(size_t nIndex)
+  {
+    if (nIndex >= m_valueList.size() || m_valueList[nIndex] == NULL)
+      {
+        return DBGWValueSharedPtr();
+      }
+
+    return m_valueList[nIndex];
+  }
+
   DBGWParameter::DBGWParameter()
   {
     /**
@@ -2339,6 +2360,34 @@ namespace dbgw
      * 		setLastException(e);
      * }
      */
+  }
+
+  DBGWValueSharedPtr DBGWParameter::getValueSharedPtr(const char *szKey,
+      size_t nIndex)
+  {
+    clearException();
+
+    try
+      {
+        DBGWValueSharedPtr pValue = DBGWValueSet::getValueSharedPtr(szKey);
+        if (pValue == NULL)
+          {
+            pValue = DBGWValueSet::getValueSharedPtr(nIndex);
+            if (pValue == NULL)
+              {
+                NotExistSetException e(nIndex);
+                DBGW_LOG_ERROR(e.what());
+                throw e;
+              }
+          }
+
+        return pValue;
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return DBGWValueSharedPtr();
+      }
   }
 
   const DBGWValue *DBGWParameter::getValue(size_t nIndex) const

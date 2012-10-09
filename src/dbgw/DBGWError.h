@@ -43,6 +43,7 @@ namespace dbgw
       SQL_INVALID_SQL                           = -22201,
       SQL_NOT_EXIST_PARAM                       = -22202,
       SQL_EXECUTE_BEFORE_PREPARE                = -22203,
+      SQL_NOT_EXIST_PROPERTY                    = -22204,
 
       VALUE_NOT_EXIST_SET                       = -22300,
       VALUE_MISMATCH_VALUE_TYPE                 = -22301,
@@ -213,6 +214,12 @@ namespace dbgw
   {
   public:
     ExecuteBeforePrepareException() throw();
+  };
+
+  class SQLNotExistPropertyException : public DBGWException
+  {
+  public:
+    SQLNotExistPropertyException(const char *szName) throw();
   };
 
   class NotExistSetException : public DBGWException

@@ -56,6 +56,7 @@ namespace dbgw
     DBGWValueType get20ValueType(const char *szName);
     DBGWValueType get10ValueType(const char *szName);
     CCI_LOG_LEVEL getLogLevel(const char *szName);
+    DBGWBindMode getBindMode(const char *szMode);
 
   public:
     const char *getNodeName() const;
@@ -166,9 +167,10 @@ namespace dbgw
     void setLocalGroupName(const char *szLocalGroupName);
     void setQueryType(DBGWQueryType::Enum queryType);
     void setSqlName(const char *szSqlName);
-    void setParameter(const string &name, int nIndex, DBGWValueType valueType);
+    void setParameter(const string &name, int nIndex, DBGWValueType valueType,
+        DBGWBindMode mode);
     void setParameter(const char *szMode, const char *szName,
-        DBGWValueType valueType);
+        DBGWValueType valueType, DBGWBindMode mode);
     void setResult(const string &name, size_t nIndex, DBGWValueType valueType,
         int nLength);
     void appendQueryString(const char *szQueryString);
@@ -186,8 +188,7 @@ namespace dbgw
     string m_sqlName;
     DBGWQueryType::Enum m_queryType;
     set<int> m_paramIndexList;
-    DBGWQueryParameterHashMap m_inQueryParamMap;
-    DBGWQueryParameterHashMap m_outQueryParamMap;
+    DBGWQueryParameterList m_queryParamList;
     set<int> m_resultIndexList;
     db::MetaDataList m_userDefinedMetaList;
     stringstream m_queryBuffer;

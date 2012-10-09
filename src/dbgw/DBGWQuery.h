@@ -23,21 +23,37 @@
 namespace dbgw
 {
 
-  extern string makeImplicitParamName(int nIndex);
-  extern bool isImplicitParamName(const char *szName);
-
   class DBGWQuery;
   typedef shared_ptr<DBGWQuery> DBGWQuerySharedPtr;
+
+  enum DBGWQueryMapperVersion
+  {
+    DBGW_QUERY_MAP_VER_UNKNOWN,
+    DBGW_QUERY_MAP_VER_10,
+    DBGW_QUERY_MAP_VER_20,
+    DBGW_QUERY_MAP_VER_30
+  };
 
   namespace DBGWQueryType
   {
 
     enum Enum
     {
-      UNDEFINED = -1, SELECT = 0, PROCEDURE, DML, SIZE
+      UNDEFINED = -1, SELECT = 0, PROCEDURE, UPDATE, SIZE
     };
 
   }
+
+  extern string makeImplicitParamName(int nIndex);
+  extern bool isImplicitParamName(const char *szName);
+  extern DBGWQueryType::Enum getQueryType(const char *szQueryType);
+
+  enum DBGWBindMode
+  {
+    DBGW_BIND_MODE_IN = 0,
+    DBGW_BIND_MODE_OUT,
+    DBGW_BIND_MODE_INOUT
+  };
 
   namespace db
   {
@@ -48,12 +64,20 @@ namespace dbgw
   {
     string name;
     DBGWValueType type;
-    int index;
+    size_t index;
+    int firstPlaceHolderIndex;
+    DBGWBindMode mode;
   };
 
-  typedef boost::unordered_map<string, DBGWQueryParameter,
-          boost::hash<string>, dbgwStringCompareFunc>
-          DBGWQueryParameterHashMap;
+  struct DBGWPlaceHolder
+  {
+    string name;
+    size_t index;
+    size_t queryParamIndex;
+  };
+
+  typedef vector<DBGWQueryParameter> DBGWQueryParameterList;
+  typedef vector<DBGWPlaceHolder> DBGWPlaceHolderList;
 
   class DBGWQuery;
 
@@ -70,8 +94,10 @@ namespace dbgw
     string getSqlKey() const;
     DBGWQueryType::Enum getType() const;
     int getBindNum() const;
-    DBGWQueryParameter getBindParam(int nIndex) const;
+    const DBGWQueryParameter &getQueryParamByPlaceHolderIndex(int nBindIndex) const;
+    const DBGWQueryParameterList &getQueryParamList() const;
     const db::MetaDataList &getUserDefinedMetaList() const;
+    bool isExistOutBindParam() const;
 
   private:
     DBGWBoundQuery(const char *szSql, const char *szGroupName,
@@ -92,11 +118,10 @@ namespace dbgw
   class DBGWQuery
   {
   public:
-    DBGWQuery(const string &fileName, const string &query,
-        const string &sqlName, const string &groupName,
+    DBGWQuery(DBGWQueryMapperVersion version, const string &fileName,
+        const string &query, const string &sqlName, const string &groupName,
         DBGWQueryType::Enum queryType,
-        const DBGWQueryParameterHashMap &inQueryParamMap,
-        const DBGWQueryParameterHashMap &outQueryParamMap,
+        const DBGWQueryParameterList &queryParamList,
         const db::MetaDataList &userDefinedMetaList);
     virtual ~ DBGWQuery();
 
@@ -108,9 +133,11 @@ namespace dbgw
     const char *getGroupName() const;
     DBGWQueryType::Enum getType() const;
     int getBindNum() const;
-    DBGWQueryParameter getBindParam(size_t nIndex) const;
+    const DBGWQueryParameter &getQueryParamByPlaceHolderIndex(size_t nBindIndex) const;
     const char *getQuery() const;
     const db::MetaDataList &getUserDefinedMetaList() const;
+    const DBGWQueryParameterList &getQueryParamList() const;
+    bool isExistOutBindParam() const;
 
   private:
     void addQueryPart(char cToken, const char *szStart, const char *szEnd);
@@ -128,10 +155,10 @@ namespace dbgw
     string m_sqlName;
     string m_groupName;
     DBGWQueryType::Enum m_queryType;
-    DBGWQueryParameterHashMap m_inQueryParamMap;
-    DBGWQueryParameterHashMap m_outQueryParamMap;
-    DBGWStringList m_bindParamNameList;
+    DBGWQueryParameterList m_queryParamList;
+    DBGWPlaceHolderList m_placeHolderList;
     db::MetaDataList m_userDefinedMetaList;
+    bool m_bExistOutBindParam;
 
   private:
     class DBGWQueryPart

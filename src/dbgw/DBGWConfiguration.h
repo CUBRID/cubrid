@@ -241,14 +241,6 @@ namespace dbgw
 
   typedef list<string> DBGWQueryNameList;
 
-  enum DBGWQueryMapperVersion
-  {
-    DBGW_QUERY_MAP_VER_UNKNOWN,
-    DBGW_QUERY_MAP_VER_10,
-    DBGW_QUERY_MAP_VER_20,
-    DBGW_QUERY_MAP_VER_30
-  };
-
   class DBGWQueryMapper: public DBGWResource
   {
   public:

@@ -296,6 +296,16 @@ namespace dbgw
   {
   }
 
+  SQLNotExistPropertyException::SQLNotExistPropertyException(
+      const char *szName) throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(DBGWErrorCode::SQL_NOT_EXIST_PROPERTY,
+            (boost::format(
+                "Not exist required property '%s' in dataabse info map.")
+                % szName).str()))
+  {
+  }
+
   NotExistSetException::NotExistSetException(const char *szKey) throw() :
     DBGWException(
         DBGWExceptionFactory::create(DBGWErrorCode::VALUE_NOT_EXIST_SET,

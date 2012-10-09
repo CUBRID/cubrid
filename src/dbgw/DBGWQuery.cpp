@@ -76,6 +76,35 @@ namespace dbgw
       }
   }
 
+  DBGWQueryType::Enum getQueryType(const char *szQueryType)
+  {
+    const char *p = szQueryType;
+
+    while (isspace(*p))
+      {
+        ++p;
+      }
+
+    if (!strncasecmp(p, "select", 6))
+      {
+        return DBGWQueryType::SELECT;
+      }
+    else if (!strncasecmp(p, "insert", 6)
+        || !strncasecmp(p, "update", 6)
+        || !strncasecmp(p, "delete", 6))
+      {
+        return DBGWQueryType::UPDATE;
+      }
+    else if (!strncasecmp(p, "call", 4))
+      {
+        return DBGWQueryType::PROCEDURE;
+      }
+    else
+      {
+        return DBGWQueryType::UNDEFINED;
+      }
+  }
+
   /**
    * class DBGWBoundQuery
    */
@@ -130,9 +159,15 @@ namespace dbgw
     return m_query.getBindNum();
   }
 
-  DBGWQueryParameter DBGWBoundQuery::getBindParam(int nIndex) const
+  const DBGWQueryParameter &DBGWBoundQuery::getQueryParamByPlaceHolderIndex(
+      int nBindIndex) const
   {
-    return m_query.getBindParam(nIndex);
+    return m_query.getQueryParamByPlaceHolderIndex(nBindIndex);
+  }
+
+  const DBGWQueryParameterList &DBGWBoundQuery::getQueryParamList() const
+  {
+    return m_query.getQueryParamList();
   }
 
   const db::MetaDataList &DBGWBoundQuery::getUserDefinedMetaList() const
@@ -140,21 +175,36 @@ namespace dbgw
     return m_query.getUserDefinedMetaList();
   }
 
+  bool DBGWBoundQuery::isExistOutBindParam() const
+  {
+    return m_query.isExistOutBindParam();
+  }
+
   /**
    * class DBGWQuery
    */
-  DBGWQuery::DBGWQuery(const string &fileName, const string &query,
-      const string &sqlName, const string &groupName,
+  DBGWQuery::DBGWQuery(DBGWQueryMapperVersion version, const string &fileName,
+      const string &query, const string &sqlName, const string &groupName,
       DBGWQueryType::Enum queryType,
-      const DBGWQueryParameterHashMap &inQueryParamMap,
-      const DBGWQueryParameterHashMap &outQueryParamMap,
+      const DBGWQueryParameterList &queryParamList,
       const db::MetaDataList &userDefinedMetaList) :
     m_logger(groupName, sqlName), m_fileName(fileName), m_query(query),
     m_sqlName(sqlName), m_groupName(groupName), m_queryType(queryType),
-    m_inQueryParamMap(inQueryParamMap),
-    m_outQueryParamMap(outQueryParamMap),
-    m_userDefinedMetaList(userDefinedMetaList)
+    m_queryParamList(queryParamList),
+    m_userDefinedMetaList(userDefinedMetaList),
+    m_bExistOutBindParam(false)
   {
+    DBGWQueryParameterList::const_iterator it = m_queryParamList.begin();
+    for (; it != m_queryParamList.end(); it++)
+      {
+        if (it->mode == DBGW_BIND_MODE_OUT
+            || it->mode == DBGW_BIND_MODE_INOUT)
+          {
+            m_bExistOutBindParam = true;
+            break;
+          }
+      }
+
     /**
      * Example :
      *
@@ -209,7 +259,7 @@ namespace dbgw
           }
         else if (cToken != 0 && !isalnum(*p) && (*p != '_' && *p != '-'))
           {
-            if (cToken == '?')
+            if (cToken == '?' && version == DBGW_QUERY_MAP_VER_10)
               {
                 /**
                  * 9. `?` is added to bind query part.
@@ -252,26 +302,77 @@ namespace dbgw
   {
     string part;
     DBGWQueryPartSharedPtr p;
-    switch (cToken)
+
+    if (cToken == '#')
       {
-      case '#':
         part = string(szStart + 1, szEnd - szStart - 1);
         p = DBGWQueryPartSharedPtr(new DBGWReplaceQueryPart(m_logger, part));
         m_queryPartList.push_back(p);
-        break;
-      case ':':
+      }
+    else if (cToken == ':')
+      {
         part = string(szStart + 1, szEnd - szStart - 1);
-        m_bindParamNameList.push_back(part);
+
+        int i = 0;
+        DBGWQueryParameterList::iterator it = m_queryParamList.begin();
+        for (i = 0, it = m_queryParamList.begin();
+            it != m_queryParamList.end(); i++, it++)
+          {
+            /**
+             * find query parameter by placeholder name
+             * and set each index to find easy later.
+             */
+            if (it->name == part)
+              {
+                DBGWPlaceHolder placeHolder;
+                placeHolder.name = part;
+                placeHolder.index = m_placeHolderList.size();
+                placeHolder.queryParamIndex = i;
+                m_placeHolderList.push_back(placeHolder);
+
+                if (it->firstPlaceHolderIndex == -1)
+                  {
+                    it->firstPlaceHolderIndex = placeHolder.index;
+                  }
+
+                p = DBGWQueryPartSharedPtr(new DBGWSQLQueryPart("?"));
+                m_queryPartList.push_back(p);
+                return;
+              }
+          }
+
+        NotExistParamException e(part);
+        DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+        throw e;
+      }
+    else if (cToken == '?')
+      {
+        DBGWPlaceHolder placeHolder;
+        placeHolder.index = m_placeHolderList.size();
+        placeHolder.queryParamIndex = placeHolder.index;
+
+        if (m_queryParamList.size() > placeHolder.index)
+          {
+            placeHolder.name = m_queryParamList[placeHolder.index].name;
+            if (m_queryParamList[placeHolder.index].firstPlaceHolderIndex == -1)
+              {
+                m_queryParamList[placeHolder.index].firstPlaceHolderIndex =
+                    placeHolder.index;
+              }
+          }
+
+        if (placeHolder.name == "")
+          {
+            placeHolder.name = makeImplicitParamName(placeHolder.index);
+          }
+
+        m_placeHolderList.push_back(placeHolder);
+
         p = DBGWQueryPartSharedPtr(new DBGWSQLQueryPart("?"));
         m_queryPartList.push_back(p);
-        break;
-      case '?':
-        part = makeImplicitParamName(m_bindParamNameList.size());
-        m_bindParamNameList.push_back(part);
-        p = DBGWQueryPartSharedPtr(new DBGWSQLQueryPart("?"));
-        m_queryPartList.push_back(p);
-        break;
-      default:
+      }
+    else
+      {
         part = string(szStart, szEnd - szStart);
         p = DBGWQueryPartSharedPtr(new DBGWSQLQueryPart(part));
         m_queryPartList.push_back(p);
@@ -314,27 +415,28 @@ namespace dbgw
 
   int DBGWQuery::getBindNum() const
   {
-    return m_bindParamNameList.size();
+    return m_placeHolderList.size();
   }
 
-  DBGWQueryParameter DBGWQuery::getBindParam(size_t nIndex) const
+  const DBGWQueryParameter &DBGWQuery::getQueryParamByPlaceHolderIndex(
+      size_t nBindIndex) const
   {
-    if (m_bindParamNameList.size() < nIndex)
+    if (m_placeHolderList.size() < nBindIndex)
       {
-        NotExistParamException e(nIndex);
+        NotExistParamException e(nBindIndex);
         DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
         throw e;
       }
 
-    DBGWQueryParameterHashMap::const_iterator it = m_inQueryParamMap.find(
-        m_bindParamNameList[nIndex]);
-    if (it == m_inQueryParamMap.end())
+    const DBGWPlaceHolder &placeHolder = m_placeHolderList[nBindIndex];
+    if (m_queryParamList.size() < placeHolder.queryParamIndex)
       {
-        NotExistParamException e(m_bindParamNameList[nIndex]);
+        NotExistParamException e(placeHolder.queryParamIndex);
         DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
         throw e;
       }
-    return it->second;
+
+    return m_queryParamList[placeHolder.queryParamIndex];
   }
 
   const char *DBGWQuery::getQuery() const
@@ -345,6 +447,16 @@ namespace dbgw
   const db::MetaDataList &DBGWQuery::getUserDefinedMetaList() const
   {
     return m_userDefinedMetaList;
+  }
+
+  const DBGWQueryParameterList &DBGWQuery::getQueryParamList() const
+  {
+    return m_queryParamList;
+  }
+
+  bool DBGWQuery::isExistOutBindParam() const
+  {
+    return m_bExistOutBindParam;
   }
 
   /**

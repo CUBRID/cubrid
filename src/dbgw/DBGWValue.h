@@ -199,6 +199,8 @@ namespace dbgw
 
   public:
     DBGWValueSet &operator=(const DBGWValueSet &valueSet);
+    DBGWValueSharedPtr getValueSharedPtr(const char *szKey);
+    DBGWValueSharedPtr getValueSharedPtr(size_t nIndex);
 
   private:
     void removeIndexMap(int nIndex);
@@ -216,6 +218,8 @@ namespace dbgw
   public:
     DBGWParameter();
     virtual ~ DBGWParameter();
+
+    DBGWValueSharedPtr getValueSharedPtr(const char *szKey, size_t nIndex);
 
   public:
     const DBGWValue *getValue(size_t nIndex) const;

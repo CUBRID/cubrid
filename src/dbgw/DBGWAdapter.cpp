@@ -937,6 +937,66 @@ namespace dbgw
             }
         }
 
+        DECLSPECIFIER bool __stdcall GetParameter(Handle hResult, int nIndex,
+            int *pValue)
+        {
+          return GetColumn(hResult, nIndex, pValue);
+        }
+
+        DECLSPECIFIER bool __stdcall GetParameter(Handle hResult,
+            const char *szName, int *pValue)
+        {
+          return GetColumn(hResult, szName, pValue);
+        }
+
+        DECLSPECIFIER bool __stdcall GetParameter(Handle hResult, int nIndex,
+            int64 *pValue)
+        {
+          return GetColumn(hResult, nIndex, pValue);
+        }
+
+        DECLSPECIFIER bool __stdcall GetParameter(Handle hResult,
+            const char *szName, int64 *pValue)
+        {
+          return GetColumn(hResult, szName, pValue);
+        }
+
+        DECLSPECIFIER bool __stdcall GetParameter(Handle hResult, int nIndex,
+            float *pValue)
+        {
+          return GetColumn(hResult, nIndex, pValue);
+        }
+
+        DECLSPECIFIER bool __stdcall GetParameter(Handle hResult,
+            const char *szName, float *pValue)
+        {
+          return GetColumn(hResult, szName, pValue);
+        }
+
+        DECLSPECIFIER bool __stdcall GetParameter(Handle hResult, int nIndex,
+            double *pValue)
+        {
+          return GetColumn(hResult, nIndex, pValue);
+        }
+
+        DECLSPECIFIER bool __stdcall GetParameter(Handle hResult,
+            const char *szName, double *pValue)
+        {
+          return GetColumn(hResult, szName, pValue);
+        }
+
+        DECLSPECIFIER bool __stdcall GetParameter(Handle hResult, int nIndex,
+            char *szBuffer, int BufferSize, size_t *pLen)
+        {
+          return GetColumn(hResult, nIndex, szBuffer, BufferSize, pLen);
+        }
+
+        DECLSPECIFIER bool __stdcall GetParameter(Handle hResult,
+            const char *szName, char *szBuffer, int BufferSize, size_t *pLen)
+        {
+          return GetColumn(hResult, szName, szBuffer, BufferSize, pLen);
+        }
+
         DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, int nIndex,
             int *pValue)
         {
