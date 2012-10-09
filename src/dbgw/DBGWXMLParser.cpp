@@ -16,6 +16,7 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
+#include <boost/format.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/algorithm/string.hpp>
 #if defined(WINDOWS)
@@ -43,6 +44,7 @@ namespace dbgw
   static const char *XML_NODE_CONFIGURATION = "configuration";
   static const char *XML_NODE_CONNECTOR = "connector";
   static const char *XML_NODE_QUERYMAP = "querymap";
+  static const char *XML_NODE_QUERYMAP_PROP_VERSION = "version";
 
   static const char *XML_NODE_SERVICE = "service";
   static const char *XML_NODE_SERVICE_PROP_NAMESPACE = "namespace";
@@ -71,21 +73,64 @@ namespace dbgw
 
   static const char *XML_NODE_ALTHOSTS = "althosts";
 
-  static const char *XML_NODE_SQLS = "sqls";
-  static const char *XML_NODE_SQLS_PROP_GROUP_NAME = "group-name";
+  static const char *XML_NODE_10_DEFINEDQUERY = "definedquery";
 
-  static const char *XML_NODE_SELECT = "select";
-  static const char *XML_NODE_INSERT = "insert";
-  static const char *XML_NODE_UPDATE = "update";
-  static const char *XML_NODE_DELETE = "delete";
-  static const char *XML_NODE_SQL_PROP_NAME = "name";
+  static const char *XML_NODE_10_SQL = "sql";
+  static const char *XML_NODE_10_SQL_PROP_NAME = "name";
 
-  static const char *XML_NODE_PARAM = "param";
-  static const char *XML_NODE_PARAM_PROP_NAME = "name";
-  static const char *XML_NODE_PARAM_PROP_TYPE = "type";
-  static const char *XML_NODE_PARAM_PROP_MODE = "mode";
+  static const char *XML_NODE_10_QUERY = "query";
 
-  static const char *XML_NODE_CDATA = "cdata";
+  static const char *XML_NODE_10_PLACEHOLDER = "placeholder";
+
+  static const char *XML_NODE_10_PARAMETER = "parameter";
+  static const char *XML_NODE_10_PARAMETER_PROP_NAME = "name";
+  static const char *XML_NODE_10_PARAMETER_PROP_INDEX = "index";
+  static const char *XML_NODE_10_PARAMETER_PROP_TYPE = "type";
+
+  static const char *XML_NODE_10_RESULT = "result";
+
+  static const char *XML_NODE_10_COLUMN = "column";
+  static const char *XML_NODE_10_COLUMN_PROP_NAME = "name";
+  static const char *XML_NODE_10_COLUMN_PROP_INDEX = "index";
+  static const char *XML_NODE_10_COLUMN_PROP_LENGTH = "length";
+  static const char *XML_NODE_10_COLUMN_PROP_TYPE = "type";
+
+  static const char *XML_NODE_20_SQLS = "sqls";
+
+  static const char *XML_NODE_20_USING_DB = "using-db";
+  static const char *XML_NODE_20_USING_DB_PROP_MODULE_ID = "module-id";
+  static const char *XML_NODE_20_USING_DB_PROP_DEFAULT = "default";
+
+  static const char *XML_NODE_20_SELECT = "select";
+  static const char *XML_NODE_20_INSERT = "insert";
+  static const char *XML_NODE_20_UPDATE = "update";
+  static const char *XML_NODE_20_DELETE = "delete";
+  static const char *XML_NODE_20_SQL_PROP_NAME = "name";
+  static const char *XML_NODE_20_SQL_PROP_DB = "db";
+
+  static const char *XML_NODE_20_PARAM = "param";
+  static const char *XML_NODE_20_PARAM_PROP_NAME = "name";
+  static const char *XML_NODE_20_PARAM_PROP_MODE = "mode";
+  static const char *XML_NODE_20_PARAM_PROP_TYPE = "type";
+
+  static const char *XML_NODE_30_SQLS = "sqls";
+  static const char *XML_NODE_30_SQLS_PROP_GROUP_NAME = "group-name";
+
+  static const char *XML_NODE_30_SELECT = "select";
+  static const char *XML_NODE_30_INSERT = "insert";
+  static const char *XML_NODE_30_UPDATE = "update";
+  static const char *XML_NODE_30_DELETE = "delete";
+  static const char *XML_NODE_30_SQL_PROP_NAME = "name";
+
+  static const char *XML_NODE_30_PARAM = "param";
+  static const char *XML_NODE_30_PARAM_PROP_NAME = "name";
+  static const char *XML_NODE_30_PARAM_PROP_TYPE = "type";
+  static const char *XML_NODE_30_PARAM_PROP_MODE = "mode";
+
+  static const char *XML_NODE_30_GROUP = "group";
+  static const char *XML_NODE_30_GROUP_PROP_NAME = "name";
+
+  static const char *XML_NODE_30_CDATA = "cdata";
 
   static const char *XML_NODE_LOG = "log";
   static const char *XML_NODE_LOG_PROP_LEVEL = "level";
@@ -98,7 +143,8 @@ namespace dbgw
 
   static const int POOL_DEFAULT_POOL_SIZE = 10;
 
-  DBGWExpatXMLParser::DBGWExpatXMLParser(const string &fileName)
+  DBGWExpatXMLParser::DBGWExpatXMLParser(const string &fileName) :
+    m_fileName(fileName)
   {
     m_pParser = XML_ParserCreate(NULL);
     if (m_pParser == NULL)
@@ -122,9 +168,15 @@ namespace dbgw
     return m_pParser;
   }
 
-  DBGWExpatXMLProperties::DBGWExpatXMLProperties(const string &nodeName,
+  const char *DBGWExpatXMLParser::getFileName() const
+  {
+    return m_fileName.c_str();
+  }
+
+  DBGWExpatXMLProperties::DBGWExpatXMLProperties(
+      const DBGWExpatXMLParser &xmlParser, const string &nodeName,
       const XML_Char *szAttr[]) :
-    m_nodeName(nodeName), m_pAttr(szAttr)
+    m_xmlParser(xmlParser), m_nodeName(nodeName), m_pAttr(szAttr)
   {
   }
 
@@ -144,7 +196,8 @@ namespace dbgw
 
     if (bRequired)
       {
-        NotExistPropertyException e(m_nodeName.c_str(), szName);
+        NotExistPropertyException e(m_xmlParser.getFileName(),
+            m_nodeName.c_str(), szName);
         DBGW_LOG_ERROR(e.what());
         throw e;
       }
@@ -166,7 +219,8 @@ namespace dbgw
 
     if (bRequired)
       {
-        NotExistPropertyException e(m_nodeName.c_str(), szName);
+        NotExistPropertyException e(m_xmlParser.getFileName(),
+            m_nodeName.c_str(), szName);
         DBGW_LOG_ERROR(e.what());
         throw e;
       }
@@ -188,7 +242,8 @@ namespace dbgw
 
     if (bRequired)
       {
-        NotExistPropertyException e(m_nodeName.c_str(), szName);
+        NotExistPropertyException e(m_xmlParser.getFileName(),
+            m_nodeName.c_str(), szName);
         DBGW_LOG_ERROR(e.what());
         throw e;
       }
@@ -210,7 +265,8 @@ namespace dbgw
 
     if (bRequired)
       {
-        NotExistPropertyException e(m_nodeName.c_str(), szName);
+        NotExistPropertyException e(m_xmlParser.getFileName(),
+            m_nodeName.c_str(), szName);
         DBGW_LOG_ERROR(e.what());
         throw e;
       }
@@ -251,8 +307,8 @@ namespace dbgw
           }
         else
           {
-            InvalidPropertyValueException e(szValidateResult,
-                "SELECT|PROCEDURE|DML");
+            InvalidPropertyValueException e(m_xmlParser.getFileName(),
+                szValidateResult, "SELECT|PROCEDURE|DML");
             DBGW_LOG_ERROR(e.what());
             throw e;
           }
@@ -306,7 +362,73 @@ namespace dbgw
       }
 #endif
 
-    InvalidValueTypeException e(szType);
+    InvalidValueTypeException e(m_xmlParser.getFileName(), szType);
+    DBGW_LOG_ERROR(e.what());
+    throw e;
+  }
+
+  DBGWValueType DBGWExpatXMLProperties::get20ValueType(const char *szName)
+  {
+    const char *szType = get(szName, true);
+
+    if (!strcasecmp(szType, "string"))
+      {
+        return DBGW_VAL_TYPE_STRING;
+      }
+    if (!strcasecmp(szType, "char"))
+      {
+        return DBGW_VAL_TYPE_CHAR;
+      }
+    if (!strcasecmp(szType, "int"))
+      {
+        return DBGW_VAL_TYPE_INT;
+      }
+    if (!strcasecmp(szType, "long"))
+      {
+        return DBGW_VAL_TYPE_LONG;
+      }
+    if (!strcasecmp(szType, "double"))
+      {
+        return DBGW_VAL_TYPE_DOUBLE;
+      }
+    if (!strcasecmp(szType, "data"))
+      {
+        return DBGW_VAL_TYPE_DATETIME;
+      }
+    InvalidValueTypeException e(m_xmlParser.getFileName(), szType);
+    DBGW_LOG_ERROR(e.what());
+    throw e;
+  }
+
+  DBGWValueType DBGWExpatXMLProperties::get10ValueType(const char *szName)
+  {
+    const char *szType = get(szName, true);
+
+    if (!strcasecmp(szType, "string"))
+      {
+        return DBGW_VAL_TYPE_STRING;
+      }
+    if (!strcasecmp(szType, "char"))
+      {
+        return DBGW_VAL_TYPE_CHAR;
+      }
+    if (!strcasecmp(szType, "int"))
+      {
+        return DBGW_VAL_TYPE_INT;
+      }
+    if (!strcasecmp(szType, "int64"))
+      {
+        return DBGW_VAL_TYPE_LONG;
+      }
+    if (!strcasecmp(szType, "float"))
+      {
+        return DBGW_VAL_TYPE_FLOAT;
+      }
+    if (!strcasecmp(szType, "double"))
+      {
+        return DBGW_VAL_TYPE_DOUBLE;
+      }
+    InvalidValueTypeException e(m_xmlParser.getFileName(), szType);
     DBGW_LOG_ERROR(e.what());
     throw e;
   }
@@ -336,7 +458,8 @@ namespace dbgw
         return CCI_LOG_LEVEL_DEBUG;
       }
 
-    InvalidPropertyValueException e(szLogLevel, "OFF|ERROR|WARNING|INFO|DEBUG");
+    InvalidPropertyValueException e(m_xmlParser.getFileName(), szLogLevel,
+        "OFF|ERROR|WARNING|INFO|DEBUG");
     DBGW_LOG_ERROR(e.what());
     throw e;
   }
@@ -354,9 +477,10 @@ namespace dbgw
       }
     catch (boost::bad_lexical_cast &)
       {
-        InvalidPropertyValueException ie(szProperty, "NUMERIC");
-        DBGW_LOG_ERROR(ie.what());
-        throw ie;
+        InvalidPropertyValueException e(m_xmlParser.getFileName(), szProperty,
+            "NUMERIC");
+        DBGW_LOG_ERROR(e.what());
+        throw e;
       }
   }
 
@@ -372,14 +496,16 @@ namespace dbgw
       }
     else
       {
-        InvalidPropertyValueException e(szProperty, "TRUE|FALSE");
+        InvalidPropertyValueException e(m_xmlParser.getFileName(), szProperty,
+            "TRUE|FALSE");
         DBGW_LOG_ERROR(e.what());
         throw e;
       }
   }
 
   DBGWParser::DBGWParser(const string &fileName) :
-    m_fileName(fileName), m_realFileName(fileName), m_bCdataSection(false)
+    m_fileName(fileName), m_realFileName(fileName), m_bCdataSection(false),
+    m_bAborted(false)
   {
   }
 
@@ -415,6 +541,11 @@ namespace dbgw
   bool DBGWParser::isCdataSection() const
   {
     return m_bCdataSection;
+  }
+
+  bool DBGWParser::isAborted() const
+  {
+    return m_bAborted;
   }
 
   void DBGWParser::parse(DBGWParser *pParser)
@@ -456,6 +587,11 @@ namespace dbgw
   {
   }
 
+  void DBGWParser::abort()
+  {
+    m_bAborted = true;
+  }
+
   void DBGWParser::doParse(DBGWParser *pParser)
   {
     DBGWExpatXMLParser parser(pParser->getRealFileName());
@@ -470,7 +606,7 @@ namespace dbgw
     if (fp == NULL)
       {
         CreateFailParserExeception e(pParser->getRealFileName().c_str());
-        DBGW_LOGF_INFO("%s (%d)", e.what(), errno);
+        DBGW_LOGF_ERROR("%s (%d)", e.what(), errno);
         throw e;
       }
 
@@ -485,6 +621,11 @@ namespace dbgw
           {
             nReadLen = fread(buffer, 1, XML_FILE_BUFFER_SIZE, fp);
             status = XML_Parse(parser.get(), buffer, nReadLen, 0);
+
+            if (pParser->isAborted())
+              {
+                break;
+              }
           }
         while (nReadLen > 0 && status != XML_STATUS_ERROR);
       }
@@ -516,7 +657,7 @@ namespace dbgw
       const XML_Char *szAttr[])
   {
     DBGWParser *pParser = (DBGWParser *) pParam;
-    DBGWExpatXMLProperties properties(szName, szAttr);
+    DBGWExpatXMLProperties properties(pParser->getFileName(), szName, szAttr);
 
     pParser->doOnElementStart(szName, properties);
 
@@ -755,37 +896,507 @@ namespace dbgw
         properties.get(XML_NODE_HOST_PROP_PORT, true));
   }
 
-  DBGWQueryMapParser::DBGWQueryMapParser(const string &fileName,
+  DBGWQueryMapContext::DBGWQueryMapContext(const string &fileName,
       DBGWQueryMapperSharedPtr pQueryMapper) :
-    DBGWParser(fileName), m_pQueryMapper(pQueryMapper),
-    m_bExistQueryInSql(false), m_bExistQueryInGroup(false),
-    m_nQueryLen(0)
+    m_fileName(fileName), m_pQueryMapper(pQueryMapper), m_globalGroupName(""),
+    m_localGroupName(""), m_sqlName(""), m_queryType(DBGWQueryType::UNDEFINED),
+    m_bExistQueryInSql(false), m_bExistQueryInGroup(false)
   {
   }
 
-  DBGWQueryMapParser::~DBGWQueryMapParser()
+  DBGWQueryMapContext::~DBGWQueryMapContext()
   {
   }
 
-  void DBGWQueryMapParser::doOnElementStart(const XML_Char *szName,
+  void DBGWQueryMapContext::clear()
+  {
+    m_globalGroupName = "";
+    m_localGroupName = "";
+    m_sqlName = "";
+    m_queryType = DBGWQueryType::UNDEFINED;
+    m_paramIndexList.clear();
+    m_inQueryParamMap.clear();
+    m_outQueryParamMap.clear();
+    m_queryBuffer.seekg(ios_base::beg);
+    m_queryBuffer.seekp(ios_base::beg);
+    m_resultIndexList.clear();
+    m_userDefinedMetaList.clear();
+    m_bExistQueryInSql = false;
+    m_bExistQueryInGroup = false;
+  }
+
+  void DBGWQueryMapContext::checkAndClearSql()
+  {
+    if (m_bExistQueryInSql == false)
+      {
+        NotExistNodeInXmlException e(XML_NODE_30_CDATA, m_fileName.c_str());
+        DBGW_LOG_ERROR(e.what());
+        throw e;
+      }
+
+    m_localGroupName = "";
+    m_sqlName = "";
+    m_queryType = DBGWQueryType::UNDEFINED;
+    m_paramIndexList.clear();
+    m_inQueryParamMap.clear();
+    m_outQueryParamMap.clear();
+    m_queryBuffer.seekg(ios_base::beg);
+    m_queryBuffer.seekp(ios_base::beg);
+    m_resultIndexList.clear();
+    m_userDefinedMetaList.clear();
+    m_bExistQueryInSql = false;
+  }
+
+  void DBGWQueryMapContext::checkAndClearGroup()
+  {
+    if (m_bExistQueryInGroup == false)
+      {
+        NotExistNodeInXmlException e(XML_NODE_30_CDATA, m_fileName.c_str());
+        DBGW_LOG_ERROR(e.what());
+        throw e;
+      }
+
+    m_localGroupName = "";
+    m_queryBuffer.seekg(ios_base::beg);
+    m_queryBuffer.seekp(ios_base::beg);
+    m_bExistQueryInGroup = false;
+  }
+
+  void DBGWQueryMapContext::setFileName(const string &fileName)
+  {
+    m_fileName = fileName;
+  }
+
+  void DBGWQueryMapContext::setGlobalGroupName(const char *szGlobalGroupName)
+  {
+    m_globalGroupName = szGlobalGroupName;
+  }
+
+  void DBGWQueryMapContext::setLocalGroupName(const char *szLocalGroupName)
+  {
+    m_localGroupName = szLocalGroupName;
+  }
+
+  void DBGWQueryMapContext::setQueryType(DBGWQueryType::Enum queryType)
+  {
+    m_queryType = queryType;
+  }
+
+  void DBGWQueryMapContext::setSqlName(const char *szSqlName)
+  {
+    m_sqlName = szSqlName;
+  }
+
+  void DBGWQueryMapContext::setParameter(const string &name, int nIndex,
+      DBGWValueType valueType)
+  {
+    DBGWQueryParameter stParam;
+    if (name == "")
+      {
+        stParam.name = makeImplicitParamName(nIndex - 1);
+      }
+    else
+      {
+        stParam.name = name;
+      }
+
+    if (nIndex < 1)
+      {
+        InvalidParamIndexException e(m_fileName.c_str(), m_sqlName.c_str(),
+            nIndex);
+        DBGW_LOG_ERROR(e.what());
+        throw e;
+      }
+
+    if (m_paramIndexList.insert(nIndex - 1).second == false)
+      {
+        DuplicateParamIndexException e(m_fileName.c_str(), m_sqlName.c_str(),
+            nIndex);
+        DBGW_LOG_ERROR(e.what());
+        throw e;
+      }
+
+    stParam.type = valueType;
+    stParam.index = nIndex - 1;
+    m_inQueryParamMap[stParam.name] = stParam;
+  }
+
+  void DBGWQueryMapContext::setParameter(const char *szMode, const char *szName,
+      DBGWValueType valueType)
+  {
+    if (isImplicitParamName(szName))
+      {
+        throw getLastException();
+      }
+
+    DBGWQueryParameter stParam;
+    stParam.name = szName;
+    stParam.type = valueType;
+
+    if (szMode == NULL || !strcasecmp(szMode, "in"))
+      {
+        stParam.index = m_inQueryParamMap.size();
+        m_inQueryParamMap[stParam.name] = stParam;
+      }
+    else if (!strcasecmp(szMode, "out"))
+      {
+        stParam.index = m_outQueryParamMap.size();
+        m_outQueryParamMap[stParam.name] = stParam;
+      }
+    else
+      {
+        InvalidPropertyValueException e(m_fileName.c_str(), szMode, "IN|OUT");
+        DBGW_LOG_ERROR(e.what());
+        throw e;
+      }
+  }
+
+  void DBGWQueryMapContext::setResult(const string &name, size_t nIndex,
+      DBGWValueType valueType, int nLength)
+  {
+    if (nIndex < 1)
+      {
+        InvalidResultIndexException e(m_fileName.c_str(), m_sqlName.c_str(),
+            nIndex);
+        DBGW_LOG_ERROR(e.what());
+        throw e;
+      }
+
+    if (m_resultIndexList.insert(nIndex - 1).second == false)
+      {
+        DuplicateResultIndexException e(m_fileName.c_str(), m_sqlName.c_str(),
+            nIndex);
+        DBGW_LOG_ERROR(e.what());
+        throw e;
+      }
+
+    db::MetaData md;
+    md.name = name;
+    md.colNo = nIndex;
+    md.orgType = DBGW_VAL_TYPE_UNDEFINED;
+    md.type = valueType;
+    md.length = nLength;
+
+    if (m_userDefinedMetaList.size() < nIndex)
+      {
+        m_userDefinedMetaList.resize(nIndex);
+      }
+
+    m_userDefinedMetaList[nIndex - 1] = md;
+  }
+
+  void DBGWQueryMapContext::appendQueryString(const char *szQueryString)
+  {
+    m_queryBuffer << szQueryString;
+  }
+
+  void DBGWQueryMapContext::addQuery()
+  {
+    string groupName = m_localGroupName;
+    if (groupName == "")
+      {
+        groupName = m_globalGroupName;
+      }
+
+    if (groupName == "")
+      {
+        NotExistNodeInXmlException e(XML_NODE_30_GROUP, m_fileName.c_str());
+        DBGW_LOG_ERROR(e.what());
+        throw e;
+      }
+
+    string queryString = m_queryBuffer.str().substr(0, m_queryBuffer.tellp());
+    if (m_queryType == DBGWQueryType::UNDEFINED)
+      {
+        boost::trim(queryString);
+        if (!strncasecmp(queryString.c_str(), "select", 6))
+          {
+            m_queryType = DBGWQueryType::SELECT;
+          }
+        else if (!strncasecmp(queryString.c_str(), "insert", 6)
+            || !strncasecmp(queryString.c_str(), "update", 6)
+            || !strncasecmp(queryString.c_str(), "delete", 6))
+          {
+            m_queryType = DBGWQueryType::DML;
+          }
+      }
+
+    DBGWStringList groupNameList;
+    boost::split(groupNameList, groupName, boost::is_any_of(","));
+    for (DBGWStringList::iterator it = groupNameList.begin(); it
+        != groupNameList.end(); it++)
+      {
+        boost::trim(*it);
+        DBGWQuerySharedPtr p(
+            new DBGWQuery(m_fileName, queryString, m_sqlName, *it, m_queryType,
+                m_inQueryParamMap, m_outQueryParamMap,
+                m_userDefinedMetaList));
+        m_pQueryMapper->addQuery(m_sqlName, p);
+      }
+
+    m_bExistQueryInGroup = true;
+    m_bExistQueryInSql = true;
+  }
+
+  const string &DBGWQueryMapContext::getGlobalGroupName() const
+  {
+    return m_globalGroupName;
+  }
+
+  bool DBGWQueryMapContext::isExistQueryString() const
+  {
+    return !(stringstream::traits_type::eq_int_type(
+        m_queryBuffer.rdbuf()->sgetc(), stringstream::traits_type::eof()));
+  }
+
+  DBGW10QueryMapParser::DBGW10QueryMapParser(const string &fileName,
+      DBGWQueryMapContext &parserContext) :
+    DBGWParser(fileName), m_parserContext(parserContext)
+  {
+  }
+
+  DBGW10QueryMapParser::~DBGW10QueryMapParser()
+  {
+  }
+
+  void DBGW10QueryMapParser::doOnElementStart(const XML_Char *szName,
       DBGWExpatXMLProperties &properties)
   {
-    if (!strcasecmp(szName, XML_NODE_SQLS))
+    if (!strcasecmp(szName, XML_NODE_10_SQL))
+      {
+        parseSql(properties);
+      }
+    else if (!strcasecmp(szName, XML_NODE_10_PARAMETER))
+      {
+        parseParameter(properties);
+      }
+    else if (!strcasecmp(szName, XML_NODE_10_COLUMN))
+      {
+        parseColumn(properties);
+      }
+  }
+
+  void DBGW10QueryMapParser::doOnElementEnd(const XML_Char *szName)
+  {
+    if (!strcasecmp(szName, XML_NODE_10_DEFINEDQUERY))
+      {
+        m_parserContext.clear();
+      }
+    else if (!strcasecmp(szName, XML_NODE_10_SQL))
+      {
+        if (m_parserContext.isExistQueryString())
+          {
+            m_parserContext.addQuery();
+          }
+
+        m_parserContext.checkAndClearSql();
+      }
+  }
+
+  void DBGW10QueryMapParser::doOnElementContent(const XML_Char *szData, int nLength)
+  {
+    if (getParentElementName() != XML_NODE_10_QUERY)
+      {
+        return;
+      }
+
+    string data(szData);
+    m_parserContext.appendQueryString(data.substr(0, nLength).c_str());
+  }
+
+  void DBGW10QueryMapParser::parseSql(DBGWExpatXMLProperties properties)
+  {
+    if (getParentElementName() != XML_NODE_10_DEFINEDQUERY)
+      {
+        return;
+      }
+
+    m_parserContext.setLocalGroupName("__FIRST__");
+    m_parserContext.setSqlName(properties.get(XML_NODE_10_SQL_PROP_NAME, true));
+  }
+
+  void DBGW10QueryMapParser::parseParameter(DBGWExpatXMLProperties properties)
+  {
+    if (getParentElementName() != XML_NODE_10_PLACEHOLDER)
+      {
+        return;
+      }
+
+    m_parserContext.setParameter(
+        properties.get(XML_NODE_10_PARAMETER_PROP_NAME, false),
+        properties.getInt(XML_NODE_10_PARAMETER_PROP_INDEX, true),
+        properties.get10ValueType(XML_NODE_10_PARAMETER_PROP_TYPE));
+  }
+
+  void DBGW10QueryMapParser::parseColumn(DBGWExpatXMLProperties properties)
+  {
+    if (getParentElementName() != XML_NODE_10_RESULT)
+      {
+        return;
+      }
+
+    m_parserContext.setResult(
+        properties.get(XML_NODE_10_COLUMN_PROP_NAME, true),
+        properties.getInt(XML_NODE_10_COLUMN_PROP_INDEX, true),
+        properties.get10ValueType(XML_NODE_10_COLUMN_PROP_TYPE),
+        properties.getInt(XML_NODE_10_COLUMN_PROP_LENGTH, false));
+  }
+
+  DBGW20QueryMapParser::DBGW20QueryMapParser(const string &fileName,
+      DBGWQueryMapContext &parserContext) :
+    DBGWParser(fileName), m_parserContext(parserContext)
+  {
+  }
+
+  DBGW20QueryMapParser::~DBGW20QueryMapParser()
+  {
+  }
+
+  void DBGW20QueryMapParser::doOnElementStart(const XML_Char *szName,
+      DBGWExpatXMLProperties &properties)
+  {
+    if (!strcasecmp(szName, XML_NODE_20_USING_DB))
+      {
+        parseUsingDB(properties);
+      }
+    else if (!strcasecmp(szName, XML_NODE_20_SELECT))
+      {
+        m_parserContext.setQueryType(DBGWQueryType::SELECT);
+        parseSql(properties);
+      }
+    else if (!strcasecmp(szName, XML_NODE_20_INSERT)
+        || !strcasecmp(szName, XML_NODE_20_UPDATE)
+        || !strcasecmp(szName, XML_NODE_20_DELETE))
+      {
+        m_parserContext.setQueryType(DBGWQueryType::DML);
+        parseSql(properties);
+      }
+    else if (!strcasecmp(szName, XML_NODE_20_PARAM))
+      {
+        parseParameter(properties);
+      }
+  }
+
+  void DBGW20QueryMapParser::doOnElementEnd(const XML_Char *szName)
+  {
+    if (!strcasecmp(szName, XML_NODE_20_SQLS))
+      {
+        m_parserContext.clear();
+      }
+    else if (!strcasecmp(szName, XML_NODE_20_SELECT)
+        || !strcasecmp(szName, XML_NODE_20_INSERT)
+        || !strcasecmp(szName, XML_NODE_20_UPDATE)
+        || !strcasecmp(szName, XML_NODE_20_DELETE))
+      {
+        m_parserContext.checkAndClearSql();
+      }
+  }
+
+  void DBGW20QueryMapParser::doOnElementContent(const XML_Char *szData, int nLength)
+  {
+    if (isCdataSection() == false)
+      {
+        return;
+      }
+
+    if (getParentElementName() != XML_NODE_20_SELECT
+        && getParentElementName() != XML_NODE_20_INSERT
+        && getParentElementName() != XML_NODE_20_UPDATE
+        && getParentElementName() != XML_NODE_20_DELETE)
+      {
+        return;
+      }
+
+    string data(szData);
+    m_parserContext.appendQueryString(data.substr(0, nLength).c_str());
+  }
+
+  void DBGW20QueryMapParser::doOnCdataEnd()
+  {
+    if (m_parserContext.isExistQueryString())
+      {
+        m_parserContext.addQuery();
+      }
+  }
+
+  void DBGW20QueryMapParser::parseUsingDB(DBGWExpatXMLProperties &properties)
+  {
+    if (getParentElementName() != XML_NODE_20_SQLS)
+      {
+        return;
+      }
+
+    string moduleID = properties.get(XML_NODE_20_USING_DB_PROP_MODULE_ID, true);
+    if (properties.getBool(XML_NODE_20_USING_DB_PROP_DEFAULT, false)
+        || m_parserContext.getGlobalGroupName() == "")
+      {
+        m_parserContext.setGlobalGroupName(moduleID.c_str());
+      }
+
+    m_moduleIDList.push_back(moduleID);
+  }
+
+  void DBGW20QueryMapParser::parseSql(DBGWExpatXMLProperties &properties)
+  {
+    if (getParentElementName() != XML_NODE_20_SQLS)
+      {
+        return;
+      }
+
+    m_parserContext.setSqlName(properties.get(XML_NODE_20_SQL_PROP_NAME, true));
+    const char *szModuleID = properties.getCString(XML_NODE_20_SQL_PROP_DB, false);
+    if (szModuleID != NULL)
+      {
+        m_parserContext.setLocalGroupName(szModuleID);
+      }
+  }
+
+  void DBGW20QueryMapParser::parseParameter(DBGWExpatXMLProperties &properties)
+  {
+    if (getParentElementName() != XML_NODE_20_SELECT
+        && getParentElementName() != XML_NODE_20_INSERT
+        && getParentElementName() != XML_NODE_20_UPDATE
+        && getParentElementName() != XML_NODE_20_DELETE)
+      {
+        return;
+      }
+
+    m_parserContext.setParameter(
+        properties.getCString(XML_NODE_20_PARAM_PROP_MODE, false),
+        properties.get(XML_NODE_20_PARAM_PROP_NAME, true),
+        properties.get20ValueType(XML_NODE_20_PARAM_PROP_TYPE));
+  }
+
+  DBGW30QueryMapParser::DBGW30QueryMapParser(const string &fileName,
+      DBGWQueryMapContext &parserContext) :
+    DBGWParser(fileName), m_parserContext(parserContext)
+  {
+  }
+
+  DBGW30QueryMapParser::~DBGW30QueryMapParser()
+  {
+  }
+
+  void DBGW30QueryMapParser::doOnElementStart(const XML_Char *szName,
+      DBGWExpatXMLProperties &properties)
+  {
+    if (!strcasecmp(szName, XML_NODE_30_SQLS))
       {
         parseSqls(properties);
       }
-    else if (!strcasecmp(szName, XML_NODE_SELECT))
+    else if (!strcasecmp(szName, XML_NODE_30_SELECT))
       {
-        m_queryType = DBGWQueryType::SELECT;
+        m_parserContext.setQueryType(DBGWQueryType::SELECT);
         parseSql(properties);
       }
-    else if (!strcasecmp(szName, XML_NODE_INSERT) || !strcasecmp(szName,
-        XML_NODE_UPDATE) || !strcasecmp(szName, XML_NODE_DELETE))
+    else if (!strcasecmp(szName, XML_NODE_30_INSERT)
+        || !strcasecmp(szName, XML_NODE_30_UPDATE)
+        || !strcasecmp(szName, XML_NODE_30_DELETE))
       {
-        m_queryType = DBGWQueryType::DML;
+        m_parserContext.setQueryType(DBGWQueryType::DML);
         parseSql(properties);
       }
-    else if (!strcasecmp(szName, XML_NODE_PARAM))
+    else if (!strcasecmp(szName, XML_NODE_30_PARAM))
       {
         parseParameter(properties);
       }
@@ -795,163 +1406,101 @@ namespace dbgw
       }
   }
 
-  void DBGWQueryMapParser::doOnElementEnd(const XML_Char *szName)
+  void DBGW30QueryMapParser::doOnElementEnd(const XML_Char *szName)
   {
-    if (!strcasecmp(szName, XML_NODE_SQLS))
+    if (!strcasecmp(szName, XML_NODE_30_SQLS))
       {
-        m_globalGroupName = "";
+        m_parserContext.clear();
       }
-    else if (!strcasecmp(szName, XML_NODE_SELECT) || !strcasecmp(szName,
-        XML_NODE_INSERT) || !strcasecmp(szName, XML_NODE_UPDATE)
-        || !strcasecmp(szName, XML_NODE_DELETE))
+    else if (!strcasecmp(szName, XML_NODE_30_SELECT)
+        || !strcasecmp(szName, XML_NODE_30_INSERT)
+        || !strcasecmp(szName, XML_NODE_30_UPDATE)
+        || !strcasecmp(szName, XML_NODE_30_DELETE))
       {
-        m_sqlName = "";
-        m_inQueryParamMap.clear();
-        m_outQueryParamMap.clear();
-
-        if (m_bExistQueryInSql == false)
-          {
-            NotExistNodeInXmlException e(XML_NODE_CDATA, getFileName().c_str());
-            DBGW_LOG_ERROR(e.what());
-            throw e;
-          }
-
-        m_bExistQueryInSql = false;
+        m_parserContext.checkAndClearSql();
       }
-    else if (!strcasecmp(szName, XML_NODE_GROUP))
+    else if (!strcasecmp(szName, XML_NODE_30_GROUP))
       {
-        m_localGroupName = "";
-
-        if (m_bExistQueryInGroup == false)
-          {
-            NotExistNodeInXmlException e(XML_NODE_CDATA, getFileName().c_str());
-            DBGW_LOG_ERROR(e.what());
-            throw e;
-          }
-
-        m_bExistQueryInGroup = false;
+        m_parserContext.checkAndClearGroup();
       }
   }
 
-  void DBGWQueryMapParser::doOnElementContent(const XML_Char *szData, int nLength)
+  void DBGW30QueryMapParser::doOnElementContent(const XML_Char *szData, int nLength)
   {
     if (isCdataSection() == false)
       {
         return;
       }
 
-    if (getParentElementName() != XML_NODE_SELECT && getParentElementName()
-        != XML_NODE_INSERT && getParentElementName() != XML_NODE_UPDATE
-        && getParentElementName() != XML_NODE_DELETE
-        && getParentElementName() != XML_NODE_GROUP)
+    if (getParentElementName() != XML_NODE_30_SELECT
+        && getParentElementName() != XML_NODE_30_INSERT
+        && getParentElementName() != XML_NODE_30_UPDATE
+        && getParentElementName() != XML_NODE_30_DELETE
+        && getParentElementName() != XML_NODE_30_GROUP)
       {
         return;
       }
 
-    memcpy(m_szQueryBuffer + m_nQueryLen, szData, nLength);
-    m_nQueryLen += nLength;
-    m_szQueryBuffer[m_nQueryLen] = '\0';
+    string data(szData);
+    m_parserContext.appendQueryString(data.substr(0, nLength).c_str());
   }
 
-  void DBGWQueryMapParser::doOnCdataEnd()
+  void DBGW30QueryMapParser::doOnCdataEnd()
   {
-    if (m_nQueryLen > 0)
+    if (m_parserContext.isExistQueryString())
       {
-        string groupName = m_localGroupName;
-        if (groupName == "")
-          {
-            groupName = m_globalGroupName;
-          }
-
-        if (groupName == "")
-          {
-            NotExistNodeInXmlException e(XML_NODE_GROUP, getFileName().c_str());
-            DBGW_LOG_ERROR(e.what());
-            throw e;
-          }
-
-        DBGWStringList groupNameList;
-        boost::split(groupNameList, groupName, boost::is_any_of(","));
-        for (DBGWStringList::iterator it = groupNameList.begin(); it
-            != groupNameList.end(); it++)
-          {
-            boost::trim(*it);
-            DBGWQuerySharedPtr p(
-                new DBGWQuery(getFileName(), m_szQueryBuffer, m_sqlName,
-                    *it, m_queryType, m_inQueryParamMap,
-                    m_outQueryParamMap));
-            m_pQueryMapper->addQuery(m_sqlName, p);
-          }
-
-        m_bExistQueryInSql = true;
-        m_bExistQueryInGroup = true;
-
-        m_nQueryLen = 0;
+        m_parserContext.addQuery();
       }
   }
 
-  void DBGWQueryMapParser::parseSqls(DBGWExpatXMLProperties &properties)
+  void DBGW30QueryMapParser::parseSqls(DBGWExpatXMLProperties &properties)
   {
     if (!isRootElement())
       {
         return;
       }
 
-    m_globalGroupName = properties.get(XML_NODE_SQLS_PROP_GROUP_NAME, false);
+    m_parserContext.setGlobalGroupName(
+        properties.get(XML_NODE_30_SQLS_PROP_GROUP_NAME, false));
   }
 
-  void DBGWQueryMapParser::parseSql(DBGWExpatXMLProperties &properties)
+  void DBGW30QueryMapParser::parseSql(DBGWExpatXMLProperties &properties)
   {
-    if (getParentElementName() != XML_NODE_SQLS)
+    if (getParentElementName() != XML_NODE_30_SQLS)
       {
         return;
       }
 
-    m_sqlName = properties.get(XML_NODE_SQL_PROP_NAME, true);
+    m_parserContext.setSqlName(properties.get(XML_NODE_30_SQL_PROP_NAME, true));
   }
 
-  void DBGWQueryMapParser::parseParameter(DBGWExpatXMLProperties &properties)
+  void DBGW30QueryMapParser::parseParameter(DBGWExpatXMLProperties &properties)
   {
-    if (getParentElementName() != XML_NODE_SELECT && getParentElementName()
-        != XML_NODE_INSERT && getParentElementName() != XML_NODE_UPDATE
-        && getParentElementName() != XML_NODE_DELETE)
+    if (getParentElementName() != XML_NODE_30_SELECT
+        && getParentElementName() != XML_NODE_30_INSERT
+        && getParentElementName() != XML_NODE_30_UPDATE
+        && getParentElementName() != XML_NODE_30_DELETE)
       {
         return;
       }
 
-    DBGWQueryParameter stParam;
-    stParam.name = properties.get(XML_NODE_PARAM_PROP_NAME, true);
-    stParam.type = properties.get30ValueType(XML_NODE_PARAM_PROP_TYPE);
-
-    const char *szMode = properties.get(XML_NODE_PARAM_PROP_MODE, true);
-    if (!strcasecmp(szMode, "in"))
-      {
-        stParam.nIndex = m_inQueryParamMap.size();
-        m_inQueryParamMap[stParam.name] = stParam;
-      }
-    else if (!strcasecmp(szMode, "out"))
-      {
-        stParam.nIndex = m_outQueryParamMap.size();
-        m_outQueryParamMap[stParam.name] = stParam;
-      }
-    else
-      {
-        InvalidPropertyValueException e(szMode, "IN|OUT");
-        DBGW_LOG_ERROR(e.what());
-        throw e;
-      }
+    m_parserContext.setParameter(properties.get(XML_NODE_30_PARAM_PROP_MODE, true),
+        properties.get(XML_NODE_30_PARAM_PROP_NAME, true),
+        properties.get30ValueType(XML_NODE_30_PARAM_PROP_TYPE));
   }
 
-  void DBGWQueryMapParser::parseGroup(DBGWExpatXMLProperties &properties)
+  void DBGW30QueryMapParser::parseGroup(DBGWExpatXMLProperties &properties)
   {
-    if (getParentElementName() != XML_NODE_SELECT && getParentElementName()
-        != XML_NODE_INSERT && getParentElementName() != XML_NODE_UPDATE
-        && getParentElementName() != XML_NODE_DELETE)
+    if (getParentElementName() != XML_NODE_30_SELECT
+        && getParentElementName() != XML_NODE_30_INSERT
+        && getParentElementName() != XML_NODE_30_UPDATE
+        && getParentElementName() != XML_NODE_30_DELETE)
       {
         return;
       }
 
-    m_localGroupName = properties.get(XML_NODE_GROUP_PROP_NAME, true);
+    m_parserContext.setLocalGroupName(
+        properties.get(XML_NODE_30_GROUP_PROP_NAME, true));
   }
 
   DBGWConfigurationParser::DBGWConfigurationParser(const string &fileName,
@@ -973,7 +1522,11 @@ namespace dbgw
       {
         parseLog(properties);
       }
-    if (!strcasecmp(szName, XML_NODE_INCLUDE))
+    else if (!strcasecmp(szName, XML_NODE_QUERYMAP))
+      {
+        parseQueryMap(properties);
+      }
+    else if (!strcasecmp(szName, XML_NODE_INCLUDE))
       {
         parseInclude(properties);
       }
@@ -981,6 +1534,32 @@ namespace dbgw
 
   void DBGWConfigurationParser::doOnElementEnd(const XML_Char *szName)
   {
+  }
+
+  void DBGWConfigurationParser::parseQueryMap(DBGWExpatXMLProperties &properties)
+  {
+    if (getParentElementName() != XML_NODE_CONFIGURATION || m_pQueryMapper == NULL)
+      {
+        return;
+      }
+
+    string version = properties.get(XML_NODE_QUERYMAP_PROP_VERSION, false);
+    if (version == "1.0")
+      {
+        m_pQueryMapper->setVersion(DBGW_QUERY_MAP_VER_10);
+      }
+    else if (version == "2.0")
+      {
+        m_pQueryMapper->setVersion(DBGW_QUERY_MAP_VER_20);
+      }
+    else if (version == "3.0")
+      {
+        m_pQueryMapper->setVersion(DBGW_QUERY_MAP_VER_30);
+      }
+    else
+      {
+        m_pQueryMapper->setVersion(DBGW_QUERY_MAP_VER_UNKNOWN);
+      }
   }
 
   void DBGWConfigurationParser::parseLog(DBGWExpatXMLProperties &properties)
@@ -1023,7 +1602,8 @@ namespace dbgw
             szFile);
         if (pDir->isDirectory())
           {
-            InvalidPropertyValueException e(szFile, "file name");
+            InvalidPropertyValueException e(getRealFileName().c_str(), szFile,
+                "file name");
             DBGW_LOG_ERROR(e.what());
             throw e;
           }
@@ -1035,7 +1615,8 @@ namespace dbgw
             szPath);
         if (!pDir->isDirectory())
           {
-            InvalidPropertyValueException e(szPath, "file path");
+            InvalidPropertyValueException e(getRealFileName().c_str(), szPath,
+                "file path");
             DBGW_LOG_ERROR(e.what());
             throw e;
           }
@@ -1043,7 +1624,8 @@ namespace dbgw
       }
     else
       {
-        NotExistPropertyException e(properties.getNodeName(), "file or path");
+        NotExistPropertyException e(getRealFileName().c_str(),
+            properties.getNodeName(), "file or path");
         DBGW_LOG_ERROR(e.what());
         throw e;
       }
@@ -1058,11 +1640,34 @@ namespace dbgw
       }
     else if (getParentElementName() == XML_NODE_QUERYMAP)
       {
-        if (m_pQueryMapper != NULL)
+        if (m_pQueryMapper == NULL)
           {
-            DBGWQueryMapParser parser(fileName, m_pQueryMapper);
-            DBGWParser::parse(&parser);
+            return;
           }
+
+        parseQueryMapper(fileName, m_pQueryMapper);
+      }
+  }
+
+  void parseQueryMapper(const string &fileName,
+      DBGWQueryMapperSharedPtr pQueryMaper)
+  {
+    DBGWQueryMapContext context(fileName, pQueryMaper);
+
+    if (pQueryMaper->getVersion() == DBGW_QUERY_MAP_VER_10)
+      {
+        DBGW10QueryMapParser parser(fileName, context);
+        DBGWParser::parse(&parser);
+      }
+    else if (pQueryMaper->getVersion() == DBGW_QUERY_MAP_VER_20)
+      {
+        DBGW20QueryMapParser parser(fileName, context);
+        DBGWParser::parse(&parser);
+      }
+    else
+      {
+        DBGW30QueryMapParser parser(fileName, context);
+        DBGWParser::parse(&parser);
       }
   }
 

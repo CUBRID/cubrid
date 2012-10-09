@@ -141,22 +141,22 @@ namespace dbgw
       bool doNext();
 
     private:
-      DBGWCUBRIDResult(const DBGWLogger &logger, int hCCIConnection,
-          int hCCIRequest, int nAffectedRow, bool bFetchData);
-      void doMakeMetadata(MetaDataList &metaList);
-      void makeColumnValue(const Metadata &md, int nColNo);
-      void doMakeInt(const Metadata &md, int nColNo);
-      void doMakeLong(const Metadata &md, int nColNo);
-      void doMakeFloat(const Metadata &md, int nColNo);
-      void doMakeDouble(const Metadata &md, int nColNo);
+      DBGWCUBRIDResult(const DBGWPreparedStatementSharedPtr pStmt, int hCCIRequest,
+          int nAffectedRow);
+      void doMakeMetadata(MetaDataList &metaList,
+          const MetaDataList &userDefinedMetaList);
+      void makeColumnValue(const MetaData &md, int nColNo);
+      void doMakeInt(const MetaData &md, int nColNo);
+      void doMakeLong(const MetaData &md, int nColNo);
+      void doMakeFloat(const MetaData &md, int nColNo);
+      void doMakeDouble(const MetaData &md, int nColNo);
 #ifdef ENABLE_LOB
-      void doMakeClob(const Metadata &md, int nColNo);
-      void doMakeBlob(const Metadata &md, int nColNo);
+      void doMakeClob(const MetaData &md, int nColNo);
+      void doMakeBlob(const MetaData &md, int nColNo);
 #endif
-      void doMakeString(const Metadata &md, int nColNo);
+      void doMakeString(const MetaData &md, int nColNo);
 
     private:
-      int m_hCCIConnection;
       int m_hCCIRequest;
       T_CCI_CURSOR_POS m_cursorPos;
 

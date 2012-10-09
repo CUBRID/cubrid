@@ -86,7 +86,16 @@ namespace dbgw
 
         m_stVersion = m_configuration.getVersion();
         m_pConnector = m_configuration.getConnector(m_stVersion);
+        if (m_pConnector == NULL)
+          {
+            throw getLastException();
+          }
+
         m_pQueryMapper = m_configuration.getQueryMapper(m_stVersion);
+        if (m_pQueryMapper == NULL)
+          {
+            throw getLastException();
+          }
 
         m_executerList = m_pConnector->getExecuterList(m_szNamespace);
         m_bValidClient = true;
@@ -280,7 +289,8 @@ namespace dbgw
               {
                 DBGWLogger logger((*it)->getGroupName(), szSqlName);
                 DBGWBoundQuerySharedPtr pQuery = m_pQueryMapper->getQuery(
-                    szSqlName, (*it)->getGroupName(), pParameter);
+                    szSqlName, (*it)->getGroupName(), pParameter,
+                    it == m_executerList.begin());
                 if (pQuery == NULL)
                   {
                     continue;
@@ -400,6 +410,7 @@ namespace dbgw
   {
     clearException();
 
+    DBGWException exception;
     try
       {
         if (m_bClosed)
@@ -413,19 +424,21 @@ namespace dbgw
       }
     catch (DBGWException &e)
       {
-        setLastException(e);
+        exception = e;
       }
 
-    try
+    if (m_configuration.closeVersion(m_stVersion) == false)
       {
-        m_configuration.closeVersion(m_stVersion);
-        return true;
+        exception = getLastException();
       }
-    catch (DBGWException &e)
+
+    if (exception.getErrorCode() != DBGWErrorCode::NO_ERROR)
       {
-        setLastException(e);
+        setLastException(exception);
         return false;
       }
+
+    return true;
   }
 
   bool DBGWClient::isClosed() const

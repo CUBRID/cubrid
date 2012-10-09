@@ -241,6 +241,14 @@ namespace dbgw
 
   typedef list<string> DBGWQueryNameList;
 
+  enum DBGWQueryMapperVersion
+  {
+    DBGW_QUERY_MAP_VER_UNKNOWN,
+    DBGW_QUERY_MAP_VER_10,
+    DBGW_QUERY_MAP_VER_20,
+    DBGW_QUERY_MAP_VER_30
+  };
+
   class DBGWQueryMapper: public DBGWResource
   {
   public:
@@ -250,18 +258,19 @@ namespace dbgw
     void addQuery(const string &sqlName, DBGWQuerySharedPtr pQuery);
     void clearQuery();
     void copyFrom(const DBGWQueryMapper &src);
+    void setVersion(DBGWQueryMapperVersion version);
 
   public:
     size_t size() const;
     DBGWQueryNameList getQueryNameList() const;
-
-  public:
-    DBGWBoundQuerySharedPtr getQuery(const char *szSqlName,
-        const char *szGroupName, const DBGWParameter *pParameter) const;
+    DBGWBoundQuerySharedPtr getQuery(const char *szSqlName, const char *szGroupName,
+        const DBGWParameter *pParameter, bool bFirstGroup = false) const;
+    DBGWQueryMapperVersion getVersion() const;
 
   private:
     /* (sqlName => (groupName => DBGWQuery)) */
     DBGWQuerySqlHashMap m_querySqlMap;
+    DBGWQueryMapperVersion m_version;
   };
 
   typedef shared_ptr<DBGWQueryMapper> DBGWQueryMapperSharedPtr;
@@ -321,8 +330,11 @@ namespace dbgw
     virtual ~ DBGWConfiguration();
 
     bool loadConnector(const char *szXmlPath = NULL);
-    bool loadQueryMapper(const char *szXmlPath = NULL, bool bAppend = false);
-    void closeVersion(const DBGWConfigurationVersion &stVersion);
+    bool loadQueryMapper();
+    bool loadQueryMapper(const char *szXmlPath, bool bAppend = false);
+    bool loadQueryMapper(DBGWQueryMapperVersion version, const char *szXmlPath,
+        bool bAppend = false);
+    bool closeVersion(const DBGWConfigurationVersion &stVersion);
     DBGWConfigurationVersion getVersion();
     DBGWConnector *getConnector(const DBGWConfigurationVersion &stVersion);
     DBGWQueryMapper *getQueryMapper(const DBGWConfigurationVersion &stVersion);

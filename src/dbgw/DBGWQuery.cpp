@@ -17,15 +17,64 @@
  *
  */
 #include <ctype.h>
+#include <boost/lexical_cast.hpp>
 #include "DBGWCommon.h"
 #include "DBGWError.h"
 #include "DBGWPorting.h"
 #include "DBGWLogger.h"
 #include "DBGWValue.h"
 #include "DBGWQuery.h"
+#include "DBGWDataBaseInterface.h"
 
 namespace dbgw
 {
+
+  static const char *IMPLICIT_PARAM_NAME_FORMAT = "D%04d";
+  static const int IMPLICIT_PARAM_NAME_SIZE = 6;
+
+  string makeImplicitParamName(int nIndex)
+  {
+    char szImpliciParamName[IMPLICIT_PARAM_NAME_SIZE];
+    snprintf(szImpliciParamName, IMPLICIT_PARAM_NAME_SIZE,
+        IMPLICIT_PARAM_NAME_FORMAT, nIndex);
+    return szImpliciParamName;
+  }
+
+  bool isImplicitParamName(const char *szName)
+  {
+    clearException();
+
+    try
+      {
+        if (szName == NULL || strlen(szName) != IMPLICIT_PARAM_NAME_SIZE - 1)
+          {
+            return false;
+          }
+
+        if (szName[0] != 'D')
+          {
+            return false;
+          }
+
+        try
+          {
+            boost::lexical_cast<int>(szName + 1);
+          }
+        catch (boost::bad_lexical_cast &)
+          {
+            return false;
+          }
+
+        InvalidParamNameException e(szName);
+        DBGW_LOG_ERROR(e.what());
+        throw e;
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return true;
+      }
+  }
 
   /**
    * class DBGWBoundQuery
@@ -86,6 +135,11 @@ namespace dbgw
     return m_query.getBindParam(nIndex);
   }
 
+  const db::MetaDataList &DBGWBoundQuery::getUserDefinedMetaList() const
+  {
+    return m_query.getUserDefinedMetaList();
+  }
+
   /**
    * class DBGWQuery
    */
@@ -93,11 +147,13 @@ namespace dbgw
       const string &sqlName, const string &groupName,
       DBGWQueryType::Enum queryType,
       const DBGWQueryParameterHashMap &inQueryParamMap,
-      const DBGWQueryParameterHashMap &outQueryParamMap) :
+      const DBGWQueryParameterHashMap &outQueryParamMap,
+      const db::MetaDataList &userDefinedMetaList) :
     m_logger(groupName, sqlName), m_fileName(fileName), m_query(query),
     m_sqlName(sqlName), m_groupName(groupName), m_queryType(queryType),
     m_inQueryParamMap(inQueryParamMap),
-    m_outQueryParamMap(outQueryParamMap)
+    m_outQueryParamMap(outQueryParamMap),
+    m_userDefinedMetaList(userDefinedMetaList)
   {
     /**
      * Example :
@@ -109,6 +165,8 @@ namespace dbgw
      *  AND COL_C = 'BLAH BLAH #COL_C'
      *  AND @SESSSION_VAR := @SESSSION_VAR + 1
      *  AND COL_D = 'BLAH BLAH :COL_D'
+     *  AND ?
+     *  AND COL_E = COL_D
      */
     const char *p = m_query.c_str();
     const char *q = p;
@@ -138,11 +196,12 @@ namespace dbgw
             q = p;
             cToken = *p;
           }
-        else if (cQuotationMark == 0 && *p == ':')
+        else if (cQuotationMark == 0 && (*p == ':' || *p == '?'))
           {
             /**
              * 1. `SELECT * FROM A WHERE COL_A = ` is added to normal query part.
              * 7. `' AND @SESSSION_VAR ` is added to normal query part.
+             * 8. `:= @SESSSION_VAR + 1 AND COL_D = 'BLAH BLAH :COL_D' AND ` is added to normal query part.
              */
             addQueryPart(cToken, q, p);
             q = p;
@@ -150,7 +209,15 @@ namespace dbgw
           }
         else if (cToken != 0 && !isalnum(*p) && (*p != '_' && *p != '-'))
           {
-            if (cToken == ':' && p - q > 1)
+            if (cToken == '?')
+              {
+                /**
+                 * 9. `?` is added to bind query part.
+                 */
+                addQueryPart(cToken, q, p);
+                q = p;
+              }
+            else if (cToken == ':' && p - q > 1)
               {
                 /**
                  * 2. `:COL_A` is added to bind query part.
@@ -172,7 +239,7 @@ namespace dbgw
         ++p;
       }
     /**
-     * 8. `:= @SESSSION_VAR + 1 AND COL_D = 'BLAH BLAH :COL_D'` is added to normal query part.
+     * 10. `AND COL_E = COL_D` is added to normal query part.
      */
     addQueryPart(cToken, q, p);
   }
@@ -194,6 +261,12 @@ namespace dbgw
         break;
       case ':':
         part = string(szStart + 1, szEnd - szStart - 1);
+        m_bindParamNameList.push_back(part);
+        p = DBGWQueryPartSharedPtr(new DBGWSQLQueryPart("?"));
+        m_queryPartList.push_back(p);
+        break;
+      case '?':
+        part = makeImplicitParamName(m_bindParamNameList.size());
         m_bindParamNameList.push_back(part);
         p = DBGWQueryPartSharedPtr(new DBGWSQLQueryPart("?"));
         m_queryPartList.push_back(p);
@@ -267,6 +340,11 @@ namespace dbgw
   const char *DBGWQuery::getQuery() const
   {
     return m_query.c_str();
+  }
+
+  const db::MetaDataList &DBGWQuery::getUserDefinedMetaList() const
+  {
+    return m_userDefinedMetaList;
   }
 
   /**

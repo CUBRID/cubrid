@@ -112,10 +112,11 @@ namespace dbgw
         DECLSPECIFIER bool __stdcall GetDefaultTimeout(Handle hEnv,
             unsigned long *pTimeout);
 #endif
-        DECLSPECIFIER bool __stdcall LoadConnector(Handle hEnv,
-            const char *szXmlPath = NULL);
+        DECLSPECIFIER bool __stdcall LoadConnector(Handle hEnv);
+        DECLSPECIFIER bool __stdcall LoadQueryMapper(Handle hEnv);
         DECLSPECIFIER bool __stdcall LoadQueryMapper(Handle hEnv,
-            const char *szXmlPath = NULL, bool bAppend = false);
+            DBGWQueryMapperVersion version, const char *szXmlPath,
+            bool bAppend = false);
 
       }
 

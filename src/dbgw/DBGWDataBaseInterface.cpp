@@ -481,7 +481,7 @@ namespace dbgw
                     {
                       stParam = getQuery()->getBindParam(i);
                       pValue = m_parameter.getValue(stParam.name.c_str(),
-                          stParam.nIndex);
+                          stParam.index);
                       if (pValue == NULL)
                         {
                           throw getLastException();
@@ -570,7 +570,7 @@ namespace dbgw
       for (int i = 0, size = getQuery()->getBindNum(); i < size; i++)
         {
           stParam = getQuery()->getBindParam(i);
-          pValue = parameter.getValue(stParam.name.c_str(), stParam.nIndex);
+          pValue = parameter.getValue(stParam.name.c_str(), stParam.index);
           if (pValue == NULL)
             {
               throw getLastException();
@@ -601,10 +601,17 @@ namespace dbgw
         }
     }
 
-    DBGWResult::DBGWResult(const DBGWLogger &logger, int nAffectedRow,
-        bool bNeedFetch) :
-      m_logger(logger), m_nAffectedRow(nAffectedRow), m_bNeedFetch(bNeedFetch),
-      m_bNeverFetched(true)
+    MetaData::MetaData() :
+      name(""), colNo(0), type(DBGW_VAL_TYPE_UNDEFINED), orgType(
+          DBGW_VAL_TYPE_UNDEFINED), length(0)
+    {
+    }
+
+    DBGWResult::DBGWResult(const DBGWPreparedStatementSharedPtr pStmt,
+        int nAffectedRow) :
+      m_pStmt(pStmt), m_nAffectedRow(nAffectedRow), m_bNeedFetch(false),
+      m_bNeverFetched(true), m_logger(m_pStmt->getQuery()->getGroupName(),
+          m_pStmt->getQuery()->getSqlName())
     {
       /**
        * We don't need to clear error because this api will not make error.
@@ -620,6 +627,10 @@ namespace dbgw
        * 		setLastException(e);
        * }
        */
+      if (m_pStmt->getQuery()->getType() == DBGWQueryType::SELECT)
+        {
+          m_bNeedFetch = true;
+        }
     }
 
     DBGWResult::~DBGWResult()
@@ -689,7 +700,10 @@ namespace dbgw
               LogBuffer resultLogBuf("Result:");
               for (size_t i = 0; i < size(); i++)
                 {
-                  resultLogBuf.addLog(getValue(i)->toString());
+                  if (getValue(i) != NULL)
+                    {
+                      resultLogBuf.addLog(getValue(i)->toString());
+                    }
                 }
               DBGW_LOG_INFO(m_logger.getLogMessage(resultLogBuf.getLog().c_str()).c_str());
             }
@@ -826,7 +840,7 @@ namespace dbgw
 
     void DBGWResult::makeColumnValues()
     {
-      int i = 1;
+      int i = 0;
       const MetaDataList *pMetaList = getMetaDataList();
       for (MetaDataList::const_iterator it = pMetaList->begin(); it
           != pMetaList->end(); it++, i++)
@@ -835,17 +849,17 @@ namespace dbgw
         }
     }
 
-    void DBGWResult::makeValue(bool bReplace, const char *szColName,
-        int nColNo, DBGWValueType type, void *pValue, bool bNull, int nSize)
+    void DBGWResult::makeValue(const char *szColName, int nColNo,
+        DBGWValueType type, void *pValue, bool bNull, int nSize)
     {
-      if (bReplace)
+      if (m_bNeverFetched)
         {
-          replace(nColNo - 1, type, pValue, bNull, nSize);
+          DBGWValueSharedPtr p(new DBGWValue(type, pValue, bNull, nSize));
+          put(szColName, (size_t) nColNo, p);
         }
       else
         {
-          DBGWValueSharedPtr p(new DBGWValue(type, pValue, bNull, nSize));
-          put(szColName, p);
+          replace(nColNo, type, pValue, bNull, nSize);
         }
     }
 
@@ -888,7 +902,11 @@ namespace dbgw
 
     void DBGWResult::makeMetaData()
     {
-      doMakeMetadata(m_metaList);
+      const DBGWBoundQuerySharedPtr pQuery = m_pStmt->getQuery();
+
+      m_metaList.clear();
+
+      doMakeMetadata(m_metaList, pQuery->getUserDefinedMetaList());
 
       if (DBGWLogger::isWritable(CCI_LOG_LEVEL_INFO))
         {
@@ -902,6 +920,11 @@ namespace dbgw
           DBGW_LOG_INFO(m_logger.getLogMessage("ResultSet").c_str());
           DBGW_LOG_INFO(m_logger.getLogMessage(headerLogBuf.getLog().c_str()).c_str());
         }
+    }
+
+    const DBGWLogger &DBGWResult::getLogger() const
+    {
+      return m_logger;
     }
 
     void DBGWResult::clear()

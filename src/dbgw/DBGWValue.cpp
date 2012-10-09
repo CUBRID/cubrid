@@ -511,6 +511,10 @@ namespace dbgw
             return sizeof(int);
           case DBGW_VAL_TYPE_LONG:
             return sizeof(int64);
+          case DBGW_VAL_TYPE_FLOAT:
+            return sizeof(float);
+          case DBGW_VAL_TYPE_DOUBLE:
+            return sizeof(double);
           default:
             InvalidValueTypeException e(m_type);
             DBGW_LOG_ERROR(e.what());
@@ -1782,6 +1786,22 @@ namespace dbgw
      */
     m_valueList.clear();
     m_indexMap.clear();
+  }
+
+  void DBGWValueSet::put(const char *szKey, size_t nIndex, DBGWValueSharedPtr pValue)
+  {
+    if (m_valueList.size() <= nIndex)
+      {
+        m_valueList.resize(nIndex + 1);
+      }
+
+    if (m_valueList[nIndex] != NULL)
+      {
+        removeIndexMap(nIndex);
+      }
+
+    m_indexMap[szKey] = nIndex;
+    m_valueList[nIndex] = pValue;
   }
 
   const DBGWValue *DBGWValueSet::getValue(const char *szKey) const

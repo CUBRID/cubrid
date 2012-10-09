@@ -23,6 +23,9 @@
 namespace dbgw
 {
 
+  extern string makeImplicitParamName(int nIndex);
+  extern bool isImplicitParamName(const char *szName);
+
   class DBGWQuery;
   typedef shared_ptr<DBGWQuery> DBGWQuerySharedPtr;
 
@@ -36,11 +39,16 @@ namespace dbgw
 
   }
 
+  namespace db
+  {
+    typedef vector<struct MetaData> MetaDataList;
+  }
+
   struct DBGWQueryParameter
   {
     string name;
     DBGWValueType type;
-    int nIndex;
+    int index;
   };
 
   typedef boost::unordered_map<string, DBGWQueryParameter,
@@ -63,6 +71,7 @@ namespace dbgw
     DBGWQueryType::Enum getType() const;
     int getBindNum() const;
     DBGWQueryParameter getBindParam(int nIndex) const;
+    const db::MetaDataList &getUserDefinedMetaList() const;
 
   private:
     DBGWBoundQuery(const char *szSql, const char *szGroupName,
@@ -87,7 +96,8 @@ namespace dbgw
         const string &sqlName, const string &groupName,
         DBGWQueryType::Enum queryType,
         const DBGWQueryParameterHashMap &inQueryParamMap,
-        const DBGWQueryParameterHashMap &outQueryParamMap);
+        const DBGWQueryParameterHashMap &outQueryParamMap,
+        const db::MetaDataList &userDefinedMetaList);
     virtual ~ DBGWQuery();
 
   public:
@@ -100,6 +110,7 @@ namespace dbgw
     int getBindNum() const;
     DBGWQueryParameter getBindParam(size_t nIndex) const;
     const char *getQuery() const;
+    const db::MetaDataList &getUserDefinedMetaList() const;
 
   private:
     void addQueryPart(char cToken, const char *szStart, const char *szEnd);
@@ -120,6 +131,7 @@ namespace dbgw
     DBGWQueryParameterHashMap m_inQueryParamMap;
     DBGWQueryParameterHashMap m_outQueryParamMap;
     DBGWStringList m_bindParamNameList;
+    db::MetaDataList m_userDefinedMetaList;
 
   private:
     class DBGWQueryPart

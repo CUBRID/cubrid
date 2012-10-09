@@ -64,8 +64,8 @@ namespace dbgw
 
 #define DBGW_LOGF_ERROR(...) \
   do { \
-    if (DBGWLogger::isWritable(CCI_DBGW_LOG_ERROR)) { \
-      DBGWLogger::writeLogF(__FILENAME__, __LINE__, DBGW_LOG_ERROR, __VA_ARGS__); \
+    if (DBGWLogger::isWritable(CCI_LOG_LEVEL_ERROR)) { \
+      DBGWLogger::writeLogF(__FILENAME__, __LINE__, CCI_LOG_LEVEL_ERROR, __VA_ARGS__); \
     } \
   } while (false)
 

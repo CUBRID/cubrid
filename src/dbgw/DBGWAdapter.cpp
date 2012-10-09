@@ -141,8 +141,7 @@ namespace dbgw
             }
         }
 
-        DECLSPECIFIER bool __stdcall LoadConnector(Handle hEnv,
-            const char *szXmlPath)
+        DECLSPECIFIER bool __stdcall LoadConnector(Handle hEnv)
         {
           clearException();
 
@@ -155,7 +154,29 @@ namespace dbgw
                   throw e;
                 }
 
-              return hEnv->loadConnector(szXmlPath);
+              return hEnv->loadConnector();
+            }
+          catch (DBGWException &e)
+            {
+              CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+              return false;
+            }
+        }
+
+        DECLSPECIFIER bool __stdcall LoadQueryMapper(Handle hEnv)
+        {
+          clearException();
+
+          try
+            {
+              if (hEnv == NULL)
+                {
+                  InvalidHandleException e;
+                  DBGW_LOG_ERROR(e.what());
+                  throw e;
+                }
+
+              return hEnv->loadQueryMapper();
             }
           catch (DBGWException &e)
             {
@@ -165,7 +186,8 @@ namespace dbgw
         }
 
         DECLSPECIFIER bool __stdcall LoadQueryMapper(Handle hEnv,
-            const char *szXmlPath, bool bAppend)
+            DBGWQueryMapperVersion version, const char *szXmlPath,
+            bool bAppend)
         {
           clearException();
 
@@ -178,7 +200,7 @@ namespace dbgw
                   throw e;
                 }
 
-              return hEnv->loadQueryMapper(szXmlPath, bAppend);
+              return hEnv->loadQueryMapper(version, szXmlPath, bAppend);
             }
           catch (DBGWException &e)
             {
@@ -1154,6 +1176,11 @@ namespace dbgw
                 }
 
               const DBGWValue *pValue = (*hResult)->getValue(nIndex);
+              if (pValue == NULL)
+                {
+                  throw getLastException();
+                }
+
               int nValueSize = pValue->size();
 
               if (pValue->isNull())
@@ -1200,6 +1227,11 @@ namespace dbgw
                 }
 
               const DBGWValue *pValue = (*hResult)->getValue(szName);
+              if (pValue == NULL)
+                {
+                  throw getLastException();
+                }
+
               int nValueSize = pValue->size();
 
               if (pValue->isNull())
@@ -1244,6 +1276,13 @@ namespace dbgw
           Handle hExecutor = NULL;
           try
             {
+              if (hConnector == NULL)
+                {
+                  InvalidHandleException e;
+                  DBGW_LOG_ERROR(e.what());
+                  throw e;
+                }
+
               Environment::Handle hEnv = *hConnector;
 
               hExecutor = new DBGWClient(*hEnv, szNamespace);
@@ -1336,7 +1375,12 @@ namespace dbgw
                   throw e;
                 }
 
-              return hExecutor->setAutocommit(false);
+              if (hExecutor->setAutocommit(false) == false)
+                {
+                  throw getLastException();
+                }
+
+              return true;
             }
           catch (DBGWException &e)
             {
@@ -1358,11 +1402,16 @@ namespace dbgw
                   throw e;
                 }
 
-              return hExecutor->commit();
+              if (hExecutor->commit() == false)
+                {
+                  throw getLastException();
+                }
+
+              return true;
             }
           catch (DBGWException &e)
             {
-              setLastException(e);
+              CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_EXEC_FAILED);
               return false;
             }
         }
@@ -1380,11 +1429,16 @@ namespace dbgw
                   throw e;
                 }
 
-              return hExecutor->rollback();
+              if (hExecutor->rollback() == false)
+                {
+                  throw getLastException();
+                }
+
+              return true;
             }
           catch (DBGWException &e)
             {
-              setLastException(e);
+              CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_EXEC_FAILED);
               return false;
             }
         }

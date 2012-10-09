@@ -92,7 +92,8 @@ namespace dbgw
     /**
      * External access class.
      */
-    class DBGWPreparedStatement
+    class DBGWPreparedStatement :
+      public enable_shared_from_this<DBGWPreparedStatement>
     {
     public:
       DBGWPreparedStatement(DBGWBoundQuerySharedPtr pQuery);
@@ -110,12 +111,12 @@ namespace dbgw
 
     public:
       virtual bool isReused() const;
+      const DBGWBoundQuerySharedPtr getQuery() const;
 
     protected:
       void bind();
       virtual void doBind(int nIndex, const DBGWValue *pValue) = 0;
       virtual DBGWResultSharedPtr doExecute() = 0;
-      const DBGWBoundQuerySharedPtr getQuery() const;
       const DBGWParameter &getParameter() const;
 
     protected:
@@ -130,15 +131,18 @@ namespace dbgw
       bool m_bReuesed;
     };
 
-    struct Metadata
+    struct MetaData
     {
+      MetaData();
+
       string name;
+      size_t colNo;             // starting with 1
       DBGWValueType type;
       int orgType;
       size_t length;
     };
 
-    typedef vector<Metadata> MetaDataList;
+    typedef vector<MetaData> MetaDataList;
 
     /**
      * External access class.
@@ -146,7 +150,7 @@ namespace dbgw
     class DBGWResult: public DBGWValueSet
     {
     public:
-      DBGWResult(const DBGWLogger &logger, int nAffectedRow, bool bNeedFetch);
+      DBGWResult(const DBGWPreparedStatementSharedPtr pStmt, int nAffectedRow);
       virtual ~ DBGWResult();
 
       bool first();
@@ -162,29 +166,32 @@ namespace dbgw
 
     protected:
       void makeColumnValues();
-      virtual void makeColumnValue(const Metadata &md, int nColNo) = 0;
-      void makeValue(bool bReplace, const char *szColName, int nColNo,
-          DBGWValueType type, void *pValue, bool bNull, int nSize);
+      virtual void makeColumnValue(const MetaData &md, int nColNo) = 0;
+      void makeValue(const char *szColName, int nColNo, DBGWValueType type,
+          void *pValue, bool bNull, int nSize);
 #ifdef ENABLE_LOB
       const DBGWValue *makeValueBuffer(bool bReplace, const char *szColName,
           int nColNo, DBGWValueType type, bool bNull, int nSize);
 #endif
       void makeMetaData();
-      virtual void doMakeMetadata(MetaDataList &metaList) = 0;
+      virtual void doMakeMetadata(MetaDataList &metaList,
+          const MetaDataList &userDefinedMetaList) = 0;
       virtual void doFirst() = 0;
       virtual bool doNext() = 0;
 
     protected:
-      const DBGWLogger m_logger;
+      const DBGWLogger &getLogger() const;
 
     protected:
       void clear();
 
     private:
+      const DBGWPreparedStatementSharedPtr m_pStmt;
       int m_nAffectedRow;
       bool m_bNeedFetch;
       bool m_bNeverFetched;
       MetaDataList m_metaList;
+      const DBGWLogger m_logger;
     };
 
   }

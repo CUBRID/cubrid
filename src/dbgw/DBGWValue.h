@@ -172,6 +172,9 @@ namespace dbgw
         int nSize);
     virtual void clear();
 
+  protected:
+    void put(const char *szKey, size_t nIndex, DBGWValueSharedPtr pValue);
+
   public:
     virtual const DBGWValue *getValue(const char *szKey) const;
     virtual const DBGWValue *getValueWithoutException(const char *szKey) const;

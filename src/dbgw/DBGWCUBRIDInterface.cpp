@@ -864,23 +864,16 @@ namespace dbgw
           throw e;
         }
 
-      bool bNeedFetch = false;
-      if (getQuery()->getType() == DBGWQueryType::SELECT)
-        {
-          bNeedFetch = true;
-        }
-
       DBGWResultSharedPtr p(
-          new DBGWCUBRIDResult(m_logger, m_hCCIConnection, m_hCCIRequest,
-              nResult, bNeedFetch));
+          new DBGWCUBRIDResult(shared_from_this(), m_hCCIRequest,
+              nResult));
       return p;
     }
 
-    DBGWCUBRIDResult::DBGWCUBRIDResult(const DBGWLogger &logger,
-        int hCCIConnection, int hCCIRequest, int nAffectedRow, bool bFetchData) :
-      DBGWResult(logger, nAffectedRow, bFetchData), m_hCCIConnection(
-          hCCIConnection), m_hCCIRequest(hCCIRequest), m_cursorPos(
-              CCI_CURSOR_FIRST)
+    DBGWCUBRIDResult::DBGWCUBRIDResult(const DBGWPreparedStatementSharedPtr pStmt,
+        int hCCIRequest, int nAffectedRow) :
+      DBGWResult(pStmt, nAffectedRow), m_hCCIRequest(hCCIRequest),
+      m_cursorPos(CCI_CURSOR_FIRST)
     {
       /**
        * We don't need to clear error because this api will not make error.
@@ -939,14 +932,14 @@ namespace dbgw
       if (nResult == CCI_ER_NO_MORE_DATA)
         {
           NoMoreDataException e;
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+          DBGW_LOG_ERROR(getLogger().getLogMessage(e.what()).c_str());
           throw e;
         }
       else if (nResult < 0)
         {
           CUBRIDException e = CUBRIDExceptionFactory::create(nResult, cciError,
               "Failed to move cursor.");
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+          DBGW_LOG_ERROR(getLogger().getLogMessage(e.what()).c_str());
           throw e;
         }
       else
@@ -956,7 +949,7 @@ namespace dbgw
             {
               CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
                   cciError, "Failed to fetch data.");
-              DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+              DBGW_LOG_ERROR(getLogger().getLogMessage(e.what()).c_str());
               throw e;
             }
 
@@ -967,7 +960,8 @@ namespace dbgw
         }
     }
 
-    void DBGWCUBRIDResult::doMakeMetadata(MetaDataList &metaList)
+    void DBGWCUBRIDResult::doMakeMetadata(MetaDataList &metaList,
+        const MetaDataList &userDefinedMetaList)
     {
       T_CCI_SQLX_CMD cciCmdType;
       int nColNum;
@@ -977,17 +971,26 @@ namespace dbgw
         {
           CUBRIDException e = CUBRIDExceptionFactory::create(
               "Cannot get the cci col info.");
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+          DBGW_LOG_ERROR(getLogger().getLogMessage(e.what()).c_str());
           throw e;
         }
 
       metaList.clear();
+
+      MetaData md;
       for (int i = 0; i < nColNum; i++)
         {
-          Metadata stMetadata;
-          stMetadata.name = CCI_GET_RESULT_INFO_NAME(pCCIColInfo, i + 1);
-          stMetadata.orgType = CCI_GET_RESULT_INFO_TYPE(pCCIColInfo, i + 1);
-          switch (stMetadata.orgType)
+          if (userDefinedMetaList.size() > i
+              && userDefinedMetaList[i].type != DBGW_VAL_TYPE_UNDEFINED)
+            {
+              metaList.push_back(userDefinedMetaList[i]);
+              continue;
+            }
+
+          md.colNo = i + 1;
+          md.name = CCI_GET_RESULT_INFO_NAME(pCCIColInfo, i + 1);
+          md.orgType = CCI_GET_RESULT_INFO_TYPE(pCCIColInfo, i + 1);
+          switch (md.orgType)
             {
 #ifdef ENABLE_LOB
             case CCI_U_TYPE_CLOB:
@@ -996,49 +999,49 @@ namespace dbgw
               return DBGW_VAL_TYPE_BLOB;
 #endif
             case CCI_U_TYPE_CHAR:
-              stMetadata.type = DBGW_VAL_TYPE_CHAR;
+              md.type = DBGW_VAL_TYPE_CHAR;
               break;
             case CCI_U_TYPE_INT:
             case CCI_U_TYPE_SHORT:
-              stMetadata.type = DBGW_VAL_TYPE_INT;
+              md.type = DBGW_VAL_TYPE_INT;
               break;
             case CCI_U_TYPE_BIGINT:
-              stMetadata.type = DBGW_VAL_TYPE_LONG;
+              md.type = DBGW_VAL_TYPE_LONG;
               break;
             case CCI_U_TYPE_STRING:
             case CCI_U_TYPE_NCHAR:
             case CCI_U_TYPE_VARNCHAR:
-              stMetadata.type = DBGW_VAL_TYPE_STRING;
+              md.type = DBGW_VAL_TYPE_STRING;
               break;
             case CCI_U_TYPE_FLOAT:
-              stMetadata.type = DBGW_VAL_TYPE_FLOAT;
+              md.type = DBGW_VAL_TYPE_FLOAT;
               break;
             case CCI_U_TYPE_DOUBLE:
-              stMetadata.type = DBGW_VAL_TYPE_DOUBLE;
+              md.type = DBGW_VAL_TYPE_DOUBLE;
               break;
             case CCI_U_TYPE_DATE:
-              stMetadata.type = DBGW_VAL_TYPE_DATE;
+              md.type = DBGW_VAL_TYPE_DATE;
               break;
             case CCI_U_TYPE_TIME:
-              stMetadata.type = DBGW_VAL_TYPE_TIME;
+              md.type = DBGW_VAL_TYPE_TIME;
               break;
             case CCI_U_TYPE_DATETIME:
             case CCI_U_TYPE_TIMESTAMP:
-              stMetadata.type = DBGW_VAL_TYPE_DATETIME;
+              md.type = DBGW_VAL_TYPE_DATETIME;
               break;
             default:
               DBGW_LOG_WARN((
                   boost:: format(
                       "%d type is not yet supported. so converted string.")
-                  % stMetadata.orgType).str().c_str());
-              stMetadata.type = DBGW_VAL_TYPE_STRING;
+                  % md.orgType).str().c_str());
+              md.type = DBGW_VAL_TYPE_STRING;
               break;
             }
-          metaList.push_back(stMetadata);
+          metaList.push_back(md);
         }
     }
 
-    void DBGWCUBRIDResult::makeColumnValue(const Metadata &md, int nColNo)
+    void DBGWCUBRIDResult::makeColumnValue(const MetaData &md, int nColNo)
     {
       if (md.type == DBGW_VAL_TYPE_INT)
         {
@@ -1072,84 +1075,84 @@ namespace dbgw
         }
     }
 
-    void DBGWCUBRIDResult::doMakeInt(const Metadata &md, int nColNo)
+    void DBGWCUBRIDResult::doMakeInt(const MetaData &md, int nColNo)
     {
       int nValue;
       int atype = CCI_A_TYPE_INT;
       int nIndicator = 0;
-      int nResult = cci_get_data(m_hCCIRequest, nColNo, atype,
+      int nResult = cci_get_data(m_hCCIRequest, md.colNo, atype,
           (void *) &nValue, &nIndicator);
       if (nResult < 0)
         {
           CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
               "Failed to get data.");
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+          DBGW_LOG_ERROR(getLogger().getLogMessage(e.what()).c_str());
           throw e;
         }
 
-      makeValue(m_cursorPos != CCI_CURSOR_FIRST, md.name.c_str(), nColNo,
-          md.type, (void *) &nValue, nIndicator == -1, nIndicator);
+      makeValue(md.name.c_str(), nColNo, md.type, (void *) &nValue,
+          nIndicator == -1, nIndicator);
     }
 
-    void DBGWCUBRIDResult::doMakeLong(const Metadata &md, int nColNo)
+    void DBGWCUBRIDResult::doMakeLong(const MetaData &md, int nColNo)
     {
       int64 lValue;
       int atype = CCI_A_TYPE_BIGINT;
       int nIndicator = 0;
-      int nResult = cci_get_data(m_hCCIRequest, nColNo, atype,
+      int nResult = cci_get_data(m_hCCIRequest, md.colNo, atype,
           (void *) &lValue, &nIndicator);
       if (nResult < 0)
         {
           CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
               "Failed to get data.");
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+          DBGW_LOG_ERROR(getLogger().getLogMessage(e.what()).c_str());
           throw e;
         }
 
-      makeValue(m_cursorPos != CCI_CURSOR_FIRST, md.name.c_str(), nColNo,
-          md.type, (void *) &lValue, nIndicator == -1, nIndicator);
+      makeValue(md.name.c_str(), nColNo, md.type, (void *) &lValue,
+          nIndicator == -1, nIndicator);
     }
 
-    void DBGWCUBRIDResult::doMakeFloat(const Metadata &md, int nColNo)
+    void DBGWCUBRIDResult::doMakeFloat(const MetaData &md, int nColNo)
     {
       float fValue;
       int atype = CCI_A_TYPE_FLOAT;
       int nIndicator = 0;
-      int nResult = cci_get_data(m_hCCIRequest, nColNo, atype, (void *) &fValue,
+      int nResult = cci_get_data(m_hCCIRequest, md.colNo, atype, (void *) &fValue,
           &nIndicator);
       if (nResult < 0)
         {
           CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
               "Failed to get data.");
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+          DBGW_LOG_ERROR(getLogger().getLogMessage(e.what()).c_str());
           throw e;
         }
 
-      makeValue(m_cursorPos != CCI_CURSOR_FIRST, md.name.c_str(), nColNo,
-          md.type, (void *) &fValue, nIndicator == -1, nIndicator);
+      makeValue(md.name.c_str(), nColNo, md.type, (void *) &fValue,
+          nIndicator == -1, nIndicator);
     }
 
-    void DBGWCUBRIDResult::doMakeDouble(const Metadata &md, int nColNo)
+    void DBGWCUBRIDResult::doMakeDouble(const MetaData &md, int nColNo)
     {
       double dValue;
       int atype = CCI_A_TYPE_DOUBLE;
       int nIndicator = 0;
-      int nResult = cci_get_data(m_hCCIRequest, nColNo, atype, (void *) &dValue,
+      int nResult = cci_get_data(m_hCCIRequest, md.colNo, atype, (void *) &dValue,
           &nIndicator);
       if (nResult < 0)
         {
           CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
               "Failed to get data.");
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+          DBGW_LOG_ERROR(getLogger().getLogMessage(e.what()).c_str());
           throw e;
         }
 
-      makeValue(m_cursorPos != CCI_CURSOR_FIRST, md.name.c_str(), nColNo,
-          md.type, (void *) &dValue, nIndicator == -1, nIndicator);
+      makeValue(md.name.c_str(), nColNo, md.type, (void *) &dValue,
+          nIndicator == -1, nIndicator);
     }
 
 #ifdef ENABLE_LOB
-    void DBGWCUBRIDResult::doMakeClob(const Metadata &md, int nColNo)
+    void DBGWCUBRIDResult::doMakeClob(const MetaData &md, int nColNo)
     {
       T_CCI_CLOB clob;
       int atype = CCI_A_TYPE_CLOB;
@@ -1189,7 +1192,7 @@ namespace dbgw
       cci_clob_free(clob);
     }
 
-    void DBGWCUBRIDResult::doMakeBlob(const Metadata &md, int nColNo)
+    void DBGWCUBRIDResult::doMakeBlob(const MetaData &md, int nColNo)
     {
       T_CCI_BLOB blob;
       int atype = CCI_A_TYPE_BLOB;
@@ -1227,23 +1230,23 @@ namespace dbgw
     }
 #endif
 
-    void DBGWCUBRIDResult::doMakeString(const Metadata &md, int nColNo)
+    void DBGWCUBRIDResult::doMakeString(const MetaData &md, int nColNo)
     {
       char *szValue;
       int atype = CCI_A_TYPE_STR;
       int nIndicator = 0;
-      int nResult = cci_get_data(m_hCCIRequest, nColNo, atype,
+      int nResult = cci_get_data(m_hCCIRequest, md.colNo, atype,
           (void *) &szValue, &nIndicator);
       if (nResult < 0)
         {
           CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
               "Failed to get data.");
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+          DBGW_LOG_ERROR(getLogger().getLogMessage(e.what()).c_str());
           throw e;
         }
 
-      makeValue(m_cursorPos != CCI_CURSOR_FIRST, md.name.c_str(), nColNo,
-          md.type, (void *) szValue, nIndicator == -1, nIndicator);
+      makeValue(md.name.c_str(), nColNo, md.type, (void *) szValue,
+          nIndicator == -1, nIndicator);
     }
 
   }

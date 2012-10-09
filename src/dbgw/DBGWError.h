@@ -37,6 +37,7 @@ namespace dbgw
       CONF_NOT_EXIST_VERSION                    = -22105,
       CONF_NOT_EXIST_FILE                       = -22106,
       CONF_NOT_EXIST_SERVICE                    = -22107,
+      CONF_INVALID_PARAM_NAME                   = -22108,
 
       SQL_NOT_EXIST_CONN                        = -22200,
       SQL_INVALID_SQL                           = -22201,
@@ -73,6 +74,11 @@ namespace dbgw
       XML_NOT_EXIST_PROPERTY                    = -22705,
       XML_INVALID_PROPERTY_VALUE                = -22706,
       XML_INVALID_SYNTAX                        = -22707,
+      XML_DUPLICATE_PARAM_INDEX                 = -22708,
+      XML_INVALID_PARAM_INDEX                   = -22709,
+      XML_NOT_EXIST_RESULT                      = -22710,
+      XML_DUPLICATE_RESULT_INDEX                = -22711,
+      XML_INVALID_RESULT_INDEX                  = -22712,
 
       EXTERNAL_MUTEX_INIT_FAIL                  = -22800,
       EXTERNAL_STANDARD_ERROR                   = -22801,
@@ -178,6 +184,12 @@ namespace dbgw
     NotExistConfFileException(const char *szPath) throw();
   };
 
+  class InvalidParamNameException : public DBGWException
+  {
+  public:
+    InvalidParamNameException(const char *szName) throw();
+  };
+
   class NotExistConnException : public DBGWException
   {
   public:
@@ -223,6 +235,7 @@ namespace dbgw
     InvalidValueTypeException(const char *szType) throw();
     InvalidValueTypeException(int type,
         const char *szExpectedType) throw();
+    InvalidValueTypeException(const char *szFileName, const char *szType) throw();
   };
 
   class InvalidValueFormatException : public DBGWException
@@ -353,14 +366,14 @@ namespace dbgw
   class NotExistPropertyException : public DBGWException
   {
   public:
-    NotExistPropertyException(const char *szNodeName,
+    NotExistPropertyException(const char *szFileName, const char *szNodeName,
         const char *szPropName) throw();
   };
 
   class InvalidPropertyValueException : public DBGWException
   {
   public:
-    InvalidPropertyValueException(const char *szValue,
+    InvalidPropertyValueException(const char *szFileName, const char *szValue,
         const char *szCorrectValueSet) throw();
   };
 
@@ -369,6 +382,34 @@ namespace dbgw
   public:
     InvalidXMLSyntaxException(const char *szXmlErrorMessage,
         const char *szFileName, int nLine, int nCol) throw();
+  };
+
+  class DuplicateParamIndexException : public DBGWException
+  {
+  public:
+    DuplicateParamIndexException(const char *szFileName, const char *szSqlName,
+        int nIndex) throw();
+  };
+
+  class InvalidParamIndexException : public DBGWException
+  {
+  public:
+    InvalidParamIndexException(const char *szFileName, const char *szSqlName,
+        int nIndex) throw();
+  };
+
+  class DuplicateResultIndexException : public DBGWException
+  {
+  public:
+    DuplicateResultIndexException(const char *szFileName, const char *szSqlName,
+        int nIndex) throw();
+  };
+
+  class InvalidResultIndexException : public DBGWException
+  {
+  public:
+    InvalidResultIndexException(const char *szFileName, const char *szSqlName,
+        int nIndex) throw();
   };
 
   class MutexInitFailException : public DBGWException

@@ -247,6 +247,14 @@ namespace dbgw
   {
   }
 
+  InvalidParamNameException::InvalidParamNameException(const char *szName) throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(DBGWErrorCode::CONF_INVALID_PARAM_NAME,
+            (boost::format("You can't use this parameter name %s.")
+                % szName).str()))
+  {
+  }
+
   NotExistConnException::NotExistConnException(const char *szGroupName) throw() :
     DBGWException(
         DBGWExceptionFactory::create(DBGWErrorCode::SQL_NOT_EXIST_CONN,
@@ -259,7 +267,7 @@ namespace dbgw
       const char *szSqlName) throw() :
     DBGWException(
         DBGWExceptionFactory::create(DBGWErrorCode::SQL_INVALID_SQL,
-            (boost::format("Cannot parse sql %s in %s.") % szSqlName
+            (boost::format("Cannot parse sql %s (%s).") % szSqlName
                 % szFileName).str()))
   {
   }
@@ -321,10 +329,11 @@ namespace dbgw
   }
 
   InvalidValueTypeException::InvalidValueTypeException(
-      const char *szType) throw() :
+      const char *szFileName, const char *szType) throw() :
     DBGWException(
         DBGWExceptionFactory::create(DBGWErrorCode::VALUE_INVALID_VALUE_TYPE,
-            (boost::format("The value type %s is invalid.") % szType).str()))
+            (boost::format("The value type %s is not supported (%s).")
+                % szType % szFileName).str()))
   {
   }
 
@@ -537,22 +546,23 @@ namespace dbgw
   {
   }
 
-  NotExistPropertyException::NotExistPropertyException(const char *szNodeName,
-      const char *szPropName) throw() :
+  NotExistPropertyException::NotExistPropertyException(const char *szFileName,
+      const char *szNodeName, const char *szPropName) throw() :
     DBGWException(
         DBGWExceptionFactory::create(DBGWErrorCode::XML_NOT_EXIST_PROPERTY,
-            (boost::format("Cannot find %s property of %s node.") % szPropName
-                % szNodeName).str()))
+            (boost::format("Cannot find %s property of %s node (%s).") % szPropName
+                % szNodeName % szFileName).str()))
   {
   }
 
   InvalidPropertyValueException::InvalidPropertyValueException(
-      const char *szValue, const char *szCorrectValueSet) throw() :
+      const char *szFileName, const char *szValue,
+      const char *szCorrectValueSet) throw() :
     DBGWException(
         DBGWExceptionFactory::create(
             DBGWErrorCode::XML_INVALID_PROPERTY_VALUE,
-            (boost::format("The value of property %s have to be [%s].")
-                % szValue % szCorrectValueSet).str()))
+            (boost::format("The value of property %s have to be [%s] (%s).")
+                % szValue % szCorrectValueSet % szFileName).str()))
   {
   }
 
@@ -563,6 +573,46 @@ namespace dbgw
         DBGWExceptionFactory::create(DBGWErrorCode::XML_INVALID_SYNTAX,
             (boost::format("%s in %s, line %d, column %d") % szXmlErrorMessage
                 % szFileName % nLine % nCol).str()))
+  {
+  }
+
+  DuplicateParamIndexException::DuplicateParamIndexException(const char *szFileName,
+      const char *szSqlName, int nIndex) throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(DBGWErrorCode::XML_DUPLICATE_PARAM_INDEX,
+            (boost::format(
+                "Duplicate index '%d' for parameter node of %s. (%s)")
+                % nIndex % szSqlName % szFileName).str()))
+  {
+  }
+
+  InvalidParamIndexException::InvalidParamIndexException(const char *szFileName,
+      const char *szSqlName, int nIndex) throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(DBGWErrorCode::XML_INVALID_PARAM_INDEX,
+            (boost::format(
+                "The index %d of paramter node of %s is out of bounds. (%s)")
+                % nIndex % szSqlName % szFileName).str()))
+  {
+  }
+
+  DuplicateResultIndexException::DuplicateResultIndexException(const char *szFileName,
+      const char *szSqlName, int nIndex) throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(DBGWErrorCode::XML_DUPLICATE_RESULT_INDEX,
+            (boost::format(
+                "Duplicate index '%d' for result node of %s. (%s)")
+                % nIndex % szSqlName % szFileName).str()))
+  {
+  }
+
+  InvalidResultIndexException::InvalidResultIndexException(const char *szFileName,
+      const char *szSqlName, int nIndex) throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(DBGWErrorCode::XML_INVALID_RESULT_INDEX,
+            (boost::format(
+                "The index %d of paramter node of %s is out of bounds. (%s)")
+                % nIndex % szSqlName % szFileName).str()))
   {
   }
 

@@ -509,7 +509,7 @@ namespace dbgw
       int nFieldCount = mysql_num_fields(result.get());
       for (int i = 0; i < nFieldCount; i++)
         {
-          Metadata stMetadata;
+          MetaData stMetadata;
           stMetadata.name = pFieldList[i].name;
           stMetadata.type = convertMySQLTypeToValueType(pFieldList[i].type);
           stMetadata.length = pFieldList[i].length;

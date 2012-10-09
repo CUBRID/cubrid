@@ -398,7 +398,8 @@ int main(int argc, const char *argv[])
 
       for (int i = 3; i < argc; i++)
         {
-          if (configuration.loadQueryMapper(argv[i], true) == false)
+          if (configuration.loadQueryMapper(DBGW_QUERY_MAP_VER_30, argv[i],
+              true) == false)
             {
               throw getLastException();
             }

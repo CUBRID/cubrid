@@ -46,6 +46,7 @@ namespace dbgw
   static Generator g_generator(g_base, Distributer(0, 99));
 
   static const char *GROUP_NAME_ALL = "__ALL__";
+  static const char *GROUP_NAME_FIRST = "__FIRST__";
 
   DBGWHost::DBGWHost(const string &address, int nPort) :
     m_address(address), m_nPort(nPort), m_nWeight(0)
@@ -758,7 +759,8 @@ namespace dbgw
   /**
    * class DBGWQueryMapper
    */
-  DBGWQueryMapper::DBGWQueryMapper()
+  DBGWQueryMapper::DBGWQueryMapper() :
+    m_version(DBGW_QUERY_MAP_VER_UNKNOWN)
   {
   }
 
@@ -802,6 +804,9 @@ namespace dbgw
         queryGroupList.push_back(pQuery);
         m_querySqlMap[sqlName] = queryGroupList;
       }
+
+    DBGW_LOGF_INFO("%s.%s in %s is normally loaded.", pQuery->getGroupName(),
+        sqlName.c_str(), pQuery->getFileName());
   }
 
   void DBGWQueryMapper::clearQuery()
@@ -813,6 +818,11 @@ namespace dbgw
   {
     m_querySqlMap = DBGWQuerySqlHashMap(src.m_querySqlMap.begin(),
         src.m_querySqlMap.end());
+  }
+
+  void DBGWQueryMapper::setVersion(DBGWQueryMapperVersion version)
+  {
+    m_version = version;
   }
 
   size_t DBGWQueryMapper::size() const
@@ -834,7 +844,8 @@ namespace dbgw
   }
 
   DBGWBoundQuerySharedPtr DBGWQueryMapper::getQuery(const char *szSqlName,
-      const char *szGroupName, const DBGWParameter *pParameter) const
+      const char *szGroupName, const DBGWParameter *pParameter,
+      bool bFirstGroup) const
   {
     DBGWQuerySqlHashMap::const_iterator it = m_querySqlMap.find(
         szSqlName);
@@ -849,7 +860,11 @@ namespace dbgw
     for (DBGWQueryGroupList::const_iterator it = queryGroupList.begin(); it
         != queryGroupList.end(); it++)
       {
-        if (!strcmp((*it)->getGroupName(), GROUP_NAME_ALL) || !strcmp(
+        if (bFirstGroup && !strcmp((*it)->getGroupName(), GROUP_NAME_FIRST))
+          {
+            return (*it)->getDBGWBoundQuery(szGroupName, pParameter);
+          }
+        else if (!strcmp((*it)->getGroupName(), GROUP_NAME_ALL) || !strcmp(
             (*it)->getGroupName(), szGroupName))
           {
             return (*it)->getDBGWBoundQuery(szGroupName, pParameter);
@@ -857,6 +872,11 @@ namespace dbgw
       }
 
     return DBGWBoundQuerySharedPtr();
+  }
+
+  DBGWQueryMapperVersion DBGWQueryMapper::getVersion() const
+  {
+    return m_version;
   }
 
   DBGWConnector::DBGWConnector()
@@ -1110,13 +1130,25 @@ namespace dbgw
       }
   }
 
+  bool DBGWConfiguration::loadQueryMapper()
+  {
+    return loadQueryMapper(DBGW_QUERY_MAP_VER_30, NULL, false);
+  }
+
   bool DBGWConfiguration::loadQueryMapper(const char *szXmlPath, bool bAppend)
+  {
+    return loadQueryMapper(DBGW_QUERY_MAP_VER_30, szXmlPath, bAppend);
+  }
+
+  bool DBGWConfiguration::loadQueryMapper(DBGWQueryMapperVersion version,
+      const char *szXmlPath, bool bAppend)
   {
     clearException();
 
     try
       {
         DBGWQueryMapperSharedPtr pQueryMapper(new DBGWQueryMapper());
+        pQueryMapper->setVersion(version);
 
         DBGWQueryMapper *pPrevQueryMapper =
             (DBGWQueryMapper *) m_queryResource.getNewResource();
@@ -1132,8 +1164,7 @@ namespace dbgw
           }
         else
           {
-            DBGWQueryMapParser parser(szXmlPath, pQueryMapper);
-            DBGWParser::parse(&parser);
+            parseQueryMapper(szXmlPath, pQueryMapper);
           }
 
         m_queryResource.putResource(pQueryMapper);
@@ -1156,10 +1187,36 @@ namespace dbgw
     return m_queryResource.size();
   }
 
-  void DBGWConfiguration::closeVersion(const DBGWConfigurationVersion &stVersion)
+  bool DBGWConfiguration::closeVersion(const DBGWConfigurationVersion &stVersion)
   {
-    m_connResource.closeVersion(stVersion.nConnectorVersion);
-    m_queryResource.closeVersion(stVersion.nQueryMapperVersion);
+    clearException();
+
+    DBGWException exception;
+    try
+      {
+        m_connResource.closeVersion(stVersion.nConnectorVersion);
+      }
+    catch (DBGWException &e)
+      {
+        exception = e;
+      }
+
+    try
+      {
+        m_queryResource.closeVersion(stVersion.nQueryMapperVersion);
+      }
+    catch (DBGWException &e)
+      {
+        exception = e;
+      }
+
+    if (exception.getErrorCode() != DBGWErrorCode::NO_ERROR)
+      {
+        setLastException(exception);
+        return false;
+      }
+
+    return true;
   }
 
   DBGWConfigurationVersion DBGWConfiguration::getVersion()
@@ -1174,20 +1231,40 @@ namespace dbgw
   DBGWConnector *DBGWConfiguration::getConnector(
       const DBGWConfigurationVersion &stVersion)
   {
-    DBGWConnector *pConnector = (DBGWConnector *) m_connResource.getResource(
-        stVersion.nConnectorVersion);
+    clearException();
 
-    return pConnector;
+    try
+      {
+        DBGWConnector *pConnector = (DBGWConnector *) m_connResource.getResource(
+            stVersion.nConnectorVersion);
+
+        return pConnector;
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return NULL;
+      }
   }
 
   DBGWQueryMapper *DBGWConfiguration::getQueryMapper(
       const DBGWConfigurationVersion &stVersion)
   {
-    DBGWQueryMapper *pQueryMapper =
-        (DBGWQueryMapper *) m_queryResource.getResource(
-            stVersion.nQueryMapperVersion);
+    clearException();
 
-    return pQueryMapper;
+    try
+      {
+        DBGWQueryMapper *pQueryMapper =
+            (DBGWQueryMapper *) m_queryResource.getResource(
+                stVersion.nQueryMapperVersion);
+
+        return pQueryMapper;
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return NULL;
+      }
   }
 
 }
