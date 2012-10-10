@@ -185,6 +185,7 @@ cubrid 管理工具，版本 %s\n\
     restart     [数据库名]\n\
     status\n\
     acl         <status|reload> 数据库名\n
+37 The server was configured for HA.\n
 26 cubrid 应用工具, 版本 %s\n\
 用法: %s broker <命令> [参数]\n\
 \n\
@@ -286,7 +287,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 未知的命令 '%s'\n
 43 无法打开输出文件 '%s'\n
 44 无法移除已存在的数据库.\n
-45 创建一个 %d 大小的数据库.\n
+45 创建一个 %s 大小的数据库.\n
 46 无法创建数据库.\n
 47 用户文件 '%s' 存在问题\n
 48 '%s' 必须在 %s 与 %s 中间\n
@@ -673,7 +674,7 @@ $set 21 MSGCAT_UTIL_SET_ESTIMATEDB_INDEX
 21 估算的全部索引页数目 = %d\n (在实例被写入前(平均情况)，索引被创建)\n
 22 估算的全部索引页数目 = %d\n (在实例被写入前(最坏情况)，索引被创建)\n
 23 用于给定的输入...\n
-24 实例的总数               :%d\n
+24 实例的总数               : %d\n
 25 不同键的数目             : %d\n
 26 键的平均大小             : %d\n
 27 键的类型                 : %s\n\n
