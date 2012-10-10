@@ -36,8 +36,8 @@ $set 1 MSGCAT_SET_GENERAL
 11 Beklenmeyen konumsal argüman`%s'
 12 Verilen hiçbir argüman tanımlanmıyor
 13 Argüman ayrıştırma için depolama ayıramadı
-14 Argüman dize maksimum uzunluğu aşıyor:% s
-15 Argüman ayrıştırma için katalog içindeki geçersiz ileti numarası% d.
+14 Argüman dize maksimum uzunluğu aşıyor: %s
+15 Argüman ayrıştırma için katalog içindeki geçersiz ileti numarası %d.
 16 [ayarlar]
 17 Ayarlar:
 
@@ -98,7 +98,7 @@ $set 5 MSGCAT_SET_ERROR
 31 Yoğunluklar için yer bildirimi dışında sürecek ana depolama amaçlı olarak indeks. toplam sayfa sayısı = %1$d, toplam boş sayfa sayısı = %2$d.
 32 Yoğunluklar için yer bildirimi dışında sürecek genel depolama amacı ile. toplam sayfa sayısı = %1$d, toplam boş sayfa sayısı = %2$d.
 33 Yoğunluklar için yer bildirimi dışında sürecek ana depolama amaçlı olarak geçici veri ile. toplam sayfa sayısı = %1$d, toplam boş sayfa sayısı = %2$d.
-34 İç hata: %1$d nth sayfa dosyası %2d$ yoğunluk "%3$s" için aralık dışında. Sayfa sayısı %4$d vardır.
+34 İç hata: %1$d nth sayfa dosyası %2$d yoğunluk "%3$s" için aralık dışında. Sayfa sayısı %4$d vardır.
 35 İç hata: Bilinmeyen hacmi belirteç %1$d.
 36 Veritabanı içinde alandışı disk alanı. İstenen sayfa(lar) sayısı = %1$d.
 37 Yoğunluk içinde alandısşı disk alanı "%1$s". İstenen sayfa(lar) sayısı = %2$d.
@@ -107,7 +107,7 @@ $set 5 MSGCAT_SET_ERROR
 40 İç hata: %1$d beklenen sonuçlar, %2$d dosya için bulunan sayfaları VFID %3$d|%4$d(yoğunluk "%5$s").
 41 İç hata: Page %1$d|%2$d(yoğunluk "%3$s") dosya VFID parçası değildir %4$d|%5$d(yoğunluk "%6$s").
 42 Sayfasına bağlantılı kayıtları yenilenmez %1$d yoğunluğu "%2$s".
-43 İç hata: %1$d sayfa hacmi "%2$s" bozuk olabilir. %3d kayıtları% 4$d beklenen zaman kuruldu.
+43 İç hata: %1$d sayfa hacmi "%2$s" bozuk olabilir. %3$d kayıtları %4$d beklenen zaman kuruldu.
 44 Yerleşmiş sayfada uygun alan bulunmamakta %1$d yoğunluk "%2$s".
 45 Yer %1$d safada %2$d yoğunluğu "%3$s" demirlemiş bir kayıt tahsis edilir. Yeni bir kayıt buraya işlenemez.
 46 İç hata: yer %1$d sayfada %2$d yuğunluğu "%3$s" ayrılmamaktadır.
@@ -168,13 +168,13 @@ $set 5 MSGCAT_SET_ERROR
 101 Bilinmeyen kullanıcı dosya "%1$s".
 102 Dosya "%1$s" yeterli mesajı yok: %2$d girdileri beklenir.
 103 Dosya "%1$s" girişleri sırasız gibi görünüyor. Giriş %2$d değerler ile birlikte: %3$d %4$s %5$s, beklenen %6$d %7$s değerler ile birlikte bulundu.
-104 Dosya "%1$s" veritabanı adı yanlış bir giriş (ana birim) sahip görünüyor. Giriş %2$d değerler ile birlikte: %3$d %4$s %5$s, beklenen %6$d %7$s değerler ile birlikte bulundu .
+104 Dosya "%1$s" veritabanı adı yanlış bir giriş (ana birim) sahip görünüyor. Giriş %2$d değerler ile birlikte: %3$d %4$s %5$s, beklenen %6$d %7$s %8$s değerler ile birlikte bulundu .
 105 Yedekleme dosyası erişemiyor "%1$s". Yeniden Depolandı veya Yedekleme iptal edildi.
 106 Genel işlem tanımlayıcı ile cari işlem işlemek için hazırlayamaz %1$d Bu işlem tanımlayıcı başka bir işlem tarafından kullanımda olduğundan dolayı.
 107 İşlem tanımlayıcı ile ilişkili hiçbir küresel dağıtılmış işlem yoktur. %1$d.
 108 Geçerli işlem %1$d küresel tanımlayıcı ile dağıtılan işlem katılmaya çalışırken önce işlenen veya iptal edilmelidir %2$d.
 109 İşleminiz %1$d tek taraflı sistem tarafından iptal edilmiştir çünki bir katılımcı (uzak) yere indi veya tek taraflı olarak iptal işlemi.
-110 İzolasyon seviyesi değeri %1$d ve %2$ arasında olmalıdır.
+110 İzolasyon seviyesi değeri %1$d ve %2$d arasında olmalıdır.
 111 İşleminiz sunucu hatası veya mod değişikliği nedeniyle sistem tarafından iptal edildi.
 112 Host "%1$s" veritabanı çalıştırmak için yetkili değil.
 113 Yeniden / veritabanı sunucusu başlatılamadı. %1$s
@@ -987,7 +987,7 @@ $ LOADDB
 919 Yabancı anahtarının tarafından yönlendirilen birincil anahtarın sınıf '%s' bulunmamaktadır.
 920 Yabancı anahtar '%s' birincil anahtar üye '%s' içermez.
 921 Yabancı anahtar üye '%s' alanı birincil anahtar üye '%s' farklıdır.
-922 Dış anahtar kelime: '%sdeğeri'nedeniyle,'%s'sınırı geçersiz.
+922 Dış anahtar kelime: '%s değeri'nedeniyle,'%s'sınırı geçersiz.
 923 Birincil anahtar '%s' yabancı anahtar '%s' tarafından yönlendirilen iptal olması gerekmiyor.
 924 Güncelle/Sil işlemleri yabancı anahtar '%s' tarafından kısıtlanmıştır.
 925 Yabancı anahtar '%s' için kilit edinilmesi başarısız oldu.
@@ -1032,7 +1032,7 @@ $ LOADDB
 964 Sonuç kümesindeki tanıtıcı kapalı.
 965 Dizin anahtarı listesi yinelenen öznitelik adlarını kullanamazsınız. Öznitelik adı '%s' bir kereden fazla listelenmiştir.
 966 İşleminiz (index %1$d, %2$s@%3$s|%4$d) %5$s üzerinde beklerken zaman aşımına uğradı %6$d|%7$d|%8$d nesne üzerinde kilitleyin çünki tıkanıklık var. Bu kullanıcı için bekliyor(s) %9$s bitirmek için.
-967 İşleminiz (index %1$d, %2$s@%3$s|%4$d) %5$s üzerinde beklerken zaman aşımına uğradı %6$ssınıf üzerinde kilitleyin çünki tıkanıklık var. Bu kullanıcı için bekliyor(s) %7$s bitirmek için.
+967 İşleminiz (index %1$d, %2$s@%3$s|%4$d) %5$s üzerinde beklerken zaman aşımına uğradı %6$s sınıf üzerinde kilitleyin çünki tıkanıklık var. Bu kullanıcı için bekliyor(s) %7$s bitirmek için.
 968 İşleminiz (index %1$d, %2$s@%3$s|%4$d) %5$s üzerinde beklerken zaman aşımına uğradı %9$s sınıf %6$d|%7$d|%8$d örneği üzerinde kilitleyin çünki tıkanıklık var. Bu kullanıcı için bekliyor(s) %10$s bitirmek için.
 969 Sunucu bit platformu (%1$d) (%2$d) istemci bit platformundan farklıdır.
 970 Sunucu HA modunda '%1$s' '%2$s' değiştirildi.
@@ -1156,7 +1156,7 @@ $ LOADDB
 1088 Konumun var olması: %s.
 1089 Bigisayar değişken'%s' türünün ifadesi hazırlanmamalıdır.
 1090 inet_aton'ın arg '%s, ipv4 adresinde ayarlanan geçerli dizesi değildir.
-1091 inet_aton'ın arg '%11d, ipv4 adresinde ayarlananr geçerli dijital değildi.
+1091 inet_aton'ın arg '%lld, ipv4 adresinde ayarlananr geçerli dijital değildi.
 1092 Yedek inisiyatif günlükcü çalıştırımalı'%s'
 1093 Yedek inisiyatif günlükcü'%s' tamamlanmıştır
 1094 Kullanıcı adı çok uzun
@@ -1166,7 +1166,7 @@ $ LOADDB
 1098 Dil '%s'konumu karakter kümesindeki'%s' kullanılmaz.
 1099 DDL deyimini yapılandırma (block_ddl_statement = yes) tarafından izin verilmiyor.
 1100 Jümlelerde görülmeyen konumun ifadesi dış boyutlar tarafından izin verilmez(block_nowhere_statementi=yes)
-1101 Şu anki işlem yapışıkları elde ederekOID (%4$d|%5$d|%6$d)nın PSEUDO-OID üzerindeki bir tuş kilidine verelmez.
+1101 Şu anki işlem yapışıkları elde ederek OID (%4$d|%5$d|%6$d) nın PSEUDO-OID (%1$d|%2$d|%3$d) üzerindeki bir tuş kilidine verelmez.
 1102 Unknown system parameter or bad value.
 1103 Cannot change system parameter.
 1104 Son Hata
@@ -1477,7 +1477,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 159 İndeks '%s' bulunamıyor.
 160 Nitelikli dizin adı '%s' bir sınıf için başvuruyor, ancak bu yan tümcesi belirtilen değildir.
 161 İki veya daha fazla sınıfların aynı indeksi '%s' var.Nitelikli dizin adlarını kullanabilirsiniz.
-162 %S geçersiz kullanımı. \n%s anlatımı öznitelik veya ilişkili alt sorgu kullanilamaz.
+162 %s geçersiz kullanımı. \n%s anlatımı öznitelik veya ilişkili alt sorgu kullanilamaz.
 163 Güncel sürüm seçim listesinde ORDERBY_NUM() içeren bir anlatımı kısıtlar.
 164 Path anlatımı '%s' birleştirme koşulu.
 165 '%s' birleştirme koşulu tanımlı değil.
@@ -1521,7 +1521,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 203 Bir sütun adı parametresi DEFAULT işlevine aktarılan olmalıdır. Path ifadeleri henüz desteklenmemektedir.
 204 '%s' tablosu seçeneği Duplicate
 205 Sınıf '%s' REUSE_OID olarak işaretlenmiş ve olmayan-başvurulabilir konumundadır . Olmayan- başvurulabilir sınıfların bir öznitelik süreli etki alanı olamaz ve bunların örneklerini 'OID'lere geri iade edilemez.
-206 'seri bağlantı% s' seçeneğini çoğaltın.
+206 'seri bağlantı %s' seçeneğini çoğaltın.
 207 Sıralama yan tümcesinde sütununda '%s' belirsiz.
 208 Öznitelik '%s' varsayılan bir değeri yoktur.
 209 SELECT DISTINCT belirtilmişse öğelerin ORDER BY seçim listesinde görünmesi gerekir.
@@ -1547,7 +1547,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 229 Düzeyin özellikleri ve örnek özelliklerinin aynı ifadesini güncelemesine izin vermez. 
 230 Sanal hiyerarşini güncelemeye izin verilmez
 231 Sunucu değişkenleri DDL deyimini izin verilmez.
-232 İndeks geçersiz filtre ifadesi için
+232 İndeks geçersiz filtre ifadesi için (%s)
 233 Çeşitlilik veya yuvalanmış işlemleri fonksiyon dizini tanımlarında izin verilmez.
 234 Geçersiz dizin özellikleri
 235 SHARED, DEFAULT and AUTO_INCREMENT -büyüme arası tanımlanamaz.
@@ -1714,7 +1714,7 @@ $set 14 MSGCAT_SET_LOCK
 4 İşlem endeksi %3d nesne %s kilit ACQUIRED %d|%d|%d.\n
 5 İşlem endeksi %3d sayfa %s kilit ACQUIRED %d|%d.\n
 6 İşlem endeksi %3d nesne %s kilit, kilit CONVERTED %d|%d|%d.\n
-7 İşlem endeksi %3d sayfa %s kilit, kilit CONVERTED %d|%d|%d.\n
+7 İşlem endeksi %3d sayfa %s kilit, kilit CONVERTED %d|%d.\n
 8 İşlem endeksi %3d nesne %s kilit WAIT FOR %d|%d|%d.\n
 9 İşlem endeksi %3d sayfa %s kilit WAIT FOR %d|%d.\n
 10 İşlem endeksi %3d nesne %s kilit RELEASE %d|%d|%d.\n
@@ -1734,16 +1734,16 @@ $set 14 MSGCAT_SET_LOCK
 24 NON_2PL_RELEASED:\n
 25 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d\n
 26 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d, Nsubgranules = %2d\n
-27 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d\n\t%13s Blocked_mode = %8s\n\t%17s Start_waiting_at = %-30s\n\t%17s Wait_for_nsecs = %d\n
-28 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d, Nsubgranules = %2d\n\t%13s Blocked_mode =%8s\n\t%13s Start_waiting_at = %-30s\n\t%13s Wait_for_nsecs = %d\n
-29 %4sTran_index = %3d, Blocked_mode =%8s \n\t%13s Start_waiting_at = %-30s \n\t%13s Wait_for_nsecs = %d\n
+27 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d\n\t%13s Blocked_mode = %8s\n\t%17s Start_waiting_at = %-30s\n\t%17s Wait_for_secs = %.2f\n
+28 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d, Nsubgranules = %2d\n\t%13s Blocked_mode =%8s\n\t%13s Start_waiting_at = %-30s\n\t%13s Wait_for_secs = %.2f\n
+29 %4sTran_index = %3d, Blocked_mode =%8s \n\t%13s Start_waiting_at = %-30s \n\t%13s Wait_for_secs = %.2f\n
 30 %4sTran_index = %3d, Non_2_phase_lock =%8s\n
 31 VPID (volid|pageid) = %3d|%6d.\n
 32 *** Tablo Dökümü Kilit ***\n Yükseltme Kilidi = %d, Kilitlenme aralığı çalıştırın = %d\n
 33 İşlem (indeks %2d, %s, %s@%s|%d)\n
 34 Ayırma %s\n
 35 Durum %s\n
-36 Timeout_period %d\n
+36 Timeout_period %s\n
 37 İndeksleri ile tek taraflı olarak iptal işlemleri:\n
 38 %d ,
 39 Timed_out endeksleri ile işlemler:\n
@@ -1833,14 +1833,14 @@ $set 16 MSGCAT_SET_LOG
 16 Tamamlanmamış kurtarma nedeniyle log sıfırlayın.
 17 Veritabanı yedeklemesi alındı.
 18 Ortam kilitlenme uygulaması için önemli değildir.
-19 İçinde daha önceki bir yedeğe varmış gibi görünüyor dizini% s yedekleme. \n\
+19 İçinde daha önceki bir yedeğe varmış gibi görünüyor dizini %s yedekleme. \n\
 Bu yerde bu veritabanınızın kullanılmayan yedekleme yoğunlukları silinecektir,\n\
 geçerli yedeğe düzeyi yüksek ve de dahil olmak üzere.\n
 20 Devam etmek için 'y' veya iptal etmek için herhangi bir diğer tuşa basın.\n
 21 Veritabanı yedeklemesi kullanıcı tarafından iptal edildi.\n
-22 DELETE POSTPONED Mevcut yedekten geri yükleme meydana gelmedikçe\n \
-        Arşivleri %d %s için %d %s \n \
-        artık ihtiyaç vardır.\n
+22 DELETE POSTPONED: Archives %d %s to\n \
+        %d %s \n \
+        are no longer needed unless a restore from current backup occurs.\n
 23 Daha yeni bir yedeğini daha önceden DELETE POSTPONED işaretli arşivlerinde yayımladı.\n
 24 YORUM: Log arşivi %s artık daha güncel bağlı DELETE POSTPONED değil\n \
    bir veritabanı ortamı kilitlenme gerçekleşmediği sürece bu yüzden yedekleme gerekli değildir.\n

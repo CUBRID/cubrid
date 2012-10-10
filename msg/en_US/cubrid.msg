@@ -1096,14 +1096,14 @@ $ LOADDB
 1028 log applier: unexpected EOF record in archive log. LSA: %1$lld|%2$d.
 1029 log applier: invalid replication log page/offset. page HDR: %1$1lld|%2$d, final: %3$lld|%4$d, append LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, ha file status: %9$d, is end-of-log: %10$d.
 1030 log applier: invalid replication record. LSA: %1$lld|%2$d, forw LSA: %3$lld|%4$d, backw LSA: %5$lld|%6$d, Trid: %7$d, prev tran LSA: %8$lld|%9$d, type: %10$d.
-1031 log applier: failed to apply schema replication log. class: "%1$s", schema: "%2$s", internal error: %$3d. 
+1031 log applier: failed to apply schema replication log. class: "%1$s", schema: "%2$s", internal error: %3$d. 
 1032 log applier: failed to apply insert replication log. class: "%1$s", key: "%2$s", internal error: %3$d.  
 1033 log applier: failed to apply update replication log. class: "%1$s", key: "%2$s", internal error: %3$d.  
 1034 log applier: failed to apply delete replication log. class: "%1$s", key: "%2$s", internal error: %3$d.  
 1035 log applier: mem size(%1$d MB) of log applier is greater than max mem size (%2$d MB) or has been grow more than 2 times (%3$d MB). required LSA: %4$lld|%5$d. last committed LSA: %6$lld|%7$d.
 1036 log applier: log applier shut itself down by signal.
 1037 log writer: log writer shut itself down by signal.
-1038 log applier: log applier started. required LSA: %1$lld|%2$d. last committed LSA: %3$lld|%4$d. last committed repl LSA: %5$lld|%6$d. 
+1038 log applier: log applier started. required LSA: %1$lld|%2$d. last committed LSA: %3$lld|%4$d. last committed repl LSA: %5$lld|%6$d.
 1039 log writer: log writer started. mode: %1$d.
 1040 HA generic: %1$s. 
 1041 A string was truncated in context of "%1$s".

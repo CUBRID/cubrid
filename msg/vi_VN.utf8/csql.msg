@@ -97,7 +97,6 @@ $ These 3 should be blank
 188 Quá nhiều tên tệp tin đã được nhập.
 190 Không có lệnh phiên nào như thế. Gõ `;help' cho các tin nhắn trợ giúp.
 191 Có nhiều hơn một phiên phù hợp. Xin vui lòng chỉ định thêm.
-192 Không có lệnh nào như thế. Gõ `;syntax general' để xem các lệnh có thể dùng.
 193 Có nhiều hơn một lệnh phù hợp. Xin vui lòng chỉ định thêm.
 194 Sự kết hợp các đối số dòng lệnh không hợp lệ (tùy chọn).
 196 Một lỗi chưa xác định đã phát sinh.

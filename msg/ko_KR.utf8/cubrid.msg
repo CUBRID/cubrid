@@ -1,3 +1,4 @@
+
 $
 $ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
 $
@@ -1095,7 +1096,7 @@ $ LOADDB
 1028 log applier: Archive 로그에 예상치 못한 EOF 로그 레코드가 있습니다. LSA: %1$lld|%2$d.
 1029 log applier: 잘못된 로그 페이지/오프셋. page HDR: %1$1lld|%2$d, final: %3$lld|%4$d, append LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, ha file status: %9$d, is end-of-log: %10$d.
 1030 log applier: 잘못된 로그 레코드. LSA: %1$lld|%2$d, forw LSA: %3$lld|%4$d, backw LSA: %5$lld|%6$d, Trid: %7$d, prev tran LSA: %8$lld|%9$d, type: %10$d.
-1031 log applier: Schema 복제 로그 반영에 실패하였습니다. class: "%1$s", schema: "%2$s", internal error: %$3d.
+1031 log applier: Schema 복제 로그 반영에 실패하였습니다. class: "%1$s", schema: "%2$s", internal error: %3$d.
 1032 log applier: Insert 복제 로그 반영에 실패하였습니다. class: "%1$s", key: "%2$s", internal error: %3$d.
 1033 log applier: Update 복제 로그 반영에 실패하였습니다. class: "%1$s", key: "%2$s", internal error: %3$d.
 1034 log applier: Delete 복제 로그 반영에 실패하였습니다. class: "%1$s", key: "%2$s", internal error: %3$d.
@@ -1819,6 +1820,8 @@ $set 16 MSGCAT_SET_LOG
 9 ARCHIVE: %d %s %lld %lld\n
 10 ARCHIVE:
 11 REMOVE: %d %s - %d %s . REASON: %s\n
+
+
 12 ACTIVE: %s %d pages\n
 13  Finish commit of tran_index %d with tranid = %d,\n just before LSA= %lld|%d and at %s
 14  Finish abort of tran_index %d with tranid = %d,\n just before LSA= %lld|%d and at %s
@@ -1832,6 +1835,7 @@ $set 16 MSGCAT_SET_LOG
 18 Media crash is not important for the application.
 19 %s 디렉터리에 이전 백업 볼륨이 존재하는 것 같습니다.\n\
 해당 데이터베이스의 필요 없는 현재 백업 레벨을 포함한 상위 백업 볼륨들은 삭제됩니다.\n
+
 20 계속 진행하려면 'y'를 중지하려면 아무 키나 누르시오.\n
 21 사용자에 의해 백업이 중단되었습니다.\n
 22 DELETE POSTPONED: Archives %d %s to \n \

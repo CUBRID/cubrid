@@ -1096,7 +1096,7 @@ $ LOADDB
 1028 log applier: ការថតចម្លងEOFដែលមិនរំពឹងទុក ​ក្នុងarchive log. LSA: %1$lld|%2$d។
 1029 log applier: replication log page/offsetដែលមិនសុពល។ page HDR: %1$1lld|%2$d, final: %3$lld|%4$d, append LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, ha file status: %9$d, is end-of-log: %10$d.
 1030 log applier: កាថតចម្លងreplicationមិនសុពល។ LSA: %1$lld|%2$d, forw LSA: %3$lld|%4$d, backw LSA: %5$lld|%6$d, Trid: %7$d, prev tran LSA: %8$lld|%9$d, type: %10$d.
-1031 log applier: បរាជ័យក្នុងការប្រតិបត្តិ schema replication log. class: "%1$s", schema: "%2$s", internal error: %$3d. 
+1031 log applier: បរាជ័យក្នុងការប្រតិបត្តិ schema replication log. class: "%1$s", schema: "%2$s", internal error: %3$d. 
 1032 log applier: បរាជ័យក្នុងការប្រតិបត្តិបញ្ជូល replication log. class: "%1$s", key: "%2$s", internal error: %3$d.  
 1033 log applier: បរាជ័យក្នុងការប្រតិបត្តិទំនើបកម្ម replication log. class: "%1$s", key: "%2$s", internal error: %3$d.  
 1034 log applier: បរាជ័យក្នុងការប្រតិបត្តិដកចេញ replication log. class: "%1$s", key: "%2$s", internal error: %3$d.  
@@ -1167,7 +1167,9 @@ $ LOADDB
 1099 សេចក្តីថ្លែងការនៃDDLមិនអាចទទួលអនុញ្ញាតពីរូបសណ្ឋានក្រៅ(block_ddl_statement=yes)
 1100 សេចក្តីថ្លែងការនៃទីកន្លែងដែលមិននៅក្នុងឃ្លា មិនអាចទទួលអនុញ្ញាតពីរូបសណ្ឋានក្រៅ(block_nowhere_statementi=yes)
 1101 សេចក្តីសម្រេចដែលថ្មីៗមិងអាចទទួលកូសោនៅលើOID (%4$d|%5$d|%6$d)
-1102 ១១០២កំហុសចុងក្រោយ
+1102 Unknown system parameter or bad value.
+1103 Cannot change system parameter.
+1104 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error ក្នុងអនុប្រព័ន្ធ error (line %d):
@@ -1732,16 +1734,16 @@ $set 14 MSGCAT_SET_LOCK
 24 NON_2PL_RELEASED:\n
 25 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d\n
 26 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d, Nsubgranules = %2d\n
-27 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d\n\t%13s Blocked_mode = %8s\n\t%17s Start_waiting_at = %-30s\n\t%17s Wait_for_nsecs = %d\n
-28 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d, Nsubgranules = %2d\n\t%13s Blocked_mode =%8s\n\t%13s Start_waiting_at = %-30s\n\t%13s Wait_for_nsecs = %d\n
-29 %4sTran_index = %3d, Blocked_mode =%8s \n\t%13s Start_waiting_at = %-30s \n\t%13s Wait_for_nsecs = %d\n
+27 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d\n\t%13s Blocked_mode = %8s\n\t%17s Start_waiting_at = %-30s\n\t%17s Wait_for_secs = %.2f\n
+28 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d, Nsubgranules = %2d\n\t%13s Blocked_mode =%8s\n\t%13s Start_waiting_at = %-30s\n\t%13s Wait_for_secs = %.2f\n
+29 %4sTran_index = %3d, Blocked_mode =%8s \n\t%13s Start_waiting_at = %-30s \n\t%13s Wait_for_secs = %.2f\n
 30 %4sTran_index = %3d, Non_2_phase_lock =%8s\n
 31 VPID (volid|pageid) = %3d|%6d.\n
 32 *** Lock Table Dump ***\n Lock Escalation at = %d, Run Deadlock interval = %d\n
 33 Transaction (index %2d, %s, %s@%s|%d)\n
 34 Isolation %s\n
 35 State %s\n
-36 Timeout_period %d\n
+36 Timeout_period %s\n
 37 បានទម្លាក់ចោលtransactions ជាមួយ indices:\n
 38 %d ,
 39 Timed_out transactions ជាមួយ indices:\n

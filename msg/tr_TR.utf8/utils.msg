@@ -78,7 +78,7 @@ $set 1 MSGCAT_UTIL_SET_GENERIC
 %s\n\
 Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.\n
 10 \
-cubrid yönetici yardımcı programı, sürüm% s\n\
+cubrid yönetici yardımcı programı, sürüm %s\n\
 kullanım: %s <yardımcı programı-adı> [args]\n\
 Tür '%s <yardımcı programı-adı>' belirli bir yardımcı programı hakkında yardım alın.\n\
 \n\
@@ -215,7 +215,7 @@ Mevcut komut:\n\
     applylogdb  <start|stop> database-name node-name\n\
     status\n\
     reload\n
-31 '% s' argümanı gerekli değildir.\n
+31 '%s' argümanı gerekli değildir.\n
 32 Bir veritabanı-adı eksik.\n
 33 %s: Böyle seçeneği önerilmiyor.\n
 34 Geçersiz Parametre. %s %s\n
@@ -290,7 +290,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 45 %s boyutu ile veri tabanı oluşturma..\n
 46 Veritabanı oluşturulamadı.\n
 47 '%s' Kullanıcı dosya ile ilgili sorun\n
-48 '%S' olması gerekir %s ve %s arasında\n
+48 '%s' olması gerekir %s ve %s arasında\n
 49 %s Sayısal değeri '%s' geçersiz. \n
 60 \
 createdb: Bir veritabanı oluştur.\n\
@@ -344,7 +344,7 @@ $set 9 MSGCAT_UTIL_SET_MASTER
 14 Hata yerel ana bilgisayar adı bulmakta\n
 15 Parametre dosyası bulunamadı\n
 16 Ana işlemi başlatılamadı\n
-17 Sunucu %s 1 dakika içinde aşağı gidiyor
+17 Sunucu %s %d dakika içinde aşağı gidiyor
 18 Sunucu %s kapatma bildirilir. \n Bu işlem birkaç dakika sürebilir. Lütfen bekleyiniz.
 19 Sunucu %s bulunamadı.
 20 Master %d dakika aşağı gidiyor\n
@@ -608,7 +608,7 @@ kullanım: %s addvoldb [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
       --db-volume-size=SIZE    ilave yoğunluk büyüklüğü; varsayılan: cubrid.conf içinde db_volume_size\n\
-  -n, --volume-name=NAME       Bilgi yoğunluğunun NAME; varsayılan: örneğin, "db"_ext%d olarak oluşturmak\n\
+  -n, --volume-name=NAME       Bilgi yoğunluğunun NAME; varsayılan: örneğin, "db"_ext1 olarak oluşturmak\n\
   -F, --file-path=PATH         yoğunluk dosyası eklemek için PATH; varsayılan: çalışma dizini\n\
       --comment=COMMENT        yoğunluk dosyası eklemek için COMMENT; varsayılan: hiçbir\n\
   -p, --purpose=PURPOSE        yoğunluk dosyası eklemek için PURPOSE; izin:\n\
@@ -793,7 +793,7 @@ $set 31 MSGCAT_UTIL_SET_MIGRATE
 24 Yedekleme geçişten sonra önerilir. Şimdi veritabanınızı yedeklemek ister misiniz? (e/ h):
 25 Bu taşınmanın ardından backupdb komutu ile yeni bir veritabanı yedeklemek için önerilir.
 26 \n*** UYARI:taşıma başlamadan önce veritabanı yedekleme %s*** \n\nBu taşıması sırasında meydana gelen olabilecek hataları kurtarabilirsiniz, şiddetle veritabanınızı yedeklemenizi önerilir \n zaten veritabanı yedeklendiyse Varmı.? (e/h):
-27 \n%d. Backupdb\n2 çalıştırın..\n3: yeni veritabanı için yeni bir yedekleme path (%s geçerli path) girin. Çıkış
+27 \n1. Backupdb\n2 çalıştırın..\n3: yeni veritabanı için yeni bir yedekleme path (%s geçerli path) girin. Çıkış
 28 \nVeritabanı için yeni bir yedekleme path:
 29 \nTaşınması ve yedekleme başarıyla tamamlandı.
 30 Yedekleme başarısız oldu. Lütfen , Veritabanı yedeklemenizi yeniden deneyin.

@@ -621,7 +621,7 @@ $set 5 MSGCAT_SET_ERROR
 $ LOADDB
 554 Bộ tải đã nhập vào một trạng thái không hợp lệ. Không có thao tác hơn nữa nào là có thể.
 555 Lỗi cấp phát bộ nhớ trong quá trình tải cơ sở dữ liệu.
-566 Không quy định hạng cụ thể hoặc hạng không có thuộc tính.
+556 Giá trị quá nhiều cung cấp. Mong đợi %d.
 557 Với thuộc tính %1$s of %2$s, kiểu %3$s không được cho phép trong miền của tập hợp.
 558 Với thuộc tính %1$s of %2$s, kiểu mong đợi %3$s, có một hằng số tập hợp.
 559 Với thuộc tính %1$s of %2$s, kiểu mong đợi %3$s, có  %4$s.
@@ -669,7 +669,7 @@ $ LOADDB
 601 "%1$s".
 602 Lỗi dl: "%1$s" được định nghĩa nhiều hơn một lần.
 603 Lỗi nội bộ: Sector/bảng trang của tệp tin VFID %1$d|%2$d dường như bị hỏng.
-604 Lỗi nội bộ: Một thiết lập cấp phát cho tệp tin VFID %1$d|%2$d dường như bị hỏng.Một thiết lập cấp phát cho tệp tin VFID %1$d|%2$d(Bộ đĩa"%3$s") dường như không đồng nhất trong %4$d bị xóa hoặc được đánh dấu các trang bị xóa và lỗ thủng trang %5$d trong bảng
+604 Lỗi nội bộ: Một thiết lập cấp phát cho tệp tin VFID %1$d|%2$d(Bộ đĩa"%3$s") dường như không đồng nhất trong %4$d bị xóa hoặc được đánh dấu các trang bị xóa và lỗ thủng trang %5$d trong bảng
 605 Lỗi nội bộ: Số trang được đánh dấu bị xóa không đồng nhất cho tệp tin VFID %1$d|%2$d(Bộ đĩa "%3$s"). %4$d được đòi hỏi, %5$d được tìm thấy.
 606 Không thể xác định vị trí odbc.ini với đường dẫn "%1$s".
 607 Cơ sở dữ liệu "%1$s" không được tìm thấy trong odbc.ini.
@@ -1096,7 +1096,7 @@ $ LOADDB
 1028 log applier: bản ghi EOF không mong đợi từ bản ghi lưu trữ. LSA: %1$lld|%2$d.
 1029 log applier: độ lệch/trang bản ghi nhân bản không hợp lệ. page HDR: %1$1lld|%2$d, final: %3$lld|%4$d, append LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, ha file status: %9$d, is end-of-log: %10$d.
 1030 log applier: bản ghi chép nhân bản không hợp lệ. LSA: %1$lld|%2$d, forw LSA: %3$lld|%4$d, backw LSA: %5$lld|%6$d, Trid: %7$d, prev tran LSA: %8$lld|%9$d, type: %10$d.
-1031 log applier: thất bại áp dụng bản ghi nhân bản Schema. lớp: "%1$s", lược đồ: "%2$s", Lỗi nội bộ: %$3d.
+1031 log applier: thất bại áp dụng bản ghi nhân bản Schema. lớp: "%1$s", lược đồ: "%2$s", Lỗi nội bộ: %3$d.
 1032 log applier: thất bại khi áp dụng bản ghi nhân bản Insert. lớp: "%1$s", khóa: "%2$s", Lỗi nội bộ: %3$d.
 1033 log applier: thất bại khi áp dụng bản ghi nhân bản Update. class: "%1$s", key: "%2$s", Lỗi nội bộ: %3$d.
 1034 log applier: thất bại khi áp dụng bản ghi nhân bản Delete. class: "%1$s", key: "%2$s", Lỗi nội bộ: %3$d.
@@ -1477,7 +1477,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 159 Không thể tìm thấy chỉ mục '%s'.
 160 Tên chỉ mục đủ điều kiện '%s' tham chiếu đến một lớp, nhưng nó không được chỉ định trong mệnh đề From.
 161 Một hoặc nhiều lớp có chỉ mục giống nhau '%s'. Dùng các tên chỉ mục đủ điều kiện.
-162 Sử dụng %skhông hợp lệ.Biểu thức \n%s không thể được dùng với thuộc tính hoặc truy vấn con liên quan.
+162 Sử dụng %s không hợp lệ.Biểu thức \n%s không thể được dùng với thuộc tính hoặc truy vấn con liên quan.
 163 Phát hành hiện tại hạn chế một biểu thức chứa ORDERBY_NUM() trong danh sách truy xuất.
 164 Path expression '%s' trong điều kiện gia nhập.
 165 '%s' trong điều kiện gia nhập chưa được định nghĩa.

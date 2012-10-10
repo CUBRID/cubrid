@@ -1096,7 +1096,7 @@ $ LOADDB
 1028 log applier: アーカイブログに期待しなかったEOFログレコードがあります。 LSA: %1$lld|%2$d。
 1029 log applier: 正しくないログページ/オフセット。page HDR: %1$1lld|%2$d, final: %3$lld|%4$d, append LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, ha file status: %9$d, is end-of-log: %10$d.
 1030 log applier: 正しくないログレコード。 LSA: %1$lld|%2$d, forw LSA: %3$lld|%4$d, backw LSA: %5$lld|%6$d, Trid: %7$d, prev tran LSA: %8$lld|%9$d, type: %10$d.
-1031 log applier: スキーマ複製ログ反映が失敗しました。 クラス: "%1$s", スキーマ: "%2$s", インターナルエラー: %$3d.
+1031 log applier: スキーマ複製ログ反映が失敗しました。 クラス: "%1$s", スキーマ: "%2$s", インターナルエラー: %3$d.
 1032 log applier: インサート複製ログ反映が失敗しました。 クラス: "%1$s", キー: "%2$s", インターナルエラー: %3$d.
 1033 log applier: アップデート複製ログ反映が失敗しました。 クラス: "%1$s", キー: "%2$s", インターナルエラー: %3$d.
 1034 log applier: デリート複製ログ反映が失敗しました。 クラス: "%1$s", キー: "%2$s", インターナルエラー: %3$d.
