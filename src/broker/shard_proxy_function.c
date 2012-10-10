@@ -755,6 +755,9 @@ fn_proxy_client_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
   T_SHARD_STMT *stmt_p;
   T_WAIT_CONTEXT *waiter_p;
 
+  int shard_id;
+  T_SHARD_KEY_RANGE *dummy_range_p = NULL;
+
   char *request_p;
 
   const char func_code = CAS_FC_PREPARE;
@@ -1004,6 +1007,35 @@ relay_prepare_request:
 	 stmt_p->status, shard_str_stmt (stmt_p), proxy_str_context (ctx_p));
       assert (false);
       goto free_context;
+    }
+
+  /* if shard_key is static value(or shard_id), dummy prepare send to values's shard */
+  if (proxy_info_p->ignore_shard_hint == OFF)
+    {
+      if (sp_is_hint_static (stmt_p->parser))
+	{
+	  shard_id = proxy_get_shard_id (stmt_p, NULL, &dummy_range_p);
+	  if (shard_id == PROXY_INVALID_SHARD)
+	    {
+	      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+			 "Invalid shard id. (shard_id:%d). context(%s).",
+			 shard_id, proxy_str_context (ctx_p));
+
+	      proxy_context_set_error (ctx_p, CAS_ERROR_INDICATOR, CAS_ER_INTERNAL);
+
+	      /* wakeup and reset statment */
+	      shard_stmt_check_waiter_and_wakeup (ctx_p->prepared_stmt);
+	      shard_stmt_free (ctx_p->prepared_stmt);
+	      ctx_p->prepared_stmt = NULL;
+
+	      proxy_event_free (event_p);
+	      event_p = NULL;
+
+	      EXIT_FUNC ();
+	      return -1;
+	    }
+	  ctx_p->shard_id = shard_id;
+	}
     }
 
   cas_io_p = proxy_cas_alloc_by_ctx (ctx_p->shard_id, ctx_p->cas_id,
