@@ -319,7 +319,7 @@ public class UStatement {
 	public void bind(int index, boolean value) {
 		Byte data = new Byte((value == true) ? TRUE : FALSE);
 
-		bindValue(index, UUType.U_TYPE_BIT, data);
+		bindValue(index, UUType.U_TYPE_SHORT, data);
 	}
 
 	public void bind(int index, byte value) {
