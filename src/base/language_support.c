@@ -50,6 +50,7 @@ static INTL_LANG lang_Loc_id = INTL_LANG_ENGLISH;
 static INTL_CODESET lang_Loc_charset = INTL_CODESET_ISO88591;
 static char lang_Loc_name[LANG_MAX_LANGNAME] = LANG_NAME_DEFAULT;
 static char lang_user_Loc_name[LANG_MAX_LANGNAME];
+static char lang_msg_Loc_name[LANG_MAX_LANGNAME];
 static char lang_Lang_name[LANG_MAX_LANGNAME] = LANG_NAME_DEFAULT;
 static DB_CURRENCY lang_Loc_currency = DB_CURRENCY_DOLLAR;
 
@@ -66,6 +67,7 @@ static LANG_LOCALE_DATA *lang_Loc_data = &lc_English_iso88591;
 static bool lang_Initialized = false;
 static bool lang_Fully_Initialized = false;
 static bool lang_Init_w_error = false;
+static bool lang_env_initialized = false;
 
 typedef struct lang_defaults LANG_DEFAULTS;
 struct lang_defaults
@@ -131,7 +133,6 @@ static const DB_CHARSET lang_Db_charsets[] = {
    INTL_CODESET_UTF8, 1},
   {"", "", "", "", INTL_CODESET_NONE, 0}
 };
-
 
 static void set_current_locale (bool is_full_init);
 static int set_lang_from_env (void);
@@ -649,6 +650,7 @@ set_current_locale (bool is_full_init)
  *  Note : This function sets the following variables according to
  *	   $CUBRID_LANG environment variable :
  *	    lang_Loc_name : locale string: <lang>.<charset>; en_US.utf8
+ *	    lang_msg_Lang_name : locale string: <lang>.<charset>; en_US.utf8
  *	    lang_Lang_name : <lang> string part (without <charset>
  *	    lang_Loc_charset : charset id : ISO-8859-1 or UTF-8 
  *	    lang_Loc_bytes_per_char : maximum number of bytes per character
@@ -656,7 +658,8 @@ set_current_locale (bool is_full_init)
 static int
 set_lang_from_env (void)
 {
-  const char *env, *charset;
+  const char *env;
+  char *charset;
   char err_msg[ERR_MSG_SIZE];
 
   /*
@@ -677,6 +680,9 @@ set_lang_from_env (void)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
 	      "CUBRID_LANG environment variable is not set");
+
+      strcpy (lang_msg_Loc_name, LANG_NAME_DEFAULT);
+      lang_env_initialized = true;
       return ER_LOC_INIT;
     }
 
@@ -697,22 +703,27 @@ set_lang_from_env (void)
 	  || strcasecmp (charset, LANG_CHARSET_EUCKR_ALIAS1) == 0)
 	{
 	  lang_Loc_charset = INTL_CODESET_KSC5601_EUC;
+	  strcpy (charset, LANG_CHARSET_EUCKR);
 	}
       else if (strcasecmp (charset, LANG_CHARSET_UTF8) == 0
 	       || strcasecmp (charset, LANG_CHARSET_UTF8_ALIAS1) == 0)
 	{
 	  lang_Loc_charset = INTL_CODESET_UTF8;
+	  strcpy (charset, LANG_CHARSET_UTF8);
 	}
       else if (strcasecmp (charset, LANG_CHARSET_ISO88591) == 0
 	       || strcasecmp (charset, LANG_CHARSET_ISO88591_ALIAS1) == 0
 	       || strcasecmp (charset, LANG_CHARSET_ISO88591_ALIAS2) == 0)
 	{
 	  lang_Loc_charset = INTL_CODESET_ISO88591;
+	  strcpy (charset, LANG_CHARSET_ISO88591);
 	}
       else
 	{
 	  goto error;
 	}
+
+      strcpy (lang_user_Loc_name, lang_Loc_name);
 
       /* for UTF-8 charset we allow any user defined lang name */
       if (lang_Loc_charset != INTL_CODESET_UTF8)
@@ -738,12 +749,28 @@ set_lang_from_env (void)
 	}
     }
 
+  /* Locale should be formated like xx_XX.charset or xx_XX */
+  if (strlen (lang_user_Loc_name) >= 2)
+    {
+      intl_tolower_iso8859 (lang_user_Loc_name, 2);
+    }
+  if (strlen (lang_user_Loc_name) >= 5)
+    {
+      intl_toupper_iso8859 (lang_user_Loc_name + 3, 2);
+    }
+  strcpy (lang_msg_Loc_name, lang_user_Loc_name);
+
+  lang_env_initialized = true;
+
   return NO_ERROR;
 
 error:
   sprintf (err_msg, "codeset %s for language %s is not supported", charset,
 	   lang_Lang_name);
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, err_msg);
+
+  strcpy (lang_msg_Loc_name, LANG_NAME_DEFAULT);
+  lang_env_initialized = true;
 
   return ER_LOC_INIT;
 }
@@ -1319,29 +1346,30 @@ free_lang_locale_data (LANG_LOCALE_DATA * lld)
 }
 
 /*
- * lang_get_Loc_name - returns full locale name (language_name.codeset)
- *		       according to environment
- *   return: locale string
- */
-const char *
-lang_get_Loc_name (void)
-{
-  if (!lang_Initialized)
-    {
-      lang_init ();
-    }
-  return lang_Loc_name;
-}
-
-/*
- * lang_get_user_loc_name - returns the string procided by user in CUBRID_LANG
- *			    according to environment
+ * lang_get_user_loc_name - returns the string provided by user in CUBRID_LANG
+ *		            according to environment
  *   return: locale user string
  */
 const char *
 lang_get_user_loc_name (void)
 {
   return lang_user_Loc_name;
+}
+
+/*
+ * lang_get_msg_Loc_name - returns the language name for the message files,
+ *			   according to environment
+ *   return: language name string
+ */
+const char *
+lang_get_msg_Loc_name (void)
+{
+  if (!lang_env_initialized)
+    {
+      (void) set_lang_from_env ();
+    }
+
+  return lang_msg_Loc_name;
 }
 
 /*
@@ -1357,7 +1385,6 @@ lang_get_Lang_name (void)
     }
   return lang_Lang_name;
 }
-
 
 /*
  * lang_id - Returns language id per env settings

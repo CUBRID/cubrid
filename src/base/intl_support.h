@@ -156,6 +156,9 @@ extern "C"
 {
 #endif
 
+  extern int intl_tolower_iso8859 (unsigned char *s, int length);
+  extern int intl_toupper_iso8859 (unsigned char *s, int length);
+
   extern unsigned char *intl_nextchar_euc (unsigned char *s,
 					   int *curr_length);
   extern unsigned char *intl_prevchar_euc (unsigned char *s,

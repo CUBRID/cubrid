@@ -80,9 +80,6 @@ static CONV_CP_TO_BYTES iso8859_1_to_utf8_conv[256];
 bool intl_Mbs_support = true;
 bool intl_String_validation = false;
 
-/* ASCII/ISO 8859-1 string manipulations */
-static int intl_tolower_iso8859 (unsigned char *s, int length);
-static int intl_toupper_iso8859 (unsigned char *s, int length);
 /* General EUC string manipulations */
 static int intl_tolower_euc (unsigned char *s, int length_in_chars);
 static int intl_toupper_euc (unsigned char *s, int length_in_chars);
@@ -742,7 +739,7 @@ intl_copy_lowercase (const wchar_t * ws, size_t n)
  *   s(in/out): string to lowercase
  *   length(in): length of the string
  */
-static int
+int
 intl_tolower_iso8859 (unsigned char *s, int length)
 {
   int char_count = 0;
@@ -772,7 +769,7 @@ intl_tolower_iso8859 (unsigned char *s, int length)
  *   s(in/out): string to uppercase
  *   length(in): length of the string
  */
-static int
+int
 intl_toupper_iso8859 (unsigned char *s, int length)
 {
   int char_count = 0;

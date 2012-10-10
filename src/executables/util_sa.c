@@ -2056,6 +2056,9 @@ genlocale (UTIL_FUNCTION_ARG * arg)
       goto print_genlocale_usage;
     }
 
+  /* initialization of language module for built-in locales and collations */
+  (void) lang_init ();
+
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1,
 	    "%s.err", arg->command_name);

@@ -3106,8 +3106,8 @@ er_create_fmt_msg (ER_FMT * fmt, int err_id, const char *msg)
   /*
    * Now study the format specs and squirrel away info about them.
    */
-  er_study_fmt (fmt);
   fmt->err_id = err_id;
+  er_study_fmt (fmt);
 
   return fmt;
 }
