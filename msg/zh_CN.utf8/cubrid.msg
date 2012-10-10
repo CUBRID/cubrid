@@ -1302,16 +1302,16 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 102 group_concat无效使用\n GROUP_CONCAT (([DISTINCT] {col | expr} \n [ORDER BY {col | unsigned_int} [ASC | DESC] ] \n [SEPARATOR str_val])
 103 index hint无效使用
 104 字节串的最大长度是 %d 字节.
-105 语法错误: 非期望的
-106 , 期待 '{'
-107 , 期待 SELECT or '('
-108 , 期待
-109 非期望的
-110 语句结尾
-111 位于行 %d, 列 %d 在 '%c%s'之前\n
-112 位于行 %d, 列 %d 在 %s之前\n
-113 在 ' %s'之前\n
-114 在语句末之前\n
+105 语法错误: unexpected
+106 , expecting '{'
+107 , expecting SELECT or '('
+108 , expecting
+109 unexpected
+110 END OF STATEMENT
+111 In line %d, column %d before '%c%s'\n
+112 In line %d, column %d before %s\n
+113 before ' %s'\n
+114 before END OF STATEMENT\n
 115 集合名无效\n  set_names: SET NAMES charset [{COLLATE | COLLATION} collation]\n
 116 chr无效使用\n  CHR ( number [using charset] )\n
 

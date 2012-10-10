@@ -1302,16 +1302,16 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 102 sử dụng group_concat không hợp lệ\n GROUP_CONCAT (([DISTINCT] {col | expr} \n [ORDER BY {col | unsigned_int} [ASC | DESC] ] \n [SEPARATOR str_val])
 103 sử dụng gợi ý chỉ mục vô hiệu
 104 Chiều dài chuỗi bằng byte tối đa bằng %d byte.
-105 Lỗi cú pháp: không mong muốn
-106 , nên là '{'
-107 , nên là LỰA SELECT hoặc '('
-108 , nên là
-109 không mong muốn
+105 Lỗi cú pháp: unexpected
+106 , expecting '{'
+107 , expecting SELECT or '('
+108 , expecting
+109 unexpected
 110 END OF STATEMENT
-111 Trong dòng %d, cột %d trước '%c%s'\n
-112 Trong dòng %d, cột %d trước %s\n
-113 trước ' %s'\n
-114 trước END OF STATEMENT\n
+111 In line %d, column %d before '%c%s'\n
+112 In line %d, column %d before %s\n
+113 before ' %s'\n
+114 before END OF STATEMENT\n
 115 tên đặt vô hiệu\n  set_names: SET NAMES charset [{COLLATE | COLLATION} collation]\n
 116 sử dụng ký tự vô hiệu\n  CHR ( number [using charset] )\n
 

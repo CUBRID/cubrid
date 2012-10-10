@@ -1302,16 +1302,16 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 102 Uso de group_concat no valido\n GROUP_CONCAT (([DISTINCT] {col | expr} \n [ORDER BY {col | unsigned_int} [ASC | DESC] ] \n [SEPARATOR str_val])
 103 Uso de indicacion de indice no valido.
 104 Longitud maxima del string de bytes es %d bytes.
-105 Error de sintaxis: inesperada
-106 , esperando '{'
-107 , esperando SELECT o '('
-108 , esperando
-109 inesperado
+105 Error de sintaxis: unexpected
+106 , expecting '{'
+107 , expecting SELECT or '('
+108 , expecting
+109 unexpected
 110 END OF STATEMENT
-111 En linea %d, columna %d antes de '%c%s'\n
-112 En linea %d, columna %d antes de %s\n
-113 Antes de ' %s'\n
-114 Antes de END OF STATEMENT\n
+111 In line %d, column %d before '%c%s'\n
+112 In line %d, column %d before %s\n
+113 before ' %s'\n
+114 before END OF STATEMENT\n
 115 Ajusta nombres invalido\n set_names: SET NAMES charset [{COLLATE | COLLATION} collation]\n
 116 Uso de chr no valido\n CHR ( number [using charset] )\n
 

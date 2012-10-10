@@ -1302,14 +1302,14 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 102 正しくないgroup_concatファンクションです。\n GROUP_CONCAT (([DISTINCT] {col | expr} \n [ORDER BY {col | unsigned_int} [ASC | DESC] ] \n [SEPARATOR str_val])
 103 正しくないインデックスヒントです。
 104 バイトストリングの最大レングスは「%d」バイトです。
-105 シンタックスエラー: 期待していない
-106 , 期待していない'{'
-107 , 期待していないSELECTや'('
-108 , 期待していない
-109 期待しなかった
+105 シンタックスエラー: unexpected
+106 , expecting '{'
+107 , expecting SELECT or '('
+108 , expecting
+109 unexpected
 110 END OF STATEMENT
-111 ライン%d,カラム%d before '%c%s'\n
-112 ライン%d,カラム%d before %s\n
+111 In line %d, column %d before '%c%s'\n
+112 In line %d, column %d before %s\n
 113 before ' %s'\n
 114 before END OF STATEMENT\n
 115 正しくないセットネーム\n  set_names: SET NAMES キャラクターセット [{COLLATE | COLLATION} collation]\n

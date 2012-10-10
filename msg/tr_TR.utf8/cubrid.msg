@@ -1302,16 +1302,16 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 102 invalid use of group_concat\n GROUP_CONCAT (([DISTINCT] {col | expr} \n [ORDER BY {col | unsigned_int} [ASC | DESC] ] \n [SEPARATOR str_val])
 103 Dizin ipuçlarının geçersiz kullanımı
 104 Bit dizgesinin uzunluğu en fazla %d bittir.
-105 Sözdizim hatası: Beklemeyen
-106 , Beklemekte '{'
-107 , Seçim SELECT veya '('
-108 , Beklemek
-109 Beklemeyen
-110 İfade sonaermesi
-111 Hat＇ın %d iç tarafı, '%c%s'\n ön tarafın %d kapasitesi
-112 Hat＇ın %d iç tarafı, ' %s'\n ön tarafın %d kapasites
-113 %s'\n önnünde
-114 İfade sonaerdikten sonra\n
+105 Sözdizim hatası: unexpected
+106 , expecting '{'
+107 , expecting SELECT or '('
+108 , expecting
+109 unexpected
+110 END OF STATEMENT
+111 In line %d, column %d before '%c%s'\n
+112 In line %d, column %d before %s\n
+113 before ' %s'\n
+114 before END OF STATEMENT\n
 115 Geçersiz grup\n adı: SET NAMES charset [{COLLATE | COLLATION} collation]\n
 116 chr\n  CHR ( number [using charset] )\n
 

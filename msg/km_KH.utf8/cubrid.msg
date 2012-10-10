@@ -1300,16 +1300,16 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 102 ការប្រើមិនសុពលនៃ group_concat\n GROUP_CONCAT (([DISTINCT] {col | expr} \n [ORDER BY {col | unsigned_int} [ASC | DESC] ] \n [SEPARATOR str_val])
 103 ការប្រើមោឃនៃពាក្យប្រលយលេខសំគាល់
 104 ប្រវែងអតិបរិមាណនៃខ្សែអក្យរបៃជា%dបៃ
-105 កំហុសវាក្យសម័្ពន្ត：មិនបានគិតស្មាន
-106 , កំពុងសង្ឃឺង'{'
-107 , កំពុងសង្ឃឺង SELECT រើសឬ'('
-108 , សង្ឃឺង
-109 មិន សង្ឃឺង
+105 កំហុសវាក្យសម័្ពន្ត：unexpected
+106 , expecting '{'
+107 , expecting SELECT or '('
+108 , expecting
+109 unexpected
 110 END OF STATEMENT
-111 នៅក្នុងខ្សែ%d ខ្ទង់ទំព័រ%dនៅមុន'%c%s'\n
-112 នៅក្នុងខ្សែ%d ជូរឈរ%dនៅមុន %s\n
-113 នៅមុន' %s'\n
-114 ១១៤នៅ END OF STATEMENT
+111 In line %d, column %d before '%c%s'\n
+112 In line %d, column %d before %s\n
+113 before ' %s'\n
+114 before END OF STATEMENT\n
 115 ឈ្មោះមោឃ\nឈ្មោះ: SET NAMES charset [{COLLATE | COLLATION} collation]\n
 116 ការប្រើមោឃនៃchr\n  CHR ( number [using charset] )\n
 
