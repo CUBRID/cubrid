@@ -935,7 +935,6 @@ genlocale: LDML 입력 파일을 사용하는 LDML 공유 라이브러리를 생
 \n\
 language-string	      공유 라이브러리를 생성할 로캘 언어의 문자열.\n\
 		      language-string이 생략되면 'cubrid_locales.txt'에 정의된 모든 언어에 대해 생성합니다.\n\
-
 valid options:\n\
   -v, --verbose	              상세 정보 출력; 기본값: 사용 안 함\n\
   -i, --input-ldml-file       입력 LDML 파일에 대한 경로. language-string이 주어질 때만 사용.\n
@@ -951,7 +950,6 @@ dumplocale: LDML 입력 파일을 사용하여 미리 생성된 로캘 공유 �
 \n\
 language-string	 로캘 공유 라이브러리에 대해 덤프할 로캘 언어 문자열\n\
 		         no language-string이 생략되면 'cubrid_locales.txt'에 있는 모든 언어에 대해 덤프합니다.\n\
-
 valid options:\n\
   -i, --input-file    입력할 로캘 공유 라이브러리(미리 생성됨) 파일에 대한 경로.\n\
                       language-string이 생략될 때만 사용 가능.\n\
