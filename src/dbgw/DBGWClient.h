@@ -66,7 +66,7 @@ namespace dbgw
     DBGWConfigurationVersion m_stVersion;
     DBGWConnector *m_pConnector;
     DBGWQueryMapper *m_pQueryMapper;
-    DBGWExecuterList m_executerList;
+    DBGWExecutorList m_executorList;
     char *m_szNamespace;
     bool m_bClosed;
     bool m_bValidClient;

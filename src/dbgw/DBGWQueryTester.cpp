@@ -93,10 +93,10 @@ namespace dbgw
         return;
       }
 
-    if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+    if (getLastErrorCode() != DBGW_ER_NO_ERROR)
       {
         DBGWException e = getLastException();
-        if (e.getErrorCode() == DBGWErrorCode::RESULT_VALIDATE_TYPE_FAIL)
+        if (e.getErrorCode() == DBGW_ER_RESULT_VALIDATE_TYPE_FAIL)
           {
             fprintf(stderr, "[WARN] %s is failed to execute. %s\n",
                 m_sqlName.c_str(), e.what());
@@ -172,7 +172,7 @@ namespace dbgw
   int DBGWScenario::execute(DBGWConfiguration &configuration)
   {
     DBGWClient client(configuration, m_namespace.c_str());
-    if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+    if (getLastErrorCode() != DBGW_ER_NO_ERROR)
       {
         throw getLastException();
       }
@@ -384,7 +384,7 @@ int main(int argc, const char *argv[])
     }
 
   DBGWConfiguration configuration(argv[2]);
-  if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+  if (getLastErrorCode() != DBGW_ER_NO_ERROR)
     {
       cerr << getLastException().what() << endl;
       return 1;

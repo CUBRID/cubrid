@@ -62,7 +62,7 @@ namespace dbgw
     {
       T_CCI_ERROR cciError =
       {
-        DBGWErrorCode::NO_ERROR, ""
+        DBGW_ER_NO_ERROR, ""
       };
 
       return CUBRIDExceptionFactory::create(-1, cciError, errorMessage);
@@ -73,7 +73,7 @@ namespace dbgw
     {
       T_CCI_ERROR cciError =
       {
-        DBGWErrorCode::NO_ERROR, ""
+        DBGW_ER_NO_ERROR, ""
       };
 
       return CUBRIDExceptionFactory::create(nInterfaceErrorCode, cciError,
@@ -85,14 +85,14 @@ namespace dbgw
     {
       DBGWExceptionContext context =
       {
-        DBGWErrorCode::INTERFACE_ERROR, nInterfaceErrorCode,
+        DBGW_ER_INTERFACE_ERROR, nInterfaceErrorCode,
         "", "", false
       };
 
       stringstream buffer;
       buffer << "[" << context.nErrorCode << "]";
 
-      if (cciError.err_code != DBGWErrorCode::NO_ERROR)
+      if (cciError.err_code != DBGW_ER_NO_ERROR)
         {
           context.nInterfaceErrorCode = cciError.err_code;
           context.errorMessage = cciError.err_msg;
@@ -493,7 +493,7 @@ namespace dbgw
       T_CCI_ERROR cciError;
       char flag = 0;
 
-      if (pQuery->getType() == DBGWQueryType::PROCEDURE
+      if (pQuery->getType() == DBGW_QUERY_TYPE_PROCEDURE
           && pQuery->isExistOutBindParam())
         {
           flag = CCI_PREPARE_CALL;
@@ -514,7 +514,7 @@ namespace dbgw
 
     void DBGWCUBRIDPreparedStatement::beforeBind()
     {
-      if (getQuery()->getType() != DBGWQueryType::PROCEDURE)
+      if (getQuery()->getType() != DBGW_QUERY_TYPE_PROCEDURE)
         {
           return;
         }
@@ -1029,8 +1029,8 @@ namespace dbgw
     {
       const DBGWBoundQuerySharedPtr pQuery = getPreparedStatement()->getQuery();
 
-      if (pQuery->getType() == DBGWQueryType::SELECT
-          || (pQuery->getType() == DBGWQueryType::PROCEDURE
+      if (pQuery->getType() == DBGW_QUERY_TYPE_SELECT
+          || (pQuery->getType() == DBGW_QUERY_TYPE_PROCEDURE
               && pQuery->isExistOutBindParam() == false))
         {
           T_CCI_SQLX_CMD cciCmdType;
@@ -1112,7 +1112,7 @@ namespace dbgw
               metaList.push_back(md);
             }
         }
-      else if (pQuery->getType() == DBGWQueryType::PROCEDURE
+      else if (pQuery->getType() == DBGW_QUERY_TYPE_PROCEDURE
           && pQuery->isExistOutBindParam())
         {
           /**

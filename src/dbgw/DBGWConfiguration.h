@@ -56,31 +56,31 @@ namespace dbgw
 
   typedef vector<DBGWHostSharedPtr> DBGWHostList;
 
-  class DBGWExecuterPool;
+  class DBGWExecutorPool;
 
   class DBGWGroup;
 
   typedef boost::unordered_map<string, DBGWPreparedStatementSharedPtr,
           boost::hash<string>, dbgwStringCompareFunc> DBGWPreparedStatementHashMap;
 
-  class DBGWExecuter
+  class DBGWExecutor
   {
   public:
-    virtual ~DBGWExecuter();
+    virtual ~DBGWExecutor();
 
     const DBGWResultSharedPtr execute(DBGWBoundQuerySharedPtr pQuery,
         const DBGWParameter *pParameter = NULL);
     void setAutocommit(bool bAutocommit);
     void commit();
     void rollback();
-    DBGWExecuterPool &getExecuterPool();
+    DBGWExecutorPool &getExecutorPool();
 
   public:
     const char *getGroupName() const;
     bool isIgnoreResult() const;
 
   private:
-    DBGWExecuter(DBGWExecuterPool &executerPool,
+    DBGWExecutor(DBGWExecutorPool &executorPool,
         DBGWConnectionSharedPtr pConnection);
     void init(bool bAutocommit, DBGW_TRAN_ISOLATION isolation);
     void close();
@@ -96,24 +96,24 @@ namespace dbgw
     DBGWConnectionSharedPtr m_pConnection;
     /* (sqlName => DBGWPreparedStatement) */
     DBGWPreparedStatementHashMap m_preparedStatmentMap;
-    DBGWExecuterPool &m_executerPool;
+    DBGWExecutorPool &m_executorPool;
 
-    friend class DBGWExecuterPool;
+    friend class DBGWExecutorPool;
   };
 
-  typedef shared_ptr<DBGWExecuter> DBGWExecuterSharedPtr;
+  typedef shared_ptr<DBGWExecutor> DBGWExecutorSharedPtr;
 
-  typedef list<DBGWExecuterSharedPtr> DBGWExecuterList;
+  typedef list<DBGWExecutorSharedPtr> DBGWExecutorList;
 
-  class DBGWExecuterPool
+  class DBGWExecutorPool
   {
   public:
-    DBGWExecuterPool(DBGWGroup &group);
-    virtual ~DBGWExecuterPool();
+    DBGWExecutorPool(DBGWGroup &group);
+    virtual ~DBGWExecutorPool();
 
     void init(size_t nCount);
-    DBGWExecuterSharedPtr getExecuter();
-    void returnExecuter(DBGWExecuterSharedPtr pExecuter);
+    DBGWExecutorSharedPtr getExecutor();
+    void returnExecutor(DBGWExecutorSharedPtr pExecutor);
     void close();
     void setDefaultAutocommit(bool bAutocommit);
     void setDefaultTransactionIsolation(DBGW_TRAN_ISOLATION isolation);
@@ -125,7 +125,7 @@ namespace dbgw
   private:
     bool m_bClosed;
     DBGWGroup &m_group;
-    DBGWExecuterList m_executerList;
+    DBGWExecutorList m_executorList;
     MutexSharedPtr m_poolMutex;
     bool m_bAutocommit;
     DBGW_TRAN_ISOLATION m_isolation;
@@ -141,7 +141,7 @@ namespace dbgw
     void addHost(DBGWHostSharedPtr pHost);
     DBGWConnectionSharedPtr getConnection();
     void initPool(size_t nCount);
-    DBGWExecuterSharedPtr getExecuter();
+    DBGWExecutorSharedPtr getExecutor();
 
   public:
     const string &getFileName() const;
@@ -159,7 +159,7 @@ namespace dbgw
     int m_nModular;
     int m_nSchedule;
     DBGWHostList m_hostList;
-    DBGWExecuterPool m_executerPool;
+    DBGWExecutorPool m_executorPool;
   };
 
   typedef shared_ptr<DBGWGroup> DBGWGroupSharedPtr;
@@ -176,8 +176,8 @@ namespace dbgw
     void addGroup(DBGWGroupSharedPtr pGroup);
     void initPool(size_t nCount);
     void setForceValidateResult();
-    DBGWExecuterList getExecuterList();
-    bool isValidateResult(DBGWQueryType::Enum type);
+    DBGWExecutorList getExecutorList();
+    bool isValidateResult(DBGWQueryType type);
 
   public:
     const string &getFileName() const;
@@ -188,7 +188,7 @@ namespace dbgw
     string m_fileName;
     string m_nameSpace;
     string m_description;
-    bool m_bValidateResult[DBGWQueryType::SIZE];
+    bool m_bValidateResult[DBGW_QUERY_TYPE_SIZE];
     int m_nValidateRatio;
     /* (groupName => DBGWGroup) */
     DBGWGroupList m_groupList;
@@ -221,11 +221,11 @@ namespace dbgw
 
     void addService(DBGWServiceSharedPtr pService);
     void setForceValidateResult(const char *szNamespace);
-    DBGWExecuterList getExecuterList(const char *szNamespace);
-    void returnExecuterList(DBGWExecuterList &executerList);
+    DBGWExecutorList getExecutorList(const char *szNamespace);
+    void returnExecutorList(DBGWExecutorList &executorList);
 
   public:
-    bool isValidateResult(const char *szNamespace, DBGWQueryType::Enum type) const;
+    bool isValidateResult(const char *szNamespace, DBGWQueryType type) const;
 
   private:
     /* (namespace => DBGWService) */

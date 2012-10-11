@@ -34,19 +34,18 @@ namespace dbgw
     DBGW_QUERY_MAP_VER_30
   };
 
-  namespace DBGWQueryType
+  enum DBGWQueryType
   {
-
-    enum Enum
-    {
-      UNDEFINED = -1, SELECT = 0, PROCEDURE, UPDATE, SIZE
-    };
-
-  }
+    DBGW_QUERY_TYPE_UNDEFINED = -1,
+    DBGW_QUERY_TYPE_SELECT = 0,
+    DBGW_QUERY_TYPE_PROCEDURE,
+    DBGW_QUERY_TYPE_UPDATE,
+    DBGW_QUERY_TYPE_SIZE
+  };
 
   extern string makeImplicitParamName(int nIndex);
   extern bool isImplicitParamName(const char *szName);
-  extern DBGWQueryType::Enum getQueryType(const char *szQueryType);
+  extern DBGWQueryType getQueryType(const char *szQueryType);
 
   enum DBGWBindMode
   {
@@ -92,7 +91,7 @@ namespace dbgw
     const char *getSqlName() const;
     const char *getGroupName() const;
     string getSqlKey() const;
-    DBGWQueryType::Enum getType() const;
+    DBGWQueryType getType() const;
     int getBindNum() const;
     const DBGWQueryParameter &getQueryParamByPlaceHolderIndex(int nBindIndex) const;
     const DBGWQueryParameterList &getQueryParamList() const;
@@ -120,7 +119,7 @@ namespace dbgw
   public:
     DBGWQuery(DBGWQueryMapperVersion version, const string &fileName,
         const string &query, const string &sqlName, const string &groupName,
-        DBGWQueryType::Enum queryType,
+        DBGWQueryType queryType,
         const DBGWQueryParameterList &queryParamList,
         const db::MetaDataList &userDefinedMetaList);
     virtual ~ DBGWQuery();
@@ -131,7 +130,7 @@ namespace dbgw
     const char *getFileName() const;
     const char *getSqlName() const;
     const char *getGroupName() const;
-    DBGWQueryType::Enum getType() const;
+    DBGWQueryType getType() const;
     int getBindNum() const;
     const DBGWQueryParameter &getQueryParamByPlaceHolderIndex(size_t nBindIndex) const;
     const char *getQuery() const;
@@ -154,7 +153,7 @@ namespace dbgw
     string m_query;
     string m_sqlName;
     string m_groupName;
-    DBGWQueryType::Enum m_queryType;
+    DBGWQueryType m_queryType;
     DBGWQueryParameterList m_queryParamList;
     DBGWPlaceHolderList m_placeHolderList;
     db::MetaDataList m_userDefinedMetaList;

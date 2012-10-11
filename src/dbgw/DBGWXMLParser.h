@@ -165,7 +165,7 @@ namespace dbgw
     void setFileName(const string &fileName);
     void setGlobalGroupName(const char *szGlobalGroupName);
     void setLocalGroupName(const char *szLocalGroupName);
-    void setQueryType(DBGWQueryType::Enum queryType);
+    void setQueryType(DBGWQueryType queryType);
     void setSqlName(const char *szSqlName);
     void setParameter(const string &name, int nIndex, DBGWValueType valueType,
         DBGWBindMode mode);
@@ -186,7 +186,7 @@ namespace dbgw
     string m_globalGroupName;
     string m_localGroupName;
     string m_sqlName;
-    DBGWQueryType::Enum m_queryType;
+    DBGWQueryType m_queryType;
     set<int> m_paramIndexList;
     DBGWQueryParameterList m_queryParamList;
     set<int> m_resultIndexList;

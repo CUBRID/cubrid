@@ -46,27 +46,27 @@ namespace dbgw
       {
         switch (e.getErrorCode())
           {
-          case DBGWErrorCode::EXTERNAL_DBGW_INVALID_HANDLE:
+          case DBGW_ER_EXTERNAL_DBGW_INVALID_HANDLE:
             nDefaultErrorCode = DBGWCONNECTOR_INVALID_HANDLE;
             szDefaultErrorMessage = "DBGWCONNECTOR_INVALID_HANDLE";
             break;
-          case DBGWErrorCode::EXTERNAL_MEMORY_ALLOC_FAIL:
+          case DBGW_ER_EXTERNAL_MEMORY_ALLOC_FAIL:
             nDefaultErrorCode = DBGWCONNECTOR_NOT_ENOUGH_MEMORY;
             szDefaultErrorMessage = "DBGWCONNECTOR_NOT_ENOUGH_MEMORY";
             break;
-          case DBGWErrorCode::RESULT_NOT_ALLOWED_OPERATION:
+          case DBGW_ER_RESULT_NOT_ALLOWED_OPERATION:
             nDefaultErrorCode = DBGWCONNECTOR_NOT_PROPER_OP;
             szDefaultErrorMessage = "DBGWCONNECTOR_NOT_PROPER_OP";
             break;
-          case DBGWErrorCode::RESULT_NO_MORE_DATA:
+          case DBGW_ER_RESULT_NO_MORE_DATA:
             nDefaultErrorCode = DBGWCONNECTOR_NOMORE_FETCH;
             szDefaultErrorMessage = "DBGWCONNECTOR_NOMORE_FETCH";
             break;
-          case DBGWErrorCode::CLIENT_ALREADY_IN_TRANSACTION:
+          case DBGW_ER_CLIENT_ALREADY_IN_TRANSACTION:
             nDefaultErrorCode = DBGWCONNECTOR_ALREAY_IN_TRANSACTION;
             szDefaultErrorMessage = "DBGWCONNECTOR_ALREAY_IN_TRANSACTION";
             break;
-          case DBGWErrorCode::CLIENT_NOT_IN_TRANSACTION:
+          case DBGW_ER_CLIENT_NOT_IN_TRANSACTION:
             nDefaultErrorCode = DBGWCONNECTOR_NOT_IN_TRANSACTION;
             szDefaultErrorMessage = "DBGWCONNECTOR_NOT_IN_TRANSACTION";
             break;
@@ -101,7 +101,7 @@ namespace dbgw
                   throw e;
                 }
 
-              if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+              if (getLastErrorCode() != DBGW_ER_NO_ERROR)
                 {
                   throw getLastException();
                 }
@@ -293,7 +293,7 @@ namespace dbgw
                   throw e;
                 }
 
-              if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+              if (getLastErrorCode() != DBGW_ER_NO_ERROR)
                 {
                   throw getLastException();
                 }
@@ -737,7 +737,7 @@ namespace dbgw
                   throw e;
                 }
 
-              if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+              if (getLastErrorCode() != DBGW_ER_NO_ERROR)
                 {
                   throw getLastException();
                 }
@@ -791,7 +791,7 @@ namespace dbgw
                 }
 
               size_t nRowCount = (*hResult)->getRowCount();
-              if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+              if (getLastErrorCode() != DBGW_ER_NO_ERROR)
                 {
                   throw getLastException();
                 }
@@ -873,7 +873,7 @@ namespace dbgw
                 }
 
               size_t nAffectedRow = (*hResult)->getAffectedRow();
-              if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+              if (getLastErrorCode() != DBGW_ER_NO_ERROR)
                 {
                   throw getLastException();
                 }
@@ -1353,7 +1353,7 @@ namespace dbgw
                   throw e;
                 }
 
-              if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+              if (getLastErrorCode() != DBGW_ER_NO_ERROR)
                 {
                   throw getLastException();
                 }
@@ -1523,7 +1523,7 @@ namespace dbgw
     {
       DBGWExceptionContext context =
       {
-        nPreviousErrorCdoe, DBGWErrorCode::NO_ERROR,
+        nPreviousErrorCdoe, DBGW_ER_NO_ERROR,
         szPreviousErrorMessage, "", false
       };
 

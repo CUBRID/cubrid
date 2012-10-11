@@ -22,75 +22,70 @@
 namespace dbgw
 {
 
-  namespace DBGWErrorCode
+  enum DBGWErrorCode
   {
+    DBGW_ER_NO_ERROR                                  = 0,
 
-    enum Enum
-    {
-      NO_ERROR                                  = 0,
+    DBGW_ER_CONF_NOT_EXIST_NAMESPACE                  = -22100,
+    DBGW_ER_CONF_NOT_EXIST_QUERY_IN_XML               = -22101,
+    DBGW_ER_CONF_NOT_EXIST_ADDED_HOST                 = -22102,
+    DBGW_ER_CONF_FETCH_HOST_FAIL                      = -22103,
+    DBGW_ER_CONF_NOT_YET_LOADED                       = -22104,
+    DBGW_ER_CONF_NOT_EXIST_VERSION                    = -22105,
+    DBGW_ER_CONF_NOT_EXIST_FILE                       = -22106,
+    DBGW_ER_CONF_NOT_EXIST_SERVICE                    = -22107,
+    DBGW_ER_CONF_INVALID_PARAM_NAME                   = -22108,
 
-      CONF_NOT_EXIST_NAMESPACE                  = -22100,
-      CONF_NOT_EXIST_QUERY_IN_XML               = -22101,
-      CONF_NOT_EXIST_ADDED_HOST                 = -22102,
-      CONF_FETCH_HOST_FAIL                      = -22103,
-      CONF_NOT_YET_LOADED                       = -22104,
-      CONF_NOT_EXIST_VERSION                    = -22105,
-      CONF_NOT_EXIST_FILE                       = -22106,
-      CONF_NOT_EXIST_SERVICE                    = -22107,
-      CONF_INVALID_PARAM_NAME                   = -22108,
+    DBGW_ER_SQL_NOT_EXIST_CONN                        = -22200,
+    DBGW_ER_SQL_INVALID_SQL                           = -22201,
+    DBGW_ER_SQL_NOT_EXIST_PARAM                       = -22202,
+    DBGW_ER_SQL_EXECUTE_BEFORE_PREPARE                = -22203,
+    DBGW_ER_SQL_NOT_EXIST_PROPERTY                    = -22204,
 
-      SQL_NOT_EXIST_CONN                        = -22200,
-      SQL_INVALID_SQL                           = -22201,
-      SQL_NOT_EXIST_PARAM                       = -22202,
-      SQL_EXECUTE_BEFORE_PREPARE                = -22203,
-      SQL_NOT_EXIST_PROPERTY                    = -22204,
+    DBGW_ER_VALUE_NOT_EXIST_SET                       = -22300,
+    DBGW_ER_VALUE_MISMATCH_VALUE_TYPE                 = -22301,
+    DBGW_ER_VALUE_INVALID_VALUE_TYPE                  = -22302,
+    DBGW_ER_VALUE_INVALID_VALUE_FORMAT                = -22303,
+    DBGW_ER_VALUE_INVALID_SIZE                        = -22304,
 
-      VALUE_NOT_EXIST_SET                       = -22300,
-      VALUE_MISMATCH_VALUE_TYPE                 = -22301,
-      VALUE_INVALID_VALUE_TYPE                  = -22302,
-      VALUE_INVALID_VALUE_FORMAT                = -22303,
-      VALUE_INVALID_SIZE                        = -22304,
+    DBGW_ER_CLIENT_MULTISET_IGNORE_FLAG_FALSE         = -22400,
+    DBGW_ER_CLIENT_INVALID_CLIENT                     = -22401,
+    DBGW_ER_CLIENT_NOT_EXIST_GROUP                    = -22402,
+    DBGW_ER_CLIENT_ALREADY_IN_TRANSACTION             = -22403,
+    DBGW_ER_CLIENT_NOT_IN_TRANSACTION                 = -22404,
 
-      CLIENT_MULTISET_IGNORE_FLAG_FALSE         = -22400,
-      CLIENT_INVALID_CLIENT                     = -22401,
-      CLIENT_NOT_EXIST_GROUP                    = -22402,
-      CLIENT_ALREADY_IN_TRANSACTION             = -22403,
-      CLIENT_NOT_IN_TRANSACTION                 = -22404,
+    DBGW_ER_RESULT_NOT_ALLOWED_NEXT                   = -22500,
+    DBGW_ER_RESULT_NOT_ALLOWED_GET_METADATA           = -22501,
+    DBGW_ER_RESULT_NOT_ALLOWED_OPERATION              = -22502,
+    DBGW_ER_RESULT_VALIDATE_FAIL                      = -22503,
+    DBGW_ER_RESULT_VALIDATE_TYPE_FAIL                 = -22504,
+    DBGW_ER_RESULT_VALIDATE_VALUE_FAIL                = -22505,
+    DBGW_ER_RESULT_NO_MORE_DATA                       = -22506,
 
-      RESULT_NOT_ALLOWED_NEXT                   = -22500,
-      RESULT_NOT_ALLOWED_GET_METADATA           = -22501,
-      RESULT_NOT_ALLOWED_OPERATION              = -22502,
-      RESULT_VALIDATE_FAIL                      = -22503,
-      RESULT_VALIDATE_TYPE_FAIL                 = -22504,
-      RESULT_VALIDATE_VALUE_FAIL                = -22505,
-      RESULT_NO_MORE_DATA                       = -22506,
+    DBGW_ER_INTERFACE_ERROR                           = -22600,
 
-      INTERFACE_ERROR                           = -22600,
+    DBGW_ER_XML_FAIL_CREATE_PARSER                    = -22700,
+    DBGW_ER_XML_DUPLICATE_NAMESPACE                   = -22701,
+    DBGW_ER_XML_DUPLICATE_SQLNAME                     = -22702,
+    DBGW_ER_XML_DUPLICATE_GROUPNAME                   = -22703,
+    DBGW_ER_XML_NOT_EXIST_NODE                        = -22704,
+    DBGW_ER_XML_NOT_EXIST_PROPERTY                    = -22705,
+    DBGW_ER_XML_INVALID_PROPERTY_VALUE                = -22706,
+    DBGW_ER_XML_INVALID_SYNTAX                        = -22707,
+    DBGW_ER_XML_DUPLICATE_PARAM_INDEX                 = -22708,
+    DBGW_ER_XML_INVALID_PARAM_INDEX                   = -22709,
+    DBGW_ER_XML_NOT_EXIST_RESULT                      = -22710,
+    DBGW_ER_XML_DUPLICATE_RESULT_INDEX                = -22711,
+    DBGW_ER_XML_INVALID_RESULT_INDEX                  = -22712,
 
-      XML_FAIL_CREATE_PARSER                    = -22700,
-      XML_DUPLICATE_NAMESPACE                   = -22701,
-      XML_DUPLICATE_SQLNAME                     = -22702,
-      XML_DUPLICATE_GROUPNAME                   = -22703,
-      XML_NOT_EXIST_NODE                        = -22704,
-      XML_NOT_EXIST_PROPERTY                    = -22705,
-      XML_INVALID_PROPERTY_VALUE                = -22706,
-      XML_INVALID_SYNTAX                        = -22707,
-      XML_DUPLICATE_PARAM_INDEX                 = -22708,
-      XML_INVALID_PARAM_INDEX                   = -22709,
-      XML_NOT_EXIST_RESULT                      = -22710,
-      XML_DUPLICATE_RESULT_INDEX                = -22711,
-      XML_INVALID_RESULT_INDEX                  = -22712,
+    DBGW_ER_EXTERNAL_MUTEX_INIT_FAIL                  = -22800,
+    DBGW_ER_EXTERNAL_STANDARD_ERROR                   = -22801,
+    DBGW_ER_EXTERNAL_MEMORY_ALLOC_FAIL                = -22802,
+    DBGW_ER_EXTERNAL_DBGW_INVALID_HANDLE              = -22803,
+    DBGW_ER_EXTERNAL_DBGW_NOT_ENOUGH_BUFFER           = -22804,
 
-      EXTERNAL_MUTEX_INIT_FAIL                  = -22800,
-      EXTERNAL_STANDARD_ERROR                   = -22801,
-      EXTERNAL_MEMORY_ALLOC_FAIL                = -22802,
-      EXTERNAL_DBGW_INVALID_HANDLE              = -22803,
-      EXTERNAL_DBGW_NOT_ENOUGH_BUFFER           = -22804,
-
-      OLD_DBGW_INTERFACE_ERROR                  = -22900
-    };
-
-  }
+    DBGW_ER_OLD_DBGW_INTERFACE_ERROR                  = -22900
+  };
 
   struct DBGWExceptionContext
   {

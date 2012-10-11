@@ -97,7 +97,7 @@ namespace dbgw
             throw getLastException();
           }
 
-        m_executerList = m_pConnector->getExecuterList(m_szNamespace);
+        m_executorList = m_pConnector->getExecutorList(m_szNamespace);
         m_bValidClient = true;
       }
     catch (DBGWException &e)
@@ -155,8 +155,8 @@ namespace dbgw
         m_bAutocommit = bAutocommit;
 
         DBGWException exception;
-        for (DBGWExecuterList::iterator it = m_executerList.begin(); it
-            != m_executerList.end(); it++)
+        for (DBGWExecutorList::iterator it = m_executorList.begin(); it
+            != m_executorList.end(); it++)
           {
             if (*it == NULL)
               {
@@ -172,7 +172,7 @@ namespace dbgw
                 exception = e;
               }
           }
-        if (exception.getErrorCode() != DBGWErrorCode::NO_ERROR)
+        if (exception.getErrorCode() != DBGW_ER_NO_ERROR)
           {
             throw exception;
           }
@@ -194,8 +194,8 @@ namespace dbgw
         checkClientIsValid();
 
         DBGWException exception;
-        for (DBGWExecuterList::iterator it = m_executerList.begin(); it
-            != m_executerList.end(); it++)
+        for (DBGWExecutorList::iterator it = m_executorList.begin(); it
+            != m_executorList.end(); it++)
           {
             if (*it == NULL)
               {
@@ -211,7 +211,7 @@ namespace dbgw
                 exception = e;
               }
           }
-        if (exception.getErrorCode() != DBGWErrorCode::NO_ERROR)
+        if (exception.getErrorCode() != DBGW_ER_NO_ERROR)
           {
             throw exception;
           }
@@ -233,8 +233,8 @@ namespace dbgw
         checkClientIsValid();
 
         DBGWException exception;
-        for (DBGWExecuterList::iterator it = m_executerList.begin(); it
-            != m_executerList.end(); it++)
+        for (DBGWExecutorList::iterator it = m_executorList.begin(); it
+            != m_executorList.end(); it++)
           {
             if (*it == NULL)
               {
@@ -250,7 +250,7 @@ namespace dbgw
                 exception = e;
               }
           }
-        if (exception.getErrorCode() != DBGWErrorCode::NO_ERROR)
+        if (exception.getErrorCode() != DBGW_ER_NO_ERROR)
           {
             throw exception;
           }
@@ -277,8 +277,8 @@ namespace dbgw
         bool bExecuted = false;
         DBGWException validateFailException;
         DBGWResultSharedPtr pReturnResult, pInternalResult;
-        for (DBGWExecuterList::iterator it = m_executerList.begin(); it
-            != m_executerList.end(); it++)
+        for (DBGWExecutorList::iterator it = m_executorList.begin(); it
+            != m_executorList.end(); it++)
           {
             if (*it == NULL)
               {
@@ -290,7 +290,7 @@ namespace dbgw
                 DBGWLogger logger((*it)->getGroupName(), szSqlName);
                 DBGWBoundQuerySharedPtr pQuery = m_pQueryMapper->getQuery(
                     szSqlName, (*it)->getGroupName(), pParameter,
-                    it == m_executerList.begin());
+                    it == m_executorList.begin());
                 if (pQuery == NULL)
                   {
                     continue;
@@ -324,7 +324,7 @@ namespace dbgw
                 else
                   {
                     if (bValidateResult == false
-                        && pQuery->getType() == DBGWQueryType::SELECT)
+                        && pQuery->getType() == DBGW_QUERY_TYPE_SELECT)
                       {
                         continue;
                       }
@@ -347,9 +347,9 @@ namespace dbgw
                 if (bValidateResult)
                   {
                     DBGWException &ne = e;
-                    if (e.getErrorCode() != DBGWErrorCode::RESULT_VALIDATE_FAIL
-                        && e.getErrorCode() != DBGWErrorCode::RESULT_VALIDATE_TYPE_FAIL
-                        && e.getErrorCode() != DBGWErrorCode::RESULT_VALIDATE_VALUE_FAIL)
+                    if (e.getErrorCode() != DBGW_ER_RESULT_VALIDATE_FAIL
+                        && e.getErrorCode() != DBGW_ER_RESULT_VALIDATE_TYPE_FAIL
+                        && e.getErrorCode() != DBGW_ER_RESULT_VALIDATE_VALUE_FAIL)
                       {
                         /**
                          * Change error code for client to identify validation fail.
@@ -385,7 +385,7 @@ namespace dbgw
               }
           }
 
-        if (bValidateResult && getLastErrorCode() == DBGWErrorCode::NO_ERROR)
+        if (bValidateResult && getLastErrorCode() == DBGW_ER_NO_ERROR)
           {
             setLastException(validateFailException);
           }
@@ -420,7 +420,7 @@ namespace dbgw
 
         m_bClosed = true;
 
-        m_pConnector->returnExecuterList(m_executerList);
+        m_pConnector->returnExecutorList(m_executorList);
       }
     catch (DBGWException &e)
       {
@@ -432,7 +432,7 @@ namespace dbgw
         exception = getLastException();
       }
 
-    if (exception.getErrorCode() != DBGWErrorCode::NO_ERROR)
+    if (exception.getErrorCode() != DBGW_ER_NO_ERROR)
       {
         setLastException(exception);
         return false;

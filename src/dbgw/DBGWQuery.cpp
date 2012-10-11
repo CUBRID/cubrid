@@ -76,7 +76,7 @@ namespace dbgw
       }
   }
 
-  DBGWQueryType::Enum getQueryType(const char *szQueryType)
+  DBGWQueryType getQueryType(const char *szQueryType)
   {
     const char *p = szQueryType;
 
@@ -87,21 +87,21 @@ namespace dbgw
 
     if (!strncasecmp(p, "select", 6))
       {
-        return DBGWQueryType::SELECT;
+        return DBGW_QUERY_TYPE_SELECT;
       }
     else if (!strncasecmp(p, "insert", 6)
         || !strncasecmp(p, "update", 6)
         || !strncasecmp(p, "delete", 6))
       {
-        return DBGWQueryType::UPDATE;
+        return DBGW_QUERY_TYPE_UPDATE;
       }
     else if (!strncasecmp(p, "call", 4))
       {
-        return DBGWQueryType::PROCEDURE;
+        return DBGW_QUERY_TYPE_PROCEDURE;
       }
     else
       {
-        return DBGWQueryType::UNDEFINED;
+        return DBGW_QUERY_TYPE_UNDEFINED;
       }
   }
 
@@ -149,7 +149,7 @@ namespace dbgw
     return m_sqlKey;
   }
 
-  DBGWQueryType::Enum DBGWBoundQuery::getType() const
+  DBGWQueryType DBGWBoundQuery::getType() const
   {
     return m_query.getType();
   }
@@ -185,7 +185,7 @@ namespace dbgw
    */
   DBGWQuery::DBGWQuery(DBGWQueryMapperVersion version, const string &fileName,
       const string &query, const string &sqlName, const string &groupName,
-      DBGWQueryType::Enum queryType,
+      DBGWQueryType queryType,
       const DBGWQueryParameterList &queryParamList,
       const db::MetaDataList &userDefinedMetaList) :
     m_logger(groupName, sqlName), m_fileName(fileName), m_query(query),
@@ -408,7 +408,7 @@ namespace dbgw
     return m_groupName.c_str();
   }
 
-  DBGWQueryType::Enum DBGWQuery::getType() const
+  DBGWQueryType DBGWQuery::getType() const
   {
     return m_queryType;
   }

@@ -299,15 +299,15 @@ namespace dbgw
         boost::trim(*it);
         if (!strcasecmp(it->c_str(), "select"))
           {
-            bValidateResult[DBGWQueryType::SELECT] = true;
+            bValidateResult[DBGW_QUERY_TYPE_SELECT] = true;
           }
         else if (!strcasecmp(it->c_str(), "update"))
           {
-            bValidateResult[DBGWQueryType::UPDATE] = true;
+            bValidateResult[DBGW_QUERY_TYPE_UPDATE] = true;
           }
         else if (!strcasecmp(it->c_str(), "procedure"))
           {
-            bValidateResult[DBGWQueryType::PROCEDURE] = true;
+            bValidateResult[DBGW_QUERY_TYPE_PROCEDURE] = true;
           }
         else
           {
@@ -676,7 +676,7 @@ namespace dbgw
         throw e;
       }
 
-    if (exception.getErrorCode() != DBGWErrorCode::NO_ERROR)
+    if (exception.getErrorCode() != DBGW_ER_NO_ERROR)
       {
         throw exception;
       }
@@ -833,7 +833,7 @@ namespace dbgw
         return;
       }
 
-    bool bValidateResult[DBGWQueryType::SIZE];
+    bool bValidateResult[DBGW_QUERY_TYPE_SIZE];
     properties.getValidateResult(XML_NODE_SERVICE_PROP_VALIDATE_RESULT,
         bValidateResult);
 
@@ -928,7 +928,7 @@ namespace dbgw
   DBGWQueryMapContext::DBGWQueryMapContext(const string &fileName,
       DBGWQueryMapperSharedPtr pQueryMapper) :
     m_fileName(fileName), m_pQueryMapper(pQueryMapper), m_globalGroupName(""),
-    m_localGroupName(""), m_sqlName(""), m_queryType(DBGWQueryType::UNDEFINED),
+    m_localGroupName(""), m_sqlName(""), m_queryType(DBGW_QUERY_TYPE_UNDEFINED),
     m_bExistQueryInSql(false), m_bExistQueryInGroup(false)
   {
   }
@@ -942,7 +942,7 @@ namespace dbgw
     m_globalGroupName = "";
     m_localGroupName = "";
     m_sqlName = "";
-    m_queryType = DBGWQueryType::UNDEFINED;
+    m_queryType = DBGW_QUERY_TYPE_UNDEFINED;
     m_paramIndexList.clear();
     m_queryParamList.clear();
     m_queryBuffer.seekg(ios_base::beg);
@@ -964,7 +964,7 @@ namespace dbgw
 
     m_localGroupName = "";
     m_sqlName = "";
-    m_queryType = DBGWQueryType::UNDEFINED;
+    m_queryType = DBGW_QUERY_TYPE_UNDEFINED;
     m_paramIndexList.clear();
     m_queryParamList.clear();
     m_queryBuffer.seekg(ios_base::beg);
@@ -1004,7 +1004,7 @@ namespace dbgw
     m_localGroupName = szLocalGroupName;
   }
 
-  void DBGWQueryMapContext::setQueryType(DBGWQueryType::Enum queryType)
+  void DBGWQueryMapContext::setQueryType(DBGWQueryType queryType)
   {
     m_queryType = queryType;
   }
@@ -1125,7 +1125,7 @@ namespace dbgw
     string queryString = m_queryBuffer.str().substr(0, m_queryBuffer.tellp());
 
     if (m_pQueryMapper->getVersion() == DBGW_QUERY_MAP_VER_10
-        && m_queryType == DBGWQueryType::UNDEFINED)
+        && m_queryType == DBGW_QUERY_TYPE_UNDEFINED)
       {
         /**
          * in dbgw 1.0, we have to get query type to parse query string.
@@ -1231,16 +1231,16 @@ namespace dbgw
       {
         if (!strcasecmp(pType, "selcet"))
           {
-            m_parserContext.setQueryType(DBGWQueryType::SELECT);
+            m_parserContext.setQueryType(DBGW_QUERY_TYPE_SELECT);
           }
         else if (!strcasecmp(pType, "update") && !strcasecmp(pType, "delete")
             && !strcasecmp(pType, "insert"))
           {
-            m_parserContext.setQueryType(DBGWQueryType::UPDATE);
+            m_parserContext.setQueryType(DBGW_QUERY_TYPE_UPDATE);
           }
         else if (!strcasecmp(pType, "procedure"))
           {
-            m_parserContext.setQueryType(DBGWQueryType::PROCEDURE);
+            m_parserContext.setQueryType(DBGW_QUERY_TYPE_PROCEDURE);
           }
       }
   }
@@ -1292,19 +1292,19 @@ namespace dbgw
       }
     else if (!strcasecmp(szName, XML_NODE_20_SELECT))
       {
-        m_parserContext.setQueryType(DBGWQueryType::SELECT);
+        m_parserContext.setQueryType(DBGW_QUERY_TYPE_SELECT);
         parseSql(properties);
       }
     else if (!strcasecmp(szName, XML_NODE_20_PROCEDURE))
       {
-        m_parserContext.setQueryType(DBGWQueryType::PROCEDURE);
+        m_parserContext.setQueryType(DBGW_QUERY_TYPE_PROCEDURE);
         parseSql(properties);
       }
     else if (!strcasecmp(szName, XML_NODE_20_INSERT)
         || !strcasecmp(szName, XML_NODE_20_UPDATE)
         || !strcasecmp(szName, XML_NODE_20_DELETE))
       {
-        m_parserContext.setQueryType(DBGWQueryType::UPDATE);
+        m_parserContext.setQueryType(DBGW_QUERY_TYPE_UPDATE);
         parseSql(properties);
       }
     else if (!strcasecmp(szName, XML_NODE_20_PARAM))
@@ -1426,19 +1426,19 @@ namespace dbgw
       }
     else if (!strcasecmp(szName, XML_NODE_30_SELECT))
       {
-        m_parserContext.setQueryType(DBGWQueryType::SELECT);
+        m_parserContext.setQueryType(DBGW_QUERY_TYPE_SELECT);
         parseSql(properties);
       }
     else if (!strcasecmp(szName, XML_NODE_30_PROCEDURE))
       {
-        m_parserContext.setQueryType(DBGWQueryType::PROCEDURE);
+        m_parserContext.setQueryType(DBGW_QUERY_TYPE_PROCEDURE);
         parseSql(properties);
       }
     else if (!strcasecmp(szName, XML_NODE_30_INSERT)
         || !strcasecmp(szName, XML_NODE_30_UPDATE)
         || !strcasecmp(szName, XML_NODE_30_DELETE))
       {
-        m_parserContext.setQueryType(DBGWQueryType::UPDATE);
+        m_parserContext.setQueryType(DBGW_QUERY_TYPE_UPDATE);
         parseSql(properties);
       }
     else if (!strcasecmp(szName, XML_NODE_30_PARAM))

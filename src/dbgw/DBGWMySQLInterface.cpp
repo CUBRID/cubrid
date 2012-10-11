@@ -75,21 +75,21 @@ namespace dbgw
     }
 
     MySQLException::MySQLException(const string &message) throw() :
-      DBGWException(DBGWErrorCode::INTERFACE_ERROR, message), m_pMySQL(NULL),
+      DBGWException(DBGW_ER_INTERFACE_ERROR, message), m_pMySQL(NULL),
       m_pStmt(NULL)
     {
       createMessage();
     }
 
     MySQLException::MySQLException(MYSQL *pMySQL, const string &replace) throw() :
-      DBGWException(DBGWErrorCode::INTERFACE_ERROR), m_pMySQL(pMySQL),
+      DBGWException(DBGW_ER_INTERFACE_ERROR), m_pMySQL(pMySQL),
       m_pStmt(NULL), m_replace(replace)
     {
       createMessage();
     }
 
     MySQLException::MySQLException(MYSQL_STMT *pStmt, const string &replace) throw() :
-      DBGWException(DBGWErrorCode::INTERFACE_ERROR), m_pMySQL(NULL),
+      DBGWException(DBGW_ER_INTERFACE_ERROR), m_pMySQL(NULL),
       m_pStmt(pStmt), m_replace(replace)
     {
       createMessage();
@@ -395,7 +395,7 @@ namespace dbgw
         }
 
       bool bNeedFetch = false;
-      if (getQuery().getType() == DBGWQueryType::SELECT)
+      if (getQuery().getType() == DBGW_QUERY_TYPE_SELECT)
         {
           bNeedFetch = true;
         }

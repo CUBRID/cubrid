@@ -633,8 +633,8 @@ namespace dbgw
        * 		setLastException(e);
        * }
        */
-      if (m_pStmt->getQuery()->getType() == DBGWQueryType::SELECT
-          || m_pStmt->getQuery()->getType() == DBGWQueryType::PROCEDURE)
+      if (m_pStmt->getQuery()->getType() == DBGW_QUERY_TYPE_SELECT
+          || m_pStmt->getQuery()->getType() == DBGW_QUERY_TYPE_PROCEDURE)
         {
           m_bNeedFetch = true;
         }

@@ -1071,7 +1071,7 @@ namespace dbgw
           }
 
         DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_INT, &nValue, bNull));
-        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
           {
             throw getLastException();
           }
@@ -1104,7 +1104,7 @@ namespace dbgw
 
         DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_STRING, (void *) szValue,
             bNull));
-        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
           {
             throw getLastException();
           }
@@ -1136,7 +1136,7 @@ namespace dbgw
           }
 
         DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_LONG, &lValue, bNull));
-        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
           {
             throw getLastException();
           }
@@ -1168,7 +1168,7 @@ namespace dbgw
           }
 
         DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_CHAR, &cValue, bNull));
-        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
           {
             throw getLastException();
           }
@@ -1200,7 +1200,7 @@ namespace dbgw
           }
 
         DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_FLOAT, &fValue, bNull));
-        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
           {
             throw getLastException();
           }
@@ -1232,7 +1232,7 @@ namespace dbgw
           }
 
         DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_DOUBLE, &dValue, bNull));
-        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
           {
             throw getLastException();
           }
@@ -1265,7 +1265,7 @@ namespace dbgw
           }
 
         DBGWValueSharedPtr p(new DBGWValue(type, tmValue));
-        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
           {
             throw getLastException();
           }
@@ -1297,7 +1297,7 @@ namespace dbgw
           }
 
         DBGWValueSharedPtr p(new DBGWValue(type, pValue, bNull, nSize));
-        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
           {
             throw getLastException();
           }
@@ -1340,7 +1340,7 @@ namespace dbgw
     try
       {
         DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_INT, &nValue, bNull));
-        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
           {
             throw getLastException();
           }
@@ -1364,7 +1364,7 @@ namespace dbgw
       {
         DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_STRING, (void *) szValue,
             bNull));
-        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
           {
             throw getLastException();
           }
@@ -1387,7 +1387,7 @@ namespace dbgw
     try
       {
         DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_LONG, &lValue, bNull));
-        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
           {
             throw getLastException();
           }
@@ -1410,7 +1410,7 @@ namespace dbgw
     try
       {
         DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_CHAR, &cValue, bNull));
-        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
           {
             throw getLastException();
           }
@@ -1433,7 +1433,7 @@ namespace dbgw
     try
       {
         DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_FLOAT, &fValue, bNull));
-        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
           {
             throw getLastException();
           }
@@ -1456,7 +1456,7 @@ namespace dbgw
     try
       {
         DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_DOUBLE, &dValue, bNull));
-        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
           {
             throw getLastException();
           }
@@ -1480,7 +1480,7 @@ namespace dbgw
     try
       {
         DBGWValueSharedPtr p(new DBGWValue(type, tmValue));
-        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
           {
             throw getLastException();
           }
@@ -1504,7 +1504,7 @@ namespace dbgw
     try
       {
         DBGWValueSharedPtr p(new DBGWValue(type, pValue, bNull, nSize));
-        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
           {
             throw getLastException();
           }
@@ -1547,7 +1547,7 @@ namespace dbgw
     try
       {
         DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_INT, &nValue, bNull));
-        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
           {
             throw getLastException();
           }
@@ -1570,7 +1570,7 @@ namespace dbgw
       {
         DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_STRING, (void *) szValue,
             bNull));
-        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
           {
             throw getLastException();
           }
@@ -1592,7 +1592,7 @@ namespace dbgw
     try
       {
         DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_LONG, &lValue, bNull));
-        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
           {
             throw getLastException();
           }
@@ -1614,7 +1614,7 @@ namespace dbgw
     try
       {
         DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_CHAR, &cValue, bNull));
-        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
           {
             throw getLastException();
           }
@@ -1636,7 +1636,7 @@ namespace dbgw
     try
       {
         DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_FLOAT, &fValue, bNull));
-        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
           {
             throw getLastException();
           }
@@ -1658,7 +1658,7 @@ namespace dbgw
     try
       {
         DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_DOUBLE, &dValue, bNull));
-        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
           {
             throw getLastException();
           }
@@ -1680,7 +1680,7 @@ namespace dbgw
     try
       {
         DBGWValueSharedPtr p(new DBGWValue(type, tmValue));
-        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
           {
             throw getLastException();
           }
@@ -1703,7 +1703,7 @@ namespace dbgw
     try
       {
         DBGWValueSharedPtr p(new DBGWValue(type, pValue, bNull, nSize));
-        if (getLastErrorCode() != DBGWErrorCode::NO_ERROR)
+        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
           {
             throw getLastException();
           }
