@@ -6618,11 +6618,16 @@ cci_datasource_release (T_CCI_DATASOURCE * ds, T_CCI_CONN conn,
     {
       err_buf->err_code = CCI_ER_INVALID_DATASOURCE;
       snprintf (err_buf->err_msg, 1023, "CCI data source is invalid");
-      return CCI_ER_INVALID_DATASOURCE;
+      return 0;
     }
 
   con_handle = hm_find_con_handle (conn);
-  assert (con_handle != NULL);
+  if (con_handle == NULL)
+    {
+      err_buf->err_code = CCI_ER_CON_HANDLE;
+      cci_get_err_msg (CCI_ER_CON_HANDLE, err_buf->err_msg, 1023);
+      return 0;
+    }
 
   if (con_handle->datasource != ds)
     {
