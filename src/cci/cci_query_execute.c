@@ -4408,7 +4408,7 @@ get_column_info (char *buf_p, int *size, T_CCI_COL_INFO ** ret_col_info,
   char *cur_p = buf_p;
   int remain_size = *size;
   int num_col_info = 0;
-  T_CCI_COL_INFO *col_info = NULL;
+  T_CCI_COL_INFO *col_info;
   int i;
 
   if (ret_col_info)
