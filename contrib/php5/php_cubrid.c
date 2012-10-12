@@ -1410,11 +1410,11 @@ static void php_cubrid_do_connect_with_url(INTERNAL_FUNCTION_PARAMETERS, int per
     }
 
     if (!userid) {
-	userid = CUBRID_G(default_userid);
+        userid = (char *) "";
     }
 
     if (!passwd) {
-	passwd = CUBRID_G(default_passwd);
+	passwd = (char *) "";
     }
 
     snprintf(hashed_details, sizeof(hashed_details), "%s:%s:%s", buf, userid, passwd);
@@ -1937,6 +1937,7 @@ ZEND_FUNCTION(cubrid_execute)
         }
     
         if ((exec_retval = cci_execute(req_handle, exec_flag, 0, &error)) < 0) {
+            cubrid_retval = exec_retval;
             goto ERR_CUBRID_EXECUTE;
         }
     }
@@ -2832,6 +2833,7 @@ ZEND_FUNCTION(cubrid_schema)
     switch (schema_type) {
     case CUBRID_SCH_CLASS:
     case CUBRID_SCH_VCLASS:
+    case CUBRID_SCH_TRIGGER:
 	flag = CCI_CLASS_NAME_PATTERN_MATCH;
 	break;
     case CUBRID_SCH_ATTRIBUTE:
