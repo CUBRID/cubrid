@@ -744,6 +744,7 @@ receiver_thr_f (void *arg)
   char cas_req_header[SRV_CON_CLIENT_INFO_SIZE];
   char cas_client_type;
   char driver_version;
+  T_BROKER_VERSION client_version;
 #if defined(LINUX)
   int timeout;
 #endif /* LINUX */
@@ -883,6 +884,31 @@ receiver_thr_f (void *arg)
 	  continue;
 	}
 
+      driver_version = cas_req_header[SRV_CON_MSG_IDX_PROTO_VERSION];
+      if (driver_version & CAS_PROTO_INDICATOR)
+	{
+	  /* Protocol version */
+	  client_version = CAS_PROTO_UNPACK_NET_VER (driver_version);
+	}
+      else
+	{
+	  /* Build version; major, minor, and patch */
+	  client_version =
+	    CAS_MAKE_VER (cas_req_header[SRV_CON_MSG_IDX_MAJOR_VER],
+			  cas_req_header[SRV_CON_MSG_IDX_MINOR_VER],
+			  cas_req_header[SRV_CON_MSG_IDX_PATCH_VER]);
+	}
+
+#if defined(CUBRID_SHARD)
+      /* SHARD ONLY SUPPORT client_version.8.2.0 ~ */
+      if (client_version < CAS_MAKE_VER (8, 2, 0))
+	{
+	  CAS_SEND_ERROR_CODE (clt_sock_fd, CAS_ER_COMMUNICATION);
+	  CLOSE_SOCKET (clt_sock_fd);
+	  continue;
+	}
+#endif /* CUBRID_SHARD */
+
       if (v3_acl != NULL)
 	{
 	  unsigned char ip_addr[4];
@@ -919,21 +945,8 @@ receiver_thr_f (void *arg)
       new_job.port = ntohs (clt_sock_addr.sin_port);
       memcpy (new_job.ip_addr, &(clt_sock_addr.sin_addr), 4);
       strcpy (new_job.prg_name, cas_client_type_str[(int) cas_client_type]);
+      new_job.clt_version = client_version;
 
-      driver_version = cas_req_header[SRV_CON_MSG_IDX_PROTO_VERSION];
-      if (driver_version & CAS_PROTO_INDICATOR)
-	{
-	  /* Protocol version */
-	  new_job.clt_version = CAS_PROTO_UNPACK_NET_VER (driver_version);
-	}
-      else
-	{
-	  /* Build version; major, minor, and patch */
-	  new_job.clt_version =
-	    CAS_MAKE_VER (cas_req_header[SRV_CON_MSG_IDX_MAJOR_VER],
-			  cas_req_header[SRV_CON_MSG_IDX_MINOR_VER],
-			  cas_req_header[SRV_CON_MSG_IDX_PATCH_VER]);
-	}
       while (1)
 	{
 	  pthread_mutex_lock (&clt_table_mutex);
@@ -1000,7 +1013,9 @@ dispatch_thr_f (void *arg)
       if (proxy_fd != INVALID_SOCKET)
 	{
 	  memcpy (&ip_addr, cur_job.ip_addr, 4);
-	  ret_val = send_fd (proxy_fd, cur_job.clt_sock_fd, ip_addr);
+	  ret_val =
+	    send_fd (proxy_fd, cur_job.clt_sock_fd, ip_addr,
+		     cur_job.clt_version);
 	  if (ret_val > 0)
 	    {
 	      ret_val =
@@ -1134,7 +1149,9 @@ dispatch_thr_f (void *arg)
 	    }
 
 	  memcpy (&ip_addr, cur_job.ip_addr, 4);
-	  ret_val = send_fd (srv_sock_fd, cur_job.clt_sock_fd, ip_addr);
+	  ret_val =
+	    send_fd (srv_sock_fd, cur_job.clt_sock_fd, ip_addr,
+		     cur_job.clt_version);
 	  if (ret_val > 0)
 	    {
 	      ret_val =
@@ -2519,7 +2536,7 @@ find_idle_cas (void)
       CON_STATUS_LOCK (&(shm_appl->as_info[wait_cas_id]),
 		       CON_STATUS_LOCK_BROKER);
       if (shm_appl->as_info[wait_cas_id].con_status == CON_STATUS_OUT_TRAN
-          && shm_appl->as_info[wait_cas_id].num_holdable_results < 1)
+	  && shm_appl->as_info[wait_cas_id].num_holdable_results < 1)
 	{
 	  idle_cas_id = wait_cas_id;
 	  shm_appl->as_info[wait_cas_id].con_status =

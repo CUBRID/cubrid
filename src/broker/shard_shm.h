@@ -32,6 +32,7 @@
 
 #include "broker_config.h"
 #include "broker_shm.h"
+#include "shard_proxy_common.h"
 
 extern T_SHM_APPL_SERVER *shard_shm_get_appl_server (char *shm_appl_svr_p);
 extern T_SHM_PROXY *shard_shm_get_proxy (char *shm_appl_svr_p);
@@ -56,9 +57,10 @@ extern T_CLIENT_INFO *shard_shm_get_client_info (T_PROXY_INFO * proxy_info_p,
 						 int idx);
 extern T_APPL_SERVER_INFO *shard_shm_get_as_info (T_PROXY_INFO * proxy_info_p,
 						  int shard_id, int as_id);
-extern bool shard_shm_set_as_client_ip (T_PROXY_INFO * proxy_info_p,
-					int shard_id, int as_id,
-					unsigned int ip_addr);
+extern bool shard_shm_set_as_client_info (T_PROXY_INFO * proxy_info_p,
+					  int shard_id, int as_id,
+					  unsigned int ip_addr,
+					  T_BROKER_VERSION client_version);
 
 extern T_SHM_SHARD_CONN_STAT *shard_shm_get_first_shard_stat (T_PROXY_INFO *
 							      proxy_info_p);

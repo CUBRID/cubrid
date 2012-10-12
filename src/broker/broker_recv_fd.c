@@ -35,6 +35,7 @@
 #include <stdlib.h>
 
 #include "broker_recv_fd.h"
+#include "broker_send_recv_msg.h"
 
 #if defined(SOLARIS) || defined(UNIXWARE7)
 #include <sys/sockio.h>
@@ -48,10 +49,13 @@
 
 #define SYSV
 
+/* 
+   client_version is only used in PROXY(SHARD). 
+   In CAS, client_version is set in shared memory.
+ */
 int
-recv_fd (int fd, int *rid)
+recv_fd (int fd, int *rid, int *client_version)
 {
-  int req_id;
   int new_fd = 0, rc;
   struct iovec iov[1];
   struct msghdr msg;
@@ -59,9 +63,10 @@ recv_fd (int fd, int *rid)
 #if defined(LINUX) || defined(ALPHA_LINUX) || defined(UNIXWARE7)
   static struct cmsghdr *cmptr = NULL;
 #endif
+  struct sendmsg_s send_msg;
 
-  iov[0].iov_base = (char *) &req_id;
-  iov[0].iov_len = sizeof (int);
+  iov[0].iov_base = (char *) &send_msg;
+  iov[0].iov_len = sizeof (struct sendmsg_s);
   msg.msg_iov = iov;
   msg.msg_iovlen = 1;
   msg.msg_name = (caddr_t) NULL;
@@ -86,7 +91,8 @@ recv_fd (int fd, int *rid)
       return (-1);
     }
 
-  *rid = req_id;
+  *rid = send_msg.rid;
+  *client_version = send_msg.client_version;
 
   pid = getpid ();
 #if defined(LINUX) || defined(ALPHA_LINUX) || defined(UNIXWARE7)

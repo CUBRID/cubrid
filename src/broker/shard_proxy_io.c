@@ -106,7 +106,8 @@ static void proxy_socket_io_read_error (T_SOCKET_IO * sock_io_p);
 
 static int proxy_client_io_initialize (void);
 static void proxy_client_io_destroy (void);
-static T_CLIENT_IO *proxy_client_io_new (SOCKET fd);
+static T_CLIENT_IO *proxy_client_io_new (SOCKET fd,
+					 T_BROKER_VERSION client_version);
 
 static int proxy_cas_io_initialize (int shard_id, T_CAS_IO ** cas_io_pp,
 				    int size);
@@ -130,6 +131,7 @@ static int proxy_io_cas_lsnr (void);
 static SOCKET proxy_io_unixd_accept (SOCKET lsnr_fd);
 static SOCKET proxy_io_cas_accept (SOCKET lsnr_fd);
 
+static void proxy_init_net_buf (T_NET_BUF * net_buf);
 
 fd_set rset, wset, allset, wnewset, wallset;
 SOCKET broker_conn_fd = INVALID_SOCKET;
@@ -140,9 +142,8 @@ T_SOCKET_IO_GLOBAL proxy_Socket_io;
 T_CLIENT_IO_GLOBAL proxy_Client_io;
 T_SHARD_IO_GLOBAL proxy_Shard_io;
 
-/* SHARD ONLY SUPPORT ver.8.1.6 ~ */
+/* SHARD ONLY SUPPORT client_version.8.2.0 ~ */
 int cas_info_size = CAS_INFO_SIZE;
-
 
 /*** 
   THIS FUNCTION IS LOCATED IN ORIGINAL CAS FILES 
@@ -187,6 +188,20 @@ int
 get_msg_length (char *buffer)
 {
   return (get_data_length (buffer) + MSG_HEADER_SIZE);
+}
+
+static int
+get_dbinfo_length (T_BROKER_VERSION client_version)
+{
+  if (client_version < CAS_MAKE_VER (8, 2, 0))
+    {
+      return SRV_CON_DB_INFO_SIZE_PRIOR_8_2_0;
+    }
+  else if (client_version < CAS_MAKE_VER (8, 4, 0))
+    {
+      return SRV_CON_DB_INFO_SIZE_PRIOR_8_4_0;
+    }
+  return SRV_CON_DB_INFO_SIZE;
 }
 
 int
@@ -460,7 +475,7 @@ proxy_make_net_buf (T_NET_BUF * net_buf, int size)
   return 0;
 }
 
-void
+static void
 proxy_init_net_buf (T_NET_BUF * net_buf)
 {
   MSG_HEADER msg_header;
@@ -493,8 +508,9 @@ proxy_init_net_buf (T_NET_BUF * net_buf)
 
 /* error */
 int
-proxy_io_make_error_msg (char **buffer, int error_ind, int error_code,
-			 char *error_msg, char is_in_tran)
+proxy_io_make_error_msg (T_BROKER_VERSION client_version, char **buffer,
+			 int error_ind, int error_code, char *error_msg,
+			 char is_in_tran)
 {
   int error;
   T_NET_BUF net_buf;
@@ -519,8 +535,11 @@ proxy_io_make_error_msg (char **buffer, int error_ind, int error_code,
 
   if (error_ind != CAS_NO_ERROR)
     {
-      /* error indicator */
-      net_buf_cp_int (&net_buf, error_ind, NULL);
+      if (client_version >= CAS_MAKE_VER (8, 3, 0))
+	{
+	  /* error indicator */
+	  net_buf_cp_int (&net_buf, error_ind, NULL);
+	}
     }
 
   /* error code */
@@ -546,32 +565,33 @@ error_return:
 }
 
 int
-proxy_io_make_no_error (char **buffer)
+proxy_io_make_no_error (T_BROKER_VERSION client_version, char **buffer)
 {
-  return proxy_io_make_error_msg (buffer, CAS_NO_ERROR, CAS_NO_ERROR, NULL,
-				  false);
+  return proxy_io_make_error_msg (client_version, buffer, CAS_NO_ERROR,
+				  CAS_NO_ERROR, NULL, false);
 }
 
 int
-proxy_io_make_con_close_ok (char **buffer)
+proxy_io_make_con_close_ok (T_BROKER_VERSION client_version, char **buffer)
 {
-  return proxy_io_make_no_error (buffer);
+  return proxy_io_make_no_error (client_version, buffer);
 }
 
 int
-proxy_io_make_end_tran_ok (char **buffer)
+proxy_io_make_end_tran_ok (T_BROKER_VERSION client_version, char **buffer)
 {
-  return proxy_io_make_no_error (buffer);
+  return proxy_io_make_no_error (client_version, buffer);
 }
 
 int
-proxy_io_make_check_cas_ok (char **buffer)
+proxy_io_make_check_cas_ok (T_BROKER_VERSION client_version, char **buffer)
 {
-  return proxy_io_make_no_error (buffer);
+  return proxy_io_make_no_error (client_version, buffer);
 }
 
 int
-proxy_io_make_end_tran_request (char **buffer, bool commit)
+proxy_io_make_end_tran_request (T_BROKER_VERSION client_version,
+				char **buffer, bool commit)
 {
   int error;
   T_NET_BUF net_buf;
@@ -614,20 +634,23 @@ error_return:
   return -1;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 int
 proxy_io_make_end_tran_commit (char **buffer)
 {
   return proxy_io_make_end_tran_request (buffer, true);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 int
-proxy_io_make_end_tran_abort (char **buffer)
+proxy_io_make_end_tran_abort (T_BROKER_VERSION client_version, char **buffer)
 {
-  return proxy_io_make_end_tran_request (buffer, false);
+  return proxy_io_make_end_tran_request (client_version, buffer, false);
 }
 
 int
-proxy_io_make_close_req_handle_ok (char **buffer, bool is_in_tran)
+proxy_io_make_close_req_handle_ok (T_BROKER_VERSION client_version,
+				   char **buffer, bool is_in_tran)
 {
   int error;
   char *p;
@@ -672,20 +695,24 @@ error_return:
   return -1;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 int
 proxy_io_make_close_req_handle_in_tran_ok (char **buffer)
 {
   return proxy_io_make_close_req_handle_ok (buffer, true /* in_tran */ );
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 int
-proxy_io_make_close_req_handle_out_tran_ok (char **buffer)
+proxy_io_make_close_req_handle_out_tran_ok (T_BROKER_VERSION client_version,
+					    char **buffer)
 {
-  return proxy_io_make_close_req_handle_ok (buffer, false /* out_tran */ );
+  return proxy_io_make_close_req_handle_ok (client_version, buffer,
+					    false /* out_tran */ );
 }
 
 int
-proxy_io_make_get_db_version (char **buffer)
+proxy_io_make_get_db_version (T_BROKER_VERSION client_version, char **buffer)
 {
   int error;
   T_NET_BUF net_buf;
@@ -730,7 +757,7 @@ error_return:
 }
 
 int
-proxy_io_make_client_conn_ok (char **buffer)
+proxy_io_make_client_conn_ok (T_BROKER_VERSION client_version, char **buffer)
 {
   (*buffer) = (char *) malloc (sizeof (int));
 
@@ -745,7 +772,8 @@ proxy_io_make_client_conn_ok (char **buffer)
 }
 
 int
-proxy_io_make_client_dbinfo_ok (char **buffer)
+proxy_io_make_client_dbinfo_ok (T_BROKER_VERSION client_version,
+				char **buffer)
 {
   char *p;
   int reply_size;
@@ -772,6 +800,11 @@ proxy_io_make_client_dbinfo_ok (char **buffer)
     }
   broker_info[BROKER_INFO_CCI_PCONNECT] =
     (shm_as_p->cci_pconnect ? CCI_PCONNECT_ON : CCI_PCONNECT_OFF);
+
+  broker_info[BROKER_INFO_PROTO_VERSION] = CAS_PROTO_PACK_CURRENT_NET_VER;
+  broker_info[BROKER_INFO_RESERVED1] = 0;
+  broker_info[BROKER_INFO_RESERVED2] = 0;
+  broker_info[BROKER_INFO_RESERVED3] = 0;
 
   *buffer = (char *) malloc (PROXY_CONNECTION_REPLY_SIZE * sizeof (char));
   if (*buffer == NULL)
@@ -1135,8 +1168,10 @@ proxy_socket_io_new_client (SOCKET lsnr_fd)
   T_CLIENT_INFO *client_info_p;
   T_PROXY_EVENT *event_p;
   int proxy_status = 0;
+  int db_info_size;
+  T_BROKER_VERSION client_version;
 
-  client_fd = recv_fd (lsnr_fd, &client_ip);
+  client_fd = recv_fd (lsnr_fd, &client_ip, (int *) &client_version);
   if (client_fd < 0)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
@@ -1169,7 +1204,7 @@ proxy_socket_io_new_client (SOCKET lsnr_fd)
       return -1;
     }
 
-  cli_io_p = proxy_client_io_new (client_fd);
+  cli_io_p = proxy_client_io_new (client_fd, client_version);
   if (cli_io_p == NULL)
     {
       proxy_socket_io_delete (client_fd);
@@ -1187,11 +1222,13 @@ proxy_socket_io_new_client (SOCKET lsnr_fd)
   client_info_p->client_id = cli_io_p->client_id;
   client_info_p->client_ip = client_ip;
   client_info_p->connect_time = time (NULL);
+  client_info_p->client_version = cli_io_p->client_version;
 
   /* send client_conn_ok to the client */
-  event_p = proxy_event_new_with_rsp (PROXY_EVENT_IO_WRITE,
-				      PROXY_EVENT_FROM_CLIENT,
-				      proxy_io_make_client_conn_ok);
+  event_p =
+    proxy_event_new_with_rsp (cli_io_p->client_version, PROXY_EVENT_IO_WRITE,
+			      PROXY_EVENT_FROM_CLIENT,
+			      proxy_io_make_client_conn_ok);
   if (event_p == NULL)
     {
       proxy_socket_io_read_error (sock_io_p);
@@ -1226,18 +1263,21 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
   int error;
   int i;
   int length;
-  char *db_name, *db_user, *db_passwd;
+  char *db_name, *db_user, *db_passwd, *url, *db_sessionid;
   char *db_info_ok;
   struct timeval client_start_time;
   T_IO_BUFFER *read_buffer;
   T_SHARD_USER *user_p;
   T_PROXY_EVENT *event_p;
   unsigned char *ip_addr;
+  T_BROKER_VERSION client_version;
 
   ENTER_FUNC ();
 
   assert (sock_io_p);
   assert (sock_io_p->read_event);
+
+  client_version = proxy_client_io_version_find_by_fd (sock_io_p);
 
   gettimeofday (&client_start_time, NULL);
 
@@ -1256,6 +1296,19 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
 
   db_passwd = db_user + SRV_CON_DBUSER_SIZE;
   db_passwd[SRV_CON_DBPASSWD_SIZE - 1] = '\0';
+
+  if (client_version >= CAS_MAKE_VER (8, 2, 0))
+    {
+      url = db_passwd + SRV_CON_DBPASSWD_SIZE;
+      url[SRV_CON_URL_SIZE + 1] = '\0';
+    }
+
+  /* SHARD DO NOT SUPPORT SESSION */
+  if (client_version >= CAS_MAKE_VER (8, 4, 0))
+    {
+      db_sessionid = url + SRV_CON_URL_SIZE;
+      db_sessionid[SRV_CON_DBSESS_ID_SIZE - 1] = '\0';
+    }
 
   user_p = shard_metadata_get_shard_user (shm_user_p);
   assert (user_p);
@@ -1315,8 +1368,9 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
 	}
     }
 
+
   /* send dbinfo_ok to the client */
-  event_p = proxy_event_new_with_rsp (PROXY_EVENT_IO_WRITE,
+  event_p = proxy_event_new_with_rsp (client_version, PROXY_EVENT_IO_WRITE,
 				      PROXY_EVENT_FROM_CLIENT,
 				      proxy_io_make_client_dbinfo_ok);
   if (event_p == NULL)
@@ -2192,13 +2246,15 @@ proxy_socket_io_read_from_client_first (T_SOCKET_IO * sock_io_p)
 {
   int error;
   int length;
+  T_BROKER_VERSION client_version;
 
   assert (sock_io_p);
   assert (sock_io_p->read_event);
 
   if (sock_io_p->status == SOCK_IO_REG_WAIT)
     {
-      length = SRV_CON_DB_INFO_SIZE;
+      client_version = proxy_client_io_version_find_by_fd (sock_io_p);
+      length = get_dbinfo_length (client_version);
     }
   else
     {
@@ -2493,7 +2549,7 @@ proxy_str_client_io (T_CLIENT_IO * cli_io_p)
 }
 
 static T_CLIENT_IO *
-proxy_client_io_new (SOCKET fd)
+proxy_client_io_new (SOCKET fd, T_BROKER_VERSION client_version)
 {
   T_PROXY_CONTEXT *ctx_p;
   T_CLIENT_IO *cli_io_p = NULL;
@@ -2526,6 +2582,7 @@ proxy_client_io_new (SOCKET fd)
 
       cli_io_p->ctx_cid = ctx_p->cid;
       cli_io_p->ctx_uid = ctx_p->uid;
+      cli_io_p->client_version = client_version;
 
       ctx_p->client_id = cli_io_p->client_id;
 
@@ -2555,6 +2612,7 @@ proxy_client_io_free (T_CLIENT_IO * cli_io_p)
   cli_io_p->is_busy = false;
   cli_io_p->ctx_cid = PROXY_INVALID_CONTEXT;
   cli_io_p->ctx_uid = 0;
+  cli_io_p->client_version = 0;
 
   proxy_Client_io.cur_client--;
   if (proxy_Client_io.cur_client < 0)
@@ -2983,8 +3041,8 @@ proxy_cas_io_free (int shard_id, int cas_id)
 
   if (cas_io_p->is_in_tran == true)
     {
-      if (shard_shm_set_as_client_ip (proxy_info_p, shard_id, cas_id, 0) ==
-	  false)
+      if (shard_shm_set_as_client_info (proxy_info_p, shard_id, cas_id, 0, 0)
+	  == false)
 	{
 	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
 		     "Unable to find CAS info in shared memory. "
@@ -3068,7 +3126,8 @@ proxy_cas_io_free_by_ctx (int shard_id, int cas_id, int ctx_cid,
 						 cas_io_p->cas_id);
     }
 
-  if (shard_shm_set_as_client_ip (proxy_info_p, shard_id, cas_id, 0) == false)
+  if (shard_shm_set_as_client_info
+      (proxy_info_p, shard_id, cas_id, 0, 0) == false)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
 		 "Unable to find CAS info in shared memory. "
@@ -3171,7 +3230,7 @@ proxy_cas_alloc_by_ctx (int shard_id, int cas_id, int ctx_cid,
   int error;
   T_SHARD_IO *shard_io_p;
   T_CAS_IO *cas_io_p;
-  T_CLIENT_INFO *cilent_info_p;
+  T_CLIENT_INFO *client_info_p;
   unsigned int retry_count = 0;
 
   int i;
@@ -3338,16 +3397,18 @@ proxy_cas_alloc_by_ctx (int shard_id, int cas_id, int ctx_cid,
   assert (cas_io_p->ctx_uid == 0);
   assert (cas_io_p->fd != INVALID_SOCKET);
 
-  cilent_info_p = shard_shm_get_client_info (proxy_info_p, ctx_cid);
-  if (cilent_info_p == NULL)
+  client_info_p = shard_shm_get_client_info (proxy_info_p, ctx_cid);
+  if (client_info_p == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
 		 "Unable to find cilent info in shared memory. "
 		 "(context id:%d, context uid:%d)", ctx_cid, ctx_uid);
     }
-  else if (shard_shm_set_as_client_ip (proxy_info_p, cas_io_p->shard_id,
-				       cas_io_p->cas_id,
-				       cilent_info_p->client_ip) == false)
+  else if (shard_shm_set_as_client_info (proxy_info_p, cas_io_p->shard_id,
+					 cas_io_p->cas_id,
+					 client_info_p->client_ip,
+					 client_info_p->client_version) ==
+	   false)
     {
 
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
@@ -3431,7 +3492,8 @@ proxy_cas_release_by_ctx (int shard_id, int cas_id, int ctx_cid,
       return;
     }
 
-  if (shard_shm_set_as_client_ip (proxy_info_p, shard_id, cas_id, 0) == false)
+  if (shard_shm_set_as_client_info
+      (proxy_info_p, shard_id, cas_id, 0, 0) == false)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
 		 "Unable to find CAS info in shared memory. "
@@ -3903,4 +3965,48 @@ retry_select:
     }
 
   return 0;
+}
+
+T_BROKER_VERSION
+proxy_client_io_version_find_by_ctx (T_PROXY_CONTEXT * ctx_p)
+{
+  T_CLIENT_IO *cli_io_p;
+
+  assert (ctx_p);
+
+  if (ctx_p == NULL)
+    {
+      return CAS_PROTO_CURRENT_VER;
+    }
+
+  cli_io_p = proxy_client_io_find_by_ctx (ctx_p->client_id, ctx_p->cid,
+					  ctx_p->uid);
+  if (cli_io_p == NULL)
+    {
+      return CAS_PROTO_CURRENT_VER;
+    }
+
+  return cli_io_p->client_version;
+}
+
+T_BROKER_VERSION
+proxy_client_io_version_find_by_fd (T_SOCKET_IO * sock_io_p)
+{
+  T_CLIENT_IO *cli_io_p;
+
+  assert (sock_io_p);
+
+  if (sock_io_p == NULL)
+    {
+      return CAS_PROTO_CURRENT_VER;
+    }
+
+  cli_io_p =
+    proxy_client_io_find_by_fd (sock_io_p->id.client_id, sock_io_p->fd);
+  if (cli_io_p == NULL)
+    {
+      return CAS_PROTO_CURRENT_VER;
+    }
+
+  return cli_io_p->client_version;
 }

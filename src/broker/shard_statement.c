@@ -58,6 +58,9 @@ static char *shard_stmt_write_buf_to_sql (char *sql_stmt, const char *buf,
 					  int length, bool is_to_upper,
 					  char appl_server);
 
+static T_BROKER_VERSION shard_stmt_make_protocol_version (T_BROKER_VERSION
+							  client_version);
+
 T_SHARD_STMT_GLOBAL shard_Stmt;
 
 int shard_Stmt_max_num_alloc = SHARD_STMT_MAX_NUM_ALLOC;
@@ -198,16 +201,43 @@ shard_stmt_set_srv_h_id (T_SHARD_STMT * stmt_p, int shard_id, int cas_id,
   return 0;
 }
 
+static T_BROKER_VERSION
+shard_stmt_make_protocol_version (T_BROKER_VERSION client_version)
+{
+  /* protocol version used in only shard_Stmt->stmt_entry's client_version */
+  if (client_version < CAS_MAKE_VER (8, 3, 0))
+    {
+      /* old protocol */
+      return CAS_MAKE_VER (8, 2, 0);
+    }
+  else if (client_version < CAS_MAKE_VER (8, 4, 0))
+    {
+      /* error indicator protocol added */
+      return CAS_MAKE_VER (8, 3, 0);
+    }
+  else if (client_version <= CAS_PROTO_MAKE_VER (PROTOCOL_V1))
+    {
+      /* prepare result info added */
+      return CAS_PROTO_MAKE_VER (PROTOCOL_V1);
+    }
+  /* send columns meta-data with the result for executing */
+  /* PROTOCOL_V2 is current protocol version */
+  return CAS_PROTO_CURRENT_VER;
+}
+
 T_SHARD_STMT *
-shard_stmt_find_by_sql (char *sql_stmt)
+shard_stmt_find_by_sql (char *sql_stmt, T_BROKER_VERSION client_version)
 {
   T_SHARD_STMT *stmt_p = NULL;
+  T_BROKER_VERSION client_protocol_version;
   int i;
 
+  client_protocol_version = shard_stmt_make_protocol_version (client_version);
   for (i = 0; i < shard_Stmt.max_num_stmt; i++)
     {
       stmt_p = &(shard_Stmt.stmt_ent[i]);
       if (stmt_p->status == SHARD_STMT_STATUS_UNUSED
+	  || stmt_p->client_version != client_protocol_version
 	  || strcmp (sp_get_sql_stmt (stmt_p->parser), sql_stmt))
 	{
 	  continue;
@@ -361,7 +391,8 @@ shard_stmt_check_waiter_and_wakeup (T_SHARD_STMT * stmt_p)
 }
 
 T_SHARD_STMT *
-shard_stmt_new (char *sql_stmt, int ctx_cid, unsigned int ctx_uid)
+shard_stmt_new (char *sql_stmt, int ctx_cid, unsigned int ctx_uid,
+		T_BROKER_VERSION client_version)
 {
   int error;
   int i, num_cas;
@@ -370,7 +401,7 @@ shard_stmt_new (char *sql_stmt, int ctx_cid, unsigned int ctx_uid)
 
   assert (sql_stmt);
 
-  stmt_p = shard_stmt_find_by_sql (sql_stmt);
+  stmt_p = shard_stmt_find_by_sql (sql_stmt, client_version);
   if (stmt_p)
     {
       return stmt_p;
@@ -418,6 +449,9 @@ shard_stmt_new (char *sql_stmt, int ctx_cid, unsigned int ctx_uid)
 	(stmt_p->num_alloc * shard_Stmt.max_num_stmt) + stmt_p->index;
 
       stmt_p->status = SHARD_STMT_STATUS_IN_PROGRESS;
+
+      stmt_p->client_version =
+	shard_stmt_make_protocol_version (client_version);
 
       stmt_p->ctx_cid = ctx_cid;
       stmt_p->ctx_uid = ctx_uid;
@@ -537,6 +571,8 @@ shard_stmt_free (T_SHARD_STMT * stmt_p)
 
   stmt_p->stmt_h_id = SHARD_STMT_INVALID_HANDLE_ID;
   stmt_p->status = SHARD_STMT_STATUS_UNUSED;
+
+  stmt_p->client_version = 0;
 
   stmt_p->ctx_cid = PROXY_INVALID_CONTEXT;
   stmt_p->ctx_uid = 0;
@@ -905,6 +941,8 @@ shard_stmt_initialize (int initial_size)
       stmt_p->index = i;
       stmt_p->ctx_cid = PROXY_INVALID_CONTEXT;
       stmt_p->ctx_uid = 0;
+
+      stmt_p->client_version = 0;
 
       stmt_p->srv_h_id_ent = (int *) malloc (num_cas * sizeof (int));
       if (stmt_p->srv_h_id_ent == NULL)

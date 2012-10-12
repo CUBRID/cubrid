@@ -30,8 +30,6 @@
 #include "cas_net_buf.h"
 #include "shard_proxy_common.h"
 
-#define BIND_VALUE_INDEX	9
-
 typedef int (*T_PROXY_CLIENT_FUNC) (T_PROXY_CONTEXT * ctx_p,
 				    T_PROXY_EVENT * event_p, int argc,
 				    char **argv);
@@ -39,7 +37,8 @@ typedef int (*T_PROXY_CAS_FUNC) (T_PROXY_CONTEXT * ctx_p,
 				 T_PROXY_EVENT * event_p);
 
 extern int proxy_check_cas_error (char *read_msg);
-extern int proxy_get_cas_error_code (char *read_msg);
+extern int proxy_get_cas_error_code (char *read_msg,
+				     T_BROKER_VERSION client_version);
 
 
 /* process client request */

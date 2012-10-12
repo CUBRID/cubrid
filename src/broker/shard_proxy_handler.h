@@ -32,7 +32,8 @@
 #include "porting.h"
 #include "shard_proxy_common.h"
 
-typedef int (*T_PROXY_EVENT_FUNC) (char **buffer);
+typedef int (*T_PROXY_EVENT_FUNC) (T_BROKER_VERSION client_version,
+				   char **buffer);
 
 extern T_WAIT_CONTEXT *proxy_waiter_new (int ctx_cid, unsigned int ctx_uid);
 extern void proxy_waiter_free (T_WAIT_CONTEXT * waiter);
@@ -86,22 +87,25 @@ extern int proxy_wakeup_context_by_statement (T_WAIT_CONTEXT * waiter_p);
 extern T_PROXY_EVENT *proxy_event_new (unsigned int type, int from_cas);
 extern T_PROXY_EVENT *proxy_event_dup (T_PROXY_EVENT * event_p);
 extern
-  T_PROXY_EVENT *proxy_event_new_with_req (unsigned int type, int from,
+  T_PROXY_EVENT *proxy_event_new_with_req (T_BROKER_VERSION version,
+					   unsigned int type, int from,
 					   T_PROXY_EVENT_FUNC req_func);
-extern
-  T_PROXY_EVENT *proxy_event_new_with_rsp (unsigned int type, int from,
-					   T_PROXY_EVENT_FUNC resp_func);
-extern
-  T_PROXY_EVENT *proxy_event_new_with_error (unsigned int type, int from,
-					     int (*err_func) (char **buffer,
-							      int error_ind,
-							      int error_code,
-							      char *error_msg,
-							      char
-							      is_in_tran),
-					     int error_ind, int error_code,
-					     char *error_msg,
-					     char is_in_tran);
+extern T_PROXY_EVENT *proxy_event_new_with_rsp (T_BROKER_VERSION version,
+						unsigned int type, int from,
+						T_PROXY_EVENT_FUNC resp_func);
+extern T_PROXY_EVENT *proxy_event_new_with_error (T_BROKER_VERSION version,
+						  unsigned int type, int from,
+						  int (*err_func)
+						  (T_BROKER_VERSION version,
+						   char **buffer,
+						   int error_ind,
+						   int error_code,
+						   char *error_msg,
+						   char is_in_tran),
+						  int error_ind,
+						  int error_code,
+						  char *error_msg,
+						  char is_in_tran);
 
 extern int proxy_event_alloc_buffer (T_PROXY_EVENT * event_p,
 				     unsigned int size);

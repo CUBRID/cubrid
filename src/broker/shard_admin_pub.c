@@ -264,12 +264,12 @@ shard_broker_inactivate (T_BROKER_INFO * br_info_p)
 
   if (localtime_r (&cur_time, &ct) < 0)
     {
-      return -1;
+      return;
     }
 #else /* WINDOWS */
   if (localtime_r (&cur_time, &ct) == NULL)
     {
-      return -1;
+      return;
     }
 #endif /* !WINDOWS */
   ct.tm_year += 1900;

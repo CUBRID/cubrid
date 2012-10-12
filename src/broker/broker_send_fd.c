@@ -37,6 +37,7 @@
 #endif
 
 #include "broker_send_fd.h"
+#include "broker_send_recv_msg.h"
 
 #if defined(LINUX) || defined(ALPHA_LINUX) || defined(UNIXWARE7)
 #define CONTROLLEN (sizeof(struct cmsghdr) + sizeof(int))
@@ -45,7 +46,7 @@
 #define SYSV
 
 int
-send_fd (int server_fd, int client_fd, int rid)
+send_fd (int server_fd, int client_fd, int rid, int client_version)
 {
   struct iovec iov[1];
   struct msghdr msg;
@@ -53,10 +54,15 @@ send_fd (int server_fd, int client_fd, int rid)
 #if defined(LINUX) || defined(ALPHA_LINUX) || defined(UNIXWARE7)
   static struct cmsghdr *cmptr = NULL;
 #endif
+  struct sendmsg_s send_msg;
+
+  /* set send message */
+  send_msg.rid = rid;
+  send_msg.client_version = client_version;
 
   /* Pass the fd to the server */
-  iov[0].iov_base = (char *) &rid;
-  iov[0].iov_len = sizeof (int);
+  iov[0].iov_base = (char *) &send_msg;
+  iov[0].iov_len = sizeof (struct sendmsg_s);
   msg.msg_iov = iov;
   msg.msg_iovlen = 1;
   msg.msg_namelen = 0;

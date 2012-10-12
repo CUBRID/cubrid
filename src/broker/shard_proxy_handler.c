@@ -249,13 +249,16 @@ proxy_context_send_error (T_PROXY_CONTEXT * ctx_p)
   int error;
   char *error_msg = NULL;
   T_PROXY_EVENT *event_p;
+  T_BROKER_VERSION client_version;
 
   ENTER_FUNC ();
 
   assert (ctx_p->error_ind != CAS_NO_ERROR);
   assert (ctx_p->error_code != CAS_NO_ERROR);
 
-  event_p = proxy_event_new_with_error (PROXY_EVENT_IO_WRITE,
+  client_version = proxy_client_io_version_find_by_ctx (ctx_p);
+
+  event_p = proxy_event_new_with_error (client_version, PROXY_EVENT_IO_WRITE,
 					PROXY_EVENT_FROM_CLIENT,
 					proxy_io_make_error_msg,
 					ctx_p->error_ind, ctx_p->error_code,
@@ -332,10 +335,11 @@ proxy_handler_process_cas_response (T_PROXY_EVENT * event_p)
       EXIT_FUNC ();
       return;
     }
+
   client_info_p = shard_shm_get_client_info (proxy_info_p, ctx_p->client_id);
 
   error_ind = proxy_check_cas_error (response_p);
-  if (error_ind == CAS_ERROR_INDICATOR || error_ind == DBMS_ERROR_INDICATOR)
+  if (error_ind < 0)
     {
       error = proxy_handler_process_cas_error (event_p);
       if (error)
@@ -1592,8 +1596,8 @@ proxy_event_dup (T_PROXY_EVENT * event_p)
 }
 
 T_PROXY_EVENT *
-proxy_event_new_with_req (unsigned int type, int from,
-			  T_PROXY_EVENT_FUNC req_func)
+proxy_event_new_with_req (T_BROKER_VERSION client_version, unsigned int type,
+			  int from, T_PROXY_EVENT_FUNC req_func)
 {
   T_PROXY_EVENT *event_p;
   char *msg = NULL;
@@ -1605,7 +1609,7 @@ proxy_event_new_with_req (unsigned int type, int from,
       return NULL;
     }
 
-  length = req_func (&msg);
+  length = req_func (client_version, &msg);
   if (length <= 0)
     {
       proxy_event_free (event_p);
@@ -1618,22 +1622,20 @@ proxy_event_new_with_req (unsigned int type, int from,
 }
 
 T_PROXY_EVENT *
-proxy_event_new_with_rsp (unsigned int type, int from,
-			  T_PROXY_EVENT_FUNC resp_func)
+proxy_event_new_with_rsp (T_BROKER_VERSION client_version, unsigned int type,
+			  int from, T_PROXY_EVENT_FUNC resp_func)
 {
-  return proxy_event_new_with_req (type, from, resp_func);
+  return proxy_event_new_with_req (client_version, type, from, resp_func);
 }
 
 T_PROXY_EVENT *
-proxy_event_new_with_error (unsigned int type,
-			    int from,
-			    int (*err_func) (char **buffer,
-					     int error_ind,
-					     int error_code,
-					     char *error_msg,
-					     char is_in_tran),
-			    int error_ind, int error_code, char *error_msg,
-			    char is_in_tran)
+proxy_event_new_with_error (T_BROKER_VERSION client_version,
+			    unsigned int type, int from,
+			    int (*err_func) (T_BROKER_VERSION client_version,
+					     char **buffer, int error_ind,
+					     int error_code, char *error_msg,
+					     char is_in_tran), int error_ind,
+			    int error_code, char *error_msg, char is_in_tran)
 {
   T_PROXY_EVENT *event_p;
   char *msg = NULL;
@@ -1645,7 +1647,9 @@ proxy_event_new_with_error (unsigned int type,
       return NULL;
     }
 
-  length = err_func (&msg, error_ind, error_code, error_msg, is_in_tran);
+  length =
+    err_func (client_version, &msg, error_ind, error_code, error_msg,
+	      is_in_tran);
   if (length <= 0)
     {
       proxy_event_free (event_p);

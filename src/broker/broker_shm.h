@@ -291,6 +291,7 @@ struct t_client_info
   int client_id;		/* client id */
   int client_ip;		/* client ip address */
   time_t connect_time;		/* first connect time */
+  T_BROKER_VERSION client_version;	/* client protocol version */
 
   int func_code;		/* current request function code */
 

@@ -19,14 +19,18 @@
 
 
 /*
- * broker_send_fd.h - 
+ * broker_send_recv_msg.h - 
  */
 
-#ifndef _BROKER_SEND_FD_H_
-#define _BROKER_SEND_FD_H_
+#ifndef _BROKER_SEND_RECV_MSG_H_
+#define _BROKER_SEND_RECV_MSG_H_
 
 #ident "$Id$"
 
-extern int send_fd (int server_fd, int client_fd, int rid, int clt_version);
+struct sendmsg_s
+{
+  int rid;
+  int client_version;
+};
 
-#endif /* _BROKER_SEND_FD_H_ */
+#endif /* _BROKER_SEND_RECV_MSG_H_ */

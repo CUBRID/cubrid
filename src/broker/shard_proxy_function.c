@@ -59,14 +59,11 @@ static void proxy_update_shard_stats_without_hint (int shard_id);
 int
 proxy_check_cas_error (char *read_msg)
 {
-  /* Protocol Phase 1 */
-  /* INT : ERROR_INDICATOR(ERROR_INDICATOR_UNSET | CAS_ERROR_INDICATOR | DBMS_ERROR_INDICATOR) */
-  /* INT : ERROR_CODE */
-  /* */
-  /* Protocol Phase 2 : ERROR_STRING OR '\0' */
-  /* STRING : ERROR_MSG */
-
   char *data;
+
+  /* error_ind is ...  
+     old < R8.3.0 : err_no or svr_h_id 
+     R8.3.0 ~ current : error_indicator or srv_h_id */
   int error_ind;
 
   data = read_msg + MSG_HEADER_SIZE;
@@ -76,12 +73,19 @@ proxy_check_cas_error (char *read_msg)
 }
 
 int
-proxy_get_cas_error_code (char *read_msg)
+proxy_get_cas_error_code (char *read_msg, T_BROKER_VERSION client_version)
 {
   char *data;
   int error_code;
 
-  data = read_msg + MSG_HEADER_SIZE + sizeof (int) /* error indicator */ ;
+  if (client_version >= CAS_MAKE_VER (8, 3, 0))
+    {
+      data = read_msg + MSG_HEADER_SIZE + sizeof (int) /* error indicator */ ;
+    }
+  else
+    {
+      data = read_msg + MSG_HEADER_SIZE;
+    }
   error_code = (int) ntohl (*(int *) data);
 
   return error_code;
@@ -140,8 +144,11 @@ proxy_send_request_to_cas_with_new_event (T_PROXY_CONTEXT * ctx_p,
 {
   int error = 0;
   T_PROXY_EVENT *event_p = NULL;
+  T_BROKER_VERSION client_version;
 
-  event_p = proxy_event_new_with_req (type, from, req_func);
+  client_version = proxy_client_io_version_find_by_ctx (ctx_p);
+
+  event_p = proxy_event_new_with_req (client_version, type, from, req_func);
   if (event_p == NULL)
     {
       error = -1;
@@ -222,9 +229,12 @@ proxy_send_response_to_client_with_new_event (T_PROXY_CONTEXT * ctx_p,
 					      T_PROXY_EVENT_FUNC resp_func)
 {
   int error = 0;
+  T_BROKER_VERSION client_version;
   T_PROXY_EVENT *event_p = NULL;
 
-  event_p = proxy_event_new_with_rsp (type, from, resp_func);
+  client_version = proxy_client_io_version_find_by_ctx (ctx_p);
+
+  event_p = proxy_event_new_with_rsp (client_version, type, from, resp_func);
   if (event_p == NULL)
     {
       error = -1;
@@ -758,9 +768,12 @@ fn_proxy_client_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
   int shard_id;
   T_SHARD_KEY_RANGE *dummy_range_p = NULL;
 
+  T_BROKER_VERSION client_version;
+
   char *request_p;
 
   const char func_code = CAS_FC_PREPARE;
+
 
   ENTER_FUNC ();
 
@@ -844,7 +857,9 @@ fn_proxy_client_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 		   "(organized_sql_stmt:[%s]). context(%s).",
 		   organized_sql_stmt, proxy_str_context (ctx_p));
 
-  stmt_p = shard_stmt_find_by_sql (organized_sql_stmt);
+  client_version = proxy_client_io_version_find_by_ctx (ctx_p);
+
+  stmt_p = shard_stmt_find_by_sql (organized_sql_stmt, client_version);
   if (stmt_p)
     {
       switch (stmt_p->status)
@@ -919,7 +934,9 @@ fn_proxy_client_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
       goto free_context;
     }
 
-  stmt_p = shard_stmt_new (organized_sql_stmt, ctx_p->cid, ctx_p->uid);
+  stmt_p =
+    shard_stmt_new (organized_sql_stmt, ctx_p->cid, ctx_p->uid,
+		    client_version);
   if (stmt_p == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
@@ -1132,11 +1149,12 @@ fn_proxy_client_execute (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
   int cas_index, shard_id;
   int length;
   SP_HINT_TYPE hint_type;
-  const int bind_value_index = 9;
-  const int argc_mod_2 = 1;
+  int bind_value_index = 9;
+  int argc_mod_2;
   T_CAS_IO *cas_io_p;
   T_SHARD_STMT *stmt_p;
   T_SHARD_KEY_RANGE *range_p = NULL;
+  T_BROKER_VERSION client_version;
 
   T_PROXY_EVENT *new_event_p = NULL;
 
@@ -1158,6 +1176,14 @@ fn_proxy_client_execute (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 
       goto free_context;
     }
+
+  client_version = proxy_client_io_version_find_by_ctx (ctx_p);
+  if (client_version >= CAS_PROTO_MAKE_VER (PROTOCOL_V1))
+    {
+      bind_value_index++;
+    }
+
+  argc_mod_2 = bind_value_index % 2;
 
   if ((argc < bind_value_index) || (argc % 2 != argc_mod_2))
     {
@@ -1216,7 +1242,7 @@ fn_proxy_client_execute (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 	}
 
       shard_id =
-	proxy_get_shard_id (stmt_p, (void **) (argv + BIND_VALUE_INDEX),
+	proxy_get_shard_id (stmt_p, (void **) (argv + bind_value_index),
 			    &range_p);
 
       PROXY_LOG (PROXY_LOG_MODE_SHARD_DETAIL, "Select shard. "
@@ -1618,12 +1644,15 @@ fn_proxy_client_check_cas (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 {
   int error = 0;
   char *response_p;
+  T_BROKER_VERSION client_version;
   T_PROXY_EVENT *new_event_p = NULL;
 
   ENTER_FUNC ();
 
+  client_version = proxy_client_io_version_find_by_ctx (ctx_p);
   new_event_p =
-    proxy_event_new_with_rsp (PROXY_EVENT_IO_WRITE, PROXY_EVENT_FROM_CLIENT,
+    proxy_event_new_with_rsp (client_version, PROXY_EVENT_IO_WRITE,
+			      PROXY_EVENT_FROM_CLIENT,
 			      proxy_io_make_check_cas_ok);
   if (new_event_p == NULL)
     {
@@ -1687,6 +1716,7 @@ fn_proxy_client_con_close (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
   ctx_p->is_client_in_tran = false;
   ctx_p->free_on_client_io_write = true;
   ctx_p->dont_free_statement = false;
+
 
   if (ctx_p->is_in_tran)
     {
@@ -1755,6 +1785,9 @@ fn_proxy_client_get_db_version (T_PROXY_CONTEXT * ctx_p,
 
   if (argc < 1)
     {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Invalid argument. (argc:%d). context(%s).", argc,
+		 proxy_str_context (ctx_p));
       proxy_context_set_error (ctx_p, CAS_ERROR_INDICATOR, CAS_ER_ARGS);
 
       proxy_event_free (event_p);
@@ -1912,10 +1945,11 @@ fn_proxy_cas_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
   int length;
   char *prepare_reply;
 
-  T_CLIENT_IO *cli_io_p;
   T_SHARD_STMT *stmt_p;
 
   char *response_p;
+
+  T_BROKER_VERSION client_version;
 
   ENTER_FUNC ();
 
@@ -1934,9 +1968,10 @@ fn_proxy_cas_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
     }
 
   error_ind = proxy_check_cas_error (response_p);
-  if (error_ind == CAS_ERROR_INDICATOR || error_ind == DBMS_ERROR_INDICATOR)
+  if (error_ind < 0)
     {
-      error_code = proxy_get_cas_error_code (response_p);
+      client_version = proxy_client_io_version_find_by_ctx (ctx_p);
+      error_code = proxy_get_cas_error_code (response_p, client_version);
 
       PROXY_LOG (PROXY_LOG_MODE_NOTICE, "CAS response error. "
 		 "(error_ind:%d, error_code:%d). context(%s).",
@@ -2149,8 +2184,7 @@ fn_proxy_cas_execute (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
     }
 
   error_ind = proxy_check_cas_error (response_p);
-
-  if (error_ind == CAS_ERROR_INDICATOR || error_ind == DBMS_ERROR_INDICATOR)
+  if (error_ind < 0)
     {
       PROXY_LOG (PROXY_LOG_MODE_NOTICE,
 		 "CAS response error. (error_ind:%d). context(%s).",

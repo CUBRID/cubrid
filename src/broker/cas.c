@@ -334,7 +334,7 @@ main (int argc, char *argv[])
   SOCKET proxy_sock_fd = INVALID_SOCKET;
   char read_buf[1024];
   int err_code;
-  char *t, *db_sessionid;
+  char *t;
   char db_name[MAX_HA_DBNAME_LENGTH];
   char db_user[SRV_CON_DBUSER_SIZE];
   char db_passwd[SRV_CON_DBPASSWD_SIZE];
@@ -359,7 +359,6 @@ main (int argc, char *argv[])
   short proxy_ack_shard_id;
   short proxy_ack_cas_id;
 
-  char *url;
   struct timeval cas_start_time;
 
   char func_code = 0x01;
@@ -433,7 +432,7 @@ conn_retry:
   cas_error_log_open (broker_name, shm_as_index);
 #endif
 
-  /* TODO: SHARD support only 8.4.0 above */
+  /* This is a only use in proxy-cas internal message */
   req_info.client_version = CAS_PROTO_CURRENT_VER;
 
   set_cas_info_size ();
@@ -452,25 +451,11 @@ conn_retry:
   strncpy (db_passwd, shard_info_p->db_password, SRV_CON_DBPASSWD_SIZE - 1);
   db_passwd[SRV_CON_DBPASSWD_SIZE - 1] = '\0';
 
-  if (req_info.client_version >= CAS_MAKE_VER (8, 2, 0))
-    {
-      url = db_passwd + SRV_CON_DBPASSWD_SIZE;
-      url[SRV_CON_URL_SIZE - 1] = '\0';
-    }
-
-  if (req_info.client_version >= CAS_MAKE_VER (8, 4, 0))
-    {
-      db_sessionid = url + SRV_CON_URL_SIZE;
-      db_sessionid[SRV_CON_DBSESS_ID_SIZE - 1] = '\0';
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-      db_set_session_id (atol (db_sessionid));
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
-    }
+  /* SHARD DO NOT SUPPORT SESSION */
 
   cas_log_debug (ARG_FILE_LINE,
-		 "db_name %s db_user %s db_passwd %s url %s "
-		 "session id %s", db_name, db_user, db_passwd, url,
-		 db_sessionid);
+		 "db_name %s db_user %s db_passwd %s",
+		 db_name, db_user, db_passwd);
   if (as_info->reset_flag == TRUE)
     {
       cas_log_debug (ARG_FILE_LINE, "main: set reset_flag");
@@ -531,14 +516,7 @@ conn_proxy_retry:
       goto conn_proxy_retry;
     }
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-  session_id = db_get_session_id ();
-  cas_log_write_and_end (0, false, "connect db %s user %s url %s"
-			 " session id %u", db_name, db_user, url, session_id);
-#else
-  cas_log_write_and_end (0, false, "connect db %s user %s url %s",
-			 db_name, db_user, url);
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+  cas_log_write_and_end (0, false, "connect db %s user %s", db_name, db_user);
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   ux_set_default_setting ();
@@ -588,6 +566,7 @@ conn_proxy_retry:
 #if !defined(WINDOWS)
 	    signal (SIGUSR1, query_cancel);
 #endif /* !WINDOWS */
+
 	    fn_ret = process_request (proxy_sock_fd, &net_buf, &req_info);
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 	    cas_log_error_handler_clear ();
@@ -606,6 +585,8 @@ conn_proxy_retry:
 	      }
 #endif
 	  }
+	/* This is a only use in proxy-cas internal message */
+	req_info.client_version = CAS_PROTO_CURRENT_VER;
 
 	prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
 
@@ -711,6 +692,7 @@ main (int argc, char *argv[])
   };
   FN_RETURN fn_ret = FN_KEEP_CONN;
   char client_ip_str[16];
+  int do_not_use_client_version;
 
   prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
 
@@ -871,7 +853,8 @@ main (int argc, char *argv[])
 	    goto error1;
 	  }
 
-	client_sock_fd = recv_fd (br_sock_fd, &client_ip_addr);
+	client_sock_fd =
+	  recv_fd (br_sock_fd, &client_ip_addr, &do_not_use_client_version);
 	if (client_sock_fd == -1)
 	  {
 	    cas_log_write_and_end (0, false, "HANDSHAKE ERROR recv_fd %d",
@@ -1436,6 +1419,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 #endif
 
 #if defined(CUBRID_SHARD)
+  /* set req_info->client_version in net_read_process */
   err_code = net_read_process (sock_fd, &client_msg_header, req_info);
   if (err_code < 0)
     {
@@ -1965,6 +1949,9 @@ net_read_process (SOCKET proxy_sock_fd,
 	  cas_log_write_client_ip (as_info->cas_clt_ip);
 	  as_info->con_status = CON_STATUS_IN_TRAN;
 	  errors_in_transaction = 0;
+
+	  /* This is a real client protocol version */
+	  req_info->client_version = as_info->clt_version;
 	}
     }
 

@@ -286,6 +286,7 @@ net_buf_cp_lob_handle (T_NET_BUF * net_buf, T_LOB_HANDLE * lob)
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 
+/* shard_proxy dose not use this function */
 void
 net_buf_error_msg_set (T_NET_BUF * net_buf, int err_indicator,
 		       int err_code, char *err_str, const char *file,
@@ -299,19 +300,20 @@ net_buf_error_msg_set (T_NET_BUF * net_buf, int err_indicator,
 #endif /* !LIBCAS_FOR_JSP */
 
   net_buf_clear (net_buf);
-#if defined(CUBRID_SHARD)	/* TODO SHARD : client library version setting */
-  net_buf_cp_int (net_buf, err_indicator, NULL);
-#else
 #ifndef LIBCAS_FOR_JSP
+#if defined(CAS_CUBRID) || defined(CAS_FOR_MYSQL) || defined(CAS_FOR_ORACLE)
   ver = as_info->clt_version;
   if (ver >= CAS_MAKE_VER (8, 3, 0))
     {
       net_buf_cp_int (net_buf, err_indicator, NULL);
     }
+#else /* CAS_CUBRID || CAS_FOR_MYSQL || CAS_FOR_ORACLE */
+  /* shard_proxy do not use net_buf_error_msg_set. it is dummy code. */
+  net_buf_cp_int (net_buf, err_indicator, NULL);
+#endif /* FOR SHARD_PROXY */
 #else /* !LIBCAS_FOR_JSP */
   net_buf_cp_int (net_buf, err_indicator, NULL);
 #endif /* !LIBCAS_FOR_JSP */
-#endif /* !CUBRID_SHARD */
   net_buf_cp_int (net_buf, err_code, NULL);
 
 #ifdef CAS_DEBUG
