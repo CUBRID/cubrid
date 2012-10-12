@@ -1050,6 +1050,7 @@ cubrid_st_lob_get( SV *sth, int col )
     T_CCI_U_TYPE u_type;
 
     D_imp_sth (sth);
+    imp_sth->lob = NULL;
 
     if (col < 1 || col > DBIc_NUM_FIELDS (imp_sth)) {
         handle_error (sth, CCI_ER_COLUMN_INDEX, NULL);
@@ -1135,7 +1136,7 @@ cubrid_st_lob_export( SV *sth, int index, char *filename )
 
     D_imp_sth (sth);
 
-    if (imp_sth->lob[index-1].lob == NULL) {
+    if ( imp_sth->lob == NULL || imp_sth->lob[index-1].lob == NULL) {
         handle_error (sth, CCI_ER_INVALID_LOB_HANDLE, NULL);
         return FALSE;
     }
