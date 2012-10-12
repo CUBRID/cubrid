@@ -1370,22 +1370,17 @@ parser_yyinput_single_line (char *buff, int max_size)
 		  return i;
 		}
 
-	      if (c == '\\')	/* if escape character */
+	      if (c == '\\'
+		  && (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) == false))
 		{
-		  buff[i++] = c;
-		  if (i >= max_size)
-		    {
-		      return i;
-		    }
-
-		  c = pt_nextchar ();	/* read one more */
+		  /* if escape character */
+		  c = pt_nextchar (); /* read one more */
 		  buff[i++] = c;
 		  if (i >= max_size)
 		    {
 		      return i;
 		    }
 		}
-
 	    }
 	  while (c != -1);
 	}
