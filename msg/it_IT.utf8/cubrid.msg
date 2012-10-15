@@ -67,13 +67,13 @@ $set 4 MSGCAT_SET_PARAMETER
 $set 5 MSGCAT_SET_ERROR
 1 Messaggio mancante per il codice di errore %1$d.
 2 Guasto interno del sistema: nessuna informazione più specifiche è disponibile.
-3 Memoria virtuale esaurita: Impossibile allocare %1$ld byte di memoria.
+3 Memoria virtuale esaurita: Impossibile allocare %1$lld byte di memoria.
 4 è stato interrotto.
 5 Chiave = "%1$s" non è stato trovato in tabella hash "%2$s".
 6 Una tabella di memoria hash è stato fornito a una funzione della tabella hash.
 7 Cercando di formattare il volume del disco "%1$s" con una %2$d valore non corretto per il numero di pagine.
-8 Impossibile formattare il volume del disco "%1$s" con %2$d pagine (%3$ld byte).
-9 Impossibile formattare il volume del disco "%1$s" con %2$d pagine (%3$ld Kbytes) a causa di spazio insufficiente. Lo spazio attuale disponibile è %4$d pagine (%5$ld Kbytes).
+8 Impossibile formattare il volume del disco "%1$s" con %2$d pagine (%3$lld byte).
+9 Impossibile formattare il volume del disco "%1$s" con %2$d pagine (%3$lld Kbytes) a causa di spazio insufficiente. Lo spazio attuale disponibile è %4$d pagine (%5$lld Kbytes).
 10 Impossibile montare il volume del disco "%1$s".
 11 Impossibile montare il volume del disco "%1$s". La database "%2$s", a cui appartiene il volume del disco, è in uso da utente %3$s su processo %4$d dell'host %5$s dal %6$s.
 12 Problemi smontaggio del volume "%1$s".
@@ -451,7 +451,7 @@ $set 5 MSGCAT_SET_ERROR
 384 Impossibile determinare il percorso assoluto per "%1$s".
 385 processo ld terminato con il codice %1$d.
 386 processo ld terminato a causa di segnale %1$d.
-387 processo ld terminato con waitval sconosciuto 0x%1$lx.
+387 processo ld terminato con waitval sconosciuto 0x%1$x.
 388 Impossibile accedere immagine iniziale per "%1$s".
 389 Errore di sistema: %1$s.
 390 Problemi con "%1$s": %2$s.
@@ -753,7 +753,7 @@ $ LOADDB
 685 Classe "%1$s" non è valido.
 686 Notifica: il Event Manager è stato riavviato.
 687 Non permette di lanciare (%s *) a (%s *).
-688 Indice fuori intervallo. Tentativo di accedere all'elemento %ld. Dimensione dell'insieme : %ld.
+688 Indice fuori intervallo. Tentativo di accedere all'elemento %lld. Dimensione dell'insieme : %lld.
 689 Errore interno. Iterator contiene lo stato corrotto.
 690 Tentativo di dereferenziare un'istanza non inizializzata odb_Ref <>.
 691 Tentativo di utilizzare un iteratore non valido.
@@ -773,7 +773,7 @@ $ LOADDB
 705 %1$d volumi permanenti inconsistenti sono stati trovati quando %2$d erano attesi.
 706 Non è possibile espandere i volumi permanenti. volume permanente "%1$s" con scopo %2$s è stato dato.
 707 Impossibile espandere volume temporaneo "%1$s" con %2$d pagine
-708 Impossibile espandere volume temporaneo del disco "%1$s" con %2$d pagine (%3$ld Kbytes) a causa di spazio insufficiente. Lo spazio attuale disponibile è %4$d pagine (%5$ld Kbytes).
+708 Impossibile espandere volume temporaneo del disco "%1$s" con %2$d pagine (%3$lld Kbytes) a causa di spazio insufficiente. Lo spazio attuale disponibile è %4$d pagine (%5$lld Kbytes).
 709 Vincolo "%1$s" non trovato.
 710 Vincolo non valido.
 711 Un oggetto con il valore dell'attributo fornito non esiste.
@@ -1087,7 +1087,7 @@ $ LOADDB
 1019 Storage esterno non è inizializzato perché il percorso non è specificato nel "databases.txt".
 1020 File esterno "%s" non è stato trovato.
 1021 Un ciclo di deadlock viene rilevato. %1$s.
-1022 Valore "%ld" non valido per lunghezza del prefisso dell'index.
+1022 Valore "%d" non valido per lunghezza del prefisso dell'index.
 1023 Codice di errore riservato per HA.
 1024 Codice di errore riservato per HA.
 1025 Codice di errore riservato per HA.
@@ -1203,7 +1203,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 3 si prega di controlare la correttezza del token '%s'.
 4 'read uncommitted schema' non è accettabile, usando\n 'read committed schema' al posto.
 5 Massima lunghezza della stringa di caratteri è 16383.
-6 %s supera il limite di %ld.
+6 %s supera il limite di %lld.
 7 La lunghezza massima della stringa di bit è %d.
 8 Non è possibile utilizzare una sottoquery nella condizione di clausola JOIN.
 9 Non è possibile specificare l'attributo "(%s)" nella clausola di aggiornamento dei privilegi dell'instruzione grant/revoke.
@@ -1594,7 +1594,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 9          REPEATABLE READ SCHEMA, REPEATABLE READ INSTANCES.\n
 10 Un query non-aggiornabile non è permesso nel una chiamata db_query_execute_oid.
 11 Transazione scaduto in attesa per i blocchi.
-12 Tentativo di accesso variabile host con indice %ld in cui solo\n%ld variabili host di input sono stati dati.
+12 Tentativo di accesso variabile host con indice %d in cui solo\n%d variabili host di input sono stati dati.
 13 Conversione non implementata.
 14 Errore interno, conversione non definito.
 15 '%s' produce alcun risultato.
@@ -1769,7 +1769,7 @@ $set 15 MSGCAT_SET_IO
 8               Tempo de backup: %s\
   Numero dell'unità di backup: %d\n
 9         Nome di volume del DB: %s\n\
-     Identificatore di volume: %d, Size: %ld bytes (%d pages)\n
+     Identificatore di volume: %d, Size: %lld bytes (%d pages)\n
 10             Nome del Database: %s\n\
               Nome del volume: %s\n\
             Numero dell'unità: %d\n\

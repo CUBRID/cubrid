@@ -2742,25 +2742,12 @@ er_study_spec (const char *conversion_spec, char *simple_spec,
   /*
    * And then for modifier flags...
    */
-  if (*q == 'l' || *q == 'L')
+  if (*q == 'l' && *(q + 1) == 'l')
     {
-      /*
-       * Keep this modifier as the class; we'll always use 'long int'
-       * (or 'long double') as the carrier type for any conversion code
-       * prefixed by an 'l' (or 'L').
-       */
-      if (*q == 'l' && *(q + 1) == 'l')
-	{
-	  /* long long type */
-	  class_ = SPEC_CODE_LONGLONG;
-	  *p++ = *q++;
-	  *p++ = *q++;
-	}
-      else
-	{
-	  class_ = *q;
-	  *p++ = *q++;
-	}
+      /* long long type */
+      class_ = SPEC_CODE_LONGLONG;
+      *p++ = *q++;
+      *p++ = *q++;
     }
   else if (*q == 'h')
     {
@@ -2953,11 +2940,6 @@ er_estimate_size (ER_FMT * fmt, va_list * ap)
 	{
 	case 'i':
 	  (void) va_arg (args, int);
-	  n = MAX_INT_WIDTH;
-	  break;
-
-	case 'l':
-	  (void) va_arg (args, long int);
 	  n = MAX_INT_WIDTH;
 	  break;
 
@@ -3452,9 +3434,6 @@ er_vsprintf (ER_FMT * fmt, va_list * ap)
 	case 'i':
 	  er_Msg->args[i].int_value = va_arg (args, int);
 	  break;
-	case 'l':
-	  er_Msg->args[i].long_value = va_arg (args, int);
-	  break;
 	case SPEC_CODE_LONGLONG:
 	  er_Msg->args[i].longlong_value = va_arg (args, long long);
 	  break;
@@ -3543,9 +3522,6 @@ er_vsprintf (ER_FMT * fmt, va_list * ap)
 	{
 	case 'i':
 	  sprintf (s, fmt->spec[n].spec, er_Msg->args[n].int_value);
-	  break;
-	case 'l':
-	  sprintf (s, fmt->spec[n].spec, er_Msg->args[n].long_value);
 	  break;
 	case SPEC_CODE_LONGLONG:
 	  sprintf (s, fmt->spec[n].spec, er_Msg->args[n].longlong_value);

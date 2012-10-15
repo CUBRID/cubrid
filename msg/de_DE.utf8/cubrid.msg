@@ -67,13 +67,13 @@ $set 4 MSGCAT_SET_PARAMETER
 $set 5 MSGCAT_SET_ERROR
 1 Fehlende Nachricht für Fehlercode %1$d.
 2 Interner Systemfehler: keine mehr spezifischen Informationen zur Verfügung.
-3 Virtueller Speicher Fehler: kann %1$ld Speicherbytes nicht zuzuordnen.
+3 Virtueller Speicher Fehler: kann %1$lld Speicherbytes nicht zuzuordnen.
 4 Wurde unterbrochen.
 5 Schlüssel = "%1$s" wurde in die Hash-Tabelle "%2$s" nicht gefunden.
 6 Eine NULL-Speicher Hash-Tabelle wurde zugeführt zu einer Hash-Tabelle-Funktion.
 7 Es wird versucht den Datenträger "%1$s" mit einem falschen Wert %2$d für die Seitenanzahl zu formatieren.
-8 Kann den Datenträger "%1$s" mit %2$d Seiten (%3$ld Bytes) nicht formatieren.
-9 Kann den Datenträger "%1$s" mit %2$d Seiten (%3$ld Kbytes) wegen ungenügend Speicher nicht formatieren. Aktuell vorhandener Speicher ist %4$d Seiten (%5$ld Kbytes).
+8 Kann den Datenträger "%1$s" mit %2$d Seiten (%3$lld Bytes) nicht formatieren.
+9 Kann den Datenträger "%1$s" mit %2$d Seiten (%3$lld Kbytes) wegen ungenügend Speicher nicht formatieren. Aktuell vorhandener Speicher ist %4$d Seiten (%5$lld Kbytes).
 10 Kann den Datenträger "%1$s" nicht mounten.
 11 Kann den Datenträger "%1$s" nicht mounten. Die Datenbank "%2$s", an die der Datenträger gehört, wird vom Benutzer %3$s im Prozess %4$d auf Host %5$s seit %6$s benutzt.
 12 Fehler beim Unmounten des Datenträgers "%1$s".
@@ -451,7 +451,7 @@ $set 5 MSGCAT_SET_ERROR
 384 Absoluter Pfad für "%1$s" konnte nicht bestimmt werden.
 385 ld-Prozes ist mit Code %1$d beendet.
 386 ld-Prozes ist wegen Signal %1$d beendet.
-387 ld-Prozes ist mit unbekanntem waitval 0x%1$lx beendet.
+387 ld-Prozes ist mit unbekanntem waitval 0x%1$x beendet.
 388 Initialbild für "%1$s" kann nicht zugegriffen werden.
 389 Systemfehler: %1$s.
 390 Problem mit "%1$s": %2$s.
@@ -753,7 +753,7 @@ $ LOADDB
 685 Klasse "%1$s" ist ungültig.
 686 Benachrichtigung: Der Event-Handler wurde neu gestartet.
 687 Es ist nicht erlaubt (%s *) ins (%s *) umzuwandeln.
-688 Subscript außer zulässigem Bereich. Es wurde versucht, das Element %ld zuzugreifen. Kollektionsgröße = %ld.
+688 Subscript außer zulässigem Bereich. Es wurde versucht, das Element %lld zuzugreifen. Kollektionsgröße = %lld.
 689 Interner Fehler. Iterator enthält einen fehlerhaften Zustand.
 690 Die Dereferenzierung einer nicht initialisierten Instanz von odb_Ref<> wurde versucht.
 691 Es wurde versucht, einen ungültigen Iterator zu verwenden.
@@ -773,7 +773,7 @@ $ LOADDB
 705 Inkonsistente %1$d permanente Datenträger gefunden, %2$d erwartet.
 706 Permanente Datenträger können nicht erweitert werden. Permanenter Datenträger "%1$s" mit dem Zweck %2$s wurde angegeben.
 707 Temporärer Datenträger "%1$s" kann mit %2$d Seiten nicht erweitert werden.
-708 Temporärer Datenträger "%1$s" kann mit %2$d Seiten (%3$ld Kbytes) wegen Speichermangel nicht erweitert werden. Aktuell verfügbare Speicher ist %4$d Seiten (%5$ld Kbytes).
+708 Temporärer Datenträger "%1$s" kann mit %2$d Seiten (%3$lld Kbytes) wegen Speichermangel nicht erweitert werden. Aktuell verfügbare Speicher ist %4$d Seiten (%5$lld Kbytes).
 709 Einschränkung "%1$s" nicht gefunden.
 710 Ungültige Einschränkung.
 711 Ein Objekt mit dem angegebenen Attributwert existiert nicht.
@@ -1087,7 +1087,7 @@ $ LOADDB
 1019 Externer Speicher ist nicht initialisiert, weil der Pfad nicht in "databases.txt" angegeben ist.
 1020 Externe Datei "%s" nicht gefunden.
 1021 Ein Deadlock-Zyklus erkannt. %1$s.
-1022 Ungültiger Wert "%ld" für Präfixlänge des Indexes.
+1022 Ungültiger Wert "%d" für Präfixlänge des Indexes.
 1023 Reservierter Fehlercode für HA.
 1024 Reservierter Fehlercode für HA.
 1025 Reservierter Fehlercode für HA.
@@ -1203,7 +1203,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 3 Überprüfen Sie bitte die Richtigkeit des Tokens '%s'.
 4 'read uncommitted schema' ist nicht akzeptabel, \n'read committed schema' wird anstatt benutzt.
 5 Maximale Länge der Zeichenstrings ist 16383.
-6 %s überschreitet den Grenzwert %ld.
+6 %s überschreitet den Grenzwert %lld.
 7 Maximale Länge der Bitstrings ist %d Bits.
 8 Eie Subanfrage darf in einem Join-Bedingung-Klausel nicht angewendet werden.
 9 Attribut "(%s)" kann in Update-Privileg-Klausel der grant/revoke Anweisung nicht spezifiziert werden.
@@ -1594,7 +1594,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 9          REPEATABLE READ SCHEMA, REPEATABLE READ INSTANCES.\n
 10 Eine nicht aktualisierbare Anfrage ist in einem db_Anfrage_execute_oid Aufruf nicht erlaubt.
 11 Transaktion Timeout beim Warten auf Sperren.
-12 Es wurde versucht, die Hostvariable mit Index %ld zuzugreifen, wenn nurr %ld \nInput Hostvariablen angegeben worden sind.
+12 Es wurde versucht, die Hostvariable mit Index %d zuzugreifen, wenn nurr %d \nInput Hostvariablen angegeben worden sind.
 13 Nicht implementierte Umwandlung.
 14 Interner Fehler, undefinierte Umwandlung.
 15 '%s' liefert keine Ergebnisse.
@@ -1769,7 +1769,7 @@ $set 15 MSGCAT_SET_IO
 8      Sicherung Zeit: %s\
   SicherungsUnit Num: %d\n
 9  Datenbank Datenträgername: %s\n\
-   Datenträger-Identifikator: %d, Größe: %ld Bytes (%d Seiten)\n
+   Datenträger-Identifikator: %d, Größe: %lld Bytes (%d Seiten)\n
 10   Datenbankname: %s\n\
      Datenträgername: %s\n\
         Unit Num: %d\n\

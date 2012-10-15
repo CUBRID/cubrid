@@ -121,8 +121,7 @@ typedef union er_va_arg ER_VA_ARG;
 union er_va_arg
 {
   int int_value;		/* holders for the values that we actually */
-  int long_value;		/* retrieve from the va_list. */
-  void *pointer_value;
+  void *pointer_value;		/* retrieve from the va_list. */
   double double_value;
   long double longdouble_value;
   const char *string_value;

@@ -67,13 +67,13 @@ $set 4 MSGCAT_SET_PARAMETER
 $set 5 MSGCAT_SET_ERROR
 1 Hata kodu %1$d eksik mesaj.
 2 Dahili sistem hatası: daha fazla ayrıntılı bilgi mevcut bulunmamaktadır.
-3 Sanal bellek harici: %1$ld bayt bellek ayıramadı.
+3 Sanal bellek harici: %1$lld bayt bellek ayıramadı.
 4 Kesildi.
 5 Anahtar = "%1$s" karma tablosu "%2$s" bulunamadı.
 6 NULL bellek karma tablo bir karma tablo işlevi sağlanmıştır.
 7 Sayfa sayısı için yanlış bir değer %2$d ile disk birimi "%1$s" biçimlendirmek için çalışıyorum.
-8 Formatında disk birimi için açılamıyor "%1$s" %2$d sayfaları (%3$ld bayt).
-9 Yeterli boş alan formatta disk birimi için açılamıyor "%1$s" %2$d sayfaları (%3$ld Kbyte). Kullanılabilir alanı %4$d sayfa (%5$ld Kbyte) olduğunu.
+8 Formatında disk birimi için açılamıyor "%1$s" %2$d sayfaları (%3$lld bayt).
+9 Yeterli boş alan formatta disk birimi için açılamıyor "%1$s" %2$d sayfaları (%3$lld Kbyte). Kullanılabilir alanı %4$d sayfa (%5$lld Kbyte) olduğunu.
 10 Disk birimi "%1$s" monte etmeye uygun değil.
 11 Disk birimi "%1$s" monte etmeye uygun değil. Veritabanı "%2$s", hangi disk birimi ait, %6$s yılından bu yana ev sahibi %5$s süreci %4$d kullanıcı %3$s tarafından kullanılıyor.
 12 Problem sökme değeri "%1$s".
@@ -451,7 +451,7 @@ $set 5 MSGCAT_SET_ERROR
 384 "%1$s" için mutlak yol belirlenemiyor.
 385 ld işlem %1$d kodu ile çıkıldı.
 386 ld süreci %1$d sinyal nedeniyle çıkıldı.
-387 ld süreci bilinmeyen 0x%1$lx waitval ile çıkıldı.
+387 ld süreci bilinmeyen 0x%1$x waitval ile çıkıldı.
 388 "%1$s" için ilk görüntü erişilemiyor.
 389 Sistem hatası: %1$s.
 390 "%1$s" ile sorun : %2$s.
@@ -753,7 +753,7 @@ $ LOADDB
 685 Sınıf "%1$s" geçersiz.
 686 Bildirim: olay işleyici olarak başlangıç durumuna getirilir.
 687 (%s *) için (%s *) atama için izin bulunmamakta.
-688 Aralık dışında. öğesine %ld erişmek için deneyin. Toplama boyut = %ld.
+688 Aralık dışında. öğesine %lld erişmek için deneyin. Toplama boyut = %lld.
 689 Dahili hata. Yineleyici bozulmuş durum içerir.
 690 Çözümlenmiş başlangıç değeri olmayan odb_Ref<> bir örneğini çalışıldı.
 691 Geçersiz bir yineleyici kullanmaya çalışıldı.
@@ -773,7 +773,7 @@ $ LOADDB
 705 Tutarsız %1$d daimi yoğunlukları %2$d beklenen edildiğinde bulundu.
 706 Daimi yoğunlukların arttırılamaz. Daimi yoğunluk amacı ile "%1$s" %2$s  verildi.
 707 "%1$s" ile %2$d sayfaları geçici yoğunluk genişletmek için açılamıyor.
-708 Geçici disk birimi genişletmek için açılamıyor "%1$s" ile %2$d sayfaları (%3$ld Kbytes) yeterli boş alan. Şu kullanılabilir alanı %4$d sayfaları ise (%5$ld Kbytes).
+708 Geçici disk birimi genişletmek için açılamıyor "%1$s" ile %2$d sayfaları (%3$lld Kbytes) yeterli boş alan. Şu kullanılabilir alanı %4$d sayfaları ise (%5$lld Kbytes).
 709 Kısıtlama "%1$s" bulunamadı.
 710 Geçersiz kısıt.
 711 Verilen öznitelik değeri olan bir nesne bulunmamaktadır.
@@ -1087,7 +1087,7 @@ $ LOADDB
 1019 Path "databases.txt" belirlenen olmadığı için harici veri depolama başlatılmaz.
 1020 Harici dosya "%s" bulunamadı.
 1021 Bir deadlock döngüsü algılandı. %1$s.
-1022 İndeksin önek uzunluğu için geçersiz değer "%ld".
+1022 İndeksin önek uzunluğu için geçersiz değer "%d".
 1023 HA hata kodu saklıdır.
 1024 HA hata kodu saklıdır.
 1025 HA hata kodu saklıdır.
@@ -1203,7 +1203,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 3 Lütfen '%s' belirteç doğruluğunu kontrol edin.
 4 'kaydedilmemiş şema okuma' kabul edilemez, kullanarak \n'kaydedilmemiş şema okuma' yerine.
 5 Maksimum karakter dize uzunluğu 16383.
-6 %s, %ld sınırını aşarsa .
+6 %s, %lld sınırını aşarsa .
 7 En fazla bit dize uzunluğu %d bits.
 8 Join koşulu yan tümcesinde bir alt sorgu kullanamazsınız.
 9 Güncelleştirme ayrıcalığı maddesinin öznitelik "(%s)" belirlemek durumu grant/revoke edemezsiniz.
@@ -1594,7 +1594,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 9          REPEATABLE READ SCHEMA, REPEATABLE READ INSTANCES.\n
 10 Güncellenebilir-olmayan sorgusu db_query_execute_oid çağrısı izin verilmemektedir.
 11 İşlem kilitleri beklerken zaman aşımına uğradı.
-12 Sadece %ld \n giriş ana bilgisayar değişkenleri verildiğinde indeks %ld sahip ana bilgisayar değişkenine erişilmeye çalışıldı.
+12 Sadece %d \n giriş ana bilgisayar değişkenleri verildiğinde indeks %d sahip ana bilgisayar değişkenine erişilmeye çalışıldı.
 13 Dönüştürme gerçekleşmemiş.
 14 Dahili hata, tanımsız dönüştürme.
 15 '%s' yields uygun sonuç bulunamad.
@@ -1769,7 +1769,7 @@ $set 15 MSGCAT_SET_IO
 8          Yedekleme Zamanı: %s\
   Yedekleme Birimi Numarası: %d\n
 9   Veritabanı Yoğunluk Adı: %s\n\
-       Yoğunluk Tanımlayıcı: %d, Boyut: %ld bytes (%d Sayfalar)\n
+       Yoğunluk Tanımlayıcı: %d, Boyut: %lld bytes (%d Sayfalar)\n
 10           Veritabanı Adı: %s\n\
                Yoğunluk Adı: %s\n\
                   Birim Adı: %d\n\

@@ -67,13 +67,13 @@ $set 4 MSGCAT_SET_PARAMETER
 $set 5 MSGCAT_SET_ERROR
 1 Faltando mensaje para el codigo de error %1$d.
 2 Fallo del sistema interno: no hay más información específica disponible.
-3 Sin memoria virtual: no se pueden asignar %1$ld bytes de memoria.
+3 Sin memoria virtual: no se pueden asignar %1$lld bytes de memoria.
 4 Ha sido interrumpido.
 5 Clave = "%1$s" no ha sido encontrada en la tabla hash "%2$s".
 6 Una tabla hash de memoria NULL fue suministrada a una función de tabla hash.
 7 Tratando de formatear el volumen de disco "%1$s" con un valor incorrecto %2$d para el numero de paginas.
-8 No se puede formatear el volumen de disco "%1$s" con %2$d paginas (%3$ld bytes).
-9 No se puede formatear el volumen de disco "%1$s" con %2$d paginas (%3$ld Kbytes) debido a la falta de espacio. Espacio actual disponible es %4$d pages (%5$ld Kbytes).
+8 No se puede formatear el volumen de disco "%1$s" con %2$d paginas (%3$lld bytes).
+9 No se puede formatear el volumen de disco "%1$s" con %2$d paginas (%3$lld Kbytes) debido a la falta de espacio. Espacio actual disponible es %4$d pages (%5$lld Kbytes).
 10 No se puede montar el volumen de disco "%1$s".
 11 No se puede montar el volumen de disco "%1$s". La base de datos "%2$s", a la que pertenece el volumen de disco, está en uso por el usuario %3$s en el proceso %4$d del host %5$s desde %6$s.
 12 Problemas al desmontar el volumen "%1$s".
@@ -451,7 +451,7 @@ $set 5 MSGCAT_SET_ERROR
 384 No se puede determinar ruta absoluta para "%1$s".
 385 Proceso ld salio con el codigo %1$d.
 386 Proceso ld salio debido a la senal %1$d.
-387 Proceso ld salio con waitval 0x%1$lx desconocida.
+387 Proceso ld salio con waitval 0x%1$x desconocida.
 388 No se puede accesar la imagen inicial para "%1$s".
 389 Error de sistema: %1$s.
 390 Problema con "%1$s": %2$s.
@@ -753,7 +753,7 @@ $ LOADDB
 685 Clase "%1$s" no es valida.
 686 Notificacion: el handler de eventos ha sido reinicializado.
 687 No permitido emitir (%s *) a (%s *).
-688 Subindice fuera de rango. Intente accesar elemento %ld. Tamaño de la colección = %ld.
+688 Subindice fuera de rango. Intente accesar elemento %lld. Tamaño de la colección = %lld.
 689 Error interno. Iterator contiene estado corrupto.
 690 Intente desreferenciar una instancia no inicializada del odb_Ref<>.
 691 Intente utilizar un interator no valido.
@@ -773,7 +773,7 @@ $ LOADDB
 705 %1$d volumenes permanentes inconsistentes han sido encontrados cuando %2$d se esperaban.
 706 No se pueden expandar volumenes permanentes. Volumen permanente "%1$s" con proposito %2$s ha sido dado.
 707 Incapaz de expandar volumen temporal "%1$s" con %2$d paginas
-708 Incapaz de expandar volumen de disco temporal "%1$s" con %2$d paginas (%3$ld Kbytes) debido a la falta de espacio. Espacio disponible actual es %4$d pages (%5$ld Kbytes).
+708 Incapaz de expandar volumen de disco temporal "%1$s" con %2$d paginas (%3$lld Kbytes) debido a la falta de espacio. Espacio disponible actual es %4$d pages (%5$lld Kbytes).
 709 Restriccion "%1$s" no econtrada.
 710 Restriccion no valida.
 711 Un objeto con el valor de atributo suministrado no existe.
@@ -1087,7 +1087,7 @@ $ LOADDB
 1019 Almacenamiento externo no es incializado porque la ruta no es especificada en "databases.txt".
 1020 Archivo externo "%s" no fue encontrado.
 1021 Un ciclo de deadlock es detectado. %1$s.
-1022 Valor "%ld" no valido para la longitud de prefijo del indice.
+1022 Valor "%d" no valido para la longitud de prefijo del indice.
 1023 Error de codigo reservado para HA.
 1024 Error de codigo reservado para HA.
 1025 Error de codigo reservado para HA.
@@ -1203,7 +1203,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 3 Por favor verifique correctitud del token '%s'.
 4 'leer esquema no cometida" no es acceptable, utilizando \n'leer esquema cometida' en vez.
 5 Longitud maxima del string de caracteres es 16383.
-6 %s excede limite de %ld.
+6 %s excede limite de %lld.
 7 Longitud maxima del string de bits es %d bits.
 8 No se puede utilizar una subconsulta en la clausula condición de unión.
 9 No se puede especificar atributo "(%s)" en la clausula actualiza privilegio de la declaracion grant/revoke.
@@ -1594,7 +1594,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 9          REPEATABLE READ SCHEMA, REPEATABLE READ INSTANCES.\n
 10 Una consulta no actualizable no es permitida en una llamada db_query_execute_oid.
 11 Transaccion ha expiro esperando bloqueos.
-12 Intentado accesar variable de host con indice %ld cuando solamente %ld \nvariables de host de entrada fueron dadas.
+12 Intentado accesar variable de host con indice %d cuando solamente %d \nvariables de host de entrada fueron dadas.
 13 Conversacion no implementada.
 14 Error interno, conversion no definida.
 15 '%s' no produce resultados.
@@ -1769,7 +1769,7 @@ $set 15 MSGCAT_SET_IO
 8     Tiempo de respaldo: %s\
 	Numero de unidad de respaldo: %d\n
 9  Nombre de volumen de base de datos: %s\n\
-   Identificador de volumen: %d, Tamano: %ld bytes (%d paginas)\n
+   Identificador de volumen: %d, Tamano: %lld bytes (%d paginas)\n
 10 Nombre de base de datos: %s\n\
 		Nombre de volumen: %s\n\
 		Numero de unidad: %d\n\

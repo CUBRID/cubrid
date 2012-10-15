@@ -67,13 +67,13 @@ $set 4 MSGCAT_SET_PARAMETER
 $set 5 MSGCAT_SET_ERROR
 1 Thiếu thông báo cho mã lỗi %1$d.
 2 Lỗi hệ thống nội tại: không có thêm thông tin cụ thể nào.
-3 Không đủ bộ nhớ ảo: không thể cấp phát %1$ld byte của bộ nhớ.
+3 Không đủ bộ nhớ ảo: không thể cấp phát %1$lld byte của bộ nhớ.
 4 Đã bị ngắt.
 5 Key = "%1$s" không được tìm thấy trong bảng hash "%2$s".
 6 Một bảng hash bộ nhớ NULL được cung cấp đến hàm bảng hash.
 7 Cố gắng để định dạng dung lượng đĩa "%1$s" với một giá trị %2$d không chính xác cho số trang.
-8 Không thể định dạng dung lượng đĩa "%1$s" với %2$d trang (%3$ld bytes).
-9 Không thể định dạng dung lượng đĩa "%1$s" với %2$d trang (%3$ld Kbytes) bởi vì không đủ không gian. Không gian có thể dùng hiện tại là %4$d trang (%5$ld Kbytes).
+8 Không thể định dạng dung lượng đĩa "%1$s" với %2$d trang (%3$lld bytes).
+9 Không thể định dạng dung lượng đĩa "%1$s" với %2$d trang (%3$lld Kbytes) bởi vì không đủ không gian. Không gian có thể dùng hiện tại là %4$d trang (%5$lld Kbytes).
 10 Không thể gắn kết dung lượng đĩa "%1$s".
 11 Không thể gắn kết dung lượng đĩa "%1$s". Cơ sở dữ liệu "%2$s", mà dung lượng đĩa thuộc về, đang được sử dụng bởi người dùng %3$s trong tiến trình %4$d của máy chủ %5$s từ %6$s.
 12 Vấn đề khi gỡ gắn kết dung lượng "%1$s".
@@ -451,7 +451,7 @@ $set 5 MSGCAT_SET_ERROR
 384 Không thể xác định đường dẫn tuyệt đối cho "%1$s".
 385 Quá trình ld đã thoát với mã %1$d.
 386 Quá trình ld đã thoát vì tín hiệu %1$d.
-387 Quá trình ld đã thoát với waitval 0x%1$lx không rõ.
+387 Quá trình ld đã thoát với waitval 0x%1$x không rõ.
 388 Không thể truy cập hình ảnh ban đầu cho "%1$s".
 389 Lỗi hệ thống: %1$s.
 390 Vấn đề với "%1$s": %2$s.
@@ -753,7 +753,7 @@ $ LOADDB
 685 Lớp "%1$s" không hợp lệ.
 686 Thông báo: bộ xử lý sự kiện đã được khởi động lại.
 687 Không cho phép ném (%s *) đến to (%s *).
-688 Chỉ số dưới nằm ngoài phạm vi. Cố gắng truy cập phần tử %ld. Kích cỡ bộ sưu tập = %ld.
+688 Chỉ số dưới nằm ngoài phạm vi. Cố gắng truy cập phần tử %lld. Kích cỡ bộ sưu tập = %lld.
 689 Lỗi nội bộ. Iterator chứa trạng thái hỏng.
 690 Cố gắng để bỏ tham chiếu một thực thể chưa được khởi tạo của odb_Ref<>.
 691 Cố gắng để dùng một iterator không hợp lệ.
@@ -773,7 +773,7 @@ $ LOADDB
 705 Bộ đĩa thường trực %1$d không đồng nhất được tìm thấy khi %2$d được mong đợi.
 706 Không thể mở rộng bộ đĩa thường trực. Bộ đĩa thường trực "%1$s" với mục đích %2$s đã được đưa ra.
 707 Không thể mở rộng bộ đĩa tạm thời "%1$s" với %2$d trang
-708 Không thể mở rộng bộ đĩa đĩa tạm thời "%1$s" với %2$d trang (%3$ld Kbytes) vì không đủ không gian. Số trang hiện tại có thể dùng là %4$d trang (%5$ld Kbytes).
+708 Không thể mở rộng bộ đĩa đĩa tạm thời "%1$s" với %2$d trang (%3$lld Kbytes) vì không đủ không gian. Số trang hiện tại có thể dùng là %4$d trang (%5$lld Kbytes).
 709 Không tìm thấy ràng buộc "%1$s".
 710 Ràng buộc không hợp lệ.
 711 Một đối tượng với giá trị thuộc tính đã cung cấp không tồn tại.
@@ -1087,7 +1087,7 @@ $ LOADDB
 1019 Kho lưu trữ bên ngoài không được khởi tạo bởi vì đường dẫn chưa được chỉ định trong "databases.txt".
 1020 Không tìm thấy tệp tin bên ngoài "%s".
 1021 Vòng khóa chết được phát hiện. %1$s.
-1022 Giá trị "%ld" không hợp lệ cho prefix length của chỉ mục.
+1022 Giá trị "%d" không hợp lệ cho prefix length của chỉ mục.
 1023 Mã lỗi bảo lưu cho HA.
 1024 Mã lỗi bảo lưu cho HA.
 1025 Mã lỗi bảo lưu cho HA.
@@ -1203,7 +1203,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 3 xin vui lòng kiểm tra tính chính xác của mã thông báo '%s'.
 4 'read uncommitted schema' không thể chấp nhận, dùng \n'read committed schema' để thay thế.
 5 Độ dài chuỗi ký tự char tối đa là 16383.
-6 %s vượt quá giới hạn của %ld.
+6 %s vượt quá giới hạn của %lld.
 7 Độ dài chuỗi bit tối đa là %d bits.
 8 Không thể dùng truy vấn con trong mệnh đề điều kiện gia nhập.
 9 Không thể chỉ định thuộc tính "(%s)" trong mệnh đề đặc quyền update của câu lệnh grant/revoke.
@@ -1594,7 +1594,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 9          REPEATABLE READ SCHEMA, REPEATABLE READ INSTANCES.\n
 10 Một truy vấn không thể cập nhật không được cho phép trong một gọi về a db_query_execute_oid.
 11 Giao dịch tạm ngưng chờ cho khóa.
-12 Tìm cách truy cập biến số máy chủ có chỉ mục %ld trong khi chỉ %ld \ncác biến số máy chủ đầu vào được đưa ra.
+12 Tìm cách truy cập biến số máy chủ có chỉ mục %d trong khi chỉ %d \ncác biến số máy chủ đầu vào được đưa ra.
 13 Chuyển đổi chưa được thực hiện.
 14 Lỗi nội bộ, chuyển đổi chưa được định nghĩa.
 15 '%s' không sinh ra kết quả nào.
@@ -1769,7 +1769,7 @@ $set 15 MSGCAT_SET_IO
 8      Backup Time: %s\
   Backup Unit Num: %d\n
 9  Database Volume name: %s\n\
-   Volume Identifier: %d, Size: %ld bytes (%d pages)\n
+   Volume Identifier: %d, Size: %lld bytes (%d pages)\n
 10   Database Name: %s\n\
      Volume Name: %s\n\
         Unit Num: %d\n\

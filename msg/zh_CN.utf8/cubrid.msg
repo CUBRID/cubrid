@@ -67,13 +67,13 @@ $set 4 MSGCAT_SET_PARAMETER
 $set 5 MSGCAT_SET_ERROR
 1 错误代码 %1$d 缺少对应的错误信息.
 2 内部系统失败: 缺少更多的具体信息.
-3 虚拟内存耗尽: 无法申请 %1$ld 字节的内存.
+3 虚拟内存耗尽: 无法申请 %1$lld 字节的内存.
 4 已被中断.
 5 键 = "%1$s" 在哈希表 "%2$s" 中没有被找到.
 6 一个指向NULL内存的哈希表被提供给了哈希函数.
 7 试图用一个不正确的页数值 %2$d 格式化磁盘卷 "%1$s".
-8 无法用 %2$d 页(%3$ld 字节)格式化磁盘卷 "%1$s".
-9 因为空间不够无法用 %2$d 页 (%3$ld 千字节)格式化磁盘卷 "%1$s". 当前的可用空间是 %4$d 页 (%5$ld 千字节).
+8 无法用 %2$d 页(%3$lld 字节)格式化磁盘卷 "%1$s".
+9 因为空间不够无法用 %2$d 页 (%3$lld 千字节)格式化磁盘卷 "%1$s". 当前的可用空间是 %4$d 页 (%5$lld 千字节).
 10 无法加载磁盘卷 "%1$s".
 11 无法加载磁盘卷 "%1$s". 磁盘卷所属的数据库 "%2$s" 正在被用户 %3$s 通过在主机 %5$s 上的进程 %4$d 所使用, 从 %6$s 开始.
 12 卸载卷 "%1$s" 时出现问题.
@@ -451,7 +451,7 @@ $set 5 MSGCAT_SET_ERROR
 384 无法确定 "%1$s" 的绝对路径.
 385 ld 进程以返回值 %1$d 退出.
 386 ld 进程由于信号 %1$d 而退出.
-387 ld 以未知的 waitval 0x%1$lx 退出.
+387 ld 以未知的 waitval 0x%1$x 退出.
 388 无法访问 "%1$s" 初始镜像.
 389 系统错误: %1$s.
 390 "%1$s" 出现问题: %2$s.
@@ -753,7 +753,7 @@ $ LOADDB
 685 类 "%1$s" 是无效的.
 686 通知: 事件处理程序已经重启.
 687 不允许转换 (%s *) 到 (%s *).
-688 下标超出范围. 尝试访问元素 %ld. Collection 大小 = %ld.
+688 下标超出范围. 尝试访问元素 %lld. Collection 大小 = %lld.
 689 内部错误. 迭代器包含已损坏的状态.
 690 尝试对一个未初始化的odb_Ref<>的实例解除引用.
 691 尝试使用一个无效的迭代器.
@@ -773,7 +773,7 @@ $ LOADDB
 705 不一致的 %1$d 固定卷被找到当期望为 %2$d 时.
 706 无法扩展卷固定卷. 用于 %2$s 的固定卷 "%1$s" 被给定.
 707 无法以 %2$d 页 来扩展临时卷 "%1$s".
-708 由于空间不够无法以 %2$d 页 (%3$ld Kbytes)扩展临时磁盘卷"%1$s" . 当前可用的空间是 %4$d 页 (%5$ld Kbytes).
+708 由于空间不够无法以 %2$d 页 (%3$lld Kbytes)扩展临时磁盘卷"%1$s" . 当前可用的空间是 %4$d 页 (%5$lld Kbytes).
 709 约束 "%1$s" 没有找到.
 710 无效的约束.
 711 拥有此属性的对象是不存在的.
@@ -1087,7 +1087,7 @@ $ LOADDB
 1019 外部存储未被初始化 因为路径没有被指定在 "databases.txt" 文件中.
 1020 外部文件 "%s" 没有被找到.
 1021 一个死锁环路被检测到. %1$s.
-1022 索引的前缀长度值 "%ld" 是非法的.
+1022 索引的前缀长度值 "%d" 是非法的.
 1023 HA的保留错误代码.
 1024 HA的保留错误代码.
 1025 HA的保留错误代码.
@@ -1203,7 +1203,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 3 请检测符号 '%s' 的正确性.
 4 'read uncommitted schema' 是不可接受的, 使用 \n'read committed schema' 来代替.
 5 最大字符串长度是 16383.
-6 %s 超过了限制 %ld.
+6 %s 超过了限制 %lld.
 7 最大比特字符串长度是 %d 比特.
 8 无法在join的条件语句中使用子查询.
 9 无法指定属性 "(%s)" 在更新grant/revoke的私有分句.
@@ -1594,7 +1594,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 9          REPEATABLE READ SCHEMA, REPEATABLE READ INSTANCES.\n
 10 一个不可更新的查询不允许在 db_query_execute_oid 中被调用.
 11 事务等待锁超时.
-12 尝试以index %ld 访问host variable当只有 %ld 输入host variable被给定时.
+12 尝试以index %d 访问host variable当只有 %d 输入host variable被给定时.
 13 未实现的转换.
 14 内部错误, 未定义的转换.
 15 '%s' 没有生成结果.
@@ -1769,7 +1769,7 @@ $set 15 MSGCAT_SET_IO
 8      Backup Time: %s\
   Backup Unit Num: %d\n
 9  Database Volume name: %s\n\
-   Volume Identifier: %d, Size: %ld bytes (%d pages)\n
+   Volume Identifier: %d, Size: %lld bytes (%d pages)\n
 10   Database Name: %s\n\
      Volume Name: %s\n\
         Unit Num: %d\n\
