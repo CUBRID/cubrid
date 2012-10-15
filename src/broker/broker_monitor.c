@@ -1103,11 +1103,7 @@ appl_monitor (char *br_vector)
 		}
 	      print_newline ();
 
-	      if (shm_appl->keep_connection == KEEP_CON_OFF)
-		{
-		  str_out (" KEEP_CONNECTION:%s", "OFF");
-		}
-	      else if (shm_appl->keep_connection == KEEP_CON_ON)
+	      if (shm_appl->keep_connection == KEEP_CON_ON)
 		{
 		  str_out (" KEEP_CONNECTION:%s", "ON");
 		}

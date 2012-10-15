@@ -513,9 +513,6 @@ br_info_copy (T_CM_BROKER_INFO * dest_info, T_BR_INFO * src_info)
     case KEEP_CON_ON:
       dest_info->keep_connection = strdup ("ON");
       break;
-    case KEEP_CON_OFF:
-      dest_info->keep_connection = strdup ("OFF");
-      break;
     }
   switch (src_info->sql_log_mode)
     {

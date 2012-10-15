@@ -114,7 +114,6 @@ static T_CONF_TABLE tbl_sql_log_mode[] = {
 
 static T_CONF_TABLE tbl_keep_connection[] = {
   {"ON", KEEP_CON_ON},
-  {"OFF", KEEP_CON_OFF},
   {"AUTO", KEEP_CON_AUTO},
   {NULL, 0}
 };

@@ -98,7 +98,7 @@ typedef enum
 
 #define BROKER_INFO_SIZE			8
 #define BROKER_INFO_DBMS_TYPE                   0
-#define BROKER_INFO_KEEP_CONNECTION             1
+#define BROKER_INFO_RESERVED4                   1
 #define BROKER_INFO_STATEMENT_POOLING           2
 #define BROKER_INFO_CCI_PCONNECT                3
 #define BROKER_INFO_PROTO_VERSION               4
@@ -114,8 +114,6 @@ typedef enum
 #define CAS_PID_SIZE                            4
 #define SESSION_ID_SIZE                         4
 #define CAS_CONNECTION_REPLY_SIZE               (CAS_PID_SIZE + BROKER_INFO_SIZE + SESSION_ID_SIZE)
-#define CAS_KEEP_CONNECTION_OFF			0
-#define CAS_KEEP_CONNECTION_ON			1
 
 #define CAS_GET_QUERY_INFO_PLAN			1
 

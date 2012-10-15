@@ -791,16 +791,6 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode,
       goto prepare_error;
     }
 
-#ifndef LIBCAS_FOR_JSP
-  if ((flag & CCI_PREPARE_HOLDABLE)
-      && (as_info->cur_keep_con == KEEP_CON_OFF))
-    {
-      err_code = ERROR_INFO_SET (CAS_ER_HOLDABLE_NOT_ALLOWED_KEEP_CON_OFF,
-				 CAS_ERROR_INDICATOR);
-      goto prepare_error;
-    }
-#endif
-
   srv_h_id = hm_new_srv_handle (&srv_handle, query_seq_num);
   if (srv_h_id < 0)
     {

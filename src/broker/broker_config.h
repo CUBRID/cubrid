@@ -112,7 +112,6 @@ enum t_slow_log_value
 typedef enum t_keep_con_value T_KEEP_CON_VALUE;
 enum t_keep_con_value
 {
-  KEEP_CON_OFF = 0,
   KEEP_CON_ON = 1,
   KEEP_CON_AUTO = 2,
   KEEP_CON_DEFAULT = KEEP_CON_AUTO

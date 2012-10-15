@@ -4892,9 +4892,6 @@ cci_get_err_msg_internal (int err_code)
     case CAS_ER_HOLDABLE_NOT_ALLOWED:
       return "Holdable results may not be updatable or sensitive";
 
-    case CAS_ER_HOLDABLE_NOT_ALLOWED_KEEP_CON_OFF:
-      return "Holdable results are not allowed while KEEP_CONNECTION is off";
-
     case CAS_ER_IS:
       return "Not used";
 

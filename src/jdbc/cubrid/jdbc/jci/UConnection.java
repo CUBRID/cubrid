@@ -117,13 +117,16 @@ public class UConnection {
 
 	private final static int BROKER_INFO_SIZE = 8;
 	private final static int BROKER_INFO_DBMS_TYPE = 0;
-	private final static int BROKER_INFO_KEEP_CONNECTION = 1;
+	@SuppressWarnings("unused")
+	private final static int BROKER_INFO_RESERVED4 = 1;
 	private final static int BROKER_INFO_STATEMENT_POOLING = 2;
 	@SuppressWarnings("unused")
 	private final static int BROKER_INFO_CCI_PCONNECT = 3;
 	private final static int BROKER_INFO_PROTO_VERSION = 4;
 	private final static int BROKER_INFO_RESERVED1 = 5;
 	private final static int BROKER_INFO_RESERVED2 = 6;
+	@SuppressWarnings("unused")
+	private final static int BROKER_INFO_RESERVED3 = 7;
 	/* For backward compatibility */
 	private final static int BROKER_INFO_MAJOR_VERSION = BROKER_INFO_PROTO_VERSION;
 	private final static int BROKER_INFO_MINOR_VERSION = BROKER_INFO_RESERVED1;
@@ -533,7 +536,7 @@ public class UConnection {
 		 * errorHandler.clear();
 		 */
 
-		boolean keepConnection = brokerInfoKeepConnection();
+		boolean keepConnection = true;
 		long currentTime = System.currentTimeMillis() / 1000;
 		int reconnectTime = connectionProperties.getReconnectTime();
 		if (connectedHostId > 0 && lastFailureTime != 0 && reconnectTime > 0
@@ -1630,17 +1633,6 @@ public class UConnection {
 			// failed to connect to neither hosts
 			throw createJciException(UErrorCode.ER_CONNECTION);
 		}
-	}
-
-	// jci 3.0
-	private boolean brokerInfoKeepConnection() {
-		if (broker_info == null)
-			return false;
-
-		if (broker_info[BROKER_INFO_KEEP_CONNECTION] == (byte) 1)
-			return true;
-		else
-			return false;
 	}
 
 	private int makeBrokerVersion(int major, int minor, int patch) {

@@ -116,10 +116,8 @@
           const char *_macro_tmp_ptr;						\
           if ((VALUE) == KEEP_CON_AUTO)					\
             _macro_tmp_ptr = "AUTO";					\
-          else if ((VALUE) == KEEP_CON_ON)				\
-            _macro_tmp_ptr = "ON";					\
           else								\
-            _macro_tmp_ptr = "OFF";					\
+            _macro_tmp_ptr = "ON";					\
 	  SET_CONF_ITEM(CONF_ITEM, IDX, NAME, strdup(_macro_tmp_ptr));	\
         } while (0)
 

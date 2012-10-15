@@ -789,7 +789,6 @@ proxy_io_make_client_dbinfo_ok (T_BROKER_VERSION client_version,
   broker_info[BROKER_INFO_MAJOR_VERSION] = MAJOR_VERSION;
   broker_info[BROKER_INFO_MINOR_VERSION] = MINOR_VERSION;
   broker_info[BROKER_INFO_PATCH_VERSION] = PATCH_VERSION;
-  broker_info[BROKER_INFO_KEEP_CONNECTION] = CAS_KEEP_CONNECTION_ON;
   if (shm_as_p->statement_pooling)
     {
       broker_info[BROKER_INFO_STATEMENT_POOLING] = CAS_STATEMENT_POOLING_ON;

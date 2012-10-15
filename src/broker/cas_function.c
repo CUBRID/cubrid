@@ -232,40 +232,36 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   tran_timeout = 0;
   query_timeout = 0;
 
-  if (as_info->cur_keep_con != KEEP_CON_OFF)
+  assert (as_info->con_status == CON_STATUS_IN_TRAN);
+  as_info->con_status = CON_STATUS_OUT_TRAN;
+  as_info->transaction_start_time = (time_t) 0;
+  if (as_info->cas_log_reset)
     {
-      assert (as_info->con_status == CON_STATUS_IN_TRAN);
-      as_info->con_status = CON_STATUS_OUT_TRAN;
-      as_info->transaction_start_time = (time_t) 0;
-      if (as_info->cas_log_reset)
-	{
-	  cas_log_reset (broker_name, shm_as_index);
-	}
-      if (as_info->cas_slow_log_reset)
-	{
-	  cas_slow_log_reset (broker_name, shm_as_index);
-	}
-      if (shm_appl->sql_log2 != as_info->cur_sql_log2)
-	{
-	  sql_log2_end (false);
-	  as_info->cur_sql_log2 = shm_appl->sql_log2;
-	  sql_log2_init (broker_name, shm_as_index, as_info->cur_sql_log2,
-			 true);
-	}
-
-      if (!ux_is_database_connected () || as_info->reset_flag == TRUE)
-	{
-	  cas_log_debug (ARG_FILE_LINE,
-			 "fn_end_tran: !ux_is_database_connected() || reset_flag");
-	  return FN_CLOSE_CONN;
-	}
-      else if (restart_is_needed ())
-	{
-	  cas_log_debug (ARG_FILE_LINE, "fn_end_tran: restart_is_needed()");
-	  return FN_KEEP_SESS;
-	}
-      return FN_KEEP_CONN;
+      cas_log_reset (broker_name, shm_as_index);
     }
+  if (as_info->cas_slow_log_reset)
+    {
+      cas_slow_log_reset (broker_name, shm_as_index);
+    }
+  if (shm_appl->sql_log2 != as_info->cur_sql_log2)
+    {
+      sql_log2_end (false);
+      as_info->cur_sql_log2 = shm_appl->sql_log2;
+      sql_log2_init (broker_name, shm_as_index, as_info->cur_sql_log2, true);
+    }
+
+  if (!ux_is_database_connected () || as_info->reset_flag == TRUE)
+    {
+      cas_log_debug (ARG_FILE_LINE,
+		     "fn_end_tran: !ux_is_database_connected() || reset_flag");
+      return FN_CLOSE_CONN;
+    }
+  else if (restart_is_needed ())
+    {
+      cas_log_debug (ARG_FILE_LINE, "fn_end_tran: restart_is_needed()");
+      return FN_KEEP_SESS;
+    }
+  return FN_KEEP_CONN;
 #endif /* !LIBCAS_FOR_JSP */
 
   return FN_CLOSE_CONN;

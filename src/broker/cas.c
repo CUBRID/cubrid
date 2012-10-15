@@ -408,7 +408,7 @@ main (int argc, char *argv[])
 
   as_info->service_ready_flag = TRUE;
   as_info->con_status = CON_STATUS_IN_TRAN;
-  as_info->cur_keep_con = KEEP_CON_OFF;
+  as_info->cur_keep_con = KEEP_CON_DEFAULT;
   errors_in_transaction = 0;
 #if !defined(WINDOWS)
   psize_at_start = as_info->psize = getsize (getpid ());
@@ -782,7 +782,7 @@ main (int argc, char *argv[])
   as_info->con_status = CON_STATUS_IN_TRAN;
   cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_ACTIVE;
   as_info->transaction_start_time = time (0);
-  as_info->cur_keep_con = KEEP_CON_OFF;
+  as_info->cur_keep_con = KEEP_CON_DEFAULT;
   query_cancel_flag = 0;
   errors_in_transaction = 0;
 #if !defined(WINDOWS)
@@ -1059,9 +1059,7 @@ main (int argc, char *argv[])
 				   cas_default_isolation_level,
 				   cas_default_lock_timeout);
 
-	    as_info->cur_keep_con = KEEP_CON_OFF;
-	    broker_info[BROKER_INFO_KEEP_CONNECTION] =
-	      CAS_KEEP_CONNECTION_OFF;
+	    as_info->cur_keep_con = KEEP_CON_DEFAULT;
 
 	    if (shm_appl->statement_pooling)
 	      {
@@ -1090,11 +1088,6 @@ main (int argc, char *argv[])
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 		as_info->cur_keep_con = shm_appl->keep_connection;
-		if (as_info->cur_keep_con != KEEP_CON_OFF)
-		  {
-		    broker_info[BROKER_INFO_KEEP_CONNECTION] =
-		      CAS_KEEP_CONNECTION_ON;
-		  }
 
 		net_write_int (client_sock_fd, CAS_CONNECTION_REPLY_SIZE);
 
@@ -1565,9 +1558,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 #ifndef LIBCAS_FOR_JSP
   con_status_to_restore = -1;
 
-  if (FUNC_NEEDS_RESTORING_CON_STATUS (func_code)
-      && (as_info->cur_keep_con == KEEP_CON_AUTO
-	  || as_info->cur_keep_con == KEEP_CON_ON))
+  if (FUNC_NEEDS_RESTORING_CON_STATUS (func_code))
     {
       con_status_to_restore = (con_status_before_check_cas != -1) ?
 	con_status_before_check_cas : old_con_status;
@@ -1651,7 +1642,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	{
 	  fn_ret = FN_CLOSE_CONN;
 	}
-      else if (as_info->cur_keep_con != KEEP_CON_OFF)
+      else
 	{
 	  if (as_info->cas_log_reset)
 	    {

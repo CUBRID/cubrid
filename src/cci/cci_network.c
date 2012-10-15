@@ -673,14 +673,6 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
       *msg_size = *(recv_msg_header.msg_body_size_ptr);
     }
 
-  if (con_handle->cas_info[CAS_INFO_STATUS] == CAS_INFO_STATUS_INACTIVE
-      && con_handle->broker_info[BROKER_INFO_KEEP_CONNECTION] ==
-      CAS_KEEP_CONNECTION_OFF)
-    {
-      CLOSE_SOCKET (con_handle->sock_fd);
-      con_handle->sock_fd = INVALID_SOCKET;
-    }
-
   return result_code;
 
 error_return:

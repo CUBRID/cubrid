@@ -2341,28 +2341,22 @@ ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   tran_timeout = 0;
   query_timeout = 0;
 
-  if (as_info->cur_keep_con != KEEP_CON_OFF)
+  if (as_info->cas_log_reset)
     {
-      if (as_info->cas_log_reset)
-	{
-	  cas_log_reset (broker_name, shm_as_index);
-	}
-      if (!ux_is_database_connected () || restart_is_needed ())
-	{
-	  return -1;
-	}
-
-      if (shm_appl->sql_log2 != as_info->cur_sql_log2)
-	{
-	  sql_log2_end (false);
-	  as_info->cur_sql_log2 = shm_appl->sql_log2;
-	  sql_log2_init (broker_name, shm_as_index, as_info->cur_sql_log2,
-			 true);
-	}
-      return 0;
+      cas_log_reset (broker_name, shm_as_index);
+    }
+  if (!ux_is_database_connected () || restart_is_needed ())
+    {
+      return -1;
     }
 
-  return -1;
+  if (shm_appl->sql_log2 != as_info->cur_sql_log2)
+    {
+      sql_log2_end (false);
+      as_info->cur_sql_log2 = shm_appl->sql_log2;
+      sql_log2_init (broker_name, shm_as_index, as_info->cur_sql_log2, true);
+    }
+  return 0;
 }
 
 int

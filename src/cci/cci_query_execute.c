@@ -323,8 +323,7 @@ qe_end_tran (T_CON_HANDLE * con_handle, char type, T_CCI_ERROR * err_buf)
 	}
     }
 
-  keep_connection = (con_handle->broker_info[BROKER_INFO_KEEP_CONNECTION]
-		     == CAS_KEEP_CONNECTION_ON);
+  keep_connection = true;
 
   if (con_handle->alter_host_id > 0 && con_handle->rc_time > 0)
     {
