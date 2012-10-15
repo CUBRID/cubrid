@@ -17,7 +17,6 @@
  *
  */
 
-
 /*
  * broker_log_util.c -
  */
@@ -72,7 +71,6 @@ ut_trim (char *str)
 
   return (str);
 }
-
 
 void
 ut_tolower (char *str)
@@ -151,11 +149,17 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
 {
   char *msg;
   char *p, *q;
-  char *end;
   char size[256];
   char *value_p;
+  char *size_begin;
+  char *size_end;
+  char *info_end;
   int len;
 
+  if (info_size)
+    {
+      *info_size = 0;
+    }
   if (tot_val_size)
     {
       *tot_val_size = 0;
@@ -174,9 +178,9 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
     }
   p += 2;
 
-  if ((strncmp (p, "CHAR", 4) != 0) && (strncmp (p, "VARCHAR", 7) != 0) &&
-      (strncmp (p, "NCHAR", 5) != 0) && (strncmp (p, "VARNCHAR", 8) != 0) &&
-      (strncmp (p, "BIT", 3) != 0) && (strncmp (p, "VARBIT", 6) != 0))
+  if ((strncmp (p, "CHAR", 4) != 0) && (strncmp (p, "VARCHAR", 7) != 0)
+      && (strncmp (p, "NCHAR", 5) != 0) && (strncmp (p, "VARNCHAR", 8) != 0)
+      && (strncmp (p, "BIT", 3) != 0) && (strncmp (p, "VARBIT", 6) != 0))
     {
       return false;
     }
@@ -191,44 +195,50 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
   *q = '\0';
   value_p = q + 1;
 
-  memset (size, 0x00, 256);
-  end = (char *) strtok (value_p, ")");
-  if (end == NULL)
+  size_begin = strstr (value_p, "(");
+  if (size_begin == NULL)
+    {
+      goto error_on_val_size;
+    }
+  size_begin += 1;
+  size_end = strstr (value_p, ")");
+  if (size_end == NULL)
     {
       goto error_on_val_size;
     }
 
-  len = strlen (end);
-  if (len > (int) sizeof (size))
-    {
-      goto error_on_val_size;
-    }
-  if (len > 1)
-    {
-      memcpy (size, end + 1, len - 1);
-    }
-
-  end = (char *) strtok (NULL, ")");
-  if (end == NULL)
-    {
-      goto error_on_val_size;
-    }
+  info_end = size_end + 1;
 
   if (info_size)
     {
-      *info_size = (char *) end - (char *) buf;
+      *info_size = (char *) info_end - (char *) buf;
     }
   if (tot_val_size)
     {
+      len = size_end - size_begin;
+      if (len > (int) sizeof (size))
+	{
+	  goto error_on_val_size;
+	}
+      if (len > 0)
+	{
+	  memcpy (size, size_begin, len);
+	  size[len + 1] = '\0';
+	}
       *tot_val_size = atoi (size);
       if (*tot_val_size < 0)
 	{
 	  goto error_on_val_size;
 	}
     }
+
   return true;
 
 error_on_val_size:
+  if (info_size)
+    {
+      *info_size = -1;
+    }
   if (tot_val_size)
     {
       *tot_val_size = -1;
