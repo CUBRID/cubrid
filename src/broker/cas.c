@@ -84,6 +84,7 @@
 #include "shard_shm.h"
 #endif /* CUBRID_SHARD */
 
+
 #define FUNC_NEEDS_RESTORING_CON_STATUS(func_code) \
   (((func_code) == CAS_FC_GET_DB_PARAMETER) \
    ||((func_code) == CAS_FC_SET_DB_PARAMETER) \
@@ -468,7 +469,7 @@ conn_retry:
   if (err_code < 0)
     {
       SLEEP_SEC (1);
-      goto error1;
+      goto finish_cas;
     }
 
   as_info->uts_status = UTS_STATUS_IDLE;
@@ -616,7 +617,7 @@ conn_proxy_retry:
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 	cas_log_error_handler_end ();
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
-      error1:
+      finish_cas:
 #if defined(WINDOWS)
 	as_info->close_flag = 1;
 #endif /* WINDOWS */
@@ -812,7 +813,7 @@ main (int argc, char *argv[])
 
 	if (IS_INVALID_SOCKET (br_sock_fd))
 	  {
-	    goto error1;
+	    goto finish_cas;
 	  }
 
 	req_info.client_version = as_info->clt_version;
@@ -832,7 +833,7 @@ main (int argc, char *argv[])
 	client_sock_fd = br_sock_fd;
 	if (ioctlsocket (client_sock_fd, FIONBIO, (u_long *) & one) < 0)
 	  {
-	    goto error1;
+	    goto finish_cas;
 	  }
 	memcpy (&client_ip_addr, as_info->cas_clt_ip, 4);
 #else /* WINDOWS */
@@ -843,14 +844,14 @@ main (int argc, char *argv[])
 	    cas_log_write_and_end (0, false,
 				   "HANDSHAKE ERROR net_read_int(con_status)");
 	    CLOSE_SOCKET (br_sock_fd);
-	    goto error1;
+	    goto finish_cas;
 	  }
 	if (net_write_int (br_sock_fd, as_info->con_status) < 0)
 	  {
 	    cas_log_write_and_end (0, false,
 				   "HANDSHAKE ERROR net_write_int(con_status)");
 	    CLOSE_SOCKET (br_sock_fd);
-	    goto error1;
+	    goto finish_cas;
 	  }
 
 	client_sock_fd =
@@ -860,7 +861,7 @@ main (int argc, char *argv[])
 	    cas_log_write_and_end (0, false, "HANDSHAKE ERROR recv_fd %d",
 				   client_sock_fd);
 	    CLOSE_SOCKET (br_sock_fd);
-	    goto error1;
+	    goto finish_cas;
 	  }
 	if (net_write_int (br_sock_fd, as_info->uts_status) < 0)
 	  {
@@ -868,7 +869,7 @@ main (int argc, char *argv[])
 				   "HANDSHAKE ERROR net_write_int(uts_status)");
 	    CLOSE_SOCKET (br_sock_fd);
 	    CLOSE_SOCKET (client_sock_fd);
-	    goto error1;
+	    goto finish_cas;
 	  }
 
 	CLOSE_SOCKET (br_sock_fd);
@@ -893,7 +894,7 @@ main (int argc, char *argv[])
 
 	if (IS_INVALID_SOCKET (client_sock_fd))
 	  {
-	    goto error1;
+	    goto finish_cas;
 	  }
 #if !defined(WINDOWS)
 	else
@@ -902,7 +903,7 @@ main (int argc, char *argv[])
 	    if (net_write_int (client_sock_fd, 0) < 0)
 	      {
 		CLOSE_SOCKET (client_sock_fd);
-		goto error1;
+		goto finish_cas;
 	      }
 	  }
 #endif
@@ -938,6 +939,19 @@ main (int argc, char *argv[])
 
 	    db_name = read_buf;
 	    db_name[SRV_CON_DBNAME_SIZE - 1] = '\0';
+
+	    /* Send response to broker health checker */
+	    if (strcmp (db_name, HEALTH_CHECK_DUMMY_DB) == 0)
+	      {
+		cas_log_write_and_end (0, false,
+				       "Incoming health check request from client.");
+
+		net_write_int (client_sock_fd, 0);
+		net_write_stream (client_sock_fd, cas_info, cas_info_size);
+		CLOSE_SOCKET (client_sock_fd);
+
+		goto finish_cas;
+	      }
 
 	    db_user = db_name + SRV_CON_DBNAME_SIZE;
 	    db_user[SRV_CON_DBUSER_SIZE - 1] = '\0';
@@ -1009,7 +1023,7 @@ main (int argc, char *argv[])
 
 		    CLOSE_SOCKET (client_sock_fd);
 
-		    goto error1;
+		    goto finish_cas;
 		  }
 	      }
 
@@ -1037,7 +1051,7 @@ main (int argc, char *argv[])
 		CLOSE_SOCKET (client_sock_fd);
 		FREE_MEM (db_err_msg);
 
-		goto error1;
+		goto finish_cas;
 	      }
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 	    session_id = db_get_session_id ();
@@ -1186,7 +1200,7 @@ main (int argc, char *argv[])
 
 	CLOSE_SOCKET (client_sock_fd);
 
-      error1:
+      finish_cas:
 #if defined(WINDOWS)
 	as_info->close_flag = 1;
 #endif /* WINDOWS */

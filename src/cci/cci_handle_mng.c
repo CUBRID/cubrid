@@ -1219,7 +1219,8 @@ hm_thread_health_checker (void *arg)
 	{
 	  ip_addr = host_status[i].host.ip_addr;
 	  port = host_status[i].host.port;
-	  if (net_peer_alive (ip_addr, port, 5000))
+	  if (net_check_broker_alive
+	      (ip_addr, port, BROKER_HEALTH_CHECK_TIMEOUT))
 	    {
 	      hm_set_host_status_by_addr (ip_addr, port, true);
 	    }

@@ -88,6 +88,7 @@ extern void ut_bit_to_str (char *bit_str, int size, char *str);
 extern int ut_is_deleted_oid (T_OBJECT * oid);
 
 extern int cci_url_match (const char *src, char *token[]);
+extern long ut_timeval_diff_msec (struct timeval *start, struct timeval *end);
 
 #ifdef UNICODE_DATA
 extern char *ut_ansi_to_unicode (char *str);

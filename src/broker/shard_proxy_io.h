@@ -128,6 +128,8 @@ extern int proxy_io_make_get_db_version (T_BROKER_VERSION client_version,
 					 char **buffer);
 extern int proxy_io_make_client_conn_ok (T_BROKER_VERSION client_version,
 					 char **buffer);
+extern int proxy_io_make_client_proxy_alive (T_BROKER_VERSION client_version,
+					     char **buffer);
 extern int proxy_io_make_client_dbinfo_ok (T_BROKER_VERSION client_version,
 					   char **buffer);
 

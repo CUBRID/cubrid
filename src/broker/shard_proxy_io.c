@@ -772,6 +772,30 @@ proxy_io_make_client_conn_ok (T_BROKER_VERSION client_version, char **buffer)
 }
 
 int
+proxy_io_make_client_proxy_alive (T_BROKER_VERSION client_version,
+				  char **buffer)
+{
+  assert (buffer);
+
+  int error;
+  T_NET_BUF net_buf;
+
+  error = proxy_make_net_buf (&net_buf, MSG_HEADER_SIZE);
+  if (error)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Failed to make net buffer. (error:%d).", error);
+      *buffer = NULL;
+      return -1;
+    }
+
+  net_buf.data_size = 0;
+  proxy_init_net_buf (&net_buf);
+
+  return MSG_HEADER_SIZE;
+}
+
+int
 proxy_io_make_client_dbinfo_ok (T_BROKER_VERSION client_version,
 				char **buffer)
 {
@@ -1286,6 +1310,40 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
   db_name = read_buffer->data;
   db_name[SRV_CON_DBNAME_SIZE - 1] = '\0';
 
+  if (strcmp (db_name, HEALTH_CHECK_DUMMY_DB) == 0)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Incoming health check request from client.");
+      /* send proxy_alive response to the client */
+      event_p =
+	proxy_event_new_with_rsp (client_version, PROXY_EVENT_IO_WRITE,
+				  PROXY_EVENT_FROM_CLIENT,
+				  proxy_io_make_client_proxy_alive);
+      if (event_p == NULL)
+	{
+	  proxy_socket_io_read_error (sock_io_p);
+	  EXIT_FUNC ();
+	  return -1;
+	}
+
+      /* set write event to the socket io */
+      error = proxy_socket_set_write_event (sock_io_p, event_p);
+      if (error)
+	{
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to set write buffer. "
+		     "(fd:%d). event(%s).",
+		     sock_io_p->fd, proxy_str_event (event_p));
+
+	  proxy_event_free (event_p);
+	  event_p = NULL;
+
+	  proxy_socket_io_read_error (sock_io_p);
+	  EXIT_FUNC ();
+	  return -1;
+	}
+      goto finished;
+    }
+
   db_user = db_name + SRV_CON_DBNAME_SIZE;
   db_user[SRV_CON_DBUSER_SIZE - 1] = '\0';
   if (db_user[0] == '\0')
@@ -1403,6 +1461,7 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
 			sock_io_p->ip_addr, db_name, db_user, true);
     }
 
+finished:
   assert (sock_io_p->read_event);
   proxy_event_free (sock_io_p->read_event);
   sock_io_p->read_event = NULL;

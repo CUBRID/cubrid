@@ -709,3 +709,15 @@ cci_url_match (const char *src, char *token[])
   cub_regfree (&regex);
   return error;
 }
+
+long
+ut_timeval_diff_msec (struct timeval *start, struct timeval *end)
+{
+  long diff_msec;
+  assert (start != NULL && end != NULL);
+
+  diff_msec = (end->tv_sec - start->tv_sec) * 1000;
+  diff_msec += ((end->tv_usec - start->tv_usec) / 1000);
+
+  return diff_msec;
+}

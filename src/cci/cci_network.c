@@ -490,8 +490,7 @@ net_send_msg (T_CON_HANDLE * con_handle, char *msg, int size)
       long elapsed;
 
       gettimeofday (&te, NULL);
-      elapsed = (te.tv_sec - ts.tv_sec) * 1000;
-      elapsed += ((te.tv_usec - ts.tv_usec) / 1000);
+      elapsed = ut_timeval_diff_msec (&ts, &te);
       CCI_LOGF_DEBUG (con_handle->logger, "[NET][W][H][S:%d][E:%d][T:%d]",
 		      MSG_HEADER_SIZE, err, elapsed);
     }
@@ -510,8 +509,7 @@ net_send_msg (T_CON_HANDLE * con_handle, char *msg, int size)
       long elapsed;
 
       gettimeofday (&te, NULL);
-      elapsed = (te.tv_sec - ts.tv_sec) * 1000;
-      elapsed += ((te.tv_usec - ts.tv_usec) / 1000);
+      ut_timeval_diff_msec (&ts, &te, &elapsed);
       CCI_LOGF_DEBUG (con_handle->logger, "[NET][W][B][S:%d][E:%d][T:%d]",
 		      size, err, elapsed);
     }
@@ -565,8 +563,7 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
       long elapsed;
 
       gettimeofday (&te, NULL);
-      elapsed = (te.tv_sec - ts.tv_sec) * 1000;
-      elapsed += ((te.tv_usec - ts.tv_usec) / 1000);
+      elapsed = ut_timeval_diff_msec (&ts, &te);
       CCI_LOGF_DEBUG (con_handle->logger, "[NET][R][H][S:%d][E:%d][T:%d]",
 		      MSG_HEADER_SIZE, result_code, elapsed);
     }
@@ -621,8 +618,7 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
 	  long elapsed;
 
 	  gettimeofday (&te, NULL);
-	  elapsed = (te.tv_sec - ts.tv_sec) * 1000;
-	  elapsed += ((te.tv_usec - ts.tv_usec) / 1000);
+	  ut_timeval_diff_msec (&ts, &te, &elapsed);
 	  CCI_LOGF_DEBUG (con_handle->logger, "[NET][R][B][S:%d][E:%d][T:%d]",
 			  *(recv_msg_header.msg_body_size_ptr), result_code,
 			  elapsed);
@@ -723,6 +719,82 @@ net_peer_alive (unsigned char *ip_addr, int port, int timeout_msec)
   CLOSE_SOCKET (sock_fd);
 
   return true;
+}
+
+bool
+net_check_broker_alive (unsigned char *ip_addr, int port, int timeout_msec)
+{
+  SOCKET sock_fd;
+  MSG_HEADER msg_header;
+  char client_info[SRV_CON_CLIENT_INFO_SIZE];
+  char db_info[SRV_CON_DB_INFO_SIZE];
+  char db_name[SRV_CON_DBNAME_SIZE];
+  char url[SRV_CON_URL_SIZE];
+  char *info, *msg_buf;
+  int err_code, ret_value;
+  struct timeval start_time, end_time;
+  long elapsed_time_msec;
+  bool result = false;
+
+  init_msg_header (&msg_header);
+
+  memset (client_info, 0, sizeof (client_info));
+  memset (db_info, 0, sizeof (db_info));
+
+  strncpy (client_info, SRV_CON_CLIENT_MAGIC_STR, SRV_CON_CLIENT_MAGIC_LEN);
+  client_info[SRV_CON_MSG_IDX_CLIENT_TYPE] = cci_client_type;
+  client_info[SRV_CON_MSG_IDX_PROTO_VERSION] = CAS_PROTO_PACK_CURRENT_NET_VER;
+  client_info[SRV_CON_MSG_IDX_RESERVED1] = 0;
+  client_info[SRV_CON_MSG_IDX_RESERVED2] = 0;
+
+  snprintf (db_name, SRV_CON_DBNAME_SIZE, HEALTH_CHECK_DUMMY_DB);
+  snprintf (url, SRV_CON_URL_SIZE,
+	    "cci:cubrid:%s:%d:%s::********:", ip_addr, port, db_name);
+
+  info = db_info;
+
+  strncpy (info, db_name, SRV_CON_DBNAME_SIZE - 1);
+  info += (SRV_CON_DBNAME_SIZE + SRV_CON_DBUSER_SIZE + SRV_CON_DBPASSWD_SIZE);
+
+  strncpy (info, url, SRV_CON_URL_SIZE - 1);
+
+  if (connect_srv (ip_addr, port, 0, &sock_fd, timeout_msec) < 0)
+    {
+      return false;
+    }
+
+  if (net_send_stream (sock_fd, client_info, SRV_CON_CLIENT_INFO_SIZE) < 0)
+    {
+      goto finish_health_check;
+    }
+
+  ret_value = net_recv_stream (sock_fd, port, (char *) &err_code, 4,
+			       timeout_msec);
+  if (ret_value < 0)
+    {
+      goto finish_health_check;
+    }
+
+  err_code = ntohl (err_code);
+  if (err_code < 0)
+    {
+      goto finish_health_check;
+    }
+
+  if (net_send_stream (sock_fd, db_info, SRV_CON_DB_INFO_SIZE) < 0)
+    {
+      goto finish_health_check;
+    }
+
+  if (net_recv_msg_header (sock_fd, port, &msg_header, timeout_msec) < 0)
+    {
+      goto finish_health_check;
+    }
+  result = true;
+
+finish_health_check:
+  CLOSE_SOCKET (sock_fd);
+  return result;
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)

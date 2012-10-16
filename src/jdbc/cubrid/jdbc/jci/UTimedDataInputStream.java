@@ -141,5 +141,9 @@ public class UTimedDataInputStream {
     public int read(byte[] b, int off, int len) throws IOException {
 	return read(b, off, len, timeout);
     }
+    
+    public void close() throws IOException {
+    	stream.close();
+    }
 
 }

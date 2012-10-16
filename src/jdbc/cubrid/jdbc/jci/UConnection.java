@@ -1462,6 +1462,25 @@ public class UConnection {
 	public int currentIsolationLevel() {
 		return lastIsolationLevel;
 	}
+	
+	public static byte[] createDBInfo(String dbname, String user, String passwd, String url) {
+		// see broker/cas_protocol.h
+		// #define SRV_CON_DBNAME_SIZE 32
+		// #define SRV_CON_DBUSER_SIZE 32
+		// #define SRV_CON_DBPASSWD_SIZE 32
+		// #define SRV_CON_DBSESS_ID_SIZE 20
+		// #define SRV_CON_URL_SIZE 512
+		// #define SRV_CON_DB_INFO_SIZE \
+		// (SRV_CON_DBNAME_SIZE + SRV_CON_DBUSER_SIZE +
+		// SRV_CON_DBPASSWD_SIZE + \
+		// SRV_CON_URL_SIZE + SRV_CON_DBSESS_ID_SIZE)
+		byte[] info = new byte[32 + 32 + 32 + 512 + 20];
+		UJCIUtil.copy_byte(info, 0, 32, dbname);
+		UJCIUtil.copy_byte(info, 32, 32, user);
+		UJCIUtil.copy_byte(info, 64, 32, passwd);
+		UJCIUtil.copy_byte(info, 96, 512, url);
+		return info;
+	}
 
 	void clientSocketClose() {
 		try {
@@ -1712,21 +1731,7 @@ public class UConnection {
 
 	void checkReconnect() throws IOException, UJciException {
 		if (dbInfo == null) {
-			// see broker/cas_protocol.h
-			// #define SRV_CON_DBNAME_SIZE 32
-			// #define SRV_CON_DBUSER_SIZE 32
-			// #define SRV_CON_DBPASSWD_SIZE 32
-			// #define SRV_CON_DBSESS_ID_SIZE 20
-			// #define SRV_CON_URL_SIZE 512
-			// #define SRV_CON_DB_INFO_SIZE \
-			// (SRV_CON_DBNAME_SIZE + SRV_CON_DBUSER_SIZE +
-			// SRV_CON_DBPASSWD_SIZE + \
-			// SRV_CON_URL_SIZE + SRV_CON_DBSESS_ID_SIZE)
-			dbInfo = new byte[32 + 32 + 32 + 512 + 20];
-			UJCIUtil.copy_byte(dbInfo, 0, 32, dbname);
-			UJCIUtil.copy_byte(dbInfo, 32, 32, user);
-			UJCIUtil.copy_byte(dbInfo, 64, 32, passwd);
-			UJCIUtil.copy_byte(dbInfo, 96, 512, url);
+			dbInfo = createDBInfo(dbname, user, passwd, url);
 		}
 		// set the session id
 		UJCIUtil.copy_byte(dbInfo, 608, 20, new Integer(sessionId).toString());

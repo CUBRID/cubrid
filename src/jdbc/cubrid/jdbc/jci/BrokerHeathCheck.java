@@ -30,13 +30,18 @@
 
 package cubrid.jdbc.jci;
 
+import java.io.DataOutputStream;
 import java.io.IOException;
+import java.net.Socket;
 
 import cubrid.jdbc.driver.CUBRIDDriver;
 import cubrid.jdbc.net.BrokerHandler;
 
 public class BrokerHeathCheck extends Thread{
 
+	private static final String HEALTH_CHECK_DUMMY_DB = "__$health$_$check$_$dummy$_$db$";
+	private static final int BROKER_HEALTH_CHECK_TIMEOUT = 5000;
+	private static final int CAS_INFO_SIZE = 4;
 	public static final int MONITORING_INTERVAL = 60000;
 
 	public void run() {
@@ -50,8 +55,10 @@ public class BrokerHeathCheck extends Thread{
 					ip = host.split(":")[0];
 					port = Integer.parseInt(host.split(":")[1]); 
 					try {
-						BrokerHandler.pingBroker(ip, port, 5000);
+						checkBrokerAlive(ip, port, BROKER_HEALTH_CHECK_TIMEOUT);
 						CUBRIDDriver.unreachableHosts.remove(host);
+					} catch (UJciException e) {
+						// do nothing
 					} catch (IOException e) {
 						// do nothing
 					}
@@ -66,6 +73,48 @@ public class BrokerHeathCheck extends Thread{
 					// do nothing
 				}
 			}
+		}
+	}
+	
+	private void checkBrokerAlive(String ip, int port, int timeout) throws IOException, UJciException {
+		Socket toBroker = null;
+		byte[] serverInfo;
+		byte[] casInfo;
+		String dummyUrl = "jdbc:cubrid:" + ip + ":" + port + ":" + HEALTH_CHECK_DUMMY_DB + "::********:";
+		UTimedDataInputStream is = null;
+		DataOutputStream os = null;
+		
+		long startTime = System.currentTimeMillis();
+		
+		try {
+			toBroker = BrokerHandler.connectBroker(ip, port, timeout);
+			if (timeout > 0) {
+				timeout -= (System.currentTimeMillis() - startTime);
+				if (timeout <= 0) {
+					throw new UJciException(UErrorCode.ER_TIMEOUT);
+				}
+			}
+			
+			is = new UTimedDataInputStream(toBroker.getInputStream(), ip, port, timeout);
+			os = new DataOutputStream(toBroker.getOutputStream());
+			serverInfo = UConnection.createDBInfo(HEALTH_CHECK_DUMMY_DB, "", "", dummyUrl);
+			
+			// send db info
+			os.write(serverInfo);
+			os.flush();
+			
+			// receive header
+			int dataLength = is.readInt();
+			casInfo = new byte[CAS_INFO_SIZE];
+			is.readFully(casInfo);
+			if (dataLength < 0) {
+				throw new UJciException(UErrorCode.ER_ILLEGAL_DATA_SIZE);
+			}
+			
+		} finally {
+			if (is != null) is.close();
+			if (os != null) os.close();
+			if (toBroker != null) toBroker.close();
 		}
 	}
 }

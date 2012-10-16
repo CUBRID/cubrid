@@ -66,6 +66,8 @@
 #define CAS_PROTOCOL_ERR_CODE_INDEX         (CAS_PROTOCOL_ERR_INDICATOR_SIZE)
 #define CAS_PROTOCOL_ERR_MSG_INDEX          (CAS_PROTOCOL_ERR_INDICATOR_SIZE + CAS_PROTOCOL_ERR_CODE_SIZE)
 
+#define BROKER_HEALTH_CHECK_TIMEOUT	5000
+
 /************************************************************************
  * EXPORTED TYPE DEFINITIONS						*
  ************************************************************************/
@@ -96,6 +98,8 @@ extern int net_cancel_request (T_CON_HANDLE * con_handle);
 extern int net_check_cas_request (T_CON_HANDLE * con_handle);
 extern bool net_peer_alive (unsigned char *ip_addr, int port,
 			    int timeout_msec);
+extern bool net_check_broker_alive (unsigned char *ip_addr, int port,
+				    int timeout_msec);
 /************************************************************************
  * EXPORTED VARIABLES							*
  ************************************************************************/

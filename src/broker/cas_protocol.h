@@ -129,6 +129,9 @@ typedef enum
 #define CAS_REQ_HEADER_OLEDB	"OLEDB"
 #define CAS_REQ_HEADER_CCI	"CCI"
 
+/* db_name used by client's broker health checker */
+#define HEALTH_CHECK_DUMMY_DB "___health_check_dummy_db___"
+
 typedef enum t_cas_func_code T_CAS_FUNC_CODE;
 enum t_cas_func_code
 {
