@@ -1287,20 +1287,9 @@ qe_close_req_handle_all (T_CON_HANDLE * con_handle)
 	}
       req_handle = con_handle->req_handle_table[i];
 
-      qe_close_req_handle_internal (req_handle, con_handle, true);
+      qe_close_req_handle_internal (req_handle, con_handle, false);
     }
   hm_req_handle_free_all (con_handle);
-
-  /* close handle in deferred close handle list */
-  for (i = 0; i < con_handle->deferred_close_handle_count; i++)
-    {
-      qe_send_close_handle_msg (con_handle,
-				con_handle->deferred_close_handle_list[i]);
-
-      con_handle->deferred_close_handle_list[i] = 0;
-    }
-  con_handle->deferred_close_handle_count = 0;
-
 }
 
 static int
