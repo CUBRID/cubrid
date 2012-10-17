@@ -1,0 +1,38 @@
+CUBRID Code coverage report tool
+=====================================
+
+1. Install xcov
+1.1 Move "$CUBRID_SOURCE/contrib/coverage/xcov.tgz" to appropriate folder that you want to install.
+(ex. cp /home1/bob/workspace/trunk/contrib/coverage/xcov.tgz ~/bin)
+1.2 Uncompress xcov.tgz
+1.3 Open "$HOME/.bash_profile", add PATH environment variable
+(ex. PATH=$HOME/bin/xcov:$PATH)
+(If you installed another version of lcov, please be careful path environment variable priority)
+1.4 Execute "source ~/.bash_profile" for applying environment variable
+
+2. Build CUBRID for measuring coverage 
+2.1 Execute "./configure with --enable-coverage" option.
+(ex. configure --enable-64bbit --enable-debug --enable-coverage --prefix=$HOME/build/apricot-org-coverage)
+install diff tool
+2.2 Execute "make" or "make install".
+2.3 Test your program with your test scenario.(coverage info have generated automatically)
+
+3. Create code coverage report file
+3.1 mkcoverage [directory what you want to report]
+(ex. mkcoverage src/broker)
+(ex. mkcoverage src)
+(If you meet utf-8 problem, please check your language configuration)
+3.2 mkcoverage created "coverage.xcov" successfully
+3.3 Download "coverage.xcov" to your computer
+
+4. Setting to windows
+4.1 Uncompress attachment file "CODE_COVERAGE.zip" to appropriate folder that you want to install
+4.2 Open "CODE_COVERAGE/view_coverage.bat" by notepad, and edit "set coverageDir" to your installation folder.
+(ex. "set coverageDir=D:\CODE_COVERAGE" -> "set coverageDir=F:\CODE_COVERAGE")
+4.3 If you need to view by another web brower except internet explorer, please edit "set reportProg"
+
+5. Link file type associatios to web browser
+5.1 Open "coverage.xcov" file's property
+5.2 Edit file type association to "CODE_COVERAGE/view_coverage.bat"
+(If you have any problem file type assocition, please search solution to fix file type association in window)
+5.3 Double click "coverage.xcov" file to see code coverage report.
