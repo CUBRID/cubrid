@@ -39,7 +39,7 @@ import cubrid.jdbc.net.BrokerHandler;
 
 public class BrokerHeathCheck extends Thread{
 
-	private static final String HEALTH_CHECK_DUMMY_DB = "__$health$_$check$_$dummy$_$db$";
+	private static final String HEALTH_CHECK_DUMMY_DB = "___health_check_dummy_db___";
 	private static final int BROKER_HEALTH_CHECK_TIMEOUT = 5000;
 	private static final int CAS_INFO_SIZE = 4;
 	public static final int MONITORING_INTERVAL = 60000;
