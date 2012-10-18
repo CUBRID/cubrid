@@ -116,6 +116,9 @@ extern "C"
 #define CCI_QUERY_RESULT_RESULT(QR, INDEX)	\
 	(((T_CCI_QUERY_RESULT*) (QR))[(INDEX) - 1].result_count)
 
+#define CCI_QUERY_RESULT_ERR_NO(QR, INDEX)	\
+	(((T_CCI_QUERY_RESULT*) (QR))[(INDEX) - 1].err_no)
+
 #define CCI_QUERY_RESULT_ERR_MSG(QR, INDEX)	\
 	((((T_CCI_QUERY_RESULT*) (QR))[(INDEX) - 1].err_msg) == NULL ? "" : (((T_CCI_QUERY_RESULT*) (QR))[(INDEX) - 1].err_msg))
 
@@ -264,6 +267,7 @@ extern "C"
   {
     int result_count;
     int stmt_type;
+    int err_no;
     char *err_msg;
     char oid[32];
   } T_CCI_QUERY_RESULT;
