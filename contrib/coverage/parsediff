@@ -1,0 +1,308 @@
+#!/usr/bin/perl -w
+
+#
+# parsediff
+# 	This script will parse output of 'svn diff' command, then get line numbers modified
+#	and the number of modified lines. Those will be added to %info_data hashtable.
+#
+
+use strict;
+use File::Basename;
+
+our %newlines = ();		# store each file's modified line number, hashed by filename(absolute path)
+our $verbose_level = 1;		# 0 is quiet-mode, 1 is critical, 9 is info
+
+# erlog	: print log message on screen (only used in this file)
+#	$level		: verbose level
+#	...		: message
+#
+sub erlog(@)
+{
+	my $level = shift;
+
+	if( !defined($verbose_level) || ($verbose_level eq 0)) {
+		return;
+	}
+	if( $level <= $verbose_level) {
+		print(@_);
+	}
+}
+
+# parse_code : get code lines from diff-result, and push modified codes into newlines array
+#	*FH		: handle of diff-result file
+#	$filename	: source file name retrieved from diff-result
+#	$start_line	: line number of starting point
+#	$total_line	: number of lines to be parsed
+#
+sub parse_code(*$$$) 
+{
+        local *FH = shift;
+        my $filename = shift;
+        my $start_line = shift;
+        my $total_line = shift;
+
+        while(<FH>) {
+                chomp;
+                if(/^-/) { next; }
+		if(/^\+/) {
+			s/\s+$//g;	# remove trailing spaces
+			if($_ ne "+") {
+				push(@{$newlines{$filename}}, $start_line);
+				erlog(8, "push newline $filename, $start_line, total lines=", $#{$newlines{$filename}}+1, "\n");
+			}
+		}
+                $start_line++;
+                $total_line--;
+                if($total_line eq 0) {
+                        last;
+                }
+        }
+}
+
+# parse_diff_file : read diff-result and parse it to collect modified lines.
+# 	$diff_filename 	: name of diff-result file
+#	$prefix		: base directory of source files
+#
+sub parse_diff_file($$)
+{
+	my $diff_filename = shift;
+	my $prefix = shift;
+
+	my $filename = undef;
+	my $dummy;
+
+	erlog(9, "parse_diff_file diff_filename=$diff_filename, prefix=$prefix\n");
+
+	if( !($prefix =~ /\/$/)) {
+		$prefix = $prefix."/";
+	}
+
+	open(FH, "<$diff_filename") or return -1;
+
+	while(<FH>) {
+		chomp;
+
+		if(/^\+\+\+/ || /^---/ || /^=/) {
+			next;
+		}
+		if(/^Index:/) {
+			($dummy, $filename) = split(/\s+/, $_, 2);
+			$filename = $prefix.$filename;
+			next;
+		}
+
+		if(/^@@/) {
+			s/@@//g;
+			s/^\s+//g;
+			s/\+//g;
+			s/-//g;
+			($dummy, $dummy, my $start_line, my $total_line) = split(/[\s,]/, $_, 4);
+			if( defined($filename)) {
+				parse_code(*FH, $filename, $start_line, $total_line);
+			}
+			else {
+				erlog(1, "missing filename, $_\n");
+				return -1;
+			}
+		}
+	}       
+	close(FH) or return -1;
+
+	return 0;
+}
+
+# set_newlines_info : add new line information to %info_data (global variable of genhtml)
+#			it includes all information to make HTML output
+#	%info_data	: hash reference to %info_data defined in genhtml
+#	$diff_filename	: name of diff-result file
+#	$prefix		: base directory of source files
+#
+#	Note : %info_data - hashed by filename(absolute path)
+#		$info_data{$filename} - hashed by the following key
+#			sum 		(hash, number of execution of the line, refer to genhtml)
+#			newlines* 	(array, list of the new lines)
+#			newlines_count*	(value, number of new lines)
+#			...		(refer to genhtml)
+#
+#		* : additional hash key for storing information about modified codes
+#
+sub set_newlines_info($$$$)
+{
+	my $info_data = shift;
+	my $diff_filename = shift;
+	my $prefix = shift;
+	my $force_mode = 0;
+
+	if( defined($_[0])) {
+		$force_mode = shift;
+	}
+	
+	my $result = parse_diff_file($diff_filename, $prefix);
+	if( $result < 0) {
+		erlog(1, "cannot parse diff_file, file=$diff_filename, dir_prefix=$prefix");
+		return -1;
+	}
+
+	foreach my $filename (keys %newlines) {
+
+		my %countdata = ();
+
+		if(!$force_mode) {
+			if(!defined($info_data->{$filename})) {
+				print("$filename skip!\n");
+				next;
+			}
+
+			%countdata = %{$info_data->{$filename}->{"sum"}};
+		}
+
+		foreach my $line (@{$newlines{$filename}}) {
+			
+			if( !$force_mode && !(exists($countdata{$line}))) {
+				next;
+			}
+
+			push(@{$info_data->{$filename}->{"newlines"}}, $line);
+			if( exists($info_data->{$filename}->{"newlines_count"})) {
+				$info_data->{$filename}->{"newlines_count"} += 1;
+			}
+			else {
+				$info_data->{$filename}->{"newlines_count"} = 1;
+			}
+			erlog(9, "+ set_newlines_info $filename, $line, ", $info_data->{$filename}->{"newlines_count"}, "\n");
+		}
+	}
+	return 0;
+}
+
+# is_newline : check whether input line is 'modified code' or not
+#	%info_data	: hash reference to %info_data defined in genhtml
+#	$filename	: source file name
+#	$lineno		: line number
+#
+sub is_newline($$$)
+{
+	my $info_data = shift;
+	my $filename = shift;
+	my $lineno = shift;
+
+	foreach (@{$info_data->{$filename}->{"newlines"}}) {
+		if(!defined($lineno) || !defined($_)) {
+			next;
+		}
+		if($lineno eq $_) {
+			return 1;
+		}
+	}
+	return 0;
+}
+
+# get_num_newlines : get number of new lines
+#	%info_data	: hash reference to %info_data defined in genhtml
+#	$filename	: source file name
+#
+sub get_num_newlines($$)
+{
+	my $info_data = shift;
+	my $filename = shift;
+
+	my $count = 0;
+
+	erlog(9, "get_num_newlines : $filename\n");
+
+	if( !defined($info_data->{$filename}) 
+		|| !(exists($info_data->{$filename}->{"newlines_count"})) ) {
+		return 0;
+	}
+
+	$count = $info_data->{$filename}->{"newlines_count"};
+
+	erlog(8, "get_num_newlines : $filename, $count\n");
+
+	return $count;
+}
+
+# get_num_hit_newlines : get number of new lines executed
+#	%info_data	: hash reference to %info_data defined in genhtml
+#	$filename	: source file name
+#
+sub get_num_hit_newlines($$)
+{
+	my $info_data = shift;
+	my $filename = shift;
+
+	erlog(9, "get_num_hit_newlines : $filename\n");
+
+	if( !defined($info_data->{$filename})
+		|| !(exists($info_data->{$filename}->{"newlines"})) ) {
+		return 0;
+	}
+
+        my $countdata = \%{$info_data->{$filename}->{"sum"}};
+	my $hit_lines = 0;
+
+        foreach my $line (@{$info_data->{$filename}->{"newlines"}}) {
+		# if the line was executed, count it
+		if( exists($countdata->{$line}) && ($countdata->{$line} gt 0)) {
+			$hit_lines++;
+		}
+        }
+
+	erlog(8, "get_num_hit_newlines : $filename, $hit_lines\n");
+
+	return $hit_lines;
+}
+
+# print_all_newlines : print all new lines stored on %info_data
+#	%info_data	: hash reference to %info_data defined in genhtml
+#
+sub print_all_newlines($)
+{
+	my $info_data = shift;
+
+	erlog(9, "\n========== PRINTING ALL NEWLINES ==========");
+
+	foreach my $filename (keys %{$info_data}) {
+		if( exists($info_data->{$filename}->{"newlines_count"})) {
+			erlog(9, "\n$filename, count=", $info_data->{$filename}->{"newlines_count"}, "\n");
+		}
+		else {
+			erlog(9, "\n$filename, count=not-exist ");
+		}
+		erlog(9, "$_,") foreach (@{$info_data->{$filename}->{"newlines"}});
+	}
+
+	erlog(9, "\n===========================================\n\n");
+}
+
+# get_summary : print modified files, number of new lines executed, total number of new lines
+#	%info_data	: hash reference to %info_data defined in genhtml
+#
+sub get_summary($)
+{
+	my $info_data = shift;
+
+	my $num_files = 0;
+	my $hit_lines = 0;
+	my $not_hit_lines = 0;
+
+	foreach my $filename (keys %{$info_data}) {
+		foreach my $line (@{$info_data->{$filename}->{"newlines"}}) {
+			my %countdata = %{$info_data->{$filename}->{"sum"}};
+			# hit
+			if( exists($countdata{$line}) && ($countdata{$line} gt 0)) {
+				$hit_lines++;
+			} else {
+				$not_hit_lines++;
+			}
+		}
+		if (exists($info_data->{$filename}->{"newlines_count"}) 
+			&& defined($info_data->{$filename}->{"newlines_count"})
+			&& $info_data->{$filename}->{"newlines_count"} gt 0) {
+			$num_files++;
+		}
+	}
+	return ($num_files, $hit_lines, $hit_lines+$not_hit_lines);
+}
+
+

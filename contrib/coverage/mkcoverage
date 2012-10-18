@@ -1,0 +1,77 @@
+#!/bin/bash
+
+function usage()
+{
+	##postpone function::: 
+	#	1)-p <the directory of cubrid installation files>
+
+	exec_name=$(basename $0)
+cat <<MKCOVERAGE
+
+usage: $exec_name [options] [args]
+
+		valid options :
+		-s arg        : the root directory of CUBRID that has been installed, like: -h /home/xdbms/CUBRID
+		-o arg        : need to download the lastest cubrid,no parameter, like: -n
+		-h			  : show help_message
+		
+		--highlight-all : show total line coverage.(default : show new line coverage)
+
+MKCOVERAGE
+	exit 1
+}
+
+xcov_output='xcov_output'
+highlight_all='no'
+help_message='no'
+
+while [ $# -ne 0 ]; do
+	case $1 in
+		-s)
+			shift
+			target_source=$(readlink -f $1)
+		;;
+
+		-o)
+			shift
+			xcov_output=$(readlink -f $1)
+		;;
+
+		-h)
+			help_message='yes'
+		;;
+
+		--highlight-all)
+			highlight_all='yes'
+		;;
+
+		*)
+		;;	
+	esac
+	shift
+done
+
+if [ "$help_message" == 'yes' ]; then
+	usage
+	exit 1
+fi
+
+if [ -z $target_source ]
+then
+	usage
+fi
+if [ -z $xcov_output ]
+then
+	usage
+fi
+
+if [ "$highlight_all" == 'yes' ]; then
+	contrib/coverage/xcov -d $target_source --highlight-all
+else
+	contrib/coverage/xcov -d $target_source
+fi
+
+tar -zcf coverage.xcov ${xcov_output}/lcov
+
+cat ${xcov_output}/report.txt
+rm -rf ${xcov_output}
