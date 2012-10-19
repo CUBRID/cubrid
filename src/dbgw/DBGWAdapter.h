@@ -181,6 +181,17 @@ namespace dbgw
 
       }
 
+      namespace ParamList
+      {
+        typedef DBGWParameterList *Handle, *Thandle;
+
+        DECLSPECIFIER Handle __stdcall CreateHandle();
+        DECLSPECIFIER void __stdcall DestroyHandle(Handle hParamList);
+
+        DECLSPECIFIER size_t __stdcall Size(Handle hParamList);
+        DECLSPECIFIER bool __stdcall add(Handle hParamList, ParamSet::Handle hParam);
+      }
+
       namespace ResultSet
       {
 
@@ -239,6 +250,26 @@ namespace dbgw
 
       }
 
+      namespace BatchResult
+      {
+        typedef db::DBGWBatchResultSharedPtr *Handle, *THandle;
+
+        DECLSPECIFIER Handle __stdcall CreateHandle();
+        DECLSPECIFIER void  __stdcall DestroyHandle(Handle hBatchResult);
+
+        DECLSPECIFIER bool __stdcall GetSize(Handle hBatchResult, int *pSize);
+        DECLSPECIFIER bool __stdcall GetExecuteStatus(Handle hBatchResult,
+            DBGWExecuteStatus *pStatus);
+        DECLSPECIFIER bool __stdcall GetAffectedCount(Handle hBatchResult,
+            int nIndex, int *pAffectedCount);
+        DECLSPECIFIER bool __stdcall GetErrorCode(Handle hBatchResult,
+            int nIndex, int *pErrorCode);
+        DECLSPECIFIER bool __stdcall GetErrorMessage(Handle hBatchResult,
+            int nIndex, const char *pErrorMessage);
+        DECLSPECIFIER bool __stdcall GetStatementType(Handle hBatchResult,
+            int nIndex, DBGWQueryType *pStatementType);
+      }
+
       namespace Executor
       {
 
@@ -250,6 +281,8 @@ namespace dbgw
 
         DECLSPECIFIER bool __stdcall Execute(Handle hExecutor, const char *szMethod,
             DBGW::ParamSet::Handle hParam, DBGW::ResultSet::Handle &hResult);
+        DECLSPECIFIER bool __stdcall ExecuteBatch(Handle hExecutor, const char *szMethod,
+            DBGW::ParamList::Handle hParamList, DBGW::BatchResult::Handle &hBatchResult);
         DECLSPECIFIER bool __stdcall BeginTransaction(Handle hExecutor);
         DECLSPECIFIER bool __stdcall CommitTransaction(Handle hExecutor);
         DECLSPECIFIER bool __stdcall RollbackTransaction(Handle hExecutor);

@@ -126,6 +126,12 @@ namespace dbgw
   typedef boost::unordered_map<string, int, boost::hash<string>,
           dbgwStringCompareFunc> DBGWValueIndexMap;
 
+  typedef boost::shared_array<int> IntSharedArr;
+  typedef boost::shared_array<int64> BigIntSharedArr;
+  typedef boost::shared_array<float> FloatSharedArr;
+  typedef boost::shared_array<double> DoubleSharedArr;
+  typedef boost::shared_array<char *> StringSharedArr;
+
   /**
    * External access class.
    */
@@ -224,6 +230,29 @@ namespace dbgw
   public:
     const DBGWValue *getValue(size_t nIndex) const;
     const DBGWValue *getValue(const char *szKey, size_t nPosition) const;
+  };
+
+  typedef vector<DBGWParameter> DBGWParamList;
+
+  /**
+   * External access class.
+   */
+  class DBGWParameterList
+  {
+  public:
+    DBGWParameterList();
+    virtual ~ DBGWParameterList();
+
+    void add(const DBGWParameter &param);
+    DBGWParameter *getParameter(int nIndex);
+    void clear();
+
+  public:
+    const DBGWParameter *getParameter(int nIndex) const;
+    size_t size() const;
+
+  private:
+    DBGWParamList m_paramList;
   };
 
 }

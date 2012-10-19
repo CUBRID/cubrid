@@ -127,28 +127,7 @@ namespace dbgw
 
     try
       {
-        DBGWPreparedStatementSharedPtr pStmt;
-        DBGWPreparedStatementHashMap::iterator it = m_preparedStatmentMap.find(
-            pQuery->getSqlKey());
-        if (it != m_preparedStatmentMap.end())
-          {
-            pStmt = it->second;
-
-            if (pStmt != NULL)
-              {
-                pStmt->init(pQuery);
-              }
-          }
-
-        if (pStmt == NULL)
-          {
-            pStmt = m_pConnection->preparedStatement(pQuery);
-            if (pStmt == NULL)
-              {
-                throw getLastException();
-              }
-            m_preparedStatmentMap[pQuery->getSqlKey()] = pStmt;
-          }
+        DBGWPreparedStatementSharedPtr pStmt = preparedStatement(pQuery);
 
         pStmt->setParameter(pParameter);
 
@@ -168,6 +147,68 @@ namespace dbgw
           }
         throw;
       }
+  }
+
+  const DBGWBatchResultSharedPtr DBGWExecutor::executeBatch(DBGWBoundQuerySharedPtr pQuery,
+      const DBGWParameterList *pParameterList)
+  {
+    DBGW_FAULT_PARTIAL_PREPARE_FAIL(pQuery->getGroupName());
+    DBGW_FAULT_PARTIAL_EXECUTE_FAIL(pQuery->getGroupName());
+
+    if (m_bAutocommit == false)
+      {
+        m_bInTran = true;
+      }
+
+    try
+      {
+        DBGWPreparedStatementSharedPtr pStmt = preparedStatement(pQuery);
+
+        pStmt->setParameterList(pParameterList);
+
+        DBGWBatchResultSharedPtr pBatchResult = pStmt->executeBatch();
+        if (pBatchResult == NULL)
+          {
+            throw getLastException();
+          }
+
+        return pBatchResult;
+      }
+    catch (DBGWException &e)
+      {
+        if (e.isConnectionError())
+          {
+            m_bInvalid = true;
+          }
+        throw;
+      }
+  }
+
+  DBGWPreparedStatementSharedPtr DBGWExecutor::preparedStatement(
+      const DBGWBoundQuerySharedPtr &pQuery)
+  {
+    DBGWPreparedStatementSharedPtr pStmt;
+    DBGWPreparedStatementHashMap::iterator it = m_preparedStatmentMap.find(
+        pQuery->getSqlKey());
+    if (it != m_preparedStatmentMap.end())
+      {
+        pStmt = it->second;
+
+        if (pStmt != NULL)
+          {
+            pStmt->init(pQuery);
+          }
+      }
+    if (pStmt == NULL)
+      {
+        pStmt = m_pConnection->preparedStatement(pQuery);
+        if (pStmt == NULL)
+          {
+            throw getLastException();
+          }
+        m_preparedStatmentMap[pQuery->getSqlKey()] = pStmt;
+      }
+    return pStmt;
   }
 
   void DBGWExecutor::setAutocommit(bool bAutocommit)

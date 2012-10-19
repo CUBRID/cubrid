@@ -70,6 +70,8 @@ namespace dbgw
 
     const DBGWResultSharedPtr execute(DBGWBoundQuerySharedPtr pQuery,
         const DBGWParameter *pParameter = NULL);
+    const DBGWBatchResultSharedPtr executeBatch(DBGWBoundQuerySharedPtr pQuery,
+        const DBGWParameterList *pParameterList);
     void setAutocommit(bool bAutocommit);
     void commit();
     void rollback();
@@ -86,6 +88,8 @@ namespace dbgw
     void close();
     void destroy();
     bool isInvalid() const;
+    DBGWPreparedStatementSharedPtr preparedStatement(
+        const DBGWBoundQuerySharedPtr &pQuery);
 
   private:
     bool m_bClosed;

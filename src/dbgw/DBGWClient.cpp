@@ -406,6 +406,193 @@ namespace dbgw
       }
   }
 
+  const DBGWBatchResultSharedPtr DBGWClient::execBatch(const char *szSqlName,
+      const DBGWParameterList *pParameterList)
+  {
+    clearException();
+
+    try
+      {
+        checkClientIsValid();
+
+        size_t i;
+        bool bValidateResult = false;
+        bool bMakeResult = false;
+        bool bExecuted = false;
+        DBGWException validateFailException;
+        DBGWBatchResultSharedPtr pReturnBatchResult, pInternalBatchResult;
+
+        if (pParameterList == NULL)
+          {
+            InvalidParameterListException e;
+            DBGW_LOG_ERROR(e.what());
+            throw e;
+          }
+
+        for (DBGWExecutorList::iterator it = m_executorList.begin(); it
+            != m_executorList.end(); it++)
+          {
+            if (*it == NULL)
+              {
+                continue;
+              }
+
+            try
+              {
+                DBGWBoundQuerySharedPtr pQuery;
+                DBGWLogger logger((*it)->getGroupName(), szSqlName);
+
+                if (pParameterList->size() == 0)
+                  {
+                    pQuery = m_pQueryMapper->getQuery(szSqlName, (*it)->getGroupName(),
+                        NULL, it == m_executorList.begin());
+                  }
+                else
+                  {
+                    const DBGWParameter *pParameter = pParameterList->getParameter(0);
+                    if (pParameter == NULL)
+                      {
+                        InvalidParameterListException e;
+                        DBGW_LOG_ERROR(e.what());
+                        throw e;
+                      }
+
+                    pQuery = m_pQueryMapper->getQuery(szSqlName, (*it)->getGroupName(),
+                        pParameter, it == m_executorList.begin());
+                  }
+
+                if (pQuery == NULL)
+                  {
+                    continue;
+                  }
+
+                if (pQuery->getType() == DBGW_QUERY_TYPE_SELECT)
+                  {
+                    ExecuteSelectInBatchException e;
+                    DBGW_LOG_ERROR(e.what());
+                    throw e;
+                  }
+
+                if (pQuery->getType() == DBGW_QUERY_TYPE_PROCEDURE)
+                  {
+                    ExecuteProcedureInBatchException e;
+                    DBGW_LOG_ERROR(e.what());
+                    throw e;
+                  }
+
+                bExecuted = true;
+
+                if (pReturnBatchResult == NULL && pInternalBatchResult == NULL)
+                  {
+                    bValidateResult = m_pConnector->isValidateResult(
+                        m_szNamespace, pQuery->getType());
+                  }
+
+                if ((*it)->isIgnoreResult() == false)
+                  {
+                    if (bMakeResult)
+                      {
+                        MultisetIgnoreResultFlagFalseException e(szSqlName);
+                        DBGW_LOG_ERROR(e.what());
+                        throw e;
+                      }
+
+                    bMakeResult = true;
+                    pReturnBatchResult = (*it)->executeBatch(pQuery, pParameterList);
+                    if (pReturnBatchResult == NULL)
+                      {
+                        throw getLastException();
+                      }
+                    DBGW_LOG_INFO(logger.getLogMessage("execute.").c_str());
+                  }
+                else
+                  {
+                    if (bValidateResult == false
+                        && pQuery->getType() == DBGW_QUERY_TYPE_SELECT)
+                      {
+                        continue;
+                      }
+
+                    pInternalBatchResult = (*it)->executeBatch(pQuery, pParameterList);
+                    if (pInternalBatchResult == NULL)
+                      {
+                        throw getLastException();
+                      }
+                    DBGW_LOG_INFO(logger.getLogMessage("execute. (ignore result)").c_str());
+                  }
+
+                if (bValidateResult)
+                  {
+                    if (pReturnBatchResult == NULL || pInternalBatchResult == NULL)
+                      {
+                        continue;
+                      }
+                    validateResult(logger, pReturnBatchResult,
+                        pInternalBatchResult);
+                  }
+              }
+            catch (DBGWException &e)
+              {
+                if (bValidateResult)
+                  {
+                    DBGWException ne = e;
+                    if (e.getErrorCode() != DBGW_ER_RESULT_VALIDATE_FAIL
+                        && e.getErrorCode() != DBGW_ER_RESULT_VALIDATE_TYPE_FAIL
+                        && e.getErrorCode() != DBGW_ER_RESULT_VALIDATE_VALUE_FAIL)
+                      {
+                        /**
+                         * Change error code for client to identify validation fail.
+                         */
+                        ne = ValidateFailException(e);
+                      }
+
+                    if (pReturnBatchResult != NULL)
+                      {
+                        /**
+                         * We don't need to execute query of remaining groups.
+                         * Because primary query is already executed.
+                         */
+                        setLastException(ne);
+                        return pReturnBatchResult;
+                      }
+                    else
+                      {
+                        /**
+                         * There is chance to change last error code by executing query of remaining groups.
+                         * So we must save exception.
+                         */
+                        validateFailException = ne;
+                      }
+                  }
+                else if ((*it)->isIgnoreResult() == false)
+                  {
+                    setLastException(e);
+                    return DBGWBatchResultSharedPtr();
+                  }
+              }
+          }
+
+        if (bValidateResult && getLastErrorCode() == DBGW_ER_NO_ERROR)
+          {
+            setLastException(validateFailException);
+          }
+
+        if (bExecuted == false)
+          {
+            NotExistGroupException e(szSqlName);
+            DBGW_LOG_ERROR(e.what());
+            throw e;
+          }
+
+        return pReturnBatchResult;
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return DBGWBatchResultSharedPtr();
+      }
+  }
+
   bool DBGWClient::close()
   {
     clearException();
@@ -572,6 +759,49 @@ namespace dbgw
           }
 
         throw;
+      }
+  }
+
+  void DBGWClient::validateResult(const DBGWLogger &logger, DBGWBatchResultSharedPtr pReturnBatchResult,
+      DBGWBatchResultSharedPtr pInternalBatchResult)
+  {
+    if (pReturnBatchResult == NULL || pInternalBatchResult == NULL)
+      {
+        return;
+      }
+
+    int nReturnBatchResultSize, nInternalBatchResultSize;
+
+    pReturnBatchResult->getSize(&nReturnBatchResultSize);
+    pInternalBatchResult->getSize(&nInternalBatchResultSize);
+
+    if (nReturnBatchResultSize != nInternalBatchResultSize)
+      {
+        ValidateFailException e;
+        DBGW_LOG_ERROR(logger.getLogMessage(e.what()).c_str());
+        throw e;
+      }
+
+    for (int i = 0; i < nReturnBatchResultSize; i++)
+      {
+        int nReturnBatchResultAffectedRow, nInternalBatchResultAffectiedRow;
+
+        if (pReturnBatchResult->getAffectedRow(i, &nReturnBatchResultAffectedRow) == false)
+          {
+            throw getLastException();
+          }
+        if (pInternalBatchResult->getAffectedRow(i, &nInternalBatchResultAffectiedRow) == false)
+          {
+            throw getLastException();
+          }
+
+        if (nReturnBatchResultAffectedRow != nInternalBatchResultAffectiedRow)
+          {
+            ValidateFailException e(nReturnBatchResultAffectedRow,
+                nInternalBatchResultAffectiedRow);
+            DBGW_LOG_ERROR(logger.getLogMessage(e.what()).c_str());
+            throw e;
+          }
       }
   }
 

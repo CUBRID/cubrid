@@ -647,7 +647,151 @@ int
 ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
 		  T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
-  return ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
+  int err_code;
+  int i, n, va;
+  int num_bind = 0;
+  int num_value = 0;
+  int stmt_id = -1;
+  int num_query, num_query_msg_offset;
+  char *err_msg;
+  MYSQL_STMT *stmt = NULL;
+  T_OBJECT ins_oid;
+  T_PREPARE_CALL_INFO *call_info;
+  MYSQL_BIND *value_list = NULL;
+  DB_VALUE **db_vals = NULL;
+  void **start_argv = argv + 2;
+  char auto_commit_mode;
+  T_BROKER_VERSION client_version = req_info->client_version;
+
+  net_arg_get_char (auto_commit_mode, argv[1]);
+
+  if (auto_commit_mode == TRUE)
+    {
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+    }
+
+  if (srv_handle == NULL || srv_handle->schema_type >= CCI_SCH_FIRST)
+    {
+      err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+      goto execute_array_error;
+    }
+
+  srv_handle->auto_commit_mode = auto_commit_mode;
+
+  if (srv_handle->prepare_flag & CCI_PREPARE_CALL)
+    {
+      net_buf_cp_int (net_buf, 0, NULL);	/* result code */
+      net_buf_cp_int (net_buf, 0, NULL);	/* num_query */
+      return 0;
+    }
+
+  hm_qresult_end (srv_handle, FALSE);
+
+  stmt = (MYSQL_STMT *) srv_handle->session;
+  stmt_id = stmt->stmt_id;
+  call_info = srv_handle->prepare_call_info;
+
+  num_bind = call_info->num_args;
+  if (num_bind > 0)
+    {
+      value_list = (MYSQL_BIND *) call_info->bind;
+      db_vals = (DB_VALUE **) call_info->dbval_args;
+      if ((value_list == NULL) || (db_vals == NULL))
+	{
+	  err_code = ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
+	  goto execute_array_error;
+	}
+    }
+
+  memset (&ins_oid, 0, sizeof (T_OBJECT));
+
+  net_buf_cp_int (net_buf, 0, NULL);	/* result code */
+  num_query = 0;
+  net_buf_cp_int (net_buf, num_query, &num_query_msg_offset);
+
+  num_value = (argc - 2) / 2;
+
+  for (va = 0; va < num_value; va += num_bind)
+    {
+      num_query++;
+
+      err_code =
+	make_bind_value (num_bind, num_bind * 2, start_argv + (va * 2),
+			 value_list, db_vals, net_buf, MYSQL_TYPE_NULL);
+      if (err_code < 0)
+	{
+	  goto execute_array_error;
+	}
+
+      err_code = cas_mysql_stmt_bind_param (stmt, value_list);
+      if (err_code < 0)
+	{
+	  goto exec_db_error;
+	}
+
+      SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
+
+      n = cas_mysql_stmt_execute (stmt);
+      as_info->num_queries_processed %= MAX_DIAG_DATA_VALUE;
+      as_info->num_queries_processed++;
+
+      SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, n);
+
+      if (n < 0)
+	{
+	  goto exec_db_error;
+	}
+
+      n = cas_mysql_stmt_affected_rows (stmt);
+      net_buf_cp_int (net_buf, n, NULL);
+      net_buf_cp_object (net_buf, &ins_oid);
+
+      continue;
+
+    exec_db_error:
+      errors_in_transaction++;
+
+      err_code = err_info.err_number;
+      err_msg = err_info.err_string;
+
+      if (client_version >= CAS_MAKE_VER (8, 4, 3))
+	{
+	  net_buf_cp_int (net_buf, DBMS_ERROR_INDICATOR, NULL);
+	}
+      net_buf_cp_int (net_buf, err_code, NULL);
+      net_buf_cp_int (net_buf, strlen (err_msg) + 1, NULL);
+      net_buf_cp_str (net_buf, err_msg, strlen (err_msg) + 1);
+
+    }
+
+  net_buf_overwrite_int (net_buf, num_query_msg_offset, num_query);
+
+  for (i = 0; i < num_bind; i++)
+    {
+      db_value_clear (db_vals[i]);
+    }
+
+  return 0;
+
+execute_array_error:
+  NET_BUF_ERR_SET (net_buf);
+
+  if (srv_handle->auto_commit_mode)
+    {
+      req_info->need_auto_commit = TRAN_AUTOROLLBACK;
+    }
+
+  errors_in_transaction++;
+
+  if (db_vals)
+    {
+      for (i = 0; i < num_bind; i++)
+	{
+	  db_value_clear (db_vals[i]);
+	}
+    }
+
+  return err_code;
 }
 
 int

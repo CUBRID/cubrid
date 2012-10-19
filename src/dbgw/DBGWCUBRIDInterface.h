@@ -104,9 +104,14 @@ namespace dbgw
 
     protected:
       void beforeBind();
+      void beforeBindList();
+      void bindArraySize(int parameterSize);
       void doBind(const DBGWQueryParameter &queryParam, size_t nIndex,
           const DBGWValue *pValue);
+      void doBind(const DBGWQueryParameter &queryParam,
+          size_t nIndex, DBGWValueList &valueList);
       DBGWResultSharedPtr doExecute();
+      DBGWBatchResultSharedPtr doExecuteBatch();
 
     private:
       DBGWCUBRIDPreparedStatement(const DBGWBoundQuerySharedPtr pQuery,
@@ -121,11 +126,24 @@ namespace dbgw
       void doBindClob(int nIndex, const DBGWValue *pValue);
       void doBindBlob(int nIndex, const DBGWValue *pValue);
 #endif
+      void doBindIntArray(int nIndex, DBGWValueList &valueList);
+      void doBindLongArray(int nIndex, DBGWValueList &valueList);
+      void doBindStringArray(int nIndex, DBGWValueList &valueList);
+      void doBindCharArray(int nIndex, DBGWValueList &valueList);
+      void doBindFloatArray(int nIndex, DBGWValueList &valueList);
+      void doBindDoubleArray(int nIndex, DBGWValueList &valueList);
+      void doBindListClear();
 
     private:
       int m_hCCIConnection;
       int m_hCCIRequest;
       bool m_bClosed;
+
+      list<IntSharedArr> bindIntList;
+      list<BigIntSharedArr> bindBigIntList;
+      list<FloatSharedArr> bindFloatList;
+      list<DoubleSharedArr> bindDoubleList;
+      list<StringSharedArr> bindStringList;
 
       friend class DBGWCUBRIDConnection;
     };

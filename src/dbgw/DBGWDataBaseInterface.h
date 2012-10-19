@@ -34,14 +34,22 @@ namespace dbgw
       DBGW_TRAN_SERIALIZABLE
     } DBGW_TRAN_ISOLATION;
 
+    enum DBGWExecuteStatus
+    {
+      DBGW_EXECUTE_SUCCESS,
+      DBGW_EXECUTE_FAIL
+    };
+
     class DBGWPreparedStatement;
     class DBGWResult;
+    class DBGWBatchResult;
 
     typedef boost::unordered_map<string, string,
             boost::hash<string>, dbgwStringCompareFunc> DBGWDBInfoHashMap;
 
     typedef shared_ptr<DBGWPreparedStatement> DBGWPreparedStatementSharedPtr;
     typedef shared_ptr<DBGWResult> DBGWResultSharedPtr;
+    typedef shared_ptr<DBGWBatchResult> DBGWBatchResultSharedPtr;
 
     /**
      * External access class.
@@ -106,7 +114,9 @@ namespace dbgw
       virtual void setLong(size_t nIndex, int64 lValue);
       virtual void setChar(size_t nIndex, char cValue);
       virtual void setParameter(const DBGWParameter *pParameter);
+      virtual void setParameterList(const DBGWParameterList *pParameterList);
       DBGWResultSharedPtr execute();
+      const DBGWBatchResultSharedPtr executeBatch();
       virtual void init(DBGWBoundQuerySharedPtr pQuery);
 
     public:
@@ -115,21 +125,27 @@ namespace dbgw
 
     protected:
       virtual void beforeBind();
+      virtual void beforeBindList();
       void bind();
+      void bindList();
       virtual void doBind(const DBGWQueryParameter &queryParam,
           size_t nIndex, const DBGWValue *pValue) = 0;
+      virtual void doBind(const DBGWQueryParameter &queryParam,
+          size_t nIndex, DBGWValueList &valueList) = 0;
       virtual DBGWResultSharedPtr doExecute() = 0;
-      DBGWParameter &getParameter();
+      virtual DBGWBatchResultSharedPtr doExecuteBatch() = 0;
+      DBGWParameterList &getParameterList();
+      void writeLog(int nIndex);
 
     protected:
       const DBGWLogger m_logger;
 
     private:
-      string dump() const;
+      string dump();
 
     private:
       DBGWBoundQuerySharedPtr m_pQuery;
-      DBGWParameter m_parameter;
+      DBGWParameterList m_parameterList;
       bool m_bReuesed;
     };
 
@@ -196,6 +212,38 @@ namespace dbgw
       bool m_bNeverFetched;
       MetaDataList m_metaList;
       const DBGWLogger m_logger;
+    };
+
+    /**
+     * External access class.
+     */
+    class DBGWBatchResult
+    {
+    public:
+      DBGWBatchResult(int nSize);
+      virtual ~ DBGWBatchResult();
+      void setExecuteStatus(DBGWExecuteStatus status);
+      void setAffectedRow(int nIndex, int nRow);
+      void setErrorCode(int nIndex, int nNumber);
+      void setErrorMessage(int nIndex, const char *pMessage);
+      void setStatementType(int nIndex, DBGWQueryType nType);
+
+    public:
+      /* Batch Result User Interface */
+      bool getSize(int *pSize) const;
+      bool getExecuteStatus(DBGWExecuteStatus *pExecuteStatus) const;
+      bool getAffectedRow(int nIndex, int *pAffectedRow) const;
+      bool getErrorCode(int nIndex, int *pErrorCode) const;
+      bool getErrorMessage(int nIndex, const char *pErrorMessage) const;
+      bool getStatementType(int nIndex, DBGWQueryType *pStatementType) const;
+
+    private:
+      int m_nResultCount;
+      DBGWExecuteStatus m_nExecuteStatus;
+      DBGWIntegerList m_nAffectedRows;
+      DBGWIntegerList m_nErrorCodes;
+      DBGWStringList m_szErrorMessages;
+      DBGWQueryTypeList m_nStatementType;
     };
 
   }

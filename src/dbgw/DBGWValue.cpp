@@ -2420,4 +2420,103 @@ namespace dbgw
       }
   }
 
+  DBGWParameterList::DBGWParameterList()
+  {
+    /**
+     * We don't need to clear error because this api will not make error.
+     *
+     * clearException();
+     *
+     * try
+     * {
+     *    blur blur blur;
+     * }
+     * catch (DBGWException &e)
+     * {
+     *    setLastException(e);
+     * }
+     */
+  }
+
+  DBGWParameterList::~DBGWParameterList()
+  {
+    /**
+     * We don't need to clear error because this api will not make error.
+     *
+     * clearException();
+     *
+     * try
+     * {
+     *    blur blur blur;
+     * }
+     * catch (DBGWException &e)
+     * {
+     *    setLastException(e);
+     * }
+     */
+  }
+
+  void DBGWParameterList::add(const DBGWParameter &param)
+  {
+    m_paramList.push_back(param);
+  }
+
+  size_t DBGWParameterList::size() const
+  {
+    return m_paramList.size();
+  }
+
+  void DBGWParameterList::clear()
+  {
+    m_paramList.clear();
+  }
+
+  DBGWParameter *DBGWParameterList::getParameter(int nIndex)
+  {
+    clearException();
+
+    try
+      {
+        if (nIndex >= (int)m_paramList.size() || nIndex < 0)
+          {
+            NotExistSetException e(nIndex);
+            DBGW_LOG_ERROR(e.what());
+            throw e;
+          }
+        else
+          {
+            return &m_paramList[nIndex];
+          }
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return NULL;
+      }
+  }
+
+  const DBGWParameter *DBGWParameterList::getParameter(int nIndex) const
+  {
+    clearException();
+
+    try
+      {
+        if (nIndex >= (int)m_paramList.size() || nIndex < 0)
+          {
+            NotExistSetException e(nIndex);
+            DBGW_LOG_ERROR(e.what());
+            throw e;
+          }
+        else
+          {
+            return &m_paramList[nIndex];
+          }
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return NULL;
+      }
+  }
+
 }

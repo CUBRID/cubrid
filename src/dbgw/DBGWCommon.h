@@ -38,6 +38,7 @@
 #else /* WINDOWS */
 #include <tr1/memory>
 #endif /* !WINDOWS */
+#include<boost/shared_array.hpp>
 
 namespace dbgw
 {
@@ -68,6 +69,7 @@ namespace dbgw
     }
   };
 
+  typedef vector<int> DBGWIntegerList;
   typedef vector<string> DBGWStringList;
 
 }

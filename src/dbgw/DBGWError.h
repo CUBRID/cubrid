@@ -53,6 +53,9 @@ namespace dbgw
     DBGW_ER_CLIENT_NOT_EXIST_GROUP                    = -22402,
     DBGW_ER_CLIENT_ALREADY_IN_TRANSACTION             = -22403,
     DBGW_ER_CLIENT_NOT_IN_TRANSACTION                 = -22404,
+    DBGW_ER_CLIENT_INVALID_PARAMETER_LIST             = -22405,
+    DBGW_ER_CLIENT_EXECUTE_SELECT_IN_BATCH            = -22406,
+    DBGW_ER_CLIENT_EXECUTE_PROCEDURE_IN_BATCH         = -22407,
 
     DBGW_ER_RESULT_NOT_ALLOWED_NEXT                   = -22500,
     DBGW_ER_RESULT_NOT_ALLOWED_GET_METADATA           = -22501,
@@ -238,6 +241,7 @@ namespace dbgw
     InvalidValueTypeException(int type,
         const char *szExpectedType) throw();
     InvalidValueTypeException(const char *szFileName, const char *szType) throw();
+    InvalidValueTypeException(int firstType, int anotherType) throw();
   };
 
   class InvalidValueFormatException : public DBGWException
@@ -436,6 +440,24 @@ namespace dbgw
   {
   public:
     NotEnoughBufferException() throw();
+  };
+
+  class InvalidParameterListException : public DBGWException
+  {
+  public:
+    InvalidParameterListException() throw();
+  };
+
+  class ExecuteSelectInBatchException : public DBGWException
+  {
+  public:
+    ExecuteSelectInBatchException() throw();
+  };
+
+  class ExecuteProcedureInBatchException : public DBGWException
+  {
+  public:
+    ExecuteProcedureInBatchException() throw();
   };
 
 }

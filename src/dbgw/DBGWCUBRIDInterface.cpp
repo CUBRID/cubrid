@@ -519,9 +519,21 @@ namespace dbgw
           return;
         }
 
-      DBGWParameter &parameter = getParameter();
+      if (getParameterList().size() == 0)
+        {
+          return;
+        }
+
+      DBGWParameter *pParameter = getParameterList().getParameter(0);
+      if (pParameter == NULL)
+        {
+          InvalidParameterListException e;
+          DBGW_LOG_ERROR(e.what());
+          throw e;
+        }
+
       const DBGWQueryParameterList &queryParamList = getQuery()->getQueryParamList();
-      if (queryParamList.size() <= parameter.size())
+      if (queryParamList.size() <= pParameter->size())
         {
           return;
         }
@@ -543,7 +555,7 @@ namespace dbgw
         {
           if (it->mode == DBGW_BIND_MODE_IN)
             {
-              pValue = parameter.getValueSharedPtr(it->name.c_str(), it->index);
+              pValue = pParameter->getValueSharedPtr(it->name.c_str(), it->index);
               if (pValue == NULL)
                 {
                   throw getLastException();
@@ -557,7 +569,17 @@ namespace dbgw
             }
         }
 
-      parameter = newParameter;
+      *pParameter = newParameter;
+    }
+
+    void DBGWCUBRIDPreparedStatement::beforeBindList()
+    {
+      bindArraySize(getParameterList().size());
+    }
+
+    void DBGWCUBRIDPreparedStatement::bindArraySize(int parameterSize)
+    {
+      cci_bind_param_array_size(m_hCCIRequest, parameterSize);
     }
 
     void DBGWCUBRIDPreparedStatement::doBind(const DBGWQueryParameter &queryParam,
@@ -606,6 +628,36 @@ namespace dbgw
           || queryParam.mode == DBGW_BIND_MODE_INOUT)
         {
           cci_register_out_param(m_hCCIRequest, nIndex);
+        }
+    }
+
+    void DBGWCUBRIDPreparedStatement::doBind(const DBGWQueryParameter &queryParam,
+        size_t nIndex, DBGWValueList &valueList)
+    {
+      switch (valueList[0]->getType())
+        {
+        case DBGW_VAL_TYPE_INT:
+          doBindIntArray(nIndex, valueList);
+          break;
+        case DBGW_VAL_TYPE_LONG:
+          doBindLongArray(nIndex, valueList);
+          break;
+        case DBGW_VAL_TYPE_CHAR:
+          doBindCharArray(nIndex, valueList);
+          break;
+        case DBGW_VAL_TYPE_FLOAT:
+          doBindFloatArray(nIndex, valueList);
+          break;
+        case DBGW_VAL_TYPE_DOUBLE:
+          doBindDoubleArray(nIndex, valueList);
+          break;
+        case DBGW_VAL_TYPE_STRING:
+        case DBGW_VAL_TYPE_DATETIME:
+        case DBGW_VAL_TYPE_DATE:
+        case DBGW_VAL_TYPE_TIME:
+        default:
+          doBindStringArray(nIndex, valueList);
+          break;
         }
     }
 
@@ -908,6 +960,265 @@ namespace dbgw
     }
 #endif
 
+    void DBGWCUBRIDPreparedStatement::doBindIntArray(int nIndex,
+        DBGWValueList &valueList)
+    {
+      int i = 0;
+      IntSharedArr nValue(new int[valueList.size()]);
+      IntSharedArr nullInd(new int[valueList.size()]);
+
+      for (DBGWValueList::iterator it = valueList.begin();
+          it != valueList.end(); it++, i++)
+        {
+          if ((*it)->getInt(&nValue[i]))
+            {
+              if ((*it)->isNull())
+                {
+                  nullInd[i] = 1;
+                }
+              else
+                {
+                  nullInd[i] = 0;
+                }
+            }
+          else
+            {
+              throw getLastException();
+            }
+        }
+
+      bindIntList.push_back(nValue);
+      bindIntList.push_back(nullInd);
+
+      int nResult = cci_bind_param_array(m_hCCIRequest, nIndex, CCI_A_TYPE_INT,
+          nValue.get(), nullInd.get(), CCI_U_TYPE_INT);
+      if (nResult < 0)
+        {
+          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
+              "Failed to bind parameter.");
+          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+          throw e;
+        }
+    }
+
+    void DBGWCUBRIDPreparedStatement::doBindLongArray(int nIndex,
+        DBGWValueList &valueList)
+    {
+      int i = 0;
+      BigIntSharedArr lnValue(new int64[valueList.size()]);
+      IntSharedArr nullInd(new int[valueList.size()]);
+
+      for (DBGWValueList::iterator it = valueList.begin();
+          it != valueList.end(); it++, i++)
+        {
+          if ((*it)->getLong(&lnValue[i]))
+            {
+              if ((*it)->isNull())
+                {
+                  nullInd[i] = 1;
+                }
+              else
+                {
+                  nullInd[i] = 0;
+                }
+            }
+          else
+            {
+              throw getLastException();
+            }
+        }
+
+      bindBigIntList.push_back(lnValue);
+      bindIntList.push_back(nullInd);
+
+      int nResult =  cci_bind_param_array(m_hCCIRequest, nIndex, CCI_A_TYPE_BIGINT,
+          lnValue.get(), nullInd.get(), CCI_U_TYPE_BIGINT);
+
+      if (nResult < 0)
+        {
+          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
+              "Failed to bind parameter.");
+          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+          throw e;
+        }
+    }
+
+    void DBGWCUBRIDPreparedStatement::doBindStringArray(int nIndex,
+        DBGWValueList &valueList)
+    {
+      int i = 0;
+      StringSharedArr szValue(new char*[valueList.size()]);
+      IntSharedArr nullInd(new int[valueList.size()]);
+
+      for (DBGWValueList::iterator it = valueList.begin();
+          it != valueList.end(); it++, i++)
+        {
+          if ((*it)->getCString(&szValue[i]))
+            {
+              if ((*it)->isNull())
+                {
+                  nullInd[i] = 1;
+                }
+              else
+                {
+                  nullInd[i] = 0;
+                }
+            }
+          else
+            {
+              throw getLastException();
+            }
+        }
+
+      bindStringList.push_back(szValue);
+      bindIntList.push_back(nullInd);
+
+      int nResult = cci_bind_param_array(m_hCCIRequest, nIndex, CCI_A_TYPE_STR,
+          szValue.get(), nullInd.get(), CCI_U_TYPE_STRING);
+
+      if (nResult < 0)
+        {
+          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
+              "Failed to bind parameter.");
+          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+          throw e;
+        }
+    }
+
+    void DBGWCUBRIDPreparedStatement::doBindCharArray(int nIndex,
+        DBGWValueList &valueList)
+    {
+      int i = 0;
+      StringSharedArr szBuffer(new char*[valueList.size()]);
+      IntSharedArr nullInd(new int[valueList.size()]);
+
+      for (DBGWValueList::iterator it = valueList.begin();
+          it != valueList.end(); it++, i++)
+        {
+          if ((*it)->getCString(&szBuffer[i]))
+            {
+              if ((*it)->isNull())
+                {
+                  nullInd[i] = 1;
+                }
+              else
+                {
+                  nullInd[i] = 0;
+                }
+            }
+          else
+            {
+              throw getLastException();
+            }
+        }
+
+      bindStringList.push_back(szBuffer);
+      bindIntList.push_back(nullInd);
+
+      int nResult = cci_bind_param_array(m_hCCIRequest, nIndex, CCI_A_TYPE_STR,
+          szBuffer.get(), nullInd.get(), CCI_U_TYPE_CHAR);
+      if (nResult < 0)
+        {
+          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
+              "Failed to bind parameter.");
+          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+          throw e;
+        }
+    }
+
+    void DBGWCUBRIDPreparedStatement::doBindFloatArray(int nIndex,
+        DBGWValueList &valueList)
+    {
+      int i = 0;
+      FloatSharedArr fValue(new float[valueList.size()]);
+      IntSharedArr nullInd(new int[valueList.size()]);
+
+      for (DBGWValueList::iterator it = valueList.begin();
+          it != valueList.end(); it++, i++)
+        {
+          if ((*it)->getFloat(&fValue[i]))
+            {
+              if ((*it)->isNull())
+                {
+                  nullInd[i] = 1;
+                }
+              else
+                {
+                  nullInd[i] = 0;
+                }
+            }
+          else
+            {
+              throw getLastException();
+            }
+        }
+
+      bindFloatList.push_back(fValue);
+      bindIntList.push_back(nullInd);
+
+      int nResult = cci_bind_param_array(m_hCCIRequest, nIndex, CCI_A_TYPE_FLOAT,
+          fValue.get(), nullInd.get(), CCI_U_TYPE_FLOAT);
+
+      if (nResult < 0)
+        {
+          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
+              "Failed to bind parameter.");
+          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+          throw e;
+        }
+    }
+
+    void DBGWCUBRIDPreparedStatement::doBindDoubleArray(int nIndex,
+        DBGWValueList &valueList)
+    {
+      int i = 0;
+      DoubleSharedArr dValue(new double[valueList.size()]);
+      IntSharedArr nullInd(new int[valueList.size()]);
+
+      for (DBGWValueList::iterator it = valueList.begin();
+          it != valueList.end(); it++, i++)
+        {
+          if ((*it)->getDouble(&dValue[i]))
+            {
+              if ((*it)->isNull())
+                {
+                  nullInd[i] = 1;
+                }
+              else
+                {
+                  nullInd[i] = 0;
+                }
+            }
+          else
+            {
+              throw getLastException();
+            }
+        }
+
+      bindDoubleList.push_back(dValue);
+      bindIntList.push_back(nullInd);
+
+      int nResult = cci_bind_param_array(m_hCCIRequest, nIndex, CCI_A_TYPE_DOUBLE,
+          dValue.get(), nullInd.get(), CCI_U_TYPE_DOUBLE);
+
+      if (nResult < 0)
+        {
+          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
+              "Failed to bind parameter.");
+          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+          throw e;
+        }
+    }
+
+    void DBGWCUBRIDPreparedStatement::doBindListClear()
+    {
+      bindIntList.clear();
+      bindBigIntList.clear();
+      bindFloatList.clear();
+      bindDoubleList.clear();
+      bindStringList.clear();
+    }
+
     DBGWResultSharedPtr DBGWCUBRIDPreparedStatement::doExecute()
     {
       T_CCI_ERROR cciError;
@@ -932,6 +1243,56 @@ namespace dbgw
           new DBGWCUBRIDResult(shared_from_this(), m_hCCIRequest,
               nResult));
       return p;
+    }
+
+    DBGWBatchResultSharedPtr DBGWCUBRIDPreparedStatement::doExecuteBatch()
+    {
+      T_CCI_ERROR cciError;
+      T_CCI_QUERY_RESULT *queryResult;
+
+
+      if (m_hCCIRequest < 0)
+        {
+          ExecuteBeforePrepareException e;
+          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+          throw e;
+        }
+
+      int nResult = cci_execute_array(m_hCCIRequest, &queryResult, &cciError);
+      if (nResult < 0)
+        {
+          CUBRIDException e = CUBRIDExceptionFactory::create(nResult, cciError,
+              "Failed to execute statement.");
+          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+          doBindListClear();
+          throw e;
+        }
+
+      doBindListClear();
+
+      DBGWBatchResultSharedPtr pBatchResult(new DBGWBatchResult(nResult));
+
+      for (int i = 1; i <= nResult; i++)
+        {
+          int cnt = CCI_QUERY_RESULT_RESULT(queryResult, i);
+
+          pBatchResult->setAffectedRow(i-1, cnt);
+          if (cnt < 0)
+            {
+              int nErrorCode = CCI_QUERY_RESULT_ERR_NO(queryResult, i);
+              const char *szErrorMessage = CCI_QUERY_RESULT_ERR_MSG(queryResult, i);
+              CUBRIDException e = CUBRIDExceptionFactory::create(nErrorCode, szErrorMessage);
+              DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+
+              pBatchResult->setErrorCode(i-1, nErrorCode);
+              pBatchResult->setErrorMessage(i-1, szErrorMessage);
+              pBatchResult->setStatementType(i-1, DBGW_QUERY_TYPE_UPDATE);
+              pBatchResult->setExecuteStatus(DBGW_EXECUTE_FAIL);
+            }
+        }
+      cci_query_result_free(queryResult, nResult);
+
+      return pBatchResult;
     }
 
     DBGWCUBRIDResult::DBGWCUBRIDResult(const DBGWPreparedStatementSharedPtr pStmt,

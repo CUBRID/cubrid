@@ -338,6 +338,15 @@ namespace dbgw
   {
   }
 
+  InvalidValueTypeException::InvalidValueTypeException(int firstType, int anotherType) throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(DBGW_ER_VALUE_INVALID_VALUE_TYPE,
+            (boost::format("The value type %s is different from binding array %s.")
+                % getDBGWValueTypeString(anotherType)
+                % getDBGWValueTypeString(firstType)).str()))
+  {
+  }
+
   InvalidValueTypeException::InvalidValueTypeException(
       const char *szFileName, const char *szType) throw() :
     DBGWException(
@@ -652,6 +661,27 @@ namespace dbgw
     DBGWException(
         DBGWExceptionFactory::create(
             DBGW_ER_EXTERNAL_DBGW_NOT_ENOUGH_BUFFER, "Not enough buffer memory."))
+  {
+  }
+
+  InvalidParameterListException::InvalidParameterListException() throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(
+            DBGW_ER_CLIENT_INVALID_PARAMETER_LIST, "The parameter list is invalid."))
+  {
+  }
+
+  ExecuteSelectInBatchException::ExecuteSelectInBatchException() throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(
+            DBGW_ER_CLIENT_EXECUTE_SELECT_IN_BATCH, "Can't use select statement when execute batch."))
+  {
+  }
+
+  ExecuteProcedureInBatchException::ExecuteProcedureInBatchException() throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(
+            DBGW_ER_CLIENT_EXECUTE_PROCEDURE_IN_BATCH, "Can't use procedure call when execute batch."))
   {
   }
 

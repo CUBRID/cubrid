@@ -49,6 +49,8 @@ namespace dbgw
     bool rollback();
     const DBGWResultSharedPtr exec(const char *szSqlName,
         const DBGWParameter *pParameter = NULL);
+    const DBGWBatchResultSharedPtr execBatch(const char *szSqlName,
+        const DBGWParameterList *pParameterList);
     bool close();
 
   public:
@@ -59,6 +61,8 @@ namespace dbgw
   private:
     void validateResult(const DBGWLogger &logger, DBGWResultSharedPtr pReturnResult,
         DBGWResultSharedPtr pInternalResult);
+    void validateResult(const DBGWLogger &logger, DBGWBatchResultSharedPtr pReturnBatchResult,
+        DBGWBatchResultSharedPtr pInternalBatchResult);
     void checkClientIsValid();
 
   private:

@@ -1544,6 +1544,8 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
 
     exec_db_error:
       cas_oracle_get_errno ();
+      errors_in_transaction++;
+
       err_code = err_info.err_number;
       err_msg = err_info.err_string;
 

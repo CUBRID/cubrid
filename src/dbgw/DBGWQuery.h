@@ -75,6 +75,7 @@ namespace dbgw
     size_t queryParamIndex;
   };
 
+  typedef vector<DBGWQueryType> DBGWQueryTypeList;
   typedef vector<DBGWQueryParameter> DBGWQueryParameterList;
   typedef vector<DBGWPlaceHolder> DBGWPlaceHolderList;
 

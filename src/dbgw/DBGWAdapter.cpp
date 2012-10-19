@@ -720,6 +720,110 @@ namespace dbgw
 
       }
 
+      namespace ParamList
+      {
+        DECLSPECIFIER Handle __stdcall CreateHandle()
+        {
+          clearException();
+
+          Handle hParamList = NULL;
+          try
+            {
+              hParamList = new DBGWParameterList();
+              if (hParamList == NULL)
+                {
+                  MemoryAllocationFail e(sizeof(Handle));
+                  DBGW_LOG_ERROR(e.what());
+                  throw e;
+                }
+
+              if (getLastErrorCode() != DBGW_ER_NO_ERROR)
+                {
+                  throw getLastException();
+                }
+
+              return hParamList;
+            }
+          catch (DBGWException &e)
+            {
+              if (hParamList != NULL)
+                {
+                  delete hParamList;
+                }
+
+              CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_CREATE_FAILED);
+              return NULL;
+            }
+        }
+
+        DECLSPECIFIER void __stdcall DestroyHandle(Handle hParamList)
+        {
+          clearException();
+
+          try
+            {
+              if (hParamList == NULL)
+                {
+                  InvalidHandleException e;
+                  DBGW_LOG_ERROR(e.what());
+                  throw e;
+                }
+
+              delete hParamList;
+            }
+          catch (DBGWException &e)
+            {
+              CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_HANDLE);
+            }
+        }
+
+        DECLSPECIFIER size_t __stdcall Size(Handle hParamList)
+        {
+          clearException();
+
+          try
+            {
+              if (hParamList == NULL)
+                {
+                  InvalidHandleException e;
+                  DBGW_LOG_ERROR(e.what());
+                  throw e;
+                }
+
+              return hParamList->size();
+            }
+          catch (DBGWException &e)
+            {
+              CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_HANDLE);
+              return 0;
+            }
+        }
+
+        DECLSPECIFIER bool __stdcall add(Handle hParamList, ParamSet::Handle hParam)
+        {
+          clearException();
+
+          try
+            {
+              if (hParamList == NULL)
+                {
+                  InvalidHandleException e;
+                  DBGW_LOG_ERROR(e.what());
+                  throw e;
+                }
+
+              hParamList->add(*hParam);
+              return true;
+
+            }
+          catch (DBGWException &e)
+            {
+              CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+              return false;
+            }
+        }
+      }
+
       namespace ResultSet
       {
         DECLSPECIFIER Handle __stdcall CreateHandle()
@@ -1325,6 +1429,225 @@ namespace dbgw
 
       }
 
+      namespace BatchResult
+      {
+        DECLSPECIFIER Handle __stdcall CreateHandle()
+        {
+          clearException();
+
+          Handle hResult = NULL;
+          try
+            {
+              hResult = new db::DBGWBatchResultSharedPtr();
+              if (hResult == NULL)
+                {
+                  MemoryAllocationFail e(sizeof(Handle));
+                  DBGW_LOG_ERROR(e.what());
+                  throw e;
+                }
+
+              if (getLastErrorCode() != DBGW_ER_NO_ERROR)
+                {
+                  throw getLastException();
+                }
+
+              return hResult;
+            }
+          catch (DBGWException &e)
+            {
+              if (hResult != NULL)
+                {
+                  delete hResult;
+                }
+
+              CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_CREATE_FAILED);
+              return NULL;
+            }
+        }
+
+        DECLSPECIFIER void __stdcall DestroyHandle(Handle hBatchResult)
+        {
+          clearException();
+
+          try
+            {
+              if (hBatchResult == NULL)
+                {
+                  InvalidHandleException e;
+                  DBGW_LOG_ERROR(e.what());
+                  throw e;
+                }
+
+              delete hBatchResult;
+            }
+          catch (DBGWException &e)
+            {
+              CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_HANDLE);
+            }
+        }
+
+        DECLSPECIFIER bool __stdcall GetSize(Handle hBatchResult, int *pSize)
+        {
+          clearException();
+
+          try
+            {
+              if (hBatchResult == NULL)
+                {
+                  InvalidHandleException e;
+                  DBGW_LOG_ERROR(e.what());
+                  throw e;
+                }
+
+              if ((*hBatchResult)->getSize(pSize) == false)
+                {
+                  throw getLastException();
+                }
+              return true;
+            }
+          catch (DBGWException &e)
+            {
+              CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_HANDLE);
+              return false;
+            }
+        }
+
+        DECLSPECIFIER bool __stdcall GetExecuteStatus(Handle hBatchResult, DBGWExecuteStatus *pStatus)
+        {
+          clearException();
+
+          try
+            {
+              if (hBatchResult == NULL)
+                {
+                  InvalidHandleException e;
+                  DBGW_LOG_ERROR(e.what());
+                  throw e;
+                }
+
+              if ((*hBatchResult)->getExecuteStatus(pStatus) == false)
+                {
+                  throw getLastException();
+                }
+              return true;
+            }
+          catch (DBGWException &e)
+            {
+              CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_HANDLE);
+              return false;
+            }
+        }
+
+        DECLSPECIFIER bool __stdcall GetAffectedCount(Handle hBatchResult,
+            int nIndex, int *pAffectedCount)
+        {
+          clearException();
+
+          try
+            {
+              if (hBatchResult == NULL)
+                {
+                  InvalidHandleException e;
+                  DBGW_LOG_ERROR(e.what());
+                  throw e;
+                }
+
+              if ((*hBatchResult)->getAffectedRow(nIndex, pAffectedCount) == false)
+                {
+                  throw getLastException();
+                }
+              return true;
+            }
+          catch (DBGWException &e)
+            {
+              CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_NOT_PROPER_OP);
+              return false;
+            }
+        }
+
+        DECLSPECIFIER bool __stdcall GetErrorCode(Handle hBatchResult,
+            int nIndex, int *pErrorCode)
+        {
+          clearException();
+
+          try
+            {
+              if (hBatchResult == NULL)
+                {
+                  InvalidHandleException e;
+                  DBGW_LOG_ERROR(e.what());
+                  throw e;
+                }
+
+              if ((*hBatchResult)->getErrorCode(nIndex, pErrorCode) == false)
+                {
+                  throw getLastException();
+                }
+              return true;
+            }
+          catch (DBGWException &e)
+            {
+              CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_NOT_PROPER_OP);
+              return false;
+            }
+        }
+
+        DECLSPECIFIER bool __stdcall GetErrorMessage(Handle hBatchResult,
+            int nIndex, const char *pErrorMessage)
+        {
+          clearException();
+
+          try
+            {
+              if (hBatchResult == NULL)
+                {
+                  InvalidHandleException e;
+                  DBGW_LOG_ERROR(e.what());
+                  throw e;
+                }
+
+              if ((*hBatchResult)->getErrorMessage(nIndex, pErrorMessage) == false)
+                {
+                  throw getLastException();
+                }
+              return true;
+            }
+          catch (DBGWException &e)
+            {
+              CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_NOT_PROPER_OP);
+              return false;
+            }
+        }
+
+        DECLSPECIFIER bool __stdcall GetStatementType(Handle hBatchResult,
+            int nIndex, DBGWQueryType *pStatementType)
+        {
+          clearException();
+
+          try
+            {
+              if (hBatchResult == NULL)
+                {
+                  InvalidHandleException e;
+                  DBGW_LOG_ERROR(e.what());
+                  throw e;
+                }
+
+              if ((*hBatchResult)->getStatementType(nIndex, pStatementType) == false)
+                {
+                  throw getLastException();
+                }
+              return true;
+            }
+          catch (DBGWException &e)
+            {
+              CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_NOT_PROPER_OP);
+              return false;
+            }
+        }
+
+      }
+
       namespace Executor
       {
 
@@ -1409,6 +1732,35 @@ namespace dbgw
 
               *hResult = hExecutor->exec(szMethod, hParam);
               if (*hResult == NULL)
+                {
+                  throw getLastException();
+                }
+
+              return true;
+            }
+          catch (DBGWException &e)
+            {
+              CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_EXEC_FAILED);
+              return false;
+            }
+        }
+
+        DECLSPECIFIER bool __stdcall ExecuteBatch(Handle hExecutor, const char *szMethod,
+            DBGW::ParamList::Handle hParamList, DBGW::BatchResult::Handle &hBatchResult)
+        {
+          clearException();
+
+          try
+            {
+              if (hExecutor == NULL)
+                {
+                  InvalidHandleException e;
+                  DBGW_LOG_ERROR(e.what());
+                  throw e;
+                }
+
+              *hBatchResult = hExecutor->execBatch(szMethod, hParamList);
+              if (*hBatchResult == NULL)
                 {
                   throw getLastException();
                 }
