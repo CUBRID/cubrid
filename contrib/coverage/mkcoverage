@@ -2,17 +2,12 @@
 
 function usage()
 {
-	##postpone function::: 
-	#	1)-p <the directory of cubrid installation files>
-
 	exec_name=$(basename $0)
 cat <<MKCOVERAGE
 
-usage: $exec_name [options] [args]
+usage: $exec_name [options] [args] [coverage_target_directory]
 
 		valid options :
-		-s arg        : the root directory of CUBRID that has been installed, like: -h /home/xdbms/CUBRID
-		-o arg        : need to download the lastest cubrid,no parameter, like: -n
 		-h			  : show help_message
 		
 		--highlight-all : show total line coverage.(default : show new line coverage)
@@ -27,16 +22,6 @@ help_message='no'
 
 while [ $# -ne 0 ]; do
 	case $1 in
-		-s)
-			shift
-			target_source=$(readlink -f $1)
-		;;
-
-		-o)
-			shift
-			xcov_output=$(readlink -f $1)
-		;;
-
 		-h)
 			help_message='yes'
 		;;
@@ -46,6 +31,7 @@ while [ $# -ne 0 ]; do
 		;;
 
 		*)
+			target_source=$(readlink -f $1)
 		;;	
 	esac
 	shift
