@@ -48,10 +48,22 @@ namespace dbgw
     virtual ~ DBGWExpatXMLProperties();
 
     const char *get(const char *szName, bool bRequired);
+    const char *get(const char *szName, const char *szHiddenName,
+        bool bRequired);
     const char *getCString(const char *szName, bool bRequired);
-    int getInt(const char *szName, bool bRequired);
+    const char *getCString(const char *szName, const char *szHiddenName,
+        bool bRequired);
+    int getInt(const char *szName, bool bRequired, int nDefault = 0);
+    int getInt(const char *szName, const char *szHiddenName,
+        bool bRequired, int nDefault = 0);
+    long getLong(const char *szName, bool bRequired, int nDefault = 0);
+    long getLong(const char *szName, const char *szHiddenName,
+        bool bRequired, int nDefault = 0);
     bool getBool(const char *szName, bool bRequired);
-    void getValidateResult(const char *szName, bool bValidateResult[]);
+    bool getBool(const char *szName, const char *szHiddenName,
+        bool bRequired);
+    void getValidateResult(const char *szName, const char *szHiddenName,
+        bool bValidateResult[]);
     DBGWValueType get30ValueType(const char *szName);
     DBGWValueType get20ValueType(const char *szName);
     DBGWValueType get10ValueType(const char *szName);
@@ -63,6 +75,7 @@ namespace dbgw
 
   private:
     int propertyToInt(const char *szProperty);
+    long propertyToLong(const char *szProperty);
     bool propertyToBoolean(const char *szProperty);
 
   private:
@@ -148,7 +161,7 @@ namespace dbgw
     DBGWGroupSharedPtr m_pGroup;
     DBGWDBInfoHashMap m_dbInfoMap;
     DBGWHostSharedPtr m_pHost;
-    size_t m_nPoolSize;
+    DBGWExecutorPoolContext m_context;
     bool bExistDbInfo;
   };
 

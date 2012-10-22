@@ -255,6 +255,22 @@ namespace dbgw
   {
   }
 
+  ChangePoolContextException::ChangePoolContextException(const char *szContext0ame,
+      int nModifiedValue, const char *szDescription) throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(DBGW_ER_CONF_INVALID_PARAM_NAME,
+            (boost::format("Pool parameter value '%s' has been changed to %d. (%s)")
+                % szContext0ame % nModifiedValue % szDescription).str()))
+  {
+  }
+
+  FailedToCreateEvictorException::FailedToCreateEvictorException() throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(DBGW_ER_CONF_FAILED_TO_CREATE_EVICTOR_THREAD,
+            "Failed to create evictor thread."))
+  {
+  }
+
   NotExistConnException::NotExistConnException(const char *szGroupName) throw() :
     DBGWException(
         DBGWExceptionFactory::create(DBGW_ER_SQL_NOT_EXIST_CONN,
@@ -409,6 +425,13 @@ namespace dbgw
     DBGWException(
         DBGWExceptionFactory::create(DBGW_ER_CLIENT_NOT_IN_TRANSACTION,
             "The client is not in transaction."))
+  {
+  }
+
+  CreateMaxConnectionException::CreateMaxConnectionException(int nSize) throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(DBGW_ER_CLIENT_CREATE_MAX_CONNECTION,
+            (boost::format("Cannot create more than %s connections.") % nSize).str()))
   {
   }
 
@@ -635,10 +658,12 @@ namespace dbgw
   {
   }
 
-  MutexInitFailException::MutexInitFailException() throw() :
+  MutexOperationFailException::MutexOperationFailException(const char *szOp,
+      int nStatus) throw() :
     DBGWException(
-        DBGWExceptionFactory::create(DBGW_ER_EXTERNAL_MUTEX_INIT_FAIL,
-            "Failed to init mutex object."))
+        DBGWExceptionFactory::create(DBGW_ER_EXTERNAL_MUTEX_OPERATION_FAIL,
+            (boost::format("Failed to %s mutex. (status : %d)") % szOp
+                % nStatus).str()))
   {
   }
 
@@ -682,6 +707,24 @@ namespace dbgw
     DBGWException(
         DBGWExceptionFactory::create(
             DBGW_ER_CLIENT_EXECUTE_PROCEDURE_IN_BATCH, "Can't use procedure call when execute batch."))
+  {
+  }
+
+  CondVarOperationFailException::CondVarOperationFailException(const char *szOp,
+      int nStatus) throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(DBGW_ER_EXTERNAL_COND_VAR_OPERATION_FAIL,
+            (boost::format("Failed to %s condition variable. (status : %d)")
+                % szOp % nStatus).str()))
+  {
+  }
+
+  ThreadOperationFailException::ThreadOperationFailException(const char *szOp,
+      int nStatus) throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(DBGW_ER_EXTERNAL_THREAD_OPERATION_FAIL,
+            (boost::format("Failed to %s thread. (status : %d)") % szOp
+                % nStatus).str()))
   {
   }
 

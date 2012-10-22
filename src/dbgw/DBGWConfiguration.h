@@ -87,7 +87,8 @@ namespace dbgw
     void init(bool bAutocommit, DBGW_TRAN_ISOLATION isolation);
     void close();
     void destroy();
-    bool isInvalid() const;
+    bool isValid() const;
+    bool isEvictable(long lMinEvictableIdleTimeMillis);
     DBGWPreparedStatementSharedPtr preparedStatement(
         const DBGWBoundQuerySharedPtr &pQuery);
 
@@ -98,6 +99,7 @@ namespace dbgw
     bool m_bInTran;
     bool m_bInvalid;
     DBGWConnectionSharedPtr m_pConnection;
+    struct timeval m_beginIdleTime;
     /* (sqlName => DBGWPreparedStatement) */
     DBGWPreparedStatementHashMap m_preparedStatmentMap;
     DBGWExecutorPool &m_executorPool;
@@ -109,30 +111,57 @@ namespace dbgw
 
   typedef list<DBGWExecutorSharedPtr> DBGWExecutorList;
 
+  struct DBGWExecutorPoolContext
+  {
+    DBGWExecutorPoolContext();
+
+    static size_t DEFAULT_INITIAL_SIZE();
+    static int DEFAULT_MIN_IDLE();
+    static int DEFAULT_MAX_IDLE();
+    static int DEFAULT_MAX_ACTIVE();
+    static long DEFAULT_TIME_BETWEEN_EVICTION_RUNS_MILLIS();
+    static int DEFAULT_NUM_TESTS_PER_EVICTIONRUN();
+    static long DEFAULT_MIN_EVICTABLE_IDLE_TIMEMILLIS();
+    static DBGW_TRAN_ISOLATION DEFAULT_ISOLATION();
+    static bool DEFAULT_AUTOCOMMIT();
+
+    size_t initialSize;
+    int minIdle;
+    int maxIdle;
+    int maxActive;
+    long timeBetweenEvictionRunsMillis;
+    int numTestsPerEvictionRun;
+    long minEvictableIdleTimeMillis;
+    DBGW_TRAN_ISOLATION isolation;
+    bool autocommit;
+  };
+
   class DBGWExecutorPool
   {
   public:
     DBGWExecutorPool(DBGWGroup &group);
     virtual ~DBGWExecutorPool();
 
-    void init(size_t nCount);
+    void init(const DBGWExecutorPoolContext &context);
     DBGWExecutorSharedPtr getExecutor();
-    void returnExecutor(DBGWExecutorSharedPtr pExecutor);
+    void returnExecutor(DBGWExecutorSharedPtr pExecuter);
+    void evictUnsuedExecutor(int nCheckCount);
     void close();
-    void setDefaultAutocommit(bool bAutocommit);
-    void setDefaultTransactionIsolation(DBGW_TRAN_ISOLATION isolation);
 
   public:
     const char *getGroupName() const;
     bool isIgnoreResult() const;
+    size_t getPoolSize() const;
 
   private:
     bool m_bClosed;
     DBGWGroup &m_group;
+    DBGWLogger m_logger;
     DBGWExecutorList m_executorList;
-    MutexSharedPtr m_poolMutex;
-    bool m_bAutocommit;
-    DBGW_TRAN_ISOLATION m_isolation;
+    system::MutexSharedPtr m_pPoolMutex;
+    DBGWExecutorPoolContext m_context;
+    // getPoolSize() + m_nUsedExecutorCount = maxActive
+    int m_nUsedExecutorCount;
   };
 
   class DBGWGroup
@@ -144,8 +173,9 @@ namespace dbgw
 
     void addHost(DBGWHostSharedPtr pHost);
     DBGWConnectionSharedPtr getConnection();
-    void initPool(size_t nCount);
+    void initPool(const DBGWExecutorPoolContext &context);
     DBGWExecutorSharedPtr getExecutor();
+    void evictUnsuedExecutor(int nCheckCount);
 
   public:
     const string &getFileName() const;
@@ -170,23 +200,30 @@ namespace dbgw
 
   typedef vector<DBGWGroupSharedPtr> DBGWGroupList;
 
-  class DBGWService
+  class DBGWService : public system::ThreadData
   {
   public:
+    static long DEFAULT_MAX_WAIT_EXIT_TIME_MILSEC();
+
+  public:
     DBGWService(const string &fileName, const string &nameSpace,
-        const string &description, bool bValidateResult[], int nValidateRatio);
+        const string &description, bool bValidateResult[], int nValidateRatio,
+        long lMaxWaitExitTimeMilSec);
     virtual ~ DBGWService();
 
     void addGroup(DBGWGroupSharedPtr pGroup);
-    void initPool(size_t nCount);
+    void initPool(const DBGWExecutorPoolContext &context);
     void setForceValidateResult();
+    void setMaxWaitExitTimeMilSec(long lMaxWaitExitTimeMilSec);
     DBGWExecutorList getExecutorList();
     bool isValidateResult(DBGWQueryType type);
+    void evictUnsuedExecutor();
 
   public:
     const string &getFileName() const;
     const string &getNameSpace() const;
     bool empty() const;
+    const DBGWExecutorPoolContext &getExecutorPoolContext() const;
 
   private:
     string m_fileName;
@@ -194,8 +231,11 @@ namespace dbgw
     string m_description;
     bool m_bValidateResult[DBGW_QUERY_TYPE_SIZE];
     int m_nValidateRatio;
+    long m_lMaxWaitExitTimeMilSec;
     /* (groupName => DBGWGroup) */
     DBGWGroupList m_groupList;
+    DBGWExecutorPoolContext m_poolContext;
+    system::ThreadSharedPtr m_pEvictorThread;
   };
 
   typedef shared_ptr<DBGWService> DBGWServiceSharedPtr;
@@ -296,7 +336,7 @@ namespace dbgw
     DBGWResource *getResourceWithUnlock(int nVersion);
 
   private:
-    MutexSharedPtr m_mutex;
+    system::MutexSharedPtr m_pMutex;
     int m_nVersion;
     DBGWResourceSharedPtr m_pResource;
     DBGWResourceMap m_resourceMap;

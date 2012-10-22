@@ -143,27 +143,15 @@ namespace dbgw
 
         DECLSPECIFIER bool __stdcall LoadConnector(Handle hEnv)
         {
-          clearException();
-
-          try
-            {
-              if (hEnv == NULL)
-                {
-                  InvalidHandleException e;
-                  DBGW_LOG_ERROR(e.what());
-                  throw e;
-                }
-
-              return hEnv->loadConnector();
-            }
-          catch (DBGWException &e)
-            {
-              CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
-              return false;
-            }
+          return LoadConnector(hEnv, NULL);
         }
 
         DECLSPECIFIER bool __stdcall LoadQueryMapper(Handle hEnv)
+        {
+          return LoadQueryMapper(hEnv, DBGW_QUERY_MAP_VER_30, NULL, false);
+        }
+
+        DECLSPECIFIER bool __stdcall LoadConnector(Handle hEnv, const char *szConnectorFileName)
         {
           clearException();
 
@@ -176,7 +164,7 @@ namespace dbgw
                   throw e;
                 }
 
-              return hEnv->loadQueryMapper();
+              return hEnv->loadConnector(szConnectorFileName);
             }
           catch (DBGWException &e)
             {
@@ -186,7 +174,7 @@ namespace dbgw
         }
 
         DECLSPECIFIER bool __stdcall LoadQueryMapper(Handle hEnv,
-            DBGWQueryMapperVersion version, const char *szXmlPath,
+            DBGWQueryMapperVersion version, const char *szQueryMapFileName,
             bool bAppend)
         {
           clearException();
@@ -200,7 +188,7 @@ namespace dbgw
                   throw e;
                 }
 
-              return hEnv->loadQueryMapper(version, szXmlPath, bAppend);
+              return hEnv->loadQueryMapper(version, szQueryMapFileName, bAppend);
             }
           catch (DBGWException &e)
             {

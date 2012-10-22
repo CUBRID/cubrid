@@ -49,17 +49,28 @@ namespace dbgw
   static const char *XML_NODE_SERVICE = "service";
   static const char *XML_NODE_SERVICE_PROP_NAMESPACE = "namespace";
   static const char *XML_NODE_SERVICE_PROP_DESCRIPTION = "description";
-  static const char *XML_NODE_SERVICE_PROP_VALIDATE_RESULT = "validate-result";
-  static const char *XML_NODE_SERVICE_PROP_VALIDATE_RATIO = "validate-ratio";
+  static const char *XML_NODE_SERVICE_PROP_VALIDATE_RESULT = "validateResult";
+  static const char *XML_NODE_SERVICE_PROP_VALIDATE_RESULT_HIDDEN = "validate-result";
+  static const char *XML_NODE_SERVICE_PROP_VALIDATE_RATIO = "validateRatio";
+  static const char *XML_NODE_SERVICE_PROP_VALIDATE_RATIO_HIDDEN = "validate-ratio";
+  static const char *XML_NODE_SERVICE_PROP_MAX_WAIT_EXIT_TIME_MILLIS = "maxWaitExitTimeMillis";
 
   static const char *XML_NODE_GROUP = "group";
   static const char *XML_NODE_GROUP_PROP_NAME = "name";
   static const char *XML_NODE_GROUP_PROP_DESCRIPTION = "description";
   static const char *XML_NODE_GROUP_PROP_INACTIVATE = "inactivate";
-  static const char *XML_NODE_GROUP_PROP_IGNORE_RESULT = "ignore-result";
+  static const char *XML_NODE_GROUP_PROP_IGNORE_RESULT = "ignoreResult";
+  static const char *XML_NODE_GROUP_PROP_IGNORE_RESULT_HIDDEN = "ignore-result";
 
   static const char *XML_NODE_POOL = "pool";
-  static const char *XML_NODE_POOL_PROP_SIZE = "pool-size";
+  static const char *XML_NODE_POOL_PROP_INIT_SIZE = "initialSize";
+  static const char *XML_NODE_POOL_PROP_INIT_SIZE_HIDDEN = "pool-size";
+  static const char *XML_NODE_POOL_PROP_MIN_IDLE = "minIdle";
+  static const char *XML_NODE_POOL_PROP_MAX_IDLE = "maxIdle";
+  static const char *XML_NODE_POOL_PROP_MAX_ACTIVE = "maxActive";
+  static const char *XML_NODE_POOL_PROP_TIME_BETWEEN_EVICTION_RUNS_MILLIS = "timeBetweenEvictionRunsMillis";
+  static const char *XML_NODE_POOL_PROP_NUM_TESTS_PER_EVICTIONRUN = "numTestsPerEvictionRun";
+  static const char *XML_NODE_POOL_PROP_MIN_EVICTABLE_IDLE_TIMEMILLIS = "minEvictableIdleTimeMillis";
 
   static const char *XML_NODE_DBINFO = "dbinfo";
   static const char *XML_NODE_DBINFO_PROP_DBNAME = "dbname";
@@ -117,7 +128,8 @@ namespace dbgw
   static const char *XML_NODE_20_PARAM_PROP_TYPE = "type";
 
   static const char *XML_NODE_30_SQLS = "sqls";
-  static const char *XML_NODE_30_SQLS_PROP_GROUP_NAME = "group-name";
+  static const char *XML_NODE_30_SQLS_PROP_GROUP_NAME = "groupName";
+  static const char *XML_NODE_30_SQLS_PROP_GROUP_NAME_HIDDEN = "group-name";
 
   static const char *XML_NODE_30_SELECT = "select";
   static const char *XML_NODE_30_INSERT = "insert";
@@ -139,13 +151,12 @@ namespace dbgw
   static const char *XML_NODE_LOG = "log";
   static const char *XML_NODE_LOG_PROP_LEVEL = "level";
   static const char *XML_NODE_LOG_PROP_PATH = "path";
-  static const char *XML_NODE_LOG_PROP_FORCE_FLUSH = "force-flush";
+  static const char *XML_NODE_LOG_PROP_FORCE_FLUSH = "forceFlush";
+  static const char *XML_NODE_LOG_PROP_FORCE_FLUSH_HIDDEN = "force-flush";
 
   static const char *XML_NODE_INCLUDE = "include";
   static const char *XML_NODE_INCLUDE_PROP_FILE = "file";
   static const char *XML_NODE_INCLUDE_PROP_PATH = "path";
-
-  static const int POOL_DEFAULT_POOL_SIZE = 10;
 
   DBGWExpatXMLParser::DBGWExpatXMLParser(const string &fileName) :
     m_fileName(fileName)
@@ -190,9 +201,19 @@ namespace dbgw
 
   const char *DBGWExpatXMLProperties::get(const char *szName, bool bRequired)
   {
+    return get(szName, NULL, bRequired);
+  }
+
+  const char *DBGWExpatXMLProperties::get(const char *szName, const char *szHiddenName,
+      bool bRequired)
+  {
     for (int i = 0; m_pAttr[i] != NULL; i += 2)
       {
-        if (!strcmp(m_pAttr[i], szName))
+        if (szName != NULL && !strcmp(m_pAttr[i], szName))
+          {
+            return m_pAttr[i + 1];
+          }
+        else if (szHiddenName != NULL && !strcmp(m_pAttr[i], szHiddenName))
           {
             return m_pAttr[i + 1];
           }
@@ -213,9 +234,19 @@ namespace dbgw
 
   const char *DBGWExpatXMLProperties::getCString(const char *szName, bool bRequired)
   {
+    return getCString(szName, NULL, bRequired);
+  }
+
+  const char *DBGWExpatXMLProperties::getCString(const char *szName,
+      const char *szHiddenName, bool bRequired)
+  {
     for (int i = 0; m_pAttr[i] != NULL; i += 2)
       {
-        if (!strcmp(m_pAttr[i], szName))
+        if (szName != NULL && !strcmp(m_pAttr[i], szName))
+          {
+            return m_pAttr[i + 1];
+          }
+        else if (szHiddenName != NULL && !strcmp(m_pAttr[i], szHiddenName))
           {
             return m_pAttr[i + 1];
           }
@@ -234,11 +265,21 @@ namespace dbgw
       }
   }
 
-  int DBGWExpatXMLProperties::getInt(const char *szName, bool bRequired)
+  int DBGWExpatXMLProperties::getInt(const char *szName, bool bRequired, int nDefault)
+  {
+    return getInt(szName, NULL, bRequired, nDefault);
+  }
+
+  int DBGWExpatXMLProperties::getInt(const char *szName, const char *szHiddenName,
+      bool bRequired, int nDefault)
   {
     for (int i = 0; m_pAttr[i] != NULL; i += 2)
       {
-        if (!strcmp(m_pAttr[i], szName))
+        if (szName != NULL && !strcmp(m_pAttr[i], szName))
+          {
+            return propertyToInt(m_pAttr[i + 1]);
+          }
+        else if (szHiddenName != NULL && !strcmp(m_pAttr[i], szHiddenName))
           {
             return propertyToInt(m_pAttr[i + 1]);
           }
@@ -253,15 +294,58 @@ namespace dbgw
       }
     else
       {
-        return 0;
+        return nDefault;
+      }
+  }
+
+  long DBGWExpatXMLProperties::getLong(const char *szName, bool bRequired, int nDefault)
+  {
+    return getLong(szName, NULL, bRequired, nDefault);
+  }
+
+  long DBGWExpatXMLProperties::getLong(const char *szName, const char *szHiddenName,
+      bool bRequired, int nDefault)
+  {
+    for (int i = 0; m_pAttr[i] != NULL; i += 2)
+      {
+        if (szName != NULL && !strcmp(m_pAttr[i], szName))
+          {
+            return propertyToLong(m_pAttr[i + 1]);
+          }
+        else if (szHiddenName != NULL && !strcmp(m_pAttr[i], szHiddenName))
+          {
+            return propertyToLong(m_pAttr[i + 1]);
+          }
+      }
+
+    if (bRequired)
+      {
+        NotExistPropertyException e(m_xmlParser.getFileName(),
+            m_nodeName.c_str(), szName);
+        DBGW_LOG_ERROR(e.what());
+        throw e;
+      }
+    else
+      {
+        return nDefault;
       }
   }
 
   bool DBGWExpatXMLProperties::getBool(const char *szName, bool bRequired)
   {
+    return getBool(szName, NULL, bRequired);
+  }
+
+  bool DBGWExpatXMLProperties::getBool(const char *szName, const char *szHiddenName,
+      bool bRequired)
+  {
     for (int i = 0; m_pAttr[i] != NULL; i += 2)
       {
-        if (!strcmp(m_pAttr[i], szName))
+        if (szName != NULL && !strcmp(m_pAttr[i], szName))
+          {
+            return propertyToBoolean(m_pAttr[i + 1]);
+          }
+        else if (szHiddenName != NULL && !strcmp(m_pAttr[i], szHiddenName))
           {
             return propertyToBoolean(m_pAttr[i + 1]);
           }
@@ -281,11 +365,11 @@ namespace dbgw
   }
 
   void DBGWExpatXMLProperties::getValidateResult(const char *szName,
-      bool bValidateResult[])
+      const char *szHiddenName, bool bValidateResult[])
   {
-    memset(bValidateResult, 0, sizeof(bValidateResult));
+    memset(bValidateResult, 0, DBGW_QUERY_TYPE_SIZE);
 
-    const char *szValidateResult = getCString(szName, false);
+    const char *szValidateResult = getCString(szName, szHiddenName, false);
     if (szValidateResult == NULL)
       {
         return;
@@ -503,6 +587,21 @@ namespace dbgw
     try
       {
         return boost::lexical_cast<int>(szProperty);
+      }
+    catch (boost::bad_lexical_cast &)
+      {
+        InvalidPropertyValueException e(m_xmlParser.getFileName(), szProperty,
+            "NUMERIC");
+        DBGW_LOG_ERROR(e.what());
+        throw e;
+      }
+  }
+
+  long DBGWExpatXMLProperties::propertyToLong(const char *szProperty)
+  {
+    try
+      {
+        return boost::lexical_cast<long>(szProperty);
       }
     catch (boost::bad_lexical_cast &)
       {
@@ -754,8 +853,7 @@ namespace dbgw
 
   DBGWConnectorParser::DBGWConnectorParser(const string &fileName,
       DBGWConnectorSharedPtr pConnector) :
-    DBGWParser(fileName), m_pConnector(pConnector),
-    m_nPoolSize(POOL_DEFAULT_POOL_SIZE), bExistDbInfo(false)
+    DBGWParser(fileName), m_pConnector(pConnector), bExistDbInfo(false)
   {
   }
 
@@ -802,10 +900,10 @@ namespace dbgw
             DBGW_LOG_ERROR(e.what());
             throw e;
           }
-        m_pService->initPool(m_nPoolSize);
+        m_pService->initPool(m_context);
 
         m_pService = DBGWServiceSharedPtr();
-        m_nPoolSize = POOL_DEFAULT_POOL_SIZE;
+        m_context = DBGWExecutorPoolContext();
       }
     else if (!strcasecmp(szName, XML_NODE_GROUP))
       {
@@ -835,15 +933,17 @@ namespace dbgw
 
     bool bValidateResult[DBGW_QUERY_TYPE_SIZE];
     properties.getValidateResult(XML_NODE_SERVICE_PROP_VALIDATE_RESULT,
-        bValidateResult);
+        XML_NODE_SERVICE_PROP_VALIDATE_RESULT_HIDDEN, bValidateResult);
 
     m_pService = DBGWServiceSharedPtr(
-        new DBGWService(
-            getFileName(),
+        new DBGWService(getFileName(),
             properties.get(XML_NODE_SERVICE_PROP_NAMESPACE, true),
             properties.get(XML_NODE_SERVICE_PROP_DESCRIPTION, false),
             bValidateResult,
-            properties.getInt(XML_NODE_SERVICE_PROP_VALIDATE_RATIO, false)));
+            properties.getInt(XML_NODE_SERVICE_PROP_VALIDATE_RATIO,
+                XML_NODE_SERVICE_PROP_VALIDATE_RATIO_HIDDEN, false),
+            properties.getLong(XML_NODE_SERVICE_PROP_MAX_WAIT_EXIT_TIME_MILLIS,
+                false, DBGWService::DEFAULT_MAX_WAIT_EXIT_TIME_MILSEC())));
     m_pConnector->addService(m_pService);
   }
 
@@ -861,7 +961,7 @@ namespace dbgw
             properties.get(XML_NODE_GROUP_PROP_DESCRIPTION, false),
             properties.getBool(XML_NODE_GROUP_PROP_INACTIVATE, false),
             properties.getBool(XML_NODE_GROUP_PROP_IGNORE_RESULT,
-                false)));
+                XML_NODE_GROUP_PROP_IGNORE_RESULT_HIDDEN, false)));
     m_pService->addGroup(m_pGroup);
   }
 
@@ -872,7 +972,24 @@ namespace dbgw
         return;
       }
 
-    m_nPoolSize = properties.getInt(XML_NODE_POOL_PROP_SIZE, true);
+    m_context.initialSize = properties.getInt(XML_NODE_POOL_PROP_INIT_SIZE,
+        XML_NODE_POOL_PROP_INIT_SIZE_HIDDEN, false,
+        DBGWExecutorPoolContext::DEFAULT_INITIAL_SIZE());
+    m_context.minIdle = properties.getInt(XML_NODE_POOL_PROP_MIN_IDLE, false,
+        DBGWExecutorPoolContext::DEFAULT_MIN_IDLE());
+    m_context.maxIdle = properties.getInt(XML_NODE_POOL_PROP_MAX_IDLE, false,
+        DBGWExecutorPoolContext::DEFAULT_MAX_IDLE());
+    m_context.maxActive = properties.getInt(XML_NODE_POOL_PROP_MAX_ACTIVE, false,
+        DBGWExecutorPoolContext::DEFAULT_MAX_ACTIVE());
+    m_context.timeBetweenEvictionRunsMillis = properties.getLong(
+        XML_NODE_POOL_PROP_TIME_BETWEEN_EVICTION_RUNS_MILLIS, false,
+        DBGWExecutorPoolContext::DEFAULT_TIME_BETWEEN_EVICTION_RUNS_MILLIS());
+    m_context.numTestsPerEvictionRun = properties.getInt(
+        XML_NODE_POOL_PROP_NUM_TESTS_PER_EVICTIONRUN, false,
+        DBGWExecutorPoolContext::DEFAULT_NUM_TESTS_PER_EVICTIONRUN());
+    m_context.minEvictableIdleTimeMillis = properties.getLong(
+        XML_NODE_POOL_PROP_MIN_EVICTABLE_IDLE_TIMEMILLIS, false,
+        DBGWExecutorPoolContext::DEFAULT_MIN_EVICTABLE_IDLE_TIMEMILLIS());
   }
 
   void DBGWConnectorParser::parseDBInfo(DBGWExpatXMLProperties &properties)
@@ -1508,7 +1625,8 @@ namespace dbgw
       }
 
     m_parserContext.setGlobalGroupName(
-        properties.get(XML_NODE_30_SQLS_PROP_GROUP_NAME, false));
+        properties.get(XML_NODE_30_SQLS_PROP_GROUP_NAME,
+            XML_NODE_30_SQLS_PROP_GROUP_NAME_HIDDEN, false));
   }
 
   void DBGW30QueryMapParser::parseSql(DBGWExpatXMLProperties &properties)
@@ -1622,7 +1740,8 @@ namespace dbgw
     DBGWLogger::setLogPath(properties.getCString(XML_NODE_LOG_PROP_PATH, false));
     DBGWLogger::setLogLevel(properties.getLogLevel(XML_NODE_LOG_PROP_LEVEL));
     DBGWLogger::setForceFlush(
-        properties.getBool(XML_NODE_LOG_PROP_FORCE_FLUSH, false));
+        properties.getBool(XML_NODE_LOG_PROP_FORCE_FLUSH,
+            XML_NODE_LOG_PROP_FORCE_FLUSH_HIDDEN, false));
   }
 
   void DBGWConfigurationParser::parseInclude(DBGWExpatXMLProperties &properties)

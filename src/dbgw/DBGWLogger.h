@@ -25,9 +25,12 @@ namespace dbgw
   class DBGWLogger
   {
   public:
+    DBGWLogger();
     DBGWLogger(const string &sqlName);
     DBGWLogger(const string &groupName, const string &sqlName);
     virtual ~ DBGWLogger();
+
+    void setGroupName(const string &groupName);
 
   public:
     const string getLogMessage(const char *szMsg) const;

@@ -35,6 +35,8 @@ namespace dbgw
     DBGW_ER_CONF_NOT_EXIST_FILE                       = -22106,
     DBGW_ER_CONF_NOT_EXIST_SERVICE                    = -22107,
     DBGW_ER_CONF_INVALID_PARAM_NAME                   = -22108,
+    DBGW_ER_CONF_CHANGE_POOL_CONTEXT                  = -22109,
+    DBGW_ER_CONF_FAILED_TO_CREATE_EVICTOR_THREAD      = -22110,
 
     DBGW_ER_SQL_NOT_EXIST_CONN                        = -22200,
     DBGW_ER_SQL_INVALID_SQL                           = -22201,
@@ -56,6 +58,7 @@ namespace dbgw
     DBGW_ER_CLIENT_INVALID_PARAMETER_LIST             = -22405,
     DBGW_ER_CLIENT_EXECUTE_SELECT_IN_BATCH            = -22406,
     DBGW_ER_CLIENT_EXECUTE_PROCEDURE_IN_BATCH         = -22407,
+    DBGW_ER_CLIENT_CREATE_MAX_CONNECTION              = -22408,
 
     DBGW_ER_RESULT_NOT_ALLOWED_NEXT                   = -22500,
     DBGW_ER_RESULT_NOT_ALLOWED_GET_METADATA           = -22501,
@@ -81,11 +84,13 @@ namespace dbgw
     DBGW_ER_XML_DUPLICATE_RESULT_INDEX                = -22711,
     DBGW_ER_XML_INVALID_RESULT_INDEX                  = -22712,
 
-    DBGW_ER_EXTERNAL_MUTEX_INIT_FAIL                  = -22800,
+    DBGW_ER_EXTERNAL_MUTEX_OPERATION_FAIL             = -22800,
     DBGW_ER_EXTERNAL_STANDARD_ERROR                   = -22801,
     DBGW_ER_EXTERNAL_MEMORY_ALLOC_FAIL                = -22802,
     DBGW_ER_EXTERNAL_DBGW_INVALID_HANDLE              = -22803,
     DBGW_ER_EXTERNAL_DBGW_NOT_ENOUGH_BUFFER           = -22804,
+    DBGW_ER_EXTERNAL_COND_VAR_OPERATION_FAIL          = -22805,
+    DBGW_ER_EXTERNAL_THREAD_OPERATION_FAIL            = -22806,
 
     DBGW_ER_OLD_DBGW_INTERFACE_ERROR                  = -22900
   };
@@ -189,6 +194,19 @@ namespace dbgw
     InvalidParamNameException(const char *szName) throw();
   };
 
+  class ChangePoolContextException : public DBGWException
+  {
+  public:
+    ChangePoolContextException(const char *szContext0ame, int nModifiedValue,
+        const char *szDescription) throw();
+  };
+
+  class FailedToCreateEvictorException : public DBGWException
+  {
+  public:
+    FailedToCreateEvictorException() throw();
+  };
+
   class NotExistConnException : public DBGWException
   {
   public:
@@ -284,6 +302,12 @@ namespace dbgw
   {
   public:
     NotInTransactionException() throw();
+  };
+
+  class CreateMaxConnectionException : public DBGWException
+  {
+  public:
+    CreateMaxConnectionException(int nSize) throw();
   };
 
   class NotAllowedNextException : public DBGWException
@@ -418,10 +442,10 @@ namespace dbgw
         int nIndex) throw();
   };
 
-  class MutexInitFailException : public DBGWException
+  class MutexOperationFailException : public DBGWException
   {
   public:
-    MutexInitFailException() throw();
+    MutexOperationFailException(const char *szOp, int nStatus) throw();
   };
 
   class MemoryAllocationFail : public DBGWException
@@ -458,6 +482,18 @@ namespace dbgw
   {
   public:
     ExecuteProcedureInBatchException() throw();
+  };
+
+  class CondVarOperationFailException : public DBGWException
+  {
+  public:
+    CondVarOperationFailException(const char *szOp, int nStatus) throw();
+  };
+
+  class ThreadOperationFailException : public DBGWException
+  {
+  public:
+    ThreadOperationFailException(const char *szOp, int nStatus) throw();
   };
 
 }

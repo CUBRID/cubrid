@@ -94,12 +94,13 @@ namespace dbgw
     return m_dbInfoMap;
   }
 
-  DBGWExecutor::DBGWExecutor(DBGWExecutorPool &executOrPool,
+  DBGWExecutor::DBGWExecutor(DBGWExecutorPool &executorPool,
       DBGWConnectionSharedPtr pConnection) :
     m_bClosed(false), m_bDestroyed(false), m_bAutocommit(true),
     m_bInTran(false), m_bInvalid(false), m_pConnection(pConnection),
-    m_executorPool(executOrPool)
+    m_executorPool(executorPool)
   {
+    gettimeofday(&m_beginIdleTime, NULL);
   }
 
   DBGWExecutor::~DBGWExecutor()
@@ -283,6 +284,8 @@ namespace dbgw
     m_bClosed = true;
     m_preparedStatmentMap.clear();
 
+    gettimeofday(&m_beginIdleTime, NULL);
+
     if (m_bInTran)
       {
         if (m_pConnection->rollback() == false)
@@ -303,8 +306,6 @@ namespace dbgw
         return;
       }
 
-    DBGW_LOG_DEBUG("executor is destroyed.");
-
     m_bDestroyed = true;
 
     close();
@@ -315,15 +316,84 @@ namespace dbgw
       }
   }
 
-  bool DBGWExecutor::isInvalid() const
+  bool DBGWExecutor::isValid() const
   {
-    return m_bInvalid;
+    return m_bInvalid == false;
+  }
+
+  bool DBGWExecutor::isEvictable(long lMinEvictableIdleTimeMillis)
+  {
+    struct timeval endIdleTime;
+
+    gettimeofday(&endIdleTime, NULL);
+
+    long lTotalIdleTimeMilSec = (endIdleTime.tv_sec - m_beginIdleTime.tv_sec) * 1000;
+    lTotalIdleTimeMilSec += ((endIdleTime.tv_usec - m_beginIdleTime.tv_usec) / 1000);
+
+    return lTotalIdleTimeMilSec >= lMinEvictableIdleTimeMillis;
+  }
+
+  DBGWExecutorPoolContext::DBGWExecutorPoolContext() :
+    initialSize(DEFAULT_INITIAL_SIZE()), minIdle(DEFAULT_MIN_IDLE()),
+    maxIdle(DEFAULT_MAX_IDLE()), maxActive(DEFAULT_MAX_ACTIVE()),
+    timeBetweenEvictionRunsMillis(DEFAULT_TIME_BETWEEN_EVICTION_RUNS_MILLIS()),
+    numTestsPerEvictionRun(DEFAULT_NUM_TESTS_PER_EVICTIONRUN()),
+    minEvictableIdleTimeMillis(DEFAULT_MIN_EVICTABLE_IDLE_TIMEMILLIS()),
+    isolation(DEFAULT_ISOLATION()), autocommit(DEFAULT_AUTOCOMMIT())
+  {
+  }
+
+  size_t DBGWExecutorPoolContext::DEFAULT_INITIAL_SIZE()
+  {
+    return 0;
+  }
+
+  int DBGWExecutorPoolContext::DEFAULT_MIN_IDLE()
+  {
+    return 0;
+  }
+
+  int DBGWExecutorPoolContext::DEFAULT_MAX_IDLE()
+  {
+    return 8;
+  }
+
+  int DBGWExecutorPoolContext::DEFAULT_MAX_ACTIVE()
+  {
+    return 8;
+  }
+
+  long DBGWExecutorPoolContext::DEFAULT_TIME_BETWEEN_EVICTION_RUNS_MILLIS()
+  {
+    return -1;
+  }
+
+  int DBGWExecutorPoolContext::DEFAULT_NUM_TESTS_PER_EVICTIONRUN()
+  {
+    return 3;
+  }
+
+  long DBGWExecutorPoolContext::DEFAULT_MIN_EVICTABLE_IDLE_TIMEMILLIS()
+  {
+    return 1000 * 60 * 30;
+  }
+
+  DBGW_TRAN_ISOLATION DBGWExecutorPoolContext::DEFAULT_ISOLATION()
+  {
+    return DBGW_TRAN_UNKNOWN;
+  }
+
+  bool DBGWExecutorPoolContext::DEFAULT_AUTOCOMMIT()
+  {
+    return true;
   }
 
   DBGWExecutorPool::DBGWExecutorPool(DBGWGroup &group) :
-    m_group(group), m_bAutocommit(true), m_isolation(DBGW_TRAN_UNKNOWN),
-    m_poolMutex(MutexFactory::create())
+    m_bClosed(false), m_group(group),
+    m_pPoolMutex(system::MutexFactory::create()),
+    m_nUsedExecutorCount(0)
   {
+    m_logger.setGroupName(m_group.getName());
   }
 
   DBGWExecutorPool::~DBGWExecutorPool()
@@ -338,18 +408,20 @@ namespace dbgw
       }
   }
 
-  void DBGWExecutorPool::init(size_t nCount)
+  void DBGWExecutorPool::init(const DBGWExecutorPoolContext &context)
   {
+    m_context = context;
+
+    system::MutexLock lock(m_pPoolMutex);
+
     DBGWExecutorSharedPtr pExecutor;
-    for (size_t i = 0; i < nCount; i++)
+    for (size_t i = 0; i < context.initialSize; i++)
       {
         pExecutor = DBGWExecutorSharedPtr(
             new DBGWExecutor(*this, m_group.getConnection()));
 
-        m_poolMutex->lock();
         m_executorList.push_back(pExecutor);
-        m_poolMutex->unlock();
-        usleep(1000);
+        SLEEP_MILISEC(0, 10);
       }
   }
 
@@ -360,18 +432,18 @@ namespace dbgw
       {
         try
           {
-            m_poolMutex->lock();
+            m_pPoolMutex->lock();
             if (m_executorList.empty())
               {
-                m_poolMutex->unlock();
+                m_pPoolMutex->unlock();
                 break;
               }
 
             pExecutor = m_executorList.front();
             m_executorList.pop_front();
-            m_poolMutex->unlock();
+            m_pPoolMutex->unlock();
 
-            pExecutor->init(m_bAutocommit, m_isolation);
+            pExecutor->init(m_context.autocommit, m_context.isolation);
           }
         catch (DBGWException &)
           {
@@ -382,13 +454,25 @@ namespace dbgw
 
     if (pExecutor == NULL)
       {
+        system::MutexLock lock(m_pPoolMutex);
+        if (m_context.maxActive <= ((int) getPoolSize() + m_nUsedExecutorCount))
+          {
+            CreateMaxConnectionException e(m_context.maxActive);
+            DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+            throw e;
+          }
+        lock.unlock();
+
         pExecutor = DBGWExecutorSharedPtr(
             new DBGWExecutor(*this, m_group.getConnection()));
         if (pExecutor != NULL)
           {
-            pExecutor->init(m_bAutocommit, m_isolation);
+            pExecutor->init(m_context.autocommit, m_context.isolation);
           }
       }
+
+    system::MutexLock lock(m_pPoolMutex);
+    m_nUsedExecutorCount++;
 
     return pExecutor;
   }
@@ -400,14 +484,61 @@ namespace dbgw
         return;
       }
 
-    pExecutor->close();
-    if (pExecutor->isInvalid())
+    try
       {
-        return;
+        pExecutor->close();
+      }
+    catch (DBGWException &)
+      {
       }
 
-    MutexLock lock(m_poolMutex);
-    m_executorList.push_back(pExecutor);
+    system::MutexLock lock(m_pPoolMutex);
+
+    if (m_nUsedExecutorCount > 0)
+      {
+        m_nUsedExecutorCount--;
+      }
+
+    if (pExecutor->isValid() && m_context.maxIdle > (int) getPoolSize())
+      {
+        m_executorList.push_back(pExecutor);
+      }
+    else
+      {
+        /**
+         * Becase pExecutor is smart pointer,
+         * it will be deleted automatically.
+         */
+      }
+  }
+
+  void DBGWExecutorPool::evictUnsuedExecutor(int nCheckCount)
+  {
+    system::MutexLock lock(m_pPoolMutex);
+
+    if (nCheckCount > (int) getPoolSize())
+      {
+        nCheckCount = getPoolSize();
+      }
+
+    DBGWExecutorList::iterator it = m_executorList.begin();
+
+    for (int i = 0; i < nCheckCount; i++)
+      {
+        if (m_context.minIdle >= (int) getPoolSize())
+          {
+            return;
+          }
+
+        if ((*it)->isEvictable(m_context.minEvictableIdleTimeMillis))
+          {
+            m_executorList.erase(it++);
+          }
+        else
+          {
+            ++it;
+          }
+      }
   }
 
   void DBGWExecutorPool::close()
@@ -419,18 +550,8 @@ namespace dbgw
 
     m_bClosed = true;
 
-    MutexLock lock(m_poolMutex);
+    system::MutexLock lock(m_pPoolMutex);
     m_executorList.clear();
-  }
-
-  void DBGWExecutorPool::setDefaultAutocommit(bool bAutocommit)
-  {
-    m_bAutocommit = bAutocommit;
-  }
-
-  void DBGWExecutorPool::setDefaultTransactionIsolation(DBGW_TRAN_ISOLATION isolation)
-  {
-    m_isolation = isolation;
   }
 
   const char *DBGWExecutorPool::getGroupName() const
@@ -441,6 +562,11 @@ namespace dbgw
   bool DBGWExecutorPool::isIgnoreResult() const
   {
     return m_group.isIgnoreResult();
+  }
+
+  size_t DBGWExecutorPool::getPoolSize() const
+  {
+    return m_executorList.size();
   }
 
   DBGWGroup::DBGWGroup(const string &fileName, const string &name,
@@ -503,14 +629,19 @@ namespace dbgw
     throw e;
   }
 
-  void DBGWGroup::initPool(size_t nCount)
+  void DBGWGroup::initPool(const DBGWExecutorPoolContext &context)
   {
-    m_executorPool.init(nCount);
+    m_executorPool.init(context);
   }
 
   DBGWExecutorSharedPtr DBGWGroup::getExecutor()
   {
     return m_executorPool.getExecutor();
+  }
+
+  void DBGWGroup::evictUnsuedExecutor(int nCheckCount)
+  {
+    m_executorPool.evictUnsuedExecutor(nCheckCount);
   }
 
   const string &DBGWGroup::getFileName() const
@@ -538,10 +669,44 @@ namespace dbgw
     return m_hostList.empty();
   }
 
+  void evictUnusedExecutorThreadFunc(const system::Thread *pThread,
+      system::ThreadDataSharedPtr pData)
+  {
+    if (pData == NULL || pThread == NULL)
+      {
+        FailedToCreateEvictorException e;
+        DBGW_LOG_ERROR(e.what());
+        return;
+      }
+
+    DBGWService *pService = (DBGWService *) pData.get();
+    const DBGWExecutorPoolContext &context = pService->getExecutorPoolContext();
+
+    while (pThread->isRunning())
+      {
+        pService->evictUnsuedExecutor();
+
+        if (context.timeBetweenEvictionRunsMillis > 0)
+          {
+            if (pThread->sleep(context.timeBetweenEvictionRunsMillis) == false)
+              {
+                break;
+              }
+          }
+      }
+  }
+
+  long DBGWService::DEFAULT_MAX_WAIT_EXIT_TIME_MILSEC()
+  {
+    return 5000;
+  }
+
   DBGWService::DBGWService(const string &fileName, const string &nameSpace,
-      const string &description, bool bValidateResult[], int nValidateRatio) :
+      const string &description, bool bValidateResult[], int nValidateRatio,
+      long lMaxWaitExitTimeMilSec) :
     m_fileName(fileName), m_nameSpace(nameSpace), m_description(description),
-    m_nValidateRatio(nValidateRatio)
+    m_nValidateRatio(nValidateRatio), m_lMaxWaitExitTimeMilSec(lMaxWaitExitTimeMilSec),
+    m_pEvictorThread(system::ThreadFactory::create(evictUnusedExecutorThreadFunc))
   {
     memcpy(m_bValidateResult, bValidateResult, sizeof(m_bValidateResult));
 
@@ -557,6 +722,8 @@ namespace dbgw
 
   DBGWService::~DBGWService()
   {
+    m_pEvictorThread->timedJoin(m_lMaxWaitExitTimeMilSec);
+
     m_groupList.clear();
   }
 
@@ -598,9 +765,28 @@ namespace dbgw
     return nRandom < m_nValidateRatio;
   }
 
+  void DBGWService::evictUnsuedExecutor()
+  {
+    if (m_groupList.empty())
+      {
+        return;
+      }
+
+    for (DBGWGroupList::iterator it = m_groupList.begin(); it
+        != m_groupList.end(); it++)
+      {
+        (*it)->evictUnsuedExecutor(m_poolContext.numTestsPerEvictionRun);
+      }
+  }
+
   bool DBGWService::empty() const
   {
     return m_groupList.empty();
+  }
+
+  const DBGWExecutorPoolContext &DBGWService::getExecutorPoolContext() const
+  {
+    return m_poolContext;
   }
 
   DBGWResource::DBGWResource() :
@@ -625,20 +811,20 @@ namespace dbgw
   const int DBGWVersionedResource::INVALID_VERSION = -1;
 
   DBGWVersionedResource::DBGWVersionedResource() :
-    m_nVersion(INVALID_VERSION), m_mutex(MutexFactory::create())
+    m_pMutex(system::MutexFactory::create()), m_nVersion(INVALID_VERSION)
   {
   }
 
   DBGWVersionedResource::~DBGWVersionedResource()
   {
-    MutexLock lock(m_mutex);
+    system::MutexLock lock(m_pMutex);
 
     m_resourceMap.clear();
   }
 
   int DBGWVersionedResource::getVersion()
   {
-    MutexLock lock(m_mutex);
+    system::MutexLock lock(m_pMutex);
 
     if (m_nVersion > INVALID_VERSION)
       {
@@ -655,7 +841,7 @@ namespace dbgw
         return;
       }
 
-    MutexLock lock(m_mutex);
+    system::MutexLock lock(m_pMutex);
 
     DBGWResource *pResource = getResourceWithUnlock(nVersion);
     pResource->modifyRefCount(-1);
@@ -676,7 +862,7 @@ namespace dbgw
 
   void DBGWVersionedResource::putResource(DBGWResourceSharedPtr pResource)
   {
-    MutexLock lock(m_mutex);
+    system::MutexLock lock(m_pMutex);
 
     if (m_pResource != NULL && m_nVersion > INVALID_VERSION
         && m_pResource->getRefCount() > 0)
@@ -690,7 +876,7 @@ namespace dbgw
 
   DBGWResource *DBGWVersionedResource::getNewResource()
   {
-    MutexLock lock(m_mutex);
+    system::MutexLock lock(m_pMutex);
 
     if (m_nVersion <= INVALID_VERSION)
       {
@@ -702,7 +888,7 @@ namespace dbgw
 
   DBGWResource *DBGWVersionedResource::getResource(int nVersion)
   {
-    MutexLock lock(m_mutex);
+    system::MutexLock lock(m_pMutex);
 
     return getResourceWithUnlock(nVersion);
   }
@@ -737,8 +923,45 @@ namespace dbgw
     return m_resourceMap.size();
   }
 
-  void DBGWService::initPool(size_t nCount)
+  void DBGWService::initPool(const DBGWExecutorPoolContext &context)
   {
+    m_poolContext = context;
+
+    if (m_poolContext.maxIdle > m_poolContext.maxActive)
+      {
+        m_poolContext.maxIdle = m_poolContext.maxActive;
+
+        ChangePoolContextException e("maxIdle", m_poolContext.maxIdle,
+            "maxIdle > maxActive");
+        DBGW_LOG_WARN(e.what());
+      }
+
+    if (m_poolContext.minIdle > m_poolContext.maxIdle)
+      {
+        m_poolContext.minIdle = m_poolContext.maxIdle;
+
+        ChangePoolContextException e("minIdle", m_poolContext.minIdle,
+            "minIdle > maxIdle");
+        DBGW_LOG_WARN(e.what());
+      }
+
+    if ((int) m_poolContext.initialSize < m_poolContext.minIdle)
+      {
+        m_poolContext.initialSize = m_poolContext.minIdle;
+
+        ChangePoolContextException e("initialSize", m_poolContext.initialSize,
+            "initialSize < minIdle");
+        DBGW_LOG_WARN(e.what());
+      }
+    else if ((int) m_poolContext.initialSize > m_poolContext.maxIdle)
+      {
+        m_poolContext.initialSize = m_poolContext.maxIdle;
+
+        ChangePoolContextException e("initialSize", m_poolContext.initialSize,
+            "initialSize > maxIdle");
+        DBGW_LOG_WARN(e.what());
+      }
+
     for (DBGWGroupList::iterator it = m_groupList.begin(); it
         != m_groupList.end(); it++)
       {
@@ -749,7 +972,7 @@ namespace dbgw
 
         try
           {
-            (*it)->initPool(nCount);
+            (*it)->initPool(m_poolContext);
           }
         catch (DBGWException &)
           {
@@ -761,12 +984,19 @@ namespace dbgw
             clearException();
           }
       }
+
+    m_pEvictorThread->start(shared_from_this());
   }
 
   void DBGWService::setForceValidateResult()
   {
     memset(&m_bValidateResult, 1, sizeof(m_bValidateResult));
     m_nValidateRatio = 100;
+  }
+
+  void DBGWService::setMaxWaitExitTimeMilSec(long lMaxWaitExitTimeMilSec)
+  {
+    m_lMaxWaitExitTimeMilSec = lMaxWaitExitTimeMilSec;
   }
 
   DBGWExecutorList DBGWService::getExecutorList()

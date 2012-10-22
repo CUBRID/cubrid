@@ -114,8 +114,13 @@ namespace dbgw
 #endif
         DECLSPECIFIER bool __stdcall LoadConnector(Handle hEnv);
         DECLSPECIFIER bool __stdcall LoadQueryMapper(Handle hEnv);
+        /**
+         * do not call this method directly.
+         */
+        DECLSPECIFIER bool __stdcall LoadConnector(Handle hEnv,
+            const char *szConnectorFileName);
         DECLSPECIFIER bool __stdcall LoadQueryMapper(Handle hEnv,
-            DBGWQueryMapperVersion version, const char *szXmlPath,
+            DBGWQueryMapperVersion version, const char *szQueryMapFileName,
             bool bAppend = false);
 
       }

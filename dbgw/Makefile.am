@@ -66,7 +66,7 @@ libdbgw3_la_SOURCES = \
 libdbgw3_la_CPPFLAGS = \
         $(AM_CPPFLAGS) -I$(CCI_DIR) -I$(BROKER_DIR)
 libdbgw3_la_LDFLAGS = -version-number @LT_VERSION@		
-libdbgw3_la_LIBADD = @EXPAT_LIBS@
+libdbgw3_la_LIBADD = @EXPAT_LIBS@ -lrt
 libdbgw3_la_LINK = $(CXXLINK)
 
 # DBGW Season 3 Query Tester
@@ -91,7 +91,7 @@ dbgw3_query_tester_SOURCES = \
 		$(DBGW_DIR)/DBGWQueryTester.cpp		
 dbgw3_query_tester_CPPFLAGS = \
 		$(AM_CPPFLAGS) -I$(CCI_DIR) -I$(BROKER_DIR)		
-dbgw3_query_tester_LDADD = @EXPAT_LIBS@ @CCI_LIB@
+dbgw3_query_tester_LDADD = @EXPAT_LIBS@ @CCI_LIB@ -lrt
 
 VERSIONED_FILES = \
         $(BASE_DIR)/release_string.c \

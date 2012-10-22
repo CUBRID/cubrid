@@ -29,11 +29,15 @@ namespace dbgw
 
   static const char *DBGW_LOG_PATH = "log/cci_dbgw.log";
   static const int LOG_BUFFER_SIZE = 1024 * 20;
-  static MutexSharedPtr g_logMutex = MutexFactory::create();
+  static system::MutexSharedPtr g_pLogMutex = system::MutexFactory::create();
 
   Logger DBGWLogger::m_logger = NULL;
   string DBGWLogger::m_logPath = DBGW_LOG_PATH;
   CCI_LOG_LEVEL DBGWLogger::m_logLevel = CCI_LOG_LEVEL_ERROR;
+
+  DBGWLogger::DBGWLogger()
+  {
+  }
 
   DBGWLogger::DBGWLogger(const string &sqlName) :
     m_sqlName(sqlName)
@@ -49,12 +53,23 @@ namespace dbgw
   {
   }
 
+  void DBGWLogger::setGroupName(const string &groupName)
+  {
+    m_groupName = groupName;
+  }
+
   const string DBGWLogger::getLogMessage(const char *szMsg) const
   {
     string message;
     if (m_groupName == "")
       {
         message += m_sqlName;
+        message += " : ";
+        message += szMsg;
+      }
+    else if (m_sqlName == "")
+      {
+        message += m_groupName;
         message += " : ";
         message += szMsg;
       }
@@ -82,7 +97,7 @@ namespace dbgw
 
   void DBGWLogger::setLogPath(const char *szLogPath)
   {
-    g_logMutex->lock();
+    g_pLogMutex->lock();
     if (szLogPath != NULL)
       {
         if (m_logger != NULL)
@@ -93,7 +108,7 @@ namespace dbgw
         m_logPath = szLogPath;
         m_logger = cci_log_get(m_logPath.c_str());
       }
-    g_logMutex->unlock();
+    g_pLogMutex->unlock();
   }
 
   void DBGWLogger::setLogLevel(CCI_LOG_LEVEL level)
@@ -114,13 +129,13 @@ namespace dbgw
 
   void DBGWLogger::finalize()
   {
-    g_logMutex->lock();
+    g_pLogMutex->lock();
     if (m_logger != NULL)
       {
         cci_log_remove(m_logPath.c_str());
         m_logger = NULL;
       }
-    g_logMutex->unlock();
+    g_pLogMutex->unlock();
   }
 
   void DBGWLogger::writeLogF(const char *szFile, int nLine, CCI_LOG_LEVEL level,
