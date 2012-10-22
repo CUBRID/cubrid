@@ -27918,7 +27918,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 #line 16962 "../../src/parser/csql_grammar.y"
     {{
 
-			int charset = lang_charset ();
+			int charset = lang_get_client_charset ();
 			PT_NODE *node;
 
 			node = parser_new_node (this_parser, PT_VALUE);
@@ -27940,7 +27940,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 			PT_NODE *charset_node = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
 			int dummy;
-			int charset = lang_charset ();
+			int charset = lang_get_client_charset ();
 			PT_NODE *node;
 
 			if (charset_node)
@@ -32622,7 +32622,7 @@ yyparse (void)
   /* User initialization code.  */
   #line 548 "../../src/parser/csql_grammar.y"
 {yybuffer_pos = 0;}
-/* Line 2317 of glr.c.  */
+/* Line 2309 of glr.c.  */
 #line 32627 "../../src/parser/csql_grammar.c"
   if (! yyinitGLRStack (yystackp, YYINITDEPTH))
     goto yyexhaustedlab;

@@ -16961,7 +16961,7 @@ opt_using_charset
 	: /* empty */
 		{{
 
-			int charset = lang_charset ();
+			int charset = lang_get_client_charset ();
 			PT_NODE *node;
 
 			node = parser_new_node (this_parser, PT_VALUE);
@@ -16980,7 +16980,7 @@ opt_using_charset
 
 			PT_NODE *charset_node = $2;
 			int dummy;
-			int charset = lang_charset ();
+			int charset = lang_get_client_charset ();
 			PT_NODE *node;
 
 			if (charset_node)
