@@ -10,9 +10,9 @@ install diff tool
 
 2. Create code coverage report file
 2.1 Move to Source's ROOT directory (ex. trunk/)
-2.2 contrib/coverage/mkcoverage -s [directory what you want to report]
-(ex. mkcoverage -s src/broker)
-(ex. mkcoverage -s src)
+2.2 contrib/coverage/mkcoverage [directory what you want to report]
+(ex. mkcoverage src/broker)
+(ex. mkcoverage src)
 (If you meet utf-8 problem, please check your language configuration)
 (If you want to know detail usage, please use -h option)
 2.3 mkcoverage created "coverage.xcov" successfully
