@@ -825,6 +825,11 @@ static int qexec_update_btree_unique_stats_info (THREAD_ENTRY * thread_p,
 						 * info);
 static int qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec,
 			     VAL_DESCR * vd, int composite_locking);
+static int qexec_process_partition_unique_stats (THREAD_ENTRY * thread_p,
+						 PRUNING_CONTEXT * pcontext);
+static int qexec_process_unique_stats (THREAD_ENTRY * thread_p,
+				       OID * class_oid,
+				       UPDDEL_CLASS_INFO_INTERNAL * class_);
 static SCAN_CODE qexec_init_next_partition (THREAD_ENTRY * thread_p,
 					    ACCESS_SPEC_TYPE * spec);
 
@@ -22578,6 +22583,37 @@ qexec_upddel_setup_current_class (THREAD_ENTRY * thread_p,
 	    }
 	}
     }
+  else
+    {
+      /* look through subclasses */
+      for (i = 0; i < query_class->no_subclasses; i++)
+	{
+	  if (OID_EQ (&query_class->class_oid[i], current_oid))
+	    {
+	      internal_class->class_oid = &query_class->class_oid[i];
+	      internal_class->class_hfid = &query_class->class_hfid[i];
+	      internal_class->btid = internal_class->btids + i;
+	      internal_class->btid_dup_key_locked =
+		internal_class->btids_dup_key_locked[i];
+	      internal_class->subclass_idx = i;
+
+	      if (query_class->no_lob_attrs && query_class->lob_attr_ids)
+		{
+		  internal_class->no_lob_attrs = query_class->no_lob_attrs[i];
+		  internal_class->lob_attr_ids = query_class->lob_attr_ids[i];
+		}
+	      else
+		{
+		  internal_class->no_lob_attrs = 0;
+		  internal_class->lob_attr_ids = NULL;
+		}
+	      break;
+	    }
+	}
+    }
+
+  if (internal_class->class_hfid == NULL)
+    {
       return ER_FAILED;
     }
 
@@ -22640,37 +22676,6 @@ qexec_upddel_setup_current_class (THREAD_ENTRY * thread_p,
     }
 
   COPY_OID (&internal_class->prev_class_oid, current_oid);
-
-  return NO_ERROR;
-}
-
-	    {
-	      internal_class->class_oid = &query_class->class_oid[i];
-	      internal_class->class_hfid = &query_class->class_hfid[i];
-	      internal_class->btid = internal_class->btids + i;
-	      internal_class->btid_dup_key_locked =
-		internal_class->btids_dup_key_locked[i];
-	      internal_class->subclass_idx = i;
-
-	      if (query_class->no_lob_attrs && query_class->lob_attr_ids)
-		{
-		  internal_class->no_lob_attrs = query_class->no_lob_attrs[i];
-		  internal_class->lob_attr_ids = query_class->lob_attr_ids[i];
-		}
-	      else
-		{
-		  internal_class->no_lob_attrs = 0;
-		  internal_class->lob_attr_ids = NULL;
-		}
-	      break;
-	    }
-	}
-    }
-
-  if (internal_class->class_hfid == NULL)
-    {
-      return ER_FAILED;
-    }
 
   return NO_ERROR;
 }
