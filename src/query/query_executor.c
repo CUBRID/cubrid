@@ -767,7 +767,8 @@ static int qexec_execute_obj_fetch (THREAD_ENTRY * thread_p,
 				    XASL_STATE * xasl_state);
 static int qexec_execute_increment (THREAD_ENTRY * thread_p, OID * oid,
 				    OID * class_oid, HFID * class_hfid,
-				    ATTR_ID attrid, int n_increment);
+				    ATTR_ID attrid, int n_increment,
+				    bool needs_pruning);
 static int qexec_execute_selupd_list (THREAD_ENTRY * thread_p,
 				      XASL_NODE * xasl,
 				      XASL_STATE * xasl_state);
@@ -820,6 +821,8 @@ static int qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 static int qexec_update_btree_unique_stats_info (THREAD_ENTRY * thread_p,
 						 BTREE_UNIQUE_STATS_UPDATE_INFO
 						 * info);
+static int qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec,
+			     VAL_DESCR * vd, int composite_locking);
 static SCAN_CODE qexec_init_next_partition (THREAD_ENTRY * thread_p,
 					    ACCESS_SPEC_TYPE * spec);
 
@@ -5863,48 +5866,10 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec,
 
   if (curr_spec->needs_pruning && !curr_spec->pruned)
     {
-      PARTITION_SPEC_TYPE *partition_spec = NULL;
-      LOCK lock = NULL_LOCK;
-      int granted;
-      int error = partition_prune_spec (thread_p, vd, curr_spec);
-      if (error != NO_ERROR)
+      if (qexec_prune_spec (thread_p, curr_spec, vd, composite_locking) !=
+	  NO_ERROR)
 	{
 	  goto exit_on_error;
-	}
-      assert (s_id != NULL);
-
-      if (composite_locking == 0)
-	{
-	  lock = IS_LOCK;
-	}
-      else
-	{
-	  if (curr_spec->access == SEQUENTIAL)
-	    {
-	      lock = X_LOCK;
-	    }
-	  else
-	    {
-	      assert (curr_spec->access == INDEX);
-	      lock = IX_LOCK;
-	    }
-	}
-
-      for (partition_spec = curr_spec->parts; partition_spec != NULL;
-	   partition_spec = partition_spec->next)
-	{
-	  granted = lock_subclass (thread_p, &partition_spec->oid,
-				   &ACCESS_SPEC_CLS_OID (curr_spec), lock,
-				   LK_UNCOND_LOCK);
-	  if (granted != LK_GRANTED)
-	    {
-	      error = er_errid ();
-	      if (error == NO_ERROR)
-		{
-		  error = ER_FAILED;
-		}
-	      goto exit_on_error;
-	    }
 	}
     }
 
@@ -6827,6 +6792,70 @@ qexec_reset_regu_variable (REGU_VARIABLE * var)
     default:
       break;
     }
+}
+
+/*
+ * qexec_prune_spec () - perform partition pruning on an access spec
+ * return : error code or NO_ERROR
+ * thread_p (in) :
+ * spec (in) :
+ * vd (in) :
+ * composite_locking (in) :
+ */
+static int
+qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec,
+		  VAL_DESCR * vd, int composite_locking)
+{
+  PARTITION_SPEC_TYPE *partition_spec = NULL;
+  LOCK lock = NULL_LOCK;
+  int granted;
+  int error = NO_ERROR;
+
+  if (spec == NULL || !spec->needs_pruning || spec->pruned)
+    {
+      return NO_ERROR;
+    }
+
+  error = partition_prune_spec (thread_p, vd, spec);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (composite_locking == 0)
+    {
+      lock = IS_LOCK;
+    }
+  else
+    {
+      if (spec->access == SEQUENTIAL)
+	{
+	  lock = X_LOCK;
+	}
+      else
+	{
+	  assert (spec->access == INDEX);
+	  lock = IX_LOCK;
+	}
+    }
+
+  for (partition_spec = spec->parts; partition_spec != NULL;
+       partition_spec = partition_spec->next)
+    {
+      granted = lock_subclass (thread_p, &partition_spec->oid,
+			       &ACCESS_SPEC_CLS_OID (spec), lock,
+			       LK_UNCOND_LOCK);
+      if (granted != LK_GRANTED)
+	{
+	  error = er_errid ();
+	  if (error == NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+    }
+
+  return NO_ERROR;
 }
 
 /*
@@ -10799,7 +10828,8 @@ exit_on_error:
  */
 static int
 qexec_execute_increment (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
-			 HFID * class_hfid, ATTR_ID attrid, int n_increment)
+			 HFID * class_hfid, ATTR_ID attrid, int n_increment,
+			 bool needs_pruning)
 {
   HEAP_CACHE_ATTRINFO attr_info;
   int attr_info_inited = 0;
@@ -10808,6 +10838,8 @@ qexec_execute_increment (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
   HEAP_ATTRVALUE *value = NULL;
   int force_count;
   int error = NO_ERROR;
+  int op_type = SINGLE_ROW_UPDATE;
+  LC_COPYAREA_OPERATION area_op = LC_FLUSH_UPDATE;
 
   error = heap_attrinfo_start (thread_p, class_oid, -1, NULL, &attr_info);
   if (error != NO_ERROR)
@@ -10816,9 +10848,15 @@ qexec_execute_increment (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
     }
   attr_info_inited = 1;
 
+  if (needs_pruning)
+    {
+      op_type = SINGLE_ROW_UPDATE_PRUNING;
+      area_op = LC_FLUSH_UPDATE_PRUNE;
+    }
+
   error =
     locator_start_force_scan_cache (thread_p, &scan_cache, class_hfid,
-				    class_oid, SINGLE_ROW_UPDATE);
+				    class_oid, op_type);
   if (error != NO_ERROR)
     {
       goto wrapup;
@@ -10852,8 +10890,7 @@ qexec_execute_increment (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
       force_count = 0;
       if (locator_attribute_info_force (thread_p, class_hfid, oid, NULL,
 					false, &attr_info, &attrid, 1,
-					LC_FLUSH_UPDATE,
-					SINGLE_ROW_UPDATE, &scan_cache,
+					area_op, op_type, &scan_cache,
 					&force_count, false,
 					REPL_INFO_TYPE_STMT_NORMAL, NULL,
 					NULL) != NO_ERROR)
@@ -10918,6 +10955,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   int lock_ret;
   int tran_index;
   int err = NO_ERROR;
+  bool needs_pruning = false;
 
   list = xasl->selected_upd_list;
 
@@ -11015,6 +11053,37 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		      class_hfid = &specp->s.cls_node.hfid;
 		      break;
 		    }
+		  else if (specp->needs_pruning)
+		    {
+		      PARTITION_SPEC_TYPE *part_spec;
+		      bool found = false;
+		      if (!specp->pruned)
+			{
+			  /* perform pruning */
+			  err = qexec_prune_spec (thread_p, specp,
+						  &xasl_state->vd,
+						  xasl->composite_locking);
+			  if (err != NO_ERROR)
+			    {
+			      goto exit_on_error;
+			    }
+			}
+		      for (part_spec = specp->parts; part_spec != NULL;
+			   part_spec = part_spec->next)
+			{
+			  if (OID_EQ (&part_spec->oid, class_oid))
+			    {
+			      class_hfid = &part_spec->hfid;
+			      found = true;
+			      break;
+			    }
+			}
+		      if (found)
+			{
+			  needs_pruning = true;
+			  break;
+			}
+		    }
 		}
 	      if (!specp)
 		{		/* not found hfid */
@@ -11060,7 +11129,8 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	    }
 
 	  if (qexec_execute_increment (thread_p, oid, class_oid, class_hfid,
-				       attrid, n_increment) != NO_ERROR)
+				       attrid, n_increment, needs_pruning)
+	      != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
