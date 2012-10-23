@@ -5787,6 +5787,7 @@ la_change_state (void)
 
 	case HA_SERVER_STATE_DEAD:
 	case HA_SERVER_STATE_STANDBY:
+	case HA_SERVER_STATE_MAINTENANCE:
 	  if (la_Info.apply_state != HA_LOG_APPLIER_STATE_DONE)
 	    {
 	      /* notify to slave db */
@@ -5819,6 +5820,7 @@ la_change_state (void)
 	case HA_SERVER_STATE_TO_BE_ACTIVE:
 	case HA_SERVER_STATE_STANDBY:
 	case HA_SERVER_STATE_DEAD:
+	case HA_SERVER_STATE_MAINTENANCE:
 	  if (la_Info.apply_state != HA_LOG_APPLIER_STATE_DONE
 	      && la_Info.apply_state != HA_LOG_APPLIER_STATE_RECOVERING)
 	    {
