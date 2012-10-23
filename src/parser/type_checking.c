@@ -6362,7 +6362,8 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
   int col_cnt, i;
   PT_NODE *col, *set, *spec;
 
-  if (node->info.query.has_outer_spec == 1 || node->info.query.is_sort_spec)
+  if (node->info.query.has_outer_spec == 1 || node->info.query.is_sort_spec
+      || node->info.query.is_insert_select)
     {
       /* rewrite as empty subquery
        * for example,
@@ -6852,6 +6853,16 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 	    }
+	}
+      break;
+
+    case PT_INSERT:
+      /* mark inserted sub-query as belonging to insert statement */
+      if (node->info.insert.value_clauses->info.node_list.list_type ==
+	  PT_IS_SUBQUERY)
+	{
+	  node->info.insert.value_clauses->info.node_list.list->info.query.
+	    is_insert_select = 1;
 	}
       break;
 

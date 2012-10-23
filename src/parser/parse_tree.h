@@ -2284,6 +2284,7 @@ struct pt_query_info
 				 * delete in the generated SELECT statement */
   unsigned has_outer_spec:1;	/* has outer join spec ? */
   unsigned is_sort_spec:1;	/* query is a sort spec expression */
+  unsigned is_insert_select:1;	/* query is a sub-select for insert statement */
   unsigned single_tuple:1;	/* is single-tuple query ? */
   unsigned vspec_as_derived:1;	/* is derived from vclass spec ? */
   unsigned reexecute:1;		/* should be re-executed; not from the result caceh */

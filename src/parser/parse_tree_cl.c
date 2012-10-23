@@ -8344,6 +8344,7 @@ pt_init_difference (PT_NODE * p)
   p->info.query.all_distinct = PT_ALL;
   p->info.query.has_outer_spec = 0;
   p->info.query.is_sort_spec = 0;
+  p->info.query.is_insert_select = 0;
   p->info.query.single_tuple = 0;
   p->info.query.vspec_as_derived = 0;
   p->info.query.reexecute = 0;
@@ -12151,6 +12152,7 @@ pt_init_intersection (PT_NODE * p)
   p->info.query.all_distinct = PT_ALL;
   p->info.query.has_outer_spec = 0;
   p->info.query.is_sort_spec = 0;
+  p->info.query.is_insert_select = 0;
   p->info.query.single_tuple = 0;
   p->info.query.vspec_as_derived = 0;
   p->info.query.reexecute = 0;
@@ -13363,6 +13365,7 @@ pt_init_select (PT_NODE * p)
   p->info.query.is_view_spec = 0;
   p->info.query.has_outer_spec = 0;
   p->info.query.is_sort_spec = 0;
+  p->info.query.is_insert_select = 0;
   p->info.query.single_tuple = 0;
   p->info.query.vspec_as_derived = 0;
   p->info.query.reexecute = 0;
@@ -14473,6 +14476,7 @@ pt_init_union_stmt (PT_NODE * p)
   p->info.query.into_list = 0;
   p->info.query.has_outer_spec = 0;
   p->info.query.is_sort_spec = 0;
+  p->info.query.is_insert_select = 0;
   p->info.query.single_tuple = 0;
   p->info.query.vspec_as_derived = 0;
   p->info.query.reexecute = 0;
