@@ -859,21 +859,36 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
   int ret;
   int sp_success;
   LOG_LSA lsa;
+  int tran_index;
+  LOCK lock_mode = NULL_LOCK;
 
   assert_release (serial_class_oidp != NULL
 		  && !OID_ISNULL (serial_class_oidp));
 
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  lock_mode =
+    lock_get_object_lock (serial_oidp, serial_class_oidp, tran_index);
+
   /* need to start topop for replication
    * Replication will recognize and realize a special type of update for serial
    * by this top operation log record.
+   *
+   * If lock_mode is X_LOCK
+   * means we created or altered the serial obj in an uncommited trans
+   * For this case, topop and flush mark are not used,
+   * since these may cause problem with replication log.
    */
-  ret = xtran_server_start_topop (thread_p, &lsa);
-  if (ret != NO_ERROR)
+  if (lock_mode != X_LOCK)
     {
-      return ER_FAILED;
+      ret = xtran_server_start_topop (thread_p, &lsa);
+      if (ret != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
     }
 
-  if (!LOG_CHECK_LOG_APPLIER (thread_p)
+  if (lock_mode != X_LOCK
+      && !LOG_CHECK_LOG_APPLIER (thread_p)
       && log_does_allow_replication () == true)
     {
       repl_start_flush_mark (thread_p);
@@ -927,10 +942,14 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 		       REPL_INFO_TYPE_STMT_NORMAL);
       repl_add_update_lsa (thread_p, serial_oidp);
 
-      repl_end_flush_mark (thread_p, false);
+      if (lock_mode != X_LOCK)
+	{
+	  repl_end_flush_mark (thread_p, false);
+	}
     }
 
-  if (xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_COMMIT, &lsa)
+  if (lock_mode != X_LOCK
+      && xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_COMMIT, &lsa)
       != TRAN_UNACTIVE_COMMITTED)
     {
       return ER_FAILED;
@@ -940,7 +959,10 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 
 exit_on_error:
 
-  xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
+  if (lock_mode != X_LOCK)
+    {
+      xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
+    }
 
   return ((ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
