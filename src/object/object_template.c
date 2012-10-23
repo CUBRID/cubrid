@@ -2773,6 +2773,21 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 	    {
 	      error = er_errid ();
 	    }
+	  /* update template object if this was a partitioned class */
+	  object = OBT_BASE_OBJECT (template_ptr);
+	  if (object->updated_obj != NULL)
+	    {
+	      assert (WS_ISMARK_DELETED (object));
+	      if (template_ptr->base_object != NULL)
+		{
+		  template_ptr->base_object = object->updated_obj;
+		}
+	      else
+		{
+		  template_ptr->object = object->updated_obj;
+		}
+	      object->updated_obj = NULL;
+	    }
 	}
     }
 

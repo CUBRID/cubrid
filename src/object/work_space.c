@@ -258,6 +258,7 @@ ws_make_mop (OID * oid)
       op->object = NULL;
       op->class_link = NULL;
       op->dirty_link = NULL;
+      op->updated_obj = NULL;
       op->dirty = 0;
       op->deleted = 0;
       op->pinned = 0;
@@ -1347,8 +1348,8 @@ ws_update_oid_and_class (MOP mop, OID * new_oid, OID * new_class_oid)
   /* Mark the old object as deleted. We don't actually remove the object from
    * the dirty link here. It will be removed by the next call to
    * ws_map_dirty_internal */
-  mop->deleted = 1;
-  mop->dirty = false;
+  WS_SET_DELETED (mop);
+  WS_RESET_DIRTY (mop);
   /* add the new object to the class it has been placed into */
   if (new_class->object == NULL)
     {
@@ -1381,6 +1382,7 @@ ws_update_oid_and_class (MOP mop, OID * new_oid, OID * new_class_oid)
     }
   /* this object is not dirty, we just received it from the server */
   new_mop->dirty = false;
+  mop->updated_obj = new_mop;
   return NO_ERROR;
 }
 

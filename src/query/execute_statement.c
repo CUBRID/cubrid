@@ -6324,7 +6324,7 @@ update_object_tuple (PARSER_CONTEXT * parser,
        * flush the object on updating it.
        */
       if (update_type == ON_DUPLICATE_KEY_UPDATE
-	  || smclass->partition_of != NULL)
+	  || sm_is_partitioned_class (real_object->class_mop))
 	{
 	  obt_set_force_flush (otemplate);
 	}
@@ -14870,10 +14870,10 @@ exit:
   if (ins_select_stmt != NULL)
     {
       if (ins_select_stmt->etc != NULL)
-        {
-          regu_free_listid ((QFILE_LIST_ID *) ins_select_stmt->etc);
-          qmgr_end_query (ins_query_id);
-        }
+	{
+	  regu_free_listid ((QFILE_LIST_ID *) ins_select_stmt->etc);
+	  qmgr_end_query (ins_query_id);
+	}
       parser_free_tree (parser, ins_select_stmt);
     }
 
@@ -15723,10 +15723,10 @@ exit:
   if (ins_select_stmt != NULL)
     {
       if (ins_select_stmt->etc != NULL)
-        {
-          regu_free_listid ((QFILE_LIST_ID *) ins_select_stmt->etc);
-          qmgr_end_query (ins_query_id);
-        }
+	{
+	  regu_free_listid ((QFILE_LIST_ID *) ins_select_stmt->etc);
+	  qmgr_end_query (ins_query_id);
+	}
       parser_free_tree (parser, ins_select_stmt);
     }
 

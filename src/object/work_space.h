@@ -86,7 +86,11 @@ struct db_object
   struct db_object *dirty_link;	/* link for dirty list */
   struct db_object *hash_link;	/* link for workspace hash table */
   struct db_object *commit_link;	/* link for obj to be reset at commit/abort */
-
+  struct db_object *updated_obj;	/* link to the updated object after a flush
+					 * operation. In the case of partitioned
+					 * classes, this member points to the newly
+					 * inserted object in the case of a
+					 * partition change */
   void *version;		/* versioning information */
   LOCK lock;			/* object lock */
 
