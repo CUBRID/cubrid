@@ -2233,7 +2233,7 @@ partition_init_pruning_context (PRUNING_CONTEXT * pinfo)
   pinfo->partition_pred = NULL;
   pinfo->attr_position = -1;
   pinfo->error_code = NO_ERROR;
-  pinfo->insert_cache_list = NULL;
+  pinfo->scan_cache_list = NULL;
   pinfo->is_attr_info_inited = false;
   pinfo->is_from_cache = false;
 }
@@ -2401,7 +2401,7 @@ error_return:
 void
 partition_clear_pruning_context (PRUNING_CONTEXT * pinfo)
 {
-  INSERTCACHE_LIST *list, *next;
+  SCANCACHE_LIST *list, *next;
 
   if (pinfo == NULL)
     {
@@ -2450,27 +2450,26 @@ partition_clear_pruning_context (PRUNING_CONTEXT * pinfo)
       heap_attrinfo_end (pinfo->thread_p, &(pinfo->attr_info));
     }
 
-  list = pinfo->insert_cache_list;
+  list = pinfo->scan_cache_list;
   while (list != NULL)
     {
       next = list->next;
-      if (list->insert_cache.is_scan_cache_started)
+      if (list->scan_cache.is_scan_cache_started)
 	{
-	  heap_scancache_end (pinfo->thread_p,
-			      &list->insert_cache.scan_cache);
+	  heap_scancache_end (pinfo->thread_p, &list->scan_cache.scan_cache);
 	}
-      if (list->insert_cache.func_index_pred != NULL)
+      if (list->scan_cache.func_index_pred != NULL)
 	{
 	  heap_free_func_pred_unpack_info (pinfo->thread_p,
-					   list->insert_cache.n_indexes,
-					   list->insert_cache.func_index_pred,
+					   list->scan_cache.n_indexes,
+					   list->scan_cache.func_index_pred,
 					   NULL);
 	}
       db_private_free (pinfo->thread_p, list);
       list = next;
     }
 
-  pinfo->insert_cache_list = NULL;
+  pinfo->scan_cache_list = NULL;
 }
 
 /*
@@ -3257,17 +3256,16 @@ cleanup:
 }
 
 /*
- * partition_get_insertcache () - get cached insert information for a
- *				  partition
+ * partition_get_scancache () - get scan_cache for a partition
  * return : cached object or NULL
  * pcontext (in)      : pruning context
  * partition_oid (in) : partition
  */
-PRUNING_INSERT_CACHE *
-partition_get_insertcache (PRUNING_CONTEXT * pcontext,
-			   const OID * partition_oid)
+PRUNING_SCAN_CACHE *
+partition_get_scancache (PRUNING_CONTEXT * pcontext,
+			 const OID * partition_oid)
 {
-  INSERTCACHE_LIST *node = NULL;
+  SCANCACHE_LIST *node = NULL;
 
   if (partition_oid == NULL || pcontext == NULL)
     {
@@ -3275,12 +3273,12 @@ partition_get_insertcache (PRUNING_CONTEXT * pcontext,
       return NULL;
     }
 
-  node = pcontext->insert_cache_list;
+  node = pcontext->scan_cache_list;
   while (node != NULL)
     {
-      if (OID_EQ (&node->insert_cache.scan_cache.class_oid, partition_oid))
+      if (OID_EQ (&node->scan_cache.scan_cache.class_oid, partition_oid))
 	{
-	  return &node->insert_cache;
+	  return &node->scan_cache;
 	}
       node = node->next;
     }
@@ -3289,32 +3287,31 @@ partition_get_insertcache (PRUNING_CONTEXT * pcontext,
 }
 
 /*
- * partition_new_scancache () - create a new object to hold insert related
- *				objects
- * return : insert cache entry or NULL
+ * partition_new_scancache () - create a new scan_cache object
+ * return : scan_cache entry or NULL
  * pcontext (in) : pruning context
  */
-PRUNING_INSERT_CACHE *
-partition_new_insertcache (PRUNING_CONTEXT * pcontext)
+PRUNING_SCAN_CACHE *
+partition_new_scancache (PRUNING_CONTEXT * pcontext)
 {
-  INSERTCACHE_LIST *node = NULL;
+  SCANCACHE_LIST *node = NULL;
 
-  node = (INSERTCACHE_LIST *) db_private_alloc (pcontext->thread_p,
-						sizeof (INSERTCACHE_LIST));
+  node = (SCANCACHE_LIST *) db_private_alloc (pcontext->thread_p,
+					      sizeof (SCANCACHE_LIST));
   if (node == NULL)
     {
       return NULL;
     }
 
-  node->insert_cache.is_scan_cache_started = false;
-  node->insert_cache.n_indexes = 0;
-  node->insert_cache.func_index_pred = NULL;
+  node->scan_cache.is_scan_cache_started = false;
+  node->scan_cache.n_indexes = 0;
+  node->scan_cache.func_index_pred = NULL;
 
   /* add it at the beginning */
-  node->next = pcontext->insert_cache_list;
-  pcontext->insert_cache_list = node;
+  node->next = pcontext->scan_cache_list;
+  pcontext->scan_cache_list = node;
 
-  return &node->insert_cache;
+  return &node->scan_cache;
 }
 
 /*

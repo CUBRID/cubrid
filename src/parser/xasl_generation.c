@@ -17388,7 +17388,8 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* setup members not needed for DELETE */
 	  class_info->att_id = NULL;
 	  class_info->no_attrs = 0;
-	  class_info->has_uniques = 0;
+	  /* assume it always has uniques */
+	  class_info->has_uniques = 1;
 
 	  cl_name_node = node->info.spec.flat_entity_list;
 	  class_obj = cl_name_node->info.name.db_object;
@@ -23386,7 +23387,7 @@ pt_to_merge_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   del_cls = &delete_->classes[0];
   del_cls->att_id = NULL;
   del_cls->no_attrs = 0;
-  del_cls->has_uniques = 0;
+  del_cls->has_uniques = 1;
 
   /* count subclasses */
   no_subclasses = 0;
