@@ -1896,6 +1896,16 @@ start_collation_setttings (void *data, const char **attr)
 	}
     }
 
+  att_val = NULL;
+  if (xml_get_att_value (attr, "MatchContractionBoundary", &att_val) == 0)
+    {
+      assert (att_val != NULL);
+      if (strcasecmp (att_val, "true") == 0)
+	{
+	  curr_coll_tail->uca_opt.sett_match_contr = MATCH_CONTR_BOUND_ALLOW;
+	}
+    }
+
   PRINT_DEBUG_START (data, attr, "", 0);
   return 0;
 }
@@ -5290,6 +5300,8 @@ locale_save_collation_data_to_C_file (FILE * fp, COLL_DATA * cd)
 		       cd->coll_name);
   PRINT_VAR_TO_C_FILE (fp, "int", "coll_sett_contr_policy",
 		       cd->uca_opt.sett_contr_policy, "%d", cd->coll_name);
+  PRINT_VAR_TO_C_FILE (fp, "int", "coll_match_contr",
+		       cd->uca_opt.sett_match_contr, "%d", cd->coll_name);
 
   /* other OPT_COLL members */
   PRINT_VAR_TO_C_FILE (fp, "int", "coll_w_count", cd->w_count, "%d",
@@ -6253,10 +6265,11 @@ comp_func_coll_uca_exp (const void *arg1, const void *arg2)
       str2 = (char *) utf8_buf_2;
     }
 
-  return lang_strcmp_utf8_uca_w_coll_data (coll, (const unsigned char *) str1,
-					   size1,
-					   (const unsigned char *) str2,
-					   size2);
+  return lang_strmatch_utf8_uca_w_coll_data (coll, false,
+					     (const unsigned char *) str1,
+					     size1,
+					     (const unsigned char *) str2,
+					     size2, NULL, false, NULL);
 }
 
 /*

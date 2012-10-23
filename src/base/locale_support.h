@@ -59,8 +59,6 @@
 #define INTL_IS_NEXT_CONTR(v) \
   (((v) & INTL_MASK_CONTR) == INTL_MASK_CONTR)
 
-#define INTL_CONTR_FOUND(v) ((v) == INTL_MASK_CONTR)
-
 #define INTL_GET_NEXT_CONTR_ID(v) ((v) & (~INTL_MASK_CONTR))
 
 /*
@@ -298,6 +296,16 @@ typedef enum
   CONTR_DUCET_USE = 0x2
 } COLL_CONTR_POLICY;
 
+/* Matching of a pattern containing a contraction starter on last position:
+ * if "ch" is a contraction, then :
+ * "bac" is not matched in "bachxxx", if MATCH_CONTR_BOUND_FORBID 
+ * "bac" is matched in "bachxxx", if MATCH_CONTR_BOUND_ALLOW */
+typedef enum
+{
+  MATCH_CONTR_BOUND_FORBID = 0,
+  MATCH_CONTR_BOUND_ALLOW = 1
+} COLL_MATCH_CONTR;
+
 /* UCA sort options */
 typedef struct uca_options UCA_OPTIONS;
 struct uca_options
@@ -311,7 +319,12 @@ struct uca_options
 
   /* how to handle contractions, should be regarded as bit-field flag */
   int sett_contr_policy;
-  bool use_only_first_ce;	/* set only when sorting for 'next' with expansions : not serialized */
+
+  /* set only when sorting for 'next' with expansions : not serialized */
+  bool use_only_first_ce;
+
+  /* how to handle string matching when contractions spans over the boundary */
+  COLL_MATCH_CONTR sett_match_contr;
 };
 
 typedef struct coll_data COLL_DATA;

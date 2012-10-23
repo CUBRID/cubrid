@@ -203,7 +203,8 @@ static int qstr_pad (MISC_OPERAND pad_operand,
 		     int *result_length, int *result_size);
 static int qstr_eval_like (const char *tar, int tar_length,
 			   const char *expr, int expr_length,
-			   const char *escape, INTL_CODESET codeset);
+			   const char *escape, INTL_CODESET codeset,
+			   int coll_id);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static int kor_cmp (unsigned char *src, unsigned char *dest, int size);
 #endif
@@ -4259,7 +4260,8 @@ db_string_like (const DB_VALUE * src_string,
   *result = qstr_eval_like (src_char_string_p, src_length,
 			    pattern_char_string_p, pattern_length,
 			    (esc_char ? esc_char_p : NULL),
-			    DB_GET_STRING_CODESET (src_string));
+			    DB_GET_STRING_CODESET (src_string),
+			    DB_GET_STRING_COLLATION (src_string));
 
   if (*result == V_ERROR)
     {
@@ -4702,25 +4704,28 @@ db_string_fix_string_size (DB_VALUE * src_string)
 static int
 qstr_eval_like (const char *tar, int tar_length,
 		const char *expr, int expr_length,
-		const char *escape, INTL_CODESET codeset)
+		const char *escape, INTL_CODESET codeset, int coll_id)
 {
   const int IN_CHECK = 0;
   const int IN_PERCENT = 1;
-  const int IN_PERCENT_UNDERSCORE = 2;
 
   int status = IN_CHECK;
   unsigned char *tarstack[STACK_SIZE], *exprstack[STACK_SIZE];
   int stackp = -1;
-  int inescape = 0;
 
   unsigned char *tar_ptr, *end_tar;
   unsigned char *expr_ptr, *end_expr;
   int substrlen = 0;
+  bool escape_is_match_one =
+    ((escape != NULL) && *escape == LIKE_WILDCARD_MATCH_ONE);
+  bool escape_is_match_many =
+    ((escape != NULL) && *escape == LIKE_WILDCARD_MATCH_MANY);
 
   tar_ptr = (unsigned char *) tar;
   expr_ptr = (unsigned char *) expr;
   end_tar = (unsigned char *) (tar + tar_length);
   end_expr = (unsigned char *) (expr + expr_length);
+
 
   while (1)
     {
@@ -4729,62 +4734,10 @@ qstr_eval_like (const char *tar, int tar_length,
 
       if (status == IN_CHECK)
 	{
-	  /* To keep MySQL compatibility, when the last character
-	   * is escape char, do not treat as escape character.*/
-	  if (escape != NULL
-	      && inescape == 0
-	      && intl_cmp_char (expr_ptr, (unsigned char *) escape, codeset,
-				&char_size) == 0
-	      && (expr_ptr + char_size) < end_expr)
-	    {
-	      expr_ptr += char_size;
-	      if (expr_ptr < end_expr
-		  && QSTR_IS_LIKE_WILDCARD_CHAR (*expr_ptr))
-		{
-		  inescape = 1;
-		  continue;
-		}
-	      else if ((tar_ptr < end_tar && expr_ptr < end_expr)
-		       && intl_cmp_char (tar_ptr, expr_ptr, codeset,
-					 &char_size) == 0)
-		{
-		  tar_ptr += char_size;
-		  expr_ptr += char_size;
-		  continue;
-		}
-	    }
-
-	  if (inescape)
-	    {
-	      if ((tar_ptr < end_tar && expr_ptr < end_expr)
-		  && intl_cmp_char (tar_ptr, expr_ptr, codeset,
-				    &char_size) == 0)
-		{
-		  tar_ptr += char_size;
-		  expr_ptr += char_size;
-		}
-	      else
-		{
-		  if (stackp >= 0 && stackp < STACK_SIZE)
-		    {
-		      tar_ptr = tarstack[stackp];
-
-		      tar_ptr = intl_next_char (tar_ptr, codeset, &dummy);
-
-		      expr_ptr = exprstack[stackp--];
-		    }
-		  else
-		    {
-		      return V_FALSE;
-		    }
-		}
-	      inescape = 0;
-	      continue;
-	    }
-
-	  /* goto check */
+	  bool go_back = true;
 	  if (expr_ptr == end_expr)
 	    {
+	      go_back = false;
 	      while (tar_ptr < end_tar && *tar_ptr == ' ')
 		{
 		  tar_ptr++;
@@ -4808,9 +4761,10 @@ qstr_eval_like (const char *tar, int tar_length,
 		    }
 		}
 	    }
-	  else if (expr_ptr < end_expr
+	  else if (!escape_is_match_many && expr_ptr < end_expr
 		   && *expr_ptr == LIKE_WILDCARD_MATCH_MANY)
 	    {
+	      go_back = false;
 	      status = IN_PERCENT;
 	      while ((expr_ptr + 1 < end_expr)
 		     && *(expr_ptr + 1) == LIKE_WILDCARD_MATCH_MANY)
@@ -4818,39 +4772,113 @@ qstr_eval_like (const char *tar, int tar_length,
 		  expr_ptr++;
 		}
 	    }
-	  else if ((tar_ptr < end_tar && expr_ptr < end_expr)
-		   && ((*expr_ptr == LIKE_WILDCARD_MATCH_ONE)
-		       || (intl_cmp_char (tar_ptr, expr_ptr, codeset,
-					  &char_size) == 0)))
+	  else if (tar_ptr < end_tar && expr_ptr < end_expr)
 	    {
-	      tar_ptr = intl_next_char (tar_ptr, codeset, &dummy);
-	      expr_ptr = intl_next_char (expr_ptr, codeset, &dummy);
-	    }
-	  else if (stackp >= 0 && stackp < STACK_SIZE)
-	    {
-	      tar_ptr = tarstack[stackp];
+	      if (!escape_is_match_one
+		  && *expr_ptr == LIKE_WILDCARD_MATCH_ONE)
+		{
+		  tar_ptr = intl_next_char (tar_ptr, codeset, &dummy);
+		  expr_ptr++;
+		  go_back = false;
+		}
+	      else
+		{
+		  unsigned char *expr_seq_end = expr_ptr;
+		  int cmp;
+		  int tar_matched_size;
+		  unsigned char *match_escape = NULL;
+		  bool inescape = false;
+		  bool has_last_escape = false;
 
-	      tar_ptr = intl_next_char (tar_ptr, codeset, &dummy);
+		  /* build sequence to check (until wildcard) */
+		  do
+		    {
+		      if (!inescape &&
+			  (((!escape_is_match_many &&
+			     *expr_seq_end == LIKE_WILDCARD_MATCH_MANY)
+			    || (!escape_is_match_one &&
+				*expr_seq_end == LIKE_WILDCARD_MATCH_ONE))))
+			{
+			  break;
+			}
 
-	      expr_ptr = exprstack[stackp--];
+		      /* set escape for match: if remains NULL, we don't check 
+		       * for escape in matching function */
+		      if (!inescape && escape != NULL
+			  && intl_cmp_char (expr_seq_end,
+					    (unsigned char *) escape,
+					    codeset, &dummy) == 0)
+			{
+			  /* last escape character is not considered escape,
+			   * but normal character */
+			  if (expr_seq_end + 1 >= end_expr)
+			    {
+			      has_last_escape = true;
+			      inescape = false;
+			    }
+			  else
+			    {
+			      inescape = true;
+			      match_escape = (unsigned char *) escape;
+			    }
+			}
+		      else
+			{
+			  inescape = false;
+			}
+
+		      expr_seq_end = intl_next_char (expr_seq_end, codeset,
+						     &dummy);
+		    }
+		  while (expr_seq_end < end_expr);
+
+		  assert (end_tar - tar_ptr > 0);
+		  assert (expr_seq_end - expr_ptr > 0);
+
+		  /* match using collation */
+		  cmp = QSTR_MATCH (coll_id, tar_ptr, end_tar - tar_ptr,
+				    expr_ptr, expr_seq_end - expr_ptr,
+				    match_escape, has_last_escape,
+				    &tar_matched_size);
+
+		  if (cmp == 0)
+		    {
+		      tar_ptr += tar_matched_size;
+		      expr_ptr = expr_seq_end;
+		      go_back = false;
+		    }
+
+		  assert (tar_ptr <= end_tar);
+		  assert (expr_ptr <= end_expr);
+		}
 	    }
-	  else if (stackp > STACK_SIZE)
+
+	  if (go_back)
 	    {
-	      return V_ERROR;
-	    }
-	  else
-	    {
-	      return V_FALSE;
+	      if (stackp >= 0 && stackp < STACK_SIZE)
+		{
+		  tar_ptr = tarstack[stackp];
+		  tar_ptr = intl_next_char (tar_ptr, codeset, &dummy);
+		  expr_ptr = exprstack[stackp--];
+		}
+	      else if (stackp > STACK_SIZE)
+		{
+		  return V_ERROR;
+		}
+	      else
+		{
+		  return V_FALSE;
+		}
 	    }
 	}
-      else if (status == IN_PERCENT)
+      else
 	{
 	  unsigned char *next_expr_ptr = intl_next_char (expr_ptr, codeset,
 							 &dummy);
 
+	  assert (status == IN_PERCENT);
 	  if ((next_expr_ptr < end_expr)
-	      && (escape == NULL
-		  || (escape != NULL && *escape != LIKE_WILDCARD_MATCH_ONE))
+	      && (!escape_is_match_one || escape == NULL)
 	      && *next_expr_ptr == LIKE_WILDCARD_MATCH_ONE)
 	    {
 	      if (stackp >= STACK_SIZE - 1)
@@ -4866,22 +4894,8 @@ qstr_eval_like (const char *tar, int tar_length,
 		{
 		  return V_ERROR;
 		}
-	      inescape = 0;
-	      status = IN_PERCENT_UNDERSCORE;
+	      status = IN_CHECK;
 	      continue;
-	    }
-
-	  /* To keep MySQL compatibility, when the last character
-	   * is escape char, do not treat as escape character.*/
-	  if ((next_expr_ptr < end_expr) && escape != NULL
-	      && inescape == 0
-	      && intl_cmp_char (next_expr_ptr, (unsigned char *) escape,
-				codeset, &dummy) == 0
-	      && (next_expr_ptr + dummy) < end_expr)
-	    {
-	      expr_ptr = next_expr_ptr;
-	      next_expr_ptr = intl_next_char (expr_ptr, codeset, &dummy);
-	      inescape = 1;
 	    }
 
 	  if (next_expr_ptr == end_expr)
@@ -4889,140 +4903,95 @@ qstr_eval_like (const char *tar, int tar_length,
 	      return V_TRUE;
 	    }
 
-	  while ((tar_ptr < end_tar && expr_ptr < end_expr)
-		 && (intl_cmp_char (tar_ptr, next_expr_ptr, codeset,
-				    &dummy) != 0))
+	  if (tar_ptr < end_tar && next_expr_ptr < end_expr)
 	    {
-	      tar_ptr = intl_next_char (tar_ptr, codeset, &dummy);
-	    }
+	      unsigned char *expr_seq_end = next_expr_ptr;
+	      int cmp;
+	      int tar_matched_size;
+	      unsigned char *match_escape = NULL;
+	      bool inescape = false;
+	      bool has_last_escape = false;
 
-	  if ((tar_ptr < end_tar && expr_ptr < end_expr)
-	      && (intl_cmp_char (tar_ptr, next_expr_ptr, codeset,
-				 &dummy) == 0))
-	    {
-	      if (stackp >= STACK_SIZE - 1)
+	      /* build sequence to check (until wildcard) */
+	      do
 		{
-		  return V_ERROR;
-		}
-	      tarstack[++stackp] = tar_ptr;
-	      if (inescape)
-		{
-		  assert (expr_ptr > expr);
-		  expr_ptr = intl_prev_char (expr_ptr, expr, codeset, &dummy);
-		}
-	      exprstack[stackp] = expr_ptr;
-
-	      expr_ptr = intl_next_char (expr_ptr, codeset, &dummy);
-
-	      if (stackp > STACK_SIZE)
-		{
-		  return V_ERROR;
-		}
-	      inescape = 0;
-	      status = IN_CHECK;
-	    }
-	}
-      if (status == IN_PERCENT_UNDERSCORE)
-	{
-	  /* To keep MySQL compatibility, when the last character
-	   * is escape char, do not treat as escape character.*/
-	  if (expr_ptr < end_expr && escape != NULL
-	      && inescape == 0
-	      && intl_cmp_char (expr_ptr, (unsigned char *) escape, codeset,
-				&char_size) == 0
-	      && (expr_ptr + char_size) < end_expr)
-	    {
-	      expr_ptr += char_size;
-	      inescape = 1;
-	      continue;
-	    }
-
-	  if (inescape)
-	    {
-	      if ((tar_ptr < end_tar && expr_ptr < end_expr)
-		  && (intl_cmp_char (tar_ptr, expr_ptr, codeset,
-				     &char_size) == 0))
-		{
-		  tar_ptr += char_size;
-		  expr_ptr += char_size;
-		}
-	      else
-		{
-		  if (stackp >= 0 && stackp < STACK_SIZE)
+		  if (!inescape &&
+		      (((!escape_is_match_many &&
+			 *expr_seq_end == LIKE_WILDCARD_MATCH_MANY)
+			|| (!escape_is_match_one &&
+			    *expr_seq_end == LIKE_WILDCARD_MATCH_ONE))))
 		    {
-		      tar_ptr = tarstack[stackp];
-		      tar_ptr = intl_next_char (tar_ptr, codeset, &dummy);
+		      break;
+		    }
 
-		      expr_ptr = exprstack[stackp--];
+		  /* set escape for match: if remains NULL, we don't check 
+		   * for escape in matching function */
+		  if (!inescape && escape != NULL
+		      && intl_cmp_char (expr_seq_end,
+					(unsigned char *) escape,
+					codeset, &dummy) == 0)
+		    {
+		      /* last escape character is not considered escape,
+		       * but normal character */
+		      if (expr_seq_end + 1 >= end_expr)
+			{
+			  has_last_escape = true;
+			  inescape = false;
+			}
+		      else
+			{
+			  inescape = true;
+			  match_escape = (unsigned char *) escape;
+			}
 		    }
 		  else
 		    {
-		      return V_FALSE;
+		      inescape = false;
 		    }
-		}
-	      inescape = 0;
-	      continue;
-	    }
 
-	  /* goto check */
-	  if (expr_ptr == end_expr)
-	    {
-	      while (tar_ptr < end_tar && *tar_ptr == ' ')
-		{
-		  tar_ptr++;
+		  expr_seq_end = intl_next_char (expr_seq_end, codeset,
+						 &dummy);
 		}
+	      while (expr_seq_end < end_expr);
 
-	      if (tar_ptr == end_tar)
+	      assert (end_tar - tar_ptr > 0);
+	      assert (expr_seq_end - next_expr_ptr > 0);
+
+	      do
 		{
-		  return V_TRUE;
-		}
-	      else
-		{
-		  if (stackp >= 0 && stackp < STACK_SIZE)
+		  /* match using collation */
+		  cmp = QSTR_MATCH (coll_id, tar_ptr, end_tar - tar_ptr,
+				    next_expr_ptr,
+				    expr_seq_end - next_expr_ptr,
+				    match_escape, has_last_escape,
+				    &tar_matched_size);
+
+		  if (cmp == 0)
 		    {
-		      tar_ptr = tarstack[stackp];
-		      tar_ptr = intl_next_char (tar_ptr, codeset, &dummy);
+		      if (stackp >= STACK_SIZE - 1)
+			{
+			  return V_ERROR;
+			}
+		      tarstack[++stackp] = tar_ptr;
+		      tar_ptr += tar_matched_size;
 
-		      expr_ptr = exprstack[stackp--];
+		      exprstack[stackp] = expr_ptr;
+		      expr_ptr = expr_seq_end;
+
+		      if (stackp > STACK_SIZE)
+			{
+			  return V_ERROR;
+			}
+		      status = IN_CHECK;
+		      break;
 		    }
 		  else
 		    {
-		      return V_FALSE;
+		      /* check starting from next char */
+		      tar_ptr = intl_next_char (tar_ptr, codeset, &dummy);
 		    }
 		}
-	    }
-	  else if (expr_ptr < end_expr
-		   && *expr_ptr == LIKE_WILDCARD_MATCH_MANY)
-	    {
-	      status = IN_PERCENT;
-	      while (((expr_ptr + 1) < end_expr)
-		     && *(expr_ptr + 1) == LIKE_WILDCARD_MATCH_MANY)
-		{
-		  expr_ptr++;
-		}
-	    }
-	  else if ((expr_ptr < end_expr && tar_ptr < end_tar)
-		   && ((*expr_ptr == LIKE_WILDCARD_MATCH_ONE)
-		       || (intl_cmp_char (tar_ptr, expr_ptr, codeset,
-					  &dummy) == 0)))
-	    {
-	      tar_ptr = intl_next_char (tar_ptr, codeset, &dummy);
-	      expr_ptr = intl_next_char (expr_ptr, codeset, &dummy);
-	    }
-	  else if (stackp >= 0 && stackp < STACK_SIZE)
-	    {
-	      tar_ptr = tarstack[stackp];
-	      tar_ptr = intl_next_char (tar_ptr, codeset, &dummy);
-
-	      expr_ptr = exprstack[stackp--];
-	    }
-	  else if (stackp > STACK_SIZE)
-	    {
-	      return V_ERROR;
-	    }
-	  else
-	    {
-	      return V_FALSE;
+	      while (tar_ptr < end_tar);
 	    }
 	}
 

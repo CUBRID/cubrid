@@ -117,6 +117,26 @@
 				<t>Ü</t>
 			</rules>
 		</collation>
+		<collation type="utf8_de_exp_ai_ci">
+			<settings strength="primary" caseLevel="off" caseFirst="off" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" CUBRIDExpansions="use" />
+			<cubridrules>
+				<set>
+					<scp>20</scp>
+					<w>[0.0.0.0]</w>
+				</set>
+			</cubridrules>		
+			<rules>
+				<reset>AE</reset>
+				<s>ä</s>
+				<t>Ä</t>
+				<reset>OE</reset>
+				<s>ö</s>
+				<t>Ö</t>
+				<reset>UE</reset>
+				<s>ü</s>
+				<t>Ü</t>
+			</rules>
+		</collation>
 		<collation type="utf8_gen">
 			<settings strength="quaternary" caseLevel="on" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />
 			<cubridrules>
@@ -125,7 +145,25 @@
 					<w>[0.0.0.0]</w>
 				</set>
 			</cubridrules>
-		</collation>		
+		</collation>
+		<collation type="utf8_gen_ci">
+			<settings strength="secondary" caseLevel="off" caseFirst="off" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />
+			<cubridrules>
+				<set>
+					<scp>20</scp>
+					<w>[0.0.0.0]</w>
+				</set>
+			</cubridrules>
+		</collation>
+		<collation type="utf8_gen_ai_ci">
+			<settings strength="primary" caseLevel="off" caseFirst="off" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />
+			<cubridrules>
+				<set>
+					<scp>20</scp>
+					<w>[0.0.0.0]</w>
+				</set>
+			</cubridrules>
+		</collation>
 	</collations>
 	<alphabets>
 		<alphabet CUBRIDAlphabetMode="UNICODEDATAFILE">

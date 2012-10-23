@@ -162,6 +162,11 @@ struct lang_collation
   int (*fastcmp) (const LANG_COLLATION * lang_coll,
 		  const unsigned char *string1, const int size1,
 		  const unsigned char *string2, const int size2);
+  int (*strmatch) (const LANG_COLLATION * lang_coll, bool is_match,
+		   const unsigned char *string1, int size1,
+		   const unsigned char *string2, int size2,
+		   const unsigned char *escape,
+		   const bool has_last_escape, int *str1_match_size);
   /* function to get collatable character sequence (in sort order) */
   int (*next_coll_seq) (const LANG_COLLATION * lang_coll,
 			const unsigned char *seq, const int size,
@@ -300,11 +305,15 @@ extern "C"
   extern TEXT_CONVERSION *lang_get_txt_conv (void);
   extern const char *lang_charset_name (const INTL_CODESET codeset);
 
-  extern int lang_strcmp_utf8_uca_w_coll_data (const COLL_DATA * coll_data,
-					       const unsigned char *str1,
-					       const int size1,
-					       const unsigned char *str2,
-					       const int size2);
+  extern int lang_strmatch_utf8_uca_w_coll_data (const COLL_DATA * coll_data,
+						 bool is_match,
+						 const unsigned char *str1,
+						 const int size1,
+						 const unsigned char *str2,
+						 const int size2,
+						 const unsigned char *escape,
+						 const bool has_last_escape,
+						 int *str1_match_size);
 #if !defined (SERVER_MODE)
   extern void lang_server_charset_init (void);
   extern INTL_CODESET lang_server_charset_id (void);

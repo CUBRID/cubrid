@@ -119,6 +119,24 @@
 					<w>[0.0.0.0]</w>
 				</set>
 			</cubridrules>
+		</collation>
+		<collation type="utf8_gen_ci">
+			<settings strength="secondary" caseLevel="off" caseFirst="off" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />
+			<cubridrules>
+				<set>
+					<scp>20</scp>
+					<w>[0.0.0.0]</w>
+				</set>
+			</cubridrules>
+		</collation>
+		<collation type="utf8_gen_ai_ci">
+			<settings strength="primary" caseLevel="off" caseFirst="off" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />
+			<cubridrules>
+				<set>
+					<scp>20</scp>
+					<w>[0.0.0.0]</w>
+				</set>
+			</cubridrules>
 		</collation>		
 	</collations>
 	<alphabets>

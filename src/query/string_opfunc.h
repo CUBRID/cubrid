@@ -64,6 +64,12 @@
 #define QSTR_COMPARE(id, string1, size1, string2, size2) \
   (lang_get_collation (id))->fastcmp ((lang_get_collation (id)), (string1), \
 				      (size1), (string2), (size2))
+#define QSTR_MATCH(id, string1, size1, string2, size2, esc, has_last_escape, \
+		   match_size) \
+  (lang_get_collation (id))->strmatch ((lang_get_collation (id)), true, \
+				       (string1), (size1), \
+				       (string2), (size2), (esc), \
+				       (has_last_escape), (match_size))
 #define QSTR_NEXT_ALPHA_CHAR(id, cur_chr, size, next_chr, len) \
   (lang_get_collation (id))->next_coll_seq ((lang_get_collation (id)), \
 					(cur_chr), (size), (next_chr), (len))
