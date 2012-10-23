@@ -46,11 +46,11 @@
 
 #define SYMBOL_NAME_SIZE 128
 
-static INTL_LANG lang_Loc_id = INTL_LANG_ENGLISH;
+static INTL_LANG lang_Lang_id = INTL_LANG_ENGLISH;
 static INTL_CODESET lang_Loc_charset = INTL_CODESET_ISO88591;
 static char lang_Loc_name[LANG_MAX_LANGNAME] = LANG_NAME_DEFAULT;
 static char lang_user_Loc_name[LANG_MAX_LANGNAME];
-static char lang_msg_Loc_name[LANG_MAX_LANGNAME];
+static char lang_msg_Loc_name[LANG_MAX_LANGNAME] = LANG_NAME_DEFAULT;
 static char lang_Lang_name[LANG_MAX_LANGNAME] = LANG_NAME_DEFAULT;
 static DB_CURRENCY lang_Loc_currency = DB_CURRENCY_DOLLAR;
 
@@ -136,6 +136,8 @@ static const DB_CHARSET lang_Db_charsets[] = {
 
 static void set_current_locale (bool is_full_init);
 static int set_lang_from_env (void);
+static int check_env_lang_val (char *env_val, char *lang_name,
+			       char **charset_ptr, INTL_CODESET * codeset);
 static void set_default_lang (void);
 static void lang_unload_libraries (void);
 static void destroy_user_locales (void);
@@ -493,6 +495,8 @@ lang_init (void)
       return lang_Initialized;
     }
 
+  /* ignore lang_env_initialized (if already set after catalog message init),
+   * and force reading the environment to check any possible errors */
   if (set_lang_from_env () != NO_ERROR)
     {
       return false;
@@ -663,9 +667,9 @@ set_current_locale (bool is_full_init)
 {
   bool found = false;
 
-  lang_get_lang_id_from_name (lang_Lang_name, &lang_Loc_id);
+  lang_get_lang_id_from_name (lang_Lang_name, &lang_Lang_id);
 
-  for (lang_Loc_data = lang_loaded_locales[lang_Loc_id];
+  for (lang_Loc_data = lang_loaded_locales[lang_Lang_id];
        lang_Loc_data != NULL; lang_Loc_data = lang_Loc_data->next_lld)
     {
       assert (lang_Loc_data != NULL);
@@ -698,31 +702,72 @@ set_current_locale (bool is_full_init)
 /*
  * set_lang_from_env - Initializes language variables from environment
  *
- *   return: true if success
+ *   return: NO_ERROR if success
  *
- *  Note : This function sets the following variables according to
+ *  Note : This function sets the following global variables according to
  *	   $CUBRID_LANG environment variable :
- *	    lang_Loc_name : locale string: <lang>.<charset>; en_US.utf8
- *	    lang_msg_Lang_name : locale string: <lang>.<charset>; en_US.utf8
- *	    lang_Lang_name : <lang> string part (without <charset>
- *	    lang_Loc_charset : charset id : ISO-8859-1 or UTF-8 
- *	    lang_Loc_bytes_per_char : maximum number of bytes per character
+ *	    - lang_user_Loc_name : locale string supplied by user
+ *	    - lang_Loc_name : resolved locale string: <lang>.<charset>
+ *	    - lang_Lang_name : <lang> string part (without <charset>)
+ *	    - lang_Lang_id: id of language
+ *	    - lang_Loc_charset : charset id : ISO-8859-1, UTF-8 or EUC-KR
+ *	   According to $CUBRID_MSG_LANG:
+ *	    - lang_msg_Loc_name : <lang>.<charset>; en_US.utf8;
+ *	      if $CUBRID_MSG_LANG is not set, then only $CUBRID_LANG is used
  */
 static int
 set_lang_from_env (void)
 {
   const char *env;
-  char *charset;
+  char *charset = NULL;
   char err_msg[ERR_MSG_SIZE];
+  bool is_msg_env_set = false;
+  int status = NO_ERROR;
 
   /*
-   * Determine the locale by examining environment variables.
-   * We check only our internal variable CUBRID_LANG to allow CUBRID
-   * to operate in a different locale than is set with LANG.  This is
-   * necessary when lang must be set to something other than one of the
-   * recognized settings used to select message catalogs in
-   * $CUBRID/admin/msg.
+   * Determines the locale by examining environment variables.
+   * We check the optional variable CUBRID_MSG_LANG, which decides the
+   * locale for catalog messages; if not set CUBRID_LANG is used for catalog
+   * messages
+   * CUBRID_LANG is mandatory, it decides the locale in which CUBRID opertes.
+   * This controls the system charset and collation, including charset and
+   * collation of system tables, charset (and casing rules) of identifiers,
+   * default charset and collation of string literals, default locale for 
+   * string - date /numeric conversion functions.
    */
+
+  env = envvar_get ("MSG_LANG");
+  if (env != NULL)
+    {
+      INTL_CODESET dummy_cs;
+      char msg_lang[LANG_MAX_LANGNAME];
+
+      strncpy (lang_msg_Loc_name, env, sizeof (lang_msg_Loc_name));
+
+      status = check_env_lang_val (lang_msg_Loc_name, msg_lang,
+				   &charset, &dummy_cs);
+      if (status != NO_ERROR)
+	{
+	  sprintf (err_msg, "invalid value '%s' for CUBRID_MSG_LANG",
+		   lang_msg_Loc_name);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, err_msg);
+	  strcpy (lang_msg_Loc_name, LANG_NAME_DEFAULT);
+	  lang_env_initialized = true;
+	  return ER_LOC_INIT;
+	}
+      else
+	{
+	  is_msg_env_set = true;
+	  if (charset == NULL && strcasecmp (msg_lang, "en_US") != 0)
+	    {
+	      /* by default all catalog message folders are in .utf8, unless
+	       * otherwise specified */
+	      assert (strlen (lang_msg_Loc_name) == 5);
+	      strcat (lang_msg_Loc_name, ".utf8");
+	    }
+	}
+      charset = NULL;
+    }
 
   env = envvar_get ("LANG");
   if (env != NULL)
@@ -734,98 +779,153 @@ set_lang_from_env (void)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
 	      "CUBRID_LANG environment variable is not set");
 
-      strcpy (lang_msg_Loc_name, LANG_NAME_DEFAULT);
+      if (!is_msg_env_set)
+	{
+	  strcpy (lang_msg_Loc_name, LANG_NAME_DEFAULT);
+	}
       lang_env_initialized = true;
       return ER_LOC_INIT;
     }
 
   strcpy (lang_user_Loc_name, lang_Loc_name);
+  lang_Loc_charset = INTL_CODESET_NONE;
+  status = check_env_lang_val (lang_Loc_name, lang_Lang_name, &charset,
+			       &lang_Loc_charset);
+  if (status != NO_ERROR)
+    {
+      sprintf (err_msg, "invalid value %s for CUBRID_LANG", lang_Loc_name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, err_msg);
+      if (!is_msg_env_set)
+	{
+	  strcpy (lang_msg_Loc_name, LANG_NAME_DEFAULT);
+	}
+      lang_env_initialized = true;
+      return ER_LOC_INIT;
+    }
+
+  if (lang_Loc_charset == INTL_CODESET_NONE)
+    {
+      /* no charset provided in $CUBRID_LANG */
+      (void) lang_get_builtin_lang_id_from_name (lang_Lang_name,
+						 &lang_Lang_id);
+      lang_Loc_charset = lang_get_default_codeset (lang_Lang_id);
+      if (!lang_is_codeset_allowed (lang_Lang_id, lang_Loc_charset))
+	{
+	  set_default_lang ();
+	  goto error_codeset;
+	}
+    }
+  else if (lang_Loc_charset != INTL_CODESET_UTF8)
+    {
+      /* not UTF-8 charset, it has to be a built-in language */
+      (void) lang_get_builtin_lang_id_from_name (lang_Loc_name,
+						 &lang_Lang_id);
+      if (!lang_is_codeset_allowed (lang_Lang_id, lang_Loc_charset))
+	{
+	  goto error_codeset;
+	}
+    }
+
+  if (!is_msg_env_set)
+    {
+      strcpy (lang_msg_Loc_name, lang_Loc_name);
+    }
+
+  lang_env_initialized = true;
+
+  return NO_ERROR;
+
+error_codeset:
+  sprintf (err_msg, "codeset %s for language %s is not supported", charset,
+	   lang_Lang_name);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, err_msg);
+
+  if (!is_msg_env_set)
+    {
+      strcpy (lang_msg_Loc_name, LANG_NAME_DEFAULT);
+    }
+  lang_env_initialized = true;
+
+  return ER_LOC_INIT;
+}
+
+/*
+ * check_env_lang_val - check and normalizes the environment variable value;
+ *			gets the language and charset parts
+ *
+ *   return: NO_ERROR if success
+ *
+ *   env_val(in/out): value; Example : "En_US.UTF8" -> en_US.utf8
+ *   lang_name(out): language part : en_US
+ *   charset_ptr(out): pointer in env_val to charset part : utf8
+ *   codeset(out): codeset value, according to charset part or
+ *		   INTL_CODESET_NODE, if charset part is empty
+ *
+ */
+static int
+check_env_lang_val (char *env_val, char *lang_name, char **charset_ptr,
+		    INTL_CODESET * codeset)
+{
+  char *charset;
+
+  assert (env_val != NULL);
+  assert (lang_name != NULL);
+  assert (charset_ptr != NULL);
 
   /* strip quotas : */
-  envvar_trim_char (lang_Loc_name, (int) '\"');
+  envvar_trim_char (env_val, (int) '\"');
 
-  /* allow environment to override the character set settings */
-  charset = strchr (lang_Loc_name, '.');
+  /* Locale should be formated like xx_XX.charset or xx_XX */
+  charset = strchr (env_val, '.');
+  *charset_ptr = charset;
   if (charset != NULL)
     {
-      strncpy (lang_Lang_name, lang_Loc_name, charset - lang_Loc_name);
-      lang_Lang_name[charset - lang_Loc_name] = '\0';
+      strncpy (lang_name, env_val, charset - env_val);
+      lang_name[charset - env_val] = '\0';
 
       charset++;
       if (strcasecmp (charset, LANG_CHARSET_EUCKR) == 0
 	  || strcasecmp (charset, LANG_CHARSET_EUCKR_ALIAS1) == 0)
 	{
-	  lang_Loc_charset = INTL_CODESET_KSC5601_EUC;
+	  *codeset = INTL_CODESET_KSC5601_EUC;
 	  strcpy (charset, LANG_CHARSET_EUCKR);
 	}
       else if (strcasecmp (charset, LANG_CHARSET_UTF8) == 0
 	       || strcasecmp (charset, LANG_CHARSET_UTF8_ALIAS1) == 0)
 	{
-	  lang_Loc_charset = INTL_CODESET_UTF8;
+	  *codeset = INTL_CODESET_UTF8;
 	  strcpy (charset, LANG_CHARSET_UTF8);
 	}
       else if (strcasecmp (charset, LANG_CHARSET_ISO88591) == 0
 	       || strcasecmp (charset, LANG_CHARSET_ISO88591_ALIAS1) == 0
 	       || strcasecmp (charset, LANG_CHARSET_ISO88591_ALIAS2) == 0)
 	{
-	  lang_Loc_charset = INTL_CODESET_ISO88591;
+	  *codeset = INTL_CODESET_ISO88591;
 	  strcpy (charset, LANG_CHARSET_ISO88591);
 	}
       else
 	{
-	  goto error;
-	}
-
-      strcpy (lang_user_Loc_name, lang_Loc_name);
-
-      /* for UTF-8 charset we allow any user defined lang name */
-      if (lang_Loc_charset != INTL_CODESET_UTF8)
-	{
-	  (void) lang_get_builtin_lang_id_from_name (lang_Loc_name,
-						     &lang_Loc_id);
-	  if (!lang_is_codeset_allowed (lang_Loc_id, lang_Loc_charset))
-	    {
-	      goto error;
-	    }
+	  return ER_FAILED;
 	}
     }
   else
     {
-      /* no charset provided in $CUBRID_LANG */
-      (void) lang_get_builtin_lang_id_from_name (lang_Loc_name, &lang_Loc_id);
-      lang_Loc_charset = lang_get_default_codeset (lang_Loc_id);
-      strcpy (lang_Lang_name, lang_Loc_name);
-      if (!lang_is_codeset_allowed (lang_Loc_id, lang_Loc_charset))
-	{
-	  set_default_lang ();
-	  goto error;
-	}
+      strcpy (lang_name, env_val);
     }
 
-  /* Locale should be formated like xx_XX.charset or xx_XX */
-  if (strlen (lang_user_Loc_name) >= 2)
+  if (strlen (lang_name) == 5)
     {
-      intl_tolower_iso8859 (lang_user_Loc_name, 2);
+      intl_toupper_iso8859 (lang_name + 3, 2);
+      intl_tolower_iso8859 (lang_name, 2);
     }
-  if (strlen (lang_user_Loc_name) >= 5)
+  else
     {
-      intl_toupper_iso8859 (lang_user_Loc_name + 3, 2);
+      return ER_FAILED;
     }
-  strcpy (lang_msg_Loc_name, lang_user_Loc_name);
 
-  lang_env_initialized = true;
+  memcpy (env_val, lang_name, strlen (lang_name));
 
   return NO_ERROR;
-
-error:
-  sprintf (err_msg, "codeset %s for language %s is not supported", charset,
-	   lang_Lang_name);
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, err_msg);
-
-  strcpy (lang_msg_Loc_name, LANG_NAME_DEFAULT);
-  lang_env_initialized = true;
-
-  return ER_LOC_INIT;
 }
 
 /*
@@ -836,7 +936,7 @@ error:
 static void
 set_default_lang (void)
 {
-  lang_Loc_id = INTL_LANG_ENGLISH;
+  lang_Lang_id = INTL_LANG_ENGLISH;
   strncpy (lang_Loc_name, LANG_NAME_DEFAULT, sizeof (lang_Loc_name));
   strncpy (lang_Lang_name, LANG_NAME_DEFAULT, sizeof (lang_Lang_name));
   lang_Loc_data = &lc_English_iso88591;
@@ -1419,6 +1519,7 @@ lang_get_msg_Loc_name (void)
 {
   if (!lang_env_initialized)
     {
+      /* ignore any errors, we just need a locale for messages */
       (void) set_lang_from_env ();
     }
 
@@ -1450,7 +1551,7 @@ lang_id (void)
     {
       lang_init ();
     }
-  return lang_Loc_id;
+  return lang_Lang_id;
 }
 
 /*
