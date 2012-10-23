@@ -7588,6 +7588,10 @@ pt_wrap_select_list_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * query,
 	    for (item = select_list; item != NULL;
 		 prev = item, item = item->next)
 	      {
+		if (item->is_hidden_column)
+		  {
+		    continue;
+		  }
 		new_node = NULL;
 		if (item->type_enum == new_type && !force_wrap)
 		  {
