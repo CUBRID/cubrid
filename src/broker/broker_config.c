@@ -79,7 +79,8 @@ struct t_conf_table
 
 enum
 { PARAM_NO_ERROR = 0, PARAM_INVAL_SEC = 1,
-  PARAM_BAD_VALUE = 2, PARAM_BAD_RANGE = 3
+  PARAM_BAD_VALUE = 2, PARAM_BAD_RANGE = 3,
+  SECTION_NAME_TOO_LONG = 4
 };
 
 static void conf_file_has_been_loaded (const char *conf_path);
@@ -151,7 +152,8 @@ static const char *tbl_conf_err_msg[] = {
   "",
   "Cannot find any section in conf file.",
   "Value type does not match parameter type.",
-  "Value is out of range."
+  "Value is out of range.",
+  "Section name is too long. Section name must be less than 64."
 };
 
 /* conf files that have been loaded */
@@ -371,11 +373,18 @@ broker_config_read_internal (const char *conf_file,
     {
       char *sec_name;
 
-      sec_name = ini_getsecname (ini, i);
+      sec_name = ini_getsecname (ini, i, &lineno);
       if (sec_name == NULL || strcasecmp (sec_name, SECTION_NAME) == 0
 	  || sec_name[0] != '%')
 	{
 	  continue;
+	}
+
+      /* sec_name : %broker_name */
+      if ((strlen (sec_name)) > BROKER_NAME_LEN)
+	{
+	  errcode = SECTION_NAME_TOO_LONG;
+	  goto conf_error;
 	}
 
       if (num_brs >= MAX_BROKER_NUM)

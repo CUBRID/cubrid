@@ -427,8 +427,8 @@ as_pid_file_create (char *br_name, int proxy_index, int shard_id,
 
 #if defined(CUBRID_SHARD)
   sprintf (as_pid_file_name, "%s%s_%d_%d_%d.pid",
-	   get_cubrid_file (FID_AS_PID_DIR, buf, PATH_MAX), br_name, proxy_index + 1,
-	   shard_id, as_index + 1);
+	   get_cubrid_file (FID_AS_PID_DIR, buf, PATH_MAX), br_name,
+	   proxy_index + 1, shard_id, as_index + 1);
 #else
   sprintf (as_pid_file_name, "%s%s_%d.pid",
 	   get_cubrid_file (FID_AS_PID_DIR, buf, PATH_MAX), br_name,
@@ -460,7 +460,7 @@ as_db_err_log_set (char *br_name, int proxy_index, int shard_id, int as_index)
 }
 
 int
-as_get_my_as_info (char *br_name, int *as_index)
+as_get_my_as_info (char *br_name, int *as_index, int max_length)
 {
   char *p, *q, *dir_p;
 
@@ -477,7 +477,7 @@ as_get_my_as_info (char *br_name, int *as_index)
     return -1;
 
   *q = '\0';
-  strcpy (br_name, dir_p + 1);
+  strncpy (br_name, dir_p + 1, max_length);
   *as_index = atoi (q + 1) - 1;
   *q = '.';
 

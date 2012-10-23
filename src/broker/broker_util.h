@@ -62,7 +62,7 @@ extern int ut_set_keepalive (int sock, int keepalive_time);
 extern int run_child (const char *appl_name);
 #endif
 
-extern int as_get_my_as_info (char *br_name, int *as_index);
+extern int as_get_my_as_info (char *br_name, int *as_index, int max_length);
 extern void as_pid_file_create (char *br_name, int proxy_index, int shard_id,
 				int as_index);
 extern void as_db_err_log_set (char *br_name, int proxy_index, int shard_id,

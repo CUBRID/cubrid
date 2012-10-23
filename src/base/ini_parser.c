@@ -739,7 +739,7 @@ ini_findsec (INI_TABLE * ini, const char *sec)
  * Note:
  */
 char *
-ini_getsecname (INI_TABLE * ini, int n)
+ini_getsecname (INI_TABLE * ini, int n, int *lineno)
 {
   int i, foundsec;
 
@@ -766,6 +766,10 @@ ini_getsecname (INI_TABLE * ini, int n)
   if (foundsec <= n)
     {
       return NULL;
+    }
+  if (lineno != NULL && ini->lineno != NULL)
+    {
+      *lineno = ini->lineno[i];
     }
   return ini->key[i];
 }

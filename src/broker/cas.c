@@ -1816,9 +1816,9 @@ cas_init ()
       return -1;
     }
 
-  strcpy (broker_name, shm_appl->broker_name);
+  strncpy (broker_name, shm_appl->broker_name, BROKER_NAME_LEN);
 #else
-  if (as_get_my_as_info (broker_name, &shm_as_index) < 0)
+  if (as_get_my_as_info (broker_name, &shm_as_index, BROKER_NAME_LEN) < 0)
     {
       return -1;
     }
