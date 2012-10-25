@@ -187,6 +187,9 @@ static int partition_prune_heap_scan (PRUNING_CONTEXT * pinfo);
 
 static int partition_prune_index_scan (PRUNING_CONTEXT * pinfo);
 
+/* misc pruning functions */
+static bool partition_decrement_value (DB_VALUE * val);
+
 
 /* PRUNING_BITSET manipulation functions */
 
@@ -1425,6 +1428,14 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val,
 	}
       else
 	{
+	  if (op == PO_GT)
+	    {
+	      /* Partitioning interval is stored as [min, max). Try to convert
+	       * it to [min, max--] in order to handle some limit cases like
+	       * val > max-- which should not match any partition
+	       */
+	      (void) partition_decrement_value (&max);
+	    }
 	  rmax = tp_value_compare (val, &max, 1, 1);
 	}
 
@@ -3375,4 +3386,66 @@ cleanup:
       *count = 0;
     }
   return error;
+}
+
+/*
+ * partition_decrement_value () - decrement a DB_VALUE
+ * return : true if value was decremented, false otherwise
+ * val (in) : value to decrement
+ */
+static bool
+partition_decrement_value (DB_VALUE * val)
+{
+  if (DB_IS_NULL (val))
+    {
+      return false;
+    }
+
+  switch (DB_VALUE_TYPE (val))
+    {
+    case DB_TYPE_INTEGER:
+      val->data.i--;
+      return true;
+
+    case DB_TYPE_BIGINT:
+      val->data.bigint--;
+      return true;
+
+    case DB_TYPE_SHORT:
+      val->data.i--;
+      return true;
+
+    case DB_TYPE_TIME:
+      val->data.time--;
+      return true;
+
+    case DB_TYPE_TIMESTAMP:
+      val->data.utime--;
+      return true;
+
+    case DB_TYPE_DATETIME:
+      if (val->data.datetime.time == 0)
+	{
+	  val->data.datetime.date--;
+	  val->data.datetime.time = MILLISECONDS_OF_ONE_DAY - 1;
+	}
+      else
+	{
+	  val->data.datetime.time--;
+	}
+      return true;
+
+    case DB_TYPE_DATE:
+      if (val->data.date == 0)
+	{
+	  return false;
+	}
+      val->data.date--;
+      return true;
+
+    default:
+      return false;
+    }
+
+  return false;
 }
