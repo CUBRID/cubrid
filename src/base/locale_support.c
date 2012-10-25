@@ -108,7 +108,7 @@ static int end_number_symbol (void *data, const char *el_name);
 static int start_collations (void *data, const char **attr);
 static int start_one_collation (void *data, const char **attr);
 static int end_one_collation (void *data, const char *el_name);
-static int start_collation_setttings (void *data, const char **attr);
+static int start_collation_settings (void *data, const char **attr);
 static int start_collation_reset (void *data, const char **attr);
 static int end_collation_reset (void *data, const char *el_name);
 static int start_collation_rule (void *data, const char **attr);
@@ -149,7 +149,8 @@ static LOCALE_COLLATION *new_locale_collation (LOCALE_DATA * ld);
 static TAILOR_RULE *new_collation_rule (LOCALE_DATA * ld);
 static TRANSFORM_RULE *new_transform_rule (LOCALE_DATA * ld);
 static CUBRID_TAILOR_RULE *new_collation_cubrid_rule (LOCALE_DATA * ld);
-static int locale_alloc_collation_id (void);
+static void locale_alloc_collation_id (COLL_TAILORING * coll_tail);
+static int locale_check_collation_id (const COLL_TAILORING * coll_tail);
 static void locale_destroy_collation (LOCALE_COLLATION * lc);
 
 static void print_debug_start_el (void *data, const char **attrs,
@@ -485,7 +486,7 @@ XML_ELEMENT_DEF ldml_elem_collation_rules =
 };
 XML_ELEMENT_DEF ldml_elem_collation_settings =
   { "ldml collations collation settings", 4,
-  (ELEM_START_FUNC) & start_collation_setttings,
+  (ELEM_START_FUNC) & start_collation_settings,
   (ELEM_END_FUNC) & end_element_ok, NULL
 };
 XML_ELEMENT_DEF ldml_elem_collation_reset =
@@ -1767,7 +1768,7 @@ end_one_collation (void *data, const char *el_name)
 }
 
 /* 
- * start_collation_setttings() - XML element start function
+ * start_collation_settings() - XML element start function
  * "ldml collations collation settings"
  *
  * return: 0 validation OK enter this element , 1 validation NOK do not enter
@@ -1776,7 +1777,7 @@ end_one_collation (void *data, const char *el_name)
  * attr: attribute/value pair array
  */
 static int
-start_collation_setttings (void *data, const char **attr)
+start_collation_settings (void *data, const char **attr)
 {
   XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
   LOCALE_DATA *ld = NULL;
@@ -1788,6 +1789,14 @@ start_collation_setttings (void *data, const char **attr)
   ld = XML_USER_DATA (pd);
   curr_coll_tail = LOC_CURRENT_COLL_TAIL (ld);
 
+  att_val = NULL;
+  if (xml_get_att_value (attr, "id", &att_val) == 0)
+    {
+      assert (att_val != NULL);
+      curr_coll_tail->coll_id = atoi (att_val);
+    }
+
+  att_val = NULL;
   /* all setting are optional */
   if (xml_get_att_value (attr, "strength", &att_val) == 0)
     {
@@ -3628,15 +3637,118 @@ print_debug_data_content (void *data, const char *msg, const int status)
  * locale_alloc_collation_id() - allocates collation id
  *
  * return:
+ *
+ *  Note : Ranges of collation id:
+ *	   0 - 31(*)  : built-in collations  (32)
+ *	   32(*) - 46 : generic collations (language independent) (15)
+ *	   47 - 255 : language dependent collations (208 = 26 * 8)
+ *	   Collation is name is in format: charset_lang_desc1_desc2_..
+ *	   utf8_de_exp : Collation specific to de (German) with expansions
+ *	   utf8_gen_ai_ci : Generic collation, accent and case insensitive
+ *	   
+ */
+static void
+locale_alloc_collation_id (COLL_TAILORING * coll_tail)
+{
+#define ID_PER_RANGE 8
+#define START_GENERIC_RANGE LANG_MAX_BUILTIN_COLLATIONS
+#define START_LANG_RANGE 47
+
+  int coll_id = 0;
+  char coll_name[COLL_NAME_SIZE];
+  const char *charset_part, *lang_part, *desc_part;
+  int range_start, range_size;
+
+  strcpy (coll_name, coll_tail->coll_name);
+
+  charset_part = coll_name;
+  lang_part = strchr (coll_name, '_');
+  if (lang_part != NULL)
+    {
+      lang_part++;
+      desc_part = strchr (lang_part, '_');
+      if (desc_part != NULL)
+	{
+	  desc_part++;
+	}
+    }
+  else
+    {
+      desc_part = NULL;
+    }
+
+  if (lang_part != NULL)
+    {
+      if (strncasecmp (lang_part, "gen", 3) == 0)
+	{
+	  range_start = START_GENERIC_RANGE;
+	  range_size = (START_LANG_RANGE - START_GENERIC_RANGE) + 1;
+	}
+      else
+	{
+	  int s = (int) *lang_part;
+	  s = (char_isupper (s)) ? (s + ('a' - 'A')) : s;
+	  s = (s > 'z') ? 'z' : ((s < 'a') ? 'a' : s);
+	  s -= 'a';
+	  range_start = START_LANG_RANGE + s * ID_PER_RANGE;
+	  range_size = ID_PER_RANGE;
+	}
+
+      if (desc_part != NULL)
+	{
+	  while (desc_part < coll_name + strlen (coll_name))
+	    {
+	      coll_id += *desc_part++;
+	    }
+	}
+
+      coll_id %= range_size;
+      coll_id += range_start;
+    }
+
+  coll_tail->coll_id = coll_id;
+
+#undef ID_PER_RANGE
+#undef START_GENERIC_RANGE
+#undef START_LANG_RANGE
+}
+
+/*
+ * locale_check_collation_id() - checks a collation id
+ *
+ * return:
+ *
+ *	   
  */
 static int
-locale_alloc_collation_id (void)
+locale_check_collation_id (const COLL_TAILORING * coll_tail)
 {
-  static int coll_id = -1;
+  char err_msg[ERR_MSG_SIZE];
+  static int taken_collations[LANG_MAX_COLLATIONS] = { 0 };
 
-  coll_id++;
+  if (coll_tail->coll_id < LANG_MAX_BUILTIN_COLLATIONS
+      || coll_tail->coll_id >= LANG_MAX_COLLATIONS)
+    {
+      snprintf (err_msg, sizeof (err_msg) - 1,
+		"Invalid collation numeric identifier : %d"
+		" for collation '%s'. Value too small or too big.",
+		coll_tail->coll_id, coll_tail->coll_name);
+      LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
+      return ER_LOC_GEN;
+    }
 
-  return coll_id + lang_collation_count ();
+  if (taken_collations[coll_tail->coll_id] != 0)
+    {
+      snprintf (err_msg, sizeof (err_msg) - 1,
+		"Invalid collation numeric identifier : %d"
+		" for collation '%s'. Id is already taken.",
+		coll_tail->coll_id, coll_tail->coll_name);
+      LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
+      return ER_LOC_GEN;
+    }
+
+  taken_collations[coll_tail->coll_id] = 1;
+  return NO_ERROR;
 }
 
 /* 
@@ -4573,7 +4685,18 @@ locale_compile_locale (LOCALE_FILE * lf, bool is_verbose)
 	    {
 	      goto exit;
 	    }
-	  lc->opt_coll.coll_id = locale_alloc_collation_id ();
+
+	  if (lc->tail_coll.coll_id <= 0)
+	    {
+	      locale_alloc_collation_id (&lc->tail_coll);
+	    }
+
+	  er_status = locale_check_collation_id (&lc->tail_coll);
+	  if (er_status != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	  lc->opt_coll.coll_id = lc->tail_coll.coll_id;
 	}
 
       er_status = locale_compute_coll_checksum (&(lc->opt_coll));

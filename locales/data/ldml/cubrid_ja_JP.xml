@@ -98,7 +98,7 @@
 	</numbers>
 	<collations validSubLocales="ja_JP">
 		<collation type="utf8_ja_exp">
-			<settings strength="tertiary" caseLevel="off" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="use" CUBRIDExpansions="use"/>
+			<settings id="124" strength="tertiary" caseLevel="off" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="use" CUBRIDExpansions="use"/>
 			<cubridrules>
 				<set>
 					<scp>20</scp>
@@ -1308,7 +1308,7 @@
 			</rules>
 		</collation>
 		<collation type="utf8_ja_exp_cbm">	<!-- same as utf8_ja_exp, except that it allows matching across contraction boundary -->
-			<settings strength="tertiary" caseLevel="off" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="use" CUBRIDExpansions="use" MatchContractionBoundary="true"/>
+			<settings id="125" strength="tertiary" caseLevel="off" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="use" CUBRIDExpansions="use" MatchContractionBoundary="true"/>
 			<cubridrules>
 				<set>
 					<scp>20</scp>
@@ -2518,7 +2518,7 @@
 			</rules>
 		</collation>		
 		<collation type="utf8_gen">
-			<settings strength="quaternary" caseLevel="on" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />
+			<settings id="32" strength="quaternary" caseLevel="on" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />
 			<cubridrules>
 				<set>
 					<scp>20</scp>
@@ -2527,7 +2527,7 @@
 			</cubridrules>
 		</collation>
 		<collation type="utf8_gen_ci">
-			<settings strength="secondary" caseLevel="off" caseFirst="off" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />
+			<settings id="44" strength="secondary" caseLevel="off" caseFirst="off" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />
 			<cubridrules>
 				<set>
 					<scp>20</scp>
@@ -2536,7 +2536,7 @@
 			</cubridrules>
 		</collation>
 		<collation type="utf8_gen_ai_ci">
-			<settings strength="primary" caseLevel="off" caseFirst="off" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />
+			<settings id="37" strength="primary" caseLevel="off" caseFirst="off" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />
 			<cubridrules>
 				<set>
 					<scp>20</scp>

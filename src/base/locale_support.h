@@ -369,6 +369,8 @@ struct coll_tailoring
 {
   char coll_name[COLL_NAME_SIZE];	/* collation name */
 
+  int coll_id;
+
   UCA_OPTIONS uca_opt;
 
   /* number of codepoints to take into account for collation 

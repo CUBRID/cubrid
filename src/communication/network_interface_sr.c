@@ -9563,20 +9563,29 @@ sboot_get_locales_info (THREAD_ENTRY * thread_p, unsigned int rid,
   const int collation_cnt = lang_collation_count ();
   const int lang_cnt = lang_locales_count (false);
   const int locales_cnt = lang_locales_count (true);
+  int found_coll = 0;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   /* compute size of packed information */
-  for (i = 0; i < collation_cnt; i++)
+  for (i = 0; i < LANG_MAX_COLLATIONS; i++)
     {
       LANG_COLLATION *lc = lang_get_collation (i);
 
       assert (lc != NULL);
+      if (i != 0 && lc->coll.coll_id == LANG_COLL_ISO_BINARY)
+	{
+	  /* iso88591 binary collation added only once */
+	  continue;
+	}
+      found_coll++;
 
       size += 2 * OR_INT_SIZE;	/* collation id , codeset */
       size += or_packed_string_length (lc->coll.coll_name, &len_str);
       size += or_packed_string_length (lc->coll.checksum, &len_str);
     }
+
+  assert (found_coll == collation_cnt);
 
   for (i = 0; i < lang_cnt; i++)
     {
@@ -9602,13 +9611,21 @@ sboot_get_locales_info (THREAD_ENTRY * thread_p, unsigned int rid,
     {
       ptr = or_pack_int (data_reply, collation_cnt);
       ptr = or_pack_int (ptr, locales_cnt);
+      found_coll = 0;
 
       /* pack collation information : */
-      for (i = 0; i < collation_cnt; i++)
+      for (i = 0; i < LANG_MAX_COLLATIONS; i++)
 	{
 	  LANG_COLLATION *lc = lang_get_collation (i);
 
 	  assert (lc != NULL);
+
+	  if (i != 0 && lc->coll.coll_id == LANG_COLL_ISO_BINARY)
+	    {
+	      continue;
+	    }
+
+	  found_coll++;
 
 	  ptr = or_pack_int (ptr, lc->coll.coll_id);
 
@@ -9620,6 +9637,7 @@ sboot_get_locales_info (THREAD_ENTRY * thread_p, unsigned int rid,
 	  len_str = strlen (lc->coll.checksum);
 	  ptr = or_pack_string_with_length (ptr, lc->coll.checksum, len_str);
 	}
+      assert (found_coll == collation_cnt);
 
       /* pack locale information : */
       for (i = 0; i < lang_cnt; i++)

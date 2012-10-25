@@ -98,7 +98,7 @@
 	</numbers>
 	<collations validSubLocales="ko_KR">
 		<collation type="utf8_ko_cs_uca">
-			<settings strength="quaternary" caseLevel="on" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />
+			<settings id="133" strength="quaternary" caseLevel="on" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />
 			<cubridrules>
 				<set>
 					<scp>20</scp>
@@ -1063,7 +1063,7 @@
 			</rules>			
 		</collation>
 		<collation type="utf8_gen">
-			<settings strength="quaternary" caseLevel="on" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />
+			<settings id="32" strength="quaternary" caseLevel="on" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />
 			<cubridrules>
 				<set>
 					<scp>20</scp>
@@ -1072,7 +1072,7 @@
 			</cubridrules>
 		</collation>
 		<collation type="utf8_gen_ci">
-			<settings strength="secondary" caseLevel="off" caseFirst="off" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />
+			<settings id="44" strength="secondary" caseLevel="off" caseFirst="off" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />
 			<cubridrules>
 				<set>
 					<scp>20</scp>
@@ -1081,7 +1081,7 @@
 			</cubridrules>
 		</collation>
 		<collation type="utf8_gen_ai_ci">
-			<settings strength="primary" caseLevel="off" caseFirst="off" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />
+			<settings id="37" strength="primary" caseLevel="off" caseFirst="off" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />
 			<cubridrules>
 				<set>
 					<scp>20</scp>

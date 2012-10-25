@@ -3373,16 +3373,24 @@ boot_add_collations (MOP class_mop)
 {
   int i;
   int count_collations;
+  int found_coll = 0;
 
   count_collations = lang_collation_count ();
 
-  for (i = 0; i < count_collations; i++)
+  for (i = 0; i < LANG_MAX_COLLATIONS; i++)
     {
       LANG_COLLATION *lang_coll = lang_get_collation (i);
       DB_OBJECT *obj;
       DB_VALUE val;
 
       assert (lang_coll != NULL);
+
+      if (i != 0 && lang_coll->coll.coll_id == LANG_COLL_ISO_BINARY)
+	{
+	  /* iso88591 binary collation added only once */
+	  continue;
+	}
+      found_coll++;
 
       obj = db_create_internal (class_mop);
       if (obj == NULL)
@@ -3420,6 +3428,8 @@ boot_add_collations (MOP class_mop)
 		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
       db_put_internal (obj, CT_DBCOLL_CHECKSUM_COLUMN, &val);
     }
+
+  assert (found_coll == count_collations);
 
   return NO_ERROR;
 }

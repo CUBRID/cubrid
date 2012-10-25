@@ -524,6 +524,12 @@ lang_init (void)
       return false;
     }
 
+  /* init all collation placeholders with ISO binary collation */
+  for (i = 0; i < LANG_MAX_COLLATIONS; i++)
+    {
+      lang_collations[i] = &coll_iso_binary;
+    }
+
   /* built-in collations : order of registration should match colation ID */
   for (i = 0; i < (int) (sizeof (built_in_collations)
 			 / sizeof (built_in_collations[0])); i++)
@@ -1225,22 +1231,43 @@ error:
 static int
 register_collation (LANG_COLLATION * coll)
 {
+  int id;
   assert (coll != NULL);
   assert (lang_count_collations < LANG_MAX_COLLATIONS);
 
-  if (coll->coll.coll_id != lang_count_collations)
+  id = coll->coll.coll_id;
+
+  if (id < ((coll->built_in) ? 0 : LANG_MAX_BUILTIN_COLLATIONS)
+      || id >= LANG_MAX_COLLATIONS)
     {
       char err_msg[ERR_MSG_SIZE];
       snprintf (err_msg, sizeof (err_msg) - 1,
-		"Invalid collation numeric identifier : %d (expecting %d) "
-		" for collation '%s'. Check locales configuration file.",
-		coll->coll.coll_id, lang_count_collations,
-		coll->coll.coll_name);
+		"Invalid collation numeric identifier : %d"
+		" for collation '%s'. Expecting greater than %d and lower "
+		"than %d.", id, coll->coll.coll_name,
+		((coll->built_in) ? 0 : LANG_MAX_BUILTIN_COLLATIONS),
+		LANG_MAX_COLLATIONS);
       LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, true);
       return ER_LOC_INIT;
     }
 
-  lang_collations[lang_count_collations++] = coll;
+  assert (lang_collations[id] != NULL);
+
+  if (lang_collations[id]->coll.coll_id != LANG_COLL_ISO_BINARY)
+    {
+      char err_msg[ERR_MSG_SIZE];
+      snprintf (err_msg, sizeof (err_msg) - 1,
+		"Invalid collation numeric identifier : %d for collation '%s'"
+		". This id is already used by collation '%s'",
+		id, coll->coll.coll_name,
+		lang_collations[id]->coll.coll_name);
+      LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, true);
+      return ER_LOC_INIT;
+    }
+
+  lang_collations[id] = coll;
+
+  lang_count_collations++;
 
   if (coll->init_coll != NULL)
     {
@@ -1290,7 +1317,7 @@ lang_is_coll_name_allowed (const char *name)
 LANG_COLLATION *
 lang_get_collation (const int coll_id)
 {
-  assert (coll_id >= 0 && coll_id < lang_count_collations);
+  assert (coll_id >= 0 && coll_id < LANG_MAX_COLLATIONS);
 
   return lang_collations[coll_id];
 }
@@ -1304,7 +1331,7 @@ lang_get_collation (const int coll_id)
 const char *
 lang_get_collation_name (const int coll_id)
 {
-  assert (coll_id >= 0 && coll_id < lang_count_collations);
+  assert (coll_id >= 0 && coll_id < LANG_MAX_COLLATIONS);
 
   return lang_collations[coll_id]->coll.coll_name;
 }
@@ -1320,7 +1347,7 @@ lang_get_collation_by_name (const char *coll_name)
   int i;
   assert (coll_name != NULL);
 
-  for (i = 0; i < lang_count_collations; i++)
+  for (i = 0; i < LANG_MAX_COLLATIONS; i++)
     {
       if (strcmp (coll_name, lang_collations[i]->coll.coll_name) == 0)
 	{
@@ -2496,7 +2523,7 @@ lang_set_client_charset_coll (const INTL_CODESET codeset,
 	  || codeset == INTL_CODESET_UTF8
 	  || codeset == INTL_CODESET_KSC5601_EUC);
 
-  assert (collation_id >= 0 && collation_id < lang_count_collations);
+  assert (collation_id >= 0 && collation_id < LANG_MAX_COLLATIONS);
 
   lang_Client_charset = codeset;
   lang_Client_collation_id = collation_id;
@@ -6194,7 +6221,7 @@ exit:
 
 error_loading_symbol:
   snprintf (err_msg, sizeof (err_msg) - 1,
-	    "Cannot load symbol %s from the library file %s"
+	    "Cannot load symbol %s from the library file %s "
 	    "for the %s locale!", sym_name, lf->lib_file, lf->locale_name);
   LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, true);
 
@@ -6661,7 +6688,11 @@ lang_free_collations (void)
 {
   int i;
 
-  for (i = 0; i < lang_count_collations; i++)
+  if (lang_count_collations <= 0)
+    {
+      return;
+    }
+  for (i = 0; i < LANG_MAX_COLLATIONS; i++)
     {
       assert (lang_collations[i] != NULL);
       if (!(lang_collations[i]->built_in))
@@ -6714,56 +6745,57 @@ lang_check_coll_compat (const LANG_COLL_COMPAT * coll_array,
   for (i = 0; i < coll_cnt; i++)
     {
       const LANG_COLL_COMPAT *ref_c;
-      LANG_COLLATION *coll;
+      LANG_COLLATION *lc;
 
       ref_c = &(coll_array[i]);
 
-      if (ref_c->coll_id < 0 || ref_c->coll_id > lang_count_collations)
+      assert (ref_c->coll_id >= 0 && ref_c->coll_id < LANG_MAX_COLLATIONS);
+      /* collation id is valid, check if same collation */
+      lc = lang_get_collation (ref_c->coll_id);
+
+      if (lc->coll.coll_id != ref_c->coll_id)
 	{
 	  snprintf (err_msg, sizeof (err_msg) - 1,
-		    "Collation '%s' with id %d of %s is not configured on %s",
-		    ref_c->coll_name, ref_c->coll_id,
-		    client_text, server_text);
+		    "Collation '%s' with id %d form %s not found with the "
+		    "same id on %s", ref_c->coll_name, ref_c->coll_id,
+		    server_text, client_text);
 	  er_status = ER_LOC_INIT;
 	  LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, true);
 	  goto exit;
 	}
 
-      /* collation id is valid, check if same collation */
-      coll = lang_get_collation (ref_c->coll_id);
-
-      if (strcmp (coll->coll.coll_name, ref_c->coll_name))
+      if (strcmp (lc->coll.coll_name, ref_c->coll_name))
 	{
 	  snprintf (err_msg, sizeof (err_msg) - 1,
 		    "Names of collation with id %d do not match : "
 		    "on %s, is '%s'; on %s, is '%s'",
 		    ref_c->coll_id, client_text, ref_c->coll_name,
-		    server_text, coll->coll.coll_name);
+		    server_text, lc->coll.coll_name);
 	  er_status = ER_LOC_INIT;
 	  LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, true);
 	  goto exit;
 	}
 
-      if (coll->codeset != ref_c->codeset)
+      if (lc->codeset != ref_c->codeset)
 	{
 	  snprintf (err_msg, sizeof (err_msg) - 1,
 		    "Codesets of collation '%s' with id %d do not match : "
 		    "on %s, codeset is %d; on %s, codeset is %d",
 		    ref_c->coll_name, ref_c->coll_id,
-		    client_text, ref_c->codeset, server_text, coll->codeset);
+		    client_text, ref_c->codeset, server_text, lc->codeset);
 	  er_status = ER_LOC_INIT;
 	  LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, true);
 	  goto exit;
 	}
 
-      if (strcasecmp (coll->coll.checksum, ref_c->checksum))
+      if (strcasecmp (lc->coll.checksum, ref_c->checksum))
 	{
 	  snprintf (err_msg, sizeof (err_msg) - 1,
 		    "Collation '%s' with id %d has changed : "
 		    "on %s, checksum is '%s'; on %s, checksum is '%s'",
 		    ref_c->coll_name, ref_c->coll_id,
 		    client_text, ref_c->checksum,
-		    server_text, coll->coll.checksum);
+		    server_text, lc->coll.checksum);
 	  er_status = ER_LOC_INIT;
 	  LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, true);
 	  goto exit;
