@@ -6434,8 +6434,8 @@ fileio_initialize_backup (const char *db_full_name_p,
 			  const char *backup_destination_p,
 			  FILEIO_BACKUP_SESSION * session_p,
 			  FILEIO_BACKUP_LEVEL level,
-			  const char *verbose_file_p, int num_threads,
-			  int sleep_msecs)
+			  FILE * verbose_file_fp,
+			  int num_threads, int sleep_msecs)
 {
   int vol_fd;
   int size;
@@ -6443,7 +6443,6 @@ fileio_initialize_backup (const char *db_full_name_p,
   struct stat stbuf;
   int buf_size;
   int io_page_size;
-  const char *verbose_fp_mode;
 
   /*
    * First assume that backup device is a regular file or a raw device.
@@ -6635,9 +6634,26 @@ fileio_initialize_backup (const char *db_full_name_p,
       return NULL;
     }
 
-  if (verbose_file_p && *verbose_file_p)
+  session_p->verbose_fp = verbose_file_fp;
+  session_p->sleep_msecs = sleep_msecs;
+
+  return session_p;
+}
+
+FILE *
+fileio_initialize_backup_verbose_file (const char *backup_verbose_file_name,
+				       FILEIO_BACKUP_TYPE type,
+				       FILEIO_BACKUP_LEVEL level)
+{
+
+
+  FILE *verbose_file = NULL;
+
+  char *verbose_fp_mode;
+
+  if (backup_verbose_file_name && *backup_verbose_file_name)
     {
-      if (session_p->type == FILEIO_BACKUP_WRITE && level == 0)
+      if (type == FILEIO_BACKUP_WRITE && level == 0)
 	{
 	  verbose_fp_mode = "w";
 	}
@@ -6646,36 +6662,24 @@ fileio_initialize_backup (const char *db_full_name_p,
 	  verbose_fp_mode = "a";
 	}
 
-      session_p->verbose_fp = fopen (verbose_file_p, verbose_fp_mode);
+      verbose_file = fopen (backup_verbose_file_name, verbose_fp_mode);
 
-      if (session_p->verbose_fp == NULL)
+      if (verbose_file == NULL)
 	{
-	  if (session_p->bkup.buffer != NULL)
-	    {
-	      free_and_init (session_p->bkup.buffer);
-	    }
-
-	  if (session_p->dbfile.area != NULL)
-	    {
-	      free_and_init (session_p->dbfile.area);
-	    }
-
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_IO_CANNOT_OPEN_VERBOSE_FILE, 1, verbose_file_p);
+		  ER_IO_CANNOT_OPEN_VERBOSE_FILE, 1,
+		  backup_verbose_file_name);
 
 	  return NULL;
 	}
 
-      setbuf (session_p->verbose_fp, NULL);
+      setbuf (verbose_file, NULL);
     }
   else
     {
-      session_p->verbose_fp = NULL;
+      verbose_file = NULL;
     }
-
-  session_p->sleep_msecs = sleep_msecs;
-
-  return session_p;
+  return verbose_file;
 }
 
 static void

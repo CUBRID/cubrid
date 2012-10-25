@@ -498,10 +498,16 @@ extern FILEIO_BACKUP_SESSION
 			      const char *backup_destination,
 			      FILEIO_BACKUP_SESSION * session,
 			      FILEIO_BACKUP_LEVEL level,
-			      const char *backup_verbose_file,
+			      FILE * verbose_file_fp,
 			      int num_threads, int sleep_msecs);
+extern FILE *fileio_initialize_backup_verbose_file (const char
+						    *backup_verbose_file_name,
+						    FILEIO_BACKUP_TYPE type,
+						    FILEIO_BACKUP_LEVEL
+						    level);
 extern FILEIO_BACKUP_SESSION
-  * fileio_start_backup (THREAD_ENTRY * thread_p, const char *db_fullname,
+  * fileio_start_backup (THREAD_ENTRY * thread_p,
+			 const char *db_fullname,
 			 INT64 * db_creation,
 			 FILEIO_BACKUP_LEVEL backup_level,
 			 LOG_LSA * backup_start_lsa,
@@ -521,12 +527,16 @@ extern int fileio_backup_volume (THREAD_ENTRY * thread_p,
 				 const char *from_vlabel, VOLID from_volid,
 				 PAGEID last_page, bool only_updated_pages);
 extern FILEIO_BACKUP_SESSION
-  * fileio_start_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
-			  char *backup_source, INT64 match_dbcreation,
-			  PGLENGTH * db_iopagesize, float *db_compatibility,
+  * fileio_start_restore (THREAD_ENTRY * thread_p,
+			  const char *db_fullname,
+			  char *backup_source,
+			  INT64 match_dbcreation,
+			  PGLENGTH * db_iopagesize,
+			  float *db_compatibility,
 			  FILEIO_BACKUP_SESSION * session,
 			  FILEIO_BACKUP_LEVEL level,
-			  bool authenticate, INT64 match_bkupcreation,
+			  bool authenticate,
+			  INT64 match_bkupcreation,
 			  const char *restore_verbose_file, bool newvolpath);
 extern int fileio_finish_restore (THREAD_ENTRY * thread_p,
 				  FILEIO_BACKUP_SESSION * session);

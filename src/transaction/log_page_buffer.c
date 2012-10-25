@@ -9211,6 +9211,10 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols,
   const char *str_tmp;
   time_t tmp_time;
 
+  time_t wait_checkpoint_begin_time;
+  FILE *backup_verbose_fp = NULL;
+  bool print_backupdb_waiting_reason = false;
+
   memset (&session, 0, sizeof (FILEIO_BACKUP_SESSION));
 
   /*
@@ -9229,6 +9233,19 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols,
       allbackup_path = real_pathbuf;
     }
 #endif
+
+  if (backup_verbose_file && *backup_verbose_file)
+    {
+      backup_verbose_fp =
+	fileio_initialize_backup_verbose_file (backup_verbose_file,
+					       FILEIO_BACKUP_WRITE,
+					       backup_level);
+      if (backup_verbose_fp == NULL)
+	{
+	  error_code = ER_FAILED;
+	  goto failure;
+	}
+    }
 
   /*
    * Determine the first log archive that will be needed to insure
@@ -9249,15 +9266,43 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols,
   log_Gl.backup_in_progress = true;
   LOG_CS_EXIT ();
 
+  print_backupdb_waiting_reason = false;
+  wait_checkpoint_begin_time = time (NULL);
 loop:
   LOG_CS_ENTER (thread_p);
   /* check if checkpoint is in progress */
   if (log_Gl.run_nxchkpt_atpageid == NULL_PAGEID)
     {
+      bool continue_check;
       LOG_CS_EXIT ();
+      if (print_backupdb_waiting_reason == false && backup_verbose_fp != NULL)
+	{
+	  fprintf (backup_verbose_fp,
+		   "[ Database backup will start after checkpointing is complete. ]\n\n");
+	  print_backupdb_waiting_reason = true;
+	}
       /* wait until checkpoint process is finished */
+
+      /* interrupt check */
+#if defined(SERVER_MODE)
+      if (thread_get_check_interrupt (thread_p) == true)
+#endif /* SERVER_MODE */
+	if (logtb_is_interrupted (thread_p, true, &continue_check) == true)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	    error_code = ER_INTERRUPTED;
+	    goto failure;
+	  }
+
       thread_sleep (1, 0);
       goto loop;
+    }
+  if (print_backupdb_waiting_reason == true && backup_verbose_fp != NULL)
+    {
+
+      fprintf (backup_verbose_fp,
+	       "[ Database backup has been suspended for %lld seconds due to checkpoint. ]\n\n",
+	       time (NULL) - wait_checkpoint_begin_time);
     }
 
   /* block checkpoint process */
@@ -9333,7 +9378,7 @@ loop:
    */
   session.type = FILEIO_BACKUP_WRITE;	/* access backup device for write */
   if (fileio_initialize_backup (log_Db_fullname, allbackup_path,
-				&session, backup_level, backup_verbose_file,
+				&session, backup_level, backup_verbose_fp,
 				num_threads, sleep_msecs) == NULL)
     {
       error_code = ER_FAILED;
