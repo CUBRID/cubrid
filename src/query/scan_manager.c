@@ -2116,18 +2116,14 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p,
 	      }
 	    else
 	      {
-		bool comparable = true;
 		int c = DB_UNK;
 
-		c = tp_value_compare_with_error (&key_val_range->key1,
-						 &key_val_range->key2, 1, 1,
-						 &comparable);
+		c =
+		  scan_key_compare (&key_val_range->key1,
+				    &key_val_range->key2,
+				    key_val_range->num_index_term);
 
-		if (!comparable)
-		  {
-		    return ER_FAILED;
-		  }
-		else if (c == DB_UNK)
+		if (c == DB_UNK)
 		  {
 		    /* impossible case */
 		    assert_release (false);
