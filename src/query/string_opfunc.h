@@ -73,11 +73,10 @@
 #define QSTR_NEXT_ALPHA_CHAR(id, cur_chr, size, next_chr, len) \
   (lang_get_collation (id))->next_coll_seq ((lang_get_collation (id)), \
 					(cur_chr), (size), (next_chr), (len))
-#define QSTR_SPLIT_POINT(id, string1, size1, string2, size2, c, b) \
-  (lang_get_collation (id))->split_point ((lang_get_collation (id)), \
-					  (string1), (size1), \
-					  (string2), (size2), \
-					  (c), (b))
+#define QSTR_SPLIT_KEY(id, is_desc, str1, size1, str2, size2, k, s, flag) \
+  (lang_get_collation (id))->split_key ((lang_get_collation (id)), is_desc, \
+					(str1), (size1), (str2), (size2), \
+					(k), (s), (flag))
 
 
 /*

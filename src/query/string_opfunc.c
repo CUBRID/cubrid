@@ -719,10 +719,9 @@ db_string_unique_prefix (const DB_VALUE * db_string1,
       int size1, size2, result_size, pad_size = 0;
       unsigned char *string1, *string2, *result, *key, pad[2], *t;
       INTL_CODESET codeset;
-      int char_count;
       int num_bits = -1;
       int collation_id;
-      int char_size;
+      bool bit_use_str1_size = false;
 
       string1 = (unsigned char *) DB_GET_STRING (db_string1);
       size1 = (int) DB_GET_STRING_SIZE (db_string1);
@@ -732,6 +731,11 @@ db_string_unique_prefix (const DB_VALUE * db_string1,
       collation_id = DB_GET_STRING_COLLATION (db_string1);
 
       assert (collation_id == DB_GET_STRING_COLLATION (db_string2));
+
+      if (result_type == DB_TYPE_VARBIT)
+	{
+	  collation_id = LANG_COLL_ISO_BINARY;
+	}
 
       if (string1 == NULL || string2 == NULL)
 	{
@@ -778,105 +782,17 @@ db_string_unique_prefix (const DB_VALUE * db_string1,
 	    }
 	}
 
-      assert (db_string1->domain.char_info.collation_id
-	      == db_string1->domain.char_info.collation_id);
+      error_status = QSTR_SPLIT_KEY (collation_id, key_domain->is_desc,
+				     string1, size1, string2, size2, &key,
+				     &result_size, &bit_use_str1_size);
+      assert (error_status == NO_ERROR);
 
-      QSTR_SPLIT_POINT (db_string1->domain.char_info.collation_id,
-			string1, size1, string2, size2, &char_count,
-			&result_size);
+      assert (key != NULL);
 
-      if (!key_domain->is_desc)
-	{			/* normal index */
-	  bool string2_has_one_more_char = false;
-
-	  if (result_size < size1)
-	    {
-	      /* check if in string2 there is one more character after common
-	         part */
-	      (void) intl_next_char (string2 + result_size, codeset,
-				     &char_size);
-	      if (result_size + char_size == size2)
-		{
-		  string2_has_one_more_char = true;
-		}
-	    }
-
-	  if (result_size == size1 || string2_has_one_more_char)
-	    {
-	      key = string1;
-	      result_size = size1;
-	      /* if we have bits, we need all the string1 bits.  Remember
-	         that you may not use all of the bits in the last byte. */
-	      if (result_type == DB_TYPE_VARBIT)
-		{
-		  num_bits = db_string1->data.ch.medium.size;
-		}
-	    }
-	  else
-	    {
-	      assert (result_size < size2);
-	      if (result_type == DB_TYPE_VARCHAR
-		  || result_type == DB_TYPE_VARNCHAR)
-		{
-		  /* common part plus one more character */
-		  (void) intl_next_char (string2 + result_size, codeset,
-					 &char_size);
-		  result_size += char_size;
-		}
-	      else
-		{
-		  result_size += 1;
-		}
-	      key = string2;
-
-	      /* if we have bits, we will take all the bits for the
-	         differentiating byte.  This is fine since in this branch
-	         we are guaranteed not to be at the end of either string. */
-	      if (result_type == DB_TYPE_VARBIT)
-		{
-		  num_bits = result_size * BYTE_SIZE;
-		}
-	    }
-	}
-      else
-	{			/* reverse index */
-	  if (result_size == size1)
-	    {
-	      /* actually, this could not happen */
-	      /* only when string1 == string2 */
-	      key = string1;
-	      result_size = size1;
-	      /* if we have bits, we need all the string1 bits.  Remember
-	         that you may not use all of the bits in the last byte. */
-	      if (result_type == DB_TYPE_VARBIT)
-		{
-		  num_bits = db_string1->data.ch.medium.size;
-		}
-	    }
-	  else
-	    {
-	      assert (result_size < size1);
-	      if (result_type == DB_TYPE_VARCHAR
-		  || result_type == DB_TYPE_VARNCHAR)
-		{
-		  /* common part plus one more character */
-		  intl_next_char (string1 + result_size, codeset, &char_size);
-		  result_size += char_size;
-		}
-	      else
-		{
-		  result_size += 1;
-		}
-	      key = string1;
-
-	      /* if we have bits, we will take all the bits for the
-	         differentiating byte.  This is fine since in this branch
-	         we are guaranteed not to be at the end of either string. */
-	      if (result_type == DB_TYPE_VARBIT)
-		{
-		  num_bits = result_size * BYTE_SIZE;
-		}
-	    }
+      if (result_type == DB_TYPE_VARBIT)
+	{
+	  num_bits = bit_use_str1_size ? (db_string1->data.ch.medium.size)
+	    : (result_size * BYTE_SIZE);
 	}
 
       result = db_private_alloc (NULL, result_size + 1);

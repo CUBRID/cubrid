@@ -197,6 +197,10 @@ static int lang_strcmp_utf8_w_contr (const LANG_COLLATION * lang_coll,
 				     const int size1,
 				     const unsigned char *str2,
 				     const int size2);
+static unsigned int lang_get_w_first_el (const COLL_DATA * coll,
+					 const unsigned char *str,
+					 const int str_size,
+					 unsigned char **next_char);
 static int lang_strmatch_utf8_w_contr (const LANG_COLLATION * lang_coll,
 				       bool is_match,
 				       const unsigned char *str1, int size1,
@@ -253,18 +257,36 @@ static int lang_next_coll_seq_utf8_w_contr (const LANG_COLLATION * lang_coll,
 					    const int size,
 					    unsigned char *next_seq,
 					    int *len_next);
-static int lang_split_point_iso (const LANG_COLLATION * lang_coll,
+static int lang_split_key_iso (const LANG_COLLATION * lang_coll,
+			       const bool is_desc,
+			       const unsigned char *str1, const int size1,
+			       const unsigned char *str2, const int size2,
+			       unsigned char **key, int *byte_size,
+			       bool * bit_use_str1_size);
+static int lang_split_key_byte (const LANG_COLLATION * lang_coll,
+				const bool is_desc,
+				const unsigned char *str1, const int size1,
+				const unsigned char *str2, const int size2,
+				unsigned char **key, int *byte_size,
+				bool * bit_use_str1_size);
+static int lang_split_key_utf8 (const LANG_COLLATION * lang_coll,
+				const bool is_desc,
+				const unsigned char *str1, const int size1,
+				const unsigned char *str2, const int size2,
+				unsigned char **key, int *byte_size,
+				bool * bit_use_str1_size);
+static int lang_split_key_w_exp (const LANG_COLLATION * lang_coll,
+				 const bool is_desc,
 				 const unsigned char *str1, const int size1,
 				 const unsigned char *str2, const int size2,
-				 int *char_pos, int *byte_pos);
-static int lang_split_point_utf8 (const LANG_COLLATION * lang_coll,
-				  const unsigned char *str1, const int size1,
-				  const unsigned char *str2, const int size2,
-				  int *char_pos, int *byte_pos);
-static int lang_split_point_w_exp (const LANG_COLLATION * lang_coll,
-				   const unsigned char *str1, const int size1,
-				   const unsigned char *str2, const int size2,
-				   int *char_pos, int *byte_pos);
+				 unsigned char **key, int *byte_size,
+				 bool * bit_use_str1_size);
+static int lang_split_key_euc (const LANG_COLLATION * lang_coll,
+			       const bool is_desc,
+			       const unsigned char *str1, const int size1,
+			       const unsigned char *str2, const int size2,
+			       unsigned char **key, int *byte_size,
+			       bool * bit_use_str1_size);
 static void lang_init_coll_en_ci (LANG_COLLATION * lang_coll);
 static void lang_init_coll_utf8_en_cs (LANG_COLLATION * lang_coll);
 static void lang_init_coll_utf8_tr_cs (LANG_COLLATION * lang_coll);
@@ -329,7 +351,7 @@ static LANG_COLLATION coll_iso_binary = {
   lang_fastcmp_iso_88591,
   lang_strmatch_iso_88591,
   lang_next_alpha_char_iso88591,
-  lang_split_point_iso,
+  lang_split_key_iso,
   NULL
 };
 
@@ -347,7 +369,7 @@ static LANG_COLLATION coll_utf8_binary = {
   lang_strmatch_utf8,
   /* 'next' and 'split_point' functions must handle UTF-8 chars */
   lang_next_coll_char_utf8,
-  lang_split_point_utf8,
+  lang_split_key_utf8,
   NULL
 };
 
@@ -363,7 +385,7 @@ static LANG_COLLATION coll_iso88591_en_cs = {
   lang_fastcmp_iso_88591,
   lang_strmatch_iso_88591,
   lang_next_alpha_char_iso88591,
-  lang_split_point_iso,
+  lang_split_key_iso,
   NULL
 };
 
@@ -379,7 +401,7 @@ static LANG_COLLATION coll_iso88591_en_ci = {
   lang_fastcmp_byte,
   lang_strmatch_iso_88591,
   lang_next_coll_byte,
-  lang_split_point_iso,
+  lang_split_key_byte,
   lang_init_coll_en_ci
 };
 
@@ -395,7 +417,7 @@ static LANG_COLLATION coll_utf8_en_cs = {
   lang_fastcmp_byte,
   lang_strmatch_utf8,
   lang_next_coll_char_utf8,
-  lang_split_point_utf8,
+  lang_split_key_utf8,
   lang_init_coll_utf8_en_cs
 };
 
@@ -411,7 +433,7 @@ static LANG_COLLATION coll_utf8_en_ci = {
   lang_fastcmp_byte,
   lang_strmatch_utf8,
   lang_next_coll_char_utf8,
-  lang_split_point_utf8,
+  lang_split_key_utf8,
   lang_init_coll_en_ci
 };
 
@@ -427,7 +449,7 @@ static LANG_COLLATION coll_utf8_tr_cs = {
   lang_strcmp_utf8,
   lang_strmatch_utf8,
   lang_next_coll_char_utf8,
-  lang_split_point_utf8,
+  lang_split_key_utf8,
   lang_init_coll_utf8_tr_cs
 };
 
@@ -443,7 +465,7 @@ static LANG_COLLATION coll_utf8_ko_cs = {
   lang_strcmp_utf8,
   lang_strmatch_utf8,
   lang_next_coll_char_utf8,
-  lang_split_point_utf8,
+  lang_split_key_utf8,
   lang_init_coll_utf8_en_cs
 };
 
@@ -459,7 +481,7 @@ static LANG_COLLATION coll_euckr_bin = {
   lang_fastcmp_ko,
   lang_strmatch_ko,
   lang_next_alpha_char_ko,
-  lang_split_point_iso,
+  lang_split_key_euc,
   NULL
 };
 
@@ -2931,7 +2953,66 @@ lang_strmatch_utf8_w_contr (const LANG_COLLATION * lang_coll, bool is_match,
 }
 
 /*
- * lang_get_contr_for_string() - searches the contraction for a given string
+ * lang_get_w_first_el() - get the weight of the first element (character or
+ *			   contraction) encountered in the string
+ *
+ *   return: weight value
+ *   coll_data(in): collation data
+ *   str(in): buffer to check for contractions
+ *   str_size(in): size of buffer (bytes)
+ *   next_char(out): pointer to the end of element (next character)
+ *
+ *   Note : This function works only on UTF-8 collations without expansions.
+ *
+ */
+static unsigned int
+lang_get_w_first_el (const COLL_DATA * coll,
+		     const unsigned char *str, const int str_size,
+		     unsigned char **next_char)
+{
+  unsigned int cp, w;
+  const int alpha_cnt = coll->w_count;
+  const unsigned int *weight_ptr = coll->weights;
+
+  assert (coll->uca_exp_num == 0);
+  assert (str_size > 0);
+  assert (next_char != NULL);
+
+  cp = intl_utf8_to_cp (str, str_size, next_char);
+  if (cp < (unsigned int) alpha_cnt)
+    {
+      COLL_CONTRACTION *contr = NULL;
+
+      if (coll->count_contr > 0
+	  && str_size >= coll->contr_min_size
+	  && cp >= coll->cp_first_contr_offset
+	  && cp < (coll->cp_first_contr_offset
+		   + coll->cp_first_contr_count)
+	  && ((contr = lang_get_contr_for_string (coll, str, str_size, cp))
+	      != NULL))
+	{
+	  assert (contr != NULL);
+
+	  w = contr->wv;
+	  *next_char = (unsigned char *) str + contr->size;
+	}
+      else
+	{
+	  w = weight_ptr[cp];
+	}
+    }
+  else
+    {
+      w = cp;
+    }
+
+  return w;
+}
+
+/*
+ * lang_get_contr_for_string() - checks if the string starts with a
+ *				 contraction
+ *
  *   return: contraction pointer or NULL if no contraction is found
  *   coll_data(in): collation data
  *   str(in): buffer to check for contractions
@@ -3798,27 +3879,38 @@ lang_next_coll_seq_utf8_w_contr (const LANG_COLLATION * lang_coll,
 }
 
 /*
- * lang_split_point_iso() - find position where strings are different (ISO
- *			    charset version)
+ * lang_split_key_iso() - finds the prefix key between two strings (ISO
+ *			  charset with cases sensitive collation and bit
+ *			  strings)
+ *
  *   return:  error status
  *   lang_coll(in):
+ *   is_desc(in):
  *   str1(in):
  *   size1(in):
  *   str2(in):
  *   size2(in):
- *   char_pos(out): position at which to split (character)
- *   byte_pos(out): position at which to split (byte)
+ *   key(out): key
+ *   byte_size(out): size in bytes of key
+ *   bit_use_str1_size(out): flag for computing num_bits (for VARBIT type)
+ *	if true, it uses initial size of str1 (before eliminating padding);
+ *	if false, byte_size is used (x 8)
  *
  *  Note : this function is used by index prefix computation (BTREE building)
  */
 static int
-lang_split_point_iso (const LANG_COLLATION * lang_coll,
-		      const unsigned char *str1, const int size1,
-		      const unsigned char *str2, const int size2,
-		      int *char_pos, int *byte_pos)
+lang_split_key_iso (const LANG_COLLATION * lang_coll, const bool is_desc,
+		    const unsigned char *str1, const int size1,
+		    const unsigned char *str2, const int size2,
+		    unsigned char **key, int *byte_size,
+		    bool * bit_use_str1_size)
 {
   int pos;
   const unsigned char *t, *t2;
+
+  assert (key != NULL);
+  assert (byte_size != NULL);
+  assert (bit_use_str1_size != NULL);
 
   for (pos = 0, t = str1, t2 = str2;
        pos < size1 && pos < size2 && *t++ == *t2++; pos++)
@@ -3826,95 +3918,570 @@ lang_split_point_iso (const LANG_COLLATION * lang_coll,
       ;
     }
 
-  *byte_pos = pos;
-  *char_pos = pos;
+  if (!is_desc)
+    {				/* normal index */
+      /* check if matched size is exactly string1 or in string2 there is
+       * exactly one more character (byte) after matched part */
+      if (pos == size1 || pos + 1 == size2)
+	{
+	  *key = (unsigned char *) str1;
+	  pos = size1;
+	  /* if we have bits, we need all the string1 bits.  Remember
+	   * that you may not use all of the bits in the last byte. */
+	  *bit_use_str1_size = true;
+	}
+      else
+	{
+	  assert (pos < size2);
+
+	  *key = (unsigned char *) str2;
+	  pos += 1;
+	  /* if we have bits, we will take all the bits for the
+	   * differentiating byte.  This is fine since in this branch
+	   * we are guaranteed not to be at the end of either string. */
+	  *bit_use_str1_size = false;
+	}
+    }
+  else
+    {				/* reverse index */
+      assert (is_desc);
+
+      if (pos == size1)
+	{
+	  /* actually, this could happen only when string1 == string2 */
+	  *key = (unsigned char *) str1;
+	  pos = size1;
+	  /* if we have bits, we need all the string1 bits.  Remember
+	   * that you may not use all of the bits in the last byte. */
+	  *bit_use_str1_size = true;
+	}
+      else
+	{
+	  assert (pos < size1);
+	  *key = (unsigned char *) str1;
+	  pos += 1;
+	  /* if we have bits, we will take all the bits for the
+	   * differentiating byte.  This is fine since in this branch
+	   * we are guaranteed not to be at the end of either string */
+	  *bit_use_str1_size = false;
+	}
+    }
+
+  *byte_size = pos;
 
   return NO_ERROR;
 }
 
-
 /*
- * lang_split_point_utf8() - find position where strings are different (UTF-8
- *			     simple version - collation without expansions)
+ * lang_split_key_byte() - finds the prefix key :
+ *			   collations  with byte-characters (ISO charset) and
+ *			   weight values (e.g. case insensitive).
+ *
  *   return:  error status
  *   lang_coll(in):
+ *   is_desc(in):
  *   str1(in):
  *   size1(in):
  *   str2(in):
  *   size2(in):
- *   char_pos(out): position at which to split (character)
- *   byte_pos(out): position at which to split (byte)
+ *   key(out): key
+ *   byte_size(out): size in bytes of key
+ *   bit_use_str1_size(out): not used in this function
  *
  *  Note : this function is used by index prefix computation (BTREE building)
  */
 static int
-lang_split_point_utf8 (const LANG_COLLATION * lang_coll,
-		       const unsigned char *str1, const int size1,
-		       const unsigned char *str2, const int size2,
-		       int *char_pos, int *byte_pos)
+lang_split_key_byte (const LANG_COLLATION * lang_coll, const bool is_desc,
+		     const unsigned char *str1, const int size1,
+		     const unsigned char *str2, const int size2,
+		     unsigned char **key, int *byte_size,
+		     bool * bit_use_str1_size)
+{
+  int pos, cmp;
+  const unsigned char *t1, *t2;
+
+  assert (key != NULL);
+  assert (byte_size != NULL);
+
+  for (pos = 0, t1 = str1, t2 = str2; pos < size1 && pos < size2; pos++)
+    {
+      cmp = lang_coll->coll.weights[*t1++] - lang_coll->coll.weights[*t2++];
+
+      if (cmp != 0)
+	{
+	  assert ((!is_desc && cmp < 0) || (is_desc && cmp > 0));
+	  break;
+	}
+    }
+
+  if (!is_desc)
+    {				/* normal index */
+      if (pos == size1 || pos + 1 == size2)
+	{
+	  *key = (unsigned char *) str1;
+	  pos = size1;
+	}
+      else
+	{
+	  assert (pos < size2);
+
+	  *key = (unsigned char *) str2;
+	  pos += 1;
+	}
+    }
+  else
+    {				/* reverse index */
+      if (pos == size1)
+	{
+	  *key = (unsigned char *) str1;
+	  pos = size1;
+	}
+      else
+	{
+	  assert (pos < size1);
+	  *key = (unsigned char *) str1;
+	  pos += 1;
+	}
+    }
+
+  *byte_size = pos;
+
+  return NO_ERROR;
+}
+
+/*
+ * lang_split_key_utf8() - finds the prefix key; UTF-8 collation with
+ *			   contractions but without expansions
+ *
+ *   return:  error status
+ *   lang_coll(in):
+ *   is_desc(in):
+ *   str1(in):
+ *   size1(in):
+ *   str2(in):
+ *   size2(in):
+ *   key(out): key
+ *   byte_size(out): size in bytes of key
+ *   bit_use_str1_size(out): not used by this function
+ *			     
+ *  Note : this function is used by index prefix computation (BTREE building)
+ */
+static int
+lang_split_key_utf8 (const LANG_COLLATION * lang_coll, const bool is_desc,
+		     const unsigned char *str1, const int size1,
+		     const unsigned char *str2, const int size2,
+		     unsigned char **key, int *byte_size,
+		     bool * bit_use_str1_size)
+{
+  const unsigned char *str1_end, *str2_end;
+  const unsigned char *str1_begin, *str2_begin;
+  unsigned char *str1_next, *str2_next;
+  unsigned int w1, w2;
+  int key_size;
+  const COLL_DATA *coll = &(lang_coll->coll);
+
+  assert (key != NULL);
+  assert (byte_size != NULL);
+
+  str1_end = str1 + size1;
+  str2_end = str2 + size2;
+  str1_begin = str1;
+  str2_begin = str2;
+
+  for (; str1 < str1_end && str2 < str2_end;)
+    {
+      w1 = lang_get_w_first_el (coll, str1, str1_end - str1, &str1_next);
+      w2 = lang_get_w_first_el (coll, str2, str2_end - str2, &str2_next);
+
+      if (w1 != w2)
+	{
+	  assert ((!is_desc && w1 < w2) || (is_desc && w1 > w2));
+	  break;
+	}
+
+      str1 = str1_next;
+      str2 = str2_next;
+    }
+
+  if (!is_desc)
+    {				/* normal index */
+      bool string2_has_one_more_char = false;
+
+      if (str1 < str1_end)
+	{
+	  /* check if in string2 there is one more character (or contraction)
+	   * after common part */
+	  if (str2 < str2_end)
+	    {
+	      (void) lang_get_w_first_el (coll, str2, str2_end - str2,
+					  &str2_next);
+	      if (str2_next == str2_end)
+		{
+		  string2_has_one_more_char = true;
+		}
+	    }
+	}
+
+      if (str1 == str1_end || string2_has_one_more_char)
+	{
+	  *key = (unsigned char *) str1_begin;
+	  key_size = size1;
+	}
+      else
+	{
+	  assert (str2 < str2_end);
+
+	  *key = (unsigned char *) str2_begin;
+
+	  /* common part plus one more character (or more, if last unit is a
+	   * contraction) from string2 */
+	  key_size = str2_next - str2_begin;
+	  assert (key_size <= size2);
+	}
+    }
+  else
+    {				/* reverse index */
+      if (str1 == str1_end)
+	{
+	  /* actually, this could happen only when string1 == string2 */
+	  *key = (unsigned char *) str1_begin;
+	  key_size = size1;
+	}
+      else
+	{
+	  assert (str1 < str1_end);
+	  *key = (unsigned char *) str1_begin;
+
+	  /* common part plus one more character (or more, if last unit is a
+	   * contraction) from string1 */
+	  (void) lang_get_w_first_el (coll, str1, str1_end - str1,
+				      &str1_next);
+	  key_size = str1_next - str1_begin;
+
+	  assert (key_size <= size1);
+	}
+    }
+
+  *byte_size = key_size;
+
+  return NO_ERROR;
+}
+
+/*
+ * lang_split_key_w_exp() - finds the prefix key for UTF-8 strings and
+ *			    collation with expansions
+ *
+ *   return:  error status
+ *   lang_coll(in):
+ *   is_desc(in):
+ *   str1(in):
+ *   size1(in):
+ *   str2(in):
+ *   size2(in):
+ *   key(out): key
+ *   byte_size(out): size in bytes in key
+ *   bit_use_str1_size(out): not used by this function
+ *
+ *  Note : this function is used by index prefix computation (BTREE building)
+ */
+static int
+lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is_desc,
+		      const unsigned char *str1, const int size1,
+		      const unsigned char *str2, const int size2,
+		      unsigned char **key, int *byte_size,
+		      bool * bit_use_str1_size)
+{
+  const unsigned char *str1_end;
+  const unsigned char *str2_end;
+  unsigned char *str1_next, *str2_next;
+  unsigned char *str1_begin, *str2_begin;
+  UCA_L13_W *uca_w_l13_1 = NULL;
+  UCA_L13_W *uca_w_l13_2 = NULL;
+  int num_ce1 = 0, num_ce2 = 0;
+  int ce_index1 = 0, ce_index2 = 0;
+  unsigned int w1 = 0, w2 = 0;
+  const COLL_DATA *cd = &(lang_coll->coll);
+  int dummy, key_size;
+  int last_str1_unit_size = 1, last_str2_unit_size = 1;
+  bool force_key = false;
+
+  assert (key != NULL);
+  assert (byte_size != NULL);
+
+  str1_begin = str1_next = (unsigned char *) str1;
+  str2_begin = str2_next = (unsigned char *) str2;
+
+  str1_end = str1 + size1;
+  str2_end = str2 + size2;
+
+  /* Regular string compare in collation with expansions requires multiple
+   * passes up to the UCA level of collation or until a weight difference 
+   * Key prefix algorithm takes into account only level 1 of weight */
+  for (;;)
+    {
+    read_weights1:
+      if (num_ce1 == 0)
+	{
+	  str1 = str1_next;
+	  if (str1 >= str1_end)
+	    {
+	      goto read_weights2;
+	    }
+
+	  lang_get_uca_w_l13 (cd, true, str1, str1_end - str1,
+			      &uca_w_l13_1, &num_ce1, &str1_next, &dummy);
+	  assert (num_ce1 > 0);
+
+	  ce_index1 = 0;
+
+	  last_str1_unit_size = str1_next - str1;
+	}
+
+    read_weights2:
+      if (num_ce2 == 0)
+	{
+	  str2 = str2_next;
+	  if (str2 >= str2_end)
+	    {
+	      goto compare;
+	    }
+
+	  lang_get_uca_w_l13 (cd, true, str2, str2_end - str2,
+			      &uca_w_l13_2, &num_ce2, &str2_next, &dummy);
+
+	  assert (num_ce2 > 0);
+
+	  ce_index2 = 0;
+
+	  last_str2_unit_size = str2_next - str2;
+	}
+
+    compare:
+      if ((num_ce1 == 0 && str1 >= str1_end)
+	  || (num_ce2 == 0 && str2 >= str2_end))
+	{
+	  force_key = true;
+	  break;
+	}
+
+      w1 = UCA_GET_L1_W (uca_w_l13_1[ce_index1]);
+      w2 = UCA_GET_L1_W (uca_w_l13_2[ce_index2]);
+
+      /* ignore zero weights (unless character is space) */
+      if (w1 == 0 && *str1 != 0x20)
+	{
+	  ce_index1++;
+	  num_ce1--;
+
+	  if (w2 == 0 && *str2 != 0x20)
+	    {
+	      ce_index2++;
+	      num_ce2--;
+	    }
+
+	  goto read_weights1;
+	}
+      else if (w2 == 0 && *str2 != 0x20)
+	{
+	  ce_index2++;
+	  num_ce2--;
+
+	  goto read_weights1;
+	}
+      else if (w1 != w2)
+	{
+	  assert ((is_desc && w1 > w2) || (!is_desc && w1 < w2));
+	  break;
+	}
+
+      assert (w1 == w2);
+
+      ce_index1++;
+      ce_index2++;
+
+      num_ce1--;
+      num_ce2--;
+    }
+
+  if (force_key)
+    {
+      *key = str1_begin;
+      *byte_size = size1;
+      return NO_ERROR;
+    }
+
+  if (!is_desc)
+    {				/* normal index */
+      bool string2_has_one_more_char = false;
+
+      if (str1 < str1_end)
+	{
+	  /* check if in string2 there is one more character after common
+	     part */
+	  if (str2 < str2_end)
+	    {
+	      /* get end of current element, we don't care about weights */
+	      lang_get_uca_w_l13 (cd, true, str2, str2_end - str2,
+				  &uca_w_l13_2, &num_ce2, &str2_next, &dummy);
+	      if (str2_next == str2_end)
+		{
+		  string2_has_one_more_char = true;
+		}
+	    }
+	}
+
+      if (str1 == str1_end || string2_has_one_more_char)
+	{
+	  *key = str1_begin;
+	  key_size = size1;
+	}
+      else
+	{
+	  assert (str1 < str1_end);
+	  assert (str2 < str2_end);
+	  *key = str2_begin;
+
+	  /* equal part plus one more element (character or contraction)
+	   * the end of element was computed above (str2_next) */
+	  key_size = str2_next - str2_begin;
+	  assert (key_size <= size2);
+	}
+    }
+  else
+    {				/* reverse index */
+      if (str1 == str1_end)
+	{
+	  /* this could happen only when string1 == string2 */
+	  *key = str1_begin;
+	  key_size = size1;
+	}
+      else
+	{
+	  assert (str1 < str1_end);
+	  *key = str1_begin;
+
+	  /* get end of current element, we don't care about weights */
+	  lang_get_uca_w_l13 (cd, true, str1, str1_end - str1, &uca_w_l13_1,
+			      &num_ce1, &str1_next, &dummy);
+	  /* equal part plus one more element (character or contraction) */
+	  key_size = str1_next - str1_begin;
+	  assert (key_size <= size1);
+	}
+    }
+
+  *byte_size = key_size;
+
+  return NO_ERROR;
+}
+
+/*
+ * lang_split_key_euc() - finds the prefix key for EUC-KR collation
+ *
+ *   return:  error status
+ *   lang_coll(in):
+ *   is_desc(in):
+ *   str1(in):
+ *   size1(in):
+ *   str2(in):
+ *   size2(in):
+ *   key(out): key
+ *   byte_size(out): size in bytes in key
+ *   bit_use_str1_size(out): not used by this function
+ *			     
+ *  Note : this function is used by index prefix computation (BTREE building)
+ */
+static int
+lang_split_key_euc (const LANG_COLLATION * lang_coll, const bool is_desc,
+		    const unsigned char *str1, const int size1,
+		    const unsigned char *str2, const int size2,
+		    unsigned char **key, int *byte_size,
+		    bool * bit_use_str1_size)
 {
   unsigned char *str1_next, *str2_next;
-  unsigned int cp1, cp2;
-  int rem1, rem2;
+  int key_size, char1_size, char2_size;
+  const unsigned char *str1_end, *str2_end;
+  const unsigned char *str1_begin, *str2_begin;
 
-  rem1 = size1;
-  rem2 = size2;
+  assert (key != NULL);
+  assert (byte_size != NULL);
 
-  for (*char_pos = 0; rem1 > 0 && rem2 > 0; (*char_pos)++)
+  str1_end = str1 + size1;
+  str2_end = str2 + size2;
+  str1_begin = str1;
+  str2_begin = str2;
+
+  for (; str1 < str1_end && str2 < str2_end;)
     {
-      cp1 = intl_utf8_to_cp (str1, rem1, &str1_next);
-      cp2 = intl_utf8_to_cp (str2, rem2, &str2_next);
+      str1_next = intl_nextchar_euc ((unsigned char *) str1, &char1_size);
+      str2_next = intl_nextchar_euc ((unsigned char *) str2, &char2_size);
 
-      if (cp1 != cp2)
+      if (char1_size != char2_size || memcmp (str1, str2, char1_size) != 0)
 	{
 	  break;
 	}
 
-      assert (str1_next - str1 == str2_next - str2);
-
-      rem1 -= str1_next - str1;
-      rem2 -= str1_next - str1;
-      str1 = (unsigned char *) str1_next;
-      str2 = (unsigned char *) str2_next;
+      str1 = str1_next;
+      str2 = str2_next;
     }
 
-  *byte_pos = size1 - rem1;
+  if (!is_desc)
+    {				/* normal index */
+      bool string2_has_one_more_char = false;
+
+      if (str1 < str1_end)
+	{
+	  /* check if in string2 there is one more character after common
+	     part */
+	  if (str2 < str2_end)
+	    {
+	      (void) intl_nextchar_euc ((unsigned char *) str2, &char2_size);
+	      if (str2 + char2_size == str2_end)
+		{
+		  string2_has_one_more_char = true;
+		}
+	    }
+	}
+
+      if (str1 == str1_end || string2_has_one_more_char)
+	{
+	  *key = (unsigned char *) str1_begin;
+	  key_size = size1;
+	}
+      else
+	{
+	  assert (str2 < str2_end);
+
+	  *key = (unsigned char *) str2_begin;
+
+	  /* common part plus one more character */
+	  (void) intl_nextchar_euc ((unsigned char *) str2, &char2_size);
+	  key_size = str2 - str2_begin + char2_size;
+	}
+    }
+  else
+    {				/* reverse index */
+      if (str1 == str1_end)
+	{
+	  /* actually, this could not happen */
+	  /* only when string1 == string2 */
+	  *key = (unsigned char *) str1_begin;
+	  key_size = size1;
+	}
+      else
+	{
+	  assert (str1 < str1_end);
+	  *key = (unsigned char *) str1_begin;
+
+	  /* common part plus one more character */
+	  (void) intl_nextchar_euc ((unsigned char *) str1, &char1_size);
+	  key_size = str1 - str1_end + char1_size;
+	}
+    }
+
+  *byte_size = key_size;
 
   return NO_ERROR;
 }
-
-/*
- * lang_split_point_w_exp() - find position where strings are different (UTF-8
- *			      - collation with expansions)
- *   return:  error status
- *   lang_coll(in):
- *   str1(in):
- *   size1(in):
- *   str2(in):
- *   size2(in):
- *   char_pos(out): position at which to split (character)
- *   byte_pos(out): position at which to split (byte)
- *
- *  Note : this function is used by index prefix computation (BTREE building)
- */
-static int
-lang_split_point_w_exp (const LANG_COLLATION * lang_coll,
-			const unsigned char *str1, const int size1,
-			const unsigned char *str2, const int size2,
-			int *char_pos, int *byte_pos)
-{
-  /* TODO : elaborate the algorithm for this case.
-   * At this time, the split key will be the same as string1.
-   * Possible algorithm  : compare until a L1 weight difference is found,
-   * and replace the last character with 'next_seq' or 'prev_seq' according 
-   * to desc/asc index property */
-  *byte_pos = size1;
-  intl_char_count ((unsigned char *) str1, size1, INTL_CODESET_UTF8,
-		   char_pos);
-
-  return NO_ERROR;
-}
-
 
 /*
  * English Locale Data
@@ -5585,7 +6152,7 @@ lang_locale_data_load_from_lib (LANG_LOCALE_DATA * lld,
 	  lang_coll->fastcmp = lang_strcmp_utf8_uca;
 	  lang_coll->strmatch = lang_strmatch_utf8_uca;
 	  lang_coll->next_coll_seq = lang_next_coll_seq_utf8_w_contr;
-	  lang_coll->split_point = lang_split_point_w_exp;
+	  lang_coll->split_key = lang_split_key_w_exp;
 	  lang_coll->options.allow_like_rewrite = false;
 	  lang_coll->options.allow_prefix_index = false;
 	}
@@ -5594,14 +6161,14 @@ lang_locale_data_load_from_lib (LANG_LOCALE_DATA * lld,
 	  lang_coll->fastcmp = lang_strcmp_utf8_w_contr;
 	  lang_coll->strmatch = lang_strmatch_utf8_w_contr;
 	  lang_coll->next_coll_seq = lang_next_coll_seq_utf8_w_contr;
-	  lang_coll->split_point = lang_split_point_utf8;
+	  lang_coll->split_key = lang_split_key_utf8;
 	}
       else
 	{
 	  lang_coll->fastcmp = lang_strcmp_utf8;
 	  lang_coll->strmatch = lang_strmatch_utf8;
 	  lang_coll->next_coll_seq = lang_next_coll_char_utf8;
-	  lang_coll->split_point = lang_split_point_utf8;
+	  lang_coll->split_key = lang_split_key_utf8;
 	}
 
       err_status = register_collation (lang_coll);

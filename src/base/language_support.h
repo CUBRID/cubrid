@@ -171,11 +171,12 @@ struct lang_collation
   int (*next_coll_seq) (const LANG_COLLATION * lang_coll,
 			const unsigned char *seq, const int size,
 			unsigned char *next_seq, int *len_next);
-  /* find position where strings are different (BTREE string prefix) */
-  int (*split_point) (const LANG_COLLATION * lang_coll,
-		      const unsigned char *str1, const int size1,
-		      const unsigned char *str2, const int size2,
-		      int *char_pos, int *byte_pos);
+  /* find common key where str1 <= key < str2 (BTREE string prefix) */
+  int (*split_key) (const LANG_COLLATION * lang_coll, const bool is_desc,
+		    const unsigned char *str1, const int size1,
+		    const unsigned char *str2, const int size2,
+		    unsigned char **key, int *byte_size,
+		    bool * bit_use_str1_size);
   /* collation data init function */
   void (*init_coll) (LANG_COLLATION * lang_coll);
 };
