@@ -2929,18 +2929,31 @@ obt_update_internal (OBJ_TEMPLATE * template_ptr, MOP * newobj,
 	  if (error == NO_ERROR)
 	    {
 
-	      /* Must perform savepoint to handle unique maintenance until the
-	       * time when test & set will work correctly.
-	       *
-	       * We must do a savepoint if this template or any sub template
-	       * has uniques.  The actual unique tests will be done in
-	       * obt_apply_assignments().
-	       */
-	      if ((template_ptr->check_uniques && has_uniques)
-		  || template_ptr->fkeys_were_modified
-		  || template_ptr->function_key_modified
-		  || template_ptr->force_flush)
+	      if (db_get_client_type () == DB_CLIENT_TYPE_LOG_APPLIER)
 		{
+		  /* 
+		   * Only one of the log_applier can apply replication 
+		   * logs at the same time. 
+		   * Therefore, log_applier don't need to perform 
+		   * savepoint at this time to maintain unique indexes.
+		   */
+
+		  /* do nothing */
+		  ;
+		}
+	      else if ((template_ptr->check_uniques && has_uniques)
+		       || template_ptr->fkeys_were_modified
+		       || template_ptr->function_key_modified
+		       || template_ptr->force_flush)
+		{
+		  /* Must perform savepoint to handle unique maintenance until the
+		   * time when test & set will work correctly.
+		   *
+		   * We must do a savepoint if this template or any sub template
+		   * has uniques.  The actual unique tests will be done in
+		   * obt_apply_assignments().
+		   */
+
 		  sprintf (savepoint_name, "%s-%d",
 			   OBJ_INTERNAL_SAVEPOINT_NAME,
 			   template_savepoint_count++);

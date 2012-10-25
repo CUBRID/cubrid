@@ -4648,7 +4648,6 @@ la_apply_insert_log (LA_ITEM * item)
 {
   int error = NO_ERROR, au_save = 0;
   DB_OBJECT *class_obj;
-  DB_OBJECT *object = NULL;
   DB_OBJECT *new_object = NULL;
   MOBJ mclass;
   LOG_PAGE *pgptr;
@@ -4701,19 +4700,6 @@ la_apply_insert_log (LA_ITEM * item)
       goto error_rtn;
     }
 
-  /* check existence */
-  object = obj_repl_find_object_by_pkey (class_obj, &item->key,
-					 AU_FETCH_UPDATE);
-  if (object != NULL)
-    {
-      help_sprint_value (&item->key, buf, 255);
-      er_log_debug (ARG_FILE_LINE,
-		    "apply_insert : already exist class %s key %s\n",
-		    item->class_name, buf);
-      error = er_errid ();
-      goto error_rtn;
-    }
-
   /* get class info */
   mclass = locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTREAD);
   if (mclass == NULL)
@@ -4757,8 +4743,6 @@ la_apply_insert_log (LA_ITEM * item)
       free_and_init (recdes.data);
     }
 
-  assert (object == NULL);
-
   /* This prevents from dangling references to serial objects
    * during replication.
    * The typical scenario is to update serials, cull mops which clears
@@ -4796,18 +4780,6 @@ error_rtn:
   if (ovfyn)
     {
       free_and_init (recdes.data);
-    }
-
-  if (object)
-    {
-      /* This prevents from dangling references to serial objects
-       * during replication.
-       * The typical scenario is to update serials, cull mops which clears
-       * the mop up, and then truncate the table which leads updating
-       * the serial mop to reset its values.
-       */
-      ws_release_user_instance (object);
-      object = NULL;
     }
 
   if (new_object)

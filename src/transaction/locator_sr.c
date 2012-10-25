@@ -6422,7 +6422,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area,
 	  force_scancache = &scan_cache;
 	}
 
-      if (num_ignore_error > 0)
+      if (LOG_CHECK_LOG_APPLIER (thread_p) || num_ignore_error > 0)
 	{
 	  error_code = xtran_server_start_topop (thread_p, &oneobj_lsa);
 	  if (error_code != NO_ERROR)
@@ -6495,21 +6495,28 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area,
 	  break;
 	}			/* end-switch */
 
-      if (num_ignore_error > 0)
+      if (LOG_CHECK_LOG_APPLIER (thread_p) || num_ignore_error > 0)
 	{
 	  bool need_to_abort_oneobj = false;
 
 	  if (error_code != NO_ERROR)
 	    {
-	      error_code =
-		locator_filter_errid (thread_p, num_ignore_error,
-				      ingore_error_list);
-
-	      if (error_code == NO_ERROR)
+	      if (LOG_CHECK_LOG_APPLIER (thread_p))
 		{
-		  /* error is filtered out */
-		  OID_SET_NULL (&obj->oid);
 		  need_to_abort_oneobj = true;
+		}
+	      else
+		{
+		  error_code =
+		    locator_filter_errid (thread_p, num_ignore_error,
+					  ingore_error_list);
+
+		  if (error_code == NO_ERROR)
+		    {
+		      /* error is filtered out */
+		      OID_SET_NULL (&obj->oid);
+		      need_to_abort_oneobj = true;
+		    }
 		}
 	    }
 
