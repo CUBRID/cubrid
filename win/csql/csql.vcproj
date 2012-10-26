@@ -70,6 +70,8 @@
 				GenerateDebugInformation="true"
 				SubSystem="1"
 				TargetMachine="1"
+				StackReserveSize="8000000"
+				StackCommitSize="8000000"
 			/>
 			<Tool
 				Name="VCALinkTool"
@@ -145,6 +147,8 @@
 				GenerateDebugInformation="true"
 				SubSystem="1"
 				TargetMachine="17"
+				StackReserveSize="8000000"
+				StackCommitSize="8000000"
 			/>
 			<Tool
 				Name="VCALinkTool"
@@ -222,6 +226,8 @@
 				OptimizeReferences="2"
 				EnableCOMDATFolding="2"
 				TargetMachine="1"
+				StackReserveSize="8000000"
+				StackCommitSize="8000000"
 			/>
 			<Tool
 				Name="VCALinkTool"
@@ -300,6 +306,8 @@
 				OptimizeReferences="2"
 				EnableCOMDATFolding="2"
 				TargetMachine="17"
+				StackReserveSize="8000000"
+				StackCommitSize="8000000"
 			/>
 			<Tool
 				Name="VCALinkTool"
