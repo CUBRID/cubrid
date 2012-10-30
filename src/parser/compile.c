@@ -313,9 +313,17 @@ pt_add_oid_to_select_list (PARSER_CONTEXT * parser, PT_NODE * statement,
 	{
 	  ord = p->info.sort_spec.expr;
 	  assert (ord->node_type == PT_VALUE);
-	  ord->info.value.data_value.i += 1;
+
+	  /* adjust value */
 	  p->info.sort_spec.pos_descr.pos_no += 1;
+	  p->info.sort_spec.expr->info.value.data_value.i += 1;
+	  p->info.sort_spec.expr->info.value.db_value.data.i += 1;
+
+	  /* not needed any more */
+	  p->info.sort_spec.expr->info.value.text = NULL;
+
 	  p = p->next;
+
 	}
     }
 

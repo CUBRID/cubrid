@@ -1799,6 +1799,8 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement,
 	    {
 	      /* if yes, update position number of order by clause */
 	      val->info.value.data_value.i = i;
+	      val->info.value.db_value.data.i = i;
+	      val->info.value.text = NULL;
 	      order->info.sort_spec.pos_descr.pos_no = i;
 	      break;
 	    }
@@ -1821,6 +1823,8 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement,
 
 	  /* update position number of order by clause */
 	  val->info.value.data_value.i = i;
+	  val->info.value.db_value.data.i = i;
+	  val->info.value.text = NULL;
 	  order->info.sort_spec.pos_descr.pos_no = i;
 	}
 
@@ -4663,7 +4667,7 @@ mq_push_paths (PARSER_CONTEXT * parser, PT_NODE * statement,
 	    }
 	}
 
-      if (!PT_SELECT_INFO_IS_FLAGED (statement, 
+      if (!PT_SELECT_INFO_IS_FLAGED (statement,
 				     PT_SELECT_INFO_IS_MERGE_QUERY))
 	{
 	  mq_push_paths_select (parser, statement,
