@@ -1796,7 +1796,10 @@ smt_check_foreign_key (SM_TEMPLATE * template_,
 	      goto err;
 	    }
 
-	  if (ref_attr->type->id != atts[j]->type->id)
+	  if (ref_attr->type->id != atts[j]->type->id
+	      || (TP_TYPE_HAS_COLLATION (ref_attr->type->id)
+		  && TP_DOMAIN_COLLATION (ref_attr->domain)
+		  != TP_DOMAIN_COLLATION (atts[j]->domain)))
 	    {
 	      ERROR2 (error, ER_FK_HAS_DEFFERENT_TYPE_WITH_PK,
 		      atts[j]->header.name, ref_attr->header.name);
@@ -1817,7 +1820,10 @@ smt_check_foreign_key (SM_TEMPLATE * template_,
 	}
       else
 	{
-	  if (pk->attributes[i]->type->id != atts[i]->type->id)
+	  if (pk->attributes[i]->type->id != atts[i]->type->id
+	      || (TP_TYPE_HAS_COLLATION (atts[i]->type->id)
+		  && TP_DOMAIN_COLLATION (pk->attributes[i]->domain)
+		  != TP_DOMAIN_COLLATION (atts[i]->domain)))
 	    {
 	      ERROR2 (error, ER_FK_HAS_DEFFERENT_TYPE_WITH_PK,
 		      atts[i]->header.name, pk->attributes[i]->header.name);
