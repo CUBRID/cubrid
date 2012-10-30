@@ -121,8 +121,6 @@ static int css_return_queued_request (CSS_CONN_ENTRY * conn,
 				      unsigned short *rid, int *request,
 				      int *buffer_size);
 
-static int css_send_magic (CSS_CONN_ENTRY * conn);
-
 /*
  * css_shutdown_conn () -
  *   return: void
@@ -345,9 +343,7 @@ css_send_close_request (CSS_CONN_ENTRY * conn)
       header.transaction_id = htonl (conn->transaction_id);
       header.db_error = htonl (conn->db_error);
       /* timeout in milli-second in css_net_send() */
-      css_net_send (conn, (char *) &header, sizeof (NET_HEADER),
-		    prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) *
-		    1000);
+      css_net_send (conn, (char *) &header, sizeof (NET_HEADER), -1);
     }
 
   css_remove_all_unexpected_packets (conn);
@@ -372,13 +368,7 @@ css_read_header (CSS_CONN_ENTRY * conn, NET_HEADER * local_header)
 
   buffer_size = sizeof (NET_HEADER);
 
-  do
-    {
-      rc = css_net_read_header (conn->fd, (char *) local_header,
-				&buffer_size);
-    }
-  while (rc == INTERRUPTED_READ);
-
+  rc = css_net_read_header (conn->fd, (char *) local_header, &buffer_size);
   if (rc == NO_ERRORS && ntohl (local_header->type) == CLOSE_TYPE)
     {
       css_shutdown_conn (conn);
@@ -487,12 +477,13 @@ css_receive_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *request,
  *   req_id(in):
  *   buffer(out):
  *   buffer_size(out):
+ *   timeout(in):
  *
  * Note: this is a blocking read.
  */
 int
 css_receive_data (CSS_CONN_ENTRY * conn, unsigned short req_id, char **buffer,
-		  int *buffer_size)
+		  int *buffer_size, int timeout)
 {
   NET_HEADER header = DEFAULT_HEADER_DATA;
   int header_size;
@@ -547,16 +538,7 @@ begin:
 
 	      if (*buffer != NULL)
 		{
-		  do
-		    {
-		      /* timeout in milli-second in css_net_recv() */
-		      rc = css_net_recv (conn->fd, *buffer, buffer_size,
-					 prm_get_integer_value
-					 (PRM_ID_TCP_CONNECTION_TIMEOUT) *
-					 1000);
-		    }
-		  while (rc == INTERRUPTED_READ);
-
+		  rc = css_net_recv (conn->fd, *buffer, buffer_size, timeout);
 		  if (rc == NO_ERRORS || rc == RECORD_TRUNCATED)
 		    {
 		      if (req_id != rid)
@@ -677,16 +659,7 @@ begin:
 							 buffer_size);
 	      if (*buffer != NULL)
 		{
-		  do
-		    {
-		      /* timeout in milli-second in css_net_recv() */
-		      rc = css_net_recv (conn->fd, *buffer, buffer_size,
-					 prm_get_integer_value
-					 (PRM_ID_TCP_CONNECTION_TIMEOUT) *
-					 1000);
-		    }
-		  while (rc == INTERRUPTED_READ);
-
+		  rc = css_net_recv (conn->fd, *buffer, buffer_size, -1);
 		  if (rc == NO_ERRORS || rc == RECORD_TRUNCATED)
 		    {
 		      if (req_id != rid)
@@ -856,7 +829,8 @@ css_server_connect_part_two (char *host_name, CSS_CONN_ENTRY * conn,
     {
       /* now ask for a reply from the server */
       css_queue_user_data_buffer (conn, *rid, sizeof (int), (char *) &reason);
-      if (css_receive_data (conn, *rid, &buffer, &buffer_size) == NO_ERRORS)
+      if (css_receive_data (conn, *rid, &buffer, &buffer_size, -1) ==
+	  NO_ERRORS)
 	{
 	  if (buffer_size == sizeof (int) && buffer == (char *) &reason)
 	    {
@@ -1058,7 +1032,7 @@ css_connect_to_cubrid_server (char *host_name, char *server_name)
   if (css_server_connect (host_name, conn, server_name, &rid))
     {
       css_queue_user_data_buffer (conn, rid, sizeof (int), reason_buffer);
-      if (css_receive_data (conn, rid, &buffer, &size) == NO_ERRORS)
+      if (css_receive_data (conn, rid, &buffer, &size, -1) == NO_ERRORS)
 	{
 	  if (buffer != NULL && size == sizeof (int))
 	    {
@@ -1094,7 +1068,8 @@ css_connect_to_cubrid_server (char *host_name, char *server_name)
 	      /* new style of connection protocol, get the server port id */
 	      css_queue_user_data_buffer (conn, rid, sizeof (int),
 					  reason_buffer);
-	      if (css_receive_data (conn, rid, &buffer, &size) == NO_ERRORS)
+	      if (css_receive_data (conn, rid, &buffer, &size, -1) ==
+		  NO_ERRORS)
 		{
 		  if (buffer != NULL && size == sizeof (int))
 		    {
@@ -1471,78 +1446,4 @@ css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn)
   css_queue_remove_header (&conn->data_queue);
   css_queue_remove_header (&conn->abort_queue);
   css_queue_remove_header (&conn->error_queue);
-}
-
-/*
- * css_send_magic () - send magic 
- *                    
- *   return: void
- *   conn(in/out):
- */
-int
-css_send_magic (CSS_CONN_ENTRY * conn)
-{
-  NET_HEADER header;
-
-  memset ((char *) &header, 0, sizeof (NET_HEADER));
-  memcpy ((char *) &header, css_Net_magic, sizeof (css_Net_magic));
-
-  return (css_net_send (conn, (const char *) &header, sizeof (NET_HEADER),
-			(prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT)
-			 * 1000)));
-}
-
-/*
- * css_check_magic () - check magic
- *                    
- *   return: void
- *   conn(in/out):
- */
-int
-css_check_magic (CSS_CONN_ENTRY * conn)
-{
-  unsigned int i;
-  int templen, left;
-  NET_HEADER header;
-  char *p;
-
-  p = (char *) &header;
-
-  if (css_readn (conn->fd, (char *) &templen, sizeof (int),
-		 (prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) *
-		  1000)) != sizeof (int))
-    {
-      return ERROR_WHEN_READING_SIZE;
-    }
-
-  templen = htonl (templen);
-  if (templen != sizeof (NET_HEADER))
-    {
-      return WRONG_PACKET_TYPE;
-    }
-
-  for (i = 0; i < sizeof (css_Net_magic); i++)
-    {
-      if (css_readn (conn->fd, (char *) p, sizeof (char),
-		     (prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) *
-		      1000)) != sizeof (char))
-	{
-	  return ERROR_ON_READ;
-	}
-
-      if (*(p++) != css_Net_magic[i])
-	{
-	  return WRONG_PACKET_TYPE;
-	}
-    }
-
-  left = sizeof (NET_HEADER) - sizeof (css_Net_magic);
-  if (css_readn (conn->fd, (char *) p, left,
-		 (prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) *
-		  1000)) != left)
-    {
-      return ERROR_ON_READ;
-    }
-
-  return NO_ERRORS;
 }

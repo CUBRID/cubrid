@@ -205,8 +205,6 @@ static void css_queue_packet (CSS_CONN_ENTRY * conn, int type,
 static int css_remove_and_free_queue_entry (void *data, void *arg);
 static int css_remove_and_free_wait_queue_entry (void *data, void *arg);
 
-static int css_send_magic (CSS_CONN_ENTRY * conn);
-
 /*
  * get_next_client_id() -
  *   return: client id
@@ -1196,9 +1194,7 @@ css_abort_request (CSS_CONN_ENTRY * conn, unsigned short rid)
   header.db_error = htonl (conn->db_error);
 
   /* timeout in milli-second in css_net_send() */
-  return (css_net_send (conn, (char *) &header, sizeof (NET_HEADER),
-			prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT)
-			* 1000));
+  return css_net_send (conn, (char *) &header, sizeof (NET_HEADER), -1);
 }
 
 /*
@@ -1250,13 +1246,7 @@ css_read_header (CSS_CONN_ENTRY * conn, const NET_HEADER * local_header)
       return (CONNECTION_CLOSED);
     }
 
-  do
-    {
-      rc = css_net_read_header (conn->fd, (char *) local_header,
-				&buffer_size);
-    }
-  while (rc == INTERRUPTED_READ);
-
+  rc = css_net_read_header (conn->fd, (char *) local_header, &buffer_size);
   if (rc == NO_ERRORS && ntohl (local_header->type) == CLOSE_TYPE)
     {
       return (CONNECTION_CLOSED);
@@ -1330,12 +1320,13 @@ css_read_and_queue (CSS_CONN_ENTRY * conn, int *type)
  *   req_id(in): request id
  *   buffer(out): buffer for data
  *   buffer_size(out): buffer size
+ *   timeout(in):
  *
  * Note: this is a blocking read.
  */
 int
 css_receive_data (CSS_CONN_ENTRY * conn, unsigned short req_id,
-		  char **buffer, int *buffer_size)
+		  char **buffer, int *buffer_size, int timeout)
 {
   int *r, rc;
 
@@ -1870,15 +1861,7 @@ css_queue_data_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
   /* receive data into buffer and queue data if there's no waiting thread */
   if (buffer != NULL)
     {
-      do
-	{
-	  /* timeout in milli-second in css_net_recv() */
-	  rc = css_net_recv (conn->fd, buffer, &size,
-			     prm_get_integer_value
-			     (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000);
-	}
-      while (rc == INTERRUPTED_READ);
-
+      rc = css_net_recv (conn->fd, buffer, &size, -1);
       if (rc == NO_ERRORS || rc == RECORD_TRUNCATED)
 	{
 	  if (!css_is_request_aborted (conn, request_id))
@@ -1950,15 +1933,7 @@ css_queue_error_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
 
   if (buffer != NULL)
     {
-      do
-	{
-	  /* timeout in milli-second in css_net_recv() */
-	  rc = css_net_recv (conn->fd, buffer, &size,
-			     prm_get_integer_value
-			     (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000);
-	}
-      while (rc == INTERRUPTED_READ);
-
+      rc = css_net_recv (conn->fd, buffer, &size, -1);
       if (rc == NO_ERRORS || rc == RECORD_TRUNCATED)
 	{
 	  if (!css_is_request_aborted (conn, request_id))
@@ -2494,23 +2469,4 @@ css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn)
 		     conn);
 
   csect_exit_critical_section (&conn->csect);
-}
-
-/*
- * css_send_magic () - send magic
- *                    
- *   return: void
- *   conn(in/out):
- */
-int
-css_send_magic (CSS_CONN_ENTRY * conn)
-{
-  NET_HEADER header;
-
-  memset ((char *) &header, 0, sizeof (NET_HEADER));
-  memcpy ((char *) &header, css_Net_magic, sizeof (css_Net_magic));
-
-  return (css_net_send (conn, (const char *) &header, sizeof (NET_HEADER),
-			(prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT)
-			 * 1000)));
 }

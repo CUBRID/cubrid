@@ -1254,30 +1254,25 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 
       po[0].fd = fd;
       po[0].events = POLLIN;
-      timeout = prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000;
+      po[0].revents = 0;
+      timeout = 5000;
       n = poll (po, 1, timeout);
-#if 0
-      if (n > 0 && !FD_ISSET (fd, &rfds) && !FD_ISSET (fd, &efds))
-	{
-	  /* possible? */
-	  continue;
-	}
-#endif
       if (n == 0)
 	{
 #if !defined (WINDOWS)
-	  /*
-	   * 0 means it timed out and no fd is changed.
-	   * Check if the peer is alive or not.
-	   */
-	  if (!css_peer_alive (fd, timeout))
+	  /* 0 means it timed out and no fd is changed. */
+	  if (CHECK_CLIENT_IS_ALIVE ())
 	    {
-	      er_log_debug (ARG_FILE_LINE,
-			    "css_connection_handler_thread: "
-			    "css_peer_alive() error\n");
-	      status = CONNECTION_CLOSED;
-	      break;
+	      if (css_peer_alive (fd, timeout) == false)
+		{
+		  er_log_debug (ARG_FILE_LINE,
+				"css_connection_handler_thread: "
+				"css_peer_alive() error\n");
+		  status = CONNECTION_CLOSED;
+		  break;
+		}
 	    }
+
 	  /* check server's HA state */
 	  if (ha_Server_state == HA_SERVER_STATE_TO_BE_STANDBY
 	      && conn->in_transaction == false
@@ -1290,15 +1285,9 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 #endif /* !WINDOWS */
 	  continue;
 	}
-      if (n < 0)
+      else if (n < 0)
 	{
-#if defined(WINDOWS)
-	  int last_error = WSAGetLastError ();
-	  if (errno == EINTR || last_error == WSAEWOULDBLOCK
-	      || last_error == WSAEINPROGRESS)
-#else /* WINDOWS */
-	  if (errno == EINTR || errno == EWOULDBLOCK || errno == EINPROGRESS)
-#endif /* WINDOWS */
+	  if (errno == EINTR)
 	    {
 	      continue;
 	    }
@@ -1311,8 +1300,14 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 	      break;
 	    }
 	}
-      if (n > 0)
+      else
 	{
+	  if (po[0].revents & POLLERR || po[0].revents & POLLHUP)
+	    {
+	      status = ERROR_ON_READ;
+	      break;
+	    }
+
 	  /* read command/data/etc request from socket,
 	     and enqueue it to appr. queue */
 	  status = css_read_and_queue (conn, &type);
@@ -1551,7 +1546,7 @@ css_internal_request_handler (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
 
       if (size)
 	{
-	  rc = css_receive_data (conn, rid, &buffer, &size);
+	  rc = css_receive_data (conn, rid, &buffer, &size, -1);
 	  if (rc != NO_ERRORS)
 	    {
 	      return status;
@@ -2040,7 +2035,7 @@ css_receive_data_from_client (CSS_CONN_ENTRY * conn, unsigned int eid,
 
   *size = 0;
 
-  rc = css_receive_data (conn, CSS_RID_FROM_EID (eid), buffer, size);
+  rc = css_receive_data (conn, CSS_RID_FROM_EID (eid), buffer, size, -1);
 
   if (rc == NO_ERRORS || rc == RECORD_TRUNCATED)
     {

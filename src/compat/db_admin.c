@@ -658,7 +658,7 @@ db_ping_server (int client_val, int *server_val)
 
   CHECK_CONNECT_ERROR ();
 #if defined (CS_MODE)
-  error = net_client_ping_server (client_val, server_val);
+  error = net_client_ping_server (client_val, server_val, 5000);
 #endif /* CS_MODE */
   return error;
 }

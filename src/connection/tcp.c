@@ -1409,7 +1409,7 @@ css_peer_alive (SOCKET sd, int timeout)
   socklen_t size;
   struct sockaddr_in saddr;
   socklen_t slen;
-  struct pollfd po[1] = { {0, 0, 0} };
+  struct pollfd po[1];
 
   slen = sizeof (saddr);
   if (getpeername (sd, (struct sockaddr *) &saddr, &slen) < 0)
@@ -1457,69 +1457,69 @@ css_peer_alive (SOCKET sd, int timeout)
       close (nsd);
       return true;
     }
-  else
-    {
-      switch (errno)
-	{
-	case EINPROGRESS:	/* non-blocking, asynchronously */
-	  break;
-	case ENETUNREACH:	/* network unreachable */
-	case EAFNOSUPPORT:	/* address family not supported */
-	case EADDRNOTAVAIL:	/* address is not available on the remote machine */
-	case EINVAL:		/* on some linux, connecting to the loopback */
-	  er_log_debug (ARG_FILE_LINE,
-			"css_peer_alive: errno %d from connect()\n", errno);
-	  close (nsd);
-	  return false;
-	default:		/* otherwise, connection failed */
-	  er_log_debug (ARG_FILE_LINE,
-			"css_peer_alive: errno %d from connect()\n", errno);
-	  close (nsd);
-	  return false;
-	}
 
-    retry:
-      po[0].fd = nsd;
-      po[0].events = POLLOUT;
-      n = poll (po, 1, timeout);
-      if (n < 0)
-	{
-	  if (errno == EINTR || errno == EWOULDBLOCK || errno == EINPROGRESS)
-	    {
-	      goto retry;
-	    }
-	  er_log_debug (ARG_FILE_LINE,
-			"css_peer_alive: errno %d from select()\n", errno);
-	  close (nsd);
-	  return false;
-	}
-      if (n == 0)
-	{
-	  er_log_debug (ARG_FILE_LINE, "css_peer_alive: timed out %d\n",
-			timeout);
-	  close (nsd);
-	  return false;
-	}
-      /* has connection been established? */
-      size = sizeof (n);
-      if (getsockopt (nsd, SOL_SOCKET, SO_ERROR, (void *) &n, &size) < 0)
-	{
-	  n = errno;
-	}
-      if (n == EINTR || n == EWOULDBLOCK || n == EINPROGRESS)
-	{
-	  goto retry;
-	}
-      if (n == 0 || n == ECONNREFUSED)
-	{
-	  close (nsd);
-	  return true;
-	}
+  switch (errno)
+    {
+    case EINPROGRESS:		/* non-blocking, asynchronously */
+      break;
+    case ENETUNREACH:		/* network unreachable */
+    case EAFNOSUPPORT:		/* address family not supported */
+    case EADDRNOTAVAIL:	/* address is not available on the remote machine */
+    case EINVAL:		/* on some linux, connecting to the loopback */
       er_log_debug (ARG_FILE_LINE,
-		    "css_peer_alive: errno %d from connect()\n", n);
+		    "css_peer_alive: errno %d from connect()\n", errno);
       close (nsd);
       return false;
-    }				/* else */
+    default:			/* otherwise, connection failed */
+      er_log_debug (ARG_FILE_LINE,
+		    "css_peer_alive: errno %d from connect()\n", errno);
+      close (nsd);
+      return false;
+    }
+
+retry_poll:
+  po[0].fd = nsd;
+  po[0].events = POLLOUT;
+  po[0].revents = 0;
+  n = poll (po, 1, timeout);
+  if (n < 0)
+    {
+      if (errno == EINTR)
+	{
+	  goto retry_poll;
+	}
+      er_log_debug (ARG_FILE_LINE, "css_peer_alive: errno %d from poll()\n",
+		    errno);
+      close (nsd);
+      return false;
+    }
+  else if (n == 0)
+    {
+      er_log_debug (ARG_FILE_LINE, "css_peer_alive: timed out %d\n", timeout);
+      close (nsd);
+      return false;
+    }
+
+  /* has connection been established? */
+  size = sizeof (n);
+  if (getsockopt (nsd, SOL_SOCKET, SO_ERROR, (void *) &n, &size) < 0)
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "css_peer_alive: getsockopt() return error %d\n", errno);
+      close (nsd);
+      return false;
+    }
+
+  if (n == 0 || n == ECONNREFUSED)
+    {
+      close (nsd);
+      return true;
+    }
+
+  er_log_debug (ARG_FILE_LINE, "css_peer_alive: errno %d from connect()\n",
+		n);
+  close (nsd);
+  return false;
 }
 
 /*

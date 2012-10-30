@@ -120,3 +120,6 @@ extern const char *css_ha_server_state_string (HA_SERVER_STATE state);
 extern const char *css_ha_applier_state_string (HA_LOG_APPLIER_STATE state);
 extern const char *css_ha_mode_string (HA_MODE mode);
 #endif /* _CONNECTION_SUPPORT_H_ */
+
+extern int css_send_magic (CSS_CONN_ENTRY * conn);
+extern int css_check_magic (CSS_CONN_ENTRY * conn);

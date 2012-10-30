@@ -587,7 +587,7 @@ css_test_for_server_errors (CSS_MAP_ENTRY * entry, unsigned int eid)
 unsigned int
 css_receive_data_from_server (unsigned int eid, char **buffer, int *size)
 {
-  return css_receive_data_from_server_with_timeout (eid, buffer, size, 0);
+  return css_receive_data_from_server_with_timeout (eid, buffer, size, -1);
 }
 
 /*
@@ -603,77 +603,25 @@ css_receive_data_from_server_with_timeout (unsigned int eid, char **buffer,
 					   int *size, int timeout)
 {
   CSS_MAP_ENTRY *entry;
-  int errid;
-  struct pollfd po[1] = { {0, 0, 0} };
-#if !defined (WINDOWS)
-  int n;
-#endif /* WINDOWS */
+  int rid;
 
   entry = css_return_entry_from_eid (eid, css_Client_anchor);
-  if (entry != NULL)
+  if (entry == NULL)
     {
-#if !defined (WINDOWS)
-      if ((timeout > 0) && (entry->conn != NULL)
-	  && (entry->conn->status == CONN_OPEN))
-	{
-	  po[0].fd = entry->conn->fd;
-	  po[0].events = POLLIN;
-	  n = poll (po, 1, timeout);
-	  if (n == 0)
-	    {
-	      if (css_peer_alive (entry->conn->fd, timeout))
-		{
-		  return INTERRUPTED_READ;
-		}
-	      else
-		{
-		  return SERVER_ABORTED;
-		}
-	    }
-	}
-#endif /* WINDOWS */
-      css_Errno = css_receive_data (entry->conn, CSS_RID_FROM_EID (eid),
-				    buffer, size);
-      if (css_Errno == NO_ERRORS)
-	{
-	  (void) css_test_for_server_errors (entry, eid);
-
-	  assert (css_is_valid_request_id (entry->conn,
-					   CSS_RID_FROM_EID (eid)));
-
-	  /* 0 means that it isn't a communication error with server */
-	  return 0;
-	}
-      /* css_Errno != NO_ERROR */
-      if (css_Errno == SERVER_ABORTED)
-	{
-	  errid = css_test_for_server_errors (entry, eid);
-#if 0
-	  if (errid == ER_DB_NO_MODIFICATIONS)
-	    {
-	      css_Errno = REQUEST_REFUSED;
-	    }
-#endif
-	}
-#if 0
-      /*
-       * Normally, we disconnect upon any type of receive error.  However,
-       * in the case of allocation errors, we want to continue and
-       * propagate the error.
-       */
-      if (css_Errno != CANT_ALLOC_BUFFER)
-	{
-	  css_remove_queued_connection_by_entry (entry, &css_Client_anchor);
-	}
-#endif
+      css_Errno = SERVER_WAS_NOT_FOUND;
       assert (css_is_valid_request_id (entry->conn, CSS_RID_FROM_EID (eid)));
       return css_Errno;
     }
 
-  css_Errno = SERVER_WAS_NOT_FOUND;
+  rid = CSS_RID_FROM_EID (eid);
+  css_Errno = css_receive_data (entry->conn, rid, buffer, size, timeout);
+  if (css_Errno == NO_ERRORS || css_Errno == SERVER_ABORTED)
+    {
+      css_test_for_server_errors (entry, eid);
+    }
 
-  assert (css_is_valid_request_id (entry->conn, CSS_RID_FROM_EID (eid)));
-  return css_Errno;
+  assert (css_is_valid_request_id (entry->conn, rid));
+  return css_Errno == NO_ERRORS ? 0 : css_Errno;
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)

@@ -495,7 +495,8 @@ extern int net_client_request_recv_stream (int request, char *argbuf,
 					   int argsize, char *replybuf,
 					   int replybuf_size, char *databuf,
 					   int datasize, FILE * outfp);
-extern int net_client_ping_server (int client_val, int *server_val);
+extern int net_client_ping_server (int client_val, int *server_val,
+				   int timeout);
 extern int net_client_ping_server_with_handshake (int client_type,
 						  bool check_capabilities);
 

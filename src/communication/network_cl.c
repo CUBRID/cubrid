@@ -2485,6 +2485,10 @@ net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr,
 		  do_read = true;
 		  continue;
 		}
+	      else
+		{
+		  /* TODO: should be handled other errors */
+		}
 	    }
 	  else
 #endif
@@ -4062,7 +4066,7 @@ end:
  */
 
 int
-net_client_ping_server (int client_val, int *server_val)
+net_client_ping_server (int client_val, int *server_val, int timeout)
 {
   OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
   char *request = OR_ALIGNED_BUF_START (a_request);
@@ -4070,6 +4074,8 @@ net_client_ping_server (int client_val, int *server_val)
   char *reply_buf = OR_ALIGNED_BUF_START (a_reply);
   char *reply = NULL;
   int eid, error, reply_size;
+
+  er_log_debug (ARG_FILE_LINE, "The net_clinet_ping_server() is calling.");
 
   error = NO_ERROR;
   if (net_Server_host[0] == '\0' || net_Server_name[0] == '\0')
@@ -4093,7 +4099,8 @@ net_client_ping_server (int client_val, int *server_val)
       return error;
     }
 
-  error = css_receive_data_from_server (eid, &reply, &reply_size);
+  error = css_receive_data_from_server_with_timeout (eid, &reply, &reply_size,
+						     timeout);
   if (error || reply == NULL)
     {
       COMPARE_AND_FREE_BUFFER (reply_buf, reply);

@@ -460,6 +460,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_INTL_CHECK_INPUT_STRING "intl_check_input_string"
 
+#define PRM_NAME_CHECK_PEER_ALIVE "check_peer_alive"
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -1235,6 +1236,9 @@ static bool prm_unicode_output_normalization_default = false;
 
 bool PRM_INTL_CHECK_INPUT_STRING = false;
 static bool prm_intl_check_input_string_default = false;
+
+int PRM_CHECK_PEER_ALIVE = CSS_CHECK_PEER_ALIVE_BOTH;
+static int prm_check_peer_alive_default = CSS_CHECK_PEER_ALIVE_BOTH;
 
 typedef struct sysprm_param SYSPRM_PARAM;
 struct sysprm_param
@@ -2591,6 +2595,14 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_INTL_CHECK_INPUT_STRING,
    (void *) NULL, (void *) NULL,
    (char *) NULL},
+  {PRM_NAME_CHECK_PEER_ALIVE,
+   (PRM_REQUIRED | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_FOR_SERVER
+    | PRM_USER_CHANGE),
+   PRM_KEYWORD,
+   (void *) &prm_check_peer_alive_default,
+   (void *) &PRM_CHECK_PEER_ALIVE,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))
@@ -2719,12 +2731,18 @@ static KEYVAL ha_log_applier_state_words[] = {
   {HA_LOG_APPLIER_STATE_ERROR_STR, HA_LOG_APPLIER_STATE_ERROR}
 };
 
-
 static KEYVAL compat_words[] = {
   {"cubrid", COMPAT_CUBRID},
   {"default", COMPAT_CUBRID},
   {"mysql", COMPAT_MYSQL},
   {"oracle", COMPAT_ORACLE}
+};
+
+static KEYVAL check_peer_alive_words[] = {
+  {"none", CSS_CHECK_PEER_ALIVE_NONE},
+  {"server_only", CSS_CHECK_PEER_ALIVE_SERVER_ONLY},
+  {"client_only", CSS_CHECK_PEER_ALIVE_CLIENT_ONLY},
+  {"both", CSS_CHECK_PEER_ALIVE_BOTH},
 };
 
 static const char *compat_mode_values_PRM_ANSI_QUOTES[COMPAT_ORACLE + 2] = {
@@ -4019,6 +4037,12 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
 	  keyvalp = prm_keyword (PRM_GET_INT (prm->value),
 				 NULL, compat_words, DIM (compat_words));
 	}
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_CHECK_PEER_ALIVE) == 0)
+	{
+	  keyvalp = prm_keyword (PRM_GET_INT (prm->value),
+				 NULL, check_peer_alive_words,
+				 DIM (check_peer_alive_words));
+	}
       else
 	{
 	  assert (false);
@@ -4229,6 +4253,12 @@ prm_print_session_prm (const SESSION_PARAM * sprm, char *buf, size_t len,
 	{
 	  keyvalp = prm_keyword (sprm->prm_value.i, NULL, compat_words,
 				 DIM (compat_words));
+	}
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_CHECK_PEER_ALIVE) == 0)
+	{
+	  keyvalp = prm_keyword (sprm->prm_value.i, NULL,
+				 check_peer_alive_words,
+				 DIM (check_peer_alive_words));
 	}
       else
 	{
@@ -4956,6 +4986,11 @@ prm_set (SYSPRM_PARAM * prm, const char *value, bool set_flag)
       else if (intl_mbs_casecmp (prm->name, PRM_NAME_COMPAT_MODE) == 0)
 	{
 	  keyvalp = prm_keyword (-1, value, compat_words, DIM (compat_words));
+	}
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_CHECK_PEER_ALIVE) == 0)
+	{
+	  keyvalp = prm_keyword (-1, value, check_peer_alive_words,
+				 DIM (check_peer_alive_words));
 	}
       else
 	{
@@ -7748,6 +7783,11 @@ prm_set_session_parameter_value (SESSION_PARAM * session_params,
 	  {
 	    keyvalp = prm_keyword (-1, value, compat_words,
 				   DIM (compat_words));
+	  }
+	else if (intl_mbs_casecmp (prm->name, PRM_NAME_CHECK_PEER_ALIVE) == 0)
+	  {
+	    keyvalp = prm_keyword (-1, value, check_peer_alive_words,
+				   DIM (check_peer_alive_words));
 	  }
 	else
 	  {

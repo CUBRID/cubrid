@@ -219,6 +219,23 @@ enum css_status_code
 };
 
 /*
+ * There are the modes to check peer-alive.
+ */
+enum css_check_peer_alive
+{
+  CSS_CHECK_PEER_ALIVE_NONE,
+  CSS_CHECK_PEER_ALIVE_SERVER_ONLY,
+  CSS_CHECK_PEER_ALIVE_CLIENT_ONLY,
+  CSS_CHECK_PEER_ALIVE_BOTH
+};
+#define CHECK_CLIENT_IS_ALIVE() \
+  (prm_get_integer_value (PRM_ID_CHECK_PEER_ALIVE) == CSS_CHECK_PEER_ALIVE_BOTH \
+  || prm_get_integer_value (PRM_ID_CHECK_PEER_ALIVE) == CSS_CHECK_PEER_ALIVE_SERVER_ONLY)
+#define CHECK_SERVER_IS_ALIVE() \
+    (prm_get_integer_value (PRM_ID_CHECK_PEER_ALIVE) == CSS_CHECK_PEER_ALIVE_BOTH \
+    || prm_get_integer_value (PRM_ID_CHECK_PEER_ALIVE) == CSS_CHECK_PEER_ALIVE_CLIENT_ONLY)
+
+/*
  * HA mode
  */
 typedef enum ha_mode HA_MODE;

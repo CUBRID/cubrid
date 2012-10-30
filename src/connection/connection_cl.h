@@ -50,7 +50,7 @@ extern CSS_CONN_ENTRY *css_connect_to_master_for_info (const char *host_name,
 extern bool css_does_master_exist (int port_id);
 
 extern int css_receive_data (CSS_CONN_ENTRY * conn, unsigned short rid,
-			     char **buffer, int *size);
+			     char **buffer, int *size, int timeout);
 extern int css_receive_request (CSS_CONN_ENTRY * conn, unsigned short *rid,
 				int *request, int *arg_buffer_size);
 extern int css_send_close_request (CSS_CONN_ENTRY * conn);
@@ -72,5 +72,4 @@ extern int css_return_queued_error (CSS_CONN_ENTRY * conn,
 				    unsigned short request_id, char **buffer,
 				    int *buffer_size, int *rc);
 extern void css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn);
-extern int css_check_magic (CSS_CONN_ENTRY * conn);
 #endif /* _CONNECTION_CL_H_ */

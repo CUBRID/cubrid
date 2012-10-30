@@ -203,7 +203,7 @@ static void
 return_string (CSS_CONN_ENTRY * conn, unsigned short request_id,
 	       char **buffer, int *buffer_size)
 {
-  css_receive_data (conn, request_id, buffer, buffer_size);
+  css_receive_data (conn, request_id, buffer, buffer_size, -1);
 }
 
 /*
@@ -276,7 +276,7 @@ return_integer_data (CSS_CONN_ENTRY * conn, unsigned short request_id)
   int size;
   int *buffer = NULL;
 
-  if (css_receive_data (conn, request_id, (char **) &buffer, &size)
+  if (css_receive_data (conn, request_id, (char **) &buffer, &size, -1)
       == NO_ERRORS)
     {
       if (size == sizeof (int))

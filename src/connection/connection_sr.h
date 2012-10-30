@@ -92,7 +92,7 @@ extern int css_receive_request (CSS_CONN_ENTRY * conn, unsigned short *rid,
 				int *request, int *buffer_size);
 extern int css_read_and_queue (CSS_CONN_ENTRY * conn, int *type);
 extern int css_receive_data (CSS_CONN_ENTRY * conn, unsigned short req_id,
-			     char **buffer, int *buffer_size);
+			     char **buffer, int *buffer_size, int timeout);
 
 extern unsigned int css_return_eid_from_conn (CSS_CONN_ENTRY * conn,
 					      unsigned short rid);

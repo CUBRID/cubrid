@@ -365,15 +365,7 @@ css_recv_and_queue_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
 {
   int rc;
 
-  do
-    {
-      /* timeout in milli-seconds in css_net_recv() */
-      rc = css_net_recv (conn->fd, buffer, &size,
-			 prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT)
-			 * 1000);
-    }
-  while (rc == INTERRUPTED_READ);
-
+  rc = css_net_recv (conn->fd, buffer, &size, -1);
   if (rc == NO_ERRORS || rc == RECORD_TRUNCATED)
     {
       if (!css_is_request_aborted (conn, request_id))

@@ -225,6 +225,8 @@ server_ping (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int client_val, server_val;
 
+  er_log_debug (ARG_FILE_LINE, "The server_ping() is called.");
+
   /* you can get something useful from the request */
   or_unpack_int (request, &client_val);
 

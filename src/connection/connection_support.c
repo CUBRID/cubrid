@@ -77,6 +77,10 @@
 #include "connection_cl.h"
 #endif
 
+#if defined(CS_MODE)
+#include "network_interface_cl.h"
+#endif
+
 #if !defined (SERVER_MODE)
 #define pthread_mutex_init(a, b)
 #define pthread_mutex_destroy(a)
@@ -404,44 +408,39 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
     }
 
   if (nbytes <= 0)
-    return 0;
+    {
+      return 0;
+    }
 
   nleft = nbytes;
   do
     {
-#if !defined (WINDOWS)
-      if (timeout >= 0)
+      po[0].fd = fd;
+      po[0].events = POLLIN;
+      po[0].revents = 0;
+      n = poll (po, 1, timeout);
+      if (n == 0)
 	{
-	  po[0].fd = fd;
-	  po[0].events = POLLIN;
-	select_again:
-	  n = poll (po, 1, timeout);
-	  if (n == 0)
+	  /* 0 means it timed out and no fd is changed. */
+	  errno = ETIMEDOUT;
+	  return -1;
+	}
+      else if (n < 0)
+	{
+	  if (errno == EINTR)
 	    {
-	      /*
-	       * 0 means it timed out and no fd is changed.
-	       * Check if the peer is alive or not.
-	       */
-	      if (css_peer_alive (fd, timeout))
-		{
-		  continue;
-		}
-	      else
-		{
-		  errno = ETIMEDOUT;
-		  return -1;
-		}
+	      continue;
 	    }
-	  else if (n < 0)
+	  return -1;
+	}
+      else
+	{
+	  if (po[0].revents & POLLERR || po[0].revents & POLLHUP)
 	    {
-	      if (errno == EINTR)
-		{
-		  goto select_again;
-		}
 	      return -1;
 	    }
 	}
-#endif /* !WINDOWS */
+
     read_again:
       n = recv (fd, ptr, nleft, 0);
 
@@ -453,7 +452,7 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
       if (n < 0)
 	{
 #if !defined(WINDOWS)
-	  if (errno == EAGAIN || errno == EWOULDBLOCK)
+	  if (errno == EAGAIN)
 	    {
 	      continue;
 	    }
@@ -467,9 +466,7 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 	    {
 	      goto read_again;
 	    }
-
 #endif
-
 #if !defined (SERVER_MODE)
 	  css_set_networking_error (fd);
 #endif /* !SERVER_MODE */
@@ -548,20 +545,38 @@ css_net_recv (SOCKET fd, char *buffer, int *maxlen, int timeout)
   int nbytes;
   int templen;
   int length_to_read;
+  int time_unit;
+  int elapsed;
 
-  do
+  if (timeout < 0)
     {
-      nbytes = css_readn (fd, (char *) &templen, sizeof (int), timeout);
+      timeout = INT_MAX;
+    }
+  time_unit = timeout > 5000 ? 5000 : timeout;
+  elapsed = time_unit;
+
+  /* read data length */
+  while (true)
+    {
+      nbytes = css_readn (fd, (char *) &templen, sizeof (int), time_unit);
       if (nbytes < 0)
 	{
-#ifdef CUBRID_DEUBG
-	  er_log_debug (ARG_FILE_LINE,
-			"css_net_recv: returning ERROR_WHEN_READING_SIZE bytes %d\n",
-			nbytes);
-#endif
+	  if (errno == ETIMEDOUT && timeout >= elapsed)
+	    {
+#if defined(CS_MODE)
+	      if (CHECK_SERVER_IS_ALIVE ())
+		{
+		  if (net_client_ping_server (fd, NULL, 5000) != NO_ERROR)
+		    {
+		      return ERROR_WHEN_READING_SIZE;
+		    }
+		}
+#endif /* CS_MODE */
+	      elapsed += time_unit;
+	      continue;
+	    }
 	  return ERROR_WHEN_READING_SIZE;
 	}
-
       if (nbytes != sizeof (int))
 	{
 #ifdef CUBRID_DEBUG
@@ -571,11 +586,14 @@ css_net_recv (SOCKET fd, char *buffer, int *maxlen, int timeout)
 #endif
 	  return ERROR_WHEN_READING_SIZE;
 	}
-
-      templen = ntohl (templen);
+      else
+	{
+	  break;
+	}
     }
-  while (templen == 0);
 
+  templen = ntohl (templen);
+  assert_release (templen > 0);
   if (templen > *maxlen)
     {
       length_to_read = *maxlen;
@@ -585,6 +603,7 @@ css_net_recv (SOCKET fd, char *buffer, int *maxlen, int timeout)
       length_to_read = templen;
     }
 
+  /* read data */
   nbytes = css_readn (fd, buffer, length_to_read, timeout);
   if (nbytes < length_to_read)
     {
@@ -766,6 +785,7 @@ free_vector_buffer (int index)
  *   vec(in): vector buffer
  *   len(in): vector length
  *   bytes_written(in):
+ *   timeout(in): timeout value in milli-seconds
  *
  * Note: Does not support the "byte_written" argument for retries, we'll
  *       internally keep retrying the operation until all the data is written.
@@ -928,32 +948,32 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written,
 
   do
     {
-      if (timeout >= 0)
+      po[0].fd = fd;
+      po[0].events = POLLOUT;
+      po[0].revents = 0;
+      n = poll (po, 1, timeout);
+      if (n < 0)
 	{
-	  po[0].fd = fd;
-	  po[0].events = POLLOUT;
-	  n = poll (po, 1, timeout);
-	  if (n == 0)
+	  if (errno == EINTR)
 	    {
-	      /*
-	       * 0 means it timed out and no fd is changed.
-	       * Check if the peer is alive or not.
-	       */
-	      if (css_peer_alive (fd, timeout))
-		{
-		  continue;
-		}
-	      else
-		{
-		  errno = ETIMEDOUT;
-		  return -1;
-		}
+	      continue;
 	    }
-	  if (n < 0 && errno != EINTR)
+	  return -1;
+	}
+      else if (n == 0)
+	{
+	  /* 0 means it timed out and no fd is changed. */
+	  errno = ETIMEDOUT;
+	  return -1;
+	}
+      else
+	{
+	  if (po[0].revents & POLLERR || po[0].revents & POLLHUP)
 	    {
 	      return -1;
 	    }
 	}
+
     write_again:
       n = writev (fd, *vec, *len);
       if (n == 0)
@@ -966,7 +986,7 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written,
 	    {
 	      goto write_again;
 	    }
-	  if (errno == EAGAIN || errno == EWOULDBLOCK)
+	  if (errno == EAGAIN)
 	    {
 	      continue;
 	    }
@@ -1077,9 +1097,7 @@ css_net_send2 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
   total_len = len1 + len2 + sizeof (int) * 2;
 
   /* timeout in milli-second in css_send_io_vector() */
-  return css_send_io_vector (conn, iov, total_len, 4,
-			     prm_get_integer_value
-			     (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000);
+  return css_send_io_vector (conn, iov, total_len, 4, -1);
 }
 
 /*
@@ -1111,9 +1129,7 @@ css_net_send3 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
   total_len = len1 + len2 + len3 + sizeof (int) * 3;
 
   /* timeout in milli-second in css_send_io_vector() */
-  return css_send_io_vector (conn, iov, total_len, 6,
-			     prm_get_integer_value
-			     (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000);
+  return css_send_io_vector (conn, iov, total_len, 6, -1);
 }
 
 /*
@@ -1149,9 +1165,7 @@ css_net_send4 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
   total_len = len1 + len2 + len3 + len4 + sizeof (int) * 4;
 
   /* timeout in milli-second in css_send_io_vector() */
-  return css_send_io_vector (conn, iov, total_len, 8,
-			     prm_get_integer_value
-			     (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000);
+  return css_send_io_vector (conn, iov, total_len, 8, -1);
 }
 
 #if defined(CS_MODE) || defined(SA_MODE)
@@ -1180,9 +1194,7 @@ css_net_send5 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
   total_len = len1 + len2 + len3 + len4 + len5 + sizeof (int) * 5;
 
   /* timeout in milli-second in css_send_io_vector() */
-  return css_send_io_vector (conn, iov, total_len, 10,
-			     prm_get_integer_value
-			     (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000);
+  return css_send_io_vector (conn, iov, total_len, 10, -1);
 }
 #endif /* CS_MODE || SA_MODE */
 
@@ -1226,9 +1238,7 @@ css_net_send6 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
   total_len = len1 + len2 + len3 + len4 + len5 + len6 + sizeof (int) * 6;
 
   /* timeout in milli-second in css_send_io_vector() */
-  return css_send_io_vector (conn, iov, total_len, 12,
-			     prm_get_integer_value
-			     (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000);
+  return css_send_io_vector (conn, iov, total_len, 12, -1);
 }
 
 #if defined(CS_MODE) || defined(SA_MODE)
@@ -1261,9 +1271,7 @@ css_net_send7 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
     len1 + len2 + len3 + len4 + len5 + len6 + len7 + sizeof (int) * 7;
 
   /* timeout in milli-second in css_send_io_vector() */
-  return css_send_io_vector (conn, iov, total_len, 14,
-			     prm_get_integer_value
-			     (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000);
+  return css_send_io_vector (conn, iov, total_len, 14, -1);
 }
 #endif /* CS_MODE || SA_MODE */
 
@@ -1316,9 +1324,7 @@ css_net_send8 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
     + sizeof (int) * 8;
 
   /* timeout in milli-second in css_send_io_vector() */
-  return css_send_io_vector (conn, iov, total_len, 16,
-			     prm_get_integer_value
-			     (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000);
+  return css_send_io_vector (conn, iov, total_len, 16, -1);
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -1472,10 +1478,7 @@ css_net_send_buffer_only (CSS_CONN_ENTRY * conn, const char *buff, int len,
 int
 css_net_read_header (SOCKET fd, char *buffer, int *maxlen)
 {
-  /* timeout in milli-seconds in css_net_recv() */
-  return css_net_recv (fd, buffer, maxlen,
-		       prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) *
-		       1000);
+  return css_net_recv (fd, buffer, maxlen, -1);
 }
 
 static void
@@ -1541,9 +1544,8 @@ css_send_request_with_data_buffer (CSS_CONN_ENTRY * conn, int request,
   else
     {
       /* timeout in milli-second in css_net_send() */
-      if (css_net_send (conn, (char *) &local_header, sizeof (NET_HEADER),
-			prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT)
-			* 1000) == NO_ERRORS)
+      if (css_net_send (conn, (char *) &local_header, sizeof (NET_HEADER), -1)
+	  == NO_ERRORS)
 	{
 	  return NO_ERRORS;
 	}
@@ -2453,3 +2455,54 @@ css_trim_str (char *str)
   return (str);
 }
 #endif
+
+/*
+ * css_send_magic () - send magic
+ *
+ *   return: void
+ *   conn(in/out):
+ */
+int
+css_send_magic (CSS_CONN_ENTRY * conn)
+{
+  NET_HEADER header;
+
+  memset ((char *) &header, 0, sizeof (NET_HEADER));
+  memcpy ((char *) &header, css_Net_magic, sizeof (css_Net_magic));
+
+  return css_net_send (conn, (const char *) &header, sizeof (NET_HEADER), -1);
+}
+
+/*
+ * css_check_magic () - check magic
+ *
+ *   return: void
+ *   conn(in/out):
+ */
+int
+css_check_magic (CSS_CONN_ENTRY * conn)
+{
+  int error;
+  unsigned int i;
+  NET_HEADER header;
+  char *p;
+  int len = sizeof (NET_HEADER);
+  int timeout = prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000;
+
+  p = (char *) &header;
+  error = css_net_recv (conn->fd, p, &len, timeout);
+  if (error != NO_ERRORS)
+    {
+      return error;
+    }
+
+  for (i = 0; i < sizeof (css_Net_magic); i++)
+    {
+      if (*(p++) != css_Net_magic[i])
+	{
+	  return WRONG_PACKET_TYPE;
+	}
+    }
+
+  return NO_ERRORS;
+}
