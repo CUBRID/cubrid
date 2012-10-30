@@ -720,6 +720,7 @@ extern "C"
 				   void *value, T_CCI_ERROR * err_buf);
   extern long cci_escape_string (int con_h_id, char *to, const char *from,
 				 unsigned long length, T_CCI_ERROR * err_buf);
+  extern int cci_close_query_result (int req_handle);
   extern int cci_close_req_handle (int req_handle);
   extern int cci_cursor (int req_handle,
 			 int offset,

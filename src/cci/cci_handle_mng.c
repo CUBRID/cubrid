@@ -797,10 +797,8 @@ req_handle_content_free (T_REQ_HANDLE * req_handle, int reuse)
      So, they must not be freed.
    */
 
-  QUERY_RESULT_FREE (req_handle);
+  hm_close_query_result (req_handle);
   req_handle_col_info_free (req_handle);
-  hm_req_handle_fetch_buf_free (req_handle);
-  hm_conv_value_buf_clear (&(req_handle->conv_value_buffer));
 
   if (!reuse)
     {
@@ -816,12 +814,17 @@ req_handle_content_free (T_REQ_HANDLE * req_handle, int reuse)
 void
 req_handle_content_free_for_pool (T_REQ_HANDLE * req_handle)
 {
-  QUERY_RESULT_FREE (req_handle);
-  hm_req_handle_fetch_buf_free (req_handle);
-  hm_conv_value_buf_clear (&(req_handle->conv_value_buffer));
+  hm_close_query_result (req_handle);
   qe_bind_value_free (req_handle);
 }
 
+void
+hm_close_query_result (T_REQ_HANDLE * req_handle)
+{
+  QUERY_RESULT_FREE (req_handle);
+  hm_req_handle_fetch_buf_free (req_handle);
+  hm_conv_value_buf_clear (&(req_handle->conv_value_buffer));
+}
 
 static int
 hm_find_host_status_index (unsigned char *ip_addr, int port)

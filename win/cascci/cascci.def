@@ -19,6 +19,7 @@ EXPORTS
 	cci_prepare_and_execute
 	cci_get_db_parameter
 	cci_set_db_parameter
+	cci_close_query_result
 	cci_close_req_handle
 	cci_cursor
 	cci_fetch_size

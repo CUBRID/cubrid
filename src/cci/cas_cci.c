@@ -2142,6 +2142,49 @@ ret:
 }
 
 int
+cci_close_query_result (int req_h_id)
+{
+  T_REQ_HANDLE *req_handle = NULL;
+  T_CON_HANDLE *con_handle = NULL;
+  int err_code = 0;
+
+#ifdef CCI_DEBUG
+  CCI_DEBUG_PRINT (print_debug_msg
+		   ("(%d:%d)cci_close_query_result", CON_ID (req_h_id),
+		    REQ_ID (req_h_id)));
+#endif
+
+  while (1)
+    {
+      MUTEX_LOCK (con_handle_table_mutex);
+
+      req_handle = hm_find_req_handle (req_h_id, &con_handle);
+      if (req_handle == NULL)
+	{
+	  MUTEX_UNLOCK (con_handle_table_mutex);
+	  return CCI_ER_REQ_HANDLE;
+	}
+
+      if (con_handle->ref_count > 0)
+	{
+	  MUTEX_UNLOCK (con_handle_table_mutex);
+	  SLEEP_MILISEC (0, 100);
+	}
+      else
+	{
+	  con_handle->ref_count = 1;
+	  MUTEX_UNLOCK (con_handle_table_mutex);
+	  break;
+	}
+    }
+
+  hm_close_query_result (req_handle);
+  con_handle->ref_count = 0;
+
+  return err_code;
+}
+
+int
 cci_close_req_handle (int req_h_id)
 {
   T_REQ_HANDLE *req_handle = NULL;
