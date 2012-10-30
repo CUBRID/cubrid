@@ -4798,10 +4798,13 @@ lang_strmatch_iso_88591 (const LANG_COLLATION * lang_coll, bool is_match,
 			 const unsigned char *escape,
 			 const bool has_last_escape, int *str1_match_size)
 {
-  unsigned char c1, c2;
+  unsigned int c1, c2;
   const unsigned char *str1_end;
   const unsigned char *str2_end;
   const unsigned char *str1_begin;
+  const int alpha_cnt = lang_coll->coll.w_count;
+  const unsigned int *weight_ptr = lang_coll->coll.weights;
+
 #define PAD ' '			/* str_pad_char(INTL_CODESET_ISO88591, pad, &pad_size) */
 #define SPACE PAD		/* smallest character in the collation sequence */
 #define ZERO '\0'		/* space is treated as zero */
@@ -4836,6 +4839,16 @@ lang_strmatch_iso_88591 (const LANG_COLLATION * lang_coll, bool is_match,
 		}
 	    }
 	}
+
+      if (c1 < (unsigned int) alpha_cnt)
+	{
+	  c1 = weight_ptr[c1];
+	}
+      if (c2 < (unsigned int) alpha_cnt)
+	{
+	  c2 = weight_ptr[c2];
+	}
+
       if (c1 != c2)
 	{
 	  return (c1 < c2) ? -1 : 1;
