@@ -183,6 +183,10 @@
 
 #define JOB_COUNT_MAX		1000000
 
+/* num of collecting counts per monitoring interval */
+#define NUM_COLLECT_COUNT_PER_INTVL     4
+#define HANG_COUNT_THRESHOLD_RATIO      0.5
+
 #if defined(WINDOWS)
 #define F_OK	0
 #else
@@ -223,6 +227,7 @@ static THREAD_FUNC receiver_thr_f (void *arg);
 static THREAD_FUNC dispatch_thr_f (void *arg);
 static THREAD_FUNC psize_check_thr_f (void *arg);
 static THREAD_FUNC cas_monitor_thr_f (void *arg);
+static THREAD_FUNC hang_check_thr_f (void *arg);
 #if defined(CUBRID_SHARD)
 static THREAD_FUNC proxy_monitor_thr_f (void *arg);
 static THREAD_FUNC proxy_listener_thr_f (void *arg);
@@ -340,6 +345,7 @@ main (int argc, char *argv[])
   pthread_t dispatch_thread;
   pthread_t cas_monitor_thread;
   pthread_t psize_check_thread;
+  pthread_t hang_check_thread;
 #if defined(CUBRID_SHARD)
   pthread_t proxy_monitor_thread;
   pthread_t proxy_listener_thread;
@@ -403,6 +409,11 @@ main (int argc, char *argv[])
   THREAD_BEGIN (cas_monitor_thread, cas_monitor_thr_f, NULL);
   THREAD_BEGIN (proxy_monitor_thread, proxy_monitor_thr_f, NULL);
   THREAD_BEGIN (proxy_listener_thread, proxy_listener_thr_f, NULL);
+
+  if (shm_br->br_info[br_index].monitor_hang_flag)
+    {
+      THREAD_BEGIN (hang_check_thread, hang_check_thr_f, NULL);
+    }
 
   br_info_p->err_code = 0;	/* DO NOT DELETE!!! : reset error code */
 
@@ -519,8 +530,11 @@ main (int argc, char *argv[])
   THREAD_BEGIN (receiver_thread, receiver_thr_f, NULL);
   THREAD_BEGIN (dispatch_thread, dispatch_thr_f, NULL);
   THREAD_BEGIN (psize_check_thread, psize_check_thr_f, NULL);
-
   THREAD_BEGIN (cas_monitor_thread, cas_monitor_thr_f, NULL);
+  if (shm_br->br_info[br_index].monitor_hang_flag)
+    {
+      THREAD_BEGIN (hang_check_thread, hang_check_thr_f, NULL);
+    }
 
 #if defined(WIN_FW)
   for (i = 0; i < num_thr; i++)
@@ -771,6 +785,14 @@ receiver_thr_f (void *arg)
 		&clt_sock_addr_len);
       if (IS_INVALID_SOCKET (clt_sock_fd))
 	{
+	  continue;
+	}
+
+      if (shm_br->br_info[br_index].monitor_hang_flag
+	  && shm_br->br_info[br_index].reject_client_flag)
+	{
+	  shm_br->br_info[br_index].reject_client_count++;
+	  CLOSE_SOCKET (clt_sock_fd);
 	  continue;
 	}
 
@@ -1937,6 +1959,101 @@ cas_monitor_thr_f (void *ar)
       SLEEP_MILISEC (0, 100);
     }
 
+#if !defined(WINDOWS)
+  return NULL;
+#endif
+}
+
+static THREAD_FUNC
+hang_check_thr_f (void *ar)
+{
+  int i, cur_index;
+  int cur_hang_count;
+  T_APPL_SERVER_INFO *as_info_p;
+  T_BROKER_INFO *br_info_p;
+  time_t cur_time;
+  int collect_count_interval;
+  int hang_count[NUM_COLLECT_COUNT_PER_INTVL] = { 0, 0, 0, 0 };
+  float avg_hang_count;
+
+#if defined(CUBRID_SHARD)
+  int proxy_index;
+  T_PROXY_INFO *proxy_info_p = NULL;
+#endif /* CUBRID_SHARD */
+
+  SLEEP_MILISEC (shm_br->br_info[br_index].monitor_hang_interval, 0);
+
+  br_info_p = &(shm_br->br_info[br_index]);
+  cur_hang_count = 0;
+  cur_index = 0;
+  avg_hang_count = 0.0;
+  collect_count_interval =
+    br_info_p->monitor_hang_interval / NUM_COLLECT_COUNT_PER_INTVL;
+
+  while (process_flag)
+    {
+      cur_time = time (NULL);
+#if !defined(CUBRID_SHARD)
+      for (i = 0; i < br_info_p->appl_server_max_num; i++)
+	{
+	  as_info_p = &(shm_appl->as_info[i]);
+
+	  if ((as_info_p->service_flag != SERVICE_ON)
+	      || as_info_p->claimed_alive_time == 0)
+	    {
+	      continue;
+	    }
+	  if ((br_info_p->hang_timeout <
+	       cur_time - as_info_p->claimed_alive_time))
+	    {
+	      cur_hang_count++;
+	    }
+	}
+#else /* !CUBRID_SHARD */
+      for (proxy_index = 0, proxy_info_p =
+	   shard_shm_get_first_proxy_info (shm_proxy_p); proxy_info_p;
+	   proxy_index++, proxy_info_p =
+	   shard_shm_get_next_proxy_info (proxy_info_p))
+	{
+	  if ((proxy_info_p->service_flag != SERVICE_ON)
+	      || (proxy_info_p->claimed_alive_time == 0))
+	    {
+	      continue;
+	    }
+
+	  if ((br_info_p->hang_timeout <
+	       cur_time - proxy_info_p->claimed_alive_time))
+	    {
+	      cur_hang_count++;
+	    }
+	}
+#endif /* CUBRID_SHARD */
+
+      hang_count[cur_index] = cur_hang_count;
+
+      avg_hang_count =
+	ut_get_avg_from_array (hang_count, NUM_COLLECT_COUNT_PER_INTVL);
+
+#if !defined(CUBRID_SHARD)
+      br_info_p->reject_client_flag =
+	(avg_hang_count >=
+	 (float) br_info_p->appl_server_num * HANG_COUNT_THRESHOLD_RATIO);
+#else /* !CUBRID_SHARD */
+      /*
+       * reject_client_flag for shard broker
+       * does not depend on the current number of proxies.
+       * If one proxy hangs for the last 1 min, then
+       * it will disable shard_broker no matter how many proxies
+       * there are.
+       */
+      br_info_p->reject_client_flag = (avg_hang_count >= 1);
+#endif /* CUBRID_SHARD */
+
+      cur_index = (cur_index + 1) % NUM_COLLECT_COUNT_PER_INTVL;
+      cur_hang_count = 0;
+
+      SLEEP_MILISEC (collect_count_interval, 0);
+    }
 #if !defined(WINDOWS)
   return NULL;
 #endif

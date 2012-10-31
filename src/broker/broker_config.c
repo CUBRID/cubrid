@@ -62,6 +62,9 @@
 #define DEFAULT_KEEP_CONNECTION         "AUTO"
 #define DEFAULT_JDBC_CACHE_LIFE_TIME    1000
 #define DEFAULT_MAX_PREPARED_STMT_COUNT 2000
+#define DEFAULT_MONITOR_HANG_INTERVAL 60
+#define DEFAULT_HANG_TIMEOUT    60
+
 #if defined(CUBRID_SHARD)
 #define DEFAULT_PROXY_LOG_MODE		"ERROR"
 #define DEFAULT_SHARD_KEY_MODULAR	256
@@ -713,6 +716,23 @@ broker_config_read_internal (const char *conf_file,
 	  goto conf_error;
 	}
 
+      /* parameters related to checking hanging cas */
+      br_info[num_brs].reject_client_flag = false;
+      tmp_int = conf_get_value_table_on_off (ini_getstr (ini, sec_name,
+							 "ENABLE_MONITOR_HANG",
+							 "OFF", &lineno));
+      if (tmp_int < 0)
+	{
+	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
+      else
+	{
+	  br_info[num_brs].monitor_hang_flag = tmp_int;
+	  br_info[num_brs].monitor_hang_interval =
+	    DEFAULT_MONITOR_HANG_INTERVAL;
+	  br_info[num_brs].hang_timeout = DEFAULT_HANG_TIMEOUT;
+	}
 #if defined(CUBRID_SHARD)
       /* SHARD PHASE0 */
       strncpy (br_info[num_brs].shard_db_name,
@@ -1135,7 +1155,7 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info,
 	       br_info[i].appl_server_max_size / ONE_K);
       fprintf (fp, "SESSION_TIMEOUT\t\t=%d\n", br_info[i].session_timeout);
       fprintf (fp, "LOG_DIR\t\t\t=%s\n", br_info[i].log_dir);
-      fprintf (fp, "SLOW_LOG_DIR\t\t\t=%s\n", br_info[i].slow_log_dir);
+      fprintf (fp, "SLOW_LOG_DIR\t\t=%s\n", br_info[i].slow_log_dir);
       fprintf (fp, "ERROR_LOG_DIR\t\t=%s\n", br_info[i].err_log_dir);
       tmp_str = get_conf_string (br_info[i].log_backup, tbl_on_off);
       if (tmp_str)
@@ -1193,7 +1213,15 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info,
 	{
 	  fprintf (fp, "ACCESS_MODE\t\t=%s\n", tmp_str);
 	}
-      fprintf (fp, "MAX_QUERY_TIMEOUT\t\t=%d\n", br_info[i].query_timeout);
+      fprintf (fp, "MAX_QUERY_TIMEOUT\t=%d\n", br_info[i].query_timeout);
+
+      tmp_str = get_conf_string (br_info[i].monitor_hang_flag, tbl_on_off);
+      if (tmp_str)
+	{
+	  fprintf (fp, "ENABLE_MONITOR_HANG\t=%s\n", tmp_str);
+	}
+      fprintf (fp, "REJECTED_CLIENTS_COUNT\t=%d\n",
+	       br_info[i].reject_client_count);
 
 #if defined(CUBRID_SHARD)
       fprintf (fp, "SHARD_DB_NAME\t\t=%s\n", br_info[i].shard_db_name);

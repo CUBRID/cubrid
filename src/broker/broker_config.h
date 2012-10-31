@@ -22,8 +22,8 @@
  * broker_config.h - broker configuration utilities
  */
 
-#ifndef	_BROKER_CONFIG_H_
-#define	_BROKER_CONFIG_H_
+#ifndef _BROKER_CONFIG_H_
+#define _BROKER_CONFIG_H_
 
 #include "config.h"
 #include "cas_protocol.h"
@@ -205,6 +205,12 @@ struct t_broker_info
   int jdbc_cache_life_time;
   char ready_to_service;
   char cci_default_autocommit;
+
+  int monitor_hang_interval;
+  char monitor_hang_flag;
+  int hang_timeout;
+  char reject_client_flag;	/* reject clients due to hanging cas/proxy */
+  int reject_client_count;
 
 #if defined(CUBRID_SHARD)
   char proxy_log_mode;

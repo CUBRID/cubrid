@@ -54,6 +54,9 @@ static int proxy_shm_initialize (void);
 
 static void cleanup (int signo);
 
+static void proxy_set_hang_check_time (void);
+static void proxy_unset_hang_check_time (void);
+
 void
 proxy_term (void)
 {
@@ -225,12 +228,40 @@ main (int argc, char *argv[])
   PROXY_LOG (PROXY_LOG_MODE_ERROR, "Shard proxy started.");
   while (ENDLESS)
     {
+      /*
+       * Since every operation in proxy main is non-blocking
+       * (which is not the case in cas main),
+       * proxy_set_hang_check_time is placed at the beginning and
+       * proxy_unset_hang_check_time is at the end.
+       */
+      proxy_set_hang_check_time ();
+
       /* read or write */
       proxy_io_process ();
 
       /* process message */
       proxy_handler_process ();
+
+      proxy_unset_hang_check_time ();
     }
   PROXY_LOG (PROXY_LOG_MODE_NOTICE, "Shard proxy going down.");
   return 0;
+}
+
+static void
+proxy_set_hang_check_time ()
+{
+  if (proxy_info_p != NULL && shm_as_p != NULL && shm_as_p->monitor_hang_flag)
+    {
+      proxy_info_p->claimed_alive_time = time (NULL);
+    }
+}
+
+static void
+proxy_unset_hang_check_time ()
+{
+  if (proxy_info_p != NULL && shm_as_p != NULL && shm_as_p->monitor_hang_flag)
+    {
+      proxy_info_p->claimed_alive_time = (time_t) 0;
+    }
 }

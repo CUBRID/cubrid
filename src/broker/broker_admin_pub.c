@@ -2800,6 +2800,7 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
   br_info->err_code = UW_ER_NO_ERROR + 1;
   br_info->os_err_code = 0;
   br_info->num_busy_count = 0;
+  br_info->reject_client_count = 0;
 
   shm_size = sizeof (T_SHM_APPL_SERVER) +
     (br_info->appl_server_max_num - 1) * sizeof (T_APPL_SERVER_INFO);
@@ -2818,6 +2819,7 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
   shm_appl->job_queue_size = br_info->job_queue_size;
   shm_appl->job_queue[0].id = 0;	/* initialize max heap */
   shm_appl->max_prepared_stmt_count = br_info->max_prepared_stmt_count;
+  shm_appl->monitor_hang_flag = br_info->monitor_hang_flag;
   strcpy (shm_appl->log_dir, br_info->log_dir);
   strcpy (shm_appl->slow_log_dir, br_info->slow_log_dir);
   strcpy (shm_appl->err_log_dir, br_info->err_log_dir);

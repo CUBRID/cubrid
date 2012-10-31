@@ -31,6 +31,7 @@ EXPORTS
     css_get_peer_name
     css_get_sock_name
     css_check_magic
+    css_register_server_timeout_fn
     cub_vsnprintf
     da_create
     da_destroy

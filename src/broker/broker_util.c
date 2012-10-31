@@ -559,3 +559,15 @@ ut_get_ipv4_string (char *ip_str, int len, unsigned char *ip_addr)
 	    (unsigned char) ip_addr[2], (unsigned char) ip_addr[3]);
   return (ip_str);
 }
+
+float
+ut_get_avg_from_array (int array[], int size)
+{
+  int i, total = 0;
+  for (i = 0; i < size; i++)
+    {
+      total += array[i];
+    }
+
+  return (float) total / size;
+}

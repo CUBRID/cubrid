@@ -1125,6 +1125,27 @@ appl_monitor (char *br_vector)
 		  str_out (", ACCESS_MODE:%s", "SO");
 		}
 	      str_out (", MAX_QUERY_TIMEOUT:%d", shm_appl->query_timeout);
+
+	      print_newline ();
+
+	      if (shm_br->br_info[i].monitor_hang_flag == ON)
+		{
+		  str_out (" MONITOR_HANG:%s", "ON");
+		}
+	      else
+		{
+		  str_out (" MONITOR_HANG:%s", "OFF");
+		}
+
+	      if (shm_br->br_info[i].reject_client_flag == ON)
+		{
+		  str_out (", REJECT_CLIENTS:%s", "YES");
+		}
+	      else
+		{
+		  str_out (", REJECT_CLIENTS:%s", "NO");
+		}
+
 	      print_newline ();
 
 #if defined (WINDOWS)

@@ -22,8 +22,8 @@
  * broker_shm.h -
  */
 
-#ifndef	_BROKER_SHM_H_
-#define	_BROKER_SHM_H_
+#ifndef _BROKER_SHM_H_
+#define _BROKER_SHM_H_
 
 #ident "$Id$"
 
@@ -239,6 +239,7 @@ struct t_appl_server_info
 #endif
   time_t last_access_time;	/* last access time */
   time_t transaction_start_time;
+  time_t claimed_alive_time;	/* to check if the cas hangs */
 #ifdef UNIXWARE711
   int clt_sock_fd;
 #endif
@@ -413,6 +414,9 @@ struct t_proxy_info
   INT64 num_hint_id_queries_processed;
   INT64 num_hint_all_queries_processed;
 
+  /* hang check info */
+  time_t claimed_alive_time;
+
   int num_shard_key;		/* size : T_SHM_SHARD_KEY->num_shard_key */
   int num_shard_conn;		/* size : T_SHM_SHARD_CONN->num_shard_conn */
   T_SHM_SHARD_KEY_STAT key_stat[1];
@@ -499,6 +503,7 @@ struct t_shm_appl_server
   int max_prepared_stmt_count;
   int num_access_info;
   int acl_chn;
+  bool monitor_hang_flag;
 #if !defined(WINDOWS)
   sem_t acl_sem;
 #endif

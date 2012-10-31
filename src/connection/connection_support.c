@@ -106,6 +106,12 @@ struct iovec
 static const int CSS_TCP_MIN_NUM_RETRIES = 3;
 #define CSS_TRUNCATE_BUFFER_SIZE    512
 
+#if !defined (SERVER_MODE)
+static void css_default_server_timeout_fn (void);
+static CSS_SERVER_TIMEOUT_FN css_server_timeout_fn =
+  css_default_server_timeout_fn;
+#endif /* !SERVER_MODE */
+
 #if defined(WINDOWS)
 #define CSS_VECTOR_SIZE     (1024 * 64)
 
@@ -228,6 +234,14 @@ css_sprintf_conn_infoids (SOCKET fd, const char **client_user_name,
     }
 
   return tran_index;
+}
+
+
+static void
+css_default_server_timeout_fn (void)
+{
+  /* do nothing */
+  return;
 }
 
 #elif defined(WINDOWS)
@@ -429,6 +443,12 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 	{
 	  if (errno == EINTR)
 	    {
+#if !defined (SERVER_MODE)
+	      if (css_server_timeout_fn != NULL)
+		{
+		  css_server_timeout_fn ();
+		}
+#endif /* !SERVER_MODE */
 	      continue;
 	    }
 	  return -1;
@@ -2205,6 +2225,14 @@ css_ha_mode_string (HA_MODE mode)
     }
   return "invalid";
 }
+
+#if !defined (SERVER_MODE)
+void
+css_register_server_timeout_fn (CSS_SERVER_TIMEOUT_FN callback_fn)
+{
+  css_server_timeout_fn = callback_fn;
+}
+#endif /* !SERVER_MODE */
 
 #if defined(SERVER_MODE)
 int

@@ -71,4 +71,5 @@ extern void as_db_err_log_set (char *br_name, int proxy_index, int shard_id,
 extern int ut_time_string (char *buf, struct timeval *log_time);
 extern char *ut_get_ipv4_string (char *ip_str, int len,
 				 unsigned char *ip_addr);
+extern float ut_get_avg_from_array (int array[], int size);
 #endif /* _BROKER_UTIL_H_ */

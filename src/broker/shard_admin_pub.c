@@ -110,6 +110,7 @@ shard_broker_activate (int master_shm_id, T_BROKER_INFO * br_info_p,
   br_info_p->err_code = UW_ER_NO_ERROR + 1;
   br_info_p->os_err_code = 0;
   br_info_p->num_busy_count = 0;
+  br_info_p->reject_client_count = 0;
 
   /* SHARD TODO : move this code to shard_shm.[ch] */
   get_cubrid_file (FID_SOCK_DIR, dirname, PATH_MAX);
@@ -119,6 +120,7 @@ shard_broker_activate (int master_shm_id, T_BROKER_INFO * br_info_p,
 #if !defined(WINDOWS)
   unlink (shm_as_p->port_name);
 #endif /* !WINDOWS */
+  shm_as_p->monitor_hang_flag = br_info_p->monitor_hang_flag;
 
   env = make_env (br_info_p->source_env, &env_num);
 

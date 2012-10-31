@@ -33,6 +33,8 @@
 extern int css_net_send_no_block (SOCKET fd, const char *buffer, int size);
 #endif
 
+typedef void (*CSS_SERVER_TIMEOUT_FN) (void);
+
 extern int css_readn (SOCKET fd, char *ptr, int nbytes, int timeout);
 extern void css_read_remaining_bytes (SOCKET fd, int len);
 
@@ -119,6 +121,11 @@ extern int css_peer_host_name (CSS_CONN_ENTRY * conn, char *hostname,
 extern const char *css_ha_server_state_string (HA_SERVER_STATE state);
 extern const char *css_ha_applier_state_string (HA_LOG_APPLIER_STATE state);
 extern const char *css_ha_mode_string (HA_MODE mode);
+
+#if !defined (SERVER_MODE)
+extern void css_register_server_timeout_fn (CSS_SERVER_TIMEOUT_FN
+					    callback_fn);
+#endif /* !SERVER_MODE */
 #endif /* _CONNECTION_SUPPORT_H_ */
 
 extern int css_send_magic (CSS_CONN_ENTRY * conn);

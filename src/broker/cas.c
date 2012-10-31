@@ -779,6 +779,8 @@ main (int argc, char *argv[])
   as_info->as_port = new_port;
 #endif /* WINDOWS */
 
+  unset_hang_check_time ();
+
   as_info->service_ready_flag = TRUE;
   as_info->con_status = CON_STATUS_IN_TRAN;
   cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_ACTIVE;
@@ -809,6 +811,8 @@ main (int argc, char *argv[])
       retry:
 #endif
 	error_info_clear ();
+
+	unset_hang_check_time ();
 	br_sock_fd = net_connect_client (srv_sock_fd);
 
 	if (IS_INVALID_SOCKET (br_sock_fd))
@@ -874,6 +878,7 @@ main (int argc, char *argv[])
 
 	CLOSE_SOCKET (br_sock_fd);
 #endif /* WINDOWS */
+	set_hang_check_time ();
 
 	net_timeout_set (NET_DEFAULT_TIMEOUT);
 
@@ -891,6 +896,8 @@ main (int argc, char *argv[])
 	setsockopt (client_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one,
 		    sizeof (one));
 	ut_set_keepalive (client_sock_fd, 1800);
+
+	unset_hang_check_time ();
 
 	if (IS_INVALID_SOCKET (client_sock_fd))
 	  {
@@ -978,6 +985,8 @@ main (int argc, char *argv[])
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 	      }
 
+	    set_hang_check_time ();
+
 	    cas_log_debug (ARG_FILE_LINE,
 			   "db_name %s db_user %s db_passwd %s url %s "
 			   "session id %s", db_name, db_user, db_passwd, url,
@@ -988,6 +997,8 @@ main (int argc, char *argv[])
 		set_db_connect_status (-1);	/* DB_CONNECTION_STATUS_RESET */
 		as_info->reset_flag = FALSE;
 	      }
+
+	    unset_hang_check_time ();
 
 	    ip_addr = (unsigned char *) (&client_ip_addr);
 
@@ -1010,6 +1021,9 @@ main (int argc, char *argv[])
 						   DBMS_ERROR_INDICATOR,
 						   CAS_ER_NOT_AUTHORIZED_CLIENT,
 						   err_msg);
+
+		    set_hang_check_time ();
+
 		    cas_log_write_and_end (0, false,
 					   "connect db %s user %s url %s - rejected",
 					   db_name, db_user, url);
@@ -1020,6 +1034,8 @@ main (int argc, char *argv[])
 					client_ip_addr, db_name, db_user,
 					false);
 		      }
+
+		    unset_hang_check_time ();
 
 		    CLOSE_SOCKET (client_sock_fd);
 
@@ -1053,6 +1069,9 @@ main (int argc, char *argv[])
 
 		goto finish_cas;
 	      }
+
+	    set_hang_check_time ();
+
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 	    session_id = db_get_session_id ();
 	    cas_log_write_and_end (0, false, "connect db %s user %s url %s"
@@ -1201,6 +1220,7 @@ main (int argc, char *argv[])
 	CLOSE_SOCKET (client_sock_fd);
 
       finish_cas:
+	set_hang_check_time ();
 #if defined(WINDOWS)
 	as_info->close_flag = 1;
 #endif /* WINDOWS */
@@ -1221,6 +1241,8 @@ main (int argc, char *argv[])
 	cas_error_log_close (true);
 #endif
 	cas_req_count++;
+
+	unset_hang_check_time ();
 
 	if (is_server_aborted ())
 	  {
@@ -1308,6 +1330,42 @@ libcas_srv_handle_free (int h_id)
 }
 #endif /* !LIBCAS_FOR_JSP */
 #endif /* CUBRID_SHARD */
+
+/*
+ * set_hang_check_time() -
+ *   Mark the current time so that cas hang checker thread
+ *   in broker can monitor the status of the cas.
+ *   If the time is set, ALWAYS unset it
+ *   before meeting indefinite blocking operation.
+ */
+void
+set_hang_check_time (void)
+{
+#if !defined(LIBCAS_FOR_JSP) && !defined(CUBRID_SHARD)
+  if (as_info != NULL && shm_appl != NULL && shm_appl->monitor_hang_flag)
+    {
+      as_info->claimed_alive_time = time (NULL);
+    }
+#endif /* !LIBCAS_FOR_JSP && !CUBRID_SHARD */
+  return;
+}
+
+/*
+ * unset_hang_check_time -
+ *   Clear the time and the cas is free from being monitored
+ *   by hang checker in broker.
+ */
+void
+unset_hang_check_time (void)
+{
+#if !defined(LIBCAS_FOR_JSP) && !defined(CUBRID_SHARD)
+  if (as_info != NULL && shm_appl != NULL && shm_appl->monitor_hang_flag)
+    {
+      as_info->claimed_alive_time = (time_t) 0;
+    }
+#endif /* !LIBCAS_FOR_JSP && !CUBRID_SHARD */
+  return;
+}
 
 #ifndef LIBCAS_FOR_JSP
 static void
@@ -1453,6 +1511,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     }
 #else /* CUBRID_SHARD */
 #ifndef LIBCAS_FOR_JSP
+  unset_hang_check_time ();
   if (as_info->cur_keep_con == KEEP_CON_AUTO)
     {
       err_code = net_read_int_keep_con_auto (sock_fd,
@@ -1622,7 +1681,10 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 #endif /* !LIBCAS_FOR_JSP */
   cas_send_result_flag = TRUE;
 
+  set_hang_check_time ();
   fn_ret = (*server_fn) (sock_fd, argc, argv, net_buf, req_info);
+  set_hang_check_time ();
+
 #ifndef LIBCAS_FOR_JSP
   cas_log_debug (ARG_FILE_LINE, "process_request: %s() err_code %d",
 		 server_func_name[func_code - 1], err_info.err_number);
@@ -1851,13 +1913,15 @@ cas_init ()
 #if defined(CUBRID_SHARD)
   as_pid_file_create (broker_name, shm_proxy_id, shm_shard_id, shm_as_index);
   as_db_err_log_set (broker_name, shm_proxy_id, shm_shard_id, shm_as_index);
-#else
+#else /* CUBRID_SHARD */
   as_pid_file_create (broker_name, PROXY_INVALID_ID, SHARD_INVALID_ID,
 		      shm_as_index);
   as_db_err_log_set (broker_name, PROXY_INVALID_ID, SHARD_INVALID_ID,
 		     shm_as_index);
-#endif /* CUBRID_SHARD */
-
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+  css_register_server_timeout_fn (set_hang_check_time);
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+#endif /* !CUBRID_SHARD */
   return 0;
 }
 #endif /* !LIBCAS_FOR_JSP */

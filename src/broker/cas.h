@@ -127,4 +127,6 @@ extern bool is_xa_prepared (void);
 extern void set_xa_prepare_flag (void);
 extern void unset_xa_prepare_flag (void);
 
+extern void set_hang_check_time (void);
+extern void unset_hang_check_time (void);
 #endif /* _CAS_H_ */
