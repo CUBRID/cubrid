@@ -8,7 +8,9 @@ EXPORTS
 	cci_end
 	cci_get_version
 	cci_connect_3_0
+	cci_connect_ex
 	cci_connect_with_url
+	cci_connect_with_url_ex
 	cci_disconnect
 	cci_end_tran
 	cci_prepare
