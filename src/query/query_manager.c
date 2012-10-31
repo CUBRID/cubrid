@@ -1279,7 +1279,8 @@ qmgr_finalize (THREAD_ENTRY * thread_p)
  * xqmgr_prepare_query () - Prepares a query for later (and repetitive) execution
  *   return:  XASL file id which contains the XASL stream
  *   thrd(in)   :
- *   query_str(in)      : query string; used for hash key of the XASL cache
+ *   qstmt(in)      : query string; used for hash key of the XASL cache
+ *   qplan(in)      :
  *   user_oid(in)       :
  *   xasl_stream(in)    : XASL stream;
  *                        set to NULL if you want to look up the XASL cache
@@ -1293,7 +1294,8 @@ qmgr_finalize (THREAD_ENTRY * thread_p)
  * NULL will be returned.
  */
 XASL_ID *
-xqmgr_prepare_query (THREAD_ENTRY * thread_p, const char *query_string_p,
+xqmgr_prepare_query (THREAD_ENTRY * thread_p,
+		     const char *qstmt, const char *qplan,
 		     const OID * user_oid_p, const char *xasl_stream_p,
 		     int xasl_size, XASL_ID * xasl_id_p)
 {
@@ -1311,11 +1313,11 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, const char *query_string_p,
      this query. The XASL is stored as a file so that the XASL file id
      (XASL_ID) will be returned if found in the cache. */
 
-  if (!xasl_stream_p)
+  if (xasl_stream_p == NULL)
     {
       /* lookup the XASL cache with the query string as the key */
       cache_entry_p =
-	qexec_lookup_xasl_cache_ent (thread_p, query_string_p, user_oid_p);
+	qexec_lookup_xasl_cache_ent (thread_p, qstmt, user_oid_p);
       if (cache_entry_p != NULL)
 	{
 	  XASL_ID_COPY (xasl_id_p, &(cache_entry_p->xasl_id));
@@ -1336,13 +1338,12 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, const char *query_string_p,
   /* at this time, I'd like to look up once again because it is possible
      that the other competing thread which is running the same query has
      updated the cache before me */
-  cache_entry_p =
-    qexec_lookup_xasl_cache_ent (thread_p, query_string_p, user_oid_p);
+  cache_entry_p = qexec_lookup_xasl_cache_ent (thread_p, qstmt, user_oid_p);
   if (cache_entry_p != NULL)
     {
       er_log_debug (ARG_FILE_LINE,
-		    "xqm_query_prepare: second xs_lookup_xasl_cache_ent query_str %s\n",
-		    query_string_p);
+		    "xqm_query_prepare: second xs_lookup_xasl_cache_ent qstmt %s\n",
+		    qstmt);
       XASL_ID_COPY (xasl_id_p, &(cache_entry_p->xasl_id));
       goto exit_on_end;
     }
@@ -1390,7 +1391,7 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, const char *query_string_p,
     }
 
   cache_entry_p =
-    qexec_update_xasl_cache_ent (thread_p, query_string_p, xasl_id_p,
+    qexec_update_xasl_cache_ent (thread_p, qstmt, qplan, xasl_id_p,
 				 &creator_oid, n_oid_list, class_oid_list_p,
 				 repr_id_list_p, dbval_cnt);
   if (cache_entry_p == NULL)
@@ -1635,7 +1636,8 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
 		     QUERY_ID * query_id_p, int dbval_count,
 		     const DB_VALUE * dbvals_p, QUERY_FLAG * flag_p,
 		     CACHE_TIME * client_cache_time_p,
-		     CACHE_TIME * server_cache_time_p, int query_timeout)
+		     CACHE_TIME * server_cache_time_p, int query_timeout,
+		     char **qstmt_ptr, char **plan_ptr)
 {
   XASL_CACHE_ENTRY *xasl_cache_entry_p;
   QFILE_LIST_CACHE_ENTRY *list_cache_entry_p;
@@ -1697,6 +1699,16 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
 		    xasl_id_p->temp_vfid.fileid, xasl_id_p->temp_vfid.volid);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       return NULL;
+    }
+
+  if (qstmt_ptr != NULL)
+    {
+      *qstmt_ptr = xasl_cache_entry_p->qstmt;
+    }
+
+  if (plan_ptr != NULL)
+    {
+      *plan_ptr = xasl_cache_entry_p->qplan;
     }
 
   /* If it is not inhibited from getting the cached result, inspect the list
@@ -2068,8 +2080,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
 		qfile_update_list_cache_entry (thread_p,
 					       &xasl_cache_entry_p->
 					       list_ht_no, &params, list_id_p,
-					       xasl_cache_entry_p->
-					       query_string);
+					       xasl_cache_entry_p->qstmt);
 	      if (list_cache_entry_p == NULL)
 		{
 		  char *s;
@@ -2129,6 +2140,7 @@ error:
     }
 
 end:
+
   /* free the XASL tree */
   if (is_sync_query && query_p && query_p->xasl_buf_info)
     {
@@ -2191,7 +2203,8 @@ QFILE_LIST_ID *
 xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_p,
 				 int xasl_size, QUERY_ID * query_id_p,
 				 int dbval_count, DB_VALUE * dbval_p,
-				 QUERY_FLAG * flag_p, int query_timeout)
+				 QUERY_FLAG * flag_p, int query_timeout,
+				 char **plan_ptr)
 {
   QMGR_QUERY_ENTRY *query_p;
   QFILE_LIST_ID *list_id_p;
@@ -2529,7 +2542,7 @@ xqmgr_end_query (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 /*
  * xqmgr_drop_query_plan () - Drop the stored query plan
  *   return: NO_ERROR or ER_FAILED
- *   query_str(in)      : query string; used for hash key of the XASL cache
+ *   qstmt(in)      : query string; used for hash key of the XASL cache
  *   user_oid(in)       :
  *   xasl_id(in)        : XASL file id which contains the XASL stream
  *   delete(in) :
@@ -2538,21 +2551,21 @@ xqmgr_end_query (THREAD_ENTRY * thread_p, QUERY_ID query_id)
  * file id upon request of the client.
  */
 int
-xqmgr_drop_query_plan (THREAD_ENTRY * thread_p, const char *query_string_p,
+xqmgr_drop_query_plan (THREAD_ENTRY * thread_p, const char *qstmt,
 		       const OID * user_oid_p, const XASL_ID * xasl_id_p,
 		       bool is_drop)
 {
-  if (query_string_p && user_oid_p)
+  if (qstmt && user_oid_p)
     {
       if (is_drop)
 	{
 	  /* delete the XASL cache entry */
 	  if (qexec_remove_xasl_cache_ent_by_qstr
-	      (thread_p, query_string_p, user_oid_p) != NO_ERROR)
+	      (thread_p, qstmt, user_oid_p) != NO_ERROR)
 	    {
 	      er_log_debug (ARG_FILE_LINE,
 			    "xqm_query_drop_plan: xs_remove_xasl_cache_ent_by_qstr failed for query_str %s\n",
-			    query_string_p);
+			    qstmt);
 	      return ER_FAILED;
 	    }
 	}

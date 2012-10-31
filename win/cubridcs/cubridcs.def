@@ -838,6 +838,7 @@ EXPORTS
     dbt_set_label
     dbt_set_loader_commands
     dbt_set_object_id
+    db_get_execution_plan 
 ; elo
 	db_elo_copy_structure
 	db_elo_free_structure

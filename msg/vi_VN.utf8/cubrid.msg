@@ -1169,7 +1169,8 @@ $ LOADDB
 1101 Giao dịch hiện tại không thể lấy được khóa phím trên PSEUDO-OID (%1$d|%2$d|%3$d) đính kèm với OID (%4$d|%5$d|%6$d)
 1102 Không biết hệ thống tham số hoặc giá trị xấu.
 1103 Không thể thay đổi tham số hệ thống.
-1104 Lỗi sau cùng
+1104 Slow query (%d msec)\n%s
+1105 Lỗi sau cùng
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Lỗi trong các lỗi hệ thống con (dòng %d):

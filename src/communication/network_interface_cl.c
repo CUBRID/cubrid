@@ -93,6 +93,9 @@
  */
 unsigned int db_on_server = 0;
 
+
+static char db_execution_plan[2048];
+
 #if defined(CS_MODE)
 static char *pack_const_string (char *buffer, const char *cstring);
 static int length_const_string (const char *cstring, int *strlen);
@@ -4209,7 +4212,8 @@ boot_backup (const char *backup_path, FILEIO_BACKUP_LEVEL backup_level,
 						    reply,
 						    OR_ALIGNED_BUF_SIZE
 						    (a_reply), NULL, 0, NULL,
-						    0, &rd1, &d1, &rd2, &d2);
+						    0, &rd1, &d1, &rd2, &d2,
+						    NULL, NULL);
       if (!req_error)
 	{
 	  ptr = or_unpack_int (reply, &cb_type);
@@ -7100,7 +7104,8 @@ qfile_get_list_file_page (QUERY_ID query_id, VOLID volid, PAGEID pageid,
  *
  * return:
  *
- *   query_str(in):
+ *   qstmt(in):
+ *   qplan(in):
  *   user_oid(in):
  *   xasl_buffer(in):
  *   size(in):
@@ -7109,19 +7114,20 @@ qfile_get_list_file_page (QUERY_ID query_id, VOLID volid, PAGEID pageid,
  * NOTE:
  */
 XASL_ID *
-qmgr_prepare_query (const char *query_str, const OID * user_oid,
-		    const char *xasl_buffer, int size, XASL_ID * xasl_id)
+qmgr_prepare_query (const char *qstmt, const char *qplan,
+		    const OID * user_oid, const char *xasl_buffer,
+		    int size, XASL_ID * xasl_id)
 {
 #if defined(CS_MODE)
   int success = NO_ERROR;
-  int req_error, request_size, strlen;
+  int req_error, request_size, qstmt_len, qplan_len;
   char *request, *reply, *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_XASL_ID_SIZE) a_reply;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size =
-    length_const_string (query_str, &strlen) + OR_OID_SIZE + OR_INT_SIZE;
+  request_size = length_const_string (qstmt, &qstmt_len)
+    + length_const_string (qplan, &qplan_len) + OR_OID_SIZE + OR_INT_SIZE;
   request = (char *) malloc (request_size);
   if (!request)
     {
@@ -7131,7 +7137,11 @@ qmgr_prepare_query (const char *query_str, const OID * user_oid,
     }
 
   /* pack query string as a request data */
-  ptr = pack_const_string_with_length (request, query_str, strlen);
+  ptr = pack_const_string_with_length (request, qstmt, qstmt_len);
+
+  /* pack query plan as a request data */
+  ptr = pack_const_string_with_length (ptr, qplan, qplan_len);
+
   /* pack OID of the current user */
   ptr = or_pack_oid (ptr, (OID *) user_oid);
   /* pack size of XASL stream */
@@ -7173,7 +7183,7 @@ qmgr_prepare_query (const char *query_str, const OID * user_oid,
   ENTER_SERVER ();
 
   /* call the server routine of query prepare */
-  p = xqmgr_prepare_query (NULL, query_str, user_oid, xasl_buffer, size,
+  p = xqmgr_prepare_query (NULL, qstmt, qplan, user_oid, xasl_buffer, size,
 			   xasl_id);
   if (p)
     {
@@ -7188,6 +7198,30 @@ qmgr_prepare_query (const char *query_str, const OID * user_oid,
 
   return xasl_id;
 #endif /* !CS_MODE */
+}
+
+static void
+db_set_execution_plan (char *plan)
+{
+  if (plan == NULL)
+    {
+      db_execution_plan[0] = 0;
+      return;
+    }
+
+  strncpy (db_execution_plan, plan, sizeof (db_execution_plan));
+  db_execution_plan[sizeof (db_execution_plan) - 1] = 0;
+}
+
+char *
+db_get_execution_plan ()
+{
+  if (db_execution_plan[0] == 0)
+    {
+      return NULL;
+    }
+
+  return db_execution_plan;
 }
 
 /*
@@ -7221,12 +7255,13 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
 {
 #if defined(CS_MODE)
   QFILE_LIST_ID *list_id = NULL;
-  int req_error, senddata_size, replydata_size1, replydata_size2;
+  int req_error, senddata_size, replydata_size1, replydata_size2,
+    replydata_size3;
   char *request, *reply, *senddata = NULL;
-  char *replydata1 = NULL, *replydata2 = NULL, *ptr;
-  OR_ALIGNED_BUF (OR_XASL_ID_SIZE + OR_INT_SIZE * 3 +
+  char *replydata1 = NULL, *replydata2 = NULL, *replydata3 = NULL, *ptr;
+  OR_ALIGNED_BUF (OR_XASL_ID_SIZE + OR_INT_SIZE * 4 +
 		  OR_CACHE_TIME_SIZE + OR_INT_SIZE) a_request;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 3 + OR_PTR_ALIGNED_SIZE
+  OR_ALIGNED_BUF (OR_INT_SIZE * 4 + OR_PTR_ALIGNED_SIZE
 		  + OR_CACHE_TIME_SIZE) a_reply;
   int i;
   const DB_VALUE *dbval;
@@ -7273,9 +7308,14 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
 						(a_request), reply,
 						OR_ALIGNED_BUF_SIZE (a_reply),
 						senddata, senddata_size, NULL,
-						0, &replydata1,
-						&replydata_size1, &replydata2,
-						&replydata_size2);
+						0,
+						&replydata1, &replydata_size1,
+						&replydata2, &replydata_size2,
+						&replydata3,
+						&replydata_size3);
+
+  db_set_execution_plan (replydata3);
+
   if (senddata)
     {
       free_and_init (senddata);
@@ -7289,8 +7329,10 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
          ptr = or_unpack_int(ptr, &listid_length); */
       /* third argument should be the same with replydata_size2
          ptr = or_unpack_int(ptr, &page_size); */
+      /* third argument should be the same with replydata_size3
+         ptr = or_unpack_int(ptr, &plan_size); */
       /* fourth argument should be query_id */
-      ptr = or_unpack_ptr (reply + OR_INT_SIZE * 3, query_idp);
+      ptr = or_unpack_ptr (reply + OR_INT_SIZE * 4, query_idp);
       OR_UNPACK_CACHE_TIME (ptr, srv_cache_time);
 
       if (replydata1 && replydata_size1)
@@ -7319,7 +7361,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
   /* call the server routine of query execute */
   list_id = xqmgr_execute_query (NULL, xasl_id, query_idp, dbval_cnt,
 				 dbvals, &flag, clt_cache_time,
-				 srv_cache_time, query_timeout);
+				 srv_cache_time, query_timeout, NULL, NULL);
 
   EXIT_SERVER ();
 
@@ -7410,7 +7452,8 @@ qmgr_prepare_and_execute_query (char *xasl_buffer, int xasl_size,
 						xasl_buffer, xasl_size,
 						senddata, senddata_size,
 						&replydata, &replydata_size1,
-						&page_ptr, &replydata_size2);
+						&page_ptr, &replydata_size2,
+						NULL, NULL);
   if (!req_error)
     {
       /* should be the same as replydata_size */
@@ -7447,7 +7490,7 @@ qmgr_prepare_and_execute_query (char *xasl_buffer, int xasl_size,
   regu_result = xqmgr_prepare_and_execute_query (NULL, xasl_buffer, xasl_size,
 						 query_idp, dbval_cnt,
 						 dbval_ptr, &flag,
-						 query_timeout);
+						 query_timeout, NULL);
 
   EXIT_SERVER ();
 
@@ -7517,7 +7560,7 @@ qmgr_end_query (QUERY_ID query_id)
  *
  * return:
  *
- *   query_str(in):
+ *   qstmt(in):
  *   user_oid(in):
  *   xasl_id(in):
  *   delete(in):
@@ -7525,7 +7568,7 @@ qmgr_end_query (QUERY_ID query_id)
  * NOTE:
  */
 int
-qmgr_drop_query_plan (const char *query_str, const OID * user_oid,
+qmgr_drop_query_plan (const char *qstmt, const OID * user_oid,
 		      const XASL_ID * xasl_id, bool drop)
 {
 #if defined(CS_MODE)
@@ -7536,14 +7579,14 @@ qmgr_drop_query_plan (const char *query_str, const OID * user_oid,
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = length_const_string (query_str, &strlen)
+  request_size = length_const_string (qstmt, &strlen)
     + OR_OID_SIZE + OR_XASL_ID_SIZE + OR_INT_SIZE;
 
   request = (char *) malloc (request_size);
   if (request)
     {
       /* pack query string as a request data */
-      ptr = pack_const_string_with_length (request, query_str, strlen);
+      ptr = pack_const_string_with_length (request, qstmt, strlen);
       /* pack OID of the current user */
       ptr = or_pack_oid (ptr, (OID *) user_oid);
       /* pack XASL file id (XASL_ID) */
@@ -7577,7 +7620,7 @@ qmgr_drop_query_plan (const char *query_str, const OID * user_oid,
   ENTER_SERVER ();
 
   /* call the server routine of query drop plan */
-  status = xqmgr_drop_query_plan (NULL, query_str, user_oid, xasl_id, drop);
+  status = xqmgr_drop_query_plan (NULL, qstmt, user_oid, xasl_id, drop);
 
   EXIT_SERVER ();
 

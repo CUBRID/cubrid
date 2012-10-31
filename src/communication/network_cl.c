@@ -389,7 +389,7 @@ compare_size_and_buffer (int *replysize, int size, char **replybuf, char *buf,
       *replysize = size;
     }
 
-  if (buf != *replybuf)
+  if (buf != *replybuf && size > 0)
     {
       err = ER_NET_UNUSED_BUFFER;
       er_set (ER_ERROR_SEVERITY, file, line, err, 0);
@@ -1748,11 +1748,13 @@ net_client_request_with_callback (int request, char *argbuf, int argsize,
 				  char **replydata_ptr1,
 				  int *replydatasize_ptr1,
 				  char **replydata_ptr2,
-				  int *replydatasize_ptr2)
+				  int *replydatasize_ptr2,
+				  char **replydata_ptr3,
+				  int *replydatasize_ptr3)
 {
   unsigned int rc;
   int size;
-  int reply_datasize1, reply_datasize2, error;
+  int reply_datasize1, reply_datasize2, reply_datasize3, error;
   char *reply = NULL, *replydata, *ptr;
   QUERY_SERVER_REQUEST server_request;
   int server_request_num;
@@ -1760,8 +1762,18 @@ net_client_request_with_callback (int request, char *argbuf, int argsize,
   error = 0;
   *replydata_ptr1 = NULL;
   *replydata_ptr2 = NULL;
+  if (replydata_ptr3 != NULL)
+    {
+      *replydata_ptr3 = NULL;
+    }
+
   *replydatasize_ptr1 = 0;
   *replydatasize_ptr2 = 0;
+
+  if (replydatasize_ptr3 != NULL)
+    {
+      *replydatasize_ptr3 = 0;
+    }
 
   if (net_Server_name[0] == '\0')
     {
@@ -1812,9 +1824,10 @@ net_client_request_with_callback (int request, char *argbuf, int argsize,
 	         of the following data block */
 	      ptr = or_unpack_int (ptr, &reply_datasize1);
 	      ptr = or_unpack_int (ptr, &reply_datasize2);
+	      ptr = or_unpack_int (ptr, &reply_datasize3);
 	      COMPARE_AND_FREE_BUFFER (replybuf, reply);
 
-	      if (reply_datasize1)
+	      if (reply_datasize1 + reply_datasize2 + reply_datasize3)
 		{
 		  if ((error == NO_ERROR)
 		      && (replydata =
@@ -1846,7 +1859,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize,
 		    }
 		}
 
-	      if (reply_datasize2)
+	      if (reply_datasize2 + reply_datasize3)
 		{
 		  if ((error == NO_ERROR)
 		      && (replydata = (char *) malloc (DB_PAGESIZE)) != NULL)
@@ -1869,6 +1882,47 @@ net_client_request_with_callback (int request, char *argbuf, int argsize,
 			}
 		      *replydata_ptr2 = reply;
 		      *replydatasize_ptr2 = size;
+		      reply = NULL;
+		    }
+		  else
+		    {
+		      SET_ALLOC_ERR_AND_READ_EXPECTED_PACKETS (&error, rc, 1);
+		    }
+		}
+
+	      if (reply_datasize3)
+		{
+		  if ((error == NO_ERROR)
+		      && (replydata =
+			  (char *) malloc (reply_datasize3 + 1)) != NULL)
+		    {
+		      css_queue_receive_data_buffer (rc, replydata,
+						     reply_datasize3);
+		      error =
+			css_receive_data_from_server (rc, &reply, &size);
+		      if (error != NO_ERROR)
+			{
+			  COMPARE_AND_FREE_BUFFER (replydata, reply);
+			  free_and_init (replydata);
+			  return set_server_error (error);
+			}
+		      else
+			{
+			  error =
+			    COMPARE_SIZE_AND_BUFFER (&reply_datasize3,
+						     size, &replydata, reply);
+			}
+
+		      if (replydata_ptr3 != NULL)
+			{
+			  *replydata_ptr3 = reply;
+			}
+
+		      if (replydatasize_ptr3 != NULL)
+			{
+			  *replydatasize_ptr3 = size;
+			}
+
 		      reply = NULL;
 		    }
 		  else

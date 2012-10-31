@@ -307,7 +307,7 @@ extern int btree_class_test_unique (char *buf, int buf_size);
 extern int qfile_get_list_file_page (QUERY_ID query_id, VOLID volid,
 				     PAGEID pageid, char *buffer,
 				     int *buffer_size);
-extern XASL_ID *qmgr_prepare_query (const char *query_str,
+extern XASL_ID *qmgr_prepare_query (const char *qstmt, const char *qplan,
 				    const OID * user_oid,
 				    const char *xasl_buffer, int size,
 				    XASL_ID * xasl_id);
@@ -326,7 +326,7 @@ extern QFILE_LIST_ID *qmgr_prepare_and_execute_query (char *xasl_buffer,
 						      QUERY_FLAG flag,
 						      int query_timeout);
 extern int qmgr_end_query (QUERY_ID query_id);
-extern int qmgr_drop_query_plan (const char *query_str, const OID * user_oid,
+extern int qmgr_drop_query_plan (const char *qstmt, const OID * user_oid,
 				 const XASL_ID * xasl_id, bool drop);
 extern int qmgr_drop_all_query_plans (void);
 extern void qmgr_dump_query_plans (FILE * outfp);
@@ -431,7 +431,9 @@ extern int net_client_request_with_callback (int request, char *argbuf,
 					     char **replydata_ptr1,
 					     int *replydatasize_ptr1,
 					     char **replydata_ptr2,
-					     int *replydatasize_ptr2);
+					     int *replydatasize_ptr2,
+					     char **replydata_ptr3,
+					     int *replydatasize_ptr3);
 extern int net_client_check_log_header (LOGWR_CONTEXT * ctx_ptr, char *argbuf,
 					int argsize, char *replybuf,
 					int replysize, char **logpg_area_buf,

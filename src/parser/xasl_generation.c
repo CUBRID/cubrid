@@ -65,6 +65,7 @@
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
+extern void qo_plan_lite_print (QO_PLAN * plan, FILE * f, int howfar);
 
 typedef enum
 { SORT_LIST_AFTER_ISCAN = 1,
@@ -15574,6 +15575,22 @@ pt_plan_set_query (PARSER_CONTEXT * parser, PT_NODE * node,
   /* no optimization for now */
   xasl = pt_to_union_proc (parser, node, proc_type);
 
+  if (xasl)
+    {
+      XASL_NODE *left, *right;
+
+      left = xasl->proc.union_.left;
+      right = xasl->proc.union_.right;
+
+      if (left && right && left->qplan && right->qplan)
+	{
+	  xasl->qplan =
+	    pt_alloc_packing_buf (strlen (left->qplan) +
+				  strlen (right->qplan) + 256);
+	  sprintf (xasl->qplan, "%s\n%s", left->qplan, right->qplan);
+	}
+    }
+
   return xasl;
 }
 
@@ -15753,6 +15770,54 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	    }
 	}
       parser->custom_print = save_custom;
+    }
+
+  if (xasl && plan)
+    {
+      char *pname =
+	tempnam (prm_get_string_value (PRM_ID_SQL_TRACE_TEMP_PATH), "plan");
+      FILE *fp = fopen (pname, "w+");
+      if (fp)
+	{
+	  int size;
+	  char *qplan;
+	  const char *line =
+	    "--------------------------------------------------------------------------------";
+	  const char *title = "Operation";
+
+	  qo_plan_lite_print (plan, fp, 0);
+	  fseek (fp, 0, SEEK_END);
+	  size = ftell (fp);
+	  qplan = pt_alloc_packing_buf (size + 1);
+	  fseek (fp, 0, SEEK_SET);
+	  fread (qplan, 1, size, fp);
+	  qplan[size] = 0;
+
+	  fclose (fp);
+	  unlink (pname);
+	  free (pname);
+
+
+	  if (select_node->alias_print)
+	    {
+	      size += strlen (select_node->alias_print);
+	    }
+
+	  xasl->qplan =
+	    pt_alloc_packing_buf (strlen (line) * 3 + strlen (title) + size +
+				  128);
+
+	  if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN))
+	    {
+	      sprintf (xasl->qplan, "%s\n%s\n%s\n%s%s\n%s\n", line, title,
+		       line, select_node->alias_print, qplan, line);
+	    }
+	  else
+	    {
+	      sprintf (xasl->qplan, "%s\n%s\n%s\n%s\n%s\n", line, title, line,
+		       select_node->alias_print, line);
+	    }
+	}
     }
 
   if (plan)
@@ -16807,6 +16872,12 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   if (xasl)
     {
       xasl->qstmt = statement->alias_print;
+
+      if (xasl->aptr_list)
+	{
+	  xasl->qplan = xasl->aptr_list->qplan;
+	  xasl->aptr_list->qplan = NULL;
+	}
     }
 
   return xasl;
@@ -18306,7 +18377,7 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
   /* During the above parser_walk_tree the request to get a driver may cause a
      deadlock. We give up the following steps and propagate the error
      messages */
-  if (parser->abort || !node)
+  if (parser->abort || node == NULL)
     {
       return NULL;
     }
@@ -18425,29 +18496,27 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
       XASL_SET_FLAG (xasl, XASL_TOP_MOST_XASL);
     }
 
-  {
-    if (prm_get_bool_value (PRM_ID_XASL_DEBUG_DUMP))
-      {
-	if (xasl)
-	  {
-	    if (xasl->qstmt == NULL)
-	      {
+  if (prm_get_bool_value (PRM_ID_XASL_DEBUG_DUMP))
+    {
+      if (xasl)
+	{
+	  if (xasl->qstmt == NULL)
+	    {
+	      if (node->alias_print == NULL)
+		{
+		  node->alias_print = parser_print_tree (parser, node);
+		}
 
-		if (node->alias_print == NULL)
-		  {
-		    node->alias_print = parser_print_tree (parser, node);
-		  }
+	      xasl->qstmt = node->alias_print;
+	    }
 
-		xasl->qstmt = node->alias_print;
-	      }
-	    qdump_print_xasl (xasl);
-	  }
-	else
-	  {
-	    printf ("<NULL XASL generation>\n");
-	  }
-      }
-  }
+	  qdump_print_xasl (xasl);
+	}
+      else
+	{
+	  printf ("<NULL XASL generation>\n");
+	}
+    }
 
   return xasl;
 }
@@ -19625,6 +19694,7 @@ parser_generate_do_stmt_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
   xasl->dbval_cnt = parser->dbval_cnt;
   xasl->qstmt = node->alias_print;
   XASL_SET_FLAG (xasl, XASL_TOP_MOST_XASL);
+  xasl->qplan = NULL;		/* TODO */
 
   if (prm_get_bool_value (PRM_ID_XASL_DEBUG_DUMP))
     {

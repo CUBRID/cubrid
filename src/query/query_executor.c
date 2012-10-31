@@ -333,7 +333,8 @@ union pooled_xasl_cache_entry
   char dummy[FIXED_SIZE_OF_POOLED_XASL_CACHE_ENTRY];
   /* 4K size including XASL cache entry itself
    *   and reserved spaces for
-   *   xasl_cache_ent.query_string,
+   *   xasl_cache_ent.qstmt,
+   *   xasl_cache_ent.qplan,
    *   xasl_cache_ent.class_oid_list, and
    *   xasl_cache_ent.repr_id_list */
 };
@@ -495,7 +496,7 @@ static XASL_CACHE_ENTRY_POOL filter_pred_cache_entry_pool = { NULL, 0, -1 };
  *  XASL_CACHE_ENTRY memory structure :=
  *      [|ent structure itself|TRANID array(tran_id_array)
  *       |OID array(class_oid_ilst)|int array(repr_id_list)
- *	 |char array(query_string)|]
+ *	 |char array(qstmt)|char array(qplan)|]
  *  ; malloc all in one memory block
 */
 
@@ -503,10 +504,10 @@ static XASL_CACHE_ENTRY_POOL filter_pred_cache_entry_pool = { NULL, 0, -1 };
 
 #define XASL_CACHE_ENTRY_ALLOC_SIZE(qlen, noid) \
         (sizeof(XASL_CACHE_ENTRY)       /* space for structure */ \
-         + sizeof(int) * MAX_NTRANS/* space for tran_index_array */ \
+         + sizeof(int) * MAX_NTRANS	/* space for tran_index_array */ \
          + sizeof(OID) * (noid)         /* space for class_oid_list */ \
          + sizeof(int) * (noid)    /* space for repr_id_list */ \
-         + (qlen))		/* space for query_string */
+         + (qlen))		/* space for qstmt, qplan */
 #define XASL_CACHE_ENTRY_TRAN_INDEX_ARRAY(ent) \
         (int *) ((char *) ent + sizeof(XASL_CACHE_ENTRY))
 #define XASL_CACHE_ENTRY_CLASS_OID_LIST(ent) \
@@ -516,11 +517,17 @@ static XASL_CACHE_ENTRY_POOL filter_pred_cache_entry_pool = { NULL, 0, -1 };
         (int *) ((char *) ent + sizeof(XASL_CACHE_ENTRY) + \
                       sizeof(int) * MAX_NTRANS + \
                       sizeof(OID) * ent->n_oid_list)
-#define XASL_CACHE_ENTRY_QUERY_STRING(ent) \
+#define XASL_CACHE_ENTRY_QSTMT(ent) \
         (char *) ((char *) ent + sizeof(XASL_CACHE_ENTRY) + \
                   sizeof(int) * MAX_NTRANS + \
                   sizeof(OID) * ent->n_oid_list + \
                   sizeof(int) * ent->n_oid_list)
+#define XASL_CACHE_ENTRY_QPLAN(ent) \
+        (char *) ((char *) ent + sizeof(XASL_CACHE_ENTRY) + \
+                  sizeof(int) * MAX_NTRANS + \
+                  sizeof(OID) * ent->n_oid_list + \
+                  sizeof(int) * ent->n_oid_list + \
+                  strlen (ent->qstmt) + 1)
 
 #else /* SA_MODE */
 
@@ -528,16 +535,21 @@ static XASL_CACHE_ENTRY_POOL filter_pred_cache_entry_pool = { NULL, 0, -1 };
         (sizeof(XASL_CACHE_ENTRY)       /* space for structure */ \
          + sizeof(OID) * (noid)         /* space for class_oid_list */ \
          + sizeof(int) * (noid)    /* space for repr_id_list */ \
-         + (qlen))		/* space for query_string */
+         + (qlen))		/* space for qstmt, qplan */
 #define XASL_CACHE_ENTRY_CLASS_OID_LIST(ent) \
         (OID *) ((char *) ent + sizeof(XASL_CACHE_ENTRY))
 #define XASL_CACHE_ENTRY_REPR_ID_LIST(ent) \
         (int *) ((char *) ent + sizeof(XASL_CACHE_ENTRY) + \
                       sizeof(OID) * ent->n_oid_list)
-#define XASL_CACHE_ENTRY_QUERY_STRING(ent) \
+#define XASL_CACHE_ENTRY_QSTMT(ent) \
         (char *) ((char *) ent + sizeof(XASL_CACHE_ENTRY) + \
                   sizeof(OID) * ent->n_oid_list + \
                   sizeof(int) * ent->n_oid_list)
+#define XASL_CACHE_ENTRY_QPLAN(ent) \
+        (char *) ((char *) ent + sizeof(XASL_CACHE_ENTRY) + \
+                  sizeof(OID) * ent->n_oid_list + \
+                  sizeof(int) * ent->n_oid_list + \
+                  strlen(ent->qstmt) + 1)
 
 #endif /* SERVER_MODE */
 
@@ -13213,6 +13225,7 @@ qexec_finalize_xasl_cache (THREAD_ENTRY * thread_p)
  *   data(in)   :
  *   args(in)   :
  */
+
 static int
 qexec_print_xasl_cache_ent (FILE * fp, const void *key, void *data,
 			    void *args)
@@ -13235,7 +13248,8 @@ qexec_print_xasl_cache_ent (FILE * fp, const void *key, void *data,
     }
 
   fprintf (fp, "XASL_CACHE_ENTRY (%p) {\n", data);
-  fprintf (fp, "  query_string = %s\n", ent->query_string);
+  fprintf (fp, "  qstmt=%s\n", ent->qstmt);
+  fprintf (fp, "  qplan=\n%s\n", ent->qplan);
   fprintf (fp,
 	   "  xasl_id = { first_vpid = { %d %d } temp_vfid = { %d %d } }\n",
 	   ent->xasl_id.first_vpid.pageid, ent->xasl_id.first_vpid.volid,
@@ -13666,7 +13680,7 @@ qexec_append_LRU_xasl_cache_clo (XASL_CACHE_CLONE * clo)
 	{			/* unknown error */
 	  er_log_debug (ARG_FILE_LINE,
 			"qexec_append_LRU_xasl_cache_clo: not found victim for qstr %s xasl_id { first_vpid { %d %d } temp_vfid { %d %d } }\n",
-			ent->query_string,
+			ent->qstmt,
 			ent->xasl_id.first_vpid.pageid,
 			ent->xasl_id.first_vpid.volid,
 			ent->xasl_id.temp_vfid.fileid,
@@ -14056,7 +14070,8 @@ qexec_select_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
  * the same query is found in the cache
  */
 XASL_CACHE_ENTRY *
-qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
+qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
+			     const char *qstmt, const char *qplan,
 			     XASL_ID * xasl_id,
 			     const OID * oid, int n_oids,
 			     const OID * class_oids,
@@ -14065,7 +14080,7 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
   XASL_CACHE_ENTRY *ent, **p, **q, **r;
   XASL_CACHE_ENT_CV_INFO *xasl_ent_cv;
   const OID *o;
-  int len, i, j, k;
+  int qstmt_len, qplan_len, i, j, k;
 #if defined(SERVER_MODE)
   int tran_index;
   int num_elements;
@@ -14082,7 +14097,7 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
     }
 
   /* check again whether the entry is in the cache */
-  ent = (XASL_CACHE_ENTRY *) mht_get (xasl_ent_cache.qstr_ht, qstr);
+  ent = (XASL_CACHE_ENTRY *) mht_get (xasl_ent_cache.qstr_ht, qstmt);
   if (ent != NULL && OID_EQ (&ent->creator_oid, oid))
     {
       if (ent->deletion_marker)
@@ -14237,10 +14252,17 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
     }				/* if */
 
   /* make new XASL_CACHE_ENTRY */
-  len = strlen (qstr) + 1;
+  qstmt_len = strlen (qstmt) + 1;
+
+  qplan_len = 0;
+  if (qplan)
+    {
+      qplan_len = strlen (qplan) + 1;
+    }
   /* get new entry from the XASL_CACHE_ENTRY_POOL */
   ent =
-    qexec_alloc_xasl_cache_ent (XASL_CACHE_ENTRY_ALLOC_SIZE (len, n_oids));
+    qexec_alloc_xasl_cache_ent (XASL_CACHE_ENTRY_ALLOC_SIZE
+				(qstmt_len + qplan_len, n_oids));
   if (ent == NULL)
     {
       goto end;
@@ -14268,8 +14290,16 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
 			(void *) repr_ids, n_oids * sizeof (int));
     }
 
-  ent->query_string =
-    (char *) memcpy (XASL_CACHE_ENTRY_QUERY_STRING (ent), (void *) qstr, len);
+  ent->qstmt =
+    (char *) memcpy (XASL_CACHE_ENTRY_QSTMT (ent), (void *) qstmt, qstmt_len);
+
+  if (qplan)
+    {
+      ent->qplan =
+	(char *) memcpy (XASL_CACHE_ENTRY_QPLAN (ent), (void *) qplan,
+			 qplan_len);
+    }
+
   XASL_ID_COPY (&ent->xasl_id, xasl_id);
   COPY_OID (&ent->creator_oid, oid);
   (void) gettimeofday (&ent->time_created, NULL);
@@ -14294,11 +14324,11 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
 #endif
 
   /* insert (or update) the entry into the query string hash table */
-  if (mht_put_new (xasl_ent_cache.qstr_ht, ent->query_string, ent) == NULL)
+  if (mht_put_new (xasl_ent_cache.qstr_ht, ent->qstmt, ent) == NULL)
     {
       er_log_debug (ARG_FILE_LINE,
-		    "qexec_update_xasl_cache_ent: mht_put failed for qstr %s\n",
-		    ent->query_string);
+		    "qexec_update_xasl_cache_ent: mht_put failed for qstmt %s\n",
+		    ent->qstmt);
       (void) qexec_delete_xasl_cache_ent (thread_p, ent, NULL);
       ent = NULL;
       goto end;
@@ -14771,14 +14801,14 @@ qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
 #endif /* SERVER_MODE */
     {
       /* remove the entry from query string hash table */
-      if (mht_rem2 (xasl_ent_cache.qstr_ht, ent->query_string, ent,
+      if (mht_rem2 (xasl_ent_cache.qstr_ht, ent->qstmt, ent,
 		    NULL, NULL) != NO_ERROR)
 	{
 	  if (!ent->deletion_marker)
 	    {
 	      er_log_debug (ARG_FILE_LINE,
 			    "qexec_delete_xasl_cache_ent: mht_rem2 failed for qstr %s\n",
-			    ent->query_string);
+			    ent->qstmt);
 	    }
 	}
       /* remove the entry from xasl file id hash table */
@@ -14830,12 +14860,12 @@ qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
       /* remove from the query string hash table to allow
          new XASL with the same query string to be registered */
       rc = NO_ERROR;
-      if (mht_rem2 (xasl_ent_cache.qstr_ht, ent->query_string, ent,
+      if (mht_rem2 (xasl_ent_cache.qstr_ht, ent->qstmt, ent,
 		    NULL, NULL) != NO_ERROR)
 	{
 	  er_log_debug (ARG_FILE_LINE,
 			"qexec_delete_xasl_cache_ent: mht_rem2 failed for qstr %s\n",
-			ent->query_string);
+			ent->qstmt);
 	  rc = ER_FAILED;
 	}
     }
@@ -20092,7 +20122,7 @@ qexec_append_LRU_filter_pred_cache_clo (THREAD_ENTRY * thread_p,
 			"qexec_append_LRU_filter_pred_cache_clo: "
 			"not found victim for qstr %s xasl_id "
 			"{ first_vpid { %d %d } temp_vfid { %d %d } }\n",
-			ent->query_string,
+			ent->qstmt,
 			ent->xasl_id.first_vpid.pageid,
 			ent->xasl_id.first_vpid.volid,
 			ent->xasl_id.temp_vfid.fileid,
@@ -20579,8 +20609,8 @@ qexec_update_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
 			(void *) repr_ids, n_oids * sizeof (int));
     }
 
-  ent->query_string =
-    (char *) memcpy (XASL_CACHE_ENTRY_QUERY_STRING (ent), (void *) qstr, len);
+  ent->qstmt =
+    (char *) memcpy (XASL_CACHE_ENTRY_QSTMT (ent), (void *) qstr, len);
   XASL_ID_COPY (&ent->xasl_id, xasl_id);
   COPY_OID (&ent->creator_oid, oid);
   (void) gettimeofday (&ent->time_created, NULL);
@@ -20603,12 +20633,11 @@ qexec_update_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
 #endif
 
   /* insert (or update) the entry into the query string hash table */
-  if (mht_put_new (filter_pred_ent_cache.qstr_ht, ent->query_string,
-		   ent) == NULL)
+  if (mht_put_new (filter_pred_ent_cache.qstr_ht, ent->qstmt, ent) == NULL)
     {
       er_log_debug (ARG_FILE_LINE,
 		    "qexec_update_filter_pred_cache_ent: mht_put failed for "
-		    "qstr %s\n", ent->query_string);
+		    "qstr %s\n", ent->qstmt);
       (void) qexec_delete_filter_pred_cache_ent (thread_p, ent, NULL);
       ent = NULL;
       goto end;
@@ -20936,14 +20965,14 @@ qexec_delete_filter_pred_cache_ent (THREAD_ENTRY * thread_p, void *data,
   /* mark it to be deleted */
   ent->deletion_marker = true;
   /* remove the entry from query string hash table */
-  if (mht_rem2 (filter_pred_ent_cache.qstr_ht, ent->query_string, ent,
+  if (mht_rem2 (filter_pred_ent_cache.qstr_ht, ent->qstmt, ent,
 		NULL, NULL) != NO_ERROR)
     {
       if (!ent->deletion_marker)
 	{
 	  er_log_debug (ARG_FILE_LINE,
 			"qexec_delete_filter_pred_cache_ent: mht_rem2 "
-			"failed for qstr %s\n", ent->query_string);
+			"failed for qstr %s\n", ent->qstmt);
 	}
     }
   /* remove the entry from xasl file id hash table */

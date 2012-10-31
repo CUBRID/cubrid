@@ -1169,7 +1169,8 @@ $ LOADDB
 1101 Şu anki işlem yapışıkları elde ederek OID (%4$d|%5$d|%6$d) nın PSEUDO-OID (%1$d|%2$d|%3$d) üzerindeki bir tuş kilidine verelmez.
 1102 Unknown system parameter or bad value.
 1103 Cannot change system parameter.
-1104 Son Hata
+1104 Slow query (%d msec)\n%s
+1105 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %d):

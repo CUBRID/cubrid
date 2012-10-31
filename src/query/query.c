@@ -45,26 +45,20 @@
  * query_prepare () - Prepares a query for later (and repetitive)
  *                         execution
  *   return: Error code
- *   qstr(in)   : query string; used for hash key of the XASL cache
+ *   qstmt(in)   : query string; used for hash key of the XASL cache
+ *   qplan(in)   :
  *   stream(in) : XASL stream; set to NULL if you want to look up the XASL cache
  *   size(in)   : size of the XASL stream in bytes
  *   xasl_idp(out): XASL file id (XASL_ID)
- *
- * Input:
- *   qstr - query string; used for hash key of the XASL cache
- *   stream - XASL stream; set to NULL if you want to look up the XASL cache
- *   size - size of the XASL stream in bytes
- * Ouput:
- *   xasl_idp - XASL file id (XASL_ID)
- * Return:
- *   Error code
  */
 int
-query_prepare (const char *qstr, const char *stream, int size,
-	       XASL_ID ** xasl_idp)
+query_prepare (const char *qstmt, const char *qplan,
+	       const char *stream, int size, XASL_ID ** xasl_idp)
 {
   int level;
   XASL_ID *p;
+
+  assert (qstmt);
 
   *xasl_idp = NULL;
   /* if QO_PARAM_LEVEL indicate no execution, just return */
@@ -85,7 +79,7 @@ query_prepare (const char *qstr, const char *stream, int size,
     }
 
   /* send XASL stream to the server and get XASL_ID */
-  if (qmgr_prepare_query (qstr, ws_identifier (db_get_user ()),
+  if (qmgr_prepare_query (qstmt, qplan, ws_identifier (db_get_user ()),
 			  stream, size, p) == NULL)
     {
       free_and_init (p);

@@ -1169,7 +1169,8 @@ $ LOADDB
 1101 Le transaction en cours ne pourrait acquérir un verrou à clé sur (%1$d|%2$d|%3$d) ci-joint à l'OID (%4$d|%5$d|%6$d)
 1102 Paramètre du système inconnu ou mauvaise valeur.
 1103 Impossible de changer le paramètre du système.
-1104 Dernière erreur
+1104 Slow query (%d msec)\n%s
+1105 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %d):

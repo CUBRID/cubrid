@@ -1169,7 +1169,8 @@ $ LOADDB
 1101 La transazione corrente non può acquisire un blocco a chiave PSEUDO-OID (%1$d|%2$d|%3$d) allegata alla OID (%4$d|%5$d|%6$d)
 1102 Parametro di sistema sconosciuto o valore non valido.
 1103 Impossibile modificare i parametri del sistema.
-1104 Ultimo errore
+1104 Slow query (%d msec)\n%s
+1105 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %d):

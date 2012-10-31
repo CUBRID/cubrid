@@ -7883,7 +7883,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
   int has_trigger, has_unique, au_save, has_virt = 0;
   bool server_update;
   XASL_ID *xasl_id;
-  const char *qstr = NULL;
+  const char *qstmt = NULL;
 
   if (parser == NULL || statement == NULL)
     {
@@ -8006,7 +8006,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  parser->print_type_ambiguity = 0;
 	  PT_NODE_PRINT_TO_ALIAS (parser, statement,
 				  (PT_CONVERT_RANGE | PT_PRINT_QUOTES));
-	  qstr = statement->alias_print;
+	  qstmt = statement->alias_print;
 	  parser->dont_prt_long_string = 0;
 	  if (parser->long_string_skipped || parser->print_type_ambiguity)
 	    {
@@ -8030,7 +8030,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	     and get XASL file id (XASL_ID) returned if found */
 	  if (statement->recompile == 0)
 	    {
-	      err = query_prepare (qstr, NULL, 0, &xasl_id);
+	      err = query_prepare (qstmt, NULL, NULL, 0, &xasl_id);
 	      if (err != NO_ERROR)
 		{
 		  err = er_errid ();
@@ -8038,7 +8038,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	  else
 	    {
-	      err = qmgr_drop_query_plan (qstr,
+	      err = qmgr_drop_query_plan (qstmt,
 					  ws_identifier (db_get_user ()),
 					  NULL, true);
 	    }
@@ -8095,7 +8095,9 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	         and get XASL file id returned */
 	      if (stream && (err >= NO_ERROR))
 		{
-		  err = query_prepare (qstr, stream, size, &xasl_id);
+		  err =
+		    query_prepare (qstmt, xasl->qplan, stream, size,
+				   &xasl_id);
 		  if (err != NO_ERROR)
 		    {
 		      err = er_errid ();
@@ -9245,7 +9247,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* Server-side deletion case: (by requesting server to execute XASL)
 	     build DELETE_PROC XASL */
 
-	  const char *qstr;
+	  const char *qstmt;
 	  XASL_NODE *xasl;
 	  char *stream;
 	  int size;
@@ -9256,7 +9258,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  parser->print_type_ambiguity = 0;
 	  PT_NODE_PRINT_TO_ALIAS (parser, statement,
 				  (PT_CONVERT_RANGE | PT_PRINT_QUOTES));
-	  qstr = statement->alias_print;
+	  qstmt = statement->alias_print;
 	  parser->dont_prt_long_string = 0;
 	  if (parser->long_string_skipped || parser->print_type_ambiguity)
 	    {
@@ -9268,7 +9270,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	     and get XASL file id (XASL_ID) returned if found */
 	  if (statement->recompile == 0)
 	    {
-	      err = query_prepare (qstr, NULL, 0, &xasl_id);
+	      err = query_prepare (qstmt, NULL, NULL, 0, &xasl_id);
 	      if (err != NO_ERROR)
 		{
 		  err = er_errid ();
@@ -9276,7 +9278,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	  else
 	    {
-	      err = qmgr_drop_query_plan (qstr,
+	      err = qmgr_drop_query_plan (qstmt,
 					  ws_identifier (db_get_user ()),
 					  NULL, true);
 	    }
@@ -9323,7 +9325,9 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	         and get XASL file id returned */
 	      if (stream && (err >= NO_ERROR))
 		{
-		  err = query_prepare (qstr, stream, size, &xasl_id);
+		  err =
+		    query_prepare (qstmt, xasl->qplan, stream, size,
+				   &xasl_id);
 		  if (err != NO_ERROR)
 		    {
 		      err = er_errid ();
@@ -9835,7 +9839,7 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
   int i = 0;
   int j = 0;
   XASL_ID *xasl_id = NULL;
-  const char *qstr;
+  const char *qstmt;
   PT_NODE *val, *head = NULL, *prev = NULL;
 
   if (!parser || !statement || !values_list
@@ -9882,7 +9886,7 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
   parser->print_type_ambiguity = 0;
   PT_NODE_PRINT_TO_ALIAS (parser, statement,
 			  (PT_CONVERT_RANGE | PT_PRINT_QUOTES));
-  qstr = statement->alias_print;
+  qstmt = statement->alias_print;
   parser->dont_prt_long_string = 0;
   if (parser->long_string_skipped || parser->print_type_ambiguity)
     {
@@ -9894,7 +9898,7 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
      and get XASL file id (XASL_ID) returned if found */
   if (statement->recompile == 0)
     {
-      error = query_prepare (qstr, NULL, 0, &xasl_id);
+      error = query_prepare (qstmt, NULL, NULL, 0, &xasl_id);
       if (error != NO_ERROR)
 	{
 	  error = er_errid ();
@@ -9902,7 +9906,7 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
     }
   else
     {
-      error = qmgr_drop_query_plan (qstr,
+      error = qmgr_drop_query_plan (qstmt,
 				    ws_identifier (db_get_user ()), NULL,
 				    true);
     }
@@ -9956,7 +9960,7 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
 
       if (stream && (error >= NO_ERROR))
 	{
-	  error = query_prepare (qstr, stream, size, &xasl_id);
+	  error = query_prepare (qstmt, xasl->qplan, stream, size, &xasl_id);
 	  if (error != NO_ERROR)
 	    {
 	      error = er_errid ();
@@ -13248,7 +13252,7 @@ int
 do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int err = NO_ERROR;
-  const char *qstr;
+  const char *qstmt;
   XASL_ID *xasl_id;
   XASL_NODE *xasl;
   char *stream;
@@ -13289,7 +13293,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE_PRINT_TO_ALIAS (parser, statement,
 			  (PT_CONVERT_RANGE | PT_PRINT_QUOTES
 			   | PT_PRINT_DIFFERENT_SESSION_PRMS));
-  qstr = statement->alias_print;
+  qstmt = statement->alias_print;
   parser->dont_prt_long_string = 0;
   if (parser->long_string_skipped || parser->print_type_ambiguity)
     {
@@ -13302,7 +13306,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   xasl_id = NULL;
   if (statement->recompile == 0)
     {
-      err = query_prepare (qstr, NULL, 0, &xasl_id);
+      err = query_prepare (qstmt, NULL, NULL, 0, &xasl_id);
       if (err != NO_ERROR)
 	{
 	  err = er_errid ();
@@ -13310,7 +13314,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   else
     {
-      err = qmgr_drop_query_plan (qstr, ws_identifier (db_get_user ()),
+      err = qmgr_drop_query_plan (qstmt, ws_identifier (db_get_user ()),
 				  NULL, true);
     }
   if (!xasl_id && err == NO_ERROR)
@@ -13349,15 +13353,17 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
+#if 0 /* TMP TODO: xasl->qplan refer packing buf. so move this codes below */
       /* mark the end of another level of xasl packing */
       pt_exit_packing_buf ();
+#endif
 
       /* request the server to prepare the query;
          give XASL stream generated from the parse tree
          and get XASL file id returned */
       if (stream && (err == NO_ERROR))
 	{
-	  err = query_prepare (qstr, stream, size, &xasl_id);
+	  err = query_prepare (qstmt, xasl->qplan, stream, size, &xasl_id);
 	  if (err != NO_ERROR)
 	    {
 	      err = er_errid ();
@@ -13372,6 +13378,11 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  free_and_init (stream);
 	}
       statement->use_plan_cache = 0;
+
+#if 1 
+      /* mark the end of another level of xasl packing */
+      pt_exit_packing_buf ();
+#endif
     }
   else
     {
@@ -15133,7 +15144,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* lookup in XASL cache */
       if (statement->recompile == 0)
 	{
-	  err = query_prepare (qstr, NULL, 0, &xasl_id);
+	  err = query_prepare (qstr, NULL, NULL, 0, &xasl_id);
 	  if (err != NO_ERROR)
 	    {
 	      err = er_errid ();
@@ -15212,7 +15223,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* cache the XASL */
 	  if (stream && (err >= NO_ERROR))
 	    {
-	      err = query_prepare (qstr, stream, size, &xasl_id);
+	      err = query_prepare (qstr, xasl->qplan, stream, size, &xasl_id);
 	      if (err != NO_ERROR)
 		{
 		  err = er_errid ();

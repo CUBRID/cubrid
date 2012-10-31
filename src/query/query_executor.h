@@ -626,6 +626,7 @@ struct xasl_node
 				 * in the XASL */
   int *repr_id_list;		/* representation ids of the classes in the class OID list */
   const char *qstmt;
+  const char *qplan;
   int dbval_cnt;		/* number of host variables in this XASL */
   bool iscan_oid_order;
 };
@@ -659,7 +660,7 @@ struct func_pred
 					 * clause... sometimes cycles may be
 					 * ignored
 					 */
-#define	XASL_OBJFETCH_IGNORE_CLASSOID 1024  /* fetch proc should ignore class oid */
+#define	XASL_OBJFETCH_IGNORE_CLASSOID 1024	/* fetch proc should ignore class oid */
 
 #define XASL_IS_FLAGED(x, f)        ((x)->flag & (int) (f))
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
@@ -709,7 +710,8 @@ struct xasl_state
 typedef struct xasl_cache_ent XASL_CACHE_ENTRY;
 struct xasl_cache_ent
 {
-  const char *query_string;	/* original query for the XASL; key for hash */
+  const char *qstmt;		/* original query for the XASL; key for hash */
+  const char *qplan;
   XASL_ID xasl_id;		/* XASL file identifier */
 #if defined(SERVER_MODE)
   int *tran_index_array;	/* array of TID(tran index)s that are currently
@@ -791,7 +793,8 @@ extern XASL_CACHE_ENTRY *qexec_lookup_filter_pred_cache_ent (THREAD_ENTRY *
 							     const OID *
 							     user_oid);
 extern XASL_CACHE_ENTRY *qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
-						      const char *qstr,
+						      const char *qsmt,
+						      const char *qplan,
 						      XASL_ID * xasl_id,
 						      const OID * oid,
 						      int n_oids,

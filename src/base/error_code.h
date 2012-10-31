@@ -1381,7 +1381,9 @@
 #define ER_PRM_BAD_VALUE_NO_DATA                    -1102
 #define ER_PRM_CANNOT_CHANGE_NO_DATA                -1103
 
-#define ER_LAST_ERROR                               -1104
+#define ER_SLOW_QUERY				    -1104
+
+#define ER_LAST_ERROR                               -1105
 
 /*
  * CAUTION!

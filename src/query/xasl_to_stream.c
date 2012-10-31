@@ -2951,8 +2951,23 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
     }
   else
     {
-      offset = xts_save_string ("");	/* because restore_xxx() cannot handle
-					   NULL pointer */
+/* because restore_xxx() cannot handle NULL pointer */
+      offset = xts_save_string ("*** EMPTY QUERY ***");
+    }
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  if (xasl->qplan)
+    {
+      offset = xts_save_string (xasl->qplan);
+    }
+  else
+    {
+/* because restore_xxx() cannot handle NULL pointer */
+      offset = xts_save_string ("*** EMPTY PLAN ***");
     }
   if (offset == ER_FAILED)
     {
@@ -5248,6 +5263,8 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
   size += OR_INT_SIZE;		/* iscan_oid_order */
 
   size += PTR_SIZE;		/* qstmt */
+
+  size += PTR_SIZE;		/* qplan */
 
   size += PTR_SIZE;		/* next */
   return size;

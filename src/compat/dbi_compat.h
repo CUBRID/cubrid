@@ -1373,7 +1373,6 @@
 #define ER_HF_MAX_BESTSPACE_ENTRIES                 -1095
 #define ER_ALTER_PARTITIONS_FK_NOT_ALLOWED	    -1096
 #define ER_CANNOT_HAVE_PK_DEFAULT_NULL		    -1097
-
 #define ER_LANG_CODESET_NOT_AVAILABLE		    -1098
 
 #define ER_BLOCK_DDL_STMT                           -1099
@@ -1384,7 +1383,9 @@
 #define ER_PRM_BAD_VALUE_NO_DATA                    -1102
 #define ER_PRM_CANNOT_CHANGE_NO_DATA                -1103
 
-#define ER_LAST_ERROR                               -1104
+#define ER_SLOW_QUERY				    -1104
+
+#define ER_LAST_ERROR                               -1105
 
 
 #define DB_TRUE 1

@@ -1169,7 +1169,8 @@ $ LOADDB
 1101 The current transaction could not acquire a key lock on PSEUDO-OID (%1$d|%2$d|%3$d) attached to OID (%4$d|%5$d|%6$d)
 1102 Unknown system parameter or bad value.
 1103 Cannot change system parameter.
-1104 Last Error
+1104 Slow query (%d msec)\n%s
+1105 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %d):

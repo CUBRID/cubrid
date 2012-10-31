@@ -1169,7 +1169,8 @@ $ LOADDB
 1101 当前事务不能取得 PSEUDO-OID (%1$d|%2$d|%3$d) 上的锁， 该 PSEUDO-OID 附属于 OID (%4$d|%5$d|%6$d)
 1102 未知系统参数或错误的值.
 1103 不能改变系统参数.
-1104 Last Error
+1104 Slow query (%d msec)\n%s
+1105 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %d):

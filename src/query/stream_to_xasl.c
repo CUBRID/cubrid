@@ -2388,6 +2388,21 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
+      xasl->qplan = NULL;
+    }
+  else
+    {
+      xasl->qplan =
+	stx_restore_string (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (xasl->qplan == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
       xasl->next = NULL;
     }
   else

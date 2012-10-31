@@ -196,7 +196,7 @@ extern void regu_set_error_with_one_args (int err_type, const char *infor);
 #endif
 extern void regu_set_global_error (void);
 
-extern int query_prepare (const char *qstr,
+extern int query_prepare (const char *qstmt, const char *qplan,
 			  const char *stream, int size, XASL_ID ** xasl_idp);
 extern int query_execute (const XASL_ID * xasl_id, QUERY_ID * query_idp,
 			  int var_cnt, const DB_VALUE * varptr,

@@ -109,7 +109,7 @@ static void qo_join_info (QO_PLAN *, FILE *, int);
 static void qo_follow_info (QO_PLAN *, FILE *, int);
 static void qo_worst_info (QO_PLAN *, FILE *, int);
 
-static void qo_plan_lite_print (QO_PLAN *, FILE *, int);
+void qo_plan_lite_print (QO_PLAN *, FILE *, int);
 static void qo_plan_del_ref_func (QO_PLAN * plan, void *ignore);
 
 static void qo_generic_walk (QO_PLAN *, void (*)(QO_PLAN *, void *), void *,
@@ -4108,7 +4108,7 @@ qo_plan_fprint (QO_PLAN * plan, FILE * f, int howfar, const char *title)
  *   f(in):
  *   howfar(in):
  */
-static void
+void
 qo_plan_lite_print (QO_PLAN * plan, FILE * f, int howfar)
 {
   (*((plan->vtbl)->info_fn)) (plan, f, howfar);

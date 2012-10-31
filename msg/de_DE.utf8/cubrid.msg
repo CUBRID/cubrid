@@ -1169,7 +1169,8 @@ $ LOADDB
 1101 Die aktuelle Transaktion kann keine Schlüssel-Lock auf PSEUDO-OID (%1$d|%2$d|%3$d), an OID (%4$d|%5$d|%6$d) angehängt, bekommen.
 1102 Unbekannter Systemparameter oder falscher Wert.
 1103 Systemparameter kann nicht geändert werden.
-1104 Letzter Fehler
+1104 Slow query (%d msec)\n%s
+1105 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %d):

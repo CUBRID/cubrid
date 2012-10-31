@@ -86,6 +86,9 @@ extern bool tran_is_in_libcas (void);
 #endif /* !LIBCAS_FOR_JSP */
 #endif
 
+/* functions implemented in network_interface_cl.c */
+extern char *db_get_execution_plan ();
+
 static const char *tran_type_str[] = { "COMMIT", "ROLLBACK" };
 
 static const char *schema_type_str[] = {
@@ -431,7 +434,18 @@ FN_RETURN
 fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 	    T_REQ_INFO * req_info)
 {
-  return (fn_execute_internal (sock_fd, argc, argv, net_buf, req_info, NULL));
+  FN_RETURN ret =
+    fn_execute_internal (sock_fd, argc, argv, net_buf, req_info, NULL);
+
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+  char *plan = db_get_execution_plan ();
+  if (plan != NULL)
+    {
+      cas_log_write (0, true, "slow query plan\n%s", plan);
+    }
+#endif
+
+  return ret;
 }
 
 static FN_RETURN

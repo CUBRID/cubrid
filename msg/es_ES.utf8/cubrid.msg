@@ -1169,7 +1169,8 @@ $ LOADDB
 1101 La transaccion actual no puede adquirrir un bloqueo de clave en PSEUDO-OID (%1$d|%2$d|%3$d) adjunto al OID (%4$d|%5$d|%6$d)
 1102 Parametro de sistema desconocido o valor malo.
 1103 No se puede cambiar el parametro de sistema.
-1104 Ultimo error
+1104 Slow query (%d msec)\n%s
+1105 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %d):

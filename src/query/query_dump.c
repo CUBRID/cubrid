@@ -77,7 +77,7 @@ static bool qdump_print_hfid (HFID id);
 static bool qdump_print_vfid (VFID id);
 static bool qdump_print_list (LIST_SPEC_TYPE * ptr);
 static bool qdump_print_outlist (const char *title, OUTPTR_LIST * outlist);
-static bool qdump_print_listi_d (QFILE_LIST_ID * idptr);
+static bool qdump_print_list_id (QFILE_LIST_ID * idptr);
 static bool qdump_print_type_list (QFILE_TUPLE_VALUE_TYPE_LIST * typeptr);
 static bool qdump_print_domain_list (int cnt, TP_DOMAIN ** ptr);
 static bool qdump_print_sort_list (SORT_LIST * sorting_list);
@@ -785,12 +785,12 @@ qdump_print_outlist (const char *title_p, OUTPTR_LIST * outlist_p)
 }
 
 /*
- * qdump_print_listi_d () -
+ * qdump_print_list_id () -
  *   return:
  *   idptr(in):
  */
 static bool
-qdump_print_listi_d (QFILE_LIST_ID * list_id_p)
+qdump_print_list_id (QFILE_LIST_ID * list_id_p)
 {
   if (list_id_p == NULL)
     {
@@ -1233,7 +1233,7 @@ qdump_print_value (REGU_VARIABLE * value_p)
 	  fprintf (foutput, "[NOT SORTED]");
 	}
 
-      if (!qdump_print_listi_d (value_p->value.srlist_id->list_id))
+      if (!qdump_print_list_id (value_p->value.srlist_id->list_id))
 	{
 	  return false;
 	}
@@ -1855,7 +1855,7 @@ qdump_print_aggregate_expression (int type, AGGREGATE_TYPE * aggptr)
       return false;
     }
 
-  if (!qdump_print_listi_d (aggptr->list_id))
+  if (!qdump_print_list_id (aggptr->list_id))
     {
       return false;
     }
@@ -2325,14 +2325,14 @@ qdump_print_connect_by_proc_node (XASL_NODE * xasl_p)
   if (node_p->input_list_id)
     {
       fprintf (foutput, "-->input list id:");
-      qdump_print_listi_d (node_p->input_list_id);
+      qdump_print_list_id (node_p->input_list_id);
       fprintf (foutput, "\n");
     }
 
   if (node_p->start_with_list_id)
     {
       fprintf (foutput, "-->start with list id:");
-      qdump_print_listi_d (node_p->start_with_list_id);
+      qdump_print_list_id (node_p->start_with_list_id);
       fprintf (foutput, "\n");
     }
 
@@ -2471,7 +2471,7 @@ qdump_print_xasl (XASL_NODE * xasl_p)
   if (xasl_p->list_id)
     {
       fprintf (foutput, "-->list id:");
-      qdump_print_listi_d (xasl_p->list_id);
+      qdump_print_list_id (xasl_p->list_id);
       fprintf (foutput, "\n");
     }
 
@@ -2814,6 +2814,7 @@ qdump_print_xasl (XASL_NODE * xasl_p)
 
   fprintf (foutput, "\ndbval_cnt:%d", xasl_p->dbval_cnt);
   fprintf (foutput, "\nqstmt:%s\n", xasl_p->qstmt ? xasl_p->qstmt : "(NULL)");
+  fprintf (foutput, "\nqplan:%s\n", xasl_p->qplan ? xasl_p->qplan : "(NULL)");
   fprintf (foutput, "<end of xasl structure %p>\n", xasl_p);
   fflush (foutput);
 

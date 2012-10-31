@@ -462,6 +462,12 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_CHECK_PEER_ALIVE "check_peer_alive"
 
+#define PRM_NAME_SQL_TRACE_EXECUTION_PLAN "sql_trace_execution_plan"
+
+#define PRM_NAME_SQL_TRACE_SLOW_MSECS "sql_trace_slow_msecs"
+
+#define PRM_NAME_SQL_TRACE_TEMP_PATH "sql_trace_temp_path"
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -1239,6 +1245,17 @@ static bool prm_intl_check_input_string_default = false;
 
 int PRM_CHECK_PEER_ALIVE = CSS_CHECK_PEER_ALIVE_BOTH;
 static int prm_check_peer_alive_default = CSS_CHECK_PEER_ALIVE_BOTH;
+
+int PRM_SQL_TRACE_SLOW_MSECS = -1;
+static int prm_sql_trace_slow_msecs_default = -1;
+static int prm_sql_trace_slow_msecs_lower = -1;
+static int prm_sql_trace_slow_msecs_upper = 1000 * 60 * 60 * 24;	/* 24 hours */
+
+bool PRM_SQL_TRACE_EXECUTION_PLAN = false;
+static bool prm_sql_trace_execution_plan_default = false;
+
+char *PRM_SQL_TRACE_TEMP_PATH = "";
+static char *prm_sql_trace_temp_path_default = NULL;
 
 typedef struct sysprm_param SYSPRM_PARAM;
 struct sysprm_param
@@ -2602,6 +2619,31 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_check_peer_alive_default,
    (void *) &PRM_CHECK_PEER_ALIVE,
    (void *) NULL, (void *) NULL,
+   (char *) NULL},
+  {PRM_NAME_SQL_TRACE_SLOW_MSECS,
+   (PRM_DEFAULT | PRM_LOWER_LIMIT | PRM_USER_CHANGE |
+    PRM_FOR_SERVER | PRM_UPPER_LIMIT),
+   PRM_INTEGER,
+   (void *) &prm_sql_trace_slow_msecs_default,
+   (void *) &PRM_SQL_TRACE_SLOW_MSECS,
+   (void *) &prm_sql_trace_slow_msecs_upper,
+   (void *) &prm_sql_trace_slow_msecs_lower,
+   (char *) NULL},
+  {PRM_NAME_SQL_TRACE_EXECUTION_PLAN,
+   (PRM_DEFAULT | PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   (void *) &prm_sql_trace_execution_plan_default,
+   (void *) &PRM_SQL_TRACE_EXECUTION_PLAN,
+   (void *) NULL,
+   (void *) NULL,
+   (char *) NULL},
+  {PRM_NAME_SQL_TRACE_TEMP_PATH,
+   (PRM_DEFAULT | PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_STRING,
+   (void *) &prm_sql_trace_temp_path_default,
+   (void *) &PRM_SQL_TRACE_TEMP_PATH,
+   (void *) NULL,
+   (void *) NULL,
    (char *) NULL},
 };
 

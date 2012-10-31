@@ -570,7 +570,6 @@ begin:
 	    }
 	  else
 	    {
-	      assert_release (false);
 	      /*
 	       * This is the case where data length is zero, but if the
 	       * user registered a buffer, we should return the buffer
