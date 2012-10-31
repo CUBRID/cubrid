@@ -1279,7 +1279,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
     {
       *clt_cache_reusable = TRUE;
     }
-  else
+  else if (result != NULL)
     {
       /* success; peek the values in tuples */
       (void) db_query_set_copy_tplvalue (result, 0 /* peek */ );
@@ -1826,14 +1826,20 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
       goto execute_error;
     }
 
-  /* success; copy the values in tuples */
-  (void) db_query_set_copy_tplvalue (result, 1 /* copy */ );
+  if (result != NULL)
+    {
+      /* success; copy the values in tuples */
+      (void) db_query_set_copy_tplvalue (result, 1 /* copy */ );
+    }
 
   i = 0;
   if (call_info->is_first_out)
     {
-      db_query_get_tuple_value (result, 0,
-				((DB_VALUE **) call_info->dbval_args)[0]);
+      if (result != NULL)
+	{
+	  db_query_get_tuple_value (result, 0,
+				    ((DB_VALUE **) call_info->dbval_args)[0]);
+	}
       i++;
     }
 
@@ -2075,7 +2081,10 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
 	}
 
       /* success; peek the values in tuples */
-      (void) db_query_set_copy_tplvalue (result, 0 /* peek */ );
+      if (result != NULL)
+	{
+	  (void) db_query_set_copy_tplvalue (result, 0 /* peek */ );
+	}
 
       net_buf_cp_byte (net_buf, stmt_type);
       net_buf_cp_int (net_buf, res_count, NULL);
@@ -2255,7 +2264,10 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
 			&srv_handle->use_query_cache);
 
       /* success; peek the values in tuples */
-      (void) db_query_set_copy_tplvalue (result, 0 /* peek */ );
+      if (result != NULL)
+	{
+	  (void) db_query_set_copy_tplvalue (result, 0 /* peek */ );
+	}
 
       if (stmt_type < 0)
 	{
