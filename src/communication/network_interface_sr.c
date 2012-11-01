@@ -883,7 +883,8 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 	  ptr = or_pack_int (ptr, packed_desc_size);
 	  ptr = or_pack_int (ptr, 0);
 
-	  if (success != NO_ERROR)
+	  if (success != NO_ERROR
+	      && success != ER_LC_PARTIALLY_FAILED_TO_FLUSH)
 	    {
 	      return_error_to_client (thread_p, rid);
 	    }
