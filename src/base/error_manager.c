@@ -1511,7 +1511,8 @@ er_set_internal (int severity, const char *file_name, const int line_no,
     (void) er_start ();
 #endif /* SERVER_MODE */
 
-  if ((severity == ER_NOTIFICATION_SEVERITY) && (er_Msg->err_id != NO_ERROR))
+  if ((severity == ER_NOTIFICATION_SEVERITY && er_Msg->err_id != NO_ERROR)
+      || (er_Msg->err_id == ER_INTERRUPTED))
     {
       er_stack_push ();
 #if defined (SERVER_MODE)
@@ -1831,11 +1832,11 @@ er_log (void)
       er_Msglog = er_file_open (er_Msglog_file_name);
 
       if (er_Msglog == NULL)
-        {
-          er_Msglog = stderr;
-          er_log_debug (ARG_FILE_LINE, er_cached_msg[ER_LOG_MSGLOG_WARNING],
-                        er_Msglog_file_name);
-        }
+	{
+	  er_Msglog = stderr;
+	  er_log_debug (ARG_FILE_LINE, er_cached_msg[ER_LOG_MSGLOG_WARNING],
+			er_Msglog_file_name);
+	}
     }
 
   fprintf (er_Msglog, er_cached_msg[ER_LOG_MSG_WRAPPER_D], time_array,
