@@ -7429,7 +7429,7 @@ sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag, void **result)
   if (class_name == NULL)
     {
       all_trigger = tmp_trigger;
-      num_trig = ml_size (all_trigger);
+      num_trig = db_list_length ((DB_LIST *) all_trigger);
     }
   else
     {
