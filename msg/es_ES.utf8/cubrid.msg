@@ -1152,15 +1152,15 @@ $ LOADDB
 1084 Saltando pagina no valida en punto de control. (page id: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, lsa anterior de rehacer punto de control: %5$lld|%6$d)
 1085 No se puede compilar expresion regular: '%s'
 1086 No se puede ejecutar expresion regular: '%s'
-1087 Inicializacion local: %s.
-1088 Generacion local: %s.
-1089 No se puede preparar declaracion de tipo '%s' con variables de host.
-1090 El argumento '%s' para inet_aton no es una direccion ipv4 de formato string valida.
-1091 El argumento '%lld' para inet_ntoa no es una direccion ipv4 de formato numeral valida.
-1092 Registro activo de respaldo '%s' inicializado.
-1093 Registro activo de respaldo '%s' terminado.
-1094 Nombre de utilizador es demasiado largo.
-1095 Asignacion de recursos fallada. Aumentar 'max_bestspace_entries=%1$d'.
+1087 Registro activo de respaldo '%s' inicializado.
+1088 Registro activo de respaldo '%s' terminado.
+1089 Asignacion de recursos fallada. Aumentar 'max_bestspace_entries=%1$d'.
+1090 Inicializacion local: %s.
+1091 Generacion local: %s.
+1092 No se puede preparar declaracion de tipo '%s' con variables de host.
+1093 El argumento '%s' para inet_aton no es una direccion ipv4 de formato string valida.
+1094 El argumento '%lld' para inet_ntoa no es una direccion ipv4 de formato numeral valida.
+1095 Nombre de utilizador es demasiado largo.
 1096 Alterando esquema de particionamiento cuando la clase particionada es referenciada por una clave externa no es permitido.
 1097 Columna '%s' no puede tener una restriccion PRIMARY KEY y un valor estandar NULL.
 1098 Locales para el idioma '%s' no son disponibles con el conjunto de caracteres '%s'.

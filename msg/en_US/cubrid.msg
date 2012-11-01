@@ -1152,15 +1152,15 @@ $ LOADDB
 1084 Skip invalid page in checkpoint. (page id: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, previous checkpoint redo lsa: %5$lld|%6$d)
 1085 Cannot compile regular expression: '%s'
 1086 Cannot execute regular expression: '%s'
-1087 Locale initialization: %s.
-1088 Locale generation: %s.
-1089 Cannot prepare statement of type '%s' with host variables.
-1090 The arg '%s' for inet_aton is not a valid string formatted ipv4 address.
-1091 The arg '%lld' for inet_ntoa is not a valid number formatted ipv4 address.
-1092 Backup active log '%s' started.
-1093 Backup active log '%s' finished.
-1094 User name is too long.
-1095 Resources allocation failed. Raise up 'max_bestspace_entries=%1$d'.
+1087 Backup active log '%s' started.
+1088 Backup active log '%s' finished.
+1089 Resources allocation failed. Raise up 'max_bestspace_entries=%1$d'.
+1090 Locale initialization: %s.
+1091 Locale generation: %s.
+1092 Cannot prepare statement of type '%s' with host variables.
+1093 The arg '%s' for inet_aton is not a valid string formatted ipv4 address.
+1094 The arg '%lld' for inet_ntoa is not a valid number formatted ipv4 address.
+1095 User name is too long.
 1096 Altering partitioning schema is not allowed when the partitioned class is referenced by a foreign key.
 1097 Column '%s' cannot have a PRIMARY KEY constraint and a NULL default value.
 1098 Locales for language '%s' are not available with charset '%s'.

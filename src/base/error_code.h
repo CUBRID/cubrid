@@ -1356,19 +1356,20 @@
 #define ER_REGEX_COMPILE_ERROR			    -1085
 #define ER_REGEX_EXEC_ERROR			    -1086
 
-#define ER_LOC_INIT				    -1087
-#define ER_LOC_GEN				    -1088
-#define ER_CANNOT_PREPARE_WITH_HOST_VAR		    -1089
+#define ER_LOG_BACKUP_CS_ENTER 			    -1087
+#define ER_LOG_BACKUP_CS_EXIT			    -1088
 
-#define ER_OPFUNC_INET_ATON_ARG			    -1090
-#define ER_OPFUNC_INET_NTOA_ARG			    -1091
+#define ER_HF_MAX_BESTSPACE_ENTRIES		    -1089
 
-#define ER_LOG_BACKUP_CS_ENTER 			    -1092
-#define ER_LOG_BACKUP_CS_EXIT			    -1093
+#define ER_LOC_INIT				    -1090
+#define ER_LOC_GEN				    -1091
+#define ER_CANNOT_PREPARE_WITH_HOST_VAR		    -1092
 
-#define ER_USER_NAME_TOO_LONG			    -1094
+#define ER_OPFUNC_INET_ATON_ARG			    -1093
+#define ER_OPFUNC_INET_NTOA_ARG			    -1094
 
-#define ER_HF_MAX_BESTSPACE_ENTRIES		    -1095
+#define ER_USER_NAME_TOO_LONG			    -1095
+
 #define ER_ALTER_PARTITIONS_FK_NOT_ALLOWED	    -1096
 #define ER_CANNOT_HAVE_PK_DEFAULT_NULL		    -1097
 

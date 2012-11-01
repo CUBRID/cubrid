@@ -1152,15 +1152,15 @@ $ LOADDB
 1084 Passer page invalide dans point de contrôle. (page id: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, lsa du point de contrôle REDO précédent: %5$lld|%6$d)
 1085 Impossible de compiler expression régulière: '%s'
 1086 Impossible d'exécuter expression régulière: '%s'
-1087 Initialisation de paramètres régionaux: %s.
-1088 Génération de paramètres régionaux: %s.
-1089 Impossible de préparer instruction de type '%s' avec des variables d'hôte.
-1090 Le arg '%s' pour inet_aton n'est pas une chaîne valide formatée pour une adresse IPv4.
-1091 Le arg '%lld' pour inet_ntoa n'est pas un nombre valid formaté pour une adresse IPv4.
-1092 Journal actif de sauvegarde '%s' a commencé.
-1093 Journal actif de sauvegarde '%s' est terminé.
-1094 Nom d'utilisateur est trop long.
-1095 L'allocation des ressources a échoué. Augmentez 'max_bestspace_entries=%1$d'.
+1087 Journal actif de sauvegarde '%s' a commencé.
+1088 Journal actif de sauvegarde '%s' est terminé.
+1089 L'allocation des ressources a échoué. Augmentez 'max_bestspace_entries=%1$d'.
+1090 Initialisation de paramètres régionaux: %s.
+1091 Génération de paramètres régionaux: %s.
+1092 Impossible de préparer instruction de type '%s' avec des variables d'hôte.
+1093 Le arg '%s' pour inet_aton n'est pas une chaîne valide formatée pour une adresse IPv4.
+1094 Le arg '%lld' pour inet_ntoa n'est pas un nombre valid formaté pour une adresse IPv4.
+1095 Nom d'utilisateur est trop long.
 1096 La modification de schéma de partitionnement n'est pas autorisée lorsque la classe partitionnée est référencée par une clé étrangère.
 1097 Colonne '%s' ne peut pas avoir une contrainte PRIMARY KEY et une valeur par défaut NULL.
 1098 Paramètres régionaux pour la langue '%s' ne sont pas disponibles avec jeux de caractères codés '%s'.

@@ -1152,15 +1152,15 @@ $ LOADDB
 1084 Ignorando pagina non valida nel checkpoint. (pagina id: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, LSA REDO precedente del checkpoint: %5$lld|%6$d)
 1085 Impossibile compilare l'espressione regolare: '%s'
 1086 Impossibile eseguire l'espressione regolare: '%s'
-1087 Inizializzazione dei impostazioni internazionali: %s.
-1088 Generazione dei impostazioni internazionali: %s.
-1089 Impossibile preparare l'instruzione di tipo '%s' con variabili host.
-1090 L'argomento '%s' per inet_aton non è una stringa valida formattata come un'indirizzo IPv4.
-1091 L'argomento '%lld' per inet_ntoa non è un numero valido formattato come un'ndirizzo IPv4.
-1092 Log attivo di backup '%s' cominciato.
-1093 Log attivo di backup '%s' finito.
-1094 Nome di utente è troppo lungo.
-1095 Allocazione delle risorse non riuscito. Aumentate 'max_bestspace_entries= %1$d'.
+1087 Log attivo di backup '%s' cominciato.
+1088 Log attivo di backup '%s' finito.
+1089 Allocazione delle risorse non riuscito. Aumentate 'max_bestspace_entries= %1$d'.
+1090 Inizializzazione dei impostazioni internazionali: %s.
+1091 Generazione dei impostazioni internazionali: %s.
+1092 Impossibile preparare l'instruzione di tipo '%s' con variabili host.
+1093 L'argomento '%s' per inet_aton non è una stringa valida formattata come un'indirizzo IPv4.
+1094 L'argomento '%lld' per inet_ntoa non è un numero valido formattato come un'ndirizzo IPv4.
+1095 Nome di utente è troppo lungo.
 1096 Modificazione dello schema di partizionamento non è permessa quando la classe partizionata fa riferimento a una chiave esterna.
 1097 Colonna '%s' non può avere un vincolo PRIMARY KEY e un valore predefinito NULL.
 1098 Impostazioni internazionali per la lingua '%s' non sono disponibili con charset '%s'.

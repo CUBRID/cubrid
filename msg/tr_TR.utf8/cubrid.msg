@@ -1152,15 +1152,15 @@ $ LOADDB
 1084 Kontrol noktasındaki geçersiz sayfa numasından atlamak. (page id: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, önceki kontrol redo lsa: %5$lld|%6$d)
 1085 Düzenlenemez Konvansiyonel ifadesi: düzenlemesi : '%s'
 1086 Konvansiyonel ifadesi gerçekleştiremiyor: '%s'
-1087 Konum ilklendimesi: %s.
-1088 Konumun var olması: %s.
-1089 Bigisayar değişken'%s' türünün ifadesi hazırlanmamalıdır.
-1090 inet_aton'ın arg '%s, ipv4 adresinde ayarlanan geçerli dizesi değildir.
-1091 inet_aton'ın arg '%lld, ipv4 adresinde ayarlananr geçerli dijital değildi.
-1092 Yedek inisiyatif günlükcü çalıştırımalı'%s'
-1093 Yedek inisiyatif günlükcü'%s' tamamlanmıştır
-1094 Kullanıcı adı çok uzun
-1095 Kaynak ayırma hatası. Yüksetilmiş max_bestspace_entries=%1$d '.
+1087 Yedek inisiyatif günlükcü çalıştırımalı'%s'
+1088 Yedek inisiyatif günlükcü'%s' tamamlanmıştır
+1089 Kaynak ayırma hatası. Yüksetilmiş max_bestspace_entries=%1$d '.
+1090 Konum ilklendimesi: %s.
+1091 Konumun var olması: %s.
+1092 Bigisayar değişken'%s' türünün ifadesi hazırlanmamalıdır.
+1093 inet_aton'ın arg '%s, ipv4 adresinde ayarlanan geçerli dizesi değildir.
+1094 inet_aton'ın arg '%lld, ipv4 adresinde ayarlananr geçerli dijital değildi.
+1095 Kullanıcı adı çok uzun
 1096 Ne zaman bölğm düzeyinde dış anahtar kelimeler referans için kullandığı zamanda, Değişiklik yapılmakta olan bölüm yapısına izin vermez.
 1097 '%s'kapısitesinde bir ilk PRIMARY KEY kelimelerde bir sınırlama ile geçersiz NULL değeri olamaz. 
 1098 Dil '%s'konumu karakter kümesindeki'%s' kullanılmaz.

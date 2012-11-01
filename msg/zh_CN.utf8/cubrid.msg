@@ -1152,15 +1152,15 @@ $ LOADDB
 1084 在checkpoint跳过非法页. (page id: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, previous checkpoint redo lsa: %5$lld|%6$d)
 1085 不能编译正则表达式: '%s'
 1086 不能编译运行表达式: '%s'
-1087 初始化语言区域: %s.
-1088 生成语言区域: %s.
-1089 不能prepare带有类型 '%s' 的 host variables的语句.
-1090 inet_aton 中的参数 '%s' 不是合法的ipv4地址字符串.
-1091 inet_ntoa 中的参数 '%lld' 不是一个合法的代表ipv4 地址的数字.
-1092 备份 active log '%s' 开始.
-1093 备份 active log '%s' 结束.
-1094 用户名太长.
-1095 资源分配失败. 提升 'max_bestspace_entries=%1$d'.
+1087 备份 active log '%s' 开始.
+1088 备份 active log '%s' 结束.
+1089 资源分配失败. 提升 'max_bestspace_entries=%1$d'.
+1090 初始化语言区域: %s.
+1091 生成语言区域: %s.
+1092 不能prepare带有类型 '%s' 的 host variables的语句.
+1093 inet_aton 中的参数 '%s' 不是合法的ipv4地址字符串.
+1094 inet_ntoa 中的参数 '%lld' 不是一个合法的代表ipv4 地址的数字.
+1095 用户名太长.
 1096 当分区表引用一个外键时 不允许修改分区表结构.
 1097 列 '%s' 不能同时制定主键约束和 NULL缺省值.
 1098 区域中的语言 '%s' 在字符集 '%s' 中无效.

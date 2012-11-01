@@ -1152,15 +1152,15 @@ $ LOADDB
 1084 Bỏ qua trang vô hiệu tại điểm mốc. (page id: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, LSA làm lại tại điểm redo lsa: %5$lld|%6$d)
 1085 Không thể biên dịch cách diễn đạt thông thường: '%s'
 1086 Không thể chạy cách diễn đạt thông thường: '%s'
-1087 Khởi động tại chỗ: %s.
-1088 Khởi tạo tại chỗ: %s.
-1089 Không thể soạn thảo báo cáo loại '%s' với các biến chủ.
-1090 Phần arg '%s' cho inet_aton không phải là một địa chỉ ipv4 có định dạng chuỗi hợp lệ.
-1091 Phần arg '%lld' cho inet_ntoa không phải là một địa chỉ ipv4 có định dạng số hợp lệ.
-1092 Nhật ký kích hoạt sao lưu '%s' bắt đầu.
-1093 Nhật ký kích hoạt sao lưu '%s' kết thúc.
-1094 Tên người dùng quá dài.
-1095 Phân bổ tài nguyên thất bại. Tăng lên 'max_bestspace_entries=%1$d'.
+1087 Nhật ký kích hoạt sao lưu '%s' bắt đầu.
+1088 Nhật ký kích hoạt sao lưu '%s' kết thúc.
+1089 Phân bổ tài nguyên thất bại. Tăng lên 'max_bestspace_entries=%1$d'.
+1090 Khởi động tại chỗ: %s.
+1091 Khởi tạo tại chỗ: %s.
+1092 Không thể soạn thảo báo cáo loại '%s' với các biến chủ.
+1093 Phần arg '%s' cho inet_aton không phải là một địa chỉ ipv4 có định dạng chuỗi hợp lệ.
+1094 Phần arg '%lld' cho inet_ntoa không phải là một địa chỉ ipv4 có định dạng số hợp lệ.
+1095 Tên người dùng quá dài.
 1096 Thay đổi kế hoạch phân mảng không được cho phép khi hạng phân mảng được tham chiếu bởi một phím bên ngoài.
 1097 Cột '%s' không thể có ràng buộc PRIMARY KEY và giá trị mặc định NULL.
 1098 Thiết lập cục bộ cho ngôn ngữ '%s' không khả dụng với bộ ký tự '%s'.

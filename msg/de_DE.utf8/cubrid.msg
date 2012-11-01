@@ -1152,15 +1152,15 @@ $ LOADDB
 1084 Ungültige Seite in Checkpoint überspringen. (Seiten-ID: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, früherer Checkpoint Redo lsa: %5$lld|%6$d)
 1085 Regulärer Ausdruck '%s' kann nicht kompiliert werden.
 1086 Regulärer Ausdruck '%s' kann nicht ausgeführt werden.
-1087 Lokale Initialisierung: %s.
-1088 Lokale Erzeugung: %s.
-1089 Anweisung der Typ '%s' kann mit Host-Variablen nicht vorbereitet werden.
-1090 Das arg '%s' für inet_aton ist keine valide String-IPV4-Adresse.
-1091 Das arg '%lld' für inet_ntoa ist keine valide Nummer-IPV4-Adresse.
-1092 Sicherung des aktiven Protokolls '%s' angefangen.
-1093 Sicherung des aktiven Protokolls '%s' beendet.
-1094 Benutzername ist zu lang.
-1095 Ressourcenzuteilung gescheitert. 'max_bestspace_entries=%1$d' soll vergrößert werden.
+1087 Sicherung des aktiven Protokolls '%s' angefangen.
+1088 Sicherung des aktiven Protokolls '%s' beendet.
+1089 Ressourcenzuteilung gescheitert. 'max_bestspace_entries=%1$d' soll vergrößert werden.
+1090 Lokale Initialisierung: %s.
+1091 Lokale Erzeugung: %s.
+1092 Anweisung der Typ '%s' kann mit Host-Variablen nicht vorbereitet werden.
+1093 Das arg '%s' für inet_aton ist keine valide String-IPV4-Adresse.
+1094 Das arg '%lld' für inet_ntoa ist keine valide Nummer-IPV4-Adresse.
+1095 Benutzername ist zu lang.
 1096 Änderung der Partitionsschema ist nicht erlaubt, wenn die partitionierte Klasse von einer Fremdschlüssel referenziert wird.
 1097 Spalte '%s' kann keine PRIMARY KEY Einschränkung und zugleich einen NULL Default-Wert haben.
 1098 Sprachumgebungen für Sprache '%s' sind im Zeichenvorrat '%s' nicht verfügbar.
