@@ -126,7 +126,9 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
   *new_handle = srv_handle;
   srv_handle_table[new_handle_id - 1] = srv_handle;
   if (new_handle_id > max_handle_id)
-    max_handle_id = new_handle_id;
+    {
+      max_handle_id = new_handle_id;
+    }
 
 #if !defined(LIBCAS_FOR_JSP)
   current_handle_count++;
@@ -139,7 +141,9 @@ T_SRV_HANDLE *
 hm_find_srv_handle (int h_id)
 {
   if (h_id <= 0 || h_id > max_srv_handle)
-    return NULL;
+    {
+      return NULL;
+    }
 
   return (srv_handle_table[h_id - 1]);
 }
@@ -150,11 +154,15 @@ hm_srv_handle_free (int h_id)
   T_SRV_HANDLE *srv_handle;
 
   if (h_id <= 0 || h_id > max_srv_handle)
-    return;
+    {
+      return;
+    }
 
   srv_handle = srv_handle_table[h_id - 1];
   if (srv_handle == NULL)
-    return;
+    {
+      return;
+    }
 
   srv_handle_content_free (srv_handle);
   srv_handle_rm_tmp_file (h_id, srv_handle);
@@ -163,14 +171,6 @@ hm_srv_handle_free (int h_id)
   FREE_MEM (srv_handle->classes);
   FREE_MEM (srv_handle->classes_chn);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
-
-  if (srv_handle->is_holdable == true)
-    {
-      srv_handle->is_holdable = false;
-#if !defined(LIBCAS_FOR_JSP)
-      as_info->num_holdable_results--;
-#endif
-    }
 
   FREE_MEM (srv_handle);
   srv_handle_table[h_id - 1] = NULL;
@@ -190,12 +190,16 @@ hm_srv_handle_free_all (bool free_holdable)
     {
       srv_handle = srv_handle_table[i];
       if (srv_handle == NULL)
-	continue;
+        {
+          continue;
+        }
+
       if (srv_handle->is_holdable && !free_holdable)
 	{
 	  new_max_handle_id = i;
 	  continue;
 	}
+
       srv_handle_content_free (srv_handle);
       srv_handle_rm_tmp_file (i + 1, srv_handle);
       FREE_MEM (srv_handle);
@@ -204,6 +208,7 @@ hm_srv_handle_free_all (bool free_holdable)
       current_handle_count--;
 #endif
     }
+
   max_handle_id = new_max_handle_id;
 #if !defined(LIBCAS_FOR_JSP)
   if (free_holdable)
@@ -219,7 +224,6 @@ hm_srv_handle_qresult_end_all (bool end_holdable)
 {
   T_SRV_HANDLE *srv_handle;
   int i;
-  int count_unclosed_holdable = 0;
 
   for (i = 0; i < max_handle_id; i++)
     {
@@ -232,18 +236,17 @@ hm_srv_handle_qresult_end_all (bool end_holdable)
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
       hm_qresult_end (srv_handle, FALSE);
 #else /* CAS_FOR_MYSQL */
+
       if (srv_handle->is_holdable && !end_holdable)
 	{
 	  /* do not close holdable results */
 	  srv_handle->is_from_current_transaction = false;
-	  count_unclosed_holdable++;
 	  continue;
 	}
 
       if (srv_handle->is_holdable && !srv_handle->is_from_current_transaction)
 	{
 	  /* end only holdable handles from the current transaction */
-	  count_unclosed_holdable++;
 	  continue;
 	}
 
@@ -257,22 +260,9 @@ hm_srv_handle_qresult_end_all (bool end_holdable)
 	  || srv_handle->schema_type == CCI_SCH_PRIMARY_KEY)
 	{
 	  hm_qresult_end (srv_handle, FALSE);
-	  if (srv_handle->is_holdable == true)
-	    {
-	      srv_handle->is_holdable = false;
-#if !defined(LIBCAS_FOR_JSP)
-	      as_info->num_holdable_results--;
-#endif
-	    }
 	}
 #endif
     }
-#if !defined(LIBCAS_FOR_JSP)
-  /* make sure that as_info->num_holdable_results is 0 after rollback
-   * if no holdable results were from previous transactions
-   */
-  assert (count_unclosed_holdable == as_info->num_holdable_results);
-#endif
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -286,7 +276,10 @@ hm_srv_handle_set_pooled ()
     {
       srv_handle = srv_handle_table[i];
       if (srv_handle == NULL)
-	continue;
+        {
+          continue;
+        }
+
       srv_handle->is_pooled = 1;
     }
 }
@@ -303,6 +296,7 @@ hm_qresult_end (T_SRV_HANDLE * srv_handle, char free_flag)
 {
   T_QUERY_RESULT *q_result;
   int i;
+
   q_result = srv_handle->q_result;
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
   if (free_flag == TRUE)
@@ -319,6 +313,14 @@ hm_qresult_end (T_SRV_HANDLE * srv_handle, char free_flag)
 	  if (q_result[i].copied != TRUE && q_result[i].result)
 	    {
 	      ux_free_result (q_result[i].result);
+
+	      if (q_result[i].is_holdable == true)
+		{
+		  q_result[i].is_holdable = false;
+#if !defined(LIBCAS_FOR_JSP)
+		  as_info->num_holdable_results--;
+#endif
+		}
 	    }
 	  q_result[i].result = NULL;
 
@@ -350,6 +352,7 @@ hm_qresult_end (T_SRV_HANDLE * srv_handle, char free_flag)
   srv_handle->num_q_result = 0;
   srv_handle->cur_result = NULL;
   srv_handle->cur_result_index = 0;
+  srv_handle->num_result_set = 0;
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 }
 
@@ -386,6 +389,7 @@ srv_handle_content_free (T_SRV_HANDLE * srv_handle)
 #else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
   FREE_MEM (srv_handle->sql_stmt);
   ux_prepare_call_info_free (srv_handle->prepare_call_info);
+
   if (srv_handle->schema_type < 0
       || srv_handle->schema_type == CCI_SCH_CLASS
       || srv_handle->schema_type == CCI_SCH_VCLASS
@@ -409,7 +413,9 @@ srv_handle_content_free (T_SRV_HANDLE * srv_handle)
   else if (srv_handle->schema_type == CCI_SCH_TRIGGER)
     {
       if (srv_handle->session)
-	db_objlist_free ((DB_OBJLIST *) (srv_handle->session));
+        {
+          db_objlist_free ((DB_OBJLIST *) (srv_handle->session));
+        }
       srv_handle->cur_result = NULL;
     }
   else if (srv_handle->schema_type == CCI_SCH_IMPORTED_KEYS
@@ -417,6 +423,7 @@ srv_handle_content_free (T_SRV_HANDLE * srv_handle)
 	   || srv_handle->schema_type == CCI_SCH_CROSS_REFERENCE)
     {
       T_FK_INFO_RESULT *fk_res = (T_FK_INFO_RESULT *) srv_handle->session;
+
       if (fk_res != NULL)
 	{
 	  release_all_fk_info_results (fk_res);
@@ -454,6 +461,7 @@ srv_handle_rm_tmp_file (int h_id, T_SRV_HANDLE * srv_handle)
   if (srv_handle->query_info_flag == TRUE)
     {
       char *p;
+
       p = cas_log_query_plan_file (h_id);
       if (p != NULL)
 	{
@@ -470,20 +478,5 @@ hm_srv_handle_get_current_count (void)
   return current_handle_count;
 #else
   return 0;
-#endif
-}
-
-void
-hm_srv_handle_set_holdable (T_SRV_HANDLE * srv_handle)
-{
-  if (srv_handle == NULL)
-    {
-      assert (false);
-      return;
-    }
-
-  srv_handle->is_holdable = true;
-#if !defined(LIBCAS_FOR_JSP)
-  as_info->num_holdable_results++;
 #endif
 }

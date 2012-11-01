@@ -312,6 +312,9 @@ static T_PREPARE_CALL_INFO *make_prepare_call_info (int num_args,
 						    int is_first_out);
 static void prepare_call_info_dbval_clear (T_PREPARE_CALL_INFO * call_info);
 static int fetch_call (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf);
+static int create_srv_handle_with_query_result (T_QUERY_RESULT * src_q_result,
+						DB_QUERY_TYPE * column_info,
+						unsigned int query_seq_num);
 #define check_class_chn(s) 0
 static int get_client_result_cache_lifetime (DB_SESSION * session,
 					     int stmt_id);
@@ -928,11 +931,6 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode,
       srv_handle->is_prepared = TRUE;
     }
 
-  if (has_stmt_result_set (stmt_type) && (flag & CCI_PREPARE_HOLDABLE))
-    {
-      hm_srv_handle_set_holdable (srv_handle);
-    }
-
 prepare_result_set:
   srv_handle->num_markers = num_markers;
   srv_handle->prepare_flag = flag;
@@ -964,12 +962,16 @@ prepare_result_set:
       goto prepare_error;
     }
 
-  srv_handle->session = (void *) session;
-
+  srv_handle->session = session;
   srv_handle->q_result = q_result;
   srv_handle->num_q_result = 1;
   srv_handle->cur_result = NULL;
   srv_handle->cur_result_index = 0;
+
+  if (flag & CCI_PREPARE_HOLDABLE)
+    {
+      srv_handle->is_holdable = true;
+    }
 
   db_get_cacheinfo (session, stmt_id, &srv_handle->use_plan_cache,
 		    &srv_handle->use_query_cache);
@@ -1359,11 +1361,23 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   srv_handle->cur_result_index = 1;
   srv_handle->max_row = max_row;
 
+  if (has_stmt_result_set (srv_handle->q_result->stmt_type) == true)
+    {
+      srv_handle->num_result_set = 1;
+
+      if (srv_handle->is_holdable == true)
+	{
+	  srv_handle->q_result->is_holdable = true;
+#if !defined(LIBCAS_FOR_JSP)
+	  as_info->num_holdable_results++;
+#endif
+	}
+    }
+
   db_get_cacheinfo (session, stmt_id, &srv_handle->use_plan_cache,
 		    &srv_handle->use_query_cache);
 
-  if (has_stmt_result_set (srv_handle->q_result->stmt_type) == false
-      && srv_handle->auto_commit_mode == TRUE)
+  if (srv_handle->auto_commit_mode == TRUE && srv_handle->num_result_set == 0)
     {
       req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
@@ -1468,6 +1482,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   DB_QUERY_RESULT *result = NULL;
   DB_SESSION *session = NULL;
   T_BROKER_VERSION client_version = req_info->client_version;
+  T_QUERY_RESULT *q_result;
 
   srv_handle->query_info_flag = FALSE;
 
@@ -1650,21 +1665,36 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 	  goto execute_all_error;
 	}
 
+      q_result = &(srv_handle->q_result[q_res_idx]);
+
       if (is_prepared == FALSE)
 	{
-	  hm_qresult_clear (&(srv_handle->q_result[q_res_idx]));
-	  srv_handle->q_result[q_res_idx].stmt_type = stmt_type;
-	  srv_handle->q_result[q_res_idx].stmt_id = stmt_id;
+	  hm_qresult_clear (q_result);
+	  q_result->stmt_type = stmt_type;
+	  q_result->stmt_id = stmt_id;
 	}
 
       db_get_cacheinfo (session, stmt_id, &srv_handle->use_plan_cache,
 			&srv_handle->use_query_cache);
 
-      srv_handle->q_result[q_res_idx].async_flag = async_flag;
-      srv_handle->q_result[q_res_idx].result = result;
-      srv_handle->q_result[q_res_idx].tuple_count = n;
-      (srv_handle->num_q_result)++;
+      q_result->async_flag = async_flag;
+      q_result->result = result;
+      q_result->tuple_count = n;
+      srv_handle->num_q_result++;
       is_prepared = FALSE;
+
+      if (has_stmt_result_set (q_result->stmt_type) == true)
+	{
+	  srv_handle->num_result_set++;
+
+	  if (srv_handle->is_holdable == true)
+	    {
+	      q_result->is_holdable = true;
+#if !defined(LIBCAS_FOR_JSP)
+	      as_info->num_holdable_results++;
+#endif
+	    }
+	}
     }
 
   srv_handle->max_row = max_row;
@@ -1672,9 +1702,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   srv_handle->cur_result = (void *) srv_handle->q_result;
   srv_handle->cur_result_index = 1;
 
-  if (srv_handle->num_q_result < 2
-      && has_stmt_result_set (srv_handle->q_result->stmt_type) == false
-      && srv_handle->auto_commit_mode == TRUE)
+  if (srv_handle->auto_commit_mode == TRUE && srv_handle->num_result_set == 0)
     {
       req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
@@ -1853,11 +1881,20 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 
   srv_handle->max_col_size = max_col_size;
   srv_handle->num_q_result = 1;
+  srv_handle->num_result_set = 1;
   srv_handle->q_result->result = (void *) result;
   srv_handle->q_result->tuple_count = n;
   srv_handle->cur_result = (void *) srv_handle->q_result;
   srv_handle->cur_result_index = 1;
   srv_handle->max_row = max_row;
+
+  if (srv_handle->is_holdable == true)
+    {
+      srv_handle->q_result->is_holdable = true;
+#if !defined(LIBCAS_FOR_JSP)
+      as_info->num_holdable_results++;
+#endif
+    }
 
   if (value_list)
     {
@@ -2819,7 +2856,7 @@ cursor_update_error:
 }
 
 void
-ux_cursor_close (T_SRV_HANDLE * srv_handle, bool unset_holdable)
+ux_cursor_close (T_SRV_HANDLE * srv_handle)
 {
   int idx = 0;
 
@@ -2834,11 +2871,12 @@ ux_cursor_close (T_SRV_HANDLE * srv_handle, bool unset_holdable)
       return;
     }
 
-  db_query_end (srv_handle->q_result[idx].result);
+  ux_free_result (srv_handle->q_result[idx].result);
+  srv_handle->q_result[idx].result = NULL;
 
-  if (unset_holdable == true && srv_handle->is_holdable == true)
+  if (srv_handle->q_result[idx].is_holdable == true)
     {
-      srv_handle->is_holdable = false;
+      srv_handle->q_result[idx].is_holdable = false;
 #if !defined(LIBCAS_FOR_JSP)
       as_info->num_holdable_results--;
 #endif
@@ -5079,9 +5117,10 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 
 	  if (check_auto_commit_after_fetch_done (srv_handle) == true)
 	    {
-	      ux_cursor_close (srv_handle, true);
+	      ux_cursor_close (srv_handle);
 	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
 	    }
+
 	  return 0;
 	}
       else
@@ -5148,11 +5187,12 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	{
 	  if (check_auto_commit_after_fetch_done (srv_handle) == true)
 	    {
-	      ux_cursor_close (srv_handle, true);
+	      ux_cursor_close (srv_handle);
 	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
 	    }
 	  break;
 	}
+
       err_code = db_query_next_tuple (result);
       if (err_code == DB_CURSOR_SUCCESS)
 	{
@@ -5161,7 +5201,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	{
 	  if (check_auto_commit_after_fetch_done (srv_handle) == true)
 	    {
-	      ux_cursor_close (srv_handle, true);
+	      ux_cursor_close (srv_handle);
 	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
 	    }
 	  break;
@@ -7851,6 +7891,7 @@ sch_query_execute (T_SRV_HANDLE * srv_handle, char *sql_stmt,
   srv_handle->q_result = q_result;
   srv_handle->cur_result = (void *) srv_handle->q_result;
   srv_handle->num_q_result = 1;
+  srv_handle->num_result_set = 1;
   srv_handle->cur_result_index = 1;
   srv_handle->sql_stmt = NULL;
 
@@ -8543,9 +8584,8 @@ fetch_call (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
 }
 
 static int
-create_srv_handle_with_query_result (DB_QUERY_RESULT * result, int num_column,
+create_srv_handle_with_query_result (T_QUERY_RESULT * src_q_result,
 				     DB_QUERY_TYPE * column_info,
-				     int stmt_type,
 				     unsigned int query_seq_num)
 {
   int srv_h_id;
@@ -8570,18 +8610,20 @@ create_srv_handle_with_query_result (DB_QUERY_RESULT * result, int num_column,
   hm_qresult_clear (q_result);
   srv_handle->q_result = q_result;
 
-  q_result->result = result;
-  q_result->tuple_count = db_query_tuple_count (result);
-  q_result->stmt_type = stmt_type;
+  q_result->result = src_q_result->result;
+  q_result->tuple_count = db_query_tuple_count (src_q_result->result);
+  q_result->stmt_type = src_q_result->stmt_type;
   q_result->col_updatable = FALSE;
   q_result->include_oid = FALSE;
   q_result->async_flag = FALSE;
-  q_result->num_column = num_column;
+  q_result->num_column = src_q_result->num_column;
   q_result->column_info = column_info;
+  q_result->is_holdable = src_q_result->is_holdable;
 
   srv_handle->cur_result = (void *) srv_handle->q_result;
   srv_handle->cur_result_index = 1;
   srv_handle->num_q_result = 1;
+  srv_handle->num_result_set = 1;
   srv_handle->max_row = q_result->tuple_count;
 
   return srv_h_id;
@@ -8627,12 +8669,8 @@ ux_use_sp_out (int srv_h_id)
   if (q_result->result != NULL && column_info != NULL)
     {
       new_handle_id =
-	create_srv_handle_with_query_result ((DB_QUERY_RESULT *)
-					     q_result->result,
-					     q_result->num_column,
-					     column_info, q_result->stmt_type,
-					     SRV_HANDLE_QUERY_SEQ_NUM
-					     (srv_handle));
+	create_srv_handle_with_query_result (q_result, column_info,
+					     srv_handle->query_seq_num);
       if (new_handle_id > 0)
 	{
 	  q_result->copied = TRUE;
@@ -8967,12 +9005,16 @@ ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 static bool
 has_stmt_result_set (char stmt_type)
 {
-  if (stmt_type == CUBRID_STMT_SELECT
-      || stmt_type == CUBRID_STMT_CALL
-      || stmt_type == CUBRID_STMT_GET_STATS
-      || stmt_type == CUBRID_STMT_EVALUATE)
+  switch (stmt_type)
     {
+    case CUBRID_STMT_SELECT:
+    case CUBRID_STMT_CALL:
+    case CUBRID_STMT_GET_STATS:
+    case CUBRID_STMT_EVALUATE:
       return true;
+
+    default:
+      break;
     }
 
   return false;
@@ -8981,10 +9023,12 @@ has_stmt_result_set (char stmt_type)
 static bool
 check_auto_commit_after_fetch_done (T_SRV_HANDLE * srv_handle)
 {
-  if (srv_handle->num_q_result < 2
-      && (has_stmt_result_set (srv_handle->q_result->stmt_type) == true
-	  && srv_handle->auto_commit_mode == TRUE
-	  && srv_handle->forward_only_cursor == TRUE))
+  srv_handle->num_result_set--;
+
+  if (srv_handle->auto_commit_mode == TRUE
+      && srv_handle->num_result_set == 0
+      && srv_handle->forward_only_cursor == TRUE
+      && srv_handle->is_updatable == FALSE)
     {
       return true;
     }

@@ -1763,14 +1763,7 @@ fn_cursor_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
 		 "cursor_close srv_h_id %d", srv_h_id);
 
-  if (srv_handle->num_q_result == 1)
-    {
-      ux_cursor_close (srv_handle, true);
-    }
-  else
-    {
-      ux_cursor_close (srv_handle, false);
-    }
+  ux_cursor_close (srv_handle);
 
   return FN_KEEP_CONN;
 }

@@ -143,6 +143,7 @@ struct t_query_result
   char col_updatable;
   char include_oid;
   char async_flag;
+  bool is_holdable;
 #endif				/* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 };
 
@@ -170,6 +171,7 @@ struct t_srv_handle
   int *classes_chn;
   int cur_result_index;
   int num_q_result;
+  int num_result_set;
 #endif				/* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
   int num_markers;
   int max_col_size;
@@ -204,7 +206,6 @@ extern void hm_qresult_clear (T_QUERY_RESULT * q_result);
 extern void hm_qresult_end (T_SRV_HANDLE * srv_handle, char free_flag);
 extern void hm_session_free (T_SRV_HANDLE * srv_handle);
 extern void hm_col_update_info_clear (T_COL_UPDATE_INFO * col_update_info);
-extern void hm_srv_handle_set_holdable (T_SRV_HANDLE * srv_handle);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void hm_srv_handle_set_pooled (void);
 #endif

@@ -147,7 +147,7 @@ extern int ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
 			     T_REQ_INFO * req_info);
 extern int ux_cursor_update (T_SRV_HANDLE * srv_handle, int cursor_pos,
 			     int argc, void **argv, T_NET_BUF * net_buf);
-extern void ux_cursor_close (T_SRV_HANDLE * srv_handle, bool unset_holdable);
+extern void ux_cursor_close (T_SRV_HANDLE * srv_handle);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)

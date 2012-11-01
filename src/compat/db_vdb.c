@@ -2678,6 +2678,7 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session,
       return err;
     }
 
+  new_session->parser->is_holdable = session->parser->is_holdable;
   return db_execute_and_keep_statement_local (new_session, 1, result);
 }
 
