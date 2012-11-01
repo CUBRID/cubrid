@@ -1165,7 +1165,7 @@ $ LOADDB
 1097 Column '%s' cannot have a PRIMARY KEY constraint and a NULL default value.
 1098 Locales for language '%s' are not available with charset '%s'.
 1099 DDL statement is not allowed by configuration (block_ddl_statement=yes).
-1100 Statement without WHERE clause is not allowed by configuration (block_nowhere_statementi=yes).
+1100 Statement without WHERE clause is not allowed by configuration (block_nowhere_statement=yes).
 1101 The current transaction could not acquire a key lock on PSEUDO-OID (%1$d|%2$d|%3$d) attached to OID (%4$d|%5$d|%6$d)
 1102 Unknown system parameter or bad value.
 1103 Cannot change system parameter.

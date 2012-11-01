@@ -1165,7 +1165,7 @@ $ LOADDB
 1097 Cột '%s' không thể có ràng buộc PRIMARY KEY và giá trị mặc định NULL.
 1098 Thiết lập cục bộ cho ngôn ngữ '%s' không khả dụng với bộ ký tự '%s'.
 1099 Tuyên bố DDL không được cho phép bởi cấu hình (block_ddl_statement=yes).
-1100 Tuyên bố không có mệnh đề Ở WHERE không được cho phép bởi cấu hình (block_nowhere_statementi=yes).
+1100 Tuyên bố không có mệnh đề Ở WHERE không được cho phép bởi cấu hình (block_nowhere_statementiyes).
 1101 Giao dịch hiện tại không thể lấy được khóa phím trên PSEUDO-OID (%1$d|%2$d|%3$d) đính kèm với OID (%4$d|%5$d|%6$d)
 1102 Không biết hệ thống tham số hoặc giá trị xấu.
 1103 Không thể thay đổi tham số hệ thống.

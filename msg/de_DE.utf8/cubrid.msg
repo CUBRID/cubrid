@@ -1165,7 +1165,7 @@ $ LOADDB
 1097 Spalte '%s' kann keine PRIMARY KEY Einschränkung und zugleich einen NULL Default-Wert haben.
 1098 Sprachumgebungen für Sprache '%s' sind im Zeichenvorrat '%s' nicht verfügbar.
 1099 DDL-Anweisung ist in der Konfiguration nicht erlaubt (block_ddl_statement=yes).
-1100 Anweisung ohne WHERE Klausel ist in der Konfiguration nicht erlaubt (block_nowhere_statementi=yes).
+1100 Anweisung ohne WHERE Klausel ist in der Konfiguration nicht erlaubt (block_nowhere_statement=yes).
 1101 Die aktuelle Transaktion kann keine Schlüssel-Lock auf PSEUDO-OID (%1$d|%2$d|%3$d), an OID (%4$d|%5$d|%6$d) angehängt, bekommen.
 1102 Unbekannter Systemparameter oder falscher Wert.
 1103 Systemparameter kann nicht geändert werden.

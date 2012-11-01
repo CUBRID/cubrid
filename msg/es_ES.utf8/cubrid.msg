@@ -1165,7 +1165,7 @@ $ LOADDB
 1097 Columna '%s' no puede tener una restriccion PRIMARY KEY y un valor estandar NULL.
 1098 Locales para el idioma '%s' no son disponibles con el conjunto de caracteres '%s'.
 1099 Declaracion DDL no es permitida por configuracion (block_ddl_statement=yes).
-1100 Declaracion sin clausula WHERE no es permitida por configuracion (block_nowhere_statementi=yes).
+1100 Declaracion sin clausula WHERE no es permitida por configuracion (block_nowhere_statement=yes).
 1101 La transaccion actual no puede adquirrir un bloqueo de clave en PSEUDO-OID (%1$d|%2$d|%3$d) adjunto al OID (%4$d|%5$d|%6$d)
 1102 Parametro de sistema desconocido o valor malo.
 1103 No se puede cambiar el parametro de sistema.
