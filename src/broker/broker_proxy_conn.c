@@ -25,11 +25,13 @@
 #ident "$Id$"
 
 #if defined(CUBRID_SHARD)
-#include <sys/time.h>
 #include <sys/types.h>
+#include <assert.h>
+#if !defined(WINDOWS)
+#include <sys/time.h>
 #include <unistd.h>
 #include <pthread.h>
-#include <assert.h>
+#endif /* !WINDOWS */
 
 #include "porting.h"
 #include "broker_proxy_conn.h"

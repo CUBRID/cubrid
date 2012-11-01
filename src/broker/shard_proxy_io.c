@@ -36,6 +36,11 @@
 #include "shard_shm.h"
 #include "broker_acl.h"
 
+#if defined(WINDOWS)
+#define O_NONBLOCK		FIONBIO
+#define HZ				1000
+#endif /* WINDOWS */
+
 #define PROC_TYPE_CLIENT        0
 #define PROC_TYPE_CAS           1
 #define PROC_TYPE_BROKER        2
@@ -775,10 +780,10 @@ int
 proxy_io_make_client_proxy_alive (T_BROKER_VERSION client_version,
 				  char **buffer)
 {
-  assert (buffer);
-
   int error;
   T_NET_BUF net_buf;
+
+  assert (buffer);
 
   error = proxy_make_net_buf (&net_buf, MSG_HEADER_SIZE);
   if (error)
@@ -1641,9 +1646,9 @@ static int
 proxy_process_client_message (T_SOCKET_IO * sock_io_p)
 {
   int error = 0;
+  char *buffer;
 
   assert (sock_io_p);
-  char *buffer;
 
   switch (sock_io_p->status)
     {
@@ -3655,7 +3660,26 @@ proxy_io_connect_to_broker (void)
 {
   SOCKET fd;
   int len;
-  struct sockaddr_un unix_addr;
+
+#if defined(WINDOWS)
+  int port = 0;
+  struct sockaddr_in shard_sock_addr;
+  int n;
+
+  if ((fd = socket (AF_INET, SOCK_STREAM, 0)) < 0)
+    {
+      return (-1);
+    }
+
+  memset (&shard_sock_addr, 0, sizeof (struct sockaddr_in));
+  shard_sock_addr.sin_family = AF_INET;
+  shard_sock_addr.sin_port = htons ((unsigned short) port);
+  len = sizeof (struct sockaddr_in);
+  n = INADDR_ANY;
+  memcpy (&shard_sock_addr.sin_addr, &n, sizeof (int));
+
+#else /* WINDOWS */
+  struct sockaddr_un shard_sock_addr;
   char *port_name;
 
   if ((port_name = getenv (PORT_NAME_ENV_STR)) == NULL)
@@ -3668,20 +3692,25 @@ proxy_io_connect_to_broker (void)
 	     port_name);
 
   if ((fd = socket (AF_UNIX, SOCK_STREAM, 0)) < 0)
-    return (-1);
+    {
+      return (-1);
+    }
 
-  memset (&unix_addr, 0, sizeof (unix_addr));
-  unix_addr.sun_family = AF_UNIX;
-  strcpy (unix_addr.sun_path, port_name);
+  memset (&shard_sock_addr, 0, sizeof (shard_sock_addr));
+  shard_sock_addr.sun_family = AF_UNIX;
+  strcpy (shard_sock_addr.sun_path, port_name);
 #ifdef  _SOCKADDR_LEN		/* 4.3BSD Reno and later */
-  len = sizeof (unix_addr.sun_len) + sizeof (unix_addr.sun_family) +
-    strlen (unix_addr.sun_path) + 1;
-  unix_addr.sun_len = len;
+  len = sizeof (shard_sock_addr.sun_len) +
+    sizeof (shard_sock_addr.sun_family) +
+    strlen (shard_sock_addr.sun_path) + 1;
+  shard_sock_addr.sun_len = len;
 #else /* vanilla 4.3BSD */
-  len = strlen (unix_addr.sun_path) + sizeof (unix_addr.sun_family) + 1;
+  len = strlen (shard_sock_addr.sun_path) +
+    sizeof (shard_sock_addr.sun_family) + 1;
 #endif
+#endif /* !WINDOWS */
 
-  if (connect (fd, (struct sockaddr *) &unix_addr, len) < 0)
+  if (connect (fd, (struct sockaddr *) &shard_sock_addr, len) < 0)
     {
       CLOSESOCKET (fd);
       return (-4);
@@ -3734,25 +3763,48 @@ proxy_io_unixd_lsnr (char *unixd_sock_name)
 {
   SOCKET fd;
   int n, len, backlog_size;
-  struct sockaddr_un unix_addr;
+
+#if defined(WINDOWS)
+  int port = 0;
+  struct sockaddr_in shard_sock_addr;
+
+  if ((fd = socket (AF_INET, SOCK_STREAM, 0)) < 0)
+    {
+      return (-1);
+    }
+
+  memset (&shard_sock_addr, 0, sizeof (struct sockaddr_in));
+  shard_sock_addr.sin_family = AF_INET;
+  shard_sock_addr.sin_port = htons ((unsigned short) (port));
+  len = sizeof (struct sockaddr_in);
+  n = INADDR_ANY;
+  memcpy (&shard_sock_addr.sin_addr, &n, sizeof (int));
+
+#else /* WINDOWS */
+  struct sockaddr_un shard_sock_addr;
 
   if ((fd = socket (AF_UNIX, SOCK_STREAM, 0)) < 0)
-    return (-1);
+    {
+      return (-1);
+    }
 
-  memset (&unix_addr, 0, sizeof (unix_addr));
-  unix_addr.sun_family = AF_UNIX;
-  strcpy (unix_addr.sun_path, unixd_sock_name);
+  memset (&shard_sock_addr, 0, sizeof (shard_sock_addr));
+  shard_sock_addr.sun_family = AF_UNIX;
+  strcpy (shard_sock_addr.sun_path, unixd_sock_name);
 
 #ifdef  _SOCKADDR_LEN		/* 4.3BSD Reno and later */
-  len = sizeof (unix_addr.sun_len) + sizeof (unix_addr.sun_family) +
-    strlen (unix_addr.sun_path) + 1;
-  unix_addr.sun_len = len;
+  len = sizeof (shard_sock_addr.sun_len) +
+    sizeof (shard_sock_addr.sun_family) +
+    strlen (shard_sock_addr.sun_path) + 1;
+  shard_sock_addr.sun_len = len;
 #else /* vanilla 4.3BSD */
-  len = strlen (unix_addr.sun_path) + sizeof (unix_addr.sun_family) + 1;
+  len = strlen (shard_sock_addr.sun_path) +
+    sizeof (shard_sock_addr.sun_family) + 1;
 #endif
+#endif /* !WINDOWS */
 
   /* bind the name to the descriptor */
-  if (bind (fd, (struct sockaddr *) &unix_addr, len) < 0)
+  if (bind (fd, (struct sockaddr *) &shard_sock_addr, len) < 0)
     {
       CLOSESOCKET (fd);
       return (-2);
@@ -3798,11 +3850,15 @@ static SOCKET
 proxy_io_unixd_accept (SOCKET lsnr_fd)
 {
   socklen_t len;
-  int fd;
-  struct sockaddr_un unix_addr;
+  SOCKET fd;
+#if defined(WINDOWS)
+  struct sockaddr_in shard_sock_addr;
+#else /* WINDOWS */
+  struct sockaddr_un shard_sock_addr;
+#endif /* !WINDOWS */
 
-  len = sizeof (unix_addr);
-  if ((fd = accept (lsnr_fd, (struct sockaddr *) &unix_addr, &len)) < 0)
+  len = sizeof (shard_sock_addr);
+  if ((fd = accept (lsnr_fd, (struct sockaddr *) &shard_sock_addr, &len)) < 0)
     {
       return (-1);
     }
@@ -3820,6 +3876,9 @@ int
 proxy_io_initialize (void)
 {
   int error;
+#if defined(WINDOWS)
+  int new_port = 0;
+#endif /* WINDOWS */
 
   /* clear fds */
   FD_ZERO (&allset);

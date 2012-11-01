@@ -27,14 +27,15 @@
 
 #ident "$Id$"
 
-
-#include <netdb.h>
 #include <fcntl.h>
+#if !defined(WINDOWS)
+#include <netdb.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/time.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#endif /* !WINDOWS */
 
 #include "broker_recv_fd.h"
 #include "cas_network.h"

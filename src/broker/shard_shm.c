@@ -84,7 +84,7 @@ shard_shm_set_shm_as (T_SHM_APPL_SERVER * shm_as_p, T_BROKER_INFO * br_info_p)
   strcpy (shm_as_p->broker_name, br_info_p->name);
 
 #if defined(WINDOWS)
-  shm_appl->use_pdh_flag = FALSE;
+  shm_as_p->use_pdh_flag = FALSE;
   br_info_p->pdh_workset = 0;
   br_info_p->pdh_pct_cpu = 0;
 #endif /* WINDOWS */

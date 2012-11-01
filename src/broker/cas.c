@@ -464,93 +464,96 @@ conn_retry:
       as_info->reset_flag = FALSE;
     }
 
-  err_code = ux_database_connect (db_name, db_user, db_passwd, NULL);
-
-  if (err_code < 0)
-    {
-      SLEEP_SEC (1);
-      goto finish_cas;
-    }
-
-  as_info->uts_status = UTS_STATUS_IDLE;
-
-conn_proxy_retry:
-  net_timeout_set (NET_DEFAULT_TIMEOUT);
-
-  proxy_sock_fd = net_connect_proxy ();
-
-  if (proxy_sock_fd == INVALID_SOCKET)
-    {
-      SLEEP_SEC (1);
-      goto conn_proxy_retry;
-    }
-
-  net_timeout_set (-1);
-
-  setsockopt (proxy_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one,
-	      sizeof (one));
-
-  error = cas_register_to_proxy (proxy_sock_fd);
-  if (error)
-    {
-      CLOSE_SOCKET (proxy_sock_fd);
-      SLEEP_SEC (1);
-      goto conn_proxy_retry;
-    }
-
-  shard_info_p->service_ready_flag = true;
-
-#if defined(WINDOWS)
-  as_info->uts_status = UTS_STATUS_BUSY;
-#endif /* WINDOWS */
-  errors_in_transaction = 0;
-
-  net_timeout_set (NET_DEFAULT_TIMEOUT);
-
-  as_info->cur_sql_log2 = shm_appl->sql_log2;
-  sql_log2_init (broker_name, shm_as_index, as_info->cur_sql_log2, false);
-  setsockopt (proxy_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one,
-	      sizeof (one));
-
-  if (IS_INVALID_SOCKET (proxy_sock_fd))
-    {
-      goto conn_proxy_retry;
-    }
-
-  cas_log_write_and_end (0, false, "connect db %s user %s", db_name, db_user);
-
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-  ux_set_default_setting ();
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
-
-  as_info->auto_commit_mode = FALSE;
-  cas_log_write_and_end (0, false, "DEFAULT isolation_level %d, "
-			 "lock_timeout %d",
-			 cas_default_isolation_level,
-			 cas_default_lock_timeout);
-
-  if (shm_appl->statement_pooling)
-    {
-      as_info->cur_statement_pooling = ON;
-    }
-  else
-    {
-      as_info->cur_statement_pooling = OFF;
-    }
-/* TODO : SHARD, assume KEEP_CON_ON*/
-  as_info->cur_keep_con = KEEP_CON_ON;
-
-  as_info->cci_default_autocommit = shm_appl->cci_default_autocommit;
-  req_info.need_rollback = TRUE;
-
-  gettimeofday (&tran_start_time, NULL);
-  gettimeofday (&query_start_time, NULL);
-  tran_timeout = 0;
-  query_timeout = 0;
 #if defined(WINDOWS)
   __try
   {
 #endif /* WINDOWS */
+
+    err_code = ux_database_connect (db_name, db_user, db_passwd, NULL);
+
+    if (err_code < 0)
+      {
+	SLEEP_SEC (1);
+	goto finish_cas;
+      }
+
+    as_info->uts_status = UTS_STATUS_IDLE;
+
+  conn_proxy_retry:
+    net_timeout_set (NET_DEFAULT_TIMEOUT);
+
+    proxy_sock_fd = net_connect_proxy ();
+
+    if (proxy_sock_fd == INVALID_SOCKET)
+      {
+	SLEEP_SEC (1);
+	goto conn_proxy_retry;
+      }
+
+    net_timeout_set (-1);
+
+    setsockopt (proxy_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one,
+		sizeof (one));
+
+    error = cas_register_to_proxy (proxy_sock_fd);
+    if (error)
+      {
+	CLOSE_SOCKET (proxy_sock_fd);
+	SLEEP_SEC (1);
+	goto conn_proxy_retry;
+      }
+
+    shard_info_p->service_ready_flag = true;
+
+#if defined(WINDOWS)
+    as_info->uts_status = UTS_STATUS_BUSY;
+#endif /* WINDOWS */
+    errors_in_transaction = 0;
+
+    net_timeout_set (NET_DEFAULT_TIMEOUT);
+
+    as_info->cur_sql_log2 = shm_appl->sql_log2;
+    sql_log2_init (broker_name, shm_as_index, as_info->cur_sql_log2, false);
+    setsockopt (proxy_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one,
+		sizeof (one));
+
+    if (IS_INVALID_SOCKET (proxy_sock_fd))
+      {
+	goto conn_proxy_retry;
+      }
+
+    cas_log_write_and_end (0, false, "connect db %s user %s", db_name,
+			   db_user);
+
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+    ux_set_default_setting ();
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+
+    as_info->auto_commit_mode = FALSE;
+    cas_log_write_and_end (0, false, "DEFAULT isolation_level %d, "
+			   "lock_timeout %d",
+			   cas_default_isolation_level,
+			   cas_default_lock_timeout);
+
+    if (shm_appl->statement_pooling)
+      {
+	as_info->cur_statement_pooling = ON;
+      }
+    else
+      {
+	as_info->cur_statement_pooling = OFF;
+      }
+/* TODO : SHARD, assume KEEP_CON_ON*/
+    as_info->cur_keep_con = KEEP_CON_ON;
+
+    as_info->cci_default_autocommit = shm_appl->cci_default_autocommit;
+    req_info.need_rollback = TRUE;
+
+    gettimeofday (&tran_start_time, NULL);
+    gettimeofday (&query_start_time, NULL);
+    tran_timeout = 0;
+    query_timeout = 0;
+
     for (;;)
       {
 #if !defined(WINDOWS)

@@ -27,6 +27,10 @@
 
 #include <assert.h>
 
+#if defined(WINDOWS)
+#include "porting.h"
+#endif /* WINDOWS */
+
 #include "broker_config.h"
 #include "broker_shm.h"
 #include "shard_proxy_common.h"

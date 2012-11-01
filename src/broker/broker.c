@@ -284,7 +284,11 @@ static struct sockaddr_in sock_addr;
 static int sock_addr_len;
 #if defined(CUBRID_SHARD)
 static SOCKET proxy_sock_fd;
-static struct sockaddr_un unix_addr;
+#if defined(WINDOWS)
+static struct sockaddr_in shard_sock_addr;
+#else /* WINDOWS */
+static struct sockaddr_un shard_sock_addr;
+#endif /* !WINDOWS */
 #endif /* CUBRID_SHARD */
 
 static T_SHM_BROKER *shm_br = NULL;
@@ -2768,9 +2772,24 @@ find_add_as_index ()
 static int
 init_proxy_env ()
 {
-
   int n, len;
 
+#if defined(WINDOWS)
+  int port = 0;
+
+  if ((proxy_sock_fd = socket (AF_INET, SOCK_STREAM, 0)) < 0)
+    {
+      return (-1);
+    }
+
+  memset (&shard_sock_addr, 0, sizeof (struct sockaddr_in));
+  shard_sock_addr.sin_family = AF_INET;
+  shard_sock_addr.sin_port = htons ((unsigned short) port);
+  len = sizeof (struct sockaddr_in);
+  n = INADDR_ANY;
+  memcpy (&shard_sock_addr.sin_addr, &n, sizeof (int));
+
+#else /* WINDOWS */
   if ((proxy_sock_fd = socket (AF_UNIX, SOCK_STREAM, 0)) < 0)
     {
       return (-1);
@@ -2779,20 +2798,23 @@ init_proxy_env ()
   /* FOR DEBUG */
   SHARD_ERR ("<BROKER> listen to unixdoamin:[%s].\n", shm_appl->port_name);
 
-  memset (&unix_addr, 0, sizeof (unix_addr));
-  unix_addr.sun_family = AF_UNIX;
-  strcpy (unix_addr.sun_path, shm_appl->port_name);
+  memset (&shard_sock_addr, 0, sizeof (shard_sock_addr));
+  shard_sock_addr.sun_family = AF_UNIX;
+  strcpy (shard_sock_addr.sun_path, shm_appl->port_name);
 
 #ifdef  _SOCKADDR_LEN		/* 4.3BSD Reno and later */
-  len = sizeof (unix_addr.sun_len) + sizeof (unix_addr.sun_family) +
-    strlen (unix_addr.sun_path) + 1;
-  unix_addr.sun_len = len;
+  len = sizeof (shard_sock_addr.sun_len) +
+    sizeof (shard_sock_addr.sun_family) +
+    strlen (shard_sock_addr.sun_path) + 1;
+  shard_sock_addr.sun_len = len;
 #else /* vanilla 4.3BSD */
-  len = strlen (unix_addr.sun_path) + sizeof (unix_addr.sun_family) + 1;
+  len = strlen (shard_sock_addr.sun_path) +
+    sizeof (shard_sock_addr.sun_family) + 1;
 #endif
+#endif /* !WINDOWS */
 
   /* bind the name to the descriptor */
-  if (bind (proxy_sock_fd, (struct sockaddr *) &unix_addr, len) < 0)
+  if (bind (proxy_sock_fd, (struct sockaddr *) &shard_sock_addr, len) < 0)
     {
       CLOSE_SOCKET (proxy_sock_fd);
       return (-2);
@@ -2902,6 +2924,9 @@ proxy_monitor_worker (T_PROXY_INFO * proxy_info_p, int br_index,
 		      int proxy_index)
 {
   int new_pid;
+#if defined(WINDOWS)
+  HANDLE phandle;
+#endif /* WINDOWS */
 
   if (proxy_info_p->service_flag != SERVICE_ON)
     {
@@ -2909,7 +2934,6 @@ proxy_monitor_worker (T_PROXY_INFO * proxy_info_p, int br_index,
     }
 
 #if defined(WINDOWS)
-  HANDLE phandle;
   phandle = OpenProcess (SYNCHRONIZE, FALSE, proxy_info_p->pid);
   if (phandle == NULL)
     {
@@ -2920,7 +2944,7 @@ proxy_monitor_worker (T_PROXY_INFO * proxy_info_p, int br_index,
     {
       CloseHandle (phandle);
     }
-#else
+#else /* WINDOWS */
   if (kill (proxy_info_p->pid, 0) < 0)
     {
       SLEEP_MILISEC (1, 0);
@@ -2930,7 +2954,7 @@ proxy_monitor_worker (T_PROXY_INFO * proxy_info_p, int br_index,
 	  proxy_info_p->status = PROXY_STATUS_START;
 	}
     }
-#endif
+#endif /* !WINDOWS */
 
   if (proxy_info_p->status == PROXY_STATUS_RESTART)
     {
@@ -3069,8 +3093,6 @@ run_proxy_server (T_PROXY_INFO * proxy_info_p, int br_index, int proxy_index)
 #if !defined(WINDOWS)
   int i;
 #endif
-  unsigned int len;
-  struct sockaddr_un clt_unix_addr;
 
   while (1)
     {

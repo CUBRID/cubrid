@@ -1038,7 +1038,8 @@ relay_prepare_request:
 			 "Invalid shard id. (shard_id:%d). context(%s).",
 			 shard_id, proxy_str_context (ctx_p));
 
-	      proxy_context_set_error (ctx_p, CAS_ERROR_INDICATOR, CAS_ER_INTERNAL);
+	      proxy_context_set_error (ctx_p, CAS_ERROR_INDICATOR,
+				       CAS_ER_INTERNAL);
 
 	      /* wakeup and reset statment */
 	      shard_stmt_check_waiter_and_wakeup (ctx_p->prepared_stmt);
@@ -2048,7 +2049,7 @@ fn_proxy_cas_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
 
       /* modify stmt_h_id */
       stmt_h_id_n = htonl (stmt_p->stmt_h_id);
-      memcpy (stmt_p->reply_buffer + srv_h_id_offset,
+      memcpy ((char *) stmt_p->reply_buffer + srv_h_id_offset,
 	      (char *) &stmt_h_id_n, NET_SIZE_INT);
     }
 

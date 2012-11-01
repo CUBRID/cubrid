@@ -31,6 +31,7 @@
 
 #if defined(WINDOWS)
 #include <process.h>
+#include "porting.h"
 #endif /* WINDOWS */
 
 #include "broker_admin_pub.h"

@@ -432,12 +432,16 @@ shard_proxy_activate (int as_shm_id, int proxy_id, char *shm_as_cp)
 
   if (pid == 0)
     {
+#if !defined(WINDOWS)
       signal (SIGCHLD, SIG_DFL);
+#endif /* !WINDOWS */
 
       if (env != NULL)
 	{
 	  for (i = 0; i < env_num; i++)
-	    putenv (env[i]);
+	    {
+	      putenv (env[i]);
+	    }
 	}
       sprintf (port_env_str, "%s=%s", PORT_NAME_ENV_STR, shm_as_p->port_name);
       snprintf (as_shm_id_env_str, sizeof (as_shm_id_env_str), "%s=%d",
@@ -461,6 +465,7 @@ shard_proxy_activate (int as_shm_id, int proxy_id, char *shm_as_cp)
 
 #if defined(WINDOWS)
       pid = run_child (proxy_exe_name);
+    }
 #else /* WINDOWS */
       if (execle (proxy_exe_name, process_name, NULL, environ) < 0)
 	{

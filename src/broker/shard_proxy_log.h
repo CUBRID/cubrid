@@ -36,7 +36,6 @@
 #if defined(WINDOWS)
 #include <sys/timeb.h>
 #include <process.h>
-#include <io.h>
 #else
 #include <unistd.h>
 #include <sys/time.h>
@@ -58,6 +57,31 @@ extern int proxy_access_log (struct timeval *start_time,
 			     int client_ip_addr, char *dbname,
 			     char *dbuser, bool accepted);
 
+#if defined(WINDOWS)
+#define PROXY_LOG(level, fmt, ...)					\
+  do {												\
+     if (level > PROXY_LOG_MODE_NONE 				\
+        && level <= PROXY_LOG_MODE_ALL 				\
+	    && level <= proxy_log_get_level())			\
+     {												\
+         proxy_log_write (level, 					\
+		 					NULL, "%s(%d): " fmt,	\
+							__FILE__, __LINE__,		\
+							__VA_ARGS__);			\
+     }												\
+     } while(0)
+
+#define PROXY_DEBUG_LOG(fmt, ...) 					\
+  do {												\
+     if (PROXY_LOG_MODE_DEBUG <= proxy_log_get_level())	\
+     {												\
+		 proxy_log_write (PROXY_LOG_MODE_DEBUG, 	\
+		 					NULL, "%s(%d): " fmt,	\
+				  			__FILE__, __LINE__,		\
+							__VA_ARGS__);			\
+     }												\
+  } while(0)
+#else /* WINDOWS */
 #define PROXY_LOG(level, fmt, args...)				\
   do {												\
      if (level > PROXY_LOG_MODE_NONE 				\
@@ -81,6 +105,7 @@ extern int proxy_access_log (struct timeval *start_time,
 							##args);				\
      }												\
   } while(0)
+#endif /* !WINDOWS */
 
 #if defined(NDEBUG) && defined(PROXY_VERBOSE_DEBUG)
 #define ENTER_FUNC() PROXY_DEBUG_LOG("ENTER")

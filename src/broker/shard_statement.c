@@ -724,9 +724,9 @@ shard_stmt_del_all_srv_h_id_for_shard_cas (int shard_id, int cas_id)
   int ref_count;
   int *srv_h_id_p;
 
-  ENTER_FUNC ();
-
   T_SHARD_STMT *stmt_p = NULL;
+
+  ENTER_FUNC ();
 
   for (i = 0; i < shard_Stmt.max_num_stmt; i++)
     {

@@ -1514,9 +1514,15 @@ admin_log_write (const char *log_file, const char *msg)
     }
 }
 
+#if defined(CUBRID_SHARD)
+static int
+uc_changer_internal (const char *br_name, const char *name,
+		     const char *value, int proxy_number, char *err_msg)
+#else /* CUBRID_SHARD */
 static int
 uc_changer_internal (const char *br_name, const char *name,
 		     const char *value, int as_number, char *err_msg)
+#endif				/* !CUBRID_SHARD */
 {
   T_BROKER_INFO br_info[MAX_BROKER_NUM];
   int num_broker, master_shm_id;
@@ -1527,9 +1533,14 @@ uc_changer_internal (const char *br_name, const char *name,
     {
       return -1;
     }
+#if defined(CUBRID_SHARD)
+  if (admin_shard_conf_change (master_shm_id,
+			       br_name, name, value, proxy_number) < 0)
 
+#else /* CUBRID_SHARD */
   if (admin_broker_conf_change (master_shm_id,
 				br_name, name, value, as_number) < 0)
+#endif /* !CUBRID_SHARD */
     {
       strcpy (err_msg, "ERROR : changer");
       return -1;

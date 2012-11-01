@@ -354,6 +354,7 @@ EXPORTS
     envvar_vardir_file
     envvar_logdir_file
     envvar_tmpdir_file
+    envvar_libdir_file
     er_clear
     er_final
     er_init

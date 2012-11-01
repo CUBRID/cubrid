@@ -28,8 +28,9 @@
 
 #ident "$Id$"
 
-
+#if !defined(WINDOWS)
 #include <pthread.h>
+#endif /* !WINDOWS */
 
 typedef struct t_shard_queue_ent T_SHARD_QUEUE_ENT;
 struct t_shard_queue_ent

@@ -39,7 +39,10 @@
 
 #include "dbi.h"
 
+#if !defined(WINDOWS)
 #include "dlfcn.h"
+#endif /* WINDOWS */
+
 #include "cas_common.h"
 #include "broker_filename.h"
 #include "broker_admin_pub.h"
@@ -1211,10 +1214,11 @@ load_shard_key_function (const char *library_name, const char *function_name)
     {
       return -1;
     }
-  dlerror ();
 #if defined(WINDOWS)
-  fn_get_shard_key = GetProcAddress ((HMODULE) handle, function_name);
+  fn_get_shard_key =
+    (FN_GET_SHARD_KEY) GetProcAddress ((HMODULE) handle, function_name);
 #else
+  dlerror ();
   fn_get_shard_key = dlsym (handle, function_name);
 #endif
   if (fn_get_shard_key == NULL)

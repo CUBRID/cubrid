@@ -29,8 +29,11 @@
 #include "shard_parser.h"
 #include "shard_proxy_log.h"
 
-
+#if defined(WINDOWS)
+static const char *left_trim (const char *str);
+#else /* WINDOWS */
 static inline const char *left_trim (const char *str);
+#endif /* !WINDOWS */
 
 static int sp_init_sp_value (SP_VALUE * value_p);
 static void sp_free_sp_value (SP_VALUE * value_p);
@@ -50,7 +53,11 @@ static void sp_free_parser_hint_from_ctx (SP_PARSER_CTX * parser_p);
 static int sp_process_token (SP_PARSER_CTX * parser_p, SP_TOKEN token_type);
 static int sp_get_bind_type_and_value (SP_PARSER_CTX * parser_p,
 				       SP_PARSER_HINT * hint_p);
+#if defined(WINDOWS)
+static void sp_copy_cursor_to_prv (SP_PARSER_CTX * parser_p);
+#else /* WINDOWS */
 static inline void sp_copy_cursor_to_prv (SP_PARSER_CTX * parser_p);
+#endif /* !WINDOWS */
 static int sp_get_string_bind_value (SP_PARSER_CTX * parser_p,
 				     SP_PARSER_HINT * hint_p);
 static int sp_get_int_bind_value (SP_PARSER_CTX * parser_p,
@@ -232,8 +239,13 @@ sp_is_pair_token (SP_TOKEN start_token, SP_TOKEN end_token)
   return false;
 }
 
+#if defined(WINDOWS)
+static const char *
+left_trim (const char *str)
+#else /* WINDOWS */
 static inline const char *
 left_trim (const char *str)
+#endif				/* !WINDOWS */
 {
   const char *p = str;
 
@@ -350,7 +362,7 @@ sp_create_parser_hint (void)
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
 		 "Failed to initialize parser argument. "
 		 "(error:%d).", error);
-      goto ERROR;
+      goto PARSER_ERROR;
     }
 
   error = sp_init_sp_value (&hint_p->value);
@@ -359,7 +371,7 @@ sp_create_parser_hint (void)
       PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to initialize parser value. "
 		 "(error:%d). \n", error);
 
-      goto ERROR;
+      goto PARSER_ERROR;
     }
 
   hint_p->next_a = NULL;
@@ -369,7 +381,7 @@ sp_create_parser_hint (void)
   hint_p->bind_type = BT_STATIC;
   hint_p->bind_position = -1 /* INVALID POSITION */ ;
   return hint_p;
-ERROR:
+PARSER_ERROR:
   if (hint_p != NULL)
     {
       sp_free_parser_hint (hint_p);
@@ -488,9 +500,10 @@ sp_free_parser_hint_from_ctx (SP_PARSER_CTX * parser_p)
 const char *
 sp_get_token_type (const char *sql, SP_TOKEN * token)
 {
+  const char *p = sql;
+
   *token = TT_NONE;
 
-  const char *p = sql;
   switch (*(p++))
     {
     case '\'':
@@ -687,7 +700,7 @@ sp_process_token (SP_PARSER_CTX * parser_p, SP_TOKEN token_type)
       if (hint_p == NULL)
 	{
 	  error = ER_SP_OUT_OF_MEMORY;
-	  goto ERROR;
+	  goto PARSER_ERROR;
 	}
       hint_p->hint_type = hint_type;
 
@@ -695,20 +708,20 @@ sp_process_token (SP_PARSER_CTX * parser_p, SP_TOKEN token_type)
 	sp_get_hint_arg (parser_p->cursor.pos, hint_p, &error);
       if (error != NO_ERROR)
 	{
-	  goto ERROR;
+	  goto PARSER_ERROR;
 	}
 
       parser_p->cursor.pos =
 	sp_check_end_of_hint (parser_p->cursor.pos, &error);
       if (error != NO_ERROR)
 	{
-	  goto ERROR;
+	  goto PARSER_ERROR;
 	}
 
       error = sp_is_valid_hint (parser_p, hint_p);
       if (error != NO_ERROR)
 	{
-	  goto ERROR;
+	  goto PARSER_ERROR;
 	}
 
       if (hint_p->hint_type == HT_KEY)
@@ -716,7 +729,7 @@ sp_process_token (SP_PARSER_CTX * parser_p, SP_TOKEN token_type)
 	  error = sp_get_bind_type_and_value (parser_p, hint_p);
 	  if (error != NO_ERROR)
 	    {
-	      goto ERROR;
+	      goto PARSER_ERROR;
 	    }
 	}
 
@@ -739,7 +752,7 @@ sp_process_token (SP_PARSER_CTX * parser_p, SP_TOKEN token_type)
     }
 
   return error;
-ERROR:
+PARSER_ERROR:
   if (hint_p != NULL)
     {
       sp_free_parser_hint (hint_p);
@@ -781,8 +794,13 @@ sp_get_bind_type_and_value (SP_PARSER_CTX * parser_p, SP_PARSER_HINT * hint_p)
   return error;
 }
 
+#if defined(WINDOWS)
+static void
+sp_copy_cursor_to_prv (SP_PARSER_CTX * parser_p)
+#else /* WINDOWS */
 static inline void
 sp_copy_cursor_to_prv (SP_PARSER_CTX * parser_p)
+#endif				/* !WINDOWS */
 {
   parser_p->prv_cursor = parser_p->cursor;
   parser_p->cursor.token = TT_NONE;
