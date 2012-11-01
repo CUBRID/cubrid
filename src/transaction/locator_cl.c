@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <assert.h>
 
+#include "db.h"
 #include "environment_variable.h"
 #include "porting.h"
 #include "locator_cl.h"
@@ -92,6 +93,7 @@ struct locator_mflush_cache
   bool isone_mflush;		/* true, if we are not doing a
 				 * massive flushing of objects
 				 */
+  int continue_on_error;
 };
 
 typedef struct locator_cache_lock LOCATOR_CACHE_LOCK;
@@ -173,10 +175,12 @@ static LC_FIND_CLASSNAME locator_find_class_by_name (const char *classname,
 static int locator_mflush (MOP mop, void *mf);
 static int locator_mflush_initialize (LOCATOR_MFLUSH_CACHE * mflush,
 				      MOP class_mop, MOBJ class, HFID * hfid,
-				      bool decache, bool isone_mflush);
+				      bool decache, bool isone_mflush,
+				      int continue_on_error);
 static void locator_mflush_reset (LOCATOR_MFLUSH_CACHE * mflush);
 static int locator_mflush_reallocate_copy_area (LOCATOR_MFLUSH_CACHE * mflush,
 						int minsize);
+static void locator_mflush_check_error (LOCATOR_MFLUSH_CACHE * mflush);
 static void locator_mflush_end (LOCATOR_MFLUSH_CACHE * mflush);
 static int locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush);
 static int
@@ -203,7 +207,7 @@ static int locator_internal_flush_instance (MOP inst_mop, bool decache);
 static int locator_add_to_oidset_when_temp_oid (MOP mop, void *data);
 static LC_FIND_CLASSNAME locator_reserve_class_name (const char *class_name,
 						     OID * class_oid);
-
+static bool locator_reverse_dirty_link (void);
 /*
  * locator_reserve_class_name () -
  *    return:
@@ -2725,7 +2729,8 @@ locator_fun_get_all_mops (MOP class_mop,
 
   /* Flush all the instances */
 
-  if (locator_flush_all_instances (class_mop, false) != NO_ERROR)
+  if (locator_flush_all_instances (class_mop, DONT_DECACHE, LC_STOP_ON_ERROR)
+      != NO_ERROR)
     {
       return NULL;
     }
@@ -3387,6 +3392,8 @@ locator_cache_object_class (MOP mop, LC_COPYAREA_ONEOBJ * obj,
       ws_set_lock (mop, NULL_LOCK);
       *call_fun = false;
       break;
+    case LC_FETCH_NO_OP:
+      break;
 
     default:
 #if defined(CUBRID_DEBUG)
@@ -3481,6 +3488,9 @@ locator_cache_object_instance (MOP mop, MOP class_mop,
 	}
       ws_set_lock (mop, NULL_LOCK);
       *call_fun = false;
+      break;
+
+    case LC_FETCH_NO_OP:
       break;
 
     default:
@@ -3580,6 +3590,8 @@ locator_cache_not_have_object (MOP * mop_p, MOBJ * object_p, bool * call_fun,
 	      ws_set_lock (*mop_p, NULL_LOCK);
 	      *call_fun = false;
 	    }
+	  break;
+	case LC_FETCH_NO_OP:
 	  break;
 
 	default:
@@ -3774,6 +3786,11 @@ locator_cache (LC_COPYAREA * copy_area, MOP hint_class_mop, MOBJ hint_class,
       object = NULL;
       mop = NULL;
 
+      if (obj->operation == LC_FETCH_NO_OP)
+	{
+	  continue;
+	}
+
       if (recdes.length < 0)
 	{
 	  error_code = locator_cache_not_have_object (&mop, &object,
@@ -3846,7 +3863,7 @@ locator_cache (LC_COPYAREA * copy_area, MOP hint_class_mop, MOBJ hint_class,
 static int
 locator_mflush_initialize (LOCATOR_MFLUSH_CACHE * mflush, MOP class_mop,
 			   MOBJ class_obj, HFID * hfid, bool decache,
-			   bool isone_mflush)
+			   bool isone_mflush, int continue_on_error)
 {
   int error_code;
 
@@ -3865,6 +3882,7 @@ locator_mflush_initialize (LOCATOR_MFLUSH_CACHE * mflush, MOP class_mop,
   mflush->hfid = hfid;
   mflush->decache = decache;
   mflush->isone_mflush = isone_mflush;
+  mflush->continue_on_error = continue_on_error;
 
   return error_code;
 }
@@ -4065,10 +4083,14 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
       /* Force the flushing area */
       error_code =
 	locator_force (mflush->copy_area, ws_Error_ignore_count,
-		       ws_Error_ignore_list);
+		       ws_Error_ignore_list, mflush->continue_on_error);
+      assert (mflush->continue_on_error == LC_CONTINUE_ON_ERROR
+	      || error_code != ER_LC_PARTIALLY_FAILED_TO_FLUSH);
 
       /* If the force failed and the system is down.. finish */
-      if (error_code != NO_ERROR && !BOOT_IS_CLIENT_RESTARTED ())
+      if ((error_code != NO_ERROR
+	   && error_code != ER_LC_PARTIALLY_FAILED_TO_FLUSH)
+	  && !BOOT_IS_CLIENT_RESTARTED ())
 	{
 	  /* Free the memory ... and finish */
 	  mop_toid = mflush->mop_toids;
@@ -4110,7 +4132,10 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	    {
 	      obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (mflush->mobjs,
 						    mop_toid->obj);
-	      if (error_code != NO_ERROR && OID_ISNULL (&obj->oid))
+	      if (error_code != NO_ERROR
+		  && (OID_ISNULL (&obj->oid)
+		      || (error_code == ER_LC_PARTIALLY_FAILED_TO_FLUSH
+			  && obj->error_code != NO_ERROR)))
 		{
 		  COPY_OID (&obj->oid, ws_oid (mop_toid->mop));
 		}
@@ -4143,6 +4168,8 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	      obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (mflush->mobjs,
 						    mop_toid->obj);
 	      if (!OID_ISNULL (&obj->oid)
+		  && (error_code != ER_LC_PARTIALLY_FAILED_TO_FLUSH
+		      || obj->error_code == NO_ERROR)
 		  && !OID_EQ (WS_OID (mop_toid->mop->class_mop),
 			      &obj->class_oid))
 		{
@@ -4174,11 +4201,35 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	  for (i = 0; i < mflush->mobjs->num_objs; i++)
 	    {
 	      obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (mflush->mobjs, i);
-	      obj->operation = ((obj->operation == LC_FLUSH_DELETE)
-				? LC_FETCH_DELETED : LC_FETCH);
+
+	      if (error_code != NO_ERROR)
+		{
+		  if (error_code == ER_LC_PARTIALLY_FAILED_TO_FLUSH
+		      && obj->error_code == NO_ERROR)
+		    {
+		      obj->operation = LC_FETCH_NO_OP;
+		    }
+		  else
+		    {
+		      obj->operation = ((obj->operation == LC_FLUSH_DELETE)
+					? LC_FETCH_DELETED : LC_FETCH);
+		    }
+
+		  if (mflush->continue_on_error == LC_CONTINUE_ON_ERROR
+		      && error_code != ER_LC_PARTIALLY_FAILED_TO_FLUSH)
+		    {
+		      obj->error_code = ER_FAILED;
+		    }
+		}
 	    }
 	  (void) locator_cache (mflush->copy_area, NULL, NULL,
 				locator_mflush_set_dirty, NULL);
+
+	  if (error_code == ER_LC_PARTIALLY_FAILED_TO_FLUSH)
+	    {
+	      locator_mflush_check_error (mflush);
+	    }
+
 	}
     }
 
@@ -4186,6 +4237,54 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
   locator_mflush_reset (mflush);
 
   return error_code;
+}
+
+/*
+ * locator_mflush_check_error () -
+ *
+ * return: void
+ *
+ *   mflush(in):
+ */
+static void
+locator_mflush_check_error (LOCATOR_MFLUSH_CACHE * mflush)
+{
+  int i;
+  MOP class_mop, mop;
+  LC_COPYAREA_ONEOBJ *obj;
+
+  for (i = 0; i < mflush->mobjs->num_objs; i++)
+    {
+      obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (mflush->mobjs, i);
+      if (obj->error_code == NO_ERROR)
+	{
+	  continue;
+	}
+
+      if (OID_IS_ROOTOID (&obj->class_oid))
+	{
+	  /* instance only */
+	  continue;
+	}
+      else
+	{
+	  class_mop = ws_mop (&obj->class_oid, sm_Root_class_mop);
+	  if (class_mop == NULL)
+	    {
+	      continue;
+	    }
+
+	  mop = ws_mop (&obj->oid, class_mop);
+	  if (mop == NULL)
+	    {
+	      continue;
+	    }
+
+	  ws_set_error_into_error_link (mop);
+	}
+    }
+
+  return;
 }
 
 /*
@@ -4410,6 +4509,7 @@ locator_mem_to_disk (LOCATOR_MFLUSH_CACHE * mflush, MOBJ object,
 static int
 locator_mflush (MOP mop, void *mf)
 {
+  int error_code = NO_ERROR;
   LOCATOR_MFLUSH_CACHE *mflush;	/* Structure which describes objects to flush */
   HFID *hfid;			/* Heap where the object is stored        */
   OID *oid;			/* Object identifier of object to flush   */
@@ -4496,7 +4596,9 @@ locator_mflush (MOP mop, void *mf)
       else
 	{
 	  status = locator_mflush (class_mop, mf);
-	  if (status != WS_MAP_CONTINUE)
+	  if (status != WS_MAP_CONTINUE
+	      && (status != WS_MAP_CONTINUE_ON_ERROR
+		  || mflush->continue_on_error == LC_CONTINUE_ON_ERROR))
 	    {
 	      mflush->decache = decache;
 	      return status;
@@ -4749,7 +4851,12 @@ locator_mflush (MOP mop, void *mf)
   if (mflush->recdes.area_size <= 0)
     {
       /* Force the mflush area */
-      if (locator_mflush_force (mflush) != NO_ERROR)
+      error_code = locator_mflush_force (mflush);
+      if (error_code == ER_LC_PARTIALLY_FAILED_TO_FLUSH)
+	{
+	  return WS_MAP_CONTINUE_ON_ERROR;
+	}
+      else if (error_code != NO_ERROR)
 	{
 	  return WS_MAP_FAIL;
 	}
@@ -4778,6 +4885,7 @@ locator_flush_class (MOP class_mop)
   MOBJ class_obj;
   int error_code = NO_ERROR;
   int map_status = WS_MAP_FAIL;
+  bool reverse_dirty_link = false;
 
   if (class_mop == NULL)
     {
@@ -4794,14 +4902,17 @@ locator_flush_class (MOP class_mop)
        * Flush class and preflush other dirty objects to the flushing area
        */
       error_code = locator_mflush_initialize (&mflush, NULL, NULL, NULL,
-					      DONT_DECACHE, ONE_MFLUSH);
+					      DONT_DECACHE, ONE_MFLUSH,
+					      LC_STOP_ON_ERROR);
       if (error_code == NO_ERROR)
 	{
 	  /* current class mop flush */
 	  map_status = locator_mflush (class_mop, &mflush);
 	  if (map_status == WS_MAP_CONTINUE)
 	    {
-	      map_status = ws_map_dirty (locator_mflush, &mflush);
+	      reverse_dirty_link = locator_reverse_dirty_link ();
+	      map_status =
+		ws_map_dirty (locator_mflush, &mflush, reverse_dirty_link);
 	      if (map_status == WS_MAP_SUCCESS)
 		{
 		  if (mflush.mobjs->num_objs != 0)
@@ -4851,6 +4962,7 @@ locator_internal_flush_instance (MOP inst_mop, bool decache)
   int error_code = NO_ERROR;
   int retry_count = 0;
   int chn;
+  bool reverse_dirty_link = false;
 
   if (inst_mop == NULL)
     {
@@ -4875,14 +4987,16 @@ retry:
 	  chn = -2;
 	}
       error_code = locator_mflush_initialize (&mflush, NULL, NULL, NULL,
-					      decache, ONE_MFLUSH);
+					      decache, ONE_MFLUSH,
+					      LC_STOP_ON_ERROR);
       if (error_code == NO_ERROR)
 	{
 	  /* current instance mop flush */
 	  map_status = locator_mflush (inst_mop, &mflush);
 	  if (map_status == WS_MAP_CONTINUE)
 	    {
-	      map_status = ws_map_dirty (locator_mflush, &mflush);
+	      map_status =
+		ws_map_dirty (locator_mflush, &mflush, reverse_dirty_link);
 	      if (map_status == WS_MAP_SUCCESS)
 		{
 		  if (mflush.mobjs->num_objs != 0)
@@ -4989,7 +5103,8 @@ locator_flush_and_decache_instance (MOP mop)
  *              not they are dirty) of the class are decached.
  */
 int
-locator_flush_all_instances (MOP class_mop, bool decache)
+locator_flush_all_instances (MOP class_mop, bool decache,
+			     int continue_on_error)
 {
   LOCATOR_MFLUSH_CACHE mflush;	/* Structure which describes objects to
 				 * flush */
@@ -5001,6 +5116,8 @@ locator_flush_all_instances (MOP class_mop, bool decache)
   DB_OBJLIST class_list;
   DB_OBJLIST *obj = NULL;
   bool is_partitioned = false;
+  int num_ws_continue_on_error = 0;
+  bool reverse_dirty_link = false;
 
   if (class_mop == NULL)
     {
@@ -5037,7 +5154,8 @@ locator_flush_all_instances (MOP class_mop, bool decache)
        * partitions.
        */
       error_code = locator_mflush_initialize (&mflush, NULL, NULL, NULL,
-					      decache, MANY_MFLUSHES);
+					      decache, MANY_MFLUSHES,
+					      continue_on_error);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -5047,7 +5165,8 @@ locator_flush_all_instances (MOP class_mop, bool decache)
     {
       hfid = sm_heap (class_obj);
       error_code = locator_mflush_initialize (&mflush, class_mop, class_obj,
-					      hfid, decache, MANY_MFLUSHES);
+					      hfid, decache, MANY_MFLUSHES,
+					      continue_on_error);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -5074,22 +5193,32 @@ locator_flush_all_instances (MOP class_mop, bool decache)
       else
 	{
 	  /* flush all dirty instances of this class */
-	  map_status = ws_map_class_dirty (obj->op, locator_mflush, &mflush);
+	  reverse_dirty_link = locator_reverse_dirty_link ();
+	  map_status =
+	    ws_map_class_dirty (obj->op, locator_mflush, &mflush,
+				reverse_dirty_link);
 	}
 
       if (map_status == WS_MAP_FAIL)
 	{
 	  error_code = ER_FAILED;
 	}
+      else if (map_status == WS_MAP_CONTINUE_ON_ERROR)
+	{
+	  num_ws_continue_on_error++;
+	}
     }
 
   if (mflush.mobjs->num_objs != 0)
     {
       error_code = locator_mflush_force (&mflush);
+      assert (continue_on_error == LC_CONTINUE_ON_ERROR
+	      || error_code != ER_LC_PARTIALLY_FAILED_TO_FLUSH);
     }
 
   locator_mflush_end (&mflush);
-  if (error_code != NO_ERROR)
+
+  if (error_code != NO_ERROR && error_code != ER_LC_PARTIALLY_FAILED_TO_FLUSH)
     {
       return error_code;
     }
@@ -5100,6 +5229,12 @@ locator_flush_all_instances (MOP class_mop, bool decache)
 	{
 	  ws_disconnect_deleted_instances (obj->op);
 	}
+    }
+
+  if (num_ws_continue_on_error > 0)
+    {
+      assert (continue_on_error == LC_CONTINUE_ON_ERROR);
+      return ER_LC_PARTIALLY_FAILED_TO_FLUSH;
     }
 
   return error_code;
@@ -5130,6 +5265,8 @@ locator_flush_for_multi_update (MOP class_mop)
   int error_code = NO_ERROR;
   int map_status;
 
+  bool reverse_dirty_link = false;
+
   class_obj = locator_fetch_class (class_mop, DB_FETCH_CLREAD_INSTREAD);
   if (class_obj == NULL)
     {
@@ -5140,7 +5277,7 @@ locator_flush_for_multi_update (MOP class_mop)
   hfid = sm_heap (class_obj);
   /* The fifth argument, decache, is false. */
   locator_mflush_initialize (&mflush, class_mop, class_obj, hfid, false,
-			     MANY_MFLUSHES);
+			     MANY_MFLUSHES, LC_STOP_ON_ERROR);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -5150,7 +5287,9 @@ locator_flush_for_multi_update (MOP class_mop)
   mflush.mobjs->start_multi_update = 1;
 
   /* flush all dirty instances of this class */
-  map_status = ws_map_class_dirty (class_mop, locator_mflush, &mflush);
+  map_status =
+    ws_map_class_dirty (class_mop, locator_mflush, &mflush,
+			reverse_dirty_link);
 
   if (map_status == WS_MAP_SUCCESS)
     {
@@ -5181,12 +5320,14 @@ error:
  * Note: Form to flush all dirty objects to the page buffer pool (server).
  */
 int
-locator_all_flush (void)
+locator_all_flush (int continue_on_error)
 {
   LOCATOR_MFLUSH_CACHE mflush;	/* Structure which describes objects to
 				 * flush */
   int error_code;
   int map_status;
+  int num_failed_to_flush = 0;
+  bool reverse_dirty_link = false;
 
   /* flush dirty vclass objects */
   if (vid_allflush () != NO_ERROR)
@@ -5197,18 +5338,21 @@ locator_all_flush (void)
 
   /* flush all other dirty objects */
   error_code = locator_mflush_initialize (&mflush, NULL, NULL, NULL,
-					  DONT_DECACHE, MANY_MFLUSHES);
+					  DONT_DECACHE, MANY_MFLUSHES,
+					  continue_on_error);
   if (error_code != NO_ERROR)
     {
       goto error;
     }
 
-  map_status = ws_map_dirty (locator_mflush, &mflush);
+  reverse_dirty_link = locator_reverse_dirty_link ();
+  map_status = ws_map_dirty (locator_mflush, &mflush, reverse_dirty_link);
   if (map_status == WS_MAP_FAIL)
     {
       error_code = ER_FAILED;
     }
-  else if (map_status == WS_MAP_SUCCESS)
+  else if (map_status == WS_MAP_SUCCESS
+	   || map_status == WS_MAP_CONTINUE_ON_ERROR)
     {
       if (mflush.mobjs->num_objs != 0)
 	{
@@ -5219,6 +5363,9 @@ locator_all_flush (void)
   locator_mflush_end (&mflush);
 
 error:
+  assert (continue_on_error == LC_CONTINUE_ON_ERROR
+	  || error_code != ER_LC_PARTIALLY_FAILED_TO_FLUSH);
+
   return error_code;
 }
 
@@ -5325,7 +5472,7 @@ locator_add_class (MOBJ class_obj, const char *classname)
   OID_ASSIGN_TEMPOID (&class_temp_oid);
   if (OID_ISNULL (&class_temp_oid))
     {
-      if (locator_all_flush () != NO_ERROR)
+      if (locator_all_flush (LC_STOP_ON_ERROR) != NO_ERROR)
 	{
 	  return NULL;
 	}
@@ -5516,7 +5663,7 @@ locator_add_instance (MOBJ instance, MOP class_mop)
   OID_ASSIGN_TEMPOID (&temp_oid);
   if (OID_ISNULL (&temp_oid))
     {
-      if (locator_all_flush () != NO_ERROR)
+      if (locator_all_flush (LC_STOP_ON_ERROR) != NO_ERROR)
 	{
 	  return NULL;
 	}
@@ -6602,6 +6749,7 @@ locator_assign_all_permanent_oids (void)
 {
   int error_code = NO_ERROR, map_status;
   LC_OIDSET *oidset;
+  bool reverse_dirty_link = false;
 
   oidset = locator_make_oid_set ();
   if (oidset == NULL)
@@ -6609,7 +6757,9 @@ locator_assign_all_permanent_oids (void)
       return ER_FAILED;
     }
 
-  map_status = ws_map_dirty (locator_add_to_oidset_when_temp_oid, oidset);
+  map_status =
+    ws_map_dirty (locator_add_to_oidset_when_temp_oid, oidset,
+		  reverse_dirty_link);
   if (map_status == WS_MAP_FAIL)
     {
       error_code = ER_FAILED;
@@ -6647,4 +6797,21 @@ int
 locator_get_append_lsa (LOG_LSA * lsa)
 {
   return repl_log_get_append_lsa (lsa);
+}
+
+/*
+ * locator_reverse_dirty_link () -
+ *
+ * return:
+ *
+ */
+static bool
+locator_reverse_dirty_link (void)
+{
+  if (db_get_client_type () == DB_CLIENT_TYPE_LOG_APPLIER)
+    {
+      return true;
+    }
+
+  return false;
 }

@@ -6364,7 +6364,8 @@ error:
  */
 int
 xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area,
-		int num_ignore_error, int *ingore_error_list)
+		int num_ignore_error, int *ignore_error_list,
+		int continue_on_error)
 {
   LC_COPYAREA_MANYOBJS *mobjs;	/* Describe multiple objects in area */
   LC_COPYAREA_ONEOBJ *obj;	/* Describe on object in area        */
@@ -6376,6 +6377,8 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area,
   LOG_LSA lsa, oneobj_lsa;
   int error_code = NO_ERROR;
   int op_type = 0;
+  int num_continue_on_error = 0;
+
   /* need to start a topop to ensure the atomic operation. */
   error_code = xtran_server_start_topop (thread_p, &lsa);
   if (error_code != NO_ERROR)
@@ -6422,7 +6425,8 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area,
 	  force_scancache = &scan_cache;
 	}
 
-      if (LOG_CHECK_LOG_APPLIER (thread_p) || num_ignore_error > 0)
+      if (continue_on_error == LC_CONTINUE_ON_ERROR
+	  || LOG_CHECK_LOG_APPLIER (thread_p) || num_ignore_error > 0)
 	{
 	  error_code = xtran_server_start_topop (thread_p, &oneobj_lsa);
 	  if (error_code != NO_ERROR)
@@ -6495,13 +6499,23 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area,
 	  break;
 	}			/* end-switch */
 
-      if (LOG_CHECK_LOG_APPLIER (thread_p) || num_ignore_error > 0)
+      obj->error_code = error_code;
+      if (continue_on_error == LC_CONTINUE_ON_ERROR
+	  || LOG_CHECK_LOG_APPLIER (thread_p) || num_ignore_error > 0)
 	{
 	  bool need_to_abort_oneobj = false;
 
 	  if (error_code != NO_ERROR)
 	    {
-	      if (LOG_CHECK_LOG_APPLIER (thread_p))
+	      if (continue_on_error == LC_CONTINUE_ON_ERROR)
+		{
+		  error_code = NO_ERROR;
+		  num_continue_on_error++;
+
+		  OID_SET_NULL (&obj->oid);
+		  need_to_abort_oneobj = true;
+		}
+	      else if (LOG_CHECK_LOG_APPLIER (thread_p))
 		{
 		  need_to_abort_oneobj = true;
 		}
@@ -6509,8 +6523,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area,
 		{
 		  error_code =
 		    locator_filter_errid (thread_p, num_ignore_error,
-					  ingore_error_list);
-
+					  ignore_error_list);
 		  if (error_code == NO_ERROR)
 		    {
 		      /* error is filtered out */
@@ -6553,6 +6566,13 @@ done:
 
   (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER,
 				 &lsa);
+
+  assert (continue_on_error == LC_CONTINUE_ON_ERROR
+	  || num_continue_on_error == 0);
+  if (num_continue_on_error > 0)
+    {
+      return ER_LC_PARTIALLY_FAILED_TO_FLUSH;
+    }
 
   return error_code;
 

@@ -81,9 +81,10 @@ extern int locator_flush_instance (MOP mop);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int locator_flush_and_decache_instance (MOP mop);
 #endif
-extern int locator_flush_all_instances (MOP class_mop, bool decache);
+extern int locator_flush_all_instances (MOP class_mop, bool decache,
+					int continue_on_error);
 extern int locator_flush_for_multi_update (MOP class_mop);
-extern int locator_all_flush (void);
+extern int locator_all_flush (int continue_on_error);
 extern MOP locator_add_class (MOBJ class, const char *classname);
 extern MOP locator_add_instance (MOBJ instance, MOP class_mop);
 extern MOP locator_add_root (OID * root_oid, MOBJ class_root);

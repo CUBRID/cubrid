@@ -4318,7 +4318,8 @@ ldr_act_finish_line (LDR_CONTEXT * context)
 
 		      err =
 			locator_flush_all_instances (context->obj->class_mop,
-						     DECACHE);
+						     DECACHE,
+						     LC_STOP_ON_ERROR);
 		    }
 		}
 	      else

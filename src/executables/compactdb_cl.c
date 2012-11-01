@@ -746,7 +746,8 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag,
 
   for (i = 0; i < num_class_mops; i++)
     {
-      status = locator_flush_all_instances (class_mops[i], true);
+      status = locator_flush_all_instances (class_mops[i],
+					    DECACHE, LC_STOP_ON_ERROR);
       if (status != NO_ERROR)
 	{
 	  goto error;
@@ -1470,7 +1471,8 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name,
 	}
     }
 
-  skipped_error_code = locator_flush_all_instances (class_mop, true);
+  skipped_error_code =
+    locator_flush_all_instances (class_mop, DECACHE, LC_STOP_ON_ERROR);
   if (skipped_error_code != NO_ERROR)
     {
       goto error_exit;

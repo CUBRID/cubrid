@@ -1170,7 +1170,8 @@ $ LOADDB
 1102 わからないシステムパラメータか、正しくないバリュー。
 1103 システムパラメーターが変更できません。
 1104 Slow query (%d msec)\n%s
-1105 ラストエラー
+1105 Internal error: partially failed to flush dirty object. 
+1106 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %d):

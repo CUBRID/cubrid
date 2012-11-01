@@ -2504,7 +2504,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* since we are going to suppress writing replication logs,
 	   * we need to flush all dirty objects to server not to lose them.
 	   */
-	  error = locator_all_flush ();
+	  error = locator_all_flush (LC_STOP_ON_ERROR);
 	  if (error != NO_ERROR)
 	    {
 	      goto end;
@@ -2766,7 +2766,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	   */
 	  if (error == NO_ERROR)
 	    {
-	      error = locator_all_flush ();
+	      error = locator_all_flush (LC_STOP_ON_ERROR);
 	    }
 
 	  suppress_repl_error = db_set_suppress_repl_on_transaction (false);
@@ -2906,7 +2906,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* since we are going to suppress writing replication logs,
        * we need to flush all dirty objects to server not to lose them
        */
-      err = locator_all_flush ();
+      err = locator_all_flush (LC_STOP_ON_ERROR);
       if (err != NO_ERROR)
 	{
 	  goto end;
@@ -3130,7 +3130,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
        * redundant data replication logs for DDLs */
       if (err == NO_ERROR)
 	{
-	  err = locator_all_flush ();
+	  err = locator_all_flush (LC_STOP_ON_ERROR);
 	}
 
       suppress_repl_error = db_set_suppress_repl_on_transaction (false);
@@ -5602,7 +5602,7 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
        * Since the class that this trigger belongs to might also be a
        * temporary object, we actually have to flush the whole workspace
        */
-      error = locator_all_flush ();
+      error = locator_all_flush (LC_STOP_ON_ERROR);
     }
 
   return error;
@@ -13353,7 +13353,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
-#if 0 /* TMP TODO: xasl->qplan refer packing buf. so move this codes below */
+#if 0				/* TMP TODO: xasl->qplan refer packing buf. so move this codes below */
       /* mark the end of another level of xasl packing */
       pt_exit_packing_buf ();
 #endif
@@ -13379,7 +13379,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       statement->use_plan_cache = 0;
 
-#if 1 
+#if 1
       /* mark the end of another level of xasl packing */
       pt_exit_packing_buf ();
 #endif

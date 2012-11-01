@@ -739,6 +739,7 @@ reset_template (OBJ_TEMPLATE * template_ptr)
   template_ptr->force_flush = 0;
   template_ptr->force_check_not_null = 0;
   template_ptr->function_key_modified = 0;
+  template_ptr->bulk_flush = 0;
 }
 
 /*
@@ -892,6 +893,7 @@ make_template (MOP object, MOP classobj)
       template_ptr->fkeys_were_modified = 0;
       template_ptr->force_check_not_null = 0;
       template_ptr->force_flush = 0;
+      template_ptr->bulk_flush = 0;
 
       /*
        * Don't do this until we've initialized the other stuff;
@@ -2762,9 +2764,11 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
    */
   if (error == NO_ERROR)
     {
-      if ((check_uniques && template_ptr->uniques_were_modified)
-	  || template_ptr->fkeys_were_modified
-	  || template_ptr->function_key_modified || template_ptr->force_flush)
+      if (template_ptr->bulk_flush == 0
+	  && ((check_uniques && template_ptr->uniques_were_modified)
+	      || template_ptr->fkeys_were_modified
+	      || template_ptr->function_key_modified
+	      || template_ptr->force_flush))
 	{
 	  if ((locator_flush_class (OBT_BASE_CLASSOBJ (template_ptr))
 	       != NO_ERROR)
@@ -2880,6 +2884,20 @@ obt_reset_force_flush (OBJ_TEMPLATE * template_ptr)
   assert (template_ptr != NULL);
 
   template_ptr->force_flush = 0;
+}
+
+/*
+ * obt_set_bulk_flush - set bulk_flush flag of the template
+ *
+ * return : void
+ * template_ptr (in/out)
+ */
+void
+obt_set_bulk_flush (OBJ_TEMPLATE * template_ptr)
+{
+  assert (template_ptr != NULL);
+
+  template_ptr->bulk_flush = 1;
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)

@@ -1170,7 +1170,8 @@ $ LOADDB
 1102 未知系统参数或错误的值.
 1103 不能改变系统参数.
 1104 Slow query (%d msec)\n%s
-1105 Last Error
+1105 Internal error: partially failed to flush dirty object. 
+1106 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %d):

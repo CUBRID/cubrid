@@ -91,6 +91,7 @@ struct db_object
 					 * classes, this member points to the newly
 					 * inserted object in the case of a
 					 * partition change */
+  struct db_object *error_link;	/* link for error list */
   void *version;		/* versioning information */
   LOCK lock;			/* object lock */
 
@@ -109,6 +110,7 @@ struct db_object
   unsigned is_temp:1;		/* set if template MOP (for triggers) */
   unsigned released:1;		/* set by code that knows that an instance can be released, used currently by the loader only */
   unsigned decached:1;		/* set if mop is decached by calling ws_decache function */
+  unsigned is_error:1;		/* set if error while flushing dirty object */
 };
 
 
@@ -422,7 +424,8 @@ enum ws_map_status_
   WS_MAP_CONTINUE = 0,
   WS_MAP_FAIL = 1,
   WS_MAP_STOP = 2,
-  WS_MAP_SUCCESS = 3
+  WS_MAP_SUCCESS = 3,
+  WS_MAP_CONTINUE_ON_ERROR = 4
 };
 
 /*
@@ -511,9 +514,11 @@ extern void ws_gc_disable (void);
 /* Dirty list maintenance */
 extern void ws_dirty (MOP op);
 extern void ws_clean (MOP op);
-extern int ws_map_dirty (MAPFUNC function, void *args);
+extern int ws_map_dirty (MAPFUNC function, void *args,
+			 bool reverse_dirty_link);
 extern void ws_filter_dirty (void);
-extern int ws_map_class_dirty (MOP class_op, MAPFUNC function, void *args);
+extern int ws_map_class_dirty (MOP class_op, MAPFUNC function, void *args,
+			       bool reverse_dirty_link);
 
 /* Resident instance list maintenance */
 extern void ws_set_class (MOP inst, MOP class_mop);
@@ -713,4 +718,9 @@ extern bool ws_need_flush (void);
 extern int ws_set_ignore_error_list_for_mflush (int error_count,
 						int *error_list);
 
+extern void ws_reverse_dirty_link (MOP class_mop);
+
+extern void ws_set_error_into_error_link (MOP mop);
+extern MOP ws_get_error_from_error_link (void);
+extern void ws_clear_all_errors_of_error_link (void);
 #endif /* _WORK_SPACE_H_ */

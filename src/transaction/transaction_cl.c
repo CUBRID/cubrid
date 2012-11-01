@@ -385,7 +385,7 @@ tran_commit (bool retain_lock)
 
       /* Flush all dirty objects */
       /* Flush virtual objects first so that locator_all_flush doesn't see any */
-      error_code = locator_all_flush ();
+      error_code = locator_all_flush (LC_STOP_ON_ERROR);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -804,7 +804,7 @@ tran_2pc_prepare (void)
   int error_code = NO_ERROR;
 
   /* flush all dirty objects */
-  error_code = locator_all_flush ();
+  error_code = locator_all_flush (LC_STOP_ON_ERROR);
   if (error_code != NO_ERROR)
     {
 #if defined(CUBRID_DEBUG)
@@ -973,7 +973,7 @@ tran_2pc_prepare_global_tran (int gtrid)
   int error_code = NO_ERROR;
 
   /* Flush all dirty objects */
-  error_code = locator_all_flush ();
+  error_code = locator_all_flush (LC_STOP_ON_ERROR);
   if (error_code != NO_ERROR)
     {
 #if defined(CUBRID_DEBUG)
@@ -1093,7 +1093,7 @@ tran_start_topop (void)
   /* Flush all dirty objects */
   if (ws_need_flush ())
     {
-      error_code = locator_all_flush ();
+      error_code = locator_all_flush (LC_STOP_ON_ERROR);
       if (error_code != NO_ERROR)
 	{
 #if defined(CUBRID_DEBUG)
@@ -1124,7 +1124,7 @@ tran_end_topop_commit (void)
   /* Flush all dirty objects */
   if (ws_need_flush ())
     {
-      error_code = locator_all_flush ();
+      error_code = locator_all_flush (LC_STOP_ON_ERROR);
       if (error_code != NO_ERROR)
 	{
 #if defined(CUBRID_DEBUG)
@@ -1424,7 +1424,7 @@ tran_savepoint_internal (const char *savept_name,
   /* Flush all dirty objects */
   if (ws_need_flush ())
     {
-      error_code = locator_all_flush ();
+      error_code = locator_all_flush (LC_STOP_ON_ERROR);
       if (error_code != NO_ERROR)
 	{
 #if defined(CUBRID_DEBUG)

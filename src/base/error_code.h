@@ -38,6 +38,7 @@
 #ifdef NO_ERROR
 #undef NO_ERROR
 #endif
+
 #define NO_ERROR                                       0
 #define ER_FAILED                                     -1
 
@@ -1383,7 +1384,9 @@
 
 #define ER_SLOW_QUERY				    -1104
 
-#define ER_LAST_ERROR                               -1105
+#define ER_LC_PARTIALLY_FAILED_TO_FLUSH             -1105
+
+#define ER_LAST_ERROR                               -1106
 
 /*
  * CAUTION!

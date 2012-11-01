@@ -560,6 +560,7 @@ locator_pack_copy_area_descriptor (int num_objs, LC_COPYAREA * copyarea,
       ptr = or_pack_oid (ptr, &obj->oid);
       ptr = or_pack_int (ptr, obj->length);
       ptr = or_pack_int (ptr, obj->offset);
+      ptr = or_pack_int (ptr, obj->error_code);
     }
   return ptr;
 }
@@ -599,6 +600,7 @@ locator_unpack_copy_area_descriptor (int num_objs, LC_COPYAREA * copyarea,
       desc = or_unpack_oid (desc, &obj->oid);
       desc = or_unpack_int (desc, &obj->length);
       desc = or_unpack_int (desc, &obj->offset);
+      desc = or_unpack_int (desc, &obj->error_code);
     }
   return desc;
 }
@@ -638,8 +640,8 @@ locator_send_copy_area (LC_COPYAREA * copyarea, char **contents_ptr,
   *contents_length = 0;
 
   mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (copyarea);
-  *desc_length = DB_ALIGN (mobjs->num_objs * LC_AREA_ONEOBJ_PACKED_SIZE,
-			   MAX_ALIGNMENT);
+  *desc_length =
+    DB_ALIGN (LC_AREA_ONEOBJ_PACKED_SIZE, MAX_ALIGNMENT) * mobjs->num_objs;
   *desc_ptr = (char *) malloc (*desc_length);
 
   if (!*desc_ptr)

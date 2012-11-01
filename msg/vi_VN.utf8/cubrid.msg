@@ -1170,7 +1170,8 @@ $ LOADDB
 1102 Không biết hệ thống tham số hoặc giá trị xấu.
 1103 Không thể thay đổi tham số hệ thống.
 1104 Slow query (%d msec)\n%s
-1105 Lỗi sau cùng
+1105 Internal error: partially failed to flush dirty object. 
+1106 Lỗi sau cùng
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Lỗi trong các lỗi hệ thống con (dòng %d):

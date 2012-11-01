@@ -322,7 +322,8 @@ process_class (DB_OBJECT * class_, bool verbose_flag)
 
   /* Flush all the instances */
 
-  if (locator_flush_all_instances (class_, false) != NO_ERROR)
+  if (locator_flush_all_instances (class_, DONT_DECACHE, LC_STOP_ON_ERROR) !=
+      NO_ERROR)
     {
       if (verbose_flag)
 	printf (msgcat_message (MSGCAT_CATALOG_UTILS,

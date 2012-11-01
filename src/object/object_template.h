@@ -174,6 +174,12 @@ typedef struct obj_template
    * function key constraint.
    */
   unsigned function_key_modified:1;
+
+
+  /* 
+   * Set if we want to flush bulk objects
+   */
+  unsigned bulk_flush:1;
 } OBJ_TEMPLATE, *OBT;
 
 /*

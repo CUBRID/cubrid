@@ -514,7 +514,7 @@ locator_notify_isolation_incons (LC_COPYAREA ** synch_copyarea)
  */
 int
 locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list,
-	       int *ignore_error_list)
+	       int *ignore_error_list, int continue_on_error)
 {
 #if defined(CS_MODE)
   int error_code = ER_FAILED;
@@ -534,7 +534,7 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list,
 
   mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (copy_area);
 
-  request_size = OR_INT_SIZE * (6 + num_ignore_error_list);
+  request_size = OR_INT_SIZE * (7 + num_ignore_error_list);
   request = (char *) malloc (request_size);
 
   if (request == NULL)
@@ -560,6 +560,7 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list,
     {
       request_ptr = or_pack_int (request_ptr, ignore_error_list[i]);
     }
+  request_ptr = or_pack_int (request_ptr, continue_on_error);
 
   req_error = net_client_request_3_data (NET_SERVER_LC_FORCE,
 					 request, request_size,
@@ -570,7 +571,8 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list,
   if (!req_error)
     {
       (void) or_unpack_int (reply, &error_code);
-      if (error_code == NO_ERROR)
+      if (error_code == NO_ERROR
+	  || error_code == ER_LC_PARTIALLY_FAILED_TO_FLUSH)
 	{
 	  locator_unpack_copy_area_descriptor (num_objs, copy_area, desc_ptr);
 	}
@@ -605,11 +607,11 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list,
 
   error_code =
     xlocator_force (NULL, copy_area, num_ignore_error_list,
-		    ignore_error_list);
+		    ignore_error_list, continue_on_error);
 
   EXIT_SERVER ();
 
-  if (error_code != NO_ERROR)
+  if (error_code != NO_ERROR && error_code != ER_LC_PARTIALLY_FAILED_TO_FLUSH)
     {
       /* Restore copy_area */
       memcpy (copy_area->mem, copy_area_clone->mem, copy_area->length);

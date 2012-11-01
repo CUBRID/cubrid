@@ -1170,7 +1170,8 @@ $ LOADDB
 1102 Unknown system parameter or bad value.
 1103 Cannot change system parameter.
 1104 Slow query (%d msec)\n%s
-1105 Last Error
+1105 Internal error: partially failed to flush dirty object. 
+1106 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %d):

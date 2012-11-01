@@ -33,7 +33,7 @@
 #include "object_representation.h"
 #include "thread.h"
 
-#define LC_AREA_ONEOBJ_PACKED_SIZE (OR_INT_SIZE * 4 + 			\
+#define LC_AREA_ONEOBJ_PACKED_SIZE (OR_INT_SIZE * 5 + 			\
                                     OR_HFID_SIZE + 			\
                                     OR_OID_SIZE * 2)
 
@@ -90,7 +90,8 @@ typedef enum
   LC_FLUSH_DELETE,
   LC_FLUSH_UPDATE,
   LC_FLUSH_UPDATE_PRUNE,
-  LC_FETCH_VERIFY_CHN
+  LC_FETCH_VERIFY_CHN,
+  LC_FETCH_NO_OP
 } LC_COPYAREA_OPERATION;
 
 #define LC_IS_FLUSH_INSERT(operation) \
@@ -111,6 +112,7 @@ struct lc_copyarea_oneobj
   int offset;			/* location in the copy area where the
 				 * content of the object is stored
 				 */
+  int error_code;
 };
 
 typedef struct lc_copyarea_manyobjs LC_COPYAREA_MANYOBJS;
@@ -304,6 +306,11 @@ struct lc_oidset
   bool is_list;
 };
 
+typedef enum
+{
+  LC_STOP_ON_ERROR,
+  LC_CONTINUE_ON_ERROR		/* Until now, it is only for log_applier */
+} LC_ON_ERROR;
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern LC_COPYAREA *locator_allocate_copyarea (DKNPAGES npages);

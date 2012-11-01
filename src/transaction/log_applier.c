@@ -286,6 +286,8 @@ struct la_info
   bool required_lsa_changed;
   int status;
 
+  int num_unflushed_insert;
+
   /* file lock */
   int log_path_lockf_vdes;
   int db_lockf_vdes;
@@ -393,6 +395,7 @@ static int la_update_ha_last_applied_info (void);
 
 static bool la_ignore_on_error (int errid);
 static bool la_retry_on_error (int errid);
+static int la_help_sprint_object (MOP mop, char *buffer, int max_length);
 
 static LA_CACHE_PB *la_init_cache_pb (void);
 static int la_init_cache_log_buffer (LA_CACHE_PB * cache_pb, int slb_cnt,
@@ -460,6 +463,8 @@ static int la_get_relocation_recdes (LOG_RECORD_HEADER * lrec,
 static int la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes,
 			  unsigned int *rcvindex, char *log_data,
 			  char *rec_type, bool * ovfyn);
+
+static int la_flush_unflushed_insert (MOP class_mop);
 static int la_apply_delete_log (LA_ITEM * item);
 static int la_apply_update_log (LA_ITEM * item);
 static int la_apply_insert_log (LA_ITEM * item);
@@ -503,7 +508,6 @@ static LA_ITEM *la_get_next_repl_item_from_log (LA_ITEM * item,
 
 static int la_commit_transaction (void);
 static int la_find_last_deleted_arv_num (void);
-
 
 
 /*
@@ -1939,7 +1943,7 @@ la_get_last_ha_applied_info (void)
       la_Info.delete_counter = apply_info.delete_counter;
       la_Info.schema_counter = apply_info.schema_counter;
       la_Info.commit_counter = apply_info.commit_counter;
-      la_Info.fail_counter = la_Info.fail_counter;
+      la_Info.fail_counter = apply_info.fail_counter;
     }
   else
     {
@@ -2197,6 +2201,103 @@ la_retry_on_error (int errid)
     }
 
   return false;
+}
+
+static int
+la_help_sprint_object (MOP mop, char *buffer, int max_length)
+{
+  int error = NO_ERROR;
+  int i;
+  char *p, *last_p;
+  MOP class_mop;
+  SM_CLASS *class_;
+  SM_CLASS_CONSTRAINT *cons;
+  SM_ATTRIBUTE *attr;
+  DB_VALUE value;
+
+  p = buffer;
+  last_p = buffer + max_length;
+
+  if (mop->object == NULL)
+    {
+      return 0;
+    }
+
+  class_mop = mop->class_mop;
+  if (class_mop == NULL)
+    {
+      return 0;
+    }
+
+  error = au_fetch_class (class_mop, &class_, AU_FETCH_READ, AU_SELECT);
+  if (error != NO_ERROR)
+    {
+      return 0;
+    }
+
+  cons = classobj_find_class_primary_key (class_);
+  if (cons == NULL)
+    {
+      return 0;
+    }
+
+  if (cons->attributes[1] != NULL)
+    {
+      /* multi-column key */
+      if (p >= last_p)
+	{
+	  goto end;
+	}
+      p += snprintf (p, max_length - (p - buffer), "{");
+      for (i = 0; ((attr = cons->attributes[i]) != NULL); i++)
+	{
+	  if (i != 0)
+	    {
+	      if (p >= last_p)
+		{
+		  goto end;
+		}
+	      p += snprintf (p, max_length - (p - buffer), ", ");
+	    }
+
+	  if (obj_get (mop, attr->header.name, &value) == NO_ERROR)
+	    {
+	      if (p >= last_p)
+		{
+		  pr_clear_value (&value);
+		  goto end;
+		}
+	      p += help_sprint_value (&value, p, max_length - (p - buffer));
+
+	      pr_clear_value (&value);
+	    }
+	}
+
+      if (p >= last_p)
+	{
+	  goto end;
+	}
+      p += snprintf (p, max_length - (p - buffer), "}");
+    }
+  else
+    {
+      /* single-column key */
+      attr = cons->attributes[0];
+      if (attr == NULL)
+	{
+	  assert (false);
+	  return 0;
+	}
+
+      if (obj_get (mop, attr->header.name, &value) == NO_ERROR)
+	{
+	  p += help_sprint_value (&value, p, max_length - (p - buffer));
+	  pr_clear_value (&value);
+	}
+    }
+
+end:
+  return (p - buffer);
 }
 
 /*
@@ -4378,6 +4479,82 @@ la_get_ha_server_state (LOG_PAGE * pgptr, LOG_LSA * lsa)
   return state;
 }
 
+static int
+la_flush_unflushed_insert (MOP class_mop)
+{
+  int error = NO_ERROR;
+  MOP mop;
+  char *class_name;
+  char primary_key[256];
+  int length;
+
+  if (la_Info.num_unflushed_insert > 0)
+    {
+      if (class_mop)
+	{
+	  error =
+	    locator_flush_all_instances (class_mop, DONT_DECACHE,
+					 LC_CONTINUE_ON_ERROR);
+	}
+      else
+	{
+	  error = locator_all_flush (LC_CONTINUE_ON_ERROR);
+	}
+
+      if (error == ER_LC_PARTIALLY_FAILED_TO_FLUSH)
+	{
+	  while (1)
+	    {
+	      class_name = NULL;
+
+	      mop = ws_get_error_from_error_link ();
+	      if (mop == NULL)
+		{
+		  break;
+		}
+
+	      if (mop->class_mop && mop->class_mop->object)
+		{
+		  class_name =
+		    ((SM_CLASS *) mop->class_mop->object)->header.name;
+		}
+
+	      if (class_name)
+		{
+		  length =
+		    la_help_sprint_object (mop, primary_key,
+					   sizeof (primary_key));
+		  if (length > 0)
+		    {
+		      er_stack_push ();
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_HA_LA_FAILED_TO_APPLY_INSERT, 3, class_name,
+			      primary_key, ER_FAILED);
+		      er_stack_pop ();
+		    }
+		}
+
+	      ws_decache (mop);
+
+	      la_Info.fail_counter++;
+	    }
+
+	  ws_clear_all_errors_of_error_link ();
+	  error = NO_ERROR;
+	}
+      else if (error != NO_ERROR)
+	{
+	  la_Info.fail_counter++;
+	  ws_clear_all_errors_of_error_link ();
+	  return error;
+	}
+
+      la_Info.num_unflushed_insert = 0;
+    }
+
+  return error;
+}
+
 /*
  * la_apply_delete_log() - apply the delete log to the target slave
  *   return: NO_ERROR or error code
@@ -4391,6 +4568,12 @@ la_apply_delete_log (LA_ITEM * item)
   DB_OBJECT *class_obj;
   int error;
   char buf[256];
+
+  error = la_flush_unflushed_insert (NULL);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
 
   /* find out class object by class name */
   class_obj = db_find_class (item->class_name);
@@ -4492,6 +4675,13 @@ la_apply_update_log (LA_ITEM * item)
     {
       er_log_debug (ARG_FILE_LINE, "apply_update : rcvindex = %d\n",
 		    rcvindex);
+      la_release_page_buffer (old_pageid);
+      return error;
+    }
+
+  error = la_flush_unflushed_insert (NULL);
+  if (error != NO_ERROR)
+    {
       la_release_page_buffer (old_pageid);
       return error;
     }
@@ -4657,6 +4847,8 @@ la_apply_insert_log (LA_ITEM * item)
   bool ovfyn = false;
   LOG_PAGEID old_pageid = -1;
   char buf[256];
+  static char last_inserted_class_name[DB_MAX_IDENTIFIER_LENGTH] = { 0, };
+  DB_OBJECT *last_inserted_class_obj;
 
   /* get the target log page */
   old_pageid = item->target_lsa.pageid;
@@ -4691,6 +4883,23 @@ la_apply_insert_log (LA_ITEM * item)
 		    rcvindex);
       la_release_page_buffer (old_pageid);
       return error;
+    }
+
+  if (strcmp (last_inserted_class_name, item->class_name) != 0)
+    {
+      if (last_inserted_class_name[0] != '\0')
+	{
+	  last_inserted_class_obj = db_find_class (last_inserted_class_name);
+	  error = la_flush_unflushed_insert (last_inserted_class_obj);
+	  if (error != NO_ERROR)
+	    {
+	      la_release_page_buffer (old_pageid);
+	      return error;
+	    }
+	}
+
+      strncpy (last_inserted_class_name, item->class_name,
+	       sizeof (last_inserted_class_name) - 1);
     }
 
   /* Now, make the MOBJ from the record description */
@@ -4728,12 +4937,13 @@ la_apply_insert_log (LA_ITEM * item)
     }
 
   /* update object */
+  obt_set_bulk_flush (inst_tp);
   new_object = dbt_finish_object (inst_tp);
   if (new_object == NULL)
     {
       goto error_rtn;
     }
-
+  la_Info.num_unflushed_insert++;
   la_Info.insert_counter++;
 
   AU_RESTORE (au_save);
@@ -4749,7 +4959,10 @@ la_apply_insert_log (LA_ITEM * item)
    * the mop up, and then truncate the table which leads updating
    * the serial mop to reset its values.
    */
-  ws_release_user_instance (new_object);
+  if (new_object)
+    {
+      ws_release_user_instance (new_object);
+    }
   new_object = NULL;
 
   la_release_page_buffer (old_pageid);
@@ -4893,6 +5106,12 @@ la_apply_schema_log (LA_ITEM * item)
   int error = NO_ERROR;
   DB_OBJECT *user = NULL, *save_user = NULL;
   char buf[256];
+
+  error = la_flush_unflushed_insert (NULL);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
 
   switch (item->item_type)
     {
@@ -5867,6 +6086,12 @@ la_log_commit (bool update_commit_time)
       la_Info.log_commit_time = time (0);
     }
 
+  error = la_flush_unflushed_insert (NULL);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
   error = la_update_ha_last_applied_info ();
   if (error == NO_ERROR)
     {
@@ -6206,6 +6431,7 @@ la_init (const char *log_path, const int max_mem_size)
 
   la_Info.last_deleted_archive_num = -1;
   la_Info.is_role_changed = false;
+  la_Info.num_unflushed_insert = 0;
 
   la_Info.max_mem_size = max_mem_size;
   /* check vsize when it started */

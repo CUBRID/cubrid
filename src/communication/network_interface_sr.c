@@ -804,6 +804,7 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   LC_COPYAREA_MANYOBJS *mobjs;
   int i, num_ignore_error_list;
   int ignore_error_list[-ER_LAST_ERROR];
+  int continue_on_error;
 
   ptr = or_unpack_int (request, &num_objs);
   ptr = or_unpack_int (ptr, &start_multi_update);
@@ -816,6 +817,7 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
     {
       ptr = or_unpack_int (ptr, &ignore_error_list[i]);
     }
+  ptr = or_unpack_int (ptr, &continue_on_error);
 
   csserror = 0;
 
@@ -866,7 +868,8 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 	    }
 
 	  success = xlocator_force (thread_p, copy_area,
-				    num_ignore_error_list, ignore_error_list);
+				    num_ignore_error_list, ignore_error_list,
+				    continue_on_error);
 
 	  /*
 	   * Send the descriptor part since some information about the objects
