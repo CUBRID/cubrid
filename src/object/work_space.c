@@ -2806,6 +2806,7 @@ ws_final (void)
        */
       ws_clear_internal (true);
     }
+  ws_clear_all_errors_of_error_link ();
   ws_clear ();
 
   /* destroy the classname cache */
