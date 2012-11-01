@@ -402,9 +402,8 @@ main (int argc, char *argv[])
       goto error1;
     }
 
-  /* TODO : SHARD LOG
-     set_cubrid_file (FID_SHARD_BROKER_LOG_DIR, "logdir");
-   */
+  set_cubrid_file (FID_SQL_LOG_DIR, shm_appl->log_dir);
+  set_cubrid_file (FID_SLOW_LOG_DIR, shm_appl->slow_log_dir);
 
   THREAD_BEGIN (receiver_thread, receiver_thr_f, NULL);
   THREAD_BEGIN (dispatch_thread, dispatch_thr_f, NULL);
