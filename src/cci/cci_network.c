@@ -1091,7 +1091,7 @@ connect_srv (unsigned char *ip_addr, int port, char is_retry,
   int ret;
 #if defined (WINDOWS)
   struct timeval timeout_val;
-  fd_set rset, wset;
+  fd_set rset, wset, eset;
 #else
   int flags;
   struct pollfd po[1] = { {0, 0, 0} };
@@ -1142,15 +1142,17 @@ connect_retry:
 #if defined (WINDOWS)
 	  FD_ZERO (&rset);
 	  FD_ZERO (&wset);
+	  FD_ZERO (&eset);
 	  FD_SET (sock_fd, &rset);
 	  FD_SET (sock_fd, &wset);
+	  FD_SET (sock_fd, &eset);
 
-	  ret =
-	    select (sock_fd + 1, &rset, &wset, NULL,
-		    ((login_timeout == 0) ? NULL : &timeout_val));
+	  ret = select (sock_fd + 1, &rset, &wset, &eset,
+			((login_timeout == 0) ? NULL : &timeout_val));
 #else
 	  po[0].fd = sock_fd;
 	  po[0].events = POLLOUT;
+	  po[0].revents = 0;
 
 	  if (login_timeout == 0)
 	    {
@@ -1184,6 +1186,22 @@ connect_retry:
 		}
 
 	      return CCI_ER_CONNECT;
+	    }
+	  else
+	    {
+#if defined (WINDOWS)
+	      if (FD_ISSET (sock_fd, &eset))
+		{
+		  CLOSE_SOCKET (sock_fd);
+		  return CCI_ER_CONNECT;
+		}
+#else
+	      if (po[0].revents & POLLERR || po[0].revents & POLLHUP)
+		{
+		  CLOSE_SOCKET (sock_fd);
+		  return CCI_ER_CONNECT;
+		}
+#endif
 	    }
 	}
       else

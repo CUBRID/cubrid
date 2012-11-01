@@ -584,13 +584,9 @@ ret:
   CCI_DEBUG_PRINT (print_debug_msg
 		   ("cci_connect_with_url return %d", conn_id));
 #endif
-  if (conn_id >= 0)
-    {
-      API_ELOG (conn, conn_id);
-    }
-
   if (err_code == CCI_ER_NO_ERROR)
     {
+      API_ELOG (conn, conn_id);
       return conn_id;
     }
 
