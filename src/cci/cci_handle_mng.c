@@ -470,6 +470,10 @@ hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int req_id)
   data = mht_get (con->stmt_pool, sql);
   if (data != NULL)
     {
+      T_REQ_HANDLE *statement = hm_find_req_handle (req_id, NULL);
+
+      hm_pool_drop_node_from_list (&con->pool_use_head, &con->pool_use_tail,
+				   statement);
       return CCI_ER_REQ_HANDLE;
     }
 
