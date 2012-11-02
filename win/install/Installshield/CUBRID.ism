@@ -1530,7 +1530,7 @@ QwBVAEIAUgBJAEQAAQBNAGUAZABpAGEA
 		<row><td>ProObjUseDefaultSettings</td><td>##IDS_PROOBJ_USEDEFAULTSETTINGS##</td><td/></row>
 		<row><td>ProductCode</td><td>{F9D3936B-33BA-4A5C-BF34-B41F08F942E5}</td><td/></row>
 		<row><td>ProductName</td><td>CUBRID</td><td/></row>
-		<row><td>ProductVersion</td><td>9.1.0.0043</td><td/></row>
+		<row><td>ProductVersion</td><td>9.1.0.0044</td><td/></row>
 		<row><td>Property</td><td>***DO_NOT_BUILD***</td><td/></row>
 		<row><td>Typical</td><td>***DO_NOT_BUILD***</td><td/></row>
 	</table>
