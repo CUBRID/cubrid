@@ -2512,37 +2512,16 @@ net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr,
 
       do
 	{
+	  int bg_flush_interval =
+	    prm_get_integer_value (PRM_ID_LOG_BG_FLUSH_INTERVAL_MSECS);
+
 	  do_read = false;
 #ifndef WINDOWS
-	  if ((logwr_Gl.mode == LOGWR_MODE_SEMISYNC)
-	      && (prm_get_integer_value (PRM_ID_LOG_BG_FLUSH_INTERVAL_MSECS) >
-		  0))
+	  if (logwr_Gl.mode == LOGWR_MODE_SEMISYNC && bg_flush_interval > 0)
 	    {
 	      error =
 		css_receive_data_from_server_with_timeout (rc, &reply, &size,
-							   prm_get_integer_value
-							   (PRM_ID_LOG_BG_FLUSH_INTERVAL_MSECS));
-	      if (error == INTERRUPTED_READ)
-		{
-		  logwr_Gl.force_flush = true;
-		  error = logwr_set_hdr_and_flush_info ();
-		  if (error != NO_ERROR)
-		    {
-		      return error;
-		    }
-		  error = logwr_write_log_pages ();
-		  if (error != NO_ERROR)
-		    {
-		      return error;
-		    }
-		  logwr_Gl.action &= LOGWR_ACTION_DELAYED_WRITE;
-		  do_read = true;
-		  continue;
-		}
-	      else
-		{
-		  /* TODO: should be handled other errors */
-		}
+							   bg_flush_interval);
 	    }
 	  else
 #endif
@@ -4129,7 +4108,7 @@ net_client_ping_server (int client_val, int *server_val, int timeout)
   char *reply = NULL;
   int eid, error, reply_size;
 
-  er_log_debug (ARG_FILE_LINE, "The net_clinet_ping_server() is calling.");
+  er_log_debug (ARG_FILE_LINE, "The net_client_ping_server() is calling.");
 
   error = NO_ERROR;
   if (net_Server_host[0] == '\0' || net_Server_name[0] == '\0')

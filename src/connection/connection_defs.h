@@ -232,8 +232,8 @@ enum css_check_peer_alive
   (prm_get_integer_value (PRM_ID_CHECK_PEER_ALIVE) == CSS_CHECK_PEER_ALIVE_BOTH \
   || prm_get_integer_value (PRM_ID_CHECK_PEER_ALIVE) == CSS_CHECK_PEER_ALIVE_SERVER_ONLY)
 #define CHECK_SERVER_IS_ALIVE() \
-    (prm_get_integer_value (PRM_ID_CHECK_PEER_ALIVE) == CSS_CHECK_PEER_ALIVE_BOTH \
-    || prm_get_integer_value (PRM_ID_CHECK_PEER_ALIVE) == CSS_CHECK_PEER_ALIVE_CLIENT_ONLY)
+  (prm_get_integer_value (PRM_ID_CHECK_PEER_ALIVE) == CSS_CHECK_PEER_ALIVE_BOTH \
+  || prm_get_integer_value (PRM_ID_CHECK_PEER_ALIVE) == CSS_CHECK_PEER_ALIVE_CLIENT_ONLY)
 
 /*
  * HA mode

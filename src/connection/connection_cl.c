@@ -508,11 +508,6 @@ check_queue:
 begin:
   header_size = sizeof (NET_HEADER);
   rc = css_net_read_header (conn->fd, (char *) &header, &header_size);
-  if (rc == INTERRUPTED_READ)
-    {
-      goto check_queue;
-    }
-
   if (rc == NO_ERRORS)
     {
       rid = ntohl (header.request_id);
@@ -638,11 +633,6 @@ check_queue:
 begin:
   header_size = sizeof (NET_HEADER);
   rc = css_net_read_header (conn->fd, (char *) &header, &header_size);
-  if (rc == INTERRUPTED_READ)
-    {
-      goto check_queue;
-    }
-
   if (rc == NO_ERRORS)
     {
       rid = ntohl (header.request_id);
