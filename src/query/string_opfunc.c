@@ -5694,10 +5694,11 @@ db_find_string_in_in_set (const DB_VALUE * needle, const DB_VALUE * stack,
   int err = NO_ERROR;
   DB_TYPE needle_type, stack_type;
   int position = 1;
-  int stack_len = 0, needle_len = 0;
+  int stack_size = 0, needle_size = 0;
   const char *stack_str = NULL;
   const char *needle_str = NULL;
-  int i = 0, j = 0;
+  int cmp, coll_id, matched_stack_size;
+  const char *stack_ptr, *elem_start;
 
   if (DB_IS_NULL (needle) || DB_IS_NULL (stack))
     {
@@ -5730,77 +5731,67 @@ db_find_string_in_in_set (const DB_VALUE * needle, const DB_VALUE * stack,
       goto error_return;
     }
 
-  /* Loop through stack and search for ',' character. After each ',', start
-   * comparing characters from needle to stack using j.
-   *  - If they match and we're at the end of stack or the next char in stack
-   *    is ',' then we found it.
-   *  - If they don't match, reset j to -1 because we won't find it in this
-   *    token
-   * We're looking for exact matches so we don't care about code sets at this
-   * point, it's enough to perform a byte comparison. This is why we're using
-   * DB_GET_STRING_SIZE instead of DB_GET_STRING_LENGTH
-   */
   stack_str = DB_PULL_STRING (stack);
-  stack_len = DB_GET_STRING_SIZE (stack);
+  stack_size = DB_GET_STRING_SIZE (stack);
   needle_str = DB_PULL_STRING (needle);
-  needle_len = DB_GET_STRING_SIZE (needle);
+  needle_size = DB_GET_STRING_SIZE (needle);
 
-  if (stack_len == 0 && needle_len == 0)
+  if (stack_size == 0 && needle_size == 0)
     {
       /* if both are empty string, no match */
       goto match_not_found;
     }
 
-  for (i = 0; i < stack_len; i++)
+  coll_id = DB_GET_STRING_COLLATION (stack);
+  assert (coll_id == DB_GET_STRING_COLLATION (needle));
+
+  elem_start = stack_ptr = stack_str;
+
+  for (;;)
     {
-      int char_size = 0;
+      if (*stack_ptr == ',' || stack_ptr >= stack_str + stack_size)
+	{
+	  assert (stack_ptr <= stack_str + stack_size);
 
-      if (j == 0 && needle_len == 0 && stack_str[i] == ',')
-	{
-	  /* if the needle is a empty string and the current token is also an
-	     empty string, we have found a match */
-	  DB_MAKE_INT (result, position);
-	  return NO_ERROR;
-	}
-      if (j != -1 && needle_str[j] == stack_str[i])
-	{
-	  if ((i == stack_len - 1 || stack_str[i + 1] == ',')
-	      && j == needle_len - 1)
+	  if (stack_ptr == elem_start)
 	    {
-	      /* if we're at the end of the stack or at the end of a
-	         token and we found only matches so far, this is the
-	         position we're looking for */
-	      DB_MAKE_INT (result, position);
-	      return NO_ERROR;
+	      if (needle_size == 0)
+		{
+		  DB_MAKE_INT (result, position);
+		  return NO_ERROR;
+		}
+	    }
+	  else
+	    {
+	      assert (stack_ptr > elem_start);
+	      /* check using collation */
+	      if (needle_size > 0)
+		{
+		  cmp = QSTR_MATCH (coll_id, elem_start,
+				    stack_ptr - elem_start,
+				    needle_str, needle_size,
+				    false, false, &matched_stack_size);
+		  if (cmp == 0
+		      && matched_stack_size == stack_ptr - elem_start)
+		    {
+		      DB_MAKE_INT (result, position);
+		      return NO_ERROR;
+		    }
+		}
 	    }
 
-	  j++;
-	  if (j == needle_len)
+	  if (stack_ptr >= stack_str + stack_size)
 	    {
-	      /* reached end of needle and we didn't find a ',' or end of
-	         stack */
-	      j = -1;
+	      break;
 	    }
+
+	  position++;
+	  elem_start = ++stack_ptr;
 	}
       else
 	{
-	  /* needle cannot not match this token */
-	  j = -1;
+	  stack_ptr++;
 	}
-      if (stack_str[i] == ',')
-	{
-	  /* found begining of a new token */
-	  position++;
-	  j = 0;
-	}
-    }
-
-  if (j == 0 && needle_len == 0)
-    {
-      /* we have reached the end, but the last token is an empty string.
-         if the needle is also an empty string, we must match it */
-      DB_MAKE_INT (result, position);
-      return NO_ERROR;
     }
 
 match_not_found:

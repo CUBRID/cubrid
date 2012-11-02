@@ -3456,11 +3456,23 @@ lang_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, const int level,
 		}
 	      else
 		{
+		  if (is_match)
+		    {
+		      result = -1;
+		      goto exit;
+		    }
 		  goto read_weights2;
 		}
 	    }
 
 	  assert (num_ce2 > 0);
+	  if (is_match && *str2 == 0x20)
+	    {
+	      /* trailing spaces are not matched */
+	      result = -1;
+	      goto exit;	      
+	    }
+
 	  /* consume any remaining zero-weight values (skip them) from str2 */
 	  do
 	    {

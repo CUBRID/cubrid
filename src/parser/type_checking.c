@@ -20098,6 +20098,7 @@ pt_is_op_w_collation (const PT_OP_TYPE op)
     case PT_GT_ALL:
     case PT_LT_ALL:
     case PT_LE_ALL:
+    case PT_FINDINSET:
       has_collation = true;
     case PT_LOCATE:
     case PT_POSITION:
