@@ -103,7 +103,6 @@ static int cas_fputc (int c, FILE * stream);
 static int cas_unlink (const char *pathname);
 static int cas_rename (const char *oldpath, const char *newpath);
 static int cas_mkdir (const char *pathname, mode_t mode);
-static int cas_mkdir (const char *pathname, mode_t mode);
 
 static char *
 make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf,
