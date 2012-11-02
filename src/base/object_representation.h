@@ -994,6 +994,7 @@ extern char *or_pack_monetary (char *ptr, DB_MONETARY * money);
 extern char *or_pack_utime (char *ptr, DB_UTIME utime);
 #endif
 extern char *or_pack_short (char *ptr, short number);
+extern char *or_pack_stream (char *ptr, const char *stream, size_t len);
 extern char *or_pack_string (char *ptr, const char *string);
 extern char *or_pack_string_with_length (char *ptr, const char *string,
 					 int length);
@@ -1044,6 +1045,7 @@ extern char *or_unpack_date (char *ptr, DB_DATE * date);
 extern char *or_unpack_monetary (char *ptr, DB_MONETARY * money);
 extern char *or_unpack_utime (char *ptr, DB_UTIME * utime);
 #endif
+extern char *or_unpack_stream (char *ptr, char *stream, size_t len);
 extern char *or_unpack_string (char *ptr, char **string);
 extern char *or_unpack_string_alloc (char *ptr, char **string);
 extern char *or_unpack_string_nocopy (char *ptr, char **string);
@@ -1079,6 +1081,7 @@ extern char *or_unpack_bool_array (char *ptr, bool ** bools);
 extern int or_packed_bool_array_length (const bool * bools, int size);
 
 /* pack/unpack support functions */
+extern int or_packed_stream_length (size_t len);
 extern int or_packed_string_length (const char *string, int *strlen);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int or_align_length (int length);

@@ -81,7 +81,7 @@ public class UConnection {
 	private final static String magicString = "CUBRK";
 	private final static byte CAS_CLIENT_JDBC = 3;
 	/* Current protocol version */
-	private final static byte CAS_PROTOCOL_VERSION = 0x02;
+	private final static byte CAS_PROTOCOL_VERSION = 0x03;
 	private final static byte CAS_PROTO_INDICATOR = 0x40;
 	private final static byte CAS_PROTO_VER_MASK = 0x3F;
 
@@ -139,6 +139,7 @@ public class UConnection {
 	public static final int PROTOCOL_V0 = 0;
 	public static final int PROTOCOL_V1 = 1;
 	public static final int PROTOCOL_V2 = 2;
+	public static final int PROTOCOL_V3 = 3;
 
 	UOutputBuffer outBuffer;
 	CUBRIDConnection cubridcon;
@@ -180,7 +181,8 @@ public class UConnection {
 
 	private ConnectionProperties connectionProperties = new ConnectionProperties();
 	private long lastFailureTime = 0;
-	private int sessionId = 0;
+	private byte sessionId[] = createNullSession();
+	private int oldSessionId = 0;
 
 	private Log log;
 
@@ -1588,7 +1590,6 @@ public class UConnection {
 	    		broker_info = new byte[BROKER_INFO_SIZE];
 		}
 		is.readFully(broker_info);
-		sessionId = is.readInt();
 
 		/* synchronize with broker_info */
 		byte version = broker_info[BROKER_INFO_PROTO_VERSION];
@@ -1600,6 +1601,13 @@ public class UConnection {
 				(int) broker_info[BROKER_INFO_MINOR_VERSION],
 				(int) broker_info[BROKER_INFO_PATCH_VERSION]);
 		}
+	
+		if (protoVersionIsAbove(PROTOCOL_V3)) {
+		    is.readFully(sessionId);
+		} else {
+		    oldSessionId = is.readInt();
+		}
+
 	}
 
 	private boolean setActiveHost(int hostId) throws UJciException {
@@ -1734,7 +1742,11 @@ public class UConnection {
 			dbInfo = createDBInfo(dbname, user, passwd, url);
 		}
 		// set the session id
-		UJCIUtil.copy_byte(dbInfo, 608, 20, new Integer(sessionId).toString());
+		if (protoVersionIsAbove(PROTOCOL_V3)) {
+			System.arraycopy(sessionId, 0, dbInfo, 608, 20);
+		} else {
+		    	UJCIUtil.copy_byte(dbInfo, 608, 20, new Integer(oldSessionId).toString());
+		}
 
 		if (outBuffer == null) {
 			outBuffer = new UOutputBuffer(this);
@@ -1779,9 +1791,14 @@ public class UConnection {
 				return;
 			outBuffer.newRequest(output, UFunctionCode.END_SESSION);
 			send_recv_msg();
-			sessionId = 0;
+			sessionId = createNullSession();
+			oldSessionId = 0;
 		} catch (Exception e) {
 		}
+	}
+
+	private byte[] createNullSession() {
+	    return new byte[20];
 	}
 
 	// jci 3.0
@@ -1824,7 +1841,6 @@ public class UConnection {
 
     public void setConnectionProperties(ConnectionProperties connProperties) {
 		this.connectionProperties = connProperties;
-		sessionId = connectionProperties.getSessionId();
     }
 
     private Log getLogger() {

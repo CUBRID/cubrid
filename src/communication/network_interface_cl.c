@@ -35,6 +35,7 @@
 #include "storage_common.h"
 #if defined(CS_MODE)
 #include "server_interface.h"
+#include "boot_cl.h"
 #else
 #include "xserver_interface.h"
 #endif
@@ -3981,7 +3982,7 @@ boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
 #if defined(CS_MODE)
   int tran_index = NULL_TRAN_INDEX;
   int request_size, area_size, req_error, temp_int;
-  char *request, *reply, *area, *ptr;
+  char *request, *reply, *area, *ptr, *session_key;
   int row_count = DB_ROW_COUNT_NOT_SET;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   SESSION_PARAM *session_params = NULL;
@@ -3999,8 +4000,11 @@ boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
     + OR_INT_SIZE		/* process_id */
     + OR_INT_SIZE		/* client_lock_wait */
     + OR_INT_SIZE		/* client_isolation */
+    + or_packed_stream_length (SERVER_SESSION_KEY_SIZE)	/* server session key */
     + OR_INT_SIZE		/* session state id */
     + sysprm_packed_local_session_parameters_length ();	/* session parameters */
+
+  session_key = boot_get_server_session_key ();
   request = (char *) malloc (request_size);
   if (request)
     {
@@ -4015,6 +4019,7 @@ boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
       ptr = or_pack_int (ptr, client_credential->process_id);
       ptr = or_pack_int (ptr, client_lock_wait);
       ptr = or_pack_int (ptr, (int) client_isolation);
+      ptr = or_pack_stream (ptr, session_key, SERVER_SESSION_KEY_SIZE);
       ptr = or_pack_int (ptr, db_Session_id);
       ptr = sysprm_pack_local_session_parameters (ptr);
 
@@ -4043,6 +4048,9 @@ boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
 	      ptr = or_unpack_float (ptr,
 				     &server_credential->disk_compatibility);
 	      ptr = or_unpack_int (ptr, &server_credential->ha_server_state);
+	      ptr = or_unpack_stream (ptr,
+				      server_credential->server_session_key,
+				      SERVER_SESSION_KEY_SIZE);
 	      ptr = or_unpack_int (ptr, &db_Session_id);
 	      ptr = or_unpack_int (ptr, &row_count);
 	      ptr = sysprm_unpack_session_parameters (ptr, &session_params);

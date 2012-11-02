@@ -3525,7 +3525,7 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
   TRAN_ISOLATION client_isolation;
   TRAN_STATE tran_state;
   int area_size, strlen1, strlen2, strlen3;
-  char *reply, *area, *ptr;
+  char *reply, *area, *ptr, *server_session_key;
   SESSION_KEY session_key;
   int row_count = DB_ROW_COUNT_NOT_SET;
   SESSION_PARAM *session_params = NULL;
@@ -3549,6 +3549,7 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_int (ptr, &client_credential.process_id);
   ptr = or_unpack_int (ptr, &client_lock_wait);
   ptr = or_unpack_int (ptr, &xint);
+  ptr = or_unpack_stream (ptr, server_session_key, SERVER_SESSION_KEY_SIZE);
   ptr = or_unpack_int (ptr, &session_key.id);
   ptr = sysprm_unpack_session_parameters (ptr, &session_params);
   client_isolation = (TRAN_ISOLATION) xint;
@@ -3570,6 +3571,8 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
     }
 
   if (session_key.id == DB_EMPTY_SESSION
+      || memcmp (server_session_key, server_credential.server_session_key,
+		 SERVER_SESSION_KEY_SIZE) != 0
       || xsession_check_session (thread_p, &session_key) != NO_ERROR)
     {
       /* create new session */
@@ -3600,6 +3603,7 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
     + OR_INT_SIZE		/* log_page_size */
     + OR_FLOAT_SIZE		/* disk_compatibility */
     + OR_INT_SIZE		/* ha_server_state */
+    + or_packed_stream_length (SERVER_SESSION_KEY_SIZE)	/* server session key */
     + OR_INT_SIZE		/* session_id */
     + OR_INT_SIZE		/* row count */
     + sysprm_packed_session_parameters_length (session_params);
@@ -3627,6 +3631,8 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
       ptr = or_pack_int (ptr, (int) server_credential.log_page_size);
       ptr = or_pack_float (ptr, server_credential.disk_compatibility);
       ptr = or_pack_int (ptr, (int) server_credential.ha_server_state);
+      ptr = or_pack_stream (ptr, server_credential.server_session_key,
+			    SERVER_SESSION_KEY_SIZE);
       ptr = or_pack_int (ptr, session_key.id);
       ptr = or_pack_int (ptr, row_count);
       ptr = sysprm_pack_session_parameters (ptr, session_params);

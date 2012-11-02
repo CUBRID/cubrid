@@ -358,7 +358,7 @@ qe_end_session (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf)
   T_NET_BUF net_buf;
   char func_code = CAS_FC_END_SESSION;
   int err_code;
-  if (con_handle->session_id == CCI_EMPTY_SESSION)
+  if (hm_is_empty_session (&con_handle->session_id))
     {
       return 0;
     }
@@ -382,7 +382,7 @@ qe_end_session (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf)
 
   err_code = net_recv_msg (con_handle, NULL, NULL, err_buf);
 
-  con_handle->session_id = CCI_EMPTY_SESSION;
+  hm_make_empty_session (&con_handle->session_id);
   return err_code;
 }
 

@@ -66,6 +66,7 @@
 #include "cci_network.h"
 #include "cas_protocol.h"
 #include "cci_query_execute.h"
+#include "cci_util.h"
 #if defined(WINDOWS)
 #include "version.h"
 #endif
@@ -182,7 +183,18 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id,
 
   strncpy (info, con_handle->url, SRV_CON_URL_SIZE);
   info += SRV_CON_URL_SIZE;
-  snprintf (info, SRV_CON_DBSESS_ID_SIZE, "%u", con_handle->session_id);
+
+  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V3))
+    {
+      memcpy (info, con_handle->session_id.id, DRIVER_SESSION_SIZE);
+    }
+  else
+    {
+      unsigned int v;
+
+      v = *(unsigned int *) con_handle->session_id.id;
+      snprintf (info, DRIVER_SESSION_SIZE, "%u", v);
+    }
 
   if (host_id < 0)
     {
@@ -293,18 +305,40 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id,
     }
 
   /* connection success */
-
-  if (*(msg_header.msg_body_size_ptr) != CAS_CONNECTION_REPLY_SIZE)
-    {
-      err_code = CCI_ER_COMMUNICATION;
-      goto connect_srv_error;
-    }
-
   con_handle->cas_pid = err_indicator;
   memcpy (con_handle->broker_info, &msg_buf[CAS_PID_SIZE], BROKER_INFO_SIZE);
-  memcpy (&con_handle->session_id, &msg_buf[CAS_PID_SIZE + BROKER_INFO_SIZE],
-	  SESSION_ID_SIZE);
-  con_handle->session_id = ntohl (con_handle->session_id);
+
+  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V3))
+    {
+      if (*(msg_header.msg_body_size_ptr) != CAS_CONNECTION_REPLY_SIZE)
+	{
+	  err_code = CCI_ER_COMMUNICATION;
+	  goto connect_srv_error;
+	}
+    }
+  else
+    {
+      int reply_size = CAS_PID_SIZE + BROKER_INFO_SIZE + SESSION_ID_SIZE;
+
+      if (*(msg_header.msg_body_size_ptr) != reply_size)
+	{
+	  err_code = CCI_ER_COMMUNICATION;
+	  goto connect_srv_error;
+	}
+    }
+
+  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V3))
+    {
+      memcpy (con_handle->session_id.id,
+	      &msg_buf[CAS_PID_SIZE + BROKER_INFO_SIZE], DRIVER_SESSION_SIZE);
+    }
+  else
+    {
+      memcpy (con_handle->session_id.id,
+	      &msg_buf[CAS_PID_SIZE + BROKER_INFO_SIZE], SESSION_ID_SIZE);
+      *(unsigned int *) con_handle->session_id.id =
+	ntohl (*(unsigned int *) con_handle->session_id.id);
+    }
 
   FREE_MEM (msg_buf);
 
@@ -509,7 +543,7 @@ net_send_msg (T_CON_HANDLE * con_handle, char *msg, int size)
       long elapsed;
 
       gettimeofday (&te, NULL);
-      ut_timeval_diff_msec (&ts, &te, &elapsed);
+      elapsed = ut_timeval_diff_msec (&ts, &te);
       CCI_LOGF_DEBUG (con_handle->logger, "[NET][W][B][S:%d][E:%d][T:%d]",
 		      size, err, elapsed);
     }
@@ -618,7 +652,7 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
 	  long elapsed;
 
 	  gettimeofday (&te, NULL);
-	  ut_timeval_diff_msec (&ts, &te, &elapsed);
+	  elapsed = ut_timeval_diff_msec (&ts, &te);
 	  CCI_LOGF_DEBUG (con_handle->logger, "[NET][R][B][S:%d][E:%d][T:%d]",
 			  *(recv_msg_header.msg_body_size_ptr), result_code,
 			  elapsed);

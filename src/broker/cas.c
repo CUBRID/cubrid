@@ -318,6 +318,99 @@ static SOCKET srv_sock_fd;
 static int cas_req_count = 1;
 #endif /* !LIBCAS_FOR_JSP */
 
+#ifndef LIBCAS_FOR_JSP
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+static void
+cas_make_session_for_driver (char *out)
+{
+  size_t size = 0;
+  SESSION_ID session;
+
+  memcpy (out + size, db_get_server_session_key (), SERVER_SESSION_KEY_SIZE);
+  size += SERVER_SESSION_KEY_SIZE;
+  session = db_get_session_id ();
+  memcpy (out + size, &session, sizeof (SESSION_ID));
+  size += sizeof (SESSION_ID);
+  memset (out + size, 0, DRIVER_SESSION_SIZE - size);
+}
+
+static void
+cas_set_session_id (T_CAS_PROTOCOL protocol, char *session)
+{
+  SESSION_ID id;
+
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (protocol, PROTOCOL_V3))
+    {
+      id = *(SESSION_ID *) (session + 8);
+      if (db_is_same_server_session_key (session))
+	{
+	  db_set_session_id (id);
+	  cas_log_write_and_end (0, false, "using driver session %u", id);
+	}
+      else
+	{
+	  db_set_session_id (DB_EMPTY_SESSION);
+	  cas_log_write_and_end (0, false, "reject driver session %u", id);
+	}
+    }
+  else
+    {
+      /* always create new session for old drivers */
+      db_set_session_id (DB_EMPTY_SESSION);
+    }
+}
+#endif
+
+static void
+cas_send_connect_reply_to_driver (T_CAS_PROTOCOL protocol,
+				  SOCKET client_sock_fd, char *cas_info,
+				  char *broker_info)
+{
+  char msgbuf[CAS_CONNECTION_REPLY_SIZE + 8];
+  char *p = msgbuf;
+  char sessid[DRIVER_SESSION_SIZE];
+  int v;
+
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+  cas_make_session_for_driver (sessid);
+#else
+  memset (sessid, 0, DRIVER_SESSION_SIZE);
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+
+  as_info->cur_keep_con = shm_appl->keep_connection;
+
+  v = htonl (CAS_CONNECTION_REPLY_SIZE);
+  memcpy (p, &v, sizeof (int));
+  p += sizeof (int);
+  if (cas_info_size > 0)
+    {
+      memcpy (p, cas_info, cas_info_size);
+      p += cas_info_size;
+    }
+  v = htonl (getpid ());
+  memcpy (p, &v, CAS_PID_SIZE);
+  p += CAS_PID_SIZE;
+  memcpy (p, broker_info, BROKER_INFO_SIZE);
+  p += BROKER_INFO_SIZE;
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (protocol, PROTOCOL_V3))
+    {
+      memcpy (p, sessid, DRIVER_SESSION_SIZE);
+      p += DRIVER_SESSION_SIZE;
+    }
+  else
+    {
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+      v = htonl (db_get_session_id ());
+#else
+      v = 0;
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+      memcpy (p, &v, SESSION_ID_SIZE);
+      p += SESSION_ID_SIZE;
+    }
+  net_write_stream (client_sock_fd, msgbuf, p - msgbuf);
+}
+#endif /* !LIBCAS_FOR_JSP */
+
 #if defined(CUBRID_SHARD)
 #if defined(WINDOWS)
 int WINAPI
@@ -984,7 +1077,7 @@ main (int argc, char *argv[])
 		db_sessionid = url + SRV_CON_URL_SIZE;
 		db_sessionid[SRV_CON_DBSESS_ID_SIZE - 1] = '\0';
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-		db_set_session_id (atol (db_sessionid));
+		cas_set_session_id (req_info.client_version, db_sessionid);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 	      }
 
@@ -1048,7 +1141,6 @@ main (int argc, char *argv[])
 
 	    err_code =
 	      ux_database_connect (db_name, db_user, db_passwd, &db_err_msg);
-
 	    if (err_code < 0)
 	      {
 		if (db_err_msg == NULL)
@@ -1112,35 +1204,9 @@ main (int argc, char *argv[])
 	    broker_info[BROKER_INFO_CCI_PCONNECT] =
 	      (shm_appl->cci_pconnect ? CCI_PCONNECT_ON : CCI_PCONNECT_OFF);
 
-	    do
-	      {
-		/* PID + BROKER_INFO + SESSION_ID */
-		char msgbuf[CAS_CONNECTION_REPLY_SIZE];
-		int caspid = htonl (getpid ());
-		unsigned int sessid = 0;
-
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-		sessid = htonl (session_id);
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
-
-		as_info->cur_keep_con = shm_appl->keep_connection;
-
-		net_write_int (client_sock_fd, CAS_CONNECTION_REPLY_SIZE);
-
-		if (cas_info_size > 0)
-		  {
-		    net_write_stream (client_sock_fd, cas_info,
-				      cas_info_size);
-		  }
-
-		memcpy (msgbuf, &caspid, CAS_PID_SIZE);
-		memcpy (msgbuf + CAS_PID_SIZE, broker_info, BROKER_INFO_SIZE);
-		memcpy (msgbuf + CAS_PID_SIZE + BROKER_INFO_SIZE, &sessid,
-			SESSION_ID_SIZE);
-		net_write_stream (client_sock_fd, msgbuf,
-				  CAS_CONNECTION_REPLY_SIZE);
-	      }
-	    while (0);
+	    cas_send_connect_reply_to_driver (req_info.client_version,
+					      client_sock_fd, cas_info,
+					      broker_info);
 
 	    as_info->cci_default_autocommit =
 	      shm_appl->cci_default_autocommit;

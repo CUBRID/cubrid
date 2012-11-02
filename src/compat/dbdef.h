@@ -417,9 +417,10 @@ enum LOCKHINT
 /* session state id */
 typedef unsigned int SESSION_ID;
 /* uninitialized value for session id */
-#define DB_EMPTY_SESSION 0
+#define DB_EMPTY_SESSION			0
 /* uninitialized value for row count */
-#define DB_ROW_COUNT_NOT_SET -2
+#define DB_ROW_COUNT_NOT_SET			-2
+#define SERVER_SESSION_KEY_SIZE			8
 
 typedef struct session_key SESSION_KEY;
 struct session_key

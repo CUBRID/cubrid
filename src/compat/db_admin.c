@@ -2503,7 +2503,7 @@ db_get_host_connected (void)
 #if defined(CS_MODE)
   return boot_get_host_connected ();
 #else
-  return "localhost";
+  return (char *) "localhost";
 #endif
 }
 
@@ -2530,6 +2530,27 @@ db_get_ha_server_state (char *buffer, int maxlen)
       strncpy (buffer, css_ha_server_state_string (ha_state), maxlen);
     }
   return ha_state;
+}
+
+bool
+db_is_same_server_session_key (char *key)
+{
+  char *server_key;
+  int i;
+
+  server_key = boot_get_server_session_key ();
+  if (server_key == NULL)
+    {
+      return false;
+    }
+
+  return memcmp (server_key, key, SERVER_SESSION_KEY_SIZE) == 0;
+}
+
+char *
+db_get_server_session_key (void)
+{
+  return boot_get_server_session_key ();
 }
 
 /*

@@ -815,3 +815,39 @@ css_get_sock_name (SOCKET sockfd, char *hostname, size_t len)
     }
   return getnameinfo (saddr, saddr_len, hostname, len, NULL, 0, NI_NOFQDN);
 }
+
+/*
+ * css_hostname_to_ip()
+ *   return:
+ *   host(in):
+ *   ip_addr(out):
+ */
+int
+css_hostname_to_ip (const char *host, unsigned char *ip_addr)
+{
+  unsigned int in_addr;
+
+  /*
+   * First try to convert to the host name as a dotted-decimal number.
+   * Only if that fails do we call gethostbyname.
+   */
+  in_addr = inet_addr (host);
+  if (in_addr != INADDR_NONE)
+    {
+      memcpy ((void *) ip_addr, (void *) &in_addr, sizeof (in_addr));
+      return NO_ERROR;
+    }
+  else
+    {
+      struct hostent *hp;
+
+      hp = gethostbyname (host);
+      if (hp == NULL)
+	{
+	  return INVALID_SOCKET;
+	}
+      memcpy ((void *) ip_addr, (void *) hp->h_addr, hp->h_length);
+    }
+
+  return NO_ERROR;
+}

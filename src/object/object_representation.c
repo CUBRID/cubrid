@@ -3044,6 +3044,45 @@ or_pack_string (char *ptr, const char *string)
 }
 
 /*
+ * or_pack_stream - Puts a stream into the buffer.
+ *    return: advanced buffer pointer
+ *    ptr(out): current buffer pointer
+ *    stream(in): stream to pack
+ */
+char *
+or_pack_stream (char *ptr, const char *stream, size_t len)
+{
+  int bits, pad;
+
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
+  if (stream == NULL)
+    {
+      OR_PUT_INT (ptr, -1);
+      ptr += OR_INT_SIZE;
+    }
+  else
+    {
+      bits = len & 3;
+      if (bits)
+	{
+	  pad = 4 - bits;
+	}
+      else
+	{
+	  pad = 0;
+	}
+      OR_PUT_INT (ptr, len + pad);
+      ptr += OR_INT_SIZE;
+      memcpy (ptr, stream, len);
+      ptr += len;
+      memset (ptr, '\0', pad);
+      ptr += pad;
+    }
+  return ptr;
+}
+
+/*
  * or_pack_string_with_length - pack a string at most given length
  *    return: advanced buffer pointer
  *    ptr(out): output buffer
@@ -3120,6 +3159,30 @@ or_unpack_string (char *ptr, char **string)
 	}
       *string = new_;
     }
+  return ptr;
+}
+
+/*
+ * or_unpack_stream - extracts a stream from a buffer.
+ *    return: advanced pointer
+ *    ptr(in): current pointer
+ *    stream(out): return pointer
+ */
+char *
+or_unpack_stream (char *ptr, char *stream, size_t len)
+{
+  char *new_;
+  int length;
+
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
+  length = OR_GET_INT (ptr);
+  ptr += OR_INT_SIZE;
+
+  assert_release (length >= len);
+
+  memcpy (stream, ptr, len);
+  ptr += length;
   return ptr;
 }
 
@@ -3239,6 +3302,35 @@ or_packed_string_length (const char *string, int *strlenp)
 	{
 	  *strlenp = 0;
 	}
+    }
+  return total;
+}
+
+/*
+ * or_packed_stream_length - Determines the number of bytes required to hold
+ * the packed representation of a stream.
+ *    return: length of packed stream
+ *    len(in): length of stream
+ */
+int
+or_packed_stream_length (size_t len)
+{
+  int total, bits, pad;
+
+  /* always have a length */
+  total = OR_INT_SIZE;
+  if (len > 0)
+    {
+      bits = len & 3;
+      if (bits)
+	{
+	  pad = 4 - bits;
+	}
+      else
+	{
+	  pad = 0;
+	}
+      total += len + pad;
     }
   return total;
 }

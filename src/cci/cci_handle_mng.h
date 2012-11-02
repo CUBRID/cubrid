@@ -92,9 +92,11 @@ typedef enum
   CCI_CON_STATUS_IN_TRAN = 1
 } T_CCI_CON_STATUS;
 
-typedef unsigned int T_CCI_SESSION_ID;
-
-#define CCI_EMPTY_SESSION 0
+typedef struct t_cci_session_id T_CCI_SESSION_ID;
+struct t_cci_session_id
+{
+  char id[DRIVER_SESSION_SIZE];
+};
 
 typedef enum
 {
@@ -309,6 +311,9 @@ extern void hm_create_health_check_th (void);
 extern int hm_pool_restore_used_statements (T_CON_HANDLE * connection);
 extern int hm_pool_add_statement_to_use (T_CON_HANDLE * connection,
 					 int statement_id);
+
+extern bool hm_is_empty_session (T_CCI_SESSION_ID * id);
+extern void hm_make_empty_session (T_CCI_SESSION_ID * id);
 /************************************************************************
  * PUBLIC VARIABLES							*
  ************************************************************************/

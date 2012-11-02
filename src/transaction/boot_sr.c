@@ -94,6 +94,8 @@
 
 #if defined(WINDOWS)
 #include "wintcp.h"
+#else
+#include "tcp.h"
 #endif /* WINDOWS */
 
 #define BOOT_LEAVE_SAFE_OSDISK_PARTITION_FREE_SPACE  \
@@ -158,6 +160,7 @@ static int boot_Temp_volumes_max_pages = -2;
 static int boot_Temp_volumes_sys_pages = 0;
 static char boot_Lob_path[PATH_MAX + LOB_PATH_PREFIX_MAX] = "";
 static bool skip_to_check_ct_classes_for_rebuild = false;
+static char boot_Server_session_key[SERVER_SESSION_KEY_SIZE];
 
 #if defined(SERVER_MODE)
 static bool boot_Set_server_at_exit = false;
@@ -2906,6 +2909,21 @@ exit_on_error:
   return NULL_TRAN_INDEX;
 }
 
+static void
+boot_make_session_server_key (void)
+{
+  UINT32 t;
+  unsigned char ip[4];
+
+  t = time (NULL);
+  memcpy (boot_Server_session_key, &t, sizeof (UINT32));
+  css_hostname_to_ip (boot_Host_name, ip);
+  boot_Server_session_key[4] = ip[0];
+  boot_Server_session_key[5] = ip[1];
+  boot_Server_session_key[6] = ip[2];
+  boot_Server_session_key[7] = ip[3];
+}
+
 /*
  * boot_restart_server () - restart server
  *
@@ -2943,7 +2961,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   int common_ha_mode;
 #endif
   int error_code = NO_ERROR;
-  const char *prev_err_msg;
+  char *prev_err_msg;
 
 #if defined(SERVER_MODE)
   if (!lang_init_full ())
@@ -3061,6 +3079,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 
   COMPOSE_FULL_NAME (boot_Db_full_name, sizeof (boot_Db_full_name),
 		     db->pathname, db_name);
+  boot_make_session_server_key ();
 
   if (boot_volume_info_log_path (log_path) == NULL)
     {
@@ -3509,7 +3528,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   return NO_ERROR;
 
 error:
-  prev_err_msg = er_msg ();
+  prev_err_msg = (char *) er_msg ();
   if (prev_err_msg != NULL)
     {
       prev_err_msg = strdup (prev_err_msg);
@@ -3733,6 +3752,8 @@ xboot_register_client (THREAD_ENTRY * thread_p,
       server_credential->ha_server_state =
 	prm_get_integer_value (PRM_ID_HA_SERVER_STATE);
 #endif
+      memcpy (server_credential->server_session_key, boot_Server_session_key,
+	      SERVER_SESSION_KEY_SIZE);
 
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_CLIENT_CONNECTED,
 	      4, client_credential->program_name,

@@ -171,6 +171,81 @@ css_sockopt (SOCKET sd)
 }
 
 /*
+ * css_hostname_to_ip()
+ *   return:
+ *   host(in):
+ *   ip_addr(out):
+ */
+int
+css_hostname_to_ip (const char *host, unsigned char *ip_addr)
+{
+  in_addr_t in_addr;
+
+  /*
+   * First try to convert to the host name as a dotted-decimal number.
+   * Only if that fails do we call gethostbyname.
+   */
+  in_addr = inet_addr (host);
+  if (in_addr != INADDR_NONE)
+    {
+      memcpy ((void *) ip_addr, (void *) &in_addr, sizeof (in_addr));
+      return NO_ERROR;
+    }
+  else
+    {
+#ifdef HAVE_GETHOSTBYNAME_R
+# if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
+      struct hostent *hp, hent;
+      int herr;
+      char buf[1024];
+
+      if (gethostbyname_r (host, &hent, buf, sizeof (buf), &hp, &herr) != 0
+	  || hp == NULL)
+	{
+	  return INVALID_SOCKET;
+	}
+      memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
+# elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
+      struct hostent hent;
+      int herr;
+      char buf[1024];
+
+      if (gethostbyname_r (host, &hent, buf, sizeof (buf), &herr) == NULL)
+	{
+	  return INVALID_SOCKET;
+	}
+      memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
+# elif defined (HAVE_GETHOSTBYNAME_R_HPUX)
+      struct hostent hent;
+      char buf[1024];
+
+      if (gethostbyname_r (host, &hent, buf) == -1)
+	{
+	  return INVALID_SOCKET;
+	}
+      memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
+# else
+#   error "HAVE_GETHOSTBYNAME_R"
+# endif
+#else /* HAVE_GETHOSTBYNAME_R */
+      struct hostent *hp;
+
+      pthread_mutex_lock (&gethostbyname_lock);
+      hp = gethostbyname (host);
+      if (hp == NULL)
+	{
+	  pthread_mutex_unlock (&gethostbyname_lock);
+	  return INVALID_SOCKET;
+	}
+      memcpy ((void *) ip_addr, (void *) hp->h_addr, hp->h_length);
+      pthread_mutex_unlock (&gethostbyname_lock);
+#endif /* !HAVE_GETHOSTBYNAME_R */
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * css_sockaddr()
  *   return:
  *   host(in):

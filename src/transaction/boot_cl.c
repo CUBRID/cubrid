@@ -125,7 +125,8 @@ static BOOT_SERVER_CREDENTIAL boot_Server_credential = {
   /* root_class_hfid */ {{NULL_FILEID, NULL_VOLID}, NULL_PAGEID},
   /* data page_size */ -1, /* log page_size */ -1,
   /* disk_compatibility */ 0.0,
-  /* ha_server_state */ -1
+  /* ha_server_state */ -1,
+  /* server_session_key */ {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
 };
 
 static const char *boot_Client_no_user_string = "(nouser)";
@@ -1426,6 +1427,8 @@ boot_client_all_finalize (bool is_er_final)
       co_final ();
 
       memset (&boot_Server_credential, 0, sizeof (boot_Server_credential));
+      memset (boot_Server_credential.server_session_key, 0xFF,
+	      SERVER_SESSION_KEY_SIZE);
 
       boot_client (NULL_TRAN_INDEX, TRAN_LOCK_INFINITE_WAIT,
 		   TRAN_DEFAULT_ISOLATION);
@@ -5371,4 +5374,13 @@ exit:
 exit:
 #endif
   return error_code;
+}
+
+/*
+ * boot_get_server_session_key () -
+ */
+char *
+boot_get_server_session_key (void)
+{
+  return boot_Server_credential.server_session_key;
 }

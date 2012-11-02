@@ -113,7 +113,8 @@ typedef enum
 
 #define CAS_PID_SIZE                            4
 #define SESSION_ID_SIZE                         4
-#define CAS_CONNECTION_REPLY_SIZE               (CAS_PID_SIZE + BROKER_INFO_SIZE + SESSION_ID_SIZE)
+#define DRIVER_SESSION_SIZE			SRV_CON_DBSESS_ID_SIZE
+#define CAS_CONNECTION_REPLY_SIZE               (CAS_PID_SIZE + BROKER_INFO_SIZE + DRIVER_SESSION_SIZE)
 
 #define CAS_GET_QUERY_INFO_PLAN			1
 
@@ -190,7 +191,8 @@ enum t_cas_protocol
 {
   PROTOCOL_V0 = 0,		/* old protocol */
   PROTOCOL_V1 = 1,		/* query_timeout and query_cancel */
-  PROTOCOL_V2 = 2		/* send columns meta-data with the result for executing */
+  PROTOCOL_V2 = 2,		/* send columns meta-data with the result for executing */
+  PROTOCOL_V3 = 3		/* session information extend with server session key */
 };
 
 #if defined(CUBRID_SHARD)
@@ -199,7 +201,7 @@ enum t_cas_protocol
 #endif /* CUBRID_SHARD */
 
 /* Current protocol version */
-#define CAS_PROTOCOL_VERSION    (0x02)
+#define CAS_PROTOCOL_VERSION    (0x03)
 
 /* Indicates version variable holds CAS protocol version. */
 #define CAS_PROTO_INDICATOR     (0x40)

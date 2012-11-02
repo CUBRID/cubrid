@@ -979,6 +979,28 @@ hm_create_health_check_th (void)
  * IMPLEMENTATION OF PRIVATE FUNCTIONS	 				*
  ************************************************************************/
 
+bool
+hm_is_empty_session (T_CCI_SESSION_ID * id)
+{
+  size_t i;
+
+  for (i = 0; i < DRIVER_SESSION_SIZE; i++)
+    {
+      if (id->id[i] != 0)
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+void
+hm_make_empty_session (T_CCI_SESSION_ID * id)
+{
+  memset (id->id, 0, DRIVER_SESSION_SIZE);
+}
+
 static int
 init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
 		 char *db_name, char *db_user, char *db_passwd)
@@ -1013,7 +1035,7 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
   con_handle->is_retry = 0;
   con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
   con_handle->autocommit_mode = CCI_AUTOCOMMIT_TRUE;
-  con_handle->session_id = CCI_EMPTY_SESSION;
+  hm_make_empty_session (&con_handle->session_id);
 
   con_handle->max_req_handle = REQ_HANDLE_ALLOC_SIZE;
   con_handle->req_handle_table = (T_REQ_HANDLE **)

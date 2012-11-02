@@ -72,5 +72,5 @@ extern int css_get_max_socket_fds (void);
 
 extern int css_get_peer_name (SOCKET sockfd, char *hostname, size_t len);
 extern int css_get_sock_name (SOCKET sockfd, char *hostname, size_t len);
-
+extern int css_hostname_to_ip (const char *host, unsigned char *ip_addr);
 #endif /* _WINTCP_H_ */
