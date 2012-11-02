@@ -472,7 +472,8 @@ static void pt_set_charset_coll (PARSER_CONTEXT *parser, PT_NODE *c_node,
 				 const int collation_id, bool force);
 static void pt_set_char_collation_info (PARSER_CONTEXT *parser, PT_NODE *node,
 					PT_NODE *coll_node);
-
+static PT_NODE *pt_fix_partition_spec (PARSER_CONTEXT * parser,
+				       PT_NODE * spec, PT_NODE * partition);
 static PT_MISC_TYPE parser_attr_type;
 
 static bool allow_attribute_ordering;
@@ -907,6 +908,7 @@ typedef struct YYLTYPE
 %type <node> values_query
 %type <node> values_expression
 %type <node> values_expr_item
+%type <node> opt_partition_spec
 /*}}}*/
 
 /* define rule type (cptr) */
@@ -1182,6 +1184,7 @@ typedef struct YYLTYPE
 %token OVERLAPS
 %token PARAMETERS
 %token PARTIAL
+%token PARTITION
 %token POSITION
 %token PRECISION
 %token PREPARE
@@ -1401,7 +1404,6 @@ typedef struct YYLTYPE
 %token <cptr> NOMINVALUE
 %token <cptr> OFFSET
 %token <cptr> OWNER
-%token <cptr> PARTITION
 %token <cptr> PARTITIONING
 %token <cptr> PARTITIONS
 %token <cptr> PASSWORD
@@ -3946,7 +3948,7 @@ opt_outer
 table_spec
 	: class_spec opt_as_identifier_attr_name opt_table_spec_index_hint opt_with_read_uncommitted
 		{{
-
+			PT_NODE *range_var = NULL;
 			PT_NODE *ent = $1;
 			if (ent)
 			  {
@@ -3963,7 +3965,16 @@ table_spec
 				  }
 			      }
 
-			    ent->info.spec.range_var = CONTAINER_AT_0 ($2);
+			    range_var = CONTAINER_AT_0 ($2);
+			    if (range_var != NULL)
+			      {
+					if (ent->info.spec.range_var != NULL)
+					  {
+						parser_free_tree (this_parser,
+										  ent->info.spec.range_var);
+					  }
+					ent->info.spec.range_var = CONTAINER_AT_0 ($2);
+			      }
 			    ent->info.spec.as_attr_list = CONTAINER_AT_1 ($2);
 
 			    if ($3)
@@ -4297,7 +4308,7 @@ meta_class_spec
 	;
 
 only_all_class_spec
-	: only_class_name
+	: only_class_name opt_partition_spec
 		{{
 
 			PT_NODE *ocs = parser_new_node (this_parser, PT_SPEC);
@@ -4306,6 +4317,11 @@ only_all_class_spec
 			    ocs->info.spec.entity_name = $1;
 			    ocs->info.spec.only_all = PT_ONLY;
 			    ocs->info.spec.meta_class = PT_CLASS;
+			    if ($2)
+			      {
+				ocs = pt_fix_partition_spec (this_parser, ocs,
+							     $2);
+			      }
 			  }
 
 			$$ = ocs;
@@ -4389,6 +4405,18 @@ class_name_list
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
+		DBG_PRINT}}
+	;
+
+opt_partition_spec
+	: /* empty */
+		{{
+		    $$ = NULL;
+		}}
+	| PARTITION '(' identifier ')'
+		{{
+			$$ = $3;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
 	;
 
@@ -18005,16 +18033,6 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| PARTITION
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
 	| PARTITIONING
 		{{
 
@@ -22301,3 +22319,47 @@ pt_set_char_collation_info (PARSER_CONTEXT *parser, PT_NODE *node,
 
   node->info.value.print_collation = true;
 }
+
+static PT_NODE *
+pt_fix_partition_spec (PARSER_CONTEXT * parser, PT_NODE * spec,
+		       PT_NODE * partition)
+{
+  PT_NODE *entity_name = NULL;
+  char *part_name;
+  int size = 0;
+  size = strlen (spec->info.spec.entity_name->info.name.original) +
+  	 strlen (PARTITIONED_SUB_CLASS_TAG) +
+	 strlen (partition->info.name.original);
+  if (size > DB_MAX_IDENTIFIER_LENGTH)
+    {
+      PT_ERRORf (parser, spec, "identifier too long %d", size);
+      return NULL;      	  
+    }
+  part_name = parser_allocate_string_buffer (parser, size + 1, sizeof (char));
+  if (part_name == NULL)
+    {
+      PT_ERRORf (parser, spec, "cannot alloc %d bytes", size + 1);
+      return NULL;      
+    }
+
+  /* replace original spec with specified partition */
+  memset (part_name, 0, DB_MAX_IDENTIFIER_LENGTH);
+  snprintf (part_name, size + 1, "%s" PARTITIONED_SUB_CLASS_TAG "%s",
+  	    spec->info.spec.entity_name->info.name.original,
+	    partition->info.name.original);
+
+  entity_name = pt_name (parser, part_name);
+  if (entity_name == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+
+  /* set current entity name as alias for now. It will be overriden later
+   * if the spec gets an alias.
+   */
+  spec->info.spec.range_var = spec->info.spec.entity_name;
+  spec->info.spec.entity_name = entity_name;
+  return spec;
+}
+
