@@ -801,7 +801,7 @@ req_handle_content_free (T_REQ_HANDLE * req_handle, int reuse)
      So, they must not be freed.
    */
 
-  hm_close_query_result (req_handle);
+  req_close_query_result (req_handle);
   req_handle_col_info_free (req_handle);
 
   if (!reuse)
@@ -818,16 +818,25 @@ req_handle_content_free (T_REQ_HANDLE * req_handle, int reuse)
 void
 req_handle_content_free_for_pool (T_REQ_HANDLE * req_handle)
 {
-  hm_close_query_result (req_handle);
+  req_close_query_result (req_handle);
   qe_bind_value_free (req_handle);
 }
 
-void
-hm_close_query_result (T_REQ_HANDLE * req_handle)
+int
+req_close_query_result (T_REQ_HANDLE * req_handle)
 {
+  assert (req_handle != NULL);
+
+  if (req_handle->num_query_res == 0 || req_handle->qr == NULL)
+    {
+      return CCI_ER_RESULT_SET_CLOSED;
+    }
+
   QUERY_RESULT_FREE (req_handle);
   hm_req_handle_fetch_buf_free (req_handle);
   hm_conv_value_buf_clear (&(req_handle->conv_value_buffer));
+
+  return CCI_ER_NO_ERROR;
 }
 
 static int

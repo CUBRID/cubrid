@@ -2138,7 +2138,7 @@ ret:
 }
 
 int
-cci_close_query_result (int req_h_id)
+cci_close_query_result (int req_h_id, T_CCI_ERROR * err_buf)
 {
   T_REQ_HANDLE *req_handle = NULL;
   T_CON_HANDLE *con_handle = NULL;
@@ -2158,7 +2158,8 @@ cci_close_query_result (int req_h_id)
       if (req_handle == NULL)
 	{
 	  MUTEX_UNLOCK (con_handle_table_mutex);
-	  return CCI_ER_REQ_HANDLE;
+	  err_code = CCI_ER_REQ_HANDLE;
+	  goto ret;
 	}
 
       if (con_handle->ref_count > 0)
@@ -2174,8 +2175,15 @@ cci_close_query_result (int req_h_id)
 	}
     }
 
-  hm_close_query_result (req_handle);
-  con_handle->ref_count = 0;
+  err_code = req_close_query_result (req_handle);
+
+ret:
+  if (con_handle != NULL)
+    {
+      con_handle->ref_count = 0;
+    }
+
+  CCI_SET_ERROR_BUFFER (err_code, err_buf);
 
   return err_code;
 }

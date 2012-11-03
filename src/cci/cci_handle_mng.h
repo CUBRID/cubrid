@@ -284,7 +284,7 @@ extern void req_handle_col_info_free (T_REQ_HANDLE * req_handle);
 extern void hm_conv_value_buf_clear (T_VALUE_BUF * val_buf);
 extern void req_handle_content_free (T_REQ_HANDLE * req_handle, int reuse);
 extern void req_handle_content_free_for_pool (T_REQ_HANDLE * req_handle);
-extern void hm_close_query_result (T_REQ_HANDLE * req_handle);
+extern int req_close_query_result (T_REQ_HANDLE * req_handle);
 extern void hm_invalidate_all_req_handle (T_CON_HANDLE * con_handle);
 extern int hm_ip_str_to_addr (char *ip_str, unsigned char *ip_addr);
 extern int hm_get_con_from_pool (unsigned char *ip_addr, int port,
