@@ -142,7 +142,7 @@ $ csql help messages
 \n\
    ;CLear                      - 명령어 버퍼 내용을 지움.\n\
    ;EDIT                       - 명령어 버퍼 편집.\n\
-   ;List                       - 명령어 버퍼 내용 출력.\n\
+   ;LISt                       - 명령어 버퍼 내용 출력.\n\
 \n\
    ;RUn                        - 명령어 버퍼 실행.\n\
    ;Xrun                       - 명령어 버퍼 실행 후 버퍼 내용을 지움.\n\
@@ -165,6 +165,7 @@ $ csql help messages
    ;PLan [simple|detail|off]   - 쿼리 플랜 보기 설정.\n\
    ;Info <command>             - 내부 정보 출력.\n\
    ;TIme [ON/OFF]              - 쿼리 수행 시간 보기 설정|해제\n\
+   ;LINe-output [ON/OFF]       - 한 라인 내에 값 표시 설정|해제\n\
    ;HISTORYList                - 수행된 쿼리 리스트 보기.\n\
    ;HISTORYRead <history_num>  - 히스토리 번호에 해당되는 쿼리를 명령어 버퍼에 올림.\n\
    ;HElp                       - 도움말 메시지 출력.\n\n

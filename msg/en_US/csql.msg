@@ -143,7 +143,7 @@ $ csql help messages
 \n\
    ;CLear                      - clear command buffer.\n\
    ;EDIT                       - invoke system editor with command buffer.\n\
-   ;List                       - display the content of command buffer.\n\
+   ;LISt                       - display the content of command buffer.\n\
 \n\
    ;RUn                        - execute sql in command buffer.\n\
    ;Xrun                       - execute sql in command buffer,\n\
@@ -168,6 +168,7 @@ $ csql help messages
    ;Info <command>             - display internal information.\n\
    ;TIme [ON/OFF]              - enable/disable to display the query\n\
                                  execution time.\n\
+   ;LINe-output [ON/OFF]       - enable/disable to display each value in a line\n\
    ;HISTORYList                - display list of the executed queries.\n\
    ;HISTORYRead <history_num>  - read entry on the history number into command buffer.\n\
    ;HElp                       - display this help message.\n\n

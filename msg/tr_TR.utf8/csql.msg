@@ -143,7 +143,7 @@ $ csql help messages
 \n\
    ;CLear                      - komut buffer temizle.\n\
    ;EDIT                       - komut buffer ile sistem editörü çağırmak.\n\
-   ;List                       - komut buffwe içerik görüntüle.\n\
+   ;LISt                       - komut buffwe içerik görüntüle.\n\
 \n\
    ;RUn                        - komut buffer içinde SQL yürüt.\n\
    ;Xrun                       - komut buffer içinde SQL yürüt,\n\
@@ -168,6 +168,7 @@ $ csql help messages
    ;Info <command>             - iç bilgileri görüntüler.\n\
    ;TIme [ON/OFF]              - Sorgu görüntülemek için etkin / devre dışı\n\
                                  yürütme zamanı.\n\
+   ;;LINe-output [ON/OFF]      - bir çizgi üzerinde her değeri görüntüle etkin / devre dışı\n\
    ;HISTORYList                - çalıştırılan sorguların listesini görüntüleyebilir.\n\
    ;HISTORYRead <history_num>  - komut buffer içine geçmiş numarası üzerinde giriş okuyun.\n\
    ;HElp                       - yardım mesajını görüntüler.\n\n

@@ -143,7 +143,7 @@ $ csql help messages
 \n\
    ;CLear                      - xóa sạch bộ đệm lệnh.\n\
    ;EDIT                       - gọi ra trình soạn thảo hệ thống có bộ đệm lệnh.\n\
-   ;List                       - hiển thị nội dung của bộ đệm lệnh.\n\
+   ;LISt                       - hiển thị nội dung của bộ đệm lệnh.\n\
 \n\
    ;RUn                        - thực thi sql trong bộ đệm lệnh.\n\
    ;Xrun                       - thực thi sql trong bộ đệm lệnh,\n\
@@ -168,6 +168,7 @@ $ csql help messages
    ;Info <command>             - hiển thị thông tin nội tại.\n\
    ;TIme [ON/OFF]              - bật/tắt để hiển thị thời gian\n\
                                  thực thi truy vấn.\n\
+   ;LINe-output [ON/OFF]      - bật/tắt hiển thị mỗi giá trị trên một dòng\n\
    ;HISTORYList                - hiển thị danh sách của các truy vấn được thực thi.\n\
    ;HISTORYRead <history_num>  - đọc mục nhập trên số lịch sử vào bộ đệm lệnh.\n\
    ;HElp                       - hiển thị tin nhắn trợ giúp.\n\n

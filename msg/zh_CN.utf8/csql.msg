@@ -143,7 +143,7 @@ $ csql help messages
 \n\
    ;CLear                      - 清理命令缓冲区.\n\
    ;EDIT                       - 对命令缓冲区调用系统编辑器.\n\
-   ;List                       - 显示当前命令缓冲区的内容.\n\
+   ;LISt                       - 显示当前命令缓冲区的内容.\n\
 \n\
    ;RUn                        - 执行命令缓冲区的sql.\n\
    ;Xrun                       - 执行命令缓冲区的sql,\n\
@@ -168,6 +168,7 @@ $ csql help messages
    ;Info <command>             - 显示内部信息.\n\
    ;TIme [ON/OFF]              - 启用/停用 显示查询\n\
                                  执行时间.\n\
+   ;LINe-output [ON/OFF]       - 启用/停用 每个值都用单独的行表示\n\
    ;HISTORYList                - 显示已经执行的查询列表.\n\
    ;HISTORYRead <history_num>  - 将histroy_num所对应的内容读取到命令缓冲区.\n\
    ;HElp                       - 显示帮助信息.\n\n

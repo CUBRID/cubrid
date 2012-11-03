@@ -143,7 +143,7 @@ $ csql help messages
 \n\
    ;CLear                      - コマンドバッファーの内容を消す。\n\
    ;EDIT                       - コマンドバッファーを編集。\n\
-   ;List                       - コマンドバッファーの内容を出力。\n\
+   ;LISt                       - コマンドバッファーの内容を出力。\n\
 \n\
    ;RUn                        - コマンドバッファーを実行。\n\
    ;Xrun                       - コマンドバッファーを実行して、\n\
@@ -168,6 +168,7 @@ $ csql help messages
    ;Info <command>             - インターナル情報を出力。\n\
    ;TIme [ON/OFF]              - クエリー実行時間の\n\
                                  表示の設定／解除\n\
+   ;LINe-output [ON/OFF]       - 一つのラインでバリューを表示 設定／解除\n\
    ;HISTORYList                - 実行したクエリリスト表示。\n\
    ;HISTORYRead <history_num>  - ヒストリー番号のクエリをコマンドバッファーにセーブする。\n\
    ;HElp                       - ヘルプメッセージ出力。\n\n

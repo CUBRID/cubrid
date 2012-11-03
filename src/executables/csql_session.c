@@ -93,6 +93,7 @@ static SESSION_CMD_TABLE csql_Session_cmd_table[] = {
   {"echo", S_CMD_ECHO},
   {"date", S_CMD_DATE},
   {"time", S_CMD_TIME},
+  {"line-output", S_CMD_LINE_OUTPUT},
   {".hist", S_CMD_HISTO},
   {".clear_hist", S_CMD_CLR_HISTO},
   {".dump_hist", S_CMD_DUMP_HISTO},

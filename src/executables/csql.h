@@ -216,6 +216,7 @@ typedef enum
   S_CMD_ECHO,
   S_CMD_DATE,
   S_CMD_TIME,
+  S_CMD_LINE_OUTPUT,
 
 /* Histogram profile stuff */
   S_CMD_HISTO,

@@ -143,7 +143,7 @@ $ csql help messages
 \n\
    ;CLear                      - efface le tampon de commande.\n\
    ;EDIT                       - invoque éditeur du système avec tampon de commande.\n\
-   ;List                       - affiche le contenu de tampon de commande.\n\
+   ;LISt                       - affiche le contenu de tampon de commande.\n\
 \n\
    ;RUn                        - exécute sql de tampon de commande.\n\
    ;Xrun                       - exécute sql de tampon de commande,\n\
@@ -168,6 +168,7 @@ $ csql help messages
    ;Info <command>             - affiche des informations internes.\n\
    ;TIme [ON/OFF]              - active/désactive pour afficher le temps\n\
                                  d'exécution des requêtes.\n\
+   ;LINe-output [ON/OFF]       - active/désactive afficher chaque valeur dans une ligne\n\
    ;HISTORYList                - affiche la liste des requêtes exécutées.\n\
    ;HISTORYRead <history_num>  - lit l 'entrée sur le numéro d'historique dans le tampon de commande.\n\
    ;HElp                       - affiche ce message d'aide.\n\n

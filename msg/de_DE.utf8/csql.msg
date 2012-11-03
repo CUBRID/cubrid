@@ -144,7 +144,7 @@ $ csql help messages
 \n\
    ;CLear                      - Befehlspuffer leeren.\n\
    ;EDIT                       - System-Editor mit dem Befehlspuffer rufen.\n\
-   ;List                       - Inhalt eines Befehlspuffer anzeigen.\n\
+   ;LISt                       - Inhalt eines Befehlspuffer anzeigen.\n\
 \n\
    ;RUn                        - SQL in Befehlspuffer ausführen.\n\
    ;Xrun                       - SQL in Befehlspuffer ausführen,\n\
@@ -169,6 +169,7 @@ $ csql help messages
    ;Info <command>             - interne Information anzeigen.\n\
    ;TIme [ON/OFF]              - aktivieren/deaktivieren, um die Ausführungszeit\n\
 					der Abfrage anzuzeigen.\n\
+   ;LINe-output [ON/OFF]       - aktivieren/deaktivieren, jeden Wert in einer Zeile anzeigen\n\
    ;HISTORYList                - Liste der ausgeführten Abfragen anzeigen.\n\
    ;HISTORYRead <history_num>  - Eintrag über die Verlaufszahl in den Befehlspuffer schreiben.\n\
    ;HElp                       - Hilfe anzeigen.\n\n

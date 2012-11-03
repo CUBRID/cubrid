@@ -143,7 +143,7 @@ $ csql help messages
 \n\
    ;CLear                      - ជម្រះ command buffer។\n\
    ;EDIT                       - ហៅអ្នកកែតម្រូវប្រព័ន្ធដែលមានcommand buffer។\n\
-   ;List                       - បង្ហាញមាតិការនៃcommand buffer។\n\
+   ;LISt                       - បង្ហាញមាតិការនៃcommand buffer។\n\
 \n\
    ;RUn                        - ប្រតិបត្តិ sql ក្នុង command buffer។\n\
    ;Xrun                       - ប្រតិបត្តិ sql ក្នុង command buffer,\n\
@@ -168,6 +168,7 @@ $ csql help messages
    ;Info <command>             - បង្ហាញពត៌មានខាងក្នុង។\n\
    ;TIme [ON/OFF]              - មិនអាចបង្ហាញ query\n\
                                                                                            ម៉ោងប្រតិបត្តិ\n\
+   ;LINe-output [ON/OFF]       - បង្ហាញតម្លៃនីមួយៗក្នុងបន្ទាត់មួយ ម៉ោងប្រតិបត្តិ\ n\
    ;HISTORYList                - បង្ហាញតារាងឈ្មោះqueriesដែលបានប្រតិបត្តិ។\n\
    ;HISTORYRead <history_num>  - ដំណើរការentryនៅលើចំនួន historyទៅក្នុងcommand buffer។\n\
    ;HElp                       - បង្ហាញសារជំនួយនេះ (help message)។\n\n

@@ -152,7 +152,7 @@ static bool csql_Is_echo_on = false;
 enum
 { HISTO_OFF, HISTO_ON };
 static int csql_Is_histo_on = HISTO_OFF;
-static bool csql_Is_time_on = false;
+static bool csql_Is_time_on = true;
 
 static jmp_buf csql_Jmp_buf;
 
@@ -1077,6 +1077,28 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	{
 	  fprintf (csql_Output_fp, "TIME IS %s\n",
 		   (csql_Is_time_on ? "ON" : "OFF"));
+	}
+      break;
+
+    case S_CMD_LINE_OUTPUT:
+      if (strcasecmp (argument, "on") == 0)
+	{
+	  if (csql_arg->column_output)
+	    {
+	      csql_Error_code = CSQL_ERR_INVALID_ARG_COMBINATION;
+	      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+	      break;
+	    }
+	  csql_arg->line_output = true;
+	}
+      else if (strcasecmp (argument, "off") == 0)
+	{
+	  csql_arg->line_output = false;
+	}
+      else
+	{
+	  fprintf (csql_Output_fp, "LINE_OUTPUT IS %s\n",
+		   (csql_arg->line_output ? "ON" : "OFF"));
 	}
       break;
 

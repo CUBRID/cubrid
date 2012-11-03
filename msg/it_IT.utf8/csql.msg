@@ -143,7 +143,7 @@ $ messaggi di aiuto csql
 \n\
    ;CLear                      - pulire il buffer di comando.\n\
    ;EDIT                       - invocare editor di sistema con buffer di comando.\n\
-   ;List                       - visualizzare il contenuto del buffer dei comandi.\n\
+   ;LISt                       - visualizzare il contenuto del buffer dei comandi.\n\
 \n\
    ;RUn                        - eseguire sql nel buffer dei comandi.\n\
    ;Xrun                       - eseguire sql nel buffer dei comandi,\n\
@@ -168,6 +168,7 @@ $ messaggi di aiuto csql
    ;Info <comando>              - visualizzare informazioni interne.\n\
    ;TIme [ON/OFF]               - attivare/disattivare visualizzazione di query\n\
                                   tempo di esecuzione.\n\
+   ;LINe-output [ON/OFF]        - attivare/disattivare ogni valore visualizzato in una riga\n\
    ;HISTORYList                 - visualizzare l'elenco delle query eseguite.\n\
    ;HISTORYRead <history_num>   - leggere la voce del numero storia in buffer dei comandi.\n\
    ;HElp                        - visualizza questo messaggio di aiuto.\n\n
