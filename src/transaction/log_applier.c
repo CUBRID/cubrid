@@ -4734,7 +4734,7 @@ la_apply_update_log (LA_ITEM * item)
     }
 
   /* update object */
-  new_object = dbt_finish_object (inst_tp);
+  new_object = dbt_finish_object_and_decache_when_failure (inst_tp);
   if (new_object == NULL)
     {
       goto error_rtn;
@@ -4801,6 +4801,7 @@ error_rtn:
        * the serial mop to reset its values.
        */
       ws_release_user_instance (object);
+      ws_decache (object);
       object = new_object = NULL;
     }
 
@@ -4938,7 +4939,7 @@ la_apply_insert_log (LA_ITEM * item)
 
   /* update object */
   obt_set_bulk_flush (inst_tp);
-  new_object = dbt_finish_object (inst_tp);
+  new_object = dbt_finish_object_and_decache_when_failure (inst_tp);
   if (new_object == NULL)
     {
       goto error_rtn;
@@ -5004,6 +5005,7 @@ error_rtn:
        * the serial mop to reset its values.
        */
       ws_release_user_instance (new_object);
+      ws_decache (new_object);
       new_object = NULL;
     }
 

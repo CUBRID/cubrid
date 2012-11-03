@@ -583,6 +583,33 @@ dbt_finish_object (DB_OTMPL * def)
 }
 
 /*
+ * dbt_finish_object_and_decache_when_failure() - This function applies an 
+ * object template and decache if it is failed to update object template. 
+ * return : object pointer
+ * def(in): object template
+ */
+DB_OBJECT *
+dbt_finish_object_and_decache_when_failure (DB_OTMPL * def)
+{
+  MOP object = NULL;
+
+  CHECK_CONNECT_NULL ();
+  CHECK_1ARG_NULL (def);
+  CHECK_MODIFICATION_NULL ();
+
+  if (obt_update (def, &object) != NO_ERROR)
+    {
+      if (def->object)
+	{
+	  ws_decache (def->object);
+	}
+      object = NULL;		/* probably not necessary but be safe */
+    }
+
+  return (object);
+}
+
+/*
  * dbt_abort_object() -
  * return : none
  * def(in): object template

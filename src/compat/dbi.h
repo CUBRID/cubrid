@@ -653,6 +653,7 @@ extern int dbt_add_foreign_key (DB_CTMPL * def, const char *constraint_name,
 extern DB_OTMPL *dbt_create_object (DB_OBJECT * classobj);
 extern DB_OTMPL *dbt_edit_object (DB_OBJECT * object);
 extern DB_OBJECT *dbt_finish_object (DB_OTMPL * def);
+extern DB_OBJECT *dbt_finish_object_and_decache_when_failure (DB_OTMPL * def);
 extern void dbt_abort_object (DB_OTMPL * def);
 
 extern int dbt_put (DB_OTMPL * def, const char *name, DB_VALUE * value);
