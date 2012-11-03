@@ -3525,7 +3525,8 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
   TRAN_ISOLATION client_isolation;
   TRAN_STATE tran_state;
   int area_size, strlen1, strlen2, strlen3;
-  char *reply, *area, *ptr, *server_session_key;
+  char *reply, *area, *ptr;
+  char server_session_key[SERVER_SESSION_KEY_SIZE];
   SESSION_KEY session_key;
   int row_count = DB_ROW_COUNT_NOT_SET;
   SESSION_PARAM *session_params = NULL;
