@@ -298,7 +298,7 @@ thread_initialize_manager (void)
   THREAD_ENTRY *tsd_ptr;
 #endif /* not HPUX */
 
-  assert (prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS) >= 10);
+  assert (NUM_NORMAL_TRANS >= 10);
 
   if (thread_Manager.initialized == false)
     {
@@ -339,13 +339,12 @@ thread_initialize_manager (void)
       free_and_init (thread_Manager.thread_array);
     }
 
-  /* calculate the number of thread from the number of clients */
-  thread_Manager.num_workers =
-    prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS) * 2;
+  thread_Manager.num_workers = (NUM_NORMAL_TRANS
+				+ NUM_RESERVED_ADMIN_TRANS) * 2;
   thread_Manager.num_daemons = PREDEFINED_DAEMON_THREAD_NUM;
-  thread_Manager.num_total =
-    thread_Manager.num_workers + thread_Manager.num_daemons
-    + 1 /* master thread */ ;
+  thread_Manager.num_total = (thread_Manager.num_workers
+			      + thread_Manager.num_daemons +
+			      NUM_SYSTEM_TRANS);
 
   size = thread_Manager.num_total * sizeof (THREAD_ENTRY);
   tsd_ptr = thread_Manager.thread_array = (THREAD_ENTRY *) malloc (size);

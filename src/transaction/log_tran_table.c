@@ -244,7 +244,7 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
    * When second time this function invoked during normal processing,
    * just return.
    */
-  total_indices = prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS) + 1;
+  total_indices = MAX_NTRANS;
   if (log_Gl.rcv_phase == LOG_RESTARTED
       && total_indices <= NUM_TOTAL_TRAN_INDICES)
     {
@@ -391,19 +391,12 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p,
    *                 table after recovery.
    *
    * Total number of transaction descriptor is set to the value of
-   * max_clients+1
+   * MAX_NTRANS
    */
-  if (num_expected_tran_indices <
-      prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS) + 1)
-    {
-      num_expected_tran_indices =
-	prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS) + 1;
-    }
+  num_expected_tran_indices = MAX (num_expected_tran_indices, MAX_NTRANS);
 
-  if (num_expected_tran_indices < LOG_SYSTEM_TRAN_INDEX)
-    {
-      num_expected_tran_indices = LOG_SYSTEM_TRAN_INDEX + 1;
-    }
+  num_expected_tran_indices = MAX (num_expected_tran_indices,
+				   LOG_SYSTEM_TRAN_INDEX + 1);
 
   /* If there is an already defined table, free such a table */
   if (log_Gl.trantable.area != NULL)

@@ -2657,8 +2657,8 @@ net_client_get_next_log_pages (int rc, char *replybuf, int replysize,
 
   if (logwr_Gl.logpg_area_size < length)
     {
-      /* 
-       * It means log_buffer_size/log_page_size are different between master 
+      /*
+       * It means log_buffer_size/log_page_size are different between master
        * and slave.
        * In this case, we have to disconnect from server and try to reconnect.
        */
@@ -4189,6 +4189,7 @@ net_client_ping_server_with_handshake (int client_type,
   ptr = or_pack_string_with_length (request, client_release, strlen1);
   ptr = or_pack_int (ptr, client_capabilities ());
   ptr = or_pack_int (ptr, rel_bit_platform ());
+  ptr = or_pack_int (ptr, client_type);
   ptr = or_pack_string_with_length (ptr, boot_Host_name, strlen2);
 
   eid = css_send_request_to_server_with_buffer (net_Server_host,

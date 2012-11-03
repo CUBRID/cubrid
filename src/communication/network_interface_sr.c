@@ -260,6 +260,7 @@ server_ping_with_handshake (THREAD_ENTRY * thread_p, unsigned int rid,
   char *ptr, *client_release, *client_host;
   const char *server_release;
   int client_capabilities, client_bit_platform, status = CSS_NO_ERRORS;
+  int client_type;
   int strlen1, strlen2;
   REL_COMPATIBILITY compat;
 
@@ -270,6 +271,7 @@ server_ping_with_handshake (THREAD_ENTRY * thread_p, unsigned int rid,
       ptr = or_unpack_string_nocopy (request, &client_release);
       ptr = or_unpack_int (ptr, &client_capabilities);
       ptr = or_unpack_int (ptr, &client_bit_platform);
+      ptr = or_unpack_int (ptr, &client_type);
       ptr = or_unpack_string_nocopy (ptr, &client_host);
       client_release =
 	css_add_client_version_string (thread_p, client_release);
@@ -324,6 +326,20 @@ server_ping_with_handshake (THREAD_ENTRY * thread_p, unsigned int rid,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DIFFERENT_RELEASE, 2,
 	      server_release, client_release);
+      return_error_to_client (thread_p, rid);
+      status = CSS_UNPLANNED_SHUTDOWN;
+    }
+
+  /*
+   * if I'm going to exhaust the last available connection,
+   * I must be an admin client.
+   * Only an admin client can occupy the reserved admin connection.
+   */
+  if (css_get_num_free_conn () < NUM_RESERVED_ADMIN_TRANS
+      && !BOOT_ADMIN_CLIENT_TYPE (client_type))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_CSS_CLIENTS_EXCEEDED, 1, NUM_NORMAL_TRANS);
       return_error_to_client (thread_p, rid);
       status = CSS_UNPLANNED_SHUTDOWN;
     }

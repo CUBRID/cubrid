@@ -3160,7 +3160,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 #endif /* DIAG_DEVEL */
 #endif /* SERVER_MODE */
 
-  mnt_server_init (prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS) + 1);
+  mnt_server_init (MAX_NTRANS);
 
   /*
    * Compose the full name of the database and find location of logs
@@ -3755,8 +3755,8 @@ xboot_register_client (THREAD_ENTRY * thread_p,
       memcpy (server_credential->server_session_key, boot_Server_session_key,
 	      SERVER_SESSION_KEY_SIZE);
 
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_CLIENT_CONNECTED,
-	      4, client_credential->program_name,
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+	      ER_BO_CLIENT_CONNECTED, 4, client_credential->program_name,
 	      client_credential->process_id, client_credential->host_name,
 	      tran_index);
 
@@ -3780,8 +3780,8 @@ xboot_register_client (THREAD_ENTRY * thread_p,
 	}
 #endif /* SERVER_MODE */
 
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_CLIENT_CONNECTED,
-	      4, client_credential->program_name,
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+	      ER_BO_CLIENT_CONNECTED, 4, client_credential->program_name,
 	      client_credential->process_id, client_credential->host_name,
 	      tran_index);
     }

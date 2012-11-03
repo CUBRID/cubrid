@@ -312,7 +312,9 @@ css_init_job_queue (void)
   int r;
 #endif /* WINDOWS */
   CSS_JOB_ENTRY *job_entry_p;
+  int num_job_list;
 
+  num_job_list = NUM_NORMAL_TRANS + NUM_RESERVED_ADMIN_TRANS;
   for (i = 0; i < CSS_NUM_JOB_QUEUE; i++)
     {
 #if defined(WINDOWS)
@@ -322,10 +324,9 @@ css_init_job_queue (void)
       CSS_CHECK_RETURN (r, ER_CSS_PTHREAD_MUTEX_INIT);
 #endif /* WINDOWS */
 
-      css_initialize_list (&css_Job_queue[i].job_list,
-			   prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS));
+      css_initialize_list (&css_Job_queue[i].job_list, num_job_list);
       css_Job_queue[i].free_list = NULL;
-      for (j = 0; j < prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS); j++)
+      for (j = 0; j < num_job_list; j++)
 	{
 	  job_entry_p = (CSS_JOB_ENTRY *) malloc (sizeof (CSS_JOB_ENTRY));
 	  if (job_entry_p == NULL)
@@ -875,9 +876,8 @@ css_process_new_client (SOCKET master_fd)
       css_initialize_conn (&temp_conn, new_fd);
       csect_initialize_critical_section (&temp_conn.csect);
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_CSS_CLIENTS_EXCEEDED, 1,
-	      prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CLIENTS_EXCEEDED,
+	      1, NUM_NORMAL_TRANS);
       reason = htonl (SERVER_CLIENTS_EXCEEDED);
       css_send_data (&temp_conn, rid, (char *) &reason, (int) sizeof (int));
 
@@ -1083,9 +1083,8 @@ css_process_new_connection_request (void)
 
 	  rc = css_read_header (&new_conn, &header);
 	  buffer_size = rid = 0;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_CSS_CLIENTS_EXCEEDED, 1,
-		  prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CLIENTS_EXCEEDED,
+		  1, NUM_NORMAL_CLIENTS);
 	  reason = htonl (SERVER_CLIENTS_EXCEEDED);
 	  css_send_data (&new_conn, rid, (char *) &reason,
 			 (int) sizeof (int));
@@ -1641,7 +1640,7 @@ css_init (char *server_name, int name_length, int port_id)
 	{
 	  /* thread creation error */
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_THREAD_STACK,
-		  1, prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS));
+		  1, NUM_NORMAL_TRANS);
 	}
       return ER_FAILED;
     }

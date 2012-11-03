@@ -109,6 +109,10 @@ typedef struct wait_queue_search_arg
   int remove_entry;
 } CSS_WAIT_QUEUE_SEARCH_ARG;
 
+#define NUM_NORMAL_CLIENTS (prm_get_integer_value(PRM_ID_CSS_MAX_CLIENTS))
+#define NUM_MASTER_CHANNEL 1
+#define NUM_RESERVED_ADMIN_CHANNEL  1
+
 static const int CSS_MAX_CLIENT_ID = INT_MAX - 1;
 
 static int css_Client_id = 0;
@@ -422,8 +426,8 @@ css_init_conn_list (void)
   int i, err;
   CSS_CONN_ENTRY *conn;
 
-  /* max_clients + 1 for conn with master */
-  css_Num_max_conn = prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS) + 1;
+  css_Num_max_conn = (NUM_NORMAL_CLIENTS + NUM_MASTER_CHANNEL
+		      + NUM_RESERVED_ADMIN_CHANNEL);
 
   if (css_Conn_array != NULL)
     {
@@ -431,8 +435,8 @@ css_init_conn_list (void)
     }
 
   /*
-   * allocate PRM_CSS_MAX_CLIENTS conn entries
-   *         + 1(conn with master)
+   * allocate NUM_NORMAL_CLIENTS + NUM_MASTER_CHANNEL
+   * + NUM_RESERVED_ADMIN_CHANNEL conn entries
    */
   css_Conn_array = (CSS_CONN_ENTRY *)
     malloc (sizeof (CSS_CONN_ENTRY) * (css_Num_max_conn));
@@ -622,6 +626,15 @@ css_dealloc_conn (CSS_CONN_ENTRY * conn)
   assert (css_Num_free_conn > 0 && css_Num_free_conn <= css_Num_max_conn);
 
   csect_exit_critical_section (&css_Free_conn_csect);
+}
+
+/*
+ * css_get_num_free_conn -
+ */
+int
+css_get_num_free_conn (void)
+{
+  return css_Num_free_conn;
 }
 
 /*

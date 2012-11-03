@@ -2005,7 +2005,7 @@ fileio_open (const char *vol_label_p, int flags, int mode)
   if (vol_fd > NULL_VOLDES)
     {
       int high_vol_fd;
-      int range = prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS) + 10;
+      int range = MAX_NTRANS + 10;
 
       /* move fd to the over max_clients range */
       high_vol_fd = fcntl (vol_fd, F_DUPFD, range);
@@ -6399,8 +6399,7 @@ fileio_initialize_backup_thread (FILEIO_BACKUP_SESSION * session_p,
       thread_info_p->num_threads = MIN (num_threads, num_cpus * 2);
     }
   thread_info_p->num_threads =
-    MIN (thread_info_p->num_threads,
-	 prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS));
+    MIN (thread_info_p->num_threads, NUM_NORMAL_TRANS);
 #else /* SERVER_MODE */
   thread_info_p->num_threads = 1;
 #endif /* SERVER_MODE */

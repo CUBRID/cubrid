@@ -880,10 +880,7 @@ qmgr_allocate_tran_entries (THREAD_ENTRY * thread_p, int count)
   int i;
 
 #if defined (SERVER_MODE)
-  if (count <= prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS) + 1)
-    {
-      count = prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS) + 1;
-    }
+  count = MAX (count, MAX_NTRANS);
 #endif
 
   /* enter critical section, this prevents another to perform malloc/init */
