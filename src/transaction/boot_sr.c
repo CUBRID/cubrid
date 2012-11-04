@@ -3642,9 +3642,6 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, bool is_er_final)
       /* Shutdown the system with the system transaction */
       logtb_set_to_system_tran_index (thread_p);
       log_abort_all_active_transaction (thread_p);
-#if defined(SERVER_MODE)
-      thread_stop_active_daemons ();
-#endif
 
       /* before removing temp vols */
       qfile_finalize_list_cache (thread_p);

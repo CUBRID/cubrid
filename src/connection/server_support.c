@@ -83,7 +83,7 @@
 #define SockError    -1
 #endif /* WINDOWS */
 
-static struct timeval css_Shutdown_timeout = { 0, 0 };
+static struct timeval *css_Timeout = NULL;
 static char *css_Master_server_name = NULL;	/* database identifier */
 static int css_Master_port_id;
 static CSS_CONN_ENTRY *css_Master_conn;
@@ -169,6 +169,7 @@ static void css_process_get_server_ha_mode_request (SOCKET master_fd);
 static void css_process_change_server_ha_mode_request (SOCKET master_fd);
 
 static void css_close_connection_to_master (void);
+static int css_process_timeout (void);
 static int css_reestablish_connection_to_master (void);
 static void dummy_sigurg_handler (int sig);
 static int css_connection_handler_thread (THREAD_ENTRY * thrd,
@@ -693,10 +694,7 @@ css_master_thread (void)
 
       if (run_code)
 	{
-	  if (IS_INVALID_SOCKET (css_Pipe_to_master))
-	    {
-	      css_reestablish_connection_to_master ();
-	    }
+	  run_code = css_process_timeout ();
 	}
       else
 	{
@@ -758,7 +756,6 @@ css_process_master_request (SOCKET master_fd)
 
     case SERVER_START_SHUTDOWN:
       css_process_shutdown_request (master_fd);
-      r = 0;
       break;
 
     case SERVER_STOP_SHUTDOWN:
@@ -767,7 +764,6 @@ css_process_master_request (SOCKET master_fd)
     case SERVER_STOP_TRACING:
     case SERVER_HALT_EXECUTION:
     case SERVER_RESUME_EXECUTION:
-    case SERVER_REGISTER_HA_PROCESS:
       break;
     case SERVER_GET_HA_MODE:
       css_process_get_server_ha_mode_request (master_fd);
@@ -799,19 +795,32 @@ css_process_shutdown_request (SOCKET master_fd)
 
   timeout = (int) css_get_master_request (master_fd);
 
-  if (gettimeofday (&css_Shutdown_timeout, NULL) != 0)
+  if (css_Timeout == NULL)
     {
+      css_Timeout = (struct timeval *) malloc (sizeof (struct timeval));
+    }
+
+  if (css_Timeout == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, sizeof (struct timeval));
       return;
     }
 
-  css_Shutdown_timeout.tv_sec +=
-    prm_get_integer_value (PRM_ID_SHUTDOWN_WAIT_TIME_IN_SECS);
+  if (gettimeofday (css_Timeout, NULL) != 0)
+    {
+      free_and_init (css_Timeout);
+      return;
+    }
+
+  css_Timeout->tv_sec += timeout;
 
   r = css_readn (master_fd, buffer, MASTER_TO_SRV_MSG_SIZE, -1);
   if (r < 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ERR_CSS_SHUTDOWN_ERROR, 0);
+      free_and_init (css_Timeout);
       return;
     }
 }
@@ -976,24 +985,33 @@ css_close_connection_to_master (void)
 }
 
 /*
- * css_shutdown_timeout() -
+ * css_process_timeout() -
  *   return:
  */
-bool
-css_is_shutdown_timeout_expired (void)
+static int
+css_process_timeout (void)
 {
   struct timeval timeout;
 
-  /* css_Shutdown_timeout is set by shutdown request */
-  if (css_Shutdown_timeout.tv_sec != 0 && gettimeofday (&timeout, NULL) == 0)
+  if (css_Timeout)
     {
-      if (css_Shutdown_timeout.tv_sec <= timeout.tv_sec)
+      /* css_Timeout is set by shutdown request */
+      if (gettimeofday (&timeout, NULL) == 0)
 	{
-	  return true;
+	  if (css_Timeout->tv_sec <= timeout.tv_sec)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_CSS_TIMEOUT_DUE_SHUTDOWN, 0);
+	      free_and_init (css_Timeout);
+	      return 0;
+	    }
 	}
     }
 
-  return false;
+  if (IS_INVALID_SOCKET (css_Pipe_to_master))
+    css_reestablish_connection_to_master ();
+
+  return 1;
 }
 
 #if defined(WINDOWS)
@@ -1681,6 +1699,8 @@ shutdown:
   LOG_CS_EXIT ();
 
   thread_stop_active_workers (THREAD_STOP_LOGWR);
+
+  thread_stop_active_daemons ();
 
   css_close_server_connection_socket ();
 

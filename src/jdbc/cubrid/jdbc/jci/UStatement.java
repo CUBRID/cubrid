@@ -930,7 +930,7 @@ public class UStatement {
 	    UInputBuffer inBuffer;
 	    UBatchResult batchResult; 
 	    
-	    errorHandler = new UError(relatedConnection); 
+	    errorHandler = new UError(); 
 	    if (isClosed) {
 		if (relatedConnection.brokerInfoStatementPooling()) {
 		    try {

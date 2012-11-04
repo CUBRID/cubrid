@@ -786,7 +786,7 @@ thread_start_workers (void)
 int
 thread_stop_active_workers (unsigned short stop_phase)
 {
-  int i;
+  int i, count;
   int r;
   bool repeat_loop;
   THREAD_ENTRY *thread_p;
@@ -799,6 +799,7 @@ thread_stop_active_workers (unsigned short stop_phase)
       css_block_all_active_conn (stop_phase);
     }
 
+  count = 0;
 loop:
   for (i = 1; i <= thread_Manager.num_workers; i++)
     {
@@ -870,7 +871,7 @@ loop:
 
   if (repeat_loop)
     {
-      if (css_is_shutdown_timeout_expired ())
+      if (count++ > prm_get_integer_value (PRM_ID_SHUTDOWN_WAIT_TIME_IN_SECS))
 	{
 #if CUBRID_DEBUG
 	  logtb_dump_trantable (NULL, stderr);
@@ -902,13 +903,14 @@ loop:
 int
 thread_stop_active_daemons (void)
 {
-  int i;
+  int i, count;
   bool repeat_loop;
   int idx;
   THREAD_ENTRY *thread_p;
 
   assert (thread_Manager.initialized == true);
 
+  count = 0;
   for (i = 0; i < PREDEFINED_DAEMON_THREAD_NUM; i++)
     {
       idx = thread_Manager.num_workers + i + 1;	/* 1 for master thread */
@@ -939,7 +941,7 @@ loop:
 
   if (repeat_loop)
     {
-      if (css_is_shutdown_timeout_expired ())
+      if (count++ > 30)
 	{
 #if CUBRID_DEBUG
 	  xlogtb_dump_trantable (NULL, stderr);
@@ -963,7 +965,7 @@ loop:
 int
 thread_kill_all_workers (void)
 {
-  int i;
+  int i, count;
   bool repeat_loop;
   THREAD_ENTRY *thread_p;
 
@@ -973,6 +975,8 @@ thread_kill_all_workers (void)
       thread_p->interrupted = true;
       thread_p->shutdown = true;
     }
+
+  count = 0;
 
 loop:
 
@@ -991,7 +995,7 @@ loop:
 
   if (repeat_loop)
     {
-      if (css_is_shutdown_timeout_expired ())
+      if (count++ > prm_get_integer_value (PRM_ID_SHUTDOWN_WAIT_TIME_IN_SECS))
 	{
 #if CUBRID_DEBUG
 	  xlogtb_dump_trantable (NULL, stderr);

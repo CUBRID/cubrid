@@ -2210,7 +2210,7 @@ end:
 /*
  * pgbuf_flush_checkpoint () - Flush any unfixed dirty page whose lsa
  *                                      is smaller than the last checkpoint lsa
- *   return:error code or NO_ERROR
+ *   return: void
  *   flush_upto_lsa(in):
  *   prev_chkpt_redo_lsa(in): Redo_LSA of previous checkpoint
  *   smallest_lsa(out): Smallest LSA of a dirty buffer in buffer pool
@@ -2222,14 +2222,14 @@ end:
  *       checkpoint is issued.
  */
 #if !defined(NDEBUG)
-int
+void
 pgbuf_flush_checkpoint_debug (THREAD_ENTRY * thread_p,
 			      const LOG_LSA * flush_upto_lsa,
 			      const LOG_LSA * prev_chkpt_redo_lsa,
 			      LOG_LSA * smallest_lsa,
 			      const char *caller_file, int caller_line)
 #else /* NDEBUG */
-int
+void
 pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p,
 			const LOG_LSA * flush_upto_lsa,
 			const LOG_LSA * prev_chkpt_redo_lsa,
@@ -2338,16 +2338,7 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p,
 
 	  pthread_mutex_unlock (&bufptr->BCB_mutex);
 	}
-
-#if defined(SERVER_MODE)
-      if (thread_p->shutdown == true)
-	{
-	  return ER_FAILED;
-	}
-#endif /* SERVER_MODE */
     }
-
-  return NO_ERROR;
 }
 
 /*
