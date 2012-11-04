@@ -917,8 +917,9 @@ applyinfo: CUBRID HA Apply情報を出力。\n\
   -a, --applied-info          適用された情報を出力\n\
   -L, --copied-log-path=PATH  コピーしたログブリュームのパス; コピーしたログ情報を出力。\n\
   -p, --pageid=ID             ページID; デフォルト : 0(アクティブページ)\n\
-  -v, --verbose               多様な進行情報を出力; デフォルト: 出力しない\n
-
+  -v, --verbose               多様な進行情報を出力; デフォルト: 出力しない\n\
+  -i, --interval=S            print information every S secs\n	
+  
 $set 45 MSGCAT_UTIL_SET_ACLDB
 59  acldbはスタンドアロンモードで実行できません。\n
 60 \

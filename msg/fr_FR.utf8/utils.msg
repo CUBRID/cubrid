@@ -921,7 +921,8 @@ options valids:\n\
   -L, --copied-log-path=CHEMIN  CHEMIN de volumes du journal copiés; affiche les informations du journal copié\n\
   -p, --pageid=ID               id de page; par défaut : 0(page active)\n\
   -v, --verbose                 active les messages verbeux d'état; par défaut: désactivé\n\
-
+  -i, --interval=S            print information every S secs\n	
+  
 $set 45 MSGCAT_UTIL_SET_ACLDB
 59 acldb ne peut pas fonctionner en mode autonome.\n
 60 \

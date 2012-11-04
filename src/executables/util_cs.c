@@ -2822,6 +2822,22 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   char *log_path_base;
   int error = NO_ERROR;
   int pageid = 0;
+  int interval;
+  float process_rate = 0.0f;
+  /* log lsa to calculate the estimated delay */
+  LOG_LSA master_eof_lsa, applied_final_lsa;
+  LOG_LSA copied_append_lsa, copied_eof_lsa;
+  LOG_LSA initial_copied_append_lsa, initial_applied_final_lsa;
+  time_t start_time, cur_time;
+
+  start_time = time (NULL);
+
+  LSA_SET_NULL (&master_eof_lsa);
+  LSA_SET_NULL (&applied_final_lsa);
+  LSA_SET_NULL (&copied_append_lsa);
+  LSA_SET_NULL (&copied_eof_lsa);
+  LSA_SET_NULL (&initial_copied_append_lsa);
+  LSA_SET_NULL (&initial_applied_final_lsa);
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -2866,6 +2882,12 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   pageid = utility_get_option_int_value (arg_map, APPLYINFO_PAGE_S);
   verbose = utility_get_option_bool_value (arg_map, APPLYINFO_VERBOSE_S);
 
+  interval = utility_get_option_int_value (arg_map, APPLYINFO_INTERVAL_S);
+  if (interval < 0)
+    {
+      goto print_applyinfo_usage;
+    }
+
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
 
@@ -2873,96 +2895,162 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  if (check_applied_info)
-    {
-      memset (local_database_name, 0x00, MAXHOSTNAMELEN);
-      strcpy (local_database_name, database_name);
-      strcat (local_database_name, "@localhost");
+  is_Sigint_caught = false;
+#if defined(WINDOWS)
+  SetConsoleCtrlHandler ((PHANDLER_ROUTINE) intr_handler, TRUE);
+#else
+  os_set_signal_handler (SIGINT, intr_handler);
+#endif
 
-      if (check_database_name (local_database_name))
+  do
+    {
+
+      if (check_applied_info)
 	{
-	  goto check_applied_info_end;
+	  memset (local_database_name, 0x00, MAXHOSTNAMELEN);
+	  strcpy (local_database_name, database_name);
+	  strcat (local_database_name, "@localhost");
+
+	  db_clear_host_connected ();
+
+	  if (check_database_name (local_database_name))
+	    {
+	      goto check_applied_info_end;
+	    }
+	  if (db_login ("DBA", NULL) != NO_ERROR)
+	    {
+	      goto check_applied_info_end;
+	    }
+	  error = db_restart (arg->command_name, TRUE, local_database_name);
+	  if (error != NO_ERROR)
+	    {
+	      goto check_applied_info_end;
+	    }
+
+	  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+	    {
+	      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+					       MSGCAT_UTIL_SET_APPLYINFO,
+					       APPLYINFO_MSG_NOT_HA_MODE));
+	      goto check_applied_info_end;
+	    }
+
+	  error =
+	    la_log_page_check (local_database_name, log_path, pageid,
+			       check_applied_info, check_copied_info, verbose,
+			       &copied_eof_lsa, &copied_append_lsa,
+			       &applied_final_lsa);
+	  (void) db_shutdown ();
 	}
-      if (db_login ("DBA", NULL) != NO_ERROR)
+      else if (check_copied_info)
 	{
-	  goto check_applied_info_end;
+	  memset (local_database_name, 0x00, MAXHOSTNAMELEN);
+	  strcpy (local_database_name, database_name);
+	  strcat (local_database_name, "@localhost");
+
+	  error =
+	    la_log_page_check (local_database_name, log_path, pageid,
+			       check_applied_info, check_copied_info, verbose,
+			       &copied_eof_lsa, &copied_append_lsa,
+			       &applied_final_lsa);
 	}
-      error = db_restart (arg->command_name, TRUE, local_database_name);
+
+    check_applied_info_end:
       if (error != NO_ERROR)
 	{
-	  goto check_applied_info_end;
+	  printf ("%s\n", db_error_string (3));
 	}
+      error = NO_ERROR;
 
-      if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+      if (check_master_info)
 	{
-	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-					   MSGCAT_UTIL_SET_APPLYINFO,
-					   APPLYINFO_MSG_NOT_HA_MODE));
-	  goto check_applied_info_end;
+	  memset (master_database_name, 0x00, MAXHOSTNAMELEN);
+	  strcpy (master_database_name, database_name);
+	  strcat (master_database_name, "@");
+	  strcat (master_database_name, master_node_name);
+
+	  db_clear_host_connected ();
+
+	  if (check_database_name (master_database_name))
+	    {
+	      goto check_master_info_end;
+	    }
+
+	  if (db_login ("DBA", NULL) != NO_ERROR)
+	    {
+	      goto check_master_info_end;
+	    }
+
+	  error = db_restart (arg->command_name, TRUE, master_database_name);
+	  if (error != NO_ERROR)
+	    {
+	      goto check_master_info_end;
+	    }
+
+	  error =
+	    logwr_copy_log_header_check (master_database_name, verbose,
+					 &master_eof_lsa);
+	  if (error != NO_ERROR)
+	    {
+	      goto check_master_info_end;
+	    }
+
+	  (void) db_shutdown ();
 	}
 
-      error = la_log_page_check (local_database_name, log_path, pageid,
-				 check_applied_info, check_copied_info,
-				 verbose);
-      (void) db_shutdown ();
-    }
-  else if (check_copied_info)
-    {
-      memset (local_database_name, 0x00, MAXHOSTNAMELEN);
-      strcpy (local_database_name, database_name);
-      strcat (local_database_name, "@localhost");
-
-      error = la_log_page_check (local_database_name, log_path, pageid,
-				 check_applied_info, check_copied_info,
-				 verbose);
-    }
-
-check_applied_info_end:
-  if (error != NO_ERROR)
-    {
-      printf ("%s\n", db_error_string (3));
-    }
-  error = NO_ERROR;
-
-  if (check_master_info)
-    {
-      memset (master_database_name, 0x00, MAXHOSTNAMELEN);
-      strcpy (master_database_name, database_name);
-      strcat (master_database_name, "@");
-      strcat (master_database_name, master_node_name);
-
-      db_clear_host_connected ();
-
-      if (check_database_name (master_database_name))
-	{
-	  goto check_master_info_end;
-	}
-
-      if (db_login ("DBA", NULL) != NO_ERROR)
-	{
-	  goto check_master_info_end;
-	}
-
-      error = db_restart (arg->command_name, TRUE, master_database_name);
+    check_master_info_end:
       if (error != NO_ERROR)
 	{
-	  goto check_master_info_end;
+	  printf ("%s\n", db_error_string (3));
 	}
+      error = NO_ERROR;
 
-      error = logwr_copy_log_header_check (master_database_name, verbose);
-      if (error != NO_ERROR)
+      /* print delay info */
+      cur_time = time (NULL);
+      if (check_copied_info && check_master_info)
 	{
-	  goto check_master_info_end;
+	  if (!LSA_ISNULL (&initial_copied_append_lsa))
+	    {
+	      process_rate =
+		(float) (copied_append_lsa.pageid -
+			 initial_copied_append_lsa.pageid)
+		/ (cur_time - start_time);
+	    }
+	  else
+	    {
+	      initial_copied_append_lsa = copied_append_lsa;
+	      process_rate = 0.0f;
+	    }
+
+	  printf ("\n *** Delay in Copying Active Log *** \n");
+	  la_print_delay_info (copied_append_lsa, master_eof_lsa,
+			       process_rate);
 	}
 
-      (void) db_shutdown ();
-    }
+      if (check_applied_info)
+	{
+	  if (!LSA_ISNULL (&initial_applied_final_lsa))
+	    {
+	      process_rate =
+		(float) (applied_final_lsa.pageid -
+			 initial_applied_final_lsa.pageid)
+		/ (cur_time - start_time);
+	    }
+	  else
+	    {
+	      initial_applied_final_lsa = applied_final_lsa;
+	      process_rate = 0.0f;
+	    }
 
-check_master_info_end:
-  if (error != NO_ERROR)
-    {
-      printf ("%s\n", db_error_string (3));
+	  printf ("\n *** Delay in Applying Copied Log *** \n");
+	  la_print_delay_info (applied_final_lsa, copied_eof_lsa,
+			       process_rate);
+	}
+
+      sleep (interval);
     }
+  while (interval > 0 && !is_Sigint_caught);
+
   return EXIT_SUCCESS;
 
 print_applyinfo_usage:

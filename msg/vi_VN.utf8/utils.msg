@@ -917,7 +917,8 @@ các tùy chọn hợp lệ:\n\
   -a, --applied-info 	      hiển thị thông tin áp dụng \n\
   -L, --copied-log-path=PATH  đường dẫn của ổ ghi sao chép, hiển thị đăng nhập sao chép thông tin \n\
   -p, --pageid=ID             page id; mặc định : 0(active page)\n\
-  -v, --verbose               kích hoạt các thông báo trạng thái tiết; mặc định : vô hiệu hóa\n
+  -v, --verbose               kích hoạt các thông báo trạng thái tiết; mặc định : vô hiệu hóa\n\
+  -i, --interval=S            print information every S secs\n	
 
 $set 45 MSGCAT_UTIL_SET_ACLDB
 59 acldb không thể chạy như chế độ độc lập.\n

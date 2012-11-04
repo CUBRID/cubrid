@@ -917,7 +917,8 @@ applyinfo: 显示 CUBRID HA 应用信息.\n\
   -a, --applied-info 	      显示运用的信息 \n\
   -L, --copied-log-path=PATH  设置复制的日志卷路径; 显示复制的日志信息 \n\
   -p, --pageid=ID             页 id; 默认: 0(活动页)\n\
-  -v, --verbose               显示详细状态信息; 默认 : 关闭\n
+  -v, --verbose               显示详细状态信息; 默认 : 关闭\n\
+  -i, --interval=S            print information every S secs\n	
 
 $set 45 MSGCAT_UTIL_SET_ACLDB
 59 acldb 无法在单机模式下运行.\n

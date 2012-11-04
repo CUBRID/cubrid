@@ -6604,7 +6604,9 @@ la_print_log_arv_header (const char *database_name,
 int
 la_log_page_check (const char *database_name, const char *log_path,
 		   int page_num, bool check_applied_info,
-		   bool check_copied_info, bool verbose)
+		   bool check_copied_info, bool verbose,
+		   LOG_LSA * copied_eof_lsa, LOG_LSA * copied_append_lsa,
+		   LOG_LSA * applied_final_lsa)
 {
   int error = NO_ERROR;
   char *atchar;
@@ -6637,6 +6639,7 @@ la_log_page_check (const char *database_name, const char *log_path,
 	  goto check_applied_info_end;
 	}
 
+      *applied_final_lsa = ha_apply_info.final_lsa;
 
       printf ("\n *** Applied Info. *** \n");
 
@@ -6713,13 +6716,16 @@ check_applied_info_end:
 	  goto check_copied_info_end;
 	}
 
-      /* read copyed active page */
+      /* read copied active page */
       error = la_find_log_pagesize (&la_Info.act_log, la_Info.log_path,
 				    database_name);
       if (error != NO_ERROR)
 	{
 	  goto check_copied_info_end;
 	}
+
+      *copied_eof_lsa = la_Info.act_log.log_hdr->eof_lsa;
+      *copied_append_lsa = la_Info.act_log.log_hdr->append_lsa;
 
       printf ("\n *** Copied Active Info. *** \n");
       la_print_log_header (database_name, la_Info.act_log.log_hdr, verbose);
@@ -6815,6 +6821,33 @@ check_copied_info_end:
     }
 
   return NO_ERROR;
+}
+
+void
+la_print_delay_info (LOG_LSA working_lsa, LOG_LSA target_lsa,
+		     float process_rate)
+{
+  INT64 delayed_page_count = 0;
+  INT64 estimated_delay = 0;
+
+  delayed_page_count = target_lsa.pageid - working_lsa.pageid;
+
+  if (process_rate != 0.0f)
+    {
+      estimated_delay = (INT64) (delayed_page_count / process_rate);
+    }
+
+  printf ("%-30s : %lld\n", "Delayed log page count",
+	  (long long int) delayed_page_count);
+
+  if (process_rate == 0.0f)
+    {
+      printf ("%-30s : - second(s)\n", "Estimated Delay");
+    }
+  else
+    {
+      printf ("%-30s : %ld second(s)\n", "Estimated Delay", estimated_delay);
+    }
 }
 
 /*

@@ -917,7 +917,8 @@ usage: %s applyinfo [OPTION] ឈ្មោះដែលតាបេស \n\
   -a, --applied-info 	                 បង្ហាញពត៌មានសម្រេច \n\
   -L, --copied-log-path=PATH  path នៃlog volumesដែលថតចម្លងរួច; បង្ហាញពត៌មានlogដែលថតចម្លងរួច \n\
   -p, --pageid=ID             ទំព័រ id; default : 0(ទំព័រសកម្ម)\n\
-  -v, --verbose               បង្កើនសមត្ថភាពសារ verbose status ; default : មិនអាច\n
+  -v, --verbose               បង្កើនសមត្ថភាពសារ verbose status ; default : មិនអាច\n\
+  -i, --interval=S            print information every S secs\n	
 
 $set 45 MSGCAT_UTIL_SET_ACLDB
 59 acldb មិនអាចដំណើរការជា standalone modeទេ។ \n

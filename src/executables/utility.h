@@ -1180,6 +1180,8 @@ typedef struct _ha_config
 #define APPLYINFO_APPLIED_INFO_L                "applied-info"
 #define APPLYINFO_VERBOSE_S                     'v'
 #define APPLYINFO_VERBOSE_L                     "verbose"
+#define APPLYINFO_INTERVAL_S                    'i'
+#define APPLYINFO_INTERVAL_L                    "interval"
 
 /* genlocale option list */
 #define GENLOCALE_INPUT_PATH_S			'i'

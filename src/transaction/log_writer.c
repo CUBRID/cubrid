@@ -1264,12 +1264,15 @@ logwr_write_log_pages (void)
 #if !defined(WINDOWS)
 /*
  * logwr_copy_log_header_check
- *
  * return:
+ *
+ *      master_eof_lsa(OUT): record eof_lsa to calculate replication delay
+ *
  * note:
  */
 int
-logwr_copy_log_header_check (const char *db_name, bool verbose)
+logwr_copy_log_header_check (const char *db_name, bool verbose,
+			     LOG_LSA * master_eof_lsa)
 {
   int error = NO_ERROR;
   LOGWR_CONTEXT ctx = { -1, 0, false };
@@ -1309,6 +1312,8 @@ logwr_copy_log_header_check (const char *db_name, bool verbose)
 
       loghdr_pgptr = (LOG_PAGE *) logpg_area;
       hdr = *((struct log_header *) loghdr_pgptr->area);
+
+      *master_eof_lsa = hdr.eof_lsa;
 
       printf ("\n ***  Active Info. *** \n");
       la_print_log_header (db_name, &hdr, verbose);

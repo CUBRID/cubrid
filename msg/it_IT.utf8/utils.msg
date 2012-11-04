@@ -917,8 +917,9 @@ opzioni valide:\n\
   -a, --applied-info 	      visualizzare applied infomation \n\
   -L, --copied-log-path=PATH  path di volumi di registrazione copiate; informazioni del log copiate \n\
   -p, --pageid=ID             page id; predefinito : 0(pagina attiva)\n\
-  -v, --verbose               attivare i messaggi dettagliati di stato; predefinito : non attivo\n
-
+  -v, --verbose               attivare i messaggi dettagliati di stato; predefinito : non attivo\n\
+  -i, --interval=S            print information every S secs\n	
+  
 $set 45 MSGCAT_UTIL_SET_ACLDB
 59 acldb non è possibile eseguire come modalità standalone.\n
 60 \

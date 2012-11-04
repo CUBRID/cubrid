@@ -2237,12 +2237,6 @@ _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
   er_Msg = th_entry->er_Msg;
 #endif /* SERVER_MODE */
 
-  r = ER_CSECT_ENTER_LOG_FILE ();
-  if (r != NO_ERROR)
-    {
-      return;
-    }
-
   if (er_Msg == NULL)
     {
       /* Avoid infinite recursion in case of errors in error restart */
@@ -2260,6 +2254,12 @@ _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
 
 	  doing_er_start = false;
 	}
+    }
+
+  r = ER_CSECT_ENTER_LOG_FILE ();
+  if (r != NO_ERROR)
+    {
+      return;
     }
 
   va_start (ap, fmt);

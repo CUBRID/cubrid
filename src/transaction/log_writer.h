@@ -102,7 +102,8 @@ extern void logwr_flush_header_page (void);
 extern int logwr_write_log_pages (void);
 extern int logwr_set_hdr_and_flush_info (void);
 #if !defined(WINDOWS)
-extern int logwr_copy_log_header_check (const char *db_name, bool verbose);
+extern int logwr_copy_log_header_check (const char *db_name, bool verbose,
+					LOG_LSA * master_eof_lsa);
 #endif /* !WINDOWS */
 #endif /* CS_MODE */
 

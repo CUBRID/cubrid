@@ -917,7 +917,8 @@ valid options:\n\
   -a, --applied-info          반영된 정보 출력\n\
   -L, --copied-log-path=PATH  복사된 로그 볼륨의 경로; 복사된 로그 정보 출력\n\
   -p, --pageid=ID             페이지 id; 기본값: 0(활성 페이지)\n\
-  -v, --verbose               상세 상태 정보 출력; 기본값: 사용하지 않음\n
+  -v, --verbose               상세 상태 정보 출력; 기본값: 사용하지 않음\n\
+  -i, --interval=S            매 S 초마다 로그 정보 출력\n
 
 $set 45 MSGCAT_UTIL_SET_ACLDB
 59  acldb는 독립 모드에서 실행할 수 없습니다.\n
