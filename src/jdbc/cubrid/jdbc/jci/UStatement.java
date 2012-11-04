@@ -877,89 +877,119 @@ public class UStatement {
 		isAutoCommit = autoCommit;
 	}
 
+	private void writeExecuteBatchRequest () throws IOException, UJciException {
+	    outBuffer.newRequest(relatedConnection.getOutputStream(),
+		    UFunctionCode.EXECUTE_BATCH_PREPAREDSTATEMENT);
+	    outBuffer.addInt(serverHandler);
+	    outBuffer.addByte(isAutoCommit ? (byte) 1 : (byte) 0);
+
+	    if (batchParameter != null) {
+		synchronized (batchParameter) {
+		    for (int i = 0; i < batchParameter.size(); i++) {
+			UBindParameter b = (UBindParameter) batchParameter.get(i);
+			b.writeParameter(outBuffer);
+		    }
+		}
+	    }
+	}
+
+	private UBatchResult executeBatchInternal () throws IOException, UJciException {
+	    UInputBuffer inBuffer = null;
+	    errorHandler.clear();
+		
+	    synchronized (relatedConnection) {
+		writeExecuteBatchRequest();
+		inBuffer = relatedConnection.send_recv_msg();
+	    } 
+		
+	    batchParameter = null;
+	    UBatchResult batchResult;
+	    int result;
+
+	    batchResult = new UBatchResult(inBuffer.readInt());
+	    for (int i = 0; i < batchResult.getResultNumber(); i++) {
+		batchResult.setStatementType(i, statementType);
+		result = inBuffer.readInt();
+		if (result < 0) {
+		    int err_code = inBuffer.readInt();
+		    batchResult.setResultError(i, err_code, inBuffer.readString(
+				inBuffer.readInt(), UJCIManager.sysCharsetName));
+		}
+		else {
+		    batchResult.setResult(i, result);
+		    // jci 3.0
+		    inBuffer.readInt();
+		    inBuffer.readShort(); 
+		    inBuffer.readShort();
+		}
+	    }
+	    return batchResult;
+	}
+
 	synchronized public UBatchResult executeBatch() {
-		UInputBuffer inBuffer;
-
-		errorHandler = new UError(relatedConnection);
-		try {
-			synchronized (relatedConnection) {
-				relatedConnection.checkReconnect();
-				if (isClosed == true) {
-					if (relatedConnection.brokerInfoStatementPooling() == true) {
-						UStatement tmp_ustmt = relatedConnection.prepare(
-								sql_stmt, prepare_flag, true);
-						relatedConnection.pooled_ustmts.remove(tmp_ustmt);
-						relatedConnection.pooled_ustmts.add(this);
-
-						UError tmp_err = relatedConnection.getRecentError();
-						if (tmp_err.getErrorCode() != UErrorCode.ER_NO_ERROR) {
-							errorHandler.copyValue(tmp_err);
-							return null;
-						}
-
-						try {
-							init(relatedConnection, tmp_ustmt.tmp_inbuffer,
-									sql_stmt, prepare_flag, false);
-						} catch (UJciException e) {
-							e.toUError(errorHandler);
-							return null;
-						}
-					} else {
-						errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
-						return null;
-					}
-				}
-
-				outBuffer.newRequest(relatedConnection.getOutputStream(),
-						UFunctionCode.EXECUTE_BATCH_PREPAREDSTATEMENT);
-				outBuffer.addInt(serverHandler);
-				outBuffer.addByte(isAutoCommit ? (byte) 1 : (byte) 0);
-
-				if (batchParameter != null) {
-					synchronized (batchParameter) {
-						for (int i = 0; i < batchParameter.size(); i++) {
-							UBindParameter b = (UBindParameter) batchParameter
-									.get(i);
-							b.writeParameter(outBuffer);
-						}
-					}
-				}
-
-				inBuffer = relatedConnection.send_recv_msg();
-			}
-
-			batchParameter = null;
-			UBatchResult batchResult;
-			int result;
-
-			batchResult = new UBatchResult(inBuffer.readInt());
-			for (int i = 0; i < batchResult.getResultNumber(); i++) {
-				batchResult.setStatementType(i, statementType);
-				result = inBuffer.readInt();
-				if (result < 0) {
-					int err_code = inBuffer.readInt();
-					batchResult.setResultError(i, err_code, inBuffer.readString(
-							inBuffer.readInt(), UJCIManager.sysCharsetName));
-				}
-				else {
-					batchResult.setResult(i, result);
-					// jci 3.0
-					inBuffer.readInt();
-					inBuffer.readShort();
-					inBuffer.readShort();
-				}
-			}
-			return batchResult;
-		} catch (UJciException e) {
-			relatedConnection.logException(e);
+	    UInputBuffer inBuffer;
+	    UBatchResult batchResult; 
+	    
+	    errorHandler = new UError(); 
+	    if (isClosed) {
+		if (relatedConnection.brokerInfoStatementPooling()) {
+		    try {
+			reset();
+		    } catch (UJciException e) {
 			e.toUError(errorHandler);
 			return null;
-		} catch (IOException e) {
-			relatedConnection.logException(e);
-			if (errorHandler.getErrorCode() != UErrorCode.ER_CONNECTION)
-				errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
-			return null;
+		    }
+		} else {
+		    errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
+		    return null; 
 		}
+	    } 
+
+	    try {
+		batchResult = executeBatchInternal();
+		return batchResult;
+	    } catch (UJciException e) {
+		relatedConnection.logException(e);
+		e.toUError(errorHandler);
+	    } catch (IOException e) {
+		relatedConnection.logException(e);
+		if (errorHandler.getErrorCode() != UErrorCode.ER_CONNECTION)
+		    errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
+	    } 
+
+	    if (relatedConnection.isErrorToReconnect(errorHandler.getJdbcErrorCode())) {
+		relatedConnection.clientSocketClose(); 
+
+		if (!relatedConnection.isActive()) {
+		    try {
+			reset();
+			batchResult = executeBatchInternal();
+			return batchResult;
+		    } catch (UJciException e) {
+			relatedConnection.logException(e);
+			e.toUError(errorHandler);
+		    } catch (IOException e) {
+			relatedConnection.logException(e);
+			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
+		    }
+		}
+	    }
+
+	    while (relatedConnection.brokerInfoStatementPooling() &&
+		    errorHandler.getJdbcErrorCode() == UErrorCode.CAS_ER_STMT_POOLING) {
+		try {
+		    reset();
+		    batchResult = executeBatchInternal();
+		    return batchResult;
+		} catch (UJciException e) {
+		    relatedConnection.logException(e);
+		    e.toUError(errorHandler);
+		} catch (IOException e) {
+		    relatedConnection.logException(e); 
+		    errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
+		}
+	    }
+	    return null;
 	}
 
 	synchronized public void fetch() {
