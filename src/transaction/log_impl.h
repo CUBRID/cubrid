@@ -466,6 +466,9 @@ struct log_group_commit_info
   pthread_cond_t gc_cond;
 };
 
+#define LOG_GROUP_COMMIT_INFO_INITIALIZER                     \
+  {0, PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER}
+
 typedef enum logwr_mode LOGWR_MODE;
 enum logwr_mode
 {
@@ -508,6 +511,14 @@ struct logwr_info
   bool skip_flush;
 };
 
+#define LOGWR_INFO_INITIALIZER                                 \
+  {NULL,                                                       \
+    PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER,       \
+    PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER,       \
+    PTHREAD_MUTEX_INITIALIZER,                                 \
+    false}
+
+typedef struct log_append_info LOG_APPEND_INFO;
 struct log_append_info
 {
   int vdes;			/* Volume descriptor of active log            */
@@ -519,6 +530,19 @@ struct log_append_info
   LOG_PAGE *delayed_free_log_pgptr;	/* Delay freeing a log append page       */
 
 };
+
+#define LOG_APPEND_INFO_INITIALIZER                           \
+  {                                                           \
+    /* vdes */                                                \
+    NULL_VOLDES,                                              \
+    /* nxio_lsa */                                            \
+    {NULL_PAGEID, NULL_OFFSET},                               \
+    /* prev_lsa */                                            \
+    {NULL_PAGEID, NULL_OFFSET},                               \
+    /* log_pgptr */                                           \
+    NULL,                                                     \
+    /* delayed_free_log_pgptr */                              \
+    NULL}
 
 typedef enum log_2pc_execute LOG_2PC_EXECUTE;
 enum log_2pc_execute
@@ -807,6 +831,8 @@ struct trantable
   LOG_TDES **all_tdes;		/* Pointers to all transaction descriptors */
 };
 
+#define TRANTABLE_INITIALIZER \
+  {0, 0, 0, 0, 0, 0, 0, NULL, NULL}
 /*
  * This structure encapsulates various information and metrics related
  * to each backup level.
@@ -827,6 +853,7 @@ struct log_hdr_bkup_level_info
 /*
  * LOG HEADER INFORMATION
  */
+typedef struct log_header LOG_HEADER;
 struct log_header
 {				/* Log header information */
   char magic[CUBRID_MAGIC_MAX_LENGTH];	/* Magic value for file/magic Unix
@@ -897,6 +924,48 @@ struct log_header
   LOG_LSA smallest_lsa_at_last_chkpt;
 };
 
+#define LOG_HEADER_INITIALIZER                   \
+  {                                              \
+     /* magic */                                 \
+     {'0'},                                      \
+     0, 0,                                       \
+     /* db_release */                            \
+     {'0'},                                      \
+     /* db_compatibility */                      \
+     0.0,                                        \
+     0, 0, 0,                                    \
+     /* next_trid */                             \
+     NULL_TRANID,                                \
+     0, 0, 0, 0, 0,                              \
+     /* append_lsa */                            \
+     {NULL_PAGEID, NULL_OFFSET},                 \
+     /* chkpt_lsa */                             \
+     {NULL_PAGEID, NULL_OFFSET},                 \
+     /* nxarv_pageid */                          \
+     0,                                          \
+     /* nxarv_phy_pageid */                      \
+     0,                                          \
+     0, 0, 0,                                    \
+     /* bkup_level0_lsa */                       \
+     {NULL_PAGEID, NULL_OFFSET},                 \
+     /* bkup_level1_lsa */                       \
+     {NULL_PAGEID, NULL_OFFSET},                 \
+     /* bkup_level2_lsa */                       \
+     {NULL_PAGEID, NULL_OFFSET},                 \
+     /* prefix_name */                           \
+     {'0'},                                      \
+     /* has_logging_been_skipped */              \
+     false,                                      \
+     0, 0, 0,                                    \
+     /* bkinfo */                                \
+     {{0, 0, 0, 0, 0}},                          \
+     0, 0,                                       \
+     /* eof_lsa */                               \
+     {NULL_PAGEID, NULL_OFFSET},                 \
+     /* smallest_lsa_at_last_chkpt */            \
+     {NULL_PAGEID, NULL_OFFSET}                  \
+  }
+
 struct log_arv_header
 {				/* Log archive header information */
   char magic[CUBRID_MAGIC_MAX_LENGTH];	/* Magic value for file/magic Unix
@@ -915,6 +984,10 @@ struct log_arv_header
   int arv_num;			/* The archive number                       */
   INT32 dummy2;			/* Dummy field for 8byte align */
 };
+
+#define LOG_ARV_HEADER_INITIALIZER              \
+  { /* magic */ {'0'},                          \
+    0, 0, 0, 0, 0, 0, 0}
 
 typedef enum log_rectype LOG_RECTYPE;
 enum log_rectype
@@ -1338,6 +1411,14 @@ struct log_archives
   CSS_CRITICAL_SECTION archives_cs;
 };
 
+#define LOG_ARCHIVES_INITIALIZER                     \
+  {NULL_VOLDES,                                      \
+   LOG_ARV_HEADER_INITIALIZER,                       \
+   0, 0,                                             \
+   /* unav_archives */                               \
+   NULL,                                             \
+   CSS_CRITICAL_SECTION_INITIALIZER }
+
 typedef struct background_archiving_info BACKGROUND_ARCHIVING_INFO;
 struct background_archiving_info
 {
@@ -1346,6 +1427,9 @@ struct background_archiving_info
   LOG_PAGEID last_sync_pageid;
   int vdes;
 };
+
+#define BACKGROUND_ARCHIVING_INFO_INITIALIZER                     \
+  {NULL_PAGEID, NULL_PAGEID, NULL_PAGEID, NULL_VOLDES}
 
 typedef struct log_data_addr LOG_DATA_ADDR;
 struct log_data_addr
@@ -1393,6 +1477,22 @@ struct log_prior_lsa_info
 
   pthread_mutex_t prior_lsa_mutex;
 };
+
+#define LOG_PRIOR_LSA_INFO_INITIALIZER                     \
+  {                                                        \
+    /* prior_lsa */                                        \
+    {NULL_PAGEID, NULL_OFFSET},                            \
+    /* prev_lsa */                                         \
+    {NULL_PAGEID, NULL_OFFSET},                            \
+    /* list */                                             \
+    NULL, NULL,                                            \
+    /* list_size */                                        \
+    0,                                                     \
+    /* prior_flush_list_header */                          \
+    NULL,                                                  \
+    /* prior_lsa_mutex */                                  \
+    PTHREAD_MUTEX_INITIALIZER                              \
+  }
 
 /* Global structure to trantable, log buffer pool, etc */
 typedef struct log_global LOG_GLOBAL;

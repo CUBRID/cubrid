@@ -1650,7 +1650,6 @@ log_abort_all_active_transaction (THREAD_ENTRY * thread_p)
   LOG_TDES *tdes;		/* Transaction descriptor */
 #if defined(SERVER_MODE)
   int repeat_loop;
-  int repeat_loop_cnt = 0;
   CSS_CONN_ENTRY *conn = NULL;
   CSS_JOB_ENTRY *job_entry = NULL;
   int *abort_thread_running;
@@ -1713,13 +1712,14 @@ loop:
   if (repeat_loop)
     {
       thread_sleep (0, 50000);	/* sleep 0.05 sec */
-      repeat_loop_cnt++;
-      if (repeat_loop_cnt > 1000)
+      if (css_is_shutdown_timeout_expired ())
 	{
 	  if (abort_thread_running != NULL)
 	    {
 	      free_and_init (abort_thread_running);
 	    }
+	  /* exit process after some tries */
+	  er_log_debug (ARG_FILE_LINE, "log_abort_all_active_transaction: _exit(0)\n");
 	  _exit (0);
 	}
       goto loop;
@@ -4935,7 +4935,7 @@ log_append_repl_info_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
  * return: nothing
  *
  *   tdes(in):  State structure of transaction being committed/aborted.
- *   with_lock(in):  
+ *   with_lock(in):
  *
  * NOTE:critical section is set by its caller function.
  */

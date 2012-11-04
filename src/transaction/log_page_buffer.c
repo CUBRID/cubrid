@@ -7707,38 +7707,6 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
       log_Gl.archive.vdes = NULL_VOLDES;
     }
 
-#if defined(SERVER_MODE)
-  LSA_COPY (&newflush_upto_lsa, &log_Gl.flushed_lsa_lower_bound);
-#else /* SERVER_MODE */
-
-  flush_upto_lsa.pageid = LOGPB_NEXT_ARCHIVE_PAGE_ID;
-  flush_upto_lsa.offset = NULL_OFFSET;
-
-  pgbuf_flush_checkpoint (thread_p, &flush_upto_lsa, NULL,
-			  &newflush_upto_lsa);
-
-  if ((!LSA_ISNULL (&newflush_upto_lsa)
-       && LSA_LT (&newflush_upto_lsa, &flush_upto_lsa))
-      || fileio_synchronize_all (thread_p, false) != NO_ERROR)
-    {
-      /* Cannot remove the archives at this moment */
-      return;
-    }
-
-  if (log_Gl.run_nxchkpt_atpageid != NULL_PAGEID)
-    {
-      if (LSA_LT (&log_Gl.hdr.chkpt_lsa, &flush_upto_lsa))
-	{
-	  /*
-	   * Reset the checkpoint record to the first possible active page and
-	   * flush the log header before the archives are removed
-	   */
-	  LSA_COPY (&log_Gl.hdr.chkpt_lsa, &flush_upto_lsa);
-	  logpb_flush_header (thread_p);
-	}
-    }
-#endif /* SERVER_MODE */
-
   last_deleted_arv_num = log_Gl.hdr.last_arv_num_for_syscrashes;
   if (last_deleted_arv_num == -1)
     {
@@ -8492,8 +8460,12 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   er_log_debug (ARG_FILE_LINE,
 		"logpb_checkpoint: call pgbuf_flush_checkpoint()\n");
-  pgbuf_flush_checkpoint (thread_p, &newchkpt_lsa, &chkpt_redo_lsa,
-			  &tmp_chkpt.redo_lsa);
+  if (pgbuf_flush_checkpoint (thread_p, &newchkpt_lsa, &chkpt_redo_lsa,
+			      &tmp_chkpt.redo_lsa) != NO_ERROR)
+    {
+      LOG_CS_ENTER (thread_p);
+      goto error_cannot_chkpt;
+    }
 
   er_log_debug (ARG_FILE_LINE,
 		"logpb_checkpoint: call fileio_synchronize_all()\n");
@@ -12375,7 +12347,8 @@ logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit,
 	   * Flush as much as you can without forcing the current unfinish log
 	   * record.
 	   */
-	  pgbuf_flush_checkpoint (thread_p, &tmp_lsa1, NULL, &tmp_lsa2);
+	  (void) pgbuf_flush_checkpoint (thread_p, &tmp_lsa1, NULL,
+					 &tmp_lsa2);
 	  in_fatal = false;
 	}
     }
