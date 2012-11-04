@@ -57,6 +57,11 @@ begin
     makeconf(TARGETDIR^"conf\\cm.conf");
     makeconf(TARGETDIR^"conf\\cmdb.pass");
     makeconf(TARGETDIR^"conf\\cm.pass");
+    makeconf(TARGETDIR^"conf\\cubrid_locales.all.txt");
+    makeconf(TARGETDIR^"conf\\cubrid_locales.txt");
+    makeconf(TARGETDIR^"conf\\shard.conf");
+    makeconf(TARGETDIR^"conf\\shard_connection.txt");
+    makeconf(TARGETDIR^"conf\\shard_key.txt");
     
     // Register CUBRID Service    
     PROGRAM = TARGETDIR + "\\bin\\ctrlService.exe ";

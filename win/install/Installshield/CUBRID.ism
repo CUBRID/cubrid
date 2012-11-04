@@ -296,9 +296,9 @@
 		<row><td>cubrid.conf.large</td><td>CUBRID</td><td>cubrid.conf.large</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cubrid.conf.large</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>cubrid.conf.small</td><td>CUBRID</td><td>cubrid.conf.small</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cubrid.conf.small</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>cubrid.conf_dist</td><td>CUBRID</td><td>cubrid.conf-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cubrid.conf-dist</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>shard.conf</td><td>CUBRID</td><td>shard.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\shard.conf</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>shard_connection.txt</td><td>CUBRID</td><td>shard_connection.txt</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\shard_connection.txt</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>shard_key.txt</td><td>CUBRID</td><td>shard_key.txt</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\shard_key.txt</td><td>1</td><td>NewSubFolder4</td></row>
+		<row><td>shard.conf_dist</td><td>CUBRID</td><td>shard.conf-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\shard.conf-dist</td><td>1</td><td>NewSubFolder4</td></row>
+		<row><td>shard_connection.txt_dist</td><td>CUBRID</td><td>shard_connection.txt-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\shard_connection.txt-dist</td><td>1</td><td>NewSubFolder4</td></row>
+		<row><td>shard_key.txt_dist</td><td>CUBRID</td><td>shard_key.txt-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\shard_key.txt-dist</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>cm_httpd.conf</td><td>CUBRID</td><td>cm_httpd.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cm_httpd.conf</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>cm_httpd.crt</td><td>CUBRID</td><td>cm_httpd.crt</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cm_httpd.crt</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>cm_httpd.key</td><td>CUBRID</td><td>cm_httpd.key</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cm_httpd.key</td><td>1</td><td>NewSubFolder4</td></row>
@@ -309,8 +309,8 @@
 		<row><td>cubrid_esql.exe</td><td>CUBRID</td><td>cubrid_esql.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubrid_esql.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cubrid_esql.h</td><td>CUBRID</td><td>cubrid_esql.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\cubrid_esql.h</td><td>1</td><td>NewSubFolder6</td></row>
 		<row><td>cubrid_jdbc.jar</td><td>JDBC</td><td>cubrid_jdbc.jar</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\jdbc\cubrid_jdbc.jar</td><td>1</td><td/></row>
-		<row><td>cubrid_locales.all.txt</td><td>CUBRID</td><td>cubrid_locales.all.txt</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cubrid_locales.all.txt</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>cubrid_locales.txt</td><td>CUBRID</td><td>cubrid_locales.txt</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cubrid_locales.txt</td><td>1</td><td>NewSubFolder4</td></row>
+		<row><td>cubrid_locales.all.txt_dist</td><td>CUBRID</td><td>cubrid_locales.all.txt-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cubrid_locales.all.txt-dist</td><td>1</td><td>NewSubFolder4</td></row>
+		<row><td>cubrid_locales.txt_dist</td><td>CUBRID</td><td>cubrid_locales.txt-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cubrid_locales.txt-dist</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>cubrid_odbc.dll</td><td>ODBC</td><td>cubrid_odbc.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubrid_odbc.dll</td><td>1</td><td/></row>
 		<row><td>cubrid_rel.exe</td><td>CUBRID</td><td>cubrid_rel.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubrid_rel.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cubrid_service_tray.exe</td><td>CUBRID</td><td>CUBRID_Service_Tray.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\CUBRID_Service_Tray.exe</td><td>1</td><td>NewSubFolder5</td></row>

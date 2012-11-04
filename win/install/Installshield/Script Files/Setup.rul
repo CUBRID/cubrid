@@ -380,6 +380,16 @@ Dlg_SdStartCopy:
         old_conf = TRUE;
     elseif (FindFile ( szPath, "cmdb.pass", svResult ) = 0) then
         old_conf = TRUE;
+    elseif (FindFile ( szPath, "cubrid_locales.all.txt", svResult ) = 0) then
+        old_conf = TRUE;
+    elseif (FindFile ( szPath, "cubrid_locales.txt", svResult ) = 0) then
+        old_conf = TRUE;
+    elseif (FindFile ( szPath, "shard.conf", svResult ) = 0) then
+        old_conf = TRUE;
+    elseif (FindFile ( szPath, "shard_connection.txt", svResult ) = 0) then
+        old_conf = TRUE;
+    elseif (FindFile ( szPath, "shard_key.txt", svResult ) = 0) then
+        old_conf = TRUE;
     endif;
      
     if (old_conf = TRUE) then
