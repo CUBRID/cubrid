@@ -664,6 +664,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
   T_BROKER_VERSION client_version = req_info->client_version;
 
   net_arg_get_char (auto_commit_mode, argv[1]);
+  cas_mysql_autocommit (auto_commit_mode);
 
   if (auto_commit_mode == TRUE)
     {

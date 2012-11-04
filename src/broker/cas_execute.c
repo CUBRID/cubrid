@@ -2335,6 +2335,10 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
       num_bind -= num_markers;
       first_value += num_markers;
 
+      if (auto_commit_mode == TRUE)
+	{
+	  db_commit_transaction ();
+	}
       continue;
 
     exec_db_error:
@@ -2365,6 +2369,11 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
 
       num_bind -= num_markers;
       first_value += num_markers;
+
+      if (auto_commit_mode == TRUE)
+	{
+	  db_abort_transaction ();
+	}
     }
 
   net_buf_overwrite_int (net_buf, num_query_msg_offset, num_query);

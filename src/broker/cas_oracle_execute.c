@@ -1201,7 +1201,14 @@ ux_execute_internal (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 	  goto execute_error_internal;
 	}
       iters = 1;
-      mode = OCI_DEFAULT;
+      if (srv_handle->auto_commit_mode)
+      {
+	  mode = OCI_COMMIT_ON_SUCCESS;
+      }
+      else 
+      {
+	  mode = OCI_DEFAULT;
+      }
     }
 
   memset ((char *) &locp_list, 0, sizeof (LOCATOR_LIST));
@@ -1450,13 +1457,25 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
   T_PREPARE_CALL_INFO *call_info;
   DB_VALUE *value_array;
   ub4 i, va, num_value, num_query, num_query_msg_offset;
+  char auto_commit_mode;
   T_BROKER_VERSION client_version = req_info->client_version;
+
+  net_arg_get_char (auto_commit_mode, argv[1]);
+
+#ifndef LIBCAS_FOR_JSP
+  if (auto_commit_mode == TRUE)
+    {
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+    }
+#endif /* LIBCAS_FOR_JSP */
 
   num_value = 0;
 
   hm_qresult_end (srv_handle, FALSE);
   stmt = (OCIStmt *) srv_handle->session;
   call_info = srv_handle->prepare_call_info;
+
+  srv_handle->auto_commit_mode = auto_commit_mode;
 
   if (srv_handle->stmt_type != CUBRID_STMT_SELECT
       && shm_appl->access_mode == READ_ONLY_ACCESS_MODE)
@@ -1519,7 +1538,14 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
       else
 	{
 	  iters = 1;
-	  mode = OCI_DEFAULT;
+	  if (auto_commit_mode == TRUE)
+	    {
+	      mode = OCI_COMMIT_ON_SUCCESS;
+	    }
+	  else
+	    {
+	      mode = OCI_DEFAULT;
+	    }
 	}
       ret = OCIStmtExecute (ORA_SVC, stmt, ORA_ERR, iters, 0, 0, 0, mode);
       as_info->num_queries_processed %= MAX_DIAG_DATA_VALUE;
