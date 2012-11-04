@@ -100,6 +100,7 @@ EXPORTS
 	cci_datasource_borrow
 	cci_datasource_release
 	cci_set_allocators
+	cci_escape_string
 	cci_set_holdability
 	cci_get_holdability
 	
