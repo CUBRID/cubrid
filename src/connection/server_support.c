@@ -1084,7 +1084,7 @@ css_process_new_connection_request (void)
 	  rc = css_read_header (&new_conn, &header);
 	  buffer_size = rid = 0;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CLIENTS_EXCEEDED,
-		  1, NUM_NORMAL_CLIENTS);
+		  1, NUM_NORMAL_TRANS);
 	  reason = htonl (SERVER_CLIENTS_EXCEEDED);
 	  css_send_data (&new_conn, rid, (char *) &reason,
 			 (int) sizeof (int));
