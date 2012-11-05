@@ -62,45 +62,18 @@ static bool logwr_need_shutdown = false;
 
 #if defined(CS_MODE)
 LOGWR_GLOBAL logwr_Gl = {
-  /* hdr */
-  {{'0'}
-   , 0, 0, {'0'}
-   , 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-   {NULL_PAGEID, NULL_OFFSET}
-   ,
-   {NULL_PAGEID, NULL_OFFSET}
-   ,
-   NULL_PAGEID, NULL_PAGEID, -1, -1, -1,
-   {NULL_PAGEID, NULL_OFFSET}
-   ,
-   {NULL_PAGEID, NULL_OFFSET}
-   ,
-   {NULL_PAGEID, NULL_OFFSET}
-   ,
-   {'0'}, false, 0, 0, 0,
-   {{0, 0, 0, 0, 0}
-    }
-   ,
-   0, 0,
-   {NULL_PAGEID, NULL_OFFSET}
-   ,
-   {NULL_PAGEID, NULL_OFFSET}
-   }
-  ,
+  /* log header */
+  LOG_HEADER_INITIALIZER,
   /* loghdr_pgptr */
   NULL,
   /* db_name */
-  {'0'}
-  ,
+  {'0'},
   /* log_path */
-  {'0'}
-  ,
+  {'0'},
   /* loginf_path */
-  {'0'}
-  ,
+  {'0'},
   /* active_name */
-  {'0'}
-  ,
+  {'0'},
   /* append_vdes */
   NULL_VOLDES,
   /* logpg_area */
@@ -132,15 +105,9 @@ LOGWR_GLOBAL logwr_Gl = {
   /* force_flush */
   false,
   /* last_flush_time */
-  {0, 0}
-  ,
+  {0, 0},
   /* background archiving info */
-  {NULL_PAGEID, NULL_PAGEID, NULL_VOLDES
-#if defined(SERVER_MODE)
-   , PTHREAD_MUTEX_INITIALIZER
-#endif /* SERVER_MODE */
-   }
-  ,
+  BACKGROUND_ARCHIVING_INFO_INITIALIZER,
   /* bg_archive_name */
   {'0'},
   /* ori_nxarv_pageid */

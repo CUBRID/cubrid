@@ -8492,8 +8492,12 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   er_log_debug (ARG_FILE_LINE,
 		"logpb_checkpoint: call pgbuf_flush_checkpoint()\n");
-  pgbuf_flush_checkpoint (thread_p, &newchkpt_lsa, &chkpt_redo_lsa,
-			  &tmp_chkpt.redo_lsa);
+  if (pgbuf_flush_checkpoint (thread_p, &newchkpt_lsa, &chkpt_redo_lsa,
+			      &tmp_chkpt.redo_lsa) != NO_ERROR)
+    {
+      LOG_CS_ENTER (thread_p);
+      goto error_cannot_chkpt;
+    }
 
   er_log_debug (ARG_FILE_LINE,
 		"logpb_checkpoint: call fileio_synchronize_all()\n");
@@ -12375,7 +12379,8 @@ logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit,
 	   * Flush as much as you can without forcing the current unfinish log
 	   * record.
 	   */
-	  pgbuf_flush_checkpoint (thread_p, &tmp_lsa1, NULL, &tmp_lsa2);
+	  (void) pgbuf_flush_checkpoint (thread_p, &tmp_lsa1, NULL,
+					 &tmp_lsa2);
 	  in_fatal = false;
 	}
     }
