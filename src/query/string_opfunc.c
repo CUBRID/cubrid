@@ -21462,7 +21462,7 @@ write_results:
     {
       DB_DATETIME db_datetime;
 
-      db_datetime_encode (&db_datetime, m, d, y, h, mi, s, 0);
+      db_datetime_encode (&db_datetime, m, d, y, h, mi, s, ms);
 
       DB_MAKE_DATETIME (result, &db_datetime);
     }
