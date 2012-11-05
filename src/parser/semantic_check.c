@@ -1066,6 +1066,69 @@ end:
 }
 
 /*
+ * pt_check_compatible_node_for_orderby ()
+ */
+bool
+pt_check_compatible_node_for_orderby (PARSER_CONTEXT * parser,
+				      PT_NODE * order, PT_NODE * column)
+{
+  PT_NODE *arg1, *cast_type;
+  PT_TYPE_ENUM type1, type2;
+
+  if (order == NULL || column == NULL
+      || order->node_type != PT_EXPR || order->info.expr.op != PT_CAST)
+    {
+      return false;
+    }
+
+  arg1 = order->info.expr.arg1;
+  if (arg1->node_type != column->node_type)
+    {
+      return false;
+    }
+
+  if (arg1->node_type != PT_NAME && arg1->node_type != PT_DOT_)
+    {
+      return false;
+    }
+
+  if (pt_check_path_eq (parser, arg1, column) != 0)
+    {
+      return false;
+    }
+
+  cast_type = order->info.expr.cast_type;
+  type1 = arg1->type_enum;
+  type2 = cast_type->type_enum;
+
+  if (PT_IS_NUMERIC_TYPE (type1) && PT_IS_NUMERIC_TYPE (type2))
+    {
+      return true;
+    }
+
+  if (PT_IS_STRING_TYPE (type1) && PT_IS_STRING_TYPE (type2))
+    {
+      int c1, c2;
+
+      c1 = arg1->data_type->info.data_type.collation_id;
+      c2 = cast_type->info.data_type.collation_id;
+      return c1 == c2;
+    }
+
+  if (PT_IS_DATE_TIME_TYPE (type1) && PT_IS_DATE_TIME_TYPE (type2))
+    {
+      if ((type1 == PT_TYPE_TIME && type2 != PT_TYPE_TIME)
+	  || (type1 != PT_TYPE_TIME && type2 == PT_TYPE_TIME))
+	{
+	  return false;
+	}
+      return true;
+    }
+
+  return false;
+}
+
+/*
  * pt_check_cast_op () - Checks to see if the cast operator is well-formed
  *   return: none
  *   parser(in):
@@ -12515,6 +12578,10 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 			  break;	/* match */
 			}
 		    }
+		}
+	      else if (pt_check_compatible_node_for_orderby (parser, r, col))
+		{
+		  break;
 		}
 	      n++;
 	    }

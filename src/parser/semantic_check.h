@@ -76,4 +76,7 @@ extern PT_NODE *pt_find_order_value_in_list (PARSER_CONTEXT * parser,
 					     const PT_NODE * sort_value,
 					     const PT_NODE * order_list);
 extern bool pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node);
+extern bool pt_check_compatible_node_for_orderby (PARSER_CONTEXT * parser,
+						  PT_NODE * order,
+						  PT_NODE * column);
 #endif /* _SEMANTIC_CHECK_H_ */

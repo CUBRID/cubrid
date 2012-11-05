@@ -57,6 +57,7 @@
 #include "query_graph.h"
 #include "transform.h"
 #include "query_planner.h"
+#include "semantic_check.h"
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -5288,6 +5289,10 @@ pt_to_pos_descr (PARSER_CONTEXT * parser, QFILE_TUPLE_VALUE_POSITION * pos_p,
 		    }
 		}
 	    }
+	  else if (pt_check_compatible_node_for_orderby (parser, temp, node))
+	    {
+	      pos_p->pos_no = i;
+	    }
 
 	  if (pos_p->pos_no == -1)
 	    {			/* not found match */
@@ -8800,7 +8805,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    current_user_val = parser_new_node (parser, PT_VALUE);
 		    if (current_user_val == NULL)
 		      {
-			db_string_free (username);
+			db_string_free ((char *) username);
 			PT_INTERNAL_ERROR (parser, "allocate new node");
 			return NULL;
 		      }
@@ -8821,7 +8826,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    regu = pt_to_regu_variable (parser,
 						current_user_val, unbox);
 
-		    db_string_free (username);
+		    db_string_free ((char *) username);
 		    parser_free_node (parser, current_user_val);
 		    break;
 		  }
@@ -11512,7 +11517,7 @@ pt_fix_first_term_func_index_for_iss (PARSER_CONTEXT * parser,
   seg = QO_ENV_SEG (index_entryp->terms.env, index_entryp->seg_idxs[1]);
   head = QO_SEG_HEAD (seg);
   spec = head->entity_spec;
-  class_name = spec->info.spec.range_var->info.name.original;
+  class_name = (char *) spec->info.spec.range_var->info.name.original;
 
   query_str_len = strlen (func_index->expr_str) +
     strlen (class_name) + 7 /* strlen("SELECT ") */  +
@@ -14635,7 +14640,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	  while (node != NULL)
 	    {
 	      PT_NODE *final, *to_ex_list = NULL, *save_next;
-	      int sort_adjust;
+	      long sort_adjust;
 
 	      /* save next and unlink node */
 	      save_next = node->next;
@@ -14678,7 +14683,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	  for (node = select_list_final, idx = 0; node; node = node->next)
 	    {
 	      PT_NODE *list;
-	      int sort_adjust = (int) node->etc;
+	      long sort_adjust = (long) node->etc;
 
 	      /* walk list and adjust */
 	      for (list = select_list_ex; list; list = list->next)
@@ -15587,7 +15592,7 @@ pt_plan_set_query (PARSER_CONTEXT * parser, PT_NODE * node,
 	  xasl->qplan =
 	    pt_alloc_packing_buf (strlen (left->qplan) +
 				  strlen (right->qplan) + 256);
-	  sprintf (xasl->qplan, "%s\n%s", left->qplan, right->qplan);
+	  sprintf ((char *) xasl->qplan, "%s\n%s", left->qplan, right->qplan);
 	}
     }
 
@@ -15809,13 +15814,13 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 
 	  if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN))
 	    {
-	      sprintf (xasl->qplan, "%s\n%s\n%s\n%s%s\n%s\n", line, title,
-		       line, select_node->alias_print, qplan, line);
+	      sprintf ((char *) xasl->qplan, "%s\n%s\n%s\n%s%s\n%s\n", line,
+		       title, line, select_node->alias_print, qplan, line);
 	    }
 	  else
 	    {
-	      sprintf (xasl->qplan, "%s\n%s\n%s\n%s\n%s\n", line, title, line,
-		       select_node->alias_print, line);
+	      sprintf ((char *) xasl->qplan, "%s\n%s\n%s\n%s\n%s\n", line,
+		       title, line, select_node->alias_print, line);
 	    }
 	}
     }
@@ -16106,7 +16111,7 @@ pt_spec_to_xasl_class_oid_list (const PT_NODE * spec,
 	      prev_t_num = t_num;
 	      (void) lsearch (oid, o_list, &t_num, sizeof (OID), oid_compare);
 
-	      if (t_num > prev_t_num && t_num > (ssize_t) (*nump))
+	      if (t_num > prev_t_num && t_num > (size_t) (*nump))
 		{
 		  *(r_list + t_num - 1) = -1;	/* dummy repr_id */
 		}
@@ -16243,7 +16248,7 @@ pt_serial_to_xasl_class_oid_list (PARSER_CONTEXT * parser,
 
   prev_t_num = t_num;
   (void) lsearch (serial_oid_p, o_list, &t_num, sizeof (OID), oid_compare);
-  if (t_num > prev_t_num && t_num > (ssize_t) (*nump))
+  if (t_num > prev_t_num && t_num > (size_t) (*nump))
     {
       *(r_list + t_num - 1) = -1;	/* dummy repr_id */
     }

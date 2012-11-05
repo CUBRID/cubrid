@@ -10987,8 +10987,25 @@ qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
 
   for (i = 0; i < env->nsegs; i++)
     {
-      if (!intl_identifier_casecmp
-	  (QO_ENV_SEG (env, i)->name, pt_get_name (node)))
+      char *seg_name, *node_name;
+
+      seg_name = QO_ENV_SEG (env, i)->name;
+      if (node->node_type == PT_NAME)
+	{
+	  node_name = pt_get_name (node);
+	}
+      else if (node->node_type == PT_EXPR && node->info.expr.op == PT_CAST)
+	{
+	  assert (node->info.expr.arg1->node_type == PT_NAME);
+	  node_name = pt_get_name (node->info.expr.arg1);
+	}
+      else
+	{
+	  assert (false);
+	  continue;
+	}
+
+      if (!intl_identifier_casecmp (seg_name, node_name))
 	{
 	  segm = QO_ENV_SEG (env, i);
 	  break;
