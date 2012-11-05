@@ -44,7 +44,8 @@ extern int css_net_send (CSS_CONN_ENTRY * conn, const char *buff, int len,
 extern int css_net_send_buffer_only (CSS_CONN_ENTRY * conn,
 				     const char *buff, int len, int timeout);
 
-extern int css_net_read_header (SOCKET fd, char *buffer, int *maxlen);
+extern int css_net_read_header (SOCKET fd, char *buffer, int *maxlen,
+				int timeout);
 
 extern int css_send_request_with_data_buffer (CSS_CONN_ENTRY * conn,
 					      int request,

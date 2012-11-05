@@ -581,12 +581,13 @@ css_net_recv (SOCKET fd, char *buffer, int *maxlen, int timeout)
       nbytes = css_readn (fd, (char *) &templen, sizeof (int), time_unit);
       if (nbytes < 0)
 	{
-	  if (errno == ETIMEDOUT && timeout >= elapsed)
+	  if (errno == ETIMEDOUT && timeout > elapsed)
 	    {
 #if defined(CS_MODE)
 	      if (CHECK_SERVER_IS_ALIVE ())
 		{
-		  if (net_client_ping_server (fd, NULL, 5000) != NO_ERROR)
+		  if (net_client_ping_server (fd, NULL, time_unit) !=
+		      NO_ERROR)
 		    {
 		      return ERROR_WHEN_READING_SIZE;
 		    }
@@ -1494,11 +1495,12 @@ css_net_send_buffer_only (CSS_CONN_ENTRY * conn, const char *buff, int len,
  *   fd(in): socket descripter
  *   buffer(out): buffer for date be read
  *   maxlen(out): count of bytes was read
+ *   timeout(in):
  */
 int
-css_net_read_header (SOCKET fd, char *buffer, int *maxlen)
+css_net_read_header (SOCKET fd, char *buffer, int *maxlen, int timeout)
 {
-  return css_net_recv (fd, buffer, maxlen, -1);
+  return css_net_recv (fd, buffer, maxlen, timeout);
 }
 
 static void

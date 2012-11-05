@@ -1259,7 +1259,8 @@ css_read_header (CSS_CONN_ENTRY * conn, const NET_HEADER * local_header)
       return (CONNECTION_CLOSED);
     }
 
-  rc = css_net_read_header (conn->fd, (char *) local_header, &buffer_size);
+  rc = css_net_read_header (conn->fd, (char *) local_header, &buffer_size,
+			    -1);
   if (rc == NO_ERRORS && ntohl (local_header->type) == CLOSE_TYPE)
     {
       return (CONNECTION_CLOSED);

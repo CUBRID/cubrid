@@ -368,7 +368,8 @@ css_read_header (CSS_CONN_ENTRY * conn, NET_HEADER * local_header)
 
   buffer_size = sizeof (NET_HEADER);
 
-  rc = css_net_read_header (conn->fd, (char *) local_header, &buffer_size);
+  rc = css_net_read_header (conn->fd, (char *) local_header, &buffer_size,
+			    -1);
   if (rc == NO_ERRORS && ntohl (local_header->type) == CLOSE_TYPE)
     {
       css_shutdown_conn (conn);
@@ -507,7 +508,8 @@ check_queue:
 
 begin:
   header_size = sizeof (NET_HEADER);
-  rc = css_net_read_header (conn->fd, (char *) &header, &header_size);
+  rc = css_net_read_header (conn->fd, (char *) &header, &header_size,
+			    timeout);
   if (rc == NO_ERRORS)
     {
       rid = ntohl (header.request_id);
@@ -632,7 +634,7 @@ check_queue:
 
 begin:
   header_size = sizeof (NET_HEADER);
-  rc = css_net_read_header (conn->fd, (char *) &header, &header_size);
+  rc = css_net_read_header (conn->fd, (char *) &header, &header_size, -1);
   if (rc == NO_ERRORS)
     {
       rid = ntohl (header.request_id);
