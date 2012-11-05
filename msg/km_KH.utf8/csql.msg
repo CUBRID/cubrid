@@ -168,7 +168,7 @@ $ csql help messages
    ;Info <command>             - បង្ហាញពត៌មានខាងក្នុង។\n\
    ;TIme [ON/OFF]              - មិនអាចបង្ហាញ query\n\
                                                                                            ម៉ោងប្រតិបត្តិ\n\
-   ;LINe-output [ON/OFF]       - បង្ហាញតម្លៃនីមួយៗក្នុងបន្ទាត់មួយ ម៉ោងប្រតិបត្តិ\ n\
+   ;LINe-output [ON/OFF]       - បង្ហាញតម្លៃនីមួយៗក្នុងបន្ទាត់មួយ\n\
    ;HISTORYList                - បង្ហាញតារាងឈ្មោះqueriesដែលបានប្រតិបត្តិ។\n\
    ;HISTORYRead <history_num>  - ដំណើរការentryនៅលើចំនួន historyទៅក្នុងcommand buffer។\n\
    ;HElp                       - បង្ហាញសារជំនួយនេះ (help message)។\n\n
