@@ -382,6 +382,11 @@ compare_size_and_buffer (int *replysize, int size, char **replybuf, char *buf,
 {
   int err = NO_ERROR;
 
+  if (size <= 0)
+    {
+      return NO_ERROR;
+    }
+
   if (size != *replysize)
     {
       err = ER_NET_DATASIZE_MISMATCH;
@@ -389,7 +394,7 @@ compare_size_and_buffer (int *replysize, int size, char **replybuf, char *buf,
       *replysize = size;
     }
 
-  if (buf != *replybuf && size > 0)
+  if (buf != *replybuf)
     {
       err = ER_NET_UNUSED_BUFFER;
       er_set (ER_ERROR_SEVERITY, file, line, err, 0);
@@ -1745,34 +1750,34 @@ net_client_request_with_callback (int request, char *argbuf, int argsize,
 				  char *replybuf, int replysize,
 				  char *databuf1, int datasize1,
 				  char *databuf2, int datasize2,
-				  char **replydata_ptr1,
-				  int *replydatasize_ptr1,
-				  char **replydata_ptr2,
-				  int *replydatasize_ptr2,
-				  char **replydata_ptr3,
-				  int *replydatasize_ptr3)
+				  char **replydata_listid,
+				  int *replydatasize_listid,
+				  char **replydata_page,
+				  int *replydatasize_page,
+				  char **replydata_plan,
+				  int *replydatasize_plan)
 {
   unsigned int rc;
   int size;
-  int reply_datasize1, reply_datasize2, reply_datasize3, error;
+  int reply_datasize_listid, reply_datasize_page, reply_datasize_plan, error;
   char *reply = NULL, *replydata, *ptr;
   QUERY_SERVER_REQUEST server_request;
   int server_request_num;
 
   error = 0;
-  *replydata_ptr1 = NULL;
-  *replydata_ptr2 = NULL;
-  if (replydata_ptr3 != NULL)
+  *replydata_listid = NULL;
+  *replydata_page = NULL;
+  if (replydata_plan != NULL)
     {
-      *replydata_ptr3 = NULL;
+      *replydata_plan = NULL;
     }
 
-  *replydatasize_ptr1 = 0;
-  *replydatasize_ptr2 = 0;
+  *replydatasize_listid = 0;
+  *replydatasize_page = 0;
 
-  if (replydatasize_ptr3 != NULL)
+  if (replydatasize_plan != NULL)
     {
-      *replydatasize_ptr3 = 0;
+      *replydatasize_plan = 0;
     }
 
   if (net_Server_name[0] == '\0')
@@ -1822,19 +1827,20 @@ net_client_request_with_callback (int request, char *argbuf, int argsize,
 	    case QUERY_END:
 	      /* here we assume that the first integer in the reply is the length
 	         of the following data block */
-	      ptr = or_unpack_int (ptr, &reply_datasize1);
-	      ptr = or_unpack_int (ptr, &reply_datasize2);
-	      ptr = or_unpack_int (ptr, &reply_datasize3);
+	      ptr = or_unpack_int (ptr, &reply_datasize_listid);
+	      ptr = or_unpack_int (ptr, &reply_datasize_page);
+	      ptr = or_unpack_int (ptr, &reply_datasize_plan);
 	      COMPARE_AND_FREE_BUFFER (replybuf, reply);
 
-	      if (reply_datasize1 + reply_datasize2 + reply_datasize3)
+	      if (reply_datasize_listid + reply_datasize_page +
+		  reply_datasize_plan)
 		{
 		  if ((error == NO_ERROR)
 		      && (replydata =
-			  (char *) malloc (reply_datasize1)) != NULL)
+			  (char *) malloc (reply_datasize_listid)) != NULL)
 		    {
 		      css_queue_receive_data_buffer (rc, replydata,
-						     reply_datasize1);
+						     reply_datasize_listid);
 		      error =
 			css_receive_data_from_server (rc, &reply, &size);
 		      if (error != NO_ERROR)
@@ -1846,11 +1852,12 @@ net_client_request_with_callback (int request, char *argbuf, int argsize,
 		      else
 			{
 			  error =
-			    COMPARE_SIZE_AND_BUFFER (&reply_datasize1,
+			    COMPARE_SIZE_AND_BUFFER (&reply_datasize_listid,
 						     size, &replydata, reply);
 			}
-		      *replydata_ptr1 = reply;
-		      *replydatasize_ptr1 = size;
+
+		      *replydata_listid = reply;
+		      *replydatasize_listid = size;
 		      reply = NULL;
 		    }
 		  else
@@ -1859,13 +1866,13 @@ net_client_request_with_callback (int request, char *argbuf, int argsize,
 		    }
 		}
 
-	      if (reply_datasize2 + reply_datasize3)
+	      if (reply_datasize_page + reply_datasize_plan)
 		{
 		  if ((error == NO_ERROR)
 		      && (replydata = (char *) malloc (DB_PAGESIZE)) != NULL)
 		    {
 		      css_queue_receive_data_buffer (rc, replydata,
-						     reply_datasize2);
+						     reply_datasize_page);
 		      error =
 			css_receive_data_from_server (rc, &reply, &size);
 		      if (error != NO_ERROR)
@@ -1877,11 +1884,11 @@ net_client_request_with_callback (int request, char *argbuf, int argsize,
 		      else
 			{
 			  error =
-			    COMPARE_SIZE_AND_BUFFER (&reply_datasize2,
+			    COMPARE_SIZE_AND_BUFFER (&reply_datasize_page,
 						     size, &replydata, reply);
 			}
-		      *replydata_ptr2 = reply;
-		      *replydatasize_ptr2 = size;
+		      *replydata_page = reply;
+		      *replydatasize_page = size;
 		      reply = NULL;
 		    }
 		  else
@@ -1890,14 +1897,14 @@ net_client_request_with_callback (int request, char *argbuf, int argsize,
 		    }
 		}
 
-	      if (reply_datasize3)
+	      if (reply_datasize_plan)
 		{
 		  if ((error == NO_ERROR)
 		      && (replydata =
-			  (char *) malloc (reply_datasize3 + 1)) != NULL)
+			  (char *) malloc (reply_datasize_plan + 1)) != NULL)
 		    {
 		      css_queue_receive_data_buffer (rc, replydata,
-						     reply_datasize3);
+						     reply_datasize_plan);
 		      error =
 			css_receive_data_from_server (rc, &reply, &size);
 		      if (error != NO_ERROR)
@@ -1909,18 +1916,18 @@ net_client_request_with_callback (int request, char *argbuf, int argsize,
 		      else
 			{
 			  error =
-			    COMPARE_SIZE_AND_BUFFER (&reply_datasize3,
+			    COMPARE_SIZE_AND_BUFFER (&reply_datasize_plan,
 						     size, &replydata, reply);
 			}
 
-		      if (replydata_ptr3 != NULL)
+		      if (replydata_plan != NULL)
 			{
-			  *replydata_ptr3 = reply;
+			  *replydata_plan = reply;
 			}
 
-		      if (replydatasize_ptr3 != NULL)
+		      if (replydatasize_plan != NULL)
 			{
-			  *replydatasize_ptr3 = size;
+			  *replydatasize_plan = size;
 			}
 
 		      reply = NULL;
@@ -1969,11 +1976,12 @@ net_client_request_with_callback (int request, char *argbuf, int argsize,
 			  }
 #endif /* CS_MODE */
 			error = COMPARE_SIZE_AND_BUFFER (&methoddata_size,
-							 size, &methoddata,
-							 reply);
-			ptr = or_unpack_unbound_listid (methoddata,
-							(void **)
-							&method_call_list_id);
+							 size,
+							 &methoddata, reply);
+			ptr =
+			  or_unpack_unbound_listid (methoddata,
+						    (void **)
+						    &method_call_list_id);
 			method_call_list_id->last_pgptr = NULL;
 			ptr = or_unpack_method_sig_list (ptr,
 							 (void **)
@@ -2140,8 +2148,8 @@ net_client_request_with_callback (int request, char *argbuf, int argsize,
 				     * validation
 				     */
 				  case FILEIO_PROMPT_BOOLEAN_TYPE:
-				    if ((char_tolower (*user_response_ptr) ==
-					 'y')
+				    if ((char_tolower (*user_response_ptr)
+					 == 'y')
 					|| (*user_response_ptr == '1')
 					||
 					(intl_mbs_casecmp
@@ -2241,8 +2249,8 @@ net_client_request_with_callback (int request, char *argbuf, int argsize,
 		    if (pr_len > FILEIO_MAX_USER_RESPONSE_SIZE)
 		      {
 			error = ER_NET_DATA_TRUNCATED;
-			er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, error,
-				0);
+			er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+				error, 0);
 			pr_status = ER_FAILED;
 		      }
 
@@ -2311,8 +2319,9 @@ net_client_request_with_callback (int request, char *argbuf, int argsize,
       if (net_Histo_setup)
 	{
 	  net_histo_request_finished (request,
-				      replysize + *replydatasize_ptr1 +
-				      *replydatasize_ptr2);
+				      replysize + *replydatasize_listid +
+				      *replydatasize_page +
+				      *replaydatasize_plan);
 	}
 #endif /* HISTO */
     }
@@ -2352,9 +2361,9 @@ net_client_check_log_header (LOGWR_CONTEXT * ctx_ptr,
 	{
 	  /* HEADER PAGE REQUEST */
 	  rc =
-	    css_send_req_to_server_2_data (net_Server_host, request, argbuf,
-					   argsize, NULL, 0, NULL, 0,
-					   replybuf, replysize);
+	    css_send_req_to_server_2_data (net_Server_host, request,
+					   argbuf, argsize, NULL, 0,
+					   NULL, 0, replybuf, replysize);
 	  if (rc == 0)
 	    {
 	      return set_server_error (css_Errno);
@@ -2448,10 +2457,11 @@ net_client_check_log_header (LOGWR_CONTEXT * ctx_ptr,
  */
 int
 net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr,
-				       int request, char *argbuf, int argsize,
-				       char *replybuf, int replysize,
-				       char *databuf1, int datasize1,
-				       char *databuf2, int datasize2,
+				       int request, char *argbuf,
+				       int argsize, char *replybuf,
+				       int replysize, char *databuf1,
+				       int datasize1, char *databuf2,
+				       int datasize2,
 				       char **replydata_ptr1,
 				       int *replydatasize_ptr1,
 				       char **replydata_ptr2,
@@ -2490,8 +2500,8 @@ net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr,
 	  /* It sends a new request */
 	  rc = css_send_req_to_server_2_data (net_Server_host, request,
 					      argbuf, argsize, databuf1,
-					      datasize1, databuf2, datasize2,
-					      replybuf, replysize);
+					      datasize1, databuf2,
+					      datasize2, replybuf, replysize);
 	  if (rc == 0)
 	    {
 	      return set_server_error (css_Errno);
@@ -2520,7 +2530,8 @@ net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr,
 	  if (logwr_Gl.mode == LOGWR_MODE_SEMISYNC && bg_flush_interval > 0)
 	    {
 	      error =
-		css_receive_data_from_server_with_timeout (rc, &reply, &size,
+		css_receive_data_from_server_with_timeout (rc, &reply,
+							   &size,
 							   bg_flush_interval);
 	    }
 	  else
@@ -2551,8 +2562,8 @@ net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr,
 		int length;
 		ptr = or_unpack_int (ptr, (int *) (&length));
 		error =
-		  net_client_get_next_log_pages (rc, replybuf, replysize,
-						 length);
+		  net_client_get_next_log_pages (rc, replybuf,
+						 replysize, length);
 	      }
 	      break;
 	    case END_CALLBACK:
@@ -2815,8 +2826,10 @@ net_client_request3 (int request, char *argbuf, int argsize,
 	  net_histo_add_entry (request, argsize + datasize);
 	}
 #endif /* HISTO */
-      rc = css_send_req_to_server (net_Server_host, request, argbuf, argsize,
-				   databuf, datasize, replybuf, replysize);
+      rc =
+	css_send_req_to_server (net_Server_host, request, argbuf,
+				argsize, databuf, datasize, replybuf,
+				replysize);
       if (rc == 0)
 	{
 	  return set_server_error (css_Errno);
@@ -2931,8 +2944,9 @@ net_client_request_recv_copyarea (int request,
 	}
 #endif /* HISTO */
 
-      rc = css_send_req_to_server (net_Server_host, request, argbuf, argsize,
-				   NULL, 0, replybuf, replysize);
+      rc =
+	css_send_req_to_server (net_Server_host, request, argbuf,
+				argsize, NULL, 0, replybuf, replysize);
       if (rc == 0)
 	{
 	  return set_server_error (css_Errno);
@@ -2968,11 +2982,10 @@ net_client_request_recv_copyarea (int request,
 	{
 	  if (error == NO_ERROR && reply_copy_area != NULL)
 	    {
-	      *reply_copy_area = locator_recv_allocate_copyarea (num_objs,
-								 &packed_desc,
-								 packed_desc_size,
-								 &content_ptr,
-								 content_size);
+	      *reply_copy_area =
+		locator_recv_allocate_copyarea (num_objs, &packed_desc,
+						packed_desc_size,
+						&content_ptr, content_size);
 	      if (*reply_copy_area != NULL)
 		{
 		  if (packed_desc != NULL && packed_desc_size > 0)
@@ -3001,17 +3014,18 @@ net_client_request_recv_copyarea (int request,
 
 		  if (content_size > 0)
 		    {
-		      error = css_queue_receive_data_buffer (rc, content_ptr,
-							     content_size);
+		      error =
+			css_queue_receive_data_buffer (rc, content_ptr,
+						       content_size);
 		      if (error != NO_ERROR)
 			{
-			  SET_ALLOC_ERR_AND_READ_EXPECTED_PACKETS (&error, rc,
-								   1);
+			  SET_ALLOC_ERR_AND_READ_EXPECTED_PACKETS
+			    (&error, rc, 1);
 			}
 		      else
 			{
-			  error = css_receive_data_from_server (rc, &reply,
-								&size);
+			  error =
+			    css_receive_data_from_server (rc, &reply, &size);
 			}
 
 		      COMPARE_AND_FREE_BUFFER (content_ptr, reply);
@@ -3069,7 +3083,8 @@ net_client_request_recv_copyarea (int request,
 #if defined(HISTO)
       if (net_Histo_setup)
 	{
-	  net_histo_request_finished (request, replysize + content_size +
+	  net_histo_request_finished (request,
+				      replysize + content_size +
 				      packed_desc_size);
 	}
 #endif /* HISTO */
@@ -3270,10 +3285,11 @@ net_client_request_recv_logarea (int request, char *argbuf,
  * Note:
  */
 int
-net_client_request_2recv_copyarea (int request, char *argbuf, int argsize,
-				   char *replybuf, int replysize,
-				   char *databuf, int datasize,
-				   char *recvbuffer, int recvbuffer_size,
+net_client_request_2recv_copyarea (int request, char *argbuf,
+				   int argsize, char *replybuf,
+				   int replysize, char *databuf,
+				   int datasize, char *recvbuffer,
+				   int recvbuffer_size,
 				   LC_COPYAREA ** reply_copy_area, int *eid)
 {
   unsigned int rc;
@@ -3301,8 +3317,9 @@ net_client_request_2recv_copyarea (int request, char *argbuf, int argsize,
     }
 #endif /* HISTO */
 
-  rc = css_send_req_to_server (net_Server_host, request, argbuf, argsize,
-			       databuf, datasize, replybuf, replysize);
+  rc =
+    css_send_req_to_server (net_Server_host, request, argbuf, argsize,
+			    databuf, datasize, replybuf, replysize);
   if (rc == 0)
     {
       return set_server_error (css_Errno);
@@ -3747,10 +3764,11 @@ net_client_recv_copyarea (int request, char *replybuf, int replysize,
  * Note:
  */
 int
-net_client_request_3recv_copyarea (int request, char *argbuf, int argsize,
-				   char *replybuf, int replysize,
-				   char *databuf, int datasize,
-				   char **recvbuffer, int *recvbuffer_size,
+net_client_request_3recv_copyarea (int request, char *argbuf,
+				   int argsize, char *replybuf,
+				   int replysize, char *databuf,
+				   int datasize, char **recvbuffer,
+				   int *recvbuffer_size,
 				   LC_COPYAREA ** reply_copy_area)
 {
   unsigned int rc;
@@ -3781,8 +3799,9 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize,
     }
 #endif /* HISTO */
 
-  rc = css_send_req_to_server (net_Server_host, request, argbuf, argsize,
-			       databuf, datasize, replybuf, replysize);
+  rc =
+    css_send_req_to_server (net_Server_host, request, argbuf, argsize,
+			    databuf, datasize, replybuf, replysize);
   if (rc == 0)
     {
       return set_server_error (css_Errno);
@@ -3855,12 +3874,12 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize,
   if (packed_desc_size != 0 || content_size != 0)
     {
       if ((error == NO_ERROR)
-	  && ((*reply_copy_area = locator_recv_allocate_copyarea (num_objs,
-								  &packed_desc,
-								  packed_desc_size,
-								  &content_ptr,
-								  content_size))
-	      != NULL))
+	  &&
+	  ((*reply_copy_area =
+	    locator_recv_allocate_copyarea (num_objs, &packed_desc,
+					    packed_desc_size,
+					    &content_ptr,
+					    content_size)) != NULL))
 	{
 	  if (packed_desc != NULL && packed_desc_size > 0)
 	    {
@@ -3924,7 +3943,8 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize,
 #if defined(HISTO)
   if (net_Histo_setup)
     {
-      net_histo_request_finished (request, replysize + *recvbuffer_size +
+      net_histo_request_finished (request,
+				  replysize + *recvbuffer_size +
 				  content_size + packed_desc_size);
     }
 #endif /* HISTO */
@@ -3949,9 +3969,10 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize,
  * Note:
  */
 int
-net_client_request_recv_stream (int request, char *argbuf, int argsize,
-				char *replybuf, int replybuf_size,
-				char *databuf, int datasize, FILE * outfp)
+net_client_request_recv_stream (int request, char *argbuf,
+				int argsize, char *replybuf,
+				int replybuf_size, char *databuf,
+				int datasize, FILE * outfp)
 {
   unsigned int rc;
   int size;
@@ -4127,13 +4148,14 @@ net_client_ping_server (int client_val, int *server_val, int timeout)
   if (eid == 0)
     {
       error = ER_NET_CANT_CONNECT_SERVER;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, net_Server_name,
-	      net_Server_host);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
+	      net_Server_name, net_Server_host);
       return error;
     }
 
-  error = css_receive_data_from_server_with_timeout (eid, &reply, &reply_size,
-						     timeout);
+  error =
+    css_receive_data_from_server_with_timeout (eid, &reply, &reply_size,
+					       timeout);
   if (error || reply == NULL)
     {
       COMPARE_AND_FREE_BUFFER (reply_buf, reply);
@@ -4199,8 +4221,8 @@ net_client_ping_server_with_handshake (int client_type,
   if (eid == 0)
     {
       error = ER_NET_CANT_CONNECT_SERVER;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, net_Server_name,
-	      net_Server_host);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
+	      net_Server_name, net_Server_host);
       return error;
     }
 
@@ -4231,8 +4253,8 @@ net_client_ping_server_with_handshake (int client_type,
   if (server_bit_platform != rel_bit_platform ())
     {
       error = ER_NET_DIFFERENT_BIT_PLATFORM;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, server_bit_platform,
-	      rel_bit_platform ());
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
+	      server_bit_platform, rel_bit_platform ());
       return error;
     }
 
@@ -4254,7 +4276,8 @@ net_client_ping_server_with_handshake (int client_type,
        || server_capabilities & NET_CAP_REMOTE_DISABLED)
       && check_server_capabilities (server_capabilities, client_type,
 				    rel_compare (client_release,
-						 server_release), &compat,
+						 server_release),
+				    &compat,
 				    server_host) != server_capabilities)
     {
       error = ER_NET_SERVER_HAND_SHAKE;
@@ -4264,8 +4287,8 @@ net_client_ping_server_with_handshake (int client_type,
   if (compat == REL_NOT_COMPATIBLE)
     {
       error = ER_NET_DIFFERENT_RELEASE;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, server_release,
-	      client_release);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
+	      server_release, client_release);
       return error;
     }
 

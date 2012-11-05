@@ -5491,7 +5491,8 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
   int response_time = 0;
   struct timeval start;
   struct timeval end;
-  int plan_size = 0;
+  int qstmt_plan_size = 0;
+  char qstmt_plan_ptr[2048];
   char *plan_ptr = NULL;
   char *qstmt_ptr = NULL;
 
@@ -5651,35 +5652,37 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
       if (response_time >=
 	  prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS))
 	{
+	  const char *line =
+	    "--------------------------------------------------------------------------------";
+	  const char *title = "Operation";
+
 	  if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN) == false)
 	    {
-	      plan_ptr = NULL;
+	      plan_ptr = "";
 	    }
+
+	  snprintf (qstmt_plan_ptr, 2048, "%s\n%s\n%s\n%s%s\n%s\n", line, title,
+		   line, qstmt_ptr, plan_ptr, line);
 
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-		  ER_SLOW_QUERY, 2, response_time,
-		  plan_ptr ? plan_ptr : "(null)");
+		  ER_SLOW_QUERY, 2, response_time, qstmt_plan_ptr);
 
-	  if (plan_ptr)
-	    {
-	      plan_size = strlen (plan_ptr);
-	    }
+	  qstmt_plan_size = strlen (qstmt_plan_ptr);
 	}
     }
 
-  ptr = or_pack_int (ptr, plan_size);
+  ptr = or_pack_int (ptr, qstmt_plan_size);
 
   /* query id to return as a fourth argument of the reply */
   ptr = or_pack_ptr (ptr, query_id);
   /* result cache created time */
   OR_PACK_CACHE_TIME (ptr, &srv_cache_time);
 
-
   css_send_reply_and_3_data_to_client (thread_p->conn_entry, rid,
 				       reply, OR_ALIGNED_BUF_SIZE (a_reply),
 				       replydata, replydata_size,
 				       page_ptr, page_size,
-				       plan_ptr, plan_size);
+				       qstmt_plan_ptr, qstmt_plan_size);
 
   /* free QFILE_LIST_ID duplicated by xqmgr_execute_query() */
   if (replydata)
@@ -5720,6 +5723,7 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   PAGE_PTR page_ptr;
   int page_size;
+  int dummy_plan_size = 0;
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_page_buf;
   QUERY_FLAG flag;
   int query_timeout;
@@ -5790,7 +5794,7 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
   q_result =
     xqmgr_prepare_and_execute_query (thread_p, xasl_buffer, xasl_size,
 				     &query_id, var_count, dbvals, &flag,
-				     query_timeout, NULL);
+				     query_timeout);
   if (xasl_buffer)
     {
       free_and_init (xasl_buffer);	/* allocated at css_receive_data_from_client() */
@@ -5897,13 +5901,14 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
   ptr = or_pack_int (reply, (int) QUERY_END);
   ptr = or_pack_int (ptr, listid_length);
   ptr = or_pack_int (ptr, page_size);
-  ptr = or_pack_int (ptr, 0);	/* plan size */
+  ptr = or_pack_int (ptr, dummy_plan_size);
   ptr = or_pack_ptr (ptr, query_id);
 
-  css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid, reply,
+  css_send_reply_and_3_data_to_client (thread_p->conn_entry, rid, reply,
 				       OR_ALIGNED_BUF_SIZE (a_reply),
 				       list_data, listid_length,
-				       aligned_page_buf, page_size);
+				       aligned_page_buf, page_size,
+				       NULL, dummy_plan_size);
 
 cleanup:
   if (xasl_buffer)

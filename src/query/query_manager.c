@@ -2200,8 +2200,7 @@ QFILE_LIST_ID *
 xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_p,
 				 int xasl_size, QUERY_ID * query_id_p,
 				 int dbval_count, DB_VALUE * dbval_p,
-				 QUERY_FLAG * flag_p, int query_timeout,
-				 char **plan_ptr)
+				 QUERY_FLAG * flag_p, int query_timeout)
 {
   QMGR_QUERY_ENTRY *query_p;
   QFILE_LIST_ID *list_id_p;

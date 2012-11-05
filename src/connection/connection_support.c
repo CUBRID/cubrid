@@ -614,7 +614,6 @@ css_net_recv (SOCKET fd, char *buffer, int *maxlen, int timeout)
     }
 
   templen = ntohl (templen);
-  assert_release (templen > 0);
   if (templen > *maxlen)
     {
       length_to_read = *maxlen;

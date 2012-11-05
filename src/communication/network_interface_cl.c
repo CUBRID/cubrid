@@ -7265,14 +7265,15 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
 {
 #if defined(CS_MODE)
   QFILE_LIST_ID *list_id = NULL;
-  int req_error, senddata_size, replydata_size1, replydata_size2,
-    replydata_size3;
+  int req_error, senddata_size, replydata_size_listid, replydata_size_page,
+    replydata_size_plan;
   char *request, *reply, *senddata = NULL;
-  char *replydata1 = NULL, *replydata2 = NULL, *replydata3 = NULL, *ptr;
-  OR_ALIGNED_BUF (OR_XASL_ID_SIZE + OR_INT_SIZE * 4 +
-		  OR_CACHE_TIME_SIZE + OR_INT_SIZE) a_request;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 4 + OR_PTR_ALIGNED_SIZE
-		  + OR_CACHE_TIME_SIZE) a_reply;
+  char *replydata_listid = NULL, *replydata_page = NULL, *replydata_plan =
+    NULL, *ptr;
+  OR_ALIGNED_BUF (OR_XASL_ID_SIZE + OR_INT_SIZE * 4 + OR_CACHE_TIME_SIZE +
+		  OR_INT_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 4 + OR_PTR_ALIGNED_SIZE +
+		  OR_CACHE_TIME_SIZE) a_reply;
   int i;
   const DB_VALUE *dbval;
 
@@ -7319,12 +7320,14 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
 						OR_ALIGNED_BUF_SIZE (a_reply),
 						senddata, senddata_size, NULL,
 						0,
-						&replydata1, &replydata_size1,
-						&replydata2, &replydata_size2,
-						&replydata3,
-						&replydata_size3);
+						&replydata_listid,
+						&replydata_size_listid,
+						&replydata_page,
+						&replydata_size_page,
+						&replydata_plan,
+						&replydata_size_plan);
 
-  db_set_execution_plan (replydata3);
+  db_set_execution_plan (replydata_plan);
 
   if (senddata)
     {
@@ -7335,30 +7338,31 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
     {
       /* first argument should be QUERY_END
          ptr = or_unpack_int(reply, &status); */
-      /* second argument should be the same with replydata_size1
+      /* second argument should be the same with replydata_size_listid
          ptr = or_unpack_int(ptr, &listid_length); */
-      /* third argument should be the same with replydata_size2
+      /* third argument should be the same with replydata_size_page
          ptr = or_unpack_int(ptr, &page_size); */
-      /* third argument should be the same with replydata_size3
+      /* third argument should be the same with replydata_size_plan
          ptr = or_unpack_int(ptr, &plan_size); */
       /* fourth argument should be query_id */
       ptr = or_unpack_ptr (reply + OR_INT_SIZE * 4, query_idp);
       OR_UNPACK_CACHE_TIME (ptr, srv_cache_time);
 
-      if (replydata1 && replydata_size1)
+      if (replydata_listid && replydata_size_listid)
 	{
 	  /* unpack list file id of query result from the reply data */
-	  ptr = or_unpack_unbound_listid (replydata1, (void **) &list_id);
+	  ptr =
+	    or_unpack_unbound_listid (replydata_listid, (void **) &list_id);
 	  /* QFILE_LIST_ID shipped with last page */
-	  if (replydata_size2)
+	  if (replydata_size_page)
 	    {
-	      list_id->last_pgptr = replydata2;
+	      list_id->last_pgptr = replydata_page;
 	    }
 	  else
 	    {
 	      list_id->last_pgptr = NULL;
 	    }
-	  free_and_init (replydata1);
+	  free_and_init (replydata_listid);
 	}
     }
 
@@ -7402,7 +7406,7 @@ qmgr_prepare_and_execute_query (char *xasl_buffer, int xasl_size,
 {
 #if defined(CS_MODE)
   QFILE_LIST_ID *regu_result = NULL;
-  int req_error, senddata_size, replydata_size1, replydata_size2;
+  int req_error, senddata_size, replydata_size_listid, replydata_size_page;
   int i, size;
   char *ptr, *senddata, *replydata;
   DB_VALUE *dbval;
@@ -7411,7 +7415,7 @@ qmgr_prepare_and_execute_query (char *xasl_buffer, int xasl_size,
   OR_ALIGNED_BUF (OR_INT_SIZE * 3 + OR_PTR_ALIGNED_SIZE) a_reply;
   char *reply;
   char *page_ptr;
-  int page_size, request_type;
+  int page_size, dummy_plan_size, request_type;
 
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
@@ -7461,14 +7465,17 @@ qmgr_prepare_and_execute_query (char *xasl_buffer, int xasl_size,
 						OR_ALIGNED_BUF_SIZE (a_reply),
 						xasl_buffer, xasl_size,
 						senddata, senddata_size,
-						&replydata, &replydata_size1,
-						&page_ptr, &replydata_size2,
-						NULL, NULL);
+						&replydata,
+						&replydata_size_listid,
+						&page_ptr,
+						&replydata_size_page, NULL,
+						NULL);
   if (!req_error)
     {
       /* should be the same as replydata_size */
       ptr = or_unpack_int (&reply[OR_INT_SIZE], &size);
       ptr = or_unpack_int (ptr, &page_size);
+      ptr = or_unpack_int (ptr, &dummy_plan_size);
       ptr = or_unpack_ptr (ptr, query_idp);
 
       /* not interested in the return size in the reply buffer, should do some
@@ -7500,7 +7507,7 @@ qmgr_prepare_and_execute_query (char *xasl_buffer, int xasl_size,
   regu_result = xqmgr_prepare_and_execute_query (NULL, xasl_buffer, xasl_size,
 						 query_idp, dbval_cnt,
 						 dbval_ptr, &flag,
-						 query_timeout, NULL);
+						 query_timeout);
 
   EXIT_SERVER ();
 

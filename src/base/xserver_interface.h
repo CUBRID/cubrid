@@ -361,8 +361,7 @@ extern QFILE_LIST_ID *xqmgr_prepare_and_execute_query (THREAD_ENTRY * thrd,
 						       int dbval_cnt,
 						       DB_VALUE * dbval_ptr,
 						       QUERY_FLAG * flag,
-						       int query_timeout,
-						       char **plan_ptr);
+						       int query_timeout);
 extern int xqmgr_end_query (THREAD_ENTRY * thrd, QUERY_ID query_id);
 extern int xqmgr_drop_query_plan (THREAD_ENTRY * thread_p,
 				  const char *qstmt, const OID * user_oid,

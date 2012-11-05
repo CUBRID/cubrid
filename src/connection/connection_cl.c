@@ -519,36 +519,36 @@ begin:
       if (DATA_TYPE == type)
 	{
 	  *buffer_size = ntohl (header.buffer_size);
-	  if (*buffer_size != 0)
-	    {
-	      if (rid == req_id)
-		{
-		  *buffer = (char *) css_return_data_buffer (conn,
-							     rid,
-							     buffer_size);
-		}
-	      else
-		{
-		  *buffer = (char *) css_return_data_buffer (conn,
-							     0, buffer_size);
-		}
 
-	      if (*buffer != NULL)
+	  if (rid == req_id)
+	    {
+	      *buffer = (char *) css_return_data_buffer (conn,
+							 rid, buffer_size);
+	    }
+	  else
+	    {
+	      *buffer = (char *) css_return_data_buffer (conn,
+							 0, buffer_size);
+	    }
+
+	  if (*buffer != NULL)
+	    {
+	      rc = css_net_recv (conn->fd, *buffer, buffer_size, timeout);
+	      if (rc == NO_ERRORS || rc == RECORD_TRUNCATED)
 		{
-		  rc = css_net_recv (conn->fd, *buffer, buffer_size, timeout);
-		  if (rc == NO_ERRORS || rc == RECORD_TRUNCATED)
+		  if (req_id != rid)
 		    {
-		      if (req_id != rid)
-			{
-			  /* We have some data for a different request id */
-			  css_queue_unexpected_data_packet (conn, rid,
-							    *buffer,
-							    *buffer_size, rc);
-			  goto begin;
-			}
+		      /* We have some data for a different request id */
+		      css_queue_unexpected_data_packet (conn, rid,
+							*buffer,
+							*buffer_size, rc);
+		      goto begin;
 		    }
 		}
-	      else
+	    }
+	  else
+	    {
+	      if (*buffer_size > 0)
 		{
 		  /*
 		   * allocation error, buffer == NULL
@@ -564,17 +564,6 @@ begin:
 		      goto begin;
 		    }
 		}
-	    }
-	  else
-	    {
-	      /*
-	       * This is the case where data length is zero, but if the
-	       * user registered a buffer, we should return the buffer
-	       */
-	      TRACE ("getting data buffer of length 0 in css_receive_data\n",
-		     0);
-	      *buffer = css_return_data_buffer (conn, req_id, buffer_size);
-	      *buffer_size = 0;
 	    }
 	}
       else

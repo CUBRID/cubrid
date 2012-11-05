@@ -437,14 +437,6 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   FN_RETURN ret =
     fn_execute_internal (sock_fd, argc, argv, net_buf, req_info, NULL);
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-  char *plan = db_get_execution_plan ();
-  if (plan != NULL)
-    {
-      cas_log_write (0, true, "slow query plan\n%s", plan);
-    }
-#endif
-
   return ret;
 }
 
@@ -478,6 +470,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv,
   char *eid_string;
   int err_number_execute;
   int arg_idx = 0;
+  char *plan;
 
   bind_value_index = 9;
   /*
@@ -744,6 +737,14 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv,
       srv_handle->is_pooled = TRUE;
     }
 #endif /* !LIBCAS_FOR_JSP */
+
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+  plan = db_get_execution_plan ();
+  if (plan != NULL)
+    {
+      cas_log_write (0, true, "slow query plan\n%s", plan);
+    }
+#endif
 
   return FN_KEEP_CONN;
 }

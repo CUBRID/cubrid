@@ -13249,7 +13249,10 @@ qexec_print_xasl_cache_ent (FILE * fp, const void *key, void *data,
 
   fprintf (fp, "XASL_CACHE_ENTRY (%p) {\n", data);
   fprintf (fp, "  qstmt=%s\n", ent->qstmt);
-  fprintf (fp, "  qplan=\n%s\n", ent->qplan);
+  if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN) == true)
+    {
+      fprintf (fp, "  qplan=%s\n", ent->qplan);
+    }
   fprintf (fp,
 	   "  xasl_id = { first_vpid = { %d %d } temp_vfid = { %d %d } }\n",
 	   ent->xasl_id.first_vpid.pageid, ent->xasl_id.first_vpid.volid,

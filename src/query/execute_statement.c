@@ -8087,8 +8087,10 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 				   statement->column_number, er_msg (), NULL);
 		}
 
+#if 0				/* TMP TODO: xasl->qplan refer packing buf. so move this codes below */
 	      /* mark the end of another level of xasl packing */
 	      pt_exit_packing_buf ();
+#endif
 
 	      /* request the server to prepare the query;
 	         give XASL stream generated from the parse tree
@@ -8113,6 +8115,11 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  free_and_init (stream);
 		}
 	      statement->use_plan_cache = 0;
+
+#if 1
+	      /* mark the end of another level of xasl packing */
+	      pt_exit_packing_buf ();
+#endif
 	    }
 	  else
 	    {			/* if (!xasl_id) */
@@ -9317,8 +9324,10 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 				   statement->column_number, er_msg (), NULL);
 		}
 
+#if 0				/* TMP TODO: xasl->qplan refer packing buf. so move this codes below */
 	      /* mark the end of another level of xasl packing */
 	      pt_exit_packing_buf ();
+#endif
 
 	      /* request the server to prepare the query;
 	         give XASL stream generated from the parse tree
@@ -9343,6 +9352,11 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  free_and_init (stream);
 		}
 	      statement->use_plan_cache = 0;
+
+#if 1
+	      /* mark the end of another level of xasl packing */
+	      pt_exit_packing_buf ();
+#endif
 	    }
 	  else
 	    {
@@ -9955,8 +9969,10 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
 	  error = er_errid ();
 	}
 
+#if 0				/* TMP TODO: xasl->qplan refer packing buf. so move this codes below */
       /* mark the end of another level of xasl packing */
       pt_exit_packing_buf ();
+#endif
 
       if (stream && (error >= NO_ERROR))
 	{
@@ -9977,6 +9993,11 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
 	}
 
       statement->use_plan_cache = 0;
+
+#if 1
+      /* mark the end of another level of xasl packing */
+      pt_exit_packing_buf ();
+#endif
     }
   else
     {

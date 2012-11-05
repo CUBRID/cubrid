@@ -15589,10 +15589,9 @@ pt_plan_set_query (PARSER_CONTEXT * parser, PT_NODE * node,
 
       if (left && right && left->qplan && right->qplan)
 	{
-	  xasl->qplan =
-	    pt_alloc_packing_buf (strlen (left->qplan) +
-				  strlen (right->qplan) + 256);
-	  sprintf ((char *) xasl->qplan, "%s\n%s", left->qplan, right->qplan);
+	  int len = strlen (left->qplan) + strlen (right->qplan) + 256;
+	  xasl->qplan = pt_alloc_packing_buf (len);
+	  snprintf (xasl->qplan, len, "%s\n%s", left->qplan, right->qplan);
 	}
     }
 
@@ -15786,9 +15785,6 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	{
 	  int size;
 	  char *qplan;
-	  const char *line =
-	    "--------------------------------------------------------------------------------";
-	  const char *title = "Operation";
 
 	  qo_plan_lite_print (plan, fp, 0);
 	  fseek (fp, 0, SEEK_END);
@@ -15802,26 +15798,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	  unlink (pname);
 	  free (pname);
 
-
-	  if (select_node->alias_print)
-	    {
-	      size += strlen (select_node->alias_print);
-	    }
-
-	  xasl->qplan =
-	    pt_alloc_packing_buf (strlen (line) * 3 + strlen (title) + size +
-				  128);
-
-	  if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN))
-	    {
-	      sprintf ((char *) xasl->qplan, "%s\n%s\n%s\n%s%s\n%s\n", line,
-		       title, line, select_node->alias_print, qplan, line);
-	    }
-	  else
-	    {
-	      sprintf ((char *) xasl->qplan, "%s\n%s\n%s\n%s\n%s\n", line,
-		       title, line, select_node->alias_print, line);
-	    }
+	  xasl->qplan = qplan;
 	}
     }
 
