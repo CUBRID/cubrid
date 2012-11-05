@@ -4306,8 +4306,10 @@ locator_class_to_disk (LOCATOR_MFLUSH_CACHE * mflush, MOBJ object,
 		       bool * has_index, int *round_length_p,
 		       WS_MAP_STATUS * map_status)
 {
+  int error_code = NO_ERROR;
   TF_STATUS tfstatus;
   bool isalone;
+  bool enable_class_to_disk;
 
   tfstatus = tf_class_to_disk (object, &mflush->recdes);
   if (tfstatus != TF_SUCCESS)
@@ -4320,8 +4322,26 @@ locator_class_to_disk (LOCATOR_MFLUSH_CACHE * mflush, MOBJ object,
 	{
 	  isalone = false;
 	}
-      if (tfstatus != TF_ERROR
-	  && (isalone == true || locator_mflush_force (mflush) == NO_ERROR))
+
+      enable_class_to_disk = false;
+      if (tfstatus != TF_ERROR)
+	{
+	  if (isalone == true)
+	    {
+	      enable_class_to_disk = true;
+	    }
+	  else
+	    {
+	      error_code = locator_mflush_force (mflush);
+	      if (error_code == NO_ERROR
+		  || error_code == ER_LC_PARTIALLY_FAILED_TO_FLUSH)
+		{
+		  enable_class_to_disk = true;
+		}
+	    }
+	}
+
+      if (enable_class_to_disk)
 	{
 	  /*
 	   * Quit after the above force. If only one flush is
@@ -4411,8 +4431,10 @@ locator_mem_to_disk (LOCATOR_MFLUSH_CACHE * mflush, MOBJ object,
 		     bool * has_index, int *round_length_p,
 		     WS_MAP_STATUS * map_status)
 {
+  int error_code = NO_ERROR;
   TF_STATUS tfstatus;
   bool isalone;
+  bool enable_mem_to_disk;
 
   tfstatus = tf_mem_to_disk (mflush->class_mop, mflush->class_obj,
 			     object, &mflush->recdes, has_index);
@@ -4420,8 +4442,25 @@ locator_mem_to_disk (LOCATOR_MFLUSH_CACHE * mflush, MOBJ object,
     {
       isalone = (mflush->mobjs->num_objs == 0) ? true : false;
 
-      if (tfstatus != TF_ERROR
-	  && (isalone == true || locator_mflush_force (mflush) == NO_ERROR))
+      enable_mem_to_disk = false;
+      if (tfstatus != TF_ERROR)
+	{
+	  if (isalone == true)
+	    {
+	      enable_mem_to_disk = true;
+	    }
+	  else
+	    {
+	      error_code = locator_mflush_force (mflush);
+	      if (error_code == NO_ERROR
+		  || error_code == ER_LC_PARTIALLY_FAILED_TO_FLUSH)
+		{
+		  enable_mem_to_disk = true;
+		}
+	    }
+	}
+
+      if (enable_mem_to_disk)
 	{
 	  /*
 	   * Quit after the above force. If only one flush is
