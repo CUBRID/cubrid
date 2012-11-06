@@ -6951,7 +6951,8 @@ locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes,
   DB_LOGICAL ev_res;
   BTREE_LOCKED_KEYS locked_keys;
 
-  assert_release (class_oid != NULL && !OID_ISNULL (class_oid));
+  assert_release (class_oid != NULL);
+  assert_release (!OID_ISNULL (class_oid));
 
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
@@ -7517,7 +7518,8 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
   int c = DB_UNK;
   BTREE_LOCKED_KEYS locked_keys;
 
-  assert_release (class_oid != NULL && !OID_ISNULL (class_oid));
+  assert_release (class_oid != NULL);
+  assert_release (!OID_ISNULL (class_oid));
 
   aligned_newbuf = PTR_ALIGN (newbuf, MAX_ALIGNMENT);
   aligned_oldbuf = PTR_ALIGN (oldbuf, MAX_ALIGNMENT);

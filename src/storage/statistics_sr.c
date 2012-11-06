@@ -1242,8 +1242,9 @@ stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
   bool *is_disk_min_max_set = NULL;
   PARTITION_STATS_ACUMULATOR *mean = NULL, *stddev = NULL;
 
-  assert_release (class_id_p != NULL && partitions != NULL
-		  && partitions_count > 0);
+  assert_release (class_id_p != NULL);
+  assert_release (partitions != NULL);
+  assert_release (partitions_count > 0);
 
   for (i = 0; i < partitions_count; i++)
     {

@@ -1325,7 +1325,8 @@ qfile_finalize (void)
       free_and_init (sort_list_p);
     }
 
-  assert (qfile_Free_sort_list_count == 0 && qfile_Free_sort_list_total == 0);
+  assert (qfile_Free_sort_list_count == 0);
+  assert (qfile_Free_sort_list_total == 0);
 }
 
 /*

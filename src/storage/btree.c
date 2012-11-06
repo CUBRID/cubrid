@@ -7193,7 +7193,11 @@ btree_delete_lock_curr_key_next_pseudo_oid (THREAD_ENTRY * thread_p,
   char *header_ptr = NULL;
   VPID O_vpid;
 
-  assert_release (btid_int && rec && first_ovfl_vpid && class_oid);
+  assert_release (btid_int != NULL);
+  assert_release (rec != NULL);
+  assert_release (first_ovfl_vpid != NULL);
+  assert_release (class_oid != NULL);
+
   OID_SET_NULL (&last_oid);
 
   O_vpid = *first_ovfl_vpid;
@@ -10405,7 +10409,8 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   assert (BTREE_GET_NODE_TYPE (peek_rec.data) == BTREE_NON_LEAF_NODE
 	  && key_cnt + 2 == spage_number_of_records (P));
   BTREE_GET_NODE_SPLIT_INFO (peek_rec.data, &split_info);
-  assert_release (split_info.pivot >= 0 && key_cnt > 0);
+  assert_release (split_info.pivot >= 0);
+  assert_release (key_cnt > 0);
   btree_split_next_pivot (&split_info, (float) p_slot_id / key_cnt, key_cnt);
   BTREE_PUT_NODE_SPLIT_INFO (peek_rec.data, &split_info);
 
@@ -10901,7 +10906,10 @@ btree_insert_lock_curr_key_remaining_pseudo_oid (THREAD_ENTRY * thread_p,
   VPID O_vpid;
   RECDES peek_rec;
 
-  assert_release (btid && rec && first_ovfl_vpid && class_oid);
+  assert_release (btid != NULL);
+  assert_release (rec != NULL);
+  assert_release (first_ovfl_vpid != NULL);
+  assert_release (class_oid != NULL);
 
   oids_cnt = btree_leaf_get_num_oids (rec, offset, BTREE_LEAF_NODE,
 				      OR_OID_SIZE);
@@ -11058,7 +11066,10 @@ btree_insert_unlock_curr_key_remaining_pseudo_oid (THREAD_ENTRY * thread_p,
   VPID O_vpid;
   RECDES peek_rec;
 
-  assert_release (btid && rec && first_ovfl_vpid && class_oid);
+  assert_release (btid != NULL);
+  assert_release (rec != NULL);
+  assert_release (first_ovfl_vpid != NULL);
+  assert_release (class_oid != NULL);
 
   oids_cnt = btree_leaf_get_num_oids (rec, offset, BTREE_LEAF_NODE,
 				      OR_OID_SIZE);

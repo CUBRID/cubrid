@@ -15191,7 +15191,8 @@ filter_local_constraints (SM_TEMPLATE * template_, SM_CLASS * super_class)
   DB_VALUE oldval, newval;
   int error = NO_ERROR, found = 0;
 
-  assert_release (template_ != NULL && super_class != NULL);
+  assert_release (template_ != NULL);
+  assert_release (super_class != NULL);
   if (template_ == NULL || super_class == NULL)
     {
       return ER_FAILED;

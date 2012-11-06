@@ -1843,7 +1843,8 @@ partition_get_value_from_inarith (PRUNING_CONTEXT * pinfo,
   DB_VALUE *val_backup = NULL, *peek_val = NULL;
   ARITH_TYPE *arithptr = NULL;
 
-  assert_release (src != NULL && value_p != NULL);
+  assert_release (src != NULL);
+  assert_release (value_p != NULL);
   assert_release (src->type == TYPE_INARITH);
 
   *is_value = false;
@@ -3280,7 +3281,8 @@ partition_get_scancache (PRUNING_CONTEXT * pcontext,
 
   if (partition_oid == NULL || pcontext == NULL)
     {
-      assert_release (partition_oid != NULL && pcontext == NULL);
+      assert_release (partition_oid != NULL);
+      assert_release (pcontext == NULL);
       return NULL;
     }
 
@@ -3342,8 +3344,9 @@ partition_get_partition_oids (THREAD_ENTRY * thread_p, const OID * class_oid,
   int i;
   OID *oids = NULL;
 
-  assert_release (class_oid != NULL && partition_oids != NULL
-		  && count != NULL);
+  assert_release (class_oid != NULL);
+  assert_release (partition_oids != NULL);
+  assert_release (count != NULL);
 
   partition_init_pruning_context (&context);
 
