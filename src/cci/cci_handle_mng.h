@@ -254,6 +254,7 @@ typedef struct
   void *logger;
   int is_holdable;
   int no_backslash_escapes;
+  T_CCI_ERROR err_buf;
 } T_CON_HANDLE;
 
 /************************************************************************

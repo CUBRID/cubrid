@@ -706,6 +706,15 @@ cci_url_match (const char *src, char *token[])
       token[i][n] = '\0';
     }
 
+  if (error != CCI_ER_NO_ERROR)
+    {
+      /* free allocated memory when error was CCI_ER_NO_MORE_MEMORY */
+      for (i = 0; match_idx[i] != -1 && match[match_idx[i]].rm_so != -1; i++)
+	{
+	  FREE_MEM (token[i]);
+	}
+    }
+
   cub_regfree (&regex);
   return error;
 }

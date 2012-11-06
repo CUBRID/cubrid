@@ -429,7 +429,6 @@ hm_req_handle_alloc (int con_id, T_REQ_HANDLE ** ret_req_handle)
   *ret_req_handle = NULL;
 
   con_handle = hm_find_con_handle (con_id);
-
   if (con_handle == NULL)
     {
       return CCI_ER_CON_HANDLE;
