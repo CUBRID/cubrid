@@ -5302,7 +5302,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa,
 					      LOG_DBLOG_ACTIVE_VOLID,
 					      log_get_num_pages_for_creation
 					      (-1), false, true, false,
-					      LOG_PAGESIZE, false);
+					      LOG_PAGESIZE, 0, false);
 
 	  if (log_Gl.append.vdes != NULL_VOLDES)
 	    {

@@ -122,6 +122,7 @@ extern bool disk_goodvol_refresh_with_new (THREAD_ENTRY * thread_p,
 extern INT16 disk_format (THREAD_ENTRY * thread_p, const char *dbname,
 			  INT16 volid, const char *vol_fullname,
 			  const char *vol_remarks, INT32 npages,
+			  int Kbytes_to_be_written_per_sec,
 			  DISK_VOLPURPOSE vol_purpose);
 extern int disk_unformat (THREAD_ENTRY * thread_p, const char *vol_fullname);
 extern INT32 disk_expand_tmp (THREAD_ENTRY * thread_p, INT16 volid,

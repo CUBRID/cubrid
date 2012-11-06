@@ -521,6 +521,7 @@ EXPORTS
     db_add_set_attribute_domain
     db_add_shared_attribute
     db_add_volume
+    db_add_volume_ex
     db_alloc_query_format
     db_alloc_query_result
     db_alter_trigger_priority

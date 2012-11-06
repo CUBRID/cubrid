@@ -124,7 +124,6 @@ struct boot_dbparm
   VOLID temp_last_volid;	/* Next temporary volume identifier. This goes
 				 * from a higher number to a lower number */
 };
-
 extern bool catcls_Enable;
 extern int catcls_compile_catalog_classes (THREAD_ENTRY * thread_p);
 extern int catcls_finalize_class_oid_to_oid_hash_table ();
@@ -172,10 +171,7 @@ static int boot_Server_process_id = 1;
 static int boot_get_db_parm (THREAD_ENTRY * thread_p,
 			     const BOOT_DB_PARM * dbparm, OID * dbparm_oid);
 static VOLID boot_add_volume (THREAD_ENTRY * thread_p,
-			      const char *vol_fullname,
-			      const char *vol_comments, DKNPAGES npages,
-			      DISK_VOLPURPOSE vol_mpurpose,
-			      bool do_overwrite);
+			      DBDEF_VOL_EXT_INFO * ext_info);
 static int boot_remove_volume (THREAD_ENTRY * thread_p, VOLID volid);
 static int boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p);
 static int boot_xremove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid,
@@ -212,12 +208,7 @@ static int boot_check_permanent_volumes (THREAD_ENTRY * thread_p);
 static int boot_mount (THREAD_ENTRY * thread_p, VOLID volid,
 		       const char *vlabel, void *ignore_arg);
 static VOLID boot_xadd_volume_extension (THREAD_ENTRY * thread_p,
-					 const char *ext_path,
-					 const char *ext_name,
-					 const char *ext_comments,
-					 DKNPAGES ext_npages,
-					 DISK_VOLPURPOSE ext_purpose,
-					 bool ext_overwrite);
+					 DBDEF_VOL_EXT_INFO * ext_info);
 static char *boot_find_new_db_path (char *db_pathbuf,
 				    const char *fileof_vols_and_wherepaths);
 static int
@@ -513,13 +504,7 @@ boot_max_pages_new_volume (void)
  *
  * return : volid or NULL_VOLID (in case of failure)
  *
- *   vol_fullname(in): Full name of volume to be created
- *   vol_comments(in): Optional comments that are included in the header of the
- *                     volume.
- *   npages(in): Size on the volume in pages
- *   vol_mpurpose(in): The main purpose of the volume
- *   do_overwrite(in): If the volume exist, can it be overwritten?
- *
+ *   ext_info(in): volume info
  *
  * Note: Add a new volume to the database. The volume may be a permanent or
  *       temporary volume. The addition of the volume is a system operation
@@ -528,9 +513,7 @@ boot_max_pages_new_volume (void)
  *       The volume becomes immediately available to other transactions.
  */
 static VOLID
-boot_add_volume (THREAD_ENTRY * thread_p, const char *vol_fullname,
-		 const char *vol_comments, DKNPAGES npages,
-		 DISK_VOLPURPOSE vol_mpurpose, bool do_overwrite)
+boot_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * ext_info)
 {
   VOLID volid;
   int vol_fd;
@@ -547,7 +530,7 @@ boot_add_volume (THREAD_ENTRY * thread_p, const char *vol_fullname,
    * Assign a volume identifier according to its type
    */
 
-  if (vol_mpurpose != DISK_TEMPVOL_TEMP_PURPOSE)
+  if (ext_info->purpose != DISK_TEMPVOL_TEMP_PURPOSE)
     {
       volid = boot_Db_parm->last_volid + 1;
       if (volid > LOG_MAX_DBVOLID
@@ -584,23 +567,26 @@ boot_add_volume (THREAD_ENTRY * thread_p, const char *vol_fullname,
     }
   in_system_op = true;
 
-  if (do_overwrite == false && fileio_is_volume_exist (vol_fullname))
+  if (ext_info->overwrite == false && fileio_is_volume_exist (ext_info->name))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_BO_VOLUME_EXISTS, 1, vol_fullname);
+	      ER_BO_VOLUME_EXISTS, 1, ext_info->name);
       goto error;
     }
 
   pgbuf_refresh_max_permanent_volume_id (volid);
 
   /* Format the volume */
-  if (disk_format (thread_p, boot_Db_full_name, volid, vol_fullname,
-		   vol_comments, npages, vol_mpurpose) == NULL_VOLID)
+  if (disk_format (thread_p, boot_Db_full_name, volid, ext_info->name,
+		   ext_info->comments, ext_info->npages,
+		   ext_info->max_writesize_in_sec,
+		   ext_info->purpose) == NULL_VOLID)
     {
       goto error;
     }
 
-  if (logpb_add_volume (NULL, volid, vol_fullname, vol_mpurpose) != volid)
+  if (logpb_add_volume (NULL, volid, ext_info->name, ext_info->purpose) !=
+      volid)
     {
       goto error;
     }
@@ -609,7 +595,7 @@ boot_add_volume (THREAD_ENTRY * thread_p, const char *vol_fullname,
    * Modify the system parameter table to reflect the addition of the volume
    */
 
-  if (vol_mpurpose != DISK_TEMPVOL_TEMP_PURPOSE)
+  if (ext_info->purpose != DISK_TEMPVOL_TEMP_PURPOSE)
     {
       boot_Db_parm->nvols++;
       boot_Db_parm->last_volid = volid;
@@ -628,7 +614,7 @@ boot_add_volume (THREAD_ENTRY * thread_p, const char *vol_fullname,
 		   &ignore_old, NULL) == NULL)
     {
       /* Return back our global area of system parameter */
-      if (vol_mpurpose != DISK_TEMPVOL_TEMP_PURPOSE)
+      if (ext_info->purpose != DISK_TEMPVOL_TEMP_PURPOSE)
 	{
 	  boot_Db_parm->nvols--;
 	  boot_Db_parm->last_volid = volid - 1;
@@ -657,7 +643,7 @@ boot_add_volume (THREAD_ENTRY * thread_p, const char *vol_fullname,
 
   heap_flush (thread_p, boot_Db_parm_oid);
   vol_fd = fileio_get_volume_descriptor (boot_Db_parm->hfid.vfid.volid);
-  (void) fileio_synchronize (thread_p, vol_fd, vol_fullname);
+  (void) fileio_synchronize (thread_p, vol_fd, ext_info->name);
 
   log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
 
@@ -667,7 +653,7 @@ boot_add_volume (THREAD_ENTRY * thread_p, const char *vol_fullname,
 #if !defined(WINDOWS)
   if (prm_get_bool_value (PRM_ID_DBFILES_PROTECT))
     {
-      fileio_set_permission (vol_fullname);
+      fileio_set_permission (ext_info->name);
     }
 #endif /* !WINDOWS */
 
@@ -831,13 +817,7 @@ end:
  *
  * return : volid or NULL_VOLID (in case of failure)
  *
- *   ext_path(in): Directory where the database extension is created.
- *                 If NULL, is given, it defaults to the system parameter.
- *   ext_name(in): Name of the volume extension
- *   ext_comments(in): Comments which are included in the volume extension
- *                     header.
- *   ext_npages(in): Number of pages
- *   ext_overwrite(in): If the volume exist, can it be overwritten?
+ *   ext_info(in): volume info
  *
  * Note: Add a volume extension to the database. The addition of the volume
  *       is a system operation that will be either aborted in case of failure
@@ -846,21 +826,19 @@ end:
  *       transactions.
  */
 VOLID
-xboot_add_volume_extension (THREAD_ENTRY * thread_p, const char *ext_path,
-			    const char *ext_name, const char *ext_comments,
-			    DKNPAGES ext_npages, DISK_VOLPURPOSE ext_purpose,
-			    bool ext_overwrite)
+xboot_add_volume_extension (THREAD_ENTRY * thread_p,
+			    DBDEF_VOL_EXT_INFO * ext_info)
 {
+  DBDEF_VOL_EXT_INFO temp_ext_info = *ext_info;
   char real_pathbuf[PATH_MAX];
 
-  if (ext_path != NULL && realpath ((char *) ext_path, real_pathbuf) != NULL)
+  if (temp_ext_info.path != NULL
+      && realpath ((char *) temp_ext_info.path, real_pathbuf) != NULL)
     {
-      ext_path = real_pathbuf;
+      temp_ext_info.path = real_pathbuf;
     }
 
-  return boot_xadd_volume_extension (thread_p, ext_path, ext_name,
-				     ext_comments, ext_npages, ext_purpose,
-				     ext_overwrite);
+  return boot_xadd_volume_extension (thread_p, &temp_ext_info);
 }
 
 /*
@@ -962,19 +940,13 @@ boot_remove_useless_path_separator (const char *path, char *new_path)
  *
  * return :
  *
- *   ext_path(in):
- *   ext_name(in):
- *   ext_comments(in):
- *   ext_npages(in):
- *   ext_purpose(in):
- *   ext_overwrite(in):
+ * ext_info(in):
  */
 static VOLID
-boot_xadd_volume_extension (THREAD_ENTRY * thread_p, const char *ext_path,
-			    const char *ext_name, const char *ext_comments,
-			    DKNPAGES ext_npages, DISK_VOLPURPOSE ext_purpose,
-			    bool ext_overwrite)
+boot_xadd_volume_extension (THREAD_ENTRY * thread_p,
+			    DBDEF_VOL_EXT_INFO * ext_info)
 {
+  DBDEF_VOL_EXT_INFO temp_ext_info = *ext_info;
   VOLID volid;
   char vol_fullname[PATH_MAX];
   char ext_path_buf[PATH_MAX];
@@ -989,18 +961,17 @@ boot_xadd_volume_extension (THREAD_ENTRY * thread_p, const char *ext_path,
   /*
    * Get the name of the extension: ext_path|dbname|"ext"|volid
    */
-
-  if (ext_path == NULL)
+  if (temp_ext_info.path == NULL)
     {
-      ext_path = prm_get_string_value (PRM_ID_IO_VOLUME_EXT_PATH);
-      if (ext_path == NULL)
+      temp_ext_info.path = prm_get_string_value (PRM_ID_IO_VOLUME_EXT_PATH);
+      if (temp_ext_info.path == NULL)
 	{
-	  ext_path = fileio_get_directory_path (ext_path_buf,
-						boot_Db_full_name);
-	  if (ext_path == NULL)
+	  temp_ext_info.path = fileio_get_directory_path (ext_path_buf,
+							  boot_Db_full_name);
+	  if (temp_ext_info.path == NULL)
 	    {
 	      ext_path_buf[0] = '\0';
-	      ext_path = ext_path_buf;
+	      temp_ext_info.path = ext_path_buf;
 	    }
 	}
     }
@@ -1015,16 +986,18 @@ boot_xadd_volume_extension (THREAD_ENTRY * thread_p, const char *ext_path,
       return NULL_VOLID;
     }
 
-  if (ext_name == NULL)
+  if (temp_ext_info.name == NULL)
     {
-      ext_name = fileio_get_base_file_name (boot_Db_full_name);
+      temp_ext_info.name = fileio_get_base_file_name (boot_Db_full_name);
 
-      fileio_make_volume_ext_name (vol_fullname, ext_path, ext_name,
+      fileio_make_volume_ext_name (vol_fullname, temp_ext_info.path,
+				   temp_ext_info.name,
 				   boot_Db_parm->last_volid + 1);
     }
   else
     {
-      fileio_make_volume_ext_given_name (vol_fullname, ext_path, ext_name);
+      fileio_make_volume_ext_given_name (vol_fullname, temp_ext_info.path,
+					 temp_ext_info.name);
     }
 
 #if !defined(WINDOWS)
@@ -1032,15 +1005,17 @@ boot_xadd_volume_extension (THREAD_ENTRY * thread_p, const char *ext_path,
       && S_ISCHR (stat_buf.st_mode))
     {				/* is the raw device */
 
-      ext_path = fileio_get_directory_path (link_path, boot_Db_full_name);
-      if (ext_path == NULL)
+      temp_ext_info.path =
+	fileio_get_directory_path (link_path, boot_Db_full_name);
+      if (temp_ext_info.path == NULL)
 	{
 	  link_path[0] = '\0';
-	  ext_path = link_path;
+	  temp_ext_info.path = link_path;
 	}
 
-      ext_name = fileio_get_base_file_name (boot_Db_full_name);
-      fileio_make_volume_ext_name (link_fullname, ext_path, ext_name,
+      temp_ext_info.name = fileio_get_base_file_name (boot_Db_full_name);
+      fileio_make_volume_ext_name (link_fullname, temp_ext_info.path,
+				   temp_ext_info.name,
 				   boot_Db_parm->last_volid + 1);
 
       if (realpath (vol_fullname, vol_realpath) != NULL)
@@ -1079,23 +1054,25 @@ boot_xadd_volume_extension (THREAD_ENTRY * thread_p, const char *ext_path,
    * full.
    */
 
-  if (ext_comments == NULL)
+  if (temp_ext_info.comments == NULL)
     {
-      ext_comments = " ";
+      temp_ext_info.comments = " ";
     }
 
-  if (ext_npages > part_npages && part_npages >= 0)
+  if (temp_ext_info.npages > part_npages && part_npages >= 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_FORMAT_OUT_OF_SPACE, 5,
-	      vol_fullname, ext_npages,
-	      ((IO_PAGESIZE / 1024) * ((off_t) ext_npages)),
+	      vol_fullname, temp_ext_info.npages,
+	      ((IO_PAGESIZE / 1024) * ((off_t) temp_ext_info.npages)),
 	      part_npages, ((IO_PAGESIZE / 1024) * ((off_t) part_npages)));
       volid = NULL_VOLID;
     }
   else
     {
-      volid = boot_add_volume (thread_p, vol_fullname, "Volume Extension",
-			       ext_npages, ext_purpose, ext_overwrite);
+      temp_ext_info.name = vol_fullname;
+      temp_ext_info.comments = "Volume Extension";
+
+      volid = boot_add_volume (thread_p, &temp_ext_info);
       if (volid != NULL_VOLID)
 	{
 	  (void) disk_goodvol_refresh_with_new (thread_p, volid);
@@ -1123,34 +1100,37 @@ boot_add_auto_volume_extension (THREAD_ENTRY * thread_p, DKNPAGES min_npages,
 				DISK_SETPAGE_TYPE setpage_type)
 {
   VOLID volid;
-  DKNPAGES ext_npages;
+  DBDEF_VOL_EXT_INFO ext_info;
 
-  ext_npages =
+  ext_info.npages =
     (DKNPAGES) (prm_get_size_value (PRM_ID_DB_VOLUME_SIZE) / IO_PAGESIZE);
 
   if (setpage_type != DISK_NONCONTIGUOUS_SPANVOLS_PAGES
-      && ext_npages < min_npages)
+      && ext_info.npages < min_npages)
     {
-      ext_npages = min_npages;
+      ext_info.npages = min_npages;
     }
 
-  if (ext_npages < BOOT_VOLUME_MINPAGES)
+  if (ext_info.npages < BOOT_VOLUME_MINPAGES)
     {
-      ext_npages = BOOT_VOLUME_MINPAGES;
+      ext_info.npages = BOOT_VOLUME_MINPAGES;
     }
 
-  ext_npages = MIN (ext_npages, VOL_MAX_NPAGES (IO_PAGESIZE));
+  ext_info.npages = MIN (ext_info.npages, VOL_MAX_NPAGES (IO_PAGESIZE));
+  ext_info.path = NULL;
+  ext_info.name = NULL;
+  ext_info.comments = "Automatic Volume Extension";
+  ext_info.purpose = DISK_PERMVOL_GENERIC_PURPOSE;
+  ext_info.overwrite = false;
+  ext_info.max_writesize_in_sec = 0;
 
-  volid =
-    boot_xadd_volume_extension (thread_p, NULL, NULL,
-				"Automatic Volume Extension", ext_npages,
-				DISK_PERMVOL_GENERIC_PURPOSE, false);
+  volid = boot_xadd_volume_extension (thread_p, &ext_info);
 
   if (volid != NULL_VOLID)
     {
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 	      ER_BO_NOTIFY_AUTO_VOLEXT, 2,
-	      fileio_get_volume_label (volid), ext_npages);
+	      fileio_get_volume_label (volid), ext_info.npages);
     }
 
   return volid;
@@ -1182,6 +1162,7 @@ boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p,
 				  const char *filename_addmore_vols)
 {
   FILE *fp;
+  DBDEF_VOL_EXT_INFO ext_info;
   char input_buffer[BOOTSR_MAX_LINE + 1];
   char *line;
   char *token;
@@ -1384,9 +1365,15 @@ boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p,
 	  continue;
 	}
 
-      if (xboot_add_volume_extension (thread_p, ext_path, ext_name,
-				      ext_comments, ext_npages, ext_purpose,
-				      false) == NULL_VOLID)
+      ext_info.path = ext_path;
+      ext_info.name = ext_name;
+      ext_info.comments = ext_comments;
+      ext_info.npages = ext_npages;
+      ext_info.max_writesize_in_sec = 0;
+      ext_info.purpose = ext_purpose;
+      ext_info.overwrite = false;
+
+      if (xboot_add_volume_extension (thread_p, &ext_info) == NULL_VOLID)
 	{
 	  error_code = ER_FAILED;
 	}
@@ -1424,6 +1411,7 @@ boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES min_npages)
   const char *temp_name;
   char temp_path_buf[PATH_MAX];
   DKNPAGES ext_npages, part_npages;
+  DBDEF_VOL_EXT_INFO ext_info;
 
   if (boot_Temp_volumes_max_pages == -2)
     {
@@ -1571,10 +1559,16 @@ boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES min_npages)
 	  possible_max_npages = ext_npages + boot_Temp_volumes_sys_pages;
 	  possible_max_npages = MIN (possible_max_npages,
 				     boot_get_temp_temp_vol_max_npages ());
-	  temp_volid = boot_add_volume (thread_p, temp_vol_fullname,
-					"Temporary Volume",
-					possible_max_npages,
-					DISK_TEMPVOL_TEMP_PURPOSE, true);
+
+	  ext_info.path = NULL;
+	  ext_info.name = temp_vol_fullname;
+	  ext_info.comments = "Temporary Volume";
+	  ext_info.npages = possible_max_npages;
+	  ext_info.max_writesize_in_sec = 0;
+	  ext_info.purpose = DISK_TEMPVOL_TEMP_PURPOSE;
+	  ext_info.overwrite = true;
+
+	  temp_volid = boot_add_volume (thread_p, &ext_info);
 	  if (temp_volid != NULL_VOLID)
 	    {
 	      boot_Temp_volumes_tpgs += ext_npages;
@@ -5283,7 +5277,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
   /* Format the first database volume */
   db_volid = disk_format (thread_p, boot_Db_full_name, LOG_DBFIRST_VOLID,
 			  boot_Db_full_name, db_comments, db_npages,
-			  DISK_PERMVOL_GENERIC_PURPOSE);
+			  0, DISK_PERMVOL_GENERIC_PURPOSE);
   if (db_volid != LOG_DBFIRST_VOLID)
     {
       goto error;

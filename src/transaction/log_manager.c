@@ -917,7 +917,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
 				      LOG_DBLOG_ACTIVE_VOLID, npages,
 				      prm_get_bool_value
 				      (PRM_ID_LOG_SWEEP_CLEAN), true, false,
-				      LOG_PAGESIZE, false);
+				      LOG_PAGESIZE, 0, false);
   if (log_Gl.append.vdes == NULL_VOLDES
       || logpb_fetch_start_append_page (thread_p) == NULL
       || loghdr_pgptr == NULL)
@@ -1518,7 +1518,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
 					 log_Name_bg_archive,
 					 LOG_DBLOG_BG_ARCHIVE_VOLID,
 					 log_Gl.hdr.npages + 1, false, false,
-					 false, LOG_PAGESIZE, false);
+					 false, LOG_PAGESIZE, 0, false);
       if (bg_arv_info->vdes != NULL_VOLDES)
 	{
 	  bg_arv_info->start_page_id = log_Gl.hdr.nxarv_pageid;

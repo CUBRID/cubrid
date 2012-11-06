@@ -602,22 +602,24 @@ emergency_patchlog: 緊急状況でデータベースログのパッチ\n\
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB
 20 ページ数%dが正しくありません。\n
 21 ボリュームの使い道'%s'が正しくありません。\n
+22 WARNING: --max-writesize-in-sec option is ignored in stand-alone mode execution.\n
 60 \
 addvoldb: データベースボリュームファイルを追加。\n\
 使い方: %s addvoldb [オプション] <データベース名>\n\
 \n\
 オプション:\n\
-      --db-volume-size=SIZE    追加するボリュームのサイズ; デフォルト: 設定から読み込む。\n\
-  -n, --volume-name=NAME       ボリューム名; デフォルト: "db"_ext1のような名前で生成。\n\
-  -F, --file-path=PATH         データベースファイルのパス; デフォルト: 現在ディレクトリー\n\
-      --comment=COMMENT        ボリュームコメント; デフォルト: なし\n\
-  -p, --purpose=PURPOSE        ボリュームの使い道; 次のような使い道ができます。\n\
-                                       DATA - データヴォリューム\n\
-                                       INDEX - インデックスボリューム\n\
-                                       TEMP - 臨時データボリューム\n\
-                                       GENERIC - 一般データボリューム\n\
-  -S, --SA-mode                スタンドアロンモードで実行\n\
-  -C, --CS-mode                クライアントーサーバモードで実行\n
+      --db-volume-size=SIZE        追加するボリュームのサイズ; デフォルト: 設定から読み込む。\n\
+      --max-writesize-in-sec=SIZE  the amount of volume written per second; (ex. 512K, 1M, 10M); default: not used; minimum: 160K\n\
+  -n, --volume-name=NAME           ボリューム名; デフォルト: "db"_ext1のような名前で生成。\n\
+  -F, --file-path=PATH             データベースファイルのパス; デフォルト: 現在ディレクトリー\n\
+      --comment=COMMENT            ボリュームコメント; デフォルト: なし\n\
+  -p, --purpose=PURPOSE            ボリュームの使い道; 次のような使い道ができます。\n\
+                                           DATA - データヴォリューム\n\
+                                           INDEX - インデックスボリューム\n\
+                                           TEMP - 臨時データボリューム\n\
+                                           GENERIC - 一般データボリューム\n\
+  -S, --SA-mode                    スタンドアロンモードで実行\n\
+  -C, --CS-mode                    クライアントーサーバモードで実行\n
 
 $set 18 MSGCAT_UTIL_SET_CHECKDB
 20 データベースに非一貫性が発見されました。\n追加情報は「error_log_file %s」をご覧になってください。\n

@@ -80,7 +80,7 @@ enum boot_client_type
          || (client_type) == BOOT_CLIENT_PH_READ_ONLY_BROKER \
 	 || (client_type) == BOOT_CLIENT_SLAVE_ONLY_BROKER)
 
-/* 
+/*
  * BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE()
  * ((broker_default type || (remote && csql or broker_default type)) ? 0 : 1)
  */

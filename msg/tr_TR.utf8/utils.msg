@@ -602,22 +602,24 @@ geçerli seçenekler:\n\
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB
 20 Npages için yanlış değer %d\n
 21 Yoğunlaştırma depolama amacıyla yanlış bir değeri '%s'.\n
+22 WARNING: --max-writesize-in-sec option is ignored in stand-alone mode execution.\n
 60 \
 addvoldb: Add a volume-file for the database.\n\
 kullanım: %s addvoldb [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
-      --db-volume-size=SIZE    ilave yoğunluk büyüklüğü; varsayılan: cubrid.conf içinde db_volume_size\n\
-  -n, --volume-name=NAME       Bilgi yoğunluğunun NAME; varsayılan: örneğin, "db"_ext1 olarak oluşturmak\n\
-  -F, --file-path=PATH         yoğunluk dosyası eklemek için PATH; varsayılan: çalışma dizini\n\
-      --comment=COMMENT        yoğunluk dosyası eklemek için COMMENT; varsayılan: hiçbir\n\
-  -p, --purpose=PURPOSE        yoğunluk dosyası eklemek için PURPOSE; izin:\n\
-                                       DATA - sadece veri için\n\
-                                       INDEX - yalnızca endeksler için\n\
-                                       TEMP - sadece geçici için\n\
-                                       GENERIC - tüm amaçlar için\n\
-  -S, --SA-mode                stand-alone modu yürütme\n\
-  -C, --CS-mode                istemci-sunucu modunda yürütme\n
+      --db-volume-size=SIZE        ilave yoğunluk büyüklüğü; varsayılan: cubrid.conf içinde db_volume_size\n\
+      --max-writesize-in-sec=SIZE  the amount of volume written per second; (ex. 512K, 1M, 10M); default: not used; minimum: 160K\n\
+  -n, --volume-name=NAME           Bilgi yoğunluğunun NAME; varsayılan: örneğin, "db"_ext1 olarak oluşturmak\n\
+  -F, --file-path=PATH             yoğunluk dosyası eklemek için PATH; varsayılan: çalışma dizini\n\
+      --comment=COMMENT            yoğunluk dosyası eklemek için COMMENT; varsayılan: hiçbir\n\
+  -p, --purpose=PURPOSE            yoğunluk dosyası eklemek için PURPOSE; izin:\n\
+                                           DATA - sadece veri için\n\
+                                           INDEX - yalnızca endeksler için\n\
+                                           TEMP - sadece geçici için\n\
+                                           GENERIC - tüm amaçlar için\n\
+  -S, --SA-mode                    stand-alone modu yürütme\n\
+  -C, --CS-mode                    istemci-sunucu modunda yürütme\n
 
 $set 18 MSGCAT_UTIL_SET_CHECKDB
 20 Bazı tutarsızlıklar veritabanı tespit edildi.\n ek bilgi için error_log_file %s başvurun.\n

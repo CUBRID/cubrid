@@ -405,7 +405,7 @@ logwr_initialize (const char *db_name, const char *log_path, int mode)
 					     LOG_DBLOG_BG_ARCHIVE_VOLID,
 					     logwr_Gl.hdr.npages + 1,
 					     false, false, false,
-					     LOG_PAGESIZE, false);
+					     LOG_PAGESIZE, 0, false);
 	}
       if (bg_arv_info->vdes == NULL_VOLDES)
 	{
@@ -976,7 +976,7 @@ logwr_archive_active_log (void)
 	{
 	  vdes = fileio_format (NULL, logwr_Gl.db_name, archive_name,
 				LOG_DBLOG_ARCHIVE_VOLID, arvhdr->npages + 1,
-				false, false, false, LOG_PAGESIZE, false);
+				false, false, false, LOG_PAGESIZE, 0, false);
 	  if (vdes == NULL_VOLDES)
 	    {
 	      /* Unable to create archive log to archive */
@@ -1076,7 +1076,7 @@ logwr_archive_active_log (void)
 					 logwr_Gl.bg_archive_name,
 					 LOG_DBLOG_BG_ARCHIVE_VOLID,
 					 logwr_Gl.hdr.npages, false, false,
-					 false, LOG_PAGESIZE, false);
+					 false, LOG_PAGESIZE, 0, false);
       if (bg_arv_info->vdes != NULL_VOLDES)
 	{
 	  bg_arv_info->start_page_id = logwr_Gl.last_arv_lpageid + 1;
@@ -1193,7 +1193,7 @@ logwr_write_log_pages (void)
 					    (logwr_Gl.hdr.npages + 1),
 					    prm_get_bool_value
 					    (PRM_ID_LOG_SWEEP_CLEAN), true,
-					    false, LOG_PAGESIZE, false);
+					    false, LOG_PAGESIZE, 0, false);
       if (logwr_Gl.append_vdes == NULL_VOLDES)
 	{
 	  /* Unable to create an active log */

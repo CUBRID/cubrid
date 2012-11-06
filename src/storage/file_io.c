@@ -508,7 +508,8 @@ static bool fileio_is_volume_label_equal (THREAD_ENTRY * thread_p,
 					  APPLY_ARG * arg);
 static void *fileio_initialize_pages (THREAD_ENTRY * thread_p, int vdes,
 				      void *io_pgptr, DKNPAGES npages,
-				      size_t page_size);
+				      size_t page_size,
+				      int kbytes_to_be_written_per_sec);
 static int fileio_expand_permanent_volume_info (FILEIO_VOLUME_HEADER * header,
 						int volid);
 static int fileio_expand_temporary_volume_info (FILEIO_VOLUME_HEADER * header,
@@ -1940,12 +1941,46 @@ fileio_unlock (const char *vol_label_p, int vol_fd,
  *   vdes(in): Volume descriptor
  *   io_pgptr(in): Initialization content of all pages
  *   npages(in): Number of pages to initialize
+ *   kbytes_to_be_written_per_sec : size to add volume per sec
  */
 static void *
 fileio_initialize_pages (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
-			 DKNPAGES npages, size_t page_size)
+			 DKNPAGES npages, size_t page_size,
+			 int kbytes_to_be_written_per_sec)
 {
   PAGEID page_id;
+#if defined (SERVER_MODE)
+  int count_of_page_for_a_sleep = 10;
+  INT64 allowed_millis_for_a_sleep;	/* time which is time for  writing unit of page
+					 * and sleeping in a sleep
+					 */
+  INT64 previous_elapsed_millis;	/* time which is previous time for writing unit of page\
+					 * and sleep
+					 */
+  INT64 time_to_sleep;
+  struct timeval tv;
+  INT64 start_in_millis;
+  INT64 current_in_millis;
+  INT64 page_count_per_sec;
+#endif
+
+#if defined (SERVER_MODE)
+  if (kbytes_to_be_written_per_sec > 0)
+    {
+      page_count_per_sec =
+	kbytes_to_be_written_per_sec / (IO_PAGESIZE / ONE_K);
+
+      if (page_count_per_sec < count_of_page_for_a_sleep)
+	{
+	  page_count_per_sec = count_of_page_for_a_sleep;
+	}
+      allowed_millis_for_a_sleep =
+	count_of_page_for_a_sleep * 1000 / page_count_per_sec;
+
+      gettimeofday (&tv, NULL);
+      start_in_millis = (tv.tv_sec * 1000LL) + (tv.tv_usec / 1000LL);
+    }
+#endif
 
   for (page_id = 0; page_id < npages; page_id++)
     {
@@ -1973,11 +2008,30 @@ fileio_initialize_pages (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 	{
 	  return NULL;
 	}
+
+#if defined (SERVER_MODE)
+      if (kbytes_to_be_written_per_sec > 0
+	  && (page_id + 1) % count_of_page_for_a_sleep == 0)
+	{
+	  gettimeofday (&tv, NULL);
+	  current_in_millis = (tv.tv_sec * 1000LL) + (tv.tv_usec / 1000LL);
+
+	  previous_elapsed_millis = current_in_millis - start_in_millis;
+
+	  /* calculate time to sleep through subtracting */
+	  time_to_sleep =
+	    allowed_millis_for_a_sleep - previous_elapsed_millis;
+	  if (time_to_sleep > 0)
+	    {
+	      thread_sleep (0, time_to_sleep * 1000LL);
+	    }
+	  start_in_millis = current_in_millis;
+	}
+#endif
     }
 
   return io_page_p;
 }
-
 
 /*
  * fileio_open () - Same as Unix open, but with retry during interrupts
@@ -2331,6 +2385,7 @@ fileio_create_backup_volume (THREAD_ENTRY * thread_p,
  *   sweep_clean(in): Clean the newly formatted volume
  *   dolock(in): Lock the volume from other Unix processes
  *   dosync(in): synchronize the writes on the volume ?
+ *   kbytes_to_be_written_per_sec : size to add volume per sec
  *
  * Note: If sweep_clean is true, every page is initialized with recovery
  *       information. In addition a volume can be optionally locked.
@@ -2341,7 +2396,8 @@ int
 fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p,
 	       const char *vol_label_p, VOLID vol_id, DKNPAGES npages,
 	       bool is_sweep_clean, bool is_do_lock, bool is_do_sync,
-	       size_t page_size, bool reuse_file)
+	       size_t page_size, int kbytes_to_be_written_per_sec,
+	       bool reuse_file)
 {
   int vol_fd;
   FILEIO_PAGE *malloc_io_page_p;
@@ -2445,7 +2501,8 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p,
 #if defined(HPUX)
       if ((is_sweep_clean == true
 	   && !fileio_initialize_pages (vol_fd, malloc_io_page_p, npages,
-					page_size))
+					page_size,
+					kbytes_to_be_written_per_sec))
 	  || (is_sweep_clean == false
 	      && !fileio_write (vol_fd, malloc_io_page_p, npages - 1,
 				page_size)))
@@ -2455,7 +2512,9 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p,
 	    && (is_sweep_clean == false
 		|| fileio_initialize_pages (thread_p, vol_fd,
 					    malloc_io_page_p, npages,
-					    page_size) == malloc_io_page_p)))
+					    page_size,
+					    kbytes_to_be_written_per_sec) ==
+		malloc_io_page_p)))
 #endif /* HPUX */
 	{
 	  /* It is likely that we run of space. The partition where the volume
@@ -2795,7 +2854,7 @@ fileio_copy_volume (THREAD_ENTRY * thread_p, int from_vol_desc,
 #else /* HPUX */
   to_vol_desc =
     fileio_format (thread_p, NULL, to_vol_label_p, to_vol_id, npages, false,
-		   false, false, IO_PAGESIZE, false);
+		   false, false, IO_PAGESIZE, 0, false);
 #endif /* HPUX */
   if (to_vol_desc == NULL_VOLDES)
     {
@@ -10332,7 +10391,7 @@ fileio_restore_volume (THREAD_ENTRY * thread_p,
 					      session_p->dbfile.vlabel,
 					      session_p->dbfile.volid, npages,
 					      false, false, false,
-					      IO_PAGESIZE, false);
+					      IO_PAGESIZE, 0, false);
     }
   else
     {

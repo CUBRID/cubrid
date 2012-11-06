@@ -7300,7 +7300,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
     {
       vdes = fileio_format (thread_p, log_Db_fullname, arv_name,
 			    LOG_DBLOG_ARCHIVE_VOLID, arvhdr->npages + 1,
-			    false, false, false, LOG_PAGESIZE, false);
+			    false, false, false, LOG_PAGESIZE, 0, false);
       if (vdes == NULL_VOLDES)
 	{
 	  /* Unable to create archive log to archive */
@@ -7507,7 +7507,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
 					 log_Name_bg_archive,
 					 LOG_DBLOG_BG_ARCHIVE_VOLID,
 					 log_Gl.hdr.npages, false,
-					 false, false, LOG_PAGESIZE, true);
+					 false, false, LOG_PAGESIZE, 0, true);
       if (bg_arv_info->vdes != NULL_VOLDES)
 	{
 	  bg_arv_info->start_page_id = log_Gl.hdr.nxarv_pageid;
@@ -11170,7 +11170,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
   to_vdes =
     fileio_format (thread_p, to_db_fullname, to_volname, LOG_DBCOPY_VOLID,
 		   log_Gl.hdr.npages + 1, false, true, false,
-		   LOG_PAGESIZE, false);
+		   LOG_PAGESIZE, 0, false);
   if (to_vdes == NULL_VOLDES)
     {
       error_code = ER_FAILED;

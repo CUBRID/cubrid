@@ -226,12 +226,7 @@ extern int boot_backup (const char *backup_path,
 			FILEIO_ZIP_METHOD zip_method,
 			FILEIO_ZIP_LEVEL zip_level, int skip_activelog,
 			int sleep_msecs);
-extern VOLID boot_add_volume_extension (const char *ext_path,
-					const char *ext_name,
-					const char *ext_comments,
-					DKNPAGES ext_npages,
-					DISK_VOLPURPOSE ext_purpose,
-					int ext_overwrite);
+extern VOLID boot_add_volume_extension (DBDEF_VOL_EXT_INFO * ext_info);
 extern int boot_check_db_consistency (int check_flag, OID * oids,
 				      int num_oids);
 extern int boot_find_number_permanent_volumes (void);

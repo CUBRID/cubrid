@@ -289,10 +289,39 @@ db_add_volume (const char *ext_path, const char *ext_name,
 	       const char *ext_comments, const int ext_npages,
 	       const DB_VOLPURPOSE ext_purpose)
 {
+  DBDEF_VOL_EXT_INFO ext_info;
+
+  ext_info.path = ext_path;
+  ext_info.name = ext_name;
+  ext_info.comments = ext_comments;
+  ext_info.npages = ext_npages;
+  ext_info.max_writesize_in_sec = 0;
+  ext_info.purpose = ext_purpose;
+  ext_info.overwrite = false;
+
+  return db_add_volume_ex (&ext_info);
+}
+
+/*
+ * db_add_volume_ex() - Add a volume extension to the database. The addition of
+ *       the volume is a system operation that will be either aborted in case
+ *       of failure or committed in case of success, independently on the
+ *       destiny of the current transaction. The volume becomes immediately
+ *       available to other transactions.
+ *
+ *    return : Error code
+ *    ext_info : volume info
+ *
+ */
+int
+db_add_volume_ex (DBDEF_VOL_EXT_INFO * ext_info)
+{
   VOLID volid;
   int error = NO_ERROR;
 
   CHECK_CONNECT_ERROR ();
+
+  assert (ext_info != NULL);
 
   if (Au_dba_user != NULL && !au_is_dba_group_member (Au_user))
     {
@@ -301,8 +330,8 @@ db_add_volume (const char *ext_path, const char *ext_name,
       return er_errid ();
     }
 
-  volid = boot_add_volume_extension (ext_path, ext_name, ext_comments,
-				     ext_npages, ext_purpose, false);
+  ext_info->overwrite = false;
+  volid = boot_add_volume_extension (ext_info);
   if (volid == NULL_VOLID)
     {
       error = er_errid ();

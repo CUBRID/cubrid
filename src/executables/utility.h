@@ -206,6 +206,7 @@ typedef enum
 {
   ADDVOLDB_MSG_BAD_NPAGES = 20,
   ADDVOLDB_MSG_BAD_PURPOSE = 21,
+  ADDVOLDB_INVALID_MAX_WRITESIZE_IN_SEC = 22,
   ADDVOLDB_MSG_USAGE = 60
 } MSGCAT_ADDVOLDB_MSG;
 
@@ -895,6 +896,8 @@ typedef struct _ha_config
 #define ADDVOL_CS_MODE_L                        "CS-mode"
 #define ADDVOL_VOLUME_SIZE_S                    10706
 #define ADDVOL_VOLUME_SIZE_L                    "db-volume-size"
+#define ADDVOL_MAX_WRITESIZE_IN_SEC_S           10707
+#define ADDVOL_MAX_WRITESIZE_IN_SEC_L           "max-writesize-in-sec"
 
 /* spacedb option list */
 #define SPACE_OUTPUT_FILE_S                     'o'

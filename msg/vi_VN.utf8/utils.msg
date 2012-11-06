@@ -602,22 +602,24 @@ các tùy chọn hợp lệ:\n\
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB
 20 Giá trị sai %d cho npages\n
 21 Giá trị sai '%s' cho mục đích lưu trữ bộ đĩa.\n
+22 WARNING: --max-writesize-in-sec option is ignored in stand-alone mode execution.\n
 60 \
 addvoldb: Thêm một tệp tin bộ đĩa cho cơ sở dữ liệu.\n\
 cách sử dụng: %s addvoldb [TÙY CHỌN] tên-cơ sở dữ liệu\n\
 \n\
 các tùy chọn hợp lệ:\n\
-      --db-volume-size=SIZE    kích cỡ của bộ đĩa bổ sung; mặc định: db_volume_size trong cubrid.conf\n\
-  -n, --volume-name=NAME       tên của bộ đĩa thông tin; mặc định: tạo như "db"_ext1)\n\
-  -F, --file-path=PATH         đường dẫn cho thêm tệp tin bộ đĩa; mặc định: thư mục đang làm việc\n\
-      --comment=COMMENT        Chú thích cho thêm tệp tin bộ đĩa; mặc định: không có \n\
-  -p, --purpose=PURPOSE        Mục đích cho thêm tệp tin bộ đĩa; được phép:\n\
-                                       DATA - chỉ cho dữ liệu\n\
-                                       INDEX - chỉ cho thư mục\n\
-                                       TEMP - chỉ cho tạm thời\n\
-                                       GENERIC - cho tất cả mục đích\n\
-  -S, --SA-mode                thực thi chế độ độc lập\n\
-  -C, --CS-mode                thực thi chế độ client-server\n
+      --db-volume-size=SIZE        kích cỡ của bộ đĩa bổ sung; mặc định: db_volume_size trong cubrid.conf\n\
+      --max-writesize-in-sec=SIZE  the amount of volume written per second; (ex. 512K, 1M, 10M); default: not used; minimum: 160K\n\
+  -n, --volume-name=NAME           tên của bộ đĩa thông tin; mặc định: tạo như "db"_ext1)\n\
+  -F, --file-path=PATH             đường dẫn cho thêm tệp tin bộ đĩa; mặc định: thư mục đang làm việc\n\
+      --comment=COMMENT            Chú thích cho thêm tệp tin bộ đĩa; mặc định: không có \n\
+  -p, --purpose=PURPOSE            Mục đích cho thêm tệp tin bộ đĩa; được phép:\n\
+                                           DATA - chỉ cho dữ liệu\n\
+                                           INDEX - chỉ cho thư mục\n\
+                                           TEMP - chỉ cho tạm thời\n\
+                                           GENERIC - cho tất cả mục đích\n\
+  -S, --SA-mode                    thực thi chế độ độc lập\n\
+  -C, --CS-mode                    thực thi chế độ client-server\n
 
 $set 18 MSGCAT_UTIL_SET_CHECKDB
 20 Một vài sự không đồng nhất được phát hiện trong cơ sở dữ liệu của bạn.\n Xin vui lòng tham khảo error_log_file %s để biết thêm thông tin.\n

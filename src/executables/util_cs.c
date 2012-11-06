@@ -294,17 +294,18 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
   const char *database_name;
-  int volext_npages = 0;
   UINT64 volext_size;
-  const char *volext_name = NULL;
-  const char *volext_pathname = NULL;
-  const char *volext_comments = NULL;
+  UINT64 volext_max_writesize;
   const char *volext_string_purpose = NULL;
   const char *volext_npages_string = NULL;
   const char *volext_size_str = NULL;
+  const char *volext_max_writesize_in_sec_str = NULL;
   char real_volext_path_buf[PATH_MAX];
-  DISK_VOLPURPOSE Volext_purpose;
+  bool sa_mode;
+  DBDEF_VOL_EXT_INFO ext_info;
 
+  ext_info.overwrite = false;
+  ext_info.npages = 0;
   if (utility_get_option_string_table_size (arg_map) < 1)
     {
       goto print_addvol_usage;
@@ -323,15 +324,15 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
   if (volext_npages_string)
     {
       util_print_deprecated ("number-of-pages");
-      volext_npages = atoi (volext_npages_string);
+      ext_info.npages = atoi (volext_npages_string);
     }
 
   volext_size_str = utility_get_option_string_value (arg_map,
 						     ADDVOL_VOLUME_SIZE_S, 0);
   if (volext_size_str)
     {
-      if (util_size_string_to_byte (volext_size_str, &volext_size) !=
-	  NO_ERROR)
+      if (util_size_string_to_byte (volext_size_str,
+				    &volext_size) != NO_ERROR)
 	{
 	  goto print_addvol_usage;
 	}
@@ -341,20 +342,37 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
       volext_size = -1;
     }
 
-  volext_name = utility_get_option_string_value (arg_map,
-						 ADDVOL_VOLUME_NAME_S, 0);
-  volext_pathname = utility_get_option_string_value (arg_map,
-						     ADDVOL_FILE_PATH_S, 0);
-  if (volext_pathname != NULL)
+  volext_max_writesize_in_sec_str =
+    utility_get_option_string_value (arg_map, ADDVOL_MAX_WRITESIZE_IN_SEC_S,
+				     0);
+  if (volext_max_writesize_in_sec_str)
+    {
+      if (util_size_string_to_byte (volext_max_writesize_in_sec_str,
+				    &volext_max_writesize) != NO_ERROR)
+	{
+	  goto print_addvol_usage;
+	}
+      ext_info.max_writesize_in_sec = volext_max_writesize / ONE_K;
+    }
+  else
+    {
+      ext_info.max_writesize_in_sec = 0;
+    }
+
+  ext_info.name = utility_get_option_string_value (arg_map,
+						   ADDVOL_VOLUME_NAME_S, 0);
+  ext_info.path = utility_get_option_string_value (arg_map,
+						   ADDVOL_FILE_PATH_S, 0);
+  if (ext_info.path != NULL)
     {
       memset (real_volext_path_buf, 0, sizeof (real_volext_path_buf));
-      if (realpath (volext_pathname, real_volext_path_buf) != NULL)
+      if (realpath (ext_info.path, real_volext_path_buf) != NULL)
 	{
-	  volext_pathname = real_volext_path_buf;
+	  ext_info.path = real_volext_path_buf;
 	}
     }
-  volext_comments = utility_get_option_string_value (arg_map,
-						     ADDVOL_COMMENT_S, 0);
+  ext_info.comments = utility_get_option_string_value (arg_map,
+						       ADDVOL_COMMENT_S, 0);
   volext_string_purpose = utility_get_option_string_value (arg_map,
 							   ADDVOL_PURPOSE_S,
 							   0);
@@ -363,23 +381,23 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
       volext_string_purpose = "generic";
     }
 
-  Volext_purpose = DISK_PERMVOL_GENERIC_PURPOSE;
+  ext_info.purpose = DISK_PERMVOL_GENERIC_PURPOSE;
 
   if (strcasecmp (volext_string_purpose, "data") == 0)
     {
-      Volext_purpose = DISK_PERMVOL_DATA_PURPOSE;
+      ext_info.purpose = DISK_PERMVOL_DATA_PURPOSE;
     }
   else if (strcasecmp (volext_string_purpose, "index") == 0)
     {
-      Volext_purpose = DISK_PERMVOL_INDEX_PURPOSE;
+      ext_info.purpose = DISK_PERMVOL_INDEX_PURPOSE;
     }
   else if (strcasecmp (volext_string_purpose, "temp") == 0)
     {
-      Volext_purpose = DISK_PERMVOL_TEMP_PURPOSE;
+      ext_info.purpose = DISK_PERMVOL_TEMP_PURPOSE;
     }
   else if (strcasecmp (volext_string_purpose, "generic") == 0)
     {
-      Volext_purpose = DISK_PERMVOL_GENERIC_PURPOSE;
+      ext_info.purpose = DISK_PERMVOL_GENERIC_PURPOSE;
     }
   else
     {
@@ -390,8 +408,18 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
+  sa_mode = utility_get_option_bool_value (arg_map, ADDVOL_SA_MODE_S);
+  if (sa_mode && ext_info.max_writesize_in_sec > 0)
+    {
+      ext_info.max_writesize_in_sec = 0;
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_ADDVOLDB,
+				       ADDVOLDB_INVALID_MAX_WRITESIZE_IN_SEC));
+    }
+
   /* extra validation */
-  if (check_database_name (database_name) || check_volume_name (volext_name))
+  if (check_database_name (database_name)
+      || check_volume_name (ext_info.name))
     {
       goto error_exit;
     }
@@ -415,23 +443,22 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
 	  volext_size = prm_get_size_value (PRM_ID_DB_VOLUME_SIZE);
 	}
 
-      if (volext_npages == 0)
+      if (ext_info.npages == 0)
 	{
-	  volext_npages = (int) (volext_size / IO_PAGESIZE);
+	  ext_info.npages = (int) (volext_size / IO_PAGESIZE);
 	}
 
-      if (volext_npages <= 0)
+      if (ext_info.npages <= 0)
 	{
 	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 					   MSGCAT_UTIL_SET_ADDVOLDB,
 					   ADDVOLDB_MSG_BAD_NPAGES),
-		   volext_npages);
+		   ext_info.npages);
 	  db_shutdown ();
 	  goto error_exit;
 	}
 
-      if (db_add_volume (volext_pathname, volext_name, volext_comments,
-			 volext_npages, Volext_purpose) == NO_ERROR)
+      if (db_add_volume_ex (&ext_info) == NO_ERROR)
 	{
 	  db_commit_transaction ();
 	}
@@ -448,6 +475,7 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
       fprintf (stderr, "%s\n", db_error_string (3));
       goto error_exit;
     }
+
   return EXIT_SUCCESS;
 
 print_addvol_usage:

@@ -1698,6 +1698,7 @@ disk_vhdr_set_vol_remarks (DISK_VAR_HEADER * vhdr, const char *vol_remarks)
  *   vol_remarks(in): Volume remarks such as version of system, name of the
  *                    creator of the database, or nothing at all(NULL)
  *   npages(in): Size of the volume in pages
+ *   Kbytes_to_be_written_per_sec(in) : Size to add volume per sec
  *   vol_purpose(in): The main purpose of the volume
  *
  * Note: The volume header, the sector and page allocator tables are
@@ -1708,7 +1709,7 @@ disk_vhdr_set_vol_remarks (DISK_VAR_HEADER * vhdr, const char *vol_remarks)
 INT16
 disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
 	     const char *vol_fullname, const char *vol_remarks, INT32 npages,
-	     DISK_VOLPURPOSE vol_purpose)
+	     int kbytes_to_be_written_per_sec, DISK_VOLPURPOSE vol_purpose)
 {
   int vdes;			/* Volume descriptor           */
   DISK_VAR_HEADER *vhdr;	/* Pointer to volume header    */
@@ -1773,12 +1774,14 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
   if (vol_purpose == DISK_TEMPVOL_TEMP_PURPOSE)
     {
       vdes = fileio_format (thread_p, dbname, vol_fullname, volid,
-			    npages, false, false, false, IO_PAGESIZE, false);
+			    npages, false, false, false, IO_PAGESIZE,
+			    kbytes_to_be_written_per_sec, false);
     }
   else
     {
       vdes = fileio_format (thread_p, dbname, vol_fullname, volid,
-			    npages, true, false, false, IO_PAGESIZE, false);
+			    npages, true, false, false, IO_PAGESIZE,
+			    kbytes_to_be_written_per_sec, false);
     }
 
   if (vdes == NULL_VOLDES)
@@ -5478,13 +5481,13 @@ disk_rv_redo_dboutside_newvol (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	{
 	  (void) fileio_format (thread_p, NULL, vol_label,
 				vhdr->volid, vhdr->total_pages, false, false,
-				false, IO_PAGESIZE, false);
+				false, IO_PAGESIZE, 0, false);
 	}
       else
 	{
 	  (void) fileio_format (thread_p, NULL, vol_label,
 				vhdr->volid, vhdr->total_pages, true, false,
-				false, IO_PAGESIZE, false);
+				false, IO_PAGESIZE, 0, false);
 	}
       (void) pgbuf_invalidate_all (thread_p, vhdr->volid);
     }

@@ -602,22 +602,24 @@ usage: %s emergency_patchlog [选项] 数据库名\n\
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB
 20 错误的值 %d 对于 页的数目\n
 21 错误的值 '%s' 对于卷存储目的.\n
+22 WARNING: --max-writesize-in-sec option is ignored in stand-alone mode execution.\n
 60 \
 addvoldb: 为数据库添加一个卷文件.\n\
 usage: %s addvoldb [选项] 数据库名\n\
 \n\
 可用选项:\n\
-      --db-volume-size=SIZE    指定附加卷大小; 默认: db_volume_size 在 cubrid.conf 文件中\n\
-  -n, --volume-name=NAME       信息卷的名称; 默认: 像这样生成 "db"_ext1)\n\
-  -F, --file-path=PATH         为将被添加的卷文件指定一个创建目录; 默认: 工作目录\n\
-      --comment=COMMENT        给添加的卷文件加注释; 默认: 无\n\
-  -p, --purpose=PURPOSE        指明添加卷文件的目的; 允许的值:\n\
-                                       DATA - 为了数据\n\
-                                       INDEX - 为了索引\n\
-                                       TEMP - 临时的\n\
-                                       GENERIC - 通用的\n\
-  -S, --SA-mode                单机模式执行\n\
-  -C, --CS-mode                客户端-服务器模式执行\n
+      --db-volume-size=SIZE        指定附加卷大小; 默认: db_volume_size 在 cubrid.conf 文件中\n\
+      --max-writesize-in-sec=SIZE  the amount of volume written per second; (ex. 512K, 1M, 10M); default: not used; minimum: 160K\n\
+  -n, --volume-name=NAME           信息卷的名称; 默认: 像这样生成 "db"_ext1)\n\
+  -F, --file-path=PATH             为将被添加的卷文件指定一个创建目录; 默认: 工作目录\n\
+      --comment=COMMENT            给添加的卷文件加注释; 默认: 无\n\
+  -p, --purpose=PURPOSE            指明添加卷文件的目的; 允许的值:\n\
+                                           DATA - 为了数据\n\
+                                           INDEX - 为了索引\n\
+                                           TEMP - 临时的\n\
+                                           GENERIC - 通用的\n\
+  -S, --SA-mode                    单机模式执行\n\
+  -C, --CS-mode                    客户端-服务器模式执行\n
 
 $set 18 MSGCAT_UTIL_SET_CHECKDB
 20 一些不一致性在你的数据库中被检测出来.\n 请在错误日志文件 %s 中查阅额外的信息.\n

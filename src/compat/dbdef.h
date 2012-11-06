@@ -1,26 +1,26 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
 
 /*
- * dbdef.h -Supporting definitions for the CUBRID API functions. 
- * 
+ * dbdef.h -Supporting definitions for the CUBRID API functions.
+ *
  */
 
 #ifndef _DBDEF_H_
@@ -166,7 +166,7 @@ typedef enum
   DB_AUTH_EXECUTE = 64
 } DB_AUTH;
 
-/* object_id type constants used in a db_register_ldb api call to specify 
+/* object_id type constants used in a db_register_ldb api call to specify
    whether a local database supports intrinsic object identity or user-
    defined object identity. */
 typedef enum
@@ -227,20 +227,20 @@ typedef struct sm_resolution DB_RESOLUTION;
 typedef struct sm_query_spec DB_QUERY_SPEC;
 typedef struct tp_domain DB_DOMAIN;
 
-/* These are handles to attribute and method descriptors that can 
+/* These are handles to attribute and method descriptors that can
    be used for optimized lookup during repeated operations.
    They are NOT the same as the DB_ATTRIBUTE and DB_METHOD handles. */
 typedef struct sm_descriptor DB_ATTDESC;
 typedef struct sm_descriptor DB_METHDESC;
 
-/* These structures are used for building editing templates on classes     
- * and objects.  Templates allow the specification of multiple 	      
- * operations to the object that are treated as an atomic unit.  If any    
- * of the operations in the template fail, none of the operations	      
- * will be applied to the object.					      
- * They are defined as abstract data types on top of internal              
- * data structures, API programs are not allowed to make assumptions       
- * about the contents of these structures.                                 
+/* These structures are used for building editing templates on classes
+ * and objects.  Templates allow the specification of multiple
+ * operations to the object that are treated as an atomic unit.  If any
+ * of the operations in the template fail, none of the operations
+ * will be applied to the object.
+ * They are defined as abstract data types on top of internal
+ * data structures, API programs are not allowed to make assumptions
+ * about the contents of these structures.
  */
 
 typedef struct sm_template DB_CTMPL;
@@ -426,9 +426,28 @@ typedef struct session_key SESSION_KEY;
 struct session_key
 {
   SESSION_ID id;		/* hash key for a session. */
-  int fd;			/* the socket(file) descriptor of 
-				 * the associated connection. 
+  int fd;			/* the socket(file) descriptor of
+				 * the associated connection.
 				 */
+};
+typedef struct dbdef_vol_ext_info DBDEF_VOL_EXT_INFO;
+struct dbdef_vol_ext_info
+{
+  char *path;			/* Directory where the volume extension is created.
+				 *  If NULL, is given, it defaults to the system parameter. */
+  char *name;			/* Name of the volume extension
+				 * If NULL, system generates one like "db".ext"volid" where
+				 * "db" is the database name and "volid" is the volume
+				 * identifier to be assigned to the volume extension. */
+  char *comments;		/* Comments which are included in the volume extension header. */
+  int npages;			/* Number of pages */
+  int max_writesize_in_sec;	/* the amount of volume written per second */
+  DB_VOLPURPOSE purpose;	/* The purpose of the volume extension. One of the following:
+				 * - DISK_PERMVOL_DATA_PURPOSE,
+				 * - DISK_PERMVOL_INDEX_PURPOSE,
+				 * - DISK_PERMVOL_GENERIC_PURPOSE,
+				 * - DISK_PERMVOL_TEMP_PURPOSE, */
+  bool overwrite;
 };
 
 typedef enum

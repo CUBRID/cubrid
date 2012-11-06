@@ -387,7 +387,8 @@ extern void fileio_close (int vdes);
 extern int fileio_format (THREAD_ENTRY * thread_p, const char *db_fullname,
 			  const char *vlabel, VOLID volid, DKNPAGES npages,
 			  bool sweep_clean, bool dolock, bool dosync,
-			  size_t page_size, bool reuse_file);
+			  size_t page_size, int kbytes_to_be_written_per_sec,
+			  bool reuse_file);
 extern DKNPAGES fileio_expand (THREAD_ENTRY * threda_p, VOLID volid,
 			       DKNPAGES npages_toadd);
 #if defined (ENABLE_UNUSED_FUNCTION)

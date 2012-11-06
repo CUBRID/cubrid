@@ -206,6 +206,7 @@ static UTIL_ARG_MAP ua_Addvol_Option_Map[] = {
 #endif
   {ADDVOL_SA_MODE_S, {ARG_BOOLEAN}, {0}},
   {ADDVOL_CS_MODE_S, {ARG_BOOLEAN}, {0}},
+  {ADDVOL_MAX_WRITESIZE_IN_SEC_S, {ARG_STRING}, {0}},
   {0, {0}, {0}}
 };
 
@@ -217,6 +218,7 @@ static GETOPT_LONG ua_Addvol_Option[] = {
   {ADDVOL_PURPOSE_L, 1, 0, ADDVOL_PURPOSE_S},
   {ADDVOL_SA_MODE_L, 0, 0, ADDVOL_SA_MODE_S},
   {ADDVOL_CS_MODE_L, 0, 0, ADDVOL_CS_MODE_S},
+  {ADDVOL_MAX_WRITESIZE_IN_SEC_L, 1, 0, ADDVOL_MAX_WRITESIZE_IN_SEC_S},
   {0, 0, 0, 0}
 };
 

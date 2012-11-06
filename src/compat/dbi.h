@@ -105,6 +105,7 @@ extern int db_add_volume (const char *ext_path,
 			  const char *ext_comments,
 			  const int ext_npages,
 			  const DB_VOLPURPOSE ext_purpose);
+extern int db_add_volume_ex (DBDEF_VOL_EXT_INFO * ext_info);
 extern int db_num_volumes (void);
 extern void db_print_stats (void);
 

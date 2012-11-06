@@ -605,22 +605,24 @@ options valids:\n\
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB
 20 Valeur incorrecte %d pour npages\n
 21 Valeur incorrecte '%s' dans le but de stockage de volume.\n
+22 WARNING: --max-writesize-in-sec option is ignored in stand-alone mode execution.\n
 60 \
 addvoldb: Ajouter un volume à la base de données.\n\
 usage: %s addvoldb [OPTION] database-name\n\
 \n\
 options valids:\n\
-      --db-volume-size=TAILLE  TAILLE du volume supplémentaire; par défaut: db_volume_size dans cubrid.conf\n\
-  -n, --volume-name=NOM        NOM du volume d'information; par défaut: générer tels que "db"_ext1)\n\
-  -F, --file-path=CHEMIN       CHEMIN pour l'ajout de fichier de volume; par défaut: répertoire de travail\n\
-      --comment=COMMENTAIRE    COMMENTAIRE pour ajouter du volume; par défaut: aucun\n\
-  -p, --purpose=BUT            BUT pour l'ajout de fichier de volume; permis:\n\
-                                       DATA - seulement pour les données\n\
-                                       INDEX - seulement pour les indexes\n\
-                                       TEMP - seulement pour les temporaires\n\
-                                       GENERIC - à tous les buts\n\
-  -S, --SA-mode                exécution en mode autonome\n\
-  -C, --CS-mode                exécution en mode client-serveur\n\
+      --db-volume-size=TAILLE      TAILLE du volume supplémentaire; par défaut: db_volume_size dans cubrid.conf\n\
+      --max-writesize-in-sec=SIZE  the amount of volume written per second; (ex. 512K, 1M, 10M); default: not used; minimum: 160K\n\
+  -n, --volume-name=NOM            NOM du volume d'information; par défaut: générer tels que "db"_ext1)\n\
+  -F, --file-path=CHEMIN           CHEMIN pour l'ajout de fichier de volume; par défaut: répertoire de travail\n\
+      --comment=COMMENTAIRE        COMMENTAIRE pour ajouter du volume; par défaut: aucun\n\
+  -p, --purpose=BUT                BUT pour l'ajout de fichier de volume; permis:\n\
+                                           DATA - seulement pour les données\n\
+                                           INDEX - seulement pour les indexes\n\
+                                           TEMP - seulement pour les temporaires\n\
+                                           GENERIC - à tous les buts\n\
+  -S, --SA-mode                    exécution en mode autonome\n\
+  -C, --CS-mode                    exécution en mode client-serveur\n\
 
 $set 18 MSGCAT_UTIL_SET_CHECKDB
 20 Some inconsistencies were detected in your database.\n Please consult error_log_file %s for additional information.\n

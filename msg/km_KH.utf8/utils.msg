@@ -602,22 +602,24 @@ usage: %s emergency_patchlog [OPTION] ឈ្មោះដែលតាបេស\n\
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB
 20 តម្លៃខុស %d សម្រាប់ npages\n
 21 តម្លៃខុស '%s' សម្រាប់បំណងរក្សាទុក volume ។ \n
+22 WARNING: --max-writesize-in-sec option is ignored in stand-alone mode execution.\n
 60 \
 addvoldb: បន្ថែម volume-fileមួយសម្រាប់ដែលតាបេសនេះ។ \n\
 usage: %s addvoldb [OPTION] ឈ្មោះដែលតាបេស \n\
 \n\
 ជម្រើសសុពល:\n\
-      --db-volume-size=SIZE    ទំហំនៃvolumeបន្ថែម; default: db_volume_size ក្នុង cubrid.conf\n\
-  -n, --volume-name=NAME       ឈ្មោះនៃ volumeពត៌មាន; default: បង្កើត "db"_ext1)បែបនេះ \n\
-  -F, --file-path=PATH         PATH សម្រាប់បន្ថែម volume file; default: បញ្ជីឈ្មោះការងារ\n\
-      --comment=COMMENT        COMMENT សម្រាប់បន្ថែម volume file; default: none\n\
-  -p, --purpose=PURPOSE        PURPOSE សម្រាប់បន្ថែម volume file; ត្រូវបានអនុញ្ញាត:\n\
-                                       DATA - សម្រាប់តែទិន្នន័យ\n\
-                                       INDEX - សម្រាប់តែ indices\n\
-                                       TEMP - សម្រាប់តែភាពបណ្តោះអាសន្ន\n\
-                                       GENERIC - សម្រាប់បំណងទាំងអស់\n\
-  -S, --SA-mode                ការប្រតិបត្តិ stand-alone mode \n\
-  -C, --CS-mode                ការប្រតិបត្តិ client-server mode \n
+      --db-volume-size=SIZE        ទំហំនៃvolumeបន្ថែម; default: db_volume_size ក្នុង cubrid.conf\n\
+      --max-writesize-in-sec=SIZE  the amount of volume written per second; (ex. 512K, 1M, 10M); default: not used; minimum: 160K\n\
+  -n, --volume-name=NAME           ឈ្មោះនៃ volumeពត៌មាន; default: បង្កើត "db"_ext1)បែបនេះ \n\
+  -F, --file-path=PATH             PATH សម្រាប់បន្ថែម volume file; default: បញ្ជីឈ្មោះការងារ\n\
+      --comment=COMMENT            COMMENT សម្រាប់បន្ថែម volume file; default: none\n\
+  -p, --purpose=PURPOSE            PURPOSE សម្រាប់បន្ថែម volume file; ត្រូវបានអនុញ្ញាត:\n\
+                                           DATA - សម្រាប់តែទិន្នន័យ\n\
+                                           INDEX - សម្រាប់តែ indices\n\
+                                           TEMP - សម្រាប់តែភាពបណ្តោះអាសន្ន\n\
+                                           GENERIC - សម្រាប់បំណងទាំងអស់\n\
+  -S, --SA-mode                    ការប្រតិបត្តិ stand-alone mode \n\
+  -C, --CS-mode                    ការប្រតិបត្តិ client-server mode \n
 
 $set 18 MSGCAT_UTIL_SET_CHECKDB
 20 ភាពមិនជាប់លាប់មួយចំនួយត្រូវបានរកឃើញក្នុងដែលតាបេសរបស់អ្នក។ \n សូមពិគ្រោះជាមួយ error_log_file %s សម្រាប់ពត៌មានបន្ថែម។​ \n

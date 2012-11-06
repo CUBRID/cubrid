@@ -602,22 +602,24 @@ gültige Optionen:\n\
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB
 20 Ungültiger Wert %d für npages\n
 21 Ungültiger Wert '%s' für Datenträger.\n
+22 WARNING: --max-writesize-in-sec option is ignored in stand-alone mode execution.\n
 60 \
 addvoldb: Datenträger für die Datenbank hinzufügen.\n\
 Anwendung: %s addvoldb [OPTION] Datenbanknamen\n\
 \n\
 gültige Optionen:\n\
-      --db-volume-size=GRÖSSE    Größe des zusätzlichen Datenträger; Standard: db_volume_size in cubrid.conf\n\
-  -n, --volume-name=NAME       NAME des Datenträgers; Standard: erzeugt wie "db"_ext1)\n\
-  -F, --file-path=PFAD         PFAD des neuen Datenträgers; Standard: Arbeitsverzeichnis\n\
-      --comment=KOMMENTAR        KOMMENTAR fürs neue Datenträger; Standard: keinen\n\
-  -p, --purpose=ZWECK        ZWECK des neuen Datenträgers; erlaubte Werte:\n\
-                                       DATA - nur für Daten\n\
-                                       INDEX - nur für Indices\n\
-                                       TEMP - nur für temporäre Daten\n\
-                                       GENERIC - für alle Zwecke\n\
-  -S, --SA-mode                Stand-Alone-Ausführung\n\
-  -C, --CS-mode                Client-Server-Ausführung\n
+      --db-volume-size=GRÖSSE      Größe des zusätzlichen Datenträger; Standard: db_volume_size in cubrid.conf\n\
+      --max-writesize-in-sec=SIZE  the amount of volume written per second; (ex. 512K, 1M, 10M); default: not used; minimum: 160K\n\
+  -n, --volume-name=NAME           NAME des Datenträgers; Standard: erzeugt wie "db"_ext1)\n\
+  -F, --file-path=PFAD             PFAD des neuen Datenträgers; Standard: Arbeitsverzeichnis\n\
+      --comment=KOMMENTAR          KOMMENTAR fürs neue Datenträger; Standard: keinen\n\
+  -p, --purpose=ZWECK              ZWECK des neuen Datenträgers; erlaubte Werte:\n\
+                                           DATA - nur für Daten\n\
+                                           INDEX - nur für Indices\n\
+                                           TEMP - nur für temporäre Daten\n\
+                                           GENERIC - für alle Zwecke\n\
+  -S, --SA-mode                    Stand-Alone-Ausführung\n\
+  -C, --CS-mode                    Client-Server-Ausführung\n
 
 $set 18 MSGCAT_UTIL_SET_CHECKDB
 20 Einige Widersprüche wurden in der Datenbank festgestellt.\n Bitte error_log_file %s für zusätzliche Informationen einsehen.\n

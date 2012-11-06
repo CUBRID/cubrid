@@ -602,22 +602,24 @@ emergency_patchlog: 긴급한 상황에서 데이터베이스 로그 패치\n\
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB
 20 페이지 개수 값 %d가 잘못되었습니다\n
 21 볼륨 저장소이름 '%s'가 잘못되었습니다\n
+22 --max-writesize-in-sec 옵션은 독립 실행 모드에서는 무시 됩니다.\n
 60 \
 addvoldb: 데이터베이스 볼륨 파일을 추가\n\
 사용법: %s addvoldb [옵션] <데이터베이스 이름>\n\
 \n\
 옵션:\n\
-      --db-volume-size=SIZE    추가될 볼륨의 크기; 기본값: 설정에서 읽음\n\
-  -n, --volume-name=NAME       볼륨 이름; 기본값: "db"_ext1 과 같은 이름을 생성\n\
-  -F, --file-path=PATH         데이터베이스 파일에 대한 볼륨 패스; 기본값: 현재 디렉터리\n\
-      --comment=COMMENT        볼륨 주석; 기본값: 없음\n\
-  -p, --purpose=PURPOSE        볼륨 사용 용도; 다음과 같은 값이 허용됨\n\
-                                       DATA - 데이터 볼륨\n\
-                                       INDEX - 인덱스 볼륨\n\
-                                       TEMP - 임시 데이터 볼륨\n\
-                                       GENERIC - 임의 데이터 볼륨\n\
-  -S, --SA-mode                독립 모드 실행\n\
-  -C, --CS-mode                클라이언트 서버 모드 실행\n
+      --db-volume-size=SIZE        추가될 볼륨의 크기; 기본값: 설정에서 읽음\n\
+      --max-writesize-in-sec=SIZE  초당 추가될 볼륨의 크기. (예. 512K, 1M, 10M); 기본값: 사용하지 않음; 최소값: 160K\n\
+  -n, --volume-name=NAME           볼륨 이름; 기본값: "db"_ext1 과 같은 이름을 생성\n\
+  -F, --file-path=PATH             데이터베이스 파일에 대한 볼륨 패스; 기본값: 현재 디렉터리\n\
+      --comment=COMMENT            볼륨 주석; 기본값: 없음\n\
+  -p, --purpose=PURPOSE            볼륨 사용 용도; 다음과 같은 값이 허용됨\n\
+                                           DATA - 데이터 볼륨\n\
+                                           INDEX - 인덱스 볼륨\n\
+                                           TEMP - 임시 데이터 볼륨\n\
+                                           GENERIC - 임의 데이터 볼륨\n\
+  -S, --SA-mode                    독립 모드 실행\n\
+  -C, --CS-mode                    클라이언트 서버 모드 실행\n
 
 $set 18 MSGCAT_UTIL_SET_CHECKDB
 20 데이터베이스에서 비일관성이 발견되었습니다.\n추가적인 정보는 error_log_file %s 을(를) 참고 하십시오\n

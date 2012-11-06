@@ -602,22 +602,24 @@ valid options:\n\
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB
 20 Wrong value %d for npages\n
 21 Wrong value '%s' for volume storage purpose.\n
+22 WARNING: --max-writesize-in-sec option is ignored in stand-alone mode execution.\n
 60 \
 addvoldb: Add a volume-file for the database.\n\
 usage: %s addvoldb [OPTION] database-name\n\
 \n\
 valid options:\n\
-      --db-volume-size=SIZE    size of additional volume; default: db_volume_size in cubrid.conf\n\
-  -n, --volume-name=NAME       NAME of information volume; default: generate such as "db"_ext1)\n\
-  -F, --file-path=PATH         PATH for adding volume file; default: working directory\n\
-      --comment=COMMENT        COMMENT for adding volume file; default: none\n\
-  -p, --purpose=PURPOSE        PURPOSE for adding volume file; allowed:\n\
-                                       DATA - only for data\n\
-                                       INDEX - only for indices\n\
-                                       TEMP - only for temporary\n\
-                                       GENERIC - for all purposes\n\
-  -S, --SA-mode                stand-alone mode execution\n\
-  -C, --CS-mode                client-server mode execution\n
+      --db-volume-size=SIZE        size of additional volume; default: db_volume_size in cubrid.conf\n\
+      --max-writesize-in-sec=SIZE  the amount of volume written per second; (ex. 512K, 1M, 10M); default: not used; minimum: 160K\n\
+  -n, --volume-name=NAME           NAME of information volume; default: generate such as "db"_ext1)\n\
+  -F, --file-path=PATH             PATH for adding volume file; default: working directory\n\
+      --comment=COMMENT            COMMENT for adding volume file; default: none\n\
+  -p, --purpose=PURPOSE            PURPOSE for adding volume file; allowed:\n\
+                                           DATA - only for data\n\
+                                           INDEX - only for indices\n\
+                                           TEMP - only for temporary\n\
+                                           GENERIC - for all purposes\n\
+  -S, --SA-mode                    stand-alone mode execution\n\
+  -C, --CS-mode                    client-server mode execution\n
 
 $set 18 MSGCAT_UTIL_SET_CHECKDB
 20 Some inconsistencies were detected in your database.\n Please consult error_log_file %s for additional information.\n

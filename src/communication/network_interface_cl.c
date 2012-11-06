@@ -4260,19 +4260,12 @@ boot_backup (const char *backup_path, FILEIO_BACKUP_LEVEL backup_level,
  *
  * return:
  *
- *   ext_path(in):
- *   ext_name(in):
- *   ext_comments(in):
- *   ext_npages(in):
- *   ext_purpose(in):
- *   ext_overwrite(in):
+ *   ext_info(in):
  *
  * NOTE:
  */
 VOLID
-boot_add_volume_extension (const char *ext_path, const char *ext_name,
-			   const char *ext_comments, DKNPAGES ext_npages,
-			   DISK_VOLPURPOSE ext_purpose, int ext_overwrite)
+boot_add_volume_extension (DBDEF_VOL_EXT_INFO * ext_info)
 {
 #if defined(CS_MODE)
   int int_volid;
@@ -4285,20 +4278,21 @@ boot_add_volume_extension (const char *ext_path, const char *ext_name,
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = length_const_string (ext_path, &strlen1)
-    + length_const_string (ext_name, &strlen2)
-    + length_const_string (ext_comments, &strlen3)
-    + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE;
+  request_size = length_const_string (ext_info->path, &strlen1)
+    + length_const_string (ext_info->name, &strlen2)
+    + length_const_string (ext_info->comments, &strlen3)
+    + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE;
 
   request = (char *) malloc (request_size);
   if (request)
     {
-      ptr = pack_const_string_with_length (request, ext_path, strlen1);
-      ptr = pack_const_string_with_length (ptr, ext_name, strlen2);
-      ptr = pack_const_string_with_length (ptr, ext_comments, strlen3);
-      ptr = or_pack_int (ptr, (int) ext_npages);
-      ptr = or_pack_int (ptr, (int) ext_purpose);
-      ptr = or_pack_int (ptr, (int) ext_overwrite);
+      ptr = pack_const_string_with_length (request, ext_info->path, strlen1);
+      ptr = pack_const_string_with_length (ptr, ext_info->name, strlen2);
+      ptr = pack_const_string_with_length (ptr, ext_info->comments, strlen3);
+      ptr = or_pack_int (ptr, (int) ext_info->npages);
+      ptr = or_pack_int (ptr, (int) ext_info->max_writesize_in_sec);
+      ptr = or_pack_int (ptr, (int) ext_info->purpose);
+      ptr = or_pack_int (ptr, (int) ext_info->overwrite);
       req_error = net_client_request (NET_SERVER_BO_ADD_VOLEXT,
 				      request, request_size, reply,
 				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
@@ -4322,8 +4316,7 @@ boot_add_volume_extension (const char *ext_path, const char *ext_name,
 
   ENTER_SERVER ();
 
-  volid = xboot_add_volume_extension (NULL, ext_path, ext_name, ext_comments,
-				      ext_npages, ext_purpose, ext_overwrite);
+  volid = xboot_add_volume_extension (NULL, ext_info);
 
   EXIT_SERVER ();
 

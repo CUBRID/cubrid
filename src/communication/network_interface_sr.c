@@ -3774,26 +3774,19 @@ sboot_add_volume_extension (THREAD_ENTRY * thread_p, unsigned int rid,
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
-  char *ext_path;
-  char *ext_name;
-  char *ext_comments;
-  int ext_npages;
-  int ext_purpose;
-  int ext_overwrite;
+  DBDEF_VOL_EXT_INFO ext_info;
   VOLID volid;
 
-  ptr = or_unpack_string_nocopy (request, &ext_path);
-  ptr = or_unpack_string_nocopy (ptr, &ext_name);
-  ptr = or_unpack_string_nocopy (ptr, &ext_comments);
-  ptr = or_unpack_int (ptr, &ext_npages);
-  ptr = or_unpack_int (ptr, &ext_purpose);
-  ptr = or_unpack_int (ptr, &ext_overwrite);
+  ptr = or_unpack_string_nocopy (request, &ext_info.path);
+  ptr = or_unpack_string_nocopy (ptr, &ext_info.name);
+  ptr = or_unpack_string_nocopy (ptr, &ext_info.comments);
+  ptr = or_unpack_int (ptr, &ext_info.npages);
+  ptr = or_unpack_int (ptr, &ext_info.max_writesize_in_sec);
+  ptr = or_unpack_int (ptr, &ext_info.purpose);
+  ptr = or_unpack_int (ptr, &ext_info.overwrite);
 
-  volid = xboot_add_volume_extension (thread_p, ext_path, ext_name,
-				      ext_comments,
-				      (DKNPAGES) ext_npages,
-				      (DISK_VOLPURPOSE) ext_purpose,
-				      ext_overwrite);
+
+  volid = xboot_add_volume_extension (thread_p, &ext_info);
 
   if (volid == NULL_VOLID)
     {
@@ -5661,8 +5654,8 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
 	      plan_ptr = "";
 	    }
 
-	  snprintf (qstmt_plan_ptr, 2048, "%s\n%s\n%s\n%s%s\n%s\n", line, title,
-		   line, qstmt_ptr, plan_ptr, line);
+	  snprintf (qstmt_plan_ptr, 2048, "%s\n%s\n%s\n%s%s\n%s\n", line,
+		    title, line, qstmt_ptr, plan_ptr, line);
 
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 		  ER_SLOW_QUERY, 2, response_time, qstmt_plan_ptr);
