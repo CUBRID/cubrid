@@ -5070,6 +5070,11 @@ cleanup:
   result = xsession_create_prepared_statement (NULL, *user, local_name,
 					       local_alias_print,
 					       local_stmt_info, info_length);
+  if (result != NO_ERROR)
+    {
+      goto error;
+    }
+
   EXIT_SERVER ();
 
   return result;

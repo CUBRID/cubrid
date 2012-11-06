@@ -1604,18 +1604,6 @@ session_create_prepared_statement (THREAD_ENTRY * thread_p, OID user,
   return NO_ERROR;
 
 error:
-  if (name != NULL)
-    {
-      free_and_init (name);
-    }
-  if (alias_print != NULL)
-    {
-      free_and_init (alias_print);
-    }
-  if (info != NULL)
-    {
-      free_and_init (info);
-    }
   if (stmt_p != NULL)
     {
       free_and_init (stmt_p);

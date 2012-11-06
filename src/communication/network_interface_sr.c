@@ -9203,6 +9203,11 @@ ssession_create_prepared_statement (THREAD_ENTRY * thread_p, unsigned int rid,
   err = xsession_create_prepared_statement (thread_p, user, name,
 					    alias_print, info, data_size);
 
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
   or_pack_int (reply, err);
   css_send_data_to_client (thread_p->conn_entry, rid, reply,
 			   OR_ALIGNED_BUF_SIZE (a_reply));
