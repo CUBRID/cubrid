@@ -208,17 +208,16 @@ static int qstr_eval_like (const char *tar, int tar_length,
 #if defined(ENABLE_UNUSED_FUNCTION)
 static int kor_cmp (unsigned char *src, unsigned char *dest, int size);
 #endif
-static int qstr_replace (unsigned char *src_ptr,
-			 DB_TYPE src_type,
+static int qstr_replace (unsigned char *src_buf,
 			 int src_len,
 			 int src_size,
 			 INTL_CODESET codeset,
-			 unsigned char *srch_str_ptr,
+			 int coll_id,
+			 unsigned char *srch_str_buf,
 			 int srch_str_size,
-			 unsigned char *repl_str_ptr,
+			 unsigned char *repl_str_buf,
 			 int repl_str_size,
-			 unsigned char **result_ptr,
-			 DB_TYPE * result_type,
+			 unsigned char **result_buf,
 			 int *result_len, int *result_size);
 static int qstr_translate (unsigned char *src_ptr,
 			   DB_TYPE src_type,
@@ -303,10 +302,11 @@ static int qstr_coerce (const unsigned char *src, int src_length,
 			unsigned char **dest, int *dest_length,
 			int *dest_size, int dest_precision,
 			DB_TYPE dest_type, DB_DATA_STATUS * data_status);
-static int qstr_position (const char *sub_string, int sub_length,
-			  const char *src_string,
+static int qstr_position (const char *sub_string, const int sub_size,
+			  const int sub_length,
+			  const char *src_string, const char *src_end,
 			  const char *src_string_bound,
-			  int src_length, INTL_CODESET codeset,
+			  int src_length, int coll_id,
 			  bool is_forward_search, int *position);
 static int qstr_bit_position (const unsigned char *sub_string,
 			      int sub_length,
@@ -1639,10 +1639,25 @@ db_string_instr (const DB_VALUE * src_string,
 	  int offset = DB_GET_INT (start_pos);
 	  INTL_CODESET codeset =
 	    (INTL_CODESET) DB_GET_STRING_CODESET (src_string);
-	  char *search_from, *src_buf;
+	  char *search_from, *src_buf, *sub_str;
+	  int coll_id = DB_GET_STRING_COLLATION (src_string);
+	  int sub_str_size = DB_GET_STRING_SIZE (sub_string);
 	  int from_byte_offset;
+	  int src_size = DB_GET_STRING_SIZE (src_string);
 
-	  assert (DB_GET_STRING_CODESET (sub_string) == codeset);
+	  src_buf = DB_PULL_STRING (src_string);
+	  if (src_size < 0)
+	    {
+	      src_size = strlen (src_buf);
+	    }
+
+	  sub_str = DB_PULL_STRING (sub_string);
+	  if (sub_str_size < 0)
+	    {
+	      sub_str_size = strlen (sub_str);
+	    }
+
+	  assert (DB_GET_STRING_COLLATION (sub_string) == coll_id);
 
 	  if (offset > 0)
 	    {
@@ -1653,10 +1668,7 @@ db_string_instr (const DB_VALUE * src_string,
 		}
 	      else
 		{
-		  int src_size = DB_GET_STRING_SIZE (src_string);
-
-		  search_from = src_buf = DB_PULL_STRING (src_string);
-		  src_size = (src_size < 0) ? strlen (src_buf) : src_size;
+		  search_from = src_buf;
 
 		  intl_char_size ((unsigned char *) search_from, offset,
 				  codeset, &from_byte_offset);
@@ -1668,10 +1680,10 @@ db_string_instr (const DB_VALUE * src_string,
 
 		  /* forward search */
 		  error_status =
-		    qstr_position (DB_PULL_STRING (sub_string),
-				   sub_str_len, search_from,
+		    qstr_position (sub_str, sub_str_size, sub_str_len,
+				   search_from, src_buf + src_size,
 				   src_buf + src_size, src_str_len,
-				   codeset, true, &position);
+				   coll_id, true, &position);
 		  position += (position != 0) ? offset : 0;
 		}
 	    }
@@ -1684,7 +1696,8 @@ db_string_instr (const DB_VALUE * src_string,
 	      else
 		{
 		  int real_offset = src_str_len + offset - (sub_str_len - 1);
-		  search_from = src_buf = DB_PULL_STRING (src_string);
+
+		  search_from = src_buf;
 
 		  intl_char_size ((unsigned char *) search_from, real_offset,
 				  codeset, &from_byte_offset);
@@ -1693,9 +1706,9 @@ db_string_instr (const DB_VALUE * src_string,
 
 		  /* backward search */
 		  error_status =
-		    qstr_position (DB_PULL_STRING (sub_string),
-				   sub_str_len, search_from, src_buf,
-				   src_str_len + offset + 1, codeset,
+		    qstr_position (sub_str, sub_str_size, sub_str_len,
+				   search_from, src_buf + src_size, src_buf,
+				   src_str_len + offset + 1, coll_id,
 				   false, &position);
 		  if (position != 0)
 		    {
@@ -1875,23 +1888,33 @@ db_string_position (const DB_VALUE * sub_string,
       int position;
       DB_TYPE src_type = DB_VALUE_DOMAIN_TYPE (src_string);
 
-      assert (DB_GET_STRING_CODESET (src_string)
-	      == DB_GET_STRING_CODESET (sub_string));
+      assert (DB_GET_STRING_COLLATION (src_string)
+	      == DB_GET_STRING_COLLATION (sub_string));
 
       if (QSTR_IS_CHAR (src_type) || QSTR_IS_NATIONAL_CHAR (src_type))
 	{
 	  char *src_str = DB_PULL_STRING (src_string);
 	  int src_size = DB_GET_STRING_SIZE (src_string);
+	  char *sub_str = DB_PULL_STRING (sub_string);
+	  int sub_size = DB_GET_STRING_SIZE (sub_string);
 
-	  src_size = (src_size < 0) ? strlen (src_str) : src_size;
+	  if (src_size < 0)
+	    {
+	      src_size = strlen (src_str);
+	    }
+
+	  if (sub_size < 0)
+	    {
+	      sub_size = strlen (sub_str);
+	    }
 
 	  error_status =
-	    qstr_position (DB_PULL_STRING (sub_string),
+	    qstr_position (sub_str, sub_size,
 			   DB_GET_STRING_LENGTH (sub_string),
-			   src_str, src_str + src_size,
+			   src_str, src_str + src_size, src_str + src_size,
 			   DB_GET_STRING_LENGTH (src_string),
-			   (INTL_CODESET) DB_GET_STRING_CODESET (src_string),
-			   true, &position);
+			   DB_GET_STRING_COLLATION (src_string), true,
+			   &position);
 	}
       else
 	{
@@ -4989,18 +5012,25 @@ db_string_replace (const DB_VALUE * src_string, const DB_VALUE * srch_string,
       return error_status;
     }
 
+  assert (DB_GET_STRING_COLLATION (src_string)
+	  == DB_GET_STRING_COLLATION (srch_string));
+  assert (DB_GET_STRING_COLLATION (src_string)
+	  == DB_GET_STRING_COLLATION (repl_string));
+
+  result_type = QSTR_IS_NATIONAL_CHAR (DB_VALUE_DOMAIN_TYPE (src_string)) ?
+    DB_TYPE_VARNCHAR : DB_TYPE_VARCHAR;
+
   error_status = qstr_replace ((unsigned char *) DB_PULL_STRING (src_string),
-			       DB_VALUE_DOMAIN_TYPE (src_string),
 			       DB_GET_STRING_LENGTH (src_string),
 			       DB_GET_STRING_SIZE (src_string),
 			       (INTL_CODESET)
 			       DB_GET_STRING_CODESET (src_string),
+			       DB_GET_STRING_COLLATION (src_string),
 			       (unsigned char *) DB_PULL_STRING (srch_string),
 			       DB_GET_STRING_SIZE (srch_string),
 			       (unsigned char *) DB_PULL_STRING (repl_string),
 			       DB_GET_STRING_SIZE (repl_string),
-			       &result_ptr, &result_type,
-			       &result_length, &result_size);
+			       &result_ptr, &result_length, &result_size);
 
   if (error_status == NO_ERROR && result_ptr != NULL)
     {
@@ -5033,125 +5063,162 @@ db_string_replace (const DB_VALUE * src_string, const DB_VALUE * srch_string,
 /* qstr_replace () -
  */
 static int
-qstr_replace (unsigned char *src_ptr,
-	      DB_TYPE src_type,
+qstr_replace (unsigned char *src_buf,
 	      int src_len,
 	      int src_size,
 	      INTL_CODESET codeset,
-	      unsigned char *srch_str_ptr,
+	      int coll_id,
+	      unsigned char *srch_str_buf,
 	      int srch_str_size,
-	      unsigned char *repl_str_ptr,
+	      unsigned char *repl_str_buf,
 	      int repl_str_size,
-	      unsigned char **result_ptr,
-	      DB_TYPE * result_type, int *result_len, int *result_size)
+	      unsigned char **result_buf, int *result_len, int *result_size)
 {
+#define REPL_POS_ARRAY_EXTENT 32
+
   int error_status = NO_ERROR;
-  int repl_cnt = 0, i, offset;
-  unsigned char *head, *tail, *target;
+  int char_size, i;
+  unsigned char *matched_ptr, *matched_ptr_end, *target;
+  int *repl_pos_array = NULL;
+  int repl_pos_array_size;
+  int repl_pos_array_cnt;
+  unsigned char *src_ptr;
+  int repl_str_len;
 
   /*
    * if search string is NULL or is longer than source string
    * copy source string as a result
    */
-  if (srch_str_ptr == NULL || src_size < srch_str_size)
+  if (srch_str_buf == NULL || src_size < srch_str_size)
     {
-      *result_ptr =
+      *result_buf =
 	(unsigned char *) db_private_alloc (NULL, (size_t) src_size + 1);
-      if (*result_ptr == NULL)
+      if (*result_buf == NULL)
 	{
-	  error_status = er_errid ();
-	  return error_status;
+	  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1,
+		  src_size);
+	  goto exit;
 	}
 
-      (void) memcpy ((char *) (*result_ptr), (char *) src_ptr, src_size);
-      *result_type = QSTR_IS_NATIONAL_CHAR (src_type) ?
-	DB_TYPE_VARNCHAR : DB_TYPE_VARCHAR;
+      (void) memcpy ((char *) (*result_buf), (char *) src_buf, src_size);
       *result_len = src_len;
       *result_size = src_size;
-      return error_status;
+      goto exit;
     }
 
-  if (repl_str_ptr == NULL)
+  if (repl_str_buf == NULL)
     {
-      repl_str_ptr = (unsigned char *) "";
+      repl_str_buf = (unsigned char *) "";
     }
 
-  for (repl_cnt = 0, i = 0; src_size > 0 && srch_str_size > 0
-       && i <= (src_size - srch_str_size);)
+  repl_pos_array_size = REPL_POS_ARRAY_EXTENT;
+  repl_pos_array = (int *) db_private_alloc (NULL, 2 * sizeof (int)
+					     * repl_pos_array_size);
+  if (repl_pos_array == NULL)
     {
-      if (strncmp ((char *) src_ptr + i, (char *) srch_str_ptr,
-		   srch_str_size) == 0)
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1,
+	      2 * sizeof (int) * repl_pos_array_size);
+      goto exit;
+    }
+
+  intl_char_count (repl_str_buf, repl_str_size, codeset, &repl_str_len);
+
+  repl_pos_array_cnt = 0;
+  for (*result_size = 0, *result_len = 0, src_ptr = src_buf;
+       src_size > 0 && srch_str_size > 0 && src_ptr < src_buf + src_size;)
+    {
+      int matched_size;
+
+      if (QSTR_MATCH (coll_id, src_ptr, src_buf + src_size - src_ptr,
+		      srch_str_buf, srch_str_size, NULL, false,
+		      &matched_size) == 0)
 	{
-	  i += srch_str_size;
-	  repl_cnt++;
-	  continue;
-	}
-      else
-	{
-	  intl_char_size (src_ptr + i, 1, codeset, &offset);
-	  i += offset;
-	}
-    }
-
-  *result_size = src_size - (srch_str_size * repl_cnt)
-    + (repl_str_size * repl_cnt);
-
-  *result_ptr = (unsigned char *)
-    db_private_alloc (NULL, (size_t) * result_size + 1);
-  if (*result_ptr == NULL)
-    {
-      error_status = er_errid ();
-      return error_status;
-    }
-
-  head = tail = src_ptr;
-  target = *result_ptr;
-  for (; src_size > 0 && srch_str_size > 0
-       && head <= src_ptr + (src_size - srch_str_size);)
-    {
-      if (strncmp ((char *) head, (char *) srch_str_ptr, srch_str_size) == 0)
-	{
-	  /* first, copy non matched original string */
-	  if ((head - tail) > 0)
+	  /* store byte position and size of matched string */
+	  if (repl_pos_array_cnt >= repl_pos_array_size)
 	    {
-	      (void) memcpy ((char *) target, tail, head - tail);
-	      target += head - tail;
+	      repl_pos_array_size += REPL_POS_ARRAY_EXTENT;
+	      repl_pos_array =
+		(int *) db_private_realloc (NULL, repl_pos_array,
+					    2 * sizeof (int)
+					    * repl_pos_array_size);
+	      if (repl_pos_array == NULL)
+		{
+		  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1,
+			  2 * sizeof (int) * repl_pos_array_size);
+		  goto exit;
+		}
 	    }
-
-	  /* second, copy replacing string */
-	  (void) memcpy ((char *) target,
-			 (char *) repl_str_ptr, repl_str_size);
-	  i += srch_str_size;
-
-	  head += srch_str_size;
-	  tail = head;
-	  target += repl_str_size;
-	  continue;
+	  repl_pos_array[repl_pos_array_cnt * 2] = src_ptr - src_buf;
+	  repl_pos_array[repl_pos_array_cnt * 2 + 1] = matched_size;
+	  src_ptr += matched_size;
+	  repl_pos_array_cnt++;
+	  *result_size += repl_str_size;
+	  *result_len += repl_str_len;
 	}
       else
 	{
-	  intl_char_size (head, 1, codeset, &offset);
-	  head += offset;
+	  src_ptr = intl_next_char (src_ptr, codeset, &char_size);
+	  *result_size += char_size;
+	  *result_len += 1;
 	}
     }
-  if ((src_ptr + src_size - tail) > 0)
+
+  if (repl_pos_array_cnt == 0)
     {
-      (void) memcpy ((char *) target, tail, src_ptr + src_size - tail);
+      *result_size = src_size;
     }
 
-  *result_type = QSTR_IS_NATIONAL_CHAR (src_type) ?
-    DB_TYPE_VARNCHAR : DB_TYPE_VARCHAR;
-
-  *result_len = 0;
-  for (i = 0, head = *result_ptr; i < *result_size;)
+  *result_buf = (unsigned char *)
+    db_private_alloc (NULL, (size_t) (*result_size) + 1);
+  if (*result_buf == NULL)
     {
-      intl_char_size (head, 1, codeset, &offset);
-      *result_len += 1;
-      head += offset;
-      i += offset;
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1,
+	      *result_size + 1);
+      goto exit;
+    }
+
+  matched_ptr = matched_ptr_end = src_buf;
+  target = *result_buf;
+  for (i = 0; i < repl_pos_array_cnt; i++)
+    {
+      /* first, copy non matched original string preceeding matched part */
+      matched_ptr = src_buf + repl_pos_array[2 * i];
+      if ((matched_ptr - matched_ptr_end) > 0)
+	{
+	  (void) memcpy (target, matched_ptr_end,
+			 matched_ptr - matched_ptr_end);
+	  target += matched_ptr - matched_ptr_end;
+	}
+
+      /* second, copy replacing string */
+      (void) memcpy (target, repl_str_buf, repl_str_size);
+      target += repl_str_size;
+      matched_ptr_end = matched_ptr + repl_pos_array[2 * i + 1];
+    }
+
+  /* append any trailing string (after last matched part) */
+  if (matched_ptr_end < src_buf + src_size)
+    {
+      (void) memcpy (target, matched_ptr_end,
+		     src_buf + src_size - matched_ptr_end);
+      target += src_buf + src_size - matched_ptr_end;
+    }
+
+  assert (target - *result_buf == *result_size);
+
+exit:
+  if (repl_pos_array != NULL)
+    {
+      db_private_free (NULL, repl_pos_array);
     }
 
   return error_status;
+
+#undef REPL_POS_ARRAY_EXTENT
 }
 
 /*
@@ -6930,8 +6997,7 @@ is_char_string (const DB_VALUE * s)
 {
   DB_TYPE domain_type = DB_VALUE_DOMAIN_TYPE (s);
 
-  return ((domain_type == DB_TYPE_STRING)
-	  || (QSTR_IS_ANY_CHAR (domain_type)));
+  return (QSTR_IS_ANY_CHAR (domain_type));
 }
 
 /*
@@ -8860,38 +8926,54 @@ qstr_coerce (const unsigned char *src,
  */
 
 static int
-qstr_position (const char *sub_string,
-	       int sub_length,
-	       const char *src_string,
+qstr_position (const char *sub_string, const int sub_size,
+	       const int sub_length,
+	       const char *src_string, const char *src_end,
 	       const char *src_string_bound,
-	       int src_length,
-	       INTL_CODESET codeset, bool is_forward_search, int *position)
+	       int src_length, int coll_id,
+	       bool is_forward_search, int *position)
 {
   int error_status = NO_ERROR;
+  int dummy;
+
   *position = 0;
 
   if (sub_length == 0)
     {
       *position = 1;
     }
-  else if (sub_length > src_length)
-    {
-      *position = 0;
-    }
   else
     {
       int i, num_searches, current_position, result;
       unsigned char *ptr;
-      int sub_size, char_size;
+      int char_size;
+      LANG_COLLATION *lc;
+      INTL_CODESET codeset;
+
+      lc = lang_get_collation (coll_id);
+      assert (lc != NULL);
+
+      codeset = lc->codeset;
 
       /*
        *  Since the entire sub-string must be matched, a reduced
-       *  number of compares <num_searches> are needed.  A binary
-       *  comparison of <sub_size> bytes will be used.
+       *  number of compares <num_searches> are needed.  A collation-based
+       *  comparison will be used.
        */
-      num_searches = src_length - sub_length + 1;
-      intl_char_size ((unsigned char *) sub_string,
-		      sub_length, codeset, &sub_size);
+      if (lc->coll.uca_exp_num > 1 || lc->coll.count_contr > 0)
+	{
+	  /* characters may not match one-by-one */
+	  num_searches = src_length;
+	}
+      else
+	{
+	  num_searches = src_length - sub_length + 1;
+	  if (sub_length > src_length)
+	    {
+	      *position = 0;
+	      return error_status;
+	    }
+	}
 
       /*
        *  Starting at the first position of the string, match the
@@ -8904,21 +8986,41 @@ qstr_position (const char *sub_string,
       current_position = 0;
       result = 1;
 
-      for (i = 0; ((i < num_searches) && (result != 0)); i++)
+      for (i = 0; i < num_searches; i++)
 	{
-	  result = memcmp (sub_string, (char *) ptr, sub_size);
+	  result = QSTR_MATCH (coll_id, ptr, (unsigned char *) src_end - ptr,
+			       (unsigned char *) sub_string, sub_size,
+			       NULL, false, &dummy);
+	  current_position++;
+	  if (result == 0)
+	    {
+	      break;
+	    }
+
 	  if (is_forward_search)
 	    {
-	      assert (ptr < src_string_bound);
+	      if (ptr >= (unsigned char *) src_string_bound)
+		{
+		  break;
+		}
 	      ptr = intl_next_char ((unsigned char *) ptr,
 				    codeset, &char_size);
 	    }
-	  else if (ptr > src_string_bound)
-	    {			/* backward search */
-	      ptr = intl_prev_char ((unsigned char *) ptr, src_string_bound,
-				    codeset, &char_size);
+	  else
+	    {
+	      /* backward */
+	      if (ptr > (unsigned char *) src_string_bound)
+		{
+		  ptr = intl_prev_char ((unsigned char *) ptr,
+					(const unsigned char *)
+					src_string_bound,
+					codeset, &char_size);
+		}
+	      else
+		{
+		  break;
+		}
 	    }
-	  current_position++;
 	}
 
       /*
@@ -24934,7 +25036,7 @@ is_valid_ip_slice (const char *ipslice)
 
   if (ipslice[0] == '0')
     {
-      if (tolower (ipslice[1]) == 'x')
+      if (char_tolower (ipslice[1]) == 'x')
 	{
 	  if (ipslice[2] == '\0')
 	    {

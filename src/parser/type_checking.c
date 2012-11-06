@@ -20030,9 +20030,6 @@ pt_check_const_fold_op_w_args (PT_OP_TYPE op,
 static bool
 pt_is_op_w_collation (const PT_OP_TYPE op)
 {
-  bool has_collation = false;
-  bool has_codeset = false;
-
   switch (op)
     {
     case PT_EQ:
@@ -20099,16 +20096,15 @@ pt_is_op_w_collation (const PT_OP_TYPE op)
     case PT_LT_ALL:
     case PT_LE_ALL:
     case PT_FINDINSET:
-      has_collation = true;
+    case PT_INSTR:
     case PT_LOCATE:
     case PT_POSITION:
     case PT_STRCMP:
-      has_codeset = true;
-      break;
+      return true;
     default:
       return false;
     }
-  return has_collation || has_codeset;
+  return false;
 }
 
 /*
