@@ -4734,7 +4734,7 @@ cci_set_charset (int con_h_id, char *charset)
 	  break;
 	}
     }
-  err_buf_reset (&(con_handle->err_buf));
+  reset_error_buffer (&(con_handle->err_buf));
 
   err_code = qe_set_charset (con_handle, charset);
   con_handle->ref_count = 0;

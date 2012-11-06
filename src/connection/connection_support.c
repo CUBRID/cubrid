@@ -583,7 +583,7 @@ css_net_recv (SOCKET fd, char *buffer, int *maxlen, int timeout)
 	{
 	  if (errno == ETIMEDOUT && timeout > elapsed)
 	    {
-#if defined(CS_MODE)
+#if defined (CS_MODE) && !defined (WINDOWS)
 	      if (CHECK_SERVER_IS_ALIVE ())
 		{
 		  if (css_peer_alive (fd, time_unit) == false)
@@ -591,7 +591,7 @@ css_net_recv (SOCKET fd, char *buffer, int *maxlen, int timeout)
 		      return ERROR_WHEN_READING_SIZE;
 		    }
 		}
-#endif /* CS_MODE */
+#endif /* CS_MODE && !WINDOWS */
 	      elapsed += time_unit;
 	      continue;
 	    }
