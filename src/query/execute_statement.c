@@ -8087,11 +8087,6 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 				   statement->column_number, er_msg (), NULL);
 		}
 
-#if 0				/* TMP TODO: xasl->qplan refer packing buf. so move this codes below */
-	      /* mark the end of another level of xasl packing */
-	      pt_exit_packing_buf ();
-#endif
-
 	      /* request the server to prepare the query;
 	         give XASL stream generated from the parse tree
 	         and get XASL file id returned */
@@ -8105,6 +8100,10 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		      err = er_errid ();
 		    }
 		}
+
+	      /* mark the end of another level of xasl packing */
+	      pt_exit_packing_buf ();
+
 	      /* As a result of query preparation of the server,
 	         the XASL cache for this query will be created or updated. */
 
@@ -8115,11 +8114,6 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  free_and_init (stream);
 		}
 	      statement->use_plan_cache = 0;
-
-#if 1
-	      /* mark the end of another level of xasl packing */
-	      pt_exit_packing_buf ();
-#endif
 	    }
 	  else
 	    {			/* if (!xasl_id) */
@@ -9324,11 +9318,6 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 				   statement->column_number, er_msg (), NULL);
 		}
 
-#if 0				/* TMP TODO: xasl->qplan refer packing buf. so move this codes below */
-	      /* mark the end of another level of xasl packing */
-	      pt_exit_packing_buf ();
-#endif
-
 	      /* request the server to prepare the query;
 	         give XASL stream generated from the parse tree
 	         and get XASL file id returned */
@@ -9342,6 +9331,10 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 		      err = er_errid ();
 		    }
 		}
+
+	      /* mark the end of another level of xasl packing */
+	      pt_exit_packing_buf ();
+
 	      /* As a result of query preparation of the server,
 	         the XASL cache for this query will be created or updated. */
 
@@ -9352,11 +9345,6 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  free_and_init (stream);
 		}
 	      statement->use_plan_cache = 0;
-
-#if 1
-	      /* mark the end of another level of xasl packing */
-	      pt_exit_packing_buf ();
-#endif
 	    }
 	  else
 	    {
@@ -9969,11 +9957,6 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
 	  error = er_errid ();
 	}
 
-#if 0				/* TMP TODO: xasl->qplan refer packing buf. so move this codes below */
-      /* mark the end of another level of xasl packing */
-      pt_exit_packing_buf ();
-#endif
-
       if (stream && (error >= NO_ERROR))
 	{
 	  error = query_prepare (qstmt, xasl->qplan, stream, size, &xasl_id);
@@ -9982,6 +9965,9 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
 	      error = er_errid ();
 	    }
 	}
+
+      /* mark the end of another level of xasl packing */
+      pt_exit_packing_buf ();
 
       /* As a result of query preparation of the server,
          the XASL cache for this query will be created or updated. */
@@ -9993,11 +9979,6 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
 	}
 
       statement->use_plan_cache = 0;
-
-#if 1
-      /* mark the end of another level of xasl packing */
-      pt_exit_packing_buf ();
-#endif
     }
   else
     {
@@ -13374,11 +13355,6 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
-#if 0				/* TMP TODO: xasl->qplan refer packing buf. so move this codes below */
-      /* mark the end of another level of xasl packing */
-      pt_exit_packing_buf ();
-#endif
-
       /* request the server to prepare the query;
          give XASL stream generated from the parse tree
          and get XASL file id returned */
@@ -13390,6 +13366,10 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      err = er_errid ();
 	    }
 	}
+
+      /* mark the end of another level of xasl packing */
+      pt_exit_packing_buf ();
+
       /* As a result of query preparation of the server,
          the XASL cache for this query will be created or updated. */
 
@@ -13399,11 +13379,6 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  free_and_init (stream);
 	}
       statement->use_plan_cache = 0;
-
-#if 1
-      /* mark the end of another level of xasl packing */
-      pt_exit_packing_buf ();
-#endif
     }
   else
     {
@@ -15238,9 +15213,6 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 		}
 	    }
 
-	  /* mark the end of another level of xasl packing */
-	  pt_exit_packing_buf ();
-
 	  /* cache the XASL */
 	  if (stream && (err >= NO_ERROR))
 	    {
@@ -15250,6 +15222,9 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  err = er_errid ();
 		}
 	    }
+
+	  /* mark the end of another level of xasl packing */
+	  pt_exit_packing_buf ();
 
 	  /* free 'stream' that is allocated inside of
 	     xts_map_xasl_to_stream() */
