@@ -43,7 +43,7 @@ namespace dbgw
 
   const char *getDBGWValueTypeString(int type);
 
-  union DBGWRawValue
+  union _DBGWRawValue
   {
     int nValue;
     char *szValue;
@@ -52,9 +52,6 @@ namespace dbgw
     double dValue;
   };
 
-  /**
-   * External access class.
-   */
   class DBGWValue
   {
   public:
@@ -82,9 +79,7 @@ namespace dbgw
     bool getFloat(float *pValue) const;
     bool getDouble(double *pValue) const;
     DBGWValueType getType() const;
-#ifdef ENABLE_LOB
     void *getVoidPtr() const;
-#endif
     int getLength() const;
     string toString() const;
     bool isNull() const;
@@ -96,8 +91,7 @@ namespace dbgw
 
   private:
     void init(DBGWValueType type, const void *pValue, bool bNull);
-    void alloc(DBGWValueType type, const void *pValue, bool bNull,
-        int nSize);
+    void alloc(DBGWValueType type, const void *pValue, bool bNull, int nSize);
     void alloc(DBGWValueType type, const struct tm *pValue);
 #ifdef ENABLE_LOB
     void init(DBGWValueType type, const void *pValue, bool bNull,
@@ -112,7 +106,7 @@ namespace dbgw
 
   private:
     DBGWValueType m_type;
-    DBGWRawValue m_stValue;
+    _DBGWRawValue m_stValue;
     bool m_bNull;
     int m_nSize;
 
@@ -121,25 +115,24 @@ namespace dbgw
   };
 
   typedef shared_ptr<DBGWValue> DBGWValueSharedPtr;
-  typedef vector<DBGWValueSharedPtr> DBGWValueList;
+  //typedef vector<DBGWValueSharedPtr> DBGWValueList;
 
   typedef boost::unordered_map<string, int, boost::hash<string>,
           dbgwStringCompareFunc> DBGWValueIndexMap;
 
-  typedef boost::shared_array<int> IntSharedArr;
-  typedef boost::shared_array<int64> BigIntSharedArr;
-  typedef boost::shared_array<float> FloatSharedArr;
-  typedef boost::shared_array<double> DoubleSharedArr;
-  typedef boost::shared_array<char *> StringSharedArr;
+  struct _DBGWValuePair
+  {
+    string key;
+    DBGWValueSharedPtr value;
+  };
 
-  /**
-   * External access class.
-   */
-  class DBGWValueSet
+  typedef vector<_DBGWValuePair> DBGWValueList;
+
+  class _DBGWValueSet
   {
   public:
-    DBGWValueSet();
-    virtual ~ DBGWValueSet();
+    _DBGWValueSet();
+    virtual ~ _DBGWValueSet();
 
     bool set(size_t nIndex, DBGWValueSharedPtr pValue);
     bool set(size_t nIndex, int nValue, bool bNull = false);
@@ -182,48 +175,43 @@ namespace dbgw
     void put(const char *szKey, size_t nIndex, DBGWValueSharedPtr pValue);
 
   public:
-    virtual const DBGWValue *getValue(const char *szKey) const;
-    virtual const DBGWValue *getValueWithoutException(const char *szKey) const;
-    virtual bool getInt(const char *szKey, int *pValue) const;
-    virtual bool getCString(const char *szKey, char **pValue) const;
-    virtual bool getLong(const char *szKey, int64 *pValue) const;
-    virtual bool getChar(const char *szKey, char *pValue) const;
-    virtual bool getFloat(const char *szKey, float *pValue) const;
-    virtual bool getDouble(const char *szKey, double *pValue) const;
-    virtual bool getDateTime(const char *szKey, struct tm *pValue) const;
-    virtual bool isNull(const char *szKey, bool *pNull) const;
-    virtual const DBGWValue *getValue(size_t nIndex) const;
-    virtual bool getInt(int nIndex, int *pValue) const;
-    virtual bool getCString(int nIndex, char **pValue) const;
-    virtual bool getLong(int nIndex, int64 *pValue) const;
-    virtual bool getChar(int nIndex, char *pValue) const;
-    virtual bool getFloat(int nIndex, float *pValue) const;
-    virtual bool getDouble(int nIndex, double *pValue) const;
-    virtual bool getDateTime(int nIndex, struct tm *pValue) const;
-    virtual bool isNull(int nIndex, bool *pNull) const;
-    virtual size_t size() const;
+    const DBGWValue *getValue(const char *szKey) const;
+    const DBGWValue *getValueWithoutException(const char *szKey) const;
+    bool getInt(const char *szKey, int *pValue) const;
+    bool getCString(const char *szKey, char **pValue) const;
+    bool getLong(const char *szKey, int64 *pValue) const;
+    bool getChar(const char *szKey, char *pValue) const;
+    bool getFloat(const char *szKey, float *pValue) const;
+    bool getDouble(const char *szKey, double *pValue) const;
+    bool getDateTime(const char *szKey, struct tm *pValue) const;
+    bool getType(const char *szKey, DBGWValueType *pType) const;
+    bool isNull(const char *szKey, bool *pNull) const;
+    const DBGWValue *getValue(size_t nIndex) const;
+    bool getInt(int nIndex, int *pValue) const;
+    bool getCString(int nIndex, char **pValue) const;
+    bool getLong(int nIndex, int64 *pValue) const;
+    bool getChar(int nIndex, char *pValue) const;
+    bool getFloat(int nIndex, float *pValue) const;
+    bool getDouble(int nIndex, double *pValue) const;
+    bool getDateTime(int nIndex, struct tm *pValue) const;
+    bool getType(int nIndex, DBGWValueType *pType) const;
+    bool isNull(int nIndex, bool *pNull) const;
+    size_t size() const;
 
   public:
-    DBGWValueSet &operator=(const DBGWValueSet &valueSet);
+    _DBGWValueSet &operator=(const _DBGWValueSet &valueSet);
     DBGWValueSharedPtr getValueSharedPtr(const char *szKey);
     DBGWValueSharedPtr getValueSharedPtr(size_t nIndex);
 
   private:
-    void removeIndexMap(int nIndex);
-
-  private:
     DBGWValueList m_valueList;
-    DBGWValueIndexMap m_indexMap;
   };
 
-  /**
-   * External access class.
-   */
-  class DBGWParameter: public DBGWValueSet
+  class _DBGWParameter: public _DBGWValueSet
   {
   public:
-    DBGWParameter();
-    virtual ~ DBGWParameter();
+    _DBGWParameter();
+    virtual ~ _DBGWParameter();
 
     DBGWValueSharedPtr getValueSharedPtr(const char *szKey, size_t nIndex);
 
@@ -232,28 +220,7 @@ namespace dbgw
     const DBGWValue *getValue(const char *szKey, size_t nPosition) const;
   };
 
-  typedef vector<DBGWParameter> DBGWParamList;
-
-  /**
-   * External access class.
-   */
-  class DBGWParameterList
-  {
-  public:
-    DBGWParameterList();
-    virtual ~ DBGWParameterList();
-
-    void add(const DBGWParameter &param);
-    DBGWParameter *getParameter(int nIndex);
-    void clear();
-
-  public:
-    const DBGWParameter *getParameter(int nIndex) const;
-    size_t size() const;
-
-  private:
-    DBGWParamList m_paramList;
-  };
+  typedef vector<_DBGWParameter> _DBGWParameterList;
 
 }
 

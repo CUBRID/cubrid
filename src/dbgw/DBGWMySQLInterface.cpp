@@ -354,7 +354,7 @@ namespace dbgw
       m_BindList.set(nIndex, p);
     }
 
-    void DBGWMySQLPreparedStatement::setString(int nIndex, const char *szValue)
+    void DBGWMySQLPreparedStatement::setCString(int nIndex, const char *szValue)
     {
       DBGWValueSharedPtr pValue(new DBGWValue(szValue));
       MySQLBindSharedPtr p(new MySQLBind(pValue));

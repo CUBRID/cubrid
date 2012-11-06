@@ -40,7 +40,7 @@ namespace dbgw
   private:
     string m_sqlName;
     bool m_bDummy;
-    DBGWParameter m_parameter;
+    _DBGWParameter m_parameter;
   };
 
   typedef shared_ptr<DBGWQueryTester> DBGWQueryTesterSharedPtr;

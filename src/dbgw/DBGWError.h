@@ -26,47 +26,42 @@ namespace dbgw
   {
     DBGW_ER_NO_ERROR                                  = 0,
 
+    DBGW_ER_COMMON_ARRAY_INDEX_OUT_OF_BOUNDS          = -22000,
+    DBGW_ER_COMMON_NOT_EXIST_KEY                      = -22001,
+
     DBGW_ER_CONF_NOT_EXIST_NAMESPACE                  = -22100,
     DBGW_ER_CONF_NOT_EXIST_QUERY_IN_XML               = -22101,
-    DBGW_ER_CONF_NOT_EXIST_ADDED_HOST                 = -22102,
-    DBGW_ER_CONF_FETCH_HOST_FAIL                      = -22103,
-    DBGW_ER_CONF_NOT_YET_LOADED                       = -22104,
-    DBGW_ER_CONF_NOT_EXIST_VERSION                    = -22105,
-    DBGW_ER_CONF_NOT_EXIST_FILE                       = -22106,
-    DBGW_ER_CONF_NOT_EXIST_SERVICE                    = -22107,
-    DBGW_ER_CONF_INVALID_PARAM_NAME                   = -22108,
-    DBGW_ER_CONF_CHANGE_POOL_CONTEXT                  = -22109,
-    DBGW_ER_CONF_FAILED_TO_CREATE_EVICTOR_THREAD      = -22110,
+    DBGW_ER_CONF_INVALID_HOST_WEIGHT                  = -22102,
+    DBGW_ER_CONF_NOT_YET_LOADED                       = -22103,
+    DBGW_ER_CONF_NOT_EXIST_VERSION                    = -22104,
+    DBGW_ER_CONF_NOT_EXIST_FILE                       = -22105,
+    DBGW_ER_CONF_NOT_EXIST_SERVICE                    = -22106,
+    DBGW_ER_CONF_INVALID_PARAM_NAME                   = -22107,
+    DBGW_ER_CONF_CHANGE_POOL_CONTEXT                  = -22108,
+    DBGW_ER_CONF_FAILED_TO_CREATE_EVICTOR_THREAD      = -22109,
 
-    DBGW_ER_SQL_NOT_EXIST_CONN                        = -22200,
     DBGW_ER_SQL_INVALID_SQL                           = -22201,
-    DBGW_ER_SQL_NOT_EXIST_PARAM                       = -22202,
-    DBGW_ER_SQL_EXECUTE_BEFORE_PREPARE                = -22203,
-    DBGW_ER_SQL_NOT_EXIST_PROPERTY                    = -22204,
+    DBGW_ER_SQL_NOT_EXIST_OUT_PARAMETER               = -22202,
+    DBGW_ER_SQL_INVALID_PARAMETER_LIST                = -22203,
+    DBGW_ER_SQL_UNSUPPORTED_OPERATION                 = -22204,
 
-    DBGW_ER_VALUE_NOT_EXIST_SET                       = -22300,
     DBGW_ER_VALUE_MISMATCH_VALUE_TYPE                 = -22301,
     DBGW_ER_VALUE_INVALID_VALUE_TYPE                  = -22302,
     DBGW_ER_VALUE_INVALID_VALUE_FORMAT                = -22303,
-    DBGW_ER_VALUE_INVALID_SIZE                        = -22304,
 
-    DBGW_ER_CLIENT_MULTISET_IGNORE_FLAG_FALSE         = -22400,
+    DBGW_ER_CLIENT_CANNOT_MAKE_MULTIPLE_RESULT        = -22400,
     DBGW_ER_CLIENT_INVALID_CLIENT                     = -22401,
     DBGW_ER_CLIENT_NOT_EXIST_GROUP                    = -22402,
     DBGW_ER_CLIENT_ALREADY_IN_TRANSACTION             = -22403,
     DBGW_ER_CLIENT_NOT_IN_TRANSACTION                 = -22404,
-    DBGW_ER_CLIENT_INVALID_PARAMETER_LIST             = -22405,
-    DBGW_ER_CLIENT_EXECUTE_SELECT_IN_BATCH            = -22406,
-    DBGW_ER_CLIENT_EXECUTE_PROCEDURE_IN_BATCH         = -22407,
-    DBGW_ER_CLIENT_CREATE_MAX_CONNECTION              = -22408,
-
-    DBGW_ER_RESULT_NOT_ALLOWED_NEXT                   = -22500,
-    DBGW_ER_RESULT_NOT_ALLOWED_GET_METADATA           = -22501,
-    DBGW_ER_RESULT_NOT_ALLOWED_OPERATION              = -22502,
-    DBGW_ER_RESULT_VALIDATE_FAIL                      = -22503,
-    DBGW_ER_RESULT_VALIDATE_TYPE_FAIL                 = -22504,
-    DBGW_ER_RESULT_VALIDATE_VALUE_FAIL                = -22505,
-    DBGW_ER_RESULT_NO_MORE_DATA                       = -22506,
+    DBGW_ER_CLIENT_INVALID_QUERY_TYPE                 = -22405,
+    DBGW_ER_CLIENT_CREATE_MAX_CONNECTION              = -22406,
+    DBGW_ER_CLIENT_INVALID_OPERATION                  = -22407,
+    DBGW_ER_CLIENT_VALIDATE_FAIL                      = -22408,
+    DBGW_ER_CLIENT_VALIDATE_TYPE_FAIL                 = -22409,
+    DBGW_ER_CLIENT_VALIDATE_VALUE_FAIL                = -22410,
+    DBGW_ER_CLIENT_NO_MORE_DATA                       = -22411,
+    DBGW_ER_CLIENT_ACCESS_DATA_BEFORE_FETCH           = -22412,
 
     DBGW_ER_INTERFACE_ERROR                           = -22600,
 
@@ -80,9 +75,8 @@ namespace dbgw
     DBGW_ER_XML_INVALID_SYNTAX                        = -22707,
     DBGW_ER_XML_DUPLICATE_PARAM_INDEX                 = -22708,
     DBGW_ER_XML_INVALID_PARAM_INDEX                   = -22709,
-    DBGW_ER_XML_NOT_EXIST_RESULT                      = -22710,
-    DBGW_ER_XML_DUPLICATE_RESULT_INDEX                = -22711,
-    DBGW_ER_XML_INVALID_RESULT_INDEX                  = -22712,
+    DBGW_ER_XML_DUPLICATE_RESULT_INDEX                = -22710,
+    DBGW_ER_XML_INVALID_RESULT_INDEX                  = -22711,
 
     DBGW_ER_EXTERNAL_MUTEX_OPERATION_FAIL             = -22800,
     DBGW_ER_EXTERNAL_STANDARD_ERROR                   = -22801,
@@ -145,11 +139,23 @@ namespace dbgw
   extern const char *getLastErrorMessage();
   extern const char *getFormattedErrorMessage();
 
-  class NotExistNamespaceException : public DBGWException
+  class ArrayIndexOutOfBoundsException : public DBGWException
   {
   public:
-    NotExistNamespaceException() throw();
-    NotExistNamespaceException(const char *szNamespace) throw();
+    ArrayIndexOutOfBoundsException(int nIndex, const char *szArrayName) throw();
+  };
+
+  class NotExistKeyException : public DBGWException
+  {
+  public:
+    NotExistKeyException(const char *szKey, const char *szArrayName) throw();
+  };
+
+  class NotExistNameSpaceException : public DBGWException
+  {
+  public:
+    NotExistNameSpaceException() throw();
+    NotExistNameSpaceException(const char *szNamespace) throw();
   };
 
   class NotExistQueryInXmlException : public DBGWException
@@ -158,16 +164,10 @@ namespace dbgw
     NotExistQueryInXmlException(const char *szSqlName) throw();
   };
 
-  class NotExistAddedHostException : public DBGWException
+  class InvalidHostWeightException : public DBGWException
   {
   public:
-    NotExistAddedHostException() throw();
-  };
-
-  class FetchHostFailException : public DBGWException
-  {
-  public:
-    FetchHostFailException() throw();
+    InvalidHostWeightException() throw();
   };
 
   class NotYetLoadedException : public DBGWException
@@ -207,42 +207,28 @@ namespace dbgw
     FailedToCreateEvictorException() throw();
   };
 
-  class NotExistConnException : public DBGWException
-  {
-  public:
-    NotExistConnException(const char *szGroupName) throw();
-  };
-
   class InvalidSqlException : public DBGWException
   {
   public:
     InvalidSqlException(const char *szFileName, const char *szSqlName) throw();
   };
 
-  class NotExistParamException : public DBGWException
+  class NotExistOutParameterException : public DBGWException
   {
   public:
-    NotExistParamException(int nIndex) throw();
-    NotExistParamException(string name) throw();
+    NotExistOutParameterException() throw();
   };
 
-  class ExecuteBeforePrepareException : public DBGWException
+  class InvalidParameterListException : public DBGWException
   {
   public:
-    ExecuteBeforePrepareException() throw();
+    InvalidParameterListException() throw();
   };
 
-  class SQLNotExistPropertyException : public DBGWException
+  class UnsupportedOperationException : public DBGWException
   {
   public:
-    SQLNotExistPropertyException(const char *szName) throw();
-  };
-
-  class NotExistSetException : public DBGWException
-  {
-  public:
-    NotExistSetException(const char *szKey) throw();
-    NotExistSetException(size_t nIndex) throw();
+    UnsupportedOperationException() throw();
   };
 
   class MismatchValueTypeException : public DBGWException
@@ -268,16 +254,10 @@ namespace dbgw
     InvalidValueFormatException(const char *szType, const char *szFormat) throw();
   };
 
-  class InvalidValueSizeException : public DBGWException
+  class CannotMakeMulipleResultException : public DBGWException
   {
   public:
-    InvalidValueSizeException(int nSize) throw();
-  };
-
-  class MultisetIgnoreResultFlagFalseException : public DBGWException
-  {
-  public:
-    MultisetIgnoreResultFlagFalseException(const char *szSqlName) throw();
+    CannotMakeMulipleResultException(const char *szSqlName) throw();
   };
 
   class InvalidClientException : public DBGWException
@@ -304,30 +284,22 @@ namespace dbgw
     NotInTransactionException() throw();
   };
 
+  class InvalidQueryTypeException : public DBGWException
+  {
+  public:
+    InvalidQueryTypeException() throw();
+  };
+
   class CreateMaxConnectionException : public DBGWException
   {
   public:
     CreateMaxConnectionException(int nSize) throw();
   };
 
-  class NotAllowedNextException : public DBGWException
+  class InvalidClientOperationException : public DBGWException
   {
   public:
-    NotAllowedNextException() throw();
-  };
-
-  class NotAllowedGetMetadataException : public DBGWException
-  {
-  public:
-    NotAllowedGetMetadataException() throw();
-  };
-
-  class NotAllowedOperationException : public DBGWException
-  {
-  public:
-    NotAllowedOperationException() throw();
-    NotAllowedOperationException(const char *szOperation,
-        const char *szQueryType) throw();
+    InvalidClientOperationException() throw();
   };
 
   class ValidateFailException : public DBGWException
@@ -357,6 +329,12 @@ namespace dbgw
   {
   public:
     NoMoreDataException() throw();
+  };
+
+  class AccessDataBeforeFetchException : public DBGWException
+  {
+  public:
+    AccessDataBeforeFetchException() throw();
   };
 
   class CreateFailParserExeception : public DBGWException
@@ -464,24 +442,6 @@ namespace dbgw
   {
   public:
     NotEnoughBufferException() throw();
-  };
-
-  class InvalidParameterListException : public DBGWException
-  {
-  public:
-    InvalidParameterListException() throw();
-  };
-
-  class ExecuteSelectInBatchException : public DBGWException
-  {
-  public:
-    ExecuteSelectInBatchException() throw();
-  };
-
-  class ExecuteProcedureInBatchException : public DBGWException
-  {
-  public:
-    ExecuteProcedureInBatchException() throw();
   };
 
   class CondVarOperationFailException : public DBGWException

@@ -16,14 +16,6 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
-#include "DBGWCommon.h"
-#include "DBGWError.h"
-#include "DBGWPorting.h"
-#include "DBGWValue.h"
-#include "DBGWLogger.h"
-#include "DBGWQuery.h"
-#include "DBGWDataBaseInterface.h"
-#include "DBGWConfiguration.h"
 #include "DBGWClient.h"
 #include "DBGWAdapter.h"
 
@@ -54,11 +46,11 @@ namespace dbgw
             nDefaultErrorCode = DBGWCONNECTOR_NOT_ENOUGH_MEMORY;
             szDefaultErrorMessage = "DBGWCONNECTOR_NOT_ENOUGH_MEMORY";
             break;
-          case DBGW_ER_RESULT_NOT_ALLOWED_OPERATION:
+          case DBGW_ER_CLIENT_ACCESS_DATA_BEFORE_FETCH:
             nDefaultErrorCode = DBGWCONNECTOR_NOT_PROPER_OP;
             szDefaultErrorMessage = "DBGWCONNECTOR_NOT_PROPER_OP";
             break;
-          case DBGW_ER_RESULT_NO_MORE_DATA:
+          case DBGW_ER_CLIENT_NO_MORE_DATA:
             nDefaultErrorCode = DBGWCONNECTOR_NOMORE_FETCH;
             szDefaultErrorMessage = "DBGWCONNECTOR_NOMORE_FETCH";
             break;
@@ -273,7 +265,7 @@ namespace dbgw
           Handle hParam = NULL;
           try
             {
-              hParam = new DBGWParameter();
+              hParam = new DBGWClientParameter();
               if (hParam == NULL)
                 {
                   MemoryAllocationFail e(sizeof(Handle));
@@ -717,7 +709,7 @@ namespace dbgw
           Handle hParamList = NULL;
           try
             {
-              hParamList = new DBGWParameterList();
+              hParamList = new DBGWClientParameterList();
               if (hParamList == NULL)
                 {
                   MemoryAllocationFail e(sizeof(Handle));
@@ -800,7 +792,7 @@ namespace dbgw
                   throw e;
                 }
 
-              hParamList->add(*hParam);
+              hParamList->push_back(*hParam);
               return true;
 
             }
@@ -821,7 +813,7 @@ namespace dbgw
           Handle hResult = NULL;
           try
             {
-              hResult = new db::DBGWResultSharedPtr();
+              hResult = new DBGWClientResultSetSharedPtr();
               if (hResult == NULL)
                 {
                   MemoryAllocationFail e(sizeof(Handle));
@@ -1001,7 +993,8 @@ namespace dbgw
             }
         }
 
-        DECLSPECIFIER const MetaDataList *__stdcall GetMetaDataList(Handle hResult)
+        DECLSPECIFIER const DBGWResultSetMetaDataSharedPtr __stdcall GetMetaDataList(
+            Handle hResult)
         {
           clearException();
 
@@ -1014,18 +1007,19 @@ namespace dbgw
                   throw e;
                 }
 
-              const MetaDataList *metaList = (*hResult)->getMetaDataList();
-              if (metaList == NULL)
+              const DBGWResultSetMetaDataSharedPtr pMetaData =
+                  (*hResult)->getMetaData();
+              if (pMetaData == NULL)
                 {
                   throw getLastException();
                 }
 
-              return metaList;
+              return pMetaData;
             }
           catch (DBGWException &e)
             {
               CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_NOT_PROPER_OP);
-              return NULL;
+              return DBGWResultSetMetaDataSharedPtr();
             }
         }
 
@@ -1426,7 +1420,7 @@ namespace dbgw
           Handle hResult = NULL;
           try
             {
-              hResult = new db::DBGWBatchResultSharedPtr();
+              hResult = new DBGWClientBatchResultSetSharedPtr();
               if (hResult == NULL)
                 {
                   MemoryAllocationFail e(sizeof(Handle));
@@ -1487,10 +1481,7 @@ namespace dbgw
                   throw e;
                 }
 
-              if ((*hBatchResult)->getSize(pSize) == false)
-                {
-                  throw getLastException();
-                }
+              *pSize = (*hBatchResult)->size();
               return true;
             }
           catch (DBGWException &e)
@@ -1500,7 +1491,7 @@ namespace dbgw
             }
         }
 
-        DECLSPECIFIER bool __stdcall GetExecuteStatus(Handle hBatchResult, DBGWExecuteStatus *pStatus)
+        DECLSPECIFIER bool __stdcall GetExecuteStatus(Handle hBatchResult, DBGWBatchExecuteStatus *pStatus)
         {
           clearException();
 
@@ -1513,10 +1504,7 @@ namespace dbgw
                   throw e;
                 }
 
-              if ((*hBatchResult)->getExecuteStatus(pStatus) == false)
-                {
-                  throw getLastException();
-                }
+              *pStatus = (*hBatchResult)->getExecuteStatus();
               return true;
             }
           catch (DBGWException &e)
@@ -1581,7 +1569,7 @@ namespace dbgw
         }
 
         DECLSPECIFIER bool __stdcall GetErrorMessage(Handle hBatchResult,
-            int nIndex, const char *pErrorMessage)
+            int nIndex, const char **pErrorMessage)
         {
           clearException();
 
@@ -1594,7 +1582,8 @@ namespace dbgw
                   throw e;
                 }
 
-              if ((*hBatchResult)->getErrorMessage(nIndex, pErrorMessage) == false)
+              if ((*hBatchResult)->getErrorMessage(nIndex, pErrorMessage)
+                  == false)
                 {
                   throw getLastException();
                 }
@@ -1608,7 +1597,7 @@ namespace dbgw
         }
 
         DECLSPECIFIER bool __stdcall GetStatementType(Handle hBatchResult,
-            int nIndex, DBGWQueryType *pStatementType)
+            int nIndex, DBGWStatementType *pStatementType)
         {
           clearException();
 
@@ -1747,7 +1736,7 @@ namespace dbgw
                   throw e;
                 }
 
-              *hBatchResult = hExecutor->execBatch(szMethod, hParamList);
+              *hBatchResult = hExecutor->execBatch(szMethod, *hParamList);
               if (*hBatchResult == NULL)
                 {
                   throw getLastException();

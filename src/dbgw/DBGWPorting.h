@@ -68,11 +68,11 @@ namespace dbgw
   namespace system
   {
 
-    class Mutex
+    class _Mutex
     {
     public:
-      Mutex();
-      virtual ~Mutex();
+      _Mutex();
+      virtual ~_Mutex();
 
       virtual void lock() = 0;
       virtual void unlock() = 0;
@@ -80,63 +80,63 @@ namespace dbgw
 
     private:
 
-      Mutex(const Mutex &);
-      void operator=(const Mutex &);
+      _Mutex(const _Mutex &);
+      void operator=(const _Mutex &);
     };
 
-    typedef shared_ptr<Mutex> MutexSharedPtr;
+    typedef shared_ptr<_Mutex> _MutexSharedPtr;
 
-    class MutexFactory
+    class _MutexFactory
     {
     public:
-      static MutexSharedPtr create();
+      static _MutexSharedPtr create();
 
     private:
-      ~MutexFactory();
+      ~_MutexFactory();
     };
 
-    class MutexLock
+    class _MutexLock
     {
     public:
-      explicit MutexLock(MutexSharedPtr pMutex);
-      ~MutexLock();
+      explicit _MutexLock(_MutexSharedPtr pMutex);
+      ~_MutexLock();
       void unlock();
 
     private:
-      MutexSharedPtr m_pMutex;
+      _MutexSharedPtr m_pMutex;
       bool m_bUnlocked;
 
-      MutexLock(const MutexLock &);
-      void operator=(const MutexLock &);
+      _MutexLock(const _MutexLock &);
+      void operator=(const _MutexLock &);
     };
 
-    class ConditionVariable
+    class _ConditionVariable
     {
     public:
-      ConditionVariable();
-      virtual ~ConditionVariable();
+      _ConditionVariable();
+      virtual ~_ConditionVariable();
 
       virtual void notify() = 0;
       virtual void notifyAll() = 0;
-      virtual void wait(MutexSharedPtr pMutex) = 0;
-      virtual void timedWait(MutexSharedPtr pMutex, long lWaitTimeMilSec) = 0;
+      virtual void wait(_MutexSharedPtr pMutex) = 0;
+      virtual void timedWait(_MutexSharedPtr pMutex, long lWaitTimeMilSec) = 0;
     };
 
-    typedef shared_ptr<ConditionVariable> ConditionVariableSharedPtr;
+    typedef shared_ptr<_ConditionVariable> _ConditionVariableSharedPtr;
 
-    class ConditionVariableFactory
+    class _ConditionVariableFactory
     {
     public:
-      static ConditionVariableSharedPtr create();
+      static _ConditionVariableSharedPtr create();
     };
 
     const string getFileExtension(const string &fileName);
 
-    class Directory
+    class _Directory
     {
     public:
-      Directory(const char *szPath);
-      virtual ~Directory();
+      _Directory(const char *szPath);
+      virtual ~_Directory();
 
     public:
       const char *getPath() const;
@@ -147,36 +147,36 @@ namespace dbgw
       string m_path;
     };
 
-    typedef shared_ptr<Directory> DirectorySharedPtr;
+    typedef shared_ptr<_Directory> _DirectorySharedPtr;
 
-    class DirectoryFactory
+    class _DirectoryFactory
     {
     public:
-      static DirectorySharedPtr create(const char *szPath);
+      static _DirectorySharedPtr create(const char *szPath);
     };
 
-    class Thread;
+    class _Thread;
 
-    typedef shared_ptr<Thread> ThreadSharedPtr;
+    typedef shared_ptr<_Thread> _ThreadSharedPtr;
 
     /**
      * By using shared_from_this(), guarantee that
      * ThreadData will be alive until thread is dead.
      */
-    class ThreadData : public enable_shared_from_this<ThreadData>
+    class _ThreadData : public enable_shared_from_this<_ThreadData>
     {
     };
 
-    typedef shared_ptr<ThreadData> ThreadDataSharedPtr;
+    typedef shared_ptr<_ThreadData> _ThreadDataSharedPtr;
 
-    enum ThreadStatus
+    enum _ThreadStatus
     {
       THREAD_STATUS_STOP = 0,
       THREAD_STATUS_RUNNING,
       THREAD_STATUS_WAITING
     };
 
-    enum ThreadOperation
+    enum _ThreadOperation
     {
       THREAD_OP_NONE,
       THREAD_OP_START,
@@ -184,27 +184,27 @@ namespace dbgw
       THREAD_OP_DETACH
     };
 
-    typedef void (*ThreadFunction)(const Thread *, ThreadDataSharedPtr);
+    typedef void (*_ThreadFunction)(const _Thread *, _ThreadDataSharedPtr);
 
 #ifdef WINDOWS
-#define THREAD_RETURN_TYPE unsigned int __stdcall
-#define THREAD_RETURN_VALUE 0
+#define _THREAD_RETURN_TYPE unsigned int __stdcall
+#define _THREAD_RETURN_VALUE 0
 #else
-#define THREAD_RETURN_TYPE void *
-#define THREAD_RETURN_VALUE NULL
+#define _THREAD_RETURN_TYPE void *
+#define _THREAD_RETURN_VALUE NULL
 #endif
 
-    class Thread : public enable_shared_from_this<Thread>
+    class _Thread : public enable_shared_from_this<_Thread>
     {
     public:
       static long MIN_SLEEP_TIME_MILSEC();
 
     public:
-      Thread(ThreadFunction pFunc);
-      virtual ~Thread();
+      _Thread(_ThreadFunction pFunc);
+      virtual ~_Thread();
 
       void start();
-      void start(ThreadDataSharedPtr pData);
+      void start(_ThreadDataSharedPtr pData);
       void join();
       void timedJoin(int nWaitTimeMilSec);
 
@@ -213,28 +213,28 @@ namespace dbgw
       bool sleep(long lMilSec) const;
 
     protected:
-      static THREAD_RETURN_TYPE run(void *pData);
+      static _THREAD_RETURN_TYPE run(void *pData);
       virtual void doStart() = 0;
       virtual void doJoin() = 0;
       virtual void doDetach() = 0;
 
     private:
       void execute();
-      void changeThreadStatus(ThreadStatus status);
+      void changeThreadStatus(_ThreadStatus status);
 
     protected:
-      ThreadStatus m_status;
-      ThreadOperation m_op;
-      ThreadDataSharedPtr m_pData;
-      ThreadFunction m_pFunc;
-      MutexSharedPtr m_pMutex;
-      ConditionVariableSharedPtr m_pCond;
+      _ThreadStatus m_status;
+      _ThreadOperation m_op;
+      _ThreadDataSharedPtr m_pData;
+      _ThreadFunction m_pFunc;
+      _MutexSharedPtr m_pMutex;
+      _ConditionVariableSharedPtr m_pCond;
     };
 
-    class ThreadFactory
+    class _ThreadFactory
     {
     public:
-      static ThreadSharedPtr create(ThreadFunction pFunc);
+      static _ThreadSharedPtr create(_ThreadFunction pFunc);
     };
 
   }

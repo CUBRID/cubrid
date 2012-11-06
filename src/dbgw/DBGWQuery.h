@@ -20,11 +20,13 @@
 #ifndef DBGWQUERY_H_
 #define DBGWQUERY_H_
 
+#include "DBGWClientFwd.h"
+
 namespace dbgw
 {
 
-  class DBGWQuery;
-  typedef shared_ptr<DBGWQuery> DBGWQuerySharedPtr;
+  class _DBGWQuery;
+  typedef shared_ptr<_DBGWQuery> _DBGWQuerySharedPtr;
 
   enum DBGWQueryMapperVersion
   {
@@ -34,165 +36,146 @@ namespace dbgw
     DBGW_QUERY_MAP_VER_30
   };
 
-  enum DBGWQueryType
-  {
-    DBGW_QUERY_TYPE_UNDEFINED = -1,
-    DBGW_QUERY_TYPE_SELECT = 0,
-    DBGW_QUERY_TYPE_PROCEDURE,
-    DBGW_QUERY_TYPE_UPDATE,
-    DBGW_QUERY_TYPE_SIZE
-  };
-
   extern string makeImplicitParamName(int nIndex);
   extern bool isImplicitParamName(const char *szName);
-  extern DBGWQueryType getQueryType(const char *szQueryType);
+  extern db::DBGWStatementType getQueryType(const char *szQueryType);
 
-  enum DBGWBindMode
-  {
-    DBGW_BIND_MODE_IN = 0,
-    DBGW_BIND_MODE_OUT,
-    DBGW_BIND_MODE_INOUT
-  };
-
-  namespace db
-  {
-    typedef vector<struct MetaData> MetaDataList;
-  }
-
-  struct DBGWQueryParameter
+  struct _DBGWQueryParameter
   {
     string name;
     DBGWValueType type;
     size_t index;
     int firstPlaceHolderIndex;
-    DBGWBindMode mode;
+    db::DBGWParameterMode mode;
   };
 
-  struct DBGWPlaceHolder
+  struct _DBGWPlaceHolder
   {
     string name;
     size_t index;
     size_t queryParamIndex;
   };
 
-  typedef vector<DBGWQueryType> DBGWQueryTypeList;
-  typedef vector<DBGWQueryParameter> DBGWQueryParameterList;
-  typedef vector<DBGWPlaceHolder> DBGWPlaceHolderList;
+  typedef vector<db::DBGWStatementType> _DBGWQueryTypeList;
+  typedef vector<_DBGWQueryParameter> _DBGWQueryParameterList;
+  typedef vector<_DBGWPlaceHolder> _DBGWPlaceHolderList;
 
-  class DBGWQuery;
-
-  class DBGWBoundQuery
+  class _DBGWBoundQuery
   {
   public:
-    DBGWBoundQuery(const DBGWBoundQuery &query);
-    virtual ~ DBGWBoundQuery();
+    _DBGWBoundQuery(const _DBGWBoundQuery &query);
+    virtual ~ _DBGWBoundQuery();
 
   public:
     const char *getSQL() const;
     const char *getSqlName() const;
     const char *getGroupName() const;
     string getSqlKey() const;
-    DBGWQueryType getType() const;
+    db::DBGWStatementType getType() const;
     int getBindNum() const;
-    const DBGWQueryParameter &getQueryParamByPlaceHolderIndex(int nBindIndex) const;
-    const DBGWQueryParameterList &getQueryParamList() const;
-    const db::MetaDataList &getUserDefinedMetaList() const;
+    const _DBGWQueryParameter &getQueryParam(size_t nIndex) const;
+    const _DBGWQueryParameter &getQueryParamByPlaceHolderIndex(
+        size_t nBindIndex) const;
+    const _DBGWQueryParameterList &getQueryParamList() const;
+    const _DBGWClientResultSetMetaDataRawList &getUserDefinedMetaList() const;
     bool isExistOutBindParam() const;
 
   private:
-    DBGWBoundQuery(const char *szSql, const char *szGroupName,
-        const DBGWQuery &query);
+    _DBGWBoundQuery(const char *szSql, const char *szGroupName,
+        const _DBGWQuery &query);
 
   private:
     string m_sql;
     string m_groupName;
     string m_sqlKey;
-    const DBGWQuery &m_query;
+    const _DBGWQuery &m_query;
 
   private:
-    friend class DBGWQuery;
+    friend class _DBGWQuery;
   };
 
-  typedef shared_ptr<DBGWBoundQuery> DBGWBoundQuerySharedPtr;
+  typedef shared_ptr<_DBGWBoundQuery> _DBGWBoundQuerySharedPtr;
 
-  class DBGWQuery
+  class _DBGWQuery
   {
   public:
-    DBGWQuery(DBGWQueryMapperVersion version, const string &fileName,
+    _DBGWQuery(DBGWQueryMapperVersion version, const string &fileName,
         const string &query, const string &sqlName, const string &groupName,
-        DBGWQueryType queryType,
-        const DBGWQueryParameterList &queryParamList,
-        const db::MetaDataList &userDefinedMetaList);
-    virtual ~ DBGWQuery();
+        db::DBGWStatementType statementType,
+        const _DBGWQueryParameterList &queryParamList,
+        const _DBGWClientResultSetMetaDataRawList &userDefinedMetaList);
+    virtual ~ _DBGWQuery();
 
   public:
-    DBGWBoundQuerySharedPtr getDBGWBoundQuery(const char *szGroupName,
-        const DBGWValueSet *pValueSet) const;
+    _DBGWBoundQuerySharedPtr getDBGWBoundQuery(const char *szGroupName,
+        const _DBGWValueSet *pValueSet) const;
     const char *getFileName() const;
     const char *getSqlName() const;
     const char *getGroupName() const;
-    DBGWQueryType getType() const;
+    db::DBGWStatementType getType() const;
     int getBindNum() const;
-    const DBGWQueryParameter &getQueryParamByPlaceHolderIndex(size_t nBindIndex) const;
+    const _DBGWQueryParameter &getQueryParam(size_t nIndex) const;
+    const _DBGWQueryParameter &getQueryParamByPlaceHolderIndex(
+        size_t nBindIndex) const;
     const char *getQuery() const;
-    const db::MetaDataList &getUserDefinedMetaList() const;
-    const DBGWQueryParameterList &getQueryParamList() const;
+    const _DBGWClientResultSetMetaDataRawList &getUserDefinedMetaList() const;
+    const _DBGWQueryParameterList &getQueryParamList() const;
     bool isExistOutBindParam() const;
 
   private:
     void addQueryPart(char cToken, const char *szStart, const char *szEnd);
 
   private:
-    class DBGWQueryPart;
-    typedef shared_ptr<DBGWQueryPart> DBGWQueryPartSharedPtr;
-    typedef vector<DBGWQueryPartSharedPtr> DBGWQueryPartList;
+    class _DBGWQueryPart;
+    typedef shared_ptr<_DBGWQueryPart> _DBGWQueryPartSharedPtr;
+    typedef vector<_DBGWQueryPartSharedPtr> _DBGWQueryPartList;
 
   private:
-    DBGWLogger m_logger;
-    DBGWQueryPartList m_queryPartList;
+    _DBGWLogger m_logger;
+    _DBGWQueryPartList m_queryPartList;
     string m_fileName;
     string m_query;
     string m_sqlName;
     string m_groupName;
-    DBGWQueryType m_queryType;
-    DBGWQueryParameterList m_queryParamList;
-    DBGWPlaceHolderList m_placeHolderList;
-    db::MetaDataList m_userDefinedMetaList;
+    db::DBGWStatementType m_statementType;
+    _DBGWQueryParameterList m_queryParamList;
+    _DBGWPlaceHolderList m_placeHolderList;
+    _DBGWClientResultSetMetaDataRawList m_userDefinedMetaList;
     bool m_bExistOutBindParam;
 
   private:
-    class DBGWQueryPart
+    class _DBGWQueryPart
     {
     public:
-      virtual ~ DBGWQueryPart()
+      virtual ~ _DBGWQueryPart()
       {
       }
 
-      virtual string toString(const DBGWValueSet *pValueSet) const = 0;
+      virtual string toString(const _DBGWValueSet *pValueSet) const = 0;
     };
 
-    class DBGWSQLQueryPart: public DBGWQueryPart
+    class _DBGWSQLQueryPart: public _DBGWQueryPart
     {
     public:
-      DBGWSQLQueryPart(string sql);
-      virtual ~ DBGWSQLQueryPart();
+      _DBGWSQLQueryPart(string sql);
+      virtual ~ _DBGWSQLQueryPart();
 
-      virtual string toString(const DBGWValueSet *pValueSet) const;
+      virtual string toString(const _DBGWValueSet *pValueSet) const;
 
     private:
       string m_sql;
     };
 
-    class DBGWReplaceQueryPart: public DBGWQueryPart
+    class _DBGWReplaceQueryPart: public _DBGWQueryPart
     {
     public:
-      DBGWReplaceQueryPart(const DBGWLogger &logger, const string &name);
-      virtual ~ DBGWReplaceQueryPart();
+      _DBGWReplaceQueryPart(const _DBGWLogger &logger, const string &name);
+      virtual ~ _DBGWReplaceQueryPart();
 
-      virtual string toString(const DBGWValueSet *pValueSet) const;
+      virtual string toString(const _DBGWValueSet *pValueSet) const;
 
     private:
-      const DBGWLogger &m_logger;
+      const _DBGWLogger &m_logger;
       string m_name;
 
     };

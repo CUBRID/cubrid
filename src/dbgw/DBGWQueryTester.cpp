@@ -22,8 +22,6 @@
 #else /* WINDOWS */
 #include <expat.h>
 #endif /* !WINDOWS */
-#include "DBGWCommon.h"
-#include "DBGWPorting.h"
 #include "DBGWClient.h"
 #include "DBGWXMLParser.h"
 #include "DBGWQueryTester.h"
@@ -87,7 +85,7 @@ namespace dbgw
 
   void DBGWQueryTester::execute(DBGWClient &client)
   {
-    DBGWResultSharedPtr pResult = client.exec(m_sqlName.c_str(), &m_parameter);
+    DBGWClientResultSetSharedPtr pResult = client.exec(m_sqlName.c_str(), &m_parameter);
     if (m_bDummy)
       {
         return;
@@ -96,7 +94,7 @@ namespace dbgw
     if (getLastErrorCode() != DBGW_ER_NO_ERROR)
       {
         DBGWException e = getLastException();
-        if (e.getErrorCode() == DBGW_ER_RESULT_VALIDATE_TYPE_FAIL)
+        if (e.getErrorCode() == DBGW_ER_CLIENT_VALIDATE_TYPE_FAIL)
           {
             fprintf(stderr, "[WARN] %s is failed to execute. %s\n",
                 m_sqlName.c_str(), e.what());

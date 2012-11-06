@@ -17,14 +17,16 @@
  *
  */
 #include <boost/format.hpp>
+#include <boost/lexical_cast.hpp>
+#include <boost/algorithm/string.hpp>
 #include "DBGWCommon.h"
 #include "DBGWError.h"
 #include "DBGWPorting.h"
 #include "DBGWValue.h"
 #include "DBGWLogger.h"
-#include "DBGWQuery.h"
 #include "DBGWDataBaseInterface.h"
 #include "DBGWCUBRIDInterface.h"
+#include "DBGWQuery.h"
 #include "DBGWMock.h"
 
 #ifdef BUILD_MOCK
@@ -39,7 +41,7 @@ namespace dbgw
   namespace db
   {
 
-    CUBRIDException::CUBRIDException(const DBGWExceptionContext &context) throw() :
+    _CUBRIDException::_CUBRIDException(const DBGWExceptionContext &context) throw() :
       DBGWException(context)
     {
       switch (getInterfaceErrorCode())
@@ -54,21 +56,21 @@ namespace dbgw
         }
     }
 
-    CUBRIDException::~CUBRIDException() throw()
+    _CUBRIDException::~_CUBRIDException() throw()
     {
     }
 
-    CUBRIDException CUBRIDExceptionFactory::create(const string &errorMessage)
+    _CUBRIDException _CUBRIDExceptionFactory::create(const string &errorMessage)
     {
       T_CCI_ERROR cciError =
       {
         DBGW_ER_NO_ERROR, ""
       };
 
-      return CUBRIDExceptionFactory::create(-1, cciError, errorMessage);
+      return _CUBRIDExceptionFactory::create(-1, cciError, errorMessage);
     }
 
-    CUBRIDException CUBRIDExceptionFactory::create(int nInterfaceErrorCode,
+    _CUBRIDException _CUBRIDExceptionFactory::create(int nInterfaceErrorCode,
         const string &errorMessage)
     {
       T_CCI_ERROR cciError =
@@ -76,11 +78,11 @@ namespace dbgw
         DBGW_ER_NO_ERROR, ""
       };
 
-      return CUBRIDExceptionFactory::create(nInterfaceErrorCode, cciError,
+      return _CUBRIDExceptionFactory::create(nInterfaceErrorCode, cciError,
           errorMessage);
     }
 
-    CUBRIDException CUBRIDExceptionFactory::create(int nInterfaceErrorCode,
+    _CUBRIDException _CUBRIDExceptionFactory::create(int nInterfaceErrorCode,
         T_CCI_ERROR &cciError, const string &errorMessage)
     {
       DBGWExceptionContext context =
@@ -114,37 +116,75 @@ namespace dbgw
       buffer << "[" << context.nInterfaceErrorCode << "]";
       buffer << " " << context.errorMessage;
       context.what = buffer.str();
-      return CUBRIDException(context);
+      return _CUBRIDException(context);
     }
 
-    DBGWCUBRIDConnection::DBGWCUBRIDConnection(const string &groupName,
-        const string &host, int nPort, const DBGWDBInfoHashMap &dbInfoMap) :
-      DBGWConnection(groupName, host, nPort, dbInfoMap), m_bClosed(false),
-      m_hCCIConnection(-1)
+    T_CCI_U_TYPE getCCIUTypeFromDBGWValueType(DBGWValueType type)
     {
-      /**
-       * We don't need to clear error because this api will not make error.
-       *
-       * clearException();
-       *
-       * try
-       * {
-       * 		blur blur blur;
-       * }
-       * catch (DBGWException &e)
-       * {
-       * 		setLastException(e);
-       * }
-       */
+      switch (type)
+        {
+        case DBGW_VAL_TYPE_INT:
+          return CCI_U_TYPE_INT;
+        case DBGW_VAL_TYPE_STRING:
+          return CCI_U_TYPE_STRING;
+        case DBGW_VAL_TYPE_DATETIME:
+          return CCI_U_TYPE_DATETIME;
+        case DBGW_VAL_TYPE_DATE:
+          return CCI_U_TYPE_DATE;
+        case DBGW_VAL_TYPE_TIME:
+          return CCI_U_TYPE_TIME;
+        case DBGW_VAL_TYPE_LONG:
+          return CCI_U_TYPE_BIGINT;
+        case DBGW_VAL_TYPE_CHAR:
+          return CCI_U_TYPE_CHAR;
+        case DBGW_VAL_TYPE_FLOAT:
+          return CCI_U_TYPE_FLOAT;
+        case DBGW_VAL_TYPE_DOUBLE:
+          return CCI_U_TYPE_DOUBLE;
+        default:
+          return CCI_U_TYPE_STRING;
+        }
     }
 
-    DBGWCUBRIDConnection::~DBGWCUBRIDConnection()
+    T_CCI_A_TYPE getCCIATypeFromDBGWValueType(DBGWValueType type)
+    {
+      switch (type)
+        {
+        case DBGW_VAL_TYPE_INT:
+          return CCI_A_TYPE_INT;
+        case DBGW_VAL_TYPE_LONG:
+          return CCI_A_TYPE_BIGINT;
+        case DBGW_VAL_TYPE_FLOAT:
+          return CCI_A_TYPE_FLOAT;
+        case DBGW_VAL_TYPE_DOUBLE:
+          return CCI_A_TYPE_DOUBLE;
+        default:
+          return CCI_A_TYPE_STR;
+        }
+    }
+
+    _DBGWCUBRIDConnection::_DBGWCUBRIDConnection(const char *szUrl,
+        const char *szUser, const char *szPassword) :
+      DBGWConnection(szUrl, szUser, szPassword), m_url(szUrl),
+      m_user(szUser == NULL ? "" : szUser),
+      m_password(szPassword == NULL ? "" : szPassword),
+      m_hCCIConnection(-1)
     {
       clearException();
 
       try
         {
-          if (close() == false)
+          if (szUser != NULL)
+            {
+              m_user = szUser;
+            }
+
+          if (szPassword != NULL)
+            {
+              m_password = szPassword;
+            }
+
+          if (connect() == false)
             {
               throw getLastException();
             }
@@ -155,1579 +195,2231 @@ namespace dbgw
         }
     }
 
-    bool DBGWCUBRIDConnection::connect()
+    _DBGWCUBRIDConnection::~_DBGWCUBRIDConnection()
     {
-      clearException();
+      close();
+    }
 
-      try
+    DBGWCallableStatementSharedPtr _DBGWCUBRIDConnection::prepareCall(
+        const char *szSql)
+    {
+      DBGWCallableStatementSharedPtr pStatement(
+          new _DBGWCUBRIDCallableStatement(shared_from_this(), szSql));
+      return pStatement;
+    }
+
+    DBGWPreparedStatementSharedPtr _DBGWCUBRIDConnection::prepareStatement(
+        const char *szSql)
+    {
+      DBGWPreparedStatementSharedPtr pStatement(
+          new _DBGWCUBRIDPreparedStatement(shared_from_this(), szSql));
+      return pStatement;
+    }
+
+    void _DBGWCUBRIDConnection::doConnect()
+    {
+      const char *szUser = m_user == "" ? NULL : m_user.c_str();
+      const char *szPassword = m_password == "" ? NULL : m_password.c_str();
+
+      m_hCCIConnection = cci_connect_with_url((char *) m_url.c_str(),
+          (char *) szUser, (char *) szPassword);
+      if (m_hCCIConnection < 0)
         {
-          DBGWDBInfoHashMap dbInfoMap = getDBInfoMap();
-          DBGWDBInfoHashMap::const_iterator cit = dbInfoMap.find("dbname");
-          if (cit == dbInfoMap.end())
-            {
-              SQLNotExistPropertyException e("dbname");
-              DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-              throw e;
-            }
-
-          cit = dbInfoMap.find("dbuser");
-          if (cit == dbInfoMap.end())
-            {
-              SQLNotExistPropertyException e("dbuser");
-              DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-              throw e;
-            }
-
-          cit = dbInfoMap.find("dbpasswd");
-          if (cit == dbInfoMap.end())
-            {
-              SQLNotExistPropertyException e("dbpasswd");
-              DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-              throw e;
-            }
-
-          stringstream connectionUrl;
-          connectionUrl << "cci:CUBRID:" << getHost() << ":" << getPort() << ":"
-              << dbInfoMap["dbname"] << ":" << dbInfoMap["dbuser"] << ":"
-              << dbInfoMap["dbpasswd"] << ":";
-
-          char cAmp = '&';
-          cit = dbInfoMap.find("althosts");
-          if (cit == dbInfoMap.end())
-            {
-              cAmp = '?';
-            }
-          else
-            {
-              connectionUrl << dbInfoMap["althosts"];
-            }
-
-          if (DBGWLogger::getLogLevel() == CCI_LOG_LEVEL_DEBUG)
-            {
-              connectionUrl << cAmp << "logFile=" << DBGWLogger::getLogPath()
-                  << "&logOnException=true&logSlowQueries=true&logTraceApi=true";
-            }
-
-          m_hCCIConnection = cci_connect_with_url(
-              const_cast<char *>(connectionUrl.str().c_str()),
-              const_cast<char *>(dbInfoMap["dbuser"].c_str()),
-              const_cast<char *>(dbInfoMap["dbpasswd"].c_str()));
-          if (m_hCCIConnection < 0)
-            {
-              CUBRIDException e = CUBRIDExceptionFactory::create(
-                  m_hCCIConnection, "Failed to connect database.");
-              string replace(e.what());
-              replace += "(";
-              replace += connectionUrl.str();
-              replace += ")";
-              DBGW_LOG_ERROR(m_logger.getLogMessage(replace.c_str()).c_str());
-              throw e;
-            }
-          DBGW_LOGF_INFO("%s (CONN_ID:%d)",
-              m_logger.getLogMessage("connection open.").c_str(), m_hCCIConnection);
-
-          return true;
+          _CUBRIDException e = _CUBRIDExceptionFactory::create(
+              m_hCCIConnection, "Failed to connect database.");
+          string replace(e.what());
+          replace += "(";
+          replace += m_user.c_str();
+          replace += ")";
+          DBGW_LOG_ERROR(replace.c_str());
+          throw e;
         }
-      catch (DBGWException &e)
+
+      DBGW_LOGF_INFO("%s (CONN_ID:%d) (%s)", "connection open.",
+          m_hCCIConnection, m_url.c_str());
+    }
+
+    void _DBGWCUBRIDConnection::doClose()
+    {
+      if (m_hCCIConnection > 0)
         {
-          setLastException(e);
-          return false;
+          T_CCI_ERROR cciError;
+          int nResult = cci_disconnect(m_hCCIConnection, &cciError);
+          if (nResult < 0)
+            {
+              _CUBRIDException e = _CUBRIDExceptionFactory::create(nResult,
+                  cciError, "Failed to close connection.");
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          DBGW_LOGF_INFO(
+              "%s (CONN_ID:%d)", "connection close.", m_hCCIConnection);
+
+          m_hCCIConnection = -1;
         }
     }
 
-    bool DBGWCUBRIDConnection::close()
+    void _DBGWCUBRIDConnection::doSetTransactionIsolation(
+        DBGW_TRAN_ISOLATION isolation)
     {
-      clearException();
-
-      try
-        {
-          if (m_bClosed)
-            {
-              return true;
-            }
-
-          m_bClosed = true;
-
-          if (m_hCCIConnection > 0)
-            {
-              T_CCI_ERROR cciError;
-              int nResult = cci_disconnect(m_hCCIConnection, &cciError);
-              if (nResult < 0)
-                {
-                  CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
-                      cciError, "Failed to close connection.");
-                  DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-                  throw e;
-                }
-
-              DBGW_LOGF_INFO("%s (CONN_ID:%d)",
-                  m_logger.getLogMessage("connection close.").c_str(),
-                  m_hCCIConnection);
-              m_hCCIConnection = -1;
-            }
-
-          return true;
-        }
-      catch (DBGWException &e)
-        {
-          setLastException(e);
-          return false;
-        }
-    }
-
-    DBGWPreparedStatementSharedPtr DBGWCUBRIDConnection::preparedStatement(
-        const DBGWBoundQuerySharedPtr p_query)
-    {
-      clearException();
-
-      try
-        {
-          DBGWPreparedStatementSharedPtr pStatement(
-              new DBGWCUBRIDPreparedStatement(p_query, m_hCCIConnection));
-          return pStatement;
-        }
-      catch (DBGWException &e)
-        {
-          setLastException(e);
-          return DBGWPreparedStatementSharedPtr();
-        }
-    }
-
-    void DBGWCUBRIDConnection::doSetAutocommit(bool bAutocommit)
-    {
+      T_CCI_ERROR cciError;
       int nResult;
-      if (bAutocommit)
+      int nIsolation = TRAN_REP_CLASS_UNCOMMIT_INSTANCE;
+
+      switch (isolation)
         {
-          nResult = cci_set_autocommit(m_hCCIConnection, CCI_AUTOCOMMIT_TRUE);
-        }
-      else
-        {
-          nResult
-            = cci_set_autocommit(m_hCCIConnection, CCI_AUTOCOMMIT_FALSE);
+        case DBGW_TRAN_UNKNOWN:
+          return;
+        case DBGW_TRAN_SERIALIZABLE:
+          nIsolation = TRAN_SERIALIZABLE;
+          break;
+        case DBGW_TRAN_REPEATABLE_READ:
+          nIsolation = TRAN_REP_CLASS_REP_INSTANCE;
+          break;
+        case DBGW_TRAN_READ_COMMITED:
+          nIsolation = TRAN_REP_CLASS_COMMIT_INSTANCE;
+          break;
+        case DBGW_TRAN_READ_UNCOMMITED:
+          nIsolation = TRAN_REP_CLASS_UNCOMMIT_INSTANCE;
+          break;
         }
 
+      nResult = cci_set_db_parameter(m_hCCIConnection,
+          CCI_PARAM_ISOLATION_LEVEL, (void *) &nIsolation, &cciError);
       if (nResult < 0)
         {
-          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
-              "Failed to set autocommit.");
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+          _CUBRIDException e = _CUBRIDExceptionFactory::create(nResult,
+              cciError, "Failed to set isolation level");
+          DBGW_LOG_ERROR(e.what());
           throw e;
         }
     }
 
-    bool DBGWCUBRIDConnection::setIsolation(DBGW_TRAN_ISOLATION isolation)
+    void _DBGWCUBRIDConnection::doSetAutoCommit(bool bAutoCommit)
     {
-      clearException();
+      int nResult;
 
-      try
+      if (bAutoCommit)
         {
-          T_CCI_ERROR cciError;
-          int nResult;
-          int nIsolation = TRAN_REP_CLASS_UNCOMMIT_INSTANCE;
-
-          switch (isolation)
-            {
-            case DBGW_TRAN_UNKNOWN:
-              return true;
-            case DBGW_TRAN_SERIALIZABLE:
-              nIsolation = TRAN_SERIALIZABLE;
-              break;
-            case DBGW_TRAN_REPEATABLE_READ:
-              nIsolation = TRAN_REP_CLASS_REP_INSTANCE;
-              break;
-            case DBGW_TRAN_READ_COMMITED:
-              nIsolation = TRAN_REP_CLASS_COMMIT_INSTANCE;
-              break;
-            case DBGW_TRAN_READ_UNCOMMITED:
-              nIsolation = TRAN_REP_CLASS_UNCOMMIT_INSTANCE;
-              break;
-            }
-
-          nResult = cci_set_db_parameter(m_hCCIConnection,
-              CCI_PARAM_ISOLATION_LEVEL, (void *) &nIsolation, &cciError);
-          if (nResult < 0)
-            {
-              CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
-                  cciError, "Failed to set isolation level");
-              DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-              throw e;
-            }
-
-          return true;
+          nResult = cci_set_autocommit(m_hCCIConnection,
+              CCI_AUTOCOMMIT_TRUE);
         }
-      catch (DBGWException &e)
+      else
         {
-          setLastException(e);
-          return false;
+          nResult = cci_set_autocommit(m_hCCIConnection,
+              CCI_AUTOCOMMIT_FALSE);
         }
+
+      if (nResult < 0)
+        {
+          _CUBRIDException e = _CUBRIDExceptionFactory::create(nResult,
+              "Failed to set autocommit.");
+          DBGW_LOG_ERROR(e.what());
+          throw e;
+        }
+
+      DBGW_LOGF_INFO("%s (%d) (CONN_ID:%d)", "connection autocommit",
+          bAutoCommit, m_hCCIConnection);
     }
 
-    void DBGWCUBRIDConnection::doCommit()
+    void _DBGWCUBRIDConnection::doCommit()
     {
       T_CCI_ERROR cciError;
+
       int nResult =
           cci_end_tran(m_hCCIConnection, CCI_TRAN_COMMIT, &cciError);
       if (nResult < 0)
         {
-          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
+          _CUBRIDException e = _CUBRIDExceptionFactory::create(nResult,
               cciError, "Failed to commit database.");
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+          DBGW_LOG_ERROR(e.what());
           throw e;
         }
-      DBGW_LOG_INFO(m_logger.getLogMessage("connection commit.").c_str());
+
+      DBGW_LOGF_INFO("%s (CONN_ID:%d)", "connection commit.", m_hCCIConnection);
     }
 
-    void DBGWCUBRIDConnection::doRollback()
+    void _DBGWCUBRIDConnection::doRollback()
     {
       T_CCI_ERROR cciError;
+
       int nResult = cci_end_tran(m_hCCIConnection, CCI_TRAN_ROLLBACK,
           &cciError);
       if (nResult < 0)
         {
-          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
+          _CUBRIDException e = _CUBRIDExceptionFactory::create(nResult,
               cciError, "Failed to rollback database.");
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+          DBGW_LOG_ERROR(e.what());
           throw e;
         }
-      DBGW_LOG_INFO(m_logger.getLogMessage("connection rollback.").c_str());
+
+      DBGW_LOGF_INFO("%s (CONN_ID:%d)", "connection rollback.", m_hCCIConnection);
     }
 
-    string DBGWCUBRIDConnection::dump()
+    void *_DBGWCUBRIDConnection::getNativeHandle() const
     {
-      boost::format status("[DUMP][CONN] DBGW(AU : %d), CCI(AU : %d)");
-      status % isAutocommit() % cci_get_autocommit(m_hCCIConnection);
-      return status.str();
+      return (void *) &m_hCCIConnection;
     }
 
-#ifdef ENABLE_LOB
-    DBGWCUBRIDLobList::DBGWCUBRIDLobList()
+
+    _DBGWCUBRIDStatementBase::_DBGWCUBRIDStatementBase(int hCCIConnection,
+        const char *szSql) :
+      m_hCCIConnection(hCCIConnection), m_hCCIRequest(-1), m_sql(szSql)
     {
     }
 
-    DBGWCUBRIDLobList::~DBGWCUBRIDLobList()
+    _DBGWCUBRIDStatementBase::~_DBGWCUBRIDStatementBase()
     {
-      for (vector<T_CCI_CLOB>::iterator it = m_clobList.begin();
-          it != m_clobList.end(); it++)
-        {
-          cci_clob_free(*it);
-        }
-
-      for (vector<T_CCI_BLOB>::iterator it = m_blobList.begin();
-          it != m_blobList.end(); it++)
-        {
-          cci_blob_free(*it);
-        }
     }
 
-    void DBGWCUBRIDLobList::addClob(T_CCI_CLOB clob)
+    void _DBGWCUBRIDStatementBase::addBatch()
     {
-      m_clobList.push_back(clob);
+      m_parameterList.push_back(m_parameter);
     }
 
-    void DBGWCUBRIDLobList::addBlob(T_CCI_BLOB blob)
+    void _DBGWCUBRIDStatementBase::clearBatch()
     {
-      m_blobList.push_back(blob);
-    }
-#endif
-
-    DBGWCUBRIDPreparedStatement::~DBGWCUBRIDPreparedStatement()
-    {
-      clearException();
-
-      try
-        {
-          if (close() == false)
-            {
-              throw getLastException();
-            }
-        }
-      catch (DBGWException &e)
-        {
-          setLastException(e);
-        }
+      m_parameterList.clear();
     }
 
-    bool DBGWCUBRIDPreparedStatement::close()
+    void _DBGWCUBRIDStatementBase::clearParameters()
     {
-      clearException();
-
-      try
-        {
-          if (m_bClosed)
-            {
-              return true;
-            }
-
-          m_bClosed = true;
-
-          if (m_hCCIRequest > 0)
-            {
-              int nResult = cci_close_req_handle(m_hCCIRequest);
-              if (nResult < 0)
-                {
-                  CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
-                      "Failed to close statement.");
-                  DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-                  throw e;
-                }
-
-              DBGW_LOGF_INFO("%s (REQ_ID:%d)",
-                  m_logger.getLogMessage("close statement.").c_str(), m_hCCIRequest);
-              m_hCCIRequest = -1;
-            }
-
-          return true;
-        }
-      catch (DBGWException &e)
-        {
-          setLastException(e);
-          return false;
-        }
+      m_parameter.clear();
     }
 
-    DBGWCUBRIDPreparedStatement::DBGWCUBRIDPreparedStatement(
-        const DBGWBoundQuerySharedPtr pQuery, int hCCIConnection) :
-      DBGWPreparedStatement(pQuery), m_hCCIConnection(hCCIConnection),
-      m_hCCIRequest(-1), m_bClosed(false)
+    void _DBGWCUBRIDStatementBase::prepare()
     {
       T_CCI_ERROR cciError;
       char flag = 0;
 
-      if (pQuery->getType() == DBGW_QUERY_TYPE_PROCEDURE
-          && pQuery->isExistOutBindParam())
-        {
-          flag = CCI_PREPARE_CALL;
-        }
-
-      m_hCCIRequest = cci_prepare(m_hCCIConnection,
-          const_cast<char *>(pQuery->getSQL()), flag, &cciError);
+      m_hCCIRequest = cci_prepare(m_hCCIConnection, (char *) m_sql.c_str(), 0,
+          &cciError);
       if (m_hCCIRequest < 0)
         {
-          CUBRIDException e = CUBRIDExceptionFactory::create(m_hCCIRequest,
-              cciError, "Failed to prepare statement.");
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+          _CUBRIDException e = _CUBRIDExceptionFactory::create(
+              m_hCCIRequest, cciError, "Failed to prepare statement.");
+          DBGW_LOG_ERROR(e.what());
           throw e;
         }
-      DBGW_LOGF_INFO("%s (REQ_ID:%d)",
-          m_logger.getLogMessage("prepare statement.").c_str(), m_hCCIRequest);
+
+      DBGW_LOGF_INFO("%s (SQL:%s) (CONN_ID:%d) (REQ_ID:%d)",
+          "prepare statement.", m_sql.c_str(), m_hCCIConnection, m_hCCIRequest);
     }
 
-    void DBGWCUBRIDPreparedStatement::beforeBind()
+    void _DBGWCUBRIDStatementBase::prepareCall()
     {
-      if (getQuery()->getType() != DBGW_QUERY_TYPE_PROCEDURE)
+      T_CCI_ERROR cciError;
+      char flag = 0;
+
+      m_hCCIRequest = cci_prepare(m_hCCIConnection, (char *) m_sql.c_str(),
+          CCI_PREPARE_CALL, &cciError);
+      if (m_hCCIRequest < 0)
         {
-          return;
+          _CUBRIDException e = _CUBRIDExceptionFactory::create(
+              m_hCCIRequest, cciError, "Failed to prepare statement.");
+          DBGW_LOG_ERROR(e.what());
+          throw e;
         }
 
-      if (getParameterList().size() == 0)
+      DBGW_LOGF_INFO("%s (SQL:%s) (CONN_ID:%d) (REQ_ID:%d)",
+          "prepare statement.", m_sql.c_str(), m_hCCIConnection, m_hCCIRequest);
+    }
+
+    int _DBGWCUBRIDStatementBase::execute()
+    {
+      bindParameters();
+
+      T_CCI_ERROR cciError;
+
+      int nResult = cci_execute(m_hCCIRequest, 0, 0, &cciError);
+      if (nResult < 0)
         {
-          return;
+          _CUBRIDException e = _CUBRIDExceptionFactory::create(nResult, cciError,
+              "Failed to execute statement.");
+          DBGW_LOG_ERROR(e.what());
+          throw e;
         }
 
-      DBGWParameter *pParameter = getParameterList().getParameter(0);
-      if (pParameter == NULL)
+      return nResult;
+    }
+
+    DBGWBatchResultSetSharedPtr _DBGWCUBRIDStatementBase::executeArray()
+    {
+      bindArrayParameters();
+
+      T_CCI_ERROR cciError;
+      T_CCI_QUERY_RESULT *pQueryResult;
+
+      int nResult = cci_execute_array(m_hCCIRequest, &pQueryResult, &cciError);
+
+      m_arrayParameterList.clear();
+
+      if (nResult < 0)
+        {
+          _CUBRIDException e = _CUBRIDExceptionFactory::create(nResult, cciError,
+              "Failed to execute statement.");
+          DBGW_LOG_ERROR(e.what());
+          throw e;
+        }
+
+      DBGWBatchResultSetSharedPtr pBatchResult(
+          new _DBGWCUBRIDBatchResultSet(nResult, pQueryResult));
+
+      cci_query_result_free(pQueryResult, nResult);
+
+      return pBatchResult;
+    }
+
+    void _DBGWCUBRIDStatementBase::close()
+    {
+      if (m_hCCIRequest > 0)
+        {
+          int nResult = cci_close_req_handle(m_hCCIRequest);
+          if (nResult < 0)
+            {
+              _CUBRIDException e = _CUBRIDExceptionFactory::create(nResult,
+                  "Failed to close statement.");
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          DBGW_LOGF_INFO("%s (REQ_ID:%d)", "close statement.", m_hCCIRequest);
+          m_hCCIRequest = -1;
+        }
+    }
+
+    void _DBGWCUBRIDStatementBase::registerOutParameter(int nIndex,
+        DBGWValueType type)
+    {
+      if ((int) m_metaDataRawList.size() < nIndex)
+        {
+          m_metaDataRawList.resize(nIndex);
+        }
+
+      if (m_metaDataRawList[nIndex - 1].unused)
+        {
+          setNull(nIndex, type);
+          m_metaDataRawList[nIndex - 1].mode = DBGW_PARAM_MODE_OUT;
+        }
+      else
+        {
+          m_metaDataRawList[nIndex - 1].mode = DBGW_PARAM_MODE_INOUT;
+        }
+    }
+
+    void _DBGWCUBRIDStatementBase::set(int nIndex, const DBGWValue &value)
+    {
+      DBGWValueSharedPtr pValue(new DBGWValue(value));
+      if (getLastErrorCode() != DBGW_ER_NO_ERROR)
+        {
+          throw getLastException();
+        }
+
+      m_parameter.set(nIndex - 1, pValue);
+
+      setParameterMetaDataRaw(nIndex, pValue->getType());
+    }
+
+    void _DBGWCUBRIDStatementBase::setInt(int nIndex, int nValue)
+    {
+      if (m_parameter.set(nIndex - 1, nValue) == false)
+        {
+          throw getLastException();
+        }
+
+      setParameterMetaDataRaw(nIndex, DBGW_VAL_TYPE_INT);
+    }
+
+    void _DBGWCUBRIDStatementBase::setLong(int nIndex, int64 lValue)
+    {
+      if (m_parameter.set(nIndex - 1, lValue) == false)
+        {
+          throw getLastException();
+        }
+
+      setParameterMetaDataRaw(nIndex, DBGW_VAL_TYPE_LONG);
+    }
+
+    void _DBGWCUBRIDStatementBase::setChar(int nIndex, char cValue)
+    {
+      if (m_parameter.set(nIndex - 1, cValue) == false)
+        {
+          throw getLastException();
+        }
+
+      setParameterMetaDataRaw(nIndex, DBGW_VAL_TYPE_CHAR);
+    }
+
+    void _DBGWCUBRIDStatementBase::setString(int nIndex, const char *szValue)
+    {
+      if (m_parameter.set(nIndex - 1, szValue) == false)
+        {
+          throw getLastException();
+        }
+
+      setParameterMetaDataRaw(nIndex, DBGW_VAL_TYPE_STRING);
+    }
+
+    void _DBGWCUBRIDStatementBase::setFloat(int nIndex, float fValue)
+    {
+      if (m_parameter.set(nIndex - 1, fValue) == false)
+        {
+          throw getLastException();
+        }
+
+      setParameterMetaDataRaw(nIndex, DBGW_VAL_TYPE_FLOAT);
+    }
+
+    void _DBGWCUBRIDStatementBase::setDouble(int nIndex, double dValue)
+    {
+      if (m_parameter.set(nIndex - 1, dValue) == false)
+        {
+          throw getLastException();
+        }
+
+      setParameterMetaDataRaw(nIndex, DBGW_VAL_TYPE_DOUBLE);
+    }
+
+    void _DBGWCUBRIDStatementBase::setDate(int nIndex, const struct tm &tmValue)
+    {
+      if (m_parameter.set(nIndex - 1, DBGW_VAL_TYPE_DATE, tmValue) == false)
+        {
+          throw getLastException();
+        }
+
+      setParameterMetaDataRaw(nIndex, DBGW_VAL_TYPE_DATE);
+    }
+
+    void _DBGWCUBRIDStatementBase::setTime(int nIndex, const struct tm &tmValue)
+    {
+      if (m_parameter.set(nIndex - 1, DBGW_VAL_TYPE_TIME, tmValue) == false)
+        {
+          throw getLastException();
+        }
+
+      setParameterMetaDataRaw(nIndex, DBGW_VAL_TYPE_TIME);
+    }
+
+    void _DBGWCUBRIDStatementBase::setDateTime(int nIndex,
+        const struct tm &tmValue)
+    {
+      if (m_parameter.set(nIndex - 1, DBGW_VAL_TYPE_DATETIME, tmValue) == false)
+        {
+          throw getLastException();
+        }
+
+      setParameterMetaDataRaw(nIndex, DBGW_VAL_TYPE_DATETIME);
+    }
+
+    void _DBGWCUBRIDStatementBase::setNull(int nIndex, DBGWValueType type)
+    {
+      if (m_parameter.set(nIndex - 1, type, NULL) == false)
+        {
+          throw getLastException();
+        }
+
+      setParameterMetaDataRaw(nIndex, type);
+    }
+
+    void *_DBGWCUBRIDStatementBase::getNativeHandle() const
+    {
+      return (void *) &m_hCCIRequest;
+    }
+
+    void _DBGWCUBRIDStatementBase::setParameterMetaDataRaw(size_t nIndex,
+        DBGWValueType type)
+    {
+      if (m_metaDataRawList.size() < nIndex)
+        {
+          m_metaDataRawList.resize(nIndex);
+        }
+
+      m_metaDataRawList[nIndex - 1] = _DBGWCUBRIDParameterMetaDataRaw(type);
+    }
+
+    void _DBGWCUBRIDStatementBase::bindParameters()
+    {
+      T_CCI_A_TYPE atype;
+      T_CCI_U_TYPE utype;
+      const DBGWValue *pValue = NULL;
+
+      for (size_t i = 0, size = m_parameter.size(); i < size; i++)
+        {
+          pValue = m_parameter.getValue(i);
+          if (pValue == NULL)
+            {
+              throw getLastException();
+            }
+
+          if (m_metaDataRawList[i].unused == false)
+            {
+              if (pValue->getType() == DBGW_VAL_TYPE_UNDEFINED)
+                {
+                  InvalidValueTypeException e(pValue->getType());
+                  DBGW_LOG_ERROR(e.what());
+                  throw e;
+                }
+
+              utype = getCCIUTypeFromDBGWValueType(pValue->getType());
+              atype = getCCIATypeFromDBGWValueType(pValue->getType());
+
+              if (pValue->isNull())
+                {
+                  utype = CCI_U_TYPE_NULL;
+                }
+
+              int nResult = cci_bind_param(m_hCCIRequest, i + 1, atype,
+                  pValue->getVoidPtr(), utype, 0);
+              if (nResult < 0)
+                {
+                  _CUBRIDException e = _CUBRIDExceptionFactory::create(nResult,
+                      "Failed to bind parameter.");
+                  DBGW_LOG_ERROR(e.what());
+                  throw e;
+                }
+            }
+
+          if (m_metaDataRawList[i].mode == DBGW_PARAM_MODE_OUT
+              || m_metaDataRawList[i].mode == DBGW_PARAM_MODE_INOUT)
+            {
+              int nResult = cci_register_out_param(m_hCCIRequest, i + 1);
+              if (nResult < 0)
+                {
+                  _CUBRIDException e = _CUBRIDExceptionFactory::create(nResult,
+                      "Failed to register out parameter.");
+                  DBGW_LOG_ERROR(e.what());
+                  throw e;
+                }
+            }
+        }
+    }
+
+    void _DBGWCUBRIDStatementBase::bindArrayParameters()
+    {
+      if (m_parameterList.size() == 0)
         {
           InvalidParameterListException e;
           DBGW_LOG_ERROR(e.what());
           throw e;
         }
 
-      const DBGWQueryParameterList &queryParamList = getQuery()->getQueryParamList();
-      if (queryParamList.size() <= pParameter->size())
+      int nResult = cci_bind_param_array_size(m_hCCIRequest,
+          m_parameterList.size());
+      if (nResult < 0)
         {
-          return;
+          _CUBRIDException e = _CUBRIDExceptionFactory::create(nResult,
+              "Failed to bind parameter array size.");
+          DBGW_LOG_ERROR(e.what());
+          throw e;
         }
 
-      /**
-       * We must bind NULL even if the parameter mode is out.
-       *
-       * expected : [0:in, 1:out, 2:in, 3:out, 4:in]
-       *
-       * real     : [0:in, 2:in, 4:in] ==> [OK]
-       * real     : [0:in, 1:out, 2:in, 4:in] ==> [OK]
-       * real     : [0:in, 4:in] ==> [FAIL]
-       * real     : [0:in, 1:in, 2:in] ==> [FAIL]
-       */
-      DBGWParameter newParameter;
-      DBGWValueSharedPtr pValue;
-      DBGWQueryParameterList::const_iterator it = queryParamList.begin();
-      for (; it != queryParamList.end(); it++)
+      DBGWValueType type;
+      T_CCI_A_TYPE atype;
+      T_CCI_U_TYPE utype;
+      _DBGWCUBRIDArrayParameterSharedPtr pArrayParameter;
+      const _DBGWParameter &firstParameter = m_parameterList[0];
+      for (size_t i = 0, size = firstParameter.size(); i < size; i++)
         {
-          if (it->mode == DBGW_BIND_MODE_IN)
+          if (firstParameter.getType(i, &type) == false)
             {
-              pValue = pParameter->getValueSharedPtr(it->name.c_str(), it->index);
-              if (pValue == NULL)
+              throw getLastException();
+            }
+
+          if (type == DBGW_VAL_TYPE_UNDEFINED)
+            {
+              InvalidParameterListException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          /**
+           * convert row index parameter to col index parameter.
+           *
+           * example :
+           * row_param[0] = {0, 1, 2}
+           * row_param[1] = {0, 1, 2}
+           *
+           * col_param[0] = {0, 0}
+           * col_param[1] = {1, 1}
+           * col_param[2] = {2, 2}
+           */
+          pArrayParameter = _DBGWCUBRIDArrayParameterSharedPtr(
+              new _DBGWCUBRIDArrayParameter(m_parameterList, type, i));
+
+          utype = getCCIUTypeFromDBGWValueType(type);
+          atype = getCCIATypeFromDBGWValueType(type);
+
+          nResult = cci_bind_param_array(m_hCCIRequest, i + 1, atype,
+              pArrayParameter->toNativeArray(),
+              pArrayParameter->toNullIndArray(), utype);
+          if (nResult < 0)
+            {
+              _CUBRIDException e = _CUBRIDExceptionFactory::create(nResult,
+                  "Failed to bind parameter array.");
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          /**
+           * cci array parameter have to be alive until end of query execution.
+           * so we attach it to list and clear when query execution is completed.
+           */
+          m_arrayParameterList.push_back(pArrayParameter);
+        }
+    }
+
+    _DBGWCUBRIDParameterMetaDataRaw::_DBGWCUBRIDParameterMetaDataRaw() :
+      unused(true), mode(DBGW_PARAM_MODE_IN), type(DBGW_VAL_TYPE_UNDEFINED)
+    {
+    }
+
+    _DBGWCUBRIDParameterMetaDataRaw::_DBGWCUBRIDParameterMetaDataRaw(
+        DBGWValueType type) :
+      unused(false), mode(DBGW_PARAM_MODE_IN), type(type)
+    {
+    }
+
+    _DBGWCUBRIDParameterMetaData::_DBGWCUBRIDParameterMetaData(
+        const _DBGWCUBRIDParameterMetaDataList &metaDataRawList) :
+      m_metaDataRawList(metaDataRawList)
+    {
+    }
+
+    _DBGWCUBRIDParameterMetaData::~_DBGWCUBRIDParameterMetaData()
+    {
+    }
+
+    bool _DBGWCUBRIDParameterMetaData::getParameterMode(size_t nIndex,
+        DBGWParameterMode *pMode) const
+    {
+      clearException();
+
+      try
+        {
+          if (m_metaDataRawList.size() < nIndex)
+            {
+              ArrayIndexOutOfBoundsException e(nIndex,
+                  "DBGWCUBRIDParameterMetaData");
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          *pMode = m_metaDataRawList[nIndex].mode;
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    size_t _DBGWCUBRIDParameterMetaData::getParameterCount() const
+    {
+      return m_metaDataRawList.size();
+    }
+
+    bool _DBGWCUBRIDParameterMetaData::getParameterType(size_t nIndex,
+        DBGWValueType *pType) const
+    {
+      clearException();
+
+      try
+        {
+          if (m_metaDataRawList.size() < nIndex)
+            {
+              ArrayIndexOutOfBoundsException e(nIndex,
+                  "DBGWCUBRIDParameterMetaData");
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          *pType = m_metaDataRawList[nIndex].type;
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    _DBGWCUBRIDArrayParameter::_DBGWCUBRIDArrayParameter(
+        const _DBGWParameterList &parameterList, DBGWValueType type,
+        int nIndex) :
+      m_type(type), m_size(0)
+    {
+      DBGWValueType tmpType;
+      _DBGWParameterList::const_iterator it = parameterList.begin();
+      for (; it != parameterList.end(); it++)
+        {
+          if (it->getType(nIndex, &tmpType) == false)
+            {
+              throw getLastException();
+            }
+
+          if (tmpType != type)
+            {
+              InvalidParameterListException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+        }
+
+      int nValue;
+      int64 lValue;
+      float fValue;
+      double dValue;
+      char *szValue;
+      bool bNull;
+      for (it = parameterList.begin(); it != parameterList.end(); it++)
+        {
+          if (it->isNull(nIndex, &bNull) == false)
+            {
+              throw getLastException();
+            }
+
+          m_nullIndList.push_back(bNull);
+
+          if (type == DBGW_VAL_TYPE_INT)
+            {
+              if (it->getInt(nIndex, &nValue) == false)
                 {
                   throw getLastException();
                 }
 
-              newParameter.put(it->name.c_str(), pValue);
+              m_intList.push_back(nValue);
+            }
+          else if (type == DBGW_VAL_TYPE_LONG)
+            {
+              if (it->getLong(nIndex, &lValue) == false)
+                {
+                  throw getLastException();
+                }
+
+              m_longList.push_back(lValue);
+            }
+          else if (type == DBGW_VAL_TYPE_FLOAT)
+            {
+              if (it->getFloat(nIndex, &fValue) == false)
+                {
+                  throw getLastException();
+                }
+
+              m_floatList.push_back(fValue);
+            }
+          else if (type == DBGW_VAL_TYPE_DOUBLE)
+            {
+              if (it->getDouble(nIndex, &dValue) == false)
+                {
+                  throw getLastException();
+                }
+
+              m_doubleList.push_back(dValue);
             }
           else
             {
-              newParameter.put(it->name.c_str(), it->type, NULL);
-            }
-        }
-
-      *pParameter = newParameter;
-    }
-
-    void DBGWCUBRIDPreparedStatement::beforeBindList()
-    {
-      bindArraySize(getParameterList().size());
-    }
-
-    void DBGWCUBRIDPreparedStatement::bindArraySize(int parameterSize)
-    {
-      cci_bind_param_array_size(m_hCCIRequest, parameterSize);
-    }
-
-    void DBGWCUBRIDPreparedStatement::doBind(const DBGWQueryParameter &queryParam,
-        size_t nIndex, const DBGWValue *pValue)
-    {
-
-      if (queryParam.mode == DBGW_BIND_MODE_IN
-          || queryParam.mode == DBGW_BIND_MODE_INOUT)
-        {
-          switch (pValue->getType())
-            {
-            case DBGW_VAL_TYPE_INT:
-              doBindInt(nIndex, pValue);
-              break;
-            case DBGW_VAL_TYPE_LONG:
-              doBindLong(nIndex, pValue);
-              break;
-            case DBGW_VAL_TYPE_CHAR:
-              doBindChar(nIndex, pValue);
-              break;
-            case DBGW_VAL_TYPE_FLOAT:
-              doBindFloat(nIndex, pValue);
-              break;
-            case DBGW_VAL_TYPE_DOUBLE:
-              doBindDouble(nIndex, pValue);
-              break;
-#ifdef ENABLE_LOB
-            case DBGW_VAL_TYPE_CLOB:
-              doBindClob(nIndex, pValue);
-              break;
-            case DBGW_VAL_TYPE_BLOB:
-              doBindBlob(nIndex, pValue);
-              break;
-#endif
-            case DBGW_VAL_TYPE_STRING:
-            case DBGW_VAL_TYPE_DATETIME:
-            case DBGW_VAL_TYPE_DATE:
-            case DBGW_VAL_TYPE_TIME:
-            default:
-              doBindString(nIndex, pValue);
-              break;
-            }
-        }
-
-      if (queryParam.mode == DBGW_BIND_MODE_OUT
-          || queryParam.mode == DBGW_BIND_MODE_INOUT)
-        {
-          cci_register_out_param(m_hCCIRequest, nIndex);
-        }
-    }
-
-    void DBGWCUBRIDPreparedStatement::doBind(const DBGWQueryParameter &queryParam,
-        size_t nIndex, DBGWValueList &valueList)
-    {
-      switch (valueList[0]->getType())
-        {
-        case DBGW_VAL_TYPE_INT:
-          doBindIntArray(nIndex, valueList);
-          break;
-        case DBGW_VAL_TYPE_LONG:
-          doBindLongArray(nIndex, valueList);
-          break;
-        case DBGW_VAL_TYPE_CHAR:
-          doBindCharArray(nIndex, valueList);
-          break;
-        case DBGW_VAL_TYPE_FLOAT:
-          doBindFloatArray(nIndex, valueList);
-          break;
-        case DBGW_VAL_TYPE_DOUBLE:
-          doBindDoubleArray(nIndex, valueList);
-          break;
-        case DBGW_VAL_TYPE_STRING:
-        case DBGW_VAL_TYPE_DATETIME:
-        case DBGW_VAL_TYPE_DATE:
-        case DBGW_VAL_TYPE_TIME:
-        default:
-          doBindStringArray(nIndex, valueList);
-          break;
-        }
-    }
-
-    void DBGWCUBRIDPreparedStatement::doBindInt(int nIndex, const DBGWValue *pValue)
-    {
-      int nValue = 0;
-      T_CCI_U_TYPE utype = CCI_U_TYPE_INT;
-
-      if (pValue->getInt(&nValue) == false)
-        {
-          throw getLastException();
-        }
-
-      if (pValue->isNull())
-        {
-          utype = CCI_U_TYPE_NULL;
-        }
-
-      int nResult = cci_bind_param(m_hCCIRequest, nIndex, CCI_A_TYPE_INT,
-          &nValue, utype, 0);
-      if (nResult < 0)
-        {
-          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
-              "Failed to bind parameter.");
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-          throw e;
-        }
-    }
-
-    void DBGWCUBRIDPreparedStatement::doBindLong(int nIndex, const DBGWValue *pValue)
-    {
-      int64 lValue = 0;
-      T_CCI_U_TYPE utype = CCI_U_TYPE_BIGINT;
-
-      if (pValue->getLong(&lValue) == false)
-        {
-          throw getLastException();
-        }
-
-      if (pValue->isNull())
-        {
-          utype = CCI_U_TYPE_NULL;
-        }
-
-      int nResult = cci_bind_param(m_hCCIRequest, nIndex, CCI_A_TYPE_BIGINT,
-          &lValue, utype, 0);
-      if (nResult < 0)
-        {
-          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
-              "Failed to bind parameter.");
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-          throw e;
-        }
-    }
-
-    void DBGWCUBRIDPreparedStatement::doBindString(int nIndex,
-        const DBGWValue *pValue)
-    {
-      char *szValue;
-      T_CCI_U_TYPE utype = CCI_U_TYPE_STRING;
-
-      if (pValue->getCString(&szValue) == false)
-        {
-          throw getLastException();
-        }
-
-      if (pValue->isNull())
-        {
-          utype = CCI_U_TYPE_NULL;
-        }
-
-      int nResult = cci_bind_param(m_hCCIRequest, nIndex, CCI_A_TYPE_STR,
-          (void *) szValue, utype, 0);
-      if (nResult < 0)
-        {
-          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
-              "Failed to bind parameter.");
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-          throw e;
-        }
-    }
-
-    void DBGWCUBRIDPreparedStatement::doBindChar(int nIndex,
-        const DBGWValue *pValue)
-    {
-      char szBuffer[2];
-      T_CCI_U_TYPE utype = CCI_U_TYPE_CHAR;
-
-      if (pValue->getChar(&szBuffer[0]) == false)
-        {
-          throw getLastException();
-        }
-
-      if (pValue->isNull())
-        {
-          utype = CCI_U_TYPE_NULL;
-        }
-
-      szBuffer[1] = '\0';
-      int nResult = cci_bind_param(m_hCCIRequest, nIndex, CCI_A_TYPE_STR,
-          (void *) szBuffer, utype, 0);
-      if (nResult < 0)
-        {
-          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
-              "Failed to bind parameter.");
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-          throw e;
-        }
-    }
-
-    void DBGWCUBRIDPreparedStatement::doBindFloat(int nIndex,
-        const DBGWValue *pValue)
-    {
-      float fValue;
-      T_CCI_U_TYPE utype = CCI_U_TYPE_FLOAT;
-
-      if (pValue->getFloat(&fValue) == false)
-        {
-          throw getLastException();
-        }
-
-      if (pValue->isNull())
-        {
-          utype = CCI_U_TYPE_NULL;
-        }
-
-      int nResult = cci_bind_param(m_hCCIRequest, nIndex, CCI_A_TYPE_FLOAT,
-          (void *) &fValue, utype, 0);
-      if (nResult < 0)
-        {
-          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
-              "Failed to bind parameter.");
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-          throw e;
-        }
-    }
-
-    void DBGWCUBRIDPreparedStatement::doBindDouble(int nIndex,
-        const DBGWValue *pValue)
-    {
-      double dValue;
-      T_CCI_U_TYPE utype = CCI_U_TYPE_DOUBLE;
-
-      if (pValue->getDouble(&dValue) == false)
-        {
-          throw getLastException();
-        }
-
-      if (pValue->isNull())
-        {
-          utype = CCI_U_TYPE_NULL;
-        }
-
-      int nResult = cci_bind_param(m_hCCIRequest, nIndex, CCI_A_TYPE_DOUBLE,
-          (void *) &dValue, utype, 0);
-      if (nResult < 0)
-        {
-          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
-              "Failed to bind parameter.");
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-          throw e;
-        }
-    }
-
-#ifdef ENABLE_LOB
-    void DBGWCUBRIDPreparedStatement::doBindClob(int nIndex,
-        const DBGWValue *pValue)
-    {
-      char *szValue;
-      T_CCI_U_TYPE utype = CCI_U_TYPE_CLOB;
-      T_CCI_CLOB clob;
-      T_CCI_ERROR cciError;
-
-      if (m_pLobList == NULL)
-        {
-          m_pLobList = DBGWCUBRIDLobListSharedPtr(new DBGWCUBRIDLobList());
-        }
-
-      int nResult = cci_clob_new(m_hCCIConnection, &clob, &cciError);
-      if (nResult < 0)
-        {
-          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
-              "Failed to bind parameter.");
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-          throw e;
-        }
-
-      try
-        {
-          if (pValue->getCString(&szValue) == false)
-            {
-              throw getLastException();
-            }
-          else
-            {
-              nResult = cci_clob_write(m_hCCIConnection, clob, 0,
-                  pValue->getLength(), szValue, &cciError);
-              if (nResult < 0)
+              if (it->getCString(nIndex, &szValue) == false)
                 {
-                  CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
-                      "Failed to bind parameter.");
-                  DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-                  throw e;
+                  throw getLastException();
                 }
-            }
 
-          if (pValue->isNull())
-            {
-              utype = CCI_U_TYPE_NULL;
+              m_cstrList.push_back(szValue);
             }
-
-          nResult = cci_bind_param(m_hCCIRequest, nIndex, CCI_A_TYPE_CLOB,
-              (void *) clob, utype, CCI_BIND_PTR);
-          if (nResult < 0)
-            {
-              CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
-                  "Failed to bind parameter.");
-              DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-              throw e;
-            }
-
-          m_pLobList->addClob(clob);
         }
-      catch (DBGWException &e)
-        {
-          if (clob != NULL)
-            {
-              cci_clob_free(clob);
-            }
-          throw;
-        }
+
+      m_size = parameterList.size();
     }
 
-    void DBGWCUBRIDPreparedStatement::doBindBlob(int nIndex,
-        const DBGWValue *pValue)
+    _DBGWCUBRIDArrayParameter::~_DBGWCUBRIDArrayParameter()
     {
-      char *szValue;
-      T_CCI_U_TYPE utype = CCI_U_TYPE_BLOB;
-      T_CCI_BLOB blob;
-      T_CCI_ERROR cciError;
+    }
 
-      if (m_pLobList == NULL)
+    void *_DBGWCUBRIDArrayParameter::toNativeArray() const
+    {
+      if (m_size == 0)
         {
-          m_pLobList = DBGWCUBRIDLobListSharedPtr(new DBGWCUBRIDLobList());
-        }
-
-      int nResult = cci_blob_new(m_hCCIConnection, &blob, &cciError);
-      if (nResult < 0)
-        {
-          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
-              "Failed to bind parameter.");
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+          InvalidParameterListException e;
+          DBGW_LOG_ERROR(e.what());
           throw e;
         }
 
-      try
+      if (m_type == DBGW_VAL_TYPE_INT)
         {
-          if (pValue->getCString(&szValue) == false)
-            {
-              throw getLastException();
-            }
-          else
-            {
-              nResult = cci_blob_write(m_hCCIConnection, blob, 0,
-                  pValue->getLength(), szValue, &cciError);
-              if (nResult < 0)
-                {
-                  CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
-                      "Failed to bind parameter.");
-                  DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-                  throw e;
-                }
-            }
-
-          if (pValue->isNull())
-            {
-              utype = CCI_U_TYPE_NULL;
-            }
-
-          nResult = cci_bind_param(m_hCCIRequest, nIndex, CCI_A_TYPE_BLOB,
-              (void *) blob, utype, CCI_BIND_PTR);
-          if (nResult < 0)
-            {
-              CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
-                  "Failed to bind parameter.");
-              DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-              throw e;
-            }
-
-          m_pLobList->addBlob(blob);
+          return (void *) &m_intList[0];
         }
-      catch (DBGWException &e)
+      else if (m_type == DBGW_VAL_TYPE_LONG)
         {
-          if (blob != NULL)
-            {
-              cci_blob_free(blob);
-            }
-          throw;
+          return (void *) &m_longList[0];
         }
-    }
-#endif
-
-    void DBGWCUBRIDPreparedStatement::doBindIntArray(int nIndex,
-        DBGWValueList &valueList)
-    {
-      int i = 0;
-      IntSharedArr nValue(new int[valueList.size()]);
-      IntSharedArr nullInd(new int[valueList.size()]);
-
-      for (DBGWValueList::iterator it = valueList.begin();
-          it != valueList.end(); it++, i++)
+      else if (m_type == DBGW_VAL_TYPE_FLOAT)
         {
-          if ((*it)->getInt(&nValue[i]))
-            {
-              if ((*it)->isNull())
-                {
-                  nullInd[i] = 1;
-                }
-              else
-                {
-                  nullInd[i] = 0;
-                }
-            }
-          else
-            {
-              throw getLastException();
-            }
+          return (void *) &m_floatList[0];
         }
-
-      bindIntList.push_back(nValue);
-      bindIntList.push_back(nullInd);
-
-      int nResult = cci_bind_param_array(m_hCCIRequest, nIndex, CCI_A_TYPE_INT,
-          nValue.get(), nullInd.get(), CCI_U_TYPE_INT);
-      if (nResult < 0)
+      else if (m_type == DBGW_VAL_TYPE_DOUBLE)
         {
-          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
-              "Failed to bind parameter.");
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-          throw e;
-        }
-    }
-
-    void DBGWCUBRIDPreparedStatement::doBindLongArray(int nIndex,
-        DBGWValueList &valueList)
-    {
-      int i = 0;
-      BigIntSharedArr lnValue(new int64[valueList.size()]);
-      IntSharedArr nullInd(new int[valueList.size()]);
-
-      for (DBGWValueList::iterator it = valueList.begin();
-          it != valueList.end(); it++, i++)
-        {
-          if ((*it)->getLong(&lnValue[i]))
-            {
-              if ((*it)->isNull())
-                {
-                  nullInd[i] = 1;
-                }
-              else
-                {
-                  nullInd[i] = 0;
-                }
-            }
-          else
-            {
-              throw getLastException();
-            }
-        }
-
-      bindBigIntList.push_back(lnValue);
-      bindIntList.push_back(nullInd);
-
-      int nResult =  cci_bind_param_array(m_hCCIRequest, nIndex, CCI_A_TYPE_BIGINT,
-          lnValue.get(), nullInd.get(), CCI_U_TYPE_BIGINT);
-
-      if (nResult < 0)
-        {
-          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
-              "Failed to bind parameter.");
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-          throw e;
-        }
-    }
-
-    void DBGWCUBRIDPreparedStatement::doBindStringArray(int nIndex,
-        DBGWValueList &valueList)
-    {
-      int i = 0;
-      StringSharedArr szValue(new char*[valueList.size()]);
-      IntSharedArr nullInd(new int[valueList.size()]);
-
-      for (DBGWValueList::iterator it = valueList.begin();
-          it != valueList.end(); it++, i++)
-        {
-          if ((*it)->getCString(&szValue[i]))
-            {
-              if ((*it)->isNull())
-                {
-                  nullInd[i] = 1;
-                }
-              else
-                {
-                  nullInd[i] = 0;
-                }
-            }
-          else
-            {
-              throw getLastException();
-            }
-        }
-
-      bindStringList.push_back(szValue);
-      bindIntList.push_back(nullInd);
-
-      int nResult = cci_bind_param_array(m_hCCIRequest, nIndex, CCI_A_TYPE_STR,
-          szValue.get(), nullInd.get(), CCI_U_TYPE_STRING);
-
-      if (nResult < 0)
-        {
-          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
-              "Failed to bind parameter.");
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-          throw e;
-        }
-    }
-
-    void DBGWCUBRIDPreparedStatement::doBindCharArray(int nIndex,
-        DBGWValueList &valueList)
-    {
-      int i = 0;
-      StringSharedArr szBuffer(new char*[valueList.size()]);
-      IntSharedArr nullInd(new int[valueList.size()]);
-
-      for (DBGWValueList::iterator it = valueList.begin();
-          it != valueList.end(); it++, i++)
-        {
-          if ((*it)->getCString(&szBuffer[i]))
-            {
-              if ((*it)->isNull())
-                {
-                  nullInd[i] = 1;
-                }
-              else
-                {
-                  nullInd[i] = 0;
-                }
-            }
-          else
-            {
-              throw getLastException();
-            }
-        }
-
-      bindStringList.push_back(szBuffer);
-      bindIntList.push_back(nullInd);
-
-      int nResult = cci_bind_param_array(m_hCCIRequest, nIndex, CCI_A_TYPE_STR,
-          szBuffer.get(), nullInd.get(), CCI_U_TYPE_CHAR);
-      if (nResult < 0)
-        {
-          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
-              "Failed to bind parameter.");
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-          throw e;
-        }
-    }
-
-    void DBGWCUBRIDPreparedStatement::doBindFloatArray(int nIndex,
-        DBGWValueList &valueList)
-    {
-      int i = 0;
-      FloatSharedArr fValue(new float[valueList.size()]);
-      IntSharedArr nullInd(new int[valueList.size()]);
-
-      for (DBGWValueList::iterator it = valueList.begin();
-          it != valueList.end(); it++, i++)
-        {
-          if ((*it)->getFloat(&fValue[i]))
-            {
-              if ((*it)->isNull())
-                {
-                  nullInd[i] = 1;
-                }
-              else
-                {
-                  nullInd[i] = 0;
-                }
-            }
-          else
-            {
-              throw getLastException();
-            }
-        }
-
-      bindFloatList.push_back(fValue);
-      bindIntList.push_back(nullInd);
-
-      int nResult = cci_bind_param_array(m_hCCIRequest, nIndex, CCI_A_TYPE_FLOAT,
-          fValue.get(), nullInd.get(), CCI_U_TYPE_FLOAT);
-
-      if (nResult < 0)
-        {
-          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
-              "Failed to bind parameter.");
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-          throw e;
-        }
-    }
-
-    void DBGWCUBRIDPreparedStatement::doBindDoubleArray(int nIndex,
-        DBGWValueList &valueList)
-    {
-      int i = 0;
-      DoubleSharedArr dValue(new double[valueList.size()]);
-      IntSharedArr nullInd(new int[valueList.size()]);
-
-      for (DBGWValueList::iterator it = valueList.begin();
-          it != valueList.end(); it++, i++)
-        {
-          if ((*it)->getDouble(&dValue[i]))
-            {
-              if ((*it)->isNull())
-                {
-                  nullInd[i] = 1;
-                }
-              else
-                {
-                  nullInd[i] = 0;
-                }
-            }
-          else
-            {
-              throw getLastException();
-            }
-        }
-
-      bindDoubleList.push_back(dValue);
-      bindIntList.push_back(nullInd);
-
-      int nResult = cci_bind_param_array(m_hCCIRequest, nIndex, CCI_A_TYPE_DOUBLE,
-          dValue.get(), nullInd.get(), CCI_U_TYPE_DOUBLE);
-
-      if (nResult < 0)
-        {
-          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
-              "Failed to bind parameter.");
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-          throw e;
-        }
-    }
-
-    void DBGWCUBRIDPreparedStatement::doBindListClear()
-    {
-      bindIntList.clear();
-      bindBigIntList.clear();
-      bindFloatList.clear();
-      bindDoubleList.clear();
-      bindStringList.clear();
-    }
-
-    DBGWResultSharedPtr DBGWCUBRIDPreparedStatement::doExecute()
-    {
-      T_CCI_ERROR cciError;
-
-      if (m_hCCIRequest < 0)
-        {
-          ExecuteBeforePrepareException e;
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-          throw e;
-        }
-
-      int nResult = cci_execute(m_hCCIRequest, 0, 0, &cciError);
-      if (nResult < 0)
-        {
-          CUBRIDException e = CUBRIDExceptionFactory::create(nResult, cciError,
-              "Failed to execute statement.");
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-          throw e;
-        }
-
-      DBGWResultSharedPtr p(
-          new DBGWCUBRIDResult(shared_from_this(), m_hCCIRequest,
-              nResult));
-      return p;
-    }
-
-    DBGWBatchResultSharedPtr DBGWCUBRIDPreparedStatement::doExecuteBatch()
-    {
-      T_CCI_ERROR cciError;
-      T_CCI_QUERY_RESULT *queryResult;
-
-
-      if (m_hCCIRequest < 0)
-        {
-          ExecuteBeforePrepareException e;
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-          throw e;
-        }
-
-      int nResult = cci_execute_array(m_hCCIRequest, &queryResult, &cciError);
-      if (nResult < 0)
-        {
-          CUBRIDException e = CUBRIDExceptionFactory::create(nResult, cciError,
-              "Failed to execute statement.");
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-          doBindListClear();
-          throw e;
-        }
-
-      doBindListClear();
-
-      DBGWBatchResultSharedPtr pBatchResult(new DBGWBatchResult(nResult));
-
-      for (int i = 1; i <= nResult; i++)
-        {
-          int cnt = CCI_QUERY_RESULT_RESULT(queryResult, i);
-
-          pBatchResult->setAffectedRow(i-1, cnt);
-          if (cnt < 0)
-            {
-              int nErrorCode = CCI_QUERY_RESULT_ERR_NO(queryResult, i);
-              const char *szErrorMessage = CCI_QUERY_RESULT_ERR_MSG(queryResult, i);
-              CUBRIDException e = CUBRIDExceptionFactory::create(nErrorCode, szErrorMessage);
-              DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-
-              pBatchResult->setErrorCode(i-1, nErrorCode);
-              pBatchResult->setErrorMessage(i-1, szErrorMessage);
-              pBatchResult->setStatementType(i-1, DBGW_QUERY_TYPE_UPDATE);
-              pBatchResult->setExecuteStatus(DBGW_EXECUTE_FAIL);
-            }
-        }
-      cci_query_result_free(queryResult, nResult);
-
-      return pBatchResult;
-    }
-
-    DBGWCUBRIDResult::DBGWCUBRIDResult(const DBGWPreparedStatementSharedPtr pStmt,
-        int hCCIRequest, int nAffectedRow) :
-      DBGWResult(pStmt, nAffectedRow), m_hCCIRequest(hCCIRequest),
-      m_cursorPos(CCI_CURSOR_FIRST)
-    {
-      /**
-       * We don't need to clear error because this api will not make error.
-       *
-       * clearException();
-       *
-       * try
-       * {
-       * 		blur blur blur;
-       * }
-       * catch (DBGWException &e)
-       * {
-       * 		setLastException(e);
-       * }
-       */
-    }
-
-    DBGWCUBRIDResult::~DBGWCUBRIDResult()
-    {
-      /**
-       * We don't need to clear error because this api will not make error.
-       *
-       * clearException();
-       *
-       * try
-       * {
-       * 		blur blur blur;
-       * }
-       * catch (DBGWException &e)
-       * {
-       * 		setLastException(e);
-       * }
-       */
-      if (isNeedFetch() && m_hCCIRequest > 0)
-        {
-          cci_fetch_buffer_clear(m_hCCIRequest);
-        }
-    }
-
-    void DBGWCUBRIDResult::doFirst()
-    {
-      m_cursorPos = CCI_CURSOR_FIRST;
-    }
-
-    bool DBGWCUBRIDResult::doNext()
-    {
-      if (m_cursorPos == CCI_CURSOR_FIRST)
-        {
-          makeMetaData();
-          clear();
-        }
-
-      T_CCI_ERROR cciError;
-      int nResult = cci_cursor(m_hCCIRequest, 1, (T_CCI_CURSOR_POS) m_cursorPos,
-          &cciError);
-      if (nResult == CCI_ER_NO_MORE_DATA)
-        {
-          NoMoreDataException e;
-          DBGW_LOG_ERROR(getLogger().getLogMessage(e.what()).c_str());
-          throw e;
-        }
-      else if (nResult < 0)
-        {
-          CUBRIDException e = CUBRIDExceptionFactory::create(nResult, cciError,
-              "Failed to move cursor.");
-          DBGW_LOG_ERROR(getLogger().getLogMessage(e.what()).c_str());
-          throw e;
+          return (void *) &m_doubleList[0];
         }
       else
         {
-          nResult = cci_fetch(m_hCCIRequest, &cciError);
-          if (nResult < 0)
-            {
-              CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
-                  cciError, "Failed to fetch data.");
-              DBGW_LOG_ERROR(getLogger().getLogMessage(e.what()).c_str());
-              throw e;
-            }
-
-          makeColumnValues();
-
-          m_cursorPos = CCI_CURSOR_CURRENT;
-          return true;
+          return (void *) &m_cstrList[0];
         }
     }
 
-    void DBGWCUBRIDResult::doMakeMetadata(MetaDataList &metaList,
-        const MetaDataList &userDefinedMetaList)
+    int *_DBGWCUBRIDArrayParameter::toNullIndArray() const
     {
-      const DBGWBoundQuerySharedPtr pQuery = getPreparedStatement()->getQuery();
-
-      if (pQuery->getType() == DBGW_QUERY_TYPE_SELECT
-          || (pQuery->getType() == DBGW_QUERY_TYPE_PROCEDURE
-              && pQuery->isExistOutBindParam() == false))
+      if (m_size == 0)
         {
-          T_CCI_SQLX_CMD cciCmdType;
-          int nColNum;
-          T_CCI_COL_INFO *pCCIColInfo = cci_get_result_info(m_hCCIRequest,
-              &cciCmdType, &nColNum);
-          if (pCCIColInfo == NULL)
+          InvalidParameterListException e;
+          DBGW_LOG_ERROR(e.what());
+          throw e;
+        }
+
+      return (int *) &m_nullIndList[0];
+    }
+
+    size_t _DBGWCUBRIDArrayParameter::size() const
+    {
+      return m_size;
+    }
+
+    _DBGWCUBRIDPreparedStatement::_DBGWCUBRIDPreparedStatement(
+        DBGWConnectionSharedPtr pConnection, const char *szSql) :
+      DBGWPreparedStatement(pConnection),
+      m_baseStatement(*(int *) pConnection->getNativeHandle(), szSql)
+    {
+      clearException();
+
+      try
+        {
+          m_baseStatement.prepare();
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+        }
+    }
+
+    _DBGWCUBRIDPreparedStatement::~_DBGWCUBRIDPreparedStatement()
+    {
+      close();
+    }
+
+    bool _DBGWCUBRIDPreparedStatement::addBatch()
+    {
+      m_baseStatement.addBatch();
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDPreparedStatement::clearBatch()
+    {
+      m_baseStatement.clearBatch();
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDPreparedStatement::clearParameters()
+    {
+      m_baseStatement.clearParameters();
+
+      return true;
+    }
+
+    DBGWResultSetSharedPtr _DBGWCUBRIDPreparedStatement::executeQuery()
+    {
+      clearException();
+
+      try
+        {
+          int nRowCount = m_baseStatement.execute();
+
+          DBGWResultSetSharedPtr pResultSet(
+              new _DBGWCUBRIDResultSet(shared_from_this(), nRowCount));
+          return pResultSet;
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return DBGWResultSetSharedPtr();
+        }
+    }
+
+    int _DBGWCUBRIDPreparedStatement::executeUpdate()
+    {
+      clearException();
+
+      try
+        {
+          return m_baseStatement.execute();
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return -1;
+        }
+    }
+
+    DBGWBatchResultSetSharedPtr _DBGWCUBRIDPreparedStatement::executeBatch()
+    {
+      clearException();
+
+      try
+        {
+          return m_baseStatement.executeArray();
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return DBGWBatchResultSetSharedPtr();
+        }
+    }
+
+    bool _DBGWCUBRIDPreparedStatement::set(int nIndex, const DBGWValue &value)
+    {
+      clearException();
+
+      try
+        {
+          m_baseStatement.set(nIndex, value);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDPreparedStatement::setInt(int nIndex, int nValue)
+    {
+      clearException();
+
+      try
+        {
+          m_baseStatement.setInt(nIndex, nValue);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDPreparedStatement::setLong(int nIndex, int64 lValue)
+    {
+      clearException();
+
+      try
+        {
+          m_baseStatement.setLong(nIndex, lValue);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDPreparedStatement::setChar(int nIndex, char cValue)
+    {
+      clearException();
+
+      try
+        {
+          m_baseStatement.setChar(nIndex, cValue);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDPreparedStatement::setCString(int nIndex, const char *szValue)
+    {
+      clearException();
+
+      try
+        {
+          m_baseStatement.setString(nIndex, szValue);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDPreparedStatement::setFloat(int nIndex, float fValue)
+    {
+      clearException();
+
+      try
+        {
+          m_baseStatement.setFloat(nIndex, fValue);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDPreparedStatement::setDouble(int nIndex, double dValue)
+    {
+      clearException();
+
+      try
+        {
+          m_baseStatement.setDouble(nIndex, dValue);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDPreparedStatement::setDate(int nIndex,
+        const struct tm &tmValue)
+    {
+      clearException();
+
+      try
+        {
+          m_baseStatement.setDate(nIndex, tmValue);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDPreparedStatement::setTime(int nIndex,
+        const struct tm &tmValue)
+    {
+      clearException();
+
+      try
+        {
+          m_baseStatement.setTime(nIndex, tmValue);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDPreparedStatement::setDateTime(int nIndex,
+        const struct tm &tmValue)
+    {
+      clearException();
+
+      try
+        {
+          m_baseStatement.setDateTime(nIndex, tmValue);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDPreparedStatement::setNull(int nIndex, DBGWValueType type)
+    {
+      clearException();
+
+      try
+        {
+          m_baseStatement.setNull(nIndex, type);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    void *_DBGWCUBRIDPreparedStatement::getNativeHandle() const
+    {
+      return m_baseStatement.getNativeHandle();
+    }
+
+    void _DBGWCUBRIDPreparedStatement::doClose()
+    {
+      m_baseStatement.close();
+    }
+
+    _DBGWCUBRIDResultSetMetaDataRaw::_DBGWCUBRIDResultSetMetaDataRaw() :
+      unused(true), columnType(DBGW_VAL_TYPE_UNDEFINED)
+    {
+    }
+
+    _DBGWCUBRIDCallableStatement::_DBGWCUBRIDCallableStatement(
+        DBGWConnectionSharedPtr pConnection, const char *szSql) :
+      DBGWCallableStatement(pConnection),
+      m_baseStatement(*(int *) pConnection->getNativeHandle(), szSql)
+    {
+      clearException();
+
+      try
+        {
+          m_baseStatement.prepareCall();
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+        }
+    }
+
+    _DBGWCUBRIDCallableStatement::~_DBGWCUBRIDCallableStatement()
+    {
+      close();
+    }
+
+    bool _DBGWCUBRIDCallableStatement::addBatch()
+    {
+      UnsupportedOperationException e;
+      DBGW_LOG_ERROR(e.what());
+      setLastException(e);
+      return false;
+    }
+
+    bool _DBGWCUBRIDCallableStatement::clearBatch()
+    {
+      UnsupportedOperationException e;
+      DBGW_LOG_ERROR(e.what());
+      setLastException(e);
+      return false;
+    }
+
+    bool _DBGWCUBRIDCallableStatement::clearParameters()
+    {
+      m_baseStatement.clearParameters();
+      return true;
+    }
+
+    DBGWResultSetSharedPtr _DBGWCUBRIDCallableStatement::executeQuery()
+    {
+      clearException();
+
+      try
+        {
+          int nRowCount = m_baseStatement.execute();
+
+          if (isExistOutParameter())
             {
-              CUBRIDException e = CUBRIDExceptionFactory::create(
-                  "Cannot get the cci col info.");
-              DBGW_LOG_ERROR(getLogger().getLogMessage(e.what()).c_str());
+              m_pOutParamResult = DBGWResultSetSharedPtr(
+                  new _DBGWCUBRIDResultSet(shared_from_this(),
+                      m_metaDataRawList));
+              if (m_pOutParamResult == NULL)
+                {
+                  throw getLastException();
+                }
+
+              if (m_pOutParamResult->next() == false)
+                {
+                  throw getLastException();
+                }
+            }
+
+          return DBGWResultSetSharedPtr();
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return DBGWResultSetSharedPtr();
+        }
+    }
+
+    DBGWBatchResultSetSharedPtr _DBGWCUBRIDCallableStatement::executeBatch()
+    {
+      UnsupportedOperationException e;
+      DBGW_LOG_ERROR(e.what());
+      setLastException(e);
+      return DBGWBatchResultSetSharedPtr();
+    }
+
+    int _DBGWCUBRIDCallableStatement::executeUpdate()
+    {
+      clearException();
+
+      try
+        {
+          int nAffectedRow = m_baseStatement.execute();
+
+          if (isExistOutParameter())
+            {
+              m_pOutParamResult = DBGWResultSetSharedPtr(
+                  new _DBGWCUBRIDResultSet(shared_from_this(),
+                      m_metaDataRawList));
+              if (m_pOutParamResult == NULL)
+                {
+                  throw getLastException();
+                }
+
+              if (m_pOutParamResult->next() == false)
+                {
+                  throw getLastException();
+                }
+            }
+
+          return nAffectedRow;
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return -1;
+        }
+    }
+
+    bool _DBGWCUBRIDCallableStatement::registerOutParameter(size_t nIndex,
+        DBGWValueType type)
+    {
+      clearException();
+
+      try
+        {
+          m_baseStatement.registerOutParameter(nIndex, type);
+
+          if (m_metaDataRawList.size() < nIndex)
+            {
+              m_metaDataRawList.resize(nIndex);
+            }
+
+          m_metaDataRawList[nIndex - 1].unused = false;
+          m_metaDataRawList[nIndex - 1].columnType = type;
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDCallableStatement::set(int nIndex, const DBGWValue &value)
+    {
+      clearException();
+
+      try
+        {
+          m_baseStatement.set(nIndex, value);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDCallableStatement::setInt(int nIndex, int nValue)
+    {
+      clearException();
+
+      try
+        {
+          m_baseStatement.setInt(nIndex, nValue);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDCallableStatement::setLong(int nIndex, int64 lValue)
+    {
+      clearException();
+
+      try
+        {
+          m_baseStatement.setLong(nIndex, lValue);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDCallableStatement::setChar(int nIndex, char cValue)
+    {
+      clearException();
+
+      try
+        {
+          m_baseStatement.setChar(nIndex, cValue);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDCallableStatement::setCString(int nIndex,
+        const char *szValue)
+    {
+      clearException();
+
+      try
+        {
+          m_baseStatement.setString(nIndex, szValue);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDCallableStatement::setFloat(int nIndex, float fValue)
+    {
+      clearException();
+
+      try
+        {
+          m_baseStatement.setFloat(nIndex, fValue);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDCallableStatement::setDouble(int nIndex, double dValue)
+    {
+      clearException();
+
+      try
+        {
+          m_baseStatement.setDouble(nIndex, dValue);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDCallableStatement::setDate(int nIndex,
+        const struct tm &tmValue)
+    {
+      clearException();
+
+      try
+        {
+          m_baseStatement.setDate(nIndex, tmValue);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDCallableStatement::setTime(int nIndex,
+        const struct tm &tmValue)
+    {
+      clearException();
+
+      try
+        {
+          m_baseStatement.setTime(nIndex, tmValue);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDCallableStatement::setDateTime(int nIndex,
+        const struct tm &tmValue)
+    {
+      clearException();
+
+      try
+        {
+          m_baseStatement.setDateTime(nIndex, tmValue);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDCallableStatement::setNull(int nIndex, DBGWValueType type)
+    {
+      clearException();
+
+      try
+        {
+          m_baseStatement.setNull(nIndex, type);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDCallableStatement::getType(int nIndex,
+        DBGWValueType *pType) const
+    {
+      clearException();
+
+      try
+        {
+          if (m_pOutParamResult == NULL)
+            {
+              NotExistOutParameterException e;
+              DBGW_LOG_ERROR(e.what());
               throw e;
             }
 
-          metaList.clear();
+          if (m_pOutParamResult->getType(nIndex, pType) == false)
+            {
+              throw getLastException();
+            }
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
 
-          MetaData md;
-          md.unused = false;
+      return true;
+    }
 
+    bool _DBGWCUBRIDCallableStatement::getInt(int nIndex, int *pValue) const
+    {
+      clearException();
+
+      try
+        {
+          if (m_pOutParamResult == NULL)
+            {
+              NotExistOutParameterException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          if (m_pOutParamResult->getInt(nIndex, pValue) == false)
+            {
+              throw getLastException();
+            }
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDCallableStatement::getCString(int nIndex,
+        char **pValue) const
+    {
+      clearException();
+
+      try
+        {
+          if (m_pOutParamResult == NULL)
+            {
+              NotExistOutParameterException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          if (m_pOutParamResult->getCString(nIndex, pValue) == false)
+            {
+              throw getLastException();
+            }
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDCallableStatement::getLong(int nIndex, int64 *pValue) const
+    {
+      clearException();
+
+      try
+        {
+          if (m_pOutParamResult == NULL)
+            {
+              NotExistOutParameterException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          if (m_pOutParamResult->getLong(nIndex, pValue) == false)
+            {
+              throw getLastException();
+            }
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDCallableStatement::getChar(int nIndex, char *pValue) const
+    {
+      clearException();
+
+      try
+        {
+          if (m_pOutParamResult == NULL)
+            {
+              NotExistOutParameterException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          if (m_pOutParamResult->getChar(nIndex, pValue) == false)
+            {
+              throw getLastException();
+            }
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDCallableStatement::getFloat(int nIndex, float *pValue) const
+    {
+      clearException();
+
+      try
+        {
+          if (m_pOutParamResult == NULL)
+            {
+              NotExistOutParameterException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          if (m_pOutParamResult->getFloat(nIndex, pValue) == false)
+            {
+              throw getLastException();
+            }
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDCallableStatement::getDouble(int nIndex, double *pValue) const
+    {
+      clearException();
+
+      try
+        {
+          if (m_pOutParamResult == NULL)
+            {
+              NotExistOutParameterException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          if (m_pOutParamResult->getDouble(nIndex, pValue) == false)
+            {
+              throw getLastException();
+            }
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDCallableStatement::getDateTime(int nIndex,
+        struct tm *pValue) const
+    {
+      clearException();
+
+      try
+        {
+          if (m_pOutParamResult == NULL)
+            {
+              NotExistOutParameterException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          if (m_pOutParamResult->getDateTime(nIndex, pValue) == false)
+            {
+              throw getLastException();
+            }
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    const DBGWValue *_DBGWCUBRIDCallableStatement::getValue(int nIndex) const
+    {
+      clearException();
+
+      try
+        {
+          if (m_pOutParamResult == NULL)
+            {
+              NotExistOutParameterException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          const DBGWValue *pValue = m_pOutParamResult->getValue(nIndex);
+          if (pValue == NULL)
+            {
+              throw getLastException();
+            }
+
+          return pValue;
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return NULL;
+        }
+    }
+
+    void *_DBGWCUBRIDCallableStatement::getNativeHandle() const
+    {
+      return m_baseStatement.getNativeHandle();
+    }
+
+    void _DBGWCUBRIDCallableStatement::doClose()
+    {
+      m_baseStatement.close();
+    }
+
+    bool _DBGWCUBRIDCallableStatement::isExistOutParameter() const
+    {
+      return m_metaDataRawList.size() > 0;
+    }
+
+    _DBGWCUBRIDResultSetMetaData::_DBGWCUBRIDResultSetMetaData(int hCCIRequest) :
+      DBGWResultSetMetaData()
+    {
+      clearException();
+
+      try
+        {
+          T_CCI_SQLX_CMD cciCmdType;
+          int nColNum;
+          T_CCI_COL_INFO *pCCIColInfo = cci_get_result_info(hCCIRequest,
+              &cciCmdType, &nColNum);
+          if (pCCIColInfo == NULL)
+            {
+              _CUBRIDException e = _CUBRIDExceptionFactory::create(
+                  "Cannot get the cci col info.");
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          T_CCI_U_TYPE utype;
+          _DBGWCUBRIDResultSetMetaDataRaw metaDataRaw;
           for (size_t i = 0; i < (size_t) nColNum; i++)
             {
-              if (userDefinedMetaList.size() > i
-                  && userDefinedMetaList[i].type != DBGW_VAL_TYPE_UNDEFINED)
+              metaDataRaw.unused = false;
+              metaDataRaw.columnName = CCI_GET_RESULT_INFO_NAME(pCCIColInfo, i + 1);
+              utype = CCI_GET_RESULT_INFO_TYPE(pCCIColInfo, i + 1);
+              switch (utype)
                 {
-                  metaList.push_back(userDefinedMetaList[i]);
-                  continue;
-                }
-
-              md.colNo = i + 1;
-              md.name = CCI_GET_RESULT_INFO_NAME(pCCIColInfo, i + 1);
-              md.orgType = CCI_GET_RESULT_INFO_TYPE(pCCIColInfo, i + 1);
-              switch (md.orgType)
-                {
-#ifdef ENABLE_LOB
-                case CCI_U_TYPE_CLOB:
-                  return DBGW_VAL_TYPE_CLOB;
-                case CCI_U_TYPE_BLOB:
-                  return DBGW_VAL_TYPE_BLOB;
-#endif
                 case CCI_U_TYPE_CHAR:
-                  md.type = DBGW_VAL_TYPE_CHAR;
+                  metaDataRaw.columnType = DBGW_VAL_TYPE_CHAR;
                   break;
                 case CCI_U_TYPE_INT:
                 case CCI_U_TYPE_SHORT:
-                  md.type = DBGW_VAL_TYPE_INT;
+                  metaDataRaw.columnType = DBGW_VAL_TYPE_INT;
                   break;
                 case CCI_U_TYPE_BIGINT:
-                  md.type = DBGW_VAL_TYPE_LONG;
+                  metaDataRaw.columnType = DBGW_VAL_TYPE_LONG;
                   break;
                 case CCI_U_TYPE_STRING:
                 case CCI_U_TYPE_NCHAR:
                 case CCI_U_TYPE_VARNCHAR:
-                  md.type = DBGW_VAL_TYPE_STRING;
+                  metaDataRaw.columnType = DBGW_VAL_TYPE_STRING;
                   break;
                 case CCI_U_TYPE_FLOAT:
-                  md.type = DBGW_VAL_TYPE_FLOAT;
+                  metaDataRaw.columnType = DBGW_VAL_TYPE_FLOAT;
                   break;
                 case CCI_U_TYPE_DOUBLE:
-                  md.type = DBGW_VAL_TYPE_DOUBLE;
+                  metaDataRaw.columnType = DBGW_VAL_TYPE_DOUBLE;
                   break;
                 case CCI_U_TYPE_DATE:
-                  md.type = DBGW_VAL_TYPE_DATE;
+                  metaDataRaw.columnType = DBGW_VAL_TYPE_DATE;
                   break;
                 case CCI_U_TYPE_TIME:
-                  md.type = DBGW_VAL_TYPE_TIME;
+                  metaDataRaw.columnType = DBGW_VAL_TYPE_TIME;
                   break;
                 case CCI_U_TYPE_DATETIME:
                 case CCI_U_TYPE_TIMESTAMP:
-                  md.type = DBGW_VAL_TYPE_DATETIME;
+                  metaDataRaw.columnType = DBGW_VAL_TYPE_DATETIME;
                   break;
                 default:
-                  DBGW_LOG_WARN((
-                      boost:: format(
-                          "%d type is not yet supported. so converted string.")
-                      % md.orgType).str().c_str());
-                  md.type = DBGW_VAL_TYPE_STRING;
+                  DBGW_LOGF_WARN(
+                      "%d type is not yet supported. so converted string.",
+                      utype);
+                  metaDataRaw.columnType = DBGW_VAL_TYPE_STRING;
                   break;
                 }
-              metaList.push_back(md);
+
+              m_metaDataRawList.push_back(metaDataRaw);
             }
         }
-      else if (pQuery->getType() == DBGW_QUERY_TYPE_PROCEDURE
-          && pQuery->isExistOutBindParam())
+      catch (DBGWException &e)
         {
-          /**
-           * We cannot get the meta info if we execute procedure.
-           * so we make metadata based on query paramter info.
-           */
+          setLastException(e);
+        }
+    }
 
-          const DBGWQueryParameterList &queryParamList = pQuery->getQueryParamList();
 
-          MetaData md;
-          metaList.clear();
+    _DBGWCUBRIDResultSetMetaData::_DBGWCUBRIDResultSetMetaData(
+        const _DBGWCUBRIDResultSetMetaDataRawList &metaDataRawList) :
+      m_metaDataRawList(metaDataRawList)
+    {
+    }
 
-          DBGWQueryParameterList::const_iterator it = queryParamList.begin();
-          for (int i = 0; it != queryParamList.end(); it++, i++)
+    _DBGWCUBRIDResultSetMetaData::~_DBGWCUBRIDResultSetMetaData()
+    {
+    }
+
+    size_t _DBGWCUBRIDResultSetMetaData::getColumnCount() const
+    {
+      return m_metaDataRawList.size();
+    }
+
+    bool _DBGWCUBRIDResultSetMetaData::getColumnName(size_t nIndex,
+        const char **szName) const
+    {
+      clearException();
+
+      try
+        {
+          if (m_metaDataRawList.size() < nIndex - 1)
             {
-              md.name = it->name;
-              if (it->mode == DBGW_BIND_MODE_IN)
+              ArrayIndexOutOfBoundsException e(nIndex,
+                  "DBGWCUBRIDResultSetMetaData");
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          *szName = m_metaDataRawList[nIndex - 1].columnName.c_str();
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDResultSetMetaData::getColumnType(size_t nIndex,
+        DBGWValueType *pType) const
+    {
+      clearException();
+
+      try
+        {
+          if (m_metaDataRawList.size() < nIndex - 1)
+            {
+              ArrayIndexOutOfBoundsException e(nIndex,
+                  "DBGWCUBRIDResultSetMetaData");
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          *pType = m_metaDataRawList[nIndex - 1].columnType;
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    const _DBGWCUBRIDResultSetMetaDataRaw &_DBGWCUBRIDResultSetMetaData::getColumnInfo(
+        size_t nIndex) const
+    {
+      /**
+       * this method is never called external because it is non-virtual method.
+       * so we don't care about exception.
+       */
+
+      if (m_metaDataRawList.size() < nIndex)
+        {
+          ArrayIndexOutOfBoundsException e(nIndex,
+              "DBGWCUBRIDResultSetMetaDataRaw");
+          DBGW_LOG_ERROR(e.what());
+          throw e;
+        }
+
+      return m_metaDataRawList[nIndex];
+    }
+
+    _DBGWCUBRIDResultSet::_DBGWCUBRIDResultSet(
+        DBGWStatementSharedPtr pStatement, int nRowCount) :
+      DBGWResultSet(pStatement),
+      m_hCCIRequest(*(int *) pStatement->getNativeHandle()),
+      m_nRowCount(nRowCount), m_nFetchRowCount(0),
+      m_cursorPos(CCI_CURSOR_FIRST)
+    {
+    }
+
+    _DBGWCUBRIDResultSet::_DBGWCUBRIDResultSet(
+        DBGWStatementSharedPtr pStatement,
+        const _DBGWCUBRIDResultSetMetaDataRawList &metaDataRawList) :
+      DBGWResultSet(pStatement),
+      m_hCCIRequest(*(int *) pStatement->getNativeHandle()),
+      m_nRowCount(-1), m_nFetchRowCount(0), m_cursorPos(CCI_CURSOR_FIRST),
+      m_metaDataRawList(metaDataRawList)
+    {
+    }
+
+    _DBGWCUBRIDResultSet::~_DBGWCUBRIDResultSet()
+    {
+      close();
+    }
+
+    bool _DBGWCUBRIDResultSet::isFirst()
+    {
+      return m_cursorPos == CCI_CURSOR_FIRST;
+    }
+
+    bool _DBGWCUBRIDResultSet::first()
+    {
+      m_cursorPos = CCI_CURSOR_FIRST;
+      m_nFetchRowCount = 0;
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDResultSet::next()
+    {
+      clearException();
+
+      try
+        {
+          if (m_cursorPos == CCI_CURSOR_FIRST)
+            {
+              if (m_metaDataRawList.size() > 0)
                 {
-                  md.unused = true;
-                  md.colNo = -1;
+                  /**
+                   * if we execute procedure and use out bind parameter,
+                   * we make meta data using predefined meta data raw list
+                   * in order to get the out parameter.
+                   */
+                  m_pResultSetMetaData = _DBGWCUBRIDResultSetMetaDataSharedPtr(
+                      new _DBGWCUBRIDResultSetMetaData(m_metaDataRawList));
                 }
               else
                 {
-                  md.unused = false;
-                  md.colNo = it->firstPlaceHolderIndex + 1;
+                  m_pResultSetMetaData = _DBGWCUBRIDResultSetMetaDataSharedPtr(
+                      new _DBGWCUBRIDResultSetMetaData(m_hCCIRequest));
                 }
-              md.type = it->type;
-              md.orgType = it->type;
-              metaList.push_back(md);
+              m_resultSet.clear();
+            }
+
+          T_CCI_ERROR cciError;
+          int nResult = cci_cursor(m_hCCIRequest, 1,
+              (T_CCI_CURSOR_POS) m_cursorPos, &cciError);
+          if (nResult == CCI_ER_NO_MORE_DATA)
+            {
+              m_nRowCount = m_nFetchRowCount;
+
+              NoMoreDataException e;
+              throw e;
+            }
+          else if (nResult < 0)
+            {
+              _CUBRIDException e = _CUBRIDExceptionFactory::create(nResult,
+                  cciError, "Failed to move cursor.");
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+          else
+            {
+              nResult = cci_fetch(m_hCCIRequest, &cciError);
+              if (nResult < 0)
+                {
+                  _CUBRIDException e = _CUBRIDExceptionFactory::create(nResult,
+                      cciError, "Failed to fetch data.");
+                  DBGW_LOG_ERROR(e.what());
+                  throw e;
+                }
+
+              makeResultSet();
+
+              m_cursorPos = CCI_CURSOR_CURRENT;
+
+              ++m_nFetchRowCount;
+            }
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    int _DBGWCUBRIDResultSet::getRowCount() const
+    {
+      return m_nRowCount;
+    }
+
+    bool _DBGWCUBRIDResultSet::getType(int nIndex, DBGWValueType *pType) const
+    {
+      clearException();
+
+      try
+        {
+          const DBGWValue *pValue = m_resultSet.getValue(nIndex - 1);
+          if (pValue == NULL)
+            {
+              throw getLastException();
+            }
+
+          *pType = pValue->getType();
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDResultSet::getInt(int nIndex, int *pValue) const
+    {
+      return m_resultSet.getInt(nIndex - 1, pValue);
+    }
+
+    bool _DBGWCUBRIDResultSet::getCString(int nIndex, char **pValue) const
+    {
+      return m_resultSet.getCString(nIndex - 1, pValue);
+    }
+
+    bool _DBGWCUBRIDResultSet::getLong(int nIndex, int64 *pValue) const
+    {
+      return m_resultSet.getLong(nIndex - 1, pValue);
+    }
+
+    bool _DBGWCUBRIDResultSet::getChar(int nIndex, char *pValue) const
+    {
+      return m_resultSet.getChar(nIndex - 1, pValue);
+    }
+
+    bool _DBGWCUBRIDResultSet::getFloat(int nIndex, float *pValue) const
+    {
+      return m_resultSet.getFloat(nIndex - 1, pValue);
+    }
+
+    bool _DBGWCUBRIDResultSet::getDouble(int nIndex, double *pValue) const
+    {
+      return m_resultSet.getDouble(nIndex - 1, pValue);
+    }
+
+    bool _DBGWCUBRIDResultSet::getDateTime(int nIndex, struct tm *pValue) const
+    {
+      return m_resultSet.getDateTime(nIndex - 1, pValue);
+    }
+
+    const DBGWValue *_DBGWCUBRIDResultSet::getValue(int nIndex) const
+    {
+      return m_resultSet.getValue(nIndex - 1);
+    }
+
+    DBGWResultSetMetaDataSharedPtr _DBGWCUBRIDResultSet::getMetaData() const
+    {
+      return m_pResultSetMetaData;
+    }
+
+    void _DBGWCUBRIDResultSet::doClose()
+    {
+      if (m_hCCIRequest > 0)
+        {
+          T_CCI_ERROR cciError;
+          int nResult = cci_close_query_result(m_hCCIRequest, &cciError);
+          if (nResult < 0)
+            {
+              _CUBRIDException e = _CUBRIDExceptionFactory::create(nResult,
+                  cciError, "Failed to close result set.");
+              DBGW_LOG_ERROR(e.what());
+              throw e;
             }
         }
     }
 
-    void DBGWCUBRIDResult::makeColumnValue(const MetaData &md, int nColNo)
+    void _DBGWCUBRIDResultSet::makeResultSet()
     {
+      DBGWValueSharedPtr pResult;
 
-      if (md.unused)
+      for (size_t i = 0, size = m_pResultSetMetaData->getColumnCount();
+          i < size; i++)
         {
-          /**
-           * we make null value to support dbgw 2.0 compatibility
-           * if parameter mode is 'in'.
-           */
+          const _DBGWCUBRIDResultSetMetaDataRaw &metaDataRaw =
+              m_pResultSetMetaData->getColumnInfo(i);
 
-          doMakeNULL(md, nColNo);
-        }
-      else if (md.type == DBGW_VAL_TYPE_INT)
-        {
-          doMakeInt(md, nColNo);
-        }
-      else if (md.type == DBGW_VAL_TYPE_LONG)
-        {
-          doMakeLong(md, nColNo);
-        }
-      else if (md.type == DBGW_VAL_TYPE_FLOAT)
-        {
-          doMakeFloat(md, nColNo);
-        }
-      else if (md.type == DBGW_VAL_TYPE_DOUBLE)
-        {
-          doMakeDouble(md, nColNo);
-        }
-#ifdef ENABLE_LOB
-      else if (md.type == DBGW_VAL_TYPE_CLOB)
-        {
-          doMakeClob(md, nColNo);
-        }
-      else if (md.type == DBGW_VAL_TYPE_BLOB)
-        {
-          doMakeBlob(md, nColNo);
-        }
-#endif
-      else
-        {
-          doMakeString(md, nColNo);
+          if (metaDataRaw.unused)
+            {
+              /**
+               * metaDataRaw.unused means that user execute procedure
+               * and use out parameter, so we don't have to make in parameter.
+               */
+              doMakeResultSet(i, metaDataRaw.columnName.c_str(),
+                  metaDataRaw.columnType, NULL, true, 0);
+            }
+          else
+            {
+              switch (metaDataRaw.columnType)
+                {
+                case DBGW_VAL_TYPE_INT:
+                  getResultSetIntColumn(i, metaDataRaw);
+                  break;
+                case DBGW_VAL_TYPE_LONG:
+                  getResultSetLongColumn(i, metaDataRaw);
+                  break;
+                case DBGW_VAL_TYPE_FLOAT:
+                  getResultSetFloatColumn(i, metaDataRaw);
+                  break;
+                case DBGW_VAL_TYPE_DOUBLE:
+                  getResultSetDoubleColumn(i, metaDataRaw);
+                  break;
+                default:
+                  getResultSetStringColumn(i, metaDataRaw);
+                  break;
+                }
+            }
         }
     }
 
-    void DBGWCUBRIDResult::doMakeInt(const MetaData &md, int nColNo)
+    void _DBGWCUBRIDResultSet::getResultSetIntColumn(size_t nIndex,
+        const _DBGWCUBRIDResultSetMetaDataRaw &md)
     {
       int nValue;
-      int atype = CCI_A_TYPE_INT;
-      int nIndicator = 0;
-      int nResult = cci_get_data(m_hCCIRequest, md.colNo, atype,
+      int nIndicator = -1;
+      int nResult = cci_get_data(m_hCCIRequest, nIndex + 1, CCI_A_TYPE_INT,
           (void *) &nValue, &nIndicator);
       if (nResult < 0)
         {
-          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
+          _CUBRIDException e = _CUBRIDExceptionFactory::create(nResult,
               "Failed to get data.");
-          DBGW_LOG_ERROR(getLogger().getLogMessage(e.what()).c_str());
+          DBGW_LOG_ERROR(e.what());
           throw e;
         }
 
-      makeValue(md.name.c_str(), nColNo, md.type, (void *) &nValue,
-          nIndicator == -1, nIndicator);
+      doMakeResultSet(nIndex, md.columnName.c_str(), DBGW_VAL_TYPE_INT,
+          &nValue, nIndicator == -1, nIndicator);
     }
 
-    void DBGWCUBRIDResult::doMakeLong(const MetaData &md, int nColNo)
+    void _DBGWCUBRIDResultSet::getResultSetLongColumn(size_t nIndex,
+        const _DBGWCUBRIDResultSetMetaDataRaw &md)
     {
       int64 lValue;
-      int atype = CCI_A_TYPE_BIGINT;
-      int nIndicator = 0;
-      int nResult = cci_get_data(m_hCCIRequest, md.colNo, atype,
+      int nIndicator = -1;
+      int nResult = cci_get_data(m_hCCIRequest, nIndex + 1, CCI_A_TYPE_BIGINT,
           (void *) &lValue, &nIndicator);
       if (nResult < 0)
         {
-          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
+          _CUBRIDException e = _CUBRIDExceptionFactory::create(nResult,
               "Failed to get data.");
-          DBGW_LOG_ERROR(getLogger().getLogMessage(e.what()).c_str());
+          DBGW_LOG_ERROR(e.what());
           throw e;
         }
 
-      makeValue(md.name.c_str(), nColNo, md.type, (void *) &lValue,
-          nIndicator == -1, nIndicator);
+      doMakeResultSet(nIndex, md.columnName.c_str(), DBGW_VAL_TYPE_LONG,
+          &lValue, nIndicator == -1, nIndicator);
     }
 
-    void DBGWCUBRIDResult::doMakeFloat(const MetaData &md, int nColNo)
+    void _DBGWCUBRIDResultSet::getResultSetFloatColumn(size_t nIndex,
+        const _DBGWCUBRIDResultSetMetaDataRaw &md)
     {
       float fValue;
-      int atype = CCI_A_TYPE_FLOAT;
-      int nIndicator = 0;
-      int nResult = cci_get_data(m_hCCIRequest, md.colNo, atype, (void *) &fValue,
-          &nIndicator);
+      int nIndicator = -1;
+      int nResult = cci_get_data(m_hCCIRequest, nIndex + 1, CCI_A_TYPE_FLOAT,
+          (void *) &fValue, &nIndicator);
       if (nResult < 0)
         {
-          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
+          _CUBRIDException e = _CUBRIDExceptionFactory::create(nResult,
               "Failed to get data.");
-          DBGW_LOG_ERROR(getLogger().getLogMessage(e.what()).c_str());
+          DBGW_LOG_ERROR(e.what());
           throw e;
         }
 
-      makeValue(md.name.c_str(), nColNo, md.type, (void *) &fValue,
-          nIndicator == -1, nIndicator);
+      doMakeResultSet(nIndex, md.columnName.c_str(), DBGW_VAL_TYPE_FLOAT,
+          &fValue, nIndicator == -1, nIndicator);
     }
 
-    void DBGWCUBRIDResult::doMakeDouble(const MetaData &md, int nColNo)
+    void _DBGWCUBRIDResultSet::getResultSetDoubleColumn(size_t nIndex,
+        const _DBGWCUBRIDResultSetMetaDataRaw &md)
     {
       double dValue;
-      int atype = CCI_A_TYPE_DOUBLE;
-      int nIndicator = 0;
-      int nResult = cci_get_data(m_hCCIRequest, md.colNo, atype, (void *) &dValue,
-          &nIndicator);
+      int nIndicator = -1;
+      int nResult = cci_get_data(m_hCCIRequest, nIndex + 1, CCI_A_TYPE_DOUBLE,
+          (void *) &dValue, &nIndicator);
       if (nResult < 0)
         {
-          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
+          _CUBRIDException e = _CUBRIDExceptionFactory::create(nResult,
               "Failed to get data.");
-          DBGW_LOG_ERROR(getLogger().getLogMessage(e.what()).c_str());
+          DBGW_LOG_ERROR(e.what());
           throw e;
         }
 
-      makeValue(md.name.c_str(), nColNo, md.type, (void *) &dValue,
-          nIndicator == -1, nIndicator);
+      doMakeResultSet(nIndex, md.columnName.c_str(), DBGW_VAL_TYPE_DOUBLE,
+          &dValue, nIndicator == -1, nIndicator);
     }
 
-    void DBGWCUBRIDResult::doMakeNULL(const MetaData &md, int nColNo)
+    void _DBGWCUBRIDResultSet::getResultSetStringColumn(size_t nIndex,
+        const _DBGWCUBRIDResultSetMetaDataRaw &md)
     {
-      makeValue(md.name.c_str(), nColNo, md.type, NULL, true, 0);
-    }
-
-#ifdef ENABLE_LOB
-    void DBGWCUBRIDResult::doMakeClob(const MetaData &md, int nColNo)
-    {
-      T_CCI_CLOB clob;
-      int atype = CCI_A_TYPE_CLOB;
-      int nIndicator = 0;
-      int nResult = cci_get_data(m_hCCIRequest, nColNo, atype, (void *) &clob,
-          &nIndicator);
-      if (nResult < 0)
-        {
-          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
-              "Failed to get data.");
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-          throw e;
-        }
-
-      long long nClobLength = cci_clob_size(clob);
-
-      const DBGWValue *pValue = makeValueBuffer(m_cursorPos != CCI_CURSOR_FIRST,
-          md.name.c_str(), nColNo, md.type, nIndicator == -1, nClobLength);
-
-      if (pValue->isNull() == false)
-        {
-          T_CCI_ERROR cciError;
-          char *szBuffer = (char *) pValue->getVoidPtr();
-          nResult = cci_clob_read(m_hCCIConnection, clob, 0, nClobLength,
-              szBuffer, &cciError);
-          if (nResult < 0)
-            {
-              CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
-                  "Failed to get data.");
-              DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-              throw e;
-            }
-
-          szBuffer[nClobLength] = '\0';
-        }
-
-      cci_clob_free(clob);
-    }
-
-    void DBGWCUBRIDResult::doMakeBlob(const MetaData &md, int nColNo)
-    {
-      T_CCI_BLOB blob;
-      int atype = CCI_A_TYPE_BLOB;
-      int nIndicator = 0;
-      int nResult = cci_get_data(m_hCCIRequest, nColNo, atype, (void *) &blob,
-          &nIndicator);
-      if (nResult < 0)
-        {
-          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
-              "Failed to get data.");
-          DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-          throw e;
-        }
-
-      long long nClobLength = cci_blob_size(blob);
-
-      const DBGWValue *pValue = makeValueBuffer(m_cursorPos != CCI_CURSOR_FIRST,
-          md.name.c_str(), nColNo, md.type, nIndicator == -1, nClobLength);
-
-      if (pValue->isNull() == false)
-        {
-          T_CCI_ERROR cciError;
-          nResult = cci_blob_read(m_hCCIConnection, blob, 0, nClobLength,
-              (char *) pValue->getVoidPtr(), &cciError);
-          if (nResult < 0)
-            {
-              CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
-                  "Failed to get data.");
-              DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-              throw e;
-            }
-        }
-
-      cci_blob_free(blob);
-    }
-#endif
-
-    void DBGWCUBRIDResult::doMakeString(const MetaData &md, int nColNo)
-    {
-      char *szValue;
-      int atype = CCI_A_TYPE_STR;
-      int nIndicator = 0;
-      int nResult = cci_get_data(m_hCCIRequest, md.colNo, atype,
+      char *szValue = NULL;
+      int nIndicator = -1;
+      int nResult = cci_get_data(m_hCCIRequest, nIndex + 1, CCI_A_TYPE_STR,
           (void *) &szValue, &nIndicator);
       if (nResult < 0)
         {
-          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
+          _CUBRIDException e = _CUBRIDExceptionFactory::create(nResult,
               "Failed to get data.");
-          DBGW_LOG_ERROR(getLogger().getLogMessage(e.what()).c_str());
+          DBGW_LOG_ERROR(e.what());
           throw e;
         }
 
-      makeValue(md.name.c_str(), nColNo, md.type, (void *) szValue,
+      doMakeResultSet(nIndex, md.columnName.c_str(), md.columnType, szValue,
           nIndicator == -1, nIndicator);
+    }
+
+    void _DBGWCUBRIDResultSet::doMakeResultSet(size_t nIndex, const char *szKey,
+        DBGWValueType type, void *pValue, bool bNull, int nLength)
+    {
+      if (m_cursorPos == CCI_CURSOR_FIRST)
+        {
+          DBGWValueSharedPtr p(new DBGWValue(type, pValue, bNull, nLength));
+          m_resultSet.put(szKey, p);
+        }
+      else
+        {
+          m_resultSet.replace(nIndex, type, pValue, bNull, nLength);
+        }
+    }
+
+    _DBGWCUBRIDBatchResultSet::_DBGWCUBRIDBatchResultSet(
+        size_t nSize, const T_CCI_QUERY_RESULT *pQueryResult) :
+      DBGWBatchResultSet(nSize)
+    {
+      DBGWBatchResultSetRaw batchResultSetRaw;
+
+      for (size_t i = 1; i <= nSize; i++)
+        {
+          int nAffectedRow = CCI_QUERY_RESULT_RESULT(pQueryResult, i);
+
+          batchResultSetRaw.affectedRow = nAffectedRow;
+
+          if (nAffectedRow < 0)
+            {
+              batchResultSetRaw.errorCode =
+                  CCI_QUERY_RESULT_ERR_NO(pQueryResult, i);
+              batchResultSetRaw.errorMessage =
+                  CCI_QUERY_RESULT_ERR_MSG(pQueryResult, i);
+              batchResultSetRaw.queryType = DBGW_STMT_TYPE_UPDATE;
+
+              setExecuteStatus(db::DBGW_BATCH_EXEC_FAIL);
+            }
+
+          addBatchResultSetRaw(batchResultSetRaw);
+        }
+    }
+
+    _DBGWCUBRIDBatchResultSet::~_DBGWCUBRIDBatchResultSet()
+    {
     }
 
   }

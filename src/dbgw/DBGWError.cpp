@@ -32,6 +32,7 @@ namespace dbgw
   __thread char g_szErrorMessage[MAX_ERROR_MESSAGE_SIZE];
   __thread char g_szFormattedErrorMessage[MAX_ERROR_MESSAGE_SIZE];
   __thread bool g_bConnectionError;
+  __thread int g_nCount = 0;
 
   static void setErrorMessage(char *szTarget, const char *szErrorMessage)
   {
@@ -186,14 +187,33 @@ namespace dbgw
     return DBGWException(context);
   }
 
-  NotExistNamespaceException::NotExistNamespaceException() throw() :
+  ArrayIndexOutOfBoundsException::ArrayIndexOutOfBoundsException(int nIndex,
+      const char *szArrayName) throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(DBGW_ER_COMMON_ARRAY_INDEX_OUT_OF_BOUNDS,
+            (boost::format("Array index (%d) is out of bounds in %s.")
+                % nIndex % szArrayName).str()))
+
+  {
+  }
+
+  NotExistKeyException::NotExistKeyException(const char *szKey,
+      const char *szArrayName) throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(DBGW_ER_COMMON_NOT_EXIST_KEY,
+            (boost::format("The key (%s) does not exist in %s.")
+                % szKey % szArrayName).str()))
+  {
+  }
+
+  NotExistNameSpaceException::NotExistNameSpaceException() throw() :
     DBGWException(
         DBGWExceptionFactory::create(DBGW_ER_CONF_NOT_EXIST_SERVICE,
             "There is no service to execute. please check your connector.xml"))
   {
   }
 
-  NotExistNamespaceException::NotExistNamespaceException(
+  NotExistNameSpaceException::NotExistNameSpaceException(
       const char *szNamespace) throw() :
     DBGWException(
         DBGWExceptionFactory::create(DBGW_ER_CONF_NOT_EXIST_NAMESPACE,
@@ -210,17 +230,10 @@ namespace dbgw
   {
   }
 
-  NotExistAddedHostException::NotExistAddedHostException() throw() :
+  InvalidHostWeightException::InvalidHostWeightException() throw() :
     DBGWException(
-        DBGWExceptionFactory::create(DBGW_ER_CONF_NOT_EXIST_ADDED_HOST,
-            "There is no added host."))
-  {
-  }
-
-  FetchHostFailException::FetchHostFailException() throw() :
-    DBGWException(
-        DBGWExceptionFactory::create(DBGW_ER_CONF_FETCH_HOST_FAIL,
-            "Fetch host fail."))
+        DBGWExceptionFactory::create(DBGW_ER_CONF_INVALID_HOST_WEIGHT,
+            "The host weight must be greater than 0."))
   {
   }
 
@@ -258,7 +271,7 @@ namespace dbgw
   ChangePoolContextException::ChangePoolContextException(const char *szContext0ame,
       int nModifiedValue, const char *szDescription) throw() :
     DBGWException(
-        DBGWExceptionFactory::create(DBGW_ER_CONF_INVALID_PARAM_NAME,
+        DBGWExceptionFactory::create(DBGW_ER_CONF_CHANGE_POOL_CONTEXT,
             (boost::format("Pool parameter value '%s' has been changed to %d. (%s)")
                 % szContext0ame % nModifiedValue % szDescription).str()))
   {
@@ -271,14 +284,6 @@ namespace dbgw
   {
   }
 
-  NotExistConnException::NotExistConnException(const char *szGroupName) throw() :
-    DBGWException(
-        DBGWExceptionFactory::create(DBGW_ER_SQL_NOT_EXIST_CONN,
-            (boost::format("The %s connection group is not exist.")
-                % szGroupName).str()))
-  {
-  }
-
   InvalidSqlException::InvalidSqlException(const char *szFileName,
       const char *szSqlName) throw() :
     DBGWException(
@@ -288,52 +293,24 @@ namespace dbgw
   {
   }
 
-  NotExistParamException::NotExistParamException(int nIndex) throw() :
+  NotExistOutParameterException::NotExistOutParameterException() throw() :
     DBGWException(
-        DBGWExceptionFactory::create(DBGW_ER_SQL_NOT_EXIST_PARAM,
-            (boost::format("The bind parameter (index : %d) is not exist.")
-                % nIndex).str()))
+        DBGWExceptionFactory::create(DBGW_ER_SQL_NOT_EXIST_OUT_PARAMETER,
+            "There is no out bind parameter."))
   {
   }
 
-  NotExistParamException::NotExistParamException(string name) throw() :
-    DBGWException(
-        DBGWExceptionFactory::create(DBGW_ER_SQL_NOT_EXIST_PARAM,
-            (boost::format("The bind parameter (key : %s) is not exist.")
-                % name).str()))
-  {
-  }
-
-  ExecuteBeforePrepareException::ExecuteBeforePrepareException() throw() :
+  InvalidParameterListException::InvalidParameterListException() throw() :
     DBGWException(
         DBGWExceptionFactory::create(
-            DBGW_ER_SQL_EXECUTE_BEFORE_PREPARE,
-            "The query is executed before prepare."))
+            DBGW_ER_SQL_INVALID_PARAMETER_LIST, "The parameter list is invalid."))
   {
   }
 
-  SQLNotExistPropertyException::SQLNotExistPropertyException(
-      const char *szName) throw() :
+  UnsupportedOperationException::UnsupportedOperationException() throw() :
     DBGWException(
-        DBGWExceptionFactory::create(DBGW_ER_SQL_NOT_EXIST_PROPERTY,
-            (boost::format(
-                "Not exist required property '%s' in dataabse info map.")
-                % szName).str()))
-  {
-  }
-
-  NotExistSetException::NotExistSetException(const char *szKey) throw() :
-    DBGWException(
-        DBGWExceptionFactory::create(DBGW_ER_VALUE_NOT_EXIST_SET,
-            (boost::format("The value (%s key) dose not exist in set.") % szKey).str()))
-  {
-  }
-
-  NotExistSetException::NotExistSetException(size_t nIndex) throw() :
-    DBGWException(
-        DBGWExceptionFactory::create(DBGW_ER_VALUE_NOT_EXIST_SET,
-            (boost::format("The value (%d position) dose not exist in set.")
-                % nIndex).str()))
+        DBGWExceptionFactory::create(
+            DBGW_ER_SQL_UNSUPPORTED_OPERATION, "This operation is unsupported."))
   {
   }
 
@@ -389,20 +366,12 @@ namespace dbgw
   {
   }
 
-  InvalidValueSizeException::InvalidValueSizeException(int nSize) throw() :
-    DBGWException(
-        DBGWExceptionFactory::create(DBGW_ER_VALUE_INVALID_SIZE,
-            (boost::format("Cannot allocate memory (%d size)") % nSize).str()))
-  {
-  }
-
-  MultisetIgnoreResultFlagFalseException::MultisetIgnoreResultFlagFalseException(
+  CannotMakeMulipleResultException::CannotMakeMulipleResultException(
       const char *szSqlName) throw() :
     DBGWException(
         DBGWExceptionFactory::create(
-            DBGW_ER_CLIENT_MULTISET_IGNORE_FLAG_FALSE,
-            (boost::format(
-                "The 'ignore_result' flag should be set false only once in %s.")
+            DBGW_ER_CLIENT_CANNOT_MAKE_MULTIPLE_RESULT,
+            (boost::format("Cannot make multiple result set for query (%s).")
                 % szSqlName).str()))
   {
   }
@@ -411,6 +380,14 @@ namespace dbgw
     DBGWException(
         DBGWExceptionFactory::create(DBGW_ER_CLIENT_INVALID_CLIENT,
             "The client is invalid."))
+  {
+  }
+
+  NotExistGroupException::NotExistGroupException(const char *szSqlName) throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(DBGW_ER_CLIENT_NOT_EXIST_GROUP,
+            (boost::format("There is no group (%s) to execute query.")
+                % szSqlName).str()))
   {
   }
 
@@ -428,6 +405,13 @@ namespace dbgw
   {
   }
 
+  InvalidQueryTypeException::InvalidQueryTypeException() throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(DBGW_ER_CLIENT_INVALID_QUERY_TYPE,
+            "Cannot use select / procedure statement when execute array"))
+  {
+  }
+
   CreateMaxConnectionException::CreateMaxConnectionException(int nSize) throw() :
     DBGWException(
         DBGWExceptionFactory::create(DBGW_ER_CLIENT_CREATE_MAX_CONNECTION,
@@ -435,52 +419,16 @@ namespace dbgw
   {
   }
 
-  NotExistGroupException::NotExistGroupException(const char *szSqlName) throw() :
+  InvalidClientOperationException::InvalidClientOperationException() throw() :
     DBGWException(
-        DBGWExceptionFactory::create(DBGW_ER_CLIENT_NOT_EXIST_GROUP,
-            (boost::format("There is no group (%s) to execute query.")
-                % szSqlName).str()))
-  {
-  }
-
-  NotAllowedNextException::NotAllowedNextException() throw() :
-    DBGWException(
-        DBGWExceptionFactory::create(DBGW_ER_RESULT_NOT_ALLOWED_NEXT,
-            "The next() operation is allowed only select query."))
-  {
-  }
-
-  NotAllowedGetMetadataException::NotAllowedGetMetadataException() throw() :
-    DBGWException(
-        DBGWExceptionFactory::create(
-            DBGW_ER_RESULT_NOT_ALLOWED_GET_METADATA,
-            "Only Select query is able to make metadata list."))
-  {
-  }
-
-
-  NotAllowedOperationException::NotAllowedOperationException() throw() :
-    DBGWException(
-        DBGWExceptionFactory::create(
-            DBGW_ER_RESULT_NOT_ALLOWED_OPERATION,
-            "You should call next() first."))
-  {
-  }
-
-  NotAllowedOperationException::NotAllowedOperationException(
-      const char *szOperation, const char *szQueryType) throw() :
-    DBGWException(
-        DBGWExceptionFactory::create(
-            DBGW_ER_RESULT_NOT_ALLOWED_OPERATION,
-            (boost::format(
-                "The %s operation is only allowed for query type %s.")
-                % szOperation % szQueryType).str()))
+        DBGWExceptionFactory::create(DBGW_ER_CLIENT_INVALID_OPERATION,
+            "This operation is invalid."))
   {
   }
 
   ValidateFailException::ValidateFailException() throw() :
     DBGWException(
-        DBGWExceptionFactory::create(DBGW_ER_RESULT_VALIDATE_FAIL,
+        DBGWExceptionFactory::create(DBGW_ER_CLIENT_VALIDATE_FAIL,
             "The result type of lhs is different from that of rhs."))
   {
   }
@@ -488,7 +436,7 @@ namespace dbgw
   ValidateFailException::ValidateFailException(
       const DBGWException &exception) throw() :
     DBGWException(
-        DBGWExceptionFactory::create(DBGW_ER_RESULT_VALIDATE_FAIL,
+        DBGWExceptionFactory::create(DBGW_ER_CLIENT_VALIDATE_FAIL,
             (boost::format("Some of group is failed to execute query. %s")
                 % exception.what()).str()))
   {
@@ -496,7 +444,7 @@ namespace dbgw
 
   ValidateFailException::ValidateFailException(int lhs, int rhs) throw() :
     DBGWException(
-        DBGWExceptionFactory::create(DBGW_ER_RESULT_VALIDATE_FAIL,
+        DBGWExceptionFactory::create(DBGW_ER_CLIENT_VALIDATE_FAIL,
             (boost::format(
                 "The affected row count / select row count of lhs is different from that of rhs. %d != %d")
                 % lhs % rhs).str()))
@@ -507,7 +455,7 @@ namespace dbgw
       const string &lhs, const char *szLhsType, const string &rhs,
       const char *szRhsType) throw() :
     DBGWException(
-        DBGWExceptionFactory::create(DBGW_ER_RESULT_VALIDATE_TYPE_FAIL,
+        DBGWExceptionFactory::create(DBGW_ER_CLIENT_VALIDATE_TYPE_FAIL,
             (boost::format(
                 "The %s's type of lhs is different from that of rhs. %s (%s) != %s (%s)")
                 % szName % lhs % szLhsType % rhs % szRhsType).str()))
@@ -517,7 +465,7 @@ namespace dbgw
   ValidateValueFailException::ValidateValueFailException(const char *szName,
       const string &lhs) throw() :
     DBGWException(
-        DBGWExceptionFactory::create(DBGW_ER_RESULT_VALIDATE_FAIL,
+        DBGWExceptionFactory::create(DBGW_ER_CLIENT_VALIDATE_FAIL,
             (boost::format(
                 "The %s's value of lhs is different from that of rhs. %s != NULL")
                 % szName % lhs).str()))
@@ -528,7 +476,7 @@ namespace dbgw
       const string &lhs, const string &rhs) throw() :
     DBGWException(
         DBGWExceptionFactory::create(
-            DBGW_ER_RESULT_VALIDATE_VALUE_FAIL,
+            DBGW_ER_CLIENT_VALIDATE_VALUE_FAIL,
             (boost::format(
                 "The %s's value of lhs is different from that of rhs. %s != %s")
                 % szName % lhs % rhs).str()))
@@ -538,7 +486,15 @@ namespace dbgw
   NoMoreDataException::NoMoreDataException() throw() :
     DBGWException(
         DBGWExceptionFactory::create(
-            DBGW_ER_RESULT_NO_MORE_DATA, "There is no more data."))
+            DBGW_ER_CLIENT_NO_MORE_DATA, "There is no more data."))
+  {
+  }
+
+  AccessDataBeforeFetchException::AccessDataBeforeFetchException() throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(
+            DBGW_ER_CLIENT_ACCESS_DATA_BEFORE_FETCH,
+            "You must call next() before get data."))
   {
   }
 
@@ -686,27 +642,6 @@ namespace dbgw
     DBGWException(
         DBGWExceptionFactory::create(
             DBGW_ER_EXTERNAL_DBGW_NOT_ENOUGH_BUFFER, "Not enough buffer memory."))
-  {
-  }
-
-  InvalidParameterListException::InvalidParameterListException() throw() :
-    DBGWException(
-        DBGWExceptionFactory::create(
-            DBGW_ER_CLIENT_INVALID_PARAMETER_LIST, "The parameter list is invalid."))
-  {
-  }
-
-  ExecuteSelectInBatchException::ExecuteSelectInBatchException() throw() :
-    DBGWException(
-        DBGWExceptionFactory::create(
-            DBGW_ER_CLIENT_EXECUTE_SELECT_IN_BATCH, "Can't use select statement when execute batch."))
-  {
-  }
-
-  ExecuteProcedureInBatchException::ExecuteProcedureInBatchException() throw() :
-    DBGWException(
-        DBGWExceptionFactory::create(
-            DBGW_ER_CLIENT_EXECUTE_PROCEDURE_IN_BATCH, "Can't use procedure call when execute batch."))
   {
   }
 

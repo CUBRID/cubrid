@@ -25,11 +25,11 @@ using namespace std;
 namespace dbgw
 {
 
-  class DBGWExpatXMLParser
+  class _DBGWExpatXMLParser
   {
   public:
-    DBGWExpatXMLParser(const string &fileName);
-    virtual ~ DBGWExpatXMLParser();
+    _DBGWExpatXMLParser(const string &fileName);
+    virtual ~_DBGWExpatXMLParser();
 
   public:
     XML_Parser get() const;
@@ -40,12 +40,12 @@ namespace dbgw
     string m_fileName;
   };
 
-  class DBGWExpatXMLProperties
+  class _DBGWExpatXMLProperties
   {
   public:
-    DBGWExpatXMLProperties(const DBGWExpatXMLParser &xmlParser,
+    _DBGWExpatXMLProperties(const _DBGWExpatXMLParser &xmlParser,
         const string &nodeName, const XML_Char *szAttr[]);
-    virtual ~ DBGWExpatXMLProperties();
+    virtual ~ _DBGWExpatXMLProperties();
 
     const char *get(const char *szName, bool bRequired);
     const char *get(const char *szName, const char *szHiddenName,
@@ -68,7 +68,7 @@ namespace dbgw
     DBGWValueType get20ValueType(const char *szName);
     DBGWValueType get10ValueType(const char *szName);
     CCI_LOG_LEVEL getLogLevel(const char *szName);
-    DBGWBindMode getBindMode(const char *szMode);
+    db::DBGWParameterMode getBindMode(const char *szMode);
 
   public:
     const char *getNodeName() const;
@@ -79,27 +79,27 @@ namespace dbgw
     bool propertyToBoolean(const char *szProperty);
 
   private:
-    const DBGWExpatXMLParser &m_xmlParser;
+    const _DBGWExpatXMLParser &m_xmlParser;
     string m_nodeName;
     const XML_Char **m_pAttr;
   };
 
-  typedef stack<string> DBGWExpatXMLElementStack;
+  typedef stack<string> _DBGWExpatXMLElementStack;
 
-  class DBGWParser
+  class _DBGWParser
   {
   public:
-    DBGWParser(const string &fileName);
-    virtual ~ DBGWParser();
+    _DBGWParser(const string &fileName);
+    virtual ~ _DBGWParser();
 
     virtual void setRealFileName(const string &realFileName);
 
   public:
-    static void parse(DBGWParser *pParser);
+    static void parse(_DBGWParser *pParser);
 
   protected:
     virtual void doOnElementStart(const XML_Char *szName,
-        DBGWExpatXMLProperties &properties) = 0;
+        _DBGWExpatXMLProperties &properties) = 0;
     virtual void doOnElementEnd(const XML_Char *szName) = 0;
     virtual void doOnElementContent(const XML_Char *szData, int nLength);
     virtual void doOnCdataStart();
@@ -115,7 +115,7 @@ namespace dbgw
 
   private:
     bool isAborted() const;
-    static void doParse(DBGWParser *pParser);
+    static void doParse(_DBGWParser *pParser);
     static void onElementStart(void *pParam, const XML_Char *szName,
         const XML_Char *szAttr[]);
     static void onElementEnd(void *pParam, const XML_Char *szName);
@@ -130,47 +130,47 @@ namespace dbgw
   private:
     string m_fileName;
     string m_realFileName;
-    DBGWExpatXMLElementStack m_elementStack;
+    _DBGWExpatXMLElementStack m_elementStack;
     bool m_bCdataSection;
     bool m_bAborted;
   };
 
-  class DBGWConnectorParser: public DBGWParser
+  class _DBGWConnectorParser: public _DBGWParser
   {
   public:
-    DBGWConnectorParser(const string &fileName,
-        DBGWConnectorSharedPtr pConnector);
-    virtual ~ DBGWConnectorParser();
+    _DBGWConnectorParser(const string &fileName,
+        _DBGWConnectorSharedPtr pConnector);
+    virtual ~ _DBGWConnectorParser();
 
   protected:
     virtual void doOnElementStart(const XML_Char *szName,
-        DBGWExpatXMLProperties &properties);
+        _DBGWExpatXMLProperties &properties);
     virtual void doOnElementEnd(const XML_Char *szName);
 
   private:
-    void parseService(DBGWExpatXMLProperties &properties);
-    void parseGroup(DBGWExpatXMLProperties &properties);
-    void parsePool(DBGWExpatXMLProperties &properties);
-    void parseDBInfo(DBGWExpatXMLProperties &properties);
-    void parseHost(DBGWExpatXMLProperties &properties);
-    void parseAltHost(DBGWExpatXMLProperties &properties);
+    void parseService(_DBGWExpatXMLProperties &properties);
+    void parseGroup(_DBGWExpatXMLProperties &properties);
+    void parsePool(_DBGWExpatXMLProperties &properties);
+    void parseDBInfo(_DBGWExpatXMLProperties &properties);
+    void parseHost(_DBGWExpatXMLProperties &properties);
+    void parseAltHost(_DBGWExpatXMLProperties &properties);
 
   private:
-    DBGWConnectorSharedPtr m_pConnector;
-    DBGWServiceSharedPtr m_pService;
-    DBGWGroupSharedPtr m_pGroup;
-    DBGWDBInfoHashMap m_dbInfoMap;
-    DBGWHostSharedPtr m_pHost;
-    DBGWExecutorPoolContext m_context;
+    _DBGWConnectorSharedPtr m_pConnector;
+    _DBGWServiceSharedPtr m_pService;
+    _DBGWGroupSharedPtr m_pGroup;
+    _DBGWHostSharedPtr m_pHost;
+    _DBGWExecutorPoolContext m_context;
+    string m_url;
     bool bExistDbInfo;
   };
 
-  class DBGWQueryMapContext
+  class _DBGWQueryMapContext
   {
   public:
-    DBGWQueryMapContext(const string &fileName,
-        DBGWQueryMapperSharedPtr pQueryMapper);
-    virtual ~DBGWQueryMapContext();
+    _DBGWQueryMapContext(const string &fileName,
+        _DBGWQueryMapperSharedPtr pQueryMapper);
+    virtual ~_DBGWQueryMapContext();
 
     void clear();
     void checkAndClearSql();
@@ -178,12 +178,12 @@ namespace dbgw
     void setFileName(const string &fileName);
     void setGlobalGroupName(const char *szGlobalGroupName);
     void setLocalGroupName(const char *szLocalGroupName);
-    void setQueryType(DBGWQueryType queryType);
+    void setStatementType(db::DBGWStatementType statementType);
     void setSqlName(const char *szSqlName);
     void setParameter(const string &name, int nIndex, DBGWValueType valueType,
-        DBGWBindMode mode);
+        db::DBGWParameterMode mode);
     void setParameter(const char *szMode, const char *szName,
-        DBGWValueType valueType, DBGWBindMode mode);
+        DBGWValueType valueType, db::DBGWParameterMode mode);
     void setResult(const string &name, size_t nIndex, DBGWValueType valueType,
         int nLength);
     void appendQueryString(const char *szQueryString);
@@ -195,115 +195,115 @@ namespace dbgw
 
   private:
     string m_fileName;
-    DBGWQueryMapperSharedPtr m_pQueryMapper;
+    _DBGWQueryMapperSharedPtr m_pQueryMapper;
     string m_globalGroupName;
     string m_localGroupName;
     string m_sqlName;
-    DBGWQueryType m_queryType;
+    db::DBGWStatementType m_statementType;
     set<int> m_paramIndexList;
-    DBGWQueryParameterList m_queryParamList;
+    _DBGWQueryParameterList m_queryParamList;
     set<int> m_resultIndexList;
-    db::MetaDataList m_userDefinedMetaList;
     stringstream m_queryBuffer;
+    _DBGWClientResultSetMetaDataRawList m_userDefinedMetaList;
     bool m_bExistQueryInSql;
     bool m_bExistQueryInGroup;
   };
 
-  class DBGW10QueryMapParser : public DBGWParser
+  class _DBGW10QueryMapParser : public _DBGWParser
   {
   public:
-    DBGW10QueryMapParser(const string &fileName,
-        DBGWQueryMapContext &parserContext);
-    virtual ~DBGW10QueryMapParser();
+    _DBGW10QueryMapParser(const string &fileName,
+        _DBGWQueryMapContext &parserContext);
+    virtual ~_DBGW10QueryMapParser();
 
   protected:
     virtual void doOnElementStart(const XML_Char *szName,
-        DBGWExpatXMLProperties &properties);
+        _DBGWExpatXMLProperties &properties);
     virtual void doOnElementEnd(const XML_Char *szName);
     virtual void doOnElementContent(const XML_Char *szData, int nLength);
 
   private:
-    void parseSql(DBGWExpatXMLProperties properties);
-    void parseParameter(DBGWExpatXMLProperties properties);
-    void parseColumn(DBGWExpatXMLProperties properties);
+    void parseSql(_DBGWExpatXMLProperties properties);
+    void parseParameter(_DBGWExpatXMLProperties properties);
+    void parseColumn(_DBGWExpatXMLProperties properties);
 
   private:
-    DBGWQueryMapContext &m_parserContext;
+    _DBGWQueryMapContext &m_parserContext;
   };
 
-  class DBGW20QueryMapParser : public DBGWParser
+  class _DBGW20QueryMapParser : public _DBGWParser
   {
   public:
-    DBGW20QueryMapParser(const string &fileName,
-        DBGWQueryMapContext &parserContext);
-    virtual ~DBGW20QueryMapParser();
+    _DBGW20QueryMapParser(const string &fileName,
+        _DBGWQueryMapContext &parserContext);
+    virtual ~_DBGW20QueryMapParser();
 
   protected:
     virtual void doOnElementStart(const XML_Char *szName,
-        DBGWExpatXMLProperties &properties);
+        _DBGWExpatXMLProperties &properties);
     virtual void doOnElementEnd(const XML_Char *szName);
     virtual void doOnElementContent(const XML_Char *szData, int nLength);
     virtual void doOnCdataEnd();
 
   private:
-    void parseUsingDB(DBGWExpatXMLProperties &properties);
-    void parseSql(DBGWExpatXMLProperties &properties);
-    void parseParameter(DBGWExpatXMLProperties &properties);
+    void parseUsingDB(_DBGWExpatXMLProperties &properties);
+    void parseSql(_DBGWExpatXMLProperties &properties);
+    void parseParameter(_DBGWExpatXMLProperties &properties);
 
   private:
-    DBGWQueryMapContext &m_parserContext;
+    _DBGWQueryMapContext &m_parserContext;
     DBGWStringList m_moduleIDList;
   };
 
-  class DBGW30QueryMapParser : public DBGWParser
+  class _DBGW30QueryMapParser : public _DBGWParser
   {
   public:
-    DBGW30QueryMapParser(const string &fileName,
-        DBGWQueryMapContext &parserContext);
-    virtual ~DBGW30QueryMapParser();
+    _DBGW30QueryMapParser(const string &fileName,
+        _DBGWQueryMapContext &parserContext);
+    virtual ~_DBGW30QueryMapParser();
 
   protected:
     virtual void doOnElementStart(const XML_Char *szName,
-        DBGWExpatXMLProperties &properties);
+        _DBGWExpatXMLProperties &properties);
     virtual void doOnElementEnd(const XML_Char *szName);
     virtual void doOnElementContent(const XML_Char *szData, int nLength);
     virtual void doOnCdataEnd();
 
   private:
-    void parseSqls(DBGWExpatXMLProperties &properties);
-    void parseSql(DBGWExpatXMLProperties &properties);
-    void parseParameter(DBGWExpatXMLProperties &properties);
-    void parseGroup(DBGWExpatXMLProperties &properties);
+    void parseSqls(_DBGWExpatXMLProperties &properties);
+    void parseSql(_DBGWExpatXMLProperties &properties);
+    void parseParameter(_DBGWExpatXMLProperties &properties);
+    void parseGroup(_DBGWExpatXMLProperties &properties);
 
   private:
-    DBGWQueryMapContext &m_parserContext;
+    _DBGWQueryMapContext &m_parserContext;
   };
 
-  class DBGWConfigurationParser: public DBGWParser
+  class _DBGWConfigurationParser: public _DBGWParser
   {
   public:
-    DBGWConfigurationParser(const string &fileName,
-        DBGWConnectorSharedPtr pConnector);
-    DBGWConfigurationParser(const string &fileName,
-        DBGWQueryMapperSharedPtr pQueryMapper);
+    _DBGWConfigurationParser(const string &fileName,
+        _DBGWConnectorSharedPtr pConnector);
+    _DBGWConfigurationParser(const string &fileName,
+        _DBGWQueryMapperSharedPtr pQueryMapper);
 
   protected:
     virtual void doOnElementStart(const XML_Char *szName,
-        DBGWExpatXMLProperties &properties);
+        _DBGWExpatXMLProperties &properties);
     virtual void doOnElementEnd(const XML_Char *szName);
 
   private:
-    void parseQueryMap(DBGWExpatXMLProperties &properties);
-    void parseLog(DBGWExpatXMLProperties &properties);
-    void parseInclude(DBGWExpatXMLProperties &properties);
+    void parseQueryMap(_DBGWExpatXMLProperties &properties);
+    void parseLog(_DBGWExpatXMLProperties &properties);
+    void parseInclude(_DBGWExpatXMLProperties &properties);
 
   private:
-    DBGWConnectorSharedPtr m_pConnector;
-    DBGWQueryMapperSharedPtr m_pQueryMapper;
+    _DBGWConnectorSharedPtr m_pConnector;
+    _DBGWQueryMapperSharedPtr m_pQueryMapper;
   };
 
   void parseQueryMapper(const string &fileName,
-      DBGWQueryMapperSharedPtr pQueryMaper);
+      _DBGWQueryMapperSharedPtr pQueryMaper);
 
 }
 

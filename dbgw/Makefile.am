@@ -46,6 +46,7 @@ dbgw3_include_HEADERS = \
         $(DBGW_DIR)/DBGWQuery.h \
         $(DBGW_DIR)/DBGWLogger.h \
         $(DBGW_DIR)/DBGWConfiguration.h \
+        $(DBGW_DIR)/DBGWClientFwd.h \
         $(DBGW_DIR)/DBGWClient.h
 dbgw3_SOURCES = \
         $(DBGW_DIR)/DBGWMock.cpp \
@@ -69,29 +70,6 @@ libdbgw3_la_LDFLAGS = -version-number @LT_VERSION@
 libdbgw3_la_LIBADD = @EXPAT_LIBS@ -lrt
 libdbgw3_la_LINK = $(CXXLINK)
 
-# DBGW Season 3 Query Tester
-bin_PROGRAMS = \
-		$(DBGW_TESTER)
-dbgw3_query_tester_includedir = $(includedir)
-dbgw3_query_tester_include_HEADERS = \
-		$(DBGW_DIR)/DBGWQueryTester.h	
-dbgw3_query_tester_SOURCES = \
-        $(DBGW_DIR)/DBGWMock.cpp \
-        $(DBGW_DIR)/DBGWError.cpp \
-        $(DBGW_DIR)/DBGWValue.cpp \
-        $(DBGW_DIR)/DBGWDataBaseInterface.cpp \
-        $(DBGW_DIR)/DBGWCUBRIDInterface.cpp \
-        $(DBGW_DIR)/DBGWPorting.cpp \
-        $(DBGW_DIR)/DBGWAdapter.cpp \
-        $(DBGW_DIR)/DBGWXMLParser.cpp \
-        $(DBGW_DIR)/DBGWQuery.cpp \
-        $(DBGW_DIR)/DBGWLogger.cpp \
-        $(DBGW_DIR)/DBGWConfiguration.cpp \
-        $(DBGW_DIR)/DBGWClient.cpp \
-		$(DBGW_DIR)/DBGWQueryTester.cpp		
-dbgw3_query_tester_CPPFLAGS = \
-		$(AM_CPPFLAGS) -I$(CCI_DIR) -I$(BROKER_DIR)		
-dbgw3_query_tester_LDADD = @EXPAT_LIBS@ @CCI_LIB@ -lrt
 
 VERSIONED_FILES = \
         $(BASE_DIR)/release_string.c \

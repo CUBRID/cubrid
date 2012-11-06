@@ -151,7 +151,7 @@ namespace dbgw
       namespace ParamSet
       {
 
-        typedef DBGWParameter *Handle, *THandle;
+        typedef DBGWClientParameter *Handle, *THandle;
 
         DECLSPECIFIER Handle __stdcall CreateHandle();
         DECLSPECIFIER void __stdcall DestroyHandle(Handle hParam);
@@ -188,7 +188,7 @@ namespace dbgw
 
       namespace ParamList
       {
-        typedef DBGWParameterList *Handle, *Thandle;
+        typedef DBGWClientParameterList *Handle, *Thandle;
 
         DECLSPECIFIER Handle __stdcall CreateHandle();
         DECLSPECIFIER void __stdcall DestroyHandle(Handle hParamList);
@@ -200,7 +200,7 @@ namespace dbgw
       namespace ResultSet
       {
 
-        typedef db::DBGWResultSharedPtr *Handle, *THandle;
+        typedef DBGWClientResultSetSharedPtr *Handle, *THandle;
 
         DECLSPECIFIER Handle __stdcall CreateHandle();
         DECLSPECIFIER void  __stdcall DestroyHandle(Handle hResult);
@@ -210,7 +210,8 @@ namespace dbgw
         DECLSPECIFIER bool  __stdcall Fetch(Handle hResult);
         DECLSPECIFIER size_t __stdcall GetAffectedCount(Handle hResult);
         DECLSPECIFIER bool __stdcall IsNeedFetch(Handle hResult);
-        DECLSPECIFIER const MetaDataList *__stdcall GetMetaDataList(Handle hResult);
+        DECLSPECIFIER const DBGWResultSetMetaDataSharedPtr __stdcall GetMetaDataList(
+            Handle hResult);
         DECLSPECIFIER bool __stdcall GetParameter(Handle hResult, int nIndex,
             int *pValue);
         DECLSPECIFIER bool __stdcall GetParameter(Handle hResult,
@@ -257,22 +258,22 @@ namespace dbgw
 
       namespace BatchResult
       {
-        typedef db::DBGWBatchResultSharedPtr *Handle, *THandle;
+        typedef DBGWClientBatchResultSetSharedPtr *Handle, *THandle;
 
         DECLSPECIFIER Handle __stdcall CreateHandle();
         DECLSPECIFIER void  __stdcall DestroyHandle(Handle hBatchResult);
 
         DECLSPECIFIER bool __stdcall GetSize(Handle hBatchResult, int *pSize);
         DECLSPECIFIER bool __stdcall GetExecuteStatus(Handle hBatchResult,
-            DBGWExecuteStatus *pStatus);
+            DBGWBatchExecuteStatus *pStatus);
         DECLSPECIFIER bool __stdcall GetAffectedCount(Handle hBatchResult,
             int nIndex, int *pAffectedCount);
         DECLSPECIFIER bool __stdcall GetErrorCode(Handle hBatchResult,
             int nIndex, int *pErrorCode);
         DECLSPECIFIER bool __stdcall GetErrorMessage(Handle hBatchResult,
-            int nIndex, const char *pErrorMessage);
+            int nIndex, const char **pErrorMessage);
         DECLSPECIFIER bool __stdcall GetStatementType(Handle hBatchResult,
-            int nIndex, DBGWQueryType *pStatementType);
+            int nIndex, DBGWStatementType *pStatementType);
       }
 
       namespace Executor

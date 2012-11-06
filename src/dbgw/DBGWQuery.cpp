@@ -23,8 +23,9 @@
 #include "DBGWPorting.h"
 #include "DBGWLogger.h"
 #include "DBGWValue.h"
-#include "DBGWQuery.h"
 #include "DBGWDataBaseInterface.h"
+#include "DBGWClient.h"
+#include "DBGWQuery.h"
 
 namespace dbgw
 {
@@ -76,7 +77,7 @@ namespace dbgw
       }
   }
 
-  DBGWQueryType getQueryType(const char *szQueryType)
+  db::DBGWStatementType getQueryType(const char *szQueryType)
   {
     const char *p = szQueryType;
 
@@ -87,118 +88,120 @@ namespace dbgw
 
     if (!strncasecmp(p, "select", 6))
       {
-        return DBGW_QUERY_TYPE_SELECT;
+        return db::DBGW_STMT_TYPE_SELECT;
       }
     else if (!strncasecmp(p, "insert", 6)
         || !strncasecmp(p, "update", 6)
         || !strncasecmp(p, "delete", 6))
       {
-        return DBGW_QUERY_TYPE_UPDATE;
+        return db::DBGW_STMT_TYPE_UPDATE;
       }
     else if (!strncasecmp(p, "call", 4))
       {
-        return DBGW_QUERY_TYPE_PROCEDURE;
+        return db::DBGW_STMT_TYPE_PROCEDURE;
       }
     else
       {
-        return DBGW_QUERY_TYPE_UNDEFINED;
+        return db::DBGW_STMT_TYPE_UNDEFINED;
       }
   }
 
   /**
    * class DBGWBoundQuery
    */
-  DBGWBoundQuery::DBGWBoundQuery(const char *szSql, const char *szGroupName,
-      const DBGWQuery &query) :
+  _DBGWBoundQuery::_DBGWBoundQuery(const char *szSql, const char *szGroupName,
+      const _DBGWQuery &query) :
     m_sql(szSql), m_groupName(szGroupName), m_query(query)
   {
-    m_sqlKey += m_sql;
+    m_sqlKey = m_sql;
 
     m_sql += " /* SQL : ";
     m_sql += m_query.getSqlName();
     m_sql += " */";
   }
 
-  DBGWBoundQuery::DBGWBoundQuery(const DBGWBoundQuery &query) :
+  _DBGWBoundQuery::_DBGWBoundQuery(const _DBGWBoundQuery &query) :
     m_sql(query. m_sql), m_groupName(query.m_groupName),
     m_sqlKey(query.m_sqlKey), m_query(query.m_query)
   {
   }
 
-  DBGWBoundQuery::~DBGWBoundQuery()
+  _DBGWBoundQuery::~_DBGWBoundQuery()
   {
   }
 
-  const char *DBGWBoundQuery::getSQL() const
+  const char *_DBGWBoundQuery::getSQL() const
   {
     return m_sql.c_str();
   }
 
-  const char *DBGWBoundQuery::getSqlName() const
+  const char *_DBGWBoundQuery::getSqlName() const
   {
     return m_query.getSqlName();
   }
 
-  const char *DBGWBoundQuery::getGroupName() const
+  const char *_DBGWBoundQuery::getGroupName() const
   {
     return m_groupName.c_str();
   }
 
-  string DBGWBoundQuery::getSqlKey() const
+  string _DBGWBoundQuery::getSqlKey() const
   {
     return m_sqlKey;
   }
 
-  DBGWQueryType DBGWBoundQuery::getType() const
+  db::DBGWStatementType _DBGWBoundQuery::getType() const
   {
     return m_query.getType();
   }
 
-  int DBGWBoundQuery::getBindNum() const
+  int _DBGWBoundQuery::getBindNum() const
   {
     return m_query.getBindNum();
   }
 
-  const DBGWQueryParameter &DBGWBoundQuery::getQueryParamByPlaceHolderIndex(
-      int nBindIndex) const
+  const _DBGWQueryParameter &_DBGWBoundQuery::getQueryParam(size_t nIndex) const
+  {
+    return m_query.getQueryParam(nIndex);
+  }
+
+  const _DBGWQueryParameter &_DBGWBoundQuery::getQueryParamByPlaceHolderIndex(
+      size_t nBindIndex) const
   {
     return m_query.getQueryParamByPlaceHolderIndex(nBindIndex);
   }
 
-  const DBGWQueryParameterList &DBGWBoundQuery::getQueryParamList() const
+  const _DBGWQueryParameterList &_DBGWBoundQuery::getQueryParamList() const
   {
     return m_query.getQueryParamList();
   }
 
-  const db::MetaDataList &DBGWBoundQuery::getUserDefinedMetaList() const
+  const _DBGWClientResultSetMetaDataRawList &_DBGWBoundQuery::getUserDefinedMetaList() const
   {
     return m_query.getUserDefinedMetaList();
   }
 
-  bool DBGWBoundQuery::isExistOutBindParam() const
+  bool _DBGWBoundQuery::isExistOutBindParam() const
   {
     return m_query.isExistOutBindParam();
   }
 
-  /**
-   * class DBGWQuery
-   */
-  DBGWQuery::DBGWQuery(DBGWQueryMapperVersion version, const string &fileName,
+  _DBGWQuery::_DBGWQuery(DBGWQueryMapperVersion version, const string &fileName,
       const string &query, const string &sqlName, const string &groupName,
-      DBGWQueryType queryType,
-      const DBGWQueryParameterList &queryParamList,
-      const db::MetaDataList &userDefinedMetaList) :
+      db::DBGWStatementType statementType,
+      const _DBGWQueryParameterList &queryParamList,
+      const _DBGWClientResultSetMetaDataRawList &userDefinedMetaList) :
     m_logger(groupName, sqlName), m_fileName(fileName), m_query(query),
-    m_sqlName(sqlName), m_groupName(groupName), m_queryType(queryType),
+    m_sqlName(sqlName), m_groupName(groupName), m_statementType(statementType),
     m_queryParamList(queryParamList),
     m_userDefinedMetaList(userDefinedMetaList),
     m_bExistOutBindParam(false)
   {
-    DBGWQueryParameterList::const_iterator it = m_queryParamList.begin();
+    _DBGWQueryParameterList::const_iterator it = m_queryParamList.begin();
     for (; it != m_queryParamList.end(); it++)
       {
-        if (it->mode == DBGW_BIND_MODE_OUT
-            || it->mode == DBGW_BIND_MODE_INOUT)
+        if (it->mode == db::DBGW_PARAM_MODE_OUT
+            || it->mode == db::DBGW_PARAM_MODE_INOUT)
           {
             m_bExistOutBindParam = true;
             break;
@@ -294,19 +297,20 @@ namespace dbgw
     addQueryPart(cToken, q, p);
   }
 
-  DBGWQuery::~DBGWQuery()
+  _DBGWQuery::~_DBGWQuery()
   {
   }
 
-  void DBGWQuery::addQueryPart(char cToken, const char *szStart, const char *szEnd)
+  void _DBGWQuery::addQueryPart(char cToken, const char *szStart,
+      const char *szEnd)
   {
     string part;
-    DBGWQueryPartSharedPtr p;
+    _DBGWQueryPartSharedPtr p;
 
     if (cToken == '#')
       {
         part = string(szStart + 1, szEnd - szStart - 1);
-        p = DBGWQueryPartSharedPtr(new DBGWReplaceQueryPart(m_logger, part));
+        p = _DBGWQueryPartSharedPtr(new _DBGWReplaceQueryPart(m_logger, part));
         m_queryPartList.push_back(p);
       }
     else if (cToken == ':')
@@ -314,7 +318,7 @@ namespace dbgw
         part = string(szStart + 1, szEnd - szStart - 1);
 
         int i = 0;
-        DBGWQueryParameterList::iterator it = m_queryParamList.begin();
+        _DBGWQueryParameterList::iterator it = m_queryParamList.begin();
         for (i = 0, it = m_queryParamList.begin();
             it != m_queryParamList.end(); i++, it++)
           {
@@ -324,7 +328,7 @@ namespace dbgw
              */
             if (it->name == part)
               {
-                DBGWPlaceHolder placeHolder;
+                _DBGWPlaceHolder placeHolder;
                 placeHolder.name = part;
                 placeHolder.index = m_placeHolderList.size();
                 placeHolder.queryParamIndex = i;
@@ -335,19 +339,19 @@ namespace dbgw
                     it->firstPlaceHolderIndex = placeHolder.index;
                   }
 
-                p = DBGWQueryPartSharedPtr(new DBGWSQLQueryPart("?"));
+                p = _DBGWQueryPartSharedPtr(new _DBGWSQLQueryPart("?"));
                 m_queryPartList.push_back(p);
                 return;
               }
           }
 
-        NotExistParamException e(part);
+        InvalidSqlException e(m_fileName.c_str(), part.c_str());
         DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
         throw e;
       }
     else if (cToken == '?')
       {
-        DBGWPlaceHolder placeHolder;
+        _DBGWPlaceHolder placeHolder;
         placeHolder.index = m_placeHolderList.size();
         placeHolder.queryParamIndex = placeHolder.index;
 
@@ -368,70 +372,83 @@ namespace dbgw
 
         m_placeHolderList.push_back(placeHolder);
 
-        p = DBGWQueryPartSharedPtr(new DBGWSQLQueryPart("?"));
+        p = _DBGWQueryPartSharedPtr(new _DBGWSQLQueryPart("?"));
         m_queryPartList.push_back(p);
       }
     else
       {
         part = string(szStart, szEnd - szStart);
-        p = DBGWQueryPartSharedPtr(new DBGWSQLQueryPart(part));
+        p = _DBGWQueryPartSharedPtr(new _DBGWSQLQueryPart(part));
         m_queryPartList.push_back(p);
       }
   }
 
-  DBGWBoundQuerySharedPtr DBGWQuery::getDBGWBoundQuery(const char *szGroupName,
-      const DBGWValueSet *pValueSet) const
+  _DBGWBoundQuerySharedPtr _DBGWQuery::getDBGWBoundQuery(const char *szGroupName,
+      const _DBGWValueSet *pValueSet) const
   {
     stringstream stream;
-    for (DBGWQueryPartList::const_iterator it = m_queryPartList.begin(); it
+    for (_DBGWQueryPartList::const_iterator it = m_queryPartList.begin(); it
         != m_queryPartList.end(); it++)
       {
         stream << (*it)->toString(pValueSet);
       }
-    DBGWBoundQuerySharedPtr pQuery(
-        new DBGWBoundQuery(stream.str().c_str(), szGroupName, *this));
+    _DBGWBoundQuerySharedPtr pQuery(
+        new _DBGWBoundQuery(stream.str().c_str(), szGroupName, *this));
     return pQuery;
   }
 
-  const char *DBGWQuery::getFileName() const
+  const char *_DBGWQuery::getFileName() const
   {
     return m_fileName.c_str();
   }
 
-  const char *DBGWQuery::getSqlName() const
+  const char *_DBGWQuery::getSqlName() const
   {
     return m_sqlName.c_str();
   }
 
-  const char *DBGWQuery::getGroupName() const
+  const char *_DBGWQuery::getGroupName() const
   {
     return m_groupName.c_str();
   }
 
-  DBGWQueryType DBGWQuery::getType() const
+  db::DBGWStatementType _DBGWQuery::getType() const
   {
-    return m_queryType;
+    return m_statementType;
   }
 
-  int DBGWQuery::getBindNum() const
+  int _DBGWQuery::getBindNum() const
   {
     return m_placeHolderList.size();
   }
 
-  const DBGWQueryParameter &DBGWQuery::getQueryParamByPlaceHolderIndex(
-      size_t nBindIndex) const
+  const _DBGWQueryParameter &_DBGWQuery::getQueryParam(size_t nIndex) const
   {
-    if (m_placeHolderList.size() < nBindIndex)
+    if (m_queryParamList.size() < nIndex)
       {
-        NotExistParamException e(nBindIndex);
+        ArrayIndexOutOfBoundsException e(nIndex, "DBGWQueryParameter");
         DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
         throw e;
       }
 
-    const DBGWPlaceHolder &placeHolder = m_placeHolderList[nBindIndex];
+    return m_queryParamList[nIndex];
+  }
+
+  const _DBGWQueryParameter &_DBGWQuery::getQueryParamByPlaceHolderIndex(
+      size_t nBindIndex) const
+  {
+    if (m_placeHolderList.size() < nBindIndex)
+      {
+        ArrayIndexOutOfBoundsException e(nBindIndex, "DBGWQueryParameter");
+        DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+        throw e;
+      }
+
+    const _DBGWPlaceHolder &placeHolder = m_placeHolderList[nBindIndex];
     if (m_queryParamList.size() < placeHolder.queryParamIndex)
       {
-        NotExistParamException e(placeHolder.queryParamIndex);
+        ArrayIndexOutOfBoundsException e(placeHolder.queryParamIndex,
+            "DBGWQueryParameter");
         DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
         throw e;
       }
@@ -439,61 +456,58 @@ namespace dbgw
     return m_queryParamList[placeHolder.queryParamIndex];
   }
 
-  const char *DBGWQuery::getQuery() const
+  const char *_DBGWQuery::getQuery() const
   {
     return m_query.c_str();
   }
 
-  const db::MetaDataList &DBGWQuery::getUserDefinedMetaList() const
+  const _DBGWClientResultSetMetaDataRawList &_DBGWQuery::getUserDefinedMetaList() const
   {
     return m_userDefinedMetaList;
   }
 
-  const DBGWQueryParameterList &DBGWQuery::getQueryParamList() const
+  const _DBGWQueryParameterList &_DBGWQuery::getQueryParamList() const
   {
     return m_queryParamList;
   }
 
-  bool DBGWQuery::isExistOutBindParam() const
+  bool _DBGWQuery::isExistOutBindParam() const
   {
     return m_bExistOutBindParam;
   }
 
-  /**
-   * class DBGWQuery::DBGWSQLQueryPart
-   */
-  DBGWQuery::DBGWSQLQueryPart::DBGWSQLQueryPart(string sql) :
+  _DBGWQuery::_DBGWSQLQueryPart::_DBGWSQLQueryPart(string sql) :
     m_sql(sql)
   {
   }
 
-  DBGWQuery::DBGWSQLQueryPart::~DBGWSQLQueryPart()
+  _DBGWQuery::_DBGWSQLQueryPart::~_DBGWSQLQueryPart()
   {
   }
 
-  string DBGWQuery::DBGWSQLQueryPart::toString(const DBGWValueSet *pValueSet) const
+  string _DBGWQuery::_DBGWSQLQueryPart::toString(
+      const _DBGWValueSet *pValueSet) const
   {
     return m_sql;
   }
 
-  /**
-   * class DBGWQuery::DBGWReplaceQueryPart
-   */
-  DBGWQuery::DBGWReplaceQueryPart::DBGWReplaceQueryPart(const DBGWLogger &logger,
+  _DBGWQuery::_DBGWReplaceQueryPart::_DBGWReplaceQueryPart(
+      const _DBGWLogger &logger,
       const string &name) :
     m_logger(logger), m_name(name)
   {
   }
 
-  DBGWQuery::DBGWReplaceQueryPart::~DBGWReplaceQueryPart()
+  _DBGWQuery::_DBGWReplaceQueryPart::~_DBGWReplaceQueryPart()
   {
   }
 
-  string DBGWQuery::DBGWReplaceQueryPart::toString(const DBGWValueSet *pValueSet) const
+  string _DBGWQuery::_DBGWReplaceQueryPart::toString(
+      const _DBGWValueSet *pValueSet) const
   {
     if (pValueSet == NULL)
       {
-        NotExistParamException e(m_name.c_str());
+        NotExistKeyException e(m_name.c_str(), "DBGWReplaceQueryPart");
         DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
         throw e;
       }
@@ -501,7 +515,7 @@ namespace dbgw
     const DBGWValue *pValue = pValueSet->getValue(m_name.c_str());
     if (pValue == NULL)
       {
-        NotExistParamException e(m_name.c_str());
+        NotExistKeyException e(m_name.c_str(), "DBGWReplaceQueryPart");
         DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
         throw e;
       }

@@ -53,11 +53,11 @@ namespace dbgw
   namespace system
   {
 
-    Mutex::Mutex()
+    _Mutex::_Mutex()
     {
     }
 
-    Mutex::~Mutex()
+    _Mutex::~_Mutex()
     {
     }
 
@@ -68,7 +68,7 @@ namespace dbgw
       CRITICAL_SECTION *csp;
     } pthread_mutex_t;
 
-    class WindowsMutex : public Mutex
+    class WindowsMutex : public _Mutex
     {
     public:
       WindowsMutex();
@@ -128,7 +128,7 @@ namespace dbgw
       return m_mutex_t.csp;
     }
 #else /* WINDOWS */
-    class PosixMutex : public Mutex
+    class PosixMutex : public _Mutex
     {
     public:
       PosixMutex();
@@ -199,29 +199,29 @@ namespace dbgw
     }
 #endif /* !WINDOWS */
 
-    MutexSharedPtr MutexFactory::create()
+    _MutexSharedPtr _MutexFactory::create()
     {
-      MutexSharedPtr p;
+      _MutexSharedPtr p;
 #if defined(WINDOWS)
-      p = MutexSharedPtr(new WindowsMutex());
+      p = _MutexSharedPtr(new WindowsMutex());
 #else
-      p = MutexSharedPtr(new PosixMutex());
+      p = _MutexSharedPtr(new PosixMutex());
 #endif
       return p;
     }
 
-    MutexLock::MutexLock(MutexSharedPtr pMutex) :
+    _MutexLock::_MutexLock(_MutexSharedPtr pMutex) :
       m_pMutex(pMutex), m_bUnlocked(false)
     {
       m_pMutex->lock();
     }
 
-    MutexLock::~MutexLock()
+    _MutexLock::~_MutexLock()
     {
       unlock();
     }
 
-    void MutexLock::unlock()
+    void _MutexLock::unlock()
     {
       if (m_bUnlocked == false)
         {
@@ -230,11 +230,11 @@ namespace dbgw
         }
     }
 
-    ConditionVariable::ConditionVariable()
+    _ConditionVariable::_ConditionVariable()
     {
     }
 
-    ConditionVariable::~ConditionVariable()
+    _ConditionVariable::~_ConditionVariable()
     {
     }
 
@@ -296,7 +296,7 @@ namespace dbgw
           GetProcAddress(kernel32, "WakeConditionVariable");
     }
 
-    class WindowsXpConditionVariable : public ConditionVariable
+    class WindowsXpConditionVariable : public _ConditionVariable
     {
     public:
       WindowsXpConditionVariable();
@@ -304,8 +304,8 @@ namespace dbgw
 
       void notify();
       void notifyAll();
-      void wait(MutexSharedPtr pMutex);
-      void timedWait(MutexSharedPtr pMutex, long lWaitTimeMilSec);
+      void wait(_MutexSharedPtr pMutex);
+      void timedWait(_MutexSharedPtr pMutex, long lWaitTimeMilSec);
 
     private:
       pthread_cond_t m_cond_t;
@@ -368,12 +368,12 @@ namespace dbgw
       LeaveCriticalSection(&m_cond_t.lock_waiting);
     }
 
-    void WindowsXpConditionVariable::wait(MutexSharedPtr pMutex)
+    void WindowsXpConditionVariable::wait(_MutexSharedPtr pMutex)
     {
       timedWait(pMutex, INFINITE);
     }
 
-    void WindowsXpConditionVariable::timedWait(MutexSharedPtr pMutex,
+    void WindowsXpConditionVariable::timedWait(_MutexSharedPtr pMutex,
         long lWaitTimeMilSec)
     {
       int nResult;
@@ -409,7 +409,7 @@ namespace dbgw
         }
     }
 
-    class WindowsVistaConditionVariable : public ConditionVariable
+    class WindowsVistaConditionVariable : public _ConditionVariable
     {
     public:
       WindowsVistaConditionVariable();
@@ -417,8 +417,8 @@ namespace dbgw
 
       void notify();
       void notifyAll();
-      void wait(MutexSharedPtr pMutex);
-      void timedWait(MutexSharedPtr pMutex, long lWaitTimeMilSec);
+      void wait(_MutexSharedPtr pMutex);
+      void timedWait(_MutexSharedPtr pMutex, long lWaitTimeMilSec);
 
     private:
       pthread_cond_t m_cond_t;
@@ -443,13 +443,13 @@ namespace dbgw
       fp_WakeAllConditionVariable(&m_cond_t.native_cond);
     }
 
-    void WindowsVistaConditionVariable::wait(MutexSharedPtr pMutex)
+    void WindowsVistaConditionVariable::wait(_MutexSharedPtr pMutex)
     {
       fp_SleepConditionVariableCS(&m_cond_t.native_cond,
           (CRITICAL_SECTION *) pMutex->get(), INFINITE);
     }
 
-    void WindowsVistaConditionVariable::timedWait(MutexSharedPtr pMutex,
+    void WindowsVistaConditionVariable::timedWait(_MutexSharedPtr pMutex,
         long lWaitTimeMilSec)
     {
       if (fp_SleepConditionVariableCS(&m_cond_t.native_cond,
@@ -461,7 +461,7 @@ namespace dbgw
         }
     }
 #else
-    class PosixConditionVariable : public ConditionVariable
+    class PosixConditionVariable : public _ConditionVariable
     {
     public:
       PosixConditionVariable();
@@ -469,8 +469,8 @@ namespace dbgw
 
       void notify();
       void notifyAll();
-      void wait(MutexSharedPtr pMutex);
-      void timedWait(MutexSharedPtr pMutex, long lWaitTimeMilSec);
+      void wait(_MutexSharedPtr pMutex);
+      void timedWait(_MutexSharedPtr pMutex, long lWaitTimeMilSec);
 
     private:
       pthread_cond_t m_cond_t;
@@ -525,7 +525,7 @@ namespace dbgw
         }
     }
 
-    void PosixConditionVariable::wait(MutexSharedPtr pMutex)
+    void PosixConditionVariable::wait(_MutexSharedPtr pMutex)
     {
       int nStatus = pthread_cond_wait(&m_cond_t,
           (pthread_mutex_t *) pMutex->get());
@@ -537,7 +537,7 @@ namespace dbgw
         }
     }
 
-    void PosixConditionVariable::timedWait(MutexSharedPtr pMutex,
+    void PosixConditionVariable::timedWait(_MutexSharedPtr pMutex,
         long lWaitTimeMilSec)
     {
       struct timespec ts;
@@ -560,9 +560,9 @@ namespace dbgw
     }
 #endif
 
-    ConditionVariableSharedPtr ConditionVariableFactory::create()
+    _ConditionVariableSharedPtr _ConditionVariableFactory::create()
     {
-      ConditionVariableSharedPtr p;
+      _ConditionVariableSharedPtr p;
 #if defined(WINDOWS)
       static bool bChecked = false;
       if (bChecked == false)
@@ -573,14 +573,14 @@ namespace dbgw
 
       if (g_have_CONDITION_VARIABLE)
         {
-          p = ConditionVariableSharedPtr(new WindowsVistaConditionVariable());
+          p = _ConditionVariableSharedPtr(new WindowsVistaConditionVariable());
         }
       else
         {
-          p = ConditionVariableSharedPtr(new WindowsXpConditionVariable());
+          p = _ConditionVariableSharedPtr(new WindowsXpConditionVariable());
         }
 #else
-      p = ConditionVariableSharedPtr(new PosixConditionVariable());
+      p = _ConditionVariableSharedPtr(new PosixConditionVariable());
 #endif
       return p;
     }
@@ -590,22 +590,22 @@ namespace dbgw
       return fileName.substr(fileName.find_last_of(".") + 1);
     }
 
-    Directory::Directory(const char *szPath) :
+    _Directory::_Directory(const char *szPath) :
       m_path(szPath)
     {
     }
 
-    Directory::~Directory()
+    _Directory::~_Directory()
     {
     }
 
-    const char *Directory::getPath() const
+    const char *_Directory::getPath() const
     {
       return m_path.c_str();
     }
 
 #if defined(WINDOWS)
-    class WindowsDirectory : public Directory
+    class WindowsDirectory : public _Directory
     {
     public:
       WindowsDirectory(const char *szPath);
@@ -617,7 +617,7 @@ namespace dbgw
     };
 
     WindowsDirectory::WindowsDirectory(const char *szPath) :
-      Directory(szPath)
+      _Directory(szPath)
     {
     }
 
@@ -668,7 +668,7 @@ namespace dbgw
       FindClose(hSrc);
     }
 #else /* WINDOWS */
-    class PosixDirectory : public Directory
+    class PosixDirectory : public _Directory
     {
     public:
       PosixDirectory(const char *szPath);
@@ -680,7 +680,7 @@ namespace dbgw
     };
 
     PosixDirectory::PosixDirectory(const char *szPath) :
-      Directory(szPath)
+      _Directory(szPath)
     {
     }
 
@@ -730,41 +730,41 @@ namespace dbgw
     }
 #endif /* !WINDOWS */
 
-    DirectorySharedPtr DirectoryFactory::create(const char *szPath)
+    _DirectorySharedPtr _DirectoryFactory::create(const char *szPath)
     {
-      DirectorySharedPtr p;
+      _DirectorySharedPtr p;
 #if defined(WINDOWS)
-      p = DirectorySharedPtr(new WindowsDirectory(szPath));
+      p = _DirectorySharedPtr(new WindowsDirectory(szPath));
 #else
-      p = DirectorySharedPtr(new PosixDirectory(szPath));
+      p = _DirectorySharedPtr(new PosixDirectory(szPath));
 #endif
       return p;
     }
 
-    long Thread::MIN_SLEEP_TIME_MILSEC()
+    long _Thread::MIN_SLEEP_TIME_MILSEC()
     {
       return 1;
     }
 
-    Thread::Thread(ThreadFunction pFunc) :
+    _Thread::_Thread(_ThreadFunction pFunc) :
       m_status(THREAD_STATUS_STOP), m_op(THREAD_OP_NONE),
-      m_pFunc(pFunc), m_pMutex(MutexFactory::create()),
-      m_pCond(ConditionVariableFactory::create())
+      m_pFunc(pFunc), m_pMutex(_MutexFactory::create()),
+      m_pCond(_ConditionVariableFactory::create())
     {
     }
 
-    Thread::~Thread()
+    _Thread::~_Thread()
     {
     }
 
-    void Thread::start()
+    void _Thread::start()
     {
-      start(ThreadDataSharedPtr());
+      start(_ThreadDataSharedPtr());
     }
 
-    void Thread::start(ThreadDataSharedPtr pData)
+    void _Thread::start(_ThreadDataSharedPtr pData)
     {
-      MutexLock lock(m_pMutex);
+      _MutexLock lock(m_pMutex);
 
       m_pData = pData;
 
@@ -782,9 +782,9 @@ namespace dbgw
       changeThreadStatus(THREAD_STATUS_RUNNING);
     }
 
-    void Thread::join()
+    void _Thread::join()
     {
-      MutexLock lock(m_pMutex);
+      _MutexLock lock(m_pMutex);
 
       if (m_op != THREAD_OP_NONE || m_status != THREAD_STATUS_RUNNING)
         {
@@ -803,7 +803,7 @@ namespace dbgw
       changeThreadStatus(THREAD_STATUS_STOP);
     }
 
-    void Thread::timedJoin(int nWaitTimeMilSec)
+    void _Thread::timedJoin(int nWaitTimeMilSec)
     {
       try
         {
@@ -835,9 +835,9 @@ namespace dbgw
         }
     }
 
-    bool Thread::isRunning() const
+    bool _Thread::isRunning() const
     {
-      MutexLock lock(m_pMutex);
+      _MutexLock lock(m_pMutex);
 
       return m_op == THREAD_OP_START
           || (m_status == THREAD_STATUS_RUNNING && m_op == THREAD_OP_NONE);
@@ -846,7 +846,7 @@ namespace dbgw
     /**
      * if thread is stopped, this method return false
      */
-    bool Thread::sleep(long lMilSec) const
+    bool _Thread::sleep(long lMilSec) const
     {
       struct timeval beginTime;
       struct timeval endTime;
@@ -875,33 +875,35 @@ namespace dbgw
         }
     }
 
-    THREAD_RETURN_TYPE Thread::run(void *pData)
+    _THREAD_RETURN_TYPE _Thread::run(void *pData)
     {
       if (pData == NULL)
         {
-          return THREAD_RETURN_VALUE;
+          return _THREAD_RETURN_VALUE;
         }
 
-      Thread *pThread = (Thread *) pData;
+      _Thread *pThread = (_Thread *) pData;
       pThread->execute();
 
-      return THREAD_RETURN_VALUE;
+      return _THREAD_RETURN_VALUE;
     }
 
-    void Thread::execute()
+    void _Thread::execute()
     {
       /**
        * By using shared_from_this(), guarantee that
        * thread instance will be alive until thread is dead.
        */
-      ThreadSharedPtr pThread = shared_from_this();
+      _ThreadSharedPtr pThread = shared_from_this();
 
       if (m_pFunc != NULL)
         {
           (*m_pFunc)(this, m_pData);
         }
 
-      MutexLock lock(m_pMutex);
+      m_pData.reset();
+
+      _MutexLock lock(m_pMutex);
 
       if (m_status == THREAD_STATUS_WAITING && m_op == THREAD_OP_STOP)
         {
@@ -912,19 +914,19 @@ namespace dbgw
       m_status = THREAD_STATUS_STOP;
     }
 
-    void Thread::changeThreadStatus(ThreadStatus status)
+    void _Thread::changeThreadStatus(_ThreadStatus status)
     {
-      system::MutexLock lock(m_pMutex);
+      system::_MutexLock lock(m_pMutex);
 
       m_status = status;
       m_op = THREAD_OP_NONE;
     }
 
 #ifdef WINDOWS
-    class WindowsThread : public Thread
+    class WindowsThread : public _Thread
     {
     public:
-      WindowsThread::WindowsThread(ThreadFunction pFunc);
+      WindowsThread::WindowsThread(_ThreadFunction pFunc);
       virtual WindowsThread::~WindowsThread();
 
       void doStart();
@@ -938,8 +940,8 @@ namespace dbgw
       unsigned int m_nTid;
     };
 
-    WindowsThread::WindowsThread(ThreadFunction pFunc) :
-      Thread(pFunc), m_nTid(-1)
+    WindowsThread::WindowsThread(_ThreadFunction pFunc) :
+      _Thread(pFunc), m_nTid(-1)
     {
     }
 
@@ -953,7 +955,7 @@ namespace dbgw
 
     void WindowsThread::doStart()
     {
-      m_hThread = (HANDLE) _beginthreadex(NULL, 0, Thread::run, this, 0, &m_nTid);
+      m_hThread = (HANDLE) _beginthreadex(NULL, 0, _Thread::run, this, 0, &m_nTid);
       if (m_hThread <= 0)
         {
           ThreadOperationFailException e("create", (int) m_hThread);
@@ -981,10 +983,10 @@ namespace dbgw
        */
     }
 #else
-    class PosixThread : public Thread
+    class PosixThread : public _Thread
     {
     public:
-      PosixThread(ThreadFunction pFunc);
+      PosixThread(_ThreadFunction pFunc);
       virtual ~PosixThread();
 
       void doStart();
@@ -997,8 +999,8 @@ namespace dbgw
       pthread_t m_thread_t;
     };
 
-    PosixThread::PosixThread(ThreadFunction pFunc) :
-      Thread(pFunc)
+    PosixThread::PosixThread(_ThreadFunction pFunc) :
+      _Thread(pFunc)
     {
     }
 
@@ -1008,7 +1010,7 @@ namespace dbgw
 
     void PosixThread::doStart()
     {
-      int nStatus = pthread_create(&m_thread_t, NULL, Thread::run, this);
+      int nStatus = pthread_create(&m_thread_t, NULL, _Thread::run, this);
       if (nStatus != 0)
         {
           ThreadOperationFailException e("create", nStatus);
@@ -1040,13 +1042,13 @@ namespace dbgw
     }
 #endif
 
-    ThreadSharedPtr ThreadFactory::create(ThreadFunction pFunc)
+    _ThreadSharedPtr _ThreadFactory::create(_ThreadFunction pFunc)
     {
-      ThreadSharedPtr p;
+      _ThreadSharedPtr p;
 #ifdef WINDOWS
-      p = ThreadSharedPtr(new WindowsThread(pFunc));
+      p = _ThreadSharedPtr(new WindowsThread(pFunc));
 #else
-      p = ThreadSharedPtr(new PosixThread(pFunc));
+      p = _ThreadSharedPtr(new PosixThread(pFunc));
 #endif
       return p;
     }

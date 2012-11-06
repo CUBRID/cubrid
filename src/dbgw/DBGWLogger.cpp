@@ -29,36 +29,41 @@ namespace dbgw
 
   static const char *DBGW_LOG_PATH = "log/cci_dbgw.log";
   static const int LOG_BUFFER_SIZE = 1024 * 20;
-  static system::MutexSharedPtr g_pLogMutex = system::MutexFactory::create();
+  static system::_MutexSharedPtr g_pLogMutex = system::_MutexFactory::create();
 
-  Logger DBGWLogger::m_logger = NULL;
-  string DBGWLogger::m_logPath = DBGW_LOG_PATH;
-  CCI_LOG_LEVEL DBGWLogger::m_logLevel = CCI_LOG_LEVEL_ERROR;
+  Logger _DBGWLogger::m_logger = NULL;
+  string _DBGWLogger::m_logPath = DBGW_LOG_PATH;
+  CCI_LOG_LEVEL _DBGWLogger::m_logLevel = CCI_LOG_LEVEL_ERROR;
 
-  DBGWLogger::DBGWLogger()
+  _DBGWLogger::_DBGWLogger()
   {
   }
 
-  DBGWLogger::DBGWLogger(const string &sqlName) :
+  _DBGWLogger::_DBGWLogger(const string &sqlName) :
     m_sqlName(sqlName)
   {
   }
 
-  DBGWLogger::DBGWLogger(const string &groupName, const string &sqlName) :
+  _DBGWLogger::_DBGWLogger(const string &groupName, const string &sqlName) :
     m_groupName(groupName), m_sqlName(sqlName)
   {
   }
 
-  DBGWLogger::~DBGWLogger()
+  _DBGWLogger::~_DBGWLogger()
   {
   }
 
-  void DBGWLogger::setGroupName(const string &groupName)
+  void _DBGWLogger::setGroupName(const string &groupName)
   {
     m_groupName = groupName;
   }
 
-  const string DBGWLogger::getLogMessage(const char *szMsg) const
+  void _DBGWLogger::setSqlName(const string &sqlName)
+  {
+    m_sqlName = sqlName;
+  }
+
+  const string _DBGWLogger::getLogMessage(const char *szMsg) const
   {
     string message;
     if (m_groupName == "")
@@ -84,18 +89,18 @@ namespace dbgw
     return message;
   }
 
-  void DBGWLogger::initialize()
+  void _DBGWLogger::initialize()
   {
     initialize(m_logLevel, DBGW_LOG_PATH);
   }
 
-  void DBGWLogger::initialize(CCI_LOG_LEVEL level, const char *szLogPath)
+  void _DBGWLogger::initialize(CCI_LOG_LEVEL level, const char *szLogPath)
   {
     setLogPath(szLogPath);
     setLogLevel(level);
   }
 
-  void DBGWLogger::setLogPath(const char *szLogPath)
+  void _DBGWLogger::setLogPath(const char *szLogPath)
   {
     g_pLogMutex->lock();
     if (szLogPath != NULL)
@@ -111,7 +116,7 @@ namespace dbgw
     g_pLogMutex->unlock();
   }
 
-  void DBGWLogger::setLogLevel(CCI_LOG_LEVEL level)
+  void _DBGWLogger::setLogLevel(CCI_LOG_LEVEL level)
   {
     if (m_logger != NULL)
       {
@@ -119,7 +124,7 @@ namespace dbgw
       }
   }
 
-  void DBGWLogger::setForceFlush(bool bForceFlush)
+  void _DBGWLogger::setForceFlush(bool bForceFlush)
   {
     if (m_logger != NULL)
       {
@@ -127,7 +132,7 @@ namespace dbgw
       }
   }
 
-  void DBGWLogger::finalize()
+  void _DBGWLogger::finalize()
   {
     g_pLogMutex->lock();
     if (m_logger != NULL)
@@ -138,7 +143,7 @@ namespace dbgw
     g_pLogMutex->unlock();
   }
 
-  void DBGWLogger::writeLogF(const char *szFile, int nLine, CCI_LOG_LEVEL level,
+  void _DBGWLogger::writeLogF(const char *szFile, int nLine, CCI_LOG_LEVEL level,
       const char *szFormat, ...)
   {
     if (m_logger != NULL)
@@ -161,7 +166,7 @@ namespace dbgw
       }
   }
 
-  void DBGWLogger::writeLog(const char *szFile, int nLine, CCI_LOG_LEVEL level,
+  void _DBGWLogger::writeLog(const char *szFile, int nLine, CCI_LOG_LEVEL level,
       const char *szLog)
   {
     if (m_logger != NULL)
@@ -178,19 +183,50 @@ namespace dbgw
       }
   }
 
-  bool DBGWLogger::isWritable(CCI_LOG_LEVEL level)
+  bool _DBGWLogger::isWritable(CCI_LOG_LEVEL level)
   {
     return cci_log_is_writable(m_logger, level);
   }
 
-  const char *DBGWLogger::getLogPath()
+  const char *_DBGWLogger::getLogPath()
   {
     return m_logPath.c_str();
   }
 
-  CCI_LOG_LEVEL DBGWLogger::getLogLevel()
+  CCI_LOG_LEVEL _DBGWLogger::getLogLevel()
   {
     return m_logLevel;
+  }
+
+  _DBGWLogDecorator::_DBGWLogDecorator(const char *szHeader) :
+    m_iLogCount(0)
+  {
+    m_buffer << szHeader;
+    m_buffer << " [";
+  }
+
+  _DBGWLogDecorator::~_DBGWLogDecorator()
+  {
+  }
+
+  void _DBGWLogDecorator::clear()
+  {
+    m_buffer.clear();
+  }
+
+  void _DBGWLogDecorator::addLog(const string &log)
+  {
+    if (m_iLogCount++ > 0)
+      {
+        m_buffer << ", ";
+      }
+    m_buffer << log;
+  }
+
+  string _DBGWLogDecorator::getLog()
+  {
+    m_buffer << "]";
+    return m_buffer.str();
   }
 
 }

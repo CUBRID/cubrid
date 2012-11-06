@@ -22,15 +22,16 @@
 namespace dbgw
 {
 
-  class DBGWLogger
+  class _DBGWLogger
   {
   public:
-    DBGWLogger();
-    DBGWLogger(const string &sqlName);
-    DBGWLogger(const string &groupName, const string &sqlName);
-    virtual ~ DBGWLogger();
+    _DBGWLogger();
+    _DBGWLogger(const string &sqlName);
+    _DBGWLogger(const string &groupName, const string &sqlName);
+    virtual ~ _DBGWLogger();
 
     void setGroupName(const string &groupName);
+    void setSqlName(const string &sqlName);
 
   public:
     const string getLogMessage(const char *szMsg) const;
@@ -58,59 +59,74 @@ namespace dbgw
     static CCI_LOG_LEVEL m_logLevel;
   };
 
+  class _DBGWLogDecorator
+  {
+  public:
+    _DBGWLogDecorator(const char *szHeader);
+    virtual ~ _DBGWLogDecorator();
+
+    void clear();
+    void addLog(const string &log);
+    string getLog();
+
+  protected:
+    stringstream m_buffer;
+    int m_iLogCount;
+  };
+
 #define DBGW_LOG_ERROR(LOG) \
   do { \
-    if (DBGWLogger::isWritable(CCI_LOG_LEVEL_ERROR)) { \
-      DBGWLogger::writeLog(__FILENAME__, __LINE__, CCI_LOG_LEVEL_ERROR, LOG); \
+    if (_DBGWLogger::isWritable(CCI_LOG_LEVEL_ERROR)) { \
+      _DBGWLogger::writeLog(__FILENAME__, __LINE__, CCI_LOG_LEVEL_ERROR, LOG); \
     } \
   } while (false)
 
 #define DBGW_LOGF_ERROR(...) \
   do { \
-    if (DBGWLogger::isWritable(CCI_LOG_LEVEL_ERROR)) { \
-      DBGWLogger::writeLogF(__FILENAME__, __LINE__, CCI_LOG_LEVEL_ERROR, __VA_ARGS__); \
+    if (_DBGWLogger::isWritable(CCI_LOG_LEVEL_ERROR)) { \
+      _DBGWLogger::writeLogF(__FILENAME__, __LINE__, CCI_LOG_LEVEL_ERROR, __VA_ARGS__); \
     } \
   } while (false)
 
 #define DBGW_LOG_WARN(LOG) \
   do { \
-    if (DBGWLogger::isWritable(CCI_LOG_LEVEL_WARN)) { \
-      DBGWLogger::writeLog(__FILENAME__, __LINE__, CCI_LOG_LEVEL_WARN, LOG); \
+    if (_DBGWLogger::isWritable(CCI_LOG_LEVEL_WARN)) { \
+      _DBGWLogger::writeLog(__FILENAME__, __LINE__, CCI_LOG_LEVEL_WARN, LOG); \
     } \
   } while (false)
 
 #define DBGW_LOGF_WARN(...) \
   do { \
-    if (DBGWLogger::isWritable(CCI_LOG_LEVEL_WARN)) { \
-      DBGWLogger::writeLogF(__FILENAME__, __LINE__, CCI_LOG_LEVEL_WARN, __VA_ARGS__); \
+    if (_DBGWLogger::isWritable(CCI_LOG_LEVEL_WARN)) { \
+      _DBGWLogger::writeLogF(__FILENAME__, __LINE__, CCI_LOG_LEVEL_WARN, __VA_ARGS__); \
     } \
   } while (false)
 
 #define DBGW_LOG_INFO(LOG) \
   do { \
-    if (DBGWLogger::isWritable(CCI_LOG_LEVEL_INFO)) { \
-      DBGWLogger::writeLog(__FILENAME__, __LINE__, CCI_LOG_LEVEL_INFO, LOG); \
+    if (_DBGWLogger::isWritable(CCI_LOG_LEVEL_INFO)) { \
+      _DBGWLogger::writeLog(__FILENAME__, __LINE__, CCI_LOG_LEVEL_INFO, LOG); \
     } \
   } while (false)
 
 #define DBGW_LOGF_INFO(...) \
   do { \
-    if (DBGWLogger::isWritable(CCI_LOG_LEVEL_INFO)) { \
-      DBGWLogger::writeLogF(__FILENAME__, __LINE__, CCI_LOG_LEVEL_INFO, __VA_ARGS__); \
+    if (_DBGWLogger::isWritable(CCI_LOG_LEVEL_INFO)) { \
+      _DBGWLogger::writeLogF(__FILENAME__, __LINE__, CCI_LOG_LEVEL_INFO, __VA_ARGS__); \
     } \
   } while (false)
 
 #define DBGW_LOG_DEBUG(LOG) \
   do { \
-    if (DBGWLogger::isWritable(CCI_LOG_LEVEL_DEBUG)) { \
-      DBGWLogger::writeLog(__FILENAME__, __LINE__, CCI_LOG_LEVEL_DEBUG, LOG); \
+    if (_DBGWLogger::isWritable(CCI_LOG_LEVEL_DEBUG)) { \
+      _DBGWLogger::writeLog(__FILENAME__, __LINE__, CCI_LOG_LEVEL_DEBUG, LOG); \
     } \
   } while (false)
 
 #define DBGW_LOGF_DEBUG(...) \
   do { \
-    if (DBGWLogger::isWritable(CCI_LOG_LEVEL_DEBUG)) { \
-      DBGWLogger::writeLogF(__FILENAME__, __LINE__, CCI_LOG_LEVEL_DEBUG, __VA_ARGS__); \
+    if (_DBGWLogger::isWritable(CCI_LOG_LEVEL_DEBUG)) { \
+      _DBGWLogger::writeLogF(__FILENAME__, __LINE__, CCI_LOG_LEVEL_DEBUG, __VA_ARGS__); \
     } \
   } while (false)
 

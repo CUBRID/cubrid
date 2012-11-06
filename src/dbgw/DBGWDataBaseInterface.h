@@ -34,216 +34,318 @@ namespace dbgw
       DBGW_TRAN_SERIALIZABLE
     } DBGW_TRAN_ISOLATION;
 
-    enum DBGWExecuteStatus
+    enum DBGWDataBaseType
     {
-      DBGW_EXECUTE_SUCCESS,
-      DBGW_EXECUTE_FAIL
+      DBGW_DB_TYPE_CUBRID = 0,
+      DBGW_DB_TYPE_MYSQL,
+      DBGW_DB_TYPE_ORACLE
     };
 
+    enum DBGWStatementType
+    {
+      DBGW_STMT_TYPE_UNDEFINED = -1,
+      DBGW_STMT_TYPE_SELECT = 0,
+      DBGW_STMT_TYPE_PROCEDURE,
+      DBGW_STMT_TYPE_UPDATE,
+      DBGW_STMT_TYPE_SIZE
+    };
+
+    enum DBGWBatchExecuteStatus
+    {
+      DBGW_BATCH_EXEC_SUCCESS,
+      DBGW_BATCH_EXEC_FAIL
+    };
+
+    class DBGWConnection;
+    typedef shared_ptr<DBGWConnection> DBGWConnectionSharedPtr;
+
+    class DBGWStatement;
+    typedef shared_ptr<DBGWStatement> DBGWStatementSharedPtr;
+
+    class DBGWParameterMetaData;
+    typedef shared_ptr<DBGWParameterMetaData> DBGWParameterMetaDataSharedPtr;
+
     class DBGWPreparedStatement;
-    class DBGWResult;
-    class DBGWBatchResult;
-
-    typedef boost::unordered_map<string, string,
-            boost::hash<string>, dbgwStringCompareFunc> DBGWDBInfoHashMap;
-
     typedef shared_ptr<DBGWPreparedStatement> DBGWPreparedStatementSharedPtr;
-    typedef shared_ptr<DBGWResult> DBGWResultSharedPtr;
-    typedef shared_ptr<DBGWBatchResult> DBGWBatchResultSharedPtr;
+
+    class DBGWCallableStatement;
+    typedef shared_ptr<DBGWCallableStatement> DBGWCallableStatementSharedPtr;
+
+    class DBGWResultSet;
+    typedef shared_ptr<DBGWResultSet> DBGWResultSetSharedPtr;
+
+    class DBGWResultSetMetaData;
+    typedef shared_ptr<DBGWResultSetMetaData> DBGWResultSetMetaDataSharedPtr;
+
+    class DBGWBatchResultSet;
+    typedef shared_ptr<DBGWBatchResultSet> DBGWBatchResultSetSharedPtr;
+
+    class DBGWDriverManager
+    {
+    public:
+      static DBGWConnectionSharedPtr getConnection(const char *szUrl,
+          DBGWDataBaseType dbType = DBGW_DB_TYPE_CUBRID);
+      static DBGWConnectionSharedPtr getConnection(const char *szUrl,
+          const char *szUser, const char *szPassword,
+          DBGWDataBaseType dbType = DBGW_DB_TYPE_CUBRID);
+    };
 
     /**
      * External access class.
      */
-    class DBGWConnection
+    class DBGWConnection : public enable_shared_from_this<DBGWConnection>
     {
     public:
-      DBGWConnection(const string &groupName, const string &host, int nPort,
-          const DBGWDBInfoHashMap &dbInfoMap);
+      DBGWConnection(const char *szUrl, const char *szUser,
+          const char *szPassword);
       virtual ~ DBGWConnection();
 
-      virtual bool connect() = 0;
-      virtual bool close() = 0;
-      virtual DBGWPreparedStatementSharedPtr preparedStatement(
-          const DBGWBoundQuerySharedPtr p_query) = 0;
-      bool setAutocommit(bool bAutocommit);
-      virtual bool setIsolation(DBGW_TRAN_ISOLATION isolation) = 0;
+      bool connect();
+      bool close();
+
+      virtual DBGWCallableStatementSharedPtr prepareCall(
+          const char *szSql) = 0;
+      virtual DBGWPreparedStatementSharedPtr prepareStatement(
+          const char *szSql) = 0;
+
+      bool setTransactionIsolation(DBGW_TRAN_ISOLATION isolation);
+      bool setAutoCommit(bool bAutocommit);
       bool commit();
       bool rollback();
 
     public:
-      virtual const char *getHost() const;
-      virtual int getPort() const;
-      const DBGWDBInfoHashMap &getDBInfoMap() const;
-      bool isAutocommit() const;
+      bool getAutoCommit() const;
+      DBGW_TRAN_ISOLATION getTransactionIsolation() const;
+      bool isClosed() const;
+      virtual void *getNativeHandle() const = 0;
 
     protected:
-      virtual void doSetAutocommit(bool bAutocommit) = 0;
+      virtual void doConnect() = 0;
+      virtual void doClose() = 0;
+      virtual void doSetTransactionIsolation(DBGW_TRAN_ISOLATION isolation) = 0;
+      virtual void doSetAutoCommit(bool bAutocommit) = 0;
       virtual void doCommit() = 0;
       virtual void doRollback() = 0;
 
-    protected:
-      const DBGWLogger m_logger;
-
-    public:
-      /* For DEBUG */
-      virtual string dump() = 0;
-
     private:
-      bool m_bAutocommit;
-      string m_host;
-      int m_nPort;
-      const DBGWDBInfoHashMap &m_dbInfoMap;
+      bool m_bConnected;
+      bool m_bClosed;
+      bool m_bAutoCommit;
+      DBGW_TRAN_ISOLATION m_isolation;
     };
-
-    typedef shared_ptr<DBGWConnection> DBGWConnectionSharedPtr;
 
     /**
      * External access class.
      */
-    class DBGWPreparedStatement :
-      public enable_shared_from_this<DBGWPreparedStatement>
+    class DBGWStatement : public
+      enable_shared_from_this<DBGWPreparedStatement>
     {
     public:
-      DBGWPreparedStatement(DBGWBoundQuerySharedPtr pQuery);
+      DBGWStatement(DBGWConnectionSharedPtr pConnection);
+      virtual ~DBGWStatement();
+
+      bool close();
+
+      virtual DBGWResultSetSharedPtr executeQuery(const char *szSql) = 0;
+      virtual int executeUpdate(const char *szSql) = 0;
+      virtual DBGWBatchResultSetSharedPtr executeBatch() = 0;
+
+    public:
+      DBGWConnectionSharedPtr getConnection() const;
+      virtual void *getNativeHandle() const = 0;
+
+    protected:
+      virtual void doClose() = 0;
+
+    private:
+      bool m_bClosed;
+      DBGWConnectionSharedPtr m_pConnection;
+    };
+
+    enum DBGWParameterMode
+    {
+      DBGW_PARAM_MODE_IN = 0,
+      DBGW_PARAM_MODE_INOUT,
+      DBGW_PARAM_MODE_OUT
+    };
+
+    /**
+     * External access class.
+     */
+    class DBGWParameterMetaData
+    {
+    public:
+      virtual ~DBGWParameterMetaData();
+
+    public:
+      virtual bool getParameterMode(size_t nIndex,
+          DBGWParameterMode *pMode) const = 0;
+      virtual size_t getParameterCount() const = 0;
+      virtual bool getParameterType(size_t nIndex,
+          DBGWValueType *pType) const = 0;
+    };
+
+    /**
+     * External access class.
+     */
+    class DBGWPreparedStatement : public DBGWStatement
+    {
+    public:
+      DBGWPreparedStatement(DBGWConnectionSharedPtr pConnection);
       virtual ~ DBGWPreparedStatement();
 
-      virtual bool close() = 0;
-      virtual void setValue(size_t nIndex, const DBGWValue &value);
-      virtual void setInt(size_t nIndex, int nValue);
-      virtual void setString(size_t nIndex, const char *szValue);
-      virtual void setLong(size_t nIndex, int64 lValue);
-      virtual void setChar(size_t nIndex, char cValue);
-      virtual void setParameter(const DBGWParameter *pParameter);
-      virtual void setParameterList(const DBGWParameterList *pParameterList);
-      DBGWResultSharedPtr execute();
-      const DBGWBatchResultSharedPtr executeBatch();
-      virtual void init(DBGWBoundQuerySharedPtr pQuery);
+      virtual bool addBatch() = 0;
+      virtual bool clearBatch() = 0;
+      virtual bool clearParameters() = 0;
 
-    public:
-      virtual bool isReused() const;
-      const DBGWBoundQuerySharedPtr getQuery() const;
+      virtual DBGWResultSetSharedPtr executeQuery() = 0;
+      virtual int executeUpdate() = 0;
+      virtual DBGWBatchResultSetSharedPtr executeBatch() = 0;
 
-    protected:
-      virtual void beforeBind();
-      virtual void beforeBindList();
-      void bind();
-      void bindList();
-      virtual void doBind(const DBGWQueryParameter &queryParam,
-          size_t nIndex, const DBGWValue *pValue) = 0;
-      virtual void doBind(const DBGWQueryParameter &queryParam,
-          size_t nIndex, DBGWValueList &valueList) = 0;
-      virtual DBGWResultSharedPtr doExecute() = 0;
-      virtual DBGWBatchResultSharedPtr doExecuteBatch() = 0;
-      DBGWParameterList &getParameterList();
-      void writeLog(int nIndex);
-
-    protected:
-      const DBGWLogger m_logger;
+      virtual bool set(int nIndex, const DBGWValue &value) = 0;
+      virtual bool setInt(int nIndex, int nValue) = 0;
+      virtual bool setLong(int nIndex, int64 lValue) = 0;
+      virtual bool setChar(int nIndex, char cValue) = 0;
+      virtual bool setCString(int nIndex, const char *szValue) = 0;
+      virtual bool setFloat(int nIndex, float fValue) = 0;
+      virtual bool setDouble(int nIndex, double dValue) = 0;
+      virtual bool setDate(int nIndex, const struct tm &tmValue) = 0;
+      virtual bool setTime(int nIndex, const struct tm &tmValue) = 0;
+      virtual bool setDateTime(int nIndex, const struct tm &tmValue) = 0;
+      virtual bool setNull(int nIndex, DBGWValueType type) = 0;
 
     private:
-      string dump();
-
-    private:
-      DBGWBoundQuerySharedPtr m_pQuery;
-      DBGWParameterList m_parameterList;
-      bool m_bReuesed;
-    };
-
-    struct MetaData
-    {
-      MetaData();
-
-      string name;
-      size_t colNo;             // starting with 1
-      DBGWValueType type;
-      int orgType;
-      size_t length;
-      bool unused;
-    };
-
-    typedef vector<MetaData> MetaDataList;
-
-    /**
-     * External access class.
-     */
-    class DBGWResult: public DBGWValueSet
-    {
-    public:
-      DBGWResult(const DBGWPreparedStatementSharedPtr pStmt, int nAffectedRow);
-      virtual ~ DBGWResult();
-
-      bool first();
-      bool next();
-
-    public:
-      virtual const DBGWValue *getValue(const char *szKey) const;
-      virtual const DBGWValue *getValue(size_t nIndex) const;
-      bool isNeedFetch() const;
-      const MetaDataList *getMetaDataList() const;
-      int getRowCount() const;
-      int getAffectedRow() const;
-
-    protected:
-      const DBGWPreparedStatement *getPreparedStatement() const;
-      void makeColumnValues();
-      virtual void makeColumnValue(const MetaData &md, int nColNo) = 0;
-      void makeValue(const char *szColName, int nColNo, DBGWValueType type,
-          void *pValue, bool bNull, int nSize);
-#ifdef ENABLE_LOB
-      const DBGWValue *makeValueBuffer(bool bReplace, const char *szColName,
-          int nColNo, DBGWValueType type, bool bNull, int nSize);
-#endif
-      void makeMetaData();
-      virtual void doMakeMetadata(MetaDataList &metaList,
-          const MetaDataList &userDefinedMetaList) = 0;
-      virtual void doFirst() = 0;
-      virtual bool doNext() = 0;
-
-    protected:
-      const DBGWLogger &getLogger() const;
-
-    protected:
-      void clear();
-
-    private:
-      const DBGWPreparedStatementSharedPtr m_pStmt;
-      int m_nAffectedRow;
-      bool m_bNeedFetch;
-      bool m_bNeverFetched;
-      MetaDataList m_metaList;
-      const DBGWLogger m_logger;
+      /**
+       * prepared statement doesn't use these methods.
+       */
+      virtual DBGWResultSetSharedPtr executeQuery(const char *szSql);
+      virtual int executeUpdate(const char *szSql);
     };
 
     /**
      * External access class.
      */
-    class DBGWBatchResult
+    class DBGWCallableStatement : public DBGWPreparedStatement
     {
     public:
-      DBGWBatchResult(int nSize);
-      virtual ~ DBGWBatchResult();
-      void setExecuteStatus(DBGWExecuteStatus status);
-      void setAffectedRow(int nIndex, int nRow);
-      void setErrorCode(int nIndex, int nNumber);
-      void setErrorMessage(int nIndex, const char *pMessage);
-      void setStatementType(int nIndex, DBGWQueryType nType);
+      DBGWCallableStatement(DBGWConnectionSharedPtr pConnection);
+      virtual ~DBGWCallableStatement();
+
+      virtual DBGWResultSetSharedPtr executeQuery() = 0;
+      virtual int executeUpdate() = 0;
+
+      virtual bool registerOutParameter(size_t nIndex, DBGWValueType type) = 0;
+
+      virtual bool set(int nIndex, const DBGWValue &value) = 0;
+      virtual bool setInt(int nIndex, int nValue) = 0;
+      virtual bool setLong(int nIndex, int64 lValue) = 0;
+      virtual bool setChar(int nIndex, char cValue) = 0;
+      virtual bool setCString(int nIndex, const char *szValue) = 0;
+      virtual bool setFloat(int nIndex, float fValue) = 0;
+      virtual bool setDouble(int nIndex, double dValue) = 0;
+      virtual bool setDate(int nIndex, const struct tm &tmValue) = 0;
+      virtual bool setTime(int nIndex, const struct tm &tmValue) = 0;
+      virtual bool setDateTime(int nIndex, const struct tm &tmValue) = 0;
+      virtual bool setNull(int nIndex, DBGWValueType type) = 0;
 
     public:
-      /* Batch Result User Interface */
-      bool getSize(int *pSize) const;
-      bool getExecuteStatus(DBGWExecuteStatus *pExecuteStatus) const;
-      bool getAffectedRow(int nIndex, int *pAffectedRow) const;
-      bool getErrorCode(int nIndex, int *pErrorCode) const;
-      bool getErrorMessage(int nIndex, const char *pErrorMessage) const;
-      bool getStatementType(int nIndex, DBGWQueryType *pStatementType) const;
+      virtual bool getType(int nIndex, DBGWValueType *pType) const = 0;
+      virtual bool getInt(int nIndex, int *pValue) const = 0;
+      virtual bool getCString(int nIndex, char **pValue) const = 0;
+      virtual bool getLong(int nIndex, int64 *pValue) const = 0;
+      virtual bool getChar(int nIndex, char *pValue) const = 0;
+      virtual bool getFloat(int nIndex, float *pValue) const = 0;
+      virtual bool getDouble(int nIndex, double *pValue) const = 0;
+      virtual bool getDateTime(int nIndex, struct tm *pValue) const = 0;
+      virtual const DBGWValue *getValue(int nIndex) const = 0;
+    };
+
+    /**
+     * External access class.
+     */
+    class DBGWResultSetMetaData
+    {
+    public:
+      virtual ~DBGWResultSetMetaData();
+
+    public:
+      virtual size_t getColumnCount() const = 0;
+      virtual bool getColumnName(size_t nIndex, const char **szName) const = 0;
+      virtual bool getColumnType(size_t nIndex, DBGWValueType *pType) const = 0;
+    };
+
+    /**
+     * External access class.
+     */
+    class DBGWResultSet
+    {
+    public:
+      DBGWResultSet(DBGWStatementSharedPtr pStatement);
+      virtual ~DBGWResultSet();
+
+      bool close();
+      virtual bool isFirst() = 0;
+      virtual bool first() = 0;
+      virtual bool next() = 0;
+
+    public:
+      virtual int getRowCount() const = 0;
+      virtual bool getType(int nIndex, DBGWValueType *pType) const = 0;
+      virtual bool getInt(int nIndex, int *pValue) const = 0;
+      virtual bool getCString(int nIndex, char **pValue) const = 0;
+      virtual bool getLong(int nIndex, int64 *pValue) const = 0;
+      virtual bool getChar(int nIndex, char *pValue) const = 0;
+      virtual bool getFloat(int nIndex, float *pValue) const = 0;
+      virtual bool getDouble(int nIndex, double *pValue) const = 0;
+      virtual bool getDateTime(int nIndex, struct tm *pValue) const = 0;
+      virtual const DBGWValue *getValue(int nIndex) const = 0;
+      virtual DBGWResultSetMetaDataSharedPtr getMetaData() const = 0;
+
+    protected:
+      virtual void doClose() = 0;
 
     private:
-      int m_nResultCount;
-      DBGWExecuteStatus m_nExecuteStatus;
-      DBGWIntegerList m_nAffectedRows;
-      DBGWIntegerList m_nErrorCodes;
-      DBGWStringList m_szErrorMessages;
-      DBGWQueryTypeList m_nStatementType;
+      bool m_bClosed;
+      DBGWStatementSharedPtr m_pStatement;
+    };
+
+    struct DBGWBatchResultSetRaw
+    {
+      int affectedRow;
+      int errorCode;
+      string errorMessage;
+      DBGWStatementType queryType;
+    };
+
+    typedef vector<DBGWBatchResultSetRaw> DBGWBatchResultSetRawList;
+
+    /**
+     * External access class.
+     */
+    class DBGWBatchResultSet
+    {
+    public:
+      DBGWBatchResultSet(size_t nSize);
+      virtual ~DBGWBatchResultSet();
+
+    public:
+      size_t size() const ;
+      DBGWBatchExecuteStatus getExecuteStatus() const;
+      bool getAffectedRow(size_t nIndex, int *pAffectedRow) const;
+      bool getErrorCode(size_t nIndex, int *pErrorCode) const;
+      bool getErrorMessage(size_t nIndex, const char **pErrorMessage) const;
+      bool getStatementType(size_t nIndex,
+          DBGWStatementType *pStatementType) const;
+
+    protected:
+      void setExecuteStatus(DBGWBatchExecuteStatus executeStatus);
+      void addBatchResultSetRaw(
+          const DBGWBatchResultSetRaw &batchResultSetRaw);
+
+    private:
+      size_t m_nSize;
+      DBGWBatchExecuteStatus m_executeStatus;
+      DBGWBatchResultSetRawList m_batchResultSetRawList;
     };
 
   }

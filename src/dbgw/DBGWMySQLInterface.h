@@ -111,7 +111,7 @@ namespace dbgw
       void close();
       void setValue(int nIndex, const DBGWValue &value);
       void setInt(int nIndex, int nValue);
-      void setString(int nIndex, const char *szValue);
+      void setCString(int nIndex, const char *szValue);
       void setLong(int nIndex, long lValue);
       void setChar(int nIndex, char cValue);
       DBGWResultSharedPtr execute();
