@@ -249,7 +249,7 @@ namespace dbgw
 
   DBGWScenarioParser::DBGWScenarioParser(const string &fileName,
       DBGWScenario &scenario) :
-    DBGWParser(fileName), m_scenario(scenario)
+    _DBGWParser(fileName), m_scenario(scenario)
   {
   }
 
@@ -258,7 +258,7 @@ namespace dbgw
   }
 
   void DBGWScenarioParser::doOnElementStart(const XML_Char *szName,
-      DBGWExpatXMLProperties &properties)
+      _DBGWExpatXMLProperties &properties)
   {
     if (!strcasecmp(szName, XML_NODE_SCENARIO))
       {
@@ -290,7 +290,7 @@ namespace dbgw
       }
   }
 
-  void DBGWScenarioParser::parseScenario(DBGWExpatXMLProperties &properties)
+  void DBGWScenarioParser::parseScenario(_DBGWExpatXMLProperties &properties)
   {
     if (isRootElement() == false)
       {
@@ -300,7 +300,7 @@ namespace dbgw
     m_scenario.setNamespace(properties.get(XML_NODE_SCENARIO_PROP_NAMESPAE, true));
   }
 
-  void DBGWScenarioParser::parseTransaction(DBGWExpatXMLProperties &properties)
+  void DBGWScenarioParser::parseTransaction(_DBGWExpatXMLProperties &properties)
   {
     if (getParentElementName() != XML_NODE_SCENARIO)
       {
@@ -311,7 +311,7 @@ namespace dbgw
     m_pTransaction = DBGWQueryTransactionSharedPtr(new DBGWQueryTransaction());
   }
 
-  void DBGWScenarioParser::parseExecute(DBGWExpatXMLProperties &properties)
+  void DBGWScenarioParser::parseExecute(_DBGWExpatXMLProperties &properties)
   {
     if (getParentElementName() != XML_NODE_SCENARIO
         && getParentElementName() != XML_NODE_TRANSACTION)
@@ -337,7 +337,7 @@ namespace dbgw
       }
   }
 
-  void DBGWScenarioParser::parseParameter(DBGWExpatXMLProperties &properties)
+  void DBGWScenarioParser::parseParameter(_DBGWExpatXMLProperties &properties)
   {
     if (getParentElementName() != XML_NODE_EXECUTE)
       {
@@ -392,7 +392,7 @@ int main(int argc, const char *argv[])
     {
       DBGWScenario scenario;
       DBGWScenarioParser parser(argv[1], scenario);
-      DBGWParser::parse(&parser);
+      _DBGWParser::parse(&parser);
 
       for (int i = 3; i < argc; i++)
         {

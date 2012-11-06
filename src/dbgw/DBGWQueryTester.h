@@ -79,7 +79,7 @@ namespace dbgw
     int m_nPassCount;
   };
 
-  class DBGWScenarioParser: public DBGWParser
+  class DBGWScenarioParser: public _DBGWParser
   {
   public:
     DBGWScenarioParser(const string &fileName, DBGWScenario &scenario);
@@ -87,14 +87,14 @@ namespace dbgw
 
   protected:
     virtual void doOnElementStart(const XML_Char *szName,
-        DBGWExpatXMLProperties &properties);
+        _DBGWExpatXMLProperties &properties);
     virtual void doOnElementEnd(const XML_Char *szName);
 
   private:
-    void parseScenario(DBGWExpatXMLProperties &properties);
-    void parseTransaction(DBGWExpatXMLProperties &properties);
-    void parseExecute(DBGWExpatXMLProperties &properties);
-    void parseParameter(DBGWExpatXMLProperties &properties);
+    void parseScenario(_DBGWExpatXMLProperties &properties);
+    void parseTransaction(_DBGWExpatXMLProperties &properties);
+    void parseExecute(_DBGWExpatXMLProperties &properties);
+    void parseParameter(_DBGWExpatXMLProperties &properties);
     void addTransactionToScenario();
 
   private:
