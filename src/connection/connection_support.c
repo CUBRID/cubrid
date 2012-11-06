@@ -586,8 +586,7 @@ css_net_recv (SOCKET fd, char *buffer, int *maxlen, int timeout)
 #if defined(CS_MODE)
 	      if (CHECK_SERVER_IS_ALIVE ())
 		{
-		  if (net_client_ping_server (fd, NULL, time_unit) !=
-		      NO_ERROR)
+		  if (css_peer_alive (fd, time_unit) == false)
 		    {
 		      return ERROR_WHEN_READING_SIZE;
 		    }

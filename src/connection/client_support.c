@@ -609,7 +609,6 @@ css_receive_data_from_server_with_timeout (unsigned int eid, char **buffer,
   if (entry == NULL)
     {
       css_Errno = SERVER_WAS_NOT_FOUND;
-      assert (css_is_valid_request_id (entry->conn, CSS_RID_FROM_EID (eid)));
       return css_Errno;
     }
 
