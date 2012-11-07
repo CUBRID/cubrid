@@ -54,9 +54,15 @@ extern int fn_proxy_client_execute (T_PROXY_CONTEXT * ctx_p,
 extern int fn_proxy_client_close_req_handle (T_PROXY_CONTEXT * ctx_p,
 					     T_PROXY_EVENT * event_p,
 					     int argc, char **argv);
+extern int fn_proxy_client_cursor (T_PROXY_CONTEXT * ctx_p,
+				   T_PROXY_EVENT * event_p, int argc,
+				   char **argv);
 extern int fn_proxy_client_fetch (T_PROXY_CONTEXT * ctx_p,
 				  T_PROXY_EVENT * event_p, int argc,
 				  char **argv);
+extern int fn_proxy_client_schema_info (T_PROXY_CONTEXT * ctx_p,
+					T_PROXY_EVENT * event_p, int argc,
+					char **argv);
 extern int fn_proxy_client_check_cas (T_PROXY_CONTEXT * ctx_p,
 				      T_PROXY_EVENT * event_p, int argc,
 				      char **argv);

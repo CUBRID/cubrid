@@ -75,21 +75,21 @@ static int proxy_context_initialize (void);
 static void proxy_context_destroy (void);
 
 static T_PROXY_CLIENT_FUNC proxy_client_fn_table[] = {
-  fn_proxy_client_end_tran,
-  fn_proxy_client_prepare,
-  fn_proxy_client_execute,
+  fn_proxy_client_end_tran,	/* fn_end_tran */
+  fn_proxy_client_prepare,	/* fn_prepare */
+  fn_proxy_client_execute,	/* fn_execute */
   fn_proxy_client_not_supported,	/* fn_get_db_parameter */
   fn_proxy_client_not_supported,	/* fn_set_db_parameter */
   fn_proxy_client_close_req_handle,	/* fn_close_req_handle */
-  fn_proxy_client_not_supported,	/* fn_cursor */
-  fn_proxy_client_fetch,
-  fn_proxy_client_not_supported,	/* fn_schema_info */
+  fn_proxy_client_cursor,	/* fn_cursor */
+  fn_proxy_client_fetch,	/* fn_fetch */
+  fn_proxy_client_schema_info,	/* fn_schema_info */
   fn_proxy_client_not_supported,	/* fn_oid_get */
   fn_proxy_client_not_supported,	/* fn_oid_put */
   fn_proxy_client_not_supported,	/* fn_deprecated */
   fn_proxy_client_not_supported,	/* fn_deprecated */
   fn_proxy_client_not_supported,	/* fn_deprecated */
-  fn_proxy_client_get_db_version,
+  fn_proxy_client_get_db_version,	/* fn_get_db_version */
   fn_proxy_client_not_supported,	/* fn_get_class_num_objs */
   fn_proxy_client_not_supported,	/* fn_oid */
   fn_proxy_client_not_supported,	/* fn_collection */
@@ -106,7 +106,7 @@ static T_PROXY_CLIENT_FUNC proxy_client_fn_table[] = {
   fn_proxy_client_not_supported,	/* fn_xa_recover */
   fn_proxy_client_not_supported,	/* fn_xa_end_tran */
   fn_proxy_client_con_close,	/* fn_con_close */
-  fn_proxy_client_check_cas,
+  fn_proxy_client_check_cas,	/* fn_check_cas */
   fn_proxy_client_not_supported,	/* fn_make_out_rs */
   fn_proxy_client_not_supported,	/* fn_get_generated_keys */
   fn_proxy_client_not_supported,	/* fn_lob_new */
@@ -121,13 +121,13 @@ static T_PROXY_CLIENT_FUNC proxy_client_fn_table[] = {
 
 static T_PROXY_CAS_FUNC proxy_cas_fn_table[] = {
   fn_proxy_cas_end_tran,	/* fn_end_tran */
-  fn_proxy_cas_prepare,
-  fn_proxy_cas_execute,
+  fn_proxy_cas_prepare,		/* fn_prepare */
+  fn_proxy_cas_execute,		/* fn_execute */
   fn_proxy_cas_relay_only,	/* fn_get_db_parameter */
   fn_proxy_cas_relay_only,	/* fn_set_db_parameter */
   fn_proxy_cas_relay_only,	/* fn_close_req_handle */
   fn_proxy_cas_relay_only,	/* fn_cursor */
-  fn_proxy_cas_fetch,
+  fn_proxy_cas_fetch,		/* fn_fetch */
   fn_proxy_cas_relay_only,	/* fn_schema_info */
   fn_proxy_cas_relay_only,	/* fn_oid_get */
   fn_proxy_cas_relay_only,	/* fn_oid_put */
@@ -1033,6 +1033,7 @@ proxy_str_context (T_PROXY_CONTEXT * ctx_p)
 	    "free_on_client_io_write:%s, "
 	    "free_context:%s, is_client_in_tran:%s, "
 	    "is_cas_in_tran:%s, "
+	    "is_bypass_msg:%s, "
 	    "waiting_event:(%p, %s), "
 	    "func_code:%d, stmt_h_id:%d, stmt_hint_type:%d, "
 	    "client_id:%d, shard_id:%d, cas_id:%d, "
@@ -1046,6 +1047,7 @@ proxy_str_context (T_PROXY_CONTEXT * ctx_p)
 	    (ctx_p->free_context) ? "Y" : "N",
 	    (ctx_p->is_client_in_tran) ? "Y" : "N",
 	    (ctx_p->is_cas_in_tran) ? "Y" : "N",
+	    (ctx_p->is_bypass_msg) ? "Y" : "N",
 	    ctx_p->waiting_event, proxy_str_event (ctx_p->waiting_event),
 	    ctx_p->func_code, ctx_p->stmt_h_id,
 	    ctx_p->stmt_hint_type, ctx_p->client_id,
@@ -1073,6 +1075,7 @@ proxy_context_clear (T_PROXY_CONTEXT * ctx_p)
   ctx_p->is_cas_in_tran = false;
   ctx_p->waiting_dummy_prepare = false;
   ctx_p->dont_free_statement = false;
+  ctx_p->is_bypass_msg = false;
 
   if (ctx_p->waiting_event)
     {
@@ -1126,6 +1129,7 @@ proxy_context_set_out_tran (T_PROXY_CONTEXT * ctx_p)
   assert (ctx_p);
 
   ctx_p->is_in_tran = false;
+  ctx_p->is_bypass_msg = false;
   ctx_p->shard_id = PROXY_INVALID_SHARD;
   ctx_p->cas_id = PROXY_INVALID_CAS;
 
