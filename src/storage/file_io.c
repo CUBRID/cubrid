@@ -2025,7 +2025,8 @@ fileio_initialize_pages (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 	    {
 	      thread_sleep (0, time_to_sleep * 1000LL);
 	    }
-	  start_in_millis = current_in_millis;
+	  gettimeofday (&tv, NULL);
+	  start_in_millis = (tv.tv_sec * 1000LL) + (tv.tv_usec / 1000LL);
 	}
 #endif
     }
