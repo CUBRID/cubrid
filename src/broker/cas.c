@@ -1106,10 +1106,7 @@ main (int argc, char *argv[])
 		    char err_msg[1024];
 
 		    sprintf (err_msg,
-			     "Authorization error.(Address %s is rejected)",
-			     ut_get_ipv4_string (client_ip_str,
-						 sizeof (client_ip_str),
-						 as_info->cas_clt_ip));
+			     "Authorization error.(Address is rejected)");
 
 		    NET_WRITE_ERROR_CODE_WITH_MSG (client_sock_fd,
 						   req_info.client_version,

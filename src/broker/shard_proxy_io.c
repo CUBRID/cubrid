@@ -868,6 +868,19 @@ proxy_io_make_client_dbinfo_ok (T_BROKER_VERSION client_version,
   return PROXY_CONNECTION_REPLY_SIZE;
 }
 
+int
+proxy_io_make_client_acl_fail (T_BROKER_VERSION client_version, char **buffer)
+{
+  char err_msg[1024];
+  snprintf (err_msg, sizeof (err_msg),
+	    "Authorization error.(Address is rejected)");
+
+  return proxy_io_make_error_msg (client_version, buffer,
+				  DBMS_ERROR_INDICATOR,
+				  CAS_ER_NOT_AUTHORIZED_CLIENT, err_msg,
+				  false);
+}
+
 void
 proxy_io_buffer_clear (T_IO_BUFFER * io_buffer)
 {
@@ -1417,7 +1430,6 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
 	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Authentication failure. "
 		     "(db_name:[%s], db_user:[%s], db_passwd:[%s]).",
 		     db_name, db_user, db_passwd);
-	  proxy_socket_io_read_error (sock_io_p);
 
 	  if (shm_as_p->access_log == ON)
 	    {
@@ -1425,6 +1437,35 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
 				sock_io_p->ip_addr, db_name, db_user, false);
 	    }
 
+	  /* send authentication failure to the client */
+	  event_p = proxy_event_new_with_rsp (client_version,
+					      PROXY_EVENT_IO_WRITE,
+					      PROXY_EVENT_FROM_CLIENT,
+					      proxy_io_make_client_acl_fail);
+	  if (event_p == NULL)
+	    {
+	      proxy_socket_io_read_error (sock_io_p);
+	      EXIT_FUNC ();
+	      return -1;
+	    }
+
+	  /* set write event to the socket io */
+	  error = proxy_socket_set_write_event (sock_io_p, event_p);
+	  if (error)
+	    {
+	      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to set write buffer. "
+			 "(fd:%d). event(%s).",
+			 sock_io_p->fd, proxy_str_event (event_p));
+
+	      proxy_event_free (event_p);
+	      event_p = NULL;
+
+	      proxy_socket_io_read_error (sock_io_p);
+	      EXIT_FUNC ();
+	      return -1;
+	    }
+
+	  /* client will close the socket */
 	  EXIT_FUNC ();
 	  return -1;
 	}

@@ -133,6 +133,9 @@ extern int proxy_io_make_client_proxy_alive (T_BROKER_VERSION client_version,
 					     char **buffer);
 extern int proxy_io_make_client_dbinfo_ok (T_BROKER_VERSION client_version,
 					   char **buffer);
+extern int proxy_io_make_client_acl_fail (T_BROKER_VERSION client_version,
+					  char **buffer);
+
 
 extern int proxy_socket_set_write_event (T_SOCKET_IO * sock_io_p,
 					 T_PROXY_EVENT * event_p);
