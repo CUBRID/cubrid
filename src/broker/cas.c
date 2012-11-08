@@ -379,7 +379,14 @@ cas_send_connect_reply_to_driver (T_CAS_PROTOCOL protocol,
 
   as_info->cur_keep_con = shm_appl->keep_connection;
 
-  v = htonl (CAS_CONNECTION_REPLY_SIZE);
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (protocol, PROTOCOL_V3))
+    {
+      v = htonl (CAS_CONNECTION_REPLY_SIZE);
+    }
+  else
+    {
+      v = htonl (CAS_PID_SIZE + BROKER_INFO_SIZE + SESSION_ID_SIZE);
+    }
   memcpy (p, &v, sizeof (int));
   p += sizeof (int);
   if (cas_info_size > 0)

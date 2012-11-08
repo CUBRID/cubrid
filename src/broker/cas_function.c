@@ -519,6 +519,19 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv,
   net_arg_get_str (&param_mode, &param_mode_size, argv[arg_idx++]);
   if (prepared_srv_h_id != NULL)
     {
+#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
+      if (srv_handle->stmt_type == CUBRID_STMT_SELECT)
+#else
+      if (srv_handle->q_result->stmt_type == CUBRID_STMT_SELECT)
+#endif
+	{
+	  fetch_flag = 1;
+	}
+      else
+	{
+	  fetch_flag = 0;
+	}
+
       if (srv_handle->auto_commit_mode == true)
 	{
 	  auto_commit_mode = true;
@@ -532,23 +545,9 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv,
     }
   else
     {
-      arg_idx++;		/* ignore the fetch_flag from a client */
+      net_arg_get_char (fetch_flag, argv[arg_idx++]);
       net_arg_get_char (auto_commit_mode, argv[arg_idx++]);
       net_arg_get_char (forward_only_cursor, argv[arg_idx++]);
-    }
-
-  /* ignore the fetch_flag from a driver */
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-  if (srv_handle->stmt_type == CUBRID_STMT_SELECT)
-#else
-  if (srv_handle->q_result->stmt_type == CUBRID_STMT_SELECT)
-#endif
-    {
-      fetch_flag = 1;
-    }
-  else
-    {
-      fetch_flag = 0;
     }
 
   clt_cache_time_ptr = &clt_cache_time;

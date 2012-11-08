@@ -667,19 +667,28 @@ public class UStatement {
 	outBuffer.addByte(executeFlag);
 	outBuffer.addInt(maxField < 0 ? 0 : maxField);
 	outBuffer.addInt(0);
+
 	if (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_CALL_SP
 		&& bindParameter != null) {
 	    outBuffer.addBytes(bindParameter.paramMode);
 	} else {
 	    outBuffer.addNull();
 	}
-	outBuffer.addByte((byte) 0); // fetch flag is unused
-	if(relatedConnection.getAutoCommit() && !isGeneratedKeys) {
-		is_auto_commit = (byte) 1;
+
+	/* fetch flag */
+	if (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_SELECT) {
+	    outBuffer.addByte((byte) 1);
+	} else {
+	    outBuffer.addByte((byte) 0);
+	}
+
+	if (relatedConnection.getAutoCommit() && !isGeneratedKeys) {
+	    is_auto_commit = (byte) 1;
 	}
 	outBuffer.addByte(is_auto_commit);
+
 	if (isScrollable == false) {
-		is_forward_only = (byte) 1;
+	    is_forward_only = (byte) 1;
 	}
 	outBuffer.addByte(is_forward_only);
 	outBuffer.addCacheTime(null);

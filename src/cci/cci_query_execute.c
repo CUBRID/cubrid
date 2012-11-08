@@ -594,7 +594,14 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
       ADD_ARG_BYTES (&net_buf, NULL, 0);
     }
 
-  fetch_flag = 0;		/* fetch flag is unused */
+  if (req_handle->stmt_type == CUBRID_STMT_SELECT)
+    {
+      fetch_flag = 1;
+    }
+  else
+    {
+      fetch_flag = 0;
+    }
   ADD_ARG_BYTES (&net_buf, &fetch_flag, 1);
 
   if (con_handle->autocommit_mode == CCI_AUTOCOMMIT_TRUE)
