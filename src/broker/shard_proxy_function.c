@@ -29,6 +29,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <math.h>
 
 
 #include "shard_proxy.h"
@@ -46,6 +47,8 @@ extern T_PROXY_CONTEXT proxy_Context;
 extern int make_net_buf (T_NET_BUF * net_buf, int size);
 extern int make_header_info (T_NET_BUF * net_buf,
 			     MSG_HEADER * client_msg_header);
+static void proxy_set_wait_timeout (T_PROXY_CONTEXT * ctx_p,
+				    int query_timeout);
 
 static int proxy_get_shard_id (T_SHARD_STMT * stmt_p, void **argv,
 			       T_SHARD_KEY_RANGE ** range_p_out);
@@ -55,6 +58,30 @@ static void proxy_update_shard_stats (T_SHARD_STMT * stmt_p,
 				      T_SHARD_KEY_RANGE * range_p);
 static void proxy_update_shard_stats_without_hint (int shard_id);
 
+void
+proxy_set_wait_timeout (T_PROXY_CONTEXT * ctx_p, int query_timeout)
+{
+  int proxy_wait_timeout_sec;
+  int query_timeout_sec;
+
+  query_timeout_sec = ceil (query_timeout / 1000);
+  proxy_wait_timeout_sec = ctx_p->wait_timeout;
+
+  if (proxy_wait_timeout_sec == 0 || query_timeout_sec == 0)
+    {
+      ctx_p->wait_timeout = proxy_wait_timeout_sec + query_timeout_sec;
+    }
+  else if (proxy_wait_timeout_sec < query_timeout_sec)
+    {
+      ctx_p->wait_timeout = proxy_wait_timeout_sec;
+    }
+  else
+    {
+      ctx_p->wait_timeout = query_timeout_sec;
+    }
+
+  return;
+}
 
 int
 proxy_check_cas_error (char *read_msg)
@@ -100,7 +127,8 @@ proxy_send_request_to_cas (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
   ENTER_FUNC ();
 
   cas_io_p = proxy_cas_alloc_by_ctx (ctx_p->shard_id, ctx_p->cas_id,
-				     ctx_p->cid, ctx_p->uid);
+				     ctx_p->cid, ctx_p->uid,
+				     ctx_p->wait_timeout);
   if (cas_io_p == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to allocate CAS. "
@@ -927,13 +955,16 @@ fn_proxy_client_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 	      goto relay_prepare_request;
 	    }
 
-	  waiter_p = proxy_waiter_new (ctx_p->cid, ctx_p->uid);
+	  waiter_p =
+	    proxy_waiter_new (ctx_p->cid, ctx_p->uid, ctx_p->wait_timeout);
 	  if (waiter_p == NULL)
 	    {
 	      goto free_context;
 	    }
 
-	  error = shard_queue_enqueue (&stmt_p->waitq, (void *) waiter_p);
+	  error =
+	    shard_queue_ordered_enqueue (&stmt_p->waitq, (void *) waiter_p,
+					 proxy_waiter_comp_fn);
 	  if (error)
 	    {
 	      proxy_waiter_free (waiter_p);
@@ -1080,7 +1111,8 @@ relay_prepare_request:
     }
 
   cas_io_p = proxy_cas_alloc_by_ctx (ctx_p->shard_id, ctx_p->cas_id,
-				     ctx_p->cid, ctx_p->uid);
+				     ctx_p->cid, ctx_p->uid,
+				     ctx_p->wait_timeout);
   if (cas_io_p == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to allocate CAS. context(%s).",
@@ -1168,6 +1200,7 @@ fn_proxy_client_execute (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
   int error = 0;
   int srv_h_id;
   int cas_srv_h_id;
+  int query_timeout;
   char *prepare_request = NULL;
   int i;
   int cas_index, shard_id;
@@ -1221,6 +1254,17 @@ fn_proxy_client_execute (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
   if (client_version >= CAS_PROTO_MAKE_VER (PROTOCOL_V1))
     {
       bind_value_index++;
+
+      net_arg_get_int (&query_timeout, argv[9]);
+      if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V2))
+	{
+	  /* protocol version v1 driver send query timeout in second */
+	  query_timeout *= 1000;
+	}
+    }
+  else
+    {
+      query_timeout = 0;
     }
 
   argc_mod_2 = bind_value_index % 2;
@@ -1242,7 +1286,7 @@ fn_proxy_client_execute (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 
   net_arg_get_int (&srv_h_id, argv[0]);
 
-  /* arg9 ~ : bind variables, even:bind type, odd:bind value */
+  /* arg9/10 ~ : bind variables, even:bind type, odd:bind value */
 
   stmt_p = shard_stmt_find_by_stmt_h_id (srv_h_id);
   if (stmt_p == NULL)
@@ -1327,8 +1371,11 @@ fn_proxy_client_execute (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
       ctx_p->shard_id = shard_id;
     }
 
+  proxy_set_wait_timeout (ctx_p, query_timeout);
+
   cas_io_p = proxy_cas_alloc_by_ctx (ctx_p->shard_id, ctx_p->cas_id,
-				     ctx_p->cid, ctx_p->uid);
+				     ctx_p->cid, ctx_p->uid,
+				     ctx_p->wait_timeout);
   if (cas_io_p == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to allocate CAS. context(%s).",
@@ -1519,7 +1566,8 @@ fn_proxy_client_close_req_handle (T_PROXY_CONTEXT * ctx_p,
   if (ctx_p->is_in_tran)
     {
       cas_io_p = proxy_cas_alloc_by_ctx (ctx_p->shard_id, ctx_p->cas_id,
-					 ctx_p->cid, ctx_p->uid);
+					 ctx_p->cid, ctx_p->uid,
+					 ctx_p->wait_timeout);
       if (cas_io_p == NULL)
 	{
 	  goto free_context;
@@ -1616,7 +1664,8 @@ fn_proxy_client_cursor (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 
   /* find idle cas */
   cas_io_p = proxy_cas_alloc_by_ctx (ctx_p->shard_id, ctx_p->cas_id,
-				     ctx_p->cid, ctx_p->uid);
+				     ctx_p->cid, ctx_p->uid,
+				     ctx_p->wait_timeout);
   if (cas_io_p == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
@@ -1705,7 +1754,8 @@ fn_proxy_client_fetch (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 
   /* find idle cas */
   cas_io_p = proxy_cas_alloc_by_ctx (ctx_p->shard_id, ctx_p->cas_id,
-				     ctx_p->cid, ctx_p->uid);
+				     ctx_p->cid, ctx_p->uid,
+				     ctx_p->wait_timeout);
   if (cas_io_p == NULL)
     {
       goto free_context;

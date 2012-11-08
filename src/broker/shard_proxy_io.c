@@ -125,7 +125,8 @@ static T_CAS_IO *proxy_cas_io_find_by_fd (int shard_id, int cas_id,
 					  SOCKET fd);
 
 static int proxy_client_add_waiter_by_shard (T_SHARD_IO * shard_io_p,
-					     int ctx_cid, int ctx_uid);
+					     int ctx_cid, int ctx_uid,
+					     int timeout);
 static void proxy_client_check_waiter_and_wakeup (T_SHARD_IO * shard_io_p,
 						  T_CAS_IO * cas_io_p);
 
@@ -3329,7 +3330,7 @@ proxy_cas_find_io_by_ctx (int shard_id, int cas_id, int ctx_cid,
 
 T_CAS_IO *
 proxy_cas_alloc_by_ctx (int shard_id, int cas_id, int ctx_cid,
-			unsigned int ctx_uid)
+			unsigned int ctx_uid, int timeout)
 {
   int error;
   T_SHARD_IO *shard_io_p;
@@ -3545,7 +3546,8 @@ set_waiter:
       return NULL;
     }
 
-  error = proxy_client_add_waiter_by_shard (shard_io_p, ctx_cid, ctx_uid);
+  error =
+    proxy_client_add_waiter_by_shard (shard_io_p, ctx_cid, ctx_uid, timeout);
   if (error)
     {
       return NULL;
@@ -3629,7 +3631,7 @@ proxy_cas_release_by_ctx (int shard_id, int cas_id, int ctx_cid,
 
 static int
 proxy_client_add_waiter_by_shard (T_SHARD_IO * shard_io_p, int ctx_cid,
-				  int ctx_uid)
+				  int ctx_uid, int timeout)
 {
   int error;
   T_WAIT_CONTEXT *waiter_p;
@@ -3638,7 +3640,7 @@ proxy_client_add_waiter_by_shard (T_SHARD_IO * shard_io_p, int ctx_cid,
 
   assert (shard_io_p);
 
-  waiter_p = proxy_waiter_new (ctx_cid, ctx_uid);
+  waiter_p = proxy_waiter_new (ctx_cid, ctx_uid, timeout);
   if (waiter_p == NULL)
     {
       EXIT_FUNC ();
@@ -3649,7 +3651,9 @@ proxy_client_add_waiter_by_shard (T_SHARD_IO * shard_io_p, int ctx_cid,
 		   "is waiting on shard(shard_id:%d).",
 		   ctx_cid, ctx_uid, shard_io_p->shard_id);
 
-  error = shard_queue_enqueue (&shard_io_p->waitq, (void *) waiter_p);
+  error =
+    shard_queue_ordered_enqueue (&shard_io_p->waitq, (void *) waiter_p,
+				 proxy_waiter_comp_fn);
   if (error)
     {
       EXIT_FUNC ();
@@ -4167,4 +4171,21 @@ proxy_client_io_version_find_by_fd (T_SOCKET_IO * sock_io_p)
     }
 
   return cli_io_p->client_version;
+}
+
+void
+proxy_available_cas_wait_timer (void)
+{
+  T_SHARD_IO *shard_io_p;
+  int i, now;
+
+  now = time (NULL);
+
+  for (i = 0; i < proxy_Shard_io.max_shard; i++)
+    {
+      shard_io_p = &(proxy_Shard_io.ent[i]);
+      proxy_waiter_timeout (&shard_io_p->waitq, now);
+    }
+
+  return;
 }

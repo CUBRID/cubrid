@@ -1246,3 +1246,25 @@ shard_stmt_write_buf_to_sql (char *sql_stmt, const char *buf, int length,
 
   return sql_stmt;
 }
+
+void
+shard_statement_wait_timer (void)
+{
+  T_SHARD_STMT *stmt_p;
+  int i, now;
+
+  now = time (NULL);
+
+  for (i = 0; i < shard_Stmt.max_num_stmt; i++)
+    {
+      stmt_p = &(shard_Stmt.stmt_ent[i]);
+      if (stmt_p->status == SHARD_STMT_STATUS_UNUSED)
+	{
+	  continue;
+	}
+
+      proxy_waiter_timeout (&stmt_p->waitq, now);
+    }
+
+  return;
+}

@@ -163,6 +163,9 @@
 #define ACL_MAX_DBUSER_LENGTH	32
 
 #define MAX_QUERY_TIMEOUT_LIMIT         86400	/* seconds; 1 day */
+#if defined(CUBRID_SHARD)
+#define MAX_PROXY_TIMEOUT_LIMIT 	MAX_QUERY_TIMEOUT_LIMIT
+#endif /* CUBRID_SHARD */
 
 #if defined (WINDOWS)
 #define MAKE_ACL_SEM_NAME(BUF, BROKER_NAME)  \
@@ -396,6 +399,8 @@ struct t_proxy_info
 #else
   int dummy;			/* for align */
 #endif
+
+  int wait_timeout;
 
   int max_prepared_stmt_count;
   char ignore_shard_hint;

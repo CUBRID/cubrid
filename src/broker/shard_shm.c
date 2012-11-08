@@ -405,6 +405,7 @@ shard_shm_initialize (T_BROKER_INFO * br_info_p, char *shm_metadata_cp)
       proxy_info_p->max_prepared_stmt_count =
 	br_info_p->proxy_max_prepared_stmt_count;
       proxy_info_p->ignore_shard_hint = br_info_p->ignore_shard_hint;
+      proxy_info_p->wait_timeout = br_info_p->proxy_timeout;
       proxy_info_p->proxy_log_reset = 0;
       proxy_info_p->proxy_access_log_reset = 0;
 

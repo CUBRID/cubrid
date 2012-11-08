@@ -35,6 +35,40 @@
 #include "shard_proxy_queue.h"
 
 
+static void
+shard_queue_insert_after (T_SHARD_QUEUE * q, T_SHARD_QUEUE_ENT * prev,
+			  T_SHARD_QUEUE_ENT * curr)
+{
+  curr->next = NULL;
+
+  if (q->head == NULL)
+    {
+      assert (prev == NULL);
+      assert (q->tail == NULL);
+
+      q->head = q->tail = curr;
+      return;
+    }
+
+  if (prev)
+    {
+      curr->next = prev->next;
+      prev->next = curr;
+    }
+  else
+    {
+      curr->next = q->head;
+      q->head = curr;
+    }
+
+  if (q->tail == prev)
+    {
+      q->tail = curr;
+    }
+
+  return;
+}
+
 int
 shard_queue_enqueue (T_SHARD_QUEUE * q, void *v)
 {
@@ -47,18 +81,7 @@ shard_queue_enqueue (T_SHARD_QUEUE * q, void *v)
   if (q_ent)
     {
       q_ent->v = v;
-      if (q->head == NULL)
-	{
-	  q->head = q->tail = q_ent;
-	}
-      else
-	{
-	  q->tail->next = q_ent;
-	  q->tail = q_ent;
-	}
-
-      q_ent->next = NULL;
-
+      shard_queue_insert_after (q, q->tail, q_ent);
       return 0;			/* SUCCESS */
     }
 
@@ -66,6 +89,47 @@ shard_queue_enqueue (T_SHARD_QUEUE * q, void *v)
 	     "Failed to alloc shard queue entry. " "(errno:%d).", errno);
 
   return -1;			/* FAILED */
+}
+
+int
+shard_queue_ordered_enqueue (T_SHARD_QUEUE * q, void *v,
+			     SHARD_COMP_FN comp_fn)
+{
+  int error;
+  T_SHARD_QUEUE_ENT *q_ent;
+  T_SHARD_QUEUE_ENT *curr, *prev;
+
+  q_ent = (T_SHARD_QUEUE_ENT *) malloc (sizeof (T_SHARD_QUEUE_ENT));
+  if (q_ent)
+    {
+      q_ent->v = v;
+
+      if (comp_fn == NULL)
+	{
+	  shard_queue_insert_after (q, q->tail, q_ent);
+	  return 0;
+	}
+
+      prev = NULL;
+      for (curr = q->head; curr; curr = curr->next)
+	{
+	  if (comp_fn (curr->v, q_ent->v) > 0)
+	    {
+	      shard_queue_insert_after (q, prev, q_ent);
+	      return 0;
+	    }
+
+	  prev = curr;
+	}
+
+      shard_queue_insert_after (q, q->tail, q_ent);
+
+      return 0;
+    }
+
+  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Not enough virtual memory. "
+	     "Failed to alloc shard queue entry. " "(errno:%d).", errno);
+  return -1;
 }
 
 void *
@@ -92,6 +156,23 @@ shard_queue_dequeue (T_SHARD_QUEUE * q)
     }
 
   FREE_MEM (q_ent);
+
+  return ret;
+}
+
+void *
+shard_queue_peek_value (T_SHARD_QUEUE * q)
+{
+  T_SHARD_QUEUE_ENT *q_ent;
+  void *ret;
+
+  if (q->head == NULL)
+    {
+      return NULL;
+    }
+
+  q_ent = q->head;
+  ret = q_ent->v;
 
   return ret;
 }

@@ -242,6 +242,9 @@ main (int argc, char *argv[])
       /* process message */
       proxy_handler_process ();
 
+      /* process timer */
+      proxy_timer_process ();
+
       proxy_unset_hang_check_time ();
     }
   PROXY_LOG (PROXY_LOG_MODE_NOTICE, "Shard proxy going down.");

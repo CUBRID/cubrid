@@ -162,7 +162,8 @@ extern T_CAS_IO *proxy_cas_find_io_by_ctx (int shard_id, int cas_id,
 					   int ctx_cid, unsigned int ctx_uid);
 
 extern T_CAS_IO *proxy_cas_alloc_by_ctx (int shard_id, int cas_id,
-					 int ctx_cid, unsigned int ctx_uid);
+					 int ctx_cid, unsigned int ctx_uid,
+					 int timeout);
 extern void proxy_cas_release_by_ctx (int shard_id, int cas_id, int ctx_cid,
 				      unsigned int ctx_uid);
 extern int proxy_cas_io_write (T_CAS_IO * cas_io_p, T_PROXY_EVENT * event_p);
@@ -180,5 +181,5 @@ extern T_BROKER_VERSION proxy_client_io_version_find_by_ctx (T_PROXY_CONTEXT *
 							     ctx_p);
 extern T_BROKER_VERSION proxy_client_io_version_find_by_fd (T_SOCKET_IO *
 							    sock_io_p);
-
+extern void proxy_available_cas_wait_timer (void);
 #endif /* _SHARD_PROXY_IO_H_ */

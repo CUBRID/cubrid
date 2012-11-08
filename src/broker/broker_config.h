@@ -237,6 +237,7 @@ struct t_broker_info
   int proxy_max_prepared_stmt_count;
 
   char ignore_shard_hint;
+  int proxy_timeout;
 #endif				/* CUBRID_SHARD */
 };
 

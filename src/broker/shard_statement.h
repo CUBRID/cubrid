@@ -119,4 +119,6 @@ extern void shard_stmt_dump_all (FILE * fp);
 extern char *shard_str_stmt (T_SHARD_STMT * stmt_p);
 extern int shard_stmt_initialize (int initial_size);
 extern char *shard_stmt_rewrite_sql (char *sql_stmt, char appl_server);
+
+extern void shard_statement_wait_timer (void);
 #endif /* _SHARD_STATEMENT_H_ */

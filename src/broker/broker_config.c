@@ -68,6 +68,7 @@
 #if defined(CUBRID_SHARD)
 #define DEFAULT_PROXY_LOG_MODE		"ERROR"
 #define DEFAULT_SHARD_KEY_MODULAR	256
+#define DEFAULT_PROXY_TIMEOUT 		30	/* sec */
 #endif /* CUBRID_SHARD */
 
 #define	TRUE	1
@@ -864,6 +865,16 @@ broker_config_read_internal (const char *conf_file,
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
 	}
+
+      br_info[num_brs].proxy_timeout =
+	ini_getint (ini, sec_name, "PROXY_TIMEOUT", DEFAULT_PROXY_TIMEOUT,
+		    &lineno);
+      if (br_info[num_brs].proxy_timeout < 0
+	  || br_info[num_brs].proxy_timeout > MAX_PROXY_TIMEOUT_LIMIT)
+	{
+	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
 #endif /* CUBRID_SHARD */
       num_brs++;
     }
@@ -1260,6 +1271,7 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info,
 	{
 	  fprintf (fp, "IGNORE_SHARD_HINT\t\t=%s\n", tmp_str);
 	}
+      fprintf (fp, "PROXY_TIMEOUT\t\t=%d\n", br_info[i].proxy_timeout);
 
       shard_metadata_dump (fp, br_info[i].metadata_shm_id);
       shard_shm_dump_appl_server (fp, br_info[i].appl_server_shm_id);
