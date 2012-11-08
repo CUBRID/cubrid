@@ -500,7 +500,6 @@ main (int argc, char *argv[])
     }
   net_buf.alloc_size = NET_BUF_ALLOC_SIZE;
 
-  as_info->service_ready_flag = TRUE;
   as_info->con_status = CON_STATUS_IN_TRAN;
   as_info->cur_keep_con = KEEP_CON_DEFAULT;
   errors_in_transaction = 0;
@@ -596,7 +595,7 @@ conn_retry:
 	goto conn_proxy_retry;
       }
 
-    shard_info_p->service_ready_flag = true;
+    as_info->service_ready_flag = TRUE;
 
 #if defined(WINDOWS)
     as_info->uts_status = UTS_STATUS_BUSY;

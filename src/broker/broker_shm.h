@@ -136,7 +136,11 @@
 
 #define APPL_SERVER_NAME_MAX_SIZE	32
 
+#if defined(CUBRID_SHARD)
+#define		SERVICE_READY_WAIT_COUNT	6000
+#else
 #define		SERVICE_READY_WAIT_COUNT	3000
+#endif /* CUBRID_SHARD */
 #define		SERVICE_READY_WAIT(SERVICE_READY_FLAG)			\
 		do {							\
 		  int	i;						\
@@ -326,7 +330,6 @@ struct t_shard_info
 
   int shard_id;
   int status;			/* SHARD TODO : not defined yet */
-  char service_ready_flag;
 
   int min_appl_server;
   int max_appl_server;

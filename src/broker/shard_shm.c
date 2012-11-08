@@ -455,7 +455,6 @@ shard_shm_initialize (T_BROKER_INFO * br_info_p, char *shm_metadata_cp)
 	  shard_info_p->next = shard_info_size;
 	  shard_info_p->shard_id = shm_conn_p->shard_conn[j].shard_id;
 	  shard_info_p->status = 0;	/* SHARD TODO : not defined yet */
-	  shard_info_p->service_ready_flag = false;
 
 	  shard_info_p->min_appl_server = appl_server_min_num;
 	  shard_info_p->max_appl_server = appl_server_max_num;

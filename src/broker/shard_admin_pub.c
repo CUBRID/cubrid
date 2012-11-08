@@ -671,11 +671,6 @@ shard_as_activate (int as_shm_id,
 #endif /* WINDOWS */
     }
 
-  /* SHARD TODO : not inplemented  yet */
-#if 0
-  SERVICE_READY_WAIT (as_info_p->service_ready_flag);
-#endif
-
   as_info_p->pid = pid;
   as_info_p->last_access_time = time (NULL);
   as_info_p->psize_time = time (NULL);
@@ -722,6 +717,7 @@ shard_process_activate (int master_shm_id, T_BROKER_INFO * br_info_p,
   T_SHM_PROXY *proxy_p = NULL;
   T_PROXY_INFO *proxy_info_p = NULL;
   T_SHARD_INFO *shard_info_p = NULL;
+  T_APPL_SERVER_INFO *as_info_p = NULL;
 
   assert (master_shm_id > 0);
   assert (br_info_p);
@@ -783,24 +779,37 @@ shard_process_activate (int master_shm_id, T_BROKER_INFO * br_info_p,
 		  goto error_return;
 		}
 	    }
-
-	  SERVICE_READY_WAIT (shard_info_p->service_ready_flag);
-	  if (shard_info_p->service_ready_flag == false)
-	    {
-	      sprintf (admin_err_msg,
-		       "failed to connect database. [%s]\n\n"
-		       "please check your $CUBRID/conf/shard.conf or database status.\n\n"
-		       "[%%%s]\n"
-		       "%-20s = %s\n"
-		       "%-20s = %s\n",
-		       br_info_p->name, br_info_p->name, "SHARD_DB_NAME",
-		       shard_info_p->db_name, "SHARD_DB_USER",
-		       shard_info_p->db_user);
-	      goto error_return;
-	    }
 	}
     }
 
+  for (proxy_info_p = shard_shm_get_first_proxy_info (proxy_p);
+       proxy_info_p;
+       proxy_info_p = shard_shm_get_next_proxy_info (proxy_info_p))
+    {
+      for (shard_info_p = shard_shm_get_first_shard_info (proxy_info_p);
+	   shard_info_p;
+	   shard_info_p = shard_shm_get_next_shard_info (shard_info_p))
+	{
+	  for (k = 0; k < shard_info_p->num_appl_server; k++)
+	    {
+	      as_info_p = &shard_info_p->as_info[k];
+	      SERVICE_READY_WAIT (as_info_p->service_ready_flag);
+	      if (as_info_p->service_ready_flag == false)
+		{
+		  sprintf (admin_err_msg,
+			   "failed to connect database. [%s]\n\n"
+			   "please check your $CUBRID/conf/shard.conf or database status.\n\n"
+			   "[%%%s]\n"
+			   "%-20s = %s\n"
+			   "%-20s = %s\n",
+			   br_info_p->name, br_info_p->name, "SHARD_DB_NAME",
+			   shard_info_p->db_name, "SHARD_DB_USER",
+			   shard_info_p->db_user);
+		  goto error_return;
+		}
+	    }
+	}
+    }
 
   return 0;
 
