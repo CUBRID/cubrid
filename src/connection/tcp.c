@@ -1486,6 +1486,10 @@ css_peer_alive (SOCKET sd, int timeout)
   socklen_t slen;
   struct pollfd po[1];
 
+#if defined (CS_MODE)
+  er_log_debug (ARG_FILE_LINE, "The css_peer_alive() is calling.");
+#endif
+
   slen = sizeof (saddr);
   if (getpeername (sd, (struct sockaddr *) &saddr, &slen) < 0)
     {
