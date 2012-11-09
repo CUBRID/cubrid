@@ -37,7 +37,7 @@
 package cubrid.jdbc.jci;
 
 /**
- * CAS와의 Protocol에서 사용되는 Function code를 define해놓은 class이다.
+ * CAS Protocol Function code
  * 
  * since 1.0
  */
@@ -85,5 +85,6 @@ abstract class UFunctionCode {
 	final static byte READ_LOB = 37;
 	
 	final static byte END_SESSION = 38;
-	final static byte CURSOR_CLOSE = 41;
+	final static byte CURSOR_CLOSE = 42;
+	final static byte LAST_FUNCTION_CODE = CURSOR_CLOSE;
 }

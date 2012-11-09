@@ -260,8 +260,8 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_end_session,		/* CAS_FC_END_SESSION */
   fn_get_row_count,		/* CAS_FC_GET_ROW_COUNT */
   fn_get_last_insert_id,	/* CAS_FC_GET_LAST_INSERT_ID */
-  fn_cursor_close,		/* CAS_FC_CURSOR_CLOSE */
-  fn_prepare_and_execute	/* CAS_FC_PREPARE_AND_EXECUTE */
+  fn_prepare_and_execute,	/* CAS_FC_PREPARE_AND_EXECUTE */
+  fn_cursor_close		/* CAS_FC_CURSOR_CLOSE */
 };
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 
@@ -376,8 +376,6 @@ cas_send_connect_reply_to_driver (T_CAS_PROTOCOL protocol,
 #else
   memset (sessid, 0, DRIVER_SESSION_SIZE);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
-
-  as_info->cur_keep_con = shm_appl->keep_connection;
 
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (protocol, PROTOCOL_V3))
     {
@@ -1190,7 +1188,8 @@ main (int argc, char *argv[])
 				   cas_default_isolation_level,
 				   cas_default_lock_timeout);
 
-	    as_info->cur_keep_con = KEEP_CON_DEFAULT;
+	    as_info->cur_keep_con = shm_appl->keep_connection;
+	    broker_info[BROKER_INFO_KEEP_CONNECTION] = CAS_KEEP_CONNECTION_ON;
 
 	    if (shm_appl->statement_pooling)
 	      {
@@ -1722,6 +1721,21 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   strcpy (as_info->log_msg, server_func_name[func_code - 1]);
 #endif /* !LIBCAS_FOR_JSP */
 
+  /* PROTOCOL_V2 is used only 9.0.0 */
+  if (DOES_CLIENT_MATCH_THE_PROTOCOL (req_info->client_version, PROTOCOL_V2))
+    {
+      switch (func_code)
+	{
+	case CAS_FC_PREPARE_AND_EXECUTE:
+	  func_code = CAS_FC_CURSOR_CLOSE;
+	  break;
+	case CAS_FC_CURSOR_CLOSE:
+	  func_code = CAS_FC_PREPARE_AND_EXECUTE;
+	  break;
+	default:
+	  break;
+	}
+    }
   server_fn = server_fn_table[func_code - 1];
 
 #ifndef LIBCAS_FOR_JSP

@@ -98,7 +98,7 @@ typedef enum
 
 #define BROKER_INFO_SIZE			8
 #define BROKER_INFO_DBMS_TYPE                   0
-#define BROKER_INFO_RESERVED4                   1
+#define BROKER_INFO_KEEP_CONNECTION		1
 #define BROKER_INFO_STATEMENT_POOLING           2
 #define BROKER_INFO_CCI_PCONNECT                3
 #define BROKER_INFO_PROTO_VERSION               4
@@ -115,6 +115,8 @@ typedef enum
 #define SESSION_ID_SIZE                         4
 #define DRIVER_SESSION_SIZE			SRV_CON_DBSESS_ID_SIZE
 #define CAS_CONNECTION_REPLY_SIZE               (CAS_PID_SIZE + BROKER_INFO_SIZE + DRIVER_SESSION_SIZE)
+
+#define CAS_KEEP_CONNECTION_ON                  1
 
 #define CAS_GET_QUERY_INFO_PLAN			1
 
@@ -176,8 +178,8 @@ enum t_cas_func_code
   CAS_FC_END_SESSION = 38,
   CAS_FC_GET_ROW_COUNT = 39,
   CAS_FC_GET_LAST_INSERT_ID = 40,
-  CAS_FC_CURSOR_CLOSE = 41,
-  CAS_FC_PREPARE_AND_EXECUTE = 42,
+  CAS_FC_PREPARE_AND_EXECUTE = 41,
+  CAS_FC_CURSOR_CLOSE = 42,
 
   /* Whenever you want to introduce a new function code, 
    * you must add a corresponding function entry to server_fn_table 
@@ -212,6 +214,7 @@ enum t_cas_protocol
 #define CAS_PROTO_CURRENT_VER           \
         ((T_BROKER_VERSION) CAS_PROTO_MAKE_VER(CAS_PROTOCOL_VERSION))
 
+#define DOES_CLIENT_MATCH_THE_PROTOCOL(CLIENT, MATCH) ((CLIENT) == CAS_PROTO_MAKE_VER((MATCH)))
 #define DOES_CLIENT_UNDERSTAND_THE_PROTOCOL(CLIENT, REQUIRE) ((CLIENT) >= CAS_PROTO_MAKE_VER((REQUIRE)))
 
 /* Pack/unpack CAS protocol version to/from network. */
