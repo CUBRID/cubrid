@@ -201,38 +201,31 @@ namespace dbgw
                 throw getLastException();
               }
 
-            if (pValue->isNull())
+            switch (stParam.type)
               {
-                bindNull(i + 1, pValue->getType());
-              }
-            else
-              {
-                switch (pValue->getType())
-                  {
-                  case DBGW_VAL_TYPE_INT:
-                    bindInt(i + 1, pValue);
-                    break;
-                  case DBGW_VAL_TYPE_LONG:
-                    bindLong(i + 1, pValue);
-                    break;
-                  case DBGW_VAL_TYPE_FLOAT:
-                    bindFloat(i + 1, pValue);
-                    break;
-                  case DBGW_VAL_TYPE_DOUBLE:
-                    bindDouble(i + 1, pValue);
-                    break;
-                  case DBGW_VAL_TYPE_CHAR:
-                  case DBGW_VAL_TYPE_STRING:
-                  case DBGW_VAL_TYPE_DATETIME:
-                  case DBGW_VAL_TYPE_DATE:
-                  case DBGW_VAL_TYPE_TIME:
-                    bindString(i + 1, pValue);
-                    break;
-                  default:
-                    InvalidValueTypeException e(pValue->getType());
-                    DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-                    throw e;
-                  }
+              case DBGW_VAL_TYPE_INT:
+                bindInt(i + 1, pValue);
+                break;
+              case DBGW_VAL_TYPE_LONG:
+                bindLong(i + 1, pValue);
+                break;
+              case DBGW_VAL_TYPE_FLOAT:
+                bindFloat(i + 1, pValue);
+                break;
+              case DBGW_VAL_TYPE_DOUBLE:
+                bindDouble(i + 1, pValue);
+                break;
+              case DBGW_VAL_TYPE_CHAR:
+              case DBGW_VAL_TYPE_STRING:
+              case DBGW_VAL_TYPE_DATETIME:
+              case DBGW_VAL_TYPE_DATE:
+              case DBGW_VAL_TYPE_TIME:
+                bindString(i + 1, pValue);
+                break;
+              default:
+                InvalidValueTypeException e(pValue->getType());
+                DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+                throw e;
               }
           }
 
@@ -281,9 +274,15 @@ namespace dbgw
 
   void _DBGWExecutorProxy::bindInt(size_t nIndex, const DBGWValue *pValue)
   {
+    if (pValue->isNull())
+      {
+        bindNull(nIndex, DBGW_VAL_TYPE_INT);
+        return;
+      }
+
     int nValue;
 
-    if (pValue->getInt(&nValue) == false)
+    if (pValue->toInt(&nValue) == false)
       {
         throw getLastException();
       }
@@ -300,9 +299,15 @@ namespace dbgw
 
   void _DBGWExecutorProxy::bindLong(size_t nIndex, const DBGWValue *pValue)
   {
+    if (pValue->isNull())
+      {
+        bindNull(nIndex, DBGW_VAL_TYPE_LONG);
+        return;
+      }
+
     int64 lValue;
 
-    if (pValue->getLong(&lValue) == false)
+    if (pValue->toLong(&lValue) == false)
       {
         throw getLastException();
       }
@@ -319,9 +324,15 @@ namespace dbgw
 
   void _DBGWExecutorProxy::bindFloat(size_t nIndex, const DBGWValue *pValue)
   {
+    if (pValue->isNull())
+      {
+        bindNull(nIndex, DBGW_VAL_TYPE_FLOAT);
+        return;
+      }
+
     float fValue;
 
-    if (pValue->getFloat(&fValue) == false)
+    if (pValue->toFloat(&fValue) == false)
       {
         throw getLastException();
       }
@@ -338,9 +349,15 @@ namespace dbgw
 
   void _DBGWExecutorProxy::bindDouble(size_t nIndex, const DBGWValue *pValue)
   {
+    if (pValue->isNull())
+      {
+        bindNull(nIndex, DBGW_VAL_TYPE_DOUBLE);
+        return;
+      }
+
     double dValue;
 
-    if (pValue->getDouble(&dValue) == false)
+    if (pValue->toDouble(&dValue) == false)
       {
         throw getLastException();
       }
@@ -357,20 +374,21 @@ namespace dbgw
 
   void _DBGWExecutorProxy::bindString(size_t nIndex, const DBGWValue *pValue)
   {
-    char *szValue;
-
-    if (pValue->getCString(&szValue) == false)
+    if (pValue->isNull())
       {
-        throw getLastException();
+        bindNull(nIndex, DBGW_VAL_TYPE_STRING);
+        return;
       }
+
+    string value = pValue->toString();
 
     if (m_pQuery->getType() == DBGW_STMT_TYPE_PROCEDURE)
       {
-        m_pCallableStatement->setCString(nIndex, szValue);
+        m_pCallableStatement->setCString(nIndex, value.c_str());
       }
     else
       {
-        m_pStatement->setCString(nIndex, szValue);
+        m_pStatement->setCString(nIndex, value.c_str());
       }
   }
 

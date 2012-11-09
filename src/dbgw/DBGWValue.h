@@ -81,6 +81,14 @@ namespace dbgw
     DBGWValueType getType() const;
     void *getVoidPtr() const;
     int getLength() const;
+    bool toInt(int *pValue) const;
+    bool toLong(int64 *pValue) const;
+    bool toFloat(float *pValue) const;
+    bool toDouble(double *pValue) const;
+    bool toChar(char *pValue) const;
+    bool toTime(char **pValue) const;
+    bool toDate(char **pValue) const;
+    bool toDateTime(char **pValue) const;
     string toString() const;
     bool isNull() const;
     int size() const;

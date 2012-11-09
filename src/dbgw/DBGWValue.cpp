@@ -533,6 +533,295 @@ namespace dbgw
       }
   }
 
+  bool DBGWValue::toInt(int *pValue) const
+  {
+    clearException();
+
+    try
+      {
+        switch (m_type)
+          {
+          case DBGW_VAL_TYPE_STRING:
+          case DBGW_VAL_TYPE_CHAR:
+            *pValue = boost::lexical_cast<int>(m_stValue.szValue);
+            return true;
+          case DBGW_VAL_TYPE_INT:
+            return getInt(pValue);
+          case DBGW_VAL_TYPE_LONG:
+            *pValue = (int) m_stValue.lValue;
+            return true;
+          case DBGW_VAL_TYPE_FLOAT:
+            *pValue = (int) m_stValue.fValue;
+            return true;
+          case DBGW_VAL_TYPE_DOUBLE:
+            *pValue = (int) m_stValue.dValue;
+            return true;
+          default:
+            MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_INT);
+            DBGW_LOG_ERROR(e.what());
+            throw e;
+          }
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
+    catch (boost::bad_lexical_cast &)
+      {
+        MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_INT);
+        DBGW_LOG_ERROR(e.what());
+        setLastException(e);
+        return false;
+      }
+  }
+
+  bool DBGWValue::toLong(int64 *pValue) const
+  {
+    clearException();
+
+    try
+      {
+        switch (m_type)
+          {
+          case DBGW_VAL_TYPE_STRING:
+          case DBGW_VAL_TYPE_CHAR:
+            *pValue = boost::lexical_cast<int64>(m_stValue.szValue);
+            return true;
+          case DBGW_VAL_TYPE_INT:
+            *pValue = (int64) m_stValue.nValue;
+            return true;
+          case DBGW_VAL_TYPE_LONG:
+            return getLong(pValue);
+          case DBGW_VAL_TYPE_FLOAT:
+            *pValue = (int64) m_stValue.fValue;
+            return true;
+          case DBGW_VAL_TYPE_DOUBLE:
+            *pValue = (int64) m_stValue.dValue;
+            return true;
+          default:
+            MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_LONG);
+            DBGW_LOG_ERROR(e.what());
+            throw e;
+          }
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
+    catch (boost::bad_lexical_cast &)
+      {
+        MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_LONG);
+        DBGW_LOG_ERROR(e.what());
+        setLastException(e);
+        return false;
+      }
+  }
+
+  bool DBGWValue::toFloat(float *pValue) const
+  {
+    clearException();
+
+    try
+      {
+        switch (m_type)
+          {
+          case DBGW_VAL_TYPE_STRING:
+          case DBGW_VAL_TYPE_CHAR:
+            *pValue = boost::lexical_cast<float>(m_stValue.szValue);
+            return true;
+          case DBGW_VAL_TYPE_INT:
+            *pValue = (float) m_stValue.nValue;
+            return true;
+          case DBGW_VAL_TYPE_LONG:
+            *pValue = (float) m_stValue.lValue;
+            return true;
+          case DBGW_VAL_TYPE_FLOAT:
+            return getFloat(pValue);
+          case DBGW_VAL_TYPE_DOUBLE:
+            *pValue = (float) m_stValue.dValue;
+            return true;
+          default:
+            MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_FLOAT);
+            DBGW_LOG_ERROR(e.what());
+            throw e;
+          }
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
+    catch (boost::bad_lexical_cast &)
+      {
+        MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_FLOAT);
+        DBGW_LOG_ERROR(e.what());
+        setLastException(e);
+        return false;
+      }
+  }
+
+  bool DBGWValue::toDouble(double *pValue) const
+  {
+    clearException();
+
+    try
+      {
+        switch (m_type)
+          {
+          case DBGW_VAL_TYPE_STRING:
+          case DBGW_VAL_TYPE_CHAR:
+            *pValue = boost::lexical_cast<double>(m_stValue.szValue);
+            return true;
+          case DBGW_VAL_TYPE_INT:
+            *pValue = (double) m_stValue.nValue;
+            return true;
+          case DBGW_VAL_TYPE_LONG:
+            *pValue = (double) m_stValue.lValue;
+            return true;
+          case DBGW_VAL_TYPE_FLOAT:
+            *pValue = (double) m_stValue.fValue;
+            return true;
+          case DBGW_VAL_TYPE_DOUBLE:
+            return getDouble(pValue);
+          default:
+            MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_DOUBLE);
+            DBGW_LOG_ERROR(e.what());
+            throw e;
+          }
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
+    catch (boost::bad_lexical_cast &)
+      {
+        MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_DOUBLE);
+        DBGW_LOG_ERROR(e.what());
+        setLastException(e);
+        return false;
+      }
+  }
+
+  bool DBGWValue::toChar(char *pValue) const
+  {
+    clearException();
+
+    try
+      {
+        switch (m_type)
+          {
+          case DBGW_VAL_TYPE_INT:
+            *pValue = (char) m_stValue.nValue;
+            return true;
+          case DBGW_VAL_TYPE_LONG:
+            *pValue = (char) m_stValue.lValue;
+            return true;
+          case DBGW_VAL_TYPE_FLOAT:
+            *pValue = (char) m_stValue.fValue;
+            return true;
+          case DBGW_VAL_TYPE_DOUBLE:
+            *pValue = (char) m_stValue.dValue;
+            return true;
+          case DBGW_VAL_TYPE_CHAR:
+            return getChar(pValue);
+          case DBGW_VAL_TYPE_STRING:
+            *pValue = boost::lexical_cast<char>(m_stValue.szValue);
+            return true;
+          default:
+            MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_CHAR);
+            DBGW_LOG_ERROR(e.what());
+            throw e;
+          }
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
+    catch (boost::bad_lexical_cast &)
+      {
+        MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_CHAR);
+        DBGW_LOG_ERROR(e.what());
+        setLastException(e);
+        return false;
+      }
+  }
+
+  bool DBGWValue::toTime(char **pValue) const
+  {
+    clearException();
+
+    try
+      {
+        switch (m_type)
+          {
+          case DBGW_VAL_TYPE_STRING:
+          case DBGW_VAL_TYPE_TIME:
+            return getCString(pValue);
+          default:
+            MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_TIME);
+            DBGW_LOG_ERROR(e.what());
+            throw e;
+          }
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
+  }
+
+  bool DBGWValue::toDate(char **pValue) const
+  {
+    clearException();
+
+    try
+      {
+        switch (m_type)
+          {
+          case DBGW_VAL_TYPE_STRING:
+          case DBGW_VAL_TYPE_DATE:
+            return getCString(pValue);
+          default:
+            MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_DATE);
+            DBGW_LOG_ERROR(e.what());
+            throw e;
+          }
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
+  }
+
+  bool DBGWValue::toDateTime(char **pValue) const
+  {
+    clearException();
+
+    try
+      {
+        switch (m_type)
+          {
+          case DBGW_VAL_TYPE_STRING:
+          case DBGW_VAL_TYPE_DATETIME:
+            return getCString(pValue);
+          default:
+            MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_DATETIME);
+            DBGW_LOG_ERROR(e.what());
+            throw e;
+          }
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
+  }
+
   string DBGWValue::toString() const
   {
     clearException();
