@@ -31,6 +31,7 @@
 #include <assert.h>
 
 #include "porting.h"
+#include "perf_monitor.h"
 #include "memory_alloc.h"
 #include "storage_common.h"
 #include "xserver_interface.h"
@@ -72,6 +73,9 @@
 
 #define NET_COPY_AREA_SENDRECV_SIZE (OR_INT_SIZE * 3)
 #define NET_SENDRECV_BUFFSIZE (OR_INT_SIZE)
+
+#define STATDUMP_BUF_SIZE (4096)
+#define QUERY_INFO_BUF_SIZE (2048 + STATDUMP_BUF_SIZE)
 
 /* This file is only included in the server.  So set the on_server flag on */
 unsigned int db_on_server = 1;
@@ -5484,13 +5488,17 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
   int response_time = 0;
   struct timeval start;
   struct timeval end;
-  int qstmt_plan_size = 0;
-  char qstmt_plan_ptr[2048];
+  int queryinfo_string_length = 0;
+  char queryinfo_string[QUERY_INFO_BUF_SIZE];
   char *plan_ptr = NULL;
   char *qstmt_ptr = NULL;
+  MNT_SERVER_EXEC_STATS base_stats, current_stats, diff_stats;
+  char stat_buf[STATDUMP_BUF_SIZE];
 
   if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
     {
+      xmnt_server_start_stats (thread_p, false);
+      xmnt_server_copy_stats (thread_p, &base_stats);
       gettimeofday (&start, NULL);
     }
 
@@ -5634,7 +5642,6 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
   /* pack size of a page to return as a third argumnet of the reply */
   ptr = or_pack_int (ptr, page_size);
 
-
   if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
     {
       gettimeofday (&end, NULL);
@@ -5649,22 +5656,39 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
 	    "--------------------------------------------------------------------------------";
 	  const char *title = "Operation";
 
-	  if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN) == false)
+	  if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN) == true)
+	    {
+	      xmnt_server_copy_stats (thread_p, &current_stats);
+	      mnt_calc_diff_stats (&diff_stats, &current_stats, &base_stats);
+
+	      mnt_server_dump_stats_to_buffer (&diff_stats, stat_buf,
+					       STATDUMP_BUF_SIZE, NULL);
+	    }
+	  else
 	    {
 	      plan_ptr = "";
+	      stat_buf[0] = '\0';
 	    }
 
-	  snprintf (qstmt_plan_ptr, 2048, "%s\n%s\n%s\n%s%s\n%s\n", line,
-		    title, line, qstmt_ptr, plan_ptr, line);
+	  queryinfo_string_length =
+	    snprintf (queryinfo_string, QUERY_INFO_BUF_SIZE,
+		      "%s\n%s\n%s\n%s%s\n%s\n%s\n", line, title, line,
+		      qstmt_ptr, plan_ptr, stat_buf, line);
+
+	  if (queryinfo_string_length >= QUERY_INFO_BUF_SIZE)
+	    {
+	      /* string is truncated */
+	      queryinfo_string_length = QUERY_INFO_BUF_SIZE - 1;
+	      queryinfo_string[queryinfo_string_length] = '\0';
+	    }
 
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-		  ER_SLOW_QUERY, 2, response_time, qstmt_plan_ptr);
-
-	  qstmt_plan_size = strlen (qstmt_plan_ptr);
+		  ER_SLOW_QUERY, 2, response_time, queryinfo_string);
 	}
+      xmnt_server_stop_stats (thread_p);
     }
 
-  ptr = or_pack_int (ptr, qstmt_plan_size);
+  ptr = or_pack_int (ptr, queryinfo_string_length);
 
   /* query id to return as a fourth argument of the reply */
   ptr = or_pack_ptr (ptr, query_id);
@@ -5675,7 +5699,8 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
 				       reply, OR_ALIGNED_BUF_SIZE (a_reply),
 				       replydata, replydata_size,
 				       page_ptr, page_size,
-				       qstmt_plan_ptr, qstmt_plan_size);
+				       queryinfo_string,
+				       queryinfo_string_length);
 
   /* free QFILE_LIST_ID duplicated by xqmgr_execute_query() */
   if (replydata)

@@ -677,6 +677,8 @@ db_shutdown (void)
 #endif
   db_Disable_modifications = 0;
 
+  db_free_execution_plan ();
+
   return (error);
 }
 

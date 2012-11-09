@@ -238,10 +238,18 @@ struct mnt_server_exec_stats
 extern void mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats,
 				   FILE * stream, const char *substr);
 
+extern void mnt_server_dump_stats_to_buffer (const MNT_SERVER_EXEC_STATS *
+					     stats, char *buffer,
+					     int buf_size,
+					     const char *substr);
+
 extern void mnt_get_current_times (time_t * cpu_usr_time,
 				   time_t * cpu_sys_time,
 				   time_t * elapsed_time);
 
+extern int mnt_calc_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
+				MNT_SERVER_EXEC_STATS * new_stats,
+				MNT_SERVER_EXEC_STATS * old_stats);
 
 #if defined(CS_MODE) || defined(SA_MODE)
 /* Client execution statistic structure */

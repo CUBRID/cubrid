@@ -107,9 +107,6 @@ bool mnt_Iscollecting_stats = false;
 /* Client execution statistics */
 static MNT_CLIENT_STAT_INFO mnt_Stat_info;
 static void mnt_client_reset_stats (void);
-static int mnt_calc_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
-				MNT_SERVER_EXEC_STATS * new_stats,
-				MNT_SERVER_EXEC_STATS * old_stats);
 static int mnt_calc_global_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
 				       MNT_SERVER_EXEC_STATS * new_stats,
 				       MNT_SERVER_EXEC_STATS * old_stats);
@@ -341,169 +338,6 @@ mnt_print_global_stats (FILE * stream, bool cumulative, const char *substr)
 	    }
 	}
     }
-}
-
-/*
- *   mnt_calc_diff_stats -
- *   return:
- *   stats_diff :
- *   new_stats :
- *   old_stats :
- */
-static int
-mnt_calc_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
-		     MNT_SERVER_EXEC_STATS * new_stats,
-		     MNT_SERVER_EXEC_STATS * old_stats)
-{
-  MNT_SERVER_EXEC_STATS *p, *q;
-
-  assert (stats_diff && new_stats && old_stats);
-
-  if (!stats_diff || !new_stats || !old_stats)
-    {
-      return ER_FAILED;
-    }
-
-  p = new_stats;
-  q = old_stats;
-
-  CALC_STAT_DIFF (stats_diff->file_num_creates, p->file_num_creates,
-		  q->file_num_creates);
-  CALC_STAT_DIFF (stats_diff->file_num_removes, p->file_num_removes,
-		  q->file_num_removes);
-  CALC_STAT_DIFF (stats_diff->file_num_ioreads, p->file_num_ioreads,
-		  q->file_num_ioreads);
-  CALC_STAT_DIFF (stats_diff->file_num_iowrites, p->file_num_iowrites,
-		  q->file_num_iowrites);
-  CALC_STAT_DIFF (stats_diff->file_num_iosynches, p->file_num_iosynches,
-		  q->file_num_iosynches);
-
-  CALC_STAT_DIFF (stats_diff->pb_num_fetches, p->pb_num_fetches,
-		  q->pb_num_fetches);
-  CALC_STAT_DIFF (stats_diff->pb_num_dirties, p->pb_num_dirties,
-		  q->pb_num_dirties);
-  CALC_STAT_DIFF (stats_diff->pb_num_ioreads, p->pb_num_ioreads,
-		  q->pb_num_ioreads);
-  CALC_STAT_DIFF (stats_diff->pb_num_iowrites, p->pb_num_iowrites,
-		  q->pb_num_iowrites);
-  CALC_STAT_DIFF (stats_diff->pb_num_victims, p->pb_num_victims,
-		  q->pb_num_victims);
-  CALC_STAT_DIFF (stats_diff->pb_num_replacements, p->pb_num_replacements,
-		  q->pb_num_replacements);
-
-  CALC_STAT_DIFF (stats_diff->fc_num_pages, p->fc_num_pages, q->fc_num_pages);
-  CALC_STAT_DIFF (stats_diff->fc_num_log_pages, p->fc_num_log_pages,
-		  q->fc_num_log_pages);
-  CALC_STAT_DIFF (stats_diff->fc_tokens, p->fc_tokens, q->fc_tokens);
-
-  CALC_STAT_DIFF (stats_diff->prior_lsa_list_size, p->prior_lsa_list_size,
-		  q->prior_lsa_list_size);
-  CALC_STAT_DIFF (stats_diff->prior_lsa_list_maxed, p->prior_lsa_list_maxed,
-		  q->prior_lsa_list_maxed);
-  CALC_STAT_DIFF (stats_diff->prior_lsa_list_removed,
-		  p->prior_lsa_list_removed, q->prior_lsa_list_removed);
-
-  CALC_STAT_DIFF (stats_diff->hf_num_stats_entries, p->hf_num_stats_entries,
-		  q->hf_num_stats_entries);
-  CALC_STAT_DIFF (stats_diff->hf_num_stats_maxed, p->hf_num_stats_maxed,
-		  q->hf_num_stats_maxed);
-
-  CALC_STAT_DIFF (stats_diff->log_num_ioreads, p->log_num_ioreads,
-		  q->log_num_ioreads);
-  CALC_STAT_DIFF (stats_diff->log_num_iowrites, p->log_num_iowrites,
-		  q->log_num_iowrites);
-  CALC_STAT_DIFF (stats_diff->log_num_appendrecs, p->log_num_appendrecs,
-		  q->log_num_appendrecs);
-  CALC_STAT_DIFF (stats_diff->log_num_archives, p->log_num_archives,
-		  q->log_num_archives);
-  CALC_STAT_DIFF (stats_diff->log_num_start_checkpoints,
-		  p->log_num_start_checkpoints, q->log_num_start_checkpoints);
-  CALC_STAT_DIFF (stats_diff->log_num_end_checkpoints,
-		  p->log_num_end_checkpoints, q->log_num_end_checkpoints);
-  CALC_STAT_DIFF (stats_diff->log_num_wals, p->log_num_wals, q->log_num_wals);
-
-  CALC_STAT_DIFF (stats_diff->lk_num_acquired_on_pages,
-		  p->lk_num_acquired_on_pages, q->lk_num_acquired_on_pages);
-  CALC_STAT_DIFF (stats_diff->lk_num_acquired_on_objects,
-		  p->lk_num_acquired_on_objects,
-		  q->lk_num_acquired_on_objects);
-  CALC_STAT_DIFF (stats_diff->lk_num_converted_on_pages,
-		  p->lk_num_converted_on_pages, q->lk_num_converted_on_pages);
-  CALC_STAT_DIFF (stats_diff->lk_num_converted_on_objects,
-		  p->lk_num_converted_on_objects,
-		  q->lk_num_converted_on_objects);
-  CALC_STAT_DIFF (stats_diff->lk_num_re_requested_on_pages,
-		  p->lk_num_re_requested_on_pages,
-		  q->lk_num_re_requested_on_pages);
-  CALC_STAT_DIFF (stats_diff->lk_num_re_requested_on_objects,
-		  p->lk_num_re_requested_on_objects,
-		  q->lk_num_re_requested_on_objects);
-  CALC_STAT_DIFF (stats_diff->lk_num_waited_on_pages,
-		  p->lk_num_waited_on_pages, q->lk_num_waited_on_pages);
-  CALC_STAT_DIFF (stats_diff->lk_num_waited_on_objects,
-		  p->lk_num_waited_on_objects, q->lk_num_waited_on_objects);
-
-  CALC_STAT_DIFF (stats_diff->tran_num_commits, p->tran_num_commits,
-		  q->tran_num_commits);
-  CALC_STAT_DIFF (stats_diff->tran_num_rollbacks, p->tran_num_rollbacks,
-		  q->tran_num_rollbacks);
-  CALC_STAT_DIFF (stats_diff->tran_num_savepoints, p->tran_num_savepoints,
-		  q->tran_num_savepoints);
-  CALC_STAT_DIFF (stats_diff->tran_num_start_topops, p->tran_num_start_topops,
-		  q->tran_num_start_topops);
-  CALC_STAT_DIFF (stats_diff->tran_num_end_topops, p->tran_num_end_topops,
-		  q->tran_num_end_topops);
-  CALC_STAT_DIFF (stats_diff->tran_num_interrupts, p->tran_num_interrupts,
-		  q->tran_num_interrupts);
-
-  CALC_STAT_DIFF (stats_diff->bt_num_inserts, p->bt_num_inserts,
-		  q->bt_num_inserts);
-  CALC_STAT_DIFF (stats_diff->bt_num_deletes, p->bt_num_deletes,
-		  q->bt_num_deletes);
-  CALC_STAT_DIFF (stats_diff->bt_num_updates, p->bt_num_updates,
-		  q->bt_num_updates);
-  CALC_STAT_DIFF (stats_diff->bt_num_covered, p->bt_num_covered,
-		  q->bt_num_covered);
-  CALC_STAT_DIFF (stats_diff->bt_num_noncovered, p->bt_num_noncovered,
-		  q->bt_num_noncovered);
-  CALC_STAT_DIFF (stats_diff->bt_num_resumes, p->bt_num_resumes,
-		  q->bt_num_resumes);
-  CALC_STAT_DIFF (stats_diff->bt_num_multi_range_opt,
-		  p->bt_num_multi_range_opt, q->bt_num_multi_range_opt);
-
-  CALC_STAT_DIFF (stats_diff->qm_num_selects, p->qm_num_selects,
-		  q->qm_num_selects);
-  CALC_STAT_DIFF (stats_diff->qm_num_inserts, p->qm_num_inserts,
-		  q->qm_num_inserts);
-  CALC_STAT_DIFF (stats_diff->qm_num_deletes, p->qm_num_deletes,
-		  q->qm_num_deletes);
-  CALC_STAT_DIFF (stats_diff->qm_num_updates, p->qm_num_updates,
-		  q->qm_num_updates);
-  CALC_STAT_DIFF (stats_diff->qm_num_sscans, p->qm_num_sscans,
-		  q->qm_num_sscans);
-  CALC_STAT_DIFF (stats_diff->qm_num_iscans, p->qm_num_iscans,
-		  q->qm_num_iscans);
-  CALC_STAT_DIFF (stats_diff->qm_num_lscans, p->qm_num_lscans,
-		  q->qm_num_lscans);
-  CALC_STAT_DIFF (stats_diff->qm_num_setscans, p->qm_num_setscans,
-		  q->qm_num_setscans);
-  CALC_STAT_DIFF (stats_diff->qm_num_methscans, p->qm_num_methscans,
-		  q->qm_num_methscans);
-  CALC_STAT_DIFF (stats_diff->qm_num_nljoins, p->qm_num_nljoins,
-		  q->qm_num_nljoins);
-  CALC_STAT_DIFF (stats_diff->qm_num_mjoins, p->qm_num_mjoins,
-		  q->qm_num_mjoins);
-  CALC_STAT_DIFF (stats_diff->qm_num_objfetches, p->qm_num_objfetches,
-		  q->qm_num_objfetches);
-  CALC_STAT_DIFF (stats_diff->qm_num_holdable_cursors,
-		  p->qm_num_holdable_cursors, q->qm_num_holdable_cursors);
-
-  CALC_STAT_DIFF (stats_diff->net_num_requests, p->net_num_requests,
-		  q->net_num_requests);
-
-  mnt_server_calc_stats (stats_diff);
-
-  return NO_ERROR;
 }
 
 /*
@@ -3167,6 +3001,234 @@ mnt_x_get_stats_and_clear (THREAD_ENTRY * thread_p, const char *stat_name)
   return 0;
 }
 #endif /* SERVER_MODE || SA_MODE */
+
+
+/*
+ *   mnt_calc_diff_stats -
+ *   return:
+ *   stats_diff :
+ *   new_stats :
+ *   old_stats :
+ */
+int
+mnt_calc_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
+		     MNT_SERVER_EXEC_STATS * new_stats,
+		     MNT_SERVER_EXEC_STATS * old_stats)
+{
+  MNT_SERVER_EXEC_STATS *p, *q;
+
+  assert (stats_diff && new_stats && old_stats);
+
+  if (!stats_diff || !new_stats || !old_stats)
+    {
+      return ER_FAILED;
+    }
+
+  p = new_stats;
+  q = old_stats;
+
+  CALC_STAT_DIFF (stats_diff->file_num_creates, p->file_num_creates,
+		  q->file_num_creates);
+  CALC_STAT_DIFF (stats_diff->file_num_removes, p->file_num_removes,
+		  q->file_num_removes);
+  CALC_STAT_DIFF (stats_diff->file_num_ioreads, p->file_num_ioreads,
+		  q->file_num_ioreads);
+  CALC_STAT_DIFF (stats_diff->file_num_iowrites, p->file_num_iowrites,
+		  q->file_num_iowrites);
+  CALC_STAT_DIFF (stats_diff->file_num_iosynches, p->file_num_iosynches,
+		  q->file_num_iosynches);
+
+  CALC_STAT_DIFF (stats_diff->pb_num_fetches, p->pb_num_fetches,
+		  q->pb_num_fetches);
+  CALC_STAT_DIFF (stats_diff->pb_num_dirties, p->pb_num_dirties,
+		  q->pb_num_dirties);
+  CALC_STAT_DIFF (stats_diff->pb_num_ioreads, p->pb_num_ioreads,
+		  q->pb_num_ioreads);
+  CALC_STAT_DIFF (stats_diff->pb_num_iowrites, p->pb_num_iowrites,
+		  q->pb_num_iowrites);
+  CALC_STAT_DIFF (stats_diff->pb_num_victims, p->pb_num_victims,
+		  q->pb_num_victims);
+  CALC_STAT_DIFF (stats_diff->pb_num_replacements, p->pb_num_replacements,
+		  q->pb_num_replacements);
+
+  CALC_STAT_DIFF (stats_diff->fc_num_pages, p->fc_num_pages, q->fc_num_pages);
+  CALC_STAT_DIFF (stats_diff->fc_num_log_pages, p->fc_num_log_pages,
+		  q->fc_num_log_pages);
+  CALC_STAT_DIFF (stats_diff->fc_tokens, p->fc_tokens, q->fc_tokens);
+
+  CALC_STAT_DIFF (stats_diff->prior_lsa_list_size, p->prior_lsa_list_size,
+		  q->prior_lsa_list_size);
+  CALC_STAT_DIFF (stats_diff->prior_lsa_list_maxed, p->prior_lsa_list_maxed,
+		  q->prior_lsa_list_maxed);
+  CALC_STAT_DIFF (stats_diff->prior_lsa_list_removed,
+		  p->prior_lsa_list_removed, q->prior_lsa_list_removed);
+
+  CALC_STAT_DIFF (stats_diff->hf_num_stats_entries, p->hf_num_stats_entries,
+		  q->hf_num_stats_entries);
+  CALC_STAT_DIFF (stats_diff->hf_num_stats_maxed, p->hf_num_stats_maxed,
+		  q->hf_num_stats_maxed);
+
+  CALC_STAT_DIFF (stats_diff->log_num_ioreads, p->log_num_ioreads,
+		  q->log_num_ioreads);
+  CALC_STAT_DIFF (stats_diff->log_num_iowrites, p->log_num_iowrites,
+		  q->log_num_iowrites);
+  CALC_STAT_DIFF (stats_diff->log_num_appendrecs, p->log_num_appendrecs,
+		  q->log_num_appendrecs);
+  CALC_STAT_DIFF (stats_diff->log_num_archives, p->log_num_archives,
+		  q->log_num_archives);
+  CALC_STAT_DIFF (stats_diff->log_num_start_checkpoints,
+		  p->log_num_start_checkpoints, q->log_num_start_checkpoints);
+  CALC_STAT_DIFF (stats_diff->log_num_end_checkpoints,
+		  p->log_num_end_checkpoints, q->log_num_end_checkpoints);
+  CALC_STAT_DIFF (stats_diff->log_num_wals, p->log_num_wals, q->log_num_wals);
+
+  CALC_STAT_DIFF (stats_diff->lk_num_acquired_on_pages,
+		  p->lk_num_acquired_on_pages, q->lk_num_acquired_on_pages);
+  CALC_STAT_DIFF (stats_diff->lk_num_acquired_on_objects,
+		  p->lk_num_acquired_on_objects,
+		  q->lk_num_acquired_on_objects);
+  CALC_STAT_DIFF (stats_diff->lk_num_converted_on_pages,
+		  p->lk_num_converted_on_pages, q->lk_num_converted_on_pages);
+  CALC_STAT_DIFF (stats_diff->lk_num_converted_on_objects,
+		  p->lk_num_converted_on_objects,
+		  q->lk_num_converted_on_objects);
+  CALC_STAT_DIFF (stats_diff->lk_num_re_requested_on_pages,
+		  p->lk_num_re_requested_on_pages,
+		  q->lk_num_re_requested_on_pages);
+  CALC_STAT_DIFF (stats_diff->lk_num_re_requested_on_objects,
+		  p->lk_num_re_requested_on_objects,
+		  q->lk_num_re_requested_on_objects);
+  CALC_STAT_DIFF (stats_diff->lk_num_waited_on_pages,
+		  p->lk_num_waited_on_pages, q->lk_num_waited_on_pages);
+  CALC_STAT_DIFF (stats_diff->lk_num_waited_on_objects,
+		  p->lk_num_waited_on_objects, q->lk_num_waited_on_objects);
+
+  CALC_STAT_DIFF (stats_diff->tran_num_commits, p->tran_num_commits,
+		  q->tran_num_commits);
+  CALC_STAT_DIFF (stats_diff->tran_num_rollbacks, p->tran_num_rollbacks,
+		  q->tran_num_rollbacks);
+  CALC_STAT_DIFF (stats_diff->tran_num_savepoints, p->tran_num_savepoints,
+		  q->tran_num_savepoints);
+  CALC_STAT_DIFF (stats_diff->tran_num_start_topops, p->tran_num_start_topops,
+		  q->tran_num_start_topops);
+  CALC_STAT_DIFF (stats_diff->tran_num_end_topops, p->tran_num_end_topops,
+		  q->tran_num_end_topops);
+  CALC_STAT_DIFF (stats_diff->tran_num_interrupts, p->tran_num_interrupts,
+		  q->tran_num_interrupts);
+
+  CALC_STAT_DIFF (stats_diff->bt_num_inserts, p->bt_num_inserts,
+		  q->bt_num_inserts);
+  CALC_STAT_DIFF (stats_diff->bt_num_deletes, p->bt_num_deletes,
+		  q->bt_num_deletes);
+  CALC_STAT_DIFF (stats_diff->bt_num_updates, p->bt_num_updates,
+		  q->bt_num_updates);
+  CALC_STAT_DIFF (stats_diff->bt_num_covered, p->bt_num_covered,
+		  q->bt_num_covered);
+  CALC_STAT_DIFF (stats_diff->bt_num_noncovered, p->bt_num_noncovered,
+		  q->bt_num_noncovered);
+  CALC_STAT_DIFF (stats_diff->bt_num_resumes, p->bt_num_resumes,
+		  q->bt_num_resumes);
+
+  CALC_STAT_DIFF (stats_diff->qm_num_selects, p->qm_num_selects,
+		  q->qm_num_selects);
+  CALC_STAT_DIFF (stats_diff->qm_num_inserts, p->qm_num_inserts,
+		  q->qm_num_inserts);
+  CALC_STAT_DIFF (stats_diff->qm_num_deletes, p->qm_num_deletes,
+		  q->qm_num_deletes);
+  CALC_STAT_DIFF (stats_diff->qm_num_updates, p->qm_num_updates,
+		  q->qm_num_updates);
+  CALC_STAT_DIFF (stats_diff->qm_num_sscans, p->qm_num_sscans,
+		  q->qm_num_sscans);
+  CALC_STAT_DIFF (stats_diff->qm_num_iscans, p->qm_num_iscans,
+		  q->qm_num_iscans);
+  CALC_STAT_DIFF (stats_diff->qm_num_lscans, p->qm_num_lscans,
+		  q->qm_num_lscans);
+  CALC_STAT_DIFF (stats_diff->qm_num_setscans, p->qm_num_setscans,
+		  q->qm_num_setscans);
+  CALC_STAT_DIFF (stats_diff->qm_num_methscans, p->qm_num_methscans,
+		  q->qm_num_methscans);
+  CALC_STAT_DIFF (stats_diff->qm_num_nljoins, p->qm_num_nljoins,
+		  q->qm_num_nljoins);
+  CALC_STAT_DIFF (stats_diff->qm_num_mjoins, p->qm_num_mjoins,
+		  q->qm_num_mjoins);
+  CALC_STAT_DIFF (stats_diff->qm_num_objfetches, p->qm_num_objfetches,
+		  q->qm_num_objfetches);
+
+  CALC_STAT_DIFF (stats_diff->net_num_requests, p->net_num_requests,
+		  q->net_num_requests);
+
+  mnt_server_calc_stats (stats_diff);
+
+  return NO_ERROR;
+}
+
+/*
+ * mnt_server_dump_stats_to_buffer -
+ *   return: none
+ *   stats(in) server statistics to print
+ *   buffer(in):
+ *   buf_size(in):
+ *   substr(in):
+ */
+void
+mnt_server_dump_stats_to_buffer (const MNT_SERVER_EXEC_STATS * stats,
+				 char *buffer, int buf_size,
+				 const char *substr)
+{
+  unsigned int i;
+  int ret;
+  UINT64 *stats_ptr;
+  int remained_size;
+  const char *s;
+  char *p;
+
+  if (buffer == NULL || buf_size <= 0)
+    {
+      return;
+    }
+
+  p = buffer;
+  remained_size = buf_size - 1;
+  ret =
+    snprintf (p, remained_size, "\n *** SERVER EXECUTION STATISTICS *** \n");
+  remained_size -= ret;
+  p += ret;
+
+  if (remained_size <= 0)
+    {
+      return;
+    }
+
+  stats_ptr = (UINT64 *) stats;
+  for (i = 0; i < MNT_SIZE_OF_SERVER_EXEC_STATS - 1; i++)
+    {
+      if (substr != NULL)
+	{
+	  s = strstr (mnt_Stats_name[i], substr);
+	}
+      else
+	{
+	  s = mnt_Stats_name[i];
+	}
+      if (s)
+	{
+	  ret =
+	    snprintf (p, remained_size, "%-29s = %10llu\n", mnt_Stats_name[i],
+		      (unsigned long long) stats_ptr[i]);
+	  remained_size -= ret;
+	  p += ret;
+	  if (remained_size <= 0)
+	    {
+	      return;
+	    }
+	}
+    }
+
+  snprintf (p, remained_size, "\n *** OTHER STATISTICS *** \n"
+	    "Data_page_buffer_hit_ratio    = %10.2f\n",
+	    (float) stats->pb_hit_ratio / 100);
+  buffer[buf_size - 1] = '\0';
+}
 
 /*
  * mnt_server_dump_stats - Print the given server statistics

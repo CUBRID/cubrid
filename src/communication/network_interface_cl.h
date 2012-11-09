@@ -76,6 +76,7 @@ struct trans_info
 	: (info->tran[i].state == TRAN_UNACTIVE_ABORTED) ? '-'	\
 	: ('A' + info->tran[i].state))
 
+extern void db_free_execution_plan (void);
 extern int locator_fetch (OID * oidp, int chn, LOCK lock, OID * class_oid,
 			  int class_chn, int prefetch,
 			  LC_COPYAREA ** fetch_copyarea);

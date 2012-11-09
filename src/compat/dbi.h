@@ -989,4 +989,5 @@ extern int db_get_ha_server_state (char *buffer, int maxlen);
 
 extern void db_clear_host_connected (void);
 extern char *db_get_database_version (void);
+extern char *db_get_execution_plan (void);
 #endif /* _DBI_H_ */

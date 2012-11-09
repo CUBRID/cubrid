@@ -59,6 +59,10 @@
 typedef int mode_t;
 #endif /* WINDOWS */
 
+#define CAS_LOG_BUFFER_SIZE (8192)
+
+static char cas_log_buffer[CAS_LOG_BUFFER_SIZE];	/* 8K buffer */
+
 static char *make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf,
 				    size_t buf_size, const char *br_name,
 				    int as_index);
@@ -376,14 +380,15 @@ cas_log_write_internal (FILE * fp, struct timeval *log_time,
 			unsigned int seq_num, bool do_flush,
 			const char *fmt, va_list ap)
 {
-  char buf[LINE_MAX], *p;
+  char *buf, *p;
   int len, n;
 
-  p = buf;
-  len = LINE_MAX;
+  p = buf = cas_log_buffer;
+  len = CAS_LOG_BUFFER_SIZE;
   n = ut_time_string (p, log_time);
   len -= n;
   p += n;
+
   if (len > 0)
     {
       n = snprintf (p, len, " (%u) ", seq_num);
@@ -392,10 +397,16 @@ cas_log_write_internal (FILE * fp, struct timeval *log_time,
       if (len > 0)
 	{
 	  n = vsnprintf (p, len, fmt, ap);
+	  if (n >= len)
+	    {
+	      /* string is truncated */
+	      n = len;
+	    }
 	  len -= n;
 	  p += n;
 	}
     }
+
   cas_fwrite (buf, (p - buf), 1, fp);
 
   if (do_flush == true)
@@ -533,14 +544,20 @@ static void
 cas_log_write2_internal (FILE * fp, bool do_flush, const char *fmt,
 			 va_list ap)
 {
-  char buf[LINE_MAX], *p;
+  char *buf, *p;
   int len, n;
 
-  p = buf;
-  len = LINE_MAX;
+  p = buf = cas_log_buffer;
+  len = CAS_LOG_BUFFER_SIZE;
   n = vsnprintf (p, len, fmt, ap);
+  if (n >= len)
+    {
+      /* string is truncated */
+      n = len;
+    }
   len -= n;
   p += n;
+
   cas_fwrite (buf, (p - buf), 1, fp);
 
   if (do_flush == true)

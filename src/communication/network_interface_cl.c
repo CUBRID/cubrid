@@ -88,6 +88,8 @@
 #define NET_COPY_AREA_SENDRECV_SIZE (OR_INT_SIZE * 3)
 #define NET_SENDRECV_BUFFSIZE (OR_INT_SIZE)
 
+#define PLAN_BUF_INITIAL_LENGTH (1024)
+
 /*
  * Flag to indicate whether we've crossed the client/server boundary.
  * It really only comes into play in standalone.
@@ -95,7 +97,8 @@
 unsigned int db_on_server = 0;
 
 
-static char db_execution_plan[2048];
+static char *db_Execution_plan = NULL;
+static int db_Execution_plan_length = -1;
 
 #if defined(CS_MODE)
 static char *pack_const_string (char *buffer, const char *cstring);
@@ -7208,28 +7211,92 @@ qmgr_prepare_query (const char *qstmt, const char *qplan,
 #endif /* !CS_MODE */
 }
 
+/*
+ * db_set_execution_plan
+ *   plan(in):
+ *   length(in):
+ *
+ * return:
+ *
+ */
 static void
-db_set_execution_plan (char *plan)
+db_set_execution_plan (char *plan, int length)
 {
   if (plan == NULL)
     {
-      db_execution_plan[0] = 0;
+      if (db_Execution_plan != NULL)
+	{
+	  db_Execution_plan[0] = '\0';
+	}
       return;
     }
 
-  strncpy (db_execution_plan, plan, sizeof (db_execution_plan));
-  db_execution_plan[sizeof (db_execution_plan) - 1] = 0;
+  if (db_Execution_plan == NULL)
+    {
+      db_Execution_plan_length = PLAN_BUF_INITIAL_LENGTH;
+      while (db_Execution_plan_length < length)
+	{
+	  db_Execution_plan_length *= 2;
+	}
+      db_Execution_plan =
+	(char *) malloc (db_Execution_plan_length * sizeof (char));
+    }
+  else if (db_Execution_plan_length < length)
+    {
+      while (db_Execution_plan_length < length)
+	{
+	  db_Execution_plan_length *= 2;
+	}
+
+      free (db_Execution_plan);
+
+      db_Execution_plan =
+	(char *) malloc (db_Execution_plan_length * sizeof (char));
+    }
+
+  if (db_Execution_plan == NULL)
+    {
+      db_Execution_plan_length = -1;
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, db_Execution_plan_length);
+      return;
+    }
+
+  strncpy (db_Execution_plan, plan, db_Execution_plan_length);
+  db_Execution_plan[db_Execution_plan_length - 1] = 0;
 }
 
+/*
+ * db_get_execution_plan
+ *
+ * return:
+ *
+ */
 char *
-db_get_execution_plan ()
+db_get_execution_plan (void)
 {
-  if (db_execution_plan[0] == 0)
+  if (db_Execution_plan == NULL)
     {
       return NULL;
     }
 
-  return db_execution_plan;
+  return db_Execution_plan;
+}
+
+/*
+ * db_free_execution_plan :
+ *
+ * return:
+ *
+ */
+void
+db_free_execution_plan (void)
+{
+  if (db_Execution_plan != NULL)
+    {
+      free_and_init (db_Execution_plan);
+      db_Execution_plan_length = -1;
+    }
 }
 
 /*
@@ -7325,7 +7392,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
 						&replydata_plan,
 						&replydata_size_plan);
 
-  db_set_execution_plan (replydata_plan);
+  db_set_execution_plan (replydata_plan, replydata_size_plan);
 
   if (senddata)
     {

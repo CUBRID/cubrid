@@ -86,9 +86,6 @@ extern bool tran_is_in_libcas (void);
 #endif /* !LIBCAS_FOR_JSP */
 #endif
 
-/* functions implemented in network_interface_cl.c */
-extern char *db_get_execution_plan ();
-
 static const char *tran_type_str[] = { "COMMIT", "ROLLBACK" };
 
 static const char *schema_type_str[] = {
@@ -685,6 +682,10 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv,
 		 (srv_handle->use_query_cache == true) ? " (QC)" : "",
 		 eid_string);
 #ifndef LIBCAS_FOR_JSP
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+  plan = db_get_execution_plan ();
+#endif
+
   query_timeout = ut_check_timeout (&query_start_time, &exec_end,
 				    shm_appl->long_query_time,
 				    &elapsed_sec, &elapsed_msec);
@@ -724,6 +725,13 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv,
 			      (client_cache_reusable == TRUE) ? " (CC)" : "",
 			      (srv_handle->use_query_cache ==
 			       true) ? " (QC)" : "", eid_string);
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+	  if (plan != NULL)
+	    {
+	      cas_slow_log_write (NULL, 0, false, "slow query plan\n%s",
+				  plan);
+	    }
+#endif
 	  cas_slow_log_end ();
 	}
     }
@@ -738,7 +746,6 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv,
 #endif /* !LIBCAS_FOR_JSP */
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-  plan = db_get_execution_plan ();
   if (plan != NULL)
     {
       cas_log_write (0, true, "slow query plan\n%s", plan);
@@ -1605,6 +1612,7 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   int elapsed_sec = 0, elapsed_msec = 0;
   struct timeval exec_begin, exec_end;
   char *eid_string;
+  char *plan;
 
   /* argv[0] : service handle
      argv[1] : auto commit flag */
@@ -1706,6 +1714,16 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 			      elapsed_msec, "",
 			      (srv_handle->use_query_cache ==
 			       true) ? " (QC)" : "", eid_string);
+
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+	  plan = db_get_execution_plan ();
+
+	  if (plan != NULL)
+	    {
+	      cas_slow_log_write (NULL, 0, false, "slow query plan\n%s",
+				  plan);
+	    }
+#endif
 	  cas_slow_log_end ();
 	}
     }
