@@ -2511,17 +2511,28 @@ int
 css_check_magic (CSS_CONN_ENTRY * conn)
 {
   int error;
+  int size, nbytes;
   unsigned int i;
   NET_HEADER header;
   char *p;
-  int len = sizeof (NET_HEADER);
   int timeout = prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000;
 
-  p = (char *) &header;
-  error = css_net_recv (conn->fd, p, &len, timeout);
-  if (error != NO_ERRORS)
+  nbytes = css_readn (conn->fd, &size, sizeof (int), timeout);
+  if (nbytes != sizeof (int))
     {
-      return error;
+      return ERROR_WHEN_READING_SIZE;
+    }
+  size = ntohl (size);
+  if (size != sizeof (NET_HEADER))
+    {
+      return WRONG_PACKET_TYPE;
+    }
+
+  p = (char *) &header;
+  nbytes = css_readn (conn->fd, p, size, timeout);
+  if (nbytes != size)
+    {
+      return ERROR_ON_READ;
     }
 
   for (i = 0; i < sizeof (css_Net_magic); i++)
