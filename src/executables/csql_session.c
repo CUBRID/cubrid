@@ -668,7 +668,7 @@ csql_killtran (const char *argument)
       tran_index = atoi (argument);
     }
 
-  info = logtb_get_trans_info ();
+  info = logtb_get_trans_info (false);
   if (info == NULL)
     {
       csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;

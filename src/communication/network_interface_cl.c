@@ -8456,22 +8456,29 @@ thread_dump_cs_stat (FILE * outfp)
  *
  *   buffer_p(in):
  *   size_p(in):
+ *   include_query_exec_info(in):
  *
  * NOTE:
  */
 int
-logtb_get_pack_tran_table (char **buffer_p, int *size_p)
+logtb_get_pack_tran_table (char **buffer_p, int *size_p,
+			   bool include_query_exec_info)
 {
 #if defined(CS_MODE)
   int error = NO_ERROR;
   int req_error;
   int ival;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
+  char *request = OR_ALIGNED_BUF_START (a_request);
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
 
+  /* --query-exec-info */
+  or_pack_int (request, ((include_query_exec_info) ? 1 : 0));
+
   req_error = net_client_request2 (NET_SERVER_LOG_GETPACK_TRANTB,
-				   NULL, 0,
+				   request, OR_ALIGNED_BUF_SIZE (a_request),
 				   reply, OR_ALIGNED_BUF_SIZE (a_reply),
 				   NULL, 0, buffer_p, size_p);
   if (req_error)
@@ -8493,7 +8500,7 @@ logtb_get_pack_tran_table (char **buffer_p, int *size_p)
 
   ENTER_SERVER ();
 
-  error = xlogtb_get_pack_tran_table (NULL, buffer_p, size_p);
+  error = xlogtb_get_pack_tran_table (NULL, buffer_p, size_p, 0);
 
   EXIT_SERVER ();
 
@@ -8524,6 +8531,20 @@ logtb_free_trans_info (TRANS_INFO * info)
 	db_private_free_and_init (NULL, info->tran[i].login_name);
       if (info->tran[i].host_name != NULL)
 	db_private_free_and_init (NULL, info->tran[i].host_name);
+
+      if (info->tran[i].query_exec_info.query_stmt)
+	{
+	  assert_release (info->include_query_exec_info == true);
+	  db_private_free_and_init (NULL,
+				    info->tran[i].query_exec_info.query_stmt);
+	}
+      if (info->tran[i].query_exec_info.wait_for_tran_index_string)
+	{
+	  assert_release (info->include_query_exec_info == true);
+	  db_private_free_and_init (NULL,
+				    info->tran[i].query_exec_info.
+				    wait_for_tran_index_string);
+	}
     }
   free_and_init (info);
 }
@@ -8531,17 +8552,19 @@ logtb_free_trans_info (TRANS_INFO * info)
 /*
  * logtb_get_trans_info - Get transaction table information which identifies
  *                        active transactions
+ * include_query_exec_info(in) :
  *   return: TRANS_INFO array or NULL
  */
 TRANS_INFO *
-logtb_get_trans_info (void)
+logtb_get_trans_info (bool include_query_exec_info)
 {
   TRANS_INFO *info = NULL;
   char *buffer, *ptr;
   int num_trans, bufsize, i;
   int error;
 
-  error = logtb_get_pack_tran_table (&buffer, &bufsize);
+  error =
+    logtb_get_pack_tran_table (&buffer, &bufsize, include_query_exec_info);
   if (error != NO_ERROR || buffer == NULL)
     return NULL;
 
@@ -8565,6 +8588,7 @@ logtb_get_trans_info (void)
     }
 
   info->num_trans = num_trans;
+  info->include_query_exec_info = include_query_exec_info;
   for (i = 0; i < num_trans; i++)
     {
       if ((ptr = or_unpack_int (ptr, &info->tran[i].tran_index)) == NULL
@@ -8575,7 +8599,25 @@ logtb_get_trans_info (void)
 	      or_unpack_string (ptr, &info->tran[i].program_name)) == NULL
 	  || (ptr = or_unpack_string (ptr, &info->tran[i].login_name)) == NULL
 	  || (ptr = or_unpack_string (ptr, &info->tran[i].host_name)) == NULL)
-	goto error;
+	{
+	  goto error;
+	}
+
+      if (include_query_exec_info)
+	{
+	  if ((ptr = or_unpack_float (ptr, &info->tran[i].query_exec_info.
+				      query_time)) == NULL
+	      || (ptr = or_unpack_float (ptr, &info->tran[i].query_exec_info.
+					 tran_time)) == NULL
+	      || (ptr = or_unpack_string (ptr, &info->tran[i].query_exec_info.
+					  wait_for_tran_index_string)) == NULL
+	      || (ptr = or_unpack_string (ptr, &info->tran[i].query_exec_info.
+					  query_stmt)) == NULL)
+	    {
+	      goto error;
+	    }
+	  OR_UNPACK_XASL_ID (ptr, &info->tran[i].query_exec_info.xasl_id);
+	}
     }
 
   if (((int) (ptr - buffer)) != bufsize)

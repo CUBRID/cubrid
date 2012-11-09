@@ -37,6 +37,7 @@
 #include "oid.h"
 #include "storage_common.h"
 #include "locator.h"
+#include "log_comm.h"
 
 #if defined(SERVER_MODE)
 #include "connection_error.h"
@@ -133,6 +134,34 @@ typedef struct lk_composite_lock LK_COMPOSITE_LOCK;
 struct lk_composite_lock
 {
   void *lockcomp;
+};
+
+/* type of locking resource */
+typedef enum
+{
+  LOCK_RESOURCE_INSTANCE,	/* An instance resource */
+  LOCK_RESOURCE_CLASS,		/* A class resource */
+  LOCK_RESOURCE_ROOT_CLASS,	/* A root class resource */
+  LOCK_RESOURCE_OBJECT		/* An object resource */
+} LOCK_RESOURCE_TYPE;
+
+/*
+ * Lock Resource Entry Structure
+ */
+typedef struct lk_res LK_RES;
+struct lk_res
+{
+  pthread_mutex_t res_mutex;	/* resource mutex */
+  LOCK_RESOURCE_TYPE type;	/* type of resource: class,instance */
+  OID oid;
+  OID class_oid;
+  BTID btid;
+  LOCK total_holders_mode;	/* total mode of the holders */
+  LOCK total_waiters_mode;	/* total mode of the waiters */
+  LK_ENTRY *holder;		/* lock holder list */
+  LK_ENTRY *waiter;		/* lock waiter list */
+  LK_ENTRY *non2pl;		/* non2pl list */
+  LK_RES *hash_next;		/* for hash chain */
 };
 
 #if defined(SERVER_MODE)
@@ -247,4 +276,7 @@ extern LOCK lock_get_total_holders_mode (const OID * oid,
 extern LOCK lock_get_all_except_transaction (const OID * oid,
 					     const OID * class_oid,
 					     int tran_index);
+extern int lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p,
+					    char **out_buf, int waiter_index,
+					    LK_RES * res);
 #endif /* _LOCK_MANAGER_H_ */

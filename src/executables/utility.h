@@ -306,6 +306,10 @@ typedef enum
   KILLTRAN_MSG_KILLING = 29,
   KILLTRAN_MSG_KILL_FAILED = 30,
   KILLTRAN_MSG_KILL_TIMEOUT = 31,
+  KILLTRAN_MSG_QUERY_INFO_TABLE_HEADER = 32,
+  KILLTRAN_MSG_QUERY_INFO_TABLE_ENTRY = 33,
+  KILLTRAN_MSG_QUERY_INFO_TABLE_UNDERSCORE = 34,
+  KILLTRAN_MSG_QUERY_INFO_TRAN_INDEX = 35,
   KILLTRAN_MSG_NOT_IN_STANDALONE = 59,
   KILLTRAN_MSG_USAGE = 60
 } MSGCAT_KILLTRAN_MSG;
@@ -970,6 +974,8 @@ typedef struct _ha_config
 #define KILLTRAN_DBA_PASSWORD_L                 "dba-password"
 #define KILLTRAN_DISPLAY_INFORMATION_S          'd'
 #define KILLTRAN_DISPLAY_INFORMATION_L          "display-information"
+#define KILLTRAN_DISPLAY_QUERY_INFO_S           'q'
+#define KILLTRAN_DISPLAY_QUERY_INFO_L           "query-exec-info"
 #define KILLTRAN_FORCE_S                        'f'
 #define KILLTRAN_FORCE_L                        "force"
 

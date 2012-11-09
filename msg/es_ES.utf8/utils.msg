@@ -766,6 +766,10 @@ $set 26 MSGCAT_UTIL_SET_KILLTRAN
 29 Matando transaccion asociada con el indice de transaccion %d\n
 30 Fracaso al matar las siguentes transacciones\n\n
 31 La transaccion todavia no acaba, pero puede que haga trabajo de reversion.\n Por favor, espere un segundo y reintentar luego si todavia necesario.\n
+32 Tran index     Process id    Program name              Query time    Tran time              Wait for lock holder   SQL Text\n
+33 %7d(%1c) %14d    %-25s %10.2f %12.2f    %28s    %s\n
+34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
+35 Tran index : %d
 59 killtran no puede ejecutar en modo independiente.\n
 60 \
 killtran: Patrocinar transacciones de una base de datos.\n\
@@ -778,6 +782,7 @@ opciones validas:\n\
       --kill-program-name=NAME       matar todas transacciones con NOMBRE de programa de cliente\n\
   -p, --dba-password=PASS            contrasena del utilizador DBA; va a ser pedida si no es especificado\n\
   -d, --display-information          mostrar informacion relacionada a las transacciones activas\n\
+  -q, --query-exec-info              display information about query execution information of active transactions\n\
   -f, --force                        matar la transaccion sin un aviso para verificar\n
 
 

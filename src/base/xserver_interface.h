@@ -392,7 +392,8 @@ extern void xacl_dump (THREAD_ENTRY * thread_p, FILE * outfp);
 extern void xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp);
 
 extern int xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p,
-				       char **buffer_p, int *size_p);
+				       char **buffer_p, int *size_p,
+				       int include_query_exec_info);
 
 extern LOB_LOCATOR_STATE xlog_find_lob_locator (THREAD_ENTRY * thread_p,
 						const char *locator,

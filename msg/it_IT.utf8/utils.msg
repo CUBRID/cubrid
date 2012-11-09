@@ -766,6 +766,10 @@ $set 26 MSGCAT_UTIL_SET_KILLTRAN
 29 Chiusura transazione associati con indice di transazione %d\n
 30 Chiusura delle seguenti transazioni non è riuscito\n\n
 31 La transazione non ancora finito, ma può essere fare il rollback lavoro.\n si prega, attendere un secondo e provarlo in seguito se necessario.\n
+32 Tran index     Process id    Program name              Query time    Tran time              Wait for lock holder   SQL Text\n
+33 %7d(%1c) %14d    %-25s %10.2f %12.2f    %28s    %s\n
+34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
+35 Tran index : %d
 59 killrtan non è possibile eseguire come modalità standalone.\n
 60 \
 killtran: Gestire le transazioni del database.\n\
@@ -778,6 +782,7 @@ opzioni valide:\n\
       --kill-program-name=NOME       chiudere tutte le transazioni con programma client NOME\n\
   -p, --dba-password=PASS            la password dell'utente DBA; richiesta se non specificherà\n\
   -d, --display-information          visualizzare le informazioni sulle transazioni attive\n\
+  -q, --query-exec-info              display information about query execution information of active transactions\n\
   -f, --force                        chiudere la transazione senza una richiesta per la verifica\n
 
 

@@ -766,6 +766,10 @@ $set 26 MSGCAT_UTIL_SET_KILLTRAN
 29 Killing transaction associated with transaction index %d\n
 30 Killing of the following transactions has failed\n\n
 31 The transaction does not finish yet, but it may be doing the rollback work.\n Please, wait a second and try it later if needed.\n
+32 Tran index     Process id    Program name              Query time    Tran time              Wait for lock holder   SQL Text\n
+33 %7d(%1c) %14d    %-25s %10.2f %12.2f    %28s    %s\n
+34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
+35 Tran index : %d
 59 killrtan cannot run as standalone mode.\n
 60 \
 killtran: Manage transactions of the database.\n\
@@ -778,6 +782,7 @@ valid options:\n\
       --kill-program-name=NAME       kill all transactions with client program NAME\n\
   -p, --dba-password=PASS            password of the DBA user; will prompt if don't specify\n\
   -d, --display-information          display information about active transactions\n\
+  -q, --query-exec-info              display information about query execution information of active transactions\n\
   -f, --force                        kill the transaction without a prompt for verification\n
 
 

@@ -40,6 +40,7 @@
 #include "connection_defs.h"
 #include "log_writer.h"
 #include "language_support.h"
+#include "log_comm.h"
 
 typedef struct server_info SERVER_INFO;
 struct server_info
@@ -59,12 +60,14 @@ struct one_tran_info
   char *program_name;
   char *login_name;
   char *host_name;
+  TRAN_QUERY_EXEC_INFO query_exec_info;
 };
 
 typedef struct trans_info TRANS_INFO;
 struct trans_info
 {
   int num_trans;
+  bool include_query_exec_info;
   ONE_TRAN_INFO tran[1];	/* really [num_trans] */
 };
 
@@ -350,9 +353,10 @@ extern int thread_kill_tran_index (int kill_tran_index, char *kill_user,
 				   char *kill_host, int kill_pid);
 extern void thread_dump_cs_stat (FILE * outfp);
 
-extern int logtb_get_pack_tran_table (char **buffer_p, int *size_p);
+extern int logtb_get_pack_tran_table (char **buffer_p, int *size_p,
+				      bool include_query_exec_info);
 extern void logtb_free_trans_info (TRANS_INFO * info);
-extern TRANS_INFO *logtb_get_trans_info (void);
+extern TRANS_INFO *logtb_get_trans_info (bool include_query_exec_info);
 extern void logtb_dump_trantable (FILE * outfp);
 
 extern int heap_get_class_num_objects_pages (HFID * hfid, int approximation,

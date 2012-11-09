@@ -766,6 +766,10 @@ $set 26 MSGCAT_UTIL_SET_KILLTRAN
 29 取消与事务索引 %d相关联的事务\n
 30 取消如下事务失败\n\n
 31 事务目前还没有终止，但是可能在做一些回滚工作.\n 请稍等片刻，如果有必要，可以稍后再做尝试.\n
+32 Tran index     Process id    Program name              Query time    Tran time              Wait for lock holder   SQL Text\n
+33 %7d(%1c) %14d    %-25s %10.2f %12.2f    %28s    %s\n
+34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
+35 Tran index : %d
 59 无法在单机模式下取消事务.\n
 60 \
 killtran: 管理数据库的事务.\n\
@@ -778,6 +782,7 @@ usage: %s killtran [选项] 数据库名\n\
       --kill-program-name=NAME       通过客户端程序名取消所有事务\n\
   -p, --dba-password=PASS            DBA用户的密码; 如果没有指定将提示输入\n\
   -d, --display-information          显示关于活动事务的信息\n\
+  -q, --query-exec-info              display information about query execution information of active transactions\n\
   -f, --force                        取消事务而不需要核对提示\n
 
 

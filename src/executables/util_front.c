@@ -159,6 +159,7 @@ static ARG_MAP_TABLE ua_Killtran_map[] = {
   {"-pg", "--" KILLTRAN_KILL_PROGRAM_NAME_L},
   {"-p", "--" KILLTRAN_DBA_PASSWORD_L},
   {"-d", "--" KILLTRAN_DISPLAY_INFORMATION_L},
+  {"-q", "--" KILLTRAN_DISPLAY_QUERY_INFO_L},
   {"-v", "--" KILLTRAN_FORCE_L},
   {0, 0}
 };

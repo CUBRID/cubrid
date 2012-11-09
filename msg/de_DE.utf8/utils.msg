@@ -766,6 +766,10 @@ $set 26 MSGCAT_UTIL_SET_KILLTRAN
 29 Transaktion mit Index %d wird abgebrochen\n
 30 Abbrechen der folgenden Transaktion fehlgeschlagen\n\n
 31 Die Transaktion ist noch nicht abgeschlossen, aber es könnte ein Rollback ausführen.\n Bitte warten Sie einen Augenblick, versuchen Sie bei Bedarf später.\n
+32 Tran index     Process id    Program name              Query time    Tran time              Wait for lock holder   SQL Text\n
+33 %7d(%1c) %14d    %-25s %10.2f %12.2f    %28s    %s\n
+34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
+35 Tran index : %d
 59 killtran darf nicht in Stand-Alone-Modus ausgeführt werden.\n
 60 \
 killtran: Transaktionen der Datenbank verwalten.\n\
@@ -778,6 +782,7 @@ gültige Optionen:\n\
       --kill-program-name=NAME       alle Transaktionen mit Client-Programm NAME abbrechen\n\
   -p, --dba-password=PASSWORT        Passwort des DBA-Benutzers; es wird angefordert, wenn nicht angegeben\n\
   -d, --display-information          Information über aktive Transaktionen anzeigen \n\
+  -q, --query-exec-info              display information about query execution information of active transactions\n\
   -f, --force                        Transaktion ohne Bestätigung abbrechen \n
 
 

@@ -172,15 +172,6 @@ extern int lock_Comp[11][11];
 #define RESOURCE_ALLOC_WAIT_TIME 10000	/* 10 msec */
 #define KEY_LOCK_ESCALATION_THRESHOLD 10	/* key lock escalation threshold */
 
-/* type of locking resource */
-typedef enum
-{
-  LOCK_RESOURCE_INSTANCE,	/* An instance resource */
-  LOCK_RESOURCE_CLASS,		/* A class resource */
-  LOCK_RESOURCE_ROOT_CLASS,	/* A root class resource */
-  LOCK_RESOURCE_OBJECT		/* An object resource */
-} LOCK_RESOURCE_TYPE;
-
 /* state of suspended threads */
 typedef enum
 {
@@ -314,25 +305,6 @@ struct lk_deadlock_victim
   int tran_index;		/* Index of selected victim */
   TRANID tranid;		/* Transaction identifier   */
   int can_timeout;		/* Is abort or timeout      */
-};
-
-/*
- * Lock Resource Entry Structure
- */
-typedef struct lk_res LK_RES;
-struct lk_res
-{
-  pthread_mutex_t res_mutex;	/* resource mutex */
-  LOCK_RESOURCE_TYPE type;	/* type of resource: class,instance */
-  OID oid;
-  OID class_oid;
-  BTID btid;
-  LOCK total_holders_mode;	/* total mode of the holders */
-  LOCK total_waiters_mode;	/* total mode of the waiters */
-  LK_ENTRY *holder;		/* lock holder list */
-  LK_ENTRY *waiter;		/* lock waiter list */
-  LK_ENTRY *non2pl;		/* non2pl list */
-  LK_RES *hash_next;		/* for hash chain */
 };
 
 /*
@@ -2643,6 +2615,7 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
   THREAD_ENTRY *p;
   struct timeval tv;
   int client_id;
+  LOG_TDES *tdes;
 
   /* The caller is holding the thread entry mutex */
 
@@ -2682,9 +2655,21 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
   /* wakeup the dealock detect thread */
   thread_wakeup_deadlock_detect_thread ();
 
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  if (tdes)
+    {
+      tdes->waiting_for_res = entry_ptr->res_head;
+    }
+
   /* suspend the worker thread (transaction) */
   thread_suspend_wakeup_and_unlock_entry (entry_ptr->thrd_entry,
 					  THREAD_LOCK_SUSPENDED);
+
+  if (tdes)
+    {
+      tdes->waiting_for_res = NULL;
+    }
+
   if (entry_ptr->thrd_entry->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)
     {
       /* a shutdown thread wakes me up */
@@ -13380,4 +13365,114 @@ lock_get_all_except_transaction (const OID * oid, const OID * class_oid,
 
   return group_mode;
 #endif /* !SERVER_MODE */
+}
+
+/*
+ * lock_get_lock_holder_tran_index -
+ *
+ * return:
+ *  out_buf(out):
+ *  waiter_index(in):
+ *  res (in):
+ *
+ *  note : caller must free *out_buf.
+ */
+int
+lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p,
+				 char **out_buf, int waiter_index,
+				 LK_RES * res)
+{
+#define HOLDER_ENTRY_LENGTH (12)
+  int rv;
+  LK_ENTRY *holder;
+  int holder_number = 0;
+  int buf_size, n, remained_size;
+  char *buf, *p;
+
+  if (res == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  if (out_buf == NULL)
+    {
+      assert_release (0);
+      return ER_FAILED;
+    }
+
+  *out_buf = NULL;
+
+#if defined (SERVER_MODE)
+  rv = pthread_mutex_lock (&res->res_mutex);
+  if (rv != 0)
+    {
+      return ER_FAILED;
+    }
+
+  holder = res->holder;
+  while (holder != NULL)
+    {
+      if (holder->tran_index != waiter_index)
+	{
+	  holder_number++;
+	}
+      holder = holder->next;
+    }
+
+  if (holder_number == 0)
+    {
+      pthread_mutex_unlock (&res->res_mutex);
+
+      return NO_ERROR;
+    }
+
+  buf_size = holder_number * HOLDER_ENTRY_LENGTH + 1;
+  buf = (char *) malloc (sizeof (char) * buf_size);
+
+  if (buf == NULL)
+    {
+      pthread_mutex_unlock (&res->res_mutex);
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, buf_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  remained_size = buf_size;
+  p = buf;
+
+  /* write first holder index */
+  holder = res->holder;
+  while (holder && holder->tran_index == waiter_index)
+    {
+      holder = holder->next;
+    }
+
+  assert_release (holder != NULL);
+
+  n = snprintf (p, remained_size, "%d", holder->tran_index);
+  remained_size -= n;
+  p += n;
+  assert_release (remained_size >= 0);
+
+  /* write remained holder index */
+  holder = holder->next;
+  while (holder != NULL)
+    {
+      if (holder->tran_index != waiter_index)
+	{
+	  n = snprintf (p, remained_size, ", %d", holder->tran_index);
+	  remained_size -= n;
+	  p += n;
+	  assert_release (remained_size >= 0);
+	}
+      holder = holder->next;
+    }
+
+  *out_buf = buf;
+
+  pthread_mutex_unlock (&res->res_mutex);
+#endif
+
+  return NO_ERROR;
 }

@@ -766,6 +766,10 @@ $set 26 MSGCAT_UTIL_SET_KILLTRAN
 29 İptal etme işlemi işlemin endeksi %d ile ilişkili\n
 30 Aşağıdaki işlemleri İptal etme başarısız oldu\n\n
 31 işlemin henüz bitmiş değil, ama geri alma işi olabilir.\n bir saniye bekleyin ve gerekirse daha sonra deneyin.\n
+32 Tran index     Process id    Program name              Query time    Tran time              Wait for lock holder   SQL Text\n
+33 %7d(%1c) %14d    %-25s %10.2f %12.2f    %28s    %s\n
+34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
+35 Tran index : %d
 59 killrtan bağımsız modu olarak çalıştıramazsınız.\n
 60 \
 killtran: Veritabanı işlemleri yönetin.\n\
@@ -778,6 +782,7 @@ geçerli seçenekler:\n\
       --kill-program-name=NAME       istemci programı NAME ile tüm işlemleri iptal etme\n\
   -p, --dba-password=PASS            DBA kullanıcı şifresi; belirtmezseniz isteyecektir\n\
   -d, --display-information          etkin işlemler hakkında bilgi görüntülemek\n\
+  -q, --query-exec-info              display information about query execution information of active transactions\n\
   -f, --force                        doğrulaması için bir istemi olmadan işlemi iptal etme\n
 
 

@@ -7323,8 +7323,14 @@ slogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, unsigned int rid,
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int error;
+  int include_query_exec_info;
 
-  error = xlogtb_get_pack_tran_table (thread_p, &buffer, &size);
+  (void) or_unpack_int (request, &include_query_exec_info);
+
+  error =
+    xlogtb_get_pack_tran_table (thread_p, &buffer, &size,
+				include_query_exec_info);
+
 
   if (error != NO_ERROR)
     {

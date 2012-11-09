@@ -26,6 +26,7 @@
 #include "storage_common.h"
 #include "dbdef.h"
 #include "object_representation.h"
+#include "query_list.h"
 
 
 #define LOG_USERNAME_MAX        (DB_MAX_USER_LENGTH + 1)
@@ -186,6 +187,16 @@ struct manylogs
 {
   struct onelog onelog;
   int num_logs;			/* How many log recovery records are described */
+};
+
+typedef struct tran_query_exec_info TRAN_QUERY_EXEC_INFO;
+struct tran_query_exec_info
+{
+  char *wait_for_tran_index_string;
+  float query_time;
+  float tran_time;
+  char *query_stmt;
+  XASL_ID xasl_id;
 };
 
 extern const int LOG_MIN_NBUFFERS;

@@ -44,6 +44,8 @@
 #include "thread.h"
 #include "es.h"
 #include "rb_tree.h"
+#include "query_list.h"
+#include "lock_manager.h"
 
 #if defined(SOLARIS)
 #include <netdb.h>		/* for MAXHOSTNAMELEN */
@@ -791,6 +793,11 @@ struct log_tdes
 					   delete during a transaction */
 
   INT64 query_timeout;		/* a query should be executed before query_timeout time. */
+
+  INT64 query_start_time;
+  INT64 tran_start_time;
+  XASL_ID xasl_id;		/* xasl id of current query */
+  LK_RES *waiting_for_res;	/* resource that i'm waiting for */
 };
 
 typedef struct log_addr_tdesarea LOG_ADDR_TDESAREA;

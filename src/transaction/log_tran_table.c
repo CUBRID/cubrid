@@ -1572,6 +1572,10 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->num_new_tmp_files = 0;
   tdes->num_new_tmp_tmp_files = 0;
   tdes->query_timeout = 0;
+  tdes->query_start_time = 0;
+  tdes->tran_start_time = 0;
+  XASL_ID_SET_NULL (&tdes->xasl_id);
+  tdes->waiting_for_res = NULL;
 }
 
 /*
@@ -1629,6 +1633,10 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->suppress_replication = 0;
   RB_INIT (&tdes->lob_locator_root);
   tdes->query_timeout = 0;
+  tdes->query_start_time = 0;
+  tdes->tran_start_time = 0;
+  XASL_ID_SET_NULL (&tdes->xasl_id);
+  tdes->waiting_for_res = NULL;
 }
 
 /*
@@ -2046,7 +2054,7 @@ logtb_find_client_name_host_pid (int tran_index, char **client_prog_name,
  */
 int
 xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
-			    int *size_p)
+			    int *size_p, int include_query_exec_info)
 {
   int error_code = NO_ERROR;
   int num_clients = 0;
@@ -2054,6 +2062,37 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
   int size;
   char *buffer, *ptr;
   LOG_TDES *tdes;		/* Transaction descriptor */
+#if defined(SERVER_MODE)
+  UINT64 current_msec;
+  TRAN_QUERY_EXEC_INFO *query_exec_info = NULL;
+  char buf[1024];
+  XASL_CACHE_ENTRY *ent;
+#if !defined(HAVE_ATOMIC_BUILTINS)
+  struct timeval tv;
+#endif
+#endif
+
+#if defined(SERVER_MODE)
+  if (include_query_exec_info)
+    {
+      query_exec_info =
+	(TRAN_QUERY_EXEC_INFO *) calloc (NUM_TOTAL_TRAN_INDICES,
+					 sizeof (TRAN_QUERY_EXEC_INFO));
+
+      if (query_exec_info == NULL)
+	{
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error;
+	}
+
+#if !defined(HAVE_ATOMIC_BUILTINS)
+      gettimeofday (&tv, NULL);
+      current_msec = (tv.tv_sec * 1000LL) + (tv.tv_usec / 1000LL);
+#else
+      current_msec = log_Clock_msec;
+#endif /* !HAVE_ATOMIC_BUILTINS */
+    }
+#endif
 
   /* Note, we'll be in a critical section while we gather the data but
    * the section ends as soon as we return the data.  This means that the
@@ -2075,11 +2114,70 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
 	  /* The index is not assigned or is system transaction (no-client) */
 	  continue;
 	}
+
       size += 3 * OR_INT_SIZE	/* tran index + tran state + process id */
 	+ or_packed_string_length (tdes->client.db_user, NULL)
 	+ or_packed_string_length (tdes->client.program_name, NULL)
 	+ or_packed_string_length (tdes->client.login_name, NULL)
 	+ or_packed_string_length (tdes->client.host_name, NULL);
+
+#if defined(SERVER_MODE)
+      if (include_query_exec_info)
+	{
+	  if (tdes->query_start_time > 0)
+	    {
+	      query_exec_info[i].query_time =
+		(float) (current_msec - tdes->query_start_time) / 1000.0;
+	    }
+
+	  if (tdes->tran_start_time > 0)
+	    {
+	      query_exec_info[i].tran_time =
+		(float) (current_msec - tdes->tran_start_time) / 1000.0;
+	    }
+
+	  lock_get_lock_holder_tran_index (thread_p,
+					   &query_exec_info[i].
+					   wait_for_tran_index_string,
+					   tdes->tran_index,
+					   tdes->waiting_for_res);
+
+	  if (!XASL_ID_IS_NULL (&tdes->xasl_id))
+	    {
+	      /* retrieve query statement in the xasl_cache entry */
+	      ent =
+		qexec_check_xasl_cache_ent_by_xasl (thread_p, &tdes->xasl_id,
+						    -1, NULL);
+
+	      /* entry can be NULL, if xasl cache entry is deleted */
+	      if (ent != NULL)
+		{
+		  if (ent->qstmt != NULL)
+		    {
+		      /* copy query string */
+		      query_exec_info[i].query_stmt = strdup (ent->qstmt);
+		      if (query_exec_info[i].query_stmt == NULL)
+			{
+			  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+			  goto error;
+			}
+		    }
+		}
+	      /* structure copy */
+	      XASL_ID_COPY (&query_exec_info[i].xasl_id, &tdes->xasl_id);
+	    }
+	  else
+	    {
+	      XASL_ID_SET_NULL (&query_exec_info[i].xasl_id);
+	    }
+
+	  size += 2 * OR_FLOAT_SIZE	/* query time + tran time */
+	    + or_packed_string_length (query_exec_info[i].
+				       wait_for_tran_index_string, NULL)
+	    + or_packed_string_length (query_exec_info[i].query_stmt, NULL)
+	    + OR_XASL_ID_SIZE;
+	}
+#endif
       num_clients++;
     }
 
@@ -2107,6 +2205,7 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
 	  /* The index is not assigned or is system transaction (no-client) */
 	  continue;
 	}
+
       ptr = or_pack_int (ptr, tdes->tran_index);
       ptr = or_pack_int (ptr, tdes->state);
       ptr = or_pack_int (ptr, tdes->client.process_id);
@@ -2114,12 +2213,45 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
       ptr = or_pack_string (ptr, tdes->client.program_name);
       ptr = or_pack_string (ptr, tdes->client.login_name);
       ptr = or_pack_string (ptr, tdes->client.host_name);
+
+#if defined(SERVER_MODE)
+      if (include_query_exec_info)
+	{
+	  ptr = or_pack_float (ptr, query_exec_info[i].query_time);
+	  ptr = or_pack_float (ptr, query_exec_info[i].tran_time);
+	  ptr =
+	    or_pack_string (ptr,
+			    query_exec_info[i].wait_for_tran_index_string);
+	  ptr = or_pack_string (ptr, query_exec_info[i].query_stmt);
+	  OR_PACK_XASL_ID (ptr, &query_exec_info[i].xasl_id);
+	}
+#endif
     }
 
   *buffer_p = buffer;
   *size_p = size;
 
 error:
+
+#if defined(SERVER_MODE)
+  if (query_exec_info != NULL)
+    {
+      for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
+	{
+	  if (query_exec_info[i].wait_for_tran_index_string)
+	    {
+	      free_and_init (query_exec_info[i].wait_for_tran_index_string);
+	    }
+
+	  if (query_exec_info[i].query_stmt)
+	    {
+	      free_and_init (query_exec_info[i].query_stmt);
+	    }
+	}
+      free_and_init (query_exec_info);
+    }
+#endif
+
   TR_TABLE_CS_EXIT ();
   return error_code;
 }
