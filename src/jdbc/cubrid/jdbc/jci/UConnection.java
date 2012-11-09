@@ -1651,9 +1651,8 @@ public class UConnection {
 								throw e;
 							}
 						}
-					} else {
-						lastFailureTime = System.currentTimeMillis() / 1000;
 					}
+					lastFailureTime = System.currentTimeMillis() / 1000;
 				}
 				retry++;
 			} while (retry < 2);

@@ -5452,10 +5452,7 @@ cas_connect_internal (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
 		  break;
 		}
 	    }
-	  else
-	    {
-	      con_handle->last_failure_time = time (NULL);
-	    }
+	  con_handle->last_failure_time = time (NULL);
 	}
       retry++;
     }
