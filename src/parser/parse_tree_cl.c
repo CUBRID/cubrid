@@ -5494,8 +5494,8 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
 	    if (r1)
 	      {
 		assert (attrs != NULL);
-		q = pt_append_nulstring (parser, q, " ");
 		q = pt_append_varchar (parser, q, r1);
+		q = pt_append_nulstring (parser, q, " ");
 	      }
 	  }
 
