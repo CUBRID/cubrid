@@ -947,14 +947,15 @@ csql_is_statement_end (const char *str)
    */
   bool include_stmt = false;
   bool is_last_stmt_valid = true;
-  const char *p = str;
+  char *p;
+  int str_length;
+
   CSQL_STATEMENT_STATE state = csql_Edit_contents.state;
 
   if (str == NULL)
     {
       return false;
     }
-
 
   if (state == CSQL_STATE_CPP_COMMENT || state == CSQL_STATE_SQL_COMMENT)
     {
@@ -968,8 +969,9 @@ csql_is_statement_end (const char *str)
       state = CSQL_STATE_GENERAL;
     }
 
+  str_length = strlen (str);
   /* run as state machine */
-  while (*p != 0)
+  for (p = str; p < str + str_length; p++)
     {
       switch (state)
 	{
@@ -1005,8 +1007,11 @@ csql_is_statement_end (const char *str)
 	      is_last_stmt_valid = true;
 	      break;
 	    case '"':
-	      state = CSQL_STATE_MYSQL_QUOTE;
-	      is_last_stmt_valid = true;
+	      if (prm_get_bool_value(PRM_ID_ANSI_QUOTES) == false)
+		{
+		  state = CSQL_STATE_MYSQL_QUOTE;
+		  is_last_stmt_valid = true;
+		}
 	      break;
 	    case ';':
 	      include_stmt = true;
@@ -1053,28 +1058,42 @@ csql_is_statement_end (const char *str)
 	  break;
 
 	case CSQL_STATE_SINGLE_QUOTE:
-	  if (*p == '\'')
-	    {
-	      state = CSQL_STATE_GENERAL;
-	      break;
-	    }
-	  if (*p == '\\' && !prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES))
+	  if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) == false
+	      && *p == '\\')
 	    {
 	      p++;
-	      break;
+	    }
+	  else if (*p == '\'')
+	    {
+	      if (*(p + 1) == '\'')
+		{
+		  /* escape by '' */
+		  p++;
+		}
+	      else
+		{
+		  state = CSQL_STATE_GENERAL;
+		}
 	    }
 	  break;
 
 	case CSQL_STATE_MYSQL_QUOTE:
-	  if (*p == '"')
-	    {
-	      state = CSQL_STATE_GENERAL;
-	      break;
-	    }
-	  if (*p == '\\' && !prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES))
+	  if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) == false
+	      && *p == '\\')
 	    {
 	      p++;
-	      break;
+	    }
+	  else if (*p == '"')
+	    {
+	      if (*(p + 1) == '\"')
+		{
+		  /* escape by "" */
+		  p++;
+		}
+	      else
+		{
+		  state = CSQL_STATE_GENERAL;
+		}
 	    }
 	  break;
 
@@ -1082,8 +1101,6 @@ csql_is_statement_end (const char *str)
 	  /* should not be here */
 	  break;
 	}
-
-      p++;
     }
 
   /* when include other stmts and the last smt is non sense stmt. */
