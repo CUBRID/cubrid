@@ -412,8 +412,29 @@ rel_compare (const char *rel_a, const char *rel_b)
  * if the major numbers are different, no network compatibility!
  */
 static COMPATIBILITY_RULE log_compatibility_rules[] = {
+  /* 8.4.0 <-> 8.4.1 */
   {4.1f, 4.0f, REL_FORWARD_COMPATIBLE, NULL},
   {4.0f, 4.1f, REL_BACKWARD_COMPATIBLE, NULL},
+
+  /* 8.4.1 <-> 8.4.2 */
+  {4.1f, 4.2f, REL_FORWARD_COMPATIBLE, NULL},
+  {4.2f, 4.1f, REL_BACKWARD_COMPATIBLE, NULL},
+
+  /* 8.4.0 <-> 8.4.2 */
+  {4.2f, 4.0f, REL_FORWARD_COMPATIBLE, NULL},
+  {4.0f, 4.2f, REL_BACKWARD_COMPATIBLE, NULL},
+
+  /* 8.4.2 <-> 8.4.3 */
+  {4.2f, 4.3f, REL_FORWARD_COMPATIBLE, NULL},
+  {4.3f, 4.2f, REL_BACKWARD_COMPATIBLE, NULL},
+
+  /* 8.4.0 <-> 8.4.3 */
+  {4.3f, 4.0f, REL_FORWARD_COMPATIBLE, NULL},
+  {4.0f, 4.3f, REL_BACKWARD_COMPATIBLE, NULL},
+
+  /* 8.4.1 <-> 8.4.3 */
+  {4.1f, 4.3f, REL_FORWARD_COMPATIBLE, NULL},
+  {4.3f, 4.1f, REL_BACKWARD_COMPATIBLE, NULL},
 
   /*
    * NOTICE:
