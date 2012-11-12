@@ -2563,19 +2563,10 @@ db_get_ha_server_state (char *buffer, int maxlen)
   return ha_state;
 }
 
-bool
-db_is_same_server_session_key (char *key)
+void
+db_set_server_session_key (const char *key)
 {
-  char *server_key;
-  int i;
-
-  server_key = boot_get_server_session_key ();
-  if (server_key == NULL)
-    {
-      return false;
-    }
-
-  return memcmp (server_key, key, SERVER_SESSION_KEY_SIZE) == 0;
+  boot_set_server_session_key (key);
 }
 
 char *
@@ -2618,8 +2609,11 @@ db_check_session (void)
   int err = NO_ERROR;
   SESSION_ID sess_id = db_get_session_id ();
   int row_count = DB_ROW_COUNT_NOT_SET;
+  char *server_session_key;
 
-  err = csession_check_session (&sess_id, &row_count);
+  server_session_key = db_get_server_session_key ();
+  /* server_session_key is in/out parameter, it is replaced new key */
+  err = csession_check_session (&sess_id, &row_count, server_session_key);
   if (err != NO_ERROR)
     {
       db_set_session_id (DB_EMPTY_SESSION);

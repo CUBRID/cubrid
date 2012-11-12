@@ -77,4 +77,5 @@ extern int boot_rebuild_catalog_classes (const char *dbname);
 #endif /* SA_MODE */
 extern void boot_clear_host_connected (void);
 extern char *boot_get_server_session_key (void);
+extern void boot_set_server_session_key (const char *key);
 #endif /* _BOOT_CL_H_ */

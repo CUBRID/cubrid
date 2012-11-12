@@ -8899,13 +8899,17 @@ ssession_check_session (THREAD_ENTRY * thread_p, unsigned int rid,
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr = NULL, *area = NULL;
+  char server_session_key[SERVER_SESSION_KEY_SIZE];
   SESSION_PARAM *session_params = NULL;
   int error;
 
   ptr = or_unpack_int (request, &key.id);
+  ptr = or_unpack_stream (ptr, server_session_key, SERVER_SESSION_KEY_SIZE);
   ptr = sysprm_unpack_session_parameters (ptr, &session_params);
 
-  if (xsession_check_session (thread_p, &key) != NO_ERROR)
+  if (memcmp (server_session_key, xboot_get_server_session_key (),
+	      SERVER_SESSION_KEY_SIZE) != 0
+      || xsession_check_session (thread_p, &key) != NO_ERROR)
     {
       /* not an error yet */
       er_clear ();
@@ -8947,6 +8951,9 @@ ssession_check_session (THREAD_ENTRY * thread_p, unsigned int rid,
       /* row_count */
       area_size += OR_INT_SIZE;
 
+      /* server session key */
+      area_size += or_packed_stream_length (SERVER_SESSION_KEY_SIZE);
+
       /* session params */
       area_size += sysprm_packed_session_parameters_length (session_params);
 
@@ -8955,6 +8962,8 @@ ssession_check_session (THREAD_ENTRY * thread_p, unsigned int rid,
 	{
 	  ptr = or_pack_int (area, key.id);
 	  ptr = or_pack_int (ptr, row_count);
+	  ptr = or_pack_stream (ptr, xboot_get_server_session_key (),
+				SERVER_SESSION_KEY_SIZE);
 	  ptr = sysprm_pack_session_parameters (ptr, session_params);
 	}
       else

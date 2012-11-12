@@ -60,9 +60,8 @@ extern int db_restart (const char *program,
 extern int db_restart_ex (const char *program, const char *db_name,
 			  const char *db_user, const char *db_password,
 			  const char *hosts, int client_type);
+extern void db_set_server_session_key (const char *key);
 extern char *db_get_server_session_key (void);
-extern void db_set_server_session_key (char *key);
-extern bool db_is_same_server_session_key (char *key);
 extern SESSION_ID db_get_session_id (void);
 extern void db_set_session_id (const SESSION_ID session_id);
 extern int db_end_session (void);

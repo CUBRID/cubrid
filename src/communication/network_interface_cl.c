@@ -4598,9 +4598,11 @@ boot_shutdown_server (bool iserfinal)
  * return	   : error code or NO_ERROR
  * session_id (in/out) : the id of the session to end
  * row_count (out)     : the value of row count for this session
+ * server_session_key (in/out) :
  */
 int
-csession_check_session (SESSION_ID * session_id, int *row_count)
+csession_check_session (SESSION_ID * session_id, int *row_count,
+			char *server_session_key)
 {
 #if defined (CS_MODE)
   int req_error;
@@ -4613,8 +4615,10 @@ csession_check_session (SESSION_ID * session_id, int *row_count)
   int error = NO_ERROR;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
-  request_size = OR_INT_SIZE	/* *session_id */
-    + sysprm_packed_local_session_parameters_length ();	/* session_params */
+  request_size = OR_INT_SIZE;	/* session_id */
+  request_size += or_packed_stream_length (SERVER_SESSION_KEY_SIZE);
+  /* session_params */
+  request_size += sysprm_packed_local_session_parameters_length ();
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -4622,6 +4626,7 @@ csession_check_session (SESSION_ID * session_id, int *row_count)
   if (request != NULL)
     {
       ptr = or_pack_int (request, ((int) *session_id));
+      ptr = or_pack_stream (ptr, server_session_key, SERVER_SESSION_KEY_SIZE);
       ptr = sysprm_pack_local_session_parameters (ptr);
 
       req_error = net_client_request2 (NET_SERVER_SES_CHECK_SESSION,
@@ -4643,6 +4648,8 @@ csession_check_session (SESSION_ID * session_id, int *row_count)
 	    {
 	      ptr = or_unpack_int (area, (int *) session_id);
 	      ptr = or_unpack_int (ptr, row_count);
+	      ptr = or_unpack_stream (ptr, server_session_key,
+				      SERVER_SESSION_KEY_SIZE);
 	      ptr = sysprm_unpack_session_parameters (ptr, &session_params);
 
 	      free_and_init (area);

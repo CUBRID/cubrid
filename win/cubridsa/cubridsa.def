@@ -50,7 +50,7 @@ EXPORTS
     db_get_session_id
     db_check_session
     db_end_session
-    db_is_same_server_session_key
+    db_set_server_session_key
     db_get_server_session_key
     db_get_variable
     db_set_get

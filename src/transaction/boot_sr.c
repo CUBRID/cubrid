@@ -3664,6 +3664,15 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, bool is_er_final)
 }
 
 /*
+ * xboot_get_server_session_key ()
+ */
+const char *
+xboot_get_server_session_key (void)
+{
+  return boot_Server_session_key;
+}
+
+/*
  * xboot_register_client () - register a client
  *
  * return : transaction index or NULL_TRAN_INDEX in the case of error.

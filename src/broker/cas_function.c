@@ -250,15 +250,16 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       sql_log2_init (broker_name, shm_as_index, as_info->cur_sql_log2, true);
     }
 
-  if (!ux_is_database_connected () || as_info->reset_flag == TRUE)
+  if (!ux_is_database_connected ())
     {
       cas_log_debug (ARG_FILE_LINE,
-		     "fn_end_tran: !ux_is_database_connected() || reset_flag");
+		     "fn_end_tran: !ux_is_database_connected()");
       return FN_CLOSE_CONN;
     }
-  else if (restart_is_needed ())
+  else if (restart_is_needed () || as_info->reset_flag == TRUE)
     {
-      cas_log_debug (ARG_FILE_LINE, "fn_end_tran: restart_is_needed()");
+      cas_log_debug (ARG_FILE_LINE,
+		     "fn_end_tran: restart_is_needed() || reset_flag");
       return FN_KEEP_SESS;
     }
   return FN_KEEP_CONN;

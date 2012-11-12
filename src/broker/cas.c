@@ -342,20 +342,19 @@ cas_set_session_id (T_CAS_PROTOCOL protocol, char *session)
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (protocol, PROTOCOL_V3))
     {
       id = *(SESSION_ID *) (session + 8);
-      if (db_is_same_server_session_key (session))
-	{
-	  db_set_session_id (id);
-	  cas_log_write_and_end (0, false, "using driver session %u", id);
-	}
-      else
-	{
-	  db_set_session_id (DB_EMPTY_SESSION);
-	  cas_log_write_and_end (0, false, "reject driver session %u", id);
-	}
+      db_set_server_session_key (session);
+      db_set_session_id (id);
+      cas_log_write_and_end (0, false, "session id for connection %u", id);
     }
   else
     {
       /* always create new session for old drivers */
+      char key[] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+
+      cas_log_write_and_end (0, false,
+			     "session id (old protocol) for connection %s",
+			     session);
+      db_set_server_session_key (key);
       db_set_session_id (DB_EMPTY_SESSION);
     }
 }
@@ -1938,7 +1937,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     {
       cas_log_debug (ARG_FILE_LINE,
 		     "process_request: reset_flag && !CON_STATUS_IN_TRAN");
-      fn_ret = FN_CLOSE_CONN;
+      fn_ret = FN_KEEP_SESS;
       goto exit_on_end;
     }
 #endif /* !LIBCAS_FOR_JSP */

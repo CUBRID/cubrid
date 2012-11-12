@@ -5384,3 +5384,13 @@ boot_get_server_session_key (void)
 {
   return boot_Server_credential.server_session_key;
 }
+
+/*
+ * boot_set_server_session_key () -
+ */
+void
+boot_set_server_session_key (const char *key)
+{
+  memcpy (boot_Server_credential.server_session_key, key,
+	  SERVER_SESSION_KEY_SIZE);
+}
