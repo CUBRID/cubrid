@@ -8893,7 +8893,6 @@ void
 ssession_check_session (THREAD_ENTRY * thread_p, unsigned int rid,
 			char *request, int reqlen)
 {
-  int err = NO_ERROR;
   SESSION_KEY key = { DB_EMPTY_SESSION, INVALID_SOCKET };
   int row_count = -1, area_size;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
@@ -8901,7 +8900,7 @@ ssession_check_session (THREAD_ENTRY * thread_p, unsigned int rid,
   char *ptr = NULL, *area = NULL;
   char server_session_key[SERVER_SESSION_KEY_SIZE];
   SESSION_PARAM *session_params = NULL;
-  int error;
+  int error = NO_ERROR;
 
   ptr = or_unpack_int (request, &key.id);
   ptr = or_unpack_stream (ptr, server_session_key, SERVER_SESSION_KEY_SIZE);
@@ -8968,7 +8967,9 @@ ssession_check_session (THREAD_ENTRY * thread_p, unsigned int rid,
 	}
       else
 	{
-	  error = er_errid ();
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  area_size);
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  area_size = 0;
 	  return_error_to_client (thread_p, rid);
 	}
