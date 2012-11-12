@@ -2042,6 +2042,13 @@ cci_escape_string (int con_h_id, char *to, const char *from,
 
   reset_error_buffer (err_buf);
 
+  if (con_h_id == CCI_NO_BACKSLASH_ESCAPES_FALSE
+      || con_h_id == CCI_NO_BACKSLASH_ESCAPES_TRUE)
+    {
+      no_backslash_escapes = con_h_id;
+      goto convert;
+    }
+
   while (1)
     {
       MUTEX_LOCK (con_handle_table_mutex);
@@ -2068,13 +2075,6 @@ cci_escape_string (int con_h_id, char *to, const char *from,
 	}
     }
   reset_error_buffer (&(con_handle->err_buf));
-
-  if (con_h_id == CCI_NO_BACKSLASH_ESCAPES_FALSE
-      || con_h_id == CCI_NO_BACKSLASH_ESCAPES_TRUE)
-    {
-      no_backslash_escapes = con_h_id;
-      goto convert;
-    }
 
   if (IS_OUT_TRAN_STATUS (con_handle))
     {
@@ -2157,11 +2157,21 @@ convert:
   /* terminating NULL char */
   *target_ptr = '\0';
 
-  con_handle->ref_count = 0;
+  if (con_handle != NULL)
+    {
+      assert (con_h_id != CCI_NO_BACKSLASH_ESCAPES_FALSE
+	      && con_h_id != CCI_NO_BACKSLASH_ESCAPES_TRUE);
+
+      con_handle->ref_count = 0;
+    }
 
   return ((long) (target_ptr - to));
 
 error:
+
+  assert (con_handle != NULL);
+  assert (con_h_id != CCI_NO_BACKSLASH_ESCAPES_FALSE
+	  && con_h_id != CCI_NO_BACKSLASH_ESCAPES_TRUE);
 
   con_handle->ref_count = 0;
 
