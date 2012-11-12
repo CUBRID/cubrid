@@ -2142,6 +2142,10 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
       db_query_end (result);
       db_close_session (session);
 
+      if (auto_commit_mode == TRUE)
+	{
+	  db_commit_transaction ();
+	}
       continue;
 
     batch_error:
@@ -2171,6 +2175,11 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
       if (session)
 	{
 	  db_close_session (session);
+	}
+
+      if (auto_commit_mode == TRUE)
+	{
+	  db_abort_transaction ();
 	}
     }
 
