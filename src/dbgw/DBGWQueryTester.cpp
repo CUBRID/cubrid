@@ -56,30 +56,28 @@ namespace dbgw
   void DBGWQueryTester::addParameter(const char *szName, DBGWValueType type,
       const char *szValue, bool bNull)
   {
-    DBGWValueSharedPtr pValue;
+    int nValue;
+    int64 lValue;
+    void *pValue = (void *) szValue;
 
     if (type == DBGW_VAL_TYPE_INT)
       {
-        int nValue = atoi(szValue);
-        pValue = DBGWValueSharedPtr(new DBGWValue(type, (void *) &nValue, bNull));
+        nValue = atoi(szValue);
+        pValue = &nValue;
       }
     else if (type == DBGW_VAL_TYPE_LONG)
       {
-        int64 lValue = boost::lexical_cast<int64>(szValue);
-        pValue = DBGWValueSharedPtr(new DBGWValue(type, (void *) &lValue, bNull));
-      }
-    else
-      {
-        pValue = DBGWValueSharedPtr(new DBGWValue(type, (void *) szValue, bNull));
+        lValue = boost::lexical_cast<int64>(szValue);
+        pValue = &lValue;
       }
 
     if (szName == NULL)
       {
-        m_parameter.put(pValue);
+        m_parameter.put(type, pValue, bNull);
       }
     else
       {
-        m_parameter.put(szName, pValue);
+        m_parameter.put(szName, type, pValue, bNull);
       }
   }
 

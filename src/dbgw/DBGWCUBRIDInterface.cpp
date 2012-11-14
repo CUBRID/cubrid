@@ -18,7 +18,6 @@
  */
 #include <boost/format.hpp>
 #include <boost/lexical_cast.hpp>
-#include <boost/algorithm/string.hpp>
 #include "DBGWCommon.h"
 #include "DBGWError.h"
 #include "DBGWPorting.h"
@@ -33,6 +32,7 @@
 #define cci_connect_with_url cci_mock_connect_with_url
 #define cci_prepare cci_mock_prepare
 #define cci_execute cci_mock_execute
+#define cci_execute_array cci_mock_execute_array
 #endif
 
 namespace dbgw
@@ -126,13 +126,10 @@ namespace dbgw
         case DBGW_VAL_TYPE_INT:
           return CCI_U_TYPE_INT;
         case DBGW_VAL_TYPE_STRING:
-          return CCI_U_TYPE_STRING;
         case DBGW_VAL_TYPE_DATETIME:
-          return CCI_U_TYPE_DATETIME;
         case DBGW_VAL_TYPE_DATE:
-          return CCI_U_TYPE_DATE;
         case DBGW_VAL_TYPE_TIME:
-          return CCI_U_TYPE_TIME;
+          return CCI_U_TYPE_STRING;
         case DBGW_VAL_TYPE_LONG:
           return CCI_U_TYPE_BIGINT;
         case DBGW_VAL_TYPE_CHAR:
@@ -235,7 +232,7 @@ namespace dbgw
           throw e;
         }
 
-      DBGW_LOGF_INFO("%s (CONN_ID:%d) (%s)", "connection open.",
+      DBGW_LOGF_DEBUG("%s (CONN_ID:%d) (%s)", "connection open.",
           m_hCCIConnection, m_url.c_str());
     }
 
@@ -253,7 +250,7 @@ namespace dbgw
               throw e;
             }
 
-          DBGW_LOGF_INFO(
+          DBGW_LOGF_DEBUG(
               "%s (CONN_ID:%d)", "connection close.", m_hCCIConnection);
 
           m_hCCIConnection = -1;
@@ -319,7 +316,7 @@ namespace dbgw
           throw e;
         }
 
-      DBGW_LOGF_INFO("%s (%d) (CONN_ID:%d)", "connection autocommit",
+      DBGW_LOGF_DEBUG("%s (%d) (CONN_ID:%d)", "connection autocommit",
           bAutoCommit, m_hCCIConnection);
     }
 
@@ -337,7 +334,7 @@ namespace dbgw
           throw e;
         }
 
-      DBGW_LOGF_INFO("%s (CONN_ID:%d)", "connection commit.", m_hCCIConnection);
+      DBGW_LOGF_DEBUG("%s (CONN_ID:%d)", "connection commit.", m_hCCIConnection);
     }
 
     void _DBGWCUBRIDConnection::doRollback()
@@ -354,7 +351,7 @@ namespace dbgw
           throw e;
         }
 
-      DBGW_LOGF_INFO("%s (CONN_ID:%d)", "connection rollback.", m_hCCIConnection);
+      DBGW_LOGF_DEBUG("%s (CONN_ID:%d)", "connection rollback.", m_hCCIConnection);
     }
 
     void *_DBGWCUBRIDConnection::getNativeHandle() const
@@ -381,11 +378,13 @@ namespace dbgw
     void _DBGWCUBRIDStatementBase::clearBatch()
     {
       m_parameterList.clear();
+      m_arrayParameterList.clear();
     }
 
     void _DBGWCUBRIDStatementBase::clearParameters()
     {
       m_parameter.clear();
+      m_metaDataRawList.clear();
     }
 
     void _DBGWCUBRIDStatementBase::prepare()
@@ -403,7 +402,7 @@ namespace dbgw
           throw e;
         }
 
-      DBGW_LOGF_INFO("%s (SQL:%s) (CONN_ID:%d) (REQ_ID:%d)",
+      DBGW_LOGF_DEBUG("%s (SQL:%s) (CONN_ID:%d) (REQ_ID:%d)",
           "prepare statement.", m_sql.c_str(), m_hCCIConnection, m_hCCIRequest);
     }
 
@@ -422,7 +421,7 @@ namespace dbgw
           throw e;
         }
 
-      DBGW_LOGF_INFO("%s (SQL:%s) (CONN_ID:%d) (REQ_ID:%d)",
+      DBGW_LOGF_DEBUG("%s (SQL:%s) (CONN_ID:%d) (REQ_ID:%d)",
           "prepare statement.", m_sql.c_str(), m_hCCIConnection, m_hCCIRequest);
     }
 
@@ -441,6 +440,8 @@ namespace dbgw
           throw e;
         }
 
+      DBGW_LOGF_DEBUG("%s (REQ_ID:%d)", "execute statement.", m_hCCIRequest);
+
       return nResult;
     }
 
@@ -453,7 +454,8 @@ namespace dbgw
 
       int nResult = cci_execute_array(m_hCCIRequest, &pQueryResult, &cciError);
 
-      m_arrayParameterList.clear();
+      clearParameters();
+      clearBatch();
 
       if (nResult < 0)
         {
@@ -462,6 +464,8 @@ namespace dbgw
           DBGW_LOG_ERROR(e.what());
           throw e;
         }
+
+      DBGW_LOGF_DEBUG("%s (REQ_ID:%d)", "execute statement.", m_hCCIRequest);
 
       DBGWBatchResultSetSharedPtr pBatchResult(
           new _DBGWCUBRIDBatchResultSet(nResult, pQueryResult));
@@ -484,7 +488,7 @@ namespace dbgw
               throw e;
             }
 
-          DBGW_LOGF_INFO("%s (REQ_ID:%d)", "close statement.", m_hCCIRequest);
+          DBGW_LOGF_DEBUG("%s (REQ_ID:%d)", "close statement.", m_hCCIRequest);
           m_hCCIRequest = -1;
         }
     }
@@ -492,38 +496,25 @@ namespace dbgw
     void _DBGWCUBRIDStatementBase::registerOutParameter(int nIndex,
         DBGWValueType type)
     {
-      if ((int) m_metaDataRawList.size() < nIndex)
+      if ((int) m_metaDataRawList.size() < nIndex + 1)
         {
-          m_metaDataRawList.resize(nIndex);
+          m_metaDataRawList.resize(nIndex + 1);
         }
 
-      if (m_metaDataRawList[nIndex - 1].unused)
+      if (m_metaDataRawList[nIndex].unused)
         {
           setNull(nIndex, type);
-          m_metaDataRawList[nIndex - 1].mode = DBGW_PARAM_MODE_OUT;
+          m_metaDataRawList[nIndex].mode = DBGW_PARAM_MODE_OUT;
         }
       else
         {
-          m_metaDataRawList[nIndex - 1].mode = DBGW_PARAM_MODE_INOUT;
+          m_metaDataRawList[nIndex].mode = DBGW_PARAM_MODE_INOUT;
         }
-    }
-
-    void _DBGWCUBRIDStatementBase::set(int nIndex, const DBGWValue &value)
-    {
-      DBGWValueSharedPtr pValue(new DBGWValue(value));
-      if (getLastErrorCode() != DBGW_ER_NO_ERROR)
-        {
-          throw getLastException();
-        }
-
-      m_parameter.set(nIndex - 1, pValue);
-
-      setParameterMetaDataRaw(nIndex, pValue->getType());
     }
 
     void _DBGWCUBRIDStatementBase::setInt(int nIndex, int nValue)
     {
-      if (m_parameter.set(nIndex - 1, nValue) == false)
+      if (m_parameter.set(nIndex, nValue) == false)
         {
           throw getLastException();
         }
@@ -533,7 +524,7 @@ namespace dbgw
 
     void _DBGWCUBRIDStatementBase::setLong(int nIndex, int64 lValue)
     {
-      if (m_parameter.set(nIndex - 1, lValue) == false)
+      if (m_parameter.set(nIndex, lValue) == false)
         {
           throw getLastException();
         }
@@ -543,7 +534,7 @@ namespace dbgw
 
     void _DBGWCUBRIDStatementBase::setChar(int nIndex, char cValue)
     {
-      if (m_parameter.set(nIndex - 1, cValue) == false)
+      if (m_parameter.set(nIndex, cValue) == false)
         {
           throw getLastException();
         }
@@ -553,7 +544,7 @@ namespace dbgw
 
     void _DBGWCUBRIDStatementBase::setString(int nIndex, const char *szValue)
     {
-      if (m_parameter.set(nIndex - 1, szValue) == false)
+      if (m_parameter.set(nIndex, szValue) == false)
         {
           throw getLastException();
         }
@@ -563,7 +554,7 @@ namespace dbgw
 
     void _DBGWCUBRIDStatementBase::setFloat(int nIndex, float fValue)
     {
-      if (m_parameter.set(nIndex - 1, fValue) == false)
+      if (m_parameter.set(nIndex, fValue) == false)
         {
           throw getLastException();
         }
@@ -573,7 +564,7 @@ namespace dbgw
 
     void _DBGWCUBRIDStatementBase::setDouble(int nIndex, double dValue)
     {
-      if (m_parameter.set(nIndex - 1, dValue) == false)
+      if (m_parameter.set(nIndex, dValue) == false)
         {
           throw getLastException();
         }
@@ -583,7 +574,7 @@ namespace dbgw
 
     void _DBGWCUBRIDStatementBase::setDate(int nIndex, const struct tm &tmValue)
     {
-      if (m_parameter.set(nIndex - 1, DBGW_VAL_TYPE_DATE, tmValue) == false)
+      if (m_parameter.set(nIndex, DBGW_VAL_TYPE_DATE, tmValue) == false)
         {
           throw getLastException();
         }
@@ -593,7 +584,7 @@ namespace dbgw
 
     void _DBGWCUBRIDStatementBase::setTime(int nIndex, const struct tm &tmValue)
     {
-      if (m_parameter.set(nIndex - 1, DBGW_VAL_TYPE_TIME, tmValue) == false)
+      if (m_parameter.set(nIndex, DBGW_VAL_TYPE_TIME, tmValue) == false)
         {
           throw getLastException();
         }
@@ -604,7 +595,7 @@ namespace dbgw
     void _DBGWCUBRIDStatementBase::setDateTime(int nIndex,
         const struct tm &tmValue)
     {
-      if (m_parameter.set(nIndex - 1, DBGW_VAL_TYPE_DATETIME, tmValue) == false)
+      if (m_parameter.set(nIndex, DBGW_VAL_TYPE_DATETIME, tmValue) == false)
         {
           throw getLastException();
         }
@@ -614,7 +605,7 @@ namespace dbgw
 
     void _DBGWCUBRIDStatementBase::setNull(int nIndex, DBGWValueType type)
     {
-      if (m_parameter.set(nIndex - 1, type, NULL) == false)
+      if (m_parameter.set(nIndex, type, NULL) == false)
         {
           throw getLastException();
         }
@@ -630,12 +621,12 @@ namespace dbgw
     void _DBGWCUBRIDStatementBase::setParameterMetaDataRaw(size_t nIndex,
         DBGWValueType type)
     {
-      if (m_metaDataRawList.size() < nIndex)
+      if (m_metaDataRawList.size() < nIndex + 1)
         {
-          m_metaDataRawList.resize(nIndex);
+          m_metaDataRawList.resize(nIndex + 1);
         }
 
-      m_metaDataRawList[nIndex - 1] = _DBGWCUBRIDParameterMetaDataRaw(type);
+      m_metaDataRawList[nIndex] = _DBGWCUBRIDParameterMetaData(type);
     }
 
     void _DBGWCUBRIDStatementBase::bindParameters()
@@ -769,82 +760,15 @@ namespace dbgw
         }
     }
 
-    _DBGWCUBRIDParameterMetaDataRaw::_DBGWCUBRIDParameterMetaDataRaw() :
+    _DBGWCUBRIDParameterMetaData::_DBGWCUBRIDParameterMetaData() :
       unused(true), mode(DBGW_PARAM_MODE_IN), type(DBGW_VAL_TYPE_UNDEFINED)
     {
     }
 
-    _DBGWCUBRIDParameterMetaDataRaw::_DBGWCUBRIDParameterMetaDataRaw(
+    _DBGWCUBRIDParameterMetaData::_DBGWCUBRIDParameterMetaData(
         DBGWValueType type) :
       unused(false), mode(DBGW_PARAM_MODE_IN), type(type)
     {
-    }
-
-    _DBGWCUBRIDParameterMetaData::_DBGWCUBRIDParameterMetaData(
-        const _DBGWCUBRIDParameterMetaDataList &metaDataRawList) :
-      m_metaDataRawList(metaDataRawList)
-    {
-    }
-
-    _DBGWCUBRIDParameterMetaData::~_DBGWCUBRIDParameterMetaData()
-    {
-    }
-
-    bool _DBGWCUBRIDParameterMetaData::getParameterMode(size_t nIndex,
-        DBGWParameterMode *pMode) const
-    {
-      clearException();
-
-      try
-        {
-          if (m_metaDataRawList.size() < nIndex)
-            {
-              ArrayIndexOutOfBoundsException e(nIndex,
-                  "DBGWCUBRIDParameterMetaData");
-              DBGW_LOG_ERROR(e.what());
-              throw e;
-            }
-
-          *pMode = m_metaDataRawList[nIndex].mode;
-        }
-      catch (DBGWException &e)
-        {
-          setLastException(e);
-          return false;
-        }
-
-      return true;
-    }
-
-    size_t _DBGWCUBRIDParameterMetaData::getParameterCount() const
-    {
-      return m_metaDataRawList.size();
-    }
-
-    bool _DBGWCUBRIDParameterMetaData::getParameterType(size_t nIndex,
-        DBGWValueType *pType) const
-    {
-      clearException();
-
-      try
-        {
-          if (m_metaDataRawList.size() < nIndex)
-            {
-              ArrayIndexOutOfBoundsException e(nIndex,
-                  "DBGWCUBRIDParameterMetaData");
-              DBGW_LOG_ERROR(e.what());
-              throw e;
-            }
-
-          *pType = m_metaDataRawList[nIndex].type;
-        }
-      catch (DBGWException &e)
-        {
-          setLastException(e);
-          return false;
-        }
-
-      return true;
     }
 
     _DBGWCUBRIDArrayParameter::_DBGWCUBRIDArrayParameter(
@@ -1076,23 +1000,6 @@ namespace dbgw
           setLastException(e);
           return DBGWBatchResultSetSharedPtr();
         }
-    }
-
-    bool _DBGWCUBRIDPreparedStatement::set(int nIndex, const DBGWValue &value)
-    {
-      clearException();
-
-      try
-        {
-          m_baseStatement.set(nIndex, value);
-        }
-      catch (DBGWException &e)
-        {
-          setLastException(e);
-          return false;
-        }
-
-      return true;
     }
 
     bool _DBGWCUBRIDPreparedStatement::setInt(int nIndex, int nValue)
@@ -1333,6 +1240,8 @@ namespace dbgw
 
       try
         {
+          m_pOutParamResult.reset();
+
           int nRowCount = m_baseStatement.execute();
 
           if (isExistOutParameter())
@@ -1374,6 +1283,8 @@ namespace dbgw
 
       try
         {
+          m_pOutParamResult.reset();
+
           int nAffectedRow = m_baseStatement.execute();
 
           if (isExistOutParameter())
@@ -1410,30 +1321,13 @@ namespace dbgw
         {
           m_baseStatement.registerOutParameter(nIndex, type);
 
-          if (m_metaDataRawList.size() < nIndex)
+          if (m_metaDataRawList.size() < nIndex + 1)
             {
-              m_metaDataRawList.resize(nIndex);
+              m_metaDataRawList.resize(nIndex + 1);
             }
 
-          m_metaDataRawList[nIndex - 1].unused = false;
-          m_metaDataRawList[nIndex - 1].columnType = type;
-        }
-      catch (DBGWException &e)
-        {
-          setLastException(e);
-          return false;
-        }
-
-      return true;
-    }
-
-    bool _DBGWCUBRIDCallableStatement::set(int nIndex, const DBGWValue &value)
-    {
-      clearException();
-
-      try
-        {
-          m_baseStatement.set(nIndex, value);
+          m_metaDataRawList[nIndex].unused = false;
+          m_metaDataRawList[nIndex].columnType = type;
         }
       catch (DBGWException &e)
         {
@@ -1659,6 +1553,20 @@ namespace dbgw
               throw e;
             }
 
+          DBGWValueType type;
+
+          if (m_pOutParamResult->getType(nIndex, &type) == false)
+            {
+              throw getLastException();
+            }
+
+          if (type == DBGW_VAL_TYPE_UNDEFINED)
+            {
+              NotExistOutParameterException e(nIndex);
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
           if (m_pOutParamResult->getInt(nIndex, pValue) == false)
             {
               throw getLastException();
@@ -1683,6 +1591,20 @@ namespace dbgw
           if (m_pOutParamResult == NULL)
             {
               NotExistOutParameterException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          DBGWValueType type;
+
+          if (m_pOutParamResult->getType(nIndex, &type) == false)
+            {
+              throw getLastException();
+            }
+
+          if (type == DBGW_VAL_TYPE_UNDEFINED)
+            {
+              NotExistOutParameterException e(nIndex);
               DBGW_LOG_ERROR(e.what());
               throw e;
             }
@@ -1714,6 +1636,20 @@ namespace dbgw
               throw e;
             }
 
+          DBGWValueType type;
+
+          if (m_pOutParamResult->getType(nIndex, &type) == false)
+            {
+              throw getLastException();
+            }
+
+          if (type == DBGW_VAL_TYPE_UNDEFINED)
+            {
+              NotExistOutParameterException e(nIndex);
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
           if (m_pOutParamResult->getLong(nIndex, pValue) == false)
             {
               throw getLastException();
@@ -1737,6 +1673,20 @@ namespace dbgw
           if (m_pOutParamResult == NULL)
             {
               NotExistOutParameterException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          DBGWValueType type;
+
+          if (m_pOutParamResult->getType(nIndex, &type) == false)
+            {
+              throw getLastException();
+            }
+
+          if (type == DBGW_VAL_TYPE_UNDEFINED)
+            {
+              NotExistOutParameterException e(nIndex);
               DBGW_LOG_ERROR(e.what());
               throw e;
             }
@@ -1768,6 +1718,20 @@ namespace dbgw
               throw e;
             }
 
+          DBGWValueType type;
+
+          if (m_pOutParamResult->getType(nIndex, &type) == false)
+            {
+              throw getLastException();
+            }
+
+          if (type == DBGW_VAL_TYPE_UNDEFINED)
+            {
+              NotExistOutParameterException e(nIndex);
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
           if (m_pOutParamResult->getFloat(nIndex, pValue) == false)
             {
               throw getLastException();
@@ -1791,6 +1755,20 @@ namespace dbgw
           if (m_pOutParamResult == NULL)
             {
               NotExistOutParameterException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          DBGWValueType type;
+
+          if (m_pOutParamResult->getType(nIndex, &type) == false)
+            {
+              throw getLastException();
+            }
+
+          if (type == DBGW_VAL_TYPE_UNDEFINED)
+            {
+              NotExistOutParameterException e(nIndex);
               DBGW_LOG_ERROR(e.what());
               throw e;
             }
@@ -1823,6 +1801,20 @@ namespace dbgw
               throw e;
             }
 
+          DBGWValueType type;
+
+          if (m_pOutParamResult->getType(nIndex, &type) == false)
+            {
+              throw getLastException();
+            }
+
+          if (type == DBGW_VAL_TYPE_UNDEFINED)
+            {
+              NotExistOutParameterException e(nIndex);
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
           if (m_pOutParamResult->getDateTime(nIndex, pValue) == false)
             {
               throw getLastException();
@@ -1846,6 +1838,20 @@ namespace dbgw
           if (m_pOutParamResult == NULL)
             {
               NotExistOutParameterException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          DBGWValueType type;
+
+          if (m_pOutParamResult->getType(nIndex, &type) == false)
+            {
+              throw getLastException();
+            }
+
+          if (type == DBGW_VAL_TYPE_UNDEFINED)
+            {
+              NotExistOutParameterException e(nIndex);
               DBGW_LOG_ERROR(e.what());
               throw e;
             }
@@ -1979,7 +1985,7 @@ namespace dbgw
 
       try
         {
-          if (m_metaDataRawList.size() < nIndex - 1)
+          if (m_metaDataRawList.size() < nIndex + 1)
             {
               ArrayIndexOutOfBoundsException e(nIndex,
                   "DBGWCUBRIDResultSetMetaData");
@@ -1987,7 +1993,7 @@ namespace dbgw
               throw e;
             }
 
-          *szName = m_metaDataRawList[nIndex - 1].columnName.c_str();
+          *szName = m_metaDataRawList[nIndex].columnName.c_str();
         }
       catch (DBGWException &e)
         {
@@ -2005,7 +2011,7 @@ namespace dbgw
 
       try
         {
-          if (m_metaDataRawList.size() < nIndex - 1)
+          if (m_metaDataRawList.size() < nIndex + 1)
             {
               ArrayIndexOutOfBoundsException e(nIndex,
                   "DBGWCUBRIDResultSetMetaData");
@@ -2013,7 +2019,7 @@ namespace dbgw
               throw e;
             }
 
-          *pType = m_metaDataRawList[nIndex - 1].columnType;
+          *pType = m_metaDataRawList[nIndex].columnType;
         }
       catch (DBGWException &e)
         {
@@ -2032,7 +2038,7 @@ namespace dbgw
        * so we don't care about exception.
        */
 
-      if (m_metaDataRawList.size() < nIndex)
+      if (m_metaDataRawList.size() < nIndex + 1)
         {
           ArrayIndexOutOfBoundsException e(nIndex,
               "DBGWCUBRIDResultSetMetaDataRaw");
@@ -2161,7 +2167,14 @@ namespace dbgw
 
       try
         {
-          const DBGWValue *pValue = m_resultSet.getValue(nIndex - 1);
+          if (m_cursorPos == CCI_CURSOR_FIRST)
+            {
+              InvalidCursorPositionException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          const DBGWValue *pValue = m_resultSet.getValue(nIndex);
           if (pValue == NULL)
             {
               throw getLastException();
@@ -2180,42 +2193,178 @@ namespace dbgw
 
     bool _DBGWCUBRIDResultSet::getInt(int nIndex, int *pValue) const
     {
-      return m_resultSet.getInt(nIndex - 1, pValue);
+      clearException();
+
+      try
+        {
+          if (m_cursorPos == CCI_CURSOR_FIRST)
+            {
+              InvalidCursorPositionException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          return m_resultSet.getInt(nIndex, pValue);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
     }
 
     bool _DBGWCUBRIDResultSet::getCString(int nIndex, char **pValue) const
     {
-      return m_resultSet.getCString(nIndex - 1, pValue);
+      clearException();
+
+      try
+        {
+          if (m_cursorPos == CCI_CURSOR_FIRST)
+            {
+              InvalidCursorPositionException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          return m_resultSet.getCString(nIndex, pValue);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
     }
 
     bool _DBGWCUBRIDResultSet::getLong(int nIndex, int64 *pValue) const
     {
-      return m_resultSet.getLong(nIndex - 1, pValue);
+      clearException();
+
+      try
+        {
+          if (m_cursorPos == CCI_CURSOR_FIRST)
+            {
+              InvalidCursorPositionException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          return m_resultSet.getLong(nIndex, pValue);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
     }
 
     bool _DBGWCUBRIDResultSet::getChar(int nIndex, char *pValue) const
     {
-      return m_resultSet.getChar(nIndex - 1, pValue);
+      clearException();
+
+      try
+        {
+          if (m_cursorPos == CCI_CURSOR_FIRST)
+            {
+              InvalidCursorPositionException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          return m_resultSet.getChar(nIndex, pValue);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
     }
 
     bool _DBGWCUBRIDResultSet::getFloat(int nIndex, float *pValue) const
     {
-      return m_resultSet.getFloat(nIndex - 1, pValue);
+      clearException();
+
+      try
+        {
+          if (m_cursorPos == CCI_CURSOR_FIRST)
+            {
+              InvalidCursorPositionException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          return m_resultSet.getFloat(nIndex, pValue);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
     }
 
     bool _DBGWCUBRIDResultSet::getDouble(int nIndex, double *pValue) const
     {
-      return m_resultSet.getDouble(nIndex - 1, pValue);
+      clearException();
+
+      try
+        {
+          if (m_cursorPos == CCI_CURSOR_FIRST)
+            {
+              InvalidCursorPositionException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          return m_resultSet.getDouble(nIndex, pValue);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
     }
 
     bool _DBGWCUBRIDResultSet::getDateTime(int nIndex, struct tm *pValue) const
     {
-      return m_resultSet.getDateTime(nIndex - 1, pValue);
+      clearException();
+
+      try
+        {
+          if (m_cursorPos == CCI_CURSOR_FIRST)
+            {
+              InvalidCursorPositionException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          return m_resultSet.getDateTime(nIndex, pValue);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
     }
 
     const DBGWValue *_DBGWCUBRIDResultSet::getValue(int nIndex) const
     {
-      return m_resultSet.getValue(nIndex - 1);
+      clearException();
+
+      try
+        {
+          if (m_cursorPos == CCI_CURSOR_FIRST)
+            {
+              InvalidCursorPositionException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          return m_resultSet.getValue(nIndex);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
     }
 
     DBGWResultSetMetaDataSharedPtr _DBGWCUBRIDResultSet::getMetaData() const
@@ -2236,6 +2385,8 @@ namespace dbgw
               DBGW_LOG_ERROR(e.what());
               throw e;
             }
+
+          DBGW_LOGF_DEBUG("%s (REQ_ID:%d)", "close resultset.", m_hCCIRequest);
         }
     }
 
@@ -2382,8 +2533,7 @@ namespace dbgw
     {
       if (m_cursorPos == CCI_CURSOR_FIRST)
         {
-          DBGWValueSharedPtr p(new DBGWValue(type, pValue, bNull, nLength));
-          m_resultSet.put(szKey, p);
+          m_resultSet.put(szKey, type, pValue, bNull, nLength);
         }
       else
         {
@@ -2402,6 +2552,7 @@ namespace dbgw
           int nAffectedRow = CCI_QUERY_RESULT_RESULT(pQueryResult, i);
 
           batchResultSetRaw.affectedRow = nAffectedRow;
+          batchResultSetRaw.queryType = DBGW_STMT_TYPE_UPDATE;
 
           if (nAffectedRow < 0)
             {
@@ -2409,7 +2560,6 @@ namespace dbgw
                   CCI_QUERY_RESULT_ERR_NO(pQueryResult, i);
               batchResultSetRaw.errorMessage =
                   CCI_QUERY_RESULT_ERR_MSG(pQueryResult, i);
-              batchResultSetRaw.queryType = DBGW_STMT_TYPE_UPDATE;
 
               setExecuteStatus(db::DBGW_BATCH_EXEC_FAIL);
             }

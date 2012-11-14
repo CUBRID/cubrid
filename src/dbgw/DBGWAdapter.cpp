@@ -757,7 +757,7 @@ namespace dbgw
             }
         }
 
-        DECLSPECIFIER size_t __stdcall Size(Handle hParamList)
+        DECLSPECIFIER size_t __stdcall GetSize(Handle hParamList)
         {
           clearException();
 
@@ -775,17 +775,17 @@ namespace dbgw
           catch (DBGWException &e)
             {
               CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_HANDLE);
-              return 0;
+              return -1;
             }
         }
 
-        DECLSPECIFIER bool __stdcall add(Handle hParamList, ParamSet::Handle hParam)
+        DECLSPECIFIER bool __stdcall Add(Handle hParamList, ParamSet::Handle hParam)
         {
           clearException();
 
           try
             {
-              if (hParamList == NULL)
+              if (hParamList == NULL || hParam == NULL)
                 {
                   InvalidHandleException e;
                   DBGW_LOG_ERROR(e.what());

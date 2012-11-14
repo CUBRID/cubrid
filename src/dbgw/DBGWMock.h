@@ -39,6 +39,8 @@ namespace dbgw
       T_CCI_ERROR *err_buf);
   extern int cci_mock_execute(int req_handle, char flag, int max_col_size,
       T_CCI_ERROR *err_buf);
+  extern int cci_mock_execute_array(int req_h_id, T_CCI_QUERY_RESULT **qr,
+      T_CCI_ERROR *err_buf);
 
 
   typedef enum
@@ -47,6 +49,7 @@ namespace dbgw
     DBGW_FAULT_TYPE_PARTIAL_CONNECT_FAIL,
     DBGW_FAULT_TYPE_PARTIAL_PREPARE_FAIL,
     DBGW_FAULT_TYPE_PARTIAL_EXECUTE_FAIL,
+    DBGW_FAULT_TYPE_PARTIAL_EXECUTE_ARRAY_FAIL,
   } DBGW_FAULT_TYPE;
 
   extern DBGW_FAULT_TYPE dbgw_mock_get_fault();
@@ -90,10 +93,22 @@ namespace dbgw
           } \
       } \
   } while (false)
+
+#define DBGW_FAULT_PARTIAL_EXECUTE_ARRAY_FAIL(GROUP) \
+  do { \
+      if (dbgw_mock_get_fault() == DBGW_FAULT_TYPE_PARTIAL_EXECUTE_ARRAY_FAIL) { \
+          if (dbgw_mock_get_group() == NULL || !strcmp(dbgw_mock_get_group(), GROUP)) { \
+              cci_mock_set_fault(CCI_FAULT_TYPE_EXEC_BEFORE_RETURN_ERR, "cci_mock_execute_array", dbgw_mock_get_int_return()); \
+          } else { \
+              cci_mock_clear_fault(); \
+          } \
+      } \
+  } while (false)
 #else
 #define DBGW_FAULT_PARTIAL_CONNECT_FAIL(GROUP)
 #define DBGW_FAULT_PARTIAL_PREPARE_FAIL(GROUP)
 #define DBGW_FAULT_PARTIAL_EXECUTE_FAIL(GROUP)
+#define DBGW_FAULT_PARTIAL_EXECUTE_ARRAY_FAIL(GROUP)
 #endif
 
 }

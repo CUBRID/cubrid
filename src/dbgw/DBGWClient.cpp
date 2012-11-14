@@ -111,7 +111,8 @@ namespace dbgw
           }
       }
 
-    if (m_bCheckValidation && getLastErrorCode() == DBGW_ER_NO_ERROR)
+    if (m_bCheckValidation
+        && m_lastException.getErrorCode() != DBGW_ER_NO_ERROR)
       {
         setLastException(m_lastException);
       }
@@ -169,14 +170,12 @@ namespace dbgw
 
         pQuery = m_pQueryMapper->getQuery(m_sqlName.c_str(),
             (*it)->getGroupName(), NULL, it == m_executorList.begin());
-      }
-
-    if (m_execType == DBGW_EXEC_TYPE_ARRAY
-        && pQuery->getType() != DBGW_STMT_TYPE_UPDATE)
-      {
-        InvalidQueryTypeException e;
-        DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-        throw e;
+        if (pQuery != NULL && pQuery->getType() != DBGW_STMT_TYPE_UPDATE)
+          {
+            InvalidQueryTypeException e;
+            DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+            throw e;
+          }
       }
 
     return pQuery;
@@ -187,6 +186,11 @@ namespace dbgw
   {
     if ((*it)->isIgnoreResult() == false)
       {
+        /**
+         * if you have registered more than one group in the query,
+         * this query execution is primary and important.
+         * we will return this result and error.
+         */
         if (m_bMakeResult)
           {
             CannotMakeMulipleResultException e(m_sqlName.c_str());
@@ -213,11 +217,14 @@ namespace dbgw
           }
 
         m_bMakeResult = true;
-
-        DBGW_LOG_INFO(m_logger.getLogMessage("execute statement.").c_str());
       }
     else
       {
+        /**
+         * if you have registered more than one group in the query,
+         * this query execution is secondary and less important.
+         * we will discard this result and error.
+         */
         if (m_bCheckValidation == false
             && pQuery->getType() == DBGW_STMT_TYPE_SELECT)
           {
@@ -241,9 +248,6 @@ namespace dbgw
                 throw getLastException();
               }
           }
-
-        DBGW_LOG_INFO(m_logger.getLogMessage(
-            "execute statement. (ignore result)").c_str());
       }
   }
 
@@ -298,7 +302,7 @@ namespace dbgw
                   {
                     pReturnValue = m_pExternalResultSet->getValue(i);
                     pInternalvalue = m_pInternalResultSet->getValue(i);
-                    pMetaData->getColumnName(i + 1, &szColumnName);
+                    pMetaData->getColumnName(i, &szColumnName);
 
                     if (pInternalvalue == NULL)
                       {
@@ -378,6 +382,7 @@ namespace dbgw
           {
             throw getLastException();
           }
+
         if (m_pInternalBatchResultSet->getAffectedRow(i,
             &nInternalBatchResultAffectiedRow) == false)
           {
@@ -397,7 +402,11 @@ namespace dbgw
   void _DBGWClientProxy::processError(_DBGWExecutorList::iterator it,
       const DBGWException &exception)
   {
-    if (m_bCheckValidation)
+    if ((*it)->isIgnoreResult() == false)
+      {
+        throw exception;
+      }
+    else if (m_bCheckValidation)
       {
         /**
          * There is chance to change last error code by executing query of remaining groups.
@@ -425,10 +434,6 @@ namespace dbgw
             m_pExternalResultSet->first();
             throw m_lastException;
           }
-      }
-    else if ((*it)->isIgnoreResult() == false)
-      {
-        throw exception;
       }
   }
 
@@ -820,7 +825,7 @@ namespace dbgw
 
     try
       {
-        if (m_metaDataRawList.size() < nIndex - 1)
+        if (m_metaDataRawList.size() < nIndex + 1)
           {
             ArrayIndexOutOfBoundsException e(nIndex,
                 "DBGWCUBRIDResultSetMetaData");
@@ -828,7 +833,7 @@ namespace dbgw
             throw e;
           }
 
-        *szName = m_metaDataRawList[nIndex - 1].columnName.c_str();
+        *szName = m_metaDataRawList[nIndex].columnName.c_str();
       }
     catch (DBGWException &e)
       {
@@ -846,7 +851,7 @@ namespace dbgw
 
     try
       {
-        if (m_metaDataRawList.size() < nIndex - 1)
+        if (m_metaDataRawList.size() < nIndex + 1)
           {
             ArrayIndexOutOfBoundsException e(nIndex,
                 "DBGWCUBRIDResultSetMetaData");
@@ -854,7 +859,7 @@ namespace dbgw
             throw e;
           }
 
-        *pType = m_metaDataRawList[nIndex - 1].columnType;
+        *pType = m_metaDataRawList[nIndex].columnType;
       }
     catch (DBGWException &e)
       {
@@ -867,8 +872,8 @@ namespace dbgw
 
   DBGWClientResult::DBGWClientResult(_DBGWBoundQuerySharedPtr pQuery,
       int nAffectedRow) :
-    m_bFetched(false), m_pQuery(pQuery),
-    m_logger(pQuery->getGroupName(), pQuery->getSqlName()),
+    m_bFetched(false),
+    m_pQuery(pQuery), m_logger(pQuery->getGroupName(), pQuery->getSqlName()),
     m_nAffectedRow(nAffectedRow)
   {
   }
@@ -884,8 +889,10 @@ namespace dbgw
 
   DBGWClientResult::DBGWClientResult(_DBGWBoundQuerySharedPtr pQuery,
       DBGWResultSetSharedPtr pResultSet) :
-    m_bFetched(false), m_pResultSet(pResultSet), m_pQuery(pQuery),
-    m_logger(pQuery->getGroupName(), pQuery->getSqlName()), m_nAffectedRow(-1)
+    m_bFetched(false), m_pResultSet(pResultSet),
+    m_pUserDefinedResultSetMetaData(pQuery->getUserDefinedResultSetMetaData()),
+    m_pQuery(pQuery), m_logger(pQuery->getGroupName(), pQuery->getSqlName()),
+    m_nAffectedRow(-1)
   {
   }
 
@@ -1004,8 +1011,14 @@ namespace dbgw
 
     try
       {
-        if (m_pQuery->getType() != DBGW_STMT_TYPE_SELECT
-            || m_bFetched == false)
+        if (m_pQuery->getType() != DBGW_STMT_TYPE_SELECT)
+          {
+            InvalidClientOperationException e;
+            DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+            throw e;
+          }
+
+        if (m_bFetched == false)
           {
             AccessDataBeforeFetchException e;
             DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
@@ -1036,7 +1049,7 @@ namespace dbgw
                 throw e;
               }
 
-            const DBGWValue *pValue = m_pResultSet->getValue(nIndex + 1);
+            const DBGWValue *pValue = m_pResultSet->getValue(nIndex);
             if (pValue == NULL)
               {
                 throw getLastException();
@@ -1046,7 +1059,7 @@ namespace dbgw
           }
         else if (m_pQuery->getType() == DBGW_STMT_TYPE_PROCEDURE)
           {
-            const DBGWValue *pValue = m_pCallableStatement->getValue(nIndex + 1);
+            const DBGWValue *pValue = m_pCallableStatement->getValue(nIndex);
             if (pValue == NULL)
               {
                 throw getLastException();
@@ -1085,11 +1098,15 @@ namespace dbgw
                 throw e;
               }
 
-            return m_pResultSet->getType(nIndex + 1, pType);
+            return m_pResultSet->getType(nIndex, pType);
           }
         else if (m_pQuery->getType() == DBGW_STMT_TYPE_PROCEDURE)
           {
-            return m_pCallableStatement->getType(nIndex + 1, pType);
+            const _DBGWQueryParameter &queryParam = m_pQuery->getQueryParam(
+                nIndex);
+
+            return m_pCallableStatement->getType(
+                queryParam.firstPlaceHolderIndex, pType);
           }
         else
           {
@@ -1120,7 +1137,7 @@ namespace dbgw
                 throw e;
               }
 
-            return m_pResultSet->getInt(nIndex + 1, pValue);
+            return m_pResultSet->getInt(nIndex, pValue);
           }
         else if (m_pQuery->getType() == DBGW_STMT_TYPE_PROCEDURE)
           {
@@ -1128,7 +1145,7 @@ namespace dbgw
                 nIndex);
 
             return m_pCallableStatement->getInt(
-                queryParam.firstPlaceHolderIndex + 1, pValue);
+                queryParam.firstPlaceHolderIndex, pValue);
           }
         else
           {
@@ -1159,7 +1176,7 @@ namespace dbgw
                 throw e;
               }
 
-            return m_pResultSet->getCString(nIndex + 1, pValue);
+            return m_pResultSet->getCString(nIndex, pValue);
           }
         else if (m_pQuery->getType() == DBGW_STMT_TYPE_PROCEDURE)
           {
@@ -1167,7 +1184,7 @@ namespace dbgw
                 nIndex);
 
             return m_pCallableStatement->getCString(
-                queryParam.firstPlaceHolderIndex + 1, pValue);
+                queryParam.firstPlaceHolderIndex, pValue);
           }
         else
           {
@@ -1198,7 +1215,7 @@ namespace dbgw
                 throw e;
               }
 
-            return m_pResultSet->getLong(nIndex + 1, pValue);
+            return m_pResultSet->getLong(nIndex, pValue);
           }
         else if (m_pQuery->getType() == DBGW_STMT_TYPE_PROCEDURE)
           {
@@ -1206,7 +1223,7 @@ namespace dbgw
                 nIndex);
 
             return m_pCallableStatement->getLong(
-                queryParam.firstPlaceHolderIndex + 1, pValue);
+                queryParam.firstPlaceHolderIndex, pValue);
           }
         else
           {
@@ -1237,7 +1254,7 @@ namespace dbgw
                 throw e;
               }
 
-            return m_pResultSet->getChar(nIndex + 1, pValue);
+            return m_pResultSet->getChar(nIndex, pValue);
           }
         else if (m_pQuery->getType() == DBGW_STMT_TYPE_PROCEDURE)
           {
@@ -1245,7 +1262,7 @@ namespace dbgw
                 nIndex);
 
             return m_pCallableStatement->getChar(
-                queryParam.firstPlaceHolderIndex + 1, pValue);
+                queryParam.firstPlaceHolderIndex, pValue);
           }
         else
           {
@@ -1276,7 +1293,7 @@ namespace dbgw
                 throw e;
               }
 
-            return m_pResultSet->getFloat(nIndex + 1, pValue);
+            return m_pResultSet->getFloat(nIndex, pValue);
           }
         else if (m_pQuery->getType() == DBGW_STMT_TYPE_PROCEDURE)
           {
@@ -1284,7 +1301,7 @@ namespace dbgw
                 nIndex);
 
             return m_pCallableStatement->getFloat(
-                queryParam.firstPlaceHolderIndex + 1, pValue);
+                queryParam.firstPlaceHolderIndex, pValue);
           }
         else
           {
@@ -1315,7 +1332,7 @@ namespace dbgw
                 throw e;
               }
 
-            return m_pResultSet->getDouble(nIndex + 1, pValue);
+            return m_pResultSet->getDouble(nIndex, pValue);
           }
         else if (m_pQuery->getType() == DBGW_STMT_TYPE_PROCEDURE)
           {
@@ -1323,7 +1340,7 @@ namespace dbgw
                 nIndex);
 
             return m_pCallableStatement->getDouble(
-                queryParam.firstPlaceHolderIndex + 1, pValue);
+                queryParam.firstPlaceHolderIndex, pValue);
           }
         else
           {
@@ -1354,7 +1371,7 @@ namespace dbgw
                 throw e;
               }
 
-            return m_pResultSet->getDateTime(nIndex + 1, pValue);
+            return m_pResultSet->getDateTime(nIndex, pValue);
           }
         else if (m_pQuery->getType() == DBGW_STMT_TYPE_PROCEDURE)
           {
@@ -1362,7 +1379,7 @@ namespace dbgw
                 nIndex);
 
             return m_pCallableStatement->getDateTime(
-                queryParam.firstPlaceHolderIndex + 1, pValue);
+                queryParam.firstPlaceHolderIndex, pValue);
           }
         else
           {
@@ -1393,7 +1410,7 @@ namespace dbgw
                 throw e;
               }
 
-            return m_pResultSet->getValue(nIndex + 1);
+            return m_pResultSet->getValue(nIndex);
           }
         else if (m_pQuery->getType() == DBGW_STMT_TYPE_PROCEDURE)
           {
@@ -1401,7 +1418,7 @@ namespace dbgw
                 nIndex);
 
             return m_pCallableStatement->getValue(
-                queryParam.firstPlaceHolderIndex + 1);
+                queryParam.firstPlaceHolderIndex);
           }
         else
           {
@@ -1602,14 +1619,13 @@ namespace dbgw
 
     if (_DBGWLogger::isWritable(CCI_LOG_LEVEL_DEBUG))
       {
-        _DBGWLogDecorator headerLogDecorator("Header:");
-        _DBGWLogDecorator typeLogDecorator("Type:");
+        _DBGWLogDecorator resultLogDecorator("ResultSet:");
 
         const char *szColumnName;
         DBGWValueType columnType;
 
-        for (size_t i = 1, size = m_pResultSetMetaData->getColumnCount();
-            i <= size; i++)
+        for (size_t i = 0, size = m_pResultSetMetaData->getColumnCount();
+            i < size; i++)
           {
             if (m_pResultSetMetaData->getColumnName(i, &szColumnName) == false)
               {
@@ -1621,15 +1637,12 @@ namespace dbgw
                 throw getLastException();
               }
 
-            headerLogDecorator.addLog(szColumnName);
-            typeLogDecorator.addLog(getDBGWValueTypeString(columnType));
+            resultLogDecorator.addLog(szColumnName);
+            resultLogDecorator.addLogDesc(getDBGWValueTypeString(columnType));
           }
 
-        DBGW_LOG_DEBUG(m_logger.getLogMessage("ResultSet").c_str());
         DBGW_LOG_DEBUG(m_logger.getLogMessage(
-            headerLogDecorator.getLog().c_str()).c_str());
-        DBGW_LOG_DEBUG(m_logger.getLogMessage(
-            typeLogDecorator.getLog().c_str()).c_str());
+            resultLogDecorator.getLog().c_str()).c_str());
       }
   }
 
@@ -1654,14 +1667,14 @@ namespace dbgw
   {
     const char *szColumnName = NULL;
 
-    for (size_t i = 1, size = pMetaData->getColumnCount(); i <= size; i++)
+    for (size_t i = 0, size = pMetaData->getColumnCount(); i < size; i++)
       {
         if (pMetaData->getColumnName(i, &szColumnName) == false)
           {
             throw getLastException();
           }
 
-        m_keyIndexMap[szColumnName] = i - 1;
+        m_keyIndexMap[szColumnName] = i;
       }
   }
 

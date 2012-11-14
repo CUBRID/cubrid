@@ -62,9 +62,6 @@ namespace dbgw
     class DBGWStatement;
     typedef shared_ptr<DBGWStatement> DBGWStatementSharedPtr;
 
-    class DBGWParameterMetaData;
-    typedef shared_ptr<DBGWParameterMetaData> DBGWParameterMetaDataSharedPtr;
-
     class DBGWPreparedStatement;
     typedef shared_ptr<DBGWPreparedStatement> DBGWPreparedStatementSharedPtr;
 
@@ -172,22 +169,6 @@ namespace dbgw
     /**
      * External access class.
      */
-    class DBGWParameterMetaData
-    {
-    public:
-      virtual ~DBGWParameterMetaData();
-
-    public:
-      virtual bool getParameterMode(size_t nIndex,
-          DBGWParameterMode *pMode) const = 0;
-      virtual size_t getParameterCount() const = 0;
-      virtual bool getParameterType(size_t nIndex,
-          DBGWValueType *pType) const = 0;
-    };
-
-    /**
-     * External access class.
-     */
     class DBGWPreparedStatement : public DBGWStatement
     {
     public:
@@ -202,7 +183,6 @@ namespace dbgw
       virtual int executeUpdate() = 0;
       virtual DBGWBatchResultSetSharedPtr executeBatch() = 0;
 
-      virtual bool set(int nIndex, const DBGWValue &value) = 0;
       virtual bool setInt(int nIndex, int nValue) = 0;
       virtual bool setLong(int nIndex, int64 lValue) = 0;
       virtual bool setChar(int nIndex, char cValue) = 0;
@@ -236,7 +216,6 @@ namespace dbgw
 
       virtual bool registerOutParameter(size_t nIndex, DBGWValueType type) = 0;
 
-      virtual bool set(int nIndex, const DBGWValue &value) = 0;
       virtual bool setInt(int nIndex, int nValue) = 0;
       virtual bool setLong(int nIndex, int64 lValue) = 0;
       virtual bool setChar(int nIndex, char cValue) = 0;

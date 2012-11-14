@@ -77,7 +77,7 @@ namespace dbgw
     const _DBGWQueryParameter &getQueryParamByPlaceHolderIndex(
         size_t nBindIndex) const;
     const _DBGWQueryParameterList &getQueryParamList() const;
-    const _DBGWClientResultSetMetaDataRawList &getUserDefinedMetaList() const;
+    const db::DBGWResultSetMetaDataSharedPtr getUserDefinedResultSetMetaData() const;
     bool isExistOutBindParam() const;
 
   private:
@@ -103,7 +103,7 @@ namespace dbgw
         const string &query, const string &sqlName, const string &groupName,
         db::DBGWStatementType statementType,
         const _DBGWQueryParameterList &queryParamList,
-        const _DBGWClientResultSetMetaDataRawList &userDefinedMetaList);
+        const db::DBGWResultSetMetaDataSharedPtr pUserDefinedResultSetMetaData);
     virtual ~ _DBGWQuery();
 
   public:
@@ -118,7 +118,7 @@ namespace dbgw
     const _DBGWQueryParameter &getQueryParamByPlaceHolderIndex(
         size_t nBindIndex) const;
     const char *getQuery() const;
-    const _DBGWClientResultSetMetaDataRawList &getUserDefinedMetaList() const;
+    const db::DBGWResultSetMetaDataSharedPtr getUserDefinedResultSetMetaData() const;
     const _DBGWQueryParameterList &getQueryParamList() const;
     bool isExistOutBindParam() const;
 
@@ -140,7 +140,12 @@ namespace dbgw
     db::DBGWStatementType m_statementType;
     _DBGWQueryParameterList m_queryParamList;
     _DBGWPlaceHolderList m_placeHolderList;
-    _DBGWClientResultSetMetaDataRawList m_userDefinedMetaList;
+    /**
+     * in dbgw 1.0,
+     * user can specify result set meta data.
+     * so we have to save this to make result set.
+     */
+    db::DBGWResultSetMetaDataSharedPtr m_pUserDefinedResultSetMetaData;
     bool m_bExistOutBindParam;
 
   private:

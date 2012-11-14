@@ -193,8 +193,8 @@ namespace dbgw
         DECLSPECIFIER Handle __stdcall CreateHandle();
         DECLSPECIFIER void __stdcall DestroyHandle(Handle hParamList);
 
-        DECLSPECIFIER size_t __stdcall Size(Handle hParamList);
-        DECLSPECIFIER bool __stdcall add(Handle hParamList, ParamSet::Handle hParam);
+        DECLSPECIFIER size_t __stdcall GetSize(Handle hParamList);
+        DECLSPECIFIER bool __stdcall Add(Handle hParamList, ParamSet::Handle hParam);
       }
 
       namespace ResultSet

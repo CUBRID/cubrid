@@ -74,33 +74,17 @@ namespace dbgw
       int m_hCCIConnection;
     };
 
-    struct _DBGWCUBRIDParameterMetaDataRaw
+    struct _DBGWCUBRIDParameterMetaData
     {
-      _DBGWCUBRIDParameterMetaDataRaw();
-      _DBGWCUBRIDParameterMetaDataRaw(DBGWValueType type);
+      _DBGWCUBRIDParameterMetaData();
+      _DBGWCUBRIDParameterMetaData(DBGWValueType type);
 
       bool unused;
       DBGWParameterMode mode;
       DBGWValueType type;
     };
 
-    typedef vector<_DBGWCUBRIDParameterMetaDataRaw> _DBGWCUBRIDParameterMetaDataList;
-
-    class _DBGWCUBRIDParameterMetaData : public DBGWParameterMetaData
-    {
-    public:
-      _DBGWCUBRIDParameterMetaData(
-          const _DBGWCUBRIDParameterMetaDataList &metaDataRawList);
-      virtual ~_DBGWCUBRIDParameterMetaData();
-
-    public:
-      virtual bool getParameterMode(size_t nIndex, DBGWParameterMode *pMode) const;
-      virtual size_t getParameterCount() const;
-      virtual bool getParameterType(size_t nIndex, DBGWValueType *pType) const;
-
-    private:
-      _DBGWCUBRIDParameterMetaDataList m_metaDataRawList;
-    };
+    typedef vector<_DBGWCUBRIDParameterMetaData> _DBGWCUBRIDParameterMetaDataList;
 
     class _DBGWCUBRIDArrayParameter
     {
@@ -146,7 +130,6 @@ namespace dbgw
 
       void registerOutParameter(int nIndex, DBGWValueType type);
 
-      void set(int nIndex, const DBGWValue &value);
       void setInt(int nIndex, int nValue);
       void setLong(int nIndex, int64 lValue);
       void setChar(int nIndex, char cValue);
@@ -191,7 +174,6 @@ namespace dbgw
       virtual int executeUpdate();
       virtual DBGWBatchResultSetSharedPtr executeBatch();
 
-      virtual bool set(int nIndex, const DBGWValue &value);
       virtual bool setInt(int nIndex, int nValue);
       virtual bool setLong(int nIndex, int64 lValue);
       virtual bool setChar(int nIndex, char cValue);
@@ -242,7 +224,6 @@ namespace dbgw
 
       virtual bool registerOutParameter(size_t nIndex, DBGWValueType type);
 
-      virtual bool set(int nIndex, const DBGWValue &value);
       virtual bool setInt(int nIndex, int nValue);
       virtual bool setLong(int nIndex, int64 lValue);
       virtual bool setChar(int nIndex, char cValue);

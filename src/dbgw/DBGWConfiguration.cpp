@@ -79,7 +79,7 @@ namespace dbgw
   _DBGWExecutorProxy::_DBGWExecutorProxy(
       DBGWConnectionSharedPtr pConnection, _DBGWBoundQuerySharedPtr pQuery) :
     m_pQuery(pQuery), m_logger(pQuery->getGroupName(), pQuery->getSqlName()),
-    m_typeLogDecorator("Types:"), m_paramLogDecorator("Parameters:")
+    m_paramLogDecorator("Parameters:")
   {
     if (m_pQuery->getType() == DBGW_STMT_TYPE_PROCEDURE)
       {
@@ -181,7 +181,6 @@ namespace dbgw
 
     if (_DBGWLogger::isWritable(CCI_LOG_LEVEL_DEBUG))
       {
-        m_typeLogDecorator.clear();
         m_paramLogDecorator.clear();
       }
 
@@ -204,23 +203,23 @@ namespace dbgw
             switch (stParam.type)
               {
               case DBGW_VAL_TYPE_INT:
-                bindInt(i + 1, pValue);
+                bindInt(i, pValue);
                 break;
               case DBGW_VAL_TYPE_LONG:
-                bindLong(i + 1, pValue);
+                bindLong(i, pValue);
                 break;
               case DBGW_VAL_TYPE_FLOAT:
-                bindFloat(i + 1, pValue);
+                bindFloat(i, pValue);
                 break;
               case DBGW_VAL_TYPE_DOUBLE:
-                bindDouble(i + 1, pValue);
+                bindDouble(i, pValue);
                 break;
               case DBGW_VAL_TYPE_CHAR:
               case DBGW_VAL_TYPE_STRING:
               case DBGW_VAL_TYPE_DATETIME:
               case DBGW_VAL_TYPE_DATE:
               case DBGW_VAL_TYPE_TIME:
-                bindString(i + 1, pValue);
+                bindString(i, pValue);
                 break;
               default:
                 InvalidValueTypeException e(pValue->getType());
@@ -232,21 +231,22 @@ namespace dbgw
         if (stParam.mode == db::DBGW_PARAM_MODE_OUT
             || stParam.mode == db::DBGW_PARAM_MODE_INOUT)
           {
-            m_pCallableStatement->registerOutParameter(i + 1, stParam.type);
+            m_pCallableStatement->registerOutParameter(i, stParam.type);
           }
 
         if (_DBGWLogger::isWritable(CCI_LOG_LEVEL_DEBUG))
           {
             if (stParam.mode == db::DBGW_PARAM_MODE_OUT)
               {
-                m_typeLogDecorator.addLog(getDBGWValueTypeString(stParam.type));
                 m_paramLogDecorator.addLog("NULL");
+                m_paramLogDecorator.addLogDesc(
+                    getDBGWValueTypeString(stParam.type));
               }
             else
               {
-                m_typeLogDecorator.addLog(
-                    getDBGWValueTypeString(pValue->getType()));
                 m_paramLogDecorator.addLog(pValue->toString());
+                m_paramLogDecorator.addLogDesc(
+                    getDBGWValueTypeString(pValue->getType()));
               }
           }
       }
@@ -255,8 +255,6 @@ namespace dbgw
       {
         DBGW_LOG_DEBUG(
             m_logger.getLogMessage(m_paramLogDecorator.getLog().c_str()).c_str());
-        DBGW_LOG_DEBUG(
-            m_logger.getLogMessage(m_typeLogDecorator.getLog().c_str()).c_str());
       }
   }
 
@@ -398,6 +396,8 @@ namespace dbgw
     m_bInTran(false), m_bInvalid(false), m_pConnection(pConnection),
     m_executorPool(executorPool)
   {
+    m_logger.setGroupName(m_executorPool.getGroupName());
+
     gettimeofday(&m_beginIdleTime, NULL);
   }
 
@@ -426,12 +426,16 @@ namespace dbgw
 
     try
       {
+        m_logger.setSqlName(pQuery->getSqlName());
+
         _DBGWExecutorStatementSharedPtr pStmt = preparedStatement(pQuery);
         DBGWClientResultSetSharedPtr pClientResultSet = pStmt->execute(pParameter);
         if (pClientResultSet == NULL)
           {
             throw getLastException();
           }
+
+        DBGW_LOG_INFO(m_logger.getLogMessage("execute statement.").c_str());
 
         return pClientResultSet;
       }
@@ -449,7 +453,7 @@ namespace dbgw
       _DBGWBoundQuerySharedPtr pQuery, const _DBGWParameterList &parameterList)
   {
     DBGW_FAULT_PARTIAL_PREPARE_FAIL(pQuery->getGroupName());
-    DBGW_FAULT_PARTIAL_EXECUTE_FAIL(pQuery->getGroupName());
+    DBGW_FAULT_PARTIAL_EXECUTE_ARRAY_FAIL(pQuery->getGroupName());
 
     if (m_bAutocommit == false)
       {
@@ -458,6 +462,8 @@ namespace dbgw
 
     try
       {
+        m_logger.setSqlName(pQuery->getSqlName());
+
         _DBGWExecutorStatementSharedPtr pStmt = preparedStatement(pQuery);
         DBGWClientBatchResultSetSharedPtr pBatchClientResultSet =
             pStmt->executeBatch(parameterList);
@@ -465,6 +471,8 @@ namespace dbgw
           {
             throw getLastException();
           }
+
+        DBGW_LOG_INFO(m_logger.getLogMessage("execute statement.").c_str());
 
         return pBatchClientResultSet;
       }
@@ -501,6 +509,8 @@ namespace dbgw
           {
             throw getLastException();
           }
+
+        DBGW_LOG_INFO(m_logger.getLogMessage("prepare statement.").c_str());
 
         m_statmentMap[pQuery->getSqlKey()] = pStmt;
       }
@@ -609,6 +619,8 @@ namespace dbgw
       {
         throw getLastException();
       }
+
+    DBGW_LOG_INFO(m_logger.getLogMessage("connection destroyed.").c_str());
   }
 
   bool _DBGWExecutor::isValid() const
@@ -871,6 +883,7 @@ namespace dbgw
     m_nModular(0), m_nSchedule(0), m_nCurrentHostIndex(0),
     m_executorPool(*this)
   {
+    m_logger.setGroupName(m_name);
   }
 
   _DBGWGroup::~_DBGWGroup()
@@ -905,6 +918,7 @@ namespace dbgw
         DBGWDriverManager::getConnection(pHost->getUrl().c_str());
     if (pConnection != NULL && pConnection->connect())
       {
+        DBGW_LOG_INFO(m_logger.getLogMessage("connection created.").c_str());
         return pConnection;
       }
     else

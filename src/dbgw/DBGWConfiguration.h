@@ -85,7 +85,6 @@ namespace dbgw
     DBGWCallableStatementSharedPtr m_pCallableStatement;
     _DBGWBoundQuerySharedPtr m_pQuery;
     _DBGWLogger m_logger;
-    _DBGWLogDecorator m_typeLogDecorator;
     _DBGWLogDecorator m_paramLogDecorator;
   };
 
@@ -134,6 +133,7 @@ namespace dbgw
     /* (sqlName => DBGWPreparedStatement) */
     _DBGWExecutorStatementHashMap m_statmentMap;
     _DBGWExecutorPool &m_executorPool;
+    _DBGWLogger m_logger;
 
     friend class _DBGWExecutorPool;
   };
@@ -226,6 +226,7 @@ namespace dbgw
     int m_nCurrentHostIndex;
     _DBGWHostList m_hostList;
     _DBGWExecutorPool m_executorPool;
+    _DBGWLogger m_logger;
   };
 
   typedef shared_ptr<_DBGWGroup> _DBGWGroupSharedPtr;

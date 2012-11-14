@@ -1258,6 +1258,13 @@ namespace dbgw
         m_statementType = getQueryType(queryString.c_str());
       }
 
+    DBGWResultSetMetaDataSharedPtr pUserDefinedResultSetMetaData;
+    if (m_userDefinedMetaList.size() > 0)
+      {
+        pUserDefinedResultSetMetaData = DBGWResultSetMetaDataSharedPtr(
+            new _DBGWClientResultSetMetaData(m_userDefinedMetaList));
+      }
+
     DBGWStringList groupNameList;
     boost::split(groupNameList, groupName, boost::is_any_of(","));
     for (DBGWStringList::iterator it = groupNameList.begin(); it
@@ -1267,7 +1274,7 @@ namespace dbgw
         _DBGWQuerySharedPtr p(
             new _DBGWQuery(m_pQueryMapper->getVersion(), m_fileName, queryString,
                 m_sqlName, *it, m_statementType, m_queryParamList,
-                m_userDefinedMetaList));
+                pUserDefinedResultSetMetaData));
         m_pQueryMapper->addQuery(m_sqlName, p);
       }
 

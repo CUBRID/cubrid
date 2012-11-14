@@ -123,6 +123,18 @@ namespace dbgw
     return nResult;
   }
 
+  int cci_mock_execute_array(int req_h_id, T_CCI_QUERY_RESULT **qr,
+      T_CCI_ERROR *err_buf)
+  {
+    CCI_FAULT_EXEC_BEFORE_RETURN_ERR(err_buf);
+
+    int nResult = cci_execute_array(req_h_id, qr, err_buf);
+
+    CCI_FAULT_EXEC_AFTER_RETURN_ERR(err_buf);
+
+    return nResult;
+  }
+
   int cci_mock_set_autocommit(int con_h_id, CCI_AUTOCOMMIT_MODE autocommit_mode)
   {
     T_CCI_ERROR err_buf;

@@ -55,7 +55,6 @@ namespace dbgw
   class DBGWValue
   {
   public:
-    DBGWValue();
 #ifdef ENABLE_LOB
     DBGWValue(DBGWValueType type, bool bNull = false, int nSize = -1);
 #endif
@@ -142,7 +141,6 @@ namespace dbgw
     _DBGWValueSet();
     virtual ~ _DBGWValueSet();
 
-    bool set(size_t nIndex, DBGWValueSharedPtr pValue);
     bool set(size_t nIndex, int nValue, bool bNull = false);
     bool set(size_t nIndex, const char *szValue, bool bNull = false);
     bool set(size_t nIndex, int64 lValue, bool bNull = false);
@@ -152,7 +150,6 @@ namespace dbgw
     bool set(size_t nIndex, DBGWValueType type, const struct tm &tmValue);
     bool set(size_t nIndex, DBGWValueType type, void *pValue, bool bNull = false,
         int nSize = -1);
-    bool put(const char *szKey, DBGWValueSharedPtr pValue);
     bool put(const char *szKey, int nValue, bool bNull = false);
     bool put(const char *szKey, const char *szValue, bool bNull = false);
     bool put(const char *szKey, int64 lValue, bool bNull = false);
@@ -162,7 +159,6 @@ namespace dbgw
     bool put(const char *szKey, DBGWValueType type, const struct tm &tmValue);
     bool put(const char *szKey, DBGWValueType type, void *pValue,
         bool bNull = false, int nSize = -1);
-    bool put(DBGWValueSharedPtr pValue);
     bool put(int nValue, bool bNull = false);
     bool put(const char *szValue, bool bNull = false);
     bool put(int64 lValue, bool bNull = false);
@@ -178,9 +174,6 @@ namespace dbgw
     bool replace(size_t nIndex, DBGWValueType type, void *pValue, bool bNull,
         int nSize);
     virtual void clear();
-
-  protected:
-    void put(const char *szKey, size_t nIndex, DBGWValueSharedPtr pValue);
 
   public:
     const DBGWValue *getValue(const char *szKey) const;
@@ -208,8 +201,6 @@ namespace dbgw
 
   public:
     _DBGWValueSet &operator=(const _DBGWValueSet &valueSet);
-    DBGWValueSharedPtr getValueSharedPtr(const char *szKey);
-    DBGWValueSharedPtr getValueSharedPtr(size_t nIndex);
 
   private:
     DBGWValueList m_valueList;
@@ -220,8 +211,6 @@ namespace dbgw
   public:
     _DBGWParameter();
     virtual ~ _DBGWParameter();
-
-    DBGWValueSharedPtr getValueSharedPtr(const char *szKey, size_t nIndex);
 
   public:
     const DBGWValue *getValue(size_t nIndex) const;

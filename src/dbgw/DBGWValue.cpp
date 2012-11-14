@@ -63,26 +63,6 @@ namespace dbgw
 
   const int DBGWValue::MAX_BOUNDARY_SIZE = 1024 * 1024 * 1;   // 1 MByte
 
-  DBGWValue::DBGWValue() :
-    m_type(DBGW_VAL_TYPE_UNDEFINED), m_bNull(false), m_nSize(-1)
-  {
-    /**
-     * We don't need to clear error because this api will not make error.
-     *
-     * clearException();
-     *
-     * try
-     * {
-     * 		blur blur blur;
-     * }
-     * catch (DBGWException &e)
-     * {
-     * 		setLastException(e);
-     * }
-     */
-    memset(&m_stValue, 0, sizeof(_DBGWRawValue));
-  }
-
 #ifdef ENABLE_LOB
   DBGWValue::DBGWValue(DBGWValueType type, bool bNull, int nSize) :
     m_type(type), m_bNull(bNull), m_nSize(-1)
@@ -917,8 +897,14 @@ namespace dbgw
             return m_stValue.nValue == value.m_stValue.nValue;
           case DBGW_VAL_TYPE_LONG:
             return m_stValue.lValue == value.m_stValue.lValue;
+          case DBGW_VAL_TYPE_FLOAT:
+            return m_stValue.fValue == value.m_stValue.fValue;
+          case DBGW_VAL_TYPE_DOUBLE:
+            return m_stValue.dValue == value.m_stValue.dValue;
           case DBGW_VAL_TYPE_CHAR:
           case DBGW_VAL_TYPE_STRING:
+          case DBGW_VAL_TYPE_DATE:
+          case DBGW_VAL_TYPE_TIME:
           case DBGW_VAL_TYPE_DATETIME:
             return toString() == value.toString();
           default:
@@ -943,9 +929,11 @@ namespace dbgw
   {
     if (type == DBGW_VAL_TYPE_UNDEFINED)
       {
-        InvalidValueTypeException e(type);
-        DBGW_LOG_ERROR(e.what());
-        throw e;
+        /**
+         * in DBGWCallableStatement,
+         * we can't define parameter type.
+         * so make undefined value type.
+         */
       }
 
     if (m_type != type)
@@ -1289,20 +1277,6 @@ namespace dbgw
     clear();
   }
 
-  bool _DBGWValueSet::set(size_t nIndex, DBGWValueSharedPtr pValue)
-  {
-    if (m_valueList.size() <= nIndex)
-      {
-        m_valueList.resize(nIndex + 1);
-      }
-
-    _DBGWValuePair pair;
-    pair.value = pValue;
-
-    m_valueList[nIndex] = pair;
-    return true;
-  }
-
   bool _DBGWValueSet::set(size_t nIndex, int nValue, bool bNull)
   {
     clearException();
@@ -1545,16 +1519,6 @@ namespace dbgw
       }
   }
 
-  bool _DBGWValueSet::put(const char *szKey, DBGWValueSharedPtr pValue)
-  {
-    _DBGWValuePair pair;
-    pair.key = szKey;
-    pair.value = pValue;
-
-    m_valueList.push_back(pair);
-    return true;
-  }
-
   bool _DBGWValueSet::put(const char *szKey, int nValue, bool bNull)
   {
     clearException();
@@ -1764,15 +1728,6 @@ namespace dbgw
         setLastException(e);
         return false;
       }
-  }
-
-  bool _DBGWValueSet::put(DBGWValueSharedPtr pValue)
-  {
-    _DBGWValuePair pair;
-    pair.value = pValue;
-
-    m_valueList.push_back(pair);
-    return true;
   }
 
   bool _DBGWValueSet::put(int nValue, bool bNull)
@@ -2037,21 +1992,6 @@ namespace dbgw
      * }
      */
     m_valueList.clear();
-  }
-
-  void _DBGWValueSet::put(const char *szKey, size_t nIndex,
-      DBGWValueSharedPtr pValue)
-  {
-    if (m_valueList.size() <= nIndex)
-      {
-        m_valueList.resize(nIndex + 1);
-      }
-
-    _DBGWValuePair pair;
-    pair.key = szKey;
-    pair.value = pValue;
-
-    m_valueList[nIndex] = pair;
   }
 
   const DBGWValue *_DBGWValueSet::getValue(const char *szKey) const
@@ -2577,64 +2517,12 @@ namespace dbgw
     return *this;
   }
 
-  DBGWValueSharedPtr _DBGWValueSet::getValueSharedPtr(const char *szKey)
-  {
-    DBGWValueList::const_iterator it = m_valueList.begin();
-    for (; it != m_valueList.end(); it++)
-      {
-        if (!strcmp(it->key.c_str(), szKey))
-          {
-            return it->value;
-          }
-      }
-
-    return DBGWValueSharedPtr();
-  }
-
-  DBGWValueSharedPtr _DBGWValueSet::getValueSharedPtr(size_t nIndex)
-  {
-    if (nIndex >= m_valueList.size() || m_valueList[nIndex].value == NULL)
-      {
-        return DBGWValueSharedPtr();
-      }
-
-    return m_valueList[nIndex].value;
-  }
-
   _DBGWParameter::_DBGWParameter()
   {
   }
 
   _DBGWParameter::~_DBGWParameter()
   {
-  }
-
-  DBGWValueSharedPtr _DBGWParameter::getValueSharedPtr(const char *szKey,
-      size_t nIndex)
-  {
-    clearException();
-
-    try
-      {
-        DBGWValueSharedPtr pValue = _DBGWValueSet::getValueSharedPtr(szKey);
-        if (pValue == NULL)
-          {
-            pValue = _DBGWValueSet::getValueSharedPtr(nIndex);
-            if (pValue == NULL)
-              {
-                ArrayIndexOutOfBoundsException e(nIndex, "DBGWParameter");
-                DBGW_LOG_ERROR(e.what());
-                throw e;
-              }
-          }
-
-        return pValue;
-      }
-    catch (DBGWException &e)
-      {
-        setLastException(e);
-        return DBGWValueSharedPtr();
-      }
   }
 
   const DBGWValue *_DBGWParameter::getValue(size_t nIndex) const

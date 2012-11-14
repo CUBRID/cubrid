@@ -172,21 +172,6 @@ namespace dbgw
     return DBGWException(context);
   }
 
-  DBGWException DBGWExceptionFactory::create(int nErrorCode,
-      int nInterfaceErrorCode, const string &errorMessage)
-  {
-    DBGWExceptionContext context =
-    { nErrorCode, nInterfaceErrorCode, errorMessage, "", false };
-
-    stringstream buffer;
-    buffer << "[" << context.nErrorCode << "]";
-    buffer << "[" << context.nInterfaceErrorCode << "]";
-    buffer << " " << context.errorMessage;
-    context.what = buffer.str();
-
-    return DBGWException(context);
-  }
-
   ArrayIndexOutOfBoundsException::ArrayIndexOutOfBoundsException(int nIndex,
       const char *szArrayName) throw() :
     DBGWException(
@@ -287,7 +272,7 @@ namespace dbgw
   InvalidSqlException::InvalidSqlException(const char *szFileName,
       const char *szSqlName) throw() :
     DBGWException(
-        DBGWExceptionFactory::create(DBGW_ER_SQL_INVALID_SQL,
+        DBGWExceptionFactory::create(DBGW_ER_CONF_INVALID_SQL,
             (boost::format("Cannot parse sql %s (%s).") % szSqlName
                 % szFileName).str()))
   {
@@ -297,6 +282,14 @@ namespace dbgw
     DBGWException(
         DBGWExceptionFactory::create(DBGW_ER_SQL_NOT_EXIST_OUT_PARAMETER,
             "There is no out bind parameter."))
+  {
+  }
+
+  NotExistOutParameterException::NotExistOutParameterException(size_t nIndex) throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(DBGW_ER_SQL_NOT_EXIST_OUT_PARAMETER,
+            (boost::format("There is no out bind parameter. (index : %d)")
+                % nIndex).str()))
   {
   }
 
@@ -314,6 +307,13 @@ namespace dbgw
   {
   }
 
+  InvalidCursorPositionException::InvalidCursorPositionException() throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(
+            DBGW_ER_SQL_INVALID_CURSOR_POSITION, "Invalid cursor position."))
+  {
+  }
+
   MismatchValueTypeException::MismatchValueTypeException(int orgType,
       int convType) throw() :
     DBGWException(
@@ -328,15 +328,6 @@ namespace dbgw
     DBGWException(
         DBGWExceptionFactory::create(DBGW_ER_VALUE_INVALID_VALUE_TYPE,
             (boost::format("The value type %d is invalid.") % type).str()))
-  {
-  }
-
-  InvalidValueTypeException::InvalidValueTypeException(int firstType, int anotherType) throw() :
-    DBGWException(
-        DBGWExceptionFactory::create(DBGW_ER_VALUE_INVALID_VALUE_TYPE,
-            (boost::format("The value type %s is different from binding array %s.")
-                % getDBGWValueTypeString(anotherType)
-                % getDBGWValueTypeString(firstType)).str()))
   {
   }
 

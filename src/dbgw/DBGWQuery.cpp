@@ -90,19 +90,13 @@ namespace dbgw
       {
         return db::DBGW_STMT_TYPE_SELECT;
       }
-    else if (!strncasecmp(p, "insert", 6)
-        || !strncasecmp(p, "update", 6)
-        || !strncasecmp(p, "delete", 6))
-      {
-        return db::DBGW_STMT_TYPE_UPDATE;
-      }
     else if (!strncasecmp(p, "call", 4))
       {
         return db::DBGW_STMT_TYPE_PROCEDURE;
       }
     else
       {
-        return db::DBGW_STMT_TYPE_UNDEFINED;
+        return db::DBGW_STMT_TYPE_UPDATE;
       }
   }
 
@@ -176,9 +170,9 @@ namespace dbgw
     return m_query.getQueryParamList();
   }
 
-  const _DBGWClientResultSetMetaDataRawList &_DBGWBoundQuery::getUserDefinedMetaList() const
+  const db::DBGWResultSetMetaDataSharedPtr _DBGWBoundQuery::getUserDefinedResultSetMetaData() const
   {
-    return m_query.getUserDefinedMetaList();
+    return m_query.getUserDefinedResultSetMetaData();
   }
 
   bool _DBGWBoundQuery::isExistOutBindParam() const
@@ -190,11 +184,11 @@ namespace dbgw
       const string &query, const string &sqlName, const string &groupName,
       db::DBGWStatementType statementType,
       const _DBGWQueryParameterList &queryParamList,
-      const _DBGWClientResultSetMetaDataRawList &userDefinedMetaList) :
+      db::DBGWResultSetMetaDataSharedPtr pUserDefinedResultSetMetaData) :
     m_logger(groupName, sqlName), m_fileName(fileName), m_query(query),
     m_sqlName(sqlName), m_groupName(groupName), m_statementType(statementType),
     m_queryParamList(queryParamList),
-    m_userDefinedMetaList(userDefinedMetaList),
+    m_pUserDefinedResultSetMetaData(pUserDefinedResultSetMetaData),
     m_bExistOutBindParam(false)
   {
     _DBGWQueryParameterList::const_iterator it = m_queryParamList.begin();
@@ -461,9 +455,9 @@ namespace dbgw
     return m_query.c_str();
   }
 
-  const _DBGWClientResultSetMetaDataRawList &_DBGWQuery::getUserDefinedMetaList() const
+  const db::DBGWResultSetMetaDataSharedPtr _DBGWQuery::getUserDefinedResultSetMetaData() const
   {
-    return m_userDefinedMetaList;
+    return m_pUserDefinedResultSetMetaData;
   }
 
   const _DBGWQueryParameterList &_DBGWQuery::getQueryParamList() const

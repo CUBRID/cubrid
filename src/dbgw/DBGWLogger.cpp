@@ -199,10 +199,9 @@ namespace dbgw
   }
 
   _DBGWLogDecorator::_DBGWLogDecorator(const char *szHeader) :
-    m_iLogCount(0)
+    m_header(szHeader), m_iLogCount(0)
   {
-    m_buffer << szHeader;
-    m_buffer << " [";
+    clear();
   }
 
   _DBGWLogDecorator::~_DBGWLogDecorator()
@@ -211,7 +210,11 @@ namespace dbgw
 
   void _DBGWLogDecorator::clear()
   {
-    m_buffer.clear();
+    m_iLogCount = 0;
+    m_buffer.seekp(ios_base::beg);
+
+    m_buffer << m_header;
+    m_buffer << " [";
   }
 
   void _DBGWLogDecorator::addLog(const string &log)
@@ -221,6 +224,11 @@ namespace dbgw
         m_buffer << ", ";
       }
     m_buffer << log;
+  }
+
+  void _DBGWLogDecorator::addLogDesc(const string &desc)
+  {
+    m_buffer << "(" << desc << ")";
   }
 
   string _DBGWLogDecorator::getLog()

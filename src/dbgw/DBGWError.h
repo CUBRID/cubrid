@@ -39,11 +39,12 @@ namespace dbgw
     DBGW_ER_CONF_INVALID_PARAM_NAME                   = -22107,
     DBGW_ER_CONF_CHANGE_POOL_CONTEXT                  = -22108,
     DBGW_ER_CONF_FAILED_TO_CREATE_EVICTOR_THREAD      = -22109,
+    DBGW_ER_CONF_INVALID_SQL                          = -22110,
 
-    DBGW_ER_SQL_INVALID_SQL                           = -22201,
-    DBGW_ER_SQL_NOT_EXIST_OUT_PARAMETER               = -22202,
-    DBGW_ER_SQL_INVALID_PARAMETER_LIST                = -22203,
-    DBGW_ER_SQL_UNSUPPORTED_OPERATION                 = -22204,
+    DBGW_ER_SQL_NOT_EXIST_OUT_PARAMETER               = -22201,
+    DBGW_ER_SQL_INVALID_PARAMETER_LIST                = -22202,
+    DBGW_ER_SQL_UNSUPPORTED_OPERATION                 = -22203,
+    DBGW_ER_SQL_INVALID_CURSOR_POSITION               = -22204,
 
     DBGW_ER_VALUE_MISMATCH_VALUE_TYPE                 = -22301,
     DBGW_ER_VALUE_INVALID_VALUE_TYPE                  = -22302,
@@ -124,8 +125,6 @@ namespace dbgw
   {
   public:
     static DBGWException create(int nErrorCode, const string &errorMessage);
-    static DBGWException create(int nErrorCode, int nInterfaceErrorCode,
-        const string &errorMessage);
 
   private:
     virtual ~DBGWExceptionFactory();
@@ -217,6 +216,7 @@ namespace dbgw
   {
   public:
     NotExistOutParameterException() throw();
+    NotExistOutParameterException(size_t nIndex) throw();
   };
 
   class InvalidParameterListException : public DBGWException
@@ -229,6 +229,12 @@ namespace dbgw
   {
   public:
     UnsupportedOperationException() throw();
+  };
+
+  class InvalidCursorPositionException : public DBGWException
+  {
+  public:
+    InvalidCursorPositionException() throw();
   };
 
   class MismatchValueTypeException : public DBGWException
@@ -245,7 +251,6 @@ namespace dbgw
     InvalidValueTypeException(int type,
         const char *szExpectedType) throw();
     InvalidValueTypeException(const char *szFileName, const char *szType) throw();
-    InvalidValueTypeException(int firstType, int anotherType) throw();
   };
 
   class InvalidValueFormatException : public DBGWException

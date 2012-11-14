@@ -1202,13 +1202,13 @@ ux_execute_internal (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 	}
       iters = 1;
       if (srv_handle->auto_commit_mode)
-      {
+	{
 	  mode = OCI_COMMIT_ON_SUCCESS;
-      }
-      else 
-      {
+	}
+      else
+	{
 	  mode = OCI_DEFAULT;
-      }
+	}
     }
 
   memset ((char *) &locp_list, 0, sizeof (LOCATOR_LIST));
@@ -2664,7 +2664,7 @@ prepare_column_list_info_set (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
 static int
 send_prepare_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
 {
-  int count, i, err_code = CAS_NO_ERROR;
+  int count = 0, i, err_code = CAS_NO_ERROR;
   char type;
   sb1 scale, ptype, null;
   sb2 prec;

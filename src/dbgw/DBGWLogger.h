@@ -67,10 +67,12 @@ namespace dbgw
 
     void clear();
     void addLog(const string &log);
+    void addLogDesc(const string &desc);
     string getLog();
 
   protected:
     stringstream m_buffer;
+    string m_header;
     int m_iLogCount;
   };
 

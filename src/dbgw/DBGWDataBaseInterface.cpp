@@ -278,10 +278,6 @@ namespace dbgw
       return m_pConnection;
     }
 
-    DBGWParameterMetaData::~DBGWParameterMetaData()
-    {
-    }
-
     DBGWPreparedStatement::DBGWPreparedStatement(
         DBGWConnectionSharedPtr pConnection) :
       DBGWStatement(pConnection)
@@ -453,7 +449,7 @@ namespace dbgw
 
       try
         {
-          if (m_nSize < nIndex)
+          if (m_nSize <= nIndex)
             {
               ArrayIndexOutOfBoundsException e(nIndex, "DBGWBatchResulSet");
               DBGW_LOG_ERROR(e.what());
