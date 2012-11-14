@@ -408,10 +408,11 @@ int
 css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 {
   int nleft, n;
-  struct pollfd po[1] = { {0, 0, 0} };
 
 #if defined (WINDOWS)
   int winsock_error;
+#else
+  struct pollfd po[1] = { {0, 0, 0} };
 #endif /* WINDOWS */
 
   if (fd < 0)
@@ -429,6 +430,7 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
   nleft = nbytes;
   do
     {
+#if !defined (WINDOWS)
       po[0].fd = fd;
       po[0].events = POLLIN;
       po[0].revents = 0;
@@ -460,6 +462,7 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 	      return -1;
 	    }
 	}
+#endif /* !WINDOWS */
 
     read_again:
       n = recv (fd, ptr, nleft, 0);
@@ -2517,7 +2520,7 @@ css_check_magic (CSS_CONN_ENTRY * conn)
   char *p;
   int timeout = prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000;
 
-  nbytes = css_readn (conn->fd, &size, sizeof (int), timeout);
+  nbytes = css_readn (conn->fd, (char *) &size, sizeof (int), timeout);
   if (nbytes != sizeof (int))
     {
       return ERROR_WHEN_READING_SIZE;
