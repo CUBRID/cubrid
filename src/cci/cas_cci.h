@@ -778,6 +778,7 @@ extern "C"
 			      int index, char *value, T_CCI_ERROR * err_buf);
 
   extern int cci_is_updatable (int req_h_id);
+  extern int cci_is_holdable (int req_h_id);
   extern int cci_next_result (int req_h_id, T_CCI_ERROR * err_buf);
   extern int cci_bind_param_array_size (int req_h_id, int array_size);
   extern int cci_bind_param_array (int req_h_id,

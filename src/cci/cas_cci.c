@@ -1122,6 +1122,36 @@ cci_is_updatable (int req_h_id)
   return updatable_flag;
 }
 
+int
+cci_is_holdable (int req_h_id)
+{
+  T_REQ_HANDLE *req_handle = NULL;
+  int holdable;
+
+#ifdef CCI_DEBUG
+  CCI_DEBUG_PRINT (print_debug_msg
+		   ("(%d:%d)cci_is_holdable", CON_ID (req_h_id),
+		    REQ_ID (req_h_id)));
+#endif
+
+  MUTEX_LOCK (con_handle_table_mutex);
+
+  req_handle = hm_find_req_handle (req_h_id, NULL);
+  if (req_handle == NULL)
+    {
+      holdable = CCI_ER_REQ_HANDLE;
+    }
+  else
+    {
+      holdable =
+	(int) ((req_handle->prepare_flag & CCI_PREPARE_HOLDABLE) != 0);
+    }
+
+  MUTEX_UNLOCK (con_handle_table_mutex);
+
+  return holdable;
+}
+
 T_CCI_COL_INFO *
 cci_get_result_info (int req_h_id, T_CCI_CUBRID_STMT * cmd_type, int *num)
 {

@@ -44,6 +44,7 @@ EXPORTS
 	cci_col_seq_insert
 	cci_col_seq_put
 	cci_is_updatable
+	cci_is_holdable
 	cci_next_result
 	cci_bind_param_array_size
 	cci_bind_param_array
