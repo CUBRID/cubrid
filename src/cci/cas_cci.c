@@ -738,10 +738,14 @@ cci_disconnect (int con_h_id, T_CCI_ERROR * err_buf)
 
       if (err_code >= 0)
 	{
+	  set_error_buffer (&(con_handle->err_buf), err_code, NULL);
+	  copy_error_buffer (err_buf, &(con_handle->err_buf));
+
 	  MUTEX_LOCK (con_handle_table_mutex);
 	  con_handle->ref_count = 0;
 	  err_code = hm_con_handle_free (con_h_id);
 	  MUTEX_UNLOCK (con_handle_table_mutex);
+	  con_handle = NULL;
 	}
       else
 	{
@@ -749,8 +753,11 @@ cci_disconnect (int con_h_id, T_CCI_ERROR * err_buf)
 	}
     }
 
-  set_error_buffer (&(con_handle->err_buf), err_code, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  if (con_handle != NULL)
+    {
+      set_error_buffer (&(con_handle->err_buf), err_code, NULL);
+      copy_error_buffer (err_buf, &(con_handle->err_buf));
+    }
 
   return err_code;
 }
