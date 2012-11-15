@@ -138,6 +138,8 @@ namespace dbgw
           return CCI_U_TYPE_FLOAT;
         case DBGW_VAL_TYPE_DOUBLE:
           return CCI_U_TYPE_DOUBLE;
+        case DBGW_VAL_TYPE_BYTES:
+          return CCI_U_TYPE_VARBIT;
         default:
           return CCI_U_TYPE_STRING;
         }
@@ -155,6 +157,8 @@ namespace dbgw
           return CCI_A_TYPE_FLOAT;
         case DBGW_VAL_TYPE_DOUBLE:
           return CCI_A_TYPE_DOUBLE;
+        case DBGW_VAL_TYPE_BYTES:
+          return CCI_A_TYPE_BIT;
         default:
           return CCI_A_TYPE_STR;
         }
@@ -603,6 +607,17 @@ namespace dbgw
       setParameterMetaDataRaw(nIndex, DBGW_VAL_TYPE_DATETIME);
     }
 
+    void _DBGWCUBRIDStatementBase::setBytes(int nIndex, size_t nSize,
+        const void *pValue)
+    {
+      if (m_parameter.set(nIndex, nSize, pValue) == false)
+        {
+          throw getLastException();
+        }
+
+      setParameterMetaDataRaw(nIndex, DBGW_VAL_TYPE_BYTES);
+    }
+
     void _DBGWCUBRIDStatementBase::setNull(int nIndex, DBGWValueType type)
     {
       if (m_parameter.set(nIndex, type, NULL) == false)
@@ -631,37 +646,50 @@ namespace dbgw
 
     void _DBGWCUBRIDStatementBase::bindParameters()
     {
+      void *pValue = NULL;
       T_CCI_A_TYPE atype;
       T_CCI_U_TYPE utype;
-      const DBGWValue *pValue = NULL;
+      T_CCI_BIT bitValue;
+      const DBGWValue *pParam = NULL;
 
       for (size_t i = 0, size = m_parameter.size(); i < size; i++)
         {
-          pValue = m_parameter.getValue(i);
-          if (pValue == NULL)
+          pParam = m_parameter.getValue(i);
+          if (pParam == NULL)
             {
               throw getLastException();
             }
 
           if (m_metaDataRawList[i].unused == false)
             {
-              if (pValue->getType() == DBGW_VAL_TYPE_UNDEFINED)
+              if (pParam->getType() == DBGW_VAL_TYPE_UNDEFINED)
                 {
-                  InvalidValueTypeException e(pValue->getType());
+                  InvalidValueTypeException e(pParam->getType());
                   DBGW_LOG_ERROR(e.what());
                   throw e;
                 }
 
-              utype = getCCIUTypeFromDBGWValueType(pValue->getType());
-              atype = getCCIATypeFromDBGWValueType(pValue->getType());
+              utype = getCCIUTypeFromDBGWValueType(pParam->getType());
+              atype = getCCIATypeFromDBGWValueType(pParam->getType());
 
-              if (pValue->isNull())
+              if (pParam->isNull())
                 {
                   utype = CCI_U_TYPE_NULL;
                 }
 
-              int nResult = cci_bind_param(m_hCCIRequest, i + 1, atype,
-                  pValue->getVoidPtr(), utype, 0);
+              if (utype == CCI_U_TYPE_VARBIT)
+                {
+                  bitValue.size = pParam->size();
+                  bitValue.buf = (char *) pParam->getVoidPtr();
+                  pValue = &bitValue;
+                }
+              else
+                {
+                  pValue = pParam->getVoidPtr();
+                }
+
+              int nResult = cci_bind_param(m_hCCIRequest, i + 1, atype, pValue,
+                  utype, 0);
               if (nResult < 0)
                 {
                   _CUBRIDException e = _CUBRIDExceptionFactory::create(nResult,
@@ -1158,6 +1186,23 @@ namespace dbgw
       return true;
     }
 
+    bool _DBGWCUBRIDPreparedStatement::setBytes(int nIndex, size_t nSize, const void *pValue)
+    {
+      clearException();
+
+      try
+        {
+          m_baseStatement.setBytes(nIndex, nSize, pValue);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
     bool _DBGWCUBRIDPreparedStatement::setNull(int nIndex, DBGWValueType type)
     {
       clearException();
@@ -1485,6 +1530,24 @@ namespace dbgw
       try
         {
           m_baseStatement.setDateTime(nIndex, tmValue);
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
+    bool _DBGWCUBRIDCallableStatement::setBytes(int nIndex, size_t nSize,
+        const void *pValue)
+    {
+      clearException();
+
+      try
+        {
+          m_baseStatement.setBytes(nIndex, nSize, pValue);
         }
       catch (DBGWException &e)
         {
@@ -1829,6 +1892,34 @@ namespace dbgw
       return true;
     }
 
+    bool _DBGWCUBRIDCallableStatement::getBytes(int nIndex, size_t *pSize,
+        char **pValue) const
+    {
+      clearException();
+
+      try
+        {
+          if (m_pOutParamResult == NULL)
+            {
+              NotExistOutParameterException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          if (m_pOutParamResult->getBytes(nIndex, pSize, pValue) == false)
+            {
+              throw getLastException();
+            }
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
     const DBGWValue *_DBGWCUBRIDCallableStatement::getValue(int nIndex) const
     {
       clearException();
@@ -1928,6 +2019,9 @@ namespace dbgw
                 case CCI_U_TYPE_NCHAR:
                 case CCI_U_TYPE_VARNCHAR:
                   metaDataRaw.columnType = DBGW_VAL_TYPE_STRING;
+                  break;
+                case CCI_U_TYPE_VARBIT:
+                  metaDataRaw.columnType = DBGW_VAL_TYPE_BYTES;
                   break;
                 case CCI_U_TYPE_FLOAT:
                   metaDataRaw.columnType = DBGW_VAL_TYPE_FLOAT;
@@ -2345,6 +2439,11 @@ namespace dbgw
         }
     }
 
+    bool _DBGWCUBRIDResultSet::getBytes(int nIndex, size_t *pSize, char **pValue) const
+    {
+      return m_resultSet.getBytes(nIndex, pSize, pValue);
+    }
+
     const DBGWValue *_DBGWCUBRIDResultSet::getValue(int nIndex) const
     {
       clearException();
@@ -2424,6 +2523,9 @@ namespace dbgw
                   break;
                 case DBGW_VAL_TYPE_DOUBLE:
                   getResultSetDoubleColumn(i, metaDataRaw);
+                  break;
+                case DBGW_VAL_TYPE_BYTES:
+                  getResultSetBytesColumn(i, metaDataRaw);
                   break;
                 default:
                   getResultSetStringColumn(i, metaDataRaw);
@@ -2507,6 +2609,28 @@ namespace dbgw
 
       doMakeResultSet(nIndex, md.columnName.c_str(), DBGW_VAL_TYPE_DOUBLE,
           &dValue, nIndicator == -1, nIndicator);
+    }
+
+    void _DBGWCUBRIDResultSet::getResultSetBytesColumn(size_t nIndex,
+        const _DBGWCUBRIDResultSetMetaDataRaw &md)
+    {
+      T_CCI_BIT bitValue;
+      bitValue.size = 0;
+      bitValue.buf = NULL;
+
+      int nIndicator = -1;
+      int nResult = cci_get_data(m_hCCIRequest, nIndex + 1, CCI_A_TYPE_BIT,
+          &bitValue, &nIndicator);
+      if (nResult < 0)
+        {
+          _CUBRIDException e = _CUBRIDExceptionFactory::create(nResult,
+              "Failed to get data.");
+          DBGW_LOG_ERROR(e.what());
+          throw e;
+        }
+
+      doMakeResultSet(nIndex, md.columnName.c_str(), DBGW_VAL_TYPE_BYTES,
+          bitValue.buf, nIndicator == -1, bitValue.size);
     }
 
     void _DBGWCUBRIDResultSet::getResultSetStringColumn(size_t nIndex,

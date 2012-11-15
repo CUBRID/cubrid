@@ -641,8 +641,8 @@ namespace dbgw
             }
         }
 
-        DECLSPECIFIER bool __stdcall SetParameter(Handle hParam, int nIndex,
-            DBGWValueType type, void *pValue, bool bNull, int nSize)
+        DECLSPECIFIER bool __stdcall SetParameter(Handle hParam,
+            const char *szParamName, size_t nSize, const void *pValue)
         {
           clearException();
 
@@ -655,7 +655,7 @@ namespace dbgw
                   throw e;
                 }
 
-              if (hParam->set(nIndex, type, pValue, bNull, nSize) == false)
+              if (hParam->put(szParamName, nSize, pValue) == false)
                 {
                   throw getLastException();
                 }
@@ -669,9 +669,8 @@ namespace dbgw
             }
         }
 
-        DECLSPECIFIER bool __stdcall SetParameter(Handle hParam,
-            const char *szParamName, DBGWValueType type, void *pValue, bool bNull,
-            int nSize)
+        DECLSPECIFIER bool __stdcall SetParameter(Handle hParam, int nIndex,
+            size_t nSize, const void *pValue)
         {
           clearException();
 
@@ -684,7 +683,7 @@ namespace dbgw
                   throw e;
                 }
 
-              if (hParam->put(szParamName, type, pValue, bNull, nSize) == false)
+              if (hParam->set(nIndex, nSize, pValue) == false)
                 {
                   throw getLastException();
                 }
@@ -1083,6 +1082,18 @@ namespace dbgw
           return GetColumn(hResult, szName, szBuffer, BufferSize, pLen);
         }
 
+        DECLSPECIFIER bool __stdcall GetParameter(Handle hResult, int nIndex,
+            size_t *pSize, char **pValue)
+        {
+          return GetColumn(hResult, nIndex, pSize, pValue);
+        }
+
+        DECLSPECIFIER bool __stdcall GetParameter(Handle hResult,
+            const char *szName, size_t *pSize, char **pValue)
+        {
+          return GetColumn(hResult, szName, pSize, pValue);
+        }
+
         DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, int nIndex,
             int *pValue)
         {
@@ -1400,6 +1411,62 @@ namespace dbgw
                 }
 
               *pLen = nValueSize;
+              return true;
+            }
+          catch (DBGWException &e)
+            {
+              CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+              return false;
+            }
+        }
+
+        DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, int nIndex,
+            size_t *pSize, char **pValue)
+        {
+          clearException();
+
+          try
+            {
+              if (hResult == NULL)
+                {
+                  InvalidHandleException e;
+                  DBGW_LOG_ERROR(e.what());
+                  throw e;
+                }
+
+              if ((*hResult)->getBytes(nIndex, pSize, pValue) == false)
+                {
+                  throw getLastException();
+                }
+
+              return true;
+            }
+          catch (DBGWException &e)
+            {
+              CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+              return false;
+            }
+        }
+
+        DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, const char *szName,
+            size_t *pSize, char **pValue)
+        {
+          clearException();
+
+          try
+            {
+              if (hResult == NULL)
+                {
+                  InvalidHandleException e;
+                  DBGW_LOG_ERROR(e.what());
+                  throw e;
+                }
+
+              if ((*hResult)->getBytes(szName, pSize, pValue) == false)
+                {
+                  throw getLastException();
+                }
+
               return true;
             }
           catch (DBGWException &e)

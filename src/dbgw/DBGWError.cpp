@@ -357,6 +357,13 @@ namespace dbgw
   {
   }
 
+  InvalidValueSizeException::InvalidValueSizeException(int nSize) throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(DBGW_ER_VALUE_INVALID_VALUE_SIZE,
+            (boost::format("The %d size is invalid value size") % nSize).str()))
+  {
+  }
+
   CannotMakeMulipleResultException::CannotMakeMulipleResultException(
       const char *szSqlName) throw() :
     DBGWException(

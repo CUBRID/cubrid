@@ -34,7 +34,8 @@ namespace dbgw
     DBGW_VAL_TYPE_DOUBLE,
     DBGW_VAL_TYPE_DATETIME,
     DBGW_VAL_TYPE_DATE,
-    DBGW_VAL_TYPE_TIME
+    DBGW_VAL_TYPE_TIME,
+    DBGW_VAL_TYPE_BYTES
 #ifdef ENABLE_LOB
     DBGW_VAL_TYPE_CLOB,
     DBGW_VAL_TYPE_BLOB
@@ -77,6 +78,7 @@ namespace dbgw
     bool getDateTime(struct tm *pValue) const;
     bool getFloat(float *pValue) const;
     bool getDouble(double *pValue) const;
+    bool getBytes(size_t *pSize, char **pValue) const;
     DBGWValueType getType() const;
     void *getVoidPtr() const;
     int getLength() const;
@@ -88,6 +90,7 @@ namespace dbgw
     bool toTime(char **pValue) const;
     bool toDate(char **pValue) const;
     bool toDateTime(char **pValue) const;
+    bool toBytes(size_t *pSize, char **pValue) const;
     string toString() const;
     bool isNull() const;
     int size() const;
@@ -100,6 +103,7 @@ namespace dbgw
     void init(DBGWValueType type, const void *pValue, bool bNull);
     void alloc(DBGWValueType type, const void *pValue, bool bNull, int nSize);
     void alloc(DBGWValueType type, const struct tm *pValue);
+    int resize(DBGWValueType type, const char *pValue, int nSize);
 #ifdef ENABLE_LOB
     void init(DBGWValueType type, const void *pValue, bool bNull,
         bool bLateBinding);
@@ -110,6 +114,7 @@ namespace dbgw
 
   private:
     struct tm toTm() const;
+    string toHexDecimalString() const;
 
   private:
     DBGWValueType m_type;
@@ -148,8 +153,9 @@ namespace dbgw
     bool set(size_t nIndex, float fValue, bool bNull = false);
     bool set(size_t nIndex, double dValue, bool bNull = false);
     bool set(size_t nIndex, DBGWValueType type, const struct tm &tmValue);
-    bool set(size_t nIndex, DBGWValueType type, void *pValue, bool bNull = false,
-        int nSize = -1);
+    bool set(size_t nIndex, DBGWValueType type, const void *pValue,
+        bool bNull = false, int nSize = -1);
+    bool set(size_t nIndex, size_t nSize, const void *pValue, bool bNull = false);
     bool put(const char *szKey, int nValue, bool bNull = false);
     bool put(const char *szKey, const char *szValue, bool bNull = false);
     bool put(const char *szKey, int64 lValue, bool bNull = false);
@@ -157,8 +163,10 @@ namespace dbgw
     bool put(const char *szKey, float fValue, bool bNull = false);
     bool put(const char *szKey, double dValue, bool bNull = false);
     bool put(const char *szKey, DBGWValueType type, const struct tm &tmValue);
-    bool put(const char *szKey, DBGWValueType type, void *pValue,
+    bool put(const char *szKey, DBGWValueType type, const void *pValue,
         bool bNull = false, int nSize = -1);
+    bool put(const char *szKey, size_t nSize, const void *pValue,
+        bool bNull = false);
     bool put(int nValue, bool bNull = false);
     bool put(const char *szValue, bool bNull = false);
     bool put(int64 lValue, bool bNull = false);
@@ -168,6 +176,7 @@ namespace dbgw
     bool put(DBGWValueType type, const struct tm &tmValue);
     bool put(DBGWValueType type, const void *pValue, bool bNull = false,
         int nSize = -1);
+    bool put(size_t nSize, const void *pValue, bool bNull = false);
 #ifdef ENABLE_LOB
     bool replace(size_t nIndex, DBGWValueType type, bool bNull, int nSize);
 #endif
@@ -185,6 +194,7 @@ namespace dbgw
     bool getFloat(const char *szKey, float *pValue) const;
     bool getDouble(const char *szKey, double *pValue) const;
     bool getDateTime(const char *szKey, struct tm *pValue) const;
+    bool getBytes(const char *szKey, size_t *pSize, char **pValue) const;
     bool getType(const char *szKey, DBGWValueType *pType) const;
     bool isNull(const char *szKey, bool *pNull) const;
     const DBGWValue *getValue(size_t nIndex) const;
@@ -195,6 +205,7 @@ namespace dbgw
     bool getFloat(int nIndex, float *pValue) const;
     bool getDouble(int nIndex, double *pValue) const;
     bool getDateTime(int nIndex, struct tm *pValue) const;
+    bool getBytes(int nIndex, size_t *pSize, char **pValue) const;
     bool getType(int nIndex, DBGWValueType *pType) const;
     bool isNull(int nIndex, bool *pNull) const;
     size_t size() const;

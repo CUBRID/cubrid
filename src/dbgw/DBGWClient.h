@@ -181,6 +181,7 @@ namespace dbgw
     bool getFloat(int nIndex, float *pValue) const;
     bool getDouble(int nIndex, double *pValue) const;
     bool getDateTime(int nIndex, struct tm *pValue) const;
+    bool getBytes(int nIndex, size_t *pSize, char **pValue) const;
     const DBGWValue *getValue(int nIndex) const;
     bool isNull(const char *szKey, bool *pNull) const;
     bool getType(const char *szKey, DBGWValueType *pType) const;
@@ -191,6 +192,7 @@ namespace dbgw
     bool getFloat(const char *szKey, float *pValue) const;
     bool getDouble(const char *szKey, double *pValue) const;
     bool getDateTime(const char *szKey, struct tm *pValue) const;
+    bool getBytes(const char *szKey, size_t *pSize, char **pValue) const;
     const DBGWValue *getValue(const char *szKey) const;
 
   private:

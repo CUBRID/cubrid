@@ -2745,7 +2745,7 @@ cas_mysql_stmt_fetch (MYSQL_STMT * stmt)
   int ret;
 
   ret = mysql_stmt_fetch (stmt);
-  if ((ret == MYSQL_NO_DATA) || (ret == 0))
+  if ((ret == MYSQL_NO_DATA) || (ret == MYSQL_DATA_TRUNCATED) || (ret == 0))
     {
       return ret;
     }

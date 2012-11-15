@@ -49,6 +49,7 @@ namespace dbgw
     DBGW_ER_VALUE_MISMATCH_VALUE_TYPE                 = -22301,
     DBGW_ER_VALUE_INVALID_VALUE_TYPE                  = -22302,
     DBGW_ER_VALUE_INVALID_VALUE_FORMAT                = -22303,
+    DBGW_ER_VALUE_INVALID_VALUE_SIZE                  = -22304,
 
     DBGW_ER_CLIENT_CANNOT_MAKE_MULTIPLE_RESULT        = -22400,
     DBGW_ER_CLIENT_INVALID_CLIENT                     = -22401,
@@ -257,6 +258,12 @@ namespace dbgw
   {
   public:
     InvalidValueFormatException(const char *szType, const char *szFormat) throw();
+  };
+
+  class InvalidValueSizeException : public DBGWException
+  {
+  public:
+    InvalidValueSizeException(int nSize) throw();
   };
 
   class CannotMakeMulipleResultException : public DBGWException

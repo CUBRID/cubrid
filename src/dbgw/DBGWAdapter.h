@@ -178,11 +178,10 @@ namespace dbgw
             const char *szParamName, const char *szParamValue, size_t nLen);
         DECLSPECIFIER bool __stdcall SetParameter(Handle hParam, int nIndex,
             const char *szParamValue, size_t nLen);
-        DECLSPECIFIER bool __stdcall SetParameter(Handle hParam, int nIndex,
-            DBGWValueType type, void *pValue, bool bNull = false, int nSize = -1);
         DECLSPECIFIER bool __stdcall SetParameter(Handle hParam,
-            const char *szParamName, DBGWValueType type, void *pValue,
-            bool bNull = false, int nSize = -1);
+            const char *szParamName, size_t nSize, const void *pValue);
+        DECLSPECIFIER bool __stdcall SetParameter(Handle hParam, int nIndex,
+            size_t nSize, const void *pValue);
 
       }
 
@@ -229,10 +228,13 @@ namespace dbgw
         DECLSPECIFIER bool __stdcall GetParameter(Handle hResult,
             const char *szName, double *pValue);
         DECLSPECIFIER bool __stdcall GetParameter(Handle hResult, int nIndex,
-            char *szBuffer,
-            int BufferSize, size_t *pLen);
+            char *szBuffer, int BufferSize, size_t *pLen);
         DECLSPECIFIER bool __stdcall GetParameter(Handle hResult,
             const char *szName, char *szBuffer, int BufferSize, size_t *pLen);
+        DECLSPECIFIER bool __stdcall GetParameter(Handle hResult, int nIndex,
+            size_t *pSize, char **pValue);
+        DECLSPECIFIER bool __stdcall GetParameter(Handle hResult,
+            const char *szName, size_t *pSize, char **pValue);
         DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, int nIndex,
             int *pValue);
         DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, const char *szName,
@@ -253,6 +255,10 @@ namespace dbgw
             char *szBuffer, int BufferSize, size_t *pLen);
         DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, const char *szName,
             char *szBuffer, int BufferSize, size_t *pLen);
+        DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, int nIndex,
+            size_t *pSize, char **pValue);
+        DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, const char *szName,
+            size_t *pSize, char **pValue);
 
       }
 

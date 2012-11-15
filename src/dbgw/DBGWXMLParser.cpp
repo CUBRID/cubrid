@@ -444,6 +444,10 @@ namespace dbgw
       {
         return DBGW_VAL_TYPE_DATETIME;
       }
+    if (!strcasecmp(szType, "bytes"))
+      {
+        return DBGW_VAL_TYPE_BYTES;
+      }
 #ifdef ENABLE_LOB
     if (!strcasecmp(szType, "clob"))
       {

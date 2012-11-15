@@ -221,6 +221,9 @@ namespace dbgw
               case DBGW_VAL_TYPE_TIME:
                 bindString(i, pValue);
                 break;
+              case DBGW_VAL_TYPE_BYTES:
+                bindBytes(i, pValue);
+                break;
               default:
                 InvalidValueTypeException e(pValue->getType());
                 DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
@@ -387,6 +390,31 @@ namespace dbgw
     else
       {
         m_pStatement->setCString(nIndex, value.c_str());
+      }
+  }
+
+  void _DBGWExecutorProxy::bindBytes(size_t nIndex, const DBGWValue *pValue)
+  {
+    if (pValue->isNull())
+      {
+        bindNull(nIndex, DBGW_VAL_TYPE_BYTES);
+        return;
+      }
+
+    size_t nSize = 0;
+    char *pBytesValue = NULL;
+    if (pValue->toBytes(&nSize, &pBytesValue) == false)
+      {
+        throw getLastException();
+      }
+
+    if (m_pQuery->getType() == DBGW_STMT_TYPE_PROCEDURE)
+      {
+        m_pCallableStatement->setBytes(nIndex, nSize, pBytesValue);
+      }
+    else
+      {
+        m_pStatement->setBytes(nIndex, nSize, pBytesValue);
       }
   }
 

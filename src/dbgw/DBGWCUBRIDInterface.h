@@ -139,6 +139,7 @@ namespace dbgw
       void setDate(int nIndex, const struct tm &tmValue);
       void setTime(int nIndex, const struct tm &tmValue);
       void setDateTime(int nIndex, const struct tm &tmValue);
+      void setBytes(int nIndex, size_t nSize, const void *pValue);
       void setNull(int nIndex, DBGWValueType type);
 
     public:
@@ -183,6 +184,7 @@ namespace dbgw
       virtual bool setDate(int nIndex, const struct tm &tmValue);
       virtual bool setTime(int nIndex, const struct tm &tmValue);
       virtual bool setDateTime(int nIndex, const struct tm &tmValue);
+      virtual bool setBytes(int nIndex, size_t nSize, const void *pValue);
       virtual bool setNull(int nIndex, DBGWValueType type);
 
     public:
@@ -233,6 +235,7 @@ namespace dbgw
       virtual bool setDate(int nIndex, const struct tm &tmValue);
       virtual bool setTime(int nIndex, const struct tm &tmValue);
       virtual bool setDateTime(int nIndex, const struct tm &tmValue);
+      virtual bool setBytes(int nIndex, size_t nSize, const void *pValue);
       virtual bool setNull(int nIndex, DBGWValueType type);
 
     public:
@@ -244,6 +247,7 @@ namespace dbgw
       virtual bool getFloat(int nIndex, float *pValue) const;
       virtual bool getDouble(int nIndex, double *pValue) const;
       virtual bool getDateTime(int nIndex, struct tm *pValue) const;
+      virtual bool getBytes(int nIndex, size_t *pSize, char **pValue) const;
       virtual const DBGWValue *getValue(int nIndex) const;
 
     public:
@@ -310,6 +314,7 @@ namespace dbgw
       virtual bool getFloat(int nIndex, float *pValue) const;
       virtual bool getDouble(int nIndex, double *pValue) const;
       virtual bool getDateTime(int nIndex, struct tm *pValue) const;
+      virtual bool getBytes(int nIndex, size_t *pSize, char **pValue) const;
       virtual const DBGWValue *getValue(int nIndex) const;
       virtual DBGWResultSetMetaDataSharedPtr getMetaData() const;
 
@@ -325,6 +330,8 @@ namespace dbgw
       void getResultSetFloatColumn(size_t nIndex,
           const _DBGWCUBRIDResultSetMetaDataRaw &md);
       void getResultSetDoubleColumn(size_t nIndex,
+          const _DBGWCUBRIDResultSetMetaDataRaw &md);
+      void getResultSetBytesColumn(size_t nIndex,
           const _DBGWCUBRIDResultSetMetaDataRaw &md);
       void getResultSetStringColumn(size_t nIndex,
           const _DBGWCUBRIDResultSetMetaDataRaw &md);

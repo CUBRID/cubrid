@@ -79,6 +79,7 @@ namespace dbgw
     void bindFloat(size_t nIndex, const DBGWValue *pValue);
     void bindDouble(size_t nIndex, const DBGWValue *pValue);
     void bindString(size_t nIndex, const DBGWValue *pValue);
+    void bindBytes(size_t nIndex, const DBGWValue *pValue);
 
   private:
     DBGWPreparedStatementSharedPtr m_pStatement;

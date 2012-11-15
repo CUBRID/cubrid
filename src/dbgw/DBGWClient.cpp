@@ -1395,6 +1395,45 @@ namespace dbgw
       }
   }
 
+  bool DBGWClientResult::getBytes(int nIndex, size_t *pSize, char **pValue) const
+  {
+    clearException();
+
+    try
+      {
+        if (m_pQuery->getType() == DBGW_STMT_TYPE_SELECT)
+          {
+            if (m_bFetched == false)
+              {
+                AccessDataBeforeFetchException e;
+                DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+                throw e;
+              }
+
+            return m_pResultSet->getBytes(nIndex, pSize, pValue);
+          }
+        else if (m_pQuery->getType() == DBGW_STMT_TYPE_PROCEDURE)
+          {
+            const _DBGWQueryParameter &queryParam = m_pQuery->getQueryParam(
+                nIndex);
+
+            return m_pCallableStatement->getBytes(
+                queryParam.firstPlaceHolderIndex, pSize, pValue);
+          }
+        else
+          {
+            InvalidClientOperationException e;
+            DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+            throw e;
+          }
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
+  }
+
   const DBGWValue *DBGWClientResult::getValue(int nIndex) const
   {
     clearException();
@@ -1579,6 +1618,23 @@ namespace dbgw
         int nIndex = getKeyIndex(szKey);
 
         return getDateTime(nIndex, pValue);
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
+  }
+
+  bool DBGWClientResult::getBytes(const char *szKey, size_t *pSize, char **pValue) const
+  {
+    clearException();
+
+    try
+      {
+        int nIndex = getKeyIndex(szKey);
+
+        return getBytes(nIndex, pSize, pValue);
       }
     catch (DBGWException &e)
       {

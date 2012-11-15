@@ -192,6 +192,7 @@ namespace dbgw
       virtual bool setDate(int nIndex, const struct tm &tmValue) = 0;
       virtual bool setTime(int nIndex, const struct tm &tmValue) = 0;
       virtual bool setDateTime(int nIndex, const struct tm &tmValue) = 0;
+      virtual bool setBytes(int nIndex, size_t nSize, const void *pValue) = 0;
       virtual bool setNull(int nIndex, DBGWValueType type) = 0;
 
     private:
@@ -225,6 +226,7 @@ namespace dbgw
       virtual bool setDate(int nIndex, const struct tm &tmValue) = 0;
       virtual bool setTime(int nIndex, const struct tm &tmValue) = 0;
       virtual bool setDateTime(int nIndex, const struct tm &tmValue) = 0;
+      virtual bool setBytes(int nIndex, size_t nSize, const void *pValue) = 0;
       virtual bool setNull(int nIndex, DBGWValueType type) = 0;
 
     public:
@@ -236,6 +238,7 @@ namespace dbgw
       virtual bool getFloat(int nIndex, float *pValue) const = 0;
       virtual bool getDouble(int nIndex, double *pValue) const = 0;
       virtual bool getDateTime(int nIndex, struct tm *pValue) const = 0;
+      virtual bool getBytes(int nIndex, size_t *pSize, char **pValue) const = 0;
       virtual const DBGWValue *getValue(int nIndex) const = 0;
     };
 
@@ -277,6 +280,7 @@ namespace dbgw
       virtual bool getFloat(int nIndex, float *pValue) const = 0;
       virtual bool getDouble(int nIndex, double *pValue) const = 0;
       virtual bool getDateTime(int nIndex, struct tm *pValue) const = 0;
+      virtual bool getBytes(int nIndex, size_t *pSize, char **pValue) const = 0;
       virtual const DBGWValue *getValue(int nIndex) const = 0;
       virtual DBGWResultSetMetaDataSharedPtr getMetaData() const = 0;
 

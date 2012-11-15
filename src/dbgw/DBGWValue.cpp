@@ -50,6 +50,8 @@ namespace dbgw
         return "DATE";
       case DBGW_VAL_TYPE_TIME:
         return "TIME";
+      case DBGW_VAL_TYPE_BYTES:
+        return "BYTES";
 #ifdef ENABLE_LOB
       case DBGW_VAL_TYPE_CLOB:
         return "CLOB";
@@ -423,6 +425,30 @@ namespace dbgw
       }
   }
 
+  bool DBGWValue::getBytes(size_t *pSize, char **pValue) const
+  {
+    clearException();
+
+    try
+      {
+        if (m_type != DBGW_VAL_TYPE_BYTES)
+          {
+            MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_BYTES);
+            DBGW_LOG_ERROR(e.what());
+            throw e;
+          }
+
+        *pSize = m_nSize;
+        *pValue = m_stValue.szValue;
+        return true;
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
+  }
+
   DBGWValueType DBGWValue::getType() const
   {
     /**
@@ -476,6 +502,8 @@ namespace dbgw
       {
         switch (m_type)
           {
+          case DBGW_VAL_TYPE_BYTES:
+            return m_nSize;
           case DBGW_VAL_TYPE_STRING:
           case DBGW_VAL_TYPE_DATE:
           case DBGW_VAL_TYPE_TIME:
@@ -536,6 +564,10 @@ namespace dbgw
           case DBGW_VAL_TYPE_DOUBLE:
             *pValue = (int) m_stValue.dValue;
             return true;
+          case DBGW_VAL_TYPE_TIME:
+          case DBGW_VAL_TYPE_DATE:
+          case DBGW_VAL_TYPE_DATETIME:
+          case DBGW_VAL_TYPE_BYTES:
           default:
             MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_INT);
             DBGW_LOG_ERROR(e.what());
@@ -579,6 +611,10 @@ namespace dbgw
           case DBGW_VAL_TYPE_DOUBLE:
             *pValue = (int64) m_stValue.dValue;
             return true;
+          case DBGW_VAL_TYPE_TIME:
+          case DBGW_VAL_TYPE_DATE:
+          case DBGW_VAL_TYPE_DATETIME:
+          case DBGW_VAL_TYPE_BYTES:
           default:
             MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_LONG);
             DBGW_LOG_ERROR(e.what());
@@ -622,6 +658,10 @@ namespace dbgw
           case DBGW_VAL_TYPE_DOUBLE:
             *pValue = (float) m_stValue.dValue;
             return true;
+          case DBGW_VAL_TYPE_TIME:
+          case DBGW_VAL_TYPE_DATE:
+          case DBGW_VAL_TYPE_DATETIME:
+          case DBGW_VAL_TYPE_BYTES:
           default:
             MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_FLOAT);
             DBGW_LOG_ERROR(e.what());
@@ -665,6 +705,10 @@ namespace dbgw
             return true;
           case DBGW_VAL_TYPE_DOUBLE:
             return getDouble(pValue);
+          case DBGW_VAL_TYPE_TIME:
+          case DBGW_VAL_TYPE_DATE:
+          case DBGW_VAL_TYPE_DATETIME:
+          case DBGW_VAL_TYPE_BYTES:
           default:
             MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_DOUBLE);
             DBGW_LOG_ERROR(e.what());
@@ -710,6 +754,10 @@ namespace dbgw
           case DBGW_VAL_TYPE_STRING:
             *pValue = boost::lexical_cast<char>(m_stValue.szValue);
             return true;
+          case DBGW_VAL_TYPE_TIME:
+          case DBGW_VAL_TYPE_DATE:
+          case DBGW_VAL_TYPE_DATETIME:
+          case DBGW_VAL_TYPE_BYTES:
           default:
             MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_CHAR);
             DBGW_LOG_ERROR(e.what());
@@ -741,6 +789,14 @@ namespace dbgw
           case DBGW_VAL_TYPE_STRING:
           case DBGW_VAL_TYPE_TIME:
             return getCString(pValue);
+          case DBGW_VAL_TYPE_INT:
+          case DBGW_VAL_TYPE_LONG:
+          case DBGW_VAL_TYPE_FLOAT:
+          case DBGW_VAL_TYPE_DOUBLE:
+          case DBGW_VAL_TYPE_CHAR:
+          case DBGW_VAL_TYPE_DATE:
+          case DBGW_VAL_TYPE_DATETIME:
+          case DBGW_VAL_TYPE_BYTES:
           default:
             MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_TIME);
             DBGW_LOG_ERROR(e.what());
@@ -765,6 +821,14 @@ namespace dbgw
           case DBGW_VAL_TYPE_STRING:
           case DBGW_VAL_TYPE_DATE:
             return getCString(pValue);
+          case DBGW_VAL_TYPE_INT:
+          case DBGW_VAL_TYPE_LONG:
+          case DBGW_VAL_TYPE_FLOAT:
+          case DBGW_VAL_TYPE_DOUBLE:
+          case DBGW_VAL_TYPE_CHAR:
+          case DBGW_VAL_TYPE_TIME:
+          case DBGW_VAL_TYPE_DATETIME:
+          case DBGW_VAL_TYPE_BYTES:
           default:
             MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_DATE);
             DBGW_LOG_ERROR(e.what());
@@ -789,7 +853,39 @@ namespace dbgw
           case DBGW_VAL_TYPE_STRING:
           case DBGW_VAL_TYPE_DATETIME:
             return getCString(pValue);
+          case DBGW_VAL_TYPE_INT:
+          case DBGW_VAL_TYPE_LONG:
+          case DBGW_VAL_TYPE_FLOAT:
+          case DBGW_VAL_TYPE_DOUBLE:
+          case DBGW_VAL_TYPE_CHAR:
+          case DBGW_VAL_TYPE_TIME:
+          case DBGW_VAL_TYPE_DATE:
+          case DBGW_VAL_TYPE_BYTES:
           default:
+            MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_DATETIME);
+            DBGW_LOG_ERROR(e.what());
+            throw e;
+          }
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
+  }
+
+  bool DBGWValue::toBytes(size_t *pSize, char **pValue) const
+  {
+    clearException();
+
+    try
+      {
+        if (m_type == DBGW_VAL_TYPE_BYTES)
+          {
+            return getBytes(pSize, pValue);
+          }
+        else
+          {
             MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_DATETIME);
             DBGW_LOG_ERROR(e.what());
             throw e;
@@ -829,6 +925,8 @@ namespace dbgw
             return boost::lexical_cast<string>(m_stValue.fValue);
           case DBGW_VAL_TYPE_DOUBLE:
             return boost::lexical_cast<string>(m_stValue.dValue);
+          case DBGW_VAL_TYPE_BYTES:
+            return toHexDecimalString();
 #ifdef ENABLE_LOB
           case DBGW_VAL_TYPE_CLOB:
             return "(CLOB)";
@@ -907,6 +1005,21 @@ namespace dbgw
           case DBGW_VAL_TYPE_TIME:
           case DBGW_VAL_TYPE_DATETIME:
             return toString() == value.toString();
+          case DBGW_VAL_TYPE_BYTES:
+            if (getLength() != value.getLength())
+              {
+                return false;
+              }
+
+            for (int i = 0, size = getLength(); i < size; i++)
+              {
+                if (m_stValue.szValue[i] != value.m_stValue.szValue[i])
+                  {
+                    return false;
+                  }
+              }
+
+            return true;
           default:
             InvalidValueTypeException e(m_type);
             DBGW_LOG_ERROR(e.what());
@@ -964,47 +1077,14 @@ namespace dbgw
 
     if (isStringBasedValue())
       {
-        if (m_type == DBGW_VAL_TYPE_CHAR)
-          {
-            nSize = 1;
-          }
-
         char *p = (char *) pValue;
-
-        if (nSize <= 0)
-          {
-            nSize = strlen(p);
-          }
-
-        if (m_nSize <= nSize)
-          {
-            if (m_nSize == -1 || nSize > MAX_BOUNDARY_SIZE)
-              {
-                m_nSize = nSize + 1;
-              }
-            else
-              {
-                m_nSize = nSize * 2;
-              }
-
-            if (m_stValue.szValue != NULL)
-              {
-                free(m_stValue.szValue);
-              }
-
-            m_stValue.szValue = (char *) malloc(m_nSize);
-            if (m_stValue.szValue == NULL)
-              {
-                m_bNull = true;
-                m_nSize = -1;
-                MemoryAllocationFail e(m_nSize);
-                DBGW_LOG_ERROR(e.what());
-                throw e;
-              }
-          }
-
+        nSize = resize(type, p, nSize);
         memcpy(m_stValue.szValue, p, nSize);
-        m_stValue.szValue[nSize] = '\0';
+
+        if (m_type != DBGW_VAL_TYPE_BYTES)
+          {
+            m_stValue.szValue[nSize] = '\0';
+          }
         return;
       }
     else if (m_type == DBGW_VAL_TYPE_INT)
@@ -1203,6 +1283,59 @@ namespace dbgw
     m_stValue.szValue[m_nSize - 1] = '\0';
   }
 
+  int DBGWValue::resize(DBGWValueType type, const char *pValue, int nSize)
+  {
+    if (m_type == DBGW_VAL_TYPE_CHAR)
+      {
+        nSize = 1;
+      }
+
+    if (nSize <= 0)
+      {
+        if (m_type == DBGW_VAL_TYPE_BYTES)
+          {
+            InvalidValueSizeException e(nSize);
+            DBGW_LOG_ERROR(e.what());
+            throw e;
+          }
+
+        nSize = strlen(pValue);
+      }
+
+    if (m_nSize <= nSize)
+      {
+        if (m_type == DBGW_VAL_TYPE_BYTES)
+          {
+            m_nSize = nSize;
+          }
+        else if (m_nSize == -1 || nSize > MAX_BOUNDARY_SIZE)
+          {
+            m_nSize = nSize + 1;
+          }
+        else
+          {
+            m_nSize = nSize * 2;
+          }
+
+        if (m_stValue.szValue != NULL)
+          {
+            free(m_stValue.szValue);
+          }
+
+        m_stValue.szValue = (char *) malloc(m_nSize);
+        if (m_stValue.szValue == NULL)
+          {
+            m_bNull = true;
+            m_nSize = -1;
+            MemoryAllocationFail e(m_nSize);
+            DBGW_LOG_ERROR(e.what());
+            throw e;
+          }
+      }
+
+    return nSize;
+  }
+
   bool DBGWValue::isStringBasedValue() const
   {
     switch (m_type)
@@ -1212,6 +1345,7 @@ namespace dbgw
       case DBGW_VAL_TYPE_TIME:
       case DBGW_VAL_TYPE_DATETIME:
       case DBGW_VAL_TYPE_STRING:
+      case DBGW_VAL_TYPE_BYTES:
         return true;
 #ifdef ENABLE_LOB
       case DBGW_VAL_TYPE_CLOB:
@@ -1268,6 +1402,56 @@ namespace dbgw
       }
   }
 
+  string DBGWValue::toHexDecimalString() const
+  {
+    const char *szSourceHex = "0123456789ABCDEF";
+    char szHex[3];
+    szHex[2] = '\0';
+    stringstream sstream;
+
+#define ADD_HEX_TO_STREAM(i)\
+  do {\
+      char ch = m_stValue.szValue[i];\
+      szHex[0] = szSourceHex[ch >> 4];\
+      szHex[1] = szSourceHex[ch & 0xF];\
+      sstream << szHex;\
+  } while(0)
+
+    sstream << "0x";
+
+    int nHex = 0;
+
+    if (m_nSize < 20)
+      {
+        for (int i = 0; i < m_nSize; i++)
+          {
+            if (i % 2 == 0)
+              {
+                sstream << " ";
+              }
+
+            ADD_HEX_TO_STREAM(i);
+          }
+      }
+    else
+      {
+        sstream << " ";
+        ADD_HEX_TO_STREAM(0);
+        ADD_HEX_TO_STREAM(1);
+        sstream << " ";
+        ADD_HEX_TO_STREAM(2);
+        ADD_HEX_TO_STREAM(3);
+        sstream << " ... ";
+        ADD_HEX_TO_STREAM(m_nSize - 4);
+        ADD_HEX_TO_STREAM(m_nSize - 3);
+        sstream << " ";
+        ADD_HEX_TO_STREAM(m_nSize - 2);
+        ADD_HEX_TO_STREAM(m_nSize - 1);
+      }
+
+    return sstream.str();
+  }
+
   _DBGWValueSet::_DBGWValueSet()
   {
   }
@@ -1279,183 +1463,32 @@ namespace dbgw
 
   bool _DBGWValueSet::set(size_t nIndex, int nValue, bool bNull)
   {
-    clearException();
-
-    try
-      {
-        if (m_valueList.size() <= nIndex)
-          {
-            m_valueList.resize(nIndex + 1);
-          }
-
-        DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_INT, &nValue, bNull));
-        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
-          {
-            throw getLastException();
-          }
-
-        _DBGWValuePair pair;
-        pair.value = p;
-
-        m_valueList[nIndex] = pair;
-        return true;
-      }
-    catch (DBGWException &e)
-      {
-        setLastException(e);
-        return false;
-      }
+    return set(nIndex, DBGW_VAL_TYPE_INT, &nValue, bNull);
   }
 
   bool _DBGWValueSet::set(size_t nIndex, const char *szValue, bool bNull)
   {
-    clearException();
-
-    try
-      {
-        if (m_valueList.size() <= nIndex)
-          {
-            m_valueList.resize(nIndex + 1);
-          }
-
-        DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_STRING, (void *) szValue,
-            bNull));
-        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
-          {
-            throw getLastException();
-          }
-
-        _DBGWValuePair pair;
-        pair.value = p;
-
-        m_valueList[nIndex] = pair;
-        return true;
-      }
-    catch (DBGWException &e)
-      {
-        setLastException(e);
-        return false;
-      }
+    return set(nIndex, DBGW_VAL_TYPE_STRING, szValue, bNull);
   }
 
   bool _DBGWValueSet::set(size_t nIndex, int64 lValue, bool bNull)
   {
-    clearException();
-
-    try
-      {
-        if (m_valueList.size() <= nIndex)
-          {
-            m_valueList.resize(nIndex + 1);
-          }
-
-        DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_LONG, &lValue, bNull));
-        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
-          {
-            throw getLastException();
-          }
-
-        _DBGWValuePair pair;
-        pair.value = p;
-
-        m_valueList[nIndex] = pair;
-        return true;
-      }
-    catch (DBGWException &e)
-      {
-        setLastException(e);
-        return false;
-      }
+    return set(nIndex, DBGW_VAL_TYPE_LONG, &lValue, bNull);
   }
 
   bool _DBGWValueSet::set(size_t nIndex, char cValue, bool bNull)
   {
-    clearException();
-
-    try
-      {
-        if (m_valueList.size() <= nIndex)
-          {
-            m_valueList.resize(nIndex + 1);
-          }
-
-        DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_CHAR, &cValue, bNull));
-        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
-          {
-            throw getLastException();
-          }
-
-        _DBGWValuePair pair;
-        pair.value = p;
-
-        m_valueList[nIndex] = pair;
-        return true;
-      }
-    catch (DBGWException &e)
-      {
-        setLastException(e);
-        return false;
-      }
+    return set(nIndex, DBGW_VAL_TYPE_CHAR, &cValue, bNull);
   }
 
   bool _DBGWValueSet::set(size_t nIndex, float fValue, bool bNull)
   {
-    clearException();
-
-    try
-      {
-        if (m_valueList.size() <= nIndex)
-          {
-            m_valueList.resize(nIndex + 1);
-          }
-
-        DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_FLOAT, &fValue, bNull));
-        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
-          {
-            throw getLastException();
-          }
-
-        _DBGWValuePair pair;
-        pair.value = p;
-
-        m_valueList[nIndex] = pair;
-        return true;
-      }
-    catch (DBGWException &e)
-      {
-        setLastException(e);
-        return false;
-      }
+    return set(nIndex, DBGW_VAL_TYPE_FLOAT, &fValue, bNull);
   }
 
   bool _DBGWValueSet::set(size_t nIndex, double dValue, bool bNull)
   {
-    clearException();
-
-    try
-      {
-        if (m_valueList.size() <= nIndex)
-          {
-            m_valueList.resize(nIndex + 1);
-          }
-
-        DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_DOUBLE, &dValue, bNull));
-        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
-          {
-            throw getLastException();
-          }
-
-        _DBGWValuePair pair;
-        pair.value = p;
-
-        m_valueList[nIndex] = pair;
-        return true;
-      }
-    catch (DBGWException &e)
-      {
-        setLastException(e);
-        return false;
-      }
+    return set(nIndex, DBGW_VAL_TYPE_DOUBLE, &dValue, bNull);
   }
 
   bool _DBGWValueSet::set(size_t nIndex, DBGWValueType type,
@@ -1489,7 +1522,7 @@ namespace dbgw
       }
   }
 
-  bool _DBGWValueSet::set(size_t nIndex, DBGWValueType type, void *pValue,
+  bool _DBGWValueSet::set(size_t nIndex, DBGWValueType type, const void *pValue,
       bool bNull, int nSize)
   {
     clearException();
@@ -1519,161 +1552,40 @@ namespace dbgw
       }
   }
 
+  bool _DBGWValueSet::set(size_t nIndex, size_t nSize, const void *pValue,
+      bool bNull)
+  {
+    return set(nIndex, DBGW_VAL_TYPE_BYTES, pValue, bNull, nSize);
+  }
+
   bool _DBGWValueSet::put(const char *szKey, int nValue, bool bNull)
   {
-    clearException();
-
-    try
-      {
-        DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_INT, &nValue, bNull));
-        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
-          {
-            throw getLastException();
-          }
-
-        _DBGWValuePair pair;
-        pair.key = szKey;
-        pair.value = p;
-
-        m_valueList.push_back(pair);
-        return true;
-      }
-    catch (DBGWException &e)
-      {
-        setLastException(e);
-        return false;
-      }
+    return put(szKey, DBGW_VAL_TYPE_INT, &nValue, bNull);
   }
 
   bool _DBGWValueSet::put(const char *szKey, const char *szValue, bool bNull)
   {
-    clearException();
-
-    try
-      {
-        DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_STRING,
-            (void *) szValue, bNull));
-        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
-          {
-            throw getLastException();
-          }
-
-        _DBGWValuePair pair;
-        pair.key = szKey;
-        pair.value = p;
-
-        m_valueList.push_back(pair);
-        return true;
-      }
-    catch (DBGWException &e)
-      {
-        setLastException(e);
-        return false;
-      }
+    return put(szKey, DBGW_VAL_TYPE_STRING, szValue, bNull);
   }
 
   bool _DBGWValueSet::put(const char *szKey, int64 lValue, bool bNull)
   {
-    clearException();
-
-    try
-      {
-        DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_LONG, &lValue, bNull));
-        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
-          {
-            throw getLastException();
-          }
-
-        _DBGWValuePair pair;
-        pair.key = szKey;
-        pair.value = p;
-
-        m_valueList.push_back(pair);
-        return true;
-      }
-    catch (DBGWException &e)
-      {
-        setLastException(e);
-        return false;
-      }
+    return put(szKey, DBGW_VAL_TYPE_LONG, &lValue, bNull);
   }
 
   bool _DBGWValueSet::put(const char *szKey, char cValue, bool bNull)
   {
-    clearException();
-
-    try
-      {
-        DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_CHAR, &cValue, bNull));
-        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
-          {
-            throw getLastException();
-          }
-
-        _DBGWValuePair pair;
-        pair.key = szKey;
-        pair.value = p;
-
-        m_valueList.push_back(pair);
-        return true;
-      }
-    catch (DBGWException &e)
-      {
-        setLastException(e);
-        return false;
-      }
+    return put(szKey, DBGW_VAL_TYPE_CHAR, &cValue, bNull);
   }
 
   bool _DBGWValueSet::put(const char *szKey, float fValue, bool bNull)
   {
-    clearException();
-
-    try
-      {
-        DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_FLOAT, &fValue, bNull));
-        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
-          {
-            throw getLastException();
-          }
-
-        _DBGWValuePair pair;
-        pair.key = szKey;
-        pair.value = p;
-
-        m_valueList.push_back(pair);
-        return true;
-      }
-    catch (DBGWException &e)
-      {
-        setLastException(e);
-        return false;
-      }
+    return put(szKey, DBGW_VAL_TYPE_FLOAT, &fValue, bNull);
   }
 
   bool _DBGWValueSet::put(const char *szKey, double dValue, bool bNull)
   {
-    clearException();
-
-    try
-      {
-        DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_DOUBLE, &dValue, bNull));
-        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
-          {
-            throw getLastException();
-          }
-
-        _DBGWValuePair pair;
-        pair.key = szKey;
-        pair.value = p;
-
-        m_valueList.push_back(pair);
-        return true;
-      }
-    catch (DBGWException &e)
-      {
-        setLastException(e);
-        return false;
-      }
+    return put(szKey, DBGW_VAL_TYPE_DOUBLE, &dValue, bNull);
   }
 
   bool _DBGWValueSet::put(const char *szKey, DBGWValueType type,
@@ -1703,7 +1615,7 @@ namespace dbgw
       }
   }
 
-  bool _DBGWValueSet::put(const char *szKey, DBGWValueType type, void *pValue,
+  bool _DBGWValueSet::put(const char *szKey, DBGWValueType type, const void *pValue,
       bool bNull, int nSize)
   {
     clearException();
@@ -1730,150 +1642,40 @@ namespace dbgw
       }
   }
 
+  bool _DBGWValueSet::put(const char *szKey, size_t nSize, const void *pValue,
+      bool bNull)
+  {
+    return put(szKey, DBGW_VAL_TYPE_BYTES, pValue, bNull, nSize);
+  }
+
   bool _DBGWValueSet::put(int nValue, bool bNull)
   {
-    clearException();
-
-    try
-      {
-        DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_INT, &nValue, bNull));
-        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
-          {
-            throw getLastException();
-          }
-        _DBGWValuePair pair;
-        pair.value = p;
-
-        m_valueList.push_back(pair);
-        return true;
-      }
-    catch (DBGWException &e)
-      {
-        setLastException(e);
-        return false;
-      }
+    return put(DBGW_VAL_TYPE_INT, &nValue, bNull);
   }
 
   bool _DBGWValueSet::put(const char *szValue, bool bNull)
   {
-    clearException();
-
-    try
-      {
-        DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_STRING,
-            (void *) szValue, bNull));
-        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
-          {
-            throw getLastException();
-          }
-        _DBGWValuePair pair;
-        pair.value = p;
-
-        m_valueList.push_back(pair);
-        return true;
-      }
-    catch (DBGWException &e)
-      {
-        setLastException(e);
-        return false;
-      }
+    return put(DBGW_VAL_TYPE_STRING, szValue, bNull);
   }
 
   bool _DBGWValueSet::put(int64 lValue, bool bNull)
   {
-    clearException();
-
-    try
-      {
-        DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_LONG, &lValue, bNull));
-        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
-          {
-            throw getLastException();
-          }
-        _DBGWValuePair pair;
-        pair.value = p;
-
-        m_valueList.push_back(pair);
-        return true;
-      }
-    catch (DBGWException &e)
-      {
-        setLastException(e);
-        return false;
-      }
+    return put(DBGW_VAL_TYPE_LONG, &lValue, bNull);
   }
 
   bool _DBGWValueSet::put(char cValue, bool bNull)
   {
-    clearException();
-
-    try
-      {
-        DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_CHAR, &cValue, bNull));
-        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
-          {
-            throw getLastException();
-          }
-        _DBGWValuePair pair;
-        pair.value = p;
-
-        m_valueList.push_back(pair);
-        return true;
-      }
-    catch (DBGWException &e)
-      {
-        setLastException(e);
-        return false;
-      }
+    return put(DBGW_VAL_TYPE_CHAR, &cValue, bNull);
   }
 
   bool _DBGWValueSet::put(float fValue, bool bNull)
   {
-    clearException();
-
-    try
-      {
-        DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_FLOAT, &fValue, bNull));
-        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
-          {
-            throw getLastException();
-          }
-        _DBGWValuePair pair;
-        pair.value = p;
-
-        m_valueList.push_back(pair);
-        return true;
-      }
-    catch (DBGWException &e)
-      {
-        setLastException(e);
-        return false;
-      }
+    return put(DBGW_VAL_TYPE_FLOAT, &fValue, bNull);
   }
 
   bool _DBGWValueSet::put(double dValue, bool bNull)
   {
-    clearException();
-
-    try
-      {
-        DBGWValueSharedPtr p(new DBGWValue(DBGW_VAL_TYPE_DOUBLE, &dValue,
-            bNull));
-        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
-          {
-            throw getLastException();
-          }
-        _DBGWValuePair pair;
-        pair.value = p;
-
-        m_valueList.push_back(pair);
-        return true;
-      }
-    catch (DBGWException &e)
-      {
-        setLastException(e);
-        return false;
-      }
+    return put(DBGW_VAL_TYPE_DOUBLE, &dValue, bNull);
   }
 
   bool _DBGWValueSet::put(DBGWValueType type, const struct tm &tmValue)
@@ -1923,6 +1725,11 @@ namespace dbgw
         setLastException(e);
         return false;
       }
+  }
+
+  bool _DBGWValueSet::put(size_t nSize, const void *pValue, bool bNull)
+  {
+    return put(DBGW_VAL_TYPE_BYTES, pValue, bNull, nSize);
   }
 
 #ifdef ENABLE_LOB
@@ -2196,6 +2003,29 @@ namespace dbgw
       }
   }
 
+  bool _DBGWValueSet::getBytes(const char *szKey, size_t *pSize, char **pValue) const
+  {
+    clearException();
+
+    try
+      {
+        const DBGWValue *p = getValue(szKey);
+        if (p == NULL)
+          {
+            throw getLastException();
+          }
+        else
+          {
+            return p->getBytes(pSize, pValue);
+          }
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
+  }
+
   bool _DBGWValueSet::getType(const char *szKey, DBGWValueType *pType) const
   {
     clearException();
@@ -2418,6 +2248,29 @@ namespace dbgw
         else
           {
             return p->getDateTime(pValue);
+          }
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return false;
+      }
+  }
+
+  bool _DBGWValueSet::getBytes(int nIndex, size_t *pSize, char **pValue) const
+  {
+    clearException();
+
+    try
+      {
+        const DBGWValue *p = getValue(nIndex);
+        if (p == NULL)
+          {
+            throw getLastException();
+          }
+        else
+          {
+            return p->getBytes(pSize, pValue);
           }
       }
     catch (DBGWException &e)
