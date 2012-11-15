@@ -911,6 +911,11 @@ extractschema (const char *exec_name, int do_auth)
 	}
     }
 
+  if (emit_stored_procedure () != NO_ERROR)
+    {
+      err_count++;
+    }
+
   has_indexes = emit_schema (classes, do_auth, &vclass_list_has_using_index);
   if (er_errid () != NO_ERROR)
     {
@@ -918,11 +923,6 @@ extractschema (const char *exec_name, int do_auth)
     }
 
   if (emit_foreign_key (classes) != NO_ERROR)
-    {
-      err_count++;
-    }
-
-  if (emit_stored_procedure () != NO_ERROR)
     {
       err_count++;
     }
