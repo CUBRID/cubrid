@@ -1380,7 +1380,7 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser,
       if (statement->info.scope.stmt &&
 	  statement->info.scope.stmt->info.trigger_action.expression)
 	{
-	  statement->si_datetime = statement->info.scope.stmt->info.
+	  statement->si_datetime |= statement->info.scope.stmt->info.
 	    trigger_action.expression->si_datetime;
 	}
     }
