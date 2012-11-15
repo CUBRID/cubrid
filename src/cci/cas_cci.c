@@ -4726,24 +4726,22 @@ int
 cci_get_dbms_type (int con_h_id)
 {
   T_CON_HANDLE *con_handle = NULL;
-  int dbms_type;
 
   MUTEX_LOCK (con_handle_table_mutex);
 
   con_handle = hm_find_con_handle (con_h_id);
   if (con_handle == NULL)
     {
-      dbms_type = CCI_ER_CON_HANDLE;
+      MUTEX_UNLOCK (con_handle_table_mutex);
+
+      return CCI_ER_CON_HANDLE;
     }
-  else
-    {
-      dbms_type = con_handle->broker_info[BROKER_INFO_DBMS_TYPE];
-    }
-  reset_error_buffer (&(con_handle->err_buf));
 
   MUTEX_UNLOCK (con_handle_table_mutex);
 
-  return dbms_type;
+  reset_error_buffer (&(con_handle->err_buf));
+
+  return con_handle->broker_info[BROKER_INFO_DBMS_TYPE];
 }
 
 int
