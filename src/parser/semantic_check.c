@@ -8362,7 +8362,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_NODE *all_attrs, *r, *resolv_class, *attr;
   PT_NODE *tbl_opt = NULL;
   PT_MISC_TYPE entity_type;
-  DB_OBJECT *db_obj;
+  DB_OBJECT *db_obj, *existing_entity;
   int found, partition_status = NOT_PARTITION_CLASS;
   bool found_reuse_oid = false;
   bool found_auto_increment = false;
@@ -8423,11 +8423,12 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
   /* check name doesn't already exist as a class */
   name = node->info.create_entity.entity_name;
-  if (pt_find_class (parser, name))
+  existing_entity = pt_find_class (parser, name);
+  if (existing_entity != NULL)
     {
-      if (entity_type == PT_CLASS
-	  || (entity_type == PT_VCLASS
-	      && node->info.create_entity.or_replace == 0))
+      if (!(entity_type == PT_VCLASS
+	   && node->info.create_entity.or_replace == 1
+	   && db_is_vclass (existing_entity)))
 	{
 	  PT_ERRORmf (parser, name,
 		      MSGCAT_SET_PARSER_SEMANTIC,
