@@ -11883,8 +11883,12 @@ insert_subquery_results (PARSER_CONTEXT * parser,
 			  if (obj == NULL)
 			    {
 			      dbt_abort_object (otemplate);
+			      cnt = er_errid ();
 			    }
-			  cnt = er_errid ();
+			  else
+			    {
+			      cnt = error;
+			    }
 			  goto cleanup;
 			}
 

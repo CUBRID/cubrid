@@ -8296,6 +8296,7 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement,
 
     case PT_MERGE:
       specptr = &statement->info.merge.into;
+      where_part = &statement->info.merge.update.search_cond;
       /* Add to statement expressions to check if 'with check option'
        * specified */
       check_where_part = NULL;
