@@ -1171,7 +1171,8 @@ $ LOADDB
 1103 시스템 파라미터를 변경할 수 없습니다.
 1104 Slow query (%d msec)\n%s
 1105 내부에러: partially failed to flush dirty object.
-1106 마지막 에러
+1106 Multiple rows in source table match the same row in destination table.
+1107 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %d):

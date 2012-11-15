@@ -1388,7 +1388,9 @@
 
 #define ER_LC_PARTIALLY_FAILED_TO_FLUSH             -1105
 
-#define ER_LAST_ERROR                               -1106
+#define ER_MERGE_TOO_MANY_SOURCE_ROWS		    -1106
+
+#define ER_LAST_ERROR                               -1107
 
 
 #define DB_TRUE 1

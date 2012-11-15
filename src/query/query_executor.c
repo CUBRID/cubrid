@@ -3853,6 +3853,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   GROUPBY_STATE gbstate;
   QFILE_LIST_SCAN_ID input_scan_id;
   int ls_flag = 0;
+  int tuple_cnt = 0;
 
   if (buildlist->groupby_list == NULL)
     {
@@ -3950,6 +3951,10 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
       return NO_ERROR;
     }
+  else
+    {
+      tuple_cnt = list_id->tuple_cnt;
+    }
 
   /*
    * Open a scan on the unsorted input file
@@ -4032,6 +4037,15 @@ wrapup:
     result = (gbstate.state == NO_ERROR || gbstate.state == SORT_PUT_STOP)
       ? NO_ERROR : ER_FAILED;
     qexec_clear_groupby_state (thread_p, &gbstate);
+
+    if (XASL_IS_FLAGED (xasl, XASL_IS_MERGE_QUERY)
+	&& list_id->tuple_cnt != tuple_cnt)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		ER_MERGE_TOO_MANY_SOURCE_ROWS, 0);
+	result = ER_FAILED;
+      }
+
     return result;
   }
 
@@ -18165,6 +18179,7 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   SCAN_CODE scan_code;
   QFILE_TUPLE_RECORD tuple_rec;
   REGU_VARIABLE_LIST regu_list;
+  int tuple_cnt = 0;
 
   if (buildlist->groupby_list == NULL)
     {
@@ -18236,6 +18251,10 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       qexec_clear_groupby_state (thread_p, &gbstate);	/* will free gbstate.output_file */
 
       return NO_ERROR;
+    }
+  else
+    {
+      tuple_cnt = list_id->tuple_cnt;
     }
 
   /*
@@ -18359,6 +18378,14 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   qfile_destroy_list (thread_p, list_id);
   qfile_copy_list_id (list_id, gbstate.output_file, true);
+
+  if (XASL_IS_FLAGED (xasl, XASL_IS_MERGE_QUERY)
+      && list_id->tuple_cnt != tuple_cnt)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MERGE_TOO_MANY_SOURCE_ROWS,
+	      0);
+      result = ER_FAILED;
+    }
 
 exit_on_error:
 

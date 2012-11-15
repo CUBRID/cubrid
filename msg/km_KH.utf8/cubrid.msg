@@ -1171,7 +1171,8 @@ $ LOADDB
 1103 ១១០៣លេខប្រព័ន្ធដែលមិនអាចកែប្រែ.
 1104 Slow query (%d msec)\n%s
 1105 Internal error: partially failed to flush dirty object. 
-1106 ១១០៤ កំហុសទីបំផុត
+1106 Multiple rows in source table match the same row in destination table.
+1107 ១១០៤ កំហុសទីបំផុត
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error ក្នុងអនុប្រព័ន្ធ error (line %d):

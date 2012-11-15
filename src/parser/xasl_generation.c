@@ -15207,11 +15207,15 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
       XASL_SET_FLAG (xasl, XASL_MULTI_UPDATE_AGG);
     }
 
-  /* set flag to ignore class oid in object fetch */
-  if (PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_INFO_IS_MERGE_QUERY)
-      && xasl->fptr_list)
+  /* set flag for merge query */
+  if (PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_INFO_IS_MERGE_QUERY))
     {
-      XASL_SET_FLAG (xasl->fptr_list, XASL_OBJFETCH_IGNORE_CLASSOID);
+      XASL_SET_FLAG (xasl, XASL_IS_MERGE_QUERY);
+      /* set flag to ignore class oid in object fetch */
+      if (xasl->fptr_list)
+	{
+	  XASL_SET_FLAG (xasl->fptr_list, XASL_OBJFETCH_IGNORE_CLASSOID);
+	}
     }
 
   return xasl;

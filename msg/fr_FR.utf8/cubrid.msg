@@ -1171,7 +1171,8 @@ $ LOADDB
 1103 Impossible de changer le paramètre du système.
 1104 Slow query (%d msec)\n%s
 1105 Internal error: partially failed to flush dirty object. 
-1106 Dernière erreur
+1106 Multiple rows in source table match the same row in destination table.
+1107 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %d):
