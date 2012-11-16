@@ -9,6 +9,8 @@ Summary:       An open source database highly optimized for Web applications
 Name:          cubrid
 Version:       %{cubrid_version}
 Release:       %{release}%{?dist}
+Provides:      CUBRID = 2:%{version}-%{release}
+Obsoletes:     CUBRID < 2:8.4.3
 License:       GPLv2+ and BSD
 Group:         Applications/Databases
 URL:           http://www.cubrid.org
