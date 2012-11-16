@@ -10411,11 +10411,39 @@ static int
 update_foreign_key_ref (MOP ref_clsop, SM_FOREIGN_KEY_INFO * fk_info)
 {
   SM_TEMPLATE *template_;
+  SM_CLASS *ref_class_;
+  SM_CLASS_CONSTRAINT *pk;
+  MOP owner_clsop = NULL;
   int save, error;
 
   AU_DISABLE (save);
 
-  template_ = dbt_edit_class (ref_clsop);
+  error = au_fetch_class_force (ref_clsop, &ref_class_, AU_FETCH_READ);
+  if (error != NO_ERROR)
+    {
+      AU_ENABLE (save);
+      return error;
+    }
+
+  if (ref_class_->inheritance != NULL)
+    {
+      /* the PK of referenced table may come from.its parent table */
+      pk = classobj_find_cons_primary_key (ref_class_->constraints);
+      if (pk == NULL)
+	{
+	  AU_ENABLE (save);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_FK_REF_CLASS_HAS_NOT_PK, 1, ref_class_->header.name);
+	  return ER_FK_REF_CLASS_HAS_NOT_PK;
+	}
+      owner_clsop = pk->attributes[0]->class_mop;
+    }
+  else
+    {
+      owner_clsop = ref_clsop;
+    }
+
+  template_ = dbt_edit_class (owner_clsop);
   if (template_ == NULL)
     {
       AU_ENABLE (save);
@@ -10906,7 +10934,35 @@ drop_foreign_key_ref (MOP classop,
     }
   else
     {
-      refcls_template = dbt_edit_class (ref_clsop);
+      SM_CLASS *ref_class_;
+      SM_CLASS_CONSTRAINT *pk;
+      MOP owner_clsop;
+
+      err = au_fetch_class_force (ref_clsop, &ref_class_, AU_FETCH_READ);
+      if (err != NO_ERROR)
+	{
+	  AU_ENABLE (save);
+	  return err;
+	}
+      if (ref_class_->inheritance != NULL)
+	{
+	  /* the PK of referenced table may come from.its parent table */
+	  pk = classobj_find_cons_primary_key (ref_class_->constraints);
+	  if (pk == NULL)
+	    {
+	      AU_ENABLE (save);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_FK_REF_CLASS_HAS_NOT_PK, 1, ref_class_->header.name);
+	      return ER_FK_REF_CLASS_HAS_NOT_PK;
+	    }
+	  owner_clsop = pk->attributes[0]->class_mop;
+	}
+      else
+	{
+	  owner_clsop = ref_clsop;
+	}
+
+      refcls_template = dbt_edit_class (owner_clsop);
       if (refcls_template == NULL)
 	{
 	  AU_ENABLE (save);
