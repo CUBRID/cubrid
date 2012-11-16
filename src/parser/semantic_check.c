@@ -8427,8 +8427,8 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   if (existing_entity != NULL)
     {
       if (!(entity_type == PT_VCLASS
-	   && node->info.create_entity.or_replace == 1
-	   && db_is_vclass (existing_entity)))
+	    && node->info.create_entity.or_replace == 1
+	    && db_is_vclass (existing_entity)))
 	{
 	  PT_ERRORmf (parser, name,
 		      MSGCAT_SET_PARSER_SEMANTIC,
@@ -11348,21 +11348,53 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs,
 		    }
 		  else
 		    {
-		      if (lhs->expected_domain != NULL)
+		      TP_DOMAIN *hv_domain = NULL;
+
+		      /* node_type is PT_HOST_VAR
+		       * set host var's expected domain
+		       * with next order of priority.
+		       *
+		       * 1. host_var->host_var_expected_domains[index]
+		       * 2. lhs's expected domain
+		       * 3. default domain of lhs type
+		       */
+		      if (rhs->info.host_var.index < parser->host_var_count
+			  && parser->host_var_expected_domains)
 			{
-			  d = lhs->expected_domain;
+			  hv_domain =
+			    parser->host_var_expected_domains[rhs->info.
+							      host_var.index];
+			}
+
+		      if (hv_domain && hv_domain->type->id != DB_TYPE_UNKNOWN)
+			{
+			  /* host var's expected domain is already set */
+			  d = hv_domain;
+			  if (TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (d)))
+			    {
+			      d->codeset = sci.cs;
+			      d->collation_id = sci.collation_id;
+			    }
 			}
 		      else
 			{
-			  d = tp_domain_resolve_default (lhs_dbtype);
-			}
+			  /* use lhs's expected_domain */
+			  if (lhs->expected_domain != NULL)
+			    {
+			      d = lhs->expected_domain;
+			    }
+			  else
+			    {
+			      d = tp_domain_resolve_default (lhs_dbtype);
+			    }
 
-		      if (PT_HAS_COLLATION (lhs->type_enum))
-			{
-			  d = tp_domain_copy (d, false);
-			  d->codeset = sci.cs;
-			  d->collation_id = sci.collation_id;
-			  d = tp_domain_cache (d);
+			  if (PT_HAS_COLLATION (lhs->type_enum))
+			    {
+			      d = tp_domain_copy (d, false);
+			      d->codeset = sci.cs;
+			      d->collation_id = sci.collation_id;
+			      d = tp_domain_cache (d);
+			    }
 			}
 		    }
 		}
