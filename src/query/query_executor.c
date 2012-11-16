@@ -11743,7 +11743,7 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     case UPDATE_PROC:
       if (!LOG_CHECK_LOG_APPLIER (thread_p))
 	{
-	  CHECK_MODIFICATION_NO_RETURN (error);
+	  CHECK_MODIFICATION_NO_RETURN (thread_p, error);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -11772,7 +11772,7 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     case DELETE_PROC:
       if (!LOG_CHECK_LOG_APPLIER (thread_p))
 	{
-	  CHECK_MODIFICATION_NO_RETURN (error);
+	  CHECK_MODIFICATION_NO_RETURN (thread_p, error);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -11801,7 +11801,7 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     case INSERT_PROC:
       if (!LOG_CHECK_LOG_APPLIER (thread_p))
 	{
-	  CHECK_MODIFICATION_NO_RETURN (error);
+	  CHECK_MODIFICATION_NO_RETURN (thread_p, error);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -11838,7 +11838,7 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     case MERGE_PROC:
       if (!LOG_CHECK_LOG_APPLIER (thread_p))
 	{
-	  CHECK_MODIFICATION_NO_RETURN (error);
+	  CHECK_MODIFICATION_NO_RETURN (thread_p, error);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -11909,7 +11909,7 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	{
 	  if (!LOG_CHECK_LOG_APPLIER (thread_p))
 	    {
-	      CHECK_MODIFICATION_NO_RETURN (error);
+	      CHECK_MODIFICATION_NO_RETURN (thread_p, error);
 	      if (error != NO_ERROR)
 		{
 		  return error;

@@ -1070,7 +1070,7 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request,
       client_type = logtb_find_client_type (thread_p->tran_index);
       if (check && BOOT_NORMAL_CLIENT_TYPE (client_type))
 	{
-	  CHECK_MODIFICATION_NO_RETURN (error_code);
+	  CHECK_MODIFICATION_NO_RETURN (thread_p, error_code);
 	  if (error_code != NO_ERROR)
 	    {
 	      er_log_debug (ARG_FILE_LINE,
@@ -1247,7 +1247,6 @@ loop:
 		case THREAD_QMGR_ACTIVE_QRY_SUSPENDED:
 		case THREAD_QMGR_MEMBUF_PAGE_SUSPENDED:
 		case THREAD_HEAP_CLSREPR_SUSPENDED:
-		case THREAD_HA_ACTIVE_STATE_SUSPENDED:
 		case THREAD_LOGWR_SUSPENDED:
 		  wakeup_now = true;
 		  break;

@@ -314,7 +314,7 @@ xserial_get_next_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
 
   if (!LOG_CHECK_LOG_APPLIER (thread_p))
     {
-      CHECK_MODIFICATION_NO_RETURN (ret);
+      CHECK_MODIFICATION_NO_RETURN (thread_p, ret);
       if (ret != NO_ERROR)
 	{
 	  return ret;
@@ -509,7 +509,7 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p,
 
   if (!LOG_CHECK_LOG_APPLIER (thread_p))
     {
-      CHECK_MODIFICATION_NO_RETURN (ret);
+      CHECK_MODIFICATION_NO_RETURN (thread_p, ret);
       if (ret != NO_ERROR)
 	{
 	  return ret;

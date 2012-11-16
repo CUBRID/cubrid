@@ -8967,8 +8967,8 @@ ssession_check_session (THREAD_ENTRY * thread_p, unsigned int rid,
 	}
       else
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  area_size);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, area_size);
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  area_size = 0;
 	  return_error_to_client (thread_p, rid);

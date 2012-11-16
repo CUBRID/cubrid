@@ -307,18 +307,24 @@ extern int db_Disable_modifications;
 
 #ifndef CHECK_MODIFICATION_NO_RETURN
 #if defined (SA_MODE)
-#define CHECK_MODIFICATION_NO_RETURN(error) \
+#define CHECK_MODIFICATION_NO_RETURN(thread_p, error) \
   error = NO_ERROR;
 #else /* SA_MODE */
-#define CHECK_MODIFICATION_NO_RETURN(error)  \
-  if (db_Disable_modifications) {            \
-    er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_NO_MODIFICATIONS, 0); \
-    er_log_debug (ARG_FILE_LINE, "db_Disable_modification = %d\n", \
-		  db_Disable_modifications);  \
-    error = ER_DB_NO_MODIFICATIONS;          \
-  } else {                                   \
-    error = NO_ERROR;                        \
-  }
+#define CHECK_MODIFICATION_NO_RETURN(thread_p, error)  \
+  do                                                   \
+  {                                                    \
+      int mod_disabled;                                \
+      mod_disabled = logtb_is_tran_modification_disabled (thread_p);   \
+      if (mod_disabled) {            \
+      er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_NO_MODIFICATIONS, 0); \
+      er_log_debug (ARG_FILE_LINE, "tdes->disable_modification = %d\n", \
+                    mod_disabled);  \
+      error = ER_DB_NO_MODIFICATIONS;          \
+    } else {                                   \
+      error = NO_ERROR;                        \
+    }                                          \
+  }                                            \
+  while (0)
 #endif /* !SA_MODE */
 #endif /* CHECK_MODIFICATION_NO_RETURN */
 
@@ -798,6 +804,8 @@ struct log_tdes
   INT64 tran_start_time;
   XASL_ID xasl_id;		/* xasl id of current query */
   LK_RES *waiting_for_res;	/* resource that i'm waiting for */
+
+  int disable_modifications;	/* db_Disable_modification for each tran */
 };
 
 typedef struct log_addr_tdesarea LOG_ADDR_TDESAREA;
@@ -2036,6 +2044,7 @@ extern void
 logtb_find_smallest_and_largest_active_pages (THREAD_ENTRY * thread_p,
 					      LOG_PAGEID * smallest,
 					      LOG_PAGEID * largest);
+extern int logtb_is_tran_modification_disabled (THREAD_ENTRY * thread_p);
 /* For Debugging */
 extern void xlogtb_dump_trantable (THREAD_ENTRY * thread_p, FILE * out_fp);
 

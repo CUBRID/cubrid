@@ -1069,6 +1069,23 @@ logtb_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
   return tran_index;
 }
 
+int
+logtb_is_tran_modification_disabled (THREAD_ENTRY * thread_p)
+{
+  LOG_TDES *tdes;
+  int tran_index;
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+
+  if (tdes == NULL)
+    {
+      return db_Disable_modifications;
+    }
+
+  return tdes->disable_modifications;
+}
+
 /*
  * logtb_rv_find_allocate_tran_index - find/alloc a transaction during the recovery
  *                         analysis process
@@ -1576,6 +1593,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->tran_start_time = 0;
   XASL_ID_SET_NULL (&tdes->xasl_id);
   tdes->waiting_for_res = NULL;
+  tdes->disable_modifications = db_Disable_modifications;
 }
 
 /*
@@ -1637,6 +1655,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->tran_start_time = 0;
   XASL_ID_SET_NULL (&tdes->xasl_id);
   tdes->waiting_for_res = NULL;
+  tdes->disable_modifications = db_Disable_modifications;
 }
 
 /*
