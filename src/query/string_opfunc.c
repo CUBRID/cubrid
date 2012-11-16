@@ -22424,10 +22424,11 @@ db_blob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
   DB_TYPE src_type;
   int error_status = NO_ERROR;
   char path_buf[PATH_MAX + 1];
-  const char *prefix = "local:";
+  const char *default_prefix = ES_LOCAL_PATH_PREFIX;
 
   assert (src_value != NULL && result_value != NULL);
 
+  path_buf[0] = '\0';
   src_type = DB_VALUE_DOMAIN_TYPE (src_value);
   if (src_type == DB_TYPE_NULL)
     {
@@ -22450,11 +22451,15 @@ db_blob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
 	  return error_status;
 	}
 
-      assert (strlen (prefix) < PATH_MAX);
-      strcpy (path_buf, prefix);
-      path_buf_len = strlen (path_buf);
+      if (es_get_type (DB_PULL_STRING (src_value)) == ES_NONE)
+        {
+          /* Set default prefix, if no valid prefix was set. */
+          strcpy (path_buf, default_prefix);
+          path_buf_len = strlen (path_buf);
+        }
+
       strncat (path_buf, DB_PULL_STRING (src_value),
-	       MIN (src_size, PATH_MAX - path_buf_len));
+               MIN (src_size, PATH_MAX - path_buf_len));
       path_buf[path_buf_len + MIN (src_size, PATH_MAX - path_buf_len)] = '\0';
 
       error_status = lob_from_file (path_buf, result_value, DB_TYPE_BLOB);
@@ -22610,10 +22615,11 @@ db_clob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
   DB_TYPE src_type;
   int error_status = NO_ERROR;
   char path_buf[PATH_MAX + 1];
-  const char *prefix = "local:";
+  const char *default_prefix = ES_LOCAL_PATH_PREFIX;
 
   assert (src_value != (DB_VALUE *) NULL);
 
+  path_buf[0] = '\0';
   src_type = DB_VALUE_DOMAIN_TYPE (src_value);
   if (src_type == DB_TYPE_NULL)
     {
@@ -22636,11 +22642,15 @@ db_clob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
 	  return error_status;
 	}
 
-      assert (strlen (prefix) < PATH_MAX);
-      strcpy (path_buf, prefix);
-      path_buf_len = strlen (path_buf);
+      if (es_get_type (DB_PULL_STRING (src_value)) == ES_NONE)
+        {
+          /* Set default prefix, if no valid prefix was set. */
+          strcpy (path_buf, default_prefix);
+          path_buf_len = strlen (path_buf);
+        }
+
       strncat (path_buf, DB_PULL_STRING (src_value),
-	       MIN (src_size, PATH_MAX - path_buf_len));
+               MIN (src_size, PATH_MAX - path_buf_len));
       path_buf[path_buf_len + MIN (src_size, PATH_MAX - path_buf_len)] = '\0';
 
       error_status = lob_from_file (path_buf, result_value, DB_TYPE_CLOB);
