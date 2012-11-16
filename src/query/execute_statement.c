@@ -146,6 +146,7 @@ static void initialize_serial_invariant (SERIAL_INVARIANT * invariant,
 					 int val2_msgid, int error_type);
 static int check_serial_invariants (SERIAL_INVARIANT * invariants,
 				    int num_invariants, int *ret_msg_id);
+static bool truncate_need_repl_log (PT_NODE * statement);
 
 /*
  * initialize_serial_invariant() - initialize a serial invariant
@@ -266,6 +267,58 @@ check_serial_invariants (SERIAL_INVARIANT * invariants, int num_invariants,
     }
 
   return NO_ERROR;
+}
+
+/*
+ * truncate_need_repl_log() - check whether truncate stmt need a replicate log
+ *   return: true if the table has primary key,
+ *           otherwise false
+ *   statement(in):
+ */
+static bool
+truncate_need_repl_log (PT_NODE * statement)
+{
+  PT_NODE *entity_spec = NULL;
+  PT_NODE *entity_list = NULL;
+  PT_NODE *entity = NULL;
+  const char *class_name = NULL;
+  MOP *class_mop = NULL;
+  SM_CLASS *class_ = NULL;
+  SM_CLASS_CONSTRAINT *cons = NULL;
+  int error = NO_ERROR;
+
+  assert (statement != NULL);
+
+  entity_spec = statement->info.truncate.spec;
+  assert (entity_spec != NULL);
+
+  entity_list = entity_spec->info.spec.flat_entity_list;
+  assert (entity_list != NULL);
+
+  for (entity = entity_list; entity != NULL; entity = entity->next)
+    {
+      class_name = entity->info.name.original;
+      class_mop = db_find_class (class_name);
+      if (class_mop == NULL)
+	{
+	  return false;
+	}
+
+      error =
+	au_fetch_class (class_mop, &class_, AU_FETCH_READ, DB_AUTH_NONE);
+      if (error != NO_ERROR)
+	{
+	  return false;
+	}
+
+      cons = classobj_find_cons_primary_key (class_->constraints);
+      if (cons != NULL)
+	{
+	  return true;
+	}
+    }
+
+  return false;
 }
 
 /*
@@ -13884,6 +13937,11 @@ do_replicate_schema (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
 
     case PT_TRUNCATE:
+      if (!truncate_need_repl_log (statement))
+	{
+	  return NO_ERROR;
+	}
+
       repl_schema.statement_type = CUBRID_STMT_TRUNCATE;
       break;
 
