@@ -4047,6 +4047,7 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
   LC_COPYAREA_ONEOBJ *obj;	/* Describe one object in copy area */
   OID *oid;
   int error_code = NO_ERROR;
+  int client_type;
   int i;
 
   assert (mflush != NULL);
@@ -4198,14 +4199,16 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	   * Put them back into the workspace.. For example, some objects were
 	   * deleted from the workspace
 	   */
+	  client_type = db_get_client_type ();
 	  for (i = 0; i < mflush->mobjs->num_objs; i++)
 	    {
 	      obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (mflush->mobjs, i);
 
 	      if (error_code != NO_ERROR)
 		{
-		  if (error_code == ER_LC_PARTIALLY_FAILED_TO_FLUSH
-		      && obj->error_code == NO_ERROR)
+		  if ((error_code == ER_LC_PARTIALLY_FAILED_TO_FLUSH)
+		      && (obj->error_code == NO_ERROR
+			  || client_type == DB_CLIENT_TYPE_LOG_APPLIER))
 		    {
 		      obj->operation = LC_FETCH_NO_OP;
 		    }
