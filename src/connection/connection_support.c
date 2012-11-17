@@ -459,6 +459,7 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 	{
 	  if (po[0].revents & POLLERR || po[0].revents & POLLHUP)
 	    {
+	      errno = EINVAL;
 	      return -1;
 	    }
 	}
@@ -992,6 +993,7 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written,
 	{
 	  if (po[0].revents & POLLERR || po[0].revents & POLLHUP)
 	    {
+	      errno = EINVAL;
 	      return -1;
 	    }
 	}
