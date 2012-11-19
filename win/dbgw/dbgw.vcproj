@@ -46,7 +46,7 @@
 				Optimization="0"
 				EnableIntrinsicFunctions="false"
 				AdditionalIncludeDirectories="..\..\src\dbgw;..\..\win;..\..\src\broker;..\..\src\cci;..\..\include;..\..\win\external\include;C:\Program Files\boost\boost_1_41"
-				PreprocessorDefinitions="WIN;WINDOWS;WIN32;_DEBUG;_CRT_SECURE_NO_WARNINGS;_MT;_USE_32BIT_TIME_T;__STL_DEBUG;XML_STATIC;BOOST_ALL_NO_LIB"
+				PreprocessorDefinitions="WIN;WINDOWS;WIN32;_DEBUG;_CRT_SECURE_NO_WARNINGS;_MT;_USE_32BIT_TIME_T;__STL_DEBUG;XML_STATIC;BOOST_ALL_NO_LIB;DBGW_ADAPTER_API_EXPORT"
 				GeneratePreprocessedFile="0"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
@@ -74,84 +74,6 @@
 				ModuleDefinitionFile=""
 				GenerateDebugInformation="true"
 				TargetMachine="1"
-			/>
-			<Tool
-				Name="VCALinkTool"
-			/>
-			<Tool
-				Name="VCManifestTool"
-			/>
-			<Tool
-				Name="VCXDCMakeTool"
-			/>
-			<Tool
-				Name="VCBscMakeTool"
-			/>
-			<Tool
-				Name="VCFxCopTool"
-			/>
-			<Tool
-				Name="VCAppVerifierTool"
-			/>
-			<Tool
-				Name="VCPostBuildEventTool"
-			/>
-		</Configuration>
-		<Configuration
-			Name="Debug|x64"
-			OutputDirectory="$(SolutionDir)$(PlatformName)\$(ConfigurationName)"
-			IntermediateDirectory="$(PlatformName)\$(ConfigurationName)"
-			ConfigurationType="2"
-			CharacterSet="2"
-			BuildLogFile="$(IntDir)\BuildLog_$(ProjectName).htm"
-			>
-			<Tool
-				Name="VCPreBuildEventTool"
-			/>
-			<Tool
-				Name="VCCustomBuildTool"
-			/>
-			<Tool
-				Name="VCXMLDataGeneratorTool"
-			/>
-			<Tool
-				Name="VCWebServiceProxyGeneratorTool"
-			/>
-			<Tool
-				Name="VCMIDLTool"
-			/>
-			<Tool
-				Name="VCCLCompilerTool"
-				Optimization="0"
-				AdditionalIncludeDirectories="..\..\src\dbgw;..\..\win;..\..\src\broker;..\..\src\cci;..\..\include;..\..\win\external\include;C:\Program Files\boost\boost_1_41"
-				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;_DEBUG;_CRT_SECURE_NO_WARNINGS;_MT;__STL_DEBUG;XML_STATIC;BOOST_ALL_NO_LIB"
-				GeneratePreprocessedFile="0"
-				MinimalRebuild="true"
-				BasicRuntimeChecks="3"
-				RuntimeLibrary="3"
-				WarningLevel="3"
-				DebugInformationFormat="4"
-				CompileAs="0"
-				DisableSpecificWarnings="4274;4996"
-			/>
-			<Tool
-				Name="VCManagedResourceCompilerTool"
-			/>
-			<Tool
-				Name="VCResourceCompilerTool"
-			/>
-			<Tool
-				Name="VCPreLinkEventTool"
-			/>
-			<Tool
-				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib libexpat.lib cascci.lib"
-				OutputFile="$(OutDir)\dbgw3.dll"
-				AdditionalLibraryDirectories="$(SolutionDir)$(PlatformName)\$(ConfigurationName);..\..\win\external\lib64"
-				IgnoreDefaultLibraryNames="libcmt.lib"
-				ModuleDefinitionFile=""
-				GenerateDebugInformation="true"
-				TargetMachine="17"
 			/>
 			<Tool
 				Name="VCALinkTool"
@@ -233,6 +155,84 @@
 				OptimizeReferences="2"
 				EnableCOMDATFolding="2"
 				TargetMachine="1"
+			/>
+			<Tool
+				Name="VCALinkTool"
+			/>
+			<Tool
+				Name="VCManifestTool"
+			/>
+			<Tool
+				Name="VCXDCMakeTool"
+			/>
+			<Tool
+				Name="VCBscMakeTool"
+			/>
+			<Tool
+				Name="VCFxCopTool"
+			/>
+			<Tool
+				Name="VCAppVerifierTool"
+			/>
+			<Tool
+				Name="VCPostBuildEventTool"
+			/>
+		</Configuration>
+		<Configuration
+			Name="Debug|x64"
+			OutputDirectory="$(SolutionDir)$(PlatformName)\$(ConfigurationName)"
+			IntermediateDirectory="$(PlatformName)\$(ConfigurationName)"
+			ConfigurationType="2"
+			CharacterSet="2"
+			BuildLogFile="$(IntDir)\BuildLog_$(ProjectName).htm"
+			>
+			<Tool
+				Name="VCPreBuildEventTool"
+			/>
+			<Tool
+				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="VCXMLDataGeneratorTool"
+			/>
+			<Tool
+				Name="VCWebServiceProxyGeneratorTool"
+			/>
+			<Tool
+				Name="VCMIDLTool"
+			/>
+			<Tool
+				Name="VCCLCompilerTool"
+				Optimization="0"
+				AdditionalIncludeDirectories="..\..\src\dbgw;..\..\win;..\..\src\broker;..\..\src\cci;..\..\include;..\..\win\external\include;C:\Program Files\boost\boost_1_41"
+				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;_DEBUG;_CRT_SECURE_NO_WARNINGS;_MT;__STL_DEBUG;XML_STATIC;BOOST_ALL_NO_LIB"
+				GeneratePreprocessedFile="0"
+				MinimalRebuild="true"
+				BasicRuntimeChecks="3"
+				RuntimeLibrary="3"
+				WarningLevel="3"
+				DebugInformationFormat="4"
+				CompileAs="0"
+				DisableSpecificWarnings="4274;4996"
+			/>
+			<Tool
+				Name="VCManagedResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCPreLinkEventTool"
+			/>
+			<Tool
+				Name="VCLinkerTool"
+				AdditionalDependencies="ws2_32.lib libexpat.lib cascci.lib"
+				OutputFile="$(OutDir)\dbgw3.dll"
+				AdditionalLibraryDirectories="$(SolutionDir)$(PlatformName)\$(ConfigurationName);..\..\win\external\lib64"
+				IgnoreDefaultLibraryNames="libcmt.lib"
+				ModuleDefinitionFile=""
+				GenerateDebugInformation="true"
+				TargetMachine="17"
 			/>
 			<Tool
 				Name="VCALinkTool"

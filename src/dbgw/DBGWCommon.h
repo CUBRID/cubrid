@@ -33,12 +33,12 @@
 #include <exception>
 #include <cci_log.h>
 #include <cas_cci.h>
-#if defined(WINDOWS)
+#if defined(WINDOWS) || defined(_WIN32) || defined(_WIN64)
 #include <boost/tr1/memory.hpp>
 #else /* WINDOWS */
 #include <tr1/memory>
 #endif /* !WINDOWS */
-#include<boost/shared_array.hpp>
+#include <boost/shared_array.hpp>
 
 namespace dbgw
 {

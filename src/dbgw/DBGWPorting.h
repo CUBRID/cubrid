@@ -22,13 +22,14 @@
 #include <boost/unordered_set.hpp>
 #include <boost/unordered_map.hpp>
 
-#if defined(WINDOWS)
+#if defined(WINDOWS) || defined(_WIN32) || defined(_WIN64)
 #include <Winsock2.h>
 
-#ifndef DBGW_ADAPTER_API
+#ifdef DBGW_ADAPTER_API_EXPORT
 #define DECLSPECIFIER __declspec(dllexport)
 #else
 #define DECLSPECIFIER __declspec(dllimport)
+#pragma comment(lib, "dbgw3.lib")
 #endif
 
 #define snprintf                        _snprintf

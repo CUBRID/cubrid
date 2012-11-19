@@ -22,7 +22,7 @@
 #include "DBGWLogger.h"
 #include "DBGWError.h"
 #include "DBGWPorting.h"
-#if defined(WINDOWS)
+#if defined(WINDOWS) || defined(_WIN32) || defined(_WIN64)
 #include <windows.h>
 #include <errno.h>
 #include <process.h>
