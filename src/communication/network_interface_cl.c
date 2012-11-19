@@ -8606,18 +8606,26 @@ logtb_free_trans_info (TRANS_INFO * info)
       if (info->tran[i].host_name != NULL)
 	db_private_free_and_init (NULL, info->tran[i].host_name);
 
-      if (info->tran[i].query_exec_info.query_stmt)
+      if (info->include_query_exec_info)
 	{
-	  assert_release (info->include_query_exec_info == true);
-	  db_private_free_and_init (NULL,
-				    info->tran[i].query_exec_info.query_stmt);
+	  if (info->tran[i].query_exec_info.query_stmt)
+	    {
+	      db_private_free_and_init (NULL,
+					info->tran[i].query_exec_info.
+					query_stmt);
+	    }
+	  if (info->tran[i].query_exec_info.wait_for_tran_index_string)
+	    {
+	      db_private_free_and_init (NULL,
+					info->tran[i].query_exec_info.
+					wait_for_tran_index_string);
+	    }
 	}
-      if (info->tran[i].query_exec_info.wait_for_tran_index_string)
+      else
 	{
-	  assert_release (info->include_query_exec_info == true);
-	  db_private_free_and_init (NULL,
-				    info->tran[i].query_exec_info.
-				    wait_for_tran_index_string);
+	  assert_release (info->tran[i].query_exec_info.query_stmt == NULL);
+	  assert_release (info->tran[i].query_exec_info.
+			  wait_for_tran_index_string == NULL);
 	}
     }
   free_and_init (info);
@@ -8660,6 +8668,7 @@ logtb_get_trans_info (bool include_query_exec_info)
 	      i);
       goto error;
     }
+  memset (info, '\0', i);
 
   info->num_trans = num_trans;
   info->include_query_exec_info = include_query_exec_info;
