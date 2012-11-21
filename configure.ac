@@ -64,7 +64,7 @@ else
 fi
 AM_CONDITIONAL([BUILD_64], [test "$enable_64bit" = "yes"])
 
-export BIT_MODEL SYSTEM_TYPE MACHINE_TYPE CC CXX
+export BIT_MODEL CC CXX
 
 AC_PROG_LIBTOOL
 AC_PROG_RANLIB
@@ -83,6 +83,7 @@ chmod 755 libtool
 # System type
 SYSTEM_TYPE="$host_vendor-$host_os"
 MACHINE_TYPE="$host_cpu"
+export SYSTEM_TYPE MACHINE_TYPE
 
 case $SYSTEM_TYPE in
 	*linux*) SYS_DEFS="-DGCC -DLINUX -D_GNU_SOURCE -DI386"
