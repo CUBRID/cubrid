@@ -511,13 +511,15 @@ main (int argc, char *argv[])
 
   process_window_service = true;
 
-  if ((util_type == SERVICE || util_type == BROKER || util_type == MANAGER) &&
-      (argc > 3) && strcmp ((char *) argv[3], "--for-windows-service") == 0)
+  if ((util_type == SERVICE || util_type == BROKER || util_type == MANAGER ||
+       util_type == SHARD) && (argc > 3) &&
+      strcmp ((char *) argv[3], "--for-windows-service") == 0)
     {
       process_window_service = false;
     }
-  else if ((util_type == SERVER || util_type == BROKER) && (argc > 4) &&
-	   strcmp ((char *) argv[4], "--for-windows-service") == 0)
+  else if ((util_type == SERVER || util_type == BROKER || util_type == SHARD)
+	   && (argc > 4)
+	   && strcmp ((char *) argv[4], "--for-windows-service") == 0)
     {
       process_window_service = false;
     }
@@ -1775,7 +1777,7 @@ process_shard (int command_type, int argc, const char **argv,
 	    {
 #if defined(WINDOWS)
 	      const char *args[] =
-		{ UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_BROKER,
+		{ UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_SHARD,
 		COMMAND_TYPE_START, NULL
 	      };
 
@@ -1816,7 +1818,7 @@ process_shard (int command_type, int argc, const char **argv,
 	    {
 #if defined(WINDOWS)
 	      const char *args[] =
-		{ UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_BROKER,
+		{ UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_SHARD,
 		COMMAND_TYPE_STOP, NULL
 	      };
 
@@ -1908,7 +1910,7 @@ process_shard (int command_type, int argc, const char **argv,
 	  {
 #if defined(WINDOWS)
 	    const char *args[] =
-	      { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_BROKER,
+	      { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_SHARD,
 	      COMMAND_TYPE_ON, argv[0], NULL
 	    };
 
@@ -1936,7 +1938,7 @@ process_shard (int command_type, int argc, const char **argv,
 	  {
 #if defined(WINDOWS)
 	    const char *args[] =
-	      { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_BROKER,
+	      { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_SHARD,
 	      COMMAND_TYPE_OFF, argv[0], NULL
 	    };
 
@@ -1990,7 +1992,7 @@ process_shard (int command_type, int argc, const char **argv,
 	  {
 #if defined(WINDOWS)
 	    const char *args[] =
-	      { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_BROKER,
+	      { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_SHARD,
 	      COMMAND_TYPE_RESET, argv[0], NULL
 	    };
 

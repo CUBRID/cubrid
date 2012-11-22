@@ -33,6 +33,8 @@
 #include "porting.h"
 #include "broker_shm.h"
 
+#if !defined(WINDOWS)
+
 enum
 {
   PROXY_CONN_NOT_CONNECTED = 0,
@@ -67,10 +69,18 @@ extern int broker_add_proxy_conn (SOCKET fd);
 extern int broker_delete_proxy_conn_by_fd (SOCKET fd);
 extern int broker_delete_proxy_conn_by_proxy_id (int proxy_id);
 extern int broker_register_proxy_conn (SOCKET fd, int proxy_id);
-extern SOCKET broker_find_available_proxy (T_SHM_PROXY * shm_proxy_p);
 extern SOCKET broker_get_proxy_conn_maxfd (SOCKET proxy_sock_fd);
 extern int broker_init_proxy_conn (int max_proxy);
 extern void broker_destroy_proxy_conn (void);
+#endif /* !WINDOWS */
+
+#if defined(WINDOWS)
+extern int broker_find_available_proxy (T_SHM_PROXY * shm_proxy_p,
+					int ip_addr,
+					T_BROKER_VERSION clt_version);
+#else /* WINDOWS */
+extern SOCKET broker_find_available_proxy (T_SHM_PROXY * shm_proxy_p);
+#endif /* !WINDOWS */
 
 #endif /* CUBRID_SHARD */
 

@@ -398,7 +398,7 @@ struct t_proxy_info
 
   /* MOVE FROM T_APPL_SERVER_INFO */
 #if defined(WINDOWS)
-  int proxy_port;		/* as_port */
+  int proxy_port;
 #else
   int dummy;			/* for align */
 #endif

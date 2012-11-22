@@ -441,9 +441,6 @@ main (int argc, char *argv[])
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
   int one = 1, db_info_size;
   int con_status;
-#if defined(WINDOWS)
-  int new_port;
-#endif /* WINDOWS */
   char cas_info[CAS_INFO_SIZE] = { CAS_INFO_STATUS_INACTIVE,
     CAS_INFO_RESERVED_DEFAULT,
     CAS_INFO_RESERVED_DEFAULT,
@@ -578,9 +575,13 @@ conn_retry:
   conn_proxy_retry:
     net_timeout_set (NET_DEFAULT_TIMEOUT);
 
+#if defined(WINDOWS)
+    proxy_sock_fd = net_connect_proxy (shm_proxy_id);
+#else /* WINDOWS */
     proxy_sock_fd = net_connect_proxy ();
+#endif /* !WINDOWS */
 
-    if (proxy_sock_fd == INVALID_SOCKET)
+    if (IS_INVALID_SOCKET (proxy_sock_fd))
       {
 	SLEEP_SEC (1);
 	goto conn_proxy_retry;

@@ -345,7 +345,7 @@ end:
 static int
 shard_proxy_activate (int as_shm_id, int proxy_id, char *shm_as_cp)
 {
-  int pid, i, env_num;
+  int pid = 0, i, env_num;
   int fd_cnt;
   char **env;
   const char *proxy_exe_name = NAME_PROXY;

@@ -38,6 +38,7 @@
 #include "shard_proxy_common.h"
 #include "shard_shm.h"
 
+#if !defined(WINDOWS)
 T_PROXY_CONN broker_Proxy_conn = {
   -1,				/* max_num_proxy */
   0,				/* cur_num_proxy */
@@ -310,17 +311,27 @@ broker_register_proxy_conn (SOCKET fd, int proxy_id)
 
   return ret;
 }
+#endif /* !WINDOWS */
 
+#if defined(WINDOWS)
+int
+broker_find_available_proxy (T_SHM_PROXY * shm_proxy_p,
+			     int ip_addr, T_BROKER_VERSION clt_version)
+#else /* WINDOWS */
 SOCKET
 broker_find_available_proxy (T_SHM_PROXY * shm_proxy_p)
+#endif				/* !WINDOWS */
 {
   int i;
-  SOCKET fd = INVALID_SOCKET;
   int min_cur_client = -1;
   int cur_client = -1;
   int max_client = -1;
   T_PROXY_INFO *proxy_info_p;
+#if defined(WINDOWS)
+  T_PROXY_INFO *find_proxy_info_p;
+#else /* WINDOWS */
   T_PROXY_CONN_ENT *ent_p;
+  SOCKET fd = INVALID_SOCKET;
 
   if (broker_Proxy_conn.max_num_proxy < 0)
     {
@@ -328,6 +339,7 @@ broker_find_available_proxy (T_SHM_PROXY * shm_proxy_p)
     }
 
   pthread_mutex_lock (&proxy_conn_mutex);
+#endif /* !WINDOWS */
   for (proxy_info_p = shard_shm_get_first_proxy_info (shm_proxy_p);
        proxy_info_p;
        proxy_info_p = shard_shm_get_next_proxy_info (proxy_info_p))
@@ -340,6 +352,7 @@ broker_find_available_proxy (T_SHM_PROXY * shm_proxy_p)
       max_client = proxy_info_p->max_client - 1;
       cur_client = proxy_info_p->cur_client;
 
+#if !defined(WINDOWS)
       ent_p = broker_find_proxy_conn_by_id (proxy_info_p->proxy_id);
       if (ent_p == NULL || ent_p->status != PROXY_CONN_AVAILABLE)
 	{
@@ -347,6 +360,7 @@ broker_find_available_proxy (T_SHM_PROXY * shm_proxy_p)
 	}
 
       assert (ent_p->fd != INVALID_SOCKET);
+#endif /* !WINDOWS */
 
       if (min_cur_client == -1)
 	{
@@ -355,15 +369,27 @@ broker_find_available_proxy (T_SHM_PROXY * shm_proxy_p)
 
       if (cur_client < max_client && cur_client <= min_cur_client)
 	{
+#if defined(WINDOWS)
+	  find_proxy_info_p = proxy_info_p;
+#else /* WINDOWS */
 	  fd = ent_p->fd;
+#endif /* !WINDOWS */
+
 	  min_cur_client = cur_client;
 	}
     }
+#if !defined(WINDOWS)
   pthread_mutex_unlock (&proxy_conn_mutex);
+#endif /* !WINDOWS */
 
+#if defined(WINDOWS)
+  return find_proxy_info_p->proxy_port;
+#else /* WINDOWS */
   return fd;
+#endif /* !WINDOWS */
 }
 
+#if !defined(WINDOWS)
 SOCKET
 broker_get_proxy_conn_maxfd (SOCKET proxy_sock_fd)
 {
@@ -424,5 +450,5 @@ broker_destroy_proxy_conn (void)
 
   return;
 }
-
+#endif /* !WINDOWS */
 #endif /* CUBRID_SHARD */

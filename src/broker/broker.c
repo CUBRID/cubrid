@@ -203,7 +203,9 @@ struct t_clt_table
 static void cleanup (int signo);
 static int init_env (void);
 #if defined(CUBRID_SHARD)
+#if !defined(WINDOWS)
 static int init_proxy_env (void);
+#endif /* !WINDOWS */
 static int broker_init_shm (void);
 #endif /* CUBRID_SHARD */
 
@@ -230,7 +232,9 @@ static THREAD_FUNC cas_monitor_thr_f (void *arg);
 static THREAD_FUNC hang_check_thr_f (void *arg);
 #if defined(CUBRID_SHARD)
 static THREAD_FUNC proxy_monitor_thr_f (void *arg);
+#if !defined(WINDOWS)
 static THREAD_FUNC proxy_listener_thr_f (void *arg);
+#endif /* !WINDOWS */
 #endif /* CUBRID_SHARD */
 
 static int read_nbytes_from_client (SOCKET sock_fd, char *buf, int size);
@@ -283,10 +287,10 @@ static SOCKET sock_fd;
 static struct sockaddr_in sock_addr;
 static int sock_addr_len;
 #if defined(CUBRID_SHARD)
-static SOCKET proxy_sock_fd;
 #if defined(WINDOWS)
 static struct sockaddr_in shard_sock_addr;
 #else /* WINDOWS */
+static SOCKET proxy_sock_fd;
 static struct sockaddr_un shard_sock_addr;
 #endif /* !WINDOWS */
 #endif /* CUBRID_SHARD */
@@ -352,7 +356,9 @@ main (int argc, char *argv[])
   pthread_t hang_check_thread;
 #if defined(CUBRID_SHARD)
   pthread_t proxy_monitor_thread;
+#if !defined(WINDOWS)
   pthread_t proxy_listener_thread;
+#endif /* !WINDOWS */
 #endif /* CUBRID_SHARD */
 
 #if defined(WIN_FW)
@@ -387,11 +393,20 @@ main (int argc, char *argv[])
 
   pthread_mutex_init (&run_proxy_mutex, NULL);
 
+#if defined(WINDOWS)
+  if (wsa_initialize () < 0)
+    {
+      UW_SET_ERROR_CODE (UW_ER_CANT_CREATE_SOCKET, 0);
+      goto error1;
+    }
+#endif /* WINDOWS */
+
   if (init_env () == -1)
     {
       goto error1;
     }
 
+#if !defined(WINDOWS)
   if (init_proxy_env () == -1)
     {
       goto error1;
@@ -401,6 +416,7 @@ main (int argc, char *argv[])
     {
       goto error1;
     }
+#endif /* !WINDOWS */
 
   set_cubrid_file (FID_SQL_LOG_DIR, shm_appl->log_dir);
   set_cubrid_file (FID_SLOW_LOG_DIR, shm_appl->slow_log_dir);
@@ -411,7 +427,9 @@ main (int argc, char *argv[])
 
   THREAD_BEGIN (cas_monitor_thread, cas_monitor_thr_f, NULL);
   THREAD_BEGIN (proxy_monitor_thread, proxy_monitor_thr_f, NULL);
+#if !defined(WINDOWS)
   THREAD_BEGIN (proxy_listener_thread, proxy_listener_thr_f, NULL);
+#endif /* !WINDOWS */
 
   if (shm_br->br_info[br_index].monitor_hang_flag)
     {
@@ -714,7 +732,9 @@ main (int argc, char *argv[])
 
 error1:
 #if defined(CUBRID_SHARD)
+#if !defined(WINDOWS)
   broker_destroy_proxy_conn ();
+#endif /* !WINDOWS */
 #endif /* CUBRID_SHRAD */
 
   SET_BROKER_ERR_CODE ();
@@ -732,7 +752,9 @@ cleanup (int signo)
 #endif
   CLOSE_SOCKET (sock_fd);
 #if defined(CUBIRD_SHARD)
+#if !defined(WINDOWS)
   CLOSE_SOCKET (proxy_sock_fd);
+#endif /* !WINDOWS */
 #endif /* CUBRID_SHARD */
   exit (0);
 }
@@ -1002,9 +1024,11 @@ dispatch_thr_f (void *arg)
   T_MAX_HEAP_NODE *job_queue;
   T_MAX_HEAP_NODE cur_job;
   int as_index, i;
-#if !defined(WINDOWS)
+#if defined(WINDOWS)
+  int proxy_port;
+#else /* WINDOWS */
   SOCKET srv_sock_fd;
-#endif
+#endif /* !WINDOWS */
 
 #if defined(CUBRID_SHARD)
   SOCKET proxy_fd;
@@ -1031,7 +1055,11 @@ dispatch_thr_f (void *arg)
       max_heap_incr_priority (job_queue);
 
 #if defined(WINDOWS)
-      CAS_SEND_ERROR_CODE (cur_job.clt_sock_fd, CAS_ER_VERSION);
+      memcpy (&ip_addr, cur_job.ip_addr, 4);
+      proxy_port = broker_find_available_proxy (shm_proxy_p,
+						ip_addr, cur_job.clt_version);
+
+      CAS_SEND_ERROR_CODE (cur_job.clt_sock_fd, proxy_port);
       CLOSE_SOCKET (cur_job.clt_sock_fd);
 #else /* WINDOWS */
       proxy_fd = broker_find_available_proxy (shm_proxy_p);
@@ -2768,27 +2796,12 @@ find_add_as_index ()
 #endif /* CUBRID_SHARD */
 
 #if defined(CUBRID_SHARD)
+#if !defined(WINDOWS)
 static int
 init_proxy_env ()
 {
-  int n, len;
+  int len;
 
-#if defined(WINDOWS)
-  int port = 0;
-
-  if ((proxy_sock_fd = socket (AF_INET, SOCK_STREAM, 0)) < 0)
-    {
-      return (-1);
-    }
-
-  memset (&shard_sock_addr, 0, sizeof (struct sockaddr_in));
-  shard_sock_addr.sin_family = AF_INET;
-  shard_sock_addr.sin_port = htons ((unsigned short) port);
-  len = sizeof (struct sockaddr_in);
-  n = INADDR_ANY;
-  memcpy (&shard_sock_addr.sin_addr, &n, sizeof (int));
-
-#else /* WINDOWS */
   if ((proxy_sock_fd = socket (AF_UNIX, SOCK_STREAM, 0)) < 0)
     {
       return (-1);
@@ -2810,7 +2823,6 @@ init_proxy_env ()
   len = strlen (shard_sock_addr.sun_path) +
     sizeof (shard_sock_addr.sun_family) + 1;
 #endif
-#endif /* !WINDOWS */
 
   /* bind the name to the descriptor */
   if (bind (proxy_sock_fd, (struct sockaddr *) &shard_sock_addr, len) < 0)
@@ -2828,6 +2840,7 @@ init_proxy_env ()
 
   return (proxy_sock_fd);
 }
+#endif /* !WINDOWS */
 
 int
 broker_init_shm (void)
@@ -2927,7 +2940,7 @@ proxy_monitor_worker (T_PROXY_INFO * proxy_info_p, int br_index,
   HANDLE phandle;
 #endif /* WINDOWS */
 
-  if (proxy_info_p->service_flag != SERVICE_ON)
+  if (proxy_info_p->service_flag != SERVICE_ON || proxy_info_p->pid < 0)
     {
       return;
     }
@@ -2989,6 +3002,7 @@ proxy_monitor_thr_f (void *arg)
 #endif
 }
 
+#if !defined(WINDOWS)
 static THREAD_FUNC
 proxy_listener_thr_f (void *arg)
 {
@@ -3027,6 +3041,7 @@ proxy_listener_thr_f (void *arg)
 
       if (FD_ISSET (proxy_sock_fd, &rset))
 	{
+	  proxy_sock_addr_len = sizeof (proxy_sock_addr);
 	  client_fd =
 	    accept (proxy_sock_fd, (struct sockaddr *) &proxy_sock_addr,
 		    &proxy_sock_addr_len);
@@ -3067,6 +3082,7 @@ proxy_listener_thr_f (void *arg)
 
   return NULL;
 }
+#endif /* !WINDOWS */
 
 /*
  * run_proxy_server () -
@@ -3182,9 +3198,10 @@ stop_proxy_server (T_PROXY_INFO * proxy_info_p, int br_index, int proxy_index)
      when stopping the cas in order to  prevent communication
      error occurred on windows. */
   SLEEP_MILISEC (0, 100);
-#endif
+#else /* WINDOWS */
 
   broker_delete_proxy_conn_by_proxy_id (proxy_info_p->proxy_id);
+#endif /* !WINDOWS */
 
   proxy_info_p->pid = 0;
   proxy_info_p->cur_client = 0;

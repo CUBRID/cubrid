@@ -74,12 +74,12 @@ BEGIN
         BLOCK "041204b0"
         BEGIN
             VALUE "CompanyName", "Search Solution Corporation"
-            VALUE "FileDescription", "CUBRID Shard Broker"
+            VALUE "FileDescription", "CUBRID Shard Admin"
             VALUE "FileVersion", VERSION_STRING
-            VALUE "InternalName", "CUBRID Shard Broker"
+            VALUE "InternalName", "CUBRID Shard Admin"
             VALUE "LegalCopyright", "Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution."
-            VALUE "OriginalFilename", "shard_broker.exe"
-            VALUE "ProductName", "CUBRID Shard Broker"
+            VALUE "OriginalFilename", "shard_admin.exe"
+            VALUE "ProductName", "CUBRID Shard Admin"
             VALUE "ProductVersion", VERSION_STRING
         END
     END

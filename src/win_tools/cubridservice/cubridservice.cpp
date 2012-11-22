@@ -58,6 +58,8 @@ BOOL g_isRunning = false;
 #define		SERVICE_CONTROL_BROKER_STOP	161
 #define		SERVICE_CONTROL_BROKER_ON   	162
 #define		SERVICE_CONTROL_BROKER_OFF 	163
+#define		SERVICE_CONTROL_SHARD_START 	200
+#define		SERVICE_CONTROL_SHARD_STOP 	201
 #define		SERVICE_CONTROL_MANAGER_START	170
 #define		SERVICE_CONTROL_MANAGER_STOP	171
 #define		SERVICE_CONTROL_SERVER_START	180
@@ -68,6 +70,7 @@ BOOL g_isRunning = false;
 #define		CUBRID_UTIL_CUBRID		"cubrid.exe"
 #define		CUBRID_UTIL_SERVICE		"service"
 #define		CUBRID_UTIL_BROKER		"broker"
+#define		CUBRID_UTIL_SHARD		"shard"
 #define		CUBRID_UTIL_MANAGER		"manager"
 #define		CUBRID_UTIL_SERVER		"server"
 
@@ -338,6 +341,22 @@ vHandler (DWORD opcode)
 	args[2] = CUBRID_COMMAND_OFF;
 	args[4] = "--for-windows-service";
 	args[5] = NULL;
+      }
+      break;
+	case SERVICE_CONTROL_SHARD_START:
+      {
+	args[1] = CUBRID_UTIL_SHARD;
+	args[2] = CUBRID_COMMAND_START;
+	args[3] = "--for-windows-service";
+	args[4] = NULL;
+      }
+      break;
+    case SERVICE_CONTROL_SHARD_STOP:
+      {
+	args[1] = CUBRID_UTIL_SHARD;
+	args[2] = CUBRID_COMMAND_STOP;
+	args[3] = "--for-windows-service";
+	args[4] = NULL;
       }
       break;
     case SERVICE_CONTROL_MANAGER_START:

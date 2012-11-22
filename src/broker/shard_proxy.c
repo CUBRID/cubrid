@@ -201,6 +201,14 @@ main (int argc, char *argv[])
       return error;
     }
 
+#if defined(WINDOWS)
+  if (wsa_initialize () < 0)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to initialize WSA.");
+      return error;
+    }
+#endif
+
   /* SHARD TODO : initialize IO */
   error = proxy_io_initialize ();
   if (error)

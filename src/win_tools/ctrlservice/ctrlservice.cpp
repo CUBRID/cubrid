@@ -35,6 +35,7 @@
 
 #define		CUBRID_UTIL_SERVICE			"service"
 #define		CUBRID_UTIL_BROKER			"broker"
+#define		CUBRID_UTIL_SHARD			"shard"
 #define		CUBRID_UTIL_MANAGER			"manager"
 #define		CUBRID_UTIL_SERVER			"server"
 
@@ -47,6 +48,8 @@
 #define		SERVICE_CONTROL_BROKER_STOP	161
 #define		SERVICE_CONTROL_BROKER_ON   	162
 #define		SERVICE_CONTROL_BROKER_OFF 	163
+#define		SERVICE_CONTROL_SHARD_START 	200
+#define		SERVICE_CONTROL_SHARD_STOP 	201
 #define		SERVICE_CONTROL_MANAGER_START	170
 #define		SERVICE_CONTROL_MANAGER_STOP	171
 #define		SERVICE_CONTROL_SERVER_START	180
@@ -151,6 +154,24 @@ _tmain (int argc, char *argv[])
 	      else if (_stricmp (argv[2], CUBRID_COMMAND_STOP) == 0)
 		{
 		  service_control_code = SERVICE_CONTROL_BROKER_STOP;
+		}
+	      else
+		{
+		  WriteLog (sLogFile, "Invalid Argument.\n");
+		  CloseServiceHandle (scHandle);
+		  CloseServiceHandle (scmHandle);
+		  return 0;
+		}
+	    }
+	  else if (_stricmp (argv[1], CUBRID_UTIL_SHARD) == 0)
+	    {
+	      if (_stricmp (argv[2], CUBRID_COMMAND_START) == 0)
+		{
+		  service_control_code = SERVICE_CONTROL_SHARD_START;
+		}
+	      else if (_stricmp (argv[2], CUBRID_COMMAND_STOP) == 0)
+		{
+		  service_control_code = SERVICE_CONTROL_SHARD_STOP;
 		}
 	      else
 		{

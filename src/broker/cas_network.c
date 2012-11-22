@@ -67,6 +67,10 @@ static int read_from_client (SOCKET sock_fd, char *buf, int size);
 static void set_net_timeout_flag (void);
 static void unset_net_timeout_flag (void);
 
+#if defined(WINDOWS)
+static int get_host_ip (unsigned char *ip_addr);
+#endif /* WINDOWS */
+
 static bool net_timeout_flag = false;
 
 static char net_error_flag;
@@ -159,27 +163,61 @@ net_init_env (void)
 }
 
 #if defined(CUBRID_SHARD)
+#if defined(WINDOWS)
+SOCKET
+net_connect_proxy (int proxy_id)
+#else /* WINDOWS */
 SOCKET
 net_connect_proxy (void)
+#endif				/* !WINDOWS */
 {
   int fd, len;
 
 #if defined(WINDOWS)
+  char *broker_port;
   int port = 0;
-  struct sockaddr_in shard_sock_addr;
   int n;
+  int one = 1;
+  unsigned char ip_addr[4];
+  struct sockaddr_in shard_sock_addr;
 
-  if ((fd = socket (AF_INET, SOCK_STREAM, 0)) < 0)
+  /* WSA startup */
+  if (wsa_initialize ())
     {
-      return (-1);
+      return (INVALID_SOCKET);
     }
+
+  if (get_host_ip (ip_addr) < 0)
+    {
+      return (INVALID_SOCKET);
+    }
+
+  fd = socket (AF_INET, SOCK_STREAM, 0);
+  if (IS_INVALID_SOCKET (fd))
+    {
+      return (INVALID_SOCKET);
+    }
+  if ((setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, (char *) &one,
+		   sizeof (one))) < 0)
+    {
+      return (INVALID_SOCKET);
+    }
+
+  if ((broker_port = getenv (PORT_NUMBER_ENV_STR)) == NULL)
+    {
+      return (INVALID_SOCKET);
+    }
+
+  port = atoi (broker_port) + 2;
+  port = proxy_id * 2 + port;
+
+  SHARD_ERR ("<CAS> connect to socket:[%d].\n", port);
 
   memset (&shard_sock_addr, 0, sizeof (struct sockaddr_in));
   shard_sock_addr.sin_family = AF_INET;
   shard_sock_addr.sin_port = htons ((unsigned short) port);
   len = sizeof (struct sockaddr_in);
-  n = INADDR_ANY;
-  memcpy (&shard_sock_addr.sin_addr, &n, sizeof (int));
+  memcpy (&shard_sock_addr.sin_addr, ip_addr, 4);
 
 #else /* WINDOWS */
   struct sockaddr_un shard_sock_addr;
@@ -187,13 +225,13 @@ net_connect_proxy (void)
 
   if ((port_name = getenv (PORT_NAME_ENV_STR)) == NULL)
     {
-      return (-1);
+      return (INVALID_SOCKET);
     }
   /* FOR DEBUG */
   SHARD_ERR ("<CAS> connect to unixdoamin:[%s].\n", port_name);
 
   if ((fd = socket (AF_UNIX, SOCK_STREAM, 0)) < 0)
-    return (-1);
+    return (INVALID_SOCKET);
 
   memset (&shard_sock_addr, 0, sizeof (shard_sock_addr));
   shard_sock_addr.sun_family = AF_UNIX;
@@ -645,6 +683,27 @@ retry_poll:
 
   return write_len;
 }
+
+#if defined(WINDOWS)
+static int
+get_host_ip (unsigned char *ip_addr)
+{
+  char hostname[64];
+  struct hostent *hp;
+
+  if (gethostname (hostname, sizeof (hostname)) < 0)
+    {
+      return -1;
+    }
+  if ((hp = gethostbyname (hostname)) == NULL)
+    {
+      return -1;
+    }
+  memcpy (ip_addr, hp->h_addr_list[0], 4);
+
+  return 0;
+}
+#endif /* WINDOWS */
 
 bool
 is_net_timed_out (void)

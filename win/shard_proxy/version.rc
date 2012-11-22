@@ -74,12 +74,12 @@ BEGIN
         BLOCK "041204b0"
         BEGIN
             VALUE "CompanyName", "Search Solution Corporation"
-            VALUE "FileDescription", "CUBRID Broker"
+            VALUE "FileDescription", "CUBRID Shard Proxy"
             VALUE "FileVersion", VERSION_STRING
-            VALUE "InternalName", "CUBRID Broker"
+            VALUE "InternalName", "CUBRID Shard Proxy"
             VALUE "LegalCopyright", "Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution."
-            VALUE "OriginalFilename", "cub_broker.exe"
-            VALUE "ProductName", "CUBRID Broker"
+            VALUE "OriginalFilename", "shard_proxy.exe"
+            VALUE "ProductName", "CUBRID Shard Proxy"
             VALUE "ProductVersion", VERSION_STRING
         END
     END

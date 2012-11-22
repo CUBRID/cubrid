@@ -55,6 +55,10 @@
 
 #define MAX_NUM_NEW_CLIENT	5
 
+#define PROXY_START_PORT	1
+#define GET_CLIENT_PORT(broker_port, proxy_index)	(broker_port) + PROXY_START_PORT + (proxy_index)
+#define GET_CAS_PORT(broker_port, proxy_index, proxy_max_count)	(broker_port) + PROXY_START_PORT + (proxy_max_count) + (proxy_index)
+
 extern T_SHM_APPL_SERVER *shm_as_p;
 extern T_SHM_PROXY *shm_proxy_p;
 extern T_PROXY_INFO *proxy_info_p;
@@ -130,17 +134,29 @@ static int proxy_client_add_waiter_by_shard (T_SHARD_IO * shard_io_p,
 static void proxy_client_check_waiter_and_wakeup (T_SHARD_IO * shard_io_p,
 						  T_CAS_IO * cas_io_p);
 
+#if defined(WINDOWS)
+static int proxy_io_inet_lsnr (int port);
+static int proxy_io_client_lsnr (void);
+static SOCKET proxy_io_client_accept (SOCKET lsnr_fd);
+#else /* WINDOWS */
 static SOCKET proxy_io_connect_to_broker (void);
 static int proxy_io_register_to_broker (void);
 static int proxy_io_unixd_lsnr (char *unixd_sock_name);
+#endif /* !WINDOWS */
 static int proxy_io_cas_lsnr (void);
-static SOCKET proxy_io_unixd_accept (SOCKET lsnr_fd);
+static SOCKET proxy_io_accept (SOCKET lsnr_fd);
 static SOCKET proxy_io_cas_accept (SOCKET lsnr_fd);
 
 static void proxy_init_net_buf (T_NET_BUF * net_buf);
 
 fd_set rset, wset, allset, wnewset, wallset;
+#if defined(WINDOWS)
+int broker_port = 0;
+int accept_ip_addr = 0;
+SOCKET client_lsnr_fd = INVALID_SOCKET;
+#else /* WINDOWS */
 SOCKET broker_conn_fd = INVALID_SOCKET;
+#endif /* !WINDOWS */
 SOCKET cas_lsnr_fd = INVALID_SOCKET;
 int maxfd = 0;
 
@@ -1030,7 +1046,7 @@ proxy_socket_io_print (bool print_all)
       for (i = 0; i < proxy_Socket_io.max_socket; i++)
 	{
 	  sock_io_p = &(proxy_Socket_io.ent[i]);
-	  if (!print_all && sock_io_p->fd <= INVALID_SOCKET)
+	  if (!print_all && IS_INVALID_SOCKET (sock_io_p->fd))
 	    {
 	      continue;
 	    }
@@ -1092,7 +1108,7 @@ proxy_socket_io_add (SOCKET fd, bool from_cas)
 
   sock_io_p = &(proxy_Socket_io.ent[fd]);
 
-  assert (sock_io_p->fd <= INVALID_SOCKET);
+  assert (IS_INVALID_SOCKET (sock_io_p->fd));
   assert (sock_io_p->status == SOCK_IO_IDLE);
 
   sock_io_p->fd = fd;
@@ -1199,7 +1215,7 @@ proxy_socket_set_write_event (T_SOCKET_IO * sock_io_p,
 static int
 proxy_socket_io_new_client (SOCKET lsnr_fd)
 {
-#if !defined(WINDOWS)
+
   int error;
   int client_ip;
   int length;
@@ -1213,6 +1229,12 @@ proxy_socket_io_new_client (SOCKET lsnr_fd)
   int db_info_size;
   T_BROKER_VERSION client_version;
 
+#if defined(WINDOWS)
+  client_fd = lsnr_fd;
+  client_ip = accept_ip_addr;
+  client_version = CAS_MAKE_VER (9, 1, 0);
+
+#else /* WINDOWS */
   client_fd = recv_fd (lsnr_fd, &client_ip, (int *) &client_version);
   if (client_fd < 0)
     {
@@ -1234,6 +1256,7 @@ proxy_socket_io_new_client (SOCKET lsnr_fd)
       CLOSE_SOCKET (client_fd);
       return -1;
     }
+#endif /* !WINDOWS */
 
   ENTER_FUNC ();
 
@@ -1266,6 +1289,7 @@ proxy_socket_io_new_client (SOCKET lsnr_fd)
   client_info_p->connect_time = time (NULL);
   client_info_p->client_version = cli_io_p->client_version;
 
+#if !defined(WINDOWS)
   /* send client_conn_ok to the client */
   event_p =
     proxy_event_new_with_rsp (cli_io_p->client_version, PROXY_EVENT_IO_WRITE,
@@ -1293,9 +1317,10 @@ proxy_socket_io_new_client (SOCKET lsnr_fd)
       EXIT_FUNC ();
       return -1;
     }
+#endif /* !WINDOWS */
 
   EXIT_FUNC ();
-#endif /* WINDOWS */
+
   return 0;
 }
 
@@ -2997,7 +3022,7 @@ proxy_shard_io_print (bool print_all)
 	      for (j = 0; j < shard_io_p->max_num_cas; j++)
 		{
 		  cas_io_p = &(shard_io_p->ent[j]);
-		  if (!print_all && cas_io_p->fd <= INVALID_SOCKET)
+		  if (!print_all && IS_INVALID_SOCKET (cas_io_p->fd))
 		    {
 		      continue;
 		    }
@@ -3699,31 +3724,14 @@ proxy_client_check_waiter_and_wakeup (T_SHARD_IO * shard_io_p,
   return;
 }
 
-
+#if !defined(WINDOWS)
 static SOCKET
 proxy_io_connect_to_broker (void)
 {
   SOCKET fd;
   int len;
+  int error;
 
-#if defined(WINDOWS)
-  int port = 0;
-  struct sockaddr_in shard_sock_addr;
-  int n;
-
-  if ((fd = socket (AF_INET, SOCK_STREAM, 0)) < 0)
-    {
-      return (-1);
-    }
-
-  memset (&shard_sock_addr, 0, sizeof (struct sockaddr_in));
-  shard_sock_addr.sin_family = AF_INET;
-  shard_sock_addr.sin_port = htons ((unsigned short) port);
-  len = sizeof (struct sockaddr_in);
-  n = INADDR_ANY;
-  memcpy (&shard_sock_addr.sin_addr, &n, sizeof (int));
-
-#else /* WINDOWS */
   struct sockaddr_un shard_sock_addr;
   char *port_name;
 
@@ -3753,9 +3761,8 @@ proxy_io_connect_to_broker (void)
   len = strlen (shard_sock_addr.sun_path) +
     sizeof (shard_sock_addr.sun_family) + 1;
 #endif
-#endif /* !WINDOWS */
 
-  if (connect (fd, (struct sockaddr *) &shard_sock_addr, len) < 0)
+  if (connect (fd, (struct sockaddr *) &shard_sock_addr, len) != 0)
     {
       CLOSESOCKET (fd);
       return (-4);
@@ -3779,8 +3786,8 @@ proxy_io_register_to_broker (void)
       sleep (1);
       fd = proxy_io_connect_to_broker ();
     }
-  while (fd == INVALID_SOCKET && (num_retry++) < 5);
-  if (fd == INVALID_SOCKET)
+  while (IS_INVALID_SOCKET (fd) && (num_retry++) < 5);
+  if (IS_INVALID_SOCKET (fd))
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
 		 "Failed to connect to broker. (fd:%d).", fd);
@@ -3802,19 +3809,30 @@ proxy_io_register_to_broker (void)
 
   return 0;
 }
-
-static int
-proxy_io_unixd_lsnr (char *unixd_sock_name)
-{
-  SOCKET fd;
-  int n, len, backlog_size;
+#endif /* !WINDOWS */
 
 #if defined(WINDOWS)
-  int port = 0;
+static int
+proxy_io_inet_lsnr (int port)
+{
+  SOCKET fd;
+  int len, backlog_size;
+  int one = 1;
   struct sockaddr_in shard_sock_addr;
 
-  if ((fd = socket (AF_INET, SOCK_STREAM, 0)) < 0)
+  fd = socket (AF_INET, SOCK_STREAM, 0);
+  if (IS_INVALID_SOCKET (fd))
     {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Fail to create socket. (Error:%d).", WSAGetLastError ());
+      return (-1);
+    }
+  if ((setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, (char *) &one,
+		   sizeof (one))) < 0)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Fail to set socket option. (Error:%d).",
+		 WSAGetLastError ());
       return (-1);
     }
 
@@ -3822,10 +3840,33 @@ proxy_io_unixd_lsnr (char *unixd_sock_name)
   shard_sock_addr.sin_family = AF_INET;
   shard_sock_addr.sin_port = htons ((unsigned short) (port));
   len = sizeof (struct sockaddr_in);
-  n = INADDR_ANY;
-  memcpy (&shard_sock_addr.sin_addr, &n, sizeof (int));
+  shard_sock_addr.sin_addr.s_addr = htonl (INADDR_ANY);
 
+  /* bind the name to the descriptor */
+  if (bind (fd, (struct sockaddr *) &shard_sock_addr, len) < 0)
+    {
+      CLOSESOCKET (fd);
+      return (-2);
+    }
+
+  /* SHARD TODO -- modify backlog size to max_client_size or other rule -- tigger */
+  backlog_size = 10;
+  if (listen (fd, backlog_size) < 0)
+    {
+      /* tell kernel we're a server */
+      CLOSESOCKET (fd);
+      return (-3);
+    }
+
+  return fd;
+}
 #else /* WINDOWS */
+static int
+proxy_io_unixd_lsnr (char *unixd_sock_name)
+{
+  SOCKET fd;
+  int len, backlog_size;
+
   struct sockaddr_un shard_sock_addr;
 
   if ((fd = socket (AF_UNIX, SOCK_STREAM, 0)) < 0)
@@ -3846,7 +3887,6 @@ proxy_io_unixd_lsnr (char *unixd_sock_name)
   len = strlen (shard_sock_addr.sun_path) +
     sizeof (shard_sock_addr.sun_family) + 1;
 #endif
-#endif /* !WINDOWS */
 
   /* bind the name to the descriptor */
   if (bind (fd, (struct sockaddr *) &shard_sock_addr, len) < 0)
@@ -3864,35 +3904,77 @@ proxy_io_unixd_lsnr (char *unixd_sock_name)
       return (-3);
     }
 
-  cas_lsnr_fd = fd;
-  FD_SET (cas_lsnr_fd, &allset);
-  maxfd = max (cas_lsnr_fd, broker_conn_fd);
-
   return fd;
 }
+#endif /* !WINDOWS */
 
 static int
 proxy_io_cas_lsnr (void)
 {
   SOCKET fd;
 
+#if defined(WINDOWS)
+  int port = GET_CAS_PORT (broker_port, proxy_info_p->proxy_id,
+			   shm_proxy_p->max_num_proxy);
+
+  /* FOR DEBUG */
+  PROXY_LOG (PROXY_LOG_MODE_NOTICE, "Listen CAS socket. (port number:[%d])",
+	     port);
+
+  fd = proxy_io_inet_lsnr (port);
+#else /* WINDOWS */
   /* FOR DEBUG */
   PROXY_LOG (PROXY_LOG_MODE_NOTICE, "Listen CAS socket. (port name:[%s])",
 	     proxy_info_p->port_name);
 
   fd = proxy_io_unixd_lsnr (proxy_info_p->port_name);
-  if (fd <= INVALID_SOCKET)
+#endif /* !WINDOWS */
+
+  if (IS_INVALID_SOCKET (fd))
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
 		 "Failed to listen CAS socket. (fd:%d).", fd);
       return -1;		/* FAIELD */
     }
 
+  cas_lsnr_fd = fd;
+  FD_SET (cas_lsnr_fd, &allset);
+  maxfd = max (maxfd, cas_lsnr_fd);
+
   return 0;			/* SUCCESS */
 }
 
+#if defined(WINDOWS)
+static int
+proxy_io_client_lsnr (void)
+{
+  SOCKET fd;
+
+  int port = GET_CLIENT_PORT (broker_port, proxy_info_p->proxy_id);
+
+  /* FOR DEBUG */
+  PROXY_LOG (PROXY_LOG_MODE_NOTICE, "Listen Client socket. "
+	     "(port number:[%d])", port);
+
+  fd = proxy_io_inet_lsnr (port);
+  if (IS_INVALID_SOCKET (fd))
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Failed to listen Client socket. (fd:%d).", fd);
+      return -1;		/* FAIELD */
+    }
+
+  proxy_info_p->proxy_port = port;
+  client_lsnr_fd = fd;
+  FD_SET (client_lsnr_fd, &allset);
+  maxfd = max (maxfd, client_lsnr_fd);
+
+  return 0;
+}
+#endif
+
 static SOCKET
-proxy_io_unixd_accept (SOCKET lsnr_fd)
+proxy_io_accept (SOCKET lsnr_fd)
 {
   socklen_t len;
   SOCKET fd;
@@ -3903,10 +3985,15 @@ proxy_io_unixd_accept (SOCKET lsnr_fd)
 #endif /* !WINDOWS */
 
   len = sizeof (shard_sock_addr);
-  if ((fd = accept (lsnr_fd, (struct sockaddr *) &shard_sock_addr, &len)) < 0)
+  fd = accept (lsnr_fd, (struct sockaddr *) &shard_sock_addr, &len);
+  if (IS_INVALID_SOCKET (fd))
     {
       return (-1);
     }
+
+#if defined(WINDOWS)
+  memcpy (&accept_ip_addr, &(shard_sock_addr.sin_addr), 4);
+#endif /* WINDOWS */
 
   return (fd);
 }
@@ -3914,21 +4001,46 @@ proxy_io_unixd_accept (SOCKET lsnr_fd)
 static SOCKET
 proxy_io_cas_accept (SOCKET lsnr_fd)
 {
-  return proxy_io_unixd_accept (lsnr_fd);
+  return proxy_io_accept (lsnr_fd);
 }
+
+#if defined(WINDOWS)
+static SOCKET
+proxy_io_client_accept (SOCKET lsnr_fd)
+{
+  return proxy_io_accept (lsnr_fd);
+}
+#endif
 
 int
 proxy_io_initialize (void)
 {
   int error;
 #if defined(WINDOWS)
-  int new_port = 0;
+  char *port;
 #endif /* WINDOWS */
 
   /* clear fds */
   FD_ZERO (&allset);
   FD_ZERO (&wnewset);
 
+#if defined(WINDOWS)
+  if ((port = getenv (PORT_NUMBER_ENV_STR)) == NULL)
+    {
+      return (-1);
+    }
+  broker_port = atoi (port);
+
+  /* make listener for client */
+  error = proxy_io_client_lsnr ();
+  if (error)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Failed to initialize Client socket listener. (error:%d).",
+		 error);
+      return -1;
+    }
+#else /* WINDOWS */
   /* register to broker */
   error = proxy_io_register_to_broker ();
   if (error)
@@ -3937,21 +4049,7 @@ proxy_io_initialize (void)
 		 "Unable to register to broker. (error:%d).", error);
       return -1;
     }
-
-#if defined(WINDOWS)
-  if (proxy_info_p->proxy_port > 0)
-    {
-      new_port = proxy_info_p->proxy_port + proxy_id;
-    }
-  else
-    {
-      new_port = 0;
-    }
-
-  /* SHARD TODO : socket listener for windows */
-
-  proxy_info_p->proxy_port = new_port;
-#endif
+#endif /* !WINDOWS */
 
   /* make listener for cas */
   error = proxy_io_cas_lsnr ();
@@ -4027,11 +4125,19 @@ proxy_io_close_all_fd (void)
       CLOSE_SOCKET (cas_lsnr_fd);
     }
 
+#if defined(WINDOWS)
+  /* close client listen fd */
+  if (client_lsnr_fd != INVALID_SOCKET)
+    {
+      CLOSE_SOCKET (client_lsnr_fd);
+    }
+#else /* WINDOWS */
   /* close broker connection fd */
   if (broker_conn_fd != INVALID_SOCKET)
     {
       CLOSE_SOCKET (broker_conn_fd);
     }
+#endif /* !WINDOWS */
 
   return 1;
 }
@@ -4044,6 +4150,9 @@ proxy_io_process (void)
   int cas_fd;
   int i;
   unsigned int num_new_client = 0;
+#if defined(WINDOWS)
+  int client_fd;
+#endif
 
   fd_set eset;
   struct timeval tv;
@@ -4094,9 +4203,22 @@ retry_select:
     }
 
   /* new client */
+#if defined(WINDOWS)
+  if (FD_ISSET (client_lsnr_fd, &rset))
+    {
+      client_fd = proxy_io_client_accept (client_lsnr_fd);
+      if (client_fd < 0)
+	{
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Accept socket failure. (fd:%d).",
+		     client_fd);
+	  return 0;		/* or -1 */
+	}
+      error = proxy_socket_io_new_client (client_fd);
+#else /* WINDOWS */
   if (FD_ISSET (broker_conn_fd, &rset))
     {
       error = proxy_socket_io_new_client (broker_conn_fd);
+#endif /* !WINDOWS */
       if (error == 0)
 	{
 	  num_new_client++;
@@ -4111,16 +4233,18 @@ retry_select:
   for (i = 0; i <= maxfd; i++)
     {
       sock_io_p = &(proxy_Socket_io.ent[i]);
-      if (sock_io_p->fd <= INVALID_SOCKET)
+      if (IS_INVALID_SOCKET (sock_io_p->fd))
 	{
 	  continue;
 	}
 
-      if (sock_io_p->fd > INVALID_SOCKET && FD_ISSET (sock_io_p->fd, &wset))
+      if (!IS_INVALID_SOCKET (sock_io_p->fd)
+	  && FD_ISSET (sock_io_p->fd, &wset))
 	{
 	  proxy_socket_io_write (sock_io_p);
 	}
-      if (sock_io_p->fd > INVALID_SOCKET && FD_ISSET (sock_io_p->fd, &rset))
+      if (!IS_INVALID_SOCKET (sock_io_p->fd)
+	  && FD_ISSET (sock_io_p->fd, &rset))
 	{
 	  proxy_socket_io_read (sock_io_p);
 	}

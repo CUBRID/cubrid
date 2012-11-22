@@ -34,8 +34,12 @@
 #include "shard_proxy_log.h"
 #include "shard_statement.h"
 
+#if defined(WINDOWS)
+#define MAX_FD 1024
+#else /* WINDOWS */
 #undef MAX_FD
 #define MAX_FD FD_SETSIZE
+#endif /* !WINDOWS */
 
 /*
  * broker receive
