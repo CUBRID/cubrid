@@ -13960,10 +13960,15 @@ do_replicate_schema (PARSER_CONTEXT * parser, PT_NODE * statement)
       repl_schema.name = (char *) pt_get_varchar_bytes (name);
     }
   repl_schema.ddl = parser->ddl_stmt_for_replication;
+  repl_schema.db_user = db_get_user_name ();
+
+  assert_release (repl_schema.db_user != NULL);
 
   repl_info.info = (char *) &repl_schema;
 
   error = locator_flush_replication_info (&repl_info);
+
+  db_string_free (repl_schema.db_user);
 
   return error;
 }

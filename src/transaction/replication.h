@@ -59,6 +59,7 @@ struct repl_info_schema
   int statement_type;
   char *name;
   char *ddl;
+  char *db_user;
 };
 
 /*

@@ -9315,7 +9315,7 @@ repl_set_info (REPL_INFO * repl_info)
 {
 #if defined(CS_MODE)
   int req_error, success = ER_FAILED;
-  int request_size = 0, strlen1, strlen2;
+  int request_size = 0, strlen1, strlen2, strlen3;
   char *request = NULL, *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
@@ -9330,7 +9330,8 @@ repl_set_info (REPL_INFO * repl_info)
       request_size = OR_INT_SIZE	/* REPL_INFO.REPL_INFO_TYPE */
 	+ OR_INT_SIZE		/* REPL_INFO_SCHEMA.statement_type */
 	+ length_const_string (repl_schema->name, &strlen1)
-	+ length_const_string (repl_schema->ddl, &strlen2);
+	+ length_const_string (repl_schema->ddl, &strlen2)
+	+ length_const_string (repl_schema->db_user, &strlen3);
 
       request = (char *) malloc (request_size);
       if (request)
@@ -9341,6 +9342,9 @@ repl_set_info (REPL_INFO * repl_info)
 	    pack_const_string_with_length (ptr, repl_schema->name, strlen1);
 	  ptr =
 	    pack_const_string_with_length (ptr, repl_schema->ddl, strlen2);
+	  ptr =
+	    pack_const_string_with_length (ptr, repl_schema->db_user,
+					   strlen3);
 	  req_error =
 	    net_client_request (NET_SERVER_REPL_INFO, request, request_size,
 				reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
