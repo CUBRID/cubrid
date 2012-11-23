@@ -10983,6 +10983,8 @@ exit_on_error:
 		    "qexec_execute_selupd_list: ignore error %d\n", err);
 
       lock_clear_deadlock_victim (tran_index);
+      qfile_close_list (thread_p, xasl->list_id);
+      qfile_destroy_list (thread_p, xasl->list_id);
       er_clear ();
       err = NO_ERROR;
     }
