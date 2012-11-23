@@ -766,6 +766,10 @@ net_server_init (void)
   req_p->processing_function = sprm_server_obtain_parameters;
   req_p->name = "NET_SERVER_PRM_GET_PARAMETERS";
 
+  req_p = &net_Requests[NET_SERVER_PRM_GET_FORCE_PARAMETERS];
+  req_p->processing_function = sprm_server_get_force_parameters;
+  req_p->name = "NET_SERVER_PRM_GET_FORCE_PARAMETERS";
+
   req_p = &net_Requests[NET_SERVER_PRM_DUMP_PARAMETERS];
   req_p->processing_function = sprm_server_dump_parameters;
   req_p->name = "NET_SERVER_PRM_DUMP_PARAMETERS";

@@ -112,7 +112,7 @@ typedef struct session_state
   SESSION_QUERY_ENTRY *queries;
   struct timeval session_timeout;
   SOCKET related_socket;
-  SESSION_PARAM *session_params;
+  SESSION_PARAM *session_parameters;
 } SESSION_STATE;
 
 /* the active sessions storage */
@@ -345,7 +345,7 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_KEY * key)
   session_p->statements = NULL;
   session_p->queries = NULL;
   session_p->related_socket = INVALID_SOCKET;
-  session_p->session_params = NULL;
+  session_p->session_parameters = NULL;
 
   /* initialize the timeout */
   if (gettimeofday (&(session_p->session_timeout), NULL) != 0)
@@ -488,9 +488,9 @@ session_free_session (const void *key, void *data, void *args)
       cnt++;
     }
 
-  if (session->session_params)
+  if (session->session_parameters)
     {
-      sysprm_free_session_parameters (&session->session_params);
+      sysprm_free_session_parameters (&session->session_parameters);
     }
 
   er_log_debug (ARG_FILE_LINE,
@@ -1405,26 +1405,23 @@ session_set_row_count (THREAD_ENTRY * thread_p, const int row_count)
 
 /*
  * session_get_session_params () - get the list of session parameters stored
-				   in session_state
- *   return  : NO_ERROR or error code
- *   thread_p(in)	  : thread that identifies the session
- *   session_prm(out)	  : pointer to a session parameter list that will
- *			    store a duplicate for the list in session_state
+ *				   in session_state
  *
+ *   return			 : NO_ERROR or error code
+ *   thread_p(in)		 : thread that identifies the session
+ *   session_parameters_ptr(out) : pointer to session parameter list
  */
 int
 session_get_session_parameters (THREAD_ENTRY * thread_p,
-				SESSION_PARAM ** session_prm_ptr)
+				SESSION_PARAM ** session_parameters_ptr)
 {
   SESSION_KEY key;
   SESSION_STATE *state_p = NULL;
-  SESSION_PARAM *sprm = NULL;
 
-  assert (session_prm_ptr != NULL);
-  sprm = *session_prm_ptr;
-  if (sprm)
+  assert (session_parameters_ptr != NULL);
+  if (*session_parameters_ptr)
     {
-      free_and_init (sprm);
+      free_and_init (*session_parameters_ptr);
     }
 
   if (session_get_session_id (thread_p, &key) != NO_ERROR)
@@ -1450,20 +1447,54 @@ session_get_session_parameters (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
-  if (state_p->session_params)
+  *session_parameters_ptr = state_p->session_parameters;
+
+  csect_exit (CSECT_SESSION_STATE);
+
+  return NO_ERROR;
+}
+
+/*
+ * session_set_session_parameters () - set session parameters to session state
+ *
+ * return		   : error code
+ * thread_p (in)	   : worker thread
+ * session_parameters (in) : array of session parameters
+ */
+int
+session_set_session_parameters (THREAD_ENTRY * thread_p,
+				SESSION_PARAM * session_parameters)
+{
+  SESSION_KEY key;
+  SESSION_STATE *state_p = NULL;
+
+  assert (session_parameters != NULL);
+
+  if (session_get_session_id (thread_p, &key) != NO_ERROR)
     {
-      sprm = sysprm_duplicate_session_parameters (state_p->session_params);
-      if (!sprm)
-	{
-	  csect_exit (CSECT_SESSION_STATE);
-	  return ER_FAILED;
-	}
+      return ER_FAILED;
     }
-  else
+
+  if (csect_enter (thread_p, CSECT_SESSION_STATE, INF_WAIT) != NO_ERROR)
     {
-      sprm = NULL;
+      return ER_FAILED;
     }
-  *session_prm_ptr = sprm;
+
+  if (!sessions_is_states_table_initialized ())
+    {
+      csect_exit (CSECT_SESSION_STATE);
+      return ER_FAILED;
+    }
+
+  state_p = mht_get (sessions.sessions_table, &key.id);
+  if (state_p == NULL || state_p->related_socket != key.fd)
+    {
+      csect_exit (CSECT_SESSION_STATE);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
+      return ER_FAILED;
+    }
+
+  state_p->session_parameters = session_parameters;
 
   csect_exit (CSECT_SESSION_STATE);
 
@@ -1890,187 +1921,6 @@ session_set_session_variables (THREAD_ENTRY * thread_p, DB_VALUE * values,
 	}
     }
 
-  csect_exit (CSECT_SESSION_STATE);
-
-  return NO_ERROR;
-}
-
-/*
- * session_set_session_parameters () - set session parameters
- * return : error code
- * thread_p (in) : worker thread
- * values (in)	 : array of variables to set
- * count (in)	 : number of elements in array
- */
-int
-session_set_session_parameters (THREAD_ENTRY * thread_p,
-				SESSION_PARAM * session_params)
-{
-  SESSION_KEY key;
-  SESSION_STATE *state_p = NULL;
-
-  assert (session_params != NULL);
-
-  if (session_get_session_id (thread_p, &key) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  if (csect_enter (thread_p, CSECT_SESSION_STATE, INF_WAIT) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  if (!sessions_is_states_table_initialized ())
-    {
-      csect_exit (CSECT_SESSION_STATE);
-      return ER_FAILED;
-    }
-
-  state_p = mht_get (sessions.sessions_table, &key.id);
-  if (state_p == NULL || state_p->related_socket != key.fd)
-    {
-      csect_exit (CSECT_SESSION_STATE);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
-      return ER_FAILED;
-    }
-
-  if (state_p->session_params != NULL)
-    {
-      sysprm_free_session_parameters (&state_p->session_params);
-    }
-  if (session_params)
-    {
-      state_p->session_params =
-	sysprm_duplicate_session_parameters (session_params);
-      if (state_p->session_params == NULL)
-	{
-	  /* memory error */
-	  csect_exit (CSECT_SESSION_STATE);
-	  return ER_FAILED;
-	}
-    }
-
-  csect_exit (CSECT_SESSION_STATE);
-
-  return NO_ERROR;
-}
-
-/*
- * session_change_session_parameter () - changes the value for a given session
- *					 parameter
- * return: NO_ERROR or error_code
- * thread_p(in) : worker thread
- * prm_id(in)   : id of session parameter
- * value(in)    : the new value
- */
-int
-session_change_session_parameter (THREAD_ENTRY * thread_p, int prm_id,
-				  const char *value)
-{
-  SESSION_KEY key;
-  SESSION_STATE *state_p = NULL;
-
-  if (session_get_session_id (thread_p, &key) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  if (csect_enter (thread_p, CSECT_SESSION_STATE, INF_WAIT) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  if (!sessions_is_states_table_initialized ())
-    {
-      csect_exit (CSECT_SESSION_STATE);
-      return ER_FAILED;
-    }
-
-  state_p = mht_get (sessions.sessions_table, &key.id);
-  if (state_p == NULL || state_p->related_socket != key.fd)
-    {
-      csect_exit (CSECT_SESSION_STATE);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
-      return ER_FAILED;
-    }
-
-  if (state_p->session_params != NULL)
-    {
-      int error;
-
-      error = prm_set_session_parameter_value (state_p->session_params,
-					       prm_id, value, false);
-      if (error != PRM_ERR_NO_ERROR)
-	{
-	  csect_exit (CSECT_SESSION_STATE);
-	  return ER_FAILED;
-	}
-    }
-  else
-    {
-      csect_exit (CSECT_SESSION_STATE);
-      return ER_FAILED;
-    }
-  csect_exit (CSECT_SESSION_STATE);
-
-  return NO_ERROR;
-}
-
-/*
- * session_set_session_parameter_default () - changes the value for a given
- *					      session parameter to default
- * return: NO_ERROR or error_code
- * thread_p(in) : worker thread
- * prm_id(in)   : id of session parameter
- */
-int
-session_set_session_parameter_default (THREAD_ENTRY * thread_p, int prm_id)
-{
-  SESSION_KEY key;
-  SESSION_STATE *state_p = NULL;
-
-  if (session_get_session_id (thread_p, &key) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  if (csect_enter (thread_p, CSECT_SESSION_STATE, INF_WAIT) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  if (!sessions_is_states_table_initialized ())
-    {
-      csect_exit (CSECT_SESSION_STATE);
-      return ER_FAILED;
-    }
-
-  state_p = mht_get (sessions.sessions_table, &key.id);
-  if (state_p == NULL || state_p->related_socket != key.fd)
-    {
-      csect_exit (CSECT_SESSION_STATE);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
-      return ER_FAILED;
-    }
-
-  if (state_p->session_params != NULL)
-    {
-      int error;
-
-      error = prm_set_session_parameter_default (state_p->session_params,
-						 prm_id, false);
-      if (error != PRM_ERR_NO_ERROR)
-	{
-	  csect_exit (CSECT_SESSION_STATE);
-	  return ER_FAILED;
-	}
-    }
-  else
-    {
-      csect_exit (CSECT_SESSION_STATE);
-      return ER_FAILED;
-    }
   csect_exit (CSECT_SESSION_STATE);
 
   return NO_ERROR;

@@ -3989,6 +3989,7 @@ boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
   int row_count = DB_ROW_COUNT_NOT_SET;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   SESSION_PARAM *session_params = NULL;
+  int update_parameter_values = 0;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -4004,8 +4005,11 @@ boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
     + OR_INT_SIZE		/* client_lock_wait */
     + OR_INT_SIZE		/* client_isolation */
     + or_packed_stream_length (SERVER_SESSION_KEY_SIZE)	/* server session key */
-    + OR_INT_SIZE		/* session state id */
-    + sysprm_packed_local_session_parameters_length ();	/* session parameters */
+    + OR_INT_SIZE;		/* session state id */
+  /* session parameters */
+  request_size +=
+    sysprm_packed_session_parameters_length (cached_session_parameters,
+					     request_size);
 
   session_key = boot_get_server_session_key ();
   request = (char *) malloc (request_size);
@@ -4024,7 +4028,7 @@ boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
       ptr = or_pack_int (ptr, (int) client_isolation);
       ptr = or_pack_stream (ptr, session_key, SERVER_SESSION_KEY_SIZE);
       ptr = or_pack_int (ptr, db_Session_id);
-      ptr = sysprm_pack_local_session_parameters (ptr);
+      ptr = sysprm_pack_session_parameters (ptr, cached_session_parameters);
 
       req_error = net_client_request2 (NET_SERVER_BO_REGISTER_CLIENT,
 				       request, request_size, reply,
@@ -4056,7 +4060,12 @@ boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
 				      SERVER_SESSION_KEY_SIZE);
 	      ptr = or_unpack_int (ptr, &db_Session_id);
 	      ptr = or_unpack_int (ptr, &row_count);
-	      ptr = sysprm_unpack_session_parameters (ptr, &session_params);
+	      ptr = or_unpack_int (ptr, &update_parameter_values);
+	      if (update_parameter_values)
+		{
+		  ptr =
+		    sysprm_unpack_session_parameters (ptr, &session_params);
+		}
 	    }
 	  free_and_init (area);
 	}
@@ -4068,7 +4077,10 @@ boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
 	      request_size);
     }
 
-  sysprm_update_client_session_parameters (session_params);
+  if (update_parameter_values)
+    {
+      sysprm_update_client_session_parameters (session_params);
+    }
   sysprm_free_session_parameters (&session_params);
   db_update_row_count_cache (row_count);
 
@@ -4612,13 +4624,14 @@ csession_check_session (SESSION_ID * session_id, int *row_count,
   char *ptr;
   int request_size, area_size;
   SESSION_PARAM *session_params = NULL;
-  int error = NO_ERROR;
+  int error = NO_ERROR, update_parameter_values = 0;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
   request_size = OR_INT_SIZE;	/* session_id */
   request_size += or_packed_stream_length (SERVER_SESSION_KEY_SIZE);
-  /* session_params */
-  request_size += sysprm_packed_local_session_parameters_length ();
+  request_size +=
+    sysprm_packed_session_parameters_length (cached_session_parameters,
+					     request_size);
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -4627,7 +4640,7 @@ csession_check_session (SESSION_ID * session_id, int *row_count,
     {
       ptr = or_pack_int (request, ((int) *session_id));
       ptr = or_pack_stream (ptr, server_session_key, SERVER_SESSION_KEY_SIZE);
-      ptr = sysprm_pack_local_session_parameters (ptr);
+      ptr = sysprm_pack_session_parameters (ptr, cached_session_parameters);
 
       req_error = net_client_request2 (NET_SERVER_SES_CHECK_SESSION,
 				       request, request_size,
@@ -4650,11 +4663,28 @@ csession_check_session (SESSION_ID * session_id, int *row_count,
 	      ptr = or_unpack_int (ptr, row_count);
 	      ptr = or_unpack_stream (ptr, server_session_key,
 				      SERVER_SESSION_KEY_SIZE);
-	      ptr = sysprm_unpack_session_parameters (ptr, &session_params);
+	      ptr = or_unpack_int (ptr, &update_parameter_values);
+	      if (update_parameter_values)
+		{
+		  ptr =
+		    sysprm_unpack_session_parameters (ptr, &session_params);
+		}
 
 	      free_and_init (area);
 	    }
-	  sysprm_update_client_session_parameters (session_params);
+	  if (update_parameter_values)
+	    {
+	      /* session parameters were found in session state and must
+	       * update parameter values
+	       */
+	      sysprm_update_client_session_parameters (session_params);
+	    }
+	  else
+	    {
+	      /* use the values stored in cached_session_parameters */
+	      sysprm_update_client_session_parameters
+		(cached_session_parameters);
+	    }
 	  sysprm_free_session_parameters (&session_params);
 	}
       free_and_init (request);
@@ -9010,125 +9040,169 @@ qp_get_server_info (SERVER_INFO * server_info)
 }
 
 /*
- * sysprm_change_server_parameters -
+ * sysprm_change_server_parameters () - Sends a list of assignments to server
+ *					in order to change system parameter
+ *					values.
  *
- * return:
- *
- *   data(in):
- *
- * NOTE:
+ * return	    : SYSPRM_ERR code.
+ * assignments (in) : list of assignments.
  */
 int
-sysprm_change_server_parameters (const char *data)
+sysprm_change_server_parameters (const SYSPRM_ASSIGN_VALUE * assignments)
 {
 #if defined(CS_MODE)
   int rc = PRM_ERR_COMM_ERR;
-  int request_size, strlen, req_error, replydata_length;
-  int i, *diff_data = NULL;
-  char *request, *reply, *replydata;
-  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
+  int request_size = 0, req_error = NO_ERROR;
+  char *request = NULL, *reply = NULL;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  replydata = NULL;
-  request_size = length_const_string (data, &strlen);
+  request_size = sysprm_packed_assign_values_length (assignments, 0);
   request = (char *) malloc (request_size);
   if (request)
     {
-      pack_const_string_with_length (request, data, strlen);
-      req_error = net_client_request2 (NET_SERVER_PRM_SET_PARAMETERS,
-				       request, request_size,
-				       reply, OR_ALIGNED_BUF_SIZE (a_reply),
-				       NULL, 0, &replydata,
-				       &replydata_length);
-      if (!req_error)
+      (void) sysprm_pack_assign_values (request, assignments);
+      req_error = net_client_request (NET_SERVER_PRM_SET_PARAMETERS,
+				      request, request_size,
+				      reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				      NULL, 0, NULL, 0);
+      if (req_error == NO_ERROR)
 	{
-	  /* skip one field where the length of replydata is kept */
-	  or_unpack_int (reply + OR_INT_SIZE, &rc);
+	  or_unpack_int (reply, &rc);
 	}
-      if (rc != NO_ERROR)
+      else
 	{
-	  free_and_init (request);
-	  if (replydata)
-	    {
-	      free_and_init (replydata);
-	    }
-	  return rc;
+	  rc = PRM_ERR_COMM_ERR;
 	}
-      if (sysprm_unpack_different_session_parameters (replydata, &diff_data)
-	  != NULL)
-	{
-	  int count = diff_data[0];
-	  for (i = 0; i < count; i++)
-	    {
-	      prm_update_prm_different_flag (diff_data[2 * i + 1],
-					     diff_data[2 * i + 2]);
-	    }
-	}
-      free_and_init (replydata);
+
       free_and_init (request);
-      free_and_init (diff_data);
+    }
+  else
+    {
+      rc = PRM_ERR_NO_MEM_FOR_PRM;
     }
   return rc;
 #else /* CS_MODE */
-  int rc;
-
   ENTER_SERVER ();
-  rc = xsysprm_change_server_parameters (data);
+  xsysprm_change_server_parameters (assignments);
   EXIT_SERVER ();
 
-  return rc;
+  return PRM_ERR_NO_ERROR;
 #endif /* !CS_MODE */
 }
 
 /*
- * sysprm_obtain_server_parameters -
+ * sysprm_obtain_server_parameters () - Obtain values for system parameters
+ *					from server.
  *
- * return:
- *
- *   data(in):
- *   len(in):
- *
- * NOTE:
+ * return		   : SYSPRM_ERR code.
+ * prm_values_ptr (in/out) : list of parameter values.
  */
 int
-sysprm_obtain_server_parameters (char *data, int len)
+sysprm_obtain_server_parameters (SYSPRM_ASSIGN_VALUE ** prm_values_ptr)
 {
 #if defined(CS_MODE)
   int rc = PRM_ERR_COMM_ERR;
-  int req_error;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
-  char *request;
+  int req_error = NO_ERROR, request_size = 0, receive_size = 0;
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
-  char *reply;
-  char *ptr;
+  char *reply = NULL, *request_data = NULL, *receive_data = NULL;
+  char *ptr = NULL;
+  SYSPRM_ASSIGN_VALUE *updated_prm_values = NULL;
 
-  request = OR_ALIGNED_BUF_START (a_request);
+  assert (prm_values_ptr != NULL && *prm_values_ptr != NULL);
+
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  or_pack_int (request, len);
-
-  req_error = net_client_request2_no_malloc (NET_SERVER_PRM_GET_PARAMETERS,
-					     request,
-					     OR_ALIGNED_BUF_SIZE (a_request),
-					     reply,
-					     OR_ALIGNED_BUF_SIZE (a_reply),
-					     data, len, data, &len);
-  if (!req_error)
+  request_size = sysprm_packed_assign_values_length (*prm_values_ptr, 0);
+  request_data = (char *) malloc (request_size);
+  if (request_data == NULL)
     {
-      ptr = or_unpack_int (reply, &len);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      request_size);
+      return PRM_ERR_NO_MEM_FOR_PRM;
+    }
+  (void) sysprm_pack_assign_values (request_data, *prm_values_ptr);
+  req_error =
+    net_client_request2 (NET_SERVER_PRM_GET_PARAMETERS,
+			 request_data, request_size,
+			 reply, OR_ALIGNED_BUF_SIZE (a_reply),
+			 NULL, 0, &receive_data, &receive_size);
+  if (req_error != NO_ERROR)
+    {
+      rc = PRM_ERR_COMM_ERR;
+    }
+  else
+    {
+      ptr = or_unpack_int (reply, &receive_size);
       ptr = or_unpack_int (ptr, &rc);
+      if (rc != PRM_ERR_NO_ERROR || receive_data == NULL)
+	{
+	  return rc;
+	}
+
+      (void) sysprm_unpack_assign_values (receive_data, &updated_prm_values);
+      /* free old values */
+      sysprm_free_assign_values (prm_values_ptr);
+      /* update values */
+      *prm_values_ptr = updated_prm_values;
     }
 
   return rc;
 #else /* CS_MODE */
-  int rc;
-
   ENTER_SERVER ();
-  rc = xsysprm_obtain_server_parameters (data, len);
+  xsysprm_obtain_server_parameters (*prm_values_ptr);
   EXIT_SERVER ();
 
-  return rc;
+  return PRM_ERR_NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+/*
+ * sysprm_get_force_server_parameters () - Get from server values for system
+ *					   parameters marked with
+ *					   PRM_FORCE_SERVER flag.
+ *
+ * return	       : error code
+ * change_values (out) : list of parameter values.
+ */
+int
+sysprm_get_force_server_parameters (SYSPRM_ASSIGN_VALUE ** change_values)
+{
+#if defined (CS_MODE)
+  int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
+  int area_size, error;
+  char *reply = NULL, *area = NULL, *ptr = NULL;
+
+  assert (change_values != NULL);
+  *change_values = NULL;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  req_error =
+    net_client_request2 (NET_SERVER_PRM_GET_FORCE_PARAMETERS, NULL, 0,
+			 reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
+			 &area, &area_size);
+  if (req_error != NO_ERROR)
+    {
+      return req_error;
+    }
+  ptr = or_unpack_int (reply, &area_size);
+  ptr = or_unpack_int (ptr, &error);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  if (area != NULL)
+    {
+      (void) sysprm_unpack_assign_values (area, change_values);
+    }
+  return NO_ERROR;
+#else /* CS_MODE */
+  assert (change_values != NULL);
+  *change_values = NULL;
+  return NO_ERROR;
 #endif /* !CS_MODE */
 }
 

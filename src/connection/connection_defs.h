@@ -441,7 +441,7 @@ struct css_conn_entry
   CSS_LIST buffer_queue;	/* list of buffers queued for data */
   CSS_LIST error_queue;		/* list of (server) error messages  */
 
-  SESSION_PARAM *session_params;
+  SESSION_PARAM *session_parameters;
 #else
   FILE *file;
   CSS_QUEUE_ENTRY *request_queue;	/* the header for unseen requests    */

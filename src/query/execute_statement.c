@@ -13351,7 +13351,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   parser->print_type_ambiguity = 0;
   PT_NODE_PRINT_TO_ALIAS (parser, statement,
 			  (PT_CONVERT_RANGE | PT_PRINT_QUOTES
-			   | PT_PRINT_DIFFERENT_SESSION_PRMS));
+			   | PT_PRINT_DIFFERENT_SYSTEM_PARAMETERS));
   qstmt = statement->alias_print;
   parser->dont_prt_long_string = 0;
   if (parser->long_string_skipped || parser->print_type_ambiguity)

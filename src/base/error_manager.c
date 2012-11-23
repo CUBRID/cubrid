@@ -1399,12 +1399,9 @@ er_notify_event_on_error (int err_id)
   assert (err_id != NO_ERROR);
 
   err_id = abs (err_id);
-  if (prm_get_error_list_value (PRM_ID_EVENT_ACTIVATION))
+  if (sysprm_find_err_in_integer_list (PRM_ID_EVENT_ACTIVATION, err_id))
     {
-      if (prm_get_error_list_value (PRM_ID_EVENT_ACTIVATION)[err_id] == true)
-	{
-	  er_event ();
-	}
+      er_event ();
     }
 }
 
@@ -1426,28 +1423,18 @@ er_call_stack_dump_on_error (int severity, int err_id)
     }
   else if (prm_get_bool_value (PRM_ID_CALL_STACK_DUMP_ON_ERROR))
     {
-      if (prm_get_error_list_value (PRM_ID_CALL_STACK_DUMP_DEACTIVATION))
-	{
-	  if (prm_get_error_list_value (PRM_ID_CALL_STACK_DUMP_DEACTIVATION)
-	      [err_id] == false)
-	    {
-	      er_dump_call_stack (er_Msglog);
-	    }
-	}
-      else
+      if (!sysprm_find_err_in_integer_list
+	  (PRM_ID_CALL_STACK_DUMP_DEACTIVATION, err_id))
 	{
 	  er_dump_call_stack (er_Msglog);
 	}
     }
   else
     {
-      if (prm_get_error_list_value (PRM_ID_CALL_STACK_DUMP_ACTIVATION))
+      if (sysprm_find_err_in_integer_list
+	  (PRM_ID_CALL_STACK_DUMP_ACTIVATION, err_id))
 	{
-	  if (prm_get_error_list_value (PRM_ID_CALL_STACK_DUMP_ACTIVATION)
-	      [err_id] == true)
-	    {
-	      er_dump_call_stack (er_Msglog);
-	    }
+	  er_dump_call_stack (er_Msglog);
 	}
     }
 }

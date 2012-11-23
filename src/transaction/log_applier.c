@@ -2168,13 +2168,10 @@ la_ignore_on_error (int errid)
 
   errid = abs (errid);
 
-  if (prm_get_error_list_value (PRM_ID_HA_APPLYLOGDB_IGNORE_ERROR_LIST))
+  if (sysprm_find_err_in_integer_list (PRM_ID_HA_APPLYLOGDB_IGNORE_ERROR_LIST,
+				       errid))
     {
-      if (prm_get_error_list_value (PRM_ID_HA_APPLYLOGDB_IGNORE_ERROR_LIST)
-	  [errid] == true)
-	{
-	  return true;
-	}
+      return true;
     }
 
   return false;
@@ -2191,13 +2188,10 @@ la_retry_on_error (int errid)
     }
 
   errid = abs (errid);
-  if (prm_get_error_list_value (PRM_ID_HA_APPLYLOGDB_RETRY_ERROR_LIST))
+  if (sysprm_find_err_in_integer_list (PRM_ID_HA_APPLYLOGDB_RETRY_ERROR_LIST,
+				       errid))
     {
-      if (prm_get_error_list_value (PRM_ID_HA_APPLYLOGDB_RETRY_ERROR_LIST)
-	  [errid] == true)
-	{
-	  return true;
-	}
+      return true;
     }
 
   return false;

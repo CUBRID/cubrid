@@ -2383,142 +2383,88 @@ db_chn (DB_OBJECT * obj, DB_FETCH_MODE purpose)
 }
 
 /*
- * db_set_system_parameters() - set system parameters defined in cubrid.conf
- * return : error code
- * data(in) : system parameters as the format of cubrid.conf
+ * db_set_system_parameters () - set new values to system parameters
+ *
+ * return    : error code
+ * data (in) : string with new parameter values defined as:
+ *	       "param1=new_val1; param2=new_val2; ..."
  */
 int
 db_set_system_parameters (const char *data)
 {
   int rc;
   int error = NO_ERROR;
+  SYSPRM_ASSIGN_VALUE *assignments = NULL;
 
-  rc = sysprm_change_parameters (data);
-  if (rc == PRM_ERR_NOT_FOR_CLIENT)
+  /* validate changes */
+  rc = sysprm_validate_change_parameters (data, true, &assignments);
+  /* If a server parameter is changed, user must belong to DBA group */
+  if (rc == PRM_ERR_NOT_FOR_CLIENT && Au_dba_user != NULL
+      && !au_is_dba_group_member (Au_user))
     {
-      if (Au_dba_user != NULL && !au_is_dba_group_member (Au_user))
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1,
-		  "db_set_system_parameters");
-	  return er_errid ();
-	}
-      else
-	{
-	  rc = sysprm_change_server_parameters (data);
-	}
+      /* user is not authorized to do the changes */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1,
+	      "db_set_system_parameters");
+      error = ER_AU_DBA_ONLY;
+      goto cleanup;
+    }
+  if (rc == PRM_ERR_NOT_FOR_CLIENT || rc == PRM_ERR_NOT_FOR_CLIENT_NO_AUTH)
+    {
+      /* set system parameters on server */
+      rc = sysprm_change_server_parameters (assignments);
+    }
+  if (rc == PRM_ERR_NO_ERROR)
+    {
+      /* values were successfully set on server, set them on client too */
+      sysprm_change_parameter_values (assignments, true, true);
     }
 
-  if (rc == NO_ERROR && sysprm_prm_change_should_clear_cache (data))
-    {
-      /* we should invalidate xasl_cache. */
-      error = qmgr_drop_all_query_plans ();
-    }
+  /* convert SYSPRM_ERR to error code */
+  error = sysprm_set_error (rc, data);
 
-  if (rc != NO_ERROR)
-    {
-      switch (rc)
-	{
-	case PRM_ERR_UNKNOWN_PARAM:
-	case PRM_ERR_BAD_VALUE:
-	case PRM_ERR_BAD_STRING:
-	case PRM_ERR_BAD_RANGE:
-	  error = ER_PRM_BAD_VALUE;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, data);
-	  break;
-	case PRM_ERR_CANNOT_CHANGE:
-	case PRM_ERR_NOT_FOR_CLIENT:
-	case PRM_ERR_NOT_FOR_SERVER:
-	  error = ER_PRM_CANNOT_CHANGE;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, data);
-	  break;
-	case PRM_ERR_NOT_SOLE_TRAN:
-	  error = ER_NOT_SOLE_TRAN;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	  break;
-	case PRM_ERR_COMM_ERR:
-	  error = ER_NET_SERVER_COMM_ERROR;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
-		  "db_set_system_parameters");
-	  break;
-	case PRM_ERR_NO_MEM_FOR_PRM:
-	default:
-	  error = ER_GENERIC_ERROR;
-	  break;
-	}
-    }
-
+cleanup:
+  /* clean up */
+  sysprm_free_assign_values (&assignments);
   return error;
 }
 
 /*
- * db_get_system_parameters() - get system parameters defined in cubrid.conf
- *    Output will be stored at 'data' buffer as the format of cubrid.conf.
- * return   : error code.
- * data(out): system parameters to get and as buffer where the output to be
- *            stored.
- * len(in)  : the length of 'data' arg string buffer.
+ * db_get_system_parameters () - get system parameters values.
+ *
+ * return	 : error code.
+ * data (in/out) : data (in) is a list of system parameters to get with next
+ *		   format: "param1; param2; ...".
+ *		   data (out) is a list of system parameters and their values
+ *		   with the format: "param1=val1;param2=val2..."
+ * len (in)	 : maximum allowed size of output.
  */
 int
 db_get_system_parameters (char *data, int len)
 {
   int rc;
   int error = NO_ERROR;
-  char *buffer;
+  SYSPRM_ASSIGN_VALUE *prm_values = NULL;
 
-  buffer = (char *) malloc (len);
-  if (buffer == NULL)
-    {
-      return er_errid ();
-    }
-
-  strncpy (buffer, data, len);
-  rc = sysprm_obtain_parameters (buffer, len);
+  /* parse data and obtain the parameters required to print */
+  rc = sysprm_obtain_parameters (data, &prm_values);
   if (rc == PRM_ERR_NOT_FOR_CLIENT)
     {
-#if !defined(NDEBUG)
-      memset (buffer, 0, len);
-#endif
-      strncpy (buffer, data, len);
-      rc = sysprm_obtain_server_parameters (buffer, len);
-    }
-  if (rc != NO_ERROR)
-    {
-      switch (rc)
-	{
-	case PRM_ERR_UNKNOWN_PARAM:
-	case PRM_ERR_BAD_VALUE:
-	case PRM_ERR_BAD_STRING:
-	case PRM_ERR_BAD_RANGE:
-	  error = ER_PRM_BAD_VALUE;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, data);
-	  break;
-	case PRM_ERR_CANNOT_CHANGE:
-	case PRM_ERR_NOT_FOR_CLIENT:
-	case PRM_ERR_NOT_FOR_SERVER:
-	  error = ER_PRM_CANNOT_CHANGE;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, data);
-	  break;
-	case PRM_ERR_NOT_SOLE_TRAN:
-	  error = ER_NOT_SOLE_TRAN;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	  break;
-	case PRM_ERR_COMM_ERR:
-	  error = ER_NET_SERVER_COMM_ERROR;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
-		  "db_get_system_parameters");
-	  break;
-	case PRM_ERR_NO_MEM_FOR_PRM:
-	default:
-	  error = ER_GENERIC_ERROR;
-	  break;
-	}
-    }
-  else
-    {
-      strncpy (data, buffer, len);
+      /* obtain parameter values from server */
+      rc = sysprm_obtain_server_parameters (&prm_values);
     }
 
-  free_and_init (buffer);
+  /* convert SYSPRM_ERR to error code */
+  error = sysprm_set_error (rc, data);
+
+  if (error == NO_ERROR)
+    {
+      /* print parameter values in data */
+      memset (data, 0, len);
+      (void) sysprm_print_assign_values (prm_values, data, len);
+    }
+
+  /* clean up */
+  sysprm_free_assign_values (&prm_values);
   return error;
 }
 

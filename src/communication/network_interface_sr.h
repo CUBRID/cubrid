@@ -383,6 +383,9 @@ extern void sprm_server_change_parameters (THREAD_ENTRY * thread_p,
 extern void sprm_server_obtain_parameters (THREAD_ENTRY * thread_p,
 					   unsigned int rid, char *request,
 					   int reqlen);
+extern void sprm_server_get_force_parameters (THREAD_ENTRY * thread_p,
+					      unsigned int rid,
+					      char *request, int reqlen);
 extern void sprm_server_dump_parameters (THREAD_ENTRY * thread_p,
 					 unsigned int rid, char *request,
 					 int reqlen);

@@ -673,7 +673,9 @@ enum pt_custom_print
 						 * original table
 						 */
   PT_SUPPRESS_CHARSET_PRINT = 0x800000,
-  PT_PRINT_DIFFERENT_SESSION_PRMS = 0x1000000,	/* print session parameters */
+  PT_PRINT_DIFFERENT_SYSTEM_PARAMETERS = 0x1000000,	/* print session
+							 * parameters
+							 */
   PT_SHORT_PRINT = 0x2000000,	/* PT_NODE_PRINT_TO_ALIAS
 				 * calls pt_short_print
 				 * instead pt_print_tree
@@ -2241,7 +2243,7 @@ struct pt_select_info
   PT_NODE *jdbc_life_time;	/* jdbc cache life time */
   struct qo_summary *qo_summary;
   PT_NODE *check_where;		/* with check option predicate */
-  QFILE_LIST_ID *push_list;	/* list file descriptor pushed to server*/
+  QFILE_LIST_ID *push_list;	/* list file descriptor pushed to server */
   PT_HINT_ENUM hint;
   int flavor;
   short flag;			/* flags */

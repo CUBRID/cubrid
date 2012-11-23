@@ -1508,9 +1508,9 @@ process_broker (int command_type, int argc, const char **argv,
 
 	case 2:		/* no conf file */
 	  fprintf (stderr,
-                   "Error: Error occurred while reading cubrid_broker.conf.\n"
-                   "       The file is not found or an invalid "
-                   "parameter name/value is found.\n");
+		   "Error: Error occurred while reading cubrid_broker.conf.\n"
+		   "       The file is not found or an invalid "
+		   "parameter name/value is found.\n");
 	  print_result (PRINT_BROKER_NAME, ER_GENERIC_ERROR, command_type);
 	  return ER_GENERIC_ERROR;
 	default:
@@ -1553,9 +1553,9 @@ process_broker (int command_type, int argc, const char **argv,
 	  return NO_ERROR;
 	case 2:		/* no conf file */
 	  fprintf (stderr,
-                   "Error: Error occurred while reading cubrid_broker.conf.\n"
-                   "       The file is not found or an invalid "
-                   "parameter name/value is found.\n");
+		   "Error: Error occurred while reading cubrid_broker.conf.\n"
+		   "       The file is not found or an invalid "
+		   "parameter name/value is found.\n");
 	  print_result (PRINT_BROKER_NAME, ER_GENERIC_ERROR, command_type);
 	  return ER_GENERIC_ERROR;
 	default:		/* other error */
@@ -1605,9 +1605,9 @@ process_broker (int command_type, int argc, const char **argv,
 
 	  case 2:		/* no conf file */
 	    fprintf (stderr,
-                   "Error: Error occurred while reading cubrid_broker.conf.\n"
-                   "       The file is not found or an invalid "
-                   "parameter name/value is found.\n");
+		     "Error: Error occurred while reading cubrid_broker.conf.\n"
+		     "       The file is not found or an invalid "
+		     "parameter name/value is found.\n");
 	    print_result (PRINT_BROKER_NAME, ER_GENERIC_ERROR, command_type);
 	    return ER_GENERIC_ERROR;
 	  default:		/* other error */
@@ -1843,9 +1843,9 @@ process_shard (int command_type, int argc, const char **argv,
 	  return NO_ERROR;
 	case 2:		/* no conf file */
 	  fprintf (stderr,
-                   "Error: Error occurred while reading shard.conf.\n"
-                   "       The file is not found or an invalid "
-                   "parameter name/value is found.\n");
+		   "Error: Error occurred while reading shard.conf.\n"
+		   "       The file is not found or an invalid "
+		   "parameter name/value is found.\n");
 	  print_result (PRINT_SHARD_NAME, ER_GENERIC_ERROR, command_type);
 	  return ER_GENERIC_ERROR;
 	default:		/* other error */
@@ -1893,9 +1893,9 @@ process_shard (int command_type, int argc, const char **argv,
 	    return NO_ERROR;
 	  case 2:		/* no conf file */
 	    fprintf (stderr,
-                   "Error: Error occurred while reading shard.conf.\n"
-                   "       The file is not found or an invalid "
-                   "parameter name/value is found.\n");
+		     "Error: Error occurred while reading shard.conf.\n"
+		     "       The file is not found or an invalid "
+		     "parameter name/value is found.\n");
 	    print_result (PRINT_SHARD_NAME, ER_GENERIC_ERROR, command_type);
 	    return ER_GENERIC_ERROR;
 	  default:		/* other error */
@@ -3376,71 +3376,50 @@ parse_arg (UTIL_SERVICE_OPTION_MAP_T * option, const char *arg)
 static int
 load_properties (void)
 {
-  char service_list[4096];
-  char server_list[4096];
-
   bool server_flag = false;
   bool broker_flag = false;
   bool manager_flag = false;
   bool heartbeat_flag = false;
-  char *start_server_list = NULL;
+  char *value = NULL;
 
   if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
     {
       return ER_GENERIC_ERROR;
     }
 
-  strcpy (service_list, "service::service");
-  if (sysprm_obtain_parameters (service_list, 4096) == NO_ERROR)
+  /* get service::service list */
+  value = prm_get_string_value (PRM_ID_SERVICE_SERVICE_LIST);
+  if (value != NULL)
     {
-      char *save_ptr1, *save_ptr2, *value, *util;
-      char *delim = (char *) "\t=\"";
-      value = strtok_r (service_list, delim, &save_ptr1);
-      value = strtok_r (NULL, delim, &save_ptr1);
-      if (value != NULL)
+      char *util = NULL, *save_ptr = NULL;
+      for (util = value;; util = NULL)
 	{
-	  for (util = value;; util = NULL)
+	  util = strtok_r (util, " \t,", &save_ptr);
+	  if (util == NULL)
 	    {
-	      util = strtok_r (util, " \t,", &save_ptr2);
-	      if (util == NULL)
-		{
-		  break;
-		}
-
-	      if (strcmp (util, UTIL_TYPE_SERVER) == 0)
-		{
-		  server_flag = true;
-		}
-	      else if (strcmp (util, UTIL_TYPE_BROKER) == 0)
-		{
-		  broker_flag = true;
-		}
-	      else if (strcmp (util, UTIL_TYPE_MANAGER) == 0)
-		{
-		  manager_flag = true;
-		}
-	      else if (strcmp (util, UTIL_TYPE_HEARTBEAT) == 0)
-		{
-		  heartbeat_flag = true;
-		}
-	      else
-		{
-		  return ER_GENERIC_ERROR;
-		}
+	      break;
 	    }
-	}
-    }
 
-  strcpy (server_list, "service::server");
-  if (sysprm_obtain_parameters (server_list, 4096) == NO_ERROR)
-    {
-      char *save_ptr, *value;
-      char *delim = (char *) "\t=\"";
-      value = strtok_r (server_list, delim, &save_ptr);
-      value = strtok_r (NULL, delim, &save_ptr);
-      if (value != NULL)
-	{
-	  start_server_list = strdup (value);
+	  if (strcmp (util, UTIL_TYPE_SERVER) == 0)
+	    {
+	      server_flag = true;
+	    }
+	  else if (strcmp (util, UTIL_TYPE_BROKER) == 0)
+	    {
+	      broker_flag = true;
+	    }
+	  else if (strcmp (util, UTIL_TYPE_MANAGER) == 0)
+	    {
+	      manager_flag = true;
+	    }
+	  else if (strcmp (util, UTIL_TYPE_HEARTBEAT) == 0)
+	    {
+	      heartbeat_flag = true;
+	    }
+	  else
+	    {
+	      return ER_GENERIC_ERROR;
+	    }
 	}
     }
 
@@ -3452,13 +3431,30 @@ load_properties (void)
     strdup (manager_flag ? PROPERTY_ON : PROPERTY_OFF);
   us_Property_map[SERVICE_START_HEARTBEAT].property_value =
     strdup (heartbeat_flag ? PROPERTY_ON : PROPERTY_OFF);
-  us_Property_map[SERVER_START_LIST].property_value =
-    start_server_list ? start_server_list : strdup ("");
+
+  /* get service::server list */
+  value = prm_get_string_value (PRM_ID_SERVICE_SERVER_LIST);
+  if (value != NULL)
+    {
+      us_Property_map[SERVER_START_LIST].property_value = strdup (value);
+      if (us_Property_map[SERVER_START_LIST].property_value == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, strlen (value) + 1);
+	  us_Property_map[SERVER_START_LIST].property_value = "";
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+    }
+  else
+    {
+      us_Property_map[SERVER_START_LIST].property_value = "";
+    }
+
   return NO_ERROR;
 }
 
 /*
- * finalize_properties - free alloced memory by strdup ()
+ * finalize_properties - free allocated memory by strdup ()
  *
  * return:
  *

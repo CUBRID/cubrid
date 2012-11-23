@@ -3550,6 +3550,7 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
   SESSION_KEY session_key;
   int row_count = DB_ROW_COUNT_NOT_SET;
   SESSION_PARAM *session_params = NULL;
+  int update_parameter_values = 0;
 
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
 
@@ -3607,7 +3608,8 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
 
   thread_p->conn_entry->session_id = session_key.id;
   xsession_get_row_count (thread_p, &row_count);
-  if (sysprm_session_init_session_parameters (&session_params) != NO_ERROR)
+  if (sysprm_session_init_session_parameters
+      (&session_params, &update_parameter_values) != NO_ERROR)
     {
       return_error_to_client (thread_p, rid);
     }
@@ -3626,8 +3628,15 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
     + OR_INT_SIZE		/* ha_server_state */
     + or_packed_stream_length (SERVER_SESSION_KEY_SIZE)	/* server session key */
     + OR_INT_SIZE		/* session_id */
-    + OR_INT_SIZE		/* row count */
-    + sysprm_packed_session_parameters_length (session_params);
+    + OR_INT_SIZE;		/* row count */
+
+  area_size += OR_INT_SIZE;	/* update_parameter_values */
+  if (update_parameter_values)
+    {
+      /* session parameters will be sent back to client */
+      area_size += sysprm_packed_session_parameters_length (session_params,
+							    area_size);
+    }
 
   area = db_private_alloc (thread_p, area_size);
   if (area == NULL)
@@ -3656,7 +3665,11 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
 			    SERVER_SESSION_KEY_SIZE);
       ptr = or_pack_int (ptr, session_key.id);
       ptr = or_pack_int (ptr, row_count);
-      ptr = sysprm_pack_session_parameters (ptr, session_params);
+      ptr = or_pack_int (ptr, update_parameter_values);
+      if (update_parameter_values)
+	{
+	  ptr = sysprm_pack_session_parameters (ptr, session_params);
+	}
     }
 
   ptr = or_pack_int (reply, area_size);
@@ -7790,100 +7803,134 @@ sqp_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid,
 }
 
 /*
- * sprm_server_change_parameters -
+ * sprm_server_change_parameters () - Changes server's system parameter
+ *				      values.
  *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
+ * return	 :
+ * thread_p (in) :
+ * rid (in)      :
+ * request (in)  :
+ * reqlen (in)   :
  */
 void
 sprm_server_change_parameters (THREAD_ENTRY * thread_p, unsigned int rid,
 			       char *request, int reqlen)
 {
-  char *data, *reply_data;
-  int rc, reply_data_length;
-  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  char *ptr;
+  SYSPRM_ASSIGN_VALUE *assignments = NULL, *save_next = NULL;
 
-  (void) or_unpack_string_nocopy (request, &data);
+  (void) sysprm_unpack_assign_values (request, &assignments);
 
-  rc = xsysprm_change_server_parameters (data);
-  if (rc != NO_ERROR)
+  xsysprm_change_server_parameters (assignments);
+
+  (void) or_pack_int (reply, PRM_ERR_NO_ERROR);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
+
+  sysprm_free_assign_values (&assignments);
+}
+
+/*
+ * sprm_server_get_force_parameters () - Obtains values for server's system
+ *					 parameters that are marked with
+ *					 PRM_FORCE_SERVER flag.
+ *
+ * return	 : 
+ * thread_p (in) :
+ * rid (in)	 :
+ * request (in)	 :
+ * reqlen (in)	 :
+ */
+void
+sprm_server_get_force_parameters (THREAD_ENTRY * thread_p, unsigned int rid,
+				  char *request, int reqlen)
+{
+  SYSPRM_ASSIGN_VALUE *change_values;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int area_size;
+  char *area = NULL, *ptr = NULL;
+
+
+  change_values = xsysprm_get_force_server_parameters ();
+  if (change_values == NULL)
     {
       return_error_to_client (thread_p, rid);
     }
 
-  /* verify all session parameters if different */
-  reply_data_length = sysprm_packed_different_session_parameters_length ();
-  reply_data = (char *) malloc (reply_data_length);
-  if (!reply_data)
+  area_size = sysprm_packed_assign_values_length (change_values, 0);
+  area = (char *) malloc (area_size);
+  if (area == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      reply_data_length);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, area_size);
+      return_error_to_client (thread_p, rid);
+      area_size = 0;
     }
-  ptr = or_pack_int (reply, reply_data_length);
-  ptr = or_pack_int (ptr, rc);
-  (void) sysprm_pack_different_session_parameters (reply_data);
+  ptr = or_pack_int (reply, area_size);
+  ptr = or_pack_int (ptr, er_errid ());
+
+  (void) sysprm_pack_assign_values (area, change_values);
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply,
-				     OR_ALIGNED_BUF_SIZE (a_reply),
-				     reply_data, reply_data_length);
-  if (reply_data)
+				     OR_ALIGNED_BUF_SIZE (a_reply), area,
+				     area_size);
+
+  if (area != NULL)
     {
-      free_and_init (reply_data);
+      free_and_init (area);
     }
+  sysprm_free_assign_values (&change_values);
 }
 
 /*
- * sprm_server_obtain_parameters -
+ * sprm_server_obtain_parameters () - Obtains server's system parameter values
+ *				      for the requested parameters.
  *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
+ * return	 : 
+ * thread_p (in) :
+ * rid (in)	 :
+ * request (in)	 :
+ * reqlen (in)	 :
  */
 void
 sprm_server_obtain_parameters (THREAD_ENTRY * thread_p, unsigned int rid,
 			       char *request, int reqlen)
 {
-  char *data;
-  int len, rc;
+  SYSPRM_ERR rc = PRM_ERR_NO_ERROR;
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  char *ptr;
+  char *ptr = NULL, *reply_data = NULL;
+  int reply_data_size, error;
+  SYSPRM_ASSIGN_VALUE *prm_values = NULL;
 
-  (void) or_unpack_int (request, &len);
-
-  data = NULL;
-  rc = css_receive_data_from_client (thread_p->conn_entry, rid, &data, &len);
-  if (rc)
+  (void) sysprm_unpack_assign_values (request, &prm_values);
+  xsysprm_obtain_server_parameters (prm_values);
+  reply_data_size = sysprm_packed_assign_values_length (prm_values, 0);
+  reply_data = (char *) malloc (reply_data_size);
+  if (reply_data == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE,
-	      0);
-      css_send_abort_to_client (thread_p->conn_entry, rid);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, reply_data_size);
+      rc = PRM_ERR_NO_MEM_FOR_PRM;
+      reply_data_size = 0;
     }
   else
     {
-      rc = xsysprm_obtain_server_parameters (data, len);
-
-      ptr = or_pack_int (reply, len);
-      ptr = or_pack_int (ptr, rc);
-      css_send_reply_and_data_to_client (thread_p->conn_entry, rid,
-					 reply,
-					 OR_ALIGNED_BUF_SIZE (a_reply),
-					 data, len);
-
+      (void) sysprm_pack_assign_values (reply_data, prm_values);
     }
-  if (data != NULL)
+  ptr = or_pack_int (reply, reply_data_size);
+  ptr = or_pack_int (ptr, rc);
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply,
+				     OR_ALIGNED_BUF_SIZE (a_reply),
+				     reply_data, reply_data_size);
+  if (reply_data != NULL)
     {
-      free_and_init (data);
+      free_and_init (reply_data);
+    }
+  if (prm_values != NULL)
+    {
+      sysprm_free_assign_values (&prm_values);
     }
 }
 
@@ -8901,7 +8948,7 @@ ssession_check_session (THREAD_ENTRY * thread_p, unsigned int rid,
   char *ptr = NULL, *area = NULL;
   char server_session_key[SERVER_SESSION_KEY_SIZE];
   SESSION_PARAM *session_params = NULL;
-  int error = NO_ERROR;
+  int error = NO_ERROR, update_parameter_values = 0;
 
   ptr = or_unpack_int (request, &key.id);
   ptr = or_unpack_stream (ptr, server_session_key, SERVER_SESSION_KEY_SIZE);
@@ -8934,7 +8981,9 @@ ssession_check_session (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (error == NO_ERROR)
     {
-      error = sysprm_session_init_session_parameters (&session_params);
+      error =
+	sysprm_session_init_session_parameters (&session_params,
+						&update_parameter_values);
       if (error != NO_ERROR)
 	{
 	  error = sysprm_set_error (error, NULL);
@@ -8954,8 +9003,16 @@ ssession_check_session (THREAD_ENTRY * thread_p, unsigned int rid,
       /* server session key */
       area_size += or_packed_stream_length (SERVER_SESSION_KEY_SIZE);
 
-      /* session params */
-      area_size += sysprm_packed_session_parameters_length (session_params);
+      /* update_parameter_values */
+      area_size += OR_INT_SIZE;
+
+      if (update_parameter_values)
+	{
+	  /* session params */
+	  area_size +=
+	    sysprm_packed_session_parameters_length (session_params,
+						     area_size);
+	}
 
       area = (char *) malloc (area_size);
       if (area != NULL)
@@ -8964,7 +9021,11 @@ ssession_check_session (THREAD_ENTRY * thread_p, unsigned int rid,
 	  ptr = or_pack_int (ptr, row_count);
 	  ptr = or_pack_stream (ptr, xboot_get_server_session_key (),
 				SERVER_SESSION_KEY_SIZE);
-	  ptr = sysprm_pack_session_parameters (ptr, session_params);
+	  ptr = or_pack_int (ptr, update_parameter_values);
+	  if (update_parameter_values)
+	    {
+	      ptr = sysprm_pack_session_parameters (ptr, session_params);
+	    }
 	}
       else
 	{

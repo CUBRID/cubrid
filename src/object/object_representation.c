@@ -2272,8 +2272,8 @@ or_unpack_int (char *ptr, int *number)
 {
   if (ptr == NULL)
     {
-      return NULL;
       *number = 0;
+      return NULL;
     }
 
   ASSERT_ALIGN (ptr, INT_ALIGNMENT);

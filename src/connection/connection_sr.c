@@ -295,7 +295,7 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->free_wait_queue_count = 0;
   conn->free_net_header_list = NULL;
   conn->free_net_header_count = 0;
-  conn->session_params = NULL;
+  conn->session_parameters = NULL;
   conn->session_id = DB_EMPTY_SESSION;
 
   err = css_initialize_list (&conn->request_queue, 0);
@@ -408,10 +408,7 @@ css_shutdown_conn (CSS_CONN_ENTRY * conn)
 	}
     }
 
-  if (conn->session_params)
-    {
-      sysprm_free_session_parameters (&conn->session_params);
-    }
+  conn->session_parameters = NULL;
 
   csect_exit_critical_section (&conn->csect);
 }
