@@ -1148,7 +1148,7 @@ $ LOADDB
 1080 La longueur maximale de la chaîne de filtration avec prédicat doit être %1$d.
 1081 Impossible de modifier un attribut impliqué dans un index de filtration ou de fonction.
 1082 Tous les tampons de pages sont sales (LRU: %1$d).
-1083 Des informations spécifiques sur interblocage.
+1083 Des informations spécifiques sur interblocage.\n%s
 1084 Passer page invalide dans point de contrôle. (page id: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, lsa du point de contrôle REDO précédent: %5$lld|%6$d)
 1085 Impossible de compiler expression régulière: '%s'
 1086 Impossible d'exécuter expression régulière: '%s'

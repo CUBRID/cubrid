@@ -1148,7 +1148,7 @@ $ LOADDB
 1080 Chiều dài chuỗi xác nhận lọc tối đa phải bằng %1$d.
 1081 Không thể thay đổi thuộc tính của bộ lọc hoặc chỉ mục chức năng.
 1082 Tất cả các tấm đệm trang đều bẩn (LRU: %1$d).
-1083 Thông tin cụ thể về khóa chết.
+1083 Thông tin cụ thể về khóa chết.\n%s
 1084 Bỏ qua trang vô hiệu tại điểm mốc. (page id: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, LSA làm lại tại điểm redo lsa: %5$lld|%6$d)
 1085 Không thể biên dịch cách diễn đạt thông thường: '%s'
 1086 Không thể chạy cách diễn đạt thông thường: '%s'

@@ -15782,8 +15782,28 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 
   if (xasl && plan)
     {
-      char *pname =
-	tempnam (prm_get_string_value (PRM_ID_SQL_TRACE_TEMP_PATH), "plan");
+#ifdef HAVE_OPEN_MEMSTREAM
+      char *ptr;
+      size_t sizeloc;
+
+      FILE *fp = open_memstream (&ptr, &sizeloc);
+      if (fp)
+	{
+	  int size;
+	  char *qplan;
+
+	  qo_plan_lite_print (plan, fp, 0);
+	  fclose (fp);
+
+	  size = strlen (ptr);
+	  qplan = pt_alloc_packing_buf (size);
+	  strncpy (qplan, ptr, size);
+	  free (ptr);
+
+	  xasl->qplan = qplan;
+	}
+#else
+      char *pname = tempnam (NULL, "plan");
       FILE *fp = fopen (pname, "w+");
       if (fp)
 	{
@@ -15804,6 +15824,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 
 	  xasl->qplan = qplan;
 	}
+#endif
     }
 
   if (plan)

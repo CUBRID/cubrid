@@ -1148,7 +1148,7 @@ $ LOADDB
 1080 La lunghezza massima della stringa del predicato del filtro deve essere %1$d.
 1081 Non è possibile modificare un attributo coinvolto nell'un index di filtro o di funzione.
 1082 Tutti i tamponi di pagina sono sporchi (LRU: %1$d).
-1083 Informazioni specifiche sulla situazione di stallo.
+1083 Informazioni specifiche sulla situazione di stallo.\n%s
 1084 Ignorando pagina non valida nel checkpoint. (pagina id: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, LSA REDO precedente del checkpoint: %5$lld|%6$d)
 1085 Impossibile compilare l'espressione regolare: '%s'
 1086 Impossibile eseguire l'espressione regolare: '%s'

@@ -1148,7 +1148,7 @@ $ LOADDB
 1080 用作过滤的谓词字符串的最大长度是 %1$d.
 1081 无法改变在filter或 function索引中使用的列.
 1082 所有的缓冲页都是脏页 (LRU: %1$d).
-1083 指定的信息是关于死锁的.
+1083 指定的信息是关于死锁的.\n%s
 1084 在checkpoint跳过非法页. (page id: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, previous checkpoint redo lsa: %5$lld|%6$d)
 1085 不能编译正则表达式: '%s'
 1086 不能编译运行表达式: '%s'

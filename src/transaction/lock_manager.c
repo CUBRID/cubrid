@@ -10170,6 +10170,22 @@ final:
 
   if (victim_count > 0)
     {
+#ifdef HAVE_OPEN_MEMSTREAM
+      size_t size_loc;
+      char *ptr;
+      FILE *fp = open_memstream (&ptr, &size_loc);
+
+      if (fp)
+	{
+	  lock_dump_deadlock_victims (thread_p, fp);
+	  fclose (fp);
+
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+		  ER_LK_DEADLOCK_SPECIFIC_INFO, 1, ptr);
+
+	  free (ptr);
+	}
+#else
       FILE *fp = NULL;
       char *tmp_filename;
 
@@ -10178,25 +10194,18 @@ final:
       if (tmp_filename != NULL)
 	{
 	  fp = fopen (tmp_filename, "w+");
-	}
 
-      if (fp)
-	{
 	  lock_dump_deadlock_victims (thread_p, fp);
-	}
 
-      er_set_with_file (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-			ER_LK_DEADLOCK_SPECIFIC_INFO, fp, 0);
+	  er_set_with_file (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+			    ER_LK_DEADLOCK_SPECIFIC_INFO, fp, 1, "");
 
-      if (fp)
-	{
 	  fclose (fp);
-	}
-      if (tmp_filename != NULL)
-	{
+
 	  unlink (tmp_filename);
 	  free (tmp_filename);
 	}
+#endif
     }
 
   /* Now solve the deadlocks (cycles) by executing the cycle resolution

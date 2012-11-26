@@ -185,7 +185,7 @@ fi
 
 # Checks for library functions.
 AC_FUNC_VPRINTF
-AC_CHECK_FUNCS([getrlimit sysconf])
+AC_CHECK_FUNCS([getrlimit sysconf open_memstream])
 
 # Checks for system functions for which we have replacements.
 AC_REPLACE_FUNCS([vasprintf asprintf strdup strlcpy strlcat \

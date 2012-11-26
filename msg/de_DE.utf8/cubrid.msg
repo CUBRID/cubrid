@@ -1148,7 +1148,7 @@ $ LOADDB
 1080 Die maximale Größe des Filter-Prädikat-Strings muss %1$d sein.
 1081 Ein Attribut, der in einem Filter oder Funktionindex beteiligt ist, darf nicht geändert.
 1082 Alle Seitenpuffer sind benutzt (LRU: %1$d).
-1083 Spezifische Information über Deadlock.
+1083 Spezifische Information über Deadlock.\n%s
 1084 Ungültige Seite in Checkpoint überspringen. (Seiten-ID: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, früherer Checkpoint Redo lsa: %5$lld|%6$d)
 1085 Regulärer Ausdruck '%s' kann nicht kompiliert werden.
 1086 Regulärer Ausdruck '%s' kann nicht ausgeführt werden.

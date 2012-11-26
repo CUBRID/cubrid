@@ -1148,7 +1148,7 @@ $ LOADDB
 1080 Longitud maxima del string de predicado del filtro tiene que ser %1$d.
 1081 No se puede alterar un atributo involucrado en un indice de filtro o de funcion.
 1082 Todos buferes de paginas son sucios (LRU: %1$d).
-1083 Informacion especifica sobre el deadlock.
+1083 Informacion especifica sobre el deadlock.\n%s
 1084 Saltando pagina no valida en punto de control. (page id: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, lsa anterior de rehacer punto de control: %5$lld|%6$d)
 1085 No se puede compilar expresion regular: '%s'
 1086 No se puede ejecutar expresion regular: '%s'

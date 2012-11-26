@@ -466,7 +466,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_SQL_TRACE_SLOW_MSECS "sql_trace_slow_msecs"
 
-#define PRM_NAME_SQL_TRACE_TEMP_PATH "sql_trace_temp_path"
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -1259,9 +1258,6 @@ static int prm_sql_trace_slow_msecs_upper = 1000 * 60 * 60 * 24;	/* 24 hours */
 
 bool PRM_SQL_TRACE_EXECUTION_PLAN = false;
 static bool prm_sql_trace_execution_plan_default = false;
-
-char *PRM_SQL_TRACE_TEMP_PATH = "";
-static char *prm_sql_trace_temp_path_default = NULL;
 
 typedef struct sysprm_param SYSPRM_PARAM;
 struct sysprm_param
@@ -2613,15 +2609,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_SQL_TRACE_EXECUTION_PLAN,
    (void *) NULL,
    (void *) NULL,
-   (char *) NULL},
-  {PRM_NAME_SQL_TRACE_TEMP_PATH,
-   (PRM_USER_CHANGE | PRM_FOR_SERVER),
-   PRM_STRING,
-   (void *) &prm_sql_trace_temp_path_default,
-   (void *) &PRM_SQL_TRACE_TEMP_PATH,
-   (void *) NULL,
-   (void *) NULL,
-   (char *) NULL},
+   (char *) NULL}
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))

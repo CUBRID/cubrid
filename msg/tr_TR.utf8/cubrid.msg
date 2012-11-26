@@ -1148,7 +1148,7 @@ $ LOADDB
 1080 Fitre dizesi uzunluğu en fazla %1$d olmalıdır.
 1081 Filtre veya fonksiyon indeksi özellikleri ile ilgili değişiklik yapılamaz.
 1082 Tüm sayfa tamponlar kirlidir (LRU: %1$d).
-1083 Bilgisayar çöker hakkında belirli koşullar.
+1083 Bilgisayar çöker hakkında belirli koşullar.\n%s
 1084 Kontrol noktasındaki geçersiz sayfa numasından atlamak. (page id: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, önceki kontrol redo lsa: %5$lld|%6$d)
 1085 Düzenlenemez Konvansiyonel ifadesi: düzenlemesi : '%s'
 1086 Konvansiyonel ifadesi gerçekleştiremiyor: '%s'
