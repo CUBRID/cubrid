@@ -63,6 +63,7 @@ $set 4 MSGCAT_SET_PARAMETER
 21 キーワード = '%s'   バリュー = %f    デフォルト = %f\n
 22 お勧めしないパラメーターです。
 23 システム設定「%s」と「%s」は同時に使用できません。\n
+31 The '%s' parameter:
 
 $set 5 MSGCAT_SET_ERROR
 1 エラーコード「%1$d」に対するメッセージがありません。

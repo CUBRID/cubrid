@@ -63,6 +63,7 @@ $set 4 MSGCAT_SET_PARAMETER
 21 Schlüsselwort = '%s'    Wert = %f    Standardwert = %f\n
 22 Veralteter Parameter
 23 Die Parameter '%s' und '%s' dürfen nicht zusammen verwendet werden.\n
+31 The '%s' parameter:
 
 $set 5 MSGCAT_SET_ERROR
 1 Fehlende Nachricht für Fehlercode %1$d.

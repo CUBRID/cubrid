@@ -63,6 +63,7 @@ $set 4 MSGCAT_SET_PARAMETER
 21 Parola riservate = '%s':    Valore = %f    Valore default = %f\n
 22 Parametro obsoleto
 23 I parametri '%s' e '%s' non possono essere utilizzati insieme.\n
+31 The '%s' parameter:
 
 $set 5 MSGCAT_SET_ERROR
 1 Messaggio mancante per il codice di errore %1$d.

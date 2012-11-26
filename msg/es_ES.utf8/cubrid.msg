@@ -63,6 +63,7 @@ $set 4 MSGCAT_SET_PARAMETER
 21 Keyword = '%s'    Value = %f    Default Value = %f\n
 22 Deprecated parameter
 23 The '%s' and '%s' parameters can not be used together.\n
+31 The '%s' parameter:
 
 $set 5 MSGCAT_SET_ERROR
 1 Faltando mensaje para el codigo de error %1$d.

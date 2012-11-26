@@ -63,6 +63,7 @@ $set 4 MSGCAT_SET_PARAMETER
 21 Từ khóa = '%s'    Giá trị = %f    Giá trị mặc định = %f\n
 22 Tham số không được chấp thuận
 23 Tham số '%s' và '%s' không thể được dùng cùng nhau.\n
+31 The '%s' parameter:
 
 $set 5 MSGCAT_SET_ERROR
 1 Thiếu thông báo cho mã lỗi %1$d.

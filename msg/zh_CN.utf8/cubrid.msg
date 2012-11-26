@@ -63,6 +63,7 @@ $set 4 MSGCAT_SET_PARAMETER
 21 关键字 = '%s'    值 = %f    默认值 = %f\n
 22 废弃的参数
 23 '%s' 和 '%s' 参数不能一起使用.\n
+31 The '%s' parameter:
 
 $set 5 MSGCAT_SET_ERROR
 1 错误代码 %1$d 缺少对应的错误信息.

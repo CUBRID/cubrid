@@ -63,6 +63,7 @@ $set 4 MSGCAT_SET_PARAMETER
 21 Mot-clé = '%s'    Valeur = %f    Valeur par défaut = %f\n
 22 paramètre obsolète
 23 Les paramètres '%s' et '%s' ne peuvent pas être utilisés ensemble.\n
+31 The '%s' parameter:
 
 $set 5 MSGCAT_SET_ERROR
 1 Message manquant pour code d'erreur %1$d.

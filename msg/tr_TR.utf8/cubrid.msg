@@ -63,6 +63,7 @@ $set 4 MSGCAT_SET_PARAMETER
 21 Anahtar = '%s' değeri = %f varsayılan değer = %f\n
 22 Reddedilen parametre
 23 '%s' ve '%s' parametreler birlikte kullanılamaz. \n
+31 The '%s' parameter:
 
 $set 5 MSGCAT_SET_ERROR
 1 Hata kodu %1$d eksik mesaj.
