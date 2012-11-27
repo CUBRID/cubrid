@@ -624,6 +624,7 @@ static int prm_sr_nbuffers_lower = 1;
 UINT64 PRM_SORT_BUFFER_SIZE = 2097152;
 static UINT64 prm_sort_buffer_size_default = 2097152;
 static UINT64 prm_sort_buffer_size_lower = 65536;
+static UINT64 prm_sort_buffer_size_upper = 2147483648L;
 
 int PRM_PB_NBUFFERS = 32768;
 static int prm_pb_nbuffers_default = 32768;
@@ -1351,7 +1352,8 @@ static SYSPRM_PARAM prm_Def[] = {
    PRM_SIZE,
    (void *) &prm_sort_buffer_size_default,
    (void *) &PRM_SORT_BUFFER_SIZE,
-   (void *) NULL, (void *) &prm_sort_buffer_size_lower,
+   (void *) &prm_sort_buffer_size_upper,
+   (void *) &prm_sort_buffer_size_lower,
    (char *) NULL},
   {PRM_NAME_PB_NBUFFERS,
    (PRM_FOR_SERVER | PRM_DEPRECATED),
@@ -3646,6 +3648,7 @@ prm_calc_pages_by_size (const char *size, const char *page, PGLENGTH len)
   int page_value;
   SYSPRM_PARAM *size_prm, *page_prm;
   char newval[LINE_MAX];
+  int error;
 
   size_prm = prm_find (size, NULL);
   page_prm = prm_find (page, NULL);
@@ -3675,9 +3678,10 @@ prm_calc_pages_by_size (const char *size, const char *page, PGLENGTH len)
 	  snprintf (newval, LINE_MAX, "%d", page_value);
 	}
 
-      if (prm_set (page_prm, newval, false) != NO_ERROR)
+      error = prm_set (page_prm, newval, false);
+      if (error != NO_ERROR)
 	{
-	  return PRM_ERR_BAD_VALUE;
+	  return error;
 	}
     }
   return NO_ERROR;
@@ -3695,6 +3699,7 @@ prm_calc_size_by_pages (const char *page, const char *size, PGLENGTH len)
   float float_page_value;
   SYSPRM_PARAM *size_prm, *page_prm;
   char newval[LINE_MAX];
+  int error;
 
   size_prm = prm_find (size, NULL);
   page_prm = prm_find (page, NULL);
@@ -3730,9 +3735,10 @@ prm_calc_size_by_pages (const char *page, const char *size, PGLENGTH len)
       size_value = MAX (PRM_GET_SIZE (size_prm->lower_limit), size_value);
 
       snprintf (newval, LINE_MAX, "%llu", (unsigned long long) size_value);
-      if (prm_set (size_prm, newval, false) != NO_ERROR)
+      error = prm_set (size_prm, newval, false);
+      if (error != NO_ERROR)
 	{
-	  return PRM_ERR_BAD_VALUE;
+	  return error;
 	}
     }
   return NO_ERROR;
@@ -3808,12 +3814,14 @@ prm_adjust_parameters (void)
       error = prm_calc_pages_by_size (size[i], page[i], len[i]);
       if (error != NO_ERROR)
 	{
+	  prm_report_bad_entry (size[i], 0, error, size[i]);
 	  return error;
 	}
 
       error = prm_calc_size_by_pages (page[i], size[i], len[i]);
       if (error != NO_ERROR)
 	{
+	  prm_report_bad_entry (page[i], 0, error, page[i]);
 	  return error;
 	}
     }
@@ -5631,9 +5639,13 @@ prm_keyword (int val, const char *name, const KEYVAL * tbl, int dim)
 static void
 prm_report_bad_entry (const char *key, int line, int err, const char *where)
 {
-  if (line >= 0)
+  if (line > 0)
     {
       fprintf (stderr, PARAM_MSG_FMT (PRM_ERR_BAD_LINE), key, line, where);
+    }
+  else if (line == 0)
+    {
+      fprintf (stderr, PARAM_MSG_FMT (PRM_ERR_BAD_PARAM), key, line, where);
     }
   else
     {
