@@ -319,6 +319,8 @@ static PT_NODE *mq_reset_all_ids (PARSER_CONTEXT * parser, PT_NODE * node,
 				  void *void_arg, int *continue_walk);
 static PT_NODE *mq_clear_all_ids (PARSER_CONTEXT * parser, PT_NODE * node,
 				  void *void_arg, int *continue_walk);
+static PT_NODE *mq_clear_other_ids (PARSER_CONTEXT * parser, PT_NODE * node,
+				    void *void_arg, int *continue_walk);
 static PT_NODE *mq_reset_spec_ids (PARSER_CONTEXT * parser, PT_NODE * node,
 				   void *void_arg, int *continue_walk);
 static PT_NODE *mq_get_references_node (PARSER_CONTEXT * parser,
@@ -4145,6 +4147,7 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
   PT_NODE *next = insert_statement->next;
   PT_NODE *flat, *temp, **last;
   PT_NODE save = *insert_statement;
+  PT_NODE *subquery = NULL;
   bool viable;
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
   int what_for = DB_AUTH_INSERT;
@@ -4152,14 +4155,14 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
   insert_statement->next = NULL;
   from = insert_statement->info.insert.spec;
 
-  if (insert_statement->info.insert.on_dup_key_update != NULL)
+  if (insert_statement->info.insert.odku_assignments != NULL)
     {
       what_for = DB_AUTH_INSERT_UPDATE;
     }
 
   if (insert_statement->info.insert.do_replace)
     {
-      assert (insert_statement->info.insert.on_dup_key_update == NULL);
+      assert (insert_statement->info.insert.odku_assignments == NULL);
       what_for = DB_AUTH_REPLACE;
     }
 
@@ -4338,6 +4341,37 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 		 MSGCAT_RUNTIME_INSERT_EMPTY);
     }
 
+  subquery = pt_get_subquery_of_insert_select (insert_statement);
+  if (subquery != NULL && PT_IS_SELECT (subquery)
+      && insert_statement->info.insert.odku_assignments != NULL)
+    {
+      /* The odku_assignments might refer nodes from the SELECT statements.
+       * Even though name resolving was already performed on odku_assigments,
+       * we have to redo it here. If the SELECT target was a view, it has been
+       * rewritten by mq_translate_local and names which referenced it were
+       * not updated.
+       */
+      SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+      PT_NODE *odku = insert_statement->info.insert.odku_assignments;
+
+      from = insert_statement->info.insert.spec;
+      /* reset spec_id for names not referencing the insert statement */
+      odku = parser_walk_tree (parser, odku, mq_clear_other_ids, from, NULL,
+			       NULL);
+      if (odku == NULL)
+	{
+	  return NULL;
+	}
+      /* redo name resolving */
+      insert_statement = pt_resolve_names (parser, insert_statement,
+					   &sc_info);
+      if (insert_statement == NULL || pt_has_error (parser))
+	{
+	  return NULL;
+	}
+      /* need to recheck this in case something went wrong */
+      insert_statement = pt_check_odku_assignments (parser, insert_statement);
+    }
   return insert_statement;
 }
 
@@ -6454,6 +6488,35 @@ mq_clear_all_ids (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
 {
   if (node->node_type == PT_NAME)
     {
+      node->info.name.spec_id = 0;
+    }
+  return node;
+}
+
+/*
+ * mq_clear_other_ids () - clear ids for all nodes except the ones referencing
+ *			   the spec list specified in void_arg
+ * return : node
+ * parser (in) : parser context
+ * node (in)   : node to reset
+ * void_arg (in) : spec list
+ * continue_walk (in) :
+ */
+static PT_NODE *
+mq_clear_other_ids (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
+		    int *continue_walk)
+{
+  if (node->node_type == PT_NAME)
+    {
+      PT_NODE *filter_spec = (PT_NODE *) void_arg;
+      while (filter_spec != NULL)
+	{
+	  if (node->info.name.spec_id == filter_spec->info.spec.id)
+	    {
+	      return node;
+	    }
+	  filter_spec = filter_spec->next;
+	}
       node->info.name.spec_id = 0;
     }
   return node;

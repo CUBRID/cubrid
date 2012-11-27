@@ -1119,7 +1119,7 @@ $ LOADDB
 1050 Impossible de modifier l'attribut "%1$s". CUBRID ne peut actuellement pas changer de domaine de l'attribut. L'attribut possède un index sur lui-même.
 1051 Impossible de modifier l'attribut "%1$s". CUBRID ne peut actuellement pas changer l'attribut à ajouter une contrainte. Il est possible que les valeurs des attributs existants ne satisfont pas la contrainte.
 1052 Attribut "%1$s" n'a pas changé. CUBRID n'a pas détecté de changements réels dans la représentation de l'attribut.
-1053 Les instructions REPLACE INTO... and INSERT ... ON DUPLICATE KEY UPDATE ne sont pas permis pour les classes partitionnées ou pour les classes qui font partie d'une chaîne d'héritage.
+1053 The statements REPLACE INTO... and INSERT ... ON DUPLICATE KEY UPDATE are not allowed for classes that are part of an inheritance chain.
 1054 La nouvelle valeur de la contrainte d'incrémentation automatique doit être supérieure ou égale à la valeur courante.
 1055 La nouvelle valeur d'une contrainte d'incrémentation automatique doit être inférieure à la valeur maximale.
 1056 Pour éviter toute ambiguïté, l'option AUTO_INCREMENT de la table nécessite que la table possède exactement une colonne de type AUTO_INCREMENT et aucune spécification de graine/incrément.

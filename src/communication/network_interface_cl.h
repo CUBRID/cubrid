@@ -296,10 +296,15 @@ extern int btree_delete_index (BTID * btid);
 extern int locator_log_force_nologging (void);
 extern int locator_remove_class_from_index (OID * oid, BTID * btid,
 					    HFID * hfid);
-extern BTREE_SEARCH
-btree_find_unique (BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid);
+extern BTREE_SEARCH btree_find_unique (BTID * btid, DB_VALUE * key,
+				       OID * class_oid, OID * oid);
 extern BTREE_SEARCH repl_btree_find_unique (BTID * btid, DB_VALUE * key,
 					    OID * class_oid, OID * oid);
+extern BTREE_SEARCH btree_find_multi_uniques (OID * class_oid,
+					      int needs_pruning, BTID * btids,
+					      DB_VALUE * keys, int count,
+					      SCAN_OPERATION_TYPE op_type,
+					      OID ** oids, int *oids_count);
 extern int btree_delete_with_unique_key (BTID * btid, OID * class_oid,
 					 DB_VALUE * key_value);
 extern int btree_class_test_unique (char *buf, int buf_size);

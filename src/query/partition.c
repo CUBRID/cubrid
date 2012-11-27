@@ -127,7 +127,8 @@ static PARTITION_CACHE_ENTRY
 static PRUNING_OP partition_rel_op_to_pruning_op (REL_OP op);
 static int partition_load_partition_predicate (PRUNING_CONTEXT * pinfo,
 					       OR_PARTITION * master);
-static int partition_get_position_in_key (PRUNING_CONTEXT * pinfo);
+static int partition_get_position_in_key (PRUNING_CONTEXT * pinfo,
+					  BTID * btid);
 static ATTR_ID partition_get_attribute_id (REGU_VARIABLE * regu_var);
 static void partition_set_cache_info_for_expr (REGU_VARIABLE * regu_var,
 					       ATTR_ID attr_id,
@@ -2675,23 +2676,18 @@ partition_get_attribute_id (REGU_VARIABLE * var)
  *				      in a multicolumn key
  * return : error code or NO_ERROR
  * pinfo (in) : pruning context
+ * btid (in) : btid for which to get the position
  */
 static int
-partition_get_position_in_key (PRUNING_CONTEXT * pinfo)
+partition_get_position_in_key (PRUNING_CONTEXT * pinfo, BTID * btid)
 {
   int i = 0;
   int error = NO_ERROR;
   ATTR_ID part_attr_id = -1;
   ATTR_ID *keys = NULL;
   int key_count = 0;
-  OID *class_oid;
-  BTID *btid;
 
-  if (pinfo->spec->access != INDEX)
-    {
-      pinfo->attr_position = -1;
-      return NO_ERROR;
-    }
+  pinfo->attr_position = -1;
 
   if (pinfo->partition_pred->func_regu->type != TYPE_ATTR_ID)
     {
@@ -2704,14 +2700,11 @@ partition_get_position_in_key (PRUNING_CONTEXT * pinfo)
       return NO_ERROR;
     }
 
-  assert (pinfo->spec->indexptr->indx_id.type == T_BTID);
-
-  class_oid = &ACCESS_SPEC_CLS_OID (pinfo->spec);
-  btid = &pinfo->spec->indexptr->indx_id.i.btid;
   part_attr_id = pinfo->partition_pred->func_regu->value.attr_descr.id;
 
-  error = heap_get_indexinfo_of_btid (pinfo->thread_p, class_oid, btid, NULL,
-				      &key_count, &keys, NULL, NULL, NULL);
+  error = heap_get_indexinfo_of_btid (pinfo->thread_p, &pinfo->root_oid, btid,
+				      NULL, &key_count, &keys, NULL, NULL,
+				      NULL);
   if (error != NO_ERROR)
     {
       return error;
@@ -2896,7 +2889,6 @@ partition_prune_spec (THREAD_ENTRY * thread_p, VAL_DESCR * vd,
 
   pinfo.spec = spec;
   pinfo.vd = vd;
-  partition_get_position_in_key (&pinfo);
 
   if (spec->access == SEQUENTIAL)
     {
@@ -2904,10 +2896,30 @@ partition_prune_spec (THREAD_ENTRY * thread_p, VAL_DESCR * vd,
     }
   else
     {
+      if (pinfo.partition_pred->func_regu->type != TYPE_ATTR_ID)
+	{
+	  /* In the case of index keys, we will only apply pruning if the
+	   * partition expression is actually an attribute. This is because we
+	   * will not have expressions in the index key, only attributes
+	   * (except for function and filter indexes which are not handled
+	   * yet)
+	   */
+	  pinfo.attr_position = -1;
+	}
+      else
+	{
+	  BTID *btid = &spec->indexptr->indx_id.i.btid;
+	  error = partition_get_position_in_key (&pinfo, btid);
+	  if (error != NO_ERROR)
+	    {
+	      partition_clear_pruning_context (&pinfo);
+	      return error;
+	    }
+	}
       error = partition_prune_index_scan (&pinfo);
     }
 
-  (void) partition_clear_pruning_context (&pinfo);
+  partition_clear_pruning_context (&pinfo);
   spec->pruned = true;
 
   return error;
@@ -3451,4 +3463,108 @@ partition_decrement_value (DB_VALUE * val)
     }
 
   return false;
+}
+
+/*
+ * partition_prune_unique_btid () - prune an UNIQUE BTID key search
+ * return : error code or NO_ERROR
+ * pcontext (in) : pruning context
+ * key (in)	 : search key
+ * class_oid (in/out) : class OID
+ * class_hfid (in/out): class HFID
+ * btid (in/out) :  class BTID
+ * is_global_btid (in/out): true if partitioning key is not part of the index
+ *
+ * Note: this function search for the partition which could contain the key
+ * value and places the corresponding partition oid and btid in class_oid and
+ * btid arguments
+ */
+int
+partition_prune_unique_btid (PRUNING_CONTEXT * pcontext, DB_VALUE * key,
+			     OID * class_oid, HFID * class_hfid, BTID * btid,
+			     bool * is_global_btid)
+{
+  int error = NO_ERROR, pos = 0;
+  MATCH_STATUS status = MATCH_NOT_FOUND;
+  PRUNING_BITSET pruned;
+  PRUNING_BITSET_ITERATOR it;
+  char *btree_name = NULL;
+  OID partition_oid;
+  HFID partition_hfid;
+  BTID partition_btid;
+
+  if (pcontext == NULL)
+    {
+      assert_release (pcontext != NULL);
+      return ER_FAILED;
+    }
+
+  *is_global_btid = false;
+
+  error = partition_get_position_in_key (pcontext, btid);
+  if (error != NO_ERROR)
+    {
+      pcontext->attr_position = -1;
+      return error;
+    }
+
+  if (pcontext->attr_position == -1)
+    {
+      /* Cannot use key for pruning. This must be a global index */
+      *is_global_btid = true;
+      return NO_ERROR;
+    }
+
+  pruningset_init (&pruned, PARTITIONS_COUNT (pcontext));
+  status = partition_prune_db_val (pcontext, key, PO_EQ, &pruned);
+
+  if (status == MATCH_NOT_FOUND)
+    {
+      /* This can happen only if there's no partition that can hold the
+       * key value (for example, if this is called by ON DUPLICATE KEY UPDATE
+       * but the value that is being inserted will throw an error anyway)
+       */
+      *is_global_btid = true;
+      return NO_ERROR;
+    }
+  else if (pruningset_popcount (&pruned) != 1)
+    {
+      /* a key value should always return at most one partition */
+      assert (false);
+      OID_SET_NULL (class_oid);
+      return NO_ERROR;
+    }
+
+  *is_global_btid = false;
+
+  error = heap_get_indexinfo_of_btid (pcontext->thread_p, class_oid,
+				      btid, NULL, NULL, NULL, NULL,
+				      &btree_name, NULL);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  pruningset_iterator_init (&pruned, &it);
+  pos = pruningset_iterator_next (&it);
+  COPY_OID (&partition_oid, &pcontext->partitions[pos + 1].class_oid);
+  HFID_COPY (&partition_hfid, &pcontext->partitions[pos + 1].class_hfid);
+
+  error = heap_get_index_with_name (pcontext->thread_p, &partition_oid,
+				    btree_name, &partition_btid);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  COPY_OID (class_oid, &partition_oid);
+  HFID_COPY (class_hfid, &partition_hfid);
+  BTID_COPY (btid, &partition_btid);
+
+cleanup:
+  if (btree_name != NULL)
+    {
+      free_and_init (btree_name);
+    }
+  return error;
 }

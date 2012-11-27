@@ -585,6 +585,8 @@ extern "C"
 			     const PT_NODE * entity_name,
 			     const PT_NODE * range_var,
 			     const PT_NODE * flat_list);
+  extern PT_NODE *pt_tuple_value (PARSER_CONTEXT * parser, PT_NODE * name,
+				  CURSOR_ID * cursor_p, int index);
   extern bool pt_name_equal (PARSER_CONTEXT * parser_ptr,
 			     const PT_NODE * name1, const PT_NODE * name2);
   extern PT_NODE *pt_find_name (PARSER_CONTEXT * parser, const PT_NODE * name,
@@ -878,6 +880,10 @@ extern "C"
 				  PT_COLL_COERC_LEV arg3_coerc_level,
 				  const int args_w_coll, bool op_has_3_args,
 				  int *common_coll, INTL_CODESET * common_cs);
+  extern PT_NODE *pt_make_tuple_value_reference (PARSER_CONTEXT * parser,
+						 PT_NODE * name,
+						 PT_NODE * select_list,
+						 CURSOR_ID * cursor_p);
 #ifdef __cplusplus
 }
 #endif

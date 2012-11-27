@@ -5275,15 +5275,7 @@ insert_or_replace_stmt
 
 			if (ins)
 			  {
-			    PT_NODE *assignment = $3;
-			    PT_NODE *spec = ins->info.insert.spec;
-
-			    if (assignment != NULL && spec != NULL)
-			      {
-				ins->info.insert.on_dup_key_update =
-				  pt_dup_key_update_stmt (this_parser, spec, assignment);
-			      }
-
+			    ins->info.insert.odku_assignments = $3;
 			    ins->info.insert.value_clauses = $2;
 			  }
 
@@ -5325,17 +5317,9 @@ insert_or_replace_stmt
 		{{
 
 			PT_NODE *ins = $1;
-
 			if (ins)
 			  {
-			    PT_NODE *assignment = $2;
-			    PT_NODE *spec = ins->info.insert.spec;
-
-			    if (assignment != NULL && spec != NULL)
-			      {
-				ins->info.insert.on_dup_key_update =
-				  pt_dup_key_update_stmt (this_parser, spec, assignment);
-			      }
+			    ins->info.insert.odku_assignments = $2;
 			  }
 
 			$$ = ins;

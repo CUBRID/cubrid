@@ -1119,7 +1119,7 @@ $ LOADDB
 1050 애트리뷰트 "%1$s"를 변경할 수 없습니다. 애트리뷰트의 도메인을 변경할 수 없습니다. 애트리뷰트가 인덱스를 가지고 있습니다.
 1051 애트리뷰트 "%1$s"를 변경할 수 없습니다. 제약조건을 추가하기 위해 애트리뷰트를 변경할 수 없습니다. 존재하는 애트리뷰트 값들은 제약조건을 검사하지 않을 수 있습니다.
 1052 애트리뷰트 "%1$s"이 변경되지 않았습니다. 애트리뷰트 표현에서 유효한 변경을 감지할 수 없습니다.
-1053 REPLACE INTO... and INSERT ... ON DUPLICATE KEY UPDATE 문은 분할 클래스나 상속 관계를 포함하는 클래스를 지원하지 않습니다.
+1053 The statements REPLACE INTO... and INSERT ... ON DUPLICATE KEY UPDATE are not allowed for classes that are part of an inheritance chain.
 1054 AUTO INCREMENT 제약조건의 새로운 값은 현재 값보다 크거나 같아야 합니다.
 1055 AUTO INCREMENT 제약조건의 새로운 값은 최대 값보다 작아야 합니다.
 1056 모호함을 피하기 위해, 테이블은 하나의 AUTO_INCREMENT 컬럼만 가져야 하며 (seed, increment) 부분이 없어야 합니다.

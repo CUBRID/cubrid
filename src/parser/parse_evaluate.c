@@ -1379,6 +1379,25 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 	}
       break;
 
+    case PT_TUPLE_VALUE:
+      {
+	CURSOR_ID *cursor_id = tree->info.tuple_value.cursor_p;
+	int index = tree->info.tuple_value.index;
+	if (cursor_id == NULL)
+	  {
+	    PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME,
+			MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
+			pt_short_print (parser, tree));
+	    break;
+	  }
+	error = cursor_get_tuple_value (cursor_id, index, db_values);
+	if (error != NO_ERROR)
+	  {
+	    PT_ERRORc (parser, tree, er_msg ());
+	  }
+	break;
+      }
+
     case PT_EXPR:
       if (tree->or_next)
 	{

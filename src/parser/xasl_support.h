@@ -50,6 +50,7 @@ extern METHOD_SIG_LIST *regu_method_sig_list_alloc (void);
 extern SELUPD_LIST *regu_selupd_list_alloc (void);
 extern REGU_VALUE_LIST *regu_regu_value_list_alloc (void);
 extern REGU_VALUE_ITEM *regu_regu_value_item_alloc (void);
+extern ODKU_INFO *regu_odku_info_alloc (void);
 
 /* for regu_machead_db () */
 extern DB_VALUE *regu_dbval_db_alloc (void);

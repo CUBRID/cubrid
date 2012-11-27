@@ -66,20 +66,20 @@
 
 /* Enabling traces.  */
 #ifndef YYDEBUG
-#define YYDEBUG 0
+# define YYDEBUG 0
 #endif
 
 /* Enabling verbose error messages.  */
 #ifdef YYERROR_VERBOSE
-#undef YYERROR_VERBOSE
-#define YYERROR_VERBOSE 1
+# undef YYERROR_VERBOSE
+# define YYERROR_VERBOSE 1
 #else
-#define YYERROR_VERBOSE 1
+# define YYERROR_VERBOSE 1
 #endif
 
 /* Enabling the token table.  */
 #ifndef YYTOKEN_TABLE
-#define YYTOKEN_TABLE 0
+# define YYTOKEN_TABLE 0
 #endif
 
 /* Default (constant) value used for initialization for null
@@ -101,27 +101,27 @@ static YYSTYPE yyval_default;
 #include <stdarg.h>
 
 #ifndef YY_
-#if YYENABLE_NLS
-#if ENABLE_NLS
-#include <libintl.h>		/* INFRINGES ON USER NAME SPACE */
-#define YY_(msgid) dgettext ("bison-runtime", msgid)
-#endif
-#endif
-#ifndef YY_
-#define YY_(msgid) msgid
-#endif
+# if YYENABLE_NLS
+#  if ENABLE_NLS
+#   include <libintl.h>		/* INFRINGES ON USER NAME SPACE */
+#   define YY_(msgid) dgettext ("bison-runtime", msgid)
+#  endif
+# endif
+# ifndef YY_
+#  define YY_(msgid) msgid
+# endif
 #endif
 
 /* Suppress unused-variable warnings by "using" E.  */
 #if ! defined lint || defined __GNUC__
-#define YYUSE(e) ((void) (e))
+# define YYUSE(e) ((void) (e))
 #else
-#define YYUSE(e)		/* empty */
+# define YYUSE(e)		/* empty */
 #endif
 
 /* Identity function, used to suppress warnings about constant conditions.  */
 #ifndef lint
-#define YYID(n) (n)
+# define YYID(n) (n)
 #else
 #if (defined __STDC__ || defined __C99__FUNC__ \
      || defined __cplusplus || defined _MSC_VER)
@@ -138,13 +138,13 @@ YYID (i)
 #endif
 
 #ifndef YYFREE
-#define YYFREE free
+# define YYFREE free
 #endif
 #ifndef YYMALLOC
-#define YYMALLOC malloc
+# define YYMALLOC malloc
 #endif
 #ifndef YYREALLOC
-#define YYREALLOC realloc
+# define YYREALLOC realloc
 #endif
 
 #define YYSIZEMAX ((size_t) -1)
@@ -158,10 +158,10 @@ typedef unsigned char yybool;
 #define yyfalse 0
 
 #ifndef YYSETJMP
-#include <setjmp.h>
-#define YYJMP_BUF jmp_buf
-#define YYSETJMP(env) setjmp (env)
-#define YYLONGJMP(env, val) longjmp (env, val)
+# include <setjmp.h>
+# define YYJMP_BUF jmp_buf
+# define YYSETJMP(env) setjmp (env)
+# define YYLONGJMP(env, val) longjmp (env, val)
 #endif
 
 /*-----------------.
@@ -170,21 +170,21 @@ typedef unsigned char yybool;
 
 #ifndef __attribute__
 /* This feature is available in gcc versions 2.5 and later.  */
-#if (! defined __GNUC__ || __GNUC__ < 2 \
+# if (! defined __GNUC__ || __GNUC__ < 2 \
       || (__GNUC__ == 2 && __GNUC_MINOR__ < 5) || __STRICT_ANSI__)
-#define __attribute__(Spec)	/* empty */
-#endif
+#  define __attribute__(Spec)	/* empty */
+# endif
 #endif
 
 
 #ifdef __cplusplus
-#define YYOPTIONAL_LOC(Name)	/* empty */
+# define YYOPTIONAL_LOC(Name)	/* empty */
 #else
-#define YYOPTIONAL_LOC(Name) Name __attribute__ ((__unused__))
+# define YYOPTIONAL_LOC(Name) Name __attribute__ ((__unused__))
 #endif
 
 #ifndef YYASSERT
-#define YYASSERT(condition) ((void) ((condition) || (abort (), 0)))
+# define YYASSERT(condition) ((void) ((condition) || (abort (), 0)))
 #endif
 
 /* YYFINAL -- State number of the termination state.  */
@@ -1062,12 +1062,12 @@ int yyparse (void);
 
 
 #ifndef YYLLOC_DEFAULT
-#define YYLLOC_DEFAULT(Current, Rhs, N) ((void) 0)
+# define YYLLOC_DEFAULT(Current, Rhs, N) ((void) 0)
 #endif
 
 
 #ifndef YY_LOCATION_PRINT
-#define YY_LOCATION_PRINT(File, Loc) ((void) 0)
+# define YY_LOCATION_PRINT(File, Loc) ((void) 0)
 #endif
 
 
@@ -1093,11 +1093,11 @@ typedef enum
 
 #if YYDEBUG
 
-#ifndef YYFPRINTF
-#define YYFPRINTF fprintf
-#endif
+# ifndef YYFPRINTF
+#  define YYFPRINTF fprintf
+# endif
 
-#define YYDPRINTF(Args)			\
+# define YYDPRINTF(Args)			\
 do {						\
   if (yydebug)					\
     YYFPRINTF Args;				\
@@ -1114,12 +1114,12 @@ yy_symbol_value_print (FILE * yyoutput, int yytype,
 {
   if (!yyvaluep)
     return;
-#ifdef YYPRINT
+# ifdef YYPRINT
   if (yytype < YYNTOKENS)
     YYPRINT (yyoutput, yytoknum[yytype], *yyvaluep);
-#else
+# else
   YYUSE (yyoutput);
-#endif
+# endif
   switch (yytype)
     {
     default:
@@ -1144,7 +1144,7 @@ yy_symbol_print (FILE * yyoutput, int yytype, YYSTYPE const *const yyvaluep)
   YYFPRINTF (yyoutput, ")");
 }
 
-#define YY_SYMBOL_PRINT(Title, Type, Value, Location)			    \
+# define YY_SYMBOL_PRINT(Title, Type, Value, Location)			    \
 do {									    \
   if (yydebug)								    \
     {									    \
@@ -1161,14 +1161,14 @@ int yydebug;
 
 #else /* !YYDEBUG */
 
-#define YYDPRINTF(Args)
-#define YY_SYMBOL_PRINT(Title, Type, Value, Location)
+# define YYDPRINTF(Args)
+# define YY_SYMBOL_PRINT(Title, Type, Value, Location)
 
 #endif /* !YYDEBUG */
 
 /* YYINITDEPTH -- initial size of the parser's stacks.  */
 #ifndef	YYINITDEPTH
-#define YYINITDEPTH 200
+# define YYINITDEPTH 200
 #endif
 
 /* YYMAXDEPTH -- maximum size the stacks can grow to (effective only
@@ -1179,7 +1179,7 @@ int yydebug;
    evaluated with infinite-precision integer arithmetic.  */
 
 #ifndef YYMAXDEPTH
-#define YYMAXDEPTH 10000
+# define YYMAXDEPTH 10000
 #endif
 
 /* Minimum number of free items on the stack allowed after an
@@ -1190,22 +1190,22 @@ int yydebug;
 #define YYHEADROOM 2
 
 #ifndef YYSTACKEXPANDABLE
-#if (! defined __cplusplus \
+# if (! defined __cplusplus \
       || (defined YYSTYPE_IS_TRIVIAL && YYSTYPE_IS_TRIVIAL))
-#define YYSTACKEXPANDABLE 1
-#else
-#define YYSTACKEXPANDABLE 0
-#endif
+#  define YYSTACKEXPANDABLE 1
+# else
+#  define YYSTACKEXPANDABLE 0
+# endif
 #endif
 
 #if YYSTACKEXPANDABLE
-#define YY_RESERVE_GLRSTACK(Yystack)			\
+# define YY_RESERVE_GLRSTACK(Yystack)			\
   do {							\
     if (Yystack->yyspaceLeft < YYHEADROOM)		\
       yyexpandGLRStack (Yystack);			\
   } while (YYID (0))
 #else
-#define YY_RESERVE_GLRSTACK(Yystack)			\
+# define YY_RESERVE_GLRSTACK(Yystack)			\
   do {							\
     if (Yystack->yyspaceLeft < YYHEADROOM)		\
       yyMemoryExhausted (Yystack);			\
@@ -1215,10 +1215,10 @@ int yydebug;
 
 #if YYERROR_VERBOSE
 
-#ifndef yystpcpy
-#if defined __GLIBC__ && defined _STRING_H && defined _GNU_SOURCE
-#define yystpcpy stpcpy
-#else
+# ifndef yystpcpy
+#  if defined __GLIBC__ && defined _STRING_H && defined _GNU_SOURCE
+#   define yystpcpy stpcpy
+#  else
 /* Copy YYSRC to YYDEST, returning the address of the terminating '\0' in
    YYDEST.  */
 static char *
@@ -1232,10 +1232,10 @@ yystpcpy (char *yydest, const char *yysrc)
 
   return yyd - 1;
 }
-#endif
-#endif
+#  endif
+# endif
 
-#ifndef yytnamerr
+# ifndef yytnamerr
 /* Copy to YYRES the contents of YYSTR after stripping away unnecessary
    quotes and backslashes, so that it's suitable for yyerror.  The
    heuristic is that double-quoting is unnecessary unless the string
@@ -1281,7 +1281,7 @@ yytnamerr (char *yyres, const char *yystr)
 
   return yystpcpy (yyres, yystr) - yyres;
 }
-#endif
+# endif
 
 #endif /* !YYERROR_VERBOSE */
 
@@ -1463,22 +1463,22 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
   yybool yynormal __attribute__ ((__unused__)) =
     (yystackp->yysplitPoint == NULL);
   int yylow;
-#undef yyerrok
-#define yyerrok (yystackp->yyerrState = 0)
-#undef YYACCEPT
-#define YYACCEPT return yyaccept
-#undef YYABORT
-#define YYABORT return yyabort
-#undef YYERROR
-#define YYERROR return yyerrok, yyerr
-#undef YYRECOVERING
-#define YYRECOVERING() (yystackp->yyerrState != 0)
-#undef yyclearin
-#define yyclearin (yychar = YYEMPTY)
-#undef YYFILL
-#define YYFILL(N) yyfill (yyvsp, &yylow, N, yynormal)
-#undef YYBACKUP
-#define YYBACKUP(Token, Value)						     \
+# undef yyerrok
+# define yyerrok (yystackp->yyerrState = 0)
+# undef YYACCEPT
+# define YYACCEPT return yyaccept
+# undef YYABORT
+# define YYABORT return yyabort
+# undef YYERROR
+# define YYERROR return yyerrok, yyerr
+# undef YYRECOVERING
+# define YYRECOVERING() (yystackp->yyerrState != 0)
+# undef yyclearin
+# define yyclearin (yychar = YYEMPTY)
+# undef YYFILL
+# define YYFILL(N) yyfill (yyvsp, &yylow, N, yynormal)
+# undef YYBACKUP
+# define YYBACKUP(Token, Value)						     \
   return yyerror (YY_("syntax error: cannot back up")),     \
 	 yyerrok, yyerr
 
@@ -1855,9 +1855,9 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 
 	  pp_add_whenever_to_scope ((((yyGLRStackItem const *)
 				      yyvsp)[YYFILL ((1) -
-						     (2))].
-				     yystate.yysemantics.yysval.number),
-				    CONTINUE, NULL);
+						     (2))].yystate.
+				     yysemantics.yysval.number), CONTINUE,
+				    NULL);
 
 	DBG_PRINT};
       }
@@ -1870,9 +1870,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 
 	  pp_add_whenever_to_scope ((((yyGLRStackItem const *)
 				      yyvsp)[YYFILL ((1) -
-						     (2))].
-				     yystate.yysemantics.yysval.number), STOP,
-				    NULL);
+						     (2))].yystate.
+				     yysemantics.yysval.number), STOP, NULL);
 
 	DBG_PRINT};
       }
@@ -1885,12 +1884,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 
 	  pp_add_whenever_to_scope ((((yyGLRStackItem const *)
 				      yyvsp)[YYFILL ((1) -
-						     (4))].
-				     yystate.yysemantics.yysval.number), GOTO,
+						     (4))].yystate.
+				     yysemantics.yysval.number), GOTO,
 				    (((yyGLRStackItem const *)
 				      yyvsp)[YYFILL ((4) -
-						     (4))].
-				     yystate.yysemantics.yysval.ptr));
+						     (4))].yystate.
+				     yysemantics.yysval.ptr));
 
 	DBG_PRINT};
       }
@@ -1903,12 +1902,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 
 	  pp_add_whenever_to_scope ((((yyGLRStackItem const *)
 				      yyvsp)[YYFILL ((1) -
-						     (5))].
-				     yystate.yysemantics.yysval.number), GOTO,
+						     (5))].yystate.
+				     yysemantics.yysval.number), GOTO,
 				    (((yyGLRStackItem const *)
 				      yyvsp)[YYFILL ((5) -
-						     (5))].
-				     yystate.yysemantics.yysval.ptr));
+						     (5))].yystate.
+				     yysemantics.yysval.ptr));
 
 	DBG_PRINT};
       }
@@ -1921,12 +1920,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 
 	  pp_add_whenever_to_scope ((((yyGLRStackItem const *)
 				      yyvsp)[YYFILL ((1) -
-						     (3))].
-				     yystate.yysemantics.yysval.number), CALL,
+						     (3))].yystate.
+				     yysemantics.yysval.number), CALL,
 				    (((yyGLRStackItem const *)
 				      yyvsp)[YYFILL ((3) -
-						     (3))].
-				     yystate.yysemantics.yysval.ptr));
+						     (3))].yystate.
+				     yysemantics.yysval.ptr));
 
 	DBG_PRINT};
       }
@@ -1953,14 +1952,14 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 
 	  HOST_LOD *hvars;
 	  HOST_REF *href =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (3))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (3))].yystate.
+	     yysemantics.yysval.ptr);
 
-	  if ((((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].
-	       yystate.yysemantics.yysval.ptr))
+	  if ((((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].yystate.
+	       yysemantics.yysval.ptr))
 	    href =
-	      (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].
-	       yystate.yysemantics.yysval.ptr);
+	      (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].yystate.
+	       yysemantics.yysval.ptr);
 
 	  hvars = pp_input_refs ();
 	  esql_Translate_table.tr_connect (CHECK_HOST_REF (hvars, 0),
@@ -1988,18 +1987,18 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       {
 	{
 
-	  if ((((yyGLRStackItem const *) yyvsp)[YYFILL ((4) - (4))].
-	       yystate.yysemantics.yysval.ptr))
+	  if ((((yyGLRStackItem const *) yyvsp)[YYFILL ((4) - (4))].yystate.
+	       yysemantics.yysval.ptr))
 	    {
 	      ((*yyvalp).ptr) =
-		(((yyGLRStackItem const *) yyvsp)[YYFILL ((4) - (4))].
-		 yystate.yysemantics.yysval.ptr);
+		(((yyGLRStackItem const *) yyvsp)[YYFILL ((4) - (4))].yystate.
+		 yysemantics.yysval.ptr);
 	    }
 	  else
 	    {
 	      ((*yyvalp).ptr) =
-		(((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (4))].
-		 yystate.yysemantics.yysval.ptr);
+		(((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (4))].yystate.
+		 yysemantics.yysval.ptr);
 	    }
 
 	DBG_PRINT};
@@ -2024,8 +2023,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 
 
 	  ((*yyvalp).ptr) =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].yystate.
+	     yysemantics.yysval.ptr);
 
 	DBG_PRINT};
       }
@@ -2049,12 +2048,11 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  char **cp =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((5) - (5))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((5) - (5))].yystate.
+	     yysemantics.yysval.ptr);
 	  char *c_nam =
-	    strdup ((((yyGLRStackItem const *)
-		      yyvsp)[YYFILL ((2) -
-				     (5))].yystate.yysemantics.yysval.ptr));
+	    strdup ((((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (5))].
+		     yystate.yysemantics.yysval.ptr));
 	  pp_new_cursor (c_nam, cp[0], (int) (long) cp[1], NULL,
 			 pp_detach_host_refs ());
 	  free_and_init (c_nam);
@@ -2069,16 +2067,14 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  char *c_nam =
-	    strdup ((((yyGLRStackItem const *)
-		      yyvsp)[YYFILL ((2) -
-				     (5))].yystate.yysemantics.yysval.ptr));
+	    strdup ((((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (5))].
+		     yystate.yysemantics.yysval.ptr));
 	  pp_new_cursor (c_nam, NULL, 0,
 			 (STMT
 			  *) (((yyGLRStackItem const *)
 			       yyvsp)[YYFILL ((5) -
-					      (5))].yystate.
-			      yysemantics.yysval.ptr),
-			 pp_detach_host_refs ());
+					      (5))].yystate.yysemantics.
+			      yysval.ptr), pp_detach_host_refs ());
 	  free_and_init (c_nam);
 	  esql_yy_sync_lineno ();
 	  esql_yy_set_buf (NULL);
@@ -2095,8 +2091,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	  ((*yyvalp).ptr) =
 	    pp_new_stmt ((((yyGLRStackItem const *)
 			   yyvsp)[YYFILL ((1) -
-					  (1))].yystate.yysemantics.
-			  yysval.ptr));
+					  (1))].yystate.yysemantics.yysval.
+			  ptr));
 
 	DBG_PRINT};
       }
@@ -2108,11 +2104,11 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  CURSOR *cur =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (4))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (4))].yystate.
+	     yysemantics.yysval.ptr);
 	  int rdonly =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (4))].
-	     yystate.yysemantics.yysval.number);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (4))].yystate.
+	     yysemantics.yysval.number);
 	  HOST_LOD *usg;
 
 	  if (cur->static_stmt)
@@ -2123,9 +2119,9 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 			       cur->name);
 	      else
 		esql_Translate_table.tr_open_cs (cur->cid,
-						 (const char *)
-						 cur->static_stmt,
-						 cur->stmtLength, -1, rdonly,
+						 (const char *) cur->
+						 static_stmt, cur->stmtLength,
+						 -1, rdonly,
 						 HOST_N_REFS (cur->host_refs),
 						 HOST_REFS (cur->host_refs),
 						 (const char *)
@@ -2199,8 +2195,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  HOST_REF *href =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].yystate.
+	     yysemantics.yysval.ptr);
 	  char *nam = NULL;
 	  if (pp_check_type (href,
 			     NEWSET (C_TYPE_SQLDA),
@@ -2219,8 +2215,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  CURSOR *cur =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].yystate.
+	     yysemantics.yysval.ptr);
 	  if (cur)
 	    esql_Translate_table.tr_close_cs (cur->cid);
 	  already_translated = true;
@@ -2238,13 +2234,13 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	  if ((cur =
 	       pp_lookup_cursor ((((yyGLRStackItem const *)
 				   yyvsp)[YYFILL ((1) -
-						  (1))].yystate.
-				  yysemantics.yysval.ptr))) == NULL)
+						  (1))].yystate.yysemantics.
+				  yysval.ptr))) == NULL)
 	    esql_yyverror (pp_get_msg (EX_ESQLM_SET, MSG_CURSOR_UNDEFINED),
 			   (((yyGLRStackItem const *)
 			     yyvsp)[YYFILL ((1) -
-					    (1))].yystate.yysemantics.
-			    yysval.ptr));
+					    (1))].yystate.yysemantics.yysval.
+			    ptr));
 
 	  ((*yyvalp).ptr) = cur;
 
@@ -2258,11 +2254,11 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  STMT *d_statement =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (4))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (4))].yystate.
+	     yysemantics.yysval.ptr);
 	  char *nam =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((4) - (4))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((4) - (4))].yystate.
+	     yysemantics.yysval.ptr);
 
 	  if (d_statement && nam)
 	    esql_Translate_table.tr_describe (d_statement->sid, nam);
@@ -2278,14 +2274,14 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  HOST_REF *href =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (7))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (7))].yystate.
+	     yysemantics.yysval.ptr);
 	  PTR_VEC *pvec =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((5) - (7))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((5) - (7))].yystate.
+	     yysemantics.yysval.ptr);
 	  char *nam =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((7) - (7))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((7) - (7))].yystate.
+	     yysemantics.yysval.ptr);
 
 	  pp_copy_host_refs ();
 
@@ -2315,11 +2311,11 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  HOST_REF *href =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((4) - (4))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((4) - (4))].yystate.
+	     yysemantics.yysval.ptr);
 	  STMT *d_statement =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (4))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (4))].yystate.
+	     yysemantics.yysval.ptr);
 
 	  if (d_statement && href)
 	    esql_Translate_table.tr_prepare_esql (d_statement->sid, href);
@@ -2376,8 +2372,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	  ((*yyvalp).ptr) =
 	    pp_add_host_str ((((yyGLRStackItem const *)
 			       yyvsp)[YYFILL ((1) -
-					      (1))].yystate.
-			      yysemantics.yysval.ptr));
+					      (1))].yystate.yysemantics.
+			      yysval.ptr));
 
 	DBG_PRINT};
       }
@@ -2389,8 +2385,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  HOST_REF *href =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].yystate.
+	     yysemantics.yysval.ptr);
 	  ((*yyvalp).ptr) =
 	    pp_check_type (href,
 			   NEWSET (C_TYPE_CHAR_ARRAY) |
@@ -2447,8 +2443,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	  HOST_REF *href2;
 
 	  href2 =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].yystate.
+	     yysemantics.yysval.ptr);
 	  if (href2 && href2->ind)
 	    {
 	      esql_yyverror (pp_get_msg
@@ -2474,8 +2470,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	    pp_add_ptr (pvec,
 			strdup ((((yyGLRStackItem const *)
 				  yyvsp)[YYFILL ((3) -
-						 (3))].yystate.
-				 yysemantics.yysval.ptr)));
+						 (3))].yystate.yysemantics.
+				 yysval.ptr)));
 	  ((*yyvalp).ptr) = pvec;
 
 	DBG_PRINT};
@@ -2492,8 +2488,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	  pp_add_ptr (&id_list,
 		      strdup ((((yyGLRStackItem const *)
 				yyvsp)[YYFILL ((1) -
-					       (1))].yystate.
-			       yysemantics.yysval.ptr)));
+					       (1))].yystate.yysemantics.
+			       yysval.ptr)));
 
 	  ((*yyvalp).ptr) = pvec;
 
@@ -2507,8 +2503,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  STMT *d_statement =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (4))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (4))].yystate.
+	     yysemantics.yysval.ptr);
 	  if (d_statement)
 	    {
 	      HOST_LOD *inputs, *outputs;
@@ -2536,8 +2532,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  HOST_REF *href =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].yystate.
+	     yysemantics.yysval.ptr);
 
 	  if (href)
 	    esql_Translate_table.tr_execute_immediate (href);
@@ -2553,8 +2549,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  CURSOR *cur =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (3))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (3))].yystate.
+	     yysemantics.yysval.ptr);
 	  if (cur)
 	    {
 	      HOST_LOD *hlod = pp_output_refs ();
@@ -2576,11 +2572,11 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  HOST_REF *href =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (6))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (6))].yystate.
+	     yysemantics.yysval.ptr);
 	  PTR_VEC *pvec =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((5) - (6))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((5) - (6))].yystate.
+	     yysemantics.yysval.ptr);
 	  HOST_LOD *hlod;
 
 
@@ -2638,13 +2634,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       {
 	{
 
-	  ECHO_STR ((((yyGLRStackItem const *)
-		      yyvsp)[YYFILL ((1) -
-				     (1))].yystate.yysemantics.yysval.ptr),
+	  ECHO_STR ((((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
+		     yystate.yysemantics.yysval.ptr),
 		    strlen ((((yyGLRStackItem const *)
 			      yyvsp)[YYFILL ((1) -
-					     (1))].yystate.yysemantics.
-			     yysval.ptr)));
+					     (1))].yystate.yysemantics.yysval.
+			     ptr)));
 	  ((*yyvalp).number) = NO_CURSOR;
 
 	DBG_PRINT};
@@ -2656,13 +2651,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       {
 	{
 
-	  ECHO_STR ((((yyGLRStackItem const *)
-		      yyvsp)[YYFILL ((1) -
-				     (1))].yystate.yysemantics.yysval.ptr),
+	  ECHO_STR ((((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
+		     yystate.yysemantics.yysval.ptr),
 		    strlen ((((yyGLRStackItem const *)
 			      yyvsp)[YYFILL ((1) -
-					     (1))].yystate.yysemantics.
-			     yysval.ptr)));
+					     (1))].yystate.yysemantics.yysval.
+			     ptr)));
 	  ((*yyvalp).number) = NO_CURSOR;
 
 	DBG_PRINT};
@@ -2674,13 +2668,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       {
 	{
 
-	  ECHO_STR ((((yyGLRStackItem const *)
-		      yyvsp)[YYFILL ((1) -
-				     (1))].yystate.yysemantics.yysval.ptr),
+	  ECHO_STR ((((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
+		     yystate.yysemantics.yysval.ptr),
 		    strlen ((((yyGLRStackItem const *)
 			      yyvsp)[YYFILL ((1) -
-					     (1))].yystate.yysemantics.
-			     yysval.ptr)));
+					     (1))].yystate.yysemantics.yysval.
+			     ptr)));
 	  ((*yyvalp).number) = NO_CURSOR;
 
 	DBG_PRINT};
@@ -2692,13 +2685,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       {
 	{
 
-	  ECHO_STR ((((yyGLRStackItem const *)
-		      yyvsp)[YYFILL ((1) -
-				     (1))].yystate.yysemantics.yysval.ptr),
+	  ECHO_STR ((((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
+		     yystate.yysemantics.yysval.ptr),
 		    strlen ((((yyGLRStackItem const *)
 			      yyvsp)[YYFILL ((1) -
-					     (1))].yystate.yysemantics.
-			     yysval.ptr)));
+					     (1))].yystate.yysemantics.yysval.
+			     ptr)));
 	  ((*yyvalp).number) = NO_CURSOR;
 
 	DBG_PRINT};
@@ -2710,13 +2702,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       {
 	{
 
-	  ECHO_STR ((((yyGLRStackItem const *)
-		      yyvsp)[YYFILL ((1) -
-				     (1))].yystate.yysemantics.yysval.ptr),
+	  ECHO_STR ((((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
+		     yystate.yysemantics.yysval.ptr),
 		    strlen ((((yyGLRStackItem const *)
 			      yyvsp)[YYFILL ((1) -
-					     (1))].yystate.yysemantics.
-			     yysval.ptr)));
+					     (1))].yystate.yysemantics.yysval.
+			     ptr)));
 	  ((*yyvalp).number) = NO_CURSOR;
 
 	DBG_PRINT};
@@ -2728,13 +2719,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       {
 	{
 
-	  ECHO_STR ((((yyGLRStackItem const *)
-		      yyvsp)[YYFILL ((1) -
-				     (1))].yystate.yysemantics.yysval.ptr),
+	  ECHO_STR ((((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
+		     yystate.yysemantics.yysval.ptr),
 		    strlen ((((yyGLRStackItem const *)
 			      yyvsp)[YYFILL ((1) -
-					     (1))].yystate.yysemantics.
-			     yysval.ptr)));
+					     (1))].yystate.yysemantics.yysval.
+			     ptr)));
 	  ((*yyvalp).number) = NO_CURSOR;
 
 	DBG_PRINT};
@@ -2746,13 +2736,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       {
 	{
 
-	  ECHO_STR ((((yyGLRStackItem const *)
-		      yyvsp)[YYFILL ((1) -
-				     (1))].yystate.yysemantics.yysval.ptr),
+	  ECHO_STR ((((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
+		     yystate.yysemantics.yysval.ptr),
 		    strlen ((((yyGLRStackItem const *)
 			      yyvsp)[YYFILL ((1) -
-					     (1))].yystate.yysemantics.
-			     yysval.ptr)));
+					     (1))].yystate.yysemantics.yysval.
+			     ptr)));
 	  ((*yyvalp).number) = NO_CURSOR;
 
 	DBG_PRINT};
@@ -2764,13 +2753,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       {
 	{
 
-	  ECHO_STR ((((yyGLRStackItem const *)
-		      yyvsp)[YYFILL ((1) -
-				     (1))].yystate.yysemantics.yysval.ptr),
+	  ECHO_STR ((((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
+		     yystate.yysemantics.yysval.ptr),
 		    strlen ((((yyGLRStackItem const *)
 			      yyvsp)[YYFILL ((1) -
-					     (1))].yystate.yysemantics.
-			     yysval.ptr)));
+					     (1))].yystate.yysemantics.yysval.
+			     ptr)));
 	  ((*yyvalp).number) = NO_CURSOR;
 
 	DBG_PRINT};
@@ -2782,13 +2770,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       {
 	{
 
-	  ECHO_STR ((((yyGLRStackItem const *)
-		      yyvsp)[YYFILL ((1) -
-				     (1))].yystate.yysemantics.yysval.ptr),
+	  ECHO_STR ((((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
+		     yystate.yysemantics.yysval.ptr),
 		    strlen ((((yyGLRStackItem const *)
 			      yyvsp)[YYFILL ((1) -
-					     (1))].yystate.yysemantics.
-			     yysval.ptr)));
+					     (1))].yystate.yysemantics.yysval.
+			     ptr)));
 	  ((*yyvalp).number) = NO_CURSOR;
 
 	DBG_PRINT};
@@ -2800,13 +2787,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       {
 	{
 
-	  ECHO_STR ((((yyGLRStackItem const *)
-		      yyvsp)[YYFILL ((1) -
-				     (1))].yystate.yysemantics.yysval.ptr),
+	  ECHO_STR ((((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
+		     yystate.yysemantics.yysval.ptr),
 		    strlen ((((yyGLRStackItem const *)
 			      yyvsp)[YYFILL ((1) -
-					     (1))].yystate.yysemantics.
-			     yysval.ptr)));
+					     (1))].yystate.yysemantics.yysval.
+			     ptr)));
 	  ((*yyvalp).number) = NO_CURSOR;
 
 	DBG_PRINT};
@@ -2818,13 +2804,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       {
 	{
 
-	  ECHO_STR ((((yyGLRStackItem const *)
-		      yyvsp)[YYFILL ((1) -
-				     (1))].yystate.yysemantics.yysval.ptr),
+	  ECHO_STR ((((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
+		     yystate.yysemantics.yysval.ptr),
 		    strlen ((((yyGLRStackItem const *)
 			      yyvsp)[YYFILL ((1) -
-					     (1))].yystate.yysemantics.
-			     yysval.ptr)));
+					     (1))].yystate.yysemantics.yysval.
+			     ptr)));
 	  ((*yyvalp).number) = NO_CURSOR;
 
 	DBG_PRINT};
@@ -2836,13 +2821,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       {
 	{
 
-	  ECHO_STR ((((yyGLRStackItem const *)
-		      yyvsp)[YYFILL ((1) -
-				     (1))].yystate.yysemantics.yysval.ptr),
+	  ECHO_STR ((((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
+		     yystate.yysemantics.yysval.ptr),
 		    strlen ((((yyGLRStackItem const *)
 			      yyvsp)[YYFILL ((1) -
-					     (1))].yystate.yysemantics.
-			     yysval.ptr)));
+					     (1))].yystate.yysemantics.yysval.
+			     ptr)));
 	  ((*yyvalp).number) = NO_CURSOR;
 
 	DBG_PRINT};
@@ -2854,13 +2838,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       {
 	{
 
-	  ECHO_STR ((((yyGLRStackItem const *)
-		      yyvsp)[YYFILL ((1) -
-				     (1))].yystate.yysemantics.yysval.ptr),
+	  ECHO_STR ((((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
+		     yystate.yysemantics.yysval.ptr),
 		    strlen ((((yyGLRStackItem const *)
 			      yyvsp)[YYFILL ((1) -
-					     (1))].yystate.yysemantics.
-			     yysval.ptr)));
+					     (1))].yystate.yysemantics.yysval.
+			     ptr)));
 	  ((*yyvalp).number) = NO_CURSOR;
 
 	DBG_PRINT};
@@ -2872,13 +2855,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       {
 	{
 
-	  ECHO_STR ((((yyGLRStackItem const *)
-		      yyvsp)[YYFILL ((1) -
-				     (1))].yystate.yysemantics.yysval.ptr),
+	  ECHO_STR ((((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
+		     yystate.yysemantics.yysval.ptr),
 		    strlen ((((yyGLRStackItem const *)
 			      yyvsp)[YYFILL ((1) -
-					     (1))].yystate.yysemantics.
-			     yysval.ptr)));
+					     (1))].yystate.yysemantics.yysval.
+			     ptr)));
 	  ((*yyvalp).number) = NO_CURSOR;
 
 	DBG_PRINT};
@@ -2890,13 +2872,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       {
 	{
 
-	  ECHO_STR ((((yyGLRStackItem const *)
-		      yyvsp)[YYFILL ((1) -
-				     (1))].yystate.yysemantics.yysval.ptr),
+	  ECHO_STR ((((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
+		     yystate.yysemantics.yysval.ptr),
 		    strlen ((((yyGLRStackItem const *)
 			      yyvsp)[YYFILL ((1) -
-					     (1))].yystate.yysemantics.
-			     yysval.ptr)));
+					     (1))].yystate.yysemantics.yysval.
+			     ptr)));
 	  ((*yyvalp).number) = NO_CURSOR;
 
 	DBG_PRINT};
@@ -2908,13 +2889,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       {
 	{
 
-	  ECHO_STR ((((yyGLRStackItem const *)
-		      yyvsp)[YYFILL ((1) -
-				     (1))].yystate.yysemantics.yysval.ptr),
+	  ECHO_STR ((((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
+		     yystate.yysemantics.yysval.ptr),
 		    strlen ((((yyGLRStackItem const *)
 			      yyvsp)[YYFILL ((1) -
-					     (1))].yystate.yysemantics.
-			     yysval.ptr)));
+					     (1))].yystate.yysemantics.yysval.
+			     ptr)));
 	  ((*yyvalp).number) = NO_CURSOR;
 
 	DBG_PRINT};
@@ -2926,13 +2906,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       {
 	{
 
-	  ECHO_STR ((((yyGLRStackItem const *)
-		      yyvsp)[YYFILL ((1) -
-				     (1))].yystate.yysemantics.yysval.ptr),
+	  ECHO_STR ((((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
+		     yystate.yysemantics.yysval.ptr),
 		    strlen ((((yyGLRStackItem const *)
 			      yyvsp)[YYFILL ((1) -
-					     (1))].yystate.yysemantics.
-			     yysval.ptr)));
+					     (1))].yystate.yysemantics.yysval.
+			     ptr)));
 	  ((*yyvalp).number) = NO_CURSOR;
 
 	DBG_PRINT};
@@ -2944,13 +2923,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       {
 	{
 
-	  ECHO_STR ((((yyGLRStackItem const *)
-		      yyvsp)[YYFILL ((1) -
-				     (1))].yystate.yysemantics.yysval.ptr),
+	  ECHO_STR ((((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
+		     yystate.yysemantics.yysval.ptr),
 		    strlen ((((yyGLRStackItem const *)
 			      yyvsp)[YYFILL ((1) -
-					     (1))].yystate.yysemantics.
-			     yysval.ptr)));
+					     (1))].yystate.yysemantics.yysval.
+			     ptr)));
 	  ((*yyvalp).number) = NO_CURSOR;
 
 	DBG_PRINT};
@@ -2962,13 +2940,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       {
 	{
 
-	  ECHO_STR ((((yyGLRStackItem const *)
-		      yyvsp)[YYFILL ((1) -
-				     (1))].yystate.yysemantics.yysval.ptr),
+	  ECHO_STR ((((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
+		     yystate.yysemantics.yysval.ptr),
 		    strlen ((((yyGLRStackItem const *)
 			      yyvsp)[YYFILL ((1) -
-					     (1))].yystate.yysemantics.
-			     yysval.ptr)));
+					     (1))].yystate.yysemantics.yysval.
+			     ptr)));
 	  ((*yyvalp).number) = NO_CURSOR;
 
 	DBG_PRINT};
@@ -2980,13 +2957,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       {
 	{
 
-	  ECHO_STR ((((yyGLRStackItem const *)
-		      yyvsp)[YYFILL ((1) -
-				     (1))].yystate.yysemantics.yysval.ptr),
+	  ECHO_STR ((((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
+		     yystate.yysemantics.yysval.ptr),
 		    strlen ((((yyGLRStackItem const *)
 			      yyvsp)[YYFILL ((1) -
-					     (1))].yystate.yysemantics.
-			     yysval.ptr)));
+					     (1))].yystate.yysemantics.yysval.
+			     ptr)));
 	  ((*yyvalp).number) = NO_CURSOR;
 
 	DBG_PRINT};
@@ -2998,13 +2974,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       {
 	{
 
-	  ECHO_STR ((((yyGLRStackItem const *)
-		      yyvsp)[YYFILL ((1) -
-				     (1))].yystate.yysemantics.yysval.ptr),
+	  ECHO_STR ((((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
+		     yystate.yysemantics.yysval.ptr),
 		    strlen ((((yyGLRStackItem const *)
 			      yyvsp)[YYFILL ((1) -
-					     (1))].yystate.yysemantics.
-			     yysval.ptr)));
+					     (1))].yystate.yysemantics.yysval.
+			     ptr)));
 	  ((*yyvalp).number) = CURSOR_DELETE;
 
 	DBG_PRINT};
@@ -3016,13 +2991,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       {
 	{
 
-	  ECHO_STR ((((yyGLRStackItem const *)
-		      yyvsp)[YYFILL ((1) -
-				     (1))].yystate.yysemantics.yysval.ptr),
+	  ECHO_STR ((((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
+		     yystate.yysemantics.yysval.ptr),
 		    strlen ((((yyGLRStackItem const *)
 			      yyvsp)[YYFILL ((1) -
-					     (1))].yystate.yysemantics.
-			     yysval.ptr)));
+					     (1))].yystate.yysemantics.yysval.
+			     ptr)));
 	  ((*yyvalp).number) = CURSOR_UPDATE;
 
 	DBG_PRINT};
@@ -3047,8 +3021,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  g_cursor_type =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].
-	     yystate.yysemantics.yysval.number);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].yystate.
+	     yysemantics.yysval.number);
 	  //esql_yy_push_mode(BUFFER_mode);
 
 	DBG_PRINT};
@@ -3114,11 +3088,11 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  LINK *plink =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (3))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (3))].yystate.
+	     yysemantics.yysval.ptr);
 	  SYMBOL *psym =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].yystate.
+	     yysemantics.yysval.ptr);
 
 	  if (psym)
 	    {
@@ -3175,8 +3149,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  ((*yyvalp).ptr) =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].yystate.
+	     yysemantics.yysval.ptr);
 
 	DBG_PRINT};
       }
@@ -3199,8 +3173,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  ((*yyvalp).ptr) =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].yystate.
+	     yysemantics.yysval.ptr);
 
 	DBG_PRINT};
       }
@@ -3342,8 +3316,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 
 	  pp_add_struct_spec ((((yyGLRStackItem const *)
 				yyvsp)[YYFILL ((1) -
-					       (1))].yystate.
-			       yysemantics.yysval.ptr));
+					       (1))].yystate.yysemantics.
+			       yysval.ptr));
 
 	DBG_PRINT};
       }
@@ -3456,8 +3430,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 
 	  pp_add_type_noun ((((yyGLRStackItem const *)
 			      yyvsp)[YYFILL ((2) -
-					     (2))].yystate.yysemantics.
-			     yysval.number));
+					     (2))].yystate.yysemantics.yysval.
+			     number));
 
 	DBG_PRINT};
       }
@@ -3557,8 +3531,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  g_su =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].
-	     yystate.yysemantics.yysval.number);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].yystate.
+	     yysemantics.yysval.number);
 	  g_sdef2 = NULL;
 
 	DBG_PRINT};
@@ -3571,8 +3545,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  STRUCTDEF *sdef =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((4) - (4))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((4) - (4))].yystate.
+	     yysemantics.yysval.ptr);
 	  ((*yyvalp).ptr) = sdef;
 
 	DBG_PRINT};
@@ -3585,11 +3559,11 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  g_su =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (3))].
-	     yystate.yysemantics.yysval.number);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (3))].yystate.
+	     yysemantics.yysval.number);
 	  g_sdef2 =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].yystate.
+	     yysemantics.yysval.ptr);
 
 	DBG_PRINT};
       }
@@ -3601,8 +3575,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  STRUCTDEF *sdef =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((5) - (5))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((5) - (5))].yystate.
+	     yysemantics.yysval.ptr);
 	  sdef = g_sdef2;
 	  sdef->by_name = true;
 	  ((*yyvalp).ptr) = sdef;
@@ -3650,8 +3624,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  ((*yyvalp).ptr) =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].yystate.
+	     yysemantics.yysval.ptr);
 
 	DBG_PRINT};
       }
@@ -3685,8 +3659,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  SYMBOL *psym =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((4) - (6))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((4) - (6))].yystate.
+	     yysemantics.yysval.ptr);
 
 	  if (g_sdef2 == NULL)
 	    {
@@ -3729,8 +3703,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	  STRUCTDEF *sdef;
 	  SYMBOL dummy;
 	  dummy.name =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].yystate.
+	     yysemantics.yysval.ptr);
 
 	  if (!
 	      (sdef =
@@ -3741,8 +3715,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 		pp_new_structdef (strdup
 				  ((((yyGLRStackItem const *)
 				     yyvsp)[YYFILL ((1) -
-						    (1))].yystate.
-				    yysemantics.yysval.ptr)));
+						    (1))].yystate.yysemantics.
+				    yysval.ptr)));
 	      pp_Struct_table->add_symbol (pp_Struct_table, sdef);
 	    }
 
@@ -3758,20 +3732,20 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  SYMBOL *last_field =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (2))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (2))].yystate.
+	     yysemantics.yysval.ptr);
 	  if (last_field)
 	    {
 	      SYMBOL *tmp = last_field->next;
 	      last_field->next =
-		(((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].
-		 yystate.yysemantics.yysval.ptr);
+		(((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].yystate.
+		 yysemantics.yysval.ptr);
 	      last_field->next->next = tmp;
 	    }
 
 	  ((*yyvalp).ptr) =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (2))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (2))].yystate.
+	     yysemantics.yysval.ptr);
 
 	DBG_PRINT};
       }
@@ -3783,8 +3757,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  ((*yyvalp).ptr) =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].yystate.
+	     yysemantics.yysval.ptr);
 
 	DBG_PRINT};
       }
@@ -3796,11 +3770,11 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  LINK *plink =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (2))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (2))].yystate.
+	     yysemantics.yysval.ptr);
 	  SYMBOL *psym =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].yystate.
+	     yysemantics.yysval.ptr);
 	  SYMBOL *sym = NULL;
 
 	  if (psym)
@@ -3860,8 +3834,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  ((*yyvalp).ptr) =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].yystate.
+	     yysemantics.yysval.ptr);
 
 	DBG_PRINT};
       }
@@ -3884,8 +3858,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  ((*yyvalp).ptr) =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].yystate.
+	     yysemantics.yysval.ptr);
 
 	DBG_PRINT};
       }
@@ -3897,13 +3871,13 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  SYMBOL *psym =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (3))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (3))].yystate.
+	     yysemantics.yysval.ptr);
 	  if (psym)
 	    {
 	      psym->next =
-		(((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].
-		 yystate.yysemantics.yysval.ptr);
+		(((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].yystate.
+		 yysemantics.yysval.ptr);
 	    }
 
 	  ((*yyvalp).ptr) = psym;
@@ -3918,8 +3892,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  ((*yyvalp).ptr) =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].yystate.
+	     yysemantics.yysval.ptr);
 
 	DBG_PRINT};
       }
@@ -3965,8 +3939,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  ((*yyvalp).ptr) =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (4))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (4))].yystate.
+	     yysemantics.yysval.ptr);
 
 	DBG_PRINT};
       }
@@ -3978,8 +3952,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  ((*yyvalp).ptr) =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].yystate.
+	     yysemantics.yysval.ptr);
 
 	DBG_PRINT};
       }
@@ -3991,8 +3965,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  SYMBOL *dl =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (3))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (3))].yystate.
+	     yysemantics.yysval.ptr);
 	  if (dl->type)
 	    {
 	      esql_yyredef ((char *) dl->name);
@@ -4040,8 +4014,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  SYMBOL *dl =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].yystate.
+	     yysemantics.yysval.ptr);
 	  pp_do_enum (dl);
 
 	DBG_PRINT};
@@ -4065,8 +4039,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  SYMBOL *dl =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (4))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (4))].yystate.
+	     yysemantics.yysval.ptr);
 	  pp_do_enum (dl);
 
 	DBG_PRINT};
@@ -4079,11 +4053,11 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  SYMBOL *psym =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (3))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (3))].yystate.
+	     yysemantics.yysval.ptr);
 	  SYMBOL *psym3 =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].yystate.
+	     yysemantics.yysval.ptr);
 	  if (psym3)
 	    {
 	      psym3->next = psym;
@@ -4101,8 +4075,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  SYMBOL *psym =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].yystate.
+	     yysemantics.yysval.ptr);
 	  if (psym)
 	    psym->next = NULL;
 	  ((*yyvalp).ptr) = psym;
@@ -4117,8 +4091,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  ((*yyvalp).ptr) =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].yystate.
+	     yysemantics.yysval.ptr);
 
 	DBG_PRINT};
       }
@@ -4141,13 +4115,13 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  SYMBOL *psym =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (6))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (6))].yystate.
+	     yysemantics.yysval.ptr);
 	  pp_add_initializer (psym);
 
 	  ((*yyvalp).ptr) =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (6))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (6))].yystate.
+	     yysemantics.yysval.ptr);
 
 	DBG_PRINT};
       }
@@ -4159,8 +4133,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  ((*yyvalp).ptr) =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].yystate.
+	     yysemantics.yysval.ptr);
 
 	DBG_PRINT};
       }
@@ -4172,8 +4146,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  SYMBOL *psym =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].yystate.
+	     yysemantics.yysval.ptr);
 	  if (psym)
 	    pp_add_declarator (psym, D_POINTER);
 	  ((*yyvalp).ptr) = psym;
@@ -4190,8 +4164,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	  SYMBOL *psym =
 	    pp_new_symbol ((((yyGLRStackItem const *)
 			     yyvsp)[YYFILL ((1) -
-					    (1))].yystate.yysemantics.
-			    yysval.ptr), pp_nesting_level);
+					    (1))].yystate.yysemantics.yysval.
+			    ptr), pp_nesting_level);
 	  g_psym = psym;
 
 	DBG_PRINT};
@@ -4217,8 +4191,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	  SYMBOL *psym =
 	    pp_new_symbol ((((yyGLRStackItem const *)
 			     yyvsp)[YYFILL ((2) -
-					    (3))].yystate.yysemantics.
-			    yysval.ptr), pp_nesting_level);
+					    (3))].yystate.yysemantics.yysval.
+			    ptr), pp_nesting_level);
 	  g_psym = psym;
 
 	DBG_PRINT};
@@ -4256,8 +4230,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  SYMBOL *args =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].yystate.
+	     yysemantics.yysval.ptr);
 	  if (g_psym)
 	    {
 	      pp_add_declarator (g_psym, D_FUNCTION);
@@ -4274,8 +4248,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  const char *sub =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].yystate.
+	     yysemantics.yysval.ptr);
 	  if (g_psym)
 	    {
 	      pp_add_declarator (g_psym, D_ARRAY);
@@ -4292,8 +4266,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  SYMBOL *args =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].yystate.
+	     yysemantics.yysval.ptr);
 	  if (g_psym)
 	    {
 	      pp_add_declarator (g_psym, D_FUNCTION);
@@ -4310,8 +4284,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  const char *sub =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].yystate.
+	     yysemantics.yysval.ptr);
 	  if (g_psym)
 	    {
 	      pp_add_declarator (g_psym, D_ARRAY);
@@ -4374,8 +4348,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  ((*yyvalp).ptr) =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (5))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (5))].yystate.
+	     yysemantics.yysval.ptr);
 
 	DBG_PRINT};
       }
@@ -4387,8 +4361,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  ((*yyvalp).ptr) =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (5))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (5))].yystate.
+	     yysemantics.yysval.ptr);
 
 	DBG_PRINT};
       }
@@ -4444,8 +4418,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  ((*yyvalp).ptr) =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (3))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (3))].yystate.
+	     yysemantics.yysval.ptr);
 
 	DBG_PRINT};
       }
@@ -4457,11 +4431,11 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  SYMBOL *psym =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (2))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (2))].yystate.
+	     yysemantics.yysval.ptr);
 	  psym->next =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].yystate.
+	     yysemantics.yysval.ptr);
 	  ((*yyvalp).ptr) = psym;
 
 	DBG_PRINT};
@@ -4474,8 +4448,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  ((*yyvalp).ptr) =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].yystate.
+	     yysemantics.yysval.ptr);
 
 	DBG_PRINT};
       }
@@ -4487,8 +4461,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  ((*yyvalp).ptr) =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].yystate.
+	     yysemantics.yysval.ptr);
 
 	DBG_PRINT};
       }
@@ -4511,11 +4485,11 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  SYMBOL *psym =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (3))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (3))].yystate.
+	     yysemantics.yysval.ptr);
 	  SYMBOL *tmp =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].yystate.
+	     yysemantics.yysval.ptr);
 	  g_last->next = tmp;
 	  g_last = tmp;
 
@@ -4531,8 +4505,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  ((*yyvalp).ptr) = g_last =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].yystate.
+	     yysemantics.yysval.ptr);
 
 	DBG_PRINT};
       }
@@ -4555,11 +4529,11 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  SYMBOL *psym =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (4))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (4))].yystate.
+	     yysemantics.yysval.ptr);
 	  LINK *plink =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (4))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (4))].yystate.
+	     yysemantics.yysval.ptr);
 
 	  if (psym == NULL)
 	    psym = pp_new_symbol (NULL, pp_nesting_level);
@@ -4591,8 +4565,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  ((*yyvalp).ptr) =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].yystate.
+	     yysemantics.yysval.ptr);
 
 	DBG_PRINT};
       }
@@ -4604,8 +4578,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  SYMBOL *psym =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].yystate.
+	     yysemantics.yysval.ptr);
 
 	  if (psym == NULL)
 	    psym = pp_new_symbol (NULL, pp_nesting_level);
@@ -4622,8 +4596,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  ((*yyvalp).ptr) =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].yystate.
+	     yysemantics.yysval.ptr);
 
 	DBG_PRINT};
       }
@@ -4635,8 +4609,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  g_psym =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (3))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (3))].yystate.
+	     yysemantics.yysval.ptr);
 
 	DBG_PRINT};
       }
@@ -4659,8 +4633,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  SYMBOL *args =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (3))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (3))].yystate.
+	     yysemantics.yysval.ptr);
 	  g_psym = pp_new_symbol (NULL, pp_nesting_level);
 	  pp_add_declarator (g_psym, D_FUNCTION);
 	  g_psym->etype->decl.d.args = args;
@@ -4688,8 +4662,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	  g_psym =
 	    pp_new_symbol ((((yyGLRStackItem const *)
 			     yyvsp)[YYFILL ((1) -
-					    (1))].yystate.yysemantics.
-			    yysval.ptr), pp_nesting_level);
+					    (1))].yystate.yysemantics.yysval.
+			    ptr), pp_nesting_level);
 
 	DBG_PRINT};
       }
@@ -4712,8 +4686,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  const char *sub =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].yystate.
+	     yysemantics.yysval.ptr);
 	  g_psym = pp_new_symbol (NULL, pp_nesting_level);
 	  pp_add_declarator (g_psym, D_ARRAY);
 	  g_psym->etype->decl.d.num_ele = (char *) sub;
@@ -4739,8 +4713,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  const char *sub =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].yystate.
+	     yysemantics.yysval.ptr);
 	  pp_add_declarator (g_psym, D_ARRAY);
 	  g_psym->etype->decl.d.num_ele = (char *) sub;
 
@@ -4754,8 +4728,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  SYMBOL *args =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (4))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (4))].yystate.
+	     yysemantics.yysval.ptr);
 	  pp_add_declarator (g_psym, D_FUNCTION);
 	  g_psym->etype->decl.d.args = args;
 
@@ -4769,8 +4743,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  const char *sub =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].yystate.
+	     yysemantics.yysval.ptr);
 	  pp_add_declarator (g_psym, D_ARRAY);
 	  g_psym->etype->decl.d.num_ele = (char *) sub;
 
@@ -4784,8 +4758,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  SYMBOL *args =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (3))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (3))].yystate.
+	     yysemantics.yysval.ptr);
 	  pp_add_declarator (g_psym, D_FUNCTION);
 	  g_psym->etype->decl.d.args = args;
 
@@ -4810,8 +4784,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  ((*yyvalp).ptr) =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].yystate.
+	     yysemantics.yysval.ptr);
 
 	DBG_PRINT};
       }
@@ -4847,8 +4821,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	  SYMBOL *result =
 	    pp_new_symbol ((((yyGLRStackItem const *)
 			     yyvsp)[YYFILL ((2) -
-					    (3))].yystate.yysemantics.
-			    yysval.ptr), pp_nesting_level);
+					    (3))].yystate.yysemantics.yysval.
+			    ptr), pp_nesting_level);
 	  ((*yyvalp).ptr) = result;
 
 	DBG_PRINT};
@@ -4866,8 +4840,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	    result =
 	      pp_new_symbol ((((yyGLRStackItem const *)
 			       yyvsp)[YYFILL ((1) -
-					      (1))].yystate.
-			      yysemantics.yysval.ptr), pp_nesting_level);
+					      (1))].yystate.yysemantics.
+			      yysval.ptr), pp_nesting_level);
 	  else
 	    result = g_identifier_symbol;
 
@@ -4885,8 +4859,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	  SYMBOL *result =
 	    pp_new_symbol ((((yyGLRStackItem const *)
 			     yyvsp)[YYFILL ((1) -
-					    (1))].yystate.yysemantics.
-			    yysval.ptr), pp_nesting_level);
+					    (1))].yystate.yysemantics.yysval.
+			    ptr), pp_nesting_level);
 	  ((*yyvalp).ptr) = result;
 
 	DBG_PRINT};
@@ -5109,8 +5083,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  ((*yyvalp).ptr) =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].yystate.
+	     yysemantics.yysval.ptr);
 	  g_indicator = false;
 
 	DBG_PRINT};
@@ -5123,8 +5097,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  ((*yyvalp).ptr) =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].yystate.
+	     yysemantics.yysval.ptr);
 	  g_indicator = false;
 
 	DBG_PRINT};
@@ -5137,8 +5111,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  ((*yyvalp).ptr) =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].yystate.
+	     yysemantics.yysval.ptr);
 	  g_indicator = false;
 
 	DBG_PRINT};
@@ -5170,11 +5144,11 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	  HOST_REF *href;
 	  HOST_VAR *hvar1, *hvar2;
 	  hvar1 =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (3))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (3))].yystate.
+	     yysemantics.yysval.ptr);
 	  hvar2 =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].yystate.
+	     yysemantics.yysval.ptr);
 
 	  esql_yy_pop_mode ();
 	  esql_yy_set_buf (g_varstring);
@@ -5209,8 +5183,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  ((*yyvalp).ptr) =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].yystate.
+	     yysemantics.yysval.ptr);
 
 	DBG_PRINT};
       }
@@ -5222,8 +5196,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  ((*yyvalp).ptr) =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].yystate.
+	     yysemantics.yysval.ptr);
 
 	DBG_PRINT};
       }
@@ -5236,8 +5210,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 
 	  HOST_VAR *hvar = NULL;
 	  HOST_VAR *hvar2 =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].yystate.
+	     yysemantics.yysval.ptr);
 	  if ((hvar = pp_ptr_deref (hvar2, 0)) == NULL)
 	    pp_free_host_var (hvar2);
 	  else
@@ -5256,8 +5230,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 
 	  HOST_VAR *hvar = NULL;
 	  HOST_VAR *hvar2 =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].yystate.
+	     yysemantics.yysval.ptr);
 	  if ((hvar = pp_ptr_deref (hvar2, 0)) == NULL)
 	    pp_free_host_var (hvar2);
 	  else
@@ -5276,8 +5250,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 
 	  HOST_VAR *hvar = NULL;
 	  HOST_VAR *hvar2 =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].yystate.
+	     yysemantics.yysval.ptr);
 	  if ((hvar = pp_ptr_deref (hvar2, 0)) == NULL)
 	    pp_free_host_var (hvar2);
 	  else
@@ -5296,8 +5270,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 
 	  HOST_VAR *hvar;
 	  HOST_VAR *href2 =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].yystate.
+	     yysemantics.yysval.ptr);
 
 	  if ((hvar = pp_addr_of (href2)) == NULL)
 	    pp_free_host_var (href2);
@@ -5326,8 +5300,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	      esql_yyverror (pp_get_msg (EX_ESQLM_SET, MSG_NOT_DECLARED),
 			     (((yyGLRStackItem const *)
 			       yyvsp)[YYFILL ((1) -
-					      (1))].yystate.
-			      yysemantics.yysval.ptr));
+					      (1))].yystate.yysemantics.
+			      yysval.ptr));
 	      href = NULL;
 	    }
 	  else
@@ -5345,8 +5319,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  HOST_VAR *href =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].yystate.
+	     yysemantics.yysval.ptr);
 	  if (href == NULL)
 	    href = g_href;
 	  ((*yyvalp).ptr) = href;
@@ -5361,8 +5335,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  HOST_VAR *href =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (3))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (3))].yystate.
+	     yysemantics.yysval.ptr);
 	  if (href)
 	    {
 	      vs_prepend (&href->expr, "(");
@@ -5380,8 +5354,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  HOST_VAR *href =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((5) - (5))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((5) - (5))].yystate.
+	     yysemantics.yysval.ptr);
 	  if (href == NULL)
 	    href = g_href;
 	  ((*yyvalp).ptr) = href;
@@ -5407,8 +5381,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  ((*yyvalp).ptr) =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].yystate.
+	     yysemantics.yysval.ptr);
 
 	DBG_PRINT};
       }
@@ -5420,8 +5394,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  ((*yyvalp).ptr) =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].yystate.
+	     yysemantics.yysval.ptr);
 
 	DBG_PRINT};
       }
@@ -5437,15 +5411,13 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	       pp_struct_deref (g_href,
 				(((yyGLRStackItem const *)
 				  yyvsp)[YYFILL ((3) -
-						 (3))].yystate.
-				 yysemantics.yysval.ptr), 0)) == NULL)
+						 (3))].yystate.yysemantics.
+				 yysval.ptr), 0)) == NULL)
 	    pp_free_host_var (g_href);
 	  else
 	    vs_sprintf (&href->expr, ".%s",
-			(((yyGLRStackItem const *)
-			  yyvsp)[YYFILL ((3) -
-					 (3))].yystate.yysemantics.yysval.
-			 ptr));
+			(((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].
+			 yystate.yysemantics.yysval.ptr));
 
 	  ((*yyvalp).ptr) = href;
 
@@ -5463,15 +5435,13 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	       pp_struct_deref (g_href,
 				(((yyGLRStackItem const *)
 				  yyvsp)[YYFILL ((3) -
-						 (3))].yystate.
-				 yysemantics.yysval.ptr), 1)) == NULL)
+						 (3))].yystate.yysemantics.
+				 yysval.ptr), 1)) == NULL)
 	    pp_free_host_var (g_href);
 	  else
 	    vs_sprintf (&href->expr, "->%s",
-			(((yyGLRStackItem const *)
-			  yyvsp)[YYFILL ((3) -
-					 (3))].yystate.yysemantics.yysval.
-			 ptr));
+			(((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].
+			 yystate.yysemantics.yysval.ptr));
 
 	  ((*yyvalp).ptr) = href;
 
@@ -5485,8 +5455,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  ((*yyvalp).ptr) =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].yystate.
+	     yysemantics.yysval.ptr);
 
 	DBG_PRINT};
       }
@@ -5502,15 +5472,13 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	       pp_struct_deref (g_href,
 				(((yyGLRStackItem const *)
 				  yyvsp)[YYFILL ((2) -
-						 (2))].yystate.
-				 yysemantics.yysval.ptr), 0)) == NULL)
+						 (2))].yystate.yysemantics.
+				 yysval.ptr), 0)) == NULL)
 	    pp_free_host_var (g_href);
 	  else
 	    vs_sprintf (&href->expr, ".%s",
-			(((yyGLRStackItem const *)
-			  yyvsp)[YYFILL ((2) -
-					 (2))].yystate.yysemantics.yysval.
-			 ptr));
+			(((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].
+			 yystate.yysemantics.yysval.ptr));
 
 	  ((*yyvalp).ptr) = href;
 
@@ -5528,15 +5496,13 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	       pp_struct_deref (g_href,
 				(((yyGLRStackItem const *)
 				  yyvsp)[YYFILL ((2) -
-						 (2))].yystate.
-				 yysemantics.yysval.ptr), 1)) == NULL)
+						 (2))].yystate.yysemantics.
+				 yysval.ptr), 1)) == NULL)
 	    pp_free_host_var (g_href);
 	  else
 	    vs_sprintf (&href->expr, "->%s",
-			(((yyGLRStackItem const *)
-			  yyvsp)[YYFILL ((2) -
-					 (2))].yystate.yysemantics.yysval.
-			 ptr));
+			(((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].
+			 yystate.yysemantics.yysval.ptr));
 
 	  ((*yyvalp).ptr) = href;
 
@@ -5562,8 +5528,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  ((*yyvalp).ptr) =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((3) - (3))].yystate.
+	     yysemantics.yysval.ptr);
 
 	DBG_PRINT};
       }
@@ -5772,12 +5738,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 		{
 		  repeat_option = (pt[0]->node_type == PT_INSERT
 				   && !pt[0]->info.insert.do_replace
-				   && pt[0]->info.insert.on_dup_key_update ==
+				   && pt[0]->info.insert.odku_assignments ==
 				   NULL
-				   && pt[0]->info.insert.value_clauses->
-				   info.node_list.list_type != PT_IS_SUBQUERY
-				   && pt[0]->info.insert.value_clauses->
-				   info.node_list.list->next == NULL);
+				   && pt[0]->info.insert.value_clauses->info.
+				   node_list.list_type != PT_IS_SUBQUERY
+				   && pt[0]->info.insert.value_clauses->info.
+				   node_list.list->next == NULL);
 		  esql_Translate_table.tr_static (text, length, repeat_option,
 						  HOST_N_REFS (inputs),
 						  HOST_REFS (inputs),
@@ -5839,8 +5805,8 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  HOST_REF *href =
-	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].
-	     yystate.yysemantics.yysval.ptr);
+	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((2) - (2))].yystate.
+	     yysemantics.yysval.ptr);
 	  if (pp_check_type
 	      (href, NEWSET (C_TYPE_SQLDA),
 	       pp_get_msg (EX_ESQLM_SET, MSG_PTR_TO_DESCR)))
@@ -6036,13 +6002,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       {
 	{
 
-	  ECHO_STR ((((yyGLRStackItem const *)
-		      yyvsp)[YYFILL ((1) -
-				     (1))].yystate.yysemantics.yysval.ptr),
+	  ECHO_STR ((((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
+		     yystate.yysemantics.yysval.ptr),
 		    strlen ((((yyGLRStackItem const *)
 			      yyvsp)[YYFILL ((1) -
-					     (1))].yystate.yysemantics.
-			     yysval.ptr)));
+					     (1))].yystate.yysemantics.yysval.
+			     ptr)));
 
 	DBG_PRINT};
       }
@@ -6067,13 +6032,13 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
     }
 
   return yyok;
-#undef yyerrok
-#undef YYABORT
-#undef YYACCEPT
-#undef YYERROR
-#undef YYBACKUP
-#undef yyclearin
-#undef YYRECOVERING
+# undef yyerrok
+# undef YYABORT
+# undef YYACCEPT
+# undef YYERROR
+# undef YYBACKUP
+# undef yyclearin
+# undef YYRECOVERING
 }
 
 
@@ -6324,7 +6289,7 @@ yyinitGLRStack (yyGLRStack * yystackp, size_t yysize)
 
 
 #if YYSTACKEXPANDABLE
-#define YYRELOC(YYFROMITEMS,YYTOITEMS,YYX,YYTYPE) \
+# define YYRELOC(YYFROMITEMS,YYTOITEMS,YYX,YYTYPE) \
   &((YYTOITEMS) - ((YYFROMITEMS) - (yyGLRStackItem*) (YYX)))->YYTYPE
 
 /** If STACK is expandable, extend it.  WARNING: Pointers into the
@@ -6550,9 +6515,9 @@ yydoAction (yyGLRStack * yystackp, size_t yyk, yyRuleNum yyrule,
 }
 
 #if !YYDEBUG
-#define YY_REDUCE_PRINT(Args)
+# define YY_REDUCE_PRINT(Args)
 #else
-#define YY_REDUCE_PRINT(Args)		\
+# define YY_REDUCE_PRINT(Args)		\
 do {					\
   if (yydebug)				\
     yy_reduce_print Args;		\
@@ -6584,8 +6549,8 @@ yy_reduce_print (yyGLRStack * yystackp, size_t yyk, yyRuleNum yyrule,
       yy_symbol_print (stderr, yyrhs[yyprhs[yyrule] + yyi],
 		       &(((yyGLRStackItem const *)
 			  yyvsp)[YYFILL ((yyi + 1) -
-					 (yynrhs))].yystate.
-			 yysemantics.yysval));
+					 (yynrhs))].yystate.yysemantics.
+			 yysval));
       fprintf (stderr, "\n");
     }
 }
@@ -7687,8 +7652,8 @@ yypdumpstack (yyGLRStack * yystackp)
 		   (long int) YYINDEX (yyp->yystate.yypred));
 	  if (!yyp->yystate.yyresolved)
 	    fprintf (stderr, ", firstVal: %ld",
-		     (long int) YYINDEX (yyp->yystate.
-					 yysemantics.yyfirstVal));
+		     (long int) YYINDEX (yyp->yystate.yysemantics.
+					 yyfirstVal));
 	}
       else
 	{
@@ -7730,7 +7695,6 @@ int errors = 0;
 varstring *current_buf;		/* remain PUBLIC for debugging ease */
 ECHO_FN echo_fn = &echo_stream;
 char g_delay[1024] = { 0, };
-
 bool g_indicator = false;
 varstring *g_varstring = NULL;
 varstring *g_subscript = NULL;

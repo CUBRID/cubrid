@@ -1119,7 +1119,7 @@ $ LOADDB
 1050 Cannot change attribute "%1$s". CUBRID cannot currently change the attribute's domain. The attribute has an index on it.
 1051 Cannot change attribute "%1$s". CUBRID cannot currently change the attribute to add a constraint. Existing attribute values may not check the constraint.
 1052 Attribute "%1$s" was not changed. CUBRID did not detect any effective changes in the attribute representation.
-1053 The Statements REPLACE INTO... and INSERT ... ON DUPLICATE KEY UPDATE are not allowed for partitioned classes or for classes that are part of an inheritance chain.
+1053 The statements REPLACE INTO... and INSERT ... ON DUPLICATE KEY UPDATE are not allowed for classes that are part of an inheritance chain.
 1054 The new value of an auto increment constraint should be greater than or equal to the current value.
 1055 The new value of an auto increment constraint should be lower than the maximum value.
 1056 To avoid ambiguity, the AUTO_INCREMENT table option requires the table to have exactly one AUTO_INCREMENT column and no seed/increment specification.

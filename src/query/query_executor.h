@@ -394,6 +394,7 @@ struct update_assignment
   int att_idx;			/* index in the class attributes array */
   DB_VALUE *constant;		/* constant to be assigned to an attribute or
 				 * NULL */
+  REGU_VARIABLE *regu_var;	/* regu variable for rhs in assignment */
 };
 
 /*update/delete class info structure */
@@ -427,23 +428,34 @@ struct update_proc_node
   int no_orderby_keys;		/* no of keys for ORDER_BY */
 };
 
+/*on duplicate key update info structure */
+typedef struct odku_info ODKU_INFO;
+struct odku_info
+{
+  PRED_EXPR *cons_pred;		/* constraint predicate */
+  int no_assigns;		/* number of assignments */
+  UPDATE_ASSIGNMENT *assignments;	/* assignments */
+  HEAP_CACHE_ATTRINFO *attr_info;	/* attr info */
+  int *attr_ids;		/* ID's of attributes (array) */
+};
+
 typedef struct insert_proc_node INSERT_PROC_NODE;
 struct insert_proc_node
 {
   OID class_oid;		/* OID of the class involved            */
   HFID class_hfid;		/* Heap file ID of the class            */
   int no_vals;			/* total number of attrs involved       */
+  int no_default_expr;		/* total number of attrs which require
+				 * a default value to be inserted       */
   int *att_id;			/* ID's of attributes (array)           */
   DB_VALUE **vals;		/* values (array)                       */
   PRED_EXPR *cons_pred;		/* constraint predicate                 */
+  ODKU_INFO *odku;		/* ON DUPLICATE KEY UPDATE assignments  */
   int has_uniques;		/* whether there are unique constraints */
   int wait_msecs;		/* lock timeout in milliseconds */
   int no_logging;		/* no logging */
   int release_lock;		/* release lock */
   int do_replace;		/* duplicate tuples should be replaced */
-  int dup_key_oid_var_index;	/* hostvariable index for the OID required by
-				 * ON DUPLICATE KEY UPDATE processing
-				 */
   int is_first_value;		/* Indicates whether the first value of VALUES
 				 * clause. */
   int needs_pruning;		/* not 0 if the class needs pruning */

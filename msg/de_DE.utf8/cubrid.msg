@@ -1119,7 +1119,7 @@ $ LOADDB
 1050 Attribut "%1$s" kann nicht geändert werden. CUBRID kann derzeit die Domain des Attributs nicht ändern. Das Attribut hat ein Index.
 1051 Attribut "%1$s" kann nicht geändert werden. CUBRID kann derzeit ein Attribut nicht ändern, um eine Einschränkung hinzufügen. Bestehende Attributwerte könnten die Einschränkung nicht respektieren.
 1052 Attribut "%1$s" wurde nicht geändert. CUBRID hat keine effektive Änderungen in der Attribut-Repräsentierung entdeckt.
-1053 Die Anweisungen REPLACE INTO... und INSERT ... ON DUPLICATE KEY UPDATE sind für partitionierte Klassen oder für Klassen, die Teil einer Vererbungskette sind, nicht erlaubt.
+1053 The statements REPLACE INTO... and INSERT ... ON DUPLICATE KEY UPDATE are not allowed for classes that are part of an inheritance chain.
 1054 Der neue Wert einer Auto-Inkrement Einschränkung sollte größer oder gleich mit dem aktuellen Wert sein.
 1055 Der neue Wert einer Auto-Inkrement Einschränkung sollte kleiner als der maximale Wert sein.
 1056 Um Mehrdeutigkeit zu vermeiden, die AUTO_INCREMENT TabellenOption erfordert genau eine AUTO_INCREMENT-Spalte in der Tabelle und keine Seed/Inkrement Spezifikation.

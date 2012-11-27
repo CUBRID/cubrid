@@ -262,6 +262,9 @@ extern void sbtree_find_unique (THREAD_ENTRY * thread_p, unsigned int rid,
 extern void srepl_btree_find_unique (THREAD_ENTRY * thread_p,
 				     unsigned int rid, char *request,
 				     int reqlen);
+extern void sbtree_find_multi_uniques (THREAD_ENTRY * thread_p,
+				       unsigned int rid, char *request,
+				       int reqlen);
 extern void sbtree_class_test_unique (THREAD_ENTRY * thread_p,
 				      unsigned int rid, char *request,
 				      int reqlen);

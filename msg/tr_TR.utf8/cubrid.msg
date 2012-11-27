@@ -1119,7 +1119,7 @@ $ LOADDB
 1050 "%1$s" özniteliği değiştirilemiyor. CUBRID özniteliğin etki alanı henüz değiştiremezsiniz.Özniteliği üzerinde bir dizin vardır.
 1051 "%1$s" özniteliği değiştirilemiyor. CUBRID kısıtlama eklemek için öznitelik henüz değiştiremezsiniz. Mevcut öznitelik değerleri kısıtlaması kontrol edilmeyebilir.
 1052 Öznitelik "%1$s" değişmedi. CUBRID did not detect any effective changes in the attribute representation.
-1053 İfadeler (REPLACE INTO)içinde değiştirin...ve takın (INSERT) ... YENİLENEN ANAHTAR GÜNCELLEMEDE bölümlendirilmiş sınıflar için veya bir kalıtım zincirinin parçası olan sınıfları için izin verilmez.
+1053 The statements REPLACE INTO... and INSERT ... ON DUPLICATE KEY UPDATE are not allowed for classes that are part of an inheritance chain.
 1054 Otomatik artış kısıtlama yeni değeri veya daha büyük mevcut değerine eşit olmalıdır.
 1055 Otomatik artış kısıtlama yeni değeri maksimum değerden daha düşük olmalıdır.
 1056 Karışıklığı önlemek için auto_increment tablosu seçeneğini tablo tam olarak bir tane AUTO_INCREMENT sütunu ve herhangi bir çekirdek/artırma özellikleri olması gerekir.

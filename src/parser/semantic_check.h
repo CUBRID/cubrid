@@ -79,4 +79,6 @@ extern bool pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node);
 extern bool pt_check_compatible_node_for_orderby (PARSER_CONTEXT * parser,
 						  PT_NODE * order,
 						  PT_NODE * column);
+extern PT_NODE *pt_check_odku_assignments (PARSER_CONTEXT * parser,
+					   PT_NODE * insert);
 #endif /* _SEMANTIC_CHECK_H_ */

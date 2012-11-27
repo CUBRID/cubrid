@@ -2589,12 +2589,52 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 
       fill_in_insert_default_function_arguments (parser, node);
 
+      /* Do not handle ON DUPLICATE KEY UPDATE yet, we need to resolve the
+       * other nodes first.
+       */
+      save = node->info.insert.odku_assignments;
+      node->info.insert.odku_assignments = NULL;
+
       parser_walk_leaves (parser, node, pt_bind_names, bind_arg,
 			  pt_bind_names_post, bind_arg);
 
       /* flag any "correlated" names as undefined. */
       parser_walk_tree (parser, node->info.insert.value_clauses,
 			pt_undef_names, node->info.insert.spec, NULL, NULL);
+
+      if (save != NULL)
+	{
+	  SCOPES extended_scope;
+	  PT_NODE *value_list =
+	    node->info.insert.value_clauses->info.node_list.list;
+	  extended_scope.next = NULL;
+
+	  /* restore ON DUPLICATE KEY UPDATE node */
+	  node->info.insert.odku_assignments = save;
+
+	  if (PT_IS_SELECT (value_list))
+	    {
+	      /* Some assignments may reference attributes from the select
+	       * query that need to be resolved too. Add the specs from
+	       * the select statement as a scope in the stack.
+	       */
+	      extended_scope.next = bind_arg->scopes->next;
+	      extended_scope.specs = value_list->info.query.q.select.from;
+	      scopestack.correlation_level = 0;
+	      scopestack.location = 0;
+	      bind_arg->scopes->next = &extended_scope;
+	    }
+
+	  parser_walk_tree (parser, node->info.insert.odku_assignments,
+			    pt_bind_names, bind_arg, pt_bind_names_post,
+			    bind_arg);
+
+	  if (PT_IS_SELECT (value_list))
+	    {
+	      /* restore original scopes */
+	      bind_arg->scopes->next = extended_scope.next;
+	    }
+	}
 
       if (!pt_has_error (parser))
 	{
@@ -3882,15 +3922,7 @@ pt_flat_spec_pre (PARSER_CONTEXT * parser,
       break;
     }
 
-  if (node->node_type == PT_INSERT)
-    {
-      /* default to unprintable exposed name */
-      if ((spec = node->info.insert.spec) && !spec->info.spec.range_var)
-	{
-	  spec->info.spec.range_var = pt_name (parser, "");
-	}
-    }
-  else if (node->node_type == PT_SPEC)
+  if (node->node_type == PT_SPEC)
     {
       /* don't let parser_walk_tree go to rest of list. List is handled here */
       *continue_walk = PT_LEAF_WALK;

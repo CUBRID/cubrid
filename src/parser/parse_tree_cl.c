@@ -312,6 +312,8 @@ static PT_NODE *pt_apply_value (PARSER_CONTEXT * parser, PT_NODE * p,
 				PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_apply_merge (PARSER_CONTEXT * parser, PT_NODE * p,
 				PT_NODE_FUNCTION g, void *arg);
+static PT_NODE *pt_apply_tuple_value (PARSER_CONTEXT * parser, PT_NODE * p,
+				      PT_NODE_FUNCTION g, void *arg);
 
 static PARSER_APPLY_NODE_FUNC pt_apply_func_array[PT_NODE_NUMBER];
 
@@ -403,6 +405,7 @@ static PT_NODE *pt_init_update_stats (PT_NODE * p);
 static PT_NODE *pt_init_update (PT_NODE * p);
 static PT_NODE *pt_init_value (PT_NODE * p);
 static PT_NODE *pt_init_merge (PT_NODE * p);
+static PT_NODE *pt_init_tuple_value (PT_NODE * p);
 
 static PARSER_INIT_NODE_FUNC pt_init_func_array[PT_NODE_NUMBER];
 
@@ -573,6 +576,8 @@ static PARSER_VARCHAR *pt_print_merge (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_index_columns (PARSER_CONTEXT * parser,
 					       PT_NODE * p);
 
+static PARSER_VARCHAR *pt_print_tuple_value (PARSER_CONTEXT * parser,
+					     PT_NODE * p);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static PT_NODE *pt_apply_use (PARSER_CONTEXT * parser, PT_NODE * p,
 			      PT_NODE_FUNCTION g, void *arg);
@@ -4691,6 +4696,7 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_DROP_SESSION_VARIABLES] =
     pt_apply_drop_session_variables;
   pt_apply_func_array[PT_MERGE] = pt_apply_merge;
+  pt_apply_func_array[PT_TUPLE_VALUE] = pt_apply_tuple_value;
 
   pt_apply_f = pt_apply_func_array;
 }
@@ -4800,6 +4806,7 @@ pt_init_init_f (void)
   pt_init_func_array[PT_DROP_SESSION_VARIABLES] =
     pt_init_drop_session_variables;
   pt_init_func_array[PT_MERGE] = pt_init_merge;
+  pt_init_func_array[PT_TUPLE_VALUE] = pt_init_tuple_value;
 
   pt_init_f = pt_init_func_array;
 }
@@ -4910,6 +4917,7 @@ pt_init_print_f (void)
   pt_print_func_array[PT_DROP_SESSION_VARIABLES] =
     pt_print_drop_session_variables;
   pt_print_func_array[PT_MERGE] = pt_print_merge;
+  pt_print_func_array[PT_TUPLE_VALUE] = pt_print_tuple_value;
 
   pt_print_f = pt_print_func_array;
 }
@@ -11931,8 +11939,8 @@ pt_apply_insert (PARSER_CONTEXT * parser, PT_NODE * p,
     g (parser, p->info.insert.internal_stmts, arg);
   p->info.insert.waitsecs_hint =
     g (parser, p->info.insert.waitsecs_hint, arg);
-  p->info.insert.on_dup_key_update =
-    g (parser, p->info.insert.on_dup_key_update, arg);
+  p->info.insert.odku_assignments =
+    g (parser, p->info.insert.odku_assignments, arg);
   return p;
 }
 
@@ -11951,7 +11959,7 @@ pt_init_insert (PT_NODE * p)
   p->info.insert.is_subinsert = (PT_MISC_TYPE) 0;
   p->info.insert.hint = PT_HINT_NONE;
   p->info.insert.waitsecs_hint = NULL;
-  p->info.insert.on_dup_key_update = NULL;
+  p->info.insert.odku_assignments = NULL;
   p->info.insert.do_replace = false;
   return p;
 }
@@ -12088,12 +12096,9 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
     }
 
-  if (p->info.insert.on_dup_key_update)
+  if (p->info.insert.odku_assignments)
     {
-      PT_NODE *upd = p->info.insert.on_dup_key_update;
-
-      assert (upd->node_type == PT_UPDATE);
-      r1 = pt_print_bytes_l (parser, upd->info.update.assignment);
+      r1 = pt_print_bytes_l (parser, p->info.insert.odku_assignments);
       b = pt_append_nulstring (parser, b, " on duplicate key update ");
       b = pt_append_varchar (parser, b, r1);
     }
@@ -16170,6 +16175,55 @@ pt_print_merge (PARSER_CONTEXT * parser, PT_NODE * p)
     }
 
   return q;
+}
+
+/*
+ * pt_apply_tuple_value ()
+ * return : 
+ * parser (in) :
+ * p (in) :
+ * g (in) :
+ * arg (in) :
+ */
+static PT_NODE *
+pt_apply_tuple_value (PARSER_CONTEXT * parser, PT_NODE * p,
+		      PT_NODE_FUNCTION g, void *arg)
+{
+  p->info.tuple_value.name = g (parser, p->info.tuple_value.name, arg);
+  return p;
+}
+
+/*
+ * pt_init_tuple_value () 
+ * return : 
+ * p (in) :
+ */
+static PT_NODE *
+pt_init_tuple_value (PT_NODE * p)
+{
+  p->info.tuple_value.name = NULL;
+  p->info.tuple_value.cursor_p = NULL;
+  p->info.tuple_value.index = -1;
+
+  return p;
+}
+
+/*
+ * pt_print_tuple_value ()
+ * return : 
+ * parser (in) :
+ * p (in) :
+ */
+static PARSER_VARCHAR *
+pt_print_tuple_value (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  if (p->info.tuple_value.name == NULL)
+    {
+      assert (false);
+      return pt_append_bytes (parser, NULL, "unknown", 0);
+    }
+
+  return pt_print_name (parser, p->info.tuple_value.name);
 }
 
 /*

@@ -498,6 +498,31 @@ pt_entity (PARSER_CONTEXT * parser, const PT_NODE * entity_name,
 }
 
 /*
+ * pt_tuple_value () - create a tuple_value node with the specified name and
+ *		       index in a query result
+ * return : new node or NULL
+ * parser (in)	  : parser context
+ * name (in)	  : name node
+ * cursor_p (in)  : cursor for which to fetch tuple value
+ * index (in)	  : index in cursor column list
+ */
+PT_NODE *
+pt_tuple_value (PARSER_CONTEXT * parser, PT_NODE * name, CURSOR_ID * cursor_p,
+		int index)
+{
+  PT_NODE *node;
+  node = parser_new_node (parser, PT_TUPLE_VALUE);
+  if (node)
+    {
+      parser_init_node (node);
+      node->info.tuple_value.name = name;
+      node->info.tuple_value.index = index;
+      node->info.tuple_value.cursor_p = cursor_p;
+    }
+  return node;
+}
+
+/*
  * pt_datatypes_match () -
  *   return:  1 if the two data types are not virtual objects or the same
  * 	      class of virtual object.  0 otherwise.
@@ -5275,6 +5300,29 @@ regu_upddel_class_info_array_alloc (int size)
 }
 
 /*
+ * regu_odku_info_alloc () - memory allocation for ODKU_INFO objects
+ * return : allocated object or NULL
+ */
+ODKU_INFO *
+regu_odku_info_alloc (void)
+{
+  ODKU_INFO *ptr;
+
+  ptr = (ODKU_INFO *) pt_alloc_packing_buf (sizeof (ODKU_INFO));
+  if (ptr == NULL)
+    {
+      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
+      return NULL;
+    }
+  ptr->assignments = NULL;
+  ptr->attr_ids = NULL;
+  ptr->cons_pred = NULL;
+  ptr->no_assigns = 0;
+  ptr->attr_info = NULL;
+  return ptr;
+}
+
+/*
  * regu_update_assignment_init () -
  *   return:
  *   ptr(in)    : pointer to a UPDATE_ASSIGNMENT
@@ -5287,6 +5335,7 @@ regu_update_assignment_init (UPDATE_ASSIGNMENT * ptr)
   ptr->att_idx = -1;
   ptr->cls_idx = -1;
   ptr->constant = NULL;
+  ptr->regu_var = NULL;
 }
 
 /*
@@ -5838,20 +5887,20 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit,
     {
       lhs = parser_new_node (parser, PT_FUNCTION);
       if (lhs != NULL)
-        {
-          lhs->type_enum = PT_TYPE_INTEGER;
-          lhs->info.function.function_type = PT_GROUPBY_NUM;
-          lhs->info.function.arg_list = NULL;
-          lhs->info.function.all_or_distinct = PT_ALL;
-        }
+	{
+	  lhs->type_enum = PT_TYPE_INTEGER;
+	  lhs->info.function.function_type = PT_GROUPBY_NUM;
+	  lhs->info.function.arg_list = NULL;
+	  lhs->info.function.all_or_distinct = PT_ALL;
+	}
     }
   else
     {
       lhs = parser_new_node (parser, PT_EXPR);
       if (lhs != NULL)
-        {
-          lhs->info.expr.op = num_op;
-        }
+	{
+	  lhs->info.expr.op = num_op;
+	}
     }
 
   if (lhs == NULL)
@@ -9838,11 +9887,11 @@ pt_mark_spec_list_for_delete (PARSER_CONTEXT * parser,
 	}
 
       if (from->info.spec.flag & PT_SPEC_FLAG_IS_PARTITION)
-        {
-          PT_ERRORm (parser, from, MSGCAT_SET_PARSER_SEMANTIC,
-                     MSGCAT_SEMANTIC_INVALID_PARTITION_REQUEST);
-          return;
-        }
+	{
+	  PT_ERRORm (parser, from, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_INVALID_PARTITION_REQUEST);
+	  return;
+	}
 
       from->info.spec.flag |= PT_SPEC_FLAG_DELETE;
 
@@ -9886,11 +9935,11 @@ pt_mark_spec_list_for_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 
 	  if (node_tmp->info.spec.flag & PT_SPEC_FLAG_IS_PARTITION)
-            {
-              PT_ERRORm (parser, node_tmp, MSGCAT_SET_PARSER_SEMANTIC,
-                         MSGCAT_SEMANTIC_INVALID_PARTITION_REQUEST);
-              return;
-            }
+	    {
+	      PT_ERRORm (parser, node_tmp, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_INVALID_PARTITION_REQUEST);
+	      return;
+	    }
 
 	  node_tmp->info.spec.flag |= PT_SPEC_FLAG_UPDATE;
 	}
@@ -9906,12 +9955,12 @@ pt_mark_spec_list_for_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  return;
 		}
 
-              if (node_tmp->info.spec.flag & PT_SPEC_FLAG_IS_PARTITION)
-                {
-                  PT_ERRORm (parser, node_tmp, MSGCAT_SET_PARSER_SEMANTIC,
-                             MSGCAT_SEMANTIC_INVALID_PARTITION_REQUEST);
-                  return;
-                }
+	      if (node_tmp->info.spec.flag & PT_SPEC_FLAG_IS_PARTITION)
+		{
+		  PT_ERRORm (parser, node_tmp, MSGCAT_SET_PARSER_SEMANTIC,
+			     MSGCAT_SEMANTIC_INVALID_PARTITION_REQUEST);
+		  return;
+		}
 
 	      node_tmp->info.spec.flag |= PT_SPEC_FLAG_UPDATE;
 
@@ -10036,4 +10085,61 @@ pt_check_grammar_charset_collation (PARSER_CONTEXT * parser,
     }
 
   return NO_ERROR;
+}
+
+/*
+ * pt_make_tuple_value_reference () - create a PT_TUPLE_VALUE node for a
+ *				      SELECT list of a SELECT statement
+ * return : new node or NULL
+ * parser (in)	    : parser context
+ * name (in)	    : name node
+ * select_list (in) : select list of a query
+ * cursor_p (in)    : cursor for the query
+ */
+PT_NODE *
+pt_make_tuple_value_reference (PARSER_CONTEXT * parser, PT_NODE * name,
+			       PT_NODE * select_list, CURSOR_ID * cursor_p)
+{
+  int index = 0;
+  PT_NODE *node = NULL, *new_col = NULL, *last_node = NULL, *next = NULL;
+
+  assert_release (select_list != NULL);
+
+  for (node = select_list, index = 0; node != NULL;
+       node = node->next, index++)
+    {
+      if (pt_check_path_eq (parser, node, name) == 0)
+	{
+	  /* found it, just make a tuple_value reference to it */
+	  next = name->next;
+	  name->next = NULL;
+	  name = pt_tuple_value (parser, name, cursor_p, index);
+	  name->next = next;
+	  return name;
+	}
+      last_node = node;
+    }
+
+  next = name->next;
+  name->next = NULL;
+
+  /* add it to the end of the select_list */
+  new_col = parser_copy_tree (parser, name);
+  if (new_col == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+  last_node->next = new_col;
+
+  /* change name to tuple value */
+  name = pt_tuple_value (parser, name, cursor_p, index);
+  if (name == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+  name->next = next;
+
+  return name;
 }

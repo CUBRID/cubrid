@@ -128,6 +128,7 @@ static int xts_save_upddel_class_info_array (const UPDDEL_CLASS_INFO *
 					     classes, int nelements);
 static int xts_save_update_assignment_array (const UPDATE_ASSIGNMENT *
 					     assigns, int nelements);
+static int xts_save_odku_info (const ODKU_INFO * odku_info);
 
 static char *xts_process_xasl_node (char *ptr, const XASL_NODE * xasl);
 static char *xts_process_filter_pred_node (char *ptr,
@@ -245,6 +246,7 @@ static int xts_sizeof_mergelist_proc (const MERGELIST_PROC_NODE * ptr);
 static int xts_sizeof_ls_merge_info (const QFILE_LIST_MERGE_INFO * ptr);
 static int xts_sizeof_upddel_class_info (const UPDDEL_CLASS_INFO * upd_cls);
 static int xts_sizeof_update_assignment (const UPDATE_ASSIGNMENT * assign);
+static int xts_sizeof_odku_info (const ODKU_INFO * odku_info);
 static int xts_sizeof_update_proc (const UPDATE_PROC_NODE * ptr);
 static int xts_sizeof_delete_proc (const DELETE_PROC_NODE * ptr);
 static int xts_sizeof_insert_proc (const INSERT_PROC_NODE * ptr);
@@ -3585,6 +3587,21 @@ xts_save_update_assignment (char *ptr, const UPDATE_ASSIGNMENT * assign)
     }
   ptr = or_pack_int (ptr, offset);
 
+  /* regu_var */
+  if (assign->regu_var)
+    {
+      offset = xts_save_regu_variable (assign->regu_var);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+    }
+  else
+    {
+      offset = 0;
+    }
+  ptr = or_pack_int (ptr, offset);
+
   return ptr;
 }
 
@@ -3630,6 +3647,97 @@ end:
       free_and_init (buf);
     }
 
+  return offset;
+}
+
+static int
+xts_save_odku_info (const ODKU_INFO * odku_info)
+{
+  int offset, return_offset;
+  int size;
+  char *ptr = NULL, *buf = NULL;
+  int error = NO_ERROR;
+
+  if (odku_info == NULL)
+    {
+      return 0;
+    }
+
+  size = xts_sizeof_odku_info (odku_info);
+
+  return_offset = xts_reserve_location_in_stream (size);
+  if (return_offset == ER_FAILED)
+    {
+      return ER_FAILED;
+    }
+
+  ptr = buf = (char *) malloc (size);
+  if (!buf)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      size);
+      return ER_FAILED;
+    }
+
+  /* no_assigns */
+  ptr = or_pack_int (ptr, odku_info->no_assigns);
+
+  /* attr_ids */
+  offset = xts_save_int_array (odku_info->attr_ids, odku_info->no_assigns);
+  if (offset == ER_FAILED)
+    {
+      goto end;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  /* assignments */
+  offset =
+    xts_save_update_assignment_array (odku_info->assignments,
+				      odku_info->no_assigns);
+  if (offset == ER_FAILED)
+    {
+      goto end;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  /* constraint predicate */
+  if (odku_info->cons_pred)
+    {
+      offset = xts_save_pred_expr (odku_info->cons_pred);
+      if (offset == ER_FAILED)
+	{
+	  goto end;
+	}
+    }
+  else
+    {
+      offset = 0;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  /* heap cache attr info */
+  if (odku_info->attr_info)
+    {
+      offset = xts_save_cache_attrinfo (odku_info->attr_info);
+      if (offset == ER_FAILED)
+	{
+	  goto end;
+	}
+    }
+  else
+    {
+      offset = 0;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  memcpy (&xts_Stream_buffer[return_offset], buf, size);
+  offset = return_offset;
+
+end:
+  if (buf)
+    {
+      free_and_init (buf);
+    }
   return offset;
 }
 
@@ -3719,6 +3827,8 @@ xts_process_insert_proc (char *ptr, const INSERT_PROC_NODE * insert_info)
 
   ptr = or_pack_int (ptr, insert_info->no_vals);
 
+  ptr = or_pack_int (ptr, insert_info->no_default_expr);
+
   offset = xts_save_int_array (insert_info->att_id, insert_info->no_vals);
   if (offset == ER_FAILED)
     {
@@ -3743,11 +3853,16 @@ xts_process_insert_proc (char *ptr, const INSERT_PROC_NODE * insert_info)
 
   ptr = or_pack_int (ptr, insert_info->do_replace);
 
-  ptr = or_pack_int (ptr, insert_info->dup_key_oid_var_index);
-
   ptr = or_pack_int (ptr, insert_info->is_first_value);
 
   ptr = or_pack_int (ptr, insert_info->needs_pruning);
+
+  offset = xts_save_odku_info (insert_info->odku);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
 
   return ptr;
 }
@@ -5498,7 +5613,22 @@ xts_sizeof_update_assignment (const UPDATE_ASSIGNMENT * assign)
 
   size += OR_INT_SIZE +		/* cls_idx */
     OR_INT_SIZE +		/* att_idx */
-    PTR_SIZE;			/* constant */
+    PTR_SIZE +			/* constant */
+    PTR_SIZE;			/* regu_var */
+
+  return size;
+}
+
+static int
+xts_sizeof_odku_info (const ODKU_INFO * odku_info)
+{
+  int size = 0;
+
+  size += OR_INT_SIZE +		/* no_assigns */
+    PTR_SIZE +			/* attr_ids */
+    PTR_SIZE +			/* assignments */
+    PTR_SIZE +			/* cons_pred */
+    PTR_SIZE;			/* attr_info */
 
   return size;
 }
@@ -5517,7 +5647,7 @@ xts_sizeof_update_proc (const UPDATE_PROC_NODE * update_info)
     PTR_SIZE +			/* classes */
     PTR_SIZE +			/* cons_pred */
     OR_INT_SIZE +		/* no_assigns */
-    PTR_SIZE +			/* assigns */
+    PTR_SIZE +			/* assignments */
     OR_INT_SIZE +		/* wait_msecs */
     OR_INT_SIZE +		/* no_logging */
     OR_INT_SIZE +		/* release_lock */
@@ -5558,14 +5688,15 @@ xts_sizeof_insert_proc (const INSERT_PROC_NODE * insert_info)
   size += OR_OID_SIZE +		/* class_oid */
     OR_HFID_SIZE +		/* class_hfid */
     OR_INT_SIZE +		/* no_vals */
+    OR_INT_SIZE +		/* no_default_expr */
     PTR_SIZE +			/* array pointer: att_id */
     PTR_SIZE +			/* constraint predicate: cons_pred */
+    PTR_SIZE +			/* odku */
     OR_INT_SIZE +		/* has_uniques */
     OR_INT_SIZE +		/* wait_msecs */
     OR_INT_SIZE +		/* no_logging */
     OR_INT_SIZE +		/* release_lock */
     OR_INT_SIZE +		/* do_replace */
-    OR_INT_SIZE +		/* dup_key_oid_var_index */
     OR_INT_SIZE;		/* needs pruning */
 
   return size;

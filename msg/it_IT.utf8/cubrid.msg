@@ -1119,7 +1119,7 @@ $ LOADDB
 1050 Impossibile modificare attributo "%1$s". CUBRID non può attualmente cambiare il dominio dell'attributo. L'attributo ha un index su esso.
 1051 Impossibile modificare attributo "%1$s". CUBRID non può attualmente modificare l'attributo per aggiungere un vincolo. Valori degli attributi esistenti non possono soddisfare il vincolo.
 1052 Attributo "%1$s" non è stato modificato. CUBRID non ha riscontrato cambiamenti effettivi nella rappresentazione dell'attributo.
-1053 L'instruzioni REPLACE INTO ... e INSERT ... ON DUPLICATE KEY UPDATE non sono ammessi per le classi partizionati o per le classi che fanno parte di una catena di ereditarietà.
+1053 The statements REPLACE INTO... and INSERT ... ON DUPLICATE KEY UPDATE are not allowed for classes that are part of an inheritance chain.
 1054 Il nuovo valore di un vincolo di incremento automatico deve essere maggiore o uguale al valore corrente.
 1055 Il nuovo valore di un vincolo di incremento automatico deve essere inferiore al valore massimo.
 1056 Per evitare ambiguità, l'opzione AUTO_INCREMENT di tabella richiede che la tabella ha esattamente una colonna AUTO_INCREMENT e nessun specificazione per seed/increment.

@@ -2940,6 +2940,127 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid,
 }
 
 /*
+ * xbtree_find_multi_uniques () - search a list of unique indexes for
+ *				  specified values
+ * return : search return code
+ * thread_p (in)  : handler thread
+ * class_oid (in) : class oid
+ * needs_pruning (in) : perform pruning before searching
+ * btids (in)	  : indexes to search
+ * values (in)	  : values to search for
+ * count (in)	  : number of indexes
+ * op_type (in)	  : operation for which this search is performed
+ * oids (in/out)  : found OIDs
+ * oids_count (in): number of OIDs found
+ *
+ * Note: This function assumes that the indexes it searches are unique
+ *  indexes. If the operation is S_UPDATE, this function stops at the first
+ *  oid it finds in order to comply with the behavior of ON DUPLICATE KEY
+ *  UPDATE statement.
+ */
+BTREE_SEARCH
+xbtree_find_multi_uniques (THREAD_ENTRY * thread_p, OID * class_oid,
+			   int needs_pruning, BTID * btids, DB_VALUE * values,
+			   int count, SCAN_OPERATION_TYPE op_type,
+			   OID ** oids, int *oids_count)
+{
+  BTREE_SEARCH result = BTREE_KEY_FOUND;
+  OID *found_oids = NULL;
+  int i, idx, error = NO_ERROR;
+  bool is_at_least_one = false;
+  BTID pruned_btid;
+  OID pruned_class_oid;
+  HFID pruned_hfid;
+  PRUNING_CONTEXT context;
+  bool is_global_index = false;
+
+  partition_init_pruning_context (&context);
+
+  found_oids = (OID *) db_private_alloc (thread_p, count * sizeof (OID));
+  if (found_oids == NULL)
+    {
+      return BTREE_ERROR_OCCURRED;
+    }
+
+  if (needs_pruning)
+    {
+      error = partition_load_pruning_context (thread_p, class_oid, &context);
+      if (error != NO_ERROR)
+	{
+	  result = BTREE_ERROR_OCCURRED;
+	  goto error_return;
+	}
+    }
+
+  idx = 0;
+  for (i = 0; i < count; i++)
+    {
+      is_global_index = false;
+      BTID_COPY (&pruned_btid, &btids[i]);
+      COPY_OID (&pruned_class_oid, class_oid);
+      if (needs_pruning)
+	{
+	  /* At this point, there's no way of knowing if btids[i] refers a
+	   * global unique index or a local one. Perform pruning and use the
+	   * partition BTID, even if it is the same one as the BTID we
+	   * received
+	   */
+	  error = partition_prune_unique_btid (&context, &values[i],
+					       &pruned_class_oid,
+					       &pruned_hfid, &pruned_btid,
+					       &is_global_index);
+	  if (error != NO_ERROR)
+	    {
+	      result = BTREE_ERROR_OCCURRED;
+	      goto error_return;
+	    }
+	}
+
+      result = xbtree_find_unique (thread_p, &pruned_btid, 0, op_type,
+				   &values[i], &pruned_class_oid,
+				   &found_oids[idx], is_global_index);
+      if (result == BTREE_KEY_FOUND)
+	{
+	  is_at_least_one = true;
+	  idx++;
+	  if (op_type == S_UPDATE)
+	    {
+	      break;
+	    }
+	}
+      else if (result == BTREE_ERROR_OCCURRED)
+	{
+	  goto error_return;
+	}
+    }
+  if (is_at_least_one)
+    {
+      *oids_count = idx;
+      *oids = found_oids;
+      result = BTREE_KEY_FOUND;
+    }
+  else
+    {
+      result = BTREE_KEY_NOTFOUND;
+      db_private_free (thread_p, found_oids);
+      *oids = NULL;
+      *oids_count = 0;
+    }
+  partition_clear_pruning_context (&context);
+  return result;
+
+error_return:
+  if (found_oids != NULL)
+    {
+      db_private_free (thread_p, found_oids);
+    }
+  *oids_count = 0;
+  *oids = NULL;
+  partition_clear_pruning_context (&context);
+  return BTREE_ERROR_OCCURRED;
+}
+
+/*
  * btree_find_foreign_key () -
  *   return:
  *   btid(in):

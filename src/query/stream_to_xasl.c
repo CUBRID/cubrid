@@ -156,6 +156,7 @@ static UPDATE_ASSIGNMENT *stx_restore_update_assignment_array (THREAD_ENTRY
 							       char *ptr,
 							       int
 							       no_assigns);
+static ODKU_INFO *stx_restore_odku_info (THREAD_ENTRY * thread_p, char *ptr);
 static PRED_EXPR *stx_restore_pred_expr (THREAD_ENTRY * thread_p, char *ptr);
 static REGU_VARIABLE *stx_restore_regu_variable (THREAD_ENTRY * thread_p,
 						 char *ptr);
@@ -3475,6 +3476,23 @@ stx_build_update_assignment (THREAD_ENTRY * thread_p, char *ptr,
 			      &xasl_unpack_info->packed_xasl[offset]);
     }
 
+  /* regu_var */
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      assign->regu_var = NULL;
+    }
+  else
+    {
+      assign->regu_var =
+	stx_restore_regu_variable (thread_p,
+				   &xasl_unpack_info->packed_xasl[offset]);
+      if (assign->regu_var == NULL)
+	{
+	  return NULL;
+	}
+    }
+
   return ptr;
 }
 
@@ -3506,6 +3524,98 @@ stx_restore_update_assignment_array (THREAD_ENTRY * thread_p, char *ptr,
     }
 
   return assigns;
+}
+
+static ODKU_INFO *
+stx_restore_odku_info (THREAD_ENTRY * thread_p, char *ptr)
+{
+  ODKU_INFO *odku_info = NULL;
+  int offset;
+
+  XASL_UNPACK_INFO *xasl_unpack_info =
+    stx_get_xasl_unpack_info_ptr (thread_p);
+
+  odku_info = (ODKU_INFO *) stx_alloc_struct (thread_p, sizeof (ODKU_INFO));
+  if (odku_info == NULL)
+    {
+      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+      return NULL;
+    }
+
+  /* no_assigns */
+  ptr = or_unpack_int (ptr, &odku_info->no_assigns);
+
+  /* attr_ids */
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      odku_info->attr_ids = NULL;
+    }
+  else
+    {
+      odku_info->attr_ids =
+	stx_restore_int_array (thread_p,
+			       &xasl_unpack_info->packed_xasl[offset],
+			       odku_info->no_assigns);
+      if (odku_info->attr_ids == NULL)
+	{
+	  return NULL;
+	}
+    }
+
+  /* assignments */
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      odku_info->assignments = NULL;
+    }
+  else
+    {
+      odku_info->assignments =
+	stx_restore_update_assignment_array (thread_p, &xasl_unpack_info->
+					     packed_xasl[offset],
+					     odku_info->no_assigns);
+      if (odku_info->assignments == NULL)
+	{
+	  return NULL;
+	}
+    }
+
+  /* constraint predicate */
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      odku_info->cons_pred = NULL;
+    }
+  else
+    {
+      odku_info->cons_pred =
+	stx_restore_pred_expr (thread_p,
+			       &xasl_unpack_info->packed_xasl[offset]);
+      if (odku_info->cons_pred == NULL)
+	{
+	  return NULL;
+	}
+    }
+
+  /* cache attr info */
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      odku_info->attr_info = NULL;
+    }
+  else
+    {
+      odku_info->attr_info =
+	stx_restore_cache_attrinfo (thread_p,
+				    &xasl_unpack_info->packed_xasl[offset]);
+      if (odku_info->attr_info == NULL)
+	{
+	  return NULL;
+	}
+    }
+
+  return odku_info;
 }
 
 static char *
@@ -3637,6 +3747,8 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr,
 
   ptr = or_unpack_int (ptr, &insert_info->no_vals);
 
+  ptr = or_unpack_int (ptr, &insert_info->no_default_expr);
+
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0 || insert_info->no_vals == 0)
     {
@@ -3691,9 +3803,24 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr,
   ptr = or_unpack_int (ptr, &insert_info->no_logging);
   ptr = or_unpack_int (ptr, &insert_info->release_lock);
   ptr = or_unpack_int (ptr, &insert_info->do_replace);
-  ptr = or_unpack_int (ptr, &insert_info->dup_key_oid_var_index);
   ptr = or_unpack_int (ptr, &insert_info->is_first_value);
   ptr = or_unpack_int (ptr, &insert_info->needs_pruning);
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      insert_info->odku = NULL;
+    }
+  else
+    {
+      insert_info->odku =
+	stx_restore_odku_info (thread_p,
+			       &xasl_unpack_info->packed_xasl[offset]);
+      if (insert_info->odku == NULL)
+	{
+	  return NULL;
+	}
+    }
 
   return ptr;
 

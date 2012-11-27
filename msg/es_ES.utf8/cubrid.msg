@@ -1119,7 +1119,7 @@ $ LOADDB
 1050 No se puede cambiar atributo "%1$s". CUBRID no puede actualmente cambiar el dominio del atributo. El atributo tiene adjuntado un indice.
 1051 No se puede cambiar atributo "%1$s". CUBRID no puede actualmente cambiar el atributo que agregue una restriccion. Valores existentes del atributo pueden no checar la restriccion.
 1052 Atributo "%1$s" no ha sido cambiado. CUBRID no ha detectado ningun cambio efectivo en la representacion del atributo.
-1053 Las declaracions REPLACE INTO... y INSERT... ON DUPLICATE KEY UPDATE no son permitidas para clase particionadas o para clases que son partes de una cadena de herencia.
+1053 The statements REPLACE INTO... and INSERT ... ON DUPLICATE KEY UPDATE are not allowed for classes that are part of an inheritance chain.
 1054 El nuevo valor de una restriccion de incremento automatico tendria que ser superior o igual al valor actual.
 1055 El nuevo valor de una restriccion de incremento automatico tendria que ser inferior al valor maximo.
 1056 Para evitar ambigüedad, la opcion de la tabla AUTO_INCREMENT requiere que la tabla tenga exactamente una columna AUTO_INCREMENT y ninguna especificacion seed/increment.

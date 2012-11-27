@@ -1119,7 +1119,7 @@ $ LOADDB
 1050 アトリビュート「%1$s」が変更できません。アトリビュートのドメインが変更できません。アトリビュートがインデックスを持っています。
 1051 アトリビュート「%1$s」が変更できません。制約条件を追加するためにアトリビュートを変えるのは許可しません。存在するアトリビュートバリューは制約条件を検査しない恐れがあります。
 1052 アトリビュート「%1$s」が変更できませんでした。アトリビュート表現で正しい変更が見つかりません。
-1053 「REPLACE INTO... and INSERT ... ON DUPLICATE KEY UPDATE」ステートメントはパーティショニングクラスや相続関係を含めるクラスをサポートしません。
+1053 The statements REPLACE INTO... and INSERT ... ON DUPLICATE KEY UPDATE are not allowed for classes that are part of an inheritance chain.
 1054 AUTO INCREMENT制約条件の新しいバリューは現在より大きいか同じバリューである必要があります。
 1055 AUTO INCREMENT制約条件の新しいバリューは最大数より小さい必要があります。
 1056 曖昧さをさけるためにテーブルは一つのAUTO_INCREMENTカラムしか持てないし、(seed, increment)部分があってはいけません。

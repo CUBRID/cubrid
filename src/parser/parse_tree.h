@@ -788,6 +788,7 @@ enum pt_node_type
   PT_NODE_LIST,
   PT_TABLE_OPTION,
   PT_ATTR_ORDERING,
+  PT_TUPLE_VALUE,
   PT_NODE_NUMBER,		/* This is the number of node types */
   PT_LAST_NODE_NUMBER = PT_NODE_NUMBER
 };
@@ -1453,6 +1454,7 @@ typedef struct semantic_chk_info SEMANTIC_CHK_INFO;
 typedef struct parser_hint PT_HINT;
 typedef struct pt_set_names_info PT_SET_NAMES_INFO;
 
+typedef struct pt_tuple_value_info PT_TUPLE_VALUE_INFO;
 
 typedef PT_NODE *(*PT_NODE_FUNCTION) (PARSER_CONTEXT * p, PT_NODE * tree,
 				      void *arg);
@@ -2057,7 +2059,7 @@ struct pt_insert_info
   PT_NODE *internal_stmts;	/* internally created statements to handle TEXT */
   PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
   PT_HINT_ENUM hint;		/* hint flag */
-  PT_NODE *on_dup_key_update;	/* ON DUPLICATE KEY UPDATE assignments */
+  PT_NODE *odku_assignments;	/* ON DUPLICATE KEY UPDATE assignments */
   bool do_replace;		/* REPLACE statement was given */
   PT_NODE *insert_mode;		/* insert execution mode */
 };
@@ -2699,6 +2701,15 @@ struct pt_check_option_info
   PT_NODE *expr;		/* condition to check */
 };
 
+/* info structure for a node which can be evaluated during constant folding
+ * as a value of a tuple from a cursor */
+struct pt_tuple_value_info
+{
+  PT_NODE *name;		/* name alias in the original query */
+  CURSOR_ID *cursor_p;		/* cursor from which the value can be read */
+  int index;			/* index of the value in cursor */
+};
+
 /* Info field of the basic NODE
   If 'xyz' is the name of the field, then the structure type should be
   struct PT_XYZ_INFO xyz;
@@ -2784,6 +2795,7 @@ union pt_statement_info
   PT_TRIGGER_ACTION_INFO trigger_action;
   PT_TRIGGER_SPEC_LIST_INFO trigger_spec_list;
   PT_TRUNCATE_INFO truncate;
+  PT_TUPLE_VALUE_INFO tuple_value;
   PT_UPDATE_INFO update;
   PT_UPDATE_STATS_INFO update_stats;
 #if defined (ENABLE_UNUSED_FUNCTION)

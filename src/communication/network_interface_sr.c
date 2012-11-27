@@ -5008,6 +5008,138 @@ sbtree_find_unique_internal (THREAD_ENTRY * thread_p, unsigned int rid,
 }
 
 /*
+ * sbtree_find_multi_uniques -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+sbtree_find_multi_uniques (THREAD_ENTRY * thread_p, unsigned int rid,
+			   char *request, int reqlen)
+{
+  OID class_oid;
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
+  char *ptr = NULL, *area = NULL;
+  BTID *btids = NULL;
+  DB_VALUE *keys = NULL;
+  OID *oids = NULL;
+  int count, needs_pruning, i, found = 0, area_size = 0;
+  SCAN_OPERATION_TYPE op_type;
+  int error = NO_ERROR;
+  BTREE_SEARCH result = BTREE_KEY_FOUND;
+
+  ptr = or_unpack_oid (request, &class_oid);
+  ptr = or_unpack_int (ptr, &needs_pruning);
+  ptr = or_unpack_int (ptr, &i);
+  op_type = (SCAN_OPERATION_TYPE) i;
+  ptr = or_unpack_int (ptr, &count);
+
+  if (count <= 0)
+    {
+      assert_release (count > 0);
+      error = ER_FAILED;
+      goto cleanup;
+    }
+
+  btids = (BTID *) db_private_alloc (thread_p, count * sizeof (BTID));
+  if (btids == NULL)
+    {
+      error = ER_FAILED;
+      goto cleanup;
+    }
+  for (i = 0; i < count; i++)
+    {
+      ptr = or_unpack_btid (ptr, &btids[i]);
+    }
+  keys = (DB_VALUE *) db_private_alloc (thread_p, count * sizeof (DB_VALUE));
+  if (keys == NULL)
+    {
+      error = ER_FAILED;
+      goto cleanup;
+    }
+  for (i = 0; i < count; i++)
+    {
+      ptr = or_unpack_db_value (ptr, &keys[i]);
+    }
+  result = xbtree_find_multi_uniques (thread_p, &class_oid, needs_pruning,
+				      btids, keys, count, op_type, &oids,
+				      &found);
+  if (result == BTREE_ERROR_OCCURRED)
+    {
+      error = ER_FAILED;
+      goto cleanup;
+    }
+
+  /* start packing result */
+  if (found > 0)
+    {
+      /* area size is (int:number of OIDs) + size of packed OIDs */
+      area_size = OR_INT_SIZE + (found * sizeof (OID));
+      area = (char *) db_private_alloc (thread_p, area_size);
+      if (area == NULL)
+	{
+	  error = ER_FAILED;
+	  goto cleanup;
+	}
+      ptr = or_pack_int (area, found);
+      for (i = 0; i < found; i++)
+	{
+	  ptr = or_pack_oid (ptr, &oids[i]);
+	}
+    }
+  else
+    {
+      area_size = 0;
+      area = NULL;
+    }
+
+  /* pack area size */
+  ptr = or_pack_int (OR_ALIGNED_BUF_START (a_reply), area_size);
+  /* pack error (should be NO_ERROR here) */
+  ptr = or_pack_int (ptr, error);
+
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid,
+				     OR_ALIGNED_BUF_START (a_reply),
+				     OR_ALIGNED_BUF_SIZE (a_reply), area,
+				     area_size);
+
+cleanup:
+  if (btids != NULL)
+    {
+      db_private_free (thread_p, btids);
+    }
+  if (keys != NULL)
+    {
+      db_private_free (thread_p, keys);
+    }
+  if (oids != NULL)
+    {
+      db_private_free (thread_p, oids);
+    }
+  if (area != NULL)
+    {
+      db_private_free (thread_p, area);
+    }
+
+  if (error != NO_ERROR)
+    {
+      return_error_to_client (thread_p, rid);
+      ptr = or_pack_int (OR_ALIGNED_BUF_START (a_reply), 0);
+      ptr = or_pack_int (ptr, error);
+      ptr = or_pack_int (ptr, 0);
+      css_send_reply_and_data_to_client (thread_p->conn_entry, rid,
+					 OR_ALIGNED_BUF_START (a_reply),
+					 OR_ALIGNED_BUF_SIZE (a_reply), NULL,
+					 0);
+    }
+}
+
+/*
  * sbtree_class_test_unique -
  *
  * return:

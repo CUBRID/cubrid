@@ -372,6 +372,7 @@ static PT_NODE *pt_check_filter_index_expr_post (PARSER_CONTEXT * parser,
 static void pt_check_filter_index_expr (PARSER_CONTEXT * parser,
 					PT_NODE * atts, PT_NODE * node,
 					MOP db_obj);
+static PT_NODE *pt_get_assignments (PT_NODE * node);
 
 /* pt_combine_compatible_info () - combine two cinfo into cinfo1
  *   return: true if compatible, else false
@@ -9599,6 +9600,14 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 	  break;
 	}
 
+      if (node->info.insert.odku_assignments != NULL)
+	{
+	  node = pt_check_odku_assignments (parser, node);
+	  if (node == NULL || pt_has_error (parser))
+	    {
+	      break;
+	    }
+	}
       /* semantic check value clause for SELECT and INSERT subclauses */
       if (node)
 	{
@@ -11443,13 +11452,11 @@ pt_check_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt)
 
   assert (parser != NULL);
 
-  if (!stmt || (stmt->node_type != PT_UPDATE && stmt->node_type != PT_MERGE))
+  assignment_list = pt_get_assignments (stmt);
+  if (assignment_list == NULL)
     {
       return;
     }
-  assignment_list =
-    (stmt->node_type == PT_UPDATE ? stmt->info.update.assignment
-     : stmt->info.merge.update.assignment);
 
   for (a = assignment_list; a; a = next)
     {
@@ -11619,13 +11626,10 @@ pt_no_attr_and_meta_attr_updates (PARSER_CONTEXT * parser,
   PT_ASSIGNMENTS_HELPER ea;
   PT_NODE *assignments;
 
-  if (statement->node_type == PT_UPDATE)
+  assignments = pt_get_assignments (statement);
+  if (assignments == NULL)
     {
-      assignments = statement->info.update.assignment;
-    }
-  else
-    {
-      assignments = statement->info.merge.update.assignment;
+      return;
     }
 
   pt_init_assignments_helper (parser, &ea, assignments);
@@ -11663,13 +11667,11 @@ pt_no_double_updates (PARSER_CONTEXT * parser, PT_NODE * stmt)
 
   assert (parser != NULL);
 
-  if (!stmt || (stmt->node_type != PT_UPDATE && stmt->node_type != PT_MERGE))
+  assignment_list = pt_get_assignments (stmt);
+  if (assignment_list == NULL)
     {
       return;
     }
-  assignment_list =
-    (stmt->node_type == PT_UPDATE ? stmt->info.update.assignment
-     : stmt->info.merge.update.assignment);
 
   for (a = assignment_list; a; a = a->next)
     {
@@ -13801,7 +13803,9 @@ pt_check_defaultf (PARSER_CONTEXT * parser, PT_NODE * node)
   /* In case of no default value defined on an attribute:
    * DEFAULT function returns NULL when the attribute given as argument
    * has UNIQUE or no constraint, but it returns a semantic error for
-   * PRIMARY KEY or NOT NULL constraint.
+   * PRIMARY KEY or NOT NULL constraint. This function does not return a
+   * semantic error for attributes with auto_increment because, regardless
+   * of the default value, NULL will not be inserted there.
    */
   if (arg->info.name.resolved && arg->info.name.original)
     {
@@ -13809,7 +13813,7 @@ pt_check_defaultf (PARSER_CONTEXT * parser, PT_NODE * node)
       db_att = db_get_attribute_by_name (arg->info.name.resolved,
 					 arg->info.name.original);
 
-      if (db_att)
+      if (db_att && !db_attribute_is_auto_increment (db_att))
 	{
 	  if ((db_attribute_is_primary_key (db_att) ||
 	       db_attribute_is_non_null (db_att)) &&
@@ -13818,9 +13822,10 @@ pt_check_defaultf (PARSER_CONTEXT * parser, PT_NODE * node)
 			  (arg->info.name.default_value->info.value.
 			   db_value)))
 	    {
-	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-			  MSGCAT_SEMANTIC_INVALID_FIELD_DEFAULT_VALUE,
-			  arg->info.name.original);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OBJ_ATTRIBUTE_CANT_BE_NULL, 1,
+		      arg->info.name.original);
+	      PT_ERRORc (parser, arg, er_msg ());
 	      return ER_FAILED;
 	    }
 	}
@@ -15276,4 +15281,96 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node,
     }
 
   return node;
+}
+
+/*
+ * pt_get_assignments () - get assignment list for INSERT/UPDATE/MERGE
+ *			   statements
+ * return   : assignment list or NULL
+ * node (in): statement node
+ */
+static PT_NODE *
+pt_get_assignments (PT_NODE * node)
+{
+  if (node == NULL)
+    {
+      return NULL;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_UPDATE:
+      return node->info.update.assignment;
+    case PT_MERGE:
+      return node->info.merge.update.assignment;
+    case PT_INSERT:
+      return node->info.insert.odku_assignments;
+    default:
+      return NULL;
+    }
+}
+
+/*
+ * pt_check_odku_assignments () - check ON DUPLICATE KEY assignments of an
+ *				  INSERT statement
+ * return : node
+ * parser (in) : parser context
+ * insert (in) : insert statement
+ *
+ * Note: this function performs the following validations:
+ *    - there are no double assignments
+ *    - assignments are only performed to columns belonging to the insert spec
+ *    - only instance attributes are updated
+ */
+PT_NODE *
+pt_check_odku_assignments (PARSER_CONTEXT * parser, PT_NODE * insert)
+{
+  PT_NODE *assignment, *spec, *lhs;
+  if (insert == NULL || insert->node_type != PT_INSERT)
+    {
+      return insert;
+    }
+
+  if (insert->info.insert.odku_assignments == NULL)
+    {
+      return insert;
+    }
+
+  pt_no_double_updates (parser, insert);
+  if (pt_has_error (parser))
+    {
+      return NULL;
+    }
+  pt_check_assignments (parser, insert);
+  if (pt_has_error (parser))
+    {
+      return NULL;
+    }
+
+  spec = insert->info.insert.spec;
+  for (assignment = insert->info.insert.odku_assignments; assignment != NULL;
+       assignment = assignment->next)
+    {
+      if (assignment->node_type != PT_EXPR
+	  || assignment->info.expr.op != PT_ASSIGN)
+	{
+	  assert (false);
+	  PT_INTERNAL_ERROR (parser, "semantic");
+	  return NULL;
+	}
+      lhs = assignment->info.expr.arg1;
+      if (lhs == NULL || lhs->node_type != PT_NAME)
+	{
+	  assert (false);
+	  PT_INTERNAL_ERROR (parser, "semantic");
+	  return NULL;
+	}
+      if (lhs->info.name.spec_id != spec->info.spec.id)
+	{
+	  PT_ERRORm (parser, lhs, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_ILLEGAL_LHS);
+	  return NULL;
+	}
+    }
+  return insert;
 }

@@ -296,7 +296,14 @@ extern int xbtree_delete_with_unique_key (THREAD_ENTRY * thread_p,
 					  DB_VALUE * key_value);
 extern int xbtree_class_test_unique (THREAD_ENTRY * thread_p, char *buf,
 				     int buf_size);
-
+extern BTREE_SEARCH xbtree_find_multi_uniques (THREAD_ENTRY * thread_p,
+					       OID * class_oid,
+					       int needs_pruning,
+					       BTID * btids,
+					       DB_VALUE * values,
+					       int count,
+					       SCAN_OPERATION_TYPE op_type,
+					       OID ** oids, int *oids_count);
 extern EHID *xehash_create (THREAD_ENTRY * thread_p, EHID * ehid,
 			    DB_TYPE key_type, int exp_num_entries,
 			    OID * class_oid, int attr_id);

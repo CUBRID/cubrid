@@ -4155,7 +4155,8 @@ do_get_xaction (PARSER_CONTEXT * parser, PT_NODE * statement)
 	case PT_LOCK_TIMEOUT:
 	  if (lock_timeout_in_msecs > 0)
 	    {
-	      db_make_float (ins_val, (float) lock_timeout_in_msecs / 1000.0);
+	      db_make_float (ins_val,
+			     (float) (lock_timeout_in_msecs / 1000.0));
 	    }
 	  else
 	    {
@@ -8557,8 +8558,7 @@ static int delete_savepoint_number = 0;
 static int select_delete_list (PARSER_CONTEXT * parser,
 			       QFILE_LIST_ID ** result_p,
 			       PT_NODE * delete_stmt);
-static int delete_object_tuple (const PARSER_CONTEXT * parser,
-				const DB_VALUE * values);
+static int delete_object_tuple (DB_OBJECT * obj);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static int delete_object_by_oid (const PARSER_CONTEXT * parser,
 				 const PT_NODE * statement);
@@ -8624,66 +8624,57 @@ select_delete_list (PARSER_CONTEXT * parser, QFILE_LIST_ID ** result_p,
 /*
  * delete_object_tuple() - Deletes object attributes with db_values
  *   return: Error code if db_put fails
- *   parser(in): Parser context
- *   values(in): Array of db_value pointers. The first element in the
- *  		 array is the OID of the object to delete.
+ *   object(in): object to delete
  */
 static int
-delete_object_tuple (const PARSER_CONTEXT * parser, const DB_VALUE * values)
+delete_object_tuple (DB_OBJECT * object)
 {
   int error = NO_ERROR;
-  DB_OBJECT *object;
   DB_OBJECT *class_obj;
   DB_ATTRIBUTE *attr;
-
-  if (values && DB_VALUE_TYPE (values) == DB_TYPE_OBJECT)
-    {
-      object = DB_GET_OBJECT (values);
-
-      /* authorizations checked in compiler--turn off but remember in
-         parser so we can re-enable in case we run out of memory and
-         longjmp to the cleanup routine. */
-
-      /* delete blob or clob data files if exist */
-      class_obj = db_get_class (object);
-      attr = db_get_attributes (class_obj);
-      while (attr)
-	{
-	  if (attr->type->id == DB_TYPE_BLOB ||
-	      attr->type->id == DB_TYPE_CLOB)
-	    {
-	      DB_VALUE dbvalue;
-	      error = db_get (object, attr->header.name, &dbvalue);
-	      if (error == NO_ERROR)
-		{
-		  DB_ELO *elo;
-
-		  assert (db_value_type (&dbvalue) == DB_TYPE_BLOB ||
-			  db_value_type (&dbvalue) == DB_TYPE_CLOB);
-		  elo = db_get_elo (&dbvalue);
-		  if (elo)
-		    {
-		      error = db_elo_delete (elo);
-		    }
-		  db_value_clear (&dbvalue);
-		  error = (error >= 0 ? NO_ERROR : error);
-		}
-	      if (error != NO_ERROR)
-		{
-		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
-		  return error;
-		}
-	    }
-	  attr = db_attribute_next (attr);
-	}
-      /* TODO: to delete blob or clob at db api call */
-      error = db_drop (object);
-    }
-  else
+  if (object == NULL)
     {
       error = ER_OBJ_INVALID_ARGUMENTS;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
     }
+
+  /* authorizations checked in compiler--turn off but remember in
+     parser so we can re-enable in case we run out of memory and
+     longjmp to the cleanup routine. */
+
+  /* delete blob or clob data files if exist */
+  class_obj = db_get_class (object);
+  attr = db_get_attributes (class_obj);
+  while (attr)
+    {
+      if (attr->type->id == DB_TYPE_BLOB || attr->type->id == DB_TYPE_CLOB)
+	{
+	  DB_VALUE dbvalue;
+	  error = db_get (object, attr->header.name, &dbvalue);
+	  if (error == NO_ERROR)
+	    {
+	      DB_ELO *elo;
+
+	      assert (db_value_type (&dbvalue) == DB_TYPE_BLOB ||
+		      db_value_type (&dbvalue) == DB_TYPE_CLOB);
+	      elo = db_get_elo (&dbvalue);
+	      if (elo)
+		{
+		  error = db_elo_delete (elo);
+		}
+	      db_value_clear (&dbvalue);
+	      error = (error >= 0 ? NO_ERROR : error);
+	    }
+	  if (error != NO_ERROR)
+	    {
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	      return error;
+	    }
+	}
+      attr = db_attribute_next (attr);
+    }
+  /* TODO: to delete blob or clob at db api call */
+  error = db_drop (object);
 
   return error;
 }
@@ -8798,7 +8789,7 @@ delete_list_by_oids (PARSER_CONTEXT * parser, QFILE_LIST_ID * list_id)
 	    {
 	      flush_to_server[idx] = has_unique_constraint (mop);
 	    }
-	  error = delete_object_tuple (parser, &oids[idx]);
+	  error = delete_object_tuple (mop);
 	  if (error == ER_HEAP_UNKNOWN_OBJECT && do_Trigger_involved)
 	    {
 	      er_clear ();
@@ -9760,6 +9751,13 @@ typedef enum
   INSERT_ON_DUP_KEY_UPDATE = 16
 } SERVER_PREFERENCE;
 
+typedef struct odku_tuple_value_arg ODKU_TUPLE_VALUE_ARG;
+struct odku_tuple_value_arg
+{
+  PT_NODE *insert_stmt;		/* insert statement */
+  CURSOR_ID *cursor_p;		/* select cursor id */
+};
+
 /* used to generate unique savepoint names */
 static int insert_savepoint_number = 0;
 
@@ -9815,26 +9813,22 @@ static int insert_predefined_values_into_partition (const PARSER_CONTEXT *
 						    psi,
 						    PARTITION_INSERT_CACHE *
 						    pic);
-static PT_NODE *build_expression_from_assignment (PARSER_CONTEXT * parser,
-						  PT_NODE * spec,
-						  OBJ_TEMPASSIGN *
-						  assignment);
-static int build_select_statement (PARSER_CONTEXT * parser, DB_OTMPL * tmpl,
-				   PT_NODE * spec, PT_NODE * class_specs,
-				   PT_NODE ** statement, bool for_update);
-static int build_predicate_for_unique_constraint (PARSER_CONTEXT * parser,
-						  PT_NODE * spec,
-						  DB_OTMPL * tmpl,
-						  SM_CLASS_CONSTRAINT *
-						  constraint,
-						  PT_NODE ** predicate);
+static PT_NODE *do_create_odku_stmt (PARSER_CONTEXT * parser,
+				     PT_NODE * insert);
+static int do_find_unique_constraint_violations (DB_OTMPL * tmpl,
+						 bool for_update, OID ** oids,
+						 int *oids_count);
+static int do_create_midxkey_for_constraint (DB_OTMPL * tmpl,
+					     SM_CLASS_CONSTRAINT * constraint,
+					     DB_VALUE * key);
 static int do_on_duplicate_key_update (PARSER_CONTEXT * parser,
-				       DB_OTMPL * tpl, PT_NODE * spec,
-				       PT_NODE * class_specs,
-				       PT_NODE * update_stmt);
+				       DB_OTMPL * tpl, PT_NODE * update_stmt);
 static int do_replace_into (PARSER_CONTEXT * parser, DB_OTMPL * tmpl,
 			    PT_NODE * spec, PT_NODE * class_specs);
 static int is_replace_or_odku_allowed (DB_OBJECT * obj, int *allowed);
+static PT_NODE *pt_append_odku_references (PARSER_CONTEXT * parser,
+					   PT_NODE * node, void *arg,
+					   int *continue_walk);
 /*
  * insert_object_attr()
  *   return: Error code if db_put fails
@@ -9905,7 +9899,7 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
     }
 
   assert (statement->info.insert.do_replace == false);
-  assert (statement->info.insert.on_dup_key_update == NULL);
+  assert (statement->info.insert.odku_assignments == NULL);
 
   /* insert value auto parameterize */
   val = statement->info.insert.value_clauses->info.node_list.list;
@@ -9986,7 +9980,8 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
       /* mark the beginning of another level of xasl packing */
       pt_enter_packing_buf ();
       xasl = pt_to_insert_xasl (parser, statement, values_list, has_uniques,
-				non_null_attrs, default_expr_attrs, true);
+				non_null_attrs, upd_non_null_attrs,
+				default_expr_attrs, true);
 
       if (xasl)
 	{
@@ -10093,7 +10088,7 @@ do_insert_at_server (PARSER_CONTEXT * parser,
   QFILE_LIST_ID *list_id = NULL;
   int i = 0;
   int j = 0, k = 0;
-  PT_NODE *update_statement = NULL;
+  PT_NODE *odku_assignments = NULL;
 
   if (parser == NULL || statement == NULL || values_list == NULL
       || statement->node_type != PT_INSERT)
@@ -10101,73 +10096,22 @@ do_insert_at_server (PARSER_CONTEXT * parser,
       return ER_GENERIC_ERROR;
     }
 
-  update_statement = statement->info.insert.on_dup_key_update;
+  odku_assignments = statement->info.insert.odku_assignments;
 
   /* mark the beginning of another level of xasl packing */
   pt_enter_packing_buf ();
   xasl = pt_to_insert_xasl (parser, statement, values_list, has_uniques,
-			    non_null_attrs, default_expr_attrs,
-			    is_first_value);
+			    non_null_attrs, upd_non_null_attrs,
+			    default_expr_attrs, is_first_value);
 
   if (xasl)
     {
-      INSERT_PROC_NODE *insert = &xasl->proc.insert;
-
-      assert (xasl->dptr_list == NULL);
-      if (update_statement != NULL)
+      error = xts_map_xasl_to_stream (xasl, &stream, &size);
+      if (error != NO_ERROR)
 	{
-	  XASL_NODE *update_xasl =
-	    statement_to_update_xasl (parser, update_statement,
-				      upd_non_null_attrs);
-
-	  if (update_xasl != NULL)
-	    {
-	      int dup_key_oid_var_index =
-		pt_get_dup_key_oid_var_index (parser, update_statement);
-
-	      if (dup_key_oid_var_index < 0)
-		{
-		  error = ER_FAILED;
-		  PT_ERRORmf2 (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
-			       MSGCAT_RUNTIME_HOSTVAR_INDEX_ERROR,
-			       dup_key_oid_var_index,
-			       parser->auto_param_count);
-		}
-	      else
-		{
-		  xasl->dptr_list = update_xasl;
-		  insert->dup_key_oid_var_index = dup_key_oid_var_index;
-		}
-	    }
-	  else
-	    {
-	      error = er_errid ();
-	      assert (error != NO_ERROR);
-	    }
-	}
-
-      if (error == NO_ERROR)
-	{
-	  error = xts_map_xasl_to_stream (xasl, &stream, &size);
-	  if (error != NO_ERROR)
-	    {
-	      PT_ERRORm (parser, statement,
-			 MSGCAT_SET_PARSER_RUNTIME,
-			 MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
-	    }
-	}
-
-      if (xasl->dptr_list != NULL)
-	{
-	  UPDATE_PROC_NODE *update = &xasl->dptr_list->proc.update;
-
-	  for (i = update->no_classes - 1; i >= 0; i--)
-	    {
-	      if (update->assigns[i].constant)
-		{
-		  pr_clear_value (update->assigns[i].constant);
-		}
-	    }
+	  PT_ERRORm (parser, statement,
+		     MSGCAT_SET_PARSER_RUNTIME,
+		     MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
 	}
     }
   else
@@ -10208,17 +10152,12 @@ do_insert_at_server (PARSER_CONTEXT * parser,
       PT_NODE *cl_name_node = NULL;
 
       count = list_id->tuple_cnt;
-      if (count > 0 && update_statement != NULL)
+      if (count > 0 && odku_assignments != NULL)
 	{
-	  for (cl_name_node =
-	       update_statement->info.update.spec->info.spec.flat_entity_list;
-	       cl_name_node != NULL && error == NO_ERROR;
-	       cl_name_node = cl_name_node->next)
-	    {
-	      error =
-		sm_flush_and_decache_objects (cl_name_node->info.
-					      name.db_object, true);
-	    }
+	  cl_name_node =
+	    statement->info.insert.spec->info.spec.flat_entity_list;
+	  error = sm_flush_and_decache_objects (cl_name_node->info.
+						name.db_object, true);
 	}
 
       if (count > 0 && statement->info.insert.do_replace)
@@ -10540,7 +10479,7 @@ is_server_insert_allowed (PARSER_CONTEXT * parser,
 	  return error;
 	}
     }
-  if (statement->info.insert.on_dup_key_update)
+  if (statement->info.insert.odku_assignments)
     {
       if (!(server_preference & INSERT_ON_DUP_KEY_UPDATE))
 	{
@@ -10629,7 +10568,7 @@ is_server_insert_allowed (PARSER_CONTEXT * parser,
 	}
     }
 
-  if (statement->info.insert.on_dup_key_update != NULL && *has_uniques)
+  if (statement->info.insert.odku_assignments != NULL && *has_uniques)
     {
       error = sm_class_has_triggers (class_->info.name.db_object,
 				     &trigger_involved, TR_EVENT_UPDATE);
@@ -10663,215 +10602,257 @@ is_server_insert_allowed (PARSER_CONTEXT * parser,
 }
 
 /*
- * build_expression_from_assignment() -
- *
- *
- *   return: expression or NULL
- *
- *   parser(in)	   : parser context
- *   spec (in)	   : the spec for this template
- *   assignment(in): template assignment
- *
- * Notes: This function creates a PT_NODE corresponding to the predicate
- *	  argument = value. This is used as part of the WHERE clause of a
- *	  SELECT statement that checks for unique constraint violations.
+ * do_create_midxkey_for_constraint () - create a MIDX_KEY db_value for the
+ *					 specified constraint using the values
+ *					 assigned in an object template
+ * return : error code or NO_ERROR;
+ * tmpl (in)	   : object template
+ * constraint (in) : constraint
+ * key (in/out)	   : the MIDX key
  */
-
-static PT_NODE *
-build_expression_from_assignment (PARSER_CONTEXT * parser, PT_NODE * spec,
-				  OBJ_TEMPASSIGN * assignment)
+static int
+do_create_midxkey_for_constraint (DB_OTMPL * tmpl,
+				  SM_CLASS_CONSTRAINT * constraint,
+				  DB_VALUE * key)
 {
-  PT_NODE *expr = NULL;
-  PT_NODE *arg = NULL;
-  PT_NODE *val = NULL;
+  DB_MIDXKEY midxkey;
+  SM_ATTRIBUTE **attr = NULL;
+  int buf_size = 0, bitmap_size = 0, i, error = NO_ERROR, attr_count = 0;
+  unsigned char *bits;
+  char *bound_bits = NULL, *key_ptr = NULL;
+  OR_BUF buf;
+  DB_VALUE *val = NULL;
+  TP_DOMAIN *attr_dom = NULL, *dom = NULL, *setdomain = NULL;
 
-  assert (assignment != NULL);
-  assert (assignment->att != NULL);
-  assert (assignment->variable != NULL);
-
-  arg = pt_name (parser, assignment->att->header.name);
-  if (arg == NULL)
+  /* compute key size */
+  for (attr_count = 0, attr = constraint->attributes; *attr != NULL;
+       attr_count++, attr++)
     {
+      if (tmpl->assignments[(*attr)->order] != NULL)
+	{
+	  val = tmpl->assignments[(*attr)->order]->variable;
+	}
+
+      if ((*attr)->domain->is_parameterized && val != NULL)
+	{
+	  attr_dom = tp_domain_new (TP_DOMAIN_TYPE ((*attr)->domain));
+	  if (attr_dom == NULL)
+	    {
+	      error = ER_FAILED;
+	      goto error_return;
+	    }
+	  attr_dom = tp_domain_resolve_value (val, attr_dom);
+	  if (attr_dom == NULL)
+	    {
+	      error = ER_FAILED;
+	      goto error_return;
+	    }
+	}
+      else
+	{
+	  attr_dom = tp_domain_copy ((*attr)->domain, false);
+	  if (attr_dom == NULL)
+	    {
+	      error = ER_FAILED;
+	      goto error_return;
+	    }
+	}
+
+      if (attr_dom->type->index_lengthval == NULL || val == NULL)
+	{
+	  buf_size += attr_dom->type->disksize;
+	}
+      else
+	{
+	  buf_size += (*(attr_dom->type->index_lengthval)) (val);
+	}
+
+      if (setdomain == NULL)
+	{
+	  setdomain = attr_dom;
+	}
+      else
+	{
+	  dom->next = attr_dom;
+	}
+      dom = attr_dom;
+    }
+
+  bitmap_size = OR_MULTI_BOUND_BIT_BYTES (attr_count);
+  buf_size += bitmap_size;
+
+  midxkey.buf = (char *) db_private_alloc (NULL, buf_size);
+  if (midxkey.buf == NULL)
+    {
+      error = ER_FAILED;
       goto error_return;
     }
 
-  arg->info.name.spec_id = spec->info.spec.id;
-  arg->info.name.meta_class = PT_NORMAL;
-  arg->info.name.resolved = spec->info.spec.range_var->info.name.original;
+  bound_bits = midxkey.buf;
+  key_ptr = bound_bits + bitmap_size;
 
-  arg->data_type = pt_domain_to_data_type (parser, assignment->att->domain);
-  if (arg->data_type == NULL)
+  OR_BUF_INIT (buf, key_ptr, buf_size - bitmap_size);
+  if (bitmap_size > 0)
+    {
+      bits = (unsigned char *) bound_bits;
+      for (i = 0; i < bitmap_size; i++)
+	{
+	  bits[i] = (unsigned char) 0;
+	}
+    }
+
+  for (i = 0, attr = constraint->attributes; *attr != NULL; attr++, i++)
+    {
+      if (tmpl->assignments[(*attr)->order] == NULL
+	  || tmpl->assignments[(*attr)->order]->variable == NULL)
+	{
+	  continue;
+	}
+      dom = (*attr)->domain;
+      val = tmpl->assignments[(*attr)->order]->variable;
+      OR_ENABLE_BOUND_BIT (bound_bits, i);
+      (*((dom->type)->index_writeval)) (&buf, val);
+    }
+
+  midxkey.size = buf_size;
+  midxkey.ncolumns = attr_count;
+  midxkey.domain = tp_domain_construct (DB_TYPE_MIDXKEY, NULL, attr_count, 0,
+					setdomain);
+  if (midxkey.domain == NULL)
+    {
+      error = ER_FAILED;
+      goto error_return;
+    }
+  midxkey.domain = tp_domain_cache (midxkey.domain);
+
+  error = db_make_midxkey (key, &midxkey);
+  if (error != NO_ERROR)
     {
       goto error_return;
     }
-
-  arg->type_enum = arg->data_type->type_enum;
-
-  if (assignment->variable != NULL)
-    {
-      val = pt_dbval_to_value (parser, assignment->variable);
-    }
-
-  if (val == NULL)
-    {
-      goto error_return;
-    }
-
-  expr = pt_expression_2 (parser, PT_EQ, arg, val);
-  if (expr == NULL)
-    {
-      goto error_return;
-    }
-
-  return expr;
+  key->need_clear = true;
+  return NO_ERROR;
 
 error_return:
-  if (arg != NULL)
+  if (midxkey.buf != NULL)
     {
-      parser_free_tree (parser, arg);
-      arg = NULL;
+      db_private_free (NULL, midxkey.buf);
     }
-  if (val != NULL)
+  dom = setdomain;
+  while (dom != NULL)
     {
-      parser_free_tree (parser, val);
-      val = NULL;
+      attr_dom = dom->next;
+      dom->next = NULL;
+      tp_domain_free (dom);
+      dom = attr_dom;
     }
-  if (expr != NULL)
+  return error;
+}
+
+/*
+ * do_create_odku_stmt () - create an UPDATE statement for ON DUPLICATE KEY
+ *			    UPDATE node
+ * return : update node or NULL
+ * parser (in) : parser context
+ * insert (in) : INSERT statement node
+ *
+ * Note: this function alters the flag set on the SPEC node of the INSERT
+ *   statement. Callers should backup the value of the flag and restore it
+ *   when they're finished with the UPDATE statement.
+ */
+static PT_NODE *
+do_create_odku_stmt (PARSER_CONTEXT * parser, PT_NODE * insert)
+{
+  PT_NODE *update = NULL;
+
+  if (insert == NULL || insert->node_type != PT_INSERT)
     {
-      parser_free_tree (parser, expr);
-      expr = NULL;
+      assert (false);
+      PT_INTERNAL_ERROR (parser, "invalid arguments");
+      return NULL;
     }
+
+  insert->info.insert.spec->info.spec.flag |= PT_SPEC_FLAG_UPDATE;
+
+  update = parser_new_node (parser, PT_UPDATE);
+  if (update == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      goto error_return;
+    }
+  update->info.update.assignment = insert->info.insert.odku_assignments;
+  update->info.update.spec = insert->info.insert.spec;
+
+  if (insert->info.insert.where != NULL)
+    {
+      PT_NODE *check_where = parser_new_node (parser, PT_CHECK_OPTION);
+      if (check_where == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  goto error_return;
+	}
+
+      check_where->info.check_option.expr = insert->info.insert.where;
+      check_where->info.check_option.spec_id =
+	insert->info.insert.spec->info.spec.id;
+
+      update->info.update.check_where = check_where;
+    }
+
+  return update;
+
+error_return:
+  if (update != NULL)
+    {
+      update->info.update.assignment = NULL;
+      update->info.update.spec = NULL;
+      if (update->info.update.check_where != NULL)
+	{
+	  update->info.update.check_where->info.check_option.expr = NULL;
+	}
+      parser_free_tree (parser, update);
+    }
+
   return NULL;
 }
 
 /*
- * build_predicate_for_unique_constraint()
- *			      - Builds a predicate that checks if an inserted
- *				object would violate an unique constraint
- *
- *   return: NO_ERROR if successful, error otherwise
- *
- *   parser(in)	: Parser context
- *   spec (in)	: the spec into which the insert statement will insert
- *   templ (in)	: the template to be inserted
- *   constraint(in) : an unique constraint for which to generate the predicate
- *   predicate (in/out) : a predicate of the form attr1=val1 AND attr2=val2...
- *
- * Notes: The object template is already populated. If there are unique
- *	  constraints for which an argument value is not supplied
- *	  it cannot be violated by the template insert because those values
- *	  will be NULL, and NULL values don't generate unique key violations.
+ * do_find_unique_constraint_violations () - find oids for which unique
+ *					     constraints  would be violated by
+ *					     inserting an object template
+ * return : error code or NO_ERROR
+ * tmpl (in)	   : object template
+ * for_update (in) : if true, offending OIDs will be updated
+ * oids (in/out)   : array of offending OIDs
+ * oids_count (in) : number of OIDs in array
  */
 static int
-build_predicate_for_unique_constraint (PARSER_CONTEXT * parser,
-				       PT_NODE * spec, DB_OTMPL * templ,
-				       SM_CLASS_CONSTRAINT * constraint,
-				       PT_NODE ** predicate)
+do_find_unique_constraint_violations (DB_OTMPL * tmpl, bool for_update,
+				      OID ** oids, int *oids_count)
 {
   int error = NO_ERROR;
-  SM_ATTRIBUTE **db_attribute = NULL;
-  PT_NODE *pred = NULL;
-  PT_NODE *expr = NULL;
-
-  assert (*predicate == NULL);
-  assert (SM_IS_CONSTRAINT_UNIQUE_FAMILY (constraint->type));
-
-  for (db_attribute = constraint->attributes; *db_attribute; db_attribute++)
-    {
-      char found = 0;
-      int i = 0;
-      OBJ_TEMPASSIGN *assignment = templ->assignments[(*db_attribute)->order];
-
-      if (assignment == NULL)
-	{
-	  /* this constraint will not be violated */
-	  error = NO_ERROR;
-	  goto cleanup;
-	}
-
-      if (assignment->variable == NULL)
-	{
-	  /* this constraint cannot be violated */
-	  error = NO_ERROR;
-	  goto cleanup;
-	}
-
-      expr = build_expression_from_assignment (parser, spec, assignment);
-      if (expr == NULL)
-	{
-	  parser_free_tree (parser, pred);
-	  *predicate = NULL;
-	  error = er_errid ();
-	  goto cleanup;
-	}
-      if (pred == NULL)
-	{
-	  pred = expr;
-	}
-      else
-	{
-	  pred = pt_expression_2 (parser, PT_AND, pred, expr);
-	}
-    }
-
-  *predicate = pred;
-  return error;
-
-cleanup:
-  if (pred)
-    {
-      parser_free_tree (parser, pred);
-    }
-  *predicate = NULL;
-  return error;
-}
-
-/*
- * build_select_statement() - Builds a select statement used for checking
- *			      unique constraint violations
- *   return: error code
- *
- *   parser(in)	s     : Parser context
- *   spec(in)	      : the spec used for insert
- *   class_specs(in)  :
- *   attributes(in)   : the list of inserted attributes
- *   values(in)	      : the list of values assigned to attributes
- *   statement(in/out):	the select statement, will be set to NULL if unique
- *                      key violations are not possible
- *   for_update(in): true if query is used in update operation
- *
- * Notes: This function builds the parse tree for a SELECT statement that
- *	  returns a list of OIDs that would cause a unique constraint
- *	  violation. This function is used for the broker-side execution of
- *	  "insert .. on duplicate key update" and "replace" statements.
- *	  Example:
- *	  for table t(i int , str string, d date) with unique
- *	  indexes t(i) and t(str,d),
- *	  INSERT INTO t(i,str,d) VALUES(1,'1','01-01-01') ON DUPLICATE KEY
- *	      UPDATE i = 2;
- *	  builds the SELECT statement:
- *	  SELECT t FROM t WHERE i = 1 UNION
- *        SELECT t FROM t WHERE (str = '1' AND d = '01-01-01');
- */
-static int
-build_select_statement (PARSER_CONTEXT * parser, DB_OTMPL * tmpl,
-			PT_NODE * spec, PT_NODE * class_specs,
-			PT_NODE ** statement, bool for_update)
-{
-  PT_NODE *where = NULL, *stmt = NULL;
-  PT_NODE *union_stmt = NULL, *arg1 = NULL, *arg2 = NULL;
   SM_CLASS_CONSTRAINT *constraint = NULL;
   SM_CLASS *class_ = NULL;
-  int error = NO_ERROR;
+  int unique_count = 0, key_cnt, i, level, attr_count = 0;
+  BTID *unique_btids = NULL;
+  DB_VALUE *unique_keys = NULL;
+  SM_ATTRIBUTE **attr;
+  OBJ_TEMPASSIGN *assignment = NULL;
+  bool should_verify = false;
+  BTREE_SEARCH result;
+  SCAN_OPERATION_TYPE op_type = S_UPDATE;
+  int needs_pruning = 0;
 
-  assert (parser != NULL);
-
-  class_ = tmpl->class_;
-  assert (class_ != NULL);
-
-  assert (*statement == NULL);
-  *statement = NULL;
-
+  qo_get_optimization_param (&level, QO_PARAM_LEVEL);
+  if (level & 0x02)
+    {
+      /* User is only interested in query plan. Query will not be executed and
+       * we have no plan to show.
+       */
+      *oids = NULL;
+      *oids_count = 0;
+      return NO_ERROR;
+    }
   /* Populate the defaults and auto_increment values here because we need them
    * when building the WHERE clause for the SELECT statement. These values
    * will not be reassigned if the template will eventually be inserted as
@@ -10880,14 +10861,10 @@ build_select_statement (PARSER_CONTEXT * parser, DB_OTMPL * tmpl,
   error = obt_populate_known_arguments (tmpl);
   if (error != NO_ERROR)
     {
-      goto error_cleanup;
+      return error;
     }
 
-  /* build the WHERE predicate:
-   * The WHERE predicate checks to see if any constraints would be violated
-   * by the insert statement by checking new values against the values already
-   * stored.
-   */
+  class_ = tmpl->class_;
   for (constraint = class_->constraints; constraint != NULL;
        constraint = constraint->next)
     {
@@ -10895,95 +10872,117 @@ build_select_statement (PARSER_CONTEXT * parser, DB_OTMPL * tmpl,
 	{
 	  continue;
 	}
+      unique_count++;
+    }
 
-      where = NULL;
-      error = build_predicate_for_unique_constraint (parser, spec, tmpl,
-						     constraint, &where);
-      if (error != NO_ERROR)
+  if (unique_count == 0)
+    {
+      /* class does not have unique constraints */
+      *oids = NULL;
+      oids_count = 0;
+      return NO_ERROR;
+    }
+
+  unique_btids = db_private_alloc (NULL, unique_count * sizeof (BTID));
+  if (unique_btids == NULL)
+    {
+      error = ER_FAILED;
+      goto cleanup;
+    }
+  unique_keys = db_private_alloc (NULL, unique_count * sizeof (DB_VALUE));
+  if (unique_keys == NULL)
+    {
+      error = ER_FAILED;
+      goto cleanup;
+    }
+  key_cnt = 0;
+  for (constraint = class_->constraints; constraint != NULL;
+       constraint = constraint->next)
+    {
+      if (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (constraint->type))
 	{
-	  goto error_cleanup;
+	  continue;
+	}
+      BTID_COPY (&unique_btids[key_cnt], &constraint->index_btid);
+      DB_MAKE_NULL (&unique_keys[key_cnt]);
+      attr_count = 0;
+      for (attr = constraint->attributes; *attr != NULL; attr++)
+	{
+	  assignment = tmpl->assignments[(*attr)->order];
+	  if (assignment != NULL && assignment->variable != NULL)
+	    {
+	      /* this constraint may be violated */
+	      should_verify = true;
+	    }
+	  attr_count++;
 	}
 
-      if (where == NULL)
+      if (!should_verify || attr_count == 0)
 	{
 	  continue;
 	}
 
-      /* create a select statement */
-      stmt = parser_new_node (parser, PT_SELECT);
-      if (stmt != NULL)
+      if (attr_count == 1)
 	{
-	  stmt->info.query.q.select.from = parser_copy_tree_list (parser,
-								  spec);
-	  /* add in the class specs to the spec list */
-	  stmt->info.query.q.select.from =
-	    parser_append_node (parser_copy_tree_list (parser, class_specs),
-				stmt->info.query.q.select.from);
-
-	  stmt->info.query.q.select.where = where;
-
-	  /* will add the class and instance OIDs later */
-
-	  if (arg1 == NULL)
+	  /* single key handling */
+	  attr = constraint->attributes;
+	  assignment = tmpl->assignments[(*attr)->order];
+	  if (assignment == NULL)
 	    {
-	      arg1 = stmt;
+	      /* value not set */
+	      continue;
 	    }
-	  else
-	    {
-	      arg2 = stmt;
-	    }
-	}
-      else
-	{
-	  error = er_errid ();
-	  goto error_cleanup;
+	  pr_clone_value (assignment->variable, &unique_keys[key_cnt]);
+	  key_cnt++;
+	  continue;
 	}
 
-      if (arg1 && arg2)
+      /* multiple key, need to create a MIDXKEY */
+      error = do_create_midxkey_for_constraint (tmpl, constraint,
+						&unique_keys[key_cnt]);
+      if (error != NO_ERROR)
 	{
-	  stmt = arg1 = pt_union (parser, arg1, arg2);
-	  if (stmt == NULL)
-	    {
-	      error = er_errid ();
-	      goto error_cleanup;
-	    }
-	  stmt->info.query.all_distinct = PT_DISTINCT;
-
-	  arg2 = NULL;
+	  goto cleanup;
 	}
+      key_cnt++;
     }
 
-  if (stmt == NULL)
+  if (key_cnt == 0)
     {
-      /* we didn't find any constraint that could be violated */
-      return error;
+      goto cleanup;
     }
-
-  /* add the class and instance OIDs to the select list */
-  stmt = pt_add_row_classoid_name (parser, stmt, 0);
-  stmt = pt_add_row_oid_name (parser, stmt);
-
-  stmt = mq_reset_ids_in_statement (parser, stmt);
 
   if (for_update)
     {
-      stmt->info.query.composite_locking = PT_COMPOSITE_LOCKING_UPDATE;
+      op_type = S_UPDATE;
     }
   else
     {
-      stmt->info.query.composite_locking = PT_COMPOSITE_LOCKING_DELETE;
+      op_type = S_DELETE;
     }
 
-  *statement = stmt;
-
-  return error;
-
-error_cleanup:
-  if (stmt != NULL)
+  needs_pruning = sm_is_partitioned_class (tmpl->classobj);
+  result = btree_find_multi_uniques (ws_oid (tmpl->classobj), needs_pruning,
+				     unique_btids, unique_keys, key_cnt,
+				     op_type, oids, oids_count);
+  if (result == BTREE_ERROR_OCCURRED)
     {
-      parser_free_tree (parser, stmt);
+      error = ER_FAILED;
     }
 
+cleanup:
+  if (unique_keys != NULL)
+    {
+      for (i = 0; i < key_cnt; i++)
+	{
+	  pr_clear_value (&unique_keys[i]);
+	}
+      db_private_free (NULL, unique_keys);
+    }
+  if (unique_btids != NULL)
+    {
+      db_private_free (NULL, unique_btids);
+    }
   return error;
 }
 
@@ -10996,8 +10995,6 @@ error_cleanup:
  *
  *   parser(in)	      : Parser context
  *   tmpl(in)	      : object template to be inserted
- *   spec(in)	      : the spec used for insert
- *   class_specs(in)  :
  *   update_stmt(in)  : the update statement to run if there are unique
  *			constraint violations
  *
@@ -11009,125 +11006,46 @@ error_cleanup:
  */
 static int
 do_on_duplicate_key_update (PARSER_CONTEXT * parser, DB_OTMPL * tmpl,
-			    PT_NODE * spec, PT_NODE * class_specs,
 			    PT_NODE * update_stmt)
 {
   int retval = NO_ERROR;
   int ret_code = 0;
-  PT_NODE *select = NULL;
-  CURSOR_ID cursor_id;
-  DB_VALUE oid;
-  int clear_cursor = 0;
+  int flag = 0;
+  OID *oids = NULL;
+  int oids_count = 0;
 
-  assert (update_stmt->node_type == PT_UPDATE);
-  assert (update_stmt->info.update.object == NULL);
-
-  DB_MAKE_NULL (&oid);
-
-  retval = build_select_statement (parser, tmpl, spec, class_specs, &select,
-				   true);
+  retval = do_find_unique_constraint_violations (tmpl, true, &oids,
+						 &oids_count);
   if (retval != NO_ERROR)
     {
-      goto error_cleanup;
+      goto cleanup;
     }
-  if (select == NULL)
+  assert_release (oids_count <= 1);
+  if (oids_count == 0)
     {
-      /* we didn't find any constraint that would be violated */
-      retval = 0;
-      goto error_cleanup;
+      assert (oids == NULL);
+      return 0;
     }
 
-  retval = do_select (parser, select);
-  if (retval < NO_ERROR || select->etc == NULL)
-    {
-      goto error_cleanup;
-    }
+  update_stmt->info.update.object = ws_mop (oids, NULL);
 
-  if (!cursor_open (&cursor_id, (QFILE_LIST_ID *) select->etc, false, true))
-    {
-      retval = ER_GENERIC_ERROR;
-      goto error_cleanup;
-    }
-
-  cursor_id.query_id = parser->query_id;
-  retval = 0;
-  ret_code = cursor_next_tuple (&cursor_id);
-
-  if (ret_code != DB_CURSOR_END && ret_code != DB_CURSOR_SUCCESS)
-    {
-      retval = ER_GENERIC_ERROR;
-      clear_cursor = 1;
-      goto error_cleanup;
-    }
-
-  if (ret_code == DB_CURSOR_SUCCESS)
-    {
-      /* create a backup of the search condition */
-      PT_NODE *search_cond = NULL;
-
-      ret_code = cursor_get_current_oid (&cursor_id, &oid);
-      if (ret_code != DB_CURSOR_SUCCESS)
-	{
-	  clear_cursor = 1;
-	  retval = ER_GENERIC_ERROR;
-	}
-
-      /* ignore the search condition because we use an instance update that
-         does not expect a where clause to be present */
-      search_cond = update_stmt->info.update.search_cond;
-      update_stmt->info.update.search_cond = NULL;
-      update_stmt->info.update.object = oid.data.op;
-
-      ret_code = update_object_by_oid (parser, update_stmt,
-				       ON_DUPLICATE_KEY_UPDATE);
-
-      /* restore initial update parse tree */
-      update_stmt->info.update.object = NULL;
-      update_stmt->info.update.search_cond = search_cond;
-      search_cond = NULL;
-
-      if (ret_code < NO_ERROR)
-	{
-	  clear_cursor = 1;
-	  retval = ret_code;
-	  goto error_cleanup;
-	}
-
-      /* one updated row */
-      retval = 1;
-    }
-
-  /* clear modifications to update_stmt */
+  ret_code = update_object_by_oid (parser, update_stmt,
+				   ON_DUPLICATE_KEY_UPDATE);
   update_stmt->info.update.object = NULL;
-
-  cursor_close (&cursor_id);
-  regu_free_listid ((QFILE_LIST_ID *) select->etc);
-  parser_free_tree (parser, select);
-  db_value_clear (&oid);
-
-  pt_end_query (parser);
-
-  return retval;
-
-error_cleanup:
-  /* reset object information */
-  update_stmt->info.update.object = NULL;
-  if (clear_cursor)
+  if (ret_code < NO_ERROR)
     {
-      cursor_close (&cursor_id);
-      regu_free_listid ((QFILE_LIST_ID *) select->etc);
-    }
-  if (!DB_IS_NULL (&oid))
-    {
-      db_value_clear (&oid);
-    }
-  if (select != NULL)
-    {
-      parser_free_tree (parser, select);
+      retval = ret_code;
+      goto cleanup;
     }
 
-  pt_end_query (parser);
+  /* one updated row */
+  retval = 1;
 
+cleanup:
+  if (oids != NULL)
+    {
+      free_and_init (oids);
+    }
   return retval;
 }
 
@@ -11146,52 +11064,51 @@ error_cleanup:
  *        supplied in the template object and runs delete for the
  *        OIDs with which tmpl would generate unique key violations
  */
-
 static int
 do_replace_into (PARSER_CONTEXT * parser, DB_OTMPL * tmpl,
 		 PT_NODE * spec, PT_NODE * class_specs)
 {
-  int retval = NO_ERROR;
+  int retval = 0, error = NO_ERROR;
   PT_NODE *select = NULL;
-  int au_save = 0;
+  OID *oids = NULL;
+  int oids_count = 0, i;
+  MOP obj = NULL;
 
-  retval = build_select_statement (parser, tmpl, spec, class_specs, &select,
-				   false);
-  if (retval != NO_ERROR)
+  error = do_find_unique_constraint_violations (tmpl, false, &oids,
+						&oids_count);
+  if (error != NO_ERROR)
     {
       goto cleanup;
     }
-
-  if (select == NULL)
+  if (oids_count == 0)
     {
-      /* we didn't find any constraint that could be violated */
-      retval = NO_ERROR;
+      retval = 0;
       goto cleanup;
     }
 
-  retval = do_select (parser, select);
-  if (retval < NO_ERROR)
+  retval = 0;
+  for (i = 0; i < oids_count; i++)
     {
-      goto cleanup;
-    }
+      obj = ws_mop (&oids[i], NULL);
+      if (db_is_deleted (obj))
+	{
+	  continue;
+	}
 
-  if (select->etc)
-    {
-      AU_SAVE_AND_DISABLE (au_save);
-      retval = delete_list_by_oids (parser, (QFILE_LIST_ID *) select->etc);
-      AU_RESTORE (au_save);
-      regu_free_listid ((QFILE_LIST_ID *) select->etc);
+      error = delete_object_tuple (obj);
+      if (error != NO_ERROR)
+	{
+	  retval = error;
+	  goto cleanup;
+	}
+      retval++;
     }
-
-  pt_end_query (parser);
 
 cleanup:
-  if (select != NULL)
+  if (oids != NULL)
     {
-      parser_free_tree (parser, select);
+      free_and_init (oids);
     }
-  pt_end_query (parser);
-
   return retval;
 }
 
@@ -11205,19 +11122,18 @@ cleanup:
  *   allowed(out)     : 0 if not allowed, 1 if allowed
  *
  */
-
 static int
 is_replace_or_odku_allowed (DB_OBJECT * obj, int *allowed)
 {
   int error = NO_ERROR;
   SM_CLASS *smclass = NULL;
 
-  /* TODO This check should be modified when the partition code is fixed.
-   *      We cannot currently distinguish between a partitioned class
-   *      and a class in an inheritance chain (i.e. with *real* subclasses)
-   */
-
   *allowed = 1;
+  if (sm_is_partitioned_class (obj))
+    {
+      return NO_ERROR;
+    }
+
   error = au_fetch_class (obj, &smclass, AU_FETCH_READ, AU_SELECT);
   if (error != NO_ERROR)
     {
@@ -11251,13 +11167,14 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 {
   const char *into_label;
   DB_VALUE *ins_val, *val, db_value;
-  int error = NO_ERROR;
+  int error = NO_ERROR, flag = 0;
   PT_NODE *attr, *vc;
   PT_NODE *into;
   PT_NODE *class_;
   PT_NODE *non_null_attrs = NULL;
   PT_NODE *upd_non_null_attrs = NULL;
   PT_NODE *default_expr_attrs = NULL;
+  PT_NODE *update = NULL;
   DB_ATTDESC **attr_descs = NULL;
   int i, degree, row_count = 0;
   int server_allowed = 0;
@@ -11289,18 +11206,13 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
     }
 
   if (statement->info.insert.do_replace
-      || statement->info.insert.on_dup_key_update != NULL)
+      || statement->info.insert.odku_assignments != NULL)
     {
       /* Check to see if the class into which we are inserting is part of
          an inheritance chain. We do not allow these statements to be executed
          in these cases as we might have undefined behavior, such as trying
          to update a column that belongs to a child for a duplicate key in the
          parent table that does not have that column.
-       */
-      /* TODO This check should be modified when the partition code is fixed.
-       *      We cannot currently distinguish between a partitioned class
-       *      and a class in an inheritance chain (i.e. with *real*
-       *      subclasses)
        */
       int allowed = 0;
       error =
@@ -11326,23 +11238,32 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
       return error;
     }
 
-  if (statement->info.insert.on_dup_key_update != NULL && server_allowed)
+  if (statement->info.insert.odku_assignments != NULL)
     {
-      PT_NODE *upd_statement = statement->info.insert.on_dup_key_update;
-
-      server_allowed = 0;
-      error = is_server_update_allowed (parser, &upd_non_null_attrs,
-					&upd_has_uniques, &server_allowed,
-					upd_statement);
-      if (error != NO_ERROR)
+      /* Test if server UPDATE is allowed */
+      flag = statement->info.insert.spec->info.spec.flag;
+      update = do_create_odku_stmt (parser, statement);
+      if (update == NULL)
 	{
+	  error = ER_FAILED;
 	  return error;
 	}
-      if (prm_get_bool_value (PRM_ID_HOSTVAR_LATE_BINDING) &&
-	  ((prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) <= 0)
-	   || statement->cannot_prepare))
+      if (server_allowed)
 	{
 	  server_allowed = 0;
+	  error = is_server_update_allowed (parser, &upd_non_null_attrs,
+					    &upd_has_uniques, &server_allowed,
+					    update);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  if (prm_get_bool_value (PRM_ID_HOSTVAR_LATE_BINDING) &&
+	      ((prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) <=
+		0) || statement->cannot_prepare))
+	    {
+	      server_allowed = 0;
+	    }
 	}
     }
 
@@ -11382,7 +11303,6 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
          will be NULL and we will only make a template with
          no values put in. */
       row_count = 1;
-
 
       /* now create the object using templates, and then dbt_put
          each value for each corresponding attribute.
@@ -11599,13 +11519,12 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
       goto cleanup;
     }
 
-  if ((*otemplate) != NULL && statement->info.insert.on_dup_key_update)
+  if ((*otemplate) != NULL && statement->info.insert.odku_assignments)
     {
-      error =
-	do_on_duplicate_key_update (parser, *otemplate,
-				    statement->info.insert.spec,
-				    statement->info.insert.class_specs,
-				    statement->info.insert.on_dup_key_update);
+      assert (update != NULL);
+      error = do_on_duplicate_key_update (parser, *otemplate, update);
+      /* restore flags */
+      statement->info.insert.spec->info.spec.flag = flag;
       if (error < 0)
 	{
 	  goto cleanup;
@@ -11657,6 +11576,17 @@ cleanup:
       free_and_init (attr_descs);
     }
 
+  if (update != NULL)
+    {
+      update->info.update.assignment = NULL;
+      update->info.update.spec = NULL;
+      if (update->info.update.check_where != NULL)
+	{
+	  update->info.update.check_where->info.check_option.expr = NULL;
+	}
+      parser_free_tree (parser, update);
+    }
+
   if (row_count_ptr != NULL)
     {
       *row_count_ptr = row_count;
@@ -11693,11 +11623,11 @@ insert_subquery_results (PARSER_CONTEXT * parser,
   CURSOR_ID cursor_id;
   DB_OTMPL *otemplate = NULL;
   DB_OBJECT *obj = NULL;
-  PT_NODE *attr, *qry, *attrs;
+  PT_NODE *attr, *qry, *attrs, *update = NULL;
   DB_VALUE *vals = NULL, *val = NULL, *ins_val = NULL;
-  int degree, k, cnt, i;
+  int degree, k, cnt, i, flag = 0;
   DB_ATTDESC **attr_descs = NULL;
-
+  ODKU_TUPLE_VALUE_ARG odku_arg;
   if (values_list == NULL || values_list->node_type != PT_NODE_LIST
       || values_list->info.node_list.list_type != PT_IS_SUBQUERY
       || (qry = values_list->info.node_list.list) == NULL
@@ -11725,8 +11655,43 @@ insert_subquery_results (PARSER_CONTEXT * parser,
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
+      /* count elements in the select list before we modify it for 
+       * ON DUPLICATE KEY UPDATE statements */
+      degree = pt_length_of_select_list (pt_get_select_list (parser, qry),
+					 EXCLUDE_HIDDEN_COLUMNS);
+      if (degree <= 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DO_INSERT_TOO_MANY, 0);
+	  return ER_DO_INSERT_TOO_MANY;
+	}
       if (qry->etc == NULL)
 	{
+	  if (statement->info.insert.odku_assignments != NULL)
+	    {
+	      /* Add nodes referenced in odku_assignments to the select list
+	       * because we need those values when evaluating values for
+	       * update.
+	       */
+	      odku_arg.insert_stmt = statement;
+	      odku_arg.cursor_p = &cursor_id;
+
+	      statement->info.insert.odku_assignments =
+		parser_walk_tree (parser,
+				  statement->info.insert.odku_assignments,
+				  pt_append_odku_references,
+				  (void *) (&odku_arg), NULL, NULL);
+	      if (statement->info.insert.odku_assignments == NULL
+		  || pt_has_error (parser))
+		{
+		  error = er_errid ();
+		  if (error == NO_ERROR)
+		    {
+		      error = ER_FAILED;
+		    }
+		  return error;
+		}
+	    }
+
 	  /* execute the subquery */
 	  error = do_select (parser, qry);
 	  if (error < NO_ERROR || qry->etc == NULL)
@@ -11740,10 +11705,6 @@ insert_subquery_results (PARSER_CONTEXT * parser,
 	{
 	  cursor_id.query_id = parser->query_id;
 
-	  /* allocate space for attribute values */
-	  degree =
-	    pt_length_of_select_list (pt_get_select_list (parser, qry),
-				      EXCLUDE_HIDDEN_COLUMNS);
 	  vals = (DB_VALUE *) malloc (degree * sizeof (DB_VALUE));
 	  if (vals == NULL)
 	    {
@@ -11851,16 +11812,20 @@ insert_subquery_results (PARSER_CONTEXT * parser,
 		    }
 
 		  if (statement->node_type == PT_INSERT
-		      && statement->info.insert.on_dup_key_update)
+		      && statement->info.insert.odku_assignments)
 		    {
-		      error =
-			do_on_duplicate_key_update (parser, otemplate,
-						    statement->info.insert.
-						    spec,
-						    statement->info.insert.
-						    class_specs,
-						    statement->info.insert.
-						    on_dup_key_update);
+		      if (update == NULL)
+			{
+			  flag = statement->info.insert.spec->info.spec.flag;
+			  update = do_create_odku_stmt (parser, statement);
+			  if (update == NULL)
+			    {
+			      error = ER_FAILED;
+			      goto cleanup;
+			    }
+			}
+		      error = do_on_duplicate_key_update (parser, otemplate,
+							  update);
 		      if (error < 0)
 			{
 			  /* there was an error, cleanup and return */
@@ -11957,7 +11922,18 @@ insert_subquery_results (PARSER_CONTEXT * parser,
     }
 
 cleanup:
-
+  if (update != NULL)
+    {
+      /* restore flags */
+      statement->info.insert.spec->info.spec.flag = flag;
+      update->info.update.assignment = NULL;
+      update->info.update.spec = NULL;
+      if (update->info.update.check_where != NULL)
+	{
+	  update->info.update.check_where->info.check_option.expr = NULL;
+	}
+      parser_free_tree (parser, update);
+    }
   if (vals != NULL)
     {
       for (val = vals, k = 0; k < degree; val++, k++)
@@ -12263,7 +12239,7 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
   parser->au_save = save;
 
   if (need_savepoint == false
-      && statement->info.insert.on_dup_key_update != NULL)
+      && statement->info.insert.odku_assignments != NULL)
     {
       has_trigger = 0;
       error = sm_class_has_triggers (class_->info.name.db_object,
@@ -12535,7 +12511,7 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (pt_length_of_list (statement) > 1 ||
       pt_length_of_list (values) > 1 ||
       statement->info.insert.do_replace ||
-      statement->info.insert.on_dup_key_update != NULL)
+      statement->info.insert.odku_assignments != NULL)
     {
       return NO_ERROR;
     }
@@ -15861,4 +15837,121 @@ do_set_names (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   return (error != NO_ERROR) ? ER_OBJ_INVALID_ARGUMENTS : NO_ERROR;
+}
+
+/*
+ * pt_append_odku_references () - append references to SELECT specs from
+ *				  on duplicate key assignments to the SELECT
+ *				  list
+ * return :
+ * parser (in) :
+ * node (in) :
+ * arg (in) :
+ * continue_walk (in) :
+ *
+ * Note: This function rewrites the update assignments of an
+ *  INSERT...SELECT... ON DUPLICATE KEY UPDATE statement so that they can be
+ *  evaluated as constants. In order for this to be done, all right hand
+ *  references to attributes from the SELECT specs are added to the
+ *  SELECT list and replaced in assignments with PT_TUPLE_VALUE nodes. We can
+ *  only handle PT_NAME and PT_DOT_ (PT_NAME.PT_NAME) nodes here. We should
+ *  not encounter complex path expressions here but we will not throw an error
+ *  if we do. Complex path expression will either be foldable or we will throw
+ *  an error when we try to evaluate them.
+ */
+static PT_NODE *
+pt_append_odku_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+			   int *continue_walk)
+{
+  ODKU_TUPLE_VALUE_ARG *odku_arg;
+  PT_NODE *insert_spec = NULL;
+  PT_NODE *select = NULL, *select_list = NULL, *select_spec = NULL,
+    *spec = NULL;
+  PT_NODE *name_node = NULL;
+  int count = 0;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (node == NULL || arg == NULL)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  odku_arg = (ODKU_TUPLE_VALUE_ARG *) arg;
+
+  if (odku_arg->insert_stmt->node_type != PT_INSERT)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      *continue_walk = PT_STOP_WALK;
+      return NULL;
+    }
+
+  if (odku_arg->insert_stmt->info.insert.value_clauses->node_type
+      != PT_NODE_LIST)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  insert_spec = odku_arg->insert_stmt->info.insert.spec;
+
+  select =
+    odku_arg->insert_stmt->info.insert.value_clauses->info.node_list.list;
+  if (!PT_IS_SELECT (select))
+    {
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  select_list = pt_get_select_list (parser, select);
+  if (select_list == NULL)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return NULL;
+    }
+
+  if (node->node_type == PT_NAME)
+    {
+      name_node = node;
+    }
+  else if (node->node_type == PT_DOT_)
+    {
+      if (node->info.dot.arg1 == NULL
+	  || node->info.dot.arg1->node_type != PT_NAME)
+	{
+	  return node;
+	}
+
+      /* do not visit leaves */
+      *continue_walk = PT_LIST_WALK;
+      name_node = node->info.dot.arg1;
+    }
+  else
+    {
+      return node;
+    }
+
+  if (name_node->info.name.spec_id == insert_spec->info.spec.id)
+    {
+      /* node belongs to the insert class, nothing to be done here */
+      return node;
+    }
+
+  select_spec = select->info.query.q.select.from;
+  for (spec = select_spec; spec != NULL; spec = spec->next)
+    {
+      if (name_node->info.name.spec_id == spec->info.spec.id)
+	{
+	  *continue_walk = PT_LIST_WALK;
+	  return pt_make_tuple_value_reference (parser, node, select_list,
+						odku_arg->cursor_p);
+	}
+    }
+
+  /* There might be names which do not belong to either the select specs or
+   * the insert specs: ON DUPLICATE UPDATE set column = (SELECT ...) */
+  return node;
 }

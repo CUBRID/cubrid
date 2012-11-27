@@ -920,6 +920,11 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_LOGIN_USER];
   req_p->processing_function = slogin_user;
   req_p->name = "NET_SERVER_SET_USERNAME";
+
+  net_Requests[NET_SERVER_FIND_MULTI_UNIQUES].processing_function =
+    sbtree_find_multi_uniques;
+  net_Requests[NET_SERVER_FIND_MULTI_UNIQUES].name =
+    "NET_SERVER_FIND_MULTI_UNIQUES";
 }
 
 #if defined(CUBRID_DEBUG)

@@ -1119,7 +1119,7 @@ $ LOADDB
 1050 不能修改列 "%1$s". CUBRID 不能修改列的domain. 列上存在索引.
 1051 不能修改列 "%1$s". CUBRID 不能在列上添加一个约束. 已有的列数据可能不check改约束.
 1052 不能修改列 "%1$s". CUBRID 没有检测到任何有效的修改在列的representation.
-1053 语句 REPLACE INTO... 和 INSERT ... ON DUPLICATE KEY UPDATE 对分区表 或 继承链中的表 是不支持的.
+1053 The statements REPLACE INTO... and INSERT ... ON DUPLICATE KEY UPDATE are not allowed for classes that are part of an inheritance chain.
 1054 auto increment 约束的新值应该大于或等于当前值.
 1055 auto increment 约束的新值应小于最大值.
 1056 为了避免二义性, AUTO_INCREMENT的表选项需要表有一个AUTO_INCREMENT列，并且没有指定seed/increment.

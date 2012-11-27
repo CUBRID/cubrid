@@ -3088,7 +3088,7 @@ csql_statement_tail
 			      }
 			    else
 			      {
-				repeat_option = (pt[0]->node_type == PT_INSERT && !pt[0]->info.insert.do_replace && pt[0]->info.insert.on_dup_key_update == NULL
+				repeat_option = (pt[0]->node_type == PT_INSERT && !pt[0]->info.insert.do_replace && pt[0]->info.insert.odku_assignments == NULL
 				   && pt[0]->info.insert.value_clauses->info.node_list.list_type != PT_IS_SUBQUERY
 				   && pt[0]->info.insert.value_clauses->info.node_list.list->next == NULL);
 				esql_Translate_table.tr_static (text,

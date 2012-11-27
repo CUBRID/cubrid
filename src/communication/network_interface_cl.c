@@ -6957,6 +6957,182 @@ btree_find_unique_internal (BTID * btid, DB_VALUE * key, OID * class_oid,
 }
 
 /*
+ * btree_find_multi_uniques () - search a list of indexes of a specified class
+ *				 for a list of values
+ * return: index search result or BTREE_ERROR_OCCURRED
+ * class_oid (in) : class OID
+ * needs_pruning (in) : whether or not pruning should be performed
+ * btids (in)	  : list of indexes to search
+ * keys (in)	  : list of values to search for
+ * count (in)	  : number of indexes
+ * op_type (in)	  : operation type
+ * oids (in/out)  : found OIDs
+ * oids_count (in/out) : number of OIDs found
+ */
+BTREE_SEARCH
+btree_find_multi_uniques (OID * class_oid, int needs_pruning, BTID * btids,
+			  DB_VALUE * keys, int count,
+			  SCAN_OPERATION_TYPE op_type, OID ** oids,
+			  int *oids_count)
+{
+#if defined (CS_MODE)
+  int req_error, req_size, area_size, i;
+  /* reply contains area size and return code */
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
+  char *request = NULL, *ptr = NULL;
+  char *area = NULL;
+  BTREE_SEARCH result = BTREE_KEY_NOTFOUND;
+
+  /* compute request size */
+  req_size = OR_INT_SIZE	/* number of indexes to search */
+    + OR_INT_SIZE		/* needs pruning */
+    + OR_OID_SIZE		/* class OID */
+    + OR_INT_SIZE		/* operation type */
+    + (count * OR_BTID_ALIGNED_SIZE);	/* indexes */
+
+  for (i = 0; i < count; i++)
+    {
+      req_size += OR_VALUE_ALIGNED_SIZE (&keys[i]);
+    }
+
+  request = (char *) malloc (req_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, req_size);
+      result = BTREE_ERROR_OCCURRED;
+      goto cleanup;
+    }
+
+  /* pack oid */
+  ptr = or_pack_oid (request, class_oid);
+  /* needs pruning */
+  ptr = or_pack_int (ptr, needs_pruning);
+  /* operation type */
+  ptr = or_pack_int (ptr, op_type);
+  /* number of indexes */
+  ptr = or_pack_int (ptr, count);
+  /* indexes */
+  for (i = 0; i < count; i++)
+    {
+      ptr = or_pack_btid (ptr, &btids[i]);
+    }
+  /* values */
+  for (i = 0; i < count; i++)
+    {
+      ptr = or_pack_value (ptr, &keys[i]);
+    }
+
+  req_error = net_client_request2 (NET_SERVER_FIND_MULTI_UNIQUES, request,
+				   req_size, OR_ALIGNED_BUF_START (a_reply),
+				   OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
+				   &area, &area_size);
+  if (req_error != NO_ERROR)
+    {
+      result = BTREE_ERROR_OCCURRED;
+      goto cleanup;
+    }
+
+  /* skip over area_size */
+  ptr = or_unpack_int (OR_ALIGNED_BUF_START (a_reply), &area_size);
+
+  /* unpack error code returned from server */
+  ptr = or_unpack_int (ptr, &req_error);
+  if (req_error != NO_ERROR)
+    {
+      result = BTREE_ERROR_OCCURRED;
+      goto cleanup;
+    }
+
+  /* if no data was returned, no offending OID was found */
+  if (area_size == 0)
+    {
+      *oids = NULL;
+      result = BTREE_KEY_NOTFOUND;
+      goto cleanup;
+    }
+
+  /* unpack number of returned OIDs */
+  ptr = or_unpack_int (area, oids_count);
+  if (*oids_count == 0)
+    {
+      assert (false);
+      *oids = NULL;
+      result = BTREE_KEY_NOTFOUND;
+      goto cleanup;
+    }
+  else
+    {
+      assert (*oids_count > 0);
+      result = BTREE_KEY_FOUND;
+    }
+
+  *oids = (OID *) malloc ((*oids_count) * sizeof (OID));
+  if (*oids == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, req_size);
+      result = BTREE_ERROR_OCCURRED;
+      goto cleanup;
+    }
+
+  for (i = 0; i < *oids_count; i++)
+    {
+      ptr = or_unpack_oid (ptr, &((*oids)[i]));
+    }
+
+cleanup:
+  if (request != NULL)
+    {
+      free_and_init (request);
+    }
+  if (area != NULL)
+    {
+      free_and_init (area);
+    }
+  if (result != BTREE_KEY_FOUND)
+    {
+      *oids_count = 0;
+      *oids = NULL;
+    }
+  return result;
+
+#else
+  BTREE_SEARCH result = BTREE_KEY_NOTFOUND;
+  OID *local_oids = NULL;
+  int local_count = 0;
+
+  ENTER_SERVER ();
+
+  result = xbtree_find_multi_uniques (NULL, class_oid, needs_pruning, btids,
+				      keys, count, op_type, &local_oids,
+				      &local_count);
+  if (result == BTREE_ERROR_OCCURRED)
+    {
+      return result;
+    }
+
+  /* need to copy memory from server context to local context */
+  if (local_count > 0)
+    {
+      *oids = (OID *) malloc (local_count * sizeof (OID));
+      if (*oids == NULL)
+	{
+	  db_private_free (NULL, local_oids);
+	  return BTREE_ERROR_OCCURRED;
+	}
+      *oids_count = local_count;
+      memcpy (*oids, local_oids, local_count * sizeof (OID));
+      db_private_free (NULL, local_oids);
+    }
+
+  EXIT_SERVER ();
+
+  return result;
+#endif
+}
+
+/*
  * btree_delete_with_unique_key -
  *
  * return:

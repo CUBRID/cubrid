@@ -322,6 +322,13 @@ static XASL_NODE *pt_to_merge_insert_xasl (PARSER_CONTEXT * parser,
 static PT_NODE *pt_has_modified_class_helper (PARSER_CONTEXT * parser,
 					      PT_NODE * tree, void *arg,
 					      int *continue_walk);
+static PT_NODE *pt_append_assignment_references (PARSER_CONTEXT * parser,
+						 PT_NODE * assignments,
+						 PT_NODE * from,
+						 PT_NODE * select_list);
+static ODKU_INFO *pt_to_odku_info (PARSER_CONTEXT * parser, PT_NODE * insert,
+				   XASL_NODE * xasl,
+				   PT_NODE ** non_null_attrs);
 
 
 #define APPEND_TO_XASL(xasl_head, list, xasl_tail)                      \
@@ -16645,8 +16652,8 @@ outofmem:
 XASL_NODE *
 pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 		   PT_NODE * values_list, int has_uniques,
-		   PT_NODE * non_null_attrs, PT_NODE * default_expr_attrs,
-		   bool is_first_value)
+		   PT_NODE * non_null_attrs, PT_NODE ** upd_non_null_attrs,
+		   PT_NODE * default_expr_attrs, bool is_first_value)
 {
   XASL_NODE *xasl = NULL;
   INSERT_PROC_NODE *insert = NULL;
@@ -16698,6 +16705,21 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
       no_vals =
 	pt_length_of_select_list (pt_get_select_list (parser, value_clause),
 				  EXCLUDE_HIDDEN_COLUMNS);
+      /* also add columns referenced in assignments */
+      if (PT_IS_SELECT (value_clause)
+	  && statement->info.insert.odku_assignments != NULL)
+	{
+	  PT_NODE *select_list = value_clause->info.query.q.select.list;
+	  PT_NODE *select_from = value_clause->info.query.q.select.from;
+	  PT_NODE *assigns = statement->info.insert.odku_assignments;
+	  select_list =
+	    pt_append_assignment_references (parser, assigns, select_from,
+					     select_list);
+	  if (select_list == NULL)
+	    {
+	      return NULL;
+	    }
+	}
     }
   else
     {
@@ -16739,7 +16761,6 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
       insert->no_logging = (statement->info.insert.hint & PT_HINT_NO_LOGGING);
       insert->release_lock = (statement->info.insert.hint & PT_HINT_REL_LOCK);
       insert->do_replace = (statement->info.insert.do_replace ? 1 : 0);
-      insert->dup_key_oid_var_index = -1;
       insert->is_first_value = is_first_value;
 
       if (error >= 0 && (no_vals + no_default_expr > 0))
@@ -16772,6 +16793,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 		}
 	      insert->vals = NULL;
 	      insert->no_vals = no_vals + no_default_expr;
+	      insert->no_default_expr = no_default_expr;
 	    }
 	  else
 	    {
@@ -16876,6 +16898,12 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	}
     }
 
+  if (statement->info.insert.odku_assignments)
+    {
+      xasl->proc.insert.odku = pt_to_odku_info (parser, statement, xasl,
+						upd_non_null_attrs);
+    }
+
   if (xasl)
     {
       xasl->qstmt = statement->alias_print;
@@ -16888,6 +16916,369 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
     }
 
   return xasl;
+}
+
+/*
+ * pt_append_assignment_references () - append names referenced in right side
+ *					of ON DUPLICATE KEY UPDATE to the
+ *					SELECT list of an INSERT...SELECT
+ *					statement
+ * return : updated node or NULL
+ * parser (in)	    : parser context
+ * assignments (in) : assignments
+ * from (in)	    : SELECT spec list
+ * select_list (in/out) : SELECT list
+ */
+static PT_NODE *
+pt_append_assignment_references (PARSER_CONTEXT * parser,
+				 PT_NODE * assignments, PT_NODE * from,
+				 PT_NODE * select_list)
+{
+  PT_NODE *spec;
+  TABLE_INFO *table_info;
+  PT_NODE *ref_nodes;
+  PT_NODE *save_next;
+  PT_NODE *save_ref = NULL;
+
+  if (assignments == NULL)
+    {
+      return select_list;
+    }
+
+  parser->symbols = pt_symbol_info_alloc ();
+  if (parser->symbols == NULL)
+    {
+      PT_ERRORm (parser, from, MSGCAT_SET_PARSER_RUNTIME,
+		 MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+      return NULL;
+    }
+
+  for (spec = from; spec != NULL; spec = spec->next)
+    {
+      save_ref = spec->info.spec.referenced_attrs;
+      spec->info.spec.referenced_attrs = NULL;
+      table_info = pt_make_table_info (parser, spec);
+      if (!table_info)
+	{
+	  spec->info.spec.referenced_attrs = save_ref;
+	  return NULL;
+	}
+
+      parser->symbols->table_info = table_info;
+      /* make sure we only get references from assignments, not from the spec
+       * also: call mq_get_references_helper with false for the last argument
+       */
+      ref_nodes = mq_get_references_helper (parser, assignments, spec, false);
+      if (pt_has_error (parser))
+	{
+	  spec->info.spec.referenced_attrs = save_ref;
+	  return NULL;
+	}
+      while (ref_nodes)
+	{
+	  save_next = ref_nodes->next;
+	  ref_nodes->next = NULL;
+	  if (pt_find_name (parser, ref_nodes, select_list) == NULL)
+	    {
+	      parser_append_node (ref_nodes, select_list);
+	    }
+	  ref_nodes = save_next;
+	}
+      spec->info.spec.referenced_attrs = save_ref;
+    }
+  parser->symbols = NULL;
+  return select_list;
+}
+
+/*
+ * pt_to_odku_info () - build a ODKU_INFO for an
+ *			INSERT...ON DUPLICATE KEY UPDATE statement
+ * return : ODKU info or NULL
+ * parser (in)	: parser context
+ * insert (in)	: insert statement
+ * xasl (in)	: INSERT XASL node
+ * non_null_attrs (in/out) : attributes with NOT_NULL constraint
+ */
+static ODKU_INFO *
+pt_to_odku_info (PARSER_CONTEXT * parser, PT_NODE * insert, XASL_NODE * xasl,
+		 PT_NODE ** non_null_attrs)
+{
+  PT_NODE *insert_spec = NULL;
+  PT_NODE *select_specs = NULL;
+  PT_NODE *select_list = NULL;
+  PT_NODE *assignments = NULL;
+  PT_NODE *prev = NULL, *node = NULL, *next = NULL;
+  PT_NODE *spec = NULL, *constraint = NULL, *save = NULL, *pt_pred = NULL;
+  int insert_subquery;
+  PT_ASSIGNMENTS_HELPER assignments_helper;
+  DB_OBJECT *cls_obj = NULL;
+  int i = 0, error = NO_ERROR;
+  ODKU_INFO *odku = NULL;
+  DB_VALUE *val = NULL;
+  TABLE_INFO *ti = NULL;
+  DB_ATTRIBUTE *attr = NULL;
+  TP_DOMAIN *domain = NULL;
+
+  assert (insert->node_type == PT_INSERT);
+  assert (insert->info.insert.odku_assignments != NULL);
+  parser->symbols = pt_symbol_info_alloc ();
+
+  if (parser->symbols == NULL)
+    {
+      PT_ERRORm (parser, spec, MSGCAT_SET_PARSER_RUNTIME,
+		 MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+      error = MSGCAT_RUNTIME_RESOURCES_EXHAUSTED;
+      goto exit_on_error;
+    }
+
+  odku = regu_odku_info_alloc ();
+  if (odku == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  insert_spec = insert->info.insert.spec;
+
+  insert_subquery =
+    PT_IS_SELECT (insert->info.insert.value_clauses->info.node_list.list);
+
+  if (insert_subquery)
+    {
+      select_specs =
+	insert->info.insert.value_clauses->info.node_list.list->info.query.q.
+	select.from;
+      select_list =
+	insert->info.insert.value_clauses->info.node_list.list->info.query.q.
+	select.list;
+    }
+  else
+    {
+      select_list = NULL;
+      select_specs = NULL;
+    }
+
+  odku->no_assigns = 0;
+  assignments = insert->info.insert.odku_assignments;
+
+  /* init update attribute ids */
+  pt_init_assignments_helper (parser, &assignments_helper, assignments);
+  while (pt_get_next_assignment (&assignments_helper) != NULL)
+    {
+      odku->no_assigns++;
+    }
+
+  odku->attr_ids = regu_int_array_alloc (odku->no_assigns);
+  if (odku->attr_ids == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  odku->assignments = regu_update_assignment_array_alloc (odku->no_assigns);
+  if (odku->assignments == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  odku->attr_info = regu_cache_attrinfo_alloc ();
+  if (!odku->attr_info)
+    {
+      goto exit_on_error;
+    }
+
+  /* build table info */
+  ti = pt_make_table_info (parser, insert_spec);
+  if (ti == NULL)
+    {
+      PT_ERRORm (parser, spec, MSGCAT_SET_PARSER_RUNTIME,
+		 MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+      error = MSGCAT_RUNTIME_RESOURCES_EXHAUSTED;
+      goto exit_on_error;
+    }
+
+  ti->next = parser->symbols->table_info;
+  parser->symbols->table_info = ti;
+
+  for (spec = select_specs; spec != NULL; spec = spec->next)
+    {
+      ti = pt_make_table_info (parser, spec);
+      if (ti == NULL)
+	{
+	  PT_ERRORm (parser, spec, MSGCAT_SET_PARSER_RUNTIME,
+		     MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+	  error = MSGCAT_RUNTIME_RESOURCES_EXHAUSTED;
+	  goto exit_on_error;
+	}
+
+      ti->next = parser->symbols->table_info;
+      parser->symbols->table_info = ti;
+    }
+
+  /* init symbols */
+  parser->symbols->current_class = insert_spec->info.spec.entity_name;
+  parser->symbols->cache_attrinfo = odku->attr_info;
+  parser->symbols->current_listfile = select_list;
+  parser->symbols->listfile_value_list = xasl->val_list;
+  parser->symbols->listfile_attr_offset = 0;
+
+  cls_obj = insert_spec->info.spec.entity_name->info.name.db_object;
+
+  pt_init_assignments_helper (parser, &assignments_helper, assignments);
+  i = 0;
+  while (pt_get_next_assignment (&assignments_helper))
+    {
+      attr = db_get_attribute (cls_obj,
+			       assignments_helper.lhs->info.name.original);
+      if (attr == NULL)
+	{
+	  error = er_errid ();
+	  goto exit_on_error;
+	}
+
+      odku->attr_ids[i] = attr->id;
+      odku->assignments[i].att_idx = i;
+      odku->assignments[i].cls_idx = -1;
+      if (assignments_helper.is_rhs_const)
+	{
+	  val = pt_value_to_db (parser, assignments_helper.rhs);
+	  if (val == NULL)
+	    {
+	      error = ER_GENERIC_ERROR;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      goto exit_on_error;
+	    }
+
+	  prev = NULL;
+	  for (node = *non_null_attrs; node != NULL; node = next)
+	    {
+	      /* Check to see if this is a NON NULL attr */
+	      next = node->next;
+
+	      if (!pt_name_equal (parser, node, assignments_helper.lhs))
+		{
+		  prev = node;
+		  continue;
+		}
+
+	      if (DB_IS_NULL (val))
+		{
+		  /* assignment of a NULL value to a non null attribute */
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_OBJ_ATTRIBUTE_CANT_BE_NULL, 1,
+			  assignments_helper.lhs->info.name.original);
+		  error = ER_OBJ_ATTRIBUTE_CANT_BE_NULL;
+		  goto exit_on_error;
+		}
+	      /* remove the node from the non_null_attrs list
+	       * since we've already checked that the attr will be
+	       * non-null and the engine need not check again.
+	       */
+	      if (prev == NULL)
+		{
+		  *non_null_attrs = (*non_null_attrs)->next;
+		}
+	      else
+		{
+		  prev->next = node->next;
+		}
+
+	      /* free the node */
+	      node->next = NULL;	/* cut-off link */
+	      parser_free_tree (parser, node);
+	      break;
+	    }
+	  odku->assignments[i].constant = regu_dbval_alloc ();
+	  if (odku->assignments[i].constant == NULL)
+	    {
+	      error = er_errid ();
+	      goto exit_on_error;
+	    }
+	  domain = db_attribute_domain (attr);
+	  error = tp_value_coerce (val, odku->assignments[i].constant,
+				   domain);
+	  if (error != DOMAIN_COMPATIBLE)
+	    {
+	      error = ER_OBJ_DOMAIN_CONFLICT;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+		      attr->header.name);
+	      goto exit_on_error;
+	    }
+	}
+      else
+	{
+	  odku->assignments[i].regu_var =
+	    pt_to_regu_variable (parser, assignments_helper.rhs,
+				 UNBOX_AS_VALUE);
+	}
+
+      i++;
+    }
+
+  if (*non_null_attrs)
+    {
+      /* build constraint pred */
+      pt_init_assignments_helper (parser, &assignments_helper, assignments);
+      node = *non_null_attrs;
+      while (node)
+	{
+	  save = node->next;
+	  CAST_POINTER_TO_NODE (node);
+	  do
+	    {
+	      pt_get_next_assignment (&assignments_helper);
+	    }
+	  while (assignments_helper.lhs != NULL
+		 && !pt_name_equal (parser, assignments_helper.lhs, node));
+
+	  if (assignments_helper.lhs == NULL)
+	    {
+	      /* I don't think this should happen */
+	      assert (false);
+	      break;
+	    }
+
+	  constraint = parser_new_node (parser, PT_EXPR);
+	  if (constraint == NULL)
+	    {
+	      PT_ERRORm (parser, spec, MSGCAT_SET_PARSER_RUNTIME,
+			 MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+	      error = MSGCAT_RUNTIME_RESOURCES_EXHAUSTED;
+	      goto exit_on_error;
+	    }
+
+	  constraint->next = pt_pred;
+	  constraint->line_number = node->line_number;
+	  constraint->column_number = node->column_number;
+	  constraint->info.expr.op = PT_IS_NOT_NULL;
+	  constraint->info.expr.arg1 = node;
+	  pt_pred = constraint;
+
+	  node = save;
+	}
+
+      odku->cons_pred = pt_to_pred_expr (parser, pt_pred);
+      if (odku->cons_pred == NULL)
+	{
+	  goto exit_on_error;
+	}
+    }
+
+  if (pt_pred != NULL)
+    {
+      parser_free_tree (parser, pt_pred);
+    }
+  return odku;
+
+exit_on_error:
+  if (!er_errid () && !pt_has_error (parser))
+    {
+      PT_INTERNAL_ERROR (parser, "ODKU Info generation failed");
+      error = ER_FAILED;
+    }
+  if (pt_pred)
+    {
+      parser_free_tree (parser, pt_pred);
+    }
+  return NULL;
 }
 
 /*
@@ -23261,7 +23652,6 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   insert->no_logging = (statement->info.merge.hint & PT_HINT_NO_LOGGING);
   insert->release_lock = (statement->info.merge.hint & PT_HINT_REL_LOCK);
   insert->do_replace = 0;
-  insert->dup_key_oid_var_index = -1;
   insert->is_first_value = 1;
 
   if (no_vals + no_default_expr > 0)

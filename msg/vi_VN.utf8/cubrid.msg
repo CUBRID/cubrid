@@ -1119,7 +1119,7 @@ $ LOADDB
 1050 Không thể thay đổi thuộc tính "%1$s". CUBRID hiện tại không thể thay đổi miền của thuộc tính. Thuộc tính có một chỉ mục trên nó.
 1051 Không thể thay đổi thuộc tính "%1$s". CUBRID hiện tại không thể thay đổi thuộc tính để thêm một ràng buộc. Giá trị thuộc tính hiện có có thể không kiểm tra ràng buộc.
 1052 Thuộc tính "%1$s" đã không được thay đổi. CUBRID đã không phát hiện bất kỳ thay đổi có hiệu lực nào trong đại diện của thuộc tính.
-1053 Các câu lệnh REPLACE INTO... and INSERT ... ON DUPLICATE KEY UPDATE không được phép cho các lớp đã phân vùng hoặc cho các lớp là một phần của một chuỗi thừa kế.
+1053 The statements REPLACE INTO... and INSERT ... ON DUPLICATE KEY UPDATE are not allowed for classes that are part of an inheritance chain.
 1054 Giá trị mới của một ràng buộc AUTO INCREMENT phải lớn hơn hoặc bằng với giá trị hiện tại.
 1055 Giá trị mới của một ràng buộc AUTO INCREMENT phải nhỏ hơn giá trị tối đa.
 1056 Để tránh sự mơ hồ, tùy chọn bảng AUTO_INCREMENT yêu cầu bảng có chính xác một cột AUTO_INCREMENT và không có đặc tả khởi đầu/gia tăng.
