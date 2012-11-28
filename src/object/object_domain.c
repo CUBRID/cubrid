@@ -1298,8 +1298,8 @@ tp_value_slam_domain (DB_VALUE * value, const DB_DOMAIN * domain)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      db_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain),
-			       TP_DOMAIN_COLLATION (domain));
+      db_string_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain),
+				      TP_DOMAIN_COLLATION (domain));
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       value->domain.char_info.type = TP_DOMAIN_TYPE (domain);
@@ -4351,8 +4351,8 @@ tp_can_steal_string (const DB_VALUE * val, const DB_DOMAIN * desired_domain)
   desired_type = TP_DOMAIN_TYPE (desired_domain);
   desired_precision = desired_domain->precision;
 
-  if (TP_TYPE_HAS_COLLATION (original_type)
-      && TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (desired_domain)))
+  if (TP_IS_CHAR_TYPE (original_type)
+      && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (desired_domain)))
     {
       if (DB_GET_STRING_COLLATION (val)
 	  != TP_DOMAIN_COLLATION (desired_domain)
@@ -6520,10 +6520,11 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
   db_value_domain_init (target, desired_type,
 			desired_domain->precision, desired_domain->scale);
 
-  if (TP_TYPE_HAS_COLLATION (desired_type))
+  if (TP_IS_CHAR_TYPE (desired_type))
     {
-      db_put_cs_and_collation (target, TP_DOMAIN_CODESET (desired_domain),
-			       TP_DOMAIN_COLLATION (desired_domain));
+      db_string_put_cs_and_collation (target,
+				      TP_DOMAIN_CODESET (desired_domain),
+				      TP_DOMAIN_COLLATION (desired_domain));
     }
 
   switch (desired_type)
@@ -7832,9 +7833,11 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    }
 	  else
 	    {
-	      db_put_cs_and_collation (target,
-				       TP_DOMAIN_CODESET (desired_domain),
-				       TP_DOMAIN_COLLATION (desired_domain));
+	      db_string_put_cs_and_collation (target,
+					      TP_DOMAIN_CODESET
+					      (desired_domain),
+					      TP_DOMAIN_COLLATION
+					      (desired_domain));
 	      status = DOMAIN_COMPATIBLE;
 	    }
 	  break;
@@ -9112,7 +9115,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 	  if (pr_type)
 	    {
 	      /* TODO : change this when adding new types with collation */
-	      if (TP_TYPE_HAS_COLLATION (vtype1)
+	      if (TP_IS_CHAR_TYPE (vtype1)
 		  && (DB_GET_STRING_CODESET (v1)
 		      != DB_GET_STRING_CODESET (v2)))
 		{
@@ -9136,7 +9139,8 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 		      db_value_domain_init (&temp1, vtype1,
 					    DB_VALUE_PRECISION (v1), 0);
 
-		      db_put_cs_and_collation (&temp1, codeset, common_coll);
+		      db_string_put_cs_and_collation (&temp1, codeset,
+						      common_coll);
 		      error_status =
 			db_char_string_coerce (v1, &temp1, &data_status);
 
@@ -9158,7 +9162,8 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 		      db_value_domain_init (&temp2, vtype2,
 					    DB_VALUE_PRECISION (v2), 0);
 
-		      db_put_cs_and_collation (&temp2, codeset, common_coll);
+		      db_string_put_cs_and_collation (&temp2, codeset,
+						      common_coll);
 		      error_status =
 			db_char_string_coerce (v2, &temp2, &data_status);
 

@@ -2571,6 +2571,7 @@ struct pt_value_info
   char string_type;		/* ' ', 'N', 'B', or 'X' */
   bool print_charset;
   bool print_collation;
+  bool has_cs_introducer;
 };
 
 

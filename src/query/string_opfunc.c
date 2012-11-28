@@ -1321,7 +1321,8 @@ db_string_concatenate (const DB_VALUE * string1,
 					(int) QSTR_VALUE_PRECISION (string1),
 					0);
 
-		  db_put_cs_and_collation (&temp, codeset, common_coll);
+		  db_string_put_cs_and_collation (&temp, codeset,
+						  common_coll);
 		  error_status =
 		    db_char_string_coerce (string1, &temp, &data_status);
 
@@ -1343,7 +1344,8 @@ db_string_concatenate (const DB_VALUE * string1,
 					(int) QSTR_VALUE_PRECISION (string2),
 					0);
 
-		  db_put_cs_and_collation (&temp, codeset, common_coll);
+		  db_string_put_cs_and_collation (&temp, codeset,
+						  common_coll);
 		  error_status =
 		    db_char_string_coerce (string2, &temp, &data_status);
 
@@ -11033,7 +11035,7 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format,
   /* 4. */
 
   DB_MAKE_STRING (result, res);
-  db_put_cs_and_collation (result, codeset, res_collation);
+  db_string_put_cs_and_collation (result, codeset, res_collation);
 
   result->need_clear = true;
 
@@ -11664,13 +11666,14 @@ db_to_char (const DB_VALUE * src_value,
       error_status = pr_clone_value (src_value, result_str);
       if (domain != NULL)
 	{
-	  db_put_cs_and_collation (result_str, TP_DOMAIN_CODESET (domain),
-				   TP_DOMAIN_COLLATION (domain));
+	  db_string_put_cs_and_collation (result_str,
+					  TP_DOMAIN_CODESET (domain),
+					  TP_DOMAIN_COLLATION (domain));
 	}
       else
 	{
-	  db_put_cs_and_collation (result_str, LANG_COERCIBLE_CODESET,
-				   LANG_COERCIBLE_COLL);
+	  db_string_put_cs_and_collation (result_str, LANG_COERCIBLE_CODESET,
+					  LANG_COERCIBLE_COLL);
 	}
 
       return error_status;
@@ -20503,7 +20506,7 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format,
 
   DB_MAKE_STRING (result, res);
 
-  db_put_cs_and_collation (result, codeset, res_collation);
+  db_string_put_cs_and_collation (result, codeset, res_collation);
 
   result->need_clear = true;
 
@@ -21684,8 +21687,8 @@ db_time_dbval (DB_VALUE * result, const DB_VALUE * datetime_value,
     {
       assert (TP_DOMAIN_TYPE (domain) == DB_VALUE_TYPE (result));
 
-      db_put_cs_and_collation (result, TP_DOMAIN_CODESET (domain),
-			       TP_DOMAIN_COLLATION (domain));
+      db_string_put_cs_and_collation (result, TP_DOMAIN_CODESET (domain),
+				      TP_DOMAIN_COLLATION (domain));
     }
 
   result->need_clear = true;
@@ -21755,7 +21758,7 @@ db_date_dbval (DB_VALUE * result, const DB_VALUE * date_value,
   else
     {
       DB_MAKE_STRING (result, res_s);
-      db_put_cs_and_collation (result, codeset, collation_id);
+      db_string_put_cs_and_collation (result, codeset, collation_id);
     }
 
   result->need_clear = true;
@@ -22452,14 +22455,14 @@ db_blob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
 	}
 
       if (es_get_type (DB_PULL_STRING (src_value)) == ES_NONE)
-        {
-          /* Set default prefix, if no valid prefix was set. */
-          strcpy (path_buf, default_prefix);
-          path_buf_len = strlen (path_buf);
-        }
+	{
+	  /* Set default prefix, if no valid prefix was set. */
+	  strcpy (path_buf, default_prefix);
+	  path_buf_len = strlen (path_buf);
+	}
 
       strncat (path_buf, DB_PULL_STRING (src_value),
-               MIN (src_size, PATH_MAX - path_buf_len));
+	       MIN (src_size, PATH_MAX - path_buf_len));
       path_buf[path_buf_len + MIN (src_size, PATH_MAX - path_buf_len)] = '\0';
 
       error_status = lob_from_file (path_buf, result_value, DB_TYPE_BLOB);
@@ -22643,14 +22646,14 @@ db_clob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
 	}
 
       if (es_get_type (DB_PULL_STRING (src_value)) == ES_NONE)
-        {
-          /* Set default prefix, if no valid prefix was set. */
-          strcpy (path_buf, default_prefix);
-          path_buf_len = strlen (path_buf);
-        }
+	{
+	  /* Set default prefix, if no valid prefix was set. */
+	  strcpy (path_buf, default_prefix);
+	  path_buf_len = strlen (path_buf);
+	}
 
       strncat (path_buf, DB_PULL_STRING (src_value),
-               MIN (src_size, PATH_MAX - path_buf_len));
+	       MIN (src_size, PATH_MAX - path_buf_len));
       path_buf[path_buf_len + MIN (src_size, PATH_MAX - path_buf_len)] = '\0';
 
       error_status = lob_from_file (path_buf, result_value, DB_TYPE_CLOB);

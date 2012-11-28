@@ -14955,6 +14955,7 @@ pt_init_value (PT_NODE * p)
   p->info.value.location = 0;
   p->info.value.print_charset = false;
   p->info.value.print_collation = false;
+  p->info.value.has_cs_introducer = false;
   return p;
 }
 

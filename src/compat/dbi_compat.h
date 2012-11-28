@@ -2121,19 +2121,27 @@ typedef unsigned int SESSION_ID;
 #define DB_MAKE_VARBIT(value, max_bit_length, bit_str, bit_str_bit_size)\
         db_make_varbit(value, max_bit_length, bit_str, bit_str_bit_size)
 
-#define DB_MAKE_CHAR(value, char_length, str, char_str_byte_size) \
-        db_make_char(value, char_length, str, char_str_byte_size)
+#define DB_MAKE_CHAR(value, char_length, str, char_str_byte_size, \
+		     codeset, collation) \
+        db_make_char(value, char_length, str, char_str_byte_size, \
+		     codeset, collation)
 
-#define DB_MAKE_VARCHAR(value, max_char_length, str, char_str_byte_size) \
-        db_make_varchar(value, max_char_length, str, char_str_byte_size)
+#define DB_MAKE_VARCHAR(value, max_char_length, str, char_str_byte_size, \
+		        codeset, collation) \
+        db_make_varchar(value, max_char_length, str, char_str_byte_size, \
+			codeset, collation)
 
 #define DB_MAKE_STRING(value, str) db_make_string(value, str)
 
-#define DB_MAKE_NCHAR(value, nchar_length, str, nchar_str_byte_size) \
-        db_make_nchar(value, nchar_length, str, nchar_str_byte_size)
+#define DB_MAKE_NCHAR(value, nchar_length, str, nchar_str_byte_size, \
+		      codeset, collation) \
+        db_make_nchar(value, nchar_length, str, nchar_str_byte_size, \
+		      codeset, collation)
 
-#define DB_MAKE_VARNCHAR(value, max_nchar_length, str, nchar_str_byte_size)\
-        db_make_varnchar(value, max_nchar_length, str, nchar_str_byte_size)
+#define DB_MAKE_VARNCHAR(value, max_nchar_length, str, nchar_str_byte_size, \
+			 codeset, collation)\
+        db_make_varnchar(value, max_nchar_length, str, nchar_str_byte_size, \
+			 codeset, collation)
 
 #define DB_MAKE_RESULTSET(value, handle) db_make_resultset(value, handle)
 
@@ -2225,6 +2233,8 @@ typedef unsigned int SESSION_ID;
 #define DB_GET_STRING_LENGTH(value) db_get_string_length(value)
 
 #define DB_GET_STRING_CODESET(value) db_get_string_codeset(value)
+
+#define DB_GET_STRING_COLLATION(value) db_get_string_collation(value)
 
 #define DB_INT16_MIN   (-(DB_INT16_MAX)-1)
 #define DB_INT16_MAX   0x7FFFL
@@ -2358,8 +2368,28 @@ typedef enum
 {
   DB_CURRENCY_DOLLAR,
   DB_CURRENCY_YEN,
-  DB_CURRENCY_POUND,
+  DB_CURRENCY_BRITISH_POUND,
   DB_CURRENCY_WON,
+  DB_CURRENCY_TL,
+  DB_CURRENCY_CAMBODIAN_RIEL,
+  DB_CURRENCY_CHINESE_RENMINBI,
+  DB_CURRENCY_INDIAN_RUPEE,
+  DB_CURRENCY_RUSSIAN_RUBLE,
+  DB_CURRENCY_AUSTRALIAN_DOLLAR,
+  DB_CURRENCY_CANADIAN_DOLLAR,
+  DB_CURRENCY_BRASILIAN_REAL,
+  DB_CURRENCY_ROMANIAN_LEU,
+  DB_CURRENCY_EURO,
+  DB_CURRENCY_SWISS_FRANC,
+  DB_CURRENCY_DANISH_KRONE,
+  DB_CURRENCY_NORWEGIAN_KRONE,
+  DB_CURRENCY_BULGARIAN_LEV,
+  DB_CURRENCY_VIETNAMESE_DONG,
+  DB_CURRENCY_CZECH_KORUNA,
+  DB_CURRENCY_POLISH_ZLOTY,
+  DB_CURRENCY_SWEDISH_KRONA,
+  DB_CURRENCY_CROATIAN_KUNA,
+  DB_CURRENCY_SERBIAN_DINAR,
   DB_CURRENCY_NULL
 } DB_CURRENCY;
 
@@ -2748,20 +2778,23 @@ extern int db_make_varbit (DB_VALUE * value, const int max_bit_length,
 			   const int bit_str_bit_size);
 extern int db_value_put_varbit (DB_VALUE * value, DB_C_BIT str, int size);
 extern int db_make_char (DB_VALUE * value, const int char_length,
-			 const DB_C_CHAR str, const int char_str_byte_size);
+			 const DB_C_CHAR str, const int char_str_byte_size,
+			 const int codeset, const int collation_id);
 extern int db_value_put_char (DB_VALUE * value, DB_C_CHAR str, int size);
 extern int db_make_varchar (DB_VALUE * value, const int max_char_length,
-			    const DB_C_CHAR str,
-			    const int char_str_byte_size);
+			    const DB_C_CHAR str, const int char_str_byte_size,
+			    const int codeset, const int collation_id);
 extern int db_value_put_varchar (DB_VALUE * value, DB_C_CHAR str, int size);
 extern int db_make_nchar (DB_VALUE * value, const int nchar_length,
 			  const DB_C_NCHAR str,
-			  const int nchar_str_byte_size);
+			  const int nchar_str_byte_size, const int codeset,
+			  const int collation_id);
 extern int db_value_put_nchar (DB_VALUE * value, DB_C_NCHAR str, int size);
 extern int db_make_varnchar (DB_VALUE * value,
 			     const int max_nchar_length,
 			     const DB_C_NCHAR str,
-			     const int nchar_str_byte_size);
+			     const int nchar_str_byte_size, const int codeset,
+			     const int collation_id);
 extern int db_value_put_varnchar (DB_VALUE * value, DB_C_NCHAR str, int size);
 
 extern DB_CURRENCY db_get_currency_default (void);
@@ -2796,6 +2829,11 @@ extern DB_C_BIT db_get_bit (const DB_VALUE * value, int *length);
 extern DB_C_CHAR db_get_char (const DB_VALUE * value, int *length);
 extern DB_C_NCHAR db_get_nchar (const DB_VALUE * value, int *length);
 extern int db_get_string_size (const DB_VALUE * value);
+extern int db_string_put_cs_and_collation (DB_VALUE * value,
+					   const int codeset,
+					   const int collation_id);
+extern int db_get_string_codeset (const DB_VALUE * value);
+extern int db_get_string_collation (const DB_VALUE * value);
 
 extern DB_C_CHAR db_get_method_error_msg (void);
 
@@ -3890,6 +3928,4 @@ extern int db_get_ha_server_state (char *buffer, int maxlen);
 
 extern void db_clear_host_connected (void);
 extern char *db_get_database_version (void);
-extern int db_put_cs_and_collation (DB_VALUE * value, const int codeset,
-				    const int collation_id);
 #endif /* _DBI_COMPAT_H_ */

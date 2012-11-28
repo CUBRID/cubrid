@@ -3991,8 +3991,9 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 	    err_code = db_make_varchar (&db_val, val_length, value, val_size,
 					lang_get_client_charset (),
 					lang_get_client_collation ());
-	    db_put_cs_and_collation (&db_val, lang_get_client_charset (),
-				     lang_get_client_collation ());
+	    db_string_put_cs_and_collation (&db_val,
+					    lang_get_client_charset (),
+					    lang_get_client_collation ());
 	    db_val.need_clear = is_composed;
 	  }
       }

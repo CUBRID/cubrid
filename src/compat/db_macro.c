@@ -487,13 +487,6 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
       /* space is the min value, matching the comparison in qstr_compare */
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-      value->data.ch.info.style = MEDIUM_STRING;
-      value->data.ch.info.codeset = codeset;
-      value->data.ch.medium.size = 1;
-      value->data.ch.medium.buf = (char *) "\40";	/* space; 32 */
-      value->domain.general_info.is_null = 0;
-      value->domain.char_info.collation_id = collation_id;
-      break;
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
       value->data.ch.info.style = MEDIUM_STRING;
@@ -648,22 +641,6 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
       /* case DB_TYPE_STRING: internally DB_TYPE_VARCHAR */
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-      value->data.ch.info.style = MEDIUM_STRING;
-      value->data.ch.info.codeset = codeset;
-      if (codeset == INTL_CODESET_UTF8)
-	{
-	  value->data.ch.medium.size = 4;
-	  /* maximum supported codepoint : check with intl_is_max_bound_chr */
-	  value->data.ch.medium.buf = (char *) "\xf4\x8f\xbf\xbf";
-	}
-      else
-	{
-	  value->data.ch.medium.size = 1;
-	  value->data.ch.medium.buf = (char *) "\377";	/* 255 */
-	}
-      value->domain.general_info.is_null = 0;
-      value->domain.char_info.collation_id = collation_id;
-      break;
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
       value->data.ch.info.style = MEDIUM_STRING;
@@ -673,6 +650,11 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
 	  value->data.ch.medium.size = 4;
 	  /* maximum supported codepoint : check with intl_is_max_bound_chr */
 	  value->data.ch.medium.buf = (char *) "\xf4\x8f\xbf\xbf";
+	}
+      else if (codeset == INTL_CODESET_KSC5601_EUC)
+	{
+	  value->data.ch.medium.size = 2;
+	  value->data.ch.medium.buf = (char *) "\377\377";	/* 255 255 */
 	}
       else
 	{
@@ -5825,20 +5807,20 @@ db_domain_collation_id (const DB_DOMAIN * domain)
 }
 
 /*
- * db_put_cs_and_collation() - Set the charset and collation.
+ * db_string_put_cs_and_collation() - Set the charset and collation.
  * return	   : error code
  * cs(in)	   : codeset
  * collation_id(in): collation identifier
  */
 int
-db_put_cs_and_collation (DB_VALUE * value, const int codeset,
-			 const int collation_id)
+db_string_put_cs_and_collation (DB_VALUE * value, const int codeset,
+				const int collation_id)
 {
   int error = NO_ERROR;
 
   CHECK_1ARG_ERROR (value);
 
-  if (TP_TYPE_HAS_COLLATION (value->domain.general_info.type))
+  if (TP_IS_CHAR_TYPE (value->domain.general_info.type))
     {
       value->data.ch.info.codeset = (char) codeset;
       value->domain.char_info.collation_id = collation_id;

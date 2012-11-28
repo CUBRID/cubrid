@@ -5868,10 +5868,11 @@ or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain,
 	{
 	  /* this was a tagged NULL value, restore the domain but set the null flag */
 	  db_value_put_null (value);
-	  if (TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (domain)))
+	  if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain)))
 	    {
-	      db_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain),
-				       TP_DOMAIN_COLLATION (domain));
+	      db_string_put_cs_and_collation (value,
+					      TP_DOMAIN_CODESET (domain),
+					      TP_DOMAIN_COLLATION (domain));
 	    }
 	}
       else

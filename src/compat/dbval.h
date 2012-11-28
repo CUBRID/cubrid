@@ -535,7 +535,7 @@
 #define DB_GET_NUMERIC_SCALE(val) \
     ((val)->domain.numeric_info.scale)
 
-#define db_put_cs_and_collation(v, cs, coll) \
+#define db_string_put_cs_and_collation(v, cs, coll) \
     ((v)->data.ch.info.codeset = (cs), \
      (v)->domain.char_info.collation_id = (coll), \
      NO_ERROR)

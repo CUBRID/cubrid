@@ -20556,19 +20556,20 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
 		{
 		  setobj_get_element_ptr (setref->set, i, &sub_value);
 		  if (sub_value != NULL
-		      && TP_TYPE_HAS_COLLATION (DB_VALUE_TYPE (sub_value)))
+		      && TP_IS_CHAR_TYPE (DB_VALUE_TYPE (sub_value)))
 		    {
-		      db_put_cs_and_collation (sub_value,
-					       (unsigned char) codeset,
-					       coll_id);
+		      db_string_put_cs_and_collation (sub_value,
+						      (unsigned char) codeset,
+						      coll_id);
 		    }
 		}
 	    }
 	  else
 	    {
-	      assert (PT_HAS_COLLATION (node->type_enum));
-	      db_put_cs_and_collation (&(node->info.value.db_value),
-				       (unsigned char) codeset, coll_id);
+	      assert (PT_IS_CHAR_STRING_TYPE (node->type_enum));
+	      db_string_put_cs_and_collation (&(node->info.value.db_value),
+					      (unsigned char) codeset,
+					      coll_id);
 	    }
 	}
       break;

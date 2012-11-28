@@ -2251,8 +2251,8 @@ jsp_unpack_string_value (char *buffer, DB_VALUE * retval)
     }
 
   db_make_string (retval, val);
-  db_put_cs_and_collation (retval, lang_get_client_charset (),
-			   lang_get_client_collation ());
+  db_string_put_cs_and_collation (retval, lang_get_client_charset (),
+				  lang_get_client_collation ());
   retval->need_clear = true;
 
   return ptr;

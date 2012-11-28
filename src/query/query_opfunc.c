@@ -8772,8 +8772,9 @@ qdata_list_dbs (THREAD_ENTRY * thread_p, DB_VALUE * result_p,
 	{
 	  assert (TP_DOMAIN_TYPE (domain_p) == DB_VALUE_TYPE (result_p));
 
-	  db_put_cs_and_collation (result_p, TP_DOMAIN_CODESET (domain_p),
-				   TP_DOMAIN_COLLATION (domain_p));
+	  db_string_put_cs_and_collation (result_p,
+					  TP_DOMAIN_CODESET (domain_p),
+					  TP_DOMAIN_COLLATION (domain_p));
 	}
     }
   else

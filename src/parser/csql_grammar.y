@@ -18652,6 +18652,7 @@ char_string
 			    pt_set_charset_coll (this_parser, node,
 						 INTL_CODESET_KSC5601_EUC,
 						 LANG_COLL_EUCKR_BINARY, true);
+			    node->info.value.has_cs_introducer = true;
 			  }
 
 			$$ = node;
@@ -18671,6 +18672,7 @@ char_string
 			    pt_set_charset_coll (this_parser, node,
 						 INTL_CODESET_ISO88591,
 						 LANG_COLL_ISO_BINARY, true);
+			    node->info.value.has_cs_introducer = true;
 			  }
 
 			$$ = node;
@@ -18690,6 +18692,7 @@ char_string
 			    pt_set_charset_coll (this_parser, node,
 						 INTL_CODESET_UTF8,
 						 LANG_COLL_UTF8_BINARY, true);
+			    node->info.value.has_cs_introducer = true;
 			  }
 
 			$$ = node;
@@ -22266,14 +22269,28 @@ pt_set_char_collation_info (PARSER_CONTEXT *parser, PT_NODE *node,
     	         are not compatible */
     	      if (coll_node != NULL)
     		{
-    		  PT_ERRORm (parser, coll_node, MSGCAT_SET_PARSER_SEMANTIC,
-			     MSGCAT_SEMANTIC_INCOMPATIBLE_CS_COLL);
+    		  if (!node->info.value.has_cs_introducer)
+    		    {
+    		      node->data_type->info.data_type.units =
+    			lang_coll->codeset;
+    		      node->data_type->info.data_type.collation_id =
+    			lang_coll->coll.coll_id;
+    		    }
+    		  else
+    		    {
+    		      PT_ERRORm (parser, coll_node, MSGCAT_SET_PARSER_SEMANTIC,
+				 MSGCAT_SEMANTIC_INCOMPATIBLE_CS_COLL);
+		      return;
+		    }
 		}
-	      /* COLLATE was not specified: leave the default collation of
-	         charset set by charset introducer */
-	      assert (node->info.value.print_collation == false);
+	      else
+		{
+		  /* COLLATE was not specified: leave the default collation of
+		     charset set by charset introducer */
+		  assert (node->info.value.print_collation == false);
 
-	      return;
+		  return;
+		}
     	    }
     	  else
     	    {

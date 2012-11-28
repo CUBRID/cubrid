@@ -240,7 +240,7 @@ EXPORTS
     db_ping_server
     db_push_values
     db_put
-	db_put_cs_and_collation	
+    db_string_put_cs_and_collation	
     db_query_column_count
     db_query_end
     db_query_first_tuple

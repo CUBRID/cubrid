@@ -3255,9 +3255,9 @@ qo_find_like_rewrite_bound (PARSER_CONTEXT * const parser,
   assert (bound->info.value.db_value_is_initialized);
   assert (PT_HAS_COLLATION (pattern->type_enum));
 
-  db_put_cs_and_collation (&(bound->info.value.db_value),
-			   DB_GET_STRING_CODESET (&tmp_result),
-			   DB_GET_STRING_COLLATION (&tmp_result));
+  db_string_put_cs_and_collation (&(bound->info.value.db_value),
+				  DB_GET_STRING_CODESET (&tmp_result),
+				  DB_GET_STRING_COLLATION (&tmp_result));
 
   db_value_clear (&tmp_result);
   return bound;

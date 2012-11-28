@@ -1993,7 +1993,7 @@ intl_is_min_bound_chr (INTL_CODESET codeset, const unsigned char *chr)
 }
 
 /*
- * intl_set_min_bound_chr () - sets chr to a UTF-8 byte array representing 
+ * intl_set_min_bound_chr () - sets chr to a byte array representing 
  *			       the lowest bound codepoint in the selected 
  *			       codeset, for LIKE index optimization. 
  *
