@@ -356,8 +356,8 @@ static PT_NODE *pt_find_matching_sort_spec (PARSER_CONTEXT * parser,
 					    PT_NODE * spec,
 					    PT_NODE * spec_list,
 					    PT_NODE * select_list);
-static PT_NODE *pt_remove_null_sort_specs (PARSER_CONTEXT * parser,
-					   PT_NODE * list);
+static PT_NODE *pt_remove_unusable_sort_specs (PARSER_CONTEXT * parser,
+					       PT_NODE * list);
 static PT_NODE *pt_check_analytic_function (PARSER_CONTEXT * parser,
 					    PT_NODE * node, void *arg,
 					    int *continue_walk);
@@ -14357,13 +14357,16 @@ pt_find_matching_sort_spec (PARSER_CONTEXT * parser, PT_NODE * spec,
 }
 
 /*
- * pt_remove_null_sort_specs () - remove NULL sort columns (e.g. ORDER BY NULL)
- *   return: new list, without NULL specs
+ * pt_remove_unusable_sort_specs () - remove unusable sort specs
+ *   return: new list, after filtering sort specs
  *   parser(in): parser context
  *   list(in): spec list
+ * Note:
+ *  This call remove useless sort specs like NULL and constant expressions
+ *  (e.g.: order by null, order by 1 + 5, etc)
  */
 static PT_NODE *
-pt_remove_null_sort_specs (PARSER_CONTEXT * parser, PT_NODE * list)
+pt_remove_unusable_sort_specs (PARSER_CONTEXT * parser, PT_NODE * list)
 {
   PT_NODE *item, *expr, *save_next;
 
@@ -14388,11 +14391,22 @@ pt_remove_null_sort_specs (PARSER_CONTEXT * parser, PT_NODE * list)
       save_next = item->next;
       item->next = NULL;
 
+      if (item->node_type != PT_SORT_SPEC
+	  || item->info.sort_spec.expr == NULL)
+	{
+	  assert (false);
+	  PT_INTERNAL_ERROR (parser, "invalid sort spec");
+	}
+
       expr = item->info.sort_spec.expr;
-      if (item->node_type == PT_SORT_SPEC && expr != NULL
-	  && expr->node_type == PT_VALUE && expr->type_enum == PT_TYPE_NULL)
+      if (expr->node_type == PT_VALUE && expr->type_enum == PT_TYPE_NULL)
 	{
 	  /* NULL spec, get rid of it */
+	  parser_free_tree (parser, item);
+	}
+      else if (expr->node_type == PT_EXPR && pt_is_const_expr_node (expr))
+	{
+	  /* order by constant which is not place holder, get rid of it */
 	  parser_free_tree (parser, item);
 	}
       else
@@ -14456,10 +14470,11 @@ pt_check_analytic_function (PARSER_CONTEXT * parser, PT_NODE * func,
 
   /* remove NULL specs */
   func->info.function.analytic.partition_by =
-    pt_remove_null_sort_specs (parser,
-			       func->info.function.analytic.partition_by);
+    pt_remove_unusable_sort_specs (parser,
+				   func->info.function.analytic.partition_by);
   func->info.function.analytic.order_by =
-    pt_remove_null_sort_specs (parser, func->info.function.analytic.order_by);
+    pt_remove_unusable_sort_specs (parser,
+				   func->info.function.analytic.order_by);
 
   partition_by = func->info.function.analytic.partition_by;
   order_by = func->info.function.analytic.order_by;
