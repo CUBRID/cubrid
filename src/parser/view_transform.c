@@ -4341,6 +4341,11 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 		 MSGCAT_RUNTIME_INSERT_EMPTY);
     }
 
+  if (pt_has_error (parser))
+    {
+      return NULL;
+    }
+
   subquery = pt_get_subquery_of_insert_select (insert_statement);
   if (subquery != NULL && PT_IS_SELECT (subquery)
       && insert_statement->info.insert.odku_assignments != NULL)
