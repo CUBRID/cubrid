@@ -269,32 +269,7 @@ static PT_NODE *pt_set_qprior_node_etc_pre (PARSER_CONTEXT * parser,
 static void pt_fix_pseudocolumns_pos_regu_list (PARSER_CONTEXT * parser,
 						PT_NODE * node_list,
 						REGU_VARIABLE_LIST regu_list);
-static int pt_find_subplan_with_orderby_column (PARSER_CONTEXT *
-						parser,
-						PT_NODE *
-						orderby_node,
-						QO_PLAN * plan,
-						QO_PLAN ** result,
-						int *sort_col_seg_idx);
 static XASL_NODE *pt_find_oid_scan_block (XASL_NODE * xasl, OID * oid);
-static int pt_check_subplan_join_cond_for_ordby_keylimit (QO_PLAN * parent,
-							  QO_PLAN *
-							  subplan,
-							  QO_PLAN * sortplan,
-							  int
-							  sort_col_seg_idx);
-static int pt_validate_subplans_for_ordby_keylimit (QO_PLAN * parent,
-						    QO_PLAN * plan,
-						    QO_PLAN * sortplan,
-						    bool * isvalid,
-						    bool firstlayer,
-						    int sort_col_seg_idx);
-static int pt_check_subplan_and_orderby_correlation (QO_PLAN * plan,
-						     SORT_ORDER s_order,
-						     bool use_desc_index,
-						     PT_NODE * orderby_col,
-						     PARSER_CONTEXT * parser,
-						     int *can_optimize);
 static PT_NODE *pt_numbering_set_continue_post (PARSER_CONTEXT * parser,
 						PT_NODE * node, void *arg,
 						int *continue_walk);
@@ -405,7 +380,6 @@ static int pt_to_key_limit (PARSER_CONTEXT * parser, PT_NODE * key_limit,
 static int pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan,
 				    XASL_NODE * xasl);
 static int pt_ordbynum_to_key_limit_multiple_ranges (PARSER_CONTEXT * parser,
-						     PT_NODE * query,
 						     QO_PLAN * plan,
 						     XASL_NODE * xasl);
 static INDX_INFO *pt_to_index_info (PARSER_CONTEXT * parser,
@@ -756,12 +730,6 @@ static SORT_LIST *pt_to_order_siblings_by (PARSER_CONTEXT * parser,
 static SORT_LIST *pt_agg_orderby_to_sort_list (PARSER_CONTEXT * parser,
 					       PT_NODE * order_list,
 					       PT_NODE * agg_args_list);
-static bool pt_check_seg_belongs_to_range_term (QO_PLAN * subplan,
-						QO_ENV * env, int seg_idx);
-static int pt_check_parent_eq_class_for_ordby_keylimit (QO_PLAN * parent,
-							QO_PLAN * subplan,
-							QO_PLAN * sortplan,
-							int sort_col_seg_idx);
 static PT_NODE *pt_name_to_derived_path_pre (PARSER_CONTEXT * parser,
 					     PT_NODE * node, void *arg,
 					     int *continue_walk);
@@ -15017,7 +14985,8 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	    }
 
 	  /* check order by opt */
-	  if (qo_plan && qo_plan_skip_orderby (qo_plan))
+	  if (qo_plan && qo_plan_skip_orderby (qo_plan)
+	      && !qo_plan_multi_range_opt (qo_plan))
 	    {
 	      orderby_skip = true;
 
@@ -15196,10 +15165,13 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
     }
 
   /* convert ordbynum to key limit if we have iscan with multiple key ranges */
-  if (pt_ordbynum_to_key_limit_multiple_ranges (parser, select_node, qo_plan,
-						xasl) != NO_ERROR)
+  if (qo_plan && qo_plan_multi_range_opt (qo_plan))
     {
-      goto exit_on_error;
+      if (pt_ordbynum_to_key_limit_multiple_ranges (parser, qo_plan, xasl) !=
+	  NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
     }
 
   /* set list file descriptor for dummy pusher */
@@ -15448,10 +15420,13 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
     }
 
   /* convert ordbynum to key limit if we have iscan with multiple key ranges */
-  if (pt_ordbynum_to_key_limit_multiple_ranges (parser, select_node, qo_plan,
-						xasl) != NO_ERROR)
+  if (qo_plan && qo_plan_multi_range_opt (qo_plan))
     {
-      goto exit_on_error;
+      if (pt_ordbynum_to_key_limit_multiple_ranges (parser, qo_plan, xasl) !=
+	  NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
     }
 
   return xasl;
@@ -20324,117 +20299,6 @@ pt_agg_orderby_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * order_list,
 }
 
 /*
- * pt_find_subplan_with_orderby_column () -
- *   return:       NO_ERROR on success, otherwise an error code
- *   parser (in):
- *   orderby_node (in):
- *   plan (in):
- *   result (out):
- *   sort_col_seg_idx (out): a pointer to an integer that will store the
- *                           segment number (index in the env->segments[]) of
- *                           the sort column. Will be used later in
- *                           pt_check_join_cond_on_subplan_for_orderby...
- */
-static int
-pt_find_subplan_with_orderby_column (PARSER_CONTEXT * parser,
-				     PT_NODE * orderby_node,
-				     QO_PLAN * plan,
-				     QO_PLAN ** result, int *sort_col_seg_idx)
-{
-  QO_PLANTYPE pt;
-  QO_ENV *env;
-  QO_INDEX_ENTRY *index_entryp;
-  int ret;
-
-  *result = NULL;
-  *sort_col_seg_idx = -1;
-
-  if (plan == NULL)
-    {
-      goto exit;
-    }
-
-  CAST_POINTER_TO_NODE (orderby_node);
-  if (orderby_node->node_type != PT_NAME)
-    {
-      goto exit;
-    }
-
-  pt = plan->plan_type;
-
-  if (pt == QO_PLANTYPE_SORT &&
-      (plan->plan_un.sort.sort_type == SORT_ORDERBY ||
-       plan->plan_un.sort.sort_type == SORT_TEMP))
-    {
-      return pt_find_subplan_with_orderby_column (parser,
-						  orderby_node,
-						  plan->plan_un.sort.
-						  subplan, result,
-						  sort_col_seg_idx);
-    }
-
-  if (pt == QO_PLANTYPE_JOIN && plan->plan_un.join.join_type == JOIN_INNER)
-    {
-      /* first look at the outer (left) node */
-      ret = pt_find_subplan_with_orderby_column (parser,
-						 orderby_node,
-						 plan->plan_un.join.
-						 outer, result,
-						 sort_col_seg_idx);
-
-      if (ret != NO_ERROR || *result != NULL)
-	{
-	  return ret;
-	}
-
-      /* not found in the outer subplan? continue with inner subplan */
-      ret = pt_find_subplan_with_orderby_column (parser,
-						 orderby_node,
-						 plan->plan_un.join.
-						 inner, result,
-						 sort_col_seg_idx);
-
-      return ret;
-    }
-
-  if (qo_is_iscan (plan) || qo_is_iscan_from_orderby (plan))
-    {
-      int i;
-
-      env = plan->info->env;
-      index_entryp = plan->plan_un.scan.index->head;
-      if (!env || !index_entryp)
-	{
-	  goto exit;
-	}
-
-      for (i = 0; i < index_entryp->nsegs; i++)
-	{
-	  PT_NODE *n;
-	  int idx;
-
-	  idx = index_entryp->seg_idxs[i];
-	  if (idx < 0)
-	    {
-	      continue;
-	    }
-	  n = QO_SEG_PT_NODE (QO_ENV_SEG (env, index_entryp->seg_idxs[i]));
-	  CAST_POINTER_TO_NODE (n);
-	  if (n && n->node_type == PT_NAME &&
-	      pt_name_equal (parser, orderby_node, n))
-	    {
-	      *result = plan;
-	      *sort_col_seg_idx = index_entryp->seg_idxs[i];
-	      goto exit;
-	    }
-	}
-    }
-
-exit:
-  return NO_ERROR;
-}
-
-/*
  * pt_find_oid_scan_block () -
  *   return:       the XASL node or NULL
  *   xasl (in):	   the beginning of the XASL chain
@@ -20466,648 +20330,28 @@ pt_find_oid_scan_block (XASL_NODE * xasl, OID * oid)
 }
 
 /*
- * pt_check_seg_belongs_to_range_term () -
- *   return:       true or false
- *   subplan:      the subplan possibly containing the RANGE expression
- *   env:
- *   seg_idx:      segment index (in env) of the segment that we want
- *                 to check
- *
- *   note: returns true if the specified subplan contains a term that
- *         references the given segment in a RANGE expression
- *         (t.i in (1,2,3) would be an example).
- *         Used in keylimit for multiple key ranges in joins optimization.
- */
-static bool
-pt_check_seg_belongs_to_range_term (QO_PLAN * subplan, QO_ENV * env,
-				    int seg_idx)
-{
-  int t, u;
-  BITSET_ITERATOR iter, iter_s;
-
-  assert (subplan->plan_type == QO_PLANTYPE_SCAN);
-  if (subplan->plan_type != QO_PLANTYPE_SCAN)
-    {
-      return false;
-    }
-
-  for (t = bitset_iterate (&(subplan->plan_un.scan.terms), &iter); t != -1;
-       t = bitset_next_member (&iter))
-    {
-      QO_TERM *termp = QO_ENV_TERM (env, t);
-      BITSET *segs = &(QO_TERM_SEGS (termp));
-      if (!segs)
-	{
-	  continue;
-	}
-      for (u = bitset_iterate (segs, &iter_s); u != -1;
-	   u = bitset_next_member (&iter_s))
-	{
-	  if (u == seg_idx)
-	    {
-	      QO_SEGMENT *seg = QO_ENV_SEG (env, u);
-	      PT_NODE *node = QO_TERM_PT_EXPR (termp);
-	      if (!node)
-		{
-		  continue;
-		}
-
-	      switch (node->info.expr.op)
-		{
-		case PT_IS_IN:
-		case PT_EQ_SOME:
-		case PT_RANGE:
-		  return true;
-		default:
-		  continue;
-		}
-	    }
-	}
-    }
-  return false;
-}
-
-/*
- * pt_check_subplan_join_cond_for_ordby_keylimit () - validate a given
- *                 subplan regarding the possibility of applying the
- *                 keylimit optimization.
- *
- * return: NO_ERROR or error code
- * parent (in):  if the subplan is a scan, parent is the join that contains
- *               the subplan and its join conditions
- * subplan (in): the subplan to be verified at this step
- * sortplan (in):  the subplan that refers to the table that has the orderby
- *               column (earlier on we impose the condition that there is a
- *               single order by column, and it is a real table column).
- * sort_col_index_seg (in): the idx of the segment that refers to the sort
- *                          column.
- *
- *   note: the function assumes that subplan occurs "to the right" of
- *         sortplan, the plan that refers to the orderby table.
- *         The condition checked looks like this: for every join condition
- *         that refers to a column in the orderby table, the join condition
- *         must be "eq", and the referenced column must appear before the sort
- *         column in the index that is used to scan the orderby table.
- *         If it is not in the index, if it is in a different index or if it
- *         is appears after the sort column, an error occurs.
- */
-static int
-pt_check_subplan_join_cond_for_ordby_keylimit (QO_PLAN * parent,
-					       QO_PLAN * subplan,
-					       QO_PLAN * sortplan,
-					       int sort_col_seg_idx)
-{
-  int t, n;
-  BITSET_ITERATOR iter_t, iter_n, iter_segs;
-  QO_TERM *jt;
-  QO_NODE *jn;
-  QO_ENV *env;
-  QO_NODE *node_of_sort_table;
-
-  if (!parent || parent->plan_type != QO_PLANTYPE_JOIN ||
-      !subplan || subplan->plan_type != QO_PLANTYPE_SCAN ||
-      !sortplan->plan_un.scan.node ||
-      !sortplan->plan_un.scan.node->info ||
-      sortplan->plan_un.scan.node->info->n <= 0 ||
-      !sortplan->plan_un.scan.index || sortplan->plan_un.scan.index->n <= 0)
-    {
-      return false;
-    }
-
-  env = subplan->info->env;
-  node_of_sort_table = sortplan->plan_un.scan.node;
-
-  /*
-   * Scan all the parent's join terms: jt.
-   *   Join terms contain references to the tables that they reference.
-   *   For each such table t, referenced in the above mentioned jt:
-   *     - is t the same as the "orderby table"? If not, carry on to the next
-   *       table referenced by jt;
-   *     - if t is exactly the "orderby table", it means that the current join
-   *       term jt refers to that table.
-   *         - scan all the segments (seg) referenced by this join term,
-   *           only pay attention at the ones that pertain to t (== the
-   *           orderby table), and for each such segment "seg":
-   *             1. does seg appear in the index used to scan the orderby
-   *                table (get that info from the plan, sortplan). If the seg
-   *                does not appear in the index, it means that it would
-   *                qualify as a "virtual data filter" and would be able to
-   *                further restrict the result set, so halt everything and
-   *                remember that the optimization is not possible.
-   *             2. if seg DOES appear in the index used to scan the orderby
-   *                table, does it do so at a position to the left of the
-   *                actual orderby column? If not, it would also mean that
-   *                the join condition here could restrict the result set of
-   *                the btree range search on the orderby table, and the
-   *                optimization cannot be applied.
-   *
-   *   We MUST be as conservative as possible when deciding to apply the
-   *   optimization, because if we fail, the optimization would yield
-   *   too few results: a "LIMIT 10" query could end up with less than 10
-   *   results, even though there are enough records to choose from.
-   */
-
-
-  /* for each join term */
-  for (t = bitset_iterate (&(parent->plan_un.join.join_terms), &iter_t);
-       t != -1; t = bitset_next_member (&iter_t))
-    {
-      jt = QO_ENV_TERM (env, t);
-      if (jt == NULL)
-	{
-	  return false;
-	}
-
-      /* for each of the tables (nodes) the join term references */
-      for (n = bitset_iterate (&(jt->nodes), &iter_n);
-	   n != -1; n = bitset_next_member (&iter_n))
-	{
-	  int seg_idx;
-	  jn = QO_ENV_NODE (env, n);
-
-	  /* better safe than sorry */
-	  if (jn == NULL)
-	    {
-	      return false;
-	    }
-
-	  /* alternative is to use jn->info->info[0].oid; */
-	  if (jn != node_of_sort_table)
-	    {
-	      /* better luck next time! */
-	      continue;
-	    }
-
-	  /* We are here because:
-	   * there exists a join term t, that references the same table
-	   * as the table that contains the sort column.
-	   */
-
-	  /* for each of the segments referenced in jt */
-	  for (seg_idx = bitset_iterate (&(jt->segments), &iter_segs);
-	       seg_idx != -1; seg_idx = bitset_next_member (&iter_segs))
-	    {
-	      QO_SEGMENT *seg = QO_ENV_SEG (env, seg_idx);
-	      QO_NODE *seg_node = QO_SEG_HEAD (seg);
-	      int k;
-
-	      /* let the seg go if it doesn't refer to the orderby table */
-	      if (seg_node != node_of_sort_table)
-		{
-		  continue;
-		}
-
-	      /* try to find the segment in the index that is used when
-	       * scanning the orderby table - take that info from the subplan
-	       * (sortplan) rather than from the node info, because the node
-	       * info lists all the indexes, not only those that are used at
-	       * this particular scan.
-	       */
-	      for (k = 0; k < sortplan->plan_un.scan.index->head->nsegs; k++)
-		{
-		  int k_seg_idx =
-		    sortplan->plan_un.scan.index->head->seg_idxs[k];
-
-		  /* we got to our segment ! */
-		  if (k_seg_idx == seg_idx)
-		    {
-		      /* done with seg_idx, we found it before finding the sort column! */
-		      if (pt_check_seg_belongs_to_range_term
-			  (sortplan, env, seg_idx))
-			{
-			  return false;
-			}
-		      break;
-		    }
-
-		  if (k_seg_idx == sort_col_seg_idx)
-		    {
-		      /* the current segment (which is used in a join predicate
-		       * in a scan that is "more inner" than the scan that
-		       * contains the sort column) does NOT appear before the
-		       * sort column in the index that is used to scan the
-		       * table that contains the sort column.
-		       */
-		      return false;
-		    }
-		}
-	    }
-	}
-    }
-
-  return true;
-}
-
-/*
- * pt_check_parent_eq_class_for_ordby_keylimit () - validate a given
- *                 join node regarding the possibility of applying the
- *                 keylimit optimization.
- *
- * return: NO_ERROR or error code
- * parent (in):  the join that needs to be checked
- * sortplan (in):  the subplan that refers to the table that has the orderby
- *                 column (earlier on we impose the condition that there is a
- *                 single order by column, and it is a real table column).
- * sort_col_index_seg (in): the idx of the segment that refers to the sort
- *                          column.
- *
- */
-static int
-pt_check_parent_eq_class_for_ordby_keylimit (QO_PLAN * parent,
-					     QO_PLAN * subplan,
-					     QO_PLAN * sortplan,
-					     int sort_col_seg_idx)
-{
-  int t, eq_idx;
-  BITSET_ITERATOR iter_t;
-  QO_ENV *env;
-  QO_NODE *node_of_sort_table;
-  QO_NODE *node_of_cur_table;
-
-  if (!parent || parent->plan_type != QO_PLANTYPE_JOIN ||
-      !subplan || subplan->plan_type != QO_PLANTYPE_SCAN ||
-      !sortplan->plan_un.scan.node ||
-      !sortplan->plan_un.scan.node->info ||
-      sortplan->plan_un.scan.node->info->n <= 0 ||
-      !sortplan->plan_un.scan.index || sortplan->plan_un.scan.index->n <= 0)
-    {
-      return false;
-    }
-
-  env = parent->info->env;
-  node_of_sort_table = sortplan->plan_un.scan.node;
-  node_of_cur_table = subplan->plan_un.scan.node;
-
-  /* for each eq class */
-  for (eq_idx = 0; eq_idx < env->neqclasses; eq_idx++)
-    {
-      QO_EQCLASS *eq = QO_ENV_EQCLASS (env, eq_idx);
-      bool is_eqclass_relevant = false;
-
-      /* for each segment */
-      for (t = bitset_iterate (&QO_EQCLASS_SEGS (eq), &iter_t);
-	   t != -1; t = bitset_next_member (&iter_t))
-	{
-	  QO_SEGMENT *seg = QO_ENV_SEG (env, t);
-	  QO_NODE *node = QO_SEG_HEAD (seg);
-
-	  if (node == node_of_cur_table)
-	    {
-	      is_eqclass_relevant = true;
-	      break;
-	    }
-	}
-
-      if (!is_eqclass_relevant)
-	{
-	  continue;
-	}
-
-      /* here: we have an equivalence class that has a segment belonging
-       * to our current class. Must see if it also has segments belonging
-       * to the sort table: iterate again over it.
-       */
-
-      for (t = bitset_iterate (&QO_EQCLASS_SEGS (eq), &iter_t);
-	   t != -1; t = bitset_next_member (&iter_t))
-	{
-	  QO_SEGMENT *seg = QO_ENV_SEG (env, t);
-	  QO_NODE *node = QO_SEG_HEAD (seg);
-
-	  if (node == node_of_sort_table)
-	    {
-	      int k;
-	      int seg_idx = t;
-
-	      /* try to find the segment in the index that is used when
-	       * scanning the orderby table - take that info from the subplan
-	       * (sortplan) rather than from the node info, because the node
-	       * info lists all the indexes, not only those that are used at
-	       * this particular scan.
-	       */
-	      for (k = 0; k < sortplan->plan_un.scan.index->head->nsegs; k++)
-		{
-		  int k_seg_idx =
-		    sortplan->plan_un.scan.index->head->seg_idxs[k];
-
-		  /* we got to our segment ! */
-		  if (k_seg_idx == seg_idx)
-		    {
-		      /* done with seg_idx, we found it before finding the sort column! */
-		      if (pt_check_seg_belongs_to_range_term
-			  (sortplan, env, seg_idx))
-			{
-			  return false;
-			}
-		      break;
-		    }
-
-		  if (k_seg_idx == sort_col_seg_idx)
-		    {
-		      /* the current segment (which is used in a join predicate
-		       * in a scan that is "more inner" than the scan that
-		       * contains the sort column) does NOT appear before the
-		       * sort column in the index that is used to scan the
-		       * table that contains the sort column.
-		       */
-		      return false;
-		    }
-		}
-	    }
-	}
-    }
-  return true;
-}
-
-/*
- * pt_validate_subplans_for_ordby_keylimit () - validate some of the plan's
- *                 subplans for the possibility of applying the
- *                 keylimit optimization.
- *
- * return: NO_ERROR or error code
- * parent (in):     parent is the join that contains the subplan (or NULL)
- * plan (in):       the subplan to be verified at this step
- * sortplan (in):     the subplan that refers to the table that has the orderby
- *                  column (earlier on we impose the condition that there is a
- *                  single order by column, and it is a real table column).
- * isvalid (out):   will be set to 1 if we can apply the optimization
- * firstlayer (in): flag to distinguish from different recurrence layers
- * sort_col_seg_idx (in): parameter to pass to pt_check_subplan_join_cond_for_ordby_keylimit.
- *
- *   note: the function scans the plan tree and after it passes the plan for
- *         the orderby table, checks
- *         all scan subplans (they are "right" of the orderby table).
- *         See pt_check_subplan_join_cond_for_ordby_keylimit for more info.
- */
-static int
-pt_validate_subplans_for_ordby_keylimit (QO_PLAN * parent,
-					 QO_PLAN * plan,
-					 QO_PLAN * sortplan,
-					 bool * isvalid, bool firstlayer,
-					 int sort_col_seg_idx)
-{
-  QO_PLANTYPE pt;
-
-  /* seen: flag to remember that we have passed the orderby table and from now
-   * on we are looking at potentially suspect scans (they are "to the right"
-   * of the orderby table).
-   */
-  static bool seen;
-
-  if (!plan || !sortplan)
-    {
-      goto exit;
-    }
-
-  if (firstlayer == 1)
-    {
-      seen = false;
-    }
-
-  *isvalid = true;
-  pt = plan->plan_type;
-
-  /* node is a scan */
-  if (pt == QO_PLANTYPE_SCAN)
-    {
-      /* if we have passed the sort plan already, check the current plan */
-      if (seen)
-	{
-	  /* judge carefully */
-	  if (parent == NULL)
-	    {
-	      *isvalid = false;
-	      goto exit;
-	    }
-	  *isvalid =
-	    pt_check_subplan_join_cond_for_ordby_keylimit (parent, plan,
-							   sortplan,
-							   sort_col_seg_idx);
-	  if (*isvalid == true)
-	    {
-	      *isvalid =
-		pt_check_parent_eq_class_for_ordby_keylimit (parent, plan,
-							     sortplan,
-							     sort_col_seg_idx);
-	    }
-
-	  return NO_ERROR;
-	}
-      if (plan == sortplan)
-	{
-	  seen = true;
-	}
-
-      /* a scan has no descendants, so no recursion here */
-    }
-  else				/* plan_type is NOT a scan */
-    {
-      if (pt == QO_PLANTYPE_SORT)
-	{
-	  return pt_validate_subplans_for_ordby_keylimit (NULL,
-							  plan->plan_un.sort.
-							  subplan, sortplan,
-							  isvalid, false,
-							  sort_col_seg_idx);
-	}
-
-      if (pt == QO_PLANTYPE_FOLLOW)
-	{
-	  return pt_validate_subplans_for_ordby_keylimit (NULL,
-							  plan->plan_un.
-							  follow.head,
-							  sortplan, isvalid,
-							  false,
-							  sort_col_seg_idx);
-	}
-
-      if (pt == QO_PLANTYPE_JOIN)
-	{
-	  int ret;
-	  ret =
-	    pt_validate_subplans_for_ordby_keylimit (plan,
-						     plan->plan_un.join.outer,
-						     sortplan, isvalid, false,
-						     sort_col_seg_idx);
-	  if (ret != NO_ERROR || !*isvalid)
-	    {
-	      return ret;
-	    }
-
-	  ret =
-	    pt_validate_subplans_for_ordby_keylimit (plan,
-						     plan->plan_un.join.inner,
-						     sortplan, isvalid, false,
-						     sort_col_seg_idx);
-	  return ret;
-	}
-
-      /* a case we have not foreseen? Be conservative. */
-      *isvalid = false;
-    }
-
-
-exit:
-  return NO_ERROR;
-}
-
-/*
- * pt_check_subplan_and_orderby_correlation () - Checks if the given plan
- *                              contains the orderby_col column in its index,
- *                              and if it is in the desired order.
- *
- * return: NO_ERROR or error code
- * plan (in):       the subplan to be verified at this step
- * s_order (in):    the sort order of the orderby column (asc / desc)
- * orderby_col (in):
- * parser (in):
- * can_optimize (out):
- *
- */
-static int
-pt_check_subplan_and_orderby_correlation (QO_PLAN * plan,
-					  SORT_ORDER s_order,
-					  bool use_desc_index,
-					  PT_NODE * orderby_col,
-					  PARSER_CONTEXT * parser,
-					  int *can_optimize)
-{
-  QO_NODE_INDEX_ENTRY *ni_entryp;
-  QO_INDEX_ENTRY *index_entryp;
-  TP_DOMAIN *key_type;
-  int nterms;
-  int i;
-  int seg_idx;
-  bool desc;
-  PT_NODE *cur_node;
-  QO_ENV *env;
-
-  *can_optimize = false;
-
-  if (!plan || !orderby_col)
-    {
-      return ER_FAILED;
-    }
-
-  env = (plan->info)->env;
-  nterms = bitset_cardinality (&(plan->plan_un.scan.terms));
-  if (nterms <= 0 && !qo_is_iscan_from_orderby (plan))
-    {
-      return NO_ERROR;
-    }
-
-  ni_entryp = plan->plan_un.scan.index;
-  index_entryp = (ni_entryp)->head;
-
-  if (SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (index_entryp->constraints->type))
-    {
-      return NO_ERROR;
-    }
-
-  if (index_entryp->key_type == NULL)
-    {
-      return NO_ERROR;
-    }
-  key_type = index_entryp->key_type;
-  if (TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY)
-    {
-      /* get the column key-type of multi-column index */
-      key_type = key_type->setdomain;
-    }
-  else
-    {
-      return NO_ERROR;
-    }
-
-  for (i = 0; i < index_entryp->nsegs; i++)
-    {
-      desc = key_type->is_desc;
-      if (use_desc_index)
-	{
-	  desc = !desc;
-	}
-
-      seg_idx = (index_entryp->seg_idxs[i]);
-      if (seg_idx == -1)
-	{
-	  return NO_ERROR;
-	}
-
-      cur_node = QO_SEG_PT_NODE (QO_ENV_SEG (env, seg_idx));
-      if (pt_name_equal (parser, cur_node, orderby_col))
-	{
-	  if ((desc && s_order == S_DESC) || (!desc && s_order == S_ASC))
-	    {
-	      *can_optimize = true;
-	    }
-	  return NO_ERROR;
-	}
-
-      key_type = key_type->next;
-      if (!key_type)
-	{
-	  return NO_ERROR;
-	}
-    }
-  return NO_ERROR;
-}
-
-/*
  * pt_ordbynum_to_key_limit_multiple_ranges () - add key limit to optimize
- *					 index access with multiple key ranges
- *					 and ordbynum predicate
- *   return:
- *   parser(in):
- *   plan(in):
- *   xasl(in):
+ *						 index access with multiple
+ *						 key ranges
  *
- *   Note: The optimization requres a series of conditions to be met:
- *         - single table query
- *         - index scan with no data filter
- *         - ordering on a single column, and orderby_num predicate (or
- *           limit clause)
- *         - index access must have multiple key ranges, but only one range
- *           column; the range column should match the ordering column and
- *           sort order
- *         - the query should have an upper limit, but not a lower limit (or
- *           a minumum in the orderby_num predicate)
- *
- *         The generic type of query that is optimized is the following:
- *         SELECT ... FROM table
- *             WHERE col_1 = ? AND col_2 = ? AND ...
- *                   AND col_(j) IN (?,?,...)
- *                   AND col_(j+1) = ? AND ... AND col_(p-1) = ?
- *                   AND key_filter_terms
- *             ORDER BY col_(p) [ASC/DESC]
- *             FOR ordbynum_pred / LIMIT n
- *
- *         In other words, if the ordering column is col_(p):
- *         - there should be only one column col_(j), j<p, within a key list
- *           term: col_(j) IN (?,?,...)
- *         - any other column at left of col_(p) should be in an eq term:
- *           col_(k) = ?, for every k<p, k!=j
- *         - the rest of the WHERE clause may have any other key filter terms
- *
+ *   return     : NO_ERROR if key limit is generated successfully, ER_FAILED
+ *		  otherwise
+ *   parser(in) : parser context
+ *   plan(in)   : root plan (must support multi range key limit optimization)
+ *   xasl(in)   : xasl node
  */
 static int
 pt_ordbynum_to_key_limit_multiple_ranges (PARSER_CONTEXT * parser,
-					  PT_NODE * query,
 					  QO_PLAN * plan, XASL_NODE * xasl)
 {
   QO_LIMIT_INFO *limit_infop;
-  int can_optimize = 0, ret, i;
-  PT_NODE *select_list;
-  PT_NODE *orderby_col = NULL;
-
   QO_PLAN *subplan = NULL;
-  XASL_NODE *scan;
-  bool is_valid_subplan;
-  bool use_desc_index = false;
-  int sort_col_seg_idx;
+  XASL_NODE *scan = NULL;
+  int ret = 0;
 
   if (!plan)			/* simple plan, nothing to do */
     {
-      goto exit;
+      goto error_exit;
     }
 
   if (!xasl || !xasl->spec_list)
@@ -21115,42 +20359,18 @@ pt_ordbynum_to_key_limit_multiple_ranges (PARSER_CONTEXT * parser,
       goto error_exit;
     }
 
-  /* check that ORDER BY list has a single column, and it has a valid pred */
-  if (!xasl->orderby_list || xasl->orderby_list->next || !xasl->ordbynum_pred)
-    {
-      goto exit;
-    }
-
-  /* get that one and only ORDER BY node */
-  orderby_col = select_list = pt_get_select_list (parser, query);
-  if (orderby_col == NULL)
+  if (!xasl->orderby_list || !xasl->ordbynum_pred)
     {
       goto error_exit;
     }
 
-  i = xasl->orderby_list->pos_descr.pos_no;
-  while (i-- > 0 && orderby_col)
-    {
-      orderby_col = orderby_col->next;
-      if (!orderby_col)
-	{
-	  goto exit;
-	}
-    }
-
-  /* find the right subplan */
-  if (pt_find_subplan_with_orderby_column
-      (parser, orderby_col, plan, &subplan, &sort_col_seg_idx) != NO_ERROR)
+  /* find the subplan with multiple key range */
+  if (qo_find_subplan_using_multi_range_opt (plan, &subplan, NULL) !=
+      NO_ERROR)
     {
       goto error_exit;
     }
-
   if (subplan == NULL)
-    {
-      goto exit;
-    }
-
-  if (subplan->plan_un.scan.index == NULL)
     {
       goto error_exit;
     }
@@ -21160,72 +20380,27 @@ pt_ordbynum_to_key_limit_multiple_ranges (PARSER_CONTEXT * parser,
 				   head->class_->oid));
   if (scan == NULL)
     {
-      goto exit;
+      goto error_exit;
     }
 
   /* check that we have index scan */
   if (scan->spec_list->type != TARGET_CLASS ||
       scan->spec_list->access != INDEX || !scan->spec_list->indexptr)
     {
-      goto exit;
+      goto error_exit;
     }
-
-  use_desc_index = scan->spec_list->indexptr->use_desc_index;
 
   /* no data filter */
   if (scan->spec_list->where_pred)
     {
-      goto exit;
-    }
-
-  ret =
-    pt_validate_subplans_for_ordby_keylimit (NULL, plan, subplan,
-					     &is_valid_subplan, true,
-					     sort_col_seg_idx);
-  if (ret != NO_ERROR)
-    {
       goto error_exit;
-    }
-  if (!is_valid_subplan)
-    {
-      goto exit;
-    }
-
-  /* recheck orderby column and sort order */
-  can_optimize = false;
-  ret = pt_check_subplan_and_orderby_correlation (subplan,
-						  xasl->orderby_list->s_order,
-						  use_desc_index,
-						  orderby_col, parser,
-						  &can_optimize);
-  if (ret != NO_ERROR)
-    {
-      goto error_exit;
-    }
-  if (!can_optimize)
-    {
-      goto exit;
-    }
-
-
-  /* check plan to match the cases we're optimizing */
-  ret = qo_check_plan_for_multiple_ranges_limit_opt (parser, subplan,
-						     orderby_col,
-						     &can_optimize);
-  if (ret != NO_ERROR)
-    {
-      goto error_exit;
-    }
-  if (!can_optimize)
-    {
-      goto exit;
     }
 
   /* generate key limit expression from limit/ordbynum */
   limit_infop = qo_get_key_limit_from_ordbynum (parser, plan, xasl);
   if (!limit_infop)
     {
-      goto exit;
+      goto error_exit;
     }
 
   /* set an auto-resetting key limit for the iscan */
@@ -21238,10 +20413,12 @@ pt_ordbynum_to_key_limit_multiple_ranges (PARSER_CONTEXT * parser,
       goto error_exit;
     }
 
-exit:
   return NO_ERROR;
 
 error_exit:
+  assert (0);
+  PT_INTERNAL_ERROR (parser, "Error generating key limit for multiple range \
+			     key limit optimization");
   return ER_FAILED;
 }
 

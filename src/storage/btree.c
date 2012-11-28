@@ -430,6 +430,13 @@ static int btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
 						OID * nk_pseudo_oid,
 						OID * class_oid,
 						bool * key_added);
+static int btree_top_n_items_binary_search (RANGE_OPT_ITEM ** top_n_items,
+					    int *att_idxs,
+					    TP_DOMAIN ** domains,
+					    bool * desc_order,
+					    DB_VALUE * new_key_values,
+					    int no_keys, int first, int last,
+					    int *new_pos);
 static int btree_iss_set_key (BTREE_SCAN * bts, INDEX_SKIP_SCAN * iss);
 static int btree_insert_lock_curr_key_remaining_pseudo_oid (THREAD_ENTRY *
 							    thread_p,
@@ -21110,9 +21117,9 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
 				     bool * key_added)
 {
   int compare_id = 0;
-  int ret = NO_ERROR;
   DB_MIDXKEY *new_mkey = NULL;
-  DB_VALUE new_key_value;
+  DB_VALUE *new_key_value;
+  int error = NO_ERROR, i = 0;
 #if defined(SERVER_MODE)
   bool use_unlocking;
 #endif
@@ -21123,16 +21130,35 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
-  DB_MAKE_NULL (&new_key_value);
   *key_added = true;
 
-  new_mkey = &(bts->cur_key.data.midxkey);
-  ret = pr_midxkey_get_element_nocopy (new_mkey,
-				       multi_range_opt->sort_att_idx,
-				       &new_key_value, NULL, NULL);
-  if (ret != NO_ERROR)
+  assert (multi_range_opt->no_attrs != 0);
+  if (multi_range_opt->no_attrs == 0)
     {
-      return ret;
+      return ER_FAILED;
+    }
+
+  new_mkey = &(bts->cur_key.data.midxkey);
+  new_key_value =
+    (DB_VALUE *) db_private_alloc (thread_p,
+				   multi_range_opt->no_attrs *
+				   sizeof (DB_VALUE));
+  if (new_key_value == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (DB_VALUE *) * multi_range_opt->no_attrs);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  for (i = 0; i < multi_range_opt->no_attrs; i++)
+    {
+      DB_MAKE_NULL (&new_key_value[i]);
+      error = pr_midxkey_get_element_nocopy (new_mkey,
+					     multi_range_opt->sort_att_idx[i],
+					     &new_key_value[i], NULL, NULL);
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
     }
 
 #if defined(SERVER_MODE)
@@ -21154,26 +21180,35 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
       last_item = multi_range_opt->top_n_items[multi_range_opt->size - 1];
       assert (last_item != NULL);
 
-      DB_MAKE_NULL (&comp_key_value);
       comp_mkey = &(last_item->index_value.data.midxkey);
 
-      ret =
-	pr_midxkey_get_element_nocopy (comp_mkey,
-				       multi_range_opt->sort_att_idx,
-				       &comp_key_value, NULL, NULL);
-      if (ret != NO_ERROR)
+      /* if all keys are equal, the new element is rejected */
+      reject_new_elem = true;
+      for (i = 0; i < multi_range_opt->no_attrs; i++)
 	{
-	  return ret;
+	  DB_MAKE_NULL (&comp_key_value);
+	  error =
+	    pr_midxkey_get_element_nocopy (comp_mkey,
+					   multi_range_opt->sort_att_idx[i],
+					   &comp_key_value, NULL, NULL);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+
+	  c =
+	    (*(multi_range_opt->sort_col_dom[i]->type->cmpval))
+	    (&comp_key_value, &new_key_value[i], 1, 1, NULL);
+	  if (c != 0)
+	    {
+	      /* see if new element should be rejected or accepted and stop
+	       * checking keys
+	       */
+	      reject_new_elem =
+		(multi_range_opt->is_desc_order[i]) ? (c > 0) : (c < 0);
+	      break;
+	    }
 	}
-
-      /* compare last key with new key */
-      c = (*(multi_range_opt->sort_col_dom->type->cmpval)) (&comp_key_value,
-							    &new_key_value,
-							    1, 1, NULL);
-
-      /* last key should be overwritten with the new key ? */
-      reject_new_elem =
-	(multi_range_opt->is_desc_order) ? (c >= 0) : (c <= 0);
       if (reject_new_elem)
 	{
 	  /* do not add */
@@ -21302,57 +21337,188 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
       if (multi_range_opt->sort_col_dom == NULL)
 	{
 	  multi_range_opt->sort_col_dom =
-	    tp_domain_resolve_value (&new_key_value, NULL);
+	    (TP_DOMAIN **) db_private_alloc (thread_p,
+					     multi_range_opt->no_attrs *
+					     sizeof (TP_DOMAIN *));
+	  for (i = 0; i < multi_range_opt->no_attrs; i++)
+	    {
+	      multi_range_opt->sort_col_dom[i] =
+		tp_domain_resolve_value (&new_key_value[i], NULL);
+	    }
 	}
     }
 
   /* find the position for this element */
-  compare_id = multi_range_opt->cnt - 1;
-  while (compare_id > 0)
+  /* if there is only one element => nothing to do */
+  if (multi_range_opt->cnt > 1)
     {
-      DB_MIDXKEY *prec_comp_mkey = NULL;
-      DB_VALUE prec_comp_key_value;
-      bool should_reverse = false;
-      int c = 0;
-
-      assert (multi_range_opt->top_n_items[compare_id - 1] != NULL);
-
-      prec_comp_mkey =
-	&(multi_range_opt->top_n_items[compare_id - 1]->index_value.
-	  data.midxkey);
-      DB_MAKE_NULL (&prec_comp_key_value);
-
-      ret = pr_midxkey_get_element_nocopy (prec_comp_mkey,
-					   multi_range_opt->sort_att_idx,
-					   &prec_comp_key_value, NULL, NULL);
-      if (ret != NO_ERROR)
+      int pos = 0;
+      error =
+	btree_top_n_items_binary_search (multi_range_opt->top_n_items,
+					 multi_range_opt->sort_att_idx,
+					 multi_range_opt->sort_col_dom,
+					 multi_range_opt->is_desc_order,
+					 new_key_value,
+					 multi_range_opt->no_attrs, 0,
+					 multi_range_opt->cnt - 1, &pos);
+      if (error != NO_ERROR)
 	{
-	  return ret;
+	  goto exit;
 	}
-
-      /* compare current compare key with the preceding key */
-      c =
-	(*(multi_range_opt->sort_col_dom->type->cmpval))
-	(&prec_comp_key_value, &new_key_value, 1, 1, NULL);
-
-      should_reverse = (multi_range_opt->is_desc_order) ? (c < 0) : (c > 0);
-      if (should_reverse)
+      if (pos != multi_range_opt->cnt - 1)
 	{
-	  /* reverse */
-	  RANGE_OPT_ITEM *temp_item = NULL;
-
-	  temp_item = multi_range_opt->top_n_items[compare_id];
-	  multi_range_opt->top_n_items[compare_id] =
-	    multi_range_opt->top_n_items[compare_id - 1];
-	  multi_range_opt->top_n_items[compare_id - 1] = temp_item;
+	  RANGE_OPT_ITEM *temp_item;
+	  /* copy last item to temp */
+	  temp_item = multi_range_opt->top_n_items[multi_range_opt->cnt - 1];
+	  /* move all items one position to the right in order to free the
+	   * position for the new item
+	   */
+	  for (i = multi_range_opt->cnt - 1; i > pos; i--)
+	    {
+	      multi_range_opt->top_n_items[i] =
+		multi_range_opt->top_n_items[i - 1];
+	    }
+	  /* put new item at its designated position */
+	  multi_range_opt->top_n_items[pos] = temp_item;
 	}
       else
 	{
-	  break;
+	  /* the new item is already in the correct position */
 	}
-      compare_id--;
     }
 
+exit:
+  if (new_key_value != NULL)
+    {
+      db_private_free_and_init (thread_p, new_key_value);
+    }
+  return error;
+}
+
+/*
+ * btree_top_n_items_binary_search () - searches for the right position for
+ *				        the keys in new_key_values in top
+ *					N item list
+ *
+ * return	       : error code
+ * top_n_items (in)    : current top N item list
+ * att_idxs (in)       : indexes for midxkey attributes
+ * domains (in)	       : domains for midxkey attributes
+ * desc_order (in)     : is descending order for midxkey attributes
+ *			 if NULL, ascending order will be considered
+ * new_key_values (in) : key values for the new item
+ * no_keys (in)	       : number of keys that are compared
+ * first (in)	       : position of the first item in current range
+ * last (in)	       : position of the last item in current range
+ * new_pos (out)       : the position where the new item fits
+ *
+ * NOTE	: At each step, split current range in half and compare with the
+ *	  middle item. If all keys are equal save the position of middle item.
+ *	  If middle item is better, look between middle and last, otherwise
+ *	  look between first and middle.
+ *	  The recursion stops when the range cannot be split anymore
+ *	  (first + 1 <= last), when normally first is better and last is worse
+ *	  and the new item should replace last. There is a special case when
+ *	  the new item is better than all items in top N. In this case,
+ *	  first must be 0 and an extra compare is made (to see if new item
+ *	  should in fact replace first).
+ */
+static int
+btree_top_n_items_binary_search (RANGE_OPT_ITEM ** top_n_items,
+				 int *att_idxs, TP_DOMAIN ** domains,
+				 bool * desc_order, DB_VALUE * new_key_values,
+				 int no_keys, int first, int last,
+				 int *new_pos)
+{
+  DB_MIDXKEY *comp_mkey = NULL;
+  DB_VALUE comp_key_value;
+  RANGE_OPT_ITEM *comp_item;
+  int i, c, error = NO_ERROR;
+
+  int middle;
+  assert (last >= first && new_pos != NULL);
+  if (last <= first + 1)
+    {
+      if (first == 0)
+	{
+	  /* need to check if the new key is smaller than the first */
+	  comp_item = top_n_items[0];
+	  comp_mkey = &comp_item->index_value.data.midxkey;
+
+	  for (i = 0; i < no_keys; i++)
+	    {
+	      DB_MAKE_NULL (&comp_key_value);
+	      error =
+		pr_midxkey_get_element_nocopy (comp_mkey, att_idxs[i],
+					       &comp_key_value, NULL, NULL);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+	      c =
+		(*(domains[i]->type->cmpval)) (&comp_key_value,
+					       &new_key_values[i], 1, 1,
+					       NULL);
+	      if (c != 0)
+		{
+		  if ((desc_order != NULL && desc_order[i] ? c > 0 : c < 0))
+		    {
+		      /* new value is not better than the first */
+		      break;
+		    }
+		  else
+		    {
+		      /* new value is better than the first */
+		      new_pos = 0;
+		      return NO_ERROR;
+		    }
+		}
+	    }
+	  /* new value is equal to first, fall through */
+	}
+      /* here: the new values should be between first and last */
+      *new_pos = last;
+      return NO_ERROR;
+    }
+
+  /* compare new value with the value in the middle of the current range */
+  middle = (last + first) / 2;
+  comp_item = top_n_items[middle];
+  comp_mkey = &comp_item->index_value.data.midxkey;
+
+  for (i = 0; i < no_keys; i++)
+    {
+      DB_MAKE_NULL (&comp_key_value);
+      error =
+	pr_midxkey_get_element_nocopy (comp_mkey, att_idxs[i],
+				       &comp_key_value, NULL, NULL);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      c =
+	(*(domains[i]->type->cmpval)) (&comp_key_value, &new_key_values[i], 1,
+				       1, NULL);
+      if (c != 0)
+	{
+	  if ((desc_order != NULL && desc_order[i] ? c > 0 : c < 0))
+	    {
+	      /* the new value is worse than the one in the middle */
+	      first = middle;
+	    }
+	  else
+	    {
+	      /* the new value is better than the one in the middle */
+	      last = middle;
+	    }
+	  return btree_top_n_items_binary_search (top_n_items, att_idxs,
+						  domains, desc_order,
+						  new_key_values, no_keys,
+						  first, last, new_pos);
+	}
+    }
+  /* all keys were equal, the new item can be put in current position */
+  *new_pos = middle;
   return NO_ERROR;
 }
 

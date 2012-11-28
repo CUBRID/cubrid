@@ -78,6 +78,13 @@ typedef enum
   PLAN_COMP_GT = 1
 } QO_PLAN_COMPARE_RESULT;
 
+typedef enum
+{
+  PLAN_MULTI_RANGE_OPT_USE = 1,
+  PLAN_MULTI_RANGE_OPT_NO = 0,
+  PLAN_MULTI_RANGE_OPT_CANNOT_USE = -1
+} QO_PLAN_ULTI_RANGE_OPT_USE;
+
 struct qo_plan
 {
   QO_INFO *info;
@@ -172,6 +179,10 @@ struct qo_plan
     } follow;
 
   } plan_un;
+
+  QO_PLAN_ULTI_RANGE_OPT_USE multi_range_opt_use;	/* used to determine if this
+							 * plan uses multi range opt
+							 */
 };
 
 #define qo_plan_add_ref(p)	((p->refcount)++, (p))
@@ -369,4 +380,5 @@ extern bool qo_is_iscan (QO_PLAN *);
 extern bool qo_is_iscan_from_groupby (QO_PLAN *);
 extern bool qo_is_iscan_from_orderby (QO_PLAN *);
 extern bool qo_is_interesting_order_scan (QO_PLAN *);
+extern bool qo_is_iscan_with_multi_range_opt (QO_PLAN * plan);
 #endif /* _QUERY_PLANNER_H_ */

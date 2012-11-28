@@ -138,6 +138,12 @@ struct qo_index_entry
   /* true if the index cover all segments */
   bool cover_segments;
 
+  /* true if multi range optimization should apply */
+  bool multi_range_opt;
+
+  /* index of first sort column used for multi range optimization */
+  int first_sort_column;
+
   /* true if the index can skip the order by */
   bool orderby_skip;
 
@@ -885,6 +891,7 @@ struct qo_env
 #define QO_ENV_EQCLASS(env, n)		(&(env)->eqclasses[(n)])
 #define QO_ENV_TERM(env, n)		(&(env)->terms[(n)])
 #define QO_ENV_PARTITION(env, n)	(&(env)->partitions[(n)])
+#define QO_ENV_SUBQUERY(env, n)		(&(env)->subqueries[(n)])
 #define QO_ENV_PREV_SEG(env)            (env)->prev_seg
 #define QO_ENV_PARSER(env)              (env)->parser
 #define QO_ENV_PT_TREE(env)		(env)->pt_tree

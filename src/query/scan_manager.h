@@ -117,11 +117,12 @@ struct multi_range_opt
   bool use;			/* true/false */
   int cnt;			/* current number of entries */
   int size;			/* expected number of entries */
-  bool is_desc_order;		/* sorting in descending order */
-  int sort_att_idx;		/* index of MIDXKEY attribute on which the
+  int no_attrs;			/* number of order by attributes */
+  bool *is_desc_order;		/* sorting in descending order */
+  int *sort_att_idx;		/* index of MIDXKEY attribute on which the
 				   sort is performed */
   QFILE_TUPLE_RECORD tplrec;	/* tuple record to dump MIDXKEYs into */
-  TP_DOMAIN *sort_col_dom;
+  TP_DOMAIN **sort_col_dom;	/* sorting column domain */
   RANGE_OPT_ITEM **top_n_items;	/* array with top n items */
 };
 

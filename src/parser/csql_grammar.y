@@ -21006,6 +21006,8 @@ PT_HINT parser_hint_table[] = {
   ,
   {"NO_DESC_IDX", NULL, PT_HINT_NO_IDX_DESC}
   ,
+  {"NO_MULTI_RANGE_OPT", NULL, PT_HINT_NO_MULTI_RANGE_OPT}
+  ,
   {NULL, NULL, -1}		/* mark as end */
 };
 

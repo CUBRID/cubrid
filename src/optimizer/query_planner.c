@@ -227,6 +227,8 @@ static QO_PLAN_COMPARE_RESULT qo_order_by_skip_plans_cmp (QO_PLAN *,
 							  QO_PLAN *);
 static QO_PLAN_COMPARE_RESULT qo_group_by_skip_plans_cmp (QO_PLAN *,
 							  QO_PLAN *);
+static QO_PLAN_COMPARE_RESULT qo_multi_range_opt_plans_cmp (QO_PLAN *,
+							    QO_PLAN *);
 static void qo_plan_free (QO_PLAN *);
 static QO_PLAN *qo_plan_malloc (QO_ENV *);
 static const char *qo_term_string (QO_TERM *);
@@ -279,6 +281,7 @@ static int qo_walk_plan_tree (QO_PLAN * plan, QO_WALK_FUNCTION f, void *arg);
 static int qo_set_use_desc (QO_PLAN * plan, void *arg);
 static int qo_set_orderby_skip (QO_PLAN * plan, void *arg);
 static int qo_validate_indexes_for_orderby (QO_PLAN * plan, void *arg);
+static int qo_unset_multi_range_optimization (QO_PLAN * plan, void *arg);
 
 static QO_PLAN_VTBL qo_seq_scan_plan_vtbl = {
   "sscan",
@@ -1044,6 +1047,47 @@ qo_set_use_desc (QO_PLAN * plan, void *arg)
 }
 
 /*
+ * qo_unset_multi_range_optimization () - set all multi_range_opt flags
+ *					  on all indexes to false
+ *
+ * return    : NO_ERROR 
+ * plan (in) : current plan
+ * arg (in)  : not used
+ */
+static int
+qo_unset_multi_range_optimization (QO_PLAN * plan, void *arg)
+{
+  if (qo_is_iscan (plan) && plan->plan_un.scan.index != NULL
+      && plan->plan_un.scan.index->head != NULL)
+    {
+      QO_INDEX_ENTRY *index_entryp = plan->plan_un.scan.index->head;
+      if (!index_entryp->multi_range_opt)
+	{
+	  /* nothing to do */
+	  return NO_ERROR;
+	}
+      /* set multi_range_opt to false */
+      index_entryp->multi_range_opt = false;
+      index_entryp->first_sort_column = -1;
+      /* multi_range_opt may have set the descending order on index */
+      if (index_entryp->use_descending)
+	{
+	  /* if descending order is hinted or if skip order by / skip group by
+	   * are true, leave the index as descending
+	   */
+	  if (((plan->info->env->pt_tree->info.query.q.select.hint &
+		PT_HINT_USE_IDX_DESC) == 0)
+	      && !index_entryp->groupby_skip && !index_entryp->orderby_skip)
+	    {
+	      /* set use_descending to false */
+	      index_entryp->use_descending = false;
+	    }
+	}
+    }
+  return NO_ERROR;
+}
+
+/*
  * qo_set_orderby_skip () - sets certain plans' orderby_skip index flag to the
  *                          boolean value given in *arg.
  *
@@ -1122,6 +1166,14 @@ qo_top_plan_new (QO_PLAN * plan)
   if (pt_is_single_tuple (QO_ENV_PARSER (env), tree))
     {				/* one tuple plan */
       return plan;		/* do nothing */
+    }
+
+  if (qo_plan_multi_range_opt (plan))
+    {
+      /* already found out that multi range optimization can be applied
+       * on current plan, skip any other checks
+       */
+      return plan;
     }
 
   all_distinct = tree->info.query.all_distinct;
@@ -1623,6 +1675,8 @@ qo_scan_new (QO_INFO * info, QO_NODE * node, QO_SCANMETHOD scan_method,
   bitset_init (&(plan->plan_un.scan.kf_terms), info->env);
   plan->plan_un.scan.index = NULL;
 
+  plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_NO;
+
   return plan;
 }
 
@@ -1709,13 +1763,13 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
 		   QO_NODE_INDEX_ENTRY * ni_entry, BITSET * range_terms,
 		   BITSET * kf_terms, BITSET * pinned_subqueries)
 {
-  QO_PLAN *plan;
+  QO_PLAN *plan = NULL;
   BITSET_ITERATOR iter;
   int t;
   QO_ENV *env = info->env;
-  QO_INDEX_ENTRY *index_entryp;
-  QO_TERM *term;
-  PT_NODE *pt_expr;
+  QO_INDEX_ENTRY *index_entryp = NULL;
+  QO_TERM *term = NULL;
+  PT_NODE *pt_expr = NULL;
   BITSET index_segs;
   BITSET term_segs;
 
@@ -1831,6 +1885,13 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
 
   bitset_delset (&term_segs);
   bitset_delset (&index_segs);
+
+  if (qo_check_iscan_for_multi_range_opt (plan))
+    {
+      bool dummy;
+      plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_USE;
+      qo_plan_compute_iscan_sort_list (plan, &dummy);
+    }
 
   qo_plan_compute_cost (plan);
 
@@ -2163,6 +2224,12 @@ qo_scan_fprint (QO_PLAN * plan, FILE * f, int howfar)
 	}
 
       if (plan->plan_un.scan.index
+	  && plan->plan_un.scan.index->head->multi_range_opt)
+	{
+	  fprintf (f, " (multi_range_opt)");
+	}
+
+      if (plan->plan_un.scan.index
 	  && plan->plan_un.scan.index->head->use_descending)
 	{
 	  fprintf (f, " (desc_index)");
@@ -2267,6 +2334,12 @@ qo_scan_info (QO_PLAN * plan, FILE * f, int howfar)
 	}
 
       if (plan->plan_un.scan.index
+	  && plan->plan_un.scan.index->head->multi_range_opt)
+	{
+	  fprintf (f, " (multi_range_opt)");
+	}
+
+      if (plan->plan_un.scan.index
 	  && plan->plan_un.scan.index->head->use_descending)
 	{
 	  fprintf (f, " (desc_index)");
@@ -2359,6 +2432,8 @@ qo_sort_new (QO_PLAN * root, QO_EQCLASS * order, SORT_TYPE sort_type)
   plan->plan_un.sort.sort_type = sort_type;
   plan->plan_un.sort.subplan = qo_plan_add_ref (subplan);
   plan->plan_un.sort.xasl = NULL;	/* To be determined later */
+
+  plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_NO;
 
   qo_plan_compute_cost (plan);
 
@@ -2623,6 +2698,7 @@ qo_join_new (QO_INFO * info,
   plan->well_rooted = false;
   plan->iscan_sort_list = NULL;
   plan->plan_type = QO_PLANTYPE_JOIN;
+  plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_NO;
 
   switch (join_method)
     {
@@ -2761,6 +2837,13 @@ qo_join_new (QO_INFO * info,
      Separating them (so that they get evaluated in some different
      order) will yield incorrect results. */
   bitset_assign (&(plan->subqueries), pinned_subqueries);
+
+  if (qo_check_join_for_multi_range_opt (plan))
+    {
+      bool dummy;
+      plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_USE;
+      qo_plan_compute_iscan_sort_list (plan, &dummy);
+    }
 
   qo_plan_compute_cost (plan);
 
@@ -3197,6 +3280,8 @@ qo_follow_new (QO_INFO * info,
   plan->plan_un.follow.head = qo_plan_add_ref (head_plan);
   plan->plan_un.follow.path = path_term;
 
+  plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_NO;
+
   bitset_assign (&(plan->sarged_terms), sarged_terms);
   bitset_remove (&(plan->sarged_terms), QO_TERM_IDX (path_term));
 
@@ -3381,6 +3466,8 @@ qo_worst_new (QO_ENV * env)
   plan->plan_type = QO_PLANTYPE_WORST;
   plan->vtbl = &qo_worst_plan_vtbl;
 
+  plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_NO;
+
   qo_plan_compute_cost (plan);
 
   return plan;
@@ -3559,29 +3646,41 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	}
     }
 
-  af = a->fixed_cpu_cost + a->fixed_io_cost;
-  aa = a->variable_cpu_cost + a->variable_io_cost;
-  bf = b->fixed_cpu_cost + b->fixed_io_cost;
-  ba = b->variable_cpu_cost + b->variable_io_cost;
-
-  if (a->plan_type != QO_PLANTYPE_SCAN && a->plan_type != QO_PLANTYPE_SORT)
-    {
-      goto cost_cmp;		/* give up */
-    }
-
-  if (b->plan_type != QO_PLANTYPE_SCAN && b->plan_type != QO_PLANTYPE_SORT)
-    {
-      goto cost_cmp;		/* give up */
-    }
-
   if (a == b)
     {
       return PLAN_COMP_EQ;
     }
 
+  af = a->fixed_cpu_cost + a->fixed_io_cost;
+  aa = a->variable_cpu_cost + a->variable_io_cost;
+  bf = b->fixed_cpu_cost + b->fixed_io_cost;
+  ba = b->variable_cpu_cost + b->variable_io_cost;
+
+  if ((a->plan_type != QO_PLANTYPE_SCAN && a->plan_type != QO_PLANTYPE_SORT)
+      || (b->plan_type != QO_PLANTYPE_SCAN
+	  && b->plan_type != QO_PLANTYPE_SORT))
+    {
+      /* there may be joins with multi range optimizations */
+      temp_res = qo_multi_range_opt_plans_cmp (a, b);
+      if (temp_res == PLAN_COMP_GT || temp_res == PLAN_COMP_LT)
+	{
+	  return temp_res;
+	}
+      else
+	{
+	  goto cost_cmp;	/* give up */
+	}
+    }
+
   /* a order by skip plan is always preferred to a sort plan */
   if (a->plan_type == QO_PLANTYPE_SCAN && b->plan_type == QO_PLANTYPE_SORT)
     {
+      /* prefer scan if it is multi range opt */
+      if (qo_is_iscan_with_multi_range_opt (a))
+	{
+	  return PLAN_COMP_LT;
+	}
+
       temp_res = qo_plan_cmp_prefer_covering_index (a, b);
       if (temp_res == PLAN_COMP_LT || temp_res == PLAN_COMP_GT)
 	{
@@ -3600,6 +3699,12 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 
   if (b->plan_type == QO_PLANTYPE_SCAN && a->plan_type == QO_PLANTYPE_SORT)
     {
+      /* prefer scan if it is multi range opt */
+      if (qo_is_iscan_with_multi_range_opt (b))
+	{
+	  return PLAN_COMP_GT;
+	}
+
       temp_res = qo_plan_cmp_prefer_covering_index (b, a);
 
       /* Since we swapped its position, we have to negate the comp result */
@@ -3624,11 +3729,22 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 
   if (a->plan_type == QO_PLANTYPE_SCAN && b->plan_type == QO_PLANTYPE_SCAN)
     {
+      /* check multi range optimization */
+      if (qo_is_iscan_with_multi_range_opt (a)
+	  && !qo_is_iscan_with_multi_range_opt (b))
+	{
+	  return PLAN_COMP_LT;
+	}
+      if (!qo_is_iscan_with_multi_range_opt (a)
+	  && qo_is_iscan_with_multi_range_opt (b))
+	{
+	  return PLAN_COMP_GT;
+	}
+
       if (qo_plan_coverage_index (a) && qo_is_seq_scan (b))
 	{
 	  return PLAN_COMP_LT;
 	}
-
       if (qo_plan_coverage_index (b) && qo_is_seq_scan (a))
 	{
 	  return PLAN_COMP_GT;
@@ -3684,6 +3800,13 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
   if (!qo_is_interesting_order_scan (a) || !qo_is_interesting_order_scan (b))
     {
       goto cost_cmp;		/* give up */
+    }
+
+  /* check multi range optimization */
+  temp_res = qo_multi_range_opt_plans_cmp (a, b);
+  if (temp_res == PLAN_COMP_LT || temp_res == PLAN_COMP_GT)
+    {
+      return temp_res;
     }
 
   /* check index coverage */
@@ -3944,6 +4067,18 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	      }
 	  }
 
+	if (a_ent->multi_range_opt && b_ent->multi_range_opt)
+	  {
+	    if (a_ent->col_num > b_ent->col_num)
+	      {
+		return PLAN_COMP_GT;
+	      }
+	    else if (a_ent->col_num < b_ent->col_num)
+	      {
+		return PLAN_COMP_LT;
+	      }
+	  }
+
 	/* if both plans skip order by and same costs, take the larger one */
 	if (a_ent->orderby_skip && b_ent->orderby_skip)
 	  {
@@ -3992,6 +4127,113 @@ cost_cmp:
 
   return PLAN_COMP_UNK;
 #endif /* OLD_CODE */
+}
+
+/*
+ * qo_multi_range_opt_plans_cmp () - compare two plans in regard with multi
+ *				     range optimizations
+ *
+ * return : compare result
+ * a (in) : first plan
+ * b (in) : second plan
+ */
+static QO_PLAN_COMPARE_RESULT
+qo_multi_range_opt_plans_cmp (QO_PLAN * a, QO_PLAN * b)
+{
+  QO_INDEX_ENTRY *a_ent = NULL, *b_ent = NULL;
+  int result;
+
+  /* if no plan uses multi range optimization, nothing to do here */
+  if (!qo_plan_multi_range_opt (a) && !qo_plan_multi_range_opt (b))
+    {
+      return PLAN_COMP_UNK;
+    }
+
+  /* check if only one plan uses multi range optimization */
+  if (qo_plan_multi_range_opt (a) && !qo_plan_multi_range_opt (b))
+    {
+      return PLAN_COMP_LT;
+    }
+  if (!qo_plan_multi_range_opt (a) && qo_plan_multi_range_opt (b))
+    {
+      return PLAN_COMP_GT;
+    }
+
+  /* both plans use multi range optimization */
+  if (a->plan_type == QO_PLANTYPE_JOIN && b->plan_type == QO_PLANTYPE_JOIN)
+    {
+      /* choose the plan where the optimized index scan is "outer-most" */
+      int a_mro_join_idx = -1, b_mro_join_idx = -1;
+      if (qo_find_subplan_using_multi_range_opt (a, NULL, &a_mro_join_idx) !=
+	  NO_ERROR
+	  || qo_find_subplan_using_multi_range_opt (b, NULL,
+						    &b_mro_join_idx) !=
+	  NO_ERROR)
+	{
+	  assert (0);
+	  return PLAN_COMP_UNK;
+	}
+      if (a_mro_join_idx < b_mro_join_idx)
+	{
+	  return PLAN_COMP_LT;
+	}
+      else if (a_mro_join_idx > b_mro_join_idx)
+	{
+	  return PLAN_COMP_GT;
+	}
+      else
+	{
+	  return PLAN_COMP_EQ;
+	}
+    }
+
+  if (a->plan_type == QO_PLANTYPE_JOIN || b->plan_type == QO_PLANTYPE_JOIN)
+    {
+      /* one plan is join, the other is not join */
+      return PLAN_COMP_UNK;
+    }
+
+  /* both plans must be optimized index scans */
+  assert (qo_is_iscan_with_multi_range_opt (a)
+	  && qo_is_iscan_with_multi_range_opt (b));
+  a_ent = a->plan_un.scan.index->head;
+  b_ent = b->plan_un.scan.index->head;
+
+  if (a_ent == NULL || b_ent == NULL)
+    {
+      return PLAN_COMP_UNK;
+    }
+
+  if (a_ent->multi_range_opt)
+    {
+      if (b_ent->multi_range_opt)
+	{
+	  /* choose the plan that also covers all segments */
+	  if (a_ent->cover_segments && !b_ent->cover_segments)
+	    {
+	      return PLAN_COMP_LT;
+	    }
+	  else if (!a_ent->cover_segments && b_ent->cover_segments)
+	    {
+	      return PLAN_COMP_GT;
+	    }
+	  else if (a_ent->cover_segments && b_ent->cover_segments)
+	    {
+	      return qo_cover_index_plans_cmp (a_ent, b_ent);
+	    }
+
+	  return qo_plan_iscan_terms_cmp (a, b);
+	}
+      else
+	{
+	  return PLAN_COMP_LT;
+	}
+    }
+  else if (b_ent->multi_range_opt)
+    {
+      return PLAN_COMP_GT;
+    }
+  return PLAN_COMP_EQ;
 }
 
 /*
@@ -5206,6 +5448,8 @@ qo_find_best_nljoin_inner_plan_on_info (QO_PLAN * outer,
 
   temp->plan_un.join.join_type = join_type;	/* set nl-join type */
   temp->plan_un.join.outer = outer;	/* set outer */
+
+  temp->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_NO;
 
   for (i = 0, pv = &info->best_no_order; i < pv->nplans; i++)
     {
@@ -8392,8 +8636,11 @@ qo_search_planner (QO_PLANNER * planner)
 	      /* if the index didn't normally skipped the order by, we try
 	       * the new plan, maybe this will be better.
 	       * DO NOT generate a order by index if there is no order by!
+	       * Skip generating index from order by if multi_range_opt is
+	       * true (multi range optimized plan is already better)
 	       */
 	      if (!index_entry->orderby_skip &&
+		  !index_entry->multi_range_opt &&
 		  QO_ENV_PT_TREE (info->env) &&
 		  QO_ENV_PT_TREE (info->env)->info.query.order_by &&
 		  !QO_ENV_PT_TREE (info->env)->info.query.q.select.connect_by
@@ -8523,6 +8770,16 @@ qo_search_planner (QO_PLANNER * planner)
 	}
     }
 
+  /* some indexes may be marked with multi range optimization (as candidates)
+   * However, if the chosen top plan is not marked as using multi range
+   * optimization it means that the optimization has been invalidated, or
+   * maybe another plan was chosen. Make sure to un-mark indexes in this case
+   */
+  if (!qo_plan_multi_range_opt (plan))
+    {
+      qo_walk_plan_tree (plan, qo_unset_multi_range_optimization, NULL);
+    }
+
   if (qo_is_interesting_order_scan (plan))
     {
       if (plan->plan_un.scan.index && plan->plan_un.scan.index->head)
@@ -8537,7 +8794,8 @@ qo_search_planner (QO_PLANNER * planner)
 	       *   PT_HINT_USE_IDX_DESC;
 	       */
 	    }
-	  else if (plan->plan_un.scan.index->head->orderby_skip)
+	  else if (plan->plan_un.scan.index->head->orderby_skip
+		   || plan->plan_un.scan.index->head->multi_range_opt)
 	    {
 	      plan->info->env->pt_tree->info.query.q.select.hint &=
 		~PT_HINT_USE_IDX_DESC;
@@ -8715,6 +8973,13 @@ qo_search_partition_join (QO_PLANNER * planner,
 
 	  i_plan = qo_find_best_plan_on_info (i_info, QO_UNORDERED, 1.0);
 
+	  if (qo_plan_multi_range_opt (i_plan))
+	    {
+	      /* skip removing the other edge from first plan */
+	      bitset_add (&first_nodes, i);
+	      continue;
+	    }
+
 	  for (j = bitset_iterate (&first_nodes, &bj); j != -1;
 	       j = bitset_next_member (&bj))
 	    {
@@ -8723,6 +8988,12 @@ qo_search_partition_join (QO_PLANNER * planner,
 	      j_info = planner->node_info[QO_NODE_IDX (j_node)];
 
 	      j_plan = qo_find_best_plan_on_info (j_info, QO_UNORDERED, 1.0);
+
+	      if (qo_plan_multi_range_opt (j_plan))
+		{
+		  /* allow adding the other edge to first plan */
+		  continue;
+		}
 
 	      cmp = qo_plan_cmp (j_plan, i_plan);
 
@@ -10588,6 +10859,26 @@ qo_index_scan_order_by_new (QO_INFO * info, QO_NODE * node,
   plan = qo_top_plan_new (plan);
 
   return plan;
+}
+
+/*
+ * qo_is_iscan_with_multi_range_opt () - check if the current plan uses and
+ *					 index scan with multi range
+ *					 optimization
+ *
+ * return    : true/false 
+ * plan (in) : plan to verify
+ */
+bool
+qo_is_iscan_with_multi_range_opt (QO_PLAN * plan)
+{
+  if (qo_is_iscan (plan) && plan->plan_un.scan.index
+      && plan->plan_un.scan.index->head
+      && plan->plan_un.scan.index->head->multi_range_opt)
+    {
+      return true;
+    }
+  return false;
 }
 
 /*

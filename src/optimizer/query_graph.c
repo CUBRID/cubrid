@@ -4849,6 +4849,8 @@ qo_alloc_index (QO_ENV * env, int n)
       bitset_init (&(entryp->key_filter_terms), env);
       entryp->cover_segments = false;
       entryp->is_iss_candidate = false;
+      entryp->multi_range_opt = false;
+      entryp->first_sort_column = -1;
       entryp->orderby_skip = false;
       entryp->groupby_skip = false;
       entryp->use_descending = false;

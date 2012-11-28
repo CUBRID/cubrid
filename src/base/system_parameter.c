@@ -2519,7 +2519,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_session_timeout_lower,
    (char *) NULL},
   {PRM_NAME_MULTI_RANGE_OPT_LIMIT,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_QRY_STRING),
    PRM_INTEGER,
    (void *) &prm_multi_range_opt_limit_default,
    (void *) &PRM_MULTI_RANGE_OPT_LIMIT,

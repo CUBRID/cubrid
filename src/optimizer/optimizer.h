@@ -170,6 +170,7 @@ extern PT_NODE *qo_subplan_iscan_sort_list (QO_PLAN *);
 extern bool qo_plan_skip_orderby (QO_PLAN * plan);
 extern bool qo_plan_skip_groupby (QO_PLAN * plan);
 extern bool qo_plan_coverage_index (QO_PLAN * plan);
+extern bool qo_plan_multi_range_opt (QO_PLAN * plan);
 extern bool qo_plan_filtered_index (QO_PLAN * plan);
 extern void qo_set_cost (DB_OBJECT * target, DB_VALUE * result,
 			 DB_VALUE * plan, DB_VALUE * cost);
@@ -210,10 +211,10 @@ extern QO_LIMIT_INFO *qo_get_key_limit_from_ordbynum (PARSER_CONTEXT * parser,
 						      QO_PLAN * plan,
 						      XASL_NODE * xasl);
 
-extern int qo_check_plan_for_multiple_ranges_limit_opt (PARSER_CONTEXT *
-							parser,
-							QO_PLAN * subplan,
-							PT_NODE * sort_node,
-							int *can_optimize);
+extern bool qo_check_iscan_for_multi_range_opt (QO_PLAN * plan);
+extern bool qo_check_join_for_multi_range_opt (QO_PLAN * plan);
+extern int qo_find_subplan_using_multi_range_opt (QO_PLAN * plan,
+						  QO_PLAN ** result,
+						  int *join_idx);
 
 #endif /* _OPTIMIZER_H_ */

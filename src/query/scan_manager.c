@@ -4266,6 +4266,21 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 				    isidp->multi_range_opt.tplrec.tpl);
 	  isidp->multi_range_opt.tplrec.tpl = 0;
 	}
+      if (isidp->multi_range_opt.sort_att_idx != NULL)
+	{
+	  db_private_free_and_init (thread_p,
+				    isidp->multi_range_opt.sort_att_idx);
+	}
+      if (isidp->multi_range_opt.is_desc_order != NULL)
+	{
+	  db_private_free_and_init (thread_p,
+				    isidp->multi_range_opt.is_desc_order);
+	}
+      if (isidp->multi_range_opt.sort_col_dom != NULL)
+	{
+	  db_private_free_and_init (thread_p,
+				    isidp->multi_range_opt.sort_col_dom);
+	}
       memset ((void *) (&(isidp->multi_range_opt)), 0,
 	      sizeof (MULTI_RANGE_OPT));
       break;
@@ -6179,8 +6194,6 @@ scan_init_multi_range_optimization (THREAD_ENTRY * thread_p,
     }
 
   memset ((void *) (multi_range_opt), 0, sizeof (MULTI_RANGE_OPT));
-  use_range_opt = use_range_opt
-    && (max_size <= prm_get_integer_value (PRM_ID_MULTI_RANGE_OPT_LIMIT));
   multi_range_opt->use = use_range_opt;
   multi_range_opt->cnt = 0;
 
@@ -6188,8 +6201,9 @@ scan_init_multi_range_optimization (THREAD_ENTRY * thread_p,
     {
       multi_range_opt->size = max_size;
       /* we don't have sort information here, just set an invalid value */
-      multi_range_opt->sort_att_idx = -1;
-      multi_range_opt->is_desc_order = false;
+      multi_range_opt->sort_att_idx = NULL;
+      multi_range_opt->is_desc_order = NULL;
+      multi_range_opt->no_attrs = 0;
 
       multi_range_opt->top_n_items = (RANGE_OPT_ITEM **)
 	db_private_alloc (thread_p, max_size * sizeof (RANGE_OPT_ITEM *));

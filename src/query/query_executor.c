@@ -987,12 +987,11 @@ static void qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE *
 						buildlist,
 						OUTPTR_LIST *
 						reference_out_list);
-static void query_multi_range_opt_check_set_sort_col (XASL_NODE * xasl);
-static void query_multi_range_opt_check_spec (ACCESS_SPEC_TYPE * spec_list,
-					      const DB_VALUE *
-					      sort_col_out_val_ref,
-					      SORT_ORDER s_order,
-					      bool * scan_found);
+static int query_multi_range_opt_check_set_sort_col (THREAD_ENTRY * thread_p,
+						     XASL_NODE * xasl);
+static ACCESS_SPEC_TYPE *query_multi_range_opt_check_specs (THREAD_ENTRY *
+							    thread_p,
+							    XASL_NODE * xasl);
 static int qexec_init_instnum_val (XASL_NODE * xasl,
 				   THREAD_ENTRY * thread_p,
 				   XASL_STATE * xasl_state);
@@ -12397,7 +12396,12 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		}
 	    }
 
-	  query_multi_range_opt_check_set_sort_col (xasl);
+	  if (query_multi_range_opt_check_set_sort_col (thread_p, xasl) !=
+	      NO_ERROR)
+	    {
+	      qexec_clear_mainblock_iterations (thread_p, xasl);
+	      GOTO_EXIT_ON_ERROR;
+	    }
 
 	  /* call the first xasl interpreter function */
 	  qp_scan = (*func_vector[0]) (thread_p, xasl, xasl_state, &tplrec,
@@ -18509,168 +18513,209 @@ exit_on_error:
 }
 
 /*
- * query_multi_range_opt_check_set_sort_col() - scans the SPEC nodes in the
- *		XASL and attempts to resolve the sorting info required for
- *		multiple range search optimization in the index scan (only one
- *		scan should be optimized in a XASL tree);
- *		It also disables the final ORDER BY in the XASL, if the
- *		optimized scan provides the answer already sorted.
+ * query_multi_range_opt_check_set_sort_col () - scans the SPEC nodes in the
+ *						 XASL and resolves the sorting
+ *						 info required for multiple
+ *						 range search optimization
  *
- *   xasl(in/out):
+ * return	 : error code
+ * thread_p (in) : thread entry
+ * xasl (in)     : xasl node
  */
-static void
-query_multi_range_opt_check_set_sort_col (XASL_NODE * xasl)
+static int
+query_multi_range_opt_check_set_sort_col (THREAD_ENTRY * thread_p,
+					  XASL_NODE * xasl)
 {
-  ACCESS_SPEC_TYPE *spec_list = NULL;
   bool optimized_scan_found = false;
-  DB_VALUE *sort_col_out_val_ref = NULL;
-  int i = 0;
+  DB_VALUE **sort_col_out_val_ref = NULL;
+  int i = 0, count = 0, index = 0, att_id, sort_index_pos;
   REGU_VARIABLE_LIST regu_list = NULL;
+  SORT_LIST *orderby_list = NULL;
+  int error = NO_ERROR;
+  MULTI_RANGE_OPT *multi_range_opt = NULL;
+  ACCESS_SPEC_TYPE *spec = NULL;
 
   if (xasl == NULL || xasl->type != BUILDLIST_PROC
       || xasl->orderby_list == NULL || xasl->spec_list == NULL)
     {
-      return;
+      return NO_ERROR;
     }
 
-  /* only one sort column is allowed for optimization
-   * correlated subqueries are not allowed */
-  if (xasl->orderby_list->next != NULL || xasl->dptr_list != NULL)
+  /* find access spec using multi range optimization */
+  spec = query_multi_range_opt_check_specs (thread_p, xasl);
+  if (spec == NULL)
     {
-      return;
+      /* no scan with multi range search optimization was found */
+      return NO_ERROR;
     }
-
-  /* get sort column from 'outptr_list' */
-  for (regu_list = xasl->outptr_list->valptrp;
-       regu_list != NULL; regu_list = regu_list->next)
+  multi_range_opt = &spec->s_id.s.isid.multi_range_opt;
+  /* initialize sort info for multi range search optimization */
+  orderby_list = xasl->orderby_list;
+  while (orderby_list)
     {
-      if (REGU_VARIABLE_IS_FLAGED
-	  (&regu_list->value, REGU_VARIABLE_HIDDEN_COLUMN))
-	{
-	  continue;
-	}
-      if (i == xasl->orderby_list->pos_descr.pos_no)
-	{
-	  if (regu_list->value.type == TYPE_CONSTANT)
-	    {
-	      sort_col_out_val_ref = regu_list->value.value.dbvalptr;
-	    }
-	  break;
-	}
-      i++;
+      count++;
+      orderby_list = orderby_list->next;
     }
 
+  /* find the addresses contained in REGU VAR for values used in sorting */
+  sort_col_out_val_ref =
+    (DB_VALUE **) db_private_alloc (thread_p, count * sizeof (DB_VALUE *));
   if (sort_col_out_val_ref == NULL)
     {
-      return;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, count * sizeof (DB_VALUE *));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
-
-  /* check main spec */
-  query_multi_range_opt_check_spec (xasl->spec_list, sort_col_out_val_ref,
-				    xasl->orderby_list->s_order,
-				    &optimized_scan_found);
-
-  if (!optimized_scan_found &&
-      xasl->scan_ptr != NULL && xasl->scan_ptr->spec_list != NULL)
+  for (orderby_list = xasl->orderby_list; orderby_list != NULL;
+       orderby_list = orderby_list->next)
     {
-      /* check spec in scan */
-      query_multi_range_opt_check_spec (xasl->scan_ptr->spec_list,
-					sort_col_out_val_ref,
-					xasl->orderby_list->s_order,
-					&optimized_scan_found);
-    }
-
-  if (optimized_scan_found)
-    {
-      /* disable order by in XASL for this execution */
-      if (xasl->option != Q_DISTINCT && xasl->scan_ptr == NULL)
+      i = 0;
+      /* get sort column from 'outptr_list' */
+      for (regu_list = xasl->outptr_list->valptrp; regu_list != NULL;
+	   regu_list = regu_list->next)
 	{
-	  XASL_SET_FLAG (xasl, XASL_SKIP_ORDERBY_LIST);
-	}
-      return;
-    }
-}
-
-/*
- * query_multi_range_opt_check_spec() - searches the SPEC tree for the
- *		enabled multiple range search optimized index scan and sets
- *		sorting info (index of column in tree) required to sort the
- *		key with "on the fly" method; if the sort column could not be
- *		identified, and the optimization is marked as enabled (use=1),
- *		it disables the optimization on the scan
- *
- *   spec_list(in/out):
- *   sort_col_out_val_ref(in): address of VALUE contained in the REGU VAR used
- *			       for sorting
- *   s_order(in): sort direction ascending or descending
- *   scan_found(out): will be set if the scan is found
- */
-static void
-query_multi_range_opt_check_spec (ACCESS_SPEC_TYPE * spec_list,
-				  const DB_VALUE * sort_col_out_val_ref,
-				  SORT_ORDER s_order, bool * scan_found)
-{
-  REGU_VARIABLE_LIST regu_list = NULL;
-  int att_id = -1;
-  int sort_index_pos = -1;
-
-  *scan_found = false;
-
-  for (; spec_list != NULL && !(*scan_found); spec_list = spec_list->next)
-    {
-      if (spec_list->access != INDEX || spec_list->type != TARGET_CLASS
-	  || spec_list->s_id.type != S_INDX_SCAN)
-	{
-	  continue;
-	}
-      if (spec_list->s_id.s.isid.multi_range_opt.use)
-	{
-	  /* only one scan in the spec list should have the optimization */
-	  *scan_found = true;
-
-	  /* search the ATTR_ID regu 'fetching to' the output list regu
-	   * used for sorting */
-	  for (regu_list = spec_list->s_id.s.isid.rest_regu_list;
-	       regu_list != NULL; regu_list = regu_list->next)
+	  if (REGU_VARIABLE_IS_FLAGED
+	      (&regu_list->value, REGU_VARIABLE_HIDDEN_COLUMN))
 	    {
-	      assert (regu_list->value.type == TYPE_ATTR_ID);
-	      if (regu_list->value.type == TYPE_ATTR_ID
-		  && regu_list->value.vfetch_to == sort_col_out_val_ref)
+	      continue;
+	    }
+	  if (i == orderby_list->pos_descr.pos_no)
+	    {
+	      if (regu_list->value.type == TYPE_CONSTANT)
 		{
-		  att_id = regu_list->value.value.attr_descr.id;
+		  sort_col_out_val_ref[index++] =
+		    regu_list->value.value.dbvalptr;
+		}
+	      break;
+	    }
+	  i++;
+	}
+    }
+  if (index != count)
+    {
+      /* this is not supposed to happen */
+      assert (0);
+      goto exit_on_error;
+    }
+
+  if (multi_range_opt->no_attrs == 0)
+    {
+      multi_range_opt->no_attrs = count;
+      multi_range_opt->is_desc_order =
+	(bool *) db_private_alloc (thread_p, count * sizeof (bool));
+      if (multi_range_opt->is_desc_order == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, count * sizeof (bool));
+	  goto exit_on_error;
+	}
+      multi_range_opt->sort_att_idx =
+	(int *) db_private_alloc (thread_p, count * sizeof (int));
+      if (multi_range_opt->sort_att_idx == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, count * sizeof (int));
+	  goto exit_on_error;
+	}
+    }
+  else
+    {
+      /* is multi_range_opt already initialized? */
+      assert (0);
+    }
+
+  for (index = 0, orderby_list = xasl->orderby_list; index < count;
+       index++, orderby_list = orderby_list->next)
+    {
+      const DB_VALUE *valp = sort_col_out_val_ref[index];
+
+      att_id = -1;
+      sort_index_pos = -1;
+      /* search the ATTR_ID regu 'fetching to' the output list regu used for
+       * sorting
+       */
+      for (regu_list = spec->s_id.s.isid.rest_regu_list;
+	   regu_list != NULL; regu_list = regu_list->next)
+	{
+	  assert (regu_list->value.type == TYPE_ATTR_ID);
+	  if (regu_list->value.vfetch_to == valp)
+	    {
+	      att_id = regu_list->value.value.attr_descr.id;
+	      break;
+	    }
+	}
+      /* search the attribute in the index attributes */
+      if (att_id != -1)
+	{
+	  for (i = 0; i < spec->s_id.s.isid.bt_num_attrs; i++)
+	    {
+	      if (att_id == spec->s_id.s.isid.bt_attr_ids[i])
+		{
+		  sort_index_pos = i;
 		  break;
 		}
 	    }
-	  /* search the attribute in the index attributes */
-	  if (att_id != -1)
-	    {
-	      int i = 0;
+	}
+      if (sort_index_pos == -1)
+	{
+	  /* REGUs didn't match, at least disable the optimization */
+	  multi_range_opt->use = false;
+	  goto exit_on_error;
+	}
+      multi_range_opt->is_desc_order[index] =
+	(orderby_list->s_order == S_DESC) ? true : false;
+      multi_range_opt->sort_att_idx[index] = sort_index_pos;
+    }
 
-	      for (i = 0; i < spec_list->s_id.s.isid.bt_num_attrs; i++)
-		{
-		  if (att_id == spec_list->s_id.s.isid.bt_attr_ids[i])
-		    {
-		      sort_index_pos = i;
-		      break;
-		    }
-		}
-	    }
+  /* disable order by in XASL for this execution */
+  if (xasl->option != Q_DISTINCT && xasl->scan_ptr == NULL)
+    {
+      XASL_SET_FLAG (xasl, XASL_SKIP_ORDERBY_LIST);
+    }
 
-	  if (sort_index_pos != -1)
+exit:
+  if (sort_col_out_val_ref)
+    {
+      db_private_free_and_init (thread_p, sort_col_out_val_ref);
+    }
+  return error;
+
+exit_on_error:
+  error = ER_FAILED;
+  goto exit;
+}
+
+/*
+ * query_multi_range_opt_check_specs () - searches the XASL tree for the
+ *					  enabled multiple range search
+ *					  optimized index scan
+ *
+ * return		     : ACCESS_SPEC_TYPE if an index scan with multiple
+ *			       range search enabled is found, NULL otherwise
+ * thread_p (in)	     : thread entry
+ * spec_list (in/out)	     : access spec list
+ */
+static ACCESS_SPEC_TYPE *
+query_multi_range_opt_check_specs (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
+{
+  ACCESS_SPEC_TYPE *spec_list;
+  for (; xasl != NULL; xasl = xasl->scan_ptr)
+    {
+      for (spec_list = xasl->spec_list; spec_list != NULL;
+	   spec_list = spec_list->next)
+	{
+	  if (spec_list->access != INDEX || spec_list->type != TARGET_CLASS
+	      || spec_list->s_id.type != S_INDX_SCAN)
 	    {
-	      spec_list->s_id.s.isid.multi_range_opt.sort_att_idx =
-		sort_index_pos;
-	      spec_list->s_id.s.isid.multi_range_opt.is_desc_order =
-		(s_order == S_DESC) ? true : false;
-	      break;
+	      continue;
 	    }
-	  else
+	  if (spec_list->s_id.s.isid.multi_range_opt.use)
 	    {
-	      /* REGUs didn't match, at least disable the optimization */
-	      spec_list->s_id.s.isid.multi_range_opt.use = false;
+	      return spec_list;
 	    }
 	}
     }
+  return NULL;
 }
 
 /*

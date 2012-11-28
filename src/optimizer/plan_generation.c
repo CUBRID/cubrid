@@ -36,6 +36,7 @@
 #include "query_graph.h"
 #include "query_planner.h"
 #include "query_bitset.h"
+#include "system_parameter.h"
 
 #define IS_DERIVED_TABLE(node) \
     (QO_NODE_ENTITY_SPEC(node)->info.spec.derived_table)
@@ -120,6 +121,39 @@ static void regu_ptr_list_free (REGU_PTR_LIST list);
 static REGU_PTR_LIST regu_ptr_list_add_regu (REGU_VARIABLE * var_p,
 					     REGU_PTR_LIST list);
 
+static bool qo_check_seg_belongs_to_range_term (QO_PLAN * subplan,
+						QO_ENV * env, int seg_idx);
+static bool qo_check_ordby_num_for_multi_range_opt (PARSER_CONTEXT * parser,
+						    PT_NODE * orderby_for,
+						    DB_VALUE * upper_limit);
+static int qo_check_plan_index_for_multi_range_opt (PT_NODE *
+						    orderby_nodes,
+						    PT_NODE *
+						    orderby_sort_list,
+						    QO_PLAN * plan,
+						    bool * is_valid,
+						    int
+						    *first_col_idx_pos,
+						    bool * reverse);
+static int qo_check_terms_for_multiple_range_opt (QO_PLAN * plan,
+						  int first_sort_col_idx,
+						  bool * can_optimize);
+static bool qo_check_subqueries_for_multi_range_opt (QO_PLAN * plan,
+						     int sort_col_idx_pos);
+
+static int qo_check_subplans_for_multi_range_opt (QO_PLAN * parent,
+						  QO_PLAN * plan,
+						  QO_PLAN * sortplan,
+						  bool * is_valid,
+						  bool * seen);
+static bool qo_check_subplan_join_cond_for_multi_range_opt (QO_PLAN * parent,
+							    QO_PLAN * subplan,
+							    QO_PLAN *
+							    sort_plan);
+static bool qo_check_parent_eq_class_for_multi_range_opt (QO_PLAN * parent,
+							  QO_PLAN * subplan,
+							  QO_PLAN *
+							  sort_plan);
 
 /*
  * make_scan_proc () -
@@ -2557,6 +2591,21 @@ qo_plan_coverage_index (QO_PLAN * plan)
 }
 
 /*
+ * qo_plan_multi_range_opt () - check the plan info for multi range opt
+ *   return: true/false
+ *   plan(in): QO_PLAN
+ */
+bool
+qo_plan_multi_range_opt (QO_PLAN * plan)
+{
+  if (plan != NULL)
+    {
+      return (plan->multi_range_opt_use == PLAN_MULTI_RANGE_OPT_USE);
+    }
+  return false;
+}
+
+/*
  * qo_plan_filtered_index () - check the plan info for filtered index
  *   return: true/false
  *   plan(in): QO_PLAN
@@ -3460,97 +3509,558 @@ qo_get_key_limit_from_ordbynum (PARSER_CONTEXT * parser, QO_PLAN * plan,
 }
 
 /*
- * qo_check_plan_for_multiple_ranges_limit_opt () - check the plan to find out
- *                                                  if multiple ranges keylimit
- *                                                  optimization can be used
- *   return:
- *   parser(in):
- *   plan(in):
- *   sort_node(in):
- *   can_optimize(out):
+ * qo_check_iscan_for_multi_range_opt () - check that current index scan can
+ *					   use multi range key-limit
+ *					   optimization
  *
- *   Note: Find the sort column position in the index, and check that all
- *         columns that come before the sort column (on the left side of the
- *         sort column) in the index are either in an equality term, or in
- *         a key list term. Only one column should be in a key list term.
+ * return	    : true/false
+ * plan (in)	    : index scan plan
  *
+ * Note: The optimization requires a series of conditions to be met:
+ *	 For single table case:
+ *	 - valid order by for condition
+ *	    -> the upper limit has to be less than multi_range_opt_limit
+ *	       system parameter
+ *	    -> the expression should look like: LIMIT n,
+						ORDERBY_NUM </<= n,
+ *						n > ORDERBY_NUM
+ *	       or AND operator on ORDERBY_NUM valid expressions.
+ *	    -> lower limit is not allowed
+ *	 - index scan with no data filter
+ *	 - order by columns should occupy consecutive positions in index and
+ *	   the ordering should match all columns (or all should be reversed)
+ *	 - index access keys have multiple key ranges, but only one range
+ *	   column
+ *	 - The generic case that uses multi range optimization is the
+ *	   following:
+ *	    SELECT ... FROM table
+ *		WHERE col_1 = ? AND col_2 = ? AND ...
+ *		    AND col_(j) IN (?,?,...)
+ *		    AND col_(j+1) = ? AND ... AND col_(p-1) = ?
+ *		    AND key_filter_terms
+ *		ORDER BY col_(p) [ASC/DESC] [, col_(p2) [ASC/DESC], ...]
+ *		FOR ordbynum_pred / LIMIT n
  */
-int
-qo_check_plan_for_multiple_ranges_limit_opt (PARSER_CONTEXT * parser,
-					     QO_PLAN * subplan,
-					     PT_NODE * sort_node,
-					     int *can_optimize)
+bool
+qo_check_iscan_for_multi_range_opt (QO_PLAN * plan)
 {
-  int t, i, j, pos;
-  BITSET_ITERATOR iter;
-  QO_TERM *termp;
-  QO_ENV *env;
-  QO_INDEX_ENTRY *index_entryp;
-  PT_NODE *seg_node;
-  int *used_cols, idx_col;
-  int kl_terms = 0;
+  QO_ENV *env = NULL;
+  bool can_optimize = 0;
+  PT_NODE *col = NULL, *query = NULL, *select_list = NULL;
+  int error = NO_ERROR;
+  bool multi_range_optimize = false;
+  int first_col_idx_pos = -1, i = 0;
+  PT_NODE *orderby_nodes = NULL, *point = NULL, *name = NULL;
+  PARSER_CONTEXT *parser = NULL;
+  bool seen = false, reverse = false;
+  DB_VALUE upper_limit;
+  PT_NODE *order_by = NULL, *orderby_for = NULL;
+  PT_MISC_TYPE all_distinct;
 
-  *can_optimize = false;
 
-  if (!subplan
-      || !subplan->info
-      || !subplan->plan_un.scan.index
-      || !qo_is_interesting_order_scan (subplan))
+  if (plan == NULL)
     {
-      return NO_ERROR;
+      return false;
     }
 
-  env = subplan->info->env;
-  if (!env)
+  if (!qo_is_iscan (plan))
     {
-      return NO_ERROR;
+      return false;
     }
 
-  index_entryp = subplan->plan_un.scan.index->head;
-  if (!index_entryp)
+  assert (plan->info->env && plan->info->env->parser);
+  env = plan->info->env;
+  parser = env->parser;
+
+  query = QO_ENV_PT_TREE (env);
+  if (!PT_IS_SELECT (query))
     {
-      return NO_ERROR;
+      return false;
+    }
+  if ((query->info.query.q.select.hint & PT_HINT_NO_MULTI_RANGE_OPT) != 0)
+    {
+      /* NO_MULTI_RANGE_OPT was hinted */
+      return false;
+    }
+  all_distinct = query->info.query.all_distinct;
+  order_by = query->info.query.order_by;
+  orderby_for = query->info.query.orderby_for;
+
+  if (orderby_for == NULL || order_by == NULL || all_distinct == PT_DISTINCT)
+    {
+      return false;
     }
 
-  CAST_POINTER_TO_NODE (sort_node);
-  if (sort_node->node_type != PT_NAME)
+  select_list = pt_get_select_list (parser, query);
+  assert (select_list != NULL);
+
+  /* check a valid range */
+  if (orderby_for->or_next)
     {
-      return NO_ERROR;
+      /* OR operator not allowed */
+      return false;
+    }
+  DB_MAKE_NULL (&upper_limit);
+  if (!qo_check_ordby_num_for_multi_range_opt
+      (parser, orderby_for, &upper_limit))
+    {
+      /* the orderby_for expression is not valid for multi range optimization */
+      return false;
+    }
+  if (DB_IS_NULL (&upper_limit)
+      || (DB_GET_BIGINT (&upper_limit) >=
+	  prm_get_integer_value (PRM_ID_MULTI_RANGE_OPT_LIMIT)))
+    {
+      /* the upper limit for orderby_num is too large */
+      return false;
     }
 
-  idx_col = -1;
-
-  /* find the position of the sort column in the index */
-  for (i = 0; i < index_entryp->nsegs; i++)
+  /* create a list of pointers to the names referenced in order by */
+  for (col = order_by; col != NULL; col = col->next)
     {
-      seg_node = QO_SEG_PT_NODE (QO_ENV_SEG (env, index_entryp->seg_idxs[i]));
-      CAST_POINTER_TO_NODE (seg_node);
-      if (seg_node->node_type == PT_NAME
-	  && pt_name_equal (parser, sort_node, seg_node))
+      i = col->info.sort_spec.pos_descr.pos_no;
+      if (i <= 0)
 	{
-	  idx_col = i;
+	  goto exit;
+	}
+      name = select_list;
+      while (--i > 0)
+	{
+	  name = name->next;
+	  if (name == NULL)
+	    {
+	      goto exit;
+	    }
+	}
+      if (!PT_IS_NAME_NODE (name))
+	{
+	  goto exit;
+	}
+      point = pt_point (parser, name);
+      orderby_nodes = parser_append_node (point, orderby_nodes);
+    }
+
+  /* verify that the index used for scan contains all order by columns in the
+   * right order and with the right ordering (or reversed ordering)
+   */
+  error =
+    qo_check_plan_index_for_multi_range_opt (orderby_nodes, order_by,
+					     plan, &can_optimize,
+					     &first_col_idx_pos, &reverse);
+  if (error != NO_ERROR || !can_optimize)
+    {
+      goto exit;
+    }
+
+  /* check scan terms and key filter terms to verify that multi range
+   * optimization is applicable
+   */
+  error =
+    qo_check_terms_for_multiple_range_opt (plan, first_col_idx_pos,
+					   &can_optimize);
+  if (error != NO_ERROR || !can_optimize)
+    {
+      goto exit;
+    }
+
+  /* make sure that correlated subqueries may not affect the results obtained
+   * with multiple range optimization
+   */
+  can_optimize =
+    qo_check_subqueries_for_multi_range_opt (plan, first_col_idx_pos);
+  if (!can_optimize)
+    {
+      goto exit;
+    }
+
+  /* all conditions were met, so multi range optimization can be applied */
+  multi_range_optimize = true;
+  /* mark the index that will do the multi range optimization */
+  plan->plan_un.scan.index->head->multi_range_opt = true;
+  plan->plan_un.scan.index->head->use_descending = reverse;
+  plan->plan_un.scan.index->head->first_sort_column = first_col_idx_pos;
+
+exit:
+  if (orderby_nodes != NULL)
+    {
+      parser_free_tree (parser, orderby_nodes);
+    }
+  return multi_range_optimize;
+}
+
+/*
+ * qo_check_ordby_num_for_multi_range_opt () - check order by for clause is
+ *					       compatible with multi range
+ *					       optimization
+ *
+ * return	     : true if a valid order by for expression, false otherwise
+ * parser (in)	     : parser context
+ * orderby_for (in)  : order by for node
+ * upper_limit (out) : DB_VALUE pointer that will save the upper limit
+ *
+ * Note:  Only operations that can reduce to ORDERBY_NUM () </<= VALUE are
+ *	  allowed:
+ *	  1. ORDERBY_NUM () LE/LT (EXPR that evaluates to a value).
+ *	  2. (EXPR that evaluates to a values) GE/GT ORDERBY_NUM ().
+ *	  3. Any number of #1 and #2 expressions separated by PT_AND logical
+ *	     operator.
+ */
+static bool
+qo_check_ordby_num_for_multi_range_opt (PARSER_CONTEXT * parser,
+					PT_NODE * orderby_for,
+					DB_VALUE * upper_limit)
+{
+  int op;
+  PT_NODE *arg_ordby_num;
+  PT_NODE *rhs;
+  PT_NODE *arg1, *arg2;
+  DB_VALUE limit;
+
+  if (orderby_for == NULL || upper_limit == NULL)
+    {
+      return false;
+    }
+
+  if (!PT_IS_EXPR_NODE (orderby_for))
+    {
+      return false;
+    }
+
+  op = orderby_for->info.expr.op;
+  if (op == PT_AND)
+    {
+      return qo_check_ordby_num_for_multi_range_opt (parser,
+						     orderby_for->info.expr.
+						     arg1, upper_limit)
+	&& qo_check_ordby_num_for_multi_range_opt (parser,
+						   orderby_for->info.expr.
+						   arg2, upper_limit);
+    }
+
+  if (op != PT_LT && op != PT_LE && op != PT_GT && op != PT_GE)
+    {
+      /* only compare operations are allowed */
+      return false;
+    }
+
+  arg1 = orderby_for->info.expr.arg1;
+  arg2 = orderby_for->info.expr.arg2;
+  if (arg1 == NULL || arg2 == NULL)
+    {
+      /* safe guard */
+      return false;
+    }
+
+  /* look for ordby_num argument */
+  if (PT_IS_EXPR_NODE (arg1) && arg1->info.expr.op == PT_ORDERBY_NUM)
+    {
+      arg_ordby_num = arg1;
+      rhs = arg2;
+    }
+  else if (PT_IS_EXPR_NODE (arg2) && arg2->info.expr.op == PT_ORDERBY_NUM)
+    {
+      arg_ordby_num = arg2;
+      rhs = arg1;
+      /* reverse operators */
+      switch (op)
+	{
+	case PT_LE:
+	  op = PT_GT;
+	  break;
+	case PT_LT:
+	  op = PT_GE;
+	  break;
+	case PT_GT:
+	  op = PT_LE;
+	  break;
+	case PT_GE:
+	  op = PT_LT;
+	  break;
+	default:
 	  break;
 	}
     }
-  if (idx_col < 1)
+  else
+    {
+      /* ordby_num argument was not found, this is not a valid expression */
+      return false;
+    }
+
+  if (op == PT_GE || op == PT_GT)
+    {
+      /* lower limits are not accepted */
+      return false;
+    }
+
+  /* evaluate the rhs expression */
+  DB_MAKE_NULL (&limit);
+  pt_evaluate_tree (parser, rhs, &limit, 1);
+  if (DB_IS_NULL (&limit))
+    {
+      return false;
+    }
+  if (tp_value_coerce
+      (&limit, &limit,
+       tp_domain_resolve_default (DB_TYPE_BIGINT)) != DOMAIN_COMPATIBLE)
+    {
+      return false;
+    }
+  if (op == PT_LT)
+    {
+      /* ORDERBY_NUM () < n => ORDERBY_NUM <= n - 1 */
+      DB_MAKE_BIGINT (&limit, (DB_GET_BIGINT (&limit) - 1));
+    }
+  if (db_value_clone (&limit, upper_limit) != NO_ERROR)
+    {
+      return false;
+    }
+  return true;
+}
+
+
+/*
+ * qo_check_plan_index_for_multi_range_opt () - check if the index of index
+ *						scan plan can use multi range
+ *						key-limit optimization
+ *
+ * return		   : error code
+ * orderby_nodes (in)	   : list of pointer to the names of order by columns
+ * orderby_sort_list (in)  : list of PT_SORT_SPEC for the order by columns
+ * plan (in)		   : current plan to check
+ * is_valid (out)	   : true/false
+ * first_col_idx_pos (out) : position in index for the first sort column
+ * reverse (out)	   : true if the index has to be reversed in order to
+ *			     use multiple range optimization, false otherwise
+ *
+ * NOTE: In order to be compatible with multi range optimization, the index of
+ *	 index scan plan must meet the next conditions:
+ *	 - index should cover all order by columns and their positions in
+ *	   index should be consecutive (in the same order as in the order by
+ *	   clause).
+ *	 - column ordering should either match in both order by clause and
+ *	   index, or should all be reversed.
+ */
+static int
+qo_check_plan_index_for_multi_range_opt (PT_NODE * orderby_nodes,
+					 PT_NODE * orderby_sort_list,
+					 QO_PLAN * plan, bool * is_valid,
+					 int *first_col_idx_pos,
+					 bool * reverse)
+{
+  int error = NO_ERROR, i = 0, seg_idx = -1;
+  QO_INDEX_ENTRY *index_entryp = NULL;
+  QO_ENV *env = NULL;
+  PT_NODE *orderby_node = NULL;
+  PT_NODE *orderby_sort_column = NULL;
+  PT_NODE *n = NULL, *save_next = NULL;
+  TP_DOMAIN *key_type = NULL;
+
+  assert (plan != NULL && orderby_nodes != NULL && is_valid != NULL
+	  && first_col_idx_pos != NULL && reverse != NULL);
+
+  *is_valid = false;
+  *reverse = false;
+  *first_col_idx_pos = -1;
+
+  if (!qo_is_iscan (plan))
+    {
+      return NO_ERROR;
+    }
+  if (plan->plan_un.scan.index == NULL
+      || plan->plan_un.scan.index->head == NULL)
+    {
+      return NO_ERROR;
+    }
+  if (plan->info->env == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  env = plan->info->env;
+  index_entryp = plan->plan_un.scan.index->head;
+
+  key_type = index_entryp->key_type;
+  if (key_type == NULL || (TP_DOMAIN_TYPE (key_type) != DB_TYPE_MIDXKEY))
+    {
+      return NO_ERROR;
+    }
+  key_type = key_type->setdomain;
+
+  /* look for the first order by column */
+  orderby_node = orderby_nodes;
+  CAST_POINTER_TO_NODE (orderby_node);
+  assert (orderby_node->node_type == PT_NAME);
+
+  orderby_sort_column = orderby_sort_list;
+  assert (orderby_sort_column->node_type == PT_SORT_SPEC);
+
+  for (i = 0; i < index_entryp->nsegs; i++, key_type = key_type->next)
+    {
+      if (!key_type)
+	{
+	  return NO_ERROR;
+	}
+      seg_idx = index_entryp->seg_idxs[i];
+      if (seg_idx < 0)
+	{
+	  continue;
+	}
+      n = QO_SEG_PT_NODE (QO_ENV_SEG (env, seg_idx));
+      CAST_POINTER_TO_NODE (n);
+      if (n && n->node_type == PT_NAME &&
+	  pt_name_equal (env->parser, orderby_node, n))
+	{
+	  if (i == 0)
+	    {
+	      /* MRO cannot apply */
+	      return NO_ERROR;
+	    }
+	  if (key_type->is_desc
+	      != (orderby_sort_column->info.sort_spec.asc_or_desc == PT_DESC))
+	    {
+	      /* order in index does not match order in order by clause,
+	       * but reversed index may work
+	       */
+	      *reverse = true;
+	    }
+	  break;
+	}
+    }
+  if (i == index_entryp->nsegs)
+    {
+      /* order by node was not found */
+      return NO_ERROR;
+    }
+
+  *first_col_idx_pos = i;
+  /* order by node was found, check that all nodes occupy consecutive
+   * positions in index
+   */
+  for (orderby_node = orderby_nodes->next, i = i + 1, key_type =
+       key_type->next, orderby_sort_column = orderby_sort_list->next;
+       orderby_node != NULL && orderby_sort_column != NULL
+       && i < index_entryp->nsegs;
+       i++, orderby_sort_column = orderby_sort_column->next, key_type =
+       key_type->next)
+    {
+      if (key_type == NULL)
+	{
+	  return NO_ERROR;
+	}
+      seg_idx = index_entryp->seg_idxs[i];
+      if (seg_idx < 0)
+	{
+	  return NO_ERROR;
+	}
+
+      save_next = orderby_node->next;
+      CAST_POINTER_TO_NODE (orderby_node);
+      n = QO_SEG_PT_NODE (QO_ENV_SEG (env, seg_idx));
+      CAST_POINTER_TO_NODE (n);
+      if (n == NULL || n->node_type != PT_NAME
+	  || !pt_name_equal (env->parser, orderby_node, n))
+	{
+	  /* order by columns do not match the columns in index */
+	  return NO_ERROR;
+	}
+      if ((*reverse ? !key_type->is_desc : key_type->is_desc) !=
+	  (orderby_sort_column->info.sort_spec.asc_or_desc == PT_DESC))
+	{
+	  /* normally, key_type->is_desc must match sort order == PT_DESC, 
+	   * if reversed, !key_type->is_desc must match instead.
+	   */
+	  return NO_ERROR;
+	}
+      orderby_node = save_next;
+    }
+  if (orderby_node != NULL)
+    {
+      /* there are order by columns left */
+      return NO_ERROR;
+    }
+  /* all segments in index matched columns in order by list */
+  *is_valid = true;
+
+  return NO_ERROR;
+}
+
+/*
+ * qo_check_plan_for_multiple_ranges_limit_opt () - check the plan to find out
+ *                                                  if multiple ranges key
+ *						    limit optimization can be
+ *						    used
+ *
+ * return	     : error_code
+ * parser(in)	     : parser context
+ * plan(in)       : plan to check
+ * idx_col(in)       : first sort column position in index
+ * can_optimize(out) : true/false if optimization is allowed/not allowed
+ *
+ *   Note: Check that all columns that come before the first sort column (on
+ *	   the left side of the sort column) in the index are either in an
+ *	   equality term, or in a key list term. Only one column should be in
+ *	   a key list term.
+ *	   Also check all terms in the environment to see if there is any
+ *	   data filter
+ */
+static int
+qo_check_terms_for_multiple_range_opt (QO_PLAN * plan,
+				       int first_sort_col_idx,
+				       bool * can_optimize)
+{
+  int t, i, j, pos, s, seg_idx;
+  BITSET_ITERATOR iter_t, iter_s;
+  QO_TERM *termp = NULL;
+  QO_ENV *env = NULL;
+  QO_INDEX_ENTRY *index_entryp = NULL;
+  QO_NODE *node_of_plan = NULL;
+  int *used_cols = NULL;
+  int kl_terms = 0;
+
+  assert (can_optimize != NULL);
+
+  *can_optimize = false;
+
+  if (plan == NULL
+      || plan->info == NULL
+      || plan->plan_un.scan.index == NULL
+      || !qo_is_interesting_order_scan (plan))
+    {
+      return NO_ERROR;
+    }
+
+  env = plan->info->env;
+  if (env == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  index_entryp = plan->plan_un.scan.index->head;
+  if (index_entryp == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  node_of_plan = plan->plan_un.scan.node;
+  if (node_of_plan == NULL)
     {
       return NO_ERROR;
     }
 
   /* index columns that are used in terms */
-  used_cols = (int *) malloc (idx_col * sizeof (int));
+  used_cols = (int *) malloc (first_sort_col_idx * sizeof (int));
   if (!used_cols)
     {
       return ER_FAILED;
     }
-  for (i = 0; i < idx_col; i++)
+  for (i = 0; i < first_sort_col_idx; i++)
     {
       used_cols[i] = 0;
     }
 
   /* check all index scan terms */
-  for (t = bitset_iterate (&(subplan->plan_un.scan.terms), &iter); t != -1;
-       t = bitset_next_member (&iter))
+  for (t = bitset_iterate (&(plan->plan_un.scan.terms), &iter_t); t != -1;
+       t = bitset_next_member (&iter_t))
     {
       termp = QO_ENV_TERM (env, t);
 
@@ -3573,7 +4083,7 @@ qo_check_plan_for_multiple_ranges_limit_opt (PARSER_CONTEXT * parser,
 	  return NO_ERROR;
 	}
 
-      if (pos < idx_col)
+      if (pos < first_sort_col_idx)
 	{
 	  used_cols[pos]++;
 	  /* only helpful if term is equality or key list */
@@ -3609,9 +4119,16 @@ qo_check_plan_for_multiple_ranges_limit_opt (PARSER_CONTEXT * parser,
 	}
     }				/* for (t = bitset_iterate(...); ...) */
 
+  /* check key list terms */
+  if (kl_terms > 1)
+    {
+      free_and_init (used_cols);
+      return NO_ERROR;
+    }
+
   /* check all key filter terms */
-  for (t = bitset_iterate (&(subplan->plan_un.scan.kf_terms), &iter); t != -1;
-       t = bitset_next_member (&iter))
+  for (t = bitset_iterate (&(plan->plan_un.scan.kf_terms), &iter_t); t != -1;
+       t = bitset_next_member (&iter_t))
     {
       termp = QO_ENV_TERM (env, t);
 
@@ -3638,7 +4155,7 @@ qo_check_plan_for_multiple_ranges_limit_opt (PARSER_CONTEXT * parser,
 	  return NO_ERROR;
 	}
 
-      if (pos < idx_col)
+      if (pos < first_sort_col_idx)
 	{
 	  /* for key filter terms we are only interested if it is an eq term */
 	  if (QO_TERM_PT_EXPR (termp)->info.expr.op == PT_EQ)
@@ -3648,14 +4165,8 @@ qo_check_plan_for_multiple_ranges_limit_opt (PARSER_CONTEXT * parser,
 	}
     }				/* for (t = bitset_iterate(...); ...) */
 
-  /* check key list terms */
-  if (kl_terms > 1)
-    {
-      free_and_init (used_cols);
-      return NO_ERROR;
-    }
   /* check used columns */
-  for (i = 0; i < idx_col; i++)
+  for (i = 0; i < first_sort_col_idx; i++)
     {
       if (used_cols[i] == 0)
 	{
@@ -3663,9 +4174,705 @@ qo_check_plan_for_multiple_ranges_limit_opt (PARSER_CONTEXT * parser,
 	  return NO_ERROR;
 	}
     }
+  free_and_init (used_cols);
+
+  /* check all segments in all terms in environment for data filter */
+  for (t = 0; t < env->nterms; t++)
+    {
+      termp = QO_ENV_TERM (env, t);
+      for (s = bitset_iterate (&(termp->segments), &iter_s); s != -1;
+	   s = bitset_next_member (&iter_s))
+	{
+	  bool found = false;
+	  if (QO_SEG_HEAD (QO_ENV_SEG (env, s)) != node_of_plan)
+	    {
+	      continue;
+	    }
+	  seg_idx = s;
+
+	  for (i = 0; i < index_entryp->nsegs; i++)
+	    {
+	      if (seg_idx == index_entryp->seg_idxs[i])
+		{
+		  found = true;
+		  break;
+		}
+	    }
+	  if (!found)
+	    {
+	      /* data filter */
+	      return NO_ERROR;
+	    }
+	}
+    }
 
   *can_optimize = true;
+  return NO_ERROR;
+}
 
-  free_and_init (used_cols);
+/*
+ * qo_check_subqueries_for_multi_range_opt () - check that there are not
+ *						subqueries that may invalidate
+ *						multiple range optimization
+ *
+ * return		 : false if invalidated, true otherwise
+ * plan (in)		 : the plan that refers to the table that has the
+ *			   order by columns
+ * sort_col_idx_pos (in) : position in index for the first sort column
+ *
+ * NOTE:  If there are terms containing correlated subqueries, and if they
+ *	  refer to the node of the sort plan, then the affected segments must
+ *	  appear in index before the first sort column (and the segment must
+ *	  not belong to the range term).
+ */
+static bool
+qo_check_subqueries_for_multi_range_opt (QO_PLAN * plan, int sort_col_idx_pos)
+{
+  QO_ENV *env = NULL;
+  QO_SUBQUERY *subq = NULL;
+  int i, s, t, seg_idx, i_seg_idx, ts;
+  QO_NODE *node_of_plan = NULL;
+  BITSET_ITERATOR iter_s, iter_t, iter_ts;
+  QO_TERM *term = NULL;
+
+  assert (plan != NULL && plan->info->env != NULL
+	  && plan->plan_type == QO_PLANTYPE_SCAN
+	  && plan->plan_un.scan.index != NULL);
+
+  env = plan->info->env;
+  node_of_plan = plan->plan_un.scan.node;
+
+  /* for each sub-query */
+  for (s = 0; s < env->nsubqueries; s++)
+    {
+      subq = QO_ENV_SUBQUERY (env, s);
+
+      /* for each term this sub-query belongs to */
+      for (t = bitset_iterate (&(subq->terms), &iter_t); t != -1;
+	   t = bitset_next_member (&iter_t))
+	{
+	  term = QO_ENV_TERM (env, t);
+
+	  for (ts = bitset_iterate (&(term->segments), &iter_ts); ts != -1;
+	       ts = bitset_next_member (&iter_ts))
+	    {
+	      bool found = false;
+	      if (QO_SEG_HEAD (QO_ENV_SEG (env, t)) != node_of_plan)
+		{
+		  continue;
+		}
+	      seg_idx = ts;
+	      /* try to find the segment in index */
+	      for (i = 0; i < sort_col_idx_pos; i++)
+		{
+		  i_seg_idx = plan->plan_un.scan.index->head->seg_idxs[i];
+		  if (i_seg_idx == seg_idx)
+		    {
+		      if (qo_check_seg_belongs_to_range_term
+			  (plan, env, seg_idx))
+			{
+			  return false;
+			}
+		      break;
+		    }
+		}
+	      if (!found)
+		{
+		  /* the segment was not found before the first sort column */
+		  return false;
+		}
+	    }
+	}
+    }
+  return true;
+}
+
+/*
+ * qo_check_seg_belongs_to_range_term () - checks the segment if it is a range
+ *					   term
+ *
+ * return	: true or false
+ * subplan (in) : the subplan possibly containing the RANGE expression
+ * env (in)	: optimizer environment
+ * seg_idx (in) : index of the segment that needs checking
+ *
+ * NOTE:  Returns true if the specified subplan contains a term that
+ *        references the given segment in a RANGE expression
+ *        (t.i in (1,2,3) would be an example).
+ *        Used in keylimit for multiple key ranges in joins optimization.
+ */
+static bool
+qo_check_seg_belongs_to_range_term (QO_PLAN * subplan, QO_ENV * env,
+				    int seg_idx)
+{
+  int t, u;
+  BITSET_ITERATOR iter, iter_s;
+
+  assert (subplan->plan_type == QO_PLANTYPE_SCAN);
+  if (subplan->plan_type != QO_PLANTYPE_SCAN)
+    {
+      return false;
+    }
+
+  for (t = bitset_iterate (&(subplan->plan_un.scan.terms), &iter); t != -1;
+       t = bitset_next_member (&iter))
+    {
+      QO_TERM *termp = QO_ENV_TERM (env, t);
+      BITSET *segs = &(QO_TERM_SEGS (termp));
+      if (!segs)
+	{
+	  continue;
+	}
+      for (u = bitset_iterate (segs, &iter_s); u != -1;
+	   u = bitset_next_member (&iter_s))
+	{
+	  if (u == seg_idx)
+	    {
+	      QO_SEGMENT *seg = QO_ENV_SEG (env, u);
+	      PT_NODE *node = QO_TERM_PT_EXPR (termp);
+	      if (!node)
+		{
+		  continue;
+		}
+
+	      switch (node->info.expr.op)
+		{
+		case PT_IS_IN:
+		case PT_EQ_SOME:
+		case PT_RANGE:
+		  return true;
+		default:
+		  continue;
+		}
+	    }
+	}
+    }
+  for (t = bitset_iterate (&(subplan->plan_un.scan.kf_terms), &iter); t != -1;
+       t = bitset_next_member (&iter))
+    {
+      QO_TERM *termp = QO_ENV_TERM (env, t);
+      BITSET *segs = &(QO_TERM_SEGS (termp));
+      if (!segs)
+	{
+	  continue;
+	}
+      for (u = bitset_iterate (segs, &iter_s); u != -1;
+	   u = bitset_next_member (&iter_s))
+	{
+	  if (u == seg_idx)
+	    {
+	      QO_SEGMENT *seg = QO_ENV_SEG (env, u);
+	      PT_NODE *node = QO_TERM_PT_EXPR (termp);
+	      if (!node)
+		{
+		  continue;
+		}
+
+	      switch (node->info.expr.op)
+		{
+		case PT_IS_IN:
+		case PT_EQ_SOME:
+		case PT_RANGE:
+		  return true;
+		default:
+		  continue;
+		}
+	    }
+	}
+    }
+  return false;
+}
+
+/*
+ * qo_check_join_for_multi_range_opt () - check if join plan can make use of
+ *					  multi range key-limit optimization
+ *
+ * return    : true/false
+ * plan (in) : join plan
+ *
+ * NOTE:  The current join plan has to meet a series of conditions in order
+ *	  to use the multi range optimization:
+ *	  - Has at least an index scan subplan that can make use of multi
+ *	  range optimization (as if there would be no joins)
+ *	  - The sort plan (that uses multi range optimization) edges:
+ *	    - Segments used to join other "outer-more" scans must also belong
+ *	      to index (no data filter).
+ *	    - Segments use to join other "inner-more" scans must belong to
+ *	      index (no data filter), they must be positioned before the first
+ *	      sorting column, and they cannot be in a range term (in order
+ *	      to avoid filtering the results obtained after top n sorting).
+ */
+bool
+qo_check_join_for_multi_range_opt (QO_PLAN * plan)
+{
+  QO_PLAN *sort_plan = NULL;
+  int error = NO_ERROR;
+  bool can_optimize = true;
+
+  /* verify that this is a valid join for multi range optimization */
+  if (plan == NULL || plan->plan_type != QO_PLANTYPE_JOIN ||
+      plan->plan_un.join.join_type != JOIN_INNER ||
+      plan->plan_un.join.join_method == QO_JOINMETHOD_MERGE_JOIN)
+    {
+      return false;
+    }
+
+  assert (plan->info->env && plan->info->env->pt_tree);
+  if (!PT_IS_SELECT (plan->info->env->pt_tree))
+    {
+      return false;
+    }
+  if (((QO_ENV_PT_TREE (plan->info->env))->info.query.q.select.
+       hint & PT_HINT_NO_MULTI_RANGE_OPT) != 0)
+    {
+      /* NO_MULTI_RANGE_OPT was hinted */
+      return false;
+    }
+
+  /* first must find an index scan subplan that can apply multi range
+   * optimization
+   */
+  error = qo_find_subplan_using_multi_range_opt (plan, &sort_plan, NULL);
+  if (error != NO_ERROR || sort_plan == NULL)
+    {
+      /* error finding subplan or no subplan was found */
+      return false;
+    }
+
+  /* check all join conditions */
+  error =
+    qo_check_subplans_for_multi_range_opt (NULL, plan, sort_plan,
+					   &can_optimize, NULL);
+  if (error != NO_ERROR || !can_optimize)
+    {
+      return false;
+    }
+
+  /* all conditions are met, multi range optimization may be used */
+  return true;
+}
+
+/*
+ * qo_check_subplans_for_multi_range_opt () - verify that join conditions do
+ *					      not invalidate the multi range
+ *					      optimization
+ *
+ * return		 : error code
+ * parent (in)		 : join node that contains sub-plans
+ * plan (in)		 : current plan to verify
+ * sortplan (in)	 : the plan that refers to the order by table
+ * is_valid (out)	 : is_valid is true if optimization can be applied
+ *			   otherwise it is set on false
+ * sort_col_idx_pos (in) : position in index for the first sort column
+ * seen (in/out)	 : flag to remember that the sort plan was passed.
+ *			   all scan plans that are met after this flag was set
+ *			   are potential suspect scans ("to the right" of the
+ *			   order by table
+ *
+ * NOTE: 1. *seen should be false when the function is called for root plan or
+ *	    it should be left as NULL.
+ *	 2. checks all sub-plans at the right of sort plan in the join chain.
+ *	    the sub-plans in the left can invalidate the optimization only if
+ *	    the join term acts as data filter, which was already checked at a
+ *	    previous step (see qo_check_terms_for_multiple_range_opt).
+ *	 Check the comment on qo_check_join_for_multi_range_opt for more
+ *	 details.
+ */
+static int
+qo_check_subplans_for_multi_range_opt (QO_PLAN * parent, QO_PLAN * plan,
+				       QO_PLAN * sortplan, bool * is_valid,
+				       bool * seen)
+{
+  int error = NO_ERROR;
+  bool dummy = false;
+
+  if (seen == NULL)
+    {
+      seen = &dummy;
+    }
+
+  if (plan->plan_type == QO_PLANTYPE_SCAN)
+    {
+      if (*seen)
+	{
+	  if (parent == NULL)
+	    {
+	      *is_valid = false;
+	      goto exit;
+	    }
+	  *is_valid =
+	    qo_check_subplan_join_cond_for_multi_range_opt (parent, plan,
+							    sortplan);
+	  if (*is_valid == true)
+	    {
+	      *is_valid =
+		qo_check_parent_eq_class_for_multi_range_opt (parent, plan,
+							      sortplan);
+	    }
+	  return NO_ERROR;
+	}
+      if (plan == sortplan)
+	{
+	  *seen = true;
+	}
+      *is_valid = true;
+      return NO_ERROR;
+    }
+  else if (plan->plan_type == QO_PLANTYPE_JOIN)
+    {
+      if (plan->multi_range_opt_use == PLAN_MULTI_RANGE_OPT_USE)
+	{
+	  /* already checked and the plan can use multi range opt */
+	  *is_valid = true;
+	  /* sort plan is somewhere in the subtree of this plan */
+	  *seen = true;
+	  return NO_ERROR;
+	}
+      else if (plan->multi_range_opt_use == PLAN_MULTI_RANGE_OPT_CANNOT_USE)
+	{
+	  /* already checked and the plan cannot use multi range opt */
+	  *is_valid = false;
+	  return NO_ERROR;
+	}
+      /* this must be the first time current plan is checked for multi range
+       * optimization
+       */
+      error =
+	qo_check_subplans_for_multi_range_opt (plan, plan->plan_un.join.outer,
+					       sortplan, is_valid, seen);
+      if (error != NO_ERROR || !*is_valid)
+	{
+	  /* mark the plan for future checks */
+	  plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_CANNOT_USE;
+	  return error;
+	}
+      error =
+	qo_check_subplans_for_multi_range_opt (plan, plan->plan_un.join.inner,
+					       sortplan, is_valid, seen);
+      if (error != NO_ERROR || !*is_valid)
+	{
+	  /* mark the plan for future checks */
+	  plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_CANNOT_USE;
+	  return error;
+	}
+      return NO_ERROR;
+    }
+
+  /* a case we have not foreseen? Be conservative. */
+  *is_valid = false;
+
+exit:
+  return error;
+}
+
+/*
+ * qo_check_subplan_join_cond_for_multi_range_opt () - validate a given
+ *						       subplan for multi range
+ *						       key-limit optimization.
+ *
+ * return         : true if valid, false otherwise
+ * parent (in)    : join plan that contains current subplan
+ * subplan (in)   : the subplan that is verified at current step
+ * sort_plan (in) : the subplan that refers to the table that has the order by
+ *		    columns
+ * is_outer (in)  : The position of sort plan relative to sub-plan in the join
+ *		    chain. If true, sort plan must be position to the left in
+ *		    the chain (is "outer-more"), otherwise it must be to the
+ *		    right ("inner-more").
+ *
+ * NOTE:  The function checks the join conditions between sub-plan and
+ *	  sort-plan. It is supposed that sort-plan is outer and sub-plan is
+ *	  inner in this join.
+ */
+static bool
+qo_check_subplan_join_cond_for_multi_range_opt (QO_PLAN * parent,
+						QO_PLAN * subplan,
+						QO_PLAN * sort_plan)
+{
+  QO_ENV *env = NULL;
+  QO_NODE *node_of_sort_table = NULL, *node_of_subplan = NULL;
+  BITSET_ITERATOR iter_t, iter_n, iter_segs;
+  QO_TERM *jt = NULL;
+  QO_NODE *jn = NULL;
+  int t, n, seg_idx, k, k_seg_idx;
+  QO_NODE *seg_node = NULL;
+  bool is_jterm_relevant;
+
+  assert (parent != NULL && parent->plan_type == QO_PLANTYPE_JOIN);
+  assert (sort_plan != NULL && sort_plan->plan_un.scan.node != NULL
+	  && sort_plan->plan_un.scan.node->info != NULL);
+  if (sort_plan->plan_un.scan.node->info->n <= 0
+      || sort_plan->plan_un.scan.index == NULL
+      || sort_plan->plan_un.scan.index->n <= 0)
+    {
+      return false;
+    }
+
+  env = sort_plan->info->env;
+  node_of_sort_table = sort_plan->plan_un.scan.node;
+  node_of_subplan = subplan->plan_un.scan.node;
+
+  assert (node_of_sort_table != NULL && node_of_subplan != NULL);
+
+  /*
+   * Scan all the parent's join terms: jt.
+   *   If jt is a valid join-term (is a join between sub-plan and sort plan),
+   *   the segment that belong to the sort plan must be positioned in index
+   *   before the first sort column and it must not be in a range term.
+   */
+  for (t = bitset_iterate (&(parent->plan_un.join.join_terms), &iter_t);
+       t != -1; t = bitset_next_member (&iter_t))
+    {
+      jt = QO_ENV_TERM (env, t);
+      assert (jt != NULL);
+
+      is_jterm_relevant = false;
+      for (n = bitset_iterate (&(jt->nodes), &iter_n); n != -1;
+	   n = bitset_next_member (&iter_n))
+	{
+	  jn = QO_ENV_NODE (env, n);
+
+	  assert (jn != NULL);
+
+	  if (jn == node_of_subplan)
+	    {
+	      is_jterm_relevant = true;
+	      break;
+	    }
+	}
+
+      if (!is_jterm_relevant)
+	{
+	  continue;
+	}
+
+      for (n = bitset_iterate (&(jt->nodes), &iter_n); n != -1;
+	   n = bitset_next_member (&iter_n))
+	{
+	  jn = QO_ENV_NODE (env, n);
+
+	  assert (jn != NULL);
+
+	  if (jn != node_of_sort_table)
+	    {
+	      continue;
+	    }
+
+	  /* there is a join term t that references the nodes used in sub-plan
+	   * and sort plan.
+	   */
+	  for (seg_idx = bitset_iterate (&(jt->segments), &iter_segs);
+	       seg_idx != -1; seg_idx = bitset_next_member (&iter_segs))
+	    {
+	      bool found = false;
+	      seg_node = QO_SEG_HEAD (QO_ENV_SEG (env, seg_idx));
+	      if (seg_node != node_of_sort_table)
+		{
+		  continue;
+		}
+	      /* seg node refer to the order by table */
+	      for (k = 0;
+		   k < sort_plan->plan_un.scan.index->head->first_sort_column;
+		   k++)
+		{
+		  k_seg_idx =
+		    sort_plan->plan_un.scan.index->head->seg_idxs[k];
+		  if (k_seg_idx == seg_idx)
+		    {
+		      /* seg_idx was found before the first sort column */
+		      if (qo_check_seg_belongs_to_range_term
+			  (sort_plan, env, seg_idx))
+			{
+			  return false;
+			}
+		      found = true;
+		      break;
+		    }
+		}
+	      if (!found)
+		{
+		  /* seg_idx was not found before the first sort column */
+		  return false;
+		}
+	    }
+	}
+    }
+
+  return true;
+}
+
+/*
+ * qo_check_parent_eq_class_for_multi_range_opt () - validate a given subplan
+ *						     for multi range key-limit
+ *						     optimization.
+ *
+ * return	  : true if valid, false otherwise
+ * parent (in)    : join plan that contains current subplan
+ * subplan (in)   : the subplan that is verified at current step
+ * sort_plan (in) : the subplan that refers to the table that has the order by
+ *		    columns
+ *
+ * NOTE: Same as qo_check_subplan_join_cond_for_multi_range_opt, except that
+ *	 it checks the EQCLASSES.
+ */
+static bool
+qo_check_parent_eq_class_for_multi_range_opt (QO_PLAN * parent,
+					      QO_PLAN * subplan,
+					      QO_PLAN * sort_plan)
+{
+  QO_ENV *env = NULL;
+  QO_NODE *node_of_sort_table = NULL, *node_of_crt_table = NULL, *node = NULL;
+  int eq_idx, t, k, seg_idx, k_seg_idx;
+  QO_EQCLASS *eq = NULL;
+  bool is_eqclass_relevant = false;
+  BITSET_ITERATOR iter_t;
+
+  assert (parent != NULL && parent->plan_type == QO_PLANTYPE_JOIN);
+  assert (subplan != NULL && subplan->plan_type == QO_PLANTYPE_SCAN);
+  assert (sort_plan != NULL && sort_plan->plan_un.scan.node != NULL
+	  && sort_plan->plan_un.scan.node->info != NULL);
+  if (sort_plan->plan_un.scan.node->info->n <= 0
+      || sort_plan->plan_un.scan.index == NULL
+      || sort_plan->plan_un.scan.index->n <= 0)
+    {
+      return false;
+    }
+
+  env = parent->info->env;
+  node_of_sort_table = sort_plan->plan_un.scan.node;
+  node_of_crt_table = subplan->plan_un.scan.node;
+
+  for (eq_idx = 0; eq_idx < env->neqclasses; eq_idx++)
+    {
+      eq = QO_ENV_EQCLASS (env, eq_idx);
+      is_eqclass_relevant = false;
+
+      for (t = bitset_iterate (&QO_EQCLASS_SEGS (eq), &iter_t); t != -1;
+	   t = bitset_next_member (&iter_t))
+	{
+	  node = QO_SEG_HEAD (QO_ENV_SEG (env, t));
+	  if (node == node_of_crt_table)
+	    {
+	      is_eqclass_relevant = true;
+	      break;
+	    }
+	}
+
+      if (!is_eqclass_relevant)
+	{
+	  continue;
+	}
+
+      /* here: we have an equivalence class that has a segment belonging
+       * to our current class. Must see if it also has segments belonging
+       * to the sort table: iterate again over it.
+       */
+      for (t = bitset_iterate (&QO_EQCLASS_SEGS (eq), &iter_t); t != -1;
+	   t = bitset_next_member (&iter_t))
+	{
+	  bool found = false;
+	  node = QO_SEG_HEAD (QO_ENV_SEG (env, t));
+	  if (node != node_of_sort_table)
+	    {
+	      continue;
+	    }
+
+	  seg_idx = t;
+	  /* try to find the segment in the index that is used when
+	   * scanning the order by table - take that info from the subplan
+	   * (sortplan) rather than from the node info, because the node
+	   * info lists all the indexes, not only those that are used at
+	   * this particular scan.
+	   */
+	  for (k = 0;
+	       k < sort_plan->plan_un.scan.index->head->first_sort_column;
+	       k++)
+	    {
+	      k_seg_idx = sort_plan->plan_un.scan.index->head->seg_idxs[k];
+	      if (k_seg_idx == seg_idx)
+		{
+		  /* we found the segment before the first sort column */
+		  if (qo_check_seg_belongs_to_range_term
+		      (sort_plan, env, seg_idx))
+		    {
+		      return false;
+		    }
+		  found = true;
+		  break;
+		}
+	    }
+	  if (!found)
+	    {
+	      /* seg_idx was not found before the first sort column */
+	      return false;
+	    }
+	}
+    }
+
+  return true;
+}
+
+/*
+ * qo_find_subplan_using_multi_range_opt () - finds an index scan plan that
+ *					      may use multi range key-limit
+ *					      optimization.
+ *
+ * return	  : error code
+ * plan (in)	  : current node in plan tree
+ * result (out)   : plan with multi range optimization
+ * join_idx (out) : the position of the optimized plan in join chain
+ *
+ * NOTE : Leave result or join_idx NULL if they are not what you are looking
+ *	  for.
+ */
+int
+qo_find_subplan_using_multi_range_opt (QO_PLAN * plan, QO_PLAN ** result,
+				       int *join_idx)
+{
+  int error = NO_ERROR;
+
+  if (result != NULL)
+    {
+      *result = NULL;
+    }
+
+  if (plan == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  if (plan->plan_type == QO_PLANTYPE_JOIN
+      && plan->plan_un.join.join_type == JOIN_INNER)
+    {
+      if (join_idx != NULL)
+	{
+	  *join_idx++;
+	}
+      error =
+	qo_find_subplan_using_multi_range_opt (plan->plan_un.join.outer,
+					       result, join_idx);
+      if (error != NO_ERROR || (result != NULL && *result != NULL))
+	{
+	  return NO_ERROR;
+	}
+      if (join_idx != NULL)
+	{
+	  *join_idx++;
+	}
+      return qo_find_subplan_using_multi_range_opt (plan->plan_un.join.inner,
+						    result, join_idx);
+    }
+  else if (qo_is_iscan (plan))
+    {
+      if (plan->plan_un.scan.index && plan->plan_un.scan.index->head
+	  && plan->plan_un.scan.index->head->multi_range_opt)
+	{
+	  if (result != NULL)
+	    {
+	      *result = plan;
+	    }
+	}
+      return NO_ERROR;
+    }
   return NO_ERROR;
 }
