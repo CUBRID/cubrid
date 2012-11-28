@@ -223,4 +223,6 @@ extern int qmgr_get_query_error_with_entry (QMGR_QUERY_ENTRY * query_entryp);
 extern void qmgr_set_query_error (THREAD_ENTRY * thread_p, QUERY_ID query_id);
 extern void qmgr_setup_empty_list_file (char *page_buf);
 extern int qmgr_get_temp_file_membuf_pages (QMGR_TEMP_FILE * temp_file_p);
+extern int qmgr_get_sql_id (THREAD_ENTRY * thread_p, char **sql_id_buf,
+			    char *query, int sql_len);
 #endif /* _QUERY_MANAGER_H_ */

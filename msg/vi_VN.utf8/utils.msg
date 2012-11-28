@@ -766,10 +766,11 @@ $set 26 MSGCAT_UTIL_SET_KILLTRAN
 29 Xóa bỏ giao dịch kết nối với chỉ mục giao dịch %d\n
 30 Thất bại xóa bỏ các giao dịch sau đây\n\n
 31 Giao dịch chưa được hoàn thành, nhưng nó có thể thực hiện việc quay lui lại.\n Xin vui lòng chờ một lát và thử lại sau đó nếu cần.\n
-32 Tran index     Process id    Program name              Query time    Tran time              Wait for lock holder   SQL Text\n
-33 %7d(%1c) %14d    %-25s %10.2f %12.2f    %28s    %s\n
+32 Tran index     Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+33 %7d(%1c) %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
 35 Tran index : %d
+36 SQL_ID: %s\n
 59 killrtan không thể chạy như chế độ độc lập.\n
 60 \
 killtran: Quản lý giao dịch của cơ sở dữ liệu.\n\
@@ -780,6 +781,7 @@ các tùy chọn hợp lệ:\n\
       --kill-user-name=ID            xóa bỏ tất cả giao dịch với ID người dùng\n\
       --kill-host-name=HOST          xóa bỏ tất cả giao dịch với client HOST\n\
       --kill-program-name=NAME       xóa bỏ tất cả giao dịch với tên chương trình máy khách NAME\n\
+      --kill-sql-id=SQL_ID           kill all transactions with SQL_ID\n\
   -p, --dba-password=PASS            mật mã cho người dùng DBA; sẽ nhắc nếu không chỉ định\n\
   -d, --display-information          hiển thị thông tin về các giao dịch đang hoạt động\n\
   -q, --query-exec-info              display information about query execution information of active transactions\n\

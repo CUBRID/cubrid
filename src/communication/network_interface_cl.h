@@ -72,9 +72,8 @@ struct trans_info
 };
 
 #define TRAN_STATE_CHAR(STATE)					\
-	((STATE == TRAN_ACTIVE) ? '+' 				\
-	: (info->tran[i].state == TRAN_UNACTIVE_ABORTED) ? '-'	\
-	: ('A' + info->tran[i].state))
+	(((STATE) == TRAN_ACTIVE) ? '+' 			\
+	:(((STATE) == TRAN_UNACTIVE_ABORTED) ? '-':('A' + (STATE))))
 
 extern void db_free_execution_plan (void);
 extern int locator_fetch (OID * oidp, int chn, LOCK lock, OID * class_oid,

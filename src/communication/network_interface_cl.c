@@ -8826,6 +8826,11 @@ logtb_free_trans_info (TRANS_INFO * info)
 					info->tran[i].query_exec_info.
 					wait_for_tran_index_string);
 	    }
+	  if (info->tran[i].query_exec_info.sql_id)
+	    {
+	      db_private_free_and_init (NULL,
+					info->tran[i].query_exec_info.sql_id);
+	    }
 	}
       else
 	{
@@ -8901,7 +8906,9 @@ logtb_get_trans_info (bool include_query_exec_info)
 	      || (ptr = or_unpack_string (ptr, &info->tran[i].query_exec_info.
 					  wait_for_tran_index_string)) == NULL
 	      || (ptr = or_unpack_string (ptr, &info->tran[i].query_exec_info.
-					  query_stmt)) == NULL)
+					  query_stmt)) == NULL
+	      || (ptr = or_unpack_string (ptr, &info->tran[i].query_exec_info.
+					  sql_id)) == NULL)
 	    {
 	      goto error;
 	    }

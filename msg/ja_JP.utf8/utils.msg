@@ -766,10 +766,11 @@ $set 26 MSGCAT_UTIL_SET_KILLTRAN
 29 トランザクションーインデックス「%d」で指定されたトランザクションを終了させます。\n
 30 次のトランザクションを終了が失敗しました。\n\n
 31 トランザクションが終わりませんでした。ロールバックかも知れません。\nしばらく待ってからまたやり直してください。\n
-32 Tran index     Process id    Program name              Query time    Tran time              Wait for lock holder   SQL Text\n
-33 %7d(%1c) %14d    %-25s %10.2f %12.2f    %28s    %s\n
+32 Tran index     Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+33 %7d(%1c) %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
 35 Tran index : %d
+36 SQL_ID: %s\n
 59 killtranはスタンドアロンモードで実行できません。\n
 60 \
 killtran: データベーストランザクションを管理\n\
@@ -780,6 +781,7 @@ killtran: データベーストランザクションを管理\n\
       --kill-user-name=ID            IDに対するユーザーのトランザクションを全部終了\n\
       --kill-host-name=HOST          HOSTに対するクライアントのトランザクションを全部終了\n\
       --kill-program-name=NAME       NAMEに対するトランザクションを全部終了\n\
+      --kill-sql-id=SQL_ID           kill all transactions with SQL_ID\n\
   -p, --dba-password=PASS            DBAパスワード; 指定されてない場合は入力プロンプトが表示される。\n\
   -d, --display-information          現在アクティブトランザクションの情報を表示\n\
   -q, --query-exec-info              display information about query execution information of active transactions\n\

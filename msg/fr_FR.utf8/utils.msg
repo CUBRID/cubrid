@@ -769,10 +769,11 @@ $set 26 MSGCAT_UTIL_SET_KILLTRAN
 29 Arrêter transaction associée à l'index %d de transaction\n
 30 L'arrêt des transactions suivantes a échoué\n\n
 31 La transaction n'est pas encore fini, mais il peut faire le travail de restauration.\n S'il vous plaît, attendez un peu et essayer plus tard si nécessaire.\n
-32 Tran index     Process id    Program name              Query time    Tran time              Wait for lock holder   SQL Text\n
-33 %7d(%1c) %14d    %-25s %10.2f %12.2f    %28s    %s\n
+32 Tran index     Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+33 %7d(%1c) %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
 35 Tran index : %d
+36 SQL_ID: %s\n
 59 killrtan ne peut pas fonctionner en mode autonome.\n
 60 \
 killtran: Gère les transactions de la base de données.\n\
@@ -783,6 +784,7 @@ options valids:\n\
       --kill-user-name=ID            arrête tous les transactions avec with l'utilisateur ID\n\
       --kill-host-name=HÔTE          arrête tous les transactions avec le client HÔTE\n\
       --kill-program-name=NOM        arrête tous les transactions avec cet NOM du programme du client\n\
+      --kill-sql-id=SQL_ID           kill all transactions with SQL_ID\n\
   -p, --dba-password=MOT-DE-PASSE    MOT DE PASSE de l'utilisateur DBA; demandé si ne pas spécifier\n\
   -d, --display-information          affiche des informations sur les transactions actives\n\
   -q, --query-exec-info              display information about query execution information of active transactions\n\

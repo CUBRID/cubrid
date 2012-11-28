@@ -70,6 +70,8 @@ static int rv;
 
 #define QMGR_NUM_TEMP_FILE_LISTS        (TEMP_FILE_MEMBUF_NUM_TYPES)
 
+#define QMGR_SQL_ID_LENGTH      13
+
 /* We have two valid types of membuf used by temporary file. */
 #define QMGR_IS_VALID_MEMBUF_TYPE(m)    ((m) == TEMP_FILE_MEMBUF_NORMAL \
     || (m) == TEMP_FILE_MEMBUF_KEY_BUFFER)
@@ -5296,4 +5298,65 @@ qmgr_reset_query_exec_info (int tran_index)
       tdes_p->query_start_time = 0;
       XASL_ID_SET_NULL (&tdes_p->xasl_id);
     }
+}
+
+/*
+ * qmgr_get_sql_id ()
+ *   return: error_code
+ *   sql_id_buf(out):
+ *   buf_size(in):
+ *   query(in):
+ *   sql_len(in):
+ *
+ *   note : caller must free sql_id_buf
+ *
+ *   CUBRID SQL_ID is generated from md5 hash_value.
+ *   The last 13 hexa-digit string of md5-hash(32 hexa-digit) string.
+ *   Oracle's SQL_ID is also generated from md5 hash-value.
+ *   But they uses the last 8 hexa-digit to generate 13-digit string.
+ *   So the SQL_ID of a query is different in CUBRID and oracle,
+ *   even though the length is same.
+ */
+int
+qmgr_get_sql_id (THREAD_ENTRY * thread_p, char **sql_id_buf,
+		 char *query, int sql_len)
+{
+  int i = 16;
+  char hashstring[32] = { '\0' };
+  const char hexdigits[] = "0123456789abcdef";
+  char *ret_buf;
+
+  if (sql_id_buf == NULL)
+    {
+      assert_release (0);
+      return ER_FAILED;
+    }
+
+  ret_buf = (char *) malloc (sizeof (char) * (QMGR_SQL_ID_LENGTH + 1));
+  if (ret_buf == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (QMGR_SQL_ID_LENGTH + 1));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  md5_buffer (query, sql_len, hashstring);	/* 16 bytes hash value */
+
+  /* dump result as hex string */
+  while (i)
+    {
+      i--;
+
+      /* least significant digit last */
+      hashstring[(i << 1) + 1] = hexdigits[hashstring[i] & 0x0F];
+      hashstring[(i << 1)] = hexdigits[(hashstring[i] & 0xF0) >> 4];
+    }
+
+  /* copy last 13 hexa-digit to ret_buf */
+  strncpy (ret_buf, hashstring + 19, QMGR_SQL_ID_LENGTH);
+  ret_buf[QMGR_SQL_ID_LENGTH] = '\0';
+
+  *sql_id_buf = ret_buf;
+
+  return NO_ERROR;
 }

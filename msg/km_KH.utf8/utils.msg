@@ -766,10 +766,11 @@ $set 26 MSGCAT_UTIL_SET_KILLTRAN
 29 ការបំផ្លាញកិច្ចសម្រួលដំណើរការដែលទាក់ទងនឹងindexនៃកិច្ចសម្រួលដំណើរការ %d\n
 30 ការបំផ្លាញកិច្ចសម្រួលដំណើរការជាបន្តរបន្ទាប់ត្រូវបរាជ័យ។ \n\n
 31 កិច្ចសម្រួលដំណើរការនេះ មិនទាន់ចប់ទេ, ប៉ុន្តែវាអាចបន្តដំណើរការត្រឡប់វិញ។ \n សូមរងចាំសិននិងព្យាយាមនៅពេលក្រោយបើចាំបាច់។ \n
-32 Tran index     Process id    Program name              Query time    Tran time              Wait for lock holder   SQL Text\n
-33 %7d(%1c) %14d    %-25s %10.2f %12.2f    %28s    %s\n
+32 Tran index     Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+33 %7d(%1c) %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
 35 Tran index : %d
+36 SQL_ID: %s\n
 59 killrtan មិនអាចដំណើរការជា standalone mode។ \n
 60 \
 killtran: គ្រប់គ្រងកិច្ចសម្រួលដំណើរការនៃដែលតាបេស។ \n\
@@ -780,6 +781,7 @@ usage: %s killtran [OPTION] ឈ្មោះដែលតាបេស\n\
       --kill-user-name=ID            បំផ្លាញកិច្ចសម្រួលដំណើរការទាំងអស់ ជាមួយនឹងuser ID\n\
       --kill-host-name=HOST          បំផ្លាញកិច្ចសម្រួលដំណើរការទាំងអស់ ជាមួយនឹងclient HOST\n\
       --kill-program-name=NAME       បំផ្លាញកិច្ចសម្រួលដំណើរការទាំងអស់ ជាមួយនឹងclient program NAME\n\
+      --kill-sql-id=SQL_ID           kill all transactions with SQL_ID\n\
   -p, --dba-password=PASS            កំណត់សម្គាល់សម្ងាត់នៃDBA user; នឹងកើតមានប្រសិនបើ មិនជាក់លាក់\n\
   -d, --display-information          បង្ហាញពត៌មានអំពីកិច្ចសម្រួលដំណើរការសកម្ម \n\
   -q, --query-exec-info              display information about query execution information of active transactions\n\

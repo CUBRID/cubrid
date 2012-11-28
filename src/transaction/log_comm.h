@@ -196,6 +196,7 @@ struct tran_query_exec_info
   float query_time;
   float tran_time;
   char *query_stmt;
+  char *sql_id;
   XASL_ID xasl_id;
 };
 

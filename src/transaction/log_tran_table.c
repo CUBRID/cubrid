@@ -2180,6 +2180,14 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
 			  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 			  goto error;
 			}
+
+		      if (qmgr_get_sql_id (thread_p,
+					   &query_exec_info[i].sql_id,
+					   ent->qstmt,
+					   strlen (ent->qstmt)) != NO_ERROR)
+			{
+			  goto error;
+			}
 		    }
 		}
 	      /* structure copy */
@@ -2194,6 +2202,7 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
 	    + or_packed_string_length (query_exec_info[i].
 				       wait_for_tran_index_string, NULL)
 	    + or_packed_string_length (query_exec_info[i].query_stmt, NULL)
+	    + or_packed_string_length (query_exec_info[i].sql_id, NULL)
 	    + OR_XASL_ID_SIZE;
 	}
 #endif
@@ -2242,6 +2251,7 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
 	    or_pack_string (ptr,
 			    query_exec_info[i].wait_for_tran_index_string);
 	  ptr = or_pack_string (ptr, query_exec_info[i].query_stmt);
+	  ptr = or_pack_string (ptr, query_exec_info[i].sql_id);
 	  OR_PACK_XASL_ID (ptr, &query_exec_info[i].xasl_id);
 	}
 #endif
@@ -2261,10 +2271,13 @@ error:
 	    {
 	      free_and_init (query_exec_info[i].wait_for_tran_index_string);
 	    }
-
 	  if (query_exec_info[i].query_stmt)
 	    {
 	      free_and_init (query_exec_info[i].query_stmt);
+	    }
+	  if (query_exec_info[i].sql_id)
+	    {
+	      free_and_init (query_exec_info[i].sql_id);
 	    }
 	}
       free_and_init (query_exec_info);
