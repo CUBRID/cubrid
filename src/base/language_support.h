@@ -176,8 +176,7 @@ struct lang_collation
   int (*split_key) (const LANG_COLLATION * lang_coll, const bool is_desc,
 		    const unsigned char *str1, const int size1,
 		    const unsigned char *str2, const int size2,
-		    unsigned char **key, int *byte_size,
-		    bool * bit_use_str1_size);
+		    unsigned char **key, int *byte_size);
   /* collation data init function */
   void (*init_coll) (LANG_COLLATION * lang_coll);
 };

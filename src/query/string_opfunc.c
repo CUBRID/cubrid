@@ -717,7 +717,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1,
   else
     {
       int size1, size2, result_size, pad_size = 0;
-      unsigned char *string1, *string2, *result, *key, pad[2], *t;
+      unsigned char *string1, *string2, *result, *key = NULL, pad[2], *t;
       INTL_CODESET codeset;
       int num_bits = -1;
       int collation_id;
@@ -748,10 +748,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1,
 
       /* We need to implicitly trim both strings since we don't want padding
          for the result (its of varying type) and since padding can mask the
-         logical end of both of the strings.  We need to be careful how the
-         trimming is done.  Char and varchar can do the normal trim, nchar
-         and varnchar need to worry about codeset and pad chars, and bit
-         and varbit don't want to trim at all. */
+         logical end of both of the strings.  Trimming depends on codeset. */
       if (pad_size == 1)
 	{
 	  for (t = string1 + (size1 - 1); t >= string1 && *t == pad[0];
@@ -782,18 +779,79 @@ db_string_unique_prefix (const DB_VALUE * db_string1,
 	    }
 	}
 
-      error_status = QSTR_SPLIT_KEY (collation_id, key_domain->is_desc,
-				     string1, size1, string2, size2, &key,
-				     &result_size, &bit_use_str1_size);
-      assert (error_status == NO_ERROR);
-
-      assert (key != NULL);
-
       if (result_type == DB_TYPE_VARBIT)
 	{
+	  int pos;
+	  const unsigned char *t2;
+
+	  for (pos = 0, t = string1, t2 = string2;
+	       pos < size1 && pos < size2 && *t++ == *t2++; pos++)
+	    {
+	      ;
+	    }
+
+	  if (!(key_domain->is_desc))
+	    {			/* normal index */
+	      /* check if matched size is exactly string1 or in string2 there
+	       * is exactly one more byte after matched part */
+	      if (pos == size1 || pos + 1 == size2)
+		{
+		  key = string1;
+		  pos = size1;
+		  /* We need all the string1 bits. We may not use all of the
+		   * bits in the last byte. */
+		  bit_use_str1_size = true;
+		}
+	      else
+		{
+		  assert (pos < size2);
+
+		  key = (unsigned char *) string2;
+		  pos += 1;
+		  /* We will take all the bits for the differentiating byte. 
+		   * This is fine since in this branch we are guaranteed not
+		   * to be at the end of either string. */
+		  bit_use_str1_size = false;
+		}
+	    }
+	  else
+	    {
+	      /* reverse index */
+	      assert (key_domain->is_desc);
+
+	      if (pos == size1)
+		{
+		  key = (unsigned char *) string1;
+		  pos = size1;
+		  /* We need all the string1 bits. We may not use all of the
+		   * bits in the last byte. */
+		  bit_use_str1_size = true;
+		}
+	      else
+		{
+		  assert (pos < size1);
+		  key = (unsigned char *) string1;
+		  pos += 1;
+		  /* We will take all the bits for the differentiating byte.
+		   * This is fine since in this branch we are guaranteed not
+		   * to be at the end of either string */
+		  bit_use_str1_size = false;
+		}
+	    }
+
+	  result_size = pos;
 	  num_bits = bit_use_str1_size ? (db_string1->data.ch.medium.size)
 	    : (result_size * BYTE_SIZE);
 	}
+      else
+	{
+	  error_status = QSTR_SPLIT_KEY (collation_id, key_domain->is_desc,
+					 string1, size1, string2, size2, &key,
+					 &result_size);
+	}
+      assert (error_status == NO_ERROR);
+
+      assert (key != NULL);
 
       result = db_private_alloc (NULL, result_size + 1);
       if (result)
