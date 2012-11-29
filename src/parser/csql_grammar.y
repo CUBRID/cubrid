@@ -216,7 +216,8 @@ static FUNCTION_MAP functions[] = {
   {"ascii", PT_ASCII},
   {"conv", PT_CONV},
   {"inet_aton", PT_INET_ATON},
-  {"inet_ntoa", PT_INET_NTOA}
+  {"inet_ntoa", PT_INET_NTOA},
+  {"coercibility", PT_COERCIBILITY},
 };
 
 
@@ -5944,6 +5945,53 @@ show_stmt
 			  }
 			node = pt_make_query_show_columns (this_parser, original_cls_id,
 							   like_where_syntax, like_rhs, 0);
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| SHOW
+	  COLLATION
+		{{
+
+			PT_NODE *node = NULL;
+
+			node = pt_make_query_show_collation (this_parser, 0, NULL);
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| SHOW
+	  COLLATION
+	  LIKE
+	  expression_
+		{{
+
+			const int like_where_syntax = 1;  /* is LIKE */
+			PT_NODE *node = NULL;
+			PT_NODE *like_rhs = $4;
+
+			node = pt_make_query_show_collation (this_parser,
+							     like_where_syntax,
+							     like_rhs);
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| SHOW
+	  COLLATION
+	  WHERE
+	  search_condition
+		{{
+			const int like_where_syntax = 2;  /* is WHERE */
+			PT_NODE *node = NULL;
+			PT_NODE *where_cond = $4;
+
+			node = pt_make_query_show_collation (this_parser,
+							     like_where_syntax,
+							     where_cond);
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -13942,6 +13990,30 @@ reserved_func
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| CHARSET
+		{ push_msg(MSGCAT_SYNTAX_INVALID_CHARSET); }
+	  '(' expression_ ')'
+		{ pop_msg(); }
+		{{
+			PT_NODE *node =
+			  parser_make_expression (PT_CHARSET, $4, NULL, NULL);
+			PICE (node);
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| COLLATION
+		{ push_msg(MSGCAT_SYNTAX_INVALID_COLLATION); }
+	  '(' expression_ ')'
+		{ pop_msg(); }
+		{{
+			PT_NODE *node =
+			  parser_make_expression (PT_COLLATION, $4, NULL, NULL);
+			PICE (node);
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	;
 
 
@@ -21166,6 +21238,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_ASCII:
     case PT_INET_ATON:
     case PT_INET_NTOA:
+    case PT_COERCIBILITY:
       if (c != 1)
         {
 	  return NULL;

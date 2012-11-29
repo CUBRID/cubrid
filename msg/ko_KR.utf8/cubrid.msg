@@ -1318,6 +1318,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 114 before END OF STATEMENT\n
 115 잘못된 형식의 set names입니다.\n  set_names: SET NAMES charset [{COLLATE | COLLATION} collation]\n
 116 잘못된 형식의 chr 함수입니다.\n  CHR ( number [using charset] )\n
+117 잘못된 형식의 charset 함수입니다.\n  CHARSET ( expression )\n
+118 잘못된 형식의 collation 함수입니다.\n  COLLATION ( expression )\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다

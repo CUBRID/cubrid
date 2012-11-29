@@ -1317,7 +1317,9 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 113 before ' %s'\n
 114 before END OF STATEMENT\n
 115 tên đặt vô hiệu\n  set_names: SET NAMES charset [{COLLATE | COLLATION} collation]\n
-116 sử dụng ký tự vô hiệu\n  CHR ( number [using charset] )\n
+116 sử dụng chr không hợp lệ\n  CHR ( number [using charset] )\n
+117 sử dụng charset không hợp lệ\n  CHARSET ( expression )\n
+118 sử dụng collation không hợp lệ\n  COLLATION ( expression )\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Không đủ bộ nhớ.

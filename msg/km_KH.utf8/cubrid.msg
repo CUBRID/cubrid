@@ -1318,6 +1318,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 114 before END OF STATEMENT\n
 115 ឈ្មោះមោឃ\nឈ្មោះ: SET NAMES charset [{COLLATE | COLLATION} collation]\n
 116 ការប្រើមោឃនៃchr\n  CHR ( number [using charset] )\n
+117 ការប្រើមោឃនៃcharset\n  CHARSET ( expression )\n
+118 ការប្រើមោឃនៃcollation\n  COLLATION ( expression )\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 គ្មាន memory។

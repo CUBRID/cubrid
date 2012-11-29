@@ -1289,6 +1289,8 @@ typedef enum
   /* inet */
   PT_INET_ATON, PT_INET_NTOA,
 
+  PT_CHARSET, PT_COERCIBILITY, PT_COLLATION,
+
   /* This is the last entry. Please add a new one before it. */
   PT_LAST_OPCODE
 } PT_OP_TYPE;

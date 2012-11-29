@@ -3782,6 +3782,43 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       def->overloads_count = num;
       break;
 
+    case PT_COERCIBILITY:
+      num = 0;
+
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_ANY;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
+    case PT_CHARSET:
+    case PT_COLLATION:
+      num = 0;
+
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_ANY;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
     default:
       return false;
     }
@@ -5804,6 +5841,9 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_NVL2:
     case PT_COALESCE:
     case PT_TO_ENUMERATION_VALUE:
+    case PT_CHARSET:
+    case PT_COERCIBILITY:
+    case PT_COLLATION:
       return false;
 
     default:
@@ -8044,6 +8084,9 @@ pt_is_able_to_determine_return_type (const PT_OP_TYPE op)
     case PT_TO_ENUMERATION_VALUE:
     case PT_INET_ATON:
     case PT_INET_NTOA:
+    case PT_CHARSET:
+    case PT_COERCIBILITY:
+    case PT_COLLATION:
       return true;
 
     default:
@@ -11156,6 +11199,9 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
     case PT_RPAD:
     case PT_HEX:
     case PT_SUBSTRING:
+    case PT_CHARSET:
+    case PT_COERCIBILITY:
+    case PT_COLLATION:
       assert (dt == NULL);
       dt = pt_make_prim_data_type (parser, node->type_enum);
       dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
@@ -17515,7 +17561,12 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	  return 0;
 	}
       break;
-
+    case PT_CHARSET:
+    case PT_COERCIBILITY:
+    case PT_COLLATION:
+      /* these expressions should always be folded to constants */
+      assert (false);
+      break;
     default:
       break;
     }
@@ -17646,16 +17697,15 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	    }
 	}
     }
-
-  if (op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE
-      || op == PT_BIT_TO_BLOB || op == PT_CHAR_TO_BLOB
-      || op == PT_BLOB_TO_BIT || op == PT_BLOB_LENGTH
-      || op == PT_CHAR_TO_CLOB || op == PT_CLOB_TO_CHAR
-      || op == PT_CLOB_LENGTH || op == PT_EXEC_STATS)
+  else if (op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE
+	   || op == PT_BIT_TO_BLOB || op == PT_CHAR_TO_BLOB
+	   || op == PT_BLOB_TO_BIT || op == PT_BLOB_LENGTH
+	   || op == PT_CHAR_TO_CLOB || op == PT_CLOB_TO_CHAR
+	   || op == PT_CLOB_LENGTH || op == PT_EXEC_STATS)
     {
       goto end;
     }
-  if (op == PT_ROW_COUNT)
+  else if (op == PT_ROW_COUNT)
     {
       int row_count = db_get_row_count_cache ();
       if (row_count == DB_ROW_COUNT_NOT_SET)
@@ -17665,6 +17715,46 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  db_update_row_count_cache (row_count);
 	}
       DB_MAKE_INT (&dbval_res, row_count);
+      result = pt_dbval_to_value (parser, &dbval_res);
+      goto end;
+    }
+  else if (op == PT_CHARSET || op == PT_COERCIBILITY || op == PT_COLLATION)
+    {
+      int coll_id;
+      INTL_CODESET cs;
+      PT_COLL_COERC_LEV coerc;
+
+      if (pt_get_collation_info (expr->info.expr.arg1, &coll_id, &cs, &coerc))
+	{
+	  if (op == PT_CHARSET)
+	    {
+	      DB_MAKE_STRING (&dbval_res, lang_charset_name (cs));
+	    }
+	  else if (op == PT_COERCIBILITY)
+	    {
+	      DB_MAKE_INT (&dbval_res, (int) coerc);
+	    }
+	  else
+	    {
+	      assert (op == PT_COLLATION);
+	      DB_MAKE_STRING (&dbval_res, lang_get_collation_name (coll_id));
+	    }
+	}
+      else
+	{
+	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+	    {
+	      DB_MAKE_NULL (&dbval_res);
+	    }
+	  else
+	    {
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+		      ER_OBJ_INVALID_ARGUMENTS, 0);
+	      PT_ERRORc (parser, expr, er_msg ());
+	      goto end;
+	    }
+	}
+
       result = pt_dbval_to_value (parser, &dbval_res);
       goto end;
     }
@@ -20143,7 +20233,16 @@ pt_get_collation_info (PT_NODE * node, int *coll_id, INTL_CODESET * codeset,
     }
   else
     {
-      return has_collation;
+      if (node->node_type == PT_VALUE && PT_HAS_COLLATION (node->type_enum))
+	{
+	  *coll_id = LANG_SYS_COLLATION;
+	  *codeset = LANG_SYS_CODESET;
+	  has_collation = true;
+	}
+      else
+	{
+	  return has_collation;
+	}
     }
 
   switch (node->node_type)

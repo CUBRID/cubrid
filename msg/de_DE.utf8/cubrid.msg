@@ -1318,6 +1318,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 114 before END OF STATEMENT\n
 115 ungültiges set names\n  set_names: SET NAMES charset [{COLLATE | COLLATION} collation]\n
 116 Ungültige Verwendung von chr\n  CHR ( number [using charset] )\n
+117 Ungültige Verwendung von charset\n  CHARSET ( Ausdruck )\n
+118 Ungültige Verwendung von collation\n  COLLATION ( Ausdruck )\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Außer Speicher.

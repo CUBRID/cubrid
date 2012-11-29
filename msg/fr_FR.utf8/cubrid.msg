@@ -1318,6 +1318,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 114 before END OF STATEMENT\n
 115 instruction non valide: set names\n  set_names: SET NAMES charset [{COLLATE | COLLATION} collation]\n
 116 utilisation non valide de chr\n  CHR ( number [using charset] )\n
+117 utilisation non valide de charset\n  CHARSET ( expression )\n
+118 utilisation non valide de collation\n  COLLATION ( expression )\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Mémoire épuisée.

@@ -3580,6 +3580,12 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "inet_aton ";
     case PT_INET_NTOA:
       return "inet_ntoa ";
+    case PT_CHARSET:
+      return "charset ";
+    case PT_COERCIBILITY:
+      return "coercibility ";
+    case PT_COLLATION:
+      return "collation ";
     default:
       return "unknown opcode";
     }
@@ -11320,6 +11326,23 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;
+    case PT_CHARSET:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " charset(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_COERCIBILITY:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " coercibility(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_COLLATION:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " collation(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
     }
 
   for (t = p->or_next; t; t = t->or_next)

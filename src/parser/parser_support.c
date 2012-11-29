@@ -8973,6 +8973,7 @@ PT_NODE *
 pt_make_query_show_exec_stats (PARSER_CONTEXT * parser)
 {
   PT_NODE **node = NULL;
+  PT_NODE *show_node;
   const char *query =
     "(SELECT 'data_page_fetches' as [variable] , exec_stats('Num_data_page_fetches') as [value])"
     "UNION ALL (SELECT 'data_page_dirties' as [variable] , exec_stats('Num_data_page_dirties') as [value])"
@@ -8989,6 +8990,9 @@ pt_make_query_show_exec_stats (PARSER_CONTEXT * parser)
 
   parser->dont_collect_exec_stats = true;
 
+  show_node = pt_pop (parser);
+  assert (show_node == node[0]);
+
   return node[0];
 }
 
@@ -8996,6 +9000,7 @@ PT_NODE *
 pt_make_query_show_exec_stats_all (PARSER_CONTEXT * parser)
 {
   PT_NODE **node = NULL;
+  PT_NODE *show_node;
   const char *query =
     "(SELECT 'file_creates' as [variable] , exec_stats('Num_file_creates') as [value])"
     "UNION ALL (SELECT 'file_removes' as [variable] , exec_stats('Num_file_removes') as [value])"
@@ -9067,6 +9072,8 @@ pt_make_query_show_exec_stats_all (PARSER_CONTEXT * parser)
       return NULL;
     }
 
+  show_node = pt_pop (parser);
+  assert (show_node == node[0]);
   parser->dont_collect_exec_stats = true;
 
   return node[0];
@@ -10142,4 +10149,80 @@ pt_make_tuple_value_reference (PARSER_CONTEXT * parser, PT_NODE * name,
   name->next = next;
 
   return name;
+}
+
+/*
+ * pt_make_query_show_collation() - builds the query for SHOW COLLATION
+ *
+ *   return: newly built node (PT_NODE), NULL if construnction fails
+ *   parser(in): Parser context
+ *   like_where_syntax(in): indicator of presence for LIKE or WHERE clauses in
+ *			   SHOW statement. Values : 0 = none of LIKE or WHERE,
+ *			   1 = contains LIKE, 2 = contains WHERE
+ *   like_or_where_expr(in): node expression supplied as condition (in WHERE)
+ *			     or RHS for LIKE
+ *
+ * Note : Order is defined by: coll_name
+ */
+PT_NODE *
+pt_make_query_show_collation (PARSER_CONTEXT * parser,
+			      int like_where_syntax,
+			      PT_NODE * like_or_where_expr)
+{
+  PT_NODE **node = NULL;
+  PT_NODE *node_show = NULL;
+  const char *query = "SELECT * FROM (SELECT coll_name	AS [Collation],"
+    "CASE charset_id WHEN 3 THEN 'ISO8859-1' "
+    "WHEN 5 THEN 'UTF-8' WHEN 4 THEN 'KSC-EUC' "
+    "ELSE 'Other' END AS Charset,"
+    "coll_id AS Id,"
+    "IF (built_in = 0, 'No', 'Yes') AS Built_in,"
+    "IF (expansions = 0, 'No', 'Yes') AS Expansions,"
+    "CASE uca_strength WHEN 1 THEN 'Primary' "
+    "WHEN 2 THEN 'Secondary' WHEN 3 THEN 'Tertiary' "
+    "WHEN 4 THEN 'Quaternary' WHEN 5 THEN 'Identity' "
+    "ELSE 'Not applicable' END AS Strength "
+    "FROM _db_collation ORDER BY coll_name)";
+
+  lang_set_parser_use_client_charset (false);
+  node = parser_parse_string (parser, query);
+  lang_set_parser_use_client_charset (true);
+
+  if (node == NULL)
+    {
+      return NULL;
+    }
+
+  if (like_or_where_expr != NULL)
+    {
+      PT_NODE *where_item = NULL;
+
+      if (like_where_syntax == 1)
+	{
+	  /* make LIKE */
+	  where_item = pt_make_like_col_expr (parser, like_or_where_expr,
+					      "Collation");
+	}
+      else
+	{
+	  /* WHERE */
+	  assert (like_where_syntax == 2);
+	  where_item = like_or_where_expr;
+	}
+
+      node[0]->info.query.q.select.where =
+	parser_append_node (where_item, node[0]->info.query.q.select.where);
+    }
+  else
+    {
+      assert (like_where_syntax == 0);
+    }
+
+  /* remove latest statement from parser stack: it was added by
+   * parser_parse_string, and it will be added again when grammar rule is
+   * consumed */
+  node_show = pt_pop (parser);
+  assert (node_show == node[0]);
+
+  return node_show;
 }

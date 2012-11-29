@@ -884,6 +884,9 @@ extern "C"
 						 PT_NODE * name,
 						 PT_NODE * select_list,
 						 CURSOR_ID * cursor_p);
+  extern PT_NODE *pt_make_query_show_collation (PARSER_CONTEXT * parser,
+						int like_where_syntax,
+						PT_NODE * like_or_where_expr);
 #ifdef __cplusplus
 }
 #endif
