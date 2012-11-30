@@ -1488,7 +1488,7 @@ admin_broker_job_first_cmd (int master_shm_id, const char *broker_name,
 #if defined(CUBRID_SHARD)
 #if defined(SHARD_ADMIN)
 static bool
-is_integer (const char *value)
+key_isdigit (const char *value)
 {
   const char *p = value;
 
@@ -1512,7 +1512,7 @@ make_sp_value (SP_VALUE * value_p, char *shard_key)
 {
   int length = strlen (shard_key);
 
-  if (is_integer (shard_key))
+  if (key_isdigit (shard_key))
     {
       value_p->integer = atoi (shard_key);
       value_p->type = VT_INTEGER;
