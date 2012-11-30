@@ -45,6 +45,15 @@
 #define SHARD_INVALID_ID	(PROXY_INVALID_SHARD)
 #define CAS_INVALID_ID		(PROXY_INVALID_CAS)
 
+#define MAKE_FILEPATH(dest,src) \
+  do { \
+      if ((src) == NULL || (src)[0] == 0) { \
+	  (dest)[0] = 0; \
+      } else if (realpath ((src), (dest)) == NULL) { \
+	  strcpy ((dest), (src)); \
+      } \
+  } while (0)
+
 extern char *trim (char *str);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int ut_file_lock (char *lock_file);

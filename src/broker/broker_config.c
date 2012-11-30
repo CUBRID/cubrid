@@ -314,6 +314,7 @@ broker_config_read_internal (const char *conf_file,
   float tmp_float;
   int lineno = 0;
   int errcode = 0;
+  const char *ini_string;
 #if defined(CUBRID_SHARD)
   char library_name[PATH_MAX];
 #endif
@@ -347,9 +348,9 @@ broker_config_read_internal (const char *conf_file,
   master_shm_id = ini_gethex (ini, SECTION_NAME, "MASTER_SHM_ID", 0, &lineno);
   if (admin_log_file != NULL)
     {
-      strcpy (admin_log_file,
-	      ini_getstr (ini, SECTION_NAME, "ADMIN_LOG_FILE",
-			  DEFAULT_ADMIN_LOG_FILE, &lineno));
+      ini_string = ini_getstr (ini, SECTION_NAME, "ADMIN_LOG_FILE",
+			       DEFAULT_ADMIN_LOG_FILE, &lineno);
+      MAKE_FILEPATH (admin_log_file, ini_string);
     }
 
   if (acl_flag != NULL)
@@ -368,9 +369,9 @@ broker_config_read_internal (const char *conf_file,
 
   if (acl_file != NULL)
     {
-      strcpy (acl_file,
-	      ini_getstr (ini, SECTION_NAME, "ACCESS_CONTROL_FILE", "",
-			  &lineno));
+      ini_string = ini_getstr (ini, SECTION_NAME, "ACCESS_CONTROL_FILE", "",
+			       &lineno);
+      MAKE_FILEPATH (acl_file, ini_string);
     }
 
   for (i = 0; i < ini->nsec; i++)
@@ -470,15 +471,16 @@ broker_config_read_internal (const char *conf_file,
 	ini_getint (ini, sec_name, "SESSION_TIMEOUT",
 		    DEFAULT_SESSION_TIMEOUT, &lineno);
 
-      strcpy (br_info[num_brs].log_dir,
-	      ini_getstr (ini, sec_name, "LOG_DIR", DEFAULT_LOG_DIR,
-			  &lineno));
-      strcpy (br_info[num_brs].slow_log_dir,
-	      ini_getstr (ini, sec_name, "SLOW_LOG_DIR", DEFAULT_SLOW_LOG_DIR,
-			  &lineno));
-      strcpy (br_info[num_brs].err_log_dir,
-	      ini_getstr (ini, sec_name, "ERROR_LOG_DIR", DEFAULT_ERR_DIR,
-			  &lineno));
+      ini_string = ini_getstr (ini, sec_name, "LOG_DIR",
+			       DEFAULT_LOG_DIR, &lineno);
+      MAKE_FILEPATH (br_info[num_brs].log_dir, ini_string);
+      ini_string = ini_getstr (ini, sec_name, "SLOW_LOG_DIR",
+			       DEFAULT_SLOW_LOG_DIR, &lineno);
+      MAKE_FILEPATH (br_info[num_brs].slow_log_dir, ini_string);
+      ini_string = ini_getstr (ini, sec_name, "ERROR_LOG_DIR",
+			       DEFAULT_ERR_DIR, &lineno);
+      MAKE_FILEPATH (br_info[num_brs].err_log_dir, ini_string);
+
 #if !defined(CUBRID_SHARD)
       strcpy (br_info[num_brs].access_log_file, CUBRID_BASE_DIR);
 #endif /* CUBRID_SHARD */
@@ -590,9 +592,9 @@ broker_config_read_internal (const char *conf_file,
 	  goto conf_error;
 	}
 
-      strcpy (br_info[num_brs].acl_file,
-	      ini_getstr (ini, sec_name, "ACCESS_LIST",
-			  DEFAULT_EMPTY_STRING, &lineno));
+      ini_string = ini_getstr (ini, sec_name, "ACCESS_LIST",
+			       DEFAULT_EMPTY_STRING, &lineno);
+      MAKE_FILEPATH (br_info[num_brs].acl_file, ini_string);
 
       br_info[num_brs].max_string_length =
 	ini_getint (ini, sec_name, "MAX_STRING_LENGTH", -1, &lineno);

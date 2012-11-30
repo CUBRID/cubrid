@@ -197,7 +197,7 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl,
 	  goto error;
 	}
 
-      dbname = strtok (buf, ACCESS_FILE_DELIMITER);
+      dbname = strtok_r (buf, ACCESS_FILE_DELIMITER, &p);
       if (dbname == NULL || strlen (dbname) > (ACL_MAX_DBNAME_LENGTH - 1))
 	{
 	  sprintf (admin_err_msg,
@@ -207,7 +207,7 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl,
 	  goto error;
 	}
 
-      dbuser = strtok (NULL, ACCESS_FILE_DELIMITER);
+      dbuser = strtok_r (NULL, ACCESS_FILE_DELIMITER, &p);
       if (dbuser == NULL || strlen (dbuser) > (ACL_MAX_DBUSER_LENGTH - 1))
 	{
 	  sprintf (admin_err_msg,
@@ -217,7 +217,7 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl,
 	  goto error;
 	}
 
-      ip_file = strtok (NULL, ACCESS_FILE_DELIMITER);
+      ip_file = p;
       if (ip_file == NULL)
 	{
 	  sprintf (admin_err_msg,
@@ -303,6 +303,8 @@ access_control_repath_file (char *path)
   char tmp_str[PATH_MAX];
 
   trim (path);
+  strncpy (tmp_str, path, PATH_MAX);
+  MAKE_FILEPATH (path, tmp_str);
 
   if (IS_ABS_PATH (path))
     {
@@ -311,7 +313,7 @@ access_control_repath_file (char *path)
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   envvar_confdir_file (tmp_str, PATH_MAX, path);
-  strcpy (path, tmp_str);
+  MAKE_FILEPATH (path, tmp_str);
 #endif
 
   return;
