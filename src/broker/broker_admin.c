@@ -398,6 +398,16 @@ main (int argc, char **argv)
 	  return -1;
 	}
     }
+#if defined(CUBRID_SHARD)
+  else if (strcasecmp (argv[1], "getid") == 0)
+    {
+      if (admin_getid_cmd (master_shm_id, argc, (const char **) argv) < 0)
+	{
+	  printf ("%s\n", admin_err_msg);
+	  return -1;
+	}
+    }
+#endif /* CUBRID_SHARD */
   else
     {
       goto usage;
@@ -408,7 +418,7 @@ main (int argc, char **argv)
 usage:
 #if defined(CUBRID_SHARD)
   printf ("%s (start | stop | restart | on | off"
-	  " | reset | info | acl)\n", argv[0]);
+	  " | reset | info | acl | getid)\n", argv[0]);
 #else
   printf ("%s (start | stop | add | drop | restart"
 	  " | on | off | suspend | resume | reset | job_first | info | acl)\n",

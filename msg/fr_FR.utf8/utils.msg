@@ -234,7 +234,8 @@ Commandes disponibles:\n\
     on          shard-name\n\
     off         shard-name\n\
     reset       shard-name\n\
-    acl         <status|reload> [shard-name]\n
+    acl         <status|reload> [shard-name]\n\
+    getid       -b <broker-name> [-f] shard-key\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 AVERTISSEMENT: l'option -t est ignoré dans le mode d'exécution autonome.\n

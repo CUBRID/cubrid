@@ -99,8 +99,6 @@ extern int proxy_send_response_to_client_with_new_event (T_PROXY_CONTEXT *
 							 int from,
 							 T_PROXY_EVENT_FUNC
 							 resp_func);
-extern int proxy_find_shard_id_by_hint_value (SP_VALUE * value_p,
-					      const char *key_column);
 
 
 #endif /* _SHARD_PROXY_FUNCTION_H_ */

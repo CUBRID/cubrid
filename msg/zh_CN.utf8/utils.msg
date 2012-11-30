@@ -234,7 +234,8 @@ cubrid 管理工具，版本 %s\n\
     on          shard-name\n\
     off         shard-name\n\
     reset       shard-name\n\
-    acl         <status|reload> [shard-name]\n
+    acl         <status|reload> [shard-name]\n\
+    getid       -b <broker-name> [-f] shard-key\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 警告: 在单机模式下 -t 选项将被忽略.\n

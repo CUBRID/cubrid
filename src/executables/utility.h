@@ -707,6 +707,7 @@ typedef struct _ha_config
 #define PRINT_CMD_ACL           "acl"
 #define PRINT_CMD_COPYLOGDB     "copylogdb"
 #define PRINT_CMD_APPLYLOGDB    "applylogdb"
+#define PRINT_CMD_GETID         "getid"
 
 #define PRINT_RESULT_SUCCESS    "success"
 #define PRINT_RESULT_FAIL       "fail"

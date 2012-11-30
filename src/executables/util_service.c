@@ -78,7 +78,8 @@ typedef enum
   ACCESS_CONTROL,
   RESET,
   SC_COPYLOGDB,
-  SC_APPLYLOGDB
+  SC_APPLYLOGDB,
+  GET_SHARID
 } UTIL_SERVICE_COMMAND_E;
 
 typedef enum
@@ -167,6 +168,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
 #define COMMAND_TYPE_RESET      "reset"
 #define COMMAND_TYPE_COPYLOGDB  "copylogdb"
 #define COMMAND_TYPE_APPLYLOGDB "applylogdb"
+#define COMMAND_TYPE_GETID      "getid"
 
 static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {START, COMMAND_TYPE_START, MASK_ALL},
@@ -184,6 +186,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {RESET, COMMAND_TYPE_RESET, MASK_BROKER | MASK_SHARD},
   {SC_COPYLOGDB, COMMAND_TYPE_COPYLOGDB, MASK_HEARTBEAT},
   {SC_APPLYLOGDB, COMMAND_TYPE_APPLYLOGDB, MASK_HEARTBEAT},
+  {GET_SHARID, COMMAND_TYPE_GETID, MASK_SHARD},
   {-1, "", MASK_ALL}
 };
 
@@ -2012,6 +2015,40 @@ process_shard (int command_type, int argc, const char **argv,
 	      }
 	    status = proc_execute (UTIL_SHARD_NAME, args, true, false, NULL);
 	  }
+      }
+      break;
+    case GET_SHARID:
+      {
+	int i;
+	const char **args;
+	print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
+		       PRINT_SHARD_NAME, PRINT_CMD_GETID);
+
+	if (is_shard_running ())
+	  {
+	    print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
+			   PRINT_SHARD_NAME);
+	    return NO_ERROR;
+	  }
+
+	args = (const char **) malloc (sizeof (char *) * (argc + 3));
+	if (args == NULL)
+	  {
+	    return ER_GENERIC_ERROR;
+	  }
+
+	args[0] = UTIL_SHARD_NAME;
+	args[1] = PRINT_CMD_GETID;
+
+	for (i = 0; i < argc; i++)
+	  {
+	    args[i + 2] = argv[i];
+	  }
+	args[argc + 2] = NULL;
+
+	status = proc_execute (UTIL_SHARD_NAME, args, true, false, NULL);
+
+	free (args);
       }
       break;
     default:

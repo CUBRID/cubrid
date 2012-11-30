@@ -30,7 +30,16 @@
 #include "broker_shm.h"
 /* FOR DEBUG MSG -- remove this */
 #include "broker_config.h"
+
+#if defined(SHARD_ADMIN)
+#if defined(WINDOWS)
+#define PROXY_LOG(level, fmt, ...)
+#else /* WINDOWS */
+#define PROXY_LOG(level, fmt, args...)
+#endif /* !WINDOWS */
+#else /* SHARD_ADMIN */
 #include "shard_proxy_log.h"
+#endif /* !SHARD_ADMIN */
 
 extern T_SHM_PROXY *shm_proxy_p;
 
@@ -122,4 +131,37 @@ fn_get_shard_key_default (const char *shard_key, T_SHARD_U_TYPE type,
     }
 
   return ERROR_ON_MAKE_SHARD_KEY;
+}
+
+int
+proxy_find_shard_id_by_hint_value (SP_VALUE * value_p, const char *key_column)
+{
+  T_SHARD_KEY_RANGE *range_p = NULL;
+
+  int shard_key_id = -1;
+  int shard_key_val_int;
+  char *shard_key_val_string;
+  int shard_key_val_len;
+
+  if (value_p->type == VT_INTEGER)
+    {
+      shard_key_val_int = value_p->integer;
+      shard_key_id =
+	(*fn_get_shard_key) (key_column, SHARD_U_TYPE_INT,
+			     &shard_key_val_int, sizeof (int));
+    }
+  else if (value_p->type == VT_STRING)
+    {
+      shard_key_val_string = value_p->string.value;
+      shard_key_val_len = value_p->string.length;
+      shard_key_id =
+	(*fn_get_shard_key) (key_column, SHARD_U_TYPE_STRING,
+			     shard_key_val_string, shard_key_val_len);
+    }
+  else
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Invalid hint value type. (value_type:%d).", value_p->type);
+    }
+  return shard_key_id;
 }

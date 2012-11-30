@@ -234,7 +234,8 @@ cubrid 관리자 유틸리티, 버전 %s\n\
     on          <샤드 이름>\n\
     off         <샤드 이름>\n\
     reset       <샤드 이름>\n\
-    acl         <status|reload> [샤드 이름]\n
+    acl         <status|reload> [샤드 이름]\n\
+    getid       -b <broker-name> [-f] shard-key\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 경고: -t 옵션은 독립 실행 모드에서는 무시 됩니다.\n

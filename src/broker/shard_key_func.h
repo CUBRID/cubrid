@@ -27,12 +27,16 @@
 #ident "$Id$"
 
 #include "shard_key.h"
+#include "shard_parser.h"
+
 
 extern int register_fn_get_shard_key (void);
 
 extern int fn_get_shard_key_default (const char *shard_key,
 				     T_SHARD_U_TYPE type, const void *value,
 				     int value_len);
+extern int proxy_find_shard_id_by_hint_value (SP_VALUE * value_p,
+					      const char *key_column);
 
 
 #endif /* _SHARD_KEY_FUNC_H_ */

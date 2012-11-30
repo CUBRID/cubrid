@@ -118,7 +118,9 @@ shard_admin_SOURCES = \
 	$(BROKER_DIR)/shard_metadata.c \
 	$(BROKER_DIR)/shard_admin_pub.c \
 	$(BROKER_DIR)/shard_shm.c \
+	$(BROKER_DIR)/shard_key_func.c \
 	$(BROKER_DIR)/broker_acl.c
+shard_admin_CPPFLAGS = $(AM_CPPFLAGS) -DSHARD_ADMIN
 shard_admin_LDADD = $(SHARD_BROKER_CAS_LIBS)
 
 shard_cas_SOURCES = \

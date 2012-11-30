@@ -2611,37 +2611,4 @@ fn_proxy_cas_conn_error (T_PROXY_CONTEXT * ctx_p)
   return 0;
 }
 
-int
-proxy_find_shard_id_by_hint_value (SP_VALUE * value_p, const char *key_column)
-{
-  T_SHARD_KEY_RANGE *range_p = NULL;
-
-  int shard_key_id = -1;
-  int shard_key_val_int;
-  char *shard_key_val_string;
-  int shard_key_val_len;
-
-  if (value_p->type == VT_INTEGER)
-    {
-      shard_key_val_int = value_p->integer;
-      shard_key_id =
-	(*fn_get_shard_key) (key_column, SHARD_U_TYPE_INT,
-			     &shard_key_val_int, sizeof (int));
-    }
-  else if (value_p->type == VT_STRING)
-    {
-      shard_key_val_string = value_p->string.value;
-      shard_key_val_len = value_p->string.length;
-      shard_key_id =
-	(*fn_get_shard_key) (key_column, SHARD_U_TYPE_STRING,
-			     shard_key_val_string, shard_key_val_len);
-    }
-  else
-    {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Invalid hint value type. (value_type:%d).", value_p->type);
-    }
-  return shard_key_id;
-}
-
 /* wakeup event */

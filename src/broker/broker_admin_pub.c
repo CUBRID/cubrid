@@ -100,6 +100,8 @@
 #define	ALL_SHARD	-1
 #define	ALL_AS		-1
 
+T_SHM_PROXY *shm_proxy_p = NULL;
+
 static int shard_shm_set_param_proxy (T_SHM_PROXY * proxy_p,
 				      const char *param_name,
 				      const char *param_value, int proxy_id);
@@ -1484,6 +1486,358 @@ admin_broker_job_first_cmd (int master_shm_id, const char *broker_name,
 }
 
 #if defined(CUBRID_SHARD)
+#if defined(SHARD_ADMIN)
+static bool
+is_integer (const char *value)
+{
+  const char *p = value;
+
+  while (char_isdigit (*p))
+    {
+      p++;
+    }
+
+  if (*p == '\0')
+    {
+      return true;
+    }
+  else
+    {
+      return false;
+    }
+}
+
+static int
+make_sp_value (SP_VALUE * value_p, char *shard_key)
+{
+  int length = strlen (shard_key);
+
+  if (is_integer (shard_key))
+    {
+      value_p->integer = atoi (shard_key);
+      value_p->type = VT_INTEGER;
+    }
+  else
+    {
+      value_p->string.value = (char *) malloc (sizeof (char) * (length + 1));
+      if (value_p->string.value == NULL)
+	{
+	  return -1;
+	}
+      memcpy (value_p->string.value, shard_key, length);
+      value_p->type = VT_STRING;
+      value_p->string.length = length;
+      value_p->string.value[length] = '\0';
+    }
+
+  return 0;
+}
+
+static void
+print_usage (void)
+{
+  printf ("shard_getid -b <broker-name> [-f] shard-key\n");
+  printf ("\t-b shard broker name\n");
+  printf ("\t-f full information\n");
+}
+
+int
+admin_getid_cmd (int master_shm_id, int argc, const char **argv)
+{
+  int i, error, optchar;
+  int br_index, buf_len;
+  int appl_server_shm_id;
+  int shard_key_id;
+  bool full_info_flag = false;
+  char *shard_key;
+  char *shm_as_cp = NULL;
+  char *shm_metadata_cp = NULL;
+  const char *key_column;
+  char buf[LINE_MAX];
+  char line_buf[LINE_MAX];
+  char broker_name[BROKER_NAME_LEN] = { 0 };
+  T_BROKER_INFO *br_info_p;
+  T_SHM_BROKER *shm_br = NULL;
+  T_SHM_SHARD_KEY *shm_key_p = NULL;
+  T_SHM_SHARD_CONN *shm_conn_p = NULL;
+  T_SHARD_KEY *key_p = NULL;
+  T_SHARD_KEY_RANGE *range_p = NULL;
+  SP_VALUE value;
+
+  if (argc == 3 && strcmp (argv[2], "--version") == 0)
+    {
+      fprintf (stderr, "VERSION %s\n", makestring (BUILD_NUMBER));
+      return 0;
+    }
+
+  while ((optchar = getopt (argc, argv, "b:fh?")) != EOF)
+    {
+      switch (optchar)
+	{
+	case 'b':
+	  strncpy (broker_name, optarg, NAME_MAX);
+	  break;
+	case 'f':
+	  full_info_flag = true;
+	  break;
+	case 'h':
+	case '?':
+	  print_usage ();
+	  return 0;
+	  break;
+	}
+    }
+
+  if (argc < 5)
+    {
+      print_usage ();
+      goto getid_error;
+    }
+
+  shard_key = argv[argc - 1];
+
+  if (strcmp (broker_name, "") == 0)
+    {
+      sprintf (admin_err_msg, "Shard broker name is null.\n");
+      print_usage ();
+      goto getid_error;
+    }
+
+  shm_br =
+    (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_ADMIN);
+  if (shm_br == NULL)
+    {
+      sprintf (admin_err_msg, "Failed to open master shared memory.\n");
+      goto getid_error;
+    }
+
+  br_index = -1;
+  for (i = 0; i < shm_br->num_broker; i++)
+    {
+      if (strcmp (shm_br->br_info[i].name, broker_name) == 0)
+	{
+	  if (shm_br->br_info[i].service_flag == OFF)
+	    {
+	      sprintf (admin_err_msg, "Shard broker [%s] is not running.\n",
+		       broker_name);
+	      goto getid_error;
+	    }
+	  else
+	    {
+	      br_index = i;
+	    }
+	  break;
+	}
+    }
+
+  if (br_index < 0)
+    {
+      sprintf (admin_err_msg, "Cannot find shard broker [%s].\n",
+	       broker_name);
+      goto getid_error;
+    }
+
+  br_info_p = &(shm_br->br_info[br_index]);
+  appl_server_shm_id = br_info_p->appl_server_shm_id;
+
+  shm_as_cp =
+    (char *) uw_shm_open (appl_server_shm_id, SHM_APPL_SERVER,
+			  SHM_MODE_ADMIN);
+  if (shm_as_cp == NULL)
+    {
+      sprintf (admin_err_msg, "Failed to open shared memory. "
+	       "(SHM_APPL_SERVER, shm_key:%d).\n", appl_server_shm_id);
+      goto getid_error;
+    }
+
+  shm_proxy_p = shard_shm_get_proxy (shm_as_cp);
+  if (shm_proxy_p == NULL)
+    {
+      sprintf (admin_err_msg, "Failed to get shm proxy info.\n");
+      goto getid_error;
+    }
+
+  shm_metadata_cp =
+    (char *) uw_shm_open (shm_proxy_p->metadata_shm_id, SHM_BROKER,
+			  SHM_MODE_ADMIN);
+  if (shm_metadata_cp == NULL)
+    {
+      sprintf (admin_err_msg, "Failed to open shared memory. "
+	       "(SHARD_METADATA, shm_key:%d)\n.",
+	       shm_proxy_p->metadata_shm_id);
+      goto getid_error;
+    }
+
+  shm_key_p = shard_metadata_get_key (shm_metadata_cp);
+  if (shm_key_p == NULL)
+    {
+      sprintf (admin_err_msg, "Failed to get shm metadata shard key info.\n");
+      goto getid_error;
+    }
+
+  shm_conn_p = shard_metadata_get_conn (shm_metadata_cp);
+  if (shm_conn_p == NULL)
+    {
+      sprintf (admin_err_msg,
+	       "Failed to get shm metadata connection info.\n");
+      goto getid_error;
+    }
+
+  error = register_fn_get_shard_key ();
+  if (error)
+    {
+      sprintf (admin_err_msg, "Failed to register shard hashing function.\n");
+      goto getid_error;
+    }
+
+  error = make_sp_value (&value, shard_key);
+  if (error)
+    {
+      sprintf (admin_err_msg, "Failed to make shard key value.\n");
+      goto getid_error;
+    }
+
+  key_p = (T_SHARD_KEY *) (&(shm_key_p->shard_key[0]));
+  key_column = key_p->key_column;
+
+  shard_key_id = proxy_find_shard_id_by_hint_value (&value, key_column);
+  if (shard_key_id < 0)
+    {
+      sprintf (admin_err_msg, "Failed to find shard key id.\n");
+      goto getid_error;
+    }
+
+  range_p =
+    shard_metadata_find_shard_range (shm_key_p, (char *) key_column,
+				     shard_key_id);
+  if (range_p == NULL)
+    {
+      sprintf (admin_err_msg,
+	       "Unable to find shm shard range. (key:%s, key_id:%d).\n",
+	       key_column, shard_key_id);
+      goto getid_error;
+    }
+
+  /* SHARD ID INFORMATION */
+  buf_len = 0;
+  buf_len += sprintf (buf + buf_len, "%% %s\n", broker_name);
+  buf_len += sprintf (buf + buf_len, " SHARD_ID : %d, ", range_p->shard_id);
+  buf_len += sprintf (buf + buf_len, "SHARD_KEY : %s", shard_key);
+  if (full_info_flag == true)
+    {
+      buf_len += sprintf (buf + buf_len, ", KEY_COLUMN : %s", key_column);
+    }
+  buf_len += sprintf (buf + buf_len, "\n");
+  printf ("%s", buf);
+
+  /* SHARD KEY CONFIG */
+  if (full_info_flag == true)
+    {
+      buf_len = 0;
+      buf_len +=
+	sprintf (buf + buf_len, " MODULAR : %d, ",
+		 shm_proxy_p->shard_key_modular);
+      buf_len +=
+	sprintf (buf + buf_len, "LIBRARY_NAME : %s, ",
+		 (shm_proxy_p->shard_key_library_name[0] ==
+		  0) ? "NOT DEFINED" : shm_proxy_p->shard_key_library_name);
+      buf_len +=
+	sprintf (buf + buf_len, "FUNCTION_NAME : %s ",
+		 (shm_proxy_p->shard_key_function_name[0] ==
+		  0) ? "NOT DEFINED" : shm_proxy_p->shard_key_function_name);
+      buf_len += sprintf (buf + buf_len, "\n");
+      printf ("%s", buf);
+    }
+
+  /* RANGE STATISTICS */
+  if (full_info_flag == true)
+    {
+      buf_len = 0;
+      buf_len +=
+	sprintf (buf + buf_len, " RANGE STATISTICS : %s\n",
+		 key_p->key_column);
+      printf ("%s", buf);
+
+      buf_len = 0;
+      buf_len += sprintf (buf + buf_len, "%5s ~ ", "MIN");
+      buf_len += sprintf (buf + buf_len, "%5s : ", "MAX");
+      buf_len += sprintf (buf + buf_len, "%10s", "SHARD");
+      for (i = 0; i < buf_len; i++)
+	{
+	  line_buf[i] = '-';
+	}
+      line_buf[i] = '\0';
+      printf ("\t%s\n", buf);
+      printf ("\t%s\n", line_buf);
+
+      buf_len = 0;
+      buf_len += sprintf (buf + buf_len, "\t%5d ~ %5d : %10d\n", range_p->min,
+			  range_p->max, range_p->shard_id);
+      printf ("%s\n", buf);
+    }
+
+  /* CONNECTION INFOMATION */
+  if (full_info_flag == true)
+    {
+      buf_len = 0;
+      buf_len += sprintf (buf + buf_len, " SHARD CONNECTION : \n");
+      printf ("%s", buf);
+
+      buf_len = 0;
+      buf_len += sprintf (buf + buf_len, "%8s ", "SHARD_ID");
+      buf_len += sprintf (buf + buf_len, "%16s ", "DB NAME");
+      buf_len += sprintf (buf + buf_len, "%24s ", "CONNECTION_INFO");
+      for (i = 0; i < buf_len; i++)
+	{
+	  line_buf[i] = '-';
+	}
+      line_buf[i] = '\0';
+      printf ("\t%s\n", buf);
+      printf ("\t%s\n", line_buf);
+
+      for (i = 0; i < shm_conn_p->num_shard_conn; i++)
+	{
+	  if (range_p->shard_id == shm_conn_p->shard_conn[i].shard_id)
+	    {
+	      buf_len = 0;
+	      buf_len +=
+		sprintf (buf + buf_len, "%8d ",
+			 shm_conn_p->shard_conn[i].shard_id);
+	      buf_len +=
+		sprintf (buf + buf_len, "%16s ",
+			 shm_conn_p->shard_conn[i].db_name);
+	      buf_len +=
+		sprintf (buf + buf_len, "%24s ",
+			 shm_conn_p->shard_conn[i].db_conn_info);
+	      printf ("\t%s\n", buf);
+	    }
+	}
+    }
+
+  uw_shm_detach (shm_metadata_cp);
+  uw_shm_detach (shm_as_cp);
+  uw_shm_detach (shm_br);
+
+  return 0;
+
+getid_error:
+  if (shm_metadata_cp)
+    {
+      uw_shm_detach (shm_metadata_cp);
+    }
+  if (shm_as_cp)
+    {
+      uw_shm_detach (shm_as_cp);
+    }
+  if (shm_br)
+    {
+      uw_shm_detach (shm_br);
+    }
+
+  return -1;
+}
+#endif /* SHARD_ADMIN */
+
 int
 admin_shard_conf_change (int master_shm_id, const char *sh_name,
 			 const char *conf_name, const char *conf_value,

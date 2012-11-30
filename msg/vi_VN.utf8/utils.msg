@@ -234,7 +234,8 @@ Lệnh khả dụng:\n\
     on          tên mảnh\n\
     off         tên mảnh\n\
     reset       tên mảnh\n\
-    acl         <status|reload> [tên mảnh]\n
+    acl         <status|reload> [tên mảnh]\n\
+    getid       -b <broker-name> [-f] shard-key\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 CẢNH BÁO: tùy chọn -t bị bỏ qua trong thực thi chế độ độc lập.\n

@@ -35,6 +35,7 @@
 #include "shard_metadata.h"
 #include "shard_shm.h"
 #include "shard_admin_pub.h"
+#include "shard_key_func.h"
 #endif /* CUBRID_SHARD */
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -55,6 +56,7 @@ int admin_info_cmd (int);
 int admin_get_broker_status (int, const char *);
 int admin_broker_job_first_cmd (int, const char *, int);
 #if defined(CUBRID_SHARD)
+int admin_getid_cmd (int, int, const char **);
 int admin_shard_conf_change (int, const char *, const char *, const char *,
 			     int);
 #else /* CUBRID_SHARD */

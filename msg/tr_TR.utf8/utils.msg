@@ -234,7 +234,8 @@ Mevcut komut:\n\
     on          shard-adı\n\
     off         shard-adı\n\
     reset       shard-adı\n\
-    acl         <status|reload> [shard-adı]\n
+    acl         <status|reload> [shard-adı]\n\
+    getid       -b <broker-name> [-f] shard-key\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 UYARI: -t seçeneği stand-alone modu yürütülmesine göz ardı edilir.\n
