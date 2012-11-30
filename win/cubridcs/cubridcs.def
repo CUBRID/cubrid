@@ -8,6 +8,7 @@ EXPORTS
     cas_default_lock_timeout
     cas_send_result_flag
     cfg_find_db
+    char_isdigit
     css_connect_to_master_for_info
     css_does_master_exist
     css_free_conn
@@ -361,6 +362,7 @@ EXPORTS
     er_final
     er_init
     er_set
+    getopt
     getopt_long
     ini_findsec
     ini_getfloat
