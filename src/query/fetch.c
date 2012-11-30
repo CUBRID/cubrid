@@ -2259,10 +2259,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_PREDICATE:
       /* return 0,1 or NULL accordingly */
       peek_left = &tmp_value;
-      if (peek_left == NULL)
-	{
-	  goto error;
-	}
 
       switch (eval_pred (thread_p, arithptr->pred, vd, obj_oid))
 	{
@@ -2276,7 +2272,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	  DB_MAKE_INT (peek_left, 1);
 	  break;
 	default:
-	  pr_clear_value (peek_left);
 	  goto error;
 	}
 
@@ -3303,9 +3298,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 
     case T_TYPEOF:
       if (db_typeof_dbval (arithptr->value, peek_right) != NO_ERROR)
-        {
-          goto error;
-        }
+	{
+	  goto error;
+	}
       break;
 
     case T_INDEX_CARDINALITY:
