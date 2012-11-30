@@ -1873,6 +1873,13 @@ cci_execute_array (int req_h_id, T_CCI_QUERY_RESULT ** qr,
 		   ("(%d:%d)cci_execute_array", CON_ID (req_h_id),
 		    REQ_ID (req_h_id)));
 #endif
+
+  if (qr == NULL)
+    {
+      err_code = CCI_ER_INVALID_ARGS;
+      return err_code;
+    }
+
   *qr = NULL;
 
   reset_error_buffer (err_buf);
@@ -3614,6 +3621,13 @@ cci_execute_batch (int con_h_id, int num_query, char **sql_stmt,
   CCI_DEBUG_PRINT (print_debug_msg
 		   ("(%d)cci_execute_batch: %d", con_h_id, num_query));
 #endif
+
+  if (qr == NULL)
+    {
+      err_code = CCI_ER_INVALID_ARGS;
+      return err_code;
+    }
+
   *qr = NULL;
 
   reset_error_buffer (err_buf);
@@ -3745,6 +3759,13 @@ cci_execute_result (int req_h_id, T_CCI_QUERY_RESULT ** qr,
 		   ("(%d:%d)cci_execute_result", CON_ID (req_h_id),
 		    REQ_ID (req_h_id)));
 #endif
+
+  if (qr == NULL)
+    {
+      err_code = CCI_ER_INVALID_ARGS;
+      return err_code;
+    }
+
   *qr = NULL;
 
   reset_error_buffer (err_buf);
@@ -5038,6 +5059,9 @@ cci_get_err_msg_internal (int err_code)
 
     case CCI_ER_NOT_UPDATABLE:
       return "Request handle is not updatable";
+
+    case CCI_ER_INVALID_ARGS:
+      return "Invalid argument";
 
     case CAS_ER_INTERNAL:
       return "Not used";
