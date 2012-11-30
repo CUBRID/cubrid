@@ -273,6 +273,7 @@ static SOCKET connect_srv (char *br_name, int as_index);
 static int find_idle_cas (void);
 static int find_drop_as_index (void);
 static int find_add_as_index (void);
+static bool broker_add_new_cas (void);
 #endif /* CUBRID_SHARD */
 
 static void check_cas_log (char *br_name, T_APPL_SERVER_INFO * as_info_p,
@@ -334,6 +335,55 @@ static T_MAX_HEAP_NODE *session_request_q;
 #endif
 
 static int hold_job = 0;
+
+#if !defined(CUBRID_SHARD)
+static bool
+broker_add_new_cas (void)
+{
+  int cur_appl_server_num;
+  int add_as_index;
+  int pid;
+
+  cur_appl_server_num = shm_br->br_info[br_index].appl_server_num;
+
+  /* ADD UTS */
+  if (cur_appl_server_num >= shm_br->br_info[br_index].appl_server_max_num)
+    {
+      return false;
+    }
+
+  add_as_index = find_add_as_index ();
+  if (add_as_index < 0)
+    {
+      return false;
+    }
+
+  /* proxy_id and shard_id argument is only use in CUBRID SHARD */
+  /* so, please set PROXY_INVALID_ID and SHARD_INVALID_ID in normal Broker */
+  pid = run_appl_server (&(shm_appl->as_info[add_as_index]), br_index,
+			 PROXY_INVALID_ID, SHARD_INVALID_ID, add_as_index);
+  if (pid <= 0)
+    {
+      return false;
+    }
+
+  shm_appl->as_info[add_as_index].pid = pid;
+  shm_appl->as_info[add_as_index].psize = getsize (pid);
+  shm_appl->as_info[add_as_index].psize_time = time (NULL);
+  shm_appl->as_info[add_as_index].uts_status = UTS_STATUS_IDLE;
+  shm_appl->as_info[add_as_index].service_flag = SERVICE_ON;
+  shm_appl->as_info[add_as_index].reset_flag = FALSE;
+
+  memset (&shm_appl->as_info[add_as_index].cas_clt_ip[0], 0x0,
+	  sizeof (shm_appl->as_info[add_as_index].cas_clt_ip));
+  shm_appl->as_info[add_as_index].cas_clt_port = 0;
+
+  (shm_br->br_info[br_index].appl_server_num)++;
+  (shm_appl->num_appl_server)++;
+
+  return true;
+}
+#endif /* !CUBRID_SHARD */
 
 #if defined(WINDOWS)
 int WINAPI
@@ -621,49 +671,6 @@ main (int argc, char *argv[])
 	  continue;
 	}
 #endif
-
-      /* ADD UTS */
-      if (cur_appl_server_num < shm_br->br_info[br_index].appl_server_max_num)
-	{
-	  int add_as_index;
-
-	  add_as_index = find_add_as_index ();
-	  if (add_as_index >= 0 && wait_job_cnt >= 1)
-	    {
-	      int pid;
-
-	      /* proxy_id and shard_id argument is only use in CUBRID SHARD */
-	      /* so, please set PROXY_INVALID_ID and SHARD_INVALID_ID in normal Broker */
-	      pid =
-		run_appl_server (&(shm_appl->as_info[add_as_index]), br_index,
-				 PROXY_INVALID_ID, SHARD_INVALID_ID,
-				 add_as_index);
-	      if (pid > 0)
-		{
-		  shm_appl->as_info[add_as_index].pid = pid;
-		  shm_appl->as_info[add_as_index].psize = getsize (pid);
-		  shm_appl->as_info[add_as_index].psize_time = time (NULL);
-		  shm_appl->as_info[add_as_index].uts_status =
-		    UTS_STATUS_IDLE;
-		  shm_appl->as_info[add_as_index].service_flag = SERVICE_ON;
-		  shm_appl->as_info[add_as_index].reset_flag = FALSE;
-
-		  memset (&shm_appl->as_info[add_as_index].cas_clt_ip[0], 0x0,
-			  sizeof (shm_appl->as_info[add_as_index].
-				  cas_clt_ip));
-		  shm_appl->as_info[add_as_index].cas_clt_port = 0;
-
-		  (shm_br->br_info[br_index].appl_server_num)++;
-		  (shm_appl->num_appl_server)++;
-		}
-	      /*
-	         else {
-	         (shm_br->br_info[br_index].appl_server_num)--;
-	         (shm_appl->num_appl_server)--;
-	         }
-	       */
-	    }
-	}			/* end of if - add uts */
 
       /* DROP UTS */
       if (cur_appl_server_num > shm_br->br_info[br_index].appl_server_min_num
@@ -1147,9 +1154,20 @@ dispatch_thr_f (void *arg)
 	  pthread_mutex_unlock (&service_flag_mutex);
 
 	  if (as_index < 0)
-	    SLEEP_MILISEC (0, 30);
+	    {
+	      if (broker_add_new_cas ())
+		{
+		  continue;
+		}
+	      else
+		{
+		  SLEEP_MILISEC (0, 30);
+		}
+	    }
 	  else
-	    break;
+	    {
+	      break;
+	    }
 	}
 
       hold_job = 0;
