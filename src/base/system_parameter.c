@@ -3520,21 +3520,28 @@ prm_load_by_section (INI_TABLE * ini, const char *section,
 	}
 
       prm = prm_find (key + sec_len, sec_p);
-      if (reload && (prm && !PRM_IS_RELOADABLE (prm->flag)))
+      if (prm == NULL)
+	{
+	  error = PRM_ERR_UNKNOWN_PARAM;
+	  prm_report_bad_entry (key + sec_len, ini->lineno[i], error, file);
+	  return error;
+	}
+
+      if (reload && !PRM_IS_RELOADABLE (prm->flag))
 	{
 	  continue;
 	}
-      if (ha == HA_READ && (prm && !PRM_IS_FOR_HA (prm->flag)))
+      if (ha == HA_READ && !PRM_IS_FOR_HA (prm->flag))
 	{
 	  continue;
 	}
 
-      if (prm && PRM_IS_OBSOLETED (prm->flag))
+      if (PRM_IS_OBSOLETED (prm->flag))
 	{
 	  continue;
 	}
 
-      if (prm && PRM_IS_DEPRECATED (prm->flag))
+      if (PRM_IS_DEPRECATED (prm->flag))
 	{
 	  prm_report_bad_entry (key + sec_len, ini->lineno[i],
 				PRM_ERR_DEPRICATED, file);
@@ -4857,7 +4864,7 @@ sysprm_check_range (const char *pname, void *value)
 /*
  * sysprm_generate_new_value () - converts string into a system parameter value
  *
- * return	   : SYSPRM_ERR 
+ * return	   : SYSPRM_ERR
  * prm (in)	   : target system parameter
  * value (in)	   : parameter value in char * format
  * check (in)	   : check if value can be changed. set to false if value
@@ -6639,7 +6646,7 @@ sysprm_find_err_in_integer_list (PARAM_ID prm_id, int error_code)
 /*
  * sysprm_update_flag_different () - updates the PRM_DIFFERENT bit in flag.
  *
- * return   : void 
+ * return   : void
  * prm (in) : system parameter to update
  *
  * NOTE: Should be called whenever a system parameter changes value.
@@ -6713,7 +6720,7 @@ sysprm_update_flag_allocated (SYSPRM_PARAM * prm)
  *						 cleared, if not, the bit is
  *						 set.
  *
- * return   : void 
+ * return   : void
  * prm (in) : session parameter
  */
 static void
@@ -7658,7 +7665,7 @@ sysprm_compare_values (void *first_value, void *second_value,
  * sysprm_set_sysprm_value_from_parameter () - set the value of sysprm_value
  *					       from a system parameter.
  *
- * return	  : void. 
+ * return	  : void.
  * prm_value (in) : sysprm_value.
  * prm (in)	  : system parameter.
  */
