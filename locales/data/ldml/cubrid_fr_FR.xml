@@ -97,6 +97,15 @@
 		</currencies>
 	</numbers>
 	<collations validSubLocales="fr_FR">
+		<collation type="utf8_fr_exp_ab">
+			<settings id="94" strength="tertiary" backwards="on" caseLevel="on" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" CUBRIDExpansions="use" />
+			<cubridrules>
+				<set>
+					<scp>20</scp>
+					<w>[0.0.0.0]</w>
+				</set>
+			</cubridrules>
+		</collation>
 		<collation type="utf8_gen">
 			<settings id="32" strength="quaternary" backwards="off" caseLevel="on" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />		
 			<cubridrules>

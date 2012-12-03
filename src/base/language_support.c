@@ -219,6 +219,13 @@ static void lang_get_uca_w_l13 (const COLL_DATA * coll_data,
 				UCA_L13_W ** uca_w_l13, int *num_ce,
 				unsigned char **str_next,
 				unsigned int *cp_out);
+static void lang_get_uca_back_weight_l13 (const COLL_DATA * coll_data,
+					  const bool use_contractions,
+					  const unsigned char *str_start,
+					  const unsigned char *str_last,
+					  UCA_L13_W ** uca_w_l13, int *num_ce,
+					  unsigned char **str_prev,
+					  unsigned int *cp_out);
 static void lang_get_uca_w_l4 (const COLL_DATA * coll_data,
 			       const bool use_contractions,
 			       const unsigned char *str, const int size,
@@ -235,6 +242,16 @@ static int lang_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data,
 					   const bool has_last_escape,
 					   int *offset_next_level,
 					   int *str1_match_size);
+static int lang_back_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data,
+						bool is_match,
+						const unsigned char *str1,
+						const int size1,
+						const unsigned char *str2,
+						const int size2,
+						const unsigned char *escape,
+						const bool has_last_escape,
+						int *offset_next_level,
+						int *str1_match_size);
 static int lang_strcmp_utf8_uca (const LANG_COLLATION * lang_coll,
 				 const unsigned char *str1, const int size1,
 				 const unsigned char *str2, const int size2);
@@ -3173,6 +3190,86 @@ lang_get_uca_w_l13 (const COLL_DATA * coll_data, const bool use_contractions,
     }
 }
 
+
+/*
+ * lang_get_uca_back_weight_l13() - returns pointer to array of CEs of
+ *				    previous collatable element in string and
+ *				    number of CEs in this array
+ *
+ *   return:
+ *   coll_data(in): collation data
+ *   use_contractions(in):
+ *   str(in): string to get weights for
+ *   size(in): size of string (bytes)
+ *   uca_w_l13(out): pointer to weight array
+ *   num_ce(out): number of Collation Elements
+ *   str_next(out): pointer to next collatable element in string
+ *   cp_out(out): bit field value : codepoint value, and if contraction is
+ *		  found than INTL_MASK_CONTR mask is set (MSB)
+ */
+static void
+lang_get_uca_back_weight_l13 (const COLL_DATA * coll_data,
+			      const bool use_contractions,
+			      const unsigned char *str_start,
+			      const unsigned char *str_last,
+			      UCA_L13_W ** uca_w_l13, int *num_ce,
+			      unsigned char **str_prev, unsigned int *cp_out)
+{
+  unsigned int cp;
+  const int alpha_cnt = coll_data->w_count;
+  const int exp_num = coll_data->uca_exp_num;
+
+  assert (str_prev != NULL);
+  assert (cp_out != NULL);
+  assert (str_start <= str_last);
+
+  cp = intl_back_utf8_to_cp (str_start, str_last, str_prev);
+  *cp_out = cp;
+
+  if (cp < (unsigned int) alpha_cnt)
+    {
+      COLL_CONTRACTION *contr = NULL;
+      unsigned int cp_prev;
+      unsigned char *str_prev_prev = NULL;
+
+      if (*str_prev >= str_start)
+	{
+	  cp_prev = intl_back_utf8_to_cp (str_start, *str_prev,
+					  &str_prev_prev);
+
+	  if (use_contractions && coll_data->count_contr > 0
+	      && cp_prev < (unsigned int) alpha_cnt
+	      && str_last - *str_prev >= coll_data->contr_min_size
+	      && cp >= coll_data->cp_first_contr_offset
+	      && cp < (coll_data->cp_first_contr_offset
+		       + coll_data->cp_first_contr_count)
+	      &&
+	      ((contr =
+		lang_get_contr_for_string (coll_data, str_prev_prev + 1,
+					   str_last - str_prev_prev,
+					   cp_prev)) != NULL))
+	    {
+	      assert (contr != NULL);
+	      *uca_w_l13 = contr->uca_w_l13;
+	      *num_ce = contr->uca_num;
+	      *str_prev = str_prev_prev;
+	      *cp_out = INTL_MASK_CONTR | cp_prev;
+	      return;
+	    }
+	}
+
+      *uca_w_l13 = &(coll_data->uca_w_l13[cp * exp_num]);
+      *num_ce = coll_data->uca_num[cp];
+      /* leave str_prev pointer to the one returned by intl_back_utf8_to_cp */
+    }
+  else
+    {
+      *uca_w_l13 = &uca_l13_max_weight;
+      *num_ce = 1;
+      /* leave str_prev pointer to the one returned by 'intl_back_utf8_to_cp' */
+    }
+}
+
 /*
  * lang_get_uca_w_l4() - returns pointer to array of CEs of first collatable
  *			 element in string (codepoint or contraction) and
@@ -3587,6 +3684,286 @@ exit:
 }
 
 /*
+ * lang_back_strmatch_utf8_uca_w_level() - string match or compare for UTF8
+ *	collation employing full UCA weights (expansions and contractions)
+ *
+ *   return: negative if str1 < str2, positive if str1 > str2, zero otherwise
+ *   coll_data(in) : collation data
+ *   level(in) : current UCA level to compare
+ *   is_match(in) : true if match, otherwise is compare
+ *   str1(in):
+ *   size1(in):
+ *   str2(in): this is the pattern string in case of match
+ *   size2(in):
+ *   escape(in): pointer to escape character (multi-byte allowed)
+ *		 (used in context of LIKE)
+ *   has_last_escape(in): true if it should check if last character is the
+ *			  escape character
+ *   offset_next_level(in/out) : offset in bytes from which to start the
+ *				 compare; used to avoid compare between
+ *				 binary identical part in consecutive compare
+ *				 levels
+ *   str1_match_size(out): size from str1 which is matched with str2
+ */
+static int
+lang_back_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data,
+				     bool is_match,
+				     const unsigned char *str1,
+				     const int size1,
+				     const unsigned char *str2,
+				     const int size2,
+				     const unsigned char *escape,
+				     const bool has_last_escape,
+				     int *offset_next_level,
+				     int *str1_match_size)
+{
+  const unsigned char *str1_start;
+  const unsigned char *str2_start;
+  const unsigned char *str1_last;
+  const unsigned char *str2_last;
+  unsigned char *str1_prev, *str2_prev;
+  UCA_L13_W *uca_w_l13_1 = NULL;
+  UCA_L13_W *uca_w_l13_2 = NULL;
+  int num_ce1 = 0, num_ce2 = 0;
+  int ce_index1 = -1, ce_index2 = -1;
+  unsigned int w1 = 0, w2 = 0;
+  unsigned int str1_cp_contr = 0, str2_cp_contr = 0;
+  int result = 0;
+
+  assert (offset_next_level != NULL && *offset_next_level > -1);
+
+  str1_last = str1 + size1 - 1;
+  str2_last = str2 + size2 - 1;
+  str1_start = str1;
+  str2_start = str2;
+
+  while (*str1_last-- == 0x20)
+    {
+      ;
+    }
+
+  while (*str2_last-- == 0x20)
+    {
+      ;
+    }
+
+  str1_prev = (unsigned char *) str1_last;
+  str2_prev = (unsigned char *) str2_last;
+
+  for (;;)
+    {
+    read_weights1:
+      if (ce_index1 < 0)
+	{
+	  str1 = str1_prev;
+	  if (str1 < str1_start)
+	    {
+	      goto read_weights2;
+	    }
+
+	  lang_get_uca_back_weight_l13 (coll_data, true, str1_start, str1,
+					&uca_w_l13_1, &num_ce1, &str1_prev,
+					&str1_cp_contr);
+
+	  assert (num_ce1 > 0);
+
+	  ce_index1 = num_ce1 - 1;
+	}
+
+    read_weights2:
+      if (ce_index2 < 0)
+	{
+	  int c_size;
+
+	  str2 = str2_prev;
+	  if (str2 < str2_start)
+	    {
+	      goto compare;
+	    }
+
+	  if (is_match && escape != NULL
+	      && !(has_last_escape && str2 == str2_last))
+	    {
+	      unsigned char *str2_prev_prev;
+
+	      (void) intl_back_utf8_to_cp (str2, str2_start, &str2_prev_prev);
+
+	      if (intl_cmp_char
+		  (str2_prev_prev + 1, escape, INTL_CODESET_UTF8,
+		   &c_size) == 0)
+		{
+		  str2 = str2_prev_prev;
+		}
+	    }
+
+	  lang_get_uca_back_weight_l13 (coll_data, true, str2_start, str2,
+					&uca_w_l13_2, &num_ce2, &str2_prev,
+					&str2_cp_contr);
+
+	  assert (num_ce2 > 0);
+
+	  ce_index2 = num_ce2 - 1;
+
+	  if (is_match
+	      && coll_data->uca_opt.sett_match_contr
+	      == MATCH_CONTR_BOUND_ALLOW
+	      && !INTL_CONTR_FOUND (str2_cp_contr)
+	      && INTL_CONTR_FOUND (str1_cp_contr) && ce_index1 == num_ce1 - 1
+	      && str2_cp_contr == (str1_cp_contr & (~INTL_MASK_CONTR)))
+	    {
+	      /* re-compute weight of str1 without considering contractions */
+	      lang_get_uca_back_weight_l13 (coll_data, false, str1_start,
+					    str1, &uca_w_l13_1, &num_ce1,
+					    &str1_prev, &str1_cp_contr);
+
+	      assert (num_ce1 > 0);
+	      ce_index1 = num_ce1 - 1;
+	    }
+	}
+
+    compare:
+      if (ce_index1 < 0 && str1 < str1_start)
+	{
+	  /* str1 was consumed */
+	  if (ce_index2 < 0)
+	    {
+	      if (str2 < str2_start)
+		{
+		  /* both strings consumed and equal */
+		  assert (result == 0);
+		  goto exit;
+		}
+	      else
+		{
+		  if (is_match)
+		    {
+		      result = -1;
+		      goto exit;
+		    }
+		  goto read_weights2;
+		}
+	    }
+
+	  assert (ce_index2 >= 0);
+	  if (is_match)
+	    {
+	      /* trailing spaces are not matched */
+	      result = -1;
+	      goto exit;
+	    }
+
+	  /* consume any remaining zero-weight values (skip them) from str2 */
+	  do
+	    {
+	      w2 = UCA_GET_L2_W (uca_w_l13_2[ce_index2]);
+	      if (w2 != 0)
+		{
+		  /* non-zero weight : strings are not equal */
+		  result = -1;
+		  goto exit;
+		}
+	      ce_index2--;
+	    }
+	  while (ce_index2 > 0);
+
+	  goto read_weights2;
+	}
+
+      if (ce_index2 < 0 && str2 < str2_start)
+	{
+	  if (is_match)
+	    {
+	      assert (result == 0);
+	      goto exit;
+	    }
+	  /* consume any remaining zero-weight values (skip them) from str1 */
+	  while (ce_index1 >= 0)
+	    {
+	      w1 = UCA_GET_L2_W (uca_w_l13_1[ce_index1]);
+	      if (w1 != 0)
+		{
+		  /* non-zero weight : strings are not equal */
+		  result = 1;
+		  goto exit;
+		}
+	      ce_index1--;
+	    }
+
+	  goto read_weights1;
+	}
+
+      assert (ce_index1 >= 0 && ce_index2 >= 0);
+
+      w1 = UCA_GET_L2_W (uca_w_l13_1[ce_index1]);
+      w2 = UCA_GET_L2_W (uca_w_l13_2[ce_index2]);
+
+      /* ignore zero weights (unless character is space) */
+      if (w1 == 0 && *str1 != 0x20)
+	{
+	  ce_index1--;
+
+	  if (w2 == 0 && *str2 != 0x20)
+	    {
+	      ce_index2--;
+	    }
+
+	  goto read_weights1;
+	}
+      else if (w2 == 0 && *str2 != 0x20)
+	{
+	  ce_index2--;
+	  goto read_weights1;
+	}
+      else if (w1 > w2)
+	{
+	  result = 1;
+	  goto exit;
+	}
+      else if (w1 < w2)
+	{
+	  result = -1;
+	  goto exit;
+	}
+
+      ce_index1--;
+      ce_index2--;
+    }
+
+  if (str1 > str1_start)
+    {
+      assert (str2 <= str2_start);
+      result = 1;
+    }
+  else if (str2 > str2_start)
+    {
+      assert (str1 <= str1_start);
+      result = -1;
+    }
+  else
+    {
+      if (ce_index1 > ce_index2)
+	{
+	  result = 1;
+	  goto exit;
+	}
+      else if (ce_index1 < ce_index2)
+	{
+	  result = -1;
+	  goto exit;
+	}
+    }
+
+exit:
+  if (is_match)
+    {
+      assert (str1_match_size != NULL);
+      *str1_match_size = str1_last - str1_start + 1;
+    }
+
+  return result;
+}
+
+/*
  * lang_strcmp_utf8_uca() - string compare for UTF8 for a collation using
  *			    full UCA weights (expansions and contractions)
  *   return:
@@ -3693,16 +4070,37 @@ lang_strmatch_utf8_uca_w_coll_data (const COLL_DATA * coll_data,
   assert (coll_data->uca_opt.sett_strength >= TAILOR_SECONDARY);
 
   /* compare level 2 */
-  res = lang_strmatch_utf8_uca_w_level (coll_data, 1, is_match, str1, size1,
-					str2, size2,
-					escape, has_last_escape,
-					&cmp_offset, str1_match_size);
+  if (coll_data->uca_opt.sett_backwards)
+    {
+      int str1_level_2_size;
+
+      if (is_match)
+	{
+	  str1_level_2_size = *str1_match_size;
+	}
+      else
+	{
+	  str1_level_2_size = size1;
+	}
+      assert (str1_level_2_size > 0);
+      res = lang_back_strmatch_utf8_uca_w_level (coll_data, is_match,
+						 str1, str1_level_2_size,
+						 str2, size2,
+						 escape, has_last_escape,
+						 &cmp_offset,
+						 str1_match_size);
+    }
+  else
+    {
+      res = lang_strmatch_utf8_uca_w_level (coll_data, 1, is_match,
+					    str1, size1, str2, size2,
+					    escape, has_last_escape,
+					    &cmp_offset, str1_match_size);
+    }
+
   if (res != 0)
     {
-      /* TODO : this is not full "frech order"
-       * full french order requires that all CEs (entire string) of level 2
-       * are reversed (this requires more complex algorithm) */
-      return (coll_data->uca_opt.sett_backwards == 1) ? -res : res;
+      return res;
     }
 
   if (coll_data->uca_opt.sett_strength == TAILOR_SECONDARY)

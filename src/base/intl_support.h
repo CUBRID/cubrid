@@ -300,6 +300,10 @@ extern "C"
   extern unsigned int intl_utf8_to_cp (const unsigned char *utf8,
 				       const int size,
 				       unsigned char **next_char);
+  extern unsigned int intl_back_utf8_to_cp (const unsigned char *utf8_start,
+					    const unsigned char *utf8_last,
+					    unsigned char
+					    **last_byte__prev_char);
   extern unsigned int intl_dbcs_to_cp (const unsigned char *seq,
 				       const int size,
 				       const unsigned char *byte_flag,

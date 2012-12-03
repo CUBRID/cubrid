@@ -3441,6 +3441,56 @@ intl_utf8_to_cp (const unsigned char *utf8, const int size,
 }
 
 /*
+ * intl_back_utf8_to_cp() - converts a UTF-8 encoded char to unicode codepoint
+ *			    but starting from the last byte of a character
+ *  return: unicode code point; 0xffffffff means error 
+ *
+ *  utf8_start(in) : start of buffer 
+ *  utf8_last(in) : pointer to last byte of buffer (and last byte of last
+ *		    character)
+ *  last_byte__prev_char(in/out) : pointer to last byte of previous character
+ *
+ */
+unsigned int
+intl_back_utf8_to_cp (const unsigned char *utf8_start,
+		      const unsigned char *utf8_last,
+		      unsigned char **last_byte__prev_char)
+{
+  int char_size = 1;
+  unsigned char *dummy;
+
+  assert (utf8_start != NULL);
+  assert (utf8_last != NULL);
+  assert (utf8_start <= utf8_last);
+  assert (last_byte__prev_char != NULL);
+
+  if (*utf8_last < 0x80)
+    {
+      *last_byte__prev_char = ((unsigned char *) utf8_last) - 1;
+      return *utf8_last;
+    }
+
+  /* multibyte character */
+  do
+    {
+      if (((*utf8_last--) & 0xc0) != 0x80)
+	{
+	  break;
+	}
+      if (utf8_last < utf8_start)
+	{
+	  /* broken char, invalid CP */
+	  *last_byte__prev_char = ((unsigned char *) utf8_start) - 1;
+	  return 0xffffffff;
+	}
+    }
+  while (++char_size < INTL_UTF8_MAX_CHAR_SIZE);
+
+  *last_byte__prev_char = (unsigned char *) utf8_last;
+  return intl_utf8_to_cp (utf8_last + 1, char_size, &dummy);
+}
+
+/*
  * intl_dbcs_to_cp() - converts a DBCS encoded char to DBCS codepoint
  *  return: DBCS code point; 0xffffffff means error 
  *  seq(in) : buffer for DBCS char
