@@ -206,7 +206,9 @@ ldr_validate_object_file (FILE * outfp, const char *argv0)
 	  return 1;
 	}
       else
-	return 0;
+	{
+	  return 0;
+	}
     }
   else if (Input_file[0] != 0 && Object_file[0] != 0 &&
 	   strcmp (Input_file, Object_file) != 0)
@@ -220,11 +222,12 @@ ldr_validate_object_file (FILE * outfp, const char *argv0)
   else
     {
       if (Object_file[0] == 0)
-	Object_file = Input_file;
+	{
+	  Object_file = Input_file;
+	}
       return 0;
     }
 }
-
 
 /*
  * ldr_check_file_name_and_line_no - parse schema file option
@@ -237,11 +240,16 @@ ldr_check_file_name_and_line_no (void)
 
   if (Schema_file[0] != 0)
     {
-      if ((p = (char *) strchr (Schema_file, ':')) != NULL)
+      p = (char *) strchr (Schema_file, ':');
+      if (p != NULL)
 	{
 	  for (q = p + 1; *q; q++)
-	    if (!char_isdigit (*q))
-	      break;
+	    {
+	      if (!char_isdigit (*q))
+		{
+		  break;
+		}
+	    }
 	  if (*q == 0)
 	    {
 	      schema_file_start_line = atoi (p + 1);
@@ -252,11 +260,16 @@ ldr_check_file_name_and_line_no (void)
 
   if (Index_file[0] != 0)
     {
-      if ((p = (char *) strchr (Index_file, ':')) != NULL)
+      p = (char *) strchr (Index_file, ':');
+      if (p != NULL)
 	{
 	  for (q = p + 1; *q; q++)
-	    if (!char_isdigit (*q))
-	      break;
+	    {
+	      if (!char_isdigit (*q))
+		{
+		  break;
+		}
+	    }
 	  if (*q == 0)
 	    {
 	      index_file_start_line = atoi (p + 1);
@@ -467,7 +480,8 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   if (User_name != NULL || !dba_mode)
     {
       (void) db_login (User_name, Password);
-      if ((error = db_restart (arg->command_name, true, Volume)))
+      error = db_restart (arg->command_name, true, Volume);
+      if (error != NO_ERROR)
 	{
 	  if (error == ER_AU_INVALID_PASSWORD)
 	    {
@@ -477,7 +491,9 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 						MSGCAT_UTIL_SET_LOADDB,
 						LOADDB_MSG_PASSWORD_PROMPT));
 	      if (!strlen (passwd))
-		passwd = NULL;
+		{
+		  passwd = NULL;
+		}
 	      (void) db_login (User_name, passwd);
 	      error = db_restart (arg->command_name, true, Volume);
 	    }
@@ -729,7 +745,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       db_commit_transaction ();
       fclose (schema_file);
       schema_file = NULL;
-
     }
 
 
@@ -749,9 +764,13 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
        */
 
       if (Ignore_logging)
-	Interrupt_type = LDR_STOP_AND_COMMIT_INTERRUPT;
+	{
+	  Interrupt_type = LDR_STOP_AND_COMMIT_INTERRUPT;
+	}
       else
-	Interrupt_type = LDR_STOP_AND_ABORT_INTERRUPT;
+	{
+	  Interrupt_type = LDR_STOP_AND_ABORT_INTERRUPT;
+	}
 
       if (Periodic_commit)
 	{
@@ -784,12 +803,16 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 #endif /* LDR_OLD_LOADDB */
 	}
       else
-	errors = 0;
+	{
+	  errors = 0;
+	}
 
       if (errors)
-	print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS,
-					  MSGCAT_UTIL_SET_LOADDB,
-					  LOADDB_MSG_ERROR_COUNT), errors);
+	{
+	  print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS,
+					    MSGCAT_UTIL_SET_LOADDB,
+					    LOADDB_MSG_ERROR_COUNT), errors);
+	}
       else if (!Syntax_check)
 	{
 	  /* now do it for real if there were no errors and we aren't
@@ -822,17 +845,21 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 		   * rollback or commit.
 		   */
 		  if (Total_objects_loaded != -1)
-		    print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS,
-						      MSGCAT_UTIL_SET_LOADDB,
-						      LOADDB_MSG_OBJECT_COUNT),
-				   Total_objects_loaded);
+		    {
+		      print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS,
+							MSGCAT_UTIL_SET_LOADDB,
+							LOADDB_MSG_OBJECT_COUNT),
+				     Total_objects_loaded);
+		    }
 #if !defined(LDR_OLD_LOADDB)
 		  ldr_stats (&errors, &objects, &defaults, &lastcommit);
 		  if (lastcommit > 0)
-		    print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS,
-						      MSGCAT_UTIL_SET_LOADDB,
-						      LOADDB_MSG_LAST_COMMITTED_LINE),
-				   lastcommit);
+		    {
+		      print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS,
+							MSGCAT_UTIL_SET_LOADDB,
+							LOADDB_MSG_LAST_COMMITTED_LINE),
+				     lastcommit);
+		    }
 #endif /* !LDR_OLD_LOADDB */
 		  interrupted = true;
 		  status = 3;
@@ -860,11 +887,13 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 				     errors);
 #else /* !LDR_OLD_LOADDB */
 		      if (lastcommit > 0)
-			print_log_msg (1,
-				       msgcat_message (MSGCAT_CATALOG_UTILS,
-						       MSGCAT_UTIL_SET_LOADDB,
-						       LOADDB_MSG_LAST_COMMITTED_LINE),
-				       lastcommit);
+			{
+			  print_log_msg (1,
+					 msgcat_message (MSGCAT_CATALOG_UTILS,
+							 MSGCAT_UTIL_SET_LOADDB,
+							 LOADDB_MSG_LAST_COMMITTED_LINE),
+					 lastcommit);
+			}
 #endif /* LDR_OLD_LOADDB */
 		      /*
 		       * don't allow the transaction to be committed at
@@ -878,17 +907,21 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 		  else
 		    {
 		      if (objects)
-			print_log_msg (1,
-				       msgcat_message (MSGCAT_CATALOG_UTILS,
-						       MSGCAT_UTIL_SET_LOADDB,
-						       LOADDB_MSG_OBJECT_COUNT),
-				       objects);
+			{
+			  print_log_msg (1,
+					 msgcat_message (MSGCAT_CATALOG_UTILS,
+							 MSGCAT_UTIL_SET_LOADDB,
+							 LOADDB_MSG_OBJECT_COUNT),
+					 objects);
+			}
 		      if (defaults)
-			print_log_msg (1,
-				       msgcat_message (MSGCAT_CATALOG_UTILS,
-						       MSGCAT_UTIL_SET_LOADDB,
-						       LOADDB_MSG_DEFAULT_COUNT),
-				       defaults);
+			{
+			  print_log_msg (1,
+					 msgcat_message (MSGCAT_CATALOG_UTILS,
+							 MSGCAT_UTIL_SET_LOADDB,
+							 LOADDB_MSG_DEFAULT_COUNT),
+					 defaults);
+			}
 		      print_log_msg ((int) Verbose,
 				     msgcat_message (MSGCAT_CATALOG_UTILS,
 						     MSGCAT_UTIL_SET_LOADDB,
@@ -900,11 +933,13 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 			  if (!Disable_statistics)
 			    {
 			      if (Verbose)
-				print_log_msg (1,
-					       msgcat_message
-					       (MSGCAT_CATALOG_UTILS,
-						MSGCAT_UTIL_SET_LOADDB,
-						LOADDB_MSG_UPDATING_STATISTICS));
+				{
+				  print_log_msg (1,
+						 msgcat_message
+						 (MSGCAT_CATALOG_UTILS,
+						  MSGCAT_UTIL_SET_LOADDB,
+						  LOADDB_MSG_UPDATING_STATISTICS));
+				}
 			      if (!ldr_update_statistics ())
 				{
 				  /*
@@ -925,6 +960,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 		}
 	    }
 	}
+
       ldr_final ();
       if (object_file != NULL)
 	{
@@ -951,6 +987,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 			 index_file_start_line);
 	  goto error_return;
 	}
+
       /* update catalog statistics */
       AU_DISABLE (au_save);
       sm_update_catalog_statistics (CT_INDEX_NAME);
@@ -960,6 +997,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       print_log_msg (1, "Index loading from %s finished.\n", Index_file);
       db_commit_transaction ();
     }
+
   print_log_msg ((int) Verbose, msgcat_message (MSGCAT_CATALOG_UTILS,
 						MSGCAT_UTIL_SET_LOADDB,
 						LOADDB_MSG_CLOSING));
@@ -969,13 +1007,20 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   free_ignoreclasslist ();
 #endif
   return (status);
+
 error_return:
   if (schema_file != NULL)
-    fclose (schema_file);
+    {
+      fclose (schema_file);
+    }
   if (object_file != NULL)
-    fclose (object_file);
+    {
+      fclose (object_file);
+    }
   if (index_file != NULL)
-    fclose (index_file);
+    {
+      fclose (index_file);
+    }
 
 #if !defined (LDR_OLD_LOADDB)
   free_ignoreclasslist ();

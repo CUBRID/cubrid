@@ -645,7 +645,9 @@ void
 ldr_increment_err_total (LDR_CONTEXT * context)
 {
   if (context)
-    context->err_total += 1;
+    {
+      context->err_total += 1;
+    }
 }
 
 /*
@@ -658,7 +660,9 @@ static void
 ldr_increment_err_count (LDR_CONTEXT * context, int i)
 {
   if (context)
-    context->err_count += i;
+    {
+      context->err_count += i;
+    }
 }
 
 /*
@@ -670,7 +674,9 @@ static void
 ldr_clear_err_count (LDR_CONTEXT * context)
 {
   if (context)
-    context->err_count = 0;
+    {
+      context->err_count = 0;
+    }
 }
 
 /*
@@ -682,7 +688,9 @@ static void
 ldr_clear_err_total (LDR_CONTEXT * context)
 {
   if (context)
-    context->err_total = 0;
+    {
+      context->err_total = 0;
+    }
 }
 
 /*
@@ -698,10 +706,14 @@ ldr_class_name (LDR_CONTEXT * context)
   static const char *name = NULL;
 
   if (context)
-    if (context->cls)
-      name = db_get_class_name (context->cls);
+    {
+      if (context->cls)
+	{
+	  name = db_get_class_name (context->cls);
+	}
+    }
 
-  return (name);
+  return name;
 }
 
 /*
@@ -722,17 +734,24 @@ ldr_attr_name (LDR_CONTEXT * context)
       if (context->num_attrs >= context->next_attr)
 	{
 	  if (context->num_attrs)
-	    name = context->attrs[context->next_attr].att->header.name;
+	    {
+	      name = context->attrs[context->next_attr].att->header.name;
+	    }
 	  else
-	    /* haven't processed an attribute yet */
-	    name = "";
+	    {
+	      /* haven't processed an attribute yet */
+	      name = "";
+	    }
 	}
       else
-	/* should return some kind of string representation for
-	   the current method argument */
-	name = "";
+	{
+	  /* should return some kind of string representation for
+	     the current method argument */
+	  name = "";
+	}
     }
-  return (name);
+
+  return name;
 }
 
 /*
@@ -770,8 +789,10 @@ select_set_domain (LDR_CONTEXT * context,
   for (d = domain; d != NULL && best == NULL; d = d->next)
     {
       if (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (d)))
-	/* pick the first one */
-	best = d;
+	{
+	  /* pick the first one */
+	  best = d;
+	}
     }
 
   if (best == NULL)
@@ -784,8 +805,11 @@ select_set_domain (LDR_CONTEXT * context,
   else
     {
       if (set_domain_ptr != NULL)
-	*set_domain_ptr = best;
+	{
+	  *set_domain_ptr = best;
+	}
     }
+
   return err;
 }
 
@@ -830,7 +854,9 @@ check_object_domain (LDR_CONTEXT * context,
 	      if (d->type == tp_Type_object)
 		{
 		  if (class_ == NULL && d->class_mop != NULL)
-		    class_ = d->class_mop;
+		    {
+		      class_ = d->class_mop;
+		    }
 		  else
 		    {
 		      class_ = NULL;
@@ -863,7 +889,9 @@ check_object_domain (LDR_CONTEXT * context,
     }
 
   if (actual_class != NULL)
-    *actual_class = class_;
+    {
+      *actual_class = class_;
+    }
 
   return err;
 }
@@ -889,8 +917,12 @@ check_class_domain (LDR_CONTEXT * context)
   if (domain != NULL)
     {
       for (d = domain; d != NULL; d = d->next)
-	if (d->type == tp_Type_object && d->class_mop == NULL)
-	  goto error_exit;	/* we found it */
+	{
+	  if (d->type == tp_Type_object && d->class_mop == NULL)
+	    {
+	      goto error_exit;	/* we found it */
+	    }
+	}
 
       /*
        * could make this more specific but not worth the trouble
@@ -947,24 +979,29 @@ idmap_grow (int size)
     {
       newsize = size + 10;	/* some extra for growth */
       id_map_old = Id_map;
-      if ((Id_map =
-	   (DB_OBJECT **) realloc (Id_map,
-				   sizeof (DB_OBJECT *) * newsize)) == NULL)
+      Id_map = (DB_OBJECT **) realloc (Id_map,
+				       (sizeof (DB_OBJECT *) * newsize));
+      if (Id_map == NULL)
 	{
 	  /* Prevent leakage if we get a memory problem. */
 	  if (id_map_old)
-	    free_and_init (id_map_old);
+	    {
+	      free_and_init (id_map_old);
+	    }
 	  err = ER_LDR_MEMORY_ERROR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
 	}
       else
 	{
 	  for (i = Id_map_size; i < newsize; i++)
-	    Id_map[i] = NULL;
+	    {
+	      Id_map[i] = NULL;
+	    }
 
 	  Id_map_size = newsize;
 	}
     }
+
   return err;
 }
 
@@ -981,8 +1018,11 @@ ldr_assign_class_id (DB_OBJECT * class_, int id)
 {
   int err;
 
-  if (!(err = idmap_grow (id + 1)))
-    Id_map[id] = class_;
+  err = idmap_grow (id + 1);
+  if (err == NO_ERROR)
+    {
+      Id_map[id] = class_;
+    }
 
   return err;
 }
@@ -1040,7 +1080,9 @@ ldr_find_class (const char *classname)
 				   ldr_Hint_subclasses, 1);
 
   if (find == LC_CLASSNAME_EXIST)
-    class_ = db_find_class (classname);
+    {
+      class_ = db_find_class (classname);
+    }
 
   ldr_Hint_classnames[0] = NULL;
 
@@ -1059,7 +1101,9 @@ ldr_get_class_from_id (int id)
   DB_OBJECT *class_ = NULL;
 
   if (id <= Id_map_size)
-    class_ = Id_map[id];
+    {
+      class_ = Id_map[id];
+    }
 
   return (class_);
 }
@@ -1078,8 +1122,11 @@ ldr_act_start_id (LDR_CONTEXT * context, char *name)
 
   if (!context->validation_only)
     {
-      if ((class_ = ldr_find_class (name)) != NULL)
-	context->id_class = class_;
+      class_ = ldr_find_class (name);
+      if (class_ != NULL)
+	{
+	  context->id_class = class_;
+	}
       else
 	{
 	  is_ignore_class = ldr_is_ignore_class (name, strlen (name));
@@ -1173,22 +1220,32 @@ ldr_clear_and_free_context (LDR_CONTEXT * context)
       for (i = 0; i < (context->num_attrs + context->arg_count); i += 1)
 	{
 	  if (context->attrs[i].parser_str)
-	    free_and_init (context->attrs[i].parser_str);
+	    {
+	      free_and_init (context->attrs[i].parser_str);
+	    }
 	  if (context->attrs[i].attdesc)
-	    db_free_attribute_descriptor (context->attrs[i].attdesc);
+	    {
+	      db_free_attribute_descriptor (context->attrs[i].attdesc);
+	    }
 	  context->attrs[i].attdesc = NULL;
 	}
       free_and_init (context->attrs);
     }
 
   if (context->args)
-    free_and_init (context->args);
+    {
+      free_and_init (context->args);
+    }
 
   if (context->class_name)
-    free_and_init (context->class_name);
+    {
+      free_and_init (context->class_name);
+    }
 
   if (context->psi)
-    do_clear_partition_select (context->psi);
+    {
+      do_clear_partition_select (context->psi);
+    }
 
   ldr_clear_context (context);
 
@@ -1329,25 +1386,33 @@ clist_init (void)
   if (class_ != NULL)
     {
       if (ml_ext_add (&internal_classes, class_, NULL))
-	return er_errid ();
+	{
+	  return er_errid ();
+	}
     }
   class_ = db_find_class (AU_USER_CLASS_NAME);
   if (class_ != NULL)
     {
       if (ml_ext_add (&internal_classes, class_, NULL))
-	return er_errid ();
+	{
+	  return er_errid ();
+	}
     }
   class_ = db_find_class (AU_PASSWORD_CLASS_NAME);
   if (class_ != NULL)
     {
       if (ml_ext_add (&internal_classes, class_, NULL))
-	return er_errid ();
+	{
+	  return er_errid ();
+	}
     }
   class_ = db_find_class (AU_AUTH_CLASS_NAME);
   if (class_ != NULL)
     {
       if (ml_ext_add (&internal_classes, class_, NULL))
-	return er_errid ();
+	{
+	  return er_errid ();
+	}
     }
   return NO_ERROR;
 }
