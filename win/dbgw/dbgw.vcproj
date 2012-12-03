@@ -68,7 +68,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib libexpat.lib cascci.lib "
-				OutputFile="$(OutDir)\dbgw3.dll"
+				OutputFile="$(OutDir)\DBGWConnector3D.dll"
 				AdditionalLibraryDirectories="$(SolutionDir)$(PlatformName)\$(ConfigurationName);..\..\win\external\lib"
 				IgnoreDefaultLibraryNames="libcmt.lib"
 				ModuleDefinitionFile=""
@@ -147,7 +147,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib libexpat.lib cascci.lib"
-				OutputFile="$(OutDir)\dbgw3.dll"
+				OutputFile="$(OutDir)\DBGWConnector3.dll"
 				AdditionalLibraryDirectories="$(SolutionDir)$(PlatformName)\$(ConfigurationName);..\..\win\external\lib"
 				IgnoreDefaultLibraryNames="libcmt.lib"
 				ModuleDefinitionFile=""
@@ -227,7 +227,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib libexpat.lib cascci.lib"
-				OutputFile="$(OutDir)\dbgw3.dll"
+				OutputFile="$(OutDir)\DBGWConnector3D.dll"
 				AdditionalLibraryDirectories="$(SolutionDir)$(PlatformName)\$(ConfigurationName);..\..\win\external\lib64"
 				IgnoreDefaultLibraryNames="libcmt.lib"
 				ModuleDefinitionFile=""
@@ -304,7 +304,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib libexpat.lib cascci.lib"
-				OutputFile="$(OutDir)\dbgw3.dll"
+				OutputFile="$(OutDir)\DBGWConnector3.dll"
 				AdditionalLibraryDirectories="$(SolutionDir)$(PlatformName)\$(ConfigurationName);..\..\win\external\lib64"
 				IgnoreDefaultLibraryNames="libcmt.lib"
 				ModuleDefinitionFile=""

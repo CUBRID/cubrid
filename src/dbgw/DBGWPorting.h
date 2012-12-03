@@ -28,8 +28,15 @@
 #ifdef DBGW_ADAPTER_API_EXPORT
 #define DECLSPECIFIER __declspec(dllexport)
 #else
+
 #define DECLSPECIFIER __declspec(dllimport)
-#pragma comment(lib, "dbgw3.lib")
+
+#ifdef _DEBUG
+#pragma comment(lib, "DBGWConnector3D.lib")
+#else
+#pragma comment(lib, "DBGWConnector3.lib")
+#endif
+
 #endif
 
 #define snprintf                        _snprintf

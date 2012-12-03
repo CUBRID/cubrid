@@ -78,57 +78,57 @@ namespace dbgw
 
 #define DBGW_LOG_ERROR(LOG) \
   do { \
-    if (_DBGWLogger::isWritable(CCI_LOG_LEVEL_ERROR)) { \
-      _DBGWLogger::writeLog(__FILENAME__, __LINE__, CCI_LOG_LEVEL_ERROR, LOG); \
+    if (dbgw::_DBGWLogger::isWritable(CCI_LOG_LEVEL_ERROR)) { \
+      dbgw::_DBGWLogger::writeLog(__FILENAME__, __LINE__, CCI_LOG_LEVEL_ERROR, LOG); \
     } \
   } while (false)
 
 #define DBGW_LOGF_ERROR(...) \
   do { \
-    if (_DBGWLogger::isWritable(CCI_LOG_LEVEL_ERROR)) { \
-      _DBGWLogger::writeLogF(__FILENAME__, __LINE__, CCI_LOG_LEVEL_ERROR, __VA_ARGS__); \
+    if (dbgw::_DBGWLogger::isWritable(CCI_LOG_LEVEL_ERROR)) { \
+      dbgw::_DBGWLogger::writeLogF(__FILENAME__, __LINE__, CCI_LOG_LEVEL_ERROR, __VA_ARGS__); \
     } \
   } while (false)
 
 #define DBGW_LOG_WARN(LOG) \
   do { \
-    if (_DBGWLogger::isWritable(CCI_LOG_LEVEL_WARN)) { \
-      _DBGWLogger::writeLog(__FILENAME__, __LINE__, CCI_LOG_LEVEL_WARN, LOG); \
+    if (dbgw::_DBGWLogger::isWritable(CCI_LOG_LEVEL_WARN)) { \
+      dbgw::_DBGWLogger::writeLog(__FILENAME__, __LINE__, CCI_LOG_LEVEL_WARN, LOG); \
     } \
   } while (false)
 
 #define DBGW_LOGF_WARN(...) \
   do { \
-    if (_DBGWLogger::isWritable(CCI_LOG_LEVEL_WARN)) { \
-      _DBGWLogger::writeLogF(__FILENAME__, __LINE__, CCI_LOG_LEVEL_WARN, __VA_ARGS__); \
+    if (dbgw::_DBGWLogger::isWritable(CCI_LOG_LEVEL_WARN)) { \
+      dbgw::_DBGWLogger::writeLogF(__FILENAME__, __LINE__, CCI_LOG_LEVEL_WARN, __VA_ARGS__); \
     } \
   } while (false)
 
 #define DBGW_LOG_INFO(LOG) \
   do { \
-    if (_DBGWLogger::isWritable(CCI_LOG_LEVEL_INFO)) { \
-      _DBGWLogger::writeLog(__FILENAME__, __LINE__, CCI_LOG_LEVEL_INFO, LOG); \
+    if (dbgw::_DBGWLogger::isWritable(CCI_LOG_LEVEL_INFO)) { \
+      dbgw::_DBGWLogger::writeLog(__FILENAME__, __LINE__, CCI_LOG_LEVEL_INFO, LOG); \
     } \
   } while (false)
 
 #define DBGW_LOGF_INFO(...) \
   do { \
-    if (_DBGWLogger::isWritable(CCI_LOG_LEVEL_INFO)) { \
-      _DBGWLogger::writeLogF(__FILENAME__, __LINE__, CCI_LOG_LEVEL_INFO, __VA_ARGS__); \
+    if (dbgw::_DBGWLogger::isWritable(CCI_LOG_LEVEL_INFO)) { \
+      dbgw::_DBGWLogger::writeLogF(__FILENAME__, __LINE__, CCI_LOG_LEVEL_INFO, __VA_ARGS__); \
     } \
   } while (false)
 
 #define DBGW_LOG_DEBUG(LOG) \
   do { \
-    if (_DBGWLogger::isWritable(CCI_LOG_LEVEL_DEBUG)) { \
-      _DBGWLogger::writeLog(__FILENAME__, __LINE__, CCI_LOG_LEVEL_DEBUG, LOG); \
+    if (dbgw::_DBGWLogger::isWritable(CCI_LOG_LEVEL_DEBUG)) { \
+      dbgw::_DBGWLogger::writeLog(__FILENAME__, __LINE__, CCI_LOG_LEVEL_DEBUG, LOG); \
     } \
   } while (false)
 
 #define DBGW_LOGF_DEBUG(...) \
   do { \
-    if (_DBGWLogger::isWritable(CCI_LOG_LEVEL_DEBUG)) { \
-      _DBGWLogger::writeLogF(__FILENAME__, __LINE__, CCI_LOG_LEVEL_DEBUG, __VA_ARGS__); \
+    if (dbgw::_DBGWLogger::isWritable(CCI_LOG_LEVEL_DEBUG)) { \
+      dbgw::_DBGWLogger::writeLogF(__FILENAME__, __LINE__, CCI_LOG_LEVEL_DEBUG, __VA_ARGS__); \
     } \
   } while (false)
 
