@@ -846,11 +846,11 @@ namespace dbgw
     /**
      * if thread is stopped, this method return false
      */
-    bool _Thread::sleep(long lMilSec) const
+    bool _Thread::sleep(unsigned long ulMilSec) const
     {
       struct timeval beginTime;
       struct timeval endTime;
-      long lWaitTimeMilSec = 0;
+      unsigned long ulWaitTimeMilSec = 0;
 
       gettimeofday(&beginTime, NULL);
 
@@ -858,10 +858,10 @@ namespace dbgw
         {
           gettimeofday(&endTime, NULL);
 
-          lWaitTimeMilSec += ((endTime.tv_sec - beginTime.tv_sec) * 1000);
-          lWaitTimeMilSec += ((endTime.tv_usec - beginTime.tv_usec) / 1000);
+          ulWaitTimeMilSec = ((endTime.tv_sec - beginTime.tv_sec) * 1000);
+          ulWaitTimeMilSec += ((endTime.tv_usec - beginTime.tv_usec) / 1000);
 
-          if (lMilSec >= lWaitTimeMilSec)
+          if (ulMilSec <= ulWaitTimeMilSec)
             {
               return true;
             }

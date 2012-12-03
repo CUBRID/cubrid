@@ -211,7 +211,7 @@ namespace dbgw
 
     public:
       bool isRunning() const;
-      bool sleep(long lMilSec) const;
+      bool sleep(unsigned long ulMilSec) const;
 
     protected:
       static _THREAD_RETURN_TYPE run(void *pData);
