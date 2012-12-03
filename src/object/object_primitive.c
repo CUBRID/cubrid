@@ -2129,7 +2129,9 @@ pr_clear_value (DB_VALUE * value)
 	      db_private_free_and_init (NULL, DB_GET_ENUM_STRING (value));
 	    }
 	}
-      db_make_enumeration (value, 0, NULL, 0);
+      db_make_enumeration (value, 0, NULL, 0,
+			   DB_GET_ENUM_CODESET (value),
+			   DB_GET_ENUM_COLLATION (value));
       break;
 
     default:
@@ -9441,7 +9443,9 @@ pr_complete_enum_value (DB_VALUE * value, TP_DOMAIN * domain)
 	  && !memcmp (str_val, DB_GET_ENUM_ELEM_STRING (db_elem),
 		      str_val_size))
 	{
-	  DB_MAKE_ENUMERATION (value, short_val, str_val, str_val_size);
+	  DB_MAKE_ENUMERATION (value, short_val, str_val, str_val_size,
+			       DB_GET_ENUM_ELEM_CODESET (db_elem),
+			       DB_GET_ENUM_COLLATION (value));
 	  return NO_ERROR;
 	}
       pr_clear_value (value);
@@ -9454,7 +9458,9 @@ pr_complete_enum_value (DB_VALUE * value, TP_DOMAIN * domain)
 	}
       memcpy (str_val, DB_GET_ENUM_ELEM_STRING (db_elem), str_val_size);
       str_val[str_val_size] = 0;
-      DB_MAKE_ENUMERATION (value, short_val, str_val, str_val_size);
+      DB_MAKE_ENUMERATION (value, short_val, str_val, str_val_size,
+			   DB_GET_ENUM_ELEM_CODESET (db_elem),
+			   DB_GET_ENUM_COLLATION (value));
       value->need_clear = true;
 
       return NO_ERROR;
@@ -9467,7 +9473,9 @@ pr_complete_enum_value (DB_VALUE * value, TP_DOMAIN * domain)
 	  !memcmp (DB_GET_ENUM_ELEM_STRING (db_elem), str_val, str_val_size))
 	{
 	  DB_MAKE_ENUMERATION (value, DB_GET_ENUM_ELEM_SHORT (db_elem),
-			       str_val, str_val_size);
+			       str_val, str_val_size,
+			       DB_GET_ENUM_ELEM_CODESET (db_elem),
+			       DB_GET_ENUM_COLLATION (value));
 	  break;
 	}
     }
@@ -14386,7 +14394,8 @@ static void
 mr_initval_enumeration (DB_VALUE * value, int precision, int scale)
 {
   db_value_domain_init (value, DB_TYPE_ENUMERATION, precision, scale);
-  db_make_enumeration (value, 0, NULL, 0);
+  db_make_enumeration (value, 0, NULL, 0,
+		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
 }
 
 static int
@@ -14423,6 +14432,7 @@ mr_setval_enumeration (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
   char *str = NULL;
   bool need_clear = false;
+
   if (src == NULL || DB_IS_NULL (src))
     {
       return db_value_domain_init (dest, DB_TYPE_ENUMERATION,
@@ -14449,8 +14459,11 @@ mr_setval_enumeration (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	}
     }
 
+  /* get proper codeset from src */
   db_make_enumeration (dest, DB_GET_ENUM_SHORT (src), str,
-		       DB_GET_ENUM_STRING_SIZE (src));
+		       DB_GET_ENUM_STRING_SIZE (src),
+		       DB_GET_ENUM_CODESET (src),
+		       DB_GET_ENUM_COLLATION (src));
   dest->need_clear = need_clear;
 
   return NO_ERROR;
@@ -14498,13 +14511,15 @@ mr_setval_enumeration_internal (DB_VALUE * value,
 				int copy_buf_len)
 {
   bool need_clear = false;
-  int str_length;
+  int str_size;
   char *str;
   DB_ENUM_ELEMENT *db_elem = NULL;
 
   if (domain == NULL || DOM_GET_ENUM_ELEMS_COUNT (domain) == 0 || index == 0)
     {
-      db_make_enumeration (value, index, NULL, 0);
+      db_make_enumeration (value, index, NULL, 0,
+			   TP_DOMAIN_CODESET (domain),
+			   TP_DOMAIN_COLLATION (domain));
       value->need_clear = false;
       return NO_ERROR;
     }
@@ -14517,14 +14532,14 @@ mr_setval_enumeration_internal (DB_VALUE * value,
     }
 
   db_elem = &DOM_GET_ENUM_ELEM (domain, index);
-  str_length = DB_GET_ENUM_ELEM_STRING_SIZE (db_elem);
+  str_size = DB_GET_ENUM_ELEM_STRING_SIZE (db_elem);
   if (!copy)
     {
       str = DB_GET_ENUM_ELEM_STRING (db_elem);
     }
   else
     {
-      if (copy_buf && copy_buf_len >= str_length + 1)
+      if (copy_buf && copy_buf_len >= str_size + 1)
 	{
 	  /* read buf image into the copy_buf */
 	  str = copy_buf;
@@ -14532,18 +14547,20 @@ mr_setval_enumeration_internal (DB_VALUE * value,
 	}
       else
 	{
-	  str = db_private_alloc (NULL, str_length + 1);
+	  str = db_private_alloc (NULL, str_size + 1);
 	  if (str == NULL)
 	    {
 	      return ER_FAILED;
 	    }
 	  need_clear = true;
 	}
-      memcpy (str, DB_GET_ENUM_ELEM_STRING (db_elem), str_length);
-      str[str_length] = 0;
+      memcpy (str, DB_GET_ENUM_ELEM_STRING (db_elem), str_size);
+      str[str_size] = 0;
     }
 
-  db_make_enumeration (value, index, str, str_length);
+  db_make_enumeration (value, index, str, str_size,
+		       TP_DOMAIN_CODESET (domain),
+		       TP_DOMAIN_COLLATION (domain));
   value->need_clear = need_clear;
 
   return NO_ERROR;

@@ -1252,6 +1252,11 @@ or_get_domain_internal (char *ptr)
       new_->precision = OR_GET_INT (fixed + ORC_DOMAIN_PRECISION_OFFSET);
       new_->scale = OR_GET_INT (fixed + ORC_DOMAIN_SCALE_OFFSET);
       new_->codeset = OR_GET_INT (fixed + ORC_DOMAIN_CODESET_OFFSET);
+      if (typeid_ == DB_TYPE_ENUMERATION && new_->codeset == 0)
+	{
+	  assert (new_->collation_id == LANG_COLL_ISO_BINARY);
+	  new_->codeset = INTL_CODESET_ISO88591;
+	}
       new_->collation_id = OR_GET_INT (fixed +
 				       ORC_DOMAIN_COLLATION_ID_OFFSET);
 
@@ -1282,6 +1287,8 @@ or_get_domain_internal (char *ptr)
 					 ORC_DOMAIN_ENUMERATION_INDEX);
 
 	  or_init (&buf, dstart + offset, 0);
+
+	  new_->enumeration.collation_id = new_->collation_id;
 
 	  error = or_get_enumeration (&buf, &DOM_GET_ENUMERATION (new_));
 	  if (error != NO_ERROR)

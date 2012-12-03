@@ -287,8 +287,8 @@
         db_make_varnchar(value, max_nchar_length, str, nchar_str_byte_size, \
 			 codeset, collation)
 
-#define DB_MAKE_ENUMERATION(value, index, str, size) \
-	db_make_enumeration(value, index, str, size)
+#define DB_MAKE_ENUMERATION(value, index, str, size, codeset, collation) \
+	db_make_enumeration(value, index, str, size, codeset, collation)
 
 #define DB_MAKE_RESULTSET(value, handle) db_make_resultset(value, handle)
 
@@ -382,6 +382,10 @@
 #define DB_GET_STRING_CODESET(value) db_get_string_codeset(value)
 
 #define DB_GET_STRING_COLLATION(value) db_get_string_collation(value)
+
+#define DB_GET_ENUM_CODESET(value) db_get_enum_codeset(value)
+
+#define DB_GET_ENUM_COLLATION(value) db_get_enum_collation(value)
 
 #define DB_INT16_MIN   (-(DB_INT16_MAX)-1)
 #define DB_INT16_MAX   0x7FFF
@@ -712,8 +716,9 @@ struct db_enum_element
 typedef struct db_enumeration DB_ENUMERATION;
 struct db_enumeration
 {
-  unsigned short count;		/* count of enumeration elements */
   DB_ENUM_ELEMENT *elements;	/* array of enumeration elements */
+  int collation_id;		/* collation */
+  unsigned short count;		/* count of enumeration elements */
 };
 
 /* A union of all of the possible basic type values.  This is used in the
@@ -1000,7 +1005,9 @@ extern int db_make_varnchar (DB_VALUE * value,
 extern int db_value_put_varnchar (DB_VALUE * value, DB_C_NCHAR str, int size);
 
 extern int db_make_enumeration (DB_VALUE * value, unsigned short index,
-				DB_C_CHAR str, int size);
+				DB_C_CHAR str, int size,
+				unsigned char codeset,
+				const int collation_id);
 
 extern DB_CURRENCY db_get_currency_default (void);
 
@@ -1044,8 +1051,13 @@ extern DB_RESULTSET db_get_resultset (const DB_VALUE * value);
 extern int db_string_put_cs_and_collation (DB_VALUE * value,
 					   const int codeset,
 					   const int collation_id);
+extern int db_enum_put_cs_and_collation (DB_VALUE * value, const int codeset,
+					 const int collation_id);
 extern int db_get_string_codeset (const DB_VALUE * value);
 extern int db_get_string_collation (const DB_VALUE * value);
 extern int valcnv_convert_value_to_string (DB_VALUE * value);
+
+extern int db_get_enum_codeset (const DB_VALUE * value);
+extern int db_get_enum_collation (const DB_VALUE * value);
 
 #endif /* _DBTYPE_H_ */

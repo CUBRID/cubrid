@@ -412,7 +412,7 @@ pt_sm_attribute_default_value_to_node (PARSER_CONTEXT * parser,
 				       const SM_ATTRIBUTE * sm_attr)
 {
   PT_NODE *result;
-  SM_DEFAULT_VALUE *default_value;
+  const SM_DEFAULT_VALUE *default_value;
   PT_NODE *data_type;
 
   if (sm_attr == NULL || &sm_attr->default_value == NULL)
@@ -1581,6 +1581,7 @@ pt_get_enumeration_from_data_type (PARSER_CONTEXT * parser, PT_NODE * dt,
       DB_SET_ENUM_ELEM_SHORT (db_enum, (unsigned short) idx + 1);
       DB_SET_ENUM_ELEM_STRING (db_enum, str_val);
       DB_SET_ENUM_ELEM_STRING_SIZE (db_enum, str_len);
+      DB_SET_ENUM_ELEM_CODESET (db_enum, dt->info.data_type.units);
 
       idx++;
       node = node->next;
@@ -1588,6 +1589,7 @@ pt_get_enumeration_from_data_type (PARSER_CONTEXT * parser, PT_NODE * dt,
 
   enumeration->count = enum_elements_cnt;
   enumeration->elements = enum_elements;
+  enumeration->collation_id = dt->info.data_type.collation_id;
 
   return NO_ERROR;
 
@@ -1737,6 +1739,9 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
 	{
 	  return NULL;
 	}
+      codeset = dt->info.data_type.units;
+      collation_id = dt->info.data_type.collation_id;
+      assert (collation_id >= 0);
       break;
 
     case DB_TYPE_NULL:
@@ -1769,6 +1774,7 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
       retval->scale = scale;
       retval->codeset = codeset;
       retval->collation_id = collation_id;
+      retval->enumeration.collation_id = collation_id;
       DOM_SET_ENUM_ELEMENTS (retval, enumeration.elements);
       DOM_SET_ENUM_ELEMS_COUNT (retval, enumeration.count);
     }
@@ -1916,6 +1922,8 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
 	{
 	  return NULL;
 	}
+      codeset = dt->info.data_type.units;
+      collation_id = dt->info.data_type.collation_id;
       break;
 
     case DB_TYPE_NULL:
@@ -1925,6 +1933,7 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
     case DB_TYPE_RESULTSET:
       break;
     }
+
   retval = tp_domain_new (domain_type);
   if (retval)
     {
@@ -1934,6 +1943,7 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
       retval->scale = scale;
       retval->codeset = codeset;
       retval->collation_id = collation_id;
+      retval->enumeration.collation_id = collation_id;
       DOM_SET_ENUM_ELEMENTS (retval, enumeration.elements);
       DOM_SET_ENUM_ELEMS_COUNT (retval, enumeration.count);
     }

@@ -2143,6 +2143,9 @@ typedef unsigned int SESSION_ID;
         db_make_varnchar(value, max_nchar_length, str, nchar_str_byte_size, \
 			 codeset, collation)
 
+#define DB_MAKE_ENUMERATION(value, index, str, size, codeset, collation) \
+	db_make_enumeration(value, index, str, size, codeset, collation)
+
 #define DB_MAKE_RESULTSET(value, handle) db_make_resultset(value, handle)
 
 #define db_get_collection db_get_set
@@ -2234,6 +2237,10 @@ typedef unsigned int SESSION_ID;
 
 #define DB_GET_STRING_CODESET(value) db_get_string_codeset(value)
 
+#define DB_GET_ENUM_CODESET(value) db_get_enum_codeset(value)
+
+#define DB_GET_ENUM_COLLATION(value) db_get_enum_collation(value)
+
 #define DB_GET_STRING_COLLATION(value) db_get_string_collation(value)
 
 #define DB_INT16_MIN   (-(DB_INT16_MAX)-1)
@@ -2297,12 +2304,13 @@ typedef enum
   DB_TYPE_DATETIME = 32,
   DB_TYPE_BLOB = 33,
   DB_TYPE_CLOB = 34,
+  DB_TYPE_ENUMERATION = 35,
   DB_TYPE_LIST = DB_TYPE_SEQUENCE,
   DB_TYPE_SMALLINT = DB_TYPE_SHORT,	/* SQL SMALLINT           */
   DB_TYPE_VARCHAR = DB_TYPE_STRING,	/* SQL CHAR(n) VARYING values   */
   DB_TYPE_UTIME = DB_TYPE_TIMESTAMP,	/* SQL TIMESTAMP  */
 
-  DB_TYPE_LAST = DB_TYPE_CLOB
+  DB_TYPE_LAST = DB_TYPE_ENUMERATION
 } DB_TYPE;
 
 /* Domain information stored in DB_VALUE structures. */
@@ -2528,8 +2536,9 @@ struct db_enum_element
 typedef struct db_enumeration DB_ENUMERATION;
 struct db_enumeration
 {
-  unsigned short count;		/* count of enumeration elements */
   DB_ENUM_ELEMENT *elements;	/* array of enumeration elements */
+  int collation_id;		/* collation */
+  unsigned short count;		/* count of enumeration elements */
 };
 
 /* A union of all of the possible basic type values.  This is used in the
@@ -2561,6 +2570,7 @@ union db_data
   DB_NUMERIC num;
   DB_CHAR ch;
   DB_RESULTSET rset;
+  DB_ENUM_ELEMENT enumeration;
 };
 
 /* This is the primary structure used for passing values in and out of
@@ -2800,6 +2810,10 @@ extern int db_value_put_varnchar (DB_VALUE * value, DB_C_NCHAR str, int size);
 extern DB_CURRENCY db_get_currency_default (void);
 
 extern int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle);
+extern int db_make_enumeration (DB_VALUE * value, unsigned short index,
+				DB_C_CHAR str, int size,
+				unsigned char codeset,
+				const int collation_id);
 
 /*
  * DB_GET_ accessor macros.
@@ -2839,7 +2853,14 @@ extern DB_C_CHAR db_get_method_error_msg (void);
 
 extern DB_RESULTSET db_get_resultset (const DB_VALUE * value);
 
+extern DB_C_SHORT db_get_enum_short (const DB_VALUE * value);
+extern DB_C_CHAR db_get_enum_string (const DB_VALUE * value);
+extern int db_get_enum_string_size (const DB_VALUE * value);
 
+extern int db_enum_put_cs_and_collation (DB_VALUE * value, const int codeset,
+					 const int collation_id);
+extern int db_get_enum_codeset (const DB_VALUE * value);
+extern int db_get_enum_collation (const DB_VALUE * value);
 /* DB_DATE functions */
 extern int db_date_encode (DB_DATE * date, int month, int day, int year);
 extern void db_date_decode (DB_DATE * date, int *monthp,

@@ -2095,6 +2095,11 @@ disk_to_domain2 (OR_BUF * buf)
   domain->scale = or_get_int (buf, &rc);
   domain->codeset = or_get_int (buf, &rc);
   domain->collation_id = or_get_int (buf, &rc);
+  if (typeid_ == DB_TYPE_ENUMERATION && domain->codeset == 0)
+    {
+      assert (domain->collation_id == LANG_COLL_ISO_BINARY);
+      domain->codeset = INTL_CODESET_ISO88591;
+    }
 
   /*
    * Read the domain class OID without promoting it to a MOP.
@@ -2117,6 +2122,7 @@ disk_to_domain2 (OR_BUF * buf)
     (TP_DOMAIN *) get_substructure_set (buf, (LREADER) disk_to_domain2,
 					vars
 					[ORC_DOMAIN_SETDOMAIN_INDEX].length);
+  domain->enumeration.collation_id = domain->collation_id;
 
   if (get_enumeration (buf, &DOM_GET_ENUMERATION (domain),
 		       vars[ORC_DOMAIN_ENUMERATION_INDEX].length) != NO_ERROR)

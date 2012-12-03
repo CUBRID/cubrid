@@ -6307,6 +6307,10 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_ENUMERATION:
       r1 = pt_print_bytes_l (parser, p->data_type);
       q = pt_append_varchar (parser, q, r1);
+      sprintf (s, " collate %s",
+	       lang_get_collation_name (p->data_type->info.data_type.
+					collation_id));
+      q = pt_append_nulstring (parser, q, s);
       break;
     default:
       q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
@@ -8167,6 +8171,7 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes_l (parser, p->info.data_type.enumeration);
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
+      show_collation = true;
       break;
 
     default:
@@ -15519,6 +15524,12 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	    (parser, q,
 	     (char *) p->info.value.data_value.enumeration.str_val->bytes,
 	     p->info.value.data_value.enumeration.str_val->length);
+	  if (prt_coll_id != -1)
+	    {
+	      q = pt_append_nulstring (parser, q, " COLLATE ");
+	      q = pt_append_nulstring (parser, q,
+				       lang_get_collation_name (prt_coll_id));
+	    }
 	}
       else if (p->info.value.data_value.enumeration.short_val != 0)
 	{

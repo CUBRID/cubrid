@@ -67,6 +67,8 @@
 #undef DB_GET_RESULTSET
 #undef DB_GET_STRING_CODESET
 #undef DB_GET_STRING_COLLATION
+#undef DB_GET_ENUM_CODESET
+#undef DB_GET_ENUM_COLLATION
 
 
 #define DB_IS_NULL(v) \
@@ -264,20 +266,33 @@
 #define DB_GET_ENUM_ELEM_STRING_SIZE(elem) \
     ((elem)->str_val.medium.size)
 
+#define DB_GET_ENUM_ELEM_CODESET(elem) \
+    ((elem)->str_val.info.codeset)
+#define DB_SET_ENUM_ELEM_CODESET(elem, cs) \
+    ((elem)->str_val.info.codeset = (cs))
+
 #define DB_SET_ENUM_ELEM_SHORT(elem, sv) \
-    ((elem)->short_val = sv)
+    ((elem)->short_val = (sv))
 #define DB_SET_ENUM_ELEM_STRING(elem, str) \
     ((elem)->str_val.medium.buf = (str),  \
      (elem)->str_val.info.style = MEDIUM_STRING)
 #define DB_SET_ENUM_ELEM_STRING_SIZE(elem, sz) \
-    ((elem)->str_val.medium.size = sz)
+    ((elem)->str_val.medium.size = (sz))
 
+#define DB_GET_ENUMERATION(v) \
+    ((v)->data.enumeration)
 #define DB_GET_ENUM_SHORT(v) \
     ((v)->data.enumeration.short_val)
 #define DB_GET_ENUM_STRING(v) \
     ((v)->data.enumeration.str_val.medium.buf)
 #define DB_GET_ENUM_STRING_SIZE(v) \
     ((v)->data.enumeration.str_val.medium.size)
+
+#define DB_GET_ENUM_CODESET(v) \
+    ((INTL_CODESET) ((v)->data.enumeration.str_val.info.codeset))
+
+#define DB_GET_ENUM_COLLATION(v) \
+    ((v)->domain.char_info.collation_id)
 
 #define db_value_is_null(v) DB_IS_NULL(v)
 #define db_value_type(v) DB_VALUE_TYPE(v)
@@ -323,6 +338,8 @@
 #define db_get_enum_short(v) DB_GET_ENUM_SHORT(v)
 #define db_get_enum_string(v) DB_GET_ENUM_STRING(v)
 #define db_get_enum_string_size(v) DB_GET_ENUM_STRING_SIZE(v)
+#define db_get_enum_codeset(v) DB_GET_ENUM_CODESET(v)
+#define db_get_enum_collation(v) DB_GET_ENUM_COLLATION(v)
 
 #define db_make_null(v) \
     ((v)->domain.general_info.type = DB_TYPE_NULL, \
@@ -519,14 +536,15 @@
      (v)->need_clear = false, \
      NO_ERROR)
 
-#define db_make_enumeration(v, i, p, s) \
+#define db_make_enumeration(v, i, p, s, cs, coll_id) \
   ((v)->domain.general_info.type		  = DB_TYPE_ENUMERATION, \
     (v)->domain.general_info.is_null		  = 0, \
-    (v)->data.enumeration.short_val		  = i, \
-    (v)->data.enumeration.str_val.info.codeset	  = LANG_SYS_CODESET, \
+    (v)->data.enumeration.short_val		  = (i), \
+    (v)->data.enumeration.str_val.info.codeset	  = (cs), \
+    (v)->domain.char_info.collation_id		  = (coll_id), \
     (v)->data.enumeration.str_val.info.style	  = MEDIUM_STRING, \
-    (v)->data.enumeration.str_val.medium.size	  = s, \
-    (v)->data.enumeration.str_val.medium.buf	  = (char*)p, \
+    (v)->data.enumeration.str_val.medium.size	  = (s), \
+    (v)->data.enumeration.str_val.medium.buf	  = (char*) (p), \
     (v)->need_clear				  = false)
 
 #define DB_GET_NUMERIC_PRECISION(val) \
@@ -539,6 +557,10 @@
     ((v)->data.ch.info.codeset = (cs), \
      (v)->domain.char_info.collation_id = (coll), \
      NO_ERROR)
+
+#define db_enum_put_cs_and_collation(v, cs, coll) \
+    (v)->data.enumeration.str_val.info.codeset	  = (cs), \
+    (v)->domain.char_info.collation_id		  = (coll)
 
 typedef enum
 {

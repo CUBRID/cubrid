@@ -157,9 +157,11 @@ EXPORTS
     db_get_date
     db_get_datetime
     db_get_double
-	db_get_enum_short
-	db_get_enum_string
-	db_get_enum_string_size
+    db_get_enum_short
+    db_get_enum_string
+    db_get_enum_string_size
+    db_get_enum_codeset
+    db_get_enum_collation
     db_get_float
     db_get_foreign_key_action
     db_get_foreign_key_cache_object_attr
@@ -241,7 +243,8 @@ EXPORTS
     db_ping_server
     db_push_values
     db_put
-    db_string_put_cs_and_collation	
+    db_string_put_cs_and_collation
+    db_enum_put_cs_and_collation
     db_query_column_count
     db_query_end
     db_query_first_tuple

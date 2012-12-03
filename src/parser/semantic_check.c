@@ -4688,9 +4688,9 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs,
 	    }
 	  node = def->data_type->info.data_type.enumeration;
 
-	  /* because enumeration doesn't have a collation we will use
-	     ISO88591 */
-	  intl_pad_char (INTL_CODESET_ISO88591, pad, &pad_size);
+	  domain = pt_data_type_to_db_domain (parser, def->data_type, NULL);
+
+	  intl_pad_char (TP_DOMAIN_CODESET (domain), pad, &pad_size);
 
 	  /* count number of elements and remove trailing pads for each
 	     element */
@@ -4699,12 +4699,12 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs,
 	    {
 	      intl_char_count (temp->info.value.data_value.str->bytes,
 			       temp->info.value.data_value.str->length,
-			       INTL_CODESET_ISO88591, &char_count);
+			       TP_DOMAIN_CODESET (domain), &char_count);
 	      qstr_trim_trailing (pad, pad_size,
 				  temp->info.value.data_value.str->bytes,
 				  pt_node_to_db_type (temp), char_count,
 				  temp->info.value.data_value.str->length,
-				  INTL_CODESET_ISO88591, &trimmed_length,
+				  TP_DOMAIN_CODESET (domain), &trimmed_length,
 				  &trimmed_size);
 	      if (trimmed_size < temp->info.value.data_value.str->length)
 		{
@@ -4741,7 +4741,6 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs,
 
 	  /* check that the aggregate size of the ENUM elements is not greater
 	     than DB_ENUM_ELEMENTS_MAX_AGG_SIZE */
-	  domain = pt_data_type_to_db_domain (parser, def->data_type, NULL);
 	  if (domain != NULL)
 	    {
 	      count = or_packed_domain_size (domain, 0);
@@ -4761,8 +4760,12 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs,
 	      temp = node->next;
 	      while (temp != NULL)
 		{
-		  if (strcmp (node->info.value.data_value.str->bytes,
-			      temp->info.value.data_value.str->bytes) == 0)
+		  if (QSTR_COMPARE (domain->collation_id,
+				    node->info.value.data_value.str->bytes,
+				    node->info.value.data_value.str->length,
+				    temp->info.value.data_value.str->bytes,
+				    temp->info.value.data_value.str->
+				    length) == 0)
 		    {
 		      PT_ERRORm (parser, temp,
 				 MSGCAT_SET_PARSER_SEMANTIC,

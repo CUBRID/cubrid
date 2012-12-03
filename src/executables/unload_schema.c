@@ -2679,6 +2679,7 @@ emit_domain_def (DB_DOMAIN * domains)
 		elem = &DOM_GET_ENUM_ELEM (domain, count);
 		fprintf (output_file, "'%s')",
 			 DB_GET_ENUM_ELEM_STRING (elem));
+		has_collation = 1;
 		break;
 	      }
 

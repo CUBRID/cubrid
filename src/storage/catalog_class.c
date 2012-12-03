@@ -1338,7 +1338,9 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
 
       val.need_clear = false;
       DB_MAKE_ENUMERATION (attr_val_p, DB_GET_ENUM_SHORT (attr_val_p),
-			   DB_GET_STRING (&val), DB_GET_STRING_SIZE (&val));
+			   DB_GET_STRING (&val), DB_GET_STRING_SIZE (&val),
+			   DB_GET_ENUM_CODESET (attr_val_p),
+			   DB_GET_ENUM_COLLATION (attr_val_p));
       attr_val_p->need_clear = true;
     }
   /* triggers - advance only */

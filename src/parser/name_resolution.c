@@ -3601,7 +3601,7 @@ pt_check_unique_names (PARSER_CONTEXT * parser, const PT_NODE * p)
 
   while (p)
     {
-      char *p_name = NULL;
+      const char *p_name = NULL;
       if (p->node_type != PT_SPEC)
 	{
 	  p = p->next;
@@ -3625,7 +3625,7 @@ pt_check_unique_names (PARSER_CONTEXT * parser, const PT_NODE * p)
       while (q)
 	{			/* check that p->range !=
 				   q->range to the end of list */
-	  char *q_name = NULL;
+	  const char *q_name = NULL;
 	  if (q->node_type != PT_SPEC)
 	    {
 	      q = q->next;
@@ -3858,6 +3858,10 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
 	    s =
 	      pt_make_string_value (parser,
 				    DB_GET_ENUM_ELEM_STRING (db_enum));
+	    DB_SET_ENUM_ELEM_CODESET (&(DB_GET_ENUMERATION (&(s->
+							      info.value.
+							      db_value))),
+				      DB_GET_ENUM_ELEM_CODESET (db_enum));
 	    if (s == NULL)
 	      {
 		return NULL;
@@ -3865,6 +3869,10 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
 	    result->info.data_type.enumeration =
 	      parser_append_node (s, result->info.data_type.enumeration);
 	  }
+
+	result->info.data_type.units = TP_DOMAIN_CODESET (domain);
+	result->info.data_type.collation_id = TP_DOMAIN_COLLATION (domain);
+	assert (result->info.data_type.collation_id >= 0);
       }
       break;
 
@@ -3895,7 +3903,6 @@ pt_flat_spec_pre (PARSER_CONTEXT * parser,
 {
   PT_NODE *q, *derived_table;
   PT_NODE *result = node;
-  PT_NODE *spec;
   PT_NODE **spec_parent = (PT_NODE **) chk_parent;
 
   *continue_walk = PT_CONTINUE_WALK;
@@ -6092,7 +6099,7 @@ pt_resolve_vclass_args (PARSER_CONTEXT * parser, PT_NODE * statement)
   for (db_attr = db_attributes; db_attr;
        db_attr = (SM_ATTRIBUTE *) db_attr->header.next)
     {
-      char *name = db_attr->header.name;
+      const char *name = db_attr->header.name;
 
       if (!(&db_attr->default_value)
 	  || (DB_IS_NULL (&db_attr->default_value.value)

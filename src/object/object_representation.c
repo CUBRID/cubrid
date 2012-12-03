@@ -3544,6 +3544,7 @@ or_decode (const char *buffer, char *dest, int size)
 #define OR_DOMAIN_SET_DOMAIN_FLAG	(0x100)	/* for set types */
 #define OR_DOMAIN_BUILTIN_FLAG		(0x100)	/* for NULL type only */
 #define OR_DOMAIN_ENUMERATION_FLAG	(0x100)	/* for enumeration type only */
+#define OR_DOMAIN_ENUM_COLL_FLAG	(0x200)	/* for enumeration type only */
 
 #define OR_DOMAIN_SCALE_MASK		(0xFF00)
 #define OR_DOMAIN_SCALE_SHIFT		(8)
@@ -3653,6 +3654,11 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	  break;
 
 	case DB_TYPE_ENUMERATION:
+	  /* collation id */
+	  if (d->collation_id != LANG_COLL_ISO_BINARY)
+	    {
+	      size += OR_INT_SIZE;
+	    }
 	  size += or_packed_enumeration_size (&DOM_GET_ENUMERATION (d));
 	  break;
 
@@ -3800,7 +3806,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain,
 	  has_collation = true;
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
-	  carrier |= (int) (d->codeset) << OR_DOMAIN_CODSET_SHIFT;
+	  carrier |= ((int) (d->codeset)) << OR_DOMAIN_CODSET_SHIFT;
 
 	  /*
 	   * Hack, if the precision is our special maximum/floating indicator,
@@ -3867,6 +3873,15 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain,
 	  break;
 
 	case DB_TYPE_ENUMERATION:
+	  if (d->collation_id != LANG_COLL_ISO_BINARY)
+	    {
+	      has_collation = true;
+	      carrier |= OR_DOMAIN_ENUM_COLL_FLAG;
+	    }
+	  else
+	    {
+	      has_collation = false;
+	    }
 	  if (DOM_GET_ENUM_ELEMENTS (d) != NULL)
 	    {
 	      carrier |= OR_DOMAIN_ENUMERATION_FLAG;
@@ -4107,6 +4122,8 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 
 	    case DB_TYPE_ENUMERATION:
 	      has_enum = carrier & OR_DOMAIN_ENUMERATION_FLAG;
+	      has_collation = ((carrier & OR_DOMAIN_ENUM_COLL_FLAG)
+			       == OR_DOMAIN_ENUM_COLL_FLAG);
 	      break;
 
 	    default:
@@ -4179,8 +4196,32 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	    }
 
 	  /* store the codset if we had one */
-	  d->codeset = codeset;
-	  d->collation_id = collation_id;
+	  if (type == DB_TYPE_ENUMERATION)
+	    {
+	      if (has_collation)
+		{
+		  /* collation id was read above, determine codeset */
+		  LANG_COLLATION *lc;
+		  lc = lang_get_collation (collation_id);
+		  assert (collation_id != LANG_COLL_ISO_BINARY);
+		  assert (lc != NULL);
+		  codeset = lc->codeset;
+		}
+	      else
+		{
+		  collation_id = LANG_COLL_ISO_BINARY;
+		  codeset = INTL_CODESET_ISO88591;
+		}
+
+	      d->codeset = codeset;
+	      d->collation_id = collation_id;
+	      d->enumeration.collation_id = collation_id;
+	    }
+	  else
+	    {
+	      d->codeset = codeset;
+	      d->collation_id = collation_id;
+	    }
 
 	  if (has_enum)
 	    {
@@ -4262,7 +4303,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
   struct db_object *class_mop = NULL;
   int rc = NO_ERROR;
   int enum_vals_cnt = 0;
-  DB_ENUMERATION db_enum = { 0, NULL };
+  DB_ENUMERATION db_enum = { NULL, LANG_SYS_COLLATION, 0 };
 
   domain = last = dom = setdomain = NULL;
   precision = scale = 0;
@@ -4465,6 +4506,28 @@ unpack_domain (OR_BUF * buf, int *is_null)
 
 	    case DB_TYPE_ENUMERATION:
 	      {
+		if ((carrier & OR_DOMAIN_ENUM_COLL_FLAG)
+		    == OR_DOMAIN_ENUM_COLL_FLAG)
+		  {
+		    LANG_COLLATION *lc;
+		    collation_id = or_get_int (buf, &rc);
+		    assert (collation_id != LANG_COLL_ISO_BINARY);
+		    if (rc != NO_ERROR)
+		      {
+			goto error;
+		      }
+		    lc = lang_get_collation (collation_id);
+		    assert (lc != NULL);
+		    codeset = lc->codeset;
+		  }
+		else
+		  {
+		    collation_id = LANG_COLL_ISO_BINARY;
+		    codeset = INTL_CODESET_ISO88591;
+		  }
+
+		db_enum.collation_id = collation_id;
+
 		if (carrier & OR_DOMAIN_ENUMERATION_FLAG)
 		  {
 		    rc = or_get_enumeration (buf, &db_enum);
@@ -4493,12 +4556,12 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	      /* not found. need to construct one */
 	      dom =
 		tp_domain_construct (type, NULL, precision, scale, setdomain);
-	      DOM_SET_ENUM_ELEMENTS (dom, db_enum.elements);
-	      DOM_SET_ENUM_ELEMS_COUNT (dom, db_enum.count);
 	      if (dom == NULL)
 		{
 		  goto error;
 		}
+	      DOM_SET_ENUM_ELEMENTS (dom, db_enum.elements);
+	      DOM_SET_ENUM_ELEMS_COUNT (dom, db_enum.count);
 
 	      switch (type)
 		{
@@ -4517,6 +4580,10 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		  dom->class_mop = class_mop;
 #endif /* !SERVER_MODE */
 		  break;
+		case DB_TYPE_ENUMERATION:
+		  dom->collation_id = collation_id;
+		  dom->enumeration.collation_id = collation_id;
+		  dom->codeset = codeset;
 		default:
 		  break;
 		}
@@ -5874,6 +5941,12 @@ or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain,
 					      TP_DOMAIN_CODESET (domain),
 					      TP_DOMAIN_COLLATION (domain));
 	    }
+	  else if (TP_DOMAIN_TYPE (domain) == DB_TYPE_ENUMERATION)
+	    {
+	      db_enum_put_cs_and_collation (value,
+					    TP_DOMAIN_CODESET (domain),
+					    TP_DOMAIN_COLLATION (domain));
+	    }
 	}
       else
 	{
@@ -6620,7 +6693,9 @@ or_packed_enumeration_size (const DB_ENUMERATION * enumeration)
       db_make_varchar (&value, TP_FLOATING_PRECISION_VALUE,
 		       DB_GET_ENUM_ELEM_STRING (db_enum),
 		       DB_GET_ENUM_ELEM_STRING_SIZE (db_enum),
-		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
+		       DB_GET_ENUM_ELEM_CODESET (db_enum),
+		       LANG_GET_BINARY_COLLATION
+		       (DB_GET_ENUM_ELEM_CODESET (db_enum)));
       size += (*(tp_String.data_lengthval)) (&value, 1);
     }
 
@@ -6658,7 +6733,8 @@ or_put_enumeration (OR_BUF * buf, const DB_ENUMERATION * enumeration)
       db_make_varchar (&value, TP_FLOATING_PRECISION_VALUE,
 		       DB_GET_ENUM_ELEM_STRING (db_enum),
 		       DB_GET_ENUM_ELEM_STRING_SIZE (db_enum),
-		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
+		       DB_GET_ENUM_ELEM_CODESET (db_enum),
+		       enumeration->collation_id);
       rc = (*(tp_String.data_writeval)) (buf, &value);
       if (rc != NO_ERROR)
 	{
@@ -6683,6 +6759,7 @@ or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration)
   DB_VALUE value;
   char *enum_str = NULL, *value_str;
   int str_size = 0;
+  LANG_COLLATION *lc;
 
   DB_MAKE_NULL (&value);
 
@@ -6755,6 +6832,11 @@ or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration)
 
       DB_SET_ENUM_ELEM_STRING (db_enum, enum_str);
       DB_SET_ENUM_ELEM_STRING_SIZE (db_enum, str_size);
+
+      lc = lang_get_collation (enumeration->collation_id);
+      assert (lc != NULL);
+      DB_SET_ENUM_ELEM_CODESET (db_enum, lc->codeset);
+
       pr_clear_value (&value);
     }
 

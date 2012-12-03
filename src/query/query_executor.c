@@ -22341,6 +22341,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		case DB_TYPE_CHAR:
 		case DB_TYPE_NCHAR:
 		case DB_TYPE_VARNCHAR:
+		case DB_TYPE_ENUMERATION:
 		  db_make_string (out_values[idx_val++],
 				  lang_get_collation_name (attrepr->domain->
 							   collation_id));

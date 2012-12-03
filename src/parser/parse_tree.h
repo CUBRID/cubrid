@@ -262,7 +262,8 @@
         ( (((t) == PT_TYPE_CHAR)     || \
 	   ((t) == PT_TYPE_VARCHAR)  || \
 	   ((t) == PT_TYPE_NCHAR)    || \
-	   ((t) == PT_TYPE_VARNCHAR))  ? true : false )
+	   ((t) == PT_TYPE_VARNCHAR) || \
+	   ((t) == PT_TYPE_ENUMERATION))  ? true : false )
 
 #define pt_is_select(n) PT_IS_SELECT(n)
 #define pt_is_union(n) PT_IS_UNION(n)
@@ -2576,7 +2577,8 @@ struct pt_value_info
   char string_type;		/* ' ', 'N', 'B', or 'X' */
   bool print_charset;
   bool print_collation;
-  bool has_cs_introducer;
+  bool has_cs_introducer;	/* 1 if charset introducer is used for string
+				 * node e.g. _utf8'a'; 0 otherwise. */
 };
 
 

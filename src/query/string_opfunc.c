@@ -24851,7 +24851,9 @@ db_value_to_enumeration_value (const DB_VALUE * src, DB_VALUE * result,
   if (status != DOMAIN_COMPATIBLE)
     {
       er_clear ();
-      DB_MAKE_ENUMERATION (result, 0, NULL, 0);
+      DB_MAKE_ENUMERATION (result, 0, NULL, 0,
+			   TP_DOMAIN_CODESET (enum_domain),
+			   TP_DOMAIN_COLLATION (enum_domain));
       return NO_ERROR;
     }
 

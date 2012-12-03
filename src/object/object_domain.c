@@ -170,7 +170,7 @@ extern unsigned int db_on_server;
   0,            /* scale */                            \
   NULL,         /* class */                            \
   NULL,         /* set domain */                       \
-  {0, NULL},	/* enumeration */		       \
+  {NULL, 0, 0},	/* enumeration */		       \
   {-1, -1, -1}, /* class OID */                        \
   1,            /* built_in_index (set in tp_init) */  \
   0,            /* codeset */                          \
@@ -185,7 +185,7 @@ extern unsigned int db_on_server;
 #define DOMAIN_INIT2(codeset, coll)                    \
   NULL,         /* class */                            \
   NULL,         /* set domain */                       \
-  {0, NULL},	/* enumeration */		       \
+  {NULL, 0, 0},	/* enumeration */		       \
   {-1, -1, -1}, /* class OID */                        \
   1,            /* built_in_index (set in tp_init) */  \
   (codeset),    /* codeset */                          \
@@ -206,7 +206,7 @@ extern unsigned int db_on_server;
   0,            /* scale */                            \
   NULL,         /* class */                            \
   NULL,         /* set domain */                       \
-  {0, NULL},	/* enumeration */		       \
+  {NULL, 0, 0},	/* enumeration */		       \
   {-1, -1, -1}, /* class OID */                        \
   1,            /* built_in_index (set in tp_init) */  \
   0,            /* codeset */                          \
@@ -223,7 +223,7 @@ extern unsigned int db_on_server;
   (scale),      /* scale */                            \
   NULL,         /* class */                            \
   NULL,         /* set domain */                       \
-  {0, NULL},    /* enumeration */                      \
+  {NULL, 0, 0},    /* enumeration */                      \
   {-1, -1, -1}, /* class OID */                        \
   1,            /* built_in_index (set in tp_init) */  \
   0,            /* codeset */                          \
@@ -308,8 +308,9 @@ TP_DOMAIN tp_Pointer_domain = { NULL, NULL, &tp_Pointer, DOMAIN_INIT };
 TP_DOMAIN tp_Error_domain = { NULL, NULL, &tp_Error, DOMAIN_INIT };
 TP_DOMAIN tp_Vobj_domain = { NULL, NULL, &tp_Vobj, DOMAIN_INIT3 };
 TP_DOMAIN tp_Oid_domain = { NULL, NULL, &tp_Oid, DOMAIN_INIT3 };
-TP_DOMAIN tp_Enumeration_domain =
-  { NULL, NULL, &tp_Enumeration, DOMAIN_INIT3 };
+TP_DOMAIN tp_Enumeration_domain = { NULL, NULL, &tp_Enumeration, 0, 0,
+  DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
+};
 
 TP_DOMAIN tp_Numeric_domain = { NULL, NULL, &tp_Numeric,
   DB_DEFAULT_NUMERIC_PRECISION, DB_DEFAULT_NUMERIC_SCALE,
@@ -823,6 +824,10 @@ tp_enumeration_match (const DB_ENUMERATION * db_enum1,
     {
       return 0;
     }
+  if (db_enum1->collation_id != db_enum2->collation_id)
+    {
+      return 0;
+    }
 
   for (i = 0; i < db_enum1->count; i++)
     {
@@ -833,6 +838,13 @@ tp_enumeration_match (const DB_ENUMERATION * db_enum1,
 	{
 	  return 0;
 	}
+      /* 
+       * memcmp is used here because it is necessary for domains like
+       * ENUM('a', 'b') COLLATE utf8_en_ci and
+       * ENUM('A', 'B') COLLATE utf8_en_ci to be regarded as different
+       * domains, despite their common case-insensitive collation.
+       * Thus, collation-based comparison is not correct here.
+       */
       if (memcmp (DB_GET_ENUM_ELEM_STRING (enum1),
 		  DB_GET_ENUM_ELEM_STRING (enum2),
 		  DB_GET_ENUM_ELEM_STRING_SIZE (enum1)) != 0)
@@ -910,6 +922,7 @@ domain_init (TP_DOMAIN * domain, DB_TYPE typeid_)
   domain->setdomain = NULL;
   DOM_SET_ENUM (domain, NULL, 0);
   OID_SET_NULL (&domain->class_oid);
+
   if (TP_TYPE_HAS_COLLATION (typeid_))
     {
       domain->codeset = LANG_SYS_CODESET;
@@ -1049,6 +1062,7 @@ tp_domain_copy_enumeration (DB_ENUMERATION * dest, const DB_ENUMERATION * src)
       return ER_FAILED;
     }
 
+  dest->collation_id = src->collation_id;
   dest->count = 0;
   dest->elements = NULL;
   if (src->count == 0 && src->elements == NULL)
@@ -1109,6 +1123,8 @@ tp_domain_copy_enumeration (DB_ENUMERATION * dest, const DB_ENUMERATION * src)
 	{
 	  DB_SET_ENUM_ELEM_STRING (dest_elem, NULL);
 	}
+      DB_SET_ENUM_ELEM_CODESET (dest_elem,
+				DB_GET_ENUM_ELEM_CODESET (src_elem));
     }
 
   return NO_ERROR;
@@ -2790,7 +2806,7 @@ tp_domain_find_set (DB_TYPE type, TP_DOMAIN * setdomain, bool is_desc)
 /*
  * tp_domain_find_enumeration () - Find a chached domain with this enumeration
  * enumeration(in): enumeration to look for
- * is_desc(in):
+ * is_desc(in): true if desc, false if asc (for only index key)
  */
 TP_DOMAIN *
 tp_domain_find_enumeration (const DB_ENUMERATION * enumeration, bool is_desc)
@@ -4053,73 +4069,80 @@ tp_domain_select (const TP_DOMAIN * domain_list,
 	}
 
       val_idx = DB_GET_ENUM_SHORT (value);
+
+      val_str = DB_GET_ENUM_STRING (value);
+      val_size = DB_GET_ENUM_STRING_SIZE (value);
+
       for (d = (TP_DOMAIN *) domain_list; d != NULL && best == NULL;
 	   d = d->next)
 	{
-	  if (TP_DOMAIN_TYPE (d) == DB_TYPE_ENUMERATION)
+	  if (TP_DOMAIN_TYPE (d) != DB_TYPE_ENUMERATION)
 	    {
-	      if (val_idx == 0)
-		{
-		  /* this is an invalid enum value so any domain matches */
-		  best = d;
-		  break;
-		}
-	      if (DOM_GET_ENUM_ELEMS_COUNT (d) == 0 && best == NULL)
-		{
-		  /* this is the default enum domain and we haven't found
-		   * any matching domain yet. This is our best candidate so
-		   * far
-		   */
-		  best = d;
-		  continue;
-		}
-	      if (DOM_GET_ENUM_ELEMS_COUNT (d) < val_idx)
-		{
-		  continue;
-		}
-	      if (val_str == NULL)
-		{
-		  /* The enumeration string value is not specified. This means
-		   * that the domain we have so far is the best match because
-		   * there is no way of deciding between other domains based
-		   * only on the short value
-		   */
-		  best = d;
-		  break;
-		}
+	      continue;
+	    }
 
-	      dom_str =
-		DB_GET_ENUM_ELEM_STRING (&DOM_GET_ENUM_ELEM (d, val_idx));
-	      dom_size =
-		DB_GET_ENUM_ELEM_STRING_SIZE (&DOM_GET_ENUM_ELEM
-					      (d, val_idx));
-	      val_str = DB_GET_ENUM_STRING (value);
-	      val_size = DB_GET_ENUM_STRING_SIZE (value);
-	      val_size = (dom_size < val_size ? dom_size : val_size);
-	      /* We have already checked that val_str is not null */
-	      if (dom_str == NULL)
+	  if (val_idx == 0)
+	    {
+	      /* this is an invalid enum value so any domain matches */
+	      best = d;
+	      break;
+	    }
+	  if (DOM_GET_ENUM_ELEMS_COUNT (d) == 0 && best == NULL)
+	    {
+	      /* this is the default enum domain and we haven't found
+	       * any matching domain yet. This is our best candidate so
+	       * far
+	       */
+	      best = d;
+	      continue;
+	    }
+	  if (DOM_GET_ENUM_ELEMS_COUNT (d) < val_idx)
+	    {
+	      continue;
+	    }
+	  if (val_str == NULL)
+	    {
+	      /* The enumeration string value is not specified. This means
+	       * that the domain we have so far is the best match because
+	       * there is no way of deciding between other domains based
+	       * only on the short value
+	       */
+	      best = d;
+	      break;
+	    }
+
+	  if (DB_GET_ENUM_COLLATION (value) != d->collation_id)
+	    {
+	      continue;
+	    }
+
+	  dom_str = DB_GET_ENUM_ELEM_STRING (&DOM_GET_ENUM_ELEM (d, val_idx));
+	  dom_size =
+	    DB_GET_ENUM_ELEM_STRING_SIZE (&DOM_GET_ENUM_ELEM (d, val_idx));
+
+	  /* We have already checked that val_str is not null */
+	  if (dom_str == NULL)
+	    {
+	      assert (false);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      return NULL;
+	    }
+	  if (QSTR_COMPARE (d->collation_id, dom_str, dom_size,
+			    val_str, val_size) == 0)
+	    {
+	      if (best == NULL)
 		{
-		  assert (false);
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
-			  0);
-		  return NULL;
+		  best = d;
 		}
-	      if (memcmp (dom_str, val_str, val_size) == 0)
+	      else if (DOM_GET_ENUM_ELEMS_COUNT (best)
+		       < DOM_GET_ENUM_ELEMS_COUNT (d))
 		{
-		  if (best == NULL)
-		    {
-		      best = d;
-		    }
-		  else if (DOM_GET_ENUM_ELEMS_COUNT (best) <
-			   DOM_GET_ENUM_ELEMS_COUNT (d))
-		    {
-		      /* The best match is the domain that has the largest
-		       * element count. We're not interested in the value
-		       * of the exact_match argument since we cannot find
-		       * an exact enumeration match based on a DB_VALUE
-		       */
-		      best = d;
-		    }
+		  /* The best match is the domain that has the largest
+		   * element count. We're not interested in the value
+		   * of the exact_match argument since we cannot find
+		   * an exact enumeration match based on a DB_VALUE
+		   */
+		  best = d;
 		}
 	    }
 	}
@@ -5368,15 +5391,17 @@ tp_enumeration_to_varchar (const DB_VALUE * src, DB_VALUE * result)
       else
 	{
 	  db_make_varchar (result, DB_DEFAULT_PRECISION, "", 0,
-			   LANG_SYS_CODESET, LANG_SYS_COLLATION);
+			   DB_GET_ENUM_CODESET (src),
+			   DB_GET_ENUM_COLLATION (src));
 	}
     }
   else
     {
       db_make_varchar (result, DB_DEFAULT_PRECISION,
 		       DB_GET_ENUM_STRING (src),
-		       DB_GET_ENUM_STRING_SIZE (src), LANG_SYS_CODESET,
-		       LANG_SYS_COLLATION);
+		       DB_GET_ENUM_STRING_SIZE (src),
+		       DB_GET_ENUM_CODESET (src),
+		       DB_GET_ENUM_COLLATION (src));
     }
 
   return error;
@@ -8410,10 +8435,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		    db_enum = &DOM_GET_ENUM_ELEM (desired_domain, i);
 		    size = DB_GET_ENUM_ELEM_STRING_SIZE (db_enum);
 
-		    /* because enumeration doesn't have a collation we will
-		       use LANG_COLL_ISO_BINARY for comparison */
+		    /* use collation from the PT_TYPE_ENUMERATION */
 		    if (QSTR_COMPARE
-			(LANG_COLL_ISO_BINARY, val_str, val_str_size,
+			(desired_domain->collation_id, val_str, val_str_size,
 			 DB_GET_ENUM_ELEM_STRING (db_enum), size) == 0)
 		      {
 			break;
@@ -8473,7 +8497,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		  {
 		    enum_str = val_str;
 		  }
-		DB_MAKE_ENUMERATION (target, val_idx, enum_str, val_str_size);
+		DB_MAKE_ENUMERATION (target, val_idx, enum_str, val_str_size,
+				     TP_DOMAIN_CODESET (desired_domain),
+				     TP_DOMAIN_COLLATION (desired_domain));
 		target->need_clear = true;
 	      }
 	  }
@@ -9114,7 +9140,14 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 
 	  if (pr_type)
 	    {
-	      /* TODO : change this when adding new types with collation */
+	      /* Either both arguments are enums, or both are not.
+	       * If one is enum and one is not, it means that
+	       * tp_value_cast_internal failed somewhere
+	       */
+	      assert ((vtype1 == DB_TYPE_ENUMERATION && vtype1 == vtype2)
+		      || (vtype1 != DB_TYPE_ENUMERATION
+			  && vtype2 != DB_TYPE_ENUMERATION));
+
 	      if (TP_IS_CHAR_TYPE (vtype1)
 		  && (DB_GET_STRING_CODESET (v1)
 		      != DB_GET_STRING_CODESET (v2)))

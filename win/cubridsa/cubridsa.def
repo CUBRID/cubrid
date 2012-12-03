@@ -398,6 +398,8 @@ EXPORTS
     db_get_enum_short
     db_get_enum_string
     db_get_enum_string_size
+    db_get_enum_codeset
+    db_get_enum_collation
     db_get_error
     db_get_errors
     db_get_expression

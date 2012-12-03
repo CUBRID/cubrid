@@ -16853,18 +16853,115 @@ primitive_type
 			  parser_free_node (this_parser, prec);
 
 		DBG_PRINT}}
-	| ENUM '(' char_string_literal_list ')'
+	| ENUM '(' char_string_literal_list ')' opt_charset opt_collation
 	  {{
 			container_2 ctn;
+			int charset = -1;
+			int coll_id = -1;
 
-			PT_NODE *dt =
-			  parser_new_node (this_parser, PT_DATA_TYPE);
+			int elem_cs = -1;
+			int elem_coll = -1;
+			int list_cs = -1;
+			int list_coll = -1;
+			bool has_cs_introducer = false;
+			int has_error = 0;
 
-			if (dt != NULL)
-			{
-			  dt->type_enum = PT_TYPE_ENUMERATION;
-			  dt->info.data_type.enumeration = $3;
-			}
+			PT_NODE *charset_node = $5;
+			PT_NODE *coll_node = $6;
+			PT_NODE *elem_list = $3;
+			PT_NODE *dt, *elem;
+
+			elem = elem_list;
+			while (elem != NULL)
+			  {
+			    if (elem->data_type == NULL)
+			      {
+				elem = elem->next;
+				continue;
+			      }
+			    elem_cs = elem->data_type->info.data_type.units;
+			    elem_coll =
+			      elem->data_type->info.data_type.collation_id;
+			    if (elem->info.value.has_cs_introducer)
+			      {
+				if (list_cs == -1)
+				  {
+				    list_cs = elem_cs;
+				    list_coll = elem_coll;
+				    has_cs_introducer = true;
+				  }
+				else if (list_cs != elem_cs
+					 || list_coll != elem_coll)
+				  {
+				    PT_ERRORm (this_parser, elem, 
+					       MSGCAT_SET_PARSER_SEMANTIC,
+					       MSGCAT_SEMANTIC_INCOMPATIBLE_CS_COLL);
+				    has_error = 1;
+				    break;
+				  }
+			      }
+			    elem = elem->next;
+			  } /* END while */
+
+			dt = parser_new_node (this_parser, PT_DATA_TYPE);
+
+			if (!has_error && dt != NULL)
+			  {
+			    dt->type_enum = PT_TYPE_ENUMERATION;
+			    dt->info.data_type.enumeration = elem_list;
+
+			    if (charset_node == NULL && coll_node == NULL)
+			      {
+				if (has_cs_introducer)
+				  {
+				    charset = list_cs;
+				    coll_id = list_coll;
+				  }
+				else
+				  {
+				    charset = lang_get_client_charset ();
+				    coll_id = lang_get_client_collation ();
+				  }
+			      }
+			    else if (pt_check_grammar_charset_collation (
+					this_parser, charset_node,
+					coll_node, &charset,
+					&coll_id) == NO_ERROR)
+			      {
+				if (has_cs_introducer
+				    && (list_cs != charset || list_coll != coll_id))
+				  {
+				    charset = -1;
+				    coll_id = -1;
+				    has_error = 1;
+				    PT_ERRORm (this_parser, charset_node,
+					       MSGCAT_SET_PARSER_SEMANTIC,
+					       MSGCAT_SEMANTIC_INCOMPATIBLE_CS_COLL);
+				  }
+			      }
+			    else
+			      {
+				has_error = 1;
+				dt->info.data_type.units = -1;
+				dt->info.data_type.collation_id = -1;
+			      }
+
+			    if (!has_error)
+			      {
+				elem = elem_list;
+				while (elem != NULL)
+				  {
+				    if (elem->data_type != NULL)
+				      {
+					elem->data_type->info.data_type.units = charset;
+					elem->data_type->info.data_type.collation_id = coll_id;
+				      }
+				    elem = elem->next;
+				  }
+				dt->info.data_type.units = charset;
+				dt->info.data_type.collation_id = coll_id;
+			      }
+			  }
 
 			PARSER_SAVE_ERR_CONTEXT (dt, @3.buffer_pos)
 
@@ -18685,6 +18782,7 @@ char_string
 						 lang_get_client_charset (),
 						 lang_get_client_collation (),
 						 false);
+			    node->info.value.has_cs_introducer = false;
 			  }
 
 			$$ = node;
@@ -18705,6 +18803,7 @@ char_string
 						 lang_get_client_charset (),
 						 lang_get_client_collation (),
 						 false);
+			    node->info.value.has_cs_introducer = false;
 			  }
 
 			$$ = node;

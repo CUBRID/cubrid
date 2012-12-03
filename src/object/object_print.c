@@ -541,6 +541,7 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	    }
 	  break;
 	case DB_TYPE_ENUMERATION:
+	  has_collation = 1;
 	  strcpy (temp_buffer, temp_domain->type->name);
 	  ustr_upper (temp_buffer);
 	  buffer = pt_append_nulstring (parser, buffer, temp_buffer);

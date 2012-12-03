@@ -326,6 +326,11 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type,
       value->domain.char_info.collation_id = LANG_SYS_COLLATION;
       break;
 
+    case DB_TYPE_ENUMERATION:
+      value->data.enumeration.str_val.info.codeset = LANG_SYS_CODESET;
+      value->domain.char_info.collation_id = LANG_SYS_COLLATION;
+      break;
+
     case DB_TYPE_NULL:
     case DB_TYPE_INTEGER:
     case DB_TYPE_BIGINT:
@@ -351,7 +356,6 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type,
     case DB_TYPE_SHORT:
     case DB_TYPE_VOBJ:
     case DB_TYPE_OID:
-    case DB_TYPE_ENUMERATION:
       break;
 
     default:
@@ -499,13 +503,15 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
     case DB_TYPE_ENUMERATION:
       if (enumeration == NULL || enumeration->count <= 0)
 	{
-	  db_make_enumeration (value, 0, (char *) "\40", 1);
+	  db_make_enumeration (value, 0, (char *) "\40", 1,
+			       codeset, collation_id);
 	}
       else
 	{
 	  db_make_enumeration (value, 1,
 			       enumeration->elements[0].str_val.medium.buf,
-			       enumeration->elements[0].str_val.medium.size);
+			       enumeration->elements[0].str_val.medium.size,
+			       (unsigned char) codeset, collation_id);
 	}
       break;
       /* case DB_TYPE_TABLE: internal use only */
@@ -667,7 +673,22 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
     case DB_TYPE_ENUMERATION:
       if (enumeration == NULL || enumeration->count <= 0)
 	{
-	  db_make_enumeration (value, DB_UINT16_MAX, (char *) "\377", 1);
+	  if (codeset == INTL_CODESET_UTF8)
+	    {
+	      db_make_enumeration (value, DB_UINT16_MAX,
+				   (char *) "\xf4\x8f\xbf\xbf", 4,
+				   (unsigned char) codeset, collation_id);
+	    }
+	  else if (codeset == INTL_CODESET_KSC5601_EUC)
+	    {
+	      db_make_enumeration (value, DB_UINT16_MAX, (char *) "\377\377",
+				   2, (unsigned char) codeset, collation_id);
+	    }
+	  else
+	    {
+	      db_make_enumeration (value, DB_UINT16_MAX, (char *) "\377", 1,
+				   (unsigned char) codeset, collation_id);
+	    }
 	}
       else
 	{
@@ -675,7 +696,8 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
 			       enumeration->elements[enumeration->count -
 						     1].str_val.medium.buf,
 			       enumeration->elements[enumeration->count -
-						     1].str_val.medium.size);
+						     1].str_val.medium.size,
+			       (unsigned char) codeset, collation_id);
 	}
       break;
       /* case DB_TYPE_TABLE: internal use only */
@@ -795,7 +817,8 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type,
 	{
 	  db_make_enumeration (value, 1,
 			       enumeration->elements[0].str_val.medium.buf,
-			       enumeration->elements[0].str_val.medium.size);
+			       enumeration->elements[0].str_val.medium.size,
+			       (unsigned char) codeset, collation_id);
 	}
       else
 	{
@@ -2412,16 +2435,19 @@ db_make_datetime (DB_VALUE * value, const DB_DATETIME * datetime)
  * index(in):
  * str(in):
  * size(in):
+ * codeset(in):
+ * collation_id(in):
  */
 int
 db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str,
-		     int size)
+		     int size, unsigned char codeset, const int collation_id)
 {
   CHECK_1ARG_ERROR (value);
 
   value->domain.general_info.type = DB_TYPE_ENUMERATION;
   value->data.enumeration.short_val = index;
-  value->data.enumeration.str_val.info.codeset = LANG_SYS_CODESET;
+  value->data.enumeration.str_val.info.codeset = codeset;
+  value->domain.char_info.collation_id = collation_id;
   value->data.enumeration.str_val.info.style = MEDIUM_STRING;
   value->data.enumeration.str_val.medium.size = size;
   value->data.enumeration.str_val.medium.buf = str;
@@ -3001,6 +3027,32 @@ db_value_get_monetary_amount_as_double (const DB_VALUE * value)
   CHECK_1ARG_ZERO (value);
 
   return value->data.money.amount;
+}
+
+/*
+ * db_get_enum_codeset() -
+ * return :
+ * value(in):
+ */
+int
+db_get_enum_codeset (const DB_VALUE * value)
+{
+  CHECK_1ARG_ZERO_WITH_TYPE (value, INTL_CODESET);
+
+  return value->data.enumeration.str_val.info.codeset;
+}
+
+/*
+ * db_get_enum_collation() -
+ * return :
+ * value(in):
+ */
+int
+db_get_enum_collation (const DB_VALUE * value)
+{
+  CHECK_1ARG_ZERO_WITH_TYPE (value, int);
+
+  return value->domain.char_info.collation_id;
 }
 
 /*
@@ -5835,6 +5887,34 @@ db_string_put_cs_and_collation (DB_VALUE * value, const int codeset,
   return error;
 }
 
+/*
+ * db_enum_put_cs_and_collation() - Set the charset and collation.
+ * return	   : error code
+ * cs(in)	   : codeset
+ * collation_id(in): collation identifier
+ */
+int
+db_enum_put_cs_and_collation (DB_VALUE * value, const int codeset,
+			      const int collation_id)
+{
+  int error = NO_ERROR;
+
+  CHECK_1ARG_ERROR (value);
+
+  if (value->domain.general_info.type == DB_TYPE_ENUMERATION)
+    {
+      value->data.enumeration.str_val.info.codeset = (char) codeset;
+      value->domain.char_info.collation_id = collation_id;
+    }
+  else
+    {
+      error = ER_QPROC_INVALID_DATATYPE;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
+	      0);
+    }
+
+  return error;
+}
 
 /*
  * vc_append_bytes(): append a string to string buffer
