@@ -162,7 +162,7 @@ namespace dbgw
     _DBGWHostSharedPtr m_pHost;
     _DBGWExecutorPoolContext m_context;
     string m_url;
-    bool bExistDbInfo;
+    string m_dbinfo;
   };
 
   class _DBGWQueryMapContext

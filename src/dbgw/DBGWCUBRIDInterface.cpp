@@ -230,7 +230,7 @@ namespace dbgw
               m_hCCIConnection, "Failed to connect database.");
           string replace(e.what());
           replace += "(";
-          replace += m_user.c_str();
+          replace += m_url.c_str();
           replace += ")";
           DBGW_LOG_ERROR(replace.c_str());
           throw e;

@@ -81,6 +81,7 @@ namespace dbgw
   static const char *XML_NODE_HOST = "host";
   static const char *XML_NODE_HOST_PROP_ADDRESS = "address";
   static const char *XML_NODE_HOST_PROP_PORT = "port";
+  static const char *XML_NODE_HOST_PROP_URL = "url";
   static const char *XML_NODE_HOST_PROP_WEIGHT = "weight";
 
   static const char *XML_NODE_ALTHOSTS = "althosts";
@@ -858,7 +859,7 @@ namespace dbgw
 
   _DBGWConnectorParser::_DBGWConnectorParser(const string &fileName,
       _DBGWConnectorSharedPtr pConnector) :
-    _DBGWParser(fileName), m_pConnector(pConnector), bExistDbInfo(false)
+    _DBGWParser(fileName), m_pConnector(pConnector)
   {
   }
 
@@ -922,7 +923,7 @@ namespace dbgw
 
         m_pGroup = _DBGWGroupSharedPtr();
         m_url = "";
-        bExistDbInfo = false;
+        m_dbinfo = "";
       }
     else if (!strcasecmp(szName, XML_NODE_HOST))
       {
@@ -1005,14 +1006,12 @@ namespace dbgw
         return;
       }
 
-    bExistDbInfo = true;
-
-    m_url = properties.get(XML_NODE_DBINFO_PROP_DBNAME, true);
-    m_url += ":";
-    m_url += properties.get(XML_NODE_DBINFO_PROP_DBUSER, true);
-    m_url += ":";
-    m_url += properties.get(XML_NODE_DBINFO_PROP_DBPASSWD, true);
-    m_url += ":";
+    m_dbinfo = properties.get(XML_NODE_DBINFO_PROP_DBNAME, true);
+    m_dbinfo += ":";
+    m_dbinfo += properties.get(XML_NODE_DBINFO_PROP_DBUSER, true);
+    m_dbinfo += ":";
+    m_dbinfo += properties.get(XML_NODE_DBINFO_PROP_DBPASSWD, true);
+    m_dbinfo += ":";
   }
 
   void _DBGWConnectorParser::parseHost(_DBGWExpatXMLProperties &properties)
@@ -1022,20 +1021,24 @@ namespace dbgw
         return;
       }
 
-    if (bExistDbInfo == false)
+    m_url = properties.get(XML_NODE_HOST_PROP_URL, false);
+    if (m_url == "")
       {
-        NotExistNodeInXmlException e(XML_NODE_DBINFO, getFileName().c_str());
-        DBGW_LOG_ERROR(e.what());
-        throw e;
+        if (m_dbinfo == "")
+          {
+            NotExistNodeInXmlException e(XML_NODE_DBINFO, getFileName().c_str());
+            DBGW_LOG_ERROR(e.what());
+            throw e;
+          }
+
+        m_url = "cci:CUBRID:";
+        m_url += properties.get(XML_NODE_HOST_PROP_ADDRESS, true);
+        m_url += ":";
+        m_url += properties.get(XML_NODE_HOST_PROP_PORT, true);
+        m_url += ":";
+
+        m_url = m_url + m_dbinfo;
       }
-
-    string tmpUrl = "cci:CUBRID:";
-    tmpUrl += properties.get(XML_NODE_HOST_PROP_ADDRESS, true);
-    tmpUrl += ":";
-    tmpUrl += properties.get(XML_NODE_HOST_PROP_PORT, true);
-    tmpUrl += ":";
-
-    m_url = tmpUrl + m_url;
 
     int nWeight = properties.getInt(XML_NODE_HOST_PROP_WEIGHT, true, 1);
     if (nWeight <= 0)
@@ -1053,6 +1056,14 @@ namespace dbgw
   {
     if (getParentElementName() != XML_NODE_HOST)
       {
+        return;
+      }
+
+    if (m_dbinfo == "")
+      {
+        /**
+         * we don't need to use althost because the url is given by user.
+         */
         return;
       }
 
