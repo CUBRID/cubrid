@@ -1213,6 +1213,7 @@ netval_to_dbval (void *net_type, void *net_value, MYSQL_BIND * out_val,
 	out_val->buffer_length = db_val->size - 1;	/* -1 is \0 */
       }
       break;
+    case MYSQL_TYPE_INT24:
     case MYSQL_TYPE_LONG:
       {
 	int *i_val = &(db_val->data.i);
@@ -2141,6 +2142,7 @@ set_metadata_info (T_SRV_HANDLE * srv_handle)
 	      defines[i].buffer = (void *) &(columns[i].data.sh);
 	      defines[i].buffer_length = sizeof (short);
 	      break;
+	    case MYSQL_TYPE_INT24:
 	    case MYSQL_TYPE_LONG:
 	      defines[i].buffer = (void *) &(columns[i].data.i);
 	      defines[i].buffer_length = sizeof (int);
