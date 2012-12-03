@@ -1483,6 +1483,8 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   DB_SESSION *session = NULL;
   T_BROKER_VERSION client_version = req_info->client_version;
   T_QUERY_RESULT *q_result;
+  char savepoint[PATH_MAX];
+  char is_savepoint = FALSE;
 
   srv_handle->query_info_flag = FALSE;
 
@@ -1529,6 +1531,15 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 
   q_res_idx = 0;
   db_rewind_statement (session);
+  if (!srv_handle->auto_commit_mode && db_statement_count (session) > 1)
+    {
+      static unsigned long long savepoint_count = 0;
+
+      snprintf (savepoint, PATH_MAX, "__MSS$%20lld__", savepoint_count++);
+      db_savepoint_transaction (savepoint);
+      is_savepoint = TRUE;
+    }
+
   while (1)
     {
       if (is_prepared == FALSE)
@@ -1774,6 +1785,10 @@ execute_all_error:
   if (srv_handle->auto_commit_mode)
     {
       req_info->need_auto_commit = TRAN_AUTOROLLBACK;
+    }
+  else if (is_savepoint)
+    {
+      db_abort_to_savepoint (savepoint);
     }
 
   errors_in_transaction++;
