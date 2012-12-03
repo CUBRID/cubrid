@@ -4045,9 +4045,13 @@ ldr_collection_db_collection (LDR_CONTEXT * context,
 					   0, attdesc->collection_domain);
 
       if (context->collection == NULL)
-	err = er_errid ();
+	{
+	  err = er_errid ();
+	}
       else
-	context->set_domain = attdesc->collection_domain->setdomain;
+	{
+	  context->set_domain = attdesc->collection_domain->setdomain;
+	}
     }
   else
     {
@@ -4164,7 +4168,9 @@ static void
 ldr_flush (LDR_CONTEXT * context)
 {
   if (context->cls)
-    ws_intern_instances (context->cls);
+    {
+      ws_intern_instances (context->cls);
+    }
   context->flush_total += 1;
   context->inst_count = 0;
 }
@@ -4199,11 +4205,15 @@ check_commit (LDR_CONTEXT * context)
 					   LOADDB_MSG_INTERRUPTED_ABORT));
 	  if (context->periodic_commit
 	      && Total_objects >= context->periodic_commit)
-	    committed_instances =
-	      Total_objects - (context->periodic_commit -
-			       context->commit_counter);
+	    {
+	      committed_instances =
+		Total_objects - (context->periodic_commit -
+				 context->commit_counter);
+	    }
 	  else
-	    committed_instances = 0;
+	    {
+	      committed_instances = 0;
+	    }
 	}
       else
 	{
@@ -4222,12 +4232,18 @@ check_commit (LDR_CONTEXT * context)
 
       /* Invoke post interrupt callback function */
       if (ldr_post_interrupt_handler != NULL)
-	(*ldr_post_interrupt_handler) (committed_instances);
+	{
+	  (*ldr_post_interrupt_handler) (committed_instances);
+	}
 
       if (ldr_Jmp_buf != NULL)
-	longjmp (*ldr_Jmp_buf, 1);
+	{
+	  longjmp (*ldr_Jmp_buf, 1);
+	}
       else
-	return (err);
+	{
+	  return (err);
+	}
     }
 
   if (context->periodic_commit)
@@ -4248,7 +4264,9 @@ check_commit (LDR_CONTEXT * context)
 
 	      /* Invoke post commit callback function */
 	      if (ldr_post_commit_handler != NULL)
-		(*ldr_post_commit_handler) ((Total_objects + 1));
+		{
+		  (*ldr_post_commit_handler) ((Total_objects + 1));
+		}
 
 	      /* After a commit we need to ensure that our attributes and
 	       * attribute descriptors are updated. The commit process
@@ -4412,9 +4430,13 @@ ldr_act_finish_line (LDR_CONTEXT * context)
   if (context->valid && !context->err_count)
     {
       if (context->constructor)
-	err = insert_meth_instance (context);
+	{
+	  err = insert_meth_instance (context);
+	}
       else if (context->attribute_type == LDR_ATTRIBUTE_ANY)
-	err = insert_instance (context);
+	{
+	  err = insert_instance (context);
+	}
 
       if (err == NO_ERROR)
 	{
@@ -4444,16 +4466,22 @@ ldr_act_finish_line (LDR_CONTEXT * context)
 		    }
 		}
 	      else
-		LDR_INCREMENT_ERR_COUNT (context, 1);
+		{
+		  LDR_INCREMENT_ERR_COUNT (context, 1);
+		}
 	    }
 	}
       else
-	LDR_INCREMENT_ERR_COUNT (context, 1);
+	{
+	  LDR_INCREMENT_ERR_COUNT (context, 1);
+	}
     }
 
 error_exit:
   if (context->err_count || (err != NO_ERROR))
-    ldr_abort ();
+    {
+      ldr_abort ();
+    }
   context->instance_started = 0;
   return;
 }
@@ -4504,10 +4532,12 @@ ldr_finish_context (LDR_CONTEXT * context)
 	      CHECK_ERR (err, er_errid ());
 	    }
 	  if (context->verbose)
-	    fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
-					     MSGCAT_UTIL_SET_LOADDB,
-					     LOADDB_MSG_INSTANCE_COUNT),
-		     context->inst_total);
+	    {
+	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
+					       MSGCAT_UTIL_SET_LOADDB,
+					       LOADDB_MSG_INSTANCE_COUNT),
+		       context->inst_total);
+	    }
 	}
     }
 
@@ -4518,16 +4548,20 @@ ldr_finish_context (LDR_CONTEXT * context)
   if ((err == NO_ERROR) && (envvar_get ("LOADER_DEBUG") != NULL))
     {
       if (context->inst_total)
-	printf ("%d %s %s inserted in %d %s\n",
-		context->inst_total, ldr_class_name (context),
-		context->inst_total == 1 ? "instance" : "instances",
-		context->flush_total,
-		context->flush_total == 1 ? "flush" : "flushes");
+	{
+	  printf ("%d %s %s inserted in %d %s\n",
+		  context->inst_total, ldr_class_name (context),
+		  context->inst_total == 1 ? "instance" : "instances",
+		  context->flush_total,
+		  context->flush_total == 1 ? "flush" : "flushes");
+	}
 
       if (context->err_total)
-	printf ("%d %s %s ignored because of errors\n",
-		context->err_total, ldr_class_name (context),
-		context->err_total == 1 ? "instance" : "instances");
+	{
+	  printf ("%d %s %s ignored because of errors\n",
+		  context->err_total, ldr_class_name (context),
+		  context->err_total == 1 ? "instance" : "instances");
+	}
     }
 #endif /* CUBRID_DEBUG */
 
@@ -4535,7 +4569,9 @@ ldr_finish_context (LDR_CONTEXT * context)
 
 error_exit:
   if (err != NO_ERROR)
-    ldr_abort ();
+    {
+      ldr_abort ();
+    }
   return (err);
 }
 
@@ -4553,7 +4589,9 @@ ldr_partition_info (LDR_CONTEXT * context)
   int au_save;
 
   if (!context || !context->cls)
-    return -1;
+    {
+      return -1;
+    }
 
   AU_DISABLE (au_save);
 
@@ -4616,14 +4654,16 @@ ldr_act_init_context (LDR_CONTEXT * context, const char *class_name, int len)
 
   er_clear ();
 
-  if ((err = ldr_finish_context (context) != NO_ERROR))
+  err = ldr_finish_context (context);
+  if (err != NO_ERROR)
     {
       display_error (-1);
       return;
     }
   if (class_name)
     {
-      if ((class_mop = ldr_find_class (class_name)) == NULL)
+      class_mop = ldr_find_class (class_name);
+      if (class_mop == NULL)
 	{
 	  display_error_line (0);
 	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
@@ -4644,7 +4684,8 @@ ldr_act_init_context (LDR_CONTEXT * context, const char *class_name, int len)
 	   * names that we deal with, and refetch the classes and locks
 	   * after a periodic commit.
 	   */
-	  if ((context->class_name = (char *) malloc (len + 1)) == NULL)
+	  context->class_name = (char *) malloc (len + 1);
+	  if (context->class_name == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR,
 		      0);
@@ -5197,12 +5238,16 @@ ldr_finish (LDR_CONTEXT * context, int err)
   int finish_error = NO_ERROR;
 
   if (err)
-    ldr_clear_and_free_context (context);
+    {
+      ldr_clear_and_free_context (context);
+    }
   else
     {
       finish_error = ldr_finish_context (context);
       if (!finish_error && !context->validation_only && !(context->err_total))
-	finish_error = update_default_instances_stats (context);
+	{
+	  finish_error = update_default_instances_stats (context);
+	}
     }
 
   return finish_error;
@@ -5218,13 +5263,17 @@ void
 ldr_act_finish (LDR_CONTEXT * context, int parse_error)
 {
   if (ldr_finish (context, parse_error))
-    display_error (-1);
+    {
+      display_error (-1);
+    }
 
   /* check errors */
 
   if (parse_error)
-    printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-			    MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_STOPPED));
+    {
+      printf (msgcat_message (MSGCAT_CATALOG_UTILS,
+			      MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_STOPPED));
+    }
 }
 
 /*
@@ -5290,8 +5339,11 @@ insert_instance (LDR_CONTEXT * context)
 	    }
 	}
     }
+
   if (err)
-    ldr_internal_error (context);
+    {
+      ldr_internal_error (context);
+    }
   else
     {
       context->inst_count++;
@@ -5340,7 +5392,9 @@ ldr_act_start_instance (LDR_CONTEXT * context, int id, LDR_CONSTANT * cons)
 	}
 
       if (ldr_reset_context (context) != NO_ERROR)
-	display_error (-1);
+	{
+	  display_error (-1);
+	}
 
       context->instance_started = 1;
     }
@@ -5370,14 +5424,9 @@ construct_instance (LDR_CONTEXT * context)
        i < context->arg_count && err == NO_ERROR && i < LDR_MAX_ARGS;
        i++, a++)
     {
-      err = (*(elem_converter[context->attrs[a].parser_type])) (context,
-								context->attrs
-								[a].
-								parser_str,
-								context->
-								attrs[a].
-								parser_str_len,
-								&vals[i]);
+      err = (*(elem_converter[context->attrs[a].parser_type]))
+	(context, context->attrs[a].parser_str,
+	 context->attrs[a].parser_str_len, &vals[i]);
       meth_args[i] = &(vals[i]);
     }
 
@@ -5390,10 +5439,9 @@ construct_instance (LDR_CONTEXT * context)
     {
       obj = DB_GET_OBJECT (&retval);
       context->obj = obj;
-      if (!
-	  (err =
-	   au_fetch_instance (context->obj, &context->mobj, AU_FETCH_UPDATE,
-			      AU_UPDATE)))
+      err = au_fetch_instance (context->obj, &context->mobj, AU_FETCH_UPDATE,
+			       AU_UPDATE);
+      if (err == NO_ERROR)
 	{
 	  ws_pin_instance_and_class (context->obj,
 				     &context->obj_pin, &context->class_pin);
@@ -5415,12 +5463,14 @@ construct_instance (LDR_CONTEXT * context)
 					      **) (&attdesc->att));
 
 	  if (!err)
-	    err = (*(attdesc->setter[attdesc->parser_type])) (context,
-							      attdesc->
-							      parser_str,
-							      attdesc->
-							      parser_str_len,
-							      attdesc->att);
+	    {
+	      err = (*(attdesc->setter[attdesc->parser_type])) (context,
+								attdesc->
+								parser_str,
+								attdesc->
+								parser_str_len,
+								attdesc->att);
+	    }
 	}
     }
   else
@@ -5452,7 +5502,9 @@ insert_meth_instance (LDR_CONTEXT * context)
 	{
 	  CHECK_PTR (err, real_obj = construct_instance (context));
 	  if (real_obj == NULL)
-	    CHECK_ERR (err, er_errid ());
+	    {
+	      CHECK_ERR (err, er_errid ());
+	    }
 	  else
 	    {
 	      ws_release_instance (real_obj);
@@ -5483,8 +5535,11 @@ insert_meth_instance (LDR_CONTEXT * context)
 	  err = ER_GENERIC_ERROR;
 	}
     }
+
   if (err)
-    ldr_internal_error (context);
+    {
+      ldr_internal_error (context);
+    }
   else
     {
       context->inst_count++;
@@ -5560,6 +5615,7 @@ ldr_act_set_constructor (LDR_CONTEXT * context, const char *name)
 	  ldr_act = ldr_act_meth;
 	}
     }
+
 error_exit:
   if (err != NO_ERROR)
     {
@@ -5947,15 +6003,21 @@ ldr_init (bool verbose)
   context = ldr_Current_context;
 
   if (ldr_init_loader (ldr_Current_context))
-    return er_errid ();
+    {
+      return er_errid ();
+    }
 
   idmap_init ();
 
   if (otable_init ())
-    return er_errid ();
+    {
+      return er_errid ();
+    }
 
   if (clist_init ())
-    return er_errid ();
+    {
+      return er_errid ();
+    }
 
   context->validation_only = true;
   context->verbose = verbose;
@@ -5987,8 +6049,11 @@ ldr_start (int periodic_commit)
 {
   int err;
   LDR_CONTEXT *context;
+
   if (!ldr_Current_context)
-    ldr_Current_context = &ldr_Context;
+    {
+      ldr_Current_context = &ldr_Context;
+    }
 
   context = ldr_Current_context;
 
@@ -5998,13 +6063,18 @@ ldr_start (int periodic_commit)
    * Initialize the mop -> temporary_oid, table used to obtain a mapping
    * between permanent OID and workspace mop, when permanent OIDs are obtained.
    */
-  if ((err = ldr_mop_tempoid_maps_init ()) != NO_ERROR)
-    return err;
+  err = ldr_mop_tempoid_maps_init ();
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
 
   context->validation_only = 0;
 
   if (periodic_commit <= 0)
-    context->periodic_commit = 0;
+    {
+      context->periodic_commit = 0;
+    }
   else
     {
       context->periodic_commit = periodic_commit;
@@ -6097,16 +6167,24 @@ void
 ldr_stats (int *errors, int *objects, int *defaults, int *lastcommit)
 {
   if (errors != NULL)
-    *errors = ldr_Current_context->err_total;
+    {
+      *errors = ldr_Current_context->err_total;
+    }
 
   if (objects != NULL)
-    *objects = Total_objects;
+    {
+      *objects = Total_objects;
+    }
 
   if (defaults != NULL)
-    *defaults = ldr_Current_context->default_count;
+    {
+      *defaults = ldr_Current_context->default_count;
+    }
 
   if (lastcommit != NULL)
-    *lastcommit = Last_committed_line;
+    {
+      *lastcommit = Last_committed_line;
+    }
 }
 
 /*
@@ -6150,9 +6228,13 @@ ldr_abort (void)
 {
   db_abort_transaction ();
   if (ldr_post_interrupt_handler != NULL)
-    (*ldr_post_interrupt_handler) (-1);
+    {
+      (*ldr_post_interrupt_handler) (-1);
+    }
   if (ldr_Jmp_buf != NULL)
-    longjmp (*ldr_Jmp_buf, 1);
+    {
+      longjmp (*ldr_Jmp_buf, 1);
+    }
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -6165,9 +6247,13 @@ void
 print_parser_lineno (FILE * fp)
 {
   if (fp)
-    fprintf (fp, "%d\n", loader_yylineno);
+    {
+      fprintf (fp, "%d\n", loader_yylineno);
+    }
   else
-    printf ("%d\n", loader_yylineno);
+    {
+      printf ("%d\n", loader_yylineno);
+    }
 }
 #endif
 
