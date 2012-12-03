@@ -204,17 +204,47 @@ namespace dbgw
     DBGWCallableStatementSharedPtr _DBGWCUBRIDConnection::prepareCall(
         const char *szSql)
     {
-      DBGWCallableStatementSharedPtr pStatement(
-          new _DBGWCUBRIDCallableStatement(shared_from_this(), szSql));
-      return pStatement;
+      clearException();
+
+      try
+        {
+          DBGWCallableStatementSharedPtr pStatement(
+              new _DBGWCUBRIDCallableStatement(shared_from_this(), szSql));
+          if (getLastErrorCode() != DBGW_ER_NO_ERROR)
+            {
+              throw getLastException();
+            }
+
+          return pStatement;
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return DBGWCallableStatementSharedPtr();
+        }
     }
 
     DBGWPreparedStatementSharedPtr _DBGWCUBRIDConnection::prepareStatement(
         const char *szSql)
     {
-      DBGWPreparedStatementSharedPtr pStatement(
-          new _DBGWCUBRIDPreparedStatement(shared_from_this(), szSql));
-      return pStatement;
+      clearException();
+
+      try
+        {
+          DBGWPreparedStatementSharedPtr pStatement(
+              new _DBGWCUBRIDPreparedStatement(shared_from_this(), szSql));
+          if (getLastErrorCode() != DBGW_ER_NO_ERROR)
+            {
+              throw getLastException();
+            }
+
+          return pStatement;
+        }
+      catch (DBGWException &e)
+        {
+          setLastException(e);
+          return DBGWPreparedStatementSharedPtr();
+        }
     }
 
     void _DBGWCUBRIDConnection::doConnect()

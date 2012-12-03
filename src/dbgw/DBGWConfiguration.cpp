@@ -84,10 +84,18 @@ namespace dbgw
     if (m_pQuery->getType() == DBGW_STMT_TYPE_PROCEDURE)
       {
         m_pCallableStatement = pConnection->prepareCall(pQuery->getSQL());
+        if (m_pCallableStatement == NULL)
+          {
+            throw getLastException();
+          }
       }
     else
       {
         m_pStatement = pConnection->prepareStatement(pQuery->getSQL());
+        if (m_pStatement == NULL)
+          {
+            throw getLastException();
+          }
       }
   }
 
