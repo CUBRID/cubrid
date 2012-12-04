@@ -621,6 +621,8 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj,
   char *serial_name = NULL;
   char att_downcase_name[SM_MAX_IDENTIFIER_LENGTH];
   size_t name_len;
+  int save;
+  bool au_disable_flag = false;
 
   if (!serial_obj || !class_name || !att_name)
     {
@@ -645,6 +647,9 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj,
     }
 
   SET_AUTO_INCREMENT_SERIAL_NAME (serial_name, class_name, att_name);
+
+  AU_DISABLE (save);
+  au_disable_flag = true;
 
   obj_tmpl = dbt_edit_object (serial_object);
   if (obj_tmpl == NULL)
@@ -679,6 +684,9 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj,
 
   serial_object = dbt_finish_object (obj_tmpl);
 
+  AU_ENABLE (save);
+  au_disable_flag = false;
+
   if (serial_object == NULL)
     {
       error = er_errid ();
@@ -692,6 +700,11 @@ update_auto_increment_error:
   if (serial_name)
     {
       free_and_init (serial_name);
+    }
+
+  if (au_disable_flag == true)
+    {
+      AU_ENABLE (save);
     }
 
   return (error);
