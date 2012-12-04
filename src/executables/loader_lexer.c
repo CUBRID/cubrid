@@ -791,7 +791,9 @@ static LDR_STRING *loader_get_string_container (void);
 static LDR_STRING *loader_make_string_by_yytext (void);
 static LDR_STRING *loader_make_string_by_buffer (void);
 
-#line 795 "../../src/executables/loader_lexer.c"
+extern int loader_yyline;
+
+#line 797 "../../src/executables/loader_lexer.c"
 
 #define INITIAL 0
 #define BRACKET_ID 1
@@ -978,9 +980,9 @@ YY_DECL
 	register char *yy_cp, *yy_bp;
 	register int yy_act;
     
-#line 81 "../../src/executables/loader_lexer.l"
+#line 83 "../../src/executables/loader_lexer.l"
 
-#line 984 "../../src/executables/loader_lexer.c"
+#line 986 "../../src/executables/loader_lexer.c"
 
 	if ( !(yy_init) )
 		{
@@ -1065,21 +1067,21 @@ do_action:	/* This label is used only to access EOF actions. */
 
 case 1:
 YY_RULE_SETUP
-#line 82 "../../src/executables/loader_lexer.l"
+#line 84 "../../src/executables/loader_lexer.l"
 ;
 	YY_BREAK
 case 2:
 /* rule 2 can match eol */
 YY_RULE_SETUP
-#line 84 "../../src/executables/loader_lexer.l"
+#line 86 "../../src/executables/loader_lexer.l"
 {
-    loader_yylineno++;
+    loader_yylineno = loader_yyline++;
     return NL;
 }
 	YY_BREAK
 case 3:
 YY_RULE_SETUP
-#line 89 "../../src/executables/loader_lexer.l"
+#line 91 "../../src/executables/loader_lexer.l"
 {
     PRINT ("NULL_ %s\n", loader_yytext);
     return NULL_;
@@ -1087,7 +1089,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 4:
 YY_RULE_SETUP
-#line 94 "../../src/executables/loader_lexer.l"
+#line 96 "../../src/executables/loader_lexer.l"
 {
     PRINT ("CLASS %s\n", loader_yytext);
     return CLASS;
@@ -1095,7 +1097,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 5:
 YY_RULE_SETUP
-#line 99 "../../src/executables/loader_lexer.l"
+#line 101 "../../src/executables/loader_lexer.l"
 {
     PRINT ("SHARED %s\n", loader_yytext);
     return SHARED;
@@ -1103,7 +1105,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 6:
 YY_RULE_SETUP
-#line 104 "../../src/executables/loader_lexer.l"
+#line 106 "../../src/executables/loader_lexer.l"
 {
     PRINT ("DEFAULT%s\n", loader_yytext);
     return DEFAULT;
@@ -1111,7 +1113,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 7:
 YY_RULE_SETUP
-#line 109 "../../src/executables/loader_lexer.l"
+#line 111 "../../src/executables/loader_lexer.l"
 {
     PRINT ("DATE %s\n", loader_yytext);
     return DATE_;
@@ -1119,7 +1121,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 8:
 YY_RULE_SETUP
-#line 114 "../../src/executables/loader_lexer.l"
+#line 116 "../../src/executables/loader_lexer.l"
 {
     PRINT ("TIME %s\n", loader_yytext);
     return TIME;
@@ -1127,7 +1129,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 9:
 YY_RULE_SETUP
-#line 119 "../../src/executables/loader_lexer.l"
+#line 121 "../../src/executables/loader_lexer.l"
 {
     PRINT ("UTIME %s\n", loader_yytext);
     return UTIME;
@@ -1135,7 +1137,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 10:
 YY_RULE_SETUP
-#line 124 "../../src/executables/loader_lexer.l"
+#line 126 "../../src/executables/loader_lexer.l"
 {
     PRINT ("TIMESTAMP %s\n", loader_yytext);
     return TIMESTAMP;
@@ -1143,7 +1145,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 11:
 YY_RULE_SETUP
-#line 129 "../../src/executables/loader_lexer.l"
+#line 131 "../../src/executables/loader_lexer.l"
 {
     PRINT ("DATETIME %s\n", loader_yytext);
     return DATETIME;
@@ -1151,7 +1153,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 12:
 YY_RULE_SETUP
-#line 134 "../../src/executables/loader_lexer.l"
+#line 136 "../../src/executables/loader_lexer.l"
 {
     PRINT ("CMD_ID %s\n", loader_yytext);
     loader_In_instance_line = false;
@@ -1160,7 +1162,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 13:
 YY_RULE_SETUP
-#line 140 "../../src/executables/loader_lexer.l"
+#line 142 "../../src/executables/loader_lexer.l"
 {
     PRINT ("CMD_CLASS %s\n", loader_yytext);
     loader_In_instance_line = false;
@@ -1169,7 +1171,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 14:
 YY_RULE_SETUP
-#line 146 "../../src/executables/loader_lexer.l"
+#line 148 "../../src/executables/loader_lexer.l"
 {
     PRINT ("CMD_CONSTRUCTOR %s\n", loader_yytext);
     return CMD_CONSTRUCTOR;
@@ -1177,7 +1179,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 15:
 YY_RULE_SETUP
-#line 151 "../../src/executables/loader_lexer.l"
+#line 153 "../../src/executables/loader_lexer.l"
 {
     PRINT ("REF_ELO_INT %s\n", loader_yytext);
     return REF_ELO_INT;
@@ -1185,7 +1187,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 16:
 YY_RULE_SETUP
-#line 156 "../../src/executables/loader_lexer.l"
+#line 158 "../../src/executables/loader_lexer.l"
 {
     PRINT ("REF_ELO_EXT %s\n", loader_yytext);
     return REF_ELO_EXT;
@@ -1193,7 +1195,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 17:
 YY_RULE_SETUP
-#line 161 "../../src/executables/loader_lexer.l"
+#line 163 "../../src/executables/loader_lexer.l"
 {
     PRINT ("REF_USER %s\n", loader_yytext);
     return REF_USER;
@@ -1201,7 +1203,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 18:
 YY_RULE_SETUP
-#line 166 "../../src/executables/loader_lexer.l"
+#line 168 "../../src/executables/loader_lexer.l"
 {
     PRINT ("REF_CLASS %s\n", loader_yytext);
     return REF_CLASS;
@@ -1209,7 +1211,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 19:
 YY_RULE_SETUP
-#line 171 "../../src/executables/loader_lexer.l"
+#line 173 "../../src/executables/loader_lexer.l"
 {
     PRINT ("OBJECT_REFERENCE %s\n", loader_yytext);
     return OBJECT_REFERENCE;
@@ -1217,7 +1219,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 20:
 YY_RULE_SETUP
-#line 176 "../../src/executables/loader_lexer.l"
+#line 178 "../../src/executables/loader_lexer.l"
 {
     PRINT ("OID_DELIMETER %s\n", loader_yytext);
     return OID_DELIMETER;
@@ -1225,7 +1227,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 21:
 YY_RULE_SETUP
-#line 181 "../../src/executables/loader_lexer.l"
+#line 183 "../../src/executables/loader_lexer.l"
 {
     PRINT ("SET_START_BRACE %s\n", loader_yytext);
     return SET_START_BRACE;
@@ -1233,7 +1235,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 22:
 YY_RULE_SETUP
-#line 186 "../../src/executables/loader_lexer.l"
+#line 188 "../../src/executables/loader_lexer.l"
 {
     PRINT ("SET_END_BRACE %s\n", loader_yytext);
     return SET_END_BRACE;
@@ -1241,7 +1243,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 23:
 YY_RULE_SETUP
-#line 191 "../../src/executables/loader_lexer.l"
+#line 193 "../../src/executables/loader_lexer.l"
 {
     PRINT ("START_PAREN %s\n", loader_yytext);
     return START_PAREN;
@@ -1249,7 +1251,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 24:
 YY_RULE_SETUP
-#line 196 "../../src/executables/loader_lexer.l"
+#line 198 "../../src/executables/loader_lexer.l"
 {
     PRINT ("END_PAREN %s\n", loader_yytext);
     return END_PAREN;
@@ -1257,7 +1259,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 25:
 YY_RULE_SETUP
-#line 201 "../../src/executables/loader_lexer.l"
+#line 203 "../../src/executables/loader_lexer.l"
 {
     PRINT ("REAL_LIT %s\n", loader_yytext);
     loader_yylval.string = loader_make_string_by_yytext ();
@@ -1266,7 +1268,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 26:
 YY_RULE_SETUP
-#line 207 "../../src/executables/loader_lexer.l"
+#line 209 "../../src/executables/loader_lexer.l"
 {
     PRINT ("INT_LIT %s\n", loader_yytext);
     loader_yylval.string = loader_make_string_by_yytext ();
@@ -1275,7 +1277,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 27:
 YY_RULE_SETUP
-#line 213 "../../src/executables/loader_lexer.l"
+#line 215 "../../src/executables/loader_lexer.l"
 {
     PRINT ("OID %s\n", loader_yytext);
     loader_yylval.intval = atoi (loader_yytext);
@@ -1284,7 +1286,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 28:
 YY_RULE_SETUP
-#line 219 "../../src/executables/loader_lexer.l"
+#line 221 "../../src/executables/loader_lexer.l"
 {
     PRINT ("TIME_LIT4 %s\n", loader_yytext);
     loader_yylval.string = loader_make_string_by_yytext ();
@@ -1293,7 +1295,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 29:
 YY_RULE_SETUP
-#line 225 "../../src/executables/loader_lexer.l"
+#line 227 "../../src/executables/loader_lexer.l"
 {
     PRINT ("TIME_LIT42 %s\n", loader_yytext);
     loader_yylval.string = loader_make_string_by_yytext ();
@@ -1302,7 +1304,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 30:
 YY_RULE_SETUP
-#line 231 "../../src/executables/loader_lexer.l"
+#line 233 "../../src/executables/loader_lexer.l"
 {
     PRINT ("TIME_LIT3 %s\n", loader_yytext);
     loader_yylval.string = loader_make_string_by_yytext ();
@@ -1311,7 +1313,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 31:
 YY_RULE_SETUP
-#line 237 "../../src/executables/loader_lexer.l"
+#line 239 "../../src/executables/loader_lexer.l"
 {
     PRINT ("TIME_LIT31 %s\n", loader_yytext);
     loader_yylval.string = loader_make_string_by_yytext ();
@@ -1320,7 +1322,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 32:
 YY_RULE_SETUP
-#line 243 "../../src/executables/loader_lexer.l"
+#line 245 "../../src/executables/loader_lexer.l"
 {
     PRINT ("TIME_LIT2 %s\n", loader_yytext);
     loader_yylval.string = loader_make_string_by_yytext ();
@@ -1329,7 +1331,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 33:
 YY_RULE_SETUP
-#line 249 "../../src/executables/loader_lexer.l"
+#line 251 "../../src/executables/loader_lexer.l"
 {
     PRINT ("TIME_LIT1 %s\n", loader_yytext);
     loader_yylval.string = loader_make_string_by_yytext ();
@@ -1338,7 +1340,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 34:
 YY_RULE_SETUP
-#line 255 "../../src/executables/loader_lexer.l"
+#line 257 "../../src/executables/loader_lexer.l"
 {
     PRINT ("DATE_LIT2 %s\n", loader_yytext);
     loader_yylval.string = loader_make_string_by_yytext ();
@@ -1347,7 +1349,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 35:
 YY_RULE_SETUP
-#line 261 "../../src/executables/loader_lexer.l"
+#line 263 "../../src/executables/loader_lexer.l"
 {
     PRINT ("YEN_SYMBOL %s\n", loader_yytext);
     return YEN_SYMBOL;
@@ -1355,7 +1357,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 36:
 YY_RULE_SETUP
-#line 266 "../../src/executables/loader_lexer.l"
+#line 268 "../../src/executables/loader_lexer.l"
 {
     PRINT ("YEN_SYMBOL %s\n", loader_yytext);
     return YEN_SYMBOL;
@@ -1363,7 +1365,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 37:
 YY_RULE_SETUP
-#line 271 "../../src/executables/loader_lexer.l"
+#line 273 "../../src/executables/loader_lexer.l"
 {
     PRINT ("WON_SYMBOL %s\n", loader_yytext);
     return WON_SYMBOL;
@@ -1371,7 +1373,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 38:
 YY_RULE_SETUP
-#line 276 "../../src/executables/loader_lexer.l"
+#line 278 "../../src/executables/loader_lexer.l"
 {
     PRINT ("WON_SYMBOL %s\n", loader_yytext);
     return WON_SYMBOL;
@@ -1379,7 +1381,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 39:
 YY_RULE_SETUP
-#line 281 "../../src/executables/loader_lexer.l"
+#line 283 "../../src/executables/loader_lexer.l"
 {
     PRINT ("TURKISH_LIRA_CURRENCY %s\n", loader_yytext);
     return TURKISH_LIRA_CURRENCY;
@@ -1387,7 +1389,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 40:
 YY_RULE_SETUP
-#line 286 "../../src/executables/loader_lexer.l"
+#line 288 "../../src/executables/loader_lexer.l"
 {
     PRINT ("TURKISH_LIRA_CURRENCY %s\n", loader_yytext);
     return TURKISH_LIRA_CURRENCY;
@@ -1395,7 +1397,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 41:
 YY_RULE_SETUP
-#line 291 "../../src/executables/loader_lexer.l"
+#line 293 "../../src/executables/loader_lexer.l"
 {
     PRINT ("BRITISH_POUND_SYMBOL %s\n", loader_yytext);
     return BRITISH_POUND_SYMBOL;
@@ -1403,7 +1405,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 42:
 YY_RULE_SETUP
-#line 296 "../../src/executables/loader_lexer.l"
+#line 298 "../../src/executables/loader_lexer.l"
 {
     PRINT ("CAMBODIAN_RIEL_SYMBOL %s\n", loader_yytext);
     return CAMBODIAN_RIEL_SYMBOL;
@@ -1411,7 +1413,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 43:
 YY_RULE_SETUP
-#line 301 "../../src/executables/loader_lexer.l"
+#line 303 "../../src/executables/loader_lexer.l"
 {
     PRINT ("CHINESE_RENMINBI_SYMBOL %s\n", loader_yytext);
     return CHINESE_RENMINBI_SYMBOL;
@@ -1419,7 +1421,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 44:
 YY_RULE_SETUP
-#line 306 "../../src/executables/loader_lexer.l"
+#line 308 "../../src/executables/loader_lexer.l"
 {
     PRINT ("INDIAN_RUPEE_SYMBOL %s\n", loader_yytext);
     return INDIAN_RUPEE_SYMBOL;
@@ -1427,7 +1429,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 45:
 YY_RULE_SETUP
-#line 311 "../../src/executables/loader_lexer.l"
+#line 313 "../../src/executables/loader_lexer.l"
 {
     PRINT ("RUSSIAN_RUBLE_SYMBOL %s\n", loader_yytext);
     return RUSSIAN_RUBLE_SYMBOL;
@@ -1435,7 +1437,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 46:
 YY_RULE_SETUP
-#line 316 "../../src/executables/loader_lexer.l"
+#line 318 "../../src/executables/loader_lexer.l"
 {
     PRINT ("AUSTRALIAN_DOLLAR_SYMBOL %s\n", loader_yytext);
     return AUSTRALIAN_DOLLAR_SYMBOL;
@@ -1443,7 +1445,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 47:
 YY_RULE_SETUP
-#line 321 "../../src/executables/loader_lexer.l"
+#line 323 "../../src/executables/loader_lexer.l"
 {
     PRINT ("CANADIAN_DOLLAR_SYMBOL %s\n", loader_yytext);
     return CANADIAN_DOLLAR_SYMBOL;
@@ -1451,7 +1453,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 48:
 YY_RULE_SETUP
-#line 326 "../../src/executables/loader_lexer.l"
+#line 328 "../../src/executables/loader_lexer.l"
 {
     PRINT ("BRASILIAN_REAL_SYMBOL %s\n", loader_yytext);
     return BRASILIAN_REAL_SYMBOL;
@@ -1459,7 +1461,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 49:
 YY_RULE_SETUP
-#line 331 "../../src/executables/loader_lexer.l"
+#line 333 "../../src/executables/loader_lexer.l"
 {
     PRINT ("ROMANIAN_LEU_SYMBOL %s\n", loader_yytext);
     return ROMANIAN_LEU_SYMBOL;
@@ -1467,7 +1469,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 50:
 YY_RULE_SETUP
-#line 336 "../../src/executables/loader_lexer.l"
+#line 338 "../../src/executables/loader_lexer.l"
 {
     PRINT ("EURO_SYMBOL %s\n", loader_yytext);
     return EURO_SYMBOL;
@@ -1475,7 +1477,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 51:
 YY_RULE_SETUP
-#line 341 "../../src/executables/loader_lexer.l"
+#line 343 "../../src/executables/loader_lexer.l"
 {
     PRINT ("SWISS_FRANC_SYMBOL %s\n", loader_yytext);
     return SWISS_FRANC_SYMBOL;
@@ -1483,7 +1485,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 52:
 YY_RULE_SETUP
-#line 346 "../../src/executables/loader_lexer.l"
+#line 348 "../../src/executables/loader_lexer.l"
 {
     PRINT ("DANISH_KRONE_SYMBOL %s\n", loader_yytext);
     return DANISH_KRONE_SYMBOL;
@@ -1491,7 +1493,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 53:
 YY_RULE_SETUP
-#line 351 "../../src/executables/loader_lexer.l"
+#line 353 "../../src/executables/loader_lexer.l"
 {
     PRINT ("NORWEGIAN_KRONE_SYMBOL %s\n", loader_yytext);
     return NORWEGIAN_KRONE_SYMBOL;
@@ -1499,7 +1501,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 54:
 YY_RULE_SETUP
-#line 356 "../../src/executables/loader_lexer.l"
+#line 358 "../../src/executables/loader_lexer.l"
 {
     PRINT ("BULGARIAN_LEV_SYMBOL %s\n", loader_yytext);
     return BULGARIAN_LEV_SYMBOL;
@@ -1507,7 +1509,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 55:
 YY_RULE_SETUP
-#line 361 "../../src/executables/loader_lexer.l"
+#line 363 "../../src/executables/loader_lexer.l"
 {
     PRINT ("VIETNAMESE_DONG_SYMBOL %s\n", loader_yytext);
     return VIETNAMESE_DONG_SYMBOL;
@@ -1515,7 +1517,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 56:
 YY_RULE_SETUP
-#line 366 "../../src/executables/loader_lexer.l"
+#line 368 "../../src/executables/loader_lexer.l"
 {
     PRINT ("CZECH_KORUNA_SYMBOL %s\n", loader_yytext);
     return CZECH_KORUNA_SYMBOL;
@@ -1523,7 +1525,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 57:
 YY_RULE_SETUP
-#line 371 "../../src/executables/loader_lexer.l"
+#line 373 "../../src/executables/loader_lexer.l"
 {
     PRINT ("POLISH_ZLOTY_SYMBOL %s\n", loader_yytext);
     return POLISH_ZLOTY_SYMBOL;
@@ -1531,7 +1533,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 58:
 YY_RULE_SETUP
-#line 376 "../../src/executables/loader_lexer.l"
+#line 378 "../../src/executables/loader_lexer.l"
 {
     PRINT ("SWEDISH_KRONA_SYMBOL %s\n", loader_yytext);
     return SWEDISH_KRONA_SYMBOL;
@@ -1539,7 +1541,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 59:
 YY_RULE_SETUP
-#line 381 "../../src/executables/loader_lexer.l"
+#line 383 "../../src/executables/loader_lexer.l"
 {
     PRINT ("CROATIAN_KUNA_SYMBOL %s\n", loader_yytext);
     return CROATIAN_KUNA_SYMBOL;
@@ -1547,7 +1549,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 60:
 YY_RULE_SETUP
-#line 386 "../../src/executables/loader_lexer.l"
+#line 388 "../../src/executables/loader_lexer.l"
 {
     PRINT ("SERBIAN_DINAR_SYMBOL %s\n", loader_yytext);
     return SERBIAN_DINAR_SYMBOL;
@@ -1555,7 +1557,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 61:
 YY_RULE_SETUP
-#line 391 "../../src/executables/loader_lexer.l"
+#line 393 "../../src/executables/loader_lexer.l"
 {
     PRINT ("BACKSLASH %s\n", loader_yytext);
     return BACKSLASH;
@@ -1563,7 +1565,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 62:
 YY_RULE_SETUP
-#line 396 "../../src/executables/loader_lexer.l"
+#line 398 "../../src/executables/loader_lexer.l"
 {
     PRINT ("DOLLAR_SYMBOL %s\n", loader_yytext);
     return DOLLAR_SYMBOL;
@@ -1571,7 +1573,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 63:
 YY_RULE_SETUP
-#line 401 "../../src/executables/loader_lexer.l"
+#line 403 "../../src/executables/loader_lexer.l"
 {
     PRINT ("DOLLAR_SYMBOL %s\n", loader_yytext);
     return DOLLAR_SYMBOL;
@@ -1579,7 +1581,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 64:
 YY_RULE_SETUP
-#line 406 "../../src/executables/loader_lexer.l"
+#line 408 "../../src/executables/loader_lexer.l"
 {
     PRINT ("IDENTIFIER %s\n", loader_yytext);
     loader_yylval.string = loader_make_string_by_yytext ();
@@ -1588,7 +1590,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 65:
 YY_RULE_SETUP
-#line 412 "../../src/executables/loader_lexer.l"
+#line 414 "../../src/executables/loader_lexer.l"
 {
     PRINT ("Quote %s\n", loader_yytext);
     BEGIN SQS;
@@ -1598,7 +1600,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 66:
 YY_RULE_SETUP
-#line 419 "../../src/executables/loader_lexer.l"
+#line 421 "../../src/executables/loader_lexer.l"
 {
     PRINT ("NQuote %s\n", loader_yytext);
     BEGIN SQS;
@@ -1608,7 +1610,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 67:
 YY_RULE_SETUP
-#line 426 "../../src/executables/loader_lexer.l"
+#line 428 "../../src/executables/loader_lexer.l"
 {
     PRINT ("BQuote %s\n", loader_yytext);
     BEGIN SQS;
@@ -1618,7 +1620,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 68:
 YY_RULE_SETUP
-#line 433 "../../src/executables/loader_lexer.l"
+#line 435 "../../src/executables/loader_lexer.l"
 {
     PRINT ("XQuote %s\n", loader_yytext);
     BEGIN SQS;
@@ -1628,7 +1630,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 69:
 YY_RULE_SETUP
-#line 440 "../../src/executables/loader_lexer.l"
+#line 442 "../../src/executables/loader_lexer.l"
 {
     loader_set_quoted_string_buffer ();
     if (loader_In_instance_line == true)
@@ -1644,7 +1646,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 70:
 YY_RULE_SETUP
-#line 453 "../../src/executables/loader_lexer.l"
+#line 455 "../../src/executables/loader_lexer.l"
 {
     loader_set_quoted_string_buffer ();
     BEGIN BRACKET_ID;
@@ -1653,15 +1655,15 @@ YY_RULE_SETUP
 case 71:
 /* rule 71 can match eol */
 YY_RULE_SETUP
-#line 458 "../../src/executables/loader_lexer.l"
+#line 460 "../../src/executables/loader_lexer.l"
 {
-    loader_yylineno++;
+    loader_yylineno = loader_yyline++;
     /* continue line */ ; 
 }
 	YY_BREAK
 case 72:
 YY_RULE_SETUP
-#line 463 "../../src/executables/loader_lexer.l"
+#line 465 "../../src/executables/loader_lexer.l"
 {
     PRINT ("COMMA %s\n", loader_yytext);
     return COMMA;
@@ -1670,48 +1672,48 @@ YY_RULE_SETUP
 case 73:
 /* rule 73 can match eol */
 YY_RULE_SETUP
-#line 468 "../../src/executables/loader_lexer.l"
+#line 470 "../../src/executables/loader_lexer.l"
 {
-    loader_yylineno++;
+    loader_yylineno = loader_yyline++;
     /* C++ comments */
 }
 	YY_BREAK
 case 74:
 /* rule 74 can match eol */
 YY_RULE_SETUP
-#line 473 "../../src/executables/loader_lexer.l"
+#line 475 "../../src/executables/loader_lexer.l"
 {
-    loader_yylineno++;
+    loader_yylineno = loader_yyline++;
     /* SQL comments */
 }
 	YY_BREAK
 case 75:
 YY_RULE_SETUP
-#line 478 "../../src/executables/loader_lexer.l"
+#line 480 "../../src/executables/loader_lexer.l"
 {
     BEGIN COMMENT;	/* C comments */
 }
 	YY_BREAK
 case 76:
-#line 483 "../../src/executables/loader_lexer.l"
+#line 485 "../../src/executables/loader_lexer.l"
 case 77:
 /* rule 77 can match eol */
 YY_RULE_SETUP
-#line 483 "../../src/executables/loader_lexer.l"
+#line 485 "../../src/executables/loader_lexer.l"
 {
-    loader_yylineno++;
+    loader_yylineno = loader_yyline++;
 }
 	YY_BREAK
 case 78:
 YY_RULE_SETUP
-#line 487 "../../src/executables/loader_lexer.l"
+#line 489 "../../src/executables/loader_lexer.l"
 {
     BEGIN INITIAL;
 }
 	YY_BREAK
 case 79:
 YY_RULE_SETUP
-#line 491 "../../src/executables/loader_lexer.l"
+#line 493 "../../src/executables/loader_lexer.l"
 {
     loader_append_string ('"');
 }
@@ -1719,14 +1721,14 @@ YY_RULE_SETUP
 case 80:
 /* rule 80 can match eol */
 YY_RULE_SETUP
-#line 495 "../../src/executables/loader_lexer.l"
+#line 497 "../../src/executables/loader_lexer.l"
 {
     loader_append_string (loader_yytext[0]);
 }
 	YY_BREAK
 case 81:
 YY_RULE_SETUP
-#line 499 "../../src/executables/loader_lexer.l"
+#line 501 "../../src/executables/loader_lexer.l"
 {
     loader_append_string ('\0');
     PRINT ("IDENTIFIER %s\n", qstr_Buf_p);
@@ -1738,14 +1740,14 @@ YY_RULE_SETUP
 case 82:
 /* rule 82 can match eol */
 YY_RULE_SETUP
-#line 508 "../../src/executables/loader_lexer.l"
+#line 510 "../../src/executables/loader_lexer.l"
 {
     loader_append_string (loader_yytext[0]);
 }
 	YY_BREAK
 case 83:
 YY_RULE_SETUP
-#line 512 "../../src/executables/loader_lexer.l"
+#line 514 "../../src/executables/loader_lexer.l"
 {
     loader_append_string ('\0');
     PRINT ("IDENTIFIER %s\n", qstr_Buf_p);
@@ -1756,42 +1758,42 @@ YY_RULE_SETUP
 	YY_BREAK
 case 84:
 YY_RULE_SETUP
-#line 520 "../../src/executables/loader_lexer.l"
+#line 522 "../../src/executables/loader_lexer.l"
 {
     loader_append_string ('\n');
 }
 	YY_BREAK
 case 85:
 YY_RULE_SETUP
-#line 524 "../../src/executables/loader_lexer.l"
+#line 526 "../../src/executables/loader_lexer.l"
 {
     loader_append_string ('\t');
 }
 	YY_BREAK
 case 86:
 YY_RULE_SETUP
-#line 528 "../../src/executables/loader_lexer.l"
+#line 530 "../../src/executables/loader_lexer.l"
 {
     loader_append_string ('\f');
 }
 	YY_BREAK
 case 87:
 YY_RULE_SETUP
-#line 532 "../../src/executables/loader_lexer.l"
+#line 534 "../../src/executables/loader_lexer.l"
 {
     loader_append_string ('\r');
 }
 	YY_BREAK
 case 88:
 YY_RULE_SETUP
-#line 536 "../../src/executables/loader_lexer.l"
+#line 538 "../../src/executables/loader_lexer.l"
 {
     loader_append_string ((char) strtol (&loader_yytext[1], NULL, 8));
 }
 	YY_BREAK
 case 89:
 YY_RULE_SETUP
-#line 540 "../../src/executables/loader_lexer.l"
+#line 542 "../../src/executables/loader_lexer.l"
 {
     loader_append_string ((char) strtol (&loader_yytext[2], NULL, 16));
 }
@@ -1799,21 +1801,21 @@ YY_RULE_SETUP
 case 90:
 /* rule 90 can match eol */
 YY_RULE_SETUP
-#line 544 "../../src/executables/loader_lexer.l"
+#line 546 "../../src/executables/loader_lexer.l"
 {
     loader_append_string (loader_yytext[0]);
 }
 	YY_BREAK
 case 91:
 YY_RULE_SETUP
-#line 548 "../../src/executables/loader_lexer.l"
+#line 550 "../../src/executables/loader_lexer.l"
 {
     /* ignore */ ;
 }
 	YY_BREAK
 case 92:
 YY_RULE_SETUP
-#line 552 "../../src/executables/loader_lexer.l"
+#line 554 "../../src/executables/loader_lexer.l"
 {
     loader_append_string ('\0');
     PRINT ("DQS_String_Body %s\n", qstr_Buf_p);
@@ -1824,7 +1826,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 93:
 YY_RULE_SETUP
-#line 560 "../../src/executables/loader_lexer.l"
+#line 562 "../../src/executables/loader_lexer.l"
 {
     loader_append_string ('\'');
 }
@@ -1832,7 +1834,7 @@ YY_RULE_SETUP
 case 94:
 /* rule 94 can match eol */
 YY_RULE_SETUP
-#line 564 "../../src/executables/loader_lexer.l"
+#line 566 "../../src/executables/loader_lexer.l"
 {
     loader_append_string (loader_yytext[0]);
 }
@@ -1840,14 +1842,14 @@ YY_RULE_SETUP
 case 95:
 /* rule 95 can match eol */
 YY_RULE_SETUP
-#line 568 "../../src/executables/loader_lexer.l"
+#line 570 "../../src/executables/loader_lexer.l"
 {
-    loader_yylineno++;
+    loader_yylineno = loader_yyline++;
 }
 	YY_BREAK
 case 96:
 YY_RULE_SETUP
-#line 572 "../../src/executables/loader_lexer.l"
+#line 574 "../../src/executables/loader_lexer.l"
 {
     loader_append_string ('\0');
     PRINT ("String_Completion %s\n", qstr_Buf_p);
@@ -1858,7 +1860,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 97:
 YY_RULE_SETUP
-#line 580 "../../src/executables/loader_lexer.l"
+#line 582 "../../src/executables/loader_lexer.l"
 {
     loader_append_string ('\0');
     PRINT ("String_Completion2 %s\n", qstr_Buf_p);
@@ -1869,10 +1871,10 @@ YY_RULE_SETUP
 	YY_BREAK
 case 98:
 YY_RULE_SETUP
-#line 588 "../../src/executables/loader_lexer.l"
+#line 590 "../../src/executables/loader_lexer.l"
 ECHO;
 	YY_BREAK
-#line 1876 "../../src/executables/loader_lexer.c"
+#line 1878 "../../src/executables/loader_lexer.c"
 case YY_STATE_EOF(INITIAL):
 case YY_STATE_EOF(BRACKET_ID):
 case YY_STATE_EOF(DELIMITED_ID):
@@ -2871,7 +2873,7 @@ void loader_yyfree (void * ptr )
 
 #define YYTABLES_NAME "yytables"
 
-#line 588 "../../src/executables/loader_lexer.l"
+#line 590 "../../src/executables/loader_lexer.l"
 
 
 

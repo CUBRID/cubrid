@@ -267,6 +267,7 @@ static LDR_CONSTANT* loader_make_constant(int type, void *val);
 static LDR_MONETARY_VALUE* loader_make_monetary_value (int currency_type, LDR_STRING * amount);
 static LDR_CONSTANT *loader_append_constant_list(LDR_CONSTANT *head, LDR_CONSTANT *tail);
 
+int loader_yyline = 1;
 
 
 /* Enabling traces.  */
@@ -289,7 +290,7 @@ static LDR_CONSTANT *loader_append_constant_list(LDR_CONSTANT *head, LDR_CONSTAN
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 typedef union YYSTYPE
-#line 78 "../../src/executables/loader_grammar.y"
+#line 79 "../../src/executables/loader_grammar.y"
 {
 	int 	intval;
 	LDR_STRING	*string;
@@ -298,8 +299,8 @@ typedef union YYSTYPE
 	LDR_CONSTANT *constant;
 	LDR_OBJECT_REF *obj_ref;
 }
-/* Line 187 of yacc.c.  */
-#line 303 "../../src/executables/loader_grammar.c"
+/* Line 193 of yacc.c.  */
+#line 304 "../../src/executables/loader_grammar.c"
 	YYSTYPE;
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */
 # define YYSTYPE_IS_DECLARED 1
@@ -312,7 +313,7 @@ typedef union YYSTYPE
 
 
 /* Line 216 of yacc.c.  */
-#line 316 "../../src/executables/loader_grammar.c"
+#line 317 "../../src/executables/loader_grammar.c"
 
 #ifdef short
 # undef short
@@ -642,18 +643,18 @@ static const yytype_int8 yyrhs[] =
 /* YYRLINE[YYN] -- source line where rule number YYN was defined.  */
 static const yytype_uint16 yyrline[] =
 {
-       0,   193,   193,   193,   204,   209,   216,   222,   229,   236,
-     246,   251,   258,   271,   330,   336,   342,   348,   356,   362,
-     368,   376,   381,   388,   394,   400,   408,   415,   434,   439,
-     446,   452,   458,   466,   473,   478,   484,   492,   499,   505,
-     513,   514,   515,   516,   517,   518,   519,   520,   521,   522,
-     523,   524,   525,   526,   527,   528,   529,   530,   545,   546,
-     547,   548,   549,   553,   560,   567,   574,   581,   588,   595,
-     602,   609,   614,   621,   626,   634,   653,   674,   681,   686,
-     693,   699,   705,   711,   717,   725,   732,   734,   736,   738,
-     742,   749,   756,   763,   770,   777,   784,   791,   798,   805,
-     812,   819,   826,   833,   840,   847,   854,   861,   868,   875,
-     882,   889,   896,   903,   910
+       0,   194,   194,   194,   205,   210,   217,   223,   230,   237,
+     247,   252,   259,   272,   331,   337,   343,   349,   357,   363,
+     369,   377,   382,   389,   395,   401,   409,   416,   435,   440,
+     447,   453,   459,   467,   474,   479,   485,   493,   500,   506,
+     514,   515,   516,   517,   518,   519,   520,   521,   522,   523,
+     524,   525,   526,   527,   528,   529,   530,   531,   546,   547,
+     548,   549,   550,   554,   561,   568,   575,   582,   589,   596,
+     603,   610,   615,   622,   627,   635,   654,   675,   682,   687,
+     694,   700,   706,   712,   718,   726,   733,   735,   737,   739,
+     743,   750,   757,   764,   771,   778,   785,   792,   799,   806,
+     813,   820,   827,   834,   841,   848,   855,   862,   869,   876,
+     883,   890,   897,   904,   911
 };
 #endif
 
@@ -1738,7 +1739,7 @@ yyreduce:
   switch (yyn)
     {
         case 2:
-#line 193 "../../src/executables/loader_grammar.y"
+#line 194 "../../src/executables/loader_grammar.y"
     {
     loader_initialize_lexer ();
     constant_Pool_idx = 0;
@@ -1746,28 +1747,28 @@ yyreduce:
     break;
 
   case 3:
-#line 198 "../../src/executables/loader_grammar.y"
+#line 199 "../../src/executables/loader_grammar.y"
     {
     ldr_act_finish (ldr_Current_context, 0);
   ;}
     break;
 
   case 4:
-#line 205 "../../src/executables/loader_grammar.y"
+#line 206 "../../src/executables/loader_grammar.y"
     {
     DBG_PRINT ("line");
   ;}
     break;
 
   case 5:
-#line 210 "../../src/executables/loader_grammar.y"
+#line 211 "../../src/executables/loader_grammar.y"
     {
     DBG_PRINT ("line_list line");
   ;}
     break;
 
   case 6:
-#line 217 "../../src/executables/loader_grammar.y"
+#line 218 "../../src/executables/loader_grammar.y"
     {
     DBG_PRINT ("one_line");
     loader_In_instance_line = true;
@@ -1775,14 +1776,14 @@ yyreduce:
     break;
 
   case 7:
-#line 223 "../../src/executables/loader_grammar.y"
+#line 224 "../../src/executables/loader_grammar.y"
     {
     loader_In_instance_line = true;
   ;}
     break;
 
   case 8:
-#line 230 "../../src/executables/loader_grammar.y"
+#line 231 "../../src/executables/loader_grammar.y"
     {
     DBG_PRINT ("command_line");
     loader_reset_string_pool ();
@@ -1791,7 +1792,7 @@ yyreduce:
     break;
 
   case 9:
-#line 237 "../../src/executables/loader_grammar.y"
+#line 238 "../../src/executables/loader_grammar.y"
     {
     DBG_PRINT ("instance_line");
     ldr_act_finish_line (ldr_Current_context);
@@ -1801,21 +1802,21 @@ yyreduce:
     break;
 
   case 10:
-#line 247 "../../src/executables/loader_grammar.y"
+#line 248 "../../src/executables/loader_grammar.y"
     {
     DBG_PRINT ("class_command");
   ;}
     break;
 
   case 11:
-#line 252 "../../src/executables/loader_grammar.y"
+#line 253 "../../src/executables/loader_grammar.y"
     {
     DBG_PRINT ("id_command");
   ;}
     break;
 
   case 12:
-#line 259 "../../src/executables/loader_grammar.y"
+#line 260 "../../src/executables/loader_grammar.y"
     {
     skipCurrentclass = false;
 
@@ -1828,7 +1829,7 @@ yyreduce:
     break;
 
   case 13:
-#line 272 "../../src/executables/loader_grammar.y"
+#line 273 "../../src/executables/loader_grammar.y"
     {
     LDR_CLASS_COMMAND_SPEC *cmd_spec;
     LDR_STRING *class_name;
@@ -1887,7 +1888,7 @@ yyreduce:
     break;
 
   case 14:
-#line 331 "../../src/executables/loader_grammar.y"
+#line 332 "../../src/executables/loader_grammar.y"
     {
     DBG_PRINT ("attribute_list");
     (yyval.cmd_spec) = loader_make_class_command_spec (LDR_ATTRIBUTE_ANY, (yyvsp[(1) - (1)].string), NULL);
@@ -1895,7 +1896,7 @@ yyreduce:
     break;
 
   case 15:
-#line 337 "../../src/executables/loader_grammar.y"
+#line 338 "../../src/executables/loader_grammar.y"
     {
     DBG_PRINT ("attribute_list constructor_spec");
     (yyval.cmd_spec) = loader_make_class_command_spec (LDR_ATTRIBUTE_ANY, (yyvsp[(1) - (2)].string), (yyvsp[(2) - (2)].ctor_spec));
@@ -1903,7 +1904,7 @@ yyreduce:
     break;
 
   case 16:
-#line 343 "../../src/executables/loader_grammar.y"
+#line 344 "../../src/executables/loader_grammar.y"
     {
     DBG_PRINT ("attribute_list_qualifier attribute_list");
     (yyval.cmd_spec) = loader_make_class_command_spec ((yyvsp[(1) - (2)].intval), (yyvsp[(2) - (2)].string), NULL);
@@ -1911,7 +1912,7 @@ yyreduce:
     break;
 
   case 17:
-#line 349 "../../src/executables/loader_grammar.y"
+#line 350 "../../src/executables/loader_grammar.y"
     {
     DBG_PRINT ("attribute_list_qualifier attribute_list constructor_spec");
     (yyval.cmd_spec) = loader_make_class_command_spec ((yyvsp[(1) - (3)].intval), (yyvsp[(2) - (3)].string), (yyvsp[(3) - (3)].ctor_spec));
@@ -1919,7 +1920,7 @@ yyreduce:
     break;
 
   case 18:
-#line 357 "../../src/executables/loader_grammar.y"
+#line 358 "../../src/executables/loader_grammar.y"
     {
     DBG_PRINT ("CLASS");
     (yyval.intval) = LDR_ATTRIBUTE_CLASS;
@@ -1927,7 +1928,7 @@ yyreduce:
     break;
 
   case 19:
-#line 363 "../../src/executables/loader_grammar.y"
+#line 364 "../../src/executables/loader_grammar.y"
     {
     DBG_PRINT ("SHARED");
     (yyval.intval) = LDR_ATTRIBUTE_SHARED;
@@ -1935,7 +1936,7 @@ yyreduce:
     break;
 
   case 20:
-#line 369 "../../src/executables/loader_grammar.y"
+#line 370 "../../src/executables/loader_grammar.y"
     {
     DBG_PRINT ("DEFAULT");
     (yyval.intval) = LDR_ATTRIBUTE_DEFAULT;
@@ -1943,21 +1944,21 @@ yyreduce:
     break;
 
   case 21:
-#line 377 "../../src/executables/loader_grammar.y"
+#line 378 "../../src/executables/loader_grammar.y"
     {
     (yyval.string) = NULL;
   ;}
     break;
 
   case 22:
-#line 382 "../../src/executables/loader_grammar.y"
+#line 383 "../../src/executables/loader_grammar.y"
     {
     (yyval.string) = (yyvsp[(2) - (3)].string);
   ;}
     break;
 
   case 23:
-#line 389 "../../src/executables/loader_grammar.y"
+#line 390 "../../src/executables/loader_grammar.y"
     {
     DBG_PRINT ("attribute_name");
     (yyval.string) = loader_append_string_list (NULL, (yyvsp[(1) - (1)].string));
@@ -1965,7 +1966,7 @@ yyreduce:
     break;
 
   case 24:
-#line 395 "../../src/executables/loader_grammar.y"
+#line 396 "../../src/executables/loader_grammar.y"
     {
     DBG_PRINT ("attribute_names attribute_name");
     (yyval.string) = loader_append_string_list ((yyvsp[(1) - (2)].string), (yyvsp[(2) - (2)].string));
@@ -1973,7 +1974,7 @@ yyreduce:
     break;
 
   case 25:
-#line 401 "../../src/executables/loader_grammar.y"
+#line 402 "../../src/executables/loader_grammar.y"
     {
     DBG_PRINT ("attribute_names COMMA attribute_name");
     (yyval.string) = loader_append_string_list ((yyvsp[(1) - (3)].string), (yyvsp[(3) - (3)].string));
@@ -1981,14 +1982,14 @@ yyreduce:
     break;
 
   case 26:
-#line 409 "../../src/executables/loader_grammar.y"
+#line 410 "../../src/executables/loader_grammar.y"
     {
     (yyval.string) = (yyvsp[(1) - (1)].string);
   ;}
     break;
 
   case 27:
-#line 416 "../../src/executables/loader_grammar.y"
+#line 417 "../../src/executables/loader_grammar.y"
     {
     LDR_CONSTRUCTOR_SPEC *spec;
 
@@ -2007,21 +2008,21 @@ yyreduce:
     break;
 
   case 28:
-#line 435 "../../src/executables/loader_grammar.y"
+#line 436 "../../src/executables/loader_grammar.y"
     {
     (yyval.string) = NULL;
   ;}
     break;
 
   case 29:
-#line 440 "../../src/executables/loader_grammar.y"
+#line 441 "../../src/executables/loader_grammar.y"
     {
     (yyval.string) = (yyvsp[(2) - (3)].string);
   ;}
     break;
 
   case 30:
-#line 447 "../../src/executables/loader_grammar.y"
+#line 448 "../../src/executables/loader_grammar.y"
     {
     DBG_PRINT ("argument_name");
     (yyval.string) = loader_append_string_list (NULL, (yyvsp[(1) - (1)].string));
@@ -2029,7 +2030,7 @@ yyreduce:
     break;
 
   case 31:
-#line 453 "../../src/executables/loader_grammar.y"
+#line 454 "../../src/executables/loader_grammar.y"
     {
     DBG_PRINT ("argument_names argument_name");
     (yyval.string) = loader_append_string_list ((yyvsp[(1) - (2)].string), (yyvsp[(2) - (2)].string));
@@ -2037,7 +2038,7 @@ yyreduce:
     break;
 
   case 32:
-#line 459 "../../src/executables/loader_grammar.y"
+#line 460 "../../src/executables/loader_grammar.y"
     {
     DBG_PRINT ("argument_names COMMA argument_name");
     (yyval.string) = loader_append_string_list ((yyvsp[(1) - (3)].string), (yyvsp[(3) - (3)].string));
@@ -2045,21 +2046,21 @@ yyreduce:
     break;
 
   case 33:
-#line 467 "../../src/executables/loader_grammar.y"
+#line 468 "../../src/executables/loader_grammar.y"
     {
     (yyval.string) = (yyvsp[(1) - (1)].string);
   ;}
     break;
 
   case 34:
-#line 474 "../../src/executables/loader_grammar.y"
+#line 475 "../../src/executables/loader_grammar.y"
     {
     ldr_act_start_instance (ldr_Current_context, (yyvsp[(1) - (1)].intval), NULL);
   ;}
     break;
 
   case 35:
-#line 479 "../../src/executables/loader_grammar.y"
+#line 480 "../../src/executables/loader_grammar.y"
     {
     ldr_act_start_instance (ldr_Current_context, (yyvsp[(1) - (2)].intval), (yyvsp[(2) - (2)].constant));
     ldr_process_constants ((yyvsp[(2) - (2)].constant));
@@ -2067,7 +2068,7 @@ yyreduce:
     break;
 
   case 36:
-#line 485 "../../src/executables/loader_grammar.y"
+#line 486 "../../src/executables/loader_grammar.y"
     {
     ldr_act_start_instance (ldr_Current_context, -1, (yyvsp[(1) - (1)].constant));
     ldr_process_constants ((yyvsp[(1) - (1)].constant));
@@ -2075,14 +2076,14 @@ yyreduce:
     break;
 
   case 37:
-#line 493 "../../src/executables/loader_grammar.y"
+#line 494 "../../src/executables/loader_grammar.y"
     {
     (yyval.intval) = (yyvsp[(1) - (1)].intval);
   ;}
     break;
 
   case 38:
-#line 500 "../../src/executables/loader_grammar.y"
+#line 501 "../../src/executables/loader_grammar.y"
     {
     DBG_PRINT ("constant");
     (yyval.constant) = loader_append_constant_list (NULL, (yyvsp[(1) - (1)].constant));
@@ -2090,7 +2091,7 @@ yyreduce:
     break;
 
   case 39:
-#line 506 "../../src/executables/loader_grammar.y"
+#line 507 "../../src/executables/loader_grammar.y"
     {
     DBG_PRINT ("constant_list constant");
     (yyval.constant) = loader_append_constant_list ((yyvsp[(1) - (2)].constant), (yyvsp[(2) - (2)].constant));
@@ -2098,92 +2099,92 @@ yyreduce:
     break;
 
   case 40:
-#line 513 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
-    break;
-
-  case 41:
 #line 514 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
     break;
 
-  case 42:
+  case 41:
 #line 515 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
     break;
 
-  case 43:
+  case 42:
 #line 516 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
     break;
 
-  case 44:
+  case 43:
 #line 517 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
     break;
 
-  case 45:
+  case 44:
 #line 518 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
     break;
 
-  case 46:
+  case 45:
 #line 519 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
     break;
 
-  case 47:
+  case 46:
 #line 520 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
     break;
 
-  case 48:
+  case 47:
 #line 521 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
     break;
 
-  case 49:
+  case 48:
 #line 522 "../../src/executables/loader_grammar.y"
+    { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
+    break;
+
+  case 49:
+#line 523 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = loader_make_constant(LDR_NULL, NULL); ;}
     break;
 
   case 50:
-#line 523 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = loader_make_constant(LDR_TIME, (yyvsp[(1) - (1)].string)); ;}
-    break;
-
-  case 51:
 #line 524 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = loader_make_constant(LDR_TIME, (yyvsp[(1) - (1)].string)); ;}
     break;
 
-  case 52:
+  case 51:
 #line 525 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = loader_make_constant(LDR_TIME, (yyvsp[(1) - (1)].string)); ;}
     break;
 
-  case 53:
+  case 52:
 #line 526 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = loader_make_constant(LDR_TIME, (yyvsp[(1) - (1)].string)); ;}
     break;
 
-  case 54:
+  case 53:
 #line 527 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = loader_make_constant(LDR_TIME, (yyvsp[(1) - (1)].string)); ;}
     break;
 
-  case 55:
+  case 54:
 #line 528 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = loader_make_constant(LDR_TIME, (yyvsp[(1) - (1)].string)); ;}
     break;
 
-  case 56:
+  case 55:
 #line 529 "../../src/executables/loader_grammar.y"
+    { (yyval.constant) = loader_make_constant(LDR_TIME, (yyvsp[(1) - (1)].string)); ;}
+    break;
+
+  case 56:
+#line 530 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = loader_make_constant(LDR_INT, (yyvsp[(1) - (1)].string)); ;}
     break;
 
   case 57:
-#line 531 "../../src/executables/loader_grammar.y"
+#line 532 "../../src/executables/loader_grammar.y"
     {
     if (strchr ((yyvsp[(1) - (1)].string)->val, 'F') != NULL || strchr ((yyvsp[(1) - (1)].string)->val, 'f') != NULL)
       {
@@ -2201,109 +2202,109 @@ yyreduce:
     break;
 
   case 58:
-#line 545 "../../src/executables/loader_grammar.y"
+#line 546 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = loader_make_constant(LDR_DATE, (yyvsp[(1) - (1)].string)); ;}
     break;
 
   case 59:
-#line 546 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
-    break;
-
-  case 60:
 #line 547 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
     break;
 
-  case 61:
+  case 60:
 #line 548 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
     break;
 
-  case 62:
+  case 61:
 #line 549 "../../src/executables/loader_grammar.y"
     { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
     break;
 
+  case 62:
+#line 550 "../../src/executables/loader_grammar.y"
+    { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
+    break;
+
   case 63:
-#line 554 "../../src/executables/loader_grammar.y"
+#line 555 "../../src/executables/loader_grammar.y"
     {
     (yyval.constant) = loader_make_constant (LDR_STR, (yyvsp[(2) - (2)].string));
   ;}
     break;
 
   case 64:
-#line 561 "../../src/executables/loader_grammar.y"
+#line 562 "../../src/executables/loader_grammar.y"
     {
     (yyval.constant) = loader_make_constant (LDR_NSTR, (yyvsp[(2) - (2)].string));
   ;}
     break;
 
   case 65:
-#line 568 "../../src/executables/loader_grammar.y"
+#line 569 "../../src/executables/loader_grammar.y"
     {
     (yyval.constant) = loader_make_constant (LDR_STR, (yyvsp[(2) - (2)].string));
   ;}
     break;
 
   case 66:
-#line 575 "../../src/executables/loader_grammar.y"
+#line 576 "../../src/executables/loader_grammar.y"
     {
     (yyval.constant) = loader_make_constant (LDR_DATE, (yyvsp[(3) - (3)].string));
   ;}
     break;
 
   case 67:
-#line 582 "../../src/executables/loader_grammar.y"
+#line 583 "../../src/executables/loader_grammar.y"
     {
     (yyval.constant) = loader_make_constant (LDR_TIME, (yyvsp[(3) - (3)].string));
   ;}
     break;
 
   case 68:
-#line 589 "../../src/executables/loader_grammar.y"
+#line 590 "../../src/executables/loader_grammar.y"
     {
     (yyval.constant) = loader_make_constant (LDR_TIMESTAMP, (yyvsp[(3) - (3)].string));
   ;}
     break;
 
   case 69:
-#line 596 "../../src/executables/loader_grammar.y"
+#line 597 "../../src/executables/loader_grammar.y"
     {
     (yyval.constant) = loader_make_constant (LDR_TIMESTAMP, (yyvsp[(3) - (3)].string));
   ;}
     break;
 
   case 70:
-#line 603 "../../src/executables/loader_grammar.y"
+#line 604 "../../src/executables/loader_grammar.y"
     {
     (yyval.constant) = loader_make_constant (LDR_DATETIME, (yyvsp[(3) - (3)].string));
   ;}
     break;
 
   case 71:
-#line 610 "../../src/executables/loader_grammar.y"
+#line 611 "../../src/executables/loader_grammar.y"
     {
     (yyval.constant) = loader_make_constant (LDR_BSTR, (yyvsp[(2) - (2)].string));
   ;}
     break;
 
   case 72:
-#line 615 "../../src/executables/loader_grammar.y"
+#line 616 "../../src/executables/loader_grammar.y"
     {
     (yyval.constant) = loader_make_constant (LDR_XSTR, (yyvsp[(2) - (2)].string));
   ;}
     break;
 
   case 73:
-#line 622 "../../src/executables/loader_grammar.y"
+#line 623 "../../src/executables/loader_grammar.y"
     {
     (yyval.constant) = loader_make_constant (LDR_CLASS_OID, (yyvsp[(2) - (2)].obj_ref));
   ;}
     break;
 
   case 74:
-#line 627 "../../src/executables/loader_grammar.y"
+#line 628 "../../src/executables/loader_grammar.y"
     {
     (yyvsp[(2) - (3)].obj_ref)->instance_number = (yyvsp[(3) - (3)].string);
     (yyval.constant) = loader_make_constant (LDR_OID, (yyvsp[(2) - (3)].obj_ref));
@@ -2311,7 +2312,7 @@ yyreduce:
     break;
 
   case 75:
-#line 635 "../../src/executables/loader_grammar.y"
+#line 636 "../../src/executables/loader_grammar.y"
     {
     LDR_OBJECT_REF *ref;
 
@@ -2332,7 +2333,7 @@ yyreduce:
     break;
 
   case 76:
-#line 654 "../../src/executables/loader_grammar.y"
+#line 655 "../../src/executables/loader_grammar.y"
     {
     LDR_OBJECT_REF *ref;
 
@@ -2353,28 +2354,28 @@ yyreduce:
     break;
 
   case 77:
-#line 675 "../../src/executables/loader_grammar.y"
+#line 676 "../../src/executables/loader_grammar.y"
     {
     (yyval.string) = (yyvsp[(2) - (2)].string);
   ;}
     break;
 
   case 78:
-#line 682 "../../src/executables/loader_grammar.y"
+#line 683 "../../src/executables/loader_grammar.y"
     {
     (yyval.constant) = loader_make_constant (LDR_COLLECTION, NULL);
   ;}
     break;
 
   case 79:
-#line 687 "../../src/executables/loader_grammar.y"
+#line 688 "../../src/executables/loader_grammar.y"
     {
     (yyval.constant) = loader_make_constant (LDR_COLLECTION, (yyvsp[(2) - (3)].constant));
   ;}
     break;
 
   case 80:
-#line 694 "../../src/executables/loader_grammar.y"
+#line 695 "../../src/executables/loader_grammar.y"
     {
     DBG_PRINT ("constant");
     (yyval.constant) = loader_append_constant_list (NULL, (yyvsp[(1) - (1)].constant));
@@ -2382,7 +2383,7 @@ yyreduce:
     break;
 
   case 81:
-#line 700 "../../src/executables/loader_grammar.y"
+#line 701 "../../src/executables/loader_grammar.y"
     {
     DBG_PRINT ("set_elements constant");
     (yyval.constant) = loader_append_constant_list ((yyvsp[(1) - (2)].constant), (yyvsp[(2) - (2)].constant));
@@ -2390,7 +2391,7 @@ yyreduce:
     break;
 
   case 82:
-#line 706 "../../src/executables/loader_grammar.y"
+#line 707 "../../src/executables/loader_grammar.y"
     {
     DBG_PRINT ("set_elements COMMA constant");
     (yyval.constant) = loader_append_constant_list ((yyvsp[(1) - (3)].constant), (yyvsp[(3) - (3)].constant));
@@ -2398,7 +2399,7 @@ yyreduce:
     break;
 
   case 83:
-#line 712 "../../src/executables/loader_grammar.y"
+#line 713 "../../src/executables/loader_grammar.y"
     {
     DBG_PRINT ("set_elements NL constant");
     (yyval.constant) = loader_append_constant_list ((yyvsp[(1) - (3)].constant), (yyvsp[(3) - (3)].constant));
@@ -2406,7 +2407,7 @@ yyreduce:
     break;
 
   case 84:
-#line 718 "../../src/executables/loader_grammar.y"
+#line 719 "../../src/executables/loader_grammar.y"
     {
     DBG_PRINT ("set_elements COMMA NL constant");
     (yyval.constant) = loader_append_constant_list ((yyvsp[(1) - (4)].constant), (yyvsp[(4) - (4)].constant));
@@ -2414,34 +2415,34 @@ yyreduce:
     break;
 
   case 85:
-#line 726 "../../src/executables/loader_grammar.y"
+#line 727 "../../src/executables/loader_grammar.y"
     {
     (yyval.constant) = loader_make_constant ((yyvsp[(1) - (3)].intval), (yyvsp[(3) - (3)].string));
   ;}
     break;
 
   case 86:
-#line 732 "../../src/executables/loader_grammar.y"
+#line 733 "../../src/executables/loader_grammar.y"
     { (yyval.intval) = LDR_ELO_INT; ;}
     break;
 
   case 87:
-#line 734 "../../src/executables/loader_grammar.y"
+#line 735 "../../src/executables/loader_grammar.y"
     { (yyval.intval) = LDR_ELO_EXT; ;}
     break;
 
   case 88:
-#line 736 "../../src/executables/loader_grammar.y"
+#line 737 "../../src/executables/loader_grammar.y"
     { (yyval.intval) = LDR_SYS_USER; ;}
     break;
 
   case 89:
-#line 738 "../../src/executables/loader_grammar.y"
+#line 739 "../../src/executables/loader_grammar.y"
     { (yyval.intval) = LDR_SYS_CLASS; ;}
     break;
 
   case 90:
-#line 743 "../../src/executables/loader_grammar.y"
+#line 744 "../../src/executables/loader_grammar.y"
     {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_DOLLAR, (yyvsp[(2) - (2)].string));
     
@@ -2450,7 +2451,7 @@ yyreduce:
     break;
 
   case 91:
-#line 750 "../../src/executables/loader_grammar.y"
+#line 751 "../../src/executables/loader_grammar.y"
     {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_YEN, (yyvsp[(2) - (2)].string));
     
@@ -2459,7 +2460,7 @@ yyreduce:
     break;
 
   case 92:
-#line 757 "../../src/executables/loader_grammar.y"
+#line 758 "../../src/executables/loader_grammar.y"
     {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_WON, (yyvsp[(2) - (2)].string));
     
@@ -2468,7 +2469,7 @@ yyreduce:
     break;
 
   case 93:
-#line 764 "../../src/executables/loader_grammar.y"
+#line 765 "../../src/executables/loader_grammar.y"
     {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_TL, (yyvsp[(2) - (2)].string));
     
@@ -2477,7 +2478,7 @@ yyreduce:
     break;
 
   case 94:
-#line 771 "../../src/executables/loader_grammar.y"
+#line 772 "../../src/executables/loader_grammar.y"
     {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_WON, (yyvsp[(2) - (2)].string));
     
@@ -2486,7 +2487,7 @@ yyreduce:
     break;
 
   case 95:
-#line 778 "../../src/executables/loader_grammar.y"
+#line 779 "../../src/executables/loader_grammar.y"
     {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_BRITISH_POUND, (yyvsp[(2) - (2)].string));
     
@@ -2495,7 +2496,7 @@ yyreduce:
     break;
 
   case 96:
-#line 785 "../../src/executables/loader_grammar.y"
+#line 786 "../../src/executables/loader_grammar.y"
     {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_CAMBODIAN_RIEL, (yyvsp[(2) - (2)].string));
     
@@ -2504,7 +2505,7 @@ yyreduce:
     break;
 
   case 97:
-#line 792 "../../src/executables/loader_grammar.y"
+#line 793 "../../src/executables/loader_grammar.y"
     {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_CHINESE_RENMINBI, (yyvsp[(2) - (2)].string));
     
@@ -2513,7 +2514,7 @@ yyreduce:
     break;
 
   case 98:
-#line 799 "../../src/executables/loader_grammar.y"
+#line 800 "../../src/executables/loader_grammar.y"
     {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_INDIAN_RUPEE, (yyvsp[(2) - (2)].string));
     
@@ -2522,7 +2523,7 @@ yyreduce:
     break;
 
   case 99:
-#line 806 "../../src/executables/loader_grammar.y"
+#line 807 "../../src/executables/loader_grammar.y"
     {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_RUSSIAN_RUBLE, (yyvsp[(2) - (2)].string));
     
@@ -2531,7 +2532,7 @@ yyreduce:
     break;
 
   case 100:
-#line 813 "../../src/executables/loader_grammar.y"
+#line 814 "../../src/executables/loader_grammar.y"
     {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_AUSTRALIAN_DOLLAR, (yyvsp[(2) - (2)].string));
     
@@ -2540,7 +2541,7 @@ yyreduce:
     break;
 
   case 101:
-#line 820 "../../src/executables/loader_grammar.y"
+#line 821 "../../src/executables/loader_grammar.y"
     {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_CANADIAN_DOLLAR, (yyvsp[(2) - (2)].string));
     
@@ -2549,7 +2550,7 @@ yyreduce:
     break;
 
   case 102:
-#line 827 "../../src/executables/loader_grammar.y"
+#line 828 "../../src/executables/loader_grammar.y"
     {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_BRASILIAN_REAL, (yyvsp[(2) - (2)].string));
     
@@ -2558,7 +2559,7 @@ yyreduce:
     break;
 
   case 103:
-#line 834 "../../src/executables/loader_grammar.y"
+#line 835 "../../src/executables/loader_grammar.y"
     {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_ROMANIAN_LEU, (yyvsp[(2) - (2)].string));
     
@@ -2567,7 +2568,7 @@ yyreduce:
     break;
 
   case 104:
-#line 841 "../../src/executables/loader_grammar.y"
+#line 842 "../../src/executables/loader_grammar.y"
     {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_EURO, (yyvsp[(2) - (2)].string));
     
@@ -2576,7 +2577,7 @@ yyreduce:
     break;
 
   case 105:
-#line 848 "../../src/executables/loader_grammar.y"
+#line 849 "../../src/executables/loader_grammar.y"
     {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_SWISS_FRANC, (yyvsp[(2) - (2)].string));
     
@@ -2585,7 +2586,7 @@ yyreduce:
     break;
 
   case 106:
-#line 855 "../../src/executables/loader_grammar.y"
+#line 856 "../../src/executables/loader_grammar.y"
     {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_DANISH_KRONE, (yyvsp[(2) - (2)].string));
     
@@ -2594,7 +2595,7 @@ yyreduce:
     break;
 
   case 107:
-#line 862 "../../src/executables/loader_grammar.y"
+#line 863 "../../src/executables/loader_grammar.y"
     {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_NORWEGIAN_KRONE, (yyvsp[(2) - (2)].string));
     
@@ -2603,7 +2604,7 @@ yyreduce:
     break;
 
   case 108:
-#line 869 "../../src/executables/loader_grammar.y"
+#line 870 "../../src/executables/loader_grammar.y"
     {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_BULGARIAN_LEV, (yyvsp[(2) - (2)].string));
     
@@ -2612,7 +2613,7 @@ yyreduce:
     break;
 
   case 109:
-#line 876 "../../src/executables/loader_grammar.y"
+#line 877 "../../src/executables/loader_grammar.y"
     {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_VIETNAMESE_DONG, (yyvsp[(2) - (2)].string));
     
@@ -2621,7 +2622,7 @@ yyreduce:
     break;
 
   case 110:
-#line 883 "../../src/executables/loader_grammar.y"
+#line 884 "../../src/executables/loader_grammar.y"
     {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_CZECH_KORUNA, (yyvsp[(2) - (2)].string));
     
@@ -2630,7 +2631,7 @@ yyreduce:
     break;
 
   case 111:
-#line 890 "../../src/executables/loader_grammar.y"
+#line 891 "../../src/executables/loader_grammar.y"
     {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_POLISH_ZLOTY, (yyvsp[(2) - (2)].string));
     
@@ -2639,7 +2640,7 @@ yyreduce:
     break;
 
   case 112:
-#line 897 "../../src/executables/loader_grammar.y"
+#line 898 "../../src/executables/loader_grammar.y"
     {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_SWEDISH_KRONA, (yyvsp[(2) - (2)].string));
     
@@ -2648,7 +2649,7 @@ yyreduce:
     break;
 
   case 113:
-#line 904 "../../src/executables/loader_grammar.y"
+#line 905 "../../src/executables/loader_grammar.y"
     {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_CROATIAN_KUNA, (yyvsp[(2) - (2)].string));
     
@@ -2657,7 +2658,7 @@ yyreduce:
     break;
 
   case 114:
-#line 911 "../../src/executables/loader_grammar.y"
+#line 912 "../../src/executables/loader_grammar.y"
     {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_SERBIAN_DINAR, (yyvsp[(2) - (2)].string));
     
@@ -2667,7 +2668,7 @@ yyreduce:
 
 
 /* Line 1267 of yacc.c.  */
-#line 2671 "../../src/executables/loader_grammar.c"
+#line 2672 "../../src/executables/loader_grammar.c"
       default: break;
     }
   YY_SYMBOL_PRINT ("-> $$ =", yyr1[yyn], &yyval, &yyloc);
@@ -2881,7 +2882,7 @@ yyreturn:
 }
 
 
-#line 917 "../../src/executables/loader_grammar.y"
+#line 918 "../../src/executables/loader_grammar.y"
 
 
 static LDR_STRING *
@@ -2996,6 +2997,7 @@ void do_loader_parse(FILE *fp)
   loader_In_instance_line = true;
 
   loader_yyin = fp;
+  loader_yyline = 1;
   loader_yyparse();
 }
 

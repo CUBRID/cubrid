@@ -5262,7 +5262,9 @@ ldr_finish (LDR_CONTEXT * context, int err)
 void
 ldr_act_finish (LDR_CONTEXT * context, int parse_error)
 {
-  if (ldr_finish (context, parse_error))
+  /* do not display duplicate error msg */
+  int err = er_filter_errid (false);
+  if (ldr_finish (context, parse_error) && err == NO_ERROR)
     {
       display_error (-1);
     }

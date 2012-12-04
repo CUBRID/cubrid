@@ -74,6 +74,8 @@ static void loader_append_string (char c);
 static LDR_STRING *loader_get_string_container (void);
 static LDR_STRING *loader_make_string_by_yytext (void);
 static LDR_STRING *loader_make_string_by_buffer (void);
+
+extern int loader_yyline;
 %}
 
 %x BRACKET_ID DELIMITED_ID DQS SQS COMMENT
@@ -82,7 +84,7 @@ static LDR_STRING *loader_make_string_by_buffer (void);
 [ \t]+	;
 
 \r?\n {
-    yylineno++;
+    yylineno = loader_yyline++;
     return NL;
 }
 
@@ -456,7 +458,7 @@ static LDR_STRING *loader_make_string_by_buffer (void);
 }
 
 \\\n {
-    yylineno++;
+    yylineno = loader_yyline++;
     /* continue line */ ; 
 }
 
@@ -466,12 +468,12 @@ static LDR_STRING *loader_make_string_by_buffer (void);
 }
 
 \/\/[^\r\n]*\r?\n {
-    yylineno++;
+    yylineno = loader_yyline++;
     /* C++ comments */
 }
 
 \-\-[^\r\n]*\r?\n {
-    yylineno++;
+    yylineno = loader_yyline++;
     /* SQL comments */
 }
 
@@ -481,7 +483,7 @@ static LDR_STRING *loader_make_string_by_buffer (void);
 
 <COMMENT>.  |
 <COMMENT>\n {
-    yylineno++;
+    yylineno = loader_yyline++;
 }
 
 <COMMENT>"*/" {
@@ -566,7 +568,7 @@ static LDR_STRING *loader_make_string_by_buffer (void);
 }
 
 <SQS>\'\+[ \t]*\r?\n[ \t]*\' {
-    yylineno++;
+    yylineno = loader_yyline++;
 }
 
 <SQS>\'[ \t] {

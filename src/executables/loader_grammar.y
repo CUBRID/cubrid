@@ -71,6 +71,7 @@ static LDR_CONSTANT* loader_make_constant(int type, void *val);
 static LDR_MONETARY_VALUE* loader_make_monetary_value (int currency_type, LDR_STRING * amount);
 static LDR_CONSTANT *loader_append_constant_list(LDR_CONSTANT *head, LDR_CONSTANT *tail);
 
+int loader_yyline = 1;
 %}
 
 %error_verbose
@@ -1028,6 +1029,7 @@ void do_loader_parse(FILE *fp)
   loader_In_instance_line = true;
 
   loader_yyin = fp;
+  loader_yyline = 1;
   loader_yyparse();
 }
 
