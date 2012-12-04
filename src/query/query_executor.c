@@ -18640,8 +18640,8 @@ query_multi_range_opt_check_set_sort_col (THREAD_ENTRY * thread_p,
       for (regu_list = spec->s_id.s.isid.rest_regu_list;
 	   regu_list != NULL; regu_list = regu_list->next)
 	{
-	  assert (regu_list->value.type == TYPE_ATTR_ID);
-	  if (regu_list->value.vfetch_to == valp)
+	  if (regu_list->value.type == TYPE_ATTR_ID
+	      && regu_list->value.vfetch_to == valp)
 	    {
 	      att_id = regu_list->value.value.attr_descr.id;
 	      break;
