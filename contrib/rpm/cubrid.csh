@@ -14,7 +14,7 @@ else
 endif
 
 set BIN_PATH = `echo $path | grep -i cubrid`
-if ( $BIN_PATH == "" ) then
+if ( "$BIN_PATH" == "" ) then
 	set path=($CUBRID/{bin,cubridmanager} $path)
 endif
 
