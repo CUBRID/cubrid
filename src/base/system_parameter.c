@@ -5987,8 +5987,8 @@ prm_tune_parameters (void)
     }
 
   call_stack_dump_activation_prm =
-    prm_find (PRM_NAME_CALL_STACK_DUMP_ACTIVATION, NULL);
-  if (call_stack_dump_activation_prm)
+    GET_PRM (PRM_ID_CALL_STACK_DUMP_ACTIVATION);
+  if (!PRM_IS_SET (call_stack_dump_activation_prm->flag))
     {
       int dim;
       int *integer_list = NULL;
@@ -6013,6 +6013,8 @@ prm_tune_parameters (void)
 	      dim * sizeof (int));
       prm_set_integer_list_value (PRM_ID_CALL_STACK_DUMP_ACTIVATION,
 				  integer_list);
+      PRM_SET_BIT (PRM_SET, call_stack_dump_activation_prm->flag);
+      PRM_CLEAR_BIT (PRM_DEFAULT_USED, call_stack_dump_activation_prm->flag);
     }
 
   return;
