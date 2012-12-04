@@ -4132,8 +4132,11 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
   else if (PRM_IS_SIZE (prm))
     {
       UINT64 v = PRM_GET_SIZE (prm->value);
+      int left_side_len = strlen (left_side);
+      (void) util_byte_to_size_string (v, left_side + left_side_len,
+				       PRM_DEFAULT_BUFFER_SIZE -
+				       left_side_len);
       n = snprintf (buf, len, "%s", left_side);
-      n += util_byte_to_size_string (v, buf + n, len - n);
     }
   else if (PRM_IS_BOOLEAN (prm))
     {
@@ -4315,8 +4318,11 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
   else if (PRM_IS_SIZE (prm))
     {
       UINT64 v = value.size;
+      int left_side_len = strlen (left_side);
+      (void) util_byte_to_size_string (v, left_side + left_side_len,
+				       PRM_DEFAULT_BUFFER_SIZE -
+				       left_side_len);
       n = snprintf (buf, len, "%s", left_side);
-      n += util_byte_to_size_string (v, buf + n, len - n);
     }
   else if (PRM_IS_BOOLEAN (prm))
     {
@@ -7782,10 +7788,9 @@ sysprm_print_assign_values (SYSPRM_ASSIGN_VALUE * prm_values, char *buffer,
       n +=
 	sysprm_print_sysprm_value (prm_values->prm_id, prm_values->value,
 				   buffer + n, length - n, PRM_PRINT_NAME);
-      n += snprintf (buffer + n, length - n, ";");
       if (prm_values->next)
 	{
-	  n += snprintf (buffer + n, length - n, " ");
+	  n += snprintf (buffer + n, length - n, "; ");
 	}
     }
   return n;
