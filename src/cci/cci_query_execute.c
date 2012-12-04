@@ -1705,18 +1705,24 @@ qe_get_data (T_REQ_HANDLE * req_handle, int col_no, int a_type, void *value,
 int
 qe_get_cur_oid (T_REQ_HANDLE * req_handle, char *oid_str_buf)
 {
+  int index;
+
   if (req_handle->cur_fetch_tuple_index < 0)
-    return CCI_ER_INVALID_CURSOR_POS;
+    {
+      return CCI_ER_INVALID_CURSOR_POS;
+    }
 
   if (req_handle->prepare_flag & CCI_PREPARE_INCLUDE_OID)
     {
-      ut_oid_to_str (&
-		     (req_handle->tuple_value
-		      [req_handle->cur_fetch_tuple_index].tuple_oid),
+      index = req_handle->cur_fetch_tuple_index;
+      ut_oid_to_str (&(req_handle->tuple_value[index].tuple_oid),
 		     oid_str_buf);
     }
   else
-    strcpy (oid_str_buf, "");
+    {
+      strcpy (oid_str_buf, "");
+    }
+
   return 0;
 }
 
@@ -3013,9 +3019,11 @@ qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type,
     case CCI_U_TYPE_VARBIT:
       {
 	if (hm_conv_value_buf_alloc (conv_val_buf, col_val_size * 2 + 2) < 0)
-	  return CCI_ER_NO_MORE_MEMORY;
+	  {
+	    return CCI_ER_NO_MORE_MEMORY;
+	  }
 	ut_bit_to_str (col_value_p, col_val_size,
-		       (char *) conv_val_buf->data);
+		       (char *) conv_val_buf->data, col_val_size * 2 + 2);
       }
       break;
     case CCI_U_TYPE_BIGINT:
@@ -3025,8 +3033,10 @@ qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type,
 	qe_get_data_bigint (u_type, col_value_p, &data);
 
 	if (hm_conv_value_buf_alloc (conv_val_buf, 128) < 0)
-	  return CCI_ER_NO_MORE_MEMORY;
-	ut_int_to_str (data, (char *) conv_val_buf->data);
+	  {
+	    return CCI_ER_NO_MORE_MEMORY;
+	  }
+	ut_int_to_str (data, (char *) conv_val_buf->data, 128);
       }
       break;
     case CCI_U_TYPE_INT:
@@ -3037,8 +3047,10 @@ qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type,
 	qe_get_data_int (u_type, col_value_p, &data);
 
 	if (hm_conv_value_buf_alloc (conv_val_buf, 128) < 0)
-	  return CCI_ER_NO_MORE_MEMORY;
-	ut_int_to_str (data, (char *) conv_val_buf->data);
+	  {
+	    return CCI_ER_NO_MORE_MEMORY;
+	  }
+	ut_int_to_str (data, (char *) conv_val_buf->data, 128);
       }
       break;
     case CCI_U_TYPE_MONETARY:
@@ -3048,9 +3060,11 @@ qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type,
 
 	qe_get_data_double (u_type, col_value_p, &data);
 
-	if (hm_conv_value_buf_alloc (conv_val_buf, 128) < 0)
-	  return CCI_ER_NO_MORE_MEMORY;
-	ut_double_to_str (data, (char *) conv_val_buf->data);
+	if (hm_conv_value_buf_alloc (conv_val_buf, 512) < 0)
+	  {
+	    return CCI_ER_NO_MORE_MEMORY;
+	  }
+	ut_double_to_str (data, (char *) conv_val_buf->data, 512);
       }
       break;
     case CCI_U_TYPE_FLOAT:
@@ -3060,8 +3074,10 @@ qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type,
 	qe_get_data_float (u_type, col_value_p, &data);
 
 	if (hm_conv_value_buf_alloc (conv_val_buf, 128) < 0)
-	  return CCI_ER_NO_MORE_MEMORY;
-	ut_float_to_str (data, (char *) conv_val_buf->data);
+	  {
+	    return CCI_ER_NO_MORE_MEMORY;
+	  }
+	ut_float_to_str (data, (char *) conv_val_buf->data, 128);
       }
       break;
     case CCI_U_TYPE_DATE:
@@ -3074,8 +3090,10 @@ qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type,
 	qe_get_data_date (u_type, col_value_p, &data);
 
 	if (hm_conv_value_buf_alloc (conv_val_buf, 128) < 0)
-	  return CCI_ER_NO_MORE_MEMORY;
-	ut_date_to_str (&data, u_type, (char *) conv_val_buf->data);
+	  {
+	    return CCI_ER_NO_MORE_MEMORY;
+	  }
+	ut_date_to_str (&data, u_type, (char *) conv_val_buf->data, 128);
       }
       break;
     case CCI_U_TYPE_SET:
@@ -3103,7 +3121,9 @@ qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type,
       {
 	T_OBJECT data;
 	if (hm_conv_value_buf_alloc (conv_val_buf, 128) < 0)
-	  return CCI_ER_NO_MORE_MEMORY;
+	  {
+	    return CCI_ER_NO_MORE_MEMORY;
+	  }
 	NET_STR_TO_OBJECT (data, col_value_p);
 	ut_oid_to_str (&data, (char *) conv_val_buf->data);
       }
@@ -3114,8 +3134,8 @@ qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type,
 	int err_code;
 	T_LOB *lob = NULL;
 
-	err_code =
-	  qe_get_data_lob (u_type, col_value_p, col_val_size, (void *) &lob);
+	err_code = qe_get_data_lob (u_type, col_value_p,
+				    col_val_size, (void *) &lob);
 	if (err_code < 0)
 	  {
 	    return err_code;
@@ -3125,7 +3145,7 @@ qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type,
 	    FREE_MEM (lob);
 	    return CCI_ER_NO_MORE_MEMORY;
 	  }
-	ut_lob_to_str (lob, (char *) conv_val_buf->data);
+	ut_lob_to_str (lob, (char *) conv_val_buf->data, 128);
 	FREE_MEM (lob);
       }
       break;
@@ -5030,7 +5050,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	case CCI_U_TYPE_NUMERIC:
 	  {
 	    char buf[64];
-	    ut_int_to_str (i_value, buf);
+	    ut_int_to_str (i_value, buf, 64);
 	    ALLOC_COPY (bind_value->value, buf);
 	    if (bind_value->value == NULL)
 	      return CCI_ER_NO_MORE_MEMORY;
@@ -5079,7 +5099,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	case CCI_U_TYPE_NUMERIC:
 	  {
 	    char buf[64];
-	    ut_int_to_str (bi_value, buf);
+	    ut_int_to_str (bi_value, buf, 64);
 	    ALLOC_COPY (bind_value->value, buf);
 	    if (bind_value->value == NULL)
 	      return CCI_ER_NO_MORE_MEMORY;
@@ -5128,7 +5148,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	case CCI_U_TYPE_NUMERIC:
 	  {
 	    char buf[256];
-	    ut_float_to_str (f_value, buf);
+	    ut_float_to_str (f_value, buf, 256);
 	    ALLOC_COPY (bind_value->value, buf);
 	    if (bind_value->value == NULL)
 	      return CCI_ER_NO_MORE_MEMORY;
@@ -5174,8 +5194,8 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	case CCI_U_TYPE_VARNCHAR:
 	case CCI_U_TYPE_NUMERIC:
 	  {
-	    char buf[256];
-	    ut_double_to_str (d_value, buf);
+	    char buf[512];
+	    ut_double_to_str (d_value, buf, 512);
 	    ALLOC_COPY (bind_value->value, buf);
 	    if (bind_value->value == NULL)
 	      return CCI_ER_NO_MORE_MEMORY;

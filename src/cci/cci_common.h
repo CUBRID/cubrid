@@ -140,20 +140,20 @@ extern "C"
 	do {			\
 	  if (PTR) {		\
 	    FREE(PTR);		\
-	    PTR = 0;	\
+	    (PTR) = 0;	        \
 	  }			\
 	} while (0)
 
-#define ALLOC_COPY(PTR, STR)			\
-	do {					\
-	  if (STR == NULL)			\
-	    PTR = NULL;				\
-	  else {				\
-	    PTR = (char *) MALLOC(strlen((char*) STR) + 1);	\
-	    if (PTR) {				\
-	      strcpy((char*) PTR, (const char*) STR);			\
-	    }					\
-	  }					\
+#define ALLOC_COPY(PTR, STR)			                 \
+	do {					                 \
+	  if ((STR) == NULL)			                 \
+	    (PTR) = NULL;			                 \
+	  else {				                 \
+	    (PTR) = (char *) MALLOC(strlen((char*) (STR)) + 1);	 \
+	    if (PTR) {				                 \
+	      strcpy((char*) (PTR), (const char*) (STR));	 \
+	    }					                 \
+	  }					                 \
 	} while (0)
 
 #if defined(WINDOWS)

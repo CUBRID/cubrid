@@ -345,15 +345,21 @@ ut_str_to_oid (char *str, T_OBJECT * value)
   int id;
 
   if (p == NULL)
-    return CCI_ER_TYPE_CONVERSION;
+    {
+      return CCI_ER_TYPE_CONVERSION;
+    }
 
   if (*p != '@')
-    return CCI_ER_TYPE_CONVERSION;
+    {
+      return CCI_ER_TYPE_CONVERSION;
+    }
 
   p++;
   id = strtol (p, &end_p, 10);	/* page id */
   if (*end_p != '|')
-    return CCI_ER_TYPE_CONVERSION;
+    {
+      return CCI_ER_TYPE_CONVERSION;
+    }
   value->pageid = id;
 
   p = end_p + 1;
@@ -365,52 +371,55 @@ ut_str_to_oid (char *str, T_OBJECT * value)
   p = end_p + 1;
   id = strtol (p, &end_p, 10);	/* vol id */
   if (*end_p != '\0')
-    return CCI_ER_TYPE_CONVERSION;
+    {
+      return CCI_ER_TYPE_CONVERSION;
+    }
   value->volid = id;
 
   return 0;
 }
 
 void
-ut_int_to_str (INT64 value, char *str)
+ut_int_to_str (INT64 value, char *str, int size)
 {
-  sprintf (str, "%lld", (long long) value);
+  snprintf (str, size, "%lld", (long long) value);
 }
 
 void
-ut_float_to_str (float value, char *str)
+ut_float_to_str (float value, char *str, int size)
 {
-  sprintf (str, "%f", value);
+  snprintf (str, size, "%f", value);
 }
 
 void
-ut_double_to_str (double value, char *str)
+ut_double_to_str (double value, char *str, int size)
 {
-  sprintf (str, "%.16f", value);
+  snprintf (str, size, "%.16f", value);
 }
 
 void
-ut_date_to_str (T_CCI_DATE * value, T_CCI_U_TYPE u_type, char *str)
+ut_date_to_str (T_CCI_DATE * value, T_CCI_U_TYPE u_type, char *str, int size)
 {
   if (u_type == CCI_U_TYPE_DATE)
     {
-      sprintf (str, "%04d-%02d-%02d", value->yr, value->mon, value->day);
+      snprintf (str, size, "%04d-%02d-%02d", value->yr, value->mon,
+		value->day);
     }
   else if (u_type == CCI_U_TYPE_TIME)
     {
-      sprintf (str, "%02d:%02d:%02d", value->hh, value->mm, value->ss);
+      snprintf (str, size, "%02d:%02d:%02d", value->hh, value->mm, value->ss);
     }
   else if (u_type == CCI_U_TYPE_TIMESTAMP)
     {
-      sprintf (str, "%04d-%02d-%02d %02d:%02d:%02d",
-	       value->yr, value->mon, value->day,
-	       value->hh, value->mm, value->ss);
+      snprintf (str, size, "%04d-%02d-%02d %02d:%02d:%02d",
+		value->yr, value->mon, value->day,
+		value->hh, value->mm, value->ss);
     }
   else
     {				/* u_type == CCI_U_TYPE_DATETIME */
-      sprintf (str, "%04d-%02d-%02d %02d:%02d:%02d.%03d",
-	       value->yr, value->mon, value->day,
-	       value->hh, value->mm, value->ss, value->ms);
+      snprintf (str, size, "%04d-%02d-%02d %02d:%02d:%02d.%03d",
+		value->yr, value->mon, value->day,
+		value->hh, value->mm, value->ss, value->ms);
     }
 }
 
@@ -421,7 +430,7 @@ ut_oid_to_str (T_OBJECT * oid, char *str)
 }
 
 void
-ut_lob_to_str (T_LOB * lob, char *str)
+ut_lob_to_str (T_LOB * lob, char *str, int size)
 {
 #if 0
   sprintf (str, "%s:%s",
@@ -429,31 +438,44 @@ ut_lob_to_str (T_LOB * lob, char *str)
 	    ? "BLOB" : (lob->type == CCI_U_TYPE_CLOB
 			? "CLOB" : "????")), lob->handle + 16);
 #else
-  strcpy (str, lob->handle + 16);
+  strncpy (str, lob->handle + 16, size);
 #endif
 }
 
 void
-ut_bit_to_str (char *bit_str, int size, char *str)
+ut_bit_to_str (char *bit_str, int bit_size, char *str, int str_size)
 {
   char ch, c;
   int i;
 
-  for (i = 0; i < size; i++)
+  for (i = 0; i < bit_size; i++)
     {
+      if (2 * i + 1 >= str_size)
+	{
+	  break;
+	}
+
       ch = bit_str[i];
 
       c = (ch >> 4) & 0x0f;
       if (c <= 9)
-	str[2 * i] = c + '0';
+	{
+	  str[2 * i] = c + '0';
+	}
       else
-	str[2 * i] = c - 10 + 'A';
+	{
+	  str[2 * i] = c - 10 + 'A';
+	}
 
       c = ch & 0x0f;
       if (c <= 9)
-	str[2 * i + 1] = c + '0';
+	{
+	  str[2 * i + 1] = c + '0';
+	}
       else
-	str[2 * i + 1] = c - 10 + 'A';
+	{
+	  str[2 * i + 1] = c - 10 + 'A';
+	}
     }
   str[2 * i] = 0;
 }

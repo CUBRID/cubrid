@@ -77,14 +77,15 @@ extern int ut_str_to_mtime (char *str, T_CCI_DATE * value);
 extern int ut_str_to_timestamp (char *str, T_CCI_DATE * value);
 extern int ut_str_to_datetime (char *str, T_CCI_DATE * value);
 extern int ut_str_to_oid (char *str, T_OBJECT * value);
-extern void ut_int_to_str (INT64 value, char *str);
-extern void ut_float_to_str (float value, char *str);
-extern void ut_double_to_str (double value, char *str);
+extern void ut_int_to_str (INT64 value, char *str, int size);
+extern void ut_float_to_str (float value, char *str, int size);
+extern void ut_double_to_str (double value, char *str, int size);
 extern void ut_date_to_str (T_CCI_DATE * value, T_CCI_U_TYPE u_type,
-			    char *str);
+			    char *str, int size);
 extern void ut_oid_to_str (T_OBJECT * oid, char *str);
-extern void ut_lob_to_str (T_LOB * lob, char *str);
-extern void ut_bit_to_str (char *bit_str, int size, char *str);
+extern void ut_lob_to_str (T_LOB * lob, char *str, int size);
+extern void ut_bit_to_str (char *bit_str, int bit_size, char *str,
+			   int str_size);
 extern int ut_is_deleted_oid (T_OBJECT * oid);
 
 extern int cci_url_match (const char *src, char *token[]);
