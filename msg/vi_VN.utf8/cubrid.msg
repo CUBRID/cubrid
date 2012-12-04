@@ -1173,7 +1173,8 @@ $ LOADDB
 1104 Slow query (%d msec)\n%s
 1105 Internal error: partially failed to flush dirty object. 
 1106 Multiple rows in source table match the same row in destination table.
-1107 Lỗi sau cùng
+1107 Invalid bucket number for NTILE. Should be greater than zero.
+1108 Lỗi sau cùng
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Lỗi trong các lỗi hệ thống con (dòng %d):

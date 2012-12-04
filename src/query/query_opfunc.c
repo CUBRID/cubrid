@@ -9530,6 +9530,13 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 	}
       break;
 
+    case PT_NTILE:
+      /* this is just a holder
+       * we'll recalculate this field when partition ends
+       */
+      DB_MAKE_INT (func_p->value, 0);
+      break;
+
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       pr_clear_value (&dbval);

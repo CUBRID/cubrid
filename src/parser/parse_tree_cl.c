@@ -3642,6 +3642,8 @@ pt_show_function (FUNC_TYPE c)
       return "rank";
     case PT_DENSE_RANK:
       return "dense_rank";
+    case PT_NTILE:
+      return "ntile";
 
     case F_SEQUENCE:
       return "sequence";

@@ -229,6 +229,9 @@ struct analytic_state
   bool is_first_group;
   bool is_last_function;
   bool is_output_rec;
+
+  /* NTILE */
+  int current_group_input_recs;
 };
 
 /*
@@ -19030,6 +19033,9 @@ qexec_initialize_analytic_state (ANALYTIC_STATE * analytic_state,
   analytic_state->vpid.volid = -1;
   analytic_state->offset = -1;
 
+  /* NTILE */
+  analytic_state->current_group_input_recs = 0;
+
   if (a_func_list->sort_list)
     {
       if (qfile_initialize_sort_key_info (&analytic_state->key_info,
@@ -19263,7 +19269,7 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes,
 	      qexec_analytic_start_group (thread_p, analytic_state, recdes,
 					  true);
 	    }
-	  else
+	  else if (analytic_state->a_func_list->function != PT_NTILE)
 	    {
 	      if (qexec_analytic_update_group_result
 		  (thread_p, analytic_state, true) != NO_ERROR)
@@ -19364,6 +19370,9 @@ qexec_analytic_start_group (THREAD_ENTRY * thread_p,
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
+
+      /* NTILE */
+      analytic_state->current_group_input_recs = 0;
     }
   else
     {
@@ -19428,6 +19437,8 @@ qexec_analytic_add_tuple (THREAD_ENTRY * thread_p,
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
+
+      analytic_state->current_group_input_recs++;
     }
 
 wrapup:
@@ -19509,6 +19520,16 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p,
   ANALYTIC_TYPE *func_p = analytic_state->a_func_list;
   XASL_STATE *xasl_state = analytic_state->xasl_state;
   bool is_first_tuple = true;
+  TP_DOMAIN *tmp_domain_p = NULL;
+  DB_VALUE dbval;
+  int bucket_count = 0;
+  int recs_count = 0;
+  int current_bucket = 0;
+  int recs_per_bucket = 0;
+  int recs_in_bucket = 0;
+  int compensation_bucket_count = 0;
+  bool ntile_auto_increase = false;
+  bool ntile_is_null = false;
 
   output_tplrec.tpl = NULL;
 
@@ -19542,6 +19563,61 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p,
       pos.tplno = analytic_state->tplno;
 
       sc = S_SUCCESS;
+    }
+
+  /* end of group, calculate NTILE info */
+  if (!keep_list_file && func_p->function == PT_NTILE)
+    {
+      if (fetch_copy_dbval (thread_p, &func_p->operand, &xasl_state->vd,
+			    NULL, NULL, NULL, &dbval) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+
+      if (DB_VALUE_TYPE (&dbval) == DB_TYPE_NULL)
+	{
+	  DB_MAKE_NULL (func_p->value);
+	  ntile_is_null = true;
+	}
+      else
+	{
+	  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_INTEGER);
+
+	  if (tp_value_coerce (&dbval, &dbval, tmp_domain_p) !=
+	      DOMAIN_COMPATIBLE)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
+		      pr_type_name (DB_VALUE_DOMAIN_TYPE (&dbval)),
+		      pr_type_name (TP_DOMAIN_TYPE (tmp_domain_p)));
+	      pr_clear_value (&dbval);
+	      GOTO_EXIT_ON_ERROR;
+	    }
+
+	  bucket_count = DB_GET_INT (&dbval);
+	  if (bucket_count < 1)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_NTILE_INVALID_BUCKET_NUMBER, 0);
+	      GOTO_EXIT_ON_ERROR;
+	    }
+
+	  recs_count = analytic_state->current_group_input_recs;
+	  if (recs_count <= bucket_count)
+	    {
+	      ntile_auto_increase = true;
+	    }
+	  else
+	    {
+	      ntile_auto_increase = false;
+
+	      /* calculate the bucket info */
+	      recs_per_bucket = recs_count / bucket_count;
+	      compensation_bucket_count = recs_count % bucket_count;
+	      recs_in_bucket = 0;
+	    }
+
+	  current_bucket = 1;
+	}
     }
 
   while (sc != S_END)
@@ -19587,6 +19663,29 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p,
 	{
 	  qfile_close_scan (thread_p, &lsid);
 	  GOTO_EXIT_ON_ERROR;
+	}
+
+      /* end of group, update value for NTILE */
+      if (!keep_list_file && func_p->function == PT_NTILE && !ntile_is_null)
+	{
+	  DB_MAKE_INT (func_p->value, current_bucket);
+
+	  if (ntile_auto_increase)
+	    {
+	      current_bucket += 1;
+	    }
+	  else
+	    {
+	      /* NTILE bucket */
+	      recs_in_bucket += 1;
+	      if ((recs_in_bucket == recs_per_bucket
+		   && current_bucket > compensation_bucket_count)
+		  || recs_in_bucket > recs_per_bucket)
+		{
+		  current_bucket += 1;
+		  recs_in_bucket = 0;
+		}
+	    }
 	}
 
       if (qexec_insert_tuple_into_list (thread_p,

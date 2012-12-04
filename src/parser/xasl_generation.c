@@ -20791,6 +20791,15 @@ pt_to_analytic_final_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 
   if (PT_IS_ANALYTIC_NODE (tree))
     {
+      /* select ntile(select stddev(...)...)... from ... is allowed */
+      if (!pt_is_query (tree->info.function.arg_list)
+	  && pt_has_analytic (parser, tree->info.function.arg_list))
+	{
+	  PT_ERRORm (parser, tree, MSGCAT_SET_PARSER_RUNTIME,
+		     MSGCAT_RUNTIME_NESTED_AGGREGATE);
+	  return NULL;
+	}
+
       /* analytics go to ex_list, ref pointer is returned */
       goto exit_return_ptr;
     }

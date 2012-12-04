@@ -1310,6 +1310,8 @@ qdump_function_type_string (FUNC_TYPE ftype)
       return "RANK";
     case PT_DENSE_RANK:
       return "DENSE_RANK";
+    case PT_NTILE:
+      return "NTILE";
     case F_TABLE_SET:
       return "F_TABLE_SET";
     case F_TABLE_MULTISET:

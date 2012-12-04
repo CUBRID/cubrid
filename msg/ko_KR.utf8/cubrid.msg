@@ -1173,7 +1173,8 @@ $ LOADDB
 1104 Slow query (%d msec)\n%s
 1105 내부에러: partially failed to flush dirty object. 
 1106 Multiple rows in source table match the same row in destination table.
-1107 마지막 에러
+1107 Invalid bucket number for NTILE. Should be greater than zero.
+1108 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %d):

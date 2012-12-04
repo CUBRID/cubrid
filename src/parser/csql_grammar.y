@@ -1403,6 +1403,7 @@ typedef struct YYLTYPE
 %token <cptr> NOCACHE
 %token <cptr> NOMAXVALUE
 %token <cptr> NOMINVALUE
+%token <cptr> NTILE
 %token <cptr> OFFSET
 %token <cptr> OWNER
 %token <cptr> PARTITIONING
@@ -14211,6 +14212,12 @@ of_analytic
 			$$ = PT_VARIANCE;
 
 		DBG_PRINT}}
+	| NTILE
+		{{
+
+			$$ = PT_NTILE;
+
+		DBG_PRINT}}
 	/* add other analytic functions here */
 	;
 
@@ -18687,6 +18694,19 @@ identifier
 
 		DBG_PRINT}}
 /*}}}*/
+	| NTILE
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p != NULL)
+			  {
+			    p->info.name.original = $1;
+			  }
+
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	;
 
 escape_literal

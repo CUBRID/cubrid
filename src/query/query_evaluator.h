@@ -71,6 +71,7 @@ typedef enum
   PT_ROW_NUMBER,
   PT_RANK,
   PT_DENSE_RANK,
+  PT_NTILE,
   PT_TOP_AGG_FUNC,
 /* only aggregate functions should be below PT_TOP_AGG_FUNC */
 

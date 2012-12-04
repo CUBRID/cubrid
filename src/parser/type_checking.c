@@ -11947,6 +11947,24 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       }
       break;
 
+    case PT_NTILE:
+      if (!PT_IS_DISCRETE_NUMBER_TYPE (arg_type)
+	  && arg_type != PT_TYPE_MAYBE
+	  && arg_type != PT_TYPE_NULL && arg_type != PT_TYPE_NA)
+	{
+	  /* cast arg_list to int */
+	  arg_list = pt_wrap_with_cast_op (parser, arg_list, PT_TYPE_INTEGER,
+					   0, 0, NULL);
+	  if (arg_list == NULL)
+	    {
+	      return node;
+	    }
+
+	  arg_type = PT_TYPE_INTEGER;
+	  node->info.function.arg_list = arg_list;
+	}
+      break;
+
     case F_ELT:
       {
 	/* all types used in the arguments list */
@@ -12247,6 +12265,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_ROW_NUMBER:
 	case PT_RANK:
 	case PT_DENSE_RANK:
+	case PT_NTILE:
 	  node->type_enum = PT_TYPE_INTEGER;
 	  break;
 

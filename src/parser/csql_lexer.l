@@ -461,6 +461,9 @@ extern int yycolumn_end;
 										return NOMINVALUE; }
 [nN][oO][nN][eE]							{ begin_token(yytext);   return NONE; }
 [nN][oO][tT]								{ begin_token(yytext);   return NOT; }
+[nN][tT][iI][lL][eE]							{ begin_token(yytext);   
+										csql_yylval.cptr = pt_makename(yytext);
+										return NTILE; }
 [nN][uU][lL][lL][iI][fF]						{ begin_token(yytext);   return NULLIF; }
 [nN][uU][mM][eE][rR][iI][cC]						{ begin_token(yytext);   return NUMERIC; }
 [nN][uU][lL][lL]							{ begin_token(yytext);   return Null; }

@@ -1390,7 +1390,9 @@
 
 #define ER_MERGE_TOO_MANY_SOURCE_ROWS		    -1106
 
-#define ER_LAST_ERROR                               -1107
+#define ER_NTILE_INVALID_BUCKET_NUMBER              -1107
+
+#define ER_LAST_ERROR                               -1108
 
 
 #define DB_TRUE 1
