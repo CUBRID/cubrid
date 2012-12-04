@@ -84,9 +84,13 @@ extern int loader_yylineno;
 
 #define CHECK_ERR(err, expr)                                            \
   do {                                                                  \
-    if (FILTER_OUT_ERR_INTERNAL(err, expr) != NO_ERROR) {               \
+    bool inner_err = (expr);                                            \
+    if (FILTER_OUT_ERR_INTERNAL(err, inner_err) != NO_ERROR) {          \
       display_error(0);                                                 \
       goto error_exit;                                                  \
+    }                                                                   \
+    if (inner_err != NO_ERROR && err == NO_ERROR ) {                    \
+      skip_current_instance = true;                                     \
     }                                                                   \
   } while (0)
 
@@ -97,10 +101,14 @@ extern int loader_yylineno;
  */
 #define CHECK_PARSE_ERR(err, expr, cont, type, str)                     \
   do {                                                                  \
-    if (FILTER_OUT_ERR_INTERNAL(err, expr) != NO_ERROR) {               \
+    bool inner_err = (expr);                                            \
+    if (FILTER_OUT_ERR_INTERNAL(err, inner_err) != NO_ERROR) {          \
       display_error(0);                                                 \
       parse_error(cont, type, str);                                     \
       goto error_exit;                                                  \
+    }                                                                   \
+    if (inner_err != NO_ERROR && err == NO_ERROR) {                     \
+      skip_current_instance = true;                                     \
     }                                                                   \
   } while (0)
 
@@ -149,18 +157,18 @@ extern int loader_yylineno;
 	        domain = context->set_domain;                            \
 	     } while (0)
 
-#define  CHECK_SKIP()                      \
-         do {                              \
-           if (skipCurrentclass == true) { \
-             return;                       \
-           }                               \
+#define  CHECK_SKIP()                        \
+         do {                                \
+           if (skip_current_class == true) { \
+             return;                         \
+           }                                 \
          } while (0)
 
-#define  CHECK_SKIP_WITH(ret)                      \
-         do {                              \
-           if (skipCurrentclass == true) { \
-             return (ret);                       \
-           }                               \
+#define  CHECK_SKIP_WITH(ret)                \
+         do {                                \
+           if (skip_current_class == true) { \
+             return (ret);                   \
+           }                                 \
          } while (0)
 
 #define IS_OLD_GLO_CLASS(class_name)                    \
@@ -325,9 +333,10 @@ struct LDR_CONTEXT
   LDR_CONSTANT *cons;		/* constant list for instance line */
 };
 
-char **ignoreClasslist = NULL;
-int ignoreClassnum = 0;
-bool skipCurrentclass = false;
+char **ignore_class_list = NULL;
+int ignore_class_num = 0;
+bool skip_current_class = false;
+bool skip_current_instance = false;
 
 /*
  * ldr_Current_context, ldr_Context
@@ -4424,10 +4433,11 @@ ldr_act_finish_line (LDR_CONTEXT * context)
     }
 
   ldr_restore_pin_and_drop_obj (context, ((context->err_count != 0) ||
-					  (err != NO_ERROR)));
+					  (err != NO_ERROR)) ||
+				skip_current_instance);
   CHECK_ERR (err, err);
 
-  if (context->valid && !context->err_count)
+  if (context->valid && !context->err_count && !skip_current_instance)
     {
       if (context->constructor)
 	{
@@ -6262,9 +6272,9 @@ print_parser_lineno (FILE * fp)
 void
 ldr_act_set_skipCurrentclass (char *classname, size_t size)
 {
-  skipCurrentclass = ldr_is_ignore_class (classname, size);
+  skip_current_class = ldr_is_ignore_class (classname, size);
 
-  if (skipCurrentclass && ldr_Current_context->validation_only != true)
+  if (skip_current_class && ldr_Current_context->validation_only != true)
     {
       print_log_msg (1, "Class %s is ignored.\n", classname);
     }
@@ -6286,9 +6296,9 @@ ldr_is_ignore_class (char *classname, size_t size)
       return true;
     }
 
-  if (ignoreClasslist != NULL)
+  if (ignore_class_list != NULL)
     {
-      for (i = 0, p = ignoreClasslist; i < ignoreClassnum; i++, p++)
+      for (i = 0, p = ignore_class_list; i < ignore_class_num; i++, p++)
 	{
 	  if (intl_identifier_ncasecmp (*p, classname, MAX (strlen (*p),
 							    size)) == 0)

@@ -258,7 +258,7 @@ command_line :
 id_command :
   CMD_ID IDENTIFIER INT_LIT
   {
-    skipCurrentclass = false;
+    skip_current_class = false;
 
     ldr_act_start_id (ldr_Current_context, $2->val);
     ldr_act_set_id (ldr_Current_context, atoi ($3->val));
@@ -473,17 +473,20 @@ argument_name :
 instance_line :
   object_id
   {
+    skip_current_instance = false;
     ldr_act_start_instance (ldr_Current_context, $1, NULL);
   }
   |
   object_id constant_list
   {
+    skip_current_instance = false;
     ldr_act_start_instance (ldr_Current_context, $1, $2);
     ldr_process_constants ($2);
   }
   |
   constant_list
   {
+    skip_current_instance = false;
     ldr_act_start_instance (ldr_Current_context, -1, $1);
     ldr_process_constants ($1);
   }

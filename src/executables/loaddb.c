@@ -1230,7 +1230,7 @@ get_ignore_class_list (const char *inputfile_name)
   char buffer[DB_MAX_IDENTIFIER_LENGTH], buffer_scan_format[16];
   char class_name[DB_MAX_IDENTIFIER_LENGTH];
 
-  if (ignoreClasslist != NULL)
+  if (ignore_class_list != NULL)
     {
       free_ignoreclasslist ();
     }
@@ -1247,16 +1247,16 @@ get_ignore_class_list (const char *inputfile_name)
       return 1;
     }
 
-  ignoreClasslist = (char **) malloc (sizeof (char *) * inc_unit);
-  if (ignoreClasslist == NULL)
+  ignore_class_list = (char **) malloc (sizeof (char *) * inc_unit);
+  if (ignore_class_list == NULL)
     {
       goto error;
     }
 
-  memset (ignoreClasslist, '\0', inc_unit);
+  memset (ignore_class_list, '\0', inc_unit);
 
   list_size = inc_unit;
-  ignoreClassnum = 0;
+  ignore_class_num = 0;
 
   snprintf (buffer_scan_format, sizeof (buffer_scan_format), "%%%ds\n",
 	    (int) (sizeof (buffer) - 1));
@@ -1266,28 +1266,28 @@ get_ignore_class_list (const char *inputfile_name)
     {
       if ((strchr (buffer, '\n') - buffer) >= 1)
 	{
-	  if (ignoreClassnum >= list_size)
+	  if (ignore_class_num >= list_size)
 	    {
-	      ignoreClasslist =
-		(char **) realloc (ignoreClasslist,
+	      ignore_class_list =
+		(char **) realloc (ignore_class_list,
 				   sizeof (char *) * (list_size + inc_unit));
-	      if (ignoreClasslist == NULL)
+	      if (ignore_class_list == NULL)
 		{
 		  goto error;
 		}
 
-	      memset (ignoreClasslist + list_size, '\0', inc_unit);
+	      memset (ignore_class_list + list_size, '\0', inc_unit);
 	      list_size = list_size + inc_unit;
 	    }
 
 	  sscanf ((char *) buffer, buffer_scan_format, (char *) class_name);
-	  ignoreClasslist[ignoreClassnum] = strdup (class_name);
-	  if (ignoreClasslist[ignoreClassnum] == NULL)
+	  ignore_class_list[ignore_class_num] = strdup (class_name);
+	  if (ignore_class_list[ignore_class_num] == NULL)
 	    {
 	      goto error;
 	    }
 
-	  ignoreClassnum++;
+	  ignore_class_num++;
 	}
     }
 
@@ -1307,18 +1307,18 @@ free_ignoreclasslist (void)
 {
   int i = 0;
 
-  if (ignoreClasslist != NULL)
+  if (ignore_class_list != NULL)
     {
-      for (i = 0; i < ignoreClassnum; i++)
+      for (i = 0; i < ignore_class_num; i++)
 	{
-	  if (*(ignoreClasslist + i) != NULL)
+	  if (*(ignore_class_list + i) != NULL)
 	    {
-	      free (*(ignoreClasslist + i));
+	      free (*(ignore_class_list + i));
 	    }
 	}
-      free (ignoreClasslist);
-      ignoreClasslist = NULL;
+      free (ignore_class_list);
+      ignore_class_list = NULL;
     }
-  ignoreClassnum = 0;
+  ignore_class_num = 0;
 }
 #endif
