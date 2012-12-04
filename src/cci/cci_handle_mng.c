@@ -225,7 +225,9 @@ hm_con_handle_alloc (char *ip_str, int port, char *db_name, char *db_user,
 
   handle_id = new_con_handle_id ();
   if (handle_id <= 0)
-    goto error_end;
+    {
+      goto error_end;
+    }
 
   con_handle = (T_CON_HANDLE *) MALLOC (sizeof (T_CON_HANDLE));
   if (con_handle == NULL)
@@ -772,14 +774,19 @@ int
 hm_conv_value_buf_alloc (T_VALUE_BUF * val_buf, int size)
 {
   if (size <= val_buf->size)
-    return 0;
+    {
+      return 0;
+    }
 
   FREE_MEM (val_buf->data);
   val_buf->size = 0;
 
   val_buf->data = MALLOC (size);
   if (val_buf->data == NULL)
-    return CCI_ER_NO_MORE_MEMORY;
+    {
+      return CCI_ER_NO_MORE_MEMORY;
+    }
+
   val_buf->size = size;
   return 0;
 }
@@ -1066,7 +1073,9 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
   else
     {
       if (hostname2uchar (ip_str, ip_addr) < 0)
-	return CCI_ER_HOSTNAME;
+	{
+	  return CCI_ER_HOSTNAME;
+	}
     }
 
   memset (con_handle, 0, sizeof (T_CON_HANDLE));
@@ -1189,7 +1198,9 @@ new_req_handle_id (T_CON_HANDLE * con_handle)
   for (i = 0; i < con_handle->max_req_handle; i++)
     {
       if (con_handle->req_handle_table[i] == NULL)
-	return (i + 1);
+	{
+	  return (i + 1);
+	}
     }
 
   new_max_req_handle = con_handle->max_req_handle + REQ_HANDLE_ALLOC_SIZE;
@@ -1197,7 +1208,9 @@ new_req_handle_id (T_CON_HANDLE * con_handle)
     REALLOC (con_handle->req_handle_table,
 	     sizeof (T_REQ_HANDLE *) * new_max_req_handle);
   if (new_req_handle_table == NULL)
-    return CCI_ER_NO_MORE_MEMORY;
+    {
+      return CCI_ER_NO_MORE_MEMORY;
+    }
 
   handle_id = con_handle->max_req_handle + 1;
 
@@ -1256,7 +1269,9 @@ is_ip_str (char *ip_str)
   for (p = ip_str; *p; p++)
     {
       if ((*p >= '0' && *p <= '9') || (*p == '.'))
-	continue;
+	{
+	  continue;
+	}
       return 0;
     }
 
