@@ -25,6 +25,11 @@
 #ifndef _CAS_PROTOCOL_H_
 #define _CAS_PROTOCOL_H_
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 #ident "$Id$"
 
 #define SRV_CON_CLIENT_INFO_SIZE	10
@@ -58,36 +63,36 @@
 #define SRV_CON_DB_INFO_SIZE_PRIOR_8_2_0 \
         (SRV_CON_DBNAME_SIZE + SRV_CON_DBUSER_SIZE + SRV_CON_DBPASSWD_SIZE)
 
-typedef enum
-{
-  CAS_CLIENT_TYPE_MIN = 0,
-  CAS_CLIENT_NONE = 0,
-  CAS_CLIENT_CCI = 1,
-  CAS_CLIENT_ODBC = 2,
-  CAS_CLIENT_JDBC = 3,
-  CAS_CLIENT_PHP = 4,
-  CAS_CLIENT_OLEDB = 5,
-  CAS_CLIENT_TYPE_MAX = 5
-} CAS_CLIENT_TYPE;
+  typedef enum
+  {
+    CAS_CLIENT_TYPE_MIN = 0,
+    CAS_CLIENT_NONE = 0,
+    CAS_CLIENT_CCI = 1,
+    CAS_CLIENT_ODBC = 2,
+    CAS_CLIENT_JDBC = 3,
+    CAS_CLIENT_PHP = 4,
+    CAS_CLIENT_OLEDB = 5,
+    CAS_CLIENT_TYPE_MAX = 5
+  } CAS_CLIENT_TYPE;
 
-typedef enum
-{
-  CAS_INFO_STATUS_INACTIVE = 0,
-  CAS_INFO_STATUS_ACTIVE = 1
-} CAS_INFO_STATUS_TYPE;
+  typedef enum
+  {
+    CAS_INFO_STATUS_INACTIVE = 0,
+    CAS_INFO_STATUS_ACTIVE = 1
+  } CAS_INFO_STATUS_TYPE;
 
-typedef enum
-{
-  CAS_INFO_STATUS = 0,
-  CAS_INFO_RESERVED_1 = 1,
-  CAS_INFO_RESERVED_2 = 2,
-  CAS_INFO_ADDITIONAL_FLAG = 3
-} CAS_INFO_TYPE;
+  typedef enum
+  {
+    CAS_INFO_STATUS = 0,
+    CAS_INFO_RESERVED_1 = 1,
+    CAS_INFO_RESERVED_2 = 2,
+    CAS_INFO_ADDITIONAL_FLAG = 3
+  } CAS_INFO_TYPE;
 
 #define CAS_INFO_FLAG_MASK_AUTOCOMMIT		0x01
 #if defined(CUBRID_SHARD)
 #define CAS_INFO_FLAG_MASK_FORCE_OUT_TRAN       0x02
-#endif /* CUBRID_SHARD */
+#endif				/* CUBRID_SHARD */
 
 #define CAS_INFO_SIZE			(4)
 #define CAS_INFO_RESERVED_DEFAULT	(-1)
@@ -135,72 +140,72 @@ typedef enum
 /* db_name used by client's broker health checker */
 #define HEALTH_CHECK_DUMMY_DB "___health_check_dummy_db___"
 
-typedef enum t_cas_func_code T_CAS_FUNC_CODE;
-enum t_cas_func_code
-{
-  CAS_FC_END_TRAN = 1,
-  CAS_FC_PREPARE = 2,
-  CAS_FC_EXECUTE = 3,
-  CAS_FC_GET_DB_PARAMETER = 4,
-  CAS_FC_SET_DB_PARAMETER = 5,
-  CAS_FC_CLOSE_REQ_HANDLE = 6,
-  CAS_FC_CURSOR = 7,
-  CAS_FC_FETCH = 8,
-  CAS_FC_SCHEMA_INFO = 9,
-  CAS_FC_OID_GET = 10,
-  CAS_FC_OID_PUT = 11,
-  CAS_FC_DEPRECATED1 = 12,
-  CAS_FC_DEPRECATED2 = 13,
-  CAS_FC_DEPRECATED3 = 14,
-  CAS_FC_GET_DB_VERSION = 15,
-  CAS_FC_GET_CLASS_NUM_OBJS = 16,
-  CAS_FC_OID_CMD = 17,
-  CAS_FC_COLLECTION = 18,
-  CAS_FC_NEXT_RESULT = 19,
-  CAS_FC_EXECUTE_BATCH = 20,
-  CAS_FC_EXECUTE_ARRAY = 21,
-  CAS_FC_CURSOR_UPDATE = 22,
-  CAS_FC_GET_ATTR_TYPE_STR = 23,
-  CAS_FC_GET_QUERY_INFO = 24,
-  CAS_FC_DEPRECATED4 = 25,
-  CAS_FC_SAVEPOINT = 26,
-  CAS_FC_PARAMETER_INFO = 27,
-  CAS_FC_XA_PREPARE = 28,
-  CAS_FC_XA_RECOVER = 29,
-  CAS_FC_XA_END_TRAN = 30,
-  CAS_FC_CON_CLOSE = 31,
-  CAS_FC_CHECK_CAS = 32,
-  CAS_FC_MAKE_OUT_RS = 33,
-  CAS_FC_GET_GENERATED_KEYS = 34,
-  CAS_FC_LOB_NEW = 35,
-  CAS_FC_LOB_WRITE = 36,
-  CAS_FC_LOB_READ = 37,
-  CAS_FC_END_SESSION = 38,
-  CAS_FC_GET_ROW_COUNT = 39,
-  CAS_FC_GET_LAST_INSERT_ID = 40,
-  CAS_FC_PREPARE_AND_EXECUTE = 41,
-  CAS_FC_CURSOR_CLOSE = 42,
+  enum t_cas_func_code
+  {
+    CAS_FC_END_TRAN = 1,
+    CAS_FC_PREPARE = 2,
+    CAS_FC_EXECUTE = 3,
+    CAS_FC_GET_DB_PARAMETER = 4,
+    CAS_FC_SET_DB_PARAMETER = 5,
+    CAS_FC_CLOSE_REQ_HANDLE = 6,
+    CAS_FC_CURSOR = 7,
+    CAS_FC_FETCH = 8,
+    CAS_FC_SCHEMA_INFO = 9,
+    CAS_FC_OID_GET = 10,
+    CAS_FC_OID_PUT = 11,
+    CAS_FC_DEPRECATED1 = 12,
+    CAS_FC_DEPRECATED2 = 13,
+    CAS_FC_DEPRECATED3 = 14,
+    CAS_FC_GET_DB_VERSION = 15,
+    CAS_FC_GET_CLASS_NUM_OBJS = 16,
+    CAS_FC_OID_CMD = 17,
+    CAS_FC_COLLECTION = 18,
+    CAS_FC_NEXT_RESULT = 19,
+    CAS_FC_EXECUTE_BATCH = 20,
+    CAS_FC_EXECUTE_ARRAY = 21,
+    CAS_FC_CURSOR_UPDATE = 22,
+    CAS_FC_GET_ATTR_TYPE_STR = 23,
+    CAS_FC_GET_QUERY_INFO = 24,
+    CAS_FC_DEPRECATED4 = 25,
+    CAS_FC_SAVEPOINT = 26,
+    CAS_FC_PARAMETER_INFO = 27,
+    CAS_FC_XA_PREPARE = 28,
+    CAS_FC_XA_RECOVER = 29,
+    CAS_FC_XA_END_TRAN = 30,
+    CAS_FC_CON_CLOSE = 31,
+    CAS_FC_CHECK_CAS = 32,
+    CAS_FC_MAKE_OUT_RS = 33,
+    CAS_FC_GET_GENERATED_KEYS = 34,
+    CAS_FC_LOB_NEW = 35,
+    CAS_FC_LOB_WRITE = 36,
+    CAS_FC_LOB_READ = 37,
+    CAS_FC_END_SESSION = 38,
+    CAS_FC_GET_ROW_COUNT = 39,
+    CAS_FC_GET_LAST_INSERT_ID = 40,
+    CAS_FC_PREPARE_AND_EXECUTE = 41,
+    CAS_FC_CURSOR_CLOSE = 42,
 
-  /* Whenever you want to introduce a new function code, 
-   * you must add a corresponding function entry to server_fn_table 
-   * of both CUBRID and (MySQL, Oracle).
-   */
-  CAS_FC_MAX
-};
+    /* Whenever you want to introduce a new function code, 
+     * you must add a corresponding function entry to server_fn_table 
+     * of both CUBRID and (MySQL, Oracle).
+     */
+    CAS_FC_MAX
+  };
+  typedef enum t_cas_func_code T_CAS_FUNC_CODE;
 
-typedef enum t_cas_protocol T_CAS_PROTOCOL;
-enum t_cas_protocol
-{
-  PROTOCOL_V0 = 0,		/* old protocol */
-  PROTOCOL_V1 = 1,		/* query_timeout and query_cancel */
-  PROTOCOL_V2 = 2,		/* send columns meta-data with the result for executing */
-  PROTOCOL_V3 = 3		/* session information extend with server session key */
-};
+  enum t_cas_protocol
+  {
+    PROTOCOL_V0 = 0,		/* old protocol */
+    PROTOCOL_V1 = 1,		/* query_timeout and query_cancel */
+    PROTOCOL_V2 = 2,		/* send columns meta-data with the result for executing */
+    PROTOCOL_V3 = 3		/* session information extend with server session key */
+  };
+  typedef enum t_cas_protocol T_CAS_PROTOCOL;
 
 #if defined(CUBRID_SHARD)
 #define IS_VALID_CAS_FC(fc) \
 	(fc >= CAS_FC_END_TRAN && fc < CAS_FC_MAX)
-#endif /* CUBRID_SHARD */
+#endif				/* CUBRID_SHARD */
 
 /* Current protocol version */
 #define CAS_PROTOCOL_VERSION    (0x03)
@@ -228,6 +233,10 @@ enum t_cas_protocol
 
 #define CAS_MAKE_VER(MAJOR, MINOR, PATCH)       \
 	((T_BROKER_VERSION) (((MAJOR) << 16) | ((MINOR) << 8) | (PATCH)))
-typedef int T_BROKER_VERSION;
+  typedef int T_BROKER_VERSION;
 
-#endif /* _CAS_PROTOCOL_H_ */
+#ifdef __cplusplus
+}
+#endif
+
+#endif				/* _CAS_PROTOCOL_H_ */

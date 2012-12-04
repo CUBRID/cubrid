@@ -331,6 +331,10 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\cci\cci_map.cpp"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\cci\cci_properties.c"
 					>
 				</File>

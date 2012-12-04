@@ -52,6 +52,7 @@
 #include <map>
 
 #include "cci_common.h"
+#include "cci_mutex.h"
 #include "cci_log.h"
 
 static const int LOG_BUFFER_SIZE = 1024 * 20;
@@ -62,36 +63,6 @@ static const char *cciLogLevelStr[] =
 { "OFF", "ERROR", "WARN", "INFO", "DEBUG" };
 
 using namespace std;
-
-namespace cci
-{
-  class _Mutex
-  {
-  private:
-    pthread_mutex_t mutex;
-
-  public:
-    _Mutex()
-    {
-      pthread_mutex_init(&mutex, NULL);
-    }
-
-    ~_Mutex()
-    {
-      pthread_mutex_destroy(&mutex);
-    }
-
-    int lock()
-    {
-      return pthread_mutex_lock(&mutex);
-    }
-
-    int unlock()
-    {
-      return pthread_mutex_unlock(&mutex);
-    }
-  };
-}
 
 class _Logger
 {

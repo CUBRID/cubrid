@@ -188,6 +188,12 @@ extern "C"
 #define SSIZEOF(val) ((ssize_t) sizeof(val))
 #endif
 
+#define CON_HANDLE_ID_FACTOR		1000000
+
+#define GET_CON_ID(H) ((H) / CON_HANDLE_ID_FACTOR)
+#define GET_REQ_ID(H) ((H) % CON_HANDLE_ID_FACTOR)
+#define MAKE_REQ_ID(C,R) ((C) * CON_HANDLE_ID_FACTOR + (R))
+
 /* database user */
 #define CCI_DS_PROPERTY_USER				"user"
 /* password for a specified user */
@@ -479,6 +485,7 @@ extern "C"
   } T_CCI_CUBRID_STMT;
 
   typedef int T_CCI_CONN;
+  typedef int T_CCI_REQ;
   typedef struct PROPERTIES_T T_CCI_PROPERTIES;
   typedef struct DATASOURCE_T T_CCI_DATASOURCE;
 

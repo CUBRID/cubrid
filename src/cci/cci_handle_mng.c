@@ -63,6 +63,7 @@
 #include "cci_query_execute.h"
 #include "cas_protocol.h"
 #include "cci_network.h"
+#include "cci_map.h"
 
 /************************************************************************
  * PRIVATE DEFINITIONS							*
@@ -152,7 +153,7 @@ compare_conn_info (unsigned char *ip_addr, int port, char *dbname,
   return 1;
 }
 
-int
+T_CON_HANDLE *
 hm_get_con_from_pool (unsigned char *ip_addr, int port, char *dbname,
 		      char *dbuser, char *dbpasswd)
 {
@@ -170,7 +171,7 @@ hm_get_con_from_pool (unsigned char *ip_addr, int port, char *dbname,
 	}
     }
 
-  return con;
+  return con_handle_table[con - 1];
 }
 
 int
@@ -214,50 +215,49 @@ hm_con_handle_table_init ()
   con_handle_current_index = 0;
 }
 
-int
+T_CON_HANDLE *
 hm_con_handle_alloc (char *ip_str, int port, char *db_name, char *db_user,
 		     char *db_passwd)
 {
   int handle_id;
-  int ret_val = 0;
+  int error = 0;
   T_CON_HANDLE *con_handle = NULL;
 
   handle_id = new_con_handle_id ();
   if (handle_id <= 0)
-    goto con_alloc_error;
+    goto error_end;
 
   con_handle = (T_CON_HANDLE *) MALLOC (sizeof (T_CON_HANDLE));
   if (con_handle == NULL)
     {
-      ret_val = CCI_ER_NO_MORE_MEMORY;
-      goto con_alloc_error;
+      goto error_end;
     }
-  ret_val = init_con_handle (con_handle, ip_str, port,
-			     db_name, db_user, db_passwd);
-  if (ret_val < 0)
+  error = init_con_handle (con_handle, ip_str, port, db_name, db_user,
+			   db_passwd);
+  if (error < 0)
     {
-      goto con_alloc_error;
+      goto error_end;
     }
 
   con_handle_table[handle_id - 1] = con_handle;
   con_handle->id = handle_id;
 
-  return (handle_id);
+  return con_handle;
 
-con_alloc_error:
+error_end:
   FREE_MEM (con_handle);
-  return ret_val;
+  return NULL;
 }
 
 int
-hm_con_handle_free (int con_id)
+hm_con_handle_free (T_CON_HANDLE * con_handle)
 {
-  T_CON_HANDLE *con_handle = NULL;
-
-  con_handle = hm_find_con_handle (con_id);
   if (con_handle == NULL)
-    return CCI_ER_CON_HANDLE;
+    {
+      return CCI_ER_CON_HANDLE;
+    }
 
+  con_handle_table[con_handle->id - 1] = NULL;
   if (!IS_INVALID_SOCKET (con_handle->sock_fd))
     {
       CLOSE_SOCKET (con_handle->sock_fd);
@@ -266,8 +266,8 @@ hm_con_handle_free (int con_id)
 
   con_handle_content_free (con_handle);
   FREE_MEM (con_handle);
-  con_handle_table[con_id - 1] = NULL;
-  return 0;
+
+  return CCI_ER_NO_ERROR;
 }
 
 static int
@@ -420,19 +420,13 @@ hm_pool_add_statement_to_use (T_CON_HANDLE * connection, int statement_id)
 }
 
 int
-hm_req_handle_alloc (int con_id, T_REQ_HANDLE ** ret_req_handle)
+hm_req_handle_alloc (T_CON_HANDLE * con_handle,
+		     T_REQ_HANDLE ** ret_req_handle)
 {
-  T_CON_HANDLE *con_handle = NULL;
   int req_handle_id;
   T_REQ_HANDLE *req_handle = NULL;
 
   *ret_req_handle = NULL;
-
-  con_handle = hm_find_con_handle (con_id);
-  if (con_handle == NULL)
-    {
-      return CCI_ER_CON_HANDLE;
-    }
 
   req_handle_id = new_req_handle_id (con_handle);
 
@@ -449,6 +443,7 @@ hm_req_handle_alloc (int con_id, T_REQ_HANDLE ** ret_req_handle)
 
   memset (req_handle, 0, sizeof (T_REQ_HANDLE));
   req_handle->req_handle_index = req_handle_id;
+  req_handle->mapped_stmt_id = -1;
   req_handle->fetch_size = 100;
   req_handle->query_timeout = con_handle->query_timeout;
 
@@ -456,11 +451,11 @@ hm_req_handle_alloc (int con_id, T_REQ_HANDLE ** ret_req_handle)
   ++(con_handle->req_handle_count);
 
   *ret_req_handle = req_handle;
-  return MAKE_REQ_ID (con_id, req_handle_id);
+  return MAKE_REQ_ID (con_handle->id, req_handle_id);
 }
 
 int
-hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int req_id)
+hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int mapped_statement_id)
 {
   char *key;
   int *data;
@@ -469,8 +464,9 @@ hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int req_id)
   data = mht_get (con->stmt_pool, sql);
   if (data != NULL)
     {
-      T_REQ_HANDLE *statement = hm_find_req_handle (req_id, NULL);
+      T_REQ_HANDLE *statement = NULL;
 
+      hm_get_statement (mapped_statement_id, NULL, &statement);
       hm_pool_drop_node_from_list (&con->pool_use_head, &con->pool_use_tail,
 				   statement);
       return CCI_ER_REQ_HANDLE;
@@ -504,7 +500,7 @@ hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int req_id)
       return CCI_ER_NO_MORE_MEMORY;
     }
 
-  *data = req_id;
+  map_get_ots_value (mapped_statement_id, data, true);
   if (!mht_put_data (con->stmt_pool, key, data))
     {
       FREE (key);
@@ -512,7 +508,7 @@ hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int req_id)
       return CCI_ER_NO_MORE_MEMORY;
     }
 
-  hm_pool_move_node_from_use_to_lru (con, req_id);
+  hm_pool_move_node_from_use_to_lru (con, *data);
 
   return CCI_ER_NO_ERROR;
 }
@@ -536,60 +532,108 @@ hm_req_get_from_pool (T_CON_HANDLE * con, char *sql)
   return req_id;
 }
 
-T_CON_HANDLE *
-hm_find_con_handle (int con_handle_id)
+T_CCI_ERROR_CODE
+hm_get_connection_by_resolved_id (int resolved_id, T_CON_HANDLE ** connection)
 {
-  if (con_handle_id < 1 || con_handle_id > MAX_CON_HANDLE)
+  if (connection == NULL || con_handle_table[resolved_id - 1] == NULL)
     {
-      return NULL;
+      return CCI_ER_CON_HANDLE;
     }
 
-  return (con_handle_table[con_handle_id - 1]);
+  *connection = con_handle_table[resolved_id - 1];
+  return CCI_ER_NO_ERROR;
 }
 
-T_REQ_HANDLE *
-hm_find_req_handle (int req_handle_id, T_CON_HANDLE ** ret_con_h)
+static T_CCI_ERROR_CODE
+hm_get_connection_internal (int mapped_id, T_CON_HANDLE ** connection,
+			    bool force)
 {
-  int con_id;
-  int req_id;
-  T_CON_HANDLE *con_handle = NULL;
-  T_REQ_HANDLE *req_handle = NULL;
+  T_CCI_ERROR_CODE error;
+  int connection_id;
 
-  if (ret_con_h)
+  if (connection == NULL)
     {
-      *ret_con_h = NULL;
+      return CCI_ER_CON_HANDLE;
+    }
+  *connection = NULL;
+
+  error = map_get_otc_value (mapped_id, &connection_id, force);
+  if (error != CCI_ER_NO_ERROR || connection_id < 1
+      || connection_id > MAX_CON_HANDLE)
+    {
+      return CCI_ER_CON_HANDLE;
     }
 
-  if (req_handle_id < 1)
+  *connection = con_handle_table[connection_id - 1];
+  if (*connection == NULL)
     {
-      return NULL;
+      return CCI_ER_CON_HANDLE;
     }
 
-  con_id = GET_CON_ID (req_handle_id);
-  req_id = GET_REQ_ID (req_handle_id);
+  return CCI_ER_NO_ERROR;
+}
 
-  if (con_id < 1 || req_id < 1)
+T_CCI_ERROR_CODE
+hm_get_connection_force (int mapped_id, T_CON_HANDLE ** connection)
+{
+  return hm_get_connection_internal (mapped_id, connection, true);
+}
+
+T_CCI_ERROR_CODE
+hm_get_connection (int mapped_id, T_CON_HANDLE ** connection)
+{
+  return hm_get_connection_internal (mapped_id, connection, false);
+}
+
+T_CCI_ERROR_CODE
+hm_get_statement (int mapped_id, T_CON_HANDLE ** connection,
+		  T_REQ_HANDLE ** statement)
+{
+  int connection_id;
+  int statement_id;
+  T_CON_HANDLE *conn;
+
+  if (connection != NULL)
     {
-      return NULL;
+      *connection = NULL;
     }
 
-  con_handle = con_handle_table[con_id - 1];
-  if (con_handle == NULL)
+  if (statement == NULL)
     {
-      return NULL;
+      return CCI_ER_REQ_HANDLE;
+    }
+  *statement = NULL;
+
+  if (map_get_ots_value (mapped_id, &statement_id, false) != CCI_ER_NO_ERROR)
+    {
+      return CCI_ER_REQ_HANDLE;
     }
 
-  if (req_id > con_handle->max_req_handle)
+  connection_id = GET_CON_ID (statement_id);
+  statement_id = GET_REQ_ID (statement_id);
+  if (connection_id < 1 || statement_id < 1)
     {
-      return NULL;
+      return CCI_ER_REQ_HANDLE;
     }
 
-  req_handle = con_handle->req_handle_table[req_id - 1];
+  conn = con_handle_table[connection_id - 1];
+  if (conn == NULL)
+    {
+      return CCI_ER_REQ_HANDLE;
+    }
 
-  if (ret_con_h)
-    *ret_con_h = con_handle;
+  if (statement_id > conn->max_req_handle)
+    {
+      return CCI_ER_REQ_HANDLE;
+    }
 
-  return req_handle;
+  *statement = conn->req_handle_table[statement_id - 1];
+  if (connection != NULL)
+    {
+      *connection = conn;
+    }
+
+  return CCI_ER_NO_ERROR;
 }
 
 void
@@ -1037,10 +1081,10 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
 	    ip_addr[0], ip_addr[1], ip_addr[2], ip_addr[3], port,
 	    (db_name ? db_name : ""), (db_user ? db_user : ""));
   con_handle->sock_fd = -1;
-  con_handle->ref_count = 0;
   con_handle->isolation_level = TRAN_UNKNOWN_ISOLATION;
   con_handle->lock_timeout = CCI_LOCK_TIMEOUT_DEFAULT;
   con_handle->is_retry = 0;
+  con_handle->used = false;
   con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
   con_handle->autocommit_mode = CCI_AUTOCOMMIT_TRUE;
   hm_make_empty_session (&con_handle->session_id);
