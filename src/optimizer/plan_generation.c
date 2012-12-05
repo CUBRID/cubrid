@@ -3568,6 +3568,14 @@ qo_check_iscan_for_multi_range_opt (QO_PLAN * plan)
       return false;
     }
 
+  if (QO_NODE_IS_CLASS_HIERARCHY (plan->plan_un.scan.node))
+    {
+      /* for now, multi range optimization can only work on one index,
+       * therefore class hierarchies are not accepted
+       */
+      return false;
+    }
+
   assert (plan->info->env && plan->info->env->parser);
   env = plan->info->env;
   parser = env->parser;
@@ -4300,6 +4308,8 @@ qo_check_subqueries_for_multi_range_opt (QO_PLAN * plan, int sort_col_idx_pos)
  *        references the given segment in a RANGE expression
  *        (t.i in (1,2,3) would be an example).
  *        Used in keylimit for multiple key ranges in joins optimization.
+ *	  Scan terms, key filter terms and also sarged terms must all be
+ *	  checked to cover all cases.
  */
 static bool
 qo_check_seg_belongs_to_range_term (QO_PLAN * subplan, QO_ENV * env,
@@ -4348,6 +4358,39 @@ qo_check_seg_belongs_to_range_term (QO_PLAN * subplan, QO_ENV * env,
 	}
     }
   for (t = bitset_iterate (&(subplan->plan_un.scan.kf_terms), &iter); t != -1;
+       t = bitset_next_member (&iter))
+    {
+      QO_TERM *termp = QO_ENV_TERM (env, t);
+      BITSET *segs = &(QO_TERM_SEGS (termp));
+      if (!segs)
+	{
+	  continue;
+	}
+      for (u = bitset_iterate (segs, &iter_s); u != -1;
+	   u = bitset_next_member (&iter_s))
+	{
+	  if (u == seg_idx)
+	    {
+	      QO_SEGMENT *seg = QO_ENV_SEG (env, u);
+	      PT_NODE *node = QO_TERM_PT_EXPR (termp);
+	      if (!node)
+		{
+		  continue;
+		}
+
+	      switch (node->info.expr.op)
+		{
+		case PT_IS_IN:
+		case PT_EQ_SOME:
+		case PT_RANGE:
+		  return true;
+		default:
+		  continue;
+		}
+	    }
+	}
+    }
+  for (t = bitset_iterate (&(subplan->sarged_terms), &iter); t != -1;
        t = bitset_next_member (&iter))
     {
       QO_TERM *termp = QO_ENV_TERM (env, t);
