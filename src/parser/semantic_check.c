@@ -7610,6 +7610,7 @@ pt_check_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry,
 
   if (do_semantic_check)
     {
+      qry->do_not_replace_orderby = 1;
       qry = pt_semantic_check (parser, qry);
       if (pt_has_error (parser) || qry == NULL)
 	{
@@ -8155,6 +8156,7 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	}
       crt_qry = result_stmt;
 
+      crt_qry->do_not_replace_orderby = 1;
       result_stmt = pt_semantic_check (parser, crt_qry);
       if (pt_has_error (parser))
 	{
@@ -12333,13 +12335,29 @@ pt_find_order_value_in_list (PARSER_CONTEXT * parser,
 
   match = (PT_NODE *) order_list;
 
-  while (match && sort_value && match->info.sort_spec.expr
-	 && match->info.sort_spec.expr->node_type == PT_VALUE
-	 && sort_value->node_type == PT_VALUE
-	 && (match->info.sort_spec.expr->info.value.data_value.i !=
-	     sort_value->info.value.data_value.i))
+  while (match && sort_value && match->info.sort_spec.expr)
     {
-      match = match->next;
+      if (sort_value->node_type == PT_VALUE
+	  && match->info.sort_spec.expr->node_type == PT_VALUE
+	  && (match->info.sort_spec.expr->info.value.data_value.i ==
+	      sort_value->info.value.data_value.i))
+	{
+	  break;
+	}
+      else if (sort_value->node_type == PT_NAME
+	       && match->info.sort_spec.expr->node_type == PT_NAME
+	       && (pt_check_path_eq (parser, sort_value,
+				     match->info.sort_spec.expr) == 0))
+	{
+	  /* when create/alter view, columns which are not in select list
+	   * will not be replaced as value type.
+	   */
+	  break;
+	}
+      else
+	{
+	  match = match->next;
+	}
     }
 
   return match;
@@ -12638,6 +12656,15 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 		}
 	      else
 		{
+		  /* when check order by clause in create/alter view, do not
+		   * change order_by and select_list. The order by clause
+		   * will be replaced in mq_translate_subqueries() again.
+		   */
+		  if (query->do_not_replace_orderby)
+		    {
+		      continue;
+		    }
+
 		  col = parser_copy_tree (parser, r);
 		  if (col == NULL)
 		    {

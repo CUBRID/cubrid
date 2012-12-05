@@ -485,8 +485,7 @@ static PT_NODE *mq_add_dummy_from_pre (PARSER_CONTEXT * parser,
 				       PT_NODE * node, void *arg,
 				       int *continue_walk);
 static PT_NODE *mq_update_order_by (PARSER_CONTEXT * parser,
-				    PT_NODE * statement,
-				    PT_NODE * query_order_by,
+				    PT_NODE * statement, PT_NODE * query_spec,
 				    PT_NODE * class_);
 
 static bool mq_is_order_dependent_node (PT_NODE * node);
@@ -1441,6 +1440,16 @@ mq_substitute_select_in_statement (PARSER_CONTEXT * parser,
       attr->info.name.spec_id = class_->info.name.spec_id;
     }
 
+  while (col)
+    {
+      if (col->is_hidden_column)
+	{
+	  col = col->next;
+	  continue;
+	}
+      break;
+    }
+
   if (col)
     {				/* error */
       PT_ERRORmf (parser, class_, MSGCAT_SET_PARSER_RUNTIME,
@@ -1728,7 +1737,7 @@ mq_rewrite_derived_table_for_update (PARSER_CONTEXT * parser, PT_NODE * spec)
  *    to local db expressions
  *   parser(in): parser context
  *   statement(in): statement into which class will be expanded
- *   query_order_by(in): the order by of query of class
+ *   query_spec(in): query of class that will be expanded
  *   class(in): class name of class that will be expanded
  *
  *   Note:
@@ -1744,21 +1753,24 @@ mq_rewrite_derived_table_for_update (PARSER_CONTEXT * parser, PT_NODE * spec)
  */
 static PT_NODE *
 mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement,
-		    PT_NODE * query_order_by, PT_NODE * class_)
+		    PT_NODE * query_spec, PT_NODE * class_)
 {
   PT_NODE *order, *val;
   PT_NODE *attributes, *attr;
+  PT_NODE *col;
   PT_NODE *node, *result;
   PT_NODE *save_data_type;
+  int attr_count;
   int i;
 
-  assert (statement->node_type == PT_SELECT && query_order_by != NULL);
+  assert (statement->node_type == PT_SELECT
+	  && query_spec->info.query.order_by != NULL);
 
-  statement->info.query.order_by = parser_append_node (parser_copy_tree_list
-						       (parser,
-							query_order_by),
-						       statement->info.query.
-						       order_by);
+  statement->info.query.order_by =
+    parser_append_node (parser_copy_tree_list
+			(parser, query_spec->info.query.order_by),
+			statement->info.query.order_by);
+
 
   /* 1 get vclass spec attrs */
   attributes = mq_fetch_attributes (parser, class_);
@@ -1767,10 +1779,12 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement,
       return NULL;
     }
 
+  attr_count = 0;
   for (attr = attributes; attr != NULL; attr = attr->next)
     {
       /* set spec_id */
       attr->info.name.spec_id = class_->info.name.spec_id;
+      attr_count++;
     }
 
   /* update the position number of order by clause */
@@ -1782,29 +1796,59 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement,
       val = order->info.sort_spec.expr;
       assert (val->node_type == PT_VALUE);
 
-      /* 2 find the corresponding attribute */
-      for (i = 1, attr = attributes; i < val->info.value.data_value.i; i++)
+      if (attr_count < val->info.value.data_value.i)
 	{
-	  assert (attr != NULL);
-	  attr = attr->next;
-	}
+	  /* order by is a hidden column and not in attribute list, in this
+	   * case, we need append a hidden column at the end of the output
+	   * list.
+	   */
 
-      assert (attr != NULL);
-      save_data_type = attr->data_type;
-      attr->data_type = NULL;
-
-      for (node = statement->info.query.q.select.list, i = 1;
-	   node != NULL; node = node->next, i++)
-	{
-	  /* 3 check whether attr is found in output list */
-	  if (pt_name_equal (parser, node, attr))
+	  /* 2 find from spec columns */
+	  for (i = 1, attr = query_spec->info.query.q.select.list;
+	       i < val->info.value.data_value.i; i++)
 	    {
-	      /* if yes, update position number of order by clause */
-	      val->info.value.data_value.i = i;
-	      val->info.value.db_value.data.i = i;
-	      val->info.value.text = NULL;
-	      order->info.sort_spec.pos_descr.pos_no = i;
-	      break;
+	      assert (attr != NULL);
+	      attr = attr->next;
+	    }
+
+	  assert (attr != NULL && attr->node_type == PT_NAME);
+	  save_data_type = attr->data_type;
+	  attr->data_type = NULL;
+
+	  for (i = 1, node = statement->info.query.q.select.list;
+	       node != NULL; node = node->next)
+	    {
+	      i++;
+	    }
+	  node = NULL;
+	}
+      else
+	{
+	  /* 2 find the corresponding attribute */
+	  for (i = 1, attr = attributes; i < val->info.value.data_value.i;
+	       i++)
+	    {
+	      assert (attr != NULL);
+	      attr = attr->next;
+	    }
+
+	  assert (attr != NULL);
+	  save_data_type = attr->data_type;
+	  attr->data_type = NULL;
+
+	  for (node = statement->info.query.q.select.list, i = 1;
+	       node != NULL; node = node->next, i++)
+	    {
+	      /* 3 check whether attr is found in output list */
+	      if (pt_name_equal (parser, node, attr))
+		{
+		  /* if yes, update position number of order by clause */
+		  val->info.value.data_value.i = i;
+		  val->info.value.db_value.data.i = i;
+		  val->info.value.text = NULL;
+		  order->info.sort_spec.pos_descr.pos_no = i;
+		  break;
+		}
 	    }
 	}
 
@@ -2032,8 +2076,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 		{
 		  /* update the position number of order by clause */
 		  derived_table =
-		    mq_update_order_by (parser, derived_table,
-					query_spec->info.query.order_by,
+		    mq_update_order_by (parser, derived_table, query_spec,
 					tmp_class);
 		  if (derived_table == NULL)
 		    {
@@ -2152,8 +2195,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 		   * hidden column into the output list if necessary.
 		   */
 		  tmp_result =
-		    mq_update_order_by (parser, tmp_result,
-					query_spec->info.query.order_by,
+		    mq_update_order_by (parser, tmp_result, query_spec,
 					class_);
 		  if (tmp_result == NULL)
 		    {
@@ -2234,8 +2276,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 	    {
 	      /* update the position number of order by clause */
 	      statement =
-		mq_update_order_by (parser, statement,
-				    query_spec->info.query.order_by, class_);
+		mq_update_order_by (parser, statement, query_spec, class_);
 	      if (statement == NULL)
 		{
 		  goto exit_on_error;
@@ -5326,6 +5367,17 @@ mq_set_types (PARSER_CONTEXT * parser, PT_NODE * query_spec,
 	  /* advance to next attribute and column */
 	  attr = attr->next;
 	  col = col->next;
+	}
+
+      /* skip hidden column */
+      while (col)
+	{
+	  if (col->is_hidden_column)
+	    {
+	      col = col->next;
+	      continue;
+	    }
+	  break;
 	}
 
       if (col)

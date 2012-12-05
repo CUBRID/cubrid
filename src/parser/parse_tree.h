@@ -2894,6 +2894,8 @@ struct parser_node
   unsigned is_click_counter:1;	/* INCR/DECR(click counter) */
   unsigned is_value_query:1;	/* for PT_VALUE,PT_NAME,PT_EXPR... that belongs to PT_NODE_LIST
 				 * for PT_SELECT that "values" generated */
+  unsigned do_not_replace_orderby:1;	/* when checking query in create/alter
+					   view, do not replace order by */
   PT_STATEMENT_INFO info;	/* depends on 'node_type' field */
 };
 

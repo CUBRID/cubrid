@@ -2212,6 +2212,7 @@ parser_init_node (PT_NODE * node)
       node->buffer_pos = -1;
       node->next_row = NULL;
       node->is_value_query = 0;
+      node->do_not_replace_orderby = 0;
       /* initialize  node info field */
       memset (&(node->info), 0, sizeof (node->info));
 
