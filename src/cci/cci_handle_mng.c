@@ -171,6 +171,11 @@ hm_get_con_from_pool (unsigned char *ip_addr, int port, char *dbname,
 	}
     }
 
+  if (con < 0)
+    {
+      return NULL;
+    }
+
   return con_handle_table[con - 1];
 }
 

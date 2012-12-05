@@ -3256,7 +3256,7 @@ cci_set_max_row (int mapped_stmt_id, int max_row)
 {
   T_CON_HANDLE *con_handle = NULL;
   T_REQ_HANDLE *req_handle = NULL;
-  int error = 0;
+  int error = CCI_ER_NO_ERROR;
 
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg
@@ -5729,9 +5729,9 @@ cci_datasource_borrow (T_CCI_DATASOURCE * ds, T_CCI_ERROR * err_buf)
 
   if (id < 0)
     {
-      id = CCI_ER_DATASOURCE_TIMEOUT;
       set_error_buffer (err_buf, CCI_ER_DATASOURCE_TIMEOUT,
 			"All connections are used");
+      return CCI_ER_DATASOURCE_TIMEOUT;
     }
   else
     {
