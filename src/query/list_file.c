@@ -1254,6 +1254,11 @@ qfile_load_xasl (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
     }
   while (s > 0 && !VPID_ISNULL (&next_vpid));
 
+  if (cur_page_p != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, cur_page_p);
+    }
+
   return total_pages;
 }
 
@@ -3950,8 +3955,8 @@ qfile_get_estimated_pages_for_sorting (QFILE_LIST_ID * list_id_p,
 				       SORTKEY_INFO * key_info_p)
 {
   int prorated_pages, sort_key_size, sort_key_overhead;
-  double ratio;
 
+  prorated_pages = (int) list_id_p->page_cnt;
   if (key_info_p->use_original == 1)
     {
       /* P_sort_key */
@@ -3964,22 +3969,6 @@ qfile_get_estimated_pages_for_sorting (QFILE_LIST_ID * list_id_p,
       sort_key_overhead =
 	(int) ceil (((double) (list_id_p->tuple_cnt * sort_key_size)) /
 		    DB_PAGESIZE);
-      /*
-       * Estimate how much by simply taking the ratio of the number of key
-       * fields to the number of input fields.
-       */
-      if (list_id_p->type_list.type_cnt == 0)
-	{
-	  ratio = 0;
-	}
-      else
-	{
-	  ratio =
-	    (double) key_info_p->nkeys /
-	    (double) list_id_p->type_list.type_cnt;
-	}
-
-      prorated_pages = (int) ceil (((double) list_id_p->page_cnt * ratio));
     }
   else
     {
@@ -3994,7 +3983,6 @@ qfile_get_estimated_pages_for_sorting (QFILE_LIST_ID * list_id_p,
       sort_key_overhead =
 	(int) ceil (((double) (list_id_p->tuple_cnt * sort_key_size)) /
 		    DB_PAGESIZE);
-      prorated_pages = (int) list_id_p->page_cnt;
     }
 
   return prorated_pages + sort_key_overhead;

@@ -43,8 +43,6 @@
 #include "overflow_file.h"
 #include "boot_sr.h"
 
-#define SORT_INIT_INPUT_PAGE_EST 50	/* initial input page count estimate */
-
 /* Estimate on number of pages in the multipage temporary file */
 #define SORT_MULTIPAGE_FILE_SIZE_ESTIMATE  20
 
@@ -1389,18 +1387,23 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt,
 
   sort_param.limit = limit;
 
-  input_pages = ((est_inp_pg_cnt > 0)
-		 ? est_inp_pg_cnt + MAX ((int) (est_inp_pg_cnt * 0.1), 2)
-		 /* 10% of overhead and fragmentation */
-		 : SORT_INIT_INPUT_PAGE_EST);
+  if (est_inp_pg_cnt > 0)
+    {
+      /* 10% of overhead and fragmentation */
+      input_pages = est_inp_pg_cnt + MAX ((int) (est_inp_pg_cnt * 0.1), 2);
+    }
+  else
+    {
+      input_pages = prm_get_integer_value (PRM_ID_SR_NBUFFERS);
+    }
 
   /* The size of a sort buffer is limited to PRM_SR_NBUFFERS. */
   sort_param.tot_buffers =
     MIN (prm_get_integer_value (PRM_ID_SR_NBUFFERS), input_pages);
   sort_param.tot_buffers = MAX (4, sort_param.tot_buffers);
 
-  sort_param.internal_memory = (char *) malloc (sort_param.tot_buffers *
-						DB_PAGESIZE);
+  sort_param.internal_memory =
+    (char *) malloc ((size_t) sort_param.tot_buffers * (size_t) DB_PAGESIZE);
   if (sort_param.internal_memory == NULL)
     {
       sort_param.tot_buffers = 4;
