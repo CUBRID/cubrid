@@ -2724,6 +2724,12 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree,
 	      else
 		{
 		  had_some_virtual_classes = 1;
+
+		  if (pt_has_error (parser))
+		    {
+		      return NULL;
+		    }
+
 		  if (!fetch_for_update)
 		    {
 		      subquery = mq_fetch_subqueries (parser, entity);
