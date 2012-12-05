@@ -942,7 +942,8 @@ static int qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 						HEAP_CACHE_ATTRINFO *
 						index_attr_info,
 						const HEAP_IDX_ELEMENTS_INFO *
-						idx_info, int needs_pruning,
+						idx_info, int op_type,
+						int needs_pruning,
 						PRUNING_CONTEXT * pcontext,
 						int *removed_count);
 static int qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
@@ -957,6 +958,7 @@ static int qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
 static int qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p,
 					       ODKU_INFO * odku, HFID * hfid,
 					       VAL_DESCR * vd,
+					       int op_type,
 					       HEAP_SCANCACHE * scan_cache,
 					       HEAP_CACHE_ATTRINFO *
 					       attr_info,
@@ -9008,7 +9010,9 @@ qexec_free_delete_lob_info_list (THREAD_ENTRY * thread_p,
  *   attr_info(in/out): The attribute information that will be inserted
  *   index_attr_info(in/out):
  *   idx_info(in):
- *   partition_info(in/out):
+ *   op_type (in): operation type
+ *   needs_pruning (in): not 0 if partition pruning should be performed
+ *   pcontext (in): pruning context
  *   removed_count (in/out):
  */
 static int
@@ -9017,7 +9021,7 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 				     HEAP_CACHE_ATTRINFO * attr_info,
 				     HEAP_CACHE_ATTRINFO * index_attr_info,
 				     const HEAP_IDX_ELEMENTS_INFO * idx_info,
-				     int needs_pruning,
+				     int op_type, int needs_pruning,
 				     PRUNING_CONTEXT * pcontext,
 				     int *removed_count)
 {
@@ -9036,7 +9040,8 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
   BTID btid;
   bool is_global_index;
   HFID class_hfid, pruned_hfid;
-
+  int local_op_type = SINGLE_ROW_DELETE;
+  HEAP_SCANCACHE *local_scan_cache = NULL;
   *removed_count = 0;
 
   if (heap_attrinfo_clear_dbvalues (index_attr_info) != NO_ERROR)
@@ -9066,6 +9071,10 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 
   HFID_COPY (&class_hfid, &scan_cache->hfid);
   COPY_OID (&class_oid, &attr_info->class_oid);
+
+  local_scan_cache = scan_cache;
+  local_op_type =
+    BTREE_IS_MULTI_ROW_OP (op_type) ? MULTI_ROW_DELETE : SINGLE_ROW_DELETE;
 
   for (i = 0; i < idx_info->num_btids; ++i)
     {
@@ -9134,6 +9143,28 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 		}
 	    }
 
+	  if (needs_pruning && BTREE_IS_MULTI_ROW_OP (op_type))
+	    {
+	      /* need to provide appropriate scan_cache to
+	       * locator_delete_force in order to correctly compute
+	       * statistics
+	       */
+	      PRUNING_SCAN_CACHE *pruning_cache =
+		locator_get_partition_scancache (pcontext, &pruned_oid,
+						 &pruned_hfid, local_op_type,
+						 false);
+	      if (pruning_cache == NULL)
+		{
+		  error_code = er_errid ();
+		  if (error_code == NO_ERROR)
+		    {
+		      error_code = ER_FAILED;
+		    }
+		  goto error_exit;
+		}
+	      local_scan_cache = &pruning_cache->scan_cache;
+	    }
+
 	  /* xbtree_find_unique () has set an U_LOCK on the instance. We need
 	   * to get an X_LOCK in order to perform the delete.
 	   */
@@ -9154,10 +9185,10 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 	  error_code =
 	    locator_attribute_info_force (thread_p, &pruned_hfid, &unique_oid,
 					  &btid, false, NULL, NULL, 0,
-					  LC_FLUSH_DELETE, MULTI_ROW_DELETE,
-					  scan_cache, &force_count, false,
-					  REPL_INFO_TYPE_STMT_NORMAL, NULL,
-					  NULL);
+					  LC_FLUSH_DELETE, local_op_type,
+					  local_scan_cache, &force_count,
+					  false, REPL_INFO_TYPE_STMT_NORMAL,
+					  NULL, NULL);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -9208,10 +9239,13 @@ error_exit:
  *       (This is used for executing INSERT ON DUPLICATE KEY UPDATE
  *        statements)
  *   return: NO_ERROR or ER_code
+ *   thread_p(in):
  *   scan_cache(in):
  *   attr_info(in/out): The attribute information that will be inserted
  *   index_attr_info(in/out):
  *   idx_info(in):
+ *   needs_pruning(in):
+ *   pcontext(in):
  *   unique_oid_p(out): the OID of one object to be updated or a NULL OID if
  *                      there are no potential unique index violations
  * Note: A single OID is returned even if there are several objects that would
@@ -9353,15 +9387,23 @@ error_exit:
  * qexec_execute_duplicate_key_update () - Executes an update on a given OID
  *       (required by INSERT ON DUPLICATE KEY UPDATE processing)
  *   return: NO_ERROR or ER_code
- *   xasl(in):
- *   xasl_state(in/out):
- *   unique_oid(in): the OID of the object that will be updated
+ *   thread_p(in) :
+ *   odku(in) : on duplicate key update clause info
+ *   hfid(in) : class HFID
+ *   vd(in) : values descriptor
+ *   op_type(in): operation type
+ *   scan_cache(in): scan cache
+ *   attr_info(in): attribute cache info
+ *   index_attr_info(in): attribute info cache for indexes
+ *   idx_info(in): index info
+ *   needs_pruning(in): not 0 if partition pruning should be performed
+ *   pcontext(in): pruning context
  *   force_count(out): the number of objects that have been updated; it should
  *                     always be 1 on success and 0 on error
  */
 static int
 qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku,
-				    HFID * hfid, VAL_DESCR * vd,
+				    HFID * hfid, VAL_DESCR * vd, int op_type,
 				    HEAP_SCANCACHE * scan_cache,
 				    HEAP_CACHE_ATTRINFO * attr_info,
 				    HEAP_CACHE_ATTRINFO * index_attr_info,
@@ -9381,7 +9423,7 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku,
   int error = NO_ERROR;
   bool need_clear = 0;
   OID unique_oid;
-  int op_type = SINGLE_ROW_UPDATE;
+  int local_op_type = SINGLE_ROW_UPDATE;
   LC_COPYAREA_OPERATION operation = LC_FLUSH_UPDATE;
 
   OID_SET_NULL (&unique_oid);
@@ -9409,13 +9451,19 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku,
       goto exit_on_error;
     }
 
+  /* setup operation type and handle partition representation id */
   if (needs_pruning)
     {
       /* modify rec_descriptor representation id to that of attr_info */
       assert (OID_EQ (&attr_info->class_oid, &pcontext->root_oid));
       or_set_rep_id (&rec_descriptor, pcontext->root_repr_id);
-      op_type = SINGLE_ROW_UPDATE_PRUNING;
       operation = LC_FLUSH_UPDATE_PRUNE;
+      /* for partitioned classes, operation type must match initial operation
+       * type in order to handle unique statistics correctly
+       */
+      local_op_type =
+	BTREE_IS_MULTI_ROW_OP (op_type) ? MULTI_ROW_UPDATE_PRUNING :
+	SINGLE_ROW_UPDATE_PRUNING;
     }
 
   error = heap_attrinfo_read_dbvalues (thread_p, &unique_oid, &rec_descriptor,
@@ -9479,9 +9527,10 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku,
 
   error = locator_attribute_info_force (thread_p, hfid, &unique_oid, NULL,
 					false, attr_info, odku->attr_ids,
-					odku->no_assigns, operation, op_type,
-					scan_cache, force_count, false,
-					repl_info, pcontext, NULL);
+					odku->no_assigns, operation,
+					local_op_type, scan_cache,
+					force_count, false, repl_info,
+					pcontext, NULL);
   if (error != NO_ERROR)
     {
       goto exit_on_error;
@@ -9873,6 +9922,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 							   &attr_info,
 							   &index_attr_info,
 							   &idx_info,
+							   scan_cache_op_type,
 							   insert->
 							   needs_pruning,
 							   pcontext,
@@ -9892,6 +9942,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 							insert->odku,
 							&insert->class_hfid,
 							&xasl_state->vd,
+							scan_cache_op_type,
 							&scan_cache,
 							&attr_info,
 							&index_attr_info,
@@ -10048,6 +10099,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 						       &attr_info,
 						       &index_attr_info,
 						       &idx_info,
+						       scan_cache_op_type,
 						       insert->needs_pruning,
 						       pcontext,
 						       &removed_count);
@@ -10064,9 +10116,10 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  error =
 	    qexec_execute_duplicate_key_update (thread_p, insert->odku,
 						&insert->class_hfid,
-						&xasl_state->vd, &scan_cache,
-						&attr_info, &index_attr_info,
-						&idx_info,
+						&xasl_state->vd,
+						scan_cache_op_type,
+						&scan_cache, &attr_info,
+						&index_attr_info, &idx_info,
 						insert->needs_pruning,
 						pcontext, &force_count);
 	  if (error != NO_ERROR)
