@@ -2239,6 +2239,8 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p,
   PGBUF_BCB *bufptr;
   int bufid;
   bool done_flush;
+  PAGE_PTR pgptr;
+  VPID vpid;
 #if defined(SERVER_MODE)
   int sleep_nsecs;
   int rv;
@@ -2316,7 +2318,7 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p,
 	  if (LSA_ISNULL (&bufptr->oldest_unflush_lsa))
 	    {
 	      /* this page skipped logging.(log_skip_logging()) */
-	      ;			/* no op. */
+	      pthread_mutex_unlock (&bufptr->BCB_mutex);
 	    }
 	  else if (prev_chkpt_redo_lsa != NULL
 		   && !LSA_ISNULL (prev_chkpt_redo_lsa)
@@ -2324,19 +2326,53 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p,
 			      prev_chkpt_redo_lsa))
 	    {
 	      /* invalid page */
+	      pthread_mutex_unlock (&bufptr->BCB_mutex);
+
 	      assert (false);
 	    }
 	  else
 	    {
-	      /* get the smallest oldest_unflush_lsa */
-	      if (LSA_ISNULL (smallest_lsa)
-		  || LSA_LT (&bufptr->oldest_unflush_lsa, smallest_lsa))
+	      /*
+	       * bufptr->avoid_victim will be released
+	       * in pgbuf_flush_with_wal() function.
+	       */
+	      bufptr->avoid_victim = true;
+	      vpid = bufptr->vpid;
+	      pthread_mutex_unlock (&bufptr->BCB_mutex);
+
+	      pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ,
+				 PGBUF_UNCONDITIONAL_LATCH);
+	      if (pgptr == NULL
+		  || pgbuf_flush_with_wal (thread_p, pgptr) == NULL)
 		{
-		  LSA_COPY (smallest_lsa, &bufptr->oldest_unflush_lsa);
+#if !defined(NDEBUG)
+		  PGBUF_BCB *pgptr_bufptr;
+
+		  CAST_PGPTR_TO_BFPTR (pgptr_bufptr, pgptr);
+		  assert (pgptr_bufptr == bufptr);
+#endif
+		  MUTEX_LOCK_VIA_BUSY_WAIT (rv, bufptr->BCB_mutex);
+
+		  /* get the smallest oldest_unflush_lsa */
+		  if (LSA_ISNULL (smallest_lsa)
+		      || LSA_LT (&bufptr->oldest_unflush_lsa, smallest_lsa))
+		    {
+		      LSA_COPY (smallest_lsa, &bufptr->oldest_unflush_lsa);
+		    }
+
+		  if (pgptr == NULL)
+		    {
+		      bufptr->avoid_victim = false;
+		    }
+
+		  pthread_mutex_unlock (&bufptr->BCB_mutex);
+		}
+
+	      if (pgptr != NULL)
+		{
+		  pgbuf_unfix_and_init (thread_p, pgptr);
 		}
 	    }
-
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
 	}
 
 #if defined(SERVER_MODE)
