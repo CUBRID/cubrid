@@ -62,6 +62,7 @@ namespace dbgw
   static const char *XML_NODE_GROUP_PROP_INACTIVATE = "inactivate";
   static const char *XML_NODE_GROUP_PROP_IGNORE_RESULT = "ignoreResult";
   static const char *XML_NODE_GROUP_PROP_IGNORE_RESULT_HIDDEN = "ignore-result";
+  static const char *XML_NODE_GROUP_PROP_USE_DEFAULT_VALUE_WHEN_FAILED_TO_CASTING_PARAM = "useDefaultValueWhenFailedToCastParam";
 
   static const char *XML_NODE_POOL = "pool";
   static const char *XML_NODE_POOL_PROP_INIT_SIZE = "initialSize";
@@ -968,7 +969,9 @@ namespace dbgw
             properties.get(XML_NODE_GROUP_PROP_DESCRIPTION, false),
             properties.getBool(XML_NODE_GROUP_PROP_INACTIVATE, false),
             properties.getBool(XML_NODE_GROUP_PROP_IGNORE_RESULT,
-                XML_NODE_GROUP_PROP_IGNORE_RESULT_HIDDEN, false)));
+                XML_NODE_GROUP_PROP_IGNORE_RESULT_HIDDEN, false),
+            properties.getBool(XML_NODE_GROUP_PROP_USE_DEFAULT_VALUE_WHEN_FAILED_TO_CASTING_PARAM,
+                false)));
     m_pService->addGroup(m_pGroup);
   }
 

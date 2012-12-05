@@ -61,8 +61,8 @@ namespace dbgw
   class _DBGWExecutorProxy
   {
   public:
-    _DBGWExecutorProxy(DBGWConnectionSharedPtr pConnection,
-        _DBGWBoundQuerySharedPtr pQuery);
+    _DBGWExecutorProxy(bool bUseDefaultParameterValue,
+        DBGWConnectionSharedPtr pConnection, _DBGWBoundQuerySharedPtr pQuery);
     virtual ~_DBGWExecutorProxy();
 
     void init(_DBGWBoundQuerySharedPtr pQuery);
@@ -79,9 +79,13 @@ namespace dbgw
     void bindFloat(size_t nIndex, const DBGWValue *pValue);
     void bindDouble(size_t nIndex, const DBGWValue *pValue);
     void bindString(size_t nIndex, const DBGWValue *pValue);
+    void bindTime(size_t nIndex, const DBGWValue *pValue);
+    void bindDate(size_t nIndex, const DBGWValue *pValue);
+    void bindDateTime(size_t nIndex, const DBGWValue *pValue);
     void bindBytes(size_t nIndex, const DBGWValue *pValue);
 
   private:
+    bool m_bUseDefaultParameterValue;
     DBGWPreparedStatementSharedPtr m_pStatement;
     DBGWCallableStatementSharedPtr m_pCallableStatement;
     _DBGWBoundQuerySharedPtr m_pQuery;
@@ -89,10 +93,10 @@ namespace dbgw
     _DBGWLogDecorator m_paramLogDecorator;
   };
 
-  typedef shared_ptr<_DBGWExecutorProxy> _DBGWExecutorStatementSharedPtr;
+  typedef shared_ptr<_DBGWExecutorProxy> _DBGWExecutorProxySharedPtr;
 
-  typedef boost::unordered_map<string, _DBGWExecutorStatementSharedPtr,
-          boost::hash<string>, dbgwStringCompareFunc> _DBGWExecutorStatementHashMap;
+  typedef boost::unordered_map<string, _DBGWExecutorProxySharedPtr,
+          boost::hash<string>, dbgwStringCompareFunc> _DBGWExecutorProxyHashMap;
 
   class _DBGWExecutor
   {
@@ -120,7 +124,7 @@ namespace dbgw
     void destroy();
     bool isValid() const;
     bool isEvictable(long lMinEvictableIdleTimeMillis);
-    _DBGWExecutorStatementSharedPtr preparedStatement(
+    _DBGWExecutorProxySharedPtr preparedStatement(
         const _DBGWBoundQuerySharedPtr &pQuery);
 
   private:
@@ -132,7 +136,7 @@ namespace dbgw
     DBGWConnectionSharedPtr m_pConnection;
     struct timeval m_beginIdleTime;
     /* (sqlName => DBGWPreparedStatement) */
-    _DBGWExecutorStatementHashMap m_statmentMap;
+    _DBGWExecutorProxyHashMap m_proxyMap;
     _DBGWExecutorPool &m_executorPool;
     _DBGWLogger m_logger;
 
@@ -181,8 +185,7 @@ namespace dbgw
     void close();
 
   public:
-    const char *getGroupName() const;
-    bool isIgnoreResult() const;
+    _DBGWGroup &getGroup() const;
     size_t getPoolSize() const;
 
   private:
@@ -200,7 +203,8 @@ namespace dbgw
   {
   public:
     _DBGWGroup(const string &fileName, const string &name,
-        const string &description, bool bInactivate, bool bIgnoreResult);
+        const string &description, bool bInactivate, bool bIgnoreResult,
+        bool useDefaultValueWhenFailedToCastParam);
     virtual ~ _DBGWGroup();
 
     void addHost(_DBGWHostSharedPtr pHost);
@@ -214,6 +218,7 @@ namespace dbgw
     const string &getName() const;
     bool isInactivate() const;
     bool isIgnoreResult() const;
+    bool isUseDefaultParameterValue() const;
     bool empty() const;
 
   private:
@@ -222,6 +227,7 @@ namespace dbgw
     string m_description;
     bool m_bInactivate;
     bool m_bIgnoreResult;
+    bool m_buseDefaultValueWhenFailedToCastParam;
     int m_nModular;
     int m_nSchedule;
     int m_nCurrentHostIndex;

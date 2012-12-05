@@ -76,9 +76,10 @@ namespace dbgw
     return m_nWeight;
   }
 
-  _DBGWExecutorProxy::_DBGWExecutorProxy(
+  _DBGWExecutorProxy::_DBGWExecutorProxy(bool bUseDefaultParameterValue,
       DBGWConnectionSharedPtr pConnection, _DBGWBoundQuerySharedPtr pQuery) :
-    m_pQuery(pQuery), m_logger(pQuery->getGroupName(), pQuery->getSqlName()),
+    m_bUseDefaultParameterValue(bUseDefaultParameterValue), m_pQuery(pQuery),
+    m_logger(pQuery->getGroupName(), pQuery->getSqlName()),
     m_paramLogDecorator("Parameters:")
   {
     if (m_pQuery->getType() == DBGW_STMT_TYPE_PROCEDURE)
@@ -224,10 +225,16 @@ namespace dbgw
                 break;
               case DBGW_VAL_TYPE_CHAR:
               case DBGW_VAL_TYPE_STRING:
-              case DBGW_VAL_TYPE_DATETIME:
-              case DBGW_VAL_TYPE_DATE:
-              case DBGW_VAL_TYPE_TIME:
                 bindString(i, pValue);
+                break;
+              case DBGW_VAL_TYPE_DATETIME:
+                bindDateTime(i, pValue);
+                break;
+              case DBGW_VAL_TYPE_DATE:
+                bindDate(i, pValue);
+                break;
+              case DBGW_VAL_TYPE_TIME:
+                bindTime(i, pValue);
                 break;
               case DBGW_VAL_TYPE_BYTES:
                 bindBytes(i, pValue);
@@ -291,7 +298,7 @@ namespace dbgw
 
     int nValue;
 
-    if (pValue->toInt(&nValue) == false)
+    if (pValue->toInt(&nValue) == false && !m_bUseDefaultParameterValue)
       {
         throw getLastException();
       }
@@ -316,7 +323,7 @@ namespace dbgw
 
     int64 lValue;
 
-    if (pValue->toLong(&lValue) == false)
+    if (pValue->toLong(&lValue) == false && !m_bUseDefaultParameterValue)
       {
         throw getLastException();
       }
@@ -341,7 +348,7 @@ namespace dbgw
 
     float fValue;
 
-    if (pValue->toFloat(&fValue) == false)
+    if (pValue->toFloat(&fValue) == false && !m_bUseDefaultParameterValue)
       {
         throw getLastException();
       }
@@ -366,7 +373,7 @@ namespace dbgw
 
     double dValue;
 
-    if (pValue->toDouble(&dValue) == false)
+    if (pValue->toDouble(&dValue) == false && !m_bUseDefaultParameterValue)
       {
         throw getLastException();
       }
@@ -401,6 +408,78 @@ namespace dbgw
       }
   }
 
+  void _DBGWExecutorProxy::bindTime(size_t nIndex, const DBGWValue *pValue)
+  {
+    if (pValue->isNull())
+      {
+        bindNull(nIndex, DBGW_VAL_TYPE_TIME);
+        return;
+      }
+
+    char *szValue = NULL;
+    if (pValue->toTime(&szValue) == false && !m_bUseDefaultParameterValue)
+      {
+        throw getLastException();
+      }
+
+    if (m_pQuery->getType() == DBGW_STMT_TYPE_PROCEDURE)
+      {
+        m_pCallableStatement->setCString(nIndex, szValue);
+      }
+    else
+      {
+        m_pStatement->setCString(nIndex, szValue);
+      }
+  }
+
+  void _DBGWExecutorProxy::bindDate(size_t nIndex, const DBGWValue *pValue)
+  {
+    if (pValue->isNull())
+      {
+        bindNull(nIndex, DBGW_VAL_TYPE_DATE);
+        return;
+      }
+
+    char *szValue = NULL;
+    if (pValue->toDate(&szValue) == false && !m_bUseDefaultParameterValue)
+      {
+        throw getLastException();
+      }
+
+    if (m_pQuery->getType() == DBGW_STMT_TYPE_PROCEDURE)
+      {
+        m_pCallableStatement->setCString(nIndex, szValue);
+      }
+    else
+      {
+        m_pStatement->setCString(nIndex, szValue);
+      }
+  }
+
+  void _DBGWExecutorProxy::bindDateTime(size_t nIndex, const DBGWValue *pValue)
+  {
+    if (pValue->isNull())
+      {
+        bindNull(nIndex, DBGW_VAL_TYPE_DATETIME);
+        return;
+      }
+
+    char *szValue = NULL;
+    if (pValue->toDateTime(&szValue) == false && !m_bUseDefaultParameterValue)
+      {
+        throw getLastException();
+      }
+
+    if (m_pQuery->getType() == DBGW_STMT_TYPE_PROCEDURE)
+      {
+        m_pCallableStatement->setCString(nIndex, szValue);
+      }
+    else
+      {
+        m_pStatement->setCString(nIndex, szValue);
+      }
+  }
+
   void _DBGWExecutorProxy::bindBytes(size_t nIndex, const DBGWValue *pValue)
   {
     if (pValue->isNull())
@@ -411,7 +490,8 @@ namespace dbgw
 
     size_t nSize = 0;
     char *pBytesValue = NULL;
-    if (pValue->toBytes(&nSize, &pBytesValue) == false)
+    if (pValue->toBytes(&nSize, &pBytesValue) == false
+        && !m_bUseDefaultParameterValue)
       {
         throw getLastException();
       }
@@ -432,7 +512,7 @@ namespace dbgw
     m_bInTran(false), m_bInvalid(false), m_pConnection(pConnection),
     m_executorPool(executorPool)
   {
-    m_logger.setGroupName(m_executorPool.getGroupName());
+    m_logger.setGroupName(m_executorPool.getGroup().getName());
 
     gettimeofday(&m_beginIdleTime, NULL);
   }
@@ -464,8 +544,8 @@ namespace dbgw
       {
         m_logger.setSqlName(pQuery->getSqlName());
 
-        _DBGWExecutorStatementSharedPtr pStmt = preparedStatement(pQuery);
-        DBGWClientResultSetSharedPtr pClientResultSet = pStmt->execute(pParameter);
+        _DBGWExecutorProxySharedPtr pProxy = preparedStatement(pQuery);
+        DBGWClientResultSetSharedPtr pClientResultSet = pProxy->execute(pParameter);
         if (pClientResultSet == NULL)
           {
             throw getLastException();
@@ -500,9 +580,9 @@ namespace dbgw
       {
         m_logger.setSqlName(pQuery->getSqlName());
 
-        _DBGWExecutorStatementSharedPtr pStmt = preparedStatement(pQuery);
+        _DBGWExecutorProxySharedPtr pProxy = preparedStatement(pQuery);
         DBGWClientBatchResultSetSharedPtr pBatchClientResultSet =
-            pStmt->executeBatch(parameterList);
+            pProxy->executeBatch(parameterList);
         if (pBatchClientResultSet == NULL)
           {
             throw getLastException();
@@ -522,13 +602,13 @@ namespace dbgw
       }
   }
 
-  _DBGWExecutorStatementSharedPtr _DBGWExecutor::preparedStatement(
+  _DBGWExecutorProxySharedPtr _DBGWExecutor::preparedStatement(
       const _DBGWBoundQuerySharedPtr &pQuery)
   {
-    _DBGWExecutorStatementSharedPtr pStmt;
-    _DBGWExecutorStatementHashMap::iterator it = m_statmentMap.find(
+    _DBGWExecutorProxySharedPtr pStmt;
+    _DBGWExecutorProxyHashMap::iterator it = m_proxyMap.find(
         pQuery->getSqlKey());
-    if (it != m_statmentMap.end())
+    if (it != m_proxyMap.end())
       {
         pStmt = it->second;
 
@@ -539,8 +619,10 @@ namespace dbgw
       }
     if (pStmt == NULL)
       {
-        pStmt = _DBGWExecutorStatementSharedPtr(
-            new _DBGWExecutorProxy(m_pConnection, pQuery));
+        pStmt = _DBGWExecutorProxySharedPtr(
+            new _DBGWExecutorProxy(
+                m_executorPool.getGroup().isUseDefaultParameterValue(),
+                m_pConnection, pQuery));
         if (pStmt == NULL)
           {
             throw getLastException();
@@ -548,7 +630,7 @@ namespace dbgw
 
         DBGW_LOG_INFO(m_logger.getLogMessage("prepare statement.").c_str());
 
-        m_statmentMap[pQuery->getSqlKey()] = pStmt;
+        m_proxyMap[pQuery->getSqlKey()] = pStmt;
       }
     return pStmt;
   }
@@ -588,12 +670,12 @@ namespace dbgw
 
   const char *_DBGWExecutor::getGroupName() const
   {
-    return m_executorPool.getGroupName();
+    return m_executorPool.getGroup().getName().c_str();
   }
 
   bool _DBGWExecutor::isIgnoreResult() const
   {
-    return m_executorPool.isIgnoreResult();
+    return m_executorPool.getGroup().isIgnoreResult();
   }
 
   void _DBGWExecutor::init(bool bAutocommit, DBGW_TRAN_ISOLATION isolation)
@@ -623,7 +705,7 @@ namespace dbgw
       }
 
     m_bClosed = true;
-    m_statmentMap.clear();
+    m_proxyMap.clear();
 
     gettimeofday(&m_beginIdleTime, NULL);
 
@@ -897,14 +979,9 @@ namespace dbgw
     m_executorList.clear();
   }
 
-  const char *_DBGWExecutorPool::getGroupName() const
+  _DBGWGroup &_DBGWExecutorPool::getGroup() const
   {
-    return m_group.getName().c_str();
-  }
-
-  bool _DBGWExecutorPool::isIgnoreResult() const
-  {
-    return m_group.isIgnoreResult();
+    return m_group;
   }
 
   size_t _DBGWExecutorPool::getPoolSize() const
@@ -913,9 +990,11 @@ namespace dbgw
   }
 
   _DBGWGroup::_DBGWGroup(const string &fileName, const string &name,
-      const string &description, bool bInactivate, bool bIgnoreResult) :
+      const string &description, bool bInactivate, bool bIgnoreResult,
+      bool useDefaultValueWhenFailedToCastParam) :
     m_fileName(fileName), m_name(name), m_description(description),
     m_bInactivate(bInactivate), m_bIgnoreResult(bIgnoreResult),
+    m_buseDefaultValueWhenFailedToCastParam(useDefaultValueWhenFailedToCastParam),
     m_nModular(0), m_nSchedule(0), m_nCurrentHostIndex(0),
     m_executorPool(*this)
   {
@@ -996,6 +1075,11 @@ namespace dbgw
   bool _DBGWGroup::isIgnoreResult() const
   {
     return m_bIgnoreResult;
+  }
+
+  bool _DBGWGroup::isUseDefaultParameterValue() const
+  {
+    return m_buseDefaultValueWhenFailedToCastParam;
   }
 
   bool _DBGWGroup::empty() const

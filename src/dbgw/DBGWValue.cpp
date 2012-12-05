@@ -569,20 +569,22 @@ namespace dbgw
           case DBGW_VAL_TYPE_DATETIME:
           case DBGW_VAL_TYPE_BYTES:
           default:
-            MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_INT);
-            DBGW_LOG_ERROR(e.what());
+            MismatchValueTypeException e(m_type, toString(), DBGW_VAL_TYPE_INT);
+            DBGW_LOG_WARN(e.what());
             throw e;
           }
       }
     catch (DBGWException &e)
       {
+        *pValue = 0;
         setLastException(e);
         return false;
       }
     catch (boost::bad_lexical_cast &)
       {
-        MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_INT);
-        DBGW_LOG_ERROR(e.what());
+        *pValue = 0;
+        MismatchValueTypeException e(m_type, toString(), DBGW_VAL_TYPE_INT);
+        DBGW_LOG_WARN(e.what());
         setLastException(e);
         return false;
       }
@@ -616,20 +618,22 @@ namespace dbgw
           case DBGW_VAL_TYPE_DATETIME:
           case DBGW_VAL_TYPE_BYTES:
           default:
-            MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_LONG);
-            DBGW_LOG_ERROR(e.what());
+            MismatchValueTypeException e(m_type, toString(), DBGW_VAL_TYPE_LONG);
+            DBGW_LOG_WARN(e.what());
             throw e;
           }
       }
     catch (DBGWException &e)
       {
+        *pValue = 0;
         setLastException(e);
         return false;
       }
     catch (boost::bad_lexical_cast &)
       {
-        MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_LONG);
-        DBGW_LOG_ERROR(e.what());
+        *pValue = 0;
+        MismatchValueTypeException e(m_type, toString(), DBGW_VAL_TYPE_LONG);
+        DBGW_LOG_WARN(e.what());
         setLastException(e);
         return false;
       }
@@ -663,20 +667,22 @@ namespace dbgw
           case DBGW_VAL_TYPE_DATETIME:
           case DBGW_VAL_TYPE_BYTES:
           default:
-            MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_FLOAT);
-            DBGW_LOG_ERROR(e.what());
+            MismatchValueTypeException e(m_type, toString(), DBGW_VAL_TYPE_FLOAT);
+            DBGW_LOG_WARN(e.what());
             throw e;
           }
       }
     catch (DBGWException &e)
       {
+        *pValue = 0.0f;
         setLastException(e);
         return false;
       }
     catch (boost::bad_lexical_cast &)
       {
-        MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_FLOAT);
-        DBGW_LOG_ERROR(e.what());
+        *pValue = 0.0f;
+        MismatchValueTypeException e(m_type, toString(), DBGW_VAL_TYPE_FLOAT);
+        DBGW_LOG_WARN(e.what());
         setLastException(e);
         return false;
       }
@@ -710,20 +716,22 @@ namespace dbgw
           case DBGW_VAL_TYPE_DATETIME:
           case DBGW_VAL_TYPE_BYTES:
           default:
-            MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_DOUBLE);
-            DBGW_LOG_ERROR(e.what());
+            MismatchValueTypeException e(m_type, toString(), DBGW_VAL_TYPE_DOUBLE);
+            DBGW_LOG_WARN(e.what());
             throw e;
           }
       }
     catch (DBGWException &e)
       {
+        *pValue = 0.0f;
         setLastException(e);
         return false;
       }
     catch (boost::bad_lexical_cast &)
       {
-        MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_DOUBLE);
-        DBGW_LOG_ERROR(e.what());
+        *pValue = 0.0f;
+        MismatchValueTypeException e(m_type, toString(), DBGW_VAL_TYPE_DOUBLE);
+        DBGW_LOG_WARN(e.what());
         setLastException(e);
         return false;
       }
@@ -759,20 +767,22 @@ namespace dbgw
           case DBGW_VAL_TYPE_DATETIME:
           case DBGW_VAL_TYPE_BYTES:
           default:
-            MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_CHAR);
-            DBGW_LOG_ERROR(e.what());
+            MismatchValueTypeException e(m_type, toString(), DBGW_VAL_TYPE_CHAR);
+            DBGW_LOG_WARN(e.what());
             throw e;
           }
       }
     catch (DBGWException &e)
       {
+        *pValue = 0;
         setLastException(e);
         return false;
       }
     catch (boost::bad_lexical_cast &)
       {
-        MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_CHAR);
-        DBGW_LOG_ERROR(e.what());
+        *pValue = 0;
+        MismatchValueTypeException e(m_type, toString(), DBGW_VAL_TYPE_CHAR);
+        DBGW_LOG_WARN(e.what());
         setLastException(e);
         return false;
       }
@@ -798,13 +808,14 @@ namespace dbgw
           case DBGW_VAL_TYPE_DATETIME:
           case DBGW_VAL_TYPE_BYTES:
           default:
-            MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_TIME);
-            DBGW_LOG_ERROR(e.what());
+            MismatchValueTypeException e(m_type, toString(), DBGW_VAL_TYPE_TIME);
+            DBGW_LOG_WARN(e.what());
             throw e;
           }
       }
     catch (DBGWException &e)
       {
+        *pValue = "00:00:00";
         setLastException(e);
         return false;
       }
@@ -830,13 +841,14 @@ namespace dbgw
           case DBGW_VAL_TYPE_DATETIME:
           case DBGW_VAL_TYPE_BYTES:
           default:
-            MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_DATE);
-            DBGW_LOG_ERROR(e.what());
+            MismatchValueTypeException e(m_type, toString(), DBGW_VAL_TYPE_DATE);
+            DBGW_LOG_WARN(e.what());
             throw e;
           }
       }
     catch (DBGWException &e)
       {
+        *pValue = "1970-01-01";
         setLastException(e);
         return false;
       }
@@ -862,13 +874,14 @@ namespace dbgw
           case DBGW_VAL_TYPE_DATE:
           case DBGW_VAL_TYPE_BYTES:
           default:
-            MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_DATETIME);
-            DBGW_LOG_ERROR(e.what());
+            MismatchValueTypeException e(m_type, toString(), DBGW_VAL_TYPE_DATETIME);
+            DBGW_LOG_WARN(e.what());
             throw e;
           }
       }
     catch (DBGWException &e)
       {
+        *pValue = "1970-01-01 00:00:00";
         setLastException(e);
         return false;
       }
@@ -886,13 +899,15 @@ namespace dbgw
           }
         else
           {
-            MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_DATETIME);
-            DBGW_LOG_ERROR(e.what());
+            MismatchValueTypeException e(m_type, toString(), DBGW_VAL_TYPE_DATETIME);
+            DBGW_LOG_WARN(e.what());
             throw e;
           }
       }
     catch (DBGWException &e)
       {
+        *pSize = 0;
+        *pValue = "";
         setLastException(e);
         return false;
       }

@@ -242,6 +242,8 @@ namespace dbgw
   {
   public:
     MismatchValueTypeException(int orgType, int convType) throw();
+    MismatchValueTypeException(int orgType, const string &orgValue,
+        int convType) throw();
   };
 
   class InvalidValueTypeException : public DBGWException

@@ -324,6 +324,16 @@ namespace dbgw
   {
   }
 
+  MismatchValueTypeException::MismatchValueTypeException(int orgType,
+      const string &orgValue, int convType) throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(DBGW_ER_VALUE_MISMATCH_VALUE_TYPE,
+            (boost::format("Cannot cast %s (%s) to %s.")
+                % getDBGWValueTypeString(orgType) % orgValue
+                % getDBGWValueTypeString(convType)).str()))
+  {
+  }
+
   InvalidValueTypeException::InvalidValueTypeException(int type) throw() :
     DBGWException(
         DBGWExceptionFactory::create(DBGW_ER_VALUE_INVALID_VALUE_TYPE,
