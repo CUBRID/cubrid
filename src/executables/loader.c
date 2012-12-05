@@ -1731,10 +1731,13 @@ static int
 ldr_mismatch (LDR_CONTEXT * context,
 	      const char *str, int len, SM_ATTRIBUTE * att)
 {
+  int err;
+
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1,
 	  att->header.name);
-  display_error (0);
-  return ER_OBJ_DOMAIN_CONFLICT;
+  CHECK_ERR (err, ER_OBJ_DOMAIN_CONFLICT);
+error_exit:
+  return err;
 }
 
 /*
