@@ -289,7 +289,8 @@ main (int argc, char **argv)
 				  SHM_MODE_MONITOR);
   if (shm_br == NULL)
     {
-      fprintf (stderr, "master shared memory open error[0x%x]\r\n",
+      /* This means we have to launch broker */
+      fprintf (stdout, "master shared memory open error[0x%x]\r\n",
 	       master_shm_id);
       return 1;
     }

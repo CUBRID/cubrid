@@ -298,7 +298,7 @@ broker_config_read_internal (const char *conf_file,
 #define PRINTERROR(...)	sprintf(admin_err_msg, __VA_ARGS__)
 #else /* _UC_ADMIN_SO_ */
 #if !defined (WINDOWS)
-#define PRINTERROR(...)	printf(__VA_ARGS__)
+#define PRINTERROR(...)	fprintf(stderr, __VA_ARGS__)
 #else /* WINDOWS */
 #define PRINTERROR(...)
 #endif /* !WINDOWS */

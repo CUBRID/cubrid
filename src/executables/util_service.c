@@ -219,7 +219,8 @@ static int process_manager (int command_type, bool process_window_service);
 static int process_heartbeat (int command_type, int argc, const char **argv);
 
 static int proc_execute (const char *file, const char *args[],
-			 bool wait_child, bool close_output, int *pid);
+			 bool wait_child, bool close_output,
+			 bool close_err, int *pid);
 static int process_master (int command_type);
 static void print_message (FILE * output, int message_id, ...);
 static void print_result (const char *util_name, int status,
@@ -387,7 +388,7 @@ process_admin (int argc, char **argv)
   copy_argv[0] = argv[0];
   copy_argv[argc] = 0;
   status = proc_execute (UTIL_ADMIN_NAME, (const char **) copy_argv, true,
-			 false, NULL);
+			 false, false, NULL);
   free (copy_argv);
 
   return status;
@@ -625,7 +626,7 @@ util_service_version (const char *argv0)
 #if defined(WINDOWS)
 static int
 proc_execute (const char *file, const char *args[], bool wait_child,
-	      bool close_output, int *out_pid)
+	      bool close_output, bool close_err, int *out_pid)
 {
   STARTUPINFO si;
   PROCESS_INFORMATION pi;
@@ -652,8 +653,12 @@ proc_execute (const char *file, const char *args[], bool wait_child,
     {
       si.dwFlags = si.dwFlags | STARTF_USESTDHANDLES;
       si.hStdOutput = NULL;
-      si.hStdError = NULL;
       inherited_handle = FALSE;
+    }
+
+  if (close_err)
+    {
+      si.hStdError = NULL;
     }
 
   if (!CreateProcess (executable_path, cmd_arg, NULL, NULL, inherited_handle,
@@ -685,7 +690,7 @@ proc_execute (const char *file, const char *args[], bool wait_child,
 #else
 static int
 proc_execute (const char *file, const char *args[], bool wait_child,
-	      bool close_output, int *out_pid)
+	      bool close_output, bool close_err, int *out_pid)
 {
   pid_t pid, tmp;
   char executable_path[PATH_MAX];
@@ -720,8 +725,13 @@ proc_execute (const char *file, const char *args[], bool wait_child,
       if (close_output)
 	{
 	  fclose (stdout);
+	}
+
+      if (close_err)
+	{
 	  fclose (stderr);
 	}
+
       if (execv (executable_path, (char *const *) args) == -1)
 	{
 	  perror ("execv");
@@ -788,7 +798,7 @@ process_master (int command_type)
 	  {
 	    const char *args[] = { UTIL_MASTER_NAME, NULL };
 	    status = proc_execute (UTIL_MASTER_NAME, args, false, false,
-				   NULL);
+				   false, NULL);
 	    /* The master process needs a few seconds to bind port */
 	    sleep (2);
 	    status = css_does_master_exist (master_port) ?
@@ -808,7 +818,8 @@ process_master (int command_type)
       if (css_does_master_exist (master_port))
 	{
 	  const char *args[] = { UTIL_COMMDB_NAME, COMMDB_ALL_STOP, NULL };
-	  status = proc_execute (UTIL_COMMDB_NAME, args, true, false, NULL);
+	  status =
+	    proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
 	  print_result (PRINT_MASTER_NAME, status, command_type);
 	}
       else
@@ -961,7 +972,7 @@ process_service (int command_type, bool process_window_service)
 	      };
 
 	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
-			    false, NULL);
+			    false, false, NULL);
 	      status =
 		are_all_services_running (0) ? NO_ERROR : ER_GENERIC_ERROR;
 	      print_result (PRINT_SERVICE_NAME, status, command_type);
@@ -1010,7 +1021,7 @@ process_service (int command_type, bool process_window_service)
 	      };
 
 	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
-			    false, NULL);
+			    false, false, NULL);
 	      status =
 		is_windows_service_running (0) ? ER_GENERIC_ERROR : NO_ERROR;
 	      print_result (PRINT_SERVICE_NAME, status, command_type);
@@ -1251,7 +1262,7 @@ process_server (int command_type, int argc, char **argv,
 	      args[3] = token;
 	      status =
 		proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
-			      false, NULL);
+			      false, false, NULL);
 	      status =
 		is_server_running (CHECK_SERVER, token,
 				   0) ? NO_ERROR : ER_GENERIC_ERROR;
@@ -1307,7 +1318,7 @@ process_server (int command_type, int argc, char **argv,
 		  int pid;
 		  const char *args[] = { UTIL_CUBRID_NAME, token, NULL };
 		  status = proc_execute (UTIL_CUBRID_NAME, args, false, false,
-					 &pid);
+					 false, &pid);
 		  status =
 		    is_server_running (CHECK_SERVER, token,
 				       pid) ? NO_ERROR : ER_GENERIC_ERROR;
@@ -1338,7 +1349,7 @@ process_server (int command_type, int argc, char **argv,
 		  args[3] = token;
 		  status =
 		    proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args,
-				  true, false, NULL);
+				  true, false, false, NULL);
 #endif
 		}
 	      else
@@ -1367,7 +1378,7 @@ process_server (int command_type, int argc, char **argv,
 		    }
 #endif /* !WINDOWS */
 		  status = proc_execute (UTIL_COMMDB_NAME, args, true, false,
-					 NULL);
+					 false, NULL);
 		}
 	      print_result (PRINT_SERVER_NAME, status, command_type);
 	    }
@@ -1393,7 +1404,8 @@ process_server (int command_type, int argc, char **argv,
 	{
 	  const char *args[] =
 	    { UTIL_COMMDB_NAME, COMMDB_SERVER_STATUS, NULL };
-	  status = proc_execute (UTIL_COMMDB_NAME, args, true, false, NULL);
+	  status =
+	    proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
 	}
       else
 	{
@@ -1418,7 +1430,8 @@ process_server (int command_type, int argc, char **argv,
 	      NULL
 	    };
 
-	    status = proc_execute (UTIL_ADMIN_NAME, args, true, false, NULL);
+	    status =
+	      proc_execute (UTIL_ADMIN_NAME, args, true, false, false, NULL);
 	    print_result (PRINT_SERVER_NAME, status, command_type);
 	  }
 	else if (strcasecmp (argv[0], "status") == 0)
@@ -1426,7 +1439,8 @@ process_server (int command_type, int argc, char **argv,
 	    const char *args[] =
 	      { UTIL_ADMIN_NAME, UTIL_OPTION_ACLDB, argv[1], NULL };
 
-	    status = proc_execute (UTIL_ADMIN_NAME, args, true, false, NULL);
+	    status =
+	      proc_execute (UTIL_ADMIN_NAME, args, true, false, false, NULL);
 	  }
 	else
 	  {
@@ -1455,7 +1469,8 @@ static int
 is_broker_running (void)
 {
   const char *args[] = { UTIL_MONITOR_NAME, 0 };
-  int status = proc_execute (UTIL_MONITOR_NAME, args, true, true, NULL);
+  int status =
+    proc_execute (UTIL_MONITOR_NAME, args, true, true, false, NULL);
   return status;
 }
 
@@ -1495,7 +1510,7 @@ process_broker (int command_type, int argc, const char **argv,
 	      };
 
 	      status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args,
-				     true, false, NULL);
+				     true, false, false, NULL);
 #endif
 	    }
 	  else
@@ -1503,19 +1518,14 @@ process_broker (int command_type, int argc, const char **argv,
 	      const char *args[] =
 		{ UTIL_BROKER_NAME, COMMAND_TYPE_START, NULL };
 	      status =
-		proc_execute (UTIL_BROKER_NAME, args, true, false, NULL);
+		proc_execute (UTIL_BROKER_NAME, args, true, false, false,
+			      NULL);
 	    }
 
 	  print_result (PRINT_BROKER_NAME, status, command_type);
 	  return status;
 
-	case 2:		/* no conf file */
-	  fprintf (stderr,
-		   "Error: Error occurred while reading cubrid_broker.conf.\n"
-		   "       The file is not found or an invalid "
-		   "parameter name/value is found.\n");
-	  print_result (PRINT_BROKER_NAME, ER_GENERIC_ERROR, command_type);
-	  return ER_GENERIC_ERROR;
+	case 2:		/* no conf file or parameter error */
 	default:
 	  print_result (PRINT_BROKER_NAME, ER_GENERIC_ERROR, command_type);
 	  return ER_GENERIC_ERROR;
@@ -1537,7 +1547,7 @@ process_broker (int command_type, int argc, const char **argv,
 
 	      status =
 		proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
-			      false, NULL);
+			      false, false, NULL);
 #endif
 	    }
 	  else
@@ -1545,7 +1555,8 @@ process_broker (int command_type, int argc, const char **argv,
 	      const char *args[] =
 		{ UTIL_BROKER_NAME, COMMAND_TYPE_STOP, NULL };
 	      status =
-		proc_execute (UTIL_BROKER_NAME, args, true, false, NULL);
+		proc_execute (UTIL_BROKER_NAME, args, true, false, false,
+			      NULL);
 	    }
 
 	  print_result (PRINT_BROKER_NAME, status, command_type);
@@ -1554,13 +1565,7 @@ process_broker (int command_type, int argc, const char **argv,
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
 			 PRINT_BROKER_NAME);
 	  return NO_ERROR;
-	case 2:		/* no conf file */
-	  fprintf (stderr,
-		   "Error: Error occurred while reading cubrid_broker.conf.\n"
-		   "       The file is not found or an invalid "
-		   "parameter name/value is found.\n");
-	  print_result (PRINT_BROKER_NAME, ER_GENERIC_ERROR, command_type);
-	  return ER_GENERIC_ERROR;
+	case 2:		/* no conf file or parameter error */
 	default:		/* other error */
 	  print_result (PRINT_BROKER_NAME, ER_GENERIC_ERROR, command_type);
 	  return ER_GENERIC_ERROR;
@@ -1596,7 +1601,8 @@ process_broker (int command_type, int argc, const char **argv,
 	      }
 	    args[argc + 1] = NULL;
 	    status =
-	      proc_execute (UTIL_MONITOR_NAME, args, true, false, NULL);
+	      proc_execute (UTIL_MONITOR_NAME, args, true, false, false,
+			    NULL);
 
 	    free (args);
 	    return status;
@@ -1631,7 +1637,7 @@ process_broker (int command_type, int argc, const char **argv,
 
 	    status =
 	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
-			    false, NULL);
+			    false, false, NULL);
 #endif
 	  }
 	else
@@ -1643,7 +1649,8 @@ process_broker (int command_type, int argc, const char **argv,
 		print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
 		return ER_GENERIC_ERROR;
 	      }
-	    status = proc_execute (UTIL_BROKER_NAME, args, true, false, NULL);
+	    status =
+	      proc_execute (UTIL_BROKER_NAME, args, true, false, false, NULL);
 	  }
       }
       break;
@@ -1659,7 +1666,7 @@ process_broker (int command_type, int argc, const char **argv,
 
 	    status =
 	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
-			    false, NULL);
+			    false, false, NULL);
 #endif
 	  }
 	else
@@ -1671,7 +1678,8 @@ process_broker (int command_type, int argc, const char **argv,
 		print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
 		return ER_GENERIC_ERROR;
 	      }
-	    status = proc_execute (UTIL_BROKER_NAME, args, true, false, NULL);
+	    status =
+	      proc_execute (UTIL_BROKER_NAME, args, true, false, false, NULL);
 	  }
       }
       break;
@@ -1697,7 +1705,8 @@ process_broker (int command_type, int argc, const char **argv,
 	    util_service_usage (BROKER);
 	    return ER_GENERIC_ERROR;
 	  }
-	status = proc_execute (UTIL_BROKER_NAME, args, true, false, NULL);
+	status =
+	  proc_execute (UTIL_BROKER_NAME, args, true, false, false, NULL);
 	print_result (PRINT_BROKER_NAME, status, command_type);
 	break;
       }
@@ -1713,7 +1722,7 @@ process_broker (int command_type, int argc, const char **argv,
 
 	    status =
 	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
-			    false, NULL);
+			    false, false, NULL);
 #endif
 	  }
 	else
@@ -1725,7 +1734,8 @@ process_broker (int command_type, int argc, const char **argv,
 		print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
 		return ER_GENERIC_ERROR;
 	      }
-	    status = proc_execute (UTIL_BROKER_NAME, args, true, false, NULL);
+	    status =
+	      proc_execute (UTIL_BROKER_NAME, args, true, false, false, NULL);
 	  }
       }
       break;
@@ -1745,7 +1755,8 @@ static int
 is_shard_running (void)
 {
   const char *args[] = { UTIL_SMONITOR_NAME, 0 };
-  int status = proc_execute (UTIL_SMONITOR_NAME, args, true, true, NULL);
+  int status =
+    proc_execute (UTIL_SMONITOR_NAME, args, true, true, true, NULL);
   return status;
 }
 
@@ -1786,7 +1797,7 @@ process_shard (int command_type, int argc, const char **argv,
 
 	      status =
 		proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
-			      false, NULL);
+			      false, false, NULL);
 #endif
 	    }
 	  else
@@ -1794,7 +1805,8 @@ process_shard (int command_type, int argc, const char **argv,
 	      const char *args[] =
 		{ UTIL_SHARD_NAME, COMMAND_TYPE_START, NULL };
 	      status =
-		proc_execute (UTIL_SHARD_NAME, args, true, false, NULL);
+		proc_execute (UTIL_SHARD_NAME, args, true, false, false,
+			      NULL);
 	    }
 
 	  print_result (PRINT_SHARD_NAME, status, command_type);
@@ -1827,7 +1839,7 @@ process_shard (int command_type, int argc, const char **argv,
 
 	      status =
 		proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
-			      false, NULL);
+			      false, false, NULL);
 #endif
 	    }
 	  else
@@ -1835,7 +1847,8 @@ process_shard (int command_type, int argc, const char **argv,
 	      const char *args[] =
 		{ UTIL_SHARD_NAME, COMMAND_TYPE_STOP, NULL };
 	      status =
-		proc_execute (UTIL_SHARD_NAME, args, true, false, NULL);
+		proc_execute (UTIL_SHARD_NAME, args, true, false, false,
+			      NULL);
 	    }
 
 	  print_result (PRINT_SHARD_NAME, status, command_type);
@@ -1886,7 +1899,8 @@ process_shard (int command_type, int argc, const char **argv,
 	      }
 	    args[argc + 1] = NULL;
 	    status =
-	      proc_execute (UTIL_SMONITOR_NAME, args, true, false, NULL);
+	      proc_execute (UTIL_SMONITOR_NAME, args, true, false, false,
+			    NULL);
 
 	    free (args);
 	    return status;
@@ -1919,7 +1933,7 @@ process_shard (int command_type, int argc, const char **argv,
 
 	    status =
 	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
-			    false, NULL);
+			    false, false, NULL);
 #endif
 	  }
 	else
@@ -1931,7 +1945,8 @@ process_shard (int command_type, int argc, const char **argv,
 		print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
 		return ER_GENERIC_ERROR;
 	      }
-	    status = proc_execute (UTIL_SHARD_NAME, args, true, false, NULL);
+	    status =
+	      proc_execute (UTIL_SHARD_NAME, args, true, false, false, NULL);
 	  }
       }
       break;
@@ -1947,7 +1962,7 @@ process_shard (int command_type, int argc, const char **argv,
 
 	    status =
 	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
-			    false, NULL);
+			    false, false, NULL);
 #endif
 	  }
 	else
@@ -1959,7 +1974,8 @@ process_shard (int command_type, int argc, const char **argv,
 		print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
 		return ER_GENERIC_ERROR;
 	      }
-	    status = proc_execute (UTIL_SHARD_NAME, args, true, false, NULL);
+	    status =
+	      proc_execute (UTIL_SHARD_NAME, args, true, false, false, NULL);
 	  }
       }
       break;
@@ -1985,7 +2001,8 @@ process_shard (int command_type, int argc, const char **argv,
 	    util_service_usage (SHARD);
 	    return ER_GENERIC_ERROR;
 	  }
-	status = proc_execute (UTIL_SHARD_NAME, args, true, false, NULL);
+	status =
+	  proc_execute (UTIL_SHARD_NAME, args, true, false, false, NULL);
 	print_result (PRINT_SHARD_NAME, status, command_type);
 	break;
       }
@@ -2001,7 +2018,7 @@ process_shard (int command_type, int argc, const char **argv,
 
 	    status =
 	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
-			    false, NULL);
+			    false, false, NULL);
 #endif
 	  }
 	else
@@ -2013,7 +2030,8 @@ process_shard (int command_type, int argc, const char **argv,
 		print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
 		return ER_GENERIC_ERROR;
 	      }
-	    status = proc_execute (UTIL_SHARD_NAME, args, true, false, NULL);
+	    status =
+	      proc_execute (UTIL_SHARD_NAME, args, true, false, false, NULL);
 	  }
       }
       break;
@@ -2046,7 +2064,8 @@ process_shard (int command_type, int argc, const char **argv,
 	  }
 	args[argc + 2] = NULL;
 
-	status = proc_execute (UTIL_SHARD_NAME, args, true, false, NULL);
+	status =
+	  proc_execute (UTIL_SHARD_NAME, args, true, false, false, NULL);
 
 	free (args);
       }
@@ -2152,7 +2171,7 @@ process_manager (int command_type, bool process_window_service)
 
 	      cub_auto =
 		proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
-			      false, NULL);
+			      false, false, NULL);
 #endif
 	    }
 	  else
@@ -2161,13 +2180,15 @@ process_manager (int command_type, bool process_window_service)
 		const char *args[] =
 		  { UTIL_CUB_AUTO_NAME, COMMAND_TYPE_START, NULL };
 		cub_auto =
-		  proc_execute (UTIL_CUB_AUTO_NAME, args, false, false, NULL);
+		  proc_execute (UTIL_CUB_AUTO_NAME, args, false, false, false,
+				NULL);
 	      }
 	      {
 		const char *args[] =
 		  { UTIL_CUB_JS_NAME, COMMAND_TYPE_START, NULL };
 		cub_js =
-		  proc_execute (UTIL_CUB_JS_NAME, args, false, false, NULL);
+		  proc_execute (UTIL_CUB_JS_NAME, args, false, false, false,
+				NULL);
 	      }
 
 	    }
@@ -2196,7 +2217,7 @@ process_manager (int command_type, bool process_window_service)
 
 	      cub_auto =
 		proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
-			      false, NULL);
+			      false, false, NULL);
 #endif
 	    }
 	  else
@@ -2206,13 +2227,15 @@ process_manager (int command_type, bool process_window_service)
 		const char *args[] =
 		  { UTIL_CUB_AUTO_NAME, COMMAND_TYPE_STOP, NULL };
 		cub_auto =
-		  proc_execute (UTIL_CUB_AUTO_NAME, args, true, false, NULL);
+		  proc_execute (UTIL_CUB_AUTO_NAME, args, true, false, false,
+				NULL);
 	      }
 	      {
 		const char *args[] =
 		  { UTIL_CUB_JS_NAME, COMMAND_TYPE_STOP, NULL };
 		cub_js =
-		  proc_execute (UTIL_CUB_JS_NAME, args, true, false, NULL);
+		  proc_execute (UTIL_CUB_JS_NAME, args, true, false, false,
+				NULL);
 	      }
 	    }
 	  status = is_manager_running (2) ? ER_GENERIC_ERROR : NO_ERROR;
@@ -2323,7 +2346,8 @@ ha_is_registered (const char **v, bool copylogdb)
   if (status > 0)
     {
       const char *args[] = { UTIL_COMMDB_NAME, COMMDB_IS_REG, id, NULL };
-      status = proc_execute (UTIL_COMMDB_NAME, args, true, false, NULL);
+      status =
+	proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
       if (status == 0)
 	{
 	  return true;
@@ -2396,7 +2420,7 @@ us_hb_copylogdb_start (dynamic_array * pids, HA_CONF * ha_conf,
 	      if (ha_mkdir (log_path, 0755))
 		{
 		  status = proc_execute (UTIL_ADMIN_NAME, args, false, false,
-					 &pid);
+					 false, &pid);
 
 		  if (status != NO_ERROR)
 		    {
@@ -2505,7 +2529,7 @@ us_hb_copylogdb_stop (HA_CONF * ha_conf, const char *db_name,
 		  };
 		  status =
 		    proc_execute (UTIL_COMMDB_NAME, commdb_args, true, false,
-				  NULL);
+				  false, NULL);
 
 		  wait_time = 0;
 		  do
@@ -2608,7 +2632,7 @@ us_hb_applylogdb_start (dynamic_array * pids, HA_CONF * ha_conf,
 		}
 
 	      status = proc_execute (UTIL_ADMIN_NAME, args, false, false,
-				     &pid);
+				     false, &pid);
 	      if (status != NO_ERROR)
 		{
 		  goto ret;
@@ -2716,7 +2740,7 @@ us_hb_applylogdb_stop (HA_CONF * ha_conf, const char *db_name,
 		  };
 		  status =
 		    proc_execute (UTIL_COMMDB_NAME, commdb_args, true,
-				  false, NULL);
+				  false, false, NULL);
 
 		  wait_time = 0;
 		  do
@@ -3078,7 +3102,8 @@ process_heartbeat (int command_type, int argc, const char **argv)
       if (css_does_master_exist (master_port))
 	{
 	  const char *args[] = { UTIL_COMMDB_NAME, COMMDB_HA_ACTIVATE, NULL };
-	  status = proc_execute (UTIL_COMMDB_NAME, args, true, false, NULL);
+	  status =
+	    proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
 	}
 
       db_name = (argc >= 1) ? argv[0] : NULL;
@@ -3105,7 +3130,7 @@ process_heartbeat (int command_type, int argc, const char **argv)
 	{
 	  const char *args[] =
 	    { UTIL_COMMDB_NAME, COMMDB_HA_DEACTIVATE, NULL };
-	  proc_execute (UTIL_COMMDB_NAME, args, true, false, NULL);
+	  proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
 	}
       print_result (PRINT_HEARTBEAT_NAME, status, command_type);
       break;
@@ -3145,7 +3170,8 @@ process_heartbeat (int command_type, int argc, const char **argv)
 	      const char *args[] =
 		{ UTIL_COMMDB_NAME, COMMDB_HA_DEACTIVATE, NULL };
 	      status =
-		proc_execute (UTIL_COMMDB_NAME, args, true, false, NULL);
+		proc_execute (UTIL_COMMDB_NAME, args, true, false, false,
+			      NULL);
 	    }
 	}
       else
@@ -3176,7 +3202,8 @@ process_heartbeat (int command_type, int argc, const char **argv)
 	{
 	  const char *args[] =
 	    { UTIL_COMMDB_NAME, COMMDB_HA_DEREG_BY_PID, pid, NULL };
-	  status = proc_execute (UTIL_COMMDB_NAME, args, true, false, NULL);
+	  status =
+	    proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
 	}
       else
 	{
@@ -3200,7 +3227,7 @@ process_heartbeat (int command_type, int argc, const char **argv)
 
 	  status =
 	    proc_execute (UTIL_COMMDB_NAME, node_list_args, true, false,
-			  NULL);
+			  false, NULL);
 	  if (status != NO_ERROR)
 	    {
 	      goto ret;
@@ -3208,7 +3235,7 @@ process_heartbeat (int command_type, int argc, const char **argv)
 
 	  status =
 	    proc_execute (UTIL_COMMDB_NAME, proc_list_args, true, false,
-			  NULL);
+			  false, NULL);
 	}
       else
 	{
@@ -3223,7 +3250,8 @@ process_heartbeat (int command_type, int argc, const char **argv)
       if (css_does_master_exist (master_port))
 	{
 	  const char *args[] = { UTIL_COMMDB_NAME, COMMDB_HA_RELOAD, NULL };
-	  status = proc_execute (UTIL_COMMDB_NAME, args, true, false, NULL);
+	  status =
+	    proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
 	}
       else
 	{
@@ -3283,7 +3311,8 @@ process_heartbeat (int command_type, int argc, const char **argv)
       if (css_does_master_exist (master_port))
 	{
 	  const char *args[] = { UTIL_COMMDB_NAME, COMMDB_HA_ACTIVATE, NULL };
-	  status = proc_execute (UTIL_COMMDB_NAME, args, true, false, NULL);
+	  status =
+	    proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
 
 	  status =
 	    us_hb_process_copylogdb (sub_command_type, &ha_conf, db_name,
@@ -3341,7 +3370,8 @@ process_heartbeat (int command_type, int argc, const char **argv)
       if (css_does_master_exist (master_port))
 	{
 	  const char *args[] = { UTIL_COMMDB_NAME, COMMDB_HA_ACTIVATE, NULL };
-	  status = proc_execute (UTIL_COMMDB_NAME, args, true, false, NULL);
+	  status =
+	    proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
 
 	  status =
 	    us_hb_process_applylogdb (sub_command_type, &ha_conf, db_name,
