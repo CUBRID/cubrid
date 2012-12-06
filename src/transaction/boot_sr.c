@@ -2281,7 +2281,11 @@ boot_mount (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel,
   return NO_ERROR;
 }
 
-static jmp_buf bo_Init_server_jmpbuf;
+#if !defined(WINDOWS)
+static jmp_buf boot_Init_server_jmpbuf;
+#endif
+
+static bool boot_Init_server_is_canceled = false;
 
 /*
  * boot_ctrl_c_in_init_server () -
@@ -2291,7 +2295,11 @@ static jmp_buf bo_Init_server_jmpbuf;
 static void
 boot_ctrl_c_in_init_server (int ignore_signo)
 {
-  _longjmp (bo_Init_server_jmpbuf, 1);
+#if !defined(WINDOWS)
+  _longjmp (boot_Init_server_jmpbuf, 1);
+#else
+  boot_Init_server_is_canceled = true;
+#endif
 }
 
 /*
@@ -2714,7 +2722,11 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
   old_ctrl_c_handler = os_set_signal_handler (SIGINT,
 					      boot_ctrl_c_in_init_server);
 
-  if (_setjmp (bo_Init_server_jmpbuf) == 0)
+#if !defined(WINDOWS)
+  boot_Init_server_is_canceled = (_setjmp (boot_Init_server_jmpbuf) != 0);
+#endif
+
+  if (!boot_Init_server_is_canceled)
     {
       tran_index = boot_create_all_volumes (thread_p, client_credential,
 					    db_path_info->db_comments,
@@ -2723,7 +2735,8 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
 					    (const char *) log_prefix,
 					    log_npages, client_lock_wait,
 					    client_isolation);
-      if (tran_index != NULL_TRAN_INDEX)
+
+      if (tran_index != NULL_TRAN_INDEX && !boot_Init_server_is_canceled)
 	{
 #if !defined(WINDOWS) || !defined(DONT_USE_MANDATORY_LOCK_IN_WINDOWS)
 	  dbtxt_vdes = fileio_mount (thread_p, dbtxt_label, dbtxt_label,
@@ -2804,56 +2817,28 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
 	      dbtxt_vdes = NULL_VOLDES;
 	    }
 	}
+    }
+
+  if (tran_index == NULL_TRAN_INDEX || boot_Init_server_is_canceled)
+    {
+      (void) boot_remove_all_volumes (thread_p, boot_Db_full_name,
+				      log_path, (const char *) log_prefix,
+				      true, true);
+      if (boot_Init_server_is_canceled)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	}
       else
-	{			/* fail - remove all */
-	  (void) boot_remove_all_volumes (thread_p, boot_Db_full_name,
-					  log_path,
-					  (const char *) log_prefix, true,
-					  true);
+	{
 	  if (db_path_info->vol_path != NULL)
 	    {
 	      (void) unlink (boot_Db_full_name);
 	    }
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANNOT_CREATE_VOL,
-		  2, "allvols", boot_Db_full_name);
-	  goto exit_on_error;
-	}
-    }
-  else
-    {
-      /*
-       * Ctrl-C was executed
-       * Clean created volumes
-       */
-      (void) boot_remove_all_volumes (thread_p, boot_Db_full_name,
-				      log_path, (const char *) log_prefix,
-				      true, true);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-
-      /*
-       * We need to restore the old ctrl-C handler in this if stmt since
-       * the current handler does a jmp
-       */
-
-      if (old_ctrl_c_handler != SIG_ERR)
-	{
-	  (void) os_set_signal_handler (SIGINT, old_ctrl_c_handler);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_BO_CANNOT_CREATE_VOL, 2, "allvols", boot_Db_full_name);
 	}
 
-      /*
-       * May be we should execute ^C again. This time it should be handled
-       * by the original interrupt handler
-       */
-      os_send_kill ();
       goto exit_on_error;
-    }
-  /*
-   * We need to restore the old ctrl-C handler in this if stm since
-   * the current handler does a jmp
-   */
-  if (old_ctrl_c_handler != SIG_ERR)
-    {
-      (void) os_set_signal_handler (SIGINT, old_ctrl_c_handler);
     }
 
   rootclass_oid->volid = boot_Db_parm->rootclass_oid.volid;
@@ -2875,9 +2860,19 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
 	   rel_build_number (), rel_bit_platform ());
 #endif /* !NDEBUG */
 
+  if (old_ctrl_c_handler != SIG_ERR)
+    {
+      (void) os_set_signal_handler (SIGINT, old_ctrl_c_handler);
+    }
+
   return tran_index;
 
 exit_on_error:
+
+  if (old_ctrl_c_handler != SIG_ERR)
+    {
+      (void) os_set_signal_handler (SIGINT, old_ctrl_c_handler);
+    }
 
   /* Destroy everything */
   if (dir)
@@ -5266,7 +5261,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
   /* Create the active log and initialize the log and recovery manager */
   error_code = log_create (thread_p, boot_Db_full_name, log_path, log_prefix,
 			   log_npages);
-  if (error_code != NO_ERROR)
+  if (error_code != NO_ERROR || boot_Init_server_is_canceled)
     {
       goto error;
     }
@@ -5287,7 +5282,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
   db_volid = disk_format (thread_p, boot_Db_full_name, LOG_DBFIRST_VOLID,
 			  boot_Db_full_name, db_comments, db_npages,
 			  0, DISK_PERMVOL_GENERIC_PURPOSE);
-  if (db_volid != LOG_DBFIRST_VOLID)
+  if (db_volid != LOG_DBFIRST_VOLID || boot_Init_server_is_canceled)
     {
       goto error;
     }
