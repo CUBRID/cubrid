@@ -497,7 +497,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
 			  &db_volume_size) != NO_ERROR)
     {
       UINT64 min, max;
-      char min_buf[64], max_buf[64];
+      char min_buf[64], max_buf[64], vol_buf[64];
 
       if (sysprm_get_range (prm_get_name (PRM_ID_DB_VOLUME_SIZE), &min, &max)
 	  != NO_ERROR)
@@ -506,20 +506,38 @@ createdb (UTIL_FUNCTION_ARG * arg)
 	}
       util_byte_to_size_string (min, min_buf, 64);
       util_byte_to_size_string (max, max_buf, 64);
+      if (db_volume_str != NULL)
+	{
+	  int len;
+	  len = strlen (db_volume_str);
+	  if (char_isdigit (db_volume_str[len - 1]))
+	    {
+	      snprintf (vol_buf, 64, "%sB", db_volume_str);
+	    }
+	  else
+	    {
+	      snprintf (vol_buf, 64, "%s", db_volume_str);
+	    }
+	}
+      else
+	{
+	  util_byte_to_size_string (db_volume_size, vol_buf, 64);
+	}
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 				       MSGCAT_UTIL_SET_CREATEDB,
 				       CREATEDB_MSG_FAILURE));
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 				       MSGCAT_UTIL_SET_CREATEDB,
 				       CREATEDB_MSG_BAD_RANGE),
-	       prm_get_name (PRM_ID_DB_VOLUME_SIZE), min_buf, max_buf);
+	       prm_get_name (PRM_ID_DB_VOLUME_SIZE), vol_buf, min_buf,
+	       max_buf);
       goto error_exit;
     }
   if (sysprm_check_range (prm_get_name (PRM_ID_LOG_VOLUME_SIZE),
 			  &log_volume_size) != NO_ERROR)
     {
       UINT64 min, max;
-      char min_buf[64], max_buf[64];
+      char min_buf[64], max_buf[64], vol_buf[64];
 
       if (sysprm_get_range (prm_get_name (PRM_ID_LOG_VOLUME_SIZE), &min, &max)
 	  != NO_ERROR)
@@ -528,13 +546,31 @@ createdb (UTIL_FUNCTION_ARG * arg)
 	}
       util_byte_to_size_string (min, min_buf, 64);
       util_byte_to_size_string (max, max_buf, 64);
+      if (log_volume_str != NULL)
+	{
+	  int len;
+	  len = strlen (log_volume_str);
+	  if (char_isdigit (log_volume_str[len - 1]))
+	    {
+	      snprintf (vol_buf, 64, "%sB", log_volume_str);
+	    }
+	  else
+	    {
+	      snprintf (vol_buf, 64, "%s", log_volume_str);
+	    }
+	}
+      else
+	{
+	  util_byte_to_size_string (log_volume_size, vol_buf, 64);
+	}
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 				       MSGCAT_UTIL_SET_CREATEDB,
 				       CREATEDB_MSG_FAILURE));
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 				       MSGCAT_UTIL_SET_CREATEDB,
 				       CREATEDB_MSG_BAD_RANGE),
-	       prm_get_name (PRM_ID_LOG_VOLUME_SIZE), min_buf, max_buf);
+	       prm_get_name (PRM_ID_LOG_VOLUME_SIZE), vol_buf, min_buf,
+	       max_buf);
       goto error_exit;
     }
 

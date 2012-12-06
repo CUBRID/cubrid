@@ -291,7 +291,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 45 %s 크기의 데이터베이스 생성 중.\n
 46 데이터베이스를 생성할 수 없습니다.\n
 47 user file '%s'에 오류가 있습니다.\n
-48 '%s'는 %s와 %s 사이 값이어야 합니다.\n
+48 The given '%1$s', %2$s is out of range. Choose a size between %3$s and %4$s.\n
 49 %s의 값 '%s'은 유효하지 않습니다.\n
 60 \
 createdb: 데이터베이스 생성.\n\

@@ -291,7 +291,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 45 Datenbank mit Größe %s wird erstellt.\n
 46 Datenbank konnte nicht erstellt werden.\n
 47 Problem mit Benutzerdatei '%s'\n
-48 Die '%s' müssen zwischen %s und %s sein\n
+48 The given '%1$s', %2$s is out of range. Choose a size between %3$s and %4$s.\n
 49 Der Wert von %s '%s' ist ungültig.\n
 60 \
 createdb: Datenbank erstellen.\n\

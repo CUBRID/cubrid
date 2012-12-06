@@ -291,7 +291,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 45 %sサイズのデータベース生成中。\n
 46 データベースが生成できません。\n
 47 ユーザーファイル「%s」に問題があります。\n
-48 「%s」は「%s」と「%s」の間で制限されています。\n
+48 The given '%1$s', %2$s is out of range. Choose a size between %3$s and %4$s.\n
 49 %sの内容の中で「%s」が正しくありません。\n
 60 \
 createdb: データベース生成。\n\
