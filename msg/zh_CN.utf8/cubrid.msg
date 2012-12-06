@@ -1588,6 +1588,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 263 继承属性不能用作分区键.
 264 枚举元素的聚合大小超出上限.
 265 不能在源spec中使用目标表.
+266 COLLATE is not allowed in this context.
+267 COLLATE modifier cannot change codeset (from '%s' to '%s'). Try using CAST instead.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %d 字节.

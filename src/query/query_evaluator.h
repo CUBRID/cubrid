@@ -137,6 +137,8 @@ struct regu_variable_node
 						   bottom of regu tree */
 #define REGU_VARIABLE_FIELD_NESTED        0x04	/* for FIELD function, reguvar
 						   is child in T_FIELD tree */
+#define REGU_VARIABLE_APPLY_COLLATION	  0x08	/* Apply collation from domain;
+						   flag used in context of COLLATE modifier */
   int flags;			/* flags */
 #define REGU_VARIABLE_IS_FLAGED(e, f)    ((e)->flags & (short) (f))
 #define REGU_VARIABLE_SET_FLAG(e, f)     (e)->flags |= (short) (f)

@@ -1588,6 +1588,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 263 Un atributo heredado no puede ser utilizado como clave de particion.
 264 El tamaño de los agregados de elementos de la enumeración es demasiado grande.
 265 No se puede utilizar tabla de destino en especificaciones de origen.
+266 COLLATE is not allowed in this context.
+267 COLLATE modifier cannot change codeset (from '%s' to '%s'). Try using CAST instead.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sin memoria virtual: incapaz de asignar %d bytes.

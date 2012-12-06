@@ -1588,6 +1588,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 263 Un attribut hérité ne peut pas être utilisé comme clé de partitionnement.
 264 La taille de l'agrégat d'éléments d'énumération est trop grand.
 265 Impossible d'utiliser la table cible dans la spécification de la source.
+266 COLLATE is not allowed in this context.
+267 COLLATE modifier cannot change codeset (from '%s' to '%s'). Try using CAST instead.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Mémoire virtuelle épuisée: impossible d'allouer %d octets.

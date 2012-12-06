@@ -627,6 +627,13 @@
 
 #define PT_EMPTY	INT_MAX
 
+#define PT_GET_COLLATION_MODIFIER(p)					    \
+  (((p)->node_type == PT_EXPR) ? ((p)->info.expr.coll_modifier) :	    \
+  (((p)->node_type == PT_VALUE) ? ((p)->info.value.coll_modifier) :	    \
+  (((p)->node_type == PT_NAME) ? ((p)->info.name.coll_modifier) :	    \
+  (((p)->node_type == PT_FUNCTION) ? ((p)->info.function.coll_modifier) :   \
+  (((p)->node_type == PT_DOT_) ? ((p)->info.dot.coll_modifier) : (-1))))))
+
 /*
  Enumerated types of parse tree statements
   WARNING ------ WARNING ----- WARNING
@@ -1823,6 +1830,7 @@ struct pt_dot_info
   PT_NODE *selector;		/* only set if selector used A[SELECTOR].B  */
   PT_OP_TYPE op;		/* binary or unary op code */
   short tag_click_counter;	/* 0: normal name, 1: click counter name */
+  int coll_modifier;
 };
 
 /* DROP ENTITY
@@ -1960,15 +1968,16 @@ struct pt_expr_info
 					 * the derived subquery ?
 					 * is removed at the last rewrite stage
 					 * of query optimizer */
-#define PT_EXPR_INFO_DEFAULT_SELECTIVITY 1024	/* use default selectivity ? */
-#define PT_EXPR_INFO_FULL_RANGE  2048	/* non-null full RANGE term ? */
-#define	PT_EXPR_INFO_CAST_NOFAIL 4096	/* flag for non failing cast operation;
+#define PT_EXPR_INFO_FULL_RANGE  1024	/* non-null full RANGE term ? */
+#define	PT_EXPR_INFO_CAST_NOFAIL 2048	/* flag for non failing cast operation;
 					 * at runtime will return null DB_VALUE
 					 * instead of failing */
-#define PT_EXPR_INFO_CAST_SHOULD_FOLD 8192	/* flag which controls if a cast
+#define PT_EXPR_INFO_CAST_SHOULD_FOLD 4096	/* flag which controls if a cast
 						   expr should be folded */
 
-#define PT_EXPR_FUNCTION_INDEX 16384	/* function index expression flag */
+#define PT_EXPR_INFO_FUNCTION_INDEX 8192	/* function index expression flag */
+
+#define PT_EXPR_INFO_CAST_COLL_MODIFIER 16384	/* CAST is for COLLATION modifier */
 
   short flag;			/* flags */
 #define PT_EXPR_INFO_IS_FLAGED(e, f)    ((e)->info.expr.flag & (short) (f))
@@ -1978,6 +1987,7 @@ struct pt_expr_info
   bool is_order_dependent;	/* true if expression is order dependent */
   PT_TYPE_ENUM recursive_type;	/* common type for recursive expression
 				 * arguments (like PT_GREATEST, PT_LEAST,...) */
+  int coll_modifier;
 };
 
 
@@ -1998,6 +2008,7 @@ struct pt_function_info
 				 * the class OID column */
   PT_NODE *order_by;		/* ordering PT_SORT_SPEC for GROUP_CONCAT */
   bool is_order_dependent;	/* true if function is order dependent */
+  int coll_modifier;
   struct
   {
     PT_NODE *partition_by;	/* partition PT_SORT_SPEC list */
@@ -2158,6 +2169,7 @@ struct pt_name_info
   short location;		/* 0: WHERE; n: join condition of n-th FROM */
   short tag_click_counter;	/* 0: normal name, 1: click counter name */
   PT_NODE *indx_key_limit;	/* key limits for index name */
+  int coll_modifier;
 };
 
 
@@ -2579,13 +2591,14 @@ struct pt_value_info
   bool print_collation;
   bool has_cs_introducer;	/* 1 if charset introducer is used for string
 				 * node e.g. _utf8'a'; 0 otherwise. */
+  int coll_modifier;
 };
 
 
 /* Info for the ZZ_ERROR_MSG node */
 struct PT_ZZ_ERROR_MSG_INFO
 {
-  const char *error_message;	/* a helpful explanation of the error */
+  char *error_message;		/* a helpful explanation of the error */
   int statement_number;		/* statement where error was detected */
 };
 

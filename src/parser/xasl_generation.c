@@ -9079,19 +9079,40 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  break;
 
 		case PT_CAST:
-		  domain = pt_xasl_data_type_to_domain (parser,
-							node->info.
-							expr.cast_type);
-		  if (PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_NOFAIL))
-		    {
-		      regu = pt_make_regu_arith (r1, r2, NULL,
-						 T_CAST_NOFAIL, domain);
-		    }
-		  else
-		    {
-		      regu = pt_make_regu_arith (r1, r2, NULL, T_CAST,
-						 domain);
-		    }
+		  {
+		    OPERATOR_TYPE op;
+
+		    if (PT_EXPR_INFO_IS_FLAGED
+			(node, PT_EXPR_INFO_CAST_NOFAIL))
+		      {
+			op = T_CAST_NOFAIL;
+		      }
+		    else
+		      {
+			op = T_CAST;
+		      }
+
+		    if (PT_EXPR_INFO_IS_FLAGED
+			(node, PT_EXPR_INFO_CAST_COLL_MODIFIER))
+		      {
+			regu = r2;
+			domain = pt_xasl_data_type_to_domain (parser,
+							      node->info.
+							      expr.cast_type);
+			assert (domain->collation_id
+				== node->info.expr.coll_modifier);
+			regu->domain = domain;
+			REGU_VARIABLE_SET_FLAG (regu,
+						REGU_VARIABLE_APPLY_COLLATION);
+		      }
+		    else
+		      {
+			domain = pt_xasl_data_type_to_domain (parser,
+							      node->info.
+							      expr.cast_type);
+			regu = pt_make_regu_arith (r1, r2, NULL, op, domain);
+		      }
+		  }
 		  break;
 
 		case PT_CASE:

@@ -6269,6 +6269,7 @@ stx_init_regu_variable (REGU_VARIABLE * regu)
   assert (regu);
 
   regu->type = TYPE_POS_VALUE;
+  regu->flags = 0;
   regu->value.val_pos = 0;
   regu->vfetch_to = NULL;
   regu->domain = NULL;

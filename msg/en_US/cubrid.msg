@@ -1588,6 +1588,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 263 An inherited attribute cannot be used as the partitioning key.
 264 The aggregate size of enumeration elements is too large.
 265 Cannot use target table in source spec.
+266 COLLATE is not allowed in this context.
+267 COLLATE modifier cannot change codeset (from '%s' to '%s'). Try using CAST instead.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %d bytes.

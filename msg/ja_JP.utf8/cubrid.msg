@@ -1588,6 +1588,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 263 相続されたアトリビュートはパーティショニングキーで使えません。
 264 イーナムレーションエレメントの総計サイズが大きすぎます。
 265 ソーススペシフィケーションで対象テーブルが使えません。
+266 COLLATE is not allowed in this context.
+267 COLLATE modifier cannot change codeset (from '%s' to '%s'). Try using CAST instead.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 バチャールメモリーが足りません。: %dバイトがアロケーションできません。

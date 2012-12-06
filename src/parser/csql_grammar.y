@@ -468,11 +468,13 @@ static PT_NODE * pt_create_char_string_literal (PARSER_CONTEXT *parser,
 						const PT_TYPE_ENUM char_type,
 						const char *str,
 						const INTL_CODESET codeset);
-static void pt_set_charset_coll (PARSER_CONTEXT *parser, PT_NODE *c_node,
-				 const int codeset_id,
-				 const int collation_id, bool force);
-static void pt_set_char_collation_info (PARSER_CONTEXT *parser, PT_NODE *node,
-					PT_NODE *coll_node);
+static void pt_value_set_charset_coll (PARSER_CONTEXT *parser,
+				       PT_NODE *node,
+				       const int codeset_id,
+				       const int collation_id, bool force);
+static void pt_value_set_collation_info (PARSER_CONTEXT *parser,
+					 PT_NODE *node,
+					 PT_NODE *coll_node);
 static PT_NODE *pt_fix_partition_spec (PARSER_CONTEXT * parser,
 				       PT_NODE * spec, PT_NODE * partition);
 static PT_MISC_TYPE parser_attr_type;
@@ -480,6 +482,8 @@ static PT_MISC_TYPE parser_attr_type;
 static bool allow_attribute_ordering;
 
 int parse_one_statement (int state);
+static PT_NODE *pt_set_collation_modifier (PARSER_CONTEXT *parser,
+					   PT_NODE *node, PT_NODE *coll_node);
 
 
 int g_msg[1024];
@@ -622,6 +626,7 @@ typedef struct YYLTYPE
 %type <number> opt_full
 %type <number> of_analytic
 %type <number> of_analytic_no_args
+%type <number> negative_prec_cast_type
 /*}}}*/
 
 /* define rule type (node) */
@@ -796,6 +801,7 @@ typedef struct YYLTYPE
 %type <node> factor
 %type <node> factor_
 %type <node> primary
+%type <node> primary_w_collate
 %type <node> boolean
 %type <node> case_expr
 %type <node> opt_else_expr
@@ -952,6 +958,7 @@ typedef struct YYLTYPE
 %type <c2> opt_as_identifier_attr_name
 %type <c2> insert_assignment_list
 %type <c2> expression_queue
+%type <c2> of_cast_data_type
 /*}}}*/
 
 /* Token define */
@@ -6385,7 +6392,7 @@ update_assignment
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| paren_path_expression_set '=' primary
+	| paren_path_expression_set '=' primary_w_collate
 		{{
 
 			PT_NODE *exp = parser_make_expression (PT_ASSIGN, $1, NULL, NULL);
@@ -12706,7 +12713,7 @@ factor
 	;
 
 factor_
-	: primary
+	: primary_w_collate
 		{{
 
 			$$ = $1;
@@ -12743,7 +12750,7 @@ factor_
 			parser_save_and_set_pseudoc (0);
 
 		DBG_PRINT}}
-	  primary
+	  primary_w_collate
 		{{
 
 			PT_NODE *node = parser_make_expression (PT_PRIOR, $3, NULL, NULL);
@@ -12772,7 +12779,7 @@ factor_
 			parser_save_and_set_pseudoc (0);
 
 		DBG_PRINT}}
-	  primary
+	  primary_w_collate
 		{{
 
 			PT_NODE *node = parser_make_expression (PT_CONNECT_BY_ROOT, $3, NULL, NULL);
@@ -12793,6 +12800,22 @@ factor_
 
 		DBG_PRINT}}
 	;
+
+primary_w_collate
+	: primary opt_collation
+		{{
+			PT_NODE *node = $1;
+			PT_NODE *coll_node = $2;
+
+  			if (node != NULL && coll_node != NULL)
+  			  {
+  			    node = pt_set_collation_modifier (this_parser, node, coll_node);
+  			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 
 primary
 	: pseudo_column		%dprec 11
@@ -13604,7 +13627,7 @@ reserved_func
 		DBG_PRINT}}
 	| CAST
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CAST); }
-	  '(' expression_ AS data_type ')'
+	  '(' expression_ AS of_cast_data_type ')'
 		{ pop_msg(); }
 		{{
 
@@ -13839,15 +13862,8 @@ reserved_func
 			PT_NODE *node = parser_make_expression (PT_SYS_CONNECT_BY_PATH, $4, $6, NULL);
 			PT_NODE *char_string_node = $6;
 
-			if (char_string_node != NULL
-			    && char_string_node->data_type != NULL
-			    && char_string_node->data_type->info.data_type.units != LANG_SYS_CODESET)
-  			  {
-  			    assert (char_string_node->node_type == PT_VALUE);
-  			    assert (PT_HAS_COLLATION (char_string_node->type_enum));
+			pt_value_set_collation_info (this_parser, char_string_node, NULL);
 
-  			    char_string_node->info.value.print_charset = true;
-			  }
 			PARSER_SAVE_ERR_CONTEXT (node, @$.buffer_pos)
 
 			parser_restore_sysc ();
@@ -16212,6 +16228,109 @@ opt_in_out
 		DBG_PRINT}}
 	;
 
+negative_prec_cast_type
+	: CHAR_
+		{{
+
+			$$ = PT_TYPE_CHAR;
+
+		DBG_PRINT}}
+	| NATIONAL CHAR_
+		{{
+
+			$$ = PT_TYPE_NCHAR;
+
+		DBG_PRINT}}
+	| NCHAR
+		{{
+
+			$$ = PT_TYPE_NCHAR;
+
+		DBG_PRINT}}
+	;
+
+of_cast_data_type
+	: data_type
+		{{
+			$$ = $1;
+
+		DBG_PRINT}}
+	| negative_prec_cast_type '(' '-' unsigned_integer ')' opt_charset opt_collation
+		{{
+			container_2 ctn;
+			PT_TYPE_ENUM typ = $1;
+			PT_NODE *len = NULL, *dt = NULL;
+			int l = 0;
+			PT_NODE *charset_node = NULL;
+			PT_NODE *coll_node = NULL;
+
+			len = $4;
+			charset_node = $6;
+			coll_node = $7;
+
+			if (len && len->type_enum == PT_TYPE_INTEGER)
+			  {
+			    l = -len->info.value.data_value.i;
+			  }
+			
+			if (l != -1)
+			  {
+			    int maxlen = (typ == PT_TYPE_NCHAR)
+			      ? DB_MAX_NCHAR_PRECISION : DB_MAX_CHAR_PRECISION;
+			    PT_ERRORmf3 (this_parser, len,
+					 MSGCAT_SET_PARSER_SEMANTIC,
+					 MSGCAT_SEMANTIC_INV_PREC,
+					 l, -1, maxlen);
+			  }
+
+			dt = parser_new_node (this_parser, PT_DATA_TYPE);
+			if (dt)
+			  {
+			    int coll_id, charset;
+
+			    dt->type_enum = typ;
+			    dt->info.data_type.precision = l;
+			    switch (typ)
+			      {
+			      case PT_TYPE_CHAR:
+			      case PT_TYPE_NCHAR:
+				if (pt_check_grammar_charset_collation
+				    (this_parser, charset_node, coll_node, &charset, &coll_id) == NO_ERROR)
+				  {
+				    dt->info.data_type.units = charset;
+				    dt->info.data_type.collation_id = coll_id;
+				  }
+				 else
+				  {
+				    dt->info.data_type.units = -1;
+				    dt->info.data_type.collation_id = -1;
+				  }
+				break;
+
+			      default:
+				break;
+			      }
+			  }
+
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), dt);
+			$$ = ctn;
+			if (len)
+			  {
+			    parser_free_node (this_parser, len);
+			  }
+
+			if (charset_node)
+			  {
+			    parser_free_node (this_parser, charset_node);
+                          }
+
+			if (coll_node)
+			  {
+			    parser_free_node (this_parser, coll_node);
+			  }
+
+		DBG_PRINT}}
+	;
 
 data_type
 	: nested_set primitive_type
@@ -17422,20 +17541,12 @@ literal_w_o_param
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| char_string_literal opt_collation
+	| char_string_literal
 		{{
 
 			PT_NODE *node = $1;
-			PT_NODE *coll_node = $2;
 
-			if (node != NULL
-			    && node->data_type != NULL
-			    && node->data_type->info.data_type.units != LANG_SYS_CODESET)
-  			  {
-  			    node->info.value.print_charset = true;
-			  }
-
-			pt_set_char_collation_info (this_parser, node, coll_node);
+			pt_value_set_collation_info (this_parser, node, NULL);
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -18730,22 +18841,12 @@ escape_literal
 	;
 
 string_literal_or_input_hv
-	: char_string_literal opt_collation
+	: char_string_literal
 		{{
 
 			PT_NODE *node = $1;
-			PT_NODE *coll_node = $2;
 
-			if (node != NULL
-			    && node->data_type != NULL
-			    && node->data_type->info.data_type.units != LANG_SYS_CODESET)
-  			  {
-  			    assert (node->node_type == PT_VALUE);
-  			    assert (PT_HAS_COLLATION (node->type_enum));
-
-  			    node->info.value.print_charset = true;
-			  }
-			pt_set_char_collation_info (this_parser, node, coll_node);
+			pt_value_set_collation_info (this_parser, node, NULL);
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -18798,10 +18899,10 @@ char_string
 
 			if (node && lang_get_parser_use_client_charset ())
 			  {
-			    pt_set_charset_coll (this_parser, node,
-						 lang_get_client_charset (),
-						 lang_get_client_collation (),
-						 false);
+			    pt_value_set_charset_coll (this_parser, node,
+						       lang_get_client_charset (),
+						       lang_get_client_collation (),
+						       false);
 			    node->info.value.has_cs_introducer = false;
 			  }
 
@@ -18819,10 +18920,10 @@ char_string
 
 			if (node && lang_get_parser_use_client_charset ())
 			  {
-			    pt_set_charset_coll (this_parser, node,
-						 lang_get_client_charset (),
-						 lang_get_client_collation (),
-						 false);
+			    pt_value_set_charset_coll (this_parser, node,
+						       lang_get_client_charset (),
+						       lang_get_client_collation (),
+						       false);
 			    node->info.value.has_cs_introducer = false;
 			  }
 
@@ -18840,9 +18941,10 @@ char_string
 
 			if (node)
 			  {
-			    pt_set_charset_coll (this_parser, node,
-						 INTL_CODESET_KSC5601_EUC,
-						 LANG_COLL_EUCKR_BINARY, true);
+			    pt_value_set_charset_coll (this_parser, node,
+						       INTL_CODESET_KSC5601_EUC,
+						       LANG_COLL_EUCKR_BINARY,
+						       true);
 			    node->info.value.has_cs_introducer = true;
 			  }
 
@@ -18860,9 +18962,10 @@ char_string
 
 			if (node)
 			  {
-			    pt_set_charset_coll (this_parser, node,
-						 INTL_CODESET_ISO88591,
-						 LANG_COLL_ISO_BINARY, true);
+			    pt_value_set_charset_coll (this_parser, node,
+						       INTL_CODESET_ISO88591,
+						       LANG_COLL_ISO_BINARY,
+						       true);
 			    node->info.value.has_cs_introducer = true;
 			  }
 
@@ -18880,9 +18983,10 @@ char_string
 
 			if (node)
 			  {
-			    pt_set_charset_coll (this_parser, node,
-						 INTL_CODESET_UTF8,
-						 LANG_COLL_UTF8_BINARY, true);
+			    pt_value_set_charset_coll (this_parser, node,
+						       INTL_CODESET_UTF8,
+						       LANG_COLL_UTF8_BINARY,
+						       true);
 			    node->info.value.has_cs_introducer = true;
 			  }
 
@@ -22390,8 +22494,9 @@ pt_create_char_string_literal (PARSER_CONTEXT *parser, const PT_TYPE_ENUM char_t
 }
 
 static void
-pt_set_charset_coll (PARSER_CONTEXT *parser, PT_NODE *node,
-		     const int codeset_id, const int collation_id, bool force)
+pt_value_set_charset_coll (PARSER_CONTEXT *parser, PT_NODE *node,
+			   const int codeset_id, const int collation_id,
+			   bool force)
 {
   PT_NODE *dt = NULL;
 
@@ -22416,17 +22521,35 @@ pt_set_charset_coll (PARSER_CONTEXT *parser, PT_NODE *node,
       dt->info.data_type.collation_id = collation_id;
 
       node->data_type = dt;
+      if (collation_id != LANG_GET_BINARY_COLLATION (codeset_id))
+	{
+	  assert (collation_id != LANG_SYS_COLLATION);
+	  node->info.value.print_collation = true;
+	}
     }
 }
 
 static void
-pt_set_char_collation_info (PARSER_CONTEXT *parser, PT_NODE *node,
-			    PT_NODE *coll_node)
+pt_value_set_collation_info (PARSER_CONTEXT *parser, PT_NODE *node,
+			     PT_NODE *coll_node)
 {
   LANG_COLLATION *lang_coll = NULL;
+  
+  if (node == NULL)
+    {
+      return;
+    }
 
-  assert (node != NULL);
   assert (node->node_type == PT_VALUE);
+
+  if (node->data_type != NULL
+      && node->data_type->info.data_type.units != LANG_SYS_CODESET)
+    {
+      assert (node->node_type == PT_VALUE);
+      assert (PT_HAS_COLLATION (node->type_enum));
+      
+      node->info.value.print_charset = true;
+    }
 
   /* coll_node is the optional collation specified by user with COLLATE */
   if (coll_node == NULL)
@@ -22500,8 +22623,8 @@ pt_set_char_collation_info (PARSER_CONTEXT *parser, PT_NODE *node,
   	}
       else
 	{
-  	  pt_set_charset_coll (this_parser, node, lang_coll->codeset,
-  			       lang_coll->coll.coll_id, false);
+  	  pt_value_set_charset_coll (this_parser, node, lang_coll->codeset,
+  				     lang_coll->coll.coll_id, false);
   	}
     }
   else
@@ -22558,3 +22681,78 @@ pt_fix_partition_spec (PARSER_CONTEXT * parser, PT_NODE * spec,
   return spec;
 }
 
+static PT_NODE *
+pt_set_collation_modifier (PARSER_CONTEXT *parser, PT_NODE *node,
+			   PT_NODE *coll_node)
+{
+  LANG_COLLATION *lang_coll = NULL;
+  bool do_wrap_with_cast = false;
+
+  assert (coll_node != NULL);
+  assert (coll_node->node_type == PT_VALUE);
+
+  assert (coll_node->info.value.data_value.str != NULL);
+  lang_coll = lang_get_collation_by_name (coll_node->info.value.data_value.str->bytes);
+
+  if (lang_coll == NULL)
+    {
+      PT_ERRORmf (parser, coll_node, MSGCAT_SET_PARSER_SEMANTIC,
+		  MSGCAT_SEMANTIC_UNKNOWN_COLL, coll_node->info.value.data_value.str->bytes);
+      return node;
+    }
+
+  if (node->node_type == PT_VALUE)
+    {
+      if (!(PT_HAS_COLLATION (node->type_enum)))
+	{
+	  PT_ERRORm (parser, coll_node, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_COLLATE_NOT_ALLOWED);
+	  return node;
+	}
+      node->info.value.coll_modifier = lang_coll->coll.coll_id;
+      pt_value_set_collation_info (parser, node, coll_node);
+    }
+  else if (node->node_type == PT_EXPR)
+    {
+      node->info.expr.coll_modifier = lang_coll->coll.coll_id;
+      if (!pt_is_comp_op (node->info.expr.op))
+	{
+	  do_wrap_with_cast = true;
+	}
+    }
+  else if (node->node_type == PT_NAME)
+    {
+      node->info.name.coll_modifier = lang_coll->coll.coll_id;
+      do_wrap_with_cast = true;
+    }
+  else if (node->node_type == PT_DOT_)
+    {
+      node->info.dot.coll_modifier = lang_coll->coll.coll_id;
+      do_wrap_with_cast = true;
+    }
+  else if (node->node_type == PT_FUNCTION)
+    {
+      node->info.function.coll_modifier = lang_coll->coll.coll_id;
+      do_wrap_with_cast = true;
+    }
+  else
+    {
+      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		 MSGCAT_SEMANTIC_COLLATE_NOT_ALLOWED);
+      assert (do_wrap_with_cast == false);
+    }
+  
+  if (do_wrap_with_cast)
+    {
+      PT_NODE *cast_expr = parser_make_expression (PT_CAST, node, NULL, NULL);
+      if (cast_expr != NULL)
+	{
+	  cast_expr->info.expr.cast_type = NULL;
+	  PT_EXPR_INFO_SET_FLAG (cast_expr, PT_EXPR_INFO_CAST_COLL_MODIFIER);
+	  node = cast_expr;
+	  cast_expr->info.expr.coll_modifier = lang_coll->coll.coll_id;
+	}
+    }
+    
+  return node;
+}

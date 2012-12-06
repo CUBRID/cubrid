@@ -1099,6 +1099,8 @@ pt_check_compatible_node_for_orderby (PARSER_CONTEXT * parser,
     }
 
   cast_type = order->info.expr.cast_type;
+  assert (cast_type != NULL);
+
   type1 = arg1->type_enum;
   type2 = cast_type->type_enum;
 
@@ -1107,6 +1109,8 @@ pt_check_compatible_node_for_orderby (PARSER_CONTEXT * parser,
       return true;
     }
 
+  /* Only string type :
+   * Do not consider 'CAST (enum_col as VARCHAR)' equal to 'enum_col' */
   if (PT_IS_STRING_TYPE (type1) && PT_IS_STRING_TYPE (type2))
     {
       int c1, c2;
@@ -1150,6 +1154,28 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
       return false;
     }
 
+  /* check special CAST : COLLATE modifier */
+  if (PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_COLL_MODIFIER))
+    {
+      LANG_COLLATION *lc;
+      PT_NODE *arg_dt = NULL;
+
+      /* arg1 may have been set NULL due to previous semantic errors */
+      arg_dt = (node->info.expr.arg1 != NULL)
+	? node->info.expr.arg1->data_type : NULL;
+
+      lc = lang_get_collation (node->info.expr.coll_modifier);
+      if (arg_dt != NULL && lc->codeset != arg_dt->info.data_type.units)
+	{
+	  /* cannot change codeset with COLLATE */
+	  PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		       MSGCAT_SEMANTIC_CS_MATCH_COLLATE,
+		       lang_get_codeset_name (arg_dt->info.data_type.units),
+		       lang_get_codeset_name (lc->codeset));
+	  return false;
+	}
+    }
+
   /* get cast type */
   if (node->info.expr.cast_type != NULL)
     {
@@ -1157,7 +1183,8 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
     }
   else
     {
-      if (!pt_has_error (parser))
+      if (!pt_has_error (parser)
+	  && !PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_COLL_MODIFIER))
 	{
 	  PT_INTERNAL_ERROR (parser, "null cast type");
 	}
@@ -9978,6 +10005,21 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
     case PT_EXPR:
       if (node->info.expr.op == PT_CAST)
 	{
+	  PT_NODE *cast_type = node->info.expr.cast_type;
+
+	  if (PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_COLL_MODIFIER)
+	      && cast_type == NULL && node->info.expr.arg1 != NULL)
+	    {
+	      cast_type = parser_copy_tree (parser,
+					    node->info.expr.arg1->data_type);
+	      if (cast_type != NULL)
+		{
+		  node->info.expr.cast_type = cast_type;
+		  cast_type->info.data_type.collation_id =
+		    node->info.expr.coll_modifier;
+		}
+	    }
+
 	  (void) pt_check_cast_op (parser, node);
 	}
 

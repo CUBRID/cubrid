@@ -1588,6 +1588,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 263 Miras alan özellik bölünme için kullanılmaz.
 264 Sayım elemanının toplam büyüklüğü
 265 Kaynak numunelerinde hedef formu kullanılmayacak
+266 COLLATE is not allowed in this context.
+267 COLLATE modifier cannot change codeset (from '%s' to '%s'). Try using CAST instead.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %d bayt bölüm ayıramadı.

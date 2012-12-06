@@ -851,7 +851,7 @@ extern "C"
 
   extern bool pt_is_function_index_expr (PARSER_CONTEXT * parser,
 					 PT_NODE * expr, bool report_error);
-  extern PT_NODE *pt_function_index_skip_expr (const PT_NODE * node);
+  extern PT_NODE *pt_function_index_skip_expr (PT_NODE * node);
   extern PT_NODE *pt_expr_to_sort_spec (PARSER_CONTEXT * parser,
 					PT_NODE * expr);
   extern bool pt_is_join_expr (PT_NODE * expr, UINTPTR * spec_id);

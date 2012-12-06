@@ -3560,6 +3560,30 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       goto error;
     }
 
+  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_APPLY_COLLATION))
+    {
+      if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (regu_var->domain)))
+	{
+	  assert (TP_IS_CHAR_TYPE (DB_VALUE_TYPE (*peek_dbval)));
+	  assert (regu_var->domain->codeset
+		  == DB_GET_STRING_CODESET (*peek_dbval));
+	  db_string_put_cs_and_collation (*peek_dbval,
+					  regu_var->domain->codeset,
+					  regu_var->domain->collation_id);
+	}
+      else
+	{
+	  assert (TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_ENUMERATION);
+	  assert (DB_VALUE_TYPE (*peek_dbval) == DB_TYPE_ENUMERATION);
+	  assert (regu_var->domain->codeset
+		  == DB_GET_ENUM_CODESET (*peek_dbval));
+	  db_enum_put_cs_and_collation (*peek_dbval,
+					regu_var->domain->codeset,
+					regu_var->domain->collation_id);
+
+	}
+    }
+
   if (*peek_dbval != NULL && !DB_IS_NULL (*peek_dbval))
     {
       if (TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_VARIABLE)

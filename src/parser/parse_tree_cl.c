@@ -118,7 +118,7 @@ static PARSER_VARCHAR *pt_append_string_prefix (const PARSER_CONTEXT * parser,
 						const PT_NODE * value);
 static bool pt_is_function_indexable_op (PT_OP_TYPE op);
 static bool pt_is_nested_expr (const PT_NODE * node);
-static bool pt_is_allowed_as_function_index (const PT_OP_TYPE op);
+static bool pt_is_allowed_as_function_index (const PT_NODE * expr);
 
 static void pt_init_apply_f (void);
 static void pt_init_init_f (void);
@@ -1973,7 +1973,7 @@ pt_record_error (PARSER_CONTEXT * parser, int stmt_no, int line_no,
 	}
       else
 	{
-	  context_copy = context;
+	  context_copy = (char *) context;
 	}
 
       if ((context_len == 0) || ((context_len == 1) && (*context_copy <= 32)))
@@ -8463,6 +8463,7 @@ pt_apply_dot (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g,
 static PT_NODE *
 pt_init_dot (PT_NODE * p)
 {
+  p->info.dot.coll_modifier = -1;
   return p;
 }
 
@@ -9341,6 +9342,7 @@ pt_init_expr (PT_NODE * p)
   p->info.expr.location = 0;
   p->info.expr.is_order_dependent = false;
   p->info.expr.recursive_type = PT_TYPE_NONE;
+  p->info.expr.coll_modifier = -1;
   return p;
 }
 
@@ -9399,14 +9401,14 @@ pt_print_range_op (PARSER_CONTEXT * parser, PT_STRING_BLOCK * sb, PT_NODE * t,
   if (lhs && rhs1)
     {
       strcat_with_realloc (sb, lhs->bytes);
-      strcat_with_realloc (sb, op1);
+      strcat_with_realloc (sb, (char *) op1);
       strcat_with_realloc (sb, rhs1->bytes);
 
       if (rhs2)
 	{
 	  strcat_with_realloc (sb, " and ");
 	  strcat_with_realloc (sb, lhs->bytes);
-	  strcat_with_realloc (sb, op2);
+	  strcat_with_realloc (sb, (char *) op2);
 	  strcat_with_realloc (sb, rhs2->bytes);
 	}
     }
@@ -10832,12 +10834,40 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
     case PT_CAST:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
-      r2 = pt_print_bytes (parser, p->info.expr.cast_type);
-      q = pt_append_nulstring (parser, q, " cast(");
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, " as ");
-      q = pt_append_varchar (parser, q, r2);
-      q = pt_append_nulstring (parser, q, ")");
+      if (PT_EXPR_INFO_IS_FLAGED (p, PT_EXPR_INFO_CAST_COLL_MODIFIER))
+	{
+	  /* CAST op with this flag does not transform into T_CAST */
+	  char buf[PT_MEMB_BUF_SIZE];
+
+	  sprintf (buf, " collate %s",
+		   lang_get_collation_name (p->info.expr.coll_modifier));
+
+	  if (p->info.expr.arg1->node_type != PT_NAME
+	      && p->info.expr.arg1->node_type != PT_DOT_
+	      && p->info.expr.arg1->node_type != PT_VALUE
+	      && p->info.expr.arg1->node_type != PT_HOST_VAR)
+	    {
+	      /* put arg1 in paranthesys (if arg1 is an expression, 
+	       * COLLATE applies to last subexpression) */
+	      q = pt_append_nulstring (parser, NULL, "(");
+	      q = pt_append_varchar (parser, q, r1);
+	      q = pt_append_nulstring (parser, q, ")");
+	      q = pt_append_nulstring (parser, q, buf);
+	    }
+	  else
+	    {
+	      q = pt_append_nulstring (parser, r1, buf);
+	    }
+	}
+      else
+	{
+	  r2 = pt_print_bytes (parser, p->info.expr.cast_type);
+	  q = pt_append_nulstring (parser, q, " cast(");
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, " as ");
+	  q = pt_append_varchar (parser, q, r2);
+	  q = pt_append_nulstring (parser, q, ")");
+	}
       break;
     case PT_CASE:
       switch (p->info.expr.qualifier)
@@ -11471,6 +11501,7 @@ pt_init_function (PT_NODE * p)
   p->info.function.analytic.order_by = NULL;
   p->info.function.hidden_column = 0;
   p->info.function.is_order_dependent = false;
+  p->info.function.coll_modifier = -1;
   return p;
 }
 
@@ -12590,6 +12621,7 @@ pt_init_name (PT_NODE * p)
   p->info.name.indx_key_limit = NULL;
   p->info.name.hidden_column = 0;
   p->info.name.db_object_chn = NULL_CHN;
+  p->info.name.coll_modifier = -1;
   return p;
 }
 
@@ -14987,6 +15019,7 @@ pt_init_value (PT_NODE * p)
   p->info.value.print_charset = false;
   p->info.value.print_collation = false;
   p->info.value.has_cs_introducer = false;
+  p->info.value.coll_modifier = -1;
   return p;
 }
 
@@ -16927,7 +16960,7 @@ exit_on_error:
  * node(in)   : Function index expression
  */
 PT_NODE *
-pt_function_index_skip_expr (const PT_NODE * node)
+pt_function_index_skip_expr (PT_NODE * node)
 {
   if (node == NULL || !PT_IS_EXPR_NODE (node))
     {
@@ -17002,13 +17035,20 @@ pt_is_nested_expr (const PT_NODE * node)
  *					  is allowed in the structure of a
  *					  function index
  *   return:
- *   op(in): PT_OP_TYPE
+ *   expr(in): expression parse tree node
  */
 static bool
-pt_is_allowed_as_function_index (const PT_OP_TYPE op)
+pt_is_allowed_as_function_index (const PT_NODE * expr)
 {
-  switch (op)
+  assert (expr != NULL);
+
+  switch (expr->info.expr.op)
     {
+    case PT_CAST:
+      if (!PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_CAST_COLL_MODIFIER))
+	{
+	  break;
+	}
     case PT_MOD:
     case PT_LEFT:
     case PT_RIGHT:
@@ -17152,7 +17192,7 @@ pt_is_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * expr,
     {
       return false;
     }
-  if (!pt_is_allowed_as_function_index (expr->info.expr.op))
+  if (!pt_is_allowed_as_function_index (expr))
     {
       if (report_error)
 	{

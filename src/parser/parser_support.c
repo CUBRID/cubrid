@@ -1207,7 +1207,7 @@ pt_is_function_index_expression (PT_NODE * node)
       return false;
     }
 
-  if (!PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_FUNCTION_INDEX))
+  if (!PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_FUNCTION_INDEX))
     {
       return false;
     }

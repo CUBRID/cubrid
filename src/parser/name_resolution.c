@@ -7709,8 +7709,8 @@ pt_mark_function_index_expression (PARSER_CONTEXT * parser,
 			      (expr_str,
 			       constraints->func_index_info->expr_str))
 			    {
-			      PT_EXPR_INFO_SET_FLAG (expr,
-						     PT_EXPR_FUNCTION_INDEX);
+			      PT_EXPR_INFO_SET_FLAG
+				(expr, PT_EXPR_INFO_FUNCTION_INDEX);
 			      return;
 			    }
 			}

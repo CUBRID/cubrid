@@ -1588,6 +1588,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 263 Ein vererbter Attribut darf nicht als Partitionierungsschlüssel verwendet werden.
 264 Das Gesamtvolumen der Aufzählungselemente ist zu groß.
 265 Zieltabellen können in Quelle-specs nicht verwendet werden.
+266 COLLATE is not allowed in this context.
+267 COLLATE modifier cannot change codeset (from '%s' to '%s'). Try using CAST instead.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Außer virtuellem Speicher: %d Bytes können nicht zugewiesen werden.

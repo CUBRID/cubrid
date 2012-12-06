@@ -334,7 +334,8 @@ static int pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser,
 static PT_NODE *pt_coerce_node_collation (PARSER_CONTEXT * parser,
 					  PT_NODE * node, const int coll_id,
 					  const INTL_CODESET codeset,
-					  bool force_mode);
+					  bool force_mode,
+					  bool use_collate_modifier);
 static int pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node);
 static PT_NODE *pt_node_to_enumeration_expr (PARSER_CONTEXT * parser,
 					     PT_NODE * data_type,
@@ -8320,6 +8321,22 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
   common_type = arg1_type;
   expr = node;
 
+  if (expr->info.expr.coll_modifier != -1)
+    {
+      if (!(PT_HAS_COLLATION (arg1_type) || PT_HAS_COLLATION (arg2_type)
+	    || PT_HAS_COLLATION (arg3_type)
+	    || PT_HAS_COLLATION (node->type_enum)))
+	{
+	  if (!pt_has_error (parser))
+	    {
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_COLLATE_NOT_ALLOWED);
+	    }
+	  node->type_enum = PT_TYPE_NONE;
+	  goto error;
+	}
+    }
+
   /* adjust expression definition to fit the signature implementation */
   switch (op)
     {
@@ -8564,10 +8581,11 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 					     &has_user_lang);
 	  if (!has_user_lang)
 	    {
+	      int lang_flag;
 	      lang_str = prm_get_string_value (PRM_ID_INTL_NUMBER_LANG);
 	      (void) lang_set_flag_from_lang (lang_str, has_user_format,
-					      has_user_lang,
-					      &arg3->info.value.data_value.i);
+					      has_user_lang, &lang_flag);
+	      arg3->info.value.data_value.i = lang_flag;
 	      arg3->info.value.db_value_is_initialized = 0;
 	      pt_value_to_db (parser, arg3);
 	    }
@@ -9626,6 +9644,19 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
       }
     case PT_CAST:
       cast_type = node->info.expr.cast_type;
+
+      if (PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_COLL_MODIFIER)
+	  && cast_type == NULL)
+	{
+	  cast_type = parser_copy_tree (parser, arg1->data_type);
+	  if (cast_type != NULL)
+	    {
+	      node->info.expr.cast_type = cast_type;
+	      cast_type->info.data_type.collation_id =
+		node->info.expr.coll_modifier;
+	    }
+	}
+
       if (cast_type && pt_check_cast_op (parser, node))
 	{
 	  node->type_enum = cast_type->type_enum;
@@ -12717,7 +12748,8 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    assert (arg_list->next != NULL);
 
 	    new_node = pt_coerce_node_collation (parser, arg_list->next,
-						 arg1_coll, arg1_cs, false);
+						 arg1_coll, arg1_cs, false,
+						 false);
 
 	    if (new_node == NULL)
 	      {
@@ -12728,7 +12760,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  }
 
 	new_node = pt_coerce_node_collation (parser, node, arg1_coll,
-					     arg1_cs, true);
+					     arg1_cs, true, false);
 
 	if (new_node == NULL)
 	  {
@@ -12822,7 +12854,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  {
 	    new_node = pt_coerce_node_collation (parser, arg_array[0],
 						 common_coll, common_cs,
-						 false);
+						 false, false);
 	    if (new_node == NULL)
 	      {
 		goto error_collation;
@@ -12837,7 +12869,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  {
 	    new_node = pt_coerce_node_collation (parser, arg_array[3],
 						 common_coll, common_cs,
-						 false);
+						 false, false);
 	    if (new_node == NULL)
 	      {
 		goto error_collation;
@@ -12847,7 +12879,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  }
 
 	new_node = pt_coerce_node_collation (parser, node, common_coll,
-					     common_cs, true);
+					     common_cs, true, false);
 	if (new_node == NULL)
 	  {
 	    goto error_collation;
@@ -12900,7 +12932,8 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  }
 
 	new_node =
-	  pt_coerce_node_collation (parser, node, arg_coll, arg_cs, true);
+	  pt_coerce_node_collation (parser, node, arg_coll, arg_cs, true,
+				    false);
 	if (new_node == NULL)
 	  {
 	    goto error_collation;
@@ -18114,7 +18147,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	    int arg1_coll = DB_IS_NULL (arg1) ? LANG_SYS_COLLATION :
 	      DB_GET_STRING_COLLATION (arg1);
 
-	    intl_pad_char (arg1_cs, pad_str, &pad_size);
+	    intl_pad_char (arg1_cs, (unsigned char *) pad_str, &pad_size);
 
 	    if (PT_IS_NATIONAL_CHAR_STRING_TYPE (type1))
 	      {
@@ -18982,6 +19015,7 @@ pt_coerce_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest,
   PT_NODE *dest_next;
   int err = NO_ERROR;
   PT_NODE *temp = NULL;
+  bool is_collation_change = false;
 
   assert (src != NULL && dest != NULL);
 
@@ -18989,9 +19023,18 @@ pt_coerce_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest,
 
   original_type = src->type_enum;
 
+  if (PT_HAS_COLLATION (original_type) && PT_HAS_COLLATION (desired_type)
+      && src->data_type != NULL && data_type != NULL
+      && src->data_type->info.data_type.collation_id
+      != data_type->info.data_type.collation_id)
+    {
+      is_collation_change = true;
+    }
+
   if ((original_type == (PT_TYPE_ENUM) desired_type
        && original_type != PT_TYPE_NUMERIC
-       && desired_type != PT_TYPE_OBJECT)
+       && desired_type != PT_TYPE_OBJECT
+       && !is_collation_change)
       || original_type == PT_TYPE_NA || original_type == PT_TYPE_NULL)
     {
       if (src != dest)
@@ -19017,7 +19060,7 @@ pt_coerce_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest,
       && (src->data_type->info.data_type.precision ==
 	  data_type->info.data_type.precision)
       && (src->data_type->info.data_type.dec_precision ==
-	  data_type->info.data_type.dec_precision))
+	  data_type->info.data_type.dec_precision) && !is_collation_change)
     {				/* exact match */
 
       if (src != dest)
@@ -19136,6 +19179,10 @@ pt_coerce_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest,
 		temp->line_number = dest->line_number;
 		temp->column_number = dest->column_number;
 		temp->alias_print = dest->alias_print;
+		temp->info.value.print_charset =
+		  dest->info.value.print_charset;
+		temp->info.value.print_collation =
+		  dest->info.value.print_collation;
 		*dest = *temp;
 		dest->next = dest_next;
 		temp->info.value.db_value_is_in_workspace = 0;
@@ -20264,6 +20311,28 @@ pt_get_collation_info (PT_NODE * node, int *coll_id, INTL_CODESET * codeset,
 	}
     }
 
+  if (has_collation && PT_GET_COLLATION_MODIFIER (node) != -1)
+    {
+      LANG_COLLATION *lc =
+	lang_get_collation (PT_GET_COLLATION_MODIFIER (node));
+
+      assert (lc != NULL);
+
+      *coll_id = PT_GET_COLLATION_MODIFIER (node);
+
+      if (node->data_type != NULL)
+	{
+	  assert (node->data_type->info.data_type.units == lc->codeset);
+	}
+      else if (node->expected_domain != NULL)
+	{
+	  assert (TP_DOMAIN_CODESET (node->expected_domain) == lc->codeset);
+	}
+
+      *coerc_level = PT_COLLATION_NOT_COERC;
+      return has_collation;
+    }
+
   switch (node->node_type)
     {
     case PT_VALUE:
@@ -20381,6 +20450,21 @@ pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser,
       return 0;
     }
 
+  if (has_collation && PT_GET_COLLATION_MODIFIER (node) != -1)
+    {
+      LANG_COLLATION *lc =
+	lang_get_collation (PT_GET_COLLATION_MODIFIER (node));
+
+      assert (lc != NULL);
+
+      *coll_id = PT_GET_COLLATION_MODIFIER (node);
+
+      assert (*codeset == lc->codeset);
+
+      *coerc_level = PT_COLLATION_NOT_COERC;
+      return 1;
+    }
+
   switch (node->node_type)
     {
     case PT_VALUE:
@@ -20427,6 +20511,8 @@ error:
  *   coll_id(in): collation
  *   codeset(in): codeset
  *   force_mode(in): true if codeset and collation have to forced
+ *   use_collate_modifier(in): true if collation coercion should be done using
+ *			       a COLLATE expression modifier
  *
  *  Note : 'force_mode' controlls how new collation and charset are applied:
  *	   When 'force_mode' in set, collation and charset are forced;
@@ -20439,11 +20525,19 @@ error:
  *	   case it is assumed the algorithm ensures the result's collation and
  *	   codeset by previously applying the coercion on its arguments.
  *
+ *	   use_collate_modifier : if true and wrap_with_cast is done, the
+ *	   CAST operator is flagged with PT_EXPR_INFO_CAST_COLL_MODIFIER; this 
+ *	   flag is set only when CAST operation does not change charset, but
+ *	   only collation; this kind of CAST is not transformed into T_CAST
+ *	   during XASL generation, but into a flagged REGU_VARIABLE which 
+ *	   "knows" to "update" its collation after "fetch". See usage of 
+ *	   REGU_VARIABLE_APPLY_COLLATION flag.
+ *
  */
 static PT_NODE *
 pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
 			  const int coll_id, const INTL_CODESET codeset,
-			  bool force_mode)
+			  bool force_mode, bool use_collate_modifier)
 {
   assert (node != NULL);
 
@@ -20527,6 +20621,8 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
 	    {
 	      node = pt_wrap_collection_with_cast_op (parser, node,
 						      node->type_enum, dt);
+	      /* flag PT_EXPR_INFO_CAST_COLL_MODIFIER is not set here;
+	       * COLLATE modifier is not supported for this context */
 	    }
 	  else if (dt != NULL)
 	    {
@@ -20550,20 +20646,37 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
 	      dt->info.data_type.collation_id = coll_id;
 	      dt->info.data_type.units = (int) codeset;
 
-	      if (node->node_type == PT_VALUE)
+	      if (node->node_type == PT_VALUE
+		  && codeset == INTL_CODESET_ISO88591
+		  && node->data_type->info.data_type.units !=
+		  INTL_CODESET_ISO88591)
 		{
-		  /* avoid a CAST around PT_VALUE */
-		  if (pt_coerce_value (parser, node, node, node->type_enum,
-				       dt) != NO_ERROR)
+		  /* cannot have values of ENUM type here */
+		  assert (PT_IS_CHAR_STRING_TYPE (node->type_enum));
+		  /* converting from multibyte charset to ISO charset, may
+		   * truncate the string data (precision is kept);
+		   * this workaround ensures that new precision (after charset
+		   * conversion) grows to the size in bytes of original data:
+		   * conversion rule from multibyte charset to ISO is to
+		   * reinterpret the bytes as ISO characters.
+		   */
+		  if (node->info.value.data_value.str != NULL)
 		    {
-		      parser_free_node (parser, dt);
-		      goto cannot_coerce;
+		      dt->info.data_type.precision =
+			node->info.value.data_value.str->length;
+		    }
+		  else if (node->info.value.db_value_is_initialized)
+		    {
+		      dt->info.data_type.precision =
+			DB_GET_STRING_SIZE (&(node->info.value.db_value));
 		    }
 		}
-	      else if (node->node_type == PT_SELECT
-		       || node->node_type == PT_DIFFERENCE
-		       || node->node_type == PT_INTERSECTION
-		       || node->node_type == PT_UNION)
+
+
+	      if (node->node_type == PT_SELECT
+		  || node->node_type == PT_DIFFERENCE
+		  || node->node_type == PT_INTERSECTION
+		  || node->node_type == PT_UNION)
 		{
 		  PT_NODE *select_list;
 		  int nb_select_list;
@@ -20601,14 +20714,32 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
 		    {
 		      goto cannot_coerce;
 		    }
+		  /* flag PT_EXPR_INFO_CAST_COLL_MODIFIER is not set here;
+		   * COLLATE modifier is not supported for this context */
 		}
 	      else
 		{
+		  if (node->node_type == PT_VALUE)
+		    {
+		      /* force using COLLATE modifier for VALUEs;
+		       * this avoids printing an invalid data type (CHAR(-1)
+		       * in PT_CAST expression */
+		      use_collate_modifier = true;
+		    }
+
 		  node =
 		    pt_wrap_with_cast_op (parser, node, node->type_enum,
 					  dt->info.data_type.precision,
 					  dt->info.data_type.dec_precision,
 					  dt);
+		  if (node != NULL && use_collate_modifier)
+		    {
+		      assert (node->node_type == PT_EXPR
+			      && node->info.expr.op == PT_CAST);
+		      PT_EXPR_INFO_SET_FLAG (node,
+					     PT_EXPR_INFO_CAST_COLL_MODIFIER);
+		      node->info.expr.coll_modifier = coll_id;
+		    }
 		}
 
 	      /* 'dt' is copied in 'pt_wrap_with_cast_op' */
@@ -21028,14 +21159,32 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
   int args_w_coll = 0;
   bool op_has_3_args;
   bool reverse_arg2_arg3;
+  int expr_coll_modifier = -1;
+  INTL_CODESET expr_cs_modifier = INTL_CODESET_NONE;
+  bool use_cast_collate_modifier = false;
 
   assert (expr != NULL);
   assert (expr->node_type == PT_EXPR);
 
   op = expr->info.expr.op;
+  expr_coll_modifier = expr->info.expr.coll_modifier;
+
+  if (expr_coll_modifier != -1)
+    {
+      LANG_COLLATION *lc = lang_get_collation (expr_coll_modifier);
+
+      assert (lc != NULL);
+      expr_cs_modifier = lc->codeset;
+    }
 
   if (!pt_is_op_w_collation (op))
     {
+      if (expr_coll_modifier != -1)
+	{
+	  /* the result is string (was checked above), force collation */
+	  assert (PT_HAS_COLLATION (expr->type_enum) || pt_is_comp_op (op));
+	  goto coerce_result;
+	}
       return NO_ERROR;
     }
 
@@ -21094,7 +21243,7 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 
       if (status == -1)
 	{
-	  goto exit;
+	  goto error_exit;
 	}
       else if (status == 1)
 	{
@@ -21127,7 +21276,7 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 
       if (status == -1)
 	{
-	  goto exit;
+	  goto error_exit;
 	}
       else if (status == 1)
 	{
@@ -21163,7 +21312,7 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 
 	  if (status == -1)
 	    {
-	      goto exit;
+	      goto error_exit;
 	    }
 	  else if (status == 1)
 	    {
@@ -21172,6 +21321,41 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 	      common_cs = arg3_cs;
 	    }
 	}
+    }
+
+  if (expr_coll_modifier != -1 && pt_is_comp_op (op) && args_w_coll > 0)
+    {
+      /* for comparisons, force the collation of each argument to have
+       * the collation of expression */
+      if (PT_HAS_COLLATION (arg1_type) && arg1_cs != expr_cs_modifier)
+	{
+	  PT_ERRORmf2 (parser, arg1, MSGCAT_SET_PARSER_SEMANTIC,
+		       MSGCAT_SEMANTIC_CS_MATCH_COLLATE,
+		       lang_get_codeset_name (arg1_cs),
+		       lang_get_codeset_name (expr_cs_modifier));
+	  goto error_exit;
+	}
+      if (PT_HAS_COLLATION (arg2_type) && arg2_cs != expr_cs_modifier)
+	{
+	  PT_ERRORmf2 (parser, arg2, MSGCAT_SET_PARSER_SEMANTIC,
+		       MSGCAT_SEMANTIC_CS_MATCH_COLLATE,
+		       lang_get_codeset_name (arg2_cs),
+		       lang_get_codeset_name (expr_cs_modifier));
+	  goto error_exit;
+	}
+      if (PT_HAS_COLLATION (arg3_type) && arg3_cs != expr_cs_modifier)
+	{
+	  PT_ERRORmf2 (parser, arg3, MSGCAT_SET_PARSER_SEMANTIC,
+		       MSGCAT_SEMANTIC_CS_MATCH_COLLATE,
+		       lang_get_codeset_name (arg3_cs),
+		       lang_get_codeset_name (expr_cs_modifier));
+	  goto error_exit;
+	}
+
+      common_cs = expr_cs_modifier;
+      common_coll = expr_coll_modifier;
+      use_cast_collate_modifier = true;
+      goto coerce_arg;
     }
 
   if (args_w_coll <= 1)
@@ -21234,13 +21418,15 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
       goto error;
     }
 
+coerce_arg:
   /* step 3 : coerce collation of expression arguments */
   if ((common_coll != arg1_coll || common_cs != arg1_cs)
       && (PT_HAS_COLLATION (arg1_type) || arg1_type == PT_TYPE_MAYBE
 	  || PT_IS_COLLECTION_TYPE (arg1_type)))
     {
       new_node = pt_coerce_node_collation (parser, arg1, common_coll,
-					   common_cs, false);
+					   common_cs, false,
+					   use_cast_collate_modifier);
 
       if (new_node == NULL)
 	{
@@ -21255,7 +21441,8 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 	  || PT_IS_COLLECTION_TYPE (arg2_type)))
     {
       new_node = pt_coerce_node_collation (parser, arg2, common_coll,
-					   common_cs, false);
+					   common_cs, false,
+					   use_cast_collate_modifier);
 
       if (new_node == NULL)
 	{
@@ -21276,7 +21463,8 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
       && (PT_HAS_COLLATION (arg3_type) || arg3_type == PT_TYPE_MAYBE))
     {
       new_node = pt_coerce_node_collation (parser, arg3, common_coll,
-					   common_cs, false);
+					   common_cs, false,
+					   use_cast_collate_modifier);
 
       if (new_node == NULL)
 	{
@@ -21288,6 +21476,21 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 
   /* step 4: update collation of expression result */
 coerce_result:
+  if (expr_coll_modifier != -1 && expr->data_type != NULL)
+    {
+      if (expr_cs_modifier != common_cs)
+	{
+	  PT_ERRORmf2 (parser, expr, MSGCAT_SET_PARSER_SEMANTIC,
+		       MSGCAT_SEMANTIC_CS_MATCH_COLLATE,
+		       lang_get_codeset_name (common_cs),
+		       lang_get_codeset_name (expr_cs_modifier));
+	  goto error_exit;
+	}
+
+      common_coll = expr_coll_modifier;
+      common_cs = expr_cs_modifier;
+    }
+
   switch (op)
     {
     case PT_COALESCE:
@@ -21384,7 +21587,7 @@ coerce_result:
     case PT_DATEF:
     case PT_TIMEF:
       new_node = pt_coerce_node_collation (parser, expr, common_coll,
-					   common_cs, true);
+					   common_cs, true, false);
       if (new_node == NULL)
 	{
 	  goto error;
@@ -21404,7 +21607,7 @@ error:
   PT_ERRORmf (parser, expr, MSGCAT_SET_PARSER_SEMANTIC,
 	      MSGCAT_SEMANTIC_COLLATION_OP_ERROR, pt_show_binopcode (op));
 
-exit:
+error_exit:
   return ER_FAILED;
 }
 

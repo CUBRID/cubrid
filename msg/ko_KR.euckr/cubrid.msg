@@ -1588,6 +1588,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 263 상속된 애트리뷰트는 분할 키로 사용할 수 없습니다.
 264 ENUM 원소들의 문자열을 모두 더한 바이트 크기가 너무 큽니다.
 265 원본 테이블에 명시된 것을 대상 테이블에 명시할 수 없습니다.
+266 COLLATE is not allowed in this context.
+267 COLLATE modifier cannot change codeset (from '%s' to '%s'). Try using CAST instead.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %d 바이트를 할당할 수 없습니다.

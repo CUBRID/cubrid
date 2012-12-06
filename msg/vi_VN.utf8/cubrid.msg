@@ -1588,6 +1588,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 263 Thuộc tính kế thừa không được sử dụng như phím phân mảng.
 264 Tổng kích thước các yếu tố liệt kê quá lớn.
 265 Không thể sử dụng bảng đích trong đặc điểm nguồn.
+266 COLLATE is not allowed in this context.
+267 COLLATE modifier cannot change codeset (from '%s' to '%s'). Try using CAST instead.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Không đủ bộ nhớ ảo: không thể cấp phát %d bytes.

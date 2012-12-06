@@ -1588,6 +1588,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 263 សេចក្តីកំណត់ដែលទទួលមរតកមិនអាចប្រើដូចជាពាក្យសំខាន់សំរាប់ចែក
 264 ទំហំសរុបនៃធាតុការរៀបរាប់ធំណាស់
 265 មិនអាចប្រើតារាងគោលដៅនៅក្នុងគំរូធនធាន
+266 COLLATE is not allowed in this context.
+267 COLLATE modifier cannot change codeset (from '%s' to '%s'). Try using CAST instead.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 អស់ memoryជាក់ស្តែង: មិនអាចប្រើ %d bytes។
