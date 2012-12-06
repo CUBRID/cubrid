@@ -822,10 +822,9 @@ proxy_io_make_client_dbinfo_ok (T_BROKER_VERSION client_version,
 				char **buffer)
 {
   char *p;
-  int reply_size;
+  int reply_size, reply_nsize;
   int cas_info_size;
   int proxy_pid;
-  unsigned int session_id;
   char broker_info[BROKER_INFO_SIZE];
 
   assert (buffer);
@@ -851,20 +850,30 @@ proxy_io_make_client_dbinfo_ok (T_BROKER_VERSION client_version,
   broker_info[BROKER_INFO_RESERVED2] = 0;
   broker_info[BROKER_INFO_RESERVED3] = 0;
 
-  *buffer = (char *) malloc (PROXY_CONNECTION_REPLY_SIZE * sizeof (char));
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V3))
+    {
+      reply_size = CAS_CONNECTION_REPLY_SIZE;
+    }
+  else
+    {
+      reply_size = CAS_CONNECTION_REPLY_SIZE_PRIOR_PROTOCOL_V3;
+    }
+
+  *buffer =
+    (char *) malloc (PROXY_CONNECTION_REPLY_SIZE (reply_size) *
+		     sizeof (char));
   if (*buffer == NULL)
     {
       return -1;
     }
 
-  reply_size = htonl (CAS_CONNECTION_REPLY_SIZE);
+  reply_nsize = htonl (reply_size);
   cas_info_size = htonl (CAS_INFO_SIZE);
   proxy_pid = htonl (getpid ());
-  session_id = htonl (0);
 
   /* length */
   p = *(buffer);
-  memcpy (p, &reply_size, PROTOCOL_SIZE);
+  memcpy (p, &reply_nsize, PROTOCOL_SIZE);
   p += PROTOCOL_SIZE;
 
   /* cas info */
@@ -880,9 +889,18 @@ proxy_io_make_client_dbinfo_ok (T_BROKER_VERSION client_version,
   p += BROKER_INFO_SIZE;
 
   /* session id */
-  memcpy (p, &session_id, SESSION_ID_SIZE);
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V3))
+    {
+      memset ((char *) p, 0, DRIVER_SESSION_SIZE);
+      p += DRIVER_SESSION_SIZE;
+    }
+  else
+    {
+      memset ((char *) p, 0, SESSION_ID_SIZE);
+      p += SESSION_ID_SIZE;
+    }
 
-  return PROXY_CONNECTION_REPLY_SIZE;
+  return PROXY_CONNECTION_REPLY_SIZE (reply_size);
 }
 
 int

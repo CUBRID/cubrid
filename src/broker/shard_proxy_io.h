@@ -70,7 +70,7 @@ CAS_INFO_SIZE : cas_info
 */
 
 #define PROTOCOL_SIZE           sizeof(int)
-#define PROXY_CONNECTION_REPLY_SIZE     (PROTOCOL_SIZE + CAS_INFO_SIZE + CAS_CONNECTION_REPLY_SIZE)
+#define PROXY_CONNECTION_REPLY_SIZE(con_reply_size)     (PROTOCOL_SIZE + CAS_INFO_SIZE + (con_reply_size))
 
 #define SHARD_TEMPORARY_UNAVAILABLE     (-1)
 

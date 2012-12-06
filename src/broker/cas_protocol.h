@@ -119,6 +119,7 @@ extern "C"
 #define CAS_PID_SIZE                            4
 #define SESSION_ID_SIZE                         4
 #define DRIVER_SESSION_SIZE			SRV_CON_DBSESS_ID_SIZE
+#define CAS_CONNECTION_REPLY_SIZE_PRIOR_PROTOCOL_V3               (CAS_PID_SIZE + BROKER_INFO_SIZE + SESSION_ID_SIZE)
 #define CAS_CONNECTION_REPLY_SIZE               (CAS_PID_SIZE + BROKER_INFO_SIZE + DRIVER_SESSION_SIZE)
 
 #define CAS_KEEP_CONNECTION_ON                  1
