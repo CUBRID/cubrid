@@ -60,6 +60,9 @@ typedef enum csql_statement_state
   CSQL_STATE_SQL_COMMENT,
   CSQL_STATE_SINGLE_QUOTE,
   CSQL_STATE_MYSQL_QUOTE,
+  CSQL_STATE_DOUBLE_QUOTE_IDENTIFIER,
+  CSQL_STATE_BACKTICK_IDENTIFIER,
+  CSQL_STATE_BRACKET_IDENTIFIER,
   CSQL_STATE_STATEMENT_END
 } CSQL_STATEMENT_STATE;
 
@@ -1007,11 +1010,23 @@ csql_is_statement_end (const char *str)
 	      is_last_stmt_valid = true;
 	      break;
 	    case '"':
-	      if (prm_get_bool_value(PRM_ID_ANSI_QUOTES) == false)
+	      if (prm_get_bool_value (PRM_ID_ANSI_QUOTES) == false)
 		{
 		  state = CSQL_STATE_MYSQL_QUOTE;
-		  is_last_stmt_valid = true;
 		}
+	      else
+		{
+		  state = CSQL_STATE_DOUBLE_QUOTE_IDENTIFIER;
+		}
+	      is_last_stmt_valid = true;
+	      break;
+	    case '`':
+	      state = CSQL_STATE_BACKTICK_IDENTIFIER;
+	      is_last_stmt_valid = true;
+	      break;
+	    case '[':
+	      state = CSQL_STATE_BRACKET_IDENTIFIER;
+	      is_last_stmt_valid = true;
 	      break;
 	    case ';':
 	      include_stmt = true;
@@ -1094,6 +1109,27 @@ csql_is_statement_end (const char *str)
 		{
 		  state = CSQL_STATE_GENERAL;
 		}
+	    }
+	  break;
+
+	case CSQL_STATE_DOUBLE_QUOTE_IDENTIFIER:
+	  if (*p == '"')
+	    {
+	      state = CSQL_STATE_GENERAL;
+	    }
+	  break;
+
+	case CSQL_STATE_BACKTICK_IDENTIFIER:
+	  if (*p == '`')
+	    {
+	      state = CSQL_STATE_GENERAL;
+	    }
+	  break;
+
+	case CSQL_STATE_BRACKET_IDENTIFIER:
+	  if (*p == ']')
+	    {
+	      state = CSQL_STATE_GENERAL;
 	    }
 	  break;
 
