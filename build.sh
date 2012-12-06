@@ -785,6 +785,27 @@ function build_package ()
 	  fi
 	fi
       ;;
+      cci_src)
+	if [ ! "$build_mode" = "release" ]; then
+	  print_info "$build_mode mode cci source tarball is not supported. Skip"
+	  package_name="NONE"
+	else
+	  package_basename="$product_name_lower-cci"
+	  package_name="$package_basename-$build_number.tar.gz"
+	  # make dist for pack cci sources
+	  if [ -d "$build_dir/$package_basename" ]; then
+	    rm -rf $build_dir/$package_basename
+	  fi
+	  mkdir $build_dir/$package_basename
+	  (cd $build_dir/$package_basename && $source_dir/configure --with-cci-only && make PACKAGE=$package_basename dist && mv $package_name $build_dir)
+	  if [ $? -eq 0 ]; then
+	    output_packages="$output_packages $package_name"
+	    [ $build_dir -ef $output_dir ] || mv -f $build_dir/$package_name $output_dir
+	  else
+	    false
+	  fi
+	fi
+      ;;
 	php_src)
 	  if [ ! "$build_mode" = "release" ]; then
 	  print_info "$build_mode mode php source tarball is not supported. Skip"
@@ -937,7 +958,7 @@ function show_usage ()
   else
     echo "  -j path Set JAVA_HOME path; [default: $JAVA_HOME]"
   fi
-  echo "  -z arg  Package to generate (src,php_src,shell,tarball,cci,jdbc,srpm,rpm);"
+  echo "  -z arg  Package to generate (src,cci_src,php_src,shell,tarball,cci,jdbc,srpm,rpm);"
   echo "          [default: all]"
   echo "  -? | -h Show this help message and exit"
   echo ""
@@ -1025,7 +1046,7 @@ function get_options ()
     fi
   done
   if [ "$packages" = "all" -o "$packages" = "ALL" ]; then
-    packages="src php_src tarball shell cci jdbc srpm rpm"
+    packages="src cci_src php_src tarball shell cci jdbc srpm rpm"
   fi
 
   if [ "x$output_dir" = "x" ]; then

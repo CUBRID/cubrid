@@ -19,12 +19,5 @@
 
 
 SRC = $(top_srcdir)/src
-COMPAT_DIR = $(SRC)/compat
 
 noinst_HEADERS = system.h
-
-include_HEADERS = \
-	$(COMPAT_DIR)/dbi.h
-
-install-data-hook:
-	cp $(COMPAT_DIR)/dbi_compat.h $(DESTDIR)$(includedir)/dbi.h

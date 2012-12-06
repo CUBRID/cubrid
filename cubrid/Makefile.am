@@ -49,6 +49,10 @@ AM_CPPFLAGS = @SRC_INC@ -I$(HEAPLAYER_DIR)/util @EXT_INC@ \
 #cnvlex.c: $(COMPAT_DIR)/cnvlex.l
 #	$(LEX) $(LFLAGS) $(AM_LFLAGS) $< > $@
 
+
+include_HEADERS = \
+	$(COMPAT_DIR)/dbi.h
+
 COMPAT_SOURCES = \
 	$(COMPAT_DIR)/cnv.c \
 	$(COMPAT_DIR)/cnvlex.c \
@@ -222,3 +226,6 @@ libcubrid_la_SOURCES = \
 libcubrid_la_LDFLAGS = -version-number @LT_VERSION@
 libcubrid_la_LIBADD = @EXT_LIBS@ @SYS_LIBS@ $(LIBADD_DL)
 libcubrid_la_LINK = $(LINK)
+
+install-data-hook:
+	cp $(COMPAT_DIR)/dbi_compat.h $(DESTDIR)$(includedir)/dbi.h

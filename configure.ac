@@ -20,8 +20,8 @@
 #
 
 AC_PREREQ(2.59)
-AC_INIT([CUBRID],BUILD_NUMBER_STRING,,cubrid)
-AC_CONFIG_SRCDIR([src/executables/server.c])
+AC_INIT([CUBRID],[BUILD_NUMBER_STRING],[],[cubrid])
+AC_CONFIG_SRCDIR([src/base/error_code.h])
 AC_CONFIG_AUX_DIR(config)
 AC_CONFIG_HEADERS([config.h])
 
@@ -157,9 +157,8 @@ CFLAGS="$remember_CFLAGS"
 
 AC_STRUCT_TM
 
-if test "$GCC" = "yes"
-then
-	AC_MSG_CHECKING([for --hash-style=both linker support])
+AS_IF([test "$GCC" = "yes"],
+	[AC_MSG_CHECKING([for --hash-style=both linker support])
 	remember_LDFLAGS="$LDFLAGS"
 	hashstyle=`gcc -dumpspecs | grep hash-style=gnu`
 	if test "x$hashstyle" != "x"
@@ -180,8 +179,7 @@ then
 	else
 		AC_MSG_RESULT([no])
 		LDFLAGS="$remember_LDFLAGS"
-	fi
-fi
+	fi])
 
 # Checks for library functions.
 AC_FUNC_VPRINTF
@@ -193,44 +191,40 @@ AC_REPLACE_FUNCS([vasprintf asprintf strdup strlcpy strlcat \
 
 # Check gethostbyname_r function
 AC_MSG_CHECKING([for glibc gethostbyname_r])
-AC_TRY_LINK([#include <netdb.h>],
-	[struct hostent result_buf;
+AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <netdb.h>]],
+	[[struct hostent result_buf;
 	 char buf[1024];
 	 struct hostent *result;
 	 int h_erropp;
 	 gethostbyname_r("localhost", &result_buf, buf, sizeof(buf), &result, &h_erropp);
-	],
+	]])],
 	[AC_MSG_RESULT([yes])
 	 AC_DEFINE(HAVE_GETHOSTBYNAME_R_GLIBC, 1, [Using glibc version of gethostbyname_r()])
-	 AC_DEFINE(HAVE_GETHOSTBYNAME_R, 1, [Define to 1 if you have the gethostbyname_r function.])
-	],
-	[AC_MSG_RESULT([no])]
-)
+	 AC_DEFINE(HAVE_GETHOSTBYNAME_R, 1, [Define to 1 if you have the gethostbyname_r function.])],
+	[AC_MSG_RESULT([no])])
+
 AC_MSG_CHECKING([for Solaris/Irix gethostbyname_r])
-AC_TRY_LINK([#include <netdb.h>],
-	[struct hostent result;
+AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <netdb.h>]],
+	[[struct hostent result;
 	 char buf[1024];
 	 int h_errnop;
 	 gethostbyname_r("localhost", &result, buf, sizeof(buf), &h_errnop);
-	],
+	]])],
 	[AC_MSG_RESULT([yes])
 	 AC_DEFINE(HAVE_GETHOSTBYNAME_R_SOLARIS, 1, [Using Solaris gethostbyname_r()])
-	 AC_DEFINE(HAVE_GETHOSTBYNAME_R, 1, [Define to 1 if you have the gethostbyname_r function.])
-	],
-	[AC_MSG_RESULT([no])]
-)
+	 AC_DEFINE(HAVE_GETHOSTBYNAME_R, 1, [Define to 1 if you have the gethostbyname_r function.])],
+	[AC_MSG_RESULT([no])])
+
 AC_MSG_CHECKING([for HP-UX gethostbyname_r])
-AC_TRY_LINK([#include <netdb.h>],
-	[struct hostent result;
+AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <netdb.h>]],
+	[[struct hostent result;
 	 char buf[1024];
 	 gethostbyname_r("localhost", &result, buf);
-	],
+	]])],
 	[AC_MSG_RESULT([yes])
 	 AC_DEFINE(HAVE_GETHOSTBYNAME_R_HPUX, 1, [Using HPUX gethostbyname_r()])
-	 AC_DEFINE(HAVE_GETHOSTBYNAME_R, 1, [Define to 1 if you have the gethostbyname_r function.])
-	],
-	[AC_MSG_RESULT([no])]
-)
+	 AC_DEFINE(HAVE_GETHOSTBYNAME_R, 1, [Define to 1 if you have the gethostbyname_r function.])],
+	[AC_MSG_RESULT([no])])
 
 # Check gcc atomic builtins
 AC_MSG_CHECKING([whether gcc provides atomic builtins])
@@ -275,12 +269,10 @@ AC_ARG_ENABLE([coverage],
 	[enable_coverage=$enableval],
 	[enable_coverage=no])
 
-if test "$enable_coverage" = "yes"
-then
-	CFLAGS="$CFLAGS -fprofile-arcs -ftest-coverage"
+AS_IF([test "$enable_coverage" = "yes"],
+	[CFLAGS="$CFLAGS -fprofile-arcs -ftest-coverage"
 	CXXFLAGS="$CXXFLAGS -fprofile-arcs -ftest-coverage"
-	LDFLAGS="$LDFLAGS -lgcov"
-fi
+	LDFLAGS="$LDFLAGS -lgcov"])
 AM_CONDITIONAL([BUILD_COVERAGE], [test "$enable_coverage" = "yes"])
 
 AC_ARG_ENABLE([debug],
@@ -288,15 +280,11 @@ AC_ARG_ENABLE([debug],
 		[build as debug mode @<:@default=no (release mode)@:>@])],
 	[enable_debug=$enableval],
 	[enable_debug=no])
-
-if test "$enable_debug" = "yes"
-then
-	CFLAGS="$CFLAGS -ggdb -fno-inline"
-	CXXFLAGS="$CXXFLAGS -ggdb -fno-inline"
-else
-	CFLAGS="$CFLAGS -ggdb -O2 -DNDEBUG -finline-functions"
-	CXXFLAGS="$CXXFLAGS -ggdb -O2 -DNDEBUG -finline-functions"
-fi
+AS_IF([test "$enable_debug" = "yes"],
+	[CFLAGS="$CFLAGS -ggdb -fno-inline"
+	CXXFLAGS="$CXXFLAGS -ggdb -fno-inline"],
+	[CFLAGS="$CFLAGS -ggdb -O2 -DNDEBUG -finline-functions"
+	CXXFLAGS="$CXXFLAGS -ggdb -O2 -DNDEBUG -finline-functions"])
 AM_CONDITIONAL([BUILD_DEBUG], [test "$enable_debug" = "yes"])
 
 AC_ARG_ENABLE([profile],
@@ -304,12 +292,9 @@ AC_ARG_ENABLE([profile],
 		[build as profile mode @<:@default=no@:>@])],
 	[enable_profile=$enableval],
 	[enable_profile=no])
-
-if test "$enable_profile" = "yes"
-then
-	CFLAGS="$CFLAGS -g -pg"
-	CXXFLAGS="$CXXFLAGS -g -pg"
-fi
+AS_IF([test "$enable_profile" = "yes"],
+	[CFLAGS="$CFLAGS -g -pg"
+	CXXFLAGS="$CXXFLAGS -g -pg"])
 
 WARN="-Wall -W -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wextra -Wlong-long"
 WARN_CXX="-Wall -W -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wextra  -Wlong-long"
@@ -317,62 +302,63 @@ NOWARN="-Wno-unused"
 CFLAGS="$CFLAGS $WARN $NOWARN"
 CXXFLAGS="$CXXFLAGS $WARN_CXX $NOWARN"
 
-EXTERNAL_DIST="hoard-371"
+AC_MSG_CHECKING([whether build cci library only])
+AC_ARG_WITH(cci-only,
+	AS_HELP_STRING([--with-cci-only],
+		[build cci library only @<:@default=no@:>@]),
+	[with_cci_only=$enableval],
+	[with_cci_only=no])
+AS_IF([test "$with_cci_only" = "no"],
+	[AS_IF([test ! -d $srcdir/cubrid], [with_cci_only=yes])])
+AC_MSG_RESULT([$with_cci_only])
 
 AC_ARG_ENABLE([hoard],
 	[AS_HELP_STRING([--enable-hoard],
 		[enable to use Hoard as memory allocator @<:@default=no (C library)@:>@])],
 	[enable_hoard=$enableval],
 	[enable_hoard=no])
-
-if test "$enable_hoard" = "yes"
-then
-	AC_CONFIG_SUBDIRS([external/hoard-371])
+AS_IF([test "$with_cci_only" = "yes"], [enable_hoard=no],
+	[EXTERNAL_DIST="hoard-371"])
+AS_IF([test "$enable_hoard" = "yes"],
+	[AC_CONFIG_SUBDIRS([external/hoard-371])
 	SYS_DEFS="$SYS_DEFS -DHOARD"
-	SYS_LIBS="$SYS_LIBS -L\$(top_builddir)/external/hoard-371 -lhoard -lstdc++ -ldl -lpthread"
-fi
+	SYS_LIBS="$SYS_LIBS -L\$(top_builddir)/external/hoard-371 -lhoard -lstdc++ -ldl -lpthread"])
 
 AC_ARG_ENABLE([owfs],
 	[AS_HELP_STRING([--enable-owfs],
 		[enable to use OwFS for external file system @<:@default=no (C library)@:>@])],
 	[enable_owfs=$enableval],
 	[enable_owfs=no])
-
-if test "$enable_owfs" = "yes"
-then
-	AC_CONFIG_SUBDIRS([external/owfs])
+AS_IF([test "$with_cci_only" = "yes"], [enable_owfs=no])
+AS_IF([test "$enable_owfs" = "yes"],
+	[AC_CONFIG_SUBDIRS([external/owfs])
 	SYS_DEFS="$SYS_DEFS -DCUBRID_OWFS"
-	SYS_LIBS="$SYS_LIBS -L\$(top_builddir)/external/lib -lowfsclient -ldl -lpthread"
-fi
+	SYS_LIBS="$SYS_LIBS -L\$(top_builddir)/external/lib -lowfsclient -ldl -lpthread"])
 
 AC_ARG_ENABLE([mock],
 	[AS_HELP_STRING([--enable-mock],
 		[build as dbgw lib to use cci mock @<:@default=no@:>@])],
 	[enable_mock=$enableval],
 	[enable_mock=no])
-	
-if test "$enable_mock" = "yes"
-then
-	DBGW_DEFS="$DBGW_DEFS -DBUILD_MOCK"
-fi
+AS_IF([test "$enable_mock" = "yes"],
+	[DBGW_DEFS="$DBGW_DEFS -DBUILD_MOCK"])
 
 AC_MSG_CHECKING(for java home)
-if test "x$JAVA_HOME" != "x"; then
-	JAVA_BIN=$JAVA_HOME/bin
+AS_IF([test "$with_cci_only" = "no"],
+      	[AS_IF([test "x$JAVA_HOME" != "x"],
+	[JAVA_BIN=$JAVA_HOME/bin
 	JAVAC=$JAVA_HOME/bin/javac
-	AC_MSG_RESULT($JAVA_HOME)
-else
-	AC_MSG_ERROR(set your JAVA_HOME environment variable.)
-fi
+	AC_MSG_RESULT($JAVA_HOME)],
+	[AC_MSG_ERROR(set your JAVA_HOME environment variable.)])])
 
 AC_ARG_WITH(jdbc,
 	AS_HELP_STRING([--without-jdbc],
 		[JDBC driver does not build @<:@default=no@:>@]),
 	[],
 	[with_jdbc=yes])
+AS_IF([test "$with_cci_only" = "yes"], [with_jdbc=no])
 AS_IF([test "x$with_jdbc" = "xyes"],
-	[
-		AC_MSG_CHECKING([for javac version])
+	[AC_MSG_CHECKING([for javac version])
 		JAVAC_VERSION=`$JAVAC -version 2>&1 | head -1 | awk '{ print $2 }' | awk -F\. '{ print $1 "." $2 }'`
 		AC_MSG_RESULT($JAVAC_VERSION)
 		if test -n "$JAVAC_VERSION"; then
@@ -381,15 +367,13 @@ AS_IF([test "x$with_jdbc" = "xyes"],
 			fi
 		fi
 		OPTIONAL_DIR="$OPTIONAL_DIR jdbc java"
-	])
 
-AC_CHECK_PROG(ANT, ant, ant)
-if test "x$ANT" == "x"
-then
-	AC_MSG_ERROR(Ant was not found. check PATH or install ant)
-fi
+	AC_CHECK_PROG(ANT, ant, ant)
+	AS_IF([test "x$ANT" = "x"],
+		[AC_MSG_ERROR(Ant was not found. check PATH or install ant)])
 
-AC_CHECK_FILE($JAVA_HOME/include/jni.h,[JAVA_INC="-I$JAVA_HOME/include"],
+	AC_CHECK_FILE($JAVA_HOME/include/jni.h,
+		[JAVA_INC="-I$JAVA_HOME/include"],
 		AC_MSG_ERROR(jni.h is required.))
 	case ${host_os} in
 		linux*)
@@ -399,50 +383,43 @@ AC_CHECK_FILE($JAVA_HOME/include/jni.h,[JAVA_INC="-I$JAVA_HOME/include"],
 		*)
 			mddir=""
 	esac
-
-AC_CHECK_FILE($JAVA_HOME/include/$mddir/jni_md.h,
+	AC_CHECK_FILE($JAVA_HOME/include/$mddir/jni_md.h,
 		[JAVA_INC="$JAVA_INC -I$JAVA_HOME/include/$mddir"],
 		AC_MSG_ERROR(jni_md.h is required.))
-
-AC_MSG_CHECKING([whether JNI programs can be compiled with $JAVA_INC])
-
-CFLAGS="$CFLAGS $JAVA_INC"
-AC_LINK_IFELSE([AC_LANG_SOURCE([
+	AC_MSG_CHECKING([whether JNI programs can be compiled with $JAVA_INC])
+	CFLAGS="$CFLAGS $JAVA_INC"
+	AC_LINK_IFELSE([AC_LANG_SOURCE([
 			#include <jni.h>
 			int main(void) { return 0; }
 		])], [AC_MSG_RESULT(yes)],
 		[AC_MSG_ERROR([Cannot compile a JNI program. See config.log for details.])])
+	AC_SUBST(JAVA_INC)
+	AC_SUBST(JAVA_HOME)])
 
-AC_SUBST(JAVA_INC)
-AC_SUBST(JAVA_HOME)
-
+AC_MSG_CHECKING([for bison library])
 AC_ARG_WITH([bison],
 	AS_HELP_STRING([--with-bison=PATH],
 		[prefix for installed bison @<:@default=builtin@:>@]),
 	[with_bison=$withval],
 	[with_bison=builtin])
-
-if test "$with_bison" = "builtin"
-then
-	AC_CONFIG_SUBDIRS([external/bison-2.3])
-	BISON="\$(top_builddir)/external/bin/bison"
-	EXTERNAL_PKGS="$EXTERNAL_PKGS bison-2.3"
-else
-	AC_MSG_CHECKING([bison version])
-	BISON="$with_bison/bin/bison"
-	if test ! -x $BISON
-	then
-		AC_MSG_ERROR([Invalid bison path($BISON) or permission denied.])
-	fi
-	BISON_EXPECTED_VERSION="2.3"
-	BISON_VERSION=`$BISON --version 2> /dev/null | grep 'GNU Bison' | cut -d ' ' -f 4 | tr -d a-z`
-	if [[ -z "$BISON_VERSION" ]] || [[ "$BISON_VERSION" != "$BISON_EXPECTED_VERSION" ]]
-	then
-		AC_MSG_ERROR([Unsupported bison version($BISON_VERSION). It should be $BISON_EXPECTED_VERSION.])
-	fi
-	AC_MSG_RESULT([$BISON_VERSION])
-	EXTERNAL_DIST="$EXTERNAL_DIST bison-2.3"
-fi
+AS_IF([test "$with_cci_only" = "yes"], [with_bison=no],
+	[AS_IF([test "$with_bison" = "builtin"],
+		[AC_CONFIG_SUBDIRS([external/bison-2.3])
+		BISON="\$(top_builddir)/external/bin/bison"
+		EXTERNAL_PKGS="$EXTERNAL_PKGS bison-2.3"],
+		[BISON="$with_bison/bin/bison"
+		if test ! -x $BISON
+		then
+			AC_MSG_ERROR([Invalid bison path($BISON) or permission denied.])
+		fi
+		BISON_EXPECTED_VERSION="2.3"
+		BISON_VERSION=`$BISON --version 2> /dev/null | grep 'GNU Bison' | cut -d ' ' -f 4 | tr -d a-z`
+		if [[ -z "$BISON_VERSION" ]] || [[ "$BISON_VERSION" != "$BISON_EXPECTED_VERSION" ]]
+		then
+			AC_MSG_ERROR([Unsupported bison version($BISON_VERSION). It should be $BISON_EXPECTED_VERSION.])
+		fi
+		EXTERNAL_DIST="$EXTERNAL_DIST bison-2.3"])])
+AC_MSG_RESULT([$with_bison])
 
 AC_MSG_CHECKING([for libedit library])
 AC_ARG_WITH([libedit],
@@ -450,18 +427,15 @@ AC_ARG_WITH([libedit],
 		[prefix for installed editline @<:@default=builtin@:>@]),
 	[with_libedit=$withval],
 	[with_libedit=builtin])
-
-if test "$with_libedit" = "builtin"
-then
-	AC_CONFIG_SUBDIRS([external/libedit-20120601-3.0])
-	LIBEDIT_LIBS="\$(top_builddir)/external/lib/libedit.la"
-	LIBEDIT_INC="-I\$(top_builddir)/external/include"
-	EXTERNAL_PKGS="$EXTERNAL_PKGS libedit-20120601-3.0"
-else
-	LIBEDIT_LIBS="-L$with_libedit/lib -ledit"
-	LIBEDIT_INC="-I$with_libedit/include"
-	EXTERNAL_DIST="$EXTERNAL_DIST libedit-20120601-3.0"
-fi
+AS_IF([test "$with_cci_only" = "yes"], [with_libedit=no],
+	[AS_IF([test "$with_libedit" = "builtin"],
+		[AC_CONFIG_SUBDIRS([external/libedit-20120601-3.0])
+		LIBEDIT_LIBS="\$(top_builddir)/external/lib/libedit.la"
+		LIBEDIT_INC="-I\$(top_builddir)/external/include"
+		EXTERNAL_PKGS="$EXTERNAL_PKGS libedit-20120601-3.0"],
+		[LIBEDIT_LIBS="-L$with_libedit/lib -ledit"
+		LIBEDIT_INC="-I$with_libedit/include"
+		EXTERNAL_DIST="$EXTERNAL_DIST libedit-20120601-3.0"])])
 AC_MSG_RESULT([$with_libedit])
 
 AC_MSG_CHECKING([for lzo2 library])
@@ -470,18 +444,15 @@ AC_ARG_WITH([lzo2],
 		[prefix for installed LZO2 @<:@default=builtin@:>@]),
 	[with_lzo2=$withval],
 	[with_lzo2=builtin])
-
-if test "$with_lzo2" = "builtin"
-then
-	AC_CONFIG_SUBDIRS([external/lzo-2.03])
-	LZO_LIBS="\$(top_builddir)/external/lib/liblzo2.la"
-	LZO_INC="-I\$(top_builddir)/external/include/lzo"
-	EXTERNAL_PKGS="$EXTERNAL_PKGS lzo-2.03"
-else
-	LZO_LIBS="-L$with_lzo2/lib -llzo2"
-	LZO_INC="-I$with_lzo2/include/lzo"
-	EXTERNAL_DIST="$EXTERNAL_DIST lzo-2.03"
-fi
+AS_IF([test "$with_cci_only" = "yes"], [with_lzo2=no],
+	[AS_IF([test "$with_lzo2" = "builtin"],
+		[AC_CONFIG_SUBDIRS([external/lzo-2.03])
+		LZO_LIBS="\$(top_builddir)/external/lib/liblzo2.la"
+		LZO_INC="-I\$(top_builddir)/external/include/lzo"
+		EXTERNAL_PKGS="$EXTERNAL_PKGS lzo-2.03"],
+		[LZO_LIBS="-L$with_lzo2/lib -llzo2"
+		LZO_INC="-I$with_lzo2/include/lzo"
+		EXTERNAL_DIST="$EXTERNAL_DIST lzo-2.03"])])
 AC_MSG_RESULT([$with_lzo2])
 
 AC_MSG_CHECKING([for gc library])
@@ -490,18 +461,15 @@ AC_ARG_WITH([gc],
 		[prefix for installed GC @<:@default=builtin@:>@]),
 	[with_gc=$withval],
 	[with_gc=builtin])
-
-if test "$with_gc" = "builtin"
-then
-	AC_CONFIG_SUBDIRS([external/gc6.7])
-	GC_LIBS="\$(top_builddir)/external/lib/libgc.la"
-	GC_INC="-I\$(top_builddir)/external/include/gc"
-	EXTERNAL_PKGS="$EXTERNAL_PKGS gc6.7"
-else
-	GC_LIBS="-L$with_gc/lib -lgc"
-	GC_INC="-I$with_gc/include/gc"
-	EXTERNAL_DIST="$EXTERNAL_DIST gc6.7"
-fi
+AS_IF([test "$with_cci_only" = "yes"], [with_gc=no],
+	[AS_IF([test "$with_gc" = "builtin"],
+		[AC_CONFIG_SUBDIRS([external/gc6.7])
+		GC_LIBS="\$(top_builddir)/external/lib/libgc.la"
+		GC_INC="-I\$(top_builddir)/external/include/gc"
+		EXTERNAL_PKGS="$EXTERNAL_PKGS gc6.7"],
+		[GC_LIBS="-L$with_gc/lib -lgc"
+		GC_INC="-I$with_gc/include/gc"
+		EXTERNAL_DIST="$EXTERNAL_DIST gc6.7"])])
 AC_MSG_RESULT([$with_gc])
 
 AC_MSG_CHECKING([for aio library])
@@ -510,12 +478,10 @@ AC_ARG_WITH([aio],
 		[use aio]),
 	[with_aio=$withval],
 	[with_aio=no])
-
-if test "$with_aio" = "yes"
-then
-	SYS_DEFS="$SYS_DEFS -DUSE_AIO"
-	SYS_LIBS="$SYS_LIBS -lrt"
-fi
+AS_IF([test "$with_cci_only" = "yes"], [with_aio=no])
+AS_IF([test "$with_aio" = "yes"],
+	[SYS_DEFS="$SYS_DEFS -DUSE_AIO"
+	SYS_LIBS="$SYS_LIBS -lrt"])
 AC_MSG_RESULT([$with_aio])
 
 AC_MSG_CHECKING([for mysql client library])
@@ -524,10 +490,10 @@ AC_ARG_WITH([mysql],
 		[for CAS for MySQL @<:@default=builtin@:>@]),
 	[with_mysql=$withval],
 	[with_mysql=builtin])
-
+AS_IF([test "$with_cci_only" = "yes"], [with_mysql=no])
 case "$with_mysql" in
 	yes|builtin)
-		if test -d "$srcdir/external/mysqlclient" && test "$enable_64bit" == "yes"; then
+		if test -d "$srcdir/external/mysqlclient" -a "$enable_64bit" = "yes"; then
 			AC_CONFIG_SUBDIRS([external/mysqlclient])
 			MYSQL_LIB_PATH="-L\$(top_builddir)/external/lib"
 			MYSQL_INC_PATH="-I\$(top_builddir)/external/include/mysqlclient"
@@ -551,10 +517,10 @@ AC_ARG_WITH([oracle],
 		[for CAS for Oracle @<:@default=builtin@:>@]),
 	[with_oracle=$withval],
 	[with_oracle=builtin])
-
+AS_IF([test "$with_cci_only" = "yes"], [with_oracle=no])
 case "$with_oracle" in
 	yes|builtin)
-		if test -d "$srcdir/external/oracleclient" && test "$enable_64bit" == "yes"; then
+		if test -d "$srcdir/external/oracleclient" -a "$enable_64bit" = "yes"; then
 			AC_CONFIG_SUBDIRS([external/oracleclient])
 			ORACLE_LIB_PATH="-L\$(top_builddir)/external/lib"
 			ORACLE_INC_PATH="-I\$(top_builddir)/external/include/oracleclient"
@@ -587,12 +553,11 @@ AC_ARG_ENABLE([dbgw],
        [enable_dbgw=$enableval],
        [enable_dbgw=no])
 AM_CONDITIONAL([BUILD_DBGW], [test "$enable_dbgw" != "no"])
-if test "$enable_dbgw" = "yes"
-then
-	AC_LANG_PUSH([C++])
+AS_IF([test "$with_cci_only" = "yes"], [enable_dbgw=no])
+AS_IF([test "$enable_dbgw" = "yes"],
+	[AC_LANG_PUSH([C++])
 	AC_CHECK_HEADERS([boost/property_tree/ptree.hpp], [], [AC_MSG_ERROR(Boost library is required.(version 1.41.0 or higher))])
-	AC_LANG_POP([C++])
-fi
+	AC_LANG_POP([C++])])
 
 AC_MSG_CHECKING([for cubrid manager server])
 AC_ARG_WITH([cmserver],
@@ -600,7 +565,7 @@ AC_ARG_WITH([cmserver],
 		[for CUBRID Manager Server@<:@default=check@:>@]),
 	[with_cmserver=$withval],
 	[with_cmserver=check])
-
+AS_IF([test "$with_cci_only" = "yes"], [with_cmserver=no])
 case "$with_cmserver" in
 	yes|builtin|check)
 		if test -d "$srcdir/cubridmanager/server"; then
@@ -645,18 +610,14 @@ AC_ARG_WITH([regex],
 		[prefix for installed regex @<:@default=builtin@:>@]),
 	[with_regex=$withval],
 	[with_regex=builtin])
-
-if test "$with_regex" = "builtin"
-then
-	AC_CONFIG_SUBDIRS([external/libregex38a])
+AS_IF([test "$with_regex" = "builtin"],
+	[AC_CONFIG_SUBDIRS([external/libregex38a])
 	REGEX_LIBS="\$(top_builddir)/external/lib/libregex38a.la"
 	REGEX_INC="-I\$(top_builddir)/external/include/libregex38a"
-	EXTERNAL_PKGS="$EXTERNAL_PKGS libregex38a"
-else
-	REGEX_LIBS="-L$with_regex/lib"
+	EXTERNAL_PKGS="$EXTERNAL_PKGS libregex38a"],
+	[REGEX_LIBS="-L$with_regex/lib"
 	REGEX_INC="-I$with_regex/include"
-	EXTERNAL_DIST="$EXTERNAL_DIST libregex38a"
-fi
+	EXTERNAL_DIST="$EXTERNAL_DIST libregex38a"])
 AC_MSG_RESULT([$with_regex])
 
 AC_MSG_CHECKING([for expat library])
@@ -665,18 +626,15 @@ AC_ARG_WITH([expat],
 		[prefix for installed expat @<:@default=builtin@:>@]),
 	[with_expat=$withval],
 	[with_expat=builtin])
-
-if test "$with_expat" = "builtin"
-then
-	AC_CONFIG_SUBDIRS([external/expat-2.0.1])
-	EXPAT_LIBS="\$(top_builddir)/external/lib/libexpat.la"
-	EXPAT_INC="-I\$(top_builddir)/external/include/expat"
-	EXTERNAL_PKGS="$EXTERNAL_PKGS expat-2.0.1"
-else
-	EXPAT_LIBS="-L$with_expat/lib -lexpat"
-	EXPAT_INC="-I$with_expat/include"
-	EXTERNAL_DIST="$EXTERNAL_DIST expat-2.0.1"
-fi
+AS_IF([test "$with_cci_only" = "yes"], [with_expat=no],
+	[AS_IF([test "$with_expat" = "builtin"],
+		[AC_CONFIG_SUBDIRS([external/expat-2.0.1])
+		EXPAT_LIBS="\$(top_builddir)/external/lib/libexpat.la"
+		EXPAT_INC="-I\$(top_builddir)/external/include/expat"
+		EXTERNAL_PKGS="$EXTERNAL_PKGS expat-2.0.1"],
+		[EXPAT_LIBS="-L$with_expat/lib -lexpat"
+		EXPAT_INC="-I$with_expat/include"
+		EXTERNAL_DIST="$EXTERNAL_DIST expat-2.0.1"])])
 AC_MSG_RESULT([$with_expat])
 
 AC_PREFIX_DEFAULT("$HOME/cubrid")
@@ -927,6 +885,14 @@ sed < confdefs.h > confdefs.h-2 "s/^#define PACKAGE_STRING .*$"/"#define PACKAGE
 mv confdefs.h-2 confdefs.h
 AC_DEFINE([PRODUCT_STRING], ["VERSION_STRING"], [official version string])
 
+AS_IF([test "$with_cci_only" = "yes"],
+	[BUILD_SUBDIRS="external include cci"
+	EXTRA_DIST_SUBDIRS=""
+	CUBRID_LOGDIR=""
+	CUBRID_TMPDIR=""],
+	[BUILD_SUBDIRS="external include cas sa cs cubrid util cci broker cas4mysql cas4oracle cm_common conf msg demo contrib locales shard_cubrid shard_mysql dbgw $OPTIONAL_DIR"
+	EXTRA_DIST_SUBDIRS="debian win src"])
+
 AC_SUBST([BUILD_NUMBER])
 AC_SUBST([PRODUCT_STRING])
 AC_SUBST([EXTERNAL_PKGS])
@@ -964,7 +930,8 @@ AC_SUBST([MYSQL_INC_PATH])
 AC_SUBST([ORACLE_LIB_PATH])
 AC_SUBST([ORACLE_INC_PATH])
 AC_SUBST([BISON])
-AC_SUBST([OPTIONAL_DIR])
+AC_SUBST([BUILD_SUBDIRS])
+AC_SUBST([EXTRA_DIST_SUBDIRS])
 AC_SUBST([EXPAT_LIBS])
 AC_SUBST([DBGW_DEFS])
 
@@ -979,10 +946,14 @@ AH_BOTTOM([
 
 AC_CONFIG_FILES([Makefile
 	external/Makefile
-	cas/Makefile
+	include/Makefile
+	cci/Makefile
+	])
+
+AS_IF([test "$with_cci_only" = "no"],
+	[AC_CONFIG_FILES([cas/Makefile
 	broker/Makefile
 	cm_common/Makefile
-	include/Makefile
 	sa/Makefile
 	cubrid/Makefile
 	cs/Makefile
@@ -1006,7 +977,6 @@ AC_CONFIG_FILES([Makefile
 	contrib/Makefile
 	jdbc/Makefile
 	java/Makefile
-	cci/Makefile
 	cas4mysql/Makefile
 	cas4oracle/Makefile
 	locales/Makefile
@@ -1017,6 +987,6 @@ AC_CONFIG_FILES([Makefile
 	shard_cubrid/Makefile
 	shard_mysql/Makefile
 	dbgw/Makefile
-	])
+	])])
 
 AC_OUTPUT

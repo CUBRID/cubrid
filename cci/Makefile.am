@@ -20,9 +20,47 @@
 
 SRC = $(top_srcdir)/src
 BROKER_DIR = $(SRC)/broker
+BASE_DIR = $(SRC)/base
 CCI_DIR = $(SRC)/cci
+WIN_DIR = $(top_srcdir)/win
 
 AM_CPPFLAGS = @SRC_INC@ @EXT_INC@ @SYS_DEFS@ @VERSION_DEFS@
+
+noinst_HEADERS = \
+	$(BASE_DIR)/porting.h \
+	$(BASE_DIR)/stringl.h \
+	$(BASE_DIR)/error_code.h \
+	$(BROKER_DIR)/cas_protocol.h \
+	$(CCI_DIR)/cas_cci.h \
+	$(CCI_DIR)/cas_intf.h \
+	$(CCI_DIR)/cci_common.h \
+	$(CCI_DIR)/cci_handle_mng.h \
+	$(CCI_DIR)/cci_log.h \
+	$(CCI_DIR)/cci_map.h \
+	$(CCI_DIR)/cci_mutex.h \
+	$(CCI_DIR)/cci_net_buf.h \
+	$(CCI_DIR)/cci_network.h \
+	$(CCI_DIR)/cci_query_execute.h \
+	$(CCI_DIR)/cci_t_lob.h \
+	$(CCI_DIR)/cci_t_set.h \
+	$(CCI_DIR)/cci_util.h \
+	$(CCI_DIR)/cci_wsa_init.h \
+	$(CCI_DIR)/cci_xa.h
+
+# extra dist for windows
+EXTRA_DIST = \
+	$(BASE_DIR)/getopt.h \
+	$(BASE_DIR)/porting.c \
+	$(BASE_DIR)/rand.c \
+	$(CCI_DIR)/cci_wsa_init.c \
+	$(WIN_DIR)/config.h \
+	$(WIN_DIR)/version.h \
+	$(WIN_DIR)/cas_cci/cas_cci.vcproj \
+	$(WIN_DIR)/cascci/cascci.def \
+	$(WIN_DIR)/cascci/cascci.vcproj \
+	$(WIN_DIR)/external/include/regex38a.h \
+	$(WIN_DIR)/external/lib/libregex38a.lib \
+	$(WIN_DIR)/external/lib64/libregex38a.lib
 
 include_HEADERS = \
 	$(BROKER_DIR)/cas_error.h \
