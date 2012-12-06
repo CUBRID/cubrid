@@ -439,6 +439,8 @@ int tp_can_steal_string (const DB_VALUE * val,
 			 const DB_DOMAIN * desired_domain);
 int tp_domain_references_objects (const TP_DOMAIN * dom);
 
+int tp_get_fixed_precision (DB_TYPE domain_type);
+
 /* value functions */
 
 extern TP_DOMAIN_STATUS tp_value_coerce (const DB_VALUE * src,

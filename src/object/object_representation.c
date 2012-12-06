@@ -4061,6 +4061,19 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 
 	  switch (type)
 	    {
+	    case DB_TYPE_INTEGER:
+	    case DB_TYPE_SHORT:
+	    case DB_TYPE_BIGINT:
+	    case DB_TYPE_FLOAT:
+	    case DB_TYPE_DOUBLE:
+	    case DB_TYPE_DATE:
+	    case DB_TYPE_TIME:
+	    case DB_TYPE_TIMESTAMP:
+	    case DB_TYPE_DATETIME:
+	    case DB_TYPE_MONETARY:
+	      precision = tp_get_fixed_precision (type);
+	      break;
+
 	    case DB_TYPE_NUMERIC:
 	      precision =
 		(carrier & OR_DOMAIN_PRECISION_MASK) >>
@@ -4348,20 +4361,22 @@ unpack_domain (OR_BUF * buf, int *is_null)
 
 	  switch (type)		/* try to find */
 	    {
-	    case DB_TYPE_NULL:
 	    case DB_TYPE_INTEGER:
+	    case DB_TYPE_SHORT:
+	    case DB_TYPE_BIGINT:
 	    case DB_TYPE_FLOAT:
 	    case DB_TYPE_DOUBLE:
-	    case DB_TYPE_ELO:
-	    case DB_TYPE_BLOB:
-	    case DB_TYPE_CLOB:
+	    case DB_TYPE_DATE:
 	    case DB_TYPE_TIME:
 	    case DB_TYPE_TIMESTAMP:
 	    case DB_TYPE_DATETIME:
-	    case DB_TYPE_DATE:
 	    case DB_TYPE_MONETARY:
-	    case DB_TYPE_SHORT:
-	    case DB_TYPE_BIGINT:
+	      precision = tp_get_fixed_precision (type);
+
+	    case DB_TYPE_NULL:
+	    case DB_TYPE_ELO:
+	    case DB_TYPE_BLOB:
+	    case DB_TYPE_CLOB:
 	      dom = tp_domain_find_noparam (type, is_desc);
 	      break;
 

@@ -857,6 +857,56 @@ tp_enumeration_match (const DB_ENUMERATION * db_enum1,
 }
 
 /*
+ * tp_get_fixed_precision - return the fixed precision of the given type.
+ *    return: the fixed precision for the fixed types, otherwise -1.
+ *    domain_type(in): The type of the domain
+ */
+int
+tp_get_fixed_precision (DB_TYPE domain_type)
+{
+  int precision;
+
+  switch (domain_type)
+    {
+    case DB_TYPE_INTEGER:
+      precision = DB_INTEGER_PRECISION;
+      break;
+    case DB_TYPE_SHORT:
+      precision = DB_SHORT_PRECISION;
+      break;
+    case DB_TYPE_BIGINT:
+      precision = DB_BIGINT_PRECISION;
+      break;
+    case DB_TYPE_FLOAT:
+      precision = DB_FLOAT_DECIMAL_PRECISION;
+      break;
+    case DB_TYPE_DOUBLE:
+      precision = DB_DOUBLE_DECIMAL_PRECISION;
+      break;
+    case DB_TYPE_DATE:
+      precision = DB_DATE_PRECISION;
+      break;
+    case DB_TYPE_TIME:
+      precision = DB_TIME_PRECISION;
+      break;
+    case DB_TYPE_TIMESTAMP:
+      precision = DB_TIMESTAMP_PRECISION;
+      break;
+    case DB_TYPE_DATETIME:
+      precision = DB_DATETIME_PRECISION;
+      break;
+    case DB_TYPE_MONETARY:
+      precision = DB_MONETARY_DECIMAL_PRECISION;
+      break;
+    default:
+      precision = DB_DEFAULT_PRECISION;
+      break;
+    }
+
+  return precision;
+}
+
+/*
  * tp_domain_free - free a hierarchical domain structure.
  *    return: none
  *    dom(out): domain to free
@@ -991,10 +1041,23 @@ tp_domain_construct (DB_TYPE domain_type,
 		     int precision, int scale, TP_DOMAIN * setdomain)
 {
   TP_DOMAIN *new_;
+  int fixed_precision;
 
   new_ = tp_domain_new (domain_type);
   if (new_)
     {
+      fixed_precision = tp_get_fixed_precision (domain_type);
+      if (fixed_precision != DB_DEFAULT_PRECISION)
+	{
+#if !defined (NDEBUG)
+	  if (precision != fixed_precision)
+	    {
+	      assert (false);
+	    }
+#endif
+	  precision = fixed_precision;
+	}
+
       new_->precision = precision;
       new_->scale = scale;
       new_->setdomain = setdomain;
@@ -1036,6 +1099,7 @@ tp_domain_construct (DB_TYPE domain_type,
     }
   return new_;
 }
+
 
 /*
  * tp_domain_copy_enumeration () - copy an enumeration
