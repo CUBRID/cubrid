@@ -151,7 +151,7 @@ public class UConnection {
 	private DataOutputStream output;
 	private String CASIp;
 	private int CASPort;
-	private int processId;
+	int processId;
 	private Socket client;
 	private UError errorHandler;
 	private boolean isClosed = false;
@@ -181,8 +181,8 @@ public class UConnection {
 
 	private ConnectionProperties connectionProperties = new ConnectionProperties();
 	private long lastFailureTime = 0;
-	private byte sessionId[] = createNullSession();
-	private int oldSessionId = 0;
+	byte sessionId[] = createNullSession();
+	int oldSessionId = 0;
 
 	private Log log;
 

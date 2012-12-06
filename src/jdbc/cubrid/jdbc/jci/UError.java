@@ -58,9 +58,24 @@ public class UError {
 		return jciErrorCode;
 	}
 
+	private int getSessionNumber(byte[] session) {
+	    int ch1 = session[8];
+	    int ch2 = session[9];
+	    int ch3 = session[10];
+	    int ch4 = session[11];
+
+	    return ((ch1 << 24) + (ch2 << 16) + (ch3 << 8) + (ch4 << 0));
+	}
+
 	public String getErrorMsg() {
 	    	if (connection != null) {
-	    	    return connection.url + '\n' + errorMessage;
+	    	    if (connection.protoVersionIsAbove(UConnection.PROTOCOL_V3)) {
+	    		return String.format("CAS[%d],SESSION[%d],URL[%s]\n%s", connection.processId,
+	    			getSessionNumber(connection.sessionId), connection.url, errorMessage);
+	    	    } else {
+	    		return String.format("CAS[%d],SESSION[%d],URL[%s]\n%s", connection.processId,
+	    			connection.oldSessionId, connection.url, errorMessage);
+	    	    }
 	    	}
 		return errorMessage;
 	}
