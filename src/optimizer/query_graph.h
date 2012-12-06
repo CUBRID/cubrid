@@ -321,9 +321,9 @@ struct qo_node
 
   /*
    * Summaries of size information from the various constituent
-   * classes.  ncard is the total number of objects represented by this
+   * classes. ncard is the total number of objects represented by this
    * node, while tcard is the total number of disk pages occupied by
-   * those objects.  These silly names are historical artifacts that
+   * those objects. These silly names are historical artifacts that
    * correspond to the names in the 197? IBM report on query
    * optimization in System R.
    */
@@ -332,7 +332,7 @@ struct qo_node
 
   /*
    * The nominal name of this node, used pretty much only for dumping
-   * debugging information.  Right now, we just pick the name of the
+   * debugging information. Right now, we just pick the name of the
    * first class in the list of classes and subclasses underlying this
    * node (see above).
    */
@@ -351,18 +351,18 @@ struct qo_node
   int rel_idx;
 
   /*
-   *  Indexes can be viewed from a variety of perspectives.  Each class
+   *  Indexes can be viewed from a variety of perspectives. Each class
    *  associated with this node has a collection of indexes which are
-   *  possible candidates for use in an index scan.  For scans accross
-   *  the class heirarchy, it is necessary to find compatible indexes
-   *  at each class in the heirarchy.  This heirarchical grouping is
-   *  maintened in QO_NODE_INDEX.
+   *  possible candidates for use in an index scan. For scans across
+   *  the class hierarchy, it is necessary to find compatible indexes
+   *  at each class in the hierarchy. This hierarchical grouping is
+   *  maintained in QO_NODE_INDEX.
    */
   QO_NODE_INDEX *indexes;
   QO_USING_INDEX *using_index;	/* indexes specifed in USING INDEX clause */
   /* NULL if no USING INDEX clause in the query */
 
-  BITSET outer_dep_set;		/* outer join dependency; to preseve join sequence */
+  BITSET outer_dep_set;		/* outer join dependency; to preserve join sequence */
   PT_HINT_ENUM hint;		/* hint comment contained in given */
   bool sargable;		/* whether sargs are applicable to this node */
 };
