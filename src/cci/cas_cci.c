@@ -897,7 +897,7 @@ cci_prepare (int mapped_conn_id, char *sql_stmt, char flag,
 
   if (DOES_CONNECTION_HAVE_STMT_POOL (con_handle))
     {
-      statement_id = hm_req_get_from_pool (con_handle, sql_stmt);
+      statement_id = hm_req_get_from_pool (con_handle, &req_handle, sql_stmt);
       if (statement_id != CCI_ER_REQ_HANDLE)
 	{
 	  cci_set_query_timeout (statement_id, con_handle->query_timeout);

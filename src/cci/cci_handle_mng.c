@@ -521,7 +521,7 @@ hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int mapped_statement_id)
 }
 
 int
-hm_req_get_from_pool (T_CON_HANDLE * con, char *sql)
+hm_req_get_from_pool (T_CON_HANDLE * con, T_REQ_HANDLE ** req, char *sql)
 {
   int req_id, error;
   void *data;
@@ -535,6 +535,11 @@ hm_req_get_from_pool (T_CON_HANDLE * con, char *sql)
   FREE_MEM (data);
 
   hm_pool_move_node_from_lru_to_use (con, req_id);
+
+  if (req != NULL)
+    {
+      *req = con->req_handle_table[GET_REQ_ID (req_id) - 1];
+    }
 
   return req_id;
 }
