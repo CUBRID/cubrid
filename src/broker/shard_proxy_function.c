@@ -506,13 +506,15 @@ static int
 proxy_get_shard_id (T_SHARD_STMT * stmt_p, void **argv,
 		    T_SHARD_KEY_RANGE ** range_p_out)
 {
-  SP_PARSER_HINT *first_hint_p;
-  T_SHARD_KEY_RANGE *range_p;
+  int compare_flag = 0;
+  int shard_id = -1, next_shard_id;
+  SP_PARSER_HINT *hint_p;
+  T_SHARD_KEY_RANGE *range_p = NULL;
 
   *range_p_out = NULL;
 
-  first_hint_p = sp_get_first_hint (stmt_p->parser);
-  if (first_hint_p == NULL)
+  hint_p = sp_get_first_hint (stmt_p->parser);
+  if (hint_p == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
 		 "Unable to get shard id. No hint available.");
@@ -520,45 +522,79 @@ proxy_get_shard_id (T_SHARD_STMT * stmt_p, void **argv,
       return PROXY_INVALID_SHARD;
     }
 
-  switch (first_hint_p->hint_type)
+  for (; hint_p; hint_p = sp_get_next_hint (hint_p))
     {
-    case HT_KEY:
-      range_p = proxy_get_range_by_param (first_hint_p, argv);
-      if (range_p == NULL)
+      switch (hint_p->hint_type)
 	{
+	case HT_KEY:
+	  range_p = proxy_get_range_by_param (hint_p, argv);
+	  if (range_p == NULL)
+	    {
+	      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+			 "Unable to get shard id. Invalid hint key range. (hint_type:%s).",
+			 "HT_KEY");
+	      return PROXY_INVALID_SHARD;
+	    }
+	  assert (range_p->shard_id >= 0);
+	  if (shard_id < 0)
+	    {
+	      shard_id = range_p->shard_id;
+	    }
+	  else
+	    {
+	      next_shard_id = range_p->shard_id;
+	      compare_flag = 1;
+	    }
+	  break;
+
+	case HT_ID:
+	  if (hint_p->arg.type == VT_INTEGER)
+	    {
+	      if (shard_id < 0)
+		{
+		  shard_id = hint_p->arg.integer;
+		}
+	      else
+		{
+		  next_shard_id = hint_p->arg.integer;
+		  compare_flag = 1;
+		}
+	    }
+	  else
+	    {
+	      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+			 "Unable to get shard id. shard id is not integer type. (hint_type:%s, type:%d).",
+			 "HT_ID", hint_p->arg.type);
+
+	      return PROXY_INVALID_SHARD;
+	    }
+	  break;
+
+	default:
+
 	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		     "Unable to get shard id. Invalid hint key range. (hint_type:%s).",
-		     "HT_KEY");
+		     "Unsupported hint type. (hint_type:%d).",
+		     hint_p->hint_type);
 	  return PROXY_INVALID_SHARD;
 	}
-      *range_p_out = range_p;
-      assert (range_p->shard_id >= 0);
-      return range_p->shard_id;
 
-    case HT_ID:
-      if (first_hint_p->arg.type == VT_INTEGER)
-	{
-	  return first_hint_p->arg.integer;
-	}
-      else
+      if (compare_flag > 0 && shard_id != next_shard_id)
 	{
 	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		     "Unable to get shard id. shard id is not integer type. (hint_type:%s, type:%d).",
-		     "HT_ID", first_hint_p->arg.type);
-
+		     "Shard id is different. "
+		     "(first_shard_id:%d, next_shard_id:%d). ",
+		     shard_id, next_shard_id);
 	  return PROXY_INVALID_SHARD;
 	}
-      break;
 
-    default:
-
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Unsupported hint type. (hint_type:%d).",
-		 first_hint_p->hint_type);
-      return PROXY_INVALID_SHARD;
     }
 
-  return PROXY_INVALID_SHARD;
+  if (range_p != NULL)
+    {
+      *range_p_out = range_p;
+    }
+
+  return shard_id;
 }
 
 static T_SHARD_KEY_RANGE *
