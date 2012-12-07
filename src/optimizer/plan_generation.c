@@ -1857,15 +1857,54 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries,
 		}
 	      else if (is_normal_access_term (term))
 		{
-		  /* Especially, if a scan plan uses a covered index and
-		   * is normal term, we push them to key filter
-		   * instead of sarg term.
+		  /* Check if join term can be pushed to key filter instead of
+		   * sargable terms. The index used for inner index scan must
+		   * include all term segments that belong to inner node
 		   */
-		  if (qo_plan_coverage_index (inner))
+		  if (qo_plan_coverage_index (inner)
+		      || qo_plan_multi_range_opt (inner))
 		    {
+		      /* Coverage indexes and indexes using multi range
+		       * optimization are certified to include segments from
+		       * inner node
+		       */
 		      bitset_add (&(inner->plan_un.scan.kf_terms), i);
 		      bitset_difference (&predset,
 					 &(inner->plan_un.scan.kf_terms));
+		    }
+		  else if (qo_is_iscan (plan))
+		    {
+		      /* check that index covers all segments */
+		      BITSET term_segs, index_segs;
+		      QO_INDEX_ENTRY *idx_entryp = NULL;
+		      int j;
+
+		      /* create bitset including index segments */
+		      bitset_init (&index_segs, env);
+		      idx_entryp = inner->plan_un.scan.index->head;
+		      for (j = 0; j < idx_entryp->nsegs; j++)
+			{
+			  bitset_add (&index_segs, idx_entryp->seg_idxs[j]);
+			}
+
+		      /* create bitset including term segments that belong to
+		       * inner node
+		       */
+		      bitset_init (&term_segs, env);
+		      bitset_union (&term_segs, &term->segments);
+		      bitset_intersect (&term_segs,
+					&(QO_NODE_SEGS
+					  (plan->plan_un.scan.node)));
+
+		      /* check that term_segs is covered by index_segs */
+		      bitset_difference (&term_segs, &index_segs);
+		      if (bitset_is_empty (&term_segs))
+			{
+			  /* safe to add term to key filter terms */
+			  bitset_add (&(inner->plan_un.scan.kf_terms), i);
+			  bitset_difference (&predset,
+					     &(inner->plan_un.scan.kf_terms));
+			}
 		    }
 		}
 	    }			/* for (i = ... ) */
