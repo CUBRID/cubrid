@@ -12531,6 +12531,23 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res)
       error = install_new_representation (template_->op, class_, flat);
       if (error == NO_ERROR)
 	{
+	  MOP newop = NULL;
+	  bool old_val = sm_Disable_updating_statistics;
+	  int is_partition = NOT_PARTITION_CLASS;
+	  error = do_is_partitioned_classobj (&is_partition, template_->op,
+					      NULL, NULL);
+	  if (error != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+	  if (is_partition == PARTITIONED_CLASS)
+	    {
+	      /* Delay updating statistics until subclasses have been updated
+	       * also. When allocate_disk_structures is called, subclasses
+	       * do not have new indexes yet.
+	       */
+	      sm_Disable_updating_statistics = true;
+	    }
 	  /* This used to be done toward the end but since the
 	   * unique btid has to be inherited, the disk structures
 	   * have to be created before we update the subclasses.
@@ -12544,6 +12561,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res)
 		  error = update_subclasses (newsubs);
 		  if (error == NO_ERROR)
 		    {
+		      newop = template_->op;
 		      if (classmop != NULL)
 			{
 			  *classmop = template_->op;
@@ -12556,9 +12574,18 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res)
 		    }
 		}
 	    }
+	  if (is_partition == PARTITIONED_CLASS)
+	    {
+	      sm_Disable_updating_statistics = old_val;
+	      if (error == NO_ERROR)
+		{
+		  error = sm_update_statistics (newop, false);
+		}
+	    }
 	}
     }
 
+cleanup:
   if (error != NO_ERROR)
     {
       classobj_free_template (flat);

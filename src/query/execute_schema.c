@@ -9913,6 +9913,11 @@ do_promote_partition (SM_CLASS * class_)
     {
       dbt_abort_class (ctemplate);
       error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_FAILED;
+	}
+      return error;
     }
 
   /* delete the tuple from _db_partition which indicates to this

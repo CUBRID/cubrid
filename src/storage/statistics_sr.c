@@ -86,6 +86,13 @@ static int stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
 						      OID * class_oid,
 						      OID * partitions,
 						      int count);
+static const BTREE_STATS *stats_find_inherited_index_stats (OR_CLASSREP *
+							    cls_rep,
+							    OR_CLASSREP *
+							    subcls_rep,
+							    DISK_ATTR *
+							    subcls_attr,
+							    BTID * cls_btid);
 #if defined(CUBRID_DEBUG)
 static void stats_print_min_max (ATTR_STATS * attr_stats, FILE * fpp);
 #endif /* CUBRID_DEBUG */
@@ -1241,6 +1248,9 @@ stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
   int n_btrees = 0;
   bool *is_disk_min_max_set = NULL;
   PARTITION_STATS_ACUMULATOR *mean = NULL, *stddev = NULL;
+  OR_CLASSREP *cls_rep = NULL;
+  OR_CLASSREP *subcls_rep = NULL;
+  int cls_idx_cache = 0, subcls_idx_cache = 0;
 
   assert_release (class_id_p != NULL);
   assert_release (partitions != NULL);
@@ -1392,7 +1402,18 @@ stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
    * variation. The global statistics for each btree will be the
    * mean * (1 + cv). We do this so that the optimizer will pick the tree with
    * the lowest dispersion.
+   * Since partitions and partitioned class have the same indexes but not
+   * stored in the same order, we will use class representations to match
+   * inherited indexes from partitions to the indexes in the partitioned class
+   * class.
    */
+  cls_rep = heap_classrepr_get (thread_p, class_id_p, NULL, 0, &cls_idx_cache,
+				true);
+  if (cls_rep == NULL)
+    {
+      error = ER_FAILED;
+      goto cleanup;
+    }
 
   for (i = 0; i < partitions_count; i++)
     {
@@ -1407,7 +1428,13 @@ stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
 	  catalog_free_representation (subcls_disk_rep);
 	  subcls_disk_rep = NULL;
 	}
+      if (subcls_rep != NULL)
+	{
+	  heap_classrepr_free (subcls_rep, &subcls_idx_cache);
+	  subcls_rep = NULL;
+	}
 
+      /* load new subclass */
       subcls_info = catalog_get_class_info (thread_p, &partitions[i]);
       if (subcls_info == NULL)
 	{
@@ -1430,6 +1457,14 @@ stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
       if (subcls_disk_rep == NULL)
 	{
 	  error = er_errid ();
+	  goto cleanup;
+	}
+
+      subcls_rep = heap_classrepr_get (thread_p, &partitions[i], NULL, 0,
+				       &subcls_idx_cache, true);
+      if (subcls_rep == NULL)
+	{
+	  error = ER_FAILED;
 	  goto cleanup;
 	}
 
@@ -1480,20 +1515,32 @@ stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
 		disk_repr_p->variable + (j - disk_repr_p->n_fixed);
 	    }
 
-	  for (k = 0, btree_stats_p = subcls_attr_p->bt_stats;
-	       k < subcls_attr_p->n_btstats; k++, btree_stats_p++)
+	  assert_release (subcls_attr_p->id == disk_attr_p->id);
+	  assert_release (subcls_attr_p->n_btstats == disk_attr_p->n_btstats);
+
+	  for (k = 0, btree_stats_p = disk_attr_p->bt_stats;
+	       k < disk_attr_p->n_btstats; k++, btree_stats_p++)
 	    {
-	      /* leafs */
-	      mean[btree_iter].leafs += btree_stats_p->leafs;
-
-	      mean[btree_iter].pages += btree_stats_p->pages;
-
-	      mean[btree_iter].height += btree_stats_p->height;
-
-	      mean[btree_iter].keys += btree_stats_p->keys;
-	      for (m = 0; m < btree_stats_p->key_size; m++)
+	      const BTREE_STATS *subcls_stats =
+		stats_find_inherited_index_stats (cls_rep, subcls_rep,
+						  subcls_attr_p,
+						  &btree_stats_p->btid);
+	      if (subcls_stats == NULL)
 		{
-		  mean[btree_iter].pkeys[m] += btree_stats_p->pkeys[m];
+		  error = ER_FAILED;
+		  goto cleanup;
+		}
+
+	      mean[btree_iter].leafs += subcls_stats->leafs;
+
+	      mean[btree_iter].pages += subcls_stats->pages;
+
+	      mean[btree_iter].height += subcls_stats->height;
+
+	      mean[btree_iter].keys += subcls_stats->keys;
+	      for (m = 0; m < subcls_stats->key_size; m++)
+		{
+		  mean[btree_iter].pkeys[m] += subcls_stats->pkeys[m];
 		}
 
 	      btree_iter++;
@@ -1526,6 +1573,11 @@ stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
 	  catalog_free_representation (subcls_disk_rep);
 	  subcls_disk_rep = NULL;
 	}
+      if (subcls_rep != NULL)
+	{
+	  heap_classrepr_free (subcls_rep, &subcls_idx_cache);
+	  subcls_rep = NULL;
+	}
 
       /* get disk repr for subclass */
       error = catalog_get_last_representation_id (thread_p, &partitions[i],
@@ -1543,6 +1595,14 @@ stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
 	  goto cleanup;
 	}
 
+      subcls_rep = heap_classrepr_get (thread_p, &partitions[i], NULL, 0,
+				       &subcls_idx_cache, true);
+      if (subcls_rep == NULL)
+	{
+	  error = ER_FAILED;
+	  goto cleanup;
+	}
+
       /* add partition information to the accumulators */
       btree_iter = 0;
       for (j = 0; j < subcls_disk_rep->n_fixed + subcls_disk_rep->n_variable;
@@ -1551,32 +1611,44 @@ stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
 	  if (j < subcls_disk_rep->n_fixed)
 	    {
 	      subcls_attr_p = subcls_disk_rep->fixed + j;
+	      disk_attr_p = disk_repr_p->fixed + j;
 	    }
 	  else
 	    {
 	      subcls_attr_p =
 		subcls_disk_rep->variable + (j - subcls_disk_rep->n_fixed);
+	      disk_attr_p =
+		disk_repr_p->variable + (j - disk_repr_p->n_fixed);
 	    }
 
-	  for (k = 0, btree_stats_p = subcls_attr_p->bt_stats;
-	       k < subcls_attr_p->n_btstats; k++, btree_stats_p++)
+	  for (k = 0, btree_stats_p = disk_attr_p->bt_stats;
+	       k < disk_attr_p->n_btstats; k++, btree_stats_p++)
 	    {
-	      /* leafs */
+	      const BTREE_STATS *subcls_stats =
+		stats_find_inherited_index_stats (cls_rep, subcls_rep,
+						  subcls_attr_p,
+						  &btree_stats_p->btid);
+	      if (subcls_stats == NULL)
+		{
+		  error = ER_FAILED;
+		  goto cleanup;
+		}
+
 	      stddev[btree_iter].leafs +=
 		SQUARE (btree_stats_p->leafs - mean[btree_iter].leafs);
 
 	      stddev[btree_iter].pages +=
-		SQUARE (btree_stats_p->pages - mean[btree_iter].pages);
+		SQUARE (subcls_stats->pages - mean[btree_iter].pages);
 
 	      stddev[btree_iter].height +=
-		SQUARE (btree_stats_p->height - mean[btree_iter].height);
+		SQUARE (subcls_stats->height - mean[btree_iter].height);
 
 	      stddev[btree_iter].keys +=
-		SQUARE (btree_stats_p->keys - mean[btree_iter].keys);
-	      for (m = 0; m < btree_stats_p->key_size; m++)
+		SQUARE (subcls_stats->keys - mean[btree_iter].keys);
+	      for (m = 0; m < subcls_stats->key_size; m++)
 		{
 		  stddev[btree_iter].pkeys[m] +=
-		    SQUARE (btree_stats_p->pkeys[m] -
+		    SQUARE (subcls_stats->pkeys[m] -
 			    mean[btree_iter].pkeys[m]);
 		}
 
@@ -1680,6 +1752,14 @@ stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
   error = catalog_add_class_info (thread_p, class_id_p, cls_info_p);
 
 cleanup:
+  if (cls_rep != NULL)
+    {
+      heap_classrepr_free (cls_rep, &cls_idx_cache);
+    }
+  if (subcls_rep != NULL)
+    {
+      heap_classrepr_free (subcls_rep, &subcls_idx_cache);
+    }
   if (is_disk_min_max_set != NULL)
     {
       db_private_free (thread_p, is_disk_min_max_set);
@@ -1724,4 +1804,72 @@ cleanup:
     }
 
   return error;
+}
+
+/*
+ * stats_find_inherited_index_stats () - find the btree statistics
+ *					 corresponding to an index in a
+ *					 subclass
+ * return : btree statistics
+ * cls_rep (in)	   : superclass representation
+ * subcls_rep (in) : subclass representation
+ * subcls_attr (in): subclass attribute representation which contains the
+ *		     statistics
+ * cls_btid (in)   : BTID of the index in the superclass
+ */
+static const BTREE_STATS *
+stats_find_inherited_index_stats (OR_CLASSREP * cls_rep,
+				  OR_CLASSREP * subcls_rep,
+				  DISK_ATTR * subcls_attr, BTID * cls_btid)
+{
+  int i;
+  const char *cls_btname = NULL;
+  const BTID *subcls_btid = NULL;
+  BTREE_STATS *btstats = NULL;
+  /* find the index representation in the superclass */
+  for (i = 0; i < cls_rep->n_indexes; i++)
+    {
+      if (BTID_IS_EQUAL (&cls_rep->indexes[i].btid, cls_btid))
+	{
+	  cls_btname = cls_rep->indexes[i].btname;
+	  break;
+	}
+    }
+
+  if (cls_btname == NULL)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return NULL;
+    }
+
+  /* find the inherited index in the subclass */
+  for (i = 0; i < subcls_rep->n_indexes; i++)
+    {
+      if (strcasecmp (cls_btname, subcls_rep->indexes[i].btname) == 0)
+	{
+	  subcls_btid = &subcls_rep->indexes[i].btid;
+	  break;
+	}
+    }
+
+  if (subcls_btid == NULL)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return NULL;
+    }
+
+  for (i = 0, btstats = subcls_attr->bt_stats; i < subcls_attr->n_btstats;
+       i++, btstats++)
+    {
+      if (BTID_IS_EQUAL (subcls_btid, &btstats->btid))
+	{
+	  return btstats;
+	}
+    }
+
+  assert (false);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+  return NULL;
 }

@@ -10641,6 +10641,7 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl,
   for (attr_count = 0, attr = constraint->attributes; *attr != NULL;
        attr_count++, attr++)
     {
+      val = NULL;
       if (tmpl->assignments[(*attr)->order] != NULL)
 	{
 	  val = tmpl->assignments[(*attr)->order]->variable;

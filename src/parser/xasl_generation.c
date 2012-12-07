@@ -16898,6 +16898,14 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
     {
       xasl->proc.insert.odku = pt_to_odku_info (parser, statement, xasl,
 						upd_non_null_attrs);
+      if (xasl->proc.insert.odku == NULL)
+	{
+	  if (pt_has_error (parser))
+	    {
+	      pt_report_to_ersys (parser, PT_SEMANTIC);
+	    }
+	  return NULL;
+	}
     }
 
   if (xasl)
