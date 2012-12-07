@@ -5038,7 +5038,8 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 	else
 	  {
 	    char *s, *p;
-	    int list_size;
+	    char save;
+	    int list_size, tmp;
 
 	    val = calloc (1024, sizeof (int));	/* max size is 1023 */
 	    if (val == NULL)
@@ -5053,19 +5054,47 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 	    s = (char *) value;
 	    p = s;
 
-	    while (*s)
+	    while (true)
 	      {
-		if (*s == ',')
+		if (*s == ',' || *s == '\0')
 		  {
+		    save = *s;
 		    *s = '\0';
-		    val[++list_size] = atoi (p);
+		    if (intl_mbs_casecmp ("default", p) == 0)
+		      {
+			if (sysprm_get_id (prm) ==
+			    PRM_ID_CALL_STACK_DUMP_ACTIVATION)
+			  {
+			    memcpy (&val[list_size + 1],
+				    call_stack_dump_error_codes,
+				    sizeof (call_stack_dump_error_codes));
+			    list_size += DIM (call_stack_dump_error_codes);
+			  }
+			else
+			  {
+			    free_and_init (val);
+			    return PRM_ERR_BAD_VALUE;
+			  }
+		      }
+		    else
+		      {
+			tmp = strtol (p, &end, 10);
+			if (end == p)
+			  {
+			    free_and_init (val);
+			    return PRM_ERR_BAD_VALUE;
+			  }
+			val[++list_size] = tmp;
+		      }
+		    *s = save;
+		    if (*s == '\0')
+		      {
+			break;
+		      }
 		    p = s + 1;
-		    *s = ',';
 		  }
 		s++;
 	      }
-
-	    val[++list_size] = atoi (p);
 	    /* save size in the first position */
 	    val[0] = list_size;
 	  }
@@ -5258,6 +5287,8 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag,
 			  (integer_list[0] + 1) * sizeof (int));
 		  return PRM_ERR_NO_MEM_FOR_PRM;
 		}
+	      memcpy (value.integer_list, integer_list,
+		      (integer_list[0] + 1) * sizeof (int));
 	    }
 
 	default:
