@@ -19585,6 +19585,7 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p,
   bool ntile_is_null = false;
 
   output_tplrec.tpl = NULL;
+  DB_MAKE_NULL (&dbval);
 
   if (qdata_finalize_analytic_func (thread_p, func_p, keep_list_file)
       != NO_ERROR)
