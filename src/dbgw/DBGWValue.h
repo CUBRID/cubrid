@@ -71,13 +71,16 @@ namespace dbgw
 #endif
     bool set(const DBGWValueType type, void *pValue, bool bNull = false,
         int nSize = -1);
-    bool getInt(int *pValue) const;
+    /*
+     * The Number getters are replaced by toXXX.
+     * bool getInt(int *pValue) const;
+     * bool getLong(int64 *pValue) const;
+     * bool getFloat(float *pValue) const;
+     * bool getDouble(double *pValue) const;
+     */
     bool getCString(char **pValue) const;
-    bool getLong(int64 *pValue) const;
     bool getChar(char *pValue) const;
     bool getDateTime(struct tm *pValue) const;
-    bool getFloat(float *pValue) const;
-    bool getDouble(double *pValue) const;
     bool getBytes(size_t *pSize, char **pValue) const;
     DBGWValueType getType() const;
     void *getVoidPtr() const;

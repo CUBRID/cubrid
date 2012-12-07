@@ -241,29 +241,6 @@ namespace dbgw
       }
   }
 
-  bool DBGWValue::getInt(int *pValue) const
-  {
-    clearException();
-
-    try
-      {
-        if (m_type != DBGW_VAL_TYPE_INT)
-          {
-            MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_INT);
-            DBGW_LOG_ERROR(e.what());
-            throw e;
-          }
-
-        *pValue = m_stValue.nValue;
-        return true;
-      }
-    catch (DBGWException &e)
-      {
-        setLastException(e);
-        return false;
-      }
-  }
-
   bool DBGWValue::getCString(char **pValue) const
   {
     clearException();
@@ -286,29 +263,6 @@ namespace dbgw
             *pValue = m_stValue.szValue;
           }
 
-        return true;
-      }
-    catch (DBGWException &e)
-      {
-        setLastException(e);
-        return false;
-      }
-  }
-
-  bool DBGWValue::getLong(int64 *pValue) const
-  {
-    clearException();
-
-    try
-      {
-        if (m_type != DBGW_VAL_TYPE_LONG)
-          {
-            MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_LONG);
-            DBGW_LOG_ERROR(e.what());
-            throw e;
-          }
-
-        *pValue = m_stValue.lValue;
         return true;
       }
     catch (DBGWException &e)
@@ -370,52 +324,6 @@ namespace dbgw
           }
 
         *pValue = toTm();
-        return true;
-      }
-    catch (DBGWException &e)
-      {
-        setLastException(e);
-        return false;
-      }
-  }
-
-  bool DBGWValue::getFloat(float *pValue) const
-  {
-    clearException();
-
-    try
-      {
-        if (m_type != DBGW_VAL_TYPE_FLOAT)
-          {
-            MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_FLOAT);
-            DBGW_LOG_ERROR(e.what());
-            throw e;
-          }
-
-        *pValue = m_stValue.fValue;
-        return true;
-      }
-    catch (DBGWException &e)
-      {
-        setLastException(e);
-        return false;
-      }
-  }
-
-  bool DBGWValue::getDouble(double *pValue) const
-  {
-    clearException();
-
-    try
-      {
-        if (m_type != DBGW_VAL_TYPE_DOUBLE)
-          {
-            MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_DOUBLE);
-            DBGW_LOG_ERROR(e.what());
-            throw e;
-          }
-
-        *pValue = m_stValue.dValue;
         return true;
       }
     catch (DBGWException &e)
@@ -554,7 +462,8 @@ namespace dbgw
             *pValue = boost::lexical_cast<int>(m_stValue.szValue);
             return true;
           case DBGW_VAL_TYPE_INT:
-            return getInt(pValue);
+            *pValue = m_stValue.nValue;
+            return true;
           case DBGW_VAL_TYPE_LONG:
             *pValue = (int) m_stValue.lValue;
             return true;
@@ -606,7 +515,8 @@ namespace dbgw
             *pValue = (int64) m_stValue.nValue;
             return true;
           case DBGW_VAL_TYPE_LONG:
-            return getLong(pValue);
+            *pValue = m_stValue.lValue;
+            return true;
           case DBGW_VAL_TYPE_FLOAT:
             *pValue = (int64) m_stValue.fValue;
             return true;
@@ -658,7 +568,8 @@ namespace dbgw
             *pValue = (float) m_stValue.lValue;
             return true;
           case DBGW_VAL_TYPE_FLOAT:
-            return getFloat(pValue);
+            *pValue = m_stValue.fValue;
+            return true;
           case DBGW_VAL_TYPE_DOUBLE:
             *pValue = (float) m_stValue.dValue;
             return true;
@@ -710,7 +621,8 @@ namespace dbgw
             *pValue = (double) m_stValue.fValue;
             return true;
           case DBGW_VAL_TYPE_DOUBLE:
-            return getDouble(pValue);
+            *pValue = m_stValue.dValue;
+            return true;
           case DBGW_VAL_TYPE_TIME:
           case DBGW_VAL_TYPE_DATE:
           case DBGW_VAL_TYPE_DATETIME:
@@ -1870,7 +1782,7 @@ namespace dbgw
           }
         else
           {
-            return p->getInt(pValue);
+            return p->toInt(pValue);
           }
       }
     catch (DBGWException &e)
@@ -1916,7 +1828,7 @@ namespace dbgw
           }
         else
           {
-            return p->getLong(pValue);
+            return p->toLong(pValue);
           }
       }
     catch (DBGWException &e)
@@ -1962,7 +1874,7 @@ namespace dbgw
           }
         else
           {
-            return p->getFloat(pValue);
+            return p->toFloat(pValue);
           }
       }
     catch (DBGWException &e)
@@ -1985,7 +1897,7 @@ namespace dbgw
           }
         else
           {
-            return p->getDouble(pValue);
+            return p->toDouble(pValue);
           }
       }
     catch (DBGWException &e)
@@ -2124,7 +2036,7 @@ namespace dbgw
           }
         else
           {
-            return p->getInt(pValue);
+            return p->toInt(pValue);
           }
       }
     catch (DBGWException &e)
@@ -2170,7 +2082,7 @@ namespace dbgw
           }
         else
           {
-            return p->getLong(pValue);
+            return p->toLong(pValue);
           }
       }
     catch (DBGWException &e)
@@ -2216,7 +2128,7 @@ namespace dbgw
           }
         else
           {
-            return p->getFloat(pValue);
+            return p->toFloat(pValue);
           }
       }
     catch (DBGWException &e)
@@ -2239,7 +2151,7 @@ namespace dbgw
           }
         else
           {
-            return p->getDouble(pValue);
+            return p->toDouble(pValue);
           }
       }
     catch (DBGWException &e)
