@@ -81,7 +81,7 @@ extern DKNPAGES boot_get_temp_temp_vol_max_npages (void);
 extern int boot_add_temp_volume_and_file (VFID * vfid, DKNPAGES npages);
 extern int boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 				const char *db_name, bool from_backup,
-				bool for_copydb, BO_RESTART_ARG * r_args);
+				bool check_db_coll, BO_RESTART_ARG * r_args);
 extern int xboot_restart_from_backup (THREAD_ENTRY * thread_p,
 				      int print_restart, const char *db_name,
 				      BO_RESTART_ARG * r_args);

@@ -649,6 +649,19 @@ static GETOPT_LONG ua_DumpLocale_Option[] = {
   {0, 0, 0, 0}
 };
 
+static UTIL_ARG_MAP ua_SyncCollDB_Map[] = {
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {SYNCCOLL_CHECK_S, {ARG_BOOLEAN}, {0}},
+  {SYNCCOLL_FORCESYNC_S, {ARG_BOOLEAN}, {0}},
+  {0, {0}, {0}}
+};
+
+static GETOPT_LONG ua_SyncCollDB_Option[] = {
+  {SYNCCOLL_CHECK_L, 0, 0, SYNCCOLL_CHECK_S},
+  {SYNCCOLL_FORCESYNC_L, 0, 0, SYNCCOLL_FORCESYNC_S},
+  {0, 0, 0, 0}
+};
+
 static UTIL_MAP ua_Utility_Map[] = {
   {CREATEDB, SA_ONLY, 1, UTIL_OPTION_CREATEDB, "createdb",
    ua_Create_Option, ua_Create_Option_Map},
@@ -712,6 +725,8 @@ static UTIL_MAP ua_Utility_Map[] = {
    ua_GenLocale_Option, ua_GenLocale_Map},
   {DUMPLOCALE, SA_ONLY, 1, UTIL_OPTION_DUMP_LOCALE, "dumplocale",
    ua_DumpLocale_Option, ua_DumpLocale_Map},
+  {SYNCCOLLDB, SA_ONLY, 1, UTIL_OPTION_SYNCCOLLDB, "synccolldb",
+   ua_SyncCollDB_Option, ua_SyncCollDB_Map},
   {-1, -1, 0, 0, 0, 0, 0}
 };
 

@@ -76,7 +76,8 @@ typedef enum
   MSGCAT_UTIL_SET_APPLYINFO = 44,
   MSGCAT_UTIL_SET_ACLDB = 45,
   MSGCAT_UTIL_SET_GENLOCALE = 46,
-  MSGCAT_UTIL_SET_DUMPLOCALE = 47
+  MSGCAT_UTIL_SET_DUMPLOCALE = 47,
+  MSGCAT_UTIL_SET_SYNCCOLLDB = 48
 } MSGCAT_UTIL_SET;
 
 /* Message id in the set MSGCAT_UTIL_SET_GENERIC */
@@ -552,6 +553,26 @@ typedef enum
   DUMPLOCALE_MSG_USAGE = 60
 } MSGCAT_DUMPLOCALE_MSG;
 
+/* Message id in the set MSGCAT_UTIL_SET_SYNCCOLLDB */
+typedef enum
+{
+  SYNCCOLLDB_MSG_SYNC_ABORT = 47,
+  SYNCCOLLDB_MSG_SYNC_OK = 48,
+  SYNCCOLLDB_MSG_SYNC_CONTINUE = 49,
+  SYNCCOLLDB_MSG_OBS_COLL = 50,
+  SYNCCOLLDB_MSG_TRIG_OBS_COLL = 51,
+  SYNCCOLLDB_MSG_VIEW_OBS_COLL = 52,
+  SYNCCOLLDB_MSG_ATTR_OBS_COLL = 53,
+  SYNCCOLLDB_MSG_REPORT_SQL_FILE = 54,
+  SYNCCOLLDB_MSG_REPORT_NOT_NEEDED = 55,
+  SYNCCOLLDB_MSG_REPORT_SYNC_REQUIRED = 56,
+  SYNCCOLLDB_MSG_REPORT_NEW_COLL = 57,
+  SYNCCOLLDB_MSG_REPORT_DB_OBS_OK = 58,
+  SYNCCOLLDB_MSG_REPORT_DB_OBS_NOK = 59,
+  SYNCCOLLDB_MSG_USAGE = 60
+} MSGCAT_SYNCCOLLDB_MSG;
+
+
 typedef void *DSO_HANDLE;
 
 typedef enum
@@ -587,6 +608,7 @@ typedef enum
   ACLDB,
   GENLOCALE,
   DUMPLOCALE,
+  SYNCCOLLDB,
   LOGFILEDUMP
 } UTIL_INDEX;
 
@@ -773,6 +795,7 @@ typedef struct _ha_config
 #define UTIL_OPTION_ACLDB			"acldb"
 #define UTIL_OPTION_GENERATE_LOCALE		"genlocale"
 #define UTIL_OPTION_DUMP_LOCALE			"dumplocale"
+#define UTIL_OPTION_SYNCCOLLDB			"synccolldb"
 
 /* createdb option list */
 #define CREATE_PAGES_S                          'p'
@@ -1232,6 +1255,12 @@ typedef struct _ha_config
 #define DUMPLOCALE_CONSOLE_CONV_S		'k'
 #define DUMPLOCALE_CONSOLE_CONV_L		"console-conversion"
 
+/* sync_collations option list */
+#define SYNCCOLL_CHECK_S			'c'
+#define SYNCCOLL_CHECK_L			"check"
+#define SYNCCOLL_FORCESYNC_S			'f'
+#define SYNCCOLL_FORCESYNC_L                    "force-sync"
+
 #define VERSION_S                               20000
 #define VERSION_L                               "version"
 
@@ -1342,6 +1371,7 @@ extern int applyinfo (UTIL_FUNCTION_ARG * arg_map);
 extern int acldb (UTIL_FUNCTION_ARG * arg_map);
 extern int genlocale (UTIL_FUNCTION_ARG * arg_map);
 extern int dumplocale (UTIL_FUNCTION_ARG * arg_map);
+extern int synccolldb (UTIL_FUNCTION_ARG * arg_map);
 
 extern void util_admin_usage (const char *argv0);
 extern void util_admin_version (const char *argv0);

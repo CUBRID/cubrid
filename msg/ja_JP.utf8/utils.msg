@@ -65,6 +65,7 @@ $       44      applyinfo
 $       45      acldb
 $       46      genlocale
 $       47      dumplocale
+$       48      synccolldb
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 レングスが正しくないか、正しくない文字「%c」がデータベース名「%s」に入っています。\n
@@ -111,6 +112,7 @@ cubrid 管理者ユーティリティー、バージョン　%s\n\
     acldb\n\
     genlocale\n\
     dumplocale\n\
+    synccolldb\n\
 \n\
 %sはDBMS管理道具です。\n\
 追加情報は次のサイトをご覧になってください。http://www.cubrid.com\n
@@ -165,6 +167,7 @@ cubrid 管理者ユーティリティー、バージョン　%s\n\
     applyinfo\n\
     genlocale\n\
     dumplocale\n\
+    synccolldb\n\
 \n\
 %sはDBMS道具です。\n\
 追加情報は次のサイトをご覧になってください。http://www.cubrid.com\n
@@ -929,7 +932,7 @@ applyinfo: CUBRID HA Apply情報を出力。\n\
   -p, --pageid=ID             ページID; デフォルト : 0(アクティブページ)\n\
   -v, --verbose               多様な進行情報を出力; デフォルト: 出力しない\n\
   -i, --interval=S            print information every S secs\n	
-  
+
 $set 45 MSGCAT_UTIL_SET_ACLDB
 59  acldbはスタンドアロンモードで実行できません。\n
 60 \
@@ -982,4 +985,30 @@ language-string　　　　　生成するシェアードライブラリーの�
                       デフォルト : ロケールシェアードライブラリーから読み込んだ最大バリュー\n\
   -k, --console-conversion　コンソール返還データをダンプ; デフォルト : しない\n\
   -z, --normalization 正規化データをダンプ; デフォルト : しない\n
+
+$set 48 MSGCAT_UTIL_SET_SYNCCOLLDB
+47 Synchronization of collations was not performed. Database was not changed.\n
+48 Contents of '%s' system table was updated with new system collations.\n
+49 Updating system collations may cause corruption of database. Continue (y/n) ?\n
+50 Collation '%s' (Id: %d) not found in database or changed in new system configuration.\n
+51 Triggers having condition containing collation '%s'; they should be redefined :\nTrigger | Condition\n
+52 Query views containing collation '%s'; they should be redefined :\nView | Query\n
+53 Attributes having collation '%s'; they should be redefined.\nTable | Attribute Domain\n
+54 Manual intervention on database is required.\n\
+Please check file '%s' and execute it before forcing collations into database.\n
+55 Synchronization is not needed.\n
+56 Synchronization of system collation into database is required.\n\
+Run 'cubrid synccolldb -f %s'\n
+57 There are %d new collations in system configuration compared to database:\n
+58 All collations in database '%s' are found in the new system configuration.\n
+59 There are %d collations in database which are not configured or are changed compared to system collations.\n
+60 \
+synccolldb: Synchronizes the collations from database with collations of system.\n\
+usage: %s synccolldb [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -c, --check-only    Checks the collations from databases with collation of system.\n\
+		      If collations synchronization is required, error code 1 is returned.\n\
+		      Displays a report of incompatible collations.\n\
+  -f, --force-only    Updates the collations in databases to be same as the collations of new sytem configuration.\n\
 

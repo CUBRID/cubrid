@@ -153,6 +153,7 @@ EXPORTS
 	acldb
 	genlocale
 	dumplocale
+	synccolldb
 
 ;
 ;	enable below two functions when

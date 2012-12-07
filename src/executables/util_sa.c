@@ -57,6 +57,7 @@
 #include "locator_cl.h"
 #include "network_interface_cl.h"
 #include "locale_support.h"
+#include "boot_cl.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else
@@ -84,11 +85,17 @@ extern bool catcls_Enable;
 extern int log_default_input_for_archive_log_location;
 
 extern int catcls_compile_catalog_classes (THREAD_ENTRY * thread_p);
+extern int catcls_get_db_collation (THREAD_ENTRY * thread_p,
+				    LANG_COLL_COMPAT ** db_collations,
+				    int *coll_cnt);
 
 static int parse_user_define_line (char *line, FILE * output_file);
 static int parse_user_define_file (FILE * user_define_file,
 				   FILE * output_file);
 static int parse_up_to_date (char *up_to_date, struct tm *time_date);
+static int synccoll_check (const char *db_name, int *db_obs_coll_cnt,
+			   int *new_sys_coll_cnt);
+static int synccoll_force (void);
 
 /*
  * util_admin_usage - display an usage of this utility
@@ -2538,4 +2545,589 @@ print_dumplocale_usage:
 	   basename (arg->argv0));
 
   return EXIT_FAILURE;
+}
+
+/*
+ * synccolldb() - sync_collations main routine
+ *   return: EXIT_SUCCESS/EXIT_FAILURE
+ */
+int
+synccolldb (UTIL_FUNCTION_ARG * arg)
+{
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
+  const char *db_name;
+  int status = EXIT_SUCCESS;
+  bool is_check, is_force, is_sync = true;
+  int db_obs_coll_cnt = 0;
+  int new_sys_coll_cnt = 0;
+
+  db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  if (db_name == NULL)
+    {
+      goto print_sync_collations_usage;
+    }
+
+  if (utility_get_option_string_table_size (arg_map) != 1)
+    {
+      goto print_sync_collations_usage;
+    }
+
+  is_check = utility_get_option_bool_value (arg_map, SYNCCOLL_CHECK_S);
+  is_force = utility_get_option_bool_value (arg_map, SYNCCOLL_FORCESYNC_S);
+
+  if (is_check && is_force)
+    {
+      goto print_sync_collations_usage;
+    }
+
+  if (is_check || is_force)
+    {
+      is_sync = false;
+    }
+
+  if (check_database_name (db_name))
+    {
+      goto error_exit;
+    }
+
+  /* error message log file */
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
+	    "%s_%s.err", db_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
+  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
+
+  AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+  db_login ("DBA", NULL);
+  if (db_restart (arg->command_name, TRUE, db_name) != NO_ERROR)
+    {
+      fprintf (stderr, "%s\n", db_error_string (3));
+      goto error_exit;
+    }
+
+  if (is_check || is_sync)
+    {
+      status = synccoll_check (db_name, &db_obs_coll_cnt, &new_sys_coll_cnt);
+      if (status != EXIT_SUCCESS)
+	{
+	  fprintf (stderr, "%s\n", db_error_string (3));
+	  goto exit;
+	}
+
+      if (!is_sync && (db_obs_coll_cnt != 0 || new_sys_coll_cnt != 0))
+	{
+	  /* return error if synchronization is required */
+	  status = EXIT_FAILURE;
+	  goto exit;
+	}
+    }
+
+  if (is_sync || is_force)
+    {
+      char yn[2];
+
+      if (!is_force && db_obs_coll_cnt == 0 && new_sys_coll_cnt == 0)
+	{
+	  /* message SYNCCOLLDB_MSG_SYNC_NOT_NEEDED displayed in 
+	   * 'synccoll_check' */
+	  goto exit;
+	}
+
+      if (!is_force)
+	{
+	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_SYNCCOLLDB,
+					   SYNCCOLLDB_MSG_SYNC_CONTINUE));
+	  scanf ("%1s", yn);
+	  if (yn[0] != 'y')
+	    {
+	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
+					       MSGCAT_UTIL_SET_SYNCCOLLDB,
+					       SYNCCOLLDB_MSG_SYNC_ABORT));
+	      goto exit;
+	    }
+	}
+
+      status = synccoll_force ();
+      if (status != EXIT_SUCCESS)
+	{
+	  fprintf (stderr, "%s\n", db_error_string (3));
+	  db_abort_transaction ();
+	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_SYNCCOLLDB,
+					   SYNCCOLLDB_MSG_SYNC_ABORT));
+	  goto exit;
+	}
+      else
+	{
+	  db_commit_transaction ();
+	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_SYNCCOLLDB,
+					   SYNCCOLLDB_MSG_SYNC_OK),
+		   CT_COLLATION_NAME);
+	}
+    }
+
+exit:
+  db_shutdown ();
+
+  return status;
+
+print_sync_collations_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_SYNCCOLLDB,
+				   SYNCCOLLDB_MSG_USAGE),
+	   basename (arg->argv0));
+error_exit:
+  return EXIT_FAILURE;
+}
+
+/*
+ * synccoll_check() - sync_collations check
+ *   return: EXIT_SUCCESS/EXIT_FAILURE
+ */
+static int
+synccoll_check (const char *db_name, int *db_obs_coll_cnt,
+		int *new_sys_coll_cnt)
+{
+#define FILE_STMT_NAME "cubrid_synccolldb_"
+#define QUERY_SIZE 1024
+
+  LANG_COLL_COMPAT *db_collations = NULL;
+  DB_QUERY_RESULT *query_result = NULL;
+  const LANG_COLL_COMPAT *db_coll;
+  LANG_COLLATION *lc;
+  FILE *f_stmt = NULL;
+  char f_stmt_name[PATH_MAX];
+  int sys_coll_found[LANG_MAX_COLLATIONS] = { 0 };
+  int sys_coll_found_cnt = 0;
+  int i, db_coll_cnt;
+  int status = EXIT_SUCCESS;
+  int db_status;
+  bool need_manual_sync = false;
+
+  assert (db_name != NULL);
+  assert (db_obs_coll_cnt != NULL);
+  assert (new_sys_coll_cnt != NULL);
+
+  *db_obs_coll_cnt = 0;
+  *new_sys_coll_cnt = 0;
+
+  /* read all collations from DB : id, name, checksum */
+  db_status = catcls_get_db_collation (NULL, &db_collations, &db_coll_cnt);
+  if (db_status != NO_ERROR)
+    {
+      if (db_collations != NULL)
+	{
+	  db_private_free (NULL, db_collations);
+	}
+      status = EXIT_FAILURE;
+      goto exit;
+    }
+
+  assert (db_collations != NULL);
+
+  strcpy (f_stmt_name, FILE_STMT_NAME);
+  strcat (f_stmt_name, db_name);
+  strcat (f_stmt_name, ".sql");
+
+  f_stmt = fopen (f_stmt_name, "wt");
+  if (f_stmt == NULL)
+    {
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_GENERIC,
+				       MSGCAT_UTIL_GENERIC_BAD_OUTPUT_FILE),
+	       f_stmt_name);
+      goto exit;
+    }
+
+  for (i = 0; i < db_coll_cnt; i++)
+    {
+      DB_QUERY_ERROR query_error;
+      char query[QUERY_SIZE];
+      int j;
+      bool is_obs_coll = false;
+      bool check_atts = false;
+      bool check_views = false;
+      bool check_triggers = false;
+
+      db_coll = &(db_collations[i]);
+
+      assert (db_coll->coll_id >= 0
+	      && db_coll->coll_id < LANG_MAX_COLLATIONS);
+
+      for (j = 0; j < LANG_MAX_COLLATIONS; j++)
+	{
+	  lc = lang_get_collation (j);
+	  if (strcmp (db_coll->coll_name, lc->coll.coll_name) == 0)
+	    {
+	      sys_coll_found[j] = 1;
+	      sys_coll_found_cnt++;
+	      break;
+	    }
+	}
+
+      /* check if same collation */
+      lc = lang_get_collation (db_coll->coll_id);
+      assert (lc != NULL);
+
+      if (lc->coll.coll_id != db_coll->coll_id
+	  || lc->codeset != db_coll->codeset
+	  || strcasecmp (lc->coll.checksum, db_coll->checksum) != 0)
+	{
+	  check_views = true;
+	  check_atts = true;
+	  check_triggers = true;
+	  is_obs_coll = true;
+	}
+      else if (strcmp (lc->coll.coll_name, db_coll->coll_name))
+	{
+	  check_views = true;
+	  check_triggers = true;
+	  is_obs_coll = true;
+	}
+
+      if (is_obs_coll)
+	{
+	  (*db_obs_coll_cnt)++;
+	  fprintf (stdout, "----------------------------------------\n");
+	  fprintf (stdout, "----------------------------------------\n");
+	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_SYNCCOLLDB,
+					   SYNCCOLLDB_MSG_OBS_COLL),
+		   db_coll->coll_name, db_coll->coll_id);
+	}
+
+      if (check_atts)
+	{
+	  /* CLASS_NAME, CLASS_TYPE, ATTR_NAME ATTR_FULL_TYPE */
+	  /* ATTR_FULL_TYPE = CHAR(20) */
+	  /* or               ENUM ('a', 'b') */
+
+	  sprintf (query, "SELECT A.class_of.class_name, "
+		   "A.class_of.class_type, "
+		   "CONCAT (A.attr_name, ' ' , "
+		   "IF (D.data_type = 35,"
+		   "CONCAT ('ENUM (', "
+		   "(SELECT GROUP_CONCAT(concat('''',EV.a,'''')) "
+		   "FROM TABLE(D.enumeration) as EV(a)) ,  ')'), "
+		   "CONCAT (CASE D.data_type WHEN 4 THEN 'VARCHAR' "
+		   "WHEN 25 THEN 'CHAR' WHEN 27 THEN 'NCHAR VARYING' "
+		   "WHEN 26 THEN 'NCHAR' WHEN 35 THEN 'ENUM' END, "
+		   "IF (D.prec < 0 AND "
+		   "(D.data_type = 4 OR D.data_type = 27) ,"
+		   "'', CONCAT ('(', D.prec,')'))))) "
+		   "FROM _db_domain D,_db_attribute A "
+		   "WHERE D.object_of = A AND D.collation_id = %d",
+		   db_coll->coll_id);
+
+	  db_status = db_execute (query, &query_result, &query_error);
+
+	  if (db_status < 0)
+	    {
+	      status = EXIT_FAILURE;
+	      goto exit;
+	    }
+	  else if (db_status > 0)
+	    {
+	      DB_VALUE class_name;
+	      DB_VALUE attr;
+	      DB_VALUE ct;
+
+	      fprintf (stdout, "----------------------------------------\n");
+	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
+					       MSGCAT_UTIL_SET_SYNCCOLLDB,
+					       SYNCCOLLDB_MSG_ATTR_OBS_COLL),
+		       db_coll->coll_name);
+
+	      while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
+		{
+		  if (db_query_get_tuple_value (query_result, 0, &class_name)
+		      != NO_ERROR
+		      || db_query_get_tuple_value (query_result, 1, &ct)
+		      != NO_ERROR
+		      || db_query_get_tuple_value (query_result, 2, &attr)
+		      != NO_ERROR)
+		    {
+		      status = EXIT_FAILURE;
+		      goto exit;
+		    }
+
+		  assert (DB_VALUE_TYPE (&class_name) == DB_TYPE_STRING);
+		  assert (DB_VALUE_TYPE (&attr) == DB_TYPE_STRING);
+		  assert (DB_VALUE_TYPE (&ct) == DB_TYPE_INTEGER);
+
+		  fprintf (stdout, "%s | %s\n", DB_GET_STRING (&class_name),
+			   DB_GET_STRING (&attr));
+
+		  /* output query to fix schema */
+		  if (DB_GET_INTEGER (&ct) == 0)
+		    {
+		      snprintf (query, sizeof (query) - 1, "ALTER TABLE %s "
+				"MODIFY %s COLLATE utf8_bin;",
+				DB_GET_STRING (&class_name),
+				DB_GET_STRING (&attr));
+		    }
+		  else
+		    {
+		      snprintf (query, sizeof (query) - 1, "DROP VIEW %s;",
+				DB_GET_STRING (&class_name));
+
+		    }
+		  fprintf (f_stmt, "%s\n", query);
+		  need_manual_sync = true;
+		}
+	    }
+
+	  if (query_result != NULL)
+	    {
+	      db_query_end (query_result);
+	      query_result = NULL;
+	    }
+	}
+
+      if (check_views)
+	{
+	  sprintf (query, "SELECT class_of.class_name, spec "
+		   "FROM _db_query_spec "
+		   "WHERE LOCATE ('collate %s', spec) > 0",
+		   db_coll->coll_name);
+
+	  db_status = db_execute (query, &query_result, &query_error);
+
+
+	  if (db_status < 0)
+	    {
+	      status = EXIT_FAILURE;
+	      goto exit;
+	    }
+	  else if (db_status > 0)
+	    {
+	      DB_VALUE view;
+	      DB_VALUE query_spec;
+
+	      fprintf (stdout, "----------------------------------------\n");
+	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
+					       MSGCAT_UTIL_SET_SYNCCOLLDB,
+					       SYNCCOLLDB_MSG_VIEW_OBS_COLL),
+		       db_coll->coll_name);
+
+	      while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
+		{
+		  if (db_query_get_tuple_value (query_result, 0, &view)
+		      != NO_ERROR
+		      || db_query_get_tuple_value (query_result, 1,
+						   &query_spec) != NO_ERROR)
+		    {
+		      status = EXIT_FAILURE;
+		      goto exit;
+		    }
+
+		  assert (DB_VALUE_TYPE (&view) == DB_TYPE_STRING);
+		  assert (DB_VALUE_TYPE (&query_spec) == DB_TYPE_STRING);
+
+		  fprintf (stdout, "%s | %s\n", DB_GET_STRING (&view),
+			   DB_GET_STRING (&query_spec));
+
+		  /* output query to fix schema */
+		  snprintf (query, sizeof (query) - 1, "DROP VIEW %s;",
+			    DB_GET_STRING (&view));
+		  fprintf (f_stmt, "%s\n", query);
+		  need_manual_sync = true;
+		}
+	    }
+
+	  if (query_result != NULL)
+	    {
+	      db_query_end (query_result);
+	      query_result = NULL;
+	    }
+	}
+
+      if (check_triggers)
+	{
+	  sprintf (query, "SELECT name, condition FROM db_trigger "
+		   "WHERE LOCATE ('collate %s', condition) > 0",
+		   db_coll->coll_name);
+
+	  db_status = db_execute (query, &query_result, &query_error);
+
+	  if (db_status < 0)
+	    {
+	      status = EXIT_FAILURE;
+	      goto exit;
+	    }
+	  else if (db_status > 0)
+	    {
+	      DB_VALUE trig_name;
+	      DB_VALUE trig_cond;
+
+	      fprintf (stdout, "----------------------------------------\n");
+	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
+					       MSGCAT_UTIL_SET_SYNCCOLLDB,
+					       SYNCCOLLDB_MSG_TRIG_OBS_COLL),
+		       db_coll->coll_name);
+
+
+	      while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
+		{
+		  if (db_query_get_tuple_value (query_result, 0, &trig_name)
+		      != NO_ERROR
+		      || db_query_get_tuple_value (query_result, 1,
+						   &trig_cond) != NO_ERROR)
+		    {
+		      status = EXIT_FAILURE;
+		      goto exit;
+		    }
+
+		  assert (DB_VALUE_TYPE (&trig_name) == DB_TYPE_STRING);
+		  assert (DB_VALUE_TYPE (&trig_cond) == DB_TYPE_STRING);
+
+		  fprintf (stdout, "%s | %s\n", DB_GET_STRING (&trig_name),
+			   DB_GET_STRING (&trig_cond));
+
+		  /* output query to fix schema */
+		  snprintf (query, sizeof (query) - 1, "DROP TRIGGER %s;",
+			    DB_GET_STRING (&trig_name));
+		  fprintf (f_stmt, "%s\n", query);
+		  need_manual_sync = true;
+		}
+	    }
+
+	  if (query_result != NULL)
+	    {
+	      db_query_end (query_result);
+	      query_result = NULL;
+	    }
+	}
+    }
+
+  fprintf (stdout, "----------------------------------------\n");
+  fprintf (stdout, "----------------------------------------\n");
+  if (*db_obs_coll_cnt == 0)
+    {
+      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_SYNCCOLLDB,
+				       SYNCCOLLDB_MSG_REPORT_DB_OBS_OK),
+	       db_name);
+    }
+  else
+    {
+      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_SYNCCOLLDB,
+				       SYNCCOLLDB_MSG_REPORT_DB_OBS_NOK),
+	       *db_obs_coll_cnt);
+      if (need_manual_sync)
+	{
+	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_SYNCCOLLDB,
+					   SYNCCOLLDB_MSG_REPORT_SQL_FILE),
+		   f_stmt_name);
+	}
+    }
+
+  if (lang_collation_count () != sys_coll_found_cnt)
+    {
+      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_SYNCCOLLDB,
+				       SYNCCOLLDB_MSG_REPORT_NEW_COLL),
+	       lang_collation_count () - sys_coll_found_cnt);
+
+      for (i = 0; i < LANG_MAX_COLLATIONS; i++)
+	{
+	  if (sys_coll_found[i] == 1)
+	    {
+	      continue;
+	    }
+
+	  lc = lang_get_collation (i);
+	  if (lc->coll.coll_id == LANG_COLL_ISO_BINARY)
+	    {
+	      assert (i != 0);
+	      continue;
+	    }
+
+	  assert (sys_coll_found[i] == 0);
+	  /* system collation was not found in DB */
+	  fprintf (stdout, "%s\n", lc->coll.coll_name);
+	  (*new_sys_coll_cnt)++;
+	}
+      fprintf (stdout, "\n");
+    }
+
+  if (*db_obs_coll_cnt == 0 && *new_sys_coll_cnt == 0)
+    {
+      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_SYNCCOLLDB,
+				       SYNCCOLLDB_MSG_REPORT_NOT_NEEDED));
+    }
+  else
+    {
+      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_SYNCCOLLDB,
+				       SYNCCOLLDB_MSG_REPORT_SYNC_REQUIRED),
+	       db_name);
+    }
+
+  fprintf (stdout, "----------------------------------------\n");
+  fprintf (stdout, "----------------------------------------\n");
+
+exit:
+  if (f_stmt != NULL)
+    {
+      fclose (f_stmt);
+      f_stmt = NULL;
+    }
+
+  if (query_result != NULL)
+    {
+      db_query_end (query_result);
+      query_result = NULL;
+    }
+  if (db_collations != NULL)
+    {
+      db_private_free (NULL, db_collations);
+    }
+
+  return status;
+
+#undef FILE_STMT_NAME
+#undef QUERY_SIZE
+}
+
+/*
+ * synccoll_force() - sync_collations force new collation into DB
+ *   return: EXIT_SUCCESS/EXIT_FAILURE
+ */
+static int
+synccoll_force (void)
+{
+  DB_OBJECT *class_mop;
+  int status = EXIT_SUCCESS;
+  int au_save;
+
+  class_mop = db_find_class (CT_COLLATION_NAME);
+  if (class_mop == NULL)
+    {
+      status = EXIT_FAILURE;
+      return status;
+    }
+
+  AU_DISABLE (au_save);
+  if (db_truncate_class (class_mop) != NO_ERROR)
+    {
+      AU_ENABLE (au_save);
+      status = EXIT_FAILURE;
+      return status;
+    }
+
+  if (boot_add_collations (class_mop) != NO_ERROR)
+    {
+      status = EXIT_FAILURE;
+    }
+
+  AU_ENABLE (au_save);
+  return status;
 }

@@ -65,6 +65,7 @@ $       44      applyinfo
 $       45      acldb
 $       46      genlocale
 $       47      dumplocale
+$       48      synccolldb
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 ប្រវែងមិនសុពល ឬអក្សរ`%c' ក្នុងឈ្មោះដែលតាបេស`%s'\n
@@ -111,6 +112,7 @@ usage: %s <utility-name> [args]\n\
     acldb\n\
     genlocale\n\
     dumplocale\n\
+    synccolldb\n\
 \n\
 %s ជាឧបករណ៍សម្រាប់ DBMS។\n\
 សម្រាប់ពត៌មានបន្ថែម, សូមមើលhttp://www.cubrid.com\n
@@ -165,6 +167,7 @@ administrator's utilitiesដែលមាន:\n\
     applyinfo\n\
     genlocale\n\
     dumplocale\n\
+    synccolldb\n\
 \n\
 %s ជាឧបករណ៍សម្រាប់ DBMS។\n\
 សម្រាប់ពត៌មានបន្ថែម, សូមមើលhttp://www.cubrid.com\n
@@ -982,4 +985,30 @@ language-string ខ្សែអក្សរភាសាទីតាំង បោ
                       កំហុស:អានតំលៃអតិបរិមាណនៃលេខដែលចែកចាយទីតាំង\n\
   -k, --console-conversion  ចោលលេខដែលត្រូវបំលែងដោយទូបញ្ជា កំហុស មិនបាទទេ\n\
   -z, --normalization   បោះចោលលេខដែលធ្វើអោយទៅជាធម្មតា កំហុស មិនបាទទេ\n
+
+$set 48 MSGCAT_UTIL_SET_SYNCCOLLDB
+47 Synchronization of collations was not performed. Database was not changed.\n
+48 Contents of '%s' system table was updated with new system collations.\n
+49 Updating system collations may cause corruption of database. Continue (y/n) ?\n
+50 Collation '%s' (Id: %d) not found in database or changed in new system configuration.\n
+51 Triggers having condition containing collation '%s'; they should be redefined :\nTrigger | Condition\n
+52 Query views containing collation '%s'; they should be redefined :\nView | Query\n
+53 Attributes having collation '%s'; they should be redefined.\nTable | Attribute Domain\n
+54 Manual intervention on database is required.\n\
+Please check file '%s' and execute it before forcing collations into database.\n
+55 Synchronization is not needed.\n
+56 Synchronization of system collation into database is required.\n\
+Run 'cubrid synccolldb -f %s'\n
+57 There are %d new collations in system configuration compared to database:\n
+58 All collations in database '%s' are found in the new system configuration.\n
+59 There are %d collations in database which are not configured or are changed compared to system collations.\n
+60 \
+synccolldb: Synchronizes the collations from database with collations of system.\n\
+usage: %s synccolldb [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -c, --check-only    Checks the collations from databases with collation of system.\n\
+		      If collations synchronization is required, error code 1 is returned.\n\
+		      Displays a report of incompatible collations.\n\
+  -f, --force-only    Updates the collations in databases to be same as the collations of new sytem configuration.\n\
 

@@ -177,7 +177,6 @@ static int boot_define_stored_procedure (MOP class_mop);
 static int boot_define_stored_procedure_arguments (MOP class_mop);
 static int boot_define_serial (MOP class_mop);
 static int boot_define_ha_apply_info (MOP class_mop);
-static int boot_add_collations (MOP class_mop);
 static int boot_define_collations (MOP class_mop);
 static int boot_define_view_class (void);
 static int boot_define_view_super_class (void);
@@ -3371,7 +3370,7 @@ boot_define_ha_apply_info (MOP class_mop)
  * Note:
  *
  */
-static int
+int
 boot_add_collations (MOP class_mop)
 {
   int i;

@@ -2922,7 +2922,7 @@ boot_make_session_server_key (void)
  *                      is printed at the end of the restart process.
  *   db_name(in): Database Name
  *   from_backup(in): Execute the restart from a backup..
- *   for_copydb(in): Execute the restart for copy db purpose ..
+ *   check_db_coll(in): True if check DB collations with system collations
  *   r_args(in): restart argument structure contains various options
  *
  * Note: The CUBRID server is restarted. Recovery process, no
@@ -2931,8 +2931,8 @@ boot_make_session_server_key (void)
  */
 int
 boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
-		     const char *db_name, bool from_backup, bool for_copydb,
-		     BO_RESTART_ARG * r_args)
+		     const char *db_name, bool from_backup,
+		     bool check_db_coll, BO_RESTART_ARG * r_args)
 {
   char log_path[PATH_MAX];
   const char *log_prefix;
@@ -3414,7 +3414,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 #endif
 
   /* check server collations with database collations */
-  if (!for_copydb)
+  if (check_db_coll)
     {
       LANG_COLL_COMPAT *db_collations = NULL;
       int db_coll_cnt;
@@ -3596,7 +3596,7 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart,
 
   tp_init ();
 
-  if (boot_restart_server (thread_p, print_restart, db_name, true, false,
+  if (boot_restart_server (thread_p, print_restart, db_name, true, true,
 			   r_args) != NO_ERROR)
     {
       return NULL_TRAN_INDEX;
@@ -3699,12 +3699,20 @@ xboot_register_client (THREAD_ENTRY * thread_p,
 		       BOOT_SERVER_CREDENTIAL * server_credential)
 {
   int tran_index;
+  bool check_db_coll = true;
 
 #if defined(SA_MODE)
+  if (client_credential != NULL
+      && client_credential->client_type == BOOT_CLIENT_ADMIN_UTILITY
+      && client_credential->program_name != NULL
+      && strcasecmp (client_credential->program_name, "synccolldb") == 0)
+    {
+      check_db_coll = false;
+    }
   /* If the server is not restarted, restart the server at this moment */
   if (!BO_IS_SERVER_RESTARTED ()
       && boot_restart_server (thread_p, false, client_credential->db_name,
-			      false, false, NULL) != NO_ERROR)
+			      false, check_db_coll, NULL) != NO_ERROR)
     {
       *tran_state = TRAN_UNACTIVE_UNKNOWN;
       return NULL_TRAN_INDEX;
@@ -4556,7 +4564,7 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname,
 	    }
 
 	  error_code = boot_restart_server (thread_p, false, from_dbname,
-					    false, true, NULL);
+					    false, false, NULL);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;

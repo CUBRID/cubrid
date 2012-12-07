@@ -65,6 +65,7 @@ $       44      applyinfo
 $       45      acldb
 $       46      genlocale
 $       47      dumplocale
+$       48      synccolldb
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Longueur ou caractère non valide '%c' dans le nom de la base de données '%s'\n
@@ -111,6 +112,7 @@ Nom d'utilitaires d'administration disponible:\n\
     acldb\n\
     genlocale\n\
     dumplocale\n\
+    synccolldb\n\
 \n\
 %s est un outil de SGBD.\n\
 Pour plus d'informations, reportez-vous à http://www.cubrid.com\n
@@ -165,6 +167,7 @@ Utilitaires d'administrateur disponibles:\n\
     applyinfo\n\
     genlocale\n\
     dumplocale\n\
+    synccolldb\n\
 \n\
 %s is a tool for DBMS.\n\
 Pour plus d'informations, reportez-vous à http://www.cubrid.com\n
@@ -932,7 +935,7 @@ options valids:\n\
   -p, --pageid=ID               id de page; par défaut : 0(page active)\n\
   -v, --verbose                 active les messages verbeux d'état; par défaut: désactivé\n\
   -i, --interval=S            print information every S secs\n	
-  
+
 $set 45 MSGCAT_UTIL_SET_ACLDB
 59 acldb ne peut pas fonctionner en mode autonome.\n
 60 \
@@ -992,4 +995,30 @@ options valids:\n\
                       par défaut : valeur maximale luée à partir de la bibliothèque partagée\n\
   -k, --console-conversion  affiche les données de conversion de la console; par défaut: désactivé\n\
   -z, --normalization       affiche les données de normalisation; par défaut: désactivé\n
+
+$set 48 MSGCAT_UTIL_SET_SYNCCOLLDB
+47 Synchronization of collations was not performed. Database was not changed.\n
+48 Contents of '%s' system table was updated with new system collations.\n
+49 Updating system collations may cause corruption of database. Continue (y/n) ?\n
+50 Collation '%s' (Id: %d) not found in database or changed in new system configuration.\n
+51 Triggers having condition containing collation '%s'; they should be redefined :\nTrigger | Condition\n
+52 Query views containing collation '%s'; they should be redefined :\nView | Query\n
+53 Attributes having collation '%s'; they should be redefined.\nTable | Attribute Domain\n
+54 Manual intervention on database is required.\n\
+Please check file '%s' and execute it before forcing collations into database.\n
+55 Synchronization is not needed.\n
+56 Synchronization of system collation into database is required.\n\
+Run 'cubrid synccolldb -f %s'\n
+57 There are %d new collations in system configuration compared to database:\n
+58 All collations in database '%s' are found in the new system configuration.\n
+59 There are %d collations in database which are not configured or are changed compared to system collations.\n
+60 \
+synccolldb: Synchronizes the collations from database with collations of system.\n\
+usage: %s synccolldb [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -c, --check-only    Checks the collations from databases with collation of system.\n\
+		      If collations synchronization is required, error code 1 is returned.\n\
+		      Displays a report of incompatible collations.\n\
+  -f, --force-only    Updates the collations in databases to be same as the collations of new sytem configuration.\n\
 
