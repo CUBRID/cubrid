@@ -8300,7 +8300,8 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 	    }
 	  else
 	    {
-	      if (p->info.delete_.using_index->etc == (void *) -3)
+	      if (p->info.delete_.using_index->etc
+		  == (void *) PT_IDX_HINT_CLASS_NONE)
 		{
 		  r1 = pt_print_bytes_l (parser, p->info.delete_.using_index);
 		  q = pt_append_nulstring (parser, q, " using index ");
@@ -12724,12 +12725,11 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_name (parser, q, p->info.name.original);
 	  if (p->info.name.meta_class == PT_INDEX_NAME)
 	    {
-	      if (p->etc == (void *) 1)
+	      if (p->etc == (void *) PT_IDX_HINT_FORCE)
 		{
 		  q = pt_append_nulstring (parser, q, "(+)");
 		}
-	      /* TODO: temporary for IGNORE INDEX */
-	      if (p->etc == (void *) -1)
+	      if (p->etc == (void *) PT_IDX_HINT_IGNORE)
 		{
 		  q = pt_append_nulstring (parser, q, "(-)");
 		}
@@ -12750,7 +12750,8 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 	    }
 	}
       if (p->info.name.meta_class == PT_INDEX_NAME
-	  && p->info.name.original == NULL && p->etc == (void *) -3)
+	  && p->info.name.original == NULL
+	  && p->etc == (void *) PT_IDX_HINT_CLASS_NONE)
 	{
 	  q = pt_append_nulstring (parser, q, ".");
 	  q = pt_append_nulstring (parser, q, "none");
@@ -12764,12 +12765,12 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_name (parser, q, p->info.name.original);
 	  if (p->info.name.meta_class == PT_INDEX_NAME)
 	    {
-	      if (p->etc == (void *) 1)
+	      if (p->etc == (void *) PT_IDX_HINT_FORCE)
 		{
 		  q = pt_append_nulstring (parser, q, "(+)");
 		}
 	      /* TODO: temporary for IGNORE INDEX */
-	      if (p->etc == (void *) -1)
+	      if (p->etc == (void *) PT_IDX_HINT_IGNORE)
 		{
 		  q = pt_append_nulstring (parser, q, "(-)");
 		}
@@ -12793,7 +12794,7 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  if (p->info.name.meta_class == PT_INDEX_NAME
 	      && p->info.name.resolved && p->info.name.resolved[0]
-	      && p->etc == (void *) -3)
+	      && p->etc == (void *) PT_IDX_HINT_CLASS_NONE)
 	    {
 	      /* always print resolved for "class_name.NONE" index names */
 	      q = pt_append_name (parser, q, p->info.name.resolved);
@@ -13885,7 +13886,8 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 		}
 	      else
 		{
-		  if (p->info.query.q.select.using_index->etc == (void *) -3)
+		  if (p->info.query.q.select.using_index->etc
+		      == (void *) PT_IDX_HINT_CLASS_NONE)
 		    {
 		      r1 = pt_print_bytes_l (parser,
 					     p->info.query.q.select.
@@ -14721,7 +14723,8 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
 	    }
 	  else
 	    {
-	      if (p->info.update.using_index->etc == (void *) -3)
+	      if (p->info.update.using_index->etc
+		  == (void *) PT_IDX_HINT_CLASS_NONE)
 		{
 		  r1 = pt_print_bytes_l (parser, p->info.update.using_index);
 		  b = pt_append_nulstring (parser, b, " using index ");

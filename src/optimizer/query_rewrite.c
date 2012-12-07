@@ -6039,6 +6039,343 @@ qo_rewrite_hidden_col_as_derived (PARSER_CONTEXT * parser, PT_NODE * node,
 }
 
 /*
+ * qo_rewrite_index_hints () - Rewrite index hint list, removing useless hints
+ *   return: PT_NODE *
+ *   parser(in):
+ *   node(in): QUERY node
+ *   parent_node(in):
+ */
+static void
+qo_rewrite_index_hints (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  PT_NODE *using_index, *hint_node, *prev_node, *next_node;
+
+  bool is_sorted, is_idx_reversed, is_idx_match_nokl, is_hint_masked;
+
+  PT_NODE *hint_none, *root_node;
+  PT_NODE dummy_hint_local, *dummy_hint;
+
+  switch (statement->node_type)
+    {
+    case PT_SELECT:
+      using_index = statement->info.query.q.select.using_index;
+      break;
+    case PT_UPDATE:
+      using_index = statement->info.update.using_index;
+      break;
+    case PT_DELETE:
+      using_index = statement->info.delete_.using_index;
+      break;
+    default:
+      /* USING index clauses are not allowed for other query types */
+      assert (false);
+      return;
+    }
+
+  if (using_index == NULL)
+    {
+      /* no index hints, nothing to do here */
+      return;
+    }
+
+  /* Main logic - we can safely assume that pt_check_using_index() has already
+   * checked for possible semantic errors or incompatible index hints. */
+
+  /* basic rewrite, for USING INDEX NONE */
+  hint_node = using_index;
+  prev_node = NULL;
+  hint_none = NULL;
+  while (hint_node != NULL)
+    {
+      if (hint_node->etc == (void *) PT_IDX_HINT_NONE)
+	{
+	  hint_none = hint_node;
+	  break;
+	}
+      prev_node = (prev_node == NULL) ? hint_node : prev_node->next;
+      hint_node = hint_node->next;
+    }
+
+  if (hint_none != NULL)
+    {
+      /* keep only the using_index_none hint stored in hint_none */
+      /* update links and discard the first part of the hint list */
+      if (prev_node != NULL)
+	{
+	  prev_node->next = NULL;
+	  parser_free_tree (parser, using_index);
+	  using_index = NULL;
+	}
+      /* update links and discard the last part of the hint list */
+      hint_node = hint_none->next;
+      if (hint_node != NULL)
+	{
+	  parser_free_tree (parser, hint_node);
+	  hint_node = NULL;
+	}
+      /* update links and keep only the USING INDEX NONE node */
+      hint_none->next = NULL;
+      using_index = hint_none;
+      goto exit;
+    }
+
+  if (using_index->etc == (void *) PT_IDX_HINT_ALL_EXCEPT)
+    {
+      /* find all t.none index hints and mark them for later removal */
+      /* the first node, when USING INDEX ALL EXCEPT, is a '*', so use this
+       * node as a constant list root */
+      hint_node = using_index;
+      while (hint_node != NULL && (next_node = hint_node->next) != NULL)
+	{
+	  if (next_node->info.name.original == NULL
+	      && next_node->info.name.resolved != NULL
+	      && strcmp (next_node->info.name.resolved, "*") != 0)
+	    {
+	      /* found a t.none identifier; remove it from the list */
+	      hint_node->next = next_node->next;
+	      next_node->next = NULL;
+	      parser_free_node (parser, next_node);
+	    }
+	  else
+	    {
+	      hint_node = hint_node->next;
+	    }
+	}
+
+      /* if only the '*' marker node is left in the list, it means that
+       * USING INDEX ALL EXCEPT contains only t.none-like hints, so it is
+       * actually an empty hint list */
+      if (using_index->next == NULL)
+	{
+	  parser_free_node (parser, using_index);
+	  using_index = NULL;
+	  goto exit;
+	}
+
+      root_node = prev_node = using_index;
+      hint_node = using_index->next;
+    }
+  else
+    {
+      /* there is no USING INDEX {NONE|ALL EXCEPT ...} in the query;
+       * the dummy node is necessary for faster operation;
+       * use local variable dummy_hint */
+      dummy_hint = &dummy_hint_local;
+      dummy_hint->next = using_index;
+      /* just need something else than PT_IDX_HINT_ALL AEXCEPT,
+       * so that this node won't be kept later */
+      dummy_hint->etc = (void *) PT_IDX_HINT_USE;
+      root_node = prev_node = dummy_hint;
+      hint_node = using_index;
+    }
+
+  /* remove duplicate index hints and sort them; keep the same order for
+   * the hints of the same type with keylimit */
+  /* order: class_none, ignored, forced, used */
+  is_sorted = false;
+  while (!is_sorted)
+    {
+      prev_node = root_node;
+      hint_node = prev_node->next;
+      is_sorted = true;
+      while ((next_node = hint_node->next) != NULL)
+	{
+	  is_idx_reversed = false;
+	  is_idx_match_nokl = false;
+	  if (PT_IDX_HINT_ORDER (hint_node) > PT_IDX_HINT_ORDER (next_node))
+	    {
+	      is_idx_reversed = true;
+	    }
+	  else if (hint_node->etc == next_node->etc)
+	    {
+	      /* if hints have the same type, check if they need to be swapped
+	       * or are identical and one of them needs to be removed */
+	      int res_cmp_tbl_names = -1;
+	      /* unless USING INDEX NONE, which is rewritten above, all
+	       * indexes should have table names already resolved */
+	      assert (hint_node->info.name.resolved != NULL
+		      && next_node->info.name.resolved != NULL);
+
+	      /* compare the tables on which the indexes are defined */
+	      res_cmp_tbl_names = intl_identifier_casecmp
+		(hint_node->info.name.resolved,
+		 next_node->info.name.resolved);
+
+	      if (res_cmp_tbl_names == 0)
+		{
+		  /* also compare index names */
+		  if (hint_node->info.name.original != NULL
+		      && next_node->info.name.original != NULL)
+		    {
+		      /* index names can be null if t.none */
+		      int res_cmp_idx_names;
+
+		      res_cmp_idx_names = intl_identifier_casecmp
+			(hint_node->info.name.original,
+			 next_node->info.name.original);
+		      if (res_cmp_idx_names == 0)
+			{
+			  is_idx_match_nokl = true;
+			}
+		      else
+			{
+			  is_idx_reversed = (res_cmp_idx_names > 0);
+			}
+		    }
+		  else
+		    {
+		      /* hints are of the same type, name.original is either
+		       * NULL or not NULL for both hints */
+		      assert (hint_node->info.name.original == NULL
+			      && next_node->info.name.original == NULL);
+		      /* both hints are "same-table.none"; identical */
+		      is_idx_match_nokl = true;
+		    }
+		}
+	      else
+		{
+		  is_idx_reversed = (res_cmp_tbl_names > 0);
+		}
+
+	      if (is_idx_match_nokl)
+		{
+		  /* The same index is used in both hints; examine the 
+		   * keylimit clauses; if search_node does not have keylimit,
+		   * the IF below will skip, and search_node will be deleted */
+		  if (next_node->info.name.indx_key_limit != NULL)
+		    {
+		      /* search_node has keylimit */
+		      if (hint_node->info.name.indx_key_limit != NULL)
+			{
+			  /* hint_node has keylimit; no action is performed;
+			   * we want to preserve the order of index hints for
+			   * the same index, with keylimit */
+			  is_idx_reversed = false;
+			  is_idx_match_nokl = false;
+			}
+		      else
+			{
+			  /* special case; need to delete hint_node and keep
+			   * search_node, because this one has keylimit;
+			   */
+			  assert (!is_idx_reversed);
+			  is_idx_reversed = true;
+			  /* reverse the two nodes so the code below can be
+			   * reused for this situation */
+			}
+		    }		/* endif (search_node) */
+		}		/* endif (is_idx_match_nokl) */
+	    }
+
+	  if (is_idx_reversed)
+	    {
+	      /* Interchange the two hints */
+	      hint_node->next = next_node->next;
+	      next_node->next = hint_node;
+	      prev_node->next = next_node;
+	      is_sorted = false;
+	      /* update hint_node and search_node, for possible delete */
+	      hint_node = prev_node->next;
+	      next_node = hint_node->next;
+	    }
+
+	  if (is_idx_match_nokl)
+	    {
+	      /* remove search_node */
+	      hint_node->next = next_node->next;
+	      next_node->next = NULL;
+	      parser_free_node (parser, next_node);
+	      /* node removed, use prev_node and hint_node in next loop */
+	      continue;
+	    }
+	  prev_node = prev_node->next;
+	  hint_node = prev_node->next;
+	}
+    }
+
+  /* Find index hints to remove later.
+   * At this point, the only index hints that can be found in using_index are
+   * {USE|FORCE|IGNORE} INDEX and USING INDEX {idx|idx(-)|idx(+)|t.none}...
+   * Need to ignore duplicate hints, and hints that are masked by applying
+   * the hint operation rules.
+   */
+  hint_node = root_node->next;
+  while (hint_node != NULL)
+    {
+      next_node = hint_node->next;
+      prev_node = hint_node;
+      while (next_node != NULL)
+	{
+	  if (next_node->etc == hint_node->etc)
+	    {
+	      /* same hint type; duplicates were already removed, skip hint */
+	      prev_node = next_node;
+	      next_node = next_node->next;
+	      continue;
+	    }
+
+	  /* Main logic for removing redundant/masked index hints */
+	  /* The hint list is now sorted, first by index type, then by table
+	   * and index name, so the next_node type is the same as hint_node
+	   * or lower in importance (class.none > ignore > force > use),
+	   * so it is not necessary to check next_index hint type */
+	  is_hint_masked = false;
+
+	  if ((hint_node->etc == (void *) PT_IDX_HINT_CLASS_NONE
+	       || ((hint_node->etc == (void *) PT_IDX_HINT_IGNORE
+		    || hint_node->etc == (void *) PT_IDX_HINT_FORCE)
+		   && intl_identifier_casecmp
+		   (hint_node->info.name.original,
+		    next_node->info.name.original) == 0))
+	      && intl_identifier_casecmp
+	      (hint_node->info.name.resolved,
+	       next_node->info.name.resolved) == 0)
+	    {
+	      is_hint_masked = true;
+	    }
+
+	  if (is_hint_masked)
+	    {
+	      /* hint search_node is masked; remove it from the hint list */
+	      prev_node->next = next_node->next;
+	      next_node->next = NULL;
+	      parser_free_node (parser, next_node);
+	      next_node = prev_node;
+	    }
+	  prev_node = next_node;
+	  next_node = next_node->next;
+	}
+      hint_node = hint_node->next;
+    }
+
+  /* remove the dummy first node, if any */
+  if (root_node->etc != (void *) PT_IDX_HINT_ALL_EXCEPT)
+    {
+      using_index = root_node->next;
+      root_node->next = NULL;
+    }
+  else
+    {
+      using_index = root_node;
+    }
+
+exit:
+  /* Save changes to query node */
+  switch (statement->node_type)
+    {
+    case PT_SELECT:
+      statement->info.query.q.select.using_index = using_index;
+      break;
+    case PT_UPDATE:
+      statement->info.update.using_index = using_index;
+      break;
+    case PT_DELETE:
+      statement->info.delete_.using_index = using_index;
+      break;
+    }
+}
+
+/*
  * qo_rewrite_subqueries () - Rewrite uncorrelated subquery to join query
  *   return: PT_NODE *
  *   parser(in):
@@ -6609,15 +6946,18 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	  aftercbfilterp = &node->info.query.q.select.after_cb_filter;
 	}
       orderby_for_p = &node->info.query.orderby_for;
+      qo_rewrite_index_hints (parser, node);
       break;
 
     case PT_UPDATE:
       wherep = &node->info.update.search_cond;
       orderby_for_p = &node->info.update.orderby_for;
+      qo_rewrite_index_hints (parser, node);
       break;
 
     case PT_DELETE:
       wherep = &node->info.delete_.search_cond;
+      qo_rewrite_index_hints (parser, node);
       break;
 
     case PT_INSERT:

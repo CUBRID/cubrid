@@ -902,6 +902,7 @@ typedef struct YYLTYPE
 %type <node> opt_analytic_partition_by
 %type <node> opt_analytic_order_by
 %type <node> opt_table_spec_index_hint
+%type <node> opt_table_spec_index_hint_list
 %type <node> merge_stmt
 %type <node> merge_update_insert_clause
 %type <node> merge_update_clause
@@ -3955,7 +3956,7 @@ opt_outer
 	;
 
 table_spec
-	: class_spec opt_as_identifier_attr_name opt_table_spec_index_hint opt_with_read_uncommitted
+	: class_spec opt_as_identifier_attr_name opt_table_spec_index_hint_list opt_with_read_uncommitted
 		{{
 			PT_NODE *range_var = NULL;
 			PT_NODE *ent = $1;
@@ -4141,14 +4142,7 @@ table_spec
 	;
 
 opt_table_spec_index_hint
-	: /* empty */
-		{{
-
-			$$ = 0;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| USE index_or_key '(' identifier_list ')'
+	: USE index_or_key '(' identifier_list ')'
 		{{
 
 			PT_NODE *list = $4;
@@ -4169,7 +4163,7 @@ opt_table_spec_index_hint
 			while (list)
 			  {
 			    list->info.name.meta_class = PT_INDEX_NAME;
-			    list->etc = (void*) 1;
+			    list->etc = (void *) PT_IDX_HINT_FORCE;
 			    list = list->next;
 			  }
 
@@ -4184,12 +4178,36 @@ opt_table_spec_index_hint
 			while (list)
 			  {
 			    list->info.name.meta_class = PT_INDEX_NAME;
-			    list->etc = (void*) -1;
+			    list->etc = (void *) PT_IDX_HINT_IGNORE;
 			    list = list->next;
 			  }
 
 			  $$ = $4;
 			  PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
+opt_table_spec_index_hint_list
+	: /* empty */
+		{{
+
+			$$ = 0;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| opt_table_spec_index_hint_list ',' opt_table_spec_index_hint
+		{{
+
+			$$ = parser_make_link($1, $3);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos);
+
+		DBG_PRINT}}
+	| opt_table_spec_index_hint
+		{{
+
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos);
 
 		DBG_PRINT}}
 	;
@@ -11816,7 +11834,9 @@ opt_using_index_clause
 			if (node)
 			  {
 			    node->info.name.original = NULL;
+			    node->info.name.resolved = NULL;
 			    node->info.name.meta_class = PT_INDEX_NAME;
+			    node->etc = (void *) PT_IDX_HINT_NONE;
 			  }
 
 			$$ = node;
@@ -11833,13 +11853,26 @@ opt_using_index_clause
 			    node->info.name.original = NULL;
 			    node->info.name.resolved = "*";
 			    node->info.name.meta_class = PT_INDEX_NAME;
-			    node->etc = (void *) -2;
+			    node->etc = (void *) PT_IDX_HINT_ALL_EXCEPT;
 			  }
 
 			node->next = $5;
+			curr = node;
 			for (curr = node; curr; curr = curr->next)
 			  {
-			    curr->etc = (void*) -2;
+			    if (curr->etc == (void *) PT_IDX_HINT_FORCE)
+			      {
+				PT_ERRORmf(this_parser, curr, MSGCAT_SET_PARSER_SEMANTIC,
+					   MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "(+)");
+				break;
+			      }
+			    else if (curr->etc == (void *) PT_IDX_HINT_IGNORE)
+			      {
+				PT_ERRORmf(this_parser, curr, MSGCAT_SET_PARSER_SEMANTIC,
+					   MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "(-)");
+				break;
+			      }
+			    curr->etc = (void *) PT_IDX_HINT_ALL_EXCEPT;
 			  }
 
 			$$ = node;
@@ -11890,17 +11923,22 @@ index_name_keylimit
 			PARSER_SAVE_ERR_CONTEXT (node, @$.buffer_pos)
 
 			if (node)
-			{
-				if (node->etc == -3)
-				{
-					PT_ERRORm(this_parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_KEYLIMIT_INDEX_NONE);
-				}
-				else
-				{
-					/* set key limit */
-					node->info.name.indx_key_limit = $3;
-				}
-		    }
+			  {
+			    if (node->etc == (void *) PT_IDX_HINT_NONE
+				|| node->etc == (void *) PT_IDX_HINT_CLASS_NONE)
+			      {
+				PT_ERRORm(this_parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_KEYLIMIT_INDEX_NONE);
+			      }
+			    else if (node->etc == (void *) PT_IDX_HINT_IGNORE)
+			      {
+				PT_ERRORmf(this_parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "KEYLIMIT");
+			      }
+			    else
+			      {
+				/* set key limit */
+				node->info.name.indx_key_limit = $3;
+			      }
+			  }
 			$$ = node;
 			
 		DBG_PRINT}}
@@ -11910,19 +11948,20 @@ index_name_keylimit
 			PT_NODE *node = $1;
 			if (node)
 			  {
-				if (node->etc == -3)
-				{
-					PT_ERRORm(this_parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_KEYLIMIT_INDEX_NONE);
-				}
-				else
-				{
-					/* set key limits */
-					node->info.name.indx_key_limit = $5;
-					if ($5)
-					  {
-					($5)->next = $3;
+			    if (node->etc == (void *) PT_IDX_HINT_NONE
+				|| node->etc == (void *) PT_IDX_HINT_CLASS_NONE)
+			      {
+				PT_ERRORm(this_parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_KEYLIMIT_INDEX_NONE);
 			      }
-			    }
+			    else
+			      {
+				/* set key limits */
+				node->info.name.indx_key_limit = $5;
+				if ($5)
+				  {
+				    ($5)->next = $3;
+				  }
+			      }
 			  }
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -11943,7 +11982,17 @@ index_name
 
 			PT_NODE *node = $1;
 			node->info.name.meta_class = PT_INDEX_NAME;
-			node->etc = (void *) 1;
+			node->etc = (void *) PT_IDX_HINT_FORCE;
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| class_name paren_minus
+		{{
+
+			PT_NODE *node = $1;
+			node->info.name.meta_class = PT_INDEX_NAME;
+			node->etc = (void *) PT_IDX_HINT_IGNORE;
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -11953,6 +12002,7 @@ index_name
 
 			PT_NODE *node = $1;
 			node->info.name.meta_class = PT_INDEX_NAME;
+			node->etc = (void *) PT_IDX_HINT_USE;
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -11964,7 +12014,7 @@ index_name
 			node->info.name.meta_class = PT_INDEX_NAME;
 			node->info.name.resolved = node->info.name.original;
 			node->info.name.original = NULL;
-			node->etc = (void*) -3;
+			node->etc = (void *) PT_IDX_HINT_CLASS_NONE;
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		

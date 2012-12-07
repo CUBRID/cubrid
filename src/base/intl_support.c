@@ -2756,10 +2756,12 @@ intl_strcasecmp_utf8_one_cp (const ALPHABET_DATA * alphabet,
 /*
  * intl_identifier_casecmp() - compares two identifiers strings 
  *			       case insensitive 
- *   return:
+ *   return: 0 if strings are equal, -1 if str1 < str2 , 1 if str1 > str2
  *   str1(in):
  *   str2(in):
  *
+ * NOTE: identifier comparison is special, see intl_strcasecmp_w_size ()
+ *	 for details on comparing identifiers of different length.
  */
 int
 intl_identifier_casecmp (const char *str1, const char *str2)

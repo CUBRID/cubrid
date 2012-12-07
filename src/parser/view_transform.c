@@ -4947,10 +4947,15 @@ mq_translate_local (PARSER_CONTEXT * parser,
 static int
 mq_check_using_index (PARSER_CONTEXT * parser, PT_NODE * using_index)
 {
-  PT_NODE *index_none = NULL;
+  PT_NODE *hint_none = NULL, *hint_all_except = NULL;
+  PT_NODE *hint_use = NULL, *hint_force = NULL, *hint_ignore = NULL;
+
+  bool has_errors = false;
+
   PT_NODE *index_hint = NULL;
   PT_NODE *node = NULL, *search_node = NULL;
-  bool has_index_class_none = false, has_all_except = false;
+  bool is_hint_class_none = false;
+  bool is_hint_use = false, is_hint_force = false, is_hint_ignore = false;
 
   /* check for valid using_index node */
   if (using_index == NULL)
@@ -4958,73 +4963,123 @@ mq_check_using_index (PARSER_CONTEXT * parser, PT_NODE * using_index)
       return NO_ERROR;
     }
 
-  /*
-   * search for USING INDEX NONE node, which can clash with another index
-   * hint. NOTE: USING INDEX NONE node is compatible with USING INDEX
-   * class_name.NONE node and USING INDEX ALL EXCEPT node, but both cases
-   * should never occur
-   */
+  /* Gathering basic information about the index hints */
   node = using_index;
   while (node != NULL)
     {
-      if (node->info.name.original == NULL &&
-	  node->info.name.resolved == NULL)
+      if (node->etc == (void *) PT_IDX_HINT_NONE)
 	{
 	  /* USING INDEX NONE node found */
-	  index_none = node;
+	  assert (node->info.name.original == NULL
+		  && node->info.name.resolved == NULL);
+	  hint_none = node;
 	}
-
-      if (node->info.name.original != NULL &&
-	  node->info.name.resolved != NULL &&
-	  (node->etc == (void *) 0 || node->etc == (void *) 1))
+      else if (node->etc == (void *) PT_IDX_HINT_ALL_EXCEPT)
 	{
-	  /* USE INDEX or FORCE INDEX node found */
-	  index_hint = node;
+	  hint_all_except = node;
 	}
-
-      /* check for USING INDEX ALL EXCEPT and USING INDEX class_name.NONE
-         syntax; if they are not found, we'll skip some loops later */
-      if (node->etc == (void *) -2)
+      else if (node->etc == (void *) PT_IDX_HINT_CLASS_NONE)
 	{
-	  has_all_except = true;
+	  is_hint_class_none = true;
 	}
-
-      if (node->etc == (void *) -3)
+      else if (node->etc == (void *) PT_IDX_HINT_USE)
 	{
-	  has_index_class_none = true;
+	  /* found USE INDEX idx or USING INDEX idx node */
+	  assert (node->info.name.original != NULL
+		  && node->info.name.resolved != NULL);
+	  is_hint_use = true;
+	  if (hint_use == NULL)
+	    {
+	      hint_use = node;
+	    }
+	}
+      else if (node->etc == (void *) PT_IDX_HINT_FORCE)
+	{
+	  /* found FORCE INDEX idx or USING INDEX idx(+) node */
+	  assert (node->info.name.original != NULL
+		  && node->info.name.resolved != NULL);
+	  is_hint_force = true;
+	  if (hint_force == NULL)
+	    {
+	      hint_force = node;
+	    }
+	}
+      else if (node->etc == (void *) PT_IDX_HINT_IGNORE)
+	{
+	  /* found IGNORE INDEX idx or USING INDEX idx(-) node */
+	  assert (node->info.name.original != NULL
+		  && node->info.name.resolved != NULL);
+	  is_hint_ignore = true;
+	  if (hint_ignore == NULL)
+	    {
+	      hint_ignore = node;
+	    }
+	}
+      else
+	{
+	  /* all hint nodes must have the etc flag set from the grammar */
+	  assert (false);
 	}
 
       node = node->next;
     }
 
-  if (index_none != NULL && index_hint != NULL)
+  /* check for USING INDEX NONE and {USE|FORCE} INDEX; error if both found */
+  if (hint_none != NULL)
     {
-      /* {USE|FORCE} INDEX idx ... USING INDEX NONE case was found */
+      assert (hint_all_except == NULL);
+
+      if (hint_use != NULL)
+	{
+	  index_hint = hint_use;
+	  has_errors = true;
+	}
+      else if (hint_force != NULL)
+	{
+	  index_hint = hint_force;
+	  has_errors = true;
+	}
+      if (has_errors)
+	{
+	  /* {USE|FORCE} INDEX idx ... USING INDEX NONE case was found */
+	  PT_ERRORmf2 (parser, using_index, MSGCAT_SET_PARSER_SEMANTIC,
+		       MSGCAT_SEMANTIC_INDEX_HINT_CONFLICT,
+		       "using index none",
+		       parser_print_tree (parser, index_hint));
+	  return ER_PT_SEMANTIC;
+	}
+    }
+  else if (hint_all_except != NULL
+	   && (hint_use != NULL || hint_force != NULL || hint_ignore != NULL))
+    {
       PT_ERRORmf2 (parser, using_index, MSGCAT_SET_PARSER_SEMANTIC,
 		   MSGCAT_SEMANTIC_INDEX_HINT_CONFLICT,
-		   "using index none",
-		   parser_print_tree (parser, index_hint));
-
+		   "USING INDEX ALL EXCEPT", "{USE|FORCE|IGNORE} INDEX");
       return ER_PT_SEMANTIC;
     }
 
-  /* check for USING INDEX class_name.NONE, class_name.idx[(+)] or
-     {USE|FORCE} INDEX class_name.idx ... USING INDEX class_name.NONE */
+  /* 
+   * USING INDEX t.none is incompatible with {USE|FORCE} INDEX [t.]idx
+   * Check for USING INDEX class.NONE, class.any-index[(+)] or
+   * {USE|FORCE} INDEX (class.any-index) ... USING INDEX class.NONE 
+   */
   node = using_index;
-  while (node != NULL && has_index_class_none)
+  while (node != NULL && is_hint_class_none && (is_hint_use || is_hint_force))
     {
-      if (node->info.name.original == NULL &&
-	  node->info.name.resolved != NULL && node->etc == (void *) -3)
+      if (node->info.name.original == NULL
+	  && node->info.name.resolved != NULL
+	  && node->etc == (void *) PT_IDX_HINT_CLASS_NONE)
 	{
 	  /* search trough all nodes again and check for other index hints
 	     on class_name */
 	  search_node = using_index;
 	  while (search_node != NULL)
 	    {
-	      if (search_node->info.name.original != NULL &&
-		  search_node->info.name.resolved != NULL &&
-		  (search_node->etc == (void *) 0 ||
-		   search_node->etc == (void *) 1) &&
+	      if (search_node->info.name.original != NULL
+		  && search_node->info.name.resolved != NULL
+		  && (search_node->etc == (void *) PT_IDX_HINT_USE
+		      || search_node->etc == (void *) PT_IDX_HINT_FORCE)
+		  &&
 		  !intl_identifier_casecmp (node->info.name.resolved,
 					    search_node->info.name.resolved))
 		{
@@ -5037,49 +5092,6 @@ mq_check_using_index (PARSER_CONTEXT * parser, PT_NODE * using_index)
 			       parser_print_tree (parser, search_node));
 
 		  return ER_PT_SEMANTIC;
-		}
-
-	      search_node = search_node->next;
-	    }
-	}
-
-      node = node->next;
-    }
-
-  /* check for {USE|FORCE} INDEX(idx) ... USING INDEX ALL EXCEPT idx */
-  node = using_index;
-  while (node != NULL && has_all_except)
-    {
-      if (node->info.name.original != NULL &&
-	  node->info.name.resolved != NULL &&
-	  (node->etc == (void *) 0 || node->etc == (void *) 1))
-	{
-	  /* found a normal index hint; search for same index in USING INDEX
-	     ALL EXCEPT clause */
-	  search_node = using_index;
-	  while (search_node != NULL)
-	    {
-	      if (search_node->info.name.original != NULL &&
-		  search_node->info.name.original != NULL &&
-		  search_node->etc == (void *) -2)
-		{
-		  if (!intl_identifier_casecmp
-		      (search_node->info.name.original,
-		       node->info.name.original) &&
-		      !intl_identifier_casecmp
-		      (search_node->info.name.resolved,
-		       node->info.name.resolved))
-		    {
-		      /* same index found in USE INDEX and USING INDEX ALL
-		         EXCEPT clauses */
-		      PT_ERRORmf2 (parser, using_index,
-				   MSGCAT_SET_PARSER_SEMANTIC,
-				   MSGCAT_SEMANTIC_INDEX_HINT_CONFLICT,
-				   parser_print_tree (parser, node),
-				   parser_print_tree (parser, search_node));
-
-		      return ER_PT_SEMANTIC;
-		    }
 		}
 
 	      search_node = search_node->next;

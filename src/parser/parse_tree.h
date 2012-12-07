@@ -2172,6 +2172,24 @@ struct pt_name_info
   int coll_modifier;
 };
 
+enum
+{
+  PT_IDX_HINT_FORCE = 1,
+  PT_IDX_HINT_USE = 0,
+  PT_IDX_HINT_IGNORE = -1,
+  PT_IDX_HINT_ALL_EXCEPT = -2,
+  PT_IDX_HINT_CLASS_NONE = -3,
+  PT_IDX_HINT_NONE = -4
+};
+
+/* PT_IDX_HINT_ORDER is used in index hint rewrite, to sort the index hints
+ * in the using_index clause in the order implied by this define; this is
+ * needed in order to avoid additional loops through the hint list */
+#define PT_IDX_HINT_ORDER(hint_node)					  \
+  ((hint_node->etc == (void *) PT_IDX_HINT_CLASS_NONE) ? 1 :		  \
+    (hint_node->etc == (void *) PT_IDX_HINT_IGNORE ? 2 :		  \
+      (hint_node->etc == (void *) PT_IDX_HINT_FORCE ? 3 :		  \
+	(hint_node->etc == (void *) PT_IDX_HINT_USE ? 4 : 0))))
 
 /* REMOVE TRIGGER */
 struct pt_remove_trigger_info

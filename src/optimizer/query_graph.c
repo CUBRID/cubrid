@@ -4646,6 +4646,7 @@ add_using_index (QO_ENV * env, PT_NODE * using_index)
 	      if (indexp->info.name.original
 		  && indexp->info.name.resolved
 		  && indexp->info.name.indx_key_limit
+		  && indexp->etc == indexp_nokl->etc
 		  && !intl_identifier_casecmp (indexp->info.name.original,
 					       indexp_nokl->info.name.
 					       original)
@@ -4682,7 +4683,7 @@ add_using_index (QO_ENV * env, PT_NODE * using_index)
 	  if (indexp->info.name.original == NULL
 	      && !intl_identifier_casecmp (QO_NODE_NAME (nodep),
 					   indexp->info.name.resolved)
-	      && indexp->etc == (void *) -3)
+	      && indexp->etc == (void *) PT_IDX_HINT_CLASS_NONE)
 	    {
 	      n = 0;		/* USING INDEX class_name.NONE,... case */
 	      is_none = true;
@@ -7174,7 +7175,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
   QO_NODE_INDEX_ENTRY *ni_entryp;
   SM_CLASS_CONSTRAINT *constraints, *consp;
   int *seg_idx, seg_idx_arr[NELEMENTS], nseg_idx;
-  bool found;
+  bool found, is_hint_use, is_hint_ignore, is_hint_force, is_hint_all_except;
   BITSET index_segs, index_terms;
 
   /* information of classes underlying this node */
@@ -7250,6 +7251,30 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 
 	      /* search USING INDEX list */
 	      found = false;
+	      is_hint_use = is_hint_force = is_hint_ignore = false;
+	      is_hint_all_except = false;
+
+	      /* gather information */
+	      for (j = 0; j < QO_UI_N (uip); j++)
+		{
+		  switch (QO_UI_FORCE (uip, j))
+		    {
+		    case PT_IDX_HINT_USE:
+		      is_hint_use = true;
+		      break;
+		    case PT_IDX_HINT_FORCE:
+		      is_hint_force = true;
+		      break;
+		    case PT_IDX_HINT_IGNORE:
+		      is_hint_ignore = true;
+		      break;
+		    case PT_IDX_HINT_ALL_EXCEPT:
+		      is_hint_all_except = true;
+		      break;
+		    }
+		}
+
+	      /* search for index in using_index clause */
 	      for (j = 0; j < QO_UI_N (uip); j++)
 		{
 		  if (!intl_identifier_casecmp
@@ -7259,7 +7284,8 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 		      break;
 		    }
 		}
-	      if (QO_UI_FORCE (uip, 0) == -2)
+
+	      if (QO_UI_FORCE (uip, 0) == PT_IDX_HINT_ALL_EXCEPT)
 		{
 		  /* USING INDEX ALL EXCEPT case */
 		  if (found)
@@ -7270,15 +7296,23 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 		    }
 		  j = -1;
 		}
-	      else
-		{		/* QO_UI_FORCE(uip, j) could be either -1, 0, or 1 */
-		  /* normal USING INDEX case */
-		  if (!found)
+	      else if (is_hint_force || is_hint_use)
+		{
+		  /* if any indexes are forced or used, use them */
+		  if (!found || QO_UI_FORCE (uip, j) == PT_IDX_HINT_IGNORE)
 		    {
-		      /* this constraint(index) is not specified in
-		         USING INDEX clause; do not use it */
 		      continue;
 		    }
+		}
+	      else
+		{
+		  /* no indexes are used or forced, only ignored */
+		  if (found)
+		    {
+		      /* found as ignored; don't use */
+		      continue;
+		    }
+		  j = -1;
 		}
 	    }
 

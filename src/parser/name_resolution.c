@@ -6406,7 +6406,7 @@ pt_resolve_using_index (PARSER_CONTEXT * parser,
 
   if (index == NULL || index->info.name.original == NULL)
     {
-      if (index->etc != (void *) -3)
+      if (index->etc != (void *) PT_IDX_HINT_CLASS_NONE)
 	{
 	  /* the case of USING INDEX NONE */
 	  return index;
