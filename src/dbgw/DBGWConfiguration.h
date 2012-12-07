@@ -20,17 +20,13 @@
 #ifndef DBGWCONFIGURATION_H_
 #define DBGWCONFIGURATION_H_
 
+#include "DBGWWorkFwd.h"
+#include "DBGWConfigurationFwd.h"
+
 namespace dbgw
 {
 
   using namespace db;
-
-  struct DBGWSQLConnection;
-  class DBGWSQLConnectionManager;
-  class _DBGWConnector;
-
-  typedef boost::unordered_map<string, string,
-          boost::hash<string>, dbgwStringCompareFunc> DBGWDBInfoHashMap;
 
   class _DBGWHost
   {
@@ -50,14 +46,6 @@ namespace dbgw
     int m_nWeight;
   };
 
-  typedef shared_ptr<_DBGWHost> _DBGWHostSharedPtr;
-
-  typedef vector<_DBGWHostSharedPtr> _DBGWHostList;
-
-  class _DBGWExecutorPool;
-
-  class _DBGWGroup;
-
   class _DBGWExecutorProxy
   {
   public:
@@ -66,13 +54,12 @@ namespace dbgw
     virtual ~_DBGWExecutorProxy();
 
     void init(_DBGWBoundQuerySharedPtr pQuery);
-    const DBGWClientResultSetSharedPtr execute(
-        const _DBGWParameter *pParameter = NULL);
-    const DBGWClientBatchResultSetSharedPtr executeBatch(
+    DBGWClientResultSetSharedPtr execute(const _DBGWParameter &parameter);
+    DBGWClientBatchResultSetSharedPtr executeBatch(
         const _DBGWParameterList &parameterList);
 
   private:
-    void bindParameter(const _DBGWParameter *pParameter);
+    void bindParameter(const _DBGWParameter &parameter);
     void bindNull(size_t nIndex, DBGWValueType type);
     void bindInt(size_t nIndex, const DBGWValue *pValue);
     void bindLong(size_t nIndex, const DBGWValue *pValue);
@@ -93,38 +80,35 @@ namespace dbgw
     _DBGWLogDecorator m_paramLogDecorator;
   };
 
-  typedef shared_ptr<_DBGWExecutorProxy> _DBGWExecutorProxySharedPtr;
-
-  typedef boost::unordered_map<string, _DBGWExecutorProxySharedPtr,
-          boost::hash<string>, dbgwStringCompareFunc> _DBGWExecutorProxyHashMap;
-
-  class _DBGWExecutor
+  class _DBGWExecutor : public boost::enable_shared_from_this<_DBGWExecutor>
   {
   public:
+    _DBGWExecutor(_DBGWExecutorPool &executorPool,
+        DBGWConnectionSharedPtr pConnection);
     virtual ~_DBGWExecutor();
 
-    const DBGWClientResultSetSharedPtr execute(_DBGWBoundQuerySharedPtr pQuery,
-        const _DBGWParameter *pParameter = NULL);
-    const DBGWClientBatchResultSetSharedPtr executeBatch(
+    void init(bool bAutocommit, DBGW_TRAN_ISOLATION isolation);
+    void close();
+    void destroy();
+    bool isValid() const;
+    bool isEvictable(unsigned long lMinEvictableIdleTimeMillis);
+
+    DBGWClientResultSetSharedPtr execute(_DBGWBoundQuerySharedPtr pQuery,
+        const _DBGWParameter &parameter);
+    DBGWClientBatchResultSetSharedPtr executeBatch(
         _DBGWBoundQuerySharedPtr pQuery, const _DBGWParameterList &parameterList);
     void setAutocommit(bool bAutocommit);
     void commit();
     void rollback();
-    _DBGWExecutorPool &getExecutorPool();
+    void cancel();
+    void returnToPool(bool bIsForceDrop = false);
 
   public:
     const char *getGroupName() const;
     bool isIgnoreResult() const;
 
   private:
-    _DBGWExecutor(_DBGWExecutorPool &executorPool,
-        DBGWConnectionSharedPtr pConnection);
-    void init(bool bAutocommit, DBGW_TRAN_ISOLATION isolation);
-    void close();
-    void destroy();
-    bool isValid() const;
-    bool isEvictable(long lMinEvictableIdleTimeMillis);
-    _DBGWExecutorProxySharedPtr preparedStatement(
+    _DBGWExecutorProxySharedPtr getExecutorProxy(
         const _DBGWBoundQuerySharedPtr &pQuery);
 
   private:
@@ -139,13 +123,7 @@ namespace dbgw
     _DBGWExecutorProxyHashMap m_proxyMap;
     _DBGWExecutorPool &m_executorPool;
     _DBGWLogger m_logger;
-
-    friend class _DBGWExecutorPool;
   };
-
-  typedef shared_ptr<_DBGWExecutor> _DBGWExecutorSharedPtr;
-
-  typedef list<_DBGWExecutorSharedPtr> _DBGWExecutorList;
 
   struct _DBGWExecutorPoolContext
   {
@@ -155,9 +133,9 @@ namespace dbgw
     static int DEFAULT_MIN_IDLE();
     static int DEFAULT_MAX_IDLE();
     static int DEFAULT_MAX_ACTIVE();
-    static long DEFAULT_TIME_BETWEEN_EVICTION_RUNS_MILLIS();
+    static unsigned long DEFAULT_TIME_BETWEEN_EVICTION_RUNS_MILLIS();
     static int DEFAULT_NUM_TESTS_PER_EVICTIONRUN();
-    static long DEFAULT_MIN_EVICTABLE_IDLE_TIMEMILLIS();
+    static unsigned long DEFAULT_MIN_EVICTABLE_IDLE_TIMEMILLIS();
     static DBGW_TRAN_ISOLATION DEFAULT_ISOLATION();
     static bool DEFAULT_AUTOCOMMIT();
 
@@ -165,9 +143,9 @@ namespace dbgw
     int minIdle;
     int maxIdle;
     int maxActive;
-    long timeBetweenEvictionRunsMillis;
+    unsigned long timeBetweenEvictionRunsMillis;
     int numTestsPerEvictionRun;
-    long minEvictableIdleTimeMillis;
+    unsigned long minEvictableIdleTimeMillis;
     DBGW_TRAN_ISOLATION isolation;
     bool autocommit;
   };
@@ -180,7 +158,7 @@ namespace dbgw
 
     void init(const _DBGWExecutorPoolContext &context);
     _DBGWExecutorSharedPtr getExecutor();
-    void returnExecutor(_DBGWExecutorSharedPtr pExecuter);
+    void returnExecutor(_DBGWExecutorSharedPtr pExecuter, bool bIsDetached = false);
     void evictUnsuedExecutor(int nCheckCount);
     void close();
 
@@ -218,7 +196,7 @@ namespace dbgw
     const string &getName() const;
     bool isInactivate() const;
     bool isIgnoreResult() const;
-    bool isUseDefaultParameterValue() const;
+    bool isUseDefaultValueWhenFailedToCastParam() const;
     bool empty() const;
 
   private:
@@ -236,27 +214,18 @@ namespace dbgw
     _DBGWLogger m_logger;
   };
 
-  typedef shared_ptr<_DBGWGroup> _DBGWGroupSharedPtr;
-
-  typedef vector<_DBGWGroupSharedPtr> _DBGWGroupList;
-
   class _DBGWService : public system::_ThreadData
   {
   public:
-    static long DEFAULT_MAX_WAIT_EXIT_TIME_MILSEC();
-
-  public:
-    _DBGWService(const string &fileName, const string &nameSpace,
-        const string &description, bool bValidateResult[], int nValidateRatio,
-        long lMaxWaitExitTimeMilSec);
+    _DBGWService(DBGWConfiguration *pConfiguration, const string &fileName,
+        const string &nameSpace, const string &description,
+        bool bValidateResult[], int nValidateRatio);
     virtual ~ _DBGWService();
 
     void addGroup(_DBGWGroupSharedPtr pGroup);
     void initPool(const _DBGWExecutorPoolContext &context);
     void setForceValidateResult();
-    void setMaxWaitExitTimeMilSec(long lMaxWaitExitTimeMilSec);
     _DBGWExecutorList getExecutorList();
-    void returnExecutorList(_DBGWExecutorList &executorList);
     bool isValidateResult(DBGWStatementType type);
     void evictUnsuedExecutor();
     void startEvictorThread();
@@ -269,21 +238,21 @@ namespace dbgw
     const _DBGWExecutorPoolContext &getExecutorPoolContext() const;
 
   private:
+    static void run(const system::_Thread *pThread,
+        system::_ThreadDataSharedPtr pData);
+
+  private:
+    DBGWConfiguration *m_pConfiguration;
     string m_fileName;
     string m_nameSpace;
     string m_description;
     bool m_bValidateResult[DBGW_STMT_TYPE_SIZE];
     int m_nValidateRatio;
-    long m_lMaxWaitExitTimeMilSec;
     /* (groupName => DBGWGroup) */
     _DBGWGroupList m_groupList;
     _DBGWExecutorPoolContext m_poolContext;
     system::_ThreadSharedPtr m_pEvictorThread;
   };
-
-  typedef shared_ptr<_DBGWService> _DBGWServiceSharedPtr;
-
-  typedef vector<_DBGWServiceSharedPtr> _DBGWServiceList;
 
   class _DBGWResource
   {
@@ -298,23 +267,27 @@ namespace dbgw
     int m_nRefCount;
   };
 
-  typedef shared_ptr<_DBGWResource> _DBGWResourceSharedPtr;
+  typedef boost::shared_ptr<_DBGWResource> _DBGWResourceSharedPtr;
 
   class _DBGWConnector: public _DBGWResource
   {
   public:
-    _DBGWConnector();
+    _DBGWConnector(DBGWConfiguration *pConfiguration);
     virtual ~ _DBGWConnector();
 
     void addService(_DBGWServiceSharedPtr pService);
     _DBGWService *getService(const char *szNameSpace);
 
+  public:
+    DBGWConfiguration *getConfiguration() const;
+
   private:
     /* (namespace => _DBGWService) */
     _DBGWServiceList m_serviceList;
+    DBGWConfiguration *m_pConfiguration;
   };
 
-  typedef shared_ptr<_DBGWConnector> _DBGWConnectorSharedPtr;
+  typedef boost::shared_ptr<_DBGWConnector> _DBGWConnectorSharedPtr;
 
   typedef vector<_DBGWQuerySharedPtr> _DBGWQueryGroupList;
 
@@ -338,7 +311,7 @@ namespace dbgw
     size_t size() const;
     DBGWQueryNameList getQueryNameList() const;
     _DBGWBoundQuerySharedPtr getQuery(const char *szSqlName, const char *szGroupName,
-        const _DBGWParameter *pParameter, bool bFirstGroup = false) const;
+        const _DBGWParameter &parameter, bool bFirstGroup = false) const;
     DBGWQueryMapperVersion getVersion() const;
 
   private:
@@ -346,8 +319,6 @@ namespace dbgw
     _DBGWQuerySqlHashMap m_querySqlMap;
     DBGWQueryMapperVersion m_version;
   };
-
-  typedef shared_ptr<_DBGWQueryMapper> _DBGWQueryMapperSharedPtr;
 
   typedef boost::unordered_map<int, _DBGWResourceSharedPtr,
           boost::hash<int>, dbgwIntCompareFunc> _DBGWResourceMap;
@@ -395,11 +366,16 @@ namespace dbgw
   class DBGWConfiguration
   {
   public:
+    static unsigned long DEFAULT_MAX_WAIT_EXIT_TIME_MILSEC();
+
+  public:
     DBGWConfiguration();
     DBGWConfiguration(const char *szConfFileName);
     DBGWConfiguration(const char *szConfFileName, bool bLoadXml);
     virtual ~ DBGWConfiguration();
 
+    void setWaitTimeMilSec(unsigned long ulWaitTimeMilSec);
+    void setMaxWaitExitTimeMilSec(unsigned long ulMaxWaitExitTimeMilSec);
     bool loadConnector(const char *szXmlPath = NULL);
     bool loadQueryMapper();
     bool loadQueryMapper(const char *szXmlPath, bool bAppend = false);
@@ -411,18 +387,27 @@ namespace dbgw
     _DBGWService *getService(const _DBGWConfigurationVersion &stVersion,
         const char *szNameSpace);
     _DBGWQueryMapper *getQueryMapper(const _DBGWConfigurationVersion &stVersion);
+    _DBGWWorkerSharedPtr getWorker();
 
   public:
+    unsigned long getWaitTimeMilSec() const;
+    unsigned long getMaxWaitExitTimeMilSec() const;
     int getConnectorSize() const;
     int getQueryMapperSize() const;
 
   private:
+    void loadConfiguration();
+
+  private:
     string m_confFileName;
+    unsigned long m_ulWaitTimeMilSec;
+    unsigned long m_ulMaxWaitExitTimeMilSec;
     _DBGWVersionedResource m_connResource;
     _DBGWVersionedResource m_queryResource;
+    _DBGWWorkerPool m_workerPool;
   };
 
-  typedef shared_ptr<DBGWConfiguration> DBGWConfigurationSharedPtr;
+  typedef boost::shared_ptr<DBGWConfiguration> DBGWConfigurationSharedPtr;
 
 }
 

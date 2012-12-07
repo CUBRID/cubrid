@@ -22,7 +22,6 @@
 #include "DBGWValue.h"
 #include "DBGWLogger.h"
 #include "DBGWDataBaseInterface.h"
-#include "DBGWClient.h"
 #include "DBGWQuery.h"
 #include "DBGWCUBRIDInterface.h"
 
@@ -223,7 +222,6 @@ namespace dbgw
 
       return true;
     }
-
 
     bool DBGWConnection::getAutoCommit() const
     {

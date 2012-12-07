@@ -17,26 +17,24 @@
  *
  */
 
+#ifndef DBGWWORKFWD_H_
+#define DBGWWORKFWD_H_
+
 namespace dbgw
 {
 
-  class DBGWClientResult;
+  class _DBGWWorkerJob;
+  typedef boost::shared_ptr<_DBGWWorkerJob> _DBGWWorkerJobSharedPtr;
 
-  typedef boost::shared_ptr<DBGWClientResult> DBGWClientResultSetSharedPtr;
+  class _DBGWWorkerJobResult;
+  typedef boost::shared_ptr<_DBGWWorkerJobResult> _DBGWWorkerJobResultSharedPtr;
 
-  typedef db::DBGWBatchResultSetSharedPtr DBGWClientBatchResultSetSharedPtr;
+  class _DBGWWorker;
+  typedef boost::shared_ptr<_DBGWWorker> _DBGWWorkerSharedPtr;
+  typedef list<_DBGWWorkerSharedPtr> _DBGWWorkerList;
 
-  struct _DBGWClientResultSetMetaDataRaw;
-
-  typedef vector<_DBGWClientResultSetMetaDataRaw> _DBGWClientResultSetMetaDataRawList;
-
-  typedef boost::unordered_map<string, int,
-          boost::hash<string>, dbgwStringCompareFunc> _DBGWClientResultKeyIndexMap;
-
-  typedef _DBGWParameter DBGWClientParameter;
-  typedef _DBGWParameterList DBGWClientParameterList;
-
-  class _DBGWClientProxy;
-  typedef boost::shared_ptr<_DBGWClientProxy> _DBGWClientProxySharedPtr;
+  class _DBGWWorkerPool;
 
 }
+
+#endif

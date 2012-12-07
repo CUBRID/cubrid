@@ -57,25 +57,25 @@ namespace dbgw
     };
 
     class DBGWConnection;
-    typedef shared_ptr<DBGWConnection> DBGWConnectionSharedPtr;
+    typedef boost::shared_ptr<DBGWConnection> DBGWConnectionSharedPtr;
 
     class DBGWStatement;
-    typedef shared_ptr<DBGWStatement> DBGWStatementSharedPtr;
+    typedef boost::shared_ptr<DBGWStatement> DBGWStatementSharedPtr;
 
     class DBGWPreparedStatement;
-    typedef shared_ptr<DBGWPreparedStatement> DBGWPreparedStatementSharedPtr;
+    typedef boost::shared_ptr<DBGWPreparedStatement> DBGWPreparedStatementSharedPtr;
 
     class DBGWCallableStatement;
-    typedef shared_ptr<DBGWCallableStatement> DBGWCallableStatementSharedPtr;
+    typedef boost::shared_ptr<DBGWCallableStatement> DBGWCallableStatementSharedPtr;
 
     class DBGWResultSet;
-    typedef shared_ptr<DBGWResultSet> DBGWResultSetSharedPtr;
+    typedef boost::shared_ptr<DBGWResultSet> DBGWResultSetSharedPtr;
 
     class DBGWResultSetMetaData;
-    typedef shared_ptr<DBGWResultSetMetaData> DBGWResultSetMetaDataSharedPtr;
+    typedef boost::shared_ptr<DBGWResultSetMetaData> DBGWResultSetMetaDataSharedPtr;
 
     class DBGWBatchResultSet;
-    typedef shared_ptr<DBGWBatchResultSet> DBGWBatchResultSetSharedPtr;
+    typedef boost::shared_ptr<DBGWBatchResultSet> DBGWBatchResultSetSharedPtr;
 
     class DBGWDriverManager
     {
@@ -90,7 +90,7 @@ namespace dbgw
     /**
      * External access class.
      */
-    class DBGWConnection : public enable_shared_from_this<DBGWConnection>
+    class DBGWConnection : public boost::enable_shared_from_this<DBGWConnection>
     {
     public:
       DBGWConnection(const char *szUrl, const char *szUser,
@@ -109,6 +109,7 @@ namespace dbgw
       bool setAutoCommit(bool bAutocommit);
       bool commit();
       bool rollback();
+      virtual void cancel() = 0;
 
     public:
       bool getAutoCommit() const;
@@ -134,8 +135,7 @@ namespace dbgw
     /**
      * External access class.
      */
-    class DBGWStatement : public
-      enable_shared_from_this<DBGWPreparedStatement>
+    class DBGWStatement : public boost::enable_shared_from_this<DBGWPreparedStatement>
     {
     public:
       DBGWStatement(DBGWConnectionSharedPtr pConnection);
@@ -312,7 +312,7 @@ namespace dbgw
       virtual ~DBGWBatchResultSet();
 
     public:
-      size_t size() const ;
+      size_t size() const;
       DBGWBatchExecuteStatus getExecuteStatus() const;
       bool getAffectedRow(size_t nIndex, int *pAffectedRow) const;
       bool getErrorCode(size_t nIndex, int *pErrorCode) const;

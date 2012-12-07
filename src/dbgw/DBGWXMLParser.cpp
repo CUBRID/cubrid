@@ -33,6 +33,7 @@
 #include "DBGWValue.h"
 #include "DBGWDataBaseInterface.h"
 #include "DBGWQuery.h"
+#include "DBGWWork.h"
 #include "DBGWConfiguration.h"
 #include "DBGWClient.h"
 #include "DBGWXMLParser.h"
@@ -43,6 +44,7 @@ namespace dbgw
   static const int XML_FILE_BUFFER_SIZE = 4096;
 
   static const char *XML_NODE_CONFIGURATION = "configuration";
+  static const char *XML_NODE_CONFIGURATION_PROP_MAX_WAIT_EXIT_TIME_MILLIS = "maxWaitExitTimeMillis";
   static const char *XML_NODE_CONNECTOR = "connector";
   static const char *XML_NODE_QUERYMAP = "querymap";
   static const char *XML_NODE_QUERYMAP_PROP_VERSION = "version";
@@ -54,7 +56,6 @@ namespace dbgw
   static const char *XML_NODE_SERVICE_PROP_VALIDATE_RESULT_HIDDEN = "validate-result";
   static const char *XML_NODE_SERVICE_PROP_VALIDATE_RATIO = "validateRatio";
   static const char *XML_NODE_SERVICE_PROP_VALIDATE_RATIO_HIDDEN = "validate-ratio";
-  static const char *XML_NODE_SERVICE_PROP_MAX_WAIT_EXIT_TIME_MILLIS = "maxWaitExitTimeMillis";
 
   static const char *XML_NODE_GROUP = "group";
   static const char *XML_NODE_GROUP_PROP_NAME = "name";
@@ -944,14 +945,12 @@ namespace dbgw
         XML_NODE_SERVICE_PROP_VALIDATE_RESULT_HIDDEN, bValidateResult);
 
     m_pService = _DBGWServiceSharedPtr(
-        new _DBGWService(getFileName(),
+        new _DBGWService(m_pConnector->getConfiguration(), getFileName(),
             properties.get(XML_NODE_SERVICE_PROP_NAMESPACE, true),
             properties.get(XML_NODE_SERVICE_PROP_DESCRIPTION, false),
             bValidateResult,
             properties.getInt(XML_NODE_SERVICE_PROP_VALIDATE_RATIO,
-                XML_NODE_SERVICE_PROP_VALIDATE_RATIO_HIDDEN, false),
-            properties.getLong(XML_NODE_SERVICE_PROP_MAX_WAIT_EXIT_TIME_MILLIS,
-                false, _DBGWService::DEFAULT_MAX_WAIT_EXIT_TIME_MILSEC())));
+                XML_NODE_SERVICE_PROP_VALIDATE_RATIO_HIDDEN, false)));
     m_pConnector->addService(m_pService);
   }
 
@@ -1704,22 +1703,39 @@ namespace dbgw
         properties.get(XML_NODE_30_GROUP_PROP_NAME, true));
   }
 
-  _DBGWConfigurationParser::_DBGWConfigurationParser(const string &fileName,
-      _DBGWConnectorSharedPtr pConnector) :
-    _DBGWParser(fileName), m_pConnector(pConnector)
+  _DBGWConfigurationParser::_DBGWConfigurationParser(
+      DBGWConfiguration &configuraion,
+      const string &fileName, _DBGWConnectorSharedPtr pConnector,
+      _DBGWQueryMapperSharedPtr pQueryMapper) :
+    _DBGWParser(fileName), m_configuration(configuraion),
+    m_pConnector(pConnector), m_pQueryMapper(pQueryMapper)
   {
   }
 
-  _DBGWConfigurationParser::_DBGWConfigurationParser(const string &fileName,
+  _DBGWConfigurationParser::_DBGWConfigurationParser(
+      DBGWConfiguration &configuraion, const string &fileName,
+      _DBGWConnectorSharedPtr pConnector) :
+    _DBGWParser(fileName), m_configuration(configuraion),
+    m_pConnector(pConnector)
+  {
+  }
+
+  _DBGWConfigurationParser::_DBGWConfigurationParser(
+      DBGWConfiguration &configuraion, const string &fileName,
       _DBGWQueryMapperSharedPtr pQueryMapper) :
-    _DBGWParser(fileName), m_pQueryMapper(pQueryMapper)
+    _DBGWParser(fileName), m_configuration(configuraion),
+    m_pQueryMapper(pQueryMapper)
   {
   }
 
   void _DBGWConfigurationParser::doOnElementStart(const XML_Char *szName,
       _DBGWExpatXMLProperties &properties)
   {
-    if (!strcasecmp(szName, XML_NODE_LOG))
+    if (!strcasecmp(szName, XML_NODE_CONFIGURATION))
+      {
+        parseConfiguration(properties);
+      }
+    else if (!strcasecmp(szName, XML_NODE_LOG))
       {
         parseLog(properties);
       }
@@ -1735,6 +1751,16 @@ namespace dbgw
 
   void _DBGWConfigurationParser::doOnElementEnd(const XML_Char *szName)
   {
+  }
+
+  void _DBGWConfigurationParser::parseConfiguration(
+      _DBGWExpatXMLProperties &properties)
+  {
+    unsigned long ulMaxWaitExitTimeMilSec = properties.getLong(
+        XML_NODE_CONFIGURATION_PROP_MAX_WAIT_EXIT_TIME_MILLIS, false,
+        DBGWConfiguration::DEFAULT_MAX_WAIT_EXIT_TIME_MILSEC());
+
+    m_configuration.setMaxWaitExitTimeMilSec(ulMaxWaitExitTimeMilSec);
   }
 
   void _DBGWConfigurationParser::parseQueryMap(_DBGWExpatXMLProperties &properties)

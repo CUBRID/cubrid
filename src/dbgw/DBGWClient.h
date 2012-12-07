@@ -27,6 +27,7 @@
 #include "DBGWPorting.h"
 #include "DBGWDataBaseInterface.h"
 #include "DBGWQuery.h"
+#include "DBGWWork.h"
 #include "DBGWConfiguration.h"
 
 #include "DBGWClientFwd.h"
@@ -44,21 +45,26 @@ namespace dbgw
   class _DBGWClientProxy
   {
   public:
-    _DBGWClientProxy(_DBGWService *pService, _DBGWQueryMapper *pQueryMapper,
-        _DBGWExecutorList &executorList);
-
+    _DBGWClientProxy(_DBGWService *pService, _DBGWQueryMapper *pQueryMapper);
     virtual ~_DBGWClientProxy();
 
-    void init(const char *szSqlName, const DBGWClientParameter *pParameter);
-    void init(const char *szSqlName,
+    void releaseExecutor();
+    void forceReleaseExecutor();
+
+    void setAutocommit(bool bAutocommit);
+    void commit();
+    void rollback();
+    void execute(const string &sqlName, const DBGWClientParameter &parameter);
+    void executeBatch(const string &sqlName,
         const DBGWClientParameterList &parameterList);
-    void execute();
 
     DBGWClientResultSetSharedPtr getReusltSet() const;
     DBGWClientBatchResultSetSharedPtr getBatchReusltSet() const;
 
   private:
-    void doInit(const char *szSqlName);
+    void init();
+    void clearResult();
+    void doExecute();
     _DBGWBoundQuerySharedPtr getQuery(_DBGWExecutorList::iterator it);
     void executeQuery(_DBGWExecutorList::iterator it,
         _DBGWBoundQuerySharedPtr pQuery);
@@ -73,10 +79,10 @@ namespace dbgw
     bool m_bExecuteQuery;
     _DBGWService *m_pService;
     _DBGWQueryMapper *m_pQueryMapper;
-    _DBGWExecutorList &m_executorList;
+    _DBGWExecutorList m_executorList;
     DBGWClientExecutionType m_execType;
     string m_sqlName;
-    const DBGWClientParameter *m_pParameter;
+    DBGWClientParameter m_parameter;
     DBGWClientParameterList m_parameterList;
     DBGWClientResultSetSharedPtr m_pExternalResultSet;
     DBGWClientResultSetSharedPtr m_pInternalResultSet;
@@ -86,42 +92,56 @@ namespace dbgw
     DBGWException m_lastException;
   };
 
-  typedef shared_ptr<_DBGWClientProxy> _DBGWClientProxySharedPtr;
-
   class DBGWClient
   {
   public:
     DBGWClient(DBGWConfiguration &configuration, const char *szNameSpace = NULL);
     virtual ~ DBGWClient();
 
+    void setWaitTimeMilSec(unsigned long ulWaitTimeMilSec);
     bool setForceValidateResult();
     bool setAutocommit(bool bAutocommit);
+    bool setAutocommit(bool bAutocommit, unsigned long ulWaitTimeMilSec);
     bool commit();
+    bool commit(unsigned long ulWaitTimeMilSec);
     bool rollback();
-    const DBGWClientResultSetSharedPtr exec(const char *szSqlName,
+    bool rollback(unsigned long ulWaitTimeMilSec);
+    DBGWClientResultSetSharedPtr exec(const char *szSqlName,
+        unsigned long ulWaitTimeMilSec);
+    DBGWClientResultSetSharedPtr exec(const char *szSqlName,
         const DBGWClientParameter *pParameter = NULL);
-    const DBGWClientBatchResultSetSharedPtr execBatch(const char *szSqlName,
+    DBGWClientResultSetSharedPtr exec(const char *szSqlName,
+        const DBGWClientParameter *pParameter, unsigned long ulWaitTimeMilSec);
+    DBGWClientBatchResultSetSharedPtr execBatch(const char *szSqlName,
         const DBGWClientParameterList &parameterList);
+    DBGWClientBatchResultSetSharedPtr execBatch(const char *szSqlName,
+        const DBGWClientParameterList &parameterList,
+        unsigned long ulWaitTimeMilSec);
     bool close();
 
   public:
     bool isClosed() const;
     bool isAutocommit() const;
     const _DBGWQueryMapper *getQueryMapper() const;
+    unsigned long getWaitTimeMilSec() const;
 
   private:
     void checkClientIsValid();
+    unsigned long bindWorker();
+    unsigned long bindWorker(unsigned long ulWaitTimeMilSec);
+    void detachWorker();
+    void releaseWorker();
 
   private:
     DBGWConfiguration &m_configuration;
     _DBGWConfigurationVersion m_stVersion;
     _DBGWService *m_pService;
     _DBGWQueryMapper *m_pQueryMapper;
-    _DBGWExecutorList m_executorList;
-    _DBGWClientProxySharedPtr m_pProxy;
+    _DBGWWorkerSharedPtr m_pWorker;
     bool m_bClosed;
     bool m_bValidClient;
     bool m_bAutocommit;
+    unsigned long m_ulWaitTimeMilSec;
 
   private:
     static const char *szVersionString;

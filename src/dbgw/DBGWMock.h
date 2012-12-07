@@ -25,14 +25,112 @@ namespace dbgw
   typedef enum
   {
     CCI_FAULT_TYPE_NONE = 0,
-    CCI_FAULT_TYPE_EXEC_BEFORE_RETURN_ERR,
-    CCI_FAULT_TYPE_EXEC_AFTER_RETURN_ERR,
-  } CCI_FAULT_TYPE;
+    CCI_FAULT_TYPE_EXEC_BEFORE,
+    CCI_FAULT_TYPE_EXEC_AFTER,
+  } _CCI_FAULT_TYPE;
 
-  extern void cci_mock_set_fault(CCI_FAULT_TYPE type, const char *fault_function,
-      int fault_int_return);
-  extern void cci_mock_clear_fault();
-  extern void cci_mock_set_int_arg(int index, int arg);
+  class _CCIFault
+  {
+  public:
+    _CCIFault(_CCI_FAULT_TYPE type, int nReturnCode);
+    virtual ~_CCIFault();
+
+    bool raiseFaultBeforeExecute(T_CCI_ERROR *pCCIError);
+    bool raiseFaultAfterExecute(T_CCI_ERROR *pCCIError);
+
+  public:
+    int getReturnCode() const;
+
+  protected:
+    virtual bool doRaiseFaultBeforeExecute(T_CCI_ERROR *pCCIError) = 0;
+    virtual bool doRaiseFaultAfterExecute(T_CCI_ERROR *pCCIError) = 0;
+
+  private:
+    _CCI_FAULT_TYPE m_type;
+    int m_nReturnCode;
+  };
+
+  class _CCIFaultReturnError : public _CCIFault
+  {
+  public:
+    _CCIFaultReturnError(_CCI_FAULT_TYPE type, int nReturnCode,
+        int nErrorCode, string errorMessage);
+    virtual ~_CCIFaultReturnError();
+
+  protected:
+    virtual bool doRaiseFaultBeforeExecute(T_CCI_ERROR *pCCIError);
+    virtual bool doRaiseFaultAfterExecute(T_CCI_ERROR *pCCIError);
+
+  private:
+    int m_nErrorCode;
+    string m_errorMessage;
+  };
+
+  class _CCIFaultSleep : public _CCIFault
+  {
+  public:
+    _CCIFaultSleep(_CCI_FAULT_TYPE type, unsigned long ulSleepMilSec);
+    virtual ~_CCIFaultSleep();
+
+  protected:
+    virtual bool doRaiseFaultBeforeExecute(T_CCI_ERROR *pCCIError);
+    virtual bool doRaiseFaultAfterExecute(T_CCI_ERROR *pCCIError);
+
+  private:
+    unsigned long m_ulSleepMilSec;
+  };
+
+  typedef boost::shared_ptr<_CCIFault> _CCIFaultSharedPtr;
+
+  typedef list<_CCIFaultSharedPtr> _CCIFaultRawList;
+
+  class _CCIFaultList
+  {
+  public:
+    _CCIFaultList();
+    virtual ~_CCIFaultList();
+
+    void addFault(_CCIFaultSharedPtr pFault);
+    _CCIFaultSharedPtr getFault();
+
+  private:
+    _CCIFaultRawList m_faultList;
+  };
+
+  typedef boost::shared_ptr<_CCIFaultList> _CCIFaultListSharedPtr;
+
+  typedef boost::unordered_map<string, _CCIFaultListSharedPtr,
+          boost::hash<string>, dbgwStringCompareFunc> _CCIFaultListMap;
+
+  /**
+   * This class is singleton object.
+   */
+  class _CCIMockManager
+  {
+  public:
+    _CCIMockManager();
+
+    void addReturnErrorFault(const char *szFaultFunction, _CCI_FAULT_TYPE type,
+        int nReturnCode = 0, int nErrorCode = 0, const char *szErrorMessage = "");
+    void addSleepFault(const char *szFaultFunction, _CCI_FAULT_TYPE type,
+        unsigned long ulSleepMilSec);
+    _CCIFaultSharedPtr getFault(const char *szFaultFunction);
+    void clearFaultAll();
+
+  public:
+    static _CCIMockManager *getInstance();
+
+  private:
+    /**
+     * Don't create this class in stack memory.
+     */
+    virtual ~_CCIMockManager();
+
+  private:
+    static _CCIMockManager *m_pInstance;
+    _CCIFaultListMap m_faultListMap;
+    system::_MutexSharedPtr m_pMutex;
+  };
 
   extern int cci_mock_connect_with_url(char *url, char *user, char *password);
   extern int cci_mock_prepare(int con_handle, char *sql_stmt, char flag,
@@ -41,75 +139,9 @@ namespace dbgw
       T_CCI_ERROR *err_buf);
   extern int cci_mock_execute_array(int req_h_id, T_CCI_QUERY_RESULT **qr,
       T_CCI_ERROR *err_buf);
-
-
-  typedef enum
-  {
-    DBGW_FAULT_TYPE_NONE = 0,
-    DBGW_FAULT_TYPE_PARTIAL_CONNECT_FAIL,
-    DBGW_FAULT_TYPE_PARTIAL_PREPARE_FAIL,
-    DBGW_FAULT_TYPE_PARTIAL_EXECUTE_FAIL,
-    DBGW_FAULT_TYPE_PARTIAL_EXECUTE_ARRAY_FAIL,
-  } DBGW_FAULT_TYPE;
-
-  extern DBGW_FAULT_TYPE dbgw_mock_get_fault();
-  extern const char *dbgw_mock_get_group();
-  extern int dbgw_mock_get_int_return();
-
-  extern void dbgw_mock_clear_fault();
-  extern void dbgw_mock_set_fault(DBGW_FAULT_TYPE type, const char *group = NULL,
-      int int_return = CCI_ER_COMMUNICATION);
-
-#ifdef BUILD_MOCK
-#define DBGW_FAULT_PARTIAL_CONNECT_FAIL(GROUP) \
-  do { \
-      if (dbgw_mock_get_fault() == DBGW_FAULT_TYPE_PARTIAL_CONNECT_FAIL) { \
-          if (dbgw_mock_get_group() == NULL || !strcmp(dbgw_mock_get_group(), GROUP)) { \
-              cci_mock_set_fault(CCI_FAULT_TYPE_EXEC_BEFORE_RETURN_ERR, "cci_mock_connect_with_url", dbgw_mock_get_int_return()); \
-          } else { \
-              cci_mock_clear_fault(); \
-          } \
-      } \
-  } while (false)
-
-#define DBGW_FAULT_PARTIAL_PREPARE_FAIL(GROUP) \
-  do { \
-      if (dbgw_mock_get_fault() == DBGW_FAULT_TYPE_PARTIAL_PREPARE_FAIL) { \
-          if (dbgw_mock_get_group() == NULL || !strcmp(dbgw_mock_get_group(), GROUP)) { \
-              cci_mock_set_fault(CCI_FAULT_TYPE_EXEC_BEFORE_RETURN_ERR, "cci_mock_prepare", dbgw_mock_get_int_return()); \
-          } else { \
-              cci_mock_clear_fault(); \
-          } \
-      } \
-  } while (false)
-
-#define DBGW_FAULT_PARTIAL_EXECUTE_FAIL(GROUP) \
-  do { \
-      if (dbgw_mock_get_fault() == DBGW_FAULT_TYPE_PARTIAL_EXECUTE_FAIL) { \
-          if (dbgw_mock_get_group() == NULL || !strcmp(dbgw_mock_get_group(), GROUP)) { \
-              cci_mock_set_fault(CCI_FAULT_TYPE_EXEC_BEFORE_RETURN_ERR, "cci_mock_execute", dbgw_mock_get_int_return()); \
-          } else { \
-              cci_mock_clear_fault(); \
-          } \
-      } \
-  } while (false)
-
-#define DBGW_FAULT_PARTIAL_EXECUTE_ARRAY_FAIL(GROUP) \
-  do { \
-      if (dbgw_mock_get_fault() == DBGW_FAULT_TYPE_PARTIAL_EXECUTE_ARRAY_FAIL) { \
-          if (dbgw_mock_get_group() == NULL || !strcmp(dbgw_mock_get_group(), GROUP)) { \
-              cci_mock_set_fault(CCI_FAULT_TYPE_EXEC_BEFORE_RETURN_ERR, "cci_mock_execute_array", dbgw_mock_get_int_return()); \
-          } else { \
-              cci_mock_clear_fault(); \
-          } \
-      } \
-  } while (false)
-#else
-#define DBGW_FAULT_PARTIAL_CONNECT_FAIL(GROUP)
-#define DBGW_FAULT_PARTIAL_PREPARE_FAIL(GROUP)
-#define DBGW_FAULT_PARTIAL_EXECUTE_FAIL(GROUP)
-#define DBGW_FAULT_PARTIAL_EXECUTE_ARRAY_FAIL(GROUP)
-#endif
+  extern int cci_mock_set_autocommit(int con_handle,
+      CCI_AUTOCOMMIT_MODE autocommit_mode);
+  extern int cci_mock_end_tran(int con_h_id, char type, T_CCI_ERROR *err_buf);
 
 }
 

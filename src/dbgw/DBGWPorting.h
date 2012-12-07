@@ -76,6 +76,10 @@ namespace dbgw
   namespace system
   {
 
+    static const unsigned long INFINITE_TIMEOUT = 0;
+
+    unsigned long getdifftimeofday(struct timeval &begin);
+
     class _Mutex
     {
     public:
@@ -92,7 +96,7 @@ namespace dbgw
       void operator=(const _Mutex &);
     };
 
-    typedef shared_ptr<_Mutex> _MutexSharedPtr;
+    typedef boost::shared_ptr<_Mutex> _MutexSharedPtr;
 
     class _MutexFactory
     {
@@ -103,19 +107,19 @@ namespace dbgw
       ~_MutexFactory();
     };
 
-    class _MutexLock
+    class _MutexAutoLock
     {
     public:
-      explicit _MutexLock(_MutexSharedPtr pMutex);
-      ~_MutexLock();
+      explicit _MutexAutoLock(_MutexSharedPtr pMutex);
+      ~_MutexAutoLock();
       void unlock();
 
     private:
       _MutexSharedPtr m_pMutex;
       bool m_bUnlocked;
 
-      _MutexLock(const _MutexLock &);
-      void operator=(const _MutexLock &);
+      _MutexAutoLock(const _MutexAutoLock &);
+      void operator=(const _MutexAutoLock &);
     };
 
     class _ConditionVariable
@@ -127,10 +131,10 @@ namespace dbgw
       virtual void notify() = 0;
       virtual void notifyAll() = 0;
       virtual void wait(_MutexSharedPtr pMutex) = 0;
-      virtual void timedWait(_MutexSharedPtr pMutex, long lWaitTimeMilSec) = 0;
+      virtual void timedWait(_MutexSharedPtr pMutex, unsigned long lWaitTimeMilSec) = 0;
     };
 
-    typedef shared_ptr<_ConditionVariable> _ConditionVariableSharedPtr;
+    typedef boost::shared_ptr<_ConditionVariable> _ConditionVariableSharedPtr;
 
     class _ConditionVariableFactory
     {
@@ -155,7 +159,7 @@ namespace dbgw
       string m_path;
     };
 
-    typedef shared_ptr<_Directory> _DirectorySharedPtr;
+    typedef boost::shared_ptr<_Directory> _DirectorySharedPtr;
 
     class _DirectoryFactory
     {
@@ -165,17 +169,17 @@ namespace dbgw
 
     class _Thread;
 
-    typedef shared_ptr<_Thread> _ThreadSharedPtr;
+    typedef boost::shared_ptr<_Thread> _ThreadSharedPtr;
 
     /**
      * By using shared_from_this(), guarantee that
      * ThreadData will be alive until thread is dead.
      */
-    class _ThreadData : public enable_shared_from_this<_ThreadData>
+    class _ThreadData : public boost::enable_shared_from_this<_ThreadData>
     {
     };
 
-    typedef shared_ptr<_ThreadData> _ThreadDataSharedPtr;
+    typedef boost::shared_ptr<_ThreadData> _ThreadDataSharedPtr;
 
     enum _ThreadStatus
     {
@@ -202,7 +206,7 @@ namespace dbgw
 #define _THREAD_RETURN_VALUE NULL
 #endif
 
-    class _Thread : public enable_shared_from_this<_Thread>
+    class _Thread : public boost::enable_shared_from_this<_Thread>
     {
     public:
       static long MIN_SLEEP_TIME_MILSEC();
@@ -214,7 +218,8 @@ namespace dbgw
       void start();
       void start(_ThreadDataSharedPtr pData);
       void join();
-      void timedJoin(int nWaitTimeMilSec);
+      void timedJoin(unsigned long nWaitTimeMilSec);
+      void detach();
 
     public:
       bool isRunning() const;

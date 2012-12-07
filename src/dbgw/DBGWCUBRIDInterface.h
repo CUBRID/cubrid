@@ -56,6 +56,8 @@ namespace dbgw
       virtual DBGWPreparedStatementSharedPtr prepareStatement(
           const char *szSql);
 
+      virtual void cancel();
+
     protected:
       virtual void doConnect();
       virtual void doClose();
@@ -109,7 +111,7 @@ namespace dbgw
       vector<int> m_nullIndList;
     };
 
-    typedef shared_ptr<_DBGWCUBRIDArrayParameter> _DBGWCUBRIDArrayParameterSharedPtr;
+    typedef boost::shared_ptr<_DBGWCUBRIDArrayParameter> _DBGWCUBRIDArrayParameterSharedPtr;
     typedef list<_DBGWCUBRIDArrayParameterSharedPtr> _DBGWCUBRIDArrayParameterList;
 
     class _DBGWCUBRIDStatementBase
@@ -283,7 +285,7 @@ namespace dbgw
       _DBGWCUBRIDResultSetMetaDataRawList m_metaDataRawList;
     };
 
-    typedef shared_ptr<_DBGWCUBRIDResultSetMetaData>
+    typedef boost::shared_ptr<_DBGWCUBRIDResultSetMetaData>
     _DBGWCUBRIDResultSetMetaDataSharedPtr;
 
     class _DBGWCUBRIDResultSet : public DBGWResultSet

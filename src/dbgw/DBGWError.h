@@ -38,8 +38,7 @@ namespace dbgw
     DBGW_ER_CONF_NOT_EXIST_SERVICE                    = -22106,
     DBGW_ER_CONF_INVALID_PARAM_NAME                   = -22107,
     DBGW_ER_CONF_CHANGE_POOL_CONTEXT                  = -22108,
-    DBGW_ER_CONF_FAILED_TO_CREATE_EVICTOR_THREAD      = -22109,
-    DBGW_ER_CONF_INVALID_SQL                          = -22110,
+    DBGW_ER_CONF_INVALID_SQL                          = -22109,
 
     DBGW_ER_SQL_NOT_EXIST_OUT_PARAMETER               = -22201,
     DBGW_ER_SQL_INVALID_PARAMETER_LIST                = -22202,
@@ -64,6 +63,9 @@ namespace dbgw
     DBGW_ER_CLIENT_VALIDATE_VALUE_FAIL                = -22410,
     DBGW_ER_CLIENT_NO_MORE_DATA                       = -22411,
     DBGW_ER_CLIENT_ACCESS_DATA_BEFORE_FETCH           = -22412,
+    DBGW_ER_CLIENT_EXEC_TIMEOUT                       = -22413,
+
+    DBGW_ER_FATAL_FAILED_TO_CREATE_THREAD             = -22500,
 
     DBGW_ER_INTERFACE_ERROR                           = -22600,
 
@@ -199,12 +201,6 @@ namespace dbgw
   public:
     ChangePoolContextException(const char *szContext0ame, int nModifiedValue,
         const char *szDescription) throw();
-  };
-
-  class FailedToCreateEvictorException : public DBGWException
-  {
-  public:
-    FailedToCreateEvictorException() throw();
   };
 
   class InvalidSqlException : public DBGWException
@@ -349,6 +345,24 @@ namespace dbgw
   {
   public:
     AccessDataBeforeFetchException() throw();
+  };
+
+  class FailedToCreateThreadException : public DBGWException
+  {
+  public:
+    FailedToCreateThreadException(const char *szThread) throw();
+  };
+
+  class ExecuteTimeoutExecption : public DBGWException
+  {
+  public:
+    ExecuteTimeoutExecption(long lWaitTimeMilSec) throw();
+  };
+
+  class InvalidClientWorkerThreadException : public DBGWException
+  {
+  public:
+    InvalidClientWorkerThreadException() throw();
   };
 
   class CreateFailParserExeception : public DBGWException

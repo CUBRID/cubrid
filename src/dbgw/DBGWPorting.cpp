@@ -53,6 +53,17 @@ namespace dbgw
   namespace system
   {
 
+    unsigned long getdifftimeofday(struct timeval &begin)
+    {
+      struct timeval now;
+      gettimeofday(&now, NULL);
+
+      unsigned long ulDiffTimeMilSec = (now.tv_sec - begin.tv_sec) * 1000;
+      ulDiffTimeMilSec += (now.tv_usec - begin.tv_usec) / 1000;
+
+      return ulDiffTimeMilSec;
+    }
+
     _Mutex::_Mutex()
     {
     }
@@ -210,18 +221,18 @@ namespace dbgw
       return p;
     }
 
-    _MutexLock::_MutexLock(_MutexSharedPtr pMutex) :
+    _MutexAutoLock::_MutexAutoLock(_MutexSharedPtr pMutex) :
       m_pMutex(pMutex), m_bUnlocked(false)
     {
       m_pMutex->lock();
     }
 
-    _MutexLock::~_MutexLock()
+    _MutexAutoLock::~_MutexAutoLock()
     {
       unlock();
     }
 
-    void _MutexLock::unlock()
+    void _MutexAutoLock::unlock()
     {
       if (m_bUnlocked == false)
         {
@@ -305,7 +316,7 @@ namespace dbgw
       void notify();
       void notifyAll();
       void wait(_MutexSharedPtr pMutex);
-      void timedWait(_MutexSharedPtr pMutex, long lWaitTimeMilSec);
+      void timedWait(_MutexSharedPtr pMutex, unsigned long lWaitTimeMilSec);
 
     private:
       pthread_cond_t m_cond_t;
@@ -374,7 +385,7 @@ namespace dbgw
     }
 
     void WindowsXpConditionVariable::timedWait(_MutexSharedPtr pMutex,
-        long lWaitTimeMilSec)
+        unsigned long lWaitTimeMilSec)
     {
       int nResult;
       pthread_mutex_t *mutex_t = (pthread_mutex_t *) pMutex->get();
@@ -418,7 +429,7 @@ namespace dbgw
       void notify();
       void notifyAll();
       void wait(_MutexSharedPtr pMutex);
-      void timedWait(_MutexSharedPtr pMutex, long lWaitTimeMilSec);
+      void timedWait(_MutexSharedPtr pMutex, unsigned long lWaitTimeMilSec);
 
     private:
       pthread_cond_t m_cond_t;
@@ -450,13 +461,17 @@ namespace dbgw
     }
 
     void WindowsVistaConditionVariable::timedWait(_MutexSharedPtr pMutex,
-        long lWaitTimeMilSec)
+        unsigned long lWaitTimeMilSec)
     {
       if (fp_SleepConditionVariableCS(&m_cond_t.native_cond,
           (CRITICAL_SECTION *) pMutex->get(), lWaitTimeMilSec) == false)
         {
-          CondVarOperationFailException e("timed wait", WAIT_TIMEOUT);
-          DBGW_LOG_ERROR(e.what());
+          DWORD dwErrorCode = GetLastError();
+          CondVarOperationFailException e("timed wait", dwErrorCode);
+          if (dwErrorCode != ERROR_TIMEOUT)
+            {
+              DBGW_LOG_ERROR(e.what());
+            }
           throw e;
         }
     }
@@ -470,7 +485,7 @@ namespace dbgw
       void notify();
       void notifyAll();
       void wait(_MutexSharedPtr pMutex);
-      void timedWait(_MutexSharedPtr pMutex, long lWaitTimeMilSec);
+      void timedWait(_MutexSharedPtr pMutex, unsigned long lWaitTimeMilSec);
 
     private:
       pthread_cond_t m_cond_t;
@@ -538,13 +553,17 @@ namespace dbgw
     }
 
     void PosixConditionVariable::timedWait(_MutexSharedPtr pMutex,
-        long lWaitTimeMilSec)
+        unsigned long lWaitTimeMilSec)
     {
+      struct timeval tp;
       struct timespec ts;
 
-      clock_gettime(CLOCK_REALTIME, &ts);
-      ts.tv_sec += lWaitTimeMilSec / 1000;
-      ts.tv_nsec += (lWaitTimeMilSec % 1000) * 1000 * 1000;
+      gettimeofday(&tp, NULL);
+
+      long int abstime_usec = tp.tv_usec + lWaitTimeMilSec * 1000;
+
+      ts.tv_sec = tp.tv_sec + abstime_usec / 1000000;
+      ts.tv_nsec = (abstime_usec % 1000000) * 1000;
 
       int nStatus = pthread_cond_timedwait(&m_cond_t,
           (pthread_mutex_t *) pMutex->get(), &ts);
@@ -764,7 +783,7 @@ namespace dbgw
 
     void _Thread::start(_ThreadDataSharedPtr pData)
     {
-      _MutexLock lock(m_pMutex);
+      _MutexAutoLock lock(m_pMutex);
 
       m_pData = pData;
 
@@ -784,7 +803,7 @@ namespace dbgw
 
     void _Thread::join()
     {
-      _MutexLock lock(m_pMutex);
+      _MutexAutoLock lock(m_pMutex);
 
       if (m_op != THREAD_OP_NONE || m_status != THREAD_STATUS_RUNNING)
         {
@@ -803,7 +822,7 @@ namespace dbgw
       changeThreadStatus(THREAD_STATUS_STOP);
     }
 
-    void _Thread::timedJoin(int nWaitTimeMilSec)
+    void _Thread::timedJoin(unsigned long nWaitTimeMilSec)
     {
       try
         {
@@ -835,9 +854,19 @@ namespace dbgw
         }
     }
 
+    void _Thread::detach()
+    {
+      m_pMutex->lock();
+      m_op = THREAD_OP_DETACH;
+      m_status = THREAD_STATUS_WAITING;
+      m_pMutex->unlock();
+
+      doDetach();
+    }
+
     bool _Thread::isRunning() const
     {
-      _MutexLock lock(m_pMutex);
+      _MutexAutoLock lock(m_pMutex);
 
       return m_op == THREAD_OP_START
           || (m_status == THREAD_STATUS_RUNNING && m_op == THREAD_OP_NONE);
@@ -903,7 +932,7 @@ namespace dbgw
 
       m_pData.reset();
 
-      _MutexLock lock(m_pMutex);
+      _MutexAutoLock lock(m_pMutex);
 
       if (m_status == THREAD_STATUS_WAITING && m_op == THREAD_OP_STOP)
         {
@@ -916,7 +945,7 @@ namespace dbgw
 
     void _Thread::changeThreadStatus(_ThreadStatus status)
     {
-      system::_MutexLock lock(m_pMutex);
+      system::_MutexAutoLock lock(m_pMutex);
 
       m_status = status;
       m_op = THREAD_OP_NONE;

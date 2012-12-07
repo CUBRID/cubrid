@@ -19,6 +19,8 @@
 #ifndef DBGWADAPTER_H_
 #define DBGWADAPTER_H_
 
+#include "DBGWMock.h"
+
 namespace DBGW3
 {
 
@@ -104,15 +106,11 @@ namespace DBGW3
     DECLSPECIFIER Handle __stdcall CreateHandle(const char *szConfFileName);
     DECLSPECIFIER void __stdcall DestroyHandle(Handle hEnv);
 
-#ifdef ENABLE_UNUSED_FUNCTION
-    /**
-     * DBGW 3.0 cannot support this feature.
-     */
+
     DECLSPECIFIER void __stdcall SetDefaultTimeout(Handle hEnv,
         unsigned long ulMilliseconds);
     DECLSPECIFIER bool __stdcall GetDefaultTimeout(Handle hEnv,
         unsigned long *pTimeout);
-#endif
     DECLSPECIFIER bool __stdcall LoadConnector(Handle hEnv);
     DECLSPECIFIER bool __stdcall LoadQueryMapper(Handle hEnv);
     /**
@@ -139,14 +137,14 @@ namespace DBGW3
     DECLSPECIFIER Handle __stdcall CreateHandle(Environment::Handle hEnv);
     DECLSPECIFIER void __stdcall DestroyHandle(Handle hEnv);
 
-#ifdef ENABLE_UNUSED_FUNCTION
-    /**
-     * DBGW 3.0 cannot support this feature.
-     */
     DECLSPECIFIER void __stdcall SetDefaultTimeout(Handle hConnector,
         unsigned long ulMilliseconds);
     DECLSPECIFIER bool __stdcall GetDefaultTimeout(Handle hConnector,
         unsigned long *pulMilliseconds);
+#ifdef ENABLE_UNUSED_FUNCTION
+    /**
+     * DBGW 3.0 cannot support this feature.
+     */
     DECLSPECIFIER bool __stdcall SetLocalCharset(Handle hEnv,
         DBGW::CodePage codepage);
     DECLSPECIFIER DBGW::CodePage __stdcall GetLocalCharset(Handle hEnv);
@@ -169,6 +167,10 @@ namespace DBGW3
     DECLSPECIFIER bool __stdcall SetParameter(Handle hParam, int nIndex,
         int nParamValue);
     DECLSPECIFIER bool __stdcall SetParameter(Handle hParam,
+        const char *szParamName, char cParamValue);
+    DECLSPECIFIER bool __stdcall SetParameter(Handle hParam, int nIndex,
+        char cParamValue);
+    DECLSPECIFIER bool __stdcall SetParameter(Handle hParam,
         const char *szParamName, int64 nParamValue);
     DECLSPECIFIER bool __stdcall SetParameter(Handle hParam, int nIndex,
         int64 nParamValue);
@@ -188,6 +190,10 @@ namespace DBGW3
         const char *szParamName, size_t nSize, const void *pValue);
     DECLSPECIFIER bool __stdcall SetParameter(Handle hParam, int nIndex,
         size_t nSize, const void *pValue);
+    DECLSPECIFIER bool __stdcall SetParameter(Handle hParam,
+        const char *szParamName, dbgw::DBGWValueType type, struct tm &value);
+    DECLSPECIFIER bool __stdcall SetParameter(Handle hParam, int nIndex,
+        dbgw::DBGWValueType type, struct tm &value);
 
   }
 
@@ -200,6 +206,19 @@ namespace DBGW3
 
     DECLSPECIFIER size_t __stdcall GetSize(Handle hParamList);
     DECLSPECIFIER bool __stdcall Add(Handle hParamList, ParamSet::Handle hParam);
+  }
+
+  namespace ResultSetMeta
+  {
+
+    typedef dbgw::DBGWResultSetMetaDataSharedPtr Handle;
+
+    DECLSPECIFIER size_t __stdcall GetColumnCount(Handle hMeta);
+    DECLSPECIFIER bool __stdcall GetColumnName(Handle hMeta, size_t nIndex,
+        const char **szName);
+    DECLSPECIFIER bool __stdcall GetColumnType(Handle hMeta, size_t nIndex,
+        dbgw::DBGWValueType *pType);
+
   }
 
   namespace ResultSet
@@ -215,8 +234,11 @@ namespace DBGW3
     DECLSPECIFIER bool  __stdcall Fetch(Handle hResult);
     DECLSPECIFIER size_t __stdcall GetAffectedCount(Handle hResult);
     DECLSPECIFIER bool __stdcall IsNeedFetch(Handle hResult);
-    DECLSPECIFIER const dbgw::DBGWResultSetMetaDataSharedPtr __stdcall
-    GetMetaDataList(Handle hResult);
+    DECLSPECIFIER ResultSetMeta::Handle __stdcall GetMetaData(Handle hResult);
+    DECLSPECIFIER bool __stdcall IsNull(Handle hResult, int nIndex,
+        bool *pIsNull);
+    DECLSPECIFIER bool __stdcall IsNull(Handle hResult, const char *szName,
+        bool *pIsNull);
     DECLSPECIFIER bool __stdcall GetParameter(Handle hResult, int nIndex,
         int *pValue);
     DECLSPECIFIER bool __stdcall GetParameter(Handle hResult,
@@ -265,6 +287,14 @@ namespace DBGW3
         size_t *pSize, char **pValue);
     DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, const char *szName,
         size_t *pSize, char **pValue);
+    DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, int nIndex,
+        struct tm *pValue);
+    DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, const char *szName,
+        struct tm *pValue);
+    DECLSPECIFIER bool __stdcall GetType(Handle hResult, int nIndex,
+        dbgw::DBGWValueType *pType);
+    DECLSPECIFIER bool __stdcall GetType(Handle hResult, const char *szName,
+        dbgw::DBGWValueType *pType);
 
   }
 
@@ -299,11 +329,25 @@ namespace DBGW3
 
     DECLSPECIFIER bool __stdcall Execute(Handle hExecutor, const char *szMethod,
         DBGW3::ParamSet::Handle hParam, DBGW3::ResultSet::Handle &hResult);
-    DECLSPECIFIER bool __stdcall ExecuteBatch(Handle hExecutor, const char *szMethod,
-        DBGW3::ParamList::Handle hParamList, DBGW3::BatchResult::Handle &hBatchResult);
+    DECLSPECIFIER bool __stdcall Execute(Handle hExecutor, const char *szMethod,
+        unsigned long ulMilliseconds, DBGW3::ParamSet::Handle hParam,
+        DBGW3::ResultSet::Handle hResult);
+    DECLSPECIFIER bool __stdcall ExecuteBatch(Handle hExecutor,
+        const char *szMethod, DBGW3::ParamList::Handle hParamList,
+        DBGW3::BatchResult::Handle &hBatchResult);
+    DECLSPECIFIER bool __stdcall ExecuteBatch(Handle hExecutor,
+        const char *szMethod, unsigned long ulMilliseconds,
+        DBGW3::ParamList::Handle hParamList,
+        DBGW3::BatchResult::Handle &hBatchResult);
     DECLSPECIFIER bool __stdcall BeginTransaction(Handle hExecutor);
+    DECLSPECIFIER bool __stdcall BeginTransaction(Handle hExecutor,
+        unsigned long ulWaitTimeMilSec);
     DECLSPECIFIER bool __stdcall CommitTransaction(Handle hExecutor);
+    DECLSPECIFIER bool __stdcall CommitTransaction(Handle hExecutor,
+        unsigned long ulWaitTimeMilSec);
     DECLSPECIFIER bool __stdcall RollbackTransaction(Handle hExecutor);
+    DECLSPECIFIER bool __stdcall RollbackTransaction(Handle hExecutor,
+        unsigned long ulWaitTimeMilSec);
 #ifdef ENABLE_UNUSED_FUNCTION
     /**
      * DBGW 3.0 cannot support this feature.
@@ -320,6 +364,26 @@ namespace DBGW3
     DECLSPECIFIER bool __stdcall RollbackTransaction(Handle hExecutor,
         unsigned long ulMilliseconds);
 #endif
+
+  }
+
+  namespace Mock
+  {
+
+    typedef dbgw::_CCIMockManager *Handle;
+
+    /**
+     * do not call this method directly.
+     */
+    DECLSPECIFIER Handle __stdcall GetInstance();
+
+    DECLSPECIFIER void __stdcall AddReturnErrorFault(Handle hMock,
+        const char *szFaultFunction, dbgw::_CCI_FAULT_TYPE type,
+        int nReturnCode = 0, int nErrorCode = 0, const char *szErrorMessage = "");
+    DECLSPECIFIER void __stdcall AddSleepFault(Handle hMock,
+        const char *szFaultFunction, dbgw::_CCI_FAULT_TYPE type,
+        unsigned long ulSleepMilSec);
+    DECLSPECIFIER void __stdcall ClearFaultAll(Handle hMock);
 
   }
 

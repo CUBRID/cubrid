@@ -282,10 +282,22 @@ namespace dbgw
   class _DBGWConfigurationParser: public _DBGWParser
   {
   public:
-    _DBGWConfigurationParser(const string &fileName,
-        _DBGWConnectorSharedPtr pConnector);
-    _DBGWConfigurationParser(const string &fileName,
+    /**
+     * parse configuration.xml and connector.xml and querymap.xml
+     */
+    _DBGWConfigurationParser(DBGWConfiguration &configuraion,
+        const string &fileName, _DBGWConnectorSharedPtr pConnector,
         _DBGWQueryMapperSharedPtr pQueryMapper);
+    /**
+     * parse configuration.xml and connector.xml
+     */
+    _DBGWConfigurationParser(DBGWConfiguration &configuraion,
+        const string &fileName, _DBGWConnectorSharedPtr pConnector);
+    /**
+     * parse configuration.xml and querymap.xml
+     */
+    _DBGWConfigurationParser(DBGWConfiguration &configuraion,
+        const string &fileName, _DBGWQueryMapperSharedPtr pQueryMapper);
 
   protected:
     virtual void doOnElementStart(const XML_Char *szName,
@@ -293,11 +305,13 @@ namespace dbgw
     virtual void doOnElementEnd(const XML_Char *szName);
 
   private:
+    void parseConfiguration(_DBGWExpatXMLProperties &properties);
     void parseQueryMap(_DBGWExpatXMLProperties &properties);
     void parseLog(_DBGWExpatXMLProperties &properties);
     void parseInclude(_DBGWExpatXMLProperties &properties);
 
   private:
+    DBGWConfiguration &m_configuration;
     _DBGWConnectorSharedPtr m_pConnector;
     _DBGWQueryMapperSharedPtr m_pQueryMapper;
   };

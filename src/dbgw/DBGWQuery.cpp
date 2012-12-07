@@ -25,6 +25,7 @@
 #include "DBGWValue.h"
 #include "DBGWDataBaseInterface.h"
 #include "DBGWClient.h"
+#include "DBGWWork.h"
 #include "DBGWQuery.h"
 
 namespace dbgw
@@ -378,13 +379,13 @@ namespace dbgw
   }
 
   _DBGWBoundQuerySharedPtr _DBGWQuery::getDBGWBoundQuery(const char *szGroupName,
-      const _DBGWValueSet *pValueSet) const
+      const _DBGWValueSet &valueSet) const
   {
     stringstream stream;
     for (_DBGWQueryPartList::const_iterator it = m_queryPartList.begin(); it
         != m_queryPartList.end(); it++)
       {
-        stream << (*it)->toString(pValueSet);
+        stream << (*it)->toString(valueSet);
       }
     _DBGWBoundQuerySharedPtr pQuery(
         new _DBGWBoundQuery(stream.str().c_str(), szGroupName, *this));
@@ -480,7 +481,7 @@ namespace dbgw
   }
 
   string _DBGWQuery::_DBGWSQLQueryPart::toString(
-      const _DBGWValueSet *pValueSet) const
+      const _DBGWValueSet &valueSet) const
   {
     return m_sql;
   }
@@ -497,16 +498,16 @@ namespace dbgw
   }
 
   string _DBGWQuery::_DBGWReplaceQueryPart::toString(
-      const _DBGWValueSet *pValueSet) const
+      const _DBGWValueSet &valueSet) const
   {
-    if (pValueSet == NULL)
+    if (valueSet.size() == 0)
       {
         NotExistKeyException e(m_name.c_str(), "DBGWReplaceQueryPart");
         DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
         throw e;
       }
 
-    const DBGWValue *pValue = pValueSet->getValue(m_name.c_str());
+    const DBGWValue *pValue = valueSet.getValue(m_name.c_str());
     if (pValue == NULL)
       {
         NotExistKeyException e(m_name.c_str(), "DBGWReplaceQueryPart");

@@ -126,8 +126,7 @@ namespace dbgw
     static const int MAX_BOUNDARY_SIZE;
   };
 
-  typedef shared_ptr<DBGWValue> DBGWValueSharedPtr;
-  //typedef vector<DBGWValueSharedPtr> DBGWValueList;
+  typedef boost::shared_ptr<DBGWValue> DBGWValueSharedPtr;
 
   typedef boost::unordered_map<string, int, boost::hash<string>,
           dbgwStringCompareFunc> DBGWValueIndexMap;

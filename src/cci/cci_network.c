@@ -1088,9 +1088,6 @@ net_send_stream (SOCKET sock_fd, char *msg, int size)
       write_len = WRITE_TO_SOCKET (sock_fd, msg, size);
       if (write_len <= 0)
 	{
-#ifdef _DEBUG
-	  printf ("write error\n");
-#endif
 	  return CCI_ER_COMMUNICATION;
 	}
       msg += write_len;

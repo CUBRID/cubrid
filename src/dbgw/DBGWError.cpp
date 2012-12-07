@@ -262,13 +262,6 @@ namespace dbgw
   {
   }
 
-  FailedToCreateEvictorException::FailedToCreateEvictorException() throw() :
-    DBGWException(
-        DBGWExceptionFactory::create(DBGW_ER_CONF_FAILED_TO_CREATE_EVICTOR_THREAD,
-            "Failed to create evictor thread."))
-  {
-  }
-
   InvalidSqlException::InvalidSqlException(const char *szFileName,
       const char *szSqlName) throw() :
     DBGWException(
@@ -394,7 +387,7 @@ namespace dbgw
   NotExistGroupException::NotExistGroupException(const char *szSqlName) throw() :
     DBGWException(
         DBGWExceptionFactory::create(DBGW_ER_CLIENT_NOT_EXIST_GROUP,
-            (boost::format("There is no group (%s) to execute query.")
+            (boost::format("There is no group (%s).")
                 % szSqlName).str()))
   {
   }
@@ -503,6 +496,22 @@ namespace dbgw
         DBGWExceptionFactory::create(
             DBGW_ER_CLIENT_ACCESS_DATA_BEFORE_FETCH,
             "You must call next() before get data."))
+  {
+  }
+
+  FailedToCreateThreadException::FailedToCreateThreadException(
+      const char *szThread) throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(DBGW_ER_FATAL_FAILED_TO_CREATE_THREAD,
+            (boost::format("Failed to create %s thread.") % szThread).str()))
+  {
+  }
+
+  ExecuteTimeoutExecption::ExecuteTimeoutExecption(long lWaitTimeMilSec) throw() :
+    DBGWException(
+        DBGWExceptionFactory::create(DBGW_ER_CLIENT_EXEC_TIMEOUT,
+            (boost::format("Timeout occurred. (%d msec)")
+                % lWaitTimeMilSec).str()))
   {
   }
 

@@ -23,6 +23,7 @@
 #include "DBGWLogger.h"
 #include "DBGWDataBaseInterface.h"
 #include "DBGWQuery.h"
+#include "DBGWWork.h"
 #include "DBGWConfiguration.h"
 #include "DBGWClient.h"
 
@@ -35,11 +36,11 @@ namespace dbgw
   const char *DBGWClient::szVersionString = "VERSION=" MAKE_STR(BUILD_NUMBER);
 
   _DBGWClientProxy::_DBGWClientProxy(_DBGWService *pService,
-      _DBGWQueryMapper *pQueryMapper, _DBGWExecutorList &executorList) :
+      _DBGWQueryMapper *pQueryMapper) :
     m_bCheckValidation(false), m_bMakeResult(false), m_bExecuteQuery(false),
     m_pService(pService), m_pQueryMapper(pQueryMapper),
-    m_executorList(executorList), m_execType(DBGW_EXEC_TYPE_NORMAL),
-    m_pParameter(NULL)
+    m_executorList(m_pService->getExecutorList()),
+    m_execType(DBGW_EXEC_TYPE_NORMAL)
   {
   }
 
@@ -47,26 +48,196 @@ namespace dbgw
   {
   }
 
-  void _DBGWClientProxy::init(const char *szSqlName,
-      const DBGWClientParameter *pParameter)
+  void _DBGWClientProxy::releaseExecutor()
   {
-    m_execType = DBGW_EXEC_TYPE_NORMAL;
-    m_pParameter = pParameter;
-    doInit(szSqlName);
+    DBGWException exception;
+
+    clearResult();
+
+    _DBGWExecutorList::iterator it = m_executorList.begin();
+    for (; it != m_executorList.end(); it++)
+      {
+        if (*it == NULL)
+          {
+            continue;
+          }
+
+        try
+          {
+            (*it)->returnToPool();
+          }
+        catch (DBGWException &e)
+          {
+            exception = e;
+          }
+      }
+    if (exception.getErrorCode() != DBGW_ER_NO_ERROR)
+      {
+        throw exception;
+      }
   }
 
-  void _DBGWClientProxy::init(const char *szSqlName,
+  void _DBGWClientProxy::forceReleaseExecutor()
+  {
+    DBGWException exception;
+
+    clearResult();
+
+    _DBGWExecutorList::iterator it = m_executorList.begin();
+    for (; it != m_executorList.end(); it++)
+      {
+        if (*it == NULL)
+          {
+            continue;
+          }
+
+        try
+          {
+            (*it)->cancel();
+            (*it)->returnToPool(true);
+          }
+        catch (DBGWException &e)
+          {
+            exception = e;
+          }
+      }
+    if (exception.getErrorCode() != DBGW_ER_NO_ERROR)
+      {
+        throw exception;
+      }
+  }
+
+  void _DBGWClientProxy::setAutocommit(bool bAutocommit)
+  {
+    DBGWException exception;
+    _DBGWExecutorList::iterator it = m_executorList.begin();
+    for (; it != m_executorList.end(); it++)
+      {
+        if (*it == NULL)
+          {
+            continue;
+          }
+
+        try
+          {
+            (*it)->setAutocommit(bAutocommit);
+          }
+        catch (DBGWException &e)
+          {
+            exception = e;
+          }
+      }
+    if (exception.getErrorCode() != DBGW_ER_NO_ERROR)
+      {
+        throw exception;
+      }
+  }
+
+  void _DBGWClientProxy::commit()
+  {
+    DBGWException exception;
+    _DBGWExecutorList::iterator it = m_executorList.begin();
+    for (; it != m_executorList.end(); it++)
+      {
+        if (*it == NULL)
+          {
+            continue;
+          }
+
+        try
+          {
+            (*it)->commit();
+          }
+        catch (DBGWException &e)
+          {
+            exception = e;
+          }
+      }
+    if (exception.getErrorCode() != DBGW_ER_NO_ERROR)
+      {
+        throw exception;
+      }
+  }
+
+  void _DBGWClientProxy::rollback()
+  {
+    DBGWException exception;
+    _DBGWExecutorList::iterator it = m_executorList.begin();
+    for (; it != m_executorList.end(); it++)
+      {
+        if (*it == NULL)
+          {
+            continue;
+          }
+
+        try
+          {
+            (*it)->rollback();
+          }
+        catch (DBGWException &e)
+          {
+            exception = e;
+          }
+      }
+    if (exception.getErrorCode() != DBGW_ER_NO_ERROR)
+      {
+        throw exception;
+      }
+  }
+
+  void _DBGWClientProxy::execute(const string &sqlName,
+      const DBGWClientParameter &parameter)
+  {
+    m_execType = DBGW_EXEC_TYPE_NORMAL;
+    m_parameter = parameter;
+    m_sqlName = sqlName;
+
+    init();
+    doExecute();
+  }
+
+  void _DBGWClientProxy::executeBatch(const string &sqlName,
       const DBGWClientParameterList &parameterList)
   {
     m_execType = DBGW_EXEC_TYPE_ARRAY;
     m_parameterList = parameterList;
-    doInit(szSqlName);
+    m_sqlName = sqlName;
+
+    init();
+    doExecute();
   }
 
-  void _DBGWClientProxy::execute()
+  DBGWClientResultSetSharedPtr _DBGWClientProxy::getReusltSet() const
   {
-    for (_DBGWExecutorList::iterator it = m_executorList.begin(); it
-        != m_executorList.end(); it++)
+    return m_pExternalResultSet;
+  }
+
+  DBGWClientBatchResultSetSharedPtr _DBGWClientProxy::getBatchReusltSet() const
+  {
+    return m_pExternalBatchResultSet;
+  }
+
+  void _DBGWClientProxy::init()
+  {
+    m_bCheckValidation = false;
+    m_bMakeResult = false;
+    m_bExecuteQuery = false;
+    m_logger.setSqlName(m_sqlName);
+    clearResult();
+  }
+
+  void _DBGWClientProxy::clearResult()
+  {
+    m_pExternalResultSet.reset();
+    m_pInternalResultSet.reset();
+    m_pExternalBatchResultSet.reset();
+    m_pInternalBatchResultSet.reset();
+  }
+
+  void _DBGWClientProxy::doExecute()
+  {
+    _DBGWExecutorList::iterator it = m_executorList.begin();
+    for (; it != m_executorList.end(); it++)
       {
         if (*it == NULL)
           {
@@ -125,29 +296,6 @@ namespace dbgw
       }
   }
 
-  DBGWClientResultSetSharedPtr _DBGWClientProxy::getReusltSet() const
-  {
-    return m_pExternalResultSet;
-  }
-
-  DBGWClientBatchResultSetSharedPtr _DBGWClientProxy::getBatchReusltSet() const
-  {
-    return m_pExternalBatchResultSet;
-  }
-
-  void _DBGWClientProxy::doInit(const char *szSqlName)
-  {
-    m_bCheckValidation = false;
-    m_bMakeResult = false;
-    m_bExecuteQuery = false;
-    m_sqlName = szSqlName;
-    m_logger.setSqlName(m_sqlName);
-    m_pExternalResultSet.reset();
-    m_pInternalResultSet.reset();
-    m_pExternalBatchResultSet.reset();
-    m_pInternalBatchResultSet.reset();
-  }
-
   _DBGWBoundQuerySharedPtr _DBGWClientProxy::getQuery(
       _DBGWExecutorList::iterator it)
   {
@@ -156,8 +304,7 @@ namespace dbgw
     if (m_execType == DBGW_EXEC_TYPE_NORMAL)
       {
         pQuery = m_pQueryMapper->getQuery(m_sqlName.c_str(),
-            (*it)->getGroupName(), m_pParameter,
-            it == m_executorList.begin());
+            (*it)->getGroupName(), m_parameter, it == m_executorList.begin());
       }
     else if (m_execType == DBGW_EXEC_TYPE_ARRAY)
       {
@@ -169,7 +316,7 @@ namespace dbgw
           }
 
         pQuery = m_pQueryMapper->getQuery(m_sqlName.c_str(),
-            (*it)->getGroupName(), NULL, it == m_executorList.begin());
+            (*it)->getGroupName(), m_parameter, it == m_executorList.begin());
         if (pQuery != NULL && pQuery->getType() != DBGW_STMT_TYPE_UPDATE)
           {
             InvalidQueryTypeException e;
@@ -200,7 +347,7 @@ namespace dbgw
 
         if (m_execType == DBGW_EXEC_TYPE_NORMAL)
           {
-            m_pExternalResultSet = (*it)->execute(pQuery, m_pParameter);
+            m_pExternalResultSet = (*it)->execute(pQuery, m_parameter);
             if (m_pExternalResultSet == NULL)
               {
                 throw getLastException();
@@ -233,7 +380,7 @@ namespace dbgw
 
         if (m_execType == DBGW_EXEC_TYPE_NORMAL)
           {
-            m_pInternalResultSet = (*it)->execute(pQuery, m_pParameter);
+            m_pInternalResultSet = (*it)->execute(pQuery, m_parameter);
             if (m_pInternalResultSet == NULL)
               {
                 throw getLastException();
@@ -470,7 +617,8 @@ namespace dbgw
   DBGWClient::DBGWClient(DBGWConfiguration &configuration,
       const char *szNameSpace) :
     m_configuration(configuration), m_pService(NULL), m_pQueryMapper(NULL),
-    m_bClosed(false), m_bValidClient(false), m_bAutocommit(true)
+    m_bClosed(false), m_bValidClient(false), m_bAutocommit(true),
+    m_ulWaitTimeMilSec(configuration.getWaitTimeMilSec())
   {
     clearException();
 
@@ -488,11 +636,6 @@ namespace dbgw
           {
             throw getLastException();
           }
-
-        m_executorList = m_pService->getExecutorList();
-
-        m_pProxy = _DBGWClientProxySharedPtr(
-            new _DBGWClientProxy(m_pService, m_pQueryMapper, m_executorList));
 
         m_bValidClient = true;
       }
@@ -519,6 +662,11 @@ namespace dbgw
       }
   }
 
+  void DBGWClient::setWaitTimeMilSec(unsigned long ulWaitTimeMilSec)
+  {
+    m_ulWaitTimeMilSec = ulWaitTimeMilSec;
+  }
+
   bool DBGWClient::setForceValidateResult()
   {
     clearException();
@@ -537,156 +685,113 @@ namespace dbgw
 
   bool DBGWClient::setAutocommit(bool bAutocommit)
   {
+    return setAutocommit(bAutocommit, m_ulWaitTimeMilSec);
+  }
+
+  bool DBGWClient::setAutocommit(bool bAutocommit, unsigned long ulWaitTimeMilSec)
+  {
     clearException();
 
     try
       {
         checkClientIsValid();
 
+        ulWaitTimeMilSec = bindWorker(ulWaitTimeMilSec);
+
+        m_pWorker->setAutoCommit(bAutocommit, ulWaitTimeMilSec);
+
         m_bAutocommit = bAutocommit;
-
-        DBGWException exception;
-        for (_DBGWExecutorList::iterator it = m_executorList.begin(); it
-            != m_executorList.end(); it++)
-          {
-            if (*it == NULL)
-              {
-                continue;
-              }
-
-            try
-              {
-                (*it)->setAutocommit(bAutocommit);
-              }
-            catch (DBGWException &e)
-              {
-                exception = e;
-              }
-          }
-        if (exception.getErrorCode() != DBGW_ER_NO_ERROR)
-          {
-            throw exception;
-          }
-        return true;
       }
     catch (DBGWException &e)
       {
+        if (e.getErrorCode() == DBGW_ER_CLIENT_EXEC_TIMEOUT)
+          {
+            detachWorker();
+          }
+
         setLastException(e);
         return false;
       }
+
+    return true;
   }
 
   bool DBGWClient::commit()
   {
+    return commit(m_ulWaitTimeMilSec);
+  }
+
+  bool DBGWClient::commit(unsigned long ulWaitTimeMilSec)
+  {
     clearException();
 
     try
       {
         checkClientIsValid();
 
-        DBGWException exception;
-        for (_DBGWExecutorList::iterator it = m_executorList.begin(); it
-            != m_executorList.end(); it++)
-          {
-            if (*it == NULL)
-              {
-                continue;
-              }
+        ulWaitTimeMilSec = bindWorker(ulWaitTimeMilSec);
 
-            try
-              {
-                (*it)->commit();
-              }
-            catch (DBGWException &e)
-              {
-                exception = e;
-              }
-          }
-        if (exception.getErrorCode() != DBGW_ER_NO_ERROR)
-          {
-            throw exception;
-          }
-        return true;
+        m_pWorker->commit(ulWaitTimeMilSec);
       }
     catch (DBGWException &e)
       {
+        if (e.getErrorCode() == DBGW_ER_CLIENT_EXEC_TIMEOUT)
+          {
+            detachWorker();
+          }
+
         setLastException(e);
         return false;
       }
+
+    return true;
   }
 
   bool DBGWClient::rollback()
   {
+    return rollback(m_ulWaitTimeMilSec);
+  }
+
+  bool DBGWClient::rollback(unsigned long ulWaitTimeMilSec)
+  {
     clearException();
 
     try
       {
         checkClientIsValid();
 
-        DBGWException exception;
-        for (_DBGWExecutorList::iterator it = m_executorList.begin(); it
-            != m_executorList.end(); it++)
-          {
-            if (*it == NULL)
-              {
-                continue;
-              }
+        ulWaitTimeMilSec = bindWorker(ulWaitTimeMilSec);
 
-            try
-              {
-                (*it)->rollback();
-              }
-            catch (DBGWException &e)
-              {
-                exception = e;
-              }
-          }
-        if (exception.getErrorCode() != DBGW_ER_NO_ERROR)
-          {
-            throw exception;
-          }
-        return true;
+        m_pWorker->rollback(ulWaitTimeMilSec);
       }
     catch (DBGWException &e)
       {
+        if (e.getErrorCode() == DBGW_ER_CLIENT_EXEC_TIMEOUT)
+          {
+            detachWorker();
+          }
+
         setLastException(e);
         return false;
       }
+
+    return true;
   }
 
-  const DBGWClientResultSetSharedPtr DBGWClient::exec(const char *szSqlName,
+  DBGWClientResultSetSharedPtr DBGWClient::exec(const char *szSqlName,
+      unsigned long ulWaitTimeMilSec)
+  {
+    return exec(szSqlName, NULL, ulWaitTimeMilSec);
+  }
+
+  DBGWClientResultSetSharedPtr DBGWClient::exec(const char *szSqlName,
       const DBGWClientParameter *pParameter)
   {
-    clearException();
-
-    try
-      {
-        checkClientIsValid();
-
-        m_pProxy->init(szSqlName, pParameter);
-        m_pProxy->execute();
-
-        return m_pProxy->getReusltSet();
-      }
-    catch (DBGWException &e)
-      {
-        setLastException(e);
-
-        if (e.getErrorCode() == DBGW_ER_CLIENT_VALIDATE_FAIL
-            || e.getErrorCode() == DBGW_ER_CLIENT_VALIDATE_TYPE_FAIL
-            || e.getErrorCode() == DBGW_ER_CLIENT_VALIDATE_VALUE_FAIL)
-          {
-            return m_pProxy->getReusltSet();
-          }
-        else
-          {
-            return DBGWClientResultSetSharedPtr();
-          }
-      }
+    return exec(szSqlName, pParameter, m_ulWaitTimeMilSec);
   }
 
-  const DBGWClientBatchResultSetSharedPtr DBGWClient::execBatch(
-      const char *szSqlName, const DBGWClientParameterList &parameterList)
+  DBGWClientResultSetSharedPtr DBGWClient::exec(const char *szSqlName,
+      const DBGWClientParameter *pParameter, unsigned long ulWaitTimeMilSec)
   {
     clearException();
 
@@ -694,25 +799,51 @@ namespace dbgw
       {
         checkClientIsValid();
 
-        m_pProxy->init(szSqlName, parameterList);
-        m_pProxy->execute();
+        ulWaitTimeMilSec = bindWorker(ulWaitTimeMilSec);
 
-        return m_pProxy->getBatchReusltSet();
+        return m_pWorker->execute(szSqlName, pParameter, ulWaitTimeMilSec);
       }
     catch (DBGWException &e)
       {
-        setLastException(e);
+        if (e.getErrorCode() == DBGW_ER_CLIENT_EXEC_TIMEOUT)
+          {
+            detachWorker();
+          }
 
-        if (e.getErrorCode() == DBGW_ER_CLIENT_VALIDATE_FAIL
-            || e.getErrorCode() == DBGW_ER_CLIENT_VALIDATE_TYPE_FAIL
-            || e.getErrorCode() == DBGW_ER_CLIENT_VALIDATE_VALUE_FAIL)
+        setLastException(e);
+        return DBGWClientResultSetSharedPtr();
+      }
+  }
+
+  DBGWClientBatchResultSetSharedPtr DBGWClient::execBatch(const char *szSqlName,
+      const DBGWClientParameterList &parameterList)
+  {
+    return execBatch(szSqlName, parameterList, m_ulWaitTimeMilSec);
+  }
+
+  DBGWClientBatchResultSetSharedPtr DBGWClient::execBatch(
+      const char *szSqlName, const DBGWClientParameterList &parameterList,
+      unsigned long ulWaitTimeMilSec)
+  {
+    clearException();
+
+    try
+      {
+        checkClientIsValid();
+
+        ulWaitTimeMilSec = bindWorker(ulWaitTimeMilSec);
+
+        return m_pWorker->executeBatch(szSqlName, parameterList, ulWaitTimeMilSec);
+      }
+    catch (DBGWException &e)
+      {
+        if (e.getErrorCode() == DBGW_ER_CLIENT_EXEC_TIMEOUT)
           {
-            return m_pProxy->getBatchReusltSet();
+            detachWorker();
           }
-        else
-          {
-            return DBGWClientBatchResultSetSharedPtr();
-          }
+
+        setLastException(e);
+        return DBGWClientBatchResultSetSharedPtr();
       }
   }
 
@@ -723,8 +854,6 @@ namespace dbgw
     DBGWException exception;
     try
       {
-        m_pProxy.reset();
-
         if (m_bClosed)
           {
             return true;
@@ -732,7 +861,7 @@ namespace dbgw
 
         m_bClosed = true;
 
-        m_pService->returnExecutorList(m_executorList);
+        releaseWorker();
       }
     catch (DBGWException &e)
       {
@@ -782,6 +911,11 @@ namespace dbgw
     return m_pQueryMapper;
   }
 
+  unsigned long DBGWClient::getWaitTimeMilSec() const
+  {
+    return m_ulWaitTimeMilSec;
+  }
+
   void DBGWClient::checkClientIsValid()
   {
     if (m_bValidClient == false)
@@ -789,6 +923,66 @@ namespace dbgw
         InvalidClientException e;
         DBGW_LOG_ERROR(e.what());
         throw e;
+      }
+  }
+
+  unsigned long DBGWClient::bindWorker()
+  {
+    return bindWorker(m_ulWaitTimeMilSec);
+  }
+
+  unsigned long DBGWClient::bindWorker(unsigned long ulWaitTimeMilSec)
+  {
+    unsigned long ulRemainWaitTimeMilSec = ulWaitTimeMilSec;
+    struct timeval now;
+    if (ulWaitTimeMilSec > system::INFINITE_TIMEOUT)
+      {
+        gettimeofday(&now, NULL);
+      }
+
+    if (m_pWorker == NULL)
+      {
+        m_pWorker = m_configuration.getWorker();
+        if (m_pWorker == NULL)
+          {
+            throw getLastException();
+          }
+      }
+
+    m_pWorker->bindClientProxy(m_pService, m_pQueryMapper,
+        ulRemainWaitTimeMilSec);
+
+    if (ulWaitTimeMilSec > system::INFINITE_TIMEOUT)
+      {
+        ulRemainWaitTimeMilSec -= system::getdifftimeofday(now);
+        if (ulRemainWaitTimeMilSec <= 0)
+          {
+            ExecuteTimeoutExecption e(ulWaitTimeMilSec);
+            DBGW_LOG_ERROR(e.what());
+            throw e;
+          }
+      }
+
+    return ulRemainWaitTimeMilSec;
+  }
+
+  void DBGWClient::detachWorker()
+  {
+    if (m_pWorker != NULL)
+      {
+        m_pWorker->forceReleaseClientProxy();
+        m_pWorker->returnToPool(true);
+        m_pWorker.reset();
+      }
+  }
+
+  void DBGWClient::releaseWorker()
+  {
+    if (m_pWorker != NULL)
+      {
+        m_pWorker->releaseClientProxy();
+        m_pWorker->returnToPool(false);
+        m_pWorker.reset();
       }
   }
 

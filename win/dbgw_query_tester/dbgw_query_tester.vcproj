@@ -395,6 +395,10 @@
 					RelativePath="..\..\src\dbgw\DBGWValue.cpp"
 					>
 				</File>
+        <File
+          RelativePath="..\..\src\dbgw\DBGWWorker.cpp"
+          >
+        </File>
 				<File
 					RelativePath="..\..\src\dbgw\DBGWXMLParser.cpp"
 					>

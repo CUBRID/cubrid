@@ -46,6 +46,10 @@ do { \
         nDefaultErrorCode = DBGWCONNECTOR_NOT_PROPER_OP;
         szDefaultErrorMessage = "DBGWCONNECTOR_NOT_PROPER_OP";
         break;
+      case dbgw::DBGW_ER_CLIENT_INVALID_OPERATION:
+        nDefaultErrorCode = DBGWCONNECTOR_NOT_PROPER_OP;
+        szDefaultErrorMessage = "DBGWCONNECTOR_NOT_PROPER_OP";
+        break;
       case dbgw::DBGW_ER_CLIENT_NO_MORE_DATA:
         nDefaultErrorCode = DBGWCONNECTOR_NOMORE_FETCH;
         szDefaultErrorMessage = "DBGWCONNECTOR_NOMORE_FETCH";
@@ -53,6 +57,10 @@ do { \
       case dbgw::DBGW_ER_CLIENT_ALREADY_IN_TRANSACTION:
         nDefaultErrorCode = DBGWCONNECTOR_ALREAY_IN_TRANSACTION;
         szDefaultErrorMessage = "DBGWCONNECTOR_ALREAY_IN_TRANSACTION";
+        break;
+      case dbgw::DBGW_ER_CLIENT_EXEC_TIMEOUT:
+        nDefaultErrorCode = DBGWCONNECTOR_TIMEOUT;
+        szDefaultErrorMessage = "DBGWCONNECTOR_TIMEOUT";
         break;
       case dbgw::DBGW_ER_CLIENT_NOT_IN_TRANSACTION:
         nDefaultErrorCode = DBGWCONNECTOR_NOT_IN_TRANSACTION;
@@ -146,6 +154,52 @@ do { \
       catch (dbgw::DBGWException &e)
         {
           CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+        }
+    }
+
+    DECLSPECIFIER void __stdcall SetDefaultTimeout(Handle hEnv,
+        unsigned long ulMilliseconds)
+    {
+      dbgw::clearException();
+
+      try
+        {
+          if (hEnv == NULL)
+            {
+              dbgw::InvalidHandleException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          hEnv->setWaitTimeMilSec(ulMilliseconds);
+        }
+      catch (dbgw::DBGWException &e)
+        {
+          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+        }
+    }
+
+    DECLSPECIFIER bool __stdcall GetDefaultTimeout(Handle hEnv,
+        unsigned long *pTimeout)
+    {
+      dbgw::clearException();
+
+      try
+        {
+          if (hEnv == NULL)
+            {
+              dbgw::InvalidHandleException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          *pTimeout = hEnv->getWaitTimeMilSec();
+          return true;
+        }
+      catch (dbgw::DBGWException &e)
+        {
+          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          return false;
         }
     }
 
@@ -273,6 +327,52 @@ do { \
       catch (dbgw::DBGWException &e)
         {
           CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+        }
+    }
+
+    DECLSPECIFIER void __stdcall SetDefaultTimeout(Handle hConnector,
+        unsigned long ulMilliseconds)
+    {
+      dbgw::clearException();
+
+      try
+        {
+          if (hConnector == NULL)
+            {
+              dbgw::InvalidHandleException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          (*hConnector)->setWaitTimeMilSec(ulMilliseconds);
+        }
+      catch (dbgw::DBGWException &e)
+        {
+          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+        }
+    }
+
+    DECLSPECIFIER bool __stdcall GetDefaultTimeout(Handle hConnector,
+        unsigned long *pulMilliseconds)
+    {
+      dbgw::clearException();
+
+      try
+        {
+          if (hConnector == NULL)
+            {
+              dbgw::InvalidHandleException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          *pulMilliseconds = (*hConnector)->getWaitTimeMilSec();
+          return true;
+        }
+      catch (dbgw::DBGWException &e)
+        {
+          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          return false;
         }
     }
 
@@ -424,6 +524,62 @@ do { \
             }
 
           if (hParam->set(nIndex, nParamValue) == false)
+            {
+              throw dbgw::getLastException();
+            }
+
+          return true;
+        }
+      catch (dbgw::DBGWException &e)
+        {
+          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          return false;
+        }
+    }
+
+    DECLSPECIFIER bool __stdcall SetParameter(Handle hParam,
+        const char *szParamName, char cParamValue)
+    {
+      dbgw::clearException();
+
+      try
+        {
+          if (hParam == NULL)
+            {
+              dbgw::InvalidHandleException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          if (hParam->put(szParamName, cParamValue) == false)
+            {
+              throw dbgw::getLastException();
+            }
+
+          return true;
+        }
+      catch (dbgw::DBGWException &e)
+        {
+          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          return false;
+        }
+    }
+
+    DECLSPECIFIER bool __stdcall SetParameter(Handle hParam, int nIndex,
+        char cParamValue)
+    {
+      dbgw::clearException();
+
+      try
+        {
+          if (hParam == NULL)
+            {
+              dbgw::InvalidHandleException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          if (hParam->set(nIndex, cParamValue) == false)
             {
               throw dbgw::getLastException();
             }
@@ -720,6 +876,62 @@ do { \
         }
     }
 
+    DECLSPECIFIER bool __stdcall SetParameter(Handle hParam,
+        const char *szParamName, dbgw::DBGWValueType type, struct tm &value)
+    {
+      dbgw::clearException();
+
+      try
+        {
+          if (hParam == NULL)
+            {
+              dbgw::InvalidHandleException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          if (hParam->put(szParamName, type, value) == false)
+            {
+              throw dbgw::getLastException();
+            }
+
+          return true;
+        }
+      catch (dbgw::DBGWException &e)
+        {
+          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          return false;
+        }
+    }
+
+    DECLSPECIFIER bool __stdcall SetParameter(Handle hParam, int nIndex,
+        dbgw::DBGWValueType type, struct tm &value)
+    {
+      dbgw::clearException();
+
+      try
+        {
+          if (hParam == NULL)
+            {
+              dbgw::InvalidHandleException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          if (hParam->set(nIndex, type, value) == false)
+            {
+              throw dbgw::getLastException();
+            }
+
+          return true;
+        }
+      catch (dbgw::DBGWException &e)
+        {
+          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          return false;
+        }
+    }
+
   }
 
   namespace ParamList
@@ -826,6 +1038,89 @@ do { \
     }
   }
 
+  namespace ResultSetMeta
+  {
+
+    DECLSPECIFIER size_t __stdcall GetColumnCount(Handle hMeta)
+    {
+      dbgw::clearException();
+
+      try
+        {
+          if (hMeta == NULL)
+            {
+              dbgw::InvalidHandleException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          return hMeta->getColumnCount();
+        }
+      catch (dbgw::DBGWException &e)
+        {
+          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_HANDLE);
+          return 0;
+        }
+    }
+
+    DECLSPECIFIER bool __stdcall GetColumnName(Handle hMeta, size_t nIndex,
+        const char **szName)
+    {
+      dbgw::clearException();
+
+      try
+        {
+          if (hMeta == NULL)
+            {
+              dbgw::InvalidHandleException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          if (hMeta->getColumnName(nIndex, szName) == false)
+            {
+              throw dbgw::getLastException();
+            }
+
+          return true;
+        }
+      catch (dbgw::DBGWException &e)
+        {
+          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          return false;
+        }
+    }
+
+    DECLSPECIFIER bool __stdcall GetColumnType(Handle hMeta, size_t nIndex,
+        dbgw::DBGWValueType *pType)
+    {
+      dbgw::clearException();
+
+      try
+        {
+          if (hMeta == NULL)
+            {
+              dbgw::InvalidHandleException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          if (hMeta->getColumnType(nIndex, pType) == false)
+            {
+              throw dbgw::getLastException();
+            }
+
+          return true;
+        }
+      catch (dbgw::DBGWException &e)
+        {
+          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          return false;
+        }
+    }
+
+  }
+
   namespace ResultSet
   {
     DECLSPECIFIER Handle __stdcall CreateHandle()
@@ -907,7 +1202,7 @@ do { \
       catch (dbgw::DBGWException &e)
         {
           CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_NOT_PROPER_OP);
-          return 0;
+          return -1;
         }
     }
 
@@ -989,7 +1284,7 @@ do { \
       catch (dbgw::DBGWException &e)
         {
           CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_NOT_PROPER_OP);
-          return 0;
+          return -1;
         }
     }
 
@@ -1011,12 +1306,11 @@ do { \
       catch (dbgw::DBGWException &e)
         {
           CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_HANDLE);
-          return 0;
+          return false;
         }
     }
 
-    DECLSPECIFIER const dbgw::DBGWResultSetMetaDataSharedPtr __stdcall
-    GetMetaDataList(Handle hResult)
+    DECLSPECIFIER ResultSetMeta::Handle __stdcall GetMetaData(Handle hResult)
     {
       dbgw::clearException();
 
@@ -1042,6 +1336,62 @@ do { \
         {
           CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_NOT_PROPER_OP);
           return dbgw::DBGWResultSetMetaDataSharedPtr();
+        }
+    }
+
+    DECLSPECIFIER bool __stdcall IsNull(Handle hResult, int nIndex,
+        bool *pIsNull)
+    {
+      dbgw::clearException();
+
+      try
+        {
+          if (hResult == NULL)
+            {
+              dbgw::InvalidHandleException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          if ((*hResult)->isNull(nIndex, pIsNull) == false)
+            {
+              throw dbgw::getLastException();
+            }
+
+          return true;
+        }
+      catch (dbgw::DBGWException &e)
+        {
+          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          return false;
+        }
+    }
+
+    DECLSPECIFIER bool __stdcall IsNull(Handle hResult, const char *szName,
+        bool *pIsNull)
+    {
+      dbgw::clearException();
+
+      try
+        {
+          if (hResult == NULL)
+            {
+              dbgw::InvalidHandleException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          if ((*hResult)->isNull(szName, pIsNull) == false)
+            {
+              throw dbgw::getLastException();
+            }
+
+          return true;
+        }
+      catch (dbgw::DBGWException &e)
+        {
+          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          return false;
         }
     }
 
@@ -1499,6 +1849,118 @@ do { \
         }
     }
 
+    DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, int nIndex,
+        struct tm *pValue)
+    {
+      dbgw::clearException();
+
+      try
+        {
+          if (hResult == NULL)
+            {
+              dbgw::InvalidHandleException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          if ((*hResult)->getDateTime(nIndex, pValue) == false)
+            {
+              throw dbgw::getLastException();
+            }
+
+          return true;
+        }
+      catch (dbgw::DBGWException &e)
+        {
+          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          return false;
+        }
+    }
+
+    DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, const char *szName,
+        struct tm *pValue)
+    {
+      dbgw::clearException();
+
+      try
+        {
+          if (hResult == NULL)
+            {
+              dbgw::InvalidHandleException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          if ((*hResult)->getDateTime(szName, pValue) == false)
+            {
+              throw dbgw::getLastException();
+            }
+
+          return true;
+        }
+      catch (dbgw::DBGWException &e)
+        {
+          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          return false;
+        }
+    }
+
+    DECLSPECIFIER bool __stdcall GetType(Handle hResult, int nIndex,
+        dbgw::DBGWValueType *pType)
+    {
+      dbgw::clearException();
+
+      try
+        {
+          if (hResult == NULL)
+            {
+              dbgw::InvalidHandleException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          if ((*hResult)->getType(nIndex, pType) == false)
+            {
+              throw dbgw::getLastException();
+            }
+
+          return true;
+        }
+      catch (dbgw::DBGWException &e)
+        {
+          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          return false;
+        }
+    }
+
+    DECLSPECIFIER bool __stdcall GetType(Handle hResult, const char *szName,
+        dbgw::DBGWValueType *pType)
+    {
+      dbgw::clearException();
+
+      try
+        {
+          if (hResult == NULL)
+            {
+              dbgw::InvalidHandleException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          if ((*hResult)->getType(szName, pType) == false)
+            {
+              throw dbgw::getLastException();
+            }
+
+          return true;
+        }
+      catch (dbgw::DBGWException &e)
+        {
+          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          return false;
+        }
+    }
+
   }
 
   namespace BatchResult
@@ -1813,8 +2275,39 @@ do { \
         }
     }
 
-    DECLSPECIFIER bool __stdcall ExecuteBatch(Handle hExecutor, const char *szMethod,
-        DBGW3::ParamList::Handle hParamList, DBGW3::BatchResult::Handle &hBatchResult)
+    DECLSPECIFIER bool __stdcall Execute(Handle hExecutor, const char *szMethod,
+        unsigned long ulMilliseconds, DBGW3::ParamSet::Handle hParam,
+        DBGW3::ResultSet::Handle hResult)
+    {
+      dbgw::clearException();
+
+      try
+        {
+          if (hExecutor == NULL)
+            {
+              dbgw::InvalidHandleException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          *hResult = hExecutor->exec(szMethod, hParam, ulMilliseconds);
+          if (*hResult == NULL)
+            {
+              throw dbgw::getLastException();
+            }
+
+          return true;
+        }
+      catch (dbgw::DBGWException &e)
+        {
+          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_EXEC_FAILED);
+          return false;
+        }
+    }
+
+    DECLSPECIFIER bool __stdcall ExecuteBatch(Handle hExecutor,
+        const char *szMethod, DBGW3::ParamList::Handle hParamList,
+        DBGW3::BatchResult::Handle &hBatchResult)
     {
       dbgw::clearException();
 
@@ -1828,6 +2321,38 @@ do { \
             }
 
           *hBatchResult = hExecutor->execBatch(szMethod, *hParamList);
+          if (*hBatchResult == NULL)
+            {
+              throw dbgw::getLastException();
+            }
+
+          return true;
+        }
+      catch (dbgw::DBGWException &e)
+        {
+          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_EXEC_FAILED);
+          return false;
+        }
+    }
+
+    DECLSPECIFIER bool __stdcall ExecuteBatch(Handle hExecutor,
+        const char *szMethod, unsigned long ulMilliseconds,
+        DBGW3::ParamList::Handle hParamList,
+        DBGW3::BatchResult::Handle &hBatchResult)
+    {
+      dbgw::clearException();
+
+      try
+        {
+          if (hExecutor == NULL)
+            {
+              dbgw::InvalidHandleException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          *hBatchResult = hExecutor->execBatch(szMethod, *hParamList,
+              ulMilliseconds);
           if (*hBatchResult == NULL)
             {
               throw dbgw::getLastException();
@@ -1869,6 +2394,34 @@ do { \
         }
     }
 
+    DECLSPECIFIER bool __stdcall BeginTransaction(Handle hExecutor,
+        unsigned long ulWaitTimeMilSec)
+    {
+      dbgw::clearException();
+
+      try
+        {
+          if (hExecutor == NULL)
+            {
+              dbgw::InvalidHandleException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          if (hExecutor->setAutocommit(false, ulWaitTimeMilSec) == false)
+            {
+              throw dbgw::getLastException();
+            }
+
+          return true;
+        }
+      catch (dbgw::DBGWException &e)
+        {
+          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_EXEC_FAILED);
+          return false;
+        }
+    }
+
     DECLSPECIFIER bool __stdcall CommitTransaction(Handle hExecutor)
     {
       dbgw::clearException();
@@ -1883,6 +2436,34 @@ do { \
             }
 
           if (hExecutor->commit() == false)
+            {
+              throw dbgw::getLastException();
+            }
+
+          return true;
+        }
+      catch (dbgw::DBGWException &e)
+        {
+          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_EXEC_FAILED);
+          return false;
+        }
+    }
+
+    DECLSPECIFIER bool __stdcall CommitTransaction(Handle hExecutor,
+        unsigned long ulWaitTimeMilSec)
+    {
+      dbgw::clearException();
+
+      try
+        {
+          if (hExecutor == NULL)
+            {
+              dbgw::InvalidHandleException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          if (hExecutor->commit(ulWaitTimeMilSec) == false)
             {
               throw dbgw::getLastException();
             }
@@ -1921,6 +2502,64 @@ do { \
           CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_EXEC_FAILED);
           return false;
         }
+    }
+
+    DECLSPECIFIER bool __stdcall RollbackTransaction(Handle hExecutor,
+        unsigned long ulWaitTimeMilSec)
+    {
+      dbgw::clearException();
+
+      try
+        {
+          if (hExecutor == NULL)
+            {
+              dbgw::InvalidHandleException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          if (hExecutor->rollback(ulWaitTimeMilSec) == false)
+            {
+              throw dbgw::getLastException();
+            }
+
+          return true;
+        }
+      catch (dbgw::DBGWException &e)
+        {
+          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_EXEC_FAILED);
+          return false;
+        }
+    }
+
+  }
+
+  namespace Mock
+  {
+
+    DECLSPECIFIER Handle __stdcall GetInstance()
+    {
+      return dbgw::_CCIMockManager::getInstance();
+    }
+
+    DECLSPECIFIER void __stdcall AddReturnErrorFault(Handle hMock,
+        const char *szFaultFunction, dbgw::_CCI_FAULT_TYPE type,
+        int nReturnCode, int nErrorCode, const char *szErrorMessage)
+    {
+      hMock->addReturnErrorFault(szFaultFunction, type, nReturnCode,
+          nErrorCode, szErrorMessage);
+    }
+
+    DECLSPECIFIER void __stdcall AddSleepFault(Handle hMock,
+        const char *szFaultFunction, dbgw::_CCI_FAULT_TYPE type,
+        unsigned long ulSleepMilSec)
+    {
+      hMock->addSleepFault(szFaultFunction, type, ulSleepMilSec);
+    }
+
+    DECLSPECIFIER void __stdcall ClearFaultAll(Handle hMock)
+    {
+      hMock->clearFaultAll();
     }
 
   }

@@ -23,78 +23,229 @@
 namespace dbgw
 {
 
-  __thread CCI_FAULT_TYPE g_cci_fault_type = CCI_FAULT_TYPE_NONE;
-  __thread char *g_cci_fault_function = NULL;
-  __thread int g_cci_fault_int_return = 0;
-  __thread int g_cci_fault_int_args[10];
-
-  void cci_mock_set_fault(CCI_FAULT_TYPE type, const char *fault_function,
-      int fault_int_return)
+  _CCIFault::_CCIFault(_CCI_FAULT_TYPE type, int nReturnCode) :
+    m_type(type), m_nReturnCode(nReturnCode)
   {
-    g_cci_fault_type = type;
+  }
 
-    if (g_cci_fault_function != NULL)
+  _CCIFault::~_CCIFault()
+  {
+  }
+
+  bool _CCIFault::raiseFaultBeforeExecute(T_CCI_ERROR *pCCIError)
+  {
+    if (m_type != CCI_FAULT_TYPE_EXEC_BEFORE)
       {
-        free(g_cci_fault_function);
+        return false;
       }
 
-    g_cci_fault_function = strdup(fault_function);
-
-    g_cci_fault_int_return = fault_int_return;
+    return doRaiseFaultBeforeExecute(pCCIError);
   }
 
-  void cci_mock_clear_fault()
+  bool _CCIFault::raiseFaultAfterExecute(T_CCI_ERROR *pCCIError)
   {
-    g_cci_fault_type = CCI_FAULT_TYPE_NONE;
-
-    if (g_cci_fault_function != NULL)
+    if (m_type != CCI_FAULT_TYPE_EXEC_AFTER)
       {
-        free(g_cci_fault_function);
+        return false;
       }
 
-    g_cci_fault_function = NULL;
+    return doRaiseFaultAfterExecute(pCCIError);
   }
 
-  void cci_mock_set_int_arg(int index, int arg)
+  int _CCIFault::getReturnCode() const
   {
-    g_cci_fault_int_args[index] = arg;
+    return m_nReturnCode;
   }
 
-#define CCI_FAULT_EXEC_BEFORE_RETURN_ERR(ERR_BUF) \
-  do { \
-      if (g_cci_fault_type == CCI_FAULT_TYPE_EXEC_BEFORE_RETURN_ERR \
-          && g_cci_fault_function != NULL \
-          && !strcmp(__func__, g_cci_fault_function)) { \
-          if ((ERR_BUF) != NULL) { \
-              (ERR_BUF)->err_code = g_cci_fault_int_return; \
-              (ERR_BUF)->err_msg[0] = '\0'; \
-          } \
-          return g_cci_fault_int_return; \
-      } \
-  } while (false)
+  _CCIFaultReturnError::_CCIFaultReturnError(_CCI_FAULT_TYPE type, int nReturnCode,
+      int nErrorCode, string errorMessage) :
+    _CCIFault(type, nReturnCode), m_nErrorCode(nErrorCode),
+    m_errorMessage(errorMessage)
+  {
+  }
 
-#define CCI_FAULT_EXEC_AFTER_RETURN_ERR(ERR_BUF) \
-  do { \
-      if (g_cci_fault_type == CCI_FAULT_TYPE_EXEC_AFTER_RETURN_ERR \
-          && g_cci_fault_function != NULL \
-          && !strcmp(__func__, g_cci_fault_function)) { \
-          if ((ERR_BUF) != NULL) { \
-              (ERR_BUF)->err_code = g_cci_fault_int_return; \
-              (ERR_BUF)->err_msg[0] = '\0'; \
-          } \
-          return g_cci_fault_int_return; \
-      } \
-  } while (false)
+  _CCIFaultReturnError::~_CCIFaultReturnError()
+  {
+  }
+
+  bool _CCIFaultReturnError::doRaiseFaultBeforeExecute(T_CCI_ERROR *pCCIError)
+  {
+    if (pCCIError != NULL)
+      {
+        pCCIError->err_code = m_nErrorCode;
+        strncpy(pCCIError->err_msg, m_errorMessage.c_str(),
+            sizeof(pCCIError->err_msg));
+      }
+
+    return true;
+  }
+
+  bool _CCIFaultReturnError::doRaiseFaultAfterExecute(T_CCI_ERROR *pCCIError)
+  {
+    if (pCCIError != NULL)
+      {
+        pCCIError->err_code = m_nErrorCode;
+        strncpy(pCCIError->err_msg, m_errorMessage.c_str(),
+            sizeof(pCCIError->err_msg));
+      }
+
+    return true;
+  }
+
+  _CCIFaultSleep::_CCIFaultSleep(_CCI_FAULT_TYPE type,
+      unsigned long ulSleepMilSec) :
+    _CCIFault(type, CCI_ER_NO_ERROR), m_ulSleepMilSec(ulSleepMilSec)
+  {
+  }
+
+  _CCIFaultSleep::~_CCIFaultSleep()
+  {
+  }
+
+  bool _CCIFaultSleep::doRaiseFaultBeforeExecute(T_CCI_ERROR *pCCIError)
+  {
+    SLEEP_MILISEC(m_ulSleepMilSec / 1000, m_ulSleepMilSec % 1000);
+    return false;
+  }
+
+  bool _CCIFaultSleep::doRaiseFaultAfterExecute(T_CCI_ERROR *pCCIError)
+  {
+    SLEEP_MILISEC(m_ulSleepMilSec / 1000, m_ulSleepMilSec % 1000);
+    return false;
+  }
+
+  _CCIFaultList::_CCIFaultList()
+  {
+  }
+
+  _CCIFaultList::~_CCIFaultList()
+  {
+  }
+
+  void _CCIFaultList::addFault(_CCIFaultSharedPtr pFault)
+  {
+    m_faultList.push_back(pFault);
+  }
+
+  _CCIFaultSharedPtr _CCIFaultList::getFault()
+  {
+    if (m_faultList.empty())
+      {
+        return _CCIFaultSharedPtr();
+      }
+
+    _CCIFaultSharedPtr pFault = m_faultList.front();
+    m_faultList.pop_front();
+    return pFault;
+  }
+
+  _CCIMockManager *_CCIMockManager::m_pInstance = NULL;
+
+  _CCIMockManager::_CCIMockManager() :
+    m_pMutex(system::_MutexFactory::create())
+  {
+  }
+
+  _CCIMockManager::~_CCIMockManager()
+  {
+  }
+
+  void _CCIMockManager::addReturnErrorFault(const char *szFaultFunction,
+      _CCI_FAULT_TYPE type, int nReturnCode, int nErrorCode,
+      const char *szErrorMessage)
+  {
+    system::_MutexAutoLock lock(m_pMutex);
+
+    _CCIFaultSharedPtr pFault(
+        new _CCIFaultReturnError(type, nReturnCode, nErrorCode, szErrorMessage));
+
+    _CCIFaultListMap::iterator it = m_faultListMap.find(szFaultFunction);
+    if (it == m_faultListMap.end())
+      {
+        _CCIFaultListSharedPtr pFaultList(new _CCIFaultList());
+        pFaultList->addFault(pFault);
+        m_faultListMap[szFaultFunction] = pFaultList;
+      }
+    else
+      {
+        it->second->addFault(pFault);
+      }
+  }
+
+  void _CCIMockManager::addSleepFault(const char *szFaultFunction,
+      _CCI_FAULT_TYPE type, unsigned long ulSleepMilSec)
+  {
+    system::_MutexAutoLock lock(m_pMutex);
+
+    _CCIFaultSharedPtr pFault(
+        new _CCIFaultSleep(type, ulSleepMilSec));
+
+    _CCIFaultListMap::iterator it = m_faultListMap.find(szFaultFunction);
+    if (it == m_faultListMap.end())
+      {
+        _CCIFaultListSharedPtr pFaultList(new _CCIFaultList());
+        pFaultList->addFault(pFault);
+        m_faultListMap[szFaultFunction] = pFaultList;
+      }
+    else
+      {
+        it->second->addFault(pFault);
+      }
+  }
+
+  _CCIFaultSharedPtr _CCIMockManager::getFault(const char *szFaultFunction)
+  {
+    system::_MutexAutoLock lock(m_pMutex);
+
+    _CCIFaultListMap::iterator it = m_faultListMap.find(szFaultFunction);
+    if (it == m_faultListMap.end())
+      {
+        return _CCIFaultSharedPtr();
+      }
+    else
+      {
+        return it->second->getFault();
+      }
+  }
+
+  void _CCIMockManager::clearFaultAll()
+  {
+    system::_MutexAutoLock lock(m_pMutex);
+
+    m_faultListMap.clear();
+  }
+
+  _CCIMockManager *_CCIMockManager::getInstance()
+  {
+    if (m_pInstance == NULL)
+      {
+        m_pInstance = new _CCIMockManager();
+      }
+
+    return m_pInstance;
+  }
 
   int cci_mock_connect_with_url(char *url, char *user, char *password)
   {
     T_CCI_ERROR err_buf;
 
-    CCI_FAULT_EXEC_BEFORE_RETURN_ERR(&err_buf);
+    _CCIMockManager *pMockManager = _CCIMockManager::getInstance();
+
+    _CCIFaultSharedPtr pFault = pMockManager->getFault("cci_connect_with_url");
+
+    if (pFault != NULL
+        && pFault->raiseFaultBeforeExecute(&err_buf))
+      {
+        return pFault->getReturnCode();
+      }
 
     int nResult = cci_connect_with_url(url, user, password);
 
-    CCI_FAULT_EXEC_AFTER_RETURN_ERR(&err_buf);
+    if (pFault != NULL
+        && pFault->raiseFaultAfterExecute(&err_buf))
+      {
+        return pFault->getReturnCode();
+      }
 
     return nResult;
   }
@@ -102,11 +253,23 @@ namespace dbgw
   int cci_mock_prepare(int con_handle, char *sql_stmt, char flag,
       T_CCI_ERROR *err_buf)
   {
-    CCI_FAULT_EXEC_BEFORE_RETURN_ERR(err_buf);
+    _CCIMockManager *pMockManager = _CCIMockManager::getInstance();
+
+    _CCIFaultSharedPtr pFault = pMockManager->getFault("cci_prepare");
+
+    if (pFault != NULL
+        && pFault->raiseFaultBeforeExecute(err_buf))
+      {
+        return pFault->getReturnCode();
+      }
 
     int nResult = cci_prepare(con_handle, sql_stmt, flag, err_buf);
 
-    CCI_FAULT_EXEC_AFTER_RETURN_ERR(err_buf);
+    if (pFault != NULL
+        && pFault->raiseFaultAfterExecute(err_buf))
+      {
+        return pFault->getReturnCode();
+      }
 
     return nResult;
   }
@@ -114,11 +277,23 @@ namespace dbgw
   int cci_mock_execute(int req_handle, char flag, int max_col_size,
       T_CCI_ERROR *err_buf)
   {
-    CCI_FAULT_EXEC_BEFORE_RETURN_ERR(err_buf);
+    _CCIMockManager *pMockManager = _CCIMockManager::getInstance();
+
+    _CCIFaultSharedPtr pFault = pMockManager->getFault("cci_execute");
+
+    if (pFault != NULL
+        && pFault->raiseFaultBeforeExecute(err_buf))
+      {
+        return pFault->getReturnCode();
+      }
 
     int nResult = cci_execute(req_handle, flag, max_col_size, err_buf);
 
-    CCI_FAULT_EXEC_AFTER_RETURN_ERR(err_buf);
+    if (pFault != NULL
+        && pFault->raiseFaultAfterExecute(err_buf))
+      {
+        return pFault->getReturnCode();
+      }
 
     return nResult;
   }
@@ -126,11 +301,23 @@ namespace dbgw
   int cci_mock_execute_array(int req_h_id, T_CCI_QUERY_RESULT **qr,
       T_CCI_ERROR *err_buf)
   {
-    CCI_FAULT_EXEC_BEFORE_RETURN_ERR(err_buf);
+    _CCIMockManager *pMockManager = _CCIMockManager::getInstance();
+
+    _CCIFaultSharedPtr pFault = pMockManager->getFault("cci_execute_array");
+
+    if (pFault != NULL
+        && pFault->raiseFaultBeforeExecute(err_buf))
+      {
+        return pFault->getReturnCode();
+      }
 
     int nResult = cci_execute_array(req_h_id, qr, err_buf);
 
-    CCI_FAULT_EXEC_AFTER_RETURN_ERR(err_buf);
+    if (pFault != NULL
+        && pFault->raiseFaultAfterExecute(err_buf))
+      {
+        return pFault->getReturnCode();
+      }
 
     return nResult;
   }
@@ -139,62 +326,49 @@ namespace dbgw
   {
     T_CCI_ERROR err_buf;
 
-    CCI_FAULT_EXEC_BEFORE_RETURN_ERR(&err_buf);
+    _CCIMockManager *pMockManager = _CCIMockManager::getInstance();
+
+    _CCIFaultSharedPtr pFault = pMockManager->getFault("cci_set_autocommit");
+
+    if (pFault != NULL
+        && pFault->raiseFaultBeforeExecute(&err_buf))
+      {
+        return pFault->getReturnCode();
+      }
 
     int nResult = cci_set_autocommit(con_h_id, autocommit_mode);
 
-    CCI_FAULT_EXEC_AFTER_RETURN_ERR(&err_buf);
+    if (pFault != NULL
+        && pFault->raiseFaultAfterExecute(&err_buf))
+      {
+        return pFault->getReturnCode();
+      }
 
     return nResult;
   }
 
-  __thread DBGW_FAULT_TYPE g_dbgw_fault_type = DBGW_FAULT_TYPE_NONE;
-  __thread char *g_dbgw_fault_group = NULL;
-  __thread int g_dbgw_fault_int_return = 0;
-
-  DBGW_FAULT_TYPE dbgw_mock_get_fault()
+  int cci_mock_end_tran(int con_h_id, char type, T_CCI_ERROR *err_buf)
   {
-    return g_dbgw_fault_type;
-  }
 
-  const char *dbgw_mock_get_group()
-  {
-    return g_dbgw_fault_group;
-  }
+    _CCIMockManager *pMockManager = _CCIMockManager::getInstance();
 
-  int dbgw_mock_get_int_return()
-  {
-    return g_dbgw_fault_int_return;
-  }
+    _CCIFaultSharedPtr pFault = pMockManager->getFault("cci_end_tran");
 
-  void dbgw_mock_clear_fault()
-  {
-    cci_mock_clear_fault();
-
-    g_dbgw_fault_type = DBGW_FAULT_TYPE_NONE;
-
-    if (g_dbgw_fault_group != NULL)
+    if (pFault != NULL
+        && pFault->raiseFaultBeforeExecute(err_buf))
       {
-        free(g_dbgw_fault_group);
+        return pFault->getReturnCode();
       }
 
-    g_dbgw_fault_group = NULL;
-    g_dbgw_fault_int_return = 0;
-  }
+    int nResult = cci_end_tran(con_h_id, type, err_buf);
 
-  void dbgw_mock_set_fault(DBGW_FAULT_TYPE type, const char *group, int int_return)
-  {
-    cci_mock_clear_fault();
-
-    g_dbgw_fault_type = type;
-    g_dbgw_fault_int_return = int_return;
-
-    if (g_dbgw_fault_group != NULL)
+    if (pFault != NULL
+        && pFault->raiseFaultAfterExecute(err_buf))
       {
-        free(g_dbgw_fault_group);
+        return pFault->getReturnCode();
       }
 
-    g_dbgw_fault_group = strdup(group);
+    return nResult;
   }
 
 }

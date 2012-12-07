@@ -32,6 +32,7 @@
 #include "DBGWDataBaseInterface.h"
 #include "DBGWQuery.h"
 #include "DBGWCUBRIDInterface.h"
+#include "DBGWWork.h"
 #include "DBGWConfiguration.h"
 #include "DBGWClient.h"
 #include "DBGWXMLParser.h"
@@ -116,10 +117,10 @@ namespace dbgw
     m_pQuery = pQuery;
   }
 
-  const DBGWClientResultSetSharedPtr _DBGWExecutorProxy::execute(
-      const _DBGWParameter *pParameter)
+  DBGWClientResultSetSharedPtr _DBGWExecutorProxy::execute(
+      const _DBGWParameter &parameter)
   {
-    bindParameter(pParameter);
+    bindParameter(parameter);
 
     DBGWClientResultSetSharedPtr pClientResultSet;
 
@@ -160,7 +161,7 @@ namespace dbgw
     return pClientResultSet;
   }
 
-  const DBGWClientBatchResultSetSharedPtr _DBGWExecutorProxy::executeBatch(
+  DBGWClientBatchResultSetSharedPtr _DBGWExecutorProxy::executeBatch(
       const _DBGWParameterList &parameterList)
   {
     if (m_pQuery->getType() == DBGW_STMT_TYPE_PROCEDURE)
@@ -173,7 +174,7 @@ namespace dbgw
     _DBGWParameterList::const_iterator it = parameterList.begin();
     for (; it != parameterList.end(); it++)
       {
-        bindParameter(&(*it));
+        bindParameter((*it));
 
         m_pStatement->addBatch();
       }
@@ -181,9 +182,9 @@ namespace dbgw
     return m_pStatement->executeBatch();
   }
 
-  void _DBGWExecutorProxy::bindParameter(const _DBGWParameter *pParameter)
+  void _DBGWExecutorProxy::bindParameter(const _DBGWParameter &parameter)
   {
-    if (pParameter == NULL)
+    if (parameter.size() == 0)
       {
         return;
       }
@@ -202,7 +203,7 @@ namespace dbgw
         if (stParam.mode == db::DBGW_PARAM_MODE_IN
             || stParam.mode == db::DBGW_PARAM_MODE_INOUT)
           {
-            pValue = pParameter->getValue(stParam.name.c_str(), stParam.index);
+            pValue = parameter.getValue(stParam.name.c_str(), stParam.index);
 
             if (pValue == NULL)
               {
@@ -529,12 +530,9 @@ namespace dbgw
       }
   }
 
-  const DBGWClientResultSetSharedPtr _DBGWExecutor::execute(
-      _DBGWBoundQuerySharedPtr pQuery, const _DBGWParameter *pParameter)
+  DBGWClientResultSetSharedPtr _DBGWExecutor::execute(
+      _DBGWBoundQuerySharedPtr pQuery, const _DBGWParameter &parameter)
   {
-    DBGW_FAULT_PARTIAL_PREPARE_FAIL(pQuery->getGroupName());
-    DBGW_FAULT_PARTIAL_EXECUTE_FAIL(pQuery->getGroupName());
-
     if (m_bAutocommit == false)
       {
         m_bInTran = true;
@@ -544,8 +542,8 @@ namespace dbgw
       {
         m_logger.setSqlName(pQuery->getSqlName());
 
-        _DBGWExecutorProxySharedPtr pProxy = preparedStatement(pQuery);
-        DBGWClientResultSetSharedPtr pClientResultSet = pProxy->execute(pParameter);
+        _DBGWExecutorProxySharedPtr pProxy = getExecutorProxy(pQuery);
+        DBGWClientResultSetSharedPtr pClientResultSet = pProxy->execute(parameter);
         if (pClientResultSet == NULL)
           {
             throw getLastException();
@@ -565,12 +563,9 @@ namespace dbgw
       }
   }
 
-  const DBGWClientBatchResultSetSharedPtr _DBGWExecutor::executeBatch(
+  DBGWClientBatchResultSetSharedPtr _DBGWExecutor::executeBatch(
       _DBGWBoundQuerySharedPtr pQuery, const _DBGWParameterList &parameterList)
   {
-    DBGW_FAULT_PARTIAL_PREPARE_FAIL(pQuery->getGroupName());
-    DBGW_FAULT_PARTIAL_EXECUTE_ARRAY_FAIL(pQuery->getGroupName());
-
     if (m_bAutocommit == false)
       {
         m_bInTran = true;
@@ -580,7 +575,7 @@ namespace dbgw
       {
         m_logger.setSqlName(pQuery->getSqlName());
 
-        _DBGWExecutorProxySharedPtr pProxy = preparedStatement(pQuery);
+        _DBGWExecutorProxySharedPtr pProxy = getExecutorProxy(pQuery);
         DBGWClientBatchResultSetSharedPtr pBatchClientResultSet =
             pProxy->executeBatch(parameterList);
         if (pBatchClientResultSet == NULL)
@@ -602,37 +597,37 @@ namespace dbgw
       }
   }
 
-  _DBGWExecutorProxySharedPtr _DBGWExecutor::preparedStatement(
+  _DBGWExecutorProxySharedPtr _DBGWExecutor::getExecutorProxy(
       const _DBGWBoundQuerySharedPtr &pQuery)
   {
-    _DBGWExecutorProxySharedPtr pStmt;
+    _DBGWExecutorProxySharedPtr pProxy;
     _DBGWExecutorProxyHashMap::iterator it = m_proxyMap.find(
         pQuery->getSqlKey());
     if (it != m_proxyMap.end())
       {
-        pStmt = it->second;
+        pProxy = it->second;
 
-        if (pStmt != NULL)
+        if (pProxy != NULL)
           {
-            pStmt->init(pQuery);
+            pProxy->init(pQuery);
           }
       }
-    if (pStmt == NULL)
+    if (pProxy == NULL)
       {
-        pStmt = _DBGWExecutorProxySharedPtr(
+        pProxy = _DBGWExecutorProxySharedPtr(
             new _DBGWExecutorProxy(
-                m_executorPool.getGroup().isUseDefaultParameterValue(),
+                m_executorPool.getGroup().isUseDefaultValueWhenFailedToCastParam(),
                 m_pConnection, pQuery));
-        if (pStmt == NULL)
+        if (pProxy == NULL)
           {
             throw getLastException();
           }
 
         DBGW_LOG_INFO(m_logger.getLogMessage("prepare statement.").c_str());
 
-        m_proxyMap[pQuery->getSqlKey()] = pStmt;
+        m_proxyMap[pQuery->getSqlKey()] = pProxy;
       }
-    return pStmt;
+    return pProxy;
   }
 
   void _DBGWExecutor::setAutocommit(bool bAutocommit)
@@ -663,9 +658,22 @@ namespace dbgw
       }
   }
 
-  _DBGWExecutorPool &_DBGWExecutor::getExecutorPool()
+  void _DBGWExecutor::cancel()
   {
-    return m_executorPool;
+    m_pConnection->cancel();
+  }
+
+  void _DBGWExecutor::returnToPool(bool bIsForceDrop)
+  {
+    if (bIsForceDrop)
+      {
+        /**
+         * we don't want to reuse this executor.
+         */
+        m_bInvalid = true;
+      }
+
+    m_executorPool.returnExecutor(shared_from_this());
   }
 
   const char *_DBGWExecutor::getGroupName() const
@@ -746,14 +754,9 @@ namespace dbgw
     return m_bInvalid == false;
   }
 
-  bool _DBGWExecutor::isEvictable(long lMinEvictableIdleTimeMillis)
+  bool _DBGWExecutor::isEvictable(unsigned long lMinEvictableIdleTimeMillis)
   {
-    struct timeval endIdleTime;
-
-    gettimeofday(&endIdleTime, NULL);
-
-    long lTotalIdleTimeMilSec = (endIdleTime.tv_sec - m_beginIdleTime.tv_sec) * 1000;
-    lTotalIdleTimeMilSec += ((endIdleTime.tv_usec - m_beginIdleTime.tv_usec) / 1000);
+    unsigned long lTotalIdleTimeMilSec = system::getdifftimeofday(m_beginIdleTime);
 
     return lTotalIdleTimeMilSec >= lMinEvictableIdleTimeMillis;
   }
@@ -788,9 +791,9 @@ namespace dbgw
     return 8;
   }
 
-  long _DBGWExecutorPoolContext::DEFAULT_TIME_BETWEEN_EVICTION_RUNS_MILLIS()
+  unsigned long _DBGWExecutorPoolContext::DEFAULT_TIME_BETWEEN_EVICTION_RUNS_MILLIS()
   {
-    return -1;
+    return 0;
   }
 
   int _DBGWExecutorPoolContext::DEFAULT_NUM_TESTS_PER_EVICTIONRUN()
@@ -798,7 +801,7 @@ namespace dbgw
     return 3;
   }
 
-  long _DBGWExecutorPoolContext::DEFAULT_MIN_EVICTABLE_IDLE_TIMEMILLIS()
+  unsigned long _DBGWExecutorPoolContext::DEFAULT_MIN_EVICTABLE_IDLE_TIMEMILLIS()
   {
     return 1000 * 60 * 30;
   }
@@ -837,7 +840,7 @@ namespace dbgw
   {
     m_context = context;
 
-    system::_MutexLock lock(m_pPoolMutex);
+    system::_MutexAutoLock lock(m_pPoolMutex);
 
     _DBGWExecutorSharedPtr pExecutor;
     for (size_t i = 0; i < context.initialSize; i++)
@@ -879,7 +882,7 @@ namespace dbgw
 
     if (pExecutor == NULL)
       {
-        system::_MutexLock lock(m_pPoolMutex);
+        system::_MutexAutoLock lock(m_pPoolMutex);
         if (m_context.maxActive <= ((int) getPoolSize() + m_nUsedExecutorCount))
           {
             CreateMaxConnectionException e(m_context.maxActive);
@@ -896,13 +899,14 @@ namespace dbgw
           }
       }
 
-    system::_MutexLock lock(m_pPoolMutex);
+    system::_MutexAutoLock lock(m_pPoolMutex);
     m_nUsedExecutorCount++;
 
     return pExecutor;
   }
 
-  void _DBGWExecutorPool::returnExecutor(_DBGWExecutorSharedPtr pExecutor)
+  void _DBGWExecutorPool::returnExecutor(_DBGWExecutorSharedPtr pExecutor,
+      bool bIsDetached)
   {
     if (pExecutor == NULL)
       {
@@ -917,14 +921,15 @@ namespace dbgw
       {
       }
 
-    system::_MutexLock lock(m_pPoolMutex);
+    system::_MutexAutoLock lock(m_pPoolMutex);
 
     if (m_nUsedExecutorCount > 0)
       {
         m_nUsedExecutorCount--;
       }
 
-    if (pExecutor->isValid() && m_context.maxIdle > (int) getPoolSize())
+    if (bIsDetached == false && pExecutor->isValid()
+        && m_context.maxIdle > (int) getPoolSize())
       {
         m_executorList.push_back(pExecutor);
       }
@@ -939,7 +944,7 @@ namespace dbgw
 
   void _DBGWExecutorPool::evictUnsuedExecutor(int nCheckCount)
   {
-    system::_MutexLock lock(m_pPoolMutex);
+    system::_MutexAutoLock lock(m_pPoolMutex);
 
     if (nCheckCount > (int) getPoolSize())
       {
@@ -975,7 +980,7 @@ namespace dbgw
 
     m_bClosed = true;
 
-    system::_MutexLock lock(m_pPoolMutex);
+    system::_MutexAutoLock lock(m_pPoolMutex);
     m_executorList.clear();
   }
 
@@ -1015,8 +1020,6 @@ namespace dbgw
 
   DBGWConnectionSharedPtr _DBGWGroup::getConnection()
   {
-    DBGW_FAULT_PARTIAL_CONNECT_FAIL(m_name.c_str());
-
     _DBGWHostSharedPtr pHost = m_hostList[m_nCurrentHostIndex];
     if (m_nSchedule < pHost->getWeight())
       {
@@ -1077,7 +1080,7 @@ namespace dbgw
     return m_bIgnoreResult;
   }
 
-  bool _DBGWGroup::isUseDefaultParameterValue() const
+  bool _DBGWGroup::isUseDefaultValueWhenFailedToCastParam() const
   {
     return m_buseDefaultValueWhenFailedToCastParam;
   }
@@ -1087,12 +1090,12 @@ namespace dbgw
     return m_hostList.empty();
   }
 
-  void evictUnusedExecutorThreadFunc(const system::_Thread *pThread,
+  void _DBGWService::run(const system::_Thread *pThread,
       system::_ThreadDataSharedPtr pData)
   {
     if (pData == NULL || pThread == NULL)
       {
-        FailedToCreateEvictorException e;
+        FailedToCreateThreadException e("evictor");
         DBGW_LOG_ERROR(e.what());
         return;
       }
@@ -1114,17 +1117,12 @@ namespace dbgw
       }
   }
 
-  long _DBGWService::DEFAULT_MAX_WAIT_EXIT_TIME_MILSEC()
-  {
-    return 5000;
-  }
-
-  _DBGWService::_DBGWService(const string &fileName, const string &nameSpace,
-      const string &description, bool bValidateResult[], int nValidateRatio,
-      long lMaxWaitExitTimeMilSec) :
-    m_fileName(fileName), m_nameSpace(nameSpace), m_description(description),
-    m_nValidateRatio(nValidateRatio), m_lMaxWaitExitTimeMilSec(lMaxWaitExitTimeMilSec),
-    m_pEvictorThread(system::_ThreadFactory::create(evictUnusedExecutorThreadFunc))
+  _DBGWService::_DBGWService(DBGWConfiguration *pConfiguration,
+      const string &fileName, const string &nameSpace, const string &description,
+      bool bValidateResult[], int nValidateRatio) :
+    m_pConfiguration(pConfiguration), m_fileName(fileName), m_nameSpace(nameSpace),
+    m_description(description), m_nValidateRatio(nValidateRatio),
+    m_pEvictorThread(system::_ThreadFactory::create(run))
   {
     memcpy(m_bValidateResult, bValidateResult, sizeof(m_bValidateResult));
 
@@ -1202,7 +1200,14 @@ namespace dbgw
 
   void _DBGWService::stopEvictorThread()
   {
-    m_pEvictorThread->timedJoin(m_lMaxWaitExitTimeMilSec);
+    unsigned long ulMaxWaitExitTimeMilSec =
+        DBGWConfiguration::DEFAULT_MAX_WAIT_EXIT_TIME_MILSEC();
+    if (m_pConfiguration != NULL)
+      {
+        ulMaxWaitExitTimeMilSec = m_pConfiguration->getMaxWaitExitTimeMilSec();
+      }
+
+    m_pEvictorThread->timedJoin(ulMaxWaitExitTimeMilSec);
   }
 
   bool _DBGWService::empty() const
@@ -1243,14 +1248,14 @@ namespace dbgw
 
   _DBGWVersionedResource::~_DBGWVersionedResource()
   {
-    system::_MutexLock lock(m_pMutex);
+    system::_MutexAutoLock lock(m_pMutex);
 
     m_resourceMap.clear();
   }
 
   int _DBGWVersionedResource::getVersion()
   {
-    system::_MutexLock lock(m_pMutex);
+    system::_MutexAutoLock lock(m_pMutex);
 
     if (m_nVersion > INVALID_VERSION)
       {
@@ -1267,7 +1272,7 @@ namespace dbgw
         return;
       }
 
-    system::_MutexLock lock(m_pMutex);
+    system::_MutexAutoLock lock(m_pMutex);
 
     _DBGWResource *pResource = getResourceWithUnlock(nVersion);
     pResource->modifyRefCount(-1);
@@ -1288,7 +1293,7 @@ namespace dbgw
 
   void _DBGWVersionedResource::putResource(_DBGWResourceSharedPtr pResource)
   {
-    system::_MutexLock lock(m_pMutex);
+    system::_MutexAutoLock lock(m_pMutex);
 
     if (m_pResource != NULL && m_nVersion > INVALID_VERSION
         && m_pResource->getRefCount() > 0)
@@ -1302,7 +1307,7 @@ namespace dbgw
 
   _DBGWResource *_DBGWVersionedResource::getNewResource()
   {
-    system::_MutexLock lock(m_pMutex);
+    system::_MutexAutoLock lock(m_pMutex);
 
     if (m_nVersion <= INVALID_VERSION)
       {
@@ -1314,7 +1319,7 @@ namespace dbgw
 
   _DBGWResource *_DBGWVersionedResource::getResource(int nVersion)
   {
-    system::_MutexLock lock(m_pMutex);
+    system::_MutexAutoLock lock(m_pMutex);
 
     return getResourceWithUnlock(nVersion);
   }
@@ -1418,11 +1423,6 @@ namespace dbgw
     m_nValidateRatio = 100;
   }
 
-  void _DBGWService::setMaxWaitExitTimeMilSec(long lMaxWaitExitTimeMilSec)
-  {
-    m_lMaxWaitExitTimeMilSec = lMaxWaitExitTimeMilSec;
-  }
-
   _DBGWExecutorList _DBGWService::getExecutorList()
   {
     _DBGWExecutorList executorList;
@@ -1451,36 +1451,6 @@ namespace dbgw
       }
 
     return executorList;
-  }
-
-  void _DBGWService::returnExecutorList(_DBGWExecutorList &executorList)
-  {
-    DBGWException exception;
-    for (_DBGWExecutorList::iterator it = executorList.begin(); it
-        != executorList.end(); it++)
-      {
-        if (*it == NULL)
-          {
-            continue;
-          }
-
-        try
-          {
-            _DBGWExecutorPool &pool = (*it)->getExecutorPool();
-            pool.returnExecutor(*it);
-          }
-        catch (DBGWException &e)
-          {
-            exception = e;
-          }
-      }
-
-    executorList.clear();
-
-    if (exception.getErrorCode() != DBGW_ER_NO_ERROR)
-      {
-        throw exception;
-      }
   }
 
   _DBGWQueryMapper::_DBGWQueryMapper() :
@@ -1568,7 +1538,7 @@ namespace dbgw
   }
 
   _DBGWBoundQuerySharedPtr _DBGWQueryMapper::getQuery(const char *szSqlName,
-      const char *szGroupName, const _DBGWParameter *pParameter,
+      const char *szGroupName, const _DBGWParameter &parameter,
       bool bFirstGroup) const
   {
     _DBGWQuerySqlHashMap::const_iterator it = m_querySqlMap.find(
@@ -1586,12 +1556,12 @@ namespace dbgw
       {
         if (bFirstGroup && !strcmp((*it)->getGroupName(), GROUP_NAME_FIRST))
           {
-            return (*it)->getDBGWBoundQuery(szGroupName, pParameter);
+            return (*it)->getDBGWBoundQuery(szGroupName, parameter);
           }
         else if (!strcmp((*it)->getGroupName(), GROUP_NAME_ALL) || !strcmp(
             (*it)->getGroupName(), szGroupName))
           {
-            return (*it)->getDBGWBoundQuery(szGroupName, pParameter);
+            return (*it)->getDBGWBoundQuery(szGroupName, parameter);
           }
       }
 
@@ -1603,16 +1573,26 @@ namespace dbgw
     return m_version;
   }
 
-  _DBGWConnector::_DBGWConnector()
+  _DBGWConnector::_DBGWConnector(DBGWConfiguration *pConfiguration) :
+    m_pConfiguration(pConfiguration)
   {
   }
 
   _DBGWConnector::~_DBGWConnector()
   {
     _DBGWServiceList::iterator it = m_serviceList.begin();
-    while (it != m_serviceList.end())
+    for (; it != m_serviceList.end(); it++)
       {
-        (*it++)->stopEvictorThread();
+        try
+          {
+            (*it)->stopEvictorThread();
+          }
+        catch (CondVarOperationFailException &)
+          {
+            /**
+             * ignore timeout exception
+             */
+          }
       }
     m_serviceList.clear();
   }
@@ -1658,7 +1638,20 @@ namespace dbgw
     throw e;
   }
 
-  DBGWConfiguration::DBGWConfiguration()
+  DBGWConfiguration *_DBGWConnector::getConfiguration() const
+  {
+    return m_pConfiguration;
+  }
+
+  unsigned long DBGWConfiguration::DEFAULT_MAX_WAIT_EXIT_TIME_MILSEC()
+  {
+    return 5000;
+  }
+
+  DBGWConfiguration::DBGWConfiguration() :
+    m_ulWaitTimeMilSec(system::INFINITE_TIMEOUT),
+    m_ulMaxWaitExitTimeMilSec(DEFAULT_MAX_WAIT_EXIT_TIME_MILSEC()),
+    m_workerPool(this)
   {
     /**
      * We don't need to clear error because this api will not make error.
@@ -1679,7 +1672,9 @@ namespace dbgw
   }
 
   DBGWConfiguration::DBGWConfiguration(const char *szConfFileName) :
-    m_confFileName(szConfFileName)
+    m_confFileName(szConfFileName), m_ulWaitTimeMilSec(system::INFINITE_TIMEOUT),
+    m_ulMaxWaitExitTimeMilSec(DEFAULT_MAX_WAIT_EXIT_TIME_MILSEC()),
+    m_workerPool(this)
   {
     clearException();
 
@@ -1688,15 +1683,7 @@ namespace dbgw
         _DBGWLogger::finalize();
         _DBGWLogger::initialize();
 
-        if (loadConnector() == false)
-          {
-            throw getLastException();
-          }
-
-        if (loadQueryMapper() == false)
-          {
-            throw getLastException();
-          }
+        loadConfiguration();
       }
     catch (DBGWException &e)
       {
@@ -1705,7 +1692,9 @@ namespace dbgw
   }
 
   DBGWConfiguration::DBGWConfiguration(const char *szConfFileName, bool bLoadXml) :
-    m_confFileName(szConfFileName)
+    m_confFileName(szConfFileName), m_ulWaitTimeMilSec(system::INFINITE_TIMEOUT),
+    m_ulMaxWaitExitTimeMilSec(DEFAULT_MAX_WAIT_EXIT_TIME_MILSEC()),
+    m_workerPool(this)
   {
     clearException();
 
@@ -1716,15 +1705,7 @@ namespace dbgw
 
         if (bLoadXml)
           {
-            if (loadConnector() == false)
-              {
-                throw getLastException();
-              }
-
-            if (loadQueryMapper() == false)
-              {
-                throw getLastException();
-              }
+            loadConfiguration();
           }
       }
     catch (DBGWException &e)
@@ -1737,17 +1718,28 @@ namespace dbgw
   {
   }
 
+  void DBGWConfiguration::setWaitTimeMilSec(unsigned long ulWaitTimeMilSec)
+  {
+    m_ulWaitTimeMilSec = ulWaitTimeMilSec;
+  }
+
+  void DBGWConfiguration::setMaxWaitExitTimeMilSec(
+      unsigned long ulMaxWaitExitTimeMilSec)
+  {
+    m_ulMaxWaitExitTimeMilSec = ulMaxWaitExitTimeMilSec;
+  }
+
   bool DBGWConfiguration::loadConnector(const char *szXmlPath)
   {
     clearException();
 
     try
       {
-        _DBGWConnectorSharedPtr pConnector(new _DBGWConnector());
+        _DBGWConnectorSharedPtr pConnector(new _DBGWConnector(this));
 
         if (szXmlPath == NULL)
           {
-            _DBGWConfigurationParser parser(m_confFileName, pConnector);
+            _DBGWConfigurationParser parser(*this, m_confFileName, pConnector);
             _DBGWParser::parse(&parser);
           }
         else
@@ -1795,7 +1787,7 @@ namespace dbgw
 
         if (szXmlPath == NULL)
           {
-            _DBGWConfigurationParser parser(m_confFileName, pQueryMapper);
+            _DBGWConfigurationParser parser(*this, m_confFileName, pQueryMapper);
             _DBGWParser::parse(&parser);
           }
         else
@@ -1821,6 +1813,20 @@ namespace dbgw
   int DBGWConfiguration::getQueryMapperSize() const
   {
     return m_queryResource.size();
+  }
+
+  void DBGWConfiguration::loadConfiguration()
+  {
+    _DBGWConnectorSharedPtr pConnector(new _DBGWConnector(this));
+    _DBGWQueryMapperSharedPtr pQueryMapper(new _DBGWQueryMapper());
+    pQueryMapper->setVersion(DBGW_QUERY_MAP_VER_30);
+
+    _DBGWConfigurationParser parser(*this, m_confFileName, pConnector,
+        pQueryMapper);
+    _DBGWParser::parse(&parser);
+
+    m_connResource.putResource(pConnector);
+    m_queryResource.putResource(pQueryMapper);
   }
 
   bool DBGWConfiguration::closeVersion(const _DBGWConfigurationVersion &stVersion)
@@ -1920,6 +1926,31 @@ namespace dbgw
         setLastException(e);
         return NULL;
       }
+  }
+
+  _DBGWWorkerSharedPtr DBGWConfiguration::getWorker()
+  {
+    clearException();
+
+    try
+      {
+        return m_workerPool.getWorker();
+      }
+    catch (DBGWException &e)
+      {
+        setLastException(e);
+        return _DBGWWorkerSharedPtr();
+      }
+  }
+
+  unsigned long DBGWConfiguration::getWaitTimeMilSec() const
+  {
+    return m_ulWaitTimeMilSec;
+  }
+
+  unsigned long DBGWConfiguration::getMaxWaitExitTimeMilSec() const
+  {
+    return m_ulMaxWaitExitTimeMilSec;
   }
 
 }

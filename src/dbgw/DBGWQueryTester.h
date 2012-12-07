@@ -43,7 +43,7 @@ namespace dbgw
     _DBGWParameter m_parameter;
   };
 
-  typedef shared_ptr<DBGWQueryTester> DBGWQueryTesterSharedPtr;
+  typedef boost::shared_ptr<DBGWQueryTester> DBGWQueryTesterSharedPtr;
   typedef list<DBGWQueryTesterSharedPtr> DBGWQueryTesterList;
 
   class DBGWQueryTransaction
@@ -59,7 +59,7 @@ namespace dbgw
     DBGWQueryTesterList m_testerList;
   };
 
-  typedef shared_ptr<DBGWQueryTransaction> DBGWQueryTransactionSharedPtr;
+  typedef boost::shared_ptr<DBGWQueryTransaction> DBGWQueryTransactionSharedPtr;
   typedef list<DBGWQueryTransactionSharedPtr> DBGWQueryTransactionList;
 
   class DBGWScenario

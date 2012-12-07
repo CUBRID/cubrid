@@ -33,6 +33,8 @@
 #define cci_prepare cci_mock_prepare
 #define cci_execute cci_mock_execute
 #define cci_execute_array cci_mock_execute_array
+#define cci_set_autocommit cci_mock_set_autocommit
+#define cci_end_tran cci_mock_end_tran
 #endif
 
 namespace dbgw
@@ -247,6 +249,23 @@ namespace dbgw
         }
     }
 
+    void _DBGWCUBRIDConnection::cancel()
+    {
+      if (m_hCCIConnection > 0)
+        {
+          int nResult = cci_cancel(m_hCCIConnection);
+          if (nResult < 0)
+            {
+              _CUBRIDException e = _CUBRIDExceptionFactory::create(nResult,
+                  "Failed to cancel query.");
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          DBGW_LOGF_DEBUG("%s (CONN_ID:%d)", "cancel query.", m_hCCIConnection);
+        }
+    }
+
     void _DBGWCUBRIDConnection::doConnect()
     {
       const char *szUser = m_user == "" ? NULL : m_user.c_str();
@@ -329,70 +348,78 @@ namespace dbgw
 
     void _DBGWCUBRIDConnection::doSetAutoCommit(bool bAutoCommit)
     {
-      int nResult;
-
-      if (bAutoCommit)
+      if (m_hCCIConnection > 0)
         {
-          nResult = cci_set_autocommit(m_hCCIConnection,
-              CCI_AUTOCOMMIT_TRUE);
-        }
-      else
-        {
-          nResult = cci_set_autocommit(m_hCCIConnection,
-              CCI_AUTOCOMMIT_FALSE);
-        }
+          int nResult;
 
-      if (nResult < 0)
-        {
-          _CUBRIDException e = _CUBRIDExceptionFactory::create(nResult,
-              "Failed to set autocommit.");
-          DBGW_LOG_ERROR(e.what());
-          throw e;
-        }
+          if (bAutoCommit)
+            {
+              nResult = cci_set_autocommit(m_hCCIConnection,
+                  CCI_AUTOCOMMIT_TRUE);
+            }
+          else
+            {
+              nResult = cci_set_autocommit(m_hCCIConnection,
+                  CCI_AUTOCOMMIT_FALSE);
+            }
 
-      DBGW_LOGF_DEBUG("%s (%d) (CONN_ID:%d)", "connection autocommit",
-          bAutoCommit, m_hCCIConnection);
+          if (nResult < 0)
+            {
+              _CUBRIDException e = _CUBRIDExceptionFactory::create(nResult,
+                  "Failed to set autocommit.");
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          DBGW_LOGF_DEBUG("%s (%d) (CONN_ID:%d)", "connection autocommit",
+              bAutoCommit, m_hCCIConnection);
+        }
     }
 
     void _DBGWCUBRIDConnection::doCommit()
     {
-      T_CCI_ERROR cciError;
-
-      int nResult =
-          cci_end_tran(m_hCCIConnection, CCI_TRAN_COMMIT, &cciError);
-      if (nResult < 0)
+      if (m_hCCIConnection > 0)
         {
-          _CUBRIDException e = _CUBRIDExceptionFactory::create(nResult,
-              cciError, "Failed to commit database.");
-          DBGW_LOG_ERROR(e.what());
-          throw e;
-        }
+          T_CCI_ERROR cciError;
 
-      DBGW_LOGF_DEBUG("%s (CONN_ID:%d)", "connection commit.", m_hCCIConnection);
+          int nResult =
+              cci_end_tran(m_hCCIConnection, CCI_TRAN_COMMIT, &cciError);
+          if (nResult < 0)
+            {
+              _CUBRIDException e = _CUBRIDExceptionFactory::create(nResult,
+                  cciError, "Failed to commit database.");
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          DBGW_LOGF_DEBUG("%s (CONN_ID:%d)", "connection commit.", m_hCCIConnection);
+        }
     }
 
     void _DBGWCUBRIDConnection::doRollback()
     {
-      T_CCI_ERROR cciError;
-
-      int nResult = cci_end_tran(m_hCCIConnection, CCI_TRAN_ROLLBACK,
-          &cciError);
-      if (nResult < 0)
+      if (m_hCCIConnection > 0)
         {
-          _CUBRIDException e = _CUBRIDExceptionFactory::create(nResult,
-              cciError, "Failed to rollback database.");
-          DBGW_LOG_ERROR(e.what());
-          throw e;
-        }
+          T_CCI_ERROR cciError;
 
-      DBGW_LOGF_DEBUG("%s (CONN_ID:%d)", "connection rollback.", m_hCCIConnection);
+          int nResult = cci_end_tran(m_hCCIConnection, CCI_TRAN_ROLLBACK,
+              &cciError);
+          if (nResult < 0)
+            {
+              _CUBRIDException e = _CUBRIDExceptionFactory::create(nResult,
+                  cciError, "Failed to rollback database.");
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          DBGW_LOGF_DEBUG("%s (CONN_ID:%d)", "connection rollback.", m_hCCIConnection);
+        }
     }
 
     void *_DBGWCUBRIDConnection::getNativeHandle() const
     {
       return (void *) &m_hCCIConnection;
     }
-
 
     _DBGWCUBRIDStatementBase::_DBGWCUBRIDStatementBase(int hCCIConnection,
         const char *szSql) :

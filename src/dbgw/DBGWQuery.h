@@ -26,7 +26,7 @@ namespace dbgw
 {
 
   class _DBGWQuery;
-  typedef shared_ptr<_DBGWQuery> _DBGWQuerySharedPtr;
+  typedef boost::shared_ptr<_DBGWQuery> _DBGWQuerySharedPtr;
 
   enum DBGWQueryMapperVersion
   {
@@ -94,7 +94,7 @@ namespace dbgw
     friend class _DBGWQuery;
   };
 
-  typedef shared_ptr<_DBGWBoundQuery> _DBGWBoundQuerySharedPtr;
+  typedef boost::shared_ptr<_DBGWBoundQuery> _DBGWBoundQuerySharedPtr;
 
   class _DBGWQuery
   {
@@ -108,7 +108,7 @@ namespace dbgw
 
   public:
     _DBGWBoundQuerySharedPtr getDBGWBoundQuery(const char *szGroupName,
-        const _DBGWValueSet *pValueSet) const;
+        const _DBGWValueSet &valueSet) const;
     const char *getFileName() const;
     const char *getSqlName() const;
     const char *getGroupName() const;
@@ -127,7 +127,7 @@ namespace dbgw
 
   private:
     class _DBGWQueryPart;
-    typedef shared_ptr<_DBGWQueryPart> _DBGWQueryPartSharedPtr;
+    typedef boost::shared_ptr<_DBGWQueryPart> _DBGWQueryPartSharedPtr;
     typedef vector<_DBGWQueryPartSharedPtr> _DBGWQueryPartList;
 
   private:
@@ -156,7 +156,7 @@ namespace dbgw
       {
       }
 
-      virtual string toString(const _DBGWValueSet *pValueSet) const = 0;
+      virtual string toString(const _DBGWValueSet &valueSet) const = 0;
     };
 
     class _DBGWSQLQueryPart: public _DBGWQueryPart
@@ -165,7 +165,7 @@ namespace dbgw
       _DBGWSQLQueryPart(string sql);
       virtual ~ _DBGWSQLQueryPart();
 
-      virtual string toString(const _DBGWValueSet *pValueSet) const;
+      virtual string toString(const _DBGWValueSet &valueSet) const;
 
     private:
       string m_sql;
@@ -177,7 +177,7 @@ namespace dbgw
       _DBGWReplaceQueryPart(const _DBGWLogger &logger, const string &name);
       virtual ~ _DBGWReplaceQueryPart();
 
-      virtual string toString(const _DBGWValueSet *pValueSet) const;
+      virtual string toString(const _DBGWValueSet &valueSet) const;
 
     private:
       const _DBGWLogger &m_logger;
