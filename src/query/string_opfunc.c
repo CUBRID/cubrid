@@ -95,40 +95,6 @@ typedef enum
   QSTR_BIT
 } QSTR_CATEGORY;
 
-/*
- * Timestamp format
- */
-typedef enum
-{
-  DT_END = -2,			/*format string end */
-  DT_INVALID = -1,		/* invalid format */
-  DT_NORMAL,
-  DT_YYYY,
-  DT_YY,
-  DT_MM,
-  DT_MONTH,
-  DT_MON,
-  DT_DD,
-  DT_CC,
-  DT_Q,
-  DT_DAY,
-  DT_DY,			/*  So far, DATE format */
-  DT_AM,
-  DT_A_M,
-  DT_PM,
-  DT_P_M,
-  DT_HH,
-  DT_H,
-  DT_HH12,
-  DT_HH24,
-  DT_MI,
-  DT_SS,
-  DT_MS,			/*  So far, TIME format */
-  DT_TEXT,
-  DT_PUNCTUATION,
-  DT_D
-} TIMESTAMP_FORMAT;
-
 /* AM/PM position references */
 enum
 { am_NAME = 0, pm_NAME, Am_NAME, Pm_NAME, AM_NAME, PM_NAME,
@@ -25152,4 +25118,101 @@ is_valid_ip_slice (const char *ipslice)
     }
 
   return true;
+}
+
+/*
+ * db_get_truncate_format () -
+ * Returns: error number
+ * format_str(in):
+ * format(in/out):
+ *
+ */
+int
+db_get_truncate_format (const DB_VALUE * format_str,
+			TIMESTAMP_FORMAT * format)
+{
+  char *fmt_str_ptr, *next_fmt_str_ptr, *last_fmt;
+  INTL_CODESET codeset;
+  char stack_buf_str[64], stack_buf_format[64];
+  char *initial_buf_format = NULL;
+  bool do_free_buf_format = false;
+  int format_size;
+  int error = NO_ERROR;
+
+  assert (format_str != NULL);
+  assert (format != NULL);
+
+  if (DB_IS_NULL (format_str))
+    {
+      *format = DT_INVALID;
+      goto end;
+    }
+
+  if (is_char_string (format_str) == false)
+    {
+      error = ER_QSTR_INVALID_DATA_TYPE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      *format = DT_INVALID;
+      goto end;
+    }
+
+  if (DB_GET_STRING_SIZE (format_str) == 0)
+    {
+      error = ER_QSTR_EMPTY_STRING;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      *format = DT_INVALID;
+      goto end;
+    }
+
+  if (DB_GET_STRING_SIZE (format_str) > MAX_TOKEN_SIZE)
+    {
+      error = ER_QSTR_SRC_TOO_LONG;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      *format = DT_INVALID;
+      goto end;
+    }
+
+  codeset = DB_GET_STRING_CODESET (format_str);
+
+  error =
+    db_check_or_create_null_term_string (format_str, stack_buf_format,
+					 sizeof (stack_buf_format),
+					 true, true,
+					 &initial_buf_format,
+					 &do_free_buf_format);
+  if (error != NO_ERROR)
+    {
+      *format = DT_INVALID;
+      goto end;
+    }
+
+  fmt_str_ptr = initial_buf_format;
+  last_fmt = fmt_str_ptr + strlen (fmt_str_ptr);
+  /* Skip space, tab, CR     */
+  while (fmt_str_ptr < last_fmt && strchr (WHITE_CHARS, *fmt_str_ptr))
+    {
+      fmt_str_ptr++;
+    }
+
+  next_fmt_str_ptr = NULL;
+  *format =
+    get_next_format (fmt_str_ptr, codeset, DB_TYPE_DATETIME,
+		     &format_size, &next_fmt_str_ptr);
+
+  if (next_fmt_str_ptr != NULL && *next_fmt_str_ptr != 0)
+    {
+      error = ER_QSTR_INVALID_FORMAT;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      *format = DT_INVALID;
+      goto end;
+    }
+
+end:
+
+  if (do_free_buf_format)
+    {
+      db_private_free (NULL, initial_buf_format);
+    }
+
+  return error;
 }

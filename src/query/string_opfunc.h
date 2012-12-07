@@ -114,6 +114,40 @@ typedef enum
   SUBSTR
 } MISC_OPERAND;
 
+/*
+ * Timestamp format
+ */
+typedef enum
+{
+  DT_END = -2,			/*format string end */
+  DT_INVALID = -1,		/* invalid format */
+  DT_NORMAL,
+  DT_YYYY,
+  DT_YY,
+  DT_MM,
+  DT_MONTH,
+  DT_MON,
+  DT_DD,
+  DT_CC,
+  DT_Q,
+  DT_DAY,
+  DT_DY,			/*  So far, DATE format */
+  DT_AM,
+  DT_A_M,
+  DT_PM,
+  DT_P_M,
+  DT_HH,
+  DT_H,
+  DT_HH12,
+  DT_HH24,
+  DT_MI,
+  DT_SS,
+  DT_MS,			/*  So far, TIME format */
+  DT_TEXT,
+  DT_PUNCTUATION,
+  DT_D
+} TIMESTAMP_FORMAT;
+
 #define  LIKE_WILDCARD_MATCH_MANY '%'
 #define LIKE_WILDCARD_MATCH_ONE '_'
 
@@ -425,5 +459,7 @@ extern void qstr_trim_trailing (const unsigned char *trim_charset_ptr,
 				INTL_CODESET codeset,
 				int *trail_trimmed_length,
 				int *trail_trimmed_size);
+extern int db_get_truncate_format (const DB_VALUE * format_str,
+				   TIMESTAMP_FORMAT * format);
 
 #endif /* _STRING_OPFUNC_H_ */

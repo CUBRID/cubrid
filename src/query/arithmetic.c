@@ -64,6 +64,7 @@ static int db_mod_monetary (DB_VALUE * value, DB_VALUE * value1,
 static double round_double (double num, double integer);
 static double truncate_double (double num, double integer);
 static DB_BIGINT truncate_bigint (DB_BIGINT num, DB_BIGINT integer);
+static DB_DATE *truncate_date (DB_DATE * date, const DB_VALUE * format_str);
 static int get_number_dbval_as_double (double *d, const DB_VALUE * value);
 
 /*
@@ -2910,7 +2911,124 @@ truncate_bigint (DB_BIGINT num, DB_BIGINT integer)
 }
 
 /*
+ * truncate_date ()
+ *   return: truncated date
+ *   date(in)    :
+ *   fmt(in):
+ */
+static DB_DATE *
+truncate_date (DB_DATE * date, const DB_VALUE * format_str)
+{
+  int year, month, day;
+  int error = NO_ERROR;
+  DB_DATE *retval = date;
+  TIMESTAMP_FORMAT format;
+  int weekday;
+  int days_months[13] = { 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+
+  assert (date != NULL);
+  assert (format_str != NULL);
+
+  error = db_get_truncate_format (format_str, &format);
+  if (error != NO_ERROR)
+    {
+      retval = NULL;
+      goto end;
+    }
+
+  if (format == DT_INVALID)
+    {
+      error = ER_QSTR_INVALID_FORMAT;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      retval = NULL;
+      goto end;
+    }
+
+  db_date_decode (date, &month, &day, &year);
+
+  /* truncate datetime according to format */
+  switch (format)
+    {
+    case DT_YYYY:
+    case DT_YY:
+      month = day = 1;
+      break;
+    case DT_MONTH:
+    case DT_MON:
+    case DT_MM:
+      day = 1;
+      break;
+    case DT_DD:
+    case DT_HH24:
+    case DT_HH12:
+    case DT_HH:
+    case DT_H:
+    case DT_MI:
+    case DT_SS:
+    case DT_MS:
+      /* do nothing */
+      break;
+    case DT_Q:			/* quarter */
+      month = (month - 1) / 3 * 3 + 1;
+      day = 1;
+      break;
+    case DT_DAY:		/* week day */
+    case DT_DY:
+      weekday = day_of_week (*date);
+      if (weekday == 0)
+	{
+	  weekday = 7;
+	}
+
+      day = day + 1 - weekday;	/* Monday is the first day of a week */
+
+      /* need adjust */
+      if (day < 1)
+	{
+	  month = month - 1;
+	  if (month < 1)
+	    {
+	      year = year - 1;
+	      month = 12;
+	    }
+	  if (month == 2
+	      && (year % 400 == 0 || (year % 100 != 0 && year % 4 == 0)))
+	    {
+	      days_months[2] = 29;
+	    }
+
+	  day = day + days_months[month];
+	}
+      break;
+    case DT_CC:		/* one greater than the first two digits of a four-digit year */
+    default:
+      error = ER_QSTR_INVALID_FORMAT;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      retval = NULL;
+      goto end;
+    }
+
+  error = db_date_encode (date, month, day, year);
+  if (error != NO_ERROR)
+    {
+      retval = NULL;
+      goto end;
+    }
+
+end:
+
+  return retval;
+}
+
+/*
  * db_trunc_dbval () - return dbval1 truncated to dbval2 decimal places
+ *
+ * There are four overloads
+ * The first one is used to truncate number
+ *            trunc(PT_GENERIC_TYPE_NUMBER, PT_TYPE_INTEGER)
+ * The second,third and fourth are used to truncate date/datetime/timestamp with formart
+ *            trunc(PT_TYPE_DATE/PT_TYPE_DATETIME/PT_TYPE_TIMESTAMP, PT_TYPE_CHAR)
+ *
  *   return: NO_ERROR, ER_FAILED
  *   result(out): resultant db_value
  *   value1(in) : first db_value
@@ -2924,6 +3042,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   double dtmp;
   DB_VALUE cast_value;
   int er_status = NO_ERROR;
+  DB_DATE *date_p, date;
 
   if (DB_IS_NULL (value1) || DB_IS_NULL (value2))
     {
@@ -2933,7 +3052,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   type1 = DB_VALUE_DOMAIN_TYPE (value1);
   type2 = DB_VALUE_DOMAIN_TYPE (value2);
   if (type2 != DB_TYPE_SHORT && type2 != DB_TYPE_INTEGER
-      && type2 != DB_TYPE_BIGINT)
+      && type2 != DB_TYPE_BIGINT && !QSTR_IS_ANY_CHAR (type2))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
       return ER_QPROC_INVALID_DATATYPE;
@@ -2947,7 +3066,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     {
       bi2 = DB_GET_BIGINT (value2);
     }
-  else
+  else if (type2 == DB_TYPE_SHORT)
     {
       bi2 = DB_GET_SHORT (value2);
     }
@@ -3066,6 +3185,40 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	DB_MAKE_MONETARY_TYPE_AMOUNT (result,
 				      (DB_GET_MONETARY (value1))->type, dtmp);
       }
+      break;
+    case DB_TYPE_DATE:
+    case DB_TYPE_DATETIME:
+    case DB_TYPE_TIMESTAMP:
+      if (type1 == DB_TYPE_DATE)
+	{
+	  date_p = DB_GET_DATE (value1);
+	}
+      else if (type1 == DB_TYPE_DATETIME)
+	{
+	  date_p = &(DB_GET_DATETIME (value1)->date);
+	}
+      else			/* DB_TYPE_TIMESTAMP */
+	{
+	  db_timestamp_decode (DB_GET_TIMESTAMP (value1), &date, NULL);
+	  date_p = &date;
+	}
+
+      date_p = truncate_date (date_p, value2);
+      if (date_p == NULL)
+	{
+	  er_status = er_errid ();
+
+	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
+	      false)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 0);
+	      return er_status;
+	    }
+	}
+      else
+	{
+	  db_value_put_encoded_date (result, date_p);
+	}
       break;
     default:
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
@@ -3760,23 +3913,23 @@ db_typeof_dbval (DB_VALUE * result, DB_VALUE * value)
     case DB_TYPE_NUMERIC:
       buf = db_private_alloc (NULL, 128);
       if (buf == NULL)
-        {
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-                  128);
-          return ER_OUT_OF_VIRTUAL_MEMORY;
-        }
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, 128);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
 
       if (type == DB_TYPE_NUMERIC)
-        {
-          snprintf (buf, 128, "%s (%u, %u)", type_name,
-                    value->domain.numeric_info.precision,
-                    value->domain.numeric_info.scale);
-        }
+	{
+	  snprintf (buf, 128, "%s (%u, %u)", type_name,
+		    value->domain.numeric_info.precision,
+		    value->domain.numeric_info.scale);
+	}
       else
-        {
-          snprintf (buf, 128, "%s (%d)", type_name,
-                    value->domain.char_info.length);
-        }
+	{
+	  snprintf (buf, 128, "%s (%d)", type_name,
+		    value->domain.char_info.length);
+	}
 
       db_make_string (result, buf);
       result->need_clear = true;
