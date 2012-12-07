@@ -3949,7 +3949,6 @@ qstr_pad (MISC_OPERAND pad_operand,
   int remain_length_to_be_padded;	/* remained length that will be padded */
   int pad_full_size = 0;
   int pad_reminder_size = 0;
-  int char_broken = 0;
   int error_status = NO_ERROR;
 
   intl_pad_char (codeset, def_pad_char, &def_pad_char_size);
@@ -4051,15 +4050,7 @@ qstr_pad (MISC_OPERAND pad_operand,
 
   memcpy ((char *) (*result) + pad_size, src_ptr, src_size);
 
-  if (pad_operand == LEADING)
-    {
-      if (char_broken)
-	{
-	  memmove ((char *) (*result) + 1, (char *) (*result), pad_size - 1);
-	  (void) memset ((char *) (*result), ' ', 1);
-	}
-    }
-  else if (pad_operand == TRAILING)
+  if (pad_operand == TRAILING)
     {				/* switch source and padded string */
       memmove ((char *) (*result) + src_size, (char *) (*result), pad_size);
       memcpy ((char *) (*result), src_ptr, src_size);
@@ -4685,12 +4676,15 @@ qstr_eval_like (const char *tar, int tar_length,
     ((escape != NULL) && *escape == LIKE_WILDCARD_MATCH_ONE);
   bool escape_is_match_many =
     ((escape != NULL) && *escape == LIKE_WILDCARD_MATCH_MANY);
+  unsigned char pad_char[2];
+  int pad_char_size;
+
+  intl_pad_char (codeset, pad_char, &pad_char_size);
 
   tar_ptr = (unsigned char *) tar;
   expr_ptr = (unsigned char *) expr;
   end_tar = (unsigned char *) (tar + tar_length);
   end_expr = (unsigned char *) (expr + expr_length);
-
 
   while (1)
     {
@@ -4703,9 +4697,35 @@ qstr_eval_like (const char *tar, int tar_length,
 	  if (expr_ptr == end_expr)
 	    {
 	      go_back = false;
-	      while (tar_ptr < end_tar && *tar_ptr == ' ')
+
+	      if (codeset != INTL_CODESET_KSC5601_EUC)
 		{
-		  tar_ptr++;
+		  while (tar_ptr < end_tar && *tar_ptr == ' ')
+		    {
+		      tar_ptr++;
+		    }
+		}
+	      else
+		{
+		  while (tar_ptr < end_tar)
+		    {
+		      /* EUC-KR : both ASCII space and EUC-KR padding char
+		       * are ignored */
+		      if (*tar_ptr == ' ')
+			{
+			  tar_ptr++;
+			}
+		      else if (tar_ptr + pad_char_size <= end_tar
+			       && memcmp (tar_ptr, pad_char, pad_char_size)
+			       == 0)
+			{
+			  tar_ptr += pad_char_size;
+			}
+		      else
+			{
+			  break;
+			}
+		    }
 		}
 
 	      if (tar_ptr == end_tar)
@@ -24264,9 +24284,16 @@ db_hex (const DB_VALUE * param, DB_VALUE * result)
 	  /* remove padding from end of string */
 	  if (param_type == DB_TYPE_CHAR || param_type == DB_TYPE_NCHAR)
 	    {
-	      while (str_size > 0 && str[str_size - 1] == ' ')
+	      unsigned char pad_char[2];
+	      int pad_char_size;
+	      intl_pad_char (DB_GET_STRING_CODESET (param), pad_char,
+			     &pad_char_size);
+
+	      while (str_size >= pad_char_size
+		     && memcmp (&(str[str_size - pad_char_size]),
+				pad_char, pad_char_size) == 0)
 		{
-		  str_size--;
+		  str_size -= pad_char_size;
 		}
 	    }
 	}
@@ -24415,9 +24442,16 @@ db_ascii (const DB_VALUE * param, DB_VALUE * result)
       /* remove padding from end of string */
       if (param_type == DB_TYPE_CHAR || param_type == DB_TYPE_NCHAR)
 	{
-	  while (str_size > 0 && str[str_size - 1] == ' ')
+	  unsigned char pad_char[2];
+	  int pad_char_size;
+	  intl_pad_char (DB_GET_STRING_CODESET (param), pad_char,
+			 &pad_char_size);
+
+	  while (str_size >= pad_char_size
+		 && memcmp (&(str[str_size - pad_char_size]), pad_char,
+			    pad_char_size) == 0)
 	    {
-	      str_size--;
+	      str_size -= pad_char_size;
 	    }
 	}
 
