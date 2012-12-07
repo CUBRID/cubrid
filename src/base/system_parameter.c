@@ -7018,11 +7018,6 @@ sysprm_unpack_sysprm_value (char *ptr, SYSPRM_VALUE * value,
 	ptr = or_unpack_string (ptr, &str);
 	if (str != NULL)
 	  {
-	    if (er_errid () != NO_ERROR)
-	      {
-		/* error allocating unpacked string */
-		return NULL;
-	      }
 	    value->str = strdup (str);
 	    if (value->str == NULL)
 	      {
@@ -7185,7 +7180,7 @@ sysprm_unpack_session_parameters (char *ptr,
       ptr = or_unpack_int (ptr, &prm->flag);
       ptr = or_unpack_int (ptr, &prm->datatype);
       ptr = sysprm_unpack_sysprm_value (ptr, &prm->value, prm->datatype);
-      if (er_errid () != NO_ERROR)
+      if (ptr == NULL)
 	{
 	  /* error unpacking value */
 	  goto error;
@@ -7753,6 +7748,12 @@ void
 sysprm_update_client_session_parameters (SESSION_PARAM * session_parameters)
 {
   int i;
+
+  if (session_parameters == NULL)
+    {
+      /* nothing to do */
+      return;
+    }
 
   for (i = 0; i < NUM_SESSION_PRM; i++)
     {

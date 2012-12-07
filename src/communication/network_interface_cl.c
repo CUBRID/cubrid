@@ -4677,6 +4677,18 @@ csession_check_session (SESSION_ID * session_id, int *row_count,
 	      /* session parameters were found in session state and must
 	       * update parameter values
 	       */
+	      if (session_params == NULL)
+		{
+		  error = er_errid ();
+		  if (error == NO_ERROR)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_GENERIC_ERROR, 0);
+		      error = ER_FAILED;
+		    }
+		  free_and_init (request);
+		  return error;
+		}
 	      sysprm_update_client_session_parameters (session_params);
 	    }
 	  else

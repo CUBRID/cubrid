@@ -554,6 +554,10 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd,
 	   || strcmp (database_passwd, db_passwd) != 0)
     {
       int err_code;
+      /* Already connected to a database, make sure to clear errors from
+       * previous clients
+       */
+      er_clear ();
 
       err_code = au_login (db_user, db_passwd, true);
       if (err_code < 0)
@@ -570,6 +574,10 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd,
     }
   else
     {
+      /* Already connected to a database, make sure to clear errors from
+       * previous clients
+       */
+      er_clear ();
       /* check session to see if it is still active */
       db_check_session ();
     }
