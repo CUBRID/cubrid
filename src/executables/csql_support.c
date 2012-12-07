@@ -938,12 +938,12 @@ csql_edit_contents_append (const char *str, bool flag_append_new_line)
 }
 
 /*
- * csql_is_statement_end () - parse str and see if end of statement is reached
- * return : true if statement end is reached, false otherwise
+ * csql_walk_statement () - parse str and change the state
+ * return : NULL
  * str (in) : the new statement chunk received from input
  */
-bool
-csql_is_statement_end (const char *str)
+void
+csql_walk_statement (const char *str)
 {
   /* using flags but not adding many states in here may be not good choice,
    * but it will not change the state machine model and save a lot of states.
@@ -957,7 +957,7 @@ csql_is_statement_end (const char *str)
 
   if (str == NULL)
     {
-      return false;
+      return;
     }
 
   if (state == CSQL_STATE_CPP_COMMENT || state == CSQL_STATE_SQL_COMMENT)
@@ -1148,12 +1148,46 @@ csql_is_statement_end (const char *str)
     }
 
   csql_Edit_contents.state = state;
-  if (state == CSQL_STATE_STATEMENT_END)
+}
+
+/*
+ * csql_is_statement_complete () - check if end of statement is reached
+ * return : true if statement end is reached, false otherwise
+ */
+bool
+csql_is_statement_complete (void)
+{
+  if (csql_Edit_contents.state == CSQL_STATE_STATEMENT_END)
     {
       return true;
     }
+  else
+    {
+      return false;
+    }
+}
 
-  return false;
+/*
+ * csql_is_statement_in_block () - check if statement state is string block or
+ *                       comment block or identifier block
+ * return : true if yes, false otherwise
+ */
+bool
+csql_is_statement_in_block (void)
+{
+  CSQL_STATEMENT_STATE state = csql_Edit_contents.state;
+  if (state == CSQL_STATE_C_COMMENT || state == CSQL_STATE_SINGLE_QUOTE
+      || state == CSQL_STATE_MYSQL_QUOTE
+      || state == CSQL_STATE_DOUBLE_QUOTE_IDENTIFIER
+      || state == CSQL_STATE_BACKTICK_IDENTIFIER
+      || state == CSQL_STATE_BRACKET_IDENTIFIER)
+    {
+      return true;
+    }
+  else
+    {
+      return false;
+    }
 }
 
 /*

@@ -348,47 +348,6 @@ display_buffer (void)
 }
 
 
-static bool
-check_incomplete_string (char *line_read,
-			 bool * single_quote_on, bool * double_quote_on)
-{
-  char *ptr;
-  int line_length = strlen (line_read);
-
-  for (ptr = line_read; ptr < line_read + line_length; ptr++)
-    {
-      if (*double_quote_on == false && *ptr == '\'')
-	{
-	  if (ptr[1] == '\'')	/* escape by '' */
-	    {
-	      ptr++;
-	      continue;
-	    }
-
-	  *single_quote_on = !(*single_quote_on);
-	}
-
-      if (prm_get_bool_value (PRM_ID_ANSI_QUOTES) == false
-	  && *single_quote_on == false && *ptr == '\"')
-	{
-	  if (ptr[1] == '\"')	/* escape by "" */
-	    {
-	      ptr++;
-	      continue;
-	    }
-
-	  *double_quote_on = !(*double_quote_on);
-	}
-
-      if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) == false
-	  && *ptr == '\\')
-	{
-	  ptr++;
-	}
-    }
-
-  return *single_quote_on || *double_quote_on;
-}
 
 /*
  * start_csql()
@@ -428,12 +387,10 @@ start_csql (CSQL_ARGUMENT * csql_arg)
   char *ptr;			/* loop pointer */
   char *line_read_alloced = NULL;
   bool is_first_read_line = true;
-  bool flag_read_whole_line;
+  bool read_whole_line;
 
-  /* for check_incomplete_string() */
-  bool single_quote_on = false;
-  bool double_quote_on = false;
-  bool flag_in_string_block = false;
+  /* check in string block or comment block or identifier block */
+  bool is_in_block = false;
 
   if (csql_arg->column_output && csql_arg->line_output)
     {
@@ -516,7 +473,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	  fputs ("!", csql_Output_fp);
 	}
 
-      flag_read_whole_line = false;
+      read_whole_line = false;
 
       memset (line_buf, 0, LINE_BUFFER_SIZE);
       memset (utf8_line_buf, 0, INTL_UTF8_MAX_CHAR_SIZE * LINE_BUFFER_SIZE);
@@ -542,7 +499,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	       * returned buffer
 	       * (but it doesn't contain '\n' in it)
 	       */
-	      flag_read_whole_line = true;
+	      read_whole_line = true;
 	    }
 #endif /* WINDOWS */
 	}
@@ -550,7 +507,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	{
 	  /* If input line exeeds LINE_BUFFER_SIZE, line_buf couldn't contain '\n'
 	   * character in it.
-	   * So, flag_read_whole_line will be remained as false.
+	   * So, read_whole_line will be remained as false.
 	   */
 	  line_read =
 	    fgets ((char *) line_buf, LINE_BUFFER_SIZE, csql_Input_fp);
@@ -614,7 +571,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	{
 	  if (*ptr == '\n')
 	    {
-	      flag_read_whole_line = true;
+	      read_whole_line = true;
 	    }
 
 	  if (*ptr == '\n' || *ptr == '\r')
@@ -629,8 +586,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	}
 
 
-      if (CSQL_SESSION_COMMAND_PREFIX (line_read[0]) &&
-	  flag_in_string_block == false)
+      if (CSQL_SESSION_COMMAND_PREFIX (line_read[0]) && is_in_block == false)
 	{
 	  if (csql_do_session_cmd (line_read, csql_arg) == false)
 	    {
@@ -644,16 +600,9 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	}
       else
 	{
-	  bool flag_csql_execute = false;
+	  bool csql_execute = false;
 
-	  /* trace string block at each line
-	   * because we don't want to execute session commands in string block
-	   */
-	  flag_in_string_block = check_incomplete_string (line_read,
-							  &single_quote_on,
-							  &double_quote_on);
-
-	  if (csql_edit_contents_append (line_read, flag_read_whole_line) !=
+	  if (csql_edit_contents_append (line_read, read_whole_line) !=
 	      CSQL_SUCCESS)
 	    {
 	      goto error_continue;
@@ -662,25 +611,33 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	  if (feof (csql_Input_fp))
 	    {
 	      /* if eof is reached, execute all */
-	      flag_csql_execute = true;
+	      csql_execute = true;
+	      is_in_block = false;
 	    }
-	  else if (csql_arg->single_line_execution
-		   /* flag_read_whole_line == false means that
-		    * fgets couldn't read whole line (exceeds buffer size)
-		    * so we should concat next line before execute it.
-		    */
-		   && flag_read_whole_line == true
-		   && csql_is_statement_end (line_read))
+	  else
 	    {
-	      /* if eof is not reached,
-	       * execute it only on single line execution mode with
-	       * complete statement
+	      csql_walk_statement (line_read);
+	      /* because we don't want to execute session commands 
+	       * in string block or comment block or identifier block
 	       */
+	      is_in_block = csql_is_statement_in_block ();
 
-	      flag_csql_execute = true;
+	      if (csql_arg->single_line_execution
+		  /* read_whole_line == false means that
+		   * fgets couldn't read whole line (exceeds buffer size)
+		   * so we should concat next line before execute it.
+		   */
+		  && read_whole_line == true && csql_is_statement_complete ())
+		{
+		  /* if eof is not reached,
+		   * execute it only on single line execution mode with
+		   * complete statement
+		   */
+		  csql_execute = true;
+		}
 	    }
 
-	  if (flag_csql_execute)
+	  if (csql_execute)
 	    {
 	      /* single-line-oriented execution */
 	      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, line_no);
