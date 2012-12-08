@@ -242,5 +242,8 @@ extern XASL_NODE *pt_to_merge_xasl (PARSER_CONTEXT * parser,
 				    PT_NODE * default_expr_attrs);
 extern bool pt_is_spec_in_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 				PT_NODE * spec_list);
+extern int pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser,
+					   PT_NODE * node,
+					   PT_NODE * select_stmt);
 
 #endif /* _XASL_GENERATION_H_ */

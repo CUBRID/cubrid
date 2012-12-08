@@ -1815,6 +1815,10 @@ struct pt_delete_info
   PT_NODE *cursor_name;		/* PT_NAME */
   PT_NODE *internal_stmts;	/* internally created statements to handle TEXT */
   PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
+  PT_NODE *ordered_hint;	/* ORDERED_HINT hint's arguments (PT_NAME list) */
+  PT_NODE *use_nl_hint;		/* USE_NL hint's arguments (PT_NAME list) */
+  PT_NODE *use_idx_hint;	/* USE_IDX hint's arguments (PT_NAME list) */
+  PT_NODE *use_merge_hint;	/* USE_MERGE hint's arguments (PT_NAME list) */
   PT_NODE *limit;		/* PT_VALUE limit clause parameter */
   PT_HINT_ENUM hint;		/* hint flag */
   unsigned has_trigger:1;	/* whether it has triggers */
@@ -2421,6 +2425,10 @@ struct pt_update_info
   PT_NODE *check_where;		/* with check option predicate */
   PT_NODE *internal_stmts;	/* internally created statements to handle TEXT */
   PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
+  PT_NODE *ordered_hint;	/* USE_NL hint's arguments (PT_NAME list) */
+  PT_NODE *use_nl_hint;		/* USE_NL hint's arguments (PT_NAME list) */
+  PT_NODE *use_idx_hint;	/* USE_IDX hint's arguments (PT_NAME list) */
+  PT_NODE *use_merge_hint;	/* USE_MERGE hint's arguments (PT_NAME list) */
   PT_NODE *limit;		/* PT_VALUE limit clause parameter */
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR */

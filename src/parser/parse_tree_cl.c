@@ -8222,6 +8222,13 @@ pt_apply_delete (PARSER_CONTEXT * parser, PT_NODE * p,
 				      p->info.delete_.internal_stmts, arg);
   p->info.delete_.waitsecs_hint = g (parser,
 				     p->info.delete_.waitsecs_hint, arg);
+  p->info.delete_.ordered_hint =
+    g (parser, p->info.delete_.ordered_hint, arg);
+  p->info.delete_.use_nl_hint = g (parser, p->info.delete_.use_nl_hint, arg);
+  p->info.delete_.use_idx_hint =
+    g (parser, p->info.delete_.use_idx_hint, arg);
+  p->info.delete_.use_merge_hint =
+    g (parser, p->info.delete_.use_merge_hint, arg);
   p->info.delete_.limit = g (parser, p->info.delete_.limit, arg);
 
   return p;
@@ -8237,6 +8244,10 @@ pt_init_delete (PT_NODE * p)
 {
   p->info.delete_.hint = PT_HINT_NONE;
   p->info.delete_.waitsecs_hint = NULL;
+  p->info.delete_.ordered_hint = NULL;
+  p->info.delete_.use_nl_hint = NULL;
+  p->info.delete_.use_idx_hint = NULL;
+  p->info.delete_.use_merge_hint = NULL;
   return p;
 }
 
@@ -8254,7 +8265,7 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
   r1 = pt_print_bytes_l (parser, p->info.delete_.target_classes);
   r2 = pt_print_bytes_spec_list (parser, p->info.delete_.spec);
 
-  q = pt_append_nulstring (parser, q, "delete");
+  q = pt_append_nulstring (parser, q, "delete ");
   if (p->info.delete_.hint != PT_HINT_NONE)
     {
       q = pt_append_nulstring (parser, q, "/*+");
@@ -8274,6 +8285,95 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  q = pt_append_nulstring (parser, q, " RELEASE_LOCK");
 	}
+
+      if (p->info.delete_.hint & PT_HINT_ORDERED)
+	{
+	  /* force join left-to-right */
+	  q = pt_append_nulstring (parser, q, " ORDERED");
+	  if (p->info.delete_.ordered_hint)
+	    {
+	      r1 = pt_print_bytes_l (parser, p->info.delete_.ordered_hint);
+	      q = pt_append_nulstring (parser, q, "(");
+	      q = pt_append_varchar (parser, q, r1);
+	      q = pt_append_nulstring (parser, q, ") ");
+	    }
+	  else
+	    {
+	      q = pt_append_nulstring (parser, q, " ");
+	    }
+	}
+
+      if (p->info.delete_.hint & PT_HINT_USE_NL)
+	{
+	  /* force nl-join */
+	  q = pt_append_nulstring (parser, q, " USE_NL");
+	  if (p->info.delete_.use_nl_hint)
+	    {
+	      r1 = pt_print_bytes_l (parser, p->info.delete_.use_nl_hint);
+	      q = pt_append_nulstring (parser, q, "(");
+	      q = pt_append_varchar (parser, q, r1);
+	      q = pt_append_nulstring (parser, q, ") ");
+	    }
+	  else
+	    {
+	      q = pt_append_nulstring (parser, q, " ");
+	    }
+	}
+
+      if (p->info.delete_.hint & PT_HINT_USE_IDX)
+	{
+	  /* force idx-join */
+	  q = pt_append_nulstring (parser, q, " USE_IDX");
+	  if (p->info.delete_.use_idx_hint)
+	    {
+	      r1 = pt_print_bytes_l (parser, p->info.delete_.use_idx_hint);
+	      q = pt_append_nulstring (parser, q, "(");
+	      q = pt_append_varchar (parser, q, r1);
+	      q = pt_append_nulstring (parser, q, ") ");
+	    }
+	  else
+	    {
+	      q = pt_append_nulstring (parser, q, " ");
+	    }
+	}
+
+      if (p->info.delete_.hint & PT_HINT_USE_MERGE)
+	{
+	  /* force merge-join */
+	  q = pt_append_nulstring (parser, q, " USE_MERGE");
+	  if (p->info.delete_.use_merge_hint)
+	    {
+	      r1 = pt_print_bytes_l (parser, p->info.delete_.use_merge_hint);
+	      q = pt_append_nulstring (parser, q, "(");
+	      q = pt_append_varchar (parser, q, r1);
+	      q = pt_append_nulstring (parser, q, ") ");
+	    }
+	  else
+	    {
+	      q = pt_append_nulstring (parser, q, " ");
+	    }
+	}
+
+      if (p->info.delete_.hint & PT_HINT_USE_IDX_DESC)
+	{
+	  q = pt_append_nulstring (parser, q, " USE_DESC_IDX ");
+	}
+
+      if (p->info.delete_.hint & PT_HINT_NO_COVERING_IDX)
+	{
+	  q = pt_append_nulstring (parser, q, " NO_COVERING_IDX ");
+	}
+
+      if (p->info.delete_.hint & PT_HINT_NO_IDX_DESC)
+	{
+	  q = pt_append_nulstring (parser, q, " NO_DESC_IDX ");
+	}
+
+      if (p->info.delete_.hint & PT_HINT_NO_MULTI_RANGE_OPT)
+	{
+	  q = pt_append_nulstring (parser, q, " NO_MULTI_RANGE_OPT ");
+	}
+
       q = pt_append_nulstring (parser, q, " */");
     }
   if (r1)
@@ -13689,6 +13789,11 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	      q = pt_append_nulstring (parser, q, "NO_DESC_IDX ");
 	    }
 
+	  if (p->info.query.q.select.hint & PT_HINT_NO_MULTI_RANGE_OPT)
+	    {
+	      q = pt_append_nulstring (parser, q, "NO_MULTI_RANGE_OPT ");
+	    }
+
 	  q = pt_append_nulstring (parser, q, "*/ ");
 	}
 
@@ -14638,6 +14743,11 @@ pt_apply_update (PARSER_CONTEXT * parser, PT_NODE * p,
 				     p->info.update.internal_stmts, arg);
   p->info.update.waitsecs_hint = g (parser,
 				    p->info.update.waitsecs_hint, arg);
+  p->info.update.ordered_hint = g (parser, p->info.update.ordered_hint, arg);
+  p->info.update.use_nl_hint = g (parser, p->info.update.use_nl_hint, arg);
+  p->info.update.use_idx_hint = g (parser, p->info.update.use_idx_hint, arg);
+  p->info.update.use_merge_hint =
+    g (parser, p->info.update.use_merge_hint, arg);
   p->info.update.limit = g (parser, p->info.update.limit, arg);
 
   return p;
@@ -14653,6 +14763,10 @@ pt_init_update (PT_NODE * p)
 {
   p->info.update.hint = PT_HINT_NONE;
   p->info.update.waitsecs_hint = NULL;
+  p->info.update.ordered_hint = NULL;
+  p->info.update.use_nl_hint = NULL;
+  p->info.update.use_idx_hint = NULL;
+  p->info.update.use_merge_hint = NULL;
   return p;
 }
 
@@ -14688,6 +14802,95 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  b = pt_append_nulstring (parser, b, " RELEASE_LOCK");
 	}
+
+      if (p->info.update.hint & PT_HINT_ORDERED)
+	{
+	  /* force join left-to-right */
+	  b = pt_append_nulstring (parser, b, " ORDERED");
+	  if (p->info.update.ordered_hint)
+	    {
+	      r1 = pt_print_bytes_l (parser, p->info.update.ordered_hint);
+	      b = pt_append_nulstring (parser, b, "(");
+	      b = pt_append_varchar (parser, b, r1);
+	      b = pt_append_nulstring (parser, b, ") ");
+	    }
+	  else
+	    {
+	      b = pt_append_nulstring (parser, b, " ");
+	    }
+	}
+
+      if (p->info.update.hint & PT_HINT_USE_NL)
+	{
+	  /* force nl-join */
+	  b = pt_append_nulstring (parser, b, " USE_NL");
+	  if (p->info.update.use_nl_hint)
+	    {
+	      r1 = pt_print_bytes_l (parser, p->info.update.use_nl_hint);
+	      b = pt_append_nulstring (parser, b, "(");
+	      b = pt_append_varchar (parser, b, r1);
+	      b = pt_append_nulstring (parser, b, ") ");
+	    }
+	  else
+	    {
+	      b = pt_append_nulstring (parser, b, " ");
+	    }
+	}
+
+      if (p->info.update.hint & PT_HINT_USE_IDX)
+	{
+	  /* force idx-join */
+	  b = pt_append_nulstring (parser, b, " USE_IDX");
+	  if (p->info.update.use_idx_hint)
+	    {
+	      r1 = pt_print_bytes_l (parser, p->info.update.use_idx_hint);
+	      b = pt_append_nulstring (parser, b, "(");
+	      b = pt_append_varchar (parser, b, r1);
+	      b = pt_append_nulstring (parser, b, ") ");
+	    }
+	  else
+	    {
+	      b = pt_append_nulstring (parser, b, " ");
+	    }
+	}
+
+      if (p->info.update.hint & PT_HINT_USE_MERGE)
+	{
+	  /* force merge-join */
+	  b = pt_append_nulstring (parser, b, " USE_MERGE");
+	  if (p->info.update.use_merge_hint)
+	    {
+	      r1 = pt_print_bytes_l (parser, p->info.update.use_merge_hint);
+	      b = pt_append_nulstring (parser, b, "(");
+	      b = pt_append_varchar (parser, b, r1);
+	      b = pt_append_nulstring (parser, b, ") ");
+	    }
+	  else
+	    {
+	      b = pt_append_nulstring (parser, b, " ");
+	    }
+	}
+
+      if (p->info.update.hint & PT_HINT_USE_IDX_DESC)
+	{
+	  b = pt_append_nulstring (parser, b, " USE_DESC_IDX ");
+	}
+
+      if (p->info.update.hint & PT_HINT_NO_COVERING_IDX)
+	{
+	  b = pt_append_nulstring (parser, b, " NO_COVERING_IDX ");
+	}
+
+      if (p->info.update.hint & PT_HINT_NO_IDX_DESC)
+	{
+	  b = pt_append_nulstring (parser, b, " NO_DESC_IDX ");
+	}
+
+      if (p->info.update.hint & PT_HINT_NO_MULTI_RANGE_OPT)
+	{
+	  b = pt_append_nulstring (parser, b, " NO_MULTI_RANGE_OPT ");
+	}
+
       b = pt_append_nulstring (parser, b, " */");
     }
 

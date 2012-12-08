@@ -6131,7 +6131,8 @@ static QFILE_LIST_ID *get_select_list_to_update (PARSER_CONTEXT * parser,
 						 PT_NODE * order_by,
 						 PT_NODE * orderby_for,
 						 PT_NODE * using_index,
-						 PT_NODE * class_specs);
+						 PT_NODE * class_specs,
+						 PT_NODE * update_stmt);
 static int update_object_attribute (PARSER_CONTEXT * parser,
 				    DB_OTMPL * otemplate, PT_NODE * name,
 				    DB_ATTDESC * attr_desc, DB_VALUE * value);
@@ -6216,10 +6217,11 @@ get_select_list_to_update (PARSER_CONTEXT * parser, PT_NODE * from,
 			   PT_NODE * column_names, PT_NODE * column_values,
 			   PT_NODE * where, PT_NODE * order_by,
 			   PT_NODE * orderby_for, PT_NODE * using_index,
-			   PT_NODE * class_specs)
+			   PT_NODE * class_specs, PT_NODE * update_stmt)
 {
   PT_NODE *statement = NULL;
   QFILE_LIST_ID *result = NULL;
+  int err = NO_ERROR;
 
   if (from && (from->node_type == PT_SPEC) && from->info.spec.range_var
       &&
@@ -6229,6 +6231,13 @@ get_select_list_to_update (PARSER_CONTEXT * parser, PT_NODE * from,
 			     orderby_for, 0 /* not server update */ ,
 			     PT_COMPOSITE_LOCKING_UPDATE)) != NULL))
     {
+      err = pt_copy_upddel_hints_to_select (parser, update_stmt, statement);
+      if (err != NO_ERROR)
+	{
+	  parser_free_tree (parser, statement);
+	  return NULL;
+	}
+
       /* If we are updating a proxy, the select is not yet fully translated.
        * If we are updating anything else, this is a no-op.
        */
@@ -7694,7 +7703,7 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement)
 					   statement->info.update.orderby_for,
 					   statement->info.update.using_index,
 					   statement->info.update.
-					   class_specs);
+					   class_specs, statement);
 
 	      /* restore tree structure */
 	      pt_restore_assignment_links (statement->info.update.assignment,
@@ -8258,6 +8267,16 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* this prevents authorization checking during view transformation */
 	  AU_SAVE_AND_DISABLE (au_save);
 
+	  if (select_statement != NULL)
+	    {
+	      err = pt_copy_upddel_hints_to_select (parser, statement,
+						    select_statement);
+	      if (err != NO_ERROR)
+		{
+		  parser_free_tree (parser, select_statement);
+		  break;
+		}
+	    }
 	  select_statement = mq_translate (parser, select_statement);
 	  AU_RESTORE (au_save);
 	  if (select_statement)
@@ -8598,6 +8617,8 @@ select_delete_list (PARSER_CONTEXT * parser, QFILE_LIST_ID ** result_p,
 {
   PT_NODE *statement = NULL;
   QFILE_LIST_ID *result = NULL;
+  int ret = NO_ERROR;
+
   statement =
     pt_to_upd_del_query (parser, NULL, NULL, delete_stmt->info.delete_.spec,
 			 delete_stmt->info.delete_.class_specs,
@@ -8607,6 +8628,12 @@ select_delete_list (PARSER_CONTEXT * parser, QFILE_LIST_ID ** result_p,
 			 PT_COMPOSITE_LOCKING_DELETE);
   if (statement != NULL)
     {
+      ret = pt_copy_upddel_hints_to_select (parser, delete_stmt, statement);
+      if (ret != NO_ERROR)
+	{
+	  parser_free_tree (parser, statement);
+	  return ret;
+	}
       /* If we are updating a proxy, the select is not yet fully translated.
          if we are updating anything else, this is a no-op. */
       statement = mq_translate (parser, statement);
@@ -8631,7 +8658,16 @@ select_delete_list (PARSER_CONTEXT * parser, QFILE_LIST_ID ** result_p,
     }
 
   *result_p = result;
-  return (er_errid () < 0) ? er_errid () : NO_ERROR;
+
+  if (ret == NO_ERROR)
+    {
+      if (er_errid () != NO_ERROR)
+	{
+	  ret = er_errid ();
+	}
+    }
+
+  return ret;
 }
 
 /*
@@ -9431,6 +9467,13 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 						  delete_info->using_index,
 						  NULL, NULL, 0,
 						  PT_COMPOSITE_LOCKING_DELETE);
+	  err = pt_copy_upddel_hints_to_select (parser, statement,
+						select_statement);
+	  if (err != NO_ERROR)
+	    {
+	      parser_free_tree (parser, select_statement);
+	      return err;
+	    }
 	  /* translate views or virtual classes into base classes;
 	     If we are updating a proxy, the SELECT is not yet fully
 	     translated. If we are updating anything else, this is a no-op. */

@@ -145,6 +145,14 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		{
 		  node->info.query.q.select.hint |= hint_table[i].hint;
 		}
+	      else if (node->node_type == PT_DELETE)
+		{
+		  node->info.delete_.hint |= hint_table[i].hint;
+		}
+	      else if (node->node_type == PT_UPDATE)
+		{
+		  node->info.update.hint |= hint_table[i].hint;
+		}
 	      break;
 #if 0
 	    case PT_HINT_W:	/* not used */
@@ -161,12 +169,36 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		  node->info.query.q.select.use_nl = hint_table[i].arg_list;
 		  hint_table[i].arg_list = NULL;
 		}
+	      else if (node->node_type == PT_DELETE)
+		{
+		  node->info.delete_.hint |= hint_table[i].hint;
+		  node->info.delete_.use_nl_hint = hint_table[i].arg_list;
+		  hint_table[i].arg_list = NULL;
+		}
+	      else if (node->node_type == PT_UPDATE)
+		{
+		  node->info.update.hint |= hint_table[i].hint;
+		  node->info.update.use_nl_hint = hint_table[i].arg_list;
+		  hint_table[i].arg_list = NULL;
+		}
 	      break;
 	    case PT_HINT_USE_IDX:	/* force idx-join */
 	      if (node->node_type == PT_SELECT)
 		{
 		  node->info.query.q.select.hint |= hint_table[i].hint;
 		  node->info.query.q.select.use_idx = hint_table[i].arg_list;
+		  hint_table[i].arg_list = NULL;
+		}
+	      else if (node->node_type == PT_DELETE)
+		{
+		  node->info.delete_.hint |= hint_table[i].hint;
+		  node->info.delete_.use_idx_hint = hint_table[i].arg_list;
+		  hint_table[i].arg_list = NULL;
+		}
+	      else if (node->node_type == PT_UPDATE)
+		{
+		  node->info.update.hint |= hint_table[i].hint;
+		  node->info.update.use_idx_hint = hint_table[i].arg_list;
 		  hint_table[i].arg_list = NULL;
 		}
 	      break;
@@ -176,6 +208,18 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		  node->info.query.q.select.hint |= hint_table[i].hint;
 		  node->info.query.q.select.use_merge =
 		    hint_table[i].arg_list;
+		  hint_table[i].arg_list = NULL;
+		}
+	      else if (node->node_type == PT_DELETE)
+		{
+		  node->info.delete_.hint |= hint_table[i].hint;
+		  node->info.delete_.use_merge_hint = hint_table[i].arg_list;
+		  hint_table[i].arg_list = NULL;
+		}
+	      else if (node->node_type == PT_UPDATE)
+		{
+		  node->info.update.hint |= hint_table[i].hint;
+		  node->info.update.use_merge_hint = hint_table[i].arg_list;
 		  hint_table[i].arg_list = NULL;
 		}
 	      break;
@@ -311,6 +355,14 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		{
 		  node->info.query.q.select.hint |= hint_table[i].hint;
 		}
+	      else if (node->node_type == PT_DELETE)
+		{
+		  node->info.delete_.hint |= hint_table[i].hint;
+		}
+	      else if (node->node_type == PT_UPDATE)
+		{
+		  node->info.update.hint |= hint_table[i].hint;
+		}
 	      break;
 	    case PT_HINT_INSERT_MODE:
 	      if (node->node_type == PT_INSERT)
@@ -324,6 +376,14 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	      if (node->node_type == PT_SELECT)
 		{
 		  node->info.query.q.select.hint |= hint_table[i].hint;
+		}
+	      else if (node->node_type == PT_DELETE)
+		{
+		  node->info.delete_.hint |= hint_table[i].hint;
+		}
+	      else if (node->node_type == PT_UPDATE)
+		{
+		  node->info.update.hint |= hint_table[i].hint;
 		}
 	    default:
 	      break;

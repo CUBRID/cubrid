@@ -2521,6 +2521,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       bind_arg->spec_frames = &spec_frame;
       pt_bind_scope (parser, bind_arg);
 
+      (void) pt_resolve_hint (parser, node);
+
       parser_walk_leaves (parser, node, pt_bind_names, bind_arg,
 			  pt_bind_names_post, bind_arg);
 
@@ -2546,6 +2548,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       spec_frame.extra_specs = NULL;
       bind_arg->spec_frames = &spec_frame;
       pt_bind_scope (parser, bind_arg);
+
+      (void) pt_resolve_hint (parser, node);
 
       parser_walk_leaves (parser, node, pt_bind_names, bind_arg,
 			  pt_bind_names_post, bind_arg);
@@ -6299,12 +6303,43 @@ static int
 pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_HINT_ENUM hint;
-  hint = node->info.query.q.select.hint;
+  PT_NODE *ordered = NULL, *use_nl = NULL, *use_idx = NULL, *use_merge = NULL;
+  PT_NODE *spec_list = NULL;
+
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+      hint = node->info.query.q.select.hint;
+      ordered = node->info.query.q.select.ordered;
+      use_nl = node->info.query.q.select.use_nl;
+      use_idx = node->info.query.q.select.use_idx;
+      use_merge = node->info.query.q.select.use_merge;
+      spec_list = node->info.query.q.select.from;
+      break;
+    case PT_DELETE:
+      hint = node->info.delete_.hint;
+      ordered = node->info.delete_.ordered_hint;
+      use_nl = node->info.delete_.use_nl_hint;
+      use_idx = node->info.delete_.use_idx_hint;
+      use_merge = node->info.delete_.use_merge_hint;
+      spec_list = node->info.delete_.spec;
+      break;
+    case PT_UPDATE:
+      hint = node->info.update.hint;
+      ordered = node->info.update.ordered_hint;
+      use_nl = node->info.update.use_nl_hint;
+      use_idx = node->info.update.use_idx_hint;
+      use_merge = node->info.update.use_merge_hint;
+      spec_list = node->info.update.spec;
+      break;
+    default:
+      PT_INTERNAL_ERROR (parser, "Invalid statement in hints resolving");
+      return ER_FAILED;
+    }
+
   if (hint & PT_HINT_ORDERED)
     {
-      if (pt_resolve_hint_args
-	  (parser, node->info.query.q.select.ordered,
-	   node->info.query.q.select.from) != NO_ERROR)
+      if (pt_resolve_hint_args (parser, ordered, spec_list) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
@@ -6324,9 +6359,7 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (hint & PT_HINT_USE_NL)
     {
-      if (pt_resolve_hint_args
-	  (parser, node->info.query.q.select.use_nl,
-	   node->info.query.q.select.from) != NO_ERROR)
+      if (pt_resolve_hint_args (parser, use_nl, spec_list) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
@@ -6334,9 +6367,7 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (hint & PT_HINT_USE_IDX)
     {
-      if (pt_resolve_hint_args
-	  (parser, node->info.query.q.select.use_idx,
-	   node->info.query.q.select.from) != NO_ERROR)
+      if (pt_resolve_hint_args (parser, use_idx, spec_list) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
@@ -6344,9 +6375,7 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (hint & PT_HINT_USE_MERGE)
     {
-      if (pt_resolve_hint_args
-	  (parser, node->info.query.q.select.use_merge,
-	   node->info.query.q.select.from) != NO_ERROR)
+      if (pt_resolve_hint_args (parser, use_merge, spec_list) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
@@ -6363,25 +6392,45 @@ exit_on_error:
 
   /* clear hint info */
   node->info.query.q.select.hint = PT_HINT_NONE;
-  if (node->info.query.q.select.ordered)
+  if (ordered != NULL)
     {
-      parser_free_tree (parser, node->info.query.q.select.ordered);
+      parser_free_tree (parser, ordered);
+    }
+  if (use_nl != NULL)
+    {
+      parser_free_tree (parser, use_nl);
+    }
+  if (use_idx != NULL)
+    {
+      parser_free_tree (parser, use_idx);
+    }
+  if (use_merge != NULL)
+    {
+      parser_free_tree (parser, use_merge);
+    }
+
+  switch (node->node_type)
+    {
+    case PT_SELECT:
       node->info.query.q.select.ordered = NULL;
-    }
-  if (node->info.query.q.select.use_nl)
-    {
-      parser_free_tree (parser, node->info.query.q.select.use_nl);
       node->info.query.q.select.use_nl = NULL;
-    }
-  if (node->info.query.q.select.use_idx)
-    {
-      parser_free_tree (parser, node->info.query.q.select.use_idx);
       node->info.query.q.select.use_idx = NULL;
-    }
-  if (node->info.query.q.select.use_merge)
-    {
-      parser_free_tree (parser, node->info.query.q.select.use_merge);
       node->info.query.q.select.use_merge = NULL;
+      break;
+    case PT_DELETE:
+      node->info.delete_.ordered_hint = NULL;
+      node->info.delete_.use_nl_hint = NULL;
+      node->info.delete_.use_idx_hint = NULL;
+      node->info.delete_.use_merge_hint = NULL;
+      break;
+    case PT_UPDATE:
+      node->info.update.ordered_hint = NULL;
+      node->info.update.use_nl_hint = NULL;
+      node->info.update.use_idx_hint = NULL;
+      node->info.update.use_merge_hint = NULL;
+      break;
+    default:
+      break;
     }
 
   return ER_FAILED;

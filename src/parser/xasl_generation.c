@@ -17428,6 +17428,157 @@ pt_to_pred_with_context (PARSER_CONTEXT * parser, PT_NODE * predicate,
 }
 
 /*
+ * pt_copy_upddel_hints_to_select () - copy hints from delete/update statement
+ *				       to select statement.
+ *   return: NO_ERROR or error code.
+ *   parser(in):
+ *   node(in): delete/update statement that provides the hints to be
+ *	       copied to the select statement.
+ *   select_stmt(in): select statement that will receive hints.
+ *
+ * Note :
+ * The hints that are copied from delete/update statement to SELECT statement
+ * are: ORDERED, USE_DESC_IDX, NO_COVERING_INDEX, NO_DESC_IDX, USE_NL, USE_IDX,
+ *	USE_MERGE, NO_MULTI_RANGE_OPT, RECOMPILE.
+ */
+int
+pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser, PT_NODE * node,
+				PT_NODE * select_stmt)
+{
+  int err = NO_ERROR;
+  int hint_flags = PT_HINT_ORDERED | PT_HINT_USE_IDX_DESC
+    | PT_HINT_NO_COVERING_IDX | PT_HINT_NO_IDX_DESC | PT_HINT_USE_NL
+    | PT_HINT_USE_IDX | PT_HINT_USE_MERGE | PT_HINT_NO_MULTI_RANGE_OPT
+    | PT_HINT_RECOMPILE;
+  PT_NODE *arg = NULL;
+
+  switch (node->node_type)
+    {
+    case PT_DELETE:
+      hint_flags &= node->info.delete_.hint;
+      break;
+    case PT_UPDATE:
+      hint_flags &= node->info.update.hint;
+      break;
+    default:
+      return NO_ERROR;
+    }
+  select_stmt->info.query.q.select.hint |= hint_flags;
+  select_stmt->recompile = node->recompile;
+
+  if (hint_flags & PT_HINT_ORDERED)
+    {
+      switch (node->node_type)
+	{
+	case PT_DELETE:
+	  arg = node->info.delete_.ordered_hint;
+	  break;
+	case PT_UPDATE:
+	  arg = node->info.update.ordered_hint;
+	  break;
+	default:
+	  break;
+	}
+      if (arg != NULL)
+	{
+	  arg = parser_copy_tree_list (parser, arg);
+	  if (arg == NULL)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+      select_stmt->info.query.q.select.ordered = arg;
+    }
+
+  if (hint_flags & PT_HINT_USE_NL)
+    {
+      switch (node->node_type)
+	{
+	case PT_DELETE:
+	  arg = node->info.delete_.use_nl_hint;
+	  break;
+	case PT_UPDATE:
+	  arg = node->info.update.use_nl_hint;
+	  break;
+	default:
+	  break;
+	}
+      if (arg != NULL)
+	{
+	  arg = parser_copy_tree_list (parser, arg);
+	  if (arg == NULL)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+      select_stmt->info.query.q.select.use_nl = arg;
+    }
+
+  if (hint_flags & PT_HINT_USE_IDX)
+    {
+      switch (node->node_type)
+	{
+	case PT_DELETE:
+	  arg = node->info.delete_.use_idx_hint;
+	  break;
+	case PT_UPDATE:
+	  arg = node->info.update.use_idx_hint;
+	  break;
+	default:
+	  break;
+	}
+      if (arg != NULL)
+	{
+	  arg = parser_copy_tree_list (parser, arg);
+	  if (arg == NULL)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+      select_stmt->info.query.q.select.use_idx = arg;
+    }
+
+  if (hint_flags & PT_HINT_USE_MERGE)
+    {
+      switch (node->node_type)
+	{
+	case PT_DELETE:
+	  arg = node->info.delete_.use_merge_hint;
+	  break;
+	case PT_UPDATE:
+	  arg = node->info.update.use_merge_hint;
+	  break;
+	default:
+	  break;
+	}
+      if (arg != NULL)
+	{
+	  arg = parser_copy_tree_list (parser, arg);
+	  if (arg == NULL)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+      select_stmt->info.query.q.select.use_merge = arg;
+    }
+
+  return NO_ERROR;
+
+exit_on_error:
+  if (pt_has_error (parser))
+    {
+      err = er_errid ();
+    }
+  else
+    {
+      err = ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+    }
+
+  return err;
+}
+
+/*
  * pt_to_upd_del_query () - Creates a query based on the given select list,
  * 	from list, and where clause
  *   return: PT_NODE *, query statement or NULL if error
@@ -17795,6 +17946,8 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 						  NULL, NULL, 1,
 						  PT_COMPOSITE_LOCKING_DELETE))
 	   == NULL)
+	  || pt_copy_upddel_hints_to_select (parser, statement,
+					     aptr_statement) != NO_ERROR
 	  || ((aptr_statement = mq_translate (parser, aptr_statement)) ==
 	      NULL)
 	  ||
@@ -18201,6 +18354,12 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  error = ER_GENERIC_ERROR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	}
+      goto cleanup;
+    }
+
+  error = pt_copy_upddel_hints_to_select (parser, statement, aptr_statement);
+  if (error != NO_ERROR)
+    {
       goto cleanup;
     }
 
