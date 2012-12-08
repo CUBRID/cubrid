@@ -14576,6 +14576,20 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	{
 	  buildlist->g_grbynum_flag = XASL_G_GRBYNUM_FLAG_SCAN_CONTINUE;
 	}
+      if (grbynum_part != NULL
+	  && PT_EXPR_INFO_IS_FLAGED (grbynum_part,
+				     PT_EXPR_INFO_GROUPBYNUM_LIMIT))
+	{
+	  if (grbynum_part->next != NULL)
+	    {
+	      buildlist->g_grbynum_flag |= XASL_G_GRBYNUM_FLAG_LIMIT_GT_LT;
+	    }
+	  else
+	    {
+	      buildlist->g_grbynum_flag |= XASL_G_GRBYNUM_FLAG_LIMIT_LT;
+	    }
+	}
+
       select_node->info.query.q.select.having =
 	parser_append_node (having_part, grbynum_part);
 

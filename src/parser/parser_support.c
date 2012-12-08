@@ -5918,6 +5918,10 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit,
 	  goto error_exit;
 	}
 
+      if (is_gby_num)
+	{
+	  PT_EXPR_INFO_SET_FLAG (node, PT_EXPR_INFO_GROUPBYNUM_LIMIT);
+	}
       node->info.expr.op = PT_LE;
       node->info.expr.arg1 = lhs;
       lhs = NULL;
@@ -6015,6 +6019,11 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit,
 	  goto error_exit;
 	}
 
+      if (is_gby_num)
+	{
+	  PT_EXPR_INFO_SET_FLAG (part1, PT_EXPR_INFO_GROUPBYNUM_LIMIT);
+	  PT_EXPR_INFO_SET_FLAG (part2, PT_EXPR_INFO_GROUPBYNUM_LIMIT);
+	}
       node->info.expr.op = PT_AND;
       node->type_enum = PT_TYPE_LOGICAL;
       node->info.expr.arg1 = part1;

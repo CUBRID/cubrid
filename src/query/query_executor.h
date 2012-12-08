@@ -121,6 +121,8 @@
 #define XASL_G_GRBYNUM_FLAG_SCAN_CONTINUE   0x01
 #define XASL_G_GRBYNUM_FLAG_SCAN_CHECK      0x02
 #define XASL_G_GRBYNUM_FLAG_SCAN_STOP       0x04
+#define XASL_G_GRBYNUM_FLAG_LIMIT_LT	    0x08
+#define XASL_G_GRBYNUM_FLAG_LIMIT_GT_LT	    0x10
 
 /* XASL cache related macros */
 

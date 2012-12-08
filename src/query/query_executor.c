@@ -3516,6 +3516,21 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
+	  if (ev_res == V_TRUE)
+	    {
+	      if (gbstate->grbynum_flag & XASL_G_GRBYNUM_FLAG_LIMIT_GT_LT)
+		{
+		  gbstate->grbynum_flag &= ~XASL_G_GRBYNUM_FLAG_LIMIT_GT_LT;
+		  gbstate->grbynum_flag |= XASL_G_GRBYNUM_FLAG_LIMIT_LT;
+		}
+	    }
+	  else
+	    {
+	      if (gbstate->grbynum_flag & XASL_G_GRBYNUM_FLAG_LIMIT_LT)
+		{
+		  gbstate->grbynum_flag |= XASL_G_GRBYNUM_FLAG_SCAN_STOP;
+		}
+	    }
 	  if (gbstate->grbynum_flag & XASL_G_GRBYNUM_FLAG_SCAN_STOP)
 	    {
 	      /* reset grbynum_val for next use */
@@ -3889,6 +3904,16 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   if (buildlist->g_grbynum_val && DB_IS_NULL (buildlist->g_grbynum_val))
     {
       DB_MAKE_BIGINT (buildlist->g_grbynum_val, 0);
+    }
+
+  /* clear group by limit flags when skip group by is not used */
+  if (buildlist->g_grbynum_flag & XASL_G_GRBYNUM_FLAG_LIMIT_LT)
+    {
+      buildlist->g_grbynum_flag &= ~XASL_G_GRBYNUM_FLAG_LIMIT_LT;
+    }
+  if (buildlist->g_grbynum_flag & XASL_G_GRBYNUM_FLAG_LIMIT_GT_LT)
+    {
+      buildlist->g_grbynum_flag &= ~XASL_G_GRBYNUM_FLAG_LIMIT_GT_LT;
     }
 
   /*late binding : resolve group_by (buildlist) */
@@ -18450,6 +18475,10 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   while (1)
     {
+      if (gbstate.state == SORT_PUT_STOP)
+	{
+	  break;
+	}
       scan_code =
 	qfile_scan_list_next (thread_p, gbstate.input_scan, &tuple_rec, PEEK);
       if (scan_code != S_SUCCESS)
@@ -18541,6 +18570,11 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   qfile_close_list (thread_p, gbstate.output_file);
 
+  if (gbstate.input_scan)
+    {
+      qfile_close_scan (thread_p, gbstate.input_scan);
+      gbstate.input_scan = NULL;
+    }
   qfile_destroy_list (thread_p, list_id);
   qfile_copy_list_id (list_id, gbstate.output_file, true);
 

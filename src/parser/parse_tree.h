@@ -1953,8 +1953,6 @@ struct pt_expr_info
 				 * ..., SECOND), or case expr type specifier
 				 * (NULLIF, COALESCE, SIMPLE_CASE, SEARCHED_CASE)
 				 */
-  short continued_case;		/* 0 - false, 1 - true */
-
 #define PT_EXPR_INFO_CNF_DONE       1	/* CNF conversion has done? */
 #define PT_EXPR_INFO_EMPTY_RANGE    2	/* empty RANGE spec? */
 #define PT_EXPR_INFO_INSTNUM_C      4	/* compatible with inst_num() */
@@ -1983,10 +1981,15 @@ struct pt_expr_info
 
 #define PT_EXPR_INFO_CAST_COLL_MODIFIER 16384	/* CAST is for COLLATION modifier */
 
-  short flag;			/* flags */
-#define PT_EXPR_INFO_IS_FLAGED(e, f)    ((e)->info.expr.flag & (short) (f))
-#define PT_EXPR_INFO_SET_FLAG(e, f)     (e)->info.expr.flag |= (short) (f)
-#define PT_EXPR_INFO_CLEAR_FLAG(e, f)   (e)->info.expr.flag &= (short) ~(f)
+#define PT_EXPR_INFO_GROUPBYNUM_LIMIT 32768	/* flag that marks if the
+						 * expression resulted from a
+						 * GROUP BY ... LIMIT statement */
+  int flag;			/* flags */
+#define PT_EXPR_INFO_IS_FLAGED(e, f)    ((e)->info.expr.flag & (int) (f))
+#define PT_EXPR_INFO_SET_FLAG(e, f)     (e)->info.expr.flag |= (int) (f)
+#define PT_EXPR_INFO_CLEAR_FLAG(e, f)   (e)->info.expr.flag &= (int) ~(f)
+
+  short continued_case;		/* 0 - false, 1 - true */
   short location;		/* 0 : WHERE; n : join condition of n-th FROM */
   bool is_order_dependent;	/* true if expression is order dependent */
   PT_TYPE_ENUM recursive_type;	/* common type for recursive expression
