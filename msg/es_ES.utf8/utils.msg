@@ -294,7 +294,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 45 Creando base de datos con tamano %s.\n
 46 No se pudo crear base de datos.\n
 47 Problema con el archivo de utilizador '%s'\n
-48 The given '%1$s', %2$s is out of range. Choose a size between %3$s and %4$s.\n
+48 The given '%s', %s is out of range. Choose a size between %s and %s.\n
 49 El valor de %s '%s' no es valido.\n
 60 \
 createdb: Crear una base de datos.\n\

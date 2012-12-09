@@ -294,7 +294,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 45 %s boyutu ile veri tabanı oluşturma..\n
 46 Veritabanı oluşturulamadı.\n
 47 '%s' Kullanıcı dosya ile ilgili sorun\n
-48 The given '%1$s', %2$s is out of range. Choose a size between %3$s and %4$s.\n
+48 The given '%s', %s is out of range. Choose a size between %s and %s.\n
 49 %s Sayısal değeri '%s' geçersiz. \n
 60 \
 createdb: Bir veritabanı oluştur.\n\

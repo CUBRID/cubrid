@@ -294,7 +294,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 45 Tạo cơ sở dữ liệu với kích cỡ %s.\n
 46 Không thể tạo cơ sở dữ liệu.\n
 47 Vấn đề với tệp tin người dùng '%s'\n
-48 The given '%1$s', %2$s is out of range. Choose a size between %3$s and %4$s.\n
+48 The given '%s', %s is out of range. Choose a size between %s and %s.\n
 49 Giá trị %s '%s' vô hiệu.\n
 60 \
 createdb: Tạo một cơ sở dữ liệu.\n\

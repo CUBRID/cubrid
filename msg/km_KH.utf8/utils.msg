@@ -294,7 +294,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 45 បង្កើតដែលតាបេសជាមួយនឹងទំហំ %s។\n
 46 មិនអាំចបង្កើតដែលតាបេស\n
 47 បញ្ហាជាមួយ user file `%s'\n
-48 The given '%1$s', %2$s is out of range. Choose a size between %3$s and %4$s.\n
+48 The given '%s', %s is out of range. Choose a size between %s and %s.\n
 49 តំលៃនៃ%s'%s'មោឃ\n
 60 \
 createdb: បង្កើតដែលតាបេស\n\
