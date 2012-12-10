@@ -10163,6 +10163,23 @@ pt_make_tuple_value_reference (PARSER_CONTEXT * parser, PT_NODE * name,
 /*
  * pt_make_query_show_collation() - builds the query for SHOW COLLATION
  *
+ * SELECT * FROM 
+ *    (SELECT coll_name AS [Collation],
+ *	      IF (charset_id = 3, 'iso88591',
+ *		  IF (charset_id = 5, 'utf8',
+ *		      IF (charset_id = 4, 'euckr', 'other'))) AS Charset,
+ *	      coll_id AS Id,
+ *	      IF (built_in = 0, 'No', 'Yes') AS Built_in,
+ *	      IF (expansions = 0, 'No', 'Yes') AS Expansions,
+ *	      IF (uca_strength = 1,'Primary',
+ *		  IF (uca_strength = 2,'Secondary',
+ *		      IF (uca_strength = 3, 'Tertiary',
+ *			  IF (uca_strength = 4,'Quaternary',
+ *			      IF (uca_strength = 5, 'Identity',
+ *				  'Not applicable'))))) AS Strength
+ *	    FROM _db_collation) show_colllation
+ *    ORDER BY 1;
+ *
  *   return: newly built node (PT_NODE), NULL if construnction fails
  *   parser(in): Parser context
  *   like_where_syntax(in): indicator of presence for LIKE or WHERE clauses in
@@ -10178,29 +10195,191 @@ pt_make_query_show_collation (PARSER_CONTEXT * parser,
 			      int like_where_syntax,
 			      PT_NODE * like_or_where_expr)
 {
-  PT_NODE **node = NULL;
-  PT_NODE *node_show = NULL;
-  const char *query = "SELECT * FROM (SELECT coll_name	AS [Collation],"
-    "CASE charset_id WHEN 3 THEN 'ISO8859-1' "
-    "WHEN 5 THEN 'UTF-8' WHEN 4 THEN 'KSC-EUC' "
-    "ELSE 'Other' END AS Charset,"
-    "coll_id AS Id,"
-    "IF (built_in = 0, 'No', 'Yes') AS Built_in,"
-    "IF (expansions = 0, 'No', 'Yes') AS Expansions,"
-    "CASE uca_strength WHEN 1 THEN 'Primary' "
-    "WHEN 2 THEN 'Secondary' WHEN 3 THEN 'Tertiary' "
-    "WHEN 4 THEN 'Quaternary' WHEN 5 THEN 'Identity' "
-    "ELSE 'Not applicable' END AS Strength "
-    "FROM _db_collation ORDER BY coll_name)";
+  PT_NODE *sub_query = NULL;
+  PT_NODE *node = NULL;
+  PT_NODE *from_item = NULL;
 
-  lang_set_parser_use_client_charset (false);
-  node = parser_parse_string (parser, query);
-  lang_set_parser_use_client_charset (true);
+  sub_query = parser_new_node (parser, PT_SELECT);
+  if (sub_query == NULL)
+    {
+      return NULL;
+    }
 
+  /* ------ SELECT list    ------- */
+  pt_add_name_col_to_sel_list (parser, sub_query, "coll_name", "Collation");
+
+  /* Charset */
+  {
+    PT_NODE *if_node1 = NULL;
+    PT_NODE *if_node2 = NULL;
+    PT_NODE *if_node3 = NULL;
+
+    {
+      /* IF (charset_id = 4, 'euckr', 'other') */
+      PT_NODE *pred = NULL;
+
+      pred = pt_make_pred_name_int_val (parser, PT_EQ, "charset_id", 4);
+      if_node3 =
+	pt_make_if_with_strings (parser, pred, "euckr", "other", NULL);
+    }
+
+    {
+      /* IF (charset_id = 5, 'utf8',  IF_NODE_ 3) */
+      PT_NODE *pred = NULL;
+      PT_NODE *string_node = NULL;
+
+      pred = pt_make_pred_name_int_val (parser, PT_EQ, "charset_id", 5);
+      string_node = pt_make_string_value (parser, "utf8");
+
+      if_node2 = pt_make_if_with_expressions (parser, pred,
+					      string_node, if_node3, NULL);
+    }
+
+    {
+      /* IF (charset_id = 3, 'iso88591',  IF_NODE_ 2) */
+      PT_NODE *pred = NULL;
+      PT_NODE *string_node = NULL;
+
+      pred = pt_make_pred_name_int_val (parser, PT_EQ, "charset_id", 3);
+      string_node = pt_make_string_value (parser, "iso88591");
+
+      if_node1 = pt_make_if_with_expressions (parser, pred, string_node,
+					      if_node2, "Charset");
+    }
+
+    sub_query->info.query.q.select.list =
+      parser_append_node (if_node1, sub_query->info.query.q.select.list);
+  }
+
+  pt_add_name_col_to_sel_list (parser, sub_query, "coll_id", "Id");
+
+  /* Built_in */
+  {
+    PT_NODE *if_node = NULL;
+
+    {
+      PT_NODE *pred = NULL;
+
+      pred = pt_make_pred_name_int_val (parser, PT_EQ, "built_in", 0);
+      if_node = pt_make_if_with_strings (parser, pred, "No", "Yes",
+					 "Built_in");
+    }
+    sub_query->info.query.q.select.list =
+      parser_append_node (if_node, sub_query->info.query.q.select.list);
+  }
+
+  /* Expansions */
+  {
+    PT_NODE *if_node = NULL;
+
+    {
+      PT_NODE *pred = NULL;
+
+      pred = pt_make_pred_name_int_val (parser, PT_EQ, "expansions", 0);
+      if_node = pt_make_if_with_strings (parser, pred, "No", "Yes",
+					 "Expansions");
+    }
+    sub_query->info.query.q.select.list =
+      parser_append_node (if_node, sub_query->info.query.q.select.list);
+  }
+
+  /* Strength */
+  {
+    PT_NODE *if_node1 = NULL;
+    PT_NODE *if_node2 = NULL;
+    PT_NODE *if_node3 = NULL;
+    PT_NODE *if_node4 = NULL;
+    PT_NODE *if_node5 = NULL;
+
+    {
+      /* IF (uca_strength = 5, 'Identity', 'Not applicable') */
+      PT_NODE *pred = NULL;
+
+      pred = pt_make_pred_name_int_val (parser, PT_EQ, "uca_strength", 5);
+      if_node5 = pt_make_if_with_strings (parser, pred, "Identity",
+					  "Not applicable", NULL);
+    }
+
+    {
+      /* IF (uca_strength = 4,'Quaternary', IF_node_5) */
+      PT_NODE *pred = NULL;
+      PT_NODE *string_node = NULL;
+
+      pred = pt_make_pred_name_int_val (parser, PT_EQ, "uca_strength", 4);
+      string_node = pt_make_string_value (parser, "Quaternary");
+
+      if_node4 = pt_make_if_with_expressions (parser, pred,
+					      string_node, if_node5, NULL);
+    }
+
+    {
+      /* IF (uca_strength = 3, 'Tertiary', IF_Node_4) */
+      PT_NODE *pred = NULL;
+      PT_NODE *string_node = NULL;
+
+      pred = pt_make_pred_name_int_val (parser, PT_EQ, "uca_strength", 3);
+      string_node = pt_make_string_value (parser, "Tertiary");
+
+      if_node3 = pt_make_if_with_expressions (parser, pred, string_node,
+					      if_node4, NULL);
+    }
+
+    {
+      /* IF (uca_strength = 2,'Secondary', IF_Node_3)  */
+      PT_NODE *pred = NULL;
+      PT_NODE *string_node = NULL;
+
+      pred = pt_make_pred_name_int_val (parser, PT_EQ, "uca_strength", 2);
+      string_node = pt_make_string_value (parser, "Secondary");
+
+      if_node2 = pt_make_if_with_expressions (parser, pred, string_node,
+					      if_node3, NULL);
+    }
+
+    {
+      /* IF (uca_strength = 1,'Primary', IF_Node_2)  */
+      PT_NODE *pred = NULL;
+      PT_NODE *string_node = NULL;
+
+      pred = pt_make_pred_name_int_val (parser, PT_EQ, "uca_strength", 1);
+      string_node = pt_make_string_value (parser, "Primary");
+
+      if_node1 = pt_make_if_with_expressions (parser, pred, string_node,
+					      if_node2, "Strength");
+    }
+
+    sub_query->info.query.q.select.list =
+      parser_append_node (if_node1, sub_query->info.query.q.select.list);
+  }
+
+  /* ------ SELECT ... FROM   ------- */
+  from_item = pt_add_table_name_to_from_list (parser, sub_query,
+					      "_db_collation", NULL,
+					      DB_AUTH_SELECT);
+
+  if (from_item == NULL)
+    {
+      return NULL;
+    }
+
+  node = pt_make_outer_select_for_show_stmt (parser, sub_query,
+					     "show_columns");
   if (node == NULL)
     {
       return NULL;
     }
+
+  {
+    /* add ORDER BY (to outer select) */
+    PT_NODE *order_by_item = NULL;
+
+    assert (node->info.query.order_by == NULL);
+    /* By Collation */
+    order_by_item = pt_make_sort_spec_with_number (parser, 1, PT_ASC);
+    node->info.query.order_by =
+      parser_append_node (order_by_item, node->info.query.order_by);
+  }
+
 
   if (like_or_where_expr != NULL)
     {
@@ -10219,19 +10398,14 @@ pt_make_query_show_collation (PARSER_CONTEXT * parser,
 	  where_item = like_or_where_expr;
 	}
 
-      node[0]->info.query.q.select.where =
-	parser_append_node (where_item, node[0]->info.query.q.select.where);
+      node->info.query.q.select.where =
+	parser_append_node (where_item, node->info.query.q.select.where);
     }
   else
     {
       assert (like_where_syntax == 0);
     }
 
-  /* remove latest statement from parser stack: it was added by
-   * parser_parse_string, and it will be added again when grammar rule is
-   * consumed */
-  node_show = pt_pop (parser);
-  assert (node_show == node[0]);
 
-  return node_show;
+  return node;
 }
