@@ -16369,6 +16369,7 @@ btree_range_search (THREAD_ENTRY * thread_p, BTID * btid,
   bool curr_key_locked = false;
   bool next_key_locked = false;
   bool current_lock_request = false;
+  bool read_prev_key = true;
 
 #endif /* SERVER_MODE */
 
@@ -16747,7 +16748,7 @@ get_oidcnt_and_oidptr:
       else
 	{			/* new key value */
 #if defined(SERVER_MODE)
-	  if (!bts->read_uncommitted && bts->read_cur_key)
+	  if (!bts->read_uncommitted && bts->read_cur_key && read_prev_key)
 	    {
 	      btree_clear_key_value (&clear_prev_key, &prev_key);
 
@@ -16850,6 +16851,7 @@ start_locking:
     }
 
 #if defined(SERVER_MODE)
+  read_prev_key = true;
   if (bts->read_uncommitted)
     {
       if (keep_on_copying)
@@ -18021,6 +18023,13 @@ start_locking:
 		      COPY_OID (&saved_class_oid, &class_oid);
 		      COPY_OID (&saved_inst_oid, &inst_oid);
 
+		      if (bts->prev_oid_pos != -1
+			  && DB_IS_NULL (&prev_key) == false)
+			{
+			  /* do not reset previous key */
+			  read_prev_key = false;
+			}
+
 		      if (which_action == BTREE_GETOID_AGAIN_WITH_CHECK)
 			{
 			  goto get_oidcnt_and_oidptr;
@@ -18061,6 +18070,12 @@ start_locking:
 			  COPY_OID (&saved_inst_oid, &inst_oid);
 			}
 		      COPY_OID (&saved_class_oid, &class_oid);
+
+		      if (bts->prev_oid_pos != -1
+			  && DB_IS_NULL (&prev_key) == false)
+			{
+			  read_prev_key = false;
+			}
 
 		      if (which_action == BTREE_GETOID_AGAIN_WITH_CHECK)
 			{
@@ -18306,6 +18321,13 @@ start_locking:
 		      COPY_OID (&saved_class_oid, &class_oid);
 		      COPY_OID (&saved_inst_oid, &inst_oid);
 
+		      if (bts->prev_oid_pos != -1
+			  && DB_IS_NULL (&prev_key) == false)
+			{
+			  /* do not reset previous key */
+			  read_prev_key = false;
+			}
+
 		      if (which_action == BTREE_GETOID_AGAIN_WITH_CHECK)
 			{
 			  goto get_oidcnt_and_oidptr;
@@ -18346,6 +18368,13 @@ start_locking:
 			{
 			  COPY_OID (&saved_class_oid, &class_oid);
 			  COPY_OID (&saved_inst_oid, &inst_oid);
+			}
+
+		      if (bts->prev_oid_pos != -1
+			  && DB_IS_NULL (&prev_key) == false)
+			{
+			  /* do not reset previous key */
+			  read_prev_key = false;
 			}
 
 		      if (which_action == BTREE_GETOID_AGAIN_WITH_CHECK)
@@ -18498,6 +18527,12 @@ start_locking:
        */
       COPY_OID (&saved_class_oid, &class_oid);
       COPY_OID (&saved_inst_oid, &inst_oid);
+
+      if (bts->prev_oid_pos != -1 && DB_IS_NULL (&prev_key) == false)
+	{
+	  /* do not reset previous key */
+	  read_prev_key = false;
+	}
 
       if (which_action == BTREE_GETOID_AGAIN_WITH_CHECK)
 	{
