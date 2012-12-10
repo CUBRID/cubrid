@@ -396,7 +396,7 @@
 					>
 				</File>
         <File
-          RelativePath="..\..\src\dbgw\DBGWWorker.cpp"
+          RelativePath="..\..\src\dbgw\DBGWWork.cpp"
           >
         </File>
 				<File
