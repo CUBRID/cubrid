@@ -8448,6 +8448,11 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 #endif /* SERVER_MODE */
 
+  isid.oid_list.oidp = NULL;
+  isid.copy_buf = NULL;
+  isid.copy_buf_len = 0;
+  isid.indx_info = NULL;
+
   /* Start a scan cursor and a class attribute information */
   if (heap_scancache_start (thread_p, &scan_cache, hfid, class_oid, true,
 			    false, LOCKHINT_NONE) != NO_ERROR)
@@ -8544,6 +8549,13 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 	      isvalid = btree_keyoid_checkscan_check (thread_p, &bt_checkscan,
 						      class_oid, key,
 						      &inst_oid);
+
+	      if (er_errid () == ER_INTERRUPTED)
+		{
+		  /* in case of user interrupt */
+		  goto error;
+		}
+
 	      if (isvalid == DISK_INVALID)
 		{
 		  if (repair)
@@ -8626,15 +8638,17 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_OUT_OF_VIRTUAL_MEMORY, 1, ISCAN_OID_BUFFER_SIZE);
-      return DISK_ERROR;
+
+      isallvalid = DISK_ERROR;
+      goto error;
     }
 
   /* alloc index key copy_buf */
   isid.copy_buf = (char *) db_private_alloc (thread_p, DBVAL_BUFSIZE);
   if (isid.copy_buf == NULL)
     {
-      free_and_init (isid.oid_list.oidp);
-      return DISK_ERROR;
+      isallvalid = DISK_ERROR;
+      goto error;
     }
   isid.copy_buf_len = DBVAL_BUFSIZE;
   memset ((void *) (&(isid.indx_cov)), 0, sizeof (INDX_COV));
@@ -8645,14 +8659,8 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
   if (heap_scancache_start (thread_p, &isid.scan_cache, hfid, class_oid, true,
 			    true, LOCKHINT_NONE) != NO_ERROR)
     {
-      free_and_init (isid.oid_list.oidp);
-      /* free index key copy_buf */
-      if (isid.copy_buf)
-	{
-	  db_private_free_and_init (thread_p, isid.copy_buf);
-	}
-
-      return DISK_ERROR;
+      isallvalid = DISK_ERROR;
+      goto error;
     }
 
   db_make_null (&key_val_range.key1);
@@ -8734,7 +8742,12 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
       isallvalid = DISK_INVALID;
     }
 
-  free_and_init (isid.oid_list.oidp);
+error:
+  if (isid.oid_list.oidp)
+    {
+      free_and_init (isid.oid_list.oidp);
+    }
+
   /* free index key copy_buf */
   if (isid.copy_buf)
     {
@@ -8849,7 +8862,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 	  free_and_init (hfids);
 	}
 
-      return DISK_ERROR;
+      goto error;
     }
 
   /*
@@ -8945,6 +8958,13 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 							  &bt_checkscan,
 							  class_oid,
 							  key, &inst_oid);
+
+		  if (er_errid () == ER_INTERRUPTED)
+		    {
+		      /* in case of user interrupt */
+		      goto error;
+		    }
+
 		  if (isvalid == DISK_INVALID)
 		    {
 		      if (repair)
@@ -9315,27 +9335,33 @@ error:
     {
       free_and_init (isid.oid_list.oidp);
     }
+
   /* free index key copy_buf */
   if (isid.copy_buf)
     {
       db_private_free_and_init (thread_p, isid.copy_buf);
     }
+
   if (class_oids)
     {
       free_and_init (class_oids);
     }
+
   if (hfids)
     {
       free_and_init (hfids);
     }
+
   if (attrinfo_inited)
     {
       heap_attrinfo_end (thread_p, &attr_info);
     }
+
   for (j = 0; j < scancache_inited; j++)
     {
       (void) heap_scancache_end (thread_p, &scan_cache[j]);
     }
+
   if (scan_cache)
     {
       free_and_init (scan_cache);
