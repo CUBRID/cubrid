@@ -797,7 +797,12 @@ function build_package ()
 	    rm -rf $build_dir/$package_basename
 	  fi
 	  mkdir $build_dir/$package_basename
-	  (cd $build_dir/$package_basename && $source_dir/configure --with-cci-only && make PACKAGE=$package_basename dist && mv $package_name $build_dir)
+	  if [ "$(readlink -f $build_dir/..)" = "$source_dir" ]; then
+	    configure_dir="../.."
+	  else
+	    configure_dir="$source_dir"
+	  fi
+	  (cd $build_dir/$package_basename && $configure_dir/configure --with-cci-only && make PACKAGE=$package_basename dist && mv $package_name $build_dir)
 	  if [ $? -eq 0 ]; then
 	    output_packages="$output_packages $package_name"
 	    [ $build_dir -ef $output_dir ] || mv -f $build_dir/$package_name $output_dir
