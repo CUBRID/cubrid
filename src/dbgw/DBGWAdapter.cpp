@@ -22,57 +22,7 @@
 namespace DBGW3
 {
 
-#define CONVERT_PREVIOUS_DBGWEXCEPTION(e, err) \
-do { \
-    convertPreviousDBGWException(e, err, #err); \
-} while (0)
-
   static const char *DEFAULT_CONFIGURATION_PATH = "DBGWConnector3Config.xml";
-
-  void convertPreviousDBGWException(const dbgw::DBGWException &e,
-      int nDefaultErrorCode, const char *szDefaultErrorMessage)
-  {
-    switch (e.getErrorCode())
-      {
-      case dbgw::DBGW_ER_EXTERNAL_DBGW_INVALID_HANDLE:
-        nDefaultErrorCode = DBGWCONNECTOR_INVALID_HANDLE;
-        szDefaultErrorMessage = "DBGWCONNECTOR_INVALID_HANDLE";
-        break;
-      case dbgw::DBGW_ER_EXTERNAL_MEMORY_ALLOC_FAIL:
-        nDefaultErrorCode = DBGWCONNECTOR_NOT_ENOUGH_MEMORY;
-        szDefaultErrorMessage = "DBGWCONNECTOR_NOT_ENOUGH_MEMORY";
-        break;
-      case dbgw::DBGW_ER_CLIENT_ACCESS_DATA_BEFORE_FETCH:
-        nDefaultErrorCode = DBGWCONNECTOR_NOT_PROPER_OP;
-        szDefaultErrorMessage = "DBGWCONNECTOR_NOT_PROPER_OP";
-        break;
-      case dbgw::DBGW_ER_CLIENT_INVALID_OPERATION:
-        nDefaultErrorCode = DBGWCONNECTOR_NOT_PROPER_OP;
-        szDefaultErrorMessage = "DBGWCONNECTOR_NOT_PROPER_OP";
-        break;
-      case dbgw::DBGW_ER_CLIENT_NO_MORE_DATA:
-        nDefaultErrorCode = DBGWCONNECTOR_NOMORE_FETCH;
-        szDefaultErrorMessage = "DBGWCONNECTOR_NOMORE_FETCH";
-        break;
-      case dbgw::DBGW_ER_CLIENT_ALREADY_IN_TRANSACTION:
-        nDefaultErrorCode = DBGWCONNECTOR_ALREAY_IN_TRANSACTION;
-        szDefaultErrorMessage = "DBGWCONNECTOR_ALREAY_IN_TRANSACTION";
-        break;
-      case dbgw::DBGW_ER_CLIENT_EXEC_TIMEOUT:
-        nDefaultErrorCode = DBGWCONNECTOR_TIMEOUT;
-        szDefaultErrorMessage = "DBGWCONNECTOR_TIMEOUT";
-        break;
-      case dbgw::DBGW_ER_CLIENT_NOT_IN_TRANSACTION:
-        nDefaultErrorCode = DBGWCONNECTOR_NOT_IN_TRANSACTION;
-        szDefaultErrorMessage = "DBGWCONNECTOR_NOT_IN_TRANSACTION";
-        break;
-      }
-
-    dbgw::DBGWPreviousException pe = dbgw::DBGWPreviousExceptionFactory::create(e,
-        nDefaultErrorCode, szDefaultErrorMessage);
-    DBGW_LOG_ERROR(pe.what());
-    dbgw::setLastException(pe);
-  }
 
   DECLSPECIFIER unsigned int __stdcall GetLastError()
   {
@@ -131,7 +81,7 @@ do { \
               delete hEnv;
             }
 
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_CREATE_FAILED);
+          dbgw::setLastException(e);
           return NULL;
         }
     }
@@ -153,7 +103,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
         }
     }
 
@@ -175,7 +125,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
         }
     }
 
@@ -198,7 +148,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -231,7 +181,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -255,7 +205,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -304,7 +254,7 @@ do { \
               delete hConnector;
             }
 
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_CREATE_FAILED);
+          dbgw::setLastException(e);
           return NULL;
         }
     }
@@ -326,7 +276,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
         }
     }
 
@@ -348,7 +298,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
         }
     }
 
@@ -371,7 +321,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -410,7 +360,7 @@ do { \
               delete hParam;
             }
 
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_CREATE_FAILED);
+          dbgw::setLastException(e);
           return NULL;
         }
     }
@@ -432,7 +382,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_HANDLE);
+          dbgw::setLastException(e);
         }
     }
 
@@ -454,7 +404,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_HANDLE);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -476,7 +426,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_HANDLE);
+          dbgw::setLastException(e);
           return 0;
         }
     }
@@ -504,7 +454,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -532,7 +482,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -560,7 +510,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -588,7 +538,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -616,7 +566,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -644,7 +594,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -673,7 +623,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -701,7 +651,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -729,7 +679,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -757,7 +707,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -786,7 +736,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -815,7 +765,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -843,7 +793,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -871,7 +821,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -899,7 +849,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -927,7 +877,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -965,7 +915,7 @@ do { \
               delete hParamList;
             }
 
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_CREATE_FAILED);
+          dbgw::setLastException(e);
           return NULL;
         }
     }
@@ -987,7 +937,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_HANDLE);
+          dbgw::setLastException(e);
         }
     }
 
@@ -1008,7 +958,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_HANDLE);
+          dbgw::setLastException(e);
           return -1;
         }
     }
@@ -1032,7 +982,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -1058,7 +1008,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_HANDLE);
+          dbgw::setLastException(e);
           return 0;
         }
     }
@@ -1086,7 +1036,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -1114,7 +1064,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -1152,7 +1102,7 @@ do { \
               delete hResult;
             }
 
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_CREATE_FAILED);
+          dbgw::setLastException(e);
           return NULL;
         }
     }
@@ -1174,7 +1124,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_HANDLE);
+          dbgw::setLastException(e);
         }
     }
 
@@ -1201,7 +1151,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_NOT_PROPER_OP);
+          dbgw::setLastException(e);
           return -1;
         }
     }
@@ -1228,7 +1178,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_NOT_PROPER_OP);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -1255,7 +1205,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_NOT_PROPER_OP);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -1283,7 +1233,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_NOT_PROPER_OP);
+          dbgw::setLastException(e);
           return -1;
         }
     }
@@ -1305,7 +1255,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_HANDLE);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -1334,7 +1284,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_NOT_PROPER_OP);
+          dbgw::setLastException(e);
           return dbgw::DBGWResultSetMetaDataSharedPtr();
         }
     }
@@ -1362,7 +1312,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -1390,7 +1340,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -1490,7 +1440,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -1518,7 +1468,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -1546,7 +1496,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -1574,7 +1524,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -1602,7 +1552,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -1630,7 +1580,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -1658,7 +1608,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -1686,7 +1636,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -1737,7 +1687,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -1788,7 +1738,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -1816,7 +1766,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -1844,7 +1794,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -1872,7 +1822,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -1900,7 +1850,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -1928,7 +1878,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -1956,7 +1906,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_PARAMETER);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -1994,7 +1944,7 @@ do { \
               delete hResult;
             }
 
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_CREATE_FAILED);
+          dbgw::setLastException(e);
           return NULL;
         }
     }
@@ -2016,7 +1966,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_HANDLE);
+          dbgw::setLastException(e);
         }
     }
 
@@ -2038,7 +1988,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_HANDLE);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -2062,7 +2012,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_HANDLE);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -2089,7 +2039,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_NOT_PROPER_OP);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -2116,7 +2066,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_NOT_PROPER_OP);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -2144,7 +2094,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_NOT_PROPER_OP);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -2171,7 +2121,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_NOT_PROPER_OP);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -2220,7 +2170,7 @@ do { \
               delete hExecutor;
             }
 
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_CREATE_FAILED);
+          dbgw::setLastException(e);
           return NULL;
         }
     }
@@ -2242,7 +2192,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_INVALID_HANDLE);
+          dbgw::setLastException(e);
         }
     }
 
@@ -2270,7 +2220,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_EXEC_FAILED);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -2300,7 +2250,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_EXEC_FAILED);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -2330,7 +2280,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_EXEC_FAILED);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -2362,7 +2312,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_EXEC_FAILED);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -2389,7 +2339,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_EXEC_FAILED);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -2417,7 +2367,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_EXEC_FAILED);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -2444,7 +2394,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_EXEC_FAILED);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -2472,7 +2422,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_EXEC_FAILED);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -2499,7 +2449,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_EXEC_FAILED);
+          dbgw::setLastException(e);
           return false;
         }
     }
@@ -2527,7 +2477,7 @@ do { \
         }
       catch (dbgw::DBGWException &e)
         {
-          CONVERT_PREVIOUS_DBGWEXCEPTION(e, DBGWCONNECTOR_EXEC_FAILED);
+          dbgw::setLastException(e);
           return false;
         }
     }

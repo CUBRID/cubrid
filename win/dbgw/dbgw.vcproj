@@ -45,8 +45,8 @@
 				Name="VCCLCompilerTool"
 				Optimization="0"
 				EnableIntrinsicFunctions="false"
-				AdditionalIncludeDirectories="..\..\src\dbgw;..\..\win;..\..\src\broker;..\..\src\cci;..\..\include;..\..\win\external\include;C:\Program Files\boost\boost_1_41"
-				PreprocessorDefinitions="WIN;WINDOWS;WIN32;_DEBUG;_CRT_SECURE_NO_WARNINGS;_MT;_USE_32BIT_TIME_T;__STL_DEBUG;XML_STATIC;BOOST_ALL_NO_LIB;DBGW_ADAPTER_API_EXPORT"
+				AdditionalIncludeDirectories="..\..\src\dbgw;..\..\win;..\..\src\api;..\..\src\base;..\..\src\compat;..\..\src\storage;..\..\src\broker;..\..\src\cci;..\..\include;..\..\win\external\include;C:\Program Files\boost\boost_1_41"
+				PreprocessorDefinitions="WIN;WINDOWS;WIN32;_DEBUG;_CRT_SECURE_NO_WARNINGS;_MT;_USE_32BIT_TIME_T;__STL_DEBUG;CAS_CCI;CASCCI_EXPORTS;CAS_CCI_DL;XML_STATIC;BOOST_ALL_NO_LIB;DBGW_ADAPTER_API_EXPORT"
 				GeneratePreprocessedFile="0"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
@@ -67,13 +67,91 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib libexpat.lib cascci.lib "
+				AdditionalDependencies="ws2_32.lib libexpat.lib libregex38a.lib"
 				OutputFile="$(OutDir)\DBGWConnector3D.dll"
 				AdditionalLibraryDirectories="$(SolutionDir)$(PlatformName)\$(ConfigurationName);..\..\win\external\lib"
 				IgnoreDefaultLibraryNames="libcmt.lib"
 				ModuleDefinitionFile=""
 				GenerateDebugInformation="true"
 				TargetMachine="1"
+			/>
+			<Tool
+				Name="VCALinkTool"
+			/>
+			<Tool
+				Name="VCManifestTool"
+			/>
+			<Tool
+				Name="VCXDCMakeTool"
+			/>
+			<Tool
+				Name="VCBscMakeTool"
+			/>
+			<Tool
+				Name="VCFxCopTool"
+			/>
+			<Tool
+				Name="VCAppVerifierTool"
+			/>
+			<Tool
+				Name="VCPostBuildEventTool"
+			/>
+		</Configuration>
+		<Configuration
+			Name="Debug|x64"
+			OutputDirectory="$(SolutionDir)$(PlatformName)\$(ConfigurationName)"
+			IntermediateDirectory="$(PlatformName)\$(ConfigurationName)"
+			ConfigurationType="2"
+			CharacterSet="2"
+			BuildLogFile="$(IntDir)\BuildLog_$(ProjectName).htm"
+			>
+			<Tool
+				Name="VCPreBuildEventTool"
+			/>
+			<Tool
+				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="VCXMLDataGeneratorTool"
+			/>
+			<Tool
+				Name="VCWebServiceProxyGeneratorTool"
+			/>
+			<Tool
+				Name="VCMIDLTool"
+			/>
+			<Tool
+				Name="VCCLCompilerTool"
+				Optimization="0"
+				AdditionalIncludeDirectories="..\..\src\dbgw;..\..\win;..\..\src\api;..\..\src\base;..\..\src\compat;..\..\src\storage;..\..\src\broker;..\..\src\cci;..\..\include;..\..\win\external\include;C:\Program Files\boost\boost_1_41"
+				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;_DEBUG;_CRT_SECURE_NO_WARNINGS;_MT;__STL_DEBUG;CAS_CCI;CASCCI_EXPORTS;CAS_CCI_DL;XML_STATIC;BOOST_ALL_NO_LIB;DBGW_ADAPTER_API_EXPORT"
+				GeneratePreprocessedFile="0"
+				MinimalRebuild="true"
+				BasicRuntimeChecks="3"
+				RuntimeLibrary="3"
+				WarningLevel="3"
+				DebugInformationFormat="4"
+				CompileAs="0"
+				DisableSpecificWarnings="4274;4996"
+			/>
+			<Tool
+				Name="VCManagedResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCPreLinkEventTool"
+			/>
+			<Tool
+				Name="VCLinkerTool"
+				AdditionalDependencies="ws2_32.lib libexpat.lib libregex38a.lib"
+				OutputFile="$(OutDir)\DBGWConnector3D.dll"
+				AdditionalLibraryDirectories="$(SolutionDir)$(PlatformName)\$(ConfigurationName);..\..\win\external\lib64"
+				IgnoreDefaultLibraryNames="libcmt.lib"
+				ModuleDefinitionFile=""
+				GenerateDebugInformation="true"
+				TargetMachine="17"
 			/>
 			<Tool
 				Name="VCALinkTool"
@@ -126,8 +204,8 @@
 				Optimization="2"
 				InlineFunctionExpansion="0"
 				EnableIntrinsicFunctions="true"
-				AdditionalIncludeDirectories="..\..\src\dbgw;..\..\win;..\..\src\broker;..\..\src\cci;..\..\win\external\include;C:\Program Files\boost\boost_1_41"
-				PreprocessorDefinitions="WIN;WINDOWS;WIN32;NDEBUG;_CRT_SECURE_NO_WARNINGS;_MT;_USE_32BIT_TIME_T;XML_STATIC;BOOST_ALL_NO_LIB;DBGW_ADAPTER_API_EXPORT"
+				AdditionalIncludeDirectories="..\..\src\dbgw;..\..\win;..\..\src\api;..\..\src\base;..\..\src\compat;..\..\src\storage;..\..\src\broker;..\..\src\cci;..\..\include;..\..\win\external\include;&quot;C:\Program Files\boost\boost_1_41&quot;"
+				PreprocessorDefinitions="WIN;WINDOWS;WIN32;NDEBUG;_CRT_SECURE_NO_WARNINGS;_MT;_USE_32BIT_TIME_T;CAS_CCI;CASCCI_EXPORTS;CAS_CCI_DL;XML_STATIC;BOOST_ALL_NO_LIB;DBGW_ADAPTER_API_EXPORT"
 				GeneratePreprocessedFile="0"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
@@ -146,7 +224,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib libexpat.lib cascci.lib"
+				AdditionalDependencies="ws2_32.lib libexpat.lib libregex38a.lib"
 				OutputFile="$(OutDir)\DBGWConnector3.dll"
 				AdditionalLibraryDirectories="$(SolutionDir)$(PlatformName)\$(ConfigurationName);..\..\win\external\lib"
 				IgnoreDefaultLibraryNames="libcmt.lib"
@@ -155,84 +233,6 @@
 				OptimizeReferences="2"
 				EnableCOMDATFolding="2"
 				TargetMachine="1"
-			/>
-			<Tool
-				Name="VCALinkTool"
-			/>
-			<Tool
-				Name="VCManifestTool"
-			/>
-			<Tool
-				Name="VCXDCMakeTool"
-			/>
-			<Tool
-				Name="VCBscMakeTool"
-			/>
-			<Tool
-				Name="VCFxCopTool"
-			/>
-			<Tool
-				Name="VCAppVerifierTool"
-			/>
-			<Tool
-				Name="VCPostBuildEventTool"
-			/>
-		</Configuration>
-		<Configuration
-			Name="Debug|x64"
-			OutputDirectory="$(SolutionDir)$(PlatformName)\$(ConfigurationName)"
-			IntermediateDirectory="$(PlatformName)\$(ConfigurationName)"
-			ConfigurationType="2"
-			CharacterSet="2"
-			BuildLogFile="$(IntDir)\BuildLog_$(ProjectName).htm"
-			>
-			<Tool
-				Name="VCPreBuildEventTool"
-			/>
-			<Tool
-				Name="VCCustomBuildTool"
-			/>
-			<Tool
-				Name="VCXMLDataGeneratorTool"
-			/>
-			<Tool
-				Name="VCWebServiceProxyGeneratorTool"
-			/>
-			<Tool
-				Name="VCMIDLTool"
-			/>
-			<Tool
-				Name="VCCLCompilerTool"
-				Optimization="0"
-				AdditionalIncludeDirectories="..\..\src\dbgw;..\..\win;..\..\src\broker;..\..\src\cci;..\..\include;..\..\win\external\include;C:\Program Files\boost\boost_1_41"
-				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;_DEBUG;_CRT_SECURE_NO_WARNINGS;_MT;__STL_DEBUG;XML_STATIC;BOOST_ALL_NO_LIB;DBGW_ADAPTER_API_EXPORT"
-				GeneratePreprocessedFile="0"
-				MinimalRebuild="true"
-				BasicRuntimeChecks="3"
-				RuntimeLibrary="3"
-				WarningLevel="3"
-				DebugInformationFormat="4"
-				CompileAs="0"
-				DisableSpecificWarnings="4274;4996"
-			/>
-			<Tool
-				Name="VCManagedResourceCompilerTool"
-			/>
-			<Tool
-				Name="VCResourceCompilerTool"
-			/>
-			<Tool
-				Name="VCPreLinkEventTool"
-			/>
-			<Tool
-				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib libexpat.lib cascci.lib"
-				OutputFile="$(OutDir)\DBGWConnector3D.dll"
-				AdditionalLibraryDirectories="$(SolutionDir)$(PlatformName)\$(ConfigurationName);..\..\win\external\lib64"
-				IgnoreDefaultLibraryNames="libcmt.lib"
-				ModuleDefinitionFile=""
-				GenerateDebugInformation="true"
-				TargetMachine="17"
 			/>
 			<Tool
 				Name="VCALinkTool"
@@ -284,8 +284,8 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
-				AdditionalIncludeDirectories="..\..\src\dbgw;..\..\win;..\..\src\broker;..\..\src\cci;..\..\include;..\..\win\external\include;C:\Program Files\boost\boost_1_41"
-				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;NDEBUG;_CRT_SECURE_NO_WARNINGS;_MT;_USE_32BIT_TIME_T;XML_STATIC;BOOST_ALL_NO_LIB;DBGW_ADAPTER_API_EXPORT"
+				AdditionalIncludeDirectories="..\..\src\dbgw;..\..\win;..\..\src\api;..\..\src\base;..\..\src\compat;..\..\src\storage;..\..\src\broker;..\..\src\cci;..\..\include;..\..\win\external\include;C:\Program Files\boost\boost_1_41"
+				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;NDEBUG;_CRT_SECURE_NO_WARNINGS;_MT;CAS_CCI;CASCCI_EXPORTS;CAS_CCI_DL;XML_STATIC;BOOST_ALL_NO_LIB;DBGW_ADAPTER_API_EXPORT"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
 				WarningLevel="3"
@@ -303,7 +303,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib libexpat.lib cascci.lib"
+				AdditionalDependencies="ws2_32.lib libexpat.lib libregex38a.lib"
 				OutputFile="$(OutDir)\DBGWConnector3.dll"
 				AdditionalLibraryDirectories="$(SolutionDir)$(PlatformName)\$(ConfigurationName);..\..\win\external\lib64"
 				IgnoreDefaultLibraryNames="libcmt.lib"
@@ -311,7 +311,7 @@
 				GenerateDebugInformation="true"
 				OptimizeReferences="2"
 				EnableCOMDATFolding="2"
-				TargetMachine="1"
+				TargetMachine="17"
 			/>
 			<Tool
 				Name="VCALinkTool"
@@ -391,12 +391,80 @@
 					RelativePath="..\..\src\dbgw\DBGWValue.cpp"
 					>
 				</File>
-        <File
-          RelativePath="..\..\src\dbgw\DBGWWork.cpp"
-          >
-        </File>
+				<File
+					RelativePath="..\..\src\dbgw\DBGWWork.cpp"
+					>
+				</File>
 				<File
 					RelativePath="..\..\src\dbgw\DBGWXMLParser.cpp"
+					>
+				</File>
+			</Filter>
+			<Filter
+				Name="base"
+				>
+				<File
+					RelativePath="..\..\src\base\porting.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\base\rand.c"
+					>
+				</File>
+			</Filter>
+			<Filter
+				Name="cci"
+				>
+				<File
+					RelativePath="..\..\src\cci\cas_cci.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\cci\cci_common.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\cci\cci_handle_mng.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\cci\cci_log.cpp"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\cci\cci_map.cpp"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\cci\cci_net_buf.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\cci\cci_network.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\cci\cci_properties.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\cci\cci_query_execute.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\cci\cci_t_lob.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\cci\cci_t_set.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\cci\cci_util.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\cci\cci_wsa_init.c"
 					>
 				</File>
 			</Filter>
@@ -406,6 +474,66 @@
 			Filter="h;hpp;hxx;hm;inl;inc;xsd"
 			UniqueIdentifier="{93995380-89BD-4b04-88EB-625FBE52EBFB}"
 			>
+			<File
+				RelativePath="..\..\src\dbgw\DBGWAdapter.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\dbgw\DBGWClient.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\dbgw\DBGWClientFwd.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\dbgw\DBGWCommon.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\dbgw\DBGWConfiguration.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\dbgw\DBGWConnector3.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\dbgw\DBGWCUBRIDInterface.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\dbgw\DBGWDataBaseInterface.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\dbgw\DBGWError.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\dbgw\DBGWLogger.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\dbgw\DBGWMock.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\dbgw\DBGWPorting.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\dbgw\DBGWQuery.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\dbgw\DBGWValue.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\dbgw\DBGWXMLParser.h"
+				>
+			</File>
 		</Filter>
 		<Filter
 			Name="Resource Files"

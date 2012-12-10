@@ -157,6 +157,9 @@ if ERRORLEVEL 1 (echo FAILD. & GOTO :EOF) ELSE echo OK.
 "%DEVENV_PATH%" /rebuild "%BUILD_MODE%|%BUILD_TARGET%" "cubrid_compat.sln"
 if ERRORLEVEL 1 (echo FAILD. & GOTO :EOF) ELSE echo OK.
 
+"%DEVENV_PATH%" /rebuild "%BUILD_MODE%|%BUILD_TARGET%" "cubrid_dbgw.sln"
+if ERRORLEVEL 1 (echo FAILD. & GOTO :EOF) ELSE echo OK.
+
 copy %BUILD_DIR%\%BUILD_TARGET%\Release\convert_password.exe %BUILD_PREFIX%\bin
 
 copy %SOURCE_DIR%\README %BUILD_PREFIX%\
@@ -229,8 +232,6 @@ copy /y conf\cubrid_broker.conf conf\cubrid_broker.conf-dist
 copy /y conf\cm.conf conf\cm.conf-dist
 copy /y conf\cmdb.pass conf\cmdb.pass-dist
 copy /y conf\cm.pass conf\cm.pass-dist
-copy /y conf\cubrid_locales.all.txt conf\cubrid_locales.all.txt-dist
-copy /y conf\cubrid_locales.txt conf\cubrid_locales.txt-dist
 copy /y conf\shard.conf conf\shard.conf-dist
 copy /y conf\shard_connection.txt conf\shard_connection.txt-dist
 copy /y conf\shard_key.txt conf\shard_key.txt-dist
@@ -254,8 +255,6 @@ del conf\cubrid_broker.conf-dist
 del conf\cm.conf-dist
 del conf\cmdb.pass-dist
 del conf\cm.pass-dist
-del conf\cubrid_locales.all.txt-dist
-del conf\cubrid_locales.txt-dist
 del conf\shard.conf-dist
 del conf\shard_connection.txt-dist
 del conf\shard_key.txt-dist
