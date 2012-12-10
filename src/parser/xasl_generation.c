@@ -18863,60 +18863,60 @@ parser_generate_xasl_post (PARSER_CONTEXT * parser, PT_NODE * node,
       return node;
     }
 
-  if (node && node->info.query.xasl == NULL)
+  assert (node != NULL);
+
+  switch (node->node_type)
     {
-      switch (node->node_type)
+    case PT_EXPR:
+      if (PT_IS_SERIAL (node->info.expr.op))
 	{
-	case PT_EXPR:
-	  if (PT_IS_SERIAL (node->info.expr.op))
+	  /* fill in XASL cache related information;
+	     serial OID used in this XASL */
+	  if (pt_serial_to_xasl_class_oid_list (parser, node,
+						&info->class_oid_list,
+						&info->repr_id_list,
+						&info->n_oid_list,
+						&info->oid_list_size) < 0)
 	    {
-	      /* fill in XASL cache related information;
-	         serial OID used in this XASL */
-	      if (pt_serial_to_xasl_class_oid_list (parser, node,
-						    &info->class_oid_list,
-						    &info->repr_id_list,
-						    &info->n_oid_list,
-						    &info->oid_list_size) < 0)
+	      if (er_errid () == ER_OUT_OF_VIRTUAL_MEMORY)
 		{
-		  if (er_errid () == ER_OUT_OF_VIRTUAL_MEMORY)
-		    {
-		      PT_INTERNAL_ERROR (parser, "generate xasl");
-		    }
-		  xasl = NULL;
-		}
-	    }
-	  break;
-
-	case PT_SELECT:
-	case PT_UNION:
-	case PT_DIFFERENCE:
-	case PT_INTERSECTION:
-	  /* build XASL for the query */
-	  xasl = parser_generate_xasl_proc (parser, node, info->query_list);
-	  pt_pop_symbol_info (parser);
-	  if (node->node_type == PT_SELECT)
-	    {
-	      /* fill in XASL cache related information;
-	         list of class OIDs used in this XASL */
-	      if (xasl
-		  && pt_spec_to_xasl_class_oid_list (node->info.query.q.
-						     select.from,
-						     &info->class_oid_list,
-						     &info->repr_id_list,
-						     &info->n_oid_list,
-						     &info->oid_list_size) <
-		  0)
-		{
-		  /* might be memory allocation error */
 		  PT_INTERNAL_ERROR (parser, "generate xasl");
-		  xasl = NULL;
 		}
+	      xasl = NULL;
 	    }
-	  break;
-
-	default:
-	  break;
 	}
+      break;
+
+    case PT_SELECT:
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      assert (node->info.query.xasl == NULL);
+
+      /* build XASL for the query */
+      xasl = parser_generate_xasl_proc (parser, node, info->query_list);
+      pt_pop_symbol_info (parser);
+      if (node->node_type == PT_SELECT)
+	{
+	  /* fill in XASL cache related information;
+	     list of class OIDs used in this XASL */
+	  if (xasl
+	      && pt_spec_to_xasl_class_oid_list (node->info.query.q.
+						 select.from,
+						 &info->class_oid_list,
+						 &info->repr_id_list,
+						 &info->n_oid_list,
+						 &info->oid_list_size) < 0)
+	    {
+	      /* might be memory allocation error */
+	      PT_INTERNAL_ERROR (parser, "generate xasl");
+	      xasl = NULL;
+	    }
+	}
+      break;
+
+    default:
+      break;
     }
 
   if (pt_has_error (parser) || er_errid () == ER_LK_UNILATERALLY_ABORTED)

@@ -970,6 +970,8 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id,
   int serial_name_size;
   int save;
 
+  OID_SET_NULL (serial_obj_id);
+
   if (serial_class_mop == NULL || serial_name == NULL)
     {
       return NULL;
@@ -2438,6 +2440,7 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   db_make_null (&class_name_val);
+  OID_SET_NULL (&serial_obj_id);
 
   serial_class = sm_find_class (CT_SERIAL_NAME);
   if (serial_class == NULL)
@@ -11712,7 +11715,7 @@ insert_subquery_results (PARSER_CONTEXT * parser,
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
-      /* count elements in the select list before we modify it for 
+      /* count elements in the select list before we modify it for
        * ON DUPLICATE KEY UPDATE statements */
       degree = pt_length_of_select_list (pt_get_select_list (parser, qry),
 					 EXCLUDE_HIDDEN_COLUMNS);
