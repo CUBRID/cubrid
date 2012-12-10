@@ -110,6 +110,8 @@ namespace dbgw
     DBGWException(const std::exception &exception) throw();
     virtual ~ DBGWException() throw();
 
+    void clear();
+
   public:
     int getErrorCode() const;
     const char *getErrorMessage() const;

@@ -102,11 +102,7 @@ namespace dbgw
 
   DBGWException::DBGWException() throw()
   {
-    m_context.nErrorCode = DBGW_ER_NO_ERROR;
-    m_context.nInterfaceErrorCode = DBGW_ER_NO_ERROR;
-    m_context.errorMessage = "";
-    m_context.what = "";
-    m_context.bConnectionError = false;
+    clear();
   }
 
   DBGWException::DBGWException(const DBGWExceptionContext &context) throw() :
@@ -126,6 +122,15 @@ namespace dbgw
 
   DBGWException::~DBGWException() throw()
   {
+  }
+
+  void DBGWException::clear()
+  {
+    m_context.nErrorCode = DBGW_ER_NO_ERROR;
+    m_context.nInterfaceErrorCode = DBGW_ER_NO_ERROR;
+    m_context.errorMessage = "";
+    m_context.what = "";
+    m_context.bConnectionError = false;
   }
 
   int DBGWException::getErrorCode() const

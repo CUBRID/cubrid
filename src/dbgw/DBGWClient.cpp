@@ -232,6 +232,7 @@ namespace dbgw
     m_pInternalResultSet.reset();
     m_pExternalBatchResultSet.reset();
     m_pInternalBatchResultSet.reset();
+    m_lastException.clear();
   }
 
   void _DBGWClientProxy::doExecute()
