@@ -578,7 +578,10 @@ namespace dbgw
              * We don't need to execute query of remaining groups.
              * Because primary query is already executed.
              */
-            m_pExternalResultSet->first();
+            if (m_pExternalResultSet->isNeedFetch())
+              {
+                m_pExternalResultSet->first();
+              }
             throw m_lastException;
           }
       }
