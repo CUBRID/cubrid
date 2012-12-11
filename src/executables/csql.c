@@ -31,12 +31,16 @@
 #if defined(WINDOWS)
 #include <direct.h>
 #include <io.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #else /* !WINDOWS */
 #include <sys/time.h>
 #include <sys/errno.h>
 #include <signal.h>
 #include <wctype.h>
 #include <editline/readline.h>
+#include <sys/socket.h>
+#include <netdb.h>
 #endif /* !WINDOWS */
 
 #include "csql.h"
@@ -1894,8 +1898,12 @@ free_attr_spec (DB_QUERY_TYPE ** attr_spec)
 static void
 csql_print_database (void)
 {
+  struct sockaddr_in sin;
   const char *db_name, *host_name;
+  char *pstr;
+  char converted_host_name[MAXHOSTNAMELEN + 1];
   char ha_state[16];
+  int res;
 
   db_name = db_get_database_name ();
   host_name = db_get_host_connected ();
@@ -1906,15 +1914,52 @@ csql_print_database (void)
     }
   else
     {
+      sin.sin_family = AF_INET;
+      inet_pton (AF_INET, host_name, &sin.sin_addr);
+
+      res = getnameinfo ((struct sockaddr *) &sin, sizeof (sin),
+			 converted_host_name, sizeof (converted_host_name),
+			 NULL, 0, NI_NAMEREQD);
+      /* 
+       * if it fails to resolves hostname, 
+       * it will use db_get_host_connected()'s result.
+       */
+      if (res != 0)
+	{
+	  strncpy (converted_host_name, host_name, MAXHOSTNAMELEN);
+	  converted_host_name[MAXHOSTNAMELEN] = '\0';
+	}
+
+      if (strcasecmp (converted_host_name, "localhost") == 0
+	  || strcasecmp (converted_host_name, "localhost.localdomain") == 0)
+	{
+	  if (GETHOSTNAME (converted_host_name, MAXHOSTNAMELEN) != 0)
+	    {
+	      strncpy (converted_host_name, host_name, MAXHOSTNAMELEN);
+	    }
+	}
+      converted_host_name[MAXHOSTNAMELEN] = '\0';
+
+      /*
+       * if there is hostname or ip address in db_name,
+       * it will only use db_name except for hostname or ip address.
+       */
+      pstr = strchr (db_name, '@');
+      if (pstr != NULL)
+	{
+	  *pstr = '\0';
+	}
+
       if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
 	{
-	  fprintf (csql_Output_fp, "\n\t%s@%s\n\n", db_name, host_name);
+	  fprintf (csql_Output_fp, "\n\t%s@%s\n\n", db_name,
+		   converted_host_name);
 	}
       else
 	{
 	  db_get_ha_server_state (ha_state, 16);
-	  fprintf (csql_Output_fp, "\n\t%s@%s [%s]\n\n", db_name, host_name,
-		   ha_state);
+	  fprintf (csql_Output_fp, "\n\t%s@%s [%s]\n\n", db_name,
+		   converted_host_name, ha_state);
 	}
 
       db_ws_free ((char *) db_name);
