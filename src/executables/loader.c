@@ -6322,9 +6322,13 @@ ldr_process_constants (LDR_CONSTANT * cons)
 
   if (cons != NULL && ldr_Current_context->num_attrs == 0)
     {
-      ldr_Current_context->valid = false;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_LDB_NO_CLASS_OR_NO_ATTRIBUTE, 0);
+      /* diplay the msg 1 time for each class */
+      if (ldr_Current_context->valid)
+	{
+	  display_error (0);
+	}
       CHECK_CONTEXT_VALIDITY (ldr_Current_context, true);
       ldr_abort ();
       return;
