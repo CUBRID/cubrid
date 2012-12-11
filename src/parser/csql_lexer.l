@@ -386,10 +386,16 @@ extern int yycolumn_end;
 										return KEYS; }
 [lL][aA][nN][gG][uU][aA][gG][eE]					{ begin_token(yytext);   return LANGUAGE; }
 [kK][eE][yY][lL][iI][mM][iI][tT]					{ begin_token(yytext);	 return KEYLIMIT; }
+[lL][aA][gG]								{ begin_token(yytext);   
+										csql_yylval.cptr = pt_makename(yytext);
+										return LAG; }
 [lL][aA][sS][tT]							{ begin_token(yytext);   return LAST; }
 [lL][cC][aA][sS][eE]							{ begin_token(yytext);	 
 										csql_yylval.cptr = pt_makename(yytext);
 										return LCASE; }
+[lL][eE][aA][dD]							{ begin_token(yytext);   
+										csql_yylval.cptr = pt_makename(yytext);
+										return LEAD; }
 [lL][eE][aA][dD][iI][nN][gG]						{ begin_token(yytext);   return LEADING_; }
 [lL][eE][aA][vV][eE]							{ begin_token(yytext);   return LEAVE; }
 [lL][eE][fF][tT]							{ begin_token(yytext);   return LEFT; }

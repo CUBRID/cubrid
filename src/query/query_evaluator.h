@@ -75,6 +75,9 @@ typedef enum
   PT_TOP_AGG_FUNC,
 /* only aggregate functions should be below PT_TOP_AGG_FUNC */
 
+/* analytic only functions */
+  PT_LEAD, PT_LAG,
+
 /* foreign functions */
   PT_GENERIC,
 
@@ -88,6 +91,12 @@ typedef enum
   F_SET, F_MULTISET, F_SEQUENCE, F_VID, F_GENERIC, F_CLASS_OF,
   F_INSERT_SUBSTRING, F_ELT
 } FUNC_TYPE;
+
+#define QPROC_ANALYTIC_HAS_SUBPARTITIONS(func_p) \
+  (((func_p) != NULL) \
+   && ((func_p)->function != PT_LEAD) \
+   && ((func_p)->function != PT_LAG) \
+   && ((func_p)->function != PT_NTILE))
 
 #define NUM_F_GENERIC_ARGS 32
 #define NUM_F_INSERT_SUBSTRING_ARGS 4
@@ -422,24 +431,57 @@ struct aggregate_list_node
 				 * used by GROUP_CONCAT */
 };
 
+typedef struct analytic_offset_function_info ANALYTIC_OFFSET_FUNCTION_INFO;
+struct analytic_offset_function_info
+{
+  QFILE_LIST_SCAN_ID lsid;
+  QFILE_TUPLE_RECORD tplrec;
+  int tuple_idx;		/* offset scan tuple index within group */
+};
+
+typedef struct analytic_ntile_function_info ANALYTIC_NTILE_FUNCTION_INFO;
+struct analytic_ntile_function_info
+{
+  bool is_null;			/* is function result NULL? */
+  int bucket_count;		/* number of required buckets */
+};
+
+typedef union analytic_function_info ANALYTIC_FUNCTION_INFO;
+union analytic_function_info
+{
+  ANALYTIC_OFFSET_FUNCTION_INFO offset;
+  ANALYTIC_NTILE_FUNCTION_INFO ntile;
+};
+
 typedef struct analytic_list_node ANALYTIC_TYPE;
 struct analytic_list_node
 {
   ANALYTIC_TYPE *next;		/* next analytic node */
+
+  /* constant fields, XASL serialized */
+  FUNC_TYPE function;		/* analytic function type */
+  QUERY_OPTIONS option;		/* DISTINCT/ALL option */
   TP_DOMAIN *domain;		/* domain of the result */
+  SORT_LIST *sort_list;		/* partition sort */
+
+  DB_TYPE opr_dbtype;		/* operand data type */
+  REGU_VARIABLE operand;	/* operand */
+
+  int flag;			/* flags */
+  int partition_cnt;		/* number of partition items in sort list */
+  int outptr_idx;		/* index of reguvar in list */
+  int offset_idx;		/* index of offset value in select list (for
+				   LEAD/LAG functions) */
+  int default_idx;		/* index of default value in select list (for
+				   LEAD/LAG functions) */
+
+  /* runtime values */
+  ANALYTIC_FUNCTION_INFO info;	/* custom function runtime values */
+  QFILE_LIST_ID *list_id;	/* used for distinct handling */
   DB_VALUE *value;		/* value of the aggregate */
   DB_VALUE *value2;		/* for STTDEV and VARIANCE */
   DB_VALUE part_value;		/* partition temporary accumulator */
-  int outptr_idx;		/* index of reguvar in list */
   int curr_cnt;			/* current number of items */
-  FUNC_TYPE function;		/* analytic function type */
-  QUERY_OPTIONS option;		/* DISTINCT/ALL option */
-  DB_TYPE opr_dbtype;		/* operand data type */
-  struct regu_variable_node operand;	/* operand */
-  QFILE_LIST_ID *list_id;	/* used for distinct handling */
-  SORT_LIST *sort_list;		/* partition sort */
-  int partition_cnt;		/* number of partition items in sort list */
-  int flag;			/* flags */
 };
 
 #define ANALYTIC_ADVANCE_RANK 1	/* advance rank */

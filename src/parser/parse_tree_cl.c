@@ -3643,6 +3643,10 @@ pt_show_function (FUNC_TYPE c)
       return "rank";
     case PT_DENSE_RANK:
       return "dense_rank";
+    case PT_LEAD:
+      return "lead";
+    case PT_LAG:
+      return "lag";
     case PT_NTILE:
       return "ntile";
 
@@ -11580,6 +11584,10 @@ pt_apply_function (PARSER_CONTEXT * parser, PT_NODE * p,
 	g (parser, p->info.function.analytic.partition_by, arg);
       p->info.function.analytic.order_by =
 	g (parser, p->info.function.analytic.order_by, arg);
+      p->info.function.analytic.offset =
+	g (parser, p->info.function.analytic.offset, arg);
+      p->info.function.analytic.default_value =
+	g (parser, p->info.function.analytic.default_value, arg);
     }
   return p;
 }
@@ -11600,6 +11608,8 @@ pt_init_function (PT_NODE * p)
   p->info.function.analytic.is_analytic = false;
   p->info.function.analytic.partition_by = NULL;
   p->info.function.analytic.order_by = NULL;
+  p->info.function.analytic.default_value = NULL;
+  p->info.function.analytic.offset = NULL;
   p->info.function.hidden_column = 0;
   p->info.function.is_order_dependent = false;
   p->info.function.coll_modifier = -1;
@@ -11670,6 +11680,24 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
 	    }
 	  q = pt_append_varchar (parser, q, r1);
 	}
+      q = pt_append_nulstring (parser, q, ")");
+    }
+  else if (code == PT_LEAD || code == PT_LAG)
+    {
+      q = pt_append_nulstring (parser, q, pt_show_function (code));
+      q = pt_append_nulstring (parser, q, "(");
+
+      r1 = pt_print_bytes (parser, p->info.function.arg_list);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ", ");
+
+      r1 = pt_print_bytes (parser, p->info.function.analytic.offset);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ", ");
+
+      r1 = pt_print_bytes (parser, p->info.function.analytic.default_value);
+      q = pt_append_varchar (parser, q, r1);
+
       q = pt_append_nulstring (parser, q, ")");
     }
   else if (code == F_SET || code == F_MULTISET || code == F_SEQUENCE)

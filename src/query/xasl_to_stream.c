@@ -4961,6 +4961,10 @@ xts_process_analytic_type (char *ptr, const ANALYTIC_TYPE * analytic)
 
   ptr = or_pack_int (ptr, analytic->outptr_idx);
 
+  ptr = or_pack_int (ptr, analytic->offset_idx);
+
+  ptr = or_pack_int (ptr, analytic->default_idx);
+
   ptr = or_pack_int (ptr, analytic->curr_cnt);
 
   offset = xts_save_analytic_type (analytic->next);
@@ -6512,6 +6516,8 @@ xts_sizeof_analytic_type (const ANALYTIC_TYPE * analytic)
     PTR_SIZE +			/* default_value */
     OR_INT_SIZE +		/* curr_cnt */
     OR_INT_SIZE +		/* function */
+    OR_INT_SIZE +		/* offset_idx */
+    OR_INT_SIZE +		/* default_idx */
     OR_INT_SIZE +		/* option */
     OR_INT_SIZE +		/* opr_dbtype */
     OR_INT_SIZE +		/* partition_cnt */

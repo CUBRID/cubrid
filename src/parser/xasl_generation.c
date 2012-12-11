@@ -14817,18 +14817,47 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	  /* substitute references of analytic arguments */
 	  for (node = select_list_ex; node; node = node->next)
 	    {
-	      if (PT_IS_ANALYTIC_NODE (node) &&
-		  node->info.function.arg_list != NULL)
+	      if (PT_IS_ANALYTIC_NODE (node))
 		{
-		  node->info.function.arg_list =
-		    pt_substitute_analytic_references (parser,
-						       node->info.function.
-						       arg_list,
-						       &select_list_ex);
-
-		  if (node->info.function.arg_list == NULL)
+		  if (node->info.function.arg_list != NULL)
 		    {
-		      goto analytic_exit_on_error;
+		      node->info.function.arg_list =
+			pt_substitute_analytic_references (parser,
+							   node->info.
+							   function.arg_list,
+							   &select_list_ex);
+		      if (node->info.function.arg_list == NULL)
+			{
+			  goto analytic_exit_on_error;
+			}
+		    }
+
+		  if (node->info.function.analytic.offset != NULL)
+		    {
+		      node->info.function.analytic.offset =
+			pt_substitute_analytic_references (parser,
+							   node->info.
+							   function.analytic.
+							   offset,
+							   &select_list_ex);
+		      if (node->info.function.analytic.offset == NULL)
+			{
+			  goto analytic_exit_on_error;
+			}
+		    }
+
+		  if (node->info.function.analytic.default_value != NULL)
+		    {
+		      node->info.function.analytic.default_value =
+			pt_substitute_analytic_references (parser,
+							   node->info.
+							   function.analytic.
+							   default_value,
+							   &select_list_ex);
+		      if (node->info.function.analytic.default_value == NULL)
+			{
+			  goto analytic_exit_on_error;
+			}
 		    }
 		}
 	    }
@@ -20893,6 +20922,38 @@ pt_to_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree,
       analytic->sort_list = NULL;
     }
 
+  /* find indexes of offset and default values for LEAD/LAG */
+  if (func_info->function_type == PT_LEAD
+      || func_info->function_type == PT_LAG)
+    {
+      bool off_found = false, def_found = false;
+      int idx = 0;
+
+      for (list = analytic_info->select_list; list != NULL;
+	   list = list->next, idx++)
+	{
+	  if (!off_found
+	      && func_info->analytic.offset->info.pointer.node == list)
+	    {
+	      analytic->offset_idx = idx;
+	      off_found = true;
+	    }
+
+	  if (!def_found
+	      && func_info->analytic.default_value->info.pointer.node == list)
+	    {
+	      analytic->default_idx = idx;
+	      def_found = true;
+	    }
+	}
+
+      if (!off_found || !def_found)
+	{
+	  PT_INTERNAL_ERROR (parser, "invalid analytic function structure");
+	  goto exit_on_error;
+	}
+    }
+
   /* process operand (argument) */
   if (func_info->arg_list == NULL)
     {
@@ -21180,6 +21241,37 @@ pt_expand_analytic_node (PARSER_CONTEXT * parser, PT_NODE * node,
 
       /* add node to select list (select list is considered to be not null) */
       (void) parser_append_node (arg, select_list);
+    }
+
+  if (node->info.function.function_type == PT_LEAD
+      || node->info.function.function_type == PT_LAG)
+    {
+      /* add offset and default value expressions to select list */
+      ptr = pt_point_ref (parser, node->info.function.analytic.offset);
+      if (ptr == NULL)
+	{
+	  PT_ERROR (parser, node,
+		    msgcat_message (MSGCAT_CATALOG_CUBRID,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+	  return NULL;
+	}
+      (void) parser_append_node (node->info.function.analytic.offset,
+				 select_list);
+      node->info.function.analytic.offset = ptr;
+
+      ptr = pt_point_ref (parser, node->info.function.analytic.default_value);
+      if (ptr == NULL)
+	{
+	  PT_ERROR (parser, node,
+		    msgcat_message (MSGCAT_CATALOG_CUBRID,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+	  return NULL;
+	}
+      (void) parser_append_node (node->info.function.analytic.default_value,
+				 select_list);
+      node->info.function.analytic.default_value = ptr;
     }
 
   /* walk order list and resolve nodes that were not found in select list */

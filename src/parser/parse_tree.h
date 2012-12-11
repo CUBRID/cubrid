@@ -2020,6 +2020,8 @@ struct pt_function_info
   {
     PT_NODE *partition_by;	/* partition PT_SORT_SPEC list */
     PT_NODE *order_by;		/* ordering PT_SORT_SPEC list */
+    PT_NODE *default_value;	/* LEAD/LAG function default value */
+    PT_NODE *offset;		/* LEAD/LAG function offset */
     bool is_analytic;		/* is analytic clause */
   } analytic;
 };

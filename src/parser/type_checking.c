@@ -11963,6 +11963,8 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       break;
 
+    case PT_LEAD:
+    case PT_LAG:
     case PT_COUNT:
       break;
 

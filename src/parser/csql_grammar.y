@@ -625,6 +625,7 @@ typedef struct YYLTYPE
 %type <number> constraint_list
 %type <number> opt_full
 %type <number> of_analytic
+%type <number> of_analytic_lead_lag
 %type <number> of_analytic_no_args
 %type <number> negative_prec_cast_type
 /*}}}*/
@@ -1400,7 +1401,9 @@ typedef struct YYLTYPE
 %token <cptr> ISNULL
 %token <cptr> KEYS
 %token <cptr> JAVA
+%token <cptr> LAG
 %token <cptr> LCASE
+%token <cptr> LEAD
 %token <cptr> LOCK_
 %token <cptr> MAXIMUM
 %token <cptr> MAXVALUE
@@ -13241,6 +13244,87 @@ reserved_func
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| of_analytic_lead_lag '(' expression_ ')' OVER '(' opt_analytic_partition_by opt_analytic_order_by ')'
+		{{
+
+			PT_NODE *node = parser_new_node (this_parser, PT_FUNCTION);
+
+			if (node)
+			  {
+			    node->info.function.function_type = $1;
+			    node->info.function.all_or_distinct = PT_ALL;
+			    node->info.function.arg_list = $3;
+
+			    node->info.function.analytic.offset = parser_new_node (this_parser, PT_VALUE);
+			    if (node->info.function.analytic.offset != NULL)
+			      {
+				node->info.function.analytic.offset->type_enum = PT_TYPE_INTEGER;
+				node->info.function.analytic.offset->info.value.data_value.i = 1;
+			      }
+
+			    node->info.function.analytic.default_value = parser_new_node (this_parser, PT_VALUE);
+			    if (node->info.function.analytic.default_value != NULL)
+			      {
+				node->info.function.analytic.default_value->type_enum = PT_TYPE_NULL;
+			      }
+
+			    node->info.function.analytic.partition_by = $7;
+			    node->info.function.analytic.order_by = $8;
+			    node->info.function.analytic.is_analytic = true;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| of_analytic_lead_lag '(' expression_ ',' expression_ ')' OVER '(' opt_analytic_partition_by opt_analytic_order_by ')'
+		{{
+
+			PT_NODE *node = parser_new_node (this_parser, PT_FUNCTION);
+
+			if (node)
+			  {
+			    node->info.function.function_type = $1;
+			    node->info.function.all_or_distinct = PT_ALL;
+			    node->info.function.arg_list = $3;
+			    node->info.function.analytic.offset = $5;
+
+			    node->info.function.analytic.default_value = parser_new_node (this_parser, PT_VALUE);
+			    if (node->info.function.analytic.default_value != NULL)
+			      {
+				node->info.function.analytic.default_value->type_enum = PT_TYPE_NULL;
+			      }
+
+			    node->info.function.analytic.partition_by = $9;
+			    node->info.function.analytic.order_by = $10;
+			    node->info.function.analytic.is_analytic = true;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| of_analytic_lead_lag '(' expression_ ',' expression_ ',' expression_ ')' OVER '(' opt_analytic_partition_by opt_analytic_order_by ')'
+		{{
+
+			PT_NODE *node = parser_new_node (this_parser, PT_FUNCTION);
+
+			if (node)
+			  {
+			    node->info.function.function_type = $1;
+			    node->info.function.all_or_distinct = PT_ALL;
+			    node->info.function.arg_list = $3;
+			    node->info.function.analytic.offset = $5;
+			    node->info.function.analytic.default_value = $7;
+			    node->info.function.analytic.partition_by = $11;
+			    node->info.function.analytic.order_by = $12;
+			    node->info.function.analytic.is_analytic = true;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	| of_analytic_no_args '(' ')' OVER '(' opt_analytic_partition_by opt_analytic_order_by ')'
 		{{
 
@@ -14293,6 +14377,22 @@ of_analytic
 
 		DBG_PRINT}}
 	/* add other analytic functions here */
+	;
+
+of_analytic_lead_lag
+	: LEAD
+		{{
+
+			$$ = PT_LEAD;
+
+		DBG_PRINT}}
+	| LAG
+		{{
+
+			$$ = PT_LAG;
+
+		DBG_PRINT}}
+	/* functions that use other row values */
 	;
 
 of_analytic_no_args
@@ -18251,7 +18351,27 @@ identifier
 			$$ = p;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}		
+		DBG_PRINT}}
+	| LAG
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| LEAD
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	| LOCK_
 		{{
 

@@ -9288,6 +9288,12 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 	  func_p->curr_cnt++;
 	}
 
+      if (func_p->function == PT_NTILE)
+	{
+	  func_p->info.ntile.is_null = true;
+	  func_p->info.ntile.bucket_count = 0;
+	}
+
       goto exit;
     }
 
@@ -9336,6 +9342,46 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
   copy_opr = false;
   switch (func_p->function)
     {
+    case PT_NTILE:
+      /* output value is not required now */
+      DB_MAKE_NULL (func_p->value);
+
+      if (func_p->curr_cnt < 1)
+	{
+	  /* the operand is the number of buckets and should be constant within
+	     the window; we can extract it now for later use */
+	  if (tp_value_coerce (&dbval, &dbval, &tp_Integer_domain) !=
+	      DOMAIN_COMPATIBLE)
+	    {
+	      pr_clear_value (&dbval);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
+		      pr_type_name (DB_VALUE_DOMAIN_TYPE (&dbval)),
+		      pr_type_name (TP_DOMAIN_TYPE (&tp_Integer_domain)));
+	      return ER_FAILED;
+	    }
+
+	  /* we're sure the operand is not null */
+	  func_p->info.ntile.is_null = false;
+	  func_p->info.ntile.bucket_count = DB_GET_INT (&dbval);
+
+	  if (func_p->info.ntile.bucket_count < 1)
+	    {
+	      /* positive integer required */
+	      pr_clear_value (&dbval);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_NTILE_INVALID_BUCKET_NUMBER, 0);
+	      return ER_FAILED;
+	    }
+	}
+      break;
+
+    case PT_LEAD:
+    case PT_LAG:
+      /* just copy */
+      pr_clear_value (func_p->value);
+      pr_clone_value (&dbval, func_p->value);
+      break;
+
     case PT_MIN:
       opr_dbval_p = &dbval;
       if (func_p->curr_cnt < 1
@@ -9530,13 +9576,6 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 
 	  pr_clear_value (&sqr_val);
 	}
-      break;
-
-    case PT_NTILE:
-      /* this is just a holder
-       * we'll recalculate this field when partition ends
-       */
-      DB_MAKE_INT (func_p->value, 0);
       break;
 
     default:

@@ -5756,6 +5756,10 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr,
 
   ptr = or_unpack_int (ptr, &analytic->outptr_idx);
 
+  ptr = or_unpack_int (ptr, &analytic->offset_idx);
+
+  ptr = or_unpack_int (ptr, &analytic->default_idx);
+
   ptr = or_unpack_int (ptr, &analytic->curr_cnt);
 
   ptr = or_unpack_int (ptr, &offset);
