@@ -5735,22 +5735,23 @@ cci_datasource_borrow (T_CCI_DATASOURCE * ds, T_CCI_ERROR * err_buf)
     }
   else
     {
+      map_open_otc (id, &mapped_id);
+
       /* reset to default value when default_xxx property is set by user */
       if (ds->default_autocommit != CCI_DS_DEFAULT_AUTOCOMMIT_DEFAULT)
 	{
-	  cci_set_autocommit (id, ds->default_autocommit);
+	  cci_set_autocommit (mapped_id, ds->default_autocommit);
 	}
       if (ds->default_lock_timeout != CCI_DS_DEFAULT_LOCK_TIMEOUT_DEFAULT)
 	{
-	  cci_set_lock_timeout (id, ds->default_lock_timeout, err_buf);
+	  cci_set_lock_timeout (mapped_id, ds->default_lock_timeout, err_buf);
 	}
       if (ds->default_isolation != CCI_DS_DEFAULT_ISOLATION_DEFAULT)
 	{
-	  cci_set_isolation_level (id, ds->default_isolation, err_buf);
+	  cci_set_isolation_level (mapped_id, ds->default_isolation, err_buf);
 	}
     }
 
-  map_open_otc (id, &mapped_id);
   return mapped_id;
 }
 
