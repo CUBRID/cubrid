@@ -1074,69 +1074,69 @@ static const unsigned short int yyrline[] =
    13311, 13308, 13328, 13345, 13353, 13355, 13352, 13366, 13368, 13365,
    13379, 13381, 13378, 13392, 13394, 13391, 13405, 13407, 13404, 13417,
    13419, 13416, 13429, 13431, 13428, 13441, 13443, 13440, 13462, 13464,
-   13461, 13474, 13476, 13473, 13495, 13497, 13494, 13507, 13509, 13506,
-   13519, 13521, 13518, 13531, 13533, 13530, 13543, 13545, 13542, 13555,
-   13557, 13554, 13567, 13569, 13566, 13579, 13581, 13578, 13591, 13593,
-   13590, 13603, 13605, 13602, 13615, 13617, 13614, 13628, 13630, 13627,
-   13641, 13643, 13640, 13654, 13656, 13653, 13667, 13669, 13666, 13679,
-   13681, 13678, 13709, 13718, 13726, 13734, 13742, 13750, 13763, 13765,
-   13762, 13775, 13777, 13774, 13793, 13806, 13828, 13830, 13827, 13838,
-   13840, 13837, 13848, 13850, 13847, 13858, 13860, 13857, 13868, 13870,
-   13867, 13878, 13880, 13877, 13888, 13890, 13887, 13898, 13909, 13897,
-   13932, 13934, 13931, 13942, 13944, 13941, 13952, 13954, 13951, 13962,
-   13964, 13961, 13974, 13976, 13973, 13986, 13988, 13985, 13998, 14000,
-   13997, 14008, 14010, 14007, 14018, 14020, 14017, 14028, 14030, 14027,
-   14038, 14040, 14037, 14048, 14050, 14047, 14061, 14063, 14060, 14073,
-   14075, 14072, 14088, 14089, 14091, 14090, 14097, 14098, 14100, 14099,
-   14106, 14107, 14109, 14108, 14112, 14114, 14113, 14117, 14119, 14118,
-   14125, 14126, 14128, 14127, 14134, 14135, 14136, 14140, 14146, 14152,
-   14158, 14164, 14170, 14176, 14182, 14188, 14194, 14200, 14206, 14212,
-   14221, 14227, 14233, 14239, 14245, 14251, 14257, 14263, 14269, 14275,
-   14281, 14291, 14297, 14303, 14313, 14314, 14319, 14324, 14331, 14342,
-   14347, 14358, 14363, 14374, 14379, 14389, 14395, 14401, 14410, 14415,
-   14480, 14534, 14580, 14585, 14595, 14602, 14612, 14644, 14651, 14661,
-   14690, 14704, 14705, 14709, 14710, 14714, 14720, 14726, 14732, 14738,
-   14744, 14750, 14756, 14762, 14768, 14774, 14780, 14786, 14792, 14798,
-   14804, 14810, 14816, 14822, 14828, 14838, 14843, 14853, 14880, 14923,
-   14928, 14938, 14952, 14966, 14980, 14997, 15005, 15015, 15023, 15032,
-   15039, 15049, 15055, 15064, 15072, 15082, 15090, 15098, 15108, 15115,
-   15122, 15133, 15132, 15227, 15334, 15343, 15358, 15378, 15385, 15392,
-   15400, 15522, 15529, 15538, 15558, 15563, 15572, 15592, 15612, 15632,
-   15652, 15672, 15692, 15699, 15706, 15716, 15721, 15727, 15733, 15742,
-   15748, 15757, 15763, 15769, 15775, 15784, 15785, 15789, 15795, 15805,
-   15811, 15820, 15826, 15835, 15876, 15883, 15893, 15900, 15907, 15914,
-   15921, 15928, 15935, 15942, 15949, 15959, 15965, 15971, 15977, 15983,
-   15989, 15998, 16019, 16026, 16039, 16059, 16137, 16151, 16161, 16168,
-   16177, 16190, 16191, 16195, 16207, 16214, 16221, 16231, 16245, 16256,
-   16261, 16267, 16273, 16282, 16288, 16294, 16303, 16308, 16386, 16411,
-   16425, 16436, 16455, 16465, 16474, 16480, 16489, 16522, 16558, 16567,
-   16573, 16582, 16591, 16604, 16609, 16618, 16626, 16634, 16642, 16650,
-   16658, 16666, 16674, 16682, 16690, 16698, 16706, 16714, 16757, 16765,
-   16773, 16791, 16938, 16986, 17032, 17152, 17157, 17163, 17173, 17178,
-   17188, 17193, 17203, 17208, 17218, 17225, 17233, 17244, 17245, 17249,
-   17250, 17255, 17260, 17266, 17287, 17292, 17298, 17319, 17335, 17362,
-   17404, 17410, 17416, 17422, 17430, 17432, 17436, 17443, 17492, 17532,
-   17556, 17563, 17573, 17580, 17587, 17594, 17605, 17612, 17619, 17629,
-   17636, 17646, 17653, 17663, 17677, 17691, 17704, 17732, 17751, 17756,
-   17765, 17771, 17777, 17783, 17792, 17799, 17809, 17816, 17826, 17846,
-   17866, 17886, 17907, 17917, 17927, 17937, 17947, 17957, 17967, 17977,
-   17987, 17997, 18007, 18017, 18027, 18037, 18047, 18057, 18067, 18077,
-   18087, 18097, 18107, 18117, 18127, 18137, 18147, 18157, 18167, 18177,
-   18187, 18197, 18207, 18217, 18227, 18237, 18247, 18257, 18267, 18277,
-   18287, 18297, 18307, 18317, 18327, 18337, 18347, 18357, 18367, 18377,
-   18387, 18397, 18407, 18417, 18427, 18437, 18447, 18457, 18467, 18477,
-   18487, 18497, 18507, 18517, 18527, 18537, 18547, 18557, 18567, 18577,
-   18587, 18597, 18607, 18617, 18627, 18637, 18647, 18657, 18667, 18677,
-   18687, 18697, 18707, 18717, 18727, 18737, 18747, 18757, 18767, 18777,
-   18787, 18797, 18807, 18817, 18827, 18837, 18847, 18858, 18874, 18881,
-   18894, 18905, 18916, 18932, 18942, 18963, 18984, 19005, 19026, 19051,
-   19067, 19077, 19095, 19116, 19168, 19200, 19240, 19261, 19282, 19303,
-   19324, 19344, 19364, 19384, 19404, 19424, 19444, 19464, 19484, 19504,
-   19524, 19544, 19564, 19584, 19604, 19624, 19644, 19664, 19684, 19704,
-   19727, 19733, 19739, 19748, 19769, 19790, 19811, 19835, 19844, 19858,
-   19874, 19892, 19894, 19898, 19905, 19915, 19930, 19945, 19963, 19975,
-   19984, 19997, 20009, 20021, 20033, 20047, 20049, 20053, 20060, 20067,
-   20074, 20084, 20091, 20101, 20105
+   13461, 13474, 13476, 13473, 13495, 13497, 13494, 13515, 13517, 13514,
+   13527, 13529, 13526, 13539, 13541, 13538, 13551, 13553, 13550, 13563,
+   13565, 13562, 13575, 13577, 13574, 13587, 13589, 13586, 13599, 13601,
+   13598, 13611, 13613, 13610, 13623, 13625, 13622, 13636, 13638, 13635,
+   13649, 13651, 13648, 13662, 13664, 13661, 13675, 13677, 13674, 13687,
+   13689, 13686, 13717, 13726, 13734, 13742, 13750, 13758, 13771, 13773,
+   13770, 13783, 13785, 13782, 13801, 13814, 13836, 13838, 13835, 13846,
+   13848, 13845, 13856, 13858, 13855, 13866, 13868, 13865, 13876, 13878,
+   13875, 13886, 13888, 13885, 13896, 13898, 13895, 13906, 13917, 13905,
+   13940, 13942, 13939, 13950, 13952, 13949, 13960, 13962, 13959, 13970,
+   13972, 13969, 13982, 13984, 13981, 13994, 13996, 13993, 14006, 14008,
+   14005, 14016, 14018, 14015, 14026, 14028, 14025, 14036, 14038, 14035,
+   14046, 14048, 14045, 14056, 14058, 14055, 14069, 14071, 14068, 14081,
+   14083, 14080, 14096, 14097, 14099, 14098, 14105, 14106, 14108, 14107,
+   14114, 14115, 14117, 14116, 14120, 14122, 14121, 14125, 14127, 14126,
+   14133, 14134, 14136, 14135, 14142, 14143, 14144, 14148, 14154, 14160,
+   14166, 14172, 14178, 14184, 14190, 14196, 14202, 14208, 14214, 14220,
+   14229, 14235, 14241, 14247, 14253, 14259, 14265, 14271, 14277, 14283,
+   14289, 14299, 14305, 14311, 14321, 14322, 14327, 14332, 14339, 14350,
+   14355, 14366, 14371, 14382, 14387, 14397, 14403, 14409, 14418, 14423,
+   14488, 14542, 14588, 14593, 14603, 14610, 14620, 14652, 14659, 14669,
+   14698, 14712, 14713, 14717, 14718, 14722, 14728, 14734, 14740, 14746,
+   14752, 14758, 14764, 14770, 14776, 14782, 14788, 14794, 14800, 14806,
+   14812, 14818, 14824, 14830, 14836, 14846, 14851, 14861, 14888, 14931,
+   14936, 14946, 14960, 14974, 14988, 15005, 15013, 15023, 15031, 15040,
+   15047, 15057, 15063, 15072, 15080, 15090, 15098, 15106, 15116, 15123,
+   15130, 15141, 15140, 15235, 15342, 15351, 15366, 15386, 15393, 15400,
+   15408, 15530, 15537, 15546, 15566, 15571, 15580, 15600, 15620, 15640,
+   15660, 15680, 15700, 15707, 15714, 15724, 15729, 15735, 15741, 15750,
+   15756, 15765, 15771, 15777, 15783, 15792, 15793, 15797, 15803, 15813,
+   15819, 15828, 15834, 15843, 15884, 15891, 15901, 15908, 15915, 15922,
+   15929, 15936, 15943, 15950, 15957, 15967, 15973, 15979, 15985, 15991,
+   15997, 16006, 16027, 16034, 16047, 16067, 16145, 16159, 16169, 16176,
+   16185, 16198, 16199, 16203, 16215, 16222, 16229, 16239, 16253, 16264,
+   16269, 16275, 16281, 16290, 16296, 16302, 16311, 16316, 16394, 16419,
+   16433, 16444, 16463, 16473, 16482, 16488, 16497, 16530, 16566, 16575,
+   16581, 16590, 16599, 16612, 16617, 16626, 16634, 16642, 16650, 16658,
+   16666, 16674, 16682, 16690, 16698, 16706, 16714, 16722, 16765, 16773,
+   16781, 16799, 16946, 16994, 17040, 17160, 17165, 17171, 17181, 17186,
+   17196, 17201, 17211, 17216, 17226, 17233, 17241, 17252, 17253, 17257,
+   17258, 17263, 17268, 17274, 17295, 17300, 17306, 17327, 17343, 17370,
+   17412, 17418, 17424, 17430, 17438, 17440, 17444, 17451, 17500, 17540,
+   17564, 17571, 17581, 17588, 17595, 17602, 17613, 17620, 17627, 17637,
+   17644, 17654, 17661, 17671, 17685, 17699, 17712, 17740, 17759, 17764,
+   17773, 17779, 17785, 17791, 17800, 17807, 17817, 17824, 17834, 17854,
+   17874, 17894, 17915, 17925, 17935, 17945, 17955, 17965, 17975, 17985,
+   17995, 18005, 18015, 18025, 18035, 18045, 18055, 18065, 18075, 18085,
+   18095, 18105, 18115, 18125, 18135, 18145, 18155, 18165, 18175, 18185,
+   18195, 18205, 18215, 18225, 18235, 18245, 18255, 18265, 18275, 18285,
+   18295, 18305, 18315, 18325, 18335, 18345, 18355, 18365, 18375, 18385,
+   18395, 18405, 18415, 18425, 18435, 18445, 18455, 18465, 18475, 18485,
+   18495, 18505, 18515, 18525, 18535, 18545, 18555, 18565, 18575, 18585,
+   18595, 18605, 18615, 18625, 18635, 18645, 18655, 18665, 18675, 18685,
+   18695, 18705, 18715, 18725, 18735, 18745, 18755, 18765, 18775, 18785,
+   18795, 18805, 18815, 18825, 18835, 18845, 18855, 18866, 18882, 18889,
+   18902, 18913, 18924, 18940, 18950, 18971, 18992, 19013, 19034, 19059,
+   19075, 19085, 19103, 19124, 19176, 19208, 19248, 19269, 19290, 19311,
+   19332, 19352, 19372, 19392, 19412, 19432, 19452, 19472, 19492, 19512,
+   19532, 19552, 19572, 19592, 19612, 19632, 19652, 19672, 19692, 19712,
+   19735, 19741, 19747, 19756, 19777, 19798, 19819, 19843, 19852, 19866,
+   19882, 19900, 19902, 19906, 19913, 19923, 19938, 19953, 19971, 19983,
+   19992, 20005, 20017, 20029, 20041, 20055, 20057, 20061, 20068, 20075,
+   20082, 20092, 20099, 20109, 20113
 };
 #endif
 
@@ -23841,8 +23841,16 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
   case 1056:
 #line 13498 "../../src/parser/csql_grammar.y"
     {{
-
-			PT_NODE *node = parser_make_expression (PT_TIMESTAMP, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (6))].yystate.yysemantics.yysval.node), NULL, NULL); /* 1 parameter */
+			DB_VALUE zero;  
+			PT_NODE *arg2 = NULL; 
+			PT_NODE *node = NULL;
+			arg2 = parser_new_node(this_parser, PT_VALUE);
+			if (arg2)
+			  {
+			    DB_MAKE_INT(&arg2->info.value.db_value, 0);
+			    arg2->type_enum = PT_TYPE_INTEGER;
+			  }
+			node = parser_make_expression (PT_TIMESTAMP, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (6))].yystate.yysemantics.yysval.node), arg2, NULL); /* will call timestamp(arg1, 0) */
 			PICE (node);
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
@@ -23851,17 +23859,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1057:
-#line 13507 "../../src/parser/csql_grammar.y"
+#line 13515 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_TIMESTAMP); ;}
     break;
 
   case 1058:
-#line 13509 "../../src/parser/csql_grammar.y"
+#line 13517 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1059:
-#line 13510 "../../src/parser/csql_grammar.y"
+#line 13518 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_make_expression (PT_TIMESTAMP, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (8))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((6) - (8))].yystate.yysemantics.yysval.node), NULL); /* 2 parameters */
@@ -23873,17 +23881,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1060:
-#line 13519 "../../src/parser/csql_grammar.y"
+#line 13527 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_YEAR); ;}
     break;
 
   case 1061:
-#line 13521 "../../src/parser/csql_grammar.y"
+#line 13529 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1062:
-#line 13522 "../../src/parser/csql_grammar.y"
+#line 13530 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_make_expression (PT_YEARF, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (6))].yystate.yysemantics.yysval.node), NULL, NULL); /* 1 parameter */
@@ -23895,17 +23903,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1063:
-#line 13531 "../../src/parser/csql_grammar.y"
+#line 13539 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_MONTH); ;}
     break;
 
   case 1064:
-#line 13533 "../../src/parser/csql_grammar.y"
+#line 13541 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1065:
-#line 13534 "../../src/parser/csql_grammar.y"
+#line 13542 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_make_expression (PT_MONTHF, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (6))].yystate.yysemantics.yysval.node), NULL, NULL); /* 1 parameter */
@@ -23917,17 +23925,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1066:
-#line 13543 "../../src/parser/csql_grammar.y"
+#line 13551 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_DAY); ;}
     break;
 
   case 1067:
-#line 13545 "../../src/parser/csql_grammar.y"
+#line 13553 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1068:
-#line 13546 "../../src/parser/csql_grammar.y"
+#line 13554 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_make_expression (PT_DAYF, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (6))].yystate.yysemantics.yysval.node), NULL, NULL); /* 1 parameter */
@@ -23939,17 +23947,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1069:
-#line 13555 "../../src/parser/csql_grammar.y"
+#line 13563 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_HOUR); ;}
     break;
 
   case 1070:
-#line 13557 "../../src/parser/csql_grammar.y"
+#line 13565 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1071:
-#line 13558 "../../src/parser/csql_grammar.y"
+#line 13566 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_make_expression (PT_HOURF, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (6))].yystate.yysemantics.yysval.node), NULL, NULL); /* 1 parameter */
@@ -23961,17 +23969,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1072:
-#line 13567 "../../src/parser/csql_grammar.y"
+#line 13575 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_MINUTE); ;}
     break;
 
   case 1073:
-#line 13569 "../../src/parser/csql_grammar.y"
+#line 13577 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1074:
-#line 13570 "../../src/parser/csql_grammar.y"
+#line 13578 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_make_expression (PT_MINUTEF, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (6))].yystate.yysemantics.yysval.node), NULL, NULL); /* 1 parameter */
@@ -23983,17 +23991,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1075:
-#line 13579 "../../src/parser/csql_grammar.y"
+#line 13587 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_SECOND); ;}
     break;
 
   case 1076:
-#line 13581 "../../src/parser/csql_grammar.y"
+#line 13589 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1077:
-#line 13582 "../../src/parser/csql_grammar.y"
+#line 13590 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_make_expression (PT_SECONDF, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (6))].yystate.yysemantics.yysval.node), NULL, NULL); /* 1 parameter */
@@ -24005,17 +24013,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1078:
-#line 13591 "../../src/parser/csql_grammar.y"
+#line 13599 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_DATABASE); ;}
     break;
 
   case 1079:
-#line 13593 "../../src/parser/csql_grammar.y"
+#line 13601 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1080:
-#line 13594 "../../src/parser/csql_grammar.y"
+#line 13602 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_make_expression (PT_DATABASE, NULL, NULL, NULL);
@@ -24027,17 +24035,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1081:
-#line 13603 "../../src/parser/csql_grammar.y"
+#line 13611 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_SCHEMA); ;}
     break;
 
   case 1082:
-#line 13605 "../../src/parser/csql_grammar.y"
+#line 13613 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1083:
-#line 13606 "../../src/parser/csql_grammar.y"
+#line 13614 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_make_expression (PT_SCHEMA, NULL, NULL, NULL);
@@ -24049,17 +24057,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1084:
-#line 13615 "../../src/parser/csql_grammar.y"
+#line 13623 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_TRIM); ;}
     break;
 
   case 1085:
-#line 13617 "../../src/parser/csql_grammar.y"
+#line 13625 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1086:
-#line 13618 "../../src/parser/csql_grammar.y"
+#line 13626 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_make_expression (PT_TRIM, (((yyGLRStackItem const *)yyvsp)[YYFILL ((7) - (9))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((5) - (9))].yystate.yysemantics.yysval.node), NULL);
@@ -24072,17 +24080,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1087:
-#line 13628 "../../src/parser/csql_grammar.y"
+#line 13636 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_TRIM); ;}
     break;
 
   case 1088:
-#line 13630 "../../src/parser/csql_grammar.y"
+#line 13638 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1089:
-#line 13631 "../../src/parser/csql_grammar.y"
+#line 13639 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_make_expression (PT_TRIM, (((yyGLRStackItem const *)yyvsp)[YYFILL ((6) - (8))].yystate.yysemantics.yysval.node), NULL, NULL);
@@ -24095,17 +24103,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1090:
-#line 13641 "../../src/parser/csql_grammar.y"
+#line 13649 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_TRIM); ;}
     break;
 
   case 1091:
-#line 13643 "../../src/parser/csql_grammar.y"
+#line 13651 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1092:
-#line 13644 "../../src/parser/csql_grammar.y"
+#line 13652 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_make_expression (PT_TRIM, (((yyGLRStackItem const *)yyvsp)[YYFILL ((6) - (8))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (8))].yystate.yysemantics.yysval.node), NULL);
@@ -24118,17 +24126,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1093:
-#line 13654 "../../src/parser/csql_grammar.y"
+#line 13662 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_TRIM); ;}
     break;
 
   case 1094:
-#line 13656 "../../src/parser/csql_grammar.y"
+#line 13664 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1095:
-#line 13657 "../../src/parser/csql_grammar.y"
+#line 13665 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_make_expression (PT_TRIM, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (6))].yystate.yysemantics.yysval.node), NULL, NULL);
@@ -24141,17 +24149,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1096:
-#line 13667 "../../src/parser/csql_grammar.y"
+#line 13675 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_CHR); ;}
     break;
 
   case 1097:
-#line 13669 "../../src/parser/csql_grammar.y"
+#line 13677 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1098:
-#line 13670 "../../src/parser/csql_grammar.y"
+#line 13678 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_make_expression (PT_CHR, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (7))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((5) - (7))].yystate.yysemantics.yysval.node), NULL);
@@ -24163,17 +24171,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1099:
-#line 13679 "../../src/parser/csql_grammar.y"
+#line 13687 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_CAST); ;}
     break;
 
   case 1100:
-#line 13681 "../../src/parser/csql_grammar.y"
+#line 13689 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1101:
-#line 13682 "../../src/parser/csql_grammar.y"
+#line 13690 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *expr = parser_make_expression (PT_CAST, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (8))].yystate.yysemantics.yysval.node), NULL, NULL);
@@ -24204,7 +24212,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1102:
-#line 13710 "../../src/parser/csql_grammar.y"
+#line 13718 "../../src/parser/csql_grammar.y"
     {{
 
 			(((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (4))].yystate.yysemantics.yysval.node)->info.name.meta_class = PT_OID_ATTR;
@@ -24216,7 +24224,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1103:
-#line 13719 "../../src/parser/csql_grammar.y"
+#line 13727 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *expr = parser_make_expression (PT_SYS_DATE, NULL, NULL, NULL);
@@ -24227,7 +24235,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1104:
-#line 13727 "../../src/parser/csql_grammar.y"
+#line 13735 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *expr = parser_make_expression (PT_SYS_TIME, NULL, NULL, NULL);
@@ -24238,7 +24246,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1105:
-#line 13735 "../../src/parser/csql_grammar.y"
+#line 13743 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *expr = parser_make_expression (PT_SYS_TIMESTAMP, NULL, NULL, NULL);
@@ -24249,7 +24257,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1106:
-#line 13743 "../../src/parser/csql_grammar.y"
+#line 13751 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *expr = parser_make_expression (PT_SYS_DATETIME, NULL, NULL, NULL);
@@ -24260,7 +24268,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1107:
-#line 13751 "../../src/parser/csql_grammar.y"
+#line 13759 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_EXPR);
@@ -24275,17 +24283,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1108:
-#line 13763 "../../src/parser/csql_grammar.y"
+#line 13771 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_SYSTEM_USER); ;}
     break;
 
   case 1109:
-#line 13765 "../../src/parser/csql_grammar.y"
+#line 13773 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1110:
-#line 13766 "../../src/parser/csql_grammar.y"
+#line 13774 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_make_expression (PT_USER, NULL, NULL, NULL);
@@ -24297,17 +24305,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1111:
-#line 13775 "../../src/parser/csql_grammar.y"
+#line 13783 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_DEFAULT); ;}
     break;
 
   case 1112:
-#line 13777 "../../src/parser/csql_grammar.y"
+#line 13785 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1113:
-#line 13778 "../../src/parser/csql_grammar.y"
+#line 13786 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = NULL;
@@ -24326,7 +24334,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1114:
-#line 13794 "../../src/parser/csql_grammar.y"
+#line 13802 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_EXPR);
@@ -24342,7 +24350,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1115:
-#line 13807 "../../src/parser/csql_grammar.y"
+#line 13815 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_EXPR);
@@ -24366,17 +24374,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1116:
-#line 13828 "../../src/parser/csql_grammar.y"
+#line 13836 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_ADD_MONTHS); ;}
     break;
 
   case 1117:
-#line 13830 "../../src/parser/csql_grammar.y"
+#line 13838 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1118:
-#line 13831 "../../src/parser/csql_grammar.y"
+#line 13839 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_expression (PT_ADD_MONTHS, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (8))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((6) - (8))].yystate.yysemantics.yysval.node), NULL);
@@ -24386,17 +24394,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1119:
-#line 13838 "../../src/parser/csql_grammar.y"
+#line 13846 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_OCTET_LENGTH); ;}
     break;
 
   case 1120:
-#line 13840 "../../src/parser/csql_grammar.y"
+#line 13848 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1121:
-#line 13841 "../../src/parser/csql_grammar.y"
+#line 13849 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_expression (PT_OCTET_LENGTH, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (6))].yystate.yysemantics.yysval.node), NULL, NULL);
@@ -24406,17 +24414,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1122:
-#line 13848 "../../src/parser/csql_grammar.y"
+#line 13856 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_BIT_LENGTH); ;}
     break;
 
   case 1123:
-#line 13850 "../../src/parser/csql_grammar.y"
+#line 13858 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1124:
-#line 13851 "../../src/parser/csql_grammar.y"
+#line 13859 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_expression (PT_BIT_LENGTH, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (6))].yystate.yysemantics.yysval.node), NULL, NULL);
@@ -24426,17 +24434,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1125:
-#line 13858 "../../src/parser/csql_grammar.y"
+#line 13866 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_LOWER); ;}
     break;
 
   case 1126:
-#line 13860 "../../src/parser/csql_grammar.y"
+#line 13868 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1127:
-#line 13861 "../../src/parser/csql_grammar.y"
+#line 13869 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_expression (PT_LOWER, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (6))].yystate.yysemantics.yysval.node), NULL, NULL);
@@ -24446,17 +24454,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1128:
-#line 13868 "../../src/parser/csql_grammar.y"
+#line 13876 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_LOWER); ;}
     break;
 
   case 1129:
-#line 13870 "../../src/parser/csql_grammar.y"
+#line 13878 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1130:
-#line 13871 "../../src/parser/csql_grammar.y"
+#line 13879 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_expression (PT_LOWER, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (6))].yystate.yysemantics.yysval.node), NULL, NULL);
@@ -24466,17 +24474,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1131:
-#line 13878 "../../src/parser/csql_grammar.y"
+#line 13886 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_UPPER); ;}
     break;
 
   case 1132:
-#line 13880 "../../src/parser/csql_grammar.y"
+#line 13888 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1133:
-#line 13881 "../../src/parser/csql_grammar.y"
+#line 13889 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_expression (PT_UPPER, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (6))].yystate.yysemantics.yysval.node), NULL, NULL);
@@ -24486,17 +24494,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1134:
-#line 13888 "../../src/parser/csql_grammar.y"
+#line 13896 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_UPPER); ;}
     break;
 
   case 1135:
-#line 13890 "../../src/parser/csql_grammar.y"
+#line 13898 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1136:
-#line 13891 "../../src/parser/csql_grammar.y"
+#line 13899 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_expression (PT_UPPER, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (6))].yystate.yysemantics.yysval.node), NULL, NULL);
@@ -24506,7 +24514,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1137:
-#line 13898 "../../src/parser/csql_grammar.y"
+#line 13906 "../../src/parser/csql_grammar.y"
     {{
 
 			push_msg(MSGCAT_SYNTAX_INVALID_SYS_CONNECT_BY_PATH);
@@ -24520,12 +24528,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1138:
-#line 13909 "../../src/parser/csql_grammar.y"
+#line 13917 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1139:
-#line 13910 "../../src/parser/csql_grammar.y"
+#line 13918 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_make_expression (PT_SYS_CONNECT_BY_PATH, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (8))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((6) - (8))].yystate.yysemantics.yysval.node), NULL);
@@ -24550,17 +24558,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1140:
-#line 13932 "../../src/parser/csql_grammar.y"
+#line 13940 "../../src/parser/csql_grammar.y"
     { push_msg (MSGCAT_SYNTAX_INVALID_IF); ;}
     break;
 
   case 1141:
-#line 13934 "../../src/parser/csql_grammar.y"
+#line 13942 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1142:
-#line 13935 "../../src/parser/csql_grammar.y"
+#line 13943 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_expression (PT_IF, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (10))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((6) - (10))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((8) - (10))].yystate.yysemantics.yysval.node));
@@ -24570,17 +24578,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1143:
-#line 13942 "../../src/parser/csql_grammar.y"
+#line 13950 "../../src/parser/csql_grammar.y"
     { push_msg (MSGCAT_SYNTAX_INVALID_IFNULL); ;}
     break;
 
   case 1144:
-#line 13944 "../../src/parser/csql_grammar.y"
+#line 13952 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1145:
-#line 13945 "../../src/parser/csql_grammar.y"
+#line 13953 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_expression (PT_IFNULL, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (8))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((6) - (8))].yystate.yysemantics.yysval.node), NULL);
@@ -24590,17 +24598,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1146:
-#line 13952 "../../src/parser/csql_grammar.y"
+#line 13960 "../../src/parser/csql_grammar.y"
     { push_msg (MSGCAT_SYNTAX_INVALID_ISNULL); ;}
     break;
 
   case 1147:
-#line 13954 "../../src/parser/csql_grammar.y"
+#line 13962 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1148:
-#line 13955 "../../src/parser/csql_grammar.y"
+#line 13963 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_expression (PT_ISNULL, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (6))].yystate.yysemantics.yysval.node), NULL, NULL);
@@ -24610,17 +24618,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1149:
-#line 13962 "../../src/parser/csql_grammar.y"
+#line 13970 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_LEFT); ;}
     break;
 
   case 1150:
-#line 13964 "../../src/parser/csql_grammar.y"
+#line 13972 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1151:
-#line 13965 "../../src/parser/csql_grammar.y"
+#line 13973 "../../src/parser/csql_grammar.y"
     {{
 			PT_NODE *node =
 			  parser_make_expression (PT_LEFT, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (8))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((6) - (8))].yystate.yysemantics.yysval.node), NULL);
@@ -24632,17 +24640,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1152:
-#line 13974 "../../src/parser/csql_grammar.y"
+#line 13982 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_RIGHT); ;}
     break;
 
   case 1153:
-#line 13976 "../../src/parser/csql_grammar.y"
+#line 13984 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1154:
-#line 13977 "../../src/parser/csql_grammar.y"
+#line 13985 "../../src/parser/csql_grammar.y"
     {{
 			PT_NODE *node =
 			  parser_make_expression (PT_RIGHT, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (8))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((6) - (8))].yystate.yysemantics.yysval.node), NULL);
@@ -24654,17 +24662,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1155:
-#line 13986 "../../src/parser/csql_grammar.y"
+#line 13994 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_MODULUS); ;}
     break;
 
   case 1156:
-#line 13988 "../../src/parser/csql_grammar.y"
+#line 13996 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1157:
-#line 13989 "../../src/parser/csql_grammar.y"
+#line 13997 "../../src/parser/csql_grammar.y"
     {{
 			PT_NODE *node =
 			  parser_make_expression (PT_MODULUS, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (8))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((6) - (8))].yystate.yysemantics.yysval.node), NULL);
@@ -24676,17 +24684,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1158:
-#line 13998 "../../src/parser/csql_grammar.y"
+#line 14006 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_TRUNCATE); ;}
     break;
 
   case 1159:
-#line 14000 "../../src/parser/csql_grammar.y"
+#line 14008 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1160:
-#line 14001 "../../src/parser/csql_grammar.y"
+#line 14009 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_expression (PT_TRUNC, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (8))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((6) - (8))].yystate.yysemantics.yysval.node), NULL);
@@ -24696,17 +24704,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1161:
-#line 14008 "../../src/parser/csql_grammar.y"
+#line 14016 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_TRANSLATE); ;}
     break;
 
   case 1162:
-#line 14010 "../../src/parser/csql_grammar.y"
+#line 14018 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1163:
-#line 14011 "../../src/parser/csql_grammar.y"
+#line 14019 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_expression (PT_TRANSLATE, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (10))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((6) - (10))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((8) - (10))].yystate.yysemantics.yysval.node));
@@ -24716,17 +24724,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1164:
-#line 14018 "../../src/parser/csql_grammar.y"
+#line 14026 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_TRANSLATE); ;}
     break;
 
   case 1165:
-#line 14020 "../../src/parser/csql_grammar.y"
+#line 14028 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1166:
-#line 14021 "../../src/parser/csql_grammar.y"
+#line 14029 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_expression (PT_REPLACE, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (10))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((6) - (10))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((8) - (10))].yystate.yysemantics.yysval.node));
@@ -24736,17 +24744,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1167:
-#line 14028 "../../src/parser/csql_grammar.y"
+#line 14036 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_REPLACE); ;}
     break;
 
   case 1168:
-#line 14030 "../../src/parser/csql_grammar.y"
+#line 14038 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1169:
-#line 14031 "../../src/parser/csql_grammar.y"
+#line 14039 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_expression (PT_REPLACE, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (8))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((6) - (8))].yystate.yysemantics.yysval.node), NULL);
@@ -24756,17 +24764,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1170:
-#line 14038 "../../src/parser/csql_grammar.y"
+#line 14046 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_STRTODATE); ;}
     break;
 
   case 1171:
-#line 14040 "../../src/parser/csql_grammar.y"
+#line 14048 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1172:
-#line 14041 "../../src/parser/csql_grammar.y"
+#line 14049 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_expression (PT_STR_TO_DATE, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (8))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((6) - (8))].yystate.yysemantics.yysval.node), parser_make_date_lang (2, NULL));
@@ -24776,17 +24784,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1173:
-#line 14048 "../../src/parser/csql_grammar.y"
+#line 14056 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_STRTODATE); ;}
     break;
 
   case 1174:
-#line 14050 "../../src/parser/csql_grammar.y"
+#line 14058 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1175:
-#line 14051 "../../src/parser/csql_grammar.y"
+#line 14059 "../../src/parser/csql_grammar.y"
     {{
 			PT_NODE *node = parser_new_node (this_parser, PT_VALUE);
 			if (node)
@@ -24799,17 +24807,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1176:
-#line 14061 "../../src/parser/csql_grammar.y"
+#line 14069 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_CHARSET); ;}
     break;
 
   case 1177:
-#line 14063 "../../src/parser/csql_grammar.y"
+#line 14071 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1178:
-#line 14064 "../../src/parser/csql_grammar.y"
+#line 14072 "../../src/parser/csql_grammar.y"
     {{
 			PT_NODE *node =
 			  parser_make_expression (PT_CHARSET, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (6))].yystate.yysemantics.yysval.node), NULL, NULL);
@@ -24821,17 +24829,17 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1179:
-#line 14073 "../../src/parser/csql_grammar.y"
+#line 14081 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_COLLATION); ;}
     break;
 
   case 1180:
-#line 14075 "../../src/parser/csql_grammar.y"
+#line 14083 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1181:
-#line 14076 "../../src/parser/csql_grammar.y"
+#line 14084 "../../src/parser/csql_grammar.y"
     {{
 			PT_NODE *node =
 			  parser_make_expression (PT_COLLATION, (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (6))].yystate.yysemantics.yysval.node), NULL, NULL);
@@ -24843,67 +24851,67 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1184:
-#line 14091 "../../src/parser/csql_grammar.y"
+#line 14099 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_CURRENT_DATE); ;}
     break;
 
   case 1185:
-#line 14093 "../../src/parser/csql_grammar.y"
+#line 14101 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1188:
-#line 14100 "../../src/parser/csql_grammar.y"
+#line 14108 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_CURRENT_TIME); ;}
     break;
 
   case 1189:
-#line 14102 "../../src/parser/csql_grammar.y"
+#line 14110 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1192:
-#line 14109 "../../src/parser/csql_grammar.y"
+#line 14117 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_CURRENT_TIMESTAMP); ;}
     break;
 
   case 1193:
-#line 14111 "../../src/parser/csql_grammar.y"
+#line 14119 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1195:
-#line 14114 "../../src/parser/csql_grammar.y"
+#line 14122 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_LOCALTIME); ;}
     break;
 
   case 1196:
-#line 14116 "../../src/parser/csql_grammar.y"
+#line 14124 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1198:
-#line 14119 "../../src/parser/csql_grammar.y"
+#line 14127 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_LOCALTIMESTAMP); ;}
     break;
 
   case 1199:
-#line 14121 "../../src/parser/csql_grammar.y"
+#line 14129 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1202:
-#line 14128 "../../src/parser/csql_grammar.y"
+#line 14136 "../../src/parser/csql_grammar.y"
     { push_msg(MSGCAT_SYNTAX_INVALID_CURRENT_DATETIME); ;}
     break;
 
   case 1203:
-#line 14130 "../../src/parser/csql_grammar.y"
+#line 14138 "../../src/parser/csql_grammar.y"
     { pop_msg(); ;}
     break;
 
   case 1207:
-#line 14141 "../../src/parser/csql_grammar.y"
+#line 14149 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_AVG;
@@ -24912,7 +24920,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1208:
-#line 14147 "../../src/parser/csql_grammar.y"
+#line 14155 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_MAX;
@@ -24921,7 +24929,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1209:
-#line 14153 "../../src/parser/csql_grammar.y"
+#line 14161 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_MIN;
@@ -24930,7 +24938,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1210:
-#line 14159 "../../src/parser/csql_grammar.y"
+#line 14167 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_SUM;
@@ -24939,7 +24947,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1211:
-#line 14165 "../../src/parser/csql_grammar.y"
+#line 14173 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_STDDEV;
@@ -24948,7 +24956,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1212:
-#line 14171 "../../src/parser/csql_grammar.y"
+#line 14179 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_STDDEV_POP;
@@ -24957,7 +24965,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1213:
-#line 14177 "../../src/parser/csql_grammar.y"
+#line 14185 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_STDDEV_SAMP;
@@ -24966,7 +24974,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1214:
-#line 14183 "../../src/parser/csql_grammar.y"
+#line 14191 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_VAR_POP;
@@ -24975,7 +24983,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1215:
-#line 14189 "../../src/parser/csql_grammar.y"
+#line 14197 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_VAR_SAMP;
@@ -24984,7 +24992,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1216:
-#line 14195 "../../src/parser/csql_grammar.y"
+#line 14203 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_VARIANCE;
@@ -24993,7 +25001,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1217:
-#line 14201 "../../src/parser/csql_grammar.y"
+#line 14209 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_AGG_BIT_AND;
@@ -25002,7 +25010,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1218:
-#line 14207 "../../src/parser/csql_grammar.y"
+#line 14215 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_AGG_BIT_OR;
@@ -25011,7 +25019,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1219:
-#line 14213 "../../src/parser/csql_grammar.y"
+#line 14221 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_AGG_BIT_XOR;
@@ -25020,7 +25028,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1220:
-#line 14222 "../../src/parser/csql_grammar.y"
+#line 14230 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_AVG;
@@ -25029,7 +25037,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1221:
-#line 14228 "../../src/parser/csql_grammar.y"
+#line 14236 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_MAX;
@@ -25038,7 +25046,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1222:
-#line 14234 "../../src/parser/csql_grammar.y"
+#line 14242 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_MIN;
@@ -25047,7 +25055,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1223:
-#line 14240 "../../src/parser/csql_grammar.y"
+#line 14248 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_SUM;
@@ -25056,7 +25064,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1224:
-#line 14246 "../../src/parser/csql_grammar.y"
+#line 14254 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_STDDEV;
@@ -25065,7 +25073,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1225:
-#line 14252 "../../src/parser/csql_grammar.y"
+#line 14260 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_STDDEV_POP;
@@ -25074,7 +25082,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1226:
-#line 14258 "../../src/parser/csql_grammar.y"
+#line 14266 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_STDDEV_SAMP;
@@ -25083,7 +25091,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1227:
-#line 14264 "../../src/parser/csql_grammar.y"
+#line 14272 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_VAR_POP;
@@ -25092,7 +25100,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1228:
-#line 14270 "../../src/parser/csql_grammar.y"
+#line 14278 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_VAR_SAMP;
@@ -25101,7 +25109,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1229:
-#line 14276 "../../src/parser/csql_grammar.y"
+#line 14284 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_VARIANCE;
@@ -25110,7 +25118,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1230:
-#line 14282 "../../src/parser/csql_grammar.y"
+#line 14290 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_NTILE;
@@ -25119,7 +25127,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1231:
-#line 14292 "../../src/parser/csql_grammar.y"
+#line 14300 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_ROW_NUMBER;
@@ -25128,7 +25136,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1232:
-#line 14298 "../../src/parser/csql_grammar.y"
+#line 14306 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_RANK;
@@ -25137,7 +25145,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1233:
-#line 14304 "../../src/parser/csql_grammar.y"
+#line 14312 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_DENSE_RANK;
@@ -25146,7 +25154,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1236:
-#line 14319 "../../src/parser/csql_grammar.y"
+#line 14327 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = NULL;
@@ -25155,7 +25163,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1237:
-#line 14325 "../../src/parser/csql_grammar.y"
+#line 14333 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
@@ -25165,7 +25173,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1238:
-#line 14332 "../../src/parser/csql_grammar.y"
+#line 14340 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
@@ -25175,7 +25183,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1239:
-#line 14342 "../../src/parser/csql_grammar.y"
+#line 14350 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = NULL;
@@ -25184,7 +25192,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1240:
-#line 14348 "../../src/parser/csql_grammar.y"
+#line 14356 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node);
@@ -25194,7 +25202,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1241:
-#line 14358 "../../src/parser/csql_grammar.y"
+#line 14366 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = NULL;
@@ -25203,7 +25211,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1242:
-#line 14364 "../../src/parser/csql_grammar.y"
+#line 14372 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node);
@@ -25213,7 +25221,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1243:
-#line 14374 "../../src/parser/csql_grammar.y"
+#line 14382 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = NULL;
@@ -25222,7 +25230,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1244:
-#line 14380 "../../src/parser/csql_grammar.y"
+#line 14388 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node);
@@ -25232,7 +25240,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1245:
-#line 14390 "../../src/parser/csql_grammar.y"
+#line 14398 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_LEADING;
@@ -25241,7 +25249,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1246:
-#line 14396 "../../src/parser/csql_grammar.y"
+#line 14404 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_TRAILING;
@@ -25250,7 +25258,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1247:
-#line 14402 "../../src/parser/csql_grammar.y"
+#line 14410 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_BOTH;
@@ -25259,7 +25267,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1248:
-#line 14411 "../../src/parser/csql_grammar.y"
+#line 14419 "../../src/parser/csql_grammar.y"
     {{
 			((*yyvalp).node) = parser_make_expression (PT_NULLIF, (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (6))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((5) - (6))].yystate.yysemantics.yysval.node), NULL);
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
@@ -25267,7 +25275,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1249:
-#line 14416 "../../src/parser/csql_grammar.y"
+#line 14424 "../../src/parser/csql_grammar.y"
     {{
 			PT_NODE *prev, *expr, *arg, *tmp;
 			int count = parser_count_list ((((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (4))].yystate.yysemantics.yysval.node));
@@ -25335,7 +25343,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1250:
-#line 14481 "../../src/parser/csql_grammar.y"
+#line 14489 "../../src/parser/csql_grammar.y"
     {{
 
 			int i;
@@ -25392,7 +25400,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1251:
-#line 14535 "../../src/parser/csql_grammar.y"
+#line 14543 "../../src/parser/csql_grammar.y"
     {{
 
 			int i;
@@ -25437,7 +25445,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1252:
-#line 14580 "../../src/parser/csql_grammar.y"
+#line 14588 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = NULL;
@@ -25446,7 +25454,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1253:
-#line 14586 "../../src/parser/csql_grammar.y"
+#line 14594 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
@@ -25456,7 +25464,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1254:
-#line 14596 "../../src/parser/csql_grammar.y"
+#line 14604 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (2))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node));
@@ -25466,7 +25474,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1255:
-#line 14603 "../../src/parser/csql_grammar.y"
+#line 14611 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -25476,7 +25484,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1256:
-#line 14613 "../../src/parser/csql_grammar.y"
+#line 14621 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node, *ppp, *qqq;
@@ -25508,7 +25516,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1257:
-#line 14645 "../../src/parser/csql_grammar.y"
+#line 14653 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (2))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node));
@@ -25518,7 +25526,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1258:
-#line 14652 "../../src/parser/csql_grammar.y"
+#line 14660 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -25528,7 +25536,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1259:
-#line 14662 "../../src/parser/csql_grammar.y"
+#line 14670 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node, *ppp;
@@ -25556,7 +25564,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1260:
-#line 14691 "../../src/parser/csql_grammar.y"
+#line 14699 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *tmp;
@@ -25570,7 +25578,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1265:
-#line 14715 "../../src/parser/csql_grammar.y"
+#line 14723 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_YEAR;
@@ -25579,7 +25587,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1266:
-#line 14721 "../../src/parser/csql_grammar.y"
+#line 14729 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_MONTH;
@@ -25588,7 +25596,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1267:
-#line 14727 "../../src/parser/csql_grammar.y"
+#line 14735 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_DAY;
@@ -25597,7 +25605,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1268:
-#line 14733 "../../src/parser/csql_grammar.y"
+#line 14741 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_HOUR;
@@ -25606,7 +25614,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1269:
-#line 14739 "../../src/parser/csql_grammar.y"
+#line 14747 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_MINUTE;
@@ -25615,7 +25623,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1270:
-#line 14745 "../../src/parser/csql_grammar.y"
+#line 14753 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_SECOND;
@@ -25624,7 +25632,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1271:
-#line 14751 "../../src/parser/csql_grammar.y"
+#line 14759 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_MILLISECOND;
@@ -25633,7 +25641,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1272:
-#line 14757 "../../src/parser/csql_grammar.y"
+#line 14765 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_WEEK;
@@ -25642,7 +25650,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1273:
-#line 14763 "../../src/parser/csql_grammar.y"
+#line 14771 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_QUARTER;
@@ -25651,7 +25659,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1274:
-#line 14769 "../../src/parser/csql_grammar.y"
+#line 14777 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_SECOND_MILLISECOND;
@@ -25660,7 +25668,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1275:
-#line 14775 "../../src/parser/csql_grammar.y"
+#line 14783 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_MINUTE_MILLISECOND;
@@ -25669,7 +25677,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1276:
-#line 14781 "../../src/parser/csql_grammar.y"
+#line 14789 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_MINUTE_SECOND;
@@ -25678,7 +25686,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1277:
-#line 14787 "../../src/parser/csql_grammar.y"
+#line 14795 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_HOUR_MILLISECOND;
@@ -25687,7 +25695,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1278:
-#line 14793 "../../src/parser/csql_grammar.y"
+#line 14801 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_HOUR_SECOND;
@@ -25696,7 +25704,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1279:
-#line 14799 "../../src/parser/csql_grammar.y"
+#line 14807 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_HOUR_MINUTE;
@@ -25705,7 +25713,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1280:
-#line 14805 "../../src/parser/csql_grammar.y"
+#line 14813 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_DAY_MILLISECOND;
@@ -25714,7 +25722,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1281:
-#line 14811 "../../src/parser/csql_grammar.y"
+#line 14819 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_DAY_SECOND;
@@ -25723,7 +25731,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1282:
-#line 14817 "../../src/parser/csql_grammar.y"
+#line 14825 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_DAY_MINUTE;
@@ -25732,7 +25740,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1283:
-#line 14823 "../../src/parser/csql_grammar.y"
+#line 14831 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_DAY_HOUR;
@@ -25741,7 +25749,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1284:
-#line 14829 "../../src/parser/csql_grammar.y"
+#line 14837 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_YEAR_MONTH;
@@ -25750,7 +25758,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1285:
-#line 14838 "../../src/parser/csql_grammar.y"
+#line 14846 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = NULL;
@@ -25759,7 +25767,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1286:
-#line 14844 "../../src/parser/csql_grammar.y"
+#line 14852 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
@@ -25769,7 +25777,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1287:
-#line 14854 "../../src/parser/csql_grammar.y"
+#line 14862 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = NULL;
@@ -25796,7 +25804,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1288:
-#line 14881 "../../src/parser/csql_grammar.y"
+#line 14889 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -25838,7 +25846,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1289:
-#line 14923 "../../src/parser/csql_grammar.y"
+#line 14931 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = NULL;
@@ -25847,7 +25855,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1290:
-#line 14929 "../../src/parser/csql_grammar.y"
+#line 14937 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -25857,7 +25865,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1291:
-#line 14939 "../../src/parser/csql_grammar.y"
+#line 14947 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *func_node;
@@ -25874,7 +25882,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1292:
-#line 14953 "../../src/parser/csql_grammar.y"
+#line 14961 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *func_node;
@@ -25891,7 +25899,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1293:
-#line 14967 "../../src/parser/csql_grammar.y"
+#line 14975 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *func_node;
@@ -25908,7 +25916,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1294:
-#line 14981 "../../src/parser/csql_grammar.y"
+#line 14989 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *func_node;
@@ -25925,7 +25933,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1295:
-#line 14998 "../../src/parser/csql_grammar.y"
+#line 15006 "../../src/parser/csql_grammar.y"
     {{
 			PT_NODE *arg1 = pt_convert_to_logical_expr(this_parser, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), 1,1);
 			PT_NODE *arg2 = pt_convert_to_logical_expr(this_parser, (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), 1,1);
@@ -25936,7 +25944,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1296:
-#line 15006 "../../src/parser/csql_grammar.y"
+#line 15014 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = pt_convert_to_logical_expr(this_parser, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node), 1, 1);
@@ -25946,7 +25954,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1297:
-#line 15016 "../../src/parser/csql_grammar.y"
+#line 15024 "../../src/parser/csql_grammar.y"
     {{
 			PT_NODE *arg1 = pt_convert_to_logical_expr(this_parser, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), 1,1);
 			PT_NODE *arg2 = pt_convert_to_logical_expr(this_parser, (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), 1,1);
@@ -25957,7 +25965,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1298:
-#line 15024 "../../src/parser/csql_grammar.y"
+#line 15032 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -25966,7 +25974,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1299:
-#line 15033 "../../src/parser/csql_grammar.y"
+#line 15041 "../../src/parser/csql_grammar.y"
     {{
 			PT_NODE *arg = pt_convert_to_logical_expr(this_parser, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), 1,1);
 			((*yyvalp).node) = parser_make_expression ((((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (3))].yystate.yysemantics.yysval.number), arg, (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), NULL);
@@ -25976,7 +25984,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1300:
-#line 15040 "../../src/parser/csql_grammar.y"
+#line 15048 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -25986,7 +25994,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1301:
-#line 15050 "../../src/parser/csql_grammar.y"
+#line 15058 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_IS_NOT;
@@ -25995,7 +26003,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1302:
-#line 15056 "../../src/parser/csql_grammar.y"
+#line 15064 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_IS;
@@ -26004,7 +26012,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1303:
-#line 15065 "../../src/parser/csql_grammar.y"
+#line 15073 "../../src/parser/csql_grammar.y"
     {{
 			PT_NODE *arg1 = pt_convert_to_logical_expr(this_parser, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), 1,1);
 			PT_NODE *arg2 = pt_convert_to_logical_expr(this_parser, (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), 1,1);
@@ -26015,7 +26023,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1304:
-#line 15073 "../../src/parser/csql_grammar.y"
+#line 15081 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -26025,17 +26033,6 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1305:
-#line 15083 "../../src/parser/csql_grammar.y"
-    {{
-
-			PT_NODE *arg = pt_convert_to_logical_expr(this_parser, (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node), 1,1);
-			((*yyvalp).node) = parser_make_expression (PT_NOT, arg, NULL, NULL);
-			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
-
-		DBG_PRINT};}
-    break;
-
-  case 1306:
 #line 15091 "../../src/parser/csql_grammar.y"
     {{
 
@@ -26046,8 +26043,19 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 		DBG_PRINT};}
     break;
 
-  case 1307:
+  case 1306:
 #line 15099 "../../src/parser/csql_grammar.y"
+    {{
+
+			PT_NODE *arg = pt_convert_to_logical_expr(this_parser, (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node), 1,1);
+			((*yyvalp).node) = parser_make_expression (PT_NOT, arg, NULL, NULL);
+			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
+
+		DBG_PRINT};}
+    break;
+
+  case 1307:
+#line 15107 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -26057,7 +26065,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1308:
-#line 15109 "../../src/parser/csql_grammar.y"
+#line 15117 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_expression (PT_EXISTS, (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node), NULL, NULL);
@@ -26067,7 +26075,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1309:
-#line 15116 "../../src/parser/csql_grammar.y"
+#line 15124 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -26077,7 +26085,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1310:
-#line 15123 "../../src/parser/csql_grammar.y"
+#line 15131 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -26087,7 +26095,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1311:
-#line 15133 "../../src/parser/csql_grammar.y"
+#line 15141 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_JOIN_TYPE join_type = parser_top_join_type ();
@@ -26098,7 +26106,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1312:
-#line 15141 "../../src/parser/csql_grammar.y"
+#line 15149 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_JOIN_TYPE join_type = parser_pop_join_type ();
@@ -26184,7 +26192,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1313:
-#line 15228 "../../src/parser/csql_grammar.y"
+#line 15236 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *e, *opd1, *opd2, *subq;
@@ -26294,7 +26302,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1314:
-#line 15335 "../../src/parser/csql_grammar.y"
+#line 15343 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *esc = parser_make_expression (PT_LIKE_ESCAPE, (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (5))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((5) - (5))].yystate.yysemantics.yysval.node), NULL);
@@ -26306,7 +26314,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1315:
-#line 15344 "../../src/parser/csql_grammar.y"
+#line 15352 "../../src/parser/csql_grammar.y"
     {{
 
  			if (prm_get_bool_value (PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER)
@@ -26324,7 +26332,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1316:
-#line 15359 "../../src/parser/csql_grammar.y"
+#line 15367 "../../src/parser/csql_grammar.y"
     {{
 
 			/* case sensitivity flag */
@@ -26347,7 +26355,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1317:
-#line 15379 "../../src/parser/csql_grammar.y"
+#line 15387 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_expression ((((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.number), (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (2))].yystate.yysemantics.yysval.node), NULL, NULL);
@@ -26357,7 +26365,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1318:
-#line 15386 "../../src/parser/csql_grammar.y"
+#line 15394 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_expression ((((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (3))].yystate.yysemantics.yysval.number), (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), NULL);
@@ -26367,7 +26375,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1319:
-#line 15393 "../../src/parser/csql_grammar.y"
+#line 15401 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_make_expression (PT_BETWEEN_AND, (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (5))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((5) - (5))].yystate.yysemantics.yysval.node), NULL);
@@ -26378,7 +26386,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1320:
-#line 15401 "../../src/parser/csql_grammar.y"
+#line 15409 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_make_expression ((((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (3))].yystate.yysemantics.yysval.number), (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), NULL, NULL);
@@ -26502,7 +26510,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1321:
-#line 15523 "../../src/parser/csql_grammar.y"
+#line 15531 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_expression (PT_RANGE, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (5))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (5))].yystate.yysemantics.yysval.node), NULL);
@@ -26512,7 +26520,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1322:
-#line 15530 "../../src/parser/csql_grammar.y"
+#line 15538 "../../src/parser/csql_grammar.y"
     {{
 			PT_ERRORm (this_parser, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (2))].yystate.yysemantics.yysval.node), MSGCAT_SET_PARSER_SYNTAX,
 				    MSGCAT_SYNTAX_INVALID_RELATIONAL_OP);
@@ -26521,7 +26529,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1323:
-#line 15539 "../../src/parser/csql_grammar.y"
+#line 15547 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_JOIN_TYPE join_type = PT_JOIN_NONE;
@@ -26540,7 +26548,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1324:
-#line 15558 "../../src/parser/csql_grammar.y"
+#line 15566 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = 0;
@@ -26549,7 +26557,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1325:
-#line 15564 "../../src/parser/csql_grammar.y"
+#line 15572 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = 1;
@@ -26558,7 +26566,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1326:
-#line 15573 "../../src/parser/csql_grammar.y"
+#line 15581 "../../src/parser/csql_grammar.y"
     {{
 
 			switch ((((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.number))
@@ -26581,7 +26589,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1327:
-#line 15593 "../../src/parser/csql_grammar.y"
+#line 15601 "../../src/parser/csql_grammar.y"
     {{
 
 			switch ((((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.number))
@@ -26604,7 +26612,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1328:
-#line 15613 "../../src/parser/csql_grammar.y"
+#line 15621 "../../src/parser/csql_grammar.y"
     {{
 
 			switch ((((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.number))
@@ -26627,7 +26635,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1329:
-#line 15633 "../../src/parser/csql_grammar.y"
+#line 15641 "../../src/parser/csql_grammar.y"
     {{
 
 			switch ((((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.number))
@@ -26650,7 +26658,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1330:
-#line 15653 "../../src/parser/csql_grammar.y"
+#line 15661 "../../src/parser/csql_grammar.y"
     {{
 
 			switch ((((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.number))
@@ -26673,7 +26681,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1331:
-#line 15673 "../../src/parser/csql_grammar.y"
+#line 15681 "../../src/parser/csql_grammar.y"
     {{
 
 			switch ((((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.number))
@@ -26696,7 +26704,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1332:
-#line 15693 "../../src/parser/csql_grammar.y"
+#line 15701 "../../src/parser/csql_grammar.y"
     {{
 
 			push_msg (MSGCAT_SYNTAX_INVALID_EQUAL_OP);
@@ -26706,7 +26714,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1333:
-#line 15700 "../../src/parser/csql_grammar.y"
+#line 15708 "../../src/parser/csql_grammar.y"
     {{
 
 			push_msg (MSGCAT_SYNTAX_INVALID_NOT_EQUAL);
@@ -26716,7 +26724,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1334:
-#line 15707 "../../src/parser/csql_grammar.y"
+#line 15715 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_NULLSAFE_EQ;
@@ -26725,7 +26733,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1335:
-#line 15716 "../../src/parser/csql_grammar.y"
+#line 15724 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = 0;
@@ -26734,7 +26742,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1336:
-#line 15722 "../../src/parser/csql_grammar.y"
+#line 15730 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = 1;
@@ -26743,7 +26751,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1337:
-#line 15728 "../../src/parser/csql_grammar.y"
+#line 15736 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = 2;
@@ -26752,7 +26760,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1338:
-#line 15734 "../../src/parser/csql_grammar.y"
+#line 15742 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = 3;
@@ -26761,7 +26769,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1339:
-#line 15743 "../../src/parser/csql_grammar.y"
+#line 15751 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_NOT_LIKE;
@@ -26770,7 +26778,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1340:
-#line 15749 "../../src/parser/csql_grammar.y"
+#line 15757 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_LIKE;
@@ -26779,7 +26787,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1341:
-#line 15758 "../../src/parser/csql_grammar.y"
+#line 15766 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_RLIKE;
@@ -26788,7 +26796,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1342:
-#line 15764 "../../src/parser/csql_grammar.y"
+#line 15772 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_NOT_RLIKE;
@@ -26797,7 +26805,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1343:
-#line 15770 "../../src/parser/csql_grammar.y"
+#line 15778 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_RLIKE_BINARY;
@@ -26806,7 +26814,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1344:
-#line 15776 "../../src/parser/csql_grammar.y"
+#line 15784 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_NOT_RLIKE_BINARY;
@@ -26815,7 +26823,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1347:
-#line 15790 "../../src/parser/csql_grammar.y"
+#line 15798 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_IS_NOT_NULL;
@@ -26824,7 +26832,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1348:
-#line 15796 "../../src/parser/csql_grammar.y"
+#line 15804 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_IS_NULL;
@@ -26833,7 +26841,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1349:
-#line 15806 "../../src/parser/csql_grammar.y"
+#line 15814 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_NOT_BETWEEN;
@@ -26842,7 +26850,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1350:
-#line 15812 "../../src/parser/csql_grammar.y"
+#line 15820 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_BETWEEN;
@@ -26851,7 +26859,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1351:
-#line 15821 "../../src/parser/csql_grammar.y"
+#line 15829 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_IS_IN;
@@ -26860,7 +26868,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1352:
-#line 15827 "../../src/parser/csql_grammar.y"
+#line 15835 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_IS_NOT_IN;
@@ -26869,7 +26877,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1353:
-#line 15836 "../../src/parser/csql_grammar.y"
+#line 15844 "../../src/parser/csql_grammar.y"
     {{
 			container_2 ctn;
 			PT_NODE *node = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -26910,7 +26918,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1354:
-#line 15877 "../../src/parser/csql_grammar.y"
+#line 15885 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_link_or ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
@@ -26920,7 +26928,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1355:
-#line 15884 "../../src/parser/csql_grammar.y"
+#line 15892 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -26930,7 +26938,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1356:
-#line 15894 "../../src/parser/csql_grammar.y"
+#line 15902 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_expression (PT_BETWEEN_GE_LE, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), NULL);
@@ -26940,7 +26948,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1357:
-#line 15901 "../../src/parser/csql_grammar.y"
+#line 15909 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_expression (PT_BETWEEN_GE_LT, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), NULL);
@@ -26950,7 +26958,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1358:
-#line 15908 "../../src/parser/csql_grammar.y"
+#line 15916 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_expression (PT_BETWEEN_GT_LE, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), NULL);
@@ -26960,7 +26968,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1359:
-#line 15915 "../../src/parser/csql_grammar.y"
+#line 15923 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_expression (PT_BETWEEN_GT_LT, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), NULL);
@@ -26970,7 +26978,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1360:
-#line 15922 "../../src/parser/csql_grammar.y"
+#line 15930 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_expression (PT_BETWEEN_EQ_NA, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (2))].yystate.yysemantics.yysval.node), NULL, NULL);
@@ -26980,7 +26988,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1361:
-#line 15929 "../../src/parser/csql_grammar.y"
+#line 15937 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_expression (PT_BETWEEN_GE_INF, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), NULL, NULL);
@@ -26990,7 +26998,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1362:
-#line 15936 "../../src/parser/csql_grammar.y"
+#line 15944 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_expression (PT_BETWEEN_GT_INF, (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), NULL, NULL);
@@ -27000,7 +27008,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1363:
-#line 15943 "../../src/parser/csql_grammar.y"
+#line 15951 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_expression (PT_BETWEEN_INF_LE, (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), NULL, NULL);
@@ -27010,7 +27018,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1364:
-#line 15950 "../../src/parser/csql_grammar.y"
+#line 15958 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_expression (PT_BETWEEN_INF_LT, (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node), NULL, NULL);
@@ -27020,7 +27028,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1365:
-#line 15960 "../../src/parser/csql_grammar.y"
+#line 15968 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_SETEQ;
@@ -27029,7 +27037,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1366:
-#line 15966 "../../src/parser/csql_grammar.y"
+#line 15974 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_SETNEQ;
@@ -27038,7 +27046,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1367:
-#line 15972 "../../src/parser/csql_grammar.y"
+#line 15980 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_SUBSET;
@@ -27047,7 +27055,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1368:
-#line 15978 "../../src/parser/csql_grammar.y"
+#line 15986 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_SUBSETEQ;
@@ -27056,7 +27064,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1369:
-#line 15984 "../../src/parser/csql_grammar.y"
+#line 15992 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_SUPERSETEQ;
@@ -27065,7 +27073,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1370:
-#line 15990 "../../src/parser/csql_grammar.y"
+#line 15998 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_SUPERSET;
@@ -27074,7 +27082,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1371:
-#line 15999 "../../src/parser/csql_grammar.y"
+#line 16007 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *stmt = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (3))].yystate.yysemantics.yysval.node);
@@ -27094,7 +27102,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1372:
-#line 16020 "../../src/parser/csql_grammar.y"
+#line 16028 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node);
@@ -27104,7 +27112,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1373:
-#line 16027 "../../src/parser/csql_grammar.y"
+#line 16035 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node);
@@ -27120,7 +27128,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1374:
-#line 16040 "../../src/parser/csql_grammar.y"
+#line 16048 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node);
@@ -27143,7 +27151,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1375:
-#line 16060 "../../src/parser/csql_grammar.y"
+#line 16068 "../../src/parser/csql_grammar.y"
     {{
 			PT_NODE *dot;
 			PT_NODE *serial_value = NULL;
@@ -27221,7 +27229,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1376:
-#line 16138 "../../src/parser/csql_grammar.y"
+#line 16146 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *dot = parser_new_node (this_parser, PT_DOT_);
@@ -27238,7 +27246,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1377:
-#line 16152 "../../src/parser/csql_grammar.y"
+#line 16160 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -27248,7 +27256,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1378:
-#line 16162 "../../src/parser/csql_grammar.y"
+#line 16170 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -27258,7 +27266,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1379:
-#line 16169 "../../src/parser/csql_grammar.y"
+#line 16177 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
@@ -27270,7 +27278,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1380:
-#line 16178 "../../src/parser/csql_grammar.y"
+#line 16186 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -27283,7 +27291,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1383:
-#line 16196 "../../src/parser/csql_grammar.y"
+#line 16204 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *corr = (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (4))].yystate.yysemantics.yysval.node);
@@ -27298,7 +27306,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1384:
-#line 16208 "../../src/parser/csql_grammar.y"
+#line 16216 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -27308,7 +27316,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1385:
-#line 16215 "../../src/parser/csql_grammar.y"
+#line 16223 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -27318,7 +27326,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1386:
-#line 16222 "../../src/parser/csql_grammar.y"
+#line 16230 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -27328,7 +27336,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1387:
-#line 16232 "../../src/parser/csql_grammar.y"
+#line 16240 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *dot = parser_new_node (this_parser, PT_DOT_);
@@ -27345,7 +27353,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1388:
-#line 16246 "../../src/parser/csql_grammar.y"
+#line 16254 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -27355,7 +27363,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1389:
-#line 16256 "../../src/parser/csql_grammar.y"
+#line 16264 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_NOPUT;
@@ -27364,7 +27372,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1390:
-#line 16262 "../../src/parser/csql_grammar.y"
+#line 16270 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_INPUT;
@@ -27373,7 +27381,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1391:
-#line 16268 "../../src/parser/csql_grammar.y"
+#line 16276 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_OUTPUT;
@@ -27382,7 +27390,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1392:
-#line 16274 "../../src/parser/csql_grammar.y"
+#line 16282 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_INPUTOUTPUT;
@@ -27391,7 +27399,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1393:
-#line 16283 "../../src/parser/csql_grammar.y"
+#line 16291 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_TYPE_CHAR;
@@ -27400,7 +27408,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1394:
-#line 16289 "../../src/parser/csql_grammar.y"
+#line 16297 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_TYPE_NCHAR;
@@ -27409,7 +27417,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1395:
-#line 16295 "../../src/parser/csql_grammar.y"
+#line 16303 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_TYPE_NCHAR;
@@ -27418,7 +27426,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1396:
-#line 16304 "../../src/parser/csql_grammar.y"
+#line 16312 "../../src/parser/csql_grammar.y"
     {{
 			((*yyvalp).c2) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.c2);
 
@@ -27426,7 +27434,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1397:
-#line 16309 "../../src/parser/csql_grammar.y"
+#line 16317 "../../src/parser/csql_grammar.y"
     {{
 			container_2 ctn;
 			PT_TYPE_ENUM typ = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (7))].yystate.yysemantics.yysval.number);
@@ -27504,7 +27512,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1398:
-#line 16387 "../../src/parser/csql_grammar.y"
+#line 16395 "../../src/parser/csql_grammar.y"
     {{
 
 			container_2 ctn;
@@ -27532,7 +27540,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1399:
-#line 16412 "../../src/parser/csql_grammar.y"
+#line 16420 "../../src/parser/csql_grammar.y"
     {{
 
 			container_2 ctn;
@@ -27549,7 +27557,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1400:
-#line 16426 "../../src/parser/csql_grammar.y"
+#line 16434 "../../src/parser/csql_grammar.y"
     {{
 
 			container_2 ctn;
@@ -27563,7 +27571,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1401:
-#line 16437 "../../src/parser/csql_grammar.y"
+#line 16445 "../../src/parser/csql_grammar.y"
     {{
 
 			container_2 ctn;
@@ -27585,7 +27593,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1402:
-#line 16456 "../../src/parser/csql_grammar.y"
+#line 16464 "../../src/parser/csql_grammar.y"
     {{
 
 			container_2 ctn;
@@ -27598,7 +27606,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1403:
-#line 16466 "../../src/parser/csql_grammar.y"
+#line 16474 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).c2) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.c2);
@@ -27607,7 +27615,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1404:
-#line 16475 "../../src/parser/csql_grammar.y"
+#line 16483 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (2))].yystate.yysemantics.yysval.number);
@@ -27616,7 +27624,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1405:
-#line 16481 "../../src/parser/csql_grammar.y"
+#line 16489 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.number);
@@ -27625,7 +27633,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1406:
-#line 16490 "../../src/parser/csql_grammar.y"
+#line 16498 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *dt;
@@ -27661,7 +27669,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1407:
-#line 16523 "../../src/parser/csql_grammar.y"
+#line 16531 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *dt;
@@ -27697,7 +27705,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1408:
-#line 16559 "../../src/parser/csql_grammar.y"
+#line 16567 "../../src/parser/csql_grammar.y"
     {{
 
 			if ((((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.number))
@@ -27709,7 +27717,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1409:
-#line 16568 "../../src/parser/csql_grammar.y"
+#line 16576 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_TYPE_VARCHAR;
@@ -27718,7 +27726,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1410:
-#line 16574 "../../src/parser/csql_grammar.y"
+#line 16582 "../../src/parser/csql_grammar.y"
     {{
 
 			if ((((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.number))
@@ -27730,7 +27738,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1411:
-#line 16583 "../../src/parser/csql_grammar.y"
+#line 16591 "../../src/parser/csql_grammar.y"
     {{
 
 			if ((((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.number))
@@ -27742,7 +27750,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1412:
-#line 16592 "../../src/parser/csql_grammar.y"
+#line 16600 "../../src/parser/csql_grammar.y"
     {{
 
 			if ((((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.number))
@@ -27754,7 +27762,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1413:
-#line 16604 "../../src/parser/csql_grammar.y"
+#line 16612 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = 0;
@@ -27763,7 +27771,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1414:
-#line 16610 "../../src/parser/csql_grammar.y"
+#line 16618 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = 1;
@@ -27772,7 +27780,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1415:
-#line 16619 "../../src/parser/csql_grammar.y"
+#line 16627 "../../src/parser/csql_grammar.y"
     {{
 
 			container_2 ctn;
@@ -27783,7 +27791,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1416:
-#line 16627 "../../src/parser/csql_grammar.y"
+#line 16635 "../../src/parser/csql_grammar.y"
     {{
 
 			container_2 ctn;
@@ -27794,7 +27802,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1417:
-#line 16635 "../../src/parser/csql_grammar.y"
+#line 16643 "../../src/parser/csql_grammar.y"
     {{
 
 			container_2 ctn;
@@ -27805,17 +27813,6 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1418:
-#line 16643 "../../src/parser/csql_grammar.y"
-    {{
-
-			container_2 ctn;
-			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_DOUBLE), NULL);
-			((*yyvalp).c2) = ctn;
-
-		DBG_PRINT};}
-    break;
-
-  case 1419:
 #line 16651 "../../src/parser/csql_grammar.y"
     {{
 
@@ -27826,8 +27823,19 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 		DBG_PRINT};}
     break;
 
-  case 1420:
+  case 1419:
 #line 16659 "../../src/parser/csql_grammar.y"
+    {{
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_DOUBLE), NULL);
+			((*yyvalp).c2) = ctn;
+
+		DBG_PRINT};}
+    break;
+
+  case 1420:
+#line 16667 "../../src/parser/csql_grammar.y"
     {{
 
 			container_2 ctn;
@@ -27838,7 +27846,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1421:
-#line 16667 "../../src/parser/csql_grammar.y"
+#line 16675 "../../src/parser/csql_grammar.y"
     {{
 
 			container_2 ctn;
@@ -27849,17 +27857,6 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1422:
-#line 16675 "../../src/parser/csql_grammar.y"
-    {{
-
-			container_2 ctn;
-			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_TIMESTAMP), NULL);
-			((*yyvalp).c2) = ctn;
-
-		DBG_PRINT};}
-    break;
-
-  case 1423:
 #line 16683 "../../src/parser/csql_grammar.y"
     {{
 
@@ -27870,8 +27867,19 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 		DBG_PRINT};}
     break;
 
-  case 1424:
+  case 1423:
 #line 16691 "../../src/parser/csql_grammar.y"
+    {{
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_TIMESTAMP), NULL);
+			((*yyvalp).c2) = ctn;
+
+		DBG_PRINT};}
+    break;
+
+  case 1424:
+#line 16699 "../../src/parser/csql_grammar.y"
     {{
 
 			container_2 ctn;
@@ -27882,7 +27890,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1425:
-#line 16699 "../../src/parser/csql_grammar.y"
+#line 16707 "../../src/parser/csql_grammar.y"
     {{
 
 			container_2 ctn;
@@ -27893,7 +27901,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1426:
-#line 16707 "../../src/parser/csql_grammar.y"
+#line 16715 "../../src/parser/csql_grammar.y"
     {{
 
 			container_2 ctn;
@@ -27904,7 +27912,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1427:
-#line 16717 "../../src/parser/csql_grammar.y"
+#line 16725 "../../src/parser/csql_grammar.y"
     {{
 
 			container_2 ctn;
@@ -27948,7 +27956,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1428:
-#line 16758 "../../src/parser/csql_grammar.y"
+#line 16766 "../../src/parser/csql_grammar.y"
     {{
 
 			container_2 ctn;
@@ -27959,7 +27967,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1429:
-#line 16766 "../../src/parser/csql_grammar.y"
+#line 16774 "../../src/parser/csql_grammar.y"
     {{
 
 			container_2 ctn;
@@ -27970,7 +27978,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1430:
-#line 16774 "../../src/parser/csql_grammar.y"
+#line 16782 "../../src/parser/csql_grammar.y"
     {{
 
 			container_2 ctn;
@@ -27991,7 +27999,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1431:
-#line 16795 "../../src/parser/csql_grammar.y"
+#line 16803 "../../src/parser/csql_grammar.y"
     {{
 
 			container_2 ctn;
@@ -28138,7 +28146,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1432:
-#line 16939 "../../src/parser/csql_grammar.y"
+#line 16947 "../../src/parser/csql_grammar.y"
     {{
 
 			container_2 ctn;
@@ -28189,7 +28197,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1433:
-#line 16987 "../../src/parser/csql_grammar.y"
+#line 16995 "../../src/parser/csql_grammar.y"
     {{
 
 			container_2 ctn;
@@ -28238,7 +28246,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1434:
-#line 17033 "../../src/parser/csql_grammar.y"
+#line 17041 "../../src/parser/csql_grammar.y"
     {{
 			container_2 ctn;
 			int charset = -1;
@@ -28357,7 +28365,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1435:
-#line 17152 "../../src/parser/csql_grammar.y"
+#line 17160 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = 0;
@@ -28366,7 +28374,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1436:
-#line 17158 "../../src/parser/csql_grammar.y"
+#line 17166 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_LOB_INTERNAL;
@@ -28375,7 +28383,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1437:
-#line 17164 "../../src/parser/csql_grammar.y"
+#line 17172 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_LOB_EXTERNAL;
@@ -28384,7 +28392,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1438:
-#line 17173 "../../src/parser/csql_grammar.y"
+#line 17181 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = 0;
@@ -28393,7 +28401,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1439:
-#line 17179 "../../src/parser/csql_grammar.y"
+#line 17187 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = 1;
@@ -28402,7 +28410,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1440:
-#line 17188 "../../src/parser/csql_grammar.y"
+#line 17196 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = NULL;
@@ -28411,7 +28419,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1441:
-#line 17194 "../../src/parser/csql_grammar.y"
+#line 17202 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (3))].yystate.yysemantics.yysval.node);
@@ -28420,7 +28428,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1442:
-#line 17203 "../../src/parser/csql_grammar.y"
+#line 17211 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = NULL;
@@ -28429,7 +28437,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1443:
-#line 17209 "../../src/parser/csql_grammar.y"
+#line 17217 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = NULL;
@@ -28438,7 +28446,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1444:
-#line 17218 "../../src/parser/csql_grammar.y"
+#line 17226 "../../src/parser/csql_grammar.y"
     {{
 
 			container_2 ctn;
@@ -28449,7 +28457,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1445:
-#line 17226 "../../src/parser/csql_grammar.y"
+#line 17234 "../../src/parser/csql_grammar.y"
     {{
 
 			container_2 ctn;
@@ -28460,7 +28468,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1446:
-#line 17234 "../../src/parser/csql_grammar.y"
+#line 17242 "../../src/parser/csql_grammar.y"
     {{
 
 			container_2 ctn;
@@ -28471,7 +28479,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1451:
-#line 17255 "../../src/parser/csql_grammar.y"
+#line 17263 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = NULL;
@@ -28480,7 +28488,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1452:
-#line 17261 "../../src/parser/csql_grammar.y"
+#line 17269 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
@@ -28489,7 +28497,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1453:
-#line 17267 "../../src/parser/csql_grammar.y"
+#line 17275 "../../src/parser/csql_grammar.y"
     {{
 			PT_NODE *node;
 
@@ -28509,7 +28517,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1454:
-#line 17287 "../../src/parser/csql_grammar.y"
+#line 17295 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = NULL;
@@ -28518,7 +28526,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1455:
-#line 17293 "../../src/parser/csql_grammar.y"
+#line 17301 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
@@ -28527,7 +28535,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1456:
-#line 17299 "../../src/parser/csql_grammar.y"
+#line 17307 "../../src/parser/csql_grammar.y"
     {{
 			PT_NODE *node;
 
@@ -28547,7 +28555,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1457:
-#line 17319 "../../src/parser/csql_grammar.y"
+#line 17327 "../../src/parser/csql_grammar.y"
     {{
 
 			int charset = lang_get_client_charset ();
@@ -28567,7 +28575,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1458:
-#line 17336 "../../src/parser/csql_grammar.y"
+#line 17344 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *charset_node = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
@@ -28597,7 +28605,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1459:
-#line 17363 "../../src/parser/csql_grammar.y"
+#line 17371 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *temp_node = NULL;
@@ -28639,7 +28647,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1460:
-#line 17405 "../../src/parser/csql_grammar.y"
+#line 17413 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_TYPE_SET;
@@ -28648,7 +28656,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1461:
-#line 17411 "../../src/parser/csql_grammar.y"
+#line 17419 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_TYPE_MULTISET;
@@ -28657,7 +28665,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1462:
-#line 17417 "../../src/parser/csql_grammar.y"
+#line 17425 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_TYPE_SEQUENCE;
@@ -28666,7 +28674,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1463:
-#line 17423 "../../src/parser/csql_grammar.y"
+#line 17431 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (2))].yystate.yysemantics.yysval.number);
@@ -28675,7 +28683,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1466:
-#line 17437 "../../src/parser/csql_grammar.y"
+#line 17445 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -28685,7 +28693,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1467:
-#line 17444 "../../src/parser/csql_grammar.y"
+#line 17452 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
@@ -28737,7 +28745,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1468:
-#line 17493 "../../src/parser/csql_grammar.y"
+#line 17501 "../../src/parser/csql_grammar.y"
     {{
 
 						/* not allowed partition type */
@@ -28780,7 +28788,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1469:
-#line 17533 "../../src/parser/csql_grammar.y"
+#line 17541 "../../src/parser/csql_grammar.y"
     {{
 
 						/* not allowed partition type */
@@ -28804,7 +28812,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1470:
-#line 17557 "../../src/parser/csql_grammar.y"
+#line 17565 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -28814,7 +28822,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1471:
-#line 17564 "../../src/parser/csql_grammar.y"
+#line 17572 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -28824,7 +28832,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1472:
-#line 17574 "../../src/parser/csql_grammar.y"
+#line 17582 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -28834,7 +28842,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1473:
-#line 17581 "../../src/parser/csql_grammar.y"
+#line 17589 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -28844,7 +28852,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1474:
-#line 17588 "../../src/parser/csql_grammar.y"
+#line 17596 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -28854,7 +28862,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1475:
-#line 17595 "../../src/parser/csql_grammar.y"
+#line 17603 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -28868,7 +28876,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1476:
-#line 17606 "../../src/parser/csql_grammar.y"
+#line 17614 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -28878,7 +28886,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1477:
-#line 17613 "../../src/parser/csql_grammar.y"
+#line 17621 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -28888,7 +28896,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1478:
-#line 17620 "../../src/parser/csql_grammar.y"
+#line 17628 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_VALUE);
@@ -28901,7 +28909,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1479:
-#line 17630 "../../src/parser/csql_grammar.y"
+#line 17638 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -28911,7 +28919,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1480:
-#line 17637 "../../src/parser/csql_grammar.y"
+#line 17645 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_VALUE);
@@ -28924,7 +28932,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1481:
-#line 17647 "../../src/parser/csql_grammar.y"
+#line 17655 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -28934,7 +28942,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1482:
-#line 17654 "../../src/parser/csql_grammar.y"
+#line 17662 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -28944,7 +28952,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1483:
-#line 17664 "../../src/parser/csql_grammar.y"
+#line 17672 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_VALUE);
@@ -28961,7 +28969,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1484:
-#line 17678 "../../src/parser/csql_grammar.y"
+#line 17686 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_VALUE);
@@ -28978,7 +28986,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1485:
-#line 17692 "../../src/parser/csql_grammar.y"
+#line 17700 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_VALUE);
@@ -28991,7 +28999,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1486:
-#line 17705 "../../src/parser/csql_grammar.y"
+#line 17713 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_VALUE);
@@ -29022,7 +29030,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1487:
-#line 17733 "../../src/parser/csql_grammar.y"
+#line 17741 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_VALUE);
@@ -29040,7 +29048,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1488:
-#line 17751 "../../src/parser/csql_grammar.y"
+#line 17759 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_TYPE_SEQUENCE;
@@ -29049,7 +29057,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1489:
-#line 17757 "../../src/parser/csql_grammar.y"
+#line 17765 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.number);
@@ -29058,7 +29066,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1490:
-#line 17766 "../../src/parser/csql_grammar.y"
+#line 17774 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_TYPE_SET;
@@ -29067,7 +29075,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1491:
-#line 17772 "../../src/parser/csql_grammar.y"
+#line 17780 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_TYPE_MULTISET;
@@ -29076,7 +29084,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1492:
-#line 17778 "../../src/parser/csql_grammar.y"
+#line 17786 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_TYPE_SEQUENCE;
@@ -29085,7 +29093,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1493:
-#line 17784 "../../src/parser/csql_grammar.y"
+#line 17792 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).number) = PT_TYPE_SEQUENCE;
@@ -29094,7 +29102,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1494:
-#line 17793 "../../src/parser/csql_grammar.y"
+#line 17801 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
@@ -29104,7 +29112,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1495:
-#line 17800 "../../src/parser/csql_grammar.y"
+#line 17808 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -29114,7 +29122,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1496:
-#line 17810 "../../src/parser/csql_grammar.y"
+#line 17818 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
@@ -29124,7 +29132,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1497:
-#line 17817 "../../src/parser/csql_grammar.y"
+#line 17825 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -29134,7 +29142,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1498:
-#line 17827 "../../src/parser/csql_grammar.y"
+#line 17835 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29157,7 +29165,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1499:
-#line 17847 "../../src/parser/csql_grammar.y"
+#line 17855 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29180,7 +29188,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1500:
-#line 17867 "../../src/parser/csql_grammar.y"
+#line 17875 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29203,7 +29211,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1501:
-#line 17887 "../../src/parser/csql_grammar.y"
+#line 17895 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29226,7 +29234,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1502:
-#line 17908 "../../src/parser/csql_grammar.y"
+#line 17916 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29239,7 +29247,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1503:
-#line 17918 "../../src/parser/csql_grammar.y"
+#line 17926 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29252,7 +29260,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1504:
-#line 17928 "../../src/parser/csql_grammar.y"
+#line 17936 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29265,7 +29273,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1505:
-#line 17938 "../../src/parser/csql_grammar.y"
+#line 17946 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29278,7 +29286,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1506:
-#line 17948 "../../src/parser/csql_grammar.y"
+#line 17956 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29291,7 +29299,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1507:
-#line 17958 "../../src/parser/csql_grammar.y"
+#line 17966 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29304,7 +29312,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1508:
-#line 17968 "../../src/parser/csql_grammar.y"
+#line 17976 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29317,7 +29325,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1509:
-#line 17978 "../../src/parser/csql_grammar.y"
+#line 17986 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29330,7 +29338,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1510:
-#line 17988 "../../src/parser/csql_grammar.y"
+#line 17996 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29343,7 +29351,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1511:
-#line 17998 "../../src/parser/csql_grammar.y"
+#line 18006 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29356,7 +29364,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1512:
-#line 18008 "../../src/parser/csql_grammar.y"
+#line 18016 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29369,7 +29377,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1513:
-#line 18018 "../../src/parser/csql_grammar.y"
+#line 18026 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29382,7 +29390,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1514:
-#line 18028 "../../src/parser/csql_grammar.y"
+#line 18036 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29395,7 +29403,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1515:
-#line 18038 "../../src/parser/csql_grammar.y"
+#line 18046 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29408,7 +29416,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1516:
-#line 18048 "../../src/parser/csql_grammar.y"
+#line 18056 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29421,7 +29429,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1517:
-#line 18058 "../../src/parser/csql_grammar.y"
+#line 18066 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29434,7 +29442,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1518:
-#line 18068 "../../src/parser/csql_grammar.y"
+#line 18076 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29447,7 +29455,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1519:
-#line 18078 "../../src/parser/csql_grammar.y"
+#line 18086 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29460,7 +29468,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1520:
-#line 18088 "../../src/parser/csql_grammar.y"
+#line 18096 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29473,7 +29481,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1521:
-#line 18098 "../../src/parser/csql_grammar.y"
+#line 18106 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29486,7 +29494,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1522:
-#line 18108 "../../src/parser/csql_grammar.y"
+#line 18116 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29499,7 +29507,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1523:
-#line 18118 "../../src/parser/csql_grammar.y"
+#line 18126 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29512,7 +29520,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1524:
-#line 18128 "../../src/parser/csql_grammar.y"
+#line 18136 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29525,7 +29533,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1525:
-#line 18138 "../../src/parser/csql_grammar.y"
+#line 18146 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29538,7 +29546,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1526:
-#line 18148 "../../src/parser/csql_grammar.y"
+#line 18156 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29551,7 +29559,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1527:
-#line 18158 "../../src/parser/csql_grammar.y"
+#line 18166 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29564,7 +29572,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1528:
-#line 18168 "../../src/parser/csql_grammar.y"
+#line 18176 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29577,7 +29585,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1529:
-#line 18178 "../../src/parser/csql_grammar.y"
+#line 18186 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29590,7 +29598,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1530:
-#line 18188 "../../src/parser/csql_grammar.y"
+#line 18196 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29603,7 +29611,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1531:
-#line 18198 "../../src/parser/csql_grammar.y"
+#line 18206 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29616,7 +29624,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1532:
-#line 18208 "../../src/parser/csql_grammar.y"
+#line 18216 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29629,7 +29637,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1533:
-#line 18218 "../../src/parser/csql_grammar.y"
+#line 18226 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29642,7 +29650,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1534:
-#line 18228 "../../src/parser/csql_grammar.y"
+#line 18236 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29655,7 +29663,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1535:
-#line 18238 "../../src/parser/csql_grammar.y"
+#line 18246 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29668,7 +29676,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1536:
-#line 18248 "../../src/parser/csql_grammar.y"
+#line 18256 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29681,7 +29689,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1537:
-#line 18258 "../../src/parser/csql_grammar.y"
+#line 18266 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29694,7 +29702,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1538:
-#line 18268 "../../src/parser/csql_grammar.y"
+#line 18276 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29707,7 +29715,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1539:
-#line 18278 "../../src/parser/csql_grammar.y"
+#line 18286 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29720,7 +29728,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1540:
-#line 18288 "../../src/parser/csql_grammar.y"
+#line 18296 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29733,7 +29741,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1541:
-#line 18298 "../../src/parser/csql_grammar.y"
+#line 18306 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29746,7 +29754,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1542:
-#line 18308 "../../src/parser/csql_grammar.y"
+#line 18316 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29759,7 +29767,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1543:
-#line 18318 "../../src/parser/csql_grammar.y"
+#line 18326 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29772,7 +29780,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1544:
-#line 18328 "../../src/parser/csql_grammar.y"
+#line 18336 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29785,7 +29793,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1545:
-#line 18338 "../../src/parser/csql_grammar.y"
+#line 18346 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29798,7 +29806,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1546:
-#line 18348 "../../src/parser/csql_grammar.y"
+#line 18356 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29811,7 +29819,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1547:
-#line 18358 "../../src/parser/csql_grammar.y"
+#line 18366 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29824,7 +29832,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1548:
-#line 18368 "../../src/parser/csql_grammar.y"
+#line 18376 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29837,7 +29845,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1549:
-#line 18378 "../../src/parser/csql_grammar.y"
+#line 18386 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29850,7 +29858,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1550:
-#line 18388 "../../src/parser/csql_grammar.y"
+#line 18396 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29863,7 +29871,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1551:
-#line 18398 "../../src/parser/csql_grammar.y"
+#line 18406 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29876,7 +29884,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1552:
-#line 18408 "../../src/parser/csql_grammar.y"
+#line 18416 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29889,7 +29897,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1553:
-#line 18418 "../../src/parser/csql_grammar.y"
+#line 18426 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29902,7 +29910,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1554:
-#line 18428 "../../src/parser/csql_grammar.y"
+#line 18436 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29915,7 +29923,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1555:
-#line 18438 "../../src/parser/csql_grammar.y"
+#line 18446 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29928,7 +29936,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1556:
-#line 18448 "../../src/parser/csql_grammar.y"
+#line 18456 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29941,7 +29949,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1557:
-#line 18458 "../../src/parser/csql_grammar.y"
+#line 18466 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29954,7 +29962,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1558:
-#line 18468 "../../src/parser/csql_grammar.y"
+#line 18476 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29967,7 +29975,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1559:
-#line 18478 "../../src/parser/csql_grammar.y"
+#line 18486 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29980,7 +29988,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1560:
-#line 18488 "../../src/parser/csql_grammar.y"
+#line 18496 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -29993,7 +30001,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1561:
-#line 18498 "../../src/parser/csql_grammar.y"
+#line 18506 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30006,7 +30014,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1562:
-#line 18508 "../../src/parser/csql_grammar.y"
+#line 18516 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30019,7 +30027,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1563:
-#line 18518 "../../src/parser/csql_grammar.y"
+#line 18526 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30032,7 +30040,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1564:
-#line 18528 "../../src/parser/csql_grammar.y"
+#line 18536 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30045,7 +30053,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1565:
-#line 18538 "../../src/parser/csql_grammar.y"
+#line 18546 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30058,7 +30066,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1566:
-#line 18548 "../../src/parser/csql_grammar.y"
+#line 18556 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30071,7 +30079,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1567:
-#line 18558 "../../src/parser/csql_grammar.y"
+#line 18566 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30084,7 +30092,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1568:
-#line 18568 "../../src/parser/csql_grammar.y"
+#line 18576 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30097,7 +30105,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1569:
-#line 18578 "../../src/parser/csql_grammar.y"
+#line 18586 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30110,7 +30118,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1570:
-#line 18588 "../../src/parser/csql_grammar.y"
+#line 18596 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30123,7 +30131,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1571:
-#line 18598 "../../src/parser/csql_grammar.y"
+#line 18606 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30136,7 +30144,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1572:
-#line 18608 "../../src/parser/csql_grammar.y"
+#line 18616 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30149,7 +30157,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1573:
-#line 18618 "../../src/parser/csql_grammar.y"
+#line 18626 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30162,7 +30170,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1574:
-#line 18628 "../../src/parser/csql_grammar.y"
+#line 18636 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30175,7 +30183,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1575:
-#line 18638 "../../src/parser/csql_grammar.y"
+#line 18646 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30188,7 +30196,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1576:
-#line 18648 "../../src/parser/csql_grammar.y"
+#line 18656 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30201,7 +30209,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1577:
-#line 18658 "../../src/parser/csql_grammar.y"
+#line 18666 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30214,7 +30222,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1578:
-#line 18668 "../../src/parser/csql_grammar.y"
+#line 18676 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30227,7 +30235,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1579:
-#line 18678 "../../src/parser/csql_grammar.y"
+#line 18686 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30240,7 +30248,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1580:
-#line 18688 "../../src/parser/csql_grammar.y"
+#line 18696 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30253,7 +30261,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1581:
-#line 18698 "../../src/parser/csql_grammar.y"
+#line 18706 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30266,7 +30274,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1582:
-#line 18708 "../../src/parser/csql_grammar.y"
+#line 18716 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30279,7 +30287,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1583:
-#line 18718 "../../src/parser/csql_grammar.y"
+#line 18726 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30292,7 +30300,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1584:
-#line 18728 "../../src/parser/csql_grammar.y"
+#line 18736 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30305,7 +30313,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1585:
-#line 18738 "../../src/parser/csql_grammar.y"
+#line 18746 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30318,7 +30326,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1586:
-#line 18748 "../../src/parser/csql_grammar.y"
+#line 18756 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30331,7 +30339,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1587:
-#line 18758 "../../src/parser/csql_grammar.y"
+#line 18766 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30344,7 +30352,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1588:
-#line 18768 "../../src/parser/csql_grammar.y"
+#line 18776 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30357,7 +30365,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1589:
-#line 18778 "../../src/parser/csql_grammar.y"
+#line 18786 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30370,7 +30378,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1590:
-#line 18788 "../../src/parser/csql_grammar.y"
+#line 18796 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30383,7 +30391,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1591:
-#line 18798 "../../src/parser/csql_grammar.y"
+#line 18806 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30396,7 +30404,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1592:
-#line 18808 "../../src/parser/csql_grammar.y"
+#line 18816 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30409,7 +30417,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1593:
-#line 18818 "../../src/parser/csql_grammar.y"
+#line 18826 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30422,7 +30430,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1594:
-#line 18828 "../../src/parser/csql_grammar.y"
+#line 18836 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30435,7 +30443,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1595:
-#line 18838 "../../src/parser/csql_grammar.y"
+#line 18846 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30448,7 +30456,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1596:
-#line 18848 "../../src/parser/csql_grammar.y"
+#line 18856 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30461,7 +30469,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1597:
-#line 18859 "../../src/parser/csql_grammar.y"
+#line 18867 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -30477,7 +30485,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1598:
-#line 18875 "../../src/parser/csql_grammar.y"
+#line 18883 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -30487,7 +30495,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1599:
-#line 18882 "../../src/parser/csql_grammar.y"
+#line 18890 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_VALUE);
@@ -30500,7 +30508,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1600:
-#line 18895 "../../src/parser/csql_grammar.y"
+#line 18903 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -30514,7 +30522,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1601:
-#line 18906 "../../src/parser/csql_grammar.y"
+#line 18914 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -30524,7 +30532,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1602:
-#line 18917 "../../src/parser/csql_grammar.y"
+#line 18925 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *str = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (2))].yystate.yysemantics.yysval.node);
@@ -30543,7 +30551,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1603:
-#line 18933 "../../src/parser/csql_grammar.y"
+#line 18941 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -30553,7 +30561,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1604:
-#line 18943 "../../src/parser/csql_grammar.y"
+#line 18951 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = NULL;
@@ -30577,7 +30585,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1605:
-#line 18964 "../../src/parser/csql_grammar.y"
+#line 18972 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = NULL;
@@ -30601,7 +30609,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1606:
-#line 18985 "../../src/parser/csql_grammar.y"
+#line 18993 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = NULL;
@@ -30625,7 +30633,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1607:
-#line 19006 "../../src/parser/csql_grammar.y"
+#line 19014 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = NULL;
@@ -30649,7 +30657,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1608:
-#line 19027 "../../src/parser/csql_grammar.y"
+#line 19035 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = NULL;
@@ -30673,7 +30681,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1609:
-#line 19052 "../../src/parser/csql_grammar.y"
+#line 19060 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *str = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (2))].yystate.yysemantics.yysval.node);
@@ -30692,7 +30700,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1610:
-#line 19068 "../../src/parser/csql_grammar.y"
+#line 19076 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -30702,7 +30710,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1611:
-#line 19078 "../../src/parser/csql_grammar.y"
+#line 19086 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_VALUE);
@@ -30723,7 +30731,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1612:
-#line 19096 "../../src/parser/csql_grammar.y"
+#line 19104 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_VALUE);
@@ -30744,7 +30752,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1613:
-#line 19117 "../../src/parser/csql_grammar.y"
+#line 19125 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
@@ -30796,7 +30804,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1614:
-#line 19169 "../../src/parser/csql_grammar.y"
+#line 19177 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *val;
@@ -30828,7 +30836,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1615:
-#line 19201 "../../src/parser/csql_grammar.y"
+#line 19209 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
@@ -30868,7 +30876,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1616:
-#line 19241 "../../src/parser/csql_grammar.y"
+#line 19249 "../../src/parser/csql_grammar.y"
     {{
 
 			char *str, *txt;
@@ -30892,7 +30900,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1617:
-#line 19262 "../../src/parser/csql_grammar.y"
+#line 19270 "../../src/parser/csql_grammar.y"
     {{
 
 			char *str, *txt;
@@ -30916,7 +30924,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1618:
-#line 19283 "../../src/parser/csql_grammar.y"
+#line 19291 "../../src/parser/csql_grammar.y"
     {{
 
 			char *str, *txt;
@@ -30940,7 +30948,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1619:
-#line 19304 "../../src/parser/csql_grammar.y"
+#line 19312 "../../src/parser/csql_grammar.y"
     {{
 
 			char *str, *txt;
@@ -30964,7 +30972,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1620:
-#line 19325 "../../src/parser/csql_grammar.y"
+#line 19333 "../../src/parser/csql_grammar.y"
     {{
 
 			char *str, *txt;
@@ -30987,7 +30995,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1621:
-#line 19345 "../../src/parser/csql_grammar.y"
+#line 19353 "../../src/parser/csql_grammar.y"
     {{
 
 			char *str, *txt;
@@ -31010,7 +31018,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1622:
-#line 19365 "../../src/parser/csql_grammar.y"
+#line 19373 "../../src/parser/csql_grammar.y"
     {{
 
 			char *str, *txt;
@@ -31033,7 +31041,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1623:
-#line 19385 "../../src/parser/csql_grammar.y"
+#line 19393 "../../src/parser/csql_grammar.y"
     {{
 
 			char *str, *txt;
@@ -31056,7 +31064,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1624:
-#line 19405 "../../src/parser/csql_grammar.y"
+#line 19413 "../../src/parser/csql_grammar.y"
     {{
 
 			char *str, *txt;
@@ -31079,7 +31087,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1625:
-#line 19425 "../../src/parser/csql_grammar.y"
+#line 19433 "../../src/parser/csql_grammar.y"
     {{
 
 			char *str, *txt;
@@ -31102,7 +31110,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1626:
-#line 19445 "../../src/parser/csql_grammar.y"
+#line 19453 "../../src/parser/csql_grammar.y"
     {{
 
 			char *str, *txt;
@@ -31125,7 +31133,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1627:
-#line 19465 "../../src/parser/csql_grammar.y"
+#line 19473 "../../src/parser/csql_grammar.y"
     {{
 
 			char *str, *txt;
@@ -31148,7 +31156,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1628:
-#line 19485 "../../src/parser/csql_grammar.y"
+#line 19493 "../../src/parser/csql_grammar.y"
     {{
 
 			char *str, *txt;
@@ -31171,7 +31179,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1629:
-#line 19505 "../../src/parser/csql_grammar.y"
+#line 19513 "../../src/parser/csql_grammar.y"
     {{
 
 			char *str, *txt;
@@ -31194,7 +31202,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1630:
-#line 19525 "../../src/parser/csql_grammar.y"
+#line 19533 "../../src/parser/csql_grammar.y"
     {{
 
 			char *str, *txt;
@@ -31217,7 +31225,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1631:
-#line 19545 "../../src/parser/csql_grammar.y"
+#line 19553 "../../src/parser/csql_grammar.y"
     {{
 
 			char *str, *txt;
@@ -31240,7 +31248,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1632:
-#line 19565 "../../src/parser/csql_grammar.y"
+#line 19573 "../../src/parser/csql_grammar.y"
     {{
 
 			char *str, *txt;
@@ -31263,7 +31271,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1633:
-#line 19585 "../../src/parser/csql_grammar.y"
+#line 19593 "../../src/parser/csql_grammar.y"
     {{
 
 			char *str, *txt;
@@ -31286,7 +31294,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1634:
-#line 19605 "../../src/parser/csql_grammar.y"
+#line 19613 "../../src/parser/csql_grammar.y"
     {{
 
 			char *str, *txt;
@@ -31309,7 +31317,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1635:
-#line 19625 "../../src/parser/csql_grammar.y"
+#line 19633 "../../src/parser/csql_grammar.y"
     {{
 
 			char *str, *txt;
@@ -31332,7 +31340,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1636:
-#line 19645 "../../src/parser/csql_grammar.y"
+#line 19653 "../../src/parser/csql_grammar.y"
     {{
 
 			char *str, *txt;
@@ -31355,7 +31363,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1637:
-#line 19665 "../../src/parser/csql_grammar.y"
+#line 19673 "../../src/parser/csql_grammar.y"
     {{
 
 			char *str, *txt;
@@ -31378,7 +31386,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1638:
-#line 19685 "../../src/parser/csql_grammar.y"
+#line 19693 "../../src/parser/csql_grammar.y"
     {{
 
 			char *str, *txt;
@@ -31401,7 +31409,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1639:
-#line 19705 "../../src/parser/csql_grammar.y"
+#line 19713 "../../src/parser/csql_grammar.y"
     {{
 
 			char *str, *txt;
@@ -31424,7 +31432,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1640:
-#line 19728 "../../src/parser/csql_grammar.y"
+#line 19736 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).cptr) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.cptr);
@@ -31433,7 +31441,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1641:
-#line 19734 "../../src/parser/csql_grammar.y"
+#line 19742 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).cptr) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.cptr);
@@ -31442,7 +31450,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1642:
-#line 19740 "../../src/parser/csql_grammar.y"
+#line 19748 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).cptr) = pt_append_string (this_parser, (char *) "-", (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.cptr));
@@ -31451,7 +31459,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1643:
-#line 19749 "../../src/parser/csql_grammar.y"
+#line 19757 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *val = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
@@ -31475,7 +31483,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1644:
-#line 19770 "../../src/parser/csql_grammar.y"
+#line 19778 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *val = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
@@ -31499,7 +31507,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1645:
-#line 19791 "../../src/parser/csql_grammar.y"
+#line 19799 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *val = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
@@ -31523,7 +31531,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1646:
-#line 19812 "../../src/parser/csql_grammar.y"
+#line 19820 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *val = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (2))].yystate.yysemantics.yysval.node);
@@ -31547,7 +31555,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1647:
-#line 19836 "../../src/parser/csql_grammar.y"
+#line 19844 "../../src/parser/csql_grammar.y"
     {{
 			container_2 ctn;
 			SET_CONTAINER_2(ctn, FROM_NUMBER ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.number)), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
@@ -31556,7 +31564,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1648:
-#line 19845 "../../src/parser/csql_grammar.y"
+#line 19853 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *qc = parser_new_node (this_parser, PT_PARTITION);
@@ -31573,7 +31581,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1649:
-#line 19859 "../../src/parser/csql_grammar.y"
+#line 19867 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *qc = parser_new_node (this_parser, PT_PARTITION);
@@ -31592,7 +31600,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1650:
-#line 19875 "../../src/parser/csql_grammar.y"
+#line 19883 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *qc = parser_new_node (this_parser, PT_PARTITION);
@@ -31611,7 +31619,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1653:
-#line 19899 "../../src/parser/csql_grammar.y"
+#line 19907 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
@@ -31621,7 +31629,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1654:
-#line 19906 "../../src/parser/csql_grammar.y"
+#line 19914 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -31631,7 +31639,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1655:
-#line 19916 "../../src/parser/csql_grammar.y"
+#line 19924 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_PARTS);
@@ -31649,7 +31657,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1656:
-#line 19931 "../../src/parser/csql_grammar.y"
+#line 19939 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_PARTS);
@@ -31667,7 +31675,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1657:
-#line 19946 "../../src/parser/csql_grammar.y"
+#line 19954 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_PARTS);
@@ -31685,7 +31693,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1658:
-#line 19964 "../../src/parser/csql_grammar.y"
+#line 19972 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *alt = parser_get_alter_node ();
@@ -31700,7 +31708,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1659:
-#line 19976 "../../src/parser/csql_grammar.y"
+#line 19984 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *alt = parser_get_alter_node ();
@@ -31712,7 +31720,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1660:
-#line 19985 "../../src/parser/csql_grammar.y"
+#line 19993 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *alt = parser_get_alter_node ();
@@ -31728,7 +31736,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1661:
-#line 19998 "../../src/parser/csql_grammar.y"
+#line 20006 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *alt = parser_get_alter_node ();
@@ -31743,7 +31751,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1662:
-#line 20010 "../../src/parser/csql_grammar.y"
+#line 20018 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *alt = parser_get_alter_node ();
@@ -31758,7 +31766,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1663:
-#line 20022 "../../src/parser/csql_grammar.y"
+#line 20030 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *alt = parser_get_alter_node ();
@@ -31773,7 +31781,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1664:
-#line 20034 "../../src/parser/csql_grammar.y"
+#line 20042 "../../src/parser/csql_grammar.y"
     {{
 
 			PT_NODE *alt = parser_get_alter_node ();
@@ -31788,7 +31796,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1667:
-#line 20054 "../../src/parser/csql_grammar.y"
+#line 20062 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
@@ -31798,7 +31806,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1668:
-#line 20061 "../../src/parser/csql_grammar.y"
+#line 20069 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
@@ -31808,7 +31816,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1669:
-#line 20068 "../../src/parser/csql_grammar.y"
+#line 20076 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -31818,7 +31826,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1670:
-#line 20075 "../../src/parser/csql_grammar.y"
+#line 20083 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -31828,7 +31836,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1671:
-#line 20085 "../../src/parser/csql_grammar.y"
+#line 20093 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = parser_make_link ((((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (3))].yystate.yysemantics.yysval.node), (((yyGLRStackItem const *)yyvsp)[YYFILL ((3) - (3))].yystate.yysemantics.yysval.node));
@@ -31838,7 +31846,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 1672:
-#line 20092 "../../src/parser/csql_grammar.y"
+#line 20100 "../../src/parser/csql_grammar.y"
     {{
 
 			((*yyvalp).node) = (((yyGLRStackItem const *)yyvsp)[YYFILL ((1) - (1))].yystate.yysemantics.yysval.node);
@@ -31849,7 +31857,7 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 
 
 /* Line 930 of glr.c.  */
-#line 31853 "../../src/parser/csql_grammar.c"
+#line 31861 "../../src/parser/csql_grammar.c"
       default: break;
     }
 
@@ -33247,8 +33255,8 @@ yyparse (void)
   /* User initialization code.  */
   #line 554 "../../src/parser/csql_grammar.y"
 {yybuffer_pos = 0;}
-/* Line 2309 of glr.c.  */
-#line 33252 "../../src/parser/csql_grammar.c"
+/* Line 2317 of glr.c.  */
+#line 33260 "../../src/parser/csql_grammar.c"
   if (! yyinitGLRStack (yystackp, YYINITDEPTH))
     goto yyexhaustedlab;
   switch (YYSETJMP (yystack.yyexception_buffer))
@@ -33533,7 +33541,7 @@ yypdumpstack (yyGLRStack* yystackp)
 #endif
 
 
-#line 20119 "../../src/parser/csql_grammar.y"
+#line 20127 "../../src/parser/csql_grammar.y"
 
 
 

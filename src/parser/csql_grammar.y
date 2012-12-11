@@ -13496,8 +13496,16 @@ reserved_func
 		'(' expression_ ')'
 		{ pop_msg(); }
 		{{
-
-			PT_NODE *node = parser_make_expression (PT_TIMESTAMP, $4, NULL, NULL); /* 1 parameter */
+			DB_VALUE zero;  
+			PT_NODE *arg2 = NULL; 
+			PT_NODE *node = NULL;
+			arg2 = parser_new_node(this_parser, PT_VALUE);
+			if (arg2)
+			  {
+			    DB_MAKE_INT(&arg2->info.value.db_value, 0);
+			    arg2->type_enum = PT_TYPE_INTEGER;
+			  }
+			node = parser_make_expression (PT_TIMESTAMP, $4, arg2, NULL); /* will call timestamp(arg1, 0) */
 			PICE (node);
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
