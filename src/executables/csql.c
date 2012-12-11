@@ -1915,7 +1915,7 @@ csql_print_database (void)
   else
     {
       sin.sin_family = AF_INET;
-      inet_pton (AF_INET, host_name, &sin.sin_addr);
+      sin.sin_addr.s_addr = inet_addr (host_name);
 
       res = getnameinfo ((struct sockaddr *) &sin, sizeof (sin),
 			 converted_host_name, sizeof (converted_host_name),
