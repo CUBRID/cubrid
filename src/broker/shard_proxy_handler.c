@@ -116,7 +116,8 @@ static T_PROXY_CLIENT_FUNC proxy_client_fn_table[] = {
   fn_proxy_client_not_supported,	/* fn_end_session */
   fn_proxy_client_not_supported,	/* fn_get_row_count */
   fn_proxy_client_not_supported,	/* fn_get_last_insert_id */
-  fn_proxy_client_not_supported	/* fn_prepare_and_execute */
+  fn_proxy_client_not_supported,	/* fn_prepare_and_execute */
+  fn_proxy_client_cursor_close	/* fn_cursor_close */
 };
 
 
@@ -161,7 +162,8 @@ static T_PROXY_CAS_FUNC proxy_cas_fn_table[] = {
   fn_proxy_cas_relay_only,	/* fn_end_session */
   fn_proxy_cas_relay_only,	/* fn_get_row_count */
   fn_proxy_cas_relay_only,	/* fn_get_last_insert_id */
-  fn_proxy_cas_relay_only	/* fn_prepare_and_execute */
+  fn_proxy_cas_relay_only,	/* fn_prepare_and_execute */
+  fn_proxy_cas_relay_only	/* fn_cursor_close */
 };
 
 

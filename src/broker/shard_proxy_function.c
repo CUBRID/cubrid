@@ -121,7 +121,7 @@ proxy_get_cas_error_code (char *read_msg, T_BROKER_VERSION client_version)
 static int
 proxy_send_request_to_cas (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
 {
-  int error, length;
+  int error = 0;
   T_CAS_IO *cas_io_p;
 
   ENTER_FUNC ();
@@ -214,12 +214,98 @@ error_return:
   return error;
 }
 
+static int
+proxy_send_request_to_cas_with_stored_server_handle_id (T_PROXY_CONTEXT *
+							ctx_p,
+							T_PROXY_EVENT *
+							event_p, int argc,
+							char **argv)
+{
+  int error = 0;
+  int srv_h_id, cas_srv_h_id;
+
+  T_CAS_IO *cas_io_p;
+
+  ENTER_FUNC ();
+
+  /* find idle cas */
+  cas_io_p = proxy_cas_alloc_by_ctx (ctx_p->shard_id, ctx_p->cas_id,
+				     ctx_p->cid, ctx_p->uid,
+				     ctx_p->wait_timeout);
+  if (cas_io_p == NULL)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to allocate CAS. "
+		 "(shard_id:%d, cas_id:%d, context id:%d, context uid:%d).",
+		 ctx_p->shard_id, ctx_p->cas_id, ctx_p->cid, ctx_p->uid);
+
+      goto free_context;
+    }
+  else if (cas_io_p == (T_CAS_IO *) SHARD_TEMPORARY_UNAVAILABLE)
+    {
+      assert (ctx_p->shard_id < 0 || ctx_p->cas_id < 0);
+
+      goto free_context;
+    }
+
+  assert (ctx_p->shard_id == cas_io_p->shard_id);
+  assert (ctx_p->cas_id == cas_io_p->cas_id);
+
+  if (ctx_p->is_in_tran == false)
+    {
+      proxy_context_set_in_tran (ctx_p, cas_io_p->shard_id, cas_io_p->cas_id);
+    }
+
+  /* find stored server handle id for this shard/cas */
+  net_arg_get_int (&srv_h_id, argv[0]);
+
+  cas_srv_h_id = shard_stmt_find_srv_h_id_for_shard_cas (srv_h_id,
+							 ctx_p->shard_id,
+							 ctx_p->cas_id);
+
+  if (cas_srv_h_id <= 0)
+    {
+      proxy_context_set_error (ctx_p, CAS_ERROR_INDICATOR, CAS_ER_SRV_HANDLE);
+
+      goto free_context;
+    }
+
+  net_arg_put_int (argv[0], &(cas_srv_h_id));
+
+
+  error = proxy_cas_io_write (cas_io_p, event_p);
+  if (error)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to write to CAS. "
+		 "CAS(%s). event(%s).",
+		 proxy_str_cas_io (cas_io_p), proxy_str_event (event_p));
+
+      goto free_context;
+    }
+
+  event_p = NULL;
+
+  EXIT_FUNC ();
+  return 0;
+
+free_context:
+
+  if (event_p)
+    {
+      proxy_event_free (event_p);
+      event_p = NULL;
+    }
+
+  ctx_p->free_context = true;
+
+  EXIT_FUNC ();
+  return -1;
+}
+
 int
 proxy_send_response_to_client (T_PROXY_CONTEXT * ctx_p,
 			       T_PROXY_EVENT * event_p)
 {
   int error = 0;
-  int length;
   T_CLIENT_IO *cli_io_p;
 
   ENTER_FUNC ();
@@ -1690,89 +1776,27 @@ fn_proxy_client_cursor (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 			int argc, char **argv)
 {
   int error = 0;
-  int srv_h_id, cas_srv_h_id;
-
-  T_CAS_IO *cas_io_p;
 
   const char func_code = CAS_FC_CURSOR;
 
-  ENTER_FUNC ();
-
-  /* find idle cas */
-  cas_io_p = proxy_cas_alloc_by_ctx (ctx_p->shard_id, ctx_p->cas_id,
-				     ctx_p->cid, ctx_p->uid,
-				     ctx_p->wait_timeout);
-  if (cas_io_p == NULL)
+  if (ctx_p->is_bypass_msg)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Unable to find avaiable idle CAS. "
-		 "context(%s). evnet(%s).",
-		 proxy_str_context (ctx_p), proxy_str_event (event_p));
-
-      goto free_context;
+      error = proxy_send_request_to_cas (ctx_p, event_p);
     }
-  else if (cas_io_p == (T_CAS_IO *) SHARD_TEMPORARY_UNAVAILABLE)
+  else
     {
-      assert (false);		/* it cannot happen */
-
-      goto free_context;
-    }
-  assert (ctx_p->shard_id == cas_io_p->shard_id);
-  assert (ctx_p->cas_id == cas_io_p->cas_id);
-
-  if (ctx_p->is_bypass_msg == false)
-    {
-      /* 
-       * find stored server handle id for this shard/cas, if exist, do fetch 
-       * with it. otherwise, returns proxy internal error to the client.
-       */
-      net_arg_get_int (&srv_h_id, argv[0]);
-
-      cas_srv_h_id = shard_stmt_find_srv_h_id_for_shard_cas (srv_h_id,
-							     ctx_p->shard_id,
-							     ctx_p->cas_id);
-      if (cas_srv_h_id <= 0)
-	{
-	  proxy_context_set_error (ctx_p, CAS_ERROR_INDICATOR,
-				   CAS_ER_SRV_HANDLE);
-
-	  proxy_event_free (event_p);
-	  event_p = NULL;
-
-	  EXIT_FUNC ();
-	  return -1;
-	}
-
-      net_arg_put_int (argv[0], &(cas_srv_h_id));
+      error = proxy_send_request_to_cas_with_stored_server_handle_id (ctx_p,
+								      event_p,
+								      argc,
+								      argv);
     }
 
-relay_request:
-
-  error = proxy_cas_io_write (cas_io_p, event_p);
-  if (error)
+  if (error == 0)
     {
-      goto free_context;
+      ctx_p->func_code = func_code;
     }
 
-  /* in this case, we must not free event */
-  event_p = NULL;
-
-  ctx_p->func_code = func_code;
-
-  EXIT_FUNC ();
-  return 0;
-
-free_context:
-  if (event_p)
-    {
-      proxy_event_free (event_p);
-      event_p = NULL;
-    }
-
-  ctx_p->free_context = true;
-
-  EXIT_FUNC ();
-  return -1;
+  return error;
 }
 
 int
@@ -2095,6 +2119,34 @@ free_context:
 
   EXIT_FUNC ();
   return -1;
+}
+
+int
+fn_proxy_client_cursor_close (T_PROXY_CONTEXT * ctx_p,
+			      T_PROXY_EVENT * event_p, int argc, char **argv)
+{
+  int error = 0;
+
+  const char func_code = CAS_FC_CURSOR_CLOSE;
+
+  if (ctx_p->is_bypass_msg)
+    {
+      error = proxy_send_request_to_cas (ctx_p, event_p);
+    }
+  else
+    {
+      error = proxy_send_request_to_cas_with_stored_server_handle_id (ctx_p,
+								      event_p,
+								      argc,
+								      argv);
+    }
+
+  if (error == 0)
+    {
+      ctx_p->func_code = func_code;
+    }
+
+  return error;
 }
 
 int

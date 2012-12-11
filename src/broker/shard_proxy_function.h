@@ -72,6 +72,9 @@ extern int fn_proxy_client_con_close (T_PROXY_CONTEXT * ctx_p,
 extern int fn_proxy_client_get_db_version (T_PROXY_CONTEXT * ctx_p,
 					   T_PROXY_EVENT * event_p, int argc,
 					   char **argv);
+extern int fn_proxy_client_cursor_close (T_PROXY_CONTEXT * ctx_p,
+					 T_PROXY_EVENT * event_p, int argc,
+					 char **argv);
 extern int fn_proxy_client_not_supported (T_PROXY_CONTEXT * ctx_p,
 					  T_PROXY_EVENT * event_p, int argc,
 					  char **argv);
