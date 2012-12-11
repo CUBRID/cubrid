@@ -551,13 +551,13 @@ ux_execute_internal (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   if (srv_handle->stmt_type == CUBRID_STMT_SELECT &&
       srv_handle->send_metadata_before_execute == FALSE)
     {
-      srv_handle->send_metadata_before_execute = TRUE;
-
       err_code = set_metadata_info (srv_handle);
       if (err_code != CAS_NO_ERROR)
 	{
 	  goto execute_all_error;
 	}
+
+      srv_handle->send_metadata_before_execute = TRUE;
     }
 
   if ((is_all == TRUE) && (is_first_stmt == TRUE))
@@ -2099,6 +2099,7 @@ set_metadata_info (T_SRV_HANDLE * srv_handle)
 	      size += 1;
 	      break;
 	    case MYSQL_TYPE_BLOB:
+	    case MYSQL_TYPE_MEDIUM_BLOB:
 	    case MYSQL_TYPE_LONG_BLOB:
 	      if (col->length > MAX_CAS_BLOB_SIZE)	/* length is unsigned long type */
 		{
@@ -2120,10 +2121,14 @@ set_metadata_info (T_SRV_HANDLE * srv_handle)
 	    {
 	    case MYSQL_TYPE_NULL:
 	      break;
+	    case MYSQL_TYPE_TINY_BLOB:
 	    case MYSQL_TYPE_BLOB:
+	    case MYSQL_TYPE_MEDIUM_BLOB:
+	    case MYSQL_TYPE_LONG_BLOB:
 	    case MYSQL_TYPE_STRING:
 	    case MYSQL_TYPE_VARCHAR:
 	    case MYSQL_TYPE_VAR_STRING:
+	    case MYSQL_TYPE_BIT:
 	      data = (char *) MALLOC (size);
 	      if (data == NULL)
 		{
@@ -2183,6 +2188,7 @@ error:
   if (result != NULL)
     {
       cas_mysql_free_result (result);
+      hm_qresult_end (srv_handle, TRUE);
     }
 
   return err_code;

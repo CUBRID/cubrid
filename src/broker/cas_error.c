@@ -88,6 +88,23 @@ err_msg_set (T_NET_BUF * net_buf, const char *file, int line)
 #if defined(CAS_FOR_MYSQL)
   switch (err_info.err_number)
     {
+    case CR_COMMANDS_OUT_OF_SYNC:
+      /**
+       * if you execute two select query in one connection,
+       * [2014][Commands out of sync; you can't run this command now]
+       * error will be occurred and all query execution will be failed until
+       * close select query statement. so we have to terminate cub_cas_mysql
+       * to avoid this situation.
+       */
+      if (as_info->reset_flag == FALSE)
+	{
+	  cas_log_write_and_end (0, true,
+				 "FAILED TO EXECUTE QUERY AS INTERNAL PROBLEM. (MySQL ERR %d : %s)",
+				 err_info.err_number, err_info.err_string);
+	}
+      as_info->reset_flag = TRUE;
+      set_db_connect_status (DB_CONNECTION_STATUS_NOT_CONNECTED);
+      break;
     case CR_SERVER_GONE_ERROR:
     case CR_SERVER_LOST:
       as_info->reset_flag = TRUE;
