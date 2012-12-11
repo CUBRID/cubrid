@@ -998,13 +998,13 @@ qdata_add_bigint_to_time (DB_VALUE * time_val_p, DB_BIGINT add_time,
 {
   DB_TIME utime, result;
   int hour, minute, second;
+  int error = NO_ERROR;
 
   utime = *(DB_GET_TIME (time_val_p)) % SECONDS_OF_ONE_DAY;
+  add_time = add_time % SECONDS_OF_ONE_DAY;
   if (add_time < 0)
     {
-      return qdata_subtract_time (utime,
-				  (DB_TIME) ((-add_time) %
-					     SECONDS_OF_ONE_DAY), result_p);
+      return qdata_subtract_time (utime, (DB_TIME) (-add_time), result_p);
     }
 
   result = (utime + add_time) % SECONDS_OF_ONE_DAY;
@@ -1012,7 +1012,7 @@ qdata_add_bigint_to_time (DB_VALUE * time_val_p, DB_BIGINT add_time,
 
   if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
     {
-      DB_MAKE_TIME (result_p, hour, minute, second);
+      error = DB_MAKE_TIME (result_p, hour, minute, second);
     }
   else
     {
@@ -1021,20 +1021,22 @@ qdata_add_bigint_to_time (DB_VALUE * time_val_p, DB_BIGINT add_time,
       switch (type)
 	{
 	case DB_TYPE_BIGINT:
-	  DB_MAKE_BIGINT (result_p, (hour * 100 + minute) * 100 + second);
+	  error =
+	    DB_MAKE_BIGINT (result_p, (hour * 100 + minute) * 100 + second);
 	  break;
 
 	case DB_TYPE_INTEGER:
-	  DB_MAKE_INTEGER (result_p, (hour * 100 + minute) * 100 + second);
+	  error =
+	    DB_MAKE_INTEGER (result_p, (hour * 100 + minute) * 100 + second);
 	  break;
 
 	default:
-	  DB_MAKE_TIME (result_p, hour, minute, second);
+	  error = DB_MAKE_TIME (result_p, hour, minute, second);
 	  break;
 	}
     }
 
-  return NO_ERROR;
+  return error;
 }
 
 static int
