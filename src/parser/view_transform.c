@@ -2003,6 +2003,12 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
       /* determine if we have to rewrite vclass_query as a derived table */
       rewrite_as_derived = !is_pushable_query || is_outer_joined;
 
+      if (PT_IS_QUERY (tmp_result))
+	{
+	  rewrite_as_derived = rewrite_as_derived
+	    || (tmp_result->info.query.all_distinct == PT_DISTINCT);
+	}
+
       if (rewrite_as_derived)
 	{
 	  /* rewrite vclass query as a derived table */
