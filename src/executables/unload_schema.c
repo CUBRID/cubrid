@@ -2563,15 +2563,6 @@ emit_index_def (DB_OBJECT * class_)
 	    }
 	  fprintf (output_file, "%s%s%s", PRINT_IDENTIFIER (att_name));
 
-	  if (asc_desc)
-	    {
-	      if (*asc_desc == 1)
-		{
-		  fprintf (output_file, "%s", " DESC");
-		}
-	      asc_desc++;
-	    }
-
 	  if (prefix_length)
 	    {
 	      if (*prefix_length >= 0)
@@ -2579,6 +2570,15 @@ emit_index_def (DB_OBJECT * class_)
 		  fprintf (output_file, " (%d)", *prefix_length);
 		}
 	      prefix_length++;
+	    }
+
+	  if (asc_desc)
+	    {
+	      if (*asc_desc == 1)
+		{
+		  fprintf (output_file, "%s", " DESC");
+		}
+	      asc_desc++;
 	    }
 	  k++;
 	}
