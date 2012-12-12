@@ -8376,22 +8376,6 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
   common_type = arg1_type;
   expr = node;
 
-  if (expr->info.expr.coll_modifier != -1)
-    {
-      if (!(PT_HAS_COLLATION (arg1_type) || PT_HAS_COLLATION (arg2_type)
-	    || PT_HAS_COLLATION (arg3_type)
-	    || PT_HAS_COLLATION (node->type_enum)))
-	{
-	  if (!pt_has_error (parser))
-	    {
-	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_COLLATE_NOT_ALLOWED);
-	    }
-	  node->type_enum = PT_TYPE_NONE;
-	  goto error;
-	}
-    }
-
   /* adjust expression definition to fit the signature implementation */
   switch (op)
     {
@@ -8657,6 +8641,22 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
       expr = NULL;
       node->type_enum = PT_TYPE_NONE;
       goto error;
+    }
+
+  if (expr != NULL && expr->info.expr.coll_modifier != -1)
+    {
+      if (!(PT_HAS_COLLATION (arg1_type) || PT_HAS_COLLATION (arg2_type)
+	    || PT_HAS_COLLATION (arg3_type)
+	    || PT_HAS_COLLATION (node->type_enum)))
+	{
+	  if (!pt_has_error (parser))
+	    {
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_COLLATE_NOT_ALLOWED);
+	    }
+	  node->type_enum = PT_TYPE_NONE;
+	  goto error;
+	}
     }
 
   if (expr != NULL)
