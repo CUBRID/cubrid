@@ -13393,9 +13393,10 @@ lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p,
 {
 #define HOLDER_ENTRY_LENGTH (12)
   int rv;
-  LK_ENTRY *holder;
+  LK_ENTRY *holder, *waiter;
   int holder_number = 0;
   int buf_size, n, remained_size;
+  bool is_valid = false;	/* validation check */
   char *buf, *p;
 
   if (res == NULL)
@@ -13418,6 +13419,45 @@ lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
+  if (OID_ISNULL (&res->oid))
+    {
+      pthread_mutex_unlock (&res->res_mutex);
+      return NO_ERROR;
+    }
+
+  waiter = res->waiter;
+  while (waiter != NULL)
+    {
+      if (waiter->tran_index == waiter_index)
+	{
+	  is_valid = true;
+	  break;
+	}
+      waiter = waiter->next;
+    }
+
+  if (is_valid == false)
+    {
+      holder = res->holder;
+      while (holder != NULL)
+	{
+	  if (holder->blocked_mode != NULL_LOCK
+	      && holder->tran_index == waiter_index)
+	    {
+	      is_valid = true;
+	      break;
+	    }
+	  holder = holder->next;
+	}
+    }
+
+  if (is_valid == false)
+    {
+      /* not a valid waiter of this resource */
+      pthread_mutex_unlock (&res->res_mutex);
+      return NO_ERROR;
+    }
+
   holder = res->holder;
   while (holder != NULL)
     {
@@ -13431,7 +13471,6 @@ lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p,
   if (holder_number == 0)
     {
       pthread_mutex_unlock (&res->res_mutex);
-
       return NO_ERROR;
     }
 
