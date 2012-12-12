@@ -11216,6 +11216,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
     case PT_DATABASE:
     case PT_SCHEMA:
     case PT_CURRENT_USER:
+    case PT_INET_NTOA:
       assert (dt == NULL);
       dt = pt_make_prim_data_type (parser, PT_TYPE_VARCHAR);
       break;
