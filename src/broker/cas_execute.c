@@ -830,6 +830,15 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode,
       srv_handle->query_info_flag = FALSE;
     }
 
+  if (flag & CCI_PREPARE_UPDATABLE)
+    {
+      srv_handle->is_updatable = TRUE;
+    }
+  else
+    {
+      srv_handle->is_updatable = FALSE;
+    }
+
   if (flag & CCI_PREPARE_CALL)
     {
       T_PREPARE_CALL_INFO *prepare_call_info;
