@@ -402,7 +402,9 @@ struct css_queue_entry
   char lock;
 #endif
 };
-
+#if defined(SERVER_MODE)
+struct session_state;
+#endif
 /*
  * This data structure is the interface between the client and the
  * communication software to identify the data connection.
@@ -440,8 +442,7 @@ struct css_conn_entry
   CSS_LIST abort_queue;		/* list of aborted requests         */
   CSS_LIST buffer_queue;	/* list of buffers queued for data */
   CSS_LIST error_queue;		/* list of (server) error messages  */
-
-  SESSION_PARAM *session_parameters;
+  struct session_state *session_p;	/* session object for current request */
 #else
   FILE *file;
   CSS_QUEUE_ENTRY *request_queue;	/* the header for unseen requests    */

@@ -443,4 +443,5 @@ extern SYSPRM_ERR sysprm_validate_change_parameters (const char *data,
 extern int sysprm_print_assign_values (SYSPRM_ASSIGN_VALUE * prm_values,
 				       char *buffer, int length);
 extern int sysprm_set_error (SYSPRM_ERR rc, const char *data);
+extern int sysprm_get_session_parameters_count (void);
 #endif /* _SYSTEM_PARAMETER_H_ */

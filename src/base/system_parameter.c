@@ -2943,9 +2943,6 @@ static void prm_set_compound (SYSPRM_PARAM * param,
 			      const char **compound_param_values[],
 			      const int values_count, bool set_flag);
 static int prm_get_next_param_value (char **data, char **prm, char **value);
-static SESSION_PARAM *sysprm_get_session_parameter_by_id (SESSION_PARAM *
-							  session_parameters,
-							  PARAM_ID prm_id);
 static int sysprm_get_id (const SYSPRM_PARAM * prm);
 static int sysprm_compare_values (void *first_value, void *second_value,
 				  unsigned int val_type);
@@ -2984,11 +2981,11 @@ static void prm_init_intl_param (void);
 
 #if defined (SERVER_MODE)
 static SYSPRM_ERR sysprm_set_session_parameter_value (SESSION_PARAM *
-						      session_parameters,
+						      session_parameter,
 						      int id,
 						      SYSPRM_VALUE value);
 static SYSPRM_ERR sysprm_set_session_parameter_default (SESSION_PARAM *
-							session_parameters,
+							session_parameter,
 							int prm_id);
 #endif /* SERVER_MODE */
 
@@ -5247,7 +5244,6 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag,
 #if defined (SERVER_MODE)
   int id;
   THREAD_ENTRY *thread_p;
-  CSS_CONN_ENTRY *conn_p;
 #endif
 
   if (prm == NULL)
@@ -5299,19 +5295,16 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag,
 #if defined (SERVER_MODE)
   if (PRM_IS_FOR_SESSION (prm->flag) && BO_IS_SERVER_RESTARTED ())
     {
+      SESSION_PARAM *param;
       /* update session parameter */
       id = sysprm_get_id (prm);
       thread_p = thread_get_thread_entry_info ();
-      if (thread_p)
+      param = session_get_session_parameter (thread_p, id);
+      if (param == NULL)
 	{
-	  conn_p = thread_p->conn_entry;
-	  if (conn_p && conn_p->session_parameters)
-	    {
-	      return sysprm_set_session_parameter_value (conn_p->
-							 session_parameters,
-							 id, value);
-	    }
+	  return PRM_ERR_UNKNOWN_PARAM;
 	}
+      return sysprm_set_session_parameter_value (param, id, value);
     }
   /* if prm is not for session or if session_parameters have not been
    * initialized just set the system parameter stored on server
@@ -5438,18 +5431,16 @@ prm_set_default (SYSPRM_PARAM * prm)
 #if defined (SERVER_MODE)
   if (PRM_IS_FOR_SESSION (prm->flag) && BO_IS_SERVER_RESTARTED ())
     {
+      int id;
+      SESSION_PARAM *sprm = NULL;
       THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
-      if (thread_p)
+      id = sysprm_get_id (prm);
+      sprm = session_get_session_parameter (thread_p, id);
+      if (sprm == NULL)
 	{
-	  CSS_CONN_ENTRY *conn_p = thread_p->conn_entry;
-	  if (conn_p && conn_p->session_parameters)
-	    {
-	      int id = sysprm_get_id (prm);
-	      return sysprm_set_session_parameter_default (conn_p->
-							   session_parameters,
-							   id);
-	    }
+	  return PRM_ERR_UNKNOWN_PARAM;
 	}
+      return sysprm_set_session_parameter_default (sprm, id);
     }
 #endif /* SERVER_MODE */
   if (prm == NULL)
@@ -6397,27 +6388,17 @@ prm_get_value (PARAM_ID prm_id)
 {
 #if defined (SERVER_MODE)
   THREAD_ENTRY *thread_p;
-  CSS_CONN_ENTRY *conn_entry;
 
   assert (prm_id <= PRM_LAST_ID);
 
   if (PRM_SERVER_SESSION (prm_Def[prm_id].flag) && BO_IS_SERVER_RESTARTED ())
     {
+      SESSION_PARAM *sprm;
       thread_p = thread_get_thread_entry_info ();
-      if (thread_p)
+      sprm = session_get_session_parameter (thread_p, prm_id);
+      if (sprm)
 	{
-	  conn_entry = thread_p->conn_entry;
-	  if (conn_entry && conn_entry->session_parameters)
-	    {
-	      SESSION_PARAM *prm =
-		sysprm_get_session_parameter_by_id (conn_entry->
-						    session_parameters,
-						    prm_id);
-	      if (prm)
-		{
-		  return &(prm->value);
-		}
-	    }
+	  return &(sprm->value);
 	}
     }
 
@@ -6871,32 +6852,6 @@ sysprm_free_session_parameters (SESSION_PARAM ** session_parameters_ptr)
     }
 
   free_and_init (*session_parameters_ptr);
-}
-
-/*
- * sysprm_get_session_parameter_by_id () - find in array the session parameter
- *					   identified by prm_id
- *
- * return	       : session parameter
- * session_params (in) : array of session parameters
- * prm_id (in)	       : id of session parameter
- */
-static SESSION_PARAM *
-sysprm_get_session_parameter_by_id (SESSION_PARAM * session_params,
-				    PARAM_ID prm_id)
-{
-  int i;
-  assert (prm_id <= PRM_LAST_ID);
-
-  for (i = 0; i < NUM_SESSION_PRM; i++)
-    {
-      if (session_params[i].prm_id == prm_id)
-	{
-	  return &session_params[i];
-	}
-    }
-
-  return NULL;
 }
 
 /*
@@ -7462,79 +7417,67 @@ sysprm_session_init_session_parameters (SESSION_PARAM **
       *found_session_parameters = 1;
     }
 
-  /* set pointer to session parameters in connection entry too */
-  thread_p->conn_entry->session_parameters = session_params;
-
   return NO_ERROR;
 }
 
 /*
  * sysprm_set_session_parameter_value - set a new value for the session
- *					parameter in session_parameters array
- *					identified by id.
- *
- * return		   : PRM_ERR_NO_ERROR or error_code
- * session_parameters (in) : array of session parameters
+ *					parameter identified by id.
+ * return : PRM_ERR_NO_ERROR or error_code
+ * session_parameter (in)  : session parameter to set the value of
  * id (in)		   : id for the session parameter that needs changed
  * value (in)		   : new value
  */
 static SYSPRM_ERR
-sysprm_set_session_parameter_value (SESSION_PARAM * session_parameters,
-				    int id, SYSPRM_VALUE value)
+sysprm_set_session_parameter_value (SESSION_PARAM * session_parameter, int id,
+				    SYSPRM_VALUE value)
 {
-  SESSION_PARAM *sprm = NULL;
   char *end = NULL;
   SYSPRM_PARAM *prm = &prm_Def[id];
 
-  sprm = sysprm_get_session_parameter_by_id (session_parameters, id);
-  if (sprm == NULL)
-    {
-      return PRM_ERR_UNKNOWN_PARAM;
-    }
-
-  switch (sprm->datatype)
+  switch (session_parameter->datatype)
     {
     case PRM_INTEGER:
     case PRM_KEYWORD:
-      sprm->value.i = value.i;
+      session_parameter->value.i = value.i;
       break;
 
     case PRM_FLOAT:
-      sprm->value.f = value.f;
+      session_parameter->value.f = value.f;
       break;
 
     case PRM_BOOLEAN:
-      sprm->value.b = value.b;
+      session_parameter->value.b = value.b;
       break;
 
     case PRM_STRING:
-      if (PRM_IS_ALLOCATED (sprm->flag))
+      if (PRM_IS_ALLOCATED (session_parameter->flag))
 	{
-	  free_and_init (sprm->value.str);
-	  PRM_CLEAR_BIT (PRM_ALLOCATED, sprm->flag);
+	  free_and_init (session_parameter->value.str);
+	  PRM_CLEAR_BIT (PRM_ALLOCATED, session_parameter->flag);
 	}
-      sprm->value.str = value.str;
-      if (sprm->value.str != NULL)
+      session_parameter->value.str = value.str;
+      if (session_parameter->value.str != NULL)
 	{
-	  PRM_SET_BIT (PRM_ALLOCATED, sprm->flag);
+	  PRM_SET_BIT (PRM_ALLOCATED, session_parameter->flag);
 	}
       break;
 
     case PRM_INTEGER_LIST:
-      if (PRM_IS_ALLOCATED (sprm->flag))
+      if (PRM_IS_ALLOCATED (session_parameter->flag))
 	{
-	  free_and_init (sprm->value.integer_list);
-	  PRM_CLEAR_BIT (PRM_ALLOCATED, sprm->flag);
+	  free_and_init (session_parameter->value.integer_list);
+	  PRM_CLEAR_BIT (PRM_ALLOCATED, session_parameter->flag);
 	}
-      sprm->value.integer_list = value.integer_list;
-      if (sprm->value.integer_list != NULL)
+      session_parameter->value.integer_list = value.integer_list;
+      if (session_parameter->value.integer_list != NULL)
 	{
-	  PRM_SET_BIT (PRM_ALLOCATED, sprm->flag);
+	  PRM_SET_BIT (PRM_ALLOCATED, session_parameter->flag);
 	}
       break;
 
     case PRM_SIZE:
-      sprm->value.size = value.size;
+      session_parameter->value.size = value.size;
       break;
     }
 
@@ -7545,55 +7488,49 @@ sysprm_set_session_parameter_value (SESSION_PARAM * session_parameters,
  * sysprm_set_session_parameter_default - set session parameter value to default
  *
  * return		  : PRM_ERR_NO_ERROR or SYSPRM_ERR error code
- * session_parameters(in) : array of session parameters
+ * session_parameter(in)  : session parameter
  * prm_id(in)		  : parameter id
  */
 static SYSPRM_ERR
-sysprm_set_session_parameter_default (SESSION_PARAM * session_parameters,
+sysprm_set_session_parameter_default (SESSION_PARAM * session_parameter,
 				      int prm_id)
 {
-  SESSION_PARAM *sprm = NULL;
   SYSPRM_PARAM *prm = &prm_Def[prm_id];
 
-  sprm = sysprm_get_session_parameter_by_id (session_parameters, prm_id);
-  if (sprm == NULL)
-    {
-      return PRM_ERR_UNKNOWN_PARAM;
-    }
-
-  switch (sprm->datatype)
+  switch (session_parameter->datatype)
     {
     case PRM_INTEGER:
     case PRM_KEYWORD:
-      sprm->value.i = PRM_GET_INT (prm->default_value);
+      session_parameter->value.i = PRM_GET_INT (prm->default_value);
       break;
     case PRM_FLOAT:
-      sprm->value.f = PRM_GET_FLOAT (prm->default_value);
+      session_parameter->value.f = PRM_GET_FLOAT (prm->default_value);
       break;
     case PRM_BOOLEAN:
-      sprm->value.b = PRM_GET_BOOL (prm->default_value);
+      session_parameter->value.b = PRM_GET_BOOL (prm->default_value);
       break;
     case PRM_SIZE:
-      sprm->value.size = PRM_GET_SIZE (prm->default_value);
+      session_parameter->value.size = PRM_GET_SIZE (prm->default_value);
       break;
     case PRM_STRING:
       {
-	if (PRM_IS_ALLOCATED (sprm->flag))
+	if (PRM_IS_ALLOCATED (session_parameter->flag))
 	  {
-	    free_and_init (sprm->value.str);
-	    PRM_CLEAR_BIT (PRM_ALLOCATED, sprm->flag);
+	    free_and_init (session_parameter->value.str);
+	    PRM_CLEAR_BIT (PRM_ALLOCATED, session_parameter->flag);
 	  }
-	sprm->value.str = PRM_GET_STRING (prm->default_value);
+	session_parameter->value.str = PRM_GET_STRING (prm->default_value);
 	break;
       }
     case PRM_INTEGER_LIST:
       {
-	if (PRM_IS_ALLOCATED (sprm->flag))
+	if (PRM_IS_ALLOCATED (session_parameter->flag))
 	  {
-	    free_and_init (sprm->value.integer_list);
-	    PRM_CLEAR_BIT (PRM_ALLOCATED, sprm->flag);
+	    free_and_init (session_parameter->value.integer_list);
+	    PRM_CLEAR_BIT (PRM_ALLOCATED, session_parameter->flag);
 	  }
-	sprm->value.integer_list = PRM_GET_INTEGER_LIST (prm->default_value);
+	session_parameter->value.integer_list =
+	  PRM_GET_INTEGER_LIST (prm->default_value);
 	break;
       }
     }
@@ -7989,4 +7926,15 @@ sysprm_set_error (SYSPRM_ERR rc, const char *data)
     }
 
   return error;
+}
+
+/*
+ * sysprm_get_session_parameters_count () - get the count of session
+ *					    parameters
+ * return : count
+ */
+int
+sysprm_get_session_parameters_count (void)
+{
+  return NUM_SESSION_PRM;
 }

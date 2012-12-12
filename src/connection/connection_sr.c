@@ -295,8 +295,10 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->free_wait_queue_count = 0;
   conn->free_net_header_list = NULL;
   conn->free_net_header_count = 0;
-  conn->session_parameters = NULL;
   conn->session_id = DB_EMPTY_SESSION;
+#if defined(SERVER_MODE)
+  conn->session_p = NULL;
+#endif
 
   err = css_initialize_list (&conn->request_queue, 0);
   if (err != NO_ERROR)
@@ -407,9 +409,9 @@ css_shutdown_conn (CSS_CONN_ENTRY * conn)
 	  free_and_init (p);
 	}
     }
-
-  conn->session_parameters = NULL;
-
+#if defined(SERVER_MODE)
+  conn->session_p = NULL;
+#endif
   csect_exit_critical_section (&conn->csect);
 }
 
