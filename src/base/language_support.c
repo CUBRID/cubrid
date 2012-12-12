@@ -7250,7 +7250,7 @@ lang_check_coll_compat (const LANG_COLL_COMPAT * coll_array,
       if (lc->coll.coll_id != ref_c->coll_id)
 	{
 	  snprintf (err_msg, sizeof (err_msg) - 1,
-		    "Collation '%s' with id %d form %s not found with the "
+		    "Collation '%s' with id %d from %s not found with the "
 		    "same id on %s", ref_c->coll_name, ref_c->coll_id,
 		    server_text, client_text);
 	  er_status = ER_LOC_INIT;
