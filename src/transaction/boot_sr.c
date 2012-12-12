@@ -4950,9 +4950,20 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name,
     {
       if (db == NULL)
 	{
+	  const char *old_lob_path = NULL;
+	  char new_lob_pathbuf[PATH_MAX] = { '\0' };
+	  char *new_lob_path = NULL;
+
+	  old_lob_path = boot_get_lob_path ();
+	  if (*old_lob_path != '\0')
+	    {
+	      new_lob_path =
+		strncpy (new_lob_pathbuf, old_lob_path, PATH_MAX);
+	    }
+
 	  cfg_delete_db (&dir, old_db_name);
 	  db = cfg_add_db (&dir, new_db_name, new_db_path, new_log_path,
-			   NULL, new_db_server_host);
+			   new_lob_path, new_db_server_host);
 	}
       else
 	{
