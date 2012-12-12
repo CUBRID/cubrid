@@ -120,18 +120,18 @@ static UNICODE_NORMALIZATION *generic_unicode_norm = NULL;
 
 static const DB_CHARSET lang_Db_charsets[] = {
   {"ascii", "US English charset - ASCII encoding", " ", "",
-   INTL_CODESET_ASCII, 1},
+   "", INTL_CODESET_ASCII, 1},
   {"raw-bits", "Uninterpreted bits - Raw encoding", "", "",
-   INTL_CODESET_RAW_BITS, 1},
+   "", INTL_CODESET_RAW_BITS, 1},
   {"raw-bytes", "Uninterpreted bytes - Raw encoding", "", "",
-   INTL_CODESET_RAW_BYTES, 1},
+   "", INTL_CODESET_RAW_BYTES, 1},
   {"iso8859-1", "Latin 1 charset - ISO 8859 encoding", " ", "_iso88591",
-   INTL_CODESET_ISO88591, 1},
+   "iso88591", INTL_CODESET_ISO88591, 1},
   {"ksc-euc", "KSC 5601 1990 charset - EUC encoding", "\241\241", "_euckr",
-   INTL_CODESET_KSC5601_EUC, 2},
+   "euckr", INTL_CODESET_KSC5601_EUC, 2},
   {"utf-8", "UNICODE charset - UTF-8 encoding", " ", "_utf8",
-   INTL_CODESET_UTF8, 1},
-  {"", "", "", "", INTL_CODESET_NONE, 0}
+   "utf8", INTL_CODESET_UTF8, 1},
+  {"", "", "", "", "", INTL_CODESET_NONE, 0}
 };
 
 static void set_current_locale (bool is_full_init);
@@ -2194,6 +2194,30 @@ lang_charset_name (const INTL_CODESET codeset)
       if (codeset == lang_Db_charsets[i].charset_id)
 	{
 	  return lang_Db_charsets[i].charset_name;
+	}
+    }
+
+  return NULL;
+}
+
+/*
+ * lang_charset_cubrid_name() - returns charset name
+ *
+ *   return:
+ *   codeset(in):
+ */
+const char *
+lang_charset_cubrid_name (const INTL_CODESET codeset)
+{
+  int i;
+
+  assert (codeset >= INTL_CODESET_ISO88591 && codeset <= INTL_CODESET_UTF8);
+
+  for (i = 0; lang_Db_charsets[i].charset_id != INTL_CODESET_NONE; i++)
+    {
+      if (codeset == lang_Db_charsets[i].charset_id)
+	{
+	  return lang_Db_charsets[i].charset_cubrid_name;
 	}
     }
 

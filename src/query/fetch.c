@@ -477,6 +477,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_EXEC_STATS:
     case T_INET_ATON:
     case T_INET_NTOA:
+    case T_CHARSET:
+    case T_COLLATION:
       /* fetch rhs value */
       if (fetch_peek_dbval (thread_p, arithptr->rightptr,
 			    vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
@@ -3360,7 +3362,14 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       break;
 
-    default:
+    case T_CHARSET:
+    case T_COLLATION:
+      if (db_get_cs_coll_info (arithptr->value, peek_right,
+			       (arithptr->opcode == T_COLLATION) ? 1 : 0)
+	  != NO_ERROR)
+	{
+	  goto error;
+	}
       break;
     }
 

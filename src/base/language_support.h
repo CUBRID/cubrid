@@ -121,6 +121,7 @@ struct db_charset
   const char *charset_desc;
   const char *space_char;
   const char *introducer;
+  const char *charset_cubrid_name;
   INTL_CODESET charset_id;
   int space_size;
 };
@@ -305,6 +306,7 @@ extern "C"
     (const int collation_id);
   extern TEXT_CONVERSION *lang_get_txt_conv (void);
   extern const char *lang_charset_name (const INTL_CODESET codeset);
+  extern const char *lang_charset_cubrid_name (const INTL_CODESET codeset);
 
   extern int lang_strmatch_utf8_uca_w_coll_data (const COLL_DATA * coll_data,
 						 bool is_match,

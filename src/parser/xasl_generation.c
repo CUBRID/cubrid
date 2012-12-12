@@ -7675,7 +7675,9 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_EVALUATE_VARIABLE
 		       || node->info.expr.op == PT_TO_ENUMERATION_VALUE
 		       || node->info.expr.op == PT_INET_ATON
-		       || node->info.expr.op == PT_INET_NTOA)
+		       || node->info.expr.op == PT_INET_NTOA
+		       || node->info.expr.op == PT_CHARSET
+		       || node->info.expr.op == PT_COLLATION)
 		{
 		  r1 = NULL;
 
@@ -9249,6 +9251,15 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		case PT_INET_NTOA:
 		  regu =
 		    pt_make_regu_arith (r1, r2, NULL, T_INET_NTOA, domain);
+		  break;
+
+		case PT_CHARSET:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_CHARSET, domain);
+		  break;
+
+		case PT_COLLATION:
+		  regu =
+		    pt_make_regu_arith (r1, r2, NULL, T_COLLATION, domain);
 		  break;
 
 		default:

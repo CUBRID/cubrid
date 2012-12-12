@@ -25167,7 +25167,7 @@ db_get_truncate_format (const DB_VALUE * format_str,
 {
   char *fmt_str_ptr, *next_fmt_str_ptr, *last_fmt;
   INTL_CODESET codeset;
-  char stack_buf_str[64], stack_buf_format[64];
+  char stack_buf_format[64];
   char *initial_buf_format = NULL;
   bool do_free_buf_format = false;
   int format_size;
@@ -25249,4 +25249,63 @@ end:
     }
 
   return error;
+}
+
+/*
+ * db_get_cs_coll_info() - get codeset or collation from a value
+ *
+ *   return: status
+ *   result(out): result (string type)
+ *   val(in): input value
+ *   mode(in): 0 : get charset, 1 : ger collation
+ *
+ */
+int
+db_get_cs_coll_info (DB_VALUE * result, const DB_VALUE * val, const int mode)
+{
+  int status = NO_ERROR;
+
+  assert (result != NULL);
+  assert (val != NULL);
+
+  if (DB_IS_NULL (val) || !TP_TYPE_HAS_COLLATION (DB_VALUE_TYPE (val)))
+    {
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+	{
+	  DB_MAKE_NULL (result);
+	}
+      else
+	{
+	  status = ER_OBJ_INVALID_ARGUMENTS;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, status, 0);
+	}
+    }
+  else
+    {
+      int cs, coll;
+
+      if (TP_IS_CHAR_TYPE (DB_VALUE_TYPE (val)))
+	{
+	  cs = DB_GET_STRING_CODESET (val);
+	  coll = DB_GET_STRING_COLLATION (val);
+	}
+      else
+	{
+	  assert (DB_VALUE_TYPE (val) == DB_TYPE_ENUMERATION);
+	  cs = DB_GET_ENUM_CODESET (val);
+	  coll = DB_GET_ENUM_COLLATION (val);
+	}
+
+      if (mode == 0)
+	{
+	  DB_MAKE_STRING (result, lang_charset_cubrid_name (cs));
+	}
+      else
+	{
+	  assert (mode == 1);
+	  DB_MAKE_STRING (result, lang_get_collation_name (coll));
+	}
+    }
+
+  return status;
 }

@@ -3255,6 +3255,11 @@ get_opcode_rank (PT_OP_TYPE opcode)
   switch (opcode)
     {
       /* Group 1 -- light */
+    case PT_COERCIBILITY:
+      /* is always folded to constant : should not reach this code */
+      assert (false);
+    case PT_CHARSET:
+    case PT_COLLATION:
     case PT_AND:
     case PT_OR:
     case PT_XOR:
@@ -4134,6 +4139,11 @@ pt_is_pseudo_const (PT_NODE * expr)
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
 		  && pt_is_pseudo_const (expr->info.
 					 expr.arg2)) ? true : false;
+	case PT_COERCIBILITY:
+	  /* is always folded to constant : should not reach this code */
+	  assert (false);
+	case PT_COLLATION:
+	case PT_CHARSET:
 	case PT_INET_ATON:
 	case PT_INET_NTOA:
 	  return pt_is_pseudo_const (expr->info.expr.arg1);

@@ -17671,12 +17671,22 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	  return 0;
 	}
       break;
-    case PT_CHARSET:
+
     case PT_COERCIBILITY:
-    case PT_COLLATION:
-      /* these expressions should always be folded to constants */
+      /* this expression should always be folded to constant */
       assert (false);
       break;
+
+    case PT_CHARSET:
+    case PT_COLLATION:
+      error = db_get_cs_coll_info (result, arg1, (op == PT_CHARSET) ? 0 : 1);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      break;
+
     default:
       break;
     }
@@ -17828,7 +17838,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
       result = pt_dbval_to_value (parser, &dbval_res);
       goto end;
     }
-  else if (op == PT_CHARSET || op == PT_COERCIBILITY || op == PT_COLLATION)
+  else if (op == PT_COERCIBILITY)
     {
       int coll_id;
       INTL_CODESET cs;
@@ -17836,19 +17846,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 
       if (pt_get_collation_info (expr->info.expr.arg1, &coll_id, &cs, &coerc))
 	{
-	  if (op == PT_CHARSET)
-	    {
-	      DB_MAKE_STRING (&dbval_res, lang_charset_name (cs));
-	    }
-	  else if (op == PT_COERCIBILITY)
-	    {
-	      DB_MAKE_INT (&dbval_res, (int) coerc);
-	    }
-	  else
-	    {
-	      assert (op == PT_COLLATION);
-	      DB_MAKE_STRING (&dbval_res, lang_get_collation_name (coll_id));
-	    }
+	  DB_MAKE_INT (&dbval_res, (int) coerc);
 	}
       else
 	{
@@ -20394,6 +20392,10 @@ pt_get_collation_info (PT_NODE * node, int *coll_id, INTL_CODESET * codeset,
   switch (node->node_type)
     {
     case PT_VALUE:
+      assert (has_collation);
+      *coerc_level = PT_COLLATION_L4_COERC;
+      break;
+
     case PT_HOST_VAR:
       assert (has_collation);
       *coerc_level = PT_COLLATION_FULLY_COERC;
@@ -20406,9 +20408,17 @@ pt_get_collation_info (PT_NODE * node, int *coll_id, INTL_CODESET * codeset,
 	  || node->info.expr.op == PT_SCHEMA
 	  || node->info.expr.op == PT_VERSION)
 	{
-	  *coerc_level = PT_COLLATION_L4_COERC;
+	  *coerc_level = PT_COLLATION_L3_COERC;
 	  break;
 	}
+
+      if (node->info.expr.op == PT_EVALUATE_VARIABLE
+	  || node->info.expr.op == PT_DEFINE_VARIABLE)
+	{
+	  *coerc_level = PT_COLLATION_FULLY_COERC;
+	  break;
+	}
+
       if (node->info.expr.op == PT_CAST
 	  && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_SHOULD_FOLD))
 	{
@@ -20428,7 +20438,7 @@ pt_get_collation_info (PT_NODE * node, int *coll_id, INTL_CODESET * codeset,
     case PT_FUNCTION:
     case PT_METHOD_CALL:
       assert (has_collation);
-      *coerc_level = PT_COLLATION_L3_COERC;
+      *coerc_level = PT_COLLATION_L2_COERC;
       break;
 
     case PT_NAME:
@@ -20527,7 +20537,11 @@ pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser,
     {
     case PT_VALUE:
       assert (has_collation);
+      *coerc_level = PT_COLLATION_L4_COERC;
+      break;
+
     case PT_HOST_VAR:
+      assert (has_collation);
       *coerc_level = PT_COLLATION_FULLY_COERC;
       break;
 
@@ -20538,7 +20552,7 @@ pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser,
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
       *coerc_level =
-	(has_collation) ? PT_COLLATION_L3_COERC : PT_COLLATION_FULLY_COERC;
+	(has_collation) ? PT_COLLATION_L2_COERC : PT_COLLATION_FULLY_COERC;
       break;
 
     case PT_NAME:
@@ -21015,7 +21029,23 @@ pt_common_collation (const int arg1_coll, const INTL_CODESET arg1_cs,
 	{
 	  assert (arg1_coerc_level == PT_COLLATION_FULLY_COERC);
 
-	  if (LANG_IS_COERCIBLE_COLL (arg1_coll))
+	  if (orig_arg1_coerc_level != orig_arg2_coerc_level)
+	    {
+	      if (orig_arg1_coerc_level > orig_arg2_coerc_level)
+		{
+		  *common_coll = arg2_coll;
+		  *common_cs = arg2_cs;
+		  return 0;
+		}
+	      else
+		{
+		  assert (orig_arg1_coerc_level < orig_arg2_coerc_level);
+		  *common_coll = arg1_coll;
+		  *common_cs = arg1_cs;
+		  return 0;
+		}
+	    }
+	  else if (LANG_IS_COERCIBLE_COLL (arg1_coll))
 	    {
 	      if (LANG_IS_COERCIBLE_COLL (arg2_coll))
 		{

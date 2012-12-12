@@ -3089,13 +3089,15 @@ enum pt_composite_locking
 typedef enum pt_coll_coerc_lev PT_COLL_COERC_LEV;
 enum pt_coll_coerc_lev
 {
-  PT_COLLATION_NOT_COERC = 0,
+  PT_COLLATION_L0_COERC = 0,	/* expressions with COLLATE modifier */
   PT_COLLATION_L1_COERC,	/* columns */
-  PT_COLLATION_L2_COERC,	/* not used */
-  PT_COLLATION_L3_COERC,	/* SELECT values, expressions */
-  PT_COLLATION_L4_COERC,	/* special operators (USER()) */
-  PT_COLLATION_FULLY_COERC	/* constants, HV, nodes
+  PT_COLLATION_L2_COERC,	/* SELECT values, expressions */
+  PT_COLLATION_L3_COERC,	/* special operators (USER()) */
+  PT_COLLATION_L4_COERC,	/* constants (string literals) */
+  PT_COLLATION_L5_COERC,	/* HV, session variables, nodes
 				 * with coercible collation */
+  PT_COLLATION_NOT_COERC = PT_COLLATION_L0_COERC,
+  PT_COLLATION_FULLY_COERC = PT_COLLATION_L5_COERC
 };
 
 void *parser_allocate_string_buffer (const PARSER_CONTEXT * parser,
