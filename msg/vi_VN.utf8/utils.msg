@@ -196,6 +196,7 @@ Lệnh có thể dùng :\n\
     start\n\
     stop\n\
     restart\n\
+    info\n\
     status      [-b] [-f] [-q] [-t] [-s <sec>] [<expr>]\n\
     on          tên-trung gian\n\
     off         tên-trung gian\n\
@@ -233,6 +234,7 @@ Lệnh khả dụng:\n\
     start\n\
     stop\n\
     restart\n\
+    info\n\
     status      [-b] [-f] [-t] [-s <sec>] [<expr>]\n\
     on          tên mảnh\n\
     off         tên mảnh\n\

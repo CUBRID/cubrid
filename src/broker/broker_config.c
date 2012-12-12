@@ -1158,7 +1158,7 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info,
       fprintf (fp, "MIN_NUM_APPL_SERVER\t=%d\n",
 	       br_info[i].appl_server_min_num);
       fprintf (fp, "MAX_NUM_APPL_SERVER\t=%d\n",
-	       br_info[i].appl_server_min_num);
+	       br_info[i].appl_server_max_num);
 #if defined (WINDOWS)
       fprintf (fp, "APPL_SERVER_PORT\t=%d\n", br_info[i].appl_server_port);
 #endif
@@ -1235,6 +1235,59 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info,
 	}
       fprintf (fp, "REJECTED_CLIENTS_COUNT\t=%d\n",
 	       br_info[i].reject_client_count);
+
+      tmp_str = get_conf_string (br_info[i].stripped_column_name, tbl_on_off);
+      if (tmp_str)
+	{
+	  fprintf (fp, "STRIPPED_COLUMN_NAME\t=%s\n", tmp_str);
+	}
+
+      tmp_str = get_conf_string (br_info[i].cache_user_info, tbl_on_off);
+      if (tmp_str)
+	{
+	  fprintf (fp, "CACHE_USER_INFO\t\t=%s\n", tmp_str);
+	}
+
+#if !defined (WINDOWS)
+      fprintf (fp, "SQL_LOG2\t\t=%d\n", br_info[i].sql_log2);
+#endif
+      fprintf (fp, "BROKER_PORT\t\t\t=%d\n", br_info[i].port);
+      fprintf (fp, "APPL_SERVER_NUM\t\t=%d\n", br_info[i].appl_server_num);
+      fprintf (fp, "APPL_SERVER_MAX_SIZE_HARD_LIMIT\t=%d\n",
+	       br_info[i].appl_server_hard_limit);
+      fprintf (fp, "MAX_PREPARED_STMT_COUNT\t=%d\n",
+	       br_info[i].max_prepared_stmt_count);
+      fprintf (fp, "PREFERRED_HOSTS\t\t=%s\n", br_info[i].preferred_hosts);
+
+      tmp_str = get_conf_string (br_info[i].jdbc_cache, tbl_on_off);
+      if (tmp_str)
+	{
+	  fprintf (fp, "JDBC_CACHE\t\t=%s\n", tmp_str);
+	}
+
+      tmp_str = get_conf_string (br_info[i].jdbc_cache_only_hint, tbl_on_off);
+      if (tmp_str)
+	{
+	  fprintf (fp, "JDBC_CACHE_ONLY_HINT\t=%s\n", tmp_str);
+	}
+
+      fprintf (fp, "JDBC_CACHE_LIFE_TIME\t=%d\n",
+	       br_info[i].jdbc_cache_life_time);
+      tmp_str =
+	get_conf_string (br_info[i].cci_default_autocommit, tbl_on_off);
+      if (tmp_str)
+	{
+	  fprintf (fp, "CCI_DEFAULT_AUTOCOMMIT\t=%s\n", tmp_str);
+	}
+
+      fprintf (fp, "MONITOR_HANG_INTERVAL\t=%d\n",
+	       br_info[i].monitor_hang_interval);
+      fprintf (fp, "HANG_TIMEOUT\t\t=%d\n", br_info[i].hang_timeout);
+      get_conf_string (br_info[i].reject_client_flag, tbl_on_off);
+      if (tmp_str)
+	{
+	  fprintf (fp, "REJECT_CLIENT_FLAG\t=%s\n", tmp_str);
+	}
 
 #if defined(CUBRID_SHARD)
       fprintf (fp, "SHARD_DB_NAME\t\t=%s\n", br_info[i].shard_db_name);

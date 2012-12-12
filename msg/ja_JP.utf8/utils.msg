@@ -196,6 +196,7 @@ cubrid 管理者ユーティリティー、バージョン　%s\n\
     start\n\
     stop\n\
     restart\n\
+    info\n\
     status      [-b] [-f] [-q] [-t] [-s <sec>] [<expr>]\n\
     on          <ブローカー名>\n\
     off         <ブローカー名>\n\
@@ -233,6 +234,7 @@ cubrid 管理者ユーティリティー、バージョン　%s\n\
     start\n\
     stop\n\
     restart\n\
+    info\n\
     status      [-b] [-f] [-t] [-s <sec>] [<expr>]\n\
     on          <シャード名>\n\
     off         <シャード名>\n\

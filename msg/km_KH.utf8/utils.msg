@@ -196,6 +196,7 @@ commandដែលមាន:\n\
     start\n\
     stop\n\
     restart\n\
+    info\n\
     status      [-b] [-f] [-q] [-t] [-s <sec>] [<expr>]\n\
     on          ឈ្មោះbroker\n\
     off         ឈ្មោះbroker\n\
@@ -233,6 +234,7 @@ Available command:\n\
     start\n\
     stop\n\
     restart\n\
+    info\n\
     status      [-b] [-f] [-t] [-s <sec>] [<expr>]\n\
     on          shard-name\n\
     off         shard-name\n\

@@ -196,6 +196,7 @@ Commandi disponibili:\n\
     start\n\
     stop\n\
     restart\n\
+    info\n\
     status      [-b] [-f] [-q] [-t] [-s <sec>] [<expr>]\n\
     on          nome-broker\n\
     off         nome-broker\n\
@@ -233,6 +234,7 @@ Commandi disponibili:\n\
     start\n\
     stop\n\
     restart\n\
+    info\n\
     status      [-b] [-f] [-t] [-s <sec>] [<expr>]\n\
     on          nome-shard\n\
     off         nome-shard\n\

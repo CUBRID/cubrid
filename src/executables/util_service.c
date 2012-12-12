@@ -77,6 +77,7 @@ typedef enum
   OFF,
   ACCESS_CONTROL,
   RESET,
+  INFO,
   SC_COPYLOGDB,
   SC_APPLYLOGDB,
   GET_SHARID
@@ -167,6 +168,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
 #define COMMAND_TYPE_OFF        "off"
 #define COMMAND_TYPE_ACL        "acl"
 #define COMMAND_TYPE_RESET      "reset"
+#define COMMAND_TYPE_INFO       "info"
 #define COMMAND_TYPE_COPYLOGDB  "copylogdb"
 #define COMMAND_TYPE_APPLYLOGDB "applylogdb"
 #define COMMAND_TYPE_GETID      "getid"
@@ -185,6 +187,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {ACCESS_CONTROL, COMMAND_TYPE_ACL,
    MASK_SERVER | MASK_BROKER | MASK_SHARD},
   {RESET, COMMAND_TYPE_RESET, MASK_BROKER | MASK_SHARD},
+  {INFO, COMMAND_TYPE_INFO, MASK_BROKER | MASK_SHARD},
   {SC_COPYLOGDB, COMMAND_TYPE_COPYLOGDB, MASK_HEARTBEAT},
   {SC_APPLYLOGDB, COMMAND_TYPE_APPLYLOGDB, MASK_HEARTBEAT},
   {GET_SHARID, COMMAND_TYPE_GETID, MASK_SHARD},
@@ -1739,7 +1742,16 @@ process_broker (int command_type, int argc, const char **argv,
 	      proc_execute (UTIL_BROKER_NAME, args, true, false, false, NULL);
 	  }
       }
+
+    case INFO:
+      {
+	const char *args[] = { UTIL_BROKER_NAME, COMMAND_TYPE_INFO, NULL };
+
+	status =
+	  proc_execute (UTIL_BROKER_NAME, args, true, false, false, NULL);
+      }
       break;
+
     default:
       return ER_GENERIC_ERROR;
     }
@@ -2071,6 +2083,16 @@ process_shard (int command_type, int argc, const char **argv,
 	free (args);
       }
       break;
+
+    case INFO:
+      {
+	const char *args[] = { UTIL_SHARD_NAME, COMMAND_TYPE_INFO, NULL };
+
+	status =
+	  proc_execute (UTIL_SHARD_NAME, args, true, false, false, NULL);
+      }
+      break;
+
     default:
       return ER_GENERIC_ERROR;
     }

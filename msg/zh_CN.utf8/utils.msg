@@ -196,6 +196,7 @@ cubrid 管理工具，版本 %s\n\
     start\n\
     stop\n\
     restart\n\
+    info\n\
     status      [-b] [-f] [-q] [-t] [-s <sec>] [<expr>]\n\
     on          broker-name\n\
     off         broker-name\n\
@@ -233,6 +234,7 @@ cubrid 管理工具，版本 %s\n\
     start\n\
     stop\n\
     restart\n\
+    info\n\
     status      [-b] [-f] [-t] [-s <sec>] [<expr>]\n\
     on          shard-name\n\
     off         shard-name\n\

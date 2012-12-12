@@ -196,6 +196,7 @@ Vorhandene Befehle:\n\
     start\n\
     stop\n\
     restart\n\
+    info\n\
     status      [-b] [-f] [-q] [-t] [-s <sec>] [<expr>]\n\
     on          Brokername\n\
     off         Brokername\n\
@@ -233,6 +234,7 @@ Vorhandene Befehle:\n\
     start\n\
     stop\n\
     restart\n\
+    info\n\
     status      [-b] [-f] [-t] [-s <sec>] [<expr>]\n\
     on          shard-name\n\
     off         shard-name\n\

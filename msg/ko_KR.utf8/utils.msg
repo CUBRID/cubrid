@@ -196,6 +196,7 @@ cubrid 관리자 유틸리티, 버전 %s\n\
     start\n\
     stop\n\
     restart\n\
+    info\n\
     status      [-b] [-f] [-q] [-t] [-s <sec>] [<expr>]\n\
     on          <브로커 이름>\n\
     off         <브로커 이름>\n\
@@ -233,6 +234,7 @@ cubrid 관리자 유틸리티, 버전 %s\n\
     start\n\
     stop\n\
     restart\n\
+    info\n\
     status      [-b] [-f] [-t] [-s <sec>] [<expr>]\n\
     on          <샤드 이름>\n\
     off         <샤드 이름>\n\
