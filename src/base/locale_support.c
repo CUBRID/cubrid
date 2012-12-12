@@ -1782,6 +1782,7 @@ start_collation_settings (void *data, const char **attr)
   XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
   LOCALE_DATA *ld = NULL;
   char *att_val = NULL;
+  char err_msg[ERR_MSG_SIZE];
   COLL_TAILORING *curr_coll_tail = NULL;
 
   assert (data != NULL);
@@ -1794,6 +1795,17 @@ start_collation_settings (void *data, const char **attr)
     {
       assert (att_val != NULL);
       curr_coll_tail->coll_id = atoi (att_val);
+
+      if (curr_coll_tail->coll_id < LANG_MAX_BUILTIN_COLLATIONS
+	  || curr_coll_tail->coll_id >= LANG_MAX_COLLATIONS)
+	{
+	  snprintf (err_msg, sizeof (err_msg) - 1,
+		    "Invalid collation numeric identifier : %d"
+		    " for collation '%s'. Value too small or too big.",
+		    curr_coll_tail->coll_id, curr_coll_tail->coll_name);
+	  LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
+	  return -1;
+	}
     }
 
   att_val = NULL;
@@ -3726,16 +3738,8 @@ locale_check_collation_id (const COLL_TAILORING * coll_tail)
   char err_msg[ERR_MSG_SIZE];
   static int taken_collations[LANG_MAX_COLLATIONS] = { 0 };
 
-  if (coll_tail->coll_id < LANG_MAX_BUILTIN_COLLATIONS
-      || coll_tail->coll_id >= LANG_MAX_COLLATIONS)
-    {
-      snprintf (err_msg, sizeof (err_msg) - 1,
-		"Invalid collation numeric identifier : %d"
-		" for collation '%s'. Value too small or too big.",
-		coll_tail->coll_id, coll_tail->coll_name);
-      LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
-      return ER_LOC_GEN;
-    }
+  assert (coll_tail->coll_id >= LANG_MAX_BUILTIN_COLLATIONS
+	  && coll_tail->coll_id < LANG_MAX_COLLATIONS);
 
   if (taken_collations[coll_tail->coll_id] != 0)
     {
