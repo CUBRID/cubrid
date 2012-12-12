@@ -2946,7 +2946,11 @@ la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid,
     {
     case LOG_REPLICATION_DATA:
       ptr = or_unpack_string (area, &item->class_name);
-      ptr = or_unpack_mem_value (ptr, &item->key);
+      ptr = or_unpack_mem_value (ptr, &item->key);	/* 
+							 * domain is only 
+							 * used to pack/unpack 
+							 * primary key DB value 
+							 */
       item->item_type = repl_log->rcvindex;
 
       break;
