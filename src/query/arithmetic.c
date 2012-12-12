@@ -2974,6 +2974,7 @@ truncate_date (DB_DATE * date, const DB_VALUE * format_str)
       break;
     case DT_DAY:		/* week day */
     case DT_DY:
+    case DT_D:
       weekday = day_of_week (*date);
       day = day - weekday;	/* Sunday is the first day of a week */
 
