@@ -132,7 +132,7 @@ shard_shm_set_shm_as (T_SHM_APPL_SERVER * shm_as_p, T_BROKER_INFO * br_info_p)
 
   shm_as_p->proxy_log_max_size = br_info_p->proxy_log_max_size;
 
-  FREE_MEM (env);
+  free_env (env, env_num);
   return;
 }
 
@@ -1008,6 +1008,18 @@ shard_shm_get_proxy_info (char *shm_as_cp, int proxy_id)
     }
 
   return proxy_info_p;
+}
+
+void
+free_env (char **env, int env_num)
+{
+  int i;
+
+  for (i = 0; i < env_num; i++)
+    {
+      FREE_MEM (env[i]);
+    }
+  FREE_MEM (env);
 }
 
 /* SHARD TODO : move it other c-file */

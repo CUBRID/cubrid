@@ -79,6 +79,7 @@ extern void shard_shm_dump_appl_server_internal (FILE * fp,
 extern void shard_shm_dump_appl_server (FILE * fp, int shmid);
 
 /* SHARD TODO : MV OTHER HEADER FILE */
+extern void free_env (char **env, int env_num);
 extern char **make_env (char *env_file, int *env_num);
 extern const char *get_appl_server_name (int appl_server_type, char **env,
 					 int env_num);

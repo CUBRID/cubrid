@@ -64,6 +64,7 @@
 #include "broker_error.h"
 #include "cas_sql_log2.h"
 #include "broker_acl.h"
+#include "chartype.h"
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #include "dbdef.h"
@@ -92,7 +93,7 @@
 	  }								\
 	} while (0)
 
-#define MEMBER_SIZE(TYPE, MEMBER) sizeof(((TYPE *)0)->MEMBER)
+#define MEMBER_SIZE(TYPE, MEMBER) ((int) sizeof(((TYPE *)0)->MEMBER))
 #define NUM_OF_DIGITS(NUMBER) (int)log10(NUMBER) + 1
 
 #if defined(CUBRID_SHARD)
@@ -139,6 +140,7 @@ static int br_inactivate (T_BROKER_INFO *);
 static void as_activate (T_APPL_SERVER_INFO *, int, T_BROKER_INFO *, char **,
 			 int, T_SHM_APPL_SERVER *, T_SHM_BROKER *);
 static void as_inactivate (int, char *br_name, int as_index);
+static void free_env (char **env, int env_num);
 static char **make_env (char *env_file, int *env_num);
 static const char *get_appl_server_name (int appl_server_type, char **env,
 					 int env_num);
@@ -296,7 +298,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id,
 	  MEMBER_SIZE (struct sockaddr_un, sun_path) - 1)
 	{
 	  snprintf (admin_err_msg, sizeof (admin_err_msg) - 1,
-		    "The socket path is too long (>%u): %s",
+		    "The socket path is too long (>%d): %s",
 		    MEMBER_SIZE (struct sockaddr_un, sun_path), path);
 	  return -1;
 	}
@@ -582,7 +584,7 @@ admin_add_cmd (int master_shm_id, const char *broker)
 
   uw_shm_detach (shm_appl_server);
   uw_shm_detach (shm_br);
-  FREE_MEM (env);
+  free_env (env, env_num);
 
   return 0;
 #endif /* CUBRID_SHARD */
@@ -753,7 +755,14 @@ admin_restart_cmd (int master_shm_id, const char *broker, int as_index)
 #endif /* !WINDOWS */
     }
 
-  SERVICE_READY_WAIT (shm_appl->as_info[as_index].service_ready_flag);
+  if (ut_is_appl_server_ready
+      (pid, &shm_appl->as_info[as_index].service_ready_flag) == false)
+    {
+      snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE,
+		"Could not start the application server: %s\n",
+		shm_appl->appl_server_name);
+      goto restart_error;
+    }
 
   shm_appl->as_info[as_index].uts_status = UTS_STATUS_IDLE;
   shm_appl->as_info[as_index].pid = pid;
@@ -779,15 +788,21 @@ admin_restart_cmd (int master_shm_id, const char *broker, int as_index)
 
   uw_shm_detach (shm_appl);
   uw_shm_detach (shm_br);
-  FREE_MEM (env);
+  free_env (env, env_num);
 
   return 0;
 
 restart_error:
   if (shm_appl)
-    uw_shm_detach (shm_appl);
+    {
+      uw_shm_detach (shm_appl);
+    }
   if (shm_br)
-    uw_shm_detach (shm_br);
+    {
+      uw_shm_detach (shm_br);
+    }
+  free_env (env, env_num);
+
   return -1;
 #endif /* CUBRID_SHARD */
 }
@@ -1549,7 +1564,7 @@ admin_getid_cmd (int master_shm_id, int argc, const char **argv)
   int appl_server_shm_id;
   int shard_key_id;
   bool full_info_flag = false;
-  char *shard_key;
+  const char *shard_key;
   char *shm_as_cp = NULL;
   char *shm_metadata_cp = NULL;
   const char *key_column;
@@ -1570,7 +1585,7 @@ admin_getid_cmd (int master_shm_id, int argc, const char **argv)
       return 0;
     }
 
-  while ((optchar = getopt (argc, argv, "b:fh?")) != EOF)
+  while ((optchar = getopt (argc, (char *const *) argv, "b:fh?")) != EOF)
     {
       switch (optchar)
 	{
@@ -1690,7 +1705,7 @@ admin_getid_cmd (int master_shm_id, int argc, const char **argv)
       goto getid_error;
     }
 
-  error = make_sp_value (&value, shard_key);
+  error = make_sp_value (&value, (char *) shard_key);
   if (error)
     {
       sprintf (admin_err_msg, "Failed to make shard key value.\n");
@@ -3209,7 +3224,7 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
       strcpy (admin_err_msg, "fork error");
       uw_shm_detach (shm_appl);
       uw_shm_destroy (br_info->appl_server_shm_id);
-      FREE_MEM (env);
+      free_env (env, env_num);
       return -1;
     }
 #endif /* WINDOWS */
@@ -3383,10 +3398,11 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
       memcpy (err_msg_backup, admin_err_msg, ADMIN_ERR_MSG_SIZE);
       br_inactivate (br_info);
       memcpy (admin_err_msg, err_msg_backup, ADMIN_ERR_MSG_SIZE);
-      FREE_MEM (env);
+      free_env (env, env_num);
       return -1;
     }
 
+  free_env (env, env_num);
   return 0;
 }
 
@@ -3591,7 +3607,7 @@ as_activate (T_APPL_SERVER_INFO * as_info, int as_index,
 #endif /* WINDOWS */
     }
 
-  SERVICE_READY_WAIT (as_info->service_ready_flag);
+  (void) ut_is_appl_server_ready (pid, &as_info->service_ready_flag);
 
   as_info->pid = pid;
   as_info->last_access_time = time (NULL);
@@ -3612,6 +3628,18 @@ as_inactivate (int as_pid, char *br_name, int as_index)
       ut_kill_process (as_pid, br_name, PROXY_INVALID_ID, SHARD_INVALID_ID,
 		       as_index);
     }
+}
+
+static void
+free_env (char **env, int env_num)
+{
+  int i;
+
+  for (i = 0; i < env_num; i++)
+    {
+      FREE_MEM (env[i]);
+    }
+  FREE_MEM (env);
 }
 
 static char **

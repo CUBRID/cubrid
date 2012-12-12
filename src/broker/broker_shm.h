@@ -118,10 +118,6 @@
 
 #define		APPL_NAME_LENGTH	128
 
-#define		SERVICE_OFF		0
-#define		SERVICE_ON		1
-#define		SERVICE_OFF_ACK		2
-
 #define		JOB_QUEUE_MAX_SIZE	511
 
 /* SHM_APPL_SERVER->suspend_mode */
@@ -135,24 +131,6 @@
 #define MAX_CRYPT_STR_LENGTH            32
 
 #define APPL_SERVER_NAME_MAX_SIZE	32
-
-#if defined(CUBRID_SHARD)
-#define		SERVICE_READY_WAIT_COUNT	6000
-#else
-#define		SERVICE_READY_WAIT_COUNT	3000
-#endif /* CUBRID_SHARD */
-#define		SERVICE_READY_WAIT(SERVICE_READY_FLAG)			\
-		do {							\
-		  int	i;						\
-		  for (i=0 ; i < SERVICE_READY_WAIT_COUNT ; i++) {	\
-		    if ((SERVICE_READY_FLAG) == TRUE) {			\
-		      break;						\
-		    }							\
-		    else {						\
-		      SLEEP_MILISEC(0, 10);				\
-		    }							\
-		  }							\
-		} while (0)
 
 #define CAS_LOG_RESET_REOPEN          0x01
 #define CAS_LOG_RESET_REMOVE            0x02
@@ -181,6 +159,13 @@
 #define MAX_HA_DBNAME_LENGTH 		128
 #endif /* !MAX_HA_DBNAME_LENGTH */
 #endif /* CUBRID_SHARD */
+
+typedef enum
+{
+  SERVICE_OFF = 0,
+  SERVICE_ON = 1,
+  SERVICE_OFF_ACK = 2
+} T_BROKER_SERVICE_STATUS;
 
 typedef enum t_con_status T_CON_STATUS;
 enum t_con_status

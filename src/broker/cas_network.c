@@ -140,8 +140,13 @@ net_init_env (void)
     strlen (sock_addr.sun_path) + sizeof (sock_addr.sun_family) + 1;
 #endif /* WINDOWS */
 
+#if !defined(WINDOWS)
+  unlink (port_name);
+#endif /* !WINDOWS */
+
   if (bind (sock_fd, (struct sockaddr *) &sock_addr, sock_addr_len) < 0)
     {
+      CLOSE_SOCKET (sock_fd);
       return INVALID_SOCKET;
     }
 
@@ -149,6 +154,7 @@ net_init_env (void)
   if (getsockname (sock_fd, (struct sockaddr *) &sock_addr, &sock_addr_len) <
       0)
     {
+      CLOSE_SOCKET (sock_fd);
       return INVALID_SOCKET;
     }
   *new_port = ntohs (sock_addr.sin_port);
@@ -156,6 +162,7 @@ net_init_env (void)
 
   if (listen (sock_fd, 3) < 0)
     {
+      CLOSE_SOCKET (sock_fd);
       return INVALID_SOCKET;
     }
 

@@ -133,7 +133,7 @@ shard_broker_activate (int master_shm_id, T_BROKER_INFO * br_info_p,
     {
       strcpy (admin_err_msg, "fork error");
 
-      FREE_MEM (env);
+      free_env (env, env_num);
       return -1;
     }
 #endif /* WINDOWS */
@@ -242,11 +242,11 @@ shard_broker_activate (int master_shm_id, T_BROKER_INFO * br_info_p,
 
   if (err_flag)
     {
-      FREE_MEM (env);
+      free_env (env, env_num);
       return -1;
     }
 
-  FREE_MEM (env);
+  free_env (env, env_num);
   return 0;
 }
 
@@ -425,7 +425,7 @@ shard_proxy_activate (int as_shm_id, int proxy_id, char *shm_as_cp)
       uw_shm_detach (shm_as_p);
       uw_shm_destroy (br_info_p->appl_server_shm_id);
 #endif
-      FREE_MEM (env);
+      free_env (env, env_num);
       return -1;
     }
 #endif /* WINDOWS */
@@ -479,6 +479,7 @@ shard_proxy_activate (int as_shm_id, int proxy_id, char *shm_as_cp)
   SLEEP_MILISEC (0, 200);
 
   proxy_info_p->pid = pid;
+  free_env (env, env_num);
 
   return 0;
 }
@@ -678,7 +679,7 @@ shard_as_activate (int as_shm_id,
   as_info_p->uts_status = UTS_STATUS_CON_WAIT;
   as_info_p->service_flag = SERVICE_ON;
 
-  FREE_MEM (env);
+  free_env (env, env_num);
   return 0;
 }
 
@@ -793,8 +794,8 @@ shard_process_activate (int master_shm_id, T_BROKER_INFO * br_info_p,
 	  for (k = 0; k < shard_info_p->num_appl_server; k++)
 	    {
 	      as_info_p = &shard_info_p->as_info[k];
-	      SERVICE_READY_WAIT (as_info_p->service_ready_flag);
-	      if (as_info_p->service_ready_flag == false)
+	      if (ut_is_appl_server_ready
+		  (as_info_p->pid, &as_info_p->service_ready_flag) == false)
 		{
 		  sprintf (admin_err_msg,
 			   "failed to connect database. [%s]\n\n"

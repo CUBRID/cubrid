@@ -548,7 +548,7 @@ ut_time_string (char *buf, struct timeval *time_val)
 }
 
 char *
-ut_get_ipv4_string (char *ip_str, int len, unsigned char *ip_addr)
+ut_get_ipv4_string (char *ip_str, int len, const unsigned char *ip_addr)
 {
   assert (ip_addr != NULL);
   assert (ip_str != NULL);
@@ -570,4 +570,48 @@ ut_get_avg_from_array (int array[], int size)
     }
 
   return (float) total / size;
+}
+
+bool
+ut_is_appl_server_ready (int pid, char *ready_flag)
+{
+  unsigned int i;
+
+  for (i = 0; i < SERVICE_READY_WAIT_COUNT; i++)
+    {
+      if (*ready_flag == true)
+	{
+	  return true;
+	}
+      else
+	{
+#if defined(WINDOWS)
+	  HANDLE h_process;
+
+	  h_process = OpenProcess (PROCESS_QUERY_INFORMATION, FALSE, pid);
+	  if (h_process != NULL)
+	    {
+	      CloseHandle (h_process);
+	      SLEEP_MILISEC (0, 10);
+	      continue;
+	    }
+	  else
+	    {
+	      return false;
+	    }
+#else /* WINDOWS */
+	  if (kill (pid, 0) == 0)
+	    {
+	      SLEEP_MILISEC (0, 10);
+	      continue;
+	    }
+	  else
+	    {
+	      return false;
+	    }
+#endif /* WINDOWS */
+	}
+    }
+
+  return false;
 }

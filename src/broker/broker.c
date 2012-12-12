@@ -1625,11 +1625,17 @@ run_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index,
     }
 #endif
 
-  SERVICE_READY_WAIT (as_info_p->service_ready_flag);
-  run_appl_server_flag = 0;
+  if (ut_is_appl_server_ready (pid, &as_info_p->service_ready_flag))
+    {
+      as_info_p->transaction_start_time = (time_t) 0;
+      as_info_p->num_restarts++;
+    }
+  else
+    {
+      pid = -1;
+    }
 
-  as_info_p->transaction_start_time = (time_t) 0;
-  as_info_p->num_restarts++;
+  run_appl_server_flag = 0;
 
   return pid;
 }
