@@ -9259,6 +9259,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
   int copy_opr;
   TP_DOMAIN *tmp_domain_p = NULL;
   DB_TYPE dbval_type;
+  double ntile_bucket = 0.0;
 
   DB_MAKE_NULL (&dbval);
   DB_MAKE_NULL (&sqr_val);
@@ -9350,28 +9351,30 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 	{
 	  /* the operand is the number of buckets and should be constant within
 	     the window; we can extract it now for later use */
-	  if (tp_value_coerce (&dbval, &dbval, &tp_Integer_domain) !=
+	  if (tp_value_coerce (&dbval, &dbval, &tp_Double_domain) !=
 	      DOMAIN_COMPATIBLE)
 	    {
 	      pr_clear_value (&dbval);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
 		      pr_type_name (DB_VALUE_DOMAIN_TYPE (&dbval)),
-		      pr_type_name (TP_DOMAIN_TYPE (&tp_Integer_domain)));
+		      pr_type_name (TP_DOMAIN_TYPE (&tp_Double_domain)));
 	      return ER_FAILED;
 	    }
 
-	  /* we're sure the operand is not null */
-	  func_p->info.ntile.is_null = false;
-	  func_p->info.ntile.bucket_count = DB_GET_INT (&dbval);
+	  ntile_bucket = DB_GET_DOUBLE (&dbval);
 
-	  if (func_p->info.ntile.bucket_count < 1)
+	  /* boundary check */
+	  if (ntile_bucket < 1.0 || ntile_bucket > DB_INT32_MAX)
 	    {
-	      /* positive integer required */
 	      pr_clear_value (&dbval);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_NTILE_INVALID_BUCKET_NUMBER, 0);
 	      return ER_FAILED;
 	    }
+
+	  /* we're sure the operand is not null */
+	  func_p->info.ntile.is_null = false;
+	  func_p->info.ntile.bucket_count = (int) floor (ntile_bucket);
 	}
       break;
 

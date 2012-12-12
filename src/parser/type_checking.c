@@ -12040,8 +12040,8 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  && arg_type != PT_TYPE_MAYBE
 	  && arg_type != PT_TYPE_NULL && arg_type != PT_TYPE_NA)
 	{
-	  /* cast arg_list to int */
-	  arg_list = pt_wrap_with_cast_op (parser, arg_list, PT_TYPE_INTEGER,
+	  /* cast arg_list to double */
+	  arg_list = pt_wrap_with_cast_op (parser, arg_list, PT_TYPE_DOUBLE,
 					   0, 0, NULL);
 	  if (arg_list == NULL)
 	    {
