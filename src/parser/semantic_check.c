@@ -5888,6 +5888,21 @@ pt_check_partition_values (PARSER_CONTEXT * parser, PT_TYPE_ENUM desired_type,
 	  break;
 	}
 
+      if (PT_HAS_COLLATION (val->type_enum) && val->data_type != NULL
+	  && data_type != NULL && PT_HAS_COLLATION (data_type->type_enum)
+	  && data_type->info.data_type.units
+	  != val->data_type->info.data_type.units)
+	{
+	  error = ER_FAILED;
+	  PT_ERRORmf2 (parser, val, MSGCAT_SET_PARSER_SEMANTIC,
+		       MSGCAT_SEMANTIC_PARTITION_VAL_CODESET,
+		       lang_charset_introducer (val->data_type->
+						info.data_type.units),
+		       lang_charset_introducer (data_type->
+						info.data_type.units));
+	  break;
+	}
+
       if (val->type_enum != PT_TYPE_NULL && val->type_enum != desired_type)
 	{
 	  /* Coerce this value to the desired type. We have to preserve the

@@ -3986,6 +3986,8 @@ PARSER_VARCHAR *
 describe_value (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 		const DB_VALUE * value)
 {
+  INTL_CODESET codeset = INTL_CODESET_NONE;
+
   assert (parser != NULL);
 
   if (DB_IS_NULL (value))
@@ -3999,6 +4001,13 @@ describe_value (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	{
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
+	  codeset = DB_GET_STRING_CODESET (value);
+	  if (codeset != LANG_SYS_CODESET)
+	    {
+	      buffer =
+		pt_append_nulstring (parser, buffer,
+				     lang_charset_introducer (codeset));
+	    }
 	  buffer = pt_append_nulstring (parser, buffer, "'");
 	  buffer = describe_data (parser, buffer, value);
 	  buffer = pt_append_nulstring (parser, buffer, "'");
@@ -4019,6 +4028,14 @@ describe_value (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	      /* print enumerations as strings */
 	      if (tp_enumeration_to_varchar (value, &varchar_val) == NO_ERROR)
 		{
+		  codeset = DB_GET_ENUM_CODESET (value);
+		  if (codeset != LANG_SYS_CODESET)
+		    {
+		      buffer =
+			pt_append_nulstring (parser, buffer,
+					     lang_charset_introducer
+					     (codeset));
+		    }
 		  buffer = describe_value (parser, buffer, &varchar_val);
 		}
 	      else

@@ -338,9 +338,9 @@ extern "C"
   extern int lang_get_client_collation (void);
   extern void lang_set_parser_use_client_charset (bool use);
   extern bool lang_get_parser_use_client_charset (void);
-  extern const char *lang_charset_introducer (const INTL_CODESET codeset);
 #endif				/* !SERVER_MODE */
 
+  extern const char *lang_charset_introducer (const INTL_CODESET codeset);
   extern int lang_load_library (const char *lib_file, void **handle);
   extern int lang_locale_data_load_from_lib (LANG_LOCALE_DATA * lld,
 					     void *lib_handle,

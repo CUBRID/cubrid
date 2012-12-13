@@ -2618,6 +2618,8 @@ lang_get_parser_use_client_charset (void)
   return lang_Parser_use_client_charset;
 }
 
+#endif /* !SERVER_MODE */
+
 /*
  * lang_charset_introducer() - returns introducer text to print for a charset
  *
@@ -2641,8 +2643,6 @@ lang_charset_introducer (const INTL_CODESET codeset)
 
   return NULL;
 }
-#endif /* !SERVER_MODE */
-
 
 
 /* Collation functions */

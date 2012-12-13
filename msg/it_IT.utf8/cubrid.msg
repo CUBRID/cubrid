@@ -1592,6 +1592,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 265 Impossibile utilizzare la tabella di destinazione nella specificazione di origine.
 266 COLLATE is not allowed in this context.
 267 COLLATE modifier cannot change codeset (from '%s' to '%s'). Try using CAST instead.
+268 Invalid codeset '%1$s' for partition value. Expecting '%2$s' codeset.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Fuori di memoria virtuale: Impossibile allocare %d byte.
