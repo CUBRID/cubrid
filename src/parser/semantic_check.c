@@ -1164,7 +1164,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
       arg_dt = (node->info.expr.arg1 != NULL)
 	? node->info.expr.arg1->data_type : NULL;
 
-      lc = lang_get_collation (node->info.expr.coll_modifier);
+      lc = lang_get_collation (PT_GET_COLLATION_MODIFIER (node));
       if (arg_dt != NULL && lc->codeset != arg_dt->info.data_type.units)
 	{
 	  /* cannot change codeset with COLLATE */
@@ -10031,7 +10031,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 		{
 		  node->info.expr.cast_type = cast_type;
 		  cast_type->info.data_type.collation_id =
-		    node->info.expr.coll_modifier;
+		    PT_GET_COLLATION_MODIFIER (node);
 		}
 	    }
 

@@ -8570,7 +8570,7 @@ pt_apply_dot (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g,
 static PT_NODE *
 pt_init_dot (PT_NODE * p)
 {
-  p->info.dot.coll_modifier = -1;
+  p->info.dot.coll_modifier = 0;
   return p;
 }
 
@@ -9449,7 +9449,7 @@ pt_init_expr (PT_NODE * p)
   p->info.expr.location = 0;
   p->info.expr.is_order_dependent = false;
   p->info.expr.recursive_type = PT_TYPE_NONE;
-  p->info.expr.coll_modifier = -1;
+  p->info.expr.coll_modifier = 0;
   return p;
 }
 
@@ -10948,7 +10948,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	  char buf[PT_MEMB_BUF_SIZE];
 
 	  sprintf (buf, " collate %s",
-		   lang_get_collation_name (p->info.expr.coll_modifier));
+		   lang_get_collation_name (PT_GET_COLLATION_MODIFIER (p)));
 
 	  if (p->info.expr.arg1->node_type != PT_NAME
 	      && p->info.expr.arg1->node_type != PT_DOT_
@@ -11648,7 +11648,7 @@ pt_init_function (PT_NODE * p)
   p->info.function.analytic.offset = NULL;
   p->info.function.hidden_column = 0;
   p->info.function.is_order_dependent = false;
-  p->info.function.coll_modifier = -1;
+  p->info.function.coll_modifier = 0;
   return p;
 }
 
@@ -12786,7 +12786,7 @@ pt_init_name (PT_NODE * p)
   p->info.name.indx_key_limit = NULL;
   p->info.name.hidden_column = 0;
   p->info.name.db_object_chn = NULL_CHN;
-  p->info.name.coll_modifier = -1;
+  p->info.name.coll_modifier = 0;
   return p;
 }
 
@@ -15289,7 +15289,7 @@ pt_init_value (PT_NODE * p)
   p->info.value.print_charset = false;
   p->info.value.print_collation = false;
   p->info.value.has_cs_introducer = false;
-  p->info.value.coll_modifier = -1;
+  p->info.value.coll_modifier = 0;
   return p;
 }
 

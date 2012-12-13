@@ -22978,30 +22978,28 @@ pt_set_collation_modifier (PARSER_CONTEXT *parser, PT_NODE *node,
 		     MSGCAT_SEMANTIC_COLLATE_NOT_ALLOWED);
 	  return node;
 	}
-      node->info.value.coll_modifier = lang_coll->coll.coll_id;
+      PT_SET_NODE_COLL_MODIFIER (node, lang_coll->coll.coll_id);
       pt_value_set_collation_info (parser, node, coll_node);
     }
   else if (node->node_type == PT_EXPR)
     {
-      node->info.expr.coll_modifier = lang_coll->coll.coll_id;
+      if (node->info.expr.op == PT_EVALUATE_VARIABLE
+	  || node->info.expr.op == PT_DEFINE_VARIABLE)
+	{
+	  PT_ERRORm (parser, coll_node, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_COLLATE_NOT_ALLOWED);
+	  return node;
+	}
+      PT_SET_NODE_COLL_MODIFIER (node, lang_coll->coll.coll_id);
       if (!pt_is_comp_op (node->info.expr.op))
 	{
 	  do_wrap_with_cast = true;
 	}
     }
-  else if (node->node_type == PT_NAME)
+  else if (node->node_type == PT_NAME || node->node_type == PT_DOT_
+	   || node->node_type == PT_FUNCTION)
     {
-      node->info.name.coll_modifier = lang_coll->coll.coll_id;
-      do_wrap_with_cast = true;
-    }
-  else if (node->node_type == PT_DOT_)
-    {
-      node->info.dot.coll_modifier = lang_coll->coll.coll_id;
-      do_wrap_with_cast = true;
-    }
-  else if (node->node_type == PT_FUNCTION)
-    {
-      node->info.function.coll_modifier = lang_coll->coll.coll_id;
+      PT_SET_NODE_COLL_MODIFIER (node, lang_coll->coll.coll_id);
       do_wrap_with_cast = true;
     }
   else
@@ -23010,7 +23008,7 @@ pt_set_collation_modifier (PARSER_CONTEXT *parser, PT_NODE *node,
 		 MSGCAT_SEMANTIC_COLLATE_NOT_ALLOWED);
       assert (do_wrap_with_cast == false);
     }
-  
+
   if (do_wrap_with_cast)
     {
       PT_NODE *cast_expr = parser_make_expression (PT_CAST, node, NULL, NULL);
@@ -23019,9 +23017,9 @@ pt_set_collation_modifier (PARSER_CONTEXT *parser, PT_NODE *node,
 	  cast_expr->info.expr.cast_type = NULL;
 	  PT_EXPR_INFO_SET_FLAG (cast_expr, PT_EXPR_INFO_CAST_COLL_MODIFIER);
 	  node = cast_expr;
-	  cast_expr->info.expr.coll_modifier = lang_coll->coll.coll_id;
+	  PT_SET_NODE_COLL_MODIFIER (cast_expr, lang_coll->coll.coll_id);
 	}
     }
-    
+
   return node;
 }

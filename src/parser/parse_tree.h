@@ -627,12 +627,38 @@
 
 #define PT_EMPTY	INT_MAX
 
-#define PT_GET_COLLATION_MODIFIER(p)					    \
-  (((p)->node_type == PT_EXPR) ? ((p)->info.expr.coll_modifier) :	    \
-  (((p)->node_type == PT_VALUE) ? ((p)->info.value.coll_modifier) :	    \
-  (((p)->node_type == PT_NAME) ? ((p)->info.name.coll_modifier) :	    \
-  (((p)->node_type == PT_FUNCTION) ? ((p)->info.function.coll_modifier) :   \
-  (((p)->node_type == PT_DOT_) ? ((p)->info.dot.coll_modifier) : (-1))))))
+#define PT_GET_COLLATION_MODIFIER(p)					     \
+  (((p)->node_type == PT_EXPR) ? ((p)->info.expr.coll_modifier - 1) :	     \
+  (((p)->node_type == PT_VALUE) ? ((p)->info.value.coll_modifier - 1) :	     \
+  (((p)->node_type == PT_NAME) ? ((p)->info.name.coll_modifier - 1) :	     \
+  (((p)->node_type == PT_FUNCTION) ? ((p)->info.function.coll_modifier - 1) :\
+  (((p)->node_type == PT_DOT_) ? ((p)->info.dot.coll_modifier - 1) : (-1))))))
+
+#define PT_SET_NODE_COLL_MODIFIER(p, coll)                  \
+    do {                                                    \
+      assert ((p) != NULL);				    \
+      if ((p)->node_type == PT_EXPR)			    \
+	{						    \
+	  (p)->info.expr.coll_modifier = (coll) + 1;	    \
+	}						    \
+      else if ((p)->node_type == PT_VALUE)		    \
+	{						    \
+	  (p)->info.value.coll_modifier = (coll) + 1;	    \
+	}						    \
+      else if ((p)->node_type == PT_NAME)		    \
+	{						    \
+	  (p)->info.name.coll_modifier = (coll) + 1;	    \
+	}						    \
+      else if ((p)->node_type == PT_FUNCTION)		    \
+	{						    \
+	  (p)->info.function.coll_modifier = (coll) + 1;    \
+	}						    \
+      else						    \
+	{						    \
+	  assert ((p)->node_type == PT_DOT_);		    \
+	  (p)->info.dot.coll_modifier = (coll) + 1;	    \
+	}						    \
+    } while (0)
 
 /*
  Enumerated types of parse tree statements
@@ -1837,7 +1863,7 @@ struct pt_dot_info
   PT_NODE *selector;		/* only set if selector used A[SELECTOR].B  */
   PT_OP_TYPE op;		/* binary or unary op code */
   short tag_click_counter;	/* 0: normal name, 1: click counter name */
-  int coll_modifier;
+  int coll_modifier;		/* collation modifier = collation + 1 */
 };
 
 /* DROP ENTITY
@@ -1997,7 +2023,7 @@ struct pt_expr_info
   bool is_order_dependent;	/* true if expression is order dependent */
   PT_TYPE_ENUM recursive_type;	/* common type for recursive expression
 				 * arguments (like PT_GREATEST, PT_LEAST,...) */
-  int coll_modifier;
+  int coll_modifier;		/* collation modifier = collation + 1 */
 };
 
 
@@ -2018,7 +2044,7 @@ struct pt_function_info
 				 * the class OID column */
   PT_NODE *order_by;		/* ordering PT_SORT_SPEC for GROUP_CONCAT */
   bool is_order_dependent;	/* true if function is order dependent */
-  int coll_modifier;
+  int coll_modifier;		/* collation modifier = collation + 1 */
   struct
   {
     PT_NODE *partition_by;	/* partition PT_SORT_SPEC list */
@@ -2181,7 +2207,7 @@ struct pt_name_info
   short location;		/* 0: WHERE; n: join condition of n-th FROM */
   short tag_click_counter;	/* 0: normal name, 1: click counter name */
   PT_NODE *indx_key_limit;	/* key limits for index name */
-  int coll_modifier;
+  int coll_modifier;		/* collation modifier = collation + 1 */
 };
 
 enum
@@ -2625,7 +2651,7 @@ struct pt_value_info
   bool print_collation;
   bool has_cs_introducer;	/* 1 if charset introducer is used for string
 				 * node e.g. _utf8'a'; 0 otherwise. */
-  int coll_modifier;
+  int coll_modifier;		/* collation modifier = collation + 1 */
 };
 
 

@@ -8792,11 +8792,12 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
       goto error;
     }
 
-  if (expr != NULL && expr->info.expr.coll_modifier != -1)
+  if (expr != NULL && PT_GET_COLLATION_MODIFIER (expr) != -1)
     {
       if (!(PT_HAS_COLLATION (arg1_type) || PT_HAS_COLLATION (arg2_type)
 	    || PT_HAS_COLLATION (arg3_type)
-	    || PT_HAS_COLLATION (node->type_enum)))
+	    || PT_HAS_COLLATION (node->type_enum)
+	    || (expr->info.expr.op == PT_CAST && arg1_type == PT_TYPE_MAYBE)))
 	{
 	  if (!pt_has_error (parser))
 	    {
@@ -9862,12 +9863,31 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
       if (PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_COLL_MODIFIER)
 	  && cast_type == NULL)
 	{
+	  /* cast_type should be the same as arg1 type */
 	  cast_type = parser_copy_tree (parser, arg1->data_type);
+
+	  /* for HV argument, attempt to resolve using the expected domain
+	   * of expression's node or arg1 node */
+	  if (cast_type == NULL && node->expected_domain != NULL &&
+	      TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (node->expected_domain)))
+	    {
+	      cast_type =
+		pt_domain_to_data_type (parser, node->expected_domain);
+	    }
+
+	  if (cast_type == NULL && arg1->expected_domain != NULL &&
+	      TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (arg1->expected_domain)))
+	    {
+	      /* create data type from expected domain */
+	      cast_type =
+		pt_domain_to_data_type (parser, arg1->expected_domain);
+	    }
+
 	  if (cast_type != NULL)
 	    {
 	      node->info.expr.cast_type = cast_type;
 	      cast_type->info.data_type.collation_id =
-		node->info.expr.coll_modifier;
+		PT_GET_COLLATION_MODIFIER (node);
 	    }
 	}
 
@@ -20679,6 +20699,16 @@ pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser,
 	}
       while (dt_node != NULL);
     }
+  else
+    {
+      if (node->node_type == PT_FUNCTION
+	  && node->info.function.arg_list != NULL
+	  && node->info.function.arg_list->type_enum == PT_TYPE_MAYBE)
+	{
+	  /* charset and collation of system */
+	  has_collation = true;
+	}
+    }
 
   if (!has_collation)
     {
@@ -20977,7 +21007,7 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
 			      && node->info.expr.op == PT_CAST);
 		      PT_EXPR_INFO_SET_FLAG (node,
 					     PT_EXPR_INFO_CAST_COLL_MODIFIER);
-		      node->info.expr.coll_modifier = coll_id;
+		      PT_SET_NODE_COLL_MODIFIER (node, coll_id);
 		    }
 		}
 
@@ -21422,7 +21452,24 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
   assert (expr->node_type == PT_EXPR);
 
   op = expr->info.expr.op;
-  expr_coll_modifier = expr->info.expr.coll_modifier;
+  arg1 = expr->info.expr.arg1;
+  arg2 = expr->info.expr.arg2;
+  arg3 = expr->info.expr.arg3;
+
+  if (op == PT_DEFINE_VARIABLE
+      && pt_get_collation_info (arg2, &arg2_coll, &arg2_cs,
+				&arg2_coerc_level))
+    {
+      if (arg2_coll != LANG_COERCIBLE_COLL)
+	{
+	  /* user defined variables must have sytem collation */
+	  PT_ERRORmf (parser, *node, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_SESSION_VAR_COLLATION,
+		      lang_get_collation_name (LANG_COERCIBLE_COLL));
+	  goto error_exit;
+	}
+    }
+  expr_coll_modifier = PT_GET_COLLATION_MODIFIER (expr);
 
   if (expr_coll_modifier != -1)
     {
@@ -21437,7 +21484,8 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
       if (expr_coll_modifier != -1)
 	{
 	  /* the result is string (was checked above), force collation */
-	  assert (PT_HAS_COLLATION (expr->type_enum) || pt_is_comp_op (op));
+	  assert (PT_HAS_COLLATION (expr->type_enum)
+		  || op == PT_EVALUATE_VARIABLE || pt_is_comp_op (op));
 	  goto coerce_result;
 	}
       return NO_ERROR;
@@ -21450,10 +21498,6 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
   reverse_arg2_arg3 = (op == PT_RPAD || op == PT_LPAD);
 
   /* step 1 : get info */
-  arg1 = expr->info.expr.arg1;
-  arg2 = expr->info.expr.arg2;
-  arg3 = expr->info.expr.arg3;
-
   if (reverse_arg2_arg3)
     {
       PT_NODE *tmp = arg2;

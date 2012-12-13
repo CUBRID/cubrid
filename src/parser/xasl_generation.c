@@ -9117,7 +9117,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 							      node->info.
 							      expr.cast_type);
 			assert (domain->collation_id
-				== node->info.expr.coll_modifier);
+				== PT_GET_COLLATION_MODIFIER (node));
 			regu->domain = domain;
 			REGU_VARIABLE_SET_FLAG (regu,
 						REGU_VARIABLE_APPLY_COLLATION);
