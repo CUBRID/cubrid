@@ -455,7 +455,6 @@ cci_connect_with_url_internal (char *url, char *user, char *pass,
   char *end = NULL;
   char *host, *dbname;
   int port;
-  bool use_url = false;
   T_CON_HANDLE *con_handle = NULL;
 
   reset_error_buffer (err_buf);
@@ -490,17 +489,6 @@ cci_connect_with_url_internal (char *url, char *user, char *pass,
       pass = (char *) "";
     }
 
-  if (user[0] == '\0')
-    {
-      if (pass[0] != '\0')
-	{
-	  /* error - cci_connect_with_url (url, "", "pass") */
-	  set_error_buffer (err_buf, CCI_ER_CONNECT, NULL);
-	  return CCI_ER_CONNECT;
-	}
-      use_url = true;
-    }
-
   error = cci_url_match (url, token);
   if (error != CCI_ER_NO_ERROR)
     {
@@ -511,11 +499,16 @@ cci_connect_with_url_internal (char *url, char *user, char *pass,
   host = token[0];
   port = (int) strtol (token[1], &end, 10);
   dbname = token[2];
-  if (use_url)
+
+  if (*user == '\0')
     {
       user = token[3];
+    }
+  if (*pass == '\0')
+    {
       pass = token[4];
     }
+
   property = token[5];
   if (property == NULL)
     {
@@ -5271,7 +5264,6 @@ cci_check_property (char **property, T_CCI_ERROR * err_buf)
     }
 
   return true;
-
 }
 
 static void
@@ -5435,9 +5427,21 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err_buf)
   reset_error_buffer (&latest_err_buf);
 
   ds->user = cci_property_get (prop, datasource_key[CCI_DS_KEY_USER]);
-  if (cci_check_property (&ds->user, &latest_err_buf) == false)
+  if (ds->user == NULL)
     {
-      goto create_datasource_error;
+      /* a user may b e null */
+      ds->user = strdup ("");
+      if (ds->user == NULL)
+	{
+	  goto create_datasource_error;
+	}
+    }
+  else
+    {
+      if (!cci_check_property (&ds->user, &latest_err_buf))
+	{
+	  goto create_datasource_error;
+	}
     }
 
   ds->pass = cci_property_get (prop, datasource_key[CCI_DS_KEY_PASSWORD]);
