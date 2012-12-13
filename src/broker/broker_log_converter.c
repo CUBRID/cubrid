@@ -464,6 +464,10 @@ get_args (int argc, char *argv[])
   return optind;
 
 usage:
-  fprintf (stderr, "%s infile outfile\n", argv[0]);
+  fprintf (stderr,
+	   "usage : %s [OPTION] infile outfile\n"
+	   "\n"
+	   "valid options:\n"
+	   "  -i   add a unique id to each query as a comment.\n", argv[0]);
   return -1;
 }

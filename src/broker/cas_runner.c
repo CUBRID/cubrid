@@ -576,8 +576,20 @@ get_args (int argc, char *argv[])
 
 getargs_err:
   fprintf (stderr,
-	   "usage : %s -I broker_host -P broker_port -d dbname [-u dbuser] [-p dbpasswd] [-t num_thread] [-r repeat_count] [-Q] [-o result_file] exec_script_file\n",
-	   argv[0]);
+	   "usage : %s [OPTION] exec_script_file\n"
+	   "\n"
+	   "valid options:\n"
+	   "  -I   broker host\n"
+	   "  -P   broker port\n"
+	   "  -d   database name\n"
+	   "  -u   user name\n"
+	   "  -p   user password\n"
+	   "  -t   the number of thread\n"
+	   "  -r   the number of times to execute entire query by each thread\n"
+	   "  -Q   enable to print a plan per query\n"
+	   "  -o   result file\n"
+	   "  -s   enable to print a statdump per query\n"
+	   "  -a   enable auto commit mode\n", argv[0]);
   return -1;
 }
 
