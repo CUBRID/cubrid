@@ -3764,11 +3764,6 @@ xboot_register_client (THREAD_ENTRY * thread_p,
       memcpy (server_credential->server_session_key, boot_Server_session_key,
 	      SERVER_SESSION_KEY_SIZE);
 
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-	      ER_BO_CLIENT_CONNECTED, 4, client_credential->program_name,
-	      client_credential->process_id, client_credential->host_name,
-	      tran_index);
-
 #if defined(SERVER_MODE)
       /* Check the server's state for HA action for this client */
       if (BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type))
