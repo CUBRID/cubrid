@@ -3587,6 +3587,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "coercibility ";
     case PT_COLLATION:
       return "collation ";
+    case PT_WIDTH_BUCKET:
+      return "width_bucket";
     default:
       return "unknown opcode";
     }
@@ -9534,6 +9536,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
   PT_NODE *t, *or_next;
   int print_from = 0;
   PT_NODE *arg3;
+  PT_NODE *between, *between_ge_lt;
 
   assert_release (p != p->info.expr.arg1);
   assert_release (p != p->info.expr.arg2);
@@ -11486,6 +11489,39 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " collation(");
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_WIDTH_BUCKET:
+      q = pt_append_nulstring (parser, q, "width_bucket(");
+
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ", ");
+
+      /* we use PT_BETWEEN and PT_BETWEEN_GE_LT to represent the boundaries */
+      between = p->info.expr.arg2;
+      assert (between != NULL
+	      && between->node_type == PT_EXPR
+	      && between->info.expr.op == PT_BETWEEN);
+
+      between_ge_lt = between->info.expr.arg2;
+      assert (between_ge_lt != NULL
+	      && between_ge_lt->node_type == PT_EXPR
+	      && between_ge_lt->info.expr.op == PT_BETWEEN_GE_LT);
+
+      r2 = pt_print_bytes (parser, between_ge_lt->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r2);
+      q = pt_append_nulstring (parser, q, ", ");
+
+      r3 = pt_print_bytes (parser, between_ge_lt->info.expr.arg2);
+      q = pt_append_varchar (parser, q, r3);
+      q = pt_append_nulstring (parser, q, ", ");
+
+      r4 = pt_print_bytes (parser, p->info.expr.arg3);
+      q = pt_append_varchar (parser, q, r4);
+
+      q = pt_append_nulstring (parser, q, ")");
+
+      break;
     }
 
   for (t = p->or_next; t; t = t->or_next)
@@ -16937,6 +16973,10 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_COERCIBILITY:
 	  /* coercibility is always folded to constant */
 	  assert (false);
+	case PT_WIDTH_BUCKET:
+	  return (pt_is_const_expr_node (node->info.expr.arg1)
+		  && pt_is_const_expr_node (node->info.expr.arg2)
+		  && pt_is_const_expr_node (node->info.expr.arg3));
 	default:
 	  return false;
 	}

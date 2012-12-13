@@ -1174,7 +1174,9 @@ $ LOADDB
 1105 Internal error: partially failed to flush dirty object. 
 1106 Multiple rows in source table match the same row in destination table.
 1107 Invalid bucket number for NTILE. Should be greater than zero and no more than 2,147,483,647.
-1108 ១១០៤ កំហុសទីបំផុត
+1108 Invalid bucket number for WIDTH_BUCKET. Should be greater than zero and less than 2,147,483,647.
+1109 Invalid bound for WIDTH_BUCKET. Lower bound cannot be equal to upper bound.
+1110 ១១០៤ កំហុសទីបំផុត
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error ក្នុងអនុប្រព័ន្ធ error (line %d):

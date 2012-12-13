@@ -1391,7 +1391,10 @@
 
 #define ER_NTILE_INVALID_BUCKET_NUMBER              -1107
 
-#define ER_LAST_ERROR                               -1108
+#define ER_PROC_WIDTH_BUCKET_COUNT                  -1108
+#define ER_PROC_WIDTH_BUCKET_BOUND                  -1109
+
+#define ER_LAST_ERROR                               -1110
 
 /*
  * CAUTION!

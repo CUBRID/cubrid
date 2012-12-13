@@ -3875,6 +3875,89 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       def->overloads_count = num;
       break;
 
+    case PT_WIDTH_BUCKET:
+      num = 0;
+
+      /* five overloads */
+
+      /* generic number */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.type = PT_GENERIC_TYPE_NUMBER;
+
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_DOUBLE;	/* between */
+
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_INTEGER;
+
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+
+      def->overloads[num++] = sig;
+
+      /* date */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_DATE;
+
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_DATE;	/* between */
+
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_INTEGER;
+
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+
+      def->overloads[num++] = sig;
+
+      /* datetime */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_DATETIME;
+
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_DATETIME;	/* between */
+
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_INTEGER;
+
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+
+      def->overloads[num++] = sig;
+
+      /* timestamp */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIMESTAMP;
+
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_TIMESTAMP;	/* between */
+
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_INTEGER;
+
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+
+      def->overloads[num++] = sig;
+
+      /* time */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIME;
+
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_TIME;	/* between */
+
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_INTEGER;
+
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
     default:
       return false;
     }
@@ -5023,6 +5106,10 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr,
   PT_NODE *common_dt = NULL;
   PT_OP_TYPE op;
   int error = NO_ERROR;
+  PT_NODE *between = NULL;
+  PT_NODE *between_ge_lt = NULL;
+  PT_NODE *b1 = NULL;
+  PT_NODE *b2 = NULL;
 
   op = expr->info.expr.op;
 
@@ -5233,15 +5320,62 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr,
          type is stored in recursive_type */
       arg2_eq_type = expr->info.expr.recursive_type;
     }
-  error = pt_coerce_expression_argument (parser, expr, &arg2, arg2_eq_type,
-					 arg2_dt);
-  if (error != NO_ERROR)
+
+  if (op != PT_WIDTH_BUCKET)
     {
-      return NULL;
+      error =
+	pt_coerce_expression_argument (parser, expr, &arg2, arg2_eq_type,
+				       arg2_dt);
+      if (error != NO_ERROR)
+	{
+	  return NULL;
+	}
+      else
+	{
+	  expr->info.expr.arg2 = arg2;
+	}
     }
   else
     {
-      expr->info.expr.arg2 = arg2;
+      /* width_bucket is a special case. It has 4 params
+       * the 2nd and 3rd args are coerced here
+       */
+      between = expr->info.expr.arg2;
+      assert (between != NULL
+	      && between->node_type == PT_EXPR
+	      && between->info.expr.op == PT_BETWEEN);
+
+      between_ge_lt = between->info.expr.arg2;
+      assert (between_ge_lt != NULL
+	      && between_ge_lt->node_type == PT_EXPR
+	      && between_ge_lt->info.expr.op == PT_BETWEEN_GE_LT);
+
+      /* 2nd, 3rd param of width_bucket */
+      b1 = between_ge_lt->info.expr.arg1;
+      b2 = between_ge_lt->info.expr.arg2;
+      assert (b1 != NULL && b2 != NULL);
+
+      error = pt_coerce_expression_argument (parser, between_ge_lt, &b1,
+					     arg2_eq_type, arg1_dt);
+      if (error != NO_ERROR)
+	{
+	  return NULL;
+	}
+      else
+	{
+	  between_ge_lt->info.expr.arg1 = b1;
+	}
+
+      error = pt_coerce_expression_argument (parser, between_ge_lt, &b2,
+					     arg2_eq_type, arg2_dt);
+      if (error != NO_ERROR)
+	{
+	  return NULL;
+	}
+      else
+	{
+	  between_ge_lt->info.expr.arg2 = b2;
+	}
     }
 
   if (!sig.arg3_type.is_generic)
@@ -5900,6 +6034,7 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_CHARSET:
     case PT_COERCIBILITY:
     case PT_COLLATION:
+    case PT_WIDTH_BUCKET:
       return false;
 
     default:
@@ -8143,6 +8278,7 @@ pt_is_able_to_determine_return_type (const PT_OP_TYPE op)
     case PT_CHARSET:
     case PT_COERCIBILITY:
     case PT_COLLATION:
+    case PT_WIDTH_BUCKET:
       return true;
 
     default:

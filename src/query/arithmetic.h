@@ -65,5 +65,8 @@ extern int db_degrees_dbval (DB_VALUE * result, DB_VALUE * value);
 extern int db_radians_dbval (DB_VALUE * result, DB_VALUE * value);
 extern int db_log_generic_dbval (DB_VALUE * result, DB_VALUE * value, long b);
 extern int db_typeof_dbval (DB_VALUE * result, DB_VALUE * value);
+extern int db_width_bucket (DB_VALUE * result, DB_VALUE * value1,
+			    DB_VALUE * value2, DB_VALUE * value3,
+			    DB_VALUE * value4);
 
 #endif /* _ARITHMETIC_H_ */

@@ -1299,6 +1299,9 @@ typedef enum
 
   PT_CHARSET, PT_COERCIBILITY, PT_COLLATION,
 
+  /* width_bucket */
+  PT_WIDTH_BUCKET,
+
   /* This is the last entry. Please add a new one before it. */
   PT_LAST_OPCODE
 } PT_OP_TYPE;

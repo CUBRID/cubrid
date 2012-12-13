@@ -7973,6 +7973,21 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		      goto end_expr_op_switch;
 		    }
 		}
+	      else if (node->info.expr.op == PT_WIDTH_BUCKET)
+		{
+		  r1 = pt_to_regu_variable (parser,
+					    node->info.expr.arg1, unbox);
+		  r2 = pt_to_regu_variable (parser,
+					    node->info.expr.arg2, unbox);
+		  r3 = pt_to_regu_variable (parser,
+					    node->info.expr.arg3, unbox);
+
+		  domain = pt_xasl_node_to_domain (parser, node);
+		  if (domain == NULL)
+		    {
+		      goto end_expr_op_switch;
+		    }
+		}
 
 	      switch (node->info.expr.op)
 		{
@@ -9260,6 +9275,11 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		case PT_COLLATION:
 		  regu =
 		    pt_make_regu_arith (r1, r2, NULL, T_COLLATION, domain);
+		  break;
+
+		case PT_WIDTH_BUCKET:
+		  regu =
+		    pt_make_regu_arith (r1, r2, r3, T_WIDTH_BUCKET, domain);
 		  break;
 
 		default:

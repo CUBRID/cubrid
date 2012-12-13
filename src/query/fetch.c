@@ -60,6 +60,15 @@ static int fetch_peek_arith (THREAD_ENTRY * thread_p,
 static int fetch_peek_dbval_pos (REGU_VARIABLE * regu_var, QFILE_TUPLE tpl,
 				 int pos, DB_VALUE ** peek_dbval,
 				 QFILE_TUPLE * next_tpl);
+static int fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY *
+							  thread_p,
+							  REGU_VARIABLE *
+							  regu_var,
+							  VAL_DESCR * vd,
+							  OID * obj_oid,
+							  QFILE_TUPLE tpl,
+							  DB_VALUE ** min,
+							  DB_VALUE ** max);
 
 static bool is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var);
 
@@ -78,13 +87,14 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 		  DB_VALUE ** peek_dbval)
 {
   ARITH_TYPE *arithptr = regu_var->value.arithptr;
-  DB_VALUE *peek_left, *peek_right, *peek_third;
+  DB_VALUE *peek_left, *peek_right, *peek_third, *peek_fourth;
   DB_VALUE tmp_value;
   TP_DOMAIN *original_domain = NULL;
 
   peek_left = NULL;
   peek_right = NULL;
   peek_third = NULL;
+  peek_fourth = NULL;
 
   /* fetch values */
   switch (arithptr->opcode)
@@ -609,6 +619,35 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_TO_ENUMERATION_VALUE:
       if (fetch_peek_dbval (thread_p, arithptr->rightptr,
 			    vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_WIDTH_BUCKET:
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr,
+			    vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      /* get peek_righ, peed_third
+       * we use PT_BETWEEN with PT_BETWEEN_GE_LT to represent the two args.
+       */
+      if (fetch_peek_min_max_value_of_width_bucket_func (thread_p,
+							 arithptr->rightptr,
+							 vd,
+							 obj_oid,
+							 tpl,
+							 &peek_right,
+							 &peek_third) !=
+	  NO_ERROR)
+	{
+	  goto error;
+	}
+
+      if (fetch_peek_dbval (thread_p, arithptr->thirdptr,
+			    vd, NULL, obj_oid, tpl, &peek_fourth) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -3371,6 +3410,14 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	  goto error;
 	}
       break;
+
+    case T_WIDTH_BUCKET:
+      if (db_width_bucket (arithptr->value, peek_left,
+			   peek_right, peek_third, peek_fourth) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
     }
 
   *peek_dbval = arithptr->value;
@@ -3687,6 +3734,109 @@ fetch_peek_dbval_pos (REGU_VARIABLE * regu_var, QFILE_TUPLE tpl,
   *next_tpl = ptr + length;
 
   return NO_ERROR;
+}
+
+/*
+ * fetch_peek_min_max_value_of_width_bucket_func () -
+ *   return: NO_ERROR or ER_code
+ *   regu_var(in): Regulator Variable of an ARITH node.
+ *   vd(in): Value Descriptor
+ *   obj_oid(in): Object Identifier
+ *   tpl(in): Tuple
+ *   min(out): the lower bound of width_bucket
+ *   max(out): the upper bound of width_bucket
+ */
+static int
+fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY * thread_p,
+					       REGU_VARIABLE * regu_var,
+					       VAL_DESCR * vd,
+					       OID * obj_oid,
+					       QFILE_TUPLE tpl,
+					       DB_VALUE ** min,
+					       DB_VALUE ** max)
+{
+  int er_status = NO_ERROR;
+  PRED_EXPR *pred_expr;
+  PRED *pred;
+  EVAL_TERM *eval_term1, *eval_term2;
+
+  assert (min != NULL && max != NULL);
+
+  if (regu_var == NULL || regu_var->type != TYPE_INARITH)
+    {
+      er_status = ER_QPROC_INVALID_XASLNODE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 0);
+
+      goto error;
+    }
+
+  pred_expr = regu_var->value.arithptr->pred;
+  if (pred_expr == NULL || pred_expr->type != T_PRED)
+    {
+      er_status = ER_QPROC_INVALID_XASLNODE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 0);
+
+      goto error;
+    }
+
+  pred = &pred_expr->pe.pred;
+  if (pred->lhs == NULL || pred->lhs->type != T_EVAL_TERM)
+    {
+      er_status = ER_QPROC_INVALID_XASLNODE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 0);
+
+      goto error;
+    }
+
+  eval_term1 = &pred->lhs->pe.eval_term;
+  if (eval_term1->et_type != T_COMP_EVAL_TERM)
+    {
+      er_status = ER_QPROC_INVALID_XASLNODE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 0);
+
+      goto error;
+    }
+
+  /* lower bound, error info is already set in fetch_peek_dbval */
+  er_status = fetch_peek_dbval (thread_p, eval_term1->et.et_comp.rhs,
+				vd, NULL, obj_oid, tpl, min);
+  if (er_status != NO_ERROR)
+    {
+      if (er_errid () == NO_ERROR)
+	{
+	  er_status = ER_QPROC_INVALID_XASLNODE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 0);
+	}
+
+      goto error;
+    }
+
+  eval_term2 = &pred->rhs->pe.eval_term;
+  if (eval_term2->et_type != T_COMP_EVAL_TERM)
+    {
+      er_status = ER_QPROC_INVALID_XASLNODE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 0);
+
+      goto error;
+    }
+
+  /* upper bound, error info is already set in fetch_peek_dbval  */
+  er_status = fetch_peek_dbval (thread_p, eval_term2->et.et_comp.rhs,
+				vd, NULL, obj_oid, tpl, max);
+  if (er_status != NO_ERROR)
+    {
+      if (er_errid () == NO_ERROR)
+	{
+	  er_status = ER_QPROC_INVALID_XASLNODE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 0);
+	}
+
+      goto error;
+    }
+
+error:
+
+  return er_status;
 }
 
 /*

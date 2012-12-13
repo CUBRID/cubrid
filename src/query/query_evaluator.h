@@ -390,7 +390,8 @@ typedef enum
   T_INET_NTOA,
   T_TO_ENUMERATION_VALUE,
   T_CHARSET,
-  T_COLLATION
+  T_COLLATION,
+  T_WIDTH_BUCKET
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 typedef struct pred_expr PRED_EXPR;

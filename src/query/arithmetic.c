@@ -41,6 +41,7 @@
 #include "object_domain.h"
 #include "numeric_opfunc.h"
 #include "db.h"
+#include "query_opfunc.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -3934,6 +3935,156 @@ db_typeof_dbval (DB_VALUE * result, DB_VALUE * value)
     default:
       db_make_string (result, type_name);
     }
+
+  return NO_ERROR;
+}
+
+/*
+ * db_width_bucket() -
+ *   return:
+ *   result(out):
+ *   value1-4(in) : input db_value
+ */
+int
+db_width_bucket (DB_VALUE * result, DB_VALUE * value1,
+		 DB_VALUE * value2, DB_VALUE * value3, DB_VALUE * value4)
+{
+  double d1, d2, d3;
+  int i_ret, i4;
+  DB_TYPE type;
+
+  assert (result != NULL && value1 != NULL
+	  && value2 != NULL && value3 != NULL && value4 != NULL);
+
+  if (DB_VALUE_TYPE (value1) == DB_TYPE_NULL
+      || DB_VALUE_TYPE (value2) == DB_TYPE_NULL
+      || DB_VALUE_TYPE (value3) == DB_TYPE_NULL
+      || DB_VALUE_TYPE (value4) == DB_TYPE_NULL)
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  i4 = DB_GET_INT (value4);
+  if (i4 < 1 || i4 == DB_INT32_MAX)
+    {
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+	{
+	  DB_MAKE_NULL (result);
+	  return NO_ERROR;
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_PROC_WIDTH_BUCKET_COUNT, 0);
+	  return ER_PROC_WIDTH_BUCKET_COUNT;
+	}
+    }
+
+  type = DB_VALUE_DOMAIN_TYPE (value1);
+  switch (type)
+    {
+    case DB_TYPE_DATE:
+      d1 = (double) *DB_GET_DATE (value1);
+      d2 = (double) *DB_GET_DATE (value2);
+      d3 = (double) *DB_GET_DATE (value3);
+      break;
+
+    case DB_TYPE_DATETIME:
+      /* double can hold datetime type */
+      d1 = ((double) DB_GET_DATETIME (value1)->date)
+	* MILLISECONDS_OF_ONE_DAY + DB_GET_DATETIME (value1)->time;
+      d2 = ((double) DB_GET_DATETIME (value2)->date)
+	* MILLISECONDS_OF_ONE_DAY + DB_GET_DATETIME (value2)->time;
+      d3 = ((double) DB_GET_DATETIME (value3)->date)
+	* MILLISECONDS_OF_ONE_DAY + DB_GET_DATETIME (value3)->time;
+      break;
+
+    case DB_TYPE_TIMESTAMP:
+      d1 = (double) *DB_GET_TIMESTAMP (value1);
+      d2 = (double) *DB_GET_TIMESTAMP (value2);
+      d3 = (double) *DB_GET_TIMESTAMP (value3);
+      break;
+
+    case DB_TYPE_TIME:
+      d1 = (double) *DB_GET_TIME (value1);
+      d2 = (double) *DB_GET_TIME (value2);
+      d3 = (double) *DB_GET_TIME (value3);
+      break;
+
+    case DB_TYPE_SHORT:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_FLOAT:
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_MONETARY:
+    case DB_TYPE_BIGINT:
+    case DB_TYPE_NUMERIC:
+      get_number_dbval_as_double (&d1, value1);
+      get_number_dbval_as_double (&d2, value2);
+      get_number_dbval_as_double (&d3, value3);
+      break;
+
+    default:
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+	{
+	  DB_MAKE_NULL (result);
+	  return NO_ERROR;
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_QPROC_INVALID_DATATYPE, 0);
+	  return ER_QPROC_INVALID_DATATYPE;
+	}
+    }
+
+  if (d2 == d3)
+    {
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+	{
+	  DB_MAKE_NULL (result);
+	  return NO_ERROR;
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_PROC_WIDTH_BUCKET_BOUND, 0);
+	  return ER_PROC_WIDTH_BUCKET_BOUND;
+	}
+    }
+
+  if (d2 < d3)
+    {
+      if (d1 < d2)
+	{
+	  i_ret = 0;
+	}
+      else if (d3 <= d1)
+	{
+	  i_ret = i4 + 1;
+	}
+      else
+	{
+	  i_ret = floor ((d1 - d2) / (d3 - d2) * i4) + 1;
+	}
+    }
+  else
+    {
+      if (d2 < d1)
+	{
+	  i_ret = 0;
+	}
+      else if (d1 <= d3)
+	{
+	  i_ret = i4 + 1;
+	}
+      else
+	{
+	  i_ret = floor ((d2 - d1) / (d2 - d3) * i4) + 1;
+	}
+    }
+
+  DB_MAKE_INT (result, i_ret);
 
   return NO_ERROR;
 }

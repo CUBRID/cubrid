@@ -218,6 +218,7 @@ static FUNCTION_MAP functions[] = {
   {"inet_aton", PT_INET_ATON},
   {"inet_ntoa", PT_INET_NTOA},
   {"coercibility", PT_COERCIBILITY},
+  {"width_bucket", PT_WIDTH_BUCKET}
 };
 
 
@@ -21593,6 +21594,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
   PT_NODE *a1, *a2, *a3;
   FUNCTION_MAP *key;
   int c;
+  PT_NODE *expr, *val, *between_ge_lt, *between;
 
   parser_function_code = PT_EMPTY;
   c = parser_count_list (args);
@@ -21803,6 +21805,42 @@ parser_keyword_func (const char *name, PT_NODE * args)
       a3 = a2->next;
       a1->next = a2->next = NULL;
       return parser_make_expression (key->op, a1, a2, a3);
+      
+      /* arg 4 */
+    case PT_WIDTH_BUCKET:
+      if (c != 4)
+        {
+          return NULL;
+        }
+
+      a1 = args;
+      a2 = a1->next;  /* a2 is the lower bound, a2->next is the upper bound */
+      a3 = a2->next->next; 
+      a1->next = a2->next->next = a3->next = NULL;
+
+      val = parser_new_node (this_parser, PT_VALUE);
+      if (val == NULL)
+        {
+          return NULL;
+        }
+      val->type_enum = PT_TYPE_NULL;
+
+      between_ge_lt = parser_make_expression (PT_BETWEEN_GE_LT, a2, a2->next, NULL);
+      if (between_ge_lt == NULL)
+        {
+          return NULL;
+        }
+      a2->next = NULL;
+
+      between = parser_make_expression (PT_BETWEEN, val, between_ge_lt, NULL);
+      if (between == NULL)
+        {
+          return NULL;
+        }
+
+      between->do_not_fold = true;
+
+      return parser_make_expression (key->op, a1, between, a3);
 
       /* arg 1 + default */
     case PT_ROUND:

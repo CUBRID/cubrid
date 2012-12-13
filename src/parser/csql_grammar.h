@@ -744,6 +744,7 @@ static FUNCTION_MAP functions[] = {
   {"inet_aton", PT_INET_ATON},
   {"inet_ntoa", PT_INET_NTOA},
   {"coercibility", PT_COERCIBILITY},
+  {"width_bucket", PT_WIDTH_BUCKET}
 };
 
 
@@ -1079,7 +1080,7 @@ typedef struct YYLTYPE
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 typedef union YYSTYPE
-#line 561 "../src/parser/csql_grammar.y"
+#line 562 "../src/parser/csql_grammar.y"
 {
   int number;
   bool boolean;
@@ -1091,7 +1092,7 @@ typedef union YYSTYPE
   container_10 c10;
 }
 /* Line 2616 of glr.c.  */
-#line 1094 "../src/parser/csql_grammar.h"
+#line 1095 "../src/parser/csql_grammar.h"
 YYSTYPE;
 # define YYSTYPE_IS_DECLARED 1
 # define YYSTYPE_IS_TRIVIAL 1
