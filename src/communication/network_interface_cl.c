@@ -9317,12 +9317,12 @@ sysprm_obtain_server_parameters (SYSPRM_ASSIGN_VALUE ** prm_values_ptr)
 	      request_size);
       return PRM_ERR_NO_MEM_FOR_PRM;
     }
+
   (void) sysprm_pack_assign_values (request_data, *prm_values_ptr);
-  req_error =
-    net_client_request2 (NET_SERVER_PRM_GET_PARAMETERS,
-			 request_data, request_size,
-			 reply, OR_ALIGNED_BUF_SIZE (a_reply),
-			 NULL, 0, &receive_data, &receive_size);
+  req_error = net_client_request2 (NET_SERVER_PRM_GET_PARAMETERS,
+				   request_data, request_size,
+				   reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				   NULL, 0, &receive_data, &receive_size);
   if (req_error != NO_ERROR)
     {
       rc = PRM_ERR_COMM_ERR;
@@ -9333,14 +9333,26 @@ sysprm_obtain_server_parameters (SYSPRM_ASSIGN_VALUE ** prm_values_ptr)
       ptr = or_unpack_int (ptr, &rc);
       if (rc != PRM_ERR_NO_ERROR || receive_data == NULL)
 	{
-	  return rc;
+	  goto cleanup;
 	}
 
       (void) sysprm_unpack_assign_values (receive_data, &updated_prm_values);
+
       /* free old values */
       sysprm_free_assign_values (prm_values_ptr);
       /* update values */
       *prm_values_ptr = updated_prm_values;
+    }
+
+cleanup:
+  if (request_data != NULL)
+    {
+      free_and_init (request_data);
+    }
+
+  if (receive_data != NULL)
+    {
+      free_and_init (receive_data);
     }
 
   return rc;
@@ -9375,25 +9387,38 @@ sysprm_get_force_server_parameters (SYSPRM_ASSIGN_VALUE ** change_values)
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  req_error =
-    net_client_request2 (NET_SERVER_PRM_GET_FORCE_PARAMETERS, NULL, 0,
-			 reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
-			 &area, &area_size);
+  req_error = net_client_request2 (NET_SERVER_PRM_GET_FORCE_PARAMETERS,
+				   NULL, 0,
+				   reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				   NULL, 0, &area, &area_size);
   if (req_error != NO_ERROR)
     {
-      return req_error;
+      error = req_error;
+      goto error;
     }
+
   ptr = or_unpack_int (reply, &area_size);
   ptr = or_unpack_int (ptr, &error);
   if (error != NO_ERROR)
     {
-      return error;
+      goto error;
     }
+
   if (area != NULL)
     {
       (void) sysprm_unpack_assign_values (area, change_values);
+      free_and_init (area);
     }
+
   return NO_ERROR;
+
+error:
+  if (area != NULL)
+    {
+      free_and_init (area);
+    }
+
+  return error;
 #else /* CS_MODE */
   assert (change_values != NULL);
   *change_values = NULL;

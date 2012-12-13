@@ -7001,7 +7001,7 @@ sysprm_unpack_sysprm_value (char *ptr, SYSPRM_VALUE * value,
     case PRM_STRING:
       {
 	char *str = NULL;
-	ptr = or_unpack_string (ptr, &str);
+	ptr = or_unpack_string_nocopy (ptr, &str);
 	if (str != NULL)
 	  {
 	    value->str = strdup (str);
@@ -7011,7 +7011,6 @@ sysprm_unpack_sysprm_value (char *ptr, SYSPRM_VALUE * value,
 			ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (str) + 1);
 		return NULL;
 	      }
-	    db_private_free (NULL, str);
 	  }
 	else
 	  {
@@ -7288,9 +7287,9 @@ sysprm_unpack_assign_values (char *ptr,
 	  goto error;
 	}
       ptr = or_unpack_int (ptr, (int *) (&assign_val->prm_id));
-      ptr =
-	sysprm_unpack_sysprm_value (ptr, &assign_val->value,
-				    GET_PRM_DATATYPE (assign_val->prm_id));
+      ptr = sysprm_unpack_sysprm_value (ptr, &assign_val->value,
+					GET_PRM_DATATYPE (assign_val->
+							  prm_id));
       if (ptr == NULL)
 	{
 	  free_and_init (assign_val);
