@@ -148,6 +148,7 @@ extern bool sm_is_reuse_oid_class (MOP op);
 extern bool sm_is_partitioned_class (MOP op);
 extern int sm_set_class_flag (MOP classop, SM_CLASS_FLAG flag, int onoff);
 extern int sm_get_class_flag (MOP op, SM_CLASS_FLAG flag);
+extern int sm_set_class_default_collation (MOP classop, int collation_id);
 extern int sm_destroy_representations (MOP op);
 
 extern void sm_add_static_method (const char *name, void (*function) ());

@@ -1652,7 +1652,18 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 
       if (prt_type == OBJ_PRINT_CSQL_SCHEMA_COMMAND)
 	{
-	  info->name = obj_print_copy_string ((char *) class_->header.name);
+	  if (class_->collation_id == LANG_SYS_COLLATION)
+	    {
+	      info->name =
+		obj_print_copy_string ((char *) class_->header.name);
+	    }
+	  else
+	    {
+	      snprintf (name_buf, SM_MAX_IDENTIFIER_LENGTH + 2,
+			"%-20s COLLATE %-20s", class_->header.name,
+			lang_get_collation_name (class_->collation_id));
+	      info->name = obj_print_copy_string (name_buf);
+	    }
 	}
       else
 	{			/* prt_type == OBJ_PRINT_SHOW_CREATE_TABLE */

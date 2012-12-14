@@ -81,4 +81,7 @@ extern bool pt_check_compatible_node_for_orderby (PARSER_CONTEXT * parser,
 						  PT_NODE * column);
 extern PT_NODE *pt_check_odku_assignments (PARSER_CONTEXT * parser,
 					   PT_NODE * insert);
+extern void pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser,
+					   PT_NODE * attr,
+					   int default_cs, int default_coll);
 #endif /* _SEMANTIC_CHECK_H_ */

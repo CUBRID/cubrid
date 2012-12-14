@@ -5305,6 +5305,27 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " owner to ");
       q = pt_append_varchar (parser, q, r1);
       break;
+    case PT_CHANGE_COLLATION:
+      if (p->info.alter.alter_clause.collation.charset != -1)
+	{
+	  q = pt_append_nulstring (parser, q, " charset ");
+	  q =
+	    pt_append_nulstring (parser, q,
+				 lang_get_codeset_name (p->info.alter.
+							alter_clause.
+							collation.charset));
+	}
+      if (p->info.alter.alter_clause.collation.collation_id != -1)
+	{
+	  q = pt_append_nulstring (parser, q, " collate ");
+	  q =
+	    pt_append_nulstring (parser, q,
+				 lang_get_collation_name (p->info.alter.
+							  alter_clause.
+							  collation.
+							  collation_id));
+	}
+      break;
     case PT_ADD_QUERY:
       r1 = pt_print_bytes_l (parser, p->info.alter.alter_clause.query.query);
       q = pt_append_nulstring (parser, q, " add query ");
@@ -7420,6 +7441,13 @@ pt_print_table_option (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
     case PT_TABLE_OPTION_AUTO_INCREMENT:
       q = pt_append_nulstring (parser, q, "auto_increment = ");
+      break;
+    case PT_TABLE_OPTION_CHARSET:
+      q = pt_append_nulstring (parser, q, "charset ");
+      break;
+    case PT_TABLE_OPTION_COLLATION:
+      q = pt_append_nulstring (parser, q, "collate ");
+      break;
     default:
       break;
     }

@@ -4464,6 +4464,76 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 }
 
 /*
+ * pt_attr_check_default_cs_coll () - checks attribute's collation and
+ *			  codeset. If necessary, they are replaced with the
+ *			  ones passed as arguments.
+ *
+ * parser(in): parser context
+ * attr(in/out) : data default node
+ * default_cs(in): codeset of the attribute's class, or override value
+ * default_coll(in): collation of the attribute's class, or override value
+ * use_cs(in): if true, default_cs is taken into consideration;
+ *	       if false, default_cs is assumed to be missing, and the
+ *	       corresponding codeset of the default_coll is assumed to be used
+ */
+void
+pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * attr,
+			       int default_cs, int default_coll)
+{
+  int attr_cs = attr->data_type->info.data_type.units;
+  int attr_coll = attr->data_type->info.data_type.collation_id;
+  LANG_COLLATION *lc;
+
+  if (attr->data_type->info.data_type.has_cs_spec)
+    {
+      if (attr->data_type->info.data_type.has_coll_spec)
+	{
+	  return;
+	}
+
+      if (default_cs == -1)
+	{
+	  lc = lang_get_collation (default_coll);
+	  assert (lc != NULL);
+	  default_cs = lc->codeset;
+	}
+
+      if (attr_cs == default_cs)
+	{
+	  attr_coll = default_coll;
+	}
+      else
+	{
+	  attr_coll = LANG_GET_BINARY_COLLATION (attr_cs);
+	}
+    }
+  else if (attr->data_type->info.data_type.has_coll_spec)
+    {
+      lc = lang_get_collation (attr_coll);
+      assert (lc != NULL);
+      attr_cs = lc->codeset;
+    }
+  else
+    {
+      /* attribute does not have a codeset or collation spec; use defaults */
+      attr_coll = default_coll;
+      if (default_cs == -1)
+	{
+	  lc = lang_get_collation (default_coll);
+	  assert (lc != NULL);
+	  attr_cs = lc->codeset;
+	}
+      else
+	{
+	  attr_cs = default_cs;
+	}
+    }
+
+  attr->data_type->info.data_type.units = attr_cs;
+  attr->data_type->info.data_type.collation_id = attr_coll;
+}
+
+/*
  * pt_find_default_expression () - find a default expression
  *
  * result	  :
@@ -8416,10 +8486,11 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *parent, *qry_specs, *name, *create_like;
   PT_NODE *all_attrs, *r, *resolv_class, *attr;
+  PT_NODE *tbl_opt_charset, *cs_node, *tbl_opt_coll, *coll_node;
   PT_NODE *tbl_opt = NULL;
   PT_MISC_TYPE entity_type;
   DB_OBJECT *db_obj, *existing_entity;
-  int found, partition_status = NOT_PARTITION_CLASS;
+  int found, partition_status = NOT_PARTITION_CLASS, collation_id, charset;
   bool found_reuse_oid = false;
   bool found_auto_increment = false;
   int error = NO_ERROR;
@@ -8433,48 +8504,106 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       return;
     }
 
+  tbl_opt_charset = tbl_opt_coll = NULL;
   for (tbl_opt = node->info.create_entity.table_option_list;
        tbl_opt != NULL; tbl_opt = tbl_opt->next)
     {
       assert (tbl_opt->node_type == PT_TABLE_OPTION);
 
-      if (tbl_opt->info.table_option.option == PT_TABLE_OPTION_REUSE_OID)
+      switch (tbl_opt->info.table_option.option)
 	{
-	  if (found_reuse_oid)
-	    {
-	      PT_ERRORmf (parser, node,
-			  MSGCAT_SET_PARSER_SEMANTIC,
-			  MSGCAT_SEMANTIC_DUPLICATE_TABLE_OPTION,
-			  parser_print_tree (parser, tbl_opt));
-	    }
-	  else
-	    {
-	      found_reuse_oid = true;
-	    }
+	case PT_TABLE_OPTION_REUSE_OID:
+	  {
+	    if (found_reuse_oid)
+	      {
+		PT_ERRORmf (parser, node,
+			    MSGCAT_SET_PARSER_SEMANTIC,
+			    MSGCAT_SEMANTIC_DUPLICATE_TABLE_OPTION,
+			    parser_print_tree (parser, tbl_opt));
+		return;
+	      }
+	    else
+	      {
+		found_reuse_oid = true;
+	      }
+	  }
+	  break;
+
+	case PT_TABLE_OPTION_AUTO_INCREMENT:
+	  {
+	    if (found_auto_increment)
+	      {
+		PT_ERRORmf (parser, node,
+			    MSGCAT_SET_PARSER_SEMANTIC,
+			    MSGCAT_SEMANTIC_DUPLICATE_TABLE_OPTION,
+			    parser_print_tree (parser, tbl_opt));
+		return;
+	      }
+	    else
+	      {
+		if (tbl_opt->info.table_option.val != NULL)
+		  {
+		    found_auto_increment = true;
+		    assert (tbl_opt->info.table_option.val->node_type ==
+			    PT_VALUE);
+		    assert (tbl_opt->info.table_option.val->type_enum ==
+			    PT_TYPE_NUMERIC);
+		  }
+	      }
+	  }
+	  break;
+
+	case PT_TABLE_OPTION_CHARSET:
+	  {
+	    if (tbl_opt_charset != NULL)
+	      {
+		PT_ERRORmf (parser, node,
+			    MSGCAT_SET_PARSER_SEMANTIC,
+			    MSGCAT_SEMANTIC_DUPLICATE_TABLE_OPTION,
+			    parser_print_tree (parser, tbl_opt));
+		return;
+	      }
+	    else
+	      {
+		tbl_opt_charset = tbl_opt;
+	      }
+	  }
+	  break;
+
+	case PT_TABLE_OPTION_COLLATION:
+	  {
+	    if (tbl_opt_coll != NULL)
+	      {
+		PT_ERRORmf (parser, node,
+			    MSGCAT_SET_PARSER_SEMANTIC,
+			    MSGCAT_SEMANTIC_DUPLICATE_TABLE_OPTION,
+			    parser_print_tree (parser, tbl_opt));
+		return;
+	      }
+	    else
+	      {
+		tbl_opt_coll = tbl_opt;
+	      }
+	  }
+	  break;
+	default:
+	  /* should never arrive here */
+	  assert (false);
+	  break;
 	}
-      else if (tbl_opt->info.table_option.option ==
-	       PT_TABLE_OPTION_AUTO_INCREMENT)
-	{
-	  if (found_auto_increment)
-	    {
-	      PT_ERRORmf (parser, node,
-			  MSGCAT_SET_PARSER_SEMANTIC,
-			  MSGCAT_SEMANTIC_DUPLICATE_TABLE_OPTION,
-			  parser_print_tree (parser, tbl_opt));
-	    }
-	  else
-	    {
-	      assert (tbl_opt->info.table_option.val != NULL);
-	      if (tbl_opt->info.table_option.val != NULL)
-		{
-		  found_auto_increment = true;
-		  assert (tbl_opt->info.table_option.val->node_type ==
-			  PT_VALUE);
-		  assert (tbl_opt->info.table_option.val->type_enum ==
-			  PT_TYPE_NUMERIC);
-		}
-	    }
-	}
+    }
+
+  /* validate charset and collation options, if any */
+  cs_node = (tbl_opt_charset) ? tbl_opt_charset->info.table_option.val : NULL;
+  coll_node = (tbl_opt_coll) ? tbl_opt_coll->info.table_option.val : NULL;
+  charset = LANG_SYS_CODESET;
+  collation_id = LANG_SYS_COLLATION;
+  if ((cs_node != NULL || coll_node != NULL)
+      && pt_check_grammar_charset_collation (parser, cs_node, coll_node,
+					     &charset, &collation_id)
+      != NO_ERROR)
+    {
+      return;
     }
 
   /* check name doesn't already exist as a class */
@@ -8489,6 +8618,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	  PT_ERRORmf (parser, name,
 		      MSGCAT_SET_PARSER_SEMANTIC,
 		      MSGCAT_SEMANTIC_CLASS_EXISTS, name->info.name.original);
+	  return;
 	}
     }
 
@@ -8547,7 +8677,13 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 		       MSGCAT_SEMANTIC_NONEXISTENT_SUPCLASS,
 		       parent->info.name.original,
 		       pt_short_print (parser, node));
+	  return;
 	}
+    }
+
+  if (error != NO_ERROR)
+    {
+      return;
     }
 
   /* an INHERIT_clause in a create_vclass_stmt
@@ -8561,6 +8697,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 		  pt_short_print_l (parser,
 				    node->info.create_entity.
 				    resolution_list));
+      return;
     }
   else
     {
@@ -8588,6 +8725,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 			   pt_short_print_l (parser,
 					     node->info.
 					     create_entity.supclass_list));
+	      return;
 	    }
 	}
     }
@@ -8604,6 +8742,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      PT_ERRORm (parser, node,
 			 MSGCAT_SET_PARSER_SEMANTIC,
 			 MSGCAT_SEMANTIC_VCLASS_ATT_CANT_BE_AUTOINC);
+	      return;
 	    }
 	}
     }
@@ -8629,6 +8768,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      PT_ERRORmf (parser, select, MSGCAT_SET_PARSER_SEMANTIC,
 			  MSGCAT_SEMANTIC_VARIABLE_NOT_ALLOWED, 0);
+	      return;
 	    }
 	}
       if (!pt_has_error (parser) && node->info.create_entity.partition_info)
@@ -8667,6 +8807,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	  PT_ERRORmf (parser, create_like, MSGCAT_SET_PARSER_SEMANTIC,
 		      MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST,
 		      create_like->info.name.original);
+	  return;
 	}
       else
 	{
@@ -8678,6 +8819,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 			   MSGCAT_SEMANTIC_IS_NOT_A,
 			   create_like->info.name.original,
 			   pt_show_misc_type (PT_CLASS));
+	      return;
 	    }
 	}
     }
@@ -8686,6 +8828,13 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
     {
       attr->info.attr_def.data_default =
 	pt_check_data_default (parser, attr->info.attr_def.data_default);
+
+      /* for regular classes (no views) set default collation if needed */
+      if (entity_type == PT_CLASS && attr->node_type == PT_ATTR_DEF
+	  && PT_HAS_COLLATION (attr->type_enum))
+	{
+	  pt_attr_check_default_cs_coll (parser, attr, charset, collation_id);
+	}
     }
 }
 

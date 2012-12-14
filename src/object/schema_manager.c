@@ -3010,6 +3010,29 @@ sm_set_class_flag (MOP classop, SM_CLASS_FLAG flag, int on_or_off)
 }
 
 /*
+ * sm_set_class_default_collation() - This sets the table default collation.
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   classop (in): class pointer
+ *   collation_id  (in): collation id to set as default
+ */
+int
+sm_set_class_default_collation (MOP classop, int collation_id)
+{
+  SM_CLASS *class_;
+  int error = NO_ERROR;
+
+  assert (classop != NULL);
+
+  error = au_fetch_class_force (classop, &class_, AU_FETCH_UPDATE);
+  if (error == NO_ERROR)
+    {
+      class_->collation_id = collation_id;
+    }
+
+  return error;
+}
+
+/*
  * sm_is_system_class() - Tests the system class flag of a class object.
  *   return: non-zero if class is a system defined class
  *   op(in): class object

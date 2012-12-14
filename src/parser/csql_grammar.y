@@ -912,6 +912,8 @@ typedef struct YYLTYPE
 %type <node> opt_merge_delete_clause
 %type <node> delete_name
 %type <node> delete_name_list
+%type <node> collation_spec
+%type <node> charset_spec
 %type <node> opt_collation
 %type <node> opt_charset
 %type <node> opt_using_charset
@@ -4526,6 +4528,60 @@ alter_clause_for_alter_list
 			    alt->info.alter.alter_clause.user.user_name = $3;
 			  }
 		DBG_PRINT}}
+	| charset_spec opt_collation
+		{{
+			PT_NODE *node = parser_get_alter_node();
+			PT_NODE *cs_node, *coll_node;
+			int charset, coll_id;
+			
+			cs_node = $1;
+			coll_node = $2;
+			
+			if (node)
+			  {
+			    node->info.alter.alter_clause.collation.charset = -1;
+			    node->info.alter.alter_clause.collation.collation_id = -1;
+			  }
+			  
+			if (pt_check_grammar_charset_collation (this_parser, cs_node,
+								coll_node, &charset, &coll_id) == NO_ERROR)
+			  {
+			    if (node)
+			      {
+				node->info.alter.code = PT_CHANGE_COLLATION;
+				node->info.alter.alter_clause.collation.charset = charset;
+				
+				if (coll_node)
+				  {
+				    node->info.alter.alter_clause.collation.collation_id = coll_id;
+				  }
+			      }
+			  }
+		DBG_PRINT}}
+	| collation_spec
+		{{
+			PT_NODE *node = parser_get_alter_node();
+			PT_NODE *coll_node;
+			int charset, coll_id;
+			
+			coll_node = $1;
+			
+			if (node)
+			  {
+			    node->info.alter.alter_clause.collation.charset = -1;
+			    node->info.alter.alter_clause.collation.collation_id = -1;
+			  }			    			    
+			
+			if (pt_check_grammar_charset_collation (this_parser, NULL,
+								coll_node, &charset, &coll_id) == NO_ERROR)
+			  {
+			    if (node)
+			      {
+				node->info.alter.code = PT_CHANGE_COLLATION;
+				node->info.alter.alter_clause.collation.collation_id = coll_id;
+			      }
+			  }
+		DBG_PRINT}}
 	;
 
 alter_clause_cubrid_specific
@@ -7602,6 +7658,20 @@ table_option
 			}
 
 			$$ = pt_table_option (this_parser, PT_TABLE_OPTION_AUTO_INCREMENT, val);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		  DBG_PRINT}}
+	| charset_spec
+		{{
+
+			$$ = pt_table_option (this_parser, PT_TABLE_OPTION_CHARSET, $1);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		  DBG_PRINT}}
+	| collation_spec
+		{{
+
+			$$ = pt_table_option (this_parser, PT_TABLE_OPTION_COLLATION, $1);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		  DBG_PRINT}}
@@ -16891,15 +16961,34 @@ primitive_type
 			    dt->info.data_type.precision = DB_MAX_VARCHAR_PRECISION;
 
 			    if (pt_check_grammar_charset_collation
-				(this_parser, charset_node, coll_node, &charset, &coll_id) == NO_ERROR)
+				  (this_parser, charset_node,
+				   coll_node, &charset, &coll_id) == NO_ERROR)
 			      {
 				dt->info.data_type.units = charset;
 				dt->info.data_type.collation_id = coll_id;
 			      }
-			     else
+			    else
 			      {
 				dt->info.data_type.units = -1;
-				dt->info.data_type.collation_id = -1;				
+				dt->info.data_type.collation_id = -1;
+			      }
+
+			    if (charset_node)
+			      {
+				dt->info.data_type.has_cs_spec = true;
+			      }
+			    else
+			      {
+				dt->info.data_type.has_cs_spec = false;
+			      }
+			      
+			    if (coll_node)
+			      {
+				dt->info.data_type.has_coll_spec = true;
+			      }
+			    else
+			      {
+				dt->info.data_type.has_coll_spec = false;
 			      }
 			  }
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), dt);
@@ -17059,16 +17148,35 @@ primitive_type
 			      case PT_TYPE_NCHAR:
 			      case PT_TYPE_VARNCHAR:
 				if (pt_check_grammar_charset_collation
-				    (this_parser, charset_node, coll_node, &charset, &coll_id) == NO_ERROR)
+				      (this_parser, charset_node,
+				       coll_node, &charset, &coll_id) == NO_ERROR)
 				  {
 				    dt->info.data_type.units = charset;
 				    dt->info.data_type.collation_id = coll_id;
 				  }
-				 else
+				else
 				  {
 				    dt->info.data_type.units = -1;
 				    dt->info.data_type.collation_id = -1;
 				  }
+
+				if (charset_node)
+				  {
+				    dt->info.data_type.has_cs_spec = true;
+				  }
+				else
+				  {
+				    dt->info.data_type.has_cs_spec = false;
+				  }
+				  
+				if (coll_node)
+				  {
+				    dt->info.data_type.has_coll_spec = true;
+				  }
+				else
+				  {
+				    dt->info.data_type.has_coll_spec = false;
+				  }				
 				break;
 
 			      case PT_TYPE_BIT:
@@ -17254,12 +17362,15 @@ primitive_type
 				  {
 				    charset = list_cs;
 				    coll_id = list_coll;
+				    dt->info.data_type.has_cs_spec = true;
 				  }
 				else
 				  {
 				    charset = lang_get_client_charset ();
 				    coll_id = lang_get_client_collation ();
+				    dt->info.data_type.has_cs_spec = false;
 				  }
+				dt->info.data_type.has_coll_spec = false;
 			      }
 			    else if (pt_check_grammar_charset_collation (
 					this_parser, charset_node,
@@ -17276,6 +17387,23 @@ primitive_type
 					       MSGCAT_SET_PARSER_SEMANTIC,
 					       MSGCAT_SEMANTIC_INCOMPATIBLE_CS_COLL);
 				  }
+				  
+				if (charset_node)
+				  {
+				    dt->info.data_type.has_cs_spec = true;
+				  }
+				else
+				  {
+				    dt->info.data_type.has_cs_spec = false;
+				  }
+				if (coll_node)
+				  {
+				    dt->info.data_type.has_coll_spec = true;
+				  }
+				else
+				  {
+				    dt->info.data_type.has_coll_spec = false;
+				  }  
 			      }
 			    else
 			      {
@@ -17419,7 +17547,16 @@ opt_collation
 			$$ = NULL;
 
 		DBG_PRINT}}
-	| of_collation char_string_literal
+	| collation_spec
+		{{
+
+			$$=$1;
+
+		DBG_PRINT}}
+	;
+
+collation_spec
+	: of_collation char_string_literal
 		{{
 
 			$$ = $2;
@@ -17451,7 +17588,16 @@ opt_charset
 			$$ = NULL;
 
 		DBG_PRINT}}
-	| of_charset char_string_literal
+	| charset_spec
+		{{
+
+			$$ = $1;
+
+		DBG_PRINT}}
+	;
+
+charset_spec
+	: of_charset char_string_literal
 		{{
 
 			$$ = $2;

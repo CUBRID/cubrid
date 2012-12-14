@@ -1141,7 +1141,8 @@ typedef enum
   PT_DROP_FK_CLAUSE,
   PT_CHANGE_ATTR,
   PT_CHANGE_AUTO_INCREMENT,
-  PT_CHANGE_OWNER
+  PT_CHANGE_OWNER,
+  PT_CHANGE_COLLATION
 } PT_ALTER_CODE;
 
 /* Codes for trigger event type */
@@ -1187,7 +1188,9 @@ typedef enum
 typedef enum
 {
   PT_TABLE_OPTION_REUSE_OID = 9000,
-  PT_TABLE_OPTION_AUTO_INCREMENT
+  PT_TABLE_OPTION_AUTO_INCREMENT,
+  PT_TABLE_OPTION_CHARSET,
+  PT_TABLE_OPTION_COLLATION
 } PT_TABLE_OPTION_TYPE;
 
 
@@ -1617,6 +1620,22 @@ struct pt_alter_info
     } partition;
     struct
     {
+      int charset;		/* charset for PT_CHANGE_COLLATION
+				 * If the alter statement contains a valid
+				 * charset spec, it is saved into the
+				 * corresponding member of the struct(charset)
+				 * Otherwise, charset = -1.
+				 */
+      int collation_id;		/* collation for PT_CHANGE_COLLATION
+				 * If the alter statement contains a valid
+				 * collation spec, it is saved into the
+				 * corresponding member of the struct,
+				 * e.g. collation_id.
+				 * Otherwise, collation_id = -1.
+				 */
+    } collation;
+    struct
+    {
       bool reverse;
       bool unique;
     } index;
@@ -1829,6 +1848,14 @@ struct pt_data_type_info
   int dec_precision;		/* decimal precision for float */
   int units;			/* for money (or string's codeset) */
   int collation_id;		/* collation identifier (strings) */
+  bool has_coll_spec;		/* this is used only when defining collatable
+				 * types: true if collation was explicitly
+				 * set, false otherwise (collation defaulted
+				 * to that of the system) */
+  bool has_cs_spec;		/* this is used only when defining collatable
+				 * types: true if charset was explicitly set,
+				 * false otherwise (charset defaulted to that
+				 * of the system) */
   PT_MISC_TYPE inout;		/* input or output method parameter */
 };
 

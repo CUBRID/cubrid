@@ -65,6 +65,7 @@
 #define UNIQUE_SAVEPOINT_TRUNCATE "tRUnCATE"
 #define UNIQUE_SAVEPOINT_CHANGE_ATTR "cHANGEaTTR"
 #define UNIQUE_SAVEPOINT_ALTER_INDEX "aLTERiNDEX"
+#define UNIQUE_SAVEPOINT_CHANGE_DEF_COLL "cHANGEdEFAULTcOLL"
 
 #define QUERY_MAX_SIZE	1024 * 1024
 #define MAX_FILTER_PREDICATE_STRING_LENGTH 128
@@ -248,6 +249,9 @@ static int do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
 static int do_alter_change_owner (PARSER_CONTEXT * const parser,
 				  PT_NODE * const alter);
 
+static int do_alter_change_default_cs_coll (PARSER_CONTEXT * const parser,
+					    PT_NODE * const alter);
+
 static int do_change_att_schema_only (PARSER_CONTEXT * parser,
 				      DB_CTMPL * ctemplate,
 				      PT_NODE * attribute,
@@ -326,6 +330,12 @@ static int check_change_attribute (PARSER_CONTEXT * parser,
 				   PT_NODE * constraints,
 				   SM_ATTR_PROP_CHG * attr_chg_prop,
 				   SM_ATTR_CHG_SOL * change_mode);
+
+static int check_change_class_collation (PARSER_CONTEXT * parser,
+					 DB_CTMPL * ctemplate,
+					 PT_ALTER_INFO * alter,
+					 bool * need_update,
+					 int *collation_id);
 
 static int sort_constr_info_list (SM_CONSTRAINT_INFO ** source);
 static int save_constraint_info_from_pt_node (SM_CONSTRAINT_INFO ** save_info,
@@ -1580,6 +1590,9 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  break;
 	case PT_CHANGE_OWNER:
 	  error_code = do_alter_change_owner (parser, crt_clause);
+	  break;
+	case PT_CHANGE_COLLATION:
+	  error_code = do_alter_change_default_cs_coll (parser, crt_clause);
 	  break;
 	default:
 	  /* This code might not correctly handle a list of ALTER clauses so
@@ -3995,6 +4008,9 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 
 	  newpci->temp->partition_parent_atts = smclass->attributes;
 	  newpci->obj = dbt_finish_class (newpci->temp);
+
+	  sm_set_class_default_collation (newpci->obj, smclass->collation_id);
+
 	  if (newpci->obj == NULL)
 	    {
 	      dbt_abort_class (newpci->temp);
@@ -10165,6 +10181,14 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
       goto error_exit;
     }
 
+  /* set default codeset and collation for attribute if none is specified */
+  if (ctemplate->current != NULL && attribute->node_type == PT_ATTR_DEF
+      && PT_HAS_COLLATION (attribute->type_enum))
+    {
+      pt_attr_check_default_cs_coll (parser, attribute,
+				     -1, ctemplate->current->collation_id);
+    }
+
   if (validate_attribute_domain (parser, attribute,
 				 smt_get_class_type (ctemplate) ==
 				 SM_CLASS_CT ? true : false))
@@ -11867,6 +11891,9 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   bool do_rollback_on_error = false;
   bool do_abort_class_on_error = false;
   bool do_flush_class_mop = false;
+  int charset = LANG_SYS_CODESET;
+  int collation_id = LANG_SYS_COLLATION;
+  PT_NODE *tbl_opt_charset, *tbl_opt_coll, *cs_node, *coll_node;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -11876,6 +11903,8 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       error = ER_BLOCK_DDL_STMT;
       goto error_exit;
     }
+
+  tbl_opt_charset = tbl_opt_coll = cs_node = coll_node = NULL;
 
   class_name = node->info.create_entity.entity_name->info.name.original;
 
@@ -11909,8 +11938,31 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    case PT_TABLE_OPTION_REUSE_OID:
 	      reuse_oid = true;
 	      break;
+	    case PT_TABLE_OPTION_CHARSET:
+	      tbl_opt_charset = tbl_opt;
+	      break;
+	    case PT_TABLE_OPTION_COLLATION:
+	      tbl_opt_coll = tbl_opt;
+	      break;
 	    default:
 	      break;
+	    }
+	}
+
+      /* validate charset and collation options, if any */
+      cs_node =
+	(tbl_opt_charset) ? tbl_opt_charset->info.table_option.val : NULL;
+      coll_node = (tbl_opt_coll) ? tbl_opt_coll->info.table_option.val : NULL;
+      charset = LANG_SYS_CODESET;
+      collation_id = LANG_SYS_COLLATION;
+      if (cs_node != NULL || coll_node != NULL)
+	{
+	  error =
+	    pt_check_grammar_charset_collation (parser, cs_node, coll_node,
+						&charset, &collation_id);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
 	    }
 	}
 
@@ -11977,7 +12029,8 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (create_like != NULL)
     {
-      /* Nothing left to do, we already have the template filled in. */
+      /* Nothing left to do, but get the collation from the source class. */
+      collation_id = source_class->collation_id;
     }
   else
     {
@@ -12042,6 +12095,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      do_flush_class_mop = true;
 	    }
 	}
+      error = sm_set_class_default_collation (class_obj, collation_id);
       break;
 
     default:
@@ -13033,6 +13087,159 @@ do_alter_change_owner (PARSER_CONTEXT * const parser, PT_NODE * const alter)
   if (DB_VALUE_TYPE (&returnval) == DB_TYPE_ERROR)
     {
       error = DB_GET_ERROR (&returnval);
+    }
+
+  return error;
+}
+
+/*
+ * do_alter_change_default_cs_coll() - change the default collation of a
+ *				       class/vclass
+ *   return: Error code
+ *   parser(in): Parser context
+ *   alter(in/out): Parse tree of a PT_CHANGE_OWNER claus
+ */
+static int
+do_alter_change_default_cs_coll (PARSER_CONTEXT * const parser,
+				 PT_NODE * const alter)
+{
+  int error = NO_ERROR;
+  const char *entity_name = NULL;
+  DB_OBJECT *class_obj = NULL;
+  DB_CTMPL *ctemplate = NULL;
+  PT_ALTER_INFO *alter_info;
+  bool tran_saved = false;
+  MOP class_mop = NULL;
+  int user_count = 0;
+  OID class_oid;
+  bool is_chg_needed = false;
+  int i, collation_id = -1, is_partition = -1;
+  MOP *sub_partitions = NULL;
+
+  alter_info = &(alter->info.alter);
+  assert (alter_info->code == PT_CHANGE_COLLATION);
+
+  OID_SET_NULL (&class_oid);
+
+  entity_name = alter_info->entity_name->info.name.original;
+  if (entity_name == NULL)
+    {
+      error = ER_UNEXPECTED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto exit;
+    }
+
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_DEF_COLL);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+  tran_saved = true;
+
+  class_obj = db_find_class (entity_name);
+  if (class_obj == NULL)
+    {
+      error = er_errid ();
+      goto exit;
+    }
+
+  error = locator_flush_class (class_obj);
+  if (error != NO_ERROR)
+    {
+      /* don't overwrite error */
+      goto exit;
+    }
+
+  /* get exclusive lock on class */
+  if (locator_fetch_class (class_obj, DB_FETCH_QUERY_WRITE) == NULL)
+    {
+      error = ER_FAILED;
+      goto exit;
+    }
+
+  ctemplate = dbt_edit_class (class_obj);
+  if (ctemplate == NULL)
+    {
+      /* when dbt_edit_class fails (e.g. because the server unilaterally
+         aborts us), we must record the associated error message into the
+         parser.  Otherwise, we may get a confusing error msg of the form:
+         "so_and_so is not a class". */
+      pt_record_error (parser, parser->statement_number - 1,
+		       alter->line_number, alter->column_number, er_msg (),
+		       NULL);
+      error = er_errid ();
+      goto exit;
+    }
+
+  error = check_change_class_collation (parser, ctemplate, alter_info,
+					&is_chg_needed, &collation_id);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  if (!is_chg_needed)
+    {
+      /* nothing to do */
+      goto exit;
+    }
+
+  class_mop = ctemplate->op;
+
+  error = sm_set_class_default_collation (class_mop, collation_id);
+
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  error = do_is_partitioned_classobj (&is_partition, class_mop, NULL,
+				      &sub_partitions);
+
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  if (is_partition == PARTITIONED_CLASS)
+    {
+      for (i = 0; sub_partitions[i]; i++)
+	{
+	  error =
+	    sm_set_class_default_collation (sub_partitions[i], collation_id);
+	  if (error != NO_ERROR)
+	    {
+	      break;
+	    }
+	}
+
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+    }
+
+  /* force schema update to server */
+  class_obj = dbt_finish_class (ctemplate);
+  if (class_obj == NULL)
+    {
+      error = er_errid ();
+      goto exit;
+    }
+  /* set NULL, avoid 'abort_class' in case of error */
+  ctemplate = NULL;
+
+exit:
+
+  if (ctemplate != NULL)
+    {
+      dbt_abort_class (ctemplate);
+      ctemplate = NULL;
+    }
+
+  if (error != NO_ERROR && tran_saved && error != ER_LK_UNILATERALLY_ABORTED)
+    {
+      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_ATTR);
     }
 
   return error;
@@ -15960,6 +16167,55 @@ check_change_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 
 exit:
   db_value_clear (&def_value);
+  return error;
+}
+
+/*
+ * check_change_class_collation() - Checks if it is necessary to update the
+ *				    default collation of a class
+ *   return: Error code
+ *   parser(in): Parser context
+ *   ctemplate(in/out): Class template
+ *   alter(in): Node containing desired collation and codeset
+ */
+static int
+check_change_class_collation (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
+			      PT_ALTER_INFO * alter, bool * need_update,
+			      int *collation_id)
+{
+  int error = NO_ERROR;
+  int cs = -1, coll_id = -1;
+
+  assert (ctemplate->current != NULL);
+
+  *need_update = false;
+  cs = alter->alter_clause.collation.charset;
+  coll_id = alter->alter_clause.collation.collation_id;
+
+  /* check if codeset, collation or both are set, and check if it is
+   * necessary to update the default collation of the class */
+  if (coll_id != -1 && ctemplate->current->collation_id != coll_id)
+    {
+      *need_update = true;
+      *collation_id = coll_id;
+    }
+  else
+    {
+      LANG_COLLATION *lc;
+      assert (cs != -1);
+
+      lc = lang_get_collation (ctemplate->current->collation_id);
+      assert (lc != NULL);
+
+      if ((lc->codeset != cs)
+	  || (LANG_GET_BINARY_COLLATION (cs)
+	      != ctemplate->current->collation_id))
+	{
+	  *need_update = true;
+	  *collation_id = LANG_GET_BINARY_COLLATION (cs);
+	}
+    }
+
   return error;
 }
 
