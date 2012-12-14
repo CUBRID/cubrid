@@ -3761,14 +3761,14 @@ lang_back_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data,
   str1_start = str1;
   str2_start = str2;
 
-  while (*str1_last-- == 0x20)
+  while (*str1_last == 0x20)
     {
-      ;
+      str1_last--;
     }
 
-  while (*str2_last-- == 0x20)
+  while (*str2_last == 0x20)
     {
-      ;
+      str2_last--;
     }
 
   str1_prev = (unsigned char *) str1_last;
