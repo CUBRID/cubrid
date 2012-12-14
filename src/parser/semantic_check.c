@@ -14934,6 +14934,7 @@ error_exit:
  *				     see if it meets the constraints of being
  *				     part of an index
  * return :
+ * parser(in) : parser context
  * node (in) : node - PT_CREATE_INDEX
  */
 static void

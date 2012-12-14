@@ -17497,6 +17497,14 @@ pt_is_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * expr,
     }
   if (expr->node_type != PT_EXPR)
     {
+      if (report_error)
+	{
+	  /* the initial expression might have been rewritten to something
+	   * else (ex: TO_CHAR(col) rewrites to a PT_NAME if col has a
+	   * character data type. */
+	  PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_INVALID_FUNCTION_INDEX_EXPR);
+	}
       return false;
     }
   if (!pt_is_allowed_as_function_index (expr))
