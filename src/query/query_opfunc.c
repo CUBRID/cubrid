@@ -5967,7 +5967,23 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
       if (agg_p->opr_dbtype == DB_TYPE_VARIABLE && !DB_IS_NULL (&dbval))
 	{
 	  /*update domain of aggregate according to first instance of value */
-	  agg_p->domain = tp_domain_resolve_value (&dbval, NULL);
+	  DB_TYPE type = DB_VALUE_DOMAIN_TYPE (&dbval);
+	  if ((agg_p->function == PT_SUM || agg_p->function == PT_AVG) &&
+	      TP_IS_CHAR_TYPE (type))
+	    {
+	      agg_p->domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+	      if (tp_value_coerce (&dbval, &dbval, agg_p->domain) !=
+		  DOMAIN_COMPATIBLE)
+		{
+		  pr_clear_value (&dbval);
+		  return ER_FAILED;
+		}
+	    }
+	  else
+	    {
+	      agg_p->domain = tp_domain_resolve_value (&dbval, NULL);
+	    }
+
 	  agg_p->opr_dbtype = TP_DOMAIN_TYPE (agg_p->domain);
 	  db_value_domain_init (agg_p->value, agg_p->opr_dbtype,
 				DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
@@ -9275,7 +9291,23 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
   if (func_p->opr_dbtype == DB_TYPE_VARIABLE && !DB_IS_NULL (&dbval))
     {
       /*update domain according to first instance of value */
-      func_p->domain = tp_domain_resolve_value (&dbval, NULL);
+      DB_TYPE type = DB_VALUE_DOMAIN_TYPE (&dbval);
+      if ((func_p->function == PT_SUM || func_p->function == PT_AVG) &&
+	  TP_IS_CHAR_TYPE (type))
+	{
+	  func_p->domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+	  if (tp_value_coerce (&dbval, &dbval, func_p->domain) !=
+	      DOMAIN_COMPATIBLE)
+	    {
+	      pr_clear_value (&dbval);
+	      return ER_FAILED;
+	    }
+	}
+      else
+	{
+	  func_p->domain = tp_domain_resolve_value (&dbval, NULL);
+	}
+
       func_p->opr_dbtype = TP_DOMAIN_TYPE (func_p->domain);
       db_value_domain_init (func_p->value, func_p->opr_dbtype,
 			    DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
