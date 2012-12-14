@@ -969,7 +969,7 @@ cm_ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
   DB_OBJECT *obj;
   int aset;
   DB_COLLECTION *gset;
-  DB_VALUE val;
+  DB_VALUE val, val2;
   int ha_mode = 0;
   T_DB_SERVICE_MODE db_mode;
 
@@ -1038,13 +1038,40 @@ cm_ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
     }
 
   /* clear existing group - clear group, direct group */
-  gset = db_col_create (DB_TYPE_SET, 0, NULL);
-  DB_MAKE_SET (&val, gset);
-  if (db_put (dbuser, "groups", &val) < 0)
-    goto error_return;
-  if (db_put (dbuser, "direct_groups", &val) < 0)
-    goto error_return;
-  db_col_free (gset);
+  if (db_get (dbuser, "groups", &val) < 0)
+    {
+      goto error_return;
+    }
+  gset = db_get_set (&val);
+  for (i = 0; i < db_set_size (gset); i++)
+    {
+      db_set_get (gset, i, &val2);
+      if (db_drop_member (db_get_object (&val2), dbuser) < 0)
+	{
+	  db_value_clear (&val2);
+	  db_value_clear (&val);
+	  goto error_return;
+	}
+      db_value_clear (&val2);
+    }
+  db_value_clear (&val);
+  if (db_get (dbuser, "direct_groups", &val) < 0)
+    {
+      goto error_return;
+    }
+  gset = db_get_set (&val);
+  for (i = 0; i < db_set_size (gset); i++)
+    {
+      db_set_get (gset, i, &val2);
+      if (db_drop_member (db_get_object (&val2), dbuser) < 0)
+	{
+	  db_value_clear (&val2);
+	  db_value_clear (&val);
+	  goto error_return;
+	}
+      db_value_clear (&val2);
+    }
+  db_value_clear (&val);
 
 #if 0
   if (db_add_member (db_find_user ("PUBLIC"), dbuser) < 0)
