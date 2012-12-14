@@ -1160,6 +1160,14 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
       LANG_COLLATION *lc;
       PT_NODE *arg_dt = NULL;
 
+      if (node->info.expr.arg1 != NULL
+	  && node->info.expr.arg1->type_enum != PT_TYPE_NONE
+	  && !PT_HAS_COLLATION (node->info.expr.arg1->type_enum))
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_COLLATE_NOT_ALLOWED);
+	  return false;
+	}
       /* arg1 may have been set NULL due to previous semantic errors */
       arg_dt = (node->info.expr.arg1 != NULL)
 	? node->info.expr.arg1->data_type : NULL;
@@ -10025,8 +10033,31 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 	  if (PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_COLL_MODIFIER)
 	      && cast_type == NULL && node->info.expr.arg1 != NULL)
 	    {
-	      cast_type = parser_copy_tree (parser,
-					    node->info.expr.arg1->data_type);
+	      if (node->info.expr.arg1->type_enum == PT_TYPE_ENUMERATION)
+		{
+		  LANG_COLLATION *lc;
+
+		  lc = lang_get_collation (PT_GET_COLLATION_MODIFIER (node));
+
+		  /* silently rewrite the COLLATE modifier into full CAST:
+		   * CAST (ENUM as STRING) */
+		  cast_type = pt_make_prim_data_type (parser,
+						      PT_TYPE_VARCHAR);
+		  cast_type->info.data_type.collation_id =
+		    PT_GET_COLLATION_MODIFIER (node);
+		  cast_type->info.data_type.units = lc->codeset;
+		  PT_EXPR_INFO_CLEAR_FLAG (node,
+					   PT_EXPR_INFO_CAST_COLL_MODIFIER);
+		}
+	      else
+		{
+		  /* leave as COLLATE (special CAST), but copy data type from
+		   * argument */
+		  cast_type =
+		    parser_copy_tree (parser,
+				      node->info.expr.arg1->data_type);
+		}
+
 	      if (cast_type != NULL)
 		{
 		  node->info.expr.cast_type = cast_type;
