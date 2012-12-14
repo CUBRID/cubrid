@@ -716,7 +716,7 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
 					(PRM_ID_HA_FAILOVER_WAIT_TIME_IN_MSECS));
 	  assert (error == NO_ERROR);
 
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT,
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT,
 		  1,
 		  "A failover attempted to make the current node a master");
 	}
@@ -878,12 +878,12 @@ ping_check_cancel:
   if (hb_Cluster->state == HB_NSTATE_MASTER)
     {
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
-	      "Failback cancelled");
+	      "Failback cancelled by ping check");
     }
   else
     {
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
-	      "Failover cancelled");
+	      "Failover cancelled by ping check");
       hb_Cluster->state = HB_NSTATE_SLAVE;
     }
   hb_cluster_request_heartbeat_to_all ();
@@ -936,7 +936,7 @@ hb_cluster_job_failover (HB_JOB_ARG * arg)
     }
   else
     {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
 	      "Failover cancelled");
       hb_Cluster->state = HB_NSTATE_SLAVE;
     }
@@ -974,7 +974,7 @@ hb_cluster_job_failback (HB_JOB_ARG * arg)
   hb_Cluster->state = HB_NSTATE_TO_BE_SLAVE;
   hb_Resource->state = HB_NSTATE_TO_BE_SLAVE;
 
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
 	  "Master will be slave");
 
   pthread_mutex_unlock (&hb_Resource->lock);
@@ -1811,7 +1811,7 @@ hb_resource_job_proc_start (HB_JOB_ARG * arg)
     }
 
   snprintf (error_string, LINE_MAX, "(args:%s)", proc->args);
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
 	  "Restart the process", error_string);
 
   hb_proc_make_arg (argv, (char *) proc->argv);
@@ -2027,7 +2027,7 @@ hb_resource_job_confirm_start (HB_JOB_ARG * arg)
 
       snprintf (error_string, LINE_MAX, "(exceed max retry count, args:%s)",
 		proc->args);
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
 	      "Failed to restart the process", error_string);
 
       if (hb_Resource->state == HB_NSTATE_MASTER
@@ -2059,7 +2059,7 @@ hb_resource_job_confirm_start (HB_JOB_ARG * arg)
 	{
 	  snprintf (error_string, LINE_MAX, "(process not found, args:%s)",
 		    proc->args);
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_HB_PROCESS_EVENT, 2, "Failed to restart process",
 		  error_string);
 
@@ -2543,7 +2543,7 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd)
 
   snprintf (error_string, LINE_MAX, "(pid:%d, args:%s)", proc->pid,
 	    proc->args);
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
 	  "Process failure detected", error_string);
 
   job_arg = (HB_JOB_ARG *) malloc (sizeof (HB_JOB_ARG));
@@ -2718,7 +2718,7 @@ hb_register_new_process (CSS_CONN_ENTRY * conn)
       snprintf (error_string, LINE_MAX, "%s (pid:%d, state:%d, args:%s)",
 		HB_RESULT_SUCCESS_STR, ntohl (hbp_proc_register->pid),
 		proc->state, hbp_proc_register->args);
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
 	      "Registered as local process entries", error_string);
 
       pthread_mutex_unlock (&hb_Resource->lock);
@@ -2730,7 +2730,7 @@ hb_register_new_process (CSS_CONN_ENTRY * conn)
   snprintf (error_string, LINE_MAX, "%s (pid:%d, state:%d, args:%s)",
 	    HB_RESULT_FAILURE_STR, ntohl (hbp_proc_register->pid),
 	    proc->state, hbp_proc_register->args);
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
 	  "Registered as local process entries", error_string);
 
   css_remove_entry_by_conn (conn, &css_Master_socket_anchor);
@@ -2747,9 +2747,9 @@ static int
 hb_resource_send_changemode (HB_PROC_ENTRY * proc)
 {
   int error = NO_ERROR;
-  int state;
+  int state, nstate;
   int sig = 0;
-  char buffer[256];
+  char error_string[LINE_MAX] = "";
 
   if (proc->conn == NULL)
     {
@@ -2769,11 +2769,12 @@ hb_resource_send_changemode (HB_PROC_ENTRY * proc)
     {
       if (proc->pid && kill (proc->pid, 0) == 0)
 	{
-	  snprintf (buffer, sizeof (buffer),
+	  snprintf (error_string, sizeof (error_string),
 		    "process does not respond for a long time. kill pid %d signal %d.",
 		    proc->pid, sig);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_HB_PROCESS_EVENT, 2, "Process failure detected", buffer);
+		  ER_HB_PROCESS_EVENT, 2, "Process failure detected",
+		  error_string);
 	  kill (proc->pid, sig);
 	}
       return ER_FAILED;
@@ -2805,13 +2806,28 @@ hb_resource_send_changemode (HB_PROC_ENTRY * proc)
       return ER_FAILED;
     }
 
-  state = htonl (state);
-  error = css_send_heartbeat_data (proc->conn, (char *) &state,
-				   sizeof (state));
+  nstate = htonl (state);
+  error = css_send_heartbeat_data (proc->conn, (char *) &nstate,
+				   sizeof (nstate));
   if (NO_ERRORS != error)
     {
+      snprintf (error_string, LINE_MAX,
+		"Failed to send changemode request to the server. "
+		"(state:%d[%s], args:[%s], pid:%d)",
+		state, css_ha_server_state_string (state), proc->args,
+		proc->pid);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+	      error_string);
+
       return ER_FAILED;
     }
+
+  snprintf (error_string, LINE_MAX,
+	    "Send changemode request to the server. "
+	    "(state:%d[%s], args:[%s], pid:%d)",
+	    state, css_ha_server_state_string (state), proc->args, proc->pid);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	  ER_HA_GENERIC_ERROR, 1, error_string);
 
   return NO_ERROR;
 }
@@ -2829,6 +2845,7 @@ hb_resource_receive_changemode (CSS_CONN_ENTRY * conn)
   HB_PROC_ENTRY *proc;
   int state;
   char *ptr;
+  char error_string[LINE_MAX] = "";
 
   if (hb_Resource == NULL)
     {
@@ -2854,11 +2871,12 @@ hb_resource_receive_changemode (CSS_CONN_ENTRY * conn)
       return;
     }
 
-#if defined (HB_VERBOSE_DEBUG)
-  er_log_debug (ARG_FILE_LINE,
-		"receive changemode response. (fd:%d, state:%d). \n", sfd,
-		state);
-#endif
+  snprintf (error_string, LINE_MAX,
+	    "Receive changemode response from the server. "
+	    "(state:%d[%s], args:[%s], pid:%d)", state,
+	    css_ha_server_state_string (state), proc->args, proc->pid);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+	  error_string);
 
   switch (state)
     {
@@ -4203,7 +4221,7 @@ hb_deregister_by_pid (pid_t pid)
       snprintf (error_string, LINE_MAX,
 		"%s. (cannot find process to deregister, pid:%d)",
 		HB_RESULT_FAILURE_STR, pid);
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_HB_COMMAND_EXECUTION, 2, HB_CMD_DEREGISTER_STR,
 	      error_string);
       return;
@@ -4302,7 +4320,7 @@ hb_deregister_process (HB_PROC_ENTRY * proc)
       snprintf (error_string, LINE_MAX,
 		"%s. (unexpected process status or invalid pid, status:%d, pid:%d)",
 		HB_RESULT_FAILURE_STR, proc->state, proc->pid);
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_HB_COMMAND_EXECUTION, 2, HB_CMD_DEREGISTER_STR,
 	      error_string);
       return NULL;
@@ -4352,20 +4370,20 @@ hb_reconfig_heartbeat (char **str)
       snprintf (error_string, LINE_MAX,
 		"%s. (failed to reload CUBRID heartbeat configuration)",
 		HB_RESULT_FAILURE_STR);
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_HB_COMMAND_EXECUTION, 2, HB_CMD_RELOAD_STR, error_string);
     }
   else
     {
       snprintf (error_string, LINE_MAX, "%s.", HB_RESULT_SUCCESS_STR);
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_HB_COMMAND_EXECUTION, 2, HB_CMD_RELOAD_STR, error_string);
     }
 
   hb_get_node_info_string (str, false);
 
   snprintf (error_string, LINE_MAX, "\n%s", (str && *str) ? *str : "");
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_COMMAND_EXECUTION, 2,
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_COMMAND_EXECUTION, 2,
 	  HB_CMD_RELOAD_STR, error_string);
 
   return;
@@ -4412,7 +4430,7 @@ hb_deactivate_heartbeat (char **str)
       snprintf (error_string, LINE_MAX,
 		"%s. (CUBRID heartbeat feature already deactivated)",
 		HB_RESULT_FAILURE_STR);
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_HB_COMMAND_EXECUTION, 2, HB_CMD_DEACTIVATE_STR,
 	      error_string);
 
@@ -4432,7 +4450,7 @@ hb_deactivate_heartbeat (char **str)
   hb_Is_activated = false;
 
   snprintf (error_string, LINE_MAX, "%s.", HB_RESULT_SUCCESS_STR);
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_COMMAND_EXECUTION, 2,
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_COMMAND_EXECUTION, 2,
 	  HB_CMD_DEACTIVATE_STR, error_string);
 
   return;
@@ -4478,7 +4496,7 @@ hb_activate_heartbeat (char **str)
       snprintf (error_string, LINE_MAX,
 		"%s. (CUBRID heartbeat feature already activated)",
 		HB_RESULT_FAILURE_STR);
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_HB_COMMAND_EXECUTION, 2, HB_CMD_ACTIVATE_STR, error_string);
       return;
     }
@@ -4489,7 +4507,7 @@ hb_activate_heartbeat (char **str)
       snprintf (error_string, LINE_MAX,
 		"%s. (failed to initialize CUBRID heartbeat feature)",
 		HB_RESULT_FAILURE_STR);
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_HB_COMMAND_EXECUTION, 2, HB_CMD_ACTIVATE_STR, error_string);
       return;
     }
@@ -4497,7 +4515,7 @@ hb_activate_heartbeat (char **str)
   hb_Is_activated = true;
 
   snprintf (error_string, LINE_MAX, "%s.", HB_RESULT_SUCCESS_STR);
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_COMMAND_EXECUTION, 2,
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_COMMAND_EXECUTION, 2,
 	  HB_CMD_ACTIVATE_STR, error_string);
 
   return;

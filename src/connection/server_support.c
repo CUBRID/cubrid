@@ -2420,7 +2420,7 @@ css_transit_ha_server_state (THREAD_ENTRY * thread_p,
 	  new_state = table->next_state;
 	  /* append a dummy log record for LFT to wake LWTs up */
 	  log_append_ha_server_state (thread_p, new_state);
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_CSS_SERVER_HA_MODE_CHANGE, 2,
 		  css_ha_server_state_string (ha_Server_state),
 		  css_ha_server_state_string (new_state));
@@ -2612,7 +2612,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state,
 	  ha_Server_state = state;
 	  /* append a dummy log record for LFT to wake LWTs up */
 	  log_append_ha_server_state (thread_p, state);
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_CSS_SERVER_HA_MODE_CHANGE, 2,
 		  css_ha_server_state_string (ha_Server_state),
 		  css_ha_server_state_string (state));
