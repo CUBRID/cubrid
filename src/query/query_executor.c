@@ -226,6 +226,7 @@ struct analytic_state
 
   int input_recs;
   int current_group_input_recs;
+  int current_group_total_input_recs;
 
   bool is_first_tuple;
   bool is_last_function;
@@ -19141,6 +19142,7 @@ qexec_initialize_analytic_state (ANALYTIC_STATE * analytic_state,
   analytic_state->input_tplrec.tpl = 0;
   analytic_state->input_recs = 0;
   analytic_state->current_group_input_recs = 0;
+  analytic_state->current_group_total_input_recs = 0;
 
   analytic_state->last_tuple_pos.tplno = -1;
   analytic_state->last_tuple_pos.vpid.pageid = NULL_PAGEID;
@@ -19487,6 +19489,7 @@ qexec_analytic_start_group (THREAD_ENTRY * thread_p,
 	}
 
       analytic_state->current_group_input_recs = 0;
+      analytic_state->current_group_total_input_recs = 0;
     }
   else
     {
@@ -19554,6 +19557,7 @@ qexec_analytic_add_tuple (THREAD_ENTRY * thread_p,
 
       analytic_state->current_group_input_recs++;
     }
+  analytic_state->current_group_total_input_recs++;
 
 wrapup:
   return;
@@ -19634,10 +19638,10 @@ qexec_analytic_evaluate_ntile_function (THREAD_ENTRY * thread_p,
   if (!func_p->info.ntile.is_null)
     {
       int recs_in_bucket =
-	analytic_state->current_group_input_recs /
+	analytic_state->current_group_total_input_recs /
 	func_p->info.ntile.bucket_count;
       int compensate =
-	analytic_state->current_group_input_recs %
+	analytic_state->current_group_total_input_recs %
 	func_p->info.ntile.bucket_count;
 
       /* get bucket of current tuple */
