@@ -3594,8 +3594,13 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 
     case TYPE_INARITH:		/* compute and fetch arithmetic expr. value */
     case TYPE_OUTARITH:
-      return fetch_peek_arith (thread_p, regu_var, vd, obj_oid, tpl,
-			       peek_dbval);
+      error = fetch_peek_arith (thread_p, regu_var, vd, obj_oid, tpl,
+				peek_dbval);
+      if (error != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
 
     case TYPE_AGGREGATE:	/* fetch aggregation function value */
       /* The result value of the aggregate node MUST already have been evaluated */
