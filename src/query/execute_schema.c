@@ -450,6 +450,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 #endif
   SM_PARTITION_ALTER_INFO pinfo;
   bool partition_savepoint = false;
+  bool old_disable_stats = sm_Disable_updating_statistics;
   const PT_ALTER_CODE alter_code = alter->info.alter.code;
 
   entity_name = alter->info.alter.entity_name->info.name.original;
@@ -1186,6 +1187,13 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	}
       partition_savepoint = true;
 
+      if (alter_code != PT_ANALYZE_PARTITION)
+	{
+	  /* Disable updating statistics until partitioning schema 
+	   * modification is finished */
+	  sm_Disable_updating_statistics = true;
+	}
+
       error = do_alter_partitioning_pre (parser, alter, &pinfo);
       if (ctemplate->partition_of == NULL
 	  && ctemplate->current->partition_of != NULL)
@@ -1319,6 +1327,12 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	{
 	  goto alter_partition_fail;
 	}
+      if (alter_code != PT_ANALYZE_PARTITION)
+	{
+	  /* update statistics here */
+	  sm_Disable_updating_statistics = old_disable_stats;
+	  error = sm_update_statistics (pinfo.root_op, false);
+	}
       break;
     default:
       break;
@@ -1327,6 +1341,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   return error;
 
 alter_partition_fail:
+  sm_Disable_updating_statistics = old_disable_stats;
   if (partition_savepoint && error != NO_ERROR
       && error != ER_LK_UNILATERALLY_ABORTED)
     {
