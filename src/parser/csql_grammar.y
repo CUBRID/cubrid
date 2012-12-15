@@ -5630,6 +5630,7 @@ insert_name_clause_header
 	: opt_hint_list
 	  opt_into
 	  only_class_name
+	  opt_partition_spec
 	  opt_attr_list
 		{{
 
@@ -5641,12 +5642,16 @@ insert_name_clause_header
 			    ocs->info.spec.entity_name = $3;
 			    ocs->info.spec.only_all = PT_ONLY;
 			    ocs->info.spec.meta_class = PT_CLASS;
+			    if ($4)
+			      {
+			        ocs = pt_fix_partition_spec (this_parser, ocs, $4);
+			      }
 			  }
 
 			if (ins)
 			  {
 			    ins->info.insert.spec = ocs;
-			    ins->info.insert.attr_list = $4;
+			    ins->info.insert.attr_list = $5;
 			  }
 
 			$$ = ins;

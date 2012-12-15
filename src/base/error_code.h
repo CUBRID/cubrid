@@ -1394,7 +1394,9 @@
 #define ER_PROC_WIDTH_BUCKET_COUNT                  -1108
 #define ER_PROC_WIDTH_BUCKET_BOUND                  -1109
 
-#define ER_LAST_ERROR                               -1110
+#define ER_INVALID_DATA_FOR_PARTITION		    -1110
+
+#define ER_LAST_ERROR                               -1111
 
 /*
  * CAUTION!

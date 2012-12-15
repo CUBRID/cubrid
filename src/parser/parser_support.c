@@ -5260,7 +5260,7 @@ regu_upddel_class_info_init (UPDDEL_CLASS_INFO * ptr)
   ptr->has_uniques = 0;
   ptr->no_subclasses = 0;
   ptr->no_attrs = 0;
-  ptr->needs_pruning = 0;
+  ptr->needs_pruning = DB_NOT_PARTITIONED_CLASS;
   ptr->no_lob_attrs = NULL;
   ptr->lob_attr_ids = NULL;
 }
@@ -9904,13 +9904,6 @@ pt_mark_spec_list_for_delete (PARSER_CONTEXT * parser,
 	  return;
 	}
 
-      if (from->info.spec.flag & PT_SPEC_FLAG_IS_PARTITION)
-	{
-	  PT_ERRORm (parser, from, MSGCAT_SET_PARSER_SEMANTIC,
-		     MSGCAT_SEMANTIC_INVALID_PARTITION_REQUEST);
-	  return;
-	}
-
       from->info.spec.flag |= PT_SPEC_FLAG_DELETE;
 
       node = node->next;
@@ -9951,14 +9944,6 @@ pt_mark_spec_list_for_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      PT_INTERNAL_ERROR (parser, "invalid spec id");
 	      return;
 	    }
-
-	  if (node_tmp->info.spec.flag & PT_SPEC_FLAG_IS_PARTITION)
-	    {
-	      PT_ERRORm (parser, node_tmp, MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_INVALID_PARTITION_REQUEST);
-	      return;
-	    }
-
 	  node_tmp->info.spec.flag |= PT_SPEC_FLAG_UPDATE;
 	}
       else
@@ -9970,13 +9955,6 @@ pt_mark_spec_list_for_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      if (node_tmp == NULL)
 		{
 		  PT_INTERNAL_ERROR (parser, "invalid spec id");
-		  return;
-		}
-
-	      if (node_tmp->info.spec.flag & PT_SPEC_FLAG_IS_PARTITION)
-		{
-		  PT_ERRORm (parser, node_tmp, MSGCAT_SET_PARSER_SEMANTIC,
-			     MSGCAT_SEMANTIC_INVALID_PARTITION_REQUEST);
 		  return;
 		}
 

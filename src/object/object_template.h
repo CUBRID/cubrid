@@ -115,6 +115,9 @@ typedef struct obj_template
   /* Used to detect cycles in the template hierarchy */
   unsigned int traversal;
 
+  /* how to perform pruning on this template */
+  int pruning_type;
+
   /* write lock flag */
   unsigned write_lock:1;
 

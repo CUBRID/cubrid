@@ -894,7 +894,7 @@ make_template (MOP object, MOP classobj)
       template_ptr->force_check_not_null = 0;
       template_ptr->force_flush = 0;
       template_ptr->bulk_flush = 0;
-
+      template_ptr->pruning_type = DB_NOT_PARTITIONED_CLASS;
       /*
        * Don't do this until we've initialized the other stuff;
        * OTMPL_NASSIGNS relies on the "class" attribute of the template.
@@ -2049,6 +2049,7 @@ access_object (OBJ_TEMPLATE * template_ptr, MOP * object, MOBJ * objptr)
     }
   else
     {
+      mop->pruning_type = template_ptr->pruning_type;
       *object = mop;
       *objptr = obj;
     }
@@ -3079,6 +3080,7 @@ make_temp_object (DB_OBJECT * class_, OBJ_TEMPLATE * object)
 	{
 	  obj->class_mop = class_;
 	  obj->object = (void *) object;
+	  obj->pruning_type = object->pruning_type;
 	  /*
 	   * We have to be very careful here - we need to mimick the old oid
 	   * for "old" to behave correctly.

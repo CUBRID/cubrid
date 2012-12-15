@@ -2952,7 +2952,7 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid,
  * return : search return code
  * thread_p (in)  : handler thread
  * class_oid (in) : class oid
- * needs_pruning (in) : perform pruning before searching
+ * pruning_type (in) : pruning type
  * btids (in)	  : indexes to search
  * values (in)	  : values to search for
  * count (in)	  : number of indexes
@@ -2967,7 +2967,7 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid,
  */
 BTREE_SEARCH
 xbtree_find_multi_uniques (THREAD_ENTRY * thread_p, OID * class_oid,
-			   int needs_pruning, BTID * btids, DB_VALUE * values,
+			   int pruning_type, BTID * btids, DB_VALUE * values,
 			   int count, SCAN_OPERATION_TYPE op_type,
 			   OID ** oids, int *oids_count)
 {
@@ -2989,9 +2989,10 @@ xbtree_find_multi_uniques (THREAD_ENTRY * thread_p, OID * class_oid,
       return BTREE_ERROR_OCCURRED;
     }
 
-  if (needs_pruning)
+  if (pruning_type != DB_NOT_PARTITIONED_CLASS)
     {
-      error = partition_load_pruning_context (thread_p, class_oid, &context);
+      error = partition_load_pruning_context (thread_p, class_oid,
+					      pruning_type, &context);
       if (error != NO_ERROR)
 	{
 	  result = BTREE_ERROR_OCCURRED;
@@ -3005,7 +3006,7 @@ xbtree_find_multi_uniques (THREAD_ENTRY * thread_p, OID * class_oid,
       is_global_index = false;
       BTID_COPY (&pruned_btid, &btids[i]);
       COPY_OID (&pruned_class_oid, class_oid);
-      if (needs_pruning)
+      if (pruning_type)
 	{
 	  /* At this point, there's no way of knowing if btids[i] refers a
 	   * global unique index or a local one. Perform pruning and use the
@@ -3028,6 +3029,44 @@ xbtree_find_multi_uniques (THREAD_ENTRY * thread_p, OID * class_oid,
 				   &found_oids[idx], is_global_index);
       if (result == BTREE_KEY_FOUND)
 	{
+	  if (pruning_type == DB_PARTITION_CLASS)
+	    {
+	      if (is_global_index)
+		{
+		  OID found_class_oid;
+
+		  /* find the class oid for found oid */
+		  if (heap_get_class_oid (thread_p, &found_class_oid,
+					  &found_oids[i]) == NULL)
+		    {
+		      error = ER_FAILED;
+		      result = BTREE_ERROR_OCCURRED;
+		      goto error_return;
+		    }
+		  if (!OID_EQ (&found_class_oid, class_oid))
+		    {
+		      /* Found a constraint violation on a different
+		       * partition: throw invalid partition
+		       */
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_INVALID_DATA_FOR_PARTITION, 0);
+		      error = ER_INVALID_DATA_FOR_PARTITION;
+		      result = BTREE_ERROR_OCCURRED;
+		      goto error_return;
+		    }
+		}
+	      else if (!OID_EQ (&pruned_class_oid, class_oid))
+		{
+		  /* Found a constraint violation on a different partition:
+		   * throw invalid partition
+		   */
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_INVALID_DATA_FOR_PARTITION, 0);
+		  error = ER_INVALID_DATA_FOR_PARTITION;
+		  result = BTREE_ERROR_OCCURRED;
+		  goto error_return;
+		}
+	    }
 	  is_at_least_one = true;
 	  idx++;
 	  if (op_type == S_UPDATE)

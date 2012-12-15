@@ -3855,7 +3855,7 @@ xts_process_insert_proc (char *ptr, const INSERT_PROC_NODE * insert_info)
 
   ptr = or_pack_int (ptr, insert_info->is_first_value);
 
-  ptr = or_pack_int (ptr, insert_info->needs_pruning);
+  ptr = or_pack_int (ptr, insert_info->pruning_type);
 
   offset = xts_save_odku_info (insert_info->odku);
   if (offset == ER_FAILED)
@@ -4262,7 +4262,7 @@ xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec)
 
   ptr = or_pack_int (ptr, access_spec->single_fetch);
 
-  ptr = or_pack_int (ptr, access_spec->needs_pruning);
+  ptr = or_pack_int (ptr, access_spec->pruning_type);
 
   offset = xts_save_db_value (access_spec->s_dbval);
   if (offset == ER_FAILED)

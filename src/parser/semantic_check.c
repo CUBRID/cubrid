@@ -5383,13 +5383,13 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 			  MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, sup_nam);
 	      break;
 	    }
-	  if (do_is_partitioned_classobj (&ss_partition, super, NULL, NULL)
+	  if (sm_partitioned_class_type (super, &ss_partition, NULL, NULL)
 	      != NO_ERROR)
 	    {
 	      PT_ERROR (parser, alter, er_msg ());
 	      break;
 	    }
-	  if (ss_partition == PARTITION_CLASS)
+	  if (ss_partition == DB_PARTITION_CLASS)
 	    {
 	      PT_ERRORm (parser, alter, MSGCAT_SET_PARSER_SEMANTIC,
 			 MSGCAT_SEMANTIC_INVALID_PARTITION_REQUEST);
@@ -8490,7 +8490,8 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_NODE *tbl_opt = NULL;
   PT_MISC_TYPE entity_type;
   DB_OBJECT *db_obj, *existing_entity;
-  int found, partition_status = NOT_PARTITION_CLASS, collation_id, charset;
+  int found, partition_status = DB_NOT_PARTITIONED_CLASS;
+  int collation_id, charset;
   bool found_reuse_oid = false;
   bool found_auto_increment = false;
   int error = NO_ERROR;
@@ -8643,14 +8644,13 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  parent->info.name.db_object = db_obj;
 	  error =
-	    do_is_partitioned_classobj (&partition_status, db_obj, NULL,
-					NULL);
+	    sm_partitioned_class_type (db_obj, &partition_status, NULL, NULL);
 	  if (error != NO_ERROR)
 	    {
 	      PT_ERROR (parser, node, er_msg ());
 	      break;
 	    }
-	  if (partition_status == PARTITION_CLASS)
+	  if (partition_status == DB_PARTITION_CLASS)
 	    {
 	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_RUNTIME,
 			  MSGCAT_RUNTIME_NOT_ALLOWED_ACCESS_TO_PARTITION,
@@ -8851,7 +8851,7 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_NODE *name, *prefix_length, *col, *col_expr;
   DB_OBJECT *db_obj;
 
-  int is_partition = NOT_PARTITION_CLASS;
+  int is_partition = DB_NOT_PARTITIONED_CLASS;
   /* check that there trying to create an index on a class */
   name = node->info.index.indexed_class->info.spec.entity_name;
   db_obj = db_find_class (name->info.name.original);
@@ -8874,14 +8874,14 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
 	  return;
 	}
       /* check if this is a partition class */
-      if (do_is_partitioned_classobj (&is_partition, db_obj, NULL, NULL)
+      if (sm_partitioned_class_type (db_obj, &is_partition, NULL, NULL)
 	  != NO_ERROR)
 	{
 	  PT_ERROR (parser, node, er_msg ());
 	  return;
 	}
 
-      if (is_partition == PARTITION_CLASS)
+      if (is_partition == DB_PARTITION_CLASS)
 	{
 	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 		     MSGCAT_SEMANTIC_INVALID_PARTITION_REQUEST);

@@ -87,6 +87,7 @@ extern int locator_attribute_info_force (THREAD_ENTRY * thread_p,
 					 HEAP_SCANCACHE * scan_cache,
 					 int *force_count, bool not_check_fk,
 					 REPL_INFO_TYPE repl_info,
+					 int pruning_type,
 					 PRUNING_CONTEXT * pcontext,
 					 FUNC_PRED_UNPACK_INFO * func_preds);
 extern LC_COPYAREA *locator_allocate_copy_area_by_attr_info (THREAD_ENTRY *

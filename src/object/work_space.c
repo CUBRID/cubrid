@@ -264,6 +264,7 @@ ws_make_mop (OID * oid)
       op->pinned = 0;
       op->no_objects = 0;
       op->lock = NULL_LOCK;
+      op->pruning_type = DB_NOT_PARTITIONED_CLASS;
       op->hash_link = NULL;
       op->commit_link = NULL;
       op->error_link = NULL;

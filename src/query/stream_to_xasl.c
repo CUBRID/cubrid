@@ -3804,7 +3804,7 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr,
   ptr = or_unpack_int (ptr, &insert_info->release_lock);
   ptr = or_unpack_int (ptr, &insert_info->do_replace);
   ptr = or_unpack_int (ptr, &insert_info->is_first_value);
-  ptr = or_unpack_int (ptr, &insert_info->needs_pruning);
+  ptr = or_unpack_int (ptr, &insert_info->pruning_type);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -4476,7 +4476,7 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr,
   ptr = or_unpack_int (ptr, &access_spec->qualified_block);
   ptr = or_unpack_int (ptr, (int *) &access_spec->single_fetch);
 
-  ptr = or_unpack_int (ptr, &access_spec->needs_pruning);
+  ptr = or_unpack_int (ptr, &access_spec->pruning_type);
   access_spec->parts = NULL;
   access_spec->curent = NULL;
   access_spec->pruned = false;

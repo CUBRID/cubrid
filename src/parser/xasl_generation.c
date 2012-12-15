@@ -4877,7 +4877,7 @@ pt_make_access_spec (TARGET_TYPE spec_type,
       spec->where_key = where_key;
       spec->where_pred = where_pred;
       spec->next = NULL;
-      spec->needs_pruning = 0;
+      spec->pruning_type = DB_NOT_PARTITIONED_CLASS;
       spec->pruned = false;
       spec->curent = NULL;
       spec->parts = NULL;
@@ -5027,7 +5027,12 @@ pt_make_class_access_spec (PARSER_CONTEXT * parser,
 
       spec->parts = NULL;
       spec->curent = NULL;
-      spec->needs_pruning = sm_is_partitioned_class (class_);
+      if (sm_partitioned_class_type (class_, &spec->pruning_type, NULL, NULL)
+	  != NO_ERROR)
+	{
+	  PT_ERRORc (parser, flat, er_msg ());
+	  return NULL;
+	}
       spec->pruned = false;
 
       spec->s.cls_node.cls_regu_list_key = attr_list_key;
@@ -12948,7 +12953,7 @@ pt_link_regu_to_selupd_list (PARSER_CONTEXT * parser,
 	{
 	  return NULL;
 	}
-      if (do_is_partitioned_classobj (&is_partition, target_class, NULL, NULL)
+      if (sm_partitioned_class_type (target_class, &is_partition, NULL, NULL)
 	  != NO_ERROR)
 	{
 	  return NULL;
@@ -16811,7 +16816,12 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  error = ER_HEAP_UNKNOWN_OBJECT;
 	}
 
-      insert->needs_pruning = sm_is_partitioned_class (class_obj);
+      if (sm_partitioned_class_type (class_obj, &insert->pruning_type, NULL,
+				     NULL) != NO_ERROR)
+	{
+	  PT_ERRORc (parser, statement, er_msg ());
+	  return NULL;
+	}
       insert->has_uniques = has_uniques;
       insert->wait_msecs = XASL_WAIT_MSECS_NOCHANGE;
       hint_arg = statement->info.insert.waitsecs_hint;
@@ -18093,7 +18103,13 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  cl_name_node = node->info.spec.flat_entity_list;
 	  class_obj = cl_name_node->info.name.db_object;
-	  class_info->needs_pruning = sm_is_partitioned_class (class_obj);
+	  if (sm_partitioned_class_type (class_obj,
+					 &class_info->needs_pruning,
+					 NULL, NULL) != NO_ERROR)
+	    {
+	      PT_ERRORc (parser, statement, er_msg ());
+	      goto error_return;
+	    }
 
 	  no_subclasses = 0;
 	  while (cl_name_node)
@@ -18565,7 +18581,12 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 
       cl_name_node = p->info.spec.flat_entity_list;
       class_obj = cl_name_node->info.name.db_object;
-      upd_cls->needs_pruning = sm_is_partitioned_class (class_obj);
+      error = sm_partitioned_class_type (class_obj, &upd_cls->needs_pruning,
+					 NULL, NULL);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
 
       upd_cls->has_uniques = (p->info.spec.flag & PT_SPEC_FLAG_HAS_UNIQUE);
 
@@ -22753,7 +22774,12 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 
   cl_name_node = from->info.spec.flat_entity_list;
   class_obj = cl_name_node->info.name.db_object;
-  upd_cls->needs_pruning = sm_is_partitioned_class (class_obj);
+  error = sm_partitioned_class_type (class_obj, &upd_cls->needs_pruning, NULL,
+				     NULL);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
 
   /* iterate through subclasses */
   cl = 0;
@@ -23203,7 +23229,12 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	}
     }
 
-  insert->needs_pruning = sm_is_partitioned_class (class_obj);
+  error = sm_partitioned_class_type (class_obj, &insert->pruning_type, NULL,
+				     NULL);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
 
   error = pt_to_constraint_pred (parser, xasl,
 				 statement->info.merge.into,
@@ -23402,7 +23433,12 @@ pt_to_merge_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   cl_name_node = from->info.spec.flat_entity_list;
   class_obj = cl_name_node->info.name.db_object;
-  del_cls->needs_pruning = sm_is_partitioned_class (class_obj);
+  error = sm_partitioned_class_type (class_obj, &del_cls->needs_pruning, NULL,
+				     NULL);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
 
   cl = 0;
   while (cl_name_node)

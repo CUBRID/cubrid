@@ -2771,8 +2771,8 @@ sm_rename_class (MOP op, const char *new_name)
     }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
-  error = do_is_partitioned_classobj (&is_partition, op, NULL, NULL);
-  if (is_partition == PARTITIONED_CLASS)
+  error = sm_partitioned_class_type (op, &is_partition, NULL, NULL);
+  if (is_partition == DB_PARTITIONED_CLASS)
     {
       error = tran_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_RENAME);
       if (error != NO_ERROR)
@@ -2849,7 +2849,7 @@ sm_rename_class (MOP op, const char *new_name)
 	}
     }
 
-  if (is_partition == PARTITIONED_CLASS)
+  if (is_partition == DB_PARTITIONED_CLASS)
     {
       if (error == NO_ERROR)
 	{
@@ -3084,6 +3084,181 @@ sm_is_partitioned_class (MOP op)
     }
 
   return result;
+}
+
+/*
+ * sm_partitioned_class_type () -
+ * return : NO_ERROR or error code
+ * classop (in)		   :
+ * partition_type (in/out) : DB_NOT_PARTITIONED_CLASS, DB_PARTITIONED_CLASS
+ *			     OR DB_PARTITION_CLASS
+ * keyattr (in/out)	   : if not null, will hold partition key attribute
+ *			     name
+ * partitions (in/out)	   : if not null, will hold MOP array of partitions
+ */
+int
+sm_partitioned_class_type (DB_OBJECT * classop, int *partition_type,
+			   char *keyattr, MOP ** partitions)
+{
+  DB_OBJLIST *objs;
+  SM_CLASS *smclass, *subcls;
+  DB_VALUE pname, pattr, psize, attrname;
+  int au_save, pcnt, i;
+  MOP *subobjs = NULL;
+  int error;
+
+  assert (classop != NULL);
+  assert (partition_type != NULL);
+
+  *partition_type = DB_NOT_PARTITIONED_CLASS;
+
+  AU_DISABLE (au_save);
+
+  error = au_fetch_class (classop, &smclass, AU_FETCH_READ, AU_SELECT);
+  if (error != NO_ERROR)
+    {
+      AU_ENABLE (au_save);
+      return error;
+    }
+  if (!smclass->partition_of)
+    {
+      AU_ENABLE (au_save);
+      return NO_ERROR;
+    }
+
+  if (partitions == NULL && keyattr == NULL)
+    {
+      /* Only get partition status (partitioned/not partitioned) */
+      if (smclass->users == NULL)
+	{
+	  *partition_type = DB_PARTITION_CLASS;
+	}
+      else
+	{
+	  *partition_type = DB_PARTITIONED_CLASS;
+	}
+      AU_ENABLE (au_save);
+      return NO_ERROR;
+    }
+
+  db_make_null (&pname);
+  db_make_null (&pattr);
+  db_make_null (&psize);
+  db_make_null (&attrname);
+
+  if (db_get (smclass->partition_of, PARTITION_ATT_PNAME, &pname) != NO_ERROR)
+    {
+      goto partition_failed;
+    }
+  *partition_type =
+    (DB_IS_NULL (&pname) ? DB_PARTITIONED_CLASS : DB_PARTITION_CLASS);
+
+  if (keyattr || partitions)
+    {
+      if (*partition_type == DB_PARTITION_CLASS)
+	{
+	  /* Fetch the root partition class. Partitions can only inherit from
+	     one class which is the partitioned table */
+	  MOP root_op = NULL;
+	  int au_save = 0;
+
+	  error = do_get_partition_parent (classop, &root_op);
+	  if (error != NO_ERROR || root_op == NULL)
+	    {
+	      goto partition_failed;
+	    }
+
+	  error =
+	    au_fetch_class (root_op, &smclass, AU_FETCH_READ, AU_SELECT);
+
+	  if (error != NO_ERROR)
+	    {
+	      goto partition_failed;
+	    }
+	}
+
+      if (db_get (smclass->partition_of, PARTITION_ATT_PVALUES, &pattr)
+	  != NO_ERROR)
+	{
+	  goto partition_failed;
+	}
+      if (set_get_element (pattr.data.set, 0, &attrname) != NO_ERROR)
+	{
+	  goto partition_failed;
+	}
+      if (set_get_element (pattr.data.set, 1, &psize) != NO_ERROR)
+	{
+	  goto partition_failed;
+	}
+
+      pcnt = psize.data.i;
+      if (keyattr)
+	{
+	  char *p = NULL;
+
+	  keyattr[0] = 0;
+	  if (DB_IS_NULL (&attrname)
+	      || (p = DB_GET_STRING (&attrname)) == NULL)
+	    {
+	      goto partition_failed;
+	    }
+	  strncpy (keyattr, p, DB_MAX_IDENTIFIER_LENGTH);
+	}
+
+      if (partitions)
+	{
+	  subobjs = (MOP *) malloc (sizeof (MOP) * (pcnt + 1));
+	  if (subobjs == NULL)
+	    {
+	      goto partition_failed;
+	    }
+	  memset (subobjs, 0, sizeof (MOP) * (pcnt + 1));
+
+	  for (objs = smclass->users, i = 0; objs && i < pcnt;
+	       objs = objs->next)
+	    {
+	      if (au_fetch_class (objs->op, &subcls, AU_FETCH_READ, AU_SELECT)
+		  != NO_ERROR)
+		{
+		  goto partition_failed;
+		}
+	      if (!subcls->partition_of)
+		{
+		  continue;
+		}
+	      subobjs[i++] = objs->op;
+	    }
+
+	  *partitions = subobjs;
+	}
+    }
+
+  AU_ENABLE (au_save);
+
+  pr_clear_value (&pname);
+  pr_clear_value (&pattr);
+  pr_clear_value (&psize);
+  pr_clear_value (&attrname);
+
+  return NO_ERROR;
+
+partition_failed:
+
+  AU_ENABLE (au_save);
+
+  if (subobjs)
+    {
+      free_and_init (subobjs);
+    }
+
+  pr_clear_value (&pname);
+  pr_clear_value (&pattr);
+  pr_clear_value (&psize);
+  pr_clear_value (&attrname);
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
+
+  return ER_PARTITION_WORK_FAILED;
 }
 
 /*
@@ -12556,14 +12731,14 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res)
 	{
 	  MOP newop = NULL;
 	  bool old_val = sm_Disable_updating_statistics;
-	  int is_partition = NOT_PARTITION_CLASS;
-	  error = do_is_partitioned_classobj (&is_partition, template_->op,
-					      NULL, NULL);
+	  int is_partition = DB_NOT_PARTITIONED_CLASS;
+	  error = sm_partitioned_class_type (template_->op, &is_partition,
+					     NULL, NULL);
 	  if (error != NO_ERROR)
 	    {
 	      goto cleanup;
 	    }
-	  if (is_partition == PARTITIONED_CLASS)
+	  if (is_partition == DB_PARTITIONED_CLASS)
 	    {
 	      /* Delay updating statistics until subclasses have been updated
 	       * also. When allocate_disk_structures is called, subclasses
@@ -12597,7 +12772,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res)
 		    }
 		}
 	    }
-	  if (is_partition == PARTITIONED_CLASS)
+	  if (is_partition == DB_PARTITIONED_CLASS)
 	    {
 	      sm_Disable_updating_statistics = old_val;
 	      if (error == NO_ERROR)
@@ -12736,7 +12911,7 @@ sm_delete_class_mop (MOP op)
       return ER_FAILED;
     }
 
-  error = do_is_partitioned_classobj (&is_partition, op, NULL, NULL);
+  error = sm_partitioned_class_type (op, &is_partition, NULL, NULL);
   if (error != NO_ERROR)
     {
       return error;
@@ -13138,8 +13313,8 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
     SM_MAP_DB_INDEX_CONSTRAINT_TO_SM_CONSTRAINT (db_constraint_type);
   reverse_index = SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (constraint_type);
 
-  error = do_is_partitioned_classobj (&is_partition, classop, NULL,
-				      &sub_partitions);
+  error = sm_partitioned_class_type (classop, &is_partition, NULL,
+				     &sub_partitions);
   if (error != NO_ERROR)
     {
       goto fail_end;
@@ -13565,8 +13740,8 @@ sm_drop_index (MOP classop, const char *constraint_name)
   int i, is_partition = 0, savepoint_index = 0;
   MOP *sub_partitions = NULL;
 
-  error = do_is_partitioned_classobj (&is_partition, classop, NULL,
-				      &sub_partitions);
+  error = sm_partitioned_class_type (classop, &is_partition, NULL,
+				     &sub_partitions);
   if (error != NO_ERROR)
     {
       return error;

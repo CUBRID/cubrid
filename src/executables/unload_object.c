@@ -2041,8 +2041,8 @@ get_requested_classes (const char *input_filename, DB_OBJECT * class_list[])
 	    {
 	      class_list[i] = class_;
 	      error =
-		do_is_partitioned_classobj (&is_partition, class_, NULL,
-					    &sub_partitions);
+		sm_partitioned_class_type (class_, &is_partition, NULL,
+					   &sub_partitions);
 	      if (is_partition == 1 && sub_partitions != NULL)
 		{
 		  for (j = 0; sub_partitions[j]; j++)

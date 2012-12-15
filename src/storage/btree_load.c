@@ -2347,7 +2347,8 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
 					  &attr_info, &cache_attr_id, 1,
 					  LC_FLUSH_UPDATE, SINGLE_ROW_UPDATE,
 					  &upd_scancache, &force_count, true,
-					  REPL_INFO_TYPE_STMT_NORMAL, NULL,
+					  REPL_INFO_TYPE_STMT_NORMAL,
+					  DB_NOT_PARTITIONED_CLASS, NULL,
 					  NULL);
       if (ret != NO_ERROR)
 	{

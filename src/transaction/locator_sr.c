@@ -197,7 +197,7 @@ static int locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid,
 				 OID * class_oid, OID * oid, RECDES * recdes,
 				 int has_index, int op_type,
 				 HEAP_SCANCACHE * scan_cache,
-				 int *force_count,
+				 int *force_count, int pruning_type,
 				 PRUNING_CONTEXT * pcontext,
 				 FUNC_PRED_UNPACK_INFO * func_preds);
 static int locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid,
@@ -209,7 +209,7 @@ static int locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid,
 				 int n_att_id, int op_type,
 				 HEAP_SCANCACHE * scan_cache,
 				 int *force_count, bool not_check_fk,
-				 REPL_INFO_TYPE repl_info,
+				 REPL_INFO_TYPE repl_info, int pruning_type,
 				 PRUNING_CONTEXT * pcontext);
 static int locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid,
 				OID * old_class_oid, OID * obj_oid,
@@ -268,6 +268,8 @@ static LC_FIND_CLASSNAME xlocator_reserve_class_name (THREAD_ENTRY * thread_p,
 static int locator_filter_errid (THREAD_ENTRY * thread_p,
 				 int num_ignore_error_count,
 				 int *ignore_error_list);
+static int locator_area_op_to_pruning_type (LC_COPYAREA_OPERATION op);
+
 /*
  * locator_initialize () - Initialize the locator on the server
  *
@@ -4312,6 +4314,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 								 &force_count,
 								 false,
 								 REPL_INFO_TYPE_STMT_NORMAL,
+								 DB_NOT_PARTITIONED_CLASS,
 								 NULL, NULL);
 		      if (error_code != NO_ERROR)
 			{
@@ -4566,6 +4569,7 @@ locator_repair_object_cache (THREAD_ENTRY * thread_p, OR_INDEX * index,
 							 &upd_scancache,
 							 &force_count, true,
 							 REPL_INFO_TYPE_STMT_NORMAL,
+							 DB_NOT_PARTITIONED_CLASS,
 							 NULL, NULL);
 	      if (error_code != NO_ERROR)
 		{
@@ -4843,6 +4847,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p,
 							     &force_count,
 							     false,
 							     REPL_INFO_TYPE_STMT_NORMAL,
+							     DB_NOT_PARTITIONED_CLASS,
 							     NULL, NULL);
 		  if (error_code != NO_ERROR)
 		    {
@@ -4938,6 +4943,7 @@ error3:
  *   scan_cache(in/out): Scan cache used to estimate the best space pages
  *              between heap changes.
  *   force_count(in):
+ *   pruning_type(in): type of pruning that should be performed
  *   pcontext(in): partition pruning context
  *   func_preds(in): cached function index expressions
  *
@@ -4948,7 +4954,7 @@ static int
 locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 		      OID * oid, RECDES * recdes, int has_index, int op_type,
 		      HEAP_SCANCACHE * scan_cache, int *force_count,
-		      PRUNING_CONTEXT * pcontext,
+		      int pruning_type, PRUNING_CONTEXT * pcontext,
 		      FUNC_PRED_UNPACK_INFO * func_preds)
 {
   char *classname;		/* Classname to update */
@@ -4972,16 +4978,15 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
   local_scan_cache = scan_cache;
   local_func_preds = func_preds;
 
-  if (op_type == SINGLE_ROW_INSERT_PRUNING
-      || op_type == MULTI_ROW_INSERT_PRUNING)
+  if (pruning_type != DB_NOT_PARTITIONED_CLASS)
     {
       OID superclass_oid;
       int granted;
       /* Perform partition pruning on the given class */
       error_code =
 	partition_prune_insert (thread_p, class_oid, recdes, scan_cache,
-				pcontext, &real_class_oid, &real_hfid,
-				&superclass_oid);
+				pcontext, pruning_type, &real_class_oid,
+				&real_hfid, &superclass_oid);
       if (error_code != NO_ERROR)
 	{
 	  goto error2;
@@ -5042,13 +5047,6 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	   */
 	  assert_release (OID_EQ (class_oid, &real_class_oid));
 	}
-
-      /* There will be no pruning after this point. Reset op_type to a
-       * non-pruning operation
-       */
-      op_type =
-	(op_type ==
-	 SINGLE_ROW_INSERT_PRUNING) ? SINGLE_ROW_INSERT : MULTI_ROW_INSERT;
     }
 
   *force_count = 0;
@@ -5257,6 +5255,7 @@ error2:
  * op_type (in)		: operation type
  * has_index (in)	: true if the class has indexes
  * force_count (in/out)	:
+ * context(in)	        : pruning context
  *
  * Note: this function calls locator_delete_force on the current object oid
  * and locator_insert_force for the RECDES it receives. The record has already
@@ -5310,7 +5309,7 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid,
 	locator_insert_force (thread_p, new_class_hfid, new_class_oid,
 			      &new_obj_oid, recdes, has_index,
 			      ins_op_type, insert_cache, force_count,
-			      NULL, NULL);
+			      DB_NOT_PARTITIONED_CLASS, NULL, NULL);
     }
   else
     {
@@ -5329,7 +5328,7 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid,
 	locator_insert_force (thread_p, new_class_hfid, new_class_oid,
 			      &new_obj_oid, recdes, has_index,
 			      SINGLE_ROW_INSERT, &insert_cache, force_count,
-			      NULL, NULL);
+			      DB_NOT_PARTITIONED_CLASS, NULL, NULL);
       heap_scancache_end (thread_p, &insert_cache);
     }
 
@@ -5366,6 +5365,9 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid,
  *                   between heap changes.
  *   force_count(in):
  *   not_check_fk(in):
+ *   repl_inf(in): replication info
+ *   pruning_type(in): pruning type
+ *   pcontext(in): pruning context
  *
  * Note: The given object is updated on this heap and all appropriate
  *              index entries are updated.
@@ -5378,7 +5380,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 		      int has_index, ATTR_ID * att_id, int n_att_id,
 		      int op_type, HEAP_SCANCACHE * scan_cache,
 		      int *force_count, bool not_check_fk,
-		      REPL_INFO_TYPE repl_info, PRUNING_CONTEXT * pcontext)
+		      REPL_INFO_TYPE repl_info, int pruning_type,
+		      PRUNING_CONTEXT * pcontext)
 {
   char *old_classname = NULL;	/* Classname that may have been
 				 * renamed */
@@ -5564,8 +5567,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
   else
     {
       local_scan_cache = scan_cache;
-      if (op_type == SINGLE_ROW_UPDATE_PRUNING
-	  || op_type == MULTI_ROW_UPDATE_PRUNING)
+      if (pruning_type != DB_NOT_PARTITIONED_CLASS)
 	{
 	  OID superclass_oid;
 	  OID real_class_oid;
@@ -5576,7 +5578,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	  COPY_OID (&real_class_oid, class_oid);
 	  error_code =
 	    partition_prune_update (thread_p, class_oid, recdes, pcontext,
-				    &real_class_oid, &real_hfid,
+				    pruning_type, &real_class_oid, &real_hfid,
 				    &superclass_oid);
 	  if (error_code != NO_ERROR)
 	    {
@@ -5635,8 +5637,6 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	  /* There will be no pruning after this point so we should reset
 	   * op_type to a non pruning operation
 	   */
-	  op_type = ((op_type == SINGLE_ROW_UPDATE_PRUNING)
-		     ? SINGLE_ROW_UPDATE : MULTI_ROW_UPDATE);
 	}
 
       /* AN INSTANCE: Update indices if any */
@@ -6231,7 +6231,7 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p,
 				  &obj->oid, NULL, false, NULL, &recdes,
 				  obj->has_index, NULL, 0, MULTI_ROW_UPDATE,
 				  &scan_cache, &force_count, false,
-				  repl_info, NULL);
+				  repl_info, DB_NOT_PARTITIONED_CLASS, NULL);
 	  if (error_code != NO_ERROR)
 	    {
 	      /*
@@ -6376,7 +6376,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area,
   int force_count;
   LOG_LSA lsa, oneobj_lsa;
   int error_code = NO_ERROR;
-  int op_type = 0;
+  int pruning_type = 0;
   int num_continue_on_error = 0;
 
   /* need to start a topop to ensure the atomic operation. */
@@ -6439,13 +6439,13 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area,
 	{
 	case LC_FLUSH_INSERT:
 	case LC_FLUSH_INSERT_PRUNE:
-	  op_type =
-	    (obj->operation ==
-	     LC_FLUSH_INSERT) ? SINGLE_ROW_INSERT : SINGLE_ROW_INSERT_PRUNING;
+	case LC_FLUSH_INSERT_PRUNE_VERIFY:
+	  pruning_type = locator_area_op_to_pruning_type (obj->operation);
 	  error_code =
 	    locator_insert_force (thread_p, &obj->hfid, &obj->class_oid,
-				  &obj->oid, &recdes, obj->has_index, op_type,
-				  force_scancache, &force_count, NULL, NULL);
+				  &obj->oid, &recdes, obj->has_index,
+				  SINGLE_ROW_INSERT, force_scancache,
+				  &force_count, pruning_type, NULL, NULL);
 
 	  if (error_code == NO_ERROR)
 	    {
@@ -6456,15 +6456,15 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area,
 
 	case LC_FLUSH_UPDATE:
 	case LC_FLUSH_UPDATE_PRUNE:
-	  op_type =
-	    (obj->operation ==
-	     LC_FLUSH_UPDATE) ? SINGLE_ROW_UPDATE : SINGLE_ROW_UPDATE_PRUNING;
+	case LC_FLUSH_UPDATE_PRUNE_VERIFY:
+	  pruning_type = locator_area_op_to_pruning_type (obj->operation);
 	  error_code =
 	    locator_update_force (thread_p, &obj->hfid, &obj->class_oid,
 				  &obj->oid, NULL, false, NULL, &recdes,
-				  obj->has_index, NULL, 0, op_type,
+				  obj->has_index, NULL, 0, SINGLE_ROW_UPDATE,
 				  force_scancache, &force_count, false,
-				  REPL_INFO_TYPE_STMT_NORMAL, NULL);
+				  REPL_INFO_TYPE_STMT_NORMAL, pruning_type,
+				  NULL);
 
 	  if (error_code == NO_ERROR)
 	    {
@@ -6707,6 +6707,7 @@ locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p,
  *   scan_cache(in):
  *   force_count(in):
  *   not_check_fk(in):
+ *   pruning_type(in):
  *   pcontext(in): partition pruning context
  *   func_preds(in): cached function index expressions
  *
@@ -6723,7 +6724,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid,
 			      LC_COPYAREA_OPERATION operation, int op_type,
 			      HEAP_SCANCACHE * scan_cache, int *force_count,
 			      bool not_check_fk, REPL_INFO_TYPE repl_info,
-			      PRUNING_CONTEXT * pcontext,
+			      int pruning_type, PRUNING_CONTEXT * pcontext,
 			      FUNC_PRED_UNPACK_INFO * func_preds)
 {
   LC_COPYAREA *copyarea = NULL;
@@ -6734,6 +6735,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid,
   int error_code = NO_ERROR;
   HFID class_hfid;
   OID class_oid;
+
   /*
    * While scanning objects, the given scancache does not fix the last
    * accessed page. So, the object must be copied to the record descriptor.
@@ -6754,6 +6756,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid,
     {
     case LC_FLUSH_UPDATE:
     case LC_FLUSH_UPDATE_PRUNE:
+    case LC_FLUSH_UPDATE_PRUNE_VERIFY:
       scan = heap_get (thread_p, oid, &copy_recdes, scan_cache, COPY,
 		       NULL_CHN);
       if (scan == S_SUCCESS)
@@ -6802,6 +6805,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid,
 
     case LC_FLUSH_INSERT:
     case LC_FLUSH_INSERT_PRUNE:
+    case LC_FLUSH_INSERT_PRUNE_VERIFY:
       copyarea =
 	locator_allocate_copy_area_by_attr_info (thread_p, attr_info,
 						 old_recdes,
@@ -6819,7 +6823,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid,
 	  error_code =
 	    locator_insert_force (thread_p, &class_hfid, &class_oid, oid,
 				  &new_recdes, true, op_type, scan_cache,
-				  force_count, pcontext, func_preds);
+				  force_count, pruning_type, pcontext,
+				  func_preds);
 	}
       else
 	{
@@ -6830,7 +6835,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid,
 				  search_btid_duplicate_key_locked,
 				  old_recdes, &new_recdes, true, att_id,
 				  n_att_id, op_type, scan_cache, force_count,
-				  not_check_fk, repl_info, pcontext);
+				  not_check_fk, repl_info, pruning_type,
+				  pcontext);
 	}
       if (copyarea != NULL)
 	{
@@ -11431,4 +11437,35 @@ locator_get_partition_scancache (PRUNING_CONTEXT * pcontext,
     }
 
   return scan_cache;
+}
+
+/*
+ * locator_area_op_to_pruning_type () - get pruning_type operation from
+ *					locator area operation
+ * return: pruning type
+ * op (in)	    : locator operation
+ */
+static int
+locator_area_op_to_pruning_type (LC_COPYAREA_OPERATION op)
+{
+  switch (op)
+    {
+    case LC_FLUSH_INSERT:
+    case LC_FLUSH_UPDATE:
+    case LC_FLUSH_DELETE:
+      return DB_NOT_PARTITIONED_CLASS;
+
+    case LC_FLUSH_INSERT_PRUNE:
+    case LC_FLUSH_UPDATE_PRUNE:
+      return DB_PARTITIONED_CLASS;
+
+    case LC_FLUSH_INSERT_PRUNE_VERIFY:
+    case LC_FLUSH_UPDATE_PRUNE_VERIFY:
+      return DB_PARTITION_CLASS;
+
+    default:
+      assert (false);
+      return 0;
+    }
+  return 0;
 }

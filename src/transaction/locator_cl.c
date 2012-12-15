@@ -54,6 +54,16 @@
 #define WS_SET_FOUND_DELETED(mop) WS_SET_DELETED(mop)
 #define MAX_FETCH_SIZE 64
 
+#define LC_INSERT_OPERATION_TYPE(p) \
+        ((p)==DB_NOT_PARTITIONED_CLASS ? LC_FLUSH_INSERT :   \
+         ((p)==DB_PARTITIONED_CLASS ? LC_FLUSH_INSERT_PRUNE :\
+				      LC_FLUSH_INSERT_PRUNE_VERIFY))
+
+#define LC_UPDATE_OPERATION_TYPE(p) \
+        ((p)==DB_NOT_PARTITIONED_CLASS ? LC_FLUSH_UPDATE :   \
+         ((p)==DB_PARTITIONED_CLASS ? LC_FLUSH_UPDATE_PRUNE :\
+				      LC_FLUSH_UPDATE_PRUNE_VERIFY))
+
 /* Mflush structures */
 typedef struct locator_mflush_temp_oid LOCATOR_MFLUSH_TEMP_OID;
 struct locator_mflush_temp_oid
@@ -4565,7 +4575,8 @@ locator_mflush (MOP mop, void *mf)
   int status;
   bool decache;
   WS_MAP_STATUS map_status;
-  bool is_owner_partitioned = false;
+  int class_type = DB_NOT_PARTITIONED_CLASS;
+
   mflush = (LOCATOR_MFLUSH_CACHE *) mf;
 
   /* Flush the instance only if it is dirty */
@@ -4620,7 +4631,7 @@ locator_mflush (MOP mop, void *mf)
 #endif /* CUBRID_DEBUG */
       return WS_MAP_FAIL;
     }
-  is_owner_partitioned = sm_is_partitioned_class (class_mop);
+
   if (WS_ISDIRTY (class_mop) && class_mop != mop)
     {
       /*
@@ -4713,15 +4724,33 @@ locator_mflush (MOP mop, void *mf)
     }
   else
     {
+      error_code = sm_partitioned_class_type (class_mop, &class_type, NULL,
+					      NULL);
+      if (error_code != NO_ERROR)
+	{
+	  return WS_MAP_FAIL;
+	}
+      if (class_type != DB_NOT_PARTITIONED_CLASS)
+	{
+	  /* sanity check: make sure we don't flush an instance of a
+	   * partitioned class without pruning
+	   */
+	  if (mop->pruning_type == DB_NOT_PARTITIONED_CLASS)
+	    {
+	      /* At this point, we can't decide how the user intended to
+	       * work with this object so we must assume we're working with
+	       * the partitioned class
+	       */
+	      mop->pruning_type = DB_PARTITIONED_CLASS;
+	    }
+	}
       if (OID_ISTEMP (oid))
 	{
-	  operation =
-	    is_owner_partitioned ? LC_FLUSH_INSERT_PRUNE : LC_FLUSH_INSERT;
+	  operation = LC_INSERT_OPERATION_TYPE (mop->pruning_type);
 	}
       else
 	{
-	  operation =
-	    is_owner_partitioned ? LC_FLUSH_UPDATE_PRUNE : LC_FLUSH_UPDATE;
+	  operation = LC_UPDATE_OPERATION_TYPE (mop->pruning_type);
 	}
 
       /* Is the object a class ? */
@@ -4808,9 +4837,19 @@ locator_mflush (MOP mop, void *mf)
 	}
       else
 	{
-	  operation =
-	    (operation ==
-	     LC_FLUSH_INSERT) ? LC_FLUSH_UPDATE : LC_FLUSH_UPDATE_PRUNE;
+	  if (operation == LC_FLUSH_INSERT)
+	    {
+	      operation = LC_FLUSH_UPDATE;
+	    }
+	  else if (operation == LC_FLUSH_INSERT_PRUNE)
+	    {
+	      operation = LC_FLUSH_UPDATE_PRUNE;
+	    }
+	  else
+	    {
+	      operation = LC_FLUSH_UPDATE_PRUNE_VERIFY;
+	    }
+
 	  oid = ws_oid (mop);
 	}
     }

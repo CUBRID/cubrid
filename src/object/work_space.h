@@ -95,6 +95,8 @@ struct db_object
   void *version;		/* versioning information */
   LOCK lock;			/* object lock */
 
+  unsigned char pruning_type;	/* no pruning, prune as partitioned class,
+				 * prune as partition */
   unsigned char composition_fetch;	/* set the left-most bit if this MOP */
   /* has been composition fetched and  */
   /* set the prune level into the      */

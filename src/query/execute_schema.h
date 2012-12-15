@@ -53,11 +53,6 @@
 #define CHECK_PARTITION_PARENT  0x0001
 #define CHECK_PARTITION_SUBS    0x0010
 
-enum
-{
-  NOT_PARTITION_CLASS = 0, PARTITIONED_CLASS = 1, PARTITION_CLASS = 2
-};
-
 typedef struct partition_insert_cache PARTITION_INSERT_CACHE;
 struct partition_insert_cache
 {
@@ -87,6 +82,7 @@ struct client_update_class_info
   PT_NODE *check_where;		/* check option expression or NULL */
   SM_CLASS *smclass;		/* primary class structure */
   DB_OBJECT *class_mop;		/* object associated with this class */
+  int pruning_type;		/* pruning type */
   CLIENT_UPDATE_INFO *first_assign;	/* first assignment of this class */
 };
 
@@ -115,8 +111,6 @@ extern int do_is_partitioned_subclass (int *is_partitioned,
 				       const char *classname, char *keyattr);
 extern int do_get_partition_parent (DB_OBJECT * const classop,
 				    MOP * const parentop);
-extern int do_is_partitioned_classobj (int *is_partition, DB_OBJECT * classop,
-				       char *keyattr, MOP ** sub_partitions);
 extern int do_rename_partition (MOP old_class, const char *newname);
 extern int do_check_partitioned_class (DB_OBJECT * classop, int check_map,
 				       char *keyattr);

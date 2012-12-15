@@ -127,6 +127,8 @@ static PARTITION_CACHE_ENTRY
 static PRUNING_OP partition_rel_op_to_pruning_op (REL_OP op);
 static int partition_load_partition_predicate (PRUNING_CONTEXT * pinfo,
 					       OR_PARTITION * master);
+static void partition_set_specified_partition (PRUNING_CONTEXT * pinfo,
+					       const OID * partition_oid);
 static int partition_get_position_in_key (PRUNING_CONTEXT * pinfo,
 					  BTID * btid);
 static ATTR_ID partition_get_attribute_id (REGU_VARIABLE * regu_var);
@@ -2239,6 +2241,7 @@ partition_init_pruning_context (PRUNING_CONTEXT * pinfo)
   OID_SET_NULL (&pinfo->root_oid);
   pinfo->thread_p = NULL;
   pinfo->partitions = NULL;
+  pinfo->selected_partition = NULL;
   pinfo->spec = NULL;
   pinfo->vd = NULL;
   pinfo->count = 0;
@@ -2247,6 +2250,7 @@ partition_init_pruning_context (PRUNING_CONTEXT * pinfo)
   pinfo->attr_position = -1;
   pinfo->error_code = NO_ERROR;
   pinfo->scan_cache_list = NULL;
+  pinfo->pruning_type = DB_PARTITIONED_CLASS;
   pinfo->is_attr_info_inited = false;
   pinfo->is_from_cache = false;
 }
@@ -2307,14 +2311,15 @@ partition_find_root_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid,
 /*
  * partition_load_pruning_context () - load pruning context
  * return : error code or NO_ERROR
- * thread_p (in)  :
- * spec (in)	  : access specification for which to perform pruning
- * vd (in)	  : value descriptor
- * pinfo (in)	  : pruning context
+ * thread_p (in)    :
+ * class_oid (in)   : oid of the class for which the context should be loaded
+ * pruning_type(in) : DB_CLASS_PARTITION_TYPE specifying if this class is a
+ *		      partition or the actual partitioned class
+ * pinfo (in/out)   : pruning context
  */
 int
 partition_load_pruning_context (THREAD_ENTRY * thread_p,
-				const OID * class_oid,
+				const OID * class_oid, int pruning_type,
 				PRUNING_CONTEXT * pinfo)
 {
   int error = NO_ERROR;
@@ -2327,11 +2332,26 @@ partition_load_pruning_context (THREAD_ENTRY * thread_p,
       assert (false);
       return ER_FAILED;
     }
+  assert_release (pruning_type == DB_PARTITIONED_CLASS
+		  || pruning_type == DB_PARTITION_CLASS);
 
   (void) partition_init_pruning_context (pinfo);
 
+  pinfo->pruning_type = pruning_type;
   pinfo->thread_p = thread_p;
-  COPY_OID (&pinfo->root_oid, class_oid);
+  if (pruning_type == DB_PARTITIONED_CLASS)
+    {
+      COPY_OID (&pinfo->root_oid, class_oid);
+    }
+  else
+    {
+      error = partition_find_root_class_oid (thread_p, class_oid,
+					     &pinfo->root_oid);
+      if (error != NO_ERROR)
+	{
+	  goto error_return;
+	}
+    }
 
   /* try to get info from the cache first */
   if (!partition_load_context_from_cache (pinfo, &is_modified))
@@ -2354,10 +2374,14 @@ partition_load_pruning_context (THREAD_ENTRY * thread_p,
 	{
 	  goto error_return;
 	}
+      if (pruning_type == DB_PARTITION_CLASS)
+	{
+	  partition_set_specified_partition (pinfo, class_oid);
+	}
       return NO_ERROR;
     }
 
-  error = heap_get_class_partitions (pinfo->thread_p, class_oid,
+  error = heap_get_class_partitions (pinfo->thread_p, &pinfo->root_oid,
 				     &pinfo->partitions, &pinfo->count);
   if (error != NO_ERROR)
     {
@@ -2390,6 +2414,10 @@ partition_load_pruning_context (THREAD_ENTRY * thread_p,
        * will be returned holding the cached information
        */
       partition_cache_pruning_context (pinfo);
+    }
+  if (pruning_type == DB_PARTITION_CLASS)
+    {
+      partition_set_specified_partition (pinfo, class_oid);
     }
 
   return NO_ERROR;
@@ -2440,14 +2468,15 @@ partition_clear_pruning_context (PRUNING_CONTEXT * pinfo)
     }
 
   pinfo->partitions = NULL;
+  pinfo->selected_partition = NULL;
   pinfo->count = 0;
 
   if (pinfo->partition_pred != NULL
       && pinfo->partition_pred->func_regu != NULL)
     {
       (void) qexec_clear_partition_expression (pinfo->thread_p,
-					       pinfo->partition_pred->
-					       func_regu);
+					       pinfo->
+					       partition_pred->func_regu);
       pinfo->partition_pred = NULL;
     }
 
@@ -2524,6 +2553,30 @@ partition_load_partition_predicate (PRUNING_CONTEXT * pinfo,
   pr_clear_value (&val);
 
   return error;
+}
+
+/*
+ * partition_set_specified_partition () - find OR_PARTITION object for
+ *					  specified partition and set it
+ *					  in the pruning context
+ * return : void
+ * pinfo (in)	      : pruning context
+ * partition_oid (in) : partition oid
+ */
+static void
+partition_set_specified_partition (PRUNING_CONTEXT * pinfo,
+				   const OID * partition_oid)
+{
+  int i = 0;
+  for (i = 0; i < PARTITIONS_COUNT (pinfo); i++)
+    {
+      if (OID_EQ (partition_oid, &(pinfo->partitions[i + 1].class_oid)))
+	{
+	  pinfo->selected_partition = &pinfo->partitions[i + 1];
+	  break;
+	}
+    }
+  assert_release (pinfo->selected_partition != NULL);
 }
 
 /*
@@ -2860,10 +2913,16 @@ partition_prune_spec (THREAD_ENTRY * thread_p, VAL_DESCR * vd,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_FAILED;
     }
-
+  if (spec->pruning_type != DB_PARTITIONED_CLASS)
+    {
+      /* nothing to prune */
+      spec->pruned = true;
+      return NO_ERROR;
+    }
   if (spec->type != TARGET_CLASS && spec->type != TARGET_CLASS_ATTR)
     {
       /* nothing to prune */
+      spec->pruned = true;
       return NO_ERROR;
     }
 
@@ -2874,7 +2933,7 @@ partition_prune_spec (THREAD_ENTRY * thread_p, VAL_DESCR * vd,
 
   error = partition_load_pruning_context (thread_p,
 					  &ACCESS_SPEC_CLS_OID (spec),
-					  &pinfo);
+					  spec->pruning_type, &pinfo);
   if (error != NO_ERROR)
     {
       return error;
@@ -3075,6 +3134,7 @@ cleanup:
  * recdes (in)	  : Record describing the new object
  * scan_cache (in): Heap scan cache
  * pcontext (in)  : pruning context
+ * pruning_type (in) : pruning type
  * pruned_class_oid (in/out) : partition to insert into
  * pruned_hfid (in/out)	     : HFID of the partition
  * superclass_oid (in/out)   : OID of the partitioned class
@@ -3091,8 +3151,9 @@ cleanup:
 int
 partition_prune_insert (THREAD_ENTRY * thread_p, const OID * class_oid,
 			RECDES * recdes, HEAP_SCANCACHE * scan_cache,
-			PRUNING_CONTEXT * pcontext, OID * pruned_class_oid,
-			HFID * pruned_hfid, OID * superclass_oid)
+			PRUNING_CONTEXT * pcontext, int pruning_type,
+			OID * pruned_class_oid, HFID * pruned_hfid,
+			OID * superclass_oid)
 {
   PRUNING_CONTEXT pinfo;
   bool keep_pruning_context = false;
@@ -3106,6 +3167,12 @@ partition_prune_insert (THREAD_ENTRY * thread_p, const OID * class_oid,
       OID_SET_NULL (superclass_oid);
     }
 
+  if (pruning_type == DB_NOT_PARTITIONED_CLASS)
+    {
+      assert (false);
+      return NO_ERROR;
+    }
+
   if (pcontext == NULL)
     {
       /* set it to point to pinfo so that we use the same variable */
@@ -3113,7 +3180,8 @@ partition_prune_insert (THREAD_ENTRY * thread_p, const OID * class_oid,
       keep_pruning_context = false;
 
       (void) partition_init_pruning_context (pcontext);
-      error = partition_load_pruning_context (thread_p, class_oid, pcontext);
+      error = partition_load_pruning_context (thread_p, class_oid,
+					      pruning_type, pcontext);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -3127,7 +3195,7 @@ partition_prune_insert (THREAD_ENTRY * thread_p, const OID * class_oid,
       if (pcontext->partitions == NULL)
 	{
 	  error = partition_load_pruning_context (thread_p, class_oid,
-						  pcontext);
+						  pruning_type, pcontext);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -3148,6 +3216,17 @@ partition_prune_insert (THREAD_ENTRY * thread_p, const OID * class_oid,
       goto cleanup;
     }
 
+  if (pruning_type == DB_PARTITION_CLASS)
+    {
+      if (!OID_EQ (pruned_class_oid,
+		   &pcontext->selected_partition->class_oid))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_INVALID_DATA_FOR_PARTITION, 0);
+	  error = ER_INVALID_DATA_FOR_PARTITION;
+	  goto cleanup;
+	}
+    }
   if (superclass_oid != NULL)
     {
       COPY_OID (superclass_oid, &pcontext->root_oid);
@@ -3171,6 +3250,7 @@ cleanup:
  * class_oid (in) : OID of the root class
  * recdes (in)	  : Record describing the new object
  * pcontext (in)  : pruning context
+ * pruning_type (in) : pruning type
  * pruned_class_oid (in/out) : partition to insert into
  * pruned_hfid (in/out)	     : HFID of the partition
  * superclass_oid (in/out)   : OID of the partitioned class
@@ -3186,8 +3266,8 @@ cleanup:
 int
 partition_prune_update (THREAD_ENTRY * thread_p, const OID * class_oid,
 			RECDES * recdes, PRUNING_CONTEXT * pcontext,
-			OID * pruned_class_oid, HFID * pruned_hfid,
-			OID * superclass_oid)
+			int pruning_type, OID * pruned_class_oid,
+			HFID * pruned_hfid, OID * superclass_oid)
 {
   PRUNING_CONTEXT pinfo;
   int error = NO_ERROR;
@@ -3199,6 +3279,12 @@ partition_prune_update (THREAD_ENTRY * thread_p, const OID * class_oid,
     {
       /* nothing to do here */
       COPY_OID (pruned_class_oid, class_oid);
+      return NO_ERROR;
+    }
+
+  if (pruning_type == DB_NOT_PARTITIONED_CLASS)
+    {
+      assert (false);
       return NO_ERROR;
     }
 
@@ -3214,24 +3300,39 @@ partition_prune_update (THREAD_ENTRY * thread_p, const OID * class_oid,
       pcontext = &pinfo;
 
       keep_pruning_context = false;
-
-      (void) partition_init_pruning_context (pcontext);
-
-      error = partition_find_root_class_oid (thread_p, class_oid,
-					     &super_class);
-      if (error != NO_ERROR)
+      if (pruning_type == DB_PARTITION_CLASS)
 	{
-	  return error;
+	  error = partition_load_pruning_context (thread_p, class_oid,
+						  pruning_type, pcontext);
 	}
-
-      if (OID_ISNULL (&super_class))
+      else
 	{
-	  /* not a partitioned class */
-	  return NO_ERROR;
-	}
+	  /* UPDATE operation is always performed on an instance of a
+	   * partition (since the top class holds no data). Even if
+	   * pruning_type is DB_PARTITIONED_CLASS, class_oid will still
+	   * hold the OID of the partition. Find the OID of the root class
+	   * before loading pruning context. The function which loads
+	   * the pruning context will get confused if we tell it that
+	   * class_oid holds the partitioned class.
+	   */
+	  (void) partition_init_pruning_context (pcontext);
 
-      error = partition_load_pruning_context (thread_p, &super_class,
-					      pcontext);
+	  error = partition_find_root_class_oid (thread_p, class_oid,
+						 &super_class);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+
+	  if (OID_ISNULL (&super_class))
+	    {
+	      /* not a partitioned class */
+	      return NO_ERROR;
+	    }
+
+	  error = partition_load_pruning_context (thread_p, &super_class,
+						  pruning_type, pcontext);
+	}
     }
   else
     {
@@ -3260,6 +3361,18 @@ partition_prune_update (THREAD_ENTRY * thread_p, const OID * class_oid,
   if (error != NO_ERROR)
     {
       goto cleanup;
+    }
+
+  if (pcontext->pruning_type == DB_PARTITION_CLASS)
+    {
+      if (!OID_EQ (pruned_class_oid,
+		   &pcontext->selected_partition->class_oid))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_INVALID_DATA_FOR_PARTITION, 0);
+	  error = ER_INVALID_DATA_FOR_PARTITION;
+	  goto cleanup;
+	}
     }
 
   if (superclass_oid != NULL)
@@ -3362,7 +3475,8 @@ partition_get_partition_oids (THREAD_ENTRY * thread_p, const OID * class_oid,
 
   partition_init_pruning_context (&context);
 
-  error = partition_load_pruning_context (thread_p, class_oid, &context);
+  error = partition_load_pruning_context (thread_p, class_oid,
+					  DB_PARTITIONED_CLASS, &context);
   if (error != NO_ERROR)
     {
       goto cleanup;

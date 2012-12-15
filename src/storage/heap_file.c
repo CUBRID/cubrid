@@ -16528,11 +16528,11 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index,
       int midxkey_size = recdes->length;
 
       if (index->func_index_info != NULL)
-        {
-          /* this will allocate more than it is needed to store the key, but
-             there is no decent way to calculate the correct size */
-          midxkey_size += OR_VALUE_ALIGNED_SIZE (fi_res);
-        }
+	{
+	  /* this will allocate more than it is needed to store the key, but
+	     there is no decent way to calculate the correct size */
+	  midxkey_size += OR_VALUE_ALIGNED_SIZE (fi_res);
+	}
 
       /* Allocate storage for the buf of midxkey */
       if (midxkey_size > DBVAL_BUFSIZE)
@@ -20426,7 +20426,8 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p,
 				  updated_n_attrs_id, LC_FLUSH_UPDATE,
 				  SINGLE_ROW_UPDATE, upd_scancache,
 				  &force_count, false,
-				  REPL_INFO_TYPE_STMT_NORMAL, NULL, NULL);
+				  REPL_INFO_TYPE_STMT_NORMAL,
+				  DB_NOT_PARTITIONED_CLASS, NULL, NULL);
   if (error != NO_ERROR)
     {
       goto exit;

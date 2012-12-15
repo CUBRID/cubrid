@@ -4020,17 +4020,17 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
   DB_VALUE value;
   int current, save = 0, gindex;
   SM_CLASS *classobj;
-  int is_partition = 0, i, savepoint_grant = 0;
+  int is_partition = DB_NOT_PARTITIONED_CLASS, i, savepoint_grant = 0;
   MOP *sub_partitions = NULL;
 
-  error = do_is_partitioned_classobj (&is_partition, class_mop, NULL,
-				      &sub_partitions);
+  error = sm_partitioned_class_type (class_mop, &is_partition, NULL,
+				     &sub_partitions);
   if (error != NO_ERROR)
     {
       return error;
     }
 
-  if (is_partition == 1)
+  if (is_partition == DB_PARTITIONED_CLASS)
     {
       error = tran_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_GRANT);
       if (error != NO_ERROR)
@@ -4553,17 +4553,17 @@ au_revoke (MOP user, MOP class_mop, DB_AUTH type)
   int current, mask, save = 0, gindex;
   AU_GRANT *grant_list;
   SM_CLASS *classobj;
-  int is_partition = 0, i = 0, savepoint_revoke = 0;
+  int is_partition = DB_NOT_PARTITIONED_CLASS, i = 0, savepoint_revoke = 0;
   MOP *sub_partitions = NULL;
 
-  error = do_is_partitioned_classobj (&is_partition, class_mop, NULL,
-				      &sub_partitions);
+  error = sm_partitioned_class_type (class_mop, &is_partition, NULL,
+				     &sub_partitions);
   if (error != NO_ERROR)
     {
       return error;
     }
 
-  if (is_partition == 1)
+  if (is_partition == DB_PARTITIONED_CLASS)
     {
       error = tran_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_REVOKE);
       if (error != NO_ERROR)
@@ -4825,7 +4825,7 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_,
 {
   MOP user, classmop;
   int error = NO_ERROR;
-  int is_partition = 0, i, savepoint_owner = 0;
+  int is_partition = DB_NOT_PARTITIONED_CLASS, i, savepoint_owner = 0;
   MOP *sub_partitions = NULL;
   char *class_name = NULL, *owner_name = NULL;
 
@@ -4859,14 +4859,14 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_,
       return;
     }
 
-  error = do_is_partitioned_classobj (&is_partition, classmop, NULL,
-				      &sub_partitions);
+  error = sm_partitioned_class_type (classmop, &is_partition, NULL,
+				     &sub_partitions);
   if (error != NO_ERROR)
     goto fail_return;
 
-  if (is_partition > 0)
+  if (is_partition != DB_NOT_PARTITIONED_CLASS)
     {
-      if (is_partition == 2)	/* if partition; error */
+      if (is_partition == DB_PARTITION_CLASS)	/* if partition; error */
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_NOT_ALLOWED_ACCESS_TO_PARTITION, 0);

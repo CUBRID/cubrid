@@ -146,6 +146,9 @@ extern int sm_mark_system_class (MOP classop, int on_or_off);
 extern int sm_is_system_class (MOP op);
 extern bool sm_is_reuse_oid_class (MOP op);
 extern bool sm_is_partitioned_class (MOP op);
+extern int sm_partitioned_class_type (DB_OBJECT * classop,
+				      int *partition_type, char *keyattr,
+				      MOP ** partitions);
 extern int sm_set_class_flag (MOP classop, SM_CLASS_FLAG flag, int onoff);
 extern int sm_get_class_flag (MOP op, SM_CLASS_FLAG flag);
 extern int sm_set_class_default_collation (MOP classop, int collation_id);

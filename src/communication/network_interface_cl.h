@@ -300,7 +300,7 @@ extern BTREE_SEARCH btree_find_unique (BTID * btid, DB_VALUE * key,
 extern BTREE_SEARCH repl_btree_find_unique (BTID * btid, DB_VALUE * key,
 					    OID * class_oid, OID * oid);
 extern BTREE_SEARCH btree_find_multi_uniques (OID * class_oid,
-					      int needs_pruning, BTID * btids,
+					      int pruning_type, BTID * btids,
 					      DB_VALUE * keys, int count,
 					      SCAN_OPERATION_TYPE op_type,
 					      OID ** oids, int *oids_count);

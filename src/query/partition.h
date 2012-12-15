@@ -61,7 +61,10 @@ struct pruning_context
   DB_PARTITION_TYPE partition_type;	/* hash, range, list */
 
   OR_PARTITION *partitions;	/* partitions array */
-
+  OR_PARTITION *selected_partition;	/* if a request was made on a
+					 * partition rather than on the root
+					 * class, this holds the partition
+					 * info */
   SCANCACHE_LIST *scan_cache_list;	/* caches for partitions affected
 					 * by the query using this context */
   int count;			/* number of partitions */
@@ -75,6 +78,10 @@ struct pruning_context
 					 * expression */
   int error_code;		/* error encountered during pruning */
 
+  int pruning_type;		/* The type of the class for which this
+				 * context was loaded. DB_PARTITIONED_CLASS,
+				 * DB_PARTITION_CLASS
+				 */
   bool is_attr_info_inited;
   bool is_from_cache;		/* true if this context is cached */
 };
@@ -83,6 +90,7 @@ extern void partition_init_pruning_context (PRUNING_CONTEXT * pinfo);
 
 extern int partition_load_pruning_context (THREAD_ENTRY * thread_p,
 					   const OID * class_oid,
+					   int pruning_type,
 					   PRUNING_CONTEXT * pinfo);
 
 extern void partition_clear_pruning_context (PRUNING_CONTEXT * pinfo);
@@ -108,14 +116,14 @@ extern int partition_prune_spec (THREAD_ENTRY * thread_p, VAL_DESCR * vd,
 extern int partition_prune_insert (THREAD_ENTRY * thread_p,
 				   const OID * class_oid, RECDES * recdes,
 				   HEAP_SCANCACHE * scan_cache,
-				   PRUNING_CONTEXT * pcontext,
-				   OID * pruned_class_oid,
-				   HFID * pruned_hfid, OID * superclass_oid);
+				   PRUNING_CONTEXT * pcontext, int op_type,
+				   OID * pruned_class_oid, HFID * pruned_hfid,
+				   OID * superclass_oid);
 
 extern int partition_prune_update (THREAD_ENTRY * thread_p,
 				   const OID * class_oid, RECDES * recdes,
 				   PRUNING_CONTEXT * pcontext,
-				   OID * pruned_class_oid,
+				   int pruning_type, OID * pruned_class_oid,
 				   HFID * pruned_hfid, OID * superclass_oid);
 
 extern int partition_prune_unique_btid (PRUNING_CONTEXT * pcontext,

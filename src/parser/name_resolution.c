@@ -5611,7 +5611,8 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 			      && spec_parent->node_type != PT_ALTER_INDEX
 			      && spec_parent->node_type != PT_MERGE
 			      && spec_parent->node_type != PT_DELETE
-			      && spec_parent->node_type != PT_UPDATE)
+			      && spec_parent->node_type != PT_UPDATE
+			      && spec_parent->node_type != PT_INSERT)
 			    {
 			      /* partition not allowed */
 			      AU_ENABLE (au_save);
@@ -5620,14 +5621,6 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 					 MSGCAT_SEMANTIC_INVALID_PARTITION_REQUEST);
 			      pr_clear_value (&pname);
 			      return NULL;
-			    }
-
-			  /* mark this spec as a partition */
-			  if (spec_parent == NULL
-			      || !IS_UPDATE_OBJ (spec_parent))
-			    {
-			      spec->info.spec.flag |=
-				PT_SPEC_FLAG_IS_PARTITION;
 			    }
 			}
 

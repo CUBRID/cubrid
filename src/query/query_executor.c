@@ -390,8 +390,7 @@ struct upddel_class_info_internal
   OID prev_class_oid;		/* previous class oid */
   HEAP_CACHE_ATTRINFO attr_info;	/* attribute cache info */
   bool is_attr_info_inited;	/* true if attr_info has valid data */
-  bool needs_pruning;		/* true if partition pruning should be
-				 * performed on this class */
+  int needs_pruning;		/* partition pruning information */
   PRUNING_CONTEXT context;	/* partition pruning context */
   int no_lob_attrs;		/* number of lob attributes */
   int *lob_attr_ids;		/* lob attribute ids */
@@ -807,7 +806,7 @@ static int qexec_execute_obj_fetch (THREAD_ENTRY * thread_p,
 static int qexec_execute_increment (THREAD_ENTRY * thread_p, OID * oid,
 				    OID * class_oid, HFID * class_hfid,
 				    ATTR_ID attrid, int n_increment,
-				    bool needs_pruning);
+				    int pruning_type);
 static int qexec_execute_selupd_list (THREAD_ENTRY * thread_p,
 				      XASL_NODE * xasl,
 				      XASL_STATE * xasl_state);
@@ -965,7 +964,7 @@ static int qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 						index_attr_info,
 						const HEAP_IDX_ELEMENTS_INFO *
 						idx_info, int op_type,
-						int needs_pruning,
+						int pruning_type,
 						PRUNING_CONTEXT * pcontext,
 						int *removed_count);
 static int qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
@@ -987,7 +986,7 @@ static int qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p,
 					       HEAP_CACHE_ATTRINFO *
 					       index_attr_info,
 					       HEAP_IDX_ELEMENTS_INFO *
-					       idx_info, int needs_pruning,
+					       idx_info, int pruning_type,
 					       PRUNING_CONTEXT * pcontext,
 					       int *force_count);
 static int qexec_execute_do_stmt (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
@@ -5978,7 +5977,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec,
   SCAN_TYPE scan_type;
   INDX_INFO *indx_info;
 
-  if (curr_spec->needs_pruning && !curr_spec->pruned)
+  if (curr_spec->pruning_type == DB_PARTITIONED_CLASS && !curr_spec->pruned)
     {
       if (qexec_prune_spec (thread_p, curr_spec, vd, composite_locking) !=
 	  NO_ERROR)
@@ -6175,7 +6174,8 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec,
 
 exit_on_error:
 
-  if (curr_spec->needs_pruning && curr_spec->parts != NULL)
+  if (curr_spec->pruning_type == DB_PARTITIONED_CLASS
+      && curr_spec->parts != NULL)
     {
       /* reset pruning info */
       db_private_free (thread_p, curr_spec->parts);
@@ -6925,8 +6925,13 @@ qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec,
   int granted;
   int error = NO_ERROR;
 
-  if (spec == NULL || !spec->needs_pruning || spec->pruned)
+  if (spec == NULL || spec->pruned)
     {
+      return NO_ERROR;
+    }
+  else if (spec->pruning_type != DB_PARTITIONED_CLASS)
+    {
+      spec->pruned = true;
       return NO_ERROR;
     }
 
@@ -7842,8 +7847,6 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   REPL_INFO_TYPE repl_info;
   int class_oid_cnt = 0, class_oid_idx = 0;
   bool scan_open = false;
-  LC_COPYAREA_OPERATION op = LC_FLUSH_UPDATE;
-  int actual_op_type = op_type;
   bool btid_dup_key_locked = false;
   PRUNING_CONTEXT *pcontext = NULL;
 
@@ -8117,15 +8120,10 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
 	      if (upd_cls->needs_pruning)
 		{
-		  /* adjust flush operation for update statement */
-		  op = LC_FLUSH_UPDATE_PRUNE;
-		  actual_op_type = (op_type == MULTI_ROW_UPDATE) ?
-		    MULTI_ROW_UPDATE_PRUNING : SINGLE_ROW_UPDATE_PRUNING;
 		  pcontext = &internal_class->context;
 		}
 	      else
 		{
-		  actual_op_type = op_type;
 		  pcontext = NULL;
 		}
 
@@ -8148,18 +8146,12 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 					      &upd_cls->att_id
 					      [internal_class->subclass_idx *
 					       upd_cls->no_attrs],
-					      upd_cls->no_attrs, op,
-					      actual_op_type,
+					      upd_cls->no_attrs,
+					      LC_FLUSH_UPDATE, op_type,
 					      internal_class->scan_cache,
-					      &force_count, false,
-					      repl_info, pcontext, NULL);
-	      if (op == LC_FLUSH_UPDATE_PRUNE)
-		{
-		  /* reset op types here */
-		  op = LC_FLUSH_UPDATE;
-		  actual_op_type = (op_type == MULTI_ROW_UPDATE_PRUNING) ?
-		    MULTI_ROW_UPDATE : SINGLE_ROW_UPDATE;
-		}
+					      &force_count, false, repl_info,
+					      internal_class->needs_pruning,
+					      pcontext, NULL);
 	      if (error != NO_ERROR && error != ER_HEAP_UNKNOWN_OBJECT)
 		{
 		  GOTO_EXIT_ON_ERROR;
@@ -8754,8 +8746,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		   internal_class->btid, btid_dup_key_locked,
 		   NULL, NULL, 0,
 		   LC_FLUSH_DELETE, op_type, internal_class->scan_cache,
-		   &force_count, false, REPL_INFO_TYPE_STMT_NORMAL, NULL,
-		   NULL) != NO_ERROR)
+		   &force_count, false, REPL_INFO_TYPE_STMT_NORMAL,
+		   DB_NOT_PARTITIONED_CLASS, NULL, NULL) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -9058,7 +9050,8 @@ qexec_free_delete_lob_info_list (THREAD_ENTRY * thread_p,
  *   index_attr_info(in/out):
  *   idx_info(in):
  *   op_type (in): operation type
- *   needs_pruning (in): not 0 if partition pruning should be performed
+ *   pruning_type (in): one of DB_NOT_PARTITIONED_CLASS, DB_PARTITIONED_CLASS,
+ *			DB_PARTITION_CLASS 
  *   pcontext (in): pruning context
  *   removed_count (in/out):
  */
@@ -9068,7 +9061,7 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 				     HEAP_CACHE_ATTRINFO * attr_info,
 				     HEAP_CACHE_ATTRINFO * index_attr_info,
 				     const HEAP_IDX_ELEMENTS_INFO * idx_info,
-				     int op_type, int needs_pruning,
+				     int op_type, int pruning_type,
 				     PRUNING_CONTEXT * pcontext,
 				     int *removed_count)
 {
@@ -9144,7 +9137,7 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 	  goto error_exit;
 	}
 
-      if (needs_pruning)
+      if (pruning_type != DB_NOT_PARTITIONED_CLASS)
 	{
 	  if (pcontext == NULL)
 	    {
@@ -9164,7 +9157,7 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 			      key_dbvalue, &pruned_oid, &unique_oid,
 			      is_global_index) == BTREE_KEY_FOUND)
 	{
-	  if (needs_pruning && is_global_index)
+	  if (pruning_type && is_global_index)
 	    {
 	      /* Key could not be used to perform pruning. This happens when
 	       * the partitioning key is not part of the index, in which case,
@@ -9190,7 +9183,7 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 		}
 	    }
 
-	  if (needs_pruning && BTREE_IS_MULTI_ROW_OP (op_type))
+	  if (pruning_type && BTREE_IS_MULTI_ROW_OP (op_type))
 	    {
 	      /* need to provide appropriate scan_cache to
 	       * locator_delete_force in order to correctly compute
@@ -9235,7 +9228,8 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 					  LC_FLUSH_DELETE, local_op_type,
 					  local_scan_cache, &force_count,
 					  false, REPL_INFO_TYPE_STMT_NORMAL,
-					  NULL, NULL);
+					  DB_NOT_PARTITIONED_CLASS, NULL,
+					  NULL);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -9443,7 +9437,7 @@ error_exit:
  *   attr_info(in): attribute cache info
  *   index_attr_info(in): attribute info cache for indexes
  *   idx_info(in): index info
- *   needs_pruning(in): not 0 if partition pruning should be performed
+ *   pruning_type(in): pruning type
  *   pcontext(in): pruning context
  *   force_count(out): the number of objects that have been updated; it should
  *                     always be 1 on success and 0 on error
@@ -9455,7 +9449,7 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku,
 				    HEAP_CACHE_ATTRINFO * attr_info,
 				    HEAP_CACHE_ATTRINFO * index_attr_info,
 				    HEAP_IDX_ELEMENTS_INFO * idx_info,
-				    int needs_pruning,
+				    int pruning_type,
 				    PRUNING_CONTEXT * pcontext,
 				    int *force_count)
 {
@@ -9471,13 +9465,12 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku,
   bool need_clear = 0;
   OID unique_oid;
   int local_op_type = SINGLE_ROW_UPDATE;
-  LC_COPYAREA_OPERATION operation = LC_FLUSH_UPDATE;
 
   OID_SET_NULL (&unique_oid);
 
   error = qexec_oid_of_duplicate_key_update (thread_p, scan_cache, attr_info,
 					     index_attr_info, idx_info,
-					     needs_pruning, pcontext,
+					     pruning_type, pcontext,
 					     &unique_oid);
   if (error != NO_ERROR)
     {
@@ -9499,18 +9492,14 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku,
     }
 
   /* setup operation type and handle partition representation id */
-  if (needs_pruning)
+  if (pruning_type != DB_NOT_PARTITIONED_CLASS)
     {
       /* modify rec_descriptor representation id to that of attr_info */
       assert (OID_EQ (&attr_info->class_oid, &pcontext->root_oid));
       or_set_rep_id (&rec_descriptor, pcontext->root_repr_id);
-      operation = LC_FLUSH_UPDATE_PRUNE;
-      /* for partitioned classes, operation type must match initial operation
-       * type in order to handle unique statistics correctly
-       */
       local_op_type =
-	BTREE_IS_MULTI_ROW_OP (op_type) ? MULTI_ROW_UPDATE_PRUNING :
-	SINGLE_ROW_UPDATE_PRUNING;
+	BTREE_IS_MULTI_ROW_OP (op_type) ? MULTI_ROW_UPDATE :
+	SINGLE_ROW_UPDATE;
     }
 
   error = heap_attrinfo_read_dbvalues (thread_p, &unique_oid, &rec_descriptor,
@@ -9574,10 +9563,10 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku,
 
   error = locator_attribute_info_force (thread_p, hfid, &unique_oid, NULL,
 					false, attr_info, odku->attr_ids,
-					odku->no_assigns, operation,
+					odku->no_assigns, LC_FLUSH_UPDATE,
 					local_op_type, scan_cache,
 					force_count, false, repl_info,
-					pcontext, NULL);
+					pruning_type, pcontext, NULL);
   if (error != NO_ERROR)
     {
       goto exit_on_error;
@@ -9683,14 +9672,13 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   COPY_OID (&class_oid, &insert->class_oid);
   HFID_COPY (&class_hfid, &insert->class_hfid);
-  if (insert->needs_pruning)
+  if (insert->pruning_type != DB_NOT_PARTITIONED_CLASS)
     {
-      operation = LC_FLUSH_INSERT_PRUNE;
       /* initialize the pruning context here */
       pcontext = &context;
       partition_init_pruning_context (pcontext);
       error = partition_load_pruning_context (thread_p, &insert->class_oid,
-					      pcontext);
+					      insert->pruning_type, pcontext);
       if (error != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
@@ -9835,15 +9823,11 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   if (specp || ((insert->do_replace || (xasl->dptr_list != NULL))
 		&& insert->has_uniques))
     {
-      scan_cache_op_type =
-	(operation ==
-	 LC_FLUSH_INSERT) ? MULTI_ROW_INSERT : MULTI_ROW_INSERT_PRUNING;
+      scan_cache_op_type = MULTI_ROW_INSERT;
     }
   else
     {
-      scan_cache_op_type =
-	(operation ==
-	 LC_FLUSH_INSERT) ? SINGLE_ROW_INSERT : SINGLE_ROW_INSERT_PRUNING;
+      scan_cache_op_type = SINGLE_ROW_INSERT;
     }
 
   if (specp)
@@ -9971,7 +9955,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 							   &idx_info,
 							   scan_cache_op_type,
 							   insert->
-							   needs_pruning,
+							   pruning_type,
 							   pcontext,
 							   &removed_count) !=
 		      NO_ERROR)
@@ -9994,7 +9978,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 							&attr_info,
 							&index_attr_info,
 							&idx_info,
-							insert->needs_pruning,
+							insert->pruning_type,
 							pcontext,
 							&force_count);
 		  if (error != NO_ERROR)
@@ -10017,6 +10001,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 						&scan_cache, &force_count,
 						false,
 						REPL_INFO_TYPE_STMT_NORMAL,
+						insert->pruning_type,
 						pcontext, func_indx_preds) !=
 		  NO_ERROR)
 		{
@@ -10147,7 +10132,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 						       &index_attr_info,
 						       &idx_info,
 						       scan_cache_op_type,
-						       insert->needs_pruning,
+						       insert->pruning_type,
 						       pcontext,
 						       &removed_count);
 	  if (error != NO_ERROR)
@@ -10167,7 +10152,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 						scan_cache_op_type,
 						&scan_cache, &attr_info,
 						&index_attr_info, &idx_info,
-						insert->needs_pruning,
+						insert->pruning_type,
 						pcontext, &force_count);
 	  if (error != NO_ERROR)
 	    {
@@ -10189,7 +10174,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 					    scan_cache_op_type, &scan_cache,
 					    &force_count, false,
 					    REPL_INFO_TYPE_STMT_NORMAL,
-					    NULL, NULL) != NO_ERROR)
+					    insert->pruning_type, NULL,
+					    NULL) != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
@@ -10810,11 +10796,12 @@ exit_on_error:
  *   class_hfid(in)     :
  *   attrid(in) :
  *   n_increment(in)    :
+ *   pruning_type(in)	:
  */
 static int
 qexec_execute_increment (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
 			 HFID * class_hfid, ATTR_ID attrid, int n_increment,
-			 bool needs_pruning)
+			 int pruning_type)
 {
   HEAP_CACHE_ATTRINFO attr_info;
   int attr_info_inited = 0;
@@ -10833,11 +10820,6 @@ qexec_execute_increment (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
     }
   attr_info_inited = 1;
 
-  if (needs_pruning)
-    {
-      op_type = SINGLE_ROW_UPDATE_PRUNING;
-      area_op = LC_FLUSH_UPDATE_PRUNE;
-    }
 
   error =
     locator_start_force_scan_cache (thread_p, &scan_cache, class_hfid,
@@ -10877,8 +10859,8 @@ qexec_execute_increment (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
 					false, &attr_info, &attrid, 1,
 					area_op, op_type, &scan_cache,
 					&force_count, false,
-					REPL_INFO_TYPE_STMT_NORMAL, NULL,
-					NULL) != NO_ERROR)
+					REPL_INFO_TYPE_STMT_NORMAL,
+					pruning_type, NULL, NULL) != NO_ERROR)
 	{
 	  error = ER_FAILED;
 	  goto wrapup;
@@ -10940,7 +10922,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   int lock_ret;
   int tran_index;
   int err = NO_ERROR;
-  bool needs_pruning = false;
+  int needs_pruning = DB_NOT_PARTITIONED_CLASS;
 
   list = xasl->selected_upd_list;
 
@@ -11036,9 +11018,10 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		      && OID_EQ (&specp->s.cls_node.cls_oid, class_oid))
 		    {
 		      class_hfid = &specp->s.cls_node.hfid;
+		      needs_pruning = specp->pruning_type;
 		      break;
 		    }
-		  else if (specp->needs_pruning)
+		  else if (specp->pruning_type)
 		    {
 		      PARTITION_SPEC_TYPE *part_spec;
 		      bool found = false;
@@ -11065,7 +11048,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			}
 		      if (found)
 			{
-			  needs_pruning = true;
+			  needs_pruning = specp->pruning_type;
 			  break;
 			}
 		    }
@@ -21809,7 +21792,7 @@ qexec_set_lock_for_sequential_access (THREAD_ENTRY * thread_p,
 	{
 	  if (specp->type == TARGET_CLASS)
 	    {
-	      if (specp->needs_pruning)
+	      if (specp->pruning_type)
 		{
 		  /* This is a partitioned class and the IX_LOCK we currently
 		   * hold on it is enough. Later in the execution, when
@@ -23110,7 +23093,7 @@ qexec_create_internal_classes (THREAD_ENTRY * thread_p,
       class_->oid = NULL;
       class_->class_hfid = NULL;
       class_->class_oid = NULL;
-      class_->needs_pruning = false;
+      class_->needs_pruning = DB_NOT_PARTITIONED_CLASS;
       class_->subclass_idx = -1;
       class_->scan_cache = NULL;
       OID_SET_NULL (&class_->prev_class_oid);
@@ -23135,10 +23118,11 @@ qexec_create_internal_classes (THREAD_ENTRY * thread_p,
       if (query_class->needs_pruning)
 	{
 	  /* set partition information here */
-	  class_->needs_pruning = true;
+	  class_->needs_pruning = query_class->needs_pruning;
 	  error =
 	    partition_load_pruning_context (thread_p,
 					    &query_class->class_oid[0],
+					    class_->needs_pruning,
 					    &class_->context);
 	  if (error != NO_ERROR)
 	    {

@@ -298,8 +298,8 @@ struct access_spec_node
   PARTITION_SPEC_TYPE *curent;	/* current partition */
   bool pruned;			/* true if partition pruning has been
 				 * performed */
-  int needs_pruning;		/* true if partition pruning should be
-				 * performed */
+  int pruning_type;		/* how pruning should be performed on this
+				 * access spec performed */
 };
 
 
@@ -460,7 +460,8 @@ struct insert_proc_node
   int do_replace;		/* duplicate tuples should be replaced */
   int is_first_value;		/* Indicates whether the first value of VALUES
 				 * clause. */
-  int needs_pruning;		/* not 0 if the class needs pruning */
+  int pruning_type;		/* DB_CLASS_PARTITION_TYPE indicating the way
+				 * in which pruning should be performed */
 };
 
 typedef struct delete_proc_node DELETE_PROC_NODE;

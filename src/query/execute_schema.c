@@ -2593,14 +2593,14 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser,
   SM_PREDICATE_INFO pred_index_info = { NULL, NULL, 0, NULL, 0 },
     *p_pred_index_info = NULL;
   SM_FUNCTION_INFO *func_index_info = NULL;
-  int is_partition = NOT_PARTITION_CLASS;
+  int is_partition = DB_NOT_PARTITIONED_CLASS;
 
-  error = do_is_partitioned_classobj (&is_partition, obj, NULL, NULL);
+  error = sm_partitioned_class_type (obj, &is_partition, NULL, NULL);
   if (error != NO_ERROR)
     {
       return error;
     }
-  if (is_partition == PARTITION_CLASS)
+  if (is_partition == DB_PARTITION_CLASS)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_NOT_ALLOWED_ACCESS_TO_PARTITION, 0);
@@ -7107,8 +7107,9 @@ do_check_partitioned_class (DB_OBJECT * classop, int check_map, char *keyattr)
       return ER_NOT_ALLOWED_ACCESS_TO_PARTITION;
     }
 
-  error = do_is_partitioned_classobj (&is_partition, classop,
-				      (keyattr) ? attr_name : NULL, NULL);
+  error =
+    sm_partitioned_class_type (classop, &is_partition,
+			       (keyattr) ? attr_name : NULL, NULL);
   if (error != NO_ERROR)
     {
       return error;
@@ -7205,182 +7206,6 @@ error_exit:
   *parentop = NULL;
 
   return error;
-}
-
-/*
- * do_is_partitioned_classobj() -
- *   return: NO_ERROR or error code
- *   is_partition(in/out): 0 if not partition, 1 if partition and parent,
- *                         2 if sub-partition
- *   classop(in): MOP of class
- *   keyattr(in): Partition key attribute to check
- *   sub_partitions(in): MOP of sub class
- *
- * Note:
- */
-int
-do_is_partitioned_classobj (int *is_partition,
-			    DB_OBJECT * classop, char *keyattr,
-			    MOP ** sub_partitions)
-{
-  DB_OBJLIST *objs;
-  SM_CLASS *smclass, *subcls;
-  DB_VALUE pname, pattr, psize, attrname;
-  int au_save, pcnt, i;
-  MOP *subobjs = NULL;
-  int error;
-
-  assert (classop != NULL);
-  assert (is_partition != NULL);
-
-  *is_partition = NOT_PARTITION_CLASS;
-
-  AU_DISABLE (au_save);
-
-  error = au_fetch_class (classop, &smclass, AU_FETCH_READ, AU_SELECT);
-  if (error != NO_ERROR)
-    {
-      AU_ENABLE (au_save);
-      return error;
-    }
-  if (!smclass->partition_of)
-    {
-      AU_ENABLE (au_save);
-      return NO_ERROR;
-    }
-
-  if (sub_partitions == NULL && keyattr == NULL)
-    {
-      /* Only get partition status (partitioned/not partitioned) */
-      if (smclass->users == NULL)
-	{
-	  *is_partition = PARTITION_CLASS;
-	}
-      else
-	{
-	  *is_partition = PARTITIONED_CLASS;
-	}
-      AU_ENABLE (au_save);
-      return NO_ERROR;
-    }
-
-  db_make_null (&pname);
-  db_make_null (&pattr);
-  db_make_null (&psize);
-  db_make_null (&attrname);
-
-  if (db_get (smclass->partition_of, PARTITION_ATT_PNAME, &pname) != NO_ERROR)
-    {
-      goto partition_failed;
-    }
-  *is_partition = (DB_IS_NULL (&pname) ? PARTITIONED_CLASS : PARTITION_CLASS);
-
-  if (keyattr || sub_partitions)
-    {
-      if (*is_partition == PARTITION_CLASS)
-	{
-	  /* Fetch the root partition class. Partitions can only inherit from
-	     one class which is the partitioned table */
-	  MOP root_op = NULL;
-	  int au_save = 0;
-
-	  error = do_get_partition_parent (classop, &root_op);
-	  if (error != NO_ERROR || root_op == NULL)
-	    {
-	      goto partition_failed;
-	    }
-
-	  error =
-	    au_fetch_class (root_op, &smclass, AU_FETCH_READ, AU_SELECT);
-
-	  if (error != NO_ERROR)
-	    {
-	      goto partition_failed;
-	    }
-	}
-
-      if (db_get (smclass->partition_of, PARTITION_ATT_PVALUES, &pattr)
-	  != NO_ERROR)
-	{
-	  goto partition_failed;
-	}
-      if (set_get_element (pattr.data.set, 0, &attrname) != NO_ERROR)
-	{
-	  goto partition_failed;
-	}
-      if (set_get_element (pattr.data.set, 1, &psize) != NO_ERROR)
-	{
-	  goto partition_failed;
-	}
-
-      pcnt = psize.data.i;
-      if (keyattr)
-	{
-	  char *p = NULL;
-
-	  keyattr[0] = 0;
-	  if (DB_IS_NULL (&attrname)
-	      || (p = DB_GET_STRING (&attrname)) == NULL)
-	    {
-	      goto partition_failed;
-	    }
-	  strncpy (keyattr, p, DB_MAX_IDENTIFIER_LENGTH);
-	}
-
-      if (sub_partitions)
-	{
-	  subobjs = (MOP *) malloc (sizeof (MOP) * (pcnt + 1));
-	  if (subobjs == NULL)
-	    {
-	      goto partition_failed;
-	    }
-	  memset (subobjs, 0, sizeof (MOP) * (pcnt + 1));
-
-	  for (objs = smclass->users, i = 0; objs && i < pcnt;
-	       objs = objs->next)
-	    {
-	      if (au_fetch_class (objs->op, &subcls, AU_FETCH_READ, AU_SELECT)
-		  != NO_ERROR)
-		{
-		  goto partition_failed;
-		}
-	      if (!subcls->partition_of)
-		{
-		  continue;
-		}
-	      subobjs[i++] = objs->op;
-	    }
-
-	  *sub_partitions = subobjs;
-	}
-    }
-
-  AU_ENABLE (au_save);
-
-  pr_clear_value (&pname);
-  pr_clear_value (&pattr);
-  pr_clear_value (&psize);
-  pr_clear_value (&attrname);
-
-  return NO_ERROR;
-
-partition_failed:
-
-  AU_ENABLE (au_save);
-
-  if (subobjs)
-    {
-      free_and_init (subobjs);
-    }
-
-  pr_clear_value (&pname);
-  pr_clear_value (&pattr);
-  pr_clear_value (&psize);
-  pr_clear_value (&attrname);
-
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
-
-  return ER_PARTITION_WORK_FAILED;
 }
 
 /*
@@ -13208,15 +13033,14 @@ do_alter_change_default_cs_coll (PARSER_CONTEXT * const parser,
       goto exit;
     }
 
-  error = do_is_partitioned_classobj (&is_partition, class_mop, NULL,
-				      &sub_partitions);
-
+  error = sm_partitioned_class_type (class_mop, &is_partition, NULL,
+				     &sub_partitions);
   if (error != NO_ERROR)
     {
       goto exit;
     }
 
-  if (is_partition == PARTITIONED_CLASS)
+  if (is_partition == DB_PARTITIONED_CLASS)
     {
       for (i = 0; sub_partitions[i]; i++)
 	{

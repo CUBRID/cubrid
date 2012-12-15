@@ -1553,10 +1553,9 @@ ldr_act_attr (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type)
 		  || ws_mop_compare (context->cls, retobj) != 0)
 		{
 		  int is_partition;
-		  if (do_is_partitioned_classobj (&is_partition,
-						  context->cls, NULL,
-						  NULL) != NO_ERROR
-		      || is_partition != PARTITIONED_CLASS)
+		  if (sm_partitioned_class_type (context->cls, &is_partition,
+						 NULL, NULL) != NO_ERROR
+		      || is_partition != DB_PARTITIONED_CLASS)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			      ER_PARTITION_WORK_FAILED, 0);
@@ -4363,12 +4362,12 @@ ldr_act_finish_line (LDR_CONTEXT * context)
 
   if (context->partition_of)
     {
-      int is_partition = NOT_PARTITION_CLASS;
+      int is_partition = DB_NOT_PARTITIONED_CLASS;
 
       err =
-	do_is_partitioned_classobj (&is_partition, context->cls, NULL, NULL);
+	sm_partitioned_class_type (context->cls, &is_partition, NULL, NULL);
 
-      if (err == NO_ERROR && is_partition == PARTITIONED_CLASS)
+      if (err == NO_ERROR && is_partition == DB_PARTITIONED_CLASS)
 	{
 	  /* partitioned parent class */
 	  MOP sub_table;

@@ -3472,15 +3472,15 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 
 	  error = sm_update_statistics (obj, true);
-	  error = do_is_partitioned_classobj (&is_partition, obj, NULL,
-					      &sub_partitions);
+	  error = sm_partitioned_class_type (obj, &is_partition, NULL,
+					     &sub_partitions);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
 	    }
 
-	  if (is_partition == PARTITIONED_CLASS
-	      || is_partition == PARTITION_CLASS)
+	  if (is_partition == DB_PARTITIONED_CLASS
+	      || is_partition == DB_PARTITION_CLASS)
 	    {
 	      for (i = 0; sub_partitions[i]; i++)
 		{
@@ -6155,6 +6155,8 @@ static int init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement,
 			     CLIENT_UPDATE_CLASS_INFO ** cls_data,
 			     int *cls_count, DB_VALUE ** values,
 			     int *values_cnt);
+static int do_set_pruning_type (PARSER_CONTEXT * parser, PT_NODE * spec,
+				CLIENT_UPDATE_CLASS_INFO * cls);
 static int update_objs_for_list_file (PARSER_CONTEXT * parser,
 				      QFILE_LIST_ID * list_id,
 				      PT_NODE * statement);
@@ -6399,11 +6401,13 @@ update_object_tuple (PARSER_CONTEXT * parser,
       /* this is an update - force NOT NULL constraint check */
       otemplate->force_check_not_null = 1;
 
+      otemplate->pruning_type = cls_info->pruning_type;
+
       /* If this update came from INSERT ON DUPLICATE KEY UPDATE,
        * flush the object on updating it.
        */
       if (update_type == ON_DUPLICATE_KEY_UPDATE
-	  || sm_is_partitioned_class (real_object->class_mop))
+	  || otemplate->pruning_type != DB_NOT_PARTITIONED_CLASS)
 	{
 	  obt_set_force_flush (otemplate);
 	}
@@ -6627,6 +6631,81 @@ update_object_by_oid (PARSER_CONTEXT * parser, PT_NODE * statement,
 }
 
 /*
+ * do_set_pruning_type () - set pruning type for a spec
+ * return : error code or NO_ERROR
+ * parser (in)	: parser context
+ * spec (in)	: spec
+ * cls (in)	: update class info
+ */
+static int
+do_set_pruning_type (PARSER_CONTEXT * parser, PT_NODE * spec,
+		     CLIENT_UPDATE_CLASS_INFO * cls)
+{
+  int error = NO_ERROR;
+  MOP class_mop = NULL;
+  PT_NODE *derived = NULL;
+  if (cls == NULL || spec == NULL)
+    {
+      return NO_ERROR;
+    }
+  if (spec->node_type != PT_SPEC)
+    {
+      return NO_ERROR;
+    }
+  if (spec->info.spec.derived_table == NULL)
+    {
+      if (spec->info.spec.entity_name->node_type == PT_NAME)
+	{
+	  class_mop = spec->info.spec.entity_name->info.name.db_object;
+	  if (class_mop == NULL)
+	    {
+	      PT_ERROR (parser, spec, "Generic error");
+	      return ER_FAILED;
+	    }
+	  error = sm_partitioned_class_type (class_mop, &cls->pruning_type,
+					     NULL, NULL);
+	  return error;
+	}
+      else if (spec->info.spec.entity_name->node_type == PT_SPEC)
+	{
+	  /* (classA, classB) specification. We do not allow partitions in
+	   * this context */
+	  PT_NODE *node = spec->info.spec.entity_name;
+	  while (node)
+	    {
+	      error = do_set_pruning_type (parser, node, cls);
+	      if (cls->pruning_type == DB_PARTITION_CLASS)
+		{
+		  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_RUNTIME,
+			      MSGCAT_RUNTIME_NOT_ALLOWED_ACCESS_TO_PARTITION,
+			      node->info.spec.entity_name->info.name.
+			      original);
+		  return ER_FAILED;
+		}
+	      node = node->next;
+	    }
+	  return NO_ERROR;
+	}
+    }
+  /* We're in the context of a table update/insert etc. This is possible only
+   * if the derived table is a SELECT and has only one class
+   */
+  if (spec->info.spec.derived_table->node_type != PT_SELECT)
+    {
+      PT_ERROR (parser, spec, "Generic error");
+      return ER_FAILED;
+    }
+  derived = spec->info.spec.derived_table;
+  if (derived->info.query.q.select.from->next != NULL)
+    {
+      /* should only have one class */
+      PT_ERROR (parser, spec, "Generic error");
+      return ER_FAILED;
+    }
+  return do_set_pruning_type (parser, derived->info.query.q.select.from, cls);
+}
+
+/*
  * init_update_data () - init update data structures
  *   return: NO_ERROR or error code
  *   parser(in): Parser context
@@ -6693,6 +6772,7 @@ init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement,
       error = ER_REGU_NO_SPACE;
       goto error_return;
     }
+  memset (assigns, 0, assign_cnt * sizeof (CLIENT_UPDATE_INFO));
 
   node = spec;
   while (node)
@@ -6728,6 +6808,7 @@ init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement,
       error = ER_REGU_NO_SPACE;
       goto error_return;
     }
+  memset (cls_info, 0, upd_cls_cnt * sizeof (CLIENT_UPDATE_CLASS_INFO));
 
   /* add number of class oid's */
   vals_cnt += upd_cls_cnt;
@@ -6761,7 +6842,12 @@ init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  cls_info_tmp->spec = node;
 	  cls_info_tmp->first_assign = NULL;
 	  cls_info_tmp->class_mop = NULL;
-
+	  cls_info_tmp->pruning_type = DB_NOT_PARTITIONED_CLASS;
+	  error = do_set_pruning_type (parser, node, cls_info_tmp);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_return;
+	    }
 	  /* condition to check for 'with check option' option */
 	  while (check_where != NULL
 		 && check_where->info.check_option.spec_id !=
@@ -6789,6 +6875,12 @@ init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  cls_info_tmp->spec = node;
 	  cls_info_tmp->first_assign = NULL;
 	  cls_info_tmp->class_mop = NULL;
+	  cls_info_tmp->pruning_type = DB_NOT_PARTITIONED_CLASS;
+	  error = do_set_pruning_type (parser, node, cls_info_tmp);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_return;
+	    }
 
 	  /* condition to check for 'with check option' option */
 	  while (check_where != NULL
@@ -7798,7 +7890,7 @@ is_server_update_allowed (PARSER_CONTEXT * parser, PT_NODE ** non_null_attrs,
 	}
       class_obj = spec->info.spec.flat_entity_list->info.name.db_object;
       error =
-	do_is_partitioned_classobj (&is_partition, class_obj, NULL, NULL);
+	sm_partitioned_class_type (class_obj, &is_partition, NULL, NULL);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -11021,10 +11113,10 @@ do_find_unique_constraint_violations (DB_OTMPL * tmpl, bool for_update,
       op_type = S_DELETE;
     }
 
-  needs_pruning = sm_is_partitioned_class (tmpl->classobj);
-  result = btree_find_multi_uniques (ws_oid (tmpl->classobj), needs_pruning,
-				     unique_btids, unique_keys, key_cnt,
-				     op_type, oids, oids_count);
+  result = btree_find_multi_uniques (ws_oid (tmpl->classobj),
+				     tmpl->pruning_type, unique_btids,
+				     unique_keys, key_cnt, op_type, oids,
+				     oids_count);
   if (result == BTREE_ERROR_OCCURRED)
     {
       error = ER_FAILED;
@@ -11244,6 +11336,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
   float hint_waitsecs;
   PT_NODE *hint_arg;
   SM_CLASS *smclass = NULL;
+  int pruning_type = DB_NOT_PARTITIONED_CLASS;
 
   db_make_null (&db_value);
 
@@ -11363,6 +11456,13 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
          will be NULL and we will only make a template with
          no values put in. */
       row_count = 1;
+      error = sm_partitioned_class_type (class_->info.name.db_object,
+					 &pruning_type, NULL, NULL);
+      if (error != NO_ERROR)
+	{
+	  error = er_errid ();
+	  goto cleanup;
+	}
 
       /* now create the object using templates, and then dbt_put
          each value for each corresponding attribute.
@@ -11375,8 +11475,8 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 	  error = er_errid ();
 	  goto cleanup;
 	}
-
-      if (sm_is_partitioned_class (class_->info.name.db_object))
+      (*otemplate)->pruning_type = pruning_type;
+      if (pruning_type != DB_NOT_PARTITIONED_CLASS)
 	{
 	  /* The reason we're forcing a flush here is to throw an error
 	   * if the object does belong to any partition. If we don't do it
@@ -11688,6 +11788,8 @@ insert_subquery_results (PARSER_CONTEXT * parser,
   int degree, k, cnt, i, flag = 0;
   DB_ATTDESC **attr_descs = NULL;
   ODKU_TUPLE_VALUE_ARG odku_arg;
+  int pruning_type = DB_NOT_PARTITIONED_CLASS;
+
   if (values_list == NULL || values_list->node_type != PT_NODE_LIST
       || values_list->info.node_list.list_type != PT_IS_SUBQUERY
       || (qry = values_list->info.node_list.list) == NULL
@@ -11702,6 +11804,12 @@ insert_subquery_results (PARSER_CONTEXT * parser,
   if (attrs == NULL)
     {
       return ER_GENERIC_ERROR;
+    }
+  error = sm_partitioned_class_type (class_->info.name.db_object,
+				     &pruning_type, NULL, NULL);
+  if (error != NO_ERROR)
+    {
+      return error;
     }
 
   cnt = 0;
@@ -11827,8 +11935,8 @@ insert_subquery_results (PARSER_CONTEXT * parser,
 		    {
 		      break;
 		    }
-		  if (otemplate->class_->partition_of != NULL &&
-		      otemplate->class_->users != NULL)
+		  otemplate->pruning_type = pruning_type;
+		  if (pruning_type != DB_NOT_PARTITIONED_CLASS)
 		    {
 		      obt_set_force_flush (otemplate);
 		    }

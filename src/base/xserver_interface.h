@@ -298,7 +298,7 @@ extern int xbtree_class_test_unique (THREAD_ENTRY * thread_p, char *buf,
 				     int buf_size);
 extern BTREE_SEARCH xbtree_find_multi_uniques (THREAD_ENTRY * thread_p,
 					       OID * class_oid,
-					       int needs_pruning,
+					       int pruning_type,
 					       BTID * btids,
 					       DB_VALUE * values,
 					       int count,

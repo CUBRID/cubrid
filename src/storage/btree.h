@@ -46,14 +46,9 @@
 #define MULTI_ROW_INSERT     5
 #define MULTI_ROW_DELETE     6
 #define MULTI_ROW_UPDATE     7
-#define SINGLE_ROW_INSERT_PRUNING 8
-#define MULTI_ROW_INSERT_PRUNING  9
-#define SINGLE_ROW_UPDATE_PRUNING 10
-#define MULTI_ROW_UPDATE_PRUNING  11
 
 #define BTREE_IS_MULTI_ROW_OP(op) \
-  (op == MULTI_ROW_INSERT || op == MULTI_ROW_UPDATE || op == MULTI_ROW_DELETE\
-   || op == MULTI_ROW_INSERT_PRUNING || op == MULTI_ROW_UPDATE_PRUNING)
+  (op == MULTI_ROW_INSERT || op == MULTI_ROW_UPDATE || op == MULTI_ROW_DELETE)
 
 #define BTREE_NEED_UNIQUE_CHECK(thread_p, op) \
   (logtb_is_current_active (thread_p) \

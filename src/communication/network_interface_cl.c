@@ -6973,7 +6973,7 @@ btree_find_unique_internal (BTID * btid, DB_VALUE * key, OID * class_oid,
  *				 for a list of values
  * return: index search result or BTREE_ERROR_OCCURRED
  * class_oid (in) : class OID
- * needs_pruning (in) : whether or not pruning should be performed
+ * pruning_type (in) : pruning type
  * btids (in)	  : list of indexes to search
  * keys (in)	  : list of values to search for
  * count (in)	  : number of indexes
@@ -6982,7 +6982,7 @@ btree_find_unique_internal (BTID * btid, DB_VALUE * key, OID * class_oid,
  * oids_count (in/out) : number of OIDs found
  */
 BTREE_SEARCH
-btree_find_multi_uniques (OID * class_oid, int needs_pruning, BTID * btids,
+btree_find_multi_uniques (OID * class_oid, int pruning_type, BTID * btids,
 			  DB_VALUE * keys, int count,
 			  SCAN_OPERATION_TYPE op_type, OID ** oids,
 			  int *oids_count)
@@ -7019,7 +7019,7 @@ btree_find_multi_uniques (OID * class_oid, int needs_pruning, BTID * btids,
   /* pack oid */
   ptr = or_pack_oid (request, class_oid);
   /* needs pruning */
-  ptr = or_pack_int (ptr, needs_pruning);
+  ptr = or_pack_int (ptr, pruning_type);
   /* operation type */
   ptr = or_pack_int (ptr, op_type);
   /* number of indexes */
@@ -7116,7 +7116,7 @@ cleanup:
 
   ENTER_SERVER ();
 
-  result = xbtree_find_multi_uniques (NULL, class_oid, needs_pruning, btids,
+  result = xbtree_find_multi_uniques (NULL, class_oid, pruning_type, btids,
 				      keys, count, op_type, &local_oids,
 				      &local_count);
   if (result == BTREE_ERROR_OCCURRED)
