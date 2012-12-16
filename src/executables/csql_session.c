@@ -33,6 +33,7 @@
 #include "memory_alloc.h"
 #include "util_func.h"
 #include "network_interface_cl.h"
+#include "unicode_support.h"
 
 /* for short usage of `csql_append_more_line()' and error check */
 #define	APPEND_MORE_LINE(indent, line)	\
@@ -201,11 +202,42 @@ csql_help_schema (const char *class_name)
   CLASS_HELP *class_schema = NULL;
   char **line_ptr;
   char class_title[2 * DB_MAX_IDENTIFIER_LENGTH + 2];
+  char *class_name_composed = NULL;
+  int composed_size, class_name_size;
 
   if (class_name == NULL || class_name[0] == 0)
     {
       csql_Error_code = CSQL_ERR_CLASS_NAME_MISSED;
       goto error;
+    }
+
+  /* class name may be in Unicode decomposed form, in DB we store only
+   * composed form */
+  class_name_size = strlen (class_name);
+  if (LANG_SYS_CODESET == INTL_CODESET_UTF8
+      && unicode_string_need_compose (class_name, class_name_size,
+				      &composed_size,
+				      lang_get_generic_unicode_norm ()))
+    {
+      bool is_composed = false;
+
+      class_name_composed = malloc (composed_size + 1);
+      if (class_name_composed == NULL)
+	{
+	  csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
+	  goto error;
+	}
+
+      unicode_compose_string (class_name, class_name_size,
+			      class_name_composed, &composed_size,
+			      &is_composed, lang_get_generic_unicode_norm ());
+      class_name_composed[composed_size] = '\0';
+      assert (composed_size <= class_name_size);
+
+      if (is_composed)
+	{
+	  class_name = class_name_composed;
+	}
     }
 
   class_schema = (CLASS_HELP *) NULL;
@@ -378,9 +410,19 @@ csql_help_schema (const char *class_name)
   obj_print_help_free_class (class_schema);
   csql_free_more_lines ();
 
+  if (class_name_composed != NULL)
+    {
+      free_and_init (class_name_composed);
+    }
+
   return;
 
 error:
+
+  if (class_name_composed != NULL)
+    {
+      free_and_init (class_name_composed);
+    }
 
   if (class_schema != NULL)
     {
@@ -408,6 +450,7 @@ csql_help_trigger (const char *trigger_name)
 {
   char **all_triggers = NULL;
   TRIGGER_HELP *help = NULL;
+  char *trigger_name_composed = NULL;
 
   if (trigger_name == NULL || strcmp (trigger_name, "*") == 0)
     {
@@ -440,7 +483,38 @@ csql_help_trigger (const char *trigger_name)
     }
   else
     {
-      /* class name is given */
+      int trigger_name_size, composed_size;
+      /* trigger name is given */
+      /* trigger name may be in Unicode decomposed form, in DB we store only
+       * composed form */
+      trigger_name_size = strlen (trigger_name);
+      if (LANG_SYS_CODESET == INTL_CODESET_UTF8
+	  && unicode_string_need_compose (trigger_name, trigger_name_size,
+					  &composed_size,
+					  lang_get_generic_unicode_norm ()))
+	{
+	  bool is_composed = false;
+
+	  trigger_name_composed = malloc (composed_size + 1);
+	  if (trigger_name_composed == NULL)
+	    {
+	      csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
+	      goto error;
+	    }
+
+	  unicode_compose_string (trigger_name, trigger_name_size,
+				  trigger_name_composed, &composed_size,
+				  &is_composed,
+				  lang_get_generic_unicode_norm ());
+	  trigger_name_composed[composed_size] = '\0';
+	  assert (composed_size <= trigger_name_size);
+
+	  if (is_composed)
+	    {
+	      trigger_name = trigger_name_composed;
+	    }
+	}
+
       if ((help = help_trigger_name (trigger_name)) == NULL)
 	{
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
@@ -514,9 +588,18 @@ csql_help_trigger (const char *trigger_name)
     }
   csql_free_more_lines ();
 
+  if (trigger_name_composed != NULL)
+    {
+      free_and_init (trigger_name_composed);
+    }
+
   return;
 
 error:
+  if (trigger_name_composed != NULL)
+    {
+      free_and_init (trigger_name_composed);
+    }
   if (all_triggers != NULL)
     {
       help_free_names (all_triggers);
