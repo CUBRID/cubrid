@@ -78,6 +78,11 @@ typedef struct
 {
   LOC_SHARED_DATA_TYPE lsd_type;
   char lsd_key[COLL_NAME_SIZE];
+
+/* print size of an integer */
+#define COLL_SHARED_DATA_SIZE (10 + 2)
+  void *data;
+  LDML_CONTEXT ldml_context;
 } LOC_SHARED_DATA;
 
 static LOC_SHARED_DATA *shared_data = NULL;
@@ -203,7 +208,9 @@ static int comp_func_parse_order_index (const void *arg1, const void *arg2);
 static void locale_make_calendar_parse_order (LOCALE_DATA * ld);
 static int locale_check_and_set_shared_data (const LOC_SHARED_DATA_TYPE
 					     lsd_type, const char *lsd_key,
-					     bool * exist);
+					     const void *data,
+					     LDML_CONTEXT * ldml_context,
+					     LOC_SHARED_DATA ** found_entry);
 static int locale_compute_coll_checksum (COLL_DATA * cd);
 static int locale_alphabet_data_size (ALPHABET_DATA * a);
 static int locale_alphabet_data_to_buf (ALPHABET_DATA * a, char *buf);
@@ -1739,6 +1746,10 @@ start_one_collation (void *data, const char **attr)
   locale_coll->tail_coll.uca_opt.sett_strength = TAILOR_QUATERNARY;
   locale_coll->tail_coll.uca_opt.sett_caseFirst = 1;
 
+  locale_coll->tail_coll.ldml_context.ldml_file = ld->ldml_context.ldml_file;
+  locale_coll->tail_coll.ldml_context.line_no =
+    XML_GetCurrentLineNumber (pd->xml_parser);
+
   PRINT_DEBUG_START (data, attr, "", 0);
   return 0;
 }
@@ -1782,7 +1793,7 @@ start_collation_settings (void *data, const char **attr)
   XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
   LOCALE_DATA *ld = NULL;
   char *att_val = NULL;
-  char err_msg[ERR_MSG_SIZE];
+  char err_msg[ERR_MSG_SIZE + PATH_MAX];
   COLL_TAILORING *curr_coll_tail = NULL;
 
   assert (data != NULL);
@@ -1800,9 +1811,13 @@ start_collation_settings (void *data, const char **attr)
 	  || curr_coll_tail->coll_id >= LANG_MAX_COLLATIONS)
 	{
 	  snprintf (err_msg, sizeof (err_msg) - 1,
+		    "File %s, line: %d : "
 		    "Invalid collation numeric identifier : %d"
-		    " for collation '%s'. Value too small or too big.",
-		    curr_coll_tail->coll_id, curr_coll_tail->coll_name);
+		    " for collation '%s'. Valid range is from %d to %d",
+		    ld->ldml_context.ldml_file,
+		    XML_GetCurrentLineNumber (pd->xml_parser),
+		    curr_coll_tail->coll_id, curr_coll_tail->coll_name,
+		    LANG_MAX_BUILTIN_COLLATIONS, LANG_MAX_COLLATIONS - 1);
 	  LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
 	  return -1;
 	}
@@ -1813,29 +1828,41 @@ start_collation_settings (void *data, const char **attr)
   if (xml_get_att_value (attr, "strength", &att_val) == 0)
     {
       T_LEVEL coll_strength = TAILOR_QUATERNARY;
-      if (strcmp (att_val, "primary") == 0 || strcmp (att_val, "1") == 0)
+      if (strcasecmp (att_val, "primary") == 0 || strcmp (att_val, "1") == 0)
 	{
 	  coll_strength = TAILOR_PRIMARY;
 	}
-      else if ((strcmp (att_val, "secondary") == 0)
+      else if ((strcasecmp (att_val, "secondary") == 0)
 	       || (strcmp (att_val, "2") == 0))
 	{
 	  coll_strength = TAILOR_SECONDARY;
 	}
-      else if ((strcmp (att_val, "tertiary") == 0)
+      else if ((strcasecmp (att_val, "tertiary") == 0)
 	       || (strcmp (att_val, "3") == 0))
 	{
 	  coll_strength = TAILOR_TERTIARY;
 	}
-      else if ((strcmp (att_val, "quaternary") == 0)
+      else if ((strcasecmp (att_val, "quaternary") == 0)
 	       || (strcmp (att_val, "4") == 0))
 	{
 	  coll_strength = TAILOR_QUATERNARY;
 	}
-      else if ((strcmp (att_val, "identical") == 0)
+      else if ((strcasecmp (att_val, "identical") == 0)
 	       || (strcmp (att_val, "5") == 0))
 	{
 	  coll_strength = TAILOR_IDENTITY;
+	}
+      else
+	{
+	  snprintf (err_msg, sizeof (err_msg) - 1,
+		    "File %s, line: %d : "
+		    "Invalid collation strength : '%s'"
+		    " for collation '%s'",
+		    ld->ldml_context.ldml_file,
+		    XML_GetCurrentLineNumber (pd->xml_parser),
+		    att_val, curr_coll_tail->coll_name);
+	  LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
+	  return -1;
 	}
 
       curr_coll_tail->uca_opt.sett_strength = coll_strength;
@@ -1845,7 +1872,7 @@ start_collation_settings (void *data, const char **attr)
 
   if (xml_get_att_value (attr, "backwards", &att_val) == 0)
     {
-      if (strcmp (att_val, "on") == 0)
+      if (strcasecmp (att_val, "on") == 0)
 	{
 	  curr_coll_tail->uca_opt.sett_backwards = true;
 	}
@@ -1855,7 +1882,7 @@ start_collation_settings (void *data, const char **attr)
 
   if (xml_get_att_value (attr, "caseLevel", &att_val) == 0)
     {
-      if (strcmp (att_val, "on") == 0)
+      if (strcasecmp (att_val, "on") == 0)
 	{
 	  curr_coll_tail->uca_opt.sett_caseLevel = true;
 	}
@@ -1865,15 +1892,15 @@ start_collation_settings (void *data, const char **attr)
 
   if (xml_get_att_value (attr, "caseFirst", &att_val) == 0)
     {
-      if (strcmp (att_val, "off") == 0)
+      if (strcasecmp (att_val, "off") == 0)
 	{
 	  curr_coll_tail->uca_opt.sett_caseFirst = 0;
 	}
-      else if (strcmp (att_val, "upper") == 0)
+      else if (strcasecmp (att_val, "upper") == 0)
 	{
 	  curr_coll_tail->uca_opt.sett_caseFirst = 1;
 	}
-      else if (strcmp (att_val, "lower") == 0)
+      else if (strcasecmp (att_val, "lower") == 0)
 	{
 	  curr_coll_tail->uca_opt.sett_caseFirst = 2;
 	}
@@ -2963,6 +2990,10 @@ start_one_alphabet (void *data, const char **attr)
 	  return -1;
 	}
     }
+
+  ld->alpha_tailoring.ldml_context.ldml_file = ld->ldml_context.ldml_file;
+  ld->alpha_tailoring.ldml_context.line_no =
+    XML_GetCurrentLineNumber (pd->xml_parser);
 
   PRINT_DEBUG_START (data, attr, "", 0);
   return 0;
@@ -4456,6 +4487,9 @@ locale_compile_locale (LOCALE_FILE * lf, bool is_verbose)
   ldml_parser.ud = &ld;
   ldml_parser.verbose = is_verbose;
 
+  ld.ldml_context.ldml_file = lf->ldml_file;
+  ld.ldml_context.line_no = 1;
+
   ldml_parser.xml_parser =
     xml_init_parser (&ldml_parser, "UTF-8", ldml_elements,
 		     sizeof (ldml_elements) / sizeof (XML_ELEMENT_DEF *));
@@ -4530,7 +4564,8 @@ locale_compile_locale (LOCALE_FILE * lf, bool is_verbose)
     }
   else
     {
-      bool is_alphabet_shared = false;
+      LOC_SHARED_DATA *alphabet_sh_entry = NULL;
+      LDML_CONTEXT *ldml_context = &(ld.alpha_tailoring.ldml_context);
 
       er_status = unicode_process_alphabet (&ld, is_verbose);
       if (er_status != NO_ERROR)
@@ -4541,14 +4576,16 @@ locale_compile_locale (LOCALE_FILE * lf, bool is_verbose)
       if (ld.alphabet.a_type == ALPHABET_UNICODE)
 	{
 	  er_status = locale_check_and_set_shared_data (LOC_SHARED_ALPHABET,
-							"ascii",
-							&is_alphabet_shared);
+							"ascii", NULL,
+							ldml_context,
+							&alphabet_sh_entry);
 	}
       else if (ld.alphabet.a_type == ALPHABET_ASCII)
 	{
 	  er_status = locale_check_and_set_shared_data (LOC_SHARED_ALPHABET,
-							"unicode",
-							&is_alphabet_shared);
+							"unicode", NULL,
+							ldml_context,
+							&alphabet_sh_entry);
 	}
 
       if (er_status != NO_ERROR)
@@ -4556,20 +4593,22 @@ locale_compile_locale (LOCALE_FILE * lf, bool is_verbose)
 	  goto exit;
 	}
 
-      ld.alphabet.do_not_save = is_alphabet_shared;
+      ld.alphabet.do_not_save = (alphabet_sh_entry != NULL) ? true : false;
 
-      is_alphabet_shared = false;
+      alphabet_sh_entry = NULL;
       if (ld.identif_alphabet.a_type == ALPHABET_UNICODE)
 	{
 	  er_status = locale_check_and_set_shared_data (LOC_SHARED_ALPHABET,
-							"ascii",
-							&is_alphabet_shared);
+							"ascii", NULL,
+							ldml_context,
+							&alphabet_sh_entry);
 	}
       else if (ld.identif_alphabet.a_type == ALPHABET_ASCII)
 	{
 	  er_status = locale_check_and_set_shared_data (LOC_SHARED_ALPHABET,
-							"unicode",
-							&is_alphabet_shared);
+							"unicode", NULL,
+							ldml_context,
+							&alphabet_sh_entry);
 	}
 
       if (er_status != NO_ERROR)
@@ -4577,7 +4616,8 @@ locale_compile_locale (LOCALE_FILE * lf, bool is_verbose)
 	  goto exit;
 	}
 
-      ld.identif_alphabet.do_not_save = is_alphabet_shared;
+      ld.identif_alphabet.do_not_save =
+	(alphabet_sh_entry != NULL) ? true : false;
     }
 
   if (is_verbose)
@@ -4587,16 +4627,18 @@ locale_compile_locale (LOCALE_FILE * lf, bool is_verbose)
 
   if (ld.unicode_normalization.is_enabled)
     {
-      bool is_normalization_shared;
+      LOC_SHARED_DATA *norm_sh_entry = NULL;
 
       er_status =
 	locale_check_and_set_shared_data (LOC_SHARED_NORMALIZATION,
-					  "normalization",
-					  &(is_normalization_shared));
+					  "normalization", NULL, NULL,
+					  &norm_sh_entry);
 
-      ld.unicode_normalization.do_not_save = is_normalization_shared;
-      if (!is_normalization_shared)
+      ld.unicode_normalization.do_not_save =
+	(norm_sh_entry != NULL) ? true : false;;
+      if (norm_sh_entry == NULL)
 	{
+	  /* not shared, process normalization */
 	  er_status = unicode_process_normalization (&ld, is_verbose);
 	  if (er_status != NO_ERROR)
 	    {
@@ -4630,8 +4672,10 @@ locale_compile_locale (LOCALE_FILE * lf, bool is_verbose)
 
   for (i = 0; i < ld.coll_cnt; i++)
     {
-      bool is_collation_shared = false;
+      LOC_SHARED_DATA *coll_sh_entry = NULL;
       LOCALE_COLLATION *lc = &(ld.collations[i]);
+      char shared_coll_data[COLL_SHARED_DATA_SIZE];
+
 
       strncpy (lc->opt_coll.coll_name, lc->tail_coll.coll_name,
 	       COLL_NAME_SIZE);
@@ -4651,18 +4695,61 @@ locale_compile_locale (LOCALE_FILE * lf, bool is_verbose)
 	  goto exit;
 	}
 
-      er_status = locale_check_and_set_shared_data (LOC_SHARED_COLLATION,
-						    lc->tail_coll.coll_name,
-						    &is_collation_shared);
+      snprintf (shared_coll_data, sizeof (shared_coll_data) - 1, "%d",
+		lc->tail_coll.coll_id);
+
+      er_status =
+	locale_check_and_set_shared_data (LOC_SHARED_COLLATION,
+					  lc->tail_coll.coll_name,
+					  &shared_coll_data,
+					  &(lc->tail_coll.ldml_context),
+					  &coll_sh_entry);
       if (er_status != NO_ERROR)
 	{
 	  goto exit;
 	}
 
-      lc->do_not_save = is_collation_shared;
+      lc->do_not_save = (coll_sh_entry != NULL) ? true : false;
 
-      if (is_collation_shared)
+      if (coll_sh_entry != NULL)
 	{
+	  /* check found entry */
+	  const char *coll_sh_data = (const char *) coll_sh_entry->data;
+
+	  assert (coll_sh_data != NULL);
+
+	  if (strcmp (shared_coll_data, coll_sh_data) != 0)
+	    {
+	      /* found collation with same name buf different collation shared
+	       * data (collation id) */
+	      char msg[ERR_MSG_SIZE + 2 * PATH_MAX];
+
+	      snprintf (msg, sizeof (msg) - 1, "File: %s, line: %d : "
+			"collation name %s (id:%d) already defined in "
+			"file: %s, line: %d with id: %s",
+			lc->tail_coll.ldml_context.ldml_file,
+			lc->tail_coll.ldml_context.line_no,
+			lc->tail_coll.coll_name, lc->tail_coll.coll_id,
+			coll_sh_entry->ldml_context.ldml_file,
+			coll_sh_entry->ldml_context.line_no, coll_sh_data);
+
+	      LOG_LOCALE_ERROR (msg, ER_LOC_GEN, true);
+	      er_status = ER_LOC_GEN;
+	      goto exit;
+	    }
+	  else
+	    {
+	      /* same collation, just put an debug info */
+	      printf ("Warning : Definition of collation %s (id: %d) "
+		      "ignored in file: %s, line: %d. "
+		      "Using the definition from file: %s, line: %d.\n",
+		      lc->tail_coll.coll_name, lc->tail_coll.coll_id,
+		      lc->tail_coll.ldml_context.ldml_file,
+		      lc->tail_coll.ldml_context.line_no,
+		      coll_sh_entry->ldml_context.ldml_file,
+		      coll_sh_entry->ldml_context.line_no);
+	    }
+
 	  continue;
 	}
 
@@ -6580,30 +6667,35 @@ dump_collation_codepoint (COLL_DATA * coll, const unsigned int cp,
  * Returns : error status
  * lsd_type(in): shared data type
  * lsd_key(in) : key (name) of data
- * is_shared(out): true if data has already been taken into account as shared
+ * data(in) : data to be stored for key
+ * ldml_context(in): context of LDML file
+ * found_entry(out): shread data entry if found
  *
- *  Note : this is used in context of genlocale tool.
+ *  Note : this is used in context of genlocale tool, to check for duplicate
+ *	   collations, normalization or alphabet data
  */
 static int
 locale_check_and_set_shared_data (const LOC_SHARED_DATA_TYPE lsd_type,
-				  const char *lsd_key, bool * is_shared)
+				  const char *lsd_key, const void *data,
+				  LDML_CONTEXT * ldml_context,
+				  LOC_SHARED_DATA ** found_entry)
 {
+#define SHARED_DATA_INCR_SIZE 32
+
   int status = NO_ERROR;
   int i;
 
   assert (lsd_key != NULL);
-  assert (is_shared != NULL);
+  assert (found_entry != NULL);
 
-  *is_shared = false;
-
-#define SHARED_DATA_INCR_SIZE 32
+  *found_entry = NULL;
 
   for (i = 0; i < count_shared_data; i++)
     {
       if (lsd_type == shared_data[i].lsd_type
 	  && strcmp (lsd_key, shared_data[i].lsd_key) == 0)
 	{
-	  *is_shared = true;
+	  *found_entry = &(shared_data[i]);
 	  goto exit;
 	}
     }
@@ -6622,15 +6714,43 @@ locale_check_and_set_shared_data (const LOC_SHARED_DATA_TYPE lsd_type,
       alloced_shared_data += SHARED_DATA_INCR_SIZE;
     }
 
+  memset (&(shared_data[count_shared_data]), 0, sizeof (LOC_SHARED_DATA));
   shared_data[count_shared_data].lsd_type = lsd_type;
   strncpy (shared_data[count_shared_data].lsd_key, lsd_key,
 	   COLL_NAME_SIZE - 1);
   shared_data[count_shared_data].lsd_key[COLL_NAME_SIZE - 1] = '\0';
 
+  if (data != NULL)
+    {
+      shared_data[count_shared_data].data = strdup (data);
+      if (shared_data[count_shared_data].data == NULL)
+	{
+	  LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
+	  status = ER_LOC_GEN;
+	  goto exit;
+	}
+    }
+
+  if (ldml_context != NULL)
+    {
+      shared_data[count_shared_data].ldml_context.ldml_file =
+	strdup (ldml_context->ldml_file);
+      if (shared_data[count_shared_data].ldml_context.ldml_file == NULL)
+	{
+	  LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
+	  status = ER_LOC_GEN;
+	  goto exit;
+	}
+      shared_data[count_shared_data].ldml_context.line_no =
+	ldml_context->line_no;
+    }
+
   count_shared_data++;
 
 exit:
   return status;
+
+#undef SHARED_DATA_INCR_SIZE
 }
 
 /*
@@ -6643,8 +6763,23 @@ locale_free_shared_data (void)
 {
   if (shared_data != NULL)
     {
+      int i;
       assert (count_shared_data > 0);
       assert (alloced_shared_data > 0);
+
+      for (i = 0; i < count_shared_data; i++)
+	{
+	  if (shared_data[i].data != NULL)
+	    {
+	      free (shared_data[i].data);
+	      shared_data[i].data = NULL;
+	    }
+	  if (shared_data[i].ldml_context.ldml_file != NULL)
+	    {
+	      free (shared_data[i].ldml_context.ldml_file);
+	      shared_data[i].ldml_context.ldml_file = NULL;
+	    }
+	}
 
       free (shared_data);
       shared_data = NULL;
@@ -6723,11 +6858,11 @@ start_normalization (void *data, const char **attr)
     {
       assert (att_val != NULL);
 
-      if (strcmp (att_val, "true") == 0)
+      if (strcasecmp (att_val, "true") == 0)
 	{
 	  ld->unicode_normalization.is_enabled = true;
 	}
-      else if (strcmp (att_val, "false") == 0)
+      else if (strcasecmp (att_val, "false") == 0)
 	{
 	  ld->unicode_normalization.is_enabled = false;
 	}

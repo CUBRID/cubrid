@@ -177,6 +177,13 @@ struct locale_file
   char *lib_file;
 };
 
+typedef struct ldml_context LDML_CONTEXT;
+struct ldml_context
+{
+  char *ldml_file;
+  int line_no;
+};
+
 /* Collation structures */
 /* Tailoring level */
 typedef enum
@@ -385,6 +392,7 @@ struct coll_tailoring
   CUBRID_TAILOR_RULE *cub_rules;	/* absolute tailoring rules */
   int cub_count_rules;		/* # of tailorings */
   int cub_max_rules;		/* # of max (allocated tailorings) */
+  LDML_CONTEXT ldml_context;
 };
 
 /* Alphabet generation type :
@@ -453,6 +461,7 @@ struct alphabet_tailoring
   int count_rules;		/* # of tailorings */
   int max_rules;		/* # of max (allocated tailorings) */
   TRANSFORM_RULE *rules;
+  LDML_CONTEXT ldml_context;
 };
 
 /* text conversions */
@@ -619,6 +628,8 @@ struct locale_data
   int data_buf_count;
 
   char checksum[32 + 1];
+
+  LDML_CONTEXT ldml_context;
 };
 
 #ifdef __cplusplus

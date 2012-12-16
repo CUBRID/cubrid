@@ -6749,7 +6749,7 @@ lang_load_count_coll_from_lib (int *count_coll, void *lib_handle,
 
 error_loading_symbol:
   snprintf (err_msg, sizeof (err_msg) - 1,
-	    "Cannot load symbol %s from the library file %s"
+	    "Cannot load symbol %s from the library file %s "
 	    "for the %s locale!", sym_name, lf->lib_file, lf->locale_name);
   LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, true);
 
@@ -6788,7 +6788,7 @@ lang_load_get_coll_name_from_lib (const int coll_pos, char **coll_name,
 
 error_loading_symbol:
   snprintf (err_msg, sizeof (err_msg) - 1,
-	    "Cannot load symbol %s from the library file %s"
+	    "Cannot load symbol %s from the library file %s "
 	    "for the %s locale!", sym_name, lf->lib_file, lf->locale_name);
   LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, true);
 
@@ -6923,7 +6923,7 @@ exit:
 
 error_loading_symbol:
   snprintf (err_msg, sizeof (err_msg) - 1,
-	    "Cannot load symbol %s from the library file %s"
+	    "Cannot load symbol %s from the library file %s "
 	    "for the %s locale!", sym_name, lf->lib_file, lf->locale_name);
   LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, true);
 
@@ -6994,7 +6994,7 @@ lang_locale_load_alpha_from_lib (ALPHABET_DATA * a,
 
 error_loading_symbol:
   snprintf (err_msg, sizeof (err_msg) - 1,
-	    "Cannot load symbol %s from the library file %s"
+	    "Cannot load symbol %s from the library file %s "
 	    "for the %s locale!", sym_name, lf->lib_file, lf->locale_name);
   LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, true);
 
@@ -7146,7 +7146,7 @@ exit:
 
 error_loading_symbol:
   snprintf (err_msg, sizeof (err_msg) - 1,
-	    "Cannot load symbol %s from the library file %s"
+	    "Cannot load symbol %s from the library file %s "
 	    "for the %s locale!", sym_name, lf->lib_file, lf->locale_name);
   LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, true);
 

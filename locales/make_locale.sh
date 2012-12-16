@@ -105,7 +105,7 @@ echo ""
 echo "Generating locale C file for $SELECTED_LOCALE"
 
 PS=$(cubrid genlocale $LOCALE_PARAM 2>&1)
-if [ "$PS" != "" ]; then
+if ! [ "$?" -eq 0 ] ; then
 	echo $PS
 	echo "Error: Command cubrid genlocale $LOCALE_PARAM failed!"
 	exit 1
