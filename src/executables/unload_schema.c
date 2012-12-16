@@ -2703,7 +2703,7 @@ emit_domain_def (DB_DOMAIN * domains)
 
 	  if (has_collation)
 	    {
-	      (void) fprintf (output_file, " COLLATION '%s'",
+	      (void) fprintf (output_file, " COLLATE '%s'",
 			      lang_get_collation_name (domain->collation_id));
 	    }
 	}

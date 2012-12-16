@@ -1016,7 +1016,6 @@ typedef struct YYLTYPE
 %token CLOSE
 %token COALESCE
 %token COLLATE
-%token COLLATION
 %token COLUMN
 %token COMMIT
 %token COMP_NULLSAFE_EQ
@@ -1373,6 +1372,7 @@ typedef struct YYLTYPE
 %token <cptr> CHARACTER_SET_
 %token <cptr> CHARSET
 %token <cptr> CHR
+%token <cptr> COLLATION
 %token <cptr> COLUMNS
 %token <cptr> COMMITTED
 %token <cptr> COST
@@ -17540,11 +17540,6 @@ of_charset
 	| CHARSET
 	;
 
-of_collation
-	: COLLATE
-	| COLLATION
-	;
-
 opt_collation
 	: /* empty */
 		{{
@@ -17561,13 +17556,13 @@ opt_collation
 	;
 
 collation_spec
-	: of_collation char_string_literal
+	: COLLATE char_string_literal
 		{{
 
 			$$ = $2;
 
 		DBG_PRINT}}
-	| of_collation IdName
+	| COLLATE IdName
 		{{
 			PT_NODE *node;
 
@@ -18283,6 +18278,16 @@ identifier
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
 			if (p)
 			    p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| COLLATION
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
 			$$ = p;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 

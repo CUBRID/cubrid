@@ -166,7 +166,9 @@ extern int yycolumn_end;
 [cC][lL][oO][sS][eE]							{ begin_token(yytext);   return CLOSE; }
 [cC][oO][aA][lL][eE][sS][cC][eE]					{ begin_token(yytext);   return COALESCE; }
 [cC][oO][lL][lL][aA][tT][eE]						{ begin_token(yytext);   return COLLATE; }
-[cC][oO][lL][lL][aA][tT][iI][oO][nN]					{ begin_token(yytext);   return COLLATION; }
+[cC][oO][lL][lL][aA][tT][iI][oO][nN]					{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return COLLATION; }
 [cC][oO][lL][uU][mM][nN]						{ begin_token(yytext);   return COLUMN; }
 [cC][oO][lL][uU][mM][nN][sS]						{ begin_token(yytext);   
 										csql_yylval.cptr = pt_makename(yytext);
