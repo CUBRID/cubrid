@@ -7304,6 +7304,11 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 		         USING INDEX ALL EXCEPT clause; do not use it */
 		      continue;
 		    }
+		  if (consp->filter_predicate != NULL)
+		    {
+		      /* don't use filter indexes unless specified */
+		      continue;
+		    }
 		  j = -1;
 		}
 	      else if (is_hint_force || is_hint_use)
@@ -7320,6 +7325,11 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 		  if (found)
 		    {
 		      /* found as ignored; don't use */
+		      continue;
+		    }
+		  if (consp->filter_predicate != NULL)
+		    {
+		      /* don't use filter indexes unless specified */
 		      continue;
 		    }
 		  j = -1;
