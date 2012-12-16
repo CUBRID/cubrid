@@ -382,7 +382,7 @@ extern int db_blob_length (const DB_VALUE * src_value,
 extern int db_char_to_clob (const DB_VALUE * src_value,
 			    DB_VALUE * result_value);
 extern int db_clob_to_char (const DB_VALUE * src_value,
-			    const DB_VALUE * length_value,
+			    const DB_VALUE * codeset_value,
 			    DB_VALUE * result_value);
 extern int db_clob_from_file (const DB_VALUE * src_value,
 			      DB_VALUE * result_value);

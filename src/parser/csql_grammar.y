@@ -113,7 +113,6 @@ static FUNCTION_MAP functions[] = {
   {"character_length", PT_CHAR_LENGTH},
   {"clob_from_file", PT_CLOB_FROM_FILE},
   {"clob_length", PT_CLOB_LENGTH},
-  {"clob_to_char", PT_CLOB_TO_CHAR},
   {"concat", PT_CONCAT},
   {"concat_ws", PT_CONCAT_WS},
   {"cos", PT_COS},
@@ -1372,6 +1371,7 @@ typedef struct YYLTYPE
 %token <cptr> CHARACTER_SET_
 %token <cptr> CHARSET
 %token <cptr> CHR
+%token <cptr> CLOB_TO_CHAR
 %token <cptr> COLLATION
 %token <cptr> COLUMNS
 %token <cptr> COMMITTED
@@ -13332,7 +13332,7 @@ reserved_func
 			parser_groupby_exception = PT_COUNT;
 
 		DBG_PRINT}}
-	| of_analytic '(' of_distinct_unique path_expression ')' OVER '(' opt_analytic_partition_by opt_analytic_order_by ')'
+	| of_analytic '(' of_distinct_unique expression_ ')' OVER '(' opt_analytic_partition_by opt_analytic_order_by ')'
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_FUNCTION);
@@ -13709,7 +13709,6 @@ reserved_func
 		'(' expression_ ')'
 		{ pop_msg(); }
 		{{
-			DB_VALUE zero;  
 			PT_NODE *arg2 = NULL; 
 			PT_NODE *node = NULL;
 			arg2 = parser_new_node(this_parser, PT_VALUE);
@@ -13896,6 +13895,18 @@ reserved_func
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| CLOB_TO_CHAR
+		{ push_msg(MSGCAT_SYNTAX_INVALID_CLOB_TO_CHAR); }
+	  '(' expression_ opt_using_charset ')'
+		{ pop_msg(); }
+		{{
+
+			PT_NODE *node = parser_make_expression (PT_CLOB_TO_CHAR, $4, $5, NULL);
+			PICE (node);
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}		
 	| CAST
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CAST); }
 	  '(' expression_ AS of_cast_data_type ')'
@@ -18282,6 +18293,16 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| CLOB_TO_CHAR
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			    p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}		
 	| COLLATION
 		{{
 
@@ -21750,7 +21771,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
   PT_NODE *a1, *a2, *a3;
   FUNCTION_MAP *key;
   int c;
-  PT_NODE *expr, *val, *between_ge_lt, *between;
+  PT_NODE *val, *between_ge_lt, *between;
 
   parser_function_code = PT_EMPTY;
   c = parser_count_list (args);
@@ -22290,7 +22311,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
       return parser_make_expression (key->op, a1, NULL, NULL);
 
     case PT_BLOB_TO_BIT:
-    case PT_CLOB_TO_CHAR:
       if (c != 1)
 	{
 	  return NULL;

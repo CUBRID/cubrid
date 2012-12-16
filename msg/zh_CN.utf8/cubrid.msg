@@ -1324,6 +1324,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 116 chr无效使用\n  CHR ( number [using charset] )\n
 117 charset无效使用\n  CHARSET ( expression )\n
 118 collation无效使用\n  COLLATION ( expression )\n
+119 clob_to_char无效使用\n  CLOB_TO_CHAR ( expression [using charset] )\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 内存耗尽.

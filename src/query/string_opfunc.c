@@ -22605,30 +22605,36 @@ db_char_to_clob (const DB_VALUE * src_value, DB_VALUE * result_value)
  * db_clob_to_char - convert clob value to char string value
  *   return: NO_ERROR or error code
  *   src_value(in): clob value
- *   length_value(in): the length to convert
+ *   codeset_value(in): the codeset of output string
  *   result_value(out): char string value
  */
 int
-db_clob_to_char (const DB_VALUE * src_value, const DB_VALUE * length_value,
+db_clob_to_char (const DB_VALUE * src_value, const DB_VALUE * codeset_value,
 		 DB_VALUE * result_value)
 {
   int error_status = NO_ERROR;
-  DB_TYPE src_type, length_type;
+  DB_TYPE src_type;
   int max_length;
+  int cs = LANG_SYS_CODESET;
 
   assert (src_value != NULL && result_value != NULL);
 
+  if (codeset_value != NULL)
+    {
+      assert (DB_VALUE_DOMAIN_TYPE (codeset_value) == DB_TYPE_INTEGER);
+
+      cs = DB_GET_INTEGER (codeset_value);
+      if (cs != INTL_CODESET_UTF8 && cs != INTL_CODESET_ISO88591
+	  && cs != INTL_CODESET_KSC5601_EUC)
+	{
+	  error_status = ER_OBJ_INVALID_ARGUMENTS;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  return error_status;
+	}
+    }
   src_type = DB_VALUE_DOMAIN_TYPE (src_value);
-  if (length_value == NULL || DB_VALUE_TYPE (length_value) == DB_TYPE_NULL)
-    {
-      length_type = DB_TYPE_INTEGER;
-      max_length = -1;
-    }
-  else
-    {
-      length_type = DB_VALUE_DOMAIN_TYPE (length_value);
-      max_length = db_get_int (length_value);
-    }
+
+  max_length = -1;
 
   if (src_type == DB_TYPE_NULL)
     {
@@ -22636,10 +22642,17 @@ db_clob_to_char (const DB_VALUE * src_value, const DB_VALUE * length_value,
       return NO_ERROR;
     }
 
-  if (src_type == DB_TYPE_CLOB && length_type == DB_TYPE_INTEGER)
+  if (src_type == DB_TYPE_CLOB)
     {
       error_status = lob_to_bit_char (src_value, result_value, DB_TYPE_CLOB,
 				      max_length);
+
+      if (result_value != NULL
+	  && DB_VALUE_DOMAIN_TYPE (result_value) == DB_TYPE_VARCHAR)
+	{
+	  db_string_put_cs_and_collation (result_value, cs,
+					  LANG_GET_BINARY_COLLATION (cs));
+	}
     }
   else
     {

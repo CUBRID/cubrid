@@ -1324,6 +1324,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 116 正しくないchrファンクションの使い方\n  CHR ( 数字 [using charset] )\n
 117 正しくないcharsetファンクションです。\n  CHARSET ( expression )\n
 118 正しくないcollationファンクションです。\n  COLLATION ( expression )\n
+119 正しくないclob_to_charファンクションです。\n  CLOB_TO_CHAR ( 数字 [using charset] )\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 メモリーが足りません。

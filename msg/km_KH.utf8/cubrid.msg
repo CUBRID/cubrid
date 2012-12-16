@@ -1324,6 +1324,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 116 ការប្រើមោឃនៃchr\n  CHR ( number [using charset] )\n
 117 ការប្រើមោឃនៃcharset\n  CHARSET ( expression )\n
 118 ការប្រើមោឃនៃcollation\n  COLLATION ( expression )\n
+119 ការប្រើមោឃនៃclob_to_char\n  CLOB_TO_CHAR ( expression [using charset] )\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 គ្មាន memory។

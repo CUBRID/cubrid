@@ -2595,6 +2595,10 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       sig.arg1_type.is_generic = false;
       sig.arg1_type.val.type = PT_TYPE_CLOB;
 
+      /* arg2 */
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_INTEGER;
+
       /* return type */
       sig.return_type.is_generic = false;
       sig.return_type.val.type = PT_TYPE_VARCHAR;
@@ -10944,6 +10948,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
   int arg2_dec_prec = 0;
   int arg2_units = 0;
   PT_NODE *dt = NULL;
+  bool do_detect_collation = true;
 
   if (node->data_type)
     {				/* node has already been resolved */
@@ -11383,6 +11388,15 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
 	{
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
+      if (arg2 != NULL)
+	{
+	  assert (arg2->node_type == PT_VALUE);
+	  assert (arg2->type_enum == PT_TYPE_INTEGER);
+	  dt->info.data_type.units = arg2->info.value.data_value.i;
+	  dt->info.data_type.collation_id =
+	    LANG_GET_BINARY_COLLATION (dt->info.data_type.units);
+	  do_detect_collation = false;
+	}
       break;
 
 
@@ -11419,6 +11433,15 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
     case PT_CHR:
       assert (dt != NULL);
       dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
+      if (arg2 != NULL)
+	{
+	  assert (arg2->node_type == PT_VALUE);
+	  assert (arg2->type_enum == PT_TYPE_INTEGER);
+	  dt->info.data_type.units = arg2->info.value.data_value.i;
+	  dt->info.data_type.collation_id =
+	    LANG_GET_BINARY_COLLATION (dt->info.data_type.units);
+	  do_detect_collation = false;
+	}
       break;
 
     case PT_MD5:
@@ -11613,7 +11636,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
 
       /* Basic collation inference, add specific code in
        * 'pt_check_expr_collation' */
-      if (PT_HAS_COLLATION (common_type))
+      if (do_detect_collation && PT_HAS_COLLATION (common_type))
 	{
 	  if (arg1 != NULL && PT_HAS_COLLATION (arg1->type_enum)
 	      && arg2 != NULL && !PT_HAS_COLLATION (arg2->type_enum)
@@ -21776,6 +21799,14 @@ coerce_arg:
 
   /* step 4: update collation of expression result */
 coerce_result:
+  if (op == PT_CHR || op == PT_CLOB_TO_CHAR)
+    {
+      /* for these operators, we don't we the arguments' collaitons to infere
+       * common collation, but special values for arg2 */
+      common_cs = expr->data_type->info.data_type.units;
+      common_coll = expr->data_type->info.data_type.collation_id;
+    }
+
   if (expr_coll_modifier != -1 && expr->data_type != NULL)
     {
       if (expr_cs_modifier != common_cs)

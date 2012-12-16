@@ -11323,15 +11323,18 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
 
     case PT_CLOB_TO_CHAR:
-      q = pt_append_nulstring (parser, q, " clob_to_char(");
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
-      if (p->info.expr.arg2)
-	{
-	  r2 = pt_print_bytes (parser, p->info.expr.arg2);
-	  q = pt_append_nulstring (parser, q, ", ");
-	  q = pt_append_varchar (parser, q, r2);
-	}
+      q = pt_append_nulstring (parser, q, " clob_to_char(");
       q = pt_append_varchar (parser, q, r1);
+      if (p->info.expr.arg2 != NULL
+	  && p->info.expr.arg2->node_type == PT_VALUE
+	  && p->info.expr.arg2->info.value.data_value.i != LANG_SYS_CODESET)
+	{
+	  q = pt_append_nulstring (parser, q, " using ");
+	  q = pt_append_nulstring (parser, q, lang_get_codeset_name
+				   (p->info.expr.arg2->
+				    info.value.data_value.i));
+	}
       q = pt_append_nulstring (parser, q, ")");
       break;
 

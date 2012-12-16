@@ -1321,9 +1321,10 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 113 before ' %s'\n
 114 before END OF STATEMENT\n
 115 Geçersiz grup\n adı: SET NAMES charset [{COLLATE | COLLATION} collation]\n
-116 chr\n  CHR ( number [using charset] )\n
+116 invalid use of chr\n  CHR ( number [using charset] )\n
 117 invalid use of charset\n  CHARSET ( expression )\n
 118 invalid use of collation\n  COLLATION ( expression )\n
+119 invalid use of clob_to_char\n  CLOB_TO_CHAR ( expression [using charset] )\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Bellek yetersiz.

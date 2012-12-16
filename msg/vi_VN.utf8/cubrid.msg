@@ -1324,6 +1324,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 116 sử dụng chr không hợp lệ\n  CHR ( number [using charset] )\n
 117 sử dụng charset không hợp lệ\n  CHARSET ( expression )\n
 118 sử dụng collation không hợp lệ\n  COLLATION ( expression )\n
+119 sử dụng clob_to_char không hợp lệ\n  CLOB_TO_CHAR ( expression [using charset] )\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Không đủ bộ nhớ.

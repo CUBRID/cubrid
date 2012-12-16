@@ -1324,6 +1324,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 116 Ungültige Verwendung von chr\n  CHR ( number [using charset] )\n
 117 Ungültige Verwendung von charset\n  CHARSET ( Ausdruck )\n
 118 Ungültige Verwendung von collation\n  COLLATION ( Ausdruck )\n
+119 Ungültige Verwendung von clob_to_char\n  CLOB_TO_CHAR ( expression [using charset] )\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Außer Speicher.

@@ -7519,7 +7519,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  || node->info.expr.op == PT_MAKEDATE
 		  || node->info.expr.op == PT_ADDTIME
 		  || node->info.expr.op == PT_DEFINE_VARIABLE
-		  || node->info.expr.op == PT_CHR)
+		  || node->info.expr.op == PT_CHR
+		  || node->info.expr.op == PT_CLOB_TO_CHAR)
 		{
 		  r1 = pt_to_regu_variable (parser,
 					    node->info.expr.arg1, unbox);
@@ -7929,8 +7930,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  r2 = NULL;
 		  r3 = NULL;
 		}
-	      else if (node->info.expr.op == PT_BLOB_TO_BIT
-		       || node->info.expr.op == PT_CLOB_TO_CHAR)
+	      else if (node->info.expr.op == PT_BLOB_TO_BIT)
 		{
 		  r1 = pt_to_regu_variable (parser,
 					    node->info.expr.arg1, unbox);

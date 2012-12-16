@@ -93,6 +93,7 @@ static KEYWORD_RECORD keywords[] = {
   {CLASS, "CLASS", 0},
   {CLASSES, "CLASSES", 0},
   {CLOB_, "CLOB", 0},
+  {CLOB_TO_CHAR, "CLOB_TO_CHR", 1},
   {CLOSE, "CLOSE", 0},
   {COALESCE, "COALESCE", 0},
   {COLLATE, "COLLATE", 0},
