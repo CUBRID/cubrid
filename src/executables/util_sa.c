@@ -2706,6 +2706,9 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
   int i, db_coll_cnt;
   int status = EXIT_SUCCESS;
   int db_status;
+  char *vclass_names = NULL;
+  int vclass_names_used = 0;
+  int vclass_names_alloced = 0;
   bool need_manual_sync = false;
 
   assert (db_name != NULL);
@@ -2752,6 +2755,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
       bool check_atts = false;
       bool check_views = false;
       bool check_triggers = false;
+      bool check_func_index = false;
 
       db_coll = &(db_collations[i]);
 
@@ -2780,6 +2784,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 	  check_views = true;
 	  check_atts = true;
 	  check_triggers = true;
+	  check_func_index = true;
 	  is_obs_coll = true;
 	}
       else if (strcmp (lc->coll.coll_name, db_coll->coll_name))
@@ -2787,6 +2792,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 	  check_views = true;
 	  check_triggers = true;
 	  is_obs_coll = true;
+	  check_func_index = true;
 	}
 
       if (is_obs_coll)
@@ -2820,7 +2826,12 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 		   "(D.data_type = 4 OR D.data_type = 27) ,"
 		   "'', CONCAT ('(', D.prec,')'))))) "
 		   "FROM _db_domain D,_db_attribute A "
-		   "WHERE D.object_of = A AND D.collation_id = %d",
+		   "WHERE D.object_of = A AND D.collation_id = %d "
+		   "AND NOT (A.class_of.class_name IN "
+		   "(SELECT CONCAT (P.class_of.class_name, '__p__', P.pname) "
+		   "FROM _db_partition P WHERE "
+		   "CONCAT (P.class_of.class_name, '__p__', P.pname) "
+		   " = A.class_of.class_name AND P.pname IS NOT NULL))",
 		   db_coll->coll_id);
 
 	  db_status = db_execute (query, &query_result, &query_error);
@@ -2875,6 +2886,32 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 		      snprintf (query, sizeof (query) - 1, "DROP VIEW %s;",
 				DB_GET_STRING (&class_name));
 
+		      if (vclass_names == NULL
+			  || vclass_names_alloced <= vclass_names_used)
+			{
+			  if (vclass_names_alloced == 0)
+			    {
+			      vclass_names_alloced =
+				1 + DB_MAX_IDENTIFIER_LENGTH;
+			    }
+			  vclass_names =
+			    db_private_realloc (NULL, vclass_names,
+						2 * vclass_names_alloced);
+
+			  if (vclass_names == NULL)
+			    {
+			      status = EXIT_FAILURE;
+			      goto exit;
+			    }
+			  vclass_names_alloced *= 2;
+			}
+
+		      memcpy (vclass_names + vclass_names_used,
+			      DB_GET_STRING (&class_name),
+			      DB_GET_STRING_SIZE (&class_name));
+		      vclass_names_used += DB_GET_STRING_SIZE (&class_name);
+		      memcpy (vclass_names + vclass_names_used, "\0", 1);
+		      vclass_names_used += 1;
 		    }
 		  fprintf (f_stmt, "%s\n", query);
 		  need_manual_sync = true;
@@ -2897,7 +2934,6 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 
 	  db_status = db_execute (query, &query_result, &query_error);
 
-
 	  if (db_status < 0)
 	    {
 	      status = EXIT_FAILURE;
@@ -2916,6 +2952,8 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 
 	      while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
 		{
+		  bool already_dropped = false;
+
 		  if (db_query_get_tuple_value (query_result, 0, &view)
 		      != NO_ERROR
 		      || db_query_get_tuple_value (query_result, 1,
@@ -2932,9 +2970,36 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 			   DB_GET_STRING (&query_spec));
 
 		  /* output query to fix schema */
-		  snprintf (query, sizeof (query) - 1, "DROP VIEW %s;",
-			    DB_GET_STRING (&view));
-		  fprintf (f_stmt, "%s\n", query);
+		  if (vclass_names != NULL)
+		    {
+		      char *search = vclass_names;
+		      int view_name_size = DB_GET_STRING_SIZE (&view);
+
+		      /* search if the view was already put in .SQL file */
+		      while (search + view_name_size
+			     < vclass_names + vclass_names_used)
+			{
+			  if (memcmp (search, DB_GET_STRING (&view),
+				      view_name_size) == 0
+			      && *(search + view_name_size) == '\0')
+			    {
+			      already_dropped = true;
+			      break;
+			    }
+
+			  while (*search++ != '\0')
+			    {
+			      ;
+			    }
+			}
+		    }
+
+		  if (!already_dropped)
+		    {
+		      snprintf (query, sizeof (query) - 1, "DROP VIEW %s;",
+				DB_GET_STRING (&view));
+		      fprintf (f_stmt, "%s\n", query);
+		    }
 		  need_manual_sync = true;
 		}
 	    }
@@ -2991,6 +3056,71 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 		  /* output query to fix schema */
 		  snprintf (query, sizeof (query) - 1, "DROP TRIGGER %s;",
 			    DB_GET_STRING (&trig_name));
+		  fprintf (f_stmt, "%s\n", query);
+		  need_manual_sync = true;
+		}
+	    }
+
+	  if (query_result != NULL)
+	    {
+	      db_query_end (query_result);
+	      query_result = NULL;
+	    }
+	}
+
+      if (check_func_index)
+	{
+	  sprintf (query, "SELECT index_of.index_name, func, "
+		   "index_of.class_of.class_name FROM "
+		   "_db_index_key WHERE LOCATE ('%s', func) > 0",
+		   db_coll->coll_name);
+
+	  db_status = db_execute (query, &query_result, &query_error);
+
+	  if (db_status < 0)
+	    {
+	      status = EXIT_FAILURE;
+	      goto exit;
+	    }
+	  else if (db_status > 0)
+	    {
+	      DB_VALUE index_name;
+	      DB_VALUE func_expr;
+	      DB_VALUE class_name;
+
+	      fprintf (stdout, "----------------------------------------\n");
+	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
+					       MSGCAT_UTIL_SET_SYNCCOLLDB,
+					       SYNCCOLLDB_MSG_FI_OBS_COLL),
+		       db_coll->coll_name);
+
+
+	      while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
+		{
+		  if (db_query_get_tuple_value (query_result, 0, &index_name)
+		      != NO_ERROR
+		      || db_query_get_tuple_value (query_result, 1,
+						   &func_expr) != NO_ERROR
+		      || db_query_get_tuple_value (query_result, 2,
+						   &class_name) != NO_ERROR)
+		    {
+		      status = EXIT_FAILURE;
+		      goto exit;
+		    }
+
+		  assert (DB_VALUE_TYPE (&index_name) == DB_TYPE_STRING);
+		  assert (DB_VALUE_TYPE (&func_expr) == DB_TYPE_STRING);
+		  assert (DB_VALUE_TYPE (&class_name) == DB_TYPE_STRING);
+
+		  fprintf (stdout, "%s | %s | %s\n",
+			   DB_GET_STRING (&class_name),
+			   DB_GET_STRING (&index_name),
+			   DB_GET_STRING (&func_expr));
+
+		  /* output query to fix schema */
+		  snprintf (query, sizeof (query) - 1, "ALTER TABLE %s "
+			    "DROP INDEX %s;", DB_GET_STRING (&class_name),
+			    DB_GET_STRING (&index_name));
 		  fprintf (f_stmt, "%s\n", query);
 		  need_manual_sync = true;
 		}
@@ -3075,6 +3205,12 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
   fprintf (stdout, "----------------------------------------\n");
 
 exit:
+  if (vclass_names != NULL)
+    {
+      db_private_free (NULL, vclass_names);
+      vclass_names = NULL;
+    }
+
   if (f_stmt != NULL)
     {
       fclose (f_stmt);

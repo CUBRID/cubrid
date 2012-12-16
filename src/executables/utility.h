@@ -556,6 +556,7 @@ typedef enum
 /* Message id in the set MSGCAT_UTIL_SET_SYNCCOLLDB */
 typedef enum
 {
+  SYNCCOLLDB_MSG_FI_OBS_COLL = 46,
   SYNCCOLLDB_MSG_SYNC_ABORT = 47,
   SYNCCOLLDB_MSG_SYNC_OK = 48,
   SYNCCOLLDB_MSG_SYNC_CONTINUE = 49,
@@ -1257,9 +1258,9 @@ typedef struct _ha_config
 
 /* sync_collations option list */
 #define SYNCCOLL_CHECK_S			'c'
-#define SYNCCOLL_CHECK_L			"check"
+#define SYNCCOLL_CHECK_L			"check-only"
 #define SYNCCOLL_FORCESYNC_S			'f'
-#define SYNCCOLL_FORCESYNC_L                    "force-sync"
+#define SYNCCOLL_FORCESYNC_L                    "force-only"
 
 #define VERSION_S                               20000
 #define VERSION_L                               "version"
