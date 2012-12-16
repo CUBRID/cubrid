@@ -336,7 +336,7 @@ static void lang_free_collations (void);
 #define LANG_COLL_NO_EXP 0, NULL, NULL, NULL
 #define LANG_COLL_NO_CONTR NULL, 0, 0, NULL, 0, 0
 
-#define LANG_NO_NORMALIZATION {false, NULL, 0, NULL, NULL, 0}
+#define LANG_NO_NORMALIZATION {NULL, 0, NULL, NULL, 0}
 
 static unsigned int lang_weight_EN_cs[LANG_CHAR_COUNT_EN];
 static unsigned int lang_next_alpha_char_EN_cs[LANG_CHAR_COUNT_EN];
@@ -1180,8 +1180,7 @@ init_user_locales (void)
 	    }
 	}
 
-      if (lang_get_generic_unicode_norm () == NULL
-	  && lld->unicode_norm.is_enabled)
+      if (lang_get_generic_unicode_norm () == NULL)
 	{
 	  lang_set_generic_unicode_norm (&(lld->unicode_norm));
 	}
@@ -7113,19 +7112,10 @@ lang_locale_load_normalization_from_lib (UNICODE_NORMALIZATION * norm,
 {
   char sym_name[SYMBOL_NAME_SIZE + 1];
   char err_msg[ERR_MSG_SIZE];
-  int is_normalization_enabled;
-
-  SHLIB_GET_VAL (is_normalization_enabled, "unicode_normalization_enabled",
-		 int, lib_handle, lf->locale_name);
 
   assert (norm != NULL);
 
   memset (norm, 0, sizeof (UNICODE_NORMALIZATION));
-
-  if (is_normalization_enabled == 0)
-    {
-      goto exit;
-    }
 
   SHLIB_GET_ADDR (norm->unicode_mappings,
 		  "unicode_mappings", UNICODE_MAPPING *,
@@ -7139,9 +7129,7 @@ lang_locale_load_normalization_from_lib (UNICODE_NORMALIZATION * norm,
   SHLIB_GET_ADDR (norm->list_full_decomp,
 		  "list_full_decomp", int *,
 		  lib_handle, UNICODE_NORMALIZATION_DECORATOR);
-  norm->is_enabled = true;
 
-exit:
   return NO_ERROR;
 
 error_loading_symbol:

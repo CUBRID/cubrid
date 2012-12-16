@@ -519,7 +519,6 @@ struct text_conversion_prm
 typedef struct unicode_normalization UNICODE_NORMALIZATION;
 struct unicode_normalization
 {
-  bool is_enabled;
   UNICODE_MAPPING *unicode_mappings;
   int unicode_mappings_count;	/* total number of mappings, fully,
 				 * partially or not decomposed. */

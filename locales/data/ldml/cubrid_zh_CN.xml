@@ -129,6 +129,5 @@
 		<alphabet CUBRIDAlphabetMode="UNICODEDATAFILE">
 		</alphabet>
 	</alphabets>
-	<normalization enabled="false" />
 	<consoleconversion type="DBCS" windows_codepage="936" linux_charset="euc-cn" file="CP936.TXT" />		
 </ldml>

@@ -1094,6 +1094,5 @@
 		<alphabet CUBRIDAlphabetMode="UNICODEDATAFILE">
 		</alphabet>
 	</alphabets>
-	<normalization enabled="false" />
 	<consoleconversion type="DBCS" windows_codepage="949" linux_charset="euc-kr" file="CP949.TXT" />	
 </ldml>

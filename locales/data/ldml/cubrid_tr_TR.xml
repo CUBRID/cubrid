@@ -176,6 +176,5 @@
 			</l>
 		</alphabet>
 	</alphabets>
-	<normalization enabled="false" />
 	<consoleconversion type="ISO88599" windows_codepage="28599" linux_charset="iso88599,ISO_8859-9,ISO8859-9,ISO-8859-9" />
 </ldml>

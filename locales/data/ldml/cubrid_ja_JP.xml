@@ -2549,6 +2549,5 @@
 		<alphabet CUBRIDAlphabetMode="UNICODEDATAFILE">
 		</alphabet>
 	</alphabets>
-	<normalization enabled="false" />
 	<consoleconversion type="DBCS" windows_codepage="932" linux_charset="euc-jp" file="CP932.TXT" />	
 </ldml>

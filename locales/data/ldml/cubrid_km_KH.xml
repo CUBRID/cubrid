@@ -276,5 +276,4 @@
 		<alphabet CUBRIDAlphabetMode="UNICODEDATAFILE">
 		</alphabet>
 	</alphabets>
-	<normalization enabled="false" />
 </ldml>

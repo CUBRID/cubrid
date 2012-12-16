@@ -142,7 +142,6 @@ static int start_lower_case_rule (void *data, const char **attr);
 static int end_transform_buffer (void *data, const char *el_name);
 
 static int start_unicode_file (void *data, const char **attr);
-static int start_normalization (void *data, const char **attr);
 
 static int start_consoleconversion (void *data, const char **attr);
 
@@ -193,7 +192,7 @@ static void dump_collation_contr (COLL_DATA * coll,
 static void dump_collation_codepoint (COLL_DATA * coll,
 				      const unsigned int cp,
 				      bool print_weight, bool print_cp);
-static int dump_locale_normalization (UNICODE_NORMALIZATION * norm);
+static void dump_locale_normalization (UNICODE_NORMALIZATION * norm);
 static void dump_unicode_mapping (UNICODE_MAPPING * um, const int mode);
 static int dump_console_conversion (TEXT_CONVERSION * tc);
 
@@ -746,11 +745,6 @@ XML_ELEMENT_DEF ldml_elem_unicodefile =
   (ELEM_END_FUNC) & end_element_ok, NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_normalization =
-  { "ldml normalization", 2, (ELEM_START_FUNC) & start_normalization,
-  (ELEM_END_FUNC) & end_element_ok, NULL
-};
-
 XML_ELEMENT_DEF ldml_elem_consoleconversion =
   { "ldml consoleconversion", 2, (ELEM_START_FUNC) & start_consoleconversion,
   (ELEM_END_FUNC) & end_element_ok, NULL
@@ -849,7 +843,6 @@ XML_ELEMENT_DEF *ldml_elements[] = {
   &ldml_elem_alphabet_lower_dest,
 
   &ldml_elem_unicodefile,
-  &ldml_elem_normalization,
 
   &ldml_elem_consoleconversion
 };
@@ -4460,6 +4453,7 @@ locale_compile_locale (LOCALE_FILE * lf, bool is_verbose)
   FILE *fp = NULL;
   XML_PARSER_DATA ldml_parser;
   LOCALE_DATA ld;
+  LOC_SHARED_DATA *norm_sh_entry = NULL;
   char *ldml_filename = NULL;
   char *locale_str = NULL;
   char *bin_filename = NULL;
@@ -4625,32 +4619,21 @@ locale_compile_locale (LOCALE_FILE * lf, bool is_verbose)
       printf ("\n*** Processing Unicode normalization data ***\n");
     }
 
-  if (ld.unicode_normalization.is_enabled)
-    {
-      LOC_SHARED_DATA *norm_sh_entry = NULL;
+  er_status =
+    locale_check_and_set_shared_data (LOC_SHARED_NORMALIZATION,
+				      "normalization", NULL, NULL,
+				      &norm_sh_entry);
 
-      er_status =
-	locale_check_and_set_shared_data (LOC_SHARED_NORMALIZATION,
-					  "normalization", NULL, NULL,
-					  &norm_sh_entry);
+  ld.unicode_normalization.do_not_save =
+    (norm_sh_entry != NULL) ? true : false;
 
-      ld.unicode_normalization.do_not_save =
-	(norm_sh_entry != NULL) ? true : false;;
-      if (norm_sh_entry == NULL)
-	{
-	  /* not shared, process normalization */
-	  er_status = unicode_process_normalization (&ld, is_verbose);
-	  if (er_status != NO_ERROR)
-	    {
-	      goto exit;
-	    }
-	}
-    }
-  else
+  if (norm_sh_entry == NULL)
     {
-      if (is_verbose)
+      /* not shared, process normalization */
+      er_status = unicode_process_normalization (&ld, is_verbose);
+      if (er_status != NO_ERROR)
 	{
-	  printf ("Normalization is disabled. Nothing to do.");
+	  goto exit;
 	}
     }
 
@@ -6834,57 +6817,6 @@ start_unicode_file (void *data, const char **attr)
 }
 
 /*
- * start_normalization() - XML element start function
- * "ldml normalization"
- *
- * return: 0 validation OK enter this element , 1 validation NOK do not enter
- *         -1 error abort parsing
- * data: user data
- * attr: attribute/value pair array
- */
-static int
-start_normalization (void *data, const char **attr)
-{
-  XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
-  LOCALE_DATA *ld = NULL;
-  char *att_val = NULL;
-
-  assert (data != NULL);
-
-  ld = XML_USER_DATA (pd);
-
-  att_val = NULL;
-  if (xml_get_att_value (attr, "enabled", &att_val) == 0)
-    {
-      assert (att_val != NULL);
-
-      if (strcasecmp (att_val, "true") == 0)
-	{
-	  ld->unicode_normalization.is_enabled = true;
-	}
-      else if (strcasecmp (att_val, "false") == 0)
-	{
-	  ld->unicode_normalization.is_enabled = false;
-	}
-      else
-	{
-	  PRINT_DEBUG_START (data, attr,
-			     "Invalid value for normalization "
-			     "\"enabled\" attribute", -1);
-	  return -1;
-	}
-    }
-  else
-    {
-      ld->unicode_normalization.is_enabled = false;
-    }
-
-  PRINT_DEBUG_START (data, attr, "", 0);
-
-  return 0;
-}
-
-/*
  * locale_destroy_normalization_data() - frees memory used by the specified
  *			  locale for storing its computed normalization data.
  *    return:
@@ -6893,6 +6825,10 @@ start_normalization (void *data, const char **attr)
 void
 locale_destroy_normalization_data (UNICODE_NORMALIZATION * norm)
 {
+  if (norm == NULL)
+    {
+      return;
+    }
   if (norm->unicode_mappings != NULL)
     {
       free (norm->unicode_mappings);
@@ -6933,10 +6869,7 @@ locale_save_normalization_to_C_file (FILE * fp, LOCALE_DATA * ld)
 
   norm = &(ld->unicode_normalization);
 
-  PRINT_VAR_TO_C_FILE (fp, "int", "unicode_normalization_enabled",
-		       norm->is_enabled ? 1 : 0, "%d", ld->locale_name);
-
-  if (!norm->is_enabled || norm->do_not_save)
+  if (norm->do_not_save)
     {
       goto exit;
     }
@@ -6981,16 +6914,10 @@ exit:
  * Returns : NO_ERROR.
  * norm(in)  : the UNICODE_NORMALIZATION to be dumped in text format.
  */
-static int
+static void
 dump_locale_normalization (UNICODE_NORMALIZATION * norm)
 {
   int i;
-
-  if (!norm->is_enabled)
-    {
-      printf ("\nNormalization is disabled\n\n");
-      goto exit;
-    }
 
   printf ("Sorted list of unicode mappings: \n");
   for (i = 0; i < norm->unicode_mappings_count; i++)
@@ -7049,9 +6976,6 @@ dump_locale_normalization (UNICODE_NORMALIZATION * norm)
 
       printf ("\n");
     }
-
-exit:
-  return 0;
 }
 
 /* 
@@ -7565,9 +7489,7 @@ locale_compute_locale_checksum (LOCALE_DATA * ld)
 	* sizeof (CONV_CP_TO_BYTES);
     }
 
-  input_size += sizeof (ld->unicode_normalization.is_enabled);
-  if (ld->unicode_normalization.is_enabled
-      && !(ld->unicode_normalization.do_not_save))
+  if (!(ld->unicode_normalization.do_not_save))
     {
       UNICODE_NORMALIZATION *un = &(ld->unicode_normalization);
 
@@ -7698,11 +7620,7 @@ locale_compute_locale_checksum (LOCALE_DATA * ld)
 	* sizeof (CONV_CP_TO_BYTES);
     }
 
-  memcpy (buf_pos, &(ld->unicode_normalization.is_enabled),
-	  sizeof (ld->unicode_normalization.is_enabled));
-  buf_pos += sizeof (ld->unicode_normalization.is_enabled);
-  if (ld->unicode_normalization.is_enabled
-      && !(ld->unicode_normalization.do_not_save))
+  if (!(ld->unicode_normalization.do_not_save))
     {
       UNICODE_NORMALIZATION *un = &(ld->unicode_normalization);
 

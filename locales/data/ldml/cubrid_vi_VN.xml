@@ -161,6 +161,5 @@
 		<alphabet CUBRIDAlphabetMode="UNICODEDATAFILE">
 		</alphabet>
 	</alphabets>
-	<normalization enabled="false" />
 	<consoleconversion type="ISO" windows_codepage="1258" linux_charset="8859-12" file="CP1258.TXT" />	
 </ldml>
