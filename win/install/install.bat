@@ -51,6 +51,7 @@ copy %SRC_DIR%\cascci*.lib %DEST_DIR%\lib
 copy %SRC_DIR%\libesql.lib %DEST_DIR%\lib
 copy %SRC_DIR%\cmstat.lib %DEST_DIR%\lib
 copy %SRC_DIR%\cmdep.lib %DEST_DIR%\lib
+copy %SRC_DIR%\DBGWConnector3.lib %DEST_DIR%\lib
 
 copy %SRC_DIR%\*.exe %DEST_DIR%\bin
 copy %SRC_DIR%\*.dll %DEST_DIR%\bin

@@ -148,6 +148,9 @@ if NOT DEFINED ProgramFiles(x86) (
   )
 )
 
+"%DEVENV_PATH%" /rebuild "%BUILD_MODE%|%BUILD_TARGET%" "cubrid_dbgw.sln"
+if ERRORLEVEL 1 (echo FAILD. & GOTO :EOF) ELSE echo OK.
+
 "%DEVENV_PATH%" /rebuild "%BUILD_MODE%|%BUILD_TARGET%" "cubrid.sln"
 if ERRORLEVEL 1 (echo FAILD. & GOTO :EOF) ELSE echo OK.
 
@@ -155,9 +158,6 @@ if ERRORLEVEL 1 (echo FAILD. & GOTO :EOF) ELSE echo OK.
 if ERRORLEVEL 1 (echo FAILD. & GOTO :EOF) ELSE echo OK.
 
 "%DEVENV_PATH%" /rebuild "%BUILD_MODE%|%BUILD_TARGET%" "cubrid_compat.sln"
-if ERRORLEVEL 1 (echo FAILD. & GOTO :EOF) ELSE echo OK.
-
-"%DEVENV_PATH%" /rebuild "%BUILD_MODE%|%BUILD_TARGET%" "cubrid_dbgw.sln"
 if ERRORLEVEL 1 (echo FAILD. & GOTO :EOF) ELSE echo OK.
 
 copy %BUILD_DIR%\%BUILD_TARGET%\Release\convert_password.exe %BUILD_PREFIX%\bin
