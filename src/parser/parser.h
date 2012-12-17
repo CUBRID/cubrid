@@ -188,6 +188,8 @@ extern "C"
 					 PT_NODE * hv);
   extern PT_NODE *pt_bind_values_to_hostvars (PARSER_CONTEXT * parser,
 					      PT_NODE * node);
+  extern int pt_resolve_default_value (PARSER_CONTEXT * parser,
+				       PT_NODE * name);
 
   extern DB_VALUE *pt_db_value_initialize (PARSER_CONTEXT * parser,
 					   PT_NODE * value,
@@ -887,6 +889,10 @@ extern "C"
   extern PT_NODE *pt_make_query_show_collation (PARSER_CONTEXT * parser,
 						int like_where_syntax,
 						PT_NODE * like_or_where_expr);
+
+  extern PT_NODE *pt_find_node_type_pre (PARSER_CONTEXT * parser,
+					 PT_NODE * node, void *arg,
+					 int *continue_walk);
 #ifdef __cplusplus
 }
 #endif

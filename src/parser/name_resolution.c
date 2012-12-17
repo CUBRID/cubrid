@@ -2602,10 +2602,6 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       parser_walk_leaves (parser, node, pt_bind_names, bind_arg,
 			  pt_bind_names_post, bind_arg);
 
-      /* flag any "correlated" names as undefined. */
-      parser_walk_tree (parser, node->info.insert.value_clauses,
-			pt_undef_names, node->info.insert.spec, NULL, NULL);
-
       if (save != NULL)
 	{
 	  SCOPES extended_scope;
@@ -3157,6 +3153,84 @@ pt_bind_values_to_hostvars (PARSER_CONTEXT * parser, PT_NODE * node)
 
   return node;
 }				/* pt_bind_values_to_hostvars */
+
+/*
+ * pt_resolve_default_value () - Fills PT_NAME node with default value
+ *
+ * return      : error code
+ * parser (in) : parser context
+ * name (in)   : PT_NAME node
+ *
+ * NOTE: Filling with default value is forced. After setting default value,
+ *	 PT_NAME_INFO_FILL_DEFAULT flag is set.
+ *	 Name must be resolved first.
+ */
+int
+pt_resolve_default_value (PARSER_CONTEXT * parser, PT_NODE * name)
+{
+  DB_ATTRIBUTE *att = NULL;
+
+  if (name->node_type != PT_NAME)
+    {
+      return NO_ERROR;
+    }
+
+  if (name->info.name.meta_class == PT_META_CLASS
+      || name->info.name.meta_class == PT_OID_ATTR)
+    {
+      return NO_ERROR;
+    }
+
+  if (name->info.name.original == NULL || name->info.name.resolved == NULL)
+    {
+      /* cannot resolve */
+      return NO_ERROR;
+    }
+
+  if (name->info.name.default_value != NULL)
+    {
+      /* default value was already set */
+      return NO_ERROR;
+    }
+
+  att =
+    db_get_attribute_by_name (name->info.name.resolved,
+			      name->info.name.original);
+  if (att == NULL)
+    {
+      /* cannot resolve */
+      return ER_FAILED;
+    }
+
+  if (att->default_value.default_expr != DB_DEFAULT_NONE)
+    {
+      /* if the default value is an expression, make a node for it */
+      PT_OP_TYPE op =
+	pt_op_type_from_default_expr_type (att->default_value.default_expr);
+      assert (op != (PT_OP_TYPE) 0);
+      name->info.name.default_value = pt_expression_0 (parser, op);
+    }
+  else
+    {
+      /* just set the default value */
+      name->info.name.default_value =
+	pt_dbval_to_value (parser, &att->default_value.value);
+      if (name->info.name.default_value == NULL)
+	{
+	  PT_ERRORm (parser, name, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  return ER_FAILED;
+	}
+      if (TP_DOMAIN_TYPE (att->domain) == DB_TYPE_ENUMERATION)
+	{
+	  name->info.name.default_value->data_type =
+	    pt_domain_to_data_type (parser, att->domain);
+	}
+    }
+
+  PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_FILL_DEFAULT);
+  return NO_ERROR;
+}
 
 /*
  * pt_find_attr_in_class_list () - trying to resolve X.attr

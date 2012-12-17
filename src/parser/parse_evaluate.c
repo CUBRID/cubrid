@@ -1127,7 +1127,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 	}
 
       error = do_insert (parser, tree);
-      if (error == NO_ERROR)
+      if (error >= NO_ERROR)
 	{
 	  if ((val = (DB_VALUE *) (tree->etc)) == NULL)
 	    {

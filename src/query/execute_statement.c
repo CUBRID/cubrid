@@ -140,6 +140,18 @@ struct serial_invariant
 				   or ER_INVALID_SERIAL_VALUE */
 };
 
+/*
+ * eval_insert_value structure is used to pass as argument to parser_walk_tree
+ * when insert values are evaluated.
+ */
+typedef struct eval_insert_value EVAL_INSERT_VALUE;
+struct eval_insert_value
+{
+  PT_NODE *attr_list;		/* list of insert attribute names */
+  PT_NODE *value_list;		/* list of insert values values */
+  int crt_attr_index;		/* current attribute index */
+};
+
 static void initialize_serial_invariant (SERIAL_INVARIANT * invariant,
 					 DB_VALUE val1, DB_VALUE val2,
 					 PT_OP_TYPE cmp_op, int val1_msgid,
@@ -147,6 +159,17 @@ static void initialize_serial_invariant (SERIAL_INVARIANT * invariant,
 static int check_serial_invariants (SERIAL_INVARIANT * invariants,
 				    int num_invariants, int *ret_msg_id);
 static bool truncate_need_repl_log (PT_NODE * statement);
+
+static int do_evaluate_insert_values (PARSER_CONTEXT * parser,
+				      PT_NODE * insert);
+static PT_NODE *do_evaluate_insert_values_internal (PARSER_CONTEXT * parser,
+						    PT_NODE * attr_list,
+						    PT_NODE * value_list);
+static PT_NODE *do_replace_names_for_insert_values_pre (PARSER_CONTEXT *
+							parser,
+							PT_NODE * node,
+							void *arg,
+							int *continue_walk);
 
 /*
  * initialize_serial_invariant() - initialize a serial invariant
@@ -11358,6 +11381,12 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
       return er_errid ();
     }
 
+  error = do_evaluate_insert_values (parser, statement);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
   if (statement->info.insert.do_replace
       || statement->info.insert.odku_assignments != NULL)
     {
@@ -12384,6 +12413,7 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
    * 2. the REPLACE statement (ex: replace into ... values ..;)
    * 3. view having 'with check option'
    * 4. class/view having trigger
+   * 5. when there is another insert statement among values.
    */
 
   if (is_multiple_tuples_insert == true
@@ -12439,6 +12469,20 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
+  if (need_savepoint == false)
+    {
+      int arg[2];		/* argument for pt_find_node_type_pre */
+      arg[0] = PT_INSERT;	/* node type */
+      arg[1] = 0;		/* found */
+      (void) parser_walk_tree (parser, statement->info.insert.value_clauses,
+			       pt_find_node_type_pre, arg, NULL, NULL);
+      if (arg[1] == 1)
+	{
+	  /* sub insert was found */
+	  need_savepoint = true;
+	}
+    }
+
   /*
    *  if the insert statement contains more than one insert component,
    *  we savepoint the insert components to try to guarantee insert
@@ -12471,7 +12515,9 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
       obt_begin_insert_values ();
     }
 
-  for (row_count_total = 0; crt_list != NULL; crt_list = crt_list->next)
+  row_count_total = 0;
+  for (crt_list = statement->info.insert.value_clauses; crt_list != NULL;
+       crt_list = crt_list->next)
     {
       DB_OTMPL *otemplate = NULL;
       int row_count = 0;
@@ -16123,3 +16169,283 @@ pt_append_odku_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
    * the insert specs: ON DUPLICATE UPDATE set column = (SELECT ...) */
   return node;
 }
+
+/*
+ * do_evaluate_insert_values () - Evaluates the list of values for insert
+ *				  statements.
+ *
+ * return      : void
+ * parser (in) : parser context
+ * insert (in) : insert statement
+ *
+ * NOTE: Function will evaluate each value list in insert->value_clauses
+ */
+static int
+do_evaluate_insert_values (PARSER_CONTEXT * parser, PT_NODE * insert)
+{
+  PT_NODE *val_clause = NULL;
+
+  if (insert->node_type != PT_INSERT)
+    {
+      /* node must be PT_INSERT */
+      return NO_ERROR;
+    }
+
+  if (insert->info.insert.attr_list == NULL)
+    {
+      /* do nothing */
+      return NO_ERROR;
+    }
+
+  for (val_clause = insert->info.insert.value_clauses; val_clause != NULL;
+       val_clause = val_clause->next)
+    {
+      if (val_clause->info.node_list.list_type != PT_IS_VALUE
+	  || val_clause->info.node_list.list == NULL)
+	{
+	  continue;
+	}
+      /* evaluate list of values */
+      val_clause->info.node_list.list =
+	do_evaluate_insert_values_internal (parser,
+					    insert->info.insert.attr_list,
+					    val_clause->info.node_list.list);
+      if (pt_has_error (parser))
+	{
+	  /* error evaluating values, stop */
+	  if (er_errid () != NO_ERROR)
+	    {
+	      return er_errid ();
+	    }
+	  else
+	    {
+	      return ER_GENERIC_ERROR;
+	    }
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * do_evaluate_insert_values_internal () - Evaluates list of values for insert
+ *
+ * return	   : list of values after evaluation
+ * parser (in)	   : parser context
+ * attr_list (in)  : insert attr_list
+ * value_list (in) : list of values
+ *
+ * NOTE: The values corresponding to each attribute are evaluated from "left"
+ *	 to "right", in the order given by user.
+ *	 First step is to replace attribute names with values (see
+ *	 do_replace_names_for_insert_values_pre).
+ *	 After names were replaced, attribute values are evaluated using
+ *	 pt_evaluate_tree_having_serial and replaced with a PT_VALUE node.
+ */
+static PT_NODE *
+do_evaluate_insert_values_internal (PARSER_CONTEXT * parser,
+				    PT_NODE * attr_list, PT_NODE * value_list)
+{
+  int size;
+  PT_NODE *val = NULL, *prev = NULL, *attr = NULL;
+  PT_NODE *result = NULL, *save_next = NULL;
+  EVAL_INSERT_VALUE eval;
+  DB_VALUE eval_value;
+
+  eval.attr_list = attr_list;
+  eval.value_list = value_list;
+  eval.crt_attr_index = 0;
+
+  /* evaluate values in val_list */
+  for (prev = NULL, val = value_list, attr = attr_list;
+       attr != NULL && val != NULL;
+       val = save_next, attr = save_next, eval.crt_attr_index++)
+    {
+      save_next = val->next;
+      if (PT_IS_VALUE_NODE (val))
+	{
+	  /* no need to evaluate */
+	  prev = val;
+	  continue;
+	}
+
+      val->next = NULL;
+      /* if there are attribute names referred in val, replace them with
+       * values
+       */
+      result =
+	parser_walk_tree (parser, val, do_replace_names_for_insert_values_pre,
+			  &eval, pt_continue_walk, NULL);
+      if (pt_has_error (parser))
+	{
+	  val->next = save_next;
+	  return value_list;
+	}
+      if (!PT_IS_VALUE_NODE (result))
+	{
+	  /* evaluate val */
+	  pt_evaluate_tree_having_serial (parser, result, &eval_value, 1);
+	  if (pt_has_error (parser))
+	    {
+	      val->next = save_next;
+	      if (result != val)
+		{
+		  parser_free_tree (parser, result);
+		}
+	      return value_list;
+	    }
+	  /* free result and replace it with eval_value */
+	  if (result != val)
+	    {
+	      parser_free_tree (parser, result);
+	    }
+	  result = pt_dbval_to_value (parser, &eval_value);
+	  if (result == NULL)
+	    {
+	      if (!pt_has_error (parser))
+		{
+		  PT_ERRORm (parser, val, MSGCAT_SET_PARSER_RUNTIME,
+			     MSGCAT_RUNTIME__CAN_NOT_EVALUATE);
+		}
+	      val->next = save_next;
+	      return value_list;
+	    }
+	  /* free old value */
+	  parser_free_tree (parser, val);
+	}
+      if (result != val)
+	{
+	  /* replace val */
+	  if (prev != NULL)
+	    {
+	      prev->next = result;
+	    }
+	  else
+	    {
+	      value_list = result;
+	      eval.value_list = result;
+	    }
+	  result->next = save_next;
+	  prev = result;
+	  /* val was already freed */
+	}
+      else
+	{
+	  /* redo next link */
+	  val->next = save_next;
+	  prev = val;
+	}
+    }
+
+  /* evaluation has finished, return new value_list */
+  return value_list;
+}
+
+/*
+ * do_replace_names_for_insert_values_pre () - Used by parser_walk_tree to
+ *					       evaluate names in insert values
+ *
+ * return	      : node or replaced name .
+ * parser (in)	      : parser context.
+ * node (in)	      : node in parse tree.
+ * arg (in)	      : EVAL_INSERT_VALUE.
+ * continue_walk (in) : continue walk.
+ *
+ * NOTE: Name replacement will be done after the next rules:
+ *	 1. If name belongs to insert attribute list and if name was assigned
+ *	    before current attribute, use the assigned value to replace name.
+ *	 2. If name was not assigned yet, replace it with default value.
+ *	 3. If could not find a default value for name, then
+ *	    pt_evaluate_tree_having_serial will have to evaluate the name.
+ */
+static PT_NODE *
+do_replace_names_for_insert_values_pre (PARSER_CONTEXT * parser,
+					PT_NODE * node, void *arg,
+					int *continue_walk)
+{
+  int count, found;
+  PT_NODE *attr = NULL, *val = NULL, *result = NULL;
+  DB_VALUE eval_value;
+  EVAL_INSERT_VALUE *eval = (EVAL_INSERT_VALUE *) arg;
+
+  if (node == NULL || *continue_walk == PT_STOP_WALK || pt_has_error (parser))
+    {
+      return node;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_NAME:
+      *continue_walk = PT_LIST_WALK;
+      /* look for node in attr list and stop when count reaches node_index */
+      found = 0;
+      for (attr = eval->attr_list, val = eval->value_list, count = 0;
+	   attr != NULL && val != NULL && count < eval->crt_attr_index;
+	   attr = attr->next, val = val->next, count++)
+	{
+	  if (pt_name_equal (parser, node, attr))
+	    {
+	      found = true;
+	      break;
+	    }
+	}
+      if (found)
+	{
+	  /* replace node with value */
+	  if (!PT_IS_VALUE_NODE (val))
+	    {
+	      /* cannot evaluate */
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_RUNTIME,
+			 MSGCAT_RUNTIME__CAN_NOT_EVALUATE);
+	      /* do not replace node */
+	      return node;
+	    }
+	  result = parser_copy_tree (parser, val);
+	  if (result == NULL)
+	    {
+	      if (!pt_has_error (parser))
+		{
+		  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_RUNTIME,
+			     MSGCAT_RUNTIME_OUT_OF_MEMORY);
+		}
+	      /* do not replace node */
+	      return node;
+	    }
+	  /* replace node */
+	  parser_free_tree (parser, node);
+	  return result;
+	}
+      else
+	{
+	  /* try to replace node with default value */
+	  if (pt_resolve_default_value (parser, node) == NO_ERROR
+	      && node->info.name.default_value != NULL)
+	    {
+	      /* replace node with default value */
+	      result = node->info.name.default_value;
+	      node->info.name.default_value = NULL;
+	      parser_free_tree (parser, node);
+	      return result;
+	    }
+	}
+      /* could not assign a value, leave the node as it is */
+      break;
+
+    case PT_EXPR:
+    case PT_FUNCTION:
+      /* continue walk if current node is expression or function */
+      *continue_walk = PT_CONTINUE_WALK;
+      break;
+
+    default:
+      /* stop advancing in the tree if node is not a name, expression or
+       * function
+       */
+      *continue_walk = PT_LIST_WALK;
+      break;
+    }
+
+  return node;
+}
+
+

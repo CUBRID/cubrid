@@ -10389,3 +10389,34 @@ pt_make_query_show_collation (PARSER_CONTEXT * parser,
 
   return node;
 }
+
+/*
+ * pt_find_node_type_pre () - Use parser_walk_tree to find a node with a
+ *			      specific node type.
+ *
+ * return	      : node. 
+ * parser (in)	      : parser context.
+ * node (in)	      : node in parse tree.
+ * arg (in)	      : int array containing node type and found.
+ * continue_walk (in) : continue walk.
+ *
+ * NOTE: Make sure to set found to 0 before calling parser_walk_tree.
+ */
+PT_NODE *
+pt_find_node_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+		       int *continue_walk)
+{
+  int node_type = *((int *) arg);
+  int *found_p = ((int *) arg) + 1;
+
+  if (*found_p || *continue_walk == PT_STOP_WALK || node == NULL)
+    {
+      return node;
+    }
+  if (node->node_type == node_type)
+    {
+      *found_p = 1;
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
