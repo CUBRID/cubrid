@@ -774,7 +774,7 @@ csql_killtran (const char *argument)
 	    {
 	      fprintf (p_stream, csql_get_message (CSQL_KILLTRAN_FORMAT),
 		       info->tran[i].tran_index,
-		       TRAN_STATE_CHAR (info->tran[i].state),
+		       tran_get_tranlist_state_name (info->tran[i].state),
 		       info->tran[i].db_user, info->tran[i].host_name,
 		       info->tran[i].process_id, info->tran[i].program_name);
 	    }
@@ -797,7 +797,7 @@ csql_killtran (const char *argument)
 	      fprintf (csql_Output_fp,
 		       csql_get_message (CSQL_KILLTRAN_FORMAT),
 		       info->tran[i].tran_index,
-		       TRAN_STATE_CHAR (info->tran[i].state),
+		       tran_get_tranlist_state_name (info->tran[i].state),
 		       info->tran[i].db_user, info->tran[i].host_name,
 		       info->tran[i].process_id, info->tran[i].program_name);
 

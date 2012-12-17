@@ -66,6 +66,7 @@ $       45      acldb
 $       46      genlocale
 $       47      dumplocale
 $       48      synccolldb
+$       49      tranlist
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 ប្រវែងមិនសុពល ឬអក្សរ`%c' ក្នុងឈ្មោះដែលតាបេស`%s'\n
@@ -94,6 +95,7 @@ usage: %s <utility-name> [args]\n\
     addvoldb\n\
     spacedb\n\
     lockdb\n\
+    tranlist\n\
     killtran\n\
     optimizedb\n\
     compactdb\n\
@@ -150,6 +152,7 @@ administrator's utilitiesដែលមាន:\n\
     deletedb\n\
     diagdb\n\
     installdb\n\
+    tranlist\n\
     killtran\n\
     loaddb\n\
     lockdb\n\
@@ -762,22 +765,14 @@ usage: %s lockdb [OPTION] ឈ្មោះដែលតាបេស \n\
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
 20 សេចក្តីសំអាងខ្ទាស់តែមួយគត់ ត្រូវបានផ្តល់ឲ្យ: tran-index, user, host, progname\n
 21 វាយបញ្ជូលកំណត់សម្ងាត់ DBA :
-22 Tran index      ឈ្មោះUser      ឈ្មោះHost      ដំណើរការ id      ឈ្មោះProgram \n
-23 -------------------------------------------------------------------------------\n
-24 %7d(%1c) %14s %14s %15d %17s\n
-25 ពុំមានកិច្ចសម្រួលដំណើរការទេ\n
 26 ពុំមានកិច្ចសម្រួលដំណើរការជាមួយ argument valuesដែលត្រូវបានកំណត់ពិសេសទេ។ \n
 27 ត្រៀមរួចជាស្រេចដើម្បីបំផ្លាញកិច្ចសម្រួលដំណើរការជាបន្តរបន្ទាប់:\n\n
 28 តើអ្នកចង់ធ្វើប្រតិបត្តិការទេ ? (Y/N)
 29 ការបំផ្លាញកិច្ចសម្រួលដំណើរការដែលទាក់ទងនឹងindexនៃកិច្ចសម្រួលដំណើរការ %d\n
 30 ការបំផ្លាញកិច្ចសម្រួលដំណើរការជាបន្តរបន្ទាប់ត្រូវបរាជ័យ។ \n\n
 31 កិច្ចសម្រួលដំណើរការនេះ មិនទាន់ចប់ទេ, ប៉ុន្តែវាអាចបន្តដំណើរការត្រឡប់វិញ។ \n សូមរងចាំសិននិងព្យាយាមនៅពេលក្រោយបើចាំបាច់។ \n
-32 Tran index     Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
-33 %7d(%1c) %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
-34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
-35 Tran index : %d
-36 SQL_ID: %s\n
-59 killrtan មិនអាចដំណើរការជា standalone mode។ \n
+32 Invalid tranindex(%s).\n
+59 killtran មិនអាចដំណើរការជា standalone mode។ \n
 60 \
 killtran: គ្រប់គ្រងកិច្ចសម្រួលដំណើរការនៃដែលតាបេស។ \n\
 usage: %s killtran [OPTION] ឈ្មោះដែលតាបេស\n\
@@ -1016,3 +1011,27 @@ valid options:\n\
 		      Displays a report of incompatible collations.\n\
   -f, --force-only    Updates the collations in databases to be same as the collations of new sytem configuration.\n\
 
+$set 49 MSGCAT_UTIL_SET_TRANLIST
+20 Enter %s password: 
+22 Tran index          ឈ្មោះUser      ឈ្មោះHost      ដំណើរការ id      ឈ្មោះProgram \n
+23 -------------------------------------------------------------------------------\n
+24 %4d%-10s %14s %14s %15d %17s\n
+25 ពុំមានកិច្ចសម្រួលដំណើរការទេ\n
+26 tranlist can only be performed by the DBA or a DBA group member.\n
+32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
+34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
+42 Tran index          User name      Host name      Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+43 %4d%-10s %14s %14s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
+44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
+45 Tran index : %d
+46 SQL_ID: %s\n
+59 tranlist មិនអាចដំណើរការជា standalone mode។ \n
+60 \
+tranlist: Dump active transaction information.\n\
+usage: %s tranlist [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -u, --user=ID                user ID for database access; default: DBA user\n\
+  -p, --password=PASS          user password; default: none\n\
+  -s, --summary                print summarized information of transaction\n

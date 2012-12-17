@@ -69,8 +69,8 @@ Per ulteriori informazioni, vedere http://www.cubrid.com\n
 63 Non ci sono risultati.
 64 Checkpoint è stato emesso.
 65 Il database è stato riavviato.
-66 Tran index      Utente         Nome Host      Processo        Nome programma\n
-67 %7d(%1c) %14s %14s %15d %17s\n
+66 Tran index            Utente         Nome Host      Processo        Nome programma\n
+67 %4d%-12s %14s %14s %15d %17s\n
 68 La transazione specificata è stata cancellata.
 69 Annullamento della transazione specificata non riuscita.
 70 %d righe %s.

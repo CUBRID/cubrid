@@ -69,8 +69,8 @@ Pour plus d'informations, visitez le site http://www.cubrid.com\n
 63 Il n'y a pas de résultats.
 64 Point de vérification a été délivré.
 65 La base de données a été redémarré.
-66 Tran index      Nom d'utilisateur      Nom d'hôte      iD de processus      Nom du programme\n
-67 %7d(%1c) %14s %14s %15d %17s\n
+66 Tran index            Nom d'utilisateur      Nom d'hôte      iD de processus      Nom du programme\n
+67 %4d%-12s %14s %14s %15d %17s\n
 68 La transaction spécifiée a été arrêté.
 69 Arrêt de l'opération spécifiée a échoué.
 70 %d rangées %s.

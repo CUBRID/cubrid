@@ -70,7 +70,7 @@ tùy chọn có thể dùng:\n\
 64 Điểm kiểm tra đã được đưa ra.
 65 Cơ sở dữ liệu đã được khởi động lại.
 66 Chỉ mục giao dịch       Tên người dùng      Tên máy chủ      Tiến trình id      Tên chương trình\n
-67 %7d(%1c) %14s %14s %15d %17s\n
+67 %4d%-12s %14s %14s %15d %17s\n
 68 Giao dịch được chỉ định đã bị bỏ.
 69 Thất bại khi bỏ giao dịch đã chỉ định.
 70 %d hàng %s.

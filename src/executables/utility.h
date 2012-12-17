@@ -77,7 +77,8 @@ typedef enum
   MSGCAT_UTIL_SET_ACLDB = 45,
   MSGCAT_UTIL_SET_GENLOCALE = 46,
   MSGCAT_UTIL_SET_DUMPLOCALE = 47,
-  MSGCAT_UTIL_SET_SYNCCOLLDB = 48
+  MSGCAT_UTIL_SET_SYNCCOLLDB = 48,
+  MSGCAT_UTIL_SET_TRANLIST = 49
 } MSGCAT_UTIL_SET;
 
 /* Message id in the set MSGCAT_UTIL_SET_GENERIC */
@@ -292,26 +293,39 @@ typedef enum
   LOCKDB_MSG_USAGE = 60
 } MSGCAT_LOCKDB_MSG;
 
+/* Message id in the set MSGCAT_UTIL_SET_TRANLIST */
+typedef enum
+{
+  TRANLIST_MSG_USER_PASSWORD = 20,
+  TRANLIST_MSG_SUMMARY_HEADER = 22,
+  TRANLIST_MSG_SUMMARY_UNDERSCORE = 23,
+  TRANLIST_MSG_SUMMARY_ENTRY = 24,
+  TRANLIST_MSG_NONE_TABLE_ENTRIES = 25,
+  TRANLIST_MSG_NOT_DBA_USER = 26,
+  TRANLIST_MSG_QUERY_INFO_HEADER = 32,
+  TRANLIST_MSG_QUERY_INFO_ENTRY = 33,
+  TRANLIST_MSG_QUERY_INFO_UNDERSCORE = 34,
+  TRANLIST_MSG_FULL_INFO_HEADER = 42,
+  TRANLIST_MSG_FULL_INFO_ENTRY = 43,
+  TRANLIST_MSG_FULL_INFO_UNDERSCORE = 44,
+  TRANLIST_MSG_TRAN_INDEX = 45,
+  TRANLIST_MSG_SQL_ID = 46,
+  TRANLIST_MSG_NOT_IN_STANDALONE = 59,
+  TRANLIST_MSG_USAGE = 60
+} MSGCAT_TRANLIST_MSG;
+
 /* Message id in the set MSGCAT_UTIL_SET_KILLTRAN */
 typedef enum
 {
   KILLTRAN_MSG_MANY_ARGS = 20,
   KILLTRAN_MSG_DBA_PASSWORD = 21,
-  KILLTRAN_MSG_TABLE_HEADER = 22,
-  KILLTRAN_MSG_TABLE_UNDERSCORE = 23,
-  KILLTRAN_MSG_TABLE_ENTRY = 24,
-  KILLTRAN_MSG_NONE_TABLE_ENTRIES = 25,
   KILLTRAN_MSG_NO_MATCHES = 26,
   KILLTRAN_MSG_READY_TO_KILL = 27,
   KILLTRAN_MSG_VERIFY = 28,
   KILLTRAN_MSG_KILLING = 29,
   KILLTRAN_MSG_KILL_FAILED = 30,
   KILLTRAN_MSG_KILL_TIMEOUT = 31,
-  KILLTRAN_MSG_QUERY_INFO_TABLE_HEADER = 32,
-  KILLTRAN_MSG_QUERY_INFO_TABLE_ENTRY = 33,
-  KILLTRAN_MSG_QUERY_INFO_TABLE_UNDERSCORE = 34,
-  KILLTRAN_MSG_QUERY_INFO_TRAN_INDEX = 35,
-  KILLTRAN_MSG_QUERY_INFO_SQL_ID = 36,
+  KILLTRAN_MSG_INVALID_TRANINDEX = 32,
   KILLTRAN_MSG_NOT_IN_STANDALONE = 59,
   KILLTRAN_MSG_USAGE = 60
 } MSGCAT_KILLTRAN_MSG;
@@ -610,6 +624,7 @@ typedef enum
   GENLOCALE,
   DUMPLOCALE,
   SYNCCOLLDB,
+  TRANLIST,
   LOGFILEDUMP
 } UTIL_INDEX;
 
@@ -773,6 +788,7 @@ typedef struct _ha_config
 #define UTIL_OPTION_ADDVOLDB                    "addvoldb"
 #define UTIL_OPTION_SPACEDB                     "spacedb"
 #define UTIL_OPTION_LOCKDB                      "lockdb"
+#define UTIL_OPTION_TRANLIST                    "tranlist"
 #define UTIL_OPTION_KILLTRAN                    "killtran"
 #define UTIL_OPTION_OPTIMIZEDB                  "optimizedb"
 #define UTIL_OPTION_INSTALLDB                   "installdb"
@@ -987,6 +1003,14 @@ typedef struct _ha_config
 #define PLANDUMP_DROP_L                         "drop"
 #define PLANDUMP_OUTPUT_FILE_S		        'o'
 #define PLANDUMP_OUTPUT_FILE_L                  "output-file"
+
+/* tranlist option list */
+#define TRANLIST_USER_S                         'u'
+#define TRANLIST_USER_L                         "user"
+#define TRANLIST_PASSWORD_S                     'p'
+#define TRANLIST_PASSWORD_L                     "password"
+#define TRANLIST_SUMMARY_S                      's'
+#define TRANLIST_SUMMARY_L                      "summary"
 
 /* killtran option list */
 #define KILLTRAN_KILL_TRANSACTION_INDEX_S       'i'
@@ -1344,6 +1368,7 @@ extern int addvoldb (UTIL_FUNCTION_ARG * arg_map);
 extern int checkdb (UTIL_FUNCTION_ARG * arg_map);
 extern int spacedb (UTIL_FUNCTION_ARG * arg_map);
 extern int lockdb (UTIL_FUNCTION_ARG * arg_map);
+extern int tranlist (UTIL_FUNCTION_ARG * arg_map);
 extern int killtran (UTIL_FUNCTION_ARG * arg_map);
 extern int restartevnt (UTIL_FUNCTION_ARG * arg_map);
 extern int prestartldb (UTIL_FUNCTION_ARG * arg_map);

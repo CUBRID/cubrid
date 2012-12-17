@@ -3001,6 +3001,55 @@ tran_server_abort (void)
 #endif /* !CS_MODE */
 }
 
+const char *
+tran_get_tranlist_state_name (TRAN_STATE state)
+{
+  switch (state)
+    {
+    case TRAN_RECOVERY:
+      return "(RECOVERY)";
+    case TRAN_ACTIVE:
+      return "(ACTIVE)";
+    case TRAN_UNACTIVE_COMMITTED:
+      return "(COMMITTED)";
+    case TRAN_UNACTIVE_WILL_COMMIT:
+      return "(COMMITTING)";
+    case TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE:
+      return "(COMMITTED1)";
+    case TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS:
+      return "(COMMITTED2)";
+    case TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE:
+      return "(COMMITTED3)";
+    case TRAN_UNACTIVE_XTOPOPE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS:
+      return "(COMMITTED4)";
+    case TRAN_UNACTIVE_ABORTED:
+      return "(ABORTED)";
+    case TRAN_UNACTIVE_UNILATERALLY_ABORTED:
+      return "(KILLED)";
+    case TRAN_UNACTIVE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS:
+      return "(ABORTED1)";
+    case TRAN_UNACTIVE_TOPOPE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS:
+      return "(ABORTED2)";
+    case TRAN_UNACTIVE_2PC_PREPARE:
+      return "(2PC1)";
+    case TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES:
+      return "(2PC2)";
+    case TRAN_UNACTIVE_2PC_ABORT_DECISION:
+      return "(2PC3)";
+    case TRAN_UNACTIVE_2PC_COMMIT_DECISION:
+      return "(2PC4)";
+    case TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS:
+      return "(COMMITTED5)";
+    case TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS:
+      return "(ABORTED3)";
+    case TRAN_UNACTIVE_UNKNOWN:
+    default:
+      return "(UNKNOWN)";
+    }
+
+  return "(UNKNOWN)";
+}
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * tran_is_blocked -

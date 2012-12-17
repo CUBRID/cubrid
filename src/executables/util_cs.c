@@ -60,6 +60,7 @@
 
 #define PASSBUF_SIZE 12
 #define SPACEDB_NUM_VOL_PURPOSE 5
+#define MAX_KILLTRAN_INDEX_LIST_NUM  64
 
 typedef enum
 {
@@ -70,6 +71,12 @@ typedef enum
   SPACEDB_SIZE_UNIT_HUMAN_READABLE
 } T_SPACEDB_SIZE_UNIT;
 
+typedef enum
+{
+  TRANDUMP_SUMMARY,
+  TRANDUMP_QUERY_INFO,
+  TRANDUMP_FULL_INFO
+} TRANDUMP_LEVEL;
 
 static bool is_Sigint_caught = false;
 #if defined(WINDOWS)
@@ -83,7 +90,7 @@ static int spacedb_get_size_str (char *buf, UINT64 num_pages,
 				 T_SPACEDB_SIZE_UNIT size_unit);
 static void print_timestamp (FILE * outfp);
 static int print_tran_entry (const ONE_TRAN_INFO * tran_info,
-			     bool include_query_info);
+			     TRANDUMP_LEVEL dump_level);
 
 /*
  * backupdb() - backupdb main routine
@@ -1340,45 +1347,67 @@ isvalid_transaction (const ONE_TRAN_INFO * tran)
  * doesmatch_transaction() - test if matching transaction
  *   return: non-zero if the information matches this transaction
  *   tran(in)
- *   tran_index(in)
+ *   tran_index_list(in)
+ *   index_list_size(in)
  *   user_name(in)
  *   hostname(in)
  *   progname(in)
  */
-static int
-doesmatch_transaction (const ONE_TRAN_INFO * tran, int tran_index,
+static bool
+doesmatch_transaction (const ONE_TRAN_INFO * tran, int *tran_index_list,
+		       int index_list_size,
 		       const char *username, const char *hostname,
 		       const char *progname, const char *sql_id)
 {
-  int match;
+  int i;
 
-  match = (isvalid_transaction (tran)
-	   && (tran->tran_index == tran_index
-	       || (username != NULL
-		   && strcmp (tran->login_name, username) == 0)
-	       || (hostname != NULL
-		   && strcmp (tran->host_name, hostname) == 0)
-	       || (progname != NULL
-		   && strcmp (tran->program_name, progname) == 0)
-	       || (sql_id != NULL && tran->query_exec_info.sql_id != NULL
-		   && strcmp (tran->query_exec_info.sql_id, sql_id) == 0)));
+  if (isvalid_transaction (tran))
+    {
+      if ((username != NULL && strcmp (tran->login_name, username) == 0)
+	  || (hostname != NULL && strcmp (tran->host_name, hostname) == 0)
+	  || (progname != NULL && strcmp (tran->program_name, progname) == 0)
+	  || (sql_id != NULL && tran->query_exec_info.sql_id != NULL
+	      && strcmp (tran->query_exec_info.sql_id, sql_id) == 0))
+	{
+	  return true;
+	}
 
-  return match;
+      for (i = 0; i < index_list_size; i++)
+	{
+	  if (tran->tran_index == tran_index_list[i])
+	    {
+	      return true;
+	    }
+	}
+    }
+  return false;
 }
 
 /*
  * dump_trantb() - Displays information about all the currently
  *                 active transactions
  *   return: none
- *   info(in)
+ *   info(in) :
+ *   dump_level(in) :
  */
 static void
-dump_trantb (TRANS_INFO * info)
+dump_trantb (TRANS_INFO * info, TRANDUMP_LEVEL dump_level)
 {
   int i;
   int num_valid = 0;
-  MSGCAT_KILLTRAN_MSG header = KILLTRAN_MSG_TABLE_HEADER;
-  MSGCAT_KILLTRAN_MSG underscore = KILLTRAN_MSG_TABLE_UNDERSCORE;
+  MSGCAT_TRANLIST_MSG header = TRANLIST_MSG_SUMMARY_HEADER;
+  MSGCAT_TRANLIST_MSG underscore = TRANLIST_MSG_SUMMARY_UNDERSCORE;
+
+  if (dump_level == TRANDUMP_FULL_INFO)
+    {
+      header = TRANLIST_MSG_FULL_INFO_HEADER;
+      underscore = TRANLIST_MSG_FULL_INFO_UNDERSCORE;
+    }
+  else if (dump_level == TRANDUMP_QUERY_INFO)
+    {
+      header = TRANLIST_MSG_QUERY_INFO_HEADER;
+      underscore = TRANLIST_MSG_QUERY_INFO_UNDERSCORE;
+    }
 
   if (info != NULL && info->num_trans > 0)
     {
@@ -1386,12 +1415,6 @@ dump_trantb (TRANS_INFO * info)
        * remember that we have to print the messages one at a time, mts_
        * reuses the message buffer on each call.
        */
-      if (info->include_query_exec_info)
-	{
-	  header = KILLTRAN_MSG_QUERY_INFO_TABLE_HEADER;
-	  underscore = KILLTRAN_MSG_QUERY_INFO_TABLE_UNDERSCORE;
-	}
-
       for (i = 0; i < info->num_trans; i++)
 	{
 	  /*
@@ -1403,16 +1426,15 @@ dump_trantb (TRANS_INFO * info)
 		{
 		  /* Dump table header */
 		  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
-						   MSGCAT_UTIL_SET_KILLTRAN,
+						   MSGCAT_UTIL_SET_TRANLIST,
 						   header));
 		  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
-						   MSGCAT_UTIL_SET_KILLTRAN,
+						   MSGCAT_UTIL_SET_TRANLIST,
 						   underscore));
 		}
 
 	      num_valid++;
-	      print_tran_entry (&info->tran[i],
-				info->include_query_exec_info);
+	      print_tran_entry (&info->tran[i], dump_level);
 	    }
 	}
     }
@@ -1420,16 +1442,18 @@ dump_trantb (TRANS_INFO * info)
   if (num_valid > 0)
     {
       fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
-				       MSGCAT_UTIL_SET_KILLTRAN, underscore));
+				       MSGCAT_UTIL_SET_TRANLIST, underscore));
     }
   else
     {
       fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
-				       MSGCAT_UTIL_SET_KILLTRAN,
-				       KILLTRAN_MSG_NONE_TABLE_ENTRIES));
+				       MSGCAT_UTIL_SET_TRANLIST,
+				       TRANLIST_MSG_NONE_TABLE_ENTRIES));
     }
 
-  if (info != NULL && info->include_query_exec_info)
+  if (info != NULL
+      && (dump_level == TRANDUMP_QUERY_INFO
+	  || dump_level == TRANDUMP_FULL_INFO))
     {
       int j;
 
@@ -1441,12 +1465,12 @@ dump_trantb (TRANS_INFO * info)
 	      && !XASL_ID_IS_NULL (&info->tran[i].query_exec_info.xasl_id))
 	    {
 	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
-					       MSGCAT_UTIL_SET_KILLTRAN,
-					       KILLTRAN_MSG_QUERY_INFO_SQL_ID),
+					       MSGCAT_UTIL_SET_TRANLIST,
+					       TRANLIST_MSG_SQL_ID),
 		       info->tran[i].query_exec_info.sql_id);
 	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
-					       MSGCAT_UTIL_SET_KILLTRAN,
-					       KILLTRAN_MSG_QUERY_INFO_TRAN_INDEX),
+					       MSGCAT_UTIL_SET_TRANLIST,
+					       TRANLIST_MSG_TRAN_INDEX),
 		       info->tran[i].tran_index);
 
 	      for (j = i + 1; j < info->num_trans; j++)
@@ -1487,8 +1511,8 @@ dump_trantb (TRANS_INFO * info)
  *       prompted for verification wheheter or not to kill the
  *       transaction(s).
  *
- *       if tran_index != -1
- *         kill only the transaction associated with tran index.
+ *       if tran_index_list != NULL && != ""
+ *         kill transactions in the tran_index comma list.
  *       else if username != NULL && != ""
  *         kill all transactions associated with given user.
  *       else if hostname != NULL && != ""
@@ -1502,30 +1526,30 @@ dump_trantb (TRANS_INFO * info)
  *    for verification.
  */
 static int
-kill_transactions (TRANS_INFO * info, int tran_index,
+kill_transactions (TRANS_INFO * info, int *tran_index_list, int list_size,
 		   const char *username, const char *hostname,
 		   const char *progname, const char *sql_id, bool verify)
 {
   int i, ok;
   int nkills = 0, nfailures = 0;
   int ch;
-  MSGCAT_KILLTRAN_MSG header = KILLTRAN_MSG_TABLE_HEADER;
-  MSGCAT_KILLTRAN_MSG underscore = KILLTRAN_MSG_TABLE_UNDERSCORE;
-  bool include_query_info = false;
+  MSGCAT_TRANLIST_MSG header = TRANLIST_MSG_SUMMARY_HEADER;
+  MSGCAT_TRANLIST_MSG underscore = TRANLIST_MSG_SUMMARY_UNDERSCORE;
+  TRANDUMP_LEVEL dump_level = TRANDUMP_SUMMARY;
 
   if (sql_id != NULL)
     {
       /* print --query-exec-info table format */
-      header = KILLTRAN_MSG_QUERY_INFO_TABLE_HEADER;
-      underscore = KILLTRAN_MSG_QUERY_INFO_TABLE_UNDERSCORE;
-      include_query_info = true;
+      header = TRANLIST_MSG_QUERY_INFO_HEADER;
+      underscore = TRANLIST_MSG_QUERY_INFO_UNDERSCORE;
+      dump_level = TRANDUMP_QUERY_INFO;
     }
 
   /* see if we have anything do do */
   for (i = 0; i < info->num_trans; i++)
     {
-      if (doesmatch_transaction (&info->tran[i], tran_index, username,
-				 hostname, progname, sql_id))
+      if (doesmatch_transaction (&info->tran[i], tran_index_list, list_size,
+				 username, hostname, progname, sql_id))
 	{
 	  break;
 	}
@@ -1557,21 +1581,22 @@ kill_transactions (TRANS_INFO * info, int tran_index,
 					   KILLTRAN_MSG_READY_TO_KILL));
 
 	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
-					   MSGCAT_UTIL_SET_KILLTRAN, header));
+					   MSGCAT_UTIL_SET_TRANLIST, header));
 	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
-					   MSGCAT_UTIL_SET_KILLTRAN,
+					   MSGCAT_UTIL_SET_TRANLIST,
 					   underscore));
 
 	  for (i = 0; i < info->num_trans; i++)
 	    {
-	      if (doesmatch_transaction (&info->tran[i], tran_index, username,
-					 hostname, progname, sql_id))
+	      if (doesmatch_transaction (&info->tran[i], tran_index_list,
+					 list_size, username, hostname,
+					 progname, sql_id))
 		{
-		  print_tran_entry (&info->tran[i], include_query_info);
+		  print_tran_entry (&info->tran[i], dump_level);
 		}
 	    }
 	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
-					   MSGCAT_UTIL_SET_KILLTRAN,
+					   MSGCAT_UTIL_SET_TRANLIST,
 					   underscore));
 
 	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
@@ -1590,8 +1615,9 @@ kill_transactions (TRANS_INFO * info, int tran_index,
 	{
 	  for (i = 0; i < info->num_trans; i++)
 	    {
-	      if (doesmatch_transaction (&info->tran[i], tran_index, username,
-					 hostname, progname, sql_id))
+	      if (doesmatch_transaction (&info->tran[i], tran_index_list,
+					 list_size, username, hostname,
+					 progname, sql_id))
 		{
 		  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
 						   MSGCAT_UTIL_SET_KILLTRAN,
@@ -1619,15 +1645,15 @@ kill_transactions (TRANS_INFO * info, int tran_index,
 						   KILLTRAN_MSG_KILL_FAILED));
 			  fprintf (stdout,
 				   msgcat_message (MSGCAT_CATALOG_UTILS,
-						   MSGCAT_UTIL_SET_KILLTRAN,
+						   MSGCAT_UTIL_SET_TRANLIST,
 						   header));
 			  fprintf (stdout,
 				   msgcat_message (MSGCAT_CATALOG_UTILS,
-						   MSGCAT_UTIL_SET_KILLTRAN,
+						   MSGCAT_UTIL_SET_TRANLIST,
 						   underscore));
 			}
 
-		      print_tran_entry (&info->tran[i], include_query_info);
+		      print_tran_entry (&info->tran[i], dump_level);
 
 		      if (er_errid () != NO_ERROR)
 			{
@@ -1648,7 +1674,7 @@ kill_transactions (TRANS_INFO * info, int tran_index,
 	  if (nfailures > 0)
 	    {
 	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
-					       MSGCAT_UTIL_SET_KILLTRAN,
+					       MSGCAT_UTIL_SET_TRANLIST,
 					       underscore));
 	    }
 	}
@@ -1664,7 +1690,7 @@ kill_transactions (TRANS_INFO * info, int tran_index,
  *   include_query_info(in) :
  */
 static int
-print_tran_entry (const ONE_TRAN_INFO * tran_info, bool include_query_info)
+print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level)
 {
   char *buf;
   char query_buf[32];
@@ -1675,7 +1701,10 @@ print_tran_entry (const ONE_TRAN_INFO * tran_info, bool include_query_info)
       return ER_FAILED;
     }
 
-  if (include_query_info)
+  assert_release (dump_level >= TRANDUMP_SUMMARY
+		  && dump_level <= TRANDUMP_FULL_INFO);
+
+  if (dump_level == TRANDUMP_FULL_INFO || dump_level == TRANDUMP_QUERY_INFO)
     {
       buf = tran_info->query_exec_info.wait_for_tran_index_string;
 
@@ -1685,31 +1714,200 @@ print_tran_entry (const ONE_TRAN_INFO * tran_info, bool include_query_info)
 	  strncpy (query_buf, tran_info->query_exec_info.query_stmt, 32);
 	  query_buf[31] = '\0';
 	}
+    }
 
+  if (dump_level == TRANDUMP_FULL_INFO)
+    {
       fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
-				       MSGCAT_UTIL_SET_KILLTRAN,
-				       KILLTRAN_MSG_QUERY_INFO_TABLE_ENTRY),
-	       tran_info->tran_index, TRAN_STATE_CHAR (tran_info->state),
+				       MSGCAT_UTIL_SET_TRANLIST,
+				       TRANLIST_MSG_FULL_INFO_ENTRY),
+	       tran_info->tran_index,
+	       tran_get_tranlist_state_name (tran_info->state),
+	       tran_info->db_user, tran_info->host_name,
 	       tran_info->process_id, tran_info->program_name,
 	       tran_info->query_exec_info.query_time,
 	       tran_info->query_exec_info.tran_time,
 	       (buf == NULL ? "-1" : buf),
-	       ((tran_info->query_exec_info.sql_id) ?
-		tran_info->query_exec_info.sql_id : "*** empty ***"),
+	       ((tran_info->query_exec_info.sql_id) ? tran_info->
+		query_exec_info.sql_id : "*** empty ***"),
+	       ((tran_info->query_exec_info.query_stmt) ? query_buf : " "));
+    }
+  else if (dump_level == TRANDUMP_QUERY_INFO)
+    {
+      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_TRANLIST,
+				       TRANLIST_MSG_QUERY_INFO_ENTRY),
+	       tran_info->tran_index,
+	       tran_get_tranlist_state_name (tran_info->state),
+	       tran_info->process_id, tran_info->program_name,
+	       tran_info->query_exec_info.query_time,
+	       tran_info->query_exec_info.tran_time,
+	       (buf == NULL ? "-1" : buf),
+	       ((tran_info->query_exec_info.sql_id) ? tran_info->
+		query_exec_info.sql_id : "*** empty ***"),
 	       ((tran_info->query_exec_info.query_stmt) ? query_buf : " "));
     }
   else
     {
       fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
-				       MSGCAT_UTIL_SET_KILLTRAN,
-				       KILLTRAN_MSG_TABLE_ENTRY),
+				       MSGCAT_UTIL_SET_TRANLIST,
+				       TRANLIST_MSG_SUMMARY_ENTRY),
 	       tran_info->tran_index,
-	       TRAN_STATE_CHAR (tran_info->state),
+	       tran_get_tranlist_state_name (tran_info->state),
 	       tran_info->db_user, tran_info->host_name,
 	       tran_info->process_id, tran_info->program_name);
     }
 
   return NO_ERROR;
+}
+
+
+/*
+ * tranlist() -
+ *   return: EXIT_SUCCESS/EXIT_FAILURE
+ */
+int
+tranlist (UTIL_FUNCTION_ARG * arg)
+{
+#if defined (CS_MODE)
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
+  const char *database_name;
+  const char *username;
+  const char *password;
+  char *passbuf = NULL;
+  TRANS_INFO *info = NULL;
+  int error;
+  bool is_summary, include_query_info;
+  TRANDUMP_LEVEL dump_level = TRANDUMP_FULL_INFO;
+
+  if (utility_get_option_string_table_size (arg_map) != 1)
+    {
+      goto print_tranlist_usage;
+    }
+
+  database_name = utility_get_option_string_value (arg_map,
+						   OPTION_STRING_TABLE, 0);
+  if (database_name == NULL)
+    {
+      goto print_tranlist_usage;
+    }
+
+  username = utility_get_option_string_value (arg_map, TRANLIST_USER_S, 0);
+  password =
+    utility_get_option_string_value (arg_map, TRANLIST_PASSWORD_S, 0);
+  is_summary = utility_get_option_bool_value (arg_map, TRANLIST_SUMMARY_S);
+
+  if (username == NULL)
+    {
+      /* default : DBA user */
+      username = "DBA";
+    }
+
+  if (check_database_name (database_name) != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  /* error message log file */
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
+	    "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
+  error =
+    db_restart_ex (arg->command_name, database_name, username, password, NULL,
+		   DB_CLIENT_TYPE_ADMIN_UTILITY);
+  if (error != NO_ERROR)
+    {
+      char msg_buf[64];
+
+      if (error == ER_AU_INVALID_PASSWORD && password == NULL)
+	{
+	  /*
+	   * prompt for a valid password and try again, need a reusable
+	   * password prompter so we can use getpass() on platforms that
+	   * support it.
+	   */
+	  snprintf (msg_buf, 64, msgcat_message (MSGCAT_CATALOG_UTILS,
+						 MSGCAT_UTIL_SET_TRANLIST,
+						 TRANLIST_MSG_USER_PASSWORD),
+		    username);
+
+	  passbuf = getpass (msg_buf);
+
+	  if (passbuf[0] == '\0')
+	    {
+	      passbuf = (char *) NULL;
+	    }
+	  password = passbuf;
+
+	  error =
+	    db_restart_ex (arg->command_name, database_name, username,
+			   password, NULL, DB_CLIENT_TYPE_ADMIN_UTILITY);
+	}
+
+      if (error != NO_ERROR)
+	{
+	  fprintf (stderr, "%s\n", db_error_string (3));
+	  goto error_exit;
+	}
+    }
+
+  if (!au_is_dba_group_member (Au_user))
+    {
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_TRANLIST,
+				       TRANLIST_MSG_NOT_DBA_USER), username);
+      db_shutdown ();
+      goto error_exit;
+    }
+
+  /*
+   * Get the current state of transaction table information. All the
+   * transaction kills are going to be based on this information. The
+   * transaction information may be changed back in the server if there
+   * are new transactions starting and finishing. We need to do this way
+   * since verification is required at this level, and we cannot freeze the
+   * state of the server ()transaction table).
+   */
+  include_query_info = !is_summary;
+
+  info = logtb_get_trans_info (include_query_info);
+  if (info == NULL)
+    {
+      db_shutdown ();
+      goto error_exit;
+    }
+
+  if (is_summary)
+    {
+      dump_level = TRANDUMP_SUMMARY;
+    }
+
+  (void) dump_trantb (info, dump_level);
+
+  if (info)
+    {
+      logtb_free_trans_info (info);
+    }
+
+  (void) db_shutdown ();
+  return EXIT_SUCCESS;
+
+print_tranlist_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_TRANLIST,
+				   TRANLIST_MSG_USAGE),
+	   basename (arg->argv0));
+error_exit:
+  return EXIT_FAILURE;
+#else /* CS_MODE */
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_TRANLIST,
+				   TRANLIST_MSG_NOT_IN_STANDALONE),
+	   basename (arg->argv0));
+  return EXIT_FAILURE;
+#endif /* !CS_MODE */
 }
 
 /*
@@ -1723,7 +1921,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
   const char *database_name;
-  int kill_tran_index;
+  const char *kill_tran_index;
   const char *kill_progname;
   const char *kill_user;
   const char *kill_host;
@@ -1736,6 +1934,11 @@ killtran (UTIL_FUNCTION_ARG * arg)
   TRANS_INFO *info = NULL;
   int error;
   bool include_query_exec_info;
+  int tran_index_list[MAX_KILLTRAN_INDEX_LIST_NUM];
+  int list_size = 0;
+  int value;
+  char delimiter = ',';
+  char *ptr, *tmp;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -1750,16 +1953,17 @@ killtran (UTIL_FUNCTION_ARG * arg)
     }
 
   kill_tran_index =
-    utility_get_option_int_value (arg_map, KILLTRAN_KILL_TRANSACTION_INDEX_S);
-  kill_user = utility_get_option_string_value (arg_map,
-					       KILLTRAN_KILL_USER_NAME_S, 0);
-  kill_host = utility_get_option_string_value (arg_map,
-					       KILLTRAN_KILL_HOST_NAME_S, 0);
-  kill_progname = utility_get_option_string_value (arg_map,
-						   KILLTRAN_KILL_PROGRAM_NAME_S,
-						   0);
-  kill_sql_id = utility_get_option_string_value (arg_map,
-						 KILLTRAN_KILL_SQL_ID_S, 0);
+    utility_get_option_string_value (arg_map,
+				     KILLTRAN_KILL_TRANSACTION_INDEX_S, 0);
+  kill_user =
+    utility_get_option_string_value (arg_map, KILLTRAN_KILL_USER_NAME_S, 0);
+  kill_host =
+    utility_get_option_string_value (arg_map, KILLTRAN_KILL_HOST_NAME_S, 0);
+  kill_progname =
+    utility_get_option_string_value (arg_map, KILLTRAN_KILL_PROGRAM_NAME_S,
+				     0);
+  kill_sql_id =
+    utility_get_option_string_value (arg_map, KILLTRAN_KILL_SQL_ID_S, 0);
 
   force = utility_get_option_bool_value (arg_map, KILLTRAN_FORCE_S);
   dba_password = utility_get_option_string_value (arg_map,
@@ -1776,7 +1980,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
     }
 
   isbatch = 0;
-  if (kill_tran_index != -1)
+  if (kill_tran_index != NULL && strlen (kill_tran_index) != 0)
     {
       isbatch++;
     }
@@ -1873,18 +2077,82 @@ killtran (UTIL_FUNCTION_ARG * arg)
     }
 
   if (dump_trantab_flag || include_query_exec_info
-      || (kill_tran_index == -1
+      || ((kill_tran_index == NULL || strlen (kill_tran_index) == 0)
 	  && (kill_user == NULL || strlen (kill_user) == 0)
 	  && (kill_host == NULL || strlen (kill_host) == 0)
 	  && (kill_progname == NULL || strlen (kill_progname) == 0)
 	  && (kill_sql_id == NULL || strlen (kill_sql_id) == 0)))
     {
-      dump_trantb (info);
+      TRANDUMP_LEVEL dump_level;
+
+      dump_level =
+	(include_query_exec_info) ? TRANDUMP_QUERY_INFO : TRANDUMP_SUMMARY;
+      dump_trantb (info, dump_level);
     }
   else
     {
+      if (kill_tran_index != NULL && strlen (kill_tran_index) > 0)
+	{
+	  char *p = NULL;
+
+	  ptr = kill_tran_index;
+
+	  tmp = strchr (ptr, delimiter);
+	  while (*ptr != '\0' && tmp)
+	    {
+	      if (list_size >= MAX_KILLTRAN_INDEX_LIST_NUM)
+		{
+		  break;
+		}
+
+	      *tmp = '\0';
+	      value = (int) strtol (ptr, &p, 10);
+	      if ((errno == ERANGE) || (p && *p != '\0') || (value <= 0))
+		{
+		  fprintf (stderr,
+			   msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_KILLTRAN,
+					   KILLTRAN_MSG_INVALID_TRANINDEX),
+			   ptr);
+
+		  if (info)
+		    {
+		      logtb_free_trans_info (info);
+		    }
+		  db_shutdown ();
+		  goto error_exit;
+		}
+
+	      tran_index_list[list_size++] = value;
+	      ptr = tmp + 1;
+	      tmp = strchr (ptr, delimiter);
+	    }
+
+	  value = (int) strtol (ptr, &p, 10);
+	  if ((errno == ERANGE) || (p && *p != '\0') || (value <= 0))
+	    {
+	      fprintf (stderr,
+		       msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_KILLTRAN,
+				       KILLTRAN_MSG_INVALID_TRANINDEX), ptr);
+
+	      if (info)
+		{
+		  logtb_free_trans_info (info);
+		}
+	      db_shutdown ();
+	      goto error_exit;
+	    }
+
+	  if (list_size < MAX_KILLTRAN_INDEX_LIST_NUM)
+	    {
+	      tran_index_list[list_size++] = value;
+	    }
+	}
+
       /* some piece of transaction identifier was entered, try to use it */
-      if (kill_transactions (info, kill_tran_index, kill_user, kill_host,
+      if (kill_transactions (info, tran_index_list,
+			     list_size, kill_user, kill_host,
 			     kill_progname, kill_sql_id, !force) <= 0)
 	{
 	  if (info)

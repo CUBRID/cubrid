@@ -69,8 +69,8 @@ Ek bilgi için, adresine bakın http://www.cubrid.com\n
 63 Sonuç bulunmamaktadır.
 64 Kontrol noktası yayımlanmıştır
 65 Veritabanı yeniden başlatıldı.
-66 İşlem indeks      Kullanıcı Adı      Host Adı      Süreç id      Program Adı\n
-67 %7d(%1c) %14s %14s %15d %17s\n
+66 İşlem indeks          Kullanıcı Adı      Host Adı      Süreç id      Program Adı\n
+67 %4d%-12s %14s %14s %15d %17s\n
 68 Özelleıtirilmiı İşlem iptal edildi.
 69 Özelleıtirilmiı İşlem iptal etme başarısız.
 70 %d Satırlar %s.

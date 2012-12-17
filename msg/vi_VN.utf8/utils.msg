@@ -66,6 +66,7 @@ $       45      acldb
 $       46      genlocale
 $       47      dumplocale
 $       48      synccolldb
+$       49      tranlist
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Độ dài hoặc ký tự '%c' không hợp lệ trong tên cơ sở dữ liệu '%s'\n
@@ -94,6 +95,7 @@ Các tên-tiện ích quản trị có thể dùng:\n\
     addvoldb\n\
     spacedb\n\
     lockdb\n\
+    tranlist\n\
     killtran\n\
     optimizedb\n\
     compactdb\n\
@@ -150,6 +152,7 @@ Các tiện ích của quản trị viên có thể dùng:\n\
     deletedb\n\
     diagdb\n\
     installdb\n\
+    tranlist\n\
     killtran\n\
     loaddb\n\
     lockdb\n\
@@ -762,22 +765,14 @@ các tùy chọn hợp lệ:\n\
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
 20 Chỉ một đối số phải được đưa ra trong các: tran-index, user, host, progname\n
 21 Nhập mật mã DBA:
-22 Chỉ mục giao dịch      Tên người dùng      Tên máy chủ      Id tiến trình      Tên chương trình\n
-23 -------------------------------------------------------------------------------\n
-24 %7d(%1c) %14s %14s %15d %17s\n
-25 Không có giao dịch nào\n
 26 Không có giao dịch nào với giá trị đối số đã chỉ định.\n
 27 Sẵn sàng xóa bỏ các giao dịch sau đây:\n\n
 28 Bạn có muốn tiếp tuc không ? (Y/N)
 29 Xóa bỏ giao dịch kết nối với chỉ mục giao dịch %d\n
 30 Thất bại xóa bỏ các giao dịch sau đây\n\n
 31 Giao dịch chưa được hoàn thành, nhưng nó có thể thực hiện việc quay lui lại.\n Xin vui lòng chờ một lát và thử lại sau đó nếu cần.\n
-32 Tran index     Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
-33 %7d(%1c) %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
-34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
-35 Tran index : %d
-36 SQL_ID: %s\n
-59 killrtan không thể chạy như chế độ độc lập.\n
+32 Invalid tranindex(%s).\n
+59 killtran không thể chạy như chế độ độc lập.\n
 60 \
 killtran: Quản lý giao dịch của cơ sở dữ liệu.\n\
 cách sử dụng: %s killtran [TÙY CHỌN] tên-cơ sở dữ liệu\n\
@@ -1016,3 +1011,27 @@ valid options:\n\
 		      Displays a report of incompatible collations.\n\
   -f, --force-only    Updates the collations in databases to be same as the collations of new sytem configuration.\n\
 
+$set 49 MSGCAT_UTIL_SET_TRANLIST
+20 Enter %s password: 
+22 Chỉ mục giao dịch      Tên người dùng      Tên máy chủ      Id tiến trình      Tên chương trình\n
+23 -------------------------------------------------------------------------------\n
+24 %4d%-10s %14s %14s %15d %17s\n
+25 Không có giao dịch nào\n
+26 tranlist can only be performed by the DBA or a DBA group member.\n
+32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
+34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
+42 Tran index          User name      Host name      Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+43 %4d%-10s %14s %14s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
+44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
+45 Tran index : %d
+46 SQL_ID: %s\n
+59 tranlist không thể chạy như chế độ độc lập.\n
+60 \
+tranlist: Dump active transaction information.\n\
+usage: %s tranlist [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -u, --user=ID                user ID for database access; default: DBA user\n\
+  -p, --password=PASS          user password; default: none\n\
+  -s, --summary                print summarized information of transaction\n

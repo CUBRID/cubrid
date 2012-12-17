@@ -66,6 +66,7 @@ $       45      acldb
 $       46      genlocale
 $       47      dumplocale
 $       48      synccolldb
+$       49      tranlist
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 レングスが正しくないか、正しくない文字「%c」がデータベース名「%s」に入っています。\n
@@ -94,6 +95,7 @@ cubrid 管理者ユーティリティー、バージョン　%s\n\
     addvoldb\n\
     spacedb\n\
     lockdb\n\
+    tranlist\n\
     killtran\n\
     optimizedb\n\
     compactdb\n\
@@ -150,6 +152,7 @@ cubrid 管理者ユーティリティー、バージョン　%s\n\
     deletedb\n\
     diagdb\n\
     installdb\n\
+    tranlist\n\
     killtran\n\
     loaddb\n\
     lockdb\n\
@@ -762,21 +765,13 @@ lockdb: データベースのロック情報を出力\n\
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
 20 次のパラメータの中でひとつしか許可しない: トランザクションーインデックス、ユーザー、ホスト、プログラム\n
 21 DBAパスワード:
-22 トランザクションーインデックス  ユーザー名     ホスト名     プロセスID     プログラム名\n
-23 -------------------------------------------------------------------------------\n
-24 %7d(%1c) %14s %14s %15d %17s\n
-25 トランザクションがありません。\n
 26 パラメーターに対するトランザクションがありません。\n
 27 次のトランザクションを終了させる支度が終わりました:\n\n
 28 続きますか？ (Y/N)
 29 トランザクションーインデックス「%d」で指定されたトランザクションを終了させます。\n
 30 次のトランザクションを終了が失敗しました。\n\n
 31 トランザクションが終わりませんでした。ロールバックかも知れません。\nしばらく待ってからまたやり直してください。\n
-32 Tran index     Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
-33 %7d(%1c) %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
-34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
-35 Tran index : %d
-36 SQL_ID: %s\n
+32 Invalid tranindex(%s).\n
 59 killtranはスタンドアロンモードで実行できません。\n
 60 \
 killtran: データベーストランザクションを管理\n\
@@ -1016,3 +1011,27 @@ valid options:\n\
 		      Displays a report of incompatible collations.\n\
   -f, --force-only    Updates the collations in databases to be same as the collations of new sytem configuration.\n\
 
+$set 49 MSGCAT_UTIL_SET_TRANLIST
+20 Enter %s password: 
+22 トランザクションーインデックス  ユーザー名     ホスト名     プロセスID     プログラム名\n
+23 -------------------------------------------------------------------------------\n
+24 %4d%-10s %14s %14s %15d %17s\n
+25 トランザクションがありません。\n
+26 tranlist can only be performed by the DBA or a DBA group member.\n
+32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
+34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
+42 Tran index          User name      Host name      Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+43 %4d%-10s %14s %14s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
+44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
+45 Tran index : %d
+46 SQL_ID: %s\n
+59 tranlistはスタンドアロンモードで実行できません。\n
+60 \
+tranlist: Dump active transaction information.\n\
+usage: %s tranlist [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -u, --user=ID                user ID for database access; default: DBA user\n\
+  -p, --password=PASS          user password; default: none\n\
+  -s, --summary                print summarized information of transaction\n

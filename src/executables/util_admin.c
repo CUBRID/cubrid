@@ -363,7 +363,7 @@ static GETOPT_LONG ua_Plandump_Option[] = {
 
 static UTIL_ARG_MAP ua_Killtran_Option_Map[] = {
   {OPTION_STRING_TABLE, {0}, {0}},
-  {KILLTRAN_KILL_TRANSACTION_INDEX_S, {ARG_INTEGER}, {-1}},
+  {KILLTRAN_KILL_TRANSACTION_INDEX_S, {ARG_STRING}, {0}},
 #if defined(LINUX)
   {KILLTRAN_KILL_USER_NAME_S, {ARG_STRING}, {.p = (void *) ""}},
   {KILLTRAN_KILL_HOST_NAME_S, {ARG_STRING}, {.p = (void *) ""}},
@@ -394,6 +394,21 @@ static GETOPT_LONG ua_Killtran_Option[] = {
   {KILLTRAN_DISPLAY_INFORMATION_L, 0, 0, KILLTRAN_DISPLAY_INFORMATION_S},
   {KILLTRAN_DISPLAY_QUERY_INFO_L, 0, 0, KILLTRAN_DISPLAY_QUERY_INFO_S},
   {KILLTRAN_FORCE_L, 0, 0, KILLTRAN_FORCE_S},
+  {0, 0, 0, 0}
+};
+
+static UTIL_ARG_MAP ua_Tranlist_Option_Map[] = {
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {TRANLIST_USER_S, {ARG_STRING}, {0}},
+  {TRANLIST_PASSWORD_S, {ARG_STRING}, {0}},
+  {TRANLIST_SUMMARY_S, {ARG_BOOLEAN}, {0}},
+  {0, {0}, {0}}
+};
+
+static GETOPT_LONG ua_Tranlist_Option[] = {
+  {TRANLIST_USER_L, 1, 0, TRANLIST_USER_S},
+  {TRANLIST_PASSWORD_L, 1, 0, TRANLIST_PASSWORD_S},
+  {TRANLIST_SUMMARY_L, 0, 0, TRANLIST_SUMMARY_S},
   {0, 0, 0, 0}
 };
 
@@ -727,6 +742,8 @@ static UTIL_MAP ua_Utility_Map[] = {
    ua_DumpLocale_Option, ua_DumpLocale_Map},
   {SYNCCOLLDB, SA_ONLY, 1, UTIL_OPTION_SYNCCOLLDB, "synccolldb",
    ua_SyncCollDB_Option, ua_SyncCollDB_Map},
+  {TRANLIST, CS_ONLY, 1, UTIL_OPTION_TRANLIST, "tranlist",
+   ua_Tranlist_Option, ua_Tranlist_Option_Map},
   {-1, -1, 0, 0, 0, 0, 0}
 };
 

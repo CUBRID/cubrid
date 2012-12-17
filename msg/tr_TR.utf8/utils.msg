@@ -66,6 +66,7 @@ $       45      acldb
 $       46      genlocale
 $       47      dumplocale
 $       48      synccolldb
+$       49      tranlist
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Geçersiz uzunluk veya karakter '%c' veritabanı adı '%s' \n
@@ -94,6 +95,7 @@ Mevcut yönetici yardımcı programı-adı:\n\
     addvoldb\n\
     spacedb\n\
     lockdb\n\
+    tranlist\n\
     killtran\n\
     optimizedb\n\
     compactdb\n\
@@ -150,6 +152,7 @@ Mevcut yönetici programları:\n\
     deletedb\n\
     diagdb\n\
     installdb\n\
+    tranlist\n\
     killtran\n\
     loaddb\n\
     lockdb\n\
@@ -762,22 +765,14 @@ geçerli seçenekler:\n\
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
 20 Sadece tek bir bağımsız değişkeni arasında verilmelidir: tran-index, user, host, progname\n
 21 DBA şifrenizi girin:
-22 Tran index      User name      Host name      Process id      Program name\n
-23 -------------------------------------------------------------------------------\n
-24 %7d(%1c) %14s %14s %15d %17s\n
-25 Hiçbir işlem bulunmamaktadır\n
 26 Belirtilen bağımsız değişken değerleri ile bir işlem yoktur.\n
 27 Aşağıdaki işlemleri iptal etmek için hazır:\n\n
 28 Devam etmek istiyor musunuz? (Y/N)
 29 İptal etme işlemi işlemin endeksi %d ile ilişkili\n
 30 Aşağıdaki işlemleri İptal etme başarısız oldu\n\n
 31 işlemin henüz bitmiş değil, ama geri alma işi olabilir.\n bir saniye bekleyin ve gerekirse daha sonra deneyin.\n
-32 Tran index     Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
-33 %7d(%1c) %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
-34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
-35 Tran index : %d
-36 SQL_ID: %s\n
-59 killrtan bağımsız modu olarak çalıştıramazsınız.\n
+32 Invalid tranindex(%s).\n
+59 killtran bağımsız modu olarak çalıştıramazsınız.\n
 60 \
 killtran: Veritabanı işlemleri yönetin.\n\
 kullanım: %s killtran [SEÇENEK] database-name\n\
@@ -1016,3 +1011,27 @@ valid options:\n\
 		      Displays a report of incompatible collations.\n\
   -f, --force-only    Updates the collations in databases to be same as the collations of new sytem configuration.\n\
 
+$set 49 MSGCAT_UTIL_SET_TRANLIST
+20 Enter %s password: 
+22 Tran index          User name      Host name      Process id      Program name\n
+23 -------------------------------------------------------------------------------\n
+24 %4d%-10s %14s %14s %15d %17s\n
+25 Hiçbir işlem bulunmamaktadır\n
+26 tranlist can only be performed by the DBA or a DBA group member.\n
+32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
+34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
+42 Tran index          User name      Host name      Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+43 %4d%-10s %14s %14s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
+44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
+45 Tran index : %d
+46 SQL_ID: %s\n
+59 tranlist bağımsız modu olarak çalıştıramazsınız.\n
+60 \
+tranlist: Dump active transaction information.\n\
+usage: %s tranlist [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -u, --user=ID                user ID for database access; default: DBA user\n\
+  -p, --password=PASS          user password; default: none\n\
+  -s, --summary                print summarized information of transaction\n

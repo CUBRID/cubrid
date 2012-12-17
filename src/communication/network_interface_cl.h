@@ -71,10 +71,6 @@ struct trans_info
   ONE_TRAN_INFO tran[1];	/* really [num_trans] */
 };
 
-#define TRAN_STATE_CHAR(STATE)					\
-	(((STATE) == TRAN_ACTIVE) ? '+' 			\
-	:(((STATE) == TRAN_UNACTIVE_ABORTED) ? '-':('A' + (STATE))))
-
 extern void db_free_execution_plan (void);
 extern int locator_fetch (OID * oidp, int chn, LOCK lock, OID * class_oid,
 			  int class_chn, int prefetch,
@@ -203,6 +199,7 @@ extern int tran_server_savepoint (const char *savept_name,
 				  LOG_LSA * savept_lsa);
 extern TRAN_STATE tran_server_partial_abort (const char *savept_name,
 					     LOG_LSA * savept_lsa);
+extern const char *tran_get_tranlist_state_name (TRAN_STATE state);
 extern void lock_dump (FILE * outfp);
 extern int acl_reload (void);
 extern void acl_dump (FILE * outfp);

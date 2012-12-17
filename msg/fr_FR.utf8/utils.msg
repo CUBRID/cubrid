@@ -66,6 +66,7 @@ $       45      acldb
 $       46      genlocale
 $       47      dumplocale
 $       48      synccolldb
+$       49      tranlist
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Longueur ou caractère non valide '%c' dans le nom de la base de données '%s'\n
@@ -94,6 +95,7 @@ Nom d'utilitaires d'administration disponible:\n\
     addvoldb\n\
     spacedb\n\
     lockdb\n\
+    tranlist\n\
     killtran\n\
     optimizedb\n\
     compactdb\n\
@@ -150,6 +152,7 @@ Utilitaires d'administrateur disponibles:\n\
     deletedb\n\
     diagdb\n\
     installdb\n\
+    tranlist\n\
     killtran\n\
     loaddb\n\
     lockdb\n\
@@ -765,22 +768,14 @@ options valids:\n\
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
 20 Un seul argument doit être donné parmi: tran-index, utilisateur, hôte, nom du programme\n
 21 Entrez mot de passe DBA:
-22 Index de tran.   Nom d'utilisateur   Nom de l'hôte   ID de processus   Nom du programme\n
-23 -------------------------------------------------------------------------------\n
-24 %7d(%1c) %14s %14s %15d %17s\n
-25 Il n'existe pas de transactions\n
 26 Il n'ya pas de transaction avec les valeurs d'arguments spécifiés.\n
 27 Prêt à arrêter les transactions suivantes:\n\n
 28 Voulez-vous continuer? (Y/N)
 29 Arrêter transaction associée à l'index %d de transaction\n
 30 L'arrêt des transactions suivantes a échoué\n\n
 31 La transaction n'est pas encore fini, mais il peut faire le travail de restauration.\n S'il vous plaît, attendez un peu et essayer plus tard si nécessaire.\n
-32 Tran index     Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
-33 %7d(%1c) %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
-34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
-35 Tran index : %d
-36 SQL_ID: %s\n
-59 killrtan ne peut pas fonctionner en mode autonome.\n
+32 Invalid tranindex(%s).\n
+59 killtran ne peut pas fonctionner en mode autonome.\n
 60 \
 killtran: Gère les transactions de la base de données.\n\
 usage: %s killtran [OPTION] database-name\n\
@@ -1026,3 +1021,27 @@ valid options:\n\
 		      Displays a report of incompatible collations.\n\
   -f, --force-only    Updates the collations in databases to be same as the collations of new sytem configuration.\n\
 
+$set 49 MSGCAT_UTIL_SET_TRANLIST
+20 Enter %s password: 
+22 Index de tran.       Nom d'utilisateur   Nom de l'hôte   ID de processus   Nom du programme\n
+23 -------------------------------------------------------------------------------\n
+24 %4d%-10s %14s %14s %15d %17s\n
+25 Il n'existe pas de transactions\n
+26 tranlist can only be performed by the DBA or a DBA group member.\n
+32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
+34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
+42 Tran index          User name      Host name      Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+43 %4d%-10s %14s %14s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
+44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
+45 Tran index : %d
+46 SQL_ID: %s\n
+59 tranlist ne peut pas fonctionner en mode autonome.\n
+60 \
+tranlist: Dump active transaction information.\n\
+usage: %s tranlist [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -u, --user=ID                user ID for database access; default: DBA user\n\
+  -p, --password=PASS          user password; default: none\n\
+  -s, --summary                print summarized information of transaction\n

@@ -69,8 +69,8 @@ For additional information, see http://www.cubrid.com\n
 63 There are no results.
 64 Checkpoint has been issued.
 65 The database has been restarted.
-66 Tran index      User name      Host name      Process id      Program name\n
-67 %7d(%1c) %14s %14s %15d %17s\n
+66 Tran index            User name      Host name      Process id      Program name\n
+67 %4d%-12s %14s %14s %15d %17s\n
 68 The specified transaction has been killed.
 69 Killing of the specified transaction has failed.
 70 %d rows %s.

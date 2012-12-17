@@ -69,8 +69,8 @@ Für weitere Informationen, siehe http://www.cubrid.com\n
 63 Es gibt keine Ergebnisse.
 64 Der Checkpoint wurde ausgestellt.
 65 Die Datenbank wurde neugestartet.
-66 Tran index      Benutzername      Hostname      Prozess-ID      Programmname\n
-67 %7d(%1c) %14s %14s %15d %17s\n
+66 Tran index            Benutzername      Hostname      Prozess-ID      Programmname\n
+67 %4d%-12s %14s %14s %15d %17s\n
 68 Die angegebene Transaktion wurde beendet.
 69 Beendung der angegebenen Transaktion ist fehlgeschlagen.
 70 %d Reihen %s.

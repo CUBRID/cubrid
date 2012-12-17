@@ -69,8 +69,8 @@ Para mas informacion, vea http://www.cubrid.com\n
 63 No hay resultados.
 64 Punto de control se ha emitido.
 65 La base de datos ha sido reinicializada.
-66 Indice de Tran   Nombre de utilizador   Nombre de host   Identificador de Proceso   Nombre de programa\n
-67 %7d(%1c) %14s %14s %15d %17s\n
+66 Indice de Tran        Nombre de utilizador   Nombre de host   Identificador de Proceso   Nombre de programa\n
+67 %4d%-12s %14s %14s %15d %17s\n
 68 La transaccion especificada ha sido matada.
 69 Fracaso al matar la transaccion especificada.
 70 %d filas %s.

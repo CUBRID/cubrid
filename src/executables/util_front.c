@@ -152,6 +152,12 @@ static ARG_MAP_TABLE ua_Check_map[] = {
   {0, 0}
 };
 
+static ARG_MAP_TABLE ua_Tranlist_map[] = {
+  {"-u", "--" TRANLIST_USER_L},
+  {"-p", "--" TRANLIST_PASSWORD_L},
+  {"-s", "--" TRANLIST_SUMMARY_L}
+};
+
 static ARG_MAP_TABLE ua_Killtran_map[] = {
   {"-t", "--" KILLTRAN_KILL_TRANSACTION_INDEX_L},
   {"-u", "--" KILLTRAN_KILL_USER_NAME_L},
@@ -268,6 +274,7 @@ UTIL_MAP_TABLE ua_Util_table[] = {
   {"unloaddb", UTIL_OPTION_UNLOADDB, ua_Unload_map},
   {"compactdb", UTIL_OPTION_COMPACTDB, ua_Compact_map},
   {"acldb", UTIL_OPTION_ACLDB, ua_Acldb_map},
+  {"tranlist", UTIL_OPTION_TRANLIST, ua_Tranlist_map},
   {0, 0, 0}
 };
 

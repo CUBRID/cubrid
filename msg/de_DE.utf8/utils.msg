@@ -66,6 +66,7 @@ $       45      acldb
 $       46      genlocale
 $       47      dumplocale
 $       48      synccolldb
+$       49      tranlist
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Ungültige Länge oder Zeichen '%c' in Datenbank '%s'\n
@@ -94,6 +95,7 @@ Vorhandene Admin-Utilitynamen:\n\
     addvoldb\n\
     spacedb\n\
     lockdb\n\
+    tranlist\n\
     killtran\n\
     optimizedb\n\
     compactdb\n\
@@ -150,6 +152,7 @@ Vorhandene Administratorutilities:\n\
     deletedb\n\
     diagdb\n\
     installdb\n\
+    tranlist\n\
     killtran\n\
     loaddb\n\
     lockdb\n\
@@ -762,21 +765,13 @@ gültige Optionen:\n\
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
 20 Nur ein Argument unter: tran-index, Benutzer, Host, Program darf angegeben werden\n
 21 DBA-Passwort eingeben:
-22 Tran index      Benutzername      Hostname      Prozes-ID      Programname\n
-23 -------------------------------------------------------------------------------\n
-24 %7d(%1c) %14s %14s %15d %17s\n
-25 Es gibt keine Transaktionen\n
 26 Es gibt keine Transaktion mit den angegebenen Argumentwerte.\n
 27 Folgende Transaktionen abbrechen:\n\n
 28 Möchten Sie fortfahren? (Y/N)
 29 Transaktion mit Index %d wird abgebrochen\n
 30 Abbrechen der folgenden Transaktion fehlgeschlagen\n\n
 31 Die Transaktion ist noch nicht abgeschlossen, aber es könnte ein Rollback ausführen.\n Bitte warten Sie einen Augenblick, versuchen Sie bei Bedarf später.\n
-32 Tran index     Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
-33 %7d(%1c) %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
-34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
-35 Tran index : %d
-36 SQL_ID: %s\n
+32 Invalid tranindex(%s).\n
 59 killtran darf nicht in Stand-Alone-Modus ausgeführt werden.\n
 60 \
 killtran: Transaktionen der Datenbank verwalten.\n\
@@ -1015,3 +1010,28 @@ valid options:\n\
 		      Displays a report of incompatible collations.\n\
   -f, --force-only    Updates the collations in databases to be same as the collations of new sytem configuration.\n\
 
+$set 49 MSGCAT_UTIL_SET_TRANLIST
+20 Enter %s password: 
+22 Tran index          Benutzername      Hostname      Prozes-ID      Programname\n
+23 -------------------------------------------------------------------------------\n
+24 %4d%-10s %14s %14s %15d %17s\n
+25 Es gibt keine Transaktionen\n
+26 tranlist can only be performed by the DBA or a DBA group member.\n
+32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
+34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
+42 Tran index          User name      Host name      Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+43 %4d%-10s %14s %14s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
+44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
+45 Tran index : %d
+46 SQL_ID: %s\n
+59 tranlist darf nicht in Stand-Alone-Modus ausgeführt werden.\n
+60 \
+tranlist: Dump active transaction information.\n\
+usage: %s tranlist [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -u, --user=ID                user ID for database access; default: DBA user\n\
+  -p, --password=PASS          user password; default: none\n\
+  -s, --summary                print summarized information of transaction\n
+  
