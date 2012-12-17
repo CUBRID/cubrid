@@ -63,7 +63,7 @@ static bool logwr_need_shutdown = false;
 #if defined(CS_MODE)
 LOGWR_GLOBAL logwr_Gl = {
   /* log header */
-  LOG_HEADER_INITIALIZER,
+  LOGWR_HEADER_INITIALIZER,
   /* loghdr_pgptr */
   NULL,
   /* db_name */

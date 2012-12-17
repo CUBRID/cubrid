@@ -981,6 +981,48 @@ struct log_header
      {NULL_PAGEID, NULL_OFFSET}                  \
   }
 
+#define LOGWR_HEADER_INITIALIZER                 \
+  {                                              \
+     /* magic */                                 \
+     {'0'},                                      \
+     0, 0,                                       \
+     /* db_release */                            \
+     {'0'},                                      \
+     /* db_compatibility */                      \
+     0.0,                                        \
+     0, 0, 0,                                    \
+     /* next_trid */                             \
+     NULL_TRANID,                                \
+     0, 0, 0, 0, 0,                              \
+     /* append_lsa */                            \
+     {NULL_PAGEID, NULL_OFFSET},                 \
+     /* chkpt_lsa */                             \
+     {NULL_PAGEID, NULL_OFFSET},                 \
+     /* nxarv_pageid */                          \
+     NULL_PAGEID,                                \
+     /* nxarv_phy_pageid */                      \
+     NULL_PAGEID,                                \
+     -1, -1, -1,                                 \
+     /* bkup_level0_lsa */                       \
+     {NULL_PAGEID, NULL_OFFSET},                 \
+     /* bkup_level1_lsa */                       \
+     {NULL_PAGEID, NULL_OFFSET},                 \
+     /* bkup_level2_lsa */                       \
+     {NULL_PAGEID, NULL_OFFSET},                 \
+     /* prefix_name */                           \
+     {'0'},                                      \
+     /* has_logging_been_skipped */              \
+     false,                                      \
+     0, 0, 0,                                    \
+     /* bkinfo */                                \
+     {{0, 0, 0, 0, 0}},                          \
+     0, 0,                                       \
+     /* eof_lsa */                               \
+     {NULL_PAGEID, NULL_OFFSET},                 \
+     /* smallest_lsa_at_last_chkpt */            \
+     {NULL_PAGEID, NULL_OFFSET}                  \
+  }
+
 struct log_arv_header
 {				/* Log archive header information */
   char magic[CUBRID_MAGIC_MAX_LENGTH];	/* Magic value for file/magic Unix
