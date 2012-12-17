@@ -3025,7 +3025,11 @@ static void
 close_cubrid_connect (T_CUBRID_CONNECT * conn)
 {
   T_CCI_ERROR error;
-  cci_disconnect (conn->handle, &error);
+
+  /* CCI_ER_USED_CONNECTION == -20044 */
+  while (cci_disconnect (conn->handle, &error) == -20044) {
+    cci_cancel (conn->handle);
+  }
   efree (conn);
 }
 

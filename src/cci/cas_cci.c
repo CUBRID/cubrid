@@ -4110,6 +4110,9 @@ cci_get_err_msg_internal (int error)
     case CCI_ER_INVALID_ARGS:
       return "Invalid argument";
 
+    case CCI_ER_USED_CONNECTION:
+      return "This connection is used already.";
+
     case CAS_ER_INTERNAL:
       return "Not used";
 

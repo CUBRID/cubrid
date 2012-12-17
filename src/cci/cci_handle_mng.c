@@ -570,10 +570,13 @@ hm_get_connection_internal (int mapped_id, T_CON_HANDLE ** connection,
   *connection = NULL;
 
   error = map_get_otc_value (mapped_id, &connection_id, force);
-  if (error != CCI_ER_NO_ERROR || connection_id < 1
-      || connection_id > MAX_CON_HANDLE)
+  if (connection_id < 1 || connection_id > MAX_CON_HANDLE)
     {
       return CCI_ER_CON_HANDLE;
+    }
+  if (error != CCI_ER_NO_ERROR)
+    {
+      return error;
     }
 
   *connection = con_handle_table[connection_id - 1];
@@ -604,6 +607,7 @@ hm_get_statement (int mapped_id, T_CON_HANDLE ** connection,
   int connection_id;
   int statement_id;
   T_CON_HANDLE *conn;
+  T_CCI_ERROR_CODE error;
 
   if (connection != NULL)
     {
@@ -616,9 +620,10 @@ hm_get_statement (int mapped_id, T_CON_HANDLE ** connection,
     }
   *statement = NULL;
 
-  if (map_get_ots_value (mapped_id, &statement_id, false) != CCI_ER_NO_ERROR)
+  error = map_get_ots_value (mapped_id, &statement_id, false);
+  if (error != CCI_ER_NO_ERROR)
     {
-      return CCI_ER_REQ_HANDLE;
+      return error;
     }
 
   connection_id = GET_CON_ID (statement_id);

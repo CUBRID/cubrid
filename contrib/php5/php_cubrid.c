@@ -5557,7 +5557,10 @@ static void close_cubrid_connect(zend_rsrc_list_entry * rsrc TSRMLS_DC)
     }
 
     if (conn->handle) {
-        cci_disconnect(conn->handle, &error); 
+	/* CCI_ER_USED_CONNECTION == -20044 */
+	while (cci_disconnect(conn->handle, &error) == -20044) {
+	    cci_cancel(conn->handle);
+	}
     }
 
     efree(head);
@@ -5572,7 +5575,10 @@ static void close_cubrid_pconnect(zend_rsrc_list_entry * rsrc TSRMLS_DC)
     T_CCI_ERROR error;
 
     if (conn->handle) {
-        cci_disconnect(conn->handle, &error);
+	/* CCI_ER_USED_CONNECTION == -20044 */
+	while (cci_disconnect(conn->handle, &error) == -20044) {
+	    cci_cancel(conn->handle);
+	}
     }
 
     free(conn->unclosed_requests->head);
