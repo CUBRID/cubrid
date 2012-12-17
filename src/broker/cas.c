@@ -378,13 +378,17 @@ cas_send_connect_reply_to_driver (T_CAS_PROTOCOL protocol,
   memset (sessid, 0, DRIVER_SESSION_SIZE);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
-  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (protocol, PROTOCOL_V3))
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (protocol, PROTOCOL_V4))
     {
       v = htonl (CAS_CONNECTION_REPLY_SIZE);
     }
+  else if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (protocol, PROTOCOL_V3))
+    {
+      v = htonl (CAS_CONNECTION_REPLY_SIZE_V3);
+    }
   else
     {
-      v = htonl (CAS_PID_SIZE + BROKER_INFO_SIZE + SESSION_ID_SIZE);
+      v = htonl (CAS_CONNECTION_REPLY_SIZE_PRIOR_PROTOCOL_V3);
     }
   memcpy (p, &v, sizeof (int));
   p += sizeof (int);
@@ -398,6 +402,12 @@ cas_send_connect_reply_to_driver (T_CAS_PROTOCOL protocol,
   p += CAS_PID_SIZE;
   memcpy (p, broker_info, BROKER_INFO_SIZE);
   p += BROKER_INFO_SIZE;
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (protocol, PROTOCOL_V4))
+    {
+      v = htonl (shm_as_index + 1);
+      memcpy (p, &v, CAS_PID_SIZE);
+      p += CAS_PID_SIZE;
+    }
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (protocol, PROTOCOL_V3))
     {
       memcpy (p, sessid, DRIVER_SESSION_SIZE);

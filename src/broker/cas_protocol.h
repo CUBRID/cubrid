@@ -120,7 +120,9 @@ extern "C"
 #define SESSION_ID_SIZE                         4
 #define DRIVER_SESSION_SIZE			SRV_CON_DBSESS_ID_SIZE
 #define CAS_CONNECTION_REPLY_SIZE_PRIOR_PROTOCOL_V3               (CAS_PID_SIZE + BROKER_INFO_SIZE + SESSION_ID_SIZE)
-#define CAS_CONNECTION_REPLY_SIZE               (CAS_PID_SIZE + BROKER_INFO_SIZE + DRIVER_SESSION_SIZE)
+#define CAS_CONNECTION_REPLY_SIZE_V3               (CAS_PID_SIZE + BROKER_INFO_SIZE + DRIVER_SESSION_SIZE)
+#define CAS_CONNECTION_REPLY_SIZE_V4               (CAS_PID_SIZE + CAS_PID_SIZE + BROKER_INFO_SIZE + DRIVER_SESSION_SIZE)
+#define CAS_CONNECTION_REPLY_SIZE               CAS_CONNECTION_REPLY_SIZE_V4
 
 #define CAS_KEEP_CONNECTION_ON                  1
 
@@ -199,7 +201,8 @@ extern "C"
     PROTOCOL_V0 = 0,		/* old protocol */
     PROTOCOL_V1 = 1,		/* query_timeout and query_cancel */
     PROTOCOL_V2 = 2,		/* send columns meta-data with the result for executing */
-    PROTOCOL_V3 = 3		/* session information extend with server session key */
+    PROTOCOL_V3 = 3,		/* session information extend with server session key */
+    PROTOCOL_V4 = 4,		/* send as_index to driver */
   };
   typedef enum t_cas_protocol T_CAS_PROTOCOL;
 
@@ -209,7 +212,7 @@ extern "C"
 #endif				/* CUBRID_SHARD */
 
 /* Current protocol version */
-#define CAS_PROTOCOL_VERSION    (0x03)
+#define CAS_PROTOCOL_VERSION    (0x04)
 
 /* Indicates version variable holds CAS protocol version. */
 #define CAS_PROTO_INDICATOR     (0x40)

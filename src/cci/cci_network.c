@@ -147,9 +147,11 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id,
   int err_code, ret_value;
   int err_indicator;
   int new_port;
-  char *msg_buf, *info;
+  char *msg_buf, *info, *p;
   unsigned char *ip_addr;
   int port;
+  int body_len;
+  T_BROKER_VERSION broker_ver;
 
   init_msg_header (&msg_header);
 
@@ -306,11 +308,23 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id,
 
   /* connection success */
   con_handle->cas_pid = err_indicator;
-  memcpy (con_handle->broker_info, &msg_buf[CAS_PID_SIZE], BROKER_INFO_SIZE);
+  p = msg_buf + CAS_PID_SIZE;
+  memcpy (con_handle->broker_info, p, BROKER_INFO_SIZE);
+  p += BROKER_INFO_SIZE;
 
-  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V3))
+  body_len = *(msg_header.msg_body_size_ptr);
+  broker_ver = hm_get_broker_version (con_handle);
+  if (broker_ver >= CAS_PROTO_MAKE_VER (PROTOCOL_V4))
     {
-      if (*(msg_header.msg_body_size_ptr) != CAS_CONNECTION_REPLY_SIZE)
+      if (body_len != CAS_CONNECTION_REPLY_SIZE)
+	{
+	  err_code = CCI_ER_COMMUNICATION;
+	  goto connect_srv_error;
+	}
+    }
+  else if (broker_ver >= CAS_PROTO_MAKE_VER (PROTOCOL_V3))
+    {
+      if (body_len != CAS_CONNECTION_REPLY_SIZE_V3)
 	{
 	  err_code = CCI_ER_COMMUNICATION;
 	  goto connect_srv_error;
@@ -318,24 +332,30 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id,
     }
   else
     {
-      int reply_size = CAS_PID_SIZE + BROKER_INFO_SIZE + SESSION_ID_SIZE;
-
-      if (*(msg_header.msg_body_size_ptr) != reply_size)
+      if (body_len != CAS_CONNECTION_REPLY_SIZE_PRIOR_PROTOCOL_V3)
 	{
 	  err_code = CCI_ER_COMMUNICATION;
 	  goto connect_srv_error;
 	}
     }
 
-  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V3))
+  if (broker_ver >= CAS_PROTO_MAKE_VER (PROTOCOL_V4))
     {
-      memcpy (con_handle->session_id.id,
-	      &msg_buf[CAS_PID_SIZE + BROKER_INFO_SIZE], DRIVER_SESSION_SIZE);
+      con_handle->cas_id = ntohl (*(int *) p);
+      p += CAS_PID_SIZE;
     }
   else
     {
-      memcpy (con_handle->session_id.id,
-	      &msg_buf[CAS_PID_SIZE + BROKER_INFO_SIZE], SESSION_ID_SIZE);
+      con_handle->cas_id = -1;
+    }
+
+  if (broker_ver >= CAS_PROTO_MAKE_VER (PROTOCOL_V3))
+    {
+      memcpy (con_handle->session_id.id, p, DRIVER_SESSION_SIZE);
+    }
+  else
+    {
+      memcpy (con_handle->session_id.id, p, SESSION_ID_SIZE);
       *(unsigned int *) con_handle->session_id.id =
 	ntohl (*(unsigned int *) con_handle->session_id.id);
     }

@@ -212,6 +212,7 @@ extern "C"
     int cas_pid;
     char broker_info[BROKER_INFO_SIZE];
     char cas_info[CAS_INFO_SIZE];
+    int cas_id;
     T_CCI_SESSION_ID session_id;
     T_CCI_DATASOURCE *datasource;
     MHT_TABLE *stmt_pool;

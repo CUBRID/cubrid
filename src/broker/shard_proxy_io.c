@@ -850,9 +850,13 @@ proxy_io_make_client_dbinfo_ok (T_BROKER_VERSION client_version,
   broker_info[BROKER_INFO_RESERVED2] = 0;
   broker_info[BROKER_INFO_RESERVED3] = 0;
 
-  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V3))
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V4))
     {
       reply_size = CAS_CONNECTION_REPLY_SIZE;
+    }
+  else if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V3))
+    {
+      reply_size = CAS_CONNECTION_REPLY_SIZE_V3;
     }
   else
     {
@@ -887,6 +891,15 @@ proxy_io_make_client_dbinfo_ok (T_BROKER_VERSION client_version,
   /* brokerinfo */
   memcpy (p, broker_info, BROKER_INFO_SIZE);
   p += BROKER_INFO_SIZE;
+
+  /* proxy id */
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V4))
+    {
+      int v = htonl (proxy_id + 1);
+
+      memcpy (p, &v, CAS_PID_SIZE);
+      p += CAS_PID_SIZE;
+    }
 
   /* session id */
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V3))
