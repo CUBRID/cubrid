@@ -1650,7 +1650,10 @@ free_context:
 
   if (event_p == new_event_p)
     {
-      proxy_event_free (event_p);
+      if (event_p)
+	{
+	  proxy_event_free (event_p);
+	}
       event_p = new_event_p = NULL;
     }
   else
