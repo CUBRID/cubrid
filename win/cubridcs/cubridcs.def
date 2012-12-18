@@ -302,6 +302,7 @@ EXPORTS
     db_seq_put
     db_seq_size
     db_session_set_holdable
+    db_session_is_last_statement
     db_set_add
     db_set_client_cache_time
     db_set_create_basic
@@ -407,6 +408,8 @@ EXPORTS
     tran_reset_wait_times
     tran_is_in_libcas
     tran_set_query_timeout
+    tran_get_end_of_queries
+    tran_set_end_of_queries
     tran_get_tran_settings
     utility_get_generic_message
     util_make_ha_conf
