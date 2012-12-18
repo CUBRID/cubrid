@@ -1477,7 +1477,31 @@ proxy_context_timeout (T_PROXY_CONTEXT * ctx_p)
   ctx_p->stmt_h_id = SHARD_STMT_INVALID_HANDLE_ID;
   ctx_p->stmt_hint_type = HT_INVAL;
 
+  /* if statement owner */
+  if (ctx_p->prepared_stmt
+      && ctx_p->prepared_stmt->status == SHARD_STMT_STATUS_IN_PROGRESS)
+    {
+      /* check and wakeup statement waiter */
+      shard_stmt_check_waiter_and_wakeup (ctx_p->prepared_stmt);
+
+      /* free statement */
+      shard_stmt_free (ctx_p->prepared_stmt);
+    }
   ctx_p->prepared_stmt = NULL;
+
+  /* if shard/cas waiter */
+  if (ctx_p->is_in_tran == false)
+    {
+      if (ctx_p->cas_id != PROXY_INVALID_CAS)
+	{
+	  assert (false);
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unexpected transaction status. "
+		     "context(%s).", proxy_str_context (ctx_p));
+
+	}
+      ctx_p->shard_id = PROXY_INVALID_SHARD;
+      ctx_p->cas_id = PROXY_INVALID_CAS;
+    }
 
   proxy_context_set_error_with_msg (ctx_p, CAS_ERROR_INDICATOR,
 				    CAS_ER_INTERNAL,
