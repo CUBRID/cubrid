@@ -235,6 +235,8 @@ copy /y conf\cm.pass conf\cm.pass-dist
 copy /y conf\shard.conf conf\shard.conf-dist
 copy /y conf\shard_connection.txt conf\shard_connection.txt-dist
 copy /y conf\shard_key.txt conf\shard_key.txt-dist
+copy /y conf\cubrid_locales.all.txt conf\cubrid_locales.all.txt-dist
+copy /y conf\cubrid_locales.txt conf\cubrid_locales.txt-dist
 
 cd /d %BUILD_DIR%\install\Installshield
 if "%BUILD_TARGET%" == "Win32" (set CUBRID_ISM="CUBRID.ism") ELSE set CUBRID_ISM="CUBRID_x64.ism"
@@ -258,6 +260,9 @@ del conf\cm.pass-dist
 del conf\shard.conf-dist
 del conf\shard_connection.txt-dist
 del conf\shard_key.txt-dist
+del conf\cubrid_locales.all.txt-dist
+del conf\cubrid_locales.txt-dist
+
 echo Package created. [%DIST_DIR%\%CUBRID_PACKAGE_NAME%.exe]
 set DIST_PKGS=%DIST_PKGS% %CUBRID_PACKAGE_NAME%.exe
 GOTO :EOF
