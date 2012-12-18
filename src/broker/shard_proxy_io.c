@@ -3599,6 +3599,11 @@ set_waiter:
   shard_io_p = &(proxy_Shard_io.ent[curr_shard_id]);
   if (shard_io_p->cur_num_cas <= 0)
     {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Failed to allocate shard/cas. "
+		 "No available cas in this shard."
+		 "(cur_num_cas:%d, max_num_cas:%d)", shard_io_p->cur_num_cas,
+		 shard_io_p->max_num_cas);
       return NULL;
     }
 

@@ -1250,8 +1250,16 @@ relay_prepare_request:
       proxy_event_free (event_p);
       event_p = NULL;
 
-      EXIT_FUNC ();
-      return -1;
+      if (ctx_p->shard_id != PROXY_INVALID_SHARD)
+	{
+	  EXIT_FUNC ();
+	  goto free_context;
+	}
+      else
+	{
+	  EXIT_FUNC ();
+	  return -1;
+	}
     }
   else if (cas_io_p == (T_CAS_IO *) SHARD_TEMPORARY_UNAVAILABLE)
     {
@@ -1487,7 +1495,7 @@ fn_proxy_client_execute (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 	  event_p = NULL;
 
 	  EXIT_FUNC ();
-	  return -1;
+	  goto free_context;
 	}
 
       ctx_p->shard_id = shard_id;

@@ -1696,6 +1696,7 @@ restart_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index,
   /* [CUBRIDSUS-2068] make the broker sleep for 0.1 sec
      when stopping the cas in order to  prevent communication
      error occurred on windows. */
+
   SLEEP_MILISEC (0, 100);
 
   new_pid =
@@ -1942,13 +1943,9 @@ cas_monitor_worker (T_APPL_SERVER_INFO * as_info_p, int br_index,
 #else
       if (kill (as_info_p->pid, 0) < 0)
 	{
-	  SLEEP_MILISEC (1, 0);
-	  if (kill (as_info_p->pid, 0) < 0)
-	    {
-	      restart_appl_server (as_info_p, br_index, proxy_index,
-				   shard_index, as_index);
-	      as_info_p->uts_status = UTS_STATUS_IDLE;
-	    }
+	  restart_appl_server (as_info_p, br_index, proxy_index,
+			       shard_index, as_index);
+	  as_info_p->uts_status = UTS_STATUS_IDLE;
 	}
 #endif
     }

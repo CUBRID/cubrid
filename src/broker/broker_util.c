@@ -243,7 +243,11 @@ ut_kill_process (int pid, char *br_name, int proxy_index, int shard_index,
 
   if (pid > 0)
     {
+#if defined(CUBRID_SHARD)
+      for (i = 0; i < 10; i++)
+#else /* CUBRID_SHARD */
       for (i = 0; i < 100; i++)
+#endif /* !CUBRID_SHARD */
 	{
 	  if (kill (pid, SIGTERM) < 0)
 	    {
@@ -255,7 +259,11 @@ ut_kill_process (int pid, char *br_name, int proxy_index, int shard_index,
 	      break;
 	    }
 	}
-      if (i == 100)
+#if defined(CUBRID_SHARD)
+      if (i >= 10)
+#else /* CUBRID_SHARD */
+      if (i >= 100)
+#endif /* !CUBRID_SHARD */
 	{
 	  kill (pid, SIGKILL);
 	}
