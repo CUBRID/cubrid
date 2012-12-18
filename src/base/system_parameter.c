@@ -1086,24 +1086,12 @@ static bool prm_java_stored_procedure_default = false;
 bool PRM_COMPAT_PRIMARY_KEY = false;
 static bool prm_compat_primary_key_default = false;
 
-int PRM_LOG_HEADER_FLUSH_INTERVAL = 5;
-static int prm_log_header_flush_interval_default = 5;
-static int prm_log_header_flush_interval_lower = 1;
-
 bool PRM_LOG_ASYNC_COMMIT = false;
 static bool prm_log_async_commit_default = false;
 
 int PRM_LOG_GROUP_COMMIT_INTERVAL_MSECS = 0;
 static int prm_log_group_commit_interval_msecs_default = 0;
 static int prm_log_group_commit_interval_msecs_lower = 0;
-
-int PRM_LOG_BG_FLUSH_INTERVAL_MSECS = 0;
-static int prm_log_bg_flush_interval_msecs_default = 0;	/* not used */
-static int prm_log_bg_flush_interval_msecs_lower = 0;
-
-int PRM_LOG_BG_FLUSH_NUM_PAGES = 0;
-static int prm_log_bg_flush_num_pages_default = 0;
-static int prm_log_bg_flush_num_pages_lower = 0;
 
 bool PRM_INTL_MBS_SUPPORT = false;
 static bool prm_intl_mbs_support_default = false;
@@ -2241,11 +2229,11 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_LOG_HEADER_FLUSH_INTERVAL,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
-   PRM_INTEGER,
-   (void *) &prm_log_header_flush_interval_default,
-   (void *) &PRM_LOG_HEADER_FLUSH_INTERVAL,
-   (void *) NULL, (void *) &prm_log_header_flush_interval_lower,
+   (PRM_OBSOLETED),
+   PRM_NO_TYPE,
+   (void *) NULL,
+   (void *) NULL,
+   (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_LOG_ASYNC_COMMIT,
    (PRM_FOR_SERVER),
@@ -2262,18 +2250,18 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) &prm_log_group_commit_interval_msecs_lower,
    (char *) NULL},
   {PRM_NAME_LOG_BG_FLUSH_INTERVAL_MSECS,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
-   PRM_INTEGER,
-   (void *) &prm_log_bg_flush_interval_msecs_default,
-   (void *) &PRM_LOG_BG_FLUSH_INTERVAL_MSECS,
-   (void *) NULL, (void *) &prm_log_bg_flush_interval_msecs_lower,
+   (PRM_OBSOLETED),
+   PRM_NO_TYPE,
+   (void *) NULL,
+   (void *) NULL,
+   (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_LOG_BG_FLUSH_NUM_PAGES,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
-   PRM_INTEGER,
-   (void *) &prm_log_bg_flush_num_pages_default,
-   (void *) &PRM_LOG_BG_FLUSH_NUM_PAGES,
-   (void *) NULL, (void *) &prm_log_bg_flush_num_pages_lower,
+   (PRM_OBSOLETED),
+   PRM_NO_TYPE,
+   (void *) NULL,
+   (void *) NULL,
+   (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_INTL_MBS_SUPPORT,
    (PRM_FOR_CLIENT),
@@ -5199,6 +5187,12 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 	  }
 	new_value->i = val;
       }
+      break;
+    case PRM_NO_TYPE:
+      break;
+
+    default:
+      assert (false);
     }
 
   return error;

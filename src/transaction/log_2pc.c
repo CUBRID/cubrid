@@ -1350,6 +1350,7 @@ log_2pc_append_recv_ack (THREAD_ENTRY * thread_p, int particp_index)
   LOG_TDES *tdes;		/* Transaction descriptor   */
   struct log_2pc_particp_ack *received_ack;
   int tran_index;
+  LOG_LSA start_lsa;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
@@ -1415,7 +1416,7 @@ log_2pc_append_recv_ack (THREAD_ENTRY * thread_p, int particp_index)
   LOG_CS_ENTER (thread_p);
 
   /* Enter Log record for this acknowledgement */
-  logpb_start_append (thread_p, LOG_2PC_RECV_ACK, tdes);
+  start_lsa = logpb_start_append (thread_p, LOG_2PC_RECV_ACK, tdes);
 
   /* ADD the data header */
   LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*received_ack));
@@ -1429,7 +1430,7 @@ log_2pc_append_recv_ack (THREAD_ENTRY * thread_p, int particp_index)
    * again.
    */
   logpb_end_append (thread_p);
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL, NULL);
+  logpb_flush_pages (thread_p, &start_lsa);
   assert (LOG_CS_OWN (thread_p));
 
   LOG_CS_EXIT ();
@@ -1634,7 +1635,7 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
    */
 
   tdes->state = TRAN_UNACTIVE_2PC_PREPARE;
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL, &start_lsa);
+  logpb_flush_pages (thread_p, &start_lsa);
 
   return tdes->state;
 }
@@ -1856,7 +1857,7 @@ log_2pc_append_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
    * particpants know about each other and the coordiantor.
    */
   tdes->state = TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES;
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL, &start_lsa);
+  logpb_flush_pages (thread_p, &start_lsa);
 }
 
 /*
@@ -1906,7 +1907,7 @@ log_2pc_append_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
        * participant needed in the event of a crash. If the decision is not
        * found in the log, we will assume abort
        */
-      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL, &start_lsa);
+      logpb_flush_pages (thread_p, &start_lsa);
     }
   else
     {

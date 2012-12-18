@@ -570,7 +570,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 			&(btid->vfid));
 
   LOG_CS_ENTER (thread_p);
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+  logpb_flush_pages_direct (thread_p);
   LOG_CS_EXIT ();
 
   return btid;

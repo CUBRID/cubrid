@@ -127,8 +127,6 @@
 #define LOG_ARCHIVE_CS_OWN_READ_MODE(thread_p) (true)
 #endif /* !SERVER_MODE */
 
-#define LOG_NEED_WAL(lsa) (LSA_LE((&log_Gl.append.nxio_lsa), (lsa)))
-
 #define LOG_ESTIMATE_NACTIVE_TRANS      100	/* Estimate num of trans */
 #define LOG_ESTIMATE_NOBJ_LOCKS         977	/* Estimate num of locks */
 
@@ -287,10 +285,6 @@
 
 #define LOG_ISRESTARTED() (log_Gl.rcv_phase == LOG_RESTARTED)
 
-#define LOG_GET_ELAPSED_TIME(end_time, start_time) \
-            ((double)(end_time.tv_sec - start_time.tv_sec) + \
-             (end_time.tv_usec - start_time.tv_usec)/1000000.0)
-
 /* special action for log applier */
 #if defined (SERVER_MODE)
 #define LOG_CHECK_LOG_APPLIER(thread_p) \
@@ -433,14 +427,6 @@ struct log_page
   char area[1];
 };
 
-typedef enum log_flush_type LOG_FLUSH_TYPE;
-enum log_flush_type
-{
-  /* flush pages in commit process */
-  LOG_FLUSH_NORMAL = 0,
-  LOG_FLUSH_DIRECT
-};
-
 /*
  * Flush information shared by LFT and normal transaction.
  * Transaction in commit phase has to flush all toflush array's pages.
@@ -469,13 +455,12 @@ typedef struct log_group_commit_info LOG_GROUP_COMMIT_INFO;
 struct log_group_commit_info
 {
   /* group commit waiters count */
-  int waiters;
   pthread_mutex_t gc_mutex;
   pthread_cond_t gc_cond;
 };
 
 #define LOG_GROUP_COMMIT_INFO_INITIALIZER                     \
-  {0, PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER}
+  {PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER}
 
 typedef enum logwr_mode LOGWR_MODE;
 enum logwr_mode
@@ -537,8 +522,12 @@ struct log_append_info
   LOG_PAGE *log_pgptr;		/* The log page which is fixed                */
   LOG_PAGE *delayed_free_log_pgptr;	/* Delay freeing a log append page       */
 
+#if !defined(HAVE_ATOMIC_BUILTINS)
+  pthread_mutex_t nxio_lsa_mutex;
+#endif
 };
 
+#if defined(HAVE_ATOMIC_BUILTINS)
 #define LOG_APPEND_INFO_INITIALIZER                           \
   {                                                           \
     /* vdes */                                                \
@@ -551,6 +540,22 @@ struct log_append_info
     NULL,                                                     \
     /* delayed_free_log_pgptr */                              \
     NULL}
+#else
+#define LOG_APPEND_INFO_INITIALIZER                           \
+  {                                                           \
+    /* vdes */                                                \
+    NULL_VOLDES,                                              \
+    /* nxio_lsa */                                            \
+    {NULL_PAGEID, NULL_OFFSET},                               \
+    /* prev_lsa */                                            \
+    {NULL_PAGEID, NULL_OFFSET},                               \
+    /* log_pgptr */                                           \
+    NULL,                                                     \
+    /* delayed_free_log_pgptr */                              \
+    NULL,                                                     \
+    /* nxio_lsa_mutex */                                      \
+    PTHREAD_MUTEX_INITIALIZER}
+#endif
 
 typedef enum log_2pc_execute LOG_2PC_EXECUTE;
 enum log_2pc_execute
@@ -1625,22 +1630,8 @@ typedef struct log_logging_stat
   double last_flush_sec_by_trans;
   /* total time taken to flush in logpb_flush_all_append_pages() */
   double total_flush_sec_by_trans;
-  /* LOG_FLUSH_DIRECT count */
+  /* logpb_flush_pages_direct() count */
   unsigned long direct_flush_count;
-
-  /* background flush */
-  /* logpb_flush_pages_background() call count */
-  unsigned long flush_pages_call_count;
-  /* logpb_flush_pages_background() call count when no page is flushed */
-  unsigned long flush_pages_call_miss_count;
-  /* pages count to flush in logpb_flush_pages_background() */
-  unsigned long last_flush_count_by_LFT;
-  /* total pages count to flush in logpb_flush_pages_background() */
-  unsigned long total_flush_count_by_LFT;
-  /* time taken to flush in logpb_flush_pages_background() */
-  double last_flush_sec_by_LFT;
-  /* total time taken to flush in logpb_flush_pages_background() */
-  double total_flush_sec_by_LFT;
 
   /* logpb_flush_header() call count */
   unsigned long flush_hdr_call_count;
@@ -1764,9 +1755,8 @@ extern PGLENGTH logpb_find_header_parameters (THREAD_ENTRY * thread_p,
 					      float *db_compatibility);
 extern LOG_PAGE *logpb_fetch_start_append_page (THREAD_ENTRY * thread_p);
 extern LOG_PAGE *logpb_fetch_start_append_page_new (THREAD_ENTRY * thread_p);
-extern void logpb_flush_all_append_pages (THREAD_ENTRY * thread_p,
-					  LOG_FLUSH_TYPE flush_type,
-					  LOG_LSA * lsa);
+extern void logpb_flush_pages_direct (THREAD_ENTRY * thread_p);
+extern void logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa);
 extern void logpb_invalid_all_append_pages (THREAD_ENTRY * thread_p);
 extern void logpb_flush_log_for_wal (THREAD_ENTRY * thread_p,
 				     const LOG_LSA * lsa_ptr);
@@ -1896,7 +1886,6 @@ extern int logpb_check_and_reset_temp_lsa (THREAD_ENTRY * thread_p,
 					   VOLID volid);
 extern void logpb_initialize_arv_page_info_table (void);
 extern void logpb_initialize_logging_statistics (void);
-extern void logpb_flush_pages_background (THREAD_ENTRY * thread_p);
 extern int logpb_background_archiving (THREAD_ENTRY * thread_p);
 extern void xlogpb_dump_stat (FILE * outfp);
 
@@ -2090,4 +2079,6 @@ extern int logtb_is_tran_modification_disabled (THREAD_ENTRY * thread_p);
 /* For Debugging */
 extern void xlogtb_dump_trantable (THREAD_ENTRY * thread_p, FILE * out_fp);
 
+extern bool logpb_need_wal (const LOG_LSA * lsa);
+extern LOG_LSA logpb_get_nxio_lsa (void);
 #endif /* _LOG_IMPL_H_ */

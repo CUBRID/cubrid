@@ -2172,7 +2172,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 
 	  /* In the first try, we will flush pages which do not need WAL. */
 	  if (num_tries == 1
-	      && LOG_NEED_WAL (&(bufptr->iopage_buffer->iopage.prv.lsa)))
+	      && logpb_need_wal (&(bufptr->iopage_buffer->iopage.prv.lsa)))
 	    {
 	      pthread_mutex_unlock (&bufptr->BCB_mutex);
 	      continue;

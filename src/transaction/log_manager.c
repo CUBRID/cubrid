@@ -936,7 +936,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
    * Then, free the page, same for the header page.
    */
   logpb_set_dirty (thread_p, log_Gl.append.log_pgptr, DONT_FREE);
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+  logpb_flush_pages_direct (thread_p);
 
   log_Gl.chkpt_every_npages =
     prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_NPAGES);
@@ -1833,7 +1833,7 @@ log_final (THREAD_ENTRY * thread_p)
   /*
    * Flush all log append dirty pages and all data dirty pages
    */
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+  logpb_flush_pages_direct (thread_p);
 
   error_code = pgbuf_flush_all (thread_p, NULL_VOLID);
   if (error_code == NO_ERROR)
@@ -3439,7 +3439,7 @@ log_append_ha_server_state (THREAD_ENTRY * thread_p, int state)
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL, &start_lsa);
+  logpb_flush_pages (thread_p, &start_lsa);
 }
 
 /*
@@ -3762,7 +3762,7 @@ xlog_append_client_undo (THREAD_ENTRY * thread_p,
        * END append. NOTE: We must flush the log since there is not
        * coordination WAL rule for the client. Thus, the log has to be permanent
        */
-      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL, &start_lsa);
+      logpb_flush_pages (thread_p, &start_lsa);
 
       if (tdes->topops.last >= 0)
 	{
@@ -4616,7 +4616,7 @@ log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 
   tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
 
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL, &start_lsa);
+  logpb_flush_pages (thread_p, &start_lsa);
 }
 
 /*
@@ -4661,7 +4661,7 @@ log_append_topope_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
   tdes->state = TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE;
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL, &start_lsa);
+  logpb_flush_pages (thread_p, &start_lsa);
 }
 
 /*
@@ -4700,7 +4700,7 @@ log_append_commit_client_loose_ends (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
   tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS;
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL, &start_lsa);
+  logpb_flush_pages (thread_p, &start_lsa);
 }
 
 /*
@@ -4739,7 +4739,7 @@ log_append_abort_client_loose_ends (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
   tdes->state = TRAN_UNACTIVE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS;
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL, &start_lsa);
+  logpb_flush_pages (thread_p, &start_lsa);
 }
 
 /*
@@ -4782,7 +4782,7 @@ log_append_topope_commit_client_loose_ends (THREAD_ENTRY * thread_p,
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
   tdes->state = TRAN_UNACTIVE_XTOPOPE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS;
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL, &start_lsa);
+  logpb_flush_pages (thread_p, &start_lsa);
 }
 
 /*
@@ -4826,7 +4826,7 @@ log_append_topope_abort_client_loose_ends (THREAD_ENTRY * thread_p,
 
   tdes->state = TRAN_UNACTIVE_TOPOPE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS;
 
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL, &start_lsa);
+  logpb_flush_pages (thread_p, &start_lsa);
 }
 
 /*
@@ -5029,7 +5029,7 @@ log_append_donetime (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 
       log_Stat.commit_count++;
 
-      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL, &start_lsa);
+      logpb_flush_pages (thread_p, &start_lsa);
 
 #if !defined(NDEBUG)
       if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
@@ -6288,7 +6288,7 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
     {
       LOG_CS_ENTER (thread_p);
       /* We are not logging */
-      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+      logpb_flush_pages_direct (thread_p);
       (void) pgbuf_flush_all_unfixed (thread_p, NULL_VOLID);
       if (LOG_HAS_LOGGING_BEEN_IGNORED ())
 	{
@@ -6645,8 +6645,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 
 		    start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
-		    logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL,
-						  &start_lsa);
+		    logpb_flush_pages (thread_p, &start_lsa);
 		  }
 	      }
 	    else
@@ -6672,8 +6671,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 
 		    start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
-		    logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL,
-						  &start_lsa);
+		    logpb_flush_pages (thread_p, &start_lsa);
 		  }
 	      }
 	    /*
@@ -7515,7 +7513,7 @@ log_client_append_done_actions (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL, &start_lsa);
+  logpb_flush_pages (thread_p, &start_lsa);
 }
 
 /*
@@ -9171,7 +9169,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward,
 
   xlogtb_dump_trantable (thread_p, out_fp);
   logpb_dump (out_fp);
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+  logpb_flush_pages_direct (thread_p);
   logpb_flush_header (thread_p);
 
   /* Now start dumping the log */
@@ -10819,7 +10817,7 @@ log_recreate (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
        */
 
       LOG_CS_ENTER (thread_p);
-      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+      logpb_flush_pages_direct (thread_p);
       LOG_CS_EXIT ();
 
       (void) pgbuf_flush_all (thread_p, volid);
@@ -10837,7 +10835,7 @@ log_recreate (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 				&log_Gl.hdr.chkpt_lsa, false,
 				DISK_DONT_FLUSH);
       LOG_CS_ENTER (thread_p);
-      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+      logpb_flush_pages_direct (thread_p);
       LOG_CS_EXIT ();
 
       (void) pgbuf_flush_all_unfixed_and_set_lsa_as_null (thread_p, volid);
@@ -11017,7 +11015,7 @@ log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log,
 
   if (flush_log != false || flush_data_pages != false)
     {
-      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+      logpb_flush_pages_direct (thread_p);
     }
 
   if (flush_data_pages)

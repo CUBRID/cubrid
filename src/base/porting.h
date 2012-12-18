@@ -678,4 +678,11 @@ extern UINT64 win32_exchange64 (UINT64 volatile *ptr, UINT64 new_val);
 
 #endif /* WINDOWS */
 
+extern INT64 timeval_diff_in_msec (const struct timeval *end_time,
+				   const struct timeval *start_time);
+extern int timeval_add_msec (struct timeval *added_time,
+			     const struct timeval *start_time, int msec);
+extern int timeval_to_timespec (struct timespec *to,
+				const struct timeval *from);
+
 #endif /* _PORTING_H_ */

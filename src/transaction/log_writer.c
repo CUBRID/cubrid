@@ -1170,11 +1170,7 @@ logwr_write_log_pages (void)
 
       if (logwr_Gl.force_flush == false && !LOGWR_AT_SERVER_ARCHIVING ()
 	  && (logwr_Gl.hdr.eof_lsa.pageid <=
-	      logwr_Gl.toflush[0]->hdr.logical_pageid)
-	  && ((prm_get_integer_value (PRM_ID_LOG_BG_FLUSH_INTERVAL_MSECS) > 0)
-	      && (diff_msec <
-		  prm_get_integer_value
-		  (PRM_ID_LOG_BG_FLUSH_INTERVAL_MSECS))))
+	      logwr_Gl.toflush[0]->hdr.logical_pageid) && (diff_msec < 1000))
 	{
 	  return NO_ERROR;
 	}
@@ -1555,6 +1551,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p,
   char *p;
   LOG_PAGE *log_pgptr;
   INT64 num_logpgs;
+  LOG_LSA nxio_lsa;
   bool is_hdr_page_only;
   int ha_file_status;
   int error_code;
@@ -1575,9 +1572,13 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p,
 	     pack all active pages to be flushed until now */
 	  fpageid = log_Gl.hdr.nxarv_pageid;
 	}
-      else if (fpageid > log_Gl.append.nxio_lsa.pageid)
+      else
 	{
-	  fpageid = log_Gl.append.nxio_lsa.pageid;
+	  nxio_lsa = logpb_get_nxio_lsa ();
+	  if (fpageid > nxio_lsa.pageid)
+	    {
+	      fpageid = nxio_lsa.pageid;
+	    }
 	}
 
       /* Find the last pageid which is bounded by several limitations */

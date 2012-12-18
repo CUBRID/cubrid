@@ -1765,7 +1765,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
 			(int) strlen (vol_fullname) + 1, vol_fullname);
   /* This log must be flushed. */
   LOG_CS_ENTER (thread_p);
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+  logpb_flush_pages_direct (thread_p);
   LOG_CS_EXIT ();
 
   /* Create and initialize the volume. Recovery information is initialized in
@@ -2573,7 +2573,7 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid,
   /* Forcing the log here to be safer, especially in the case of
      permanent temp volumes. */
   LOG_CS_ENTER (thread_p);
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+  logpb_flush_pages_direct (thread_p);
   LOG_CS_EXIT ();
 
   DISK_VERIFY_VAR_HEADER (vhdr);

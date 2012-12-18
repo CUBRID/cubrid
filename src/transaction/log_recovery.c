@@ -819,7 +819,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   LOG_CS_ENTER (thread_p);
 
   /* Flush all dirty pages */
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+  logpb_flush_pages_direct (thread_p);
   (void) pgbuf_flush_all (thread_p, NULL_VOLID);
   (void) fileio_synchronize_all (thread_p, false);
 
@@ -4291,7 +4291,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
   log_recovery_finish_all_postpone (thread_p);
 
   /* Flush all dirty pages */
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+  logpb_flush_pages_direct (thread_p);
 
   logpb_flush_header (thread_p);
   (void) pgbuf_flush_all (thread_p, NULL_VOLID);
@@ -4923,7 +4923,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
   /* Flush all dirty pages */
 
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+  logpb_flush_pages_direct (thread_p);
 
   logpb_flush_header (thread_p);
   (void) pgbuf_flush_all (thread_p, NULL_VOLID);
@@ -5208,7 +5208,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa,
 
   if (log_Gl.append.vdes != NULL_VOLDES && log_Gl.append.log_pgptr != NULL)
     {
-      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+      logpb_flush_pages_direct (thread_p);
       logpb_invalid_all_append_pages (thread_p);
     }
 
@@ -5383,7 +5383,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa,
 		      (char *) newappend_pgptr, LOG_PAGESIZE);
 	      logpb_set_dirty (thread_p, log_Gl.append.log_pgptr, DONT_FREE);
 	    }
-	  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+	  logpb_flush_pages_direct (thread_p);
 	}
     }
 

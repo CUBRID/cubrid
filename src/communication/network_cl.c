@@ -2526,17 +2526,13 @@ net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr,
 
       do
 	{
-	  int bg_flush_interval =
-	    prm_get_integer_value (PRM_ID_LOG_BG_FLUSH_INTERVAL_MSECS);
-
 	  do_read = false;
 #ifndef WINDOWS
-	  if (logwr_Gl.mode == LOGWR_MODE_SEMISYNC && bg_flush_interval > 0)
+	  if (logwr_Gl.mode == LOGWR_MODE_SEMISYNC)
 	    {
 	      error =
 		css_receive_data_from_server_with_timeout (rc, &reply,
-							   &size,
-							   bg_flush_interval);
+							   &size, 1000);
 	    }
 	  else
 #endif

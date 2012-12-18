@@ -114,41 +114,41 @@ static THREAD_MANAGER thread_Manager;
  *    Under the win32-threads system, *_cond variables are an auto-reset event
  */
 static DAEMON_THREAD_MONITOR thread_Deadlock_detect_thread =
-  { 0, true, false, false, PTHREAD_MUTEX_INITIALIZER,
+  { 0, true, false, PTHREAD_MUTEX_INITIALIZER,
   PTHREAD_COND_INITIALIZER
 };
 static DAEMON_THREAD_MONITOR thread_Checkpoint_thread =
-  { 0, false, false, false, PTHREAD_MUTEX_INITIALIZER,
+  { 0, false, false, PTHREAD_MUTEX_INITIALIZER,
   PTHREAD_COND_INITIALIZER
 };
 static DAEMON_THREAD_MONITOR thread_Purge_archive_logs_thread =
-  { 0, false, false, false, PTHREAD_MUTEX_INITIALIZER,
+  { 0, false, false, PTHREAD_MUTEX_INITIALIZER,
   PTHREAD_COND_INITIALIZER
 };
 static DAEMON_THREAD_MONITOR thread_Oob_thread =
-  { 0, true, true, false, PTHREAD_MUTEX_INITIALIZER,
+  { 0, true, true, PTHREAD_MUTEX_INITIALIZER,
   PTHREAD_COND_INITIALIZER
 };
 static DAEMON_THREAD_MONITOR thread_Page_flush_thread =
-  { 0, false, false, false, PTHREAD_MUTEX_INITIALIZER,
+  { 0, false, false, PTHREAD_MUTEX_INITIALIZER,
   PTHREAD_COND_INITIALIZER
 };
 static DAEMON_THREAD_MONITOR thread_Flush_control_thread =
-  { 0, false, false, false, PTHREAD_MUTEX_INITIALIZER,
+  { 0, false, false, PTHREAD_MUTEX_INITIALIZER,
   PTHREAD_COND_INITIALIZER
 };
 static DAEMON_THREAD_MONITOR thread_Session_control_thread =
-  { 0, false, false, false, PTHREAD_MUTEX_INITIALIZER,
+  { 0, false, false, PTHREAD_MUTEX_INITIALIZER,
   PTHREAD_COND_INITIALIZER
 };
 DAEMON_THREAD_MONITOR thread_Log_flush_thread =
-  { 0, false, false, false, PTHREAD_MUTEX_INITIALIZER,
+  { 0, false, false, PTHREAD_MUTEX_INITIALIZER,
   PTHREAD_COND_INITIALIZER
 };
 
 #if defined(USE_LOG_CLOCK_THREAD)
 static DAEMON_THREAD_MONITOR thread_Log_clock_thread =
-  { 0, false, false, false, PTHREAD_MUTEX_INITIALIZER,
+  { 0, false, false, PTHREAD_MUTEX_INITIALIZER,
   PTHREAD_COND_INITIALIZER
 };
 #endif /* USE_LOG_CLOCK_THREAD */
@@ -180,7 +180,6 @@ thread_log_clock_thread (void *);
 static int css_initialize_sync_object (void);
 static int thread_wakeup_internal (THREAD_ENTRY * thread_p, int resume_reason,
 				   bool had_mutex);
-static int thread_get_LFT_min_wait_time_in_msec (void);
 
 /*
  * Thread Specific Data management
@@ -2795,7 +2794,7 @@ thread_purge_archive_logs_thread (void *arg_p)
 }
 
 /*
- * thread_wakeup_checkpoint_thread() -
+ * thread_wakeup_purge_archive_logs_thread() -
  *   return:
  */
 void
@@ -2930,11 +2929,6 @@ thread_wakeup_page_flush_thread (void)
 {
   int rv;
 
-  if (thread_Page_flush_thread.is_running)
-    {
-      return;
-    }
-
   rv = pthread_mutex_lock (&thread_Page_flush_thread.lock);
   if (!thread_Page_flush_thread.is_running)
     {
@@ -3047,58 +3041,12 @@ thread_wakeup_flush_control_thread (void)
 {
   int rv;
 
-  if (thread_Flush_control_thread.is_running)
-    {
-      return;
-    }
-
   rv = pthread_mutex_lock (&thread_Flush_control_thread.lock);
   if (!thread_Flush_control_thread.is_running)
     {
       pthread_cond_signal (&thread_Flush_control_thread.cond);
     }
   pthread_mutex_unlock (&thread_Flush_control_thread.lock);
-}
-
-/*
- * thread_get_LFT_min_wait_time_in_msec() - get LFT's minimum wait time
- *  return:
- *
- * Note: LFT can wakeup in 3 cases: group commit, bg flush, log hdr flush
- *       If they are not on, LFT has to be waked up by signal only.
- */
-static int
-thread_get_LFT_min_wait_time_in_msec (void)
-{
-  int flush_interval;
-  int gc_time =
-    prm_get_integer_value (PRM_ID_LOG_GROUP_COMMIT_INTERVAL_MSECS);
-  int bg_time = prm_get_integer_value (PRM_ID_LOG_BG_FLUSH_INTERVAL_MSECS);
-
-  if (gc_time == 0)
-    {
-      gc_time = INT_MAX;
-    }
-  if (bg_time == 0)
-    {
-      bg_time = INT_MAX;
-    }
-
-  flush_interval = bg_time;
-
-  if (gc_time < flush_interval)
-    {
-      flush_interval = gc_time;
-    }
-
-  if (flush_interval != INT_MAX)
-    {
-      return flush_interval;
-    }
-  else
-    {
-      return 1000;		/* default wake-up time: 1000 msec */
-    }
 }
 
 /*
@@ -3113,38 +3061,21 @@ thread_log_flush_thread (void *arg_p)
 #if !defined(HPUX)
   THREAD_ENTRY *tsd_ptr;
 #endif /* !HPUX */
-  int rv;
+  int rv, ret;
 
-  struct timespec LFT_wait_time = {
-    0, 0
-  };
+  struct timespec LFT_wakeup_time = { 0, 0 };
+  struct timeval wakeup_time = { 0, 0 };
+  struct timeval wait_time = { 0, 0 };
+  struct timeval tmp_timeval = { 0, 0 };
 
-  struct timeval start_time = {
-    0, 0
-  };
-  struct timeval end_time = {
-    0, 0
-  };
-  struct timeval work_time = {
-    0, 0
-  };
+  int working_time, remained_time, total_elapsed_time;
+  int gc_interval, wakeup_interval;
+  int max_wait_time = 1000;
 
-  double curr_elapsed = 0;
-  double gc_elapsed = 0;
-#if 0				/* disabled temporarily */
-  double repl_elapsed = 0;
-#endif
-  int elapsed_msec;
-  int remained_msec;
-  int wakeup_interval;
-  int ret;
-  int temp_wait_usec;
-  bool is_background_flush = true;
   LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
 #if defined(WINDOWS)
   int loop;
 #endif
-
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
   /* wait until THREAD_CREATE() finishes */
@@ -3156,158 +3087,79 @@ thread_log_flush_thread (void *arg_p)
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
 
   thread_Log_flush_thread.is_valid = true;
+  thread_Log_flush_thread.is_running = true;
 
   thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
 
-  gettimeofday (&start_time, NULL);
-
-  rv = pthread_mutex_lock (&thread_Log_flush_thread.lock);
+  gettimeofday (&wakeup_time, NULL);
+  total_elapsed_time = 0;
 
   while (!tsd_ptr->shutdown)
     {
       er_clear ();
 
-      gettimeofday (&work_time, NULL);
-      elapsed_msec =
-	(int) (LOG_GET_ELAPSED_TIME (work_time, start_time) * 1000);
+      gc_interval =
+	prm_get_integer_value (PRM_ID_LOG_GROUP_COMMIT_INTERVAL_MSECS);
 
-      wakeup_interval = thread_get_LFT_min_wait_time_in_msec ();
-      remained_msec = (int) (wakeup_interval - elapsed_msec);
-      if (remained_msec < 0)
+      wakeup_interval = max_wait_time;
+      if (gc_interval > 0)
 	{
-	  remained_msec = 0;
+	  wakeup_interval = MIN (gc_interval, wakeup_interval);
 	}
 
-      LFT_wait_time.tv_sec = work_time.tv_sec + (remained_msec / 1000);
+      gettimeofday (&wait_time, NULL);
+      working_time = (int) timeval_diff_in_msec (&wait_time, &wakeup_time);
+      total_elapsed_time += working_time;
 
-      temp_wait_usec = work_time.tv_usec + ((remained_msec % 1000) * 1000);
+      remained_time = MAX ((int) (wakeup_interval - working_time), 0);
+      (void) timeval_add_msec (&tmp_timeval, &wait_time, remained_time);
+      (void) timeval_to_timespec (&LFT_wakeup_time, &tmp_timeval);
 
-      if (temp_wait_usec >= 1000000)
-	{
-	  LFT_wait_time.tv_sec += 1;
-	  temp_wait_usec -= 1000000;
-	}
-      LFT_wait_time.tv_nsec = temp_wait_usec * 1000;
+      rv = pthread_mutex_lock (&thread_Log_flush_thread.lock);
 
-      thread_Log_flush_thread.is_log_flush_force = false;
       thread_Log_flush_thread.is_running = false;
-
       ret = pthread_cond_timedwait (&thread_Log_flush_thread.cond,
 				    &thread_Log_flush_thread.lock,
-				    &LFT_wait_time);
-
+				    &LFT_wakeup_time);
       thread_Log_flush_thread.is_running = true;
+
+      rv = pthread_mutex_unlock (&thread_Log_flush_thread.lock);
+
+      gettimeofday (&wakeup_time, NULL);
+      total_elapsed_time += timeval_diff_in_msec (&wakeup_time, &wait_time);
 
       if (tsd_ptr->shutdown)
 	{
 	  break;
 	}
 
-      gettimeofday (&end_time, NULL);
+      if (ret == ETIMEDOUT)
+	{
+	  if (total_elapsed_time < gc_interval)
+	    {
+	      continue;
+	    }
+	}
 
-      curr_elapsed = LOG_GET_ELAPSED_TIME (end_time, start_time);
+      LOG_CS_ENTER (tsd_ptr);
+      logpb_flush_pages_direct (tsd_ptr);
+      LOG_CS_EXIT ();
 
-      gc_elapsed += curr_elapsed;
-#if 0				/* disabled temporarily */
-      repl_elapsed += curr_elapsed;
-#endif
+      log_Stat.gc_flush_count++;
+      total_elapsed_time = 0;
 
-      start_time = end_time;
+      rv = pthread_mutex_lock (&group_commit_info->gc_mutex);
+      pthread_cond_broadcast (&group_commit_info->gc_cond);
+      pthread_mutex_unlock (&group_commit_info->gc_mutex);
 
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
 		    "css_log_flush_thread: "
-		    "[%d]curr_elapsed(%f) gc_elapsed(%f) repl_elapsed(%f) "
-		    "elapsed_msec(%d) remained_msec(%d)\n",
-		    (int) THREAD_ID (), curr_elapsed, gc_elapsed,
-		    repl_elapsed, elapsed_msec, remained_msec);
+		    "[%d]send signal - waiters\n", (int) THREAD_ID ());
 #endif /* CUBRID_DEBUG */
-
-      rv = pthread_mutex_lock (&group_commit_info->gc_mutex);
-
-      is_background_flush = false;
-      if (ret == ETIMEDOUT)
-	{
-	  if (thread_Log_flush_thread.is_log_flush_force
-	      || (LOG_IS_GROUP_COMMIT_ACTIVE ()
-		  && gc_elapsed * 1000 >=
-		  prm_get_integer_value
-		  (PRM_ID_LOG_GROUP_COMMIT_INTERVAL_MSECS)))
-	    {
-	      ;			/* is normal log flush */
-	    }
-	  else if (prm_get_integer_value (PRM_ID_LOG_BG_FLUSH_INTERVAL_MSECS)
-		   > 0)
-	    {
-	      is_background_flush = true;
-	    }
-	  else
-	    {
-	      /* dummy wake-up */
-	      pthread_mutex_unlock (&group_commit_info->gc_mutex);
-	      continue;
-	    }
-
-#if 0				/* disabled temporarily */
-	  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF
-	      && (repl_elapsed >=
-		  (double)
-		  prm_get_integer_value (PRM_ID_LOG_HEADER_FLUSH_INTERVAL)))
-	    {
-	      LOG_CS_ENTER (tsd_ptr);
-	      logpb_flush_header (tsd_ptr);
-	      LOG_CS_EXIT ();
-
-	      repl_elapsed = 0;
-	    }
-#endif
-	}
-
-      if (is_background_flush)
-	{
-	  rv = pthread_mutex_lock (&log_Gl.flush_info.flush_mutex);
-	  if (log_Gl.flush_info.num_toflush > 2)
-	    {
-	      pthread_mutex_unlock (&log_Gl.flush_info.flush_mutex);
-	      LOG_CS_ENTER (tsd_ptr);
-	      logpb_flush_pages_background (tsd_ptr);
-	      LOG_CS_EXIT ();
-	    }
-	  else
-	    {
-	      pthread_mutex_unlock (&log_Gl.flush_info.flush_mutex);
-	    }
-	}
-      else
-	{
-	  LOG_CS_ENTER (tsd_ptr);
-	  logpb_flush_all_append_pages (tsd_ptr, LOG_FLUSH_DIRECT, NULL);
-	  LOG_CS_EXIT ();
-
-	  log_Stat.gc_flush_count++;
-	  gc_elapsed = 0;
-
-#if defined(WINDOWS)
-	  for (loop = 0; loop != group_commit_info->waiters; ++loop)
-	    {
-	      pthread_cond_broadcast (&group_commit_info->gc_cond);
-	    }
-#else /* WINDOWS */
-	  pthread_cond_broadcast (&group_commit_info->gc_cond);
-#endif /* WINDOWS */
-
-#if defined(CUBRID_DEBUG)
-	  er_log_debug (ARG_FILE_LINE,
-			"css_log_flush_thread: "
-			"[%d]send signal - waiters(%d) \n",
-			(int) THREAD_ID (), group_commit_info->waiters);
-#endif /* CUBRID_DEBUG */
-	  group_commit_info->waiters = 0;
-	}
-
-      pthread_mutex_unlock (&group_commit_info->gc_mutex);
     }
 
+  rv = pthread_mutex_lock (&thread_Log_flush_thread.lock);
   thread_Log_flush_thread.is_valid = false;
   thread_Log_flush_thread.is_running = false;
   pthread_mutex_unlock (&thread_Log_flush_thread.lock);
@@ -3331,7 +3183,11 @@ thread_log_flush_thread (void *arg_p)
 void
 thread_wakeup_log_flush_thread (void)
 {
+  int rv;
+
+  rv = pthread_mutex_lock (&thread_Log_flush_thread.lock);
   pthread_cond_signal (&thread_Log_flush_thread.cond);
+  pthread_mutex_unlock (&thread_Log_flush_thread.lock);
 }
 
 #if defined(USE_LOG_CLOCK_THREAD)

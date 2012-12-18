@@ -5419,7 +5419,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
       goto error;
     }
 
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+  logpb_flush_pages_direct (thread_p);
   (void) pgbuf_flush_all (thread_p, NULL_VOLID);
   (void) fileio_synchronize_all (thread_p, false);
 

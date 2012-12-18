@@ -299,6 +299,8 @@ static char *log_data_ptr = NULL;
 static int log_data_length = 0;
 #endif
 
+LOG_LSA NULL_LSA = { NULL_PAGEID, NULL_OFFSET };
+
 /*
  * Functions
  */
@@ -401,7 +403,7 @@ static bool logpb_realloc_data_ptr (THREAD_ENTRY * thread_p, int length);
 static FILEIO_BACKUP_LEVEL log_find_most_recent_backup_level (void);
 #endif
 
-static int logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p);
+static int logpb_flush_all_append_pages (THREAD_ENTRY * thread_p);
 static int logpb_append_next_record (THREAD_ENTRY * thread_p,
 				     LOG_PRIOR_NODE * ndoe);
 
@@ -411,10 +413,10 @@ static int prior_lsa_copy_redo_data_to_node (LOG_PRIOR_NODE * node,
 					     int length, char *data);
 static int prior_lsa_copy_undo_crumbs_to_node (LOG_PRIOR_NODE * node,
 					       int num_crumbs,
-					       LOG_CRUMB * crumbs);
+					       const LOG_CRUMB * crumbs);
 static int prior_lsa_copy_redo_crumbs_to_node (LOG_PRIOR_NODE * node,
 					       int num_crumbs,
-					       LOG_CRUMB * crumbs);
+					       const LOG_CRUMB * crumbs);
 static void prior_lsa_start_append (THREAD_ENTRY * thread_p,
 				    LOG_PRIOR_NODE * node, LOG_TDES * tdes);
 static void prior_lsa_end_append (THREAD_ENTRY * thread_p,
@@ -455,25 +457,27 @@ static int prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p,
 						      LOG_RCVINDEX rcvindex,
 						      LOG_DATA_ADDR * addr,
 						      int num_ucrumbs,
-						      LOG_CRUMB * ucrumbs,
+						      const LOG_CRUMB *
+						      ucrumbs,
 						      int num_rcrumbs,
-						      LOG_CRUMB * rcrumbs);
+						      const LOG_CRUMB *
+						      rcrumbs);
 static int prior_lsa_gen_undo_record_from_crumbs (THREAD_ENTRY * thread_p,
 						  LOG_PRIOR_NODE * node,
 						  LOG_RCVINDEX rcvindex,
 						  LOG_DATA_ADDR * addr,
 						  int num_crumbs,
-						  LOG_CRUMB * crumbs);
+						  const LOG_CRUMB * crumbs);
 static int prior_lsa_gen_redo_record_from_crumbs (THREAD_ENTRY * thread_p,
 						  LOG_PRIOR_NODE * node,
 						  LOG_RCVINDEX rcvindex,
 						  LOG_DATA_ADDR * addr,
 						  int num_crumbs,
-						  LOG_CRUMB * crumbs);
-static LOG_LSA
-prior_lsa_next_record_internal (THREAD_ENTRY * thread_p,
-				LOG_PRIOR_NODE * node, LOG_TDES * tdes,
-				int with_lock);
+						  const LOG_CRUMB * crumbs);
+static LOG_LSA prior_lsa_next_record_internal (THREAD_ENTRY * thread_p,
+					       LOG_PRIOR_NODE * node,
+					       LOG_TDES * tdes,
+					       int with_lock);
 
 
 static void logpb_start_append (THREAD_ENTRY * thread_p,
@@ -498,6 +502,8 @@ static void logpb_fatal_error_internal (THREAD_ENTRY * thread_p,
 					const char *file_name,
 					const int lineno, const char *fmt,
 					va_list ap);
+
+static void logpb_set_nxio_lsa (LOG_LSA * lsa);
 
 /*
  * FUNCTIONS RELATED TO LOG BUFFERING
@@ -899,7 +905,7 @@ logpb_finalize_pool (void)
 	  log_Gl.append.log_pgptr = NULL;
 	  log_Gl.append.delayed_free_log_pgptr = NULL;
 	}
-      LSA_SET_NULL (&log_Gl.append.nxio_lsa);
+      logpb_set_nxio_lsa (&NULL_LSA);
       LSA_SET_NULL (&log_Gl.append.prev_lsa);
       /* copy log_Gl.append.prev_lsa to log_Gl.prior_info.prev_lsa */
       LOG_RESET_PREV_LSA (&log_Gl.append.prev_lsa);
@@ -1019,7 +1025,7 @@ logpb_invalidate_pool (THREAD_ENTRY * thread_p)
    * Flush any append dirty buffers at this moment.
    * Then, invalidate any buffer that it is not fixed and dirty
    */
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+  logpb_flush_pages_direct (thread_p);
 
   csect_enter_critical_section (thread_p, &log_Pb.lpb_cs, INF_WAIT);
 
@@ -1097,7 +1103,7 @@ logpb_replace (THREAD_ENTRY * thread_p, bool * retry)
 
 		      assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 		      log_Stat.log_buffer_flush_count_by_replacement++;
-		      logpb_flush_all_append_pages_helper (thread_p);
+		      logpb_flush_all_append_pages (thread_p);
 
 		      csect_enter_critical_section (thread_p,
 						    &log_Pb.lpb_cs, INF_WAIT);
@@ -2561,8 +2567,7 @@ logpb_fetch_start_append_page (THREAD_ENTRY * thread_p)
       return NULL;
     }
 
-  LSA_COPY (&log_Gl.append.nxio_lsa, &log_Gl.hdr.append_lsa);
-
+  logpb_set_nxio_lsa (&log_Gl.hdr.append_lsa);
   /*
    * Save this log append page as an active page to be flushed at a later
    * time if the page is modified (dirty).
@@ -2588,7 +2593,7 @@ logpb_fetch_start_append_page (THREAD_ENTRY * thread_p)
 
   if (need_flush)
     {
-      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+      logpb_flush_pages_direct (thread_p);
     }
 
   return log_Gl.append.log_pgptr;
@@ -2602,6 +2607,8 @@ logpb_fetch_start_append_page (THREAD_ENTRY * thread_p)
 LOG_PAGE *
 logpb_fetch_start_append_page_new (THREAD_ENTRY * thread_p)
 {
+  int rv;
+
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
   log_Gl.append.delayed_free_log_pgptr = NULL;
@@ -2613,7 +2620,7 @@ logpb_fetch_start_append_page_new (THREAD_ENTRY * thread_p)
       return NULL;
     }
 
-  LSA_COPY (&log_Gl.append.nxio_lsa, &log_Gl.hdr.append_lsa);
+  logpb_set_nxio_lsa (&log_Gl.hdr.append_lsa);
 
   return log_Gl.append.log_pgptr;
 }
@@ -2792,7 +2799,7 @@ logpb_next_append_page (THREAD_ENTRY * thread_p,
 
   if (need_flush)
     {
-      logpb_flush_all_append_pages_helper (thread_p);
+      logpb_flush_all_append_pages (thread_p);
     }
 
 #if defined(CUBRID_DEBUG)
@@ -3044,7 +3051,7 @@ prior_lsa_copy_redo_data_to_node (LOG_PRIOR_NODE * node,
  */
 static int
 prior_lsa_copy_undo_crumbs_to_node (LOG_PRIOR_NODE * node,
-				    int num_crumbs, LOG_CRUMB * crumbs)
+				    int num_crumbs, const LOG_CRUMB * crumbs)
 {
   int i, length;
   char *ptr;
@@ -3085,7 +3092,7 @@ prior_lsa_copy_undo_crumbs_to_node (LOG_PRIOR_NODE * node,
  */
 static int
 prior_lsa_copy_redo_crumbs_to_node (LOG_PRIOR_NODE * node,
-				    int num_crumbs, LOG_CRUMB * crumbs)
+				    int num_crumbs, const LOG_CRUMB * crumbs)
 {
   int i, length;
   char *ptr;
@@ -3273,9 +3280,9 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p,
 					   LOG_RCVINDEX rcvindex,
 					   LOG_DATA_ADDR * addr,
 					   int num_ucrumbs,
-					   LOG_CRUMB * ucrumbs,
+					   const LOG_CRUMB * ucrumbs,
 					   int num_rcrumbs,
-					   LOG_CRUMB * rcrumbs)
+					   const LOG_CRUMB * rcrumbs)
 {
   struct log_undoredo *undoredo;
   VPID *vpid;
@@ -3543,7 +3550,8 @@ prior_lsa_gen_undo_record_from_crumbs (THREAD_ENTRY * thread_p,
 				       LOG_PRIOR_NODE * node,
 				       LOG_RCVINDEX rcvindex,
 				       LOG_DATA_ADDR * addr,
-				       int num_crumbs, LOG_CRUMB * crumbs)
+				       int num_crumbs,
+				       const LOG_CRUMB * crumbs)
 {
   struct log_undo *undo;
   VPID *vpid;
@@ -4059,7 +4067,8 @@ prior_lsa_gen_redo_record_from_crumbs (THREAD_ENTRY * thread_p,
 				       LOG_PRIOR_NODE * node,
 				       LOG_RCVINDEX rcvindex,
 				       LOG_DATA_ADDR * addr,
-				       int num_crumbs, LOG_CRUMB * crumbs)
+				       int num_crumbs,
+				       const LOG_CRUMB * crumbs)
 {
   struct log_redo *redo;
   VPID *vpid;
@@ -4653,13 +4662,13 @@ logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p)
 }
 
 /*
- * logpb_flush_all_append_pages_helper - Flush log append pages
+ * logpb_flush_all_append_pages - Flush log append pages
  *
  * return: 1 : log flushed, 0 : do not need log flush, < 0 : error code
  *
  */
 static int
-logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
+logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 {
   LOG_RECORD_HEADER *eof;	/* End of log record */
   struct log_buffer *bufptr;	/* The current buffer log append page
@@ -5167,12 +5176,13 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
 
       flush_info->toflush[0] = log_Gl.append.delayed_free_log_pgptr;
       flush_info->num_toflush = 1;
-      LSA_COPY (&log_Gl.append.nxio_lsa, &log_Gl.append.prev_lsa);
+      logpb_set_nxio_lsa (&log_Gl.append.prev_lsa);
     }
   else
     {
       flush_info->num_toflush = 0;
-      LSA_COPY (&log_Gl.append.nxio_lsa, &log_Gl.hdr.append_lsa);
+
+      logpb_set_nxio_lsa (&log_Gl.hdr.append_lsa);
     }
 
   if (log_Gl.append.log_pgptr != NULL)
@@ -5202,7 +5212,7 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
     log_Stat.last_commit_count_in_flush_pages;
 
   er_log_debug (ARG_FILE_LINE,
-		"logpb_flush_all_append_pages_helper: "
+		"logpb_flush_all_append_pages: "
 		"flush page(%ld / %d / %ld)"
 		"avg flush count(%f), avg flush sec(%f)"
 		"commit count(%ld) avg commit count(%f)\n",
@@ -5270,11 +5280,33 @@ error:
 }
 
 /*
- * logpb_flush_all_append_pages - FLUSH LOG APPEND PAGES
+ * logpb_flush_pages_direct - flush all pages by itself.
  *
  * return: nothing
  *
- *   flush_type(in): type of flushing
+ */
+void
+logpb_flush_pages_direct (THREAD_ENTRY * thread_p)
+{
+#if defined(CUBRID_DEBUG)
+  er_log_debug (ARG_FILE_LINE,
+		"logpb_flush_pages_direct: "
+		"[%d]flush direct\n", (int) THREAD_ID ());
+#endif /* CUBRID_DEBUG */
+
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+
+  logpb_prior_lsa_append_all_list (thread_p);
+  (void) logpb_flush_all_append_pages (thread_p);
+  log_Stat.direct_flush_count++;
+}
+
+/*
+ * logpb_flush_pages - FLUSH LOG APPEND PAGES
+ *
+ * return: nothing
+ *
+ *   flush_lsa(in):
  *
  * NOTE:There are 4 cases to commit.
  *              ASYNC | GROUP COMMIT
@@ -5282,155 +5314,126 @@ error:
  *                X           O         : group commit, wait
  *                O           X         : async commit, wakeup LFT and return
  *                O           O         : async & group commit, just return
- *              Some thread have to flush log pages by itself, because they
- *              cannot release log cs.
- *              There are 2 types of flushing.
- *              LOG_FLUSH_NORMAL : normal threads's flush request.
- *              LOG_FLUSH_DIRECT : have to flushall_append_pages by itself.
  */
 void
-logpb_flush_all_append_pages (THREAD_ENTRY * thread_p,
-			      LOG_FLUSH_TYPE flush_type, LOG_LSA * lsa)
+logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 {
 #if !defined(SERVER_MODE)
   LOG_CS_ENTER (thread_p);
-  logpb_prior_lsa_append_all_list (thread_p);
-  (void) logpb_flush_all_append_pages_helper (thread_p);
+  logpb_flush_pages_direct (thread_p);
   LOG_CS_EXIT ();
 #else /* SERVER_MODE */
   int rv;
   int ret;
-  struct timeval start_time = {
-    0, 0
-  };
-  struct timeval end_time = {
-    0, 0
-  };
-  double elapsed;
+  struct timeval start_time = { 0, 0 };
+  struct timeval end_time = { 0, 0 };
+  struct timeval tmp_timeval = { 0, 0 };
+  struct timespec to = { 0, 0 };
+  int max_wait_time_in_msec = 1000;
+  int elapsed_time_in_msec;
+  bool need_wakeup_LFT, need_wait;
+  bool async_commit, group_commit;
+
+  LOG_LSA nxio_lsa;
+
   LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
 
-  /* While archiving,
-   * log_Gl.append.log_pgptr == NULL
-   * So, log_cs must not be released.
-   */
-  if (flush_type == LOG_FLUSH_DIRECT || !LOG_ISRESTARTED ())
-    {
-#if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "logpb_flush_all_append_pages: "
-		    "[%d]flush direct\n", (int) THREAD_ID ());
-#endif /* CUBRID_DEBUG */
-      assert (LOG_CS_OWN_WRITE_MODE (thread_p));
-
-      logpb_prior_lsa_append_all_list (thread_p);
-      (void) logpb_flush_all_append_pages_helper (thread_p);
-      log_Stat.direct_flush_count++;
-
-      return;
-    }
-
-  assert (LOG_ISRESTARTED ());
   assert (!LOG_CS_OWN_WRITE_MODE (thread_p));
-  assert (flush_type == LOG_FLUSH_NORMAL);
+  assert (flush_lsa != NULL && !LSA_ISNULL (flush_lsa));
 
-  if (prm_get_bool_value (PRM_ID_LOG_ASYNC_COMMIT)
-      && LOG_IS_GROUP_COMMIT_ACTIVE ())
+  if (!LOG_ISRESTARTED () || flush_lsa == NULL || LSA_ISNULL (flush_lsa))
     {
-      log_Stat.async_commit_request_count++;
-      return;
-#if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "logpb_flush_all_append_pages: "
-		    "[%d]just return\n", (int) THREAD_ID ());
-#endif /* CUBRID_DEBUG */
-    }
+      LOG_CS_ENTER (thread_p);
+      logpb_flush_pages_direct (thread_p);
+      LOG_CS_EXIT ();
 
-  rv = pthread_mutex_lock (&thread_Log_flush_thread.lock);
+      return;
+    }
 
   if (thread_Log_flush_thread.is_valid == false)
     {
-      pthread_mutex_unlock (&thread_Log_flush_thread.lock);
-
       LOG_CS_ENTER (thread_p);
-      logpb_prior_lsa_append_all_list (thread_p);
-      (void) logpb_flush_all_append_pages_helper (thread_p);
-      log_Stat.direct_flush_count++;
+      logpb_flush_pages_direct (thread_p);
       LOG_CS_EXIT ();
 
       return;
     }
 
-  if (lsa != NULL)
+  async_commit = prm_get_bool_value (PRM_ID_LOG_ASYNC_COMMIT);
+  group_commit = LOG_IS_GROUP_COMMIT_ACTIVE ();
+  if (async_commit == true && group_commit == true)
     {
-      LOG_CS_ENTER (thread_p);
-      if (LSA_LE (lsa, &log_Gl.append.nxio_lsa))
-	{
-	  /* It doesn't necessary for commit to flush log */
-	  LOG_CS_EXIT ();
-	  pthread_mutex_unlock (&thread_Log_flush_thread.lock);
-	  return;
-	}
-      LOG_CS_EXIT ();
+      /* async & group commit, just return */
+
+      log_Stat.async_commit_request_count++;
+      log_Stat.gc_commit_request_count++;
+
+      need_wakeup_LFT = false;
+      need_wait = false;
+    }
+  else if (async_commit == true && group_commit == false)
+    {
+      /* async commit: wakeup LFT and return */
+
+      log_Stat.async_commit_request_count++;
+
+      need_wakeup_LFT = true;
+      need_wait = false;
+    }
+  else if (async_commit == false && group_commit == true)
+    {
+      /* group commit: wait */
+
+      log_Stat.gc_commit_request_count++;
+
+      need_wakeup_LFT = false;
+      need_wait = true;
+    }
+  else
+    {
+      /* normal commit: wakeup LFT and wait */
+      need_wakeup_LFT = true;
+      need_wait = true;
     }
 
-  if (!LOG_IS_GROUP_COMMIT_ACTIVE ())
+  if (need_wakeup_LFT == true)
     {
-      thread_Log_flush_thread.is_log_flush_force = true;
-      pthread_cond_signal (&thread_Log_flush_thread.cond);
-
-#if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "logpb_flush_all_append_pages: "
-		    "[%d]wakeup flush thread\n", (int) THREAD_ID ());
-#endif /* CUBRID_DEBUG */
+      thread_wakeup_log_flush_thread ();
     }
 
-  rv = pthread_mutex_lock (&group_commit_info->gc_mutex);
-  pthread_mutex_unlock (&thread_Log_flush_thread.lock);
-
-  if (!prm_get_bool_value (PRM_ID_LOG_ASYNC_COMMIT))
+  if (need_wait == true)
     {
-      ++(group_commit_info->waiters);
-#if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "logpb_flush_all_append_pages: "
-		    "[%d]cond wait, flush_type(%d) waiters(%d)\n",
-		    (int) THREAD_ID (),
-		    flush_type, group_commit_info->waiters);
-#endif /* CUBRID_DEBUG */
-      if (LOG_IS_GROUP_COMMIT_ACTIVE ())
+      nxio_lsa = logpb_get_nxio_lsa ();
+
+      rv = pthread_mutex_lock (&group_commit_info->gc_mutex);
+
+      elapsed_time_in_msec = 0;
+      while (LSA_LT (&nxio_lsa, flush_lsa))
 	{
+	  if (elapsed_time_in_msec > 0)
+	    {
+	      thread_wakeup_log_flush_thread ();
+	    }
+
 	  gettimeofday (&start_time, NULL);
-	}
+	  (void) timeval_add_msec (&tmp_timeval, &start_time,
+				   max_wait_time_in_msec);
+	  (void) timeval_to_timespec (&to, &tmp_timeval);
 
-      ret = pthread_cond_wait (&group_commit_info->gc_cond,
-			       &group_commit_info->gc_mutex);
+	  ret = pthread_cond_timedwait (&group_commit_info->gc_cond,
+					&group_commit_info->gc_mutex, &to);
 
-      if (LOG_IS_GROUP_COMMIT_ACTIVE ())
-	{
 	  gettimeofday (&end_time, NULL);
-	  elapsed = LOG_GET_ELAPSED_TIME (end_time, start_time);
-	  log_Stat.gc_total_wait_time += elapsed;
-	  log_Stat.gc_commit_request_count++;
+	  elapsed_time_in_msec =
+	    timeval_diff_in_msec (&end_time, &start_time);
+	  log_Stat.gc_total_wait_time += elapsed_time_in_msec;
+
+	  nxio_lsa = logpb_get_nxio_lsa ();
 	}
 
-#if defined(CUBRID_DEBUG)
-      {
-	long temp = 1;
-
-	if (log_Stat.gc_commit_request_count != 0)
-	  temp = log_Stat.gc_commit_request_count;
-
-	er_log_debug (ARG_FILE_LINE,
-		      "logpb_flush_all_append_pages: "
-		      "avg gc wait time(%f)\n",
-		      log_Stat.gc_total_wait_time / temp);
-      }
-
-#endif /* CUBRID_DEBUG */
+      pthread_mutex_unlock (&group_commit_info->gc_mutex);
     }
 
-  pthread_mutex_unlock (&group_commit_info->gc_mutex);
 #endif /* SERVER_MODE */
 }
 
@@ -5458,7 +5461,7 @@ logpb_invalid_all_append_pages (THREAD_ENTRY * thread_p)
        * Somehow we already have an append page, flush all current append page
        * and start form scratch
        */
-      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+      logpb_flush_pages_direct (thread_p);
       logpb_free_page (thread_p, log_Gl.append.log_pgptr);
       log_Gl.append.log_pgptr = NULL;
     }
@@ -5486,19 +5489,17 @@ logpb_invalid_all_append_pages (THREAD_ENTRY * thread_p)
 void
 logpb_flush_log_for_wal (THREAD_ENTRY * thread_p, const LOG_LSA * lsa_ptr)
 {
-  if (LOG_NEED_WAL (lsa_ptr))
+  if (logpb_need_wal (lsa_ptr))
     {
       mnt_log_wals (thread_p);
 
       LOG_CS_ENTER (thread_p);
-      if (LOG_NEED_WAL (lsa_ptr))
-	{
-	  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
-	}
+      logpb_flush_pages_direct (thread_p);
       LOG_CS_EXIT ();
 
 #if defined(CUBRID_DEBUG)
-      if (LOG_NEED_WAL (lsa_ptr) && !LSA_EQ (&log_Gl.rcv_phase_lsa, lsa_ptr))
+      if (logpb_need_wal (lsa_ptr)
+	  && !LSA_EQ (&log_Gl.rcv_phase_lsa, lsa_ptr))
 	{
 	  er_log_debug (ARG_FILE_LINE,
 			"log_wal: SYSTEM ERROR.. DUMP LOG BUFFER\n");
@@ -7229,7 +7230,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
   memset (malloc_arv_hdr_pgptr, 0, LOG_PAGESIZE);
 
   /* Must force the log here to avoid nasty side effects */
-  logpb_flush_all_append_pages_helper (thread_p);
+  logpb_flush_all_append_pages (thread_p);
 
   malloc_arv_hdr_pgptr->hdr.logical_pageid = LOGPB_HEADER_PAGE_ID;
   malloc_arv_hdr_pgptr->hdr.offset = NULL_OFFSET;
@@ -8466,7 +8467,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   LSA_COPY (&chkpt_redo_lsa, &log_Gl.chkpt_redo_lsa);
   pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
 
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+  logpb_flush_pages_direct (thread_p);
 
   /* MARK THE CHECKPOINT PROCESS */
   node = prior_lsa_alloc_and_copy_data (thread_p,
@@ -8741,7 +8742,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
    * Flush the page since we are going to flush the log header which
    * reflects the new location of the last checkpoint log record
    */
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+  logpb_flush_pages_direct (thread_p);
   er_log_debug (ARG_FILE_LINE,
 		"logpb_checkpoint: call logpb_flush_all_append_pages()\n");
 
@@ -9113,7 +9114,7 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid,
     }
 
   LOG_CS_ENTER (thread_p);
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+  logpb_flush_pages_direct (thread_p);
   LOG_CS_EXIT ();
 
   error_code = pgbuf_flush_all_unfixed (thread_p, volid);
@@ -10963,7 +10964,7 @@ logpb_copy_volume (THREAD_ENTRY * thread_p, VOLID from_volid,
   from_vdes = fileio_get_volume_descriptor (from_volid);
 
   /* Flush all dirty pages */
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+  logpb_flush_pages_direct (thread_p);
 
   error_code = pgbuf_flush_all_unfixed (thread_p, from_volid);
   if (error_code != NO_ERROR)
@@ -10995,7 +10996,7 @@ logpb_copy_volume (THREAD_ENTRY * thread_p, VOLID from_volid,
 			    db_creation, to_volchkpt_lsa, false,
 			    DISK_DONT_FLUSH);
 
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+  logpb_flush_pages_direct (thread_p);
   (void) pgbuf_flush_all_unfixed_and_set_lsa_as_null (thread_p,
 						      LOG_DBCOPY_VOLID);
 
@@ -11328,7 +11329,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 		  fileio_dismount (thread_p, to_vdes);
 		  goto error;
 		}
-	      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+	      logpb_flush_pages_direct (thread_p);
 	      error_code =
 		pgbuf_flush_all_unfixed_and_set_lsa_as_null (thread_p,
 							     LOG_DBCOPY_VOLID);
@@ -11653,7 +11654,7 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
   LSA_SET_NULL (&log_Gl.hdr.bkup_level2_lsa);
   strcpy (log_Gl.hdr.prefix_name, to_prefix_logname);
 
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+  logpb_flush_pages_direct (thread_p);
   logpb_flush_header (thread_p);
 
   if (extern_rename == true)
@@ -11821,7 +11822,7 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
        * Now flush every single page of this volume, dismount the volume, rename
        * the volume, and mount the volume
        */
-      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+      logpb_flush_pages_direct (thread_p);
       error_code = pgbuf_flush_all (thread_p, volid);
       if (error_code != NO_ERROR)
 	{
@@ -12581,7 +12582,7 @@ logpb_must_archive_last_log_page (THREAD_ENTRY * thread_p)
 
   log_append_empty_record (thread_p, LOG_DUMMY_FILLPAGE_FORARCHIVE, NULL);
 
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+  logpb_flush_pages_direct (thread_p);
 
   return NO_ERROR;
 }
@@ -12752,158 +12753,6 @@ logpb_initialize_logging_statistics (void)
 }
 
 /*
- * logpb_flush_pages_background - Flush log pages background
- *
- * return: flushed page count
- *
- * NOTE:Flushes pages except first, current and delayed log pages.
- *           Flushing pages in this function and appending log
- *           in logpb_next_append_page are executed concurrently,
- *           because there is no log cs acquired while I/O in this function.
- *           There are 2 threads which can access the buffer which is flushing.
- *           1. log_pbreplace (logpb_next_append_page calls it)
- *           Because flush_running = true, can't replace the buffer.
- *           2. logpb_flush_all_append_pages
- *           Because of flush_run_mutex, can't flush the same buffer.
- *           Now, only one thread can exist flush routine, fileio_writev
- *           Log_writev_append_pages() can be called by 2 threads concurrently.
- *           There is no problem because it calls pwrite() instead of write().
- *
- *           There are two type flushing.
- *           - flushing by LFT(log_flush_pages())
- *           - flushing by normal threads(logpb_flush_all_append_pages)
- *           They must not be executed concurrently because
- *           2 threads can flushes the same page. It's why run mutex exists.
- *           If 2 flushing threads have to be executed concurrently
- *           for increasing performance, mutex for each log buffer is needed.
- */
-void
-logpb_flush_pages_background (THREAD_ENTRY * thread_p)
-{
-  int loop;
-  struct log_buffer *bufptr;
-  bool find_first = false;
-  int flush_count = 0;
-  int flush_expected;
-  LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
-
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
-
-  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
-
-  assert (flush_info->toflush != NULL);
-
-  rv = pthread_mutex_lock (&flush_info->flush_mutex);
-  if (flush_info->num_toflush <= 2)
-    {
-      pthread_mutex_unlock (&flush_info->flush_mutex);
-      return;
-    }
-
-  /* num_toflush can be changed because flush lock is released in loop */
-
-  flush_expected = prm_get_integer_value (PRM_ID_LOG_BG_FLUSH_NUM_PAGES);
-  if (flush_expected == 0)
-    {
-      flush_expected = flush_info->max_toflush;
-    }
-
-  assert (flush_info->num_toflush > 0);
-
-  csect_enter_critical_section (thread_p, &log_Pb.lpb_cs, INF_WAIT);
-
-  find_first = false;
-  for (loop = 0; loop != flush_info->num_toflush; ++loop)
-    {
-      bufptr = LOG_GET_LOG_BUFFER_PTR (flush_info->toflush[loop]);
-
-      if (!bufptr->dirty || bufptr->fcnt > 0)
-	{
-	  continue;
-	}
-
-      if (!find_first)
-	{
-	  find_first = true;
-	  continue;
-	}
-
-      if (flush_count >= flush_expected)
-	{
-	  break;
-	}
-
-      assert (bufptr->dirty && bufptr->fcnt == 0);
-      assert (!bufptr->flush_running);
-
-      /* loop = log_Gl.flush_info.num_toflush - 1 is possible.
-       * Last log page is not fixed between freeing current log page and
-       * allocation of new page
-       * And LFT can flushes it because delayed page always exists.
-       */
-
-      bufptr->flush_running = true;
-      if (logpb_writev_append_pages (thread_p, &flush_info->toflush[loop], 1)
-	  == NULL)
-	{
-	  csect_exit_critical_section (&log_Pb.lpb_cs);
-	  pthread_mutex_unlock (&flush_info->flush_mutex);
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			     "log_flush_pages_bg");
-	  return;
-	}
-
-      bufptr->flush_running = false;
-      bufptr->dirty = false;
-
-      ++flush_count;
-
-      assert (flush_info->toflush[loop] != NULL);
-    }
-
-  /* dual writing (Background archiving) */
-  if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
-    {
-      logpb_write_toflush_pages_to_archive (thread_p);
-    }
-
-  csect_exit_critical_section (&log_Pb.lpb_cs);
-  assert (flush_count < flush_info->num_toflush - 1);
-
-  /* while I/O, to append log can be executed concurrently. */
-  pthread_mutex_unlock (&flush_info->flush_mutex);
-
-  if (flush_count > 0)
-    {
-      log_Stat.total_sync_count++;
-      log_Stat.flush_pages_call_count++;
-      log_Stat.last_flush_count_by_LFT = flush_count;
-      log_Stat.total_flush_count_by_LFT += flush_count;
-
-      if (prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) == 0
-	  || (log_Stat.total_sync_count %
-	      prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) == 0))
-	{
-	  if (fileio_synchronize (thread_p,
-				  log_Gl.append.vdes,
-				  log_Name_active) == NULL_VOLDES)
-	    {
-	      return;
-	    }
-	}
-    }
-  else
-    {
-      log_Stat.flush_pages_call_miss_count++;
-    }
-
-  assert (flush_count <= flush_expected);
-  return;
-}
-
-/*
  * logpb_background_archiving -
  *
  * return:
@@ -13057,20 +12906,11 @@ logpb_dump_parameter (FILE * outfp)
 {
   fprintf (outfp, "Log Parameters:\n");
 
-  fprintf (outfp, "\treplication_meta_flush_interval (sec) : %d\n",
-	   prm_get_integer_value (PRM_ID_LOG_HEADER_FLUSH_INTERVAL));
-
   fprintf (outfp, "\tgroup_commit_interval_msec : %d\n",
 	   prm_get_integer_value (PRM_ID_LOG_GROUP_COMMIT_INTERVAL_MSECS));
 
   fprintf (outfp, "\tasync_commit : %s\n",
 	   prm_get_bool_value (PRM_ID_LOG_ASYNC_COMMIT) ? "on" : "off");
-
-  fprintf (outfp, "\tbg_flush_interval_msecs : %d\n",
-	   prm_get_integer_value (PRM_ID_LOG_BG_FLUSH_INTERVAL_MSECS));
-
-  fprintf (outfp, "\tbg_flush_num_pages : %d\n",
-	   prm_get_integer_value (PRM_ID_LOG_BG_FLUSH_NUM_PAGES));
 }
 
 /*
@@ -13123,28 +12963,6 @@ logpb_dump_runtime (FILE * outfp)
 
   fprintf (outfp, "\tavg group commit wait time = %f\n",
 	   log_Stat.gc_total_wait_time / temp);
-
-  fprintf (outfp, "\tbackground flush count = %ld\n",
-	   log_Stat.flush_pages_call_count);
-
-  fprintf (outfp, "\tbackground flush miss count = %ld\n",
-	   log_Stat.flush_pages_call_miss_count);
-
-  fprintf (outfp, "\tbackground flush pages count = %ld\n",
-	   log_Stat.total_flush_count_by_LFT);
-
-  temp = 1;
-  if (log_Stat.flush_pages_call_count != 0)
-    {
-      temp = log_Stat.flush_pages_call_count;
-    }
-
-  fprintf (outfp, "\tavg background flush pages count = %f\n",
-	   (double) log_Stat.total_flush_count_by_LFT / temp);
-
-  fprintf (outfp, "\tavg background flush hit ratio = %f\n",
-	   (double) log_Stat.flush_pages_call_count /
-	   (temp + log_Stat.flush_pages_call_miss_count));
 
   fprintf (outfp, "\ttotal commit count = %ld\n", log_Stat.commit_count);
 
@@ -13307,6 +13125,9 @@ logpb_get_zip_redo (THREAD_ENTRY * thread_p)
 #endif
 }
 
+/*
+ *
+ */
 static char *
 logpb_get_data_ptr (THREAD_ENTRY * thread_p)
 {
@@ -13340,4 +13161,65 @@ logpb_get_data_ptr (THREAD_ENTRY * thread_p)
 #else
   return log_data_ptr;
 #endif
+}
+
+/*
+ * logpb_get_nxio_lsa -
+ *
+ */
+LOG_LSA
+logpb_get_nxio_lsa (void)
+{
+  volatile INT64 tmp_int64;
+  volatile LOG_LSA nxio_lsa;
+
+#if defined(HAVE_ATOMIC_BUILTINS)
+  tmp_int64 = ATOMIC_INC_64 ((INT64 *) (&log_Gl.append.nxio_lsa), 0);
+  nxio_lsa = *((LOG_LSA *) (&tmp_int64));
+#else
+  rv = pthread_mutex_lock (&log_Gl.append.nxio_lsa_mutex);
+  LSA_COPY (&nxio_lsa, &log_Gl.append.nxio_lsa);
+  pthread_mutex_unlock (&log_Gl.append.nxio_lsa_mutex);
+#endif /* HAVE_ATOMIC_BUILTINS */
+
+  return nxio_lsa;
+}
+
+/*
+ * logpb_set_nxio_lsa -
+ */
+static void
+logpb_set_nxio_lsa (LOG_LSA * lsa)
+{
+  UINT64 tmp_int64;
+
+#if defined(HAVE_ATOMIC_BUILTINS)
+  tmp_int64 = *((INT64 *) (lsa));
+
+  ATOMIC_TAS_64 ((INT64 *) (&log_Gl.append.nxio_lsa), tmp_int64);
+#else
+  rv = pthread_mutex_lock (&log_Gl.append.nxio_lsa_mutex);
+  LSA_COPY (&log_Gl.append.nxio_lsa, lsa);
+  pthread_mutex_unlock (&log_Gl.append.nxio_lsa_mutex);
+#endif /* HAVE_ATOMIC_BUILTINS */
+}
+
+/*
+ * logpb_need_wal -
+ */
+bool
+logpb_need_wal (const LOG_LSA * lsa)
+{
+  LOG_LSA nxio_lsa;
+
+  nxio_lsa = logpb_get_nxio_lsa ();
+
+  if (LSA_LE (&nxio_lsa, lsa))
+    {
+      return true;
+    }
+  else
+    {
+      return false;
+    }
 }

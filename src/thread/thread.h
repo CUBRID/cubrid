@@ -161,7 +161,6 @@ struct daemon_thread_monitor
   int thread_index;
   bool is_valid;
   bool is_running;
-  bool is_log_flush_force;
   pthread_mutex_t lock;
   pthread_cond_t cond;
 };

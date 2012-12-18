@@ -1646,12 +1646,10 @@ shutdown:
   assert_release (thread_p != NULL);
 
   LOG_CS_ENTER (thread_p);
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT, NULL);
+  logpb_flush_pages_direct (thread_p);
 
-  pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
   assert_release (LSA_EQ (&log_Gl.append.nxio_lsa,
 			  &log_Gl.prior_info.prior_lsa));
-  pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
   LOG_CS_EXIT ();
 
   thread_stop_active_workers (THREAD_STOP_LOGWR);

@@ -1439,8 +1439,8 @@ port_win_mutex_init_and_lock (pthread_mutex_t * mutex)
   EnterCriticalSection (css_Internal_mutex_for_mutex_initialize.csp);
   if (mutex->csp != &mutex->cs)
     {
-      /* 
-       * below assert means that lock without pthread_mutex_init 
+      /*
+       * below assert means that lock without pthread_mutex_init
        * or PTHREAD_MUTEX_INITIALIZER
        */
       assert (mutex->csp == NULL);
@@ -1465,8 +1465,8 @@ port_win_mutex_init_and_trylock (pthread_mutex_t * mutex)
   EnterCriticalSection (css_Internal_mutex_for_mutex_initialize.csp);
   if (mutex->csp != &mutex->cs)
     {
-      /* 
-       * below assert means that trylock without pthread_mutex_init 
+      /*
+       * below assert means that trylock without pthread_mutex_init
        * or PTHREAD_MUTEX_INITIALIZER
        */
       assert (mutex->csp == NULL);
@@ -1783,8 +1783,8 @@ pthread_getspecific (pthread_key_t key)
 }
 
 #if !defined(_WIN64)
-/* 
- * The following functions are used to provide atomic operations on 
+/*
+ * The following functions are used to provide atomic operations on
  * Windows 32bit OS. See the comment in porting.h for more information.
  */
 UINT64
@@ -1798,7 +1798,7 @@ win32_compare_exchange64 (UINT64 volatile *val_ptr,
       mov ebx, dword ptr[swap_val]
       mov ecx, dword ptr[swap_val + 4]
       mov eax, dword ptr[cmp_val]
-      mov edx, dword ptr[cmp_val + 4] 
+      mov edx, dword ptr[cmp_val + 4]
       lock cmpxchg8b[esi]
   }
   /* *INDENT-ON* */
@@ -1830,3 +1830,64 @@ win32_exchange64 (UINT64 volatile *ptr, UINT64 new_val)
 #endif /* _WIN64 */
 
 #endif /* WINDOWS */
+
+/*
+ * timeval_diff_in_msec -
+ *
+ *   return: msec
+ *
+ */
+INT64
+timeval_diff_in_msec (const struct timeval * end_time,
+		      const struct timeval * start_time)
+{
+  INT64 msec;
+
+  msec = (end_time->tv_sec - start_time->tv_sec) * 1000LL;
+  msec += (end_time->tv_usec - start_time->tv_usec) / 1000LL;
+
+  return msec;
+}
+
+/*
+ * timeval_add_msec -
+ *   return: NO_ERROR
+ *
+ *   addted_time(out):
+ *   start_time(in):
+ *   msec(in):
+ */
+int
+timeval_add_msec (struct timeval *added_time,
+		  const struct timeval *start_time, int msec)
+{
+  added_time->tv_sec = start_time->tv_sec + msec / 1000LL;
+
+  if (start_time->tv_usec + ((msec % 1000LL) * 1000LL) >= 1000000LL)
+    {
+      added_time->tv_sec += 1;
+    }
+  added_time->tv_usec = (start_time->tv_usec +
+			 ((msec % 1000LL) * 1000LL) % 10000000LL);
+
+  return NO_ERROR;
+}
+
+/*
+ * timeval_to_timespec -
+ *   return: NO_ERROR
+ *
+ *   to(out):
+ *   from(in):
+ */
+int
+timeval_to_timespec (struct timespec *to, const struct timeval *from)
+{
+  assert (to != NULL);
+  assert (from != NULL);
+
+  to->tv_sec = from->tv_sec;
+  to->tv_nsec = from->tv_usec * 1000LL;
+
+  return NO_ERROR;
+}
