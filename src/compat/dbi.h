@@ -788,6 +788,7 @@ extern int db_statement_count (DB_SESSION * session);
 
 extern int db_compile_statement (DB_SESSION * session);
 extern void db_rewind_statement (DB_SESSION * session);
+extern int db_session_is_last_statement (DB_SESSION * session);
 
 extern DB_SESSION_ERROR *db_get_errors (DB_SESSION * session);
 

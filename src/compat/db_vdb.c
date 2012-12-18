@@ -828,6 +828,18 @@ db_rewind_statement (DB_SESSION * session)
 }
 
 /*
+ * db_session_is_last_statement() -
+ * return:
+ * session(in) :
+ */
+int
+db_session_is_last_statement (DB_SESSION * session)
+{
+  assert (session->dimension > 0);
+  return session->dimension == session->stmt_ndx;
+}
+
+/*
  * db_set_client_cache_time() -
  * return:
  * session(in) :

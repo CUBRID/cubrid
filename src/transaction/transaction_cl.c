@@ -80,6 +80,7 @@ int tm_Tran_ID = -1;
  * tm_Is_libcas indicates fn_xxx functions called by libcas_main(i.e, JSP).
  */
 static int tm_Query_timeout = 0;
+static int tm_End_of_queries = 0;
 static bool tm_Is_libcas = false;
 
 /* this is a local list of user-defined savepoints.  It may be updated upon
@@ -1612,6 +1613,26 @@ tran_get_query_timeout (void)
   tm_Query_timeout = -1;
 
   return timeout;
+}
+
+/*
+ * tran_get_end_of_queries() -
+ *   return:
+ */
+int
+tran_get_end_of_queries (void)
+{
+  return tm_End_of_queries;
+}
+
+/*
+ * tran_set_end_of_queries() -
+ *   return:
+ */
+void
+tran_set_end_of_queries (int end_of_queries)
+{
+  tm_End_of_queries = end_of_queries;
 }
 
 /*

@@ -116,6 +116,7 @@ query_execute (const XASL_ID * xasl_id, QUERY_ID * query_idp,
 {
   int level;
   int query_timeout;
+  int end_of_queries;
 
   *list_idp = NULL;
   /* if QO_PARAM_LEVEL indicate no execution, just return */
@@ -127,10 +128,11 @@ query_execute (const XASL_ID * xasl_id, QUERY_ID * query_idp,
     }
 
   query_timeout = tran_get_query_timeout ();
+  end_of_queries = tran_get_end_of_queries ();
   /* send XASL file id and host variables to the server and get QFILE_LIST_ID */
   *list_idp = qmgr_execute_query (xasl_id, query_idp, var_cnt, varptr, flag,
 				  clt_cache_time, srv_cache_time,
-				  query_timeout);
+				  query_timeout, end_of_queries);
 
   if (!*list_idp)
     {
@@ -165,6 +167,7 @@ query_prepare_and_execute (char *stream, int size, QUERY_ID * query_id,
   QFILE_LIST_ID *list_idptr;
   int level;
   int query_timeout;
+  int end_of_queries;
 
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
 
@@ -175,9 +178,11 @@ query_prepare_and_execute (char *stream, int size, QUERY_ID * query_id,
   else
     {
       query_timeout = tran_get_query_timeout ();
+      end_of_queries = tran_get_end_of_queries ();
       list_idptr = qmgr_prepare_and_execute_query (stream, size, query_id,
 						   var_cnt, varptr, flag,
-						   query_timeout);
+						   query_timeout,
+						   end_of_queries);
       if (list_idptr == NULL)
 	{
 	  return er_errid ();

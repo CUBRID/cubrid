@@ -254,7 +254,7 @@ static void qmgr_put_temp_file_into_list (QMGR_TEMP_FILE * temp_file_p);
 static void qmgr_set_query_exec_info_to_tdes (int tran_index,
 					      int query_timeout,
 					      const XASL_ID * xasl_id);
-static void qmgr_reset_query_exec_info (int tran_index);
+static void qmgr_reset_query_exec_info (int tran_index, int end_of_queries);
 
 static bool
 qmgr_is_page_in_temp_file_buffer (PAGE_PTR page_p,
@@ -1624,6 +1624,7 @@ qmgr_check_waiter_and_wakeup (QMGR_TRAN_ENTRY * tran_entry_p,
  *   clt_cache_time(in) :
  *   srv_cache_time(in) :
  *   query_timeout(in) : query_timeout in millisec.
+ *   end_of_queries(in) :
  *
  * Note1: The query result is returned through a list id (actually the list
  * file). Query id is put for further refernece to this query entry.
@@ -1638,7 +1639,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
 		     const DB_VALUE * dbvals_p, QUERY_FLAG * flag_p,
 		     CACHE_TIME * client_cache_time_p,
 		     CACHE_TIME * server_cache_time_p, int query_timeout,
-		     char **qstmt_ptr, char **plan_ptr)
+		     int end_of_queries, char **qstmt_ptr, char **plan_ptr)
 {
   XASL_CACHE_ENTRY *xasl_cache_entry_p;
   QFILE_LIST_CACHE_ENTRY *list_cache_entry_p;
@@ -2179,7 +2180,7 @@ end:
     }
 
 #if defined (SERVER_MODE)
-  qmgr_reset_query_exec_info (tran_index);
+  qmgr_reset_query_exec_info (tran_index, end_of_queries);
 #endif
 
   return list_id_p;
@@ -2196,6 +2197,7 @@ end:
  *   dbval_p(in)      : List of positional values
  *   flag(in)   :
  *   query_timeout(in): set a timeout only if it is positive
+ *   end_of_queries(in) :
  *
  * Note: The specified query is executed and the query result structure
  * which will be basically used for client side cursor operations
@@ -2208,7 +2210,8 @@ QFILE_LIST_ID *
 xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_p,
 				 int xasl_size, QUERY_ID * query_id_p,
 				 int dbval_count, DB_VALUE * dbval_p,
-				 QUERY_FLAG * flag_p, int query_timeout)
+				 QUERY_FLAG * flag_p, int query_timeout,
+				 int end_of_queries)
 {
   QMGR_QUERY_ENTRY *query_p;
   QFILE_LIST_ID *list_id_p;
@@ -2392,7 +2395,7 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_p,
       xmnt_server_start_stats (thread_p, false);
     }
 
-  qmgr_reset_query_exec_info (tran_index);
+  qmgr_reset_query_exec_info (tran_index, end_of_queries);
 
   return list_id_p;
 
@@ -2415,7 +2418,7 @@ error:
 
 #if defined (SERVER_MODE)
 async_error:
-  qmgr_reset_query_exec_info (tran_index);
+  qmgr_reset_query_exec_info (tran_index, end_of_queries);
 
 #endif /* SERVER_MODE */
   *query_id_p = 0;
@@ -5285,9 +5288,10 @@ qmgr_set_query_exec_info_to_tdes (int tran_index, int query_timeout,
  * qmgr_reset_query_exec_info () - reset query_start_time and xasl_id of tdes
  *   return: void
  *   tran_index(in):
+ *   end_of_queries(in):
  */
 static void
-qmgr_reset_query_exec_info (int tran_index)
+qmgr_reset_query_exec_info (int tran_index, int end_of_queries)
 {
   LOG_TDES *tdes_p;
 
@@ -5297,6 +5301,10 @@ qmgr_reset_query_exec_info (int tran_index)
     {
       tdes_p->query_start_time = 0;
       XASL_ID_SET_NULL (&tdes_p->xasl_id);
+      if (end_of_queries)
+	{
+	  tdes_p->query_timeout = 0;
+	}
     }
 }
 

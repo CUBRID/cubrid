@@ -7593,6 +7593,7 @@ db_free_execution_plan (void)
  *   clt_cache_time(in):
  *   srv_cache_time(in):
  *   query_timeout(in):
+ *   end_of_queries(in):
  *
  * NOTE:
  */
@@ -7600,7 +7601,8 @@ QFILE_LIST_ID *
 qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
 		    int dbval_cnt, const DB_VALUE * dbvals,
 		    QUERY_FLAG flag, CACHE_TIME * clt_cache_time,
-		    CACHE_TIME * srv_cache_time, int query_timeout)
+		    CACHE_TIME * srv_cache_time, int query_timeout,
+		    int end_of_queries)
 {
 #if defined(CS_MODE)
   QFILE_LIST_ID *list_id = NULL;
@@ -7651,6 +7653,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
   ptr = or_pack_int (ptr, flag);
   OR_PACK_CACHE_TIME (ptr, clt_cache_time);
   ptr = or_pack_int (ptr, query_timeout);
+  ptr = or_pack_int (ptr, end_of_queries);
 
   req_error = net_client_request_with_callback (NET_SERVER_QM_QUERY_EXECUTE,
 						request,
@@ -7714,7 +7717,8 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
   /* call the server routine of query execute */
   list_id = xqmgr_execute_query (NULL, xasl_id, query_idp, dbval_cnt,
 				 dbvals, &flag, clt_cache_time,
-				 srv_cache_time, query_timeout, NULL, NULL);
+				 srv_cache_time, query_timeout,
+				 end_of_queries, NULL, NULL);
 
   EXIT_SERVER ();
 
@@ -7741,7 +7745,7 @@ QFILE_LIST_ID *
 qmgr_prepare_and_execute_query (char *xasl_buffer, int xasl_size,
 				QUERY_ID * query_idp, int dbval_cnt,
 				DB_VALUE * dbval_ptr, QUERY_FLAG flag,
-				int query_timeout)
+				int query_timeout, int end_of_queries)
 {
 #if defined(CS_MODE)
   QFILE_LIST_ID *regu_result = NULL;
@@ -7781,6 +7785,7 @@ qmgr_prepare_and_execute_query (char *xasl_buffer, int xasl_size,
   ptr = or_pack_int (ptr, senddata_size);
   ptr = or_pack_int (ptr, flag);
   ptr = or_pack_int (ptr, query_timeout);
+  ptr = or_pack_int (ptr, end_of_queries);
 
   ptr = senddata;
   for (i = 0, dbval = dbval_ptr; i < dbval_cnt; i++, dbval++)
@@ -7846,7 +7851,8 @@ qmgr_prepare_and_execute_query (char *xasl_buffer, int xasl_size,
   regu_result = xqmgr_prepare_and_execute_query (NULL, xasl_buffer, xasl_size,
 						 query_idp, dbval_cnt,
 						 dbval_ptr, &flag,
-						 query_timeout);
+						 query_timeout,
+						 end_of_queries);
 
   EXIT_SERVER ();
 

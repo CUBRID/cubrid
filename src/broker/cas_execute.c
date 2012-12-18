@@ -1283,6 +1283,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
       db_set_client_cache_time (session, stmt_id, clt_cache_time);
     }
 
+  tran_set_end_of_queries (true);
   n = db_execute_and_keep_statement (session, stmt_id, &result);
 
 #ifndef LIBCAS_FOR_JSP
@@ -1600,6 +1601,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 	  db_set_client_cache_time (session, stmt_id, clt_cache_time);
 	}
 
+      tran_set_end_of_queries (db_session_is_last_statement (session));
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
       n = db_execute_and_keep_statement (session, stmt_id, &result);
       SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, n);

@@ -317,14 +317,16 @@ extern QFILE_LIST_ID *qmgr_execute_query (const XASL_ID * xasl_id,
 					  QUERY_FLAG flag,
 					  CACHE_TIME * clt_cache_time,
 					  CACHE_TIME * srv_cache_time,
-					  int query_timeout);
+					  int query_timeout,
+					  int end_of_queries);
 extern QFILE_LIST_ID *qmgr_prepare_and_execute_query (char *xasl_buffer,
 						      int xasl_size,
 						      QUERY_ID * query_id,
 						      int dbval_cnt,
 						      DB_VALUE * dbval_ptr,
 						      QUERY_FLAG flag,
-						      int query_timeout);
+						      int query_timeout,
+						      int end_of_queries);
 extern int qmgr_end_query (QUERY_ID query_id);
 extern int qmgr_drop_query_plan (const char *qstmt, const OID * user_oid,
 				 const XASL_ID * xasl_id, bool drop);

@@ -1592,6 +1592,10 @@ FN_RETURN
 fn_execute_batch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 		  T_REQ_INFO * req_info)
 {
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+  set_query_timeout (NULL, 0);
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+
   /* argv[0] : auto commit flag */
   cas_log_write (0, true, "execute_batch %d", argc - 1);
 
@@ -1639,6 +1643,10 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       query_timeout = 0;
     }
 #endif /* !LIBCAS_FOR_JSP */
+
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+  set_query_timeout (srv_handle, 0);
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
   cas_log_write_nonl (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
 		      "execute_array srv_h_id %d %d ", srv_h_id,
