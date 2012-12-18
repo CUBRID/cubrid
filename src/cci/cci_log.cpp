@@ -39,6 +39,7 @@
 #include <windows.h>
 #include <time.h>
 #include <direct.h>
+#include <io.h>
 #else
 #include <sys/time.h>
 #include <sys/stat.h>
@@ -59,6 +60,7 @@ static const int LOG_BUFFER_SIZE = 1024 * 20;
 static const int LOG_ER_OPEN = -1;
 static const long int LOG_FLUSH_SIZE = 1024 * 1024; /* byte */
 static const long int LOG_FLUSH_USEC = 1 * 1000000; /* usec */
+static const long int LOG_CHECK_FILE_INTERVAL_USEC = 10 * 1000000; /* usec */
 static const char *cciLogLevelStr[] =
 { "OFF", "ERROR", "WARN", "INFO", "DEBUG" };
 
@@ -69,7 +71,7 @@ class _Logger
 public:
   _Logger(const char *path) :
     base(path), roleTime(time(0)), level(CCI_LOG_LEVEL_INFO),
-    unflushedBytes(0), nextFlushTime(0), forceFlush(false)
+    unflushedBytes(0), nextFlushTime(0), nextCheckTime(0), forceFlush(false)
   {
   }
 
@@ -111,6 +113,7 @@ public:
         return;
       }
 
+    checkFileIsOpen();
     dailyRole();
     logInternal(level, msg);
   }
@@ -163,19 +166,19 @@ private:
     struct tm cal;
     time_t t;
 
-    gettimeofday (&tv, NULL);
+    gettimeofday(&tv, NULL);
     t = tv.tv_sec;
 
-    localtime_r (&t, &cal);
+    localtime_r(&t, &cal);
     cal.tm_year += 1900;
     cal.tm_mon += 1;
 
     char buf[128];
-    unsigned long tid = gettid ();
-    snprintf (buf, 128, "%d-%02d-%02d %02d:%02d:%02d.%03d [TID:%lu] [%5s]",
-              cal.tm_year, cal.tm_mon, cal.tm_mday, cal.tm_hour, cal.tm_min,
-              cal.tm_sec, (int)(tv.tv_usec / 1000), tid,
-              cciLogLevelStr[level]);
+    unsigned long tid = gettid();
+    snprintf(buf, 128, "%d-%02d-%02d %02d:%02d:%02d.%03d [TID:%lu] [%5s]",
+        cal.tm_year, cal.tm_mon, cal.tm_mday, cal.tm_hour, cal.tm_min,
+        cal.tm_sec, (int)(tv.tv_usec / 1000), tid,
+        cciLogLevelStr[level]);
 
     write(buf);
   }
@@ -275,7 +278,27 @@ private:
   {
     struct timeval tv;
     gettimeofday(&tv, NULL);
-    return tv.tv_usec;
+    return tv.tv_sec * 1000000 + tv.tv_usec;
+  }
+
+  void checkFileIsOpen()
+  {
+    critical.lock();
+    long int currentTime = now();
+    if (nextCheckTime == 0 || currentTime >= nextCheckTime)
+      {
+        if (access(base.c_str(), F_OK) != 0)
+          {
+            if (out.is_open())
+              {
+                out.close();
+              }
+            open();
+          }
+
+        nextCheckTime = currentTime + LOG_CHECK_FILE_INTERVAL_USEC;
+      }
+    critical.unlock();
   }
 
 private:
@@ -286,6 +309,7 @@ private:
   CCI_LOG_LEVEL level;
   long int unflushedBytes;
   long int nextFlushTime;
+  long int nextCheckTime;
   bool forceFlush;
 };
 
