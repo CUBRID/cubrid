@@ -471,6 +471,8 @@ main (int argc, char *argv[])
   char func_code = 0x01;
   int error;
 
+  bool is_first = true;
+
   prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
 
 #if !defined(WINDOWS)
@@ -523,11 +525,15 @@ main (int argc, char *argv[])
   stripped_column_name = shm_appl->stripped_column_name;
 
 conn_retry:
-  do
+  if (is_first == false)
     {
-      SLEEP_SEC (1);
+      do
+	{
+	  SLEEP_SEC (1);
+	}
+      while (as_info->uts_status == UTS_STATUS_RESTART);
     }
-  while (as_info->uts_status == UTS_STATUS_RESTART);
+  is_first = false;
 
   net_timeout_set (-1);
 
