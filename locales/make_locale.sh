@@ -134,10 +134,9 @@ echo "Removing locale C source file $CUBRID/locales/loclib/locale.c"
 rm -f $CUBRID/locales/loclib/locale.c
 echo "Done."
 
-echo "The library for $SELECTED_LOCALE has been created."
-echo "SUCCESS!"
-echo "Locale library for $SELECTED_LOCALE can be found at $CUBRID/lib/libcubrid_$SELECTED_LOCALE.so"
-echo "Edit $CUBRID/conf/cubrid_locales.txt to perform complete integration with CUBRID"
+echo "The library for selected locale(s) has been created at $CUBRID/lib/libcubrid_$SELECTED_LOCALE.so"
+echo "To check compatibility and synchronize your existing databases, run:"
+echo "	cubrid synccolldb <database-name>"
 exit 0
 
 :error_target

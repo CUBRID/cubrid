@@ -140,10 +140,9 @@ echo Removing locale C source file %CUBRID%\locales\loclib\locale.c ...
 del /Q %CUBRID%\locales\loclib\locale.c
 echo Done!
 
-echo The library for the selected locale(s) has been created.
-echo SUCCESS!
-echo Locale library for the selected locale can be found at %CUBRID%\lib\libcubrid_%SELECTED_LOCALE%.dll
-echo Edit %CUBRID%\conf\cubrid_locales.txt to perform integration with CUBRID.
+echo The library for the selected locale(s) has been created at %CUBRID%\lib\libcubrid_%SELECTED_LOCALE%.dll
+echo To check compatibility and synchronize your existing databases, run:
+echo "cubrid synccolldb <database-name>"
 
 goto :eof
 
