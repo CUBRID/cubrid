@@ -499,8 +499,8 @@ typedef struct merge_proc_node MERGE_PROC_NODE;
 struct merge_proc_node
 {
   XASL_NODE *update_xasl;	/* XASL for UPDATE part */
-  XASL_NODE *delete_xasl;	/* XASL for UPDATE DELETE part */
   XASL_NODE *insert_xasl;	/* XASL for INSERT part */
+  bool has_delete;		/* MERGE statement has DELETE */
 };
 
 typedef enum

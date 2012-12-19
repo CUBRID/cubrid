@@ -84,18 +84,6 @@ typedef struct set_numbering_node_etc_info
   DB_VALUE **ordbynum_valp;
 } SET_NUMBERING_NODE_ETC_INFO;
 
-typedef struct name_to_derived_path_info
-{
-  UINTPTR old_spec_id;
-  PT_NODE *new_spec_name;
-} NAME_TO_DERIVED_PATH_INFO;
-
-typedef struct
-{
-  PT_NODE *spec;
-  bool found;
-} PT_IS_SPEC_IN_LIST_INFO;
-
 typedef struct pred_regu_variable_p_list_node *PRED_REGU_VARIABLE_P_LIST,
   PRED_REGU_VARIABLE_P_LIST_NODE;
 struct pred_regu_variable_p_list_node
@@ -288,8 +276,6 @@ static bool validate_regu_key_function_index (REGU_VARIABLE * regu_var);
 static XASL_NODE *pt_to_merge_update_xasl (PARSER_CONTEXT * parser,
 					   PT_NODE * statement,
 					   PT_NODE ** non_null_attrs);
-static XASL_NODE *pt_to_merge_delete_xasl (PARSER_CONTEXT * parser,
-					   PT_NODE * statement);
 static XASL_NODE *pt_to_merge_insert_xasl (PARSER_CONTEXT * parser,
 					   PT_NODE * statement,
 					   PT_NODE * non_null_attrs,
@@ -730,12 +716,9 @@ static SORT_LIST *pt_to_order_siblings_by (PARSER_CONTEXT * parser,
 static SORT_LIST *pt_agg_orderby_to_sort_list (PARSER_CONTEXT * parser,
 					       PT_NODE * order_list,
 					       PT_NODE * agg_args_list);
-static PT_NODE *pt_name_to_derived_path_pre (PARSER_CONTEXT * parser,
-					     PT_NODE * node, void *arg,
-					     int *continue_walk);
-static PT_NODE *pt_is_spec_in_list_pre (PARSER_CONTEXT * parser,
-					PT_NODE * node, void *arg,
-					int *continue_walk);
+static PT_NODE *pt_substitute_assigned_name_node (PARSER_CONTEXT * parser,
+						  PT_NODE * node, void *arg,
+						  int *continue_walk);
 
 
 static void
@@ -22091,9 +22074,58 @@ pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
       return NULL;
     }
 
+  /* substitute updated columns in delete pred and add it to select list */
+  if (info->update.has_delete)
+    {
+      PT_NODE *node, *del_search_cond;
+      del_search_cond =
+	parser_copy_tree_list (parser, info->update.del_search_cond);
+      if (del_search_cond)
+	{
+	  (void) parser_walk_tree (parser, del_search_cond, NULL, NULL,
+				   pt_substitute_assigned_name_node,
+				   (void*) info->update.assignment);
+	}
+      else
+	{
+	  /* delete where (true) */
+	  del_search_cond = pt_make_integer_value (parser, 1);
+	  if (del_search_cond == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      return NULL;
+	    }
+	}
+
+      node = parser_new_node (parser, PT_EXPR);
+      if (node)
+	{
+	  node->info.expr.op = PT_NE;
+	  node->info.expr.arg1 = del_search_cond;
+	  node->info.expr.arg2 = pt_make_integer_value (parser, 0);
+	  if (node->info.expr.arg2 == NULL)
+	    {
+	      parser_free_tree (parser, node);
+	      parser_free_tree (parser, del_search_cond);
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      return NULL;
+	    }
+	}
+      else
+	{
+	  parser_free_tree (parser, del_search_cond);
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  return NULL;
+	}
+
+      node->next = select_list;
+      select_list = node;
+    }
+
   /* set select list */
   statement->info.query.q.select.list =
     parser_copy_tree_list (parser, select_list);
+
   /* set spec list */
   statement->info.query.q.select.from =
     parser_copy_tree_list (parser, info->into);
@@ -22166,174 +22198,6 @@ pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
 
   /* we don't need to keep this query */
   statement->cannot_prepare = 1;
-
-  return statement;
-}
-
-/*
- * pt_to_merge_delete_query () - Creates a query for MERGE DELETE part
- *   return: resulted query, or NULL if error
- *   parser(in): parser context
- *   info(in): MERGE statement info
- *   updated_oids(in): list of OIDs that were updated
- *
- * Note: Prepends the class oid and the instance oid onto the select list for
- * use during the delete operation.
- * If the operation is a server side delete, the prepended class oid is
- * put in the list file otherwise the class oid is a hidden column and
- * not put in the list file.
- */
-PT_NODE *
-pt_to_merge_delete_query (PARSER_CONTEXT * parser, PT_MERGE_INFO * info,
-			  QFILE_LIST_ID * updated_oids)
-{
-  PT_NODE *derived, *spec, *statement, *list, *where;
-  NAME_TO_DERIVED_PATH_INFO path_info;
-
-  statement = parser_new_node (parser, PT_SELECT);
-  derived = parser_new_node (parser, PT_SELECT);
-  spec = parser_new_node (parser, PT_SPEC);
-  if (!statement || !derived || !spec)
-    {
-      PT_INTERNAL_ERROR (parser, "allocate new node");
-      return NULL;
-    }
-
-  /* dummy subquery for object fetch */
-  derived->info.query.q.select.from =
-    parser_copy_tree_list (parser, info->into);
-  /* add oid, class oid */
-  if (info->flags & PT_MERGE_INFO_SERVER_OP)
-    {
-      derived = pt_add_row_classoid_name (parser, derived, true);
-    }
-  derived = pt_add_row_oid_name (parser, derived);
-  /* set push list */
-  derived->info.query.q.select.push_list = updated_oids;
-  PT_SELECT_INFO_SET_FLAG (derived, PT_SELECT_INFO_LIST_PUSHER);
-
-  /* derived table spec node */
-  spec->info.spec.id = (UINTPTR) spec;
-  spec->info.spec.derived_table = derived;
-  spec->info.spec.derived_table_type = PT_IS_SUBQUERY;
-  spec->info.spec.range_var = pt_name (parser, "av1222");
-  spec->info.spec.as_attr_list = pt_name (parser, "av_1");
-  if (!spec->info.spec.range_var || !spec->info.spec.as_attr_list)
-    {
-      PT_INTERNAL_ERROR (parser, "allocate new node");
-      return NULL;
-    }
-  if (info->flags & PT_MERGE_INFO_SERVER_OP)
-    {
-      spec->info.spec.as_attr_list->next = pt_name (parser, "av_2");
-      if (!spec->info.spec.as_attr_list->next)
-	{
-	  PT_INTERNAL_ERROR (parser, "allocate new node");
-	  return NULL;
-	}
-    }
-  spec->next = parser_copy_tree_list (parser, info->using);
-
-  /* make select list */
-  list = parser_copy_tree_list (parser, spec->info.spec.as_attr_list);
-  /* add LOB attributes if server side operation */
-  if (info->flags & PT_MERGE_INFO_SERVER_OP)
-    {
-      PT_NODE *flat;
-      DB_OBJECT *obj;
-      DB_ATTRIBUTE *attr;
-
-      flat = info->into->info.spec.flat_entity_list;
-      obj = flat->info.name.db_object;
-      if (obj)
-	{
-	  attr = db_get_attributes (obj);
-	  while (attr)
-	    {
-	      if (attr->type->id == DB_TYPE_BLOB
-		  || attr->type->id == DB_TYPE_CLOB)
-		{
-		  PT_NODE *path = parser_new_node (parser, PT_DOT_);
-		  if (!path)
-		    {
-		      PT_INTERNAL_ERROR (parser, "allocate new node");
-		      return NULL;
-		    }
-		  path->info.expr.arg1 = pt_name (parser, "av_1");
-		  path->info.expr.arg2 = pt_name (parser, attr->header.name);
-		  if (!path->info.expr.arg1 || !path->info.expr.arg2)
-		    {
-		      PT_INTERNAL_ERROR (parser, "allocate new node");
-		      return NULL;
-		    }
-		  path->info.expr.arg2->type_enum =
-		    pt_db_to_type_enum (attr->type->id);
-		  list = parser_append_node (path, list);
-		}
-	      attr = db_attribute_next (attr);
-	    }
-	}
-    }
-
-  /* set select list and spec */
-  statement->info.query.q.select.list = list;
-  statement->info.query.q.select.from = spec;
-
-  /* make search condition */
-  if (info->update.del_search_cond)
-    {
-      if (info->search_cond)
-	{
-	  where = parser_new_node (parser, PT_EXPR);
-	  if (where)
-	    {
-	      where->info.expr.op = PT_AND;
-	      where->info.expr.arg1 =
-		parser_copy_tree_list (parser, info->search_cond);
-	      where->info.expr.arg2 =
-		parser_copy_tree_list (parser, info->update.del_search_cond);
-	    }
-	  else
-	    {
-	      PT_INTERNAL_ERROR (parser, "allocate new node");
-	      return NULL;
-	    }
-	}
-      else
-	{
-	  where =
-	    parser_copy_tree_list (parser, info->update.del_search_cond);
-	}
-    }
-  else
-    {
-      where = parser_copy_tree_list (parser, info->search_cond);
-    }
-
-  /* translate predicate to derived spec */
-  path_info.old_spec_id = info->into->info.spec.id;
-  path_info.new_spec_name = pt_name (parser, "av_1");
-  if (!path_info.new_spec_name)
-    {
-      PT_INTERNAL_ERROR (parser, "allocate new node");
-      return NULL;
-    }
-  where = parser_walk_tree (parser, where, pt_name_to_derived_path_pre,
-			    &path_info, NULL, NULL);
-  parser_free_tree (parser, path_info.new_spec_name);
-
-  /* set search condition */
-  statement->info.query.q.select.where = where;
-
-  statement->info.query.upd_del_class_cnt = 1;
-  statement->info.query.composite_locking = PT_COMPOSITE_LOCKING_DELETE;
-  PT_SELECT_INFO_SET_FLAG (statement, PT_SELECT_INFO_IS_MERGE_QUERY);
-
-  /* we don't need to keep this query */
-  statement->cannot_prepare = 1;
-
-  /* needs compile */
-  statement = pt_compile (parser, statement);
 
   return statement;
 }
@@ -22492,15 +22356,6 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	{
 	  return NULL;
 	}
-      if (statement->info.merge.update.has_delete)
-	{
-	  /* generate XASL for UPDATE DELETE part */
-	  delete_xasl = pt_to_merge_delete_xasl (parser, statement);
-	  if (delete_xasl == NULL)
-	    {
-	      return NULL;
-	    }
-	}
     }
 
   if (statement->info.merge.insert.value_clauses)
@@ -22517,8 +22372,8 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 
   /* finalize XASL */
   xasl->proc.merge.update_xasl = update_xasl;
-  xasl->proc.merge.delete_xasl = delete_xasl;
   xasl->proc.merge.insert_xasl = insert_xasl;
+  xasl->proc.merge.has_delete = statement->info.merge.update.has_delete;
   xasl->qstmt = statement->alias_print;
 
   if ((oid = ws_identifier (db_get_user ())) != NULL)
@@ -22582,7 +22437,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   PT_NODE *from = NULL;
   int cl = 0, no_vals = 0, no_consts = 0;
   int error = NO_ERROR;
-  int a = 0, assign_idx = 0;
+  int a = 0, assign_idx = 0, attr_offset = 0;
   PT_NODE *att_name_node = NULL;
   DB_VALUE *val = NULL;
   DB_ATTRIBUTE *attr = NULL;
@@ -22600,15 +22455,19 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   PT_NODE *const_values = NULL;
   OID *oid = NULL;
   PT_MERGE_INFO *info = &statement->info.merge;
+  PT_NODE *copy_assigns, *save_assigns;
 
   from = parser_copy_tree (parser, info->into);
   from = parser_append_node (parser_copy_tree_list (parser, info->using),
-			     from);
+      goto cleanup;
+    }
 
-  if (from == NULL || from->node_type != PT_SPEC
-      || from->info.spec.range_var == NULL)
-    {
-      PT_INTERNAL_ERROR (parser, "invalid spec");
+  /* make a copy of assignment list to be able to iterate later */
+  copy_assigns = parser_copy_tree_list (parser, info->update.assignment);
+
+  /* get assignments lists for select statement generation */
+  error =
+    pt_get_assignment_lists (parser, &select_names, &select_values,
       goto cleanup;
     }
 
@@ -22620,10 +22479,19 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   if (error != NO_ERROR)
     {
       PT_INTERNAL_ERROR (parser, "merge update");
+      parser_free_tree (parser, copy_assigns);
       goto cleanup;
     }
 
+  /* save assignment list and replace within statement with the copy */
+  save_assigns = info->update.assignment;
+  info->update.assignment = copy_assigns;
+
   aptr_statement = pt_to_merge_update_query (parser, select_values, info);
+
+  /* restore assignment list and destroy the copy */
+  info->update.assignment = save_assigns;
+  parser_free_tree (parser, copy_assigns);
 
   /* restore tree structure; pt_get_assignment_lists() */
   pt_restore_assignment_links (info->update.assignment, links, -1);
@@ -22648,14 +22516,6 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  error = ER_GENERIC_ERROR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	}
-      goto cleanup;
-    }
-  /* temporary: don't allow target to be used in source spec */
-  if (pt_is_spec_in_list (parser, info->into,
-			  aptr_statement->info.query.q.select.from->next))
-    {
-      error = MSGCAT_SEMANTIC_MERGE_TARGET_IN_SOURCE_SPEC;
-      PT_ERRORm (parser, info->using, MSGCAT_SET_PARSER_SEMANTIC, error);
       goto cleanup;
     }
 
@@ -22986,13 +22846,14 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 			     &no_consts, info->update.assignment, &links);
   if (error != NO_ERROR)
     {
+      PT_INTERNAL_ERROR (parser, "merge update");
       goto cleanup;
     }
   /* need to jump upd_del_class_cnt OID-CLASS OID pairs */
+  attr_offset = aptr_statement->info.query.upd_del_class_cnt * 2
+		+ (info->update.has_delete ? 1 : 0);
   error = pt_to_constraint_pred (parser, xasl, info->into,
-				 *non_null_attrs, select_names,
-				 aptr_statement->info.query.
-				 upd_del_class_cnt * 2);
+				 *non_null_attrs, select_names, attr_offset);
   pt_restore_assignment_links (info->update.assignment, links, -1);
   if (error != NO_ERROR)
     {
@@ -23093,15 +22954,6 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  error = ER_GENERIC_ERROR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	}
-      return NULL;
-    }
-  /* temporary: don't allow target to be used in source spec */
-  if (pt_is_spec_in_list (parser, statement->info.merge.into,
-			  aptr_statement->info.query.q.select.from))
-    {
-      error = MSGCAT_SEMANTIC_MERGE_TARGET_IN_SOURCE_SPEC;
-      PT_ERRORm (parser, statement->info.merge.using,
-		 MSGCAT_SET_PARSER_SEMANTIC, error);
       return NULL;
     }
 
@@ -23308,321 +23160,34 @@ cleanup:
 }
 
 /*
- * pt_to_merge_delete_xasl () - Generate XASL for UPDATE DELETE part of MERGE
+ * pt_substitute_assigned_name_node () - substitute name node with assigned
+ *					 expression
  *   return:
  *   parser(in):
- *   statement(in):
+ *   node(in):
+ *   arg(in/out):
+ *   continue_walk(in):
  */
-static XASL_NODE *
-pt_to_merge_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
+PT_NODE *
+pt_substitute_assigned_name_node (PARSER_CONTEXT * parser, PT_NODE * node,
+				  void *arg, int *continue_walk)
 {
-  XASL_NODE *xasl = NULL, *aptr;
-  DELETE_PROC_NODE *delete_ = NULL;
-  UPDDEL_CLASS_INFO *del_cls = NULL;
-  PT_NODE *aptr_statement = NULL;
-  PT_NODE *from;
-  PT_NODE *cl_name_node;
-  HFID *hfid;
-  OID *class_oid, *oid;
-  DB_OBJECT *class_obj;
-  int no_subclasses = 0, cl;
-  int error = NO_ERROR;
-  int save_cost;
-  PT_NODE *hint_arg, *flat = NULL;
-  PT_MERGE_INFO *info = &statement->info.merge;
+  PT_NODE *assignments = (PT_NODE *) arg;
+  PT_ASSIGNMENTS_HELPER ea;
 
-  from = parser_copy_tree (parser, info->into);
-  from = parser_append_node (parser_copy_tree_list (parser, info->using),
-			     from);
-
-  if (from == NULL || from->node_type != PT_SPEC
-      || from->info.spec.range_var == NULL)
+  if (node->node_type == PT_NAME)
     {
-      PT_INTERNAL_ERROR (parser, "invalid spec");
-      goto cleanup;
-    }
-
-  aptr_statement = pt_to_merge_delete_query (parser, info, NULL);
-  if (aptr_statement == NULL)
-    {
-      error = er_errid ();
-      if (error == NO_ERROR)
+      pt_init_assignments_helper (parser, &ea, assignments);
+      while (pt_get_next_assignment (&ea) != NULL)
 	{
-	  error = ER_GENERIC_ERROR;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	}
-      goto cleanup;
-    }
-  aptr_statement = mq_translate (parser, aptr_statement);
-  if (aptr_statement == NULL)
-    {
-      error = er_errid ();
-      if (error == NO_ERROR)
-	{
-	  error = ER_GENERIC_ERROR;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	}
-      goto cleanup;
-    }
-  /* specs already checked at update subquery */
-
-  /* set follow plan cost to zero */
-  save_cost = qo_plan_get_cost_fn ("follow");
-  (void) qo_plan_set_cost_fn ("follow", 0);
-
-  xasl = pt_make_aptr_parent_node (parser, aptr_statement, DELETE_PROC);
-
-  /* restore follow plan cost */
-  (void) qo_plan_set_cost_fn ("follow", save_cost);
-
-  if (xasl == NULL || xasl->aptr_list == NULL)
-    {
-      error = er_errid ();
-      if (error == NO_ERROR)
-	{
-	  error = ER_GENERIC_ERROR;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	}
-      goto cleanup;
-    }
-
-  delete_ = &xasl->proc.delete_;
-
-  delete_->no_classes = 1;
-  delete_->classes = regu_upddel_class_info_array_alloc (1);
-  if (delete_->classes == NULL)
-    {
-      error = er_errid ();
-      if (error == NO_ERROR)
-	{
-	  error = ER_GENERIC_ERROR;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	}
-      goto cleanup;
-    }
-
-  del_cls = &delete_->classes[0];
-  del_cls->att_id = NULL;
-  del_cls->no_attrs = 0;
-  del_cls->has_uniques = 1;
-
-  /* count subclasses */
-  no_subclasses = 0;
-  cl_name_node = from->info.spec.flat_entity_list;
-  while (cl_name_node)
-    {
-      no_subclasses++;
-      cl_name_node = cl_name_node->next;
-    }
-  del_cls->no_subclasses = no_subclasses;
-
-  del_cls->class_oid = regu_oid_array_alloc (no_subclasses);
-  if (del_cls->class_oid == NULL)
-    {
-      error = er_errid ();
-      if (error == NO_ERROR)
-	{
-	  error = ER_GENERIC_ERROR;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	}
-      goto cleanup;
-    }
-  del_cls->class_hfid = regu_hfid_array_alloc (no_subclasses);
-  if (del_cls->class_hfid == NULL)
-    {
-      error = er_errid ();
-      if (error == NO_ERROR)
-	{
-	  error = ER_GENERIC_ERROR;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	}
-      goto cleanup;
-    }
-
-  cl_name_node = from->info.spec.flat_entity_list;
-  class_obj = cl_name_node->info.name.db_object;
-  error = sm_partitioned_class_type (class_obj, &del_cls->needs_pruning, NULL,
-				     NULL);
-  if (error != NO_ERROR)
-    {
-      goto cleanup;
-    }
-
-  cl = 0;
-  while (cl_name_node)
-    {
-      class_obj = cl_name_node->info.name.db_object;
-      /* get class oid */
-      class_oid = ws_identifier (class_obj);
-      if (class_oid == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_HEAP_UNKNOWN_OBJECT, 3, 0, 0, 0);
-	  error = ER_HEAP_UNKNOWN_OBJECT;
-	  goto cleanup;
-	}
-      /* get hfid */
-      hfid = sm_get_heap (class_obj);
-      if (hfid == NULL)
-	{
-	  error = er_errid ();
-	  if (error == NO_ERROR)
+	  if (pt_name_equal (parser, ea.lhs, node))
 	    {
-	      error = ER_GENERIC_ERROR;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	      parser_free_tree (parser, node);
+	      node = parser_copy_tree_list (parser, ea.rhs);
+	      break;
 	    }
-	  goto cleanup;
-	}
-      COPY_OID (&del_cls->class_oid[cl], class_oid);
-      HFID_COPY (&del_cls->class_hfid[cl], hfid);
-      cl_name_node = cl_name_node->next;
-      cl++;
-    }
-
-  hint_arg = info->waitsecs_hint;
-  delete_->wait_msecs = XASL_WAIT_MSECS_NOCHANGE;
-  if (PT_IS_HINT_NODE (hint_arg) && (info->hint & PT_HINT_LK_TIMEOUT))
-    {
-      float hint_wait_secs = (float) atof (hint_arg->info.name.original);
-      if (hint_wait_secs > 0)
-	{
-	  delete_->wait_msecs = (int) (hint_wait_secs * 1000);
-	}
-      else
-	{
-	  delete_->wait_msecs = (int) hint_wait_secs;
-	}
-    }
-  delete_->no_logging = (info->hint & PT_HINT_NO_LOGGING);
-  delete_->release_lock = (info->hint & PT_HINT_REL_LOCK);
-
-  /* fill in XASL cache related information */
-  aptr = xasl->aptr_list;
-
-  /* OID of the user who is creating this XASL */
-  if ((oid = ws_identifier (db_get_user ())) != NULL)
-    {
-      COPY_OID (&xasl->creator_oid, oid);
-    }
-  else
-    {
-      OID_SET_NULL (&xasl->creator_oid);
-    }
-
-  /* list of class OIDs used in this XASL */
-  xasl->n_oid_list = aptr->n_oid_list;
-  aptr->n_oid_list = 0;
-  xasl->class_oid_list = aptr->class_oid_list;
-  aptr->class_oid_list = NULL;
-  xasl->repr_id_list = aptr->repr_id_list;
-  aptr->repr_id_list = NULL;
-  xasl->dbval_cnt = aptr->dbval_cnt;
-
-cleanup:
-  if (aptr_statement != NULL)
-    {
-      parser_free_tree (parser, aptr_statement);
-    }
-  if (from != NULL)
-    {
-      parser_free_tree (parser, from);
-    }
-  if (error != NO_ERROR)
-    {
-      xasl = NULL;
-    }
-
-  return xasl;
-}
-
-/*
- * pt_name_to_derived_path_pre () -
- *   return:
- *   parser(in):
- *   node(in/out):
- *   arg(in):
- *   continue_walk(in/out):
- */
-static PT_NODE *
-pt_name_to_derived_path_pre (PARSER_CONTEXT * parser, PT_NODE * node,
-			     void *arg, int *continue_walk)
-{
-  NAME_TO_DERIVED_PATH_INFO *info = (NAME_TO_DERIVED_PATH_INFO *) arg;
-
-  if (node->node_type == PT_NAME
-      && node->info.name.spec_id == info->old_spec_id)
-    {
-      PT_NODE *path, *arg1, *arg2;
-      path = parser_new_node (parser, PT_DOT_);
-      arg2 = pt_name (parser, node->info.name.original);
-      if (!path || !arg2)
-	{
-	  PT_INTERNAL_ERROR (parser, "allocate new node");
-	  *continue_walk = PT_STOP_WALK;
-	}
-      else
-	{
-	  arg1 = parser_copy_tree (parser, info->new_spec_name);
-	  path->info.expr.arg1 = arg1;
-	  path->info.expr.arg2 = arg2;
-	  parser_free_tree (parser, node);
-	  node = path;
 	}
     }
 
   return node;
-}
-
-/*
- * pt_is_spec_in_list_pre () -
- *
- * return:
- * parser(in):
- * node(in):
- * arg(in/out):
- * continue_walk(in):
- */
-static PT_NODE *
-pt_is_spec_in_list_pre (PARSER_CONTEXT * parser,
-			PT_NODE * node, void *arg, int *continue_walk)
-{
-  PT_IS_SPEC_IN_LIST_INFO *info = (PT_IS_SPEC_IN_LIST_INFO *) arg;
-
-  if (node && node->node_type == PT_SPEC)
-    {
-      if (info->spec->info.spec.flat_entity_list
-	  && node->info.spec.flat_entity_list
-	  && !intl_identifier_casecmp (info->spec->info.spec.
-				       flat_entity_list->info.name.original,
-				       node->info.spec.flat_entity_list->info.
-				       name.original))
-	{
-	  info->found = true;
-	  *continue_walk = PT_STOP_WALK;
-	}
-    }
-
-  return node;
-}
-
-/*
- * pt_is_spec_in_list () - Find out if a spec is in a given spec list
- *
- *   return:
- *   parser(in):
- *   spec(in):
- *   spec_list(in):
- */
-bool
-pt_is_spec_in_list (PARSER_CONTEXT * parser, PT_NODE * spec,
-		    PT_NODE * spec_list)
-{
-  PT_IS_SPEC_IN_LIST_INFO arg;
-
-  arg.spec = spec;
-  arg.found = false;
-  (void) parser_walk_tree (parser, spec_list, pt_is_spec_in_list_pre, &arg,
-			   NULL, NULL);
-
-  return arg.found;
 }
