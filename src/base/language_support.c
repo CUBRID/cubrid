@@ -6372,7 +6372,7 @@ lang_locale_data_load_from_lib (LANG_LOCALE_DATA * lld,
 				bool is_load_for_dump)
 {
   char sym_name[SYMBOL_NAME_SIZE + 1];
-  char err_msg[ERR_MSG_SIZE + MAX_PATH];
+  char err_msg[ERR_MSG_SIZE + PATH_MAX];
   char **temp_array_sym;
   int *temp_num_sym;
   int err_status = NO_ERROR;
@@ -6750,7 +6750,7 @@ int
 lang_load_count_coll_from_lib (int *count_coll, void *lib_handle,
 			       const LOCALE_FILE * lf)
 {
-  char err_msg[ERR_MSG_SIZE + MAX_PATH];
+  char err_msg[ERR_MSG_SIZE + PATH_MAX];
   char sym_name[SYMBOL_NAME_SIZE + 1];
 
   assert (count_coll != NULL);
@@ -6785,7 +6785,7 @@ int
 lang_load_get_coll_name_from_lib (const int coll_pos, char **coll_name,
 				  void *lib_handle, const LOCALE_FILE * lf)
 {
-  char err_msg[ERR_MSG_SIZE + MAX_PATH];
+  char err_msg[ERR_MSG_SIZE + PATH_MAX];
   char sym_name[SYMBOL_NAME_SIZE + 1];
   char coll_suffix[COLL_NAME_SIZE + LANG_MAX_LANGNAME + 5];
 
@@ -6825,7 +6825,7 @@ lang_load_coll_from_lib (COLL_DATA * cd, void *lib_handle,
   char sym_name[SYMBOL_NAME_SIZE + 1];
   char *temp_char_sym;
   int *temp_num_sym;
-  char err_msg[ERR_MSG_SIZE + MAX_PATH];
+  char err_msg[ERR_MSG_SIZE + PATH_MAX];
   int err_status = NO_ERROR;
   char *coll_checksum = NULL;
 
@@ -6962,7 +6962,7 @@ lang_locale_load_alpha_from_lib (ALPHABET_DATA * a,
 				 void *lib_handle, const LOCALE_FILE * lf)
 {
   char sym_name[SYMBOL_NAME_SIZE + 1];
-  char err_msg[ERR_MSG_SIZE + MAX_PATH];
+  char err_msg[ERR_MSG_SIZE + PATH_MAX];
   int err_status = NO_ERROR;
 
   assert (a != NULL);
@@ -7129,7 +7129,7 @@ lang_locale_load_normalization_from_lib (UNICODE_NORMALIZATION * norm,
 					 const LOCALE_FILE * lf)
 {
   char sym_name[SYMBOL_NAME_SIZE + 1];
-  char err_msg[ERR_MSG_SIZE + MAX_PATH];
+  char err_msg[ERR_MSG_SIZE + PATH_MAX];
 
   assert (norm != NULL);
 
