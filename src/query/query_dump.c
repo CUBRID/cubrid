@@ -2772,6 +2772,12 @@ qdump_print_xasl (XASL_NODE * xasl_p)
 	  fprintf (foutput, "\n---->update:");
 	  qdump_print_update_proc_node (&xasl_p->proc.merge.update_xasl->
 					proc.update);
+	  if (xasl_p->proc.merge.delete_xasl)
+	    {
+	      fprintf (foutput, "\n------>delete:");
+	      qdump_print_delete_proc_node (&xasl_p->proc.merge.delete_xasl->
+					    proc.delete_);
+	    }
 	  fprintf (foutput, "\n");
 	}
       if (xasl_p->proc.merge.insert_xasl)

@@ -790,7 +790,7 @@ static SCAN_CODE qexec_merge_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 				  XASL_SCAN_FNC_PTR ignore);
 static int qexec_setup_list_id (XASL_NODE * xasl);
 static int qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
-				 bool has_delete, XASL_STATE * xasl_state);
+				 XASL_STATE * xasl_state);
 static int qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 				 XASL_STATE * xasl_state);
 static int qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
@@ -2282,6 +2282,17 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
 	    }
 	  pg_cnt +=
 	    qexec_clear_xasl (thread_p, xasl->proc.merge.update_xasl, final);
+	}
+      if (xasl->proc.merge.delete_xasl)
+	{
+	  if (XASL_IS_FLAGED (xasl, XASL_QEXEC_MODE_ASYNC))
+	    {
+	      /* propagate XASL_QEXEC_MODE_ASYNC flag */
+	      XASL_SET_FLAG (xasl->proc.merge.delete_xasl,
+			     XASL_QEXEC_MODE_ASYNC);
+	    }
+	  pg_cnt +=
+	    qexec_clear_xasl (thread_p, xasl->proc.merge.delete_xasl, final);
 	}
       if (xasl->proc.merge.insert_xasl)
 	{
@@ -7799,13 +7810,12 @@ qexec_setup_list_id (XASL_NODE * xasl)
 /*
  * qexec_execute_update () -
  *   return: NO_ERROR, or ER_code
- *   xasl(in): XASL Tree block
- *   has_delete(in): update/delete
- *   xasl_state(in):
+ *   xasl(in)   : XASL Tree block
+ *   xasl_state(in)     :
  */
 static int
 qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
-		      bool has_delete, XASL_STATE * xasl_state)
+		      XASL_STATE * xasl_state)
 {
   UPDATE_PROC_NODE *update = &xasl->proc.update;
   UPDDEL_CLASS_INFO *upd_cls = NULL;
@@ -7827,7 +7837,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   int savepoint_used = 0;
   int satisfies_constraints;
   int force_count;
-  int op_type = SINGLE_ROW_UPDATE;
+  int op_type = SINGLE_ROW_DELETE;
   int s = 0, t = 0;
   int malloc_size = 0;
   REGU_VARIABLE *rvsave = NULL;
@@ -7837,12 +7847,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   REPL_INFO_TYPE repl_info;
   int class_oid_cnt = 0, class_oid_idx = 0;
   bool scan_open = false;
-  bool should_delete = false;
-  int actual_op_type = SINGLE_ROW_UPDATE, current_op_type = SINGLE_ROW_UPDATE;
   bool btid_dup_key_locked = false;
   PRUNING_CONTEXT *pcontext = NULL;
-  DEL_LOB_INFO *del_lob_info_list = NULL;
-  RECDES recdes;
 
   class_oid_cnt = update->no_classes;
 
@@ -7976,28 +7982,6 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      GOTO_EXIT_ON_ERROR;
 	    }
 
-	  /* should delete? */
-	  current_op_type = op_type;
-	  if (has_delete)
-	    {
-	      vallist = s_id->val_list->valp;
-	      for (class_oid_idx = 0; class_oid_idx < class_oid_cnt;
-		   vallist = vallist->next->next, class_oid_idx++)
-		{
-		  ;	/* advance */
-		}
-	      valp = vallist->val;
-	      if (valp == NULL)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
-	      should_delete = DB_GET_INT (valp);
-	      if (should_delete)
-		{
-		  current_op_type = SINGLE_ROW_DELETE;
-		}
-	    }
-
 	  /* for each class calc. OID, HFID, attributes cache info and
 	   * statistical information only if class has changed */
 	  vallist = s_id->val_list->valp;
@@ -8040,8 +8024,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		   */
 		  error =
 		    qexec_upddel_setup_current_class (thread_p, upd_cls,
-						      internal_class,
-						      current_op_type,
+						      internal_class, op_type,
 						      class_oid);
 		  if (error != NO_ERROR || internal_class->class_hfid == NULL)
 		    {
@@ -8055,142 +8038,26 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		  if (!OID_ISNULL (&internal_class->prev_class_oid)
 		      && internal_class->is_attr_info_inited)
 		    {
-		      (void) heap_attrinfo_end (thread_p, &internal_class->
-						attr_info);
+		      (void) heap_attrinfo_end (thread_p,
+						&internal_class->attr_info);
 		      internal_class->is_attr_info_inited = false;
 		    }
 		  /* start attribute cache information for new subclass */
 		  if (heap_attrinfo_start (thread_p, class_oid, -1, NULL,
-					   &internal_class->attr_info)
-		      != NO_ERROR)
+					   &internal_class->attr_info) !=
+		      NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
 		  internal_class->is_attr_info_inited = true;
-
-		  if (should_delete)
-		    {
-		      if (internal_class->no_lob_attrs)
-			{
-			  internal_class->crt_del_lob_info =
-			    qexec_change_delete_lob_info (thread_p, xasl_state,
-							  internal_class,
-							  &del_lob_info_list);
-			  if (internal_class->crt_del_lob_info == NULL)
-			    {
-			      GOTO_EXIT_ON_ERROR;
-			    }
-			}
-		      else
-			{
-			  internal_class->crt_del_lob_info = NULL;
-			}
-		    }
 		}
-
-	      /* don't update, just delete */
-	      if (should_delete)
-		{
-		  /* handle lobs first */
-		  if (internal_class->crt_del_lob_info)
-		    {
-		      /* delete lob files */
-		      DEL_LOB_INFO *crt_del_lob_info =
-			internal_class->crt_del_lob_info;
-		      SCAN_CODE scan_code;
-		      int error;
-		      int i;
-
-		      /* read lob attributes */
-		      scan_code =
-			heap_get (thread_p, oid, &recdes,
-				  internal_class->scan_cache, 1, NULL_CHN);
-		      if (scan_code == S_ERROR)
-			{
-			  GOTO_EXIT_ON_ERROR;
-			}
-		      if (scan_code == S_SUCCESS)
-			{
-			  error =
-			    heap_attrinfo_read_dbvalues (thread_p, oid,
-							 &recdes,
-							 &crt_del_lob_info->
-							 attr_info);
-			  if (error != NO_ERROR)
-			    {
-			      GOTO_EXIT_ON_ERROR;
-			    }
-			  for (i = 0; i < internal_class->no_lob_attrs; i++)
-			    {
-			      DB_VALUE *attr_valp =
-				&crt_del_lob_info->attr_info.values[i].dbvalue;
-			      if (!db_value_is_null (attr_valp))
-				{
-				  DB_ELO *elo;
-				  error = NO_ERROR;
-
-				  assert (db_value_type (attr_valp)
-					  == DB_TYPE_BLOB
-					  || db_value_type (attr_valp)
-					  == DB_TYPE_CLOB);
-				  elo = db_get_elo (attr_valp);
-				  if (elo)
-				    {
-				      error = db_elo_delete (elo);
-				    }
-				  if (error != NO_ERROR)
-				    {
-				      GOTO_EXIT_ON_ERROR;
-				    }
-				}
-			    }
-			}
-		    }
-
-		  force_count = 0;
-		  if (internal_class->btid_dup_key_locked != NULL)
-		    {
-		      btid_dup_key_locked =
-			*(internal_class->btid_dup_key_locked);
-		    }
-		  else
-		    {
-		      btid_dup_key_locked = false;
-		    }
-		  if (locator_attribute_info_force
-		      (thread_p, internal_class->class_hfid,
-		       internal_class->oid, internal_class->btid,
-		       btid_dup_key_locked, NULL, NULL, 0,
-		       LC_FLUSH_DELETE, current_op_type,
-		       internal_class->scan_cache, &force_count, false,
-		       REPL_INFO_TYPE_STMT_NORMAL,
-		       DB_NOT_PARTITIONED_CLASS, NULL, NULL) != NO_ERROR)
-		    {
-		      GOTO_EXIT_ON_ERROR;
-		    }
-
-		  if (force_count)
-		    {
-		      xasl->list_id->tuple_cnt++;
-		    }
-		}
-
 	      if (heap_attrinfo_clear_dbvalues (&internal_class->attr_info)
 		  != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
-
-	      if (should_delete)
-		{
-		  goto continue_scan;
-		}
 	    }
 
-	  if (has_delete)
-	    {
-	      vallist = vallist->next;  /* skip should_delete */
-	    }
 	  /* perform assignments */
 	  for (assign_idx = 0; assign_idx < update->no_assigns; assign_idx++)
 	    {
@@ -8304,7 +8171,6 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		  xasl->list_id->tuple_cnt++;
 		}
 	    }
-continue_scan:;
 	}
       if (ls_scan != S_END)
 	{
@@ -8348,11 +8214,6 @@ continue_scan:;
     }
 
   qexec_close_scan (thread_p, specp);
-
-  if (has_delete)
-    {
-      qexec_free_delete_lob_info_list (thread_p, &del_lob_info_list);
-    }
 
   if (internal_classes != NULL)
     {
@@ -12085,7 +11946,7 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  old_wait_msecs =
 	    xlogtb_reset_wait_msecs (thread_p, xasl->proc.update.wait_msecs);
 	}
-      error = qexec_execute_update (thread_p, xasl, false, xasl_state);
+      error = qexec_execute_update (thread_p, xasl, xasl_state);
       if (old_wait_msecs != XASL_WAIT_MSECS_NOCHANGE)
 	{
 	  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
@@ -23553,8 +23414,26 @@ qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   if (error == NO_ERROR && xasl->proc.merge.update_xasl)
     {
       error = qexec_execute_update (thread_p, xasl->proc.merge.update_xasl,
-				    xasl->proc.merge.has_delete,
 				    xasl_state);
+    }
+  /* execute delete */
+  if (error == NO_ERROR && xasl->proc.merge.delete_xasl)
+    {
+      QFILE_LIST_ID *save_list_id;
+      XASL_NODE *update_aptr, *delete_aptr;
+
+      update_aptr = xasl->proc.merge.update_xasl->aptr_list;
+      delete_aptr = xasl->proc.merge.delete_xasl->aptr_list->aptr_list;
+
+      save_list_id = delete_aptr->list_id;
+      delete_aptr->list_id = update_aptr->list_id;
+      delete_aptr->status = XASL_SUCCESS;
+
+      error = qexec_execute_delete (thread_p, xasl->proc.merge.delete_xasl,
+				    xasl_state);
+
+      delete_aptr->list_id = save_list_id;
+      delete_aptr->status = XASL_CLEARED;
     }
   /* execute insert */
   if (error == NO_ERROR && xasl->proc.merge.insert_xasl)
@@ -23585,6 +23464,14 @@ qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	xasl->proc.merge.update_xasl->list_id->tuple_cnt;
       /* monitor */
       mnt_qm_updates (thread_p);
+    }
+
+  if (xasl->proc.merge.delete_xasl)
+    {
+      /* don't add the number of deleted tuples, they are
+         a subset of the updated ones */
+      /* monitor */
+      mnt_qm_deletes (thread_p);
     }
 
   if (xasl->proc.merge.insert_xasl)

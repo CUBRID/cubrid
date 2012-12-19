@@ -153,7 +153,7 @@ AC_CHECK_TYPES([long long])
 AC_CHECK_TYPES([byte_t, int8_t, int16_t, int32_t, int64_t, intmax_t, intptr_t,
 		uint8_t, uint16_t, uint32_t, uint64_t, uintmax_t, uintptr_t])
 remember_CFLAGS="$CFLAGS"
-CFLAGS="$CFLAGS -D_LARGEFILE64_SOURCE"
+CFLAGS="$CFLAGS -D_LARGEFILE64_SOURCE -finfile-functions"
 AC_CHECK_TYPES([off64_t], [SYS_DEFS="$SYS_DEFS -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64"])
 CFLAGS="$remember_CFLAGS"
 

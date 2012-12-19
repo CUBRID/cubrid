@@ -3904,17 +3904,22 @@ xts_process_merge_proc (char *ptr, const MERGE_PROC_NODE * merge_info)
     }
   ptr = or_pack_int (ptr, offset);
 
-  offset = xts_save_xasl_node (merge_info->insert_xasl);
+  offset = xts_save_xasl_node (merge_info->delete_xasl);
   if (offset == ER_FAILED)
     {
+      return NULL;
     }
   ptr = or_pack_int (ptr, offset);
 
-  ptr = or_pack_int (ptr, merge_info->has_delete);
+  offset = xts_save_xasl_node (merge_info->insert_xasl);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
 
   return ptr;
 }
-
 
 static char *
 xts_process_outptr_list (char *ptr, const OUTPTR_LIST * outptr_list)
@@ -5738,8 +5743,8 @@ xts_sizeof_merge_proc (const MERGE_PROC_NODE * merge_info)
   int size = 0;
 
   size += PTR_SIZE +		/* update_xasl */
-    PTR_SIZE +			/* insert_xasl */
-    OR_INT_SIZE;		/* has_delete */
+    PTR_SIZE +			/* delete_xasl */
+    PTR_SIZE;			/* insert_xasl */
 
   return size;
 }

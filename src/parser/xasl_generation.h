@@ -229,6 +229,9 @@ extern FUNC_PRED *pt_to_func_pred (PARSER_CONTEXT * parser,
 extern PT_NODE *pt_to_merge_update_query (PARSER_CONTEXT * parser,
 					  PT_NODE * select_list,
 					  PT_MERGE_INFO * info);
+extern PT_NODE *pt_to_merge_delete_query (PARSER_CONTEXT * parser,
+					  PT_MERGE_INFO * info,
+					  QFILE_LIST_ID * updated_oids);
 extern PT_NODE *pt_to_merge_insert_query (PARSER_CONTEXT * parser,
 					  PT_NODE * select_list,
 					  PT_MERGE_INFO * info);
@@ -237,6 +240,8 @@ extern XASL_NODE *pt_to_merge_xasl (PARSER_CONTEXT * parser,
 				    PT_NODE ** non_null_upd_attrs,
 				    PT_NODE ** non_null_ins_attrs,
 				    PT_NODE * default_expr_attrs);
+extern bool pt_is_spec_in_list (PARSER_CONTEXT * parser, PT_NODE * spec,
+				PT_NODE * spec_list);
 extern int pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser,
 					   PT_NODE * node,
 					   PT_NODE * select_stmt);

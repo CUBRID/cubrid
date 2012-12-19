@@ -305,7 +305,7 @@ truncate_need_repl_log (PT_NODE * statement)
   PT_NODE *entity_list = NULL;
   PT_NODE *entity = NULL;
   const char *class_name = NULL;
-  MOP class_mop = NULL;
+  MOP *class_mop = NULL;
   SM_CLASS *class_ = NULL;
   SM_CLASS_CONSTRAINT *cons = NULL;
   int error = NO_ERROR;
@@ -6168,8 +6168,7 @@ static int update_object_tuple (PARSER_CONTEXT * parser,
 				CLIENT_UPDATE_CLASS_INFO * upd_classes_info,
 				int classes_cnt,
 				const int turn_off_unique_check,
-				UPDATE_TYPE update_type,
-				bool should_delete);
+				UPDATE_TYPE update_type);
 static int update_object_by_oid (PARSER_CONTEXT * parser,
 				 PT_NODE * statement,
 				 UPDATE_TYPE update_type);
@@ -6178,7 +6177,7 @@ static int init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement,
 			     int *assigns_count,
 			     CLIENT_UPDATE_CLASS_INFO ** cls_data,
 			     int *cls_count, DB_VALUE ** values,
-			     int *values_cnt, bool has_delete);
+			     int *values_cnt);
 static int do_set_pruning_type (PARSER_CONTEXT * parser, PT_NODE * spec,
 				CLIENT_UPDATE_CLASS_INFO * cls);
 static int update_objs_for_list_file (PARSER_CONTEXT * parser,
@@ -6206,8 +6205,6 @@ static int is_server_update_allowed (PARSER_CONTEXT * parser,
 				     int *has_uniques,
 				     int *const server_allowed,
 				     const PT_NODE * statement);
-static int delete_object_tuple (DB_OBJECT * obj);
-static int has_unique_constraint (DB_OBJECT * mop);
 
 /*
  * unlink_list - Unlinks next pointer shortcut of lhs, rhs assignments
@@ -6340,7 +6337,6 @@ update_object_attribute (PARSER_CONTEXT * parser, DB_OTMPL * otemplate,
  *   classes_cnt(in): no of classes
  *   turn_off_unique_check(in):
  *   update_type(in):
- *   should_delete(in):
  *
  * Note:
  */
@@ -6349,7 +6345,7 @@ update_object_tuple (PARSER_CONTEXT * parser,
 		     CLIENT_UPDATE_INFO * assigns, int assigns_count,
 		     CLIENT_UPDATE_CLASS_INFO * upd_classes_info,
 		     int classes_cnt, const int turn_off_unique_check,
-		     UPDATE_TYPE update_type, bool should_delete)
+		     UPDATE_TYPE update_type)
 {
   int error = NO_ERROR;
   DB_OTMPL *otemplate = NULL, *otmpl = NULL;
@@ -6361,7 +6357,6 @@ update_object_tuple (PARSER_CONTEXT * parser,
   int exist_active_triggers = false;
   CLIENT_UPDATE_INFO *assign = NULL;
   CLIENT_UPDATE_CLASS_INFO *cls_info = NULL;
-  bool flush_del = false;
 
   for (idx = 0; idx < classes_cnt && error == NO_ERROR; idx++)
     {
@@ -6501,28 +6496,6 @@ update_object_tuple (PARSER_CONTEXT * parser,
 					  spec.flat_entity_list);
 	    }
 	}
-
-      /* handle delete only after update to give a chance to triggers */
-      if (should_delete && error == NO_ERROR)
-	{
-	  error = locator_flush_instance (object);
-	  if (error != NO_ERROR)
-	    {
-	      continue;
-	    }
-	  flush_del = has_unique_constraint (object);
-	  error = delete_object_tuple (object);
-	  if (error == ER_HEAP_UNKNOWN_OBJECT && do_Trigger_involved)
-	    {
-	      er_clear ();
-	      error = NO_ERROR;
-	      continue;
-	    }
-	  if (flush_del && error == NO_ERROR)
-	    {
-	      error = locator_flush_instance (object);
-	    }
-	}
       upd_tpl_cnt++;
     }
 
@@ -6602,8 +6575,7 @@ update_object_by_oid (PARSER_CONTEXT * parser, PT_NODE * statement,
 
       /* load structures for update */
       error = init_update_data (parser, statement, &assigns, &assigns_count,
-				&cls_info, &upd_cls_cnt, &dbvals, &vals_cnt,
-				false);
+				&cls_info, &upd_cls_cnt, &dbvals, &vals_cnt);
 
       DB_MAKE_OBJECT (&dbvals[0], oid);
 
@@ -6643,8 +6615,7 @@ update_object_by_oid (PARSER_CONTEXT * parser, PT_NODE * statement,
 	    {
 	      error =
 		update_object_tuple (parser, assigns, assigns_count,
-				     cls_info, upd_cls_cnt, 0, update_type,
-				     false);
+				     cls_info, upd_cls_cnt, 0, update_type);
 	    }
 
 	}
@@ -6773,9 +6744,8 @@ do_set_pruning_type (PARSER_CONTEXT * parser, PT_NODE * spec,
  *   values(out): address of a pointer that will receive an array of DB_VALUE
  *		  that represents runtime computed values and constants.
  *		  This array is referenced by elements of assigns_data.
- *   values_cnt(out): number of classes OIDs + values computed at
+ *    values_cnt(out): number of classes OIDs + values computed at
  *		       runtime for assignments.
- *   has_delete(in): update/delete
  *
  * Note:
  */
@@ -6783,7 +6753,7 @@ static int
 init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement,
 		  CLIENT_UPDATE_INFO ** assigns_data, int *assigns_count,
 		  CLIENT_UPDATE_CLASS_INFO ** cls_data, int *cls_count,
-		  DB_VALUE ** values, int *values_cnt, bool has_delete)
+		  DB_VALUE ** values, int *values_cnt)
 {
   int error = NO_ERROR;
   int assign_cnt = 0, upd_cls_cnt = 0, vals_cnt = 0, idx, idx2, idx3, i;
@@ -6865,21 +6835,19 @@ init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement,
 
   /* add number of class oid's */
   vals_cnt += upd_cls_cnt;
-  vals_cnt += has_delete;
   /* allocate array of DB_VALUE's. The length of the array must be equal to
    * that of select statement's list */
   dbvals =
     (DB_VALUE *) db_private_alloc (NULL,
 				   (assign_cnt +
-				    upd_cls_cnt +
-				    has_delete) * sizeof (DB_VALUE));
+				    upd_cls_cnt) * sizeof (DB_VALUE));
   if (dbvals == NULL)
     {
       error = ER_REGU_NO_SPACE;
       goto error_return;
     }
 
-  for (i = 0; i < assign_cnt + upd_cls_cnt + has_delete; i++)
+  for (i = 0; i < assign_cnt + upd_cls_cnt; i++)
     {
       DB_MAKE_NULL (&dbvals[i]);
     }
@@ -6967,17 +6935,17 @@ init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement,
       if (ea.is_rhs_const)
 	{
 	  /* constants */
-	  assign->db_val =
-	    &dbvals[assign_cnt + upd_cls_cnt + has_delete - idx3++];
+	  assign->db_val = &dbvals[assign_cnt + upd_cls_cnt - idx3++];
 	  *assign->db_val = *pt_value_to_db (parser, ea.rhs);
 	  assign->is_const = true;
 	}
       else
 	{
 	  /* not constants */
-	  assign->db_val = &dbvals[upd_cls_cnt + has_delete + idx++];
+	  assign->db_val = &dbvals[upd_cls_cnt + idx++];
 	  assign->is_const = false;
 	}
+
 
       for (idx2 = 0; idx2 < upd_cls_cnt; idx2++)
 	{
@@ -7074,7 +7042,6 @@ update_objs_for_list_file (PARSER_CONTEXT * parser,
   int cursor_status;
   PT_NODE *check_where;
   bool has_unique;
-  bool has_delete, should_delete = false;
 
   if (list_id == NULL || statement == NULL)
     {
@@ -7088,13 +7055,10 @@ update_objs_for_list_file (PARSER_CONTEXT * parser,
   has_unique = statement->node_type == PT_MERGE
     ? (statement->info.merge.flags & PT_MERGE_INFO_HAS_UNIQUE)
     : statement->info.update.has_unique;
-  has_delete = (statement->node_type == PT_MERGE
-		&& statement->info.merge.update.has_delete);
 
   /* load data in update structures */
   error = init_update_data (parser, statement, &assigns, &assign_count,
-			    &cls_info, &upd_cls_cnt, &dbvals, &vals_cnt,
-			    has_delete);
+			    &cls_info, &upd_cls_cnt, &dbvals, &vals_cnt);
   if (error != NO_ERROR)
     {
       goto done;
@@ -7164,16 +7128,10 @@ update_objs_for_list_file (PARSER_CONTEXT * parser,
 	  goto done;
 	}
 
-      if (has_delete)
-	{
-	  should_delete = DB_GET_INT (&dbvals[upd_cls_cnt]);
-	}
-
       /* perform update for current tuples */
       error = update_object_tuple (parser, assigns, assign_count,
 				   cls_info, upd_cls_cnt,
-				   turn_off_unique_check, NORMAL_UPDATE,
-				   should_delete);
+				   turn_off_unique_check, NORMAL_UPDATE);
 
       /* close cursor and restore to savepoint in case of error */
       if (error < NO_ERROR)
@@ -7295,7 +7253,7 @@ update_class_attributes (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* load data for update */
   error =
     init_update_data (parser, statement, &assigns, &assigns_count, &cls_info,
-		      &upd_cls_cnt, &dbvals, &vals_cnt, false);
+		      &upd_cls_cnt, &dbvals, &vals_cnt);
   if (error == NO_ERROR)
     {
       /* evaluate values for assignment */
@@ -8750,6 +8708,7 @@ static int delete_savepoint_number = 0;
 static int select_delete_list (PARSER_CONTEXT * parser,
 			       QFILE_LIST_ID ** result_p,
 			       PT_NODE * delete_stmt);
+static int delete_object_tuple (DB_OBJECT * obj);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static int delete_object_by_oid (const PARSER_CONTEXT * parser,
 				 const PT_NODE * statement);
@@ -8758,6 +8717,7 @@ static int delete_list_by_oids (PARSER_CONTEXT * parser,
 				QFILE_LIST_ID * list_id);
 static int build_xasl_for_server_delete (PARSER_CONTEXT * parser,
 					 PT_NODE * statement);
+static int has_unique_constraint (DB_OBJECT * mop);
 static int delete_real_class (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 /*
@@ -14725,6 +14685,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   QFILE_LIST_ID *list_id = NULL;
   PT_NODE *upd_select_stmt = NULL;
   PT_NODE *ins_select_stmt = NULL;
+  PT_NODE *del_select_stmt = NULL;
   PT_NODE *select_names = NULL, *select_values = NULL;
   PT_NODE *const_names = NULL, *const_values = NULL;
   PT_NODE *flat, *values_list = NULL;
@@ -14738,7 +14699,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   float hint_waitsecs;
   int result = 0;
   bool insert_only = false;
-  PT_NODE *copy_assigns, *save_assigns;
+  int save_cost;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -14819,11 +14780,6 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  no_vals = 0;
 	  no_consts = 0;
 
-	  /* make a copy of assignment list to be able to iterate later */
-	  copy_assigns =
-	    parser_copy_tree_list (parser,
-				   statement->info.merge.update.assignment);
-
 	  err =
 	    pt_get_assignment_lists (parser, &select_names, &select_values,
 				     &const_names, &const_values, &no_vals,
@@ -14832,20 +14788,11 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 				     &links);
 	  if (err != NO_ERROR)
 	    {
-	      parser_free_tree (parser, copy_assigns);
 	      goto exit;
 	    }
 
-	  /* save assignment list and replace within statement with the copy */
-	  save_assigns = statement->info.merge.update.assignment;
-	  statement->info.merge.update.assignment = copy_assigns;
-
 	  upd_select_stmt = pt_to_merge_update_query (parser, select_values,
 						      &statement->info.merge);
-
-	  /* restore assignment list and destroy the copy */
-	  statement->info.merge.update.assignment = save_assigns;
-	  parser_free_tree (parser, copy_assigns);
 
 	  /* restore tree structure; pt_get_assignment_lists() */
 	  pt_restore_assignment_links (statement->info.merge.update.
@@ -14863,6 +14810,17 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 			     MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
 		  err = er_errid ();
 		}
+	      goto exit;
+	    }
+	  /* temporary: don't allow target to be used in source spec */
+	  if (pt_is_spec_in_list (parser, statement->info.merge.into,
+				  upd_select_stmt->info.query.q.select.from->
+				  next))
+	    {
+	      PT_ERRORm (parser, statement->info.merge.using,
+			 MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_MERGE_TARGET_IN_SOURCE_SPEC);
+	      err = er_errid ();
 	      goto exit;
 	    }
 	}
@@ -14927,6 +14885,17 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 
 	  ins_select_stmt->etc = NULL;
+
+	  /* temporary: don't allow target to be used in source spec */
+	  if (pt_is_spec_in_list (parser, statement->info.merge.into,
+				  ins_select_stmt->info.query.q.select.from))
+	    {
+	      PT_ERRORm (parser, statement->info.merge.using,
+			 MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_MERGE_TARGET_IN_SOURCE_SPEC);
+	      err = er_errid ();
+	      goto exit;
+	    }
 
 	  /* enable authorization checking during methods in queries */
 	  AU_ENABLE (parser->au_save);
@@ -15030,7 +14999,9 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  /* OID list update */
 	  err = update_objs_for_list_file (parser, list_id, statement);
+	  /* keep update OID list for delete part */
 	}
+      parser->query_id = save_query_id;
 
       /* set result count */
       if (err >= NO_ERROR)
@@ -15038,6 +15009,85 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  result += err;
 	}
 
+      /* do delete part */
+      if (statement->info.merge.update.has_delete && err >= NO_ERROR)
+	{
+	  /* make the SELECT statement for OID list to be deleted */
+	  del_select_stmt =
+	    pt_to_merge_delete_query (parser, &statement->info.merge,
+				      list_id);
+	  AU_ENABLE (parser->au_save);
+	  del_select_stmt = mq_translate (parser, del_select_stmt);
+	  AU_DISABLE (parser->au_save);
+	  if (del_select_stmt == NULL)
+	    {
+	      err = er_errid ();
+	      if (err == NO_ERROR)
+		{
+		  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
+			     MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+		  err = er_errid ();
+		}
+	      goto exit;
+	    }
+	  /* specs already checked at update subquery */
+	  /* flush necessary objects before execute */
+	  err = sm_flush_objects (class_obj);
+	  if (err != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	  /* enable authorization checking during methods in queries */
+	  save_query_id = parser->query_id;
+	  parser->query_id = -1;
+
+	  /* set follow plan cost to zero */
+	  save_cost = qo_plan_get_cost_fn ("follow");
+	  (void) qo_plan_set_cost_fn ("follow", 0);
+
+	  AU_ENABLE (parser->au_save);
+	  err = do_select (parser, del_select_stmt);
+	  AU_DISABLE (parser->au_save);
+
+	  /* restore follow plan cost */
+	  (void) qo_plan_set_cost_fn ("follow", save_cost);
+
+	  /* free list file resulted from update */
+	  if (list_id)
+	    {
+	      if (err >= NO_ERROR && list_id->tuple_cnt > 0)
+		{
+		  err = sm_flush_and_decache_objects (class_obj, true);
+		}
+	      regu_free_listid (list_id);
+	      list_id = NULL;
+	    }
+
+	  if (err >= NO_ERROR)
+	    {
+	      list_id = (QFILE_LIST_ID *) del_select_stmt->etc;
+	      if (list_id)
+		{
+		  /* delete each oid */
+		  err = delete_list_by_oids (parser, list_id);
+		  /* don't add the number of deleted tuples, they are
+		     a subset of the updated ones */
+		  if (err >= NO_ERROR && list_id->tuple_cnt > 0)
+		    {
+		      err = sm_flush_and_decache_objects (class_obj, true);
+		    }
+		  regu_free_listid (list_id);
+		  list_id = NULL;
+		}
+
+	      pt_end_query (parser);
+	    }
+	  parser_free_tree (parser, del_select_stmt);
+	  del_select_stmt = NULL;
+	  parser->query_id = save_query_id;
+	}
+
+      save_query_id = parser->query_id;
       parser->query_id = upd_query_id;
       pt_end_query (parser);
       parser->query_id = save_query_id;
@@ -15116,6 +15166,11 @@ exit:
       parser_free_tree (parser, ins_select_stmt);
     }
 
+  if (del_select_stmt != NULL)
+    {
+      parser_free_tree (parser, del_select_stmt);
+    }
+
   if ((err < NO_ERROR) && er_errid () != NO_ERROR)
     {
       pt_record_error (parser, parser->statement_number,
@@ -15156,7 +15211,6 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE **links = NULL;
   PT_NODE *default_expr_attrs = NULL;
   DB_OBJECT *class_obj;
-  PT_NODE *copy_assigns, *save_assigns;
 
   const char *qstr = NULL;
   int no_vals, no_consts;
@@ -15488,11 +15542,6 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  no_vals = 0;
 	  no_consts = 0;
 
-	  /* make a copy of assignment list to be able to iterate later */
-	  copy_assigns =
-	    parser_copy_tree_list (parser,
-				   statement->info.merge.update.assignment);
-
 	  err =
 	    pt_get_assignment_lists (parser, &select_names, &select_values,
 				     &const_names, &const_values, &no_vals,
@@ -15501,21 +15550,12 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 				     &links);
 	  if (err != NO_ERROR)
 	    {
-	      parser_free_tree (parser, copy_assigns);
 	      goto cleanup;
 	    }
-
-	  /* save assignment list and replace within statement with the copy */
-	  save_assigns = statement->info.merge.update.assignment;
-	  statement->info.merge.update.assignment = copy_assigns;
 
 	  select_statement = pt_to_merge_update_query (parser, select_values,
 						       &statement->info.
 						       merge);
-
-	  /* restore assignment list and destroy the copy */
-	  statement->info.merge.update.assignment = save_assigns;
-	  parser_free_tree (parser, copy_assigns);
 
 	  /* restore tree structure; pt_get_assignment_lists() */
 	  pt_restore_assignment_links (statement->info.merge.update.
@@ -15526,6 +15566,17 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  AU_RESTORE (au_save);
 	  if (select_statement)
 	    {
+	      /* temporary: don't allow target to be used in source spec */
+	      if (pt_is_spec_in_list (parser, statement->info.merge.into,
+				      select_statement->info.query.q.select.
+				      from->next))
+		{
+		  PT_ERRORm (parser, statement->info.merge.using,
+			     MSGCAT_SET_PARSER_SEMANTIC,
+			     MSGCAT_SEMANTIC_MERGE_TARGET_IN_SOURCE_SPEC);
+		  err = er_errid ();
+		  goto cleanup;
+		}
 	      /* get XASL_ID by calling do_prepare_select() */
 	      err = do_prepare_select (parser, select_statement);
 	      /* save the XASL_ID to be used by do_execute_merge() */
@@ -15546,7 +15597,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
-      /* nothing to do for merge insert part */
+      /* nothing to do for merge delete and insert parts */
     }
 
 cleanup:
@@ -15581,11 +15632,12 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   int au_save;
   int wait_msecs = -2, old_wait_msecs = -2;
   float hint_waitsecs;
-  PT_NODE *ins_select_stmt = NULL, *hint_arg;
+  PT_NODE *ins_select_stmt = NULL, *del_select_stmt = NULL, *hint_arg;
   QUERY_ID ins_query_id;
   QUERY_ID save_query_id;
   bool insert_only =
     (statement->info.merge.flags & PT_MERGE_INFO_INSERT_ONLY);
+  int save_cost;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -15746,6 +15798,17 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  ins_select_stmt->etc = NULL;
 
+	  /* temporary: don't allow target to be used in source spec */
+	  if (pt_is_spec_in_list (parser, statement->info.merge.into,
+				  ins_select_stmt->info.query.q.select.from))
+	    {
+	      PT_ERRORm (parser, statement->info.merge.using,
+			 MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_MERGE_TARGET_IN_SOURCE_SPEC);
+	      err = er_errid ();
+	      goto exit;
+	    }
+
 	  save_query_id = parser->query_id;
 	  parser->query_id = -1;
 	  err = do_select (parser, ins_select_stmt);
@@ -15810,6 +15873,70 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (err >= NO_ERROR)
 	    {
 	      result += err;
+	    }
+
+	  /* delete part */
+	  if (err >= NO_ERROR && statement->info.merge.update.has_delete)
+	    {
+	      del_select_stmt =
+		pt_to_merge_delete_query (parser, &statement->info.merge,
+					  list_id);
+	      AU_SAVE_AND_ENABLE (au_save);
+	      del_select_stmt = mq_translate (parser, del_select_stmt);
+	      AU_RESTORE (au_save);
+	      if (del_select_stmt == NULL)
+		{
+		  err = er_errid ();
+		  if (err == NO_ERROR)
+		    {
+		      err = ER_GENERIC_ERROR;
+		    }
+		  if (old_wait_msecs >= -1)
+		    {
+		      (void) tran_reset_wait_times (old_wait_msecs);
+		    }
+		  goto exit;
+		}
+	      /* specs already checked at update subquery */
+
+	      save_query_id = parser->query_id;
+	      parser->query_id = -1;
+
+	      /* set follow plan cost to zero */
+	      save_cost = qo_plan_get_cost_fn ("follow");
+	      (void) qo_plan_set_cost_fn ("follow", 0);
+
+	      AU_SAVE_AND_ENABLE (au_save);
+	      err = do_select (parser, del_select_stmt);
+	      AU_RESTORE (au_save);
+
+	      /* restore follow plan cost */
+	      (void) qo_plan_set_cost_fn ("follow", save_cost);
+
+	      if (err >= NO_ERROR)
+		{
+		  QFILE_LIST_ID *del_list_id =
+		    (QFILE_LIST_ID *) del_select_stmt->etc;
+		  if (del_list_id)
+		    {
+		      /* delete each oid */
+		      AU_SAVE_AND_DISABLE (au_save);
+		      err = delete_list_by_oids (parser, del_list_id);
+		      AU_RESTORE (au_save);
+		      /* don't add the number of deleted tuples, they are
+		         a subset of the updated ones */
+		      if (err >= NO_ERROR && del_list_id->tuple_cnt > 0)
+			{
+			  err =
+			    sm_flush_and_decache_objects (class_obj, true);
+			}
+		      regu_free_listid (del_list_id);
+		    }
+		  pt_end_query (parser);
+		}
+	      parser_free_tree (parser, del_select_stmt);
+	      del_select_stmt = NULL;
+	      parser->query_id = save_query_id;
 	    }
 
 	  if (!statement->info.merge.update.do_class_attrs)
@@ -15892,6 +16019,11 @@ exit:
 	  qmgr_end_query (ins_query_id);
 	}
       parser_free_tree (parser, ins_select_stmt);
+    }
+
+  if (del_select_stmt != NULL)
+    {
+      parser_free_tree (parser, del_select_stmt);
     }
 
   if (list_id != NULL)
