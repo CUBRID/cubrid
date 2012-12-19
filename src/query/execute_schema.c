@@ -16043,9 +16043,16 @@ check_change_class_collation (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 
   /* check if codeset, collation or both are set, and check if it is
    * necessary to update the default collation of the class */
-  if (coll_id != -1 && ctemplate->current->collation_id != coll_id)
+  if (coll_id != -1)
     {
-      *need_update = true;
+      if (ctemplate->current->collation_id != coll_id)
+	{
+	  *need_update = true;
+	}
+      else
+	{
+	  *need_update = false;
+	}
       *collation_id = coll_id;
     }
   else
