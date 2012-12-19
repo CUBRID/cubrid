@@ -1122,7 +1122,7 @@ emit_schema (DB_OBJLIST * classes, int do_auth,
   int has_indexes = 0;
   const char *name;
   int is_partitioned = 0;
-
+  SM_CLASS *class_ = NULL;
   /*
    * First create all the classes
    */
@@ -1151,9 +1151,24 @@ emit_schema (DB_OBJLIST * classes, int do_auth,
 	}
       else
 	{
+	  if (au_fetch_class_force (cl->op, &class_, AU_FETCH_READ)
+	      != NO_ERROR)
+	    {
+	      class_ = NULL;
+	    }
 	  if (sm_get_class_flag (cl->op, SM_CLASSFLAG_REUSE_OID))
 	    {
 	      fprintf (output_file, " REUSE_OID");
+	      if (class_ != NULL)
+		{
+		  /* for printing collation */
+		  fprintf (output_file, ",");
+		}
+	    }
+	  if (class_ != NULL)
+	    {
+	      fprintf (output_file, " COLLATE %s",
+		       lang_get_collation_name (class_->collation_id));
 	    }
 	}
       fprintf (output_file, ";\n\n");
@@ -2703,7 +2718,7 @@ emit_domain_def (DB_DOMAIN * domains)
 
 	  if (has_collation)
 	    {
-	      (void) fprintf (output_file, " COLLATE '%s'",
+	      (void) fprintf (output_file, " COLLATE %s",
 			      lang_get_collation_name (domain->collation_id));
 	    }
 	}
