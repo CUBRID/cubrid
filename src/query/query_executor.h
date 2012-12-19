@@ -544,6 +544,7 @@ struct selupd_list
 
 struct xasl_node
 {
+  XASL_NODE_HEADER header;	/* XASL header */
   XASL_NODE *next;		/* next XASL block */
   PROC_TYPE type;		/* XASL type */
   int flag;			/* flags */
@@ -677,6 +678,7 @@ struct func_pred
 					 */
 #define	XASL_OBJFETCH_IGNORE_CLASSOID 1024	/* fetch proc should ignore class oid */
 #define XASL_IS_MERGE_QUERY	      2048	/* query belongs to a merge statement */
+#define XASL_USES_MRO	      4096	/* query uses multi range optimization */
 
 #define XASL_IS_FLAGED(x, f)        ((x)->flag & (int) (f))
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
@@ -900,6 +902,10 @@ extern int stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p,
 					char *xasl_stream,
 					int xasl_stream_size,
 					void **xasl_unpack_info_ptr);
+extern int stx_map_stream_to_xasl_node_header (THREAD_ENTRY * thread_p,
+					       XASL_NODE_HEADER *
+					       xasl_header_p,
+					       char *xasl_stream);
 extern void stx_free_xasl_unpack_info (void *unpack_info_ptr);
 extern void stx_free_additional_buff (THREAD_ENTRY * thread_p,
 				      void *unpack_info_ptr);

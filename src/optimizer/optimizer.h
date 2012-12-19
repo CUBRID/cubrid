@@ -209,7 +209,8 @@ extern QO_LIMIT_INFO *qo_get_key_limit_from_instnum (PARSER_CONTEXT * parser,
 
 extern QO_LIMIT_INFO *qo_get_key_limit_from_ordbynum (PARSER_CONTEXT * parser,
 						      QO_PLAN * plan,
-						      XASL_NODE * xasl);
+						      XASL_NODE * xasl,
+						      bool ignore_lower);
 
 extern bool qo_check_iscan_for_multi_range_opt (QO_PLAN * plan);
 extern bool qo_check_join_for_multi_range_opt (QO_PLAN * plan);

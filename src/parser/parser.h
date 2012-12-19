@@ -893,6 +893,10 @@ extern "C"
   extern PT_NODE *pt_find_node_type_pre (PARSER_CONTEXT * parser,
 					 PT_NODE * node, void *arg,
 					 int *continue_walk);
+  extern bool pt_check_ordby_num_for_multi_range_opt (PARSER_CONTEXT * parser,
+						      PT_NODE * query,
+						      bool * mro_candidate,
+						      bool * cannot_eval);
 #ifdef __cplusplus
 }
 #endif

@@ -44,16 +44,22 @@
 /*
  * query_prepare () - Prepares a query for later (and repetitive)
  *                         execution
- *   return: Error code
- *   qstmt(in)   : query string; used for hash key of the XASL cache
- *   qplan(in)   :
- *   stream(in) : XASL stream; set to NULL if you want to look up the XASL cache
- *   size(in)   : size of the XASL stream in bytes
- *   xasl_idp(out): XASL file id (XASL_ID)
+ *   return		 : Error code
+ *   qstmt (in)		 : query string; used for hash key of the XASL cache
+ *   qplan (in)		 :
+ *   stream (in)	 : XASL stream; set to NULL if you want to look up the
+ *			   XASL cache
+ *   size (in)		 : size of the XASL stream in bytes
+ *   xasl_idp (out)	 : XASL file id (XASL_ID)
+ *   xasl_header_p (out) : XASL node header
+ *
+ *   NOTE: If xasl_header_p is not NULL, also XASL node header will be
+ *	   requested from server.
  */
 int
 query_prepare (const char *qstmt, const char *qplan,
-	       const char *stream, int size, XASL_ID ** xasl_idp)
+	       const char *stream, int size, XASL_ID ** xasl_idp,
+	       XASL_NODE_HEADER * xasl_header_p)
 {
   int level;
   XASL_ID *p;
@@ -80,7 +86,7 @@ query_prepare (const char *qstmt, const char *qplan,
 
   /* send XASL stream to the server and get XASL_ID */
   if (qmgr_prepare_query (qstmt, qplan, ws_identifier (db_get_user ()),
-			  stream, size, p) == NULL)
+			  stream, size, p, xasl_header_p) == NULL)
     {
       free_and_init (p);
       return er_errid ();

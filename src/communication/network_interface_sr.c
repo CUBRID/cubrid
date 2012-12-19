@@ -5530,11 +5530,14 @@ void
 sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid,
 		     char *request, int reqlen)
 {
-  XASL_ID xasl_id, *p;
-  char *ptr, *qstmt, *qplan, *xasl_stream = NULL, *reply;
-  int csserror, xasl_size;
+  XASL_ID xasl_id, *p = NULL;
+  char *ptr = NULL, *qstmt = NULL, *qplan = NULL, *xasl_stream = NULL;
+  char *reply = NULL, *reply_buffer = NULL;
+  int csserror, xasl_size, reply_buffer_size = 0, get_xasl_header = 0;
   OID user_oid;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_XASL_ID_SIZE) a_reply;
+  XASL_NODE_HEADER xasl_header, *xasl_header_p = NULL;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_XASL_ID_SIZE) a_reply;
+  int error = NO_ERROR;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -5548,6 +5551,15 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_oid (ptr, &user_oid);
   /* unpack size of XASL stream */
   ptr = or_unpack_int (ptr, &xasl_size);
+  /* unpack get XASL node header boolean */
+  ptr = or_unpack_int (ptr, &get_xasl_header);
+
+  if (get_xasl_header)
+    {
+      /* need to get XASL node header */
+      xasl_header_p = &xasl_header;
+      INIT_XASL_NODE_HEADER (xasl_header_p);
+    }
 
   if (xasl_size > 0)
     {
@@ -5569,7 +5581,7 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid,
   XASL_ID_SET_NULL (&xasl_id);
   p =
     xqmgr_prepare_query (thread_p, qstmt, qplan, &user_oid, xasl_stream,
-			 xasl_size, &xasl_id);
+			 xasl_size, &xasl_id, xasl_header_p);
   if (xasl_stream && !p)
     {
       return_error_to_client (thread_p, rid);
@@ -5578,21 +5590,55 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid,
     {
       free_and_init (xasl_stream);
     }
-  /* pack XASL file id as a reply */
+
   if (p)
     {
-      ptr = or_pack_int (reply, NO_ERROR);
+      if (get_xasl_header && !XASL_ID_IS_NULL (p))
+	{
+	  /* pack XASL node header */
+	  reply_buffer_size = XASL_NODE_HEADER_SIZE;
+	  reply_buffer = (char *) malloc (reply_buffer_size);
+	  if (reply_buffer == NULL)
+	    {
+	      reply_buffer_size = 0;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, reply_buffer_size);
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+	  else
+	    {
+	      ptr = reply_buffer;
+	      OR_PACK_XASL_NODE_HEADER (ptr, xasl_header_p);
+	    }
+	}
+    }
+  else
+    {
+      error = ER_FAILED;
+    }
+
+  if (error == NO_ERROR)
+    {
+      ptr = or_pack_int (reply, reply_buffer_size);
+      ptr = or_pack_int (ptr, NO_ERROR);
+      /* pack XASL file id as a reply */
       OR_PACK_XASL_ID (ptr, p);
     }
   else
     {
-      ptr = or_pack_int (reply, ER_FAILED);
+      ptr = or_pack_int (reply, 0);
+      ptr = or_pack_int (ptr, error);
     }
 
   /* send reply and data to the client */
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid,
 				     reply, OR_ALIGNED_BUF_SIZE (a_reply),
-				     NULL, 0);
+				     reply_buffer, reply_buffer_size);
+
+  if (reply_buffer != NULL)
+    {
+      free_and_init (reply_buffer);
+    }
 }
 
 /*
@@ -8038,7 +8084,7 @@ sprm_server_obtain_parameters (THREAD_ENTRY * thread_p, unsigned int rid,
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr = NULL, *reply_data = NULL;
-  int reply_data_size, error;
+  int reply_data_size;
   SYSPRM_ASSIGN_VALUE *prm_values = NULL;
 
   (void) sysprm_unpack_assign_values (request, &prm_values);
@@ -9496,17 +9542,33 @@ ssession_get_prepared_statement (THREAD_ENTRY * thread_p, unsigned int rid,
   XASL_ID xasl_id;
   /* return code + data length */
   OR_ALIGNED_BUF (OR_INT_SIZE * 2 + OR_XASL_ID_SIZE) a_reply;
+  int get_xasl_header = 0;
+  XASL_NODE_HEADER xasl_header, *xasl_header_p = NULL;
 
-  or_unpack_string (request, &name);
+  /* unpack prepared statement name */
+  ptr = or_unpack_string (request, &name);
+  /* unpack get XASL node header boolean */
+  ptr = or_unpack_int (ptr, &get_xasl_header);
+  if (get_xasl_header)
+    {
+      /* need to get XASL node header too */
+      xasl_header_p = &xasl_header;
+      INIT_XASL_NODE_HEADER (xasl_header_p);
+    }
 
   err = xsession_get_prepared_statement (thread_p, name, &stmt_info,
-					 &info_len, &xasl_id);
+					 &info_len, &xasl_id, xasl_header_p);
   if (err != NO_ERROR)
     {
       goto error;
     }
 
-  reply_size = info_len;
+  /* pack reply buffer */
+  reply_size = or_packed_stream_length (info_len);	/* smt_info */
+  if (get_xasl_header)
+    {
+      reply_size += XASL_NODE_HEADER_SIZE;	/* xasl node header */
+    }
   data_reply = (char *) malloc (reply_size);
   if (data_reply == NULL)
     {
@@ -9516,8 +9578,12 @@ ssession_get_prepared_statement (THREAD_ENTRY * thread_p, unsigned int rid,
       goto error;
     }
 
-  ptr = data_reply;
-  memcpy (ptr, stmt_info, info_len);
+  ptr = or_pack_stream (data_reply, stmt_info, info_len);
+  if (get_xasl_header)
+    {
+      /* pack XASL node header */
+      OR_PACK_XASL_NODE_HEADER (ptr, xasl_header_p);
+    }
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 

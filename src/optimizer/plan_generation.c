@@ -123,9 +123,6 @@ static REGU_PTR_LIST regu_ptr_list_add_regu (REGU_VARIABLE * var_p,
 
 static bool qo_check_seg_belongs_to_range_term (QO_PLAN * subplan,
 						QO_ENV * env, int seg_idx);
-static bool qo_check_ordby_num_for_multi_range_opt (PARSER_CONTEXT * parser,
-						    PT_NODE * orderby_for,
-						    DB_VALUE * upper_limit);
 static int qo_check_plan_index_for_multi_range_opt (PT_NODE *
 						    orderby_nodes,
 						    PT_NODE *
@@ -3482,10 +3479,11 @@ qo_get_key_limit_from_instnum (PARSER_CONTEXT * parser, QO_PLAN * plan,
  *   parser(in): the parser context
  *   plan (in):  the query plan
  *   xasl (in):  the full XASL node
+ *   ignore_lower (in): generate key limit even if ordbynum has a lower limit
  */
 QO_LIMIT_INFO *
 qo_get_key_limit_from_ordbynum (PARSER_CONTEXT * parser, QO_PLAN * plan,
-				XASL_NODE * xasl)
+				XASL_NODE * xasl, bool ignore_lower)
 {
   REGU_PTR_LIST lower = NULL, upper = NULL, ptr = NULL;
   QO_LIMIT_INFO *limit_infop;
@@ -3503,7 +3501,7 @@ qo_get_key_limit_from_ordbynum (PARSER_CONTEXT * parser, QO_PLAN * plan,
       return NULL;
     }
   /* having a lower limit, or not having upper limit is not helpful */
-  if (upper == NULL || lower != NULL)
+  if (upper == NULL || (lower != NULL && !ignore_lower))
     {
       regu_ptr_list_free (lower);
       regu_ptr_list_free (upper);
@@ -3592,8 +3590,7 @@ qo_check_iscan_for_multi_range_opt (QO_PLAN * plan)
   PT_NODE *orderby_nodes = NULL, *point = NULL, *name = NULL;
   PARSER_CONTEXT *parser = NULL;
   bool seen = false, reverse = false;
-  DB_VALUE upper_limit;
-  PT_NODE *order_by = NULL, *orderby_for = NULL;
+  PT_NODE *order_by = NULL;
   PT_MISC_TYPE all_distinct;
 
 
@@ -3631,36 +3628,19 @@ qo_check_iscan_for_multi_range_opt (QO_PLAN * plan)
     }
   all_distinct = query->info.query.all_distinct;
   order_by = query->info.query.order_by;
-  orderby_for = query->info.query.orderby_for;
 
-  if (orderby_for == NULL || order_by == NULL || all_distinct == PT_DISTINCT)
+  if (order_by == NULL || all_distinct == PT_DISTINCT)
+    {
+      return false;
+    }
+
+  if (query->info.query.orderby_for == NULL)
     {
       return false;
     }
 
   select_list = pt_get_select_list (parser, query);
   assert (select_list != NULL);
-
-  /* check a valid range */
-  if (orderby_for->or_next)
-    {
-      /* OR operator not allowed */
-      return false;
-    }
-  DB_MAKE_NULL (&upper_limit);
-  if (!qo_check_ordby_num_for_multi_range_opt
-      (parser, orderby_for, &upper_limit))
-    {
-      /* the orderby_for expression is not valid for multi range optimization */
-      return false;
-    }
-  if (DB_IS_NULL (&upper_limit)
-      || (DB_GET_BIGINT (&upper_limit) >=
-	  prm_get_integer_value (PRM_ID_MULTI_RANGE_OPT_LIMIT)))
-    {
-      /* the upper limit for orderby_num is too large */
-      return false;
-    }
 
   /* create a list of pointers to the names referenced in order by */
   for (col = order_by; col != NULL; col = col->next)
@@ -3720,6 +3700,13 @@ qo_check_iscan_for_multi_range_opt (QO_PLAN * plan)
       goto exit;
     }
 
+  /* check a valid range */
+  if (!pt_check_ordby_num_for_multi_range_opt
+      (parser, query, &env->multi_range_opt_candidate, NULL))
+    {
+      goto exit;
+    }
+
   /* all conditions were met, so multi range optimization can be applied */
   multi_range_optimize = true;
   /* mark the index that will do the multi range optimization */
@@ -3734,136 +3721,6 @@ exit:
     }
   return multi_range_optimize;
 }
-
-/*
- * qo_check_ordby_num_for_multi_range_opt () - check order by for clause is
- *					       compatible with multi range
- *					       optimization
- *
- * return	     : true if a valid order by for expression, false otherwise
- * parser (in)	     : parser context
- * orderby_for (in)  : order by for node
- * upper_limit (out) : DB_VALUE pointer that will save the upper limit
- *
- * Note:  Only operations that can reduce to ORDERBY_NUM () </<= VALUE are
- *	  allowed:
- *	  1. ORDERBY_NUM () LE/LT (EXPR that evaluates to a value).
- *	  2. (EXPR that evaluates to a values) GE/GT ORDERBY_NUM ().
- *	  3. Any number of #1 and #2 expressions separated by PT_AND logical
- *	     operator.
- */
-static bool
-qo_check_ordby_num_for_multi_range_opt (PARSER_CONTEXT * parser,
-					PT_NODE * orderby_for,
-					DB_VALUE * upper_limit)
-{
-  int op;
-  PT_NODE *arg_ordby_num;
-  PT_NODE *rhs;
-  PT_NODE *arg1, *arg2;
-  DB_VALUE limit;
-
-  if (orderby_for == NULL || upper_limit == NULL)
-    {
-      return false;
-    }
-
-  if (!PT_IS_EXPR_NODE (orderby_for))
-    {
-      return false;
-    }
-
-  op = orderby_for->info.expr.op;
-  if (op == PT_AND)
-    {
-      return qo_check_ordby_num_for_multi_range_opt (parser,
-						     orderby_for->info.expr.
-						     arg1, upper_limit)
-	&& qo_check_ordby_num_for_multi_range_opt (parser,
-						   orderby_for->info.expr.
-						   arg2, upper_limit);
-    }
-
-  if (op != PT_LT && op != PT_LE && op != PT_GT && op != PT_GE)
-    {
-      /* only compare operations are allowed */
-      return false;
-    }
-
-  arg1 = orderby_for->info.expr.arg1;
-  arg2 = orderby_for->info.expr.arg2;
-  if (arg1 == NULL || arg2 == NULL)
-    {
-      /* safe guard */
-      return false;
-    }
-
-  /* look for ordby_num argument */
-  if (PT_IS_EXPR_NODE (arg1) && arg1->info.expr.op == PT_ORDERBY_NUM)
-    {
-      arg_ordby_num = arg1;
-      rhs = arg2;
-    }
-  else if (PT_IS_EXPR_NODE (arg2) && arg2->info.expr.op == PT_ORDERBY_NUM)
-    {
-      arg_ordby_num = arg2;
-      rhs = arg1;
-      /* reverse operators */
-      switch (op)
-	{
-	case PT_LE:
-	  op = PT_GT;
-	  break;
-	case PT_LT:
-	  op = PT_GE;
-	  break;
-	case PT_GT:
-	  op = PT_LE;
-	  break;
-	case PT_GE:
-	  op = PT_LT;
-	  break;
-	default:
-	  break;
-	}
-    }
-  else
-    {
-      /* ordby_num argument was not found, this is not a valid expression */
-      return false;
-    }
-
-  if (op == PT_GE || op == PT_GT)
-    {
-      /* lower limits are not accepted */
-      return false;
-    }
-
-  /* evaluate the rhs expression */
-  DB_MAKE_NULL (&limit);
-  pt_evaluate_tree (parser, rhs, &limit, 1);
-  if (DB_IS_NULL (&limit))
-    {
-      return false;
-    }
-  if (tp_value_coerce
-      (&limit, &limit,
-       tp_domain_resolve_default (DB_TYPE_BIGINT)) != DOMAIN_COMPATIBLE)
-    {
-      return false;
-    }
-  if (op == PT_LT)
-    {
-      /* ORDERBY_NUM () < n => ORDERBY_NUM <= n - 1 */
-      DB_MAKE_BIGINT (&limit, (DB_GET_BIGINT (&limit) - 1));
-    }
-  if (db_value_clone (&limit, upper_limit) != NO_ERROR)
-    {
-      return false;
-    }
-  return true;
-}
-
 
 /*
  * qo_check_plan_index_for_multi_range_opt () - check if the index of index
@@ -4279,7 +4136,7 @@ qo_check_subqueries_for_multi_range_opt (QO_PLAN * plan, int sort_col_idx_pos)
   QO_SUBQUERY *subq = NULL;
   int i, s, t, seg_idx, i_seg_idx, ts;
   QO_NODE *node_of_plan = NULL;
-  BITSET_ITERATOR iter_s, iter_t, iter_ts;
+  BITSET_ITERATOR iter_t, iter_ts;
   QO_TERM *term = NULL;
 
   assert (plan != NULL && plan->info->env != NULL

@@ -6118,6 +6118,7 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
     {
       env->plan_dump_enabled = true;
     }
+  env->multi_range_opt_candidate = false;
 
   return env;
 }

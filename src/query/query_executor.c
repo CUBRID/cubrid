@@ -12690,7 +12690,8 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  /* DISTINCT & ORDER BY
 	     check orderby_list flag for skipping order by */
 	  if ((xasl->orderby_list	/* it has ORDER BY clause */
-	       && !XASL_IS_FLAGED (xasl, XASL_SKIP_ORDERBY_LIST)	/* cannot skip */
+	       && (!XASL_IS_FLAGED (xasl, XASL_SKIP_ORDERBY_LIST)	/* cannot skip */
+		   || XASL_IS_FLAGED (xasl, XASL_USES_MRO))	/* MRO must go on */
 	       && (xasl->list_id->tuple_cnt > 1	/* the result has more than one tuple */
 		   || xasl->ordbynum_val != NULL))	/* ORDERBY_NUM() is used */
 	      || (xasl->option == Q_DISTINCT))	/* DISTINCT must be go on */
@@ -18766,6 +18767,7 @@ query_multi_range_opt_check_set_sort_col (THREAD_ENTRY * thread_p,
   if (xasl->option != Q_DISTINCT && xasl->scan_ptr == NULL)
     {
       XASL_SET_FLAG (xasl, XASL_SKIP_ORDERBY_LIST);
+      XASL_SET_FLAG (xasl, XASL_USES_MRO);
     }
 
 exit:
@@ -22153,10 +22155,11 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
 
   if ((xasl->orderby_list	/* it has ORDER BY clause */
-       && !XASL_IS_FLAGED (xasl, XASL_SKIP_ORDERBY_LIST)	/* cannot skip */
+       && (!XASL_IS_FLAGED (xasl, XASL_SKIP_ORDERBY_LIST)	/* cannot skip */
+	   || XASL_IS_FLAGED (xasl, XASL_USES_MRO))	/* MRO must go on */
        && (xasl->list_id->tuple_cnt > 1	/* the result has more than one tuple */
 	   || xasl->ordbynum_val != NULL))	/* ORDERBY_NUM() is used */
-      || (xasl->option == Q_DISTINCT))	/* DISTINCT must be go on */
+      || (xasl->option == Q_DISTINCT))	/* DISTINCT must go on */
     {
       if (qexec_orderby_distinct (thread_p, xasl, xasl->option,
 				  xasl_state) != NO_ERROR)

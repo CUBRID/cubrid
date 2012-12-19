@@ -202,6 +202,9 @@ extern int qfile_store_xasl (THREAD_ENTRY * thread_p, const char *xasl,
 			     int size, XASL_ID * xasl_id);
 extern int qfile_load_xasl (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id,
 			    char **xasl, int *size);
+extern void qfile_load_xasl_node_header (THREAD_ENTRY * thread_p,
+					 const XASL_ID * xasl_id_p,
+					 XASL_NODE_HEADER * xasl_header_p);
 extern QFILE_LIST_ID *qfile_open_list (THREAD_ENTRY * thread_p,
 				       QFILE_TUPLE_VALUE_TYPE_LIST *
 				       type_list, SORT_LIST * sort_list,

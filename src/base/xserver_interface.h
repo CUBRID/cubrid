@@ -346,7 +346,8 @@ extern XASL_ID *xqmgr_prepare_query (THREAD_ENTRY * thrd,
 				     const char *qplan,
 				     const OID * user_oid,
 				     const char *xasl_stream,
-				     int xasl_size, XASL_ID * xasl_id);
+				     int xasl_size, XASL_ID * xasl_id,
+				     XASL_NODE_HEADER * xasl_header_p);
 extern QFILE_LIST_ID *xqmgr_execute_query (THREAD_ENTRY * thrd,
 					   const XASL_ID * xasl_id,
 					   QUERY_ID * query_idp,
@@ -464,7 +465,8 @@ extern int xsession_create_prepared_statement (THREAD_ENTRY * thread_p,
 					       int info_len);
 extern int xsession_get_prepared_statement (THREAD_ENTRY * thread_p,
 					    const char *name, char **info,
-					    int *info_len, XASL_ID * xasl_id);
+					    int *info_len, XASL_ID * xasl_id,
+					    XASL_NODE_HEADER * xasl_header_p);
 extern int xsession_delete_prepared_statement (THREAD_ENTRY * thread_p,
 					       const char *name);
 

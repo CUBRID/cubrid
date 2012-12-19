@@ -15256,7 +15256,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
   if (xasl->ordbynum_pred)
     {
       QO_LIMIT_INFO *limit_infop =
-	qo_get_key_limit_from_ordbynum (parser, qo_plan, xasl);
+	qo_get_key_limit_from_ordbynum (parser, qo_plan, xasl, false);
       if (limit_infop)
 	{
 	  xasl->orderby_limit = limit_infop->upper;
@@ -15265,13 +15265,21 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
     }
 
   /* convert ordbynum to key limit if we have iscan with multiple key ranges */
-  if (qo_plan && qo_plan_multi_range_opt (qo_plan))
+  if (qo_plan != NULL && qo_plan_multi_range_opt (qo_plan))
     {
       if (pt_ordbynum_to_key_limit_multiple_ranges (parser, qo_plan, xasl) !=
 	  NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
+      xasl->header.mro_info |= XASL_NODE_HEADER_MRO_CANDIDATE;
+      xasl->header.mro_info |= XASL_NODE_HEADER_MRO_IS_USED;
+    }
+  else if (qo_plan != NULL
+	   && qo_plan->multi_range_opt_use == PLAN_MULTI_RANGE_OPT_CAN_USE)
+    {
+      /* Query could use multi range optimization, but limit was too large */
+      xasl->header.mro_info |= XASL_NODE_HEADER_MRO_CANDIDATE;
     }
 
   /* set list file descriptor for dummy pusher */
@@ -20680,7 +20688,7 @@ pt_ordbynum_to_key_limit_multiple_ranges (PARSER_CONTEXT * parser,
     }
 
   /* generate key limit expression from limit/ordbynum */
-  limit_infop = qo_get_key_limit_from_ordbynum (parser, plan, xasl);
+  limit_infop = qo_get_key_limit_from_ordbynum (parser, plan, xasl, true);
   if (!limit_infop)
     {
       goto error_exit;

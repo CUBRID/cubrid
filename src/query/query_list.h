@@ -106,6 +106,57 @@ struct cache_time
           }                                             \
         } while (0)
 
+/* XASL HEADER */
+/* 
+ * XASL_NODE_HEADER has useful information that needs to be passed to client
+ * along with XASL_ID
+ *
+ * NOTE: Update XASL_NODE_HEADER_SIZE when this structure is changed
+ */
+typedef struct xasl_node_header XASL_NODE_HEADER;
+struct xasl_node_header
+{
+  int mro_info;			/* multi range optimization flags */
+};
+
+#define XASL_NODE_HEADER_SIZE OR_INT_SIZE	/* mro_info */
+
+/* Flags for mro_info in XASL_NODE_HEADER */
+#define XASL_NODE_HEADER_MRO_CANDIDATE   0x1	/* query may use multi range opt */
+#define XASL_NODE_HEADER_MRO_IS_USED	 0x2	/* query uses multi range opt */
+
+#define OR_PACK_XASL_NODE_HEADER(PTR, X)	  \
+  do					  \
+  {					  \
+    if ((PTR) == NULL)			  \
+      {					  \
+	break;				  \
+      }					  \
+    ASSERT_ALIGN ((PTR), INT_ALIGNMENT);	  \
+    (PTR) = or_pack_int ((PTR), (X)->mro_info);	  \
+  } while (0)
+
+#define OR_UNPACK_XASL_NODE_HEADER(PTR, X)	  \
+  do					  \
+  {					  \
+    if ((PTR) == NULL)			  \
+      {					  \
+	break;				  \
+      }					  \
+    ASSERT_ALIGN ((PTR), INT_ALIGNMENT);	  \
+    (PTR) = or_unpack_int ((PTR), &(X)->mro_info); \
+  } while (0)
+
+#define INIT_XASL_NODE_HEADER(X)		  \
+  do					  \
+  {					  \
+    if ((X) == NULL)			  \
+      {					  \
+	break;				  \
+      }					  \
+    memset ((X), 0x00, XASL_NODE_HEADER_SIZE);	  \
+  } while (0)
+
 /* XASL FILE IDENTIFICATION */
 
 typedef struct xasl_id XASL_ID;

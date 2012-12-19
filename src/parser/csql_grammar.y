@@ -21593,49 +21593,53 @@ parser_main (PARSER_CONTEXT * parser)
 						      (1 +
 						       parser->stack_top) *
 						      sizeof (PT_NODE *));
-  if (parser->statements)
-    {
-      for (i = 0, top = parser->stack_top; i < top; i++)
-        {
-          parser->statements[i] = parser->node_stack[i];
-        }
-      parser->statements[top] = NULL;
-    }
-  /* record parser_input_host_index into parser->host_var_count for later use;
-     e.g. parser_set_host_variables(), auto-parameterized query */
-  parser->host_var_count = parser_input_host_index;
-  if (parser->host_var_count > 0)
-    {
-      /* allocate place holder for host variables */
-      parser->host_variables = (DB_VALUE *)
-          malloc (parser->host_var_count * sizeof (DB_VALUE));
-      if (parser->host_variables)
-        {
-          memset (parser->host_variables, 0,
-    		      parser->host_var_count * sizeof (DB_VALUE));
-        }
-      else
-        {
-          parser->statements = NULL;
-          goto end;
-        }
+      if (parser->statements)
+	{
+	  for (i = 0, top = parser->stack_top; i < top; i++)
+	    {
+	      parser->statements[i] = parser->node_stack[i];
+	    }
+	  parser->statements[top] = NULL;
+	}
+      /* record parser_input_host_index into parser->host_var_count for later use;
+	 e.g. parser_set_host_variables(), auto-parameterized query */
+      parser->host_var_count = parser_input_host_index;
+      if (parser->host_var_count > 0)
+	{
+	  /* allocate place holder for host variables */
+	  parser->host_variables = (DB_VALUE *)
+	      malloc (parser->host_var_count * sizeof (DB_VALUE));
+	  if (parser->host_variables)
+	    {
+	      memset (parser->host_variables, 0,
+    			  parser->host_var_count * sizeof (DB_VALUE));
+	    }
+	  else
+	    {
+	      parser->statements = NULL;
+	      goto end;
+	    }
 
-      parser->host_var_expected_domains = (TP_DOMAIN **)
-          malloc (parser->host_var_count * sizeof (TP_DOMAIN *));
-      if (parser->host_var_expected_domains)
-        {
-          for (i = 0; i < parser->host_var_count; i++)
-            {
-              parser->host_var_expected_domains[i] =
-                  tp_domain_resolve_default (DB_TYPE_UNKNOWN);
-            }
-        }
-      else
-        {
-          free_and_init (parser->host_variables);
-          parser->statements = NULL;
-        }
-      }
+	  parser->host_var_expected_domains = (TP_DOMAIN **)
+	      malloc (parser->host_var_count * sizeof (TP_DOMAIN *));
+	  if (parser->host_var_expected_domains)
+	    {
+	      for (i = 0; i < parser->host_var_count; i++)
+		{
+		  parser->host_var_expected_domains[i] =
+		      tp_domain_resolve_default (DB_TYPE_UNKNOWN);
+		}
+	    }
+	  else
+	    {
+	      free_and_init (parser->host_variables);
+	      parser->statements = NULL;
+	    }
+	  for (i = 0; i < parser->host_var_count; i++)
+	    {
+	      DB_MAKE_NULL (&parser->host_variables[i]);
+	    }
+	}
     }
 
 end:

@@ -4141,7 +4141,6 @@ static QO_PLAN_COMPARE_RESULT
 qo_multi_range_opt_plans_cmp (QO_PLAN * a, QO_PLAN * b)
 {
   QO_INDEX_ENTRY *a_ent = NULL, *b_ent = NULL;
-  int result;
 
   /* if no plan uses multi range optimization, nothing to do here */
   if (!qo_plan_multi_range_opt (a) && !qo_plan_multi_range_opt (b))
@@ -4219,7 +4218,7 @@ qo_multi_range_opt_plans_cmp (QO_PLAN * a, QO_PLAN * b)
 	    }
 	  else if (a_ent->cover_segments && b_ent->cover_segments)
 	    {
-	      return qo_cover_index_plans_cmp (a_ent, b_ent);
+	      return qo_cover_index_plans_cmp (a, b);
 	    }
 
 	  return qo_plan_iscan_terms_cmp (a, b);
@@ -8775,9 +8774,14 @@ qo_search_planner (QO_PLANNER * planner)
    * optimization it means that the optimization has been invalidated, or
    * maybe another plan was chosen. Make sure to un-mark indexes in this case
    */
-  if (!qo_plan_multi_range_opt (plan))
+  if (plan != NULL && !qo_plan_multi_range_opt (plan))
     {
       qo_walk_plan_tree (plan, qo_unset_multi_range_optimization, NULL);
+      if (plan->info->env != NULL
+	  && plan->info->env->multi_range_opt_candidate)
+	{
+	  plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_CAN_USE;
+	}
     }
 
   if (qo_is_interesting_order_scan (plan))

@@ -192,6 +192,8 @@ static KEY_RANGE *stx_restore_key_range_array (THREAD_ENTRY * thread_p,
 
 static char *stx_build_xasl_node (THREAD_ENTRY * thread_p, char *tmp,
 				  XASL_NODE * ptr);
+static char *stx_build_xasl_header (THREAD_ENTRY * thread_p, char *ptr,
+				    XASL_NODE_HEADER * xasl_header);
 static char *stx_build_filter_pred_node (THREAD_ENTRY * thread_p, char *ptr,
 					 PRED_EXPR_WITH_CONTEXT * pred);
 static char *stx_build_func_pred (THREAD_ENTRY * thread_p, char *tmp,
@@ -309,6 +311,38 @@ static int stx_init_xasl_unpack_info (THREAD_ENTRY * thread_p,
 static char *stx_unpack_char (char *tmp, char *ptr);
 static char *stx_unpack_long (char *tmp, long *ptr);
 #endif
+
+/*
+ * stx_map_stream_to_xasl_node_header () - Obtain xasl node header from xasl
+ *					   stream.
+ *
+ * return	       : error code.
+ * thread_p (in)       : thread entry.
+ * xasl_header_p (out) : pointer to xasl node header.
+ * xasl_stream (in)    : xasl stream.
+ */
+int
+stx_map_stream_to_xasl_node_header (THREAD_ENTRY * thread_p,
+				    XASL_NODE_HEADER * xasl_header_p,
+				    char *xasl_stream)
+{
+  int xasl_stream_header_size = 0, offset = 0;
+  char *ptr = NULL;
+
+  if (xasl_stream == NULL || xasl_header_p == NULL)
+    {
+      assert (0);
+      return ER_FAILED;
+    }
+  (void) or_unpack_int (xasl_stream, &xasl_stream_header_size);
+  offset = OR_INT_SIZE +	/* xasl stream header size */
+    xasl_stream_header_size +	/* xasl stream header data */
+    OR_INT_SIZE;		/* xasl stream body size */
+  offset = MAKE_ALIGN (offset);
+  ptr = xasl_stream + offset;
+  OR_UNPACK_XASL_NODE_HEADER (ptr, xasl_header_p);
+  return NO_ERROR;
+}
 
 /*
  * stx_map_stream_to_xasl () -
@@ -1782,6 +1816,28 @@ stx_restore_access_spec_type (THREAD_ENTRY * thread_p, char **ptr, void *arg)
   return access_spec_type;
 }
 
+/*
+ * stx_build_xasl_header () - Unpack XASL node header from buffer.
+ *
+ * return	     : buffer pointer after the unpacked XASL node header
+ * thread_p (in)     : thread entry
+ * ptr (in)	     : buffer pointer where XASL node header is packed
+ * xasl_header (out) : Unpacked XASL node header
+ */
+static char *
+stx_build_xasl_header (THREAD_ENTRY * thread_p, char *ptr,
+		       XASL_NODE_HEADER * xasl_header)
+{
+  if (ptr == NULL)
+    {
+      return NULL;
+    }
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
+  OR_UNPACK_XASL_NODE_HEADER (ptr, xasl_header);
+  return ptr;
+}
+
 static char *
 stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 {
@@ -1794,6 +1850,9 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 
   /* initialize query_in_progress flag */
   xasl->query_in_progress = false;
+
+  /* XASL node header is packed first */
+  ptr = stx_build_xasl_header (thread_p, ptr, &xasl->header);
 
   ptr = or_unpack_int (ptr, (int *) &xasl->type);
 

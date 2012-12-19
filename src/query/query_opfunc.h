@@ -197,7 +197,8 @@ extern void regu_set_error_with_one_args (int err_type, const char *infor);
 extern void regu_set_global_error (void);
 
 extern int query_prepare (const char *qstmt, const char *qplan,
-			  const char *stream, int size, XASL_ID ** xasl_idp);
+			  const char *stream, int size, XASL_ID ** xasl_idp,
+			  XASL_NODE_HEADER * xasl_header_p);
 extern int query_execute (const XASL_ID * xasl_id, QUERY_ID * query_idp,
 			  int var_cnt, const DB_VALUE * varptr,
 			  QFILE_LIST_ID ** list_idp, QUERY_FLAG flag,

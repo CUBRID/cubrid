@@ -214,6 +214,10 @@ static PT_NODE *pt_make_query_user_groups (PARSER_CONTEXT * parser,
 					   const char *user_name);
 static char *pt_help_show_create_table (PARSER_CONTEXT * parser,
 					PT_NODE * table_name);
+
+static bool pt_check_ordby_num_for_mro_internal (PARSER_CONTEXT * parser,
+						 PT_NODE * orderby_for,
+						 DB_VALUE * upper_limit);
 #define NULL_ATTRID -1
 
 /*
@@ -10388,6 +10392,360 @@ pt_make_query_show_collation (PARSER_CONTEXT * parser,
 
 
   return node;
+}
+
+/*
+ * pt_check_ordby_num_for_multi_range_opt () - checks if limit/order by for is
+ *					       valid for multi range opt
+ *
+ * return	       : true/false
+ * parser (in)	       : parser context
+ * query (in)	       : query
+ * mro_candidate (out) : if the only failed condition is upper limit for
+ *			 orderby_num (), this plan may still use multi range
+ *			 optimization if that limit changes
+ * cannot_eval (out)   : upper limit is null or could not be evaluated
+ */
+bool
+pt_check_ordby_num_for_multi_range_opt (PARSER_CONTEXT * parser,
+					PT_NODE * query, bool * mro_candidate,
+					bool * cannot_eval)
+{
+  PT_NODE *limit = NULL, *orderby_for = NULL;
+  DB_VALUE upper_limit, lower_limit, range;
+  TP_DOMAIN *big_int_tp_domain = tp_domain_resolve_default (DB_TYPE_BIGINT);
+  int save_set_host_var;
+  bool valid = false;
+
+  if (cannot_eval != NULL)
+    {
+      *cannot_eval = true;
+    }
+  if (mro_candidate != NULL)
+    {
+      *mro_candidate = false;
+    }
+
+  assert (parser != NULL);
+  if (parser == NULL)
+    {
+      return false;
+    }
+
+  if (!PT_IS_QUERY (query))
+    {
+      return false;
+    }
+
+  save_set_host_var = parser->set_host_var;
+  parser->set_host_var = 1;
+
+  limit = query->info.query.limit;
+  if (limit)
+    {
+      if (limit->next)
+	{
+	  /* LIMIT x,y => upper_limit = x + y */
+	  DB_MAKE_NULL (&lower_limit);
+	  pt_evaluate_tree_having_serial (parser, limit, &lower_limit, 1);
+	  if (pt_has_error (parser))
+	    {
+	      goto end;
+	    }
+	  if (DB_IS_NULL (&lower_limit)
+	      ||
+	      (tp_value_coerce (&lower_limit, &lower_limit, big_int_tp_domain)
+	       != DOMAIN_COMPATIBLE))
+	    {
+	      goto end_mro_candidate;
+	    }
+	  DB_MAKE_NULL (&range);
+	  pt_evaluate_tree_having_serial (parser, limit->next, &range, 1);
+	  if (pt_has_error (parser))
+	    {
+	      goto end;
+	    }
+	  if (DB_IS_NULL (&range)
+	      || (tp_value_coerce (&range, &range, big_int_tp_domain) !=
+		  DOMAIN_COMPATIBLE))
+	    {
+	      goto end_mro_candidate;
+	    }
+	  DB_MAKE_BIGINT (&upper_limit,
+			  DB_GET_BIGINT (&lower_limit) +
+			  DB_GET_BIGINT (&range));
+	}
+      else
+	{
+	  /* LIMIT x => upper_limit = x */
+	  DB_MAKE_NULL (&upper_limit);
+	  pt_evaluate_tree_having_serial (parser, limit, &upper_limit, 1);
+	  if (pt_has_error (parser))
+	    {
+	      goto end;
+	    }
+	  if (DB_IS_NULL (&upper_limit)
+	      ||
+	      (tp_value_coerce (&upper_limit, &upper_limit, big_int_tp_domain)
+	       != DOMAIN_COMPATIBLE))
+	    {
+	      goto end_mro_candidate;
+	    }
+	}
+    }
+  else
+    {
+      /* ORDER BY FOR clause, try to find upper limit */
+      orderby_for = query->info.query.orderby_for;
+      DB_MAKE_NULL (&upper_limit);
+      if (!pt_check_ordby_num_for_mro_internal
+	  (parser, orderby_for, &upper_limit))
+	{
+	  /* invalid ORDER BY FOR expression, optimization cannot apply */
+	  goto end;
+	}
+      if (pt_has_error (parser))
+	{
+	  goto end;
+	}
+      if (DB_IS_NULL (&upper_limit))
+	{
+	  goto end_mro_candidate;
+	}
+    }
+  if (cannot_eval)
+    {
+      /* upper limit was successfully evaluated */
+      *cannot_eval = false;
+    }
+  if (DB_GET_BIGINT (&upper_limit) >
+      prm_get_integer_value (PRM_ID_MULTI_RANGE_OPT_LIMIT))
+    {
+      goto end_mro_candidate;
+    }
+  else
+    {
+      valid = true;
+      goto end;
+    }
+
+end_mro_candidate:
+  /* should be here if multi range optimization could not be validated because
+   * upper limit is too large or it could not be evaluated. However, the query
+   * may still use optimization for different host variable values.
+   */
+  if (mro_candidate != NULL)
+    {
+      *mro_candidate = true;
+    }
+
+end:
+  parser->set_host_var = save_set_host_var;
+  return valid;
+}
+
+/*
+ * pt_check_ordby_num_for_mro_internal () - check order by for clause is
+ *					    compatible with multi range
+ *					    optimization
+ *
+ * return	      : true if a valid order by for expression, else false
+ * parser (in)	      : parser context
+ * orderby_for (in)   : order by for node
+ * upper_limit (out)  : DB_VALUE pointer that will save the upper limit
+ *
+ * Note:  Only operations that can reduce to ORDERBY_NUM () </<= VALUE are
+ *	  allowed:
+ *	  1. ORDERBY_NUM () LE/LT (EXPR that evaluates to a value).
+ *	  2. (EXPR that evaluates to a values) GE/GT ORDERBY_NUM ().
+ *	  3. Any number of #1 and #2 expressions separated by PT_AND logical
+ *	     operator.
+ *	  Lower limits are allowed.
+ */
+static bool
+pt_check_ordby_num_for_mro_internal (PARSER_CONTEXT * parser,
+				     PT_NODE * orderby_for,
+				     DB_VALUE * upper_limit)
+{
+  int op;
+  PT_NODE *arg_ordby_num = NULL;
+  PT_NODE *rhs = NULL;
+  PT_NODE *arg1 = NULL, *arg2 = NULL;
+  PT_NODE *save_next = NULL;
+  DB_VALUE limit;
+  bool result = false;
+  bool lt = false;
+
+  if (orderby_for == NULL || upper_limit == NULL)
+    {
+      return false;
+    }
+
+  if (!PT_IS_EXPR_NODE (orderby_for))
+    {
+      return false;
+    }
+
+  if (orderby_for->or_next != NULL)
+    {
+      /* OR operator is now allowed */
+      return false;
+    }
+  if (orderby_for->next)
+    {
+      /* AND operator */
+      save_next = orderby_for->next;
+      orderby_for->next = NULL;
+      result =
+	pt_check_ordby_num_for_mro_internal (parser, orderby_for,
+					     upper_limit);
+      if (result)
+	{
+	  result =
+	    pt_check_ordby_num_for_mro_internal (parser, orderby_for->next,
+						 upper_limit);
+	}
+      orderby_for->next = save_next;
+      return result;
+    }
+
+  op = orderby_for->info.expr.op;
+  if (op == PT_AND)
+    {
+      result =
+	pt_check_ordby_num_for_mro_internal (parser,
+					     orderby_for->info.expr.arg1,
+					     upper_limit);
+      if (result)
+	{
+	  result =
+	    pt_check_ordby_num_for_mro_internal (parser,
+						 orderby_for->info.expr.arg2,
+						 upper_limit);
+	}
+      return result;
+    }
+
+  if (op != PT_LT && op != PT_LE && op != PT_GT && op != PT_GE
+      && op != PT_BETWEEN)
+    {
+      /* only compare operations are allowed */
+      return false;
+    }
+
+  arg1 = orderby_for->info.expr.arg1;
+  arg2 = orderby_for->info.expr.arg2;
+  if (arg1 == NULL || arg2 == NULL)
+    {
+      /* safe guard */
+      return false;
+    }
+
+  /* look for orderby_for argument */
+  if (PT_IS_EXPR_NODE (arg1) && arg1->info.expr.op == PT_ORDERBY_NUM)
+    {
+      arg_ordby_num = arg1;
+      rhs = arg2;
+    }
+  else if (PT_IS_EXPR_NODE (arg2) && arg2->info.expr.op == PT_ORDERBY_NUM)
+    {
+      arg_ordby_num = arg2;
+      rhs = arg1;
+      /* reverse operators */
+      switch (op)
+	{
+	case PT_LE:
+	  op = PT_GT;
+	  break;
+	case PT_LT:
+	  op = PT_GE;
+	  break;
+	case PT_GT:
+	  op = PT_LE;
+	  break;
+	case PT_GE:
+	  op = PT_LT;
+	  break;
+	default:
+	  break;
+	}
+    }
+  else
+    {
+      /* orderby_for argument was not found, this is not a valid expression */
+      return false;
+    }
+
+  if (op == PT_GE || op == PT_GT)
+    {
+      /* lower limits are accepted */
+      return true;
+    }
+  else if (op == PT_LT)
+    {
+      lt = true;
+    }
+  else if (op == PT_BETWEEN)
+    {
+      PT_NODE *between_and = orderby_for->info.expr.arg2;
+      PT_NODE *between_upper = NULL;
+      int between_op;
+
+      assert (between_and != NULL);
+      between_upper = between_and->info.expr.arg2;
+      between_op = between_and->info.expr.op;
+      switch (between_op)
+	{
+	case PT_BETWEEN_GT_LT:
+	case PT_BETWEEN_GE_LT:
+	  lt = true;
+	  /* fall through */
+	case PT_BETWEEN_AND:
+	case PT_BETWEEN_GE_LE:
+	case PT_BETWEEN_GT_LE:
+	  assert (between_and->info.expr.arg2 != NULL);
+	  rhs = between_and->info.expr.arg2;
+	  break;
+	case PT_BETWEEN_EQ_NA:
+	case PT_BETWEEN_GE_INF:
+	case PT_BETWEEN_GT_INF:
+	  /* lower limits are allowed */
+	  return true;
+	default:
+	  /* be conservative */
+	  return false;
+	}
+    }
+
+  /* evaluate the rhs expression */
+  DB_MAKE_NULL (&limit);
+  pt_evaluate_tree_having_serial (parser, rhs, &limit, 1);
+  if (DB_IS_NULL (&limit)
+      ||
+      (tp_value_coerce
+       (&limit, &limit,
+	tp_domain_resolve_default (DB_TYPE_BIGINT)) != DOMAIN_COMPATIBLE))
+    {
+      /* multi range optimization candidate */
+      DB_MAKE_NULL (upper_limit);
+      return true;
+    }
+
+  if (lt)
+    {
+      /* ORDERBY_NUM () < n => ORDERBY_NUM <= n - 1 */
+      DB_MAKE_BIGINT (&limit, (DB_GET_BIGINT (&limit) - 1));
+    }
+  if (DB_IS_NULL (upper_limit)
+      || (DB_GET_BIGINT (upper_limit) > DB_GET_BIGINT (&limit)))
+    {
+      /* update upper limit */
+      if (db_value_clone (&limit, upper_limit) != NO_ERROR)
+	{
+	  return false;
+	}
+    }
+  return true;
 }
 
 /*

@@ -131,6 +131,8 @@ static int xts_save_update_assignment_array (const UPDATE_ASSIGNMENT *
 static int xts_save_odku_info (const ODKU_INFO * odku_info);
 
 static char *xts_process_xasl_node (char *ptr, const XASL_NODE * xasl);
+static char *xts_process_xasl_header (char *ptr,
+				      const XASL_NODE_HEADER header);
 static char *xts_process_filter_pred_node (char *ptr,
 					   const PRED_EXPR_WITH_CONTEXT *
 					   pred);
@@ -2600,6 +2602,26 @@ xts_save_key_range_array (const KEY_RANGE * key_range_array, int nelements)
   return offset;
 }
 
+/*
+ * xts_process_xasl_header () - Pack XASL node header in buffer.
+ *
+ * return      : buffer pointer after the packed XASL node header.
+ * ptr (in)    : buffer pointer where XASL node header should be packed.
+ * header (in) : XASL node header.
+ */
+static char *
+xts_process_xasl_header (char *ptr, const XASL_NODE_HEADER header)
+{
+  if (ptr == NULL)
+    {
+      return NULL;
+    }
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
+  OR_PACK_XASL_NODE_HEADER (ptr, &header);
+  return ptr;
+};
+
 static char *
 xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
 {
@@ -2608,6 +2630,9 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
   ACCESS_SPEC_TYPE *access_spec = NULL;
 
   assert (PTR_ALIGN (ptr, MAX_ALIGNMENT) == ptr);
+
+  /* pack header first */
+  ptr = xts_process_xasl_header (ptr, xasl->header);
 
   ptr = or_pack_int (ptr, xasl->type);
 
@@ -5210,7 +5235,8 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
   int tmp_size = 0;
   ACCESS_SPEC_TYPE *access_spec = NULL;
 
-  size += OR_INT_SIZE +		/* type */
+  size += XASL_NODE_HEADER_SIZE +	/* header */
+    OR_INT_SIZE +		/* type */
     OR_INT_SIZE +		/* flag */
     PTR_SIZE +			/* list_id */
     PTR_SIZE +			/* after_iscan_list */

@@ -310,7 +310,8 @@ extern int qfile_get_list_file_page (QUERY_ID query_id, VOLID volid,
 extern XASL_ID *qmgr_prepare_query (const char *qstmt, const char *qplan,
 				    const OID * user_oid,
 				    const char *xasl_buffer, int size,
-				    XASL_ID * xasl_id);
+				    XASL_ID * xasl_id,
+				    XASL_NODE_HEADER * xasl_header_p);
 extern QFILE_LIST_ID *qmgr_execute_query (const XASL_ID * xasl_id,
 					  QUERY_ID * query_idp, int dbval_cnt,
 					  const DB_VALUE * dbvals,
@@ -570,7 +571,8 @@ extern int csession_create_prepared_statement (const char *name,
 					       int info_length);
 extern int csession_get_prepared_statement (const char *name,
 					    XASL_ID * xasl_id,
-					    char **stmt_info);
+					    char **stmt_info,
+					    XASL_NODE_HEADER * xasl_header_p);
 
 extern int csession_delete_prepared_statement (const char *name);
 

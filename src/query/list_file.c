@@ -1193,6 +1193,51 @@ error:
 }
 
 /*
+ * qfile_load_xasl_node_header () - Load XASL node header from xasl stream
+ *
+ * return	       : void
+ * thread_p (in)       : thread entry
+ * xasl_id_p (in)      : XASL file id
+ * xasl_header_p (out) : pointer to XASL node header
+ */
+void
+qfile_load_xasl_node_header (THREAD_ENTRY * thread_p,
+			     const XASL_ID * xasl_id_p,
+			     XASL_NODE_HEADER * xasl_header_p)
+{
+  char *xasl_stream = NULL;
+  PAGE_PTR xasl_page_p = NULL;
+
+  if (xasl_header_p == NULL)
+    {
+      /* cannot save XASL node header */
+      return;
+    }
+  /* initialize XASL node header */
+  INIT_XASL_NODE_HEADER (xasl_header_p);
+
+  if (xasl_id_p == NULL || XASL_ID_IS_NULL (xasl_id_p))
+    {
+      /* cannot obtain XASL stream */
+      return;
+    }
+
+  /* get XASL stream page */
+  xasl_page_p =
+    pgbuf_fix (thread_p, &xasl_id_p->first_vpid, OLD_PAGE, PGBUF_LATCH_READ,
+	       PGBUF_UNCONDITIONAL_LATCH);
+  if (xasl_page_p == NULL)
+    {
+      return;
+    }
+  xasl_stream = xasl_page_p + QFILE_PAGE_HEADER_SIZE;
+  /* get XASL node header from stream */
+  (void) stx_map_stream_to_xasl_node_header (thread_p, xasl_header_p,
+					     xasl_stream);
+  pgbuf_unfix_and_init (thread_p, xasl_page_p);
+}
+
+/*
  * qfile_load_xasl () - Load the XASL stream from the temporary file
  *   return: number of pages or ER_FAILED
  *   xasl_id(in): XASL file id

@@ -884,6 +884,12 @@ struct qo_env
    * parameter was set to dump a readable version of the plan 
    */
   bool plan_dump_enabled;
+
+  /*
+   * If a plan may be using multi range optimization, but the limit is too
+   * large, this is set to true.
+   */
+  bool multi_range_opt_candidate;
 };
 
 #define QO_ENV_SEG(env, n)		(&(env)->segs[(n)])

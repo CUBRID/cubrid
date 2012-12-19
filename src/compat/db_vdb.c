@@ -93,6 +93,7 @@ static int do_get_prepared_statement_info (DB_SESSION * session,
 					   int stmt_idx);
 static int do_set_user_host_variables (DB_SESSION * session,
 				       PT_NODE * using_list);
+static int do_cast_host_variables_to_expected_domain (DB_SESSION * session);
 static int do_recompile_and_execute_prepared_statement (DB_SESSION * session,
 							PT_NODE * statement,
 							DB_QUERY_RESULT **
@@ -101,6 +102,9 @@ static int do_process_deallocate_prepare (DB_SESSION * session,
 					  PT_NODE * statement);
 static bool is_allowed_as_prepared_statement (PT_NODE * node);
 static bool is_allowed_as_prepared_statement_with_hv (PT_NODE * node);
+static bool db_check_limit_for_mro_need_recompile (PARSER_CONTEXT * parser,
+						   PT_NODE * statement,
+						   bool mro_info_use_mro);
 
 /*
  * get_dimemsion_of() - returns the number of elements of a null-terminated
@@ -1849,7 +1853,6 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 	    {
 	      do_recompile = true;
 	    }
-
 	}
       else
 	{
@@ -2494,12 +2497,15 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx)
   PARSER_CONTEXT *parser = session->parser;
   DB_PREPARE_INFO prepare_info;
   DB_QUERY_TYPE *col = NULL;
+  XASL_NODE_HEADER xasl_header;
 
   assert (pt_node_to_cmd_type (statement) == CUBRID_STMT_EXECUTE_PREPARE);
   db_init_prepare_info (&prepare_info);
 
   name = statement->info.execute.name->info.name.original;
-  err = csession_get_prepared_statement (name, &xasl_id, &stmt_info);
+  err =
+    csession_get_prepared_statement (name, &xasl_id, &stmt_info,
+				     &xasl_header);
   if (err != NO_ERROR)
     {
       return err;
@@ -2573,6 +2579,26 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx)
   parser->auto_param_count = 0;
   parser->set_host_var = 1;
 
+  /* Multi range optimization check:
+   * if host-variables were used (not auto-parameterized), the orderby_num ()
+   * limit may change and invalidate or validate multi range optimization.
+   * Check if query needs to be recompiled.
+   */
+  if (!XASL_ID_IS_NULL (&xasl_id)	/* xasl_id should not be null */
+      && xasl_header.mro_info != 0	/* query has to be multi range opt candidate */
+      && !statement->info.execute.recompile	/* recompile is already planned */
+      && (prepare_info.host_variables.size > prepare_info.auto_param_count))
+    {
+      bool mro_info_use_mro =
+	(xasl_header.mro_info & XASL_NODE_HEADER_MRO_IS_USED) != 0;
+      if (db_check_limit_for_mro_need_recompile
+	  (parser, statement, mro_info_use_mro))
+	{
+	  /* need recompile, set XASL_ID to NULL */
+	  XASL_ID_SET_NULL (&statement->info.execute.xasl_id);
+	}
+    }
+
 cleanup:
   if (stmt_info != NULL)
     {
@@ -2596,6 +2622,56 @@ cleanup:
   return err;
 }
 
+/*
+ * do_cast_host_variables_to_expected_domain () - After compilation phase,
+ *						  cast all host variables to
+ *						  their expected domains
+ *
+ * return	: error code
+ * session (in) : db_session
+ */
+static int
+do_cast_host_variables_to_expected_domain (DB_SESSION * session)
+{
+  int hv_count = session->parser->host_var_count;
+  DB_VALUE *host_vars = session->parser->host_variables;
+  TP_DOMAIN **expected_domains = session->parser->host_var_expected_domains;
+  DB_VALUE *hv = NULL;
+  TP_DOMAIN *hv_dom = NULL;
+  int i = 0;
+
+  for (i = 0; i < hv_count; i++)
+    {
+      hv = &host_vars[i];
+      hv_dom = expected_domains[i];
+      if (TP_DOMAIN_TYPE (hv_dom) == DB_TYPE_UNKNOWN
+	  || hv_dom->type->id == DB_TYPE_ENUMERATION)
+	{
+	  /* skip casting enum and unknown type values */
+	  continue;
+	}
+      if (tp_value_cast_preserve_domain (hv, hv, hv_dom, false, true) !=
+	  DOMAIN_COMPATIBLE)
+	{
+	  PT_ERRORmf2 (session->parser, NULL, MSGCAT_SET_PARSER_SEMANTIC,
+		       MSGCAT_SEMANTIC_CANT_COERCE_TO, "host var",
+		       pt_type_enum_to_db_domain (TP_DOMAIN_TYPE (hv_dom)));
+	  pt_report_to_ersys (session->parser, PT_EXECUTION);
+	  pt_reset_error (session->parser);
+	  return ER_PT_EXECUTE;
+	}
+    }
+  return NO_ERROR;
+}
+
+/*
+ * do_set_user_host_variables () - Set host variables values in parser from
+ *				   using_list
+ *
+ * return	   : error code
+ * session (in)	   : db_session
+ * using_list (in) : list of db_values
+ */
 static int
 do_set_user_host_variables (DB_SESSION * session, PT_NODE * using_list)
 {
@@ -2629,6 +2705,100 @@ do_set_user_host_variables (DB_SESSION * session, PT_NODE * using_list)
   return err;
 }
 
+/*
+ * db_check_limit_for_mro_need_recompile () - Check if statement that can use
+ *					      multi range optimization need
+ *					      to recompile.
+ *
+ * return	  : true if recompile is needed, false otherwise
+ * parser (in)	  : parser context for statement
+ * statement (in) : execute prepare statement
+ *
+ * NOTE: This function attempts to evaluate superior limit for orderby_num ()
+ *	 without doing a full statement recompile.
+ */
+static bool
+db_check_limit_for_mro_need_recompile (PARSER_CONTEXT * parent_parser,
+				       PT_NODE * statement,
+				       bool mro_info_use_mro)
+{
+  DB_SESSION *session = NULL;
+  PT_NODE *query = NULL, *limit = NULL, *orderby_for = NULL;
+  bool cannot_eval = false;
+  bool use_mro = false;
+  bool do_recompile = false;
+  DB_VALUE *save_host_variables = NULL;
+  TP_DOMAIN **save_host_var_expected_domains = NULL;
+  int save_host_var_count, save_auto_param_count;
+
+  if (statement->node_type != PT_EXECUTE_PREPARE)
+    {
+      /* statement must be execute prepare */
+      return false;
+    }
+  if (statement->info.execute.stmt_type != CUBRID_STMT_SELECT)
+    {
+      return false;
+    }
+
+  assert (statement->info.execute.query->node_type == PT_VALUE);
+  assert (statement->info.execute.query->type_enum == PT_TYPE_CHAR);
+
+  session =
+    db_open_buffer_local ((char *) statement->info.execute.query->info.value.
+			  data_value.str->bytes);
+  if (session == NULL)
+    {
+      /* error opening session */
+      return false;
+    }
+
+  if (session->dimension != 1)
+    {
+      /* need full recompile */
+      do_recompile = true;
+      goto exit;
+    }
+  query = session->statements[0];
+  assert (PT_IS_QUERY (query));
+
+  /* set host variable info */
+  save_auto_param_count = session->parser->auto_param_count;
+  save_host_var_count = session->parser->host_var_count;
+  save_host_variables = session->parser->host_variables;
+  save_host_var_expected_domains = session->parser->host_var_expected_domains;
+
+  session->parser->host_variables = parent_parser->host_variables;
+  session->parser->host_var_expected_domains =
+    parent_parser->host_var_expected_domains;
+  session->parser->host_var_count = parent_parser->host_var_count;
+  session->parser->auto_param_count = parent_parser->auto_param_count;
+  session->parser->set_host_var = 1;
+
+  use_mro =
+    pt_check_ordby_num_for_multi_range_opt (session->parser, query, NULL,
+					    &cannot_eval);
+  if (cannot_eval || (use_mro != mro_info_use_mro))
+    {
+      /* need recompile */
+      do_recompile = true;
+    }
+
+exit:
+  /* remove host variable info */
+  session->parser->host_variables = save_host_variables;
+  session->parser->host_var_expected_domains = save_host_var_expected_domains;
+  session->parser->auto_param_count = save_auto_param_count;
+  session->parser->host_var_count = save_host_var_count;
+  session->parser->set_host_var = 0;
+
+  /* clean up */
+  if (session != NULL)
+    {
+      db_close_session (session);
+    }
+  return do_recompile;
+}
 
 /*
  * do_recompile_and_execute_prepared_statement () - compile and execute a
@@ -2675,12 +2845,8 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session,
       new_session->statements[0]->recompile =
 	statement->info.execute.recompile;
     }
-  idx = db_compile_statement (new_session);
-  if (idx < 0)
-    {
-      return er_errid ();
-    }
 
+  /* set host variable values in new session */
   assert (session->parser->set_host_var == 1);
   err =
     do_set_user_host_variables (new_session,
@@ -2689,6 +2855,20 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session,
     {
       return err;
     }
+  new_session->parser->set_host_var = 0;
+  idx = db_compile_statement (new_session);
+  if (idx < 0)
+    {
+      return er_errid ();
+    }
+
+  /* cast host variables to their expected domain */
+  err = do_cast_host_variables_to_expected_domain (new_session);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+  new_session->parser->set_host_var = 1;
 
   new_session->parser->is_holdable = session->parser->is_holdable;
   return db_execute_and_keep_statement_local (new_session, 1, result);

@@ -1287,6 +1287,7 @@ qmgr_finalize (THREAD_ENTRY * thread_p)
  *                        set to NULL if you want to look up the XASL cache
  *   xasl_size(in)      : size of the XASL stream in bytes
  *   xasl_id(in)        :
+ *   xasl_header_p(out) :
  *
  * Note: Store the given XASL stream into the XASL file and return its file id.
  * The XASL file is a temporay file, ..
@@ -1298,7 +1299,8 @@ XASL_ID *
 xqmgr_prepare_query (THREAD_ENTRY * thread_p,
 		     const char *qstmt, const char *qplan,
 		     const OID * user_oid_p, const char *xasl_stream_p,
-		     int xasl_size, XASL_ID * xasl_id_p)
+		     int xasl_size, XASL_ID * xasl_id_p,
+		     XASL_NODE_HEADER * xasl_header_p)
 {
   XASL_CACHE_ENTRY *cache_entry_p;
   char *p;
@@ -1322,6 +1324,12 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p,
       if (cache_entry_p != NULL)
 	{
 	  XASL_ID_COPY (xasl_id_p, &(cache_entry_p->xasl_id));
+	  if (xasl_header_p != NULL)
+	    {
+	      /* also xasl header was requested */
+	      qfile_load_xasl_node_header (thread_p, xasl_id_p,
+					   xasl_header_p);
+	    }
 	}
       else
 	{

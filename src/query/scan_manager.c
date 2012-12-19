@@ -4266,6 +4266,11 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 				    isidp->multi_range_opt.tplrec.tpl);
 	  isidp->multi_range_opt.tplrec.tpl = 0;
 	}
+      /* free buffer */
+      if (isidp->multi_range_opt.buffer != NULL)
+	{
+	  db_private_free_and_init (thread_p, isidp->multi_range_opt.buffer);
+	}
       if (isidp->multi_range_opt.sort_att_idx != NULL)
 	{
 	  db_private_free_and_init (thread_p,
@@ -6212,6 +6217,13 @@ scan_init_multi_range_optimization (THREAD_ENTRY * thread_p,
 	  err = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto exit_on_error;
 	}
+      multi_range_opt->buffer = (RANGE_OPT_ITEM **)
+	db_private_alloc (thread_p, max_size * sizeof (RANGE_OPT_ITEM *));
+      if (multi_range_opt->buffer == NULL)
+	{
+	  err = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto exit_on_error;
+	}
       memset (multi_range_opt->top_n_items, 0,
 	      max_size * sizeof (RANGE_OPT_ITEM *));
 
@@ -6228,6 +6240,10 @@ exit_on_error:
   if (multi_range_opt->top_n_items != NULL)
     {
       db_private_free_and_init (thread_p, multi_range_opt->top_n_items);
+    }
+  if (multi_range_opt->buffer != NULL)
+    {
+      db_private_free_and_init (thread_p, multi_range_opt->buffer);
     }
 
   return err;

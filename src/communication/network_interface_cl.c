@@ -5197,17 +5197,20 @@ error:
 /*
  * csession_get_prepared_statement () - get information about a prepared
  *					session statement
- * return : error code or no error
- * name (in)	  : the name of the prepared statement
- * xasl_id (out)  : XASL id
- * stmt_info (out): serialized prepared statement information
+ * return	       : error code or no error
+ * name (in)	       : the name of the prepared statement
+ * xasl_id (out)       : XASL id
+ * stmt_info (out)     : serialized prepared statement information
+ * xasl_header_p (out) : if pointer is not null, request XASL node header
+ *			 along with XASL_ID.
  */
 int
 csession_get_prepared_statement (const char *name, XASL_ID * xasl_id,
-				 char **stmt_info)
+				 char **stmt_info,
+				 XASL_NODE_HEADER * xasl_header_p)
 {
 #if defined (CS_MODE)
-  int req_error;
+  int req_error = NO_ERROR;
   OR_ALIGNED_BUF (OR_INT_SIZE * 2 + OR_XASL_ID_SIZE) a_reply;
   char *reply = NULL;
   char *reply_data = NULL;
@@ -5215,17 +5218,23 @@ csession_get_prepared_statement (const char *name, XASL_ID * xasl_id,
   char *ptr = NULL;
   int req_size = 0, len = 0;
   int reply_size = 0;
+  int get_xasl_header = xasl_header_p != NULL;
 
-  req_size = length_const_string (name, &len);
+  INIT_XASL_NODE_HEADER (xasl_header_p);
+
+  req_size = or_packed_string_length (name, &len) +	/* name */
+    OR_INT_SIZE;		/* get_xasl_header */
   request = (char *) malloc (req_size);
   if (request == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      req_size);
+      req_error = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
 
   ptr = or_pack_string_with_length (request, name, len);
+  ptr = or_pack_int (ptr, get_xasl_header);
 
   req_error = net_client_request2 (NET_SERVER_SES_GET_PREPARED_STATEMENT,
 				   request, req_size,
@@ -5249,19 +5258,16 @@ csession_get_prepared_statement (const char *name, XASL_ID * xasl_id,
     }
   OR_UNPACK_XASL_ID (ptr, xasl_id);
 
-  req_error = NO_ERROR;
-
-  /*prepared statement info */
-  *stmt_info = (char *) malloc (reply_size);
+  ptr = or_unpack_string_alloc (reply_data, stmt_info);
   if (*stmt_info == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      reply_size);
-      req_error = ER_FAILED;
+      req_error = ER_GENERIC_ERROR;
       goto error;
     }
-
-  memcpy (*stmt_info, reply_data, reply_size);
+  if (get_xasl_header)
+    {
+      OR_UNPACK_XASL_NODE_HEADER (ptr, xasl_header_p);
+    }
 
   if (request != NULL)
     {
@@ -5290,13 +5296,10 @@ error:
 
   ENTER_SERVER ();
 
+  INIT_XASL_NODE_HEADER (xasl_header_p);
   result = xsession_get_prepared_statement (NULL, name, stmt_info,
-					    &stmt_info_len, xasl_id);
-  if (result != NO_ERROR)
-    {
-      EXIT_SERVER ();
-      return result;
-    }
+					    &stmt_info_len, xasl_id,
+					    xasl_header_p);
 
   EXIT_SERVER ();
 
@@ -7395,24 +7398,32 @@ qfile_get_list_file_page (QUERY_ID query_id, VOLID volid, PAGEID pageid,
  *   xasl_buffer(in):
  *   size(in):
  *   xasl_id(in):
+ *   xasl_header_p(out):
  *
- * NOTE:
+ * NOTE: If xasl_header_p is not null, also XASL node header will be requested
  */
 XASL_ID *
 qmgr_prepare_query (const char *qstmt, const char *qplan,
 		    const OID * user_oid, const char *xasl_buffer,
-		    int size, XASL_ID * xasl_id)
+		    int size, XASL_ID * xasl_id,
+		    XASL_NODE_HEADER * xasl_header_p)
 {
 #if defined(CS_MODE)
-  int success = NO_ERROR;
-  int req_error, request_size, qstmt_len, qplan_len;
-  char *request, *reply, *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_XASL_ID_SIZE) a_reply;
+  int error = NO_ERROR;
+  int req_error, request_size, qstmt_len, qplan_len, reply_buffer_size = 0;
+  char *request = NULL, *reply = NULL, *ptr = NULL, *reply_buffer = NULL;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_XASL_ID_SIZE) a_reply;
+  int get_xasl_header = xasl_header_p != NULL;
+
+  INIT_XASL_NODE_HEADER (xasl_header_p);
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = length_const_string (qstmt, &qstmt_len)
-    + length_const_string (qplan, &qplan_len) + OR_OID_SIZE + OR_INT_SIZE;
+  request_size = length_const_string (qstmt, &qstmt_len) +	/* qstmt */
+    length_const_string (qplan, &qplan_len) +	/* qplan */
+    OR_OID_SIZE +		/* user_oid */
+    OR_INT_SIZE +		/* size */
+    OR_INT_SIZE;		/* get_xasl_header */
   request = (char *) malloc (request_size);
   if (!request)
     {
@@ -7431,20 +7442,30 @@ qmgr_prepare_query (const char *qstmt, const char *qplan,
   ptr = or_pack_oid (ptr, (OID *) user_oid);
   /* pack size of XASL stream */
   ptr = or_pack_int (ptr, size);
+  ptr = or_pack_int (ptr, get_xasl_header);
 
   /* send SERVER_QM_QUERY_PREPARE request with request data and XASL stream;
      receive XASL file id (XASL_ID) as a reply */
-  req_error = net_client_request (NET_SERVER_QM_QUERY_PREPARE,
-				  request, request_size,
-				  reply, OR_ALIGNED_BUF_SIZE (a_reply),
-				  (char *) xasl_buffer, size, NULL, 0);
+  req_error = net_client_request2 (NET_SERVER_QM_QUERY_PREPARE,
+				   request, request_size,
+				   reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				   (char *) xasl_buffer, size,
+				   &reply_buffer, &reply_buffer_size);
   if (!req_error)
     {
-      ptr = or_unpack_int (reply, &success);
-      if (success == NO_ERROR)
+      ptr = or_unpack_int (reply, &reply_buffer_size);
+      ptr = or_unpack_int (ptr, &error);
+      if (error == NO_ERROR)
 	{
 	  /* NULL XASL_ID will be returned when cache not found */
 	  OR_UNPACK_XASL_ID (ptr, xasl_id);
+
+	  if (get_xasl_header && reply_buffer != NULL
+	      && reply_buffer_size != 0)
+	    {
+	      ptr = reply_buffer;
+	      OR_UNPACK_XASL_NODE_HEADER (ptr, xasl_header_p);
+	    }
 	}
       else
 	{
@@ -7456,9 +7477,14 @@ qmgr_prepare_query (const char *qstmt, const char *qplan,
       xasl_id = NULL;
     }
 
-  if (request)
+  if (request != NULL)
     {
       free_and_init (request);
+    }
+
+  if (reply_buffer != NULL)
+    {
+      free_and_init (reply_buffer);
     }
 
   return xasl_id;
@@ -7467,9 +7493,12 @@ qmgr_prepare_query (const char *qstmt, const char *qplan,
 
   ENTER_SERVER ();
 
+  INIT_XASL_NODE_HEADER (xasl_header_p);
   /* call the server routine of query prepare */
-  p = xqmgr_prepare_query (NULL, qstmt, qplan, user_oid, xasl_buffer, size,
-			   xasl_id);
+  p =
+    xqmgr_prepare_query (NULL, qstmt, qplan, user_oid, xasl_buffer, size,
+			 xasl_id, xasl_header_p);
+
   if (p)
     {
       *xasl_id = *p;

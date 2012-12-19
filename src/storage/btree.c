@@ -21455,16 +21455,19 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
       if (pos != multi_range_opt->cnt - 1)
 	{
 	  RANGE_OPT_ITEM *temp_item;
+	  int mem_size =
+	    (multi_range_opt->cnt - 1 - pos) * sizeof (RANGE_OPT_ITEM *);
 	  /* copy last item to temp */
 	  temp_item = multi_range_opt->top_n_items[multi_range_opt->cnt - 1];
+
 	  /* move all items one position to the right in order to free the
 	   * position for the new item
 	   */
-	  for (i = multi_range_opt->cnt - 1; i > pos; i--)
-	    {
-	      multi_range_opt->top_n_items[i] =
-		multi_range_opt->top_n_items[i - 1];
-	    }
+	  memcpy (multi_range_opt->buffer, &multi_range_opt->top_n_items[pos],
+		  mem_size);
+	  memcpy (&multi_range_opt->top_n_items[pos + 1],
+		  multi_range_opt->buffer, mem_size);
+
 	  /* put new item at its designated position */
 	  multi_range_opt->top_n_items[pos] = temp_item;
 	}

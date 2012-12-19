@@ -124,6 +124,9 @@ struct multi_range_opt
   QFILE_TUPLE_RECORD tplrec;	/* tuple record to dump MIDXKEYs into */
   TP_DOMAIN **sort_col_dom;	/* sorting column domain */
   RANGE_OPT_ITEM **top_n_items;	/* array with top n items */
+  RANGE_OPT_ITEM **buffer;	/* temporary buffer used to copy elements from
+				 * top_n_items
+				 */
 };
 
 /* Index Skip Scan Operation types: Get the first valid key for the first 

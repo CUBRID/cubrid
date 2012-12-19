@@ -200,14 +200,22 @@ xsession_create_prepared_statement (THREAD_ENTRY * thread_p, OID user,
  * info (out)		: serialized prepared statement information
  * info_len (out)	: serialized buffer length
  * xasl_id (out)	: XASL ID for this statement
+ * xasl_header_p (out)	: XASL node header for this statement.
  */
 int
 xsession_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name,
 				 char **info, int *info_len,
-				 XASL_ID * xasl_id)
+				 XASL_ID * xasl_id,
+				 XASL_NODE_HEADER * xasl_header_p)
 {
-  return session_get_prepared_statement (thread_p, name, info, info_len,
-					 xasl_id);
+  int error = session_get_prepared_statement (thread_p, name, info, info_len,
+					      xasl_id);
+  if (error == NO_ERROR && xasl_header_p != NULL)
+    {
+      /* get XASL node header from XASL stream */
+      qfile_load_xasl_node_header (thread_p, xasl_id, xasl_header_p);
+    }
+  return error;
 }
 
 /*

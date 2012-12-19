@@ -8224,7 +8224,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	     and get XASL file id (XASL_ID) returned if found */
 	  if (statement->recompile == 0)
 	    {
-	      err = query_prepare (qstmt, NULL, NULL, 0, &xasl_id);
+	      err = query_prepare (qstmt, NULL, NULL, 0, &xasl_id, NULL);
 	      if (err != NO_ERROR)
 		{
 		  err = er_errid ();
@@ -8288,7 +8288,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		{
 		  err =
 		    query_prepare (qstmt, xasl->qplan, stream, size,
-				   &xasl_id);
+				   &xasl_id, NULL);
 		  if (err != NO_ERROR)
 		    {
 		      err = er_errid ();
@@ -9482,7 +9482,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	     and get XASL file id (XASL_ID) returned if found */
 	  if (statement->recompile == 0)
 	    {
-	      err = query_prepare (qstmt, NULL, NULL, 0, &xasl_id);
+	      err = query_prepare (qstmt, NULL, NULL, 0, &xasl_id, NULL);
 	      if (err != NO_ERROR)
 		{
 		  err = er_errid ();
@@ -9536,7 +9536,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 		{
 		  err =
 		    query_prepare (qstmt, xasl->qplan, stream, size,
-				   &xasl_id);
+				   &xasl_id, NULL);
 		  if (err != NO_ERROR)
 		    {
 		      err = er_errid ();
@@ -10121,7 +10121,7 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
      and get XASL file id (XASL_ID) returned if found */
   if (statement->recompile == 0)
     {
-      error = query_prepare (qstmt, NULL, NULL, 0, &xasl_id);
+      error = query_prepare (qstmt, NULL, NULL, 0, &xasl_id, NULL);
       if (error != NO_ERROR)
 	{
 	  error = er_errid ();
@@ -10181,7 +10181,8 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
 
       if (stream && (error >= NO_ERROR))
 	{
-	  error = query_prepare (qstmt, xasl->qplan, stream, size, &xasl_id);
+	  error =
+	    query_prepare (qstmt, xasl->qplan, stream, size, &xasl_id, NULL);
 	  if (error != NO_ERROR)
 	    {
 	      error = er_errid ();
@@ -13555,10 +13556,33 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   xasl_id = NULL;
   if (statement->recompile == 0)
     {
-      err = query_prepare (qstmt, NULL, NULL, 0, &xasl_id);
+      XASL_NODE_HEADER xasl_header;
+      err = query_prepare (qstmt, NULL, NULL, 0, &xasl_id, &xasl_header);
       if (err != NO_ERROR)
 	{
 	  err = er_errid ();
+	}
+      else if (xasl_id != NULL)
+	{
+	  /* check xasl header */
+	  if ((xasl_header.mro_info & XASL_NODE_HEADER_MRO_CANDIDATE) != 0)
+	    {
+	      /* multi range optimization checks */
+	      bool good_limit =
+		pt_check_ordby_num_for_multi_range_opt (parser, statement,
+							NULL, NULL);
+	      bool mro_used =
+		((xasl_header.mro_info & XASL_NODE_HEADER_MRO_IS_USED) != 0);
+	      if ((good_limit && !mro_used) || (!good_limit && mro_used))
+		{
+		  /* drop cached xasl and prepare again */
+		  err =
+		    qmgr_drop_query_plan (qstmt,
+					  ws_identifier (db_get_user ()),
+					  NULL, true);
+		  xasl_id = NULL;
+		}
+	    }
 	}
     }
   else
@@ -13607,7 +13631,8 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
          and get XASL file id returned */
       if (stream && (err == NO_ERROR))
 	{
-	  err = query_prepare (qstmt, xasl->qplan, stream, size, &xasl_id);
+	  err =
+	    query_prepare (qstmt, xasl->qplan, stream, size, &xasl_id, NULL);
 	  if (err != NO_ERROR)
 	    {
 	      err = er_errid ();
@@ -15397,7 +15422,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* lookup in XASL cache */
       if (statement->recompile == 0)
 	{
-	  err = query_prepare (qstr, NULL, NULL, 0, &xasl_id);
+	  err = query_prepare (qstr, NULL, NULL, 0, &xasl_id, NULL);
 	  if (err != NO_ERROR)
 	    {
 	      err = er_errid ();
@@ -15473,7 +15498,9 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* cache the XASL */
 	  if (stream && (err >= NO_ERROR))
 	    {
-	      err = query_prepare (qstr, xasl->qplan, stream, size, &xasl_id);
+	      err =
+		query_prepare (qstr, xasl->qplan, stream, size, &xasl_id,
+			       NULL);
 	      if (err != NO_ERROR)
 		{
 		  err = er_errid ();
