@@ -727,7 +727,15 @@ set_current_locale (bool is_full_init)
       /* when charset is not UTF-8, full init will not be required */
       if (is_full_init || lang_Loc_charset != INTL_CODESET_UTF8)
 	{
+	  char err_msg[ERR_MSG_SIZE];
+
 	  lang_Init_w_error = true;
+	  snprintf (err_msg, sizeof (err_msg) - 1,
+		    "Locale %s.%s was not loaded.\n"
+		    " %s not found in cubrid_locales.txt",
+		    lang_Lang_name, lang_get_codeset_name (lang_Loc_charset),
+		    lang_Lang_name);
+	  LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, false);
 	}
       set_default_lang ();
     }
@@ -6364,7 +6372,7 @@ lang_locale_data_load_from_lib (LANG_LOCALE_DATA * lld,
 				bool is_load_for_dump)
 {
   char sym_name[SYMBOL_NAME_SIZE + 1];
-  char err_msg[ERR_MSG_SIZE];
+  char err_msg[ERR_MSG_SIZE + MAX_PATH];
   char **temp_array_sym;
   int *temp_num_sym;
   int err_status = NO_ERROR;
@@ -6372,6 +6380,7 @@ lang_locale_data_load_from_lib (LANG_LOCALE_DATA * lld,
   const char *alpha_suffix = NULL;
   bool load_w_identifier_name;
   int txt_conv_type;
+  bool sym_loc_name_found = false;
 
   assert (lld != NULL);
   assert (lib_handle != NULL);
@@ -6380,6 +6389,7 @@ lang_locale_data_load_from_lib (LANG_LOCALE_DATA * lld,
 
   SHLIB_GET_ADDR (lld->lang_name, "locale_name", char *, lib_handle,
 		  lf->locale_name);
+  sym_loc_name_found = true;
 
   SHLIB_GET_ADDR (lld->checksum, "locale_checksum", char *, lib_handle,
 		  lf->locale_name);
@@ -6716,7 +6726,13 @@ error_loading_symbol:
   snprintf (err_msg, sizeof (err_msg) - 1,
 	    "Cannot load symbol %s from the library file %s "
 	    "for the %s locale!", sym_name, lf->lib_file, lf->locale_name);
-  LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, true);
+  if (!sym_loc_name_found)
+    {
+      strcat (err_msg, "\n Locale might not be compiled into the selected "
+	      "library.\n Check configuration and recompile locale"
+	      ", if necessary,\n using the make_locale script");
+    }
+  LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, false);
 
   return ER_LOC_INIT;
 }
@@ -6734,7 +6750,7 @@ int
 lang_load_count_coll_from_lib (int *count_coll, void *lib_handle,
 			       const LOCALE_FILE * lf)
 {
-  char err_msg[ERR_MSG_SIZE];
+  char err_msg[ERR_MSG_SIZE + MAX_PATH];
   char sym_name[SYMBOL_NAME_SIZE + 1];
 
   assert (count_coll != NULL);
@@ -6769,7 +6785,7 @@ int
 lang_load_get_coll_name_from_lib (const int coll_pos, char **coll_name,
 				  void *lib_handle, const LOCALE_FILE * lf)
 {
-  char err_msg[ERR_MSG_SIZE];
+  char err_msg[ERR_MSG_SIZE + MAX_PATH];
   char sym_name[SYMBOL_NAME_SIZE + 1];
   char coll_suffix[COLL_NAME_SIZE + LANG_MAX_LANGNAME + 5];
 
@@ -6809,7 +6825,7 @@ lang_load_coll_from_lib (COLL_DATA * cd, void *lib_handle,
   char sym_name[SYMBOL_NAME_SIZE + 1];
   char *temp_char_sym;
   int *temp_num_sym;
-  char err_msg[ERR_MSG_SIZE];
+  char err_msg[ERR_MSG_SIZE + MAX_PATH];
   int err_status = NO_ERROR;
   char *coll_checksum = NULL;
 
@@ -6946,7 +6962,7 @@ lang_locale_load_alpha_from_lib (ALPHABET_DATA * a,
 				 void *lib_handle, const LOCALE_FILE * lf)
 {
   char sym_name[SYMBOL_NAME_SIZE + 1];
-  char err_msg[ERR_MSG_SIZE];
+  char err_msg[ERR_MSG_SIZE + MAX_PATH];
   int err_status = NO_ERROR;
 
   assert (a != NULL);
@@ -7044,12 +7060,14 @@ lang_load_library (const char *lib_file, void **handle)
 		     MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT),
 		     (char *) &lpMsgBuf, 1, &lib_file);
       snprintf (err_msg, sizeof (err_msg) - 1,
-		"Error loading library %s\n%s", lib_file, lpMsgBuf);
+		"Library file is invalid or not accessible.\n"
+		" Unable to load %s !\n %s", lib_file, lpMsgBuf);
       LocalFree (lpMsgBuf);
 #else
       error = dlerror ();
       snprintf (err_msg, sizeof (err_msg) - 1,
-		"Error loading library %s\n %s", lib_file, error);
+		"Library file is invalid or not accessible.\n"
+		" Unable to load %s !\n %s", lib_file, error);
 #endif
       LOG_LOCALE_ERROR (err_msg, err_status, true);
     }
@@ -7111,7 +7129,7 @@ lang_locale_load_normalization_from_lib (UNICODE_NORMALIZATION * norm,
 					 const LOCALE_FILE * lf)
 {
   char sym_name[SYMBOL_NAME_SIZE + 1];
-  char err_msg[ERR_MSG_SIZE];
+  char err_msg[ERR_MSG_SIZE + MAX_PATH];
 
   assert (norm != NULL);
 

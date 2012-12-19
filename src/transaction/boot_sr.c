@@ -2418,9 +2418,12 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
 
   if (!lang_check_init ())
     {
-      char msg[ERR_MSG_SIZE];
-      sprintf (msg, "language failed (%s)", lang_get_user_loc_name ());
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, msg);
+      if (er_errid () == NO_ERROR)
+	{
+	  char msg[ERR_MSG_SIZE];
+	  sprintf (msg, "language failed (%s)", lang_get_user_loc_name ());
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, msg);
+	}
       return NULL_TRAN_INDEX;
     }
 
@@ -2967,9 +2970,12 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 
   if (!lang_check_init ())
     {
-      char msg[ERR_MSG_SIZE];
-      sprintf (msg, "language failed (%s)", lang_get_user_loc_name ());
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, msg);
+      if (er_errid () == NO_ERROR)
+	{
+	  char msg[ERR_MSG_SIZE];
+	  sprintf (msg, "language failed (%s)", lang_get_user_loc_name ());
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, msg);
+	}
       return ER_LOC_INIT;
     }
 
@@ -3568,9 +3574,12 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart,
 
   if (!lang_check_init ())
     {
-      char msg[ERR_MSG_SIZE];
-      sprintf (msg, "language failed (%s)", lang_get_user_loc_name ());
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, msg);
+      if (er_errid () == NO_ERROR)
+	{
+	  char msg[ERR_MSG_SIZE];
+	  sprintf (msg, "language failed (%s)", lang_get_user_loc_name ());
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, msg);
+	}
       return NULL_TRAN_INDEX;
     }
 
@@ -5656,9 +5665,12 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name,
 
   if (!lang_check_init ())
     {
-      char msg[ERR_MSG_SIZE];
-      sprintf (msg, "language failed (%s)", lang_get_user_loc_name ());
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, msg);
+      if (er_errid () == NO_ERROR)
+	{
+	  char msg[ERR_MSG_SIZE];
+	  sprintf (msg, "language failed (%s)", lang_get_user_loc_name ());
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, msg);
+	}
       return ER_LOC_INIT;
     }
 #endif /* SERVER_MODE */
