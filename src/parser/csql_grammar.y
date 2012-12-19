@@ -7625,10 +7625,17 @@ inherit_resolution
 	;
 
 table_option_list
-	: table_option_list  ',' table_option
+	: table_option_list ',' table_option
 		{{
 
 			$$ = parser_make_link ($1, $3);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| table_option_list table_option
+		{{
+
+			$$ = parser_make_link ($1, $2);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
