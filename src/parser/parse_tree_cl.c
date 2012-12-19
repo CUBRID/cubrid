@@ -6272,7 +6272,10 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_VARNCHAR:
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
-      show_collation = true;
+      if (p->data_type && p->data_type->info.data_type.has_coll_spec)
+	{
+	  show_collation = true;
+	}
     case PT_TYPE_BIT:
     case PT_TYPE_VARBIT:
     case PT_TYPE_FLOAT:
@@ -6337,10 +6340,14 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_ENUMERATION:
       r1 = pt_print_bytes_l (parser, p->data_type);
       q = pt_append_varchar (parser, q, r1);
-      sprintf (s, " collate %s",
-	       lang_get_collation_name (p->data_type->info.data_type.
-					collation_id));
-      q = pt_append_nulstring (parser, q, s);
+
+      if (p->data_type && p->data_type->info.data_type.has_coll_spec)
+	{
+	  sprintf (s, " collate %s",
+		   lang_get_collation_name (p->data_type->info.data_type.
+					    collation_id));
+	  q = pt_append_nulstring (parser, q, s);
+	}
       break;
     default:
       q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
