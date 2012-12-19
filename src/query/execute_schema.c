@@ -12461,6 +12461,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
   bool is_srv_update_needed = false;
   OID class_oid;
   int att_id = -1;
+  PT_NODE *new_attr_def = NULL;
 
   assert (alter_code == PT_CHANGE_ATTR);
   assert (alter->info.alter.super.resolution_list == NULL);
@@ -12517,6 +12518,15 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
   assert (alter->info.alter.alter_clause.attr_mthd.mthd_def_list == NULL);
   assert (alter->info.alter.alter_clause.attr_mthd.attr_def_list->next ==
 	  NULL);
+
+  new_attr_def = alter->info.alter.alter_clause.attr_mthd.attr_def_list;
+
+  if (ctemplate->current != NULL && new_attr_def->node_type == PT_ATTR_DEF
+      && PT_HAS_COLLATION (new_attr_def->type_enum))
+    {
+      pt_attr_check_default_cs_coll (parser, new_attr_def,
+				     -1, ctemplate->current->collation_id);
+    }
 
   error = check_change_attribute (parser, ctemplate,
 				  alter->info.alter.alter_clause.attr_mthd.
