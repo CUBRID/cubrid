@@ -589,7 +589,7 @@ extern "C"
 			     const PT_NODE * flat_list);
   extern PT_NODE *pt_tuple_value (PARSER_CONTEXT * parser, PT_NODE * name,
 				  CURSOR_ID * cursor_p, int index);
-  extern bool pt_name_equal (PARSER_CONTEXT * parser_ptr,
+  extern bool pt_name_equal (PARSER_CONTEXT * parser,
 			     const PT_NODE * name1, const PT_NODE * name2);
   extern PT_NODE *pt_find_name (PARSER_CONTEXT * parser, const PT_NODE * name,
 				const PT_NODE * list);

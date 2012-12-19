@@ -6040,9 +6040,6 @@ sm_flush_for_multi_update (MOP class_mop)
 
   if (WS_ISVID (class_mop))
     {
-      /* This case must not occur. */
-      /* goto error; */
-
       /* The second argument, decache, is false. */
       if (vid_flush_all_instances (class_mop, false) != NO_ERROR)
 	{

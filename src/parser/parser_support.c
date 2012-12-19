@@ -4455,7 +4455,6 @@ regu_xasl_node_init (XASL_NODE * ptr, PROC_TYPE type)
 
     case MERGE_PROC:
       ptr->proc.merge.update_xasl = NULL;
-      ptr->proc.merge.delete_xasl = NULL;
       ptr->proc.merge.insert_xasl = NULL;
       break;
     }

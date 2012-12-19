@@ -3915,22 +3915,6 @@ stx_build_merge_proc (THREAD_ENTRY * thread_p, char *ptr,
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
-      merge_info->delete_xasl = NULL;
-    }
-  else
-    {
-      merge_info->delete_xasl =
-	stx_restore_xasl_node (thread_p,
-			       &xasl_unpack_info->packed_xasl[offset]);
-      if (merge_info->delete_xasl == NULL)
-	{
-	  goto error;
-	}
-    }
-
-  ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0)
-    {
       merge_info->insert_xasl = NULL;
     }
   else
@@ -3943,6 +3927,8 @@ stx_build_merge_proc (THREAD_ENTRY * thread_p, char *ptr,
 	  goto error;
 	}
     }
+
+  ptr = or_unpack_int (ptr, &merge_info->has_delete);
 
   return ptr;
 
