@@ -13170,14 +13170,15 @@ logpb_get_data_ptr (THREAD_ENTRY * thread_p)
 LOG_LSA
 logpb_get_nxio_lsa (void)
 {
-  volatile INT64 tmp_int64;
   volatile LOG_LSA nxio_lsa;
 
 #if defined(HAVE_ATOMIC_BUILTINS)
+  volatile INT64 tmp_int64;
+
   tmp_int64 = ATOMIC_INC_64 ((INT64 *) (&log_Gl.append.nxio_lsa), 0);
   nxio_lsa = *((LOG_LSA *) (&tmp_int64));
 #else
-  rv = pthread_mutex_lock (&log_Gl.append.nxio_lsa_mutex);
+  (void) pthread_mutex_lock (&log_Gl.append.nxio_lsa_mutex);
   LSA_COPY (&nxio_lsa, &log_Gl.append.nxio_lsa);
   pthread_mutex_unlock (&log_Gl.append.nxio_lsa_mutex);
 #endif /* HAVE_ATOMIC_BUILTINS */
@@ -13191,14 +13192,13 @@ logpb_get_nxio_lsa (void)
 static void
 logpb_set_nxio_lsa (LOG_LSA * lsa)
 {
+#if defined(HAVE_ATOMIC_BUILTINS)
   UINT64 tmp_int64;
 
-#if defined(HAVE_ATOMIC_BUILTINS)
   tmp_int64 = *((INT64 *) (lsa));
-
   ATOMIC_TAS_64 ((INT64 *) (&log_Gl.append.nxio_lsa), tmp_int64);
 #else
-  rv = pthread_mutex_lock (&log_Gl.append.nxio_lsa_mutex);
+  (void) pthread_mutex_lock (&log_Gl.append.nxio_lsa_mutex);
   LSA_COPY (&log_Gl.append.nxio_lsa, lsa);
   pthread_mutex_unlock (&log_Gl.append.nxio_lsa_mutex);
 #endif /* HAVE_ATOMIC_BUILTINS */
