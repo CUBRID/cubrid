@@ -8742,7 +8742,23 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
   /* reuse_oid flag */
   if (sm_is_reuse_oid_class (class_op))
     {
-      buffer = pt_append_nulstring (parser, buffer, " REUSE_OID ");
+      buffer = pt_append_nulstring (parser, buffer, " REUSE_OID");
+      if (class_schema->collation != NULL)
+	{
+	  buffer = pt_append_nulstring (parser, buffer, ",");
+	}
+      else
+	{
+	  buffer = pt_append_nulstring (parser, buffer, " ");
+	}
+
+    }
+
+  /* collation */
+  if (class_schema->collation != NULL)
+    {
+      buffer = pt_append_nulstring (parser, buffer, " COLLATE ");
+      buffer = pt_append_nulstring (parser, buffer, class_schema->collation);
     }
 
   /* methods and class_methods  */
@@ -8816,6 +8832,7 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
       char **first_ptr;
 
       line_ptr = class_schema->partition;
+      buffer = pt_append_nulstring (parser, buffer, " ");
       buffer = pt_append_nulstring (parser, buffer, *line_ptr);
       line_ptr++;
       if (*line_ptr != NULL)

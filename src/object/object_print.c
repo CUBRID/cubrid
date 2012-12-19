@@ -1541,6 +1541,7 @@ obj_print_make_class_help (void)
     }
   new_p->name = NULL;
   new_p->class_type = NULL;
+  new_p->collation = NULL;
   new_p->supers = NULL;
   new_p->subs = NULL;
   new_p->attributes = NULL;
@@ -1572,6 +1573,10 @@ obj_print_help_free_class (CLASS_HELP * info)
       free_and_init (info->name);
       free_and_init (info->class_type);
       free_and_init (info->object_id);
+      if (info->collation != NULL)
+	{
+	  free_and_init (info->collation);
+	}
       obj_print_free_strarray (info->supers);
       obj_print_free_strarray (info->subs);
       obj_print_free_strarray (info->attributes);
@@ -1692,6 +1697,14 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 						   MSGCAT_SET_HELP,
 						   MSGCAT_HELP_VCLASS_HEADER));
 	  break;
+	}
+
+      info->collation =
+	obj_print_copy_string (lang_get_collation_name
+			       (class_->collation_id));
+      if (info->collation == NULL)
+	{
+	  goto error_exit;
 	}
 
       if (class_->inheritance != NULL)

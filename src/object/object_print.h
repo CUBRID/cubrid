@@ -44,6 +44,7 @@ struct class_description
 {
   char *name;
   char *class_type;
+  char *collation;
   char **supers;
   char **subs;
   char **attributes;
