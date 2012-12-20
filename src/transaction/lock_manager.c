@@ -577,7 +577,7 @@ static void lock_update_non2pl_list (LK_RES * res_ptr, int tran_index,
 static int lock_add_WFG_edge (int from_tran_index, int to_tran_index,
 			      int holder_flag, time_t edge_wait_stime);
 static void lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s,
-					 int t);
+					 int t, int *count_cycle_waiters);
 static void lock_dump_deadlock_victims (THREAD_ENTRY * thread_p,
 					FILE * outfile);
 static int lock_compare_lock_info (const void *lockinfo1,
@@ -5907,7 +5907,8 @@ lock_add_WFG_edge (int from_tran_index, int to_tran_index,
  * Note:
  */
 static void
-lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
+lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t,
+			     int *count_cycle_waiters)
 {
   LK_WFG_NODE *TWFG_node;
   LK_WFG_EDGE *TWFG_edge;
@@ -6025,6 +6026,7 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 	  TWFG_node[v].ancestor = -1;
 	  v = w;
 	}
+      *count_cycle_waiters = 0;
       return;
     }
 
@@ -6196,12 +6198,13 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 #endif /* CUBRID_DEBUG */
       TWFG_node[victims[victim_count].tran_index].current = -1;
       victim_count++;
+      *count_cycle_waiters = 0;
     }
   else
     {
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE, "No victim in deadlock cycle....\n");
-      if (lock_holder_foumnd == false)
+      if (lock_holder_found == false)
 	{
 	  er_log_debug (ARG_FILE_LINE,
 			"Any Lock holder is not found in deadlock cycle.\n");
@@ -6227,6 +6230,9 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 	    }
 	}
 #endif /* CUBRID_DEBUG */
+
+      (*count_cycle_waiters)++;
+
       /* wait for some short time */
       /* TODO: remove const 1000 */
       thread_sleep (0, 1000);	/* sleep for 1000 micro seconds */
@@ -9852,8 +9858,10 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
   LK_WFG_NODE *TWFG_node;
   LK_WFG_EDGE *TWFG_edge;
   int i, rv;
-  int compat1, compat2;
+  int compat1, compat2, count_cycle_waiters;
 
+start:
+  count_cycle_waiters = 0;
   /* initialize deadlock detection related structures */
 
   /* initialize transaction WFG node table..
@@ -10137,10 +10145,17 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 	  if (TWFG_node[t].ancestor != -1)
 	    {
 	      /* A deadlock cycle is found */
-	      lock_select_deadlock_victim (thread_p, s, t);
+	      lock_select_deadlock_victim (thread_p, s, t,
+					   &count_cycle_waiters);
 	      if (victim_count >= LK_MAX_VICTIM_COUNT)
 		{
 		  goto final;
+		}
+	      if (count_cycle_waiters >= 10)
+		{
+		  /* WFG contains a false edge, rebuid WFG */
+		  assert (0);
+		  goto start;
 		}
 	    }
 	  else
@@ -12401,6 +12416,10 @@ start:
   entry_ptr->count += 1;
   entry_ptr->thrd_entry = thread_p;
 
+  assert (lock >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
+  res_ptr->total_holders_mode = lock_Conv[lock][res_ptr->total_holders_mode];
+  assert (res_ptr->total_holders_mode != NA_LOCK);
+
   /* remove the lock entry from the holder list */
   prev = (LK_ENTRY *) NULL;
   curr = res_ptr->holder;
@@ -12418,71 +12437,8 @@ start:
       prev->next = entry_ptr->next;
     }
 
-  if ((key_lock_escalation)
-      && (*key_lock_escalation == NEED_KEY_LOCK_ESCALATION))
-    {
-      /* lock escalation needed,
-       * NS_LOCK already granted
-       * the escalation lock - NX_LOCK - can't be granted
-       * move entry_ptr from holder to waiter
-       */
-      assert (lock == NX_LOCK && entry_ptr->granted_mode == NS_LOCK);
-      /* set holder_mode to NULL in order to avoid unexpected deadlocks */
-      entry_ptr->granted_mode = NULL_LOCK;
-
-      /* lock entry removed from the holder list, change total_holders_mode */
-      assert (res_ptr->total_holders_mode >= NULL_LOCK);
-      group_mode = NULL_LOCK;
-      for (i = res_ptr->holder; i != (LK_ENTRY *) NULL; i = i->next)
-	{
-	  assert (i->granted_mode >= NULL_LOCK && group_mode >= NULL_LOCK);
-	  group_mode = lock_Conv[i->granted_mode][group_mode];
-	  assert (group_mode != NA_LOCK);
-	}
-      res_ptr->total_holders_mode = group_mode;
-
-      /* remove the lock entry from the transaction lock hold list */
-      lock_delete_from_tran_hold_list (entry_ptr);
-      entry_ptr->tran_next = NULL;
-      entry_ptr->tran_prev = NULL;
-
-      /* append the lock request at the end of the waiter */
-      prev = (LK_ENTRY *) NULL;
-      for (i = res_ptr->waiter; i != (LK_ENTRY *) NULL;)
-	{
-	  prev = i;
-	  i = i->next;
-	}
-      if (prev == (LK_ENTRY *) NULL)
-	{
-	  res_ptr->waiter = entry_ptr;
-	}
-      else
-	{
-	  prev->next = entry_ptr;
-	}
-      entry_ptr->next = NULL;
-
-      /* change total_waiters_mode (total mode of waiting waiter) */
-      assert (lock >= NULL_LOCK && res_ptr->total_waiters_mode >= NULL_LOCK);
-      res_ptr->total_waiters_mode =
-	lock_Conv[lock][res_ptr->total_waiters_mode];
-      assert (res_ptr->total_waiters_mode != NA_LOCK);
-    }
-  else
-    {
-      /* change res_ptr->total_holders_mode (total mode of holder list).
-       * The previous total holders mode will be calculated when resume
-       * after suspension
-       */
-      assert (lock >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
-      res_ptr->total_holders_mode =
-	lock_Conv[lock][res_ptr->total_holders_mode];
-      assert (res_ptr->total_holders_mode != NA_LOCK);
-
-      /* position the lock entry in the holder list according to UPR */
-      lock_position_holder_entry (res_ptr, entry_ptr);
-    }
+  /* position the lock entry in the holder list according to UPR */
+  lock_position_holder_entry (res_ptr, entry_ptr);
 
 blocked:
 
