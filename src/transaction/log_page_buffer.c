@@ -5330,6 +5330,8 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
   struct timeval tmp_timeval = { 0, 0 };
   struct timespec to = { 0, 0 };
   int max_wait_time_in_msec = 1000;
+  int min_wait_time_in_msec = 10;
+  int wait_time_in_msec;
   int elapsed_time_in_msec;
   bool need_wakeup_LFT, need_wait;
   bool async_commit, group_commit;
@@ -5415,9 +5417,19 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 	      thread_wakeup_log_flush_thread ();
 	    }
 
+	  if (need_wakeup_LFT == true
+	      && thread_Log_flush_thread.is_running == true)
+	    {
+	      wait_time_in_msec = min_wait_time_in_msec;
+	    }
+	  else
+	    {
+	      wait_time_in_msec = max_wait_time_in_msec;
+	    }
+
 	  gettimeofday (&start_time, NULL);
 	  (void) timeval_add_msec (&tmp_timeval, &start_time,
-				   max_wait_time_in_msec);
+				   wait_time_in_msec);
 	  (void) timeval_to_timespec (&to, &tmp_timeval);
 
 	  ret = pthread_cond_timedwait (&group_commit_info->gc_cond,
