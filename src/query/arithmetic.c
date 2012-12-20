@@ -4038,22 +4038,7 @@ db_width_bucket (DB_VALUE * result, DB_VALUE * value1,
 	}
     }
 
-  if (d2 == d3)
-    {
-      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
-	{
-	  DB_MAKE_NULL (result);
-	  return NO_ERROR;
-	}
-      else
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_PROC_WIDTH_BUCKET_BOUND, 0);
-	  return ER_PROC_WIDTH_BUCKET_BOUND;
-	}
-    }
-
-  if (d2 < d3)
+  if (d2 <= d3)
     {
       if (d1 < d2)
 	{
