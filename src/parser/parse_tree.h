@@ -3145,12 +3145,22 @@ typedef enum pt_coll_coerc_lev PT_COLL_COERC_LEV;
 enum pt_coll_coerc_lev
 {
   PT_COLLATION_L0_COERC = 0,	/* expressions with COLLATE modifier */
-  PT_COLLATION_L1_COERC,	/* columns */
-  PT_COLLATION_L2_COERC,	/* SELECT values, expressions */
-  PT_COLLATION_L3_COERC,	/* special operators (USER()) */
-  PT_COLLATION_L4_COERC,	/* constants (string literals) */
-  PT_COLLATION_L5_COERC,	/* HV, session variables, nodes
-				 * with coercible collation */
+  /* Columns  */
+  PT_COLLATION_L1_COERC,	/* non-binary collations */
+  PT_COLLATION_L1_ISO_BIN_COERC,	/* with ISO binary coll */
+  PT_COLLATION_L1_BIN_COERC,	/* with binary collation */
+  /* SELECT values, expressions */
+  PT_COLLATION_L2_COERC,	/* non-binary collations */
+  PT_COLLATION_L2_ISO_BIN_COERC,	/* with ISO binary coll */
+  PT_COLLATION_L2_BIN_COERC,	/* with binary collation */
+  /* special operators (USER()) */
+  PT_COLLATION_L3_COERC,
+  /* constants (string literals) */
+  PT_COLLATION_L4_COERC,	/* non-binary collations */
+  PT_COLLATION_L4_ISO_BIN_COERC,	/* with ISO binary collation */
+  PT_COLLATION_L4_BIN_COERC,	/* with binary collation */
+  /* HV, session variables */
+  PT_COLLATION_L5_COERC,
   PT_COLLATION_NOT_COERC = PT_COLLATION_L0_COERC,
   PT_COLLATION_FULLY_COERC = PT_COLLATION_L5_COERC
 };

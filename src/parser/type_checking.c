@@ -20550,30 +20550,33 @@ pt_get_collation_info (PT_NODE * node, int *coll_id, INTL_CODESET * codeset,
   *codeset = LANG_COERCIBLE_CODESET;
   *coll_id = LANG_COERCIBLE_COLL;
 
-  if (node->data_type != NULL && PT_HAS_COLLATION (node->type_enum))
+  if (node->data_type != NULL)
     {
-      *coll_id = node->data_type->info.data_type.collation_id;
-      *codeset = node->data_type->info.data_type.units;
-      has_collation = true;
+      if (PT_HAS_COLLATION (node->type_enum))
+	{
+	  *coll_id = node->data_type->info.data_type.collation_id;
+	  *codeset = node->data_type->info.data_type.units;
+	  has_collation = true;
+	}
     }
-  else if (node->expected_domain != NULL
-	   && TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (node->expected_domain)))
+  else if (node->expected_domain != NULL)
     {
-      *coll_id = TP_DOMAIN_COLLATION (node->expected_domain);
-      *codeset = TP_DOMAIN_CODESET (node->expected_domain);
-      has_collation = true;
+      if (TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (node->expected_domain)))
+	{
+	  *coll_id = TP_DOMAIN_COLLATION (node->expected_domain);
+	  *codeset = TP_DOMAIN_CODESET (node->expected_domain);
+	  has_collation = true;
+	}
     }
   else
     {
-      if (node->node_type == PT_VALUE && PT_HAS_COLLATION (node->type_enum))
+      if (node->type_enum == PT_TYPE_MAYBE
+	  || (node->node_type == PT_VALUE
+	      && PT_HAS_COLLATION (node->type_enum)))
 	{
-	  *coll_id = LANG_SYS_COLLATION;
-	  *codeset = LANG_SYS_CODESET;
+	  *coll_id = lang_get_client_collation ();
+	  *codeset = lang_get_client_charset ();
 	  has_collation = true;
-	}
-      else
-	{
-	  return has_collation;
 	}
     }
 
@@ -20602,12 +20605,21 @@ pt_get_collation_info (PT_NODE * node, int *coll_id, INTL_CODESET * codeset,
   switch (node->node_type)
     {
     case PT_VALUE:
-      assert (has_collation);
-      *coerc_level = PT_COLLATION_L4_COERC;
+      if (*coll_id == LANG_COLL_ISO_BINARY)
+	{
+	  *coerc_level = PT_COLLATION_L4_ISO_BIN_COERC;
+	}
+      else if (LANG_IS_COERCIBLE_COLL (*coll_id))
+	{
+	  *coerc_level = PT_COLLATION_L4_BIN_COERC;
+	}
+      else
+	{
+	  *coerc_level = PT_COLLATION_L4_COERC;
+	}
       break;
 
     case PT_HOST_VAR:
-      assert (has_collation);
       *coerc_level = PT_COLLATION_FULLY_COERC;
       break;
 
@@ -20647,18 +20659,37 @@ pt_get_collation_info (PT_NODE * node, int *coll_id, INTL_CODESET * codeset,
     case PT_INTERSECTION:
     case PT_FUNCTION:
     case PT_METHOD_CALL:
-      assert (has_collation);
-      *coerc_level = PT_COLLATION_L2_COERC;
+      if (*coll_id == LANG_COLL_ISO_BINARY)
+	{
+	  *coerc_level = PT_COLLATION_L2_ISO_BIN_COERC;
+	}
+      else if (LANG_IS_COERCIBLE_COLL (*coll_id))
+	{
+	  *coerc_level = PT_COLLATION_L2_BIN_COERC;
+	}
+      else
+	{
+	  *coerc_level = PT_COLLATION_L2_COERC;
+	}
       break;
 
     case PT_NAME:
     case PT_DOT_:
-      assert (has_collation);
-      *coerc_level = PT_COLLATION_L1_COERC;
+      if (*coll_id == LANG_COLL_ISO_BINARY)
+	{
+	  *coerc_level = PT_COLLATION_L1_ISO_BIN_COERC;
+	}
+      else if (LANG_IS_COERCIBLE_COLL (*coll_id))
+	{
+	  *coerc_level = PT_COLLATION_L1_BIN_COERC;
+	}
+      else
+	{
+	  *coerc_level = PT_COLLATION_L1_COERC;
+	}
       break;
 
     default:
-      assert (!has_collation);
       *coerc_level = PT_COLLATION_NOT_COERC;
     }
 
@@ -20757,7 +20788,19 @@ pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser,
     {
     case PT_VALUE:
       assert (has_collation);
-      *coerc_level = PT_COLLATION_L4_COERC;
+      assert (has_collation);
+      if (*coll_id == LANG_COLL_ISO_BINARY)
+	{
+	  *coerc_level = PT_COLLATION_L4_ISO_BIN_COERC;
+	}
+      else if (LANG_IS_COERCIBLE_COLL (*coll_id))
+	{
+	  *coerc_level = PT_COLLATION_L4_BIN_COERC;
+	}
+      else
+	{
+	  *coerc_level = PT_COLLATION_L4_COERC;
+	}
       break;
 
     case PT_HOST_VAR:
@@ -20771,14 +20814,36 @@ pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser,
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
-      *coerc_level =
-	(has_collation) ? PT_COLLATION_L2_COERC : PT_COLLATION_FULLY_COERC;
+      if ((!has_collation && LANG_SYS_COLLATION == LANG_COLL_ISO_BINARY)
+	  || (*coll_id == LANG_COLL_ISO_BINARY))
+	{
+	  *coerc_level = PT_COLLATION_L2_ISO_BIN_COERC;
+	}
+      else if (!has_collation || LANG_IS_COERCIBLE_COLL (*coll_id))
+	{
+	  *coerc_level = PT_COLLATION_L2_BIN_COERC;
+	}
+      else
+	{
+	  *coerc_level = PT_COLLATION_L2_COERC;
+	}
       break;
 
     case PT_NAME:
     case PT_DOT_:
       assert (has_collation);
-      *coerc_level = PT_COLLATION_L1_COERC;
+      if (*coll_id == LANG_COLL_ISO_BINARY)
+	{
+	  *coerc_level = PT_COLLATION_L1_ISO_BIN_COERC;
+	}
+      else if (LANG_IS_COERCIBLE_COLL (*coll_id))
+	{
+	  *coerc_level = PT_COLLATION_L1_BIN_COERC;
+	}
+      else
+	{
+	  *coerc_level = PT_COLLATION_L1_COERC;
+	}
       break;
 
     default:
@@ -21207,10 +21272,6 @@ pt_common_collation (const int arg1_coll, const INTL_CODESET arg1_cs,
 		     const int args_w_coll, bool op_has_3_args,
 		     int *common_coll, INTL_CODESET * common_cs)
 {
-  PT_COLL_COERC_LEV orig_arg1_coerc_level = arg1_coerc_level;
-  PT_COLL_COERC_LEV orig_arg2_coerc_level = arg2_coerc_level;
-  PT_COLL_COERC_LEV orig_arg3_coerc_level = arg3_coerc_level;
-
   assert (common_coll != NULL);
   assert (common_cs != NULL);
 
@@ -21224,83 +21285,14 @@ pt_common_collation (const int arg1_coll, const INTL_CODESET arg1_cs,
       goto error;
     }
 
-  if (LANG_IS_COERCIBLE_COLL (arg1_coll))
+  if (arg1_coerc_level == arg2_coerc_level)
     {
-      arg1_coerc_level = PT_COLLATION_FULLY_COERC;
+      goto error;
     }
-  if (LANG_IS_COERCIBLE_COLL (arg2_coll))
-    {
-      arg2_coerc_level = PT_COLLATION_FULLY_COERC;
-    }
-  if (LANG_IS_COERCIBLE_COLL (arg3_coll))
-    {
-      arg3_coerc_level = PT_COLLATION_FULLY_COERC;
-    }
-
-  if (!op_has_3_args && arg1_coerc_level == arg2_coerc_level)
-    {
-      if (arg1_coerc_level != PT_COLLATION_FULLY_COERC)
-	{
-	  assert (args_w_coll == 2);
-	  /* cannot coerce : error */
-	  goto error;
-	}
-      else
-	{
-	  assert (arg1_coerc_level == PT_COLLATION_FULLY_COERC);
-
-	  if (orig_arg1_coerc_level != orig_arg2_coerc_level)
-	    {
-	      if (orig_arg1_coerc_level > orig_arg2_coerc_level)
-		{
-		  *common_coll = arg2_coll;
-		  *common_cs = arg2_cs;
-		  return 0;
-		}
-	      else
-		{
-		  assert (orig_arg1_coerc_level < orig_arg2_coerc_level);
-		  *common_coll = arg1_coll;
-		  *common_cs = arg1_cs;
-		  return 0;
-		}
-	    }
-	  else if (LANG_IS_COERCIBLE_COLL (arg1_coll))
-	    {
-	      if (LANG_IS_COERCIBLE_COLL (arg2_coll))
-		{
-		  /* always choose iso88591_bin if the other is utf8_bin or
-		   * euckr_bin; conversion to ISO-8859-1 charset is always
-		   * allowed and does not require byte conversion */
-		  if (arg1_coll == LANG_COLL_ISO_BINARY)
-		    {
-		      *common_coll = arg1_coll;
-		      *common_cs = arg1_cs;
-		      return 0;
-		    }
-		}
-	      *common_coll = arg2_coll;
-	      *common_cs = arg2_cs;
-	      return 0;
-	    }
-	  else if (LANG_IS_COERCIBLE_COLL (arg2_coll))
-	    {
-	      *common_coll = arg1_coll;
-	      *common_cs = arg1_cs;
-	      return 0;
-	    }
-	  else
-	    {
-	      /* cannot coerce : error */
-	      goto error;
-	    }
-	}
-    }
-
-  if (arg1_coerc_level > arg2_coerc_level)
+  else if (arg1_coerc_level > arg2_coerc_level)
     {
       /* coerce arg1 collation */
-      if (arg1_cs != arg2_cs && !LANG_IS_COERCIBLE_COLL (arg1_coll))
+      if (!INTL_CAN_COERCE_CS (arg1_cs, arg2_cs))
 	{
 	  goto error;
 	}
@@ -21322,25 +21314,13 @@ pt_common_collation (const int arg1_coll, const INTL_CODESET arg1_cs,
 	    }
 	  else
 	    {
-	      assert (arg2_coerc_level == arg3_coerc_level);
-	      if (orig_arg2_coerc_level > orig_arg3_coerc_level)
-		{
-		  set_arg3 = true;
-		}
-	      else if (orig_arg2_coerc_level < orig_arg3_coerc_level)
-		{
-		  set_arg3 = false;
-		}
-	      else
-		{
-		  goto error;
-		}
+	      goto error;
 	    }
 
 	  if (set_arg3)
 	    {
 	      /* coerce arg2 collation */
-	      if (arg2_cs != arg3_cs && !LANG_IS_COERCIBLE_COLL (arg2_coll))
+	      if (!INTL_CAN_COERCE_CS (arg2_cs, arg3_cs))
 		{
 		  goto error;
 		}
@@ -21351,7 +21331,7 @@ pt_common_collation (const int arg1_coll, const INTL_CODESET arg1_cs,
 	  else
 	    {
 	      /* coerce arg3 collation */
-	      if (arg2_cs != arg3_cs && !LANG_IS_COERCIBLE_COLL (arg3_coll))
+	      if (!INTL_CAN_COERCE_CS (arg3_cs, arg2_cs))
 		{
 		  goto error;
 		}
@@ -21363,12 +21343,10 @@ pt_common_collation (const int arg1_coll, const INTL_CODESET arg1_cs,
     }
   else
     {
-      assert ((arg1_coll == arg2_coll)
-	      || (arg1_coerc_level <= arg2_coerc_level));
+      assert (arg1_coerc_level < arg2_coerc_level);
 
       /* coerce arg2 collation */
-      if (arg1_coll != arg2_coll && arg1_coerc_level == arg2_coerc_level
-	  && !LANG_IS_COERCIBLE_COLL (arg2_coll))
+      if (!INTL_CAN_COERCE_CS (arg2_cs, arg1_cs))
 	{
 	  goto error;
 	}
@@ -21390,25 +21368,13 @@ pt_common_collation (const int arg1_coll, const INTL_CODESET arg1_cs,
 	    }
 	  else
 	    {
-	      assert (arg1_coerc_level == arg3_coerc_level);
-	      if (orig_arg1_coerc_level > orig_arg3_coerc_level)
-		{
-		  set_arg3 = true;
-		}
-	      else if (orig_arg1_coerc_level < orig_arg3_coerc_level)
-		{
-		  set_arg3 = false;
-		}
-	      else
-		{
-		  goto error;
-		}
+	      goto error;
 	    }
 
 	  if (set_arg3)
 	    {
 	      /* coerce arg1 collation */
-	      if (arg1_cs != arg3_cs && !LANG_IS_COERCIBLE_COLL (arg1_coll))
+	      if (!INTL_CAN_COERCE_CS (arg1_cs, arg3_cs))
 		{
 		  goto error;
 		}
@@ -21419,7 +21385,7 @@ pt_common_collation (const int arg1_coll, const INTL_CODESET arg1_cs,
 	  else
 	    {
 	      /* coerce arg3 collation */
-	      if (arg1_cs != arg3_cs && !LANG_IS_COERCIBLE_COLL (arg3_coll))
+	      if (!INTL_CAN_COERCE_CS (arg3_cs, arg1_cs))
 		{
 		  goto error;
 		}
@@ -21698,6 +21664,7 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 	    {
 	      arg1_coll = common_coll;
 	      arg1_cs = common_cs;
+	      arg1_coerc_level = PT_COLLATION_FULLY_COERC;
 	    }
 
 	  if (!(PT_HAS_COLLATION (arg2_type) || arg2_type == PT_TYPE_MAYBE
@@ -21705,6 +21672,7 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 	    {
 	      arg2_coll = common_coll;
 	      arg2_cs = common_cs;
+	      arg2_coerc_level = PT_COLLATION_FULLY_COERC;
 	    }
 
 	  if (!(PT_HAS_COLLATION (arg3_type) || arg3_type == PT_TYPE_MAYBE
@@ -21712,6 +21680,7 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 	    {
 	      arg3_coll = common_coll;
 	      arg3_cs = common_cs;
+	      arg3_coerc_level = PT_COLLATION_FULLY_COERC;
 	    }
 	}
 
