@@ -3130,9 +3130,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
     {
       return ER_FAILED;
     }
-  if (er_init
+  if (er_init_internal
       (prm_get_string_value (PRM_ID_ER_LOG_FILE),
-       prm_get_integer_value (PRM_ID_ER_EXIT_ASK)) != NO_ERROR)
+       prm_get_integer_value (PRM_ID_ER_EXIT_ASK), true) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -4023,7 +4023,7 @@ boot_check_db_at_num_shutdowns (bool force_nshutdowns)
 	      const char *tmpname;
 	      fflush (stderr);
 	      fflush (stdout);
-	      tmpname = er_msglog_filename ();
+	      tmpname = er_get_msglog_filename ();
 	      if (tmpname == NULL)
 		{
 		  tmpname = "/dev/null";

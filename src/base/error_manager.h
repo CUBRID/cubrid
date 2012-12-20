@@ -101,7 +101,7 @@ enum er_level
   ER_LEVEL_SYSTEM, ER_LEVEL_APPLICATION
 };
 
-typedef void (*PTR_FNERLOG) (void);
+typedef void (*PTR_FNERLOG) (int err_id);
 
 /*
  * Definition of error message structure. One structure is defined for each
@@ -166,8 +166,10 @@ struct er_msg
 };
 
 
-extern const char *er_msglog_filename (void);
+extern const char *er_get_msglog_filename (void);
 extern int er_init (const char *msglog_filename, int exit_ask);
+extern int er_init_internal (const char *msglog_filename, int exit_ask,
+			     bool make_access);
 #if defined (SERVER_MODE)
 extern void er_final (bool do_global_final);
 #else /* SERVER_MODE */

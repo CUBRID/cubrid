@@ -270,9 +270,15 @@ static char *er_cached_msg[sizeof (er_builtin_msg) / sizeof (const char *)];
 static bool er_is_cached_msg = false;
 
 /* Error log message file related */
-static char er_Log_file_name[PATH_MAX];
-static const char *er_Msglog_file_name = NULL;
-static FILE *er_Msglog = NULL;
+static char er_msglog_filename_buff[PATH_MAX];
+static const char *er_msglog_filename = NULL;
+static FILE *er_msglog_fh = NULL;
+
+/* Error log message file related */
+static char er_accesslog_filename_buff[PATH_MAX];
+static const char *er_accesslog_filename = NULL;
+static FILE *er_accesslog_fh = NULL;
+
 
 static ER_FMT er_fmt_list[(-ER_LAST_ERROR) + 1];
 static int er_fmt_msg_fail_count = -ER_LAST_ERROR;
@@ -318,7 +324,7 @@ static int er_set_internal (int severity, const char *file_name,
 			    const int line_no, int err_id, int num_args,
 			    bool include_os_error, FILE * fp,
 			    va_list * ap_ptr);
-static void er_log (void);
+static void er_log (int err_id);
 static void er_stop_on_error (void);
 
 static int er_study_spec (const char *conversion_spec, char *simple_spec,
@@ -353,13 +359,13 @@ static PTR_FNERLOG er_Fnlog[ER_MAX_SEVERITY + 1] = {
 };
 
 /*
- * er_msglog_file_name - Find the error message log file name
+ * er_get_msglog_filename - Find the error message log file name
  *   return: log file name
  */
 const char *
-er_msglog_filename (void)
+er_get_msglog_filename (void)
 {
-  return er_Msglog_file_name;
+  return er_msglog_filename;
 }
 
 /*
@@ -574,18 +580,19 @@ er_call_stack_init (void)
 /*
  * er_init - Initialize parameters for message module
  *   return: none
- *   msglog_file_name(in): name of message log file
+ *   msglog_filename(in): name of message log file
  *   exit_ask(in): define behavior when a sever error is found
+ *   make_access(in): whether seperate access log or not
  *
  * Note: This function initializes parameters that define the behavior
  *       of the message module (i.e., logging file , and fatal error
- *       exit condition). If the value of msglog_file_name is NULL,
+ *       exit condition). If the value of msglog_filename is NULL,
  *       error messages are logged/sent to PRM_ER_LOG_FILE. If that
- *       is null, then messages go to stderr. If msglog_file_name
+ *       is null, then messages go to stderr. If msglog_filename
  *       is equal to /dev/null, error messages are not logged.
  */
 int
-er_init (const char *msglog_file_name, int exit_ask)
+er_init_internal (const char *msglog_filename, int exit_ask, bool make_access)
 {
   int i;
   int r;
@@ -668,30 +675,64 @@ er_init (const char *msglog_file_name, int exit_ask)
   /*
    * Remember the name of the message log file
    */
-  if (msglog_file_name == NULL)
+  if (msglog_filename == NULL)
     {
       if (prm_get_string_value (PRM_ID_ER_LOG_FILE))
 	{
-	  msglog_file_name = prm_get_string_value (PRM_ID_ER_LOG_FILE);
+	  msglog_filename = prm_get_string_value (PRM_ID_ER_LOG_FILE);
 	}
     }
-  if (msglog_file_name)
+
+  if (msglog_filename != NULL)
     {
-      if (IS_ABS_PATH (msglog_file_name)
-	  || msglog_file_name[0] == PATH_CURRENT)
+      if (IS_ABS_PATH (msglog_filename) || msglog_filename[0] == PATH_CURRENT)
 	{
-	  strncpy (er_Log_file_name, msglog_file_name, PATH_MAX - 1);
+	  strncpy (er_msglog_filename_buff, msglog_filename, PATH_MAX - 1);
 	}
       else
 	{
-	  envvar_logdir_file (er_Log_file_name, PATH_MAX, msglog_file_name);
+	  envvar_logdir_file (er_msglog_filename_buff, PATH_MAX,
+			      msglog_filename);
 	}
-      er_Log_file_name[PATH_MAX - 1] = '\0';
-      er_Msglog_file_name = er_Log_file_name;
+
+      er_msglog_filename_buff[PATH_MAX - 1] = '\0';
+      er_msglog_filename = er_msglog_filename_buff;
     }
   else
     {
-      er_Msglog_file_name = NULL;
+      er_msglog_filename = NULL;
+    }
+
+  if (make_access == true && er_msglog_filename != NULL)
+    {
+      int len = strlen (er_msglog_filename);
+
+      if (len < 4 || strncmp (&er_msglog_filename[len - 4], ".err", 4) != 0)
+	{
+	  snprintf (er_accesslog_filename_buff, PATH_MAX, "%s.access",
+		    er_msglog_filename);
+	  /* ex) server.log => server.log.access */
+	}
+      else
+	{
+	  char tmp[PATH_MAX];
+	  strncpy (tmp, er_msglog_filename, PATH_MAX);
+	  tmp[len - 4] = '\0';
+	  snprintf (er_accesslog_filename_buff, PATH_MAX, "%s.access", tmp);
+	  /* ex) server_log.err => server_log.access */
+	}
+
+      er_accesslog_filename = er_accesslog_filename_buff;
+
+      /* in case of strlen(er_msglog_filename) > PATH_MAX - 7 */
+      if (strnlen (er_accesslog_filename_buff, PATH_MAX) >= PATH_MAX)
+	{
+	  er_accesslog_filename = NULL;
+	}
+    }
+  else
+    {
+      er_accesslog_filename = NULL;
     }
 
   er_hasalready_initiated = true;
@@ -718,6 +759,27 @@ er_init (const char *msglog_file_name, int exit_ask)
 
   return NO_ERROR;
 }
+
+
+/*
+ * er_init - Initialize parameters for message module
+ *   return: none
+ *   msglog_filename(in): name of message log file
+ *   exit_ask(in): define behavior when a sever error is found
+ *
+ * Note: This function initializes parameters that define the behavior
+ *       of the message module (i.e., logging file , and fatal error
+ *       exit condition). If the value of msglog_filename is NULL,
+ *       error messages are logged/sent to PRM_ER_LOG_FILE. If that
+ *       is null, then messages go to stderr. If msglog_filename
+ *       is equal to /dev/null, error messages are not logged.
+ */
+int
+er_init (const char *msglog_filename, int exit_ask)
+{
+  return er_init_internal (msglog_filename, exit_ask, false);
+}
+
 
 /*
  * er_file_open - small utility function to open error log file
@@ -861,35 +923,69 @@ er_start (THREAD_ENTRY * th_entry)
   /* Define message log file */
   if (logfile_opened == false)
     {
-      if (er_Msglog_file_name)
+      if (er_msglog_filename)
 	{
-	  er_isa_null_device = er_file_isa_null_device (er_Msglog_file_name);
+	  er_isa_null_device = er_file_isa_null_device (er_msglog_filename);
 
 	  if (er_isa_null_device
 	      || prm_get_bool_value (PRM_ID_ER_PRODUCTION_MODE))
 	    {
-	      er_Msglog = er_file_open (er_Msglog_file_name);
+	      er_msglog_fh = er_file_open (er_msglog_filename);
 	    }
 	  else
 	    {
 	      /* want to err on the side of doing production style error logs
 	       * because this may be getting set at some naive customer site.*/
 	      char path[PATH_MAX];
-	      sprintf (path, "%s.%d", er_Msglog_file_name, getpid ());
-	      er_Msglog = er_file_open (path);
+	      sprintf (path, "%s.%d", er_msglog_filename, getpid ());
+	      er_msglog_fh = er_file_open (path);
 	    }
-	  if (er_Msglog == NULL)
+
+	  if (er_msglog_fh == NULL)
 	    {
-	      er_Msglog = stderr;
+	      er_msglog_fh = stderr;
 	      er_log_debug (ARG_FILE_LINE,
 			    er_cached_msg[ER_LOG_MSGLOG_WARNING],
-			    er_Msglog_file_name);
+			    er_msglog_filename);
 	    }
 	}
       else
 	{
-	  er_Msglog = stderr;
+	  er_msglog_fh = stderr;
 	}
+
+      if (er_accesslog_filename)
+	{
+	  er_isa_null_device =
+	    er_file_isa_null_device (er_accesslog_filename);
+
+	  if (er_isa_null_device
+	      || prm_get_bool_value (PRM_ID_ER_PRODUCTION_MODE))
+	    {
+	      er_accesslog_fh = er_file_open (er_accesslog_filename);
+	    }
+	  else
+	    {
+	      /* want to err on the side of doing production style error logs
+	       * because this may be getting set at some naive customer site.*/
+	      char path[PATH_MAX];
+	      sprintf (path, "%s.%d", er_accesslog_filename, getpid ());
+	      er_accesslog_fh = er_file_open (path);
+	    }
+
+	  if (er_accesslog_fh == NULL)
+	    {
+	      er_accesslog_fh = stderr;
+	      er_log_debug (ARG_FILE_LINE,
+			    er_cached_msg[ER_LOG_MSGLOG_WARNING],
+			    er_accesslog_filename);
+	    }
+	}
+      else
+	{
+	  er_accesslog_fh = stderr;
+	}
+
       logfile_opened = true;
     }
 
@@ -984,34 +1080,64 @@ er_start (void)
 
   /* Define message log file */
 
-  if (er_Msglog_file_name)
+  if (er_msglog_filename)
     {
-      er_isa_null_device = er_file_isa_null_device (er_Msglog_file_name);
+      er_isa_null_device = er_file_isa_null_device (er_msglog_filename);
 
       if (er_isa_null_device
 	  || prm_get_bool_value (PRM_ID_ER_PRODUCTION_MODE))
 	{
-	  er_Msglog = er_file_open (er_Msglog_file_name);
+	  er_msglog_fh = er_file_open (er_msglog_filename);
 	}
       else
 	{
 	  /* want to err on the side of doing production style error logs
 	   * because this may be getting set at some naive customer site. */
 	  char path[PATH_MAX];
-	  sprintf (path, "%s.%d", er_Msglog_file_name, getpid ());
-	  er_Msglog = er_file_open (path);
+	  sprintf (path, "%s.%d", er_msglog_filename, getpid ());
+	  er_msglog_fh = er_file_open (path);
 	}
 
-      if (er_Msglog == NULL)
+      if (er_msglog_fh == NULL)
 	{
-	  er_Msglog = stderr;
+	  er_msglog_fh = stderr;
 	  er_log_debug (ARG_FILE_LINE, er_cached_msg[ER_LOG_MSGLOG_WARNING],
-			er_Msglog_file_name);
+			er_msglog_filename);
 	}
     }
   else
     {
-      er_Msglog = stderr;
+      er_msglog_fh = stderr;
+    }
+
+  if (er_accesslog_filename)
+    {
+      er_isa_null_device = er_file_isa_null_device (er_accesslog_filename);
+
+      if (er_isa_null_device
+	  || prm_get_bool_value (PRM_ID_ER_PRODUCTION_MODE))
+	{
+	  er_accesslog_fh = er_file_open (er_accesslog_filename);
+	}
+      else
+	{
+	  /* want to err on the side of doing production style error logs
+	   * because this may be getting set at some naive customer site. */
+	  char path[PATH_MAX];
+	  sprintf (path, "%s.%d", er_accesslog_filename, getpid ());
+	  er_accesslog_fh = er_file_open (path);
+	}
+
+      if (er_accesslog_fh == NULL)
+	{
+	  er_accesslog_fh = stderr;
+	  er_log_debug (ARG_FILE_LINE, er_cached_msg[ER_LOG_MSGLOG_WARNING],
+			er_accesslog_filename);
+	}
+    }
+  else
+    {
+      er_accesslog_fh = stderr;
     }
 
   /*
@@ -1145,12 +1271,19 @@ er_final (bool do_global_final)
 
       if (logfile_opened == true)
 	{
-	  if (er_Msglog != NULL && er_Msglog != stderr)
+	  if (er_msglog_fh != NULL && er_msglog_fh != stderr)
 	    {
-	      (void) fclose (er_Msglog);
-	      er_Msglog = NULL;
+	      (void) fclose (er_msglog_fh);
+	      er_msglog_fh = NULL;
 	    }
 	  logfile_opened = false;
+
+	  if (er_accesslog_fh != NULL && er_accesslog_fh != stderr)
+	    {
+	      (void) fclose (er_accesslog_fh);
+	      er_accesslog_fh = NULL;
+	    }
+
 	}
 
       for (i = 0; i < (int) DIM (er_fmt_list); i++)
@@ -1190,11 +1323,18 @@ er_final (void)
   if (er_Msg != NULL)
     {
       er_stack_clear ();
-      if (er_Msglog != NULL && er_Msglog != stderr)
+      if (er_msglog_fh != NULL && er_msglog_fh != stderr)
 	{
-	  (void) fclose (er_Msglog);
-	  er_Msglog = NULL;
+	  (void) fclose (er_msglog_fh);
+	  er_msglog_fh = NULL;
 	}
+
+      if (er_accesslog_fh != NULL && er_accesslog_fh != stderr)
+	{
+	  (void) fclose (er_accesslog_fh);
+	  er_accesslog_fh = NULL;
+	}
+
       ER_FREE_AREA (er_Msg->msg_area);
       er_Msg->msg_area = er_emergency_buf;
       er_Msg->msg_area_size = sizeof (er_emergency_buf);
@@ -1419,14 +1559,14 @@ er_call_stack_dump_on_error (int severity, int err_id)
   err_id = abs (err_id);
   if (severity == ER_FATAL_ERROR_SEVERITY)
     {
-      er_dump_call_stack (er_Msglog);
+      er_dump_call_stack (er_msglog_fh);
     }
   else if (prm_get_bool_value (PRM_ID_CALL_STACK_DUMP_ON_ERROR))
     {
       if (!sysprm_find_err_in_integer_list
 	  (PRM_ID_CALL_STACK_DUMP_DEACTIVATION, err_id))
 	{
-	  er_dump_call_stack (er_Msglog);
+	  er_dump_call_stack (er_msglog_fh);
 	}
     }
   else
@@ -1434,7 +1574,7 @@ er_call_stack_dump_on_error (int severity, int err_id)
       if (sysprm_find_err_in_integer_list
 	  (PRM_ID_CALL_STACK_DUMP_ACTIVATION, err_id))
 	{
-	  er_dump_call_stack (er_Msglog);
+	  er_dump_call_stack (er_msglog_fh);
 	}
     }
 }
@@ -1577,7 +1717,7 @@ er_set_internal (int severity, const char *file_name, const int line_no,
       r = ER_CSECT_ENTER_LOG_FILE ();
       if (r == NO_ERROR)
 	{
-	  (*er_Fnlog[severity]) ();
+	  (*er_Fnlog[severity]) (err_id);
 
 	  /* call stack dump */
 	  er_call_stack_dump_on_error (severity, err_id);
@@ -1593,9 +1733,9 @@ er_set_internal (int severity, const char *file_name, const int line_no,
 		  char buf[MAX_LINE];
 		  while (fgets (buf, MAX_LINE, fp) != NULL)
 		    {
-		      fprintf (er_Msglog, "%s", buf);
+		      fprintf (er_msglog_fh, "%s", buf);
 		    }
-		  (void) fflush (er_Msglog);
+		  (void) fflush (er_msglog_fh);
 		}
 	    }
 	  ER_CSECT_EXIT_LOG_FILE ();
@@ -1666,15 +1806,14 @@ er_stop_on_error (void)
  * er_log - Log the error message
  *   return: none
  *
- * Note: The maximum available level of the error is logged into
- *       er_Msglog file.This function is used at the default logging
+ * Note: The maximum available level of the error is logged into file.
+ *       This function is used at the default logging
  *       function to call when error are set. The calling logging
  *       function can be modified by calling the function er_fnerlog.
  */
-static void
-er_log (void)
+void
+er_log (int err_id)
 {
-  int err_id;
   int severity;
   int nlevels;
   int line_no;
@@ -1690,11 +1829,24 @@ er_log (void)
   char *more_info_p;
   int ret;
   char more_info[MAXHOSTNAMELEN + PATH_MAX + 64];
+  char *log_file_name;
+  FILE **log_fh;
+
+  if (er_accesslog_filename != NULL && err_id == ER_BO_CLIENT_CONNECTED)
+    {
+      log_file_name = er_accesslog_filename;
+      log_fh = &er_accesslog_fh;
+    }
+  else
+    {
+      log_file_name = er_msglog_filename;
+      log_fh = &er_msglog_fh;
+    }
 
 #if defined (WINDOWS)
   /* Check for an invalid output file    */
   /* (stderr is not valid under Windows and is set to NULL) */
-  if (er_Msglog == NULL)
+  if (log_fh == NULL || *log_fh == NULL)
     {
       return;
     }
@@ -1710,32 +1862,32 @@ er_log (void)
    * top if need be.
    */
 
-  if (er_Msglog != stderr && er_Msglog != stdout
-      && ftell (er_Msglog) > (int) prm_get_integer_value (PRM_ID_ER_LOG_SIZE))
+  if (*log_fh != stderr && *log_fh != stdout
+      && ftell (*log_fh) > (int) prm_get_integer_value (PRM_ID_ER_LOG_SIZE))
     {
-      (void) fflush (er_Msglog);
-      (void) fprintf (er_Msglog, "%s", er_cached_msg[ER_LOG_WRAPAROUND]);
+      (void) fflush (*log_fh);
+      (void) fprintf (*log_fh, "%s", er_cached_msg[ER_LOG_WRAPAROUND]);
 
       if (!er_isa_null_device)
 	{
-	  er_Msglog = er_file_backup (er_Msglog, er_Msglog_file_name);
+	  *log_fh = er_file_backup (*log_fh, log_file_name);
 
-	  if (er_Msglog == NULL)
+	  if (*log_fh == NULL)
 	    {
-	      er_Msglog = stderr;
+	      *log_fh = stderr;
 	      er_log_debug (ARG_FILE_LINE,
 			    er_cached_msg[ER_LOG_MSGLOG_WARNING],
-			    er_Msglog_file_name);
+			    log_file_name);
 	    }
 	}
       else
 	{
 	  /* Should be rewinded to avoid repeated limit check hitting */
-	  (void) fseek (er_Msglog, 0L, SEEK_SET);
+	  (void) fseek (*log_fh, 0L, SEEK_SET);
 	}
     }
 
-  if (er_Msglog == stderr || er_Msglog == stdout)
+  if (*log_fh == stderr || *log_fh == stdout)
     {
       /*
        * Try to avoid out of sequence stderr & stdout.
@@ -1811,36 +1963,36 @@ er_log (void)
     }
 #endif /* !SERVER_MODE */
 
-  /* If file is not exist, it will recreate er_Msglog file. */
-  if ((access (er_Msglog_file_name, F_OK) == -1) && er_Msglog != stderr
-      && er_Msglog != stdout)
+  /* If file is not exist, it will recreate *log_fh file. */
+  if ((access (log_file_name, F_OK) == -1) && *log_fh != stderr
+      && *log_fh != stdout)
     {
-      (void) fclose (er_Msglog);
-      er_Msglog = er_file_open (er_Msglog_file_name);
+      (void) fclose (*log_fh);
+      *log_fh = er_file_open (log_file_name);
 
-      if (er_Msglog == NULL)
+      if (*log_fh == NULL)
 	{
-	  er_Msglog = stderr;
+	  *log_fh = stderr;
 	  er_log_debug (ARG_FILE_LINE, er_cached_msg[ER_LOG_MSGLOG_WARNING],
-			er_Msglog_file_name);
+			log_file_name);
 	}
     }
 
-  fprintf (er_Msglog, er_cached_msg[ER_LOG_MSG_WRAPPER_D], time_array,
+  fprintf (*log_fh, er_cached_msg[ER_LOG_MSG_WRAPPER_D], time_array,
 	   ER_SEVERITY_STRING (severity), file_name, line_no,
 	   ER_ERROR_WARNING_STRING (severity), err_id, tran_index,
 	   more_info_p, msg);
-  fflush (er_Msglog);
+  fflush (*log_fh);
 
   /* Flush the message so it is printed immediately */
-  (void) fflush (er_Msglog);
+  (void) fflush (*log_fh);
 
-  if (er_Msglog != stderr || er_Msglog != stdout)
+  if (*log_fh != stderr || *log_fh != stdout)
     {
-      position = ftell (er_Msglog);
-      (void) fprintf (er_Msglog, "%s", er_cached_msg[ER_LOG_LAST_MSG]);
-      (void) fflush (er_Msglog);
-      (void) fseek (er_Msglog, position, SEEK_SET);
+      position = ftell (*log_fh);
+      (void) fprintf (*log_fh, "%s", er_cached_msg[ER_LOG_LAST_MSG]);
+      (void) fflush (*log_fh);
+      (void) fseek (*log_fh, position, SEEK_SET);
     }
 
   /* Do we want to exit ? */
@@ -1856,8 +2008,8 @@ er_log (void)
 #endif /* NDEBUG */
 
 	case ER_EXIT_DONT_ASK:
-	  (void) fprintf (er_Msglog, "%s", er_cached_msg[ER_ER_EXIT]);
-	  (void) fflush (er_Msglog);
+	  (void) fprintf (er_msglog_fh, "%s", er_cached_msg[ER_ER_EXIT]);
+	  (void) fflush (er_msglog_fh);
 #if defined (SERVER_MODE)
 	  er_final (1);
 #else /* SERVER_MODE */
@@ -2251,7 +2403,7 @@ _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
 
   va_start (ap, fmt);
 
-  out = (er_Msglog != NULL) ? er_Msglog : stderr;
+  out = (er_msglog_fh != NULL) ? er_msglog_fh : stderr;
 
   if (er_Msg != NULL)
     {
@@ -2422,7 +2574,7 @@ er_set_area_error (void *server_area)
       r = ER_CSECT_ENTER_LOG_FILE ();
       if (r == NO_ERROR)
 	{
-	  (*er_Fnlog[severity]) ();
+	  (*er_Fnlog[severity]) (err_id);
 	  ER_CSECT_EXIT_LOG_FILE ();
 	}
     }
@@ -3336,7 +3488,7 @@ er_emergency (const char *file, int line, const char *fmt, ...)
 #endif /* SERVER_MODE */
 
   /* Now get it into the log. */
-  er_log ();
+  er_log (er_Msg->err_id);
 }
 
 

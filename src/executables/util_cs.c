@@ -211,7 +211,7 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 	      || boot_check_db_consistency (check_flag, 0, 0) != NO_ERROR)
 	    {
 	      const char *tmpname;
-	      if ((tmpname = er_msglog_filename ()) == NULL)
+	      if ((tmpname = er_get_msglog_filename ()) == NULL)
 		{
 		  tmpname = "/dev/null";
 		}
@@ -728,7 +728,7 @@ checkdb (UTIL_FUNCTION_ARG * arg)
 	{
 	  const char *tmpname;
 
-	  if ((tmpname = er_msglog_filename ()) == NULL)
+	  if ((tmpname = er_get_msglog_filename ()) == NULL)
 	    {
 	      tmpname = "/dev/null";
 	    }

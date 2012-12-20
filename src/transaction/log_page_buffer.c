@@ -12420,7 +12420,7 @@ logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit,
    * If error message log is different from terminal or /dev/null..indicate
    * that additional information can be found in the error log file
    */
-  msglog = er_msglog_filename ();
+  msglog = er_get_msglog_filename ();
   if (msglog != NULL && strcmp (msglog, "/dev/null") != 0)
     {
       fprintf (stderr,
