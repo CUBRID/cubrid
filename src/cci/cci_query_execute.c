@@ -401,6 +401,7 @@ qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 
   if (!reuse)
     {
+      FREE_MEM (req_handle->sql_text);
       ALLOC_COPY (req_handle->sql_text, sql_stmt);
     }
 
