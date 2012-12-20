@@ -517,12 +517,6 @@ static PT_NODE *mq_reset_references_to_query_string (PARSER_CONTEXT * parser,
 						     void *arg,
 						     int *continue_walk);
 
-static void mq_no_search_cond_merge_updates (PARSER_CONTEXT * parser,
-					     PT_NODE * stmt);
-static PT_NODE *mq_no_search_cond_merge_updates_pre (PARSER_CONTEXT * parser,
-						     PT_NODE * node,
-						     void *arg,
-						     int *continue_walk);
 static void mq_auto_param_merge_clauses (PARSER_CONTEXT * parser,
 					 PT_NODE * stmt);
 
@@ -4482,7 +4476,6 @@ mq_check_merge (PARSER_CONTEXT * parser, PT_NODE * merge_statement)
 {
   pt_no_double_updates (parser, merge_statement);
   pt_no_attr_and_meta_attr_updates (parser, merge_statement);
-  mq_no_search_cond_merge_updates (parser, merge_statement);
 }
 
 /*
@@ -11765,68 +11758,6 @@ mq_reset_references_to_query_string (PARSER_CONTEXT * parser, PT_NODE * node,
   node->line_number = 0;
   node->column_number = 0;
   node->buffer_pos = -1;
-
-  return node;
-}
-
-/*
- * mq_no_search_cond_merge_updates () - check for merge updates that affect
- *                                      columns referenced in ON condition
- *   return:
- *   parser(in):
- *   stmt(in):
- */
-static void
-mq_no_search_cond_merge_updates (PARSER_CONTEXT * parser, PT_NODE * stmt)
-{
-  PT_ASSIGNMENTS_HELPER ea;
-  PT_NODE *assignments;
-  PT_NODE *search_cond;
-
-  assert (stmt->node_type == PT_MERGE);
-
-  assignments = stmt->info.merge.update.assignment;
-  search_cond = stmt->info.merge.search_cond;
-  if (assignments != NULL && search_cond != NULL)
-    {
-      pt_init_assignments_helper (parser, &ea, assignments);
-      while (pt_get_next_assignment (&ea))
-	{
-	  (void) parser_walk_tree (parser, search_cond,
-				   mq_no_search_cond_merge_updates_pre,
-				   (void *) ea.lhs, NULL, NULL);
-	  if (pt_has_error (parser))
-	    {
-	      break;
-	    }
-	}
-    }
-}
-
-/*
- * mq_no_search_cond_merge_updates_pre () -
- *   return:
- *   parser(in):
- *   stmt(in):
- */
-static PT_NODE *
-mq_no_search_cond_merge_updates_pre (PARSER_CONTEXT * parser, PT_NODE * node,
-				     void *arg, int *continue_walk)
-{
-  PT_NODE *name = (PT_NODE *) arg;
-
-  if (node->node_type == PT_NAME)
-    {
-      if (!pt_str_compare (name->info.name.original, node->info.name.original,
-			   CASE_INSENSITIVE)
-	  && name->info.name.spec_id == node->info.name.spec_id)
-	{
-	  PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC,
-		      MSGCAT_SEMANTIC_MERGE_CANT_UPDATE_ON_COLUMN,
-		      pt_short_print (parser, name));
-	  *continue_walk = PT_STOP_WALK;
-	}
-    }
 
   return node;
 }
