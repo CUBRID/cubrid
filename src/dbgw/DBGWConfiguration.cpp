@@ -793,7 +793,7 @@ namespace dbgw
 
   unsigned long _DBGWExecutorPoolContext::DEFAULT_TIME_BETWEEN_EVICTION_RUNS_MILLIS()
   {
-    return 0;
+    return 1 * 1000;
   }
 
   int _DBGWExecutorPoolContext::DEFAULT_NUM_TESTS_PER_EVICTIONRUN()
