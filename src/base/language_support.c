@@ -4113,13 +4113,20 @@ lang_strmatch_utf8_uca_w_coll_data (const COLL_DATA * coll_data,
 	{
 	  str1_level_2_size = size1;
 	}
-      assert (str1_level_2_size > 0);
-      res = lang_back_strmatch_utf8_uca_w_level (coll_data, is_match,
-						 str1, str1_level_2_size,
-						 str2, size2,
-						 escape, has_last_escape,
-						 &cmp_offset,
-						 str1_match_size);
+      if (str1_level_2_size > 0 && size2 > 0)
+	{
+	  res = lang_back_strmatch_utf8_uca_w_level (coll_data, is_match,
+						     str1, str1_level_2_size,
+						     str2, size2,
+						     escape, has_last_escape,
+						     &cmp_offset,
+						     str1_match_size);
+	}
+      else
+	{
+	  res = (str1_level_2_size == size2)
+	    ? 0 : ((str1_level_2_size > size2) ? 1 : -1);
+	}
     }
   else
     {
