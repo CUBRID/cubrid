@@ -8768,7 +8768,8 @@ heap_ovf_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * ovf_oid,
   VPID ovf_vpid;		/* Address of overflow insertion */
 
   if (heap_ovf_find_vfid (thread_p, hfid, &ovf_vfid, true) == NULL
-      || overflow_insert (thread_p, &ovf_vfid, &ovf_vpid, recdes) == NULL)
+      || overflow_insert (thread_p, &ovf_vfid, &ovf_vpid, recdes,
+			  NULL) == NULL)
     {
       return NULL;
     }

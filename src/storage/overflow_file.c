@@ -86,7 +86,8 @@ static int overflow_flush_internal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 static VPID *overflow_insert_internal (THREAD_ENTRY * thread_p,
 				       const VFID * ovf_vfid,
 				       VPID * ovf_vpid, RECDES * recdes,
-				       OVERFLOW_LOGGING_TYPE logging_type);
+				       OVERFLOW_LOGGING_TYPE logging_type,
+				       int *ovf_first_page);
 /*
  * overflow_insert () - Insert a multipage data in overflow
  *   return: ovf_vpid on success or NULL on failure
@@ -110,25 +111,28 @@ static VPID *overflow_insert_internal (THREAD_ENTRY * thread_p,
  */
 VPID *
 overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
-		 VPID * ovf_vpid, RECDES * recdes)
+		 VPID * ovf_vpid, RECDES * recdes, int *ovf_first_page)
 {
   return overflow_insert_internal (thread_p, ovf_vfid, ovf_vpid,
-				   recdes, OVERFLOW_NORMAL_LOGGING);
+				   recdes, OVERFLOW_NORMAL_LOGGING,
+				   ovf_first_page);
 }
 
 VPID *
 overflow_insert_without_undo_logging (THREAD_ENTRY * thread_p,
 				      const VFID * ovf_vfid, VPID * ovf_vpid,
-				      RECDES * recdes)
+				      RECDES * recdes, int *ovf_first_page)
 {
   return overflow_insert_internal (thread_p, ovf_vfid, ovf_vpid,
-				   recdes, OVERFLOW_SKIP_UNDO_LOGGING);
+				   recdes, OVERFLOW_SKIP_UNDO_LOGGING,
+				   ovf_first_page);
 }
 
 static VPID *
 overflow_insert_internal (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
 			  VPID * ovf_vpid, RECDES * recdes,
-			  OVERFLOW_LOGGING_TYPE logging_type)
+			  OVERFLOW_LOGGING_TYPE logging_type,
+			  int *ovf_first_page)
 {
   PAGE_PTR vfid_fhdr_pgptr = NULL;
   OVERFLOW_FIRST_PART *first_part;
@@ -136,7 +140,7 @@ overflow_insert_internal (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
   OVERFLOW_RECV_LINKS undo_recv;
   char *copyto;
   int length, copy_length;
-  INT32 npages = 0;
+  INT32 npages = 0, alloc_npages = 0;
   char *data;
   int alloc_nth;
   LOG_DATA_ADDR addr;
@@ -145,6 +149,7 @@ overflow_insert_internal (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
   VPID *vpids, fhdr_vpid;
   VPID vpids_buffer[OVERFLOW_ALLOCVPID_ARRAY_SIZE + 1];
   FILE_ALLOC_VPIDS alloc_vpids;
+  bool need_alloc = ovf_first_page == NULL;
 
   /*
    * We don't need to lock the overflow pages since these pages are not
@@ -229,17 +234,68 @@ overflow_insert_internal (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
    * pointed by anyone until we return from this function, at that point
    * they are initialized.
    */
-  if (file_alloc_pages_as_noncontiguous (thread_p, ovf_vfid, vpids,
-					 &alloc_nth, npages, NULL, NULL,
-					 NULL, &alloc_vpids) == NULL)
+  alloc_npages = npages;
+  if (!need_alloc)
     {
-      if (vpids != vpids_buffer)
+      int num_obtained_pages;
+      assert (ovf_first_page != NULL);
+      if (*ovf_first_page < 0)
 	{
-	  free_and_init (vpids);
+	  /* first page cannot be negative */
+	  *ovf_first_page = 0;
 	}
+      if (file_get_numpages (thread_p, ovf_vfid) <= *ovf_first_page)
+	{
+	  /* need to allocate more pages */
+	  need_alloc = true;
+	}
+      else
+	{
+	  num_obtained_pages =
+	    file_find_nthpages (thread_p, ovf_vfid, alloc_vpids.vpids,
+				*ovf_first_page, npages);
+	  if (num_obtained_pages == -1)
+	    {
+	      /* error obtaining pages */
+	      if (vpids != vpids_buffer)
+		{
+		  free_and_init (vpids);
+		}
+	      pgbuf_unfix (thread_p, vfid_fhdr_pgptr);
+	      return NULL;
+	    }
 
-      pgbuf_unfix (thread_p, vfid_fhdr_pgptr);
-      return NULL;
+	  if (num_obtained_pages < npages)
+	    {
+	      /* couldn't obtain npages, allocation is still necessary */
+	      alloc_npages -= num_obtained_pages;
+	      need_alloc = true;
+	    }
+	  /* update current index of alloc_vpids */
+	  alloc_vpids.index += num_obtained_pages;
+	}
+    }
+
+  if (need_alloc)
+    {
+      if (file_alloc_pages_as_noncontiguous
+	  (thread_p, ovf_vfid, vpids, &alloc_nth, alloc_npages, NULL, NULL,
+	   NULL, &alloc_vpids) == NULL)
+	{
+	  if (vpids != vpids_buffer)
+	    {
+	      free_and_init (vpids);
+	    }
+
+	  pgbuf_unfix (thread_p, vfid_fhdr_pgptr);
+	  return NULL;
+	}
+    }
+
+  if (ovf_first_page != NULL)
+    {
+      /* update first page for the next call */
+      *ovf_first_page += npages;
     }
 
   assert (alloc_vpids.index == npages);

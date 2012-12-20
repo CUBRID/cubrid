@@ -2059,7 +2059,8 @@ ehash_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p,
 	    {
 	      /* Create the overflow pages */
 	      if (overflow_insert
-		  (thread_p, ovf_file_p, &ovf_vpid, &ovf_recdes) == NULL)
+		  (thread_p, ovf_file_p, &ovf_vpid, &ovf_recdes,
+		   NULL) == NULL)
 		{
 		  /*
 		   * overflow pages creation failed; do not insert the prefix

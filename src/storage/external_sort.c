@@ -148,6 +148,8 @@ struct sort_param
   /* Details about the "limit" clause */
   int limit;
 
+  /* multipage number of pages */
+  int multipage_npages;
 };
 
 typedef struct sort_rec_list SORT_REC_LIST;
@@ -1456,6 +1458,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt,
      function, if long size sorting records are encountered. */
   sort_param.multipage_file.volid = NULL_VOLID;
   sort_param.multipage_file.fileid = NULL_FILEID;
+  sort_param.multipage_npages = 0;
 
   /* NOTE: This volume list will not be used any more. */
   /* initialize temporary volume list */
@@ -1798,7 +1801,8 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 	       * this run
 	       */
 	      if (overflow_insert (thread_p, &sort_param->multipage_file,
-				   (VPID *) item_ptr, &long_recdes) == NULL)
+				   (VPID *) item_ptr, &long_recdes,
+				   &sort_param->multipage_npages) == NULL)
 		{
 		  error = er_errid ();
 		  goto exit_on_error;
@@ -3970,6 +3974,7 @@ sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est,
   int new_nthpg;
   int pg_cnt_est2;
   int ret = NO_ERROR;
+  int file_numpages, alloc_npages;
 
   if (file_create_tmp (thread_p, vfid, file_pg_cnt_est, NULL) == NULL)
     {
@@ -3988,28 +3993,34 @@ sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est,
    * state of the pages after a rollback or system crashes. Nothing need
    * to be log on the page. The pages are initialized at a later time.
    */
-  if (file_alloc_pages_as_noncontiguous (thread_p, vfid, &new_vpid,
-					 &new_nthpg, file_pg_cnt_est, NULL,
-					 NULL, NULL, NULL) == NULL)
+  file_numpages = file_get_numpages (thread_p, vfid);
+  alloc_npages = file_pg_cnt_est - file_numpages;
+
+  if (alloc_npages > 0)
     {
-      if (er_errid () != ER_FILE_NOT_ENOUGH_PAGES_IN_VOLUME)
+      if (file_alloc_pages_as_noncontiguous (thread_p, vfid, &new_vpid,
+					     &new_nthpg, alloc_npages, NULL,
+					     NULL, NULL, NULL) == NULL)
 	{
-	  return ER_FAILED;
-	}
+	  if (er_errid () != ER_FILE_NOT_ENOUGH_PAGES_IN_VOLUME)
+	    {
+	      return ER_FAILED;
+	    }
 
-      /* allocation failed with this estimate, try to allocate maximum
-         possible. */
-      pg_cnt_est2 = (int) (boot_max_pages_new_volume () * 0.95);
-      pg_cnt_est2 = MAX (1, pg_cnt_est2);
+	  /* allocation failed with this estimate, try to allocate maximum
+	     possible. */
+	  pg_cnt_est2 = (int) (boot_max_pages_new_volume () * 0.95);
+	  pg_cnt_est2 = MAX (1, pg_cnt_est2);
 
-      if (pg_cnt_est2 < file_pg_cnt_est
-	  && (file_alloc_pages_as_noncontiguous (thread_p, vfid, &new_vpid,
-						 &new_nthpg, pg_cnt_est2,
-						 NULL, NULL, NULL,
-						 NULL) == NULL)
-	  && (er_errid () != ER_FILE_NOT_ENOUGH_PAGES_IN_VOLUME))
-	{
-	  return ER_FAILED;
+	  if (pg_cnt_est2 < file_pg_cnt_est
+	      &&
+	      (file_alloc_pages_as_noncontiguous
+	       (thread_p, vfid, &new_vpid, &new_nthpg, pg_cnt_est2, NULL,
+		NULL, NULL, NULL) == NULL)
+	      && (er_errid () != ER_FILE_NOT_ENOUGH_PAGES_IN_VOLUME))
+	    {
+	      return ER_FAILED;
+	    }
 	}
     }
 

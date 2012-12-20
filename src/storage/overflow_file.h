@@ -35,11 +35,13 @@
 #include "recovery.h"
 
 extern VPID *overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
-			      VPID * ovf_vpid, RECDES * recdes);
+			      VPID * ovf_vpid, RECDES * recdes,
+			      int *ovf_first_page);
 extern VPID *overflow_insert_without_undo_logging (THREAD_ENTRY * thread_p,
 						   const VFID * ovf_vfid,
 						   VPID * ovf_vpid,
-						   RECDES * recdes);
+						   RECDES * recdes,
+						   int *ovf_first_page);
 extern const VPID *overflow_update (THREAD_ENTRY * thread_p,
 				    const VFID * ovf_vfid,
 				    const VPID * ovf_vpid, RECDES * recdes);
