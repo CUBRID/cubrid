@@ -8413,6 +8413,7 @@ start_point:
 	      BTREE_GET_NODE_NEXT_VPID (header_ptr, &N_vpid);
 
 	      temp_page = N;
+	      N = NULL;
 	      goto get_next_oid;
 	    }
 	  if (spage_get_record (N, next_slot_id, &peek_recdes1, PEEK)
@@ -8564,8 +8565,9 @@ start_point:
        * If we give more accurate and precise checking condition,
        * the operation that traverse the tree can be reduced.
        */
-      P = pgbuf_fix (thread_p, &P_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
-		     PGBUF_UNCONDITIONAL_LATCH);
+      P = pgbuf_fix_without_validation (thread_p, &P_vpid, OLD_PAGE,
+					PGBUF_LATCH_WRITE,
+					PGBUF_UNCONDITIONAL_LATCH);
       if (P == NULL)
 	{
 	  goto error;
@@ -8582,8 +8584,9 @@ start_point:
       /* the first leaf page is valid */
       if (next_page_flag == true)
 	{
-	  N = pgbuf_fix (thread_p, &N_vpid, OLD_PAGE, PGBUF_LATCH_READ,
-			 PGBUF_UNCONDITIONAL_LATCH);
+	  N = pgbuf_fix_without_validation (thread_p, &N_vpid, OLD_PAGE,
+					    PGBUF_LATCH_READ,
+					    PGBUF_UNCONDITIONAL_LATCH);
 	  if (N == NULL)
 	    {
 	      goto error;
@@ -8710,6 +8713,9 @@ curr_key_locking:
 	  COPY_OID (&saved_N_class_oid, &N_class_oid);
 	}
 
+      assert (P == NULL && Q == NULL && R == NULL && N == NULL
+	      && temp_page == NULL);
+
       /* UNCONDITIONAL lock request */
       ret_val =
 	lock_object_with_btid (thread_p, &C_oid, &C_class_oid, btid, NX_LOCK,
@@ -8720,8 +8726,9 @@ curr_key_locking:
 	}
       curr_lock_flag = true;
 
-      P = pgbuf_fix (thread_p, &P_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
-		     PGBUF_UNCONDITIONAL_LATCH);
+      P = pgbuf_fix_without_validation (thread_p, &P_vpid, OLD_PAGE,
+					PGBUF_LATCH_WRITE,
+					PGBUF_UNCONDITIONAL_LATCH);
       if (P == NULL)
 	{
 	  goto error;
@@ -8841,6 +8848,10 @@ error:
   if (N)
     {
       pgbuf_unfix_and_init (thread_p, N);
+    }
+  if (temp_page)
+    {
+      pgbuf_unfix_and_init (thread_p, temp_page);
     }
 
   if (curr_lock_flag == true)
@@ -12271,6 +12282,7 @@ start_point:
 	      BTREE_GET_NODE_NEXT_VPID (header_ptr, &N_vpid);
 
 	      temp_page = N;
+	      N = NULL;
 	      goto get_next_oid;
 	    }
 	  if (spage_get_record (N, next_slot_id, &peek_rec, PEEK)
@@ -12395,6 +12407,9 @@ start_point:
       COPY_OID (&saved_N_oid, &N_oid);
       COPY_OID (&saved_N_class_oid, &N_class_oid);
 
+      assert (P == NULL && Q == NULL && R == NULL && N == NULL
+	      && temp_page == NULL);
+
       /* UNCONDITIONAL lock request */
       ret_val =
 	lock_object_with_btid_get_granted_mode (thread_p, &N_oid,
@@ -12416,9 +12431,9 @@ start_point:
        * if we give more accurate and precise checking condition,
        * the operation that traverse the tree can be reduced.
        */
-
-      P = pgbuf_fix (thread_p, &P_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
-		     PGBUF_UNCONDITIONAL_LATCH);
+      P = pgbuf_fix_without_validation (thread_p, &P_vpid, OLD_PAGE,
+					PGBUF_LATCH_WRITE,
+					PGBUF_UNCONDITIONAL_LATCH);
       if (P == NULL)
 	{
 	  goto error;
@@ -12436,8 +12451,9 @@ start_point:
 
       if (next_page_flag == true)
 	{
-	  N = pgbuf_fix (thread_p, &N_vpid, OLD_PAGE, PGBUF_LATCH_READ,
-			 PGBUF_UNCONDITIONAL_LATCH);
+	  N = pgbuf_fix_without_validation (thread_p, &N_vpid, OLD_PAGE,
+					    PGBUF_LATCH_READ,
+					    PGBUF_UNCONDITIONAL_LATCH);
 	  if (N == NULL)
 	    {
 	      goto error;
@@ -12622,6 +12638,9 @@ curr_key_lock_promote:
 	  COPY_OID (&saved_N_class_oid, &N_class_oid);
 	}
 
+      assert (P == NULL && Q == NULL && R == NULL && N == NULL
+	      && temp_page == NULL);
+
       /* UNCONDITIONAL lock request */
       if (current_lock == NX_LOCK
 	  && curr_key_lock_escalation == NO_KEY_LOCK_ESCALATION)
@@ -12650,12 +12669,14 @@ curr_key_lock_promote:
 	  else
 	    {
 	      current_lock = NX_LOCK;
+#if 0
 	      assert (lock_get_object_lock
 		      (&C_oid, &C_class_oid,
 		       LOG_FIND_THREAD_TRAN_INDEX (thread_p)) == NX_LOCK
 		      || lock_get_object_lock
 		      (&C_class_oid, oid_Root_class_oid,
 		       LOG_FIND_THREAD_TRAN_INDEX (thread_p)) == X_LOCK);
+#endif
 	    }
 	}
 
@@ -12665,8 +12686,9 @@ curr_key_lock_promote:
 	}
       curr_lock_flag = true;
 
-      P = pgbuf_fix (thread_p, &P_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
-		     PGBUF_UNCONDITIONAL_LATCH);
+      P = pgbuf_fix_without_validation (thread_p, &P_vpid, OLD_PAGE,
+					PGBUF_LATCH_WRITE,
+					PGBUF_UNCONDITIONAL_LATCH);
       if (P == NULL)
 	{
 	  goto error;
@@ -12802,6 +12824,10 @@ error:
   if (N)
     {
       pgbuf_unfix_and_init (thread_p, N);
+    }
+  if (temp_page)
+    {
+      pgbuf_unfix_and_init (thread_p, temp_page);
     }
 
   if (next_lock_flag)
@@ -13960,10 +13986,10 @@ btree_initialize_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 	  midxkey = DB_PULL_MIDXKEY (&key_val_range->key1);
 	  if (midxkey->domain == NULL || LOG_CHECK_LOG_APPLIER (thread_p))
 	    {
-	      /* 
-	       * The asc/desc properties in midxkey from log_applier may be 
-	       * inaccurate. therefore, we should use btree header's domain 
-	       * while processing btree search request from log_applier. 
+	      /*
+	       * The asc/desc properties in midxkey from log_applier may be
+	       * inaccurate. therefore, we should use btree header's domain
+	       * while processing btree search request from log_applier.
 	       */
 	      if (midxkey->domain)
 		{
@@ -14707,8 +14733,9 @@ btree_prepare_next_search (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
    */
 
   /* fix the current leaf page */
-  bts->C_page = pgbuf_fix (thread_p, &bts->C_vpid, OLD_PAGE, PGBUF_LATCH_READ,
-			   PGBUF_UNCONDITIONAL_LATCH);
+  bts->C_page = pgbuf_fix_without_validation (thread_p, &bts->C_vpid,
+					      OLD_PAGE, PGBUF_LATCH_READ,
+					      PGBUF_UNCONDITIONAL_LATCH);
   if (bts->C_page == NULL)
     {
       goto exit_on_error;
@@ -16030,7 +16057,7 @@ btree_lock_next_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
   char *header_ptr;
   INT16 next_slot_id;
   VPID next_vpid;
-  PAGE_PTR next_page, temp_page = NULL;
+  PAGE_PTR next_page = NULL, temp_page = NULL;
   RECDES peek_rec;
   OID N_class_oid, N_oid;
   LOG_LSA saved_nlsa, *temp_lsa = NULL;
@@ -16124,6 +16151,7 @@ start_point:
 	  BTREE_GET_NODE_NEXT_VPID (header_ptr, &next_vpid);
 
 	  temp_page = next_page;
+	  next_page = NULL;
 	  goto get_next_oid;
 	}
 
@@ -16229,6 +16257,7 @@ start_locking:
       goto error;
     }
 
+  assert (next_page == NULL && temp_page == NULL);
   /* UNCONDITIONAL lock request */
   lock_ret = lock_object_on_iscan (thread_p, &N_oid, &N_class_oid,
 				   bts->btid_int.sys_btid,
@@ -16280,8 +16309,10 @@ start_locking:
   /* The first leaf page is valid */
   if (next_page_flag == true)
     {
-      next_page = pgbuf_fix (thread_p, &next_vpid, OLD_PAGE,
-			     PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      next_page = pgbuf_fix_without_validation (thread_p, &next_vpid,
+						OLD_PAGE,
+						PGBUF_LATCH_READ,
+						PGBUF_UNCONDITIONAL_LATCH);
       if (next_page == NULL)
 	{
 	  next_page_flag = false;
@@ -16301,9 +16332,13 @@ start_locking:
   COPY_OID (nk_class_oid, &N_class_oid);
 
 end:
-  if (next_page_flag == true)
+  if (next_page)
     {
       pgbuf_unfix_and_init (thread_p, next_page);
+    }
+  if (temp_page)
+    {
+      pgbuf_unfix_and_init (thread_p, temp_page);
     }
 
   return ret_val;

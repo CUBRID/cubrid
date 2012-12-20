@@ -113,6 +113,18 @@ extern PAGE_PTR pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid,
 				 int newpg, int requestmode,
 				 PGBUF_LATCH_CONDITION condition,
 				 const char *caller_file, int caller_line);
+
+#define pgbuf_fix_without_validation(thread_p, vpid, newpg, requestmode, condition) \
+        pgbuf_fix_without_validation_debug(thread_p, vpid, newpg, requestmode, condition, \
+                        __FILE__, __LINE__)
+extern PAGE_PTR pgbuf_fix_without_validation_debug (THREAD_ENTRY * thread_p,
+						    const VPID * vpid,
+						    int newpg,
+						    int request_mode,
+						    PGBUF_LATCH_CONDITION
+						    condition,
+						    const char *caller_file,
+						    int caller_line);
 #define pgbuf_unfix(thread_p, pgptr) \
 	pgbuf_unfix_debug(thread_p, pgptr, __FILE__, __LINE__)
 extern void pgbuf_unfix_debug (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
@@ -130,6 +142,14 @@ extern int pgbuf_invalidate_debug (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 #else /* NDEBUG */
 extern PAGE_PTR pgbuf_flush (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 			     int free_page);
+#define pgbuf_fix_without_validation(thread_p, vpid, newpg, requestmode, condition) \
+  pgbuf_fix_without_validation_release(thread_p, vpid, newpg, requestmode, condition)
+extern PAGE_PTR pgbuf_fix_without_validation_release (THREAD_ENTRY * thread_p,
+						      const VPID * vpid,
+						      int newpg,
+						      int requestmode,
+						      PGBUF_LATCH_CONDITION
+						      condition);
 #define pgbuf_fix(thread_p, vpid, newpg, requestmode, condition) \
         pgbuf_fix_release(thread_p, vpid, newpg, requestmode, condition)
 extern PAGE_PTR pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid,

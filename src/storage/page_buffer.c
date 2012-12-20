@@ -921,6 +921,56 @@ pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid, int newpg,
 #endif
 #endif
 
+#if !defined(NDEBUG)
+PAGE_PTR
+pgbuf_fix_without_validation_debug (THREAD_ENTRY * thread_p,
+				    const VPID * vpid, int newpg,
+				    int request_mode,
+				    PGBUF_LATCH_CONDITION condition,
+				    const char *caller_file, int caller_line)
+{
+  PAGE_PTR pgptr;
+  bool old_check_page_validation;
+
+#if defined(SERVER_MODE)
+  old_check_page_validation = thread_set_check_page_validation (thread_p,
+								false);
+#endif /* SERVER_MODE */
+
+  pgptr = pgbuf_fix_debug (thread_p, vpid, newpg, request_mode, condition,
+			   caller_file, caller_line);
+
+#if defined(SERVER_MODE)
+  thread_set_check_page_validation (thread_p, old_check_page_validation);
+#endif /* SERVER_MODE */
+
+  return pgptr;
+}
+#else /* NDEBUG */
+PAGE_PTR
+pgbuf_fix_without_validation_release (THREAD_ENTRY * thread_p,
+				      const VPID * vpid, int newpg,
+				      int request_mode,
+				      PGBUF_LATCH_CONDITION condition)
+{
+  PAGE_PTR pgptr;
+  bool old_check_page_validation;
+
+#if defined(SERVER_MODE)
+  old_check_page_validation = thread_set_check_page_validation (thread_p,
+								false);
+#endif /* SERVER_MODE */
+
+  pgptr = pgbuf_fix_release (thread_p, vpid, newpg, request_mode, condition);
+
+#if defined(SERVER_MODE)
+  thread_set_check_page_validation (thread_p, old_check_page_validation);
+#endif /* SERVER_MODE */
+
+  return pgptr;
+}
+#endif /* NDEBUG */
+
 /*
  * pgbuf_fix () -
  *   return: Pointer to the page or NULL
@@ -2348,8 +2398,11 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p,
 #if !defined(NDEBUG)
 		  PGBUF_BCB *pgptr_bufptr;
 
-		  CAST_PGPTR_TO_BFPTR (pgptr_bufptr, pgptr);
-		  assert (pgptr_bufptr == bufptr);
+		  if (pgptr != NULL)
+		    {
+		      CAST_PGPTR_TO_BFPTR (pgptr_bufptr, pgptr);
+		      assert (pgptr_bufptr == bufptr);
+		    }
 #endif
 		  MUTEX_LOCK_VIA_BUSY_WAIT (rv, bufptr->BCB_mutex);
 
