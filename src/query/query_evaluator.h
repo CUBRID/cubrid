@@ -477,12 +477,14 @@ struct analytic_list_node
 				   LEAD/LAG functions) */
   int default_idx;		/* index of default value in select list (for
 				   LEAD/LAG functions) */
+  int eval_group;		/* evaluation group id */
 
   /* runtime values */
   ANALYTIC_FUNCTION_INFO info;	/* custom function runtime values */
   QFILE_LIST_ID *list_id;	/* used for distinct handling */
   DB_VALUE *value;		/* value of the aggregate */
   DB_VALUE *value2;		/* for STTDEV and VARIANCE */
+  DB_VALUE *save_value;		/* DB_VALUE pointer holder */
   DB_VALUE part_value;		/* partition temporary accumulator */
   int curr_cnt;			/* current number of items */
 };

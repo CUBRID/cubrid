@@ -4336,6 +4336,7 @@ regu_analytic_init (ANALYTIC_TYPE * ptr)
   ptr->sort_list = NULL;
   ptr->opr_dbtype = DB_TYPE_NULL;
   ptr->flag = 0;
+  ptr->eval_group = -1;
 }
 
 /*

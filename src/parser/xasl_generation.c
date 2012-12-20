@@ -14361,6 +14361,135 @@ error_exit:
 }
 
 /*
+ * pt_optimize_analytic_list () - optimize analytic exectution
+ *   info(in/out): analytic info
+ *
+ * NOTE: This function groups together the evaluation of analytic functions
+ * that share the same window.
+ */
+static void
+pt_optimize_analytic_list (ANALYTIC_INFO * info)
+{
+  ANALYTIC_TYPE *prev, *next, *curr, *list, *new_head, *new_list;
+  int group_id = 0, i;
+
+  /* find analytic groups */
+  for (curr = info->head_list; curr != NULL; curr = curr->next)
+    {
+      int found = 0;		/* number of matches found */
+
+      if (curr->eval_group > -1)
+	{
+	  /* already grouped */
+	  continue;
+	}
+
+      for (list = curr->next; list != NULL; list = list->next)
+	{
+	  SORT_LIST *curr_s = curr->sort_list;
+	  SORT_LIST *list_s = list->sort_list;
+
+	  if (list->eval_group > -1)
+	    {
+	      /* already grouped */
+	      continue;
+	    }
+
+	  /* check for same partition count */
+	  if (curr->partition_cnt != list->partition_cnt)
+	    {
+	      continue;
+	    }
+
+	  /* check for same subpartition flag */
+	  if (QPROC_ANALYTIC_HAS_SUBPARTITIONS (curr) !=
+	      QPROC_ANALYTIC_HAS_SUBPARTITIONS (list))
+	    {
+	      continue;
+	    }
+
+	  /* check for same sort spec list */
+	  while (curr_s != NULL && list_s != NULL)
+	    {
+	      if (curr_s->pos_descr.pos_no != list_s->pos_descr.pos_no
+		  || curr_s->s_order != list_s->s_order)
+		{
+		  break;
+		}
+
+	      curr_s = curr_s->next;
+	      list_s = list_s->next;
+	    }
+
+	  if (curr_s != NULL || list_s != NULL)
+	    {
+	      continue;
+	    }
+
+	  /* we now have a match */
+	  found++;
+	  list->eval_group = group_id;
+	}
+
+      if (found > 0)
+	{
+	  curr->eval_group = group_id;
+	  group_id++;
+	}
+    }
+
+  /* group analytics together in list */
+  new_list = new_head = NULL;
+  for (i = 0; i < group_id; i++)
+    {
+      prev = NULL;
+      list = info->head_list;
+
+      while (list != NULL)
+	{
+	  next = list->next;
+
+	  if (list->eval_group == i)
+	    {
+	      if (prev == NULL)
+		{
+		  info->head_list = next;
+		}
+	      else
+		{
+		  prev->next = next;
+		}
+
+	      list->next = NULL;
+
+	      if (new_head == NULL)
+		{
+		  new_head = new_list = list;
+		}
+	      else
+		{
+		  new_list->next = list;
+		  new_list = list;
+		}
+	    }
+	  else
+	    {
+	      prev = list;
+	    }
+
+	  list = next;
+	}
+    }
+
+  if (new_head != NULL)
+    {
+      /* add ungrouped analytics at end of list */
+      new_list->next = info->head_list;
+      info->head_list = new_head;
+    }
+}
+
+/*
  * pt_to_buildlist_proc () - Translate a PT_SELECT node to
  *                           a XASL buildlist proc
  *   return:
@@ -14926,6 +15055,9 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	     purpose */
 	  parser_free_tree (parser, select_list_ex);
 	  select_list_ex = NULL;
+
+	  /* optimize analytic function list */
+	  pt_optimize_analytic_list (&analytic_info);
 
 	  /* register analytic functions */
 	  buildlist->a_func_list = analytic_info.head_list;
@@ -21327,7 +21459,7 @@ pt_expand_analytic_node (PARSER_CONTEXT * parser, PT_NODE * node,
 
   while (spec)
     {
-      PT_NODE *val = NULL, *expr = NULL, *list = select_list;
+      PT_NODE *val = NULL, *expr = NULL, *list = select_list, *last = NULL;
       int pos = 1;		/* sort spec indexing starts from 1 */
 
       if (spec->node_type != PT_SORT_SPEC)
@@ -21346,15 +21478,33 @@ pt_expand_analytic_node (PARSER_CONTEXT * parser, PT_NODE * node,
 
       if (expr->node_type != PT_VALUE)
 	{
+	  bool found = false;
+
 	  /* we have an actual expression; move it in the select list and put
 	     a position value here */
-	  while (list != NULL && list->next != NULL)
+	  while (list != NULL)
 	    {
+	      if ((list->node_type == PT_NAME || list->node_type == PT_DOT_)
+		  && (expr->node_type == PT_NAME
+		      || expr->node_type == PT_DOT_))
+		{
+		  if (pt_check_path_eq (parser, list, expr) == 0)
+		    {
+		      found = true;
+		      break;
+		    }
+		}
+
+	      last = list;
 	      list = list->next;
 	      pos++;
 	    }
-	  list->next = expr;
-	  expr->is_hidden_column = 1;
+
+	  if (!found)
+	    {
+	      /* no match, add it in select list */
+	      last->next = expr;
+	    }
 
 	  /* unlink from sort spec */
 	  spec->info.sort_spec.expr = NULL;
@@ -21369,12 +21519,12 @@ pt_expand_analytic_node (PARSER_CONTEXT * parser, PT_NODE * node,
 	    }
 
 	  val->type_enum = PT_TYPE_INTEGER;
-	  val->info.value.data_value.i = pos + 1;
+	  val->info.value.data_value.i = pos;
 	  (void) pt_value_to_db (parser, val);
 
 	  /* set value spec and position descriptor */
 	  spec->info.sort_spec.expr = val;
-	  spec->info.sort_spec.pos_descr.pos_no = pos + 1;
+	  spec->info.sort_spec.pos_descr.pos_no = pos;
 
 	  /* resolve domain */
 	  if (expr->type_enum != PT_TYPE_NONE
@@ -21382,6 +21532,12 @@ pt_expand_analytic_node (PARSER_CONTEXT * parser, PT_NODE * node,
 	    {
 	      spec->info.sort_spec.pos_descr.dom =
 		pt_xasl_node_to_domain (parser, expr);
+	    }
+
+	  if (found)
+	    {
+	      /* cleanup */
+	      parser_free_tree (parser, expr);
 	    }
 	}
 

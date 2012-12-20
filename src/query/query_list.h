@@ -652,6 +652,8 @@ struct qfile_list_scan_id
   VPID curr_vpid;		/* current real page identifier */
   PAGE_PTR curr_pgptr;		/* current page pointer */
   QFILE_TUPLE curr_tpl;		/* current tuple pointer */
+  bool keep_page_on_finish;	/* flag; when set, does not free page when scan
+				   ends */
   int curr_offset;		/* current page offset */
   int curr_tplno;		/* current tuple number */
   QFILE_TUPLE_RECORD tplrec;	/* used for overflow tuple peeking */

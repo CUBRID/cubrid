@@ -4985,8 +4985,6 @@ xts_process_analytic_type (char *ptr, const ANALYTIC_TYPE * analytic)
 
   ptr = or_pack_int (ptr, analytic->default_idx);
 
-  ptr = or_pack_int (ptr, analytic->curr_cnt);
-
   offset = xts_save_analytic_type (analytic->next);
   if (offset == ER_FAILED)
     {
@@ -5030,6 +5028,8 @@ xts_process_analytic_type (char *ptr, const ANALYTIC_TYPE * analytic)
   ptr = or_pack_int (ptr, analytic->partition_cnt);
 
   ptr = or_pack_int (ptr, analytic->flag);
+
+  ptr = or_pack_int (ptr, analytic->eval_group);
 
   return ptr;
 }
@@ -6534,15 +6534,17 @@ xts_sizeof_analytic_type (const ANALYTIC_TYPE * analytic)
   size += or_packed_domain_size (analytic->domain, 0) + PTR_SIZE +	/* next */
     PTR_SIZE +			/* value */
     PTR_SIZE +			/* value2 */
-    PTR_SIZE +			/* default_value */
-    OR_INT_SIZE +		/* curr_cnt */
+    PTR_SIZE +			/* list_id */
+    PTR_SIZE +			/* sort_list */
     OR_INT_SIZE +		/* function */
+    OR_INT_SIZE +		/* outptr_idx */
     OR_INT_SIZE +		/* offset_idx */
     OR_INT_SIZE +		/* default_idx */
     OR_INT_SIZE +		/* option */
     OR_INT_SIZE +		/* opr_dbtype */
     OR_INT_SIZE +		/* partition_cnt */
-    OR_INT_SIZE;		/* flag */
+    OR_INT_SIZE +		/* flag */
+    OR_INT_SIZE;		/* eval_grp */
 
   tmp_size = xts_sizeof_regu_variable (&analytic->operand);
   if (tmp_size == ER_FAILED)
@@ -6550,8 +6552,6 @@ xts_sizeof_analytic_type (const ANALYTIC_TYPE * analytic)
       return ER_FAILED;
     }
   size += tmp_size;
-
-  size += PTR_SIZE + PTR_SIZE;	/* list_id and sort_info */
 
   return size;
 }

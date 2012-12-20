@@ -5805,8 +5805,6 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr,
 
   ptr = or_unpack_int (ptr, &analytic->default_idx);
 
-  ptr = or_unpack_int (ptr, &analytic->curr_cnt);
-
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
@@ -5868,9 +5866,11 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr,
 	}
     }
 
-  or_unpack_int (ptr, &analytic->partition_cnt);
+  ptr = or_unpack_int (ptr, &analytic->partition_cnt);
 
-  or_unpack_int (ptr, &analytic->flag);
+  ptr = or_unpack_int (ptr, &analytic->flag);
+
+  ptr = or_unpack_int (ptr, &analytic->eval_group);
 
   return ptr;
 
