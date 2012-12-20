@@ -2756,6 +2756,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
       bool check_views = false;
       bool check_triggers = false;
       bool check_func_index = false;
+      bool check_tables = false;
 
       db_coll = &(db_collations[i]);
 
@@ -2781,6 +2782,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 	  || lc->codeset != db_coll->codeset
 	  || strcasecmp (lc->coll.checksum, db_coll->checksum) != 0)
 	{
+	  check_tables = true;
 	  check_views = true;
 	  check_atts = true;
 	  check_triggers = true;
@@ -2789,6 +2791,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 	}
       else if (strcmp (lc->coll.coll_name, db_coll->coll_name))
 	{
+	  check_tables = true;
 	  check_views = true;
 	  check_triggers = true;
 	  is_obs_coll = true;
@@ -2804,6 +2807,72 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 					   MSGCAT_UTIL_SET_SYNCCOLLDB,
 					   SYNCCOLLDB_MSG_OBS_COLL),
 		   db_coll->coll_name, db_coll->coll_id);
+	}
+
+      if (check_tables)
+	{
+	  /* get table names having collation */
+	  sprintf (query, "SELECT C.class_name, C.class_type "
+		   "FROM _db_class C "
+		   "WHERE C.collation_id = %d "
+		   "AND NOT (C.class_name IN "
+		   "(SELECT CONCAT (P.class_of.class_name, '__p__', P.pname) "
+		   "FROM _db_partition P WHERE "
+		   "CONCAT (P.class_of.class_name, '__p__', P.pname) "
+		   " = C.class_name AND P.pname IS NOT NULL))",
+		   db_coll->coll_id);
+
+	  db_status = db_execute (query, &query_result, &query_error);
+
+	  if (db_status < 0)
+	    {
+	      status = EXIT_FAILURE;
+	      goto exit;
+	    }
+	  else if (db_status > 0)
+	    {
+	      DB_VALUE class_name;
+	      DB_VALUE ct;
+
+	      fprintf (stdout, "----------------------------------------\n");
+	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
+					       MSGCAT_UTIL_SET_SYNCCOLLDB,
+					       SYNCCOLLDB_MSG_CLASS_OBS_COLL),
+		       db_coll->coll_name);
+
+	      while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
+		{
+		  if (db_query_get_tuple_value (query_result, 0, &class_name)
+		      != NO_ERROR
+		      || db_query_get_tuple_value (query_result, 1, &ct)
+		      != NO_ERROR)
+		    {
+		      status = EXIT_FAILURE;
+		      goto exit;
+		    }
+
+		  assert (DB_VALUE_TYPE (&class_name) == DB_TYPE_STRING);
+		  assert (DB_VALUE_TYPE (&ct) == DB_TYPE_INTEGER);
+
+		  if (DB_GET_INTEGER (&ct) != 0)
+		    {
+		      continue;
+		    }
+		  fprintf (stdout, "%s\n", DB_GET_STRING (&class_name));
+
+		  /* output query to fix schema */
+		  snprintf (query, sizeof (query) - 1, "ALTER TABLE %s "
+			    "COLLATE utf8_bin;", DB_GET_STRING (&class_name));
+		  fprintf (f_stmt, "%s\n", query);
+		  need_manual_sync = true;
+		}
+	    }
+
+	  if (query_result != NULL)
+	    {
+	      db_query_end (query_result);
+	      query_result = NULL;
+	    }
 	}
 
       if (check_atts)

@@ -983,6 +983,7 @@ gültige Optionen:\n\
   -z, --normalization   Normalisierungsdaten exportieren; Standard: inaktiv\n
 
 $set 48 MSGCAT_UTIL_SET_SYNCCOLLDB
+45 Classes having collation '%s'; they should be redefined :\nClass name\n
 46 Function indexes having expression containing collation '%s'; they should be redefined :\n\
 Table | Index | Function expression\n
 47 Synchronization of collations was not performed. Database was not changed.\n
