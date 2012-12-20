@@ -12678,9 +12678,16 @@ int
 do_insert (PARSER_CONTEXT * parser, PT_NODE * root_statement)
 {
   PT_NODE *statement = root_statement;
-  int error;
+  int level, error;
 
   CHECK_MODIFICATION_ERROR ();
+
+  qo_get_optimization_param (&level, QO_PARAM_LEVEL);
+
+  if (level & 0x02)
+    {
+      return NO_ERROR;
+    }
 
   error = insert_local (parser, statement);
 
@@ -14944,11 +14951,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  if (ins_select_stmt->etc == NULL)
 	    {
-	      err = er_errid ();
-	      if (err == NO_ERROR)
-		{
-		  err = ER_GENERIC_ERROR;
-		}
+	      /* in execution_level & 0x02 */
 	      goto exit;
 	    }
 	}
