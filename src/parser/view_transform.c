@@ -4090,6 +4090,17 @@ mq_translate_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 	}
     }
 
+  /* check for analytic/aggregate combo */
+  if (pt_has_analytic (parser, select_statement)
+      && pt_has_aggregate (parser, select_statement))
+    {
+      /* we can't process analytics and aggregates in the same statement; we
+       * must build a subquery for the aggregation and keep the parent
+       * statement for the analytics */
+      mq_rewrite_aggregate_as_derived (parser, select_statement);
+      mq_reset_ids_in_statement (parser, select_statement);
+    }
+
   return select_statement;
 }
 

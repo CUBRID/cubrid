@@ -1047,6 +1047,10 @@ pt_is_analytic_node_post (PARSER_CONTEXT * parser, PT_NODE * tree,
     {
       *continue_walk = PT_STOP_WALK;
     }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
 
   return tree;
 }
@@ -1071,9 +1075,13 @@ pt_is_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree,
       *has_analytic = true;
     }
 
-  if (*has_analytic || PT_IS_QUERY_NODE_TYPE (tree->node_type))
+  if (*has_analytic)
     {
       *continue_walk = PT_STOP_WALK;
+    }
+  else if (PT_IS_QUERY_NODE_TYPE (tree->node_type))
+    {
+      *continue_walk = PT_LIST_WALK;
     }
 
   return tree;
