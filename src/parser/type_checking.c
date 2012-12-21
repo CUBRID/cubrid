@@ -3894,7 +3894,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       sig.arg2_type.val.type = PT_TYPE_DOUBLE;	/* between */
 
       sig.arg3_type.is_generic = false;
-      sig.arg3_type.val.type = PT_TYPE_INTEGER;
+      sig.arg3_type.val.type = PT_TYPE_DOUBLE;
 
       sig.return_type.is_generic = false;
       sig.return_type.val.type = PT_TYPE_INTEGER;
@@ -3909,7 +3909,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       sig.arg2_type.val.type = PT_TYPE_DATE;	/* between */
 
       sig.arg3_type.is_generic = false;
-      sig.arg3_type.val.type = PT_TYPE_INTEGER;
+      sig.arg3_type.val.type = PT_TYPE_DOUBLE;
 
       sig.return_type.is_generic = false;
       sig.return_type.val.type = PT_TYPE_INTEGER;
@@ -3924,7 +3924,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       sig.arg2_type.val.type = PT_TYPE_DATETIME;	/* between */
 
       sig.arg3_type.is_generic = false;
-      sig.arg3_type.val.type = PT_TYPE_INTEGER;
+      sig.arg3_type.val.type = PT_TYPE_DOUBLE;
 
       sig.return_type.is_generic = false;
       sig.return_type.val.type = PT_TYPE_INTEGER;
@@ -3939,7 +3939,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       sig.arg2_type.val.type = PT_TYPE_TIMESTAMP;	/* between */
 
       sig.arg3_type.is_generic = false;
-      sig.arg3_type.val.type = PT_TYPE_INTEGER;
+      sig.arg3_type.val.type = PT_TYPE_DOUBLE;
 
       sig.return_type.is_generic = false;
       sig.return_type.val.type = PT_TYPE_INTEGER;
@@ -3954,7 +3954,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       sig.arg2_type.val.type = PT_TYPE_TIME;	/* between */
 
       sig.arg3_type.is_generic = false;
-      sig.arg3_type.val.type = PT_TYPE_INTEGER;
+      sig.arg3_type.val.type = PT_TYPE_DOUBLE;
 
       sig.return_type.is_generic = false;
       sig.return_type.val.type = PT_TYPE_INTEGER;

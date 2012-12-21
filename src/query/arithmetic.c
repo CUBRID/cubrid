@@ -3949,7 +3949,7 @@ int
 db_width_bucket (DB_VALUE * result, DB_VALUE * value1,
 		 DB_VALUE * value2, DB_VALUE * value3, DB_VALUE * value4)
 {
-  double d1, d2, d3;
+  double d1, d2, d3, d4;
   int i_ret, i4;
   DB_TYPE type;
 
@@ -3965,8 +3965,8 @@ db_width_bucket (DB_VALUE * result, DB_VALUE * value1,
       return NO_ERROR;
     }
 
-  i4 = DB_GET_INT (value4);
-  if (i4 < 1 || i4 == DB_INT32_MAX)
+  d4 = DB_GET_DOUBLE (value4);
+  if (d4 < 1 || d4 >= DB_INT32_MAX)
     {
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
@@ -3980,6 +3980,7 @@ db_width_bucket (DB_VALUE * result, DB_VALUE * value1,
 	  return ER_PROC_WIDTH_BUCKET_COUNT;
 	}
     }
+  i4 = (int) floor (d4);
 
   type = DB_VALUE_DOMAIN_TYPE (value1);
   switch (type)
