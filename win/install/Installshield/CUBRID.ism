@@ -641,11 +641,8 @@
 		<row><td>ISProductFolder</td><td/><td/><td>1</td></row>
 		<row><td>ISProjectDataFolder</td><td>1</td><td/><td>1</td></row>
 		<row><td>ISProjectFolder</td><td/><td/><td>1</td></row>
-		<row><td>PATH_TO_BIN_FILES</td><td>C:\from_svn\trunk\win\install\CUBRID_Release_x64\bin</td><td/><td>2</td></row>
 		<row><td>PATH_TO_CUBRID_FILES</td><td>&lt;ISProjectFolder&gt;\..\CUBRID_Release_Win32</td><td/><td>2</td></row>
 		<row><td>PATH_TO_DEMO_FILES</td><td>&lt;ISPROJECTDIR&gt;\..\..\..\demo</td><td/><td>2</td></row>
-		<row><td>PATH_TO_INCLUDE_FILES</td><td>C:\from_svn\trunk\win\install\CUBRID_Release_x64\include</td><td/><td>2</td></row>
-		<row><td>PATH_TO_LIB_FILES</td><td>C:\from_svn\trunk\win\install\CUBRID_Release_x64\lib</td><td/><td>2</td></row>
 		<row><td>PATH_TO_RES_FILES</td><td>&lt;ISPROJECTDIR&gt;\..\..\..\src\win_tools\cubridtray\RES</td><td/><td>2</td></row>
 		<row><td>ProgramFilesFolder</td><td/><td/><td>1</td></row>
 		<row><td>SystemFolder</td><td/><td/><td>1</td></row>
