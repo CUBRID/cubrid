@@ -159,6 +159,8 @@ static void initialize_serial_invariant (SERIAL_INVARIANT * invariant,
 static int check_serial_invariants (SERIAL_INVARIANT * invariants,
 				    int num_invariants, int *ret_msg_id);
 static bool truncate_need_repl_log (PT_NODE * statement);
+static int do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser,
+						 PT_NODE * statement);
 
 static int do_evaluate_insert_values (PARSER_CONTEXT * parser,
 				      PT_NODE * attr_list,
@@ -5360,6 +5362,209 @@ exit:
 }
 
 /*
+ * do_check_for_empty_classes_in_delete() - check empty tables
+ *   return: Error code, NO_ERROR or 1 if there is at least one empty class
+ *   parser(in): Parser context
+ *   statement(in): Delete statement
+ *
+ * Note:  The function checks if the original join, which was splitted, would
+ *	  have returned 0 elements. If so then the original DELETE statement
+ *	  would have deleted no records. After split this behaviour will change.
+ *	  So we check that there is at least one splitted table with no records.
+ *	  For compatibility reasons we must preserve the behaviour of the
+ *	  original DELETE statement.
+ */
+static int
+do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser,
+				      PT_NODE * statement)
+{
+  int error = NO_ERROR, num_classes = 0, idx, partition_type = 0;
+  PT_NODE *node = statement->info.delete_.del_stmt_list, *flat = NULL;
+  char **classes_names = NULL;
+  LOCK *locks = NULL;
+  int *need_subclasses = NULL, au_save = 0;
+  MOP *partitions = NULL;
+  HFID *hfid = NULL;
+  bool has_rows = false;
+
+  /* count the number of new DELETE statements */
+  while (node != NULL)
+    {
+      num_classes++;
+      node = node->next;
+    }
+
+  /* allocate classes_names array */
+  classes_names = db_private_alloc (NULL, num_classes * sizeof (char *));
+  if (classes_names == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto cleanup;
+    }
+
+  /* allocate locks array */
+  locks = db_private_alloc (NULL, num_classes * sizeof (LOCK));
+  if (locks == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto cleanup;
+    }
+
+  /* allocate need_subclasses array */
+  need_subclasses = db_private_alloc (NULL, num_classes * sizeof (int));
+  if (need_subclasses == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto cleanup;
+    }
+
+  /* prepare information for locking */
+  node = statement->info.delete_.del_stmt_list;
+  for (idx = 0; idx < num_classes && node != NULL; idx++, node = node->next)
+    {
+      if (node->info.delete_.spec == NULL
+	  || node->info.delete_.spec->info.spec.entity_name == NULL
+	  || node->info.delete_.spec->info.spec.entity_name->info.name.
+	  original == NULL)
+	{
+	  error = ER_GENERIC_ERROR;
+	  goto cleanup;
+	}
+      classes_names[idx] =
+	node->info.delete_.spec->info.spec.entity_name->info.name.original;
+      locks[idx] = X_LOCK;
+      if (node->info.delete_.spec->info.spec.only_all == PT_ALL)
+	{
+	  need_subclasses[idx] = true;
+	}
+      else
+	{
+	  need_subclasses[idx] = false;
+	}
+    }
+
+  /* lock splitted classes with X_LOCK */
+  if (locator_lockhint_classes
+      (num_classes, classes_names, locks, need_subclasses,
+       1) != LC_CLASSNAME_EXIST)
+    {
+      error = er_errid ();
+      goto cleanup;
+    }
+
+  AU_DISABLE (au_save);
+  /* Check if we have a splitted spec that has no records */
+  for (node = statement->info.delete_.del_stmt_list;
+       node != NULL; node = node->next)
+    {
+      flat = node->info.delete_.spec->info.spec.flat_entity_list;
+      if (flat == NULL)
+	{
+	  error = ER_GENERIC_ERROR;
+	  goto cleanup;
+	}
+
+      has_rows = false;
+      /* we check subclasses and partitions including the class itself */
+      do
+	{
+	  error =
+	    locator_flush_all_instances (flat->info.name.db_object,
+					 DONT_DECACHE, LC_STOP_ON_ERROR);
+	  if (error != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+
+	  error =
+	    sm_partitioned_class_type (flat->info.name.db_object,
+				       &partition_type, NULL, &partitions);
+	  if (error != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+	  if (partition_type == DB_PARTITIONED_CLASS && partitions != NULL)
+	    {
+	      for (idx = 0; partitions[idx] != NULL && !has_rows; idx++)
+		{
+		  hfid = sm_get_heap (partitions[idx]);
+		  if (hfid == NULL)
+		    {
+		      free_and_init (partitions);
+		      goto cleanup;
+		    }
+		  error = heap_has_instance (hfid, ws_oid (partitions[idx]));
+		  if (error < NO_ERROR)
+		    {
+		      free_and_init (partitions);
+		      goto cleanup;
+		    }
+		  if (error > 0)
+		    {
+		      has_rows = true;
+		    }
+		}
+	    }
+	  else
+	    {
+	      hfid = sm_get_heap (flat->info.name.db_object);
+	      if (hfid == NULL)
+		{
+		  goto cleanup;
+		}
+	      error =
+		heap_has_instance (hfid, ws_oid (flat->info.name.db_object));
+	      if (error < NO_ERROR)
+		{
+		  goto cleanup;
+		}
+	      if (error > 0)
+		{
+		  has_rows = true;
+		}
+	    }
+	  if (partitions != NULL)
+	    {
+	      free_and_init (partitions);
+	    }
+	  flat = flat->next;
+	}
+      while (flat != NULL && !has_rows);
+      if (!has_rows)
+	{
+	  break;
+	}
+    }
+
+  /* if we have a splitted class from wich all records will be deleted and
+   * it has no records then the join will have no records so we can abort
+   * the deletion. */
+  error = (node == NULL ? NO_ERROR : 1);
+
+cleanup:
+
+  AU_ENABLE (au_save);
+
+  /* free allocated resources */
+  if (classes_names != NULL)
+    {
+      db_private_free (NULL, classes_names);
+    }
+
+  if (locks != NULL)
+    {
+      db_private_free (NULL, locks);
+    }
+
+  if (need_subclasses != NULL)
+    {
+      db_private_free (NULL, need_subclasses);
+    }
+
+  return error;
+}
+
+/*
  * do_check_delete_trigger() -
  *   return: Error code
  *   parser(in): Parser context
@@ -5375,6 +5580,10 @@ int
 do_check_delete_trigger (PARSER_CONTEXT * parser, PT_NODE * statement,
 			 PT_DO_FUNC * do_func)
 {
+  PT_NODE *node = NULL;
+  int affected_count, error = 0;
+  PT_NODE *next = NULL;
+
   if (prm_get_bool_value (PRM_ID_BLOCK_NOWHERE_STATEMENT)
       && statement->info.delete_.search_cond == NULL)
     {
@@ -5382,8 +5591,48 @@ do_check_delete_trigger (PARSER_CONTEXT * parser, PT_NODE * statement,
       return ER_BLOCK_NOWHERE_STMT;
     }
 
-  return check_trigger (TR_EVENT_STATEMENT_DELETE,
-			do_func, parser, statement);
+  if (statement->info.delete_.del_stmt_list != NULL)
+    {
+      error = do_check_for_empty_classes_in_delete (parser, statement);
+      if (error < 0)
+	{
+	  return error;
+	}
+      if (error > 0)
+	{
+	  return 0;
+	}
+    }
+
+  error =
+    check_trigger (TR_EVENT_STATEMENT_DELETE, do_func, parser, statement);
+  /* if the statement that contains joins with conditions deletes no record then
+   * we skip the deletion in the subsequent classes beacuse the original join
+   * would have deleted no record */
+  if (error <= NO_ERROR)
+    {
+      return error;
+    }
+
+  affected_count = error;
+  node = statement->info.delete_.del_stmt_list;
+  while (node != NULL)
+    {
+      next = node->next;
+      node->next = NULL;
+      error =
+	check_trigger (TR_EVENT_STATEMENT_DELETE, do_func, parser, node);
+      node->next = next;
+      if (error < NO_ERROR)
+	{
+	  return error;
+	}
+      affected_count += error;
+
+      node = node->next;
+    }
+
+  return affected_count;
 }
 
 /*
@@ -6166,8 +6415,7 @@ static int update_object_tuple (PARSER_CONTEXT * parser,
 				CLIENT_UPDATE_CLASS_INFO * upd_classes_info,
 				int classes_cnt,
 				const int turn_off_unique_check,
-				UPDATE_TYPE update_type,
-				bool should_delete);
+				UPDATE_TYPE update_type, bool should_delete);
 static int update_object_by_oid (PARSER_CONTEXT * parser,
 				 PT_NODE * statement,
 				 UPDATE_TYPE update_type);
@@ -9444,6 +9692,12 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  continue;		/* continue to next DELETE statement */
 	}
 
+      err = pt_split_delete_stmt (parser, statement);
+      if (err != NO_ERROR)
+	{
+	  break;
+	}
+
       /* the presence of a proxy trigger should force the delete
          to be performed through the workspace  */
       AU_SAVE_AND_DISABLE (au_save);	/* because sm_class_has_trigger() calls
@@ -9653,6 +9907,16 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      err = er_errid ();
 	    }
 
+	}
+
+      if (statement->info.delete_.del_stmt_list != NULL)
+	{
+	  err = do_prepare_delete (parser,
+				   statement->info.delete_.del_stmt_list);
+	  if (err != NO_ERROR)
+	    {
+	      break;
+	    }
 	}
 
       /* save the XASL_ID that is allocated and returned by
@@ -16349,5 +16613,3 @@ do_replace_names_for_insert_values_pre (PARSER_CONTEXT * parser,
 
   return node;
 }
-
-

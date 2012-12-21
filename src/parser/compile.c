@@ -1389,6 +1389,23 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser,
 	}
     }
 
+  /* split the delete statement */
+  if (statement != NULL
+      && statement->info.scope.stmt->info.trigger_action.expression != NULL
+      && statement->info.scope.stmt->info.trigger_action.expression->
+      node_type == PT_DELETE)
+    {
+      PT_NODE *node = NULL, *prev = NULL;
+
+      if (pt_split_delete_stmt
+	  (parser,
+	   statement->info.scope.stmt->info.trigger_action.expression) !=
+	  NO_ERROR)
+	{
+	  return NULL;
+	}
+    }
+
   return statement;
 }
 

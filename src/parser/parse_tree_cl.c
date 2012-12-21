@@ -8283,6 +8283,7 @@ pt_apply_delete (PARSER_CONTEXT * parser, PT_NODE * p,
 static PT_NODE *
 pt_init_delete (PT_NODE * p)
 {
+  p->info.delete_.del_stmt_list = NULL;
   p->info.delete_.hint = PT_HINT_NONE;
   p->info.delete_.waitsecs_hint = NULL;
   p->info.delete_.ordered_hint = NULL;

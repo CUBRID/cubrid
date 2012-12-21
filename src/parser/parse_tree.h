@@ -1875,6 +1875,7 @@ struct pt_delete_info
   PT_NODE *use_idx_hint;	/* USE_IDX hint's arguments (PT_NAME list) */
   PT_NODE *use_merge_hint;	/* USE_MERGE hint's arguments (PT_NAME list) */
   PT_NODE *limit;		/* PT_VALUE limit clause parameter */
+  PT_NODE *del_stmt_list;	/* list of DELETE statements after split */
   PT_HINT_ENUM hint;		/* hint flag */
   unsigned has_trigger:1;	/* whether it has triggers */
   unsigned server_delete:1;	/* whether it can be server-side deletion */

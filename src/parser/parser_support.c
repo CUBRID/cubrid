@@ -214,10 +214,15 @@ static PT_NODE *pt_make_query_user_groups (PARSER_CONTEXT * parser,
 					   const char *user_name);
 static char *pt_help_show_create_table (PARSER_CONTEXT * parser,
 					PT_NODE * table_name);
-
 static bool pt_check_ordby_num_for_mro_internal (PARSER_CONTEXT * parser,
 						 PT_NODE * orderby_for,
 						 DB_VALUE * upper_limit);
+static PT_NODE *pt_create_delete_stmt (PARSER_CONTEXT * parser,
+				       PT_NODE * spec,
+				       PT_NODE * target_class);
+static PT_NODE *pt_is_spec_referenced (PARSER_CONTEXT * parser,
+				       PT_NODE * node, void *void_arg,
+				       int *continue_walk);
 #define NULL_ATTRID -1
 
 /*
@@ -9517,8 +9522,297 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser,
     order_by_item = pt_make_sort_spec_with_number (parser, 1, PT_ASC);
     node->info.query.order_by =
       parser_append_node (order_by_item, node->info.query.order_by);
-  }
+    }
   return node;
+}
+
+/*
+ * pt_is_spec_referenced() - check if the current node references the spec id
+ *			     passed as parameter
+ *   return: the current node
+ *   parser(in): Parser context
+ *   node(in):
+ *   void_arg(in): must contain an address to the id of the spec. If the spec id
+ *		   is referenced then reference of this parameter is modified to
+ *		   0.
+ *   continue_walk(in):
+ *
+ */
+static PT_NODE *
+pt_is_spec_referenced (PARSER_CONTEXT * parser, PT_NODE * node,
+		       void *void_arg, int *continue_walk)
+{
+  int spec_id = *(int *) void_arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (node->node_type == PT_NAME && node->info.name.spec_id == spec_id
+      && node->info.name.meta_class != PT_METHOD
+      && node->info.name.meta_class != PT_INDEX_NAME)
+    {
+      *(int *) void_arg = 0;
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  if (node->node_type == PT_SPEC)
+    {
+      /* The only part of a spec node that could contain references to
+       * the given spec_id are derived tables, path_entities,
+       * path_conjuncts, and on_cond.
+       * All the rest of the name nodes for the spec are not references,
+       * but range variables, class names, etc.
+       * We don't want to mess with these. We'll handle the ones that
+       * we want by hand. */
+      parser_walk_tree (parser, node->info.spec.derived_table,
+			pt_is_spec_referenced, void_arg, pt_continue_walk,
+			NULL);
+      parser_walk_tree (parser, node->info.spec.path_entities,
+			pt_is_spec_referenced, void_arg, pt_continue_walk,
+			NULL);
+      parser_walk_tree (parser, node->info.spec.path_conjuncts,
+			pt_is_spec_referenced, void_arg, pt_continue_walk,
+			NULL);
+      parser_walk_tree (parser, node->info.spec.on_cond,
+			pt_is_spec_referenced, void_arg, pt_continue_walk,
+			NULL);
+      /* don't visit any other leaf nodes */
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+
+  /* Data type nodes can not contain any valid references.  They do
+     contain class names and other things we don't want. */
+  if (node->node_type == PT_DATA_TYPE)
+    {
+      *continue_walk = PT_LIST_WALK;
+    }
+
+  return node;
+}
+
+/*
+ * pt_create_delete_stmt() - create a new simple delete statement
+ *   return: the PT_DELETE node on success or NULL otherwise
+ *   parser(in/out): Parser context
+ *   spec(in): the spec for which the DELETE statement is created
+ *   target_class(in): the PT_NAME node that will appear in the target_classes
+ *   list.
+ *
+ * Note: The 'spec' and 'target_class' parameters are assigned to the new
+ *	 statement.
+ */
+static PT_NODE *
+pt_create_delete_stmt (PARSER_CONTEXT * parser, PT_NODE * spec,
+		       PT_NODE * target_class)
+{
+  PT_NODE *delete_stmt = NULL, *node = NULL;
+
+  assert (spec != NULL && spec->node_type == PT_SPEC);
+
+  delete_stmt = parser_new_node (parser, PT_DELETE);
+  if (delete_stmt == NULL)
+    {
+      PT_ERRORm (parser, spec, MSGCAT_SET_PARSER_SEMANTIC,
+		 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return NULL;
+    }
+
+  delete_stmt->info.delete_.spec = spec;
+  delete_stmt->info.delete_.target_classes = target_class;
+
+  return delete_stmt;
+}
+
+/*
+ * pt_split_delete_stmt() - split DELETE statement into independent DELETE
+ *			    statements
+ *   return: NO_ERROR or error code;
+ *   parser(in/out): Parser context
+ *   delete_stmt(in): the source DELETE statement
+ *
+ * Note: The function checks each spec if it is referenced. If the spec was
+ *	 specified in the target_classes list (for deletion) and is not
+ *	 referenced then it removes it from the current statement and a new
+ *	 DELETE statement is generated only for this spec. The newly generated
+ *	 statements are stored in del_stmt_list member of the current
+ *	 PT_DELETE_INFO node.
+ */
+int
+pt_split_delete_stmt (PARSER_CONTEXT * parser, PT_NODE * delete_stmt)
+{
+  PT_NODE *spec = NULL, *prev_spec = NULL, *rem_spec = NULL, *to_delete =
+    NULL;
+  PT_NODE *prev_name = NULL, *new_del_stmts = NULL, *last_new_del_stmt = NULL;
+  PT_NODE *rem_name = NULL;
+  int spec_id = 0;
+
+  if (delete_stmt == NULL || delete_stmt->node_type != PT_DELETE)
+    {
+      PT_INTERNAL_ERROR (parser, "Invalid argument");
+      return ER_FAILED;
+    }
+
+  /* if we have hints that refers globally to the join statement then we skip
+   * the split */
+  if ((delete_stmt->info.delete_.hint & PT_HINT_ORDERED
+       && delete_stmt->info.delete_.ordered_hint == NULL)
+      || ((delete_stmt->info.delete_.hint & PT_HINT_USE_NL)
+	  && delete_stmt->info.delete_.use_nl_hint == NULL)
+      || ((delete_stmt->info.delete_.hint & PT_HINT_USE_IDX)
+	  && delete_stmt->info.delete_.use_idx_hint == NULL)
+      || ((delete_stmt->info.delete_.hint & PT_HINT_USE_MERGE)
+	  && delete_stmt->info.delete_.use_merge_hint == NULL))
+    {
+      return NO_ERROR;
+    }
+
+  spec = delete_stmt->info.delete_.spec;
+  /* if the delete statement has only one spec then we do not split anything */
+  if (spec->next == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  /* iterate through specs and put in separate delete statements the specs that
+   * aren't referenced */
+  while (spec != NULL
+	 && delete_stmt->info.delete_.target_classes->next != NULL)
+    {
+      /* skip the derived tables and tables that will not be deleted */
+      if (spec->info.spec.derived_table != NULL
+	  || !(spec->info.spec.flag & PT_SPEC_FLAG_DELETE))
+	{
+	  prev_spec = spec;
+	  spec = spec->next;
+	  continue;
+	}
+
+      spec_id = spec->info.spec.id;
+      to_delete = delete_stmt->info.delete_.target_classes;
+      /* remove temporarily all target_classes from statement because these
+       * references must not be counted, then check if the current spec is
+       * referenced */
+      delete_stmt->info.delete_.target_classes = NULL;
+      parser_walk_tree (parser, delete_stmt, pt_is_spec_referenced, &spec_id,
+			pt_continue_walk, NULL);
+      delete_stmt->info.delete_.target_classes = to_delete;
+
+      /* if the spec is not referenced and if it is not the only remaining spec
+       * from the original command that will be deleted then remove it */
+      if (spec_id)
+	{
+	  /* move the iterator (spec) to the next spec and remove the current
+	   * spec from the original list of specs */
+	  rem_spec = spec;
+	  spec = spec->next;
+	  rem_spec->next = NULL;
+	  if (prev_spec != NULL)
+	    {
+	      prev_spec->next = spec;
+	    }
+	  else
+	    {
+	      delete_stmt->info.delete_.spec = spec;
+	    }
+
+	  /* remove PT_NAMEs from target_classes list */
+	  rem_name = prev_name = NULL;
+	  while (to_delete != NULL)
+	    {
+	      /* if the target class name references the removed spec then
+	       * remove it from target_classes list */
+	      if (to_delete->info.name.spec_id == spec_id)
+		{
+		  /* free the previous removed PT_NAME */
+		  if (rem_name != NULL)
+		    {
+		      parser_free_tree (parser, rem_name);
+		    }
+		  /* remove the current PT_NAME from target_classes and keep
+		   * it for a new DELETE statement */
+		  rem_name = to_delete;
+		  to_delete = to_delete->next;
+		  rem_name->next = NULL;
+		  if (prev_name != NULL)
+		    {
+		      prev_name->next = to_delete;
+		    }
+		  else
+		    {
+		      delete_stmt->info.delete_.target_classes = to_delete;
+		    }
+		}
+	      else
+		{
+		  prev_name = to_delete;
+		  to_delete = to_delete->next;
+		}
+	    }
+
+	  /* because the spec is referenced in the target_classes list, we
+	   * need to generate a new DELETE statement */
+	  if (new_del_stmts == NULL)
+	    {
+	      last_new_del_stmt = new_del_stmts =
+		pt_create_delete_stmt (parser, rem_spec, rem_name);
+	    }
+	  else
+	    {
+	      last_new_del_stmt->next =
+		pt_create_delete_stmt (parser, rem_spec, rem_name);
+	      last_new_del_stmt = last_new_del_stmt->next;
+	    }
+
+	  if (last_new_del_stmt == NULL)
+	    {
+	      goto exit_on_error;
+	    }
+
+	  /* handle hints */
+	  if (last_new_del_stmt != NULL)
+	    {
+	      last_new_del_stmt->info.delete_.hint =
+		delete_stmt->info.delete_.hint;
+	      last_new_del_stmt->recompile = delete_stmt->recompile;
+	      if ((last_new_del_stmt->info.delete_.
+		   hint & PT_HINT_LK_TIMEOUT)
+		  && delete_stmt->info.delete_.waitsecs_hint != NULL)
+		{
+		  last_new_del_stmt->info.delete_.waitsecs_hint =
+		    parser_copy_tree (parser,
+				      delete_stmt->info.delete_.
+				      waitsecs_hint);
+		  if (last_new_del_stmt->info.delete_.waitsecs_hint == NULL)
+		    {
+		      goto exit_on_error;
+		    }
+		}
+	    }
+	}
+      else
+	{
+	  prev_spec = spec;
+	  spec = spec->next;
+	}
+    }
+
+  delete_stmt->info.delete_.del_stmt_list = new_del_stmts;
+
+  return NO_ERROR;
+
+exit_on_error:
+  if (new_del_stmts != NULL)
+    {
+      parser_free_tree (parser, new_del_stmts);
+    }
+
+  if (!pt_has_error (parser))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+    }
+
+  return ER_GENERIC_ERROR;
 }
 
 /*
