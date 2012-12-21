@@ -370,7 +370,7 @@ extern int file_rv_fhdr_undoredo_add_pages (THREAD_ENTRY * thread_p,
 extern void file_rv_fhdr_dump_add_pages (FILE * fp, int length_ignore,
 					 void *data);
 extern int file_rv_fhdr_delete_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_fhdr_delete_pages_dump (FILE * fp, int length_ignore,
+extern void file_rv_fhdr_delete_pages_dump (FILE * fp, int length,
 					    void *data);
 extern int file_rv_fhdr_undoredo_mark_deleted_pages (THREAD_ENTRY * thread_p,
 						     LOG_RCV * rcv);

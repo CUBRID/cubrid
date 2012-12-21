@@ -94,6 +94,8 @@ static int rv;
 #define FILE_CREATE_FILE_TABLE 0
 #define FILE_EXPAND_FILE_TABLE 1
 
+#define NUM_HOLES_NEED_COMPACTION (DB_PAGESIZE / sizeof (PAGEID) / 2)
+
 typedef struct file_rest_des FILE_REST_DES;
 struct file_rest_des
 {
@@ -212,6 +214,13 @@ struct file_recv_shift_sector_table
 				   allocation set. See below for offset. */
   INT16 end_sects_offset;	/* Offset where the page table ends at ending
 				   vpid. */
+};
+
+typedef struct file_recv_delete_pages FILE_RECV_DELETE_PAGES;
+struct file_recv_delete_pages
+{
+  int deleted_npages;
+  int need_compaction;
 };
 
 typedef struct file_tempfile_cache_entry FILE_TEMPFILE_CACHE_ENTRY;
@@ -478,7 +487,8 @@ static int file_allocset_dump_tables (THREAD_ENTRY * thread_p, FILE * fp,
 				      const FILE_HEADER * fhdr,
 				      const FILE_ALLOCSET * allocset);
 
-static int file_compress (THREAD_ENTRY * thread_p, const VFID * vfid);
+static int file_compress (THREAD_ENTRY * thread_p, const VFID * vfid,
+			  bool do_partial_compaction);
 static int file_dump_fhdr (THREAD_ENTRY * thread_p, FILE * fp,
 			   const FILE_HEADER * fhdr);
 static int file_dump_ftabs (THREAD_ENTRY * thread_p, FILE * fp,
@@ -7716,6 +7726,7 @@ file_allocset_remove_contiguous_pages (THREAD_ENTRY * thread_p,
   INT32 *mem;
   int ret = NO_ERROR;
   INT32 undo_data, redo_data;
+  FILE_RECV_DELETE_PAGES postpone_data;
 
   if (num_contpages <= FILE_PREALLOC_MEMSIZE)
     {
@@ -7812,8 +7823,15 @@ file_allocset_remove_contiguous_pages (THREAD_ENTRY * thread_p,
 			    sizeof (undo_data), sizeof (redo_data),
 			    &undo_data, &redo_data);
 
+  postpone_data.deleted_npages = num_contpages;
+  postpone_data.need_compaction = 0;
+  if (allocset->num_holes >= NUM_HOLES_NEED_COMPACTION)
+    {
+      postpone_data.need_compaction = 1;
+    }
+
   log_append_postpone (thread_p, RVFL_FHDR_DELETE_PAGES, &addr,
-		       sizeof (num_contpages), &num_contpages);
+		       sizeof (postpone_data), &postpone_data);
   pgbuf_set_dirty (thread_p, fhdr_pgptr, DONT_FREE);
 
   return ret;
@@ -9927,7 +9945,8 @@ exit_on_error:
  *   vfid(in): Complete file identifier
  */
 static int
-file_compress (THREAD_ENTRY * thread_p, const VFID * vfid)
+file_compress (THREAD_ENTRY * thread_p, const VFID * vfid,
+	       bool do_partial_compaction)
 {
   FILE_HEADER *fhdr;
   FILE_ALLOCSET *allocset;
@@ -9989,10 +10008,20 @@ file_compress (THREAD_ENTRY * thread_p, const VFID * vfid)
 	  ret = ER_FAILED;
 	  break;
 	}
-      allocset =
-	(FILE_ALLOCSET *) ((char *) allocset_pgptr + allocset_offset);
-      /* Don't remove the first allocation set */
 
+      allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr
+				    + allocset_offset);
+
+      if (do_partial_compaction == true
+	  && allocset->num_holes < NUM_HOLES_NEED_COMPACTION)
+	{
+	  allocset_vpid = allocset->next_allocset_vpid;
+	  allocset_offset = allocset->next_allocset_offset;
+	  pgbuf_unfix_and_init (thread_p, allocset_pgptr);
+	  continue;
+	}
+
+      /* Don't remove the first allocation set */
       if (allocset->num_pages == 0 && prev_allocset_offset != -1)
 	{
 	  VPID next_allocset_vpid;
@@ -10010,6 +10039,7 @@ file_compress (THREAD_ENTRY * thread_p, const VFID * vfid)
 	    {
 	      break;
 	    }
+
 	  allocset_vpid = next_allocset_vpid;
 	  allocset_offset = next_allocset_offset;
 	}
@@ -10041,8 +10071,9 @@ file_compress (THREAD_ENTRY * thread_p, const VFID * vfid)
 	      break;
 	    }
 
-	  allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr +
-					allocset_offset);
+	  allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr
+					+ allocset_offset);
+
 	  allocset_vpid = allocset->next_allocset_vpid;
 	  allocset_offset = allocset->next_allocset_offset;
 	  pgbuf_unfix_and_init (thread_p, allocset_pgptr);
@@ -11583,7 +11614,7 @@ file_tracker_compress (THREAD_ENTRY * thread_p)
 	      continue;
 	    }
 
-	  ret = file_compress (thread_p, &vfid);
+	  ret = file_compress (thread_p, &vfid, false);
 	  if (ret != NO_ERROR)
 	    {
 	      break;
@@ -11594,7 +11625,7 @@ file_tracker_compress (THREAD_ENTRY * thread_p)
   /* Now compress the tracker file itself */
   if (ret == NO_ERROR)
     {
-      ret = file_compress (thread_p, file_Tracker->vfid);
+      ret = file_compress (thread_p, file_Tracker->vfid, false);
     }
 
   pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
@@ -11916,7 +11947,8 @@ file_reclaim_all_deleted (THREAD_ENTRY * thread_p)
 	    }
 	  else
 	    {
-	      ret = file_compress (thread_p, &marked_files[num_marked]);
+	      ret =
+		file_compress (thread_p, &marked_files[num_marked], false);
 	      if (ret != NO_ERROR)
 		{
 		  break;
@@ -11938,7 +11970,7 @@ file_reclaim_all_deleted (THREAD_ENTRY * thread_p)
 
   if (ret == NO_ERROR)
     {
-      ret = file_compress (thread_p, file_Tracker->vfid);
+      ret = file_compress (thread_p, file_Tracker->vfid, false);
     }
 
   pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
@@ -12794,10 +12826,30 @@ int
 file_rv_fhdr_delete_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   FILE_HEADER *fhdr;
+  FILE_RECV_DELETE_PAGES *rv_pages;
+  VPID *vpid;
+  VFID vfid;
 
   fhdr = (FILE_HEADER *) (rcv->pgptr + FILE_HEADER_OFFSET);
 
-  fhdr->num_user_pages_mrkdelete -= *(INT32 *) rcv->data;
+  if (rcv->length < (int) sizeof (FILE_RECV_DELETE_PAGES))
+    {
+      fhdr->num_user_pages_mrkdelete -= *(INT32 *) rcv->data;
+    }
+  else
+    {
+      rv_pages = (FILE_RECV_DELETE_PAGES *) rcv->data;
+      fhdr->num_user_pages_mrkdelete -= rv_pages->deleted_npages;
+
+      if (rv_pages->need_compaction == 1)
+	{
+	  vpid = pgbuf_get_vpid_ptr (rcv->pgptr);
+	  vfid.volid = vpid->volid;
+	  vfid.fileid = vpid->pageid;
+
+	  (void) file_compress (thread_p, &vfid, true);
+	}
+    }
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
@@ -12811,9 +12863,20 @@ file_rv_fhdr_delete_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   data(in): The data being logged
  */
 void
-file_rv_fhdr_delete_pages_dump (FILE * fp, int length_ignore, void *data)
+file_rv_fhdr_delete_pages_dump (FILE * fp, int length, void *data)
 {
-  fprintf (fp, "Num_user_pages deleted = %d\n", *(INT32 *) data);
+  FILE_RECV_DELETE_PAGES *rv_data;
+
+  if (length < (int) sizeof (FILE_RECV_DELETE_PAGES))
+    {
+      fprintf (fp, "Num_user_pages deleted = %d\n", *(INT32 *) data);
+    }
+  else
+    {
+      rv_data = (FILE_RECV_DELETE_PAGES *) data;
+      fprintf (fp, "Num_user_pages deleted = %d\n", rv_data->deleted_npages);
+      fprintf (fp, "Need_compaction = %d\n", rv_data->need_compaction);
+    }
 }
 
 /*
