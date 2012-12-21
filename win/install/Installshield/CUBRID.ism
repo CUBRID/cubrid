@@ -267,7 +267,7 @@
 		<row><td>cascci.dll1</td><td>CUBRID</td><td>cascci.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cascci.dll</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cascci.lib</td><td>CCI</td><td>cascci.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\cascci.lib</td><td>1</td><td>NewSubFolder3</td></row>
 		<row><td>cascci.lib1</td><td>CUBRID</td><td>cascci.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\cascci.lib</td><td>1</td><td>NewSubFolder7</td></row>
-		<row><td>cci_log.h</td><td>DBGW</td><td>cci_log.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_INCLUDE_FILES&gt;\cci_log.h</td><td>1</td><td>NewSubFolder14</td></row>
+		<row><td>cci_log.h</td><td>DBGW</td><td>cci_log.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\cci_log.h</td><td>1</td><td>NewSubFolder14</td></row>
 		<row><td>cm.conf_dist</td><td>CUBRID</td><td>cm.conf-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cm.conf-dist</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>cm.pass_dist</td><td>CUBRID</td><td>cm.pass-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cm.pass-dist</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>cm_dep.h</td><td>CCI</td><td>cm_dep.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\cm_dep.h</td><td>1</td><td>NewSubFolder1</td></row>
@@ -325,23 +325,23 @@
 		<row><td>cubridsa.lib</td><td>CUBRID</td><td>cubridsa.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\cubridsa.lib</td><td>1</td><td>NewSubFolder7</td></row>
 		<row><td>cubridservice.exe</td><td>CUBRID</td><td>cubridservice.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubridservice.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>dbghelp.dll</td><td>CUBRID</td><td>dbghelp.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\dbghelp.dll</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>dbgwadapter.h</td><td>DBGW</td><td>DBGWAdapter.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_INCLUDE_FILES&gt;\DBGWAdapter.h</td><td>1</td><td>NewSubFolder14</td></row>
-		<row><td>dbgwclient.h</td><td>DBGW</td><td>DBGWClient.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_INCLUDE_FILES&gt;\DBGWClient.h</td><td>1</td><td>NewSubFolder14</td></row>
-		<row><td>dbgwclientfwd.h</td><td>DBGW</td><td>DBGWClientFwd.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_INCLUDE_FILES&gt;\DBGWClientFwd.h</td><td>1</td><td>NewSubFolder14</td></row>
-		<row><td>dbgwcommon.h</td><td>DBGW</td><td>DBGWCommon.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_INCLUDE_FILES&gt;\DBGWCommon.h</td><td>1</td><td>NewSubFolder14</td></row>
-		<row><td>dbgwconfiguration.h</td><td>DBGW</td><td>DBGWConfiguration.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_INCLUDE_FILES&gt;\DBGWConfiguration.h</td><td>1</td><td>NewSubFolder14</td></row>
-		<row><td>dbgwconfigurationfwd.h</td><td>DBGW</td><td>DBGWConfigurationFwd.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_INCLUDE_FILES&gt;\DBGWConfigurationFwd.h</td><td>1</td><td>NewSubFolder14</td></row>
-		<row><td>dbgwconnector3.dll</td><td>DBGW</td><td>DBGWConnector3.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\DBGWConnector3.dll</td><td>1</td><td>NewSubFolder15</td></row>
-		<row><td>dbgwconnector3.lib</td><td>DBGW</td><td>DBGWConnector3.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_LIB_FILES&gt;\DBGWConnector3.lib</td><td>1</td><td>NewSubFolder16</td></row>
-		<row><td>dbgwdatabaseinterface.h</td><td>DBGW</td><td>DBGWDataBaseInterface.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_INCLUDE_FILES&gt;\DBGWDataBaseInterface.h</td><td>1</td><td>NewSubFolder14</td></row>
-		<row><td>dbgwerror.h</td><td>DBGW</td><td>DBGWError.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_INCLUDE_FILES&gt;\DBGWError.h</td><td>1</td><td>NewSubFolder14</td></row>
-		<row><td>dbgwlogger.h</td><td>DBGW</td><td>DBGWLogger.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_INCLUDE_FILES&gt;\DBGWLogger.h</td><td>1</td><td>NewSubFolder14</td></row>
-		<row><td>dbgwmock.h</td><td>DBGW</td><td>DBGWMock.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_INCLUDE_FILES&gt;\DBGWMock.h</td><td>1</td><td>NewSubFolder14</td></row>
-		<row><td>dbgwporting.h</td><td>DBGW</td><td>DBGWPorting.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_INCLUDE_FILES&gt;\DBGWPorting.h</td><td>1</td><td>NewSubFolder14</td></row>
-		<row><td>dbgwquery.h</td><td>DBGW</td><td>DBGWQuery.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_INCLUDE_FILES&gt;\DBGWQuery.h</td><td>1</td><td>NewSubFolder14</td></row>
-		<row><td>dbgwvalue.h</td><td>DBGW</td><td>DBGWValue.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_INCLUDE_FILES&gt;\DBGWValue.h</td><td>1</td><td>NewSubFolder14</td></row>
-		<row><td>dbgwwork.h</td><td>DBGW</td><td>DBGWWork.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_INCLUDE_FILES&gt;\DBGWWork.h</td><td>1</td><td>NewSubFolder14</td></row>
-		<row><td>dbgwworkfwd.h</td><td>DBGW</td><td>DBGWWorkFwd.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_INCLUDE_FILES&gt;\DBGWWorkFwd.h</td><td>1</td><td>NewSubFolder14</td></row>
+		<row><td>dbgwadapter.h</td><td>DBGW</td><td>DBGWAdapter.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\DBGWAdapter.h</td><td>1</td><td>NewSubFolder14</td></row>
+		<row><td>dbgwclient.h</td><td>DBGW</td><td>DBGWClient.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\DBGWClient.h</td><td>1</td><td>NewSubFolder14</td></row>
+		<row><td>dbgwclientfwd.h</td><td>DBGW</td><td>DBGWClientFwd.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\DBGWClientFwd.h</td><td>1</td><td>NewSubFolder14</td></row>
+		<row><td>dbgwcommon.h</td><td>DBGW</td><td>DBGWCommon.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\DBGWCommon.h</td><td>1</td><td>NewSubFolder14</td></row>
+		<row><td>dbgwconfiguration.h</td><td>DBGW</td><td>DBGWConfiguration.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\DBGWConfiguration.h</td><td>1</td><td>NewSubFolder14</td></row>
+		<row><td>dbgwconfigurationfwd.h</td><td>DBGW</td><td>DBGWConfigurationFwd.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\DBGWConfigurationFwd.h</td><td>1</td><td>NewSubFolder14</td></row>
+		<row><td>dbgwconnector3.dll</td><td>DBGW</td><td>DBGWConnector3.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\DBGWConnector3.dll</td><td>1</td><td>NewSubFolder15</td></row>
+		<row><td>dbgwconnector3.lib</td><td>DBGW</td><td>DBGWConnector3.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\DBGWConnector3.lib</td><td>1</td><td>NewSubFolder16</td></row>
+		<row><td>dbgwdatabaseinterface.h</td><td>DBGW</td><td>DBGWDataBaseInterface.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\DBGWDataBaseInterface.h</td><td>1</td><td>NewSubFolder14</td></row>
+		<row><td>dbgwerror.h</td><td>DBGW</td><td>DBGWError.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\DBGWError.h</td><td>1</td><td>NewSubFolder14</td></row>
+		<row><td>dbgwlogger.h</td><td>DBGW</td><td>DBGWLogger.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\DBGWLogger.h</td><td>1</td><td>NewSubFolder14</td></row>
+		<row><td>dbgwmock.h</td><td>DBGW</td><td>DBGWMock.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\DBGWMock.h</td><td>1</td><td>NewSubFolder14</td></row>
+		<row><td>dbgwporting.h</td><td>DBGW</td><td>DBGWPorting.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\DBGWPorting.h</td><td>1</td><td>NewSubFolder14</td></row>
+		<row><td>dbgwquery.h</td><td>DBGW</td><td>DBGWQuery.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\DBGWQuery.h</td><td>1</td><td>NewSubFolder14</td></row>
+		<row><td>dbgwvalue.h</td><td>DBGW</td><td>DBGWValue.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\DBGWValue.h</td><td>1</td><td>NewSubFolder14</td></row>
+		<row><td>dbgwwork.h</td><td>DBGW</td><td>DBGWWork.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\DBGWWork.h</td><td>1</td><td>NewSubFolder14</td></row>
+		<row><td>dbgwworkfwd.h</td><td>DBGW</td><td>DBGWWorkFwd.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\DBGWWorkFwd.h</td><td>1</td><td>NewSubFolder14</td></row>
 		<row><td>dbi.h</td><td>CUBRID</td><td>dbi.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbi.h</td><td>1</td><td>NewSubFolder6</td></row>
 		<row><td>demodb_objects</td><td>CUBRID</td><td>demodb_objects</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_DEMO_FILES&gt;\demodb_objects</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>demodb_schema</td><td>CUBRID</td><td>demodb_schema</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_DEMO_FILES&gt;\demodb_schema</td><td>1</td><td>NewSubFolder5</td></row>
