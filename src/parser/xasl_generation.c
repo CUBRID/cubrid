@@ -22355,6 +22355,13 @@ pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
   /* we don't need to keep this query */
   statement->cannot_prepare = 1;
 
+  /* set index hint */
+  if (info->hint & PT_HINT_USE_UPDATE_IDX)
+    {
+      statement->info.query.q.select.using_index =
+	parser_copy_tree_list (parser, info->update.index_hint);
+    }
+
   return statement;
 }
 
@@ -22406,6 +22413,13 @@ pt_to_merge_insert_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
   corr_subq->info.query.is_subquery = PT_IS_SUBQUERY;
   corr_subq->info.query.correlation_level = 1;
   corr_subq->info.query.single_tuple = 1;
+
+  /* set index hint */
+  if (info->hint & PT_HINT_USE_INSERT_IDX)
+    {
+      corr_subq->info.query.q.select.using_index =
+	parser_copy_tree_list (parser, info->insert.index_hint);
+    }
 
   subq->info.query.q.select.list =
     parser_copy_tree_list (parser, select_list);

@@ -16483,6 +16483,20 @@ pt_print_merge (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  q = pt_append_nulstring (parser, q, " RELEASE_LOCK");
 	}
+      if (p->info.merge.hint & PT_HINT_USE_UPDATE_IDX)
+	{
+	  q = pt_append_nulstring (parser, q, " USE_UPDATE_IDX(");
+	  r1 = pt_print_bytes (parser, p->info.merge.update.index_hint);
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, ")");
+	}
+      if (p->info.merge.hint & PT_HINT_USE_INSERT_IDX)
+	{
+	  q = pt_append_nulstring (parser, q, " USE_INSERT_IDX(");
+	  r1 = pt_print_bytes (parser, p->info.merge.insert.index_hint);
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, ")");
+	}
       q = pt_append_nulstring (parser, q, " */");
     }
 

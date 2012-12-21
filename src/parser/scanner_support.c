@@ -385,6 +385,23 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		{
 		  node->info.update.hint |= hint_table[i].hint;
 		}
+	      break;
+	    case PT_HINT_USE_UPDATE_IDX:
+	      if (node->node_type == PT_MERGE)
+		{
+		  node->info.merge.hint |= hint_table[i].hint;
+		  node->info.merge.update.index_hint = hint_table[i].arg_list;
+		  hint_table[i].arg_list = NULL;
+		}
+	      break;
+	    case PT_HINT_USE_INSERT_IDX:
+	      if (node->node_type == PT_MERGE)
+		{
+		  node->info.merge.hint |= hint_table[i].hint;
+		  node->info.merge.insert.index_hint = hint_table[i].arg_list;
+		  hint_table[i].arg_list = NULL;
+		}
+	      break;
 	    default:
 	      break;
 	    }

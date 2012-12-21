@@ -35232,6 +35232,10 @@ PT_HINT parser_hint_table[] = {
   ,
   {"NO_MULTI_RANGE_OPT", NULL, PT_HINT_NO_MULTI_RANGE_OPT}
   ,
+  {"USE_UPDATE_IDX", NULL, PT_HINT_USE_UPDATE_IDX}
+  ,
+  {"USE_INSERT_IDX", NULL, PT_HINT_USE_INSERT_IDX}
+  ,
   {NULL, NULL, -1}		/* mark as end */
 };
 

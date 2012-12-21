@@ -1085,9 +1085,12 @@ typedef enum
   PT_HINT_NO_COVERING_IDX = 0x20000,	/* 0010 0000 0000 0000 0000 *//* do not use covering index scan */
   PT_HINT_INSERT_MODE = 0x40000,	/* 0100 0000 0000 0000 0000 *//* set insert_executeion_mode */
   PT_HINT_NO_IDX_DESC = 0x80000,	/* 1000 0000 0000 0000 0000 *//* do not use descending index scan */
-  PT_HINT_NO_MULTI_RANGE_OPT = 0x100000	/* 0001 0000 0000 0000 0000 0000
-					 * do not use multi range optimization
-					 */
+  PT_HINT_NO_MULTI_RANGE_OPT = 0x100000,/* 0001 0000 0000 0000 0000 0000 */
+					/* do not use multi range optimization */
+  PT_HINT_USE_UPDATE_IDX = 0x200000,	/* 0010 0000 0000 0000 0000 0000 */
+					/* use index for merge update */
+  PT_HINT_USE_INSERT_IDX = 0x400000	/* 0100 0000 0000 0000 0000 0000 */
+					/* use index for merge delete */
 } PT_HINT_ENUM;
 
 
@@ -2546,14 +2549,16 @@ struct pt_merge_info
     PT_NODE *assignment;	/* PT_EXPR (list) */
     PT_NODE *search_cond;	/* PT_EXPR */
     PT_NODE *del_search_cond;	/* PT_EXPR */
+    PT_NODE *index_hint;	/* PT_NAME (list) */
     bool do_class_attrs;	/* whether it is on class attributes */
     bool has_delete;		/* whether it has a delete clause */
   } update;
   struct
   {
     PT_NODE *attr_list;		/* PT_NAME */
-    PT_NODE *value_clauses;	/* PT_NODE_LIST(list) */
+    PT_NODE *value_clauses;	/* PT_NODE_LIST (list) */
     PT_NODE *search_cond;	/* PT_EXPR */
+    PT_NODE *index_hint;	/* PT_NAME (list) */
   } insert;
   PT_NODE *check_where;		/* check option */
   PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
