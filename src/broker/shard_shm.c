@@ -67,7 +67,7 @@ static void shard_shm_init_shard_stat (T_SHM_SHARD_CONN_STAT * shard_stat_p,
 void
 shard_shm_set_shm_as (T_SHM_APPL_SERVER * shm_as_p, T_BROKER_INFO * br_info_p)
 {
-  char **env;
+  char **env = NULL;
   int env_num;
 
   assert (shm_as_p);

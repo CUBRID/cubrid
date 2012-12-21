@@ -87,7 +87,7 @@ shard_broker_activate (int master_shm_id, T_BROKER_INFO * br_info_p,
   int pid, i, env_num;
   int broker_check_loop_count = 30;
   char err_flag = FALSE;
-  char **env;
+  char **env = NULL;
 
   char port_env_str[PATH_MAX];
   char appl_name_env_str[32];
@@ -347,7 +347,7 @@ shard_proxy_activate (int as_shm_id, int proxy_id, char *shm_as_cp)
 {
   int pid = 0, i, env_num;
   int fd_cnt;
-  char **env;
+  char **env = NULL;
   const char *proxy_exe_name = NAME_PROXY;
   char port_env_str[PATH_MAX];
   char access_log_env_str[256];
@@ -533,7 +533,7 @@ shard_as_activate (int as_shm_id,
      "shard/shard_broker_admin_pub.c" 2790
    */
   int pid, i, env_num;
-  char **env;
+  char **env = NULL;
   char port_env_str[PATH_MAX];
   char appl_name_env_str[64];
   char appl_server_shm_key_env_str[32];

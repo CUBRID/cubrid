@@ -515,7 +515,7 @@ admin_add_cmd (int master_shm_id, const char *broker)
   T_SHM_APPL_SERVER *shm_appl_server;
   int i, br_index;
   int appl_shm_key = 0, as_index;
-  char **env;
+  char **env = NULL;
   int env_num;
 
   shm_br =
@@ -601,7 +601,7 @@ admin_restart_cmd (int master_shm_id, const char *broker, int as_index)
   T_SHM_APPL_SERVER *shm_appl = NULL;
   int i, br_index, appl_shm_key;
   int pid;
-  char **env;
+  char **env = NULL;
   int env_num;
   char port_str[PATH_MAX], appl_name_str[64];
   char access_log_env_str[256], error_log_env_str[256];
@@ -3155,7 +3155,7 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
 {
   int shm_size, pid, i;
   T_SHM_APPL_SERVER *shm_appl;
-  char **env;
+  char **env = NULL;
   int env_num;
   char port_str[PATH_MAX];
   char appl_name_str[32];
