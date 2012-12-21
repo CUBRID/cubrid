@@ -188,7 +188,7 @@ $set 5 MSGCAT_SET_ERROR
 120 Il numero massimo di volumi (%1$d) è stato superato.
 121 Cercando di rimuovere un volume "%1$s" permanente dal database.
 122 Impossibile accedere al catalogo di messaggi di sistema.
-123 Impossibile creare "%1$s" per il database "%2$s".
+123 Unable to create %1$s for database "%2$s". Please refer "%3$s" for additional information.
 124 Volume "%1$s" esiste già.
 125 Una estensione automatica di volume "%1$s" di %2$d pagine e scopo di stoccaggio generico è stato creato.
 126 scopo sconosciuto "%1$s" dato sulla linea %2$d.

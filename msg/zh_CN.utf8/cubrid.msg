@@ -188,7 +188,7 @@ $set 5 MSGCAT_SET_ERROR
 120 超出了卷 (%1$d) 的最大数目.
 121 试图从数据库删除永久性的卷 "%1$s".
 122 无法访问系统消息目录.
-123 无法为数据库 "%2$s" 创建 "%1$s".
+123 Unable to create %1$s for database "%2$s". Please refer "%3$s" for additional information.
 124 卷 "%1$s" 已经存在.
 125 一个具有 %2$d 页的通用存储用户的自动卷扩展 "%1$s" 被创建.
 126 未知的purpose "%1$s" 在行 %2$d 被给定.

@@ -296,7 +296,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 正しくないコマンド「%s」\n
 43 出力ファイル「%s」が開けられません。\n
 44 既存データベースが削除できません。\n
-45 %sサイズのデータベース生成中。\n
+45 Creating database with %s size. The total amount of disk space needed is %s.\n
 46 データベースが生成できません。\n
 47 ユーザーファイル「%s」に問題があります。\n
 48 The given '%s', %s is out of range. Choose a size between %s and %s.\n

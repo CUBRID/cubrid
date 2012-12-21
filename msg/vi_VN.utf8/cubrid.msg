@@ -188,7 +188,7 @@ $set 5 MSGCAT_SET_ERROR
 120 Số bộ đĩa đĩa tối đa (%1$d) đã bị vượt quá.
 121 Cố gắng gỡ bỏ "%1$s" một bộ đĩa thường trực từ cơ sở dữ liệu.
 122 Không thể truy cập catalog thông báo hệ thống.
-123 Không thể tạo "%1$s" cho cơ sở dữ liệu "%2$s".
+123 Unable to create %1$s for database "%2$s". Please refer "%3$s" for additional information.
 124 Bộ đĩa "%1$s" đã tồn tại.
 125 Phần mở rộng bộ đĩa tự động "%1$s" của trang %2$d và mục đích lưu trữ generic đã được tạo.
 126 Mục đích "%1$s" không biết được đưa ra trên dòng %2$d.

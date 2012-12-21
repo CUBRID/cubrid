@@ -296,7 +296,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 Commande inconnue '%s'\n
 43 Impossible d'ouvrir le fichier de sortie '%s'\n
 44 Impossible de supprimer la base de données existante.\n
-45 Création de base de données avec la taille de %s.\n
+45 Creating database with %s size. The total amount of disk space needed is %s.\n
 46 Impossible de créer la base de données.\n
 47 Problème avec le fichier '%s' d'utilisateur\n
 48 The given '%s', %s is out of range. Choose a size between %s and %s.\n

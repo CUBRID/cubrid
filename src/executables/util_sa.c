@@ -328,6 +328,8 @@ createdb (UTIL_FUNCTION_ARG * arg)
   char *log_volume_str;
   char *log_page_str;
 
+  char required_size[16];
+
   database_name = utility_get_option_string_value (arg_map,
 						   OPTION_STRING_TABLE, 0);
   if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
@@ -596,9 +598,14 @@ createdb (UTIL_FUNCTION_ARG * arg)
 
   util_byte_to_size_string (db_volume_size, er_msg_file,
 			    sizeof (er_msg_file));
+  /* total amount of disk space of database is
+   * db volume size + log_volume_size + temp_log_volume_size */
+  util_byte_to_size_string (db_volume_size + (UINT64) (log_volume_size * 2),
+			    required_size, sizeof (required_size));
   fprintf (output_file,
 	   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CREATEDB,
-			   CREATEDB_MSG_CREATING), er_msg_file);
+			   CREATEDB_MSG_CREATING),
+	   er_msg_file, required_size);
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1,

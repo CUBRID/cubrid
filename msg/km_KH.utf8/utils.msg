@@ -296,7 +296,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 commandដែលមិនស្គាល់ `%s'\n
 43 មិនអាចបើក output file `%s'\n
 44 មិនអាចផ្លាស់ប្តូរទីតាំងដែលតាបេសដែលមាន។\n
-45 បង្កើតដែលតាបេសជាមួយនឹងទំហំ %s។\n
+45 Creating database with %s size. The total amount of disk space needed is %s.\n
 46 មិនអាំចបង្កើតដែលតាបេស\n
 47 បញ្ហាជាមួយ user file `%s'\n
 48 The given '%s', %s is out of range. Choose a size between %s and %s.\n

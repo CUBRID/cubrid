@@ -188,7 +188,7 @@ $set 5 MSGCAT_SET_ERROR
 120 Yoğunlukların maksimum sayısı (%1$d) değerini aştı.
 121 "%1$s" kaldırmak için çalışılıyor veritabanından kalıcı bir yoğunluk.
 122 Sistem mesajı kataloguna erişilemiyor.
-123 "%1$s" veritabanı için "%2$s" oluşturulamıyor .
+123 Unable to create %1$s for database "%2$s". Please refer "%3$s" for additional information.
 124 Yoğunluk "%1$s" zaten bulunmakta.
 125 Otomatik yoğunluk uzantısı "%1$s" nın %2$d sayfaları ve genel depolama amaçlı oluşturuldu.
 126 Bilinmeyen amaç "%1$s" satırında verilen %2$d.

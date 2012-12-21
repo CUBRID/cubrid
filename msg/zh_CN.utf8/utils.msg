@@ -296,7 +296,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 未知的命令 '%s'\n
 43 无法打开输出文件 '%s'\n
 44 无法移除已存在的数据库.\n
-45 创建一个 %s 大小的数据库.\n
+45 Creating database with %s size. The total amount of disk space needed is %s.\n
 46 无法创建数据库.\n
 47 用户文件 '%s' 存在问题\n
 48 The given '%s', %s is out of range. Choose a size between %s and %s.\n

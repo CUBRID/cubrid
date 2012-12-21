@@ -296,7 +296,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 Bilinmeyen komut '%s'\n
 43 Çıktı dosyası '%s' açılamadı\n
 44 Varolan veritabanı kaldırılamadı\n
-45 %s boyutu ile veri tabanı oluşturma..\n
+45 Creating database with %s size. The total amount of disk space needed is %s.\n
 46 Veritabanı oluşturulamadı.\n
 47 '%s' Kullanıcı dosya ile ilgili sorun\n
 48 The given '%s', %s is out of range. Choose a size between %s and %s.\n

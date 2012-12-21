@@ -296,7 +296,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 Unbekannter Befehl '%s'\n
 43 Ausgabedatei konnte nicht geöffnet werden '%s'\n
 44 Vorhandene Datenbank konnte nicht gelöscht werden.\n
-45 Datenbank mit Größe %s wird erstellt.\n
+45 Creating database with %s size. The total amount of disk space needed is %s.\n
 46 Datenbank konnte nicht erstellt werden.\n
 47 Problem mit Benutzerdatei '%s'\n
 48 The given '%s', %s is out of range. Choose a size between %s and %s.\n

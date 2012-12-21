@@ -188,7 +188,7 @@ $set 5 MSGCAT_SET_ERROR
 120 Der maximale Zahl (%1$d) der Datenträger wurde überschritten.
 121 Es wird versucht, einen permanenten Datenträger "%1$s" von der Datenbank zu entfernen.
 122 Kann auf den Katalog der Systemmeldungen nicht zugreifen.
-123 "%1$s" kann für die Datenbank "%2$s" nicht erstellt werden.
+123 Unable to create %1$s for database "%2$s". Please refer "%3$s" for additional information.
 124 Datenträger "%1$s" existiert bereits.
 125 Eine automatische Erweiterung des "%1$s" Datenträgers von %2$d Seiten generischer Lagerung wurde geschaffen.
 126 Unbekannter Zweck "%1$s" on Zeile %2$d gegeben.

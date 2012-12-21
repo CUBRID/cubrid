@@ -296,7 +296,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 Lệnh '%s' không rõ\n
 43 Không thể mở tệp tin đầu ra '%s'\n
 44 Không thể gỡ bỏ cơ sở dữ liệu hiện có.\n
-45 Tạo cơ sở dữ liệu với kích cỡ %s.\n
+45 Creating database with %s size. The total amount of disk space needed is %s.\n
 46 Không thể tạo cơ sở dữ liệu.\n
 47 Vấn đề với tệp tin người dùng '%s'\n
 48 The given '%s', %s is out of range. Choose a size between %s and %s.\n
