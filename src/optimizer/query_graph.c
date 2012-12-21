@@ -1432,35 +1432,7 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
   switch (QO_NODE_PT_JOIN_TYPE (node))
     {
     case PT_JOIN_LEFT_OUTER:
-      {
-	bool found_prev_not_sargable;
-	QO_NODE *prev;
-
-	found_prev_not_sargable = false;	/* init */
-	for (i = n - 1; i > 0 && !found_prev_not_sargable; i--)
-	  {
-	    prev = QO_ENV_NODE (env, i);
-	    /* directly outer-join connected */
-	    if (QO_NODE_PT_JOIN_TYPE (prev) == PT_JOIN_LEFT_OUTER
-		|| QO_NODE_PT_JOIN_TYPE (prev) == PT_JOIN_RIGHT_OUTER
-		|| QO_NODE_PT_JOIN_TYPE (prev) == PT_JOIN_FULL_OUTER)
-	      {
-		if (!QO_NODE_SARGABLE (QO_ENV_NODE (env, i - 1)))
-		  {
-		    found_prev_not_sargable = true;
-		  }
-	      }
-	    else
-	      {			/* not directly outer-join connected */
-		break;		/* give up */
-	      }
-	  }			/* for (i = n - 1; ...) */
-
-	if (!found_prev_not_sargable)
-	  {
-	    QO_NODE_SARGABLE (QO_ENV_NODE (env, n - 1)) = false;
-	  }
-      }
+      QO_NODE_SARGABLE (QO_ENV_NODE (env, n - 1)) = false;
       break;
 
     case PT_JOIN_RIGHT_OUTER:
@@ -1605,7 +1577,7 @@ lookup_node (PT_NODE * attr, QO_ENV * env, PT_NODE ** entity)
  *   tail(in): tail of the segment
  *   node(in): pt_node that gave rise to this segment
  *   env(in): optimizer environment
- *   expr_str(in): function index expression (if needed - NULL for a normal or 
+ *   expr_str(in): function index expression (if needed - NULL for a normal or
  *		      filter index
  */
 static QO_SEGMENT *
@@ -5115,7 +5087,7 @@ grok_classes (QO_ENV * env, PT_NODE * p, QO_CLASS_INFO_ENTRY * info)
  *   return: QO_ATTR_INFO *
  *   env(in): The current optimizer environment
  *   seg(in): A (pointer to) a join graph segment
- *   expr_str(in): 
+ *   expr_str(in):
  */
 static QO_ATTR_INFO *
 qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg,
@@ -5776,7 +5748,7 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	    }
 	  else
 	    {
-	      /* function index with the function expression as the first 
+	      /* function index with the function expression as the first
 	       * attribute
 	       */
 	      SM_FUNCTION_INFO *fi_info = NULL;
