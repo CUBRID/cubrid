@@ -10172,8 +10172,17 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 	  if (has_level_lesser)
 	    {
 	      /* override checking cycles to be ignored */
-	      node->info.query.q.select.check_cycles =
-		CONNECT_BY_CYCLES_IGNORE;
+	      if (node->info.query.q.select.check_cycles ==
+		  CONNECT_BY_CYCLES_NONE)
+		{
+		  node->info.query.q.select.check_cycles =
+		    CONNECT_BY_CYCLES_NONE_IGNORE;
+		}
+	      else
+		{
+		  node->info.query.q.select.check_cycles =
+		    CONNECT_BY_CYCLES_IGNORE;
+		}
 	    }
 	}
 

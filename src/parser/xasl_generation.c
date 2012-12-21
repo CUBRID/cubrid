@@ -1006,8 +1006,10 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
     {
       XASL_SET_FLAG (xasl, XASL_HAS_NOCYCLE);
     }
-  else if (select_node->info.query.q.select.check_cycles
-	   == CONNECT_BY_CYCLES_IGNORE)
+  else if (select_node->info.query.q.select.check_cycles ==
+	   CONNECT_BY_CYCLES_IGNORE
+	   || select_node->info.query.q.select.check_cycles ==
+	   CONNECT_BY_CYCLES_NONE_IGNORE)
     {
       XASL_SET_FLAG (xasl, XASL_IGNORE_CYCLES);
     }
@@ -7433,11 +7435,14 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 			    }
 			}
 		      if (node->info.expr.op == PT_CONNECT_BY_ISCYCLE
-			  && ((parser->symbols->query_node->node_type !=
-			       PT_SELECT)
-			      || (parser->symbols->query_node->info.query.q.
-				  select.check_cycles
-				  != CONNECT_BY_CYCLES_NONE)))
+			  &&
+			  ((parser->symbols->query_node->node_type !=
+			    PT_SELECT)
+			   || (parser->symbols->query_node->info.query.q.
+			       select.check_cycles != CONNECT_BY_CYCLES_NONE
+			       && parser->symbols->query_node->info.query.q.
+			       select.check_cycles !=
+			       CONNECT_BY_CYCLES_NONE_IGNORE)))
 			{
 			  PT_ERRORm (parser, node,
 				     MSGCAT_SET_PARSER_SEMANTIC,

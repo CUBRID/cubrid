@@ -14059,7 +14059,9 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
       if (p->info.query.q.select.connect_by)
 	{
 	  r1 = pt_print_and_list (parser, p->info.query.q.select.connect_by);
-	  if (p->info.query.q.select.check_cycles == CONNECT_BY_CYCLES_NONE)
+	  if (p->info.query.q.select.check_cycles == CONNECT_BY_CYCLES_NONE
+	      || p->info.query.q.select.check_cycles ==
+	      CONNECT_BY_CYCLES_NONE_IGNORE)
 	    {
 	      q = pt_append_nulstring (parser, q, " connect by nocycle ");
 	    }
