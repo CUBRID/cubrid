@@ -12666,17 +12666,28 @@ curr_key_lock_promote:
 		  curr_key_many_locks_needed = true;
 		}
 	    }
-	  else
+	  else if (ret_val == LK_GRANTED)
 	    {
-	      current_lock = NX_LOCK;
-#if 0
-	      assert (lock_get_object_lock
-		      (&C_oid, &C_class_oid,
-		       LOG_FIND_THREAD_TRAN_INDEX (thread_p)) == NX_LOCK
-		      || lock_get_object_lock
-		      (&C_class_oid, oid_Root_class_oid,
-		       LOG_FIND_THREAD_TRAN_INDEX (thread_p)) == X_LOCK);
+#if !defined (NDEBUG)
+	      LOCK olock, tlock;
+
+	      olock = lock_get_object_lock (&C_oid, &C_class_oid,
+					    LOG_FIND_THREAD_TRAN_INDEX
+					    (thread_p));
+	      if (olock != NX_LOCK)
+		{
+		  tlock = lock_get_object_lock (&C_class_oid,
+						oid_Root_class_oid,
+						LOG_FIND_THREAD_TRAN_INDEX
+						(thread_p));
+		  assert (tlock == X_LOCK);
+		}
 #endif
+
+	      /* either NX_LOCK on the current key or X_LOCK on the table 
+	       * is held.
+	       */
+	      current_lock = NX_LOCK;
 	    }
 	}
 
