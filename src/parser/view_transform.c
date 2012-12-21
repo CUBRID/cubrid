@@ -1427,8 +1427,19 @@ mq_substitute_select_in_statement (PARSER_CONTEXT * parser,
   if (!attributes)
     return NULL;
 
-  for (col = query_spec_columns, attr = attributes; col && attr;
-       col = col->next, attr = attr->next)
+  col = query_spec_columns;
+  attr = attributes;
+  if (PT_IS_VALUE_QUERY (query_spec) && col != NULL && attr != NULL)
+    {
+      assert (col->node_type == PT_NODE_LIST);
+
+      col = col->info.node_list.list;
+
+      /* skip oid */
+      attr = attr->next;
+    }
+
+  for (; col && attr; col = col->next, attr = attr->next)
     {
       /* set spec_id */
       attr->info.name.spec_id = class_->info.name.spec_id;
@@ -2000,7 +2011,8 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
       if (PT_IS_QUERY (tmp_result))
 	{
 	  rewrite_as_derived = rewrite_as_derived
-	    || (tmp_result->info.query.all_distinct == PT_DISTINCT);
+	    || (tmp_result->info.query.all_distinct == PT_DISTINCT)
+	    || (PT_IS_VALUE_QUERY (query_spec));
 	}
 
       if (rewrite_as_derived)
@@ -3554,7 +3566,8 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser,
        || PT_SELECT_INFO_IS_FLAGED (new_query,
 				    PT_SELECT_INFO_COLS_SCHEMA)
        || PT_SELECT_INFO_IS_FLAGED (new_query,
-				    PT_SELECT_FULL_INFO_COLS_SCHEMA)))
+				    PT_SELECT_FULL_INFO_COLS_SCHEMA)
+       || PT_IS_VALUE_QUERY (new_query)))
     {
       /* don't copy push terms if target query has analytic functions */
       return push_cnt;
@@ -3709,6 +3722,8 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser,
   PT_NODE *from, *entity_name;
   FIND_ID_INFO info;
   PT_NODE *col;
+  bool is_value_query = false;
+  PT_NODE *attrs = NULL;
 
   if (new_query == NULL)
     {
@@ -3719,46 +3734,78 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser,
   /* mark as a derived vclass spec query */
   new_query->info.query.vspec_as_derived = 1;
 
-  new_query->info.query.q.select.list =
-    mq_get_references (parser, statement, spec);
-
-  for (col = new_query->info.query.q.select.list; col; col = col->next)
+  if (query_spec != NULL && PT_IS_VALUE_QUERY (query_spec))
     {
-      if (col->is_hidden_column)
-	{
-	  col->is_hidden_column = 0;
-	}
+      is_value_query = true;
     }
 
-  v_attr_list =
-    parser_copy_tree_list (parser,
-			   mq_fetch_attributes (parser,
-						spec->info.spec.
-						flat_entity_list));
-
-  /* exclude the first oid attr, append non-exist attrs to select list */
-  if (v_attr_list && v_attr_list->type_enum == PT_TYPE_OBJECT)
+  if (is_value_query)
     {
-      v_attr_list = v_attr_list->next;	/* skip oid attr */
+      new_query->is_value_query = 1;
 
-      for (v_attr = v_attr_list; v_attr; v_attr = v_attr->next)
+      /* copy node_list
+       * value query list has nothing to do with table attributes
+       */
+      new_query->info.query.q.select.list =
+	parser_copy_tree_list (parser, query_spec->info.query.q.select.list);
+
+      attrs = parser_copy_tree_list (parser,
+				     mq_fetch_attributes (parser,
+							  spec->info.spec.
+							  flat_entity_list));
+      if (attrs != NULL && attrs->type_enum == PT_TYPE_OBJECT)
 	{
-	  v_attr->info.name.spec_id = spec->info.spec.id;	/* init spec id */
-	  mq_insert_symbol (parser,
-			    &new_query->info.query.q.select.list, v_attr);
-	}			/* for (v_attr = ...) */
+	  attrs = attrs->next;	/* skip oid */
+	}
+      else
+	{
+	  parser_free_tree (parser, new_query->info.query.q.select.list);
+	  new_query->info.query.q.select.list = NULL;;
+	}
     }
   else
     {
-      /* impossible case. later, it must cause error */
-      parser_free_tree (parser, new_query->info.query.q.select.list);
-      new_query->info.query.q.select.list = NULL;
-    }
+      new_query->info.query.q.select.list =
+	mq_get_references (parser, statement, spec);
 
-  /* free alloced */
-  if (v_attr_list)
-    {
-      parser_free_tree (parser, v_attr_list);
+      for (col = new_query->info.query.q.select.list; col; col = col->next)
+	{
+	  if (col->is_hidden_column)
+	    {
+	      col->is_hidden_column = 0;
+	    }
+	}
+
+      v_attr_list =
+	parser_copy_tree_list (parser,
+			       mq_fetch_attributes (parser,
+						    spec->info.spec.
+						    flat_entity_list));
+
+      /* exclude the first oid attr, append non-exist attrs to select list */
+      if (v_attr_list && v_attr_list->type_enum == PT_TYPE_OBJECT)
+	{
+	  v_attr_list = v_attr_list->next;	/* skip oid attr */
+
+	  for (v_attr = v_attr_list; v_attr; v_attr = v_attr->next)
+	    {
+	      v_attr->info.name.spec_id = spec->info.spec.id;	/* init spec id */
+	      mq_insert_symbol (parser,
+				&new_query->info.query.q.select.list, v_attr);
+	    }			/* for (v_attr = ...) */
+	}
+      else
+	{
+	  /* impossible case. later, it must cause error */
+	  parser_free_tree (parser, new_query->info.query.q.select.list);
+	  new_query->info.query.q.select.list = NULL;
+	}
+
+      /* free alloced */
+      if (v_attr_list)
+	{
+	  parser_free_tree (parser, v_attr_list);
+	}
     }
 
   new_spec = parser_copy_tree (parser, spec);
@@ -3787,8 +3834,21 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser,
   parser_free_tree (parser, spec->info.spec.entity_name);
   spec->info.spec.entity_name = NULL;
 
-  spec->info.spec.as_attr_list =
-    parser_copy_tree_list (parser, new_query->info.query.q.select.list);
+  if (is_value_query)
+    {
+      for (v_attr = attrs; v_attr != NULL; v_attr = v_attr->next)
+	{
+	  v_attr->info.name.spec_id = spec->info.spec.id;
+	  mq_insert_symbol (parser, &spec->info.spec.as_attr_list, v_attr);
+	}
+
+      parser_free_tree (parser, attrs);
+    }
+  else
+    {
+      spec->info.spec.as_attr_list =
+	parser_copy_tree_list (parser, new_query->info.query.q.select.list);
+    }
   spec->info.spec.derived_table_type = PT_IS_SUBQUERY;
 
   /* move sargable terms */
@@ -5259,6 +5319,15 @@ mq_set_types (PARSER_CONTEXT * parser, PT_NODE * query_spec,
 
       attr = attributes;
       col = query_spec->info.query.q.select.list;
+      if (PT_IS_VALUE_QUERY (query_spec) && col != NULL && attr != NULL)
+	{
+	  assert (col->node_type == PT_NODE_LIST);
+
+	  col = col->info.node_list.list;
+
+	  /* skip oid */
+	  attr = attr->next;
+	}
       prev_col = NULL;
       while (col && attr)
 	{
@@ -5735,7 +5804,7 @@ mq_set_non_updatable_oid (PARSER_CONTEXT * parser, PT_NODE * stmt,
     {
     case PT_SELECT:
       select_list = stmt->info.query.q.select.list;
-      if (select_list != NULL)
+      if (select_list != NULL && !PT_IS_VALUE_QUERY (stmt))
 	{
 	  DB_VALUE vid;
 

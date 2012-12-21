@@ -329,16 +329,20 @@ pt_add_oid_to_select_list (PARSER_CONTEXT * parser, PT_NODE * statement,
 
   if (statement->node_type == PT_SELECT)
     {
-      statement->info.query.oids_included = DB_ROW_OIDS;
-      from = statement->info.query.q.select.from;
-      if (from && from->node_type == PT_SPEC)
+      /* value query doesn't have oid attr */
+      if (!PT_IS_VALUE_QUERY (statement))
 	{
-	  oid = pt_spec_to_oid_attr (parser, from, how);
-	  if (oid)
+	  statement->info.query.oids_included = DB_ROW_OIDS;
+	  from = statement->info.query.q.select.from;
+	  if (from && from->node_type == PT_SPEC)
 	    {
-	      /* prepend oid to the statement's select_list */
-	      oid->next = statement->info.query.q.select.list;
-	      statement->info.query.q.select.list = oid;
+	      oid = pt_spec_to_oid_attr (parser, from, how);
+	      if (oid)
+		{
+		  /* prepend oid to the statement's select_list */
+		  oid->next = statement->info.query.q.select.list;
+		  statement->info.query.q.select.list = oid;
+		}
 	    }
 	}
     }

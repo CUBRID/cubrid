@@ -13726,6 +13726,9 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       q = pt_append_nulstring (parser, q, "values ");
 
+      save_custom = parser->custom_print;
+      parser->custom_print |= PT_PRINT_ALIAS;
+
       is_first_list = true;
       for (temp = temp; temp; temp = temp->next)
 	{
@@ -13744,6 +13747,8 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	  q = pt_append_nulstring (parser, q, ")");
 	}
+
+      parser->custom_print = save_custom;
     }
   else
     {

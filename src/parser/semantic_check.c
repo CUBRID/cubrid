@@ -7949,6 +7949,7 @@ pt_type_cast_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry,
 {
   PT_NODE *columns, *col, *attr;
   PT_NODE *new_col, *prev_col;
+  PT_NODE *node_list;
 
   /* parser assures us that it's a query but better make sure */
   if (!pt_is_query (qry))
@@ -7976,49 +7977,105 @@ pt_type_cast_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry,
       return qry;		/* already done */
     }
 
-  columns = pt_get_select_list (parser, qry);
-
-  /* foreach normal/shared attribute and query_spec column do */
-  attr = attrs;
-  col = columns;
-  prev_col = NULL;
-
-  while (attr && col)
+  if (PT_IS_VALUE_QUERY (qry))
     {
-      /* bypass any class_attribute */
-      if (attr->info.attr_def.attr_type == PT_META_ATTR)
+      for (node_list = qry->info.query.q.select.list;
+	   node_list != NULL; node_list = node_list->next)
 	{
-	  attr = attr->next;
-	  continue;
-	}
+	  assert (node_list->node_type == PT_NODE_LIST);
 
-      new_col = pt_type_cast_vclass_query_spec_column (parser, attr, col);
-      if (new_col != col)
-	{
-	  if (prev_col == NULL)
+	  columns = node_list->info.node_list.list;
+
+	  col = columns;
+	  attr = attrs;
+	  prev_col = NULL;
+
+	  while (attr != NULL && col != NULL)
 	    {
-	      qry->info.query.q.select.list = new_col;
-	      qry->type_enum = new_col->type_enum;
-	      if (qry->data_type)
+	      /* skip class attribute */
+	      if (attr->info.attr_def.attr_type == PT_META_ATTR)
 		{
-		  parser_free_tree (parser, qry->data_type);
+		  attr = attr->next;
+		  continue;
 		}
-	      qry->data_type = parser_copy_tree_list (parser,
-						      new_col->data_type);
-	    }
-	  else
-	    {
-	      prev_col->next = new_col;
-	    }
 
-	  col = new_col;
+	      new_col =
+		pt_type_cast_vclass_query_spec_column (parser, attr, col);
+	      if (new_col != col)
+		{
+		  if (prev_col == NULL)
+		    {
+		      node_list->info.node_list.list = new_col;
+		      qry->type_enum = new_col->type_enum;
+		      if (qry->data_type)
+			{
+			  parser_free_tree (parser, qry->data_type);
+			}
+		      qry->data_type = parser_copy_tree_list (parser,
+							      new_col->
+							      data_type);
+		    }
+		  else
+		    {
+		      prev_col->next = new_col;
+		    }
+
+		  col = new_col;
+		}
+
+	      prev_col = col;
+	      col = col->next;
+	      attr = attr->next;
+	    }
 	}
+    }
+  else
+    {
 
-      /* save previous link */
-      prev_col = col;
-      /* advance to next attribute and column */
-      attr = attr->next;
-      col = col->next;
+      columns = pt_get_select_list (parser, qry);
+
+      /* foreach normal/shared attribute and query_spec column do */
+      attr = attrs;
+      col = columns;
+      prev_col = NULL;
+
+      while (attr && col)
+	{
+	  /* bypass any class_attribute */
+	  if (attr->info.attr_def.attr_type == PT_META_ATTR)
+	    {
+	      attr = attr->next;
+	      continue;
+	    }
+
+	  new_col = pt_type_cast_vclass_query_spec_column (parser, attr, col);
+	  if (new_col != col)
+	    {
+	      if (prev_col == NULL)
+		{
+		  qry->info.query.q.select.list = new_col;
+		  qry->type_enum = new_col->type_enum;
+		  if (qry->data_type)
+		    {
+		      parser_free_tree (parser, qry->data_type);
+		    }
+		  qry->data_type = parser_copy_tree_list (parser,
+							  new_col->data_type);
+		}
+	      else
+		{
+		  prev_col->next = new_col;
+		}
+
+	      col = new_col;
+	    }
+
+	  /* save previous link */
+	  prev_col = col;
+	  /* advance to next attribute and column */
+	  attr = attr->next;
+	  col = col->next;
+	}
     }
 
   return qry;
