@@ -230,6 +230,9 @@ extern VFID *file_create (THREAD_ENTRY * thread_p, VFID * vfid,
 			  INT32 prealloc_npages);
 extern VFID *file_create_tmp (THREAD_ENTRY * thread_p, VFID * vfid,
 			      INT32 exp_numpages, const void *file_des);
+extern VFID *file_create_tmp_no_cache (THREAD_ENTRY * thread_p, VFID * vfid,
+				       INT32 exp_numpages,
+				       const void *file_des);
 extern VFID *file_create_queryarea (THREAD_ENTRY * thread_p, VFID * vfid,
 				    INT32 exp_numpages, const void *file_des);
 extern int file_create_hint_numpages (THREAD_ENTRY * thread_p,

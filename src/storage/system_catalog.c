@@ -2643,7 +2643,8 @@ catalog_create (THREAD_ENTRY * thread_p, CTID * catalog_id_p,
   bool is_overflow_page = false;
 
   if (xehash_create (thread_p, &catalog_id_p->xhid, DB_TYPE_OBJECT,
-		     expected_index_entries, oid_Root_class_oid, -1) == NULL)
+		     expected_index_entries, oid_Root_class_oid, -1,
+		     false) == NULL)
     {
       return NULL;
     }

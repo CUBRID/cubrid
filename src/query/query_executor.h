@@ -357,6 +357,9 @@ struct buildlist_proc_node
   int a_instnum_flag;		/* inst_num() flag for query with analytic */
   int g_grbynum_flag;		/* stop or continue grouping? */
   int g_with_rollup;		/* WITH ROLLUP clause for GROUP BY */
+  EHID *upddel_oid_locator_ehids;	/* array of temporary extendible hash for
+					   UPDATE/DELETE generated SELECT
+					   statement */
 };
 
 
@@ -705,7 +708,6 @@ do {                                                                          \
 
 #define CHECK_REGU_VARIABLE_XASL_STATUS(r)                                    \
     (REGU_VARIABLE_XASL(r) ? (REGU_VARIABLE_XASL(r))->status : XASL_SUCCESS)
-
 
 /*
  * Moved to a public place to allow for streaming queries to setup

@@ -5356,7 +5356,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
   oid_set_root (&boot_Db_parm->rootclass_oid);
 
   if (xehash_create (thread_p, &boot_Db_parm->classname_table, DB_TYPE_STRING,
-		     -1, &boot_Db_parm->rootclass_oid, -1) == NULL)
+		     -1, &boot_Db_parm->rootclass_oid, -1, false) == NULL)
     {
       goto error;
     }

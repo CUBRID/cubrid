@@ -4438,6 +4438,7 @@ regu_xasl_node_init (XASL_NODE * ptr, PROC_TYPE type)
       break;
 
     case BUILDLIST_PROC:
+      ptr->proc.buildlist.upddel_oid_locator_ehids = NULL;
       break;
 
     case BUILDVALUE_PROC:

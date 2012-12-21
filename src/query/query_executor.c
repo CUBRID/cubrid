@@ -129,6 +129,10 @@
     && ((ACCESS_SPEC_HFID((specp)).vfid.fileid == NULL_FILEID \
          || ACCESS_SPEC_HFID((specp)).vfid.volid == NULL_VOLID)))
 
+#define QEXEC_IS_MULTI_TABLE_UPDATE_DELETE(xasl)			      \
+    (xasl->upd_del_class_cnt > 1					      \
+     || (xasl->upd_del_class_cnt == 1 && xasl->scan_ptr != NULL))
+
 /* Note: the following macro is used just for replacement of a repetitive
  * text in order to improve the readability.
  */
@@ -584,6 +588,9 @@ static QPROC_TPLDESCR_STATUS qexec_generate_tuple_descriptor (THREAD_ENTRY *
 							      VALPTR_LIST *
 							      outptr_list,
 							      VAL_DESCR * vd);
+static int qexec_upddel_add_unique_oid_to_ehid (THREAD_ENTRY * thread_p,
+						XASL_NODE * xasl,
+						XASL_STATE * xasl_state);
 static int qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 				    XASL_STATE * xasl_state,
 				    QFILE_TUPLE_RECORD * tplrec);
@@ -805,6 +812,10 @@ static SCAN_CODE qexec_merge_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 				  QFILE_TUPLE_RECORD * tplrec,
 				  XASL_SCAN_FNC_PTR ignore);
 static int qexec_setup_list_id (XASL_NODE * xasl);
+static int qexec_init_upddel_ehash_files (THREAD_ENTRY * thread_p,
+					  XASL_NODE * buildlist);
+static void qexec_destroy_upddel_ehash_files (THREAD_ENTRY * thread_p,
+					      XASL_NODE * buildlist);
 static int qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 				 bool has_delete, XASL_STATE * xasl_state);
 static int qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
@@ -1356,6 +1367,131 @@ exit_on_error:
 }
 
 /*
+ * qexec_upddel_add_unique_oid_to_ehid () -
+ *   return: error code (<0) or the number of removed OIDs (>=0).
+ *   thread_p(in) :
+ *   xasl(in) : The XASL node of the generated SELECT statement for UPDATE or
+ *		DELETE. It must be a BUILDLIST_PROC and have the temporary hash
+ *		files already created (upddel_oid_locator_ehids).
+ *   xasl_state(in) :
+ *
+ *  Note: This function is used only for the SELECT queries generated for UPDATE
+ *	  or DELETE statements. It sets each instance OID from the outptr_list
+ *	  to null if the OID already exists in the hash file associated with the
+ *	  source table of the OID. (It eliminates duplicate OIDs in order to not
+ *	  UPDATE/DELETE them more than once). The function returns the number of
+ *	  removed OIDs so that the caller can remove the entire row from
+ *	  processing (SELECT list) if all OIDs were removed. Otherwise only the
+ *	  null instance OIDs will be skipped from UPDATE/DELETE processing.
+ */
+static int
+qexec_upddel_add_unique_oid_to_ehid (THREAD_ENTRY * thread_p,
+				     XASL_NODE * xasl,
+				     XASL_STATE * xasl_state)
+{
+  REGU_VARIABLE_LIST reg_var_list = NULL;
+  DB_VALUE *dbval = NULL, *orig_dbval = NULL, element;
+  DB_TYPE typ;
+  int ret = NO_ERROR, idx, rem_cnt = 0;
+  EHID *ehid = NULL;
+  OID oid;
+  EH_SEARCH eh_search;
+
+  if (xasl == NULL || xasl->type != BUILDLIST_PROC
+      || xasl->proc.buildlist.upddel_oid_locator_ehids == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  idx = 0;
+  reg_var_list = xasl->outptr_list->valptrp;
+  while (reg_var_list != NULL && idx < xasl->upd_del_class_cnt)
+    {
+      ret = fetch_peek_dbval (thread_p, &reg_var_list->value, &xasl_state->vd,
+			      NULL, NULL, NULL, &dbval);
+      if (ret != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+
+      if (!DB_IS_NULL (dbval))
+	{
+	  orig_dbval = dbval;
+
+	  typ = DB_VALUE_DOMAIN_TYPE (dbval);
+	  if (typ == DB_TYPE_VOBJ)
+	    {
+	      /* grab the real oid */
+	      ret = db_seq_get (DB_GET_SEQUENCE (dbval), 2, &element);
+	      if (ret != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	      dbval = &element;
+	      typ = DB_VALUE_DOMAIN_TYPE (dbval);
+	    }
+
+	  if (typ != DB_TYPE_OID)
+	    {
+	      db_value_clear (dbval);
+	      GOTO_EXIT_ON_ERROR;
+	    }
+
+	  /* Get the appropriate hash file and check if the OID exists in the
+	     file */
+	  ehid = &xasl->proc.buildlist.upddel_oid_locator_ehids[idx];
+	  eh_search = ehash_search (thread_p, ehid, DB_GET_OID (dbval), &oid);
+	  switch (eh_search)
+	    {
+	    case EH_KEY_FOUND:
+	      /* Make it null because it was already processed */
+	      db_value_clear (orig_dbval);
+	      rem_cnt++;
+	      break;
+	    case EH_KEY_NOTFOUND:
+	      /* The OID was not processed so insert it in the hash file */
+	      if (ehash_insert (thread_p, ehid, DB_GET_OID (dbval),
+				DB_GET_OID (dbval)) == NULL)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	      break;
+	    case EH_ERROR_OCCURRED:
+	    default:
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	}
+      else
+	{
+	  rem_cnt++;
+	}
+
+      reg_var_list = reg_var_list->next;
+      if (reg_var_list != NULL)
+	{
+	  /* Skip class oid and move to next instance oid */
+	  reg_var_list = reg_var_list->next;
+	}
+      idx++;
+    }
+
+  return rem_cnt;
+
+exit_on_error:
+
+  if (ret == NO_ERROR)
+    {
+      ret = er_errid ();
+      if (ret == NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+
+  return ret;
+}
+
+/*
  * qexec_end_one_iteration () -
  *   return: NO_ERROR or ER_code
  *   xasl(in)   :
@@ -1372,25 +1508,32 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   OID *class_oid = NULL;
   int ret = NO_ERROR;
 
-  if ((xasl->composite_locking || xasl->upd_del_class_cnt > 1)
-      || (xasl->upd_del_class_cnt == 1 && xasl->scan_ptr))
+  if ((xasl->composite_locking || QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl))
+      && !XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG))
     {
-      if (!XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG))
+      /* Remove OIDs already processed */
+      ret = qexec_upddel_add_unique_oid_to_ehid (thread_p, xasl, xasl_state);
+      if (ret < 0)
 	{
-	  if (xasl->aptr_list && xasl->aptr_list->type == BUILDLIST_PROC
-	      && xasl->aptr_list->proc.buildlist.push_list_id)
-	    {
-	      class_oid = &ACCESS_SPEC_CLS_OID (xasl->aptr_list->spec_list);
-	    }
-	  ret =
-	    qexec_add_composite_lock (thread_p, xasl->outptr_list->valptrp,
+	  GOTO_EXIT_ON_ERROR;
+	}
+      if (ret == xasl->upd_del_class_cnt)
+	{
+	  return NO_ERROR;
+	}
+
+      if (xasl->aptr_list && xasl->aptr_list->type == BUILDLIST_PROC
+	  && xasl->aptr_list->proc.buildlist.push_list_id)
+	{
+	  class_oid = &ACCESS_SPEC_CLS_OID (xasl->aptr_list->spec_list);
+	}
+      ret = qexec_add_composite_lock (thread_p, xasl->outptr_list->valptrp,
 				      xasl->val_list, xasl_state,
 				      &xasl->composite_lock,
 				      xasl->upd_del_class_cnt, class_oid);
-	  if (ret != NO_ERROR)
-	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
+      if (ret != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
 	}
     }
 
@@ -2208,6 +2351,10 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
 	  {
 	    scan_end_scan (thread_p, &xasl->merge_spec->s_id);
 	    scan_close_scan (thread_p, &xasl->merge_spec->s_id);
+	  }
+	if (buildlist->upddel_oid_locator_ehids != NULL)
+	  {
+	    qexec_destroy_upddel_ehash_files (thread_p, xasl);
 	  }
 	if (final)
 	  {
@@ -7814,6 +7961,86 @@ qexec_setup_list_id (XASL_NODE * xasl)
 }
 
 /*
+ * qexec_init_upddel_ehash_files () - Initializes the hash files used for
+ *				       duplicate OIDs elimination.
+ *   return: NO_ERROR, or ER_code
+ *   thread_p(in):
+ *   buildlist(in): BUILDLIST_PROC XASL
+ *
+ * Note: The function is used only for SELECT statement generated for
+ *	 UPDATE/DELETE. The case of SINGLE-UPDATE/SINGLE-DELETE is skipped.
+ */
+static int
+qexec_init_upddel_ehash_files (THREAD_ENTRY * thread_p, XASL_NODE * buildlist)
+{
+  int idx;
+  EHID *hash_list = NULL;
+
+  if (buildlist == NULL || buildlist->type != BUILDLIST_PROC)
+    {
+      return NO_ERROR;
+    }
+
+  hash_list = db_private_alloc (thread_p,
+				buildlist->upd_del_class_cnt * sizeof (EHID));
+  if (hash_list == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  for (idx = 0; idx < buildlist->upd_del_class_cnt; idx++)
+    {
+      hash_list[idx].vfid.volid = LOG_DBFIRST_VOLID;
+      if (xehash_create (thread_p, &hash_list[idx], DB_TYPE_OBJECT, -1, NULL, 0,
+			 true) == NULL)
+	{
+	  goto exit_on_error;
+	}
+    }
+  buildlist->proc.buildlist.upddel_oid_locator_ehids = hash_list;
+
+  return NO_ERROR;
+
+exit_on_error:
+  if (hash_list != NULL)
+    {
+      for (--idx; idx >= 0; idx--)
+	{
+	  xehash_destroy (thread_p, &hash_list[idx]);
+	}
+      db_private_free (thread_p, hash_list);
+    }
+
+  return ER_FAILED;
+}
+
+/*
+ * qexec_destroy_upddel_ehash_files () - Destroys the hash files used for
+ *					 duplicate rows elimination in
+ *					 UPDATE/DELETE.
+ *   return: void
+ *   thread_p(in):
+ *   buildlist(in): BUILDLIST_PROC XASL
+ *
+ * Note: The function is used only for SELECT statement generated for
+ *	 UPDATE/DELETE.
+ */
+static void
+qexec_destroy_upddel_ehash_files (THREAD_ENTRY * thread_p,
+				  XASL_NODE * buildlist)
+{
+  int idx;
+  EHID *hash_list = buildlist->proc.buildlist.upddel_oid_locator_ehids;
+
+  for (idx = 0; idx < buildlist->upd_del_class_cnt; idx++)
+    {
+      xehash_destroy (thread_p, &hash_list[idx]);
+    }
+  db_private_free (thread_p, hash_list);
+  buildlist->proc.buildlist.upddel_oid_locator_ehids = NULL;
+}
+
+/*
  * qexec_execute_update () -
  *   return: NO_ERROR, or ER_code
  *   xasl(in): XASL Tree block
@@ -11492,6 +11719,22 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       {
 	BUILDLIST_PROC_NODE *buildlist = &xasl->proc.buildlist;
 
+	/* Initialize extendible hash files for SELECT statement generated for
+	   multi UPDATE/DELETE */
+	if (QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl)
+	    && !XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG))
+	  
+	  {
+	    if (qexec_init_upddel_ehash_files (thread_p, xasl) != NO_ERROR)
+	      {
+		GOTO_EXIT_ON_ERROR;
+	      }
+	  }
+	else
+	  {
+	    buildlist->upddel_oid_locator_ehids = NULL;
+	  }
+
 	/* initialize groupby_num() value for BUILDLIST_PROC */
 	if (buildlist->g_grbynum_val)
 	  {
@@ -11675,6 +11918,13 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
 exit_on_error:
 
+  if (xasl->type == BUILDLIST_PROC)
+    {
+      if (xasl->proc.buildlist.upddel_oid_locator_ehids != NULL)
+	{
+	  qexec_destroy_upddel_ehash_files (thread_p, xasl);
+	}
+    }
   return ER_FAILED;
 }
 
@@ -11875,8 +12125,7 @@ qexec_end_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   distinct_needed = (xasl->option == Q_DISTINCT) ? true : false;
 
   /* Acquire the lockset if composite locking is enabled. */
-  if (((xasl->composite_locking || xasl->upd_del_class_cnt > 1)
-       || (xasl->upd_del_class_cnt == 1 && xasl->scan_ptr))
+  if ((xasl->composite_locking || QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl))
       && (!XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG)))
     {
       if (lock_finalize_composite_lock (thread_p, &xasl->composite_lock) !=
@@ -11889,8 +12138,15 @@ qexec_end_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   switch (xasl->type)
     {
 
-    case CONNECTBY_PROC:
     case BUILDLIST_PROC:	/* end BUILDLIST_PROC iterations */
+      /* Destroy the extendible hash files for SELECT statement generated for
+         UPDATE/DELETE */
+      if (xasl->proc.buildlist.upddel_oid_locator_ehids != NULL)
+	{
+	  qexec_destroy_upddel_ehash_files (thread_p, xasl);
+	}
+      /* fall through */
+    case CONNECTBY_PROC:
     case BUILD_SCHEMA_PROC:
       /* close the list file */
       qfile_close_list (thread_p, xasl->list_id);
@@ -12002,8 +12258,15 @@ qexec_clear_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 
   switch (xasl->type)
     {
-    case CONNECTBY_PROC:
     case BUILDLIST_PROC:
+      /* Destroy the extendible hash files for SELECT statement generated for
+         UPDATE/DELETE */
+      if (xasl->proc.buildlist.upddel_oid_locator_ehids != NULL)
+	{
+	  qexec_destroy_upddel_ehash_files (thread_p, xasl);
+	}
+      /* fall through */
+    case CONNECTBY_PROC:
       qfile_close_list (thread_p, xasl->list_id);
       break;
 
@@ -12263,8 +12526,7 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	    }
 	}
 
-      multi_readonly_scan = (xasl->upd_del_class_cnt > 1) ||
-	(xasl->upd_del_class_cnt == 1 && xasl->scan_ptr);
+      multi_readonly_scan = QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl);
       if (xasl->composite_locking || multi_readonly_scan)
 	{
 	  readonly_scan = false;
@@ -12747,6 +13009,7 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       if (qexec_end_mainblock_iterations (thread_p, xasl, xasl_state, &tplrec)
 	  != NO_ERROR)
 	{
+	  qexec_clear_mainblock_iterations (thread_p, xasl);
 	  GOTO_EXIT_ON_ERROR;
 	}
 
@@ -12798,8 +13061,8 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	    }
 	}
 
-      if (((xasl->composite_locking || xasl->upd_del_class_cnt > 1)
-	   || (xasl->upd_del_class_cnt == 1 && xasl->scan_ptr))
+      if ((xasl->composite_locking
+	   || QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl))
 	  && XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG))
 	{
 	  if (lock_finalize_composite_lock (thread_p, &xasl->composite_lock)

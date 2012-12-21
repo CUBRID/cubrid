@@ -890,6 +890,7 @@ eh_dump_key (DB_TYPE key_type, void *key, OID * value_ptr)
  *   class_oid(in): OID of the class for which the index is created
  *   attr_id(in): Identifier of the attribute of the class for which the
  *                index is created.
+ *   is_tmp(in): true, if the EHT will be based on temporary files.
  *
  * Note: Creates an extendible hashing structure for the particular
  * key type on the disk volume whose identifier is passed in
@@ -908,10 +909,11 @@ eh_dump_key (DB_TYPE key_type, void *key, OID * value_ptr)
  */
 EHID *
 xehash_create (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type,
-	       int exp_num_entries, OID * class_oid_p, int attr_id)
+	       int exp_num_entries, OID * class_oid_p, int attr_id,
+	       bool is_tmp)
 {
   return ehash_create_helper (thread_p, ehid_p, key_type, exp_num_entries,
-			      class_oid_p, attr_id, false);
+			      class_oid_p, attr_id, is_tmp);
 }
 
 /*
@@ -994,12 +996,12 @@ ehash_get_key_size (DB_TYPE key_type)
  *   exp_num_entries(in):
  *   class_oid(in):
  *   attr_id(in):
- *   istmp(in):
+ *   is_tmp(in):
  */
 static EHID *
 ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type,
 		     int exp_num_entries, OID * class_oid_p, int attr_id,
-		     bool istmp)
+		     bool is_tmp)
 {
   EHASH_DIR_HEADER *dir_header_p;
   EHASH_DIR_RECORD *dir_record_p;
@@ -1090,19 +1092,21 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type,
 
   bucket_vfid.volid = ehid_p->vfid.volid;
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-  if (((istmp == true)
-       ? file_create_tmp (thread_p, &bucket_vfid, exp_bucket_pages, &ehdes)
-       : file_create (thread_p, &bucket_vfid, exp_bucket_pages,
-		      FILE_EXTENDIBLE_HASH, &ehdes, NULL, 0)) == NULL)
-#else
-  if (file_create (thread_p, &bucket_vfid, exp_bucket_pages,
-		   FILE_EXTENDIBLE_HASH, &ehdes, NULL, 0) == NULL)
+  if (is_tmp)
+    {
+      if (file_create_tmp_no_cache (thread_p, &bucket_vfid,
+				    exp_bucket_pages, &ehdes) == NULL)
+	{
+	  return NULL;
+	}
+    }
+  else
+    if (file_create (thread_p, &bucket_vfid, exp_bucket_pages,
+		     FILE_EXTENDIBLE_HASH, &ehdes, NULL, 0) == NULL)
     {
       /* Error; so return */
       return NULL;
     }
-#endif
 
   /* Log the initilization of the first bucket page */
 
@@ -1146,30 +1150,27 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type,
    * new, and the file is going to be removed in the event of a crash.
    */
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-  if (istmp == true)
+  if (is_tmp == true)
     {
-      if (file_create_tmp (thread_p, &dir_vfid, exp_dir_pages, &ehdes) ==
-	  NULL)
+      if (file_create_tmp_no_cache
+	  (thread_p, &dir_vfid, exp_dir_pages, &ehdes) == NULL)
 	{
 	  /* Error; so return */
 	  (void) file_destroy (thread_p, &bucket_vfid);
 	  return NULL;
 	}
 
-      if (file_alloc_pages_at_volid (thread_p, &dir_vfid, &dir_vpid, 1, NULL,
-				     dir_vfid.volid, NULL, NULL) == NULL)
+      if (file_alloc_pages
+	  (thread_p, &dir_vfid, &dir_vpid, 1, NULL, NULL, NULL) == NULL)
 	{
 	  (void) file_destroy (thread_p, &dir_vfid);
 	  (void) file_destroy (thread_p, &bucket_vfid);
 	  return NULL;
 	}
     }
-  else
-#endif
-  if (file_create (thread_p, &dir_vfid, exp_dir_pages,
-		     FILE_EXTENDIBLE_HASH_DIRECTORY, &ehdes, &dir_vpid,
-		     1) == NULL)
+  else if (file_create (thread_p, &dir_vfid, exp_dir_pages,
+			FILE_EXTENDIBLE_HASH_DIRECTORY, &ehdes, &dir_vpid,
+			1) == NULL)
     {
       /* Error; so return */
       (void) file_destroy (thread_p, &bucket_vfid);

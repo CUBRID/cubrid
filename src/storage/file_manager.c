@@ -2713,6 +2713,26 @@ file_create_tmp (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
 }
 
 /*
+ * file_create_tmp_no_cache () - Create a new unstructured temporary file
+ *   return: vfid or NULL in case of error
+ *   vfid(out): complete file identifier (i.e., volume_id + file_id)
+ *   exp_numpages(in): expected number of pages to be allocated
+ *   file_des(in):
+ *
+ * Note: Unlike file_create_tmp, it always creates a temporary file (does
+ *	 not use files from cache). See file_create_tmp for more details.
+ */
+VFID *
+file_create_tmp_no_cache (THREAD_ENTRY * thread_p, VFID * vfid,
+			  INT32 exp_numpages, const void *file_des)
+{
+  FILE_TYPE file_type = FILE_EITHER_TMP;
+
+  return file_create_tmp_internal (thread_p, vfid, &file_type, exp_numpages,
+				   file_des);
+}
+
+/*
  * file_create_queryarea () - Create a new unstructured query area file
  *   return: vfid or NULL in case of error
  *   vfid(out): complete file identifier (i.e., volume_id + file_id)

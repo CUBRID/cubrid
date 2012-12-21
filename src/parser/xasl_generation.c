@@ -15338,6 +15338,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	  buildlist->eptr_list = NULL;
 	  buildlist->g_with_rollup = 0;
 	}
+      buildlist->upddel_oid_locator_ehids = NULL;
 
       /* set index scan order */
       xasl->iscan_oid_order = ((orderby_skip) ? false

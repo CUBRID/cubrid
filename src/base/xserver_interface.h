@@ -306,7 +306,7 @@ extern BTREE_SEARCH xbtree_find_multi_uniques (THREAD_ENTRY * thread_p,
 					       OID ** oids, int *oids_count);
 extern EHID *xehash_create (THREAD_ENTRY * thread_p, EHID * ehid,
 			    DB_TYPE key_type, int exp_num_entries,
-			    OID * class_oid, int attr_id);
+			    OID * class_oid, int attr_id, bool is_tmp);
 extern int xehash_destroy (THREAD_ENTRY * thread_p, EHID * ehid);
 
 extern char *xstats_get_statistics_from_server (THREAD_ENTRY * thread_p,
