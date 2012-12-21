@@ -1350,7 +1350,10 @@ lang_get_collation (const int coll_id)
 const char *
 lang_get_collation_name (const int coll_id)
 {
-  assert (coll_id >= 0 && coll_id < LANG_MAX_COLLATIONS);
+  if (coll_id < 0 || coll_id >= LANG_MAX_COLLATIONS)
+    {
+      return NULL;
+    }
 
   return lang_collations[coll_id]->coll.coll_name;
 }
