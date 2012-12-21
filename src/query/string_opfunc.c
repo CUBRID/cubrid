@@ -25281,7 +25281,11 @@ db_get_cs_coll_info (DB_VALUE * result, const DB_VALUE * val, const int mode)
   assert (result != NULL);
   assert (val != NULL);
 
-  if (DB_IS_NULL (val) || !TP_TYPE_HAS_COLLATION (DB_VALUE_TYPE (val)))
+  if (DB_IS_NULL (val))
+    {
+      DB_MAKE_NULL (result);
+    }
+  else if (!TP_TYPE_HAS_COLLATION (DB_VALUE_TYPE (val)))
     {
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
