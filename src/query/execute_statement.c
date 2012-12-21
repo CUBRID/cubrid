@@ -161,10 +161,8 @@ static int check_serial_invariants (SERIAL_INVARIANT * invariants,
 static bool truncate_need_repl_log (PT_NODE * statement);
 
 static int do_evaluate_insert_values (PARSER_CONTEXT * parser,
-				      PT_NODE * insert);
-static PT_NODE *do_evaluate_insert_values_internal (PARSER_CONTEXT * parser,
-						    PT_NODE * attr_list,
-						    PT_NODE * value_list);
+				      PT_NODE * attr_list,
+				      PT_NODE ** value_list);
 static PT_NODE *do_replace_names_for_insert_values_pre (PARSER_CONTEXT *
 							parser,
 							PT_NODE * node,
@@ -11391,6 +11389,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
   PT_NODE *upd_non_null_attrs = NULL;
   PT_NODE *default_expr_attrs = NULL;
   PT_NODE *update = NULL;
+  PT_NODE *save_values_list = NULL;
   DB_ATTDESC **attr_descs = NULL;
   int i, degree, row_count = 0;
   int server_allowed = 0;
@@ -11422,11 +11421,18 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
       return er_errid ();
     }
 
-  error = do_evaluate_insert_values (parser, statement);
+  /* save values_list because do_evaluate_insert_values may change it */
+  save_values_list = values_list;
+  error = do_evaluate_insert_values (parser, statement->info.insert.attr_list,
+				     &values_list);
   if (error != NO_ERROR)
     {
-      return error;
+      goto cleanup;
     }
+  /* if evaluation has no error, values_list will be a modified clone of
+   * the initial values_list and will have to be released after insert is
+   * finished
+   */
 
   if (statement->info.insert.do_replace
       || statement->info.insert.odku_assignments != NULL)
@@ -11442,14 +11448,15 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 	is_replace_or_odku_allowed (class_->info.name.db_object, &allowed);
       if (error != NO_ERROR)
 	{
-	  return error;
+	  goto cleanup;
 	}
 
       if (!allowed)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_REPLACE_ODKU_NOT_ALLOWED, 0);
-	  return er_errid ();
+	  error = er_errid ();
+	  goto cleanup;
 	}
     }
 
@@ -11458,7 +11465,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 				    statement, values_list, class_);
   if (error != NO_ERROR)
     {
-      return error;
+      goto cleanup;
     }
 
   if (statement->info.insert.odku_assignments != NULL)
@@ -11469,7 +11476,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
       if (update == NULL)
 	{
 	  error = ER_FAILED;
-	  return error;
+	  goto cleanup;
 	}
       if (server_allowed)
 	{
@@ -11479,7 +11486,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 					    update);
 	  if (error != NO_ERROR)
 	    {
-	      return error;
+	      goto cleanup;
 	    }
 	  if (prm_get_bool_value (PRM_ID_HOSTVAR_LATE_BINDING) &&
 	      ((prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) <=
@@ -11815,6 +11822,12 @@ cleanup:
 	  update->info.update.check_where->info.check_option.expr = NULL;
 	}
       parser_free_tree (parser, update);
+    }
+
+  if (values_list != NULL && save_values_list != values_list)
+    {
+      /* free cloned values list */
+      parser_free_tree (parser, values_list);
     }
 
   if (row_count_ptr != NULL)
@@ -16069,69 +16082,14 @@ pt_append_odku_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 }
 
 /*
- * do_evaluate_insert_values () - Evaluates the list of values for insert
- *				  statements.
+ * do_evaluate_insert_values () - Evaluates list of values for insert
  *
- * return      : void
- * parser (in) : parser context
- * insert (in) : insert statement
- *
- * NOTE: Function will evaluate each value list in insert->value_clauses
- */
-static int
-do_evaluate_insert_values (PARSER_CONTEXT * parser, PT_NODE * insert)
-{
-  PT_NODE *val_clause = NULL;
-
-  if (insert->node_type != PT_INSERT)
-    {
-      /* node must be PT_INSERT */
-      return NO_ERROR;
-    }
-
-  if (insert->info.insert.attr_list == NULL)
-    {
-      /* do nothing */
-      return NO_ERROR;
-    }
-
-  for (val_clause = insert->info.insert.value_clauses; val_clause != NULL;
-       val_clause = val_clause->next)
-    {
-      if (val_clause->info.node_list.list_type != PT_IS_VALUE
-	  || val_clause->info.node_list.list == NULL)
-	{
-	  continue;
-	}
-      /* evaluate list of values */
-      val_clause->info.node_list.list =
-	do_evaluate_insert_values_internal (parser,
-					    insert->info.insert.attr_list,
-					    val_clause->info.node_list.list);
-      if (pt_has_error (parser))
-	{
-	  /* error evaluating values, stop */
-	  if (er_errid () != NO_ERROR)
-	    {
-	      return er_errid ();
-	    }
-	  else
-	    {
-	      return ER_GENERIC_ERROR;
-	    }
-	}
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * do_evaluate_insert_values_internal () - Evaluates list of values for insert
- *
- * return	   : list of values after evaluation
- * parser (in)	   : parser context
- * attr_list (in)  : insert attr_list
- * value_list (in) : list of values
+ * return	       : list of values after evaluation
+ * parser (in)	       : parser context
+ * attr_list (in)      : insert attr_list
+ * value_list (in/out) : function will be passed a pointer to original values
+ *			 list and will return a pointer to modified values
+ *			 clone
  *
  * NOTE: The values corresponding to each attribute are evaluated from "left"
  *	 to "right", in the order given by user.
@@ -16139,25 +16097,56 @@ do_evaluate_insert_values (PARSER_CONTEXT * parser, PT_NODE * insert)
  *	 do_replace_names_for_insert_values_pre).
  *	 After names were replaced, attribute values are evaluated using
  *	 pt_evaluate_tree_having_serial and replaced with a PT_VALUE node.
+ *	 Original parse tree shouldn't be modified so evaluation is done on a
+ *	 values list clone.
  */
-static PT_NODE *
-do_evaluate_insert_values_internal (PARSER_CONTEXT * parser,
-				    PT_NODE * attr_list, PT_NODE * value_list)
+static int
+do_evaluate_insert_values (PARSER_CONTEXT * parser, PT_NODE * attr_list,
+			   PT_NODE ** value_list_p)
 {
-  int size;
-  PT_NODE *val = NULL, *prev = NULL, *attr = NULL;
+  PT_NODE *val = NULL, *prev = NULL;
   PT_NODE *result = NULL, *save_next = NULL;
   EVAL_INSERT_VALUE eval;
   DB_VALUE eval_value;
+  PT_NODE *value_list = NULL;
+
+  if (attr_list == NULL || value_list_p == NULL || *value_list_p == NULL)
+    {
+      /* nothing to evaluate */
+      return NO_ERROR;
+    }
+  value_list = *value_list_p;
+  if (value_list->node_type != PT_NODE_LIST
+      || value_list->info.node_list.list_type != PT_IS_VALUE)
+    {
+      /* do not evaluate here */
+      return NO_ERROR;
+    }
+
+  /* check if evaluation is necessary before duplicating values list */
+  for (val = value_list; val != NULL && PT_IS_CONST (val); val = val->next);
+  if (val == NULL)
+    {
+      /* all nodes are constant and no evaluation is needed */
+      return NO_ERROR;
+    }
+
+  /* make a copy of *value_list_p */
+  value_list = parser_copy_tree (parser, value_list);
+  if (value_list == NULL)
+    {
+      PT_ERRORm (parser, *value_list_p, MSGCAT_SET_PARSER_RUNTIME,
+		 MSGCAT_RUNTIME_OUT_OF_MEMORY);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
 
   eval.attr_list = attr_list;
-  eval.value_list = value_list;
+  eval.value_list = value_list->info.node_list.list;
   eval.crt_attr_index = 0;
 
   /* evaluate values in val_list */
-  for (prev = NULL, val = value_list, attr = attr_list;
-       attr != NULL && val != NULL;
-       val = save_next, attr = save_next, eval.crt_attr_index++)
+  for (prev = NULL, val = value_list->info.node_list.list; val != NULL;
+       val = save_next, eval.crt_attr_index++)
     {
       save_next = val->next;
       if (PT_IS_VALUE_NODE (val))
@@ -16177,7 +16166,7 @@ do_evaluate_insert_values_internal (PARSER_CONTEXT * parser,
       if (pt_has_error (parser))
 	{
 	  val->next = save_next;
-	  return value_list;
+	  goto end_error;
 	}
       if (!PT_IS_VALUE_NODE (result))
 	{
@@ -16190,7 +16179,7 @@ do_evaluate_insert_values_internal (PARSER_CONTEXT * parser,
 		{
 		  parser_free_tree (parser, result);
 		}
-	      return value_list;
+	      goto end_error;
 	    }
 	  /* free result and replace it with eval_value */
 	  if (result != val)
@@ -16206,7 +16195,7 @@ do_evaluate_insert_values_internal (PARSER_CONTEXT * parser,
 			     MSGCAT_RUNTIME__CAN_NOT_EVALUATE);
 		}
 	      val->next = save_next;
-	      return value_list;
+	      goto end_error;
 	    }
 	  /* free old value */
 	  parser_free_tree (parser, val);
@@ -16220,7 +16209,7 @@ do_evaluate_insert_values_internal (PARSER_CONTEXT * parser,
 	    }
 	  else
 	    {
-	      value_list = result;
+	      value_list->info.node_list.list = result;
 	      eval.value_list = result;
 	    }
 	  result->next = save_next;
@@ -16235,8 +16224,24 @@ do_evaluate_insert_values_internal (PARSER_CONTEXT * parser,
 	}
     }
 
-  /* evaluation has finished, return new value_list */
-  return value_list;
+  /* save new value list */
+  *value_list_p = value_list;
+  return NO_ERROR;
+
+end_error:
+  if (value_list != NULL)
+    {
+      /* free value_list copy */
+      parser_free_tree (parser, value_list);
+    }
+  if (er_errid () != NO_ERROR)
+    {
+      return er_errid ();
+    }
+  else
+    {
+      return ER_PT_EXECUTE;
+    }
 }
 
 /*
@@ -16263,7 +16268,6 @@ do_replace_names_for_insert_values_pre (PARSER_CONTEXT * parser,
 {
   int count, found;
   PT_NODE *attr = NULL, *val = NULL, *result = NULL;
-  DB_VALUE eval_value;
   EVAL_INSERT_VALUE *eval = (EVAL_INSERT_VALUE *) arg;
 
   if (node == NULL || *continue_walk == PT_STOP_WALK || pt_has_error (parser))
