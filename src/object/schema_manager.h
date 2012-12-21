@@ -151,7 +151,8 @@ extern int sm_partitioned_class_type (DB_OBJECT * classop,
 				      MOP ** partitions);
 extern int sm_set_class_flag (MOP classop, SM_CLASS_FLAG flag, int onoff);
 extern int sm_get_class_flag (MOP op, SM_CLASS_FLAG flag);
-extern int sm_set_class_default_collation (MOP classop, int collation_id);
+extern int sm_set_class_collation (MOP classop, int collation_id);
+extern int sm_get_class_collation (MOP classop, int *collation_id);
 extern int sm_destroy_representations (MOP op);
 
 extern void sm_add_static_method (const char *name, void (*function) ());

@@ -4024,7 +4024,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	  newpci->temp->partition_parent_atts = smclass->attributes;
 	  newpci->obj = dbt_finish_class (newpci->temp);
 
-	  sm_set_class_default_collation (newpci->obj, smclass->collation_id);
+	  sm_set_class_collation (newpci->obj, smclass->collation_id);
 
 	  if (newpci->obj == NULL)
 	    {
@@ -11935,7 +11935,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      do_flush_class_mop = true;
 	    }
 	}
-      error = sm_set_class_default_collation (class_obj, collation_id);
+      error = sm_set_class_collation (class_obj, collation_id);
       break;
 
     default:
@@ -12461,7 +12461,6 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
   bool is_srv_update_needed = false;
   OID class_oid;
   int att_id = -1;
-  PT_NODE *new_attr_def = NULL;
 
   assert (alter_code == PT_CHANGE_ATTR);
   assert (alter->info.alter.super.resolution_list == NULL);
@@ -12518,15 +12517,6 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
   assert (alter->info.alter.alter_clause.attr_mthd.mthd_def_list == NULL);
   assert (alter->info.alter.alter_clause.attr_mthd.attr_def_list->next ==
 	  NULL);
-
-  new_attr_def = alter->info.alter.alter_clause.attr_mthd.attr_def_list;
-
-  if (ctemplate->current != NULL && new_attr_def->node_type == PT_ATTR_DEF
-      && PT_HAS_COLLATION (new_attr_def->type_enum))
-    {
-      pt_attr_check_default_cs_coll (parser, new_attr_def,
-				     -1, ctemplate->current->collation_id);
-    }
 
   error = check_change_attribute (parser, ctemplate,
 				  alter->info.alter.alter_clause.attr_mthd.
@@ -13036,7 +13026,7 @@ do_alter_change_default_cs_coll (PARSER_CONTEXT * const parser,
 
   class_mop = ctemplate->op;
 
-  error = sm_set_class_default_collation (class_mop, collation_id);
+  error = sm_set_class_collation (class_mop, collation_id);
 
   if (error != NO_ERROR)
     {
@@ -13054,8 +13044,7 @@ do_alter_change_default_cs_coll (PARSER_CONTEXT * const parser,
     {
       for (i = 0; sub_partitions[i]; i++)
 	{
-	  error =
-	    sm_set_class_default_collation (sub_partitions[i], collation_id);
+	  error = sm_set_class_collation (sub_partitions[i], collation_id);
 	  if (error != NO_ERROR)
 	    {
 	      break;

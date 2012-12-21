@@ -5008,6 +5008,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   char *drop_name_list = NULL;
 #endif /* ENABLE_UNUSED_FUNCTION */
   bool reuse_oid = false;
+  int collation_id = -1;
 
   /* look up the class */
   name = alter->info.alter.entity_name;
@@ -5020,6 +5021,12 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 		  alter->info.alter.entity_name,
 		  MSGCAT_SET_PARSER_SEMANTIC,
 		  MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, cls_nam);
+      return;
+    }
+
+  if (sm_get_class_collation (db, &collation_id) != NO_ERROR)
+    {
+      PT_ERROR (parser, alter, er_msg ());
       return;
     }
 
@@ -5075,6 +5082,17 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 		}
 	    }
 	}
+
+      for (attr = alter->info.alter.alter_clause.attr_mthd.attr_def_list;
+	   attr; attr = attr->next)
+	{
+	  if (PT_HAS_COLLATION (attr->type_enum)
+	      && attr->node_type == PT_ATTR_DEF)
+	    {
+	      pt_attr_check_default_cs_coll (parser, attr, -1, collation_id);
+	    }
+	}
+
       pt_check_attribute_domain (parser,
 				 alter->info.alter.alter_clause.
 				 attr_mthd.attr_def_list, type, NULL,
@@ -5130,6 +5148,17 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    PT_ERRORm (parser, alter, MSGCAT_SET_PARSER_SEMANTIC,
 		       MSGCAT_SEMANTIC_ALTER_CHANGE_ONLY_TABLE);
 	    break;
+	  }
+
+	for (attr = alter->info.alter.alter_clause.attr_mthd.attr_def_list;
+	     attr; attr = attr->next)
+	  {
+	    if (PT_HAS_COLLATION (attr->type_enum)
+		&& attr->node_type == PT_ATTR_DEF)
+	      {
+		pt_attr_check_default_cs_coll (parser, attr, -1,
+					       collation_id);
+	      }
 	  }
 
 	pt_check_attribute_domain (parser, att_def, type, NULL, reuse_oid,
@@ -8687,6 +8716,21 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   pt_check_unique_attr (parser, name->info.name.original, all_attrs,
 			PT_ATTR_DEF);
 
+  if (entity_type == PT_CLASS)
+    {
+      /* for regular classes (no views) set default collation if needed */
+      for (attr = node->info.create_entity.attr_def_list; attr;
+	   attr = attr->next)
+	{
+	  if (attr->node_type == PT_ATTR_DEF
+	      && PT_HAS_COLLATION (attr->type_enum))
+	    {
+	      pt_attr_check_default_cs_coll (parser, attr,
+					     charset, collation_id);
+	    }
+	}
+    }
+
   /* enforce composition hierarchy restrictions on attr type defs */
   pt_check_attribute_domain (parser, all_attrs,
 			     entity_type, name->info.name.original,
@@ -8885,13 +8929,6 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
     {
       attr->info.attr_def.data_default =
 	pt_check_data_default (parser, attr->info.attr_def.data_default);
-
-      /* for regular classes (no views) set default collation if needed */
-      if (entity_type == PT_CLASS && attr->node_type == PT_ATTR_DEF
-	  && PT_HAS_COLLATION (attr->type_enum))
-	{
-	  pt_attr_check_default_cs_coll (parser, attr, charset, collation_id);
-	}
     }
 }
 
