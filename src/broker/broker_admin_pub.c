@@ -3827,7 +3827,7 @@ shard_shm_set_param_proxy_internal (T_PROXY_INFO * proxy_info_p,
 	  return -1;
 	}
 
-      proxy_info_p->cur_proxy_log_mode = param_value;
+      proxy_info_p->cur_proxy_log_mode = proxy_log_mode;
     }
 
   return 0;
@@ -3980,7 +3980,7 @@ shard_shm_set_param_as_internal (T_APPL_SERVER_INFO * as_info,
 	  return -1;
 	}
 
-      as_info->cur_sql_log_mode = param_value;
+      as_info->cur_sql_log_mode = sql_log_mode;
     }
   else if (strcasecmp (param_name, "SLOW_LOG") == 0)
     {
@@ -3994,7 +3994,7 @@ shard_shm_set_param_as_internal (T_APPL_SERVER_INFO * as_info,
 	  return -1;
 	}
 
-      as_info->cur_slow_log_mode = param_value;
+      as_info->cur_slow_log_mode = slow_log_mode;
     }
   else if (strcasecmp (param_name, "ACCESS_MODE") == 0)
     {
