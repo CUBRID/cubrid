@@ -233,7 +233,6 @@ struct analytic_state
 
   int input_recs;
   int current_group_input_recs;
-  int current_group_total_input_recs;
 
   bool is_last_function;
   bool is_output_rec;
@@ -406,6 +405,13 @@ struct upddel_class_info_internal
   bool **btids_dup_key_locked;	/* true, if corresponding btid contain
 				   duplicate keys locked when searching  */
   BTREE_UNIQUE_STATS_UPDATE_INFO unique_stats;	/* unique indexes statistics */
+};
+
+typedef enum analytic_stage ANALYTIC_STAGE;
+enum analytic_stage
+{
+  ANALYTIC_INTERM_PROC = 1,
+  ANALYTIC_GROUP_PROC
 };
 
 static const int RESERVED_SIZE_FOR_XASL_CACHE_ENTRY =
@@ -691,6 +697,10 @@ static SORT_STATUS qexec_analytic_get_next (THREAD_ENTRY * thread_p,
 					    RECDES * recdes, void *arg);
 static int qexec_analytic_put_next (THREAD_ENTRY * thread_p,
 				    const RECDES * recdes, void *arg);
+static int qexec_analytic_eval_instnum_pred (THREAD_ENTRY * thread_p,
+					     ANALYTIC_STATE * analytic_state,
+					     ANALYTIC_TYPE * func_p,
+					     ANALYTIC_STAGE stage);
 static void qexec_analytic_start_group (THREAD_ENTRY * thread_p,
 					ANALYTIC_STATE * analytic_state,
 					const RECDES * key, bool reinit);
@@ -19336,7 +19346,6 @@ qexec_initialize_analytic_state (ANALYTIC_STATE * analytic_state,
   analytic_state->input_tplrec.tpl = 0;
   analytic_state->input_recs = 0;
   analytic_state->current_group_input_recs = 0;
-  analytic_state->current_group_total_input_recs = 0;
 
   analytic_state->last_tuple_pos.tplno = -1;
   analytic_state->last_tuple_pos.vpid.pageid = NULL_PAGEID;
@@ -19432,7 +19441,6 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes,
   QFILE_TUPLE_RECORD dummy;
   int status, nkeys;
   bool is_same_partition;
-  DB_LOGICAL is_output_rec;
 
   analytic_state = (ANALYTIC_STATE *) arg;
   list_idp = &(analytic_state->input_scan->list_id);
@@ -19449,27 +19457,12 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes,
 
       peek = COPY;		/* default */
 
-      if (analytic_state->is_last_function
-	  && analytic_state->xasl->instnum_pred)
+      /* evaluate inst_num() predicate */
+      if (qexec_analytic_eval_instnum_pred (thread_p, analytic_state,
+					    analytic_state->a_func_list,
+					    ANALYTIC_INTERM_PROC) != NO_ERROR)
 	{
-	  /* check instnum() predicate */
-	  is_output_rec =
-	    qexec_eval_instnum_pred (thread_p, analytic_state->xasl,
-				     analytic_state->xasl_state);
-
-	  if (is_output_rec == V_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-	  else
-	    {
-	      analytic_state->is_output_rec = (is_output_rec == V_TRUE);
-	    }
-	}
-      else
-	{
-	  /* default - all records go to output */
-	  analytic_state->is_output_rec = true;
+	  goto exit_on_error;
 	}
 
       /*
@@ -19627,6 +19620,71 @@ exit_on_error:
 }
 
 /*
+ * qexec_analytic_eval_instnum_pred () - evaluate inst_num() predicate
+ *   returns: error code or NO_ERROR
+ *   thread_p(in): current thread
+ *   analytic_state(in): analytic state
+ *   func_p(in): analytic function chain
+ *   stage(in): stage from within function is called
+ *
+ * NOTE: this function sets the analytic state's "is_output_rec" flag
+ */
+static int
+qexec_analytic_eval_instnum_pred (THREAD_ENTRY * thread_p,
+				  ANALYTIC_STATE * analytic_state,
+				  ANALYTIC_TYPE * func_p,
+				  ANALYTIC_STAGE stage)
+{
+  ANALYTIC_STAGE instnum_stage = ANALYTIC_INTERM_PROC;
+  DB_LOGICAL is_output_rec;
+
+  /* by default, it's an output record */
+  analytic_state->is_output_rec = true;
+
+  if (!analytic_state->is_last_function
+      || analytic_state->xasl->instnum_pred == NULL)
+    {
+      /* inst_num() is evaluated only for last function */
+      return NO_ERROR;
+    }
+
+  while (func_p != NULL)
+    {
+      if (func_p->function == PT_LEAD || func_p->function == PT_LAG
+	  || func_p->function == PT_NTILE)
+	{
+	  /* inst_num() predicate is evaluated at group processing for these
+	     functions, as the result is computed at this stage using all
+	     group values */
+	  instnum_stage = ANALYTIC_GROUP_PROC;
+	}
+
+      func_p = func_p->next;
+    }
+
+  if (stage != instnum_stage)
+    {
+      /* we're not at the required stage */
+      return NO_ERROR;
+    }
+
+  /* evaluate inst_num() */
+  is_output_rec = qexec_eval_instnum_pred (thread_p, analytic_state->xasl,
+					   analytic_state->xasl_state);
+  if (is_output_rec == V_ERROR)
+    {
+      return ER_FAILED;
+    }
+  else
+    {
+      analytic_state->is_output_rec = (is_output_rec == V_TRUE);
+    }
+
+  /* all ok */
+  return NO_ERROR;
+}
+
+/*
  * qexec_analytic_start_group () -
  *   return:
  *   analytic_state(in):
@@ -19694,7 +19752,6 @@ qexec_analytic_start_group (THREAD_ENTRY * thread_p,
 	}
 
       analytic_state->current_group_input_recs = 0;
-      analytic_state->current_group_total_input_recs = 0;
     }
   else
     {
@@ -19755,7 +19812,8 @@ qexec_analytic_add_tuple (THREAD_ENTRY * thread_p,
   if (analytic_state->is_output_rec)
     {
       /* records that did not pass the instnum() predicate evaluation are used
-         for computing the function value, but are not included in output */
+         for computing the function value, but are not included in the
+         intermediate file */
       if (qexec_insert_tuple_into_list (thread_p, list_id,
 					analytic_state->a_outptr_list_interm,
 					&xasl_state->vd,
@@ -19764,10 +19822,10 @@ qexec_analytic_add_tuple (THREAD_ENTRY * thread_p,
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
-
-      analytic_state->current_group_input_recs++;
     }
-  analytic_state->current_group_total_input_recs++;
+
+  /* account for tuple */
+  analytic_state->current_group_input_recs++;
 
 wrapup:
   return;
@@ -19865,10 +19923,10 @@ qexec_analytic_evaluate_ntile_function (THREAD_ENTRY * thread_p,
   if (!func_p->info.ntile.is_null)
     {
       int recs_in_bucket =
-	analytic_state->current_group_total_input_recs /
+	analytic_state->current_group_input_recs /
 	func_p->info.ntile.bucket_count;
       int compensate =
-	analytic_state->current_group_total_input_recs %
+	analytic_state->current_group_input_recs %
 	func_p->info.ntile.bucket_count;
 
       /* get bucket of current tuple */
@@ -20246,7 +20304,16 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p,
   XASL_STATE *xasl_state = analytic_state->xasl_state;
   SCAN_CODE sc;
   int tuple_idx = 0;		/* index is post incremented, start from zero */
+  bool save_output_rec_status;
 
+  if (analytic_state == NULL)
+    {
+      GOTO_EXIT_ON_ERROR;
+    }
+
+  /* this flag is already set for the next tuple; save it while processing
+     the group */
+  save_output_rec_status = analytic_state->is_output_rec;
   output_tplrec.tpl = NULL;
 
   for (func_list = func_p; func_list != NULL; func_list = func_list->next)
@@ -20334,14 +20401,25 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p,
 	  goto close_and_exit_on_error;
 	}
 
-      /* add tuple to output file */
-      if (qexec_insert_tuple_into_list (thread_p,
-					analytic_state->output_file,
-					analytic_state->a_outptr_list,
-					&xasl_state->vd,
-					&output_tplrec) != NO_ERROR)
+      /* evaluate inst_num() predicate */
+      if (qexec_analytic_eval_instnum_pred (thread_p, analytic_state,
+					    analytic_state->a_func_list,
+					    ANALYTIC_GROUP_PROC) != NO_ERROR)
 	{
 	  goto close_and_exit_on_error;
+	}
+
+      /* add tuple to output file */
+      if (analytic_state->is_output_rec)
+	{
+	  if (qexec_insert_tuple_into_list (thread_p,
+					    analytic_state->output_file,
+					    analytic_state->a_outptr_list,
+					    &xasl_state->vd,
+					    &output_tplrec) != NO_ERROR)
+	    {
+	      goto close_and_exit_on_error;
+	    }
 	}
 
       /* save tuple position; when scan ends, this will hold last tuple's pos */
@@ -20363,6 +20441,7 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p,
     {
       db_private_free_and_init (thread_p, output_tplrec.tpl);
     }
+  analytic_state->is_output_rec = save_output_rec_status;
 
   return NO_ERROR;
 
