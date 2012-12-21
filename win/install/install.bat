@@ -21,6 +21,8 @@ set MSG_KM_UTF8_DIR=%DEST_DIR%\msg\km_KH.utf8
 set MSG_VI_UTF8_DIR=%DEST_DIR%\msg\vi_VN.utf8
 set MSG_ZH_UTF8_DIR=%DEST_DIR%\msg\zh_CN.utf8
 
+rem -------------------------------------------
+rem Make directory
 mkdir %DEST_DIR%
 mkdir %DEST_DIR%\bin
 mkdir %DEST_DIR%\lib
@@ -45,24 +47,35 @@ mkdir %MSG_ZH_UTF8_DIR%
 mkdir %DEST_DIR%\tmp
 mkdir %DEST_DIR%\var
 
+rem -------------------------------------------
+rem Libraries
 copy %SRC_DIR%\cubridcs.lib %DEST_DIR%\lib
 copy %SRC_DIR%\cubridsa.lib %DEST_DIR%\lib
 copy %SRC_DIR%\cascci*.lib %DEST_DIR%\lib
 copy %SRC_DIR%\libesql.lib %DEST_DIR%\lib
 copy %SRC_DIR%\cmstat.lib %DEST_DIR%\lib
 copy %SRC_DIR%\cmdep.lib %DEST_DIR%\lib
+
 copy %SRC_DIR%\DBGWConnector3.lib %DEST_DIR%\lib
 
+rem -------------------------------------------
+rem Binaries
 copy %SRC_DIR%\*.exe %DEST_DIR%\bin
 copy %SRC_DIR%\*.dll %DEST_DIR%\bin
 copy %SRC_DIR%\..\..\external\dll\*.dll %DEST_DIR%\bin
 
+copy %SRC_DIR%\DBGWConnector3.dll %DEST_DIR%\bin
+
+rem -------------------------------------------
+rem Conf
 copy %SRC_DIR%\..\..\..\conf\*conf* %DEST_DIR%\conf
 copy %SRC_DIR%\..\..\..\conf\*.txt %DEST_DIR%\conf
 copy %SRC_DIR%\..\..\..\conf\cubrid_*.xml %DEST_DIR%\conf
 copy %SRC_DIR%\..\..\..\cmserver\conf\*.conf %DEST_DIR%\conf
 copy %SRC_DIR%\..\..\..\cmserver\conf\*.pass %DEST_DIR%\conf
 
+rem -------------------------------------------
+rem Headers
 copy %SRC_DIR%\..\..\..\src\cci\cas_cci.h %DEST_DIR%\include
 copy %SRC_DIR%\..\..\..\src\broker\cas_error.h %DEST_DIR%\include
 copy %SRC_DIR%\..\..\..\src\executables\cubrid_esql.h %DEST_DIR%\include\cubrid_esql.h
@@ -70,6 +83,25 @@ copy %SRC_DIR%\..\..\..\src\compat\dbi_compat.h %DEST_DIR%\include\dbi.h
 copy %SRC_DIR%\..\..\..\src\cm_common\cm_stat.h %DEST_DIR%\include\cm_stat.h
 copy %SRC_DIR%\..\..\..\src\cm_common\cm_dep.h %DEST_DIR%\include\cm_dep.h
 
+copy %SRC_DIR%\..\..\..\src\cci\cci_log.h %DEST_DIR%\include
+copy %SRC_DIR%\..\..\..\src\dbgw\DBGWMock.h %DEST_DIR%\include
+copy %SRC_DIR%\..\..\..\src\dbgw\DBGWCommon.h %DEST_DIR%\include
+copy %SRC_DIR%\..\..\..\src\dbgw\DBGWError.h %DEST_DIR%\include
+copy %SRC_DIR%\..\..\..\src\dbgw\DBGWValue.h %DEST_DIR%\include
+copy %SRC_DIR%\..\..\..\src\dbgw\DBGWDataBaseInterface.h %DEST_DIR%\include
+copy %SRC_DIR%\..\..\..\src\dbgw\DBGWPorting.h %DEST_DIR%\include
+copy %SRC_DIR%\..\..\..\src\dbgw\DBGWAdapter.h %DEST_DIR%\include
+copy %SRC_DIR%\..\..\..\src\dbgw\DBGWQuery.h %DEST_DIR%\include
+copy %SRC_DIR%\..\..\..\src\dbgw\DBGWLogger.h %DEST_DIR%\include
+copy %SRC_DIR%\..\..\..\src\dbgw\DBGWConfigurationFwd.h %DEST_DIR%\include
+copy %SRC_DIR%\..\..\..\src\dbgw\DBGWConfiguration.h %DEST_DIR%\include
+copy %SRC_DIR%\..\..\..\src\dbgw\DBGWWorkFwd.h %DEST_DIR%\include
+copy %SRC_DIR%\..\..\..\src\dbgw\DBGWWork.h %DEST_DIR%\include
+copy %SRC_DIR%\..\..\..\src\dbgw\DBGWClientFwd.h %DEST_DIR%\include
+copy %SRC_DIR%\..\..\..\src\dbgw\DBGWClient.h %DEST_DIR%\include
+
+rem -------------------------------------------
+rem Messages
 copy %SRC_DIR%\..\..\..\msg\en_US\*.msg 		%MSG_EN_US_DIR%
 copy %SRC_DIR%\..\..\..\msg\en_US.utf8\*.msg 		%MSG_EN_US_UTF8_DIR%
 copy %SRC_DIR%\..\..\..\msg\ko_KR.euckr\*.msg 		%MSG_EUCKR_DIR%
