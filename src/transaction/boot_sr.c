@@ -2839,7 +2839,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
 	    }
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_BO_CANNOT_CREATE_VOL, 3, "volumes",
-		  client_credential->db_name, er_msglog_filename ());
+		  client_credential->db_name, er_get_msglog_filename ());
 	}
 
       goto exit_on_error;
