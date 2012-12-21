@@ -84,7 +84,7 @@ typedef enum
 #define BTREE_IS_UNIQUE(btid)  ((btid)->unique & BTREE_CONSTRAINT_UNIQUE)
 #define BTREE_IS_PART_KEY_DESC(btid) ((btid)->part_key_desc == true)
 #define BTREE_IS_LAST_KEY_DESC(btid) ((btid)->last_key_desc == true)
-#define BTREE_IS_NEW_FILE(btid) ((btid)->new_file == true)
+
 
 #define BTREE_NORMAL_KEY 0
 #define BTREE_OVERFLOW_KEY 1

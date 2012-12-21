@@ -1984,7 +1984,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 			}
 
 		      /* Connect the new overflow page to the leaf page */
-		      btree_leaf_append_vpid_for_overflow_oids
+		      btree_leaf_new_overflow_oids_vpid
 			(&load_args->out_recdes, &load_args->ovf.vpid);
 
 		      /* Try to Store the record into the current leaf page */
@@ -2030,10 +2030,18 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 		}		/* no space for the new OID */
 
 	      /* Insert the new oid to the current record and return */
-	      OR_PUT_OID (load_args->new_pos, &this_oid);
-	      load_args->out_recdes.length += OR_OID_SIZE;
-	      load_args->new_pos += OR_OID_SIZE;
+	      if (load_args->overflowing == true)
+		{
+		  btree_insert_oid_with_order (&load_args->out_recdes,
+					       &this_oid);
+		}
+	      else
+		{
+		  OR_PUT_OID (load_args->new_pos, &this_oid);
+		  load_args->out_recdes.length += OR_OID_SIZE;
+		}
 
+	      load_args->new_pos += OR_OID_SIZE;
 	    }			/* same key */
 	  else
 	    {

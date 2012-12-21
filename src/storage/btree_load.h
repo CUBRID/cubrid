@@ -388,12 +388,12 @@ extern int btree_compare_key (DB_VALUE * key1, DB_VALUE * key2,
 			      TP_DOMAIN * key_domain,
 			      int do_coercion, int total_order,
 			      int *start_colp);
-extern int btree_leaf_append_vpid_for_overflow_oids (RECDES * rec,
-						     VPID * ovfl_vpid);
+extern int btree_leaf_new_overflow_oids_vpid (RECDES * rec, VPID * ovfl_vpid);
 extern int btree_get_asc_desc (THREAD_ENTRY * thread_p, BTID * btid,
 			       int col_idx, int *asc_desc);
 
-/* Dump routines */
 extern void btree_dump_key (FILE * fp, DB_VALUE * key);
+
+extern int btree_insert_oid_with_order (RECDES * rec, OID * oid);
 
 #endif /* _BTREE_LOAD_H_ */
