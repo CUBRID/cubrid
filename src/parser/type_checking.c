@@ -5347,14 +5347,20 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr,
        * the 2nd and 3rd args are coerced here
        */
       between = expr->info.expr.arg2;
-      assert (between != NULL
-	      && between->node_type == PT_EXPR
-	      && between->info.expr.op == PT_BETWEEN);
+      if (between == NULL
+	  || between->node_type != PT_EXPR
+	  || between->info.expr.op != PT_BETWEEN)
+	{
+	  return NULL;
+	}
 
       between_ge_lt = between->info.expr.arg2;
-      assert (between_ge_lt != NULL
-	      && between_ge_lt->node_type == PT_EXPR
-	      && between_ge_lt->info.expr.op == PT_BETWEEN_GE_LT);
+      if (between_ge_lt == NULL
+	  || between_ge_lt->node_type != PT_EXPR
+	  || between_ge_lt->info.expr.op != PT_BETWEEN_GE_LT)
+	{
+	  return NULL;
+	}
 
       /* 2nd, 3rd param of width_bucket */
       b1 = between_ge_lt->info.expr.arg1;

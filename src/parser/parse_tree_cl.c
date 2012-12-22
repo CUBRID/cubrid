@@ -11538,14 +11538,20 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 
       /* we use PT_BETWEEN and PT_BETWEEN_GE_LT to represent the boundaries */
       between = p->info.expr.arg2;
-      assert (between != NULL
-	      && between->node_type == PT_EXPR
-	      && between->info.expr.op == PT_BETWEEN);
+      if (between == NULL
+	  || between->node_type != PT_EXPR
+	  || between->info.expr.op != PT_BETWEEN)
+	{
+	  return NULL;
+	}
 
       between_ge_lt = between->info.expr.arg2;
-      assert (between_ge_lt != NULL
-	      && between_ge_lt->node_type == PT_EXPR
-	      && between_ge_lt->info.expr.op == PT_BETWEEN_GE_LT);
+      if (between_ge_lt == NULL
+	  || between_ge_lt->node_type != PT_EXPR
+	  || between_ge_lt->info.expr.op != PT_BETWEEN_GE_LT)
+	{
+	  return NULL;
+	}
 
       r2 = pt_print_bytes (parser, between_ge_lt->info.expr.arg1);
       q = pt_append_varchar (parser, q, r2);
