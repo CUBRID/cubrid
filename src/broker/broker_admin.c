@@ -90,13 +90,13 @@ main (int argc, char **argv)
       return 0;
     }
 
+  /* change the working directory to $CUBRID/bin */
+  ut_cd_work_dir ();
+
   err = broker_config_read (NULL, br_info, &num_broker, &master_shm_id,
 			    admin_log_file, 0, &acl_flag, acl_file, NULL);
   if (err < 0)
     return -1;
-
-  /* change the working directory to $CUBRID/bin */
-  ut_cd_work_dir ();
 
   if (argc < 2)
     goto usage;
