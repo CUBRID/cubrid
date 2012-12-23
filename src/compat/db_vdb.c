@@ -701,7 +701,7 @@ db_compile_statement_local (DB_SESSION * session)
 	     wrong about attribute/column updatability.
 	     Thats what they asked for. */
 	  qtype = pt_fillin_type_size (parser, statement, qtype, DB_NO_OIDS,
-				       false);
+				       false, false);
 	}
     }
 

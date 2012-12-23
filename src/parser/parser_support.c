@@ -6462,17 +6462,6 @@ pt_fixup_column_type (PT_NODE * col)
     }
 }
 
-static void
-pt_fixup_select_columns_type (PT_NODE * columns)
-{
-  PT_NODE *col = NULL;
-
-  for (col = columns; col != NULL; col = col->next)
-    {
-      pt_fixup_column_type (col);
-    }
-}
-
 /*
  * pt_get_select_query_columns() - Retrieves the columns of a SELECT query
  *				   result
@@ -6522,8 +6511,6 @@ pt_get_select_query_columns (PARSER_CONTEXT * parser, PT_NODE * create_select,
       goto error_exit;
     }
 
-  pt_fixup_select_columns_type (pt_get_select_list (parser, temp_copy));
-
   if (qtype == NULL)
     {
       qtype = pt_get_titles (parser, temp_copy);
@@ -6535,7 +6522,8 @@ pt_get_select_query_columns (PARSER_CONTEXT * parser, PT_NODE * create_select,
       goto error_exit;
     }
 
-  qtype = pt_fillin_type_size (parser, temp_copy, qtype, DB_NO_OIDS, true);
+  qtype =
+    pt_fillin_type_size (parser, temp_copy, qtype, DB_NO_OIDS, true, true);
   if (qtype == NULL)
     {
       error = er_errid ();
@@ -9523,7 +9511,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser,
     order_by_item = pt_make_sort_spec_with_number (parser, 1, PT_ASC);
     node->info.query.order_by =
       parser_append_node (order_by_item, node->info.query.order_by);
-    }
+  }
   return node;
 }
 

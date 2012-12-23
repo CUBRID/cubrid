@@ -206,7 +206,6 @@ extern "C"
 				      PT_NODE * query);
   extern PT_OP_TYPE pt_op_type_from_default_expr_type (DB_DEFAULT_EXPR_TYPE
 						       expr_type);
-
   extern int pt_associate_label_with_value_check_reference (const char *label,
 							    DB_VALUE * val);
   extern DB_VALUE *pt_find_value_of_label (const char *label);
@@ -523,7 +522,8 @@ extern "C"
 					     PT_NODE * query,
 					     DB_QUERY_TYPE * list,
 					     const int include_oid,
-					     bool want_spec_entity_name);
+					     bool want_spec_entity_name,
+					     bool fixup_columns_type);
   extern void pt_free_query_etc_area (PT_NODE * query);
   DB_OBJECT *pt_find_users_class (PARSER_CONTEXT * parser, PT_NODE * name);
   DB_ATTRIBUTE *db_get_attribute_force (DB_OBJECT * obj, const char *name);

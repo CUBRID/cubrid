@@ -60,6 +60,7 @@ static DB_QUERY_TYPE *pt_get_node_title (PARSER_CONTEXT * parser,
 					 const PT_NODE * from_list);
 static PT_NODE *pt_get_from_list (const PARSER_CONTEXT * parser,
 				  const PT_NODE * query);
+static void pt_fixup_select_columns_type (PT_NODE * columns);
 
 /*
  * pt_find_size_from_dbtype () -  return bytesize of memory representation of
@@ -614,6 +615,16 @@ pt_get_from_list (const PARSER_CONTEXT * parser, const PT_NODE * query)
     }
 }
 
+static void
+pt_fixup_select_columns_type (PT_NODE * columns)
+{
+  PT_NODE *col = NULL;
+  for (col = columns; col != NULL; col = col->next)
+    {
+      pt_fixup_column_type (col);
+    }
+}
+
 /*
  * pt_get_titles() - creates, initializes, returns DB_QUERY_TYPE describing the
  *   		     output columns titles of the given query
@@ -884,12 +895,13 @@ error:
  *   query(out): abstract syntax tree form of a SELECT expression
  *   list(in/out): a partially initialized DB_QUERY_TYPE list
  *   oids_included(in):
+ *   fixup_columns_type(in): whether fixup column type
  */
 
 DB_QUERY_TYPE *
 pt_fillin_type_size (PARSER_CONTEXT * parser, PT_NODE * query,
 		     DB_QUERY_TYPE * list, const int oids_included,
-		     bool want_spec_entity_name)
+		     bool want_spec_entity_name, bool fixup_columns_type)
 {
   DB_QUERY_TYPE *q, *t;
   PT_NODE *s, *from_list;
@@ -899,11 +911,19 @@ pt_fillin_type_size (PARSER_CONTEXT * parser, PT_NODE * query,
   char *original_name;
 
   s = pt_get_select_list (parser, query);
+  if (s == NULL || list == NULL)
+    {
+      return list;
+    }
+
+  if (fixup_columns_type)
+    {
+      /* fixup the columns of union statement */
+      pt_fixup_select_columns_type (s);
+    }
   from_list = pt_get_from_list (parser, query);
   /* from_list is allowed to be NULL for supporting SELECT without references
      to tables */
-  if (!s || !list)
-    return list;
 
   if (oids_included == 1)
     {
