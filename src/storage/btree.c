@@ -462,8 +462,12 @@ static int btree_delete_lock_curr_key_next_pseudo_oid (THREAD_ENTRY *
 						       BTID_INT * btid_int,
 						       RECDES * rec,
 						       int offset,
+						       VPID * P_vpid,
+						       PAGE_PTR * P_page,
 						       VPID * first_ovfl_vpid,
-						       OID * class_oid);
+						       OID * class_oid,
+						       bool *
+						       search_without_locking);
 static int btree_get_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 			     int slot_id, RECDES * rec, int is_peeking);
 static bool btree_is_new_file (BTID_INT * btid_int);
@@ -7742,8 +7746,15 @@ exit_on_error:
  *   btid(in): B+tree index identifier
  *   rec(in): leaf record
  *   offset(in): offset of oid(s) following the key
+ *   P_vpid(in): vpid of page where rec reside
+ *   P_page(in/out): page where rec reside
+ *		     *P_page can be modified when resume after uncond locking
  *   first_ovfl_vpid(in): first overflow vpid of leaf record
  *   class_oid(in): class oid
+ *   search_without_locking(out): true when the lock is acquired and
+ *				 the page where the key reside must
+ *				 be searched again
+ *				  if true, *P_page is set to NULL
  *
  * Note:
  *  This function must be called by btree_delete if the following conditions
@@ -7758,22 +7769,31 @@ int
 btree_delete_lock_curr_key_next_pseudo_oid (THREAD_ENTRY * thread_p,
 					    BTID_INT * btid_int,
 					    RECDES * rec, int offset,
+					    VPID * P_vpid,
+					    PAGE_PTR * P_page,
 					    VPID * first_ovfl_vpid,
-					    OID * class_oid)
+					    OID * class_oid,
+					    bool * search_without_locking)
 {
   PAGE_PTR O_page = NULL;
-  int ret_val = NO_ERROR;
+  int ret_val = NO_ERROR, lock_ret;
   RECDES peek_recdes;
-  OID temp_oid, last_oid, last_pseudo_oid;
+  OID temp_oid, last_oid;
   char *header_ptr = NULL;
   VPID O_vpid;
+  PAGE_PTR P = NULL;
 
   assert_release (btid_int != NULL);
   assert_release (rec != NULL);
   assert_release (first_ovfl_vpid != NULL);
   assert_release (class_oid != NULL);
+  assert_release (P_vpid != NULL);
+  assert_release (P_page != NULL);
+  assert_release (search_without_locking != NULL);
+  assert_release (*P_page != NULL);
 
   OID_SET_NULL (&last_oid);
+  *search_without_locking = false;
 
   O_vpid = *first_ovfl_vpid;
   /* find the last overflow page */
@@ -7822,18 +7842,62 @@ btree_delete_lock_curr_key_next_pseudo_oid (THREAD_ENTRY * thread_p,
     }
 
   btree_make_pseudo_oid (last_oid.pageid, last_oid.slotid,
-			 last_oid.volid, btid_int->sys_btid,
-			 &last_pseudo_oid);
+			 last_oid.volid, btid_int->sys_btid, &last_oid);
 
-  if (lock_object_with_btid (thread_p, &last_pseudo_oid, class_oid,
-			     btid_int->sys_btid, NX_LOCK, LK_COND_LOCK)
-      != LK_GRANTED)
+  lock_ret = lock_object_with_btid (thread_p, &last_oid, class_oid,
+				    btid_int->sys_btid, NX_LOCK,
+				    LK_COND_LOCK);
+  if (lock_ret == LK_GRANTED)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_GET_KEY_LOCK,
-	      6, last_pseudo_oid.volid, last_pseudo_oid.pageid,
-	      last_pseudo_oid.slotid, last_oid.volid, last_oid.pageid,
-	      last_oid.slotid);
-      ret_val = ER_CANNOT_GET_KEY_LOCK;
+      goto end;
+    }
+  else if (lock_ret == LK_NOTGRANTED_DUE_TIMEOUT)
+    {
+      /* acquire uncond lock */
+      LOG_LSA cur_leaf_lsa;
+
+      if (O_page != NULL)
+	{
+	  /* release overflow page */
+	  pgbuf_unfix_and_init (thread_p, O_page);
+	}
+
+      LSA_COPY (&cur_leaf_lsa, pgbuf_get_lsa (*P_page));
+      pgbuf_unfix_and_init (thread_p, *P_page);
+
+      /* UNCONDITIONAL lock request */
+      lock_ret = lock_object_with_btid (thread_p, &last_oid, class_oid,
+					btid_int->sys_btid, NX_LOCK,
+					LK_UNCOND_LOCK);
+      if (lock_ret != LK_GRANTED)
+	{
+	  ret_val = ER_FAILED;
+	  goto end;
+	}
+
+      *P_page = pgbuf_fix (thread_p, P_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+			   PGBUF_UNCONDITIONAL_LATCH);
+      if (*P_page == NULL)
+	{
+	  ret_val = ER_FAILED;
+	  goto end;
+	}
+
+      if (!LSA_EQ (&cur_leaf_lsa, pgbuf_get_lsa (*P_page)))
+	{
+	  /* current page changed during unconditional lock request
+	   * the page where the key reside must be searched again
+	   * the locks have been acquired
+	   */
+	  pgbuf_unfix_and_init (thread_p, *P_page);
+	  *search_without_locking = true;
+	  goto end;
+	}
+    }
+  else
+    {
+      ret_val = ER_FAILED;
+      goto end;
     }
 
 end:
@@ -7909,6 +7973,7 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   int oid_size;
   bool curr_key_lock_commit_duration = false;
   bool delete_first_key_oid = false;
+  bool search_without_locking = false;
 #if defined(SERVER_MODE)
   bool old_check_interrupt;
 #endif /* SERVER_MODE */
@@ -8179,10 +8244,18 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
 start_point:
 
-  curr_key_lock_commit_duration = false;
+  if (search_without_locking == false)
+    {
+      curr_key_lock_commit_duration = false;
+    }
+  else
+    {
+      /* preserve values of curr_key_lock_commit_duration, curr_lock_flag
+       */
+    }
+
   if (next_lock_flag == true || curr_lock_flag == true)
     {
-
       P_vpid.volid = btid->vfid.volid;	/* read the root page */
       P_vpid.pageid = btid->root_pageid;
       P = pgbuf_fix (thread_p, &P_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
@@ -8609,6 +8682,10 @@ start_point:
 
   p_slot_id = NULL_SLOTID;
 
+  if (nextkey_lock_request == false || search_without_locking == true)
+    {
+      goto key_deletion;
+    }
   /* keys(the number of keyvals) of the leaf page is valid */
 
   if (locked_keys == BTREE_ALL_KEYS_LOCKED)
@@ -8634,12 +8711,15 @@ start_point:
 				 curr_key_first_oid.slotid,
 				 curr_key_first_oid.volid, btid_int.sys_btid,
 				 &C_oid);
-	  curr_key_oids_cnt =
-	    btree_leaf_get_num_oids (&peek_recdes1, offset,
-				     BTREE_LEAF_NODE, oid_size);
+	  assert (lock_get_object_lock (&C_oid, &C_class_oid,
+					LOG_FIND_THREAD_TRAN_INDEX
+					(thread_p)) == NX_LOCK);
+	  curr_key_oids_cnt = btree_leaf_get_num_oids (&peek_recdes1, offset,
+						       BTREE_LEAF_NODE,
+						       oid_size);
 	  if (curr_key_oids_cnt > 1
-	      || (curr_key_oids_cnt == 1 &&
-		  leaf_pnt.ovfl.pageid != NULL_PAGEID))
+	      || (curr_key_oids_cnt == 1
+		  && leaf_pnt.ovfl.pageid != NULL_PAGEID))
 	    {
 	      curr_key_lock_commit_duration = true;
 	    }
@@ -8652,11 +8732,23 @@ start_point:
 	    {
 	      /* at least 2 OIDS, and the first one is removed
 	         lock the second OID */
-	      if (btree_delete_lock_curr_key_next_pseudo_oid
-		  (thread_p, &btid_int, &peek_recdes1, offset,
-		   &leaf_pnt.ovfl, &C_class_oid) != NO_ERROR)
+	      if (btree_delete_lock_curr_key_next_pseudo_oid (thread_p,
+							      &btid_int,
+							      &peek_recdes1,
+							      offset,
+							      &P_vpid, &P,
+							      &leaf_pnt.ovfl,
+							      &C_class_oid,
+							      &search_without_locking)
+		  != NO_ERROR)
 		{
 		  goto error;
+		}
+
+	      if (search_without_locking)
+		{
+		  curr_lock_flag = true;
+		  goto start_point;
 		}
 	    }
 
@@ -8672,13 +8764,9 @@ start_point:
 	  btree_set_unknown_key_error (thread_p, &btid_int, key,
 				       "btree_delete_from_leaf: "
 				       "btree_search_leaf_page fails, "
-				       "next key not found.");
+				       "current key not found.");
 	  goto error;
 	}
-    }
-  if (nextkey_lock_request == false)
-    {
-      goto key_deletion;
     }
 
   /* save node info. of the leaf page
@@ -8912,9 +9000,8 @@ start_point:
     }
 
   /* CONDITIONAL lock request */
-  ret_val =
-    lock_object_with_btid (thread_p, &N_oid, &N_class_oid, btid, NX_LOCK,
-			   LK_COND_LOCK);
+  ret_val = lock_object_with_btid (thread_p, &N_oid, &N_class_oid, btid,
+				   NX_LOCK, LK_COND_LOCK);
   if (ret_val == LK_GRANTED)
     {
       next_lock_flag = true;
@@ -9062,10 +9149,18 @@ curr_key_locking:
   if (locked_keys == BTREE_CURRENT_KEYS_LOCKED)
     {
       /* current key lock already granted */
+#if !defined (NDEBUG)
+      LOCK lk;
+
+      lk = lock_get_object_lock (&C_oid, &C_class_oid,
+				 LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+      assert (lk == NX_LOCK);
+#endif
       ret_val = LK_GRANTED;
       curr_lock_flag = true;
     }
-  else if (curr_key_lock_commit_duration == true && !delete_first_key_oid)
+  else if ((curr_key_lock_commit_duration == true)
+	   && (!delete_first_key_oid || locked_keys == BTREE_NO_KEY_LOCKED))
     {
       ret_val = lock_object_with_btid (thread_p, &C_oid, &C_class_oid, btid,
 				       NX_LOCK, LK_COND_LOCK);
@@ -9084,8 +9179,8 @@ curr_key_locking:
     }
   else
     {
-      ret_val =
-	lock_hold_object_instant (thread_p, &C_oid, &C_class_oid, NX_LOCK);
+      ret_val = lock_hold_object_instant (thread_p, &C_oid, &C_class_oid,
+					  NX_LOCK);
     }
 
   if (ret_val == LK_GRANTED)
@@ -9112,9 +9207,8 @@ curr_key_locking:
 	      && temp_page == NULL);
 
       /* UNCONDITIONAL lock request */
-      ret_val =
-	lock_object_with_btid (thread_p, &C_oid, &C_class_oid, btid, NX_LOCK,
-			       LK_UNCOND_LOCK);
+      ret_val = lock_object_with_btid (thread_p, &C_oid, &C_class_oid, btid,
+				       NX_LOCK, LK_UNCOND_LOCK);
       if (ret_val != LK_GRANTED)
 	{
 	  goto error;
@@ -9158,11 +9252,23 @@ curr_key_locking:
 curr_key_lock_consistency:
   if (curr_key_lock_commit_duration == true && delete_first_key_oid)
     {
-      if (btree_delete_lock_curr_key_next_pseudo_oid
-	  (thread_p, &btid_int, &peek_recdes1, offset, &leaf_pnt.ovfl,
-	   &C_class_oid) != NO_ERROR)
+      assert (search_without_locking == false);
+      assert (curr_lock_flag == true);
+
+      if (btree_delete_lock_curr_key_next_pseudo_oid (thread_p, &btid_int,
+						      &peek_recdes1, offset,
+						      &P_vpid, &P,
+						      &leaf_pnt.ovfl,
+						      &C_class_oid,
+						      &search_without_locking)
+	  != NO_ERROR)
 	{
 	  goto error;
+	}
+
+      if (search_without_locking)
+	{
+	  goto start_point;
 	}
     }
 
@@ -20552,9 +20658,9 @@ btree_rv_keyval_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   datasize = recv->length;
   btree_rv_read_keyval_info_nocopy (thread_p, datap, datasize,
 				    &btid, &cls_oid, &oid, &key);
-  if (btree_delete
-      (thread_p, btid.sys_btid, &key, &cls_oid, &oid, BTREE_NO_KEY_LOCKED,
-       &dummy, SINGLE_ROW_MODIFY, (BTREE_UNIQUE_STATS *) NULL) == NULL)
+  if (btree_delete (thread_p, btid.sys_btid, &key, &cls_oid, &oid,
+		    BTREE_NO_KEY_LOCKED, &dummy, SINGLE_ROW_MODIFY,
+		    (BTREE_UNIQUE_STATS *) NULL) == NULL)
     {
       int err;
 

@@ -1167,7 +1167,7 @@ $ LOADDB
 1098 Dil '%s'konumu karakter kümesindeki'%s' kullanılmaz.
 1099 DDL deyimini yapılandırma (block_ddl_statement = yes) tarafından izin verilmiyor.
 1100 Jümlelerde görülmeyen konumun ifadesi dış boyutlar tarafından izin verilmez(block_nowhere_statement=yes)
-1101 Şu anki işlem yapışıkları elde ederek OID (%4$d|%5$d|%6$d) nın PSEUDO-OID (%1$d|%2$d|%3$d) üzerindeki bir tuş kilidine verelmez.
+1101 Kullanılmayan hata kodu.
 1102 Unknown system parameter or bad value.
 1103 Cannot change system parameter.
 1104 Slow query (%d msec)\n%s
