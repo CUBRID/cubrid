@@ -1167,7 +1167,7 @@ $ LOADDB
 1098 Paramètres régionaux pour la langue '%s' ne sont pas disponibles avec jeux de caractères codés '%s'.
 1099 Instruction DDL est interdit par la configuration (block_ddl_statement=yes).
 1100 Instruction sans clause WHERE est interdit par la configuration (block_nowhere_statement=yes).
-1101 Code d'erreur pas utilisé.
+1101 Le transaction en cours ne pourrait acquérir un verrou à clé sur (%1$d|%2$d|%3$d) ci-joint à l'OID (%4$d|%5$d|%6$d)
 1102 Paramètre du système inconnu ou mauvaise valeur.
 1103 Impossible de changer le paramètre du système.
 1104 Slow query (%d msec)\n%s

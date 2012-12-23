@@ -1166,7 +1166,7 @@ $ LOADDB
 1097 列 '%s' 不能同时制定主键约束和 NULL缺省值.
 1098 区域中的语言 '%s' 在字符集 '%s' 中无效.
 1099 DDL 语句在配置中设为不允许 (block_ddl_statement=yes).
-1101 未使用的错误号.
+1100 没有where子句的语句在配置中设为不允许 (block_nowhere_statement=yes).
 1101 当前事务不能取得 PSEUDO-OID (%1$d|%2$d|%3$d) 上的锁， 该 PSEUDO-OID 附属于 OID (%4$d|%5$d|%6$d)
 1102 未知系统参数或错误的值.
 1103 不能改变系统参数.
