@@ -2188,7 +2188,23 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
       err_code = db_error_code ();
       if (err_code < 0)
 	{
-	  err_msg = (char *) db_error_string (1);
+	  if (auto_commit_mode == FALSE
+	      && (ER_IS_SERVER_DOWN_ERROR (err_code)
+		  || ER_IS_ABORTED_DUE_TO_DEADLOCK (err_code)))
+	    {
+	      if (session != NULL)
+		{
+		  db_close_session (session);
+		}
+
+	      err_code = ERROR_INFO_SET (err_code, CAS_ERROR_INDICATOR);
+	      goto execute_batch_error;
+	    }
+	  else
+	    {
+	      err_msg = (char *) db_error_string (1);
+	      errors_in_transaction++;
+	    }
 	}
       else
 	{
@@ -2218,6 +2234,12 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
     }
 
   return 0;
+
+execute_batch_error:
+  NET_BUF_ERR_SET (net_buf);
+  errors_in_transaction++;
+
+  return err_code;
 }
 
 int
@@ -2386,10 +2408,26 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
 
     exec_db_error:
       err_code = db_error_code ();
+
       if (err_code < 0)
 	{
-	  err_msg = (char *) db_error_string (1);
-	  errors_in_transaction++;
+	  if (auto_commit_mode == FALSE
+	      && (ER_IS_SERVER_DOWN_ERROR (err_code)
+		  || ER_IS_ABORTED_DUE_TO_DEADLOCK (err_code)))
+	    {
+	      if (is_prepared == FALSE && session != NULL)
+		{
+		  db_close_session (session);
+		}
+
+	      err_code = ERROR_INFO_SET (err_code, CAS_ERROR_INDICATOR);
+	      goto execute_array_error;
+	    }
+	  else
+	    {
+	      err_msg = (char *) db_error_string (1);
+	      errors_in_transaction++;
+	    }
 	}
       else
 	{

@@ -103,6 +103,25 @@ enum er_level
 
 typedef void (*PTR_FNERLOG) (int err_id);
 
+#define ER_IS_LOCK_TIMEOUT_ERROR(err)                            \
+           ((err) == ER_LK_UNILATERALLY_ABORTED                  \
+            || (err) == ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG          \
+            || (err) == ER_LK_OBJECT_TIMEOUT_CLASS_MSG           \
+            || (err) == ER_LK_OBJECT_TIMEOUT_CLASSOF_MSG         \
+            || (err) == ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG       \
+            || (err) == ER_LK_OBJECT_DL_TIMEOUT_CLASS_MSG        \
+            || (err) == ER_LK_OBJECT_DL_TIMEOUT_CLASSOF_MSG)
+
+#define ER_IS_ABORTED_DUE_TO_DEADLOCK(err)                       \
+           ((err) == ER_LK_UNILATERALLY_ABORTED)
+
+#define ER_IS_SERVER_DOWN_ERROR(err)                            \
+           ((err) == ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED     \
+            || (err) == ER_NET_SERVER_CRASHED                   \
+            || (err) == ER_OBJ_NO_CONNECT                       \
+            || (err) == ER_BO_CONNECT_FAILED)
+
+
 /*
  * Definition of error message structure. One structure is defined for each
  * thread of execution. Note message areas are stored in the structure for

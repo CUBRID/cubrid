@@ -43,21 +43,6 @@
 #include "network_interface_cl.h"
 
 
-#define LOCK_TIMEOUT_ERROR(err)                                  \
-           ((err) == ER_LK_UNILATERALLY_ABORTED                  \
-            || (err) == ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG          \
-            || (err) == ER_LK_OBJECT_TIMEOUT_CLASS_MSG           \
-            || (err) == ER_LK_OBJECT_TIMEOUT_CLASSOF_MSG         \
-            || (err) == ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG       \
-            || (err) == ER_LK_OBJECT_DL_TIMEOUT_CLASS_MSG        \
-            || (err) == ER_LK_OBJECT_DL_TIMEOUT_CLASSOF_MSG)
-
-#define SERVER_DOWN_ERROR(err)                                  \
-           ((err) == ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED     \
-            || (err) == ER_NET_SERVER_CRASHED                   \
-            || (err) == ER_OBJ_NO_CONNECT                       \
-            || (err) == ER_BO_CONNECT_FAILED)
-
 static int pt_find_size_from_dbtype (const DB_TYPE T_type);
 static int pt_arity_of_query_type (const DB_QUERY_TYPE * qt);
 static char *pt_get_attr_name (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -318,7 +303,7 @@ pt_report_to_ersys (const PARSER_CONTEXT * parser,
   if (error_node && error_node->node_type == PT_ZZ_ERROR_MSG)
     {
       err = er_errid ();
-      if (!LOCK_TIMEOUT_ERROR (err) && !SERVER_DOWN_ERROR (err))
+      if (!ER_IS_LOCK_TIMEOUT_ERROR (err) && !ER_IS_SERVER_DOWN_ERROR (err))
 	{
 	  switch (error_type)
 	    {
@@ -383,7 +368,7 @@ pt_report_to_ersys_with_statement (PARSER_CONTEXT * parser,
   if (error_node && error_node->node_type == PT_ZZ_ERROR_MSG)
     {
       err = er_errid ();
-      if (!LOCK_TIMEOUT_ERROR (err) && !SERVER_DOWN_ERROR (err))
+      if (!ER_IS_LOCK_TIMEOUT_ERROR (err) && !ER_IS_SERVER_DOWN_ERROR (err))
 	{
 	  switch (error_type)
 	    {
