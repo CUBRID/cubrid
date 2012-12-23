@@ -279,7 +279,11 @@ static const int LOG_BKUP_HASH_NUM_PAGEIDS = 1000;
 #define LOG_MAX_LOGINFO_LINE (PATH_MAX * 4)
 
 /* skip prompting for archive log location */
+#if defined(SERVER_MODE)
+int log_default_input_for_archive_log_location = 0;
+#else
 int log_default_input_for_archive_log_location = -1;
+#endif
 
 LOG_PB_GLOBAL_DATA log_Pb = {
   NULL, NULL, NULL, 0, 0
