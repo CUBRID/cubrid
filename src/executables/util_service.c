@@ -1265,6 +1265,26 @@ process_server (int command_type, int argc, char **argv,
 		}
 
 	      args[3] = token;
+
+	      /* load parameters for [@database] section */
+	      if (check_ha_mode == true)
+		{
+		  status = sysprm_load_and_init (token, NULL);
+		  if (status != NO_ERROR)
+		    {
+		      print_result (PRINT_SERVER_NAME, status, command_type);
+		      break;
+		    }
+
+		  if (util_get_ha_mode_for_sa_utils () != HA_MODE_OFF)
+		    {
+		      status = ER_GENERIC_ERROR;
+		      print_message (stderr, MSGCAT_UTIL_GENERIC_HA_MODE);
+		      print_result (PRINT_SERVER_NAME, status, command_type);
+		      break;
+		    }
+		}
+
 	      status =
 		proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
 			      false, false, NULL);
