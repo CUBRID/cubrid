@@ -9014,6 +9014,11 @@ pt_make_query_show_exec_stats (PARSER_CONTEXT * parser)
     "UNION ALL (SELECT 'data_page_ioreads' as [variable] , exec_stats('Num_data_page_ioreads') as [value])"
     "UNION ALL (SELECT 'data_page_iowrites' as [variable] , exec_stats('Num_data_page_iowrites') as [value]);";
 
+  /* parser ';' will empty and reset the stack of parser, 
+   * this make the status machine be right for the next statement, 
+   * and avoid nested parser statement. */
+  parser_parse_string (parser, ";");
+
   lang_set_parser_use_client_charset (false);
   node = parser_parse_string (parser, query);
   lang_set_parser_use_client_charset (true);
@@ -9097,6 +9102,11 @@ pt_make_query_show_exec_stats_all (PARSER_CONTEXT * parser)
     "UNION ALL (SELECT 'prior_lsa_list_removed' as [variable] , exec_stats('Num_prior_lsa_list_removed') as [value])"
     "UNION ALL (SELECT 'heap_stats_bestspace_entries' as [variable] , exec_stats('Num_heap_stats_bestspace_entries') as [value])"
     "UNION ALL (SELECT 'heap_stats_bestspace_maxed' as [variable] , exec_stats('Num_heap_stats_bestspace_maxed') as [value])";
+
+  /* parser ';' will empty and reset the stack of parser, 
+   * this make the status machine be right for the next statement, 
+   * and avoid nested parser statement. */
+  parser_parse_string (parser, ";");
 
   lang_set_parser_use_client_charset (false);
   node = parser_parse_string (parser, query);
