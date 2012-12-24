@@ -1395,7 +1395,9 @@
 
 #define ER_INVALID_DATA_FOR_PARTITION		    -1109
 
-#define ER_LAST_ERROR                               -1110
+#define ER_BTREE_NO_SPACE			    -1110
+
+#define ER_LAST_ERROR                               -1111
 
 /*
  * CAUTION!

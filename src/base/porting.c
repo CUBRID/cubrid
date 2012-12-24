@@ -1926,3 +1926,69 @@ timeval_to_timespec (struct timespec *to, const struct timeval *from)
 
   return NO_ERROR;
 }
+
+
+/*
+ * port_open_memstream - make memory stream file handle if possible. 
+ *			 if not, make temporiry file handle.
+ *   return: file handle
+ *
+ *   ptr (out): memory stream (or temp file name)
+ *   sizeloc (out): stream size
+ *
+ *   NOTE: this function use memory allocation in it.
+ *         so you should ensure that stream size is not too huge
+ *         before you use this.
+ */
+FILE *
+port_open_memstream (char **ptr, size_t * sizeloc)
+{
+#ifdef HAVE_OPEN_MEMSTREAM
+  return open_memstream (ptr, sizeloc);
+#else
+  *ptr = tempnam (NULL, "cubrid_");
+  return fopen (*ptr, "w+");
+#endif
+}
+
+
+/*
+ * port_close_memstream - flush file handle and close
+ *
+ *   fp (in): file handle to close 
+ *   ptr (in/out): memory stream (out) or temp file name (in)
+ *   sizeloc (out): stream size
+ *
+ *   NOTE: you should call this function before refer ptr
+ *         this function flush contents to ptr before close handle
+ */
+void
+port_close_memstream (FILE * fp, char **ptr, size_t * sizeloc)
+{
+  char *buff;
+
+  if (fp)
+    {
+#ifdef HAVE_OPEN_MEMSTREAM
+      fclose (fp);
+#else
+      fseek (fp, 0, SEEK_END);
+      *sizeloc = ftell (fp);
+      buff = malloc (*sizeloc + 1);
+      if (buff)
+	{
+	  fseek (fp, 0, SEEK_SET);
+	  fread (buff, 1, *sizeloc, fp);
+	  buff[*sizeloc] = 0;
+	}
+      fclose (fp);
+
+      /* tempname from port_open_memstream */
+      unlink (*ptr);
+      free (*ptr);
+
+      /* set output */
+      *ptr = buff;
+#endif
+    }
+}

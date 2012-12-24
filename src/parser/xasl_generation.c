@@ -15993,49 +15993,25 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 
   if (xasl && plan)
     {
-#ifdef HAVE_OPEN_MEMSTREAM
       char *ptr;
       size_t sizeloc;
 
-      FILE *fp = open_memstream (&ptr, &sizeloc);
+      FILE *fp = port_open_memstream (&ptr, &sizeloc);
       if (fp)
 	{
-	  int size;
 	  char *qplan;
 
 	  qo_plan_lite_print (plan, fp, 0);
-	  fclose (fp);
+	  port_close_memstream (fp, &ptr, &sizeloc);
 
-	  size = strlen (ptr);
-	  qplan = pt_alloc_packing_buf (size);
-	  strncpy (qplan, ptr, size);
-	  free (ptr);
-
-	  xasl->qplan = qplan;
+	  if (ptr)
+	    {
+	      qplan = pt_alloc_packing_buf (sizeloc);
+	      strncpy (qplan, ptr, sizeloc);
+	      free (ptr);
+	      xasl->qplan = qplan;
+	    }
 	}
-#else
-      char *pname = tempnam (NULL, "plan");
-      FILE *fp = fopen (pname, "w+");
-      if (fp)
-	{
-	  int size;
-	  char *qplan;
-
-	  qo_plan_lite_print (plan, fp, 0);
-	  fseek (fp, 0, SEEK_END);
-	  size = ftell (fp);
-	  qplan = pt_alloc_packing_buf (size + 1);
-	  fseek (fp, 0, SEEK_SET);
-	  fread (qplan, 1, size, fp);
-	  qplan[size] = 0;
-
-	  fclose (fp);
-	  unlink (pname);
-	  free (pname);
-
-	  xasl->qplan = qplan;
-	}
-#endif
     }
 
   if (plan)
@@ -22246,7 +22222,7 @@ pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
 	{
 	  (void) parser_walk_tree (parser, del_search_cond, NULL, NULL,
 				   pt_substitute_assigned_name_node,
-				   (void*) info->update.assignment);
+				   (void *) info->update.assignment);
 	}
       else
 	{
@@ -23027,7 +23003,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
     }
   /* need to jump upd_del_class_cnt OID-CLASS OID pairs */
   attr_offset = aptr_statement->info.query.upd_del_class_cnt * 2
-		+ (info->update.has_delete ? 1 : 0);
+    + (info->update.has_delete ? 1 : 0);
   error = pt_to_constraint_pred (parser, xasl, info->into,
 				 *non_null_attrs, select_names, attr_offset);
   pt_restore_assignment_links (info->update.assignment, links, -1);

@@ -1176,7 +1176,8 @@ $ LOADDB
 1107 Invalid bucket number for NTILE. Should be greater than zero and no more than 2,147,483,647.
 1108 Invalid bucket number for WIDTH_BUCKET. Should be greater than zero and less than 2,147,483,647.
 1109 Invalid value for partition definition.
-1110 Dernière erreur
+1110 Insufficient space in btree leaf page. (key len: %d)\n%s
+1111 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %d):

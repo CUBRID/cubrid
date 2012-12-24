@@ -9353,9 +9353,32 @@ btree_insert_oid_with_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid,
       /* if this block is entered, that means there is not enough space
        * in the leaf page for a new key. This shows a bug in the algorithm.
        */
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      er_log_debug (ARG_FILE_LINE,
-		    "btree_insert_into_leaf: no space to insert a new key.");
+      char *ptr = NULL;
+      FILE *fp = NULL;
+      size_t sizeloc;
+
+      fp = port_open_memstream (&ptr, &sizeloc);
+      if (fp)
+	{
+	  VPID *vpid = pgbuf_get_vpid_ptr (leaf_page);
+
+	  btree_dump_page (thread_p, fp, cls_oid, btid,
+			   NULL, leaf_page, vpid, 2, 2);
+	  spage_dump (thread_p, fp, leaf_page, true);
+	  port_close_memstream (fp, &ptr, &sizeloc);
+	}
+
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BTREE_NO_SPACE,
+	      2, rec.length, ptr);
+
+      if (ptr)
+	{
+	  free (ptr);
+	}
+
+      assert_release (false);
+      ret = ER_BTREE_NO_SPACE;
+
       goto exit_on_error;
     }
 
@@ -10479,14 +10502,22 @@ btree_find_split_point (THREAD_ENTRY * thread_p,
 	      sum += spage_get_space_for_record (page_ptr, i);
 	    }
 
+
 	  if (sum < mid_size)
 	    {
 	      /* new key insert into left node */
 	      sum += ent_size;
 	      key_read = true;
+
 	      for (; sum < mid_size && i <= n; i++)
 		{
-		  sum += spage_get_space_for_record (page_ptr, i);
+		  int len = spage_get_space_for_record (page_ptr, i);
+		  if (sum + len >= mid_size)
+		    {
+		      break;
+		    }
+
+		  sum += len;
 		}
 	    }
 	  else
@@ -11875,9 +11906,9 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   PAGEID_STRUCT pageid_struct;	/* for recovery purposes */
   int key_added;
   BTID_INT btid_int;
-  int next_page_flag = false;
-  int next_lock_flag = false;
-  int curr_lock_flag = false;
+  bool next_page_flag = false;
+  bool next_lock_flag = false;
+  bool curr_lock_flag = false;
   OID class_oid;
   LOCK class_lock = NULL_LOCK;
   int tran_index;
@@ -11912,6 +11943,7 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 #if defined(SERVER_MODE)
   bool old_check_interrupt;
 #endif /* SERVER_MODE */
+  int retry_btree_no_space = 0;
 
 #if defined(SERVER_MODE)
   old_check_interrupt = thread_set_check_interrupt (thread_p, false);
@@ -13253,12 +13285,60 @@ key_insertion:
    */
   key_added = 0;
 
-  if (btree_insert_into_leaf (thread_p, &key_added, &btid_int,
-			      P, key, &class_oid, oid, &P_vpid,
-			      op_type, key_found, p_slot_id) != NO_ERROR)
+  ret_val = btree_insert_into_leaf (thread_p, &key_added, &btid_int,
+				    P, key, &class_oid, oid, &P_vpid,
+				    op_type, key_found, p_slot_id);
+
+  if (ret_val != NO_ERROR)
     {
+      if (ret_val == ER_BTREE_NO_SPACE)
+	{
+	  char *ptr = NULL;
+	  FILE *fp = NULL;
+	  size_t sizeloc;
+
+	  fp = port_open_memstream (&ptr, &sizeloc);
+	  if (fp)
+	    {
+	      btree_dump_page (thread_p, fp, &class_oid, &btid_int,
+			       NULL, P, &P_vpid, 2, 2);
+	      spage_dump (thread_p, fp, P, true);
+	      port_close_memstream (fp, &ptr, &sizeloc);
+	    }
+
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_NO_SPACE, 2,
+		  key_len, ptr);
+
+	  if (ptr)
+	    {
+	      free (ptr);
+	    }
+
+	  retry_btree_no_space++;
+
+	  if (retry_btree_no_space <= 1)
+	    {
+	      /* ER_BTREE_NO_SPACE can be made by split node algorithm
+	       * In this case, release resource and retry it one time.
+	       */
+	      assert (top_op_active == 0);
+	      assert (Q == NULL);
+	      assert (R == NULL);
+	      assert (N == NULL);
+
+	      pgbuf_unfix_and_init (thread_p, P);
+
+	      goto start_point;
+	    }
+	}
+
       goto error;
     }
+
+  assert (top_op_active == 0);
+  assert (Q == NULL);
+  assert (R == NULL);
+  assert (N == NULL);
 
   pgbuf_unfix_and_init (thread_p, P);
 
@@ -13299,7 +13379,6 @@ key_insertion:
   return key;
 
 error:
-
   /* do not unfix P, Q, R before topop rollback */
   if (top_op_active)
     {
