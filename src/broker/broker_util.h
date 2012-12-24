@@ -70,6 +70,7 @@ extern int ut_access_log (int as_index, struct timeval *start_time,
 extern int ut_kill_process (int pid, char *br_name, int proxy_index,
 			    int shard_index, int as_index);
 extern void ut_cd_work_dir (void);
+extern void ut_cd_root_dir (void);
 
 extern int ut_set_keepalive (int sock, int keepalive_time);
 

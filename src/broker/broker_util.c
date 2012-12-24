@@ -390,6 +390,12 @@ ut_cd_work_dir ()
   chdir (envvar_bindir_file (path, PATH_MAX, ""));
 }
 
+void
+ut_cd_root_dir ()
+{
+  chdir (envvar_root ());
+}
+
 #ifdef V3_TEST
 int
 uts_size ()
