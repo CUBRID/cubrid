@@ -349,6 +349,20 @@ qo_get_optimization_param (void *retval, QO_PARAM param, ...)
 }
 
 /*
+ * qo_need_skip_execution (void) - check execution level and return skip or not
+ *				  
+ *   return: bool
+ */
+bool
+qo_need_skip_execution (void)
+{
+  int level;
+  qo_get_optimization_param (&level, QO_PARAM_LEVEL);
+
+  return level & 0x02;
+}
+
+/*
  * qo_set_optimization_param () - Return the old value of some (global)
  *				  optimization param, and set the global
  *				  param to the new value

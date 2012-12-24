@@ -158,6 +158,7 @@ extern QO_SEGMENT *lookup_seg (QO_NODE * head, PT_NODE * name, QO_ENV * env);
 extern void qo_expr_segs (QO_ENV * env, PT_NODE * pt_expr, BITSET * result);
 
 extern void qo_get_optimization_param (void *, QO_PARAM, ...);
+extern bool qo_need_skip_execution (void);
 extern void qo_set_optimization_param (void *, QO_PARAM, ...);
 extern QO_PLAN *qo_optimize_query (PARSER_CONTEXT *, PT_NODE *);
 extern XASL_NODE *qo_to_xasl (QO_PLAN *, XASL_NODE *);

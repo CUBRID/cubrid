@@ -11792,6 +11792,11 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
   else if (values_list->info.node_list.list_type == PT_IS_VALUE
 	   || values_list->info.node_list.list_type == PT_IS_DEFAULT_VALUE)
     {
+      if (qo_need_skip_execution ())
+	{
+	  return NO_ERROR;
+	}
+
       /* there is one value to insert into target class
          If we are doing PT_IS_DEFAULT_VALUE value_clause
          will be NULL and we will only make a template with
@@ -12955,16 +12960,9 @@ int
 do_insert (PARSER_CONTEXT * parser, PT_NODE * root_statement)
 {
   PT_NODE *statement = root_statement;
-  int level, error;
+  int error;
 
   CHECK_MODIFICATION_ERROR ();
-
-  qo_get_optimization_param (&level, QO_PARAM_LEVEL);
-
-  if (level & 0x02)
-    {
-      return NO_ERROR;
-    }
 
   error = insert_local (parser, statement);
 
@@ -15228,7 +15226,15 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  if (ins_select_stmt->etc == NULL)
 	    {
-	      /* in execution_level & 0x02 */
+	      err = er_errid ();
+	      if (err == NO_ERROR)
+		{
+		  if (qo_need_skip_execution () == false)
+		    {
+		      err = ER_GENERIC_ERROR;
+		    }
+		}
+
 	      goto exit;
 	    }
 	}

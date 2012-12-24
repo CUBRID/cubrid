@@ -61,16 +61,14 @@ query_prepare (const char *qstmt, const char *qplan,
 	       const char *stream, int size, XASL_ID ** xasl_idp,
 	       XASL_NODE_HEADER * xasl_header_p)
 {
-  int level;
   XASL_ID *p;
 
   assert (qstmt);
 
   *xasl_idp = NULL;
-  /* if QO_PARAM_LEVEL indicate no execution, just return */
-  qo_get_optimization_param (&level, QO_PARAM_LEVEL);
 
-  if (level & 0x02)
+  /* if QO_PARAM_LEVEL indicate no execution, just return */
+  if (qo_need_skip_execution ())
     {
       return NO_ERROR;
     }
@@ -120,15 +118,13 @@ query_execute (const XASL_ID * xasl_id, QUERY_ID * query_idp,
 	       QFILE_LIST_ID ** list_idp, QUERY_FLAG flag,
 	       CACHE_TIME * clt_cache_time, CACHE_TIME * srv_cache_time)
 {
-  int level;
   int query_timeout;
   int end_of_queries;
 
   *list_idp = NULL;
-  /* if QO_PARAM_LEVEL indicate no execution, just return */
-  qo_get_optimization_param (&level, QO_PARAM_LEVEL);
 
-  if (level & 0x02)
+  /* if QO_PARAM_LEVEL indicate no execution, just return */
+  if (qo_need_skip_execution ())
     {
       return NO_ERROR;
     }
@@ -171,13 +167,10 @@ query_prepare_and_execute (char *stream, int size, QUERY_ID * query_id,
 			   QFILE_LIST_ID ** result, QUERY_FLAG flag)
 {
   QFILE_LIST_ID *list_idptr;
-  int level;
   int query_timeout;
   int end_of_queries;
 
-  qo_get_optimization_param (&level, QO_PARAM_LEVEL);
-
-  if (level & 0x02)
+  if (qo_need_skip_execution ())
     {
       list_idptr = NULL;
     }
