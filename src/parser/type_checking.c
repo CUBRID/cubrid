@@ -2782,7 +2782,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
     case PT_TRUNC:
       num = 0;
 
-      /* four overloads */
+      /* five overloads */
 
       /* number types */
       sig.arg1_type.is_generic = true;
@@ -2794,6 +2794,18 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       /* return type */
       sig.return_type.is_generic = true;
       sig.return_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
+      def->overloads[num++] = sig;
+
+      /* number types 2 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.type = PT_GENERIC_TYPE_STRING;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.generic_type = PT_TYPE_DOUBLE;
       def->overloads[num++] = sig;
 
       /* date */

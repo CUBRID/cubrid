@@ -3037,9 +3037,14 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   DB_TYPE type1, type2;
   DB_BIGINT bi2;
   double dtmp;
-  DB_VALUE cast_value;
+  DB_VALUE cast_value, cast_format;
   int er_status = NO_ERROR;
   DB_DATE *date_p, date;
+  DB_DOMAIN *domain;
+  TP_DOMAIN_STATUS cast_status;
+
+  DB_MAKE_NULL (&cast_value);
+  DB_MAKE_NULL (&cast_format);
 
   if (DB_IS_NULL (value1) || DB_IS_NULL (value2))
     {
@@ -3049,10 +3054,78 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   type1 = DB_VALUE_DOMAIN_TYPE (value1);
   type2 = DB_VALUE_DOMAIN_TYPE (value2);
   if (type2 != DB_TYPE_SHORT && type2 != DB_TYPE_INTEGER
-      && type2 != DB_TYPE_BIGINT && !QSTR_IS_ANY_CHAR (type2))
+      && type2 != DB_TYPE_BIGINT && type2 != DB_TYPE_NUMERIC
+      && type2 != DB_TYPE_FLOAT && type2 != DB_TYPE_DOUBLE
+      && type2 != DB_TYPE_MONETARY && !QSTR_IS_ANY_CHAR (type2))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-      return ER_QPROC_INVALID_DATATYPE;
+      er_status = ER_QPROC_INVALID_DATATYPE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 0);
+
+      goto error;
+    }
+
+  /* convert value1 to double when it's a string */
+  switch (type1)
+    {
+    case DB_TYPE_SHORT:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_BIGINT:
+    case DB_TYPE_NUMERIC:
+    case DB_TYPE_FLOAT:
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_MONETARY:
+    case DB_TYPE_DATE:
+    case DB_TYPE_DATETIME:
+    case DB_TYPE_TIMESTAMP:
+      break;
+    default:			/* convert to double */
+      type1 = DB_TYPE_UNKNOWN;
+
+      /* try type double */
+      DB_MAKE_NULL (&cast_value);
+      domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+      cast_status = tp_value_coerce (value1, &cast_value, domain);
+      if (cast_status == DOMAIN_COMPATIBLE)
+	{
+	  type1 = DB_TYPE_DOUBLE;
+	  value1 = &cast_value;
+	}
+
+      /* convert fail */
+      if (type1 == DB_TYPE_UNKNOWN)
+	{
+	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
+	      true)
+	    {
+	      DB_MAKE_NULL (result);
+	      er_status = NO_ERROR;
+	    }
+	  else
+	    {
+	      er_status = ER_QPROC_INVALID_DATATYPE;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 0);
+	    }
+
+	  goto error;
+	}
+    }
+
+  /* translate default fmt */
+  if (type2 == DB_TYPE_CHAR &&
+      strcasecmp (DB_GET_STRING (value2), "default") == 0)
+    {
+      if (type1 == DB_TYPE_DATE || type1 == DB_TYPE_DATETIME
+	  || type1 == DB_TYPE_TIMESTAMP)
+	{
+	  DB_MAKE_STRING (&cast_format, "dd");
+	}
+      else
+	{
+	  DB_MAKE_INT (&cast_format, 0);
+	  type2 = DB_TYPE_INTEGER;
+	}
+
+      value2 = &cast_format;
     }
 
   if (type2 == DB_TYPE_INTEGER)
@@ -3066,6 +3139,30 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   else if (type2 == DB_TYPE_SHORT)
     {
       bi2 = DB_GET_SHORT (value2);
+    }
+  else if (type1 != DB_TYPE_DATE
+	   && type1 != DB_TYPE_DATETIME && type1 != DB_TYPE_TIMESTAMP)
+    {
+      domain = tp_domain_resolve_default (DB_TYPE_BIGINT);
+      cast_status = tp_value_coerce (value2, &cast_format, domain);
+      if (cast_status != DOMAIN_COMPATIBLE)
+	{
+	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
+	      true)
+	    {
+	      DB_MAKE_NULL (result);
+	      er_status = NO_ERROR;
+	    }
+	  else
+	    {
+	      er_status = ER_QSTR_INVALID_FORMAT;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 0);
+	    }
+
+	  goto error;
+	}
+
+      bi2 = DB_GET_BIGINT (&cast_format);
     }
 
   switch (type1)
@@ -3106,26 +3203,6 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	DB_MAKE_FLOAT (result, (float) dtmp);
       }
       break;
-
-    case DB_TYPE_CHAR:
-    case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      DB_MAKE_NULL (&cast_value);
-      er_status = tp_value_str_auto_cast_to_number (value1, &cast_value,
-						    &type1);
-      if (er_status != NO_ERROR
-	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
-	      true && type1 != DB_TYPE_DOUBLE))
-	{
-	  return er_status;
-	}
-
-      assert (type1 == DB_TYPE_DOUBLE);
-
-      value1 = &cast_value;
-
-      /* fall through */
 
     case DB_TYPE_DOUBLE:
       {
@@ -3203,14 +3280,18 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       date_p = truncate_date (date_p, value2);
       if (date_p == NULL)
 	{
-	  er_status = er_errid ();
-
 	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
-	      false)
+	      true)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 0);
-	      return er_status;
+	      er_clear ();
+	      er_status = NO_ERROR;
 	    }
+	  else
+	    {
+	      er_status = er_errid ();
+	    }
+
+	  goto error;
 	}
       else
 	{
@@ -3220,13 +3301,18 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     default:
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
-		  0);
-	  return ER_QPROC_INVALID_DATATYPE;
+	  er_status = ER_QPROC_INVALID_DATATYPE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 0);
+	  goto error;
 	}
     }
 
-  return NO_ERROR;
+error:
+
+  pr_clear_value (&cast_value);
+  pr_clear_value (&cast_format);
+
+  return er_status;
 }
 
 /*
