@@ -383,7 +383,7 @@ run_child (const char *appl_name)
 #endif
 
 void
-ut_cd_work_dir ()
+ut_cd_work_dir (void)
 {
   char path[PATH_MAX];
 
@@ -391,14 +391,14 @@ ut_cd_work_dir ()
 }
 
 void
-ut_cd_root_dir ()
+ut_cd_root_dir (void)
 {
   chdir (envvar_root ());
 }
 
 #ifdef V3_TEST
 int
-uts_size ()
+uts_size (void)
 {
   int procfd;
   struct prpsinfo info;
