@@ -7736,6 +7736,106 @@ pt_check_vclass_union_spec (PARSER_CONTEXT * parser, PT_NODE * qry,
 }
 
 /*
+ * pt_check_cyclic_reference_in_view_spec () -
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in):
+ *   continue_walk(in):
+ */
+PT_NODE *
+pt_check_cyclic_reference_in_view_spec (PARSER_CONTEXT * parser,
+					PT_NODE * node, void *arg,
+					int *continue_walk)
+{
+  const char *spec_name = NULL;
+  PT_NODE *entity_name = NULL;
+  DB_OBJECT *class_object;
+  DB_QUERY_SPEC *db_query_spec;
+  PT_NODE **result;
+  PT_NODE *query_spec;
+  const char *query_spec_string;
+  const char *self = (const char *) arg;
+  PARSER_CONTEXT *query_cache;
+
+  if (node == NULL)
+    {
+      return node;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_SPEC:
+
+      entity_name = node->info.spec.entity_name;
+      if (entity_name == NULL)
+	{
+	  return node;
+	}
+      if (entity_name->node_type != PT_NAME)
+	{
+	  return node;
+	}
+
+      spec_name = pt_get_name (entity_name);
+      if (pt_str_compare (spec_name, self, CASE_INSENSITIVE) == 0)
+	{
+	  PT_ERRORmf (parser, node,
+		      MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_CYCLIC_REFERENCE_VIEW_SPEC, self);
+	  *continue_walk = PT_STOP_WALK;
+	  return node;
+	}
+
+      class_object = entity_name->info.name.db_object;
+      if (!db_is_vclass (class_object))
+	{
+	  return node;
+	}
+
+      query_cache = parser_create_parser ();
+      if (query_cache == NULL)
+	{
+	  return node;
+	}
+
+      db_query_spec = db_get_query_specs (class_object);
+      while (db_query_spec)
+	{
+	  query_spec_string = db_query_spec_string (db_query_spec);
+	  result = parser_parse_string (query_cache, query_spec_string);
+
+	  if (result != NULL)
+	    {
+	      query_spec = *result;
+	      parser_walk_tree (query_cache, query_spec,
+				pt_check_cyclic_reference_in_view_spec, arg,
+				NULL, NULL);
+	    }
+
+	  if (pt_has_error (query_cache))
+	    {
+	      parser->error_msgs =
+		parser_append_node (parser_copy_tree_list
+				    (parser, query_cache->error_msgs),
+				    parser->error_msgs);
+	      *continue_walk = PT_STOP_WALK;
+	      break;
+	    }
+
+	  db_query_spec = db_query_spec_next (db_query_spec);
+	}
+      parser_free_parser (query_cache);
+      break;
+
+    default:
+      break;
+    }
+
+  return node;
+}
+
+/*
  * pt_check_vclass_query_spec () -  do semantic checks on a vclass query spec
  *   return:
  *   parser(in): the parser context used to derive the qry
@@ -7778,6 +7878,14 @@ pt_check_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry,
 	{
 	  return NULL;
 	}
+    }
+
+  (void) parser_walk_tree (parser, qry,
+			   pt_check_cyclic_reference_in_view_spec, self, NULL,
+			   NULL);
+  if (pt_has_error (parser))
+    {
+      return NULL;
     }
 
   qry = pt_check_vclass_union_spec (parser, qry, attrs);
