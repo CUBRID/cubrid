@@ -4266,6 +4266,7 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
   PT_NODE *flat, *temp, **last;
   PT_NODE save = *insert_statement;
   PT_NODE *subquery = NULL;
+  PT_SPEC_INFO *from_spec = NULL;
   bool viable;
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
   int what_for = DB_AUTH_INSERT;
@@ -4415,7 +4416,19 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 	{
 	  temp = *last;
 	  from = temp->info.insert.spec;
+	  from_spec = &(from->info.spec);
+	  /* try to retrieve info from derived table */
+	  if (from_spec->derived_table_type == PT_IS_SUBQUERY)
+	    {
+	      from = from_spec->derived_table->info.query.q.select.from;
+	      temp->info.insert.spec = from;
+	    }
 	  flat = from->info.spec.flat_entity_list;
+	  if (flat == NULL)
+	    {
+	      assert (false);
+	      return NULL;
+	    }
 
 	  viable = false;
 	  if (db_is_class (flat->info.name.db_object))
