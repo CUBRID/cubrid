@@ -5759,7 +5759,12 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
 				 &clt_cache_time, &srv_cache_time,
 				 query_timeout, end_of_queries,
 				 &qstmt_ptr, &plan_ptr);
+
+#if 0
   if (!list_id && !CACHE_TIME_EQ (&clt_cache_time, &srv_cache_time))
+#else
+  if (!list_id)
+#endif
     {
       return_error_to_client (thread_p, rid);
     }
@@ -8019,7 +8024,7 @@ sprm_server_change_parameters (THREAD_ENTRY * thread_p, unsigned int rid,
  *					 parameters that are marked with
  *					 PRM_FORCE_SERVER flag.
  *
- * return	 : 
+ * return	 :
  * thread_p (in) :
  * rid (in)	 :
  * request (in)	 :
@@ -8070,7 +8075,7 @@ sprm_server_get_force_parameters (THREAD_ENTRY * thread_p, unsigned int rid,
  * sprm_server_obtain_parameters () - Obtains server's system parameter values
  *				      for the requested parameters.
  *
- * return	 : 
+ * return	 :
  * thread_p (in) :
  * rid (in)	 :
  * request (in)	 :

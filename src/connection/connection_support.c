@@ -2096,7 +2096,11 @@ css_send_error (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buffer,
 {
   NET_HEADER header = DEFAULT_HEADER_DATA;
 
+#if defined (SERVER_MODE)
+  if (!conn || conn->status == CONN_CLOSED)
+#else
   if (!conn || conn->status != CONN_OPEN)
+#endif
     {
       return (CONNECTION_CLOSED);
     }
