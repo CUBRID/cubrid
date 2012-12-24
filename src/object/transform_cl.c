@@ -4355,6 +4355,7 @@ tf_disk_to_class (OID * oid, RECDES * record)
 
   /* restore gc */
   ws_gc_enable ();
+  sm_bump_global_schema_version();
 
   buf->error_abort = 0;
   return (class_);

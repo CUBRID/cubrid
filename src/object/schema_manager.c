@@ -259,7 +259,8 @@ HFID *sm_Root_class_hfid = &sm_Root_class.header.heap;
 /* Flag to do update statistics */
 bool sm_Disable_updating_statistics = false;
 
-static unsigned int schema_version_number = 0;
+static unsigned int local_schema_version = 0;
+static unsigned int global_schema_version = 0;
 
 static int domain_search (MOP dclass_mop, MOP class_mop);
 static int annotate_method_files (MOP classmop, SM_CLASS * class_);
@@ -2270,7 +2271,7 @@ sm_final ()
  *    to inform the schema manager that a transaction boundary has been crossed.
  *    If the commit-flag is non-zero it indicates that we've committed
  *    the transaction.
- *    We used to call sm_bump_schema_version directly from the tm_ functions.
+ *    We used to call sm_bump_local_schema_version directly from the tm_ functions.
  *    Now that we have more than one thing to do however, start
  *    encapsulating them in a module specific transaction boundary handler
  *    so we don't have to keep modifying transaction_cl.c
@@ -6309,25 +6310,47 @@ sm_gc_object (MOP mop, void (*gcmarker) (MOP))
 #endif
 
 /*
- * sm_schema_version()
- *   return: unsigned int indicating any change in schema as none
+ * sm_local_schema_version()
+ *   return: unsigned int indicating any change in local schema as none
  */
 
 unsigned int
-sm_schema_version ()
+sm_local_schema_version (void)
 {
-  return schema_version_number;
+  return local_schema_version;
 }
 
 /*
- * sm_bump_schema_version()
- *   return: indicates global schema version has changed none
+ * sm_bump_local_schema_version()
+ *
  */
 
 void
-sm_bump_schema_version ()
+sm_bump_local_schema_version (void)
 {
-  schema_version_number++;
+  local_schema_version++;
+}
+
+/*
+ * sm_global_schema_version()
+ *   return: unsigned int indicating any change in global schema as none
+ */
+
+unsigned int
+sm_global_schema_version (void)
+{
+  return global_schema_version;
+}
+
+/*
+ * sm_bump_global_schema_version()
+ *
+ */
+
+void
+sm_bump_global_schema_version (void)
+{
+  global_schema_version++;
 }
 
 /*
@@ -6347,10 +6370,25 @@ sm_virtual_queries (DB_OBJECT * class_object)
     {
       (void) ws_pin (class_object, 1);
 
-      current_schema_id = sm_schema_version ();
+      if (cl->virtual_query_cache != NULL
+	  && cl->virtual_query_cache->statements != NULL)
+	{
+	  (void) pt_class_pre_fetch (cl->virtual_query_cache,
+				     cl->virtual_query_cache->view_cache
+				     ->vquery_for_query);
+	  if (pt_has_error (cl->virtual_query_cache))
+	    {
+	      mq_free_virtual_query_cache (cl->virtual_query_cache);
+	      cl->virtual_query_cache = NULL;
+	    }
+	}
 
-      if (cl->virtual_cache_schema_id != current_schema_id
-	  && cl->virtual_query_cache != NULL)
+      current_schema_id = sm_local_schema_version ()
+	+ sm_global_schema_version ();
+
+      if (cl->virtual_query_cache != NULL
+	  && (cl->virtual_cache_schema_id != current_schema_id
+	      || cl->virtual_query_cache->statements == NULL))
 	{
 	  mq_free_virtual_query_cache (cl->virtual_query_cache);
 	  cl->virtual_query_cache = NULL;
@@ -6374,6 +6412,7 @@ sm_virtual_queries (DB_OBJECT * class_object)
 	    {
 	      cl->virtual_query_cache = tmp;
 	    }
+
 	  cl->virtual_cache_schema_id = current_schema_id;
 	}
 
@@ -11883,7 +11922,7 @@ install_new_representation (MOP classop, SM_CLASS * class_,
   if (needrep)
     {
       /* check for error on each of the locator functions,
-       * an error can happen if we run out of space during flushing. 
+       * an error can happen if we run out of space during flushing.
        */
       if (!classop->no_objects)
 	{
@@ -12581,7 +12620,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res)
   DB_OBJLIST *cursupers, *oldsupers, *newsupers, *cursubs, *newsubs;
   SM_TEMPLATE *flat;
 
-  sm_bump_schema_version ();
+  sm_bump_local_schema_version ();
   class_ = NULL;
   cursupers = NULL;
   oldsupers = NULL;
@@ -12974,7 +13013,7 @@ sm_delete_class_mop (MOP op)
       return error;
     }
 
-  sm_bump_schema_version ();
+  sm_bump_local_schema_version ();
 
   /* op should be a class */
   if (!locator_is_class (op, DB_FETCH_WRITE))

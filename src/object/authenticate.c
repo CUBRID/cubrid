@@ -4162,7 +4162,7 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 	       * Make sure any cached parse trees are rebuild.  This proabably
 	       * isn't necessary for GRANT, only REVOKE.
 	       */
-	      sm_bump_schema_version ();
+	      sm_bump_local_schema_version ();
 	    }
 	}
     }
@@ -4726,7 +4726,7 @@ au_revoke (MOP user, MOP class_mop, DB_AUTH type)
 		       * around that rely on obsolete authorization.
 		       * This may not be necessary.
 		       */
-		      sm_bump_schema_version ();
+		      sm_bump_local_schema_version ();
 		    }
 		  free_grant_list (grant_list);
 		}
@@ -6084,7 +6084,7 @@ au_set_user (MOP newuser)
 	  Au_cache_index = index;
 
 	  /*
-	   * it is important that we don't call sm_bump_schema_version() here
+	   * it is important that we don't call sm_bump_local_schema_version() here
 	   * because this function is called during the compilation of vclasses
 	   */
 
@@ -6217,7 +6217,7 @@ au_perform_login (const char *name, const char *password,
 		  error = AU_SET_USER (user);
 
 		  /* necessary to invalidate vclass cache */
-		  sm_bump_schema_version ();
+		  sm_bump_local_schema_version ();
 		}
 	    }
 	}

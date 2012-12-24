@@ -876,7 +876,7 @@ make_template (MOP object, MOP classobj)
       template_ptr->base_object = base_object;
 
       template_ptr->tran_id = tm_Tran_index;
-      template_ptr->schema_id = sm_schema_version ();
+      template_ptr->schema_id = sm_local_schema_version ();
       template_ptr->assignments = NULL;
       template_ptr->label = NULL;
       template_ptr->traversal = 0;
@@ -948,7 +948,7 @@ validate_template (OBJ_TEMPLATE * temp)
 
   if (temp != NULL
       && (temp->tran_id != tm_Tran_index
-	  || temp->schema_id != sm_schema_version ()))
+	  || temp->schema_id != sm_local_schema_version ()))
     {
       error = ER_OBJ_INVALID_TEMPLATE;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -2950,10 +2950,10 @@ obt_update_internal (OBJ_TEMPLATE * template_ptr, MOP * newobj,
 
 	      if (db_get_client_type () == DB_CLIENT_TYPE_LOG_APPLIER)
 		{
-		  /* 
-		   * Only one of the log_applier can apply replication 
-		   * logs at the same time. 
-		   * Therefore, log_applier don't need to perform 
+		  /*
+		   * Only one of the log_applier can apply replication
+		   * logs at the same time.
+		   * Therefore, log_applier don't need to perform
 		   * savepoint at this time to maintain unique indexes.
 		   */
 
