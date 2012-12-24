@@ -415,8 +415,10 @@ static FILEIO_BACKUP_INFO_QUEUE fileio_Backup_vol_info_data[2] =
   { {false, {NULL, NULL, NULL}, NULL}, {false, {NULL, NULL, NULL}, NULL} };
 
 /* Flush Control */
+#if !defined(HAVE_ATOMIC_BUILTINS)
 static pthread_mutex_t fileio_Flushed_page_counter_mutex =
   PTHREAD_MUTEX_INITIALIZER;
+#endif
 static int fileio_Flushed_page_count = 0;
 
 static TOKEN_BUCKET fc_Token_bucket_s;
@@ -624,10 +626,28 @@ static int fileio_os_sysconf (void);
 
 static void fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd,
 				     int npage);
+static int fileio_increase_flushed_page_count (int npages);
 static int fileio_flush_control_get_token (THREAD_ENTRY * thread_p,
 					   int ntoken);
 static int fileio_flush_control_get_desired_rate (TOKEN_BUCKET * tb);
 static int fileio_synchronize_bg_archive_volume (THREAD_ENTRY * thread_p);
+
+static int
+fileio_increase_flushed_page_count (int npages)
+{
+  int flushed_page_count;
+
+#if defined(HAVE_ATOMIC_BUILTINS)
+  flushed_page_count = ATOMIC_INC_32 (&fileio_Flushed_page_count, npages);
+#else
+  (void) pthread_mutex_lock (&fileio_Flushed_page_counter_mutex);
+  fileio_Flushed_page_count += npage;
+  flushed_page_count = fileio_Flushed_page_count;
+  pthread_mutex_unlock (&fileio_Flushed_page_counter_mutex);
+#endif /* HAVE_ATOMIC_BUILTINS */
+
+  return flushed_page_count;
+}
 
 static void
 fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage)
@@ -637,6 +657,7 @@ fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage)
 #else
   int rv;
   bool need_sync;
+  int flushed_page_count;
 
   assert (npage > 0);
 
@@ -657,19 +678,15 @@ fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage)
     }
 
   need_sync = false;
-  rv = pthread_mutex_lock (&fileio_Flushed_page_counter_mutex);
 
-  fileio_Flushed_page_count += npage;
-  if (fileio_Flushed_page_count >
-      prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH))
+  flushed_page_count = fileio_increase_flushed_page_count (npage);
+  if (flushed_page_count > prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH))
     {
       need_sync = true;
       fileio_Flushed_page_count = 0;
     }
 
-  pthread_mutex_unlock (&fileio_Flushed_page_counter_mutex);
-
-  if (need_sync)
+  if (need_sync && !LOG_CS_OWN_WRITE_MODE (thread_p))
     {
       fileio_synchronize_all (thread_p, false);
     }
