@@ -191,6 +191,7 @@ static int numeric_longnum_to_shortnum (DB_C_NUMERIC answer,
 					DB_C_NUMERIC long_arg);
 static void numeric_shortnum_to_longnum (DB_C_NUMERIC long_answer,
 					 DB_C_NUMERIC arg);
+static int get_significant_digit (DB_BIGINT i);
 /*
  * numeric_is_negative () -
  *   return: true, false
@@ -2186,10 +2187,10 @@ numeric_db_value_compare (DB_VALUE * dbv1, DB_VALUE * dbv2, DB_VALUE * answer)
 	}
       else if (ret == ER_NUM_OVERFLOW)
 	{
-	  /* For example, if we want to compare a NUMERIC(31,2) with a 
-	   * NUMERIC(21, 14) the common precision and scale is (43, 14) 
+	  /* For example, if we want to compare a NUMERIC(31,2) with a
+	   * NUMERIC(21, 14) the common precision and scale is (43, 14)
 	   * which is an overflow.
-	   * To avoid this issue we compare the integral parts and 
+	   * To avoid this issue we compare the integral parts and
 	   * the fractional parts of dbv1 and dbv2 separately.
 	   */
 	  unsigned char num1_integ[DB_NUMERIC_BUF_SIZE];
@@ -2566,7 +2567,7 @@ numeric_coerce_num_to_double (DB_C_NUMERIC num, int scale, double *adouble)
   /* 123.445 was converted to 123.444999999999999999 */
   *adouble = atof (num_string) / pow (10.0, scale);
 
-  /* TODO: [CUBRIDSUS-2637] revert to early code for now.  
+  /* TODO: [CUBRIDSUS-2637] revert to early code for now.
    *adouble = atof (num_string);
    for (i = 0; i < scale; i++)
    *adouble /= 10;
@@ -2673,7 +2674,7 @@ numeric_fast_convert (double adouble,
  *   dst_prec(in)  : the desired precision of the result
  *   dest(out)	   : the result
  *
- * Note: This function returns a NUMERIC value of precision dst_prec and 
+ * Note: This function returns a NUMERIC value of precision dst_prec and
  *	 0 scale representing the integral part of the num number.
  */
 static void
@@ -2946,7 +2947,7 @@ numeric_internal_real_to_num (double adouble, int dst_scale,
 	    {
 	      /* adouble might fit into a CUBRID NUMERIC domain type with
 	       * sufficient precision.
-	       * Invoke _dtoa() to get the sequence of digits and the 
+	       * Invoke _dtoa() to get the sequence of digits and the
 	       * decimal point position
 	       */
 	      int decpt, sign;
@@ -3182,8 +3183,8 @@ numeric_coerce_string_to_num (const char *astring, int astring_length,
 	}
       else
 	{
-	  /* Only space character should be allowed on trailer. 
-	   * If the first space character is shown after digits, 
+	  /* Only space character should be allowed on trailer.
+	   * If the first space character is shown after digits,
 	   * we consider it as the beginning of trailer.
 	   */
 	  if (trailing_spaces && astring[i] != ' ')
@@ -3406,6 +3407,26 @@ exit_on_error:
 }
 
 /*
+ * get_significant_digit () -
+ *   return: significant digit of integer value
+ *   i(in) :
+ */
+static int
+get_significant_digit (DB_BIGINT i)
+{
+  int n = 0;
+
+  do
+    {
+      n++;
+      i /= 10;
+    }
+  while (i != 0);
+
+  return n;
+}
+
+/*
  * numeric_db_value_coerce_to_num () -
  *   return: NO_ERROR, or ER_code
  *   src(in)     : ptr to a DB_VALUE of some numerical type
@@ -3420,8 +3441,8 @@ exit_on_error:
  * amount necessary in order to preserve as much data as possible.
  */
 int
-numeric_db_value_coerce_to_num (DB_VALUE * src,
-				DB_VALUE * dest, DB_DATA_STATUS * data_status)
+numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest,
+				DB_DATA_STATUS * data_status)
 {
   int ret = NO_ERROR;
   unsigned char num[DB_NUMERIC_BUF_SIZE];	/* copy of a DB_C_NUMERIC */
@@ -3462,8 +3483,9 @@ numeric_db_value_coerce_to_num (DB_VALUE * src,
     case DB_TYPE_INTEGER:
       {
 	int anint = DB_GET_INT (src);
+
 	numeric_coerce_int_to_num (anint, num);
-	precision = 10;
+	precision = get_significant_digit (anint);
 	scale = 0;
 	break;
       }
@@ -3471,8 +3493,9 @@ numeric_db_value_coerce_to_num (DB_VALUE * src,
     case DB_TYPE_SMALLINT:
       {
 	int anint = (int) DB_GET_SMALLINT (src);
+
 	numeric_coerce_int_to_num (anint, num);
-	precision = 5;
+	precision = get_significant_digit (anint);
 	scale = 0;
 	break;
       }
@@ -3480,8 +3503,9 @@ numeric_db_value_coerce_to_num (DB_VALUE * src,
     case DB_TYPE_BIGINT:
       {
 	DB_BIGINT bigint = DB_GET_BIGINT (src);
+
 	numeric_coerce_bigint_to_num (bigint, num);
-	precision = 19;
+	precision = get_significant_digit (bigint);
 	desired_precision = MAX (desired_precision, precision);
 	scale = 0;
 	break;
@@ -3813,7 +3837,7 @@ exit_on_error:
 
 /*
  * numeric_db_value_coerce_from_num_strict () - coerce a numeric to the type
- *						of dest 
+ *						of dest
  * return : error code or NO_ERROR
  * src (in)	: the numeric value
  * dest(in/out) : the value to coerce to
