@@ -1299,9 +1299,9 @@ catalog_store_attribute_value (THREAD_ENTRY * thread_p, void *value,
 	}
       else
 	{
-	  /* if the size of the value is larger than the whole size of the 
+	  /* if the size of the value is larger than the whole size of the
 	   * recdes.data, we need split the value over N pages. The first N-1
-	   * pages need to be stored into pages, while the last page can be 
+	   * pages need to be stored into pages, while the last page can be
 	   * stored in the recdes.data buffer as the existing routine.
 	   */
 	  assert (catalog_record_p->offset == 0);
@@ -4339,58 +4339,56 @@ catalog_update (THREAD_ENTRY * thread_p, RECDES * record_p, OID * class_oid_p)
       return ER_CT_INVALID_REPRID;
     }
 
-  if (catalog_get_last_representation_id (thread_p, class_oid_p,
-					  &current_repr_id) < 0)
+  disk_repr_p = orc_diskrep_from_record (thread_p, record_p);
+  if (disk_repr_p == NULL)
     {
       return er_errid ();
     }
 
-  if (new_repr_id != current_repr_id)
+  if (catalog_get_last_representation_id (thread_p, class_oid_p,
+                                          &current_repr_id) < 0)
     {
-      disk_repr_p = orc_diskrep_from_record (thread_p, record_p);
-      if (disk_repr_p == NULL)
-	{
-	  return er_errid ();
-	}
-
-      if (current_repr_id != NULL_REPRID)
-	{
-	  old_repr_p = catalog_get_representation (thread_p, class_oid_p,
-						   current_repr_id);
-	  if (old_repr_p == NULL)
-	    {
-	      if (er_errid () != ER_SP_UNKNOWN_SLOTID)
-		{
-		  orc_free_diskrep (disk_repr_p);
-		  return er_errid ();
-		}
-	    }
-
-	  /* Migrate statistics from the old representation to the new one */
-	  if (old_repr_p)
-	    {
-	      catalog_copy_disk_attributes (disk_repr_p->fixed,
-					    disk_repr_p->n_fixed,
-					    old_repr_p->fixed,
-					    old_repr_p->n_fixed);
-	      catalog_copy_disk_attributes (disk_repr_p->variable,
-					    disk_repr_p->n_variable,
-					    old_repr_p->variable,
-					    old_repr_p->n_variable);
-
-	      catalog_free_representation (old_repr_p);
-	      catalog_drop (thread_p, class_oid_p, current_repr_id);
-	    }
-	}
-
-      if (catalog_add_representation (thread_p, class_oid_p, new_repr_id,
-				      disk_repr_p) < 0)
-	{
-	  orc_free_diskrep (disk_repr_p);
-	  return er_errid ();
-	}
-      orc_free_diskrep (disk_repr_p);
+      return er_errid ();
     }
+
+  if (current_repr_id != NULL_REPRID)
+    {
+      old_repr_p = catalog_get_representation (thread_p, class_oid_p,
+					       current_repr_id);
+      if (old_repr_p == NULL)
+	{
+	  if (er_errid () != ER_SP_UNKNOWN_SLOTID)
+	    {
+	      orc_free_diskrep (disk_repr_p);
+	      return er_errid ();
+	    }
+	}
+
+      /* Migrate statistics from the old representation to the new one */
+      if (old_repr_p)
+	{
+	  catalog_copy_disk_attributes (disk_repr_p->fixed,
+					disk_repr_p->n_fixed,
+					old_repr_p->fixed,
+					old_repr_p->n_fixed);
+	  catalog_copy_disk_attributes (disk_repr_p->variable,
+					disk_repr_p->n_variable,
+					old_repr_p->variable,
+					old_repr_p->n_variable);
+
+	  catalog_free_representation (old_repr_p);
+	  catalog_drop (thread_p, class_oid_p, current_repr_id);
+	}
+    }
+
+  if (catalog_add_representation (thread_p, class_oid_p, new_repr_id,
+				  disk_repr_p) < 0)
+    {
+      orc_free_diskrep (disk_repr_p);
+      return er_errid ();
+    }
+
+  orc_free_diskrep (disk_repr_p);
 
   class_info_p = catalog_get_class_info (thread_p, class_oid_p);
   if (class_info_p != NULL)

@@ -11107,11 +11107,6 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_,
 	}
     }
 
-  if (classobj_snapshot_representation (class_))
-    {
-      goto structure_error;
-    }
-
   /* recache class constraint for foreign key */
   if (recache_cls_cons && classobj_cache_class_constraints (class_))
     {
@@ -13624,18 +13619,6 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
 	}
       if (error == NO_ERROR)
 	{
-	  /* must bump the representation in order to get the index into
-	   * the catalog unfortunate but not worth changing now, this is
-	   * alot simpler than install_new_representation because there
-	   * are no structural changes made to the instances
-	   * - this must be an atomic operation.
-	   * If this fails, the transaction must be aborted.
-	   */
-	  if (classobj_snapshot_representation (class_))
-	    {
-	      goto severe_error;
-	    }
-
 	  /* modify the class to point at the new index */
 	  if (classobj_put_index_id (&(class_->properties), constraint_type,
 				     constraint_name, attrs, asc_desc,
@@ -13862,15 +13845,6 @@ sm_drop_index (MOP classop, const char *constraint_name)
 	  if (error != NO_ERROR)
 	    {
 	      return error;
-	    }
-
-	  /* must bump the representation in order to get the catalog updated,
-	     unfortunate but not worth changing now, this is alot simpler
-	     than install_new_representation because there are no structural
-	     changes made to the instances - this must be an atomic operation */
-	  if (classobj_snapshot_representation (class_))
-	    {
-	      goto severe_error;
 	    }
 
 	  /*

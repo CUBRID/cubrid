@@ -6922,36 +6922,6 @@ memory_error:
 }
 
 /*
- * classobj_snapshot_representation() - This is used to install a class representation
- *    that is exactly the same as the current class definition.
- *    This is called by classobj_install_template if a representation needs
- *    to be saved before the new template is installed.
- *    This is also called by the index creation functions since they
- *    make no structural changes to the class but must increment
- *    the representation id in order to get the information into
- *    the catalog.
- *   return: NO_ERROR on success, non-zero for ERROR
- *   class(in/out): class structure
- */
-
-int
-classobj_snapshot_representation (SM_CLASS * class_)
-{
-  SM_REPRESENTATION *rep;
-
-  rep = classobj_capture_representation (class_);
-  if (rep == NULL)
-    {
-      return er_errid ();
-    }
-  rep->next = class_->representations;
-  class_->representations = rep;
-  class_->repid = class_->repid + 1;
-
-  return NO_ERROR;
-}
-
-/*
  * classobj_sort_attlist * classobj_sort_methlist() - Work function for classobj_install_template
  *    Destructively modifies a list so that it is ordered according
  *    to the "order" field.

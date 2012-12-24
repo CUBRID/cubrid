@@ -132,8 +132,8 @@
  */
 #define SM_MAX_IDENTIFIER_LENGTH 255
 
-/* 
- *  c : constraint_type 
+/*
+ *  c : constraint_type
  */
 #define SM_GET_CONSTRAINT_STRING(c) \
 	((c) == DB_CONSTRAINT_UNIQUE         ? "UNIQUE": \
@@ -548,7 +548,7 @@ typedef struct sm_attribute SM_ATTRIBUTE;
  *      create table x (i int);
  *      -- Insert a record with the first repr.
  *      insert into x values (1);
- *      
+ *
  *      alter table x add attribute s varchar(32) default 'def1';
  *      -- The second repr has column "s" with default value 'def1'.
  *      -- 'def1' was copied to "original_value" and "value" of column "s".
@@ -1204,8 +1204,6 @@ extern int classobj_class_size (SM_CLASS * class_);
 
 extern int classobj_install_template (SM_CLASS * class_, SM_TEMPLATE * flat,
 				      int saverep);
-
-extern int classobj_snapshot_representation (SM_CLASS * class_);
 
 extern SM_REPRESENTATION *classobj_find_representation (SM_CLASS * class_,
 							int id);
