@@ -1779,7 +1779,7 @@ static const unsigned char yyr2[] =
 /* YYDPREC[RULE-NUM] -- Dynamic precedence of rule #RULE-NUM (0 if none).  */
 static const unsigned char yydprec[] =
 {
-       0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+       0,     0,     0,     0,     1,     2,     0,     0,     0,     0,
        0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
        0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
        0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
@@ -33704,7 +33704,7 @@ yyparse (void)
   /* User initialization code.  */
   #line 554 "../../src/parser/csql_grammar.y"
 {yybuffer_pos = 0;}
-/* Line 2309 of glr.c.  */
+/* Line 2317 of glr.c.  */
 #line 33709 "../../src/parser/csql_grammar.c"
   if (! yyinitGLRStack (yystackp, YYINITDEPTH))
     goto yyexhaustedlab;

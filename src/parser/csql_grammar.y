@@ -1490,7 +1490,7 @@ stmt_done
 	;
 
 stmt_list
-	: stmt_list stmt
+	: stmt_list stmt %dprec 1
 		{{
 
 			if ($2 != NULL)
@@ -1508,7 +1508,7 @@ stmt_list
 			  }
 
 		DBG_PRINT}}
-	| stmt
+	| stmt %dprec 2
 		{{
 
 			if ($1 != NULL)
