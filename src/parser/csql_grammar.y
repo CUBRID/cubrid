@@ -793,6 +793,7 @@ typedef struct YYLTYPE
 %type <node> opt_orderby_clause
 %type <node> sort_spec_list
 %type <node> expression_
+%type <node> normal_expression
 %type <node> expression_strcat
 %type <node> expression_add_sub
 %type <node> expression_bitshift
@@ -5857,7 +5858,7 @@ insert_value
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| expression_
+	| normal_expression
 		{{
 
 			$$ = $1;
@@ -11406,7 +11407,7 @@ alias_enabled_expression_list
 	;
 
 alias_enabled_expression_
-	: expression_ opt_as_identifier
+	: normal_expression opt_as_identifier %dprec 2
 		{{
 
 			PT_NODE *subq, *id;
@@ -11451,7 +11452,23 @@ alias_enabled_expression_
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| predicate_expression opt_as_identifier %dprec 1
+		{{
 
+			PT_NODE *id;
+			PT_NODE *node = $1;
+
+			id = $2;
+			if (id && id->node_type == PT_NAME)
+			  {
+			    node->alias_print = pt_makename (id->info.name.original);
+			    parser_free_node (this_parser, id);
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	;
 
 expression_list
@@ -12729,8 +12746,25 @@ sort_spec
 		DBG_PRINT}}
 	;
 
-
 expression_
+	: normal_expression
+		{{
+
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| predicate_expression
+		{{
+
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
+
+normal_expression
 	: session_variable_definition
 		{{
 
@@ -15374,13 +15408,6 @@ predicate
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| predicate_expression
-		{{
-
-			$$ = $1;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
 	;
 
 predicate_expression
@@ -15479,7 +15506,7 @@ predicate_expression
 
 
 predicate_expr_sub
-	: pred_lhs comp_op expression_
+	: pred_lhs comp_op normal_expression
 		{{
 
 			PT_NODE *e, *opd1, *opd2, *subq;
@@ -15586,7 +15613,7 @@ predicate_expr_sub
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| pred_lhs like_op expression_ ESCAPE escape_literal
+	| pred_lhs like_op normal_expression ESCAPE escape_literal
 		{{
 
 			PT_NODE *esc = parser_make_expression (PT_LIKE_ESCAPE, $3, $5, NULL);
@@ -15595,7 +15622,7 @@ predicate_expr_sub
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| pred_lhs like_op expression_
+	| pred_lhs like_op normal_expression
 		{{
 
  			if (prm_get_bool_value (PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER)
@@ -15610,7 +15637,7 @@ predicate_expr_sub
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| pred_lhs rlike_op expression_
+	| pred_lhs rlike_op normal_expression
 		{{
 
 			/* case sensitivity flag */
@@ -15637,14 +15664,14 @@ predicate_expr_sub
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| pred_lhs set_op expression_
+	| pred_lhs set_op normal_expression
 		{{
 
 			$$ = parser_make_expression ($2, $1, $3, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| pred_lhs between_op expression_ AND expression_
+	| pred_lhs between_op normal_expression AND normal_expression
 		{{
 
 			PT_NODE *node = parser_make_expression (PT_BETWEEN_AND, $3, $5, NULL);
@@ -15790,7 +15817,7 @@ predicate_expr_sub
 	;
 
 pred_lhs
-	: expression_ opt_paren_plus
+	: normal_expression opt_paren_plus
 		{{
 
 			PT_JOIN_TYPE join_type = PT_JOIN_NONE;
