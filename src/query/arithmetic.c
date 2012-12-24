@@ -3061,7 +3061,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       er_status = ER_QPROC_INVALID_DATATYPE;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 0);
 
-      goto error;
+      goto end;
     }
 
   /* convert value1 to double when it's a string */
@@ -3106,13 +3106,13 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 0);
 	    }
 
-	  goto error;
+	  goto end;
 	}
     }
 
   /* translate default fmt */
-  if (type2 == DB_TYPE_CHAR &&
-      strcasecmp (DB_GET_STRING (value2), "default") == 0)
+  if (type2 == DB_TYPE_CHAR
+      && strcasecmp (DB_GET_STRING (value2), "default") == 0)
     {
       if (type1 == DB_TYPE_DATE || type1 == DB_TYPE_DATETIME
 	  || type1 == DB_TYPE_TIMESTAMP)
@@ -3159,7 +3159,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 0);
 	    }
 
-	  goto error;
+	  goto end;
 	}
 
       bi2 = DB_GET_BIGINT (&cast_format);
@@ -3289,9 +3289,13 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  else
 	    {
 	      er_status = er_errid ();
+	      if (er_status == NO_ERROR)
+		{
+		  er_status = ER_FAILED;
+		}
 	    }
 
-	  goto error;
+	  goto end;
 	}
       else
 	{
@@ -3303,12 +3307,11 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	{
 	  er_status = ER_QPROC_INVALID_DATATYPE;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 0);
-	  goto error;
+	  goto end;
 	}
     }
 
-error:
-
+end:
   pr_clear_value (&cast_value);
   pr_clear_value (&cast_format);
 

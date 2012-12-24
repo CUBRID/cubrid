@@ -22117,7 +22117,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
       /* prevent user input "default" */
       if (a2->node_type == PT_VALUE 
           && a2->type_enum == PT_TYPE_CHAR
-          && strcmp (a2->info.value.data_value.str->bytes, "default") == 0)
+          && strcasecmp (a2->info.value.data_value.str->bytes, "default") == 0)
         {
           PT_ERRORf (this_parser, a2, "check syntax at %s",
                      parser_print_tree (this_parser, a2));
