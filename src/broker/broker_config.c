@@ -297,11 +297,7 @@ broker_config_read_internal (const char *conf_file,
 #if defined (_UC_ADMIN_SO_)
 #define PRINTERROR(...)	sprintf(admin_err_msg, __VA_ARGS__)
 #else /* _UC_ADMIN_SO_ */
-#if !defined (WINDOWS)
 #define PRINTERROR(...)	fprintf(stderr, __VA_ARGS__)
-#else /* WINDOWS */
-#define PRINTERROR(...)
-#endif /* !WINDOWS */
 #endif /* !_UC_ADMIN_SO_ */
   int num_brs = 0;
   int i, j;
@@ -999,11 +995,9 @@ broker_config_read_internal (const char *conf_file,
   return 0;
 
 conf_error:
-#if !defined (WINDOWS)
 #if !defined (_UC_ADMIN_SO_)
   PRINTERROR ("Line %d in config file %s : %s\n", lineno, conf_file,
 	      tbl_conf_err_msg[errcode]);
-#endif
 #endif
   if (ini)
     {
