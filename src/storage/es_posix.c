@@ -39,6 +39,7 @@
 #endif /* !WINDOWS */
 
 #include "porting.h"
+#include "thread.h"
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "error_code.h"
@@ -67,13 +68,24 @@ es_get_unique_name (char *dirname1, char *dirname2, const char *metaname,
 {
   UINT64 unum;
   int hashval;
+  int r;
+
+#if defined(SERVER_MODE)
+  THREAD_ENTRY *thread_p;
+
+  thread_p = thread_get_thread_entry_info ();
+  assert (thread_p != NULL);
+
+  r = rand_r (&thread_p->rand_seed);
+#else
+  r = rand ();
+#endif
 
   /* get unique numbers */
   unum = es_get_unique_num ();
 
   /* make a file name & a dir name */
-  snprintf (filename, NAME_MAX, "%s.%020llu_%04d", metaname, unum,
-	    rand () % 10000);
+  snprintf (filename, NAME_MAX, "%s.%020llu_%04d", metaname, unum, r % 10000);
 
   hashval = es_name_hash_func (ES_POSIX_HASH1, filename);
   snprintf (dirname1, NAME_MAX, "ces_%03d", hashval);

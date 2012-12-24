@@ -33,6 +33,7 @@
 #include <sys/time.h>
 #endif
 
+#include "porting.h"
 #include "dbi.h"
 #include "parser.h"
 #include "memory_alloc.h"
@@ -1079,6 +1080,7 @@ parser_create_parser (void)
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
+  struct drand48_data rand_buf;
 
   parser = (PARSER_CONTEXT *) calloc (sizeof (PARSER_CONTEXT), 1);
   if (parser == NULL)
@@ -1112,9 +1114,9 @@ parser_create_parser (void)
 
   /* Generate random values for rand() and drand() */
   gettimeofday (&t, NULL);
-  srand48 (t.tv_usec);
-  parser->lrand = lrand48 ();
-  parser->drand = drand48 ();
+  srand48_r (t.tv_usec, &rand_buf);
+  lrand48_r (&rand_buf, &parser->lrand);
+  drand48_r (&rand_buf, &parser->drand);
 
   /* initialization */
   parser->is_in_and_list = false;

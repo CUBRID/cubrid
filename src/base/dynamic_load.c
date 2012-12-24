@@ -940,10 +940,12 @@ dl_parse_extra_options (int *num_options, char *option_string)
 {
   const char **option_vec = NULL;
   const char *option = NULL;
+  char *save;
   int i = 0, opt_cnt = 0;
 
-  for (option = (const char *) strtok (option_string, " \t");
-       option; option = (const char *) strtok ((char *) NULL, " \t"))
+
+  for (option = (const char *) strtok_r (option_string, " \t", &save);
+       option; option = (const char *) strtok_r ((char *) NULL, " \t", &save))
     {
       const char **new_vec = NULL;
 

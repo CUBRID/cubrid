@@ -3418,17 +3418,10 @@ br_inactivate (T_BROKER_INFO * br_info)
   char acl_sem_name[BROKER_NAME_LEN];
 #endif
 
-#if defined(WINDOWS)
-  if (localtime_r (&cur_time, &ct) < 0)
-    {
-      return -1;
-    }
-#else /* WINDOWS */
   if (localtime_r (&cur_time, &ct) == NULL)
     {
       return -1;
     }
-#endif /* !WINDOWS */
   ct.tm_year += 1900;
 
   if (br_info->pid)

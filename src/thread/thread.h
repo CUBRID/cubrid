@@ -33,6 +33,7 @@
 #include <pthread.h>
 #endif /* !WINDOWS */
 
+#include "porting.h"
 #include "error_manager.h"
 #include "adjustable_array.h"
 #include "system_parameter.h"
@@ -118,6 +119,7 @@ struct thread_entry
   int xasl_errcode;		/* xasl errorcode */
 
   unsigned int rand_seed;	/* seed for rand_r() */
+  struct drand48_data rand_buf;	/* seed for lrand48_r(), drand48_r() */
 
   char qp_num_buf[81];		/* buffer which contains number as
 				   string form;

@@ -31,6 +31,7 @@
 #include <string.h>
 #include <time.h>
 
+#include "porting.h"
 #include "file_manager.h"
 #include "memory_alloc.h"
 #include "storage_common.h"
@@ -10441,9 +10442,8 @@ exit_on_error:
 static int
 file_dump_fhdr (THREAD_ENTRY * thread_p, FILE * fp, const FILE_HEADER * fhdr)
 {
-#if defined(SERVER_MODE) && !defined(WINDOWS)
-  char time_val[64];
-#endif /* SERVER_MODE */
+
+  char time_val[CTIME_MAX];
   int ret = NO_ERROR;
   time_t tmp_time;
 
@@ -10453,16 +10453,12 @@ file_dump_fhdr (THREAD_ENTRY * thread_p, FILE * fp, const FILE_HEADER * fhdr)
 		  fhdr->vfid.volid);
 
   tmp_time = (time_t) fhdr->creation;
+  (void) ctime_r (&tmp_time, time_val);
   (void) fprintf (fp,
 		  "File_type = %s, Ismark_as_deleted = %s,\n"
 		  "Creation_time = %s", file_type_to_string (fhdr->type),
 		  (fhdr->ismark_as_deleted == true) ? "true" : "false",
-#if defined(SERVER_MODE) && !defined(WINDOWS)
-		  ctime_r (&tmp_time, time_val)
-#else /* SERVER_MODE && !WINDOWS */
-		  ctime (&tmp_time)
-#endif /* SERVER_MODE && !WINDOWS */
-    );
+		  time_val);
   (void) fprintf (fp, "File Descriptor comments = ");
   ret = file_descriptor_dump_internal (thread_p, fp, fhdr);
   if (ret != NO_ERROR)

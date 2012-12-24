@@ -55,6 +55,8 @@
 #define ONE_T		1099511627776LL
 #define ONE_P		1125899906842624LL
 
+#define CTIME_MAX 64
+
 #if defined(WINDOWS)
 #include <fcntl.h>
 #include <direct.h>
@@ -100,8 +102,6 @@
 #define ftime		    _ftime_s
 #define timeb		    _timeb
 #define fileno		_fileno
-#define localtime_r(time, tm)   localtime_s(tm, time)
-#define gmtime_r(time, tm)	((void)(tm), gmtime(time))
 #define vsnprintf	cub_vsnprintf
 #define tempnam         _tempnam
 
@@ -215,6 +215,10 @@ extern char *cuserid (char *string);
 
 extern int getlogin_r (char *buf, size_t bufsize);
 
+extern struct tm *localtime_r (const time_t * time, struct tm *tm_val);
+
+extern char *ctime_r (const time_t * time, char *time_buf);
+
 #if 0
 extern int umask (int mask);
 #endif
@@ -254,6 +258,21 @@ extern int free_space (const char *);
 /*
 #define _setjmp                 setjmp
 */
+#else /* WINDOWS */
+
+#if !defined(HAVE_CTIME_R)
+#  error "HAVE_CTIME_R"
+#endif
+
+#if !defined(HAVE_LOCALTIME_R)
+#  error "HAVE_LOCALTIME_R"
+#endif
+
+#if !defined(HAVE_DRAND48_R)
+#  error "HAVE_DRAND48_R"
+#endif
+
+
 #endif /* WINDOWS */
 
 
@@ -427,6 +446,7 @@ extern double drand48 (void);
 extern int srand48_r (long int seedval, struct drand48_data *buffer);
 extern int lrand48_r (struct drand48_data *buffer, long int *result);
 extern int drand48_r (struct drand48_data *buffer, double *result);
+extern int rand_r (unsigned int *seedp);
 
 extern double round (double d);
 

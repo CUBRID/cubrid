@@ -7991,8 +7991,8 @@ qexec_init_upddel_ehash_files (THREAD_ENTRY * thread_p, XASL_NODE * buildlist)
   for (idx = 0; idx < buildlist->upd_del_class_cnt; idx++)
     {
       hash_list[idx].vfid.volid = LOG_DBFIRST_VOLID;
-      if (xehash_create (thread_p, &hash_list[idx], DB_TYPE_OBJECT, -1, NULL, 0,
-			 true) == NULL)
+      if (xehash_create (thread_p, &hash_list[idx], DB_TYPE_OBJECT, -1, NULL,
+			 0, true) == NULL)
 	{
 	  goto exit_on_error;
 	}
@@ -8228,7 +8228,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      for (class_oid_idx = 0; class_oid_idx < class_oid_cnt;
 		   vallist = vallist->next->next, class_oid_idx++)
 		{
-		  ;	/* advance */
+		  ;		/* advance */
 		}
 	      valp = vallist->val;
 	      if (valp == NULL)
@@ -8317,7 +8317,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		      if (internal_class->no_lob_attrs)
 			{
 			  internal_class->crt_del_lob_info =
-			    qexec_change_delete_lob_info (thread_p, xasl_state,
+			    qexec_change_delete_lob_info (thread_p,
+							  xasl_state,
 							  internal_class,
 							  &del_lob_info_list);
 			  if (internal_class->crt_del_lob_info == NULL)
@@ -8367,7 +8368,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			  for (i = 0; i < internal_class->no_lob_attrs; i++)
 			    {
 			      DB_VALUE *attr_valp =
-				&crt_del_lob_info->attr_info.values[i].dbvalue;
+				&crt_del_lob_info->attr_info.values[i].
+				dbvalue;
 			      if (!db_value_is_null (attr_valp))
 				{
 				  DB_ELO *elo;
@@ -8433,7 +8435,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
 	  if (has_delete)
 	    {
-	      vallist = vallist->next;  /* skip should_delete */
+	      vallist = vallist->next;	/* skip should_delete */
 	    }
 	  /* perform assignments */
 	  for (assign_idx = 0; assign_idx < update->no_assigns; assign_idx++)
@@ -8548,7 +8550,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		  xasl->list_id->tuple_cnt++;
 		}
 	    }
-continue_scan:;
+	continue_scan:;
 	}
       if (ls_scan != S_END)
 	{
@@ -11723,7 +11725,7 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	   multi UPDATE/DELETE */
 	if (QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl)
 	    && !XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG))
-	  
+
 	  {
 	    if (qexec_init_upddel_ehash_files (thread_p, xasl) != NO_ERROR)
 	      {
@@ -13229,7 +13231,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
   QFILE_LIST_ID *list_id = NULL;
   XASL_STATE xasl_state;
   struct timeb tloc;
-  struct tm *c_time_struct;
+  struct tm *c_time_struct, tm_val;
 #if defined(SERVER_MODE)
   int rv;
 #endif
@@ -13240,6 +13242,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
   struct timeval s_tv, e_tv;
 #endif /* CUBRID_DEBUG */
   QMGR_QUERY_ENTRY *query_entryp;
+  struct drand48_data *rand_buf_p;
 
 #if defined(CUBRID_DEBUG)
   {
@@ -13296,7 +13299,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
 	char str[19];
 
 	time (&loc);
-	strftime (str, 19, "%x %X", localtime (&loc));
+	strftime (str, 19, "%x %X", localtime_r (&loc, &tm_val));
 	fprintf (fp, "start %s tid %d qid %ld query %s\n",
 		 str, LOG_FIND_THREAD_TRAN_INDEX (thread_p), query_id,
 		 (xasl->qstmt ? xasl->qstmt : "<NULL>"));
@@ -13314,7 +13317,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
   xasl_state.vd.dbval_cnt = dbval_cnt;
   xasl_state.vd.dbval_ptr = (DB_VALUE *) dbval_ptr;
   ftime (&tloc);
-  c_time_struct = localtime (&tloc.time);
+  c_time_struct = localtime_r (&tloc.time, &tm_val);
 
   if (c_time_struct != NULL)
     {
@@ -13325,8 +13328,9 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
 			  c_time_struct->tm_sec, tloc.millitm);
     }
 
-  xasl_state.vd.lrand = lrand48 ();
-  xasl_state.vd.drand = drand48 ();
+  rand_buf_p = qmgr_get_rand_buf (thread_p);
+  lrand48_r (rand_buf_p, &xasl_state.vd.lrand);
+  drand48_r (rand_buf_p, &xasl_state.vd.drand);
   xasl_state.vd.xasl_state = &xasl_state;
 
   /* save the query_id into the XASL state struct */
@@ -13512,7 +13516,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
 	elapsed += (float) (e_tv.tv_usec - s_tv.tv_usec);
 	elapsed /= 1000000;
 	time (&loc);
-	strftime (str, 19, "%x %X", localtime (&loc));
+	strftime (str, 19, "%x %X", localtime_r (&loc, &tm_val));
 	fprintf (fp, "end %s tid %d qid %d elapsed %.6f\n",
 		 str, LOG_FIND_THREAD_TRAN_INDEX (thread_p), query_id,
 		 elapsed);
@@ -13865,7 +13869,7 @@ qexec_print_xasl_cache_ent (FILE * fp, const void *key, void *data,
   const OID *o;
   char str[20];
   time_t tmp_time;
-  struct tm *c_time_struct;
+  struct tm *c_time_struct, tm_val;
 
   if (!ent)
     {
@@ -13916,7 +13920,7 @@ qexec_print_xasl_cache_ent (FILE * fp, const void *key, void *data,
   fprintf (fp, " ]\n");
 
   tmp_time = ent->time_created.tv_sec;
-  c_time_struct = localtime (&tmp_time);
+  c_time_struct = localtime_r (&tmp_time, &tm_val);
   if (c_time_struct == NULL)
     {
       fprintf (fp, "  ent->time_created.tv_sec is invalid (%ld)\n",
@@ -13930,7 +13934,7 @@ qexec_print_xasl_cache_ent (FILE * fp, const void *key, void *data,
     }
 
   tmp_time = ent->time_last_used.tv_sec;
-  c_time_struct = localtime (&tmp_time);
+  c_time_struct = localtime_r (&tmp_time, &tm_val);
   if (c_time_struct == NULL)
     {
       fprintf (fp, "  ent->time_last_used.tv_sec is invalid (%ld)\n",
@@ -24035,8 +24039,7 @@ qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   if (error == NO_ERROR && xasl->proc.merge.update_xasl)
     {
       error = qexec_execute_update (thread_p, xasl->proc.merge.update_xasl,
-				    xasl->proc.merge.has_delete,
-				    xasl_state);
+				    xasl->proc.merge.has_delete, xasl_state);
     }
   /* execute insert */
   if (error == NO_ERROR && xasl->proc.merge.insert_xasl)

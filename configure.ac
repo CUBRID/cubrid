@@ -191,6 +191,9 @@ AC_CHECK_FUNCS([getrlimit sysconf open_memstream])
 AC_REPLACE_FUNCS([vasprintf asprintf strdup strlcpy strlcat \
 		  getopt getopt_long dirname basename])
 
+# Check reentrant functions
+AC_CHECK_FUNCS([ctime_r localtime_r drand48_r])
+
 # Check gethostbyname_r function
 AC_MSG_CHECKING([for glibc gethostbyname_r])
 AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <netdb.h>]],

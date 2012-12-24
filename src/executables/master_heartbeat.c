@@ -393,11 +393,7 @@ hb_strtime (char *s, unsigned int max, struct timeval *tv_p)
     }
   *s = '\0';
 
-#if !defined(WINDOWS)
   hb_tm_p = localtime_r (&tv_p->tv_sec, &hb_tm);
-#else
-  hb_tm_p = localtime (&tv_p->tv_sec);
-#endif
 
   if (hb_tm_p == NULL)
     {

@@ -52,6 +52,7 @@
 #include <sys/procfs.h>
 #endif
 
+#include "porting.h"
 #include "cas_common.h"
 #include "broker_env_def.h"
 #include "broker_util.h"
@@ -81,11 +82,7 @@ ut_access_log (int as_index, struct timeval *start_time, char error_flag,
 
   t1 = start_time->tv_sec;
   t2 = end_time.tv_sec;
-#if defined (WINDOWS)
-  if (localtime_s (&ct1, &t1) != 0 || localtime_s (&ct2, &t2) != 0)
-#else /* !WINDOWS */
   if (localtime_r (&t1, &ct1) == NULL || localtime_r (&t2, &ct2) == NULL)
-#endif /* !WINDOWS */
     {
       return -1;
     }
@@ -525,15 +522,7 @@ ut_time_string (char *buf, struct timeval *time_val)
       millisec = time_val->tv_usec / 1000;
     }
 
-#if defined(WINDOWS)
-  tm_p = localtime (&sec);
-  if (tm_p)
-    {
-      tm = *tm_p;
-    }
-#else
   tm_p = localtime_r (&sec, &tm);
-#endif
   tm.tm_mon++;
 
   buf[0] = (tm.tm_mon / 10) + '0';

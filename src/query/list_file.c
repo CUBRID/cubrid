@@ -5699,7 +5699,7 @@ qfile_print_list_cache_entry (FILE * fp, const void *key, void *data,
   char str[20];
   TP_DOMAIN **d;
   time_t tmp_time;
-  struct tm *c_time_struct;
+  struct tm *c_time_struct, tm_val;
 
   if (!ent)
     {
@@ -5756,7 +5756,7 @@ qfile_print_list_cache_entry (FILE * fp, const void *key, void *data,
   fprintf (fp, "  query_string = %s\n", ent->query_string);
 
   tmp_time = ent->time_created.tv_sec;
-  c_time_struct = localtime (&tmp_time);
+  c_time_struct = localtime_r (&tmp_time, &tm_val);
   if (c_time_struct == NULL)
     {
       fprintf (fp, "  ent->time_created.tv_sec is invalid (%ld)\n",
@@ -5770,7 +5770,7 @@ qfile_print_list_cache_entry (FILE * fp, const void *key, void *data,
     }
 
   tmp_time = ent->time_last_used.tv_sec;
-  c_time_struct = localtime (&tmp_time);
+  c_time_struct = localtime_r (&tmp_time, &tm_val);
   if (c_time_struct == NULL)
     {
       fprintf (fp, "  ent->time_last_used.tv_sec is invalid (%ld)\n",

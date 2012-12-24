@@ -263,17 +263,12 @@ shard_broker_inactivate (T_BROKER_INFO * br_info_p)
   char cmd_buf[BUFSIZ];
 #if defined(WINDOWS)
   char sem_name[BROKER_NAME_LEN];
+#endif
 
-  if (localtime_r (&cur_time, &ct) < 0)
-    {
-      return;
-    }
-#else /* WINDOWS */
   if (localtime_r (&cur_time, &ct) == NULL)
     {
       return;
     }
-#endif /* !WINDOWS */
   ct.tm_year += 1900;
 
   if (br_info_p->pid)

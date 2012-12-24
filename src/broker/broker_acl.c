@@ -27,6 +27,7 @@
 #include <assert.h>
 #include <errno.h>
 
+#include "porting.h"
 #include "broker_acl.h"
 #include "cas_error.h"
 #include "broker_util.h"
@@ -324,6 +325,7 @@ access_control_read_ip_info (IP_INFO * ip_info, char *filename,
 			     char *admin_err_msg)
 {
   char buf[LINE_MAX];
+  char *save;
   FILE *fd_ip_list;
   unsigned char i, ln = 0;
 
@@ -370,7 +372,7 @@ access_control_read_ip_info (IP_INFO * ip_info, char *filename,
 	  goto error;
 	}
 
-      token = strtok (buf, ".");
+      token = strtok_r (buf, ".", &save);
 
       address_index = ip_info->num_list * IP_BYTE_COUNT;
       for (i = 0; i < 4; i++)
@@ -405,7 +407,7 @@ access_control_read_ip_info (IP_INFO * ip_info, char *filename,
 		(unsigned char) adr;
 	    }
 
-	  token = strtok (NULL, ".");
+	  token = strtok_r (NULL, ".", &save);
 	  if (i == 3 && token != NULL)
 	    {
 	      sprintf (admin_err_msg,

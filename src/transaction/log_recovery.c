@@ -32,6 +32,7 @@
 #include <time.h>
 #include <assert.h>
 
+#include "porting.h"
 #include "log_manager.h"
 #include "log_impl.h"
 #include "log_comm.h"
@@ -1981,6 +1982,7 @@ log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id,
   struct log_donetime *donetime;
   int tran_index;
   time_t last_at_time;
+  char time_val[CTIME_MAX];
 
   /*
    * The transaction has been fully completed. therefore, it was not
@@ -2015,12 +2017,12 @@ log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id,
 	  fprintf (stdout,
 		   msgcat_message (MSGCAT_CATALOG_CUBRID,
 				   MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
+	  (void) ctime_r (&last_at_time, time_val);
 	  fprintf (stdout,
 		   msgcat_message (MSGCAT_CATALOG_CUBRID,
 				   MSGCAT_SET_LOG,
 				   MSGCAT_LOG_INCOMPLTE_MEDIA_RECOVERY),
-		   end_redo_lsa->pageid, end_redo_lsa->offset,
-		   ctime (&last_at_time));
+		   end_redo_lsa->pageid, end_redo_lsa->offset, time_val);
 	  fprintf (stdout,
 		   msgcat_message (MSGCAT_CATALOG_CUBRID,
 				   MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
@@ -2945,6 +2947,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
   struct log_chkpt chkpt;	/* Checkpoint log record     */
   struct log_chkpt_trans *chkpt_trans;
   time_t last_at_time = -1;
+  char time_val[CTIME_MAX];
   bool may_need_synch_checkpoint_2pc = false;
   bool may_use_checkpoint = false;
   int tran_index;
@@ -2989,13 +2992,13 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
 			   msgcat_message (MSGCAT_CATALOG_CUBRID,
 					   MSGCAT_SET_LOG,
 					   MSGCAT_LOG_STARTS));
+		  (void) ctime_r (&last_at_time, time_val);
 		  fprintf (stdout,
 			   msgcat_message (MSGCAT_CATALOG_CUBRID,
 					   MSGCAT_SET_LOG,
 					   MSGCAT_LOG_INCOMPLTE_MEDIA_RECOVERY),
 			   end_redo_lsa->pageid, end_redo_lsa->offset,
-			   ((last_at_time ==
-			     -1) ? "???...\n" : ctime (&last_at_time)));
+			   ((last_at_time == -1) ? "???...\n" : time_val));
 		  fprintf (stdout,
 			   msgcat_message (MSGCAT_CATALOG_CUBRID,
 					   MSGCAT_SET_LOG,

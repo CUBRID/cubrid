@@ -375,14 +375,14 @@ utility_keyword_search (UTIL_KEYWORD * keywords, int *keyval_p,
 int
 utility_localtime (const time_t * ts, struct tm *result)
 {
-  struct tm *tm_p;
+  struct tm *tm_p, tm_val;
 
   if (result == NULL)
     {
       return -1;
     }
 
-  tm_p = localtime (ts);
+  tm_p = localtime_r (ts, &tm_val);
   if (tm_p == NULL)
     {
       memset (result, 0, sizeof (struct tm));

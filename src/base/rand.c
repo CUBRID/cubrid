@@ -123,4 +123,15 @@ drand48_r (struct drand48_data *buffer, double *result)
     }
   return 0;
 }
+
+int
+rand_r (unsigned int *seedp)
+{
+  int ret;
+  if (rand_s (&ret) == 0)
+    {
+      return ret;
+    }
+  return 0;
+}
 #endif /* WINDOWS */

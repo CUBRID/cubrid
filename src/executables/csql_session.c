@@ -29,6 +29,7 @@
 #include <string.h>
 #include <signal.h>
 
+#include "porting.h"
 #include "csql.h"
 #include "memory_alloc.h"
 #include "util_func.h"
@@ -648,7 +649,7 @@ csql_pipe_handler (int sig_no)
 void
 csql_help_info (const char *command, int aucommit_flag)
 {
-  char *dup = NULL, *tok;
+  char *dup = NULL, *tok, *save;
   FILE *p_stream;		/* pipe stream to pager */
 #if !defined(WINDOWS)
   void (*csql_intr_save) (int sig);
@@ -667,7 +668,7 @@ csql_help_info (const char *command, int aucommit_flag)
       csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
       goto error;
     }
-  tok = strtok (dup, " \t");
+  tok = strtok_r (dup, " \t", &save);
   if (tok != NULL &&
       (!strcasecmp (tok, "schema") || !strcasecmp (tok, "trigger") ||
        !strcasecmp (tok, "deferred") || !strcasecmp (tok, "workspace") ||

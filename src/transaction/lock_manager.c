@@ -33,6 +33,7 @@
 #include <netdb.h>
 #endif /* SOLARIS */
 
+#include "porting.h"
 #include "xserver_interface.h"
 #include "lock_manager.h"
 #include "system_parameter.h"
@@ -6374,7 +6375,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
   LK_ENTRY *entry_ptr;
   char *classname;		/* Name of the class */
   int num_holders, num_blocked_holders, num_waiters;
-  char time_val[64];
+  char time_val[CTIME_MAX];
 
   memset (time_val, 0, sizeof (time_val));
 
@@ -6551,14 +6552,11 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 	    {
 	      time_t stime =
 		(time_t) (entry_ptr->thrd_entry->lockwait_stime / 1000LL);
-#if defined(WINDOWS)
-	      strcpy (time_val, ctime (&stime));
-#else /* WINDOWS */
 	      if (ctime_r (&stime, time_val) == NULL)
 		{
 		  strcpy (time_val, "???");
 		}
-#endif /* WINDOWS */
+
 	      if (time_val[strlen (time_val) - 1] == '\n')
 		{
 		  time_val[strlen (time_val) - 1] = 0;
@@ -6607,11 +6605,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 	{
 	  time_t stime =
 	    (time_t) (entry_ptr->thrd_entry->lockwait_stime / 1000LL);
-#if defined(WINDOWS)
-	  strcpy (time_val, ctime (&stime));
-#else /* WINDOWS */
-	  ctime_r (&stime, time_val);
-#endif /* WINDOWS */
+	  (void) ctime_r (&stime, time_val);
 	  if (time_val[strlen (time_val) - 1] == '\n')
 	    {
 	      time_val[strlen (time_val) - 1] = 0;
@@ -9933,15 +9927,16 @@ start:
 #if defined(CUBRID_DEBUG)
 		  FILE *lk_fp;
 		  time_t cur_time;
+		  char time_val[CTIME_MAX];
 
 		  lk_fp = fopen ("lock_waiter_only_info.log", "a");
 		  if (lk_fp != NULL)
 		    {
 		      cur_time = time (NULL);
+		      (void) ctime_r (&cur_time, time_val);
 		      fprintf (lk_fp,
 			       "##########################################\n");
-		      fprintf (lk_fp, "# current time: %s\n",
-			       ctime (&cur_time));
+		      fprintf (lk_fp, "# current time: %s\n", time_val);
 		      lock_dump_resource (lk_fp, res_ptr);
 		      fprintf (lk_fp,
 			       "##########################################\n");

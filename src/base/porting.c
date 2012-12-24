@@ -30,6 +30,7 @@
 #include <errno.h>
 #include <signal.h>
 #include <ctype.h>
+#include <time.h>
 
 #if defined(WINDOWS)
 #include <tchar.h>
@@ -63,7 +64,8 @@ poll (struct pollfd *fds, nfds_t nfds, int timeout)
   fd_set rset, wset, eset;
   fd_set *rp, *wp, *ep;
   unsigned long int i;
-  int r, max_fd;
+  int r;
+  unsigned int max_fd;
 
   tp = NULL;
   if (timeout >= 0)
@@ -1031,6 +1033,39 @@ basename (const char *path)
   return (basename_r (path, bname, PATH_MAX) < 0) ? NULL : bname;
 }
 #endif /* !HAVE_BASENAME */
+
+#if defined(WINDOWS)
+char *
+ctime_r (const time_t * time, char *time_buf)
+{
+  int err;
+  assert (time != NULL && time_buf != NULL);
+
+  err = ctime_s (time_buf, CTIME_MAX, time);
+  if (err != 0)
+    {
+      return NULL;
+    }
+  return time_buf;
+}
+#endif /* !WINDOWS */
+
+#if defined(WINDOWS)
+struct tm *
+localtime_r (const time_t * time, struct tm *tm_val)
+{
+  int err;
+  assert (time != NULL && tm_val != NULL);
+
+  err = localtime_s (tm_val, time);
+  if (err != 0)
+    {
+      return NULL;
+    }
+  return tm_val;
+}
+#endif /* WIDNOWS */
+
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 int

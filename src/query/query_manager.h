@@ -225,4 +225,5 @@ extern void qmgr_setup_empty_list_file (char *page_buf);
 extern int qmgr_get_temp_file_membuf_pages (QMGR_TEMP_FILE * temp_file_p);
 extern int qmgr_get_sql_id (THREAD_ENTRY * thread_p, char **sql_id_buf,
 			    char *query, int sql_len);
+extern struct drand48_data *qmgr_get_rand_buf (THREAD_ENTRY * thread_p);
 #endif /* _QUERY_MANAGER_H_ */

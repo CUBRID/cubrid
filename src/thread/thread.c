@@ -1036,6 +1036,7 @@ static int
 thread_initialize_entry (THREAD_ENTRY * entry_p)
 {
   int r;
+  struct timeval t;
 
   entry_p->index = -1;
   entry_p->tid = ((pthread_t) 0);
@@ -1058,6 +1059,9 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
   entry_p->cnv_adj_buffer[2] = NULL;
   entry_p->conn_entry = NULL;
   entry_p->worker_thrd_list = NULL;
+  gettimeofday (&t, NULL);
+  entry_p->rand_seed = (unsigned int) t.tv_usec;
+  srand48_r ((long) t.tv_usec, &entry_p->rand_buf);
 
   r = pthread_mutex_init (&entry_p->th_entry_lock, NULL);
   if (r != 0)

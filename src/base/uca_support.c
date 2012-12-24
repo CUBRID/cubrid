@@ -317,7 +317,7 @@ load_ducet (const char *file_path, const int sett_contr_policy)
     {
       char *comment;
       char *weight;
-      char *s;
+      char *s, *save;
       int codenum;
       bool is_variable = false;
       char is_ignorable[4] = { -1, -1, -1, -1 };
@@ -437,12 +437,12 @@ load_ducet (const char *file_path, const int sett_contr_policy)
       assert (ce_list != NULL);
 
       ce_list->num = 0;
-      s = strtok (weight, " []");
+      s = strtok_r (weight, " []", &save);
       while (s)
 	{
 	  /* Count the number of collation elements of the current char */
 	  weights[ce_list->num] = s;
-	  s = strtok (NULL, " []");
+	  s = strtok_r (NULL, " []", &save);
 	  ce_list->num++;
 	}
 

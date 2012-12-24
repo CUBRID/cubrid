@@ -30,6 +30,7 @@
 #include <string.h>
 #include <assert.h>
 
+#include "porting.h"
 #include "disk_manager.h"
 #include "memory_alloc.h"
 #include "system_parameter.h"
@@ -5302,9 +5303,7 @@ disk_dump_goodvol_system (THREAD_ENTRY * thread_p, FILE * fp, INT16 volid,
 static int
 disk_vhdr_dump (FILE * fp, const DISK_VAR_HEADER * vhdr)
 {
-#if defined(SERVER_MODE) && !defined(WINDOWS)
-  char time_val[64];
-#endif /* SERVER_MODE */
+  char time_val[CTIME_MAX];
   int ret = NO_ERROR;
   time_t tmp_time;
 
@@ -5338,15 +5337,11 @@ disk_vhdr_dump (FILE * fp, const DISK_VAR_HEADER * vhdr)
 		  vhdr->warnat);
 
   tmp_time = (time_t) vhdr->db_creation;
+  (void) ctime_r (&tmp_time, time_val);
   (void) fprintf (fp,
 		  " Database creation time = %s\n"
 		  " Lowest Checkpoint for recovery = %lld|%d\n",
-#if defined(SERVER_MODE) && !defined(WINDOWS)
-		  ctime_r (&tmp_time, time_val),
-#else /* SERVER_MODE && !WINDOWS */
-		  ctime (&tmp_time),
-#endif /* SERVER_MODE && !WINDOWS */
-		  vhdr->chkpt_lsa.pageid, vhdr->chkpt_lsa.offset);
+		  time_val, vhdr->chkpt_lsa.pageid, vhdr->chkpt_lsa.offset);
   (void) fprintf (fp,
 		  "Boot_hfid: volid %d, fileid %d header_pageid %d\n",
 		  vhdr->boot_hfid.vfid.volid, vhdr->boot_hfid.vfid.fileid,

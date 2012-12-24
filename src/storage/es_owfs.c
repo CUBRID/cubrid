@@ -183,6 +183,18 @@ es_make_unique_name (char *owner_name, char *metaname, char *file_name)
   UINT64 unum;
   unsigned int base;
   int hashval;
+  int r;
+
+#if defined(SERVER_MODE)
+  THREAD_ENTRY *thread_p;
+
+  thread_p = thread_get_thread_entry_info ();
+  assert (thread_p != NULL);
+
+  r = rand_r (&thread_p->rand_seed);
+#else
+  r = rand ();
+#endif
 
   /* get unique numbers */
   unum = es_get_unique_num ();
@@ -191,7 +203,7 @@ es_make_unique_name (char *owner_name, char *metaname, char *file_name)
 
   /* make a file name & an owner name */
   snprintf (file_name, NAME_MAX, "%s.%020llu_%04d", metaname, unum,
-	    rand () % 10000);
+	    r % 10000);
   hashval = es_name_hash_func (ES_OWFS_HASH, file_name);
   snprintf (owner_name, NAME_MAX, "ces_%010u_%06d", base, hashval);
 }

@@ -1177,13 +1177,7 @@ fileio_ctime (INT64 * clock_p, char *buffer_p)
   time_t tmp_time;
 
   tmp_time = (time_t) (*clock_p);
-
-#if defined(WINDOWS)
-  ctime_s (buffer_p, 64, &tmp_time);
-  t = buffer_p;
-#else /* WINDOWS */
   t = ctime_r (&tmp_time, buffer_p);
-#endif /* WINDOWS */
 
   p = strchr (t, '\n');
   if (p)
@@ -1255,7 +1249,7 @@ fileio_lock (const char *db_full_name_p, const char *vol_label_p,
   int total_num_loops = 0;
   int num_loops = 0;
   int max_num_loops;
-  char io_timeval[64], format_string[32];
+  char io_timeval[CTIME_MAX], format_string[32];
 
   if (prm_get_bool_value (PRM_ID_IO_LOCKF_ENABLE) != true)
     {
@@ -7180,7 +7174,7 @@ fileio_finish_backup (THREAD_ENTRY * thread_p,
 {
   int nbytes;
   char *msg_area = NULL;
-  char io_time_val[64];
+  char io_time_val[CTIME_MAX];
   INT64 end_time;
 
   end_time = (INT64) time (NULL);
@@ -9434,7 +9428,7 @@ fileio_continue_restore (THREAD_ENTRY * thread_p,
   FILEIO_BACKUP_LEVEL level;
   int exists;
   int search_loop_count = 0;
-  char io_timeval[64];
+  char io_timeval[CTIME_MAX];
 
   memset (io_timeval, 0, sizeof (io_timeval));
 
@@ -9869,6 +9863,7 @@ fileio_list_restore (THREAD_ENTRY * thread_p,
   INT64 db_creation_time = 0;
   char file_name[PATH_MAX];
   time_t tmp_time;
+  char time_val[CTIME_MAX];
 
   if (fileio_start_restore (thread_p, db_full_name_p, backup_source_p,
 			    db_creation_time, db_io_page_size_p,
@@ -9901,11 +9896,12 @@ fileio_list_restore (THREAD_ENTRY * thread_p,
 			   MSGCAT_FILEIO_BKUP_HDR));
 
   tmp_time = (time_t) backup_header_p->db_creation;
+  (void) ctime_r (&tmp_time, time_val);
   fprintf (stdout,
 	   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO,
 			   MSGCAT_FILEIO_BKUP_HDR_DBINFO),
 	   backup_header_p->db_fullname,
-	   ctime (&tmp_time), backup_header_p->db_iopagesize);
+	   time_val, backup_header_p->db_iopagesize);
   fprintf (stdout,
 	   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO,
 			   MSGCAT_FILEIO_BKUP_HDR_LEVEL),
@@ -9917,10 +9913,11 @@ fileio_list_restore (THREAD_ENTRY * thread_p,
 	   backup_header_p->chkpt_lsa.offset);
 
   tmp_time = (time_t) backup_header_p->start_time;
+  (void) ctime_r (&tmp_time, time_val);
   fprintf (stdout,
 	   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO,
 			   MSGCAT_FILEIO_BKUP_HDR_TIME),
-	   ctime (&tmp_time), backup_header_p->unit_num);
+	   time_val, backup_header_p->unit_num);
   fprintf (stdout,
 	   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO,
 			   MSGCAT_FILEIO_BKUP_HDR_RELEASES),
@@ -9946,10 +9943,11 @@ fileio_list_restore (THREAD_ENTRY * thread_p,
        && backup_header_p->previnfo[i].at_time > 0; i++)
     {
       tmp_time = (time_t) backup_header_p->previnfo[i].at_time;
+      (void) ctime_r (&tmp_time, time_val);
       fprintf (stdout,
 	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO,
 			       MSGCAT_FILEIO_BKUP_HDR_LX_LSA), i,
-	       ctime (&tmp_time),
+	       time_val,
 	       backup_header_p->previnfo[i].lsa.pageid,
 	       backup_header_p->previnfo[i].lsa.offset);
     }
@@ -11014,7 +11012,7 @@ fileio_get_next_backup_volume (THREAD_ENTRY * thread_p,
   char copy_name[PATH_MAX];
   char orig_name[PATH_MAX];
   char *message_area_p = NULL;
-  char io_timeval[64];
+  char io_timeval[CTIME_MAX];
 
   if (session_p->bkup.dtype == FILEIO_BACKUP_VOL_DIRECTORY)
     {

@@ -9231,6 +9231,7 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols,
   char old_bkpath[PATH_MAX];
   const char *str_tmp;
   time_t tmp_time;
+  char time_val[CTIME_MAX];
 
   time_t wait_checkpoint_begin_time;
   FILE *backup_verbose_fp = NULL;
@@ -9475,6 +9476,7 @@ loop:
 		    {
 		      io_bkup_hdr_p = session.bkup.bkuphdr;
 		      tmp_time = (time_t) io_bkup_hdr_p->start_time;
+		      (void) ctime_r (&tmp_time, time_val);
 		      sprintf (old_bkpath,
 			       msgcat_message (MSGCAT_CATALOG_CUBRID,
 					       MSGCAT_SET_LOG,
@@ -9482,7 +9484,7 @@ loop:
 			       io_bkup_hdr_p->level,
 			       fileio_get_base_file_name (io_bkup_hdr_p->
 							  db_fullname),
-			       ctime (&tmp_time), io_bkup_hdr_p->unit_num);
+			       time_val, io_bkup_hdr_p->unit_num);
 		      fileio_request_user_response (thread_p,
 						    FILEIO_PROMPT_DISPLAY_ONLY,
 						    old_bkpath, NULL, NULL,
@@ -9598,9 +9600,8 @@ loop:
 #endif
 
       backup_start_time = time (NULL);
-      fprintf (session.verbose_fp, "- backup start time: %s\n",
-	       ctime (&backup_start_time));
-
+      (void) ctime_r (&backup_start_time, time_val);
+      fprintf (session.verbose_fp, "- backup start time: %s\n", time_val);
       fprintf (session.verbose_fp, "- number of permanent volumes: %d\n\n",
 	       num_perm_vols);
 
@@ -9861,8 +9862,8 @@ loop:
       fprintf (session.verbose_fp,
 	       "-----------------------------------------------------------------------------\n\n");
       backup_end_time = time (NULL);
-      fprintf (session.verbose_fp, "# backup end time: %s\n",
-	       ctime (&backup_end_time));
+      (void) ctime_r (&backup_end_time, time_val);
+      fprintf (session.verbose_fp, "# backup end time: %s\n", time_val);
       switch (backup_level)
 	{
 	case FILEIO_BACKUP_FULL_LEVEL:
@@ -9974,12 +9975,12 @@ static int
 logpb_check_stop_at_time (FILEIO_BACKUP_SESSION * session,
 			  time_t stop_at, time_t backup_time)
 {
-  char ctime_buf1[64], ctime_buf2[64];
+  char ctime_buf1[CTIME_MAX], ctime_buf2[CTIME_MAX];
 
   if (stop_at < backup_time)
     {
-      strcpy (ctime_buf1, ctime (&stop_at));
-      strcpy (ctime_buf2, ctime (&backup_time));
+      ctime_r (&stop_at, ctime_buf1);
+      ctime_r (&backup_time, ctime_buf2);
 
       ctime_buf1[strlen (ctime_buf1) - 1] = 0;	/* strip '\n' */
       ctime_buf2[strlen (ctime_buf2) - 1] = 0;
@@ -10059,6 +10060,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
   bool restore_in_progress = false;	/* true if any vols restored */
   int lgat_vdes = NULL_VOLDES;
   time_t restore_start_time, restore_end_time;
+  char time_val[CTIME_MAX];
   int loop_cnt = 0;
   char lgat_tmpname[PATH_MAX];	/* active log temp name */
   struct stat stat_buf;
@@ -10403,9 +10405,9 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 		       boot_db_name (), r_args->level);
 
 	      restore_start_time = time (NULL);
+	      (void) ctime_r (&restore_start_time, time_val);
 	      fprintf (session->verbose_fp, "- restore start time: %s\n",
-		       ctime (&restore_start_time));
-
+		       time_val);
 	      fprintf (session->verbose_fp, "- restore steps: %d \n",
 		       r_args->level + 1);
 	    }
@@ -10585,8 +10587,8 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
       if (session->verbose_fp)
 	{
 	  restore_end_time = time (NULL);
-	  fprintf (session->verbose_fp, "- restore end time: %s\n",
-		   ctime (&restore_end_time));
+	  (void) ctime_r (&restore_end_time, time_val);
+	  fprintf (session->verbose_fp, "- restore end time: %s\n", time_val);
 	  fprintf (session->verbose_fp,
 		   "[ Database(%s) Restore (level = %d) end ]\n",
 		   boot_db_name (), r_args->level);

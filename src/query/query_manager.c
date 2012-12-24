@@ -166,6 +166,9 @@ QMGR_QUERY_TABLE qmgr_Query_table = { NULL, 0, 0, 0, 0, 0, NULL, NULL, NULL,
 };
 
 static int qmgr_Query_id_count;	/* global query identifier count */
+#if !defined(SERVER_MODE)
+static struct drand48_data qmgr_rand_buf;
+#endif
 
 /*
  * 			QM_MUTEX_LOCK/UNLOCK : recursive mutex
@@ -1147,6 +1150,9 @@ int
 qmgr_initialize (THREAD_ENTRY * thread_p)
 {
   int total_tran_indices;
+#if !defined(SERVER_MODE)
+  struct timeval t;
+#endif
 
   if (csect_enter (thread_p, CSECT_QPROC_QUERY_TABLE, INF_WAIT) != NO_ERROR)
     {
@@ -1213,6 +1219,11 @@ qmgr_initialize (THREAD_ENTRY * thread_p)
 #endif
 
   srand48 ((long) time (NULL));
+
+#if !defined(SERVER_MODE)
+  gettimeofday (&t, NULL);
+  srand48_r ((long) t.tv_usec, &qmgr_rand_buf);
+#endif
 
   scan_initialize ();
 
@@ -5375,4 +5386,21 @@ qmgr_get_sql_id (THREAD_ENTRY * thread_p, char **sql_id_buf,
   *sql_id_buf = ret_buf;
 
   return NO_ERROR;
+}
+
+/* qmgr_get_rand_buf() : return the drand48_data reference
+ * thread_p(in):
+ */
+struct drand48_data *
+qmgr_get_rand_buf (THREAD_ENTRY * thread_p)
+{
+#if defined(SERVER_MODE)
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+  return &thread_p->rand_buf;
+#else
+  return &qmgr_rand_buf;
+#endif
 }

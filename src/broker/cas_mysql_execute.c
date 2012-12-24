@@ -40,6 +40,7 @@
 #include <sys/time.h>
 #endif
 
+#include "porting.h"
 #include "cas.h"
 #include "cas_common.h"
 #include "cas_execute.h"
@@ -2380,7 +2381,7 @@ cas_mysql_find_db (const char *alias, char *dbname, char *host, int *port)
   DB_INFO *db_info_all_p, *db_info_p;
   int ret;
   char delim[] = ":";
-  char *str, tmpdbinfo[PATH_MAX];
+  char *str, tmpdbinfo[PATH_MAX], *save;
 
   db_info_all_p = db_info_p = NULL;
 
@@ -2395,14 +2396,14 @@ cas_mysql_find_db (const char *alias, char *dbname, char *host, int *port)
 
   strcpy (dbname, alias);
 
-  str = strtok (tmpdbinfo, delim);	/* SET HOST ADDRESS */
+  str = strtok_r (tmpdbinfo, delim, &save);	/* SET HOST ADDRESS */
   if (str == NULL)
     {
       goto cas_mysql_find_db_error;
     }
   strncpy (host, str, MAX_HOSTNAME_LENGTH);
 
-  str = strtok (NULL, delim);	/* SET PORT */
+  str = strtok_r (NULL, delim, &save);	/* SET PORT */
   if (str == NULL)
     {
       *port = DEFAULT_MYSQL_PORT;
@@ -2437,21 +2438,21 @@ cas_mysql_find_db (const char *alias, char *dbname, char *host, int *port)
 	  memset (tmpdbinfo, 0x00, PATH_MAX);
 	  memcpy (tmpdbinfo, db_info_p->dbinfo, PATH_MAX);
 
-	  str = strtok (tmpdbinfo, delim);	/* SET DBNAME */
+	  str = strtok_r (tmpdbinfo, delim, &save);	/* SET DBNAME */
 	  if (str == NULL)
 	    {
 	      goto cas_mysql_find_db_error;
 	    }
 	  strncpy (dbname, str, MAX_DBNAME_LENGTH);
 
-	  str = strtok (NULL, delim);	/* SET HOST ADDRESS */
+	  str = strtok_r (NULL, delim, &save);	/* SET HOST ADDRESS */
 	  if (str == NULL)
 	    {
 	      goto cas_mysql_find_db_error;
 	    }
 	  strncpy (host, str, MAX_HOSTNAME_LENGTH);
 
-	  str = strtok (NULL, delim);	/* SET PORT */
+	  str = strtok_r (NULL, delim, &save);	/* SET PORT */
 	  if (str == NULL)
 	    {
 	      *port = DEFAULT_MYSQL_PORT;

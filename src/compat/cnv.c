@@ -620,8 +620,9 @@ us_date_value (int *the_month, int *the_day, int *the_year)
       if (type != FT_TIME_DIGITS_ANY)
 	{
 	  /* Abbreviated year: add current century. */
+	  struct tm tm_val, *today;
 	  time_t now = time (NULL);
-	  struct tm *today = localtime (&now);
+	  today = localtime_r (&now, &tm_val);
 
 	  if (today != NULL)
 	    {
@@ -1229,8 +1230,9 @@ ko_date_value (int *the_month, int *the_day, int *the_year)
       if (type != FT_TIME_DIGITS_ANY)
 	{
 	  /* Abbreviated year: add current century. */
+	  struct tm tm_val, *today;
 	  time_t now = time (NULL);
-	  struct tm *today = localtime (&now);
+	  today = localtime_r (&now, &tm_val);
 
 	  if (today != NULL)
 	    {
@@ -1332,8 +1334,9 @@ ko_alt_date_value (int *the_month, int *the_day, int *the_year)
 	{
 
 	  /* Abbreviated year: add current century. */
+	  struct tm tm_val, *today;
 	  time_t now = time (NULL);
-	  struct tm *today = localtime (&now);
+	  today = localtime_r (&now, &tm_val);
 
 	  if (today != NULL)
 	    {

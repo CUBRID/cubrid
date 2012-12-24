@@ -3211,15 +3211,12 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	    }
 	  else
 	    {
-	      struct timeval t;
+	      long int r;
+	      struct drand48_data *rand_buf_p;
 
-	      /* This routine can be called several times within 1 us by the following query.
-	       *   e.g, select random(), random(), random()
-	       * So, we make a seed by adding time and random number.
-	       */
-	      gettimeofday (&t, NULL);
-	      srand48 ((long) (t.tv_usec + lrand48 ()));
-	      db_make_int (arithptr->value, lrand48 ());
+	      rand_buf_p = qmgr_get_rand_buf (thread_p);
+	      lrand48_r (rand_buf_p, &r);
+	      db_make_int (arithptr->value, r);
 	    }
 	}
       else
@@ -3286,11 +3283,12 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	    }
 	  else
 	    {
-	      struct timeval t;
+	      double r;
+	      struct drand48_data *rand_buf_p;
 
-	      gettimeofday (&t, NULL);
-	      srand48 ((long) (t.tv_usec + lrand48 ()));
-	      db_make_double (arithptr->value, drand48 ());
+	      rand_buf_p = qmgr_get_rand_buf (thread_p);
+	      drand48_r (rand_buf_p, &r);
+	      db_make_double (arithptr->value, r);
 	    }
 	}
       else

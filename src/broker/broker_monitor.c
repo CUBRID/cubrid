@@ -611,11 +611,7 @@ time2str (const time_t t, char *str)
 {
   struct tm s_tm;
 
-#if defined (WINDOWS)
-  if (localtime_s (&s_tm, &t) != 0)
-#else /* !WINDOWS */
   if (localtime_r (&t, &s_tm) == NULL)
-#endif /* !WINDOWS */
     {
       *str = '\0';
       return;

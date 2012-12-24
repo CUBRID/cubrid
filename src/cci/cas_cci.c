@@ -69,6 +69,7 @@
 #if defined(WINDOWS)
 #include "version.h"
 #endif
+#include "porting.h"
 #include "cci_common.h"
 #include "cas_cci.h"
 #include "cci_handle_mng.h"
@@ -84,7 +85,6 @@
 
 #if defined(WINDOWS)
 int wsa_initialize ();
-#define getpid _getpid
 #endif
 
 #ifdef CCI_XA
@@ -5905,15 +5905,7 @@ cci_time_string (char *buf, struct timeval *time_val)
       millisec = time_val->tv_usec / 1000;
     }
 
-#if defined(WINDOWS)
-  tm_p = localtime (&sec);
-  if (tm_p)
-    {
-      tm = *tm_p;
-    }
-#else
   tm_p = localtime_r (&sec, &tm);
-#endif
   tm.tm_mon++;
 
   buf[0] = (tm.tm_mon / 10) + '0';

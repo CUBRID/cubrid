@@ -27,6 +27,8 @@
 #include <stdio.h>
 #include <math.h>
 #include <time.h>
+
+#include "porting.h"
 #include "chartype.h"
 #include "misc_string.h"
 #include "error_manager.h"
@@ -603,9 +605,7 @@ db_timestamp_decode (const DB_TIMESTAMP * utime, DB_DATE * date,
 {
   struct tm *temp;
   time_t tmp_time = *utime;
-#if defined(SERVER_MODE) && !defined(WINDOWS)
   struct tm t;
-#endif
 
   if (tmp_time == IGREG_SPECIAL)
     {
@@ -621,11 +621,7 @@ db_timestamp_decode (const DB_TIMESTAMP * utime, DB_DATE * date,
       return;
     }
 
-#if defined(SERVER_MODE) && !defined(WINDOWS)
   temp = localtime_r (&tmp_time, &t);
-#else
-  temp = localtime (&tmp_time);
-#endif
   if (temp)
     {
       if (date != NULL)
@@ -699,14 +695,9 @@ void
 db_localtime (time_t * epoch_time, DB_DATE * date, DB_TIME * timeval)
 {
   struct tm *temp;
-#if defined(SERVER_MODE) && !defined(WINDOWS)
   struct tm t;
 
   temp = localtime_r (epoch_time, &t);
-#else
-  temp = localtime (epoch_time);
-#endif
-
   if (temp == NULL)
     {
       return;
@@ -735,15 +726,9 @@ void
 db_localdatetime (time_t * epoch_time, DB_DATETIME * datetime)
 {
   struct tm *temp;
-
-#if defined(SERVER_MODE) && !defined(WINDOWS)
   struct tm t;
 
   temp = localtime_r (epoch_time, &t);
-#else
-  temp = localtime (epoch_time);
-#endif
-
   if (temp == NULL)
     {
       return;
@@ -772,20 +757,14 @@ init_tm (struct tm *tm)
 {
   time_t tloc;
   struct tm *tmp;
-#if defined(SERVER_MODE) && !defined(WINDOWS)
   struct tm t;
-#endif
 
   if (time (&tloc) == -1)
     {
       return -1;
     }
 
-#if defined(SERVER_MODE) && !defined(WINDOWS)
   tmp = localtime_r (&tloc, &t);
-#else
-  tmp = localtime (&tloc);
-#endif
   if (tmp == NULL)
     {
       return -1;
@@ -3833,9 +3812,7 @@ db_timestamp_to_datetime (DB_TIMESTAMP * utime, DB_DATETIME * datetime)
 {
   struct tm *temp;
   time_t tmp_time = *utime;
-#if defined(SERVER_MODE) && !defined(WINDOWS)
   struct tm t;
-#endif
 
   if (tmp_time == IGREG_SPECIAL)
     {
@@ -3848,12 +3825,7 @@ db_timestamp_to_datetime (DB_TIMESTAMP * utime, DB_DATETIME * datetime)
       return NO_ERROR;
     }
 
-#if defined(SERVER_MODE) && !defined(WINDOWS)
   temp = localtime_r (&tmp_time, &t);
-#else
-  temp = localtime (&tmp_time);
-#endif
-
   if (temp)
     {
       if (datetime)

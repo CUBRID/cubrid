@@ -3096,11 +3096,7 @@ sysprm_set_er_log_file (const char *db_name)
     }
 
   log_time = time (NULL);
-#if defined (SERVER_MODE) && !defined (WINDOWS)
   log_tm_p = localtime_r (&log_time, &log_tm);
-#else
-  log_tm_p = localtime (&log_time);
-#endif /* SERVER_MODE && !WINDOWS */
   if (log_tm_p != NULL)
     {
       snprintf (error_log_name, PATH_MAX - 1,

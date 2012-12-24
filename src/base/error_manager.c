@@ -1900,11 +1900,7 @@ er_log (int err_id)
   /* LOG THE MESSAGE */
 
   er_time = time (NULL);
-#if defined (SERVER_MODE) && !defined (WINDOWS)
   er_tm_p = localtime_r (&er_time, &er_tm);
-#else /* SERVER_MODE && !WINDOWS */
-  er_tm_p = localtime (&er_time);
-#endif /* SERVER_MODE && !WINDOWS */
   if (er_tm_p == NULL)
     {
       strcpy (time_array, "00/00/00 00:00:00.000");
@@ -2321,11 +2317,7 @@ er_print (void)
   er_all (&err_id, &severity, &nlevels, &line_no, &file_name, &msg);
 
   er_time = time (NULL);
-#if defined (SERVER_MODE) && !defined (WINDOWS)
   er_tm_p = localtime_r (&er_time, &er_tm);
-#else /* SERVER_MODE && !WINDOWS */
-  er_tm_p = localtime (&er_time);
-#endif /* SERVER_MODE && !WINDOWS */
   if (er_tm_p)
     {
       strftime (time_array_p, 256, "%c", er_tm_p);
@@ -2409,12 +2401,7 @@ _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
     {
       er_time = time (NULL);
 
-#if defined (SERVER_MODE) && !defined (WINDOWS)
       er_tm_p = localtime_r (&er_time, &er_tm);
-#else /* SERVER_MODE && !WINDOWS */
-      er_tm_p = localtime (&er_time);
-#endif /* SERVER_MODE && !WINDOWS */
-
       if (er_tm_p == NULL)
 	{
 	  strcpy (time_array, "00/00/00 00:00:00.000");

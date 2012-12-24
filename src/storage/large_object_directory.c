@@ -28,6 +28,7 @@
 #include <string.h>
 #include <assert.h>
 
+#include "porting.h"
 #include "error_manager.h"
 #include "recovery.h"
 #include "memory_alloc.h"
@@ -3315,23 +3316,17 @@ largeobjmgr_firstdir_map_shrink (THREAD_ENTRY * thread_p, LOID * loid,
    * inside the index. The first and last entries are not chosen
    * for deletion.
    */
-#if defined(SERVER_MODE) && !defined(WINDOWS)
-  {
-    THREAD_ENTRY *entry;
-
-    if (thread_p == NULL)
-      {
-	thread_p = thread_get_thread_entry_info ();
-      }
-
-    entry = thread_p;
-    del_ind =
-      1 +
-      (rand_r (&entry->rand_seed) % (LARGEOBJMGR_MAX_DIRMAP_ENTRY_CNT - 3));
-  }
-#else /* SERVER_MODE && !WINDOWS */
+#if defined(SERVER_MODE)
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+  del_ind =
+    1 +
+    (rand_r (&thread_p->rand_seed) % (LARGEOBJMGR_MAX_DIRMAP_ENTRY_CNT - 3));
+#else /* SERVER_MODE */
   del_ind = 1 + (rand () % (LARGEOBJMGR_MAX_DIRMAP_ENTRY_CNT - 3));
-#endif /* SERVER_MODE && !WINDOWS */
+#endif /* SERVER_MODE */
 
   del_ent_ptr = largeobjmgr_dirmap_entry (page_ptr, del_ind);
   del_length = (int) del_ent_ptr->length;

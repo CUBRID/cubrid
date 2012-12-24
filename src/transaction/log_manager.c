@@ -5034,13 +5034,15 @@ log_append_donetime (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 #if !defined(NDEBUG)
       if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
 	{
-	  time_t xxtime = time (NULL);
+	  char time_val[CTIME_MAX];
 
+	  time_t xxtime = time (NULL);
+	  (void) ctime_r (&xxtime, time_val);
 	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
 					   MSGCAT_SET_LOG,
 					   MSGCAT_LOG_FINISH_COMMIT),
 		   tdes->tran_index, tdes->trid, log_Gl.hdr.append_lsa.pageid,
-		   log_Gl.hdr.append_lsa.offset, ctime (&xxtime));
+		   log_Gl.hdr.append_lsa.offset, time_val);
 	  fflush (stdout);
 	}
 #endif /* !NDEBUG */
@@ -5051,13 +5053,15 @@ log_append_donetime (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 #if !defined(NDEBUG)
       if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
 	{
-	  time_t xxtime = time (NULL);
+	  char time_val[CTIME_MAX];
 
+	  time_t xxtime = time (NULL);
+	  (void) ctime_r (&xxtime, time_val);
 	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
 					   MSGCAT_SET_LOG,
 					   MSGCAT_LOG_FINISH_ABORT),
 		   tdes->tran_index, tdes->trid, log_Gl.hdr.append_lsa.pageid,
-		   log_Gl.hdr.append_lsa.offset, ctime (&xxtime));
+		   log_Gl.hdr.append_lsa.offset, time_val);
 	  fflush (stdout);
 	}
 #endif /* !NDEBUG */
@@ -6787,8 +6791,10 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 #if !defined(NDEBUG)
       if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
 	{
+	  char time_val[CTIME_MAX];
 	  time_t xxtime = time (NULL);
 
+	  (void) ctime_r (&xxtime, time_val);
 	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
 					   MSGCAT_SET_LOG,
 					   ((iscommitted != LOG_ABORT)
@@ -6796,7 +6802,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 					    : MSGCAT_LOG_FINISH_ABORT)),
 		   tdes->tran_index, tdes->trid,
 		   log_Gl.hdr.append_lsa.pageid, log_Gl.hdr.append_lsa.offset,
-		   ctime (&xxtime));
+		   time_val);
 	  fflush (stdout);
 	}
 #endif /* !NDEBUG */
@@ -8127,10 +8133,12 @@ static void
 log_dump_header (FILE * out_fp, struct log_header *log_header_p)
 {
   time_t tmp_time;
+  char time_val[CTIME_MAX];
 
   fprintf (out_fp, "\n ** DUMP LOG HEADER **\n");
 
   tmp_time = (time_t) log_header_p->db_creation;
+  (void) ctime_r (&tmp_time, time_val);
   fprintf (out_fp,
 	   "HDR: Magic Symbol = %s at disk location = %lld\n"
 	   "     Creation_time = %s"
@@ -8140,7 +8148,7 @@ log_dump_header (FILE * out_fp, struct log_header *log_header_p)
 	   "     Num_active_log_pages = %d, First_active_log_page = %lld,\n"
 	   "     Current_append = %lld|%d, Checkpoint = %lld|%d,\n",
 	   log_header_p->magic, (long long) offsetof (LOG_PAGE, area),
-	   ctime (&tmp_time), log_header_p->db_release,
+	   time_val, log_header_p->db_release,
 	   log_header_p->db_compatibility, log_header_p->db_iopagesize,
 	   log_header_p->db_logpagesize, log_header_p->is_shutdown,
 	   log_header_p->next_trid, log_header_p->avg_ntrans,
@@ -8574,6 +8582,7 @@ log_dump_record_transaction_finish (THREAD_ENTRY * thread_p, FILE * out_fp,
 {
   struct log_donetime *donetime;
   time_t tmp_time;
+  char time_val[CTIME_MAX];
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*donetime), log_lsa,
@@ -8581,8 +8590,8 @@ log_dump_record_transaction_finish (THREAD_ENTRY * thread_p, FILE * out_fp,
   donetime =
     (struct log_donetime *) ((char *) log_page_p->area + log_lsa->offset);
   tmp_time = (time_t) donetime->at_time;
-  fprintf (out_fp, ",\n     Transaction finish time at = %s\n",
-	   ctime (&tmp_time));
+  (void) ctime_r (&tmp_time, time_val);
+  fprintf (out_fp, ",\n     Transaction finish time at = %s\n", time_val);
 
   return log_page_p;
 }

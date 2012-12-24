@@ -2334,7 +2334,7 @@ css_read_ip_info (IP_INFO ** out_ip_info, char *filename)
 
   while (fgets (buf, 32, fd_ip_list))
     {
-      char *token, *p;
+      char *token, *p, *save;
       int address_index;
 
       p = strchr (buf, '#');
@@ -2374,7 +2374,7 @@ css_read_ip_info (IP_INFO ** out_ip_info, char *filename)
 	    }
 	}
 
-      token = strtok (buf, ".");
+      token = strtok_r (buf, ".", &save);
 
       address_index = ip_info->num_list * IP_BYTE_COUNT;
 
@@ -2426,7 +2426,7 @@ css_read_ip_info (IP_INFO ** out_ip_info, char *filename)
 		(unsigned char) adr;
 	    }
 
-	  token = strtok (NULL, ".");
+	  token = strtok_r (NULL, ".", &save);
 
 	  if (i == 3 && token != NULL)
 	    {

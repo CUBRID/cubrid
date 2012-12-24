@@ -480,11 +480,7 @@ log_dump_log_info (const char *logname_info, bool also_stdout,
     }
 
   log_time = time (NULL);
-#if defined (SERVER_MODE) && !defined (WINDOWS)
   log_tm_p = localtime_r (&log_time, &log_tm);
-#else /* SERVER_MODE && !WINDOWS */
-  log_tm_p = localtime (&log_time);
-#endif /* SERVER_MODE && !WINDOWS */
   if (log_tm_p == NULL)
     {
       strcpy (time_array_of_log_info, "Time: 00/00/00 00:00:00.000 - ");

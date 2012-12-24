@@ -489,11 +489,12 @@ load_unicode_data (const LOCALE_DATA * ld)
       for (i = 1; i < UNICODE_FILE_FIELDS; i++)
 	{
 	  char str_p[UNICODE_FILE_LINE_SIZE];
+	  char *save;
 	  int cp_count;
 
 	  strcpy (str_p, s);
 
-	  end = strtok (str_p, ";");
+	  end = strtok_r (str_p, ";", &save);
 
 	  /* check generic category */
 	  if (i == UNICODE_FILE_GENERAL_CAT_POS)

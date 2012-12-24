@@ -48,6 +48,7 @@
 
 #include "misc_string.h"
 #include "md5.h"
+#include "porting.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -11429,7 +11430,7 @@ db_sys_date (DB_VALUE * result_date)
 {
   int error_status = NO_ERROR;
   time_t tloc;
-  struct tm *c_time_struct;
+  struct tm *c_time_struct, tm_val;
 
   assert (result_date != (DB_VALUE *) NULL);
 
@@ -11445,7 +11446,7 @@ db_sys_date (DB_VALUE * result_date)
       return error_status;
     }
 
-  c_time_struct = localtime (&tloc);
+  c_time_struct = localtime_r (&tloc, &tm_val);
   if (c_time_struct == NULL)
     {
       error_status = ER_SYSTEM_DATE;
@@ -11467,7 +11468,7 @@ db_sys_time (DB_VALUE * result_time)
 {
   int error_status = NO_ERROR;
   time_t tloc;
-  struct tm *c_time_struct;
+  struct tm *c_time_struct, tm_val;
 
   assert (result_time != (DB_VALUE *) NULL);
 
@@ -11483,8 +11484,8 @@ db_sys_time (DB_VALUE * result_time)
       return error_status;
     }
 
-  c_time_struct = localtime (&tloc);
-  if (c_time_struct == NULL || c_time_struct == (struct tm *) -1)
+  c_time_struct = localtime_r (&tloc, &tm_val);
+  if (c_time_struct == NULL)
     {
       error_status = ER_SYSTEM_DATE;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
@@ -11532,7 +11533,7 @@ db_sys_datetime (DB_VALUE * result_datetime)
   DB_DATETIME datetime;
 
   struct timeb tloc;
-  struct tm *c_time_struct;
+  struct tm *c_time_struct, tm_val;
 
   assert (result_datetime != (DB_VALUE *) NULL);
 
@@ -11546,8 +11547,8 @@ db_sys_datetime (DB_VALUE * result_datetime)
       return error_status;
     }
 
-  c_time_struct = localtime (&tloc.time);
-  if (c_time_struct == NULL || c_time_struct == (struct tm *) -1)
+  c_time_struct = localtime_r (&tloc.time, &tm_val);
+  if (c_time_struct == NULL)
     {
       error_status = ER_SYSTEM_DATE;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
@@ -18138,14 +18139,14 @@ static int
 get_cur_year (void)
 {
   time_t tloc;
-  struct tm *tm;
+  struct tm *tm, tm_val;
 
   if (time (&tloc) == -1)
     {
       return -1;
     }
 
-  tm = localtime (&tloc);
+  tm = localtime_r (&tloc, &tm_val);
   if (tm == NULL)
     {
       return -1;
@@ -18161,14 +18162,14 @@ static int
 get_cur_month (void)
 {
   time_t tloc;
-  struct tm *tm;
+  struct tm *tm, tm_val;
 
   if (time (&tloc) == -1)
     {
       return -1;
     }
 
-  tm = localtime (&tloc);
+  tm = localtime_r (&tloc, &tm_val);
   if (tm == NULL)
     {
       return -1;

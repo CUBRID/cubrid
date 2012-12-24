@@ -1478,7 +1478,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
 
     case DB_TYPE_TIMESTAMP:
       {
-	struct tm *temp;
+	struct tm *temp, tm_val;
 	bool pm;
 	time_t tmp_time;
 
@@ -1489,7 +1489,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
 	  }
 
 	tmp_time = *(DB_GET_TIMESTAMP (value));
-	temp = localtime (&tmp_time);
+	temp = localtime_r (&tmp_time, &tm_val);
 	if (temp)
 	  {
 	    pm = (temp->tm_hour >= 12) ? true : false;

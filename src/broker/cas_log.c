@@ -40,6 +40,7 @@
 #endif
 #include <assert.h>
 
+#include "porting.h"
 #include "cas_common.h"
 #include "cas_log.h"
 #include "cas_util.h"
@@ -777,11 +778,7 @@ cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr,
 
   t1 = start_time->tv_sec;
   t2 = end_time.tv_sec;
-#if defined (WINDOWS)
-  if (localtime_s (&ct1, &t1) != 0 || localtime_s (&ct2, &t2) != 0)
-#else /* !WINDOWS */
   if (localtime_r (&t1, &ct1) == NULL || localtime_r (&t2, &ct2) == NULL)
-#endif /* !WINDOWS */
     {
       return -1;
     }
