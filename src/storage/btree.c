@@ -11112,6 +11112,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
    * prefix key length approaches the fixed key length.
    */
   max_key = btree_get_key_length (mid_key);
+  max_key = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_NON_LEAF_NODE, max_key);
   if (max_key > BTREE_GET_NODE_MAX_KEY_LEN (peek_rec.data))
     {
       BTREE_PUT_NODE_MAX_KEY_LEN (peek_rec.data, max_key);

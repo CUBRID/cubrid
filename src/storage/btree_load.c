@@ -1072,7 +1072,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 	   * is larger than the fixed key length in pathological cases like char(4)
 	   */
 	  new_max = btree_get_key_length (&prefix_key);
-	  max_key_len = (new_max > max_key_len) ? new_max : max_key_len;
+	  new_max = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_NON_LEAF_NODE, new_max);
+	  max_key_len = MAX (new_max, max_key_len);
 
 	  if (btree_connect_page (thread_p, &prefix_key, max_key_len,
 				  &load_args->leaf.vpid, load_args) == NULL)
@@ -1093,6 +1094,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 	}
       else
 	{			/* key type is not string */
+	  max_key_len = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_NON_LEAF_NODE,
+						   max_key_len);
 	  /* Insert this key to the parent level */
 	  if (btree_connect_page (thread_p, &last_key, max_key_len,
 				  &load_args->leaf.vpid, load_args) == NULL)
@@ -1140,6 +1143,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 		     &leaf_pnt, BTREE_LEAF_NODE, &clear_last_key,
 		     &last_key_offset, PEEK_KEY_VALUE);
 
+  max_key_len = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_NON_LEAF_NODE, max_key_len);
   /* Insert this key to the parent level */
   if (btree_connect_page (thread_p, &last_key, max_key_len,
 			  &load_args->leaf.vpid, load_args) == NULL)
@@ -1242,6 +1246,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 			     &clear_last_key, &last_key_offset,
 			     PEEK_KEY_VALUE);
 
+	  max_key_len = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_NON_LEAF_NODE,
+						   max_key_len);
 	  /* Insert this key to the parent level */
 	  if (btree_connect_page (thread_p, &last_key, max_key_len,
 				  &cur_nleafpgid, load_args) == NULL)
