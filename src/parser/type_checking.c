@@ -2788,8 +2788,8 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       sig.arg1_type.is_generic = true;
       sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
 
-      sig.arg2_type.is_generic = false;
-      sig.arg2_type.val.type = PT_TYPE_INTEGER;
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.type = PT_GENERIC_TYPE_NUMBER;
 
       /* return type */
       sig.return_type.is_generic = true;
@@ -2798,14 +2798,14 @@ pt_get_expression_definition (const PT_OP_TYPE op,
 
       /* number types 2 */
       sig.arg1_type.is_generic = true;
-      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
 
       sig.arg2_type.is_generic = true;
       sig.arg2_type.val.type = PT_GENERIC_TYPE_STRING;
 
       /* return type */
-      sig.return_type.is_generic = false;
-      sig.return_type.val.generic_type = PT_TYPE_DOUBLE;
+      sig.return_type.is_generic = true;
+      sig.return_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
       def->overloads[num++] = sig;
 
       /* date */
