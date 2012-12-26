@@ -113,44 +113,26 @@ static THREAD_MANAGER thread_Manager;
  * For special Purpose Threads: deadlock detector, checkpoint daemon
  *    Under the win32-threads system, *_cond variables are an auto-reset event
  */
-static DAEMON_THREAD_MONITOR thread_Deadlock_detect_thread =
-  { 0, true, false, PTHREAD_MUTEX_INITIALIZER,
-  PTHREAD_COND_INITIALIZER
-};
-static DAEMON_THREAD_MONITOR thread_Checkpoint_thread =
-  { 0, false, false, PTHREAD_MUTEX_INITIALIZER,
-  PTHREAD_COND_INITIALIZER
-};
-static DAEMON_THREAD_MONITOR thread_Purge_archive_logs_thread =
-  { 0, false, false, PTHREAD_MUTEX_INITIALIZER,
-  PTHREAD_COND_INITIALIZER
-};
-static DAEMON_THREAD_MONITOR thread_Oob_thread =
-  { 0, true, true, PTHREAD_MUTEX_INITIALIZER,
-  PTHREAD_COND_INITIALIZER
-};
-static DAEMON_THREAD_MONITOR thread_Page_flush_thread =
-  { 0, false, false, PTHREAD_MUTEX_INITIALIZER,
-  PTHREAD_COND_INITIALIZER
-};
-static DAEMON_THREAD_MONITOR thread_Flush_control_thread =
-  { 0, false, false, PTHREAD_MUTEX_INITIALIZER,
-  PTHREAD_COND_INITIALIZER
-};
-static DAEMON_THREAD_MONITOR thread_Session_control_thread =
-  { 0, false, false, PTHREAD_MUTEX_INITIALIZER,
-  PTHREAD_COND_INITIALIZER
-};
-DAEMON_THREAD_MONITOR thread_Log_flush_thread =
-  { 0, false, false, PTHREAD_MUTEX_INITIALIZER,
-  PTHREAD_COND_INITIALIZER
-};
+static DAEMON_THREAD_MONITOR
+  thread_Deadlock_detect_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
+static DAEMON_THREAD_MONITOR
+  thread_Checkpoint_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
+static DAEMON_THREAD_MONITOR
+  thread_Purge_archive_logs_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
+static DAEMON_THREAD_MONITOR
+  thread_Oob_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
+static DAEMON_THREAD_MONITOR
+  thread_Page_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
+static DAEMON_THREAD_MONITOR
+  thread_Flush_control_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
+static DAEMON_THREAD_MONITOR
+  thread_Session_control_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
+DAEMON_THREAD_MONITOR
+  thread_Log_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 
 #if defined(USE_LOG_CLOCK_THREAD)
-static DAEMON_THREAD_MONITOR thread_Log_clock_thread =
-  { 0, false, false, PTHREAD_MUTEX_INITIALIZER,
-  PTHREAD_COND_INITIALIZER
-};
+static DAEMON_THREAD_MONITOR
+  thread_Log_clock_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 #endif /* USE_LOG_CLOCK_THREAD */
 
 static int thread_initialize_entry (THREAD_ENTRY * entry_ptr);
@@ -180,6 +162,7 @@ thread_log_clock_thread (void *);
 static int css_initialize_sync_object (void);
 static int thread_wakeup_internal (THREAD_ENTRY * thread_p, int resume_reason,
 				   bool had_mutex);
+static void thread_reset_nrequestors_of_log_flush_thread (void);
 
 /*
  * Thread Specific Data management
@@ -2489,6 +2472,9 @@ thread_deadlock_detect_thread (void *arg_p)
   tsd_ptr->type = TT_DAEMON;
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
 
+  thread_Deadlock_detect_thread.is_valid = true;
+  thread_Deadlock_detect_thread.is_running = true;
+
   thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
 
   /* during server is active */
@@ -2541,6 +2527,11 @@ thread_deadlock_detect_thread (void *arg_p)
 	}
     }
 
+  rv = pthread_mutex_lock (&thread_Deadlock_detect_thread.lock);
+  thread_Deadlock_detect_thread.is_running = false;
+  thread_Deadlock_detect_thread.is_valid = false;
+  pthread_mutex_unlock (&thread_Deadlock_detect_thread.lock);
+
   er_clear ();
   tsd_ptr->status = TS_DEAD;
 
@@ -2585,6 +2576,7 @@ thread_session_control_thread (void *arg_p)
   thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
   tsd_ptr->type = TT_DAEMON;
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
+  thread_Session_control_thread.is_valid = true;
   thread_Session_control_thread.is_running = true;
 
   thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
@@ -2608,6 +2600,10 @@ thread_session_control_thread (void *arg_p)
 
       session_remove_expired_sessions (&timeout);
     }
+  rv = pthread_mutex_lock (&thread_Session_control_thread.lock);
+  thread_Session_control_thread.is_valid = false;
+  thread_Session_control_thread.is_running = false;
+  pthread_mutex_unlock (&thread_Session_control_thread.lock);
 
   er_clear ();
   tsd_ptr->status = TS_DEAD;
@@ -2653,6 +2649,8 @@ thread_checkpoint_thread (void *arg_p)
   thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
   tsd_ptr->type = TT_DAEMON;
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
+  thread_Checkpoint_thread.is_valid = true;
+  thread_Checkpoint_thread.is_running = true;
 
   thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
 
@@ -2676,6 +2674,11 @@ thread_checkpoint_thread (void *arg_p)
 
       logpb_checkpoint (tsd_ptr);
     }
+
+  rv = pthread_mutex_lock (&thread_Checkpoint_thread.lock);
+  thread_Checkpoint_thread.is_valid = false;
+  thread_Checkpoint_thread.is_running = false;
+  pthread_mutex_unlock (&thread_Checkpoint_thread.lock);
 
   er_clear ();
   tsd_ptr->status = TS_DEAD;
@@ -2723,6 +2726,9 @@ thread_purge_archive_logs_thread (void *arg_p)
   thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
   tsd_ptr->type = TT_DAEMON;
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
+
+  thread_Purge_archive_logs_thread.is_valid = true;
+  thread_Purge_archive_logs_thread.is_running = true;
 
   thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
 
@@ -2790,6 +2796,10 @@ thread_purge_archive_logs_thread (void *arg_p)
 	}
 
     }
+  rv = pthread_mutex_lock (&thread_Purge_archive_logs_thread.lock);
+  thread_Purge_archive_logs_thread.is_valid = false;
+  thread_Purge_archive_logs_thread.is_running = false;
+  pthread_mutex_unlock (&thread_Purge_archive_logs_thread.lock);
 
   er_clear ();
   tsd_ptr->status = TS_DEAD;
@@ -2859,6 +2869,7 @@ thread_page_flush_thread (void *arg_p)
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
 
   thread_Page_flush_thread.is_running = true;
+  thread_Page_flush_thread.is_valid = true;
 
   thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
 
@@ -2915,6 +2926,11 @@ thread_page_flush_thread (void *arg_p)
 				    prm_get_float_value
 				    (PRM_ID_PB_BUFFER_FLUSH_RATIO));
     }
+
+  rv = pthread_mutex_lock (&thread_Page_flush_thread.lock);
+  thread_Page_flush_thread.is_running = false;
+  thread_Page_flush_thread.is_valid = false;
+  pthread_mutex_unlock (&thread_Page_flush_thread.lock);
 
   er_clear ();
   tsd_ptr->status = TS_DEAD;
@@ -2976,6 +2992,7 @@ thread_flush_control_thread (void *arg_p)
   tsd_ptr->type = TT_DAEMON;	/* daemon thread */
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
 
+  thread_Flush_control_thread.is_valid = true;
   thread_Flush_control_thread.is_running = true;
 
   thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
@@ -3028,6 +3045,10 @@ thread_flush_control_thread (void *arg_p)
       (void) fileio_flush_control_add_tokens (tsd_ptr, diff_usec, &token_gen,
 					      &token_consumed);
     }
+  rv = pthread_mutex_lock (&thread_Flush_control_thread.lock);
+  thread_Flush_control_thread.is_valid = false;
+  thread_Flush_control_thread.is_running = false;
+  pthread_mutex_unlock (&thread_Flush_control_thread.lock);
 
   fileio_flush_control_finalize ();
   er_clear ();
@@ -3121,11 +3142,15 @@ thread_log_flush_thread (void *arg_p)
 
       rv = pthread_mutex_lock (&thread_Log_flush_thread.lock);
 
-      thread_Log_flush_thread.is_running = false;
-      ret = pthread_cond_timedwait (&thread_Log_flush_thread.cond,
-				    &thread_Log_flush_thread.lock,
-				    &LFT_wakeup_time);
-      thread_Log_flush_thread.is_running = true;
+      ret = 0;
+      if (thread_Log_flush_thread.nrequestors == 0 || gc_interval > 0)
+	{
+	  thread_Log_flush_thread.is_running = false;
+	  ret = pthread_cond_timedwait (&thread_Log_flush_thread.cond,
+					&thread_Log_flush_thread.lock,
+					&LFT_wakeup_time);
+	  thread_Log_flush_thread.is_running = true;
+	}
 
       rv = pthread_mutex_unlock (&thread_Log_flush_thread.lock);
 
@@ -3154,6 +3179,7 @@ thread_log_flush_thread (void *arg_p)
 
       rv = pthread_mutex_lock (&group_commit_info->gc_mutex);
       pthread_cond_broadcast (&group_commit_info->gc_cond);
+      thread_reset_nrequestors_of_log_flush_thread ();
       pthread_mutex_unlock (&group_commit_info->gc_mutex);
 
 #if defined(CUBRID_DEBUG)
@@ -3191,6 +3217,21 @@ thread_wakeup_log_flush_thread (void)
 
   rv = pthread_mutex_lock (&thread_Log_flush_thread.lock);
   pthread_cond_signal (&thread_Log_flush_thread.cond);
+  thread_Log_flush_thread.nrequestors++;
+  pthread_mutex_unlock (&thread_Log_flush_thread.lock);
+}
+
+/*
+ * thread_reset_nrequestors_of_log_flush_thread() -
+ *   return:
+ */
+static void
+thread_reset_nrequestors_of_log_flush_thread (void)
+{
+  int rv;
+
+  rv = pthread_mutex_lock (&thread_Log_flush_thread.lock);
+  thread_Log_flush_thread.nrequestors = 0;
   pthread_mutex_unlock (&thread_Log_flush_thread.lock);
 }
 
@@ -3220,6 +3261,7 @@ thread_log_clock_thread (void *arg_p)
   thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
   tsd_ptr->type = TT_DAEMON;
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
+  thread_Log_clock_thread.is_valid = true;
   thread_Log_clock_thread.is_running = true;
 
   while (!tsd_ptr->shutdown)
@@ -3238,6 +3280,9 @@ thread_log_clock_thread (void *arg_p)
 	  break;
 	}
     }
+
+  thread_Log_clock_thread.is_valid = false;
+  thread_Log_clock_thread.is_running = false;
 
   er_clear ();
   tsd_ptr->status = TS_DEAD;

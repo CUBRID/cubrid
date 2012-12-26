@@ -5328,15 +5328,10 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
   LOG_CS_EXIT ();
 #else /* SERVER_MODE */
   int rv;
-  int ret;
   struct timeval start_time = { 0, 0 };
-  struct timeval end_time = { 0, 0 };
   struct timeval tmp_timeval = { 0, 0 };
   struct timespec to = { 0, 0 };
   int max_wait_time_in_msec = 1000;
-  int min_wait_time_in_msec = 10;
-  int wait_time_in_msec;
-  int elapsed_time_in_msec;
   bool need_wakeup_LFT, need_wait;
   bool async_commit, group_commit;
 
@@ -5344,7 +5339,6 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 
   LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
 
-  assert (!LOG_CS_OWN_WRITE_MODE (thread_p));
   assert (flush_lsa != NULL && !LSA_ISNULL (flush_lsa));
 
   if (!LOG_ISRESTARTED () || flush_lsa == NULL || LSA_ISNULL (flush_lsa))
@@ -5355,6 +5349,7 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 
       return;
     }
+  assert (!LOG_CS_OWN_WRITE_MODE (thread_p));
 
   if (thread_Log_flush_thread.is_valid == false)
     {
@@ -5402,52 +5397,40 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
       need_wait = true;
     }
 
-  if (need_wakeup_LFT == true)
+  if (need_wakeup_LFT == true && need_wait == false)
     {
       thread_wakeup_log_flush_thread ();
     }
-
-  if (need_wait == true)
+  else if (need_wait == true)
     {
       nxio_lsa = logpb_get_nxio_lsa ();
 
-      rv = pthread_mutex_lock (&group_commit_info->gc_mutex);
-
-      elapsed_time_in_msec = 0;
       while (LSA_LT (&nxio_lsa, flush_lsa))
 	{
-	  if (elapsed_time_in_msec > 0)
+	  gettimeofday (&start_time, NULL);
+	  (void) timeval_add_msec (&tmp_timeval, &start_time,
+				   max_wait_time_in_msec);
+	  (void) timeval_to_timespec (&to, &tmp_timeval);
+
+	  rv = pthread_mutex_lock (&group_commit_info->gc_mutex);
+	  nxio_lsa = logpb_get_nxio_lsa ();
+	  if (LSA_GE (&nxio_lsa, flush_lsa))
+	    {
+	      pthread_mutex_unlock (&group_commit_info->gc_mutex);
+	      break;
+	    }
+
+	  if (need_wakeup_LFT == true)
 	    {
 	      thread_wakeup_log_flush_thread ();
 	    }
+	  (void) pthread_cond_timedwait (&group_commit_info->gc_cond,
+					 &group_commit_info->gc_mutex, &to);
+	  pthread_mutex_unlock (&group_commit_info->gc_mutex);
 
-	  if (need_wakeup_LFT == true
-	      && thread_Log_flush_thread.is_running == true)
-	    {
-	      wait_time_in_msec = min_wait_time_in_msec;
-	    }
-	  else
-	    {
-	      wait_time_in_msec = max_wait_time_in_msec;
-	    }
-
-	  gettimeofday (&start_time, NULL);
-	  (void) timeval_add_msec (&tmp_timeval, &start_time,
-				   wait_time_in_msec);
-	  (void) timeval_to_timespec (&to, &tmp_timeval);
-
-	  ret = pthread_cond_timedwait (&group_commit_info->gc_cond,
-					&group_commit_info->gc_mutex, &to);
-
-	  gettimeofday (&end_time, NULL);
-	  elapsed_time_in_msec =
-	    timeval_diff_in_msec (&end_time, &start_time);
-	  log_Stat.gc_total_wait_time += elapsed_time_in_msec;
-
+	  need_wakeup_LFT = true;
 	  nxio_lsa = logpb_get_nxio_lsa ();
 	}
-
-      pthread_mutex_unlock (&group_commit_info->gc_mutex);
     }
 
 #endif /* SERVER_MODE */

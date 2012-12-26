@@ -163,9 +163,13 @@ struct daemon_thread_monitor
   int thread_index;
   bool is_valid;
   bool is_running;
+  int nrequestors;
   pthread_mutex_t lock;
   pthread_cond_t cond;
 };
+
+#define DAEMON_THREAD_MONITOR_INITIALIZER  \
+  {0, false, false, 0, PTHREAD_MUTEX_INITIALIZER,PTHREAD_COND_INITIALIZER}
 
 typedef void *CSS_THREAD_ARG;
 
