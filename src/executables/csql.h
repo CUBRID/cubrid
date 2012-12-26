@@ -50,7 +50,7 @@
 #define isatty(stream)	_isatty(stream)
 #endif /* WINDOWS */
 
-#define MSGCAT_CSQL_SET_CSQL	1
+#define MSGCAT_CSQL_SET_CSQL	  1
 
 /*
  * MESSAGE NUMBERS
@@ -201,6 +201,8 @@ typedef enum
   S_CMD_PRINT_CMD,
   S_CMD_PAGER_CMD,
   S_CMD_NOPAGER_CMD,
+  S_CMD_COLUMN_WIDTH,
+  S_CMD_STRING_WIDTH,
 
 /* Help stuffs */
   S_CMD_HELP,
@@ -254,10 +256,17 @@ typedef struct
   bool nopager;
   bool continue_on_error;
   bool sysadm;
+  int string_width;
 #if defined(CSQL_NO_LONGGING)
   bool no_logging;
 #endif				/* CSQL_NO_LONGGING */
 } CSQL_ARGUMENT;
+
+typedef struct
+{
+  char *name;
+  int width;
+} CSQL_COLUMN_WIDTH_INFO;
 
 /* The file streams we are to use */
 extern FILE *csql_Input_fp;
@@ -327,5 +336,9 @@ extern void csql_help_info (const char *command, int aucommit_flag);
 extern void csql_killtran (const char *argument);
 
 extern char *csql_db_value_as_string (DB_VALUE * value, int *length);
+
+extern int csql_set_column_width_info (const char *column_name,
+				       int column_width);
+extern int csql_get_column_width (const char *column_name);
 
 #endif /* _CSQL_H_ */

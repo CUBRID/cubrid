@@ -40,6 +40,7 @@ valid options:\n\
   -c, --command=ARG            CSQL-commands\n\
   -l, --line-output            បង្ហាញតម្លៃនីមួយៗក្នុងបន្ទាត់មួយ\n\
   -r, --read-only              ទម្រង់read-only\n\
+      --string-width           display each column which is a string type in this width\n\
       --no-auto-commit         មិនអាចស្វ័យធ្វើប្រតិបត្តិការទម្រង់(mode execution)\n\
       --no-pager               កុំប្រើទំព័រ\n\
       --no-single-line         បិទបន្ទាត់ឯក(single line)ដែលតម្រង់រកការប្រតិបត្តិ\n\
@@ -133,45 +134,47 @@ $ csql help messages
          អាចដាក់ខាងមុខបុព្វបទ។ អក្សធំៗជាតំណាងនៃចំនួនអប្បបរមា\n\
         ពាក្យសរសេរកាត់ដែលអ្នកត្រូវតែបញ្ជូលដើម្បីប្រតិបត្តិcommandពិសេស។\n\
 \n\
-   ;REAd   [<file-name>]       - ដំណើរការfileមួយទៅក្នុងcommand buffer។\n\
-   ;Write  [<file-name>]       - ដាក់ជំនួសcommand bufferក្នុងfileមួយ។\n\
-   ;APpend [<file-name>]       - បន្ថែមcommand bufferទៅក្នុង fileមួយ។\n\
-   ;PRINT                      - ផ្តិត(print) command buffer។\n\
-   ;SHELL                      - ហៅ shell.\n\
-   ;CD                         - ប្តូរបញ្ជីការងារបច្ចុប្បន្ន\n\
-   ;EXit                       - បិទកម្មវិធី។\n\
+   ;REAd   [<file-name>]        - ដំណើរការfileមួយទៅក្នុងcommand buffer។\n\
+   ;Write  [<file-name>]        - ដាក់ជំនួសcommand bufferក្នុងfileមួយ។\n\
+   ;APpend [<file-name>]        - បន្ថែមcommand bufferទៅក្នុង fileមួយ។\n\
+   ;PRINT                       - ផ្តិត(print) command buffer។\n\
+   ;SHELL                       - ហៅ shell.\n\
+   ;CD                          - ប្តូរបញ្ជីការងារបច្ចុប្បន្ន\n\
+   ;EXit                        - បិទកម្មវិធី។\n\
 \n\
-   ;CLear                      - ជម្រះ command buffer។\n\
-   ;EDIT                       - ហៅអ្នកកែតម្រូវប្រព័ន្ធដែលមានcommand buffer។\n\
-   ;LISt                       - បង្ហាញមាតិការនៃcommand buffer។\n\
+   ;CLear                       - ជម្រះ command buffer។\n\
+   ;EDIT                        - ហៅអ្នកកែតម្រូវប្រព័ន្ធដែលមានcommand buffer។\n\
+   ;LISt                        - បង្ហាញមាតិការនៃcommand buffer។\n\
 \n\
-   ;RUn                        - ប្រតិបត្តិ sql ក្នុង command buffer។\n\
-   ;Xrun                       - ប្រតិបត្តិ sql ក្នុង command buffer,\n\
-                                                                                          និងជម្រះ command buffer។\n\
-   ;COmmit                     - ប្រតិបត្តិកិច្ចសម្រួលដំណើរការបច្ចុប្បន្ន។\n\
-   ;ROllback                   - បន្ថយកិច្ចសម្រួលដំណើរការបច្ចុប្បន្ន។\n\
-   ;AUtocommit [ON|OFF]        - មិនអាចស្វ័យប្រតិបត្តិទម្រង់(mode)។\n\
-   ;REStart                    - ចាប់ផ្តើមដែលតាបេសឡើងវិញ។\n\
+   ;RUn                         - ប្រតិបត្តិ sql ក្នុង command buffer។\n\
+   ;Xrun                        - ប្រតិបត្តិ sql ក្នុង command buffer,\n\
+                                                                                                                      និងជម្រះ command buffer។\n\
+   ;COMmit                      - ប្រតិបត្តិកិច្ចសម្រួលដំណើរការបច្ចុប្បន្ន។\n\
+   ;ROllback                    - បន្ថយកិច្ចសម្រួលដំណើរការបច្ចុប្បន្ន។\n\
+   ;AUtocommit [ON|OFF]         - មិនអាចស្វ័យប្រតិបត្តិទម្រង់(mode)។\n\
+   ;REStart                     - ចាប់ផ្តើមដែលតាបេសឡើងវិញ។\n\
 \n\
-   ;SHELL_Cmd  [shell-cmd]     - កំណត់ default shell, អ្នកកែត្រូវ(editor), ម៉ាស៊ីនព្រីន(print) និងអ្នកកំណត់ទំព័រ(pager)\n\
-   ;EDITOR_Cmd [editor-cmd]      បញ្ជាទៅកាន់ឧបករណ៍ថ្មីមួយ(new one), ឬបង្ហាញបច្ចុប្បន្នភាព(the current)\n\
-   ;PRINT_Cmd  [print-cmd]       ឧបករណ៍មួយ, រៀងៗគ្នា។\n\
-   ;PAger_cmd  [pager-cmd]\n\
+   ;SHELL_Cmd    [shell-cmd]    - កំណត់ default shell, អ្នកកែត្រូវ(editor), ម៉ាស៊ីនព្រីន(print) និងអ្នកកំណត់ទំព័រ(pager)\n\
+   ;EDITOR_Cmd   [editor-cmd]     បញ្ជាទៅកាន់ឧបករណ៍ថ្មីមួយ(new one), ឬបង្ហាញបច្ចុប្បន្នភាព(the current)\n\
+   ;PRINT_Cmd    [print-cmd]      ឧបករណ៍មួយ, រៀងៗគ្នា។\n\
+   ;PAger_cmd    [pager-cmd]\n\
+   ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
+   ;COLumn-width [name] [width] - set width that a specific column is displayed.\n\
 \n\
-   ;DATE                       - បង្ហាញម៉ោងក្នុងស្រុក, កាលបរិច្ឆេទ។\n\
-   ;DATAbase                   - បង្ហាញឈ្មោះដែលតាបេសដែលពេញសិទិ្ធ។\n\
-   ;SChema class-name          - បង្ហាញពត៌មានschemaនៃថ្នាក់មួយ(class)។\n\
-   ;TRigger [`*'|trigger-name] - បង្ហាញនិយមន័យtrigger។\n\
-   ;Get system_parameter       - ទទួលយកតម្លៃនៃប៉ារ៉ាម៉ែត្រប្រព័ន្ធ។\n\
-   ;SEt system_parameter=value - កំណត់តម្លៃនៃប៉ារ៉ាម៉ែត្រប្រព័ន្ធ។\n\
-   ;PLan [simple/detail/off]   - បង្ហាញផែនការណ៍ប្រតិបត្តិquery។\n\
-   ;Info <command>             - បង្ហាញពត៌មានខាងក្នុង។\n\
-   ;TIme [ON/OFF]              - មិនអាចបង្ហាញ query\n\
-                                                                                           ម៉ោងប្រតិបត្តិ\n\
-   ;LINe-output [ON/OFF]       - បង្ហាញតម្លៃនីមួយៗក្នុងបន្ទាត់មួយ\n\
-   ;HISTORYList                - បង្ហាញតារាងឈ្មោះqueriesដែលបានប្រតិបត្តិ។\n\
-   ;HISTORYRead <history_num>  - ដំណើរការentryនៅលើចំនួន historyទៅក្នុងcommand buffer។\n\
-   ;HElp                       - បង្ហាញសារជំនួយនេះ (help message)។\n\n
+   ;DATE                        - បង្ហាញម៉ោងក្នុងស្រុក, កាលបរិច្ឆេទ។\n\
+   ;DATAbase                    - បង្ហាញឈ្មោះដែលតាបេសដែលពេញសិទិ្ធ។\n\
+   ;SChema class-name           - បង្ហាញពត៌មានschemaនៃថ្នាក់មួយ(class)។\n\
+   ;TRigger [`*'|trigger-name]  - បង្ហាញនិយមន័យtrigger។\n\
+   ;Get system_parameter        - ទទួលយកតម្លៃនៃប៉ារ៉ាម៉ែត្រប្រព័ន្ធ។\n\
+   ;SEt system_parameter=value  - កំណត់តម្លៃនៃប៉ារ៉ាម៉ែត្រប្រព័ន្ធ។\n\
+   ;PLan [simple/detail/off]    - បង្ហាញផែនការណ៍ប្រតិបត្តិquery។\n\
+   ;Info <command>              - បង្ហាញពត៌មានខាងក្នុង។\n\
+   ;TIme [ON/OFF]               - មិនអាចបង្ហាញ query\n\
+                                                                                                                       ម៉ោងប្រតិបត្តិ\n\
+   ;LINe-output [ON/OFF]        - បង្ហាញតម្លៃនីមួយៗក្នុងបន្ទាត់មួយ\n\
+   ;HISTORYList                 - បង្ហាញតារាងឈ្មោះqueriesដែលបានប្រតិបត្តិ។\n\
+   ;HISTORYRead <history_num>   - ដំណើរការentryនៅលើចំនួន historyទៅក្នុងcommand buffer។\n\
+   ;HElp                        - បង្ហាញសារជំនួយនេះ (help message)។\n\n
 
 232 <Constraints> 
 233 Info {schema|trigger|deferred|workspace|lock|stats}\n\

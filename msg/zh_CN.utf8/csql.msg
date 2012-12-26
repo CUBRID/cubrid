@@ -40,6 +40,7 @@ $set 1 MSGCAT_CSQL_SET_CSQL
   -c, --command=ARG            CSQL命令\n\
   -l, --line-output            每个值都用单独的行表示\n\
   -r, --read-only              只读模式\n\
+      --string-width           display each column which is a string type in this width\n\
       --no-auto-commit         禁用自动提交执行模式\n\
       --no-pager               不要将查询结果分页\n\
       --no-single-line         关闭单行执行模式\n\
@@ -133,45 +134,47 @@ $ csql help messages
    大写的字母代表为了执行一条特定的命令,\n\
    所需的最少的缩写.\n\
 \n\
-   ;REAd   [<file-name>]       - 将一个文件读取到命令缓冲区.\n\
-   ;Write  [<file-name>]       - 用命令缓冲区的内容重写一个文件.\n\
-   ;APpend [<file-name>]       - 将命令缓冲区的内容追加到一个文件.\n\
-   ;PRINT                      - 打印命令缓冲区.\n\
-   ;SHELL                      - 调用shell.\n\
-   ;CD                         - 改变当前工作目录.\n\
-   ;EXit                       - 退出程序.\n\
+   ;REAd   [<file-name>]        - 将一个文件读取到命令缓冲区.\n\
+   ;Write  [<file-name>]        - 用命令缓冲区的内容重写一个文件.\n\
+   ;APpend [<file-name>]        - 将命令缓冲区的内容追加到一个文件.\n\
+   ;PRINT                       - 打印命令缓冲区.\n\
+   ;SHELL                       - 调用shell.\n\
+   ;CD                          - 改变当前工作目录.\n\
+   ;EXit                        - 退出程序.\n\
 \n\
-   ;CLear                      - 清理命令缓冲区.\n\
-   ;EDIT                       - 对命令缓冲区调用系统编辑器.\n\
-   ;LISt                       - 显示当前命令缓冲区的内容.\n\
+   ;CLear                       - 清理命令缓冲区.\n\
+   ;EDIT                        - 对命令缓冲区调用系统编辑器.\n\
+   ;LISt                        - 显示当前命令缓冲区的内容.\n\
 \n\
-   ;RUn                        - 执行命令缓冲区的sql.\n\
-   ;Xrun                       - 执行命令缓冲区的sql,\n\
-                                 并清理命令缓冲区.\n\
-   ;COmmit                     - 提交当前事务.\n\
-   ;ROllback                   - 回滚当前事务.\n\
-   ;AUtocommit [ON|OFF]        - 启用/停用自动提交模式.\n\
-   ;REStart                    - 重新启动数据库.\n\
+   ;RUn                         - 执行命令缓冲区的sql.\n\
+   ;Xrun                        - 执行命令缓冲区的sql,\n\
+                                  并清理命令缓冲区.\n\
+   ;COMmit                      - 提交当前事务.\n\
+   ;ROllback                    - 回滚当前事务.\n\
+   ;AUtocommit [ON|OFF]         - 启用/停用自动提交模式.\n\
+   ;REStart                     - 重新启动数据库.\n\
 \n\
-   ;SHELL_Cmd  [shell-cmd]     - 设置默认的shell或显示当前设置.\n\
-   ;EDITOR_Cmd [editor-cmd]    - 设置默认编辑器或显示当前设置.\n\
-   ;PRINT_Cmd  [print-cmd]     - 设置默认print或显示当前设置.\n\
-   ;PAger_cmd  [pager-cmd]     - 设置默认分页程序或显示当前设置\n\
+   ;SHELL_Cmd  [shell-cmd]      - 设置默认的shell或显示当前设置.\n\
+   ;EDITOR_Cmd [editor-cmd]     - 设置默认编辑器或显示当前设置.\n\
+   ;PRINT_Cmd  [print-cmd]      - 设置默认print或显示当前设置.\n\
+   ;PAger_cmd  [pager-cmd]      - 设置默认分页程序或显示当前设置\n\
+   ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
+   ;COLumn-width [name] [width] - set width that a specific column is displayed.\n\
 \n\
-   ;DATE                       - 显示本地时间,日期.\n\
-   ;DATAbase                   - 显示正被访问的数据库名.\n\
-   ;SChema class-name          - 显示类的结构信息.\n\
-   ;TRigger [`*'|trigger-name] - 显示触发器的定义.\n\
-   ;Get system_parameter       - 获取一个系统参数的值.\n\
-   ;SEt system_parameter=value - 设置一个系统参数的值.\n\
-   ;PLan [simple/detail/off]   - 显示查询执行计划.\n\
-   ;Info <command>             - 显示内部信息.\n\
-   ;TIme [ON/OFF]              - 启用/停用 显示查询\n\
-                                 执行时间.\n\
-   ;LINe-output [ON/OFF]       - 启用/停用 每个值都用单独的行表示\n\
-   ;HISTORYList                - 显示已经执行的查询列表.\n\
-   ;HISTORYRead <history_num>  - 将histroy_num所对应的内容读取到命令缓冲区.\n\
-   ;HElp                       - 显示帮助信息.\n\n
+   ;DATE                        - 显示本地时间,日期.\n\
+   ;DATAbase                    - 显示正被访问的数据库名.\n\
+   ;SChema class-name           - 显示类的结构信息.\n\
+   ;TRigger [`*'|trigger-name]  - 显示触发器的定义.\n\
+   ;Get system_parameter        - 获取一个系统参数的值.\n\
+   ;SEt system_parameter=value  - 设置一个系统参数的值.\n\
+   ;PLan [simple/detail/off]    - 显示查询执行计划.\n\
+   ;Info <command>              - 显示内部信息.\n\
+   ;TIme [ON/OFF]               - 启用/停用 显示查询\n\
+                                  执行时间.\n\
+   ;LINe-output [ON/OFF]        - 启用/停用 每个值都用单独的行表示\n\
+   ;HISTORYList                 - 显示已经执行的查询列表.\n\
+   ;HISTORYRead <history_num>   - 将histroy_num所对应的内容读取到命令缓冲区.\n\
+   ;HElp                        - 显示帮助信息.\n\n
 
 232 <系统规定参数> 
 233 Info {schema|trigger|deferred|workspace|lock|stats}\n\

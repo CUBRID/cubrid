@@ -40,6 +40,7 @@ gültigen Optionen:\n\
   -c, --command=ARG            CSQL-Befehle\n\
   -l, --line-output            jeden Wert in einer Zeile anzeigen\n\
   -r, --read-only              Nur-Lese-Modus\n\
+      --string-width           display each column which is a string type in this width\n\
       --no-auto-commit         Auto-Commit-Modus deaktivieren\n\
       --no-pager               Pager nicht verwenden\n\
       --no-single-line         Ausführung ausgerichtet auf einer Zeile deaktivieren\n\
@@ -134,45 +135,47 @@ $ csql help messages
    Zeichen sind die minimale Abkürzung, die Sie eingeben müssen, um den\n\
    angegebenen Befehl auszuführen.\n\
 \n\
-   ;REAd   [<file-name>]       - Datei in Befehlspuffer lesen.\n\
-   ;Write  [<file-name>]       - (über)schreiben des Befehlspuffers in eine Datei.\n\
-   ;APpend [<file-name>]       - Befehlspuffer in eine Datei anfügen.\n\
-   ;PRINT                      - Befehlspuffer drucken.\n\
-   ;SHELL                      - Shell rufen.\n\
-   ;CD                         - aktuelles Verzeichnis ändern.\n\
-   ;EXit                       - Programm beenden.\n\
+   ;REAd   [<file-name>]        - Datei in Befehlspuffer lesen.\n\
+   ;Write  [<file-name>]        - (über)schreiben des Befehlspuffers in eine Datei.\n\
+   ;APpend [<file-name>]        - Befehlspuffer in eine Datei anfügen.\n\
+   ;PRINT                       - Befehlspuffer drucken.\n\
+   ;SHELL                       - Shell rufen.\n\
+   ;CD                          - aktuelles Verzeichnis ändern.\n\
+   ;EXit                        - Programm beenden.\n\
 \n\
-   ;CLear                      - Befehlspuffer leeren.\n\
-   ;EDIT                       - System-Editor mit dem Befehlspuffer rufen.\n\
-   ;LISt                       - Inhalt eines Befehlspuffer anzeigen.\n\
+   ;CLear                       - Befehlspuffer leeren.\n\
+   ;EDIT                        - System-Editor mit dem Befehlspuffer rufen.\n\
+   ;LISt                        - Inhalt eines Befehlspuffer anzeigen.\n\
 \n\
-   ;RUn                        - SQL in Befehlspuffer ausführen.\n\
-   ;Xrun                       - SQL in Befehlspuffer ausführen,\n\
-                                 und Befehlspuffer leeren.\n\
-   ;COmmit                     - aktuelle Transaktion verpflichten.\n\
-   ;ROllback                   - aktuelle Transaktion rückgängig machen.\n\
-   ;AUtocommit [ON|OFF]        - aktivieren/deaktivieren des Auto-Commit-Modus.\n\
-   ;REStart                    - Datenbank neustarten.\n\
+   ;RUn                         - SQL in Befehlspuffer ausführen.\n\
+   ;Xrun                        - SQL in Befehlspuffer ausführen,\n\
+                                  und Befehlspuffer leeren.\n\
+   ;COMmit                      - aktuelle Transaktion verpflichten.\n\
+   ;ROllback                    - aktuelle Transaktion rückgängig machen.\n\
+   ;AUtocommit [ON|OFF]         - aktivieren/deaktivieren des Auto-Commit-Modus.\n\
+   ;REStart                     - Datenbank neustarten.\n\
 \n\
-   ;SHELL_Cmd  [shell-cmd]     - Standard-Shell, -Editor, -Printer und -Pager setzen\n\
-   ;EDITOR_Cmd [editor-cmd]      Befehl für eine neue, oder die aktuelle Anzeigen\n\
-   ;PRINT_Cmd  [print-cmd]       einzeln, jeweils.\n\
-   ;PAger_cmd  [pager-cmd]\n\
+   ;SHELL_Cmd    [shell-cmd]    - Standard-Shell, -Editor, -Printer und -Pager setzen\n\
+   ;EDITOR_Cmd   [editor-cmd]     Befehl für eine neue, oder die aktuelle Anzeigen\n\
+   ;PRINT_Cmd    [print-cmd]      einzeln, jeweils.\n\
+   ;PAger_cmd    [pager-cmd]\n\
+   ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
+   ;COLumn-width [name] [width] - set width that a specific column is displayed.\n\
 \n\
-   ;DATE                       - lokale Uhrzeit und Datum anzeigen.\n\
-   ;DATAbase                   - den Namen der zugegriffenen Datenbank anzeigen.\n\
-   ;SChema class-name          - Schema-Informationen einer Klasse anzeigen.\n\
-   ;TRigger [`*'|trigger-name] - Trigger-definition anzeigen.\n\
-   ;Get system_parameter       - Wert eines System-Parameter erhalten.\n\
-   ;SEt system_parameter=value - Wert eines System-Parameter setzen.\n\
-   ;PLan [simple/detail/off]   - Abfrageausführungsplan anzeigen.\n\
-   ;Info <command>             - interne Information anzeigen.\n\
-   ;TIme [ON/OFF]              - aktivieren/deaktivieren, um die Ausführungszeit\n\
+   ;DATE                        - lokale Uhrzeit und Datum anzeigen.\n\
+   ;DATAbase                    - den Namen der zugegriffenen Datenbank anzeigen.\n\
+   ;SChema class-name           - Schema-Informationen einer Klasse anzeigen.\n\
+   ;TRigger [`*'|trigger-name]  - Trigger-definition anzeigen.\n\
+   ;Get system_parameter        - Wert eines System-Parameter erhalten.\n\
+   ;SEt system_parameter=value  - Wert eines System-Parameter setzen.\n\
+   ;PLan [simple/detail/off]    - Abfrageausführungsplan anzeigen.\n\
+   ;Info <command>              - interne Information anzeigen.\n\
+   ;TIme [ON/OFF]               - aktivieren/deaktivieren, um die Ausführungszeit\n\
 					der Abfrage anzuzeigen.\n\
-   ;LINe-output [ON/OFF]       - aktivieren/deaktivieren, jeden Wert in einer Zeile anzeigen\n\
-   ;HISTORYList                - Liste der ausgeführten Abfragen anzeigen.\n\
-   ;HISTORYRead <history_num>  - Eintrag über die Verlaufszahl in den Befehlspuffer schreiben.\n\
-   ;HElp                       - Hilfe anzeigen.\n\n
+   ;LINe-output [ON/OFF]        - aktivieren/deaktivieren, jeden Wert in einer Zeile anzeigen\n\
+   ;HISTORYList                 - Liste der ausgeführten Abfragen anzeigen.\n\
+   ;HISTORYRead <history_num>   - Eintrag über die Verlaufszahl in den Befehlspuffer schreiben.\n\
+   ;HElp                        - Hilfe anzeigen.\n\n
 
 232 <Beschränkungen> 
 233 Info {schema|trigger|deferred|workspace|lock|stats}\n\

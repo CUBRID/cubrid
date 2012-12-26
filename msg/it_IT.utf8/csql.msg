@@ -40,6 +40,7 @@ opzioni valide:\n\
   -c, --command=ARG            commandi-CSQL\n\
   -l, --line-output            ogni valore visualizzato in una riga\n\
   -r, --read-only              modalità read-only\n\
+      --string-width           display each column which is a string type in this width\n\
       --no-auto-commit         disattivare modalità di esecuzione auto-commit\n\
       --no-pager               non utilizzare pager\n\
       --no-single-line         disattivare l'esecuzione orientata singola riga\n\
@@ -133,30 +134,32 @@ $ messaggi di aiuto csql
    può precedere il prefisso. Caratteri in maiuscolo rappresentano l'abbreviazione minima\n\
    che deve inserire per eseguire il comando specificato.\n\
 \n\
-   ;REAd   [<file-name>]       - leggere un file nel buffer dei comandi.\n\
-   ;Write  [<file-name>]       - (sovra)scrivere il buffer dei comandi in un file.\n\
-   ;APpend [<file-name>]       - aggiungere buffer dei comandi in un file.\n\
-   ;PRINT                      - stampa buffer dei comandi.\n\
-   ;SHELL                      - richiamare shell.\n\
-   ;CD                         - cambiare directory di lavoro corrente.\n\
-   ;EXit                       - uscire dal programma.\n\
+   ;REAd   [<file-name>]        - leggere un file nel buffer dei comandi.\n\
+   ;Write  [<file-name>]        - (sovra)scrivere il buffer dei comandi in un file.\n\
+   ;APpend [<file-name>]        - aggiungere buffer dei comandi in un file.\n\
+   ;PRINT                       - stampa buffer dei comandi.\n\
+   ;SHELL                       - richiamare shell.\n\
+   ;CD                          - cambiare directory di lavoro corrente.\n\
+   ;EXit                        - uscire dal programma.\n\
 \n\
-   ;CLear                      - pulire il buffer di comando.\n\
-   ;EDIT                       - invocare editor di sistema con buffer di comando.\n\
-   ;LISt                       - visualizzare il contenuto del buffer dei comandi.\n\
+   ;CLear                       - pulire il buffer di comando.\n\
+   ;EDIT                        - invocare editor di sistema con buffer di comando.\n\
+   ;LISt                        - visualizzare il contenuto del buffer dei comandi.\n\
 \n\
-   ;RUn                        - eseguire sql nel buffer dei comandi.\n\
-   ;Xrun                       - eseguire sql nel buffer dei comandi,\n\
-                                 e pulire il buffer di comando.\n\
-   ;COmmit                     - commit della transazione corrente.\n\
-   ;ROllback                   - roll back della transazione corrente.\n\
-   ;AUtocommit [ON|OFF]        - attivare/disattivare la modalità di auto-commit.\n\
-   ;REStart                    - riavviare il database.\n\
+   ;RUn                         - eseguire sql nel buffer dei comandi.\n\
+   ;Xrun                        - eseguire sql nel buffer dei comandi,\n\
+                                  e pulire il buffer di comando.\n\
+   ;COMmit                      - commit della transazione corrente.\n\
+   ;ROllback                    - roll back della transazione corrente.\n\
+   ;AUtocommit [ON|OFF]         - attivare/disattivare la modalità di auto-commit.\n\
+   ;REStart                     - riavviare il database.\n\
 \n\
-   ;SHELL_Cmd  [shell-cmd]     - impostare la shell predefinito, editor, stampa e pager\n\
-   ;EDITOR_Cmd [editor-cmd]      comando a uno nuovo, o la visualizzazione corrente\n\
-   ;PRINT_Cmd  [print-cmd]       uno, rispettivamente.\n\
-   ;PAger_cmd  [pager-cmd]\n\
+   ;SHELL_Cmd    [shell-cmd]    - impostare la shell predefinito, editor, stampa e pager\n\
+   ;EDITOR_Cmd   [editor-cmd]     comando a uno nuovo, o la visualizzazione corrente\n\
+   ;PRINT_Cmd    [print-cmd]      uno, rispettivamente.\n\
+   ;PAger_cmd    [pager-cmd]\n\
+   ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
+   ;COLumn-width [name] [width] - set width that a specific column is displayed.\n\
 \n\
    ;DATE                        - visualizzare l'ora locale, data.\n\
    ;DATAbase                    - visualizzare il nome del database a cui si accede.\n\

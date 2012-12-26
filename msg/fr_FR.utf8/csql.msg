@@ -40,6 +40,7 @@ valid options:\n\
   -c, --command=ARG            commandes CSQL\n\
   -l, --line-output            afficher chaque valeur dans une ligne\n\
   -r, --read-only              mode lecture seule\n\
+      --string-width           display each column which is a string type in this width\n\
       --no-auto-commit         désactiver le mode de validation automatique\n\
       --no-pager               ne pas utiliser pagineur\n\
       --no-single-line         désactiver exécution ligne par ligne\n\
@@ -133,45 +134,47 @@ $ csql help messages
    des blancs / tabulations peuvent précéder du préfixe. Caractères capitalisés\n\
    représentent l'abréviation minimale que vous devez entrer pour exécuter la commande spécifiée\n\
 \n\
-   ;REAd   [<file-name>]       - lit un fichier en tampon de commande.\n\
-   ;Write  [<file-name>]       - écrit le tampon de commande dans un fichier.\n\
-   ;APpend [<file-name>]       - ajoute tampon de commande dans un fichier.\n\
-   ;PRINT                      - affiche tampon de commande.\n\
-   ;SHELL                      - invoque l'interpréteur de commandes.\n\
-   ;CD                         - change le répertoire courant.\n\
-   ;EXit                       - quitte le programme.\n\
+   ;REAd   [<file-name>]        - lit un fichier en tampon de commande.\n\
+   ;Write  [<file-name>]        - écrit le tampon de commande dans un fichier.\n\
+   ;APpend [<file-name>]        - ajoute tampon de commande dans un fichier.\n\
+   ;PRINT                       - affiche tampon de commande.\n\
+   ;SHELL                       - invoque l'interpréteur de commandes.\n\
+   ;CD                          - change le répertoire courant.\n\
+   ;EXit                        - quitte le programme.\n\
 \n\
-   ;CLear                      - efface le tampon de commande.\n\
-   ;EDIT                       - invoque éditeur du système avec tampon de commande.\n\
-   ;LISt                       - affiche le contenu de tampon de commande.\n\
+   ;CLear                       - efface le tampon de commande.\n\
+   ;EDIT                        - invoque éditeur du système avec tampon de commande.\n\
+   ;LISt                        - affiche le contenu de tampon de commande.\n\
 \n\
-   ;RUn                        - exécute sql de tampon de commande.\n\
-   ;Xrun                       - exécute sql de tampon de commande,\n\
-                                 et efface le tampon de commande.\n\
-   ;COmmit                     - valide la transaction en cours.\n\
-   ;ROllback                   - annule la transaction en cours.\n\
-   ;AUtocommit [ON|OFF]        - active/désactive la validation automatique des transactions.\n\
-   ;REStart                    - redémarre la base de données.\n\
+   ;RUn                         - exécute sql de tampon de commande.\n\
+   ;Xrun                        - exécute sql de tampon de commande,\n\
+                                  et efface le tampon de commande.\n\
+   ;COMmit                      - valide la transaction en cours.\n\
+   ;ROllback                    - annule la transaction en cours.\n\
+   ;AUtocommit [ON|OFF]         - active/désactive la validation automatique des transactions.\n\
+   ;REStart                     - redémarre la base de données.\n\
 \n\
-   ;SHELL_Cmd  [shell-cmd]     - définit nouveau commande par défaut pour shell,\n\
-   ;EDITOR_Cmd [editor-cmd]      éditeur, affiche et paginateur, ou afficher la \n\
-   ;PRINT_Cmd  [print-cmd]       commande de courrant.\n\
-   ;PAger_cmd  [pager-cmd]\n\
+   ;SHELL_Cmd    [shell-cmd]    - définit nouveau commande par défaut pour shell,\n\
+   ;EDITOR_Cmd   [editor-cmd]     éditeur, affiche et paginateur, ou afficher la \n\
+   ;PRINT_Cmd    [print-cmd]      commande de courrant.\n\
+   ;PAger_cmd    [pager-cmd]\n\
+   ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
+   ;COLumn-width [name] [width] - set width that a specific column is displayed.\n\
 \n\
-   ;DATE                       - affiche l'heure et la date locales.\n\
-   ;DATAbase                   - affiche le nom de la base de données en cours d'accès.\n\
-   ;SChema class-name          - affiche les informations de schéma d'une classe.\n\
-   ;TRigger [`*'|trigger-name] - affiche la définition du déclencheur.\n\
-   ;Get system_parameter       - obtient la valeur d'un paramètre de système.\n\
-   ;SEt system_parameter=value - définit la valeur d'un paramètre de système.\n\
-   ;PLan [simple/detail/off]   - aficher plan d'exécution de la requête.\n\
-   ;Info <command>             - affiche des informations internes.\n\
-   ;TIme [ON/OFF]              - active/désactive pour afficher le temps\n\
-                                 d'exécution des requêtes.\n\
-   ;LINe-output [ON/OFF]       - active/désactive afficher chaque valeur dans une ligne\n\
-   ;HISTORYList                - affiche la liste des requêtes exécutées.\n\
-   ;HISTORYRead <history_num>  - lit l 'entrée sur le numéro d'historique dans le tampon de commande.\n\
-   ;HElp                       - affiche ce message d'aide.\n\n
+   ;DATE                        - affiche l'heure et la date locales.\n\
+   ;DATAbase                    - affiche le nom de la base de données en cours d'accès.\n\
+   ;SChema class-name           - affiche les informations de schéma d'une classe.\n\
+   ;TRigger [`*'|trigger-name]  - affiche la définition du déclencheur.\n\
+   ;Get system_parameter        - obtient la valeur d'un paramètre de système.\n\
+   ;SEt system_parameter=value  - définit la valeur d'un paramètre de système.\n\
+   ;PLan [simple/detail/off]    - aficher plan d'exécution de la requête.\n\
+   ;Info <command>              - affiche des informations internes.\n\
+   ;TIme [ON/OFF]               - active/désactive pour afficher le temps\n\
+                                  d'exécution des requêtes.\n\
+   ;LINe-output [ON/OFF]        - active/désactive afficher chaque valeur dans une ligne\n\
+   ;HISTORYList                 - affiche la liste des requêtes exécutées.\n\
+   ;HISTORYRead <history_num>   - lit l 'entrée sur le numéro d'historique dans le tampon de commande.\n\
+   ;HElp                        - affiche ce message d'aide.\n\n
 
 232 <Constraints> 
 233 Info {schema|trigger|deferred|workspace|lock|stats}\n\

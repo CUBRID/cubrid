@@ -128,7 +128,6 @@ int csql_Error_code = NO_ERROR;
 static char csql_Prompt[100];
 static char csql_Name[100];
 
-
 /*
  * Handles for the various files
  */
@@ -160,6 +159,9 @@ static bool csql_Is_time_on = true;
 
 static jmp_buf csql_Jmp_buf;
 
+static CSQL_COLUMN_WIDTH_INFO *csql_column_width_info_list = NULL;
+static int csql_column_width_info_list_size = 0;
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 #if !defined(WINDOWS)
 static char *csql_keyword_generator (const char *text, int state);
@@ -169,6 +171,8 @@ static void init_readline ();
 #endif /* ! WINDOWS */
 #endif /* ENABLE_UNUSED_FUNCTION */
 
+static void free_csql_column_width_info_list ();
+static int initialize_csql_column_width_info_list ();
 static void csql_pipe_handler (int sig_no);
 static void display_buffer (void);
 static void csql_execute_rcfile (CSQL_ARGUMENT * csql_arg);
@@ -275,6 +279,65 @@ init_readline ()
 }
 #endif /* !WINDOWS */
 #endif /* ENABLE_UNUSED_FUNCTION */
+
+/*
+ * free_csql_column_width_info_list() - free csql_column_width_info_list
+ * return: void
+ */
+static void
+free_csql_column_width_info_list ()
+{
+  int i;
+
+  if (csql_column_width_info_list == NULL)
+    {
+      csql_column_width_info_list_size = 0;
+
+      return;
+    }
+
+  for (i = 0; i < csql_column_width_info_list_size; i++)
+    {
+      if (csql_column_width_info_list[i].name != NULL)
+	{
+	  free_and_init (csql_column_width_info_list[i].name);
+	}
+    }
+
+  if (csql_column_width_info_list != NULL)
+    {
+      free_and_init (csql_column_width_info_list);
+    }
+
+  csql_column_width_info_list_size = 0;
+}
+
+/*
+ * initialize_csql_column_width_info_list() - initialize csql_column_width_info_list
+ * return: int
+ */
+static int
+initialize_csql_column_width_info_list ()
+{
+  int i;
+
+  csql_column_width_info_list = malloc (sizeof (CSQL_COLUMN_WIDTH_INFO) * 24);
+  if (csql_column_width_info_list == NULL)
+    {
+      csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
+
+      return CSQL_FAILURE;
+    }
+
+  csql_column_width_info_list_size = 24;
+  for (i = 0; i < csql_column_width_info_list_size; i++)
+    {
+      csql_column_width_info_list[i].name = NULL;
+      csql_column_width_info_list[i].width = 0;
+    }
+
+  return CSQL_SUCCESS;
+}
 
 /*
  * csql_display_msg() - displays the given msg to output device
@@ -412,6 +475,11 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	  csql_Error_code = CSQL_ERR_OS_ERROR;
 	  goto fatal_error;
 	}
+    }
+
+  if (initialize_csql_column_width_info_list () != CSQL_SUCCESS)
+    {
+      goto fatal_error;
     }
 
   /* For batch file input and SQL/X command argument input */
@@ -1063,6 +1131,131 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	}
       break;
 
+    case S_CMD_COLUMN_WIDTH:
+      {
+	char column_name[1024], column_width[1024];
+	char *endptr;
+	int width;
+	long result;
+
+	if (*argument == '\0')
+	  {
+	    int i;
+
+	    for (i = 0; i < csql_column_width_info_list_size; i++)
+	      {
+		if (csql_column_width_info_list[i].name == NULL)
+		  {
+		    break;
+		  }
+
+		if (csql_column_width_info_list[i].width <= 0)
+		  {
+		    continue;
+		  }
+
+		fprintf (csql_Output_fp,
+			 "COLUMN-WIDTH %s : %d\n",
+			 csql_column_width_info_list[i].name,
+			 csql_column_width_info_list[i].width);
+	      }
+	  }
+	else
+	  {
+	    result =
+	      sscanf (argument, "%1023s %1023s", column_name, column_width);
+
+	    if (result == 1)
+	      {
+		width = csql_get_column_width (column_name);
+		fprintf (csql_Output_fp,
+			 "COLUMN-WIDTH %s : %d\n", column_name, width);
+	      }
+	    else if (result == 2)
+	      {
+		errno = 0;	/* To distinguish success/failure after call */
+
+		result = strtol (column_width, &endptr, 10);
+		if ((errno == ERANGE
+		     && (result == LONG_MAX || result == LONG_MIN))
+		    || (errno != 0 && result == 0))
+		  {
+		    fprintf (csql_Error_fp,
+			     "ERROR: Invalid column-width(%s).\n",
+			     column_width);
+		    break;
+		  }
+		if (endptr && *endptr != '\0')
+		  {
+		    fprintf (csql_Error_fp,
+			     "ERROR: Invalid column-width(%s).\n",
+			     column_width);
+		    break;
+		  }
+		if (result > INT_MAX || result < 0)
+		  {
+		    fprintf (csql_Error_fp,
+			     "ERROR: Invalid column-width(%s).\n",
+			     column_width);
+		    break;
+		  }
+
+		if (csql_set_column_width_info (column_name, result) !=
+		    CSQL_SUCCESS)
+		  {
+		    return false;
+		  }
+	      }
+	    else
+	      {
+		fprintf (csql_Error_fp,
+			 "ERROR: Invalid column-width(%s).\n", argument);
+	      }
+	  }
+      }
+      break;
+
+    case S_CMD_STRING_WIDTH:
+      {
+	long result;
+	char *endptr;
+
+	if (*argument != '\0')
+	  {
+	    errno = 0;		/* To distinguish success/failure after call */
+
+	    result = strtol (argument, &endptr, 10);
+	    if ((errno == ERANGE
+		 && (result == LONG_MAX || result == LONG_MIN))
+		|| (errno != 0 && result == 0))
+	      {
+		fprintf (csql_Error_fp,
+			 "ERROR: Invalid string-width(%s).\n", argument);
+		break;
+	      }
+	    if (endptr && *endptr != '\0')
+	      {
+		fprintf (csql_Error_fp,
+			 "ERROR: Invalid string-width(%s).\n", argument);
+		break;
+	      }
+	    if (result > INT_MAX || result < 0)
+	      {
+		fprintf (csql_Error_fp,
+			 "ERROR: Invalid string-width(%s).\n", argument);
+		break;
+	      }
+
+	    csql_arg->string_width = result;
+	  }
+	else
+	  {
+	    fprintf (csql_Output_fp,
+		     "STRING-WIDTH : %d\n", csql_arg->string_width);
+	  }
+      }
+      break;
+
     case S_CMD_HISTO:
       if (histo_is_supported ())
 	{
@@ -1230,7 +1423,6 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 
   return true;
 }
-
 
 /*
  * csql_read_file() - read a file into command editor
@@ -2208,6 +2400,8 @@ csql_exit_session (int error)
   bool commit_on_shutdown = false;
   bool prm_commit_on_shutdown = prm_get_commit_on_shutdown ();
 
+  free_csql_column_width_info_list ();
+
   if (!db_commit_is_needed ())
     {
       /* when select statements exist only in session,
@@ -2610,4 +2804,123 @@ csql_get_message (int message_index)
 {
   return (msgcat_message (MSGCAT_CATALOG_CSQL,
 			  MSGCAT_CSQL_SET_CSQL, message_index));
+}
+
+/*
+ * csql_set_column_width_info() - insert column_name and column_width 
+ *                                in csql_column_width_info_list
+ *   return: int
+ *   column_name(in): column_name 
+ *   column_width(in): column_width 
+ */
+int
+csql_set_column_width_info (const char *column_name, int column_width)
+{
+  CSQL_COLUMN_WIDTH_INFO *temp_list;
+  char *temp_name;
+  int i, index = -1, previous_size = csql_column_width_info_list_size;
+
+  if (column_name == NULL || column_width < 0)
+    {
+      csql_Error_code = CSQL_ERR_INVALID_ARG_COMBINATION;
+
+      return CSQL_FAILURE;
+    }
+
+  if (csql_column_width_info_list == NULL)
+    {
+      if (initialize_csql_column_width_info_list () != CSQL_SUCCESS)
+	{
+	  return CSQL_FAILURE;
+	}
+    }
+
+  for (i = 0; i < csql_column_width_info_list_size; i++)
+    {
+      if (csql_column_width_info_list[i].name == NULL ||
+	  strcasecmp (column_name, csql_column_width_info_list[i].name) == 0)
+	{
+	  index = i;
+	  break;
+	}
+    }
+
+  if (index == -1)
+    {
+      temp_list = realloc (csql_column_width_info_list,
+			   sizeof (CSQL_COLUMN_WIDTH_INFO)
+			   * (csql_column_width_info_list_size * 2));
+      if (temp_list == NULL)
+	{
+	  csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
+
+	  return CSQL_FAILURE;
+	}
+
+      csql_column_width_info_list_size *= 2;
+      csql_column_width_info_list = temp_list;
+      for (i = previous_size; i < csql_column_width_info_list_size; i++)
+	{
+	  csql_column_width_info_list[i].name = NULL;
+	  csql_column_width_info_list[i].width = 0;
+	}
+
+      index = previous_size;
+    }
+
+  if (csql_column_width_info_list[index].name == NULL)
+    {
+      temp_name = strdup (column_name);
+      if (temp_name == NULL)
+	{
+	  csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
+
+	  return CSQL_FAILURE;
+	}
+
+      csql_column_width_info_list[index].name = temp_name;
+      csql_column_width_info_list[index].width = column_width;
+    }
+  else
+    {
+      csql_column_width_info_list[index].width = column_width;
+    }
+
+  return CSQL_SUCCESS;
+}
+
+/*
+ * csql_get_column_width_info() - get column_width related column_name
+ *   return: column_width 
+ *   column_name(in): column_name 
+ */
+int
+csql_get_column_width (const char *column_name)
+{
+  int i;
+
+  if (column_name == NULL)
+    {
+      return 0;
+    }
+
+  if (csql_column_width_info_list == NULL)
+    {
+      return 0;
+    }
+
+  for (i = 0; i < csql_column_width_info_list_size; i++)
+    {
+      if (csql_column_width_info_list[i].name == NULL)
+	{
+	  return 0;
+	}
+      else if (strcasecmp (column_name, csql_column_width_info_list[i].name)
+	       == 0)
+	{
+	  return csql_column_width_info_list[i].width;
+	}
+    }
+
+  return 0;
 }

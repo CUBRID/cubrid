@@ -40,6 +40,7 @@ $set 1 MSGCAT_CSQL_SET_CSQL
   -c, --command=ARG            CSQLコマンド\n\
   -l, --line-output            一つのラインでバリューを表示\n\
   -r, --read-only              リードオンリーモード\n\
+      --string-width           display each column which is a string type in this width\n\
       --no-auto-commit         自動コミットしない\n\
       --no-pager               ページ単位で表示しない\n\
       --no-single-line         シングルラインで実行しない\n\
@@ -133,45 +134,47 @@ $ csql help messages
    キャピタルレターで表示された部分はそのコマンドを実行するために\n\
    必要な最小の略語です。\n\
 \n\
-   ;REAd   [<file-name>]       - コマンドバッファーにファイルの内容を読み込む。\n\
-   ;Write  [<file-name>]       - コマンドバッファーの内容をファイルにセーブする。\n\
-   ;APpend [<file-name>]       - コマンドバッファーの内容をファイルにアペンドする。\n\
-   ;PRINT                      - コマンドバッファーの内容を出力。\n\
-   ;SHELL                      - シェル実行。\n\
-   ;CD                         - 現在作業ディレクトリー変更。\n\
-   ;EXit                       - 終了。\n\
+   ;REAd   [<file-name>]        - コマンドバッファーにファイルの内容を読み込む。\n\
+   ;Write  [<file-name>]        - コマンドバッファーの内容をファイルにセーブする。\n\
+   ;APpend [<file-name>]        - コマンドバッファーの内容をファイルにアペンドする。\n\
+   ;PRINT                       - コマンドバッファーの内容を出力。\n\
+   ;SHELL                       - シェル実行。\n\
+   ;CD                          - 現在作業ディレクトリー変更。\n\
+   ;EXit                        - 終了。\n\
 \n\
-   ;CLear                      - コマンドバッファーの内容を消す。\n\
-   ;EDIT                       - コマンドバッファーを編集。\n\
-   ;LISt                       - コマンドバッファーの内容を出力。\n\
+   ;CLear                       - コマンドバッファーの内容を消す。\n\
+   ;EDIT                        - コマンドバッファーを編集。\n\
+   ;LISt                        - コマンドバッファーの内容を出力。\n\
 \n\
-   ;RUn                        - コマンドバッファーを実行。\n\
-   ;Xrun                       - コマンドバッファーを実行して、\n\
-                                 バッファーの内容を消す。\n\
-   ;COmmit                     - 進行中のトランザクションをコミット。\n\
-   ;ROllback                   - 進行中のトランザクションをロールバック。\n\
-   ;AUtocommit [ON|OFF]        - 自動コミットモードを設定。／解除。\n\
-   ;REStart                    - データベースリスタート。\n\
+   ;RUn                         - コマンドバッファーを実行。\n\
+   ;Xrun                        - コマンドバッファーを実行して、\n\
+                                  バッファーの内容を消す。\n\
+   ;COMmit                      - 進行中のトランザクションをコミット。\n\
+   ;ROllback                    - 進行中のトランザクションをロールバック。\n\
+   ;AUtocommit [ON|OFF]         - 自動コミットモードを設定。／解除。\n\
+   ;REStart                     - データベースリスタート。\n\
 \n\
-   ;SHELL_Cmd  [shell-cmd]     - 既存に設定したシェルを設定／表示する。\n\
-   ;EDITOR_Cmd [editor-cmd]    - 既存に設定したエディターを設定／表示する。\n\
-   ;PRINT_Cmd  [print-cmd]     - 既存に設定したプリントを設定／表示する。\n\
-   ;PAger_cmd  [pager-cmd]     - 既存に設定したページャーを設定／表示する。\n\
+   ;SHELL_Cmd    [shell-cmd]    - 既存に設定したシェルを設定／表示する。\n\
+   ;EDITOR_Cmd   [editor-cmd]   - 既存に設定したエディターを設定／表示する。\n\
+   ;PRINT_Cmd    [print-cmd]    - 既存に設定したプリントを設定／表示する。\n\
+   ;PAger_cmd    [pager-cmd]    - 既存に設定したページャーを設定／表示する。\n\
+   ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
+   ;COLumn-width [name] [width] - set width that a specific column is displayed.\n\
 \n\
-   ;DATE                       - 地域の日付、時間を出力。\n\
-   ;DATAbase                   - アクセスしているデータベース名を出力。\n\
-   ;SChema class-name          - クラスのスキーマ情報を出力。\n\
-   ;TRigger [`*'|trigger-name] - トリガー正義を出力。\n\
-   ;Get system_parameter       - システムパラメーターを表示。\n\
-   ;SEt system_parameter=value - システムパラメーターを設定。\n\
-   ;PLan [simple|detail|off]   - クエリプランの表示を設定。\n\
-   ;Info <command>             - インターナル情報を出力。\n\
-   ;TIme [ON/OFF]              - クエリー実行時間の\n\
-                                 表示の設定／解除\n\
-   ;LINe-output [ON/OFF]       - 一つのラインでバリューを表示 設定／解除\n\
-   ;HISTORYList                - 実行したクエリリスト表示。\n\
-   ;HISTORYRead <history_num>  - ヒストリー番号のクエリをコマンドバッファーにセーブする。\n\
-   ;HElp                       - ヘルプメッセージ出力。\n\n
+   ;DATE                        - 地域の日付、時間を出力。\n\
+   ;DATAbase                    - アクセスしているデータベース名を出力。\n\
+   ;SChema class-name           - クラスのスキーマ情報を出力。\n\
+   ;TRigger [`*'|trigger-name]  - トリガー正義を出力。\n\
+   ;Get system_parameter        - システムパラメーターを表示。\n\
+   ;SEt system_parameter=value  - システムパラメーターを設定。\n\
+   ;PLan [simple|detail|off]    - クエリプランの表示を設定。\n\
+   ;Info <command>              - インターナル情報を出力。\n\
+   ;TIme [ON/OFF]               - クエリー実行時間の\n\
+                                  表示の設定／解除\n\
+   ;LINe-output [ON/OFF]        - 一つのラインでバリューを表示 設定／解除\n\
+   ;HISTORYList                 - 実行したクエリリスト表示。\n\
+   ;HISTORYRead <history_num>   - ヒストリー番号のクエリをコマンドバッファーにセーブする。\n\
+   ;HElp                        - ヘルプメッセージ出力。\n\n
 
 232 <制約事項> 
 233 Info {schema|trigger|deferred|workspace|lock|stats}\n\

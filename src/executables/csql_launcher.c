@@ -143,6 +143,7 @@ main (int argc, char *argv[])
     {CSQL_NO_PAGER_L, 0, 0, CSQL_NO_PAGER_S},
     {CSQL_NO_SINGLE_LINE_L, 0, 0, CSQL_NO_SINGLE_LINE_S},
     {CSQL_SYSADM_L, 0, 0, CSQL_SYSADM_S},
+    {CSQL_STRING_WIDTH_L, 1, 0, CSQL_STRING_WIDTH_S},
     {VERSION_L, 0, 0, VERSION_S},
     {0, 0, 0, 0}
   };
@@ -150,6 +151,7 @@ main (int argc, char *argv[])
   memset (&csql_arg, 0, sizeof (CSQL_ARGUMENT));
   csql_arg.auto_commit = true;
   csql_arg.single_line_execution = true;
+  csql_arg.string_width = 0;
   utility_make_getopt_optstring (csql_option, option_string);
 
   while (1)
@@ -244,6 +246,32 @@ main (int argc, char *argv[])
 
 	case CSQL_SYSADM_S:
 	  csql_arg.sysadm = true;
+	  break;
+
+	case CSQL_STRING_WIDTH_S:
+	  {
+	    char *endptr;
+	    long result;
+
+	    errno = 0;		/* To distinguish success/failure after call */
+	    result = strtol (optarg, &endptr, 10);
+	    if ((errno == ERANGE
+		 && (result == LONG_MAX || result == LONG_MIN))
+		|| (errno != 0 && result == 0))
+	      {
+		goto print_usage;
+	      }
+	    if (endptr && *endptr != '\0')
+	      {
+		goto print_usage;
+	      }
+	    if (result > INT_MAX || result < 0)
+	      {
+		goto print_usage;
+	      }
+
+	    csql_arg.string_width = result;
+	  }
 	  break;
 
 	case VERSION_S:

@@ -40,6 +40,7 @@ valid options:\n\
   -c, --command=ARG            CSQL-commands\n\
   -l, --line-output            display each value in a line\n\
   -r, --read-only              read-only mode\n\
+      --string-width           display each column which is a string type in this width\n\
       --no-auto-commit         disable auto commit mode execution\n\
       --no-pager               do not use pager\n\
       --no-single-line         turn off single line oriented execution\n\
@@ -133,45 +134,47 @@ $ csql help messages
    can precede the prefix. Capitalized characters represent the minimum\n\
    abbreviation that you need to enter to execute the specified command.\n\
 \n\
-   ;REAd   [<file-name>]       - read a file into command buffer.\n\
-   ;Write  [<file-name>]       - (over)write command buffer into a file.\n\
-   ;APpend [<file-name>]       - append command buffer into a file.\n\
-   ;PRINT                      - print command buffer.\n\
-   ;SHELL                      - invoke shell.\n\
-   ;CD                         - change current working directory.\n\
-   ;EXit                       - exit program.\n\
+   ;REAd   [<file-name>]        - read a file into command buffer.\n\
+   ;Write  [<file-name>]        - (over)write command buffer into a file.\n\
+   ;APpend [<file-name>]        - append command buffer into a file.\n\
+   ;PRINT                       - print command buffer.\n\
+   ;SHELL                       - invoke shell.\n\
+   ;CD                          - change current working directory.\n\
+   ;EXit                        - exit program.\n\
 \n\
-   ;CLear                      - clear command buffer.\n\
-   ;EDIT                       - invoke system editor with command buffer.\n\
-   ;LISt                       - display the content of command buffer.\n\
+   ;CLear                       - clear command buffer.\n\
+   ;EDIT                        - invoke system editor with command buffer.\n\
+   ;LISt                        - display the content of command buffer.\n\
 \n\
-   ;RUn                        - execute sql in command buffer.\n\
-   ;Xrun                       - execute sql in command buffer,\n\
-                                 and clear the command buffer.\n\
-   ;COmmit                     - commit the current transaction.\n\
-   ;ROllback                   - roll back the current transaction.\n\
-   ;AUtocommit [ON|OFF]        - enable/disable auto commit mode.\n\
-   ;REStart                    - restart database.\n\
+   ;RUn                         - execute sql in command buffer.\n\
+   ;Xrun                        - execute sql in command buffer,\n\
+                                  and clear the command buffer.\n\
+   ;COMmit                      - commit the current transaction.\n\
+   ;ROllback                    - roll back the current transaction.\n\
+   ;AUtocommit [ON|OFF]         - enable/disable auto commit mode.\n\
+   ;REStart                     - restart database.\n\
 \n\
-   ;SHELL_Cmd  [shell-cmd]     - set default shell, editor, print and pager\n\
-   ;EDITOR_Cmd [editor-cmd]      command to new one, or display the current\n\
-   ;PRINT_Cmd  [print-cmd]       one, respectively.\n\
-   ;PAger_cmd  [pager-cmd]\n\
+   ;SHELL_Cmd    [shell-cmd]    - set default shell, editor, print and pager\n\
+   ;EDITOR_Cmd   [editor-cmd]     command to new one, or display the current\n\
+   ;PRINT_Cmd    [print-cmd]      one, respectively.\n\
+   ;PAger_cmd    [pager-cmd]\n\
+   ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
+   ;COLumn-width [name] [width] - set width that a specific column is displayed.\n\
 \n\
-   ;DATE                       - display the local time, date.\n\
-   ;DATAbase                   - display the name of database being accessed.\n\
-   ;SChema class-name          - display schema information of a class.\n\
-   ;TRigger [`*'|trigger-name] - display trigger definition.\n\
-   ;Get system_parameter       - get the value of a system parameter.\n\
-   ;SEt system_parameter=value - set the value of a system parameter.\n\
-   ;PLan [simple/detail/off]   - show query execution plan.\n\
-   ;Info <command>             - display internal information.\n\
-   ;TIme [ON/OFF]              - enable/disable to display the query\n\
-                                 execution time.\n\
-   ;LINe-output [ON/OFF]       - enable/disable to display each value in a line\n\
-   ;HISTORYList                - display list of the executed queries.\n\
-   ;HISTORYRead <history_num>  - read entry on the history number into command buffer.\n\
-   ;HElp                       - display this help message.\n\n
+   ;DATE                        - display the local time, date.\n\
+   ;DATAbase                    - display the name of database being accessed.\n\
+   ;SChema class-name           - display schema information of a class.\n\
+   ;TRigger [`*'|trigger-name]  - display trigger definition.\n\
+   ;Get system_parameter        - get the value of a system parameter.\n\
+   ;SEt system_parameter=value  - set the value of a system parameter.\n\
+   ;PLan [simple/detail/off]    - show query execution plan.\n\
+   ;Info <command>              - display internal information.\n\
+   ;TIme [ON/OFF]               - enable/disable to display the query\n\
+                                  execution time.\n\
+   ;LINe-output [ON/OFF]        - enable/disable to display each value in a line\n\
+   ;HISTORYList                 - display list of the executed queries.\n\
+   ;HISTORYRead <history_num>   - read entry on the history number into command buffer.\n\
+   ;HElp                        - display this help message.\n\n
 
 232 <Constraints> 
 233 Info {schema|trigger|deferred|workspace|lock|stats}\n\

@@ -89,6 +89,8 @@ static SESSION_CMD_TABLE csql_Session_cmd_table[] = {
   {"print_cmd", S_CMD_PRINT_CMD},
   {"pager_cmd", S_CMD_PAGER_CMD},
   {"nopager", S_CMD_NOPAGER_CMD},
+  {"column-width", S_CMD_COLUMN_WIDTH},
+  {"string-width", S_CMD_STRING_WIDTH},
   {"set", S_CMD_SET_PARAM},
   {"get", S_CMD_GET_PARAM},
   {"plan", S_CMD_PLAN_DUMP},

@@ -39,17 +39,19 @@
  * NOTE: some of these are totally dependent on report-writer's
  * rendering library.
  */
-#define	MAX_SHORT_DISPLAY_LENGTH	6
-#define	MAX_INTEGER_DISPLAY_LENGTH	11
-#define	MAX_BIGINT_DISPLAY_LENGTH	20
-#define	MAX_FLOAT_DISPLAY_LENGTH	(FLT_DIG + 7)
-#define	MAX_DOUBLE_DISPLAY_LENGTH	(DBL_DIG + 9)
-#define	MAX_TIME_DISPLAY_LENGTH		11
-#define	MAX_UTIME_DISPLAY_LENGTH	25
-#define MAX_DATETIME_DISPLAY_LENGTH     29
-#define	MAX_DATE_DISPLAY_LENGTH		10
-#define	MAX_MONETARY_DISPLAY_LENGTH	20
-#define	MAX_DEFAULT_DISPLAY_LENGTH	20
+#define	MAX_SHORT_DISPLAY_LENGTH	 6
+#define	MAX_INTEGER_DISPLAY_LENGTH	 11
+#define	MAX_BIGINT_DISPLAY_LENGTH	 20
+#define	MAX_FLOAT_DISPLAY_LENGTH	 (FLT_DIG + 7)
+#define	MAX_DOUBLE_DISPLAY_LENGTH	 (DBL_DIG + 9)
+#define	MAX_TIME_DISPLAY_LENGTH		 11
+#define	MAX_UTIME_DISPLAY_LENGTH	 25
+#define MAX_DATETIME_DISPLAY_LENGTH      29
+#define	MAX_DATE_DISPLAY_LENGTH		 10
+#define	MAX_MONETARY_DISPLAY_LENGTH	 20
+#define	MAX_DEFAULT_DISPLAY_LENGTH	 20
+#define STRING_TYPE_PREFIX_SUFFIX_LENGTH 2
+#define BIT_TYPE_PREFIX_SUFFIX_LENGTH    3
 
 /* structure for current query result information */
 typedef struct
@@ -149,6 +151,12 @@ static int write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp,
 				    const CUR_RESULT_INFO * result_info);
 static char *uncontrol_strdup (const char *from);
 static char *uncontrol_strndup (const char *from, int length);
+static int calculate_width (int column_width,
+			    int string_width,
+			    int origin_width,
+			    DB_TYPE attr_type, bool is_null);
+static bool is_string_type (DB_TYPE type);
+static bool is_bit_type (DB_TYPE type);
 
 /*
  * csql_results() - display the result
@@ -692,11 +700,17 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp,
   int n;			/* # of cols for a line */
   CUBRID_STMT_TYPE stmt_type = result_info->curr_stmt_type;
   DB_QUERY_RESULT *result = result_info->query_result;
+  DB_TYPE *attr_types = result_info->attr_types;
   int line_no = result_info->curr_stmt_line_no;
   int num_attrs = result_info->num_attrs;
   int *attr_lengths = result_info->attr_lengths;
   char **attr_names = result_info->attr_names;
+  char *value = NULL;
   int max_attr_name_length = result_info->max_attr_name_length;
+  int column_width;
+  int csql_string_width = csql_arg->string_width;
+  int value_width;
+  bool is_null;
 
   val = (char **) NULL;
   len = NULL;
@@ -773,23 +787,50 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp,
 
 	  if (!csql_arg->line_output)
 	    {
-	      int l;
+	      int padding_size;
+
 	      for (i = 0; i < num_attrs; i++)
 		{
-		  l = (attr_lengths[i] > 0) ?
-		    MAX (attr_lengths[i] - len[i], 0) :
-		    MIN (attr_lengths[i] + len[i], 0);
+		  if (strcmp ("NULL", val[i]) == 0)
+		    {
+		      is_null = true;
+		    }
+		  else
+		    {
+		      is_null = false;
+		    }
+
+		  column_width = csql_get_column_width (attr_names[i]);
+		  value_width =
+		    calculate_width (column_width,
+				     csql_string_width,
+				     len[i], attr_types[i], is_null);
+
+		  padding_size = (attr_lengths[i] > 0) ?
+		    MAX (attr_lengths[i] -
+			 (value_width), 0)
+		    : MIN (attr_lengths[i] + (value_width), 0);
+
 		  fprintf (pf, "  ");
-		  if (l > 0)
+		  if (padding_size > 0)
 		    {
 		      /* right justified */
-		      fprintf (pf, "%*s", (int) l, "");
+		      fprintf (pf, "%*s", (int) padding_size, "");
 		    }
-		  fwrite (val[i], 1, len[i], pf);
-		  if (l < 0)
+
+		  value = val[i];
+		  if ((is_string_type (attr_types[i])
+		       || is_bit_type (attr_types[i])) && is_null == false)
+		    {
+		      value[value_width - 1] = '\'';
+		    }
+
+		  fwrite (value, 1, value_width, pf);
+
+		  if (padding_size < 0)
 		    {
 		      /* left justified */
-		      fprintf (pf, "%*s", (int) (-l), "");
+		      fprintf (pf, "%*s", (int) (-padding_size), "");
 		    }
 		}
 	      putc ('\n', pf);
@@ -859,6 +900,122 @@ done:
     }
 
   return ((error) ? CSQL_FAILURE : CSQL_SUCCESS);
+}
+
+
+/*
+ * calcluate_width() - calculate column's width
+ *   return: width 
+ *   column_width(in): column width 
+ *   string_width(in): string width
+ *   origin_width(in): real width
+ *   attr_type(in): type
+ *   is_null(in): check null
+ */
+int
+calculate_width (int column_width, int string_width,
+		 int origin_width, DB_TYPE attr_type, bool is_null)
+{
+  int result = 0;
+
+  if (column_width > 0)
+    {
+      if (is_null)
+	{
+	  result = column_width;
+	}
+      else if (is_string_type (attr_type))
+	{
+	  result = column_width + STRING_TYPE_PREFIX_SUFFIX_LENGTH;
+	}
+      else if (is_bit_type (attr_type))
+	{
+	  result = column_width + BIT_TYPE_PREFIX_SUFFIX_LENGTH;
+	}
+      else
+	{
+	  result = column_width;
+	}
+    }
+  else if ((is_string_type (attr_type) || is_bit_type (attr_type))
+	   && string_width > 0)
+    {
+      if (is_null)
+	{
+	  result = string_width;
+	}
+      else if (is_string_type (attr_type))
+	{
+	  result = string_width + STRING_TYPE_PREFIX_SUFFIX_LENGTH;
+	}
+      else if (is_bit_type (attr_type))
+	{
+	  result = string_width + BIT_TYPE_PREFIX_SUFFIX_LENGTH;
+	}
+      else
+	{
+	  result = string_width;
+	}
+    }
+  else
+    {
+      result = origin_width;
+    }
+
+  if (result > origin_width)
+    {
+      result = origin_width;
+    }
+  if (result < 0)
+    {
+      result = 0;
+    }
+
+  return result;
+}
+
+/*
+ * is_string_type() - check whether it is a string type or not
+ *   return: bool
+ *   type(in): type
+ */
+bool
+is_string_type (DB_TYPE type)
+{
+  switch (type)
+    {
+    case DB_TYPE_STRING:
+      return true;
+    case DB_TYPE_CHAR:
+      return true;
+    case DB_TYPE_NCHAR:
+      return true;
+    case DB_TYPE_VARNCHAR:
+      return true;
+    default:
+      return false;
+    }
+  return false;
+}
+
+/*
+ * is_bit_type() - check whether it is a bit type or not
+ *   return: bool
+ *   type(in): type
+ */
+bool
+is_bit_type (DB_TYPE type)
+{
+  switch (type)
+    {
+    case DB_TYPE_BIT:
+      return true;
+    case DB_TYPE_VARBIT:
+      return true;
+    default:
+      return false;
+    }
+  return false;
 }
 
 /*

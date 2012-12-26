@@ -40,6 +40,7 @@ geçerli ayarlar:\n\
   -c, --command=ARG            CSQL-komutları\n\
   -l, --line-output            bir çizgi üzerinde her değeri görüntüle\n\
   -r, --read-only              sadece-oku modu\n\
+      --string-width           display each column which is a string type in this width\n\
       --no-auto-commit         Otomatik tamamlama modu yürütme devre dışı\n\
       --no-pager               do not use pager\n\
       --no-single-line         tek satır odaklı yürütmeyi kapatın\n\
@@ -133,45 +134,47 @@ $ csql help messages
    önek önce gelebilir. Aktifleıtirilen karakterleri az temsil eder.\n\
    Belirtilen komutu çalıştırmak için girmeniz gereken kısaltma.\n\
 \n\
-   ;REAd   [<file-name>]       - komut buffer içinden bir dosyayı oku.\n\
-   ;Write  [<file-name>]       - bir dosya içinden komut buffer (üzerine)yaz.\n\
-   ;APpend [<file-name>]       - bir dosya içinden komut buffer açılmış.\n\
-   ;PRINT                      - komut buffer yazdır.\n\
-   ;SHELL                      - dış kabuk çağırma.\n\
-   ;CD                         - Geçerli çalışma dizini değiştirin.\n\
-   ;EXit                       - programdan çık.\n\
+   ;REAd   [<file-name>]        - komut buffer içinden bir dosyayı oku.\n\
+   ;Write  [<file-name>]        - bir dosya içinden komut buffer (üzerine)yaz.\n\
+   ;APpend [<file-name>]        - bir dosya içinden komut buffer açılmış.\n\
+   ;PRINT                       - komut buffer yazdır.\n\
+   ;SHELL                       - dış kabuk çağırma.\n\
+   ;CD                          - Geçerli çalışma dizini değiştirin.\n\
+   ;EXit                        - programdan çık.\n\
 \n\
-   ;CLear                      - komut buffer temizle.\n\
-   ;EDIT                       - komut buffer ile sistem editörü çağırmak.\n\
-   ;LISt                       - komut buffwe içerik görüntüle.\n\
+   ;CLear                       - komut buffer temizle.\n\
+   ;EDIT                        - komut buffer ile sistem editörü çağırmak.\n\
+   ;LISt                        - komut buffwe içerik görüntüle.\n\
 \n\
-   ;RUn                        - komut buffer içinde SQL yürüt.\n\
-   ;Xrun                       - komut buffer içinde SQL yürüt,\n\
-                                 ve komut buffer temizle.\n\
-   ;COmmit                     - geçerli işlemleri iıle.\n\
-   ;ROllback                   - geçerli işlemleri geri iıle.\n\
-   ;AUtocommit [ON|OFF]        - otomatik tamamlama modunu etkinleştirme / devre dışı bırakma.\n\
-   ;REStart                    - veritabanını yeniden başlat.\n\
+   ;RUn                         - komut buffer içinde SQL yürüt.\n\
+   ;Xrun                        - komut buffer içinde SQL yürüt,\n\
+                                  ve komut buffer temizle.\n\
+   ;COMmit                      - geçerli işlemleri iıle.\n\
+   ;ROllback                    - geçerli işlemleri geri iıle.\n\
+   ;AUtocommit [ON|OFF]         - otomatik tamamlama modunu etkinleştirme / devre dışı bırakma.\n\
+   ;REStart                     - veritabanını yeniden başlat.\n\
 \n\
-   ;SHELL_Cmd  [shell-cmd]     - varsayılan dış kabuğu ayarla, editör, yazdır ve çağrı cihazı\n\
-   ;EDITOR_Cmd [editor-cmd]      yeni bir tane komut ver veya geçerli olanı görüntüle\n\
-   ;PRINT_Cmd  [print-cmd]       bir, sırasıyla.\n\
-   ;PAger_cmd  [pager-cmd]\n\
+   ;SHELL_Cmd    [shell-cmd]    - varsayılan dış kabuğu ayarla, editör, yazdır ve çağrı cihazı\n\
+   ;EDITOR_Cmd   [editor-cmd]     yeni bir tane komut ver veya geçerli olanı görüntüle\n\
+   ;PRINT_Cmd    [print-cmd]      bir, sırasıyla.\n\
+   ;PAger_cmd    [pager-cmd]\n\
+   ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
+   ;COLumn-width [name] [width] - set width that a specific column is displayed.\n\
 \n\
-   ;DATE                       - yerel saat görüntüle, tarih.\n\
-   ;DATAbase                   - veritabanı erişilen adını görüntüler.\n\
-   ;SChema class-name          - bir sınıfın şema bilgilerini görüntüler.\n\
-   ;TRigger [`*'|trigger-name] - tetik tanımı görüntüler.\n\
-   ;Get system_parameter       - bir sistem parametre değeri edinin.\n\
-   ;SEt system_parameter=value - bir sistem parametre değeri ayarla.\n\
-   ;PLan [simple/detail/off]   - sorgu yürütme planı göster.\n\
-   ;Info <command>             - iç bilgileri görüntüler.\n\
-   ;TIme [ON/OFF]              - Sorgu görüntülemek için etkin / devre dışı\n\
-                                 yürütme zamanı.\n\
-   ;;LINe-output [ON/OFF]      - bir çizgi üzerinde her değeri görüntüle etkin / devre dışı\n\
-   ;HISTORYList                - çalıştırılan sorguların listesini görüntüleyebilir.\n\
-   ;HISTORYRead <history_num>  - komut buffer içine geçmiş numarası üzerinde giriş okuyun.\n\
-   ;HElp                       - yardım mesajını görüntüler.\n\n
+   ;DATE                        - yerel saat görüntüle, tarih.\n\
+   ;DATAbase                    - veritabanı erişilen adını görüntüler.\n\
+   ;SChema class-name           - bir sınıfın şema bilgilerini görüntüler.\n\
+   ;TRigger [`*'|trigger-name]  - tetik tanımı görüntüler.\n\
+   ;Get system_parameter        - bir sistem parametre değeri edinin.\n\
+   ;SEt system_parameter=value  - bir sistem parametre değeri ayarla.\n\
+   ;PLan [simple/detail/off]    - sorgu yürütme planı göster.\n\
+   ;Info <command>              - iç bilgileri görüntüler.\n\
+   ;TIme [ON/OFF]               - Sorgu görüntülemek için etkin / devre dışı\n\
+                                  yürütme zamanı.\n\
+   ;;LINe-output [ON/OFF]       - bir çizgi üzerinde her değeri görüntüle etkin / devre dışı\n\
+   ;HISTORYList                 - çalıştırılan sorguların listesini görüntüleyebilir.\n\
+   ;HISTORYRead <history_num>   - komut buffer içine geçmiş numarası üzerinde giriş okuyun.\n\
+   ;HElp                        - yardım mesajını görüntüler.\n\n
 
 232 <Constraints> 
 233 Info {schema|trigger|deferred|workspace|lock|stats}\n\

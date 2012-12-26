@@ -1154,6 +1154,8 @@ typedef struct _ha_config
 #define CSQL_SYSADM_L                           "sysadm"
 #define CSQL_NO_SINGLE_LINE_S                   12013
 #define CSQL_NO_SINGLE_LINE_L                   "no-single-line"
+#define CSQL_STRING_WIDTH_S                     12014
+#define CSQL_STRING_WIDTH_L                     "string-width"
 
 #define COMMDB_SERVER_LIST_S                    'P'
 #define COMMDB_SERVER_LIST_L                    "server-list"

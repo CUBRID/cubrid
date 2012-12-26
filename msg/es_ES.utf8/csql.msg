@@ -40,6 +40,7 @@ opciones validas:\n\
   -c, --command=ARG            CSQL-comandos\n\
   -l, --line-output            muestra cada valor en una linea\n\
   -r, --read-only              modo read-only\n\
+      --string-width           display each column which is a string type in this width\n\
       --no-auto-commit         inhabilitar modo de ejecucion cometer automaticamente\n\
       --no-pager               no utilize pager\n\
       --no-single-line         desactivar modo de ejecucion linea suelta\n\
@@ -133,45 +134,47 @@ $ csql help messages
    pueden preceder el prefijo. Caracteres mayúsculas representan la abreviacion minima\n\
    que necesita introducir para ejecutar el comando especificado.\n\
 \n\
-   ;REAd   [<file-name>]       - leer un archivo en el bufer de comando.\n\
-   ;Write  [<file-name>]       - (sobre)escribe bufer de comando en un archivo.\n\
-   ;APpend [<file-name>]       - añadir bufer de comando en un archivo.\n\
-   ;PRINT                      - imprimir bufer de comando.\n\
-   ;SHELL                      - invocar shell.\n\
-   ;CD                         - cambiar directorio de trabajo actual.\n\
-   ;EXit                       - salir del programa.\n\
+   ;REAd   [<file-name>]        - leer un archivo en el bufer de comando.\n\
+   ;Write  [<file-name>]        - (sobre)escribe bufer de comando en un archivo.\n\
+   ;APpend [<file-name>]        - añadir bufer de comando en un archivo.\n\
+   ;PRINT                       - imprimir bufer de comando.\n\
+   ;SHELL                       - invocar shell.\n\
+   ;CD                          - cambiar directorio de trabajo actual.\n\
+   ;EXit                        - salir del programa.\n\
 \n\
-   ;CLear                      - limpia bufer de comando.\n\
-   ;EDIT                       - invocar editor de sistema con bufer de comando.\n\
-   ;LISt                       - mostrar el contenido del bufer de comando.\n\
+   ;CLear                       - limpia bufer de comando.\n\
+   ;EDIT                        - invocar editor de sistema con bufer de comando.\n\
+   ;LISt                        - mostrar el contenido del bufer de comando.\n\
 \n\
-   ;RUn                        - ejecutar sql en bufer de comando.\n\
-   ;Xrun                       - ejecutar sql en bufer de comando,\n\
-                                 y limpia el bufer de comando.\n\
-   ;COmmit                     - cometer transaccion actual.\n\
-   ;ROllback                   - hacer retroceder la transaccion actual.\n\
-   ;AUtocommit [ON|OFF]        - habilitar / deshabilitar modo cometer auto.\n\
-   ;REStart                    - reinicializar base de datos.\n\
+   ;RUn                         - ejecutar sql en bufer de comando.\n\
+   ;Xrun                        - ejecutar sql en bufer de comando,\n\
+                                  y limpia el bufer de comando.\n\
+   ;COMmit                      - cometer transaccion actual.\n\
+   ;ROllback                    - hacer retroceder la transaccion actual.\n\
+   ;AUtocommit [ON|OFF]         - habilitar / deshabilitar modo cometer auto.\n\
+   ;REStart                     - reinicializar base de datos.\n\
 \n\
-   ;SHELL_Cmd  [shell-cmd]     - ajusta estandar shell, editor, impresora y pager\n\
-   ;EDITOR_Cmd [editor-cmd]      comandar a una nueva, o mostrar la actual\n\
-   ;PRINT_Cmd  [print-cmd]       respectivamente.\n\
-   ;PAger_cmd  [pager-cmd]\n\
+   ;SHELL_Cmd    [shell-cmd]    - ajusta estandar shell, editor, impresora y pager\n\
+   ;EDITOR_Cmd   [editor-cmd]     comandar a una nueva, o mostrar la actual\n\
+   ;PRINT_Cmd    [print-cmd]      respectivamente.\n\
+   ;PAger_cmd    [pager-cmd]\n\
+   ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
+   ;COLumn-width [name] [width] - set width that a specific column is displayed.\n\
 \n\
-   ;DATE                       - mostrar el tiempo local, fecha.\n\
-   ;DATAbase                   - mostrar el nombre de la base de datos que esta accesada.\n\
-   ;SChema class-name          - mostrar informacion de esquema de una clase.\n\
-   ;TRigger [`*'|trigger-name] - mostrar informacion de disparador.\n\
-   ;Get system_parameter       - obtener el valor de un parametro de sistema.\n\
-   ;SEt system_parameter=value - ajustar el valor de un parametro de sistema.\n\
-   ;PLan [simple/detail/off]   - mostrar el plan de ejecucion de la consulta.\n\
-   ;Info <command>             - mostrar informacion interna.\n\
-   ;TIme [ON/OFF]              - habilitar/inhabilitar para mostrar la consulta \n\
-                                 tiempo de ejecucion.\n\
-   ;LINe-output [ON/OFF]       - habilitar/inhabilitar muestra cada valor en una linea\n\
-   ;HISTORYList                - mostrar lista de las consultas ejecutadas.\n\
-   ;HISTORYRead <history_num>  - leer entrada sobre el numero de historia en bufer de comando.\n\
-   ;HElp                       - mostrar este mensaje de ayuda.\n\n
+   ;DATE                        - mostrar el tiempo local, fecha.\n\
+   ;DATAbase                    - mostrar el nombre de la base de datos que esta accesada.\n\
+   ;SChema class-name           - mostrar informacion de esquema de una clase.\n\
+   ;TRigger [`*'|trigger-name]  - mostrar informacion de disparador.\n\
+   ;Get system_parameter        - obtener el valor de un parametro de sistema.\n\
+   ;SEt system_parameter=value  - ajustar el valor de un parametro de sistema.\n\
+   ;PLan [simple/detail/off]    - mostrar el plan de ejecucion de la consulta.\n\
+   ;Info <command>              - mostrar informacion interna.\n\
+   ;TIme [ON/OFF]               - habilitar/inhabilitar para mostrar la consulta \n\
+                                  tiempo de ejecucion.\n\
+   ;LINe-output [ON/OFF]        - habilitar/inhabilitar muestra cada valor en una linea\n\
+   ;HISTORYList                 - mostrar lista de las consultas ejecutadas.\n\
+   ;HISTORYRead <history_num>   - leer entrada sobre el numero de historia en bufer de comando.\n\
+   ;HElp                        - mostrar este mensaje de ayuda.\n\n
 
 232 <Restricciones>
 233 Info {schema|trigger|deferred|workspace|lock|stats}\n\

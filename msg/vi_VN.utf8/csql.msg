@@ -40,6 +40,7 @@ tùy chọn có thể dùng:\n\
   -c, --command=ARG            CSQL-các lệnh\n\
   -l, --line-output            hiển thị mỗi giá trị trên một dòng\n\
   -r, --read-only              chế độ chỉ-đọc\n\
+      --string-width           display each column which is a string type in this width\n\
       --no-auto-commit         tắt thực thi chế độ tự động cam kết\n\
       --no-pager               không dùng bộ phân trang\n\
       --no-single-line         tắt thực thi theo định hướng dòng đơn\n\
@@ -133,45 +134,47 @@ $ csql help messages
    mới có thể nằm trước các tiền tố đó. Ký tự viết hoa đại diện cho viết tắt\n\
    tối thiểu mà bạn cần nhập vào để thực thi lệnh được chỉ định.\n\
 \n\
-   ;REAd   [<file-name>]       - đọc một tệp tin vào bộ đệm lệnh.\n\
-   ;Write  [<file-name>]       - ghi (ghi đè) bộ đệm lệnh vào một tệp tin.\n\
-   ;APpend [<file-name>]       - nối bộ đệm lệnh vào một tệp tin.\n\
-   ;PRINT                      - in bộ đệm lệnh.\n\
-   ;SHELL                      - gọi ra shell.\n\
-   ;CD                         - thay đổi thư mục đang làm việc hiện tại.\n\
-   ;EXit                       - thoát chương trình.\n\
+   ;REAd   [<file-name>]        - đọc một tệp tin vào bộ đệm lệnh.\n\
+   ;Write  [<file-name>]        - ghi (ghi đè) bộ đệm lệnh vào một tệp tin.\n\
+   ;APpend [<file-name>]        - nối bộ đệm lệnh vào một tệp tin.\n\
+   ;PRINT                       - in bộ đệm lệnh.\n\
+   ;SHELL                       - gọi ra shell.\n\
+   ;CD                          - thay đổi thư mục đang làm việc hiện tại.\n\
+   ;EXit                        - thoát chương trình.\n\
 \n\
-   ;CLear                      - xóa sạch bộ đệm lệnh.\n\
-   ;EDIT                       - gọi ra trình soạn thảo hệ thống có bộ đệm lệnh.\n\
-   ;LISt                       - hiển thị nội dung của bộ đệm lệnh.\n\
+   ;CLear                       - xóa sạch bộ đệm lệnh.\n\
+   ;EDIT                        - gọi ra trình soạn thảo hệ thống có bộ đệm lệnh.\n\
+   ;LISt                        - hiển thị nội dung của bộ đệm lệnh.\n\
 \n\
-   ;RUn                        - thực thi sql trong bộ đệm lệnh.\n\
-   ;Xrun                       - thực thi sql trong bộ đệm lệnh,\n\
-                                 và xóa sạch bộ đệm lệnh.\n\
-   ;COmmit                     - cam kết giao dịch hiện tại.\n\
-   ;ROllback                   - quay lui lại giao dịch hiện tại.\n\
-   ;AUtocommit [ON|OFF]        - bật/tắt chế độ tự động cam kết.\n\
-   ;REStart                    - khởi động lại cơ sở dữ liệu.\n\
+   ;RUn                         - thực thi sql trong bộ đệm lệnh.\n\
+   ;Xrun                        - thực thi sql trong bộ đệm lệnh,\n\
+                                  và xóa sạch bộ đệm lệnh.\n\
+   ;COMmit                      - cam kết giao dịch hiện tại.\n\
+   ;ROllback                    - quay lui lại giao dịch hiện tại.\n\
+   ;AUtocommit [ON|OFF]         - bật/tắt chế độ tự động cam kết.\n\
+   ;REStart                     - khởi động lại cơ sở dữ liệu.\n\
 \n\
-   ;SHELL_Cmd  [shell-cmd]     - thiết lập shell mặc định, trình soạn thảo, in và bộ phân trang\n\
-   ;EDITOR_Cmd [editor-cmd]      lệnh đến một cái mới, hoặc hiện thị cái hiện tại\n\
-   ;PRINT_Cmd  [print-cmd]       ,theo thứ tự.\n\
-   ;PAger_cmd  [pager-cmd]\n\
+   ;SHELL_Cmd    [shell-cmd]    - thiết lập shell mặc định, trình soạn thảo, in và bộ phân trang\n\
+   ;EDITOR_Cmd   [editor-cmd]     lệnh đến một cái mới, hoặc hiện thị cái hiện tại\n\
+   ;PRINT_Cmd    [print-cmd]      ,theo thứ tự.\n\
+   ;PAger_cmd    [pager-cmd]\n\
+   ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
+   ;COLumn-width [name] [width] - set width that a specific column is displayed.\n\
 \n\
-   ;DATE                       - hiển thị ngày, thời gian cục bộ.\n\
-   ;DATAbase                   - hiển thị tên của cơ sở dữ liệu đang được truy cập.\n\
-   ;SChema class-name          - hiển thị thông tin lược đồ của một lớp.\n\
-   ;TRigger [`*'|trigger-name] - hiển thị định nghĩa trigger.\n\
-   ;Get system_parameter       - lấy giá trị của một tham số hệ thống.\n\
-   ;SEt system_parameter=value - thiết lập giá trị của một tham số hệ thống.\n\
-   ;PLan [simple/detail/off]   - hiện kế hoạch thực thi truy vấn.\n\
-   ;Info <command>             - hiển thị thông tin nội tại.\n\
-   ;TIme [ON/OFF]              - bật/tắt để hiển thị thời gian\n\
+   ;DATE                        - hiển thị ngày, thời gian cục bộ.\n\
+   ;DATAbase                    - hiển thị tên của cơ sở dữ liệu đang được truy cập.\n\
+   ;SChema class-name           - hiển thị thông tin lược đồ của một lớp.\n\
+   ;TRigger [`*'|trigger-name]  - hiển thị định nghĩa trigger.\n\
+   ;Get system_parameter        - lấy giá trị của một tham số hệ thống.\n\
+   ;SEt system_parameter=value  - thiết lập giá trị của một tham số hệ thống.\n\
+   ;PLan [simple/detail/off]    - hiện kế hoạch thực thi truy vấn.\n\
+   ;Info <command>              - hiển thị thông tin nội tại.\n\
+   ;TIme [ON/OFF]               - bật/tắt để hiển thị thời gian\n\
                                  thực thi truy vấn.\n\
-   ;LINe-output [ON/OFF]      - bật/tắt hiển thị mỗi giá trị trên một dòng\n\
-   ;HISTORYList                - hiển thị danh sách của các truy vấn được thực thi.\n\
-   ;HISTORYRead <history_num>  - đọc mục nhập trên số lịch sử vào bộ đệm lệnh.\n\
-   ;HElp                       - hiển thị tin nhắn trợ giúp.\n\n
+   ;LINe-output [ON/OFF]        - bật/tắt hiển thị mỗi giá trị trên một dòng\n\
+   ;HISTORYList                 - hiển thị danh sách của các truy vấn được thực thi.\n\
+   ;HISTORYRead <history_num>   - đọc mục nhập trên số lịch sử vào bộ đệm lệnh.\n\
+   ;HElp                        - hiển thị tin nhắn trợ giúp.\n\n
 
 232 <Constraints>
 233 Info {schema|trigger|deferred|workspace|lock|stats}\n\

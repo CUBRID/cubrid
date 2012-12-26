@@ -1,4 +1,4 @@
-
+﻿
 $
 $ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
 $
@@ -40,6 +40,7 @@ $set 1 MSGCAT_CSQL_SET_CSQL
   -c, --command=ARG            CSQL 명령어들\n\
   -l, --line-output            한 라인 내에 값 표시\n\
   -r, --read-only              읽기 전용 모드\n\
+      --string-width           각 문자열 컬럼값이 출력 될 길이\n\
       --no-auto-commit         자동 커밋 안 함\n\
       --no-pager               페이지 단위로 표시 안 함\n\
       --no-single-line         단일 라인 실행 안 함\n\
@@ -132,43 +133,45 @@ $ csql help messages
    모든 세션 명령어는 ';'로 시작하며 앞에는 공백/탭 문자 이외에는 올 수 없습니다.\n\
    대문자로 표시된 부분은 해당 명령어를 수행하기 위해 지정되야 할 최소한의 약어입니다.\n\
 \n\
-   ;REAd   [<file-name>]       - 명령어 버퍼로 파일 내용을 읽어 들임.\n\
-   ;Write  [<file-name>]       - 명령어 버퍼 내용을 파일에 저장.\n\
-   ;APpend [<file-name>]       - 명령어 버퍼 내용을 파일에 덧붙임.\n\
-   ;PRINT                      - 명령어 버퍼 내용을 프린트.\n\
-   ;SHELL                      - 쉘 수행.\n\
-   ;CD                         - 현재 작업 디렉터리 변경.\n\
-   ;EXit                       - 종료.\n\
+   ;REAd   [<file-name>]        - 명령어 버퍼로 파일 내용을 읽어 들임.\n\
+   ;Write  [<file-name>]        - 명령어 버퍼 내용을 파일에 저장.\n\
+   ;APpend [<file-name>]        - 명령어 버퍼 내용을 파일에 덧붙임.\n\
+   ;PRINT                       - 명령어 버퍼 내용을 프린트.\n\
+   ;SHELL                       - 쉘 수행.\n\
+   ;CD                          - 현재 작업 디렉터리 변경.\n\
+   ;EXit                        - 종료.\n\
 \n\
-   ;CLear                      - 명령어 버퍼 내용을 지움.\n\
-   ;EDIT                       - 명령어 버퍼 편집.\n\
-   ;LISt                       - 명령어 버퍼 내용 출력.\n\
+   ;CLear                       - 명령어 버퍼 내용을 지움.\n\
+   ;EDIT                        - 명령어 버퍼 편집.\n\
+   ;LISt                        - 명령어 버퍼 내용 출력.\n\
 \n\
-   ;RUn                        - 명령어 버퍼 실행.\n\
-   ;Xrun                       - 명령어 버퍼 실행 후 버퍼 내용을 지움.\n\
-   ;COmmit                     - 진행 중인 트랜잭션 커밋.\n\
-   ;ROllback                   - 진행 중인 트랜잭션 철회.\n\
-   ;AUtocommit [ON|OFF]        - 자동 커밋 모드 설정|해제.\n\
-   ;REStart                    - 데이터베이스 재시작.\n\
+   ;RUn                         - 명령어 버퍼 실행.\n\
+   ;Xrun                        - 명령어 버퍼 실행 후 버퍼 내용을 지움.\n\
+   ;COMmit                      - 진행 중인 트랜잭션 커밋.\n\
+   ;ROllback                    - 진행 중인 트랜잭션 철회.\n\
+   ;AUtocommit [ON|OFF]         - 자동 커밋 모드 설정|해제.\n\
+   ;REStart                     - 데이터베이스 재시작.\n\
 \n\
-   ;SHELL_Cmd  [shell-cmd]     - 내정된 쉘을 설정하거나 보여줌.\n\
-   ;EDITOR_Cmd [editor-cmd]    - 내정된 편집기를 설정하거나 보여줌.\n\
-   ;PRINT_Cmd  [print-cmd]     - 내정된 프린트 명령어를 설정하거나 보여줌.\n\
-   ;PAger_cmd  [pager-cmd]     - 내정된 페이지 구분기를 설정하거나 보여줌.\n\
+   ;SHELL_Cmd    [shell-cmd]    - 내정된 쉘을 설정하거나 보여줌.\n\
+   ;EDITOR_Cmd   [editor-cmd]   - 내정된 편집기를 설정하거나 보여줌.\n\
+   ;PRINT_Cmd    [print-cmd]    - 내정된 프린트 명령어를 설정하거나 보여줌.\n\
+   ;PAger_cmd    [pager-cmd]    - 내정된 페이지 구분기를 설정하거나 보여줌.\n\
+   ;STring-width [width]        - 각 문자열 컬럼값이 출력 될 길이 설정.\n\
+   ;COLumn-width [name] [width] - 명시한 이름의 컬럼값이 출력 될 길이 설정.\n\
 \n\
-   ;DATE                       - 지역 날짜, 시간 출력.\n\
-   ;DATAbase                   - 접근 중인 데이터베이스 이름 출력.\n\
-   ;SChema class-name          - 클래스의 스키마 정보 출력.\n\
-   ;TRigger [`*'|trigger-name] - 트리거 정의 출력.\n\
-   ;Get system_parameter       - 시스템 파라메터 보기.\n\
-   ;SEt system_parameter=value - 시스템 파라메터 설정.\n\
-   ;PLan [simple|detail|off]   - 쿼리 플랜 보기 설정.\n\
-   ;Info <command>             - 내부 정보 출력.\n\
-   ;TIme [ON/OFF]              - 쿼리 수행 시간 보기 설정|해제\n\
-   ;;LINe-output [ON/OFF]      - 한 라인 내에 값 표시 설정|해제\n\
-   ;HISTORYList                - 수행된 쿼리 리스트 보기.\n\
-   ;HISTORYRead <history_num>  - 히스토리 번호에 해당되는 쿼리를 명령어 버퍼에 올림.\n\
-   ;HElp                       - 도움말 메시지 출력.\n\n
+   ;DATE                        - 지역 날짜, 시간 출력.\n\
+   ;DATAbase                    - 접근 중인 데이터베이스 이름 출력.\n\
+   ;SChema class-name           - 클래스의 스키마 정보 출력.\n\
+   ;TRigger [`*'|trigger-name]  - 트리거 정의 출력.\n\
+   ;Get system_parameter        - 시스템 파라메터 보기.\n\
+   ;SEt system_parameter=value  - 시스템 파라메터 설정.\n\
+   ;PLan [simple|detail|off]    - 쿼리 플랜 보기 설정.\n\
+   ;Info <command>              - 내부 정보 출력.\n\
+   ;TIme [ON/OFF]               - 쿼리 수행 시간 보기 설정|해제\n\
+   ;;LINe-output [ON/OFF]       - 한 라인 내에 값 표시 설정|해제\n\
+   ;HISTORYList                 - 수행된 쿼리 리스트 보기.\n\
+   ;HISTORYRead <history_num>   - 히스토리 번호에 해당되는 쿼리를 명령어 버퍼에 올림.\n\
+   ;HElp                        - 도움말 메시지 출력.\n\n
 
 232 <제약사항> 
 233 Info {schema|trigger|deferred|workspace|lock|stats}\n\
