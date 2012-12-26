@@ -9311,6 +9311,101 @@ lock_get_object_lock (const OID * oid, const OID * class_oid, int tran_index)
 }
 
 /*
+ * lock_has_lock_on_object - 
+ *
+ * return:
+ *
+ *   oid(in): target object ientifier
+ *   class_oid(in): class identifier of the target object
+ *   tran_index(in): the transaction table index of target transaction.
+ *   lock(in): the lock mode
+ *
+ * Note: Find whether the transaction holds an enough lock on the object
+ *
+ */
+int
+lock_has_lock_on_object (const OID * oid, const OID * class_oid,
+			 int tran_index, LOCK lock)
+{
+#if !defined (SERVER_MODE)
+  return 1;
+#else /* !SERVER_MODE */
+  LOCK granted_lock_mode = NULL_LOCK;
+  LK_TRAN_LOCK *tran_lock;
+  LK_ENTRY *entry_ptr;
+  int rv;
+
+  if (oid == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2,
+	      "lock_has_exclusive_lock_on_object", "NULL OID pointer");
+      return ER_LK_BAD_ARGUMENT;
+    }
+  if (tran_index == NULL_TRAN_INDEX)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2,
+	      "lock_has_exclusive_lock_on_object", "NULL_TRAN_INDEX");
+      return ER_LK_BAD_ARGUMENT;
+    }
+
+  /* get a pointer to transaction lock info entry */
+  tran_lock = &lk_Gl.tran_lock_table[tran_index];
+
+  /*
+   * case 1: root class lock
+   */
+  /* get the granted lock mode acquired on the root class oid */
+  if (OID_EQ (oid, oid_Root_class_oid))
+    {
+      rv = pthread_mutex_lock (&tran_lock->hold_mutex);
+      if (tran_lock->root_class_hold != NULL)
+	{
+	  granted_lock_mode = tran_lock->root_class_hold->granted_mode;
+	}
+      pthread_mutex_unlock (&tran_lock->hold_mutex);
+      return (lock_Conv[lock][granted_lock_mode] == granted_lock_mode);
+    }
+
+  /*
+   * case 2: general class lock
+   */
+  /* get the granted lock mode acquired on the given class oid */
+  if (class_oid == NULL || OID_EQ (class_oid, oid_Root_class_oid))
+    {
+      entry_ptr = lock_find_tran_hold_entry (tran_index, oid, true);
+      if (entry_ptr != NULL)
+	{
+	  granted_lock_mode = entry_ptr->granted_mode;
+	}
+      return (lock_Conv[lock][granted_lock_mode] == granted_lock_mode);
+    }
+
+  entry_ptr = lock_find_tran_hold_entry (tran_index, class_oid, true);
+  if (entry_ptr != NULL)
+    {
+      granted_lock_mode = entry_ptr->granted_mode;
+      if (lock_Conv[lock][granted_lock_mode] == granted_lock_mode)
+	{
+	  return 1;
+	}
+    }
+
+  /*
+   * case 3: object lock
+   */
+  /* get the granted lock mode acquired on the given instance/pseudo oid */
+  entry_ptr = lock_find_tran_hold_entry (tran_index, oid, false);
+  if (entry_ptr != NULL)
+    {
+      granted_lock_mode = entry_ptr->granted_mode;
+      return 1;
+    }
+
+  return 0;
+#endif /* !SERVER_MODE */
+}
+
+/*
  * lock_has_xlock - Does transaction have an exclusive lock on any resource ?
  *
  * return:

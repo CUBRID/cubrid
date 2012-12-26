@@ -279,4 +279,6 @@ extern LOCK lock_get_all_except_transaction (const OID * oid,
 extern int lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p,
 					    char **out_buf, int waiter_index,
 					    LK_RES * res);
+extern int lock_has_lock_on_object (const OID * oid, const OID * class_oid,
+				    int tran_index, LOCK lock);
 #endif /* _LOCK_MANAGER_H_ */

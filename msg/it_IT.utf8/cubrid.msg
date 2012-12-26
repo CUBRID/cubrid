@@ -1167,7 +1167,7 @@ $ LOADDB
 1098 Impostazioni internazionali per la lingua '%s' non sono disponibili con charset '%s'.
 1099 Istruzione DDL non è permessa dalla configurazione (block_ddl_statement=yes).
 1100 Instruzione senza clausola WHERE non è permessa dalla configurazione (block_nowhere_statement=yes).
-1101 La transazione corrente non può acquisire un blocco a chiave PSEUDO-OID (%1$d|%2$d|%3$d) allegata alla OID (%4$d|%5$d|%6$d)
+1101 Codice di errore non utilizzato.
 1102 Parametro di sistema sconosciuto o valore non valido.
 1103 Impossibile modificare i parametri del sistema.
 1104 Slow query (%d msec)\n%s
