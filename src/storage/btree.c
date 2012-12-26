@@ -1544,11 +1544,6 @@ btree_append_oid (RECDES * rec, OID * oid)
 int
 btree_insert_oid_with_order (RECDES * rec, OID * oid)
 {
-#if 1
-  btree_append_oid (rec, oid);
-  return NO_ERROR;
-#else
-
   char *ptr, *oid_ptr;
   int min, mid, max, len, num;
   OID tmp_oid;
@@ -1601,7 +1596,6 @@ btree_insert_oid_with_order (RECDES * rec, OID * oid)
   rec->length += OR_OID_SIZE;
 
   return NO_ERROR;
-#endif
 }
 
 /*
@@ -10253,7 +10247,6 @@ btree_find_oid_from_leaf (BTID_INT * btid, RECDES * rec_p,
 static int
 btree_find_oid_from_ovfl (RECDES * rec_p, OID * oid)
 {
-#if 0
   OID inst_oid;
   int min, mid, max, num_oids;
   char *base_ptr, *oid_ptr;
@@ -10279,7 +10272,6 @@ btree_find_oid_from_ovfl (RECDES * rec_p, OID * oid)
     {
       return rec_p->length - OR_OID_SIZE;
     }
-/*#endif*/
 
   num_oids = btree_leaf_get_num_oids (rec_p, 0, BTREE_OVERFLOW_NODE,
 				      OR_OID_SIZE);
@@ -10308,27 +10300,6 @@ btree_find_oid_from_ovfl (RECDES * rec_p, OID * oid)
     }
 
   return NOT_FOUND;
-#else
-  OR_BUF buf;
-  OID inst_oid;
-  int i, num_oids;
-
-  num_oids = btree_leaf_get_num_oids (rec_p, 0,
-				      BTREE_OVERFLOW_NODE, OR_OID_SIZE);
-
-  or_init (&buf, rec_p->data, rec_p->length);
-
-  for (i = 0; i < num_oids; i++)
-    {
-      or_get_oid (&buf, &inst_oid);
-      if (OID_EQ (&inst_oid, oid))
-	{
-	  return CAST_BUFLEN ((buf.ptr - OR_OID_SIZE) - rec_p->data);
-	}
-    }
-
-  return NOT_FOUND;
-#endif
 }
 
 /*
