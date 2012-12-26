@@ -641,7 +641,7 @@ fileio_increase_flushed_page_count (int npages)
   flushed_page_count = ATOMIC_INC_32 (&fileio_Flushed_page_count, npages);
 #else
   (void) pthread_mutex_lock (&fileio_Flushed_page_counter_mutex);
-  fileio_Flushed_page_count += npage;
+  fileio_Flushed_page_count += npages;
   flushed_page_count = fileio_Flushed_page_count;
   pthread_mutex_unlock (&fileio_Flushed_page_counter_mutex);
 #endif /* HAVE_ATOMIC_BUILTINS */
