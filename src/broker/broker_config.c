@@ -462,6 +462,11 @@ broker_config_read_internal (const char *conf_file,
 	ini_getint (ini, sec_name, "APPL_SERVER_MAX_SIZE_HARD_LIMIT",
 		    DEFAULT_SERVER_HARD_LIMIT, &lineno);
       br_info[num_brs].appl_server_hard_limit *= ONE_K;	/* K bytes */
+      if (br_info[num_brs].appl_server_hard_limit <= 0)
+	{
+	  errcode = PARAM_BAD_RANGE;
+	  goto conf_error;
+	}
 
       br_info[num_brs].session_timeout =
 	ini_getint (ini, sec_name, "SESSION_TIMEOUT",
@@ -1248,7 +1253,7 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info,
       fprintf (fp, "BROKER_PORT\t\t\t=%d\n", br_info[i].port);
       fprintf (fp, "APPL_SERVER_NUM\t\t=%d\n", br_info[i].appl_server_num);
       fprintf (fp, "APPL_SERVER_MAX_SIZE_HARD_LIMIT\t=%d\n",
-	       br_info[i].appl_server_hard_limit);
+	       br_info[i].appl_server_hard_limit / ONE_K);
       fprintf (fp, "MAX_PREPARED_STMT_COUNT\t=%d\n",
 	       br_info[i].max_prepared_stmt_count);
       fprintf (fp, "PREFERRED_HOSTS\t\t=%s\n", br_info[i].preferred_hosts);

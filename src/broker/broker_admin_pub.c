@@ -2075,6 +2075,16 @@ admin_shard_conf_change (int master_shm_id, const char *sh_name,
 
       max_size = atoi (conf_value);
       max_size *= ONE_K;
+      if (max_size > 0
+	  && max_size > (shm_br->br_info[br_index].appl_server_hard_limit))
+	{
+	  sprintf (admin_err_msg,
+		   "CONFIGURATION WARNING - the APPL_SERVER_MAX_SIZE (%dM)"
+		   " is greater than the APPL_SERVER_MAX_SIZE_HARD_LIMIT (%dM)",
+		   max_size / ONE_K,
+		   shm_as_p->appl_server_hard_limit / ONE_K);
+	}
+
       br_info_p->appl_server_max_size = max_size;
       shm_as_p->appl_server_max_size = max_size;
     }
@@ -2084,6 +2094,22 @@ admin_shard_conf_change (int master_shm_id, const char *sh_name,
 
       hard_limit = atoi (conf_value);
       hard_limit *= ONE_K;
+      if (hard_limit <= 0)
+	{
+	  sprintf (admin_err_msg,
+		   "APPL_SERVER_MAX_SIZE_HARD_LIMIT(%dM) must be greater than 0",
+		   hard_limit / ONE_K);
+	  goto set_shard_conf_error;
+	}
+      else if (hard_limit < shm_br->br_info[br_index].appl_server_max_size)
+	{
+	  sprintf (admin_err_msg,
+		   "CONFIGURATION WARNING - the APPL_SERVER_MAX_SIZE_HARD_LIMIT (%dM) "
+		   "is smaller than the APPL_SERVER_MAX_SIZE (%dM)",
+		   hard_limit / ONE_K,
+		   shm_as_p->appl_server_max_size / ONE_K);
+	}
+
       br_info_p->appl_server_hard_limit = hard_limit;
       shm_as_p->appl_server_hard_limit = hard_limit;
     }
@@ -2578,6 +2604,16 @@ admin_broker_conf_change (int master_shm_id, const char *br_name,
 
       max_size = atoi (conf_value);
       max_size *= ONE_K;
+      if (max_size > 0
+	  && max_size > (shm_br->br_info[br_index].appl_server_hard_limit))
+	{
+	  sprintf (admin_err_msg,
+		   "CONFIGURATION WARNING - the APPL_SERVER_MAX_SIZE (%dM)"
+		   " is greater than the APPL_SERVER_MAX_SIZE_HARD_LIMIT (%dM)",
+		   max_size / ONE_K,
+		   shm_appl->appl_server_hard_limit / ONE_K);
+	}
+
       shm_br->br_info[br_index].appl_server_max_size = max_size;
       shm_appl->appl_server_max_size = max_size;
     }
@@ -2587,6 +2623,22 @@ admin_broker_conf_change (int master_shm_id, const char *br_name,
 
       hard_limit = atoi (conf_value);
       hard_limit *= ONE_K;
+      if (hard_limit <= 0)
+	{
+	  sprintf (admin_err_msg,
+		   "APPL_SERVER_MAX_SIZE_HARD_LIMIT(%dM) must be greater than 0",
+		   hard_limit / ONE_K);
+	  goto set_broker_conf_error;
+	}
+      else if (hard_limit < shm_br->br_info[br_index].appl_server_max_size)
+	{
+	  sprintf (admin_err_msg,
+		   "CONFIGURATION WARNING - the APPL_SERVER_MAX_SIZE_HARD_LIMIT (%dM) "
+		   "is smaller than the APPL_SERVER_MAX_SIZE (%dM)",
+		   hard_limit / ONE_K,
+		   shm_appl->appl_server_max_size / ONE_K);
+	}
+
       shm_br->br_info[br_index].appl_server_hard_limit = hard_limit;
       shm_appl->appl_server_hard_limit = hard_limit;
     }

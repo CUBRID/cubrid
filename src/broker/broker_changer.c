@@ -136,6 +136,12 @@ main (int argc, char *argv[])
       printf ("%s\n", admin_err_msg);
       exit (0);
     }
+
+  if (admin_err_msg[0] != '\0')
+    {
+      printf ("%s\n", admin_err_msg);
+    }
+
   printf ("OK\n");
   return 0;
 }
