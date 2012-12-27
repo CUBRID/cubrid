@@ -5332,9 +5332,18 @@ boot_check_locales (BOOT_CLIENT_CREDENTIAL * client_credential)
 
   if (!lang_check_server_env ())
     {
+      char server_env_string[64];
+      char client_env_string[64];
+
+      server_env_string[0] = client_env_string[0] = '\0';
+      lang_get_server_charset_env_string (server_env_string, 64);
+      lang_get_client_charset_env_string (client_env_string, 64);
+
       error_code = ER_INVALID_SERVER_CHARSET;
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_INVALID_SERVER_CHARSET, 0);
+	      ER_INVALID_SERVER_CHARSET, 2, server_env_string,
+	      client_env_string);
+
       goto exit;
     }
 

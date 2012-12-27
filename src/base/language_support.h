@@ -136,9 +136,9 @@ struct coll_opt
 
   /* enabled by default; disabled for collations having identical sort key
    * for different strings (case insensitive collations).
-   * In order to produce specific sort keys, an UCA collation should be 
+   * In order to produce specific sort keys, an UCA collation should be
    * configured with maximum sorting level. But, even in this case there
-   * are some acceptatable codepoints which have the same weight. These 
+   * are some acceptatable codepoints which have the same weight. These
    * codepoints ussually represent the same graphic symbol. */
   bool allow_index_cov;
 
@@ -317,6 +317,9 @@ extern "C"
 						 const unsigned char *escape,
 						 const bool has_last_escape,
 						 int *str1_match_size);
+  extern int lang_get_charset_env_string (char *buf, int buf_size,
+					  const char *lang_name,
+					  const INTL_CODESET charset);
 #if !defined (SERVER_MODE)
   extern void lang_server_charset_init (void);
   extern INTL_CODESET lang_server_charset_id (void);
@@ -338,6 +341,8 @@ extern "C"
   extern int lang_get_client_collation (void);
   extern void lang_set_parser_use_client_charset (bool use);
   extern bool lang_get_parser_use_client_charset (void);
+  extern int lang_get_server_charset_env_string (char *buf, int buf_size);
+  extern int lang_get_client_charset_env_string (char *buf, int buf_size);
 #endif				/* !SERVER_MODE */
 
   extern const char *lang_charset_introducer (const INTL_CODESET codeset);

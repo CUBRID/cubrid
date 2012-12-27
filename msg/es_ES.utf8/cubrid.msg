@@ -1145,7 +1145,7 @@ $ LOADDB
 1076 No se puede cargar parametro de sistema.
 1077 Parametro '%s' en linea %d en archivo '%s' : Parametro desconocido.
 1078 Caracter en offset %d no valido con el conjunto de codigo actual.
-1079 Conjuntos de codigo de la configuracion de base de datos y servidor son incompatibles.
+1079 Codesets of database(%1$s) and server configuration(%2$s) are incompatible.
 1080 Longitud maxima del string de predicado del filtro tiene que ser %1$d.
 1081 No se puede alterar un atributo involucrado en un indice de filtro o de funcion.
 1082 Todos buferes de paginas son sucios (LRU: %1$d).

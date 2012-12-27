@@ -1145,7 +1145,7 @@ $ LOADDB
 1076 Sistem parametresi yüklenemedi.
 1077 Dosya '%s' satır %d '%s' parametresi: Bilinmeyen parametre
 1078 Başlangıç yerideki %d özellikleri güncel kod ayarını geçersiz.
-1079 Veritabanı kodu kümesi ve sonucu yapılarına uymuyor.
+1079 Codesets of database(%1$s) and server configuration(%2$s) are incompatible.
 1080 Fitre dizesi uzunluğu en fazla %1$d olmalıdır.
 1081 Filtre veya fonksiyon indeksi özellikleri ile ilgili değişiklik yapılamaz.
 1082 Tüm sayfa tamponlar kirlidir (LRU: %1$d).

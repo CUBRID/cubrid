@@ -18,7 +18,7 @@
  */
 
 /*
- * cm_defines.h - 
+ * cm_defines.h -
  */
 
 #ifndef _CM_DEFINES_H_
@@ -28,7 +28,7 @@
 
 #define CUBRID_ENV "CUBRID"
 #define CUBRID_DATABASES_ENV "CUBRID_DATABASES"
-#define CUBRID_LANG_ENV "CUBRID_LANG"
+#define CUBRID_CHARSET_ENV "CUBRID_CHARSET"
 
 
 

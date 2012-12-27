@@ -549,7 +549,7 @@ lang_init (void)
       (void) register_collation (built_in_collations[i]);
     }
 
-  /* register all built-in locales allowed in current charset 
+  /* register all built-in locales allowed in current charset
    * Support for multiple locales is required for switching function context
    * string - data/time , string - number conversions */
 
@@ -753,7 +753,7 @@ set_current_locale (bool is_full_init)
  *   return: NO_ERROR if success
  *
  *  Note : This function sets the following global variables according to
- *	   $CUBRID_LANG environment variable :
+ *	   $CUBRID_CHARSET environment variable :
  *	    - lang_user_Loc_name : locale string supplied by user
  *	    - lang_Loc_name : resolved locale string: <lang>.<charset>
  *	    - lang_Lang_name : <lang> string part (without <charset>)
@@ -761,7 +761,7 @@ set_current_locale (bool is_full_init)
  *	    - lang_Loc_charset : charset id : ISO-8859-1, UTF-8 or EUC-KR
  *	   According to $CUBRID_MSG_LANG:
  *	    - lang_msg_Loc_name : <lang>.<charset>; en_US.utf8;
- *	      if $CUBRID_MSG_LANG is not set, then only $CUBRID_LANG is used
+ *	      if $CUBRID_MSG_LANG is not set, then only $CUBRID_CHARSET is used
  */
 static int
 set_lang_from_env (void)
@@ -775,12 +775,12 @@ set_lang_from_env (void)
   /*
    * Determines the locale by examining environment variables.
    * We check the optional variable CUBRID_MSG_LANG, which decides the
-   * locale for catalog messages; if not set CUBRID_LANG is used for catalog
+   * locale for catalog messages; if not set CUBRID_CHARSET is used for catalog
    * messages
-   * CUBRID_LANG is mandatory, it decides the locale in which CUBRID opertes.
+   * CUBRID_CHARSET is mandatory, it decides the locale in which CUBRID opertes.
    * This controls the system charset and collation, including charset and
    * collation of system tables, charset (and casing rules) of identifiers,
-   * default charset and collation of string literals, default locale for 
+   * default charset and collation of string literals, default locale for
    * string - date /numeric conversion functions.
    */
 
@@ -817,7 +817,7 @@ set_lang_from_env (void)
       charset = NULL;
     }
 
-  env = envvar_get ("LANG");
+  env = envvar_get ("CHARSET");
   if (env != NULL)
     {
       strncpy (lang_Loc_name, env, sizeof (lang_Loc_name));
@@ -825,7 +825,7 @@ set_lang_from_env (void)
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
-	      "CUBRID_LANG environment variable is not set");
+	      "CUBRID_CHARSET environment variable is not set");
 
       if (!is_msg_env_set)
 	{
@@ -841,7 +841,7 @@ set_lang_from_env (void)
 			       &lang_Loc_charset);
   if (status != NO_ERROR)
     {
-      sprintf (err_msg, "invalid value %s for CUBRID_LANG", lang_Loc_name);
+      sprintf (err_msg, "invalid value %s for CUBRID_CHARSET", lang_Loc_name);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, err_msg);
       if (!is_msg_env_set)
 	{
@@ -853,7 +853,7 @@ set_lang_from_env (void)
 
   if (lang_Loc_charset == INTL_CODESET_NONE)
     {
-      /* no charset provided in $CUBRID_LANG */
+      /* no charset provided in $CUBRID_CHARSET */
       (void) lang_get_builtin_lang_id_from_name (lang_Lang_name,
 						 &lang_Lang_id);
       lang_Loc_charset = lang_get_default_codeset (lang_Lang_id);
@@ -1004,7 +1004,7 @@ lang_check_init (void)
 }
 
 /*
- * lang_locales_count - 
+ * lang_locales_count -
  *   return: number of locales in the system
  */
 int
@@ -1381,7 +1381,7 @@ lang_get_collation_by_name (const char *coll_name)
 }
 
 /*
- * lang_collation_count - 
+ * lang_collation_count -
  *   return: number of collations in the system
  */
 int
@@ -1416,7 +1416,7 @@ lang_get_codeset_name (int codeset_id)
 }
 
 /*
- * lang_user_alphabet_w_coll - 
+ * lang_user_alphabet_w_coll -
  *   return: id of default collation
  */
 const ALPHABET_DATA *
@@ -1570,7 +1570,7 @@ free_lang_locale_data (LANG_LOCALE_DATA * lld)
 }
 
 /*
- * lang_get_user_loc_name - returns the string provided by user in CUBRID_LANG
+ * lang_get_user_loc_name - returns the string provided by user in CUBRID_CHARSET
  *		            according to environment
  *   return: locale user string
  */
@@ -1845,7 +1845,7 @@ lang_get_specific_locale (const INTL_LANG lang, const INTL_CODESET codeset)
 /*
  * lang_get_first_locale_for_lang - returns first locale for language
  *  return: language locale data or NULL if language id is not valid
- *  lang(in): 
+ *  lang(in):
  */
 const LANG_LOCALE_DATA *
 lang_get_first_locale_for_lang (const INTL_LANG lang)
@@ -2234,6 +2234,37 @@ lang_charset_cubrid_name (const INTL_CODESET codeset)
   return NULL;
 }
 
+/*
+ * lang_get_charset_env_string -
+ * buf(out):
+ * buf_size(in):
+ * lang_name(in):
+ * codeset(in):
+ * return:
+ */
+int
+lang_get_charset_env_string (char *buf, int buf_size, const char *lang_name,
+			     const INTL_CODESET codeset)
+{
+  if (buf == NULL)
+    {
+      assert_release (0);
+      return ER_FAILED;
+    }
+
+  if (!strcasecmp (lang_name, "en_US") && codeset == INTL_CODESET_ISO88591)
+    {
+      snprintf (buf, buf_size, "%s", lang_name);
+    }
+  else
+    {
+      snprintf (buf, buf_size, "%s.%s", lang_name,
+		lang_charset_cubrid_name (codeset));
+    }
+
+  return NO_ERROR;
+}
+
 #if !defined (SERVER_MODE)
 static DB_CHARSET lang_Server_charset;
 static INTL_LANG lang_Server_lang_id;
@@ -2246,6 +2277,64 @@ static INTL_CODESET lang_Client_charset = INTL_CODESET_ISO88591;
 static int lang_Client_collation_id = LANG_COLL_ISO_BINARY;
 static int lang_Client_charset_Initialized = 0;
 static bool lang_Parser_use_client_charset = true;
+
+/*
+ * lang_get_server_charset_env_string -
+ * buf(out):
+ * buf_size(in):
+ * return:
+ */
+int
+lang_get_server_charset_env_string (char *buf, int buf_size)
+{
+  int ret;
+
+  if (buf == NULL)
+    {
+      assert_release (0);
+      return ER_FAILED;
+    }
+
+  if (!lang_Server_charset_Initialized)
+    {
+      lang_server_charset_init ();
+    }
+
+  ret = lang_get_charset_env_string (buf, buf_size, lang_Server_lang_name,
+				     lang_Server_charset.charset_id);
+
+  return ret;
+}
+
+/*
+ * lang_get_client_charset_env_string -
+ * buf(out):
+ * buf_size(in):
+ * return:
+ */
+int
+lang_get_client_charset_env_string (char *buf, int buf_size)
+{
+  int ret;
+
+  if (buf == NULL)
+    {
+      assert_release (0);
+      return ER_FAILED;
+    }
+
+  if (!lang_Initialized)
+    {
+      lang_init ();
+    }
+
+  ret =
+    lang_get_charset_env_string (buf, buf_size,
+				 lang_get_lang_name_from_id (lang_id ()),
+				 lang_charset ());
+
+  return ret;
+}
 
 /*
  * lang_server_charset_init - Initializes the global value of the server's
@@ -2426,7 +2515,7 @@ lang_server_charset_id (void)
 /*
  * lang_check_server_env - checks if server settings match with existing
  *			   environment
- *                          
+ *
  *   return: true if server settings match
  */
 bool
@@ -4538,7 +4627,7 @@ lang_split_key_byte (const LANG_COLLATION * lang_coll, const bool is_desc,
  *   size2(in):
  *   key(out): key
  *   byte_size(out): size in bytes of key
- *			     
+ *
  *  Note : this function is used by index prefix computation (BTREE building)
  */
 static int
@@ -4693,7 +4782,7 @@ lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is_desc,
   str2_end = str2 + size2;
 
   /* Regular string compare in collation with expansions requires multiple
-   * passes up to the UCA level of collation or until a weight difference 
+   * passes up to the UCA level of collation or until a weight difference
    * Key prefix algorithm takes into account only level 1 of weight */
   for (;;)
     {
@@ -4871,7 +4960,7 @@ lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is_desc,
  *   size2(in):
  *   key(out): key
  *   byte_size(out): size in bytes in key
- *			     
+ *
  *  Note : this function is used by index prefix computation (BTREE building)
  */
 static int
@@ -5833,7 +5922,7 @@ lang_initloc_tr_utf8 (LANG_LOCALE_DATA * ld)
   lang_upper_i_TR[0x131] = 'I';	/* small letter dotless i */
   lang_lower_i_TR[0x130] = 'i';	/* capital letter I with dot above */
 
-  /* exceptions in TR casing for user alphabet : 
+  /* exceptions in TR casing for user alphabet :
    */
   lang_upper_TR[0x131] = 'I';	/* small letter dotless i */
   lang_lower_TR[0x131] = 0x131;	/* small letter dotless i */
@@ -6219,7 +6308,7 @@ lang_next_alpha_char_ko (const LANG_COLLATION * lang_coll,
   assert (char_size <= 3);
   /* increment last byte of current character without carry and without
    * mixing ASCII range with korean range;
-   * this works for EUC-KR characters encoding which don't have terminal 
+   * this works for EUC-KR characters encoding which don't have terminal
    * byte = FF */
   if ((char_size == 1 && *next_seq < 0x7f)
       || (char_size > 1 && next_seq[char_size - 1] < 0xff))
@@ -7172,7 +7261,7 @@ error_loading_symbol:
 /*
  * lang_get_generic_unicode_norm - gets the global unicode
  *		    normalization structure
- * Returns: 
+ * Returns:
  */
 UNICODE_NORMALIZATION *
 lang_get_generic_unicode_norm (void)

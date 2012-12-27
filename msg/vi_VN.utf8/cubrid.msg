@@ -1145,7 +1145,7 @@ $ LOADDB
 1076 Không thể tải tham số hệ thống.
 1077 Tham số '%s' tại dòng %d trong tệp tin '%s' : Tham số không biết
 1078 Ký tự ở vị trí chuyển vị %d không có giá trị với bộ mã hiện tại.
-1079 Các bộ mã của cơ sở dữ liệu và cấu hình server không tương thích.
+1079 Codesets of database(%1$s) and server configuration(%2$s) are incompatible.
 1080 Chiều dài chuỗi xác nhận lọc tối đa phải bằng %1$d.
 1081 Không thể thay đổi thuộc tính của bộ lọc hoặc chỉ mục chức năng.
 1082 Tất cả các tấm đệm trang đều bẩn (LRU: %1$d).

@@ -1145,7 +1145,7 @@ $ LOADDB
 1076 不能加载系统参数.
 1077 '%s' 参数 在第 %d 行的文件 '%s' 中: 未知参数
 1078 偏移量为 %d 的字符在当前字符集是非法的.
-1079 数据库和服务器的字符集配置不兼容.
+1079 Codesets of database(%1$s) and server configuration(%2$s) are incompatible.
 1080 用作过滤的谓词字符串的最大长度是 %1$d.
 1081 无法改变在filter或 function索引中使用的列.
 1082 所有的缓冲页都是脏页 (LRU: %1$d).

@@ -1145,7 +1145,7 @@ $ LOADDB
 1076 Impossibile caricare i parametri del sistema.
 1077 Il parametro '%s' alla linea %d nel file '%s': parametro sconosciuto
 1078 Carattere all'offset %d non è valido con il codeset corrente.
-1079 Codeset di database e codeset dello server non sono compatibili.
+1079 Codeset di database(%1$s) e codeset dello server(%2$s) non sono compatibili.
 1080 La lunghezza massima della stringa del predicato del filtro deve essere %1$d.
 1081 Non è possibile modificare un attributo coinvolto nell'un index di filtro o di funzione.
 1082 Tutti i tamponi di pagina sono sporchi (LRU: %1$d).

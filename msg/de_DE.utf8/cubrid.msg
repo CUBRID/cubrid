@@ -1145,7 +1145,7 @@ $ LOADDB
 1076 Systemparameter kann nicht geladen werden.
 1077 Der '%s' Parameter auf Zeile %d in Datei '%s' : Unbekannter Parameter
 1078 Zeichen am Offset %d ist ungültig in aktueller Codeliste.
-1079 Die Codelisten der Datenbank und der Serverkonfiguration sind nicht kompatibel.
+1079 Die Codelisten der Datenbank(%1$s) und der Serverkonfiguration(%2$s) sind nicht kompatibel.
 1080 Die maximale Größe des Filter-Prädikat-Strings muss %1$d sein.
 1081 Ein Attribut, der in einem Filter oder Funktionindex beteiligt ist, darf nicht geändert.
 1082 Alle Seitenpuffer sind benutzt (LRU: %1$d).

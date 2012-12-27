@@ -3412,9 +3412,19 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
     if (db_charset != lang_charset () ||
 	strcasecmp (lang_get_Lang_name (), db_lang))
       {
+	char db_env_string[64];
+	char current_env_string[64];
+
+	db_env_string[0] = current_env_string[0] = '\0';
+	lang_get_charset_env_string (db_env_string, 64, db_lang, db_charset);
+	lang_get_charset_env_string (current_env_string, 64,
+				     lang_get_Lang_name (), lang_charset ());
+
 	error_code = ER_INVALID_SERVER_CHARSET;
 	er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-		ER_INVALID_SERVER_CHARSET, 0);
+		ER_INVALID_SERVER_CHARSET, 2,
+		db_env_string, current_env_string);
+
 	goto error;
       }
   }

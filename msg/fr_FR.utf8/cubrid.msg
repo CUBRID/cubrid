@@ -1145,7 +1145,7 @@ $ LOADDB
 1076 Impossible de charger le paramètre du système.
 1077 Le paramètre '%s' à la ligne %d dans le fichier '%s' : paramètre inconnu.
 1078 Caractère au offset %d n'est pas valide avec jeu de caractères codés actuelle.
-1079 Jeux de caractères codés de base de données et du serveur sont incompatibles.
+1079 Codesets of database(%1$s) and server configuration(%2$s) are incompatible.
 1080 La longueur maximale de la chaîne de filtration avec prédicat doit être %1$d.
 1081 Impossible de modifier un attribut impliqué dans un index de filtration ou de fonction.
 1082 Tous les tampons de pages sont sales (LRU: %1$d).
