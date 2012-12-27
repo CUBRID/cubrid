@@ -2445,6 +2445,8 @@ db_get_system_parameters (char *data, int len)
   int error = NO_ERROR;
   SYSPRM_ASSIGN_VALUE *prm_values = NULL;
 
+  er_clear ();
+
   /* parse data and obtain the parameters required to print */
   rc = sysprm_obtain_parameters (data, &prm_values);
   if (rc == PRM_ERR_NOT_FOR_CLIENT)

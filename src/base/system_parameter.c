@@ -612,7 +612,7 @@ bool PRM_ACCESS_IP_CONTROL = false;
 static bool prm_access_ip_control_default = false;
 
 const char *PRM_ACCESS_IP_CONTROL_FILE = "";
-static const char *prm_access_ip_control_file_default = NULL;
+static const char *prm_access_ip_control_file_default = "";
 
 bool PRM_IO_LOCKF_ENABLE = false;
 static bool prm_io_lockf_enable_default = true;
@@ -1308,14 +1308,14 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_ACCESS_IP_CONTROL,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_BOOLEAN,
    (void *) &prm_access_ip_control_default,
    (void *) &PRM_ACCESS_IP_CONTROL,
    (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_ACCESS_IP_CONTROL_FILE,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_STRING,
    (void *) &prm_access_ip_control_file_default,
    (void *) &PRM_ACCESS_IP_CONTROL_FILE,
@@ -1336,7 +1336,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) &prm_sr_nbuffers_lower,
    (char *) NULL},
   {PRM_NAME_SORT_BUFFER_SIZE,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_SIZE,
    (void *) &prm_sort_buffer_size_default,
    (void *) &PRM_SORT_BUFFER_SIZE,
@@ -1366,7 +1366,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_page_buffer_size_upper, (void *) &prm_page_buffer_size_lower,
    (char *) NULL},
   {PRM_NAME_HF_UNFILL_FACTOR,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_FLOAT,
    (void *) &prm_hf_unfill_factor_default,
    (void *) &PRM_HF_UNFILL_FACTOR,
@@ -1380,7 +1380,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_BT_UNFILL_FACTOR,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_FLOAT,
    (void *) &prm_bt_unfill_factor_default,
    (void *) &PRM_BT_UNFILL_FACTOR,
@@ -1394,7 +1394,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_bt_oid_nbuffers_upper, (void *) &prm_bt_oid_nbuffers_lower,
    (char *) NULL},
   {PRM_NAME_BT_OID_BUFFER_SIZE,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_SIZE,
    (void *) &prm_bt_oid_buffer_size_default,
    (void *) &PRM_BT_OID_BUFFER_SIZE,
@@ -1424,7 +1424,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL,
    (char *) NULL},
   {PRM_NAME_LK_ESCALATION_AT,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_INTEGER,
    (void *) &prm_lk_escalation_at_default,
    (void *) &PRM_LK_ESCALATION_AT,
@@ -1459,7 +1459,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) &prm_log_buffer_size_lower,
    (char *) NULL},
   {PRM_NAME_LOG_CHECKPOINT_NPAGES,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_INTEGER,
    (void *) &prm_log_checkpoint_npages_default,
    (void *) &PRM_LOG_CHECKPOINT_NPAGES,
@@ -1649,7 +1649,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_TEMP_MEM_BUFFER_PAGES,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_INTEGER,
    (void *) &prm_temp_mem_buffer_pages_default,
    (void *) &PRM_TEMP_MEM_BUFFER_PAGES,
@@ -2236,7 +2236,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_LOG_ASYNC_COMMIT,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_BOOLEAN,
    (void *) &prm_log_async_commit_default,
    (void *) &PRM_LOG_ASYNC_COMMIT,
@@ -2429,7 +2429,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_IO_VOLUME_EXT_PATH,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_STRING,
    (void *) &prm_io_volume_ext_path_default,
    (void *) &PRM_IO_VOLUME_EXT_PATH,
@@ -4068,7 +4068,17 @@ sysprm_change_parameter_values (const SYSPRM_ASSIGN_VALUE * assignments,
 	}
 #endif
       sysprm_set_value (prm, assignments->value, set_flag, true);
+#if defined (SERVER_MODE)
+      if (sysprm_get_id (prm) == PRM_ID_ACCESS_IP_CONTROL)
+	{
+	  css_set_accessible_ip_info ();
+	}
+#endif
     }
+
+#if defined (SERVER_MODE)
+  prm_adjust_parameters ();
+#endif
 }
 
 /*
@@ -4311,7 +4321,7 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
     }
   else if (PRM_IS_FLOAT (prm))
     {
-      n = snprintf (buf, len, "%s%f", prm->name, value.f);
+      n = snprintf (buf, len, "%s%.6g", left_side, value.f);
     }
   else if (PRM_IS_STRING (prm))
     {
@@ -4535,6 +4545,10 @@ sysprm_obtain_parameters (char *data, SYSPRM_ASSIGN_VALUE ** prm_values_ptr)
 	{
 	  /* set the value here */
 	  sysprm_set_sysprm_value_from_parameter (&prm_value->value, prm);
+	}
+      else
+	{
+	  memset (&prm_value->value, 0, sizeof (SYSPRM_VALUE));
 	}
 #else /* CS_MODE */
       sysprm_set_sysprm_value_from_parameter (&prm_value->value, prm);
@@ -6925,6 +6939,9 @@ sysprm_packed_sysprm_value_length (SYSPRM_VALUE value,
     case PRM_KEYWORD:
     case PRM_BOOLEAN:
       return OR_INT_SIZE;
+
+    case PRM_FLOAT:
+      return OR_FLOAT_SIZE;
 
     case PRM_STRING:
       return or_packed_string_length (value.str, NULL);
