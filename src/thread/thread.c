@@ -1167,7 +1167,6 @@ thread_finalize_entry (THREAD_ENTRY * entry_p)
   return error;
 }
 
-#if defined(CUBRID_DEBUG)
 /*
  * thread_print_entry_info() -
  *   return: void
@@ -1185,8 +1184,9 @@ thread_print_entry_info (THREAD_ENTRY * thread_p)
     {
       css_print_conn_entry_info (thread_p->conn_entry);
     }
+
+  fflush (stderr);
 }
-#endif
 
 /*
  * Thread entry related functions
@@ -2028,7 +2028,6 @@ thread_num_total_threads (void)
   return thread_Manager.num_total;
 }
 
-#if defined(CUBRID_DEBUG)
 /*
  * thread_dump_threads() - dump all thread
  *   return: void
@@ -2056,8 +2055,9 @@ thread_dump_threads (void)
 	       thread_p->tran_index, thread_p->rid,
 	       status[thread_p->status], thread_p->interrupted);
     }
+
+  fflush (stderr);
 }
-#endif
 
 /*
  * css_get_private_heap () -
