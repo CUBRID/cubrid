@@ -70,8 +70,9 @@ public class UError {
 	public String getErrorMsg() {
 	    	if (connection != null) {
 	    	    if (connection.protoVersionIsAbove(UConnection.PROTOCOL_V4)) {
-	    		return String.format("CASID[%d],SESSION[%d],URL[%s]\n%s", connection.casId,
-	    			getSessionNumber(connection.sessionId), connection.url, errorMessage);
+	    		return String.format("CASID[%d],CASPID[%d],SESSION[%d],URL[%s]\n%s", connection.casId,
+	    			connection.processId ,getSessionNumber(connection.sessionId),
+	    			connection.url, errorMessage);
 	    	    } else if (connection.protoVersionIsAbove(UConnection.PROTOCOL_V3)) {
 	    		return String.format("CASPID[%d],SESSION[%d],URL[%s]\n%s", connection.processId,
 	    			getSessionNumber(connection.sessionId), connection.url, errorMessage);
