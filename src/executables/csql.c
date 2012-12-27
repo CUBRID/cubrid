@@ -1397,6 +1397,12 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 		       "ERROR: HISTORYRead {history_number}\n");
 	    }
 	}
+#else
+      if (csql_Is_interactive)
+	{
+	  fprintf (csql_Error_fp, "ERROR: Windows do not support HISTORYList"
+		   " and HISTORYRead session commands in csql.\n");
+	}
 #endif /* !WINDOWS */
       break;
 
@@ -1416,6 +1422,12 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	      fprintf (csql_Output_fp, "----< %d >----\n", i + 1);
 	      fprintf (csql_Output_fp, "%s\n\n", hist_entry->line);
 	    }
+	}
+#else
+      if (csql_Is_interactive)
+	{
+	  fprintf (csql_Error_fp, "ERROR: Windows do not support HISTORYList"
+		   " and HISTORYRead session commands in csql.\n");
 	}
 #endif /* !WINDOWS */
       break;
