@@ -92,7 +92,7 @@ T_CCI_ERROR_CODE map_open_otc (T_CCI_CONN connection_id,
     }
   else
     {
-      *mapped_conn_id == -1;
+      *mapped_conn_id = -1;
       error = CCI_ER_NO_ERROR;
     }
 
@@ -205,7 +205,7 @@ T_CCI_ERROR_CODE map_open_ots (T_CCI_REQ statement_id,
     }
   else
     {
-      *mapped_stmt_id == -1;
+      *mapped_stmt_id = -1;
     }
 
   mutexStatement.lock ();
