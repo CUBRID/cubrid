@@ -822,6 +822,8 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
     }
 #endif /* !WINDOWS */
 
+  er_clear ();
+
   switch ((SESSION_CMD) cmd_no)
     {
       /* File stuffs */
