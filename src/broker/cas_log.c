@@ -948,10 +948,6 @@ cas_slow_log_open (char *br_name, int as_index)
 
       /* note: in "a+" mode, output is always appended */
       slow_log_fp = cas_fopen (slow_log_filepath, "a+");
-      if (slow_log_fp == NULL)
-	{
-	  assert (0);
-	}
     }
   else
     {

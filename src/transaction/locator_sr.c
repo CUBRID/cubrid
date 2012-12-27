@@ -6585,7 +6585,7 @@ error:
 
   (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
 
-  assert_release (error_code == er_errid ());
+  assert_release (error_code == ER_FAILED || error_code == er_errid ());
   return error_code;
 }
 
@@ -7883,10 +7883,10 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 
 	  if (pr_type->id == DB_TYPE_MIDXKEY)
 	    {
-	      /* 
-	       * The asc/desc properties in midxkey from log_applier may be 
-	       * inaccurate. therefore, we should use btree header's domain 
-	       * while processing btree search request from log_applier. 
+	      /*
+	       * The asc/desc properties in midxkey from log_applier may be
+	       * inaccurate. therefore, we should use btree header's domain
+	       * while processing btree search request from log_applier.
 	       */
 	      repl_old_key->data.midxkey.domain =
 		locator_make_midxkey_domain (&

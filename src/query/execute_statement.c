@@ -10956,6 +10956,7 @@ is_server_insert_allowed (PARSER_CONTEXT * parser,
 	  return error;
 	}
     }
+
   if (statement->info.insert.odku_assignments)
     {
       if (!(server_preference & INSERT_ON_DUP_KEY_UPDATE))
@@ -10963,6 +10964,7 @@ is_server_insert_allowed (PARSER_CONTEXT * parser,
 	  return error;
 	}
     }
+
   if (values_list->info.node_list.list_type == PT_IS_SUBQUERY)
     {
       if (!(server_preference & INSERT_SELECT))
