@@ -278,9 +278,12 @@ overflow_insert_internal (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
 
   if (need_alloc)
     {
-      if (file_alloc_pages_as_noncontiguous
-	  (thread_p, ovf_vfid, vpids, &alloc_nth, alloc_npages, NULL, NULL,
-	   NULL, &alloc_vpids) == NULL)
+      if (file_alloc_pages_as_noncontiguous (thread_p, ovf_vfid,
+					     (alloc_vpids.vpids
+					      + alloc_vpids.index),
+					     &alloc_nth, alloc_npages,
+					     NULL, NULL, NULL,
+					     &alloc_vpids) == NULL)
 	{
 	  if (vpids != vpids_buffer)
 	    {
