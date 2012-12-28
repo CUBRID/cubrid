@@ -437,6 +437,7 @@ EXPORTS
     checkdb
     plandump
     paramdump
+    loaddb_user
     unloaddb
     csql
     changemode
