@@ -164,6 +164,8 @@ static int btree_read_fixed_portion_of_non_leaf_record_from_orbuf (OR_BUF
 								   NON_LEAF_REC
 								   * nlf_rec);
 static void btree_append_oid (RECDES * rec, OID * oid);
+static void btree_insert_oid_in_front_of_ovfl_vpid (RECDES * rec, OID * oid,
+						    VPID * ovfl_vpid);
 static int btree_start_overflow_page (THREAD_ENTRY * thread_p,
 				      BTID_INT * btid, VPID * new_vpid,
 				      PAGE_PTR * new_page_ptr,
@@ -480,7 +482,8 @@ static int btree_insert_oid_into_leaf_rec (THREAD_ENTRY * thread_p,
 					   BTID_INT * btid,
 					   PAGE_PTR leaf_page, DB_VALUE * key,
 					   OID * cls_oid, OID * oid,
-					   INT16 slot_id, RECDES * rec);
+					   INT16 slot_id, RECDES * rec,
+					   VPID * first_ovfl_vpid);
 static int btree_append_overflow_oids_page (THREAD_ENTRY * thread_p,
 					    BTID_INT * btid,
 					    PAGE_PTR leaf_page,
@@ -1537,6 +1540,35 @@ btree_append_oid (RECDES * rec, OID * oid)
   ptr = rec->data + rec->length;
   OR_PUT_OID (ptr, oid);
   rec->length += OR_OID_SIZE;
+}
+
+/*
+ * btree_insert_oid_front_ovfl_vpid () -
+ *   return:
+ *   rec(in):
+ *   oid(in):
+ *   ovfl_vpid(in):
+ *
+ */
+static void
+btree_insert_oid_in_front_of_ovfl_vpid (RECDES * rec, OID * oid,
+					VPID * ovfl_vpid)
+{
+  char *ptr;
+#if !defined(NDEBUG)
+  VPID vpid;
+
+  btree_leaf_get_vpid_for_overflow_oids (rec, &vpid);
+  assert (ovfl_vpid->volid == vpid.volid && ovfl_vpid->pageid == vpid.pageid);
+#endif
+
+  rec->length -= DB_ALIGN (DISK_VPID_SIZE, INT_ALIGNMENT);
+
+  ptr = rec->data + rec->length;
+  OR_PUT_OID (ptr, oid);
+  rec->length += OR_OID_SIZE;
+
+  btree_leaf_new_overflow_oids_vpid (rec, ovfl_vpid);
 }
 
 /*
@@ -9556,7 +9588,7 @@ static int
 btree_insert_oid_into_leaf_rec (THREAD_ENTRY * thread_p, BTID_INT * btid,
 				PAGE_PTR leaf_page, DB_VALUE * key,
 				OID * cls_oid, OID * oid, INT16 slot_id,
-				RECDES * rec)
+				RECDES * rec, VPID * first_ovfl_vpid)
 {
   int ret = NO_ERROR;
   int key_type = BTREE_NORMAL_KEY;
@@ -9583,7 +9615,7 @@ btree_insert_oid_into_leaf_rec (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
   recins.ovfl_changed = false;
   recins.new_ovflpg = false;
-  VPID_SET_NULL (&recins.ovfl_vpid);
+  recins.ovfl_vpid = *first_ovfl_vpid;
 
   if (btree_is_new_file (btid))
     {
@@ -9608,11 +9640,19 @@ btree_insert_oid_into_leaf_rec (THREAD_ENTRY * thread_p, BTID_INT * btid,
 				 rv_key, &recins);
     }
 
-  btree_append_oid (rec, oid);
-
-  if (BTREE_IS_UNIQUE (btid))
+  if (VPID_ISNULL (first_ovfl_vpid))
     {
-      btree_append_oid (rec, cls_oid);
+      btree_append_oid (rec, oid);
+
+      if (BTREE_IS_UNIQUE (btid))
+	{
+	  btree_append_oid (rec, cls_oid);
+	}
+    }
+  else
+    {
+      assert (!BTREE_IS_UNIQUE (btid));
+      btree_insert_oid_in_front_of_ovfl_vpid (rec, oid, first_ovfl_vpid);
     }
 
   assert (rec->length % 4 == 0);
@@ -9956,7 +9996,7 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, int *key_added,
   int oid_size;
   bool dummy;
   int max_free, oid_length_in_rec;
-  int key_len, offset;
+  int offset;
   int ret = NO_ERROR;
   PAGE_PTR ovfl_page, last_ovfl_page = NULL;
   char rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
@@ -10069,7 +10109,6 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, int *key_added,
 
   /* get the free space size in page */
   max_free = spage_max_space_for_new_record (thread_p, page_ptr);
-  key_len = btree_get_key_length (key);
 
   oid_length_in_rec = oid_size + rec.length - offset;
 
@@ -10077,7 +10116,8 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, int *key_added,
       && oid_length_in_rec < BTREE_MAX_OIDLEN_INPAGE)
     {
       ret = btree_insert_oid_into_leaf_rec (thread_p, btid, page_ptr, key,
-					    cls_oid, oid, slot_id, &rec);
+					    cls_oid, oid, slot_id, &rec,
+					    &leafrec_pnt.ovfl);
       return ret;
     }
 
@@ -20951,11 +20991,19 @@ btree_rv_leafrec_redo_insert_oid (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 
       if (recins->oid_inserted == true)
 	{
-	  btree_append_oid (&rec, &recins->oid);
-	  if (!OID_ISNULL (&recins->class_oid))
+	  if (VPID_ISNULL (&recins->ovfl_vpid))
 	    {
-	      /* unique index */
-	      btree_append_oid (&rec, &recins->class_oid);
+	      btree_append_oid (&rec, &recins->oid);
+	      if (!OID_ISNULL (&recins->class_oid))
+		{
+		  /* unique index */
+		  btree_append_oid (&rec, &recins->class_oid);
+		}
+	    }
+	  else
+	    {
+	      btree_insert_oid_in_front_of_ovfl_vpid (&rec, &recins->oid,
+						      &recins->ovfl_vpid);
 	    }
 	}
 
