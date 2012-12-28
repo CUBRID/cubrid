@@ -23,6 +23,7 @@
 #include "DBGWPorting.h"
 #include "DBGWValue.h"
 #include "DBGWLogger.h"
+#include "DBGWSynchronizedResource.h"
 #include "DBGWDataBaseInterface.h"
 #include "DBGWCUBRIDInterface.h"
 #include "DBGWQuery.h"

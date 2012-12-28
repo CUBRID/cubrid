@@ -18,12 +18,6 @@
  */
 #include <ctype.h>
 #include <boost/lexical_cast.hpp>
-#include "DBGWCommon.h"
-#include "DBGWError.h"
-#include "DBGWPorting.h"
-#include "DBGWLogger.h"
-#include "DBGWValue.h"
-#include "DBGWDataBaseInterface.h"
 #include "DBGWClient.h"
 #include "DBGWWork.h"
 #include "DBGWQuery.h"

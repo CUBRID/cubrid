@@ -90,7 +90,8 @@ namespace dbgw
     /**
      * External access class.
      */
-    class DBGWConnection : public boost::enable_shared_from_this<DBGWConnection>
+    class DBGWConnection : public boost::enable_shared_from_this<DBGWConnection>,
+      public _DBGWSynchronizedResourceSubject
     {
     public:
       DBGWConnection(const char *szUrl, const char *szUser,
@@ -135,7 +136,8 @@ namespace dbgw
     /**
      * External access class.
      */
-    class DBGWStatement : public boost::enable_shared_from_this<DBGWPreparedStatement>
+    class DBGWStatement : public boost::enable_shared_from_this<DBGWPreparedStatement>,
+      public _DBGWSynchronizedResourceSubject, public _DBGWSynchronizedResource
     {
     public:
       DBGWStatement(DBGWConnectionSharedPtr pConnection);
@@ -153,6 +155,7 @@ namespace dbgw
 
     protected:
       virtual void doClose() = 0;
+      virtual void doUnlinkResource();
 
     private:
       bool m_bClosed;
@@ -259,7 +262,7 @@ namespace dbgw
     /**
      * External access class.
      */
-    class DBGWResultSet
+    class DBGWResultSet : public _DBGWSynchronizedResource
     {
     public:
       DBGWResultSet(DBGWStatementSharedPtr pStatement);
@@ -286,6 +289,7 @@ namespace dbgw
 
     protected:
       virtual void doClose() = 0;
+      virtual void doUnlinkResource();
 
     private:
       bool m_bClosed;

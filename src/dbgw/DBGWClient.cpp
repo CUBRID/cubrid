@@ -21,6 +21,7 @@
 #include "DBGWPorting.h"
 #include "DBGWValue.h"
 #include "DBGWLogger.h"
+#include "DBGWSynchronizedResource.h"
 #include "DBGWDataBaseInterface.h"
 #include "DBGWQuery.h"
 #include "DBGWWork.h"
@@ -628,6 +629,8 @@ namespace dbgw
 
     try
       {
+        configuration.registerResource(this);
+
         m_stVersion = m_configuration.getVersion();
         m_pService = m_configuration.getService(m_stVersion, szNameSpace);
         if (m_pService == NULL)
@@ -865,6 +868,8 @@ namespace dbgw
 
         m_bClosed = true;
 
+        closeResource();
+
         releaseWorker();
       }
     catch (DBGWException &e)
@@ -913,6 +918,11 @@ namespace dbgw
   const _DBGWQueryMapper *DBGWClient::getQueryMapper() const
   {
     return m_pQueryMapper;
+  }
+
+  void DBGWClient::doUnlinkResource()
+  {
+    close();
   }
 
   unsigned long DBGWClient::getWaitTimeMilSec() const

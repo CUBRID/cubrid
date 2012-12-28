@@ -21,6 +21,7 @@
 #include "DBGWPorting.h"
 #include "DBGWValue.h"
 #include "DBGWLogger.h"
+#include "DBGWSynchronizedResource.h"
 #include "DBGWDataBaseInterface.h"
 #include "DBGWQuery.h"
 #include "DBGWCUBRIDInterface.h"
@@ -118,6 +119,8 @@ namespace dbgw
             }
 
           m_bClosed = true;
+
+          unregisterResourceAll();
 
           doClose();
         }
@@ -241,6 +244,7 @@ namespace dbgw
     DBGWStatement::DBGWStatement(DBGWConnectionSharedPtr pConnection) :
       m_bClosed(false), m_pConnection(pConnection)
     {
+      m_pConnection->registerResource(this);
     }
 
     DBGWStatement::~DBGWStatement()
@@ -260,6 +264,9 @@ namespace dbgw
 
           m_bClosed = true;
 
+          closeResource();
+          unregisterResourceAll();
+
           doClose();
         }
       catch (DBGWException &e)
@@ -274,6 +281,11 @@ namespace dbgw
     DBGWConnectionSharedPtr DBGWStatement::getConnection() const
     {
       return m_pConnection;
+    }
+
+    void DBGWStatement::doUnlinkResource()
+    {
+      close();
     }
 
     DBGWPreparedStatement::DBGWPreparedStatement(
@@ -313,6 +325,7 @@ namespace dbgw
     DBGWResultSet::DBGWResultSet(DBGWStatementSharedPtr pStatement) :
       m_bClosed(false), m_pStatement(pStatement)
     {
+      m_pStatement->registerResource(this);
     }
 
     DBGWResultSet::~DBGWResultSet()
@@ -332,6 +345,8 @@ namespace dbgw
 
           m_bClosed = true;
 
+          closeResource();
+
           doClose();
         }
       catch (DBGWException &e)
@@ -341,6 +356,11 @@ namespace dbgw
         }
 
       return true;
+    }
+
+    void DBGWResultSet::doUnlinkResource()
+    {
+      close();
     }
 
     DBGWBatchResultSet::DBGWBatchResultSet(size_t nSize) :

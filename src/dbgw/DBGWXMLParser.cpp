@@ -26,15 +26,6 @@
 #endif /* !WINDOWS */
 #include <fstream>
 #include <errno.h>
-#include "DBGWCommon.h"
-#include "DBGWError.h"
-#include "DBGWPorting.h"
-#include "DBGWLogger.h"
-#include "DBGWValue.h"
-#include "DBGWDataBaseInterface.h"
-#include "DBGWQuery.h"
-#include "DBGWWork.h"
-#include "DBGWConfiguration.h"
 #include "DBGWClient.h"
 #include "DBGWXMLParser.h"
 

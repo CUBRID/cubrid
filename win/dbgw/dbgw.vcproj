@@ -387,6 +387,10 @@
 					RelativePath="..\..\src\dbgw\DBGWQuery.cpp"
 					>
 				</File>
+        <File
+          RelativePath="..\..\src\dbgw\DBGWSynchronizedResource.cpp"
+          >
+        </File>
 				<File
 					RelativePath="..\..\src\dbgw\DBGWValue.cpp"
 					>
@@ -526,6 +530,10 @@
 				RelativePath="..\..\src\dbgw\DBGWQuery.h"
 				>
 			</File>
+      <File
+        RelativePath="..\..\src\dbgw\DBGWSynchronizedResource.h"
+        >
+      </File>
 			<File
 				RelativePath="..\..\src\dbgw\DBGWValue.h"
 				>

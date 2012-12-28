@@ -45,6 +45,7 @@ dbgw3_include_HEADERS = \
         $(DBGW_DIR)/DBGWAdapter.h \
         $(DBGW_DIR)/DBGWQuery.h \
         $(DBGW_DIR)/DBGWLogger.h \
+        $(DBGW_DIR)/DBGWSynchronizedResource.h \
         $(DBGW_DIR)/DBGWConfigurationFwd.h \
         $(DBGW_DIR)/DBGWConfiguration.h \
         $(DBGW_DIR)/DBGWWorkFwd.h \
@@ -62,6 +63,7 @@ dbgw3_SOURCES = \
         $(DBGW_DIR)/DBGWXMLParser.cpp \
         $(DBGW_DIR)/DBGWQuery.cpp \
         $(DBGW_DIR)/DBGWLogger.cpp \
+        $(DBGW_DIR)/DBGWSynchronizedResource.cpp \
         $(DBGW_DIR)/DBGWConfiguration.cpp \
         $(DBGW_DIR)/DBGWWork.cpp \
         $(DBGW_DIR)/DBGWClient.cpp

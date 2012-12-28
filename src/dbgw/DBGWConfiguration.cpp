@@ -24,16 +24,6 @@
 #else /* WINDOWS */
 #include <expat.h>
 #endif /* !WINDOWS */
-#include "DBGWCommon.h"
-#include "DBGWError.h"
-#include "DBGWPorting.h"
-#include "DBGWLogger.h"
-#include "DBGWValue.h"
-#include "DBGWDataBaseInterface.h"
-#include "DBGWQuery.h"
-#include "DBGWCUBRIDInterface.h"
-#include "DBGWWork.h"
-#include "DBGWConfiguration.h"
 #include "DBGWClient.h"
 #include "DBGWXMLParser.h"
 #include "DBGWMock.h"
@@ -1716,6 +1706,7 @@ namespace dbgw
 
   DBGWConfiguration::~DBGWConfiguration()
   {
+    unregisterResourceAll();
   }
 
   void DBGWConfiguration::setWaitTimeMilSec(unsigned long ulWaitTimeMilSec)

@@ -25,6 +25,7 @@
 #include "DBGWValue.h"
 #include "DBGWLogger.h"
 #include "DBGWPorting.h"
+#include "DBGWSynchronizedResource.h"
 #include "DBGWDataBaseInterface.h"
 #include "DBGWQuery.h"
 #include "DBGWWork.h"
@@ -92,7 +93,7 @@ namespace dbgw
     DBGWException m_lastException;
   };
 
-  class DBGWClient
+  class DBGWClient : public _DBGWSynchronizedResource
   {
   public:
     DBGWClient(DBGWConfiguration &configuration, const char *szNameSpace = NULL);
@@ -124,6 +125,9 @@ namespace dbgw
     bool isAutocommit() const;
     const _DBGWQueryMapper *getQueryMapper() const;
     unsigned long getWaitTimeMilSec() const;
+
+  protected:
+    virtual void doUnlinkResource();
 
   private:
     void checkClientIsValid();

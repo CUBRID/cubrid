@@ -363,7 +363,7 @@ namespace dbgw
   typedef boost::unordered_map<int, _DBGWQueryMapperSharedPtr,
           boost::hash<int>, dbgwIntCompareFunc> _DBGWQueryMapperHashMap;
 
-  class DBGWConfiguration
+  class DBGWConfiguration : public _DBGWSynchronizedResourceSubject
   {
   public:
     static unsigned long DEFAULT_MAX_WAIT_EXIT_TIME_MILSEC();
