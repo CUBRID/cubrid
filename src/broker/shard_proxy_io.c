@@ -1246,19 +1246,18 @@ proxy_socket_set_write_event (T_SOCKET_IO * sock_io_p,
 static int
 proxy_socket_io_new_client (SOCKET lsnr_fd)
 {
-
-  int error;
   int client_ip;
-  int length;
-  char *buffer;
   SOCKET client_fd;
   T_CLIENT_IO *cli_io_p;
   T_SOCKET_IO *sock_io_p;
   T_CLIENT_INFO *client_info_p;
-  T_PROXY_EVENT *event_p;
   int proxy_status = 0;
-  int db_info_size;
   T_BROKER_VERSION client_version;
+#if !defined (WINDOWS)
+  T_PROXY_EVENT *event_p;
+  int length;
+  int error;
+#endif
 
 #if defined(WINDOWS)
   client_fd = lsnr_fd;
@@ -1359,10 +1358,7 @@ static int
 proxy_process_client_register (T_SOCKET_IO * sock_io_p)
 {
   int error;
-  int i;
-  int length;
   char *db_name, *db_user, *db_passwd, *url, *db_sessionid;
-  char *db_info_ok;
   struct timeval client_start_time;
   T_IO_BUFFER *read_buffer;
   T_SHARD_USER *user_p;
@@ -1577,10 +1573,7 @@ static int
 proxy_process_client_request (T_SOCKET_IO * sock_io_p)
 {
   int error;
-  int length;
-  char *buffer;
   T_PROXY_CONTEXT *ctx_p;
-  T_CLIENT_IO *cli_io_p;
   T_PROXY_EVENT *event_p;
 
   ENTER_FUNC ();
@@ -1628,8 +1621,6 @@ static int
 proxy_process_client_conn_error (T_SOCKET_IO * sock_io_p)
 {
   int error;
-  int length;
-  char *buffer;
   T_PROXY_CONTEXT *ctx_p;
   T_CLIENT_INFO *client_info_p;
   T_PROXY_EVENT *event_p;
@@ -1744,7 +1735,6 @@ static int
 proxy_process_client_message (T_SOCKET_IO * sock_io_p)
 {
   int error = 0;
-  char *buffer;
 
   assert (sock_io_p);
 
@@ -1768,7 +1758,6 @@ proxy_process_client_message (T_SOCKET_IO * sock_io_p)
 static int
 proxy_process_cas_register (T_SOCKET_IO * sock_io_p)
 {
-  int error;
   int length;
   char *p;
   int shard_id = PROXY_INVALID_SHARD, cas_id = PROXY_INVALID_CAS;
@@ -1855,7 +1844,6 @@ static int
 proxy_process_cas_response (T_SOCKET_IO * sock_io_p)
 {
   int error;
-  int length;
   T_PROXY_CONTEXT *ctx_p;
   T_CAS_IO *cas_io_p;
   T_PROXY_EVENT *event_p;
@@ -1952,8 +1940,6 @@ static int
 proxy_process_cas_conn_error (T_SOCKET_IO * sock_io_p)
 {
   int error;
-  int length;
-  char *buffer;
   T_PROXY_CONTEXT *ctx_p;
   T_CAS_IO *cas_io_p;
   T_PROXY_EVENT *event_p;
@@ -2317,7 +2303,6 @@ static void
 proxy_socket_io_read_from_cas_next (T_SOCKET_IO * sock_io_p)
 {
   int error;
-  T_IO_BUFFER *r_buf;
 
   assert (sock_io_p);
 
@@ -2341,7 +2326,6 @@ proxy_socket_io_read_from_cas_first (T_SOCKET_IO * sock_io_p)
 {
   int error;
   int length;
-  char *buffer;
 
   assert (sock_io_p);
   assert (sock_io_p->read_event);
@@ -2354,7 +2338,7 @@ proxy_socket_io_read_from_cas_first (T_SOCKET_IO * sock_io_p)
       return;
     }
 
-  return proxy_socket_io_read_from_cas_next (sock_io_p);
+  proxy_socket_io_read_from_cas_next (sock_io_p);
 }
 
 static void
@@ -2383,7 +2367,6 @@ static void
 proxy_socket_io_read_from_client_next (T_SOCKET_IO * sock_io_p)
 {
   int error;
-  T_IO_BUFFER *r_buf;
 
   assert (sock_io_p);
 
@@ -2429,7 +2412,7 @@ proxy_socket_io_read_from_client_first (T_SOCKET_IO * sock_io_p)
       return;
     }
 
-  return proxy_socket_io_read_from_client_next (sock_io_p);
+  proxy_socket_io_read_from_client_next (sock_io_p);
 }
 
 static void
@@ -3003,7 +2986,7 @@ error_return:
 static void
 proxy_shard_io_destroy (void)
 {
-  int i, j;
+  int i;
   T_SHARD_IO *shard_io_p;
 
   for (i = 0; i < proxy_Shard_io.max_shard; i++)
@@ -3621,7 +3604,6 @@ void
 proxy_cas_release_by_ctx (int shard_id, int cas_id, int ctx_cid,
 			  unsigned int ctx_uid)
 {
-  int error;
   T_SHARD_IO *shard_io_p;
   T_CAS_IO *cas_io_p;
 
@@ -4182,7 +4164,7 @@ int
 proxy_io_process (void)
 {
   int error;
-  int n, select_ret;
+  int select_ret;
   int cas_fd;
   int i;
   unsigned int num_new_client = 0;
@@ -4190,7 +4172,6 @@ proxy_io_process (void)
   int client_fd;
 #endif
 
-  fd_set eset;
   struct timeval tv;
 
   T_SOCKET_IO *sock_io_p;

@@ -559,7 +559,6 @@ shard_stmt_destroy (void)
 void
 shard_stmt_free (T_SHARD_STMT * stmt_p)
 {
-  int error;
   int num_cas;
   int i;
 
@@ -654,7 +653,6 @@ shard_stmt_add_srv_h_id_for_shard_cas (int stmt_h_id, int shard_id,
 				       int cas_id, int srv_h_id)
 {
   int error;
-  int ref_count;
 
   T_SHARD_STMT *stmt_p = NULL;
 
@@ -692,8 +690,6 @@ void
 shard_stmt_del_srv_h_id_for_shard_cas (int stmt_h_id, int shard_id,
 				       int cas_id)
 {
-  int error;
-  int ref_count;
   int *srv_h_id_p;
   T_SHARD_STMT *stmt_p = NULL;
 
@@ -721,7 +717,6 @@ void
 shard_stmt_del_all_srv_h_id_for_shard_cas (int shard_id, int cas_id)
 {
   int i;
-  int ref_count;
   int *srv_h_id_p;
 
   T_SHARD_STMT *stmt_p = NULL;
@@ -892,7 +887,6 @@ shard_str_stmt (T_SHARD_STMT * stmt_p)
 int
 shard_stmt_initialize (int initial_size)
 {
-  int error;
   T_SHARD_STMT *stmt_p;
   T_SHARD_INFO *shard_info_p;
   int mem_size;

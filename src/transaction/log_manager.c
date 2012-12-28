@@ -67,6 +67,7 @@
 #include "connection_error.h"
 #include "thread.h"
 #include "job_queue.h"
+#include "server_support.h"
 #endif /* SERVER_MODE */
 #include "log_compress.h"
 #include "object_print.h"

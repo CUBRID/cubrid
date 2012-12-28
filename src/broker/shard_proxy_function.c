@@ -397,7 +397,6 @@ proxy_send_prepared_stmt_to_client (T_PROXY_CONTEXT * ctx_p,
   int error;
   int length;
   char *prepare_resp = NULL;
-  T_CLIENT_IO *cli_io_p;
   T_PROXY_EVENT *event_p = NULL;
 
   prepare_resp = proxy_dup_msg (stmt_p->reply_buffer);
@@ -686,7 +685,6 @@ proxy_get_shard_id (T_SHARD_STMT * stmt_p, void **argv,
 static T_SHARD_KEY_RANGE *
 proxy_get_range_by_param (SP_PARSER_HINT * hint_p, void **argv)
 {
-  int ret;
   int hint_position, num_bind;
   int type_idx, val_idx;
 
@@ -698,9 +696,6 @@ proxy_get_range_by_param (SP_PARSER_HINT * hint_p, void **argv)
   T_SHARD_KEY_RANGE *range_p = NULL;
 
   int shard_key_id = 0;
-  int shard_key_val_int;
-  char *shard_key_val_string;
-  int shard_key_val_len;
   const char *key_column;
 
   /* Phase 0 : hint position get */
@@ -833,10 +828,6 @@ fn_proxy_client_end_tran (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 			  int argc, char **argv)
 {
   int error = 0;
-  int length;
-
-  T_CAS_IO *cas_io_p;
-
   const char func_code = CAS_FC_END_TRAN;
 
   ENTER_FUNC ();
@@ -904,7 +895,6 @@ fn_proxy_client_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 {
   int error = 0;
   int i;
-  int length;
 
   /* sql statement */
   char *sql_stmt;
@@ -914,10 +904,8 @@ fn_proxy_client_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
   /* argv */
   char flag;
   char auto_commit_mode;
-  int srv_h_id;
 
   /* io/statement entries */
-  T_CLIENT_IO *cli_io_p;
   T_CAS_IO *cas_io_p;
   T_SHARD_STMT *stmt_p;
   T_WAIT_CONTEXT *waiter_p;
@@ -1332,8 +1320,7 @@ fn_proxy_client_execute (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
   int cas_srv_h_id;
   int query_timeout;
   char *prepare_request = NULL;
-  int i;
-  int cas_index, shard_id;
+  int shard_id;
   int length;
   SP_HINT_TYPE hint_type;
   int bind_value_index = 9;
@@ -1867,8 +1854,6 @@ fn_proxy_client_fetch (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
       net_arg_put_int (argv[0], &(cas_srv_h_id));
     }
 
-relay_request:
-
   error = proxy_cas_io_write (cas_io_p, event_p);
   if (error)
     {
@@ -2273,9 +2258,7 @@ fn_proxy_cas_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
   int stmt_h_id_n;
   int srv_h_id_offset = MSG_HEADER_SIZE;
   char *srv_h_id_pos;
-  int length;
-  char *prepare_reply;
-
+  
   T_SHARD_STMT *stmt_p;
 
   char *response_p;

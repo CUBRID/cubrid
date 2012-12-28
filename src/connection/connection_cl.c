@@ -492,7 +492,6 @@ css_receive_data (CSS_CONN_ENTRY * conn, unsigned short req_id, char **buffer,
   unsigned int rid;
   int type;
 
-check_queue:
   if (conn == NULL || conn->status != CONN_OPEN)
     {
       TRACE ("conn->status = %d in css_receive_data\n",
@@ -610,7 +609,6 @@ css_receive_error (CSS_CONN_ENTRY * conn, unsigned short req_id,
   int rid;
   int type;
 
-check_queue:
   if (conn == NULL || conn->status != CONN_OPEN)
     {
       return CONNECTION_CLOSED;

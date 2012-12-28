@@ -84,7 +84,7 @@ extern int loader_yylineno;
 
 #define CHECK_ERR(err, expr)                                            \
   do {                                                                  \
-    bool inner_err = (expr);                                            \
+    int inner_err = (expr);                                             \
     if (FILTER_OUT_ERR_INTERNAL(err, inner_err) != NO_ERROR) {          \
       display_error(0);                                                 \
       goto error_exit;                                                  \
@@ -101,7 +101,7 @@ extern int loader_yylineno;
  */
 #define CHECK_PARSE_ERR(err, expr, cont, type, str)                     \
   do {                                                                  \
-    bool inner_err = (expr);                                            \
+    int inner_err = (expr);                                             \
     if (FILTER_OUT_ERR_INTERNAL(err, inner_err) != NO_ERROR) {          \
       display_error(0);                                                 \
       parse_error(cont, type, str);                                     \

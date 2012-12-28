@@ -1762,7 +1762,6 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement,
 {
   PT_NODE *order, *val;
   PT_NODE *attributes, *attr;
-  PT_NODE *col;
   PT_NODE *node, *result;
   PT_NODE *save_data_type;
   int attr_count;

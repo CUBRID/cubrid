@@ -13418,6 +13418,24 @@ lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p,
 				 char **out_buf, int waiter_index,
 				 LK_RES * res)
 {
+#if !defined (SERVER_MODE)
+  if (res == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  if (out_buf == NULL)
+    {
+      assert_release (0);
+      return ER_FAILED;
+    }
+
+  *out_buf = NULL;
+
+  return NO_ERROR;
+
+#else
+
 #define HOLDER_ENTRY_LENGTH (12)
   int rv;
   LK_ENTRY *holder, *waiter;
@@ -13439,7 +13457,6 @@ lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p,
 
   *out_buf = NULL;
 
-#if defined (SERVER_MODE)
   rv = pthread_mutex_lock (&res->res_mutex);
   if (rv != 0)
     {
@@ -13547,7 +13564,7 @@ lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p,
   *out_buf = buf;
 
   pthread_mutex_unlock (&res->res_mutex);
-#endif
 
   return NO_ERROR;
+#endif
 }

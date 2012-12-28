@@ -930,7 +930,9 @@ pgbuf_fix_without_validation_debug (THREAD_ENTRY * thread_p,
 				    const char *caller_file, int caller_line)
 {
   PAGE_PTR pgptr;
+#if defined(SERVER_MODE)
   bool old_check_page_validation;
+#endif
 
 #if defined(SERVER_MODE)
   old_check_page_validation = thread_set_check_page_validation (thread_p,

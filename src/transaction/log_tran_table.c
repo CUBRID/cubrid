@@ -2084,7 +2084,6 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
 #if defined(SERVER_MODE)
   UINT64 current_msec;
   TRAN_QUERY_EXEC_INFO *query_exec_info = NULL;
-  char buf[1024];
   XASL_CACHE_ENTRY *ent;
 #if !defined(HAVE_ATOMIC_BUILTINS)
   struct timeval tv;

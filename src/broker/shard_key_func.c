@@ -47,11 +47,6 @@ int
 register_fn_get_shard_key (void)
 {
   int error;
-#if defined(WINDOWS)
-  HMODULE handle;
-#else
-  void *handle;
-#endif
 
   if (shm_proxy_p->shard_key_library_name[0] != '\0'
       && shm_proxy_p->shard_key_function_name[0] != '\0')

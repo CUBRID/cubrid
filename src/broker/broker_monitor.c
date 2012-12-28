@@ -629,8 +629,12 @@ appl_info_display (T_SHM_APPL_SERVER * shm_appl,
   struct tm cur_tm;
   INT64 qps, lqs;
   int col_len;
-  char line_buf[1024], ip_str[16];
-  time_t last_access_time, last_connect_time, tran_start_time;
+  char line_buf[1024];
+  time_t last_access_time, last_connect_time;
+#if !defined (CUBRID_SHARD)
+  time_t tran_start_time;
+  char ip_str[16];
+#endif /* CUBRID_SHARD */
 
   if (as_info_p->service_flag != SERVICE_ON)
     {
@@ -1881,7 +1885,6 @@ metadata_monitor (void)
   T_SHARD_CONN *conn_p;
 
   T_SHM_SHARD_KEY_STAT *key_stat_p;
-  T_SHM_SHARD_KEY_RANGE_STAT *range_stat_p;
   T_SHM_SHARD_CONN_STAT *shard_stat_p;
 
   char *shm_as_cp = NULL;

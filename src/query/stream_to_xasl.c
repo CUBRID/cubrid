@@ -3896,6 +3896,7 @@ stx_build_merge_proc (THREAD_ENTRY * thread_p, char *ptr,
   int offset;
   XASL_UNPACK_INFO *xasl_unpack_info =
     stx_get_xasl_unpack_info_ptr (thread_p);
+  int tmp;
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -3929,7 +3930,8 @@ stx_build_merge_proc (THREAD_ENTRY * thread_p, char *ptr,
 	}
     }
 
-  ptr = or_unpack_int (ptr, &merge_info->has_delete);
+  ptr = or_unpack_int (ptr, &tmp);
+  merge_info->has_delete = (bool) tmp;
 
   return ptr;
 

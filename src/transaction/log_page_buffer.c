@@ -2611,8 +2611,6 @@ logpb_fetch_start_append_page (THREAD_ENTRY * thread_p)
 LOG_PAGE *
 logpb_fetch_start_append_page_new (THREAD_ENTRY * thread_p)
 {
-  int rv;
-
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
   log_Gl.append.delayed_free_log_pgptr = NULL;
@@ -9206,6 +9204,7 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols,
   bool bkup_in_progress = false;
 #if defined(SERVER_MODE)
   int rv;
+  time_t wait_checkpoint_begin_time;
 #endif /* SERVER_MODE */
   int error_code = NO_ERROR;
   FILEIO_BACKUP_HEADER *io_bkup_hdr_p;
@@ -9216,7 +9215,6 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols,
   time_t tmp_time;
   char time_val[CTIME_MAX];
 
-  time_t wait_checkpoint_begin_time;
   FILE *backup_verbose_fp = NULL;
   bool print_backupdb_waiting_reason = false;
 

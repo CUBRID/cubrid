@@ -95,7 +95,6 @@ int
 shard_queue_ordered_enqueue (T_SHARD_QUEUE * q, void *v,
 			     SHARD_COMP_FN comp_fn)
 {
-  int error;
   T_SHARD_QUEUE_ENT *q_ent;
   T_SHARD_QUEUE_ENT *curr, *prev;
 

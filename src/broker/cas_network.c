@@ -183,7 +183,6 @@ net_connect_proxy (void)
 #if defined(WINDOWS)
   char *broker_port;
   int port = 0;
-  int n;
   int one = 1;
   unsigned char ip_addr[4];
   struct sockaddr_in shard_sock_addr;

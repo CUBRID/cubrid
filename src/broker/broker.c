@@ -284,6 +284,10 @@ static void check_proxy_access_log (T_PROXY_INFO * proxy_info_p);
 
 #endif /* CUBRID_SHARD */
 
+#if defined(WINDOWS)
+static int get_cputime_sec (int pid);
+#endif
+
 static SOCKET sock_fd;
 static struct sockaddr_in sock_addr;
 static int sock_addr_len;
@@ -397,8 +401,6 @@ int
 main (int argc, char *argv[])
 #endif
 {
-  char *p;
-  int i;
   pthread_t receiver_thread;
   pthread_t dispatch_thread;
   pthread_t cas_monitor_thread;
@@ -409,14 +411,18 @@ main (int argc, char *argv[])
 #if !defined(WINDOWS)
   pthread_t proxy_listener_thread;
 #endif /* !WINDOWS */
+#else
+  char *p;
+  int i;
+  int wait_job_cnt;
+  int cur_appl_server_num;
 #endif /* CUBRID_SHARD */
 
 #if defined(WIN_FW)
   pthread_t service_thread;
   int *thr_index;
 #endif
-  int wait_job_cnt;
-  int cur_appl_server_num;
+
 #if defined(CUBRID_SHARD)
   int error;
 
@@ -1030,19 +1036,22 @@ dispatch_thr_f (void *arg)
 {
   T_MAX_HEAP_NODE *job_queue;
   T_MAX_HEAP_NODE cur_job;
-  int as_index, i;
-#if defined(WINDOWS)
-  int proxy_port;
-#else /* WINDOWS */
+#if !defined(WINDOWS)
   SOCKET srv_sock_fd;
 #endif /* !WINDOWS */
 
 #if defined(CUBRID_SHARD)
+  int ip_addr;
+#if defined(WINDOWS)
+  int proxy_port;
+#else
   SOCKET proxy_fd;
   int proxy_status;
   unsigned int len;
   int ret_val;
-  int ip_addr;
+#endif
+#else /* CUBRID_SHARD */
+  int as_index, i;
 #endif /* CUBRID_SHARD */
 
   job_queue = shm_appl->job_queue;
@@ -1146,7 +1155,9 @@ dispatch_thr_f (void *arg)
       hold_job = 1;
       max_heap_incr_priority (job_queue);
 
+#if !defined (WINDOWS)
     retry:
+#endif
       while (1)
 	{
 	  pthread_mutex_lock (&service_flag_mutex);
@@ -1511,7 +1522,7 @@ run_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index,
 {
   char port_str[PATH_MAX];
   char appl_name[APPL_SERVER_NAME_MAX_SIZE], appl_name_str[64];
-  char access_log_env_str[256], error_log_env_str[256];
+  char error_log_env_str[256];
   int pid;
   char argv0[128];
   char buf[PATH_MAX];
@@ -1522,6 +1533,8 @@ run_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index,
   char proxy_id_env_str[32];
   char shard_id_env_str[32];
   char as_id_env_str[32];
+#else /* CUBRID_SHARD */
+  char access_log_env_str[256];
 #endif /* CUBRID_SHARD */
 
   while (1)
@@ -2021,9 +2034,8 @@ cas_monitor_thr_f (void *ar)
 static THREAD_FUNC
 hang_check_thr_f (void *ar)
 {
-  int i, cur_index;
+  int cur_index;
   int cur_hang_count;
-  T_APPL_SERVER_INFO *as_info_p;
   T_BROKER_INFO *br_info_p;
   time_t cur_time;
   int collect_count_interval;
@@ -2033,6 +2045,9 @@ hang_check_thr_f (void *ar)
 #if defined(CUBRID_SHARD)
   int proxy_index;
   T_PROXY_INFO *proxy_info_p = NULL;
+#else /* CUBRID_SHARD */
+  int i;
+  T_APPL_SERVER_INFO *as_info_p;
 #endif /* CUBRID_SHARD */
 
   SLEEP_MILISEC (shm_br->br_info[br_index].monitor_hang_interval, 0);
@@ -3003,7 +3018,7 @@ proxy_monitor_worker (T_PROXY_INFO * proxy_info_p, int br_index,
 static THREAD_FUNC
 proxy_monitor_thr_f (void *arg)
 {
-  int i, tmp_num_busy_uts;
+  int tmp_num_busy_uts;
   int proxy_index;
   T_PROXY_INFO *proxy_info_p = NULL;
 
@@ -3122,13 +3137,10 @@ run_proxy_server (T_PROXY_INFO * proxy_info_p, int br_index, int proxy_index)
 {
   char port_str[PATH_MAX];
   const char *proxy_exe_name = NAME_PROXY;
-  char process_name[APPL_SERVER_NAME_MAX_SIZE];
-  char access_log_env_str[256], error_log_env_str[256], as_shm_id_env_str[32],
-    proxy_id_env_str[32];
+  char as_shm_id_env_str[32], proxy_id_env_str[32];
   int pid;
-  char argv0[128];
-  char buf[PATH_MAX];
 #if !defined(WINDOWS)
+  char process_name[APPL_SERVER_NAME_MAX_SIZE];
   int i;
 #endif
 

@@ -253,7 +253,6 @@ shard_broker_activate (int master_shm_id, T_BROKER_INFO * br_info_p,
 void
 shard_broker_inactivate (T_BROKER_INFO * br_info_p)
 {
-  int i;
   T_SHM_APPL_SERVER *shm_as_p = NULL;
   T_SHM_PROXY *shm_proxy_p = NULL;
   T_PROXY_INFO *proxy_info_p = NULL;
@@ -345,12 +344,16 @@ shard_proxy_activate (int as_shm_id, int proxy_id, char *shm_as_cp)
   char **env = NULL;
   const char *proxy_exe_name = NAME_PROXY;
   char port_env_str[PATH_MAX];
+#if 0
   char access_log_env_str[256];
+#endif
   char as_shm_id_env_str[32];
   char proxy_id_env_str[32];
 
   char dirname[PATH_MAX];
+#if !defined (WINDOWS)
   char process_name[128];
+#endif
 
   T_SHM_APPL_SERVER *shm_as_p = NULL;
   T_SHM_PROXY *shm_proxy_p = NULL;
@@ -540,7 +543,9 @@ shard_as_activate (int as_shm_id,
   char as_id_env_str[32];
 
   char appl_name[APPL_SERVER_NAME_MAX_SIZE];
+#if 0
   char port_name[PATH_MAX], dirname[PATH_MAX];
+#endif
 #if !defined(WINDOWS)
   char process_name[128];
 #endif /* !WINDOWS */

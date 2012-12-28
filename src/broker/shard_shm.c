@@ -243,8 +243,6 @@ shard_shm_set_as_info (T_APPL_SERVER_INFO * as_info_p,
 char *
 shard_shm_initialize (T_BROKER_INFO * br_info_p, char *shm_metadata_cp)
 {
-  int shm_size;
-
   int shard_info_size;
   int proxy_info_size;
   int proxy_size;
@@ -1226,7 +1224,7 @@ static int
 shard_shm_get_shard_stat_offset (T_PROXY_INFO * proxy_info_p)
 {
   int offset = 0;
-  int num_shard_key, num_shard_conn;
+  int num_shard_key;
 
   assert (proxy_info_p);
 

@@ -3171,7 +3171,6 @@ or_unpack_string (char *ptr, char **string)
 char *
 or_unpack_stream (char *ptr, char *stream, size_t len)
 {
-  char *new_;
   int length;
 
   ASSERT_ALIGN (ptr, INT_ALIGNMENT);

@@ -2519,7 +2519,6 @@ css_send_magic (CSS_CONN_ENTRY * conn)
 int
 css_check_magic (CSS_CONN_ENTRY * conn)
 {
-  int error;
   int size, nbytes;
   unsigned int i;
   NET_HEADER header;

@@ -330,7 +330,9 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv,
   int sql_size;
   int srv_h_id;
   T_SRV_HANDLE *srv_handle;
+#if !defined (CUBRID_SHARD)
   int i;
+#endif /* CUBRID_SHARD */
 
   if (argc < 2)
     {
@@ -744,7 +746,6 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv,
     {
       srv_handle->is_pooled = TRUE;
     }
-#endif /* !LIBCAS_FOR_JSP */
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   if (plan != NULL)
@@ -752,6 +753,8 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv,
       cas_log_write (0, true, "slow query plan\n%s", plan);
     }
 #endif
+
+#endif /* !LIBCAS_FOR_JSP */
 
   return FN_KEEP_CONN;
 }

@@ -47,6 +47,7 @@
 #include "connection_error.h"
 #endif
 #include "thread.h"
+#include "md5.h"
 
 #ifndef SERVER_MODE
 

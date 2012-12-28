@@ -1220,13 +1220,14 @@ admin_reset_cmd (int master_shm_id, const char *broker_name)
 {
   int i, br_index;
   T_SHM_BROKER *shm_br;
-  T_SHM_APPL_SERVER *shm_appl;
 #if defined(CUBRID_SHARD)
   T_BROKER_INFO *br_info_p;
   T_SHM_PROXY *proxy_p = NULL;
   T_PROXY_INFO *proxy_info_p;
   T_SHARD_INFO *shard_info_p;
   char *shm_as_cp = NULL;
+#else
+  T_SHM_APPL_SERVER *shm_appl;
 #endif /* CUBRID_SHARD */
 
   shm_br =

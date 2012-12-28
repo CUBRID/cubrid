@@ -3098,9 +3098,6 @@ thread_log_flush_thread (void *arg_p)
   int max_wait_time = 1000;
 
   LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
-#if defined(WINDOWS)
-  int loop;
-#endif
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
   /* wait until THREAD_CREATE() finishes */

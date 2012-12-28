@@ -754,7 +754,6 @@ fatal_error:
 static bool
 csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 {
-  int i;
   char *ptr;
   char *sess_end = NULL;	/* end pos of session command */
   char sess_end_char;		/* orginal char in end pos of session command */
@@ -1368,7 +1367,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	{
 	  if (argument[0] != '\0')
 	    {
-	      i = atoi (argument);
+	      int i = atoi (argument);
 	      if (i > 0)
 		{
 		  HIST_ENTRY *hist;
@@ -1413,6 +1412,8 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       if (csql_Is_interactive)
 	{
 	  /* rewind history */
+	  int i;
+
 	  while (next_history ())
 	    {
 	      ;

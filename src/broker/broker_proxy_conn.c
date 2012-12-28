@@ -322,7 +322,6 @@ SOCKET
 broker_find_available_proxy (T_SHM_PROXY * shm_proxy_p)
 #endif				/* !WINDOWS */
 {
-  int i;
   int min_cur_client = -1;
   int cur_client = -1;
   int max_client = -1;

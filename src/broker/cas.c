@@ -442,30 +442,21 @@ main (int argc, char *argv[])
 {
   T_NET_BUF net_buf;
   SOCKET proxy_sock_fd = INVALID_SOCKET;
-  char read_buf[1024];
   int err_code;
-  char *t;
   char db_name[MAX_HA_DBNAME_LENGTH];
   char db_user[SRV_CON_DBUSER_SIZE];
   char db_passwd[SRV_CON_DBPASSWD_SIZE];
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   SESSION_ID session_id = DB_EMPTY_SESSION;
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
-  int one = 1, db_info_size;
-  int con_status;
+  int one = 1;
   char cas_info[CAS_INFO_SIZE] = { CAS_INFO_STATUS_INACTIVE,
     CAS_INFO_RESERVED_DEFAULT,
     CAS_INFO_RESERVED_DEFAULT,
     CAS_INFO_RESERVED_DEFAULT
   };
   FN_RETURN fn_ret = FN_KEEP_CONN;
-
-  MSG_HEADER proxy_msg_header;
-  MSG_HEADER cas_msg_header;
-  int cas_id;
-  short proxy_ack_shard_id;
-  short proxy_ack_cas_id;
-
+ 
   struct timeval cas_start_time;
 
   char func_code = 0x01;
@@ -1974,7 +1965,9 @@ exit_on_end:
 static int
 cas_init ()
 {
+#if !defined (CUBRID_SHARD)
   char *tmp_p;
+#endif /* CUBRID_SHARD */
 
 #if defined(CUBRID_SHARD)
   if (cas_init_shm () < 0)

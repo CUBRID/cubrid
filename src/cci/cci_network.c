@@ -784,10 +784,8 @@ net_check_broker_alive (unsigned char *ip_addr, int port, int timeout_msec)
   char db_info[SRV_CON_DB_INFO_SIZE];
   char db_name[SRV_CON_DBNAME_SIZE];
   char url[SRV_CON_URL_SIZE];
-  char *info, *msg_buf;
+  char *info;
   int err_code, ret_value;
-  struct timeval start_time, end_time;
-  long elapsed_time_msec;
   bool result = false;
 
   init_msg_header (&msg_header);

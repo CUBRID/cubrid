@@ -366,7 +366,6 @@ proxy_handler_process_cas_response (T_PROXY_EVENT * event_p)
   int error = NO_ERROR;
   int error_ind;
   char *response_p;
-  int argc;
   char **argv = NULL;
   T_PROXY_CONTEXT *ctx_p = NULL;
   T_CLIENT_INFO *client_info_p;
@@ -767,7 +766,6 @@ proxy_handler_process_client_conn_error (T_PROXY_EVENT * event_p)
       ;
     }
 
-end:
   proxy_event_free (event_p);
   event_p = NULL;
 
@@ -783,7 +781,6 @@ end:
 static void
 proxy_handler_process_client_wakeup_by_shard (T_PROXY_EVENT * event_p)
 {
-  int error;
   T_PROXY_EVENT *waiting_event;
   T_PROXY_CONTEXT *ctx_p;
   T_CLIENT_INFO *client_info_p;
@@ -841,7 +838,6 @@ proxy_handler_process_client_wakeup_by_shard (T_PROXY_EVENT * event_p)
 static void
 proxy_handler_process_client_wakeup_by_statement (T_PROXY_EVENT * event_p)
 {
-  int error;
   T_PROXY_EVENT *waiting_event;
   T_PROXY_CONTEXT *ctx_p;
 

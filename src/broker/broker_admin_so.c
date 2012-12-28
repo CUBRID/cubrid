@@ -680,8 +680,9 @@ uc_as_info (const char *br_name, T_AS_INFO ** ret_as_info,
   int br_index, i, appl_shm_key;
   int num_as;
   T_AS_INFO *as_info = NULL;
+#if !defined (CUBRID_SHARD)
   char client_ip_str[16];
-
+#endif /* CUBRID_SHARD */
 
   if (admin_common (br_info, &num_broker, &master_shm_id,
 		    admin_log_file, err_msg, 0, NULL, NULL) < 0)

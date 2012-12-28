@@ -3792,6 +3792,7 @@ sboot_add_volume_extension (THREAD_ENTRY * thread_p, unsigned int rid,
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
   DBDEF_VOL_EXT_INFO ext_info;
+  int tmp;
   VOLID volid;
 
   ptr = or_unpack_string_nocopy (request, &ext_info.path);
@@ -3799,9 +3800,10 @@ sboot_add_volume_extension (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_string_nocopy (ptr, &ext_info.comments);
   ptr = or_unpack_int (ptr, &ext_info.npages);
   ptr = or_unpack_int (ptr, &ext_info.max_writesize_in_sec);
-  ptr = or_unpack_int (ptr, &ext_info.purpose);
-  ptr = or_unpack_int (ptr, &ext_info.overwrite);
-
+  ptr = or_unpack_int (ptr, &tmp);
+  ext_info.purpose = (DB_VOLPURPOSE) tmp;
+  ptr = or_unpack_int (ptr, &tmp);
+  ext_info.overwrite = (bool) tmp;
 
   volid = xboot_add_volume_extension (thread_p, &ext_info);
 

@@ -863,7 +863,6 @@ cci_prepare (int mapped_conn_id, char *sql_stmt, char flag,
   int statement_id = -1;
   int error = CCI_ER_NO_ERROR;
   int con_err_code = 0;
-  int connect_done;
   T_CON_HANDLE *con_handle = NULL;
   T_REQ_HANDLE *req_handle = NULL;
 
@@ -1030,7 +1029,6 @@ cci_is_updatable (int mapped_stmt_id)
 {
   T_CON_HANDLE *con_handle = NULL;
   T_REQ_HANDLE *req_handle = NULL;
-  int updatable_flag;
   int error;
 
 #ifdef CCI_DEBUG

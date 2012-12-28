@@ -6635,7 +6635,7 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, int *key_deleted,
 			OID * class_oid, OID * oid, INT16 leaf_slot_id)
 {
   int ret = NO_ERROR;
-  PAGE_PTR leaf_page, ovfl_page, prev_page, no_op_log_page;
+  PAGE_PTR leaf_page, ovfl_page, prev_page;
   LEAF_REC leaf_rec;
   VPID ovfl_vpid, next_ovfl_vpid;
   RECDES leaf_copy_rec;
@@ -9592,7 +9592,6 @@ btree_insert_oid_into_leaf_rec (THREAD_ENTRY * thread_p, BTID_INT * btid,
 {
   int ret = NO_ERROR;
   int key_type = BTREE_NORMAL_KEY;
-  int key_len, max_free;
   char *rv_data, *rv_key = NULL;
   int rv_data_len, rv_key_len;
   char rv_data_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
@@ -10241,7 +10240,6 @@ btree_check_duplicate_oid (THREAD_ENTRY * thread_p, BTID_INT * btid,
   VPID next_ovfl_vpid;
   char *header_ptr;
   RECDES orec;
-  char orec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
 
   if (btree_find_oid_from_leaf (btid, leaf_rec_p, oid_list_offset,
 				oid) != NOT_FOUND)

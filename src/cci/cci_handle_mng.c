@@ -466,7 +466,6 @@ hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int mapped_statement_id)
 {
   char *key;
   int *data;
-  int error;
 
   data = mht_get (con->stmt_pool, sql);
   if (data != NULL)
@@ -523,7 +522,7 @@ hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int mapped_statement_id)
 int
 hm_req_get_from_pool (T_CON_HANDLE * con, T_REQ_HANDLE ** req, char *sql)
 {
-  int req_id, error;
+  int req_id;
   void *data;
 
   data = mht_rem (con->stmt_pool, sql, true, false);

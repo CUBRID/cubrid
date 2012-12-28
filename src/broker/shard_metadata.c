@@ -664,7 +664,6 @@ char *
 shard_metadata_initialize (T_BROKER_INFO * br_info)
 {
   int error;
-  int metainfo_shm_size;
   char *shm_metadata_cp = NULL;
   T_SHM_SHARD_USER *shm_user_p = NULL;
   T_SHM_SHARD_KEY *shm_key_p = NULL;
@@ -1125,7 +1124,6 @@ T_SHARD_KEY_RANGE *
 shard_metadata_bsearch_range (T_SHARD_KEY * key_p, unsigned int hash_res)
 {
   int min, mid, max;
-  int result;
   T_SHARD_KEY_RANGE *range_p;
 
   min = 0;
@@ -1171,7 +1169,6 @@ shard_metadata_find_shard_range (T_SHM_SHARD_KEY * shm_key_p, const char *key,
 T_SHARD_USER *
 shard_metadata_get_shard_user (T_SHM_SHARD_USER * shm_user_p)
 {
-  int i;
   T_SHARD_USER *shard_user_p = NULL;
 
   assert (shm_user_p);
