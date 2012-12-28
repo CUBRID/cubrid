@@ -6,7 +6,7 @@ if not "%1"=="" (
         if exist "%2" (
                 set CUBRID=%2
                 set CUBRID_DATABASES=%2\Databases
-                set CUBRID_LANG=en_US
+                set CUBRID_CHARSET=en_US
                 set CUBRID_MODE=client
         )
 )
