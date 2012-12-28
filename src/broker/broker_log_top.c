@@ -99,6 +99,7 @@ main (int argc, char *argv[])
 {
   int arg_start;
 
+
   arg_start = get_args (argc, argv);
   if (arg_start < 0)
     return -1;
@@ -194,7 +195,11 @@ log_top_query (int argc, char *argv[], int arg_start)
       filename = argv[i];
       fprintf (stdout, "%s\n", filename);
 
+#if defined(WINDOWS)
+      fp = fopen (filename, "rb");
+#else
       fp = fopen (filename, "r");
+#endif
       if (fp == NULL)
 	{
 	  fprintf (stderr, "%s[%s]\n", strerror (errno), filename);
