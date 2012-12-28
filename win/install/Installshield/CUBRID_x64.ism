@@ -1600,7 +1600,7 @@ QwBVAEIAUgBJAEQAAQBNAGUAZABpAGEA
 		<row><td>Registry16</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td/><td/><td>NoISRegistrySet</td><td>0</td></row>
 		<row><td>Registry17</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td>CUBRID</td><td>&lt;TARGETDIR&gt;</td><td>NoISRegistrySet</td><td>0</td></row>
 		<row><td>Registry18</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td>CUBRID_DATABASES</td><td>&lt;TARGETDIR&gt;\databases</td><td>NoISRegistrySet</td><td>0</td></row>
-		<row><td>Registry19</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td>CUBRID_LANG</td><td>en_US</td><td>NoISRegistrySet</td><td>0</td></row>
+		<row><td>Registry19</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td>CUBRID_CHARSET</td><td>en_US</td><td>NoISRegistrySet</td><td>0</td></row>
 		<row><td>Registry2</td><td>2</td><td>SOFTWARE\CUBRID</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
 		<row><td>Registry20</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td>CUBRID_MODE</td><td>client</td><td>NoISRegistrySet</td><td>0</td></row>
 		<row><td>Registry21</td><td>2</td><td>SOFTWARE</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
@@ -1643,7 +1643,7 @@ QwBVAEIAUgBJAEQAAQBNAGUAZABpAGEA
 		<row><td>Registry55</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td/><td/><td>CUBRID</td><td>1</td></row>
 		<row><td>Registry56</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td>CUBRID_DATABASES</td><td>&lt;TARGETDIR&gt;\databases</td><td>CUBRID</td><td>0</td></row>
 		<row><td>Registry57</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td>CUBRID_MODE</td><td>client</td><td>CUBRID</td><td>0</td></row>
-		<row><td>Registry58</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td>CUBRID_LANG</td><td>en_US</td><td>CUBRID</td><td>0</td></row>
+		<row><td>Registry58</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td>CUBRID_CHARSET</td><td>en_US</td><td>CUBRID</td><td>0</td></row>
 		<row><td>Registry59</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td>CUBRID</td><td>&lt;TARGETDIR&gt;</td><td>CUBRID</td><td>0</td></row>
 		<row><td>Registry6</td><td>2</td><td>SOFTWARE\cmserver</td><td>Version</td><td>2.1.1</td><td>NoISRegistrySet</td><td>0</td></row>
 		<row><td>Registry7</td><td>2</td><td>SOFTWARE\CUBRID</td><td/><td/><td>NoISRegistrySet</td><td>0</td></row>
