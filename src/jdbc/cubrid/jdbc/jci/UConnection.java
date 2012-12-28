@@ -1652,7 +1652,8 @@ public class UConnection {
 							logException(e);
 							int errno = e.getJciError();
 							if (errno == UErrorCode.ER_COMMUNICATION
-									|| errno == UErrorCode.ER_CONNECTION) {
+								|| errno == UErrorCode.ER_CONNECTION
+								|| errno == UErrorCode.ER_TIMEOUT) {
 								CUBRIDDriver.addToUnreachableHosts(altHosts
 										.get(hostId));
 							} else {

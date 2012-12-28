@@ -1625,6 +1625,8 @@ run_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index,
     }
 #endif
 
+  CON_STATUS_LOCK_DESTROY (&shm_appl->as_info[as_index]);
+  CON_STATUS_LOCK_INIT (&shm_appl->as_info[as_index]);
   if (ut_is_appl_server_ready (pid, &as_info_p->service_ready_flag))
     {
       as_info_p->transaction_start_time = (time_t) 0;
