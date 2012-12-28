@@ -1398,6 +1398,11 @@ br_monitor (char *br_vector)
 		  as_info_p = &(shm_appl->as_info[j]);
 		  num_req += as_info_p->num_request;
 
+		  if (as_info_p->service_flag != ON)
+		    {
+		      continue;
+		    }
+
 		  if (full_info_flag)
 		    {
 		      bool time_expired =
