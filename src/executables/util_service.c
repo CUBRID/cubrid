@@ -92,6 +92,14 @@ typedef enum
   SERVICE_START_HEARTBEAT
 } UTIL_SERVICE_PROPERTY_E;
 
+#if defined(WINDOWS)
+typedef enum
+{
+  ALL_SERVICES_RUNNING,
+  ALL_SERVICES_STOPPED
+} UTIL_ALL_SERVICES_STATUS;
+#endif
+
 typedef struct
 {
   int option_index;
@@ -204,6 +212,8 @@ static UTIL_SERVICE_PROPERTY_T us_Property_map[] = {
   {-1, NULL}
 };
 
+
+
 static const char **Argv;
 
 static void util_service_usage (int util_type);
@@ -240,6 +250,10 @@ static bool is_manager_running (unsigned int sleep_time);
 #if defined(WINDOWS)
 static bool is_windows_service_running (unsigned int sleep_time);
 static bool are_all_services_running (unsigned int sleep_time);
+static bool are_all_services_stopped (unsigned int sleep_time);
+static bool check_all_services_status (unsigned int sleep_time,
+				       UTIL_ALL_SERVICES_STATUS
+				       expected_status);
 #endif
 
 static bool ha_make_mem_size (char *mem_size, int size, int value);
@@ -893,17 +907,55 @@ is_windows_service_running (unsigned int sleep_time)
 static bool
 are_all_services_running (unsigned int sleep_time)
 {
+  return check_all_services_status (sleep_time, ALL_SERVICES_RUNNING);
+}
+
+/*
+ * are_all_services_stopped - are all of services stopped
+ *
+ * return:
+ *
+ *      sleep_time(in):
+ *
+ * NOTE:
+ */
+static bool
+are_all_services_stopped (unsigned int sleep_time)
+{
+  return check_all_services_status (sleep_time, ALL_SERVICES_STOPPED);
+}
+
+
+/*
+ * check_all_services_status - check all service status and compare with 
+			      expected_status, if not meet return false.
+ *
+ * return:
+ *
+ *      sleep_time(in):
+ *      expected_status(in);
+ * NOTE:
+ */
+static bool
+check_all_services_status (unsigned int sleep_time,
+			   UTIL_ALL_SERVICES_STATUS expected_status)
+{
+  bool ret;
   int master_port;
 
   /* check whether CUBRIDService is running */
-  if (!is_windows_service_running (sleep_time))
+  ret = is_windows_service_running (sleep_time);
+  if ((expected_status == ALL_SERVICES_RUNNING && !ret)
+      || (expected_status == ALL_SERVICES_STOPPED && ret))
     {
       return false;
     }
 
   master_port = prm_get_master_port_id ();
   /* check whether cub_master is running */
-  if (!css_does_master_exist (master_port))
+  ret = css_does_master_exist (master_port);
+  if ((expected_status == ALL_SERVICES_RUNNING && !ret)
+      || (expected_status == ALL_SERVICES_STOPPED && ret))
     {
       return false;
     }
@@ -924,7 +976,9 @@ are_all_services_running (unsigned int sleep_time)
 	      break;
 	    }
 	  /* check whether cub_server is running */
-	  if (!is_server_running (CHECK_SERVER, token, 0))
+	  ret = is_server_running (CHECK_SERVER, token, 0);
+	  if ((expected_status == ALL_SERVICES_RUNNING && !ret)
+	      || (expected_status == ALL_SERVICES_STOPPED && ret))
 	    {
 	      return false;
 	    }
@@ -932,17 +986,28 @@ are_all_services_running (unsigned int sleep_time)
     }
 
   /* check whether cub_broker is running */
-  if (strcmp (get_property (SERVICE_START_BROKER), PROPERTY_ON) == 0
-      && is_broker_running () != 0)
+  if (strcmp (get_property (SERVICE_START_BROKER), PROPERTY_ON) == 0)
     {
-      return false;
+      int broker_status;
+
+      /* broker_status may be 0, 1, 2. */
+      broker_status = is_broker_running ();
+      if ((expected_status == ALL_SERVICES_RUNNING && broker_status != 0)
+	  || (expected_status == ALL_SERVICES_STOPPED && broker_status != 1))
+	{
+	  return false;
+	}
     }
 
   /* check whether cub_manager is running */
-  if (strcmp (get_property (SERVICE_START_MANAGER), PROPERTY_ON) == 0
-      && !is_manager_running (0))
+  if (strcmp (get_property (SERVICE_START_MANAGER), PROPERTY_ON) == 0)
     {
-      return false;
+      ret = is_manager_running (0);
+      if ((expected_status == ALL_SERVICES_RUNNING && !ret)
+	  || (expected_status == ALL_SERVICES_STOPPED && ret))
+	{
+	  return false;
+	}
     }
 
   /* do not check heartbeat in windows */
@@ -995,6 +1060,7 @@ process_service (int command_type, bool process_window_service)
 	}
       else
 	{
+
 	  status = process_master (command_type);
 	  if (strcmp (get_property (SERVICE_START_SERVER), PROPERTY_ON) == 0)
 	    {
@@ -1031,7 +1097,7 @@ process_service (int command_type, bool process_window_service)
 	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
 			    false, false, NULL);
 	      status =
-		is_windows_service_running (0) ? ER_GENERIC_ERROR : NO_ERROR;
+		are_all_services_stopped (0) ? NO_ERROR : ER_GENERIC_ERROR;
 	      print_result (PRINT_SERVICE_NAME, status, command_type);
 	    }
 	  else
