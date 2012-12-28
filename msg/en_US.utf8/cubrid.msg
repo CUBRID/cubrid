@@ -1145,7 +1145,7 @@ $ LOADDB
 1076 Could not load system parameter.
 1077 The '%s' parameter at line %d in file '%s' : Unknown parameter
 1078 Character at offset %d is invalid with current codeset.
-1079 Codesets of database(%1$s) and server configuration(%2%s) are incompatible.
+1079 Codesets of database(%1$s) and server configuration(%2$s) are incompatible.
 1080 The maximum length of filter predicate string must be %1$d.
 1081 Cannot alter an attribute involved in a filter or function index.
 1082 All page buffers are dirty (LRU: %1$d).
