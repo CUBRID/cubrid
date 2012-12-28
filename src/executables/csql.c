@@ -1673,7 +1673,14 @@ csql_change_working_directory (const char *dirname)
 
   if (dirname == NULL)
     {
+#if defined (WINDOWS)
+      static char home_path[PATH_MAX];
+
+      sprintf (home_path, "%s%s", getenv ("HOMEDRIVE"), getenv ("HOMEPATH"));
+      dirname = home_path;
+#else
       dirname = getenv ("HOME");
+#endif
     }
 
   if (dirname == NULL || chdir (dirname) == -1)

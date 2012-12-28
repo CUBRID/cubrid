@@ -154,12 +154,19 @@ const char *
 csql_get_real_path (const char *pathname)
 {
 #if defined(WINDOWS)
-  static char home_path[PATH_MAX];
-
-  if (pathname == NULL || pathname[0] == '\0')
+  if (pathname == NULL)
     {
-      sprintf (home_path, "%s%s", getenv ("HOMEDRIVE"), getenv ("HOMEPATH"));
-      return home_path;
+      return NULL;
+    }
+
+  while (isspace (pathname[0]))
+    {
+      pathname++;
+    }
+
+  if (pathname[0] == '\0')
+    {
+      return NULL;
     }
 
   return pathname;
