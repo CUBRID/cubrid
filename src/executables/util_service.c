@@ -30,6 +30,7 @@
 #include <errno.h>
 #include <string.h>
 #include <fcntl.h>
+#include <assert.h>
 #if !defined(WINDOWS)
 #include <sys/wait.h>
 #endif
@@ -102,7 +103,7 @@ typedef enum
 
 typedef struct
 {
-  int option_index;
+  int option_type;
   const char *option_name;
   int option_mask;
 } UTIL_SERVICE_OPTION_MAP_T;
@@ -216,6 +217,8 @@ static UTIL_SERVICE_PROPERTY_T us_Property_map[] = {
 
 static const char **Argv;
 
+static int util_get_service_option_mask (int util_type);
+static int util_get_command_option_mask (int command_type);
 static void util_service_usage (int util_type);
 static void util_service_version (const char *argv0);
 static int load_properties (void);
@@ -414,6 +417,46 @@ process_admin (int argc, char **argv)
 }
 
 /*
+ * util_get_service_option_mask () -
+ *
+ */
+static int
+util_get_service_option_mask (int util_type)
+{
+  int i;
+
+  assert (util_type != ADMIN);
+
+  for (i = 0; us_Service_map[i].option_type != -1; i++)
+    {
+      if (us_Service_map[i].option_type == util_type)
+	{
+	  return us_Service_map[i].option_mask;
+	}
+    }
+  return 0;			/* NULL mask */
+}
+
+/*
+ * util_get_command_option_mask () -
+ *
+ */
+static int
+util_get_command_option_mask (int command_type)
+{
+  int i;
+
+  for (i = 0; us_Command_map[i].option_type != -1; i++)
+    {
+      if (us_Command_map[i].option_type == command_type)
+	{
+	  return us_Command_map[i].option_mask;
+	}
+    }
+  return 0;			/* NULL mask */
+}
+
+/*
  * main() - a service utility's entry point
  *
  * return:
@@ -509,8 +552,9 @@ main (int argc, char *argv[])
     }
   else
     {
-      int util_mask = us_Service_map[util_type].option_mask;
-      int command_mask = us_Command_map[command_type].option_mask;
+      int util_mask = util_get_service_option_mask (util_type);
+      int command_mask = util_get_command_option_mask (command_type);
+
       if ((util_mask & command_mask) == 0)
 	{
 	  print_message (stderr, MSGCAT_UTIL_GENERIC_SERVICE_INVALID_CMD,
@@ -927,7 +971,7 @@ are_all_services_stopped (unsigned int sleep_time)
 
 
 /*
- * check_all_services_status - check all service status and compare with 
+ * check_all_services_status - check all service status and compare with
 			      expected_status, if not meet return false.
  *
  * return:
@@ -3536,11 +3580,11 @@ parse_arg (UTIL_SERVICE_OPTION_MAP_T * option, const char *arg)
     {
       return ER_GENERIC_ERROR;
     }
-  for (i = 0; option[i].option_index != -1; i++)
+  for (i = 0; option[i].option_type != -1; i++)
     {
       if (strcasecmp (option[i].option_name, arg) == 0)
 	{
-	  return option[i].option_index;
+	  return option[i].option_type;
 	}
     }
   return ER_GENERIC_ERROR;
