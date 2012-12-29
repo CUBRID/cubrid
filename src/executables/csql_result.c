@@ -39,19 +39,20 @@
  * NOTE: some of these are totally dependent on report-writer's
  * rendering library.
  */
-#define	MAX_SHORT_DISPLAY_LENGTH	 6
-#define	MAX_INTEGER_DISPLAY_LENGTH	 11
-#define	MAX_BIGINT_DISPLAY_LENGTH	 20
-#define	MAX_FLOAT_DISPLAY_LENGTH	 (FLT_DIG + 7)
-#define	MAX_DOUBLE_DISPLAY_LENGTH	 (DBL_DIG + 9)
-#define	MAX_TIME_DISPLAY_LENGTH		 11
-#define	MAX_UTIME_DISPLAY_LENGTH	 25
-#define MAX_DATETIME_DISPLAY_LENGTH      29
-#define	MAX_DATE_DISPLAY_LENGTH		 10
-#define	MAX_MONETARY_DISPLAY_LENGTH	 20
-#define	MAX_DEFAULT_DISPLAY_LENGTH	 20
-#define STRING_TYPE_PREFIX_SUFFIX_LENGTH 2
-#define BIT_TYPE_PREFIX_SUFFIX_LENGTH    3
+#define	MAX_SHORT_DISPLAY_LENGTH	  6
+#define	MAX_INTEGER_DISPLAY_LENGTH	  11
+#define	MAX_BIGINT_DISPLAY_LENGTH	  20
+#define	MAX_FLOAT_DISPLAY_LENGTH	  (FLT_DIG + 7)
+#define	MAX_DOUBLE_DISPLAY_LENGTH	  (DBL_DIG + 9)
+#define	MAX_TIME_DISPLAY_LENGTH		  11
+#define	MAX_UTIME_DISPLAY_LENGTH	  25
+#define MAX_DATETIME_DISPLAY_LENGTH       29
+#define	MAX_DATE_DISPLAY_LENGTH		  10
+#define	MAX_MONETARY_DISPLAY_LENGTH	  20
+#define	MAX_DEFAULT_DISPLAY_LENGTH	  20
+#define STRING_TYPE_PREFIX_SUFFIX_LENGTH  2
+#define NSTRING_TYPE_PREFIX_SUFFIX_LENGTH 3
+#define BIT_TYPE_PREFIX_SUFFIX_LENGTH     3
 
 /* structure for current query result information */
 typedef struct
@@ -156,7 +157,10 @@ static int calculate_width (int column_width,
 			    int origin_width,
 			    DB_TYPE attr_type, bool is_null);
 static bool is_string_type (DB_TYPE type);
+static bool is_nstring_type (DB_TYPE type);
 static bool is_bit_type (DB_TYPE type);
+static bool is_cuttable_type_by_string_width (DB_TYPE type);
+static bool is_type_that_has_suffix (DB_TYPE type);
 
 /*
  * csql_results() - display the result
@@ -819,8 +823,8 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp,
 		    }
 
 		  value = val[i];
-		  if ((is_string_type (attr_types[i])
-		       || is_bit_type (attr_types[i])) && is_null == false)
+		  if (is_type_that_has_suffix (attr_types[i])
+		      && is_null == false)
 		    {
 		      value[value_width - 1] = '\'';
 		    }
@@ -928,6 +932,10 @@ calculate_width (int column_width, int string_width,
 	{
 	  result = column_width + STRING_TYPE_PREFIX_SUFFIX_LENGTH;
 	}
+      else if (is_nstring_type (attr_type))
+	{
+	  result = column_width + NSTRING_TYPE_PREFIX_SUFFIX_LENGTH;
+	}
       else if (is_bit_type (attr_type))
 	{
 	  result = column_width + BIT_TYPE_PREFIX_SUFFIX_LENGTH;
@@ -937,8 +945,7 @@ calculate_width (int column_width, int string_width,
 	  result = column_width;
 	}
     }
-  else if ((is_string_type (attr_type) || is_bit_type (attr_type))
-	   && string_width > 0)
+  else if (is_cuttable_type_by_string_width (attr_type) && string_width > 0)
     {
       if (is_null)
 	{
@@ -947,6 +954,10 @@ calculate_width (int column_width, int string_width,
       else if (is_string_type (attr_type))
 	{
 	  result = string_width + STRING_TYPE_PREFIX_SUFFIX_LENGTH;
+	}
+      else if (is_nstring_type (attr_type))
+	{
+	  result = string_width + NSTRING_TYPE_PREFIX_SUFFIX_LENGTH;
 	}
       else if (is_bit_type (attr_type))
 	{
@@ -979,7 +990,7 @@ calculate_width (int column_width, int string_width,
  *   return: bool
  *   type(in): type
  */
-bool
+static bool
 is_string_type (DB_TYPE type)
 {
   switch (type)
@@ -988,6 +999,22 @@ is_string_type (DB_TYPE type)
       return true;
     case DB_TYPE_CHAR:
       return true;
+    default:
+      return false;
+    }
+  return false;
+}
+
+/*
+ * is_nstring_type() - check whether it is a nstring type or not
+ *   return: bool
+ *   type(in): type
+ */
+static bool
+is_nstring_type (DB_TYPE type)
+{
+  switch (type)
+    {
     case DB_TYPE_NCHAR:
       return true;
     case DB_TYPE_VARNCHAR:
@@ -1003,7 +1030,7 @@ is_string_type (DB_TYPE type)
  *   return: bool
  *   type(in): type
  */
-bool
+static bool
 is_bit_type (DB_TYPE type)
 {
   switch (type)
@@ -1016,6 +1043,30 @@ is_bit_type (DB_TYPE type)
       return false;
     }
   return false;
+}
+
+/*
+ * is_cuttable_type_by_string_width() - check whether it is cuttable type by string_width or not
+ *   return: bool
+ *   type(in): type
+ */
+static bool
+is_cuttable_type_by_string_width (DB_TYPE type)
+{
+  return (is_string_type (type) || is_nstring_type (type)
+	  || is_bit_type (type));
+}
+
+/*
+ * is_type_that_has_suffix() - check whether this type has suffix or not 
+ *   return: bool
+ *   type(in): type
+ */
+static bool
+is_type_that_has_suffix (DB_TYPE type)
+{
+  return (is_string_type (type) || is_nstring_type (type)
+	  || is_bit_type (type));
 }
 
 /*
