@@ -71,6 +71,7 @@ cub_cas_oracle_SOURCES = \
 	$(BROKER_DIR)/cas_error_log.c \
 	$(BASE_DIR)/environment_variable.c \
 	$(BASE_DIR)/stringl.c \
+	$(BASE_DIR)/porting.c \
 	$(BROKER_DIR)/broker_acl.c
 cub_cas_oracle_CPPFLAGS = @SRC_INC@ @EXT_INC@ @ORACLE_INC_PATH@\
 	@SYS_DEFS@ @VERSION_DEFS@ -DASYNC_MODE -D_XOPEN_SOURCE -D_BSD_SOURCE \

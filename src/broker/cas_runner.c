@@ -162,7 +162,6 @@ static double diff_time (struct timeval *begin, struct timeval *end);
 static void free_node (T_NODE_INFO * node);
 static int make_node_info (T_NODE_INFO * node, char *node_name,
 			   char *info_str);
-static char *trim (char *str);
 static int set_args_with_node_info (char *node_name);
 static int ignore_error (int code);
 static char *make_sql_stmt (char *src);
@@ -1509,38 +1508,6 @@ free_node (T_NODE_INFO * node)
   FREE_MEM (node->ip);
   FREE_MEM (node->dbuser);
   FREE_MEM (node->dbpasswd);
-}
-
-static char *
-trim (char *str)
-{
-  char *p;
-  char *s;
-
-  if (str == NULL)
-    return (str);
-
-  for (s = str;
-       *s != '\0' && (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r');
-       s++)
-    ;
-  if (*s == '\0')
-    {
-      *str = '\0';
-      return (str);
-    }
-
-  /* *s must be a non-white char */
-  for (p = s; *p != '\0'; p++)
-    ;
-  for (p--; *p == ' ' || *p == '\t' || *p == '\n' || *p == '\r'; p--)
-    ;
-  *++p = '\0';
-
-  if (s != str)
-    memcpy (str, s, strlen (s) + 1);
-
-  return (str);
 }
 
 static int

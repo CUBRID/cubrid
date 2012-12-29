@@ -606,6 +606,9 @@
 				</FileConfiguration>
 			</File>
 			<File
+                                RelativePath="..\..\src\base\porting.c"
+                                >
+			<File
 				RelativePath="..\..\src\odbc\odbc_catalog.c"
 				>
 			</File>

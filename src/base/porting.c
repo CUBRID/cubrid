@@ -1886,7 +1886,7 @@ timeval_diff_in_msec (const struct timeval * end_time,
 
 /*
  * timeval_add_msec -
- *   return: NO_ERROR
+ *   return: 0
  *
  *   addted_time(out):
  *   start_time(in):
@@ -1905,12 +1905,12 @@ timeval_add_msec (struct timeval *added_time,
   added_time->tv_usec = (start_time->tv_usec +
 			 ((msec % 1000LL) * 1000LL) % 10000000LL);
 
-  return NO_ERROR;
+  return 0;
 }
 
 /*
  * timeval_to_timespec -
- *   return: NO_ERROR
+ *   return: 0
  *
  *   to(out):
  *   from(in):
@@ -1924,7 +1924,7 @@ timeval_to_timespec (struct timespec *to, const struct timeval *from)
   to->tv_sec = from->tv_sec;
   to->tv_nsec = from->tv_usec * 1000LL;
 
-  return NO_ERROR;
+  return 0;
 }
 
 
@@ -1991,4 +1991,36 @@ port_close_memstream (FILE * fp, char **ptr, size_t * sizeloc)
       *ptr = buff;
 #endif
     }
+}
+
+char *
+trim (char *str)
+{
+  char *p;
+  char *s;
+
+  if (str == NULL)
+    return (str);
+
+  for (s = str;
+       *s != '\0' && (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r');
+       s++)
+    ;
+  if (*s == '\0')
+    {
+      *str = '\0';
+      return (str);
+    }
+
+  /* *s must be a non-white char */
+  for (p = s; *p != '\0'; p++)
+    ;
+  for (p--; *p == ' ' || *p == '\t' || *p == '\n' || *p == '\r'; p--)
+    ;
+  *++p = '\0';
+
+  if (s != str)
+    memmove (str, s, strlen (s) + 1);
+
+  return (str);
 }

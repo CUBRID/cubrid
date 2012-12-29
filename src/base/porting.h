@@ -708,4 +708,6 @@ extern int timeval_to_timespec (struct timespec *to,
 extern FILE *port_open_memstream (char **ptr, size_t * sizeloc);
 
 extern void port_close_memstream (FILE * fp, char **ptr, size_t * sizeloc);
+
+extern char *trim (char *str);
 #endif /* _PORTING_H_ */

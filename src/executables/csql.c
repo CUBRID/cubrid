@@ -2919,6 +2919,8 @@ csql_set_column_width_info (const char *column_name, int column_width)
 int
 csql_get_column_width (const char *column_name)
 {
+  char name_without_space[1024];
+  char *result;
   int i;
 
   if (column_name == NULL)
@@ -2931,14 +2933,20 @@ csql_get_column_width (const char *column_name)
       return 0;
     }
 
+  strncpy (name_without_space, column_name, sizeof (name_without_space));
+  result = trim (name_without_space);
+  if (result == NULL)
+    {
+      return 0;
+    }
+
   for (i = 0; i < csql_column_width_info_list_size; i++)
     {
       if (csql_column_width_info_list[i].name == NULL)
 	{
 	  return 0;
 	}
-      else if (strcasecmp (column_name, csql_column_width_info_list[i].name)
-	       == 0)
+      else if (strcasecmp (result, csql_column_width_info_list[i].name) == 0)
 	{
 	  return csql_column_width_info_list[i].width;
 	}

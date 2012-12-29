@@ -60,7 +60,6 @@
       } \
   } while (0)
 
-extern char *trim (char *str);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int ut_file_lock (char *lock_file);
 extern void ut_file_unlock (char *);
