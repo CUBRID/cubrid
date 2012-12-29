@@ -5656,7 +5656,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, int exp_npgs,
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_HEAP_UNABLE_TO_CREATE_HEAP, 1,
-		  fileio_get_volume_label (hfid->vfid.volid));
+		  fileio_get_volume_label (hfid->vfid.volid, PEEK));
 	}
 
       /* Free the page and release the lock */
@@ -9043,7 +9043,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p,
 	  if (valid_file != DISK_ERROR)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_HEAP,
-		      3, fileio_get_volume_label (hfid->vfid.volid),
+		      3, fileio_get_volume_label (hfid->vfid.volid, PEEK),
 		      hfid->vfid.fileid, hfid->hpgid);
 	    }
 	  goto exit_on_error;

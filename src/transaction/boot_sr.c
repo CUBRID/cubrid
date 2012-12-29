@@ -692,7 +692,7 @@ boot_remove_volume (THREAD_ENTRY * thread_p, VOLID volid)
   RECDES recdes;		/* Record descriptor which describe the
 				 * volume.
 				 */
-  const char *vlabel;
+  char *vlabel = NULL;
   int vol_fd;
   bool ignore_old;
   int error_code = NO_ERROR;
@@ -712,7 +712,7 @@ boot_remove_volume (THREAD_ENTRY * thread_p, VOLID volid)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_BO_TRYING_TO_REMOVE_PERMANENT_VOLUME, 1,
-		  fileio_get_volume_label (volid));
+		  fileio_get_volume_label (volid, PEEK));
 	  error_code = ER_BO_TRYING_TO_REMOVE_PERMANENT_VOLUME;
 	}
       else
@@ -728,7 +728,7 @@ boot_remove_volume (THREAD_ENTRY * thread_p, VOLID volid)
    * Find the name of the volume to remove
    */
 
-  vlabel = fileio_get_volume_label (volid);
+  vlabel = fileio_get_volume_label (volid, ALLOC_COPY);
 
   /*
    * Start a TOP SYSTEM OPERATION.
@@ -792,6 +792,7 @@ boot_remove_volume (THREAD_ENTRY * thread_p, VOLID volid)
    * The volume is not know by the system any longer. Remove it from disk
    */
   (void) pgbuf_invalidate_all (thread_p, volid);
+
   if (vlabel)
     {
       error_code = disk_unformat (thread_p, vlabel);
@@ -807,6 +808,10 @@ boot_remove_volume (THREAD_ENTRY * thread_p, VOLID volid)
   (void) disk_goodvol_refresh (thread_p, boot_Db_parm->nvols);
 
 end:
+  if (vlabel)
+    {
+      free (vlabel);
+    }
   csect_exit (CSECT_BOOT_SR_DBPARM);
 
   return error_code;
@@ -1130,7 +1135,7 @@ boot_add_auto_volume_extension (THREAD_ENTRY * thread_p, DKNPAGES min_npages,
     {
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 	      ER_BO_NOTIFY_AUTO_VOLEXT, 2,
-	      fileio_get_volume_label (volid), ext_info.npages);
+	      fileio_get_volume_label (volid, PEEK), ext_info.npages);
     }
 
   return volid;
@@ -1713,20 +1718,6 @@ boot_remove_unknown_temp_volumes (THREAD_ENTRY * thread_p)
       temp_volid = boot_Db_parm->temp_last_volid - 1;
     }
 
-  /*
-   * we check only two volumes
-   * because ... refer the document
-   */
-  for (i = 0; i < 2; i++, temp_volid--)
-    {
-      fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name,
-				    temp_volid);
-      if (fileio_is_volume_exist (temp_vol_fullname))
-	{
-	  fileio_unformat (thread_p, temp_vol_fullname);
-	}
-    }
-
   for (; temp_volid > boot_Db_parm->last_volid; temp_volid--)
     {
       fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name,
@@ -2195,7 +2186,7 @@ boot_check_permanent_volumes (THREAD_ENTRY * thread_p)
     {
       num_vols++;
       /* Have to make sure a label exists, before we try to use it below */
-      vlabel = fileio_get_volume_label (next_volid);
+      vlabel = fileio_get_volume_label (next_volid, PEEK);
       if (vlabel == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);

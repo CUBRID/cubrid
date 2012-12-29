@@ -2190,7 +2190,7 @@ fileio_close (int vol_fd)
     {
       er_set_with_oserror (ER_WARNING_SEVERITY, ARG_FILE_LINE,
 			   ER_IO_DISMOUNT_FAIL, 1,
-			   fileio_get_volume_label_by_fd (vol_fd));
+			   fileio_get_volume_label_by_fd (vol_fd, PEEK));
     }
 }
 
@@ -2599,7 +2599,7 @@ fileio_expand (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES npages_toadd)
 #endif
 
   vol_fd = fileio_get_volume_descriptor (vol_id);
-  vol_label_p = fileio_get_volume_label (vol_id);
+  vol_label_p = fileio_get_volume_label (vol_id, PEEK);
 
   if (vol_fd == NULL_VOLDES || vol_label_p == NULL)
     {
@@ -2714,7 +2714,7 @@ fileio_truncate (VOLID vol_id, DKNPAGES npages_to_resize)
   bool is_retry = true;
 
   vol_fd = fileio_get_volume_descriptor (vol_id);
-  vol_label_p = fileio_get_volume_label (vol_id);
+  vol_label_p = fileio_get_volume_label (vol_id, PEEK);
 
   if (vol_fd == NULL_VOLDES || vol_label_p == NULL)
     {
@@ -2742,7 +2742,8 @@ fileio_truncate (VOLID vol_id, DKNPAGES npages_to_resize)
 	    {
 	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				   ER_IO_TRUNCATE, 2, npages_to_resize,
-				   fileio_get_volume_label_by_fd (vol_fd));
+				   fileio_get_volume_label_by_fd (vol_fd,
+								  PEEK));
 	      return -1;
 	    }
 	}
@@ -2783,11 +2784,17 @@ fileio_unformat_and_rename (THREAD_ENTRY * thread_p, const char *vol_label_p,
 #endif
 #if !defined(CS_MODE)
   int vol_fd;
+  char vlabel_p[PATH_MAX];
 
   /* Dismount the volume if it is mounted */
   vol_fd = fileio_find_volume_descriptor_with_label (vol_label_p);
   if (vol_fd != NULL_VOLDES)
     {
+      /* if vol_label_p is a pointer of global vinfo->vlabel,
+       * It can be reset in fileio_dismount
+       */
+      strcpy (vlabel_p, vol_label_p);
+      vol_label_p = vlabel_p;
       fileio_dismount (thread_p, vol_fd);
     }
 #endif /* !CS_MODE */
@@ -3118,7 +3125,7 @@ fileio_dismount (THREAD_ENTRY * thread_p, int vol_fd)
    * that the dirty pages of the file (or files that the program opened) are
    * forced to disk.
    */
-  vlabel = fileio_get_volume_label_by_fd (vol_fd);
+  vlabel = fileio_get_volume_label_by_fd (vol_fd, PEEK);
 
   (void) fileio_synchronize (thread_p, vol_fd, vlabel);
 
@@ -3147,7 +3154,7 @@ fileio_dismount_without_fsync (THREAD_ENTRY * thread_p, int vol_fd)
   lockf_type = fileio_get_lockf_type (vol_fd);
   if (lockf_type != FILEIO_NOT_LOCKF)
     {
-      fileio_unlock (fileio_get_volume_label_by_fd (vol_fd), vol_fd,
+      fileio_unlock (fileio_get_volume_label_by_fd (vol_fd, PEEK), vol_fd,
 		     lockf_type);
     }
 
@@ -3697,7 +3704,7 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_IO_READ, 2, page_id,
 			       fileio_get_volume_label (fileio_get_volume_id
-							(vol_fd)));
+							(vol_fd), PEEK));
 	  return NULL;
 	}
 
@@ -3724,7 +3731,7 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_IO_READ, 2, page_id,
 			       fileio_get_volume_label (fileio_get_volume_id
-							(vol_fd)));
+							(vol_fd), PEEK));
 	  pthread_mutex_unlock (io_mutex);
 	  return NULL;
 	}
@@ -3762,7 +3769,7 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 	         allocated disk space */
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_PB_BAD_PAGEID, 2, page_id,
-		      fileio_get_volume_label_by_fd (vol_fd));
+		      fileio_get_volume_label_by_fd (vol_fd, PEEK));
 	      return NULL;
 	    }
 
@@ -3774,7 +3781,8 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 	    {
 	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				   ER_IO_READ, 2, page_id,
-				   fileio_get_volume_label_by_fd (vol_fd));
+				   fileio_get_volume_label_by_fd (vol_fd,
+								  PEEK));
 	      return NULL;
 	    }
 	}
@@ -3802,7 +3810,7 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_IO_READ, 2, page_id,
-			   fileio_get_volume_label_by_fd (vol_fd));
+			   fileio_get_volume_label_by_fd (vol_fd, PEEK));
       return NULL;
     }
 #endif
@@ -3859,7 +3867,7 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_IO_WRITE, 2, page_id,
 			       fileio_get_volume_label (fileio_get_volume_id
-							(vol_fd)));
+							(vol_fd), PEEK));
 	  return NULL;
 	}
 
@@ -3885,7 +3893,7 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_IO_WRITE, 2, page_id,
 			       fileio_get_volume_label (fileio_get_volume_id
-							(vol_fd)));
+							(vol_fd), PEEK));
 	  return NULL;
 	}
 
@@ -3920,14 +3928,14 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_IO_WRITE_OUT_OF_SPACE, 2, page_id,
-			  fileio_get_volume_label_by_fd (vol_fd));
+			  fileio_get_volume_label_by_fd (vol_fd, PEEK));
 		}
 	      else
 		{
 		  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				       ER_IO_WRITE, 2, page_id,
-				       fileio_get_volume_label_by_fd
-				       (vol_fd));
+				       fileio_get_volume_label_by_fd (vol_fd,
+								      PEEK));
 		}
 	      return NULL;
 	    }
@@ -3956,7 +3964,7 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_IO_WRITE, 2, page_id,
-			   fileio_get_volume_label_by_fd (vol_fd));
+			   fileio_get_volume_label_by_fd (vol_fd, PEEK));
       return NULL;
     }
 #endif
@@ -4012,7 +4020,7 @@ fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_IO_READ, 2, page_id,
 			       fileio_get_volume_label (fileio_get_volume_id
-							(vol_fd)));
+							(vol_fd), PEEK));
 	  return NULL;
 	}
 
@@ -4038,7 +4046,7 @@ fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_IO_READ, 2, page_id,
 			       fileio_get_volume_label (fileio_get_volume_id
-							(vol_fd)));
+							(vol_fd), PEEK));
 	  pthread_mutex_unlock (io_mutex);
 	  return NULL;
 	}
@@ -4090,7 +4098,8 @@ fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
 	      {
 		er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				     ER_IO_READ, 2, page_id,
-				     fileio_get_volume_label_by_fd (vol_fd));
+				     fileio_get_volume_label_by_fd (vol_fd,
+								    PEEK));
 		return NULL;
 	      }
 	    }
@@ -4166,7 +4175,7 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_IO_WRITE, 2, page_id,
 			       fileio_get_volume_label (fileio_get_volume_id
-							(vol_fd)));
+							(vol_fd), PEEK));
 	  return NULL;
 	}
 
@@ -4192,7 +4201,7 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_IO_WRITE, 2, page_id,
 			       fileio_get_volume_label (fileio_get_volume_id
-							(vol_fd)));
+							(vol_fd), PEEK));
 	  pthread_mutex_unlock (io_mutex);
 	  return NULL;
 	}
@@ -4244,7 +4253,8 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
 	      {
 		er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				     ER_IO_WRITE, 2, page_id,
-				     fileio_get_volume_label_by_fd (vol_fd));
+				     fileio_get_volume_label_by_fd (vol_fd,
+								    PEEK));
 		return NULL;
 	      }
 	    }
@@ -4595,7 +4605,7 @@ fileio_read_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id,
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_IO_READ, 2, page_id,
 			       fileio_get_volume_label (fileio_get_volume_id
-							(vol_fd)));
+							(vol_fd), PEEK));
 	  return NULL;
 	}
 
@@ -4616,7 +4626,7 @@ fileio_read_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id,
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_IO_READ, 2, page_id,
 			       fileio_get_volume_label (fileio_get_volume_id
-							(vol_fd)));
+							(vol_fd), PEEK));
 	  pthread_mutex_unlock (&io_mutex);
 	  return NULL;
 	}
@@ -4647,7 +4657,8 @@ fileio_read_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id,
 
 	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				   ER_IO_READ, 2, page_id,
-				   fileio_get_volume_label_by_fd (vol_fd));
+				   fileio_get_volume_label_by_fd (vol_fd,
+								  PEEK));
 	      return NULL;
 	    }
 	}
@@ -4695,7 +4706,7 @@ fileio_write_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id,
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_IO_WRITE, 2, page_id,
-			   fileio_get_volume_label_by_fd (vol_fd));
+			   fileio_get_volume_label_by_fd (vol_fd, PEEK));
       return NULL;
     }
 
@@ -4728,7 +4739,7 @@ fileio_write_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id,
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_IO_WRITE, 2, page_id,
-			       fileio_get_volume_label_by_fd (vol_fd));
+			       fileio_get_volume_label_by_fd (vol_fd, PEEK));
 	  return NULL;
 
 	}
@@ -4752,7 +4763,7 @@ fileio_write_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id,
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_IO_WRITE, 2, page_id,
-			   fileio_get_volume_label_by_fd (vol_fd));
+			   fileio_get_volume_label_by_fd (vol_fd, PEEK));
       return NULL;
     }
 #endif /* WINDOWS */
@@ -4773,7 +4784,7 @@ fileio_write_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id,
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_IO_WRITE, 2, page_id,
 			       fileio_get_volume_label (fileio_get_volume_id
-							(vol_fd)));
+							(vol_fd), PEEK));
 	  return NULL;
 	}
 
@@ -4794,7 +4805,7 @@ fileio_write_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id,
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_IO_WRITE, 2, page_id,
 			       fileio_get_volume_label (fileio_get_volume_id
-							(vol_fd)));
+							(vol_fd), PEEK));
 	  return NULL;
 	}
 
@@ -4817,14 +4828,14 @@ fileio_write_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id,
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_IO_WRITE_OUT_OF_SPACE, 2, page_id,
-			  fileio_get_volume_label_by_fd (vol_fd));
+			  fileio_get_volume_label_by_fd (vol_fd, PEEK));
 		}
 	      else
 		{
 		  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				       ER_IO_WRITE, 2, page_id,
 				       fileio_get_volume_label_by_fd
-				       (vol_fd));
+				       (vol_fd, PEEK));
 		}
 
 	      if (io_page_p != NULL)
@@ -6038,12 +6049,12 @@ fileio_decache (THREAD_ENTRY * thread_p, int vol_fd)
  *   return: Volume label
  *   volid(in): Permanent volume identifier
  */
-const char *
-fileio_get_volume_label (VOLID vol_id)
+char *
+fileio_get_volume_label (VOLID vol_id, bool is_peek)
 {
   FILEIO_VOLUME_INFO *vol_info_p;
   FILEIO_SYSTEM_VOLUME_INFO *sys_vol_info_p;
-  const char *vol_label_p = NULL;
+  char *vol_label_p = NULL;
   int i, j, rv;
   APPLY_ARG arg = { 0 };
 
@@ -6083,7 +6094,7 @@ fileio_get_volume_label (VOLID vol_id)
 	    - (LOG_MAX_DBVOLID - vol_id) % FILEIO_VOLINFO_INCREMENT;
 	}
       vol_info_p = &fileio_Vol_info_header.volinfo[i][j];
-      vol_label_p = (const char *) vol_info_p->vlabel;
+      vol_label_p = (char *) vol_info_p->vlabel;
     }
   else
     {
@@ -6095,10 +6106,23 @@ fileio_get_volume_label (VOLID vol_id)
 				   &arg);
       if (sys_vol_info_p)
 	{
-	  vol_label_p = (const char *) sys_vol_info_p->vlabel;
+	  vol_label_p = (char *) sys_vol_info_p->vlabel;
 	}
 
       pthread_mutex_unlock (&fileio_Sys_vol_info_header.mutex);
+    }
+
+  if (!is_peek)
+    {
+      char *ret = strdup (vol_label_p);
+
+      if (ret == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (vol_label_p));
+	}
+
+      return ret;
     }
 
   return vol_label_p;
@@ -6110,10 +6134,10 @@ fileio_get_volume_label (VOLID vol_id)
  *   return: Volume label
  *   vol_fd(in): volume descriptor
  */
-const char *
-fileio_get_volume_label_by_fd (int vol_fd)
+char *
+fileio_get_volume_label_by_fd (int vol_fd, bool is_peek)
 {
-  return fileio_get_volume_label (fileio_get_volume_id (vol_fd));
+  return fileio_get_volume_label (fileio_get_volume_id (vol_fd), is_peek);
 }
 
 
@@ -8911,7 +8935,8 @@ fileio_write_backup_header (FILEIO_BACKUP_SESSION * session_p)
 		      ER_IO_WRITE_OUT_OF_SPACE, 2,
 		      CEIL_PTVDIV (session_p->bkup.voltotalio,
 				   IO_PAGESIZE),
-		      fileio_get_volume_label_by_fd (session_p->bkup.vdes));
+		      fileio_get_volume_label_by_fd (session_p->bkup.vdes,
+						     PEEK));
 	    }
 	  else
 	    {

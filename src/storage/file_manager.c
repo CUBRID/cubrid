@@ -1671,8 +1671,9 @@ file_ftabvpid_next (const FILE_HEADER * fhdr, PAGE_PTR current_ftb_pgptr,
   if (VPID_EQ (vpid, next_ftbvpid))
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_FTB_LOOP, 4,
-	      fhdr->vfid.fileid, fileio_get_volume_label (fhdr->vfid.volid),
-	      vpid->volid, vpid->pageid);
+	      fhdr->vfid.fileid, fileio_get_volume_label (fhdr->vfid.volid,
+							  PEEK), vpid->volid,
+	      vpid->pageid);
       VPID_SET_NULL (next_ftbvpid);
     }
 
@@ -2554,7 +2555,7 @@ file_calculate_offset (INT16 start_offset, int size, int nelements,
 	      ER_FILE_TABLE_OVERFLOW,
 	      5, num_ftb_pages, (idx + 1), ftb_vpids[0].volid,
 	      ftb_vpids[0].pageid,
-	      fileio_get_volume_label (ftb_vpids[0].volid));
+	      fileio_get_volume_label (ftb_vpids[0].volid, PEEK));
 
       return ER_FILE_TABLE_OVERFLOW;
     }
@@ -3516,7 +3517,7 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 		    {
 		      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 			      ER_FILE_FTB_LOOP, 4, vfid->fileid,
-			      fileio_get_volume_label (vfid->volid),
+			      fileio_get_volume_label (vfid->volid, PEEK),
 			      allocset->next_allocset_vpid.volid,
 			      allocset->next_allocset_vpid.pageid);
 		      VPID_SET_NULL (&allocset_vpid);
@@ -3885,7 +3886,7 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 		  ret = ER_FILE_FTB_LOOP;
 		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ret, 4, vfid->fileid,
-			  fileio_get_volume_label (vfid->volid),
+			  fileio_get_volume_label (vfid->volid, PEEK),
 			  allocset->next_allocset_vpid.volid,
 			  allocset->next_allocset_vpid.pageid);
 		  VPID_SET_NULL (&allocset_vpid);
@@ -4890,7 +4891,8 @@ file_find_nthpages (THREAD_ENTRY * thread_p, const VFID * vfid,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_FILE_NTH_FPAGE_OUT_OF_RANGE, 4, start_nthpage, vfid->fileid,
-	      fileio_get_volume_label (vfid->volid), fhdr->num_user_pages);
+	      fileio_get_volume_label (vfid->volid, PEEK),
+	      fhdr->num_user_pages);
       VPID_SET_NULL (nth_vpids);
       goto exit_on_error;
     }
@@ -4981,7 +4983,7 @@ file_find_nthpages (THREAD_ENTRY * thread_p, const VFID * vfid,
 	    {
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_FILE_FTB_LOOP, 4, vfid->fileid,
-		      fileio_get_volume_label (vfid->volid),
+		      fileio_get_volume_label (vfid->volid, PEEK),
 		      allocset->next_allocset_vpid.volid,
 		      allocset->next_allocset_vpid.pageid);
 	      VPID_SET_NULL (&allocset_vpid);
@@ -5104,7 +5106,7 @@ file_isvalid_page_partof (THREAD_ENTRY * thread_p, const VPID * vpid,
       if (valid != DISK_ERROR)
 	{
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2,
-		  vpid->pageid, fileio_get_volume_label (vpid->volid));
+		  vpid->pageid, fileio_get_volume_label (vpid->volid, PEEK));
 	}
       return valid;
     }
@@ -5165,7 +5167,7 @@ file_isvalid_page_partof (THREAD_ENTRY * thread_p, const VPID * vpid,
 		{
 		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_FILE_FTB_LOOP, 4, vfid->fileid,
-			  fileio_get_volume_label (vfid->volid),
+			  fileio_get_volume_label (vfid->volid, PEEK),
 			  allocset_vpid.volid, allocset_vpid.pageid);
 		  VPID_SET_NULL (&allocset_vpid);
 		  allocset_offset = -1;
@@ -5195,8 +5197,8 @@ file_isvalid_page_partof (THREAD_ENTRY * thread_p, const VPID * vpid,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_PAGE_ISNOT_PARTOF, 6,
 	      vpid->volid, vpid->pageid,
-	      fileio_get_volume_label (vpid->volid), vfid->volid,
-	      vfid->fileid, fileio_get_volume_label (vfid->volid));
+	      fileio_get_volume_label (vpid->volid, PEEK), vfid->volid,
+	      vfid->fileid, fileio_get_volume_label (vfid->volid, PEEK));
       return DISK_INVALID;
     }
 }
@@ -6828,7 +6830,7 @@ file_alloc_pages (THREAD_ENTRY * thread_p, const VFID * vfid,
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_FILE_NOT_ENOUGH_PAGES_IN_VOLUME, 2,
-		      fileio_get_volume_label (vfid->volid), npages);
+		      fileio_get_volume_label (vfid->volid, PEEK), npages);
 	    }
 	  else
 	    {
@@ -7123,7 +7125,7 @@ file_alloc_pages_as_noncontiguous (THREAD_ENTRY * thread_p, const VFID * vfid,
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_FILE_NOT_ENOUGH_PAGES_IN_VOLUME, 2,
-		      fileio_get_volume_label (vfid->volid), npages);
+		      fileio_get_volume_label (vfid->volid, PEEK), npages);
 	    }
 	  else
 	    {
@@ -7351,7 +7353,7 @@ file_alloc_pages_at_volid (THREAD_ENTRY * thread_p, const VFID * vfid,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_FILE_NOT_ENOUGH_PAGES_IN_VOLUME, 2,
-	      fileio_get_volume_label (desired_volid), npages);
+	      fileio_get_volume_label (desired_volid, PEEK), npages);
       goto exit_on_error;
     }
 
@@ -8088,7 +8090,7 @@ file_dealloc_page (THREAD_ENTRY * thread_p, const VFID * vfid,
 		{
 		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_FILE_FTB_LOOP, 4, vfid->fileid,
-			  fileio_get_volume_label (vfid->volid),
+			  fileio_get_volume_label (vfid->volid, PEEK),
 			  allocset_vpid.volid, allocset_vpid.pageid);
 		  VPID_SET_NULL (&allocset_vpid);
 		}
@@ -8413,7 +8415,7 @@ file_truncate_to_numpages (THREAD_ENTRY * thread_p, const VFID * vfid,
 		  /* System error. It looks like we are in a loop */
 		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_FILE_FTB_LOOP, 4, vfid->fileid,
-			  fileio_get_volume_label (vfid->volid),
+			  fileio_get_volume_label (vfid->volid, PEEK),
 			  allocset->next_allocset_vpid.volid,
 			  allocset->next_allocset_vpid.pageid);
 		  VPID_SET_NULL (&allocset_vpid);
@@ -10199,7 +10201,7 @@ file_check_all_pages (THREAD_ENTRY * thread_p, const VFID * vfid,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_INCONSISTENT_HEADER,
 	      3, vfid->volid, vfid->fileid,
-	      fileio_get_volume_label (vfid->volid));
+	      fileio_get_volume_label (vfid->volid, PEEK));
       allvalid = DISK_INVALID;
     }
 
@@ -10215,9 +10217,9 @@ file_check_all_pages (THREAD_ENTRY * thread_p, const VFID * vfid,
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_FILE_INCONSISTENT_ALLOCATION, 6, set_vpids[0].volid,
 		      set_vpids[0].pageid,
-		      fileio_get_volume_label (set_vpids[0].volid),
+		      fileio_get_volume_label (set_vpids[0].volid, PEEK),
 		      vfid->volid, vfid->fileid,
-		      fileio_get_volume_label (vfid->volid));
+		      fileio_get_volume_label (vfid->volid, PEEK));
 	    }
 
 	  allvalid = valid;
@@ -10268,9 +10270,10 @@ file_check_all_pages (THREAD_ENTRY * thread_p, const VFID * vfid,
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			      ER_FILE_INCONSISTENT_ALLOCATION, 6,
 			      set_vpids[j].volid, set_vpids[j].pageid,
-			      fileio_get_volume_label (set_vpids[j].volid),
-			      vfid->volid, vfid->fileid,
-			      fileio_get_volume_label (vfid->volid));
+			      fileio_get_volume_label (set_vpids[j].volid,
+						       PEEK), vfid->volid,
+			      vfid->fileid,
+			      fileio_get_volume_label (vfid->volid, PEEK));
 		    }
 		  allvalid = valid;
 		  /* Continue looking for more */
@@ -10283,7 +10286,7 @@ file_check_all_pages (THREAD_ENTRY * thread_p, const VFID * vfid,
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_FILE_INCONSISTENT_EXPECTED_PAGES, 5,
 		  fhdr->num_user_pages, i, vfid->volid, vfid->fileid,
-		  fileio_get_volume_label (vfid->volid));
+		  fileio_get_volume_label (vfid->volid, PEEK));
 	  allvalid = DISK_ERROR;
 	}
     }
@@ -10375,7 +10378,7 @@ file_check_deleted (THREAD_ENTRY * thread_p, const VFID * vfid)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_FILE_ALLOCSET_INCON_EXPECTED_NHOLES, 5,
 		  vfid->fileid, vfid->volid,
-		  fileio_get_volume_label (vfid->volid),
+		  fileio_get_volume_label (vfid->volid, PEEK),
 		  num_deleted + num_marked_deleted, allocset->num_holes);
 	  valid = DISK_INVALID;
 	}
@@ -10386,7 +10389,7 @@ file_check_deleted (THREAD_ENTRY * thread_p, const VFID * vfid)
 	  && allocset_offset == allocset->next_allocset_offset)
 	{
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_FTB_LOOP, 4,
-		  vfid->fileid, fileio_get_volume_label (vfid->volid),
+		  vfid->fileid, fileio_get_volume_label (vfid->volid, PEEK),
 		  allocset->next_allocset_vpid.volid,
 		  allocset->next_allocset_vpid.pageid);
 	  VPID_SET_NULL (&allocset_vpid);
@@ -10407,7 +10410,7 @@ file_check_deleted (THREAD_ENTRY * thread_p, const VFID * vfid)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_FILE_INCONSISTENT_EXPECTED_MARKED_DEL, 5,
 	      vfid->fileid, vfid->volid,
-	      fileio_get_volume_label (vfid->volid),
+	      fileio_get_volume_label (vfid->volid, PEEK),
 	      fhdr->num_user_pages_mrkdelete, total_marked_deleted);
       valid = DISK_INVALID;
     }
@@ -10873,7 +10876,7 @@ file_dump (THREAD_ENTRY * thread_p, FILE * fp, const VFID * vfid)
 	    {
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_FILE_FTB_LOOP, 4, vfid->fileid,
-		      fileio_get_volume_label (vfid->volid),
+		      fileio_get_volume_label (vfid->volid, PEEK),
 		      allocset->next_allocset_vpid.volid,
 		      allocset->next_allocset_vpid.pageid);
 	      VPID_SET_NULL (&allocset_vpid);
@@ -11269,7 +11272,7 @@ file_tracker_unregister (THREAD_ENTRY * thread_p, const VFID * vfid)
 		{
 		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_FILE_FTB_LOOP, 4, vfid->fileid,
-			  fileio_get_volume_label (vfid->volid),
+			  fileio_get_volume_label (vfid->volid, PEEK),
 			  allocset_vpid.volid, allocset_vpid.pageid);
 		  VPID_SET_NULL (&allocset_vpid);
 		  allocset_offset = -1;

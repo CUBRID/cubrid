@@ -1141,7 +1141,7 @@ spage_compact (PAGE_PTR page_p)
 	  pgbuf_get_vpid (page_p, &vpid);
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_SP_WRONG_NUM_SLOTS, 4,
-		  vpid.pageid, fileio_get_volume_label (vpid.volid),
+		  vpid.pageid, fileio_get_volume_label (vpid.volid, PEEK),
 		  j, page_header_p->num_records);
 
 	  assert (false);

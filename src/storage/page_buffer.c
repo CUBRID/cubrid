@@ -1014,7 +1014,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, int newpg,
   if (vpid->pageid < 0)
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2,
-	      vpid->pageid, fileio_get_volume_label (vpid->volid));
+	      vpid->pageid, fileio_get_volume_label (vpid->volid, PEEK));
       return NULL;
     }
 
@@ -1267,7 +1267,7 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 		    " dirty pageid = %d of Volume = %s.\n Recovery problems"
 		    " may happen\n",
 		    bufptr->vpid.pageid,
-		    fileio_get_volume_label (bufptr->vpid.volid));
+		    fileio_get_volume_label (bufptr->vpid.volid, PEEK));
       /*
        * Do not give warnings on this page any longer. Set the LSA of the
        * buffer for this purposes
@@ -1300,7 +1300,7 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 		    "Pb_debug_free_bufptr: SYSTEM ERROR Freeing"
 		    " too much buffer of pageid = %d of Volume = %s\n",
 		    bufptr->vpid.pageid,
-		    fileio_get_volume_label (bufptr->vpid.volid));
+		    fileio_get_volume_label (bufptr->vpid.volid, PEEK));
     }
 #endif /* CUBRID_DEBUG */
 
@@ -2328,7 +2328,7 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p,
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_LOG_CHECKPOINT_SKIP_INVALID_PAGE, 6,
 		      bufptr->vpid.pageid,
-		      fileio_get_volume_label (bufptr->vpid.volid),
+		      fileio_get_volume_label (bufptr->vpid.volid, PEEK),
 		      bufptr->oldest_unflush_lsa.pageid,
 		      bufptr->oldest_unflush_lsa.offset,
 		      prev_chkpt_redo_lsa->pageid,
@@ -2945,7 +2945,7 @@ pgbuf_get_volume_label (PAGE_PTR pgptr)
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
   assert (!VPID_ISNULL (&bufptr->vpid));
 
-  return fileio_get_volume_label (bufptr->vpid.volid);
+  return fileio_get_volume_label (bufptr->vpid.volid, PEEK);
 }
 
 /*
@@ -4078,7 +4078,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_UNFIXED_PAGEPTR, 3,
 	      bufptr->iopage_buffer->iopage.page, bufptr->vpid.pageid,
-	      fileio_get_volume_label (bufptr->vpid.volid));
+	      fileio_get_volume_label (bufptr->vpid.volid, PEEK));
       assert (false);
       bufptr->fcnt = 0;
     }
@@ -4090,7 +4090,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       pthread_mutex_unlock (&bufptr->BCB_mutex);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_UNFIXED_PAGEPTR, 3,
 	      bufptr->iopage_buffer->iopage.page, bufptr->vpid.pageid,
-	      fileio_get_volume_label (bufptr->vpid.volid));
+	      fileio_get_volume_label (bufptr->vpid.volid, PEEK));
       assert (false);
       return ER_FAILED;
     }
@@ -4104,7 +4104,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 	  pthread_mutex_unlock (&bufptr->BCB_mutex);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_UNFIXED_PAGEPTR, 3,
 		  bufptr->iopage_buffer->iopage.page, bufptr->vpid.pageid,
-		  fileio_get_volume_label (bufptr->vpid.volid));
+		  fileio_get_volume_label (bufptr->vpid.volid, PEEK));
 	  assert (false);
 	  return ER_FAILED;
 	}
@@ -6323,7 +6323,8 @@ pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid,
 {
   DISK_ISVALID valid;
 
-  if (fileio_get_volume_label (vpid->volid) == NULL || VPID_ISNULL (vpid))
+  if (fileio_get_volume_label (vpid->volid, PEEK) == NULL
+      || VPID_ISNULL (vpid))
     {
       assert (false);
 
@@ -6338,7 +6339,7 @@ pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid,
 	{
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_PB_BAD_PAGEID, 2, vpid->pageid,
-		  fileio_get_volume_label (vpid->volid));
+		  fileio_get_volume_label (vpid->volid, PEEK));
 
 	  assert (false);
 	}
@@ -6375,7 +6376,7 @@ pgbuf_is_valid_page_ptr (const PAGE_PTR pgptr)
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_PB_UNFIXED_PAGEPTR, 3, pgptr,
 		      bufptr->vpid.pageid,
-		      fileio_get_volume_label (bufptr->vpid.volid));
+		      fileio_get_volume_label (bufptr->vpid.volid, PEEK));
 	      pthread_mutex_unlock (&bufptr->BCB_mutex);
 
 	      assert (false);

@@ -6835,7 +6835,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 			   LOG_PAGESIZE) == NULL)
 	    {
 	      /* Error reading archive page */
-	      tmp_arv_name = fileio_get_volume_label_by_fd (vdes);
+	      tmp_arv_name = fileio_get_volume_label_by_fd (vdes, PEEK);
 	      fileio_dismount (thread_p, vdes);
 	      log_Gl.archive.vdes = NULL_VOLDES;
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ, 3,
@@ -9131,8 +9131,9 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid,
    */
 
   error_code =
-    fileio_backup_volume (thread_p, session, fileio_get_volume_label (volid),
-			  volid, vol_sys_lastpage, only_updated);
+    fileio_backup_volume (thread_p, session,
+			  fileio_get_volume_label (volid, PEEK), volid,
+			  vol_sys_lastpage, only_updated);
 
   return error_code;
 }
@@ -9641,7 +9642,7 @@ loop:
 	   */
 	  continue;
 	default:
-	  from_vlabel = fileio_get_volume_label (volid);
+	  from_vlabel = fileio_get_volume_label (volid, PEEK);
 	  break;
 	}
 
@@ -10821,7 +10822,7 @@ logpb_next_where_path (const char *to_db_fullname, const char *toext_path,
   int error_code = NO_ERROR;
   char format_string[64];
 
-  current_vlabel = fileio_get_volume_label (volid);
+  current_vlabel = fileio_get_volume_label (volid, PEEK);
   sprintf (format_string, "%%d %%%ds %%%ds", PATH_MAX - 1, PATH_MAX - 1);
 
   /*
@@ -10972,7 +10973,8 @@ logpb_copy_volume (THREAD_ENTRY * thread_p, VOLID from_volid,
     }
 
   if (fileio_synchronize (thread_p, from_vdes,
-			  fileio_get_volume_label (from_vdes)) != from_vdes)
+			  fileio_get_volume_label (from_vdes,
+						   PEEK)) != from_vdes)
     {
       return ER_FAILED;
     }
@@ -11829,7 +11831,8 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 	}
       if (fileio_synchronize (thread_p,
 			      fileio_get_volume_descriptor (volid),
-			      fileio_get_volume_label (volid)) == NULL_VOLDES)
+			      fileio_get_volume_label (volid, PEEK))
+	  == NULL_VOLDES)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
@@ -12101,18 +12104,14 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
        */
       for (volid = LOG_DBFIRST_VOLID; volid < num_perm_vols; volid++)
 	{
-	  vlabel = fileio_get_volume_label (volid);
+	  vlabel = fileio_get_volume_label (volid, ALLOC_COPY);
 	  if (vlabel != NULL)
 	    {
 	      (void) pgbuf_invalidate_all (thread_p, volid);
-	      /*
-	       * We need to copy the name since it is undefined once the volume is
-	       * dismounted
-	       */
-	      strcpy (vol_fullname, vlabel);
 	      fileio_dismount (thread_p,
 			       fileio_get_volume_descriptor (volid));
-	      fileio_unformat (thread_p, vol_fullname);
+	      fileio_unformat (thread_p, vlabel);
+	      free (vlabel);
 	    }
 	}
     }

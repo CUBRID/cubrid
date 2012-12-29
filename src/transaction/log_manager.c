@@ -9626,7 +9626,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 			    rv_err);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
-		      fileio_get_volume_label (rcv_vpid->volid));
+		      fileio_get_volume_label (rcv_vpid->volid, PEEK));
 	    }
 
 	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
@@ -9648,7 +9648,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
       log_append_compensate (thread_p, rcvindex, rcv_vpid,
 			     rcv->offset, NULL, rcv->length, rcv->data, tdes);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY,
-	      1, fileio_get_volume_label (rcv_vpid->volid));
+	      1, fileio_get_volume_label (rcv_vpid->volid, PEEK));
     }
 
   if (area != NULL)
@@ -10595,7 +10595,7 @@ log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
        * on such page
        */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY,
-	      1, fileio_get_volume_label (rcv_vpid.volid));
+	      1, fileio_get_volume_label (rcv_vpid.volid, PEEK));
     }
 
   if (area != NULL)
@@ -10805,7 +10805,7 @@ log_recreate (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
     {
       char vol_fullname[PATH_MAX];
 
-      vlabel = fileio_get_volume_label (volid);
+      vlabel = fileio_get_volume_label (volid, PEEK);
 
       /* Find the current pages of the volume and its descriptor */
 

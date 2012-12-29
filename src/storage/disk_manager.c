@@ -2111,7 +2111,7 @@ disk_expand_tmp (THREAD_ENTRY * thread_p, INT16 volid, INT32 min_pages,
          can be expanded are temporary volumes for temporary purposes */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_DISK_CANNOT_EXPAND_PERMVOLS, 2,
-	      fileio_get_volume_label (volid), vhdr->purpose);
+	      fileio_get_volume_label (volid, PEEK), vhdr->purpose);
       goto error;
     }
 
@@ -2124,7 +2124,7 @@ disk_expand_tmp (THREAD_ENTRY * thread_p, INT16 volid, INT32 min_pages,
     {
       /* This volume cannot be expanded with the given number of pages. */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DISK_UNABLE_TO_EXPAND, 2,
-	      fileio_get_volume_label (volid), min_pages);
+	      fileio_get_volume_label (volid, PEEK), min_pages);
       goto error;
     }
   else if (npages_toadd > max_pages)
@@ -3606,7 +3606,7 @@ disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
     {
       /* Unknown sector identifier. Assume DISK_SECTOR_WITH_ALL_PAGES */
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DISK_UNKNOWN_SECTOR, 2,
-	      sectid, fileio_get_volume_label (volid));
+	      sectid, fileio_get_volume_label (volid, PEEK));
       sectid = DISK_SECTOR_WITH_ALL_PAGES;
     }
 
@@ -3710,14 +3710,14 @@ disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
 	      vhdr->warnat = 0;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_DISK_LAST_ALMOST_OUT_OF_SPACE, 3,
-		      fileio_get_volume_label (volid),
+		      fileio_get_volume_label (volid, PEEK),
 		      vhdr->total_pages, vhdr->free_pages);
 	    }
 	  else
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_DISK_ALMOST_OUT_OF_SPACE, 3,
-		      fileio_get_volume_label (volid),
+		      fileio_get_volume_label (volid, PEEK),
 		      vhdr->total_pages, vhdr->free_pages);
 	    }
 	}
@@ -4176,7 +4176,7 @@ disk_dealloc_sector (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
       for (; sectid < 0 && nsects > 0; sectid++, nsects--)
 	{
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DISK_UNKNOWN_SECTOR,
-		  2, sectid, fileio_get_volume_label (volid));
+		  2, sectid, fileio_get_volume_label (volid, PEEK));
 	}
 
       if (nsects <= 0)
@@ -4195,7 +4195,7 @@ disk_dealloc_sector (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
 	   nsects > 0; nsects--, bad_sectid++)
 	{
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DISK_UNKNOWN_SECTOR,
-		  2, bad_sectid, fileio_get_volume_label (volid));
+		  2, bad_sectid, fileio_get_volume_label (volid, PEEK));
 	}
 #endif /* CUBRID_DEBUG */
 
@@ -4304,7 +4304,7 @@ disk_dealloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 pageid,
       pgbuf_unfix_and_init (thread_p, addr.pgptr);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_DISK_TRY_DEALLOC_DISK_SYSPAGE, 2, pageid,
-	      fileio_get_volume_label (volid));
+	      fileio_get_volume_label (volid, PEEK));
       return ER_FAILED;
     }
 
@@ -4312,7 +4312,7 @@ disk_dealloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 pageid,
     {
       pgbuf_unfix_and_init (thread_p, addr.pgptr);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DISK_UNKNOWN_PAGE, 2,
-	      pageid, fileio_get_volume_label (volid));
+	      pageid, fileio_get_volume_label (volid, PEEK));
       return ER_FAILED;
     }
 
@@ -4457,13 +4457,13 @@ disk_id_dealloc (THREAD_ENTRY * thread_p, INT16 volid, INT32 at_pg1,
 		    {
 		      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
 			      ER_DISK_UNKNOWN_SECTOR, 2, deallid,
-			      fileio_get_volume_label (volid));
+			      fileio_get_volume_label (volid, PEEK));
 		    }
 		  else
 		    {
 		      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
 			      ER_DISK_UNKNOWN_PAGE, 2, deallid,
-			      fileio_get_volume_label (volid));
+			      fileio_get_volume_label (volid, PEEK));
 		    }
 
 		  if (recv.num > 0)
@@ -5053,7 +5053,7 @@ disk_check (THREAD_ENTRY * thread_p, INT16 volid, bool repair)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_DISK_CANNOT_REPAIR_INCONSISTENT_NFREE_PAGES, 3,
-		      fileio_get_volume_label (volid),
+		      fileio_get_volume_label (volid, PEEK),
 		      vhdr->free_pages, nfree);
 	      valid = DISK_INVALID;
 	    }
@@ -5073,7 +5073,8 @@ disk_check (THREAD_ENTRY * thread_p, INT16 volid, bool repair)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_DISK_INCONSISTENT_NFREE_PAGES, 3,
-		  fileio_get_volume_label (volid), vhdr->free_pages, nfree);
+		  fileio_get_volume_label (volid, PEEK), vhdr->free_pages,
+		  nfree);
 	  valid = DISK_INVALID;
 	}
     }
@@ -5099,7 +5100,7 @@ disk_check (THREAD_ENTRY * thread_p, INT16 volid, bool repair)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_DISK_CANNOT_REPAIR_INCONSISTENT_NFREE_SECTS, 3,
-		      fileio_get_volume_label (volid),
+		      fileio_get_volume_label (volid, PEEK),
 		      vhdr->free_sects, nfree);
 	      valid = DISK_INVALID;
 	    }
@@ -5119,7 +5120,8 @@ disk_check (THREAD_ENTRY * thread_p, INT16 volid, bool repair)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_DISK_INCONSISTENT_NFREE_SECTS, 3,
-		  fileio_get_volume_label (volid), vhdr->free_sects, nfree);
+		  fileio_get_volume_label (volid, PEEK), vhdr->free_sects,
+		  nfree);
 	  valid = DISK_INVALID;
 	}
     }
@@ -5137,7 +5139,7 @@ disk_check (THREAD_ENTRY * thread_p, INT16 volid, bool repair)
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_DISK_INCONSISTENT_VOL_HEADER, 1,
-	      fileio_get_volume_label (volid));
+	      fileio_get_volume_label (volid, PEEK));
       valid = DISK_INVALID;
     }
   else if (vhdr->purpose != DISK_TEMPVOL_TEMP_PURPOSE)
@@ -5151,7 +5153,7 @@ disk_check (THREAD_ENTRY * thread_p, INT16 volid, bool repair)
 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_DISK_INCONSISTENT_VOL_HEADER, 1,
-		  fileio_get_volume_label (volid));
+		  fileio_get_volume_label (volid, PEEK));
 	  valid = DISK_INVALID;
 	}
     }
@@ -5857,7 +5859,7 @@ disk_rv_alloctable_with_volheader (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
   if (vhdr_rcv.pgptr == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY,
-	      1, fileio_get_volume_label (vhdr_vpid.volid));
+	      1, fileio_get_volume_label (vhdr_vpid.volid, PEEK));
 
       return ER_FAILED;
     }
@@ -5867,7 +5869,7 @@ disk_rv_alloctable_with_volheader (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
   if (rcv->pgptr == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY,
-	      1, fileio_get_volume_label (page_vpid.volid));
+	      1, fileio_get_volume_label (page_vpid.volid, PEEK));
 
       pgbuf_unfix (thread_p, vhdr_rcv.pgptr);
       return ER_FAILED;

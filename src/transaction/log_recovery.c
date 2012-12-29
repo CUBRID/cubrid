@@ -424,7 +424,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
        * page
        */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY,
-	      1, fileio_get_volume_label (rcv_vpid->volid));
+	      1, fileio_get_volume_label (rcv_vpid->volid, PEEK));
     }
 
   if (area != NULL)
@@ -5077,7 +5077,12 @@ log_unformat_ahead_volumes (THREAD_ENTRY * thread_p, VOLID volid,
 	}
       else
 	{
-	  fileio_unformat (thread_p, fileio_get_volume_label (volid));
+	  char *vlabel = fileio_get_volume_label (volid, ALLOC_COPY);
+	  fileio_unformat (thread_p, vlabel);
+	  if (vlabel)
+	    {
+	      free (vlabel);
+	    }
 	}
     }
   return result;

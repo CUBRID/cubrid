@@ -65,6 +65,9 @@
 #define STR_PATH_SEPARATOR "/"
 #endif /* WINDOWS */
 
+#define PEEK           true	/* Peek volume label pointer */
+#define ALLOC_COPY  false	/* alloc and copy volume label */
+
 /* If the last character of path string is PATH_SEPARATOR, don't append PATH_SEPARATOR */
 #define FILEIO_PATH_SEPARATOR(path) \
   (path[strlen(path) - 1] == PATH_SEPARATOR ? "" : STR_PATH_SEPARATOR)
@@ -436,8 +439,8 @@ extern void *fileio_write_user_area (THREAD_ENTRY * thread_p, int vdes,
 extern bool fileio_is_volume_exist_and_file (const char *vlabel);
 extern DKNPAGES fileio_get_number_of_volume_pages (int vdes,
 						   size_t page_size);
-extern const char *fileio_get_volume_label (VOLID volid);
-extern const char *fileio_get_volume_label_by_fd (int vol_fd);
+extern char *fileio_get_volume_label (VOLID volid, bool is_peek);
+extern char *fileio_get_volume_label_by_fd (int vol_fd, bool is_peek);
 extern VOLID fileio_find_volume_id_with_label (THREAD_ENTRY * thread_p,
 					       const char *vlabel);
 extern int fileio_get_volume_descriptor (VOLID volid);
