@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 
 #if defined(WINDOWS)
 #include <winsock2.h>
@@ -102,6 +103,8 @@ static int cas_oracle_write_to_lob (OCILobLocator * locp, char *buf,
 static int cas_oracle_prepare (T_SRV_HANDLE ** new_handle, char *sql_stmt,
 			       int flag, char auto_commit_mode,
 			       unsigned int query_seq_num);
+static void increase_executed_query_count (T_APPL_SERVER_INFO * as_info_p,
+					   char stmt_t);
 
 static ORACLE_INFO _db_info;
 static int _offset_row_count;
@@ -1302,8 +1305,8 @@ ux_execute_internal (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, 1);
   err_code = OCIStmtExecute (ORA_SVC, stmt, ORA_ERR, iters, 0, 0, 0, mode);
 
-  as_info->num_queries_processed %= MAX_DIAG_DATA_VALUE;
-  as_info->num_queries_processed++;
+  increase_executed_query_count (as_info, srv_handle->stmt_type);
+
   SQL_LOG2_EXEC_END (as_info->cur_sql_log2, 1, err_code);
   if (!ORA_SUCCESS (err_code))
     {
@@ -1548,8 +1551,9 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
 	    }
 	}
       ret = OCIStmtExecute (ORA_SVC, stmt, ORA_ERR, iters, 0, 0, 0, mode);
-      as_info->num_queries_processed %= MAX_DIAG_DATA_VALUE;
-      as_info->num_queries_processed++;
+
+      increase_executed_query_count (as_info, srv_handle->stmt_type);
+
       SQL_LOG2_EXEC_END (as_info->cur_sql_log2, 1, ret);
       GOTO_ORA_ERROR (ret, exec_db_error);
 
@@ -2779,4 +2783,35 @@ oracle_error:
   err_code = cas_oracle_get_errno ();
 
   return err_code;
+}
+
+static void
+increase_executed_query_count (T_APPL_SERVER_INFO * as_info_p, char stmt_type)
+{
+  assert (as_info_p != NULL);
+
+  as_info_p->num_queries_processed %= MAX_DIAG_DATA_VALUE;
+  as_info_p->num_queries_processed++;
+
+  switch (stmt_type)
+    {
+    case CUBRID_STMT_SELECT:
+      as_info_p->num_select_queries %= MAX_DIAG_DATA_VALUE;
+      as_info_p->num_select_queries++;
+      break;
+    case CUBRID_STMT_INSERT:
+      as_info_p->num_insert_queries %= MAX_DIAG_DATA_VALUE;
+      as_info_p->num_insert_queries++;
+      break;
+    case CUBRID_STMT_UPDATE:
+      as_info_p->num_update_queries %= MAX_DIAG_DATA_VALUE;
+      as_info_p->num_update_queries++;
+      break;
+    case CUBRID_STMT_DELETE:
+      as_info_p->num_delete_queries %= MAX_DIAG_DATA_VALUE;
+      as_info_p->num_delete_queries++;
+      break;
+    default:
+      break;
+    }
 }

@@ -32,6 +32,7 @@
 #include <time.h>
 #include <string.h>
 #include <stdarg.h>
+#include <assert.h>
 #ifdef HAVE_GETOPT_H
 #include <getopt.h>
 #else
@@ -73,6 +74,156 @@
 #define		DEFAULT_CHECK_PERIOD		300	/* seconds */
 #define		MAX_APPL_NUM		100
 
+#define         FIELD_DELIMITER          ' '
+
+#define         FIELD_WIDTH_BROKER_NAME 20
+
+typedef enum
+{
+  FIELD_BROKER_NAME = 0,
+  FIELD_PID,
+  FIELD_PSIZE,
+  FIELD_PORT,
+  FIELD_ACTIVE_P,
+  FIELD_ACTIVE_C,
+  FIELD_APPL_SERVER_NUM_TOTAL,
+  FIELD_APPL_SERVER_NUM_CLIENT_WAIT,
+  FIELD_APPL_SERVER_NUM_BUSY,
+  FIELD_APPL_SERVER_NUM_CLIENT_WAIT_IN_SEC,
+  FIELD_APPL_SERVER_NUM_BUSY_IN_SEC,	/* = 10 */
+  FIELD_JOB_QUEUE_ID,
+  FIELD_THREAD,
+  FIELD_CPU_USAGE,
+  FIELD_CPU_TIME,
+  FIELD_TPS,
+  FIELD_QPS,
+  FIELD_NUM_OF_SELECT_QUERIES,
+  FIELD_NUM_OF_INSERT_QUERIES,
+  FIELD_NUM_OF_UPDATE_QUERIES,
+  FIELD_NUM_OF_DELETE_QUERIES,	/* = 20 */
+  FIELD_NUM_OF_OTHERS_QUERIES,
+  FIELD_K_QPS,
+  FIELD_H_KEY,
+  FIELD_H_ID,
+  FIELD_H_ALL,
+  FIELD_NK_QPS,
+  FIELD_LONG_TRANSACTION,
+  FIELD_LONG_QUERY,
+  FIELD_ERROR_QUERIES,
+  FIELD_UNIQUE_ERROR_QUERIES,	/* = 30 */
+  FIELD_CANCELED,
+  FIELD_ACCESS_MODE,
+  FIELD_SQL_LOG,
+  FIELD_NUMBER_OF_CONNECTION,
+  FIELD_PROXY_ID,
+  FIELD_SHARD_ID,
+  FIELD_ID,
+  FIELD_LQS,
+  FIELD_STATUS,
+  FIELD_LAST_ACCESS_TIME,	/* = 40 */
+  FIELD_DB_NAME,
+  FIELD_HOST,
+  FIELD_LAST_CONNECT_TIME,
+  FIELD_CLIENT_IP,
+  FIELD_SQL_LOG_MODE,
+  FIELD_TRANSACTION_STIME,
+  FIELD_CONNECT,
+  FIELD_RESTART,
+  FIELD_LAST = FIELD_RESTART
+} FIELD_NAME;
+
+typedef enum
+{
+  FIELD_T_STRING = 0,
+  FIELD_T_INT,
+  FIELD_T_FLOAT,
+  FIELD_T_UINT64,
+  FIELD_T_INT64,
+  FIELD_T_TIME
+} FIELD_TYPE;
+
+typedef enum
+{
+  FIELD_LEFT_ALIGN = 0,
+  FIELD_RIGHT_ALIGN
+} FIELD_ALIGN;
+
+struct status_field
+{
+  FIELD_NAME name;
+  unsigned int width;
+  char title[256];
+  FIELD_ALIGN align;
+};
+
+struct status_field fields[FIELD_LAST + 1] = {
+  {FIELD_BROKER_NAME, FIELD_WIDTH_BROKER_NAME, "NAME", FIELD_LEFT_ALIGN},
+  {FIELD_PID, 5, "PID", FIELD_RIGHT_ALIGN},
+  {FIELD_PSIZE, 7, "PSIZE", FIELD_RIGHT_ALIGN},
+  {FIELD_PORT, 5, "PORT", FIELD_RIGHT_ALIGN},
+  {FIELD_ACTIVE_P, 10, "Active-P", FIELD_RIGHT_ALIGN},
+  {FIELD_ACTIVE_C, 10, "Active-C", FIELD_RIGHT_ALIGN},
+  {FIELD_APPL_SERVER_NUM_TOTAL, 5, "", FIELD_RIGHT_ALIGN},
+  {FIELD_APPL_SERVER_NUM_CLIENT_WAIT, 6, "W", FIELD_RIGHT_ALIGN},
+  {FIELD_APPL_SERVER_NUM_BUSY, 6, "B", FIELD_RIGHT_ALIGN},
+  {FIELD_APPL_SERVER_NUM_CLIENT_WAIT_IN_SEC, 6, "", FIELD_RIGHT_ALIGN},
+  {FIELD_APPL_SERVER_NUM_BUSY_IN_SEC, 6, "", FIELD_RIGHT_ALIGN},
+  {FIELD_JOB_QUEUE_ID, 4, "JQ", FIELD_RIGHT_ALIGN},
+  {FIELD_THREAD, 4, "THR", FIELD_RIGHT_ALIGN},
+  {FIELD_CPU_USAGE, 6, "CPU", FIELD_RIGHT_ALIGN},
+  {FIELD_CPU_TIME, 6, "CTIME", FIELD_RIGHT_ALIGN},
+  {FIELD_TPS, 20, "TPS", FIELD_RIGHT_ALIGN},
+  {FIELD_QPS, 20, "QPS", FIELD_RIGHT_ALIGN},
+  {FIELD_NUM_OF_SELECT_QUERIES, 8, "SELECT", FIELD_RIGHT_ALIGN},
+  {FIELD_NUM_OF_INSERT_QUERIES, 8, "INSERT", FIELD_RIGHT_ALIGN},
+  {FIELD_NUM_OF_UPDATE_QUERIES, 8, "UPDATE", FIELD_RIGHT_ALIGN},
+  {FIELD_NUM_OF_DELETE_QUERIES, 8, "DELETE", FIELD_RIGHT_ALIGN},
+  {FIELD_NUM_OF_OTHERS_QUERIES, 8, "OTHERS", FIELD_RIGHT_ALIGN},
+  {FIELD_K_QPS, 7, "K-QPS", FIELD_RIGHT_ALIGN},
+  {FIELD_H_KEY, 7, "(H-KEY", FIELD_RIGHT_ALIGN},
+  {FIELD_H_ID, 7, "H_ID", FIELD_RIGHT_ALIGN},
+  {FIELD_H_ALL, 7, "H-ALL)", FIELD_RIGHT_ALIGN},
+  {FIELD_NK_QPS, 7, "NK-QPS", FIELD_RIGHT_ALIGN},
+  /*
+   * 5: width of long transaction count
+   * 1: delimiter(/)
+   * 4: width of long transaction time
+   * output example :
+   *    [long transaction count]/[long transaction time]
+   *    10/60.0
+   * */
+  {FIELD_LONG_TRANSACTION, 5 + 1 + 4, "LONG-T", FIELD_RIGHT_ALIGN},
+  /*
+   * 5: width of long query count
+   * 1: delimiter(/)
+   * 4: width of long query time
+   * output example :
+   *    [long query count]/[long query time]
+   *    10/60.0
+   * */
+  {FIELD_LONG_QUERY, 5 + 1 + 4, "LONG-Q", FIELD_RIGHT_ALIGN},
+  {FIELD_ERROR_QUERIES, 13, "ERR-Q", FIELD_RIGHT_ALIGN},
+  {FIELD_UNIQUE_ERROR_QUERIES, 13, "UNIQUE-ERR-Q", FIELD_RIGHT_ALIGN},
+  {FIELD_CANCELED, 10, "CANCELED", FIELD_RIGHT_ALIGN},
+  {FIELD_ACCESS_MODE, 13, "ACCESS_MODE", FIELD_RIGHT_ALIGN},
+  {FIELD_SQL_LOG, 9, "SQL_LOG", FIELD_RIGHT_ALIGN},
+  {FIELD_NUMBER_OF_CONNECTION, 9, "#CONNECT", FIELD_RIGHT_ALIGN},
+  {FIELD_PROXY_ID, 8, "PROXY_ID", FIELD_RIGHT_ALIGN},
+  {FIELD_SHARD_ID, 8, "SHARD_ID", FIELD_RIGHT_ALIGN},
+  {FIELD_ID, 5, "ID", FIELD_RIGHT_ALIGN},
+  {FIELD_LQS, 10, "LQS", FIELD_RIGHT_ALIGN},
+  {FIELD_STATUS, 12, "STATUS", FIELD_LEFT_ALIGN},
+  {FIELD_LAST_ACCESS_TIME, 19, "LAST ACCESS TIME", FIELD_RIGHT_ALIGN},
+  {FIELD_DB_NAME, 16, "DB", FIELD_RIGHT_ALIGN},
+  {FIELD_HOST, 16, "HOST", FIELD_RIGHT_ALIGN},
+  {FIELD_LAST_CONNECT_TIME, 19, "LAST CONNECT TIME", FIELD_RIGHT_ALIGN},
+  {FIELD_CLIENT_IP, 15, "CLIENT IP", FIELD_RIGHT_ALIGN},
+  {FIELD_SQL_LOG_MODE, 15, "SQL_LOG_MODE", FIELD_RIGHT_ALIGN},
+  {FIELD_TRANSACTION_STIME, 19, "TRANSACTION STIME", FIELD_RIGHT_ALIGN},
+  {FIELD_CONNECT, 9, "#CONNECT", FIELD_RIGHT_ALIGN},
+  {FIELD_RESTART, 9, "#RESTART", FIELD_RIGHT_ALIGN}
+};
+
 /* structure for appl monitoring */
 typedef struct appl_monitoring_item APPL_MONITORING_ITEM;
 struct appl_monitoring_item
@@ -87,27 +238,29 @@ struct appl_monitoring_item
 typedef struct br_monitoring_item BR_MONITORING_ITEM;
 struct br_monitoring_item
 {
-  INT64 num_tx;
-  INT64 num_qx;
-  INT64 num_lt;
-  INT64 num_lq;
-  INT64 num_eq;
-  INT64 num_interrupt;
-  INT64 tps;
-  INT64 qps;
-  INT64 lts;
-  INT64 lqs;
-  INT64 eqs;
-  INT64 its;
+  UINT64 num_tx;
+  UINT64 num_qx;
+  UINT64 num_lt;
+  UINT64 num_lq;
+  UINT64 num_eq;
+  UINT64 num_eq_ui;
+  UINT64 num_interrupt;
+  UINT64 tps;
+  UINT64 qps;
+  UINT64 lts;
+  UINT64 lqs;
+  UINT64 eqs_ui;
+  UINT64 eqs;
+  UINT64 its;
 #if defined(CUBRID_SHARD)
-  INT64 num_hnqx;
-  INT64 num_hkqx;
-  INT64 num_hiqx;
-  INT64 num_haqx;
-  INT64 hnqps;
-  INT64 hkqps;
-  INT64 hiqps;
-  INT64 haqps;
+  UINT64 num_hnqx;
+  UINT64 num_hkqx;
+  UINT64 num_hiqx;
+  UINT64 num_haqx;
+  UINT64 hnqps;
+  UINT64 hkqps;
+  UINT64 hiqps;
+  UINT64 haqps;
 #endif				/* CUBRID_SHARD */
 };
 
@@ -150,6 +303,15 @@ static int br_monitor (char *br_vector);
 static void time_format (int t, char *time_str);
 #endif
 static void print_header (bool use_pdh_flag);
+static int print_title (char *buf_p, int buf_offset, FIELD_NAME name,
+			char *new_title_p);
+static void print_value (FIELD_NAME name, void *value, FIELD_TYPE type);
+static char *get_access_mode_string (T_ACCESS_MODE_VALUE mode);
+static char *get_sql_log_mode_string (T_SQL_LOG_MODE_VALUE mode);
+static char *get_status_string (T_APPL_SERVER_INFO * as_info_p,
+				char appl_server);
+static void get_cpu_usage_string (char *buf_p, float usage);
+
 
 #if defined(WINDOWS)
 static void move (int x, int y);
@@ -173,9 +335,7 @@ static int last_access_sec = 0;
 static bool tty_mode = false;
 static bool full_info_flag = false;
 static int state_interval = 1;
-
-static int max_col_len = 0;
-
+static char service_filter_value = SERVICE_UNKNOWN;
 #if defined(CUBRID_SHARD)
 static bool metadata_monitor_flag = false;
 static bool client_monitor_flag = false;
@@ -450,6 +610,7 @@ print_usage (void)
   printf ("\t-c display client information\n");
 #else
   printf ("broker_monitor [-b] [-q] [-t] [-s <sec>] [-f] [<expr>]\n");
+  printf ("\t<expr> part of broker name or SERVICE=[ON|OFF]\n");
   printf ("\t-q display job queue\n");
 #endif /* CUBRID_SHARD */
   printf ("\t-b brief mode (show broker info)\n");
@@ -479,6 +640,7 @@ get_args (int argc, char *argv[], char *br_vector)
   last_access_sec = 0;
   full_info_flag = false;
   state_interval = 1;
+  service_filter_value = SERVICE_UNKNOWN;
   while ((c = getopt (argc, argv, optchars)) != EOF)
     {
       switch (c)
@@ -527,6 +689,31 @@ get_args (int argc, char *argv[], char *br_vector)
 
   for (; optind < argc; optind++)
     {
+      if (br_name_opt_flag == false)
+	{
+	  if (strncasecmp (argv[optind], "SERVICE=", strlen ("SERVICE=")) ==
+	      0)
+	    {
+	      char *value_p;
+	      value_p = argv[optind] + strlen ("SERVICE=");
+	      if (strcasecmp (value_p, "ON") == 0)
+		{
+		  service_filter_value = SERVICE_ON;
+		  break;
+		}
+	      else if (strcasecmp (value_p, "OFF") == 0)
+		{
+		  service_filter_value = SERVICE_OFF;
+		  break;
+		}
+	      else
+		{
+		  print_usage ();
+		  return -1;
+		}
+	    }
+	}
+
       br_name_opt_flag = true;
 #if !defined(WINDOWS)
       if (regcomp (&re, argv[optind], 0) != 0)
@@ -627,14 +814,19 @@ appl_info_display (T_SHM_APPL_SERVER * shm_appl,
 		   double elapsed_time)
 {
   struct tm cur_tm;
-  INT64 qps, lqs;
+  UINT64 qps;
+  UINT64 lqs;
   int col_len;
-  char line_buf[1024];
   time_t last_access_time, last_connect_time;
 #if !defined (CUBRID_SHARD)
   time_t tran_start_time;
   char ip_str[16];
 #endif /* CUBRID_SHARD */
+
+  int as_id;
+  int proxy_id;
+  int psize;
+  char buf[256];
 
   if (as_info_p->service_flag != SERVICE_ON)
     {
@@ -648,28 +840,34 @@ appl_info_display (T_SHM_APPL_SERVER * shm_appl,
 	{
 	  return;
 	}
-    }
-  col_len = 0;
-#if defined(CUBRID_SHARD)
-  col_len += sprintf (line_buf + col_len, "%8d ", proxy_index + 1);
-  col_len += sprintf (line_buf + col_len, "%8d ", shard_index);
-  col_len += sprintf (line_buf + col_len, "%8d ", as_index + 1);
-#else
-  col_len += sprintf (line_buf + col_len, "%2d ", as_index + 1);
-#endif /* CUBRID_SHARD */
-  col_len += sprintf (line_buf + col_len, "%5d ", as_info_p->pid);
 
+      if (as_info_p->uts_status == UTS_STATUS_BUSY
+	  && IS_APPL_SERVER_TYPE_CAS (shm_br->br_info[br_index].appl_server)
+	  && as_info_p->con_status == CON_STATUS_OUT_TRAN)
+	{
+	  return;
+	}
+    }
+
+  col_len = 0;
+  as_id = as_index + 1;
+#if defined(CUBRID_SHARD)
+  proxy_id = proxy_index + 1;
+  print_value (FIELD_PROXY_ID, &proxy_id, FIELD_T_INT);
+  print_value (FIELD_SHARD_ID, &shard_index, FIELD_T_INT);
+  print_value (FIELD_ID, &as_id, FIELD_T_INT);
+#else
+  print_value (FIELD_ID, &as_id, FIELD_T_INT);
+#endif /* CUBRID_SHARD */
+  print_value (FIELD_PID, &as_info_p->pid, FIELD_T_INT);
   if (elapsed_time > 0)
     {
       qps = (as_info_p->num_queries_processed -
 	     appl_mnt_old->num_query_processed) / elapsed_time;
       lqs = (as_info_p->num_long_queries -
 	     appl_mnt_old->num_long_query) / elapsed_time;
-
       appl_mnt_old->num_query_processed = as_info_p->num_queries_processed;
-
       appl_mnt_old->num_long_query = as_info_p->num_long_queries;
-
       appl_mnt_old->qps = qps;
       appl_mnt_old->lqs = lqs;
     }
@@ -679,206 +877,98 @@ appl_info_display (T_SHM_APPL_SERVER * shm_appl,
       lqs = appl_mnt_old->lqs;
     }
 
-  col_len += sprintf (line_buf + col_len, "%5ld ", qps);
-  col_len += sprintf (line_buf + col_len, "%5ld ", lqs);
-
+  print_value (FIELD_QPS, &qps, FIELD_T_UINT64);
+  print_value (FIELD_LQS, &lqs, FIELD_T_UINT64);
 #if defined(WINDOWS)
-  col_len += sprintf (line_buf + col_len, "%5d ", as_info_p->as_port);
+  print_value (FIELD_PORT, &(as_info_p->as_port), FIELD_T_INT);
 #endif
-
 #if defined(WINDOWS)
   if (shm_appl->use_pdh_flag == TRUE)
     {
-      col_len += sprintf (line_buf + col_len, "%5d ", as_info_p->pdh_workset);
+      print_value (FIELD_PSIZE, &(as_info_p->pdh_workset), FIELD_T_INT);
     }
 #else
-  col_len += sprintf (line_buf + col_len, "%5d ", getsize (as_info_p->pid));
+  psize = getsize (as_info_p->pid);
+  print_value (FIELD_PSIZE, &psize, FIELD_T_INT);
 #endif
-  if (as_info_p->uts_status == UTS_STATUS_BUSY)
-    {
-      if (IS_APPL_SERVER_TYPE_CAS (shm_br->br_info[br_index].appl_server))
-	{
-	  if (as_info_p->con_status == CON_STATUS_OUT_TRAN)
-	    {
-	      col_len += sprintf (line_buf + col_len, "%-12s ", "CLOSE WAIT");
-	    }
-	  else if (as_info_p->log_msg[0] == '\0')
-	    {
-	      col_len +=
-		sprintf (line_buf + col_len, "%-12s ", "CLIENT WAIT");
-	    }
-	  else
-	    {
-	      col_len += sprintf (line_buf + col_len, "%-12s ", "BUSY");
-	    }
-	}
-      else
-	{
-	  col_len += sprintf (line_buf + col_len, "%-12s ", "BUSY");
-	}
-    }
-#if defined(WINDOWS)
-  else if (as_info_p->uts_status == UTS_STATUS_BUSY_WAIT)
-    {
-      col_len += sprintf (line_buf + col_len, "%-12s ", "BUSY");
-    }
-#endif
-  else if (as_info_p->uts_status == UTS_STATUS_RESTART)
-    {
-      col_len += sprintf (line_buf + col_len, "%-12s ", "INITIALIZE");
-    }
-#if defined(CUBRID_SHARD)
-  else if (as_info_p->uts_status == UTS_STATUS_CON_WAIT)
-    {
-      col_len += sprintf (line_buf + col_len, "%-12s ", "CON WAIT");
-    }
-#endif
-  else
-    {
-      col_len += sprintf (line_buf + col_len, "%-12s ", "IDLE");
-    }
+  print_value (FIELD_STATUS,
+	       get_status_string (as_info_p,
+				  shm_br->br_info[br_index].appl_server),
+	       FIELD_T_STRING);
 
 #ifdef GET_PSINFO
   get_psinfo (as_info_p->pid, &proc_info);
-  col_len += sprintf (line_buf + col_len, "%5.2f", proc_info.pcpu);
+
+  get_cpu_usage_string (buf, proc_info.pcpu);
+  print_value (FIELD_CPU_USAGE, buf, FIELD_T_STRING);
+
   time_format (proc_info.cpu_time, time_str);
-  col_len += sprintf (line_buf + col_len, "%7s ", time_str);
+  print_value (FIELD_CPU_TIME, time_str, FIELD_T_STRING);
 #elif WINDOWS
   if (shm_appl->use_pdh_flag == TRUE)
     {
-      float pct_cpu;
-      pct_cpu = as_info_p->pdh_pct_cpu;
-      if (pct_cpu >= 0)
-	{
-	  col_len += sprintf (line_buf + col_len, "%5.2f ", pct_cpu);
-	}
-      else
-	{
-	  col_len += sprintf (line_buf + col_len, "%5s ", " - ");
-	}
+      get_cpu_usage_string (buf, as_info_p->pdh_pct_cpu);
+      print_value (FIELD_CPU_USAGE, buf, FIELD_T_STRING);
     }
 #endif
 
   if (full_info_flag)
     {
-      char sql_log_mode_string[16];
-
-      last_access_time = as_info_p->last_access_time;
-      localtime_r (&last_access_time, &cur_tm);
-      cur_tm.tm_year += 1900;
-
-      col_len += sprintf (line_buf + col_len,
-			  "%02d/%02d/%02d %02d:%02d:%02d ",
-			  cur_tm.tm_year, cur_tm.tm_mon + 1,
-			  cur_tm.tm_mday, cur_tm.tm_hour,
-			  cur_tm.tm_min, cur_tm.tm_sec);
-
+      print_value (FIELD_LAST_ACCESS_TIME, &(as_info_p->last_access_time),
+		   FIELD_T_TIME);
       if (as_info_p->database_name[0] != '\0')
 	{
-	  col_len +=
-	    sprintf (line_buf + col_len, "%16.16s ",
-		     as_info_p->database_name);
-	  col_len +=
-	    sprintf (line_buf + col_len, "%16.16s ",
-		     as_info_p->database_host);
-	  last_connect_time = as_info_p->last_connect_time;
-	  localtime_r (&last_connect_time, &cur_tm);
-	  cur_tm.tm_year += 1900;
-
-	  col_len += sprintf (line_buf + col_len,
-			      "%02d/%02d/%02d %02d:%02d:%02d ",
-			      cur_tm.tm_year,
-			      cur_tm.tm_mon + 1,
-			      cur_tm.tm_mday,
-			      cur_tm.tm_hour, cur_tm.tm_min, cur_tm.tm_sec);
+	  print_value (FIELD_DB_NAME, as_info_p->database_name,
+		       FIELD_T_STRING);
+	  print_value (FIELD_HOST, as_info_p->database_host, FIELD_T_STRING);
+	  print_value (FIELD_LAST_CONNECT_TIME,
+		       &(as_info_p->last_connect_time), FIELD_T_TIME);
 	}
       else
 	{
-	  col_len +=
-	    sprintf (line_buf + col_len, "%16c %16c %19c ", '-', '-', '-');
+	  print_value (FIELD_DB_NAME, (char *) "-", FIELD_T_STRING);
+	  print_value (FIELD_HOST, (char *) "-", FIELD_T_STRING);
+	  print_value (FIELD_LAST_CONNECT_TIME, (char *) "-", FIELD_T_STRING);
 	}
 
 #if !defined(CUBRID_SHARD)
-      col_len +=
-	sprintf (line_buf + col_len, "%15.15s ",
-		 ut_get_ipv4_string (ip_str, sizeof (ip_str),
-				     as_info_p->cas_clt_ip));
+      print_value (FIELD_CLIENT_IP,
+		   ut_get_ipv4_string (ip_str, sizeof (ip_str),
+				       as_info_p->cas_clt_ip),
+		   FIELD_T_STRING);
 #endif /* !CUBRID_SHARD */
-
-      strncpy (sql_log_mode_string, "-", sizeof (sql_log_mode_string));
-
       if (as_info_p->cur_sql_log_mode != shm_appl->sql_log_mode)
 	{
-	  if (as_info_p->cur_sql_log_mode == SQL_LOG_MODE_NONE)
-	    {
-	      strncpy (sql_log_mode_string, "NONE",
-		       sizeof (sql_log_mode_string));
-	    }
-	  else if (as_info_p->cur_sql_log_mode == SQL_LOG_MODE_ERROR)
-	    {
-	      strncpy (sql_log_mode_string, "ERROR",
-		       sizeof (sql_log_mode_string));
-	    }
-	  else if (as_info_p->cur_sql_log_mode == SQL_LOG_MODE_TIMEOUT)
-	    {
-	      strncpy (sql_log_mode_string, "TIMEOUT",
-		       sizeof (sql_log_mode_string));
-	    }
-	  else if (as_info_p->cur_sql_log_mode == SQL_LOG_MODE_NOTICE)
-	    {
-	      strncpy (sql_log_mode_string, "NOTICE",
-		       sizeof (sql_log_mode_string));
-	    }
-	  else if (as_info_p->cur_sql_log_mode == SQL_LOG_MODE_ALL)
-	    {
-	      strncpy (sql_log_mode_string, "ALL",
-		       sizeof (sql_log_mode_string));
-	    }
+	  print_value (FIELD_SQL_LOG_MODE,
+		       get_sql_log_mode_string (as_info_p->cur_sql_log_mode),
+		       FIELD_T_STRING);
 	}
-
-      col_len +=
-	sprintf (line_buf + col_len, "%15.15s ", sql_log_mode_string);
+      else
+	{
+	  print_value (FIELD_SQL_LOG_MODE, (char *) "-", FIELD_T_STRING);
+	}
 
 #if !defined(CUBRID_SHARD)
       tran_start_time = as_info_p->transaction_start_time;
       if (tran_start_time != (time_t) 0)
 	{
-	  localtime_r (&tran_start_time, &cur_tm);
-	  cur_tm.tm_year += 1900;
-
-	  col_len +=
-	    sprintf (line_buf + col_len,
-		     "%02d/%02d/%02d %02d:%02d:%02d ",
-		     cur_tm.tm_year, cur_tm.tm_mon + 1,
-		     cur_tm.tm_mday, cur_tm.tm_hour,
-		     cur_tm.tm_min, cur_tm.tm_sec);
+	  print_value (FIELD_TRANSACTION_STIME, &tran_start_time,
+		       FIELD_T_TIME);
 	}
       else
 	{
-	  col_len += sprintf (line_buf + col_len, "%19c ", '-');
+	  print_value (FIELD_TRANSACTION_STIME, (char *) "-", FIELD_T_STRING);
 	}
-      col_len +=
-	sprintf (line_buf + col_len, "%9d ",
-		 (int) as_info_p->num_connect_requests);
-      col_len +=
-	sprintf (line_buf + col_len, "%9d ", (int) as_info_p->num_restarts);
+      print_value (FIELD_CONNECT, &(as_info_p->num_connect_requests),
+		   FIELD_T_INT);
+      print_value (FIELD_RESTART, &(as_info_p->num_restarts), FIELD_T_INT);
 #endif /* !CUBRID_SHARD */
     }
 
-  if (col_len >= max_col_len)
-    {
-      max_col_len = col_len;
-    }
-  else
-    {
-      sprintf (line_buf + col_len, "%*c", max_col_len - col_len, ' ');
-    }
-  str_out ("%s", line_buf);
   print_newline ();
   if (as_info_p->uts_status == UTS_STATUS_BUSY)
     {
-      sprintf (line_buf, "SQL: %s", as_info_p->log_msg);
-      str_out ("%s", line_buf);
+      str_out ("SQL: %s", as_info_p->log_msg);
       print_newline ();
     }
 }
@@ -924,7 +1014,7 @@ appl_monitor (char *br_vector)
 	}
       for (i = 0; i < shm_br->num_broker; i++)
 	{
-	  if (shm_br->br_info[i].service_flag == ON)
+	  if (shm_br->br_info[i].service_flag == SERVICE_ON)
 	    {
 	      shm_as_cp =
 		(char *) uw_shm_open (shm_br->br_info[i].appl_server_shm_id,
@@ -995,11 +1085,19 @@ appl_monitor (char *br_vector)
     {
 
       if (br_vector[i] == 0)
-	continue;
+	{
+	  continue;
+	}
 
-      str_out ("%% %s ", shm_br->br_info[i].name);
+      if (service_filter_value != SERVICE_UNKNOWN
+	  && service_filter_value != shm_br->br_info[i].service_flag)
+	{
+	  continue;
+	}
 
-      if (shm_br->br_info[i].service_flag == ON)
+      str_out ("%% %s", shm_br->br_info[i].name);
+
+      if (shm_br->br_info[i].service_flag == SERVICE_ON)
 	{
 #if defined(CUBRID_SHARD)
 	  shm_as_cp =
@@ -1008,9 +1106,11 @@ appl_monitor (char *br_vector)
 	  shm_appl = shard_shm_get_appl_server (shm_as_cp);
 	  if (shm_as_cp == NULL || shm_appl == NULL)
 #else
-	  shm_appl = (T_SHM_APPL_SERVER *)
-	    uw_shm_open (shm_br->br_info[i].appl_server_shm_id,
-			 SHM_APPL_SERVER, SHM_MODE_MONITOR);
+	  shm_appl =
+	    (T_SHM_APPL_SERVER *) uw_shm_open (shm_br->br_info[i].
+					       appl_server_shm_id,
+					       SHM_APPL_SERVER,
+					       SHM_MODE_MONITOR);
 	  if (shm_appl == NULL)
 #endif /* CUBRID_SHARD */
 	    {
@@ -1022,133 +1122,8 @@ appl_monitor (char *br_vector)
 	      if (shm_appl->suspend_mode != SUSPEND_NONE)
 		{
 		  str_out ("%s", " SUSPENDED");
-		  print_newline ();
-		  str_out ("%s", "  ");
-		}
-	      str_out (" - %s ", shm_appl->appl_server_name);
-	      str_out ("[%d,", shm_br->br_info[i].pid);
-	      str_out ("%d] ", shm_br->br_info[i].port);
-#if !defined(CUBRID_SHARD)
-	      str_out ("%s ", shm_br->br_info[i].access_log_file);
-#endif /* CUBRID_SHARD */
-	      str_out ("%s ", shm_br->br_info[i].error_log_file);
-	      print_newline ();
-
-	      if (display_job_queue == true)
-		{
-		  memcpy (job_queue, shm_appl->job_queue,
-			  sizeof (T_MAX_HEAP_NODE) * (JOB_QUEUE_MAX_SIZE +
-						      1));
-		  str_out (" JOB QUEUE:%d", job_queue[0].id);
-		}
-	      else
-		{
-		  str_out (" JOB QUEUE:%d", shm_appl->job_queue[0].id);
-		}
-
-	      if (shm_br->br_info[i].auto_add_appl_server == ON)
-		{
-		  str_out (", AUTO_ADD_APPL_SERVER:%s", "ON");
-		}
-	      else
-		{
-		  str_out (", AUTO_ADD_APPL_SERVER:%s", "OFF");
-		}
-
-	      if (shm_appl->sql_log_mode == SQL_LOG_MODE_NONE)
-		{
-		  str_out (", SQL_LOG_MODE:%s:%d", "NONE",
-			   shm_appl->sql_log_max_size);
-		}
-	      else if (shm_appl->sql_log_mode == SQL_LOG_MODE_ERROR)
-		{
-		  str_out (", SQL_LOG_MODE:%s:%d", "ERROR",
-			   shm_appl->sql_log_max_size);
-		}
-	      else if (shm_appl->sql_log_mode == SQL_LOG_MODE_TIMEOUT)
-		{
-		  str_out (", SQL_LOG_MODE:%s:%d", "TIMEOUT",
-			   shm_appl->sql_log_max_size);
-		}
-	      else if (shm_appl->sql_log_mode == SQL_LOG_MODE_NOTICE)
-		{
-		  str_out (", SQL_LOG_MODE:%s:%d", "NOTICE",
-			   shm_appl->sql_log_max_size);
-		}
-	      else if (shm_appl->sql_log_mode == SQL_LOG_MODE_ALL)
-		{
-		  str_out (", SQL_LOG_MODE:%s:%d", "ALL",
-			   shm_appl->sql_log_max_size);
-		}
-
-	      if (shm_br->br_info[i].slow_log_mode == SLOW_LOG_MODE_ON)
-		{
-		  str_out (", SLOW_LOG:%s", "ON");
-		}
-	      else
-		{
-		  str_out (", SLOW_LOG:%s", "OFF");
-		}
-
-	      print_newline ();
-
-	      str_out (" LONG_TRANSACTION_TIME:%.2f",
-		       (shm_appl->long_transaction_time / 1000.0));
-	      str_out (", LONG_QUERY_TIME:%.2f",
-		       (shm_appl->long_query_time / 1000.0));
-
-	      if (IS_APPL_SERVER_TYPE_CAS (shm_br->br_info[i].appl_server))
-		{
-		  str_out (", SESSION_TIMEOUT:%d",
-			   shm_br->br_info[i].session_timeout);
 		}
 	      print_newline ();
-
-	      if (shm_appl->keep_connection == KEEP_CON_ON)
-		{
-		  str_out (" KEEP_CONNECTION:%s", "ON");
-		}
-	      else if (shm_appl->keep_connection == KEEP_CON_AUTO)
-		{
-		  str_out (" KEEP_CONNECTION:%s", "AUTO");
-		}
-
-	      if (shm_appl->access_mode == READ_WRITE_ACCESS_MODE)
-		{
-		  str_out (", ACCESS_MODE:%s", "RW");
-		}
-	      else if (shm_appl->access_mode == READ_ONLY_ACCESS_MODE)
-		{
-		  str_out (", ACCESS_MODE:%s", "RO");
-		}
-	      else if (shm_appl->access_mode == SLAVE_ONLY_ACCESS_MODE)
-		{
-		  str_out (", ACCESS_MODE:%s", "SO");
-		}
-	      str_out (", MAX_QUERY_TIMEOUT:%d", shm_appl->query_timeout);
-
-	      print_newline ();
-
-	      if (shm_br->br_info[i].monitor_hang_flag == ON)
-		{
-		  str_out (" MONITOR_HANG:%s", "ON");
-		}
-	      else
-		{
-		  str_out (" MONITOR_HANG:%s", "OFF");
-		}
-
-	      if (shm_br->br_info[i].reject_client_flag == ON)
-		{
-		  str_out (", REJECT_CLIENTS:%s", "YES");
-		}
-	      else
-		{
-		  str_out (", REJECT_CLIENTS:%s", "NO");
-		}
-
-	      print_newline ();
-
 #if defined (WINDOWS)
 	      print_header (shm_appl->use_pdh_flag);
 #else
@@ -1225,7 +1200,7 @@ appl_monitor (char *br_vector)
 
       else
 	{			/* service_flag == OFF */
-	  str_out ("%s", "OFF");
+	  str_out ("%c%s", FIELD_DELIMITER, "OFF");
 	  print_newline ();
 	  print_newline ();
 	}
@@ -1243,9 +1218,10 @@ static int
 br_monitor (char *br_vector)
 {
   T_SHM_APPL_SERVER *shm_appl;
-  int i, j, num_req;
+  int i, j;
   char buf[1024];
-  int buf_len;
+  UINT64 num_connect;
+  int buf_offset;
 #ifdef GET_PSINFO
   T_PSINFO proc_info;
   char time_str[32];
@@ -1253,11 +1229,20 @@ br_monitor (char *br_vector)
   static BR_MONITORING_ITEM *br_mnt_olds = NULL;
   static time_t time_old;
   time_t time_cur;
-  INT64 num_tx_cur = 0, num_qx_cur = 0, num_interrupts_cur = 0;
-  INT64 num_lt_cur = 0, num_lq_cur = 0, num_eq_cur = 0;
-  INT64 tps = 0, qps = 0, lts = 0, lqs = 0, eqs = 0, its = 0;
+  UINT64 num_req;
+  UINT64 num_tx_cur = 0, num_qx_cur = 0, num_interrupts_cur = 0;
+  UINT64 num_lt_cur = 0, num_lq_cur = 0, num_eq_cur = 0;
+  UINT64 num_eq_ui_cur = 0;
+  UINT64 lts = 0, lqs = 0, eqs = 0, its = 0;
+  UINT64 eqs_ui = 0;
+  UINT64 tps = 0, qps = 0;
   static unsigned int tty_print_header = 0;
   double elapsed_time;
+  UINT64 num_select_queries = 0;
+  UINT64 num_insert_queries = 0;
+  UINT64 num_update_queries = 0;
+  UINT64 num_delete_queries = 0;
+  UINT64 num_other_queries = 0;
 #if defined(CUBRID_SHARD)
   char *shm_as_cp = NULL;
 
@@ -1268,65 +1253,95 @@ br_monitor (char *br_vector)
   INT64 num_hnqx_cur = 0, num_hkqx_cur = 0, num_hiqx_cur = 0, num_haqx_cur =
     0;
   INT64 hnqps = 0, hkqps = 0, hiqps = 0, haqps = 0;
+  INT64 total_kqps = 0;
 #endif /* CUBRID_SHARD */
 
   T_APPL_SERVER_INFO *as_info_p = NULL;
 
-  buf_len = 0;
-  buf_len += sprintf (buf + buf_len, "  %-12s", "NAME");
-  buf_len += sprintf (buf + buf_len, "%6s", "PID");
+  buf_offset = 0;
+  buf_offset = print_title (buf, buf_offset, FIELD_BROKER_NAME, NULL);
+  buf_offset = print_title (buf, buf_offset, FIELD_PID, NULL);
   if (full_info_flag)
     {
-      buf_len += sprintf (buf + buf_len, "%7s", "PSIZE");
+      buf_offset = print_title (buf, buf_offset, FIELD_PSIZE, NULL);
     }
-  buf_len += sprintf (buf + buf_len, "%6s", "PORT");
+  buf_offset = print_title (buf, buf_offset, FIELD_PORT, NULL);
 #if defined(CUBRID_SHARD)
-  buf_len += sprintf (buf + buf_len, "%10s", "Active-P");
-  buf_len += sprintf (buf + buf_len, "%10s", "Active-C");
+  buf_offset = print_title (buf, buf_offset, FIELD_ACTIVE_P, NULL);
+  buf_offset = print_title (buf, buf_offset, FIELD_ACTIVE_C, NULL);
 #else
   if (full_info_flag)
     {
-      buf_len +=
-	sprintf (buf + buf_len, "  AS(T   W   B %2ds-W %2ds-B)",
-		 state_interval, state_interval);
+      char field_title_with_interval[256];
+
+      buf_offset = print_title (buf, buf_offset,
+				FIELD_APPL_SERVER_NUM_TOTAL, (char *) "AS(T");
+      buf_offset = print_title (buf, buf_offset,
+				FIELD_APPL_SERVER_NUM_CLIENT_WAIT, NULL);
+      buf_offset = print_title (buf, buf_offset,
+				FIELD_APPL_SERVER_NUM_BUSY, NULL);
+      sprintf (field_title_with_interval, "%d%s", state_interval, "s-W");
+      buf_offset = print_title (buf, buf_offset,
+				FIELD_APPL_SERVER_NUM_CLIENT_WAIT_IN_SEC,
+				field_title_with_interval);
+      sprintf (field_title_with_interval, "%d%s", state_interval, "s-B)");
+      buf_offset = print_title (buf, buf_offset,
+				FIELD_APPL_SERVER_NUM_BUSY_IN_SEC,
+				field_title_with_interval);
     }
   else
     {
-      buf_len += sprintf (buf + buf_len, "%4s", "AS");
+      buf_offset = print_title (buf, buf_offset,
+				FIELD_APPL_SERVER_NUM_TOTAL, (char *) "AS");
     }
 
-  buf_len += sprintf (buf + buf_len, "%4s", "JQ");
+  buf_offset = print_title (buf, buf_offset, FIELD_JOB_QUEUE_ID, NULL);
 #endif /* CUBRID_SHARD */
 
 #ifdef GET_PSINFO
-  buf_len += sprintf (buf + buf_len, "%4s", "THR");
-  buf_len += sprintf (buf + buf_len, "%6s", "CPU");
-  buf_len += sprintf (buf + buf_len, "%6s", "TIME");
+  buf_offset = print_title (buf, buf_offset, FIELD_THREAD, NULL);
+  buf_offset = print_title (buf, buf_offset, FIELD_CPU_USAGE, NULL);
+  buf_offset = print_title (buf, buf_offset, FIELD_CPU_TIME, NULL);
 #endif
-  buf_len += sprintf (buf + buf_len, "%9s", "REQ");
-  buf_len += sprintf (buf + buf_len, "%5s", "TPS");
-  buf_len += sprintf (buf + buf_len, "%5s", "QPS");
+
+  buf_offset = print_title (buf, buf_offset, FIELD_TPS, NULL);
+  buf_offset = print_title (buf, buf_offset, FIELD_QPS, NULL);
+  if (full_info_flag == false)
+    {
+      buf_offset = print_title (buf, buf_offset, FIELD_NUM_OF_SELECT_QUERIES,
+				NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_NUM_OF_INSERT_QUERIES,
+				NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_NUM_OF_UPDATE_QUERIES,
+				NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_NUM_OF_DELETE_QUERIES,
+				NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_NUM_OF_OTHERS_QUERIES,
+				NULL);
+    }
 #if defined(CUBRID_SHARD)
-  buf_len += sprintf (buf + buf_len, "%7s", "K-QPS");
+  buf_offset = print_title (buf, buf_offset, FIELD_K_QPS, NULL);
   if (full_info_flag)
     {
-      buf_len += sprintf (buf + buf_len, "%7s", "(H-KEY");
-      buf_len += sprintf (buf + buf_len, "%7s", "H-ID");
-      buf_len += sprintf (buf + buf_len, "%7s", "H-ALL)");
+      buf_offset = print_title (buf, buf_offset, FIELD_H_KEY, NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_H_ID, NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_H_ALL, NULL);
     }
-  buf_len += sprintf (buf + buf_len, "%7s", "NK-QPS");
+  buf_offset = print_title (buf, buf_offset, FIELD_NK_QPS, NULL);
 #endif /* CUBRID_SHARD */
-
-  buf_len += sprintf (buf + buf_len, "%10s", "LONG-T");
-  buf_len += sprintf (buf + buf_len, "%10s", "LONG-Q");
-  buf_len += sprintf (buf + buf_len, "%7s", "ERR-Q");
-
+  buf_offset = print_title (buf, buf_offset, FIELD_LONG_TRANSACTION, NULL);
+  buf_offset = print_title (buf, buf_offset, FIELD_LONG_QUERY, NULL);
+  buf_offset = print_title (buf, buf_offset, FIELD_ERROR_QUERIES, NULL);
+  buf_offset = print_title (buf, buf_offset, FIELD_UNIQUE_ERROR_QUERIES,
+			    NULL);
   if (full_info_flag)
     {
-      buf_len += sprintf (buf + buf_len, "%10s", "CANCELED");
-      buf_len += sprintf (buf + buf_len, "%13s", "ACCESS_MODE");
-      buf_len += sprintf (buf + buf_len, "%9s", "SQL_LOG");
+      buf_offset = print_title (buf, buf_offset, FIELD_CANCELED, NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_ACCESS_MODE, NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_SQL_LOG, NULL);
     }
+  buf_offset = print_title (buf, buf_offset, FIELD_NUMBER_OF_CONNECTION,
+			    NULL);
 
   if (tty_mode == false || (tty_print_header++ % 20 == 0))
     {
@@ -1361,25 +1376,51 @@ br_monitor (char *br_vector)
       int proxy_index, shard_index, cas_index, tot_proxy, tot_cas;
 #endif /* CUBRID_SHARD */
       time_t cur_time;
-
+      char shortened_broker_name[FIELD_WIDTH_BROKER_NAME + 1];
+      num_select_queries = 0;
+      num_insert_queries = 0;
+      num_update_queries = 0;
+      num_delete_queries = 0;
+      num_other_queries = 0;
       if (br_vector[i] == 0)
-	continue;
+	{
+	  continue;
+	}
 
-      str_out ("* %-12s", shm_br->br_info[i].name);
+      if (service_filter_value != SERVICE_UNKNOWN
+	  && service_filter_value != shm_br->br_info[i].service_flag)
+	{
+	  continue;
+	}
 
-      if (shm_br->br_info[i].service_flag == ON)
+      if (strlen (shm_br->br_info[i].name) <= FIELD_WIDTH_BROKER_NAME)
+	{
+	  sprintf (shortened_broker_name, "%s", shm_br->br_info[i].name);
+	}
+      else
+	{
+	  sprintf (shortened_broker_name, "%.*s...",
+		   FIELD_WIDTH_BROKER_NAME - 3, shm_br->br_info[i].name);
+	}
+
+      str_out ("*%c", FIELD_DELIMITER);
+      print_value (FIELD_BROKER_NAME, shortened_broker_name, FIELD_T_STRING);
+      if (shm_br->br_info[i].service_flag == SERVICE_ON)
 	{
 #if defined(CUBRID_SHARD)
 	  shm_as_cp =
-	    (char *) uw_shm_open (shm_br->br_info[i].appl_server_shm_id,
+	    (char *) uw_shm_open (shm_br->br_info[i].
+				  appl_server_shm_id,
 				  SHM_APPL_SERVER, SHM_MODE_MONITOR);
 	  shm_appl = shard_shm_get_appl_server (shm_as_cp);
 	  if (shm_as_cp == NULL || shm_appl == NULL)
 #else
-	  shm_appl = (T_SHM_APPL_SERVER *)
-	    uw_shm_open (shm_br->br_info[i].appl_server_shm_id,
-			 SHM_APPL_SERVER, SHM_MODE_MONITOR);
-
+	  shm_appl =
+	    (T_SHM_APPL_SERVER *) uw_shm_open (shm_br->
+					       br_info[i].
+					       appl_server_shm_id,
+					       SHM_APPL_SERVER,
+					       SHM_MODE_MONITOR);
 	  if (shm_appl == NULL)
 #endif /* CUBRID_SHARD */
 	    {
@@ -1393,20 +1434,21 @@ br_monitor (char *br_vector)
 	      num_client_wait_nsec = 0;
 	      num_busy = 0;
 	      num_busy_nsec = 0;
-
+	      num_connect = 0;
 #if !defined(CUBRID_SHARD)
 	      cur_time = time (NULL);
 
 	      for (j = 0; j < shm_br->br_info[i].appl_server_max_num; j++)
 		{
 		  as_info_p = &(shm_appl->as_info[j]);
-		  num_req += as_info_p->num_request;
 
 		  if (as_info_p->service_flag != ON)
 		    {
 		      continue;
 		    }
 
+		  num_req += as_info_p->num_request;
+		  num_connect += as_info_p->num_connect_requests;
 		  if (full_info_flag)
 		    {
 		      bool time_expired =
@@ -1447,45 +1489,55 @@ br_monitor (char *br_vector)
 		}
 #endif /* !CUBRID_SHARD */
 
-	      str_out ("%6d", shm_br->br_info[i].pid);
-
+	      print_value (FIELD_PID, &(shm_br->br_info[i].pid), FIELD_T_INT);
 	      if (full_info_flag)
 		{
+		  int process_size;
 #if defined(WINDOWS)
 		  if (shm_appl->use_pdh_flag == TRUE)
 		    {
-		      str_out ("%7d ", shm_br->br_info[i].pdh_workset);
+		      print_value (FIELD_PSIZE,
+				   &(shm_br->br_info[i].pdh_workset),
+				   FIELD_T_INT);
 		    }
 #else
-		  str_out ("%7d", getsize (shm_br->br_info[i].pid));
+		  process_size = getsize (shm_br->br_info[i].pid);
+		  print_value (FIELD_PSIZE, &process_size, FIELD_T_INT);
 #endif
 		}
 
-	      str_out ("%6d", shm_br->br_info[i].port);
+	      print_value (FIELD_PORT, &(shm_br->br_info[i].port),
+			   FIELD_T_INT);
 #if !defined(CUBRID_SHARD)
+	      print_value (FIELD_APPL_SERVER_NUM_TOTAL,
+			   &(shm_br->br_info[i].appl_server_num),
+			   FIELD_T_INT);
 	      if (full_info_flag)
 		{
-		  str_out ("   %3d %3d %3d  %4d  %4d ",
-			   shm_br->br_info[i].appl_server_num,
-			   num_client_wait, num_busy, num_client_wait_nsec,
-			   num_busy_nsec);
-		}
-	      else
-		{
-		  str_out ("%4d", shm_br->br_info[i].appl_server_num);
+
+		  print_value (FIELD_APPL_SERVER_NUM_CLIENT_WAIT,
+			       &num_client_wait, FIELD_T_INT);
+		  print_value (FIELD_APPL_SERVER_NUM_BUSY,
+			       &num_busy, FIELD_T_INT);
+		  print_value (FIELD_APPL_SERVER_NUM_CLIENT_WAIT_IN_SEC,
+			       &num_client_wait_nsec, FIELD_T_INT);
+		  print_value (FIELD_APPL_SERVER_NUM_BUSY_IN_SEC,
+			       &num_busy_nsec, FIELD_T_INT);
 		}
 
-	      str_out ("%4d", shm_appl->job_queue[0].id);
-
+	      print_value (FIELD_JOB_QUEUE_ID,
+			   &(shm_appl->job_queue[0].id), FIELD_T_INT);
 #ifdef GET_PSINFO
 	      get_psinfo (shm_br->br_info[i].pid, &proc_info);
-	      str_out ("%4d", proc_info.num_thr);
-	      str_out ("%6.2f", proc_info.pcpu);
-	      time_format (proc_info.cpu_time, time_str);
-	      str_out ("%6s", time_str);
-#endif
 
-	      str_out (" %8d", num_req);
+	      print_value (FIELD_THREAD, &(proc_info.num_thr), FIELD_T_INT);
+
+	      get_cpu_usage_string (buf, proc_info.pcpu);
+	      print_value (FIELD_CPU_USAGE, buf, FIELD_T_STRING);
+
+	      time_format (proc_info.cpu_time, time_str);
+	      print_value (FIELD_CPU_TIME, &time_str, FIELD_T_STRING);
+#endif
 #endif /* !CUBRID_SHARD */
 
 #if defined(CUBRID_SHARD)
@@ -1506,6 +1558,7 @@ br_monitor (char *br_vector)
 	      num_lt_cur = 0;
 	      num_lq_cur = 0;
 	      num_eq_cur = 0;
+	      num_eq_ui_cur = 0;
 	      num_interrupts_cur = 0;
 
 #if defined(CUBRID_SHARD)
@@ -1532,8 +1585,9 @@ br_monitor (char *br_vector)
 			  num_lt_cur += as_info_p->num_long_transactions;
 			  num_lq_cur += as_info_p->num_long_queries;
 			  num_eq_cur += as_info_p->num_error_queries;
+			  num_eq_ui_cur +=
+			    as_info_p->num_unique_error_queries;
 			  num_interrupts_cur += as_info_p->num_interrupts;
-
 			}
 		      tot_cas += cas_index;
 		    }		/* SHARD */
@@ -1556,7 +1610,15 @@ br_monitor (char *br_vector)
 		  num_lt_cur += as_info_p->num_long_transactions;
 		  num_lq_cur += as_info_p->num_long_queries;
 		  num_eq_cur += as_info_p->num_error_queries;
+		  num_eq_ui_cur += as_info_p->num_unique_error_queries;
 		  num_interrupts_cur += as_info_p->num_interrupts;
+		  num_select_queries += as_info_p->num_select_queries;
+		  num_insert_queries += as_info_p->num_insert_queries;
+		  num_update_queries += as_info_p->num_update_queries;
+		  num_delete_queries += as_info_p->num_delete_queries;
+		  num_other_queries +=
+		    (num_qx_cur - num_select_queries - num_insert_queries -
+		     num_update_queries - num_delete_queries);
 		}		/* CAS */
 #endif /* CUBRID_SHARD */
 
@@ -1567,9 +1629,10 @@ br_monitor (char *br_vector)
 		  lts = ((num_lt_cur - br_mnt_olds[i].num_lt) / elapsed_time);
 		  lqs = ((num_lq_cur - br_mnt_olds[i].num_lq) / elapsed_time);
 		  eqs = ((num_eq_cur - br_mnt_olds[i].num_eq) / elapsed_time);
-		  its =
-		    ((num_interrupts_cur -
-		      br_mnt_olds[i].num_interrupt) / elapsed_time);
+		  eqs_ui = ((num_eq_ui_cur -
+			     br_mnt_olds[i].num_eq_ui) / elapsed_time);
+		  its = ((num_interrupts_cur -
+			  br_mnt_olds[i].num_interrupt) / elapsed_time);
 #if defined(CUBRID_SHARD)
 		  hnqps =
 		    ((num_hnqx_cur - br_mnt_olds[i].num_hnqx) / elapsed_time);
@@ -1580,12 +1643,12 @@ br_monitor (char *br_vector)
 		  haqps =
 		    ((num_haqx_cur - br_mnt_olds[i].num_haqx) / elapsed_time);
 #endif /* CUBRID_SHARD */
-
 		  br_mnt_olds[i].num_tx = num_tx_cur;
 		  br_mnt_olds[i].num_qx = num_qx_cur;
 		  br_mnt_olds[i].num_lt = num_lt_cur;
 		  br_mnt_olds[i].num_lq = num_lq_cur;
 		  br_mnt_olds[i].num_eq = num_eq_cur;
+		  br_mnt_olds[i].num_eq_ui = num_eq_ui_cur;
 		  br_mnt_olds[i].num_interrupt = num_interrupts_cur;
 #if defined(CUBRID_SHARD)
 		  br_mnt_olds[i].num_hnqx = num_hnqx_cur;
@@ -1593,12 +1656,12 @@ br_monitor (char *br_vector)
 		  br_mnt_olds[i].num_hiqx = num_hiqx_cur;
 		  br_mnt_olds[i].num_haqx = num_haqx_cur;
 #endif /* CUBRID_SHARD */
-
 		  br_mnt_olds[i].tps = tps;
 		  br_mnt_olds[i].qps = qps;
 		  br_mnt_olds[i].lts = lts;
 		  br_mnt_olds[i].lqs = lqs;
 		  br_mnt_olds[i].eqs = eqs;
+		  br_mnt_olds[i].eqs_ui = eqs_ui;
 		  br_mnt_olds[i].its = its;
 #if defined(CUBRID_SHARD)
 		  br_mnt_olds[i].hnqps = hnqps;
@@ -1614,6 +1677,7 @@ br_monitor (char *br_vector)
 		  lts = br_mnt_olds[i].lts;
 		  lqs = br_mnt_olds[i].lqs;
 		  eqs = br_mnt_olds[i].eqs;
+		  eqs_ui = br_mnt_olds[i].eqs_ui;
 		  its = br_mnt_olds[i].its;
 #if defined(CUBRID_SHARD)
 		  hnqps = br_mnt_olds[i].hnqps;
@@ -1624,71 +1688,70 @@ br_monitor (char *br_vector)
 		}
 
 #if defined(CUBRID_SHARD)
-	      str_out (" %9d", tot_proxy);
-	      str_out (" %9d", tot_cas);
-
-	      str_out (" %8d", num_req);
+	      print_value (FIELD_ACTIVE_P, &tot_proxy, FIELD_T_INT);
+	      print_value (FIELD_ACTIVE_C, &tot_cas, FIELD_T_INT);
 #endif /* CUBRID_SHARD */
-	      str_out (" %4ld", tps);
-	      str_out (" %4ld", qps);
+	      if (refresh_sec > 0)
+		{
+		  print_value (FIELD_TPS, &tps, FIELD_T_UINT64);
+		  print_value (FIELD_QPS, &qps, FIELD_T_UINT64);
+		}
+	      else
+		{
+		  print_value (FIELD_TPS, &num_tx_cur, FIELD_T_UINT64);
+		  print_value (FIELD_QPS, &num_qx_cur, FIELD_T_UINT64);
+		}
+
+	      if (full_info_flag == false)
+		{
+		  print_value (FIELD_NUM_OF_SELECT_QUERIES,
+			       &num_select_queries, FIELD_T_UINT64);
+		  print_value (FIELD_NUM_OF_INSERT_QUERIES,
+			       &num_insert_queries, FIELD_T_UINT64);
+		  print_value (FIELD_NUM_OF_UPDATE_QUERIES,
+			       &num_update_queries, FIELD_T_UINT64);
+		  print_value (FIELD_NUM_OF_DELETE_QUERIES,
+			       &num_delete_queries, FIELD_T_UINT64);
+		  print_value (FIELD_NUM_OF_OTHERS_QUERIES,
+			       &num_other_queries, FIELD_T_UINT64);
+		}
+
 #if defined(CUBRID_SHARD)
-	      str_out (" %6ld", hkqps + hiqps + haqps);
+	      total_kqps = hkqps + hiqps + haqps;
+	      print_value (FIELD_K_QPS, &total_kqps, FIELD_T_INT64);
 	      if (full_info_flag)
 		{
-		  str_out (" %6ld", hkqps);
-		  str_out (" %6ld", hiqps);
-		  str_out (" %6ld", haqps);
+		  print_value (FIELD_H_KEY, &hkqps, FIELD_T_INT64);
+		  print_value (FIELD_H_ID, &hiqps, FIELD_T_INT64);
+		  print_value (FIELD_H_ALL, &haqps, FIELD_T_INT64);
 		}
-	      str_out (" %6ld", hnqps);
+	      print_value (FIELD_NK_QPS, &hnqps, FIELD_T_INT64);
 #endif /* CUBRID_SHARD */
-	      str_out (" %4ld/%-.1f", lts,
+	      sprintf (buf, "%lu/%-.1f", lts,
 		       (shm_appl->long_transaction_time / 1000.0));
-	      str_out (" %4ld/%-.1f", lqs,
+	      print_value (FIELD_LONG_TRANSACTION, buf, FIELD_T_STRING);
+	      sprintf (buf, "%lu/%-.1f", lqs,
 		       (shm_appl->long_query_time / 1000.0));
-	      str_out (" %6ld", eqs);
-
+	      print_value (FIELD_LONG_QUERY, buf, FIELD_T_STRING);
+	      print_value (FIELD_ERROR_QUERIES, &eqs, FIELD_T_UINT64);
+	      print_value (FIELD_UNIQUE_ERROR_QUERIES, &eqs_ui,
+			   FIELD_T_UINT64);
 	      if (full_info_flag)
 		{
-		  str_out (" %9ld", its);
-		  switch (shm_br->br_info[i].access_mode)
-		    {
-		    case READ_ONLY_ACCESS_MODE:
-		      str_out ("%13s", " RO");
-		      break;
-		    case SLAVE_ONLY_ACCESS_MODE:
-		      str_out ("%13s", " SO");
-		      break;
-		    case READ_WRITE_ACCESS_MODE:
-		      str_out ("%13s", " RW");
-		      break;
-		    default:
-		      str_out ("%13s", " --");
-		      break;
-		    }
+		  print_value (FIELD_CANCELED, &its, FIELD_T_INT64);
+		  print_value (FIELD_ACCESS_MODE,
+			       get_access_mode_string (shm_br->br_info[i].
+						       access_mode),
+			       FIELD_T_STRING);
 
-		  switch (shm_br->br_info[i].sql_log_mode)
-		    {
-		    case SQL_LOG_MODE_NONE:
-		      str_out ("%9s", " NONE");
-		      break;
-		    case SQL_LOG_MODE_ERROR:
-		      str_out ("%9s", " ERROR");
-		      break;
-		    case SQL_LOG_MODE_TIMEOUT:
-		      str_out ("%9s", " TIMEOUT");
-		      break;
-		    case SQL_LOG_MODE_NOTICE:
-		      str_out ("%9s", " NOTICE");
-		      break;
-		    case SQL_LOG_MODE_ALL:
-		      str_out ("%9s", " ALL");
-		      break;
-		    default:
-		      str_out ("%9s", " --");
-		      break;
-		    }
+		  print_value (FIELD_SQL_LOG,
+			       get_sql_log_mode_string (shm_br->br_info[i].
+							sql_log_mode),
+			       FIELD_T_STRING);
 		}
 
+	      print_value (FIELD_NUMBER_OF_CONNECTION, &num_connect,
+			   FIELD_T_UINT64);
 	      print_newline ();
 
 	      if (shm_appl->suspend_mode != SUSPEND_NONE)
@@ -1700,10 +1763,9 @@ br_monitor (char *br_vector)
 	      uw_shm_detach (shm_appl);
 	    }
 	}
-
       else
 	{			/* service_flag == OFF */
-	  str_out ("%s", " OFF");
+	  str_out ("%s", "OFF");
 	  print_newline ();
 	}
     }
@@ -1733,61 +1795,64 @@ print_header (bool use_pdh_flag)
 {
   char buf[256];
   char line_buf[256];
-  int col_len = 0;
+  int buf_offset = 0;
   int i;
 
 #if defined(CUBRID_SHARD)
-  col_len += sprintf (buf + col_len, "%8s ", "PROXY_ID");
-  col_len += sprintf (buf + col_len, "%8s ", "SHARD_ID");
-  col_len += sprintf (buf + col_len, "%8s ", "CAS_ID");
+  buf_offset = print_title (buf, buf_offset, FIELD_PROXY_ID, NULL);
+  buf_offset = print_title (buf, buf_offset, FIELD_SHARD_ID, NULL);
+  buf_offset = print_title (buf, buf_offset, FIELD_ID, NULL);
 #else
-  col_len += sprintf (buf + col_len, "%2s ", "ID");
+  buf_offset = print_title (buf, buf_offset, FIELD_ID, NULL);
 #endif /* CUBRID_SHARD */
-  col_len += sprintf (buf + col_len, "%5s ", "PID");
-  col_len += sprintf (buf + col_len, "%5s ", "QPS");
-  col_len += sprintf (buf + col_len, "%5s ", "LQS");
+  buf_offset = print_title (buf, buf_offset, FIELD_PID, NULL);
+  buf_offset = print_title (buf, buf_offset, FIELD_QPS, NULL);
+  buf_offset = print_title (buf, buf_offset, FIELD_LQS, NULL);
 #if defined(WINDOWS)
-  col_len += sprintf (buf + col_len, "%6s ", "PORT");
+  buf_offset = print_title (buf, buf_offset, FIELD_PORT, NULL);
 #endif
 #if defined(WINDOWS)
   if (use_pdh_flag == true)
     {
-      col_len += sprintf (buf + col_len, "%5s ", "PSIZE");
+      buf_offset = print_title (buf, buf_offset, FIELD_PSIZE, NULL);
     }
 #else
-  col_len += sprintf (buf + col_len, "%5s ", "PSIZE");
+  buf_offset = print_title (buf, buf_offset, FIELD_PSIZE, NULL);
 #endif
-  col_len += sprintf (buf + col_len, "%-12s ", "STATUS");
+  buf_offset = print_title (buf, buf_offset, FIELD_STATUS, NULL);
 #if 0
-  col_len += sprintf (buf + col_len, "%6s ", "PORT");
+  buf_offset = print_title (buf, buf_offset, FIELD_PORT, NULL);
 #endif
 #ifdef GET_PSINFO
-  col_len += sprintf (buf + col_len, "%5s ", "CPU");
-  col_len += sprintf (buf + col_len, "%8s ", "CTIME");
+  buf_offset = print_title (buf, buf_offset, FIELD_CPU_USAGE, NULL);
+  buf_offset = print_title (buf, buf_offset, FIELD_CPU_TIME, NULL);
 #elif WINDOWS
   if (use_pdh_flag == true)
     {
-      col_len += sprintf (buf + col_len, "%5s ", "CPU");
+      buf_offset = print_title (buf, buf_offset, FIELD_CPU_USAGE, NULL);
     }
 #endif
   if (full_info_flag)
     {
-      col_len += sprintf (buf + col_len, "%19s ", "LAST ACCESS TIME");
-      col_len += sprintf (buf + col_len, "%16s ", "DB");
-      col_len += sprintf (buf + col_len, "%16s ", "HOST");
-      col_len += sprintf (buf + col_len, "%19s ", "LAST CONNECT TIME");
+      buf_offset = print_title (buf, buf_offset, FIELD_LAST_ACCESS_TIME,
+				NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_DB_NAME, NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_HOST, NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_LAST_CONNECT_TIME,
+				NULL);
 #if !defined(CUBRID_SHARD)
-      col_len += sprintf (buf + col_len, "%15s ", "CLIENT IP");
+      buf_offset = print_title (buf, buf_offset, FIELD_CLIENT_IP, NULL);
 #endif /* CUBRID_SHARD */
-      col_len += sprintf (buf + col_len, "%15s ", "SQL_LOG_MODE");
+      buf_offset = print_title (buf, buf_offset, FIELD_SQL_LOG_MODE, NULL);
 #if !defined(CUBRID_SHARD)
-      col_len += sprintf (buf + col_len, "%19s ", "TRANSACTION STIME");
-      col_len += sprintf (buf + col_len, "%9s ", "# CONNECT");
-      col_len += sprintf (buf + col_len, "%9s ", "# RESTART");
+      buf_offset = print_title (buf, buf_offset, FIELD_TRANSACTION_STIME,
+				NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_CONNECT, NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_RESTART, NULL);
 #endif /* CUBRID_SHARD */
     }
 
-  for (i = 0; i < col_len; i++)
+  for (i = 0; i < buf_offset; i++)
     line_buf[i] = '-';
   line_buf[i] = '\0';
 
@@ -1818,7 +1883,9 @@ move (int x, int y)
 static void
 clear ()
 {
-  COORD pos = { 0, 0 };
+  COORD pos = {
+    0, 0
+  };
   DWORD size;
   FillConsoleOutputCharacter (h_console, ' ',
 			      scr_info.dwSize.X * scr_info.dwSize.Y, pos,
@@ -1956,7 +2023,7 @@ metadata_monitor (void)
 
   for (i = 0; i < shm_br->num_broker; i++)
     {
-      if (shm_br->br_info[i].service_flag != ON)
+      if (shm_br->br_info[i].service_flag != SERVICE_ON)
 	{
 	  continue;
 	}
@@ -2385,3 +2452,263 @@ client_monitor (void)
   return 0;
 }
 #endif /* CUBRID_SHARD */
+
+static int
+print_title (char *buf_p, int buf_offset, FIELD_NAME name, char *new_title_p)
+{
+  struct status_field *field_p = NULL;
+  char *title_p = NULL;
+
+  assert (buf_p != NULL);
+  assert (buf_offset >= 0);
+
+  field_p = &fields[name];
+
+  if (new_title_p != NULL)
+    {
+      title_p = new_title_p;
+    }
+  else
+    {
+      title_p = field_p->title;
+    }
+
+  switch (field_p->name)
+    {
+    case FIELD_BROKER_NAME:
+      buf_offset += sprintf (buf_p + buf_offset, "%c%c",
+			     FIELD_DELIMITER, FIELD_DELIMITER);
+      if (field_p->align == FIELD_LEFT_ALIGN)
+	{
+	  buf_offset += sprintf (buf_p + buf_offset, "%-*s",
+				 field_p->width, title_p);
+	}
+      else
+	{
+	  buf_offset += sprintf (buf_p + buf_offset, "%*s",
+				 field_p->width, title_p);
+	}
+      break;
+    default:
+      if (field_p->align == FIELD_LEFT_ALIGN)
+	{
+	  buf_offset += sprintf (buf_p + buf_offset, "%-*s",
+				 field_p->width, title_p);
+	}
+      else
+	{
+	  buf_offset += sprintf (buf_p + buf_offset, "%*s",
+				 field_p->width, title_p);
+	}
+      break;
+    }
+  buf_offset += sprintf (buf_p + buf_offset, "%c", FIELD_DELIMITER);
+
+  return buf_offset;
+}
+
+static void
+print_value (FIELD_NAME name, void *value_p, FIELD_TYPE type)
+{
+  char format_string[256];
+  struct status_field *field_p = NULL;
+  struct tm cur_tm;
+  char time_buf[64];
+
+  assert (value_p != NULL);
+
+  field_p = &fields[name];
+
+  switch (type)
+    {
+    case FIELD_T_INT:
+      if (field_p->align == FIELD_LEFT_ALIGN)
+	{
+	  str_out ("%-*d", field_p->width, *(int *) value_p);
+	}
+      else
+	{
+	  str_out ("%*d", field_p->width, *(int *) value_p);
+	}
+      break;
+    case FIELD_T_STRING:
+      if (field_p->align == FIELD_LEFT_ALIGN)
+	{
+	  str_out ("%-*.*s", field_p->width, field_p->width, value_p);
+	}
+      else
+	{
+	  str_out ("%*.*s", field_p->width, field_p->width, value_p);
+	}
+      break;
+    case FIELD_T_FLOAT:
+      if (field_p->align == FIELD_LEFT_ALIGN)
+	{
+	  str_out ("%-*f", field_p->width, *(float *) value_p);
+	}
+      else
+	{
+	  str_out ("%*f", field_p->width, *(float *) value_p);
+	}
+      break;
+    case FIELD_T_UINT64:
+      if (field_p->align == FIELD_LEFT_ALIGN)
+	{
+	  str_out ("%-*lu", field_p->width, *(UINT64 *) value_p);
+	}
+      else
+	{
+	  str_out ("%*lu", field_p->width, *(UINT64 *) value_p);
+	}
+      break;
+    case FIELD_T_INT64:
+      if (field_p->align == FIELD_LEFT_ALIGN)
+	{
+	  str_out ("%-*ld", field_p->width, *(INT64 *) value_p);
+	}
+      else
+	{
+	  str_out ("%*ld", field_p->width, *(INT64 *) value_p);
+	}
+      break;
+    case FIELD_T_TIME:
+      localtime_r (value_p, &cur_tm);
+      cur_tm.tm_year += 1900;
+      sprintf (time_buf, "%02d/%02d/%02d %02d:%02d:%02d", cur_tm.tm_year,
+	       cur_tm.tm_mon + 1, cur_tm.tm_mday, cur_tm.tm_hour,
+	       cur_tm.tm_min, cur_tm.tm_sec);
+      if (field_p->align == FIELD_LEFT_ALIGN)
+	{
+	  str_out ("%-*s", field_p->width, time_buf);
+	}
+      else
+	{
+	  str_out ("%*s", field_p->width, time_buf);
+	}
+    default:
+      break;
+    }
+  str_out ("%c", FIELD_DELIMITER);
+}
+
+static char *
+get_sql_log_mode_string (T_SQL_LOG_MODE_VALUE mode)
+{
+  char *mode_string_p = NULL;
+
+  switch (mode)
+    {
+    case SQL_LOG_MODE_NONE:
+      mode_string_p = (char *) "NONE";
+      break;
+    case SQL_LOG_MODE_ERROR:
+      mode_string_p = (char *) "ERROR";
+      break;
+    case SQL_LOG_MODE_TIMEOUT:
+      mode_string_p = (char *) "TIMEOUT";
+      break;
+    case SQL_LOG_MODE_NOTICE:
+      mode_string_p = (char *) "NOTICE";
+      break;
+    case SQL_LOG_MODE_ALL:
+      mode_string_p = (char *) "ALL";
+      break;
+    default:
+      mode_string_p = (char *) "-";
+      break;
+    }
+
+  return mode_string_p;
+}
+
+static char *
+get_access_mode_string (T_ACCESS_MODE_VALUE mode)
+{
+  char *mode_string_p = NULL;
+
+  switch (mode)
+    {
+    case READ_ONLY_ACCESS_MODE:
+      mode_string_p = (char *) "RO";
+      break;
+    case SLAVE_ONLY_ACCESS_MODE:
+      mode_string_p = (char *) "SO";
+      break;
+    case READ_WRITE_ACCESS_MODE:
+      mode_string_p = (char *) "RW";
+      break;
+    default:
+      mode_string_p = (char *) "--";
+      break;
+    }
+
+  return mode_string_p;
+}
+
+static char *
+get_status_string (T_APPL_SERVER_INFO * as_info_p, char appl_server)
+{
+  char *status_string_p = NULL;
+
+  assert (as_info_p != NULL);
+
+  if (as_info_p->uts_status == UTS_STATUS_BUSY)
+    {
+      if (IS_APPL_SERVER_TYPE_CAS (appl_server))
+	{
+	  if (as_info_p->con_status == CON_STATUS_OUT_TRAN)
+	    {
+	      status_string_p = (char *) "CLOSE_WAIT";
+	    }
+	  else if (as_info_p->log_msg[0] == '\0')
+	    {
+	      status_string_p = (char *) "CLIENT_WAIT";
+	    }
+	  else
+	    {
+	      status_string_p = (char *) "BUSY";
+	    }
+	}
+      else
+	{
+	  status_string_p = (char *) "BUSY";
+	}
+    }
+#if defined(WINDOWS)
+  else if (as_info_p->uts_status == UTS_STATUS_BUSY_WAIT)
+    {
+      status_string_p = (char *) "BUSY";
+    }
+#endif
+  else if (as_info_p->uts_status == UTS_STATUS_RESTART)
+    {
+      status_string_p = (char *) "INITIALIZE";
+    }
+#if defined(CUBRID_SHARD)
+  else if (as_info_p->uts_status == UTS_STATUS_CON_WAIT)
+    {
+      status_string_p = (char *) "CON WAIT";
+    }
+#endif
+  else
+    {
+      status_string_p = (char *) "IDLE";
+    }
+
+  return status_string_p;
+}
+
+static void
+get_cpu_usage_string (char *buf_p, float usage)
+{
+  assert (buf_p != NULL);
+
+  if (usage >= 0)
+    {
+      sprintf (buf_p, "%.2f", usage);
+    }
+  else
+    {
+      sprintf (buf_p, " - ");
+    }
+}

@@ -343,6 +343,11 @@ static T_FK_INFO_RESULT *add_fk_info_result (T_FK_INFO_RESULT * fk_res,
 
 static char *get_backslash_escape_string (void);
 
+static void increase_executed_query_count (T_APPL_SERVER_INFO * as_info_p,
+					   DB_SESSION * session_p,
+					   int stmt_id);
+
+
 static char cas_u_type[] = { 0,	/* 0 */
   CCI_U_TYPE_INT,		/* 1 */
   CCI_U_TYPE_FLOAT,		/* 2 */
@@ -1287,8 +1292,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   n = db_execute_and_keep_statement (session, stmt_id, &result);
 
 #ifndef LIBCAS_FOR_JSP
-  as_info->num_queries_processed %= MAX_DIAG_DATA_VALUE;
-  as_info->num_queries_processed++;
+  increase_executed_query_count (as_info, session, stmt_id);
 #endif /* !LIBCAS_FOR_JSP */
 
   if (n < 0)
@@ -1607,8 +1611,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
       SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, n);
 
 #ifndef LIBCAS_FOR_JSP
-      as_info->num_queries_processed %= MAX_DIAG_DATA_VALUE;
-      as_info->num_queries_processed++;
+      increase_executed_query_count (as_info, session, stmt_id);
 #endif /* !LIBCAS_FOR_JSP */
 
       if (n < 0)
@@ -1878,8 +1881,7 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   jsp_unset_prepare_call ();
 
 #ifndef LIBCAS_FOR_JSP
-  as_info->num_queries_processed %= MAX_DIAG_DATA_VALUE;
-  as_info->num_queries_processed++;
+  increase_executed_query_count (as_info, session, stmt_id);
 #endif /* !LIBCAS_FOR_JSP */
 
   if (n < 0)
@@ -2142,8 +2144,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
       SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, res_count);
 
 #ifndef LIBCAS_FOR_JSP
-      as_info->num_queries_processed %= MAX_DIAG_DATA_VALUE;
-      as_info->num_queries_processed++;
+      increase_executed_query_count (as_info, session, stmt_id);
 #endif /* LIBCAS_FOR_JSP */
 
       if (res_count < 0)
@@ -2353,8 +2354,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
       SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, res_count);
 
 #ifndef LIBCAS_FOR_JSP
-      as_info->num_queries_processed %= MAX_DIAG_DATA_VALUE;
-      as_info->num_queries_processed++;
+      increase_executed_query_count (as_info, session, stmt_id);
 #endif /* LIBCAS_FOR_JSP */
 
       if (res_count < 0)
@@ -7947,8 +7947,7 @@ sch_query_execute (T_SRV_HANDLE * srv_handle, char *sql_stmt,
   lang_set_parser_use_client_charset (true);
 
 #ifndef LIBCAS_FOR_JSP
-  as_info->num_queries_processed %= MAX_DIAG_DATA_VALUE;
-  as_info->num_queries_processed++;
+  increase_executed_query_count (as_info, session, stmt_id);
 #endif /* !LIBCAS_FOR_JSP */
 
   if (num_result < 0)
@@ -9526,5 +9525,41 @@ get_backslash_escape_string (void)
   else
     {
       return (char *) "\\\\";
+    }
+}
+
+static void
+increase_executed_query_count (T_APPL_SERVER_INFO * as_info_p,
+			       DB_SESSION * session_p, int stmt_id)
+{
+  CUBRID_STMT_TYPE stmt_type;
+
+  assert (as_info_p != NULL);
+  assert (session_p != NULL);
+
+  as_info_p->num_queries_processed %= MAX_DIAG_DATA_VALUE;
+  as_info_p->num_queries_processed++;
+
+  stmt_type = db_get_statement_type (session_p, stmt_id);
+  switch (stmt_type)
+    {
+    case CUBRID_STMT_SELECT:
+      as_info_p->num_select_queries %= MAX_DIAG_DATA_VALUE;
+      as_info_p->num_select_queries++;
+      break;
+    case CUBRID_STMT_INSERT:
+      as_info_p->num_insert_queries %= MAX_DIAG_DATA_VALUE;
+      as_info_p->num_insert_queries++;
+      break;
+    case CUBRID_STMT_UPDATE:
+      as_info_p->num_update_queries %= MAX_DIAG_DATA_VALUE;
+      as_info_p->num_update_queries++;
+      break;
+    case CUBRID_STMT_DELETE:
+      as_info_p->num_delete_queries %= MAX_DIAG_DATA_VALUE;
+      as_info_p->num_delete_queries++;
+      break;
+    default:
+      break;
     }
 }

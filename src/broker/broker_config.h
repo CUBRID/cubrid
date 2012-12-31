@@ -75,7 +75,7 @@
 #define DEFAULT_SQL_LOG_MAX_SIZE	10000	/* about 10M */
 #define DEFAULT_LONG_QUERY_TIME         60
 #define DEFAULT_LONG_TRANSACTION_TIME   60
-#define MAX_SQL_LOG_MAX_SIZE            2000000 /* about 200M */
+#define MAX_SQL_LOG_MAX_SIZE            2000000	/* about 200M */
 
 #define BROKER_NAME_LEN		64
 #define BROKER_LOG_MSG_SIZE	64
@@ -90,7 +90,7 @@
 #define MAX_PROXY_LOG_MAX_SIZE		1000000	/* 1G */
 #endif /* CUBRID_SHARD */
 
-typedef enum t_sql_log_value T_SQL_LOG_MODE_VALUE;
+typedef enum t_sql_log_mode_value T_SQL_LOG_MODE_VALUE;
 enum t_sql_log_mode_value
 {
   SQL_LOG_MODE_NONE = 0,

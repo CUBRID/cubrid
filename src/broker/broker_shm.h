@@ -164,7 +164,8 @@ typedef enum
 {
   SERVICE_OFF = 0,
   SERVICE_ON = 1,
-  SERVICE_OFF_ACK = 2
+  SERVICE_OFF_ACK = 2,
+  SERVICE_UNKNOWN = 3
 } T_BROKER_SERVICE_STATUS;
 
 typedef enum t_con_status T_CON_STATUS;
@@ -275,6 +276,13 @@ struct t_appl_server_info
   INT64 num_connect_requests;
   INT64 num_restarts;
   int num_holdable_results;
+
+  INT64 num_select_queries;
+  INT64 num_insert_queries;
+  INT64 num_update_queries;
+  INT64 num_delete_queries;
+
+  INT64 num_unique_error_queries;
 };
 
 #if defined(CUBRID_SHARD)

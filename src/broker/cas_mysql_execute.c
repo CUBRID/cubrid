@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 
 #if defined(WINDOWS)
 #include <winsock2.h>
@@ -241,6 +242,9 @@ static char database_name[SRV_CON_DBNAME_SIZE] = "";
 static char database_user[SRV_CON_DBUSER_SIZE] = "";
 static char database_passwd[SRV_CON_DBPASSWD_SIZE] = "";
 static int multi_byte_character_max_length = 3;
+
+static void increase_executed_query_count (T_APPL_SERVER_INFO * as_info_p,
+					   char stmt_type);
 
 int
 ux_check_connection (void)
@@ -540,8 +544,9 @@ ux_execute_internal (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   q_res_idx = 0;
   SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
   n = cas_mysql_stmt_execute (stmt);
-  as_info->num_queries_processed %= MAX_DIAG_DATA_VALUE;
-  as_info->num_queries_processed++;
+
+  increase_executed_query_count (as_info, srv_handle->stmt_type);
+
   SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, n);
   if (n < 0)
     {
@@ -734,8 +739,8 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
 
       n = cas_mysql_stmt_execute (stmt);
-      as_info->num_queries_processed %= MAX_DIAG_DATA_VALUE;
-      as_info->num_queries_processed++;
+
+      increase_executed_query_count (as_info, srv_handle->stmt_type);
 
       SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, n);
 
@@ -2971,5 +2976,36 @@ ux_prepare_call_info_free (T_PREPARE_CALL_INFO * call_info)
       FREE_MEM (call_info->param_mode);
 
       FREE_MEM (call_info);
+    }
+}
+
+static void
+increase_executed_query_count (T_APPL_SERVER_INFO * as_info_p, char stmt_type)
+{
+  assert (as_info_p != NULL);
+
+  as_info_p->num_queries_processed %= MAX_DIAG_DATA_VALUE;
+  as_info_p->num_queries_processed++;
+
+  switch (stmt_type)
+    {
+    case CUBRID_STMT_SELECT:
+      as_info_p->num_select_queries %= MAX_DIAG_DATA_VALUE;
+      as_info_p->num_select_queries++;
+      break;
+    case CUBRID_STMT_INSERT:
+      as_info_p->num_insert_queries %= MAX_DIAG_DATA_VALUE;
+      as_info_p->num_insert_queries++;
+      break;
+    case CUBRID_STMT_UPDATE:
+      as_info_p->num_update_queries %= MAX_DIAG_DATA_VALUE;
+      as_info_p->num_update_queries++;
+      break;
+    case CUBRID_STMT_DELETE:
+      as_info_p->num_delete_queries %= MAX_DIAG_DATA_VALUE;
+      as_info_p->num_delete_queries++;
+      break;
+    default:
+      break;
     }
 }

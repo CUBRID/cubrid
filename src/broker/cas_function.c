@@ -79,12 +79,16 @@ static void bind_value_log (struct timeval *log_time, int start, int argc,
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 static void set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout);
 
+
 /* functions implemented in transaction_cl.c */
 extern void tran_set_query_timeout (int);
 #ifndef LIBCAS_FOR_JSP
 extern bool tran_is_in_libcas (void);
 #endif /* !LIBCAS_FOR_JSP */
 #endif
+
+static void increase_error_query_count (T_APPL_SERVER_INFO * as_info_p,
+					const T_ERROR_INFO * err_info_p);
 
 static const char *tran_type_str[] = { "COMMIT", "ROLLBACK" };
 
@@ -422,8 +426,7 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv,
 #ifndef LIBCAS_FOR_JSP
   if (srv_h_id < 0)
     {
-      as_info->num_error_queries %= MAX_DIAG_DATA_VALUE;
-      as_info->num_error_queries++;
+      increase_error_query_count (as_info, &err_info);
     }
 #endif /* !LIBCAS_FOR_JSP */
 
@@ -702,8 +705,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv,
 
       if (ret_code < 0)
 	{
-	  as_info->num_error_queries %= MAX_DIAG_DATA_VALUE;
-	  as_info->num_error_queries++;
+	  increase_error_query_count (as_info, &err_info);
 	}
 
       if (as_info->cur_slow_log_mode == SLOW_LOG_MODE_ON)
@@ -1700,8 +1702,7 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
       if (ret_code < 0)
 	{
-	  as_info->num_error_queries %= MAX_DIAG_DATA_VALUE;
-	  as_info->num_error_queries++;
+	  increase_error_query_count (as_info, &err_info);
 	}
 
       if (as_info->cur_slow_log_mode == SLOW_LOG_MODE_ON)
@@ -2594,3 +2595,27 @@ set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout)
 #endif
 }
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+
+static void
+increase_error_query_count (T_APPL_SERVER_INFO * as_info_p,
+			    const T_ERROR_INFO * err_info_p)
+{
+  assert (as_info_p != NULL);
+  assert (err_info_p != NULL);
+
+  if (err_info_p->err_number != ER_QPROC_INVALID_XASLNODE)
+    {
+      as_info_p->num_error_queries %= MAX_DIAG_DATA_VALUE;
+      as_info_p->num_error_queries++;
+    }
+
+  if (err_info_p->err_indicator == DBMS_ERROR_INDICATOR)
+    {
+      if (err_info_p->err_number == ER_BTREE_UNIQUE_FAILED
+	  || err_info_p->err_number == ER_UNIQUE_VIOLATION_WITHKEY)
+	{
+	  as_info_p->num_unique_error_queries %= MAX_DIAG_DATA_VALUE;
+	  as_info_p->num_unique_error_queries++;
+	}
+    }
+}
