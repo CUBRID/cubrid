@@ -15795,21 +15795,6 @@ pt_plan_set_query (PARSER_CONTEXT * parser, PT_NODE * node,
   /* no optimization for now */
   xasl = pt_to_union_proc (parser, node, proc_type);
 
-  if (xasl)
-    {
-      XASL_NODE *left, *right;
-
-      left = xasl->proc.union_.left;
-      right = xasl->proc.union_.right;
-
-      if (left && right && left->qplan && right->qplan)
-	{
-	  int len = strlen (left->qplan) + strlen (right->qplan) + 256;
-	  xasl->qplan = pt_alloc_packing_buf (len);
-	  snprintf (xasl->qplan, len, "%s\n%s", left->qplan, right->qplan);
-	}
-    }
-
   return xasl;
 }
 
@@ -15993,27 +15978,70 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 
   if (xasl && plan)
     {
-      char *ptr;
-      size_t sizeloc;
+      size_t plan_len, sizeloc;
+      char *ptr, *sql_plan = "";
+      COMPILE_CONTEXT *context = parser->context;
 
       FILE *fp = port_open_memstream (&ptr, &sizeloc);
       if (fp)
 	{
-	  char *qplan;
-
 	  qo_plan_lite_print (plan, fp, 0);
 	  port_close_memstream (fp, &ptr, &sizeloc);
 
 	  if (ptr)
 	    {
-	      qplan = pt_alloc_packing_buf (sizeloc);
-	      strncpy (qplan, ptr, sizeloc);
+	      sql_plan = pt_alloc_packing_buf (sizeloc + 1);
+	      if (sql_plan == NULL)
+		{
+		  goto error_exit;
+		}
+
+	      strncpy (sql_plan, ptr, sizeloc);
+	      sql_plan[sizeloc] = '\0';
 	      free (ptr);
-	      xasl->qplan = qplan;
 	    }
+	}
+
+      if (context && sql_plan)
+	{
+	  plan_len = strlen (sql_plan);
+
+	  if (context->sql_plan_alloc_size == 0)
+	    {
+	      int size = MAX (1024, plan_len * 2);
+	      context->sql_plan_text = parser_alloc (parser, size);
+	      if (context->sql_plan_text == NULL)
+		{
+		  goto error_exit;
+		}
+
+	      context->sql_plan_alloc_size = size;
+	      context->sql_plan_text[0] = '\0';
+	    }
+	  else if (context->sql_plan_alloc_size -
+		   strlen (context->sql_plan_text) < plan_len)
+	    {
+	      char *ptr;
+	      int size = (context->sql_plan_alloc_size + plan_len) * 2;
+
+	      ptr = parser_alloc (parser, size);
+	      if (ptr == NULL)
+		{
+		  goto error_exit;
+		}
+
+              ptr[0] = '\0';
+	      strcpy (ptr, context->sql_plan_text);
+
+	      context->sql_plan_text = ptr;
+	      context->sql_plan_alloc_size = size;
+	    }
+
+	  strcat (context->sql_plan_text, sql_plan);
 	}
     }
 
+error_exit:
   if (plan)
     {
       qo_plan_discard (plan);
@@ -17099,13 +17127,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 
   if (xasl)
     {
-      xasl->qstmt = statement->alias_print;
-
-      if (xasl->aptr_list)
-	{
-	  xasl->qplan = xasl->aptr_list->qplan;
-	  xasl->aptr_list->qplan = NULL;
-	}
+      xasl->query_alias = statement->alias_print;
     }
 
   return xasl;
@@ -18402,7 +18424,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   if (xasl)
     {
-      xasl->qstmt = statement->alias_print;
+      xasl->query_alias = statement->alias_print;
     }
 
   if (statement->info.delete_.limit)
@@ -18936,7 +18958,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
       xasl->dbval_cnt = xasl->aptr_list->dbval_cnt;
     }
 
-  xasl->qstmt = statement->alias_print;
+  xasl->query_alias = statement->alias_print;
 
   if (statement->info.update.limit)
     {
@@ -19253,7 +19275,7 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (xasl)
     {
-      xasl->qstmt = node->alias_print;
+      xasl->query_alias = node->alias_print;
       XASL_SET_FLAG (xasl, XASL_TOP_MOST_XASL);
     }
 
@@ -19261,14 +19283,14 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
     {
       if (xasl)
 	{
-	  if (xasl->qstmt == NULL)
+	  if (xasl->query_alias == NULL)
 	    {
 	      if (node->alias_print == NULL)
 		{
 		  node->alias_print = parser_print_tree (parser, node);
 		}
 
-	      xasl->qstmt = node->alias_print;
+	      xasl->query_alias = node->alias_print;
 	    }
 
 	  qdump_print_xasl (xasl);
@@ -20453,19 +20475,18 @@ parser_generate_do_stmt_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
   xasl->class_oid_list = NULL;
   xasl->repr_id_list = NULL;
   xasl->dbval_cnt = parser->dbval_cnt;
-  xasl->qstmt = node->alias_print;
+  xasl->query_alias = node->alias_print;
   XASL_SET_FLAG (xasl, XASL_TOP_MOST_XASL);
-  xasl->qplan = NULL;		/* TODO */
 
   if (prm_get_bool_value (PRM_ID_XASL_DEBUG_DUMP))
     {
-      if (xasl->qstmt == NULL)
+      if (xasl->query_alias == NULL)
 	{
 	  if (node->alias_print == NULL)
 	    {
 	      node->alias_print = parser_print_tree (parser, node);
 	    }
-	  xasl->qstmt = node->alias_print;
+	  xasl->query_alias = node->alias_print;
 	}
       qdump_print_xasl (xasl);
     }
@@ -22526,7 +22547,7 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   xasl->proc.merge.update_xasl = update_xasl;
   xasl->proc.merge.insert_xasl = insert_xasl;
   xasl->proc.merge.has_delete = statement->info.merge.update.has_delete;
-  xasl->qstmt = statement->alias_print;
+  xasl->query_alias = statement->alias_print;
 
   if ((oid = ws_identifier (db_get_user ())) != NULL)
     {

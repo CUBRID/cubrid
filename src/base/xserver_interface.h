@@ -342,12 +342,10 @@ extern int xqfile_get_list_file_page (THREAD_ENTRY * thread_p,
 
 /* new query interface */
 extern XASL_ID *xqmgr_prepare_query (THREAD_ENTRY * thrd,
-				     const char *qstmt,
-				     const char *qplan,
-				     const OID * user_oid,
-				     const char *xasl_stream,
-				     int xasl_size, XASL_ID * xasl_id,
-				     XASL_NODE_HEADER * xasl_header_p);
+				     COMPILE_CONTEXT * ctx,
+				     XASL_STREAM * stream,
+				     const OID * user_oid);
+
 extern QFILE_LIST_ID *xqmgr_execute_query (THREAD_ENTRY * thrd,
 					   const XASL_ID * xasl_id,
 					   QUERY_ID * query_idp,
@@ -358,7 +356,7 @@ extern QFILE_LIST_ID *xqmgr_execute_query (THREAD_ENTRY * thrd,
 					   CACHE_TIME * srv_cache_time,
 					   int query_timeout,
 					   int end_of_queries,
-					   char **qstmt_ptr, char **plan_ptr);
+					   EXECUTION_INFO * info);
 extern QFILE_LIST_ID *xqmgr_prepare_and_execute_query (THREAD_ENTRY * thrd,
 						       char *xasl_ptr,
 						       int size,

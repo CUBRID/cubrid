@@ -1068,14 +1068,13 @@ qfile_set_dirty_page_and_skip_logging (THREAD_ENTRY * thread_p,
 /*
  * qfile_store_xasl () - Store the XASL stream into the temporary file
  *   return: number of pages or ER_FAILED
- *   xasl(in): XASL stream
- *   size(in): size of XASL stream
- *   xasl_id(in/out): pointer to XASL_ID that will be set to XASL file id
- *                    set to XASL file id; first_vpid and temp_vfid
+ *   stream(in/out): xasl_stream & xasl_stream_size in, xasl_id out
+ *                   stream->xasl_id is a pointer to XASL_ID that 
+ *                   will be set to XASL file id set to XASL file id; 
+ *                   first_vpid and temp_vfid
  */
 int
-qfile_store_xasl (THREAD_ENTRY * thread_p, const char *xasl_p, int size,
-		  XASL_ID * xasl_id_p)
+qfile_store_xasl (THREAD_ENTRY * thread_p, XASL_STREAM * stream)
 {
   VPID *cur_vpid_p, prev_vpid, vpid_array[QFILE_PAGE_EXTENDS];
   DKNPAGES nth_page, num_pages;
@@ -1083,9 +1082,13 @@ qfile_store_xasl (THREAD_ENTRY * thread_p, const char *xasl_p, int size,
   int xasl_page_size, total_pages, page_index, n;
   struct timeval time_stored;
 
-  XASL_ID_SET_NULL (xasl_id_p);
+  XASL_ID *xasl_id = stream->xasl_id;
+  int xasl_stream_size = stream->xasl_stream_size;
+  char *xasl_stream = stream->xasl_stream;
 
-  if (file_create_queryarea (thread_p, &xasl_id_p->temp_vfid,
+  XASL_ID_SET_NULL (xasl_id);
+
+  if (file_create_queryarea (thread_p, &xasl_id->temp_vfid,
 			     QFILE_DEFAULT_PAGES, "XASL stream file") == NULL)
     {
       return 0;
@@ -1093,19 +1096,19 @@ qfile_store_xasl (THREAD_ENTRY * thread_p, const char *xasl_p, int size,
 
   page_index = QFILE_PAGE_EXTENDS;
   total_pages = nth_page = n = 0;
-  num_pages = file_get_numpages (thread_p, &xasl_id_p->temp_vfid);
+  num_pages = file_get_numpages (thread_p, &xasl_id->temp_vfid);
 
   VPID_SET_NULL (&prev_vpid);
   prev_page_p = NULL;
 
-  while (size > 0)
+  while (xasl_stream_size > 0)
     {
       if (page_index >= QFILE_PAGE_EXTENDS || page_index >= n)
 	{
 	  if (nth_page >= num_pages)
 	    {
 	      if (file_alloc_pages_as_noncontiguous (thread_p,
-						     &xasl_id_p->temp_vfid,
+						     &xasl_id->temp_vfid,
 						     vpid_array, &nth_page,
 						     QFILE_PAGE_EXTENDS, NULL,
 						     NULL, NULL,
@@ -1114,10 +1117,10 @@ qfile_store_xasl (THREAD_ENTRY * thread_p, const char *xasl_p, int size,
 		  goto error;
 		}
 
-	      num_pages = file_get_numpages (thread_p, &xasl_id_p->temp_vfid);
+	      num_pages = file_get_numpages (thread_p, &xasl_id->temp_vfid);
 	    }
 
-	  n = file_find_nthpages (thread_p, &xasl_id_p->temp_vfid, vpid_array,
+	  n = file_find_nthpages (thread_p, &xasl_id->temp_vfid, vpid_array,
 				  nth_page, QFILE_PAGE_EXTENDS);
 	  if (n < 0)
 	    {
@@ -1139,15 +1142,14 @@ qfile_store_xasl (THREAD_ENTRY * thread_p, const char *xasl_p, int size,
 
       qfile_initialize_page_header (cur_page_p);
       qfile_set_dirty_page_and_skip_logging (thread_p, cur_page_p,
-					     &xasl_id_p->temp_vfid,
-					     DONT_FREE);
+					     &xasl_id->temp_vfid, DONT_FREE);
 
-      xasl_page_size = MIN (size, qfile_Xasl_page_size);
+      xasl_page_size = MIN (xasl_stream_size, qfile_Xasl_page_size);
       if (prev_page_p == NULL)
 	{
 	  /* this is the first page */
-	  xasl_id_p->first_vpid = *cur_vpid_p;
-	  QFILE_PUT_XASL_PAGE_SIZE (cur_page_p, size);
+	  xasl_id->first_vpid = *cur_vpid_p;
+	  QFILE_PUT_XASL_PAGE_SIZE (cur_page_p, xasl_stream_size);
 	}
       else
 	{
@@ -1160,10 +1162,11 @@ qfile_store_xasl (THREAD_ENTRY * thread_p, const char *xasl_p, int size,
 						 FREE);
 	}
 
-      memcpy (cur_page_p + QFILE_PAGE_HEADER_SIZE, xasl_p, xasl_page_size);
+      memcpy (cur_page_p + QFILE_PAGE_HEADER_SIZE, xasl_stream,
+	      xasl_page_size);
 
-      size -= xasl_page_size;
-      xasl_p += xasl_page_size;
+      xasl_stream_size -= xasl_page_size;
+      xasl_stream += xasl_page_size;
       prev_page_p = cur_page_p;
       prev_vpid = *cur_vpid_p;
       page_index++;
@@ -1177,7 +1180,7 @@ qfile_store_xasl (THREAD_ENTRY * thread_p, const char *xasl_p, int size,
 
   /* save stored time */
   (void) gettimeofday (&time_stored, NULL);
-  CACHE_TIME_MAKE (&xasl_id_p->time_stored, &time_stored);
+  CACHE_TIME_MAKE (&xasl_id->time_stored, &time_stored);
 
   return total_pages;
 
@@ -1186,8 +1189,8 @@ error:
     {
       pgbuf_unfix_and_init (thread_p, prev_page_p);
     }
-  file_destroy (thread_p, &xasl_id_p->temp_vfid);
-  XASL_ID_SET_NULL (xasl_id_p);
+  file_destroy (thread_p, &xasl_id->temp_vfid);
+  XASL_ID_SET_NULL (xasl_id);
 
   return 0;
 }

@@ -185,8 +185,6 @@
 
 #define QEXEC_NULL_COMMAND_ID   -1	/* Invalid command identifier */
 
-typedef struct xasl_node XASL_NODE;
-typedef struct pred_expr_with_context PRED_EXPR_WITH_CONTEXT;
 
 /*
  * Access specification information
@@ -644,8 +642,7 @@ struct xasl_node
   OID *class_oid_list;		/* list of class/serial OIDs referenced
 				 * in the XASL */
   int *repr_id_list;		/* representation ids of the classes in the class OID list */
-  const char *qstmt;
-  const char *qplan;
+  const char *query_alias;
   int dbval_cnt;		/* number of host variables in this XASL */
   bool iscan_oid_order;
 };
@@ -730,8 +727,8 @@ struct xasl_state
 typedef struct xasl_cache_ent XASL_CACHE_ENTRY;
 struct xasl_cache_ent
 {
-  const char *qstmt;		/* original query for the XASL; key for hash */
-  const char *qplan;
+  EXECUTION_INFO sql_info;	/* cache entry hash key, user input string & plan */
+
   XASL_ID xasl_id;		/* XASL file identifier */
 #if defined(SERVER_MODE)
   int *tran_index_array;	/* array of TID(tran index)s that are currently
@@ -813,9 +810,9 @@ extern XASL_CACHE_ENTRY *qexec_lookup_filter_pred_cache_ent (THREAD_ENTRY *
 							     const OID *
 							     user_oid);
 extern XASL_CACHE_ENTRY *qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
-						      const char *qsmt,
-						      const char *qplan,
-						      XASL_ID * xasl_id,
+						      COMPILE_CONTEXT *
+						      context,
+						      XASL_STREAM * stream,
 						      const OID * oid,
 						      int n_oids,
 						      const OID * class_oids,
@@ -881,7 +878,7 @@ extern bool qdump_print_xasl (XASL_NODE * xasl);
 extern bool qdump_check_xasl_tree (XASL_NODE * xasl);
 #endif /* CUBRID_DEBUG */
 extern int xts_map_xasl_to_stream (const XASL_NODE * xasl,
-				   char **stream, int *size);
+				   XASL_STREAM * stream);
 extern int xts_map_filter_pred_to_stream (const PRED_EXPR_WITH_CONTEXT * pred,
 					  char **stream, int *size);
 extern int xts_map_func_pred_to_stream (const FUNC_PRED * xasl,

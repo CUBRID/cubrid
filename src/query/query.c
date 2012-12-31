@@ -45,27 +45,19 @@
  * query_prepare () - Prepares a query for later (and repetitive)
  *                         execution
  *   return		 : Error code
- *   qstmt (in)		 : query string; used for hash key of the XASL cache
- *   qplan (in)		 :
- *   stream (in)	 : XASL stream; set to NULL if you want to look up the
- *			   XASL cache
- *   size (in)		 : size of the XASL stream in bytes
- *   xasl_idp (out)	 : XASL file id (XASL_ID)
- *   xasl_header_p (out) : XASL node header
+ *   context (in)	 : query string; used for hash key of the XASL cache
+ *   stream (in/out)	 : XASL stream, size, xasl_id & xasl_header;
+ *                         set to NULL if you want to look up the XASL cache
  *
- *   NOTE: If xasl_header_p is not NULL, also XASL node header will be
+ *   NOTE: If stream->xasl_header is not NULL, also XASL node header will be
  *	   requested from server.
  */
 int
-query_prepare (const char *qstmt, const char *qplan,
-	       const char *stream, int size, XASL_ID ** xasl_idp,
-	       XASL_NODE_HEADER * xasl_header_p)
+query_prepare (COMPILE_CONTEXT * context, XASL_STREAM * stream)
 {
-  XASL_ID *p;
 
-  assert (qstmt);
+  assert (context->sql_hash_text);
 
-  *xasl_idp = NULL;
 
   /* if QO_PARAM_LEVEL indicate no execution, just return */
   if (qo_need_skip_execution ())
@@ -74,8 +66,8 @@ query_prepare (const char *qstmt, const char *qplan,
     }
 
   /* allocate XASL_ID, the caller is responsible to free this */
-  p = (XASL_ID *) malloc (sizeof (XASL_ID));
-  if (p == NULL)
+  stream->xasl_id = (XASL_ID *) malloc (sizeof (XASL_ID));
+  if (stream->xasl_id == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (XASL_ID));
@@ -83,20 +75,21 @@ query_prepare (const char *qstmt, const char *qplan,
     }
 
   /* send XASL stream to the server and get XASL_ID */
-  if (qmgr_prepare_query (qstmt, qplan, ws_identifier (db_get_user ()),
-			  stream, size, p, xasl_header_p) == NULL)
+  if (qmgr_prepare_query (context, stream,
+			  ws_identifier (db_get_user ())) == NULL)
     {
-      free_and_init (p);
+      free_and_init (stream->xasl_id);
       return er_errid ();
     }
+
   /* if the query is not found in the cache */
-  if (!stream && p && XASL_ID_IS_NULL (p))
+  if (stream->xasl_stream == NULL && stream->xasl_id &&
+      XASL_ID_IS_NULL (stream->xasl_id))
     {
-      free_and_init (p);
+      free_and_init (stream->xasl_id);
       return NO_ERROR;
     }
 
-  *xasl_idp = p;
   return NO_ERROR;
 }
 

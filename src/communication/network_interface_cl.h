@@ -41,6 +41,7 @@
 #include "log_writer.h"
 #include "language_support.h"
 #include "log_comm.h"
+#include "query_executor.h"
 
 typedef struct server_info SERVER_INFO;
 struct server_info
@@ -307,11 +308,10 @@ extern int btree_class_test_unique (char *buf, int buf_size);
 extern int qfile_get_list_file_page (QUERY_ID query_id, VOLID volid,
 				     PAGEID pageid, char *buffer,
 				     int *buffer_size);
-extern XASL_ID *qmgr_prepare_query (const char *qstmt, const char *qplan,
-				    const OID * user_oid,
-				    const char *xasl_buffer, int size,
-				    XASL_ID * xasl_id,
-				    XASL_NODE_HEADER * xasl_header_p);
+extern XASL_ID *qmgr_prepare_query (COMPILE_CONTEXT * context,
+				    XASL_STREAM * stream,
+				    const OID * user_oid);
+
 extern QFILE_LIST_ID *qmgr_execute_query (const XASL_ID * xasl_id,
 					  QUERY_ID * query_idp, int dbval_cnt,
 					  const DB_VALUE * dbvals,

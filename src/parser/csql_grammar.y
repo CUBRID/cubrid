@@ -496,6 +496,11 @@ int yybuffer_pos;
 void _push_msg (int code, int line);
 void pop_msg (void);
 
+char *g_query_string;
+int g_query_string_len;
+PT_NODE *g_last_stmt;
+
+
 /* 
  * The default YYLTYPE structure is extended so that locations can hold
  * context information
@@ -1497,9 +1502,13 @@ stmt_list
 			if ($2 != NULL)
 			  {
 			    if (parser_statement_OK)
-			      this_parser->statement_number++;
+			      {
+			        this_parser->statement_number++;
+			      }
 			    else
-			      parser_statement_OK = 1;
+			      {
+			        parser_statement_OK = 1;
+			      }
 
 			    pt_push (this_parser, $2);
 
@@ -1519,7 +1528,9 @@ stmt_list
 				this_parser->statement_number++;
 			      }
 			    else
-			      parser_statement_OK = 1;
+			      {
+			        parser_statement_OK = 1;
+			      }
 
 			    pt_push (this_parser, $1);
 
@@ -1536,8 +1547,23 @@ stmt_list
 stmt
 	:
 		{{
-
 			msg_ptr = 0;
+
+			if (this_parser->original_buffer)
+			  {
+			    int pos = @$.buffer_pos;
+			    int stmt_n = this_parser->statement_number;
+
+			    g_query_string = this_parser->original_buffer + pos;
+			
+			    /* set query length of previous statement */
+			    if (g_last_stmt)
+			      {
+				int len = g_query_string - g_last_stmt->sql_user_text; 
+				g_last_stmt->sql_user_text_len = len;
+				g_query_string_len = len;
+			      }
+			  }
 
 		DBG_PRINT}}
 		{{
@@ -1582,6 +1608,25 @@ stmt
 			if (msg_ptr > 0)
 			  {
 			    csql_yyerror (NULL);
+			  }
+
+			/* set query length of last statement (but do it every time)
+                         * Not last statement's length will be updated later.
+                         */
+			if (this_parser->original_buffer)
+			  {
+			    int pos = @$.buffer_pos;
+			    PT_NODE *node = $3;
+			  
+			    if (node)
+			      {
+				char *curr_ptr = this_parser->original_buffer + pos;
+				int len = curr_ptr - g_query_string;
+				node->sql_user_text_len = len;
+				g_query_string_len = len;
+			      }
+
+			    g_last_stmt = node;
 			  }
 
 		DBG_PRINT}}
@@ -21612,6 +21657,12 @@ parser_main (PARSER_CONTEXT * parser)
 
   yyline = 1;
   yycolumn = yycolumn_end = 1;
+  yybuffer_pos=0;
+  csql_yylloc.buffer_pos=0;
+
+  g_query_string = NULL;
+  g_query_string_len = 0;
+  g_last_stmt = NULL;
 
   rv = yyparse ();
   pt_cleanup_hint (parser, parser_hint_table);
@@ -21699,6 +21750,12 @@ parse_one_statement (int state)
   this_parser->statement_number = 0;
 
   parser_yyinput_single_mode = 1;
+  yybuffer_pos=0;
+  csql_yylloc.buffer_pos=0;
+
+  g_query_string = NULL;
+  g_query_string_len = 0;
+  g_last_stmt = NULL;
 
   rv = yyparse ();
   pt_cleanup_hint (this_parser, parser_hint_table);
@@ -23283,3 +23340,5 @@ pt_set_collation_modifier (PARSER_CONTEXT *parser, PT_NODE *node,
 
   return node;
 }
+
+

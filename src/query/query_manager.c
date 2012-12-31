@@ -40,6 +40,7 @@
 #include "wait_for_graph.h"
 #include "page_buffer.h"
 #include "query_manager.h"
+#include "query_opfunc.h"
 
 #if defined (SERVER_MODE)
 #include "connection_defs.h"
@@ -1292,14 +1293,10 @@ qmgr_finalize (THREAD_ENTRY * thread_p)
  * xqmgr_prepare_query () - Prepares a query for later (and repetitive) execution
  *   return:  XASL file id which contains the XASL stream
  *   thrd(in)   :
- *   qstmt(in)      : query string; used for hash key of the XASL cache
- *   qplan(in)      :
+ *   context (in)      : query string; used for hash key of the XASL cache
  *   user_oid(in)       :
- *   xasl_stream(in)    : XASL stream;
+ *   stream(in/out)     : XASL stream, size, xasl_id & xasl_header info
  *                        set to NULL if you want to look up the XASL cache
- *   xasl_size(in)      : size of the XASL stream in bytes
- *   xasl_id(in)        :
- *   xasl_header_p(out) :
  *
  * Note: Store the given XASL stream into the XASL file and return its file id.
  * The XASL file is a temporay file, ..
@@ -1309,10 +1306,8 @@ qmgr_finalize (THREAD_ENTRY * thread_p)
  */
 XASL_ID *
 xqmgr_prepare_query (THREAD_ENTRY * thread_p,
-		     const char *qstmt, const char *qplan,
-		     const OID * user_oid_p, const char *xasl_stream_p,
-		     int xasl_size, XASL_ID * xasl_id_p,
-		     XASL_NODE_HEADER * xasl_header_p)
+		     COMPILE_CONTEXT * context,
+		     XASL_STREAM * stream, const OID * user_oid_p)
 {
   XASL_CACHE_ENTRY *cache_entry_p;
   char *p;
@@ -1328,27 +1323,29 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p,
      this query. The XASL is stored as a file so that the XASL file id
      (XASL_ID) will be returned if found in the cache. */
 
-  if (xasl_stream_p == NULL)
+  if (stream->xasl_stream == NULL)
     {
       /* lookup the XASL cache with the query string as the key */
       cache_entry_p =
-	qexec_lookup_xasl_cache_ent (thread_p, qstmt, user_oid_p);
+	qexec_lookup_xasl_cache_ent (thread_p, context->sql_hash_text,
+				     user_oid_p);
       if (cache_entry_p != NULL)
 	{
-	  XASL_ID_COPY (xasl_id_p, &(cache_entry_p->xasl_id));
-	  if (xasl_header_p != NULL)
+	  XASL_ID_COPY (stream->xasl_id, &(cache_entry_p->xasl_id));
+	  if (stream->xasl_header != NULL)
 	    {
 	      /* also xasl header was requested */
-	      qfile_load_xasl_node_header (thread_p, xasl_id_p,
-					   xasl_header_p);
+	      qfile_load_xasl_node_header (thread_p, stream->xasl_id,
+					   stream->xasl_header);
 	    }
+
 	}
       else
 	{
-	  XASL_ID_SET_NULL (xasl_id_p);
+	  XASL_ID_SET_NULL (stream->xasl_id);
 	}
 
-      return xasl_id_p;
+      return stream->xasl_id;
     }
 
   /* xasl_stream is given. It means that the client generated a XASL for
@@ -1359,17 +1356,19 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p,
   /* at this time, I'd like to look up once again because it is possible
      that the other competing thread which is running the same query has
      updated the cache before me */
-  cache_entry_p = qexec_lookup_xasl_cache_ent (thread_p, qstmt, user_oid_p);
+  cache_entry_p =
+    qexec_lookup_xasl_cache_ent (thread_p, context->sql_hash_text,
+				 user_oid_p);
   if (cache_entry_p != NULL)
     {
       er_log_debug (ARG_FILE_LINE,
 		    "xqm_query_prepare: second xs_lookup_xasl_cache_ent qstmt %s\n",
-		    qstmt);
-      XASL_ID_COPY (xasl_id_p, &(cache_entry_p->xasl_id));
+		    context->sql_hash_text);
+      XASL_ID_COPY (stream->xasl_id, &(cache_entry_p->xasl_id));
       goto exit_on_end;
     }
 
-  if (qfile_store_xasl (thread_p, xasl_stream_p, xasl_size, xasl_id_p) == 0)
+  if (qfile_store_xasl (thread_p, stream) == 0)
     {
       er_log_debug (ARG_FILE_LINE,
 		    "xqm_query_prepare: ls_store_xasl failed\n");
@@ -1377,10 +1376,10 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p,
     }
 
   /* save the returned XASL_ID for check later */
-  XASL_ID_COPY (&temp_xasl_id, xasl_id_p);
+  XASL_ID_COPY (&temp_xasl_id, stream->xasl_id);
 
   /* get some information from the XASL stream */
-  p = or_unpack_int ((char *) xasl_stream_p, &header_size);
+  p = or_unpack_int ((char *) stream->xasl_stream, &header_size);
   p = or_unpack_int (p, &dbval_cnt);
   p = or_unpack_oid (p, &creator_oid);
   p = or_unpack_int (p, &n_oid_list);
@@ -1412,16 +1411,17 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p,
     }
 
   cache_entry_p =
-    qexec_update_xasl_cache_ent (thread_p, qstmt, qplan, xasl_id_p,
-				 &creator_oid, n_oid_list, class_oid_list_p,
-				 repr_id_list_p, dbval_cnt);
+    qexec_update_xasl_cache_ent (thread_p, context, stream,
+				 &creator_oid, n_oid_list,
+				 class_oid_list_p, repr_id_list_p, dbval_cnt);
   if (cache_entry_p == NULL)
     {
+      XASL_ID *xasl_id = stream->xasl_id;
       er_log_debug (ARG_FILE_LINE,
 		    "xsm_query_prepare: qexec_update_xasl_cache_ent failed xasl_id { first_vpid { %d %d } temp_vfid { %d %d } }\n",
-		    xasl_id_p->first_vpid.pageid, xasl_id_p->first_vpid.volid,
-		    xasl_id_p->temp_vfid.fileid, xasl_id_p->temp_vfid.volid);
-      (void) file_destroy (thread_p, &xasl_id_p->temp_vfid);
+		    xasl_id->first_vpid.pageid, xasl_id->first_vpid.volid,
+		    xasl_id->temp_vfid.fileid, xasl_id->temp_vfid.volid);
+      (void) file_destroy (thread_p, &xasl_id->temp_vfid);
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       if (class_oid_list_p)
@@ -1446,16 +1446,17 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p,
     }
 
   /* check whether qexec_update_xasl_cache_ent() changed the XASL_ID */
-  if (!XASL_ID_EQ (&temp_xasl_id, xasl_id_p))
+  if (!XASL_ID_EQ (&temp_xasl_id, stream->xasl_id))
     {
+      XASL_ID *xasl_id = stream->xasl_id;
       er_log_debug (ARG_FILE_LINE,
 		    "xqm_query_prepare: qexec_update_xasl_cache_ent changed xasl_id { first_vpid { %d %d } temp_vfid { %d %d } } to xasl_id { first_vpid { %d %d } temp_vfid { %d %d } }\n",
 		    temp_xasl_id.first_vpid.pageid,
 		    temp_xasl_id.first_vpid.volid,
 		    temp_xasl_id.temp_vfid.fileid,
 		    temp_xasl_id.temp_vfid.volid,
-		    xasl_id_p->first_vpid.pageid, xasl_id_p->first_vpid.volid,
-		    xasl_id_p->temp_vfid.fileid, xasl_id_p->temp_vfid.volid);
+		    xasl_id->first_vpid.pageid, xasl_id->first_vpid.volid,
+		    xasl_id->temp_vfid.fileid, xasl_id->temp_vfid.volid);
       /* the other competing thread which is running the has updated the cache
          very after the moment of the previous check;
          simply abandon my XASL file */
@@ -1473,11 +1474,11 @@ exit_on_end:
       db_private_free_and_init (thread_p, repr_id_list_p);
     }
 
-  return xasl_id_p;
+  return stream->xasl_id;
 
 exit_on_error:
 
-  xasl_id_p = NULL;
+  stream->xasl_id = NULL;
   goto exit_on_end;
 }
 
@@ -1645,6 +1646,7 @@ qmgr_check_waiter_and_wakeup (QMGR_TRAN_ENTRY * tran_entry_p,
  *   srv_cache_time(in) :
  *   query_timeout(in) : query_timeout in millisec.
  *   end_of_queries(in) :
+ *   info(out) : execution info from server
  *
  * Note1: The query result is returned through a list id (actually the list
  * file). Query id is put for further refernece to this query entry.
@@ -1654,12 +1656,15 @@ qmgr_check_waiter_and_wakeup (QMGR_TRAN_ENTRY * tran_entry_p,
  * by calling QFILE_FREE_AND_INIT_LIST_ID().
  */
 QFILE_LIST_ID *
-xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
+xqmgr_execute_query (THREAD_ENTRY * thread_p,
+		     const XASL_ID * xasl_id_p,
 		     QUERY_ID * query_id_p, int dbval_count,
-		     const DB_VALUE * dbvals_p, QUERY_FLAG * flag_p,
+		     const DB_VALUE * dbvals_p,
+		     QUERY_FLAG * flag_p,
 		     CACHE_TIME * client_cache_time_p,
-		     CACHE_TIME * server_cache_time_p, int query_timeout,
-		     int end_of_queries, char **qstmt_ptr, char **plan_ptr)
+		     CACHE_TIME * server_cache_time_p,
+		     int query_timeout, int end_of_queries,
+		     EXECUTION_INFO * info)
 {
   XASL_CACHE_ENTRY *xasl_cache_entry_p;
   QFILE_LIST_CACHE_ENTRY *list_cache_entry_p;
@@ -1717,20 +1722,17 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
       er_log_debug (ARG_FILE_LINE,
 		    "xqm_query_execute: xs_check_xasl_cache_ent_by_xasl failed"
 		    " xasl_id { first_vpid { %d %d } temp_vfid { %d %d } }\n",
-		    xasl_id_p->first_vpid.pageid, xasl_id_p->first_vpid.volid,
+		    xasl_id_p->first_vpid.pageid,
+		    xasl_id_p->first_vpid.volid,
 		    xasl_id_p->temp_vfid.fileid, xasl_id_p->temp_vfid.volid);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       return NULL;
     }
 
-  if (qstmt_ptr != NULL)
-    {
-      *qstmt_ptr = xasl_cache_entry_p->qstmt;
-    }
 
-  if (plan_ptr != NULL)
+  if (info != NULL)
     {
-      *plan_ptr = xasl_cache_entry_p->qplan;
+      *info = xasl_cache_entry_p->sql_info;
     }
 
   /* If it is not inhibited from getting the cached result, inspect the list
@@ -1872,7 +1874,8 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
 	{			/* not found clone */
 	  /* unpack the XASL stream to the XASL tree for execution */
 	  if (stx_map_stream_to_xasl (thread_p, &query_p->xasl,
-				      query_p->xasl_data, query_p->xasl_size,
+				      query_p->xasl_data,
+				      query_p->xasl_size,
 				      &query_p->xasl_buf_info))
 	    {
 	      /* error occurred during unpacking */
@@ -1901,8 +1904,8 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
 	  er_log_debug (ARG_FILE_LINE,
 			"xqm_query_execute: dbval_cnt mismatch %d vs %d\n",
 			query_p->xasl->dbval_cnt, dbval_count);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE,
-		  0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_QPROC_INVALID_XASLNODE, 0);
 	  goto error;
 	}
 
@@ -2101,8 +2104,10 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
 	      list_cache_entry_p =
 		qfile_update_list_cache_entry (thread_p,
 					       &xasl_cache_entry_p->
-					       list_ht_no, &params, list_id_p,
-					       xasl_cache_entry_p->qstmt);
+					       list_ht_no, &params,
+					       list_id_p,
+					       xasl_cache_entry_p->
+					       sql_info.sql_hash_text);
 	      if (list_cache_entry_p == NULL)
 		{
 		  char *s;
@@ -2157,8 +2162,8 @@ error:
   /* end the use of the cached result if any when an error occurred */
   if (cached_result)
     {
-      (void) qfile_end_use_of_list_cache_entry (thread_p, list_cache_entry_p,
-						false);
+      (void) qfile_end_use_of_list_cache_entry (thread_p,
+						list_cache_entry_p, false);
     }
 
 end:
@@ -2227,11 +2232,13 @@ end:
  * If there is an error, NULL is returned.
  */
 QFILE_LIST_ID *
-xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_p,
-				 int xasl_size, QUERY_ID * query_id_p,
-				 int dbval_count, DB_VALUE * dbval_p,
-				 QUERY_FLAG * flag_p, int query_timeout,
-				 int end_of_queries)
+xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
+				 char *xasl_p, int xasl_size,
+				 QUERY_ID * query_id_p,
+				 int dbval_count,
+				 DB_VALUE * dbval_p,
+				 QUERY_FLAG * flag_p,
+				 int query_timeout, int end_of_queries)
 {
   QMGR_QUERY_ENTRY *query_p;
   QFILE_LIST_ID *list_id_p;
@@ -2483,8 +2490,8 @@ xqmgr_end_query (THREAD_ENTRY * thread_p, QUERY_ID query_id)
   /* get query entry */
   if (qmgr_Query_table.tran_entries_p == NULL)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_QUERYID, 1,
-	      query_id);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_QUERYID,
+	      1, query_id);
       return ER_FAILED;
     }
 
@@ -3004,8 +3011,8 @@ qmgr_allocate_oid_block (THREAD_ENTRY * thread_p)
       if (oid_block_p == NULL)
 	{
 	  csect_exit (CSECT_QPROC_QUERY_TABLE);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (OID_BLOCK_LIST));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OID_BLOCK_LIST));
 	  return NULL;
 	}
     }
@@ -3129,8 +3136,8 @@ qmgr_get_old_page (THREAD_ENTRY * thread_p, VPID * vpid_p,
 
   if (vpid_p->volid == NULL_VOLID && tfile_vfid_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_TEMP_FILE, 1,
-	      LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_TEMP_FILE,
+	      1, LOG_FIND_THREAD_TRAN_INDEX (thread_p));
       return NULL;
     }
 
@@ -3234,8 +3241,9 @@ qmgr_free_old_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
  *   tfile_vfidp(in)    :
  */
 void
-qmgr_set_dirty_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int free_page,
-		     LOG_DATA_ADDR * addr_p, QMGR_TEMP_FILE * tfile_vfid_p)
+qmgr_set_dirty_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
+		     int free_page, LOG_DATA_ADDR * addr_p,
+		     QMGR_TEMP_FILE * tfile_vfid_p)
 {
 #if defined (SERVER_MODE)
   int rv;
@@ -3292,8 +3300,8 @@ qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpid_p,
 
   if (tfile_vfid_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_TEMP_FILE, 1,
-	      LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_TEMP_FILE,
+	      1, LOG_FIND_THREAD_TRAN_INDEX (thread_p));
       return NULL;
     }
 
@@ -3408,9 +3416,9 @@ qmgr_get_external_file_page (THREAD_ENTRY * thread_p, VPID * vpid_p,
        * allocate next extent of pages for the file
        * Don't care about initializing the pages
        */
-      if (file_alloc_pages_as_noncontiguous (thread_p, &tmp_vfid_p->temp_vfid,
-					     vpid_p, &nthpg, num_pages, NULL,
-					     NULL, NULL, NULL) == NULL)
+      if (file_alloc_pages_as_noncontiguous
+	  (thread_p, &tmp_vfid_p->temp_vfid, vpid_p, &nthpg, num_pages,
+	   NULL, NULL, NULL, NULL) == NULL)
 	{
 	  /* if error was no more pages, ignore this expected error code */
 	  if (er_errid () != ER_FILE_NOT_ENOUGH_PAGES_IN_VOLUME)
@@ -3520,7 +3528,8 @@ qmgr_allocate_tempfile_with_buffer (int num_buffer_pages)
  *   query_id(in)       :
  */
 QMGR_TEMP_FILE *
-qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id,
+qmgr_create_new_temp_file (THREAD_ENTRY * thread_p,
+			   QUERY_ID query_id,
 			   QMGR_TEMP_FILE_MEMBUF_TYPE membuf_type)
 {
   QMGR_QUERY_ENTRY *query_p;
@@ -3880,8 +3889,8 @@ qmgr_free_query_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
  */
 int
 qmgr_free_temp_file_list (THREAD_ENTRY * thread_p,
-			  QMGR_TEMP_FILE * tfile_vfid_p, QUERY_ID query_id,
-			  bool is_error)
+			  QMGR_TEMP_FILE * tfile_vfid_p,
+			  QUERY_ID query_id, bool is_error)
 {
   QMGR_TEMP_FILE *temp = NULL;
   int rc = NO_ERROR, fd_ret = NO_ERROR;
@@ -4224,8 +4233,9 @@ qmgr_execute_async_select (THREAD_ENTRY * thread_p,
 #if defined (ENABLE_UNUSED_FUNCTION)
       /* plan_cache=on; called from xqmgr_execute_query() */
       /* save XASL tree */
-      (void) qexec_check_xasl_cache_ent_by_xasl (thread_p, &query_p->xasl_id,
-						 -1, &cache_clone_p);
+      (void) qexec_check_xasl_cache_ent_by_xasl (thread_p,
+						 &query_p->xasl_id, -1,
+						 &cache_clone_p);
 #endif /* ENABLE_UNUSED_FUNCTION */
     }
   else
@@ -4299,8 +4309,8 @@ xqmgr_get_query_info (THREAD_ENTRY * thread_p, QUERY_ID query_id)
  *   query_id(in)       :
  */
 void *
-qmgr_get_area_error_async (THREAD_ENTRY * thread_p, int *length_p, int count,
-			   QUERY_ID query_id)
+qmgr_get_area_error_async (THREAD_ENTRY * thread_p, int *length_p,
+			   int count, QUERY_ID query_id)
 {
   int len;
   char *area, *ptr;
@@ -4834,9 +4844,10 @@ qmgr_is_async_executable (XASL_NODE * xasl_p, QMGR_QUERY_TYPE * query_type_p)
  */
 static QFILE_LIST_ID *
 qmgr_process_async_select (THREAD_ENTRY * thread_p,
-			   XASL_CACHE_CLONE * cache_clone_p,
-			   QMGR_QUERY_ENTRY * query_p, int dbval_count,
-			   const DB_VALUE * dbval_p)
+			   XASL_CACHE_CLONE *
+			   cache_clone_p,
+			   QMGR_QUERY_ENTRY * query_p,
+			   int dbval_count, const DB_VALUE * dbval_p)
 {
   QFILE_LIST_ID *tmp_list_p;
   XASL_NODE *xasl_p, *tmp_xasl_p;
@@ -4911,8 +4922,8 @@ qmgr_process_async_select (THREAD_ENTRY * thread_p,
 	    }
 #endif
 	  /* now set up the 'type_list' in the new list file */
-	  if (qdata_get_valptr_type_list (thread_p, outptr_list_p, &type_list)
-	      != NO_ERROR)
+	  if (qdata_get_valptr_type_list
+	      (thread_p, outptr_list_p, &type_list) != NO_ERROR)
 	    {
 	      free_and_init (tmp_list_p);
 	      return (QFILE_LIST_ID *) NULL;
@@ -4934,7 +4945,8 @@ qmgr_process_async_select (THREAD_ENTRY * thread_p,
 	    }
 	}
       else if (query_type == VALUE_QUERY || query_type == GROUPBY_QUERY
-	       || query_type == ORDERBY_QUERY || query_type == DISTINCT_QUERY
+	       || query_type == ORDERBY_QUERY
+	       || query_type == DISTINCT_QUERY
 	       || query_type == ANALYTIC_QUERY)
 	{
 	  if (xasl_p->type == BUILDLIST_PROC
@@ -4953,8 +4965,8 @@ qmgr_process_async_select (THREAD_ENTRY * thread_p,
 	    }
 
 	  /* now set up the 'type_list' in the new list file */
-	  if (qdata_get_valptr_type_list (thread_p, outptr_list_p, &type_list)
-	      != NO_ERROR)
+	  if (qdata_get_valptr_type_list
+	      (thread_p, outptr_list_p, &type_list) != NO_ERROR)
 	    {
 	      free_and_init (tmp_list_p);
 	      return (QFILE_LIST_ID *) NULL;

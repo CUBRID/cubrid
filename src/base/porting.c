@@ -1967,6 +1967,8 @@ port_close_memstream (FILE * fp, char **ptr, size_t * sizeloc)
 {
   char *buff;
 
+  fflush (fp);
+
   if (fp)
     {
 #ifdef HAVE_OPEN_MEMSTREAM

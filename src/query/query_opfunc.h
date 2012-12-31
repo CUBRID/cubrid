@@ -29,6 +29,8 @@
 #include "storage_common.h"
 #include "heap_file.h"
 #include "query_evaluator.h"
+#include "parse_tree.h"
+#include "query_list.h"
 
 #define UNBOUND(x) ((x)->val_flag == V_UNBOUND || (x)->type == DB_TYPE_NULL)
 
@@ -119,6 +121,53 @@ typedef enum
   QPROC_TPLDESCR_RETRY_BIG_REC = -2	/* error, retry for BIG RECORD */
 } QPROC_TPLDESCR_STATUS;
 
+typedef struct xasl_node XASL_NODE;
+typedef struct pred_expr_with_context PRED_EXPR_WITH_CONTEXT;
+
+
+/*
+ * COMPILE_CONTEXT cover from user input query string to gnerated xasl
+ */
+typedef struct compile_context COMPILE_CONTEXT;
+struct compile_context
+{
+  XASL_NODE *xasl;
+
+  char *sql_user_text;		/* original query statement that user input */
+  int sql_user_text_len;	/* length of sql_user_text */
+
+  char *sql_hash_text;		/* rewrited query string which is used as hash key */
+
+  char *sql_plan_text;		/* plans for this query */
+  int sql_plan_alloc_size;	/* query_plan alloc size */
+};
+
+
+typedef struct xasl_stream XASL_STREAM;
+struct xasl_stream
+{
+  XASL_ID *xasl_id;
+  XASL_NODE_HEADER *xasl_header;
+
+  char *xasl_stream;
+  int xasl_stream_size;
+};
+
+
+/*
+ * EXECUTION_INFO is used for receive server execution info
+ * If you want get another info from server (ex. server statdump)
+ * add item in this structure
+ */
+typedef struct execution_info EXECUTION_INFO;
+struct execution_info
+{
+  char *sql_hash_text;		/* rewrited query string which is used as hash key */
+  char *sql_user_text;		/* original query statement that user input */
+  char *sql_plan_text;		/* plans for this query */
+};
+
+
 extern void qdata_set_value_list_to_null (VAL_LIST * val_list);
 extern int qdata_copy_db_value (DB_VALUE * dbval1, DB_VALUE * dbval2);
 
@@ -196,9 +245,7 @@ extern void regu_set_error_with_one_args (int err_type, const char *infor);
 #endif
 extern void regu_set_global_error (void);
 
-extern int query_prepare (const char *qstmt, const char *qplan,
-			  const char *stream, int size, XASL_ID ** xasl_idp,
-			  XASL_NODE_HEADER * xasl_header_p);
+extern int query_prepare (COMPILE_CONTEXT * context, XASL_STREAM * stream);
 extern int query_execute (const XASL_ID * xasl_id, QUERY_ID * query_idp,
 			  int var_cnt, const DB_VALUE * varptr,
 			  QFILE_LIST_ID ** list_idp, QUERY_FLAG flag,

@@ -297,8 +297,7 @@ static int xts_reserve_location_in_stream (int size);
  * xts_map_xasl_to_stream () -
  *   return: if successful, return 0, otherwise non-zero error code
  *   xasl_tree(in)      : pointer to root of XASL tree
- *   xasl_stream(out)   : pointer to xasl stream
- *   xasl_stream_size(out): # of bytes in xasl_stream
+ *   stream (out)       : xasl stream & size
  *
  * Note: map the XASL tree into linear byte stream of disk
  * representation. On successful return, `*xasl_stream'
@@ -310,15 +309,14 @@ static int xts_reserve_location_in_stream (int size);
  * xasl_stream. the free function should be free_and_init().
  */
 int
-xts_map_xasl_to_stream (const XASL_NODE * xasl_tree, char **xasl_stream,
-			int *xasl_stream_size)
+xts_map_xasl_to_stream (const XASL_NODE * xasl_tree, XASL_STREAM * stream)
 {
   int offset;
   int header_size, body_size;
   char *p;
   int i;
 
-  if (!xasl_tree || !xasl_stream || !xasl_stream_size)
+  if (!xasl_tree || !stream)
     {
       return ER_QPROC_INVALID_XASLNODE;
     }
@@ -368,8 +366,8 @@ xts_map_xasl_to_stream (const XASL_NODE * xasl_tree, char **xasl_stream,
   p = or_pack_int (p, body_size);
 
   /* set result */
-  *xasl_stream = xts_Stream_buffer;
-  *xasl_stream_size = xts_Free_offset_in_stream;
+  stream->xasl_stream = xts_Stream_buffer;
+  stream->xasl_stream_size = xts_Free_offset_in_stream;
 
 end:
   /* free all memories */
@@ -2972,29 +2970,14 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
 
   ptr = or_pack_int (ptr, (int) xasl->iscan_oid_order);
 
-  if (xasl->qstmt)
+  if (xasl->query_alias)
     {
-      offset = xts_save_string (xasl->qstmt);
+      offset = xts_save_string (xasl->query_alias);
     }
   else
     {
 /* because restore_xxx() cannot handle NULL pointer */
       offset = xts_save_string ("*** EMPTY QUERY ***");
-    }
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
-  if (xasl->qplan)
-    {
-      offset = xts_save_string (xasl->qplan);
-    }
-  else
-    {
-/* because restore_xxx() cannot handle NULL pointer */
-      offset = xts_save_string ("*** EMPTY PLAN ***");
     }
   if (offset == ER_FAILED)
     {
@@ -5402,9 +5385,7 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 
   size += OR_INT_SIZE;		/* iscan_oid_order */
 
-  size += PTR_SIZE;		/* qstmt */
-
-  size += PTR_SIZE;		/* qplan */
+  size += PTR_SIZE;		/* query_alias */
 
   size += PTR_SIZE;		/* next */
   return size;

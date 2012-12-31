@@ -1085,12 +1085,12 @@ typedef enum
   PT_HINT_NO_COVERING_IDX = 0x20000,	/* 0010 0000 0000 0000 0000 *//* do not use covering index scan */
   PT_HINT_INSERT_MODE = 0x40000,	/* 0100 0000 0000 0000 0000 *//* set insert_executeion_mode */
   PT_HINT_NO_IDX_DESC = 0x80000,	/* 1000 0000 0000 0000 0000 *//* do not use descending index scan */
-  PT_HINT_NO_MULTI_RANGE_OPT = 0x100000,/* 0001 0000 0000 0000 0000 0000 */
-					/* do not use multi range optimization */
+  PT_HINT_NO_MULTI_RANGE_OPT = 0x100000,	/* 0001 0000 0000 0000 0000 0000 */
+  /* do not use multi range optimization */
   PT_HINT_USE_UPDATE_IDX = 0x200000,	/* 0010 0000 0000 0000 0000 0000 */
-					/* use index for merge update */
+  /* use index for merge update */
   PT_HINT_USE_INSERT_IDX = 0x400000	/* 0100 0000 0000 0000 0000 0000 */
-					/* use index for merge delete */
+    /* use index for merge delete */
 } PT_HINT_ENUM;
 
 
@@ -2967,6 +2967,9 @@ struct parser_node
   int column_number;		/* the user column number originating this  */
   int buffer_pos;		/* position in the parse buffer of the string
 				   originating this */
+  char *sql_user_text;		/* user input sql string */
+  int sql_user_text_len;	/* user input sql string length (one statement) */
+
   PT_NODE *next;		/* forward link for NULL terminated list */
   PT_NODE *or_next;		/* forward link for DNF list */
   PT_NODE *next_row;		/* for PT_VALUE,PT_NAME,PT_EXPR... that belongs to PT_NODE_LIST */
@@ -3032,6 +3035,10 @@ struct keyword_record
 
 typedef int (*PT_CASECMP_FUN) (const char *s1, const char *s2);
 typedef int (*PT_INT_FUNCTION) (PARSER_CONTEXT * c);
+
+
+
+struct compile_context;
 
 struct parser_context
 {
@@ -3124,6 +3131,8 @@ struct parser_context
 				   commits */
   bool dont_collect_exec_stats:1;
   char *ddl_stmt_for_replication;
+
+  struct compile_context *context;
 };
 
 /* used in assignments enumeration */

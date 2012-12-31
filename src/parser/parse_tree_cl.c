@@ -587,6 +587,9 @@ static PARSER_VARCHAR *pt_print_use (PARSER_CONTEXT * parser, PT_NODE * p);
 
 static PARSER_PRINT_NODE_FUNC pt_print_func_array[PT_NODE_NUMBER];
 
+extern char *g_query_string;
+extern int g_query_string_len;
+
 
 typedef struct pt_string_block PT_STRING_BLOCK;
 struct pt_string_block
@@ -1738,6 +1741,7 @@ parser_parse_string_with_escapes (PARSER_CONTEXT * parser, const char *buffer,
     }
   parser->buffer = buffer;
   parser->original_buffer = buffer;
+
   parser->next_byte = buffgetin;
   if (LANG_VARIABLE_CHARSET (lang_charset ()))
     {
@@ -2164,6 +2168,9 @@ parser_new_node (PARSER_CONTEXT * parser, PT_NODE_TYPE node_type)
       node->node_type = node_type;
       pt_parser_line_col (node);
       parser_init_node (node);
+
+      node->sql_user_text = g_query_string;
+      node->sql_user_text_len = g_query_string_len;
     }
   return node;
 }

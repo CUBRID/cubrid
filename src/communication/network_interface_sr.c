@@ -5532,65 +5532,75 @@ void
 sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid,
 		     char *request, int reqlen)
 {
-  XASL_ID xasl_id, *p = NULL;
-  char *ptr = NULL, *qstmt = NULL, *qplan = NULL, *xasl_stream = NULL;
+  XASL_ID xasl_id, *p;
+  char *ptr;
   char *reply = NULL, *reply_buffer = NULL;
   int csserror, xasl_size, reply_buffer_size = 0, get_xasl_header = 0;
   OID user_oid;
-  XASL_NODE_HEADER xasl_header, *xasl_header_p = NULL;
+  XASL_NODE_HEADER xasl_header;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_XASL_ID_SIZE) a_reply;
   int error = NO_ERROR;
+  COMPILE_CONTEXT context;
+  XASL_STREAM stream;
+
+  memset (&context, 0x00, sizeof (COMPILE_CONTEXT));
+  memset (&stream, 0x00, sizeof (XASL_STREAM));
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  /* unpack query string from the request data */
-  ptr = or_unpack_string_nocopy (request, &qstmt);
+  /* unpack query alias string from the request data */
+  ptr = or_unpack_string_nocopy (request, &context.sql_hash_text);
 
   /* unpack query plan from the request data */
-  ptr = or_unpack_string_nocopy (ptr, &qplan);
+  ptr = or_unpack_string_nocopy (ptr, &context.sql_plan_text);
+
+  /* unpack query string from the request data */
+  ptr = or_unpack_string_nocopy (ptr, &context.sql_user_text);
 
   /* unpack OID of the current user */
   ptr = or_unpack_oid (ptr, &user_oid);
   /* unpack size of XASL stream */
-  ptr = or_unpack_int (ptr, &xasl_size);
+  ptr = or_unpack_int (ptr, &stream.xasl_stream_size);
   /* unpack get XASL node header boolean */
   ptr = or_unpack_int (ptr, &get_xasl_header);
 
   if (get_xasl_header)
     {
       /* need to get XASL node header */
-      xasl_header_p = &xasl_header;
-      INIT_XASL_NODE_HEADER (xasl_header_p);
+      stream.xasl_header = &xasl_header;
+      INIT_XASL_NODE_HEADER (stream.xasl_header);
     }
 
-  if (xasl_size > 0)
+  if (stream.xasl_stream_size > 0)
     {
       /* receive XASL stream from the client */
       csserror = css_receive_data_from_client (thread_p->conn_entry, rid,
-					       &xasl_stream, &xasl_size);
+					       &stream.xasl_stream,
+					       &stream.xasl_stream_size);
       if (csserror)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_NET_SERVER_DATA_RECEIVE, 0);
 	  css_send_abort_to_client (thread_p->conn_entry, rid);
-	  if (xasl_stream)
-	    free_and_init (xasl_stream);
+	  if (stream.xasl_stream)
+	    free_and_init (stream.xasl_stream);
 	  return;
 	}
     }
 
   /* call the server routine of query prepare */
-  XASL_ID_SET_NULL (&xasl_id);
-  p =
-    xqmgr_prepare_query (thread_p, qstmt, qplan, &user_oid, xasl_stream,
-			 xasl_size, &xasl_id, xasl_header_p);
-  if (xasl_stream && !p)
+  stream.xasl_id = &xasl_id;
+  XASL_ID_SET_NULL (stream.xasl_id);
+
+  p = xqmgr_prepare_query (thread_p, &context, &stream, &user_oid);
+
+  if (stream.xasl_stream && !p)
     {
       return_error_to_client (thread_p, rid);
     }
-  if (xasl_stream)
+  if (stream.xasl_stream)
     {
-      free_and_init (xasl_stream);
+      free_and_init (stream.xasl_stream);
     }
 
   if (p)
@@ -5610,7 +5620,7 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid,
 	  else
 	    {
 	      ptr = reply_buffer;
-	      OR_PACK_XASL_NODE_HEADER (ptr, xasl_header_p);
+	      OR_PACK_XASL_NODE_HEADER (ptr, stream.xasl_header);
 	    }
 	}
     }
@@ -5684,10 +5694,13 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
   struct timeval end;
   int queryinfo_string_length = 0;
   char queryinfo_string[QUERY_INFO_BUF_SIZE];
-  char *plan_ptr = NULL;
-  char *qstmt_ptr = NULL;
+
   MNT_SERVER_EXEC_STATS base_stats, current_stats, diff_stats;
   char stat_buf[STATDUMP_BUF_SIZE];
+  char *sql_id;
+
+  EXECUTION_INFO info = { NULL, NULL, NULL };
+
 
   if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
     {
@@ -5759,8 +5772,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
   list_id = xqmgr_execute_query (thread_p, &xasl_id, &query_id,
 				 dbval_cnt, dbvals, &query_flag,
 				 &clt_cache_time, &srv_cache_time,
-				 query_timeout, end_of_queries,
-				 &qstmt_ptr, &plan_ptr);
+				 query_timeout, end_of_queries, &info);
 
 #if 0
   if (!list_id && !CACHE_TIME_EQ (&clt_cache_time, &srv_cache_time))
@@ -5867,14 +5879,28 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
 	    }
 	  else
 	    {
-	      plan_ptr = "";
+	      info.sql_plan_text = "";
 	      stat_buf[0] = '\0';
+	    }
+
+	  if (qmgr_get_sql_id (thread_p, &sql_id, info.sql_hash_text,
+			       strlen (info.sql_hash_text)) != NO_ERROR)
+	    {
+	      sql_id = NULL;
 	    }
 
 	  queryinfo_string_length =
 	    snprintf (queryinfo_string, QUERY_INFO_BUF_SIZE,
-		      "%s\n%s\n%s\n%s%s\n%s\n%s\n", line, title, line,
-		      qstmt_ptr, plan_ptr, stat_buf, line);
+		      "%s\n%s\n%s\n %s\n\n /* SQL_ID: %s */ %s%s \n\n%s\n%s\n",
+		      line, title, line,
+		      info.sql_user_text,
+		      sql_id ? sql_id : "(null)",
+		      info.sql_hash_text, info.sql_plan_text, stat_buf, line);
+
+	  if (sql_id != NULL)
+	    {
+	      free (sql_id);
+	    }
 
 	  if (queryinfo_string_length >= QUERY_INFO_BUF_SIZE)
 	    {

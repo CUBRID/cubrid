@@ -2813,8 +2813,8 @@ qdump_print_xasl (XASL_NODE * xasl_p)
     }
 
   fprintf (foutput, "\ndbval_cnt:%d", xasl_p->dbval_cnt);
-  fprintf (foutput, "\nqstmt:%s\n", xasl_p->qstmt ? xasl_p->qstmt : "(NULL)");
-  fprintf (foutput, "\nqplan:%s\n", xasl_p->qplan ? xasl_p->qplan : "(NULL)");
+  fprintf (foutput, "\nquery_alias:%s\n",
+	   xasl_p->query_alias ? xasl_p->query_alias : "(NULL)");
   fprintf (foutput, "<end of xasl structure %p>\n", xasl_p);
   fflush (foutput);
 

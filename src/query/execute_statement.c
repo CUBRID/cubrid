@@ -120,6 +120,7 @@
 
 #define MAX_SERIAL_INVARIANT	8
 
+
 typedef struct serial_invariant SERIAL_INVARIANT;
 
 /* an invariant which serial must hold */
@@ -5262,7 +5263,8 @@ check_trigger (DB_TRIGGER_EVENT event, PT_DO_FUNC * do_func,
 		  }
 
 		result =
-		  tr_prepare_statement (&state, event, class_, idx, columns);
+		  tr_prepare_statement (&state, event, class_, idx,
+					(const char **) columns);
 	      }
 	  }
 	while (node);
@@ -5431,7 +5433,8 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser,
 	  goto cleanup;
 	}
       classes_names[idx] =
-	node->info.delete_.spec->info.spec.entity_name->info.name.original;
+	(char *) node->info.delete_.spec->info.spec.entity_name->info.name.
+	original;
       locks[idx] = X_LOCK;
       if (node->info.delete_.spec->info.spec.only_all == PT_ALL)
 	{
@@ -5445,7 +5448,7 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser,
 
   /* lock splitted classes with X_LOCK */
   if (locator_lockhint_classes
-      (num_classes, classes_names, locks, need_subclasses,
+      (num_classes, (const char **) classes_names, locks, need_subclasses,
        1) != LC_CLASSNAME_EXIST)
     {
       error = er_errid ();
@@ -7643,6 +7646,37 @@ statement_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 }
 
 /*
+ * init_compile_context() - init COMPILE_CONTEXT and set parser's current
+ * 			    context to this
+ *
+ *   parser (out): set parser->context to context
+ *   context (in): initialized parameter
+ *
+ */
+static void
+init_compile_context (PARSER_CONTEXT * parser, COMPILE_CONTEXT * context)
+{
+  memset (context, 0x00, sizeof (COMPILE_CONTEXT));
+
+  if (parser != NULL)
+    {
+      parser->context = context;
+    }
+}
+
+/*
+ * init_xasl_stream() - init XASL_STREAM
+ *
+ *   stream (in): initialized parameter
+ *
+ */
+static void
+init_xasl_stream (XASL_STREAM * stream)
+{
+  memset (stream, 0x00, sizeof (COMPILE_CONTEXT));
+}
+
+/*
  * update_at_server - Build an xasl tree for a server update and execute it
  *   return: Tuple count if success, otherwise an error code
  *   parser(in): Parser context
@@ -7678,11 +7712,16 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from,
   int error = NO_ERROR;
   int i;
   XASL_NODE *xasl = NULL;
-  int size, count = 0;
-  char *stream = NULL;
+  int count = 0;
   QUERY_ID query_id = NULL_QUERY_ID;
   QFILE_LIST_ID *list_id = NULL;
   PT_NODE *cl_name_node = NULL, *spec = NULL;
+
+  COMPILE_CONTEXT context;
+  XASL_STREAM stream;
+
+  init_compile_context (parser, &context);
+  init_xasl_stream (&stream);
 
   /* mark the beginning of another level of xasl packing */
   pt_enter_packing_buf ();
@@ -7692,7 +7731,7 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from,
     {
       UPDATE_PROC_NODE *update = &xasl->proc.update;
 
-      error = xts_map_xasl_to_stream (xasl, &stream, &size);
+      error = xts_map_xasl_to_stream (xasl, &stream);
       if (error != NO_ERROR)
 	{
 	  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
@@ -7718,7 +7757,9 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from,
 
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization
 					   checking for method */
-      error = query_prepare_and_execute (stream, size, &query_id,
+      error = query_prepare_and_execute (stream.xasl_stream,
+					 stream.xasl_stream_size,
+					 &query_id,
 					 parser->host_var_count +
 					 parser->auto_param_count,
 					 parser->host_variables, &list_id,
@@ -7729,9 +7770,9 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from,
   parser->query_id = query_id;
 
   /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
-  if (stream)
+  if (stream.xasl_stream)
     {
-      free_and_init (stream);
+      free_and_init (stream.xasl_stream);
     }
 
   if (list_id)
@@ -8364,8 +8405,6 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJECT *class_obj;
   int has_trigger, has_unique, au_save, has_virt = 0;
   bool server_update;
-  XASL_ID *xasl_id;
-  const char *qstmt = NULL;
 
   if (parser == NULL || statement == NULL)
     {
@@ -8377,6 +8416,15 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
   for (err = NO_ERROR; statement && (err >= NO_ERROR); statement
        = statement->next)
     {
+      COMPILE_CONTEXT context;
+      XASL_STREAM stream;
+
+      init_compile_context (parser, &context);
+      init_xasl_stream (&stream);
+
+      context.sql_user_text = statement->sql_user_text;
+      context.sql_user_text_len = statement->sql_user_text_len;
+
       /* there can be no results, this is a compile time false where clause */
       if (pt_false_where (parser, statement))
 	{
@@ -8482,13 +8530,18 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (server_update)
 	{
+	  /*
+	   * Server-side update case: (by requesting server to execute XASL)
+	   *  build UPDATE_PROC XASL
+	   */
+
 	  /* make query string */
 	  parser->dont_prt_long_string = 1;
 	  parser->long_string_skipped = 0;
 	  parser->print_type_ambiguity = 0;
 	  PT_NODE_PRINT_TO_ALIAS (parser, statement,
 				  (PT_CONVERT_RANGE | PT_PRINT_QUOTES));
-	  qstmt = statement->alias_print;
+	  context.sql_hash_text = (char *) statement->alias_print;
 	  parser->dont_prt_long_string = 0;
 	  if (parser->long_string_skipped || parser->print_type_ambiguity)
 	    {
@@ -8497,22 +8550,20 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
-      xasl_id = NULL;
+      stream.xasl_id = NULL;
       if (server_update)
 	{
 	  /*
 	   * Server-side update case: (by requesting server to execute XASL)
 	   *  build UPDATE_PROC XASL
 	   */
-	  XASL_NODE *xasl;
-	  char *stream;
-	  int size;
 
 	  /* look up server's XASL cache for this query string
 	     and get XASL file id (XASL_ID) returned if found */
 	  if (statement->recompile == 0)
 	    {
-	      err = query_prepare (qstmt, NULL, NULL, 0, &xasl_id, NULL);
+	      err = query_prepare (&context, &stream);
+
 	      if (err != NO_ERROR)
 		{
 		  err = er_errid ();
@@ -8520,11 +8571,12 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	  else
 	    {
-	      err = qmgr_drop_query_plan (qstmt,
+	      err = qmgr_drop_query_plan (context.sql_hash_text,
 					  ws_identifier (db_get_user ()),
 					  NULL, true);
 	    }
-	  if (!xasl_id && err == NO_ERROR)
+
+	  if (stream.xasl_id == NULL && err == NO_ERROR)
 	    {
 	      /* cache not found;
 	         make XASL from the parse tree including query optimization
@@ -8537,17 +8589,18 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      AU_SAVE_AND_DISABLE (au_save);
 
 	      /* pt_to_update_xasl() will build XASL tree from parse tree */
-	      xasl = pt_to_update_xasl (parser, statement, &not_nulls);
+	      context.xasl =
+		pt_to_update_xasl (parser, statement, &not_nulls);
 	      AU_RESTORE (au_save);
-	      stream = NULL;
-	      if (xasl && (err >= NO_ERROR))
+
+	      if (context.xasl && (err >= NO_ERROR))
 		{
 		  int i;
-		  UPDATE_PROC_NODE *update = &xasl->proc.update;
+		  UPDATE_PROC_NODE *update = &context.xasl->proc.update;
 
 		  /* convert the created XASL tree to the byte stream for
 		     transmission to the server */
-		  err = xts_map_xasl_to_stream (xasl, &stream, &size);
+		  err = xts_map_xasl_to_stream (context.xasl, &stream);
 		  if (err != NO_ERROR)
 		    {
 		      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
@@ -8572,11 +8625,10 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      /* request the server to prepare the query;
 	         give XASL stream generated from the parse tree
 	         and get XASL file id returned */
-	      if (stream && (err >= NO_ERROR))
+	      if (stream.xasl_stream && (err >= NO_ERROR))
 		{
-		  err =
-		    query_prepare (qstmt, xasl->qplan, stream, size,
-				   &xasl_id, NULL);
+		  err = query_prepare (&context, &stream);
+
 		  if (err != NO_ERROR)
 		    {
 		      err = er_errid ();
@@ -8591,9 +8643,9 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	      /* free 'stream' that is allocated inside of
 	         xts_map_xasl_to_stream() */
-	      if (stream)
+	      if (stream.xasl_stream)
 		{
-		  free_and_init (stream);
+		  free_and_init (stream.xasl_stream);
 		}
 	      statement->use_plan_cache = 0;
 	    }
@@ -8608,7 +8660,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		      if (locator_flush_class (flat->info.name.db_object)
 			  != NO_ERROR)
 			{
-			  xasl_id = NULL;
+			  stream.xasl_id = NULL;
 			  err = er_errid ();
 			  break;
 			}
@@ -8689,7 +8741,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      /* get XASL_ID by calling do_prepare_select() */
 	      err = do_prepare_select (parser, select_statement);
-	      xasl_id = select_statement->xasl_id;
+	      stream.xasl_id = select_statement->xasl_id;
 	      parser_free_tree (parser, select_statement);
 	    }
 	  else
@@ -8704,7 +8756,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* save the XASL_ID that is allocated and returned by
          query_prepare() into 'statement->xasl_id'
          to be used by do_execute_update() */
-      statement->xasl_id = xasl_id;
+      statement->xasl_id = stream.xasl_id;
 
       if (not_nulls)
 	{
@@ -9335,11 +9387,16 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
   int error = NO_ERROR;
   XASL_NODE *xasl = NULL;
   DB_OBJECT *class_obj;
-  int size, count = 0;
-  char *stream = NULL;
+  int count = 0;
   QUERY_ID query_id = NULL_QUERY_ID;
   QFILE_LIST_ID *list_id = NULL;
   const PT_NODE *node;
+
+  COMPILE_CONTEXT context;
+  XASL_STREAM stream;
+
+  init_compile_context (parser, &context);
+  init_xasl_stream (&stream);
 
   /* mark the beginning of another level of xasl packing */
   pt_enter_packing_buf ();
@@ -9348,7 +9405,7 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (xasl)
     {
-      error = xts_map_xasl_to_stream (xasl, &stream, &size);
+      error = xts_map_xasl_to_stream (xasl, &stream);
       if (error != NO_ERROR)
 	{
 	  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
@@ -9366,8 +9423,8 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization
 					   checking for method */
-      error = query_prepare_and_execute (stream,
-					 size,
+      error = query_prepare_and_execute (stream.xasl_stream,
+					 stream.xasl_stream_size,
 					 &query_id,
 					 parser->host_var_count +
 					 parser->auto_param_count,
@@ -9380,9 +9437,9 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
   parser->query_id = query_id;
 
   /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
-  if (stream)
+  if (stream.xasl_stream)
     {
-      free_and_init (stream);
+      free_and_init (stream.xasl_stream);
     }
 
   if (list_id)
@@ -9655,7 +9712,6 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJECT *class_obj;
   int has_trigger, au_save;
   bool server_delete, has_virt_obj;
-  XASL_ID *xasl_id;
   PT_NODE *node = NULL;
 
   if (parser == NULL)
@@ -9665,9 +9721,19 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
+
   for (err = NO_ERROR; statement && (err >= NO_ERROR);
        statement = statement->next)
     {
+      COMPILE_CONTEXT context;
+      XASL_STREAM stream;
+
+      init_compile_context (parser, &context);
+      init_xasl_stream (&stream);
+
+      context.sql_user_text = statement->sql_user_text;
+      context.sql_user_text_len = statement->sql_user_text_len;
+
       /* there can be no results, this is a compile time false where clause */
       if (pt_false_where (parser, statement))
 	{
@@ -9745,16 +9811,11 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       statement->info.delete_.server_delete = server_delete;
 
-      xasl_id = NULL;
+      stream.xasl_id = NULL;
       if (server_delete)
 	{
 	  /* Server-side deletion case: (by requesting server to execute XASL)
 	     build DELETE_PROC XASL */
-
-	  const char *qstmt;
-	  XASL_NODE *xasl;
-	  char *stream;
-	  int size;
 
 	  /* make query string */
 	  parser->dont_prt_long_string = 1;
@@ -9762,7 +9823,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  parser->print_type_ambiguity = 0;
 	  PT_NODE_PRINT_TO_ALIAS (parser, statement,
 				  (PT_CONVERT_RANGE | PT_PRINT_QUOTES));
-	  qstmt = statement->alias_print;
+	  context.sql_hash_text = (char *) statement->alias_print;
 	  parser->dont_prt_long_string = 0;
 	  if (parser->long_string_skipped || parser->print_type_ambiguity)
 	    {
@@ -9774,7 +9835,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	     and get XASL file id (XASL_ID) returned if found */
 	  if (statement->recompile == 0)
 	    {
-	      err = query_prepare (qstmt, NULL, NULL, 0, &xasl_id, NULL);
+	      err = query_prepare (&context, &stream);
 	      if (err != NO_ERROR)
 		{
 		  err = er_errid ();
@@ -9782,11 +9843,11 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	  else
 	    {
-	      err = qmgr_drop_query_plan (qstmt,
+	      err = qmgr_drop_query_plan (context.sql_hash_text,
 					  ws_identifier (db_get_user ()),
 					  NULL, true);
 	    }
-	  if (!xasl_id && err == NO_ERROR)
+	  if (stream.xasl_id == NULL && err == NO_ERROR)
 	    {
 	      /* cache not found;
 	         make XASL from the parse tree including query optimization
@@ -9799,14 +9860,14 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      AU_SAVE_AND_DISABLE (au_save);
 
 	      /* pt_to_delete_xasl() will build XASL tree from parse tree */
-	      xasl = pt_to_delete_xasl (parser, statement);
+	      context.xasl = pt_to_delete_xasl (parser, statement);
 	      AU_RESTORE (au_save);
-	      stream = NULL;
-	      if (xasl && (err >= NO_ERROR))
+
+	      if (context.xasl && (err >= NO_ERROR))
 		{
 		  /* convert the created XASL tree to the byte stream for
 		     transmission to the server */
-		  err = xts_map_xasl_to_stream (xasl, &stream, &size);
+		  err = xts_map_xasl_to_stream (context.xasl, &stream);
 		  if (err != NO_ERROR)
 		    {
 		      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
@@ -9824,11 +9885,9 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      /* request the server to prepare the query;
 	         give XASL stream generated from the parse tree
 	         and get XASL file id returned */
-	      if (stream && (err >= NO_ERROR))
+	      if (stream.xasl_stream && (err >= NO_ERROR))
 		{
-		  err =
-		    query_prepare (qstmt, xasl->qplan, stream, size,
-				   &xasl_id, NULL);
+		  err = query_prepare (&context, &stream);
 		  if (err != NO_ERROR)
 		    {
 		      err = er_errid ();
@@ -9843,9 +9902,9 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	      /* free 'stream' that is allocated inside of
 	         xts_map_xasl_to_stream() */
-	      if (stream)
+	      if (stream.xasl_stream)
 		{
-		  free_and_init (stream);
+		  free_and_init (stream.xasl_stream);
 		}
 	      statement->use_plan_cache = 0;
 	    }
@@ -9897,7 +9956,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      /* get XASL_ID by calling do_prepare_select() */
 	      err = do_prepare_select (parser, select_statement);
-	      xasl_id = select_statement->xasl_id;
+	      stream.xasl_id = select_statement->xasl_id;
 	      parser_free_tree (parser, select_statement);
 	    }
 	  else
@@ -9922,8 +9981,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* save the XASL_ID that is allocated and returned by
          query_prepare() into 'statement->xasl_id'
          to be used by do_execute_delete() */
-      statement->xasl_id = xasl_id;
-
+      statement->xasl_id = stream.xasl_id;
     }
 
   return err;
@@ -10358,14 +10416,15 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
 			    const int has_uniques, const int upd_has_uniques)
 {
   int error = NO_ERROR;
-  XASL_NODE *xasl = NULL;
-  int size = 0;
-  char *stream = NULL;
   int i = 0;
   int j = 0;
-  XASL_ID *xasl_id = NULL;
-  const char *qstmt;
   PT_NODE *val, *head = NULL, *prev = NULL;
+
+  COMPILE_CONTEXT context;
+  XASL_STREAM stream;
+
+  init_compile_context (parser, &context);
+  init_xasl_stream (&stream);
 
   if (!parser || !statement || !values_list
       || statement->node_type != PT_INSERT)
@@ -10376,6 +10435,9 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
 
   assert (statement->info.insert.do_replace == false);
   assert (statement->info.insert.odku_assignments == NULL);
+
+  context.sql_user_text = statement->sql_user_text;
+  context.sql_user_text_len = statement->sql_user_text_len;
 
   /* insert value auto parameterize */
   val = statement->info.insert.value_clauses->info.node_list.list;
@@ -10411,7 +10473,7 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
   parser->print_type_ambiguity = 0;
   PT_NODE_PRINT_TO_ALIAS (parser, statement,
 			  (PT_CONVERT_RANGE | PT_PRINT_QUOTES));
-  qstmt = statement->alias_print;
+  context.sql_hash_text = (char *) statement->alias_print;
   parser->dont_prt_long_string = 0;
   if (parser->long_string_skipped || parser->print_type_ambiguity)
     {
@@ -10423,7 +10485,7 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
      and get XASL file id (XASL_ID) returned if found */
   if (statement->recompile == 0)
     {
-      error = query_prepare (qstmt, NULL, NULL, 0, &xasl_id, NULL);
+      error = query_prepare (&context, &stream);
       if (error != NO_ERROR)
 	{
 	  error = er_errid ();
@@ -10431,12 +10493,12 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
     }
   else
     {
-      error = qmgr_drop_query_plan (qstmt,
+      error = qmgr_drop_query_plan (context.sql_hash_text,
 				    ws_identifier (db_get_user ()), NULL,
 				    true);
     }
 
-  if (!xasl_id && error == NO_ERROR)
+  if (stream.xasl_id == NULL && error == NO_ERROR)
     {
       PT_NODE *default_expr_attrs = NULL;
       PT_NODE *class_;
@@ -10455,19 +10517,20 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
 
       /* mark the beginning of another level of xasl packing */
       pt_enter_packing_buf ();
-      xasl = pt_to_insert_xasl (parser, statement, values_list, has_uniques,
-				non_null_attrs, upd_non_null_attrs,
-				default_expr_attrs, true);
+      context.xasl =
+	pt_to_insert_xasl (parser, statement, values_list, has_uniques,
+			   non_null_attrs, upd_non_null_attrs,
+			   default_expr_attrs, true);
 
-      if (xasl)
+      if (context.xasl)
 	{
-	  INSERT_PROC_NODE *insert = &xasl->proc.insert;
+	  INSERT_PROC_NODE *insert = &context.xasl->proc.insert;
 
-	  assert (xasl->dptr_list == NULL);
+	  assert (context.xasl->dptr_list == NULL);
 
 	  if (error == NO_ERROR)
 	    {
-	      error = xts_map_xasl_to_stream (xasl, &stream, &size);
+	      error = xts_map_xasl_to_stream (context.xasl, &stream);
 	      if (error != NO_ERROR)
 		{
 		  PT_ERRORm (parser, statement,
@@ -10481,10 +10544,9 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
 	  error = er_errid ();
 	}
 
-      if (stream && (error >= NO_ERROR))
+      if (stream.xasl_stream && (error >= NO_ERROR))
 	{
-	  error =
-	    query_prepare (qstmt, xasl->qplan, stream, size, &xasl_id, NULL);
+	  error = query_prepare (&context, &stream);
 	  if (error != NO_ERROR)
 	    {
 	      error = er_errid ();
@@ -10498,9 +10560,9 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
          the XASL cache for this query will be created or updated. */
 
       /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
-      if (stream)
+      if (stream.xasl_stream)
 	{
-	  free_and_init (stream);
+	  free_and_init (stream.xasl_stream);
 	}
 
       statement->use_plan_cache = 0;
@@ -10520,7 +10582,7 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
   /* save the XASL_ID that is allocated and returned by
      query_prepare() into 'statement->xasl_id'
      to be used by do_execute_update() */
-  statement->xasl_id = xasl_id;
+  statement->xasl_id = stream.xasl_id;
 
   return NO_ERROR;
 }
@@ -10559,13 +10621,18 @@ do_insert_at_server (PARSER_CONTEXT * parser,
 {
   int error = NO_ERROR;
   XASL_NODE *xasl = NULL;
-  int size = 0, count = 0;
-  char *stream = NULL;
+  int count = 0;
   QUERY_ID query_id = NULL_QUERY_ID;
   QFILE_LIST_ID *list_id = NULL;
   int i = 0;
   int j = 0, k = 0;
   PT_NODE *odku_assignments = NULL;
+
+  COMPILE_CONTEXT context;
+  XASL_STREAM stream;
+
+  init_compile_context (parser, &context);
+  init_xasl_stream (&stream);
 
   if (parser == NULL || statement == NULL || values_list == NULL
       || statement->node_type != PT_INSERT)
@@ -10583,7 +10650,7 @@ do_insert_at_server (PARSER_CONTEXT * parser,
 
   if (xasl)
     {
-      error = xts_map_xasl_to_stream (xasl, &stream, &size);
+      error = xts_map_xasl_to_stream (xasl, &stream);
       if (error != NO_ERROR)
 	{
 	  PT_ERRORm (parser, statement,
@@ -10596,16 +10663,16 @@ do_insert_at_server (PARSER_CONTEXT * parser,
       error = er_errid ();
     }
 
-  if (error == NO_ERROR && stream != NULL)
+  if (error == NO_ERROR && stream.xasl_stream != NULL)
     {
       int au_save;
 
-      assert (size > 0);
+      assert (stream.xasl_stream_size > 0);
 
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization
 					   checking for method */
-      error = query_prepare_and_execute (stream,
-					 size,
+      error = query_prepare_and_execute (stream.xasl_stream,
+					 stream.xasl_stream_size,
 					 &query_id,
 					 (parser->host_var_count +
 					  parser->auto_param_count),
@@ -10619,9 +10686,9 @@ do_insert_at_server (PARSER_CONTEXT * parser,
   parser->query_id = query_id;
 
   /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
-  if (stream)
+  if (stream.xasl_stream)
     {
-      free_and_init (stream);
+      free_and_init (stream.xasl_stream);
     }
 
   if (list_id)
@@ -13668,11 +13735,15 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   const char *into_label;
   DB_VALUE *vals, *v;
   int save;
-  int size;
-  char *stream = NULL;
   QUERY_ID query_id = NULL_QUERY_ID;
   QUERY_FLAG query_flag;
   int async_flag;
+
+  COMPILE_CONTEXT context;
+  XASL_STREAM stream;
+
+  init_compile_context (parser, &context);
+  init_xasl_stream (&stream);
 
   error = NO_ERROR;
 
@@ -13721,7 +13792,7 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  if (error >= NO_ERROR)
 	    {
-	      error = xts_map_xasl_to_stream (xasl, &stream, &size);
+	      error = xts_map_xasl_to_stream (xasl, &stream);
 	      if (error != NO_ERROR)
 		{
 		  PT_ERRORm (parser, statement,
@@ -13732,8 +13803,8 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  if (error >= NO_ERROR)
 	    {
-	      error = query_prepare_and_execute (stream,
-						 size,
+	      error = query_prepare_and_execute (stream.xasl_stream,
+						 stream.xasl_stream_size,
 						 &query_id,
 						 parser->host_var_count +
 						 parser->auto_param_count,
@@ -13744,9 +13815,9 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  statement->etc = list_id;
 
 	  /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
-	  if (stream)
+	  if (stream.xasl_stream)
 	    {
-	      free_and_init (stream);
+	      free_and_init (stream.xasl_stream);
 	    }
 
 	  if (error >= NO_ERROR)
@@ -13826,12 +13897,13 @@ int
 do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int err = NO_ERROR;
-  const char *qstmt;
-  XASL_ID *xasl_id;
-  XASL_NODE *xasl;
-  char *stream;
-  int size;
   int au_save;
+
+  COMPILE_CONTEXT context;
+  XASL_STREAM stream;
+
+  init_compile_context (parser, &context);
+  init_xasl_stream (&stream);
 
   if (parser == NULL || statement == NULL)
     {
@@ -13839,6 +13911,9 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      0);
       return ER_OBJ_INVALID_ARGUMENTS;
     }
+
+  context.sql_user_text = statement->sql_user_text;
+  context.sql_user_text_len = statement->sql_user_text_len;
 
   /* click counter check */
   if (statement->is_click_counter)
@@ -13867,7 +13942,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE_PRINT_TO_ALIAS (parser, statement,
 			  (PT_CONVERT_RANGE | PT_PRINT_QUOTES
 			   | PT_PRINT_DIFFERENT_SYSTEM_PARAMETERS));
-  qstmt = statement->alias_print;
+  context.sql_hash_text = (char *) statement->alias_print;
   parser->dont_prt_long_string = 0;
   if (parser->long_string_skipped || parser->print_type_ambiguity)
     {
@@ -13877,44 +13952,48 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* look up server's XASL cache for this query string
      and get XASL file id (XASL_ID) returned if found */
-  xasl_id = NULL;
   if (statement->recompile == 0)
     {
       XASL_NODE_HEADER xasl_header;
-      err = query_prepare (qstmt, NULL, NULL, 0, &xasl_id, &xasl_header);
+      stream.xasl_header = &xasl_header;
+
+      err = query_prepare (&context, &stream);
       if (err != NO_ERROR)
 	{
 	  err = er_errid ();
 	}
-      else if (xasl_id != NULL)
+      else if (stream.xasl_id != NULL)
 	{
 	  /* check xasl header */
-	  if ((xasl_header.mro_info & XASL_NODE_HEADER_MRO_CANDIDATE) != 0)
+	  if ((stream.xasl_header->
+	       mro_info & XASL_NODE_HEADER_MRO_CANDIDATE) != 0)
 	    {
 	      /* multi range optimization checks */
 	      bool good_limit =
 		pt_check_ordby_num_for_multi_range_opt (parser, statement,
 							NULL, NULL);
 	      bool mro_used =
-		((xasl_header.mro_info & XASL_NODE_HEADER_MRO_IS_USED) != 0);
+		((stream.xasl_header->
+		  mro_info & XASL_NODE_HEADER_MRO_IS_USED) != 0);
 	      if ((good_limit && !mro_used) || (!good_limit && mro_used))
 		{
 		  /* drop cached xasl and prepare again */
 		  err =
-		    qmgr_drop_query_plan (qstmt,
+		    qmgr_drop_query_plan (context.sql_hash_text,
 					  ws_identifier (db_get_user ()),
 					  NULL, true);
-		  xasl_id = NULL;
+		  stream.xasl_id = NULL;
 		}
 	    }
 	}
     }
   else
     {
-      err = qmgr_drop_query_plan (qstmt, ws_identifier (db_get_user ()),
-				  NULL, true);
+      err =
+	qmgr_drop_query_plan (context.sql_hash_text,
+			      ws_identifier (db_get_user ()), NULL, true);
     }
-  if (!xasl_id && err == NO_ERROR)
+  if (stream.xasl_id == NULL && err == NO_ERROR)
     {
       /* cache not found;
          make XASL from the parse tree including query optimization
@@ -13926,15 +14005,14 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       AU_SAVE_AND_DISABLE (au_save);	/* this prevents authorization
 					   checking during generating XASL */
       /* parser_generate_xasl() will build XASL tree from parse tree */
-      xasl = parser_generate_xasl (parser, statement);
+      context.xasl = parser_generate_xasl (parser, statement);
       AU_RESTORE (au_save);
-      stream = NULL;
 
-      if (xasl && (err == NO_ERROR) && !pt_has_error (parser))
+      if (context.xasl && (err == NO_ERROR) && !pt_has_error (parser))
 	{
 	  /* convert the created XASL tree to the byte stream for transmission
 	     to the server */
-	  err = xts_map_xasl_to_stream (xasl, &stream, &size);
+	  err = xts_map_xasl_to_stream (context.xasl, &stream);
 	  if (err != NO_ERROR)
 	    {
 	      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
@@ -13953,10 +14031,9 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* request the server to prepare the query;
          give XASL stream generated from the parse tree
          and get XASL file id returned */
-      if (stream && (err == NO_ERROR))
+      if (stream.xasl_stream && (err == NO_ERROR))
 	{
-	  err =
-	    query_prepare (qstmt, xasl->qplan, stream, size, &xasl_id, NULL);
+	  err = query_prepare (&context, &stream);
 	  if (err != NO_ERROR)
 	    {
 	      err = er_errid ();
@@ -13970,9 +14047,9 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
          the XASL cache for this query will be created or updated. */
 
       /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
-      if (stream)
+      if (stream.xasl_stream)
 	{
-	  free_and_init (stream);
+	  free_and_init (stream.xasl_stream);
 	}
       statement->use_plan_cache = 0;
     }
@@ -13990,7 +14067,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* save the XASL_ID that is allocated and returned by query_prepare()
      into 'statement->xasl_id' to be used by do_execute_select() */
-  statement->xasl_id = xasl_id;
+  statement->xasl_id = stream.xasl_id;
 
   return err;
 }				/* do_prepare_select() */
@@ -14615,10 +14692,14 @@ do_execute_do (PARSER_CONTEXT * parser, PT_NODE * statement)
   XASL_NODE *xasl = NULL;
   QFILE_LIST_ID *list_id = NULL;
   int save;
-  int size;
-  char *stream = NULL;
   QUERY_ID query_id = NULL_QUERY_ID;
   QUERY_FLAG query_flag;
+
+  COMPILE_CONTEXT context;
+  XASL_STREAM stream;
+
+  init_compile_context (parser, &context);
+  init_xasl_stream (&stream);
 
   AU_DISABLE (save);
   parser->au_save = save;
@@ -14650,15 +14731,15 @@ do_execute_do (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* map XASL to stream */
-  error = xts_map_xasl_to_stream (xasl, &stream, &size);
+  error = xts_map_xasl_to_stream (xasl, &stream);
   if (error != NO_ERROR)
     {
       goto end;
     }
 
   /* execute statement */
-  error = query_prepare_and_execute (stream,
-				     size,
+  error = query_prepare_and_execute (stream.xasl_stream,
+				     stream.xasl_stream_size,
 				     &query_id,
 				     parser->host_var_count +
 				     parser->auto_param_count,
@@ -14675,9 +14756,9 @@ do_execute_do (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 end:
   /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
-  if (stream)
+  if (stream.xasl_stream)
     {
-      free_and_init (stream);
+      free_and_init (stream.xasl_stream);
     }
 
   /* mark the end of another level of xasl packing */
@@ -15446,8 +15527,13 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJECT *class_obj;
   PT_NODE *copy_assigns, *save_assigns;
 
-  const char *qstr = NULL;
   int no_vals, no_consts;
+
+  COMPILE_CONTEXT context;
+  XASL_STREAM stream;
+
+  init_compile_context (parser, &context);
+  init_xasl_stream (&stream);
 
   if (parser == NULL || statement == NULL)
     {
@@ -15455,6 +15541,9 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      0);
       return ER_OBJ_INVALID_ARGUMENTS;
     }
+
+  context.sql_user_text = statement->sql_user_text;
+  context.sql_user_text_len = statement->sql_user_text_len;
 
   if (pt_false_where (parser, statement))
     {
@@ -15632,11 +15721,6 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (server_op)
     {
-      XASL_ID *xasl_id = NULL;
-      XASL_NODE *xasl;
-      char *stream;
-      int size;
-
       statement->info.merge.flags |= PT_MERGE_INFO_SERVER_OP;
 
       /* make query string */
@@ -15645,7 +15729,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       parser->print_type_ambiguity = 0;
       PT_NODE_PRINT_TO_ALIAS (parser, statement,
 			      (PT_CONVERT_RANGE | PT_PRINT_QUOTES));
-      qstr = statement->alias_print;
+      context.sql_hash_text = (char *) statement->alias_print;
       parser->dont_prt_long_string = 0;
       if (parser->long_string_skipped || parser->print_type_ambiguity)
 	{
@@ -15656,7 +15740,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* lookup in XASL cache */
       if (statement->recompile == 0)
 	{
-	  err = query_prepare (qstr, NULL, NULL, 0, &xasl_id, NULL);
+	  err = query_prepare (&context, &stream);
 	  if (err != NO_ERROR)
 	    {
 	      err = er_errid ();
@@ -15664,11 +15748,12 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       else
 	{
-	  err = qmgr_drop_query_plan (qstr, ws_identifier (db_get_user ()),
-				      NULL, true);
+	  err =
+	    qmgr_drop_query_plan (context.sql_hash_text,
+				  ws_identifier (db_get_user ()), NULL, true);
 	}
 
-      if (!xasl_id && err == NO_ERROR)
+      if (stream.xasl_id == NULL && err == NO_ERROR)
 	{
 	  if (statement->info.merge.insert.value_clauses)
 	    {
@@ -15689,14 +15774,15 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  pt_enter_packing_buf ();
 
 	  /* generate MERGE XASL */
-	  xasl = pt_to_merge_xasl (parser, statement, &non_nulls_upd,
-				   &non_nulls_ins, default_expr_attrs);
+	  context.xasl = pt_to_merge_xasl (parser, statement, &non_nulls_upd,
+					   &non_nulls_ins,
+					   default_expr_attrs);
 
-	  stream = NULL;
+	  stream.xasl_stream = NULL;
 
-	  if (xasl && (err >= NO_ERROR))
+	  if (context.xasl && (err >= NO_ERROR))
 	    {
-	      err = xts_map_xasl_to_stream (xasl, &stream, &size);
+	      err = xts_map_xasl_to_stream (context.xasl, &stream);
 	      if (err != NO_ERROR)
 		{
 		  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
@@ -15704,11 +15790,11 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 		}
 
 	      /* clear constant values */
-	      if (xasl->proc.merge.update_xasl)
+	      if (context.xasl->proc.merge.update_xasl)
 		{
 		  int i;
 		  UPDATE_PROC_NODE *update =
-		    &xasl->proc.merge.update_xasl->proc.update;
+		    &context.xasl->proc.merge.update_xasl->proc.update;
 		  for (i = update->no_assigns - 1; i >= 0; i--)
 		    {
 		      if (update->assigns[i].constant)
@@ -15730,11 +15816,9 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 
 	  /* cache the XASL */
-	  if (stream && (err >= NO_ERROR))
+	  if (stream.xasl_stream && (err >= NO_ERROR))
 	    {
-	      err =
-		query_prepare (qstr, xasl->qplan, stream, size, &xasl_id,
-			       NULL);
+	      err = query_prepare (&context, &stream);
 	      if (err != NO_ERROR)
 		{
 		  err = er_errid ();
@@ -15746,19 +15830,19 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  /* free 'stream' that is allocated inside of
 	     xts_map_xasl_to_stream() */
-	  if (stream)
+	  if (stream.xasl_stream)
 	    {
-	      free_and_init (stream);
+	      free_and_init (stream.xasl_stream);
 	    }
 	  statement->use_plan_cache = 0;
-	  statement->xasl_id = xasl_id;
+	  statement->xasl_id = stream.xasl_id;
 	}
       else
 	{
 	  if (err == NO_ERROR)
 	    {
 	      statement->use_plan_cache = 1;
-	      statement->xasl_id = xasl_id;
+	      statement->xasl_id = stream.xasl_id;
 	    }
 	  else
 	    {

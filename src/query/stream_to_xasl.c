@@ -2433,28 +2433,13 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
-      xasl->qstmt = NULL;
+      xasl->query_alias = NULL;
     }
   else
     {
-      xasl->qstmt =
+      xasl->query_alias =
 	stx_restore_string (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (xasl->qstmt == NULL)
-	{
-	  goto error;
-	}
-    }
-
-  ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0)
-    {
-      xasl->qplan = NULL;
-    }
-  else
-    {
-      xasl->qplan =
-	stx_restore_string (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (xasl->qplan == NULL)
+      if (xasl->query_alias == NULL)
 	{
 	  goto error;
 	}

@@ -7379,6 +7379,8 @@ qfile_get_list_file_page (QUERY_ID query_id, VOLID volid, PAGEID pageid,
 #endif /* !CS_MODE */
 }
 
+
+
 /*
  * qmgr_prepare_query - Send a SERVER_QM_PREPARE request to the server
  *
@@ -7386,41 +7388,34 @@ qfile_get_list_file_page (QUERY_ID query_id, VOLID volid, PAGEID pageid,
  * If xasl_buffer == NULL, the server will look up the XASL cache and then
  * return the cached XASL file id if found, otherwise return NULL.
  * This function is a counter part to sqmgr_prepare_query().
- */
-/*
- * qmgr_prepare_query -
  *
- * return:
+ * return: XASL_ID
  *
- *   qstmt(in):
- *   qplan(in):
+ *   context(in): query string & plan
+ *   stream(in/out): xasl stream, size & xasl_header
  *   user_oid(in):
- *   xasl_buffer(in):
- *   size(in):
- *   xasl_id(in):
- *   xasl_header_p(out):
  *
  * NOTE: If xasl_header_p is not null, also XASL node header will be requested
  */
 XASL_ID *
-qmgr_prepare_query (const char *qstmt, const char *qplan,
-		    const OID * user_oid, const char *xasl_buffer,
-		    int size, XASL_ID * xasl_id,
-		    XASL_NODE_HEADER * xasl_header_p)
+qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream,
+		    const OID * user_oid)
 {
 #if defined(CS_MODE)
   int error = NO_ERROR;
-  int req_error, request_size, qstmt_len, qplan_len, reply_buffer_size = 0;
+  int req_error, request_size;
+  int sql_hash_text_len, sql_plan_text_len, reply_buffer_size = 0;
   char *request = NULL, *reply = NULL, *ptr = NULL, *reply_buffer = NULL;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_XASL_ID_SIZE) a_reply;
-  int get_xasl_header = xasl_header_p != NULL;
+  int get_xasl_header = stream->xasl_header != NULL;
 
-  INIT_XASL_NODE_HEADER (xasl_header_p);
+  INIT_XASL_NODE_HEADER (stream->xasl_header);
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = length_const_string (qstmt, &qstmt_len) +	/* qstmt */
-    length_const_string (qplan, &qplan_len) +	/* qplan */
+  request_size = length_const_string (context->sql_hash_text, &sql_hash_text_len) +	/* query alias string */
+    length_const_string (context->sql_plan_text, &sql_plan_text_len) +	/* query plan */
+    OR_INT_SIZE + OR_INT_SIZE + context->sql_user_text_len + 1 +	/* query string */
     OR_OID_SIZE +		/* user_oid */
     OR_INT_SIZE +		/* size */
     OR_INT_SIZE;		/* get_xasl_header */
@@ -7432,16 +7427,25 @@ qmgr_prepare_query (const char *qstmt, const char *qplan,
       return NULL;
     }
 
-  /* pack query string as a request data */
-  ptr = pack_const_string_with_length (request, qstmt, qstmt_len);
+  /* pack query alias string as a request data */
+  ptr =
+    pack_const_string_with_length (request, context->sql_hash_text,
+				   sql_hash_text_len);
 
   /* pack query plan as a request data */
-  ptr = pack_const_string_with_length (ptr, qplan, qplan_len);
+  ptr =
+    pack_const_string_with_length (ptr, context->sql_plan_text,
+				   sql_plan_text_len);
+
+  /* pack query string as a request data */
+  ptr =
+    pack_const_string_with_length (ptr, context->sql_user_text,
+				   context->sql_user_text_len);
 
   /* pack OID of the current user */
   ptr = or_pack_oid (ptr, (OID *) user_oid);
   /* pack size of XASL stream */
-  ptr = or_pack_int (ptr, size);
+  ptr = or_pack_int (ptr, stream->xasl_stream_size);
   ptr = or_pack_int (ptr, get_xasl_header);
 
   /* send SERVER_QM_QUERY_PREPARE request with request data and XASL stream;
@@ -7449,8 +7453,9 @@ qmgr_prepare_query (const char *qstmt, const char *qplan,
   req_error = net_client_request2 (NET_SERVER_QM_QUERY_PREPARE,
 				   request, request_size,
 				   reply, OR_ALIGNED_BUF_SIZE (a_reply),
-				   (char *) xasl_buffer, size,
-				   &reply_buffer, &reply_buffer_size);
+				   (char *) stream->xasl_stream,
+				   stream->xasl_stream_size, &reply_buffer,
+				   &reply_buffer_size);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &reply_buffer_size);
@@ -7458,23 +7463,23 @@ qmgr_prepare_query (const char *qstmt, const char *qplan,
       if (error == NO_ERROR)
 	{
 	  /* NULL XASL_ID will be returned when cache not found */
-	  OR_UNPACK_XASL_ID (ptr, xasl_id);
+	  OR_UNPACK_XASL_ID (ptr, stream->xasl_id);
 
 	  if (get_xasl_header && reply_buffer != NULL
 	      && reply_buffer_size != 0)
 	    {
 	      ptr = reply_buffer;
-	      OR_UNPACK_XASL_NODE_HEADER (ptr, xasl_header_p);
+	      OR_UNPACK_XASL_NODE_HEADER (ptr, stream->xasl_header);
 	    }
 	}
       else
 	{
-	  xasl_id = NULL;
+	  stream->xasl_id = NULL;
 	}
     }
   else
     {
-      xasl_id = NULL;
+      stream->xasl_id = NULL;
     }
 
   if (request != NULL)
@@ -7487,32 +7492,32 @@ qmgr_prepare_query (const char *qstmt, const char *qplan,
       free_and_init (reply_buffer);
     }
 
-  return xasl_id;
+  return stream->xasl_id;
+
 #else /* CS_MODE */
   XASL_ID *p;
 
   ENTER_SERVER ();
 
-  INIT_XASL_NODE_HEADER (xasl_header_p);
+  INIT_XASL_NODE_HEADER (stream->xasl_header);
   /* call the server routine of query prepare */
-  p =
-    xqmgr_prepare_query (NULL, qstmt, qplan, user_oid, xasl_buffer, size,
-			 xasl_id, xasl_header_p);
-
+  p = xqmgr_prepare_query (NULL, context, stream, user_oid);
   if (p)
     {
-      *xasl_id = *p;
+      *stream->xasl_id = *p;
     }
   else
     {
-      xasl_id = NULL;
+      return NULL;
     }
 
   EXIT_SERVER ();
 
-  return xasl_id;
+  return p;
+
 #endif /* !CS_MODE */
 }
+
 
 /*
  * db_set_execution_plan
@@ -7747,7 +7752,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
   list_id = xqmgr_execute_query (NULL, xasl_id, query_idp, dbval_cnt,
 				 dbvals, &flag, clt_cache_time,
 				 srv_cache_time, query_timeout,
-				 end_of_queries, NULL, NULL);
+				 end_of_queries, NULL);
 
   EXIT_SERVER ();
 
