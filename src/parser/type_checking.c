@@ -2762,18 +2762,70 @@ pt_get_expression_definition (const PT_OP_TYPE op,
 
     case PT_ROUND:
       num = 0;
-
-      /* one overload */
-
+      /* five overloads */
+      /* first overload for number: */
       sig.arg1_type.is_generic = true;
       sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
 
-      sig.arg2_type.is_generic = false;
-      sig.arg2_type.val.type = PT_TYPE_INTEGER;
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
 
       /* return type */
       sig.return_type.is_generic = true;
       sig.return_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
+
+      def->overloads[num++] = sig;
+
+      /* overload for round('123', '1') */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
+
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+
+      /* return type */
+      sig.return_type.is_generic = true;
+      sig.return_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
+
+      def->overloads[num++] = sig;
+
+      /* overload for round(date, 'year|month|day') */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_DATE;
+
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_DATE;
+
+      def->overloads[num++] = sig;
+
+      /* overload for round(datetime, 'year|month|day') */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_DATETIME;
+
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+
+      /*return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_DATE;
+
+      def->overloads[num++] = sig;
+
+      /* overload for round(timestamp, 'year|month|day') */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIMESTAMP;
+
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+
+      /*return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_DATE;
+
       def->overloads[num++] = sig;
 
       def->overloads_count = num;

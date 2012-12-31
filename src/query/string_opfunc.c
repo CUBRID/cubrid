@@ -25169,15 +25169,14 @@ is_valid_ip_slice (const char *ipslice)
 }
 
 /*
- * db_get_truncate_format () -
+ * db_get_date_format () -
  * Returns: error number
  * format_str(in):
  * format(in/out):
  *
  */
 int
-db_get_truncate_format (const DB_VALUE * format_str,
-			TIMESTAMP_FORMAT * format)
+db_get_date_format (const DB_VALUE * format_str, TIMESTAMP_FORMAT * format)
 {
   char *fmt_str_ptr, *next_fmt_str_ptr, *last_fmt;
   INTL_CODESET codeset;

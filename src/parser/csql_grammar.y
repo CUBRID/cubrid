@@ -21872,6 +21872,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
   int c;
   PT_NODE *val, *between_ge_lt, *between;
 
+
   parser_function_code = PT_EMPTY;
   c = parser_count_list (args);
   key = keyword_offset (name);
@@ -22121,31 +22122,59 @@ parser_keyword_func (const char *name, PT_NODE * args)
       /* arg 1 + default */
     case PT_ROUND:
       if (c == 1)
-	{
-	  a1 = args;
-	  a2 = parser_new_node (this_parser, PT_VALUE);
-	  if (a2)
-	    {
-	      a2->type_enum = PT_TYPE_INTEGER;
-	      a2->info.value.data_value.i = 0;
-	    }
-
-	  return parser_make_expression (key->op, a1, a2, NULL);
-	}
-
+    {
+      a1 = args;
+      a2 = parser_new_node (this_parser, PT_VALUE);
+      if (a2)
+        {
+          /* default fmt value */
+          if(a1->node_type == PT_VALUE
+             && PT_IS_DATE_TIME_TYPE(a1->type_enum))
+            {
+              a2->type_enum = PT_TYPE_CHAR;
+              a2->info.value.data_value.str = 
+                pt_append_bytes(this_parser, NULL, "dd", 2);
+            }
+          else if(a1->node_type == PT_VALUE
+                  && PT_IS_NUMERIC_TYPE(a1->type_enum))
+            {
+              a2->type_enum = PT_TYPE_INTEGER;
+              a2->info.value.data_value.i = 0;  
+            }
+          else
+            {
+              a2->type_enum = PT_TYPE_CHAR;
+              a2->info.value.data_value.str = 
+                pt_append_bytes(this_parser, NULL, "default", 7);
+            }
+        }
+        
+      return parser_make_expression (key->op, a1, a2, NULL);
+    }
+      
       if (c != 2)
-	return NULL;
+    return NULL;
       a1 = args;
       a2 = a1->next;
       a1->next = NULL;
+      
+      if(a2->node_type == PT_VALUE
+         && PT_IS_STRING_TYPE(a2->type_enum)
+         && strcasecmp(a2->info.value.data_value.str->bytes, "default") == 0)
+        {
+          PT_ERRORf (this_parser, a2, "check syntax at %s",
+                     parser_print_tree (this_parser, a2));
+          return NULL;
+        }
+      
       return parser_make_expression (key->op, a1, a2, NULL);
       
     case PT_TRUNC:
       if (c == 1)
-	{
-	  a1 = args;
-	  a2 = parser_new_node (this_parser, PT_VALUE);
-	  if (a2)
+    {
+      a1 = args;
+      a2 = parser_new_node (this_parser, PT_VALUE);
+      if (a2)
 	    {
 	      /* default fmt value */
 	      if (a1->node_type == PT_VALUE

@@ -63,6 +63,10 @@ static int db_mod_numeric (DB_VALUE * value, DB_VALUE * value1,
 static int db_mod_monetary (DB_VALUE * value, DB_VALUE * value1,
 			    DB_VALUE * value2);
 static double round_double (double num, double integer);
+static int move_n_days (int *monthp, int *dayp,
+			int *yearp, const int interval);
+static int round_date (DB_VALUE * result,
+		       DB_VALUE * value1, DB_VALUE * value2);
 static double truncate_double (double num, double integer);
 static DB_BIGINT truncate_bigint (DB_BIGINT num, DB_BIGINT integer);
 static DB_DATE *truncate_date (DB_DATE * date, const DB_VALUE * format_str);
@@ -2094,6 +2098,210 @@ round_double (double num, double integer)
 }
 
 /*
+ * move_n_days () - move forward or backward n days from a given date, 
+ *                     
+ *   return: error code
+ *   yearp(in/out): 
+ *   monthp(in/out) : 
+ *   dayp(in/out) :
+ *   interval(in) : how many days to move, negative number means back
+ */
+static int
+move_n_days (int *monthp, int *dayp, int *yearp, const int interval)
+{
+  /* no need to judge if arguments are illegal as it has been done previously */
+  DB_DATE date;
+  int error;
+
+  error = db_date_encode (&date, *monthp, *dayp, *yearp);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  date += interval;
+  db_date_decode (&date, monthp, dayp, yearp);
+
+  return NO_ERROR;
+}
+
+/*
+ * db_round_date () - returns a date round by value2('year' | 'month' | 'day') 
+ *                     
+ *   return: NO_ERROR, ER_FAILED
+ *   result(out): resultant db_value
+ *   value1(in) : first db_value
+ *   value2(in) : second db_value
+ */
+
+static int
+round_date (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
+{
+  DB_DATETIME *pdatetime;
+  DB_TIMESTAMP *pstamp;
+  DB_DATE *pdate;
+  DB_DATE date;
+  DB_TIME time;
+  DB_TYPE type;
+  int year = 0, month = 0, day = 0, hour = 0, minute = 0,
+    second = 0, millisecond = 0;
+  int weekday = 0;
+  int error = NO_ERROR;
+  TIMESTAMP_FORMAT format;
+
+  /* get format */
+  error = db_get_date_format (value2, &format);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* get all values in the date */
+  type = DB_VALUE_DOMAIN_TYPE (value1);
+
+  if (type == DB_TYPE_TIMESTAMP)
+    {
+      pstamp = db_get_timestamp (value1);
+      db_timestamp_decode (pstamp, &date, &time);
+      db_date_decode (&date, &month, &day, &year);
+      db_time_decode (&time, &hour, &minute, &second);
+    }
+  else if (type == DB_TYPE_DATETIME)
+    {
+      pdatetime = db_get_datetime (value1);
+      db_datetime_decode (pdatetime, &month, &day, &year,
+			  &hour, &minute, &second, &millisecond);
+    }
+  else if (type == DB_TYPE_DATE)
+    {
+      pdate = db_get_date (value1);
+      db_date_decode (pdate, &month, &day, &year);
+      hour = minute = second = millisecond = 0;
+    }
+  else
+    {
+      error = ER_QPROC_INVALID_DATATYPE;
+      goto end;
+    }
+
+  /* apply round according to format */
+  switch (format)
+    {
+    case DT_YYYY:
+    case DT_YY:
+      if (month >= 7)		/* rounds up on July 1 */
+	{
+	  year++;
+	}
+      month = 1;
+      day = 1;
+      break;
+    case DT_MONTH:
+    case DT_MON:
+    case DT_MM:
+      if (day >= 16)		/* rounds up on the 16th days */
+	{
+	  if (month == 12)
+	    {
+	      year++;
+	      month = 1;
+	    }
+	  else
+	    {
+	      month++;
+	    }
+	}
+      day = 1;
+      break;
+    case DT_DD:
+    case DT_HH24:
+    case DT_HH12:
+    case DT_HH:
+    case DT_H:
+    case DT_MI:
+    case DT_SS:
+    case DT_MS:
+      if (hour >= 12)		/* rounds up on 12:00 AM */
+	{
+	  error = move_n_days (&month, &day, &year, 1);
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	}
+      break;
+    case DT_Q:			/* quarter */
+      /* rounds up on the 16th day of the second month of the quarter */
+      if (month < 2 || (month == 2 && day < 16))
+	{
+	  month = 1;
+	}
+      else if (month < 5 || (month == 5 && day < 16))
+	{
+	  month = 4;
+	}
+      else if (month < 8 || (month == 8 && day < 16))
+	{
+	  month = 7;
+	}
+      else if (month < 11 || (month == 11 && day < 16))
+	{
+	  month = 10;
+	}
+      else
+	{
+	  month = 1;
+	  year++;
+	}
+      day = 1;
+      break;
+    case DT_DAY:
+    case DT_DY:		/* rounds up on thursday of a week */
+    case DT_D:
+      weekday = day_of_week (julian_encode (month, day, year));
+      if (weekday < 4)
+	{
+	  error = move_n_days (&month, &day, &year, -weekday);
+	}
+      else
+	{
+	  error = move_n_days (&month, &day, &year, 7 - weekday);
+	}
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+      break;
+    case DT_CC:
+    default:
+      error = ER_QSTR_INVALID_FORMAT;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto end;
+    }
+
+  /* check for boundary and throw overflow */
+  if (year < 0 || year > 9999)
+    {
+      error = ER_IT_DATA_OVERFLOW;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      error, 1, tp_Date_domain.type->name);
+      goto end;
+    }
+
+  /* re-create new date */
+  error = DB_MAKE_DATE (result, month, day, year);
+
+end:
+  if (error != NO_ERROR
+      && prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+    {
+      error = NO_ERROR;
+      DB_MAKE_NULL (result);
+    }
+
+  return error;
+}
+
+/*
  * db_round_dbval () - returns value1 rounded to value2 places right of
  *                     the decimal point
  *   return: NO_ERROR, ER_FAILED
@@ -2116,8 +2324,12 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   char *ptr, *end;
   int need_round = 0;
   int p, s;
-  DB_VALUE cast_value;
+  DB_VALUE cast_value, cast_format;
   int er_status = NO_ERROR;
+  DB_DOMAIN *domain;
+
+  DB_MAKE_NULL (&cast_value);
+  DB_MAKE_NULL (&cast_format);
 
   if (DB_IS_NULL (value1) || DB_IS_NULL (value2))
     {
@@ -2126,6 +2338,44 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
   type1 = DB_VALUE_DOMAIN_TYPE (value1);
   type2 = DB_VALUE_DOMAIN_TYPE (value2);
+
+  /* first check if round a date: */
+  if (type1 == DB_TYPE_DATETIME
+      || type1 == DB_TYPE_DATE || type1 == DB_TYPE_TIMESTAMP)
+    {				/* round date */
+      if (QSTR_IS_ANY_CHAR (type2)
+	  && strcasecmp (DB_GET_STRING_SAFE (value2), "default") == 0)
+	{
+	  DB_MAKE_STRING (&cast_format, "dd");
+	  value2 = &cast_format;
+	}
+      return round_date (result, value1, value2);
+    }
+
+  /* cast value1 to double */
+  if (!TP_IS_NUMERIC_TYPE (type1))
+    {
+      type1 = DB_TYPE_UNKNOWN;
+      /* try type double */
+      domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+      if (tp_value_coerce (value1, &cast_value, domain) != DOMAIN_COMPATIBLE)
+	{
+	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+	    {
+	      return NO_ERROR;
+	    }
+	  else
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_QPROC_INVALID_DATATYPE, 0);
+	      return ER_QPROC_INVALID_DATATYPE;
+	    }
+	}
+      type1 = DB_TYPE_DOUBLE;
+      value1 = &cast_value;
+    }
+
+  /* get value2 */
   if (type2 == DB_TYPE_INTEGER)
     {
       d2 = (double) DB_GET_INT (value2);
@@ -2138,12 +2388,46 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     {
       d2 = (double) DB_GET_SHORT (value2);
     }
-  else
+  else if (type2 == DB_TYPE_DOUBLE)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-      return ER_QPROC_INVALID_DATATYPE;
+      d2 = DB_GET_DOUBLE (value2);
+    }
+  else				/* cast to INTEGER */
+    {
+      if (QSTR_IS_ANY_CHAR (type2)
+	  && strcasecmp (DB_GET_STRING_SAFE (value2), "default") == 0)
+	{
+	  DB_MAKE_INT (&cast_format, 0);
+	  value2 = &cast_format;
+	  type2 = DB_TYPE_INTEGER;
+	  d2 = 0;
+	}
+      else
+	{
+	  /* try type int */
+	  type2 = DB_TYPE_UNKNOWN;
+	  domain = tp_domain_resolve_default (DB_TYPE_INTEGER);
+	  if (tp_value_coerce (value2, &cast_format,
+			       domain) != DOMAIN_COMPATIBLE)
+	    {
+	      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+		{
+		  return NO_ERROR;
+		}
+	      else
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_QPROC_INVALID_DATATYPE, 0);
+		  return ER_QPROC_INVALID_DATATYPE;
+		}
+	    }
+	  type2 = DB_TYPE_INTEGER;
+	  value2 = &cast_format;
+	  d2 = DB_GET_INTEGER (value2);
+	}
     }
 
+  /* round double */
   switch (type1)
     {
     case DB_TYPE_SHORT:
@@ -2181,11 +2465,9 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
 
       assert (type1 == DB_TYPE_DOUBLE);
-
       value1 = &cast_value;
 
       /* fall through */
-
     case DB_TYPE_DOUBLE:
       d1 = DB_GET_DOUBLE (value1);
       dtmp = round_double (d1, d2);
@@ -2206,11 +2488,14 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	{
 	  bi2 = DB_GET_INT (value2);
 	}
-      else
+      else if (type2 == DB_TYPE_SHORT)
 	{
 	  bi2 = DB_GET_SHORT (value2);
 	}
-
+      else			/* double */
+	{
+	  bi2 = DB_GET_DOUBLE (value2);
+	}
       ptr = end - s + bi2;
 
       if (end < ptr)
@@ -2257,9 +2542,17 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 		      if (strlen (ptr) > DB_MAX_NUMERIC_PRECISION)
 			{
 			  /* overflow happened during round up */
-			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				  ER_NUM_OVERFLOW, 0);
-			  return ER_NUM_OVERFLOW;
+			  if (prm_get_bool_value
+			      (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+			    {
+			      return NO_ERROR;
+			    }
+			  else
+			    {
+			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				      ER_NUM_OVERFLOW, 0);
+			      return ER_NUM_OVERFLOW;
+			    }
 			}
 		      break;
 		    }
@@ -2277,13 +2570,14 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 				    dtmp);
       break;
     default:
-      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
+      if (!prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
 		  0);
 	  return ER_QPROC_INVALID_DATATYPE;
 	}
     }
+
 
   if (er_errid () < 0
       && prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
@@ -2930,7 +3224,7 @@ truncate_date (DB_DATE * date, const DB_VALUE * format_str)
   assert (date != NULL);
   assert (format_str != NULL);
 
-  error = db_get_truncate_format (format_str, &format);
+  error = db_get_date_format (format_str, &format);
   if (error != NO_ERROR)
     {
       retval = NULL;

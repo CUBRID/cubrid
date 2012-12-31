@@ -551,7 +551,7 @@ enum yytokentype
 
 
 /* Copy the first part of user declarations.  */
-#line 28 "../../src/parser/csql_grammar.y"
+#line 28 "../src/parser/csql_grammar.y"
 
 #define YYMAXDEPTH	1000000
 

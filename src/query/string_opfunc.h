@@ -459,8 +459,8 @@ extern void qstr_trim_trailing (const unsigned char *trim_charset_ptr,
 				INTL_CODESET codeset,
 				int *trail_trimmed_length,
 				int *trail_trimmed_size);
-extern int db_get_truncate_format (const DB_VALUE * format_str,
-				   TIMESTAMP_FORMAT * format);
+extern int db_get_date_format (const DB_VALUE * format_str,
+			       TIMESTAMP_FORMAT * format);
 extern int db_get_cs_coll_info (DB_VALUE * result, const DB_VALUE * val,
 				const int mode);
 #endif /* _STRING_OPFUNC_H_ */
