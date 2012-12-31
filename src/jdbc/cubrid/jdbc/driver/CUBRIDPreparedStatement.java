@@ -91,6 +91,8 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 			synchronized (con) {
 				synchronized (this) {
 				    	long begin = 0;
+
+				    	u_con.setBeginTime();
 				    	if (u_con.getLogSlowQuery()) {
 				    	    	begin = System.currentTimeMillis();
 				    	}
@@ -124,6 +126,8 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 			synchronized (con) {
 				synchronized (this) {
 				    	long begin = 0;
+
+				    	u_con.setBeginTime();
 				    	if (u_con.getLogSlowQuery()) {
 				    	    	begin = System.currentTimeMillis();
 				    	}
@@ -451,6 +455,8 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 			synchronized (con) {
 				synchronized (this) {
 				    	long begin = 0;
+
+				    	u_con.setBeginTime();
 				    	if (u_con.getLogSlowQuery()) {
 				    	    	begin = System.currentTimeMillis();
 				    	}
@@ -745,12 +751,13 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		try {
 			synchronized (con) {
 				synchronized (this) {
+				    	u_con.setBeginTime();
 					checkIsOpen();
 					if (!completed)
 						complete();
 					checkIsOpen();
 					u_stmt.setAutoCommit(u_con.getAutoCommit());
-					UBatchResult results = u_stmt.executeBatch();
+					UBatchResult results = u_stmt.executeBatch(query_timeout);
 					error = u_stmt.getRecentError();
 
 					switch (error.getErrorCode()) {
@@ -860,7 +867,8 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		try {
 			synchronized (con) {
 				synchronized (this) {
-					checkIsOpen();
+				    	u_con.setBeginTime();
+				    	checkIsOpen();
 					if (!completed) {
 						complete();
 					}

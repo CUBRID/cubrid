@@ -187,6 +187,7 @@ public class UConnection {
 	int oldSessionId = 0;
 
 	private Log log;
+	private long beginTime;
 
 	static {
 		driverInfo = new byte[10];
@@ -350,7 +351,7 @@ public class UConnection {
 		}
 	}
 
-	synchronized public UBatchResult batchExecute(String batchSqlStmt[]) {
+	synchronized public UBatchResult batchExecute(String batchSqlStmt[], int queryTimeout) {
 		errorHandler = new UError(this);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
@@ -367,6 +368,10 @@ public class UConnection {
 
 			outBuffer.newRequest(output, UFunctionCode.EXECUTE_BATCH_STATEMENT);
 			outBuffer.addByte(getAutoCommit() ? (byte) 1 : (byte) 0);
+			if (protoVersionIsAbove(UConnection.PROTOCOL_V4)) {
+			    long remainingTime = getRemainingTime(queryTimeout * 1000);
+			    outBuffer.addInt((int) remainingTime);
+			}
 
 			for (int i = 0; i < batchSqlStmt.length; i++) {
 				if (batchSqlStmt[i] != null)
@@ -1926,5 +1931,22 @@ public class UConnection {
 
     public boolean isActive() {
 	return getCASInfoStatus() == CAS_INFO_STATUS_ACTIVE;
+    }
+
+    public void setBeginTime() {
+	beginTime = System.currentTimeMillis();
+    }
+
+    public long getRemainingTime(long timeout) {
+	if (beginTime == 0 || timeout == 0) {
+	    return timeout;
+	}
+
+	long now = System.currentTimeMillis();
+	return timeout - (now - beginTime);
+    }
+
+    public void resetBeginTime() {
+	beginTime = 0;
     }
 }

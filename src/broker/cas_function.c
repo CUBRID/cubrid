@@ -77,7 +77,7 @@ static void bind_value_log (struct timeval *log_time, int start, int argc,
 			    unsigned int query_seq_num, bool slow_log);
 #endif /* !LIBCAS_FOR_JSP */
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-static void set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout);
+void set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout);
 
 
 /* functions implemented in transaction_cl.c */
@@ -1597,14 +1597,35 @@ FN_RETURN
 fn_execute_batch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 		  T_REQ_INFO * req_info)
 {
+  int arg_index = 0;
+  char auto_commit_mode;
+  int query_timeout;
+
+  net_arg_get_char (auto_commit_mode, argv[arg_index]);
+  arg_index++;
+  if (auto_commit_mode == TRUE)
+    {
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+    }
+
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info->client_version,
+					   PROTOCOL_V4))
+    {
+      net_arg_get_int (&query_timeout, argv[arg_index]);
+      arg_index++;
+    }
+  else
+    {
+      query_timeout = 0;
+    }
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+  /* does not support query timeout for execute_batch yet */
   set_query_timeout (NULL, 0);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
-  /* argv[0] : auto commit flag */
-  cas_log_write (0, true, "execute_batch %d", argc - 1);
+  cas_log_write (0, true, "execute_batch %d", argc - arg_index);
 
-  ux_execute_batch (argc, argv, net_buf, req_info);
+  ux_execute_batch (argc - arg_index, argv + arg_index, net_buf, req_info);
 
   cas_log_write (0, true, "execute_batch end");
 
@@ -1623,6 +1644,9 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   struct timeval exec_begin, exec_end;
   char *eid_string;
   char *plan;
+  int driver_query_timeout;
+  int arg_index = 0;
+  char auto_commit_mode;
 
   /* argv[0] : service handle
      argv[1] : auto commit flag */
@@ -1632,7 +1656,8 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       return FN_KEEP_CONN;
     }
 
-  net_arg_get_int (&srv_h_id, argv[0]);
+  net_arg_get_int (&srv_h_id, argv[arg_index]);
+  arg_index++;
 
   srv_handle = hm_find_srv_handle (srv_h_id);
   if (srv_handle == NULL)
@@ -1648,14 +1673,34 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       query_timeout = 0;
     }
 #endif /* !LIBCAS_FOR_JSP */
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info->client_version,
+					   PROTOCOL_V4))
+    {
+      net_arg_get_int (&driver_query_timeout, argv[arg_index]);
+      arg_index++;
+    }
+  else
+    {
+      driver_query_timeout = 0;
+    }
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+  /* does not support query timeout for execute_array yet */
   set_query_timeout (srv_handle, 0);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
+  net_arg_get_char (auto_commit_mode, argv[arg_index]);
+  arg_index++;
+
+  if (auto_commit_mode == TRUE)
+    {
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+    }
+  srv_handle->auto_commit_mode = auto_commit_mode;
+
   cas_log_write_nonl (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
 		      "execute_array srv_h_id %d %d ", srv_h_id,
-		      (argc - 2) / 2);
+		      (argc - arg_index) / 2);
   if (srv_handle->sql_stmt != NULL)
     {
       cas_log_write_query_string (srv_handle->sql_stmt,
@@ -1664,14 +1709,15 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 #ifndef LIBCAS_FOR_JSP
   if (as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      bind_value_log (NULL, 2, argc - 1, argv, 0, NULL,
+      bind_value_log (NULL, arg_index, argc - 1, argv, 0, NULL,
 		      SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false);
     }
 #endif /* !LIBCAS_FOR_JSP */
 
   gettimeofday (&exec_begin, NULL);
 
-  ret_code = ux_execute_array (srv_handle, argc, argv, net_buf, req_info);
+  ret_code = ux_execute_array (srv_handle, argc - arg_index, argv + arg_index,
+			       net_buf, req_info);
 
   gettimeofday (&exec_end, NULL);
   ut_timeval_diff (&exec_begin, &exec_end, &elapsed_sec, &elapsed_msec);

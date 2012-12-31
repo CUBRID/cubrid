@@ -73,7 +73,7 @@ public class CUBRIDStatement implements Statement {
 
 	private int max_field_size;
 	private int max_rows;
-	private int query_timeout;
+	int query_timeout;
 	private int type;
 	private int concurrency;
 	private boolean is_scrollable;
@@ -125,6 +125,8 @@ public class CUBRIDStatement implements Statement {
 			synchronized (con) {
 				synchronized (this) {
 				    	long begin = 0;
+
+				    	u_con.setBeginTime();
 				    	if (u_con.getLogSlowQuery()) {
 				    	    	begin = System.currentTimeMillis();
 				    	}
@@ -394,6 +396,7 @@ public class CUBRIDStatement implements Statement {
 		try {
 			synchronized (con) {
 				synchronized (this) {
+				    	u_con.setBeginTime();
 					checkIsOpen();
 					if (!completed) {
 						complete();
@@ -403,7 +406,7 @@ public class CUBRIDStatement implements Statement {
 					for (int i = 0; i < batchs.size(); i++) {
 						batch_querys[i] = (String) batchs.get(i);
 					}
-					batch_results = u_con.batchExecute(batch_querys);
+					batch_results = u_con.batchExecute(batch_querys, query_timeout);
 					error = u_con.getRecentError();
 
 					switch (error.getErrorCode()) {
@@ -434,6 +437,8 @@ public class CUBRIDStatement implements Statement {
 			synchronized (con) {
 				synchronized (this) {
 				    	long begin = 0;
+
+				    	u_con.setBeginTime();
 				    	if (u_con.getLogSlowQuery()) {
 				    	    	begin = System.currentTimeMillis();
 				    	}
@@ -493,6 +498,8 @@ public class CUBRIDStatement implements Statement {
 			synchronized (con) {
 				synchronized (this) {
 				    	long begin = 0;
+
+				    	u_con.setBeginTime();
 				    	if (u_con.getLogSlowQuery()) {
 				    	    	begin = System.currentTimeMillis();
 				    	}
@@ -626,6 +633,8 @@ public class CUBRIDStatement implements Statement {
 		try {
 			synchronized (con) {
 				synchronized (this) {
+				    	u_con.setBeginTime();
+
 					checkIsOpen();
 					if (!completed) {
 						complete();

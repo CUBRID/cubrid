@@ -696,10 +696,12 @@ public class UStatement {
 	// query timeout support only if protocol version 1 or above
 	if (relatedConnection.protoVersionIsAbove(UConnection.PROTOCOL_V2)) {
 	    // send queryTimeout in milliseconds
-	    outBuffer.addInt(queryTimeout * 1000);
+	    long remainingTime = relatedConnection.getRemainingTime(queryTimeout * 1000);
+	    outBuffer.addInt((int) remainingTime);
 	} else if (relatedConnection.protoVersionIsAbove(UConnection.PROTOCOL_V1)) {
 	    // send queryTimeout in seconds
-	    outBuffer.addInt(queryTimeout);
+	    long remainingTime = relatedConnection.getRemainingTime(queryTimeout);
+	    outBuffer.addInt((int) remainingTime);
 	}
 
 	if (bindParameter != null) {
@@ -886,10 +888,14 @@ public class UStatement {
 		isAutoCommit = autoCommit;
 	}
 
-	private void writeExecuteBatchRequest () throws IOException, UJciException {
+	private void writeExecuteBatchRequest (int queryTimeout) throws IOException, UJciException {
 	    outBuffer.newRequest(relatedConnection.getOutputStream(),
 		    UFunctionCode.EXECUTE_BATCH_PREPAREDSTATEMENT);
 	    outBuffer.addInt(serverHandler);
+	    if (relatedConnection.protoVersionIsAbove(UConnection.PROTOCOL_V4)) {
+		long remainingTime = relatedConnection.getRemainingTime(queryTimeout * 1000);
+		outBuffer.addInt((int) remainingTime);
+	    }
 	    outBuffer.addByte(isAutoCommit ? (byte) 1 : (byte) 0);
 
 	    if (batchParameter != null) {
@@ -902,12 +908,12 @@ public class UStatement {
 	    }
 	}
 
-	private UBatchResult executeBatchInternal () throws IOException, UJciException {
+	private UBatchResult executeBatchInternal (int queryTimeout) throws IOException, UJciException {
 	    UInputBuffer inBuffer = null;
 	    errorHandler.clear();
 		
 	    synchronized (relatedConnection) {
-		writeExecuteBatchRequest();
+		writeExecuteBatchRequest(queryTimeout);
 		inBuffer = relatedConnection.send_recv_msg();
 	    } 
 		
@@ -935,8 +941,7 @@ public class UStatement {
 	    return batchResult;
 	}
 
-	synchronized public UBatchResult executeBatch() {
-	    UInputBuffer inBuffer;
+	synchronized public UBatchResult executeBatch(int queryTimeout) {
 	    UBatchResult batchResult; 
 	    
 	    errorHandler = new UError(relatedConnection); 
@@ -955,7 +960,7 @@ public class UStatement {
 	    } 
 
 	    try {
-		batchResult = executeBatchInternal();
+		batchResult = executeBatchInternal(queryTimeout);
 		return batchResult;
 	    } catch (UJciException e) {
 		relatedConnection.logException(e);
@@ -972,7 +977,7 @@ public class UStatement {
 		if (!relatedConnection.isActive()) {
 		    try {
 			reset();
-			batchResult = executeBatchInternal();
+			batchResult = executeBatchInternal(queryTimeout);
 			return batchResult;
 		    } catch (UJciException e) {
 			relatedConnection.logException(e);
@@ -988,7 +993,7 @@ public class UStatement {
 		    errorHandler.getJdbcErrorCode() == UErrorCode.CAS_ER_STMT_POOLING) {
 		try {
 		    reset();
-		    batchResult = executeBatchInternal();
+		    batchResult = executeBatchInternal(queryTimeout);
 		    return batchResult;
 		} catch (UJciException e) {
 		    relatedConnection.logException(e);

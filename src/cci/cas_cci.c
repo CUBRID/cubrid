@@ -2582,6 +2582,7 @@ cci_get_db_version (int mapped_conn_id, char *out_buf, int buf_size)
   reset_error_buffer (&(con_handle->err_buf));
 
   API_SLOG (con_handle);
+  SET_START_TIME_FOR_QUERY (con_handle, NULL);
   if (IS_OUT_TRAN_STATUS (con_handle))
     {
       error = cas_connect (con_handle, NULL);
@@ -2595,6 +2596,7 @@ cci_get_db_version (int mapped_conn_id, char *out_buf, int buf_size)
   API_ELOG (con_handle, error);
   con_handle->used = false;
 
+  RESET_START_TIME (con_handle);
   return error;
 }
 

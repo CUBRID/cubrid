@@ -397,7 +397,7 @@ qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   char *result_msg = NULL;
   int result_msg_size;
   int result_code;
-  int remained_time = 0;
+  int remaining_time = 0;
 
   if (!reuse)
     {
@@ -444,11 +444,9 @@ qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 
   if (TIMEOUT_IS_SET (con_handle))
     {
-      remained_time =
-	con_handle->current_timeout -
-	get_elapsed_time (&con_handle->start_time);
-
-      if (remained_time <= 0)
+      remaining_time = con_handle->current_timeout;
+      remaining_time -= get_elapsed_time (&con_handle->start_time);
+      if (remaining_time <= 0)
 	{
 	  net_buf_clear (&net_buf);
 	  return CCI_ER_QUERY_TIMEOUT;
@@ -464,7 +462,7 @@ qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 
   result_code =
     net_recv_msg_timeout (con_handle, &result_msg, &result_msg_size, err_buf,
-			  remained_time);
+			  remaining_time);
   if (result_code < 0)
     {
       return result_code;
@@ -573,7 +571,7 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
   char forward_only_cursor;
   char include_column_info;
   int remain_msg_size = 0;
-  int remained_time = 0;
+  int remaining_time = 0;
   bool use_server_query_cancel = false;
 
   QUERY_RESULT_FREE (req_handle);
@@ -618,20 +616,28 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
 
   ADD_ARG_CACHE_TIME (&net_buf, 0, 0);
 
+  if (TIMEOUT_IS_SET (con_handle))
+    {
+      remaining_time = con_handle->current_timeout;
+      remaining_time -= get_elapsed_time (&con_handle->start_time);
+      if (remaining_time <= 0)
+	{
+	  err_code = CCI_ER_QUERY_TIMEOUT;
+	  goto execute_error;
+	}
+    }
+
   if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V2))
     {
       /* In PROTOCOL_V2, cci driver use server query timeout feature,
        * when disconnect_on_query_timeout is false.
        */
-      int timeout = 0;
-
       if (TIMEOUT_IS_SET (con_handle)
 	  && con_handle->disconnect_on_query_timeout == false)
 	{
 	  use_server_query_cancel = true;
-	  timeout = con_handle->current_timeout;
 	}
-      ADD_ARG_INT (&net_buf, timeout);
+      ADD_ARG_INT (&net_buf, remaining_time);
     }
   else if (hm_get_broker_version (con_handle) >=
 	   CAS_PROTO_MAKE_VER (PROTOCOL_V1))
@@ -655,19 +661,6 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
       goto execute_error;
     }
 
-  if (TIMEOUT_IS_SET (con_handle))
-    {
-      remained_time =
-	con_handle->current_timeout -
-	get_elapsed_time (&con_handle->start_time);
-
-      if (remained_time <= 0)
-	{
-	  err_code = CCI_ER_QUERY_TIMEOUT;
-	  goto execute_error;
-	}
-    }
-
   err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   if (err_code < 0)
     {
@@ -679,7 +672,7 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
   res_count = net_recv_msg_timeout (con_handle, &result_msg,
 				    &result_msg_size, err_buf,
 				    ((use_server_query_cancel) ?
-				     0 : remained_time));
+				     0 : remaining_time));
 
   if (res_count < 0)
     {
@@ -803,7 +796,7 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   char fetch_flag;
   char include_column_info;
   int remain_msg_size = 0;
-  int remained_time = 0;
+  int remaining_time = 0;
   int num_tuple = 0;
   char prepare_flag = 0;
   char execute_flag = CCI_EXEC_QUERY_ALL;
@@ -847,20 +840,28 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 
   ADD_ARG_CACHE_TIME (&net_buf, 0, 0);
 
+  if (TIMEOUT_IS_SET (con_handle))
+    {
+      remaining_time = con_handle->current_timeout;
+      remaining_time -= get_elapsed_time (&con_handle->start_time);
+      if (remaining_time <= 0)
+	{
+	  err_code = CCI_ER_QUERY_TIMEOUT;
+	  goto prepare_and_execute_error;
+	}
+    }
+
   if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V2))
     {
       /* In PROTOCOL_V2, cci driver use server query timeout feature,
        * when disconnect_on_query_timeout is false.
        */
-      int timeout = 0;
-
       if (TIMEOUT_IS_SET (con_handle)
 	  && con_handle->disconnect_on_query_timeout == false)
 	{
 	  use_server_query_cancel = true;
-	  timeout = con_handle->current_timeout;
 	}
-      ADD_ARG_INT (&net_buf, timeout);
+      ADD_ARG_INT (&net_buf, remaining_time);
     }
   else if (hm_get_broker_version (con_handle) >=
 	   CAS_PROTO_MAKE_VER (PROTOCOL_V1))
@@ -875,21 +876,7 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
       goto prepare_and_execute_error;
     }
 
-  if (TIMEOUT_IS_SET (con_handle))
-    {
-      remained_time =
-	con_handle->current_timeout -
-	get_elapsed_time (&con_handle->start_time);
-
-      if (remained_time <= 0)
-	{
-	  err_code = CCI_ER_QUERY_TIMEOUT;
-	  goto prepare_and_execute_error;
-	}
-    }
-
   err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
-
   if (err_code < 0)
     {
       goto prepare_and_execute_error;
@@ -901,7 +888,7 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   /* prepare result */
   result_code =
     net_recv_msg_timeout (con_handle, &result_msg, &result_msg_size, err_buf,
-			  ((use_server_query_cancel) ? 0 : remained_time));
+			  ((use_server_query_cancel) ? 0 : remaining_time));
 
   if (result_code < 0)
     {
@@ -2020,7 +2007,7 @@ qe_get_db_version (T_CON_HANDLE * con_handle, char *out_buf, int buf_size)
   char func_code = CAS_FC_GET_DB_VERSION;
   char *result_msg = NULL;
   int result_msg_size;
-  int err_code, remained_time = 0;
+  int err_code, remaining_time = 0;
 
   net_buf_init (&net_buf);
   net_buf_cp_str (&net_buf, &func_code, 1);
@@ -2036,11 +2023,9 @@ qe_get_db_version (T_CON_HANDLE * con_handle, char *out_buf, int buf_size)
 
   if (TIMEOUT_IS_SET (con_handle))
     {
-      remained_time =
-	con_handle->current_timeout -
-	get_elapsed_time (&con_handle->start_time);
-
-      if (remained_time <= 0)
+      remaining_time = con_handle->current_timeout;
+      remaining_time -= get_elapsed_time (&con_handle->start_time);
+      if (remaining_time <= 0)
 	{
 	  net_buf_clear (&net_buf);
 	  return CCI_ER_QUERY_TIMEOUT;
@@ -2056,7 +2041,7 @@ qe_get_db_version (T_CON_HANDLE * con_handle, char *out_buf, int buf_size)
 
 
   err_code = net_recv_msg_timeout (con_handle, &result_msg,
-				   &result_msg_size, NULL, remained_time);
+				   &result_msg_size, NULL, remaining_time);
 
   result_msg_size -= 4;
 
@@ -2604,13 +2589,29 @@ qe_execute_array (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   char *result_msg = NULL;
   int result_msg_size;
   int remain_size;
-  int remained_time = 0;
+  int remaining_time = 0;
 
   net_buf_init (&net_buf);
 
   net_buf_cp_str (&net_buf, &func_code, 1);
 
   ADD_ARG_INT (&net_buf, req_handle->server_handle_id);
+
+  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V4))
+    {
+      if (TIMEOUT_IS_SET (con_handle))
+	{
+	  remaining_time = con_handle->current_timeout;
+	  remaining_time -= get_elapsed_time (&con_handle->start_time);
+	  if (remaining_time <= 0)
+	    {
+	      net_buf_clear (&net_buf);
+	      return CCI_ER_QUERY_TIMEOUT;
+	    }
+	}
+      ADD_ARG_INT (&net_buf, remaining_time);
+    }
+
   ADD_ARG_BYTES (&net_buf, &con_handle->autocommit_mode, 1);
 
   for (row = 0; row < req_handle->bind_array_size; row++)
@@ -2758,11 +2759,9 @@ qe_execute_array (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 
   if (TIMEOUT_IS_SET (con_handle))
     {
-      remained_time =
-	con_handle->current_timeout -
-	get_elapsed_time (&con_handle->start_time);
-
-      if (remained_time <= 0)
+      remaining_time = con_handle->current_timeout;
+      remaining_time -= get_elapsed_time (&con_handle->start_time);
+      if (remaining_time <= 0)
 	{
 	  net_buf_clear (&net_buf);
 	  return CCI_ER_QUERY_TIMEOUT;
@@ -2777,7 +2776,7 @@ qe_execute_array (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
     }
 
   err_code = net_recv_msg_timeout (con_handle, &result_msg, &result_msg_size,
-				   err_buf, remained_time);
+				   err_buf, 0);
   if (err_code < 0)
     {
       return err_code;
@@ -2926,7 +2925,7 @@ qe_execute_batch (T_CON_HANDLE * con_handle, int num_query, char **sql_stmt,
   int sql_len;
   int i;
   int remain_size;
-  int remained_time = 0;
+  int remaining_time = 0;
 
   net_buf_init (&net_buf);
 
@@ -2934,6 +2933,21 @@ qe_execute_batch (T_CON_HANDLE * con_handle, int num_query, char **sql_stmt,
 
   /* set AutoCommitMode is FALSE */
   ADD_ARG_BYTES (&net_buf, &con_handle->autocommit_mode, 1);
+
+  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V4))
+    {
+      if (TIMEOUT_IS_SET (con_handle))
+	{
+	  remaining_time = con_handle->current_timeout;
+	  remaining_time -= get_elapsed_time (&con_handle->start_time);
+	  if (remaining_time <= 0)
+	    {
+	      net_buf_clear (&net_buf);
+	      return CCI_ER_QUERY_TIMEOUT;
+	    }
+	}
+      ADD_ARG_INT (&net_buf, remaining_time);
+    }
 
   for (i = 0; i < num_query; i++)
     {
@@ -2950,11 +2964,9 @@ qe_execute_batch (T_CON_HANDLE * con_handle, int num_query, char **sql_stmt,
 
   if (TIMEOUT_IS_SET (con_handle))
     {
-      remained_time =
-	con_handle->current_timeout -
-	get_elapsed_time (&con_handle->start_time);
-
-      if (remained_time <= 0)
+      remaining_time = con_handle->current_timeout;
+      remaining_time -= get_elapsed_time (&con_handle->start_time);
+      if (remaining_time <= 0)
 	{
 	  net_buf_clear (&net_buf);
 	  return CCI_ER_QUERY_TIMEOUT;
@@ -2969,7 +2981,7 @@ qe_execute_batch (T_CON_HANDLE * con_handle, int num_query, char **sql_stmt,
     }
 
   err_code = net_recv_msg_timeout (con_handle, &result_msg, &result_msg_size,
-				   err_buf, remained_time);
+				   err_buf, 0);
   if (err_code < 0)
     {
       return err_code;

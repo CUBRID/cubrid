@@ -154,6 +154,10 @@ struct t_attr_table
 extern void histo_print (FILE * stream);
 extern void histo_clear (void);
 
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+extern void set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout);
+#endif /* !LIBCAS_FOR_JSP */
+
 static int netval_to_dbval (void *type, void *value, DB_VALUE * db_val,
 			    T_NET_BUF * net_buf, char desired_type);
 static int cur_tuple (T_QUERY_RESULT * q_result, int max_col_size,
@@ -2080,12 +2084,11 @@ int
 ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
 		  T_REQ_INFO * req_info)
 {
-  int i;
+  int query_index;
   int err_code, sql_size, res_count, stmt_id;
   bool use_plan_cache, use_query_cache;
   char *sql_stmt, *err_msg;
   char stmt_type;
-  char auto_commit_mode;
   DB_SESSION *session;
   DB_QUERY_RESULT *result;
   DB_VALUE val;
@@ -2093,25 +2096,17 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
   T_OBJECT ins_oid;
   T_BROKER_VERSION client_version = req_info->client_version;
 
-  net_arg_get_char (auto_commit_mode, argv[0]);
-  argc--;			/* real query num is argc-1 (because auto commit) */
-
   net_buf_cp_int (net_buf, 0, NULL);	/* result code */
   net_buf_cp_int (net_buf, argc, NULL);	/* result msg. num_query */
 
-  if (auto_commit_mode == TRUE)
-    {
-      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
-    }
-
-  for (i = 1; i <= argc; i++)
+  for (query_index = 0; query_index < argc; query_index++)
     {
       use_plan_cache = false;
       use_query_cache = false;
 
-      net_arg_get_str (&sql_stmt, &sql_size, argv[i]);
+      net_arg_get_str (&sql_stmt, &sql_size, argv[query_index]);
 
-      cas_log_write_nonl (0, false, "batch %d : %s", i,
+      cas_log_write_nonl (0, false, "batch %d : %s", query_index + 1,
 			  (sql_stmt ? sql_stmt : ""));
 
       session = db_open_buffer (sql_stmt);
@@ -2137,6 +2132,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
 	  goto batch_error;
 	}
 
+      tran_set_end_of_queries ((query_index + 1) == argc);
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
       db_get_cacheinfo (session, stmt_id, &use_plan_cache, &use_query_cache);
       cas_log_write2_nonl (" %s\n", use_plan_cache ? "(PC)" : "");
@@ -2177,7 +2173,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
       db_query_end (result);
       db_close_session (session);
 
-      if (auto_commit_mode == TRUE)
+      if (req_info->need_auto_commit == TRAN_AUTOCOMMIT)
 	{
 	  db_commit_transaction ();
 	}
@@ -2189,7 +2185,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
       err_code = db_error_code ();
       if (err_code < 0)
 	{
-	  if (auto_commit_mode == FALSE
+	  if (req_info->need_auto_commit == TRAN_AUTOCOMMIT
 	      && (ER_IS_SERVER_DOWN_ERROR (err_code)
 		  || ER_IS_ABORTED_DUE_TO_DEADLOCK (err_code)))
 	    {
@@ -2228,7 +2224,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
 	  db_close_session (session);
 	}
 
-      if (auto_commit_mode == TRUE)
+      if (req_info->need_auto_commit == TRAN_AUTOCOMMIT)
 	{
 	  db_abort_transaction ();
 	}
@@ -2262,25 +2258,15 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
   DB_QUERY_RESULT *result;
   int stmt_type = -1;
   T_OBJECT ins_oid;
-  char auto_commit_mode;
   DB_VALUE val;
   DB_OBJECT *ins_obj_p;
   T_BROKER_VERSION client_version = req_info->client_version;
-
-  net_arg_get_char (auto_commit_mode, argv[1]);
-
-  if (auto_commit_mode == TRUE)
-    {
-      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
-    }
 
   if (srv_handle == NULL || srv_handle->schema_type >= CCI_SCH_FIRST)
     {
       err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
       goto execute_array_error;
     }
-
-  srv_handle->auto_commit_mode = auto_commit_mode;
 
   if (srv_handle->prepare_flag & CCI_PREPARE_CALL)
     {
@@ -2309,14 +2295,14 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
   num_query = 0;
   net_buf_cp_int (net_buf, num_query, &num_query_msg_offset);
 
-  if (argc <= 3 || num_markers < 1)
+  if (argc <= 2 || num_markers < 1)
     {
       return 0;
     }
 
-  num_bind = (argc - 2) / 2;
+  num_bind = argc / 2;
 
-  err_code = make_bind_value (num_bind, argc - 2, argv + 2, &value_list,
+  err_code = make_bind_value (num_bind, argc, argv, &value_list,
 			      net_buf, DB_TYPE_NULL);
   if (err_code < 0)
     {
@@ -2348,6 +2334,8 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
 	      goto exec_db_error;
 	    }
 	}
+
+      tran_set_end_of_queries (num_bind == num_markers);
 
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
       res_count = db_execute_and_keep_statement (session, stmt_id, &result);
@@ -2400,7 +2388,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
       num_bind -= num_markers;
       first_value += num_markers;
 
-      if (auto_commit_mode == TRUE)
+      if (srv_handle->auto_commit_mode == TRUE)
 	{
 	  db_commit_transaction ();
 	}
@@ -2411,7 +2399,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
 
       if (err_code < 0)
 	{
-	  if (auto_commit_mode == FALSE
+	  if (srv_handle->auto_commit_mode == FALSE
 	      && (ER_IS_SERVER_DOWN_ERROR (err_code)
 		  || ER_IS_ABORTED_DUE_TO_DEADLOCK (err_code)))
 	    {
@@ -2451,7 +2439,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
       num_bind -= num_markers;
       first_value += num_markers;
 
-      if (auto_commit_mode == TRUE)
+      if (srv_handle->auto_commit_mode == TRUE)
 	{
 	  db_abort_transaction ();
 	}

@@ -666,13 +666,11 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
   MYSQL_BIND *value_list = NULL;
   DB_VALUE **db_vals = NULL;
   void **start_argv = argv + 2;
-  char auto_commit_mode;
   T_BROKER_VERSION client_version = req_info->client_version;
 
-  net_arg_get_char (auto_commit_mode, argv[1]);
-  cas_mysql_autocommit (auto_commit_mode);
+  cas_mysql_autocommit (srv_handle->auto_commit_mode);
 
-  if (auto_commit_mode == TRUE)
+  if (srv_handle->auto_commit_mode == TRUE)
     {
       req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
@@ -682,8 +680,6 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
       err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
       goto execute_array_error;
     }
-
-  srv_handle->auto_commit_mode = auto_commit_mode;
 
   if (srv_handle->prepare_flag & CCI_PREPARE_CALL)
     {
