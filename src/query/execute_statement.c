@@ -7673,7 +7673,7 @@ init_compile_context (PARSER_CONTEXT * parser, COMPILE_CONTEXT * context)
 static void
 init_xasl_stream (XASL_STREAM * stream)
 {
-  memset (stream, 0x00, sizeof (COMPILE_CONTEXT));
+  memset (stream, 0x00, sizeof (XASL_STREAM));
 }
 
 /*
