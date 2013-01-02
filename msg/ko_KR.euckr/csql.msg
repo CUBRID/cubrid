@@ -40,7 +40,7 @@ $set 1 MSGCAT_CSQL_SET_CSQL
   -c, --command=ARG            CSQL 명령어들\n\
   -l, --line-output            한 라인 내에 값 표시\n\
   -r, --read-only              읽기 전용 모드\n\
-      --string-width           각 문자열 컬럼값이 출력 될 길이\n\
+      --string-width           각 문자열 컬럼 값을 출력할 길이\n\
       --no-auto-commit         자동 커밋 안 함\n\
       --no-pager               페이지 단위로 표시 안 함\n\
       --no-single-line         단일 라인 실행 안 함\n\
@@ -156,8 +156,6 @@ $ csql help messages
    ;EDITOR_Cmd   [editor-cmd]   - 내정된 편집기를 설정하거나 보여줌.\n\
    ;PRINT_Cmd    [print-cmd]    - 내정된 프린트 명령어를 설정하거나 보여줌.\n\
    ;PAger_cmd    [pager-cmd]    - 내정된 페이지 구분기를 설정하거나 보여줌.\n\
-   ;STring-width [width]        - 각 문자열 컬럼값이 출력 될 길이 설정.\n\
-   ;COLumn-width [name] [width] - 명시한 이름의 컬럼값이 출력 될 길이 설정.\n\
 \n\
    ;DATE                        - 지역 날짜, 시간 출력.\n\
    ;DATAbase                    - 접근 중인 데이터베이스 이름 출력.\n\
@@ -165,6 +163,8 @@ $ csql help messages
    ;TRigger [`*'|trigger-name]  - 트리거 정의 출력.\n\
    ;Get system_parameter        - 시스템 파라메터 보기.\n\
    ;SEt system_parameter=value  - 시스템 파라메터 설정.\n\
+   ;STring-width [width]        - 각 문자열 컬럼 값을 출력할 길이를 설정.\n\
+   ;COLumn-width [name]=[width] - 명시한 컬럼 값을 출력할 길이를 설정.\n\
    ;PLan [simple|detail|off]    - 쿼리 플랜 보기 설정.\n\
    ;Info <command>              - 내부 정보 출력.\n\
    ;TIme [ON/OFF]               - 쿼리 수행 시간 보기 설정|해제\n\

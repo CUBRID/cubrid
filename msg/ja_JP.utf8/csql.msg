@@ -158,8 +158,6 @@ $ csql help messages
    ;EDITOR_Cmd   [editor-cmd]   - 既存に設定したエディターを設定／表示する。\n\
    ;PRINT_Cmd    [print-cmd]    - 既存に設定したプリントを設定／表示する。\n\
    ;PAger_cmd    [pager-cmd]    - 既存に設定したページャーを設定／表示する。\n\
-   ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
-   ;COLumn-width [name] [width] - set width that a specific column is displayed.\n\
 \n\
    ;DATE                        - 地域の日付、時間を出力。\n\
    ;DATAbase                    - アクセスしているデータベース名を出力。\n\
@@ -167,6 +165,8 @@ $ csql help messages
    ;TRigger [`*'|trigger-name]  - トリガー正義を出力。\n\
    ;Get system_parameter        - システムパラメーターを表示。\n\
    ;SEt system_parameter=value  - システムパラメーターを設定。\n\
+   ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
+   ;COLumn-width [name]=[width] - set width that a specific column is displayed.\n\
    ;PLan [simple|detail|off]    - クエリプランの表示を設定。\n\
    ;Info <command>              - インターナル情報を出力。\n\
    ;TIme [ON/OFF]               - クエリー実行時間の\n\

@@ -158,8 +158,6 @@ $ csql help messages
    ;EDITOR_Cmd   [editor-cmd]     lệnh đến một cái mới, hoặc hiện thị cái hiện tại\n\
    ;PRINT_Cmd    [print-cmd]      ,theo thứ tự.\n\
    ;PAger_cmd    [pager-cmd]\n\
-   ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
-   ;COLumn-width [name] [width] - set width that a specific column is displayed.\n\
 \n\
    ;DATE                        - hiển thị ngày, thời gian cục bộ.\n\
    ;DATAbase                    - hiển thị tên của cơ sở dữ liệu đang được truy cập.\n\
@@ -167,6 +165,8 @@ $ csql help messages
    ;TRigger [`*'|trigger-name]  - hiển thị định nghĩa trigger.\n\
    ;Get system_parameter        - lấy giá trị của một tham số hệ thống.\n\
    ;SEt system_parameter=value  - thiết lập giá trị của một tham số hệ thống.\n\
+   ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
+   ;COLumn-width [name]=[width] - set width that a specific column is displayed.\n\
    ;PLan [simple/detail/off]    - hiện kế hoạch thực thi truy vấn.\n\
    ;Info <command>              - hiển thị thông tin nội tại.\n\
    ;TIme [ON/OFF]               - bật/tắt để hiển thị thời gian\n\

@@ -158,8 +158,6 @@ $ csql help messages
    ;EDITOR_Cmd [editor-cmd]     - 设置默认编辑器或显示当前设置.\n\
    ;PRINT_Cmd  [print-cmd]      - 设置默认print或显示当前设置.\n\
    ;PAger_cmd  [pager-cmd]      - 设置默认分页程序或显示当前设置\n\
-   ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
-   ;COLumn-width [name] [width] - set width that a specific column is displayed.\n\
 \n\
    ;DATE                        - 显示本地时间,日期.\n\
    ;DATAbase                    - 显示正被访问的数据库名.\n\
@@ -167,6 +165,8 @@ $ csql help messages
    ;TRigger [`*'|trigger-name]  - 显示触发器的定义.\n\
    ;Get system_parameter        - 获取一个系统参数的值.\n\
    ;SEt system_parameter=value  - 设置一个系统参数的值.\n\
+   ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
+   ;COLumn-width [name]=[width] - set width that a specific column is displayed.\n\
    ;PLan [simple/detail/off]    - 显示查询执行计划.\n\
    ;Info <command>              - 显示内部信息.\n\
    ;TIme [ON/OFF]               - 启用/停用 显示查询\n\

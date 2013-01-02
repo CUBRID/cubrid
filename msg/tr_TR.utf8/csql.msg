@@ -158,8 +158,6 @@ $ csql help messages
    ;EDITOR_Cmd   [editor-cmd]     yeni bir tane komut ver veya geçerli olanı görüntüle\n\
    ;PRINT_Cmd    [print-cmd]      bir, sırasıyla.\n\
    ;PAger_cmd    [pager-cmd]\n\
-   ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
-   ;COLumn-width [name] [width] - set width that a specific column is displayed.\n\
 \n\
    ;DATE                        - yerel saat görüntüle, tarih.\n\
    ;DATAbase                    - veritabanı erişilen adını görüntüler.\n\
@@ -167,11 +165,13 @@ $ csql help messages
    ;TRigger [`*'|trigger-name]  - tetik tanımı görüntüler.\n\
    ;Get system_parameter        - bir sistem parametre değeri edinin.\n\
    ;SEt system_parameter=value  - bir sistem parametre değeri ayarla.\n\
+   ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
+   ;COLumn-width [name]=[width] - set width that a specific column is displayed.\n\
    ;PLan [simple/detail/off]    - sorgu yürütme planı göster.\n\
    ;Info <command>              - iç bilgileri görüntüler.\n\
    ;TIme [ON/OFF]               - Sorgu görüntülemek için etkin / devre dışı\n\
                                   yürütme zamanı.\n\
-   ;;LINe-output [ON/OFF]       - bir çizgi üzerinde her değeri görüntüle etkin / devre dışı\n\
+   ;LINe-output [ON/OFF]        - bir çizgi üzerinde her değeri görüntüle etkin / devre dışı\n\
    ;HISTORYList                 - çalıştırılan sorguların listesini görüntüleyebilir.\n\
    ;HISTORYRead <history_num>   - komut buffer içine geçmiş numarası üzerinde giriş okuyun.\n\
    ;HElp                        - yardım mesajını görüntüler.\n\n

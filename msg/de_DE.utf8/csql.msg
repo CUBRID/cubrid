@@ -159,8 +159,6 @@ $ csql help messages
    ;EDITOR_Cmd   [editor-cmd]     Befehl für eine neue, oder die aktuelle Anzeigen\n\
    ;PRINT_Cmd    [print-cmd]      einzeln, jeweils.\n\
    ;PAger_cmd    [pager-cmd]\n\
-   ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
-   ;COLumn-width [name] [width] - set width that a specific column is displayed.\n\
 \n\
    ;DATE                        - lokale Uhrzeit und Datum anzeigen.\n\
    ;DATAbase                    - den Namen der zugegriffenen Datenbank anzeigen.\n\
@@ -168,6 +166,8 @@ $ csql help messages
    ;TRigger [`*'|trigger-name]  - Trigger-definition anzeigen.\n\
    ;Get system_parameter        - Wert eines System-Parameter erhalten.\n\
    ;SEt system_parameter=value  - Wert eines System-Parameter setzen.\n\
+   ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
+   ;COLumn-width [name]=[width] - set width that a specific column is displayed.\n\
    ;PLan [simple/detail/off]    - Abfrageausführungsplan anzeigen.\n\
    ;Info <command>              - interne Information anzeigen.\n\
    ;TIme [ON/OFF]               - aktivieren/deaktivieren, um die Ausführungszeit\n\
