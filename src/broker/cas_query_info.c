@@ -47,8 +47,11 @@ static char *time2str (int t, char *buf);
 
 static T_QUERY_INFO *query_info_arr = NULL;
 static int num_query_info = 0;
+
+#ifdef TEST
 static T_QUERY_INFO *query_info_arr_ne = NULL;
 static int num_query_info_ne = 0;
+#endif
 
 #ifdef MT_MODE
 static T_MUTEX query_info_mutex;
@@ -286,6 +289,11 @@ query_info_add_ne (T_QUERY_INFO * qi, char *end_date)
   int i;
   int retval;
 
+#ifndef TEST
+  /* query_info_arr_ne is used only in TEST mode */
+  return 0;
+#else
+
   if (check_log_time (qi->start_date, end_date) < 0)
     return 0;
 
@@ -345,6 +353,8 @@ query_info_add_ne_end:
   MUTEX_UNLOCK (query_info_mutex);
 #endif
   return retval;
+
+#endif /* define TEST */
 }
 
 static int

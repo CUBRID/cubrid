@@ -418,6 +418,7 @@ log_top (FILE * fp, char *filename, long start_offset, long end_offset)
 		    {
 		      break;
 		    }
+
 		  GET_MSG_START_PTR (msg_p, linebuf);
 		  if (strncmp (msg_p, "***", 3) == 0)
 		    {
@@ -441,6 +442,7 @@ log_top (FILE * fp, char *filename, long start_offset, long end_offset)
 	  query_info_buf[qi_idx].sql =
 	    (char *) REALLOC (query_info_buf[qi_idx].sql,
 			      t_string_len (sql_buf) + 1);
+
 	  strcpy (query_info_buf[qi_idx].sql,
 		  ut_trim (t_string_str (sql_buf)));
 
@@ -456,32 +458,45 @@ log_top (FILE * fp, char *filename, long start_offset, long end_offset)
 		  if (query_info_add
 		      (&query_info_buf[qi_idx], qi_idx + 1, 0, filename,
 		       lineno, cur_date) < 0)
-		    goto log_top_err;
+		    {
+		      goto log_top_err;
+		    }
 		}
 	    }
 	  else
 	    {
 	      int execute_res, runtime;
 
-	      if (read_execute_end_msg (msg_p, &execute_res, &runtime) < 0)
-		{
-		  if (query_info_add_ne (&query_info_buf[qi_idx], cur_date) <
-		      0)
-		    goto log_top_err;
-		  read_flag = 0;
-		  continue;
-		}
-
+	      /* set cas_log to query info */
 	      if (t_string_add (cas_log_buf, linebuf, strlen (linebuf)) < 0)
 		{
 		  goto log_top_err;
 		}
+
 	      query_info_buf[qi_idx].cas_log =
 		(char *) REALLOC (query_info_buf[qi_idx].cas_log,
 				  t_string_len (cas_log_buf) + 1);
+
 	      memcpy (query_info_buf[qi_idx].cas_log,
 		      t_string_str (cas_log_buf), t_string_len (cas_log_buf));
+
 	      query_info_buf[qi_idx].cas_log_len = t_string_len (cas_log_buf);
+
+
+	      /* read execute info & if fail add to query_info_arr_ne */
+	      if (read_execute_end_msg (msg_p, &execute_res, &runtime) < 0)
+		{
+		  if (query_info_add_ne (&query_info_buf[qi_idx], cur_date) <
+		      0)
+		    {
+		      goto log_top_err;
+		    }
+
+		  read_flag = 0;
+		  continue;
+		}
+
+	      /* add to query_info_arr */
 	      if (query_info_add
 		  (&query_info_buf[qi_idx], runtime, execute_res, filename,
 		   lineno, cur_date) < 0)
@@ -494,7 +509,9 @@ log_top (FILE * fp, char *filename, long start_offset, long end_offset)
     }
 
   for (i = 0; i < MAX_SRV_HANDLE; i++)
-    query_info_clear (&query_info_buf[i]);
+    {
+      query_info_clear (&query_info_buf[i]);
+    }
 
   t_string_free (cas_log_buf);
   t_string_free (sql_buf);
