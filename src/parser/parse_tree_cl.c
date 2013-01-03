@@ -80,12 +80,20 @@ struct pt_walk_arg
   int continue_walk;
 };
 
+typedef struct pt_string_block PT_STRING_BLOCK;
+struct pt_string_block
+{
+  char *body;
+  int length;
+  int size;
+};
 
 PARSER_INIT_NODE_FUNC *pt_init_f = NULL;
 PARSER_PRINT_NODE_FUNC *pt_print_f = NULL;
 PARSER_APPLY_NODE_FUNC *pt_apply_f = NULL;
 PARSER_CONTEXT *parent_parser = NULL;
 
+static void strcat_with_realloc (PT_STRING_BLOCK * sb, const char *tail);
 static PT_NODE *pt_lambda_check_reduce_eq (PARSER_CONTEXT * parser,
 					   PT_NODE * tree_or_name,
 					   void *void_arg,
@@ -591,16 +599,14 @@ extern char *g_query_string;
 extern int g_query_string_len;
 
 
-typedef struct pt_string_block PT_STRING_BLOCK;
-struct pt_string_block
-{
-  char *body;
-  int length;
-  int size;
-};
-
+/*
+ * strcat_with_realloc () -
+ *   return:
+ *   PT_STRING_BLOCK(in/out):
+ *   tail(in):
+ */
 static void
-strcat_with_realloc (PT_STRING_BLOCK * sb, char *tail)
+strcat_with_realloc (PT_STRING_BLOCK * sb, const char *tail)
 {
   char *cp = sb->body;
   int margin = 32;
@@ -615,7 +621,6 @@ strcat_with_realloc (PT_STRING_BLOCK * sb, char *tail)
   strcat (cp, tail);
   sb->length = sb->length + strlen (tail);
 }
-
 
 /*
  * pt_lambda_check_reduce_eq () -

@@ -304,12 +304,12 @@ static void time_format (int t, char *time_str);
 #endif
 static void print_header (bool use_pdh_flag);
 static int print_title (char *buf_p, int buf_offset, FIELD_NAME name,
-			char *new_title_p);
-static void print_value (FIELD_NAME name, void *value, FIELD_TYPE type);
-static char *get_access_mode_string (T_ACCESS_MODE_VALUE mode);
-static char *get_sql_log_mode_string (T_SQL_LOG_MODE_VALUE mode);
-static char *get_status_string (T_APPL_SERVER_INFO * as_info_p,
-				char appl_server);
+			const char *new_title_p);
+static void print_value (FIELD_NAME name, const void *value, FIELD_TYPE type);
+static const char *get_access_mode_string (T_ACCESS_MODE_VALUE mode);
+static const char *get_sql_log_mode_string (T_SQL_LOG_MODE_VALUE mode);
+static const char *get_status_string (T_APPL_SERVER_INFO * as_info_p,
+				      char appl_server);
 static void get_cpu_usage_string (char *buf_p, float usage);
 
 
@@ -1377,6 +1377,7 @@ br_monitor (char *br_vector)
 #endif /* CUBRID_SHARD */
       time_t cur_time;
       char shortened_broker_name[FIELD_WIDTH_BROKER_NAME + 1];
+
       num_select_queries = 0;
       num_insert_queries = 0;
       num_update_queries = 0;
@@ -2454,10 +2455,11 @@ client_monitor (void)
 #endif /* CUBRID_SHARD */
 
 static int
-print_title (char *buf_p, int buf_offset, FIELD_NAME name, char *new_title_p)
+print_title (char *buf_p, int buf_offset, FIELD_NAME name,
+	     const char *new_title_p)
 {
   struct status_field *field_p = NULL;
-  char *title_p = NULL;
+  const char *title_p = NULL;
 
   assert (buf_p != NULL);
   assert (buf_offset >= 0);
@@ -2508,7 +2510,7 @@ print_title (char *buf_p, int buf_offset, FIELD_NAME name, char *new_title_p)
 }
 
 static void
-print_value (FIELD_NAME name, void *value_p, FIELD_TYPE type)
+print_value (FIELD_NAME name, const void *value_p, FIELD_TYPE type)
 {
   char format_string[256];
   struct status_field *field_p = NULL;
@@ -2524,55 +2526,57 @@ print_value (FIELD_NAME name, void *value_p, FIELD_TYPE type)
     case FIELD_T_INT:
       if (field_p->align == FIELD_LEFT_ALIGN)
 	{
-	  str_out ("%-*d", field_p->width, *(int *) value_p);
+	  str_out ("%-*d", field_p->width, *(const int *) value_p);
 	}
       else
 	{
-	  str_out ("%*d", field_p->width, *(int *) value_p);
+	  str_out ("%*d", field_p->width, *(const int *) value_p);
 	}
       break;
     case FIELD_T_STRING:
       if (field_p->align == FIELD_LEFT_ALIGN)
 	{
-	  str_out ("%-*.*s", field_p->width, field_p->width, value_p);
+	  str_out ("%-*.*s", field_p->width, field_p->width,
+		   (const char *) value_p);
 	}
       else
 	{
-	  str_out ("%*.*s", field_p->width, field_p->width, value_p);
+	  str_out ("%*.*s", field_p->width, field_p->width,
+		   (const char *) value_p);
 	}
       break;
     case FIELD_T_FLOAT:
       if (field_p->align == FIELD_LEFT_ALIGN)
 	{
-	  str_out ("%-*f", field_p->width, *(float *) value_p);
+	  str_out ("%-*f", field_p->width, *(const float *) value_p);
 	}
       else
 	{
-	  str_out ("%*f", field_p->width, *(float *) value_p);
+	  str_out ("%*f", field_p->width, *(const float *) value_p);
 	}
       break;
     case FIELD_T_UINT64:
       if (field_p->align == FIELD_LEFT_ALIGN)
 	{
-	  str_out ("%-*lu", field_p->width, *(UINT64 *) value_p);
+	  str_out ("%-*lu", field_p->width, *(const UINT64 *) value_p);
 	}
       else
 	{
-	  str_out ("%*lu", field_p->width, *(UINT64 *) value_p);
+	  str_out ("%*lu", field_p->width, *(const UINT64 *) value_p);
 	}
       break;
     case FIELD_T_INT64:
       if (field_p->align == FIELD_LEFT_ALIGN)
 	{
-	  str_out ("%-*ld", field_p->width, *(INT64 *) value_p);
+	  str_out ("%-*ld", field_p->width, *(const INT64 *) value_p);
 	}
       else
 	{
-	  str_out ("%*ld", field_p->width, *(INT64 *) value_p);
+	  str_out ("%*ld", field_p->width, *(const INT64 *) value_p);
 	}
       break;
     case FIELD_T_TIME:
-      localtime_r (value_p, &cur_tm);
+      localtime_r ((const time_t *) value_p, &cur_tm);
       cur_tm.tm_year += 1900;
       sprintf (time_buf, "%02d/%02d/%02d %02d:%02d:%02d", cur_tm.tm_year,
 	       cur_tm.tm_mon + 1, cur_tm.tm_mday, cur_tm.tm_hour,
@@ -2591,65 +2595,45 @@ print_value (FIELD_NAME name, void *value_p, FIELD_TYPE type)
   str_out ("%c", FIELD_DELIMITER);
 }
 
-static char *
+static const char *
 get_sql_log_mode_string (T_SQL_LOG_MODE_VALUE mode)
 {
-  char *mode_string_p = NULL;
-
   switch (mode)
     {
     case SQL_LOG_MODE_NONE:
-      mode_string_p = (char *) "NONE";
-      break;
+      return "NONE";
     case SQL_LOG_MODE_ERROR:
-      mode_string_p = (char *) "ERROR";
-      break;
+      return "ERROR";
     case SQL_LOG_MODE_TIMEOUT:
-      mode_string_p = (char *) "TIMEOUT";
-      break;
+      return "TIMEOUT";
     case SQL_LOG_MODE_NOTICE:
-      mode_string_p = (char *) "NOTICE";
-      break;
+      return "NOTICE";
     case SQL_LOG_MODE_ALL:
-      mode_string_p = (char *) "ALL";
-      break;
+      return "ALL";
     default:
-      mode_string_p = (char *) "-";
-      break;
+      return "-";
     }
-
-  return mode_string_p;
 }
 
-static char *
+static const char *
 get_access_mode_string (T_ACCESS_MODE_VALUE mode)
 {
-  char *mode_string_p = NULL;
-
   switch (mode)
     {
     case READ_ONLY_ACCESS_MODE:
-      mode_string_p = (char *) "RO";
-      break;
+      return "RO";
     case SLAVE_ONLY_ACCESS_MODE:
-      mode_string_p = (char *) "SO";
-      break;
+      return "SO";
     case READ_WRITE_ACCESS_MODE:
-      mode_string_p = (char *) "RW";
-      break;
+      return "RW";
     default:
-      mode_string_p = (char *) "--";
-      break;
+      return "--";
     }
-
-  return mode_string_p;
 }
 
-static char *
-get_status_string (T_APPL_SERVER_INFO * as_info_p, char appl_server)
+static const char *
+get_status_string (T_APPL_SERVER_INFO * as_info_p, const char appl_server)
 {
-  char *status_string_p = NULL;
-
   assert (as_info_p != NULL);
 
   if (as_info_p->uts_status == UTS_STATUS_BUSY)
@@ -2658,44 +2642,44 @@ get_status_string (T_APPL_SERVER_INFO * as_info_p, char appl_server)
 	{
 	  if (as_info_p->con_status == CON_STATUS_OUT_TRAN)
 	    {
-	      status_string_p = (char *) "CLOSE_WAIT";
+	      return "CLOSE_WAIT";
 	    }
 	  else if (as_info_p->log_msg[0] == '\0')
 	    {
-	      status_string_p = (char *) "CLIENT_WAIT";
+	      return "CLIENT_WAIT";
 	    }
 	  else
 	    {
-	      status_string_p = (char *) "BUSY";
+	      return "BUSY";
 	    }
 	}
       else
 	{
-	  status_string_p = (char *) "BUSY";
+	  return "BUSY";
 	}
     }
 #if defined(WINDOWS)
   else if (as_info_p->uts_status == UTS_STATUS_BUSY_WAIT)
     {
-      status_string_p = (char *) "BUSY";
+      return "BUSY";
     }
 #endif
   else if (as_info_p->uts_status == UTS_STATUS_RESTART)
     {
-      status_string_p = (char *) "INITIALIZE";
+      return "INITIALIZE";
     }
 #if defined(CUBRID_SHARD)
   else if (as_info_p->uts_status == UTS_STATUS_CON_WAIT)
     {
-      status_string_p = (char *) "CON WAIT";
+      return "CON WAIT";
     }
 #endif
   else
     {
-      status_string_p = (char *) "IDLE";
+      return "IDLE";
     }
 
-  return status_string_p;
+  return NULL;
 }
 
 static void

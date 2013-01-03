@@ -84,4 +84,9 @@ extern PT_NODE *pt_check_odku_assignments (PARSER_CONTEXT * parser,
 extern void pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser,
 					   PT_NODE * attr,
 					   int default_cs, int default_coll);
+extern PT_NODE *pt_check_cyclic_reference_in_view_spec (PARSER_CONTEXT *
+							parser,
+							PT_NODE * node,
+							void *arg,
+							int *continue_walk);
 #endif /* _SEMANTIC_CHECK_H_ */

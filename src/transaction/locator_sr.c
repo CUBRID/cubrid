@@ -1639,7 +1639,7 @@ locator_print_class_name (FILE * outfp, const void *key, void *ent,
       fprintf (outfp,
 	       "     action = %s, OID = %d|%d|%d, Save_Lsa = %lld|%d\n",
 	       str_action, action->oid.volid, action->oid.pageid,
-	       action->oid.slotid, action->savep_lsa.pageid,
+	       action->oid.slotid, (long long int) action->savep_lsa.pageid,
 	       action->savep_lsa.offset);
       action = action->prev;
     }

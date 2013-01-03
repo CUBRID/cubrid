@@ -222,6 +222,7 @@ extern void obt_disable_unique_checking (OBJ_TEMPLATE * template_ptr);
 extern bool obt_enable_unique_checking (bool new_state);
 extern void obt_set_force_flush (OBJ_TEMPLATE * template_ptr);
 extern void obt_reset_force_flush (OBJ_TEMPLATE * template_ptr);
+extern void obt_set_bulk_flush (OBJ_TEMPLATE * template_ptr);
 extern int obt_update (OBJ_TEMPLATE * template_ptr, MOP * newobj);
 extern int obt_assign (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att,
 		       int base_assignment, DB_VALUE * value,

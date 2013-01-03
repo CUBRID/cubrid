@@ -1395,7 +1395,7 @@ mq_substitute_select_in_statement (PARSER_CONTEXT * parser,
 
   query_spec_columns = query_spec->info.query.q.select.list;
   query_spec_from = query_spec->info.query.q.select.from;
-  if (!query_spec_from)
+  if (query_spec_from == NULL)
     {
       PT_INTERNAL_ERROR (parser, "translate");
       return NULL;
@@ -1405,8 +1405,8 @@ mq_substitute_select_in_statement (PARSER_CONTEXT * parser,
     {
       PT_NODE *spec_name = query_spec_from->info.spec.entity_name;
 
-      if (do_is_partitioned_subclass
-	  (NULL, spec_name->info.name.original, NULL))
+      if (do_is_partitioned_subclass (NULL, spec_name->info.name.original,
+				      NULL))
 	{
 	  PT_ERRORmf (parser, class_, MSGCAT_SET_PARSER_RUNTIME,
 		      MSGCAT_RUNTIME_NOT_ALLOWED_ACCESS_TO_PARTITION,
@@ -1424,8 +1424,10 @@ mq_substitute_select_in_statement (PARSER_CONTEXT * parser,
 
   /* get vclass spec attrs */
   attributes = mq_fetch_attributes (parser, class_);
-  if (!attributes)
-    return NULL;
+  if (attributes == NULL)
+    {
+      return NULL;
+    }
 
   col = query_spec_columns;
   attr = attributes;
@@ -2286,8 +2288,8 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 	  if (query_spec->info.query.order_by != NULL)
 	    {
 	      /* update the position number of order by clause */
-	      statement =
-		mq_update_order_by (parser, statement, query_spec, class_);
+	      statement = mq_update_order_by (parser, statement, query_spec,
+					      class_);
 	      if (statement == NULL)
 		{
 		  goto exit_on_error;
@@ -2407,11 +2409,9 @@ exit_on_error:
  *   what_for(in):
  */
 static PT_NODE *
-mq_substitute_subquery_list_in_statement (PARSER_CONTEXT *
-					  parser,
+mq_substitute_subquery_list_in_statement (PARSER_CONTEXT * parser,
 					  PT_NODE * statement,
-					  PT_NODE *
-					  query_spec_list,
+					  PT_NODE * query_spec_list,
 					  PT_NODE * class_,
 					  PT_NODE * order_by, int what_for)
 {
@@ -2424,7 +2424,6 @@ mq_substitute_subquery_list_in_statement (PARSER_CONTEXT *
       result = mq_substitute_subquery_in_statement (parser, statement,
 						    query_spec, class_,
 						    order_by, what_for);
-
       if (result)
 	{
 	  result_list = parser_append_node (result, result_list);
@@ -2694,39 +2693,42 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree,
 	      return NULL;	/* authorization fails */
 	    }
 	}
-      else
-	if (class_spec->info.spec.meta_class != PT_META_CLASS
-	    && class_spec->info.spec.derived_table_type != PT_IS_WHACKED_SPEC)
+      else if (class_spec->info.spec.meta_class != PT_META_CLASS
+	       && (class_spec->info.spec.derived_table_type
+		   != PT_IS_WHACKED_SPEC))
 	{
 	  for (entity = class_spec->info.spec.flat_entity_list;
 	       entity != NULL; entity = entity->next)
 	    {
-	      if ((!mq_translatable_class (parser, entity)) ||
-		  (PT_IS_SELECT (tree) &&
-		   (PT_SELECT_INFO_IS_FLAGED (tree,
-					      PT_SELECT_INFO_COLS_SCHEMA)
-		    || PT_SELECT_INFO_IS_FLAGED
-		    (tree, PT_SELECT_FULL_INFO_COLS_SCHEMA))))
+	      if (mq_translatable_class (parser, entity) == 0
+		  || (PT_IS_SELECT (tree)
+		      && (PT_SELECT_INFO_IS_FLAGED (tree,
+						    PT_SELECT_INFO_COLS_SCHEMA)
+			  || PT_SELECT_INFO_IS_FLAGED (tree,
+						       PT_SELECT_FULL_INFO_COLS_SCHEMA))))
 		{
 		  /* no translation for above cases */
 		  my_class = parser_copy_tree (parser, entity);
 		  if (!my_class)
-		    return NULL;
+		    {
+		      return NULL;
+		    }
+
 		  /* check for authorization bypass: this feature should be
 		   * used only for specs in SHOW statements;
 		   * Note : all classes expanded under the current spec
 		   * sub-tree will be skipped by the authorization process
 		   */
 		  if (!skip_auth_check &&
-		      (db_check_authorization
-		       (my_class->info.name.db_object,
-			(DB_AUTH) what_for) != NO_ERROR))
+		      (db_check_authorization (my_class->info.name.db_object,
+					       (DB_AUTH) what_for) !=
+		       NO_ERROR))
 		    {
 		      PT_ERRORmf2 (parser, entity, MSGCAT_SET_PARSER_RUNTIME,
 				   MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON,
 				   get_authorization_name (what_for),
-				   db_get_class_name
-				   (my_class->info.name.db_object));
+				   db_get_class_name (my_class->info.name.
+						      db_object));
 		      return NULL;
 		    }
 		  my_class->next = real_classes;
@@ -2747,9 +2749,11 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree,
 		    }
 		  else
 		    {
-		      subquery = mq_fetch_subqueries_for_update
-			(parser, entity, PT_NORMAL_SELECT,
-			 (DB_AUTH) what_for);
+		      subquery = mq_fetch_subqueries_for_update (parser,
+								 entity,
+								 PT_NORMAL_SELECT,
+								 (DB_AUTH)
+								 what_for);
 		    }
 
 		  if (subquery != NULL)

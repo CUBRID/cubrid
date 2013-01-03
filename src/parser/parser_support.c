@@ -8465,11 +8465,11 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser,
   int subquery_list_size = is_show_full ? 9 : 8;
   int query_list_size = subquery_list_size - 2;
 
-  char *subquery_aliases[] =
+  const char *subquery_aliases[] =
     { "Attr_Type", "Def_Order", "Field", "Type", "Null", "Key", "Default",
     "Extra"
   };
-  char *subquery_full_aliases[] =
+  const char *subquery_full_aliases[] =
     { "Attr_Type", "Def_Order", "Field", "Type", "Collation", "Null",
     "Key", "Default", "Extra"
   };
@@ -9894,7 +9894,7 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
 			INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER];
   PT_NODE *value = NULL, *value_list = NULL;
   DB_VALUE db_valuep[12];
-  char *aliases[] = {
+  const char *aliases[] = {
     "Table", "Non_unique", "Key_name", "Seq_in_index", "Column_name",
     "Collation", "Cardinality", "Sub_part", "Packed", "Null", "Index_type",
     "Func"

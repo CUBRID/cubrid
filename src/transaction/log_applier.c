@@ -888,7 +888,8 @@ la_log_fetch_from_archive (LOG_PAGEID pageid, char *data)
       if (error < 0)
 	{
 	  er_log_debug (ARG_FILE_LINE,
-			"cannot find archive log for %lld page.", pageid);
+			"cannot find archive log for %lld page.",
+			(long long int) pageid);
 	  return error;
 	}
       if (la_Info.arv_log.arv_num != arv_log_num)
@@ -917,7 +918,7 @@ log_reopen:
 	{
 	  er_log_debug (ARG_FILE_LINE,
 			"cannot open %s archive for %lld page.",
-			la_Info.arv_log.path, pageid);
+			la_Info.arv_log.path, (long long int) pageid);
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_LOG_MOUNT_FAIL, 1, la_Info.arv_log.path);
 	  return ER_LOG_MOUNT_FAIL;
@@ -927,7 +928,7 @@ log_reopen:
 	{
 	  er_log_debug (ARG_FILE_LINE,
 			"archive (%s) has been opened for %lld page",
-			la_Info.arv_log.path, pageid);
+			la_Info.arv_log.path, (long long int) pageid);
 	}
 #endif
     }
@@ -5705,7 +5706,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
       snprintf (buffer, sizeof (buffer),
 		"process log record (type:%d). "
 		"skip this log page. LSA: %lld|%d",
-		lrec->type, final->pageid, final->offset);
+		lrec->type, (long long int) final->pageid, final->offset);
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR,
 	      1, buffer);
 
@@ -5860,7 +5861,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
       snprintf (buffer, sizeof (buffer),
 		"process log record (type:%d). "
 		"skip this log record. LSA: %lld|%d",
-		lrec->type, final->pageid, final->offset);
+		lrec->type, (long long int) final->pageid, final->offset);
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR,
 	      1, buffer);
 
@@ -5906,7 +5907,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
 	{
 	  snprintf (buffer, sizeof (buffer),
 		    "process last log record in archive. LSA: %lld|%d",
-		    final->pageid, final->offset);
+		    (long long int) final->pageid, final->offset);
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 		  ER_HA_GENERIC_ERROR, 1, buffer);
 
@@ -6048,7 +6049,7 @@ la_change_state (void)
 		    "last committed LSA: %lld|%d",
 		    css_ha_applier_state_string (la_Info.apply_state),
 		    css_ha_applier_state_string (new_state),
-		    la_Info.committed_lsa.pageid,
+		    (long long int) la_Info.committed_lsa.pageid,
 		    la_Info.committed_lsa.offset);
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 		  ER_HA_GENERIC_ERROR, 1, buffer);
@@ -6538,9 +6539,9 @@ la_print_log_header (const char *database_name, struct log_header *hdr,
   printf ("%-30s : %s\n", "DB name ", database_name);
   printf ("%-30s : %s (%ld)\n", "DB creation time ", timebuf, tloc);
   printf ("%-30s : %lld | %d\n", "EOF LSA",
-	  hdr->eof_lsa.pageid, hdr->eof_lsa.offset);
+	  (long long int) hdr->eof_lsa.pageid, hdr->eof_lsa.offset);
   printf ("%-30s : %lld | %d\n", "Append LSA",
-	  hdr->append_lsa.pageid, hdr->append_lsa.offset);
+	  (long long int) hdr->append_lsa.pageid, hdr->append_lsa.offset);
   printf ("%-30s : %s\n", "HA server state",
 	  css_ha_server_state_string (hdr->ha_server_state));
   if (verbose)
@@ -6551,19 +6552,19 @@ la_print_log_header (const char *database_name, struct log_header *hdr,
       printf ("%-30s : %d\n", "Is log shutdown", hdr->is_shutdown);
       printf ("%-30s : %d\n", "Next transaction identifier", hdr->next_trid);
       printf ("%-30s : %d\n", "Number of pages", hdr->npages);
-      printf ("%-30s : %lld\n", "Logical pageid", hdr->fpageid);
+      printf ("%-30s : %lld\n", "Logical pageid",
+	      (long long int) hdr->fpageid);
       printf ("%-30s : %lld | %d\n", "CHKPT LSA",
-	      hdr->chkpt_lsa.pageid, hdr->chkpt_lsa.offset);
-      printf ("%-30s : %lld\n", "Next archive pageid", hdr->nxarv_pageid);
+	      (long long int) hdr->chkpt_lsa.pageid, hdr->chkpt_lsa.offset);
+      printf ("%-30s : %lld\n", "Next archive pageid",
+	      (long long int) hdr->nxarv_pageid);
       printf ("%-30s : %lld\n", "Next archive physical pageid",
-	      hdr->nxarv_phy_pageid);
+	      (long long int) hdr->nxarv_phy_pageid);
       printf ("%-30s : %d\n", "Next archive number", hdr->nxarv_num);
       printf ("%-30s : %s\n", "HA file status",
-	      (hdr->ha_file_status ==
-	       LOG_HA_FILESTAT_CLEAR) ? "CLEAR" : ((hdr->ha_file_status ==
-						    LOG_HA_FILESTAT_ARCHIVED)
-						   ? "ARCHIVED" :
-						   "SYNCHRONIZED"));
+	      (hdr->ha_file_status == LOG_HA_FILESTAT_CLEAR)
+	      ? "CLEAR" : ((hdr->ha_file_status == LOG_HA_FILESTAT_ARCHIVED)
+			   ? "ARCHIVED" : "SYNCHRONIZED"));
     }
 }
 
@@ -6588,7 +6589,8 @@ la_print_log_arv_header (const char *database_name,
     {
       printf ("%-30s : %d\n", "Next transaction identifier", hdr->next_trid);
       printf ("%-30s : %d\n", "Number of pages", hdr->npages);
-      printf ("%-30s : %lld\n", "Logical pageid", hdr->fpageid);
+      printf ("%-30s : %lld\n", "Logical pageid",
+	      (long long int) hdr->fpageid);
     }
   printf ("%-30s : %d\n", "Archive number", hdr->arv_num);
 }
@@ -6648,21 +6650,22 @@ la_log_page_check (const char *database_name, const char *log_path,
 	  printf ("%-30s : %s\n", "DB creation time", timebuf);
 
 	  printf ("%-30s : %lld | %d\n", "Last committed LSA",
-		  ha_apply_info.committed_lsa.pageid,
+		  (long long int) ha_apply_info.committed_lsa.pageid,
 		  ha_apply_info.committed_lsa.offset);
 	  printf ("%-30s : %lld | %d\n", "Last committed replog LSA",
-		  ha_apply_info.committed_rep_lsa.pageid,
+		  (long long int) ha_apply_info.committed_rep_lsa.pageid,
 		  ha_apply_info.committed_rep_lsa.offset);
 	  printf ("%-30s : %lld | %d\n", "Last append LSA",
-		  ha_apply_info.append_lsa.pageid,
+		  (long long int) ha_apply_info.append_lsa.pageid,
 		  ha_apply_info.append_lsa.offset);
 	  printf ("%-30s : %lld | %d\n", "Last EOF LSA",
-		  ha_apply_info.eof_lsa.pageid, ha_apply_info.eof_lsa.offset);
+		  (long long int) ha_apply_info.eof_lsa.pageid,
+		  ha_apply_info.eof_lsa.offset);
 	  printf ("%-30s : %lld | %d\n", "Final LSA",
-		  ha_apply_info.final_lsa.pageid,
+		  (long long int) ha_apply_info.final_lsa.pageid,
 		  ha_apply_info.final_lsa.offset);
 	  printf ("%-30s : %lld | %d\n", "Required LSA",
-		  ha_apply_info.required_lsa.pageid,
+		  (long long int) ha_apply_info.required_lsa.pageid,
 		  ha_apply_info.required_lsa.offset);
 
 	  db_datetime_to_string ((char *) timebuf, 1024,
@@ -6781,8 +6784,9 @@ check_applied_info_end:
 				       la_Info.arv_log.log_hdr, verbose);
 	    }
 	  printf ("Log page %d (phy: %lld pageid: %lld, offset %d)\n",
-		  page_num, la_log_phypageid (page_num),
-		  logpage->hdr.logical_pageid, logpage->hdr.offset);
+		  page_num, (long long int) la_log_phypageid (page_num),
+		  (long long int) logpage->hdr.logical_pageid,
+		  logpage->hdr.offset);
 
 	  if (logpage->hdr.offset < 0)
 	    {
@@ -6803,9 +6807,10 @@ check_applied_info_end:
 		      "(tid:%d bck p:%lld,o:%d frw p:%lld,o:%d type:%d)\n",
 		      lsa.offset,
 		      lrec->trid,
-		      lrec->back_lsa.pageid, lrec->back_lsa.offset,
-		      lrec->forw_lsa.pageid, lrec->forw_lsa.offset,
-		      lrec->type);
+		      (long long int) lrec->back_lsa.pageid,
+		      lrec->back_lsa.offset,
+		      (long long int) lrec->forw_lsa.pageid,
+		      lrec->forw_lsa.offset, lrec->type);
 	      LSA_COPY (&lsa, &lrec->forw_lsa);
 	    }
 	}
@@ -7210,7 +7215,7 @@ la_apply_log_file (const char *database_name, const char *log_path,
 
 		  er_log_debug (ARG_FILE_LINE,
 				"lowest required page id is %lld",
-				la_Info.committed_lsa.pageid);
+				(long long int) la_Info.committed_lsa.pageid);
 
 		  error = la_log_commit (false);
 		  if (error == ER_NET_CANT_CONNECT_SERVER ||
@@ -7251,7 +7256,7 @@ la_apply_log_file (const char *database_name, const char *log_path,
 		{
 		  er_log_debug (ARG_FILE_LINE,
 				"requested pageid (%lld) is not yet exist",
-				la_Info.final_lsa.pageid);
+				(long long int) la_Info.final_lsa.pageid);
 		  usleep (300 * 1000);
 		  continue;
 		}
@@ -7262,15 +7267,16 @@ la_apply_log_file (const char *database_name, const char *log_path,
 		  er_log_debug (ARG_FILE_LINE,
 				"requested pageid (%lld) is greater than "
 				"append_las.pageid (%lld) in log header",
-				la_Info.final_lsa.pageid,
-				final_log_hdr.append_lsa.pageid);
+				(long long int) la_Info.final_lsa.pageid,
+				(long long int) final_log_hdr.append_lsa.
+				pageid);
 		  usleep (100 * 1000);
 		  continue;
 		}
 
 	      er_log_debug (ARG_FILE_LINE,
 			    "requested pageid (%lld) may be corrupted ",
-			    la_Info.final_lsa.pageid);
+			    (long long int) la_Info.final_lsa.pageid);
 
 	      if (retry_count++ < LA_GET_PAGE_RETRY_COUNT)
 		{
@@ -7325,9 +7331,12 @@ la_apply_log_file (const char *database_name, const char *log_path,
 			{
 			  er_log_debug (ARG_FILE_LINE,
 					"skip this page (pageid=%lld/%lld/%lld)",
-					la_Info.final_lsa.pageid,
-					final_log_hdr.eof_lsa.pageid,
-					final_log_hdr.append_lsa.pageid);
+					(long long int) la_Info.final_lsa.
+					pageid,
+					(long long int) final_log_hdr.eof_lsa.
+					pageid,
+					(long long int) final_log_hdr.
+					append_lsa.pageid);
 			  /* skip it */
 			  la_Info.final_lsa.pageid++;
 			  la_Info.final_lsa.offset = 0;
@@ -7338,9 +7347,10 @@ la_apply_log_file (const char *database_name, const char *log_path,
 #if defined (LA_VERBOSE_DEBUG)
 		  er_log_debug (ARG_FILE_LINE,
 				"refetch this page... (pageid=%lld/%lld/%lld)",
-				la_Info.final_lsa.pageid,
-				final_log_hdr.eof_lsa.pageid,
-				final_log_hdr.append_lsa.pageid);
+				(long long int) la_Info.final_lsa.pageid,
+				(long long int) final_log_hdr.eof_lsa.pageid,
+				(long long int) final_log_hdr.append_lsa.
+				pageid);
 #endif
 		  /* wait a moment and retry it */
 		  usleep (100 * 1000);
@@ -7397,12 +7407,12 @@ la_apply_log_file (const char *database_name, const char *log_path,
 		  er_log_debug (ARG_FILE_LINE,
 				"this page is grater than eof_lsa. (%lld|%d) > "
 				"eof (%lld|%d). appended (%lld|%d)",
-				la_Info.final_lsa.pageid,
+				(long long int) la_Info.final_lsa.pageid,
 				la_Info.final_lsa.offset,
-				final_log_hdr.eof_lsa.pageid,
+				(long long int) final_log_hdr.eof_lsa.pageid,
 				final_log_hdr.eof_lsa.offset,
-				final_log_hdr.append_lsa.pageid,
-				final_log_hdr.append_lsa.offset);
+				(long long int) final_log_hdr.append_lsa.
+				pageid, final_log_hdr.append_lsa.offset);
 #endif
 		  la_Info.is_end_of_record = true;
 		  /* it should be refetched and release later */

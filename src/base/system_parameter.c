@@ -3876,6 +3876,7 @@ prm_check_environment (void)
     }
 }
 
+#if !defined (SERVER_MODE)
 /*
  * sysprm_validate_change_parameters () - validate the parameter value changes
  *
@@ -4025,6 +4026,7 @@ sysprm_validate_change_parameters (const char *data, bool check,
   sysprm_free_assign_values (&assignments);
   return err;
 }
+#endif /* !SERVER_MODE */
 
 /*
  * sysprm_change_parameter_values () - update system parameter values

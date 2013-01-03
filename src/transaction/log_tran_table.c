@@ -1368,16 +1368,18 @@ logtb_dump_tdes (FILE * out_fp, LOG_TDES * tdes)
 	   log_state_string (tdes->state),
 	   log_isolation_string (tdes->isolation),
 	   tdes->wait_msecs, tdes->isloose_end,
-	   tdes->head_lsa.pageid, tdes->head_lsa.offset,
-	   tdes->tail_lsa.pageid, tdes->tail_lsa.offset,
-	   tdes->posp_nxlsa.pageid, tdes->posp_nxlsa.offset,
-	   tdes->savept_lsa.pageid, tdes->savept_lsa.offset,
-	   tdes->undo_nxlsa.pageid, tdes->undo_nxlsa.offset,
+	   (long long int) tdes->head_lsa.pageid, tdes->head_lsa.offset,
+	   (long long int) tdes->tail_lsa.pageid, tdes->tail_lsa.offset,
+	   (long long int) tdes->posp_nxlsa.pageid, tdes->posp_nxlsa.offset,
+	   (long long int) tdes->savept_lsa.pageid, tdes->savept_lsa.offset,
+	   (long long int) tdes->undo_nxlsa.pageid, tdes->undo_nxlsa.offset,
 	   tdes->client.client_type, tdes->client.db_user,
 	   tdes->client.program_name, tdes->client.login_name,
 	   tdes->client.host_name, tdes->client.process_id,
-	   tdes->client_undo_lsa.pageid, tdes->client_undo_lsa.offset,
-	   tdes->client_posp_lsa.pageid, tdes->client_posp_lsa.offset);
+	   (long long int) tdes->client_undo_lsa.pageid,
+	   tdes->client_undo_lsa.offset,
+	   (long long int) tdes->client_posp_lsa.pageid,
+	   tdes->client_posp_lsa.offset);
 
   if (tdes->topops.max != 0 && tdes->topops.last >= 0)
     {
@@ -1410,13 +1412,13 @@ logtb_dump_top_operations (FILE * out_fp, LOG_TOPOPS_STACK * topops_p)
     {
       fprintf (out_fp, " Head = %lld|%d, Posp_Head = %lld|%d,"
 	       "Client_posp_Head = %lld|%d, Client_undo_Head = %lld|%d\n",
-	       topops_p->stack[i].lastparent_lsa.pageid,
+	       (long long int) topops_p->stack[i].lastparent_lsa.pageid,
 	       topops_p->stack[i].lastparent_lsa.offset,
-	       topops_p->stack[i].posp_lsa.pageid,
+	       (long long int) topops_p->stack[i].posp_lsa.pageid,
 	       topops_p->stack[i].posp_lsa.offset,
-	       topops_p->stack[i].client_posp_lsa.pageid,
+	       (long long int) topops_p->stack[i].client_posp_lsa.pageid,
 	       topops_p->stack[i].client_posp_lsa.offset,
-	       topops_p->stack[i].client_undo_lsa.pageid,
+	       (long long int) topops_p->stack[i].client_undo_lsa.pageid,
 	       topops_p->stack[i].client_undo_lsa.offset);
     }
 }

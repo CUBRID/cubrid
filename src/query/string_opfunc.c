@@ -24619,7 +24619,7 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base,
 
 	case DB_TYPE_BIGINT:
 	  snprintf (num_p_str, UINT64_MAX_BIN_DIGITS + 1, "%lld",
-		    DB_GET_BIGINT (num));
+		    (long long int) DB_GET_BIGINT (num));
 	  break;
 
 	case DB_TYPE_NUMERIC:

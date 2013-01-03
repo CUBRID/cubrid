@@ -1645,37 +1645,52 @@ logpb_dump (FILE * out_fp)
 static void
 logpb_dump_information (FILE * out_fp)
 {
-  (void) fprintf (out_fp,
-		  "\n\n ** DUMP OF LOG BUFFER POOL INFORMATION **\n\n");
+  long long int delayed_free, append;
 
-  (void) fprintf (out_fp, "\nHash table dump\n");
-  (void) mht_dump (out_fp, log_Pb.ht, false, logpb_print_hash_entry, NULL);
-  (void) fprintf (out_fp, "\n\n");
+  fprintf (out_fp, "\n\n ** DUMP OF LOG BUFFER POOL INFORMATION **\n\n");
 
-  (void) fprintf (out_fp,
-		  " Next IO_LSA = %lld|%d, Current append LSA = %lld|%d,"
-		  " Prev append LSA = %lld|%d\n"
-		  " Prior LSA = %lld|%d, Prev prior LSA = %lld|%d\n\n",
-		  log_Gl.append.nxio_lsa.pageid,
-		  log_Gl.append.nxio_lsa.offset, log_Gl.hdr.append_lsa.pageid,
-		  log_Gl.hdr.append_lsa.offset, log_Gl.append.prev_lsa.pageid,
-		  log_Gl.append.prev_lsa.offset,
-		  log_Gl.prior_info.prior_lsa.pageid,
-		  log_Gl.prior_info.prior_lsa.offset,
-		  log_Gl.prior_info.prev_lsa.pageid,
-		  log_Gl.prior_info.prev_lsa.offset);
+  fprintf (out_fp, "\nHash table dump\n");
+  mht_dump (out_fp, log_Pb.ht, false, logpb_print_hash_entry, NULL);
+  fprintf (out_fp, "\n\n");
 
-  (void) fprintf (out_fp,
-		  " Append to_flush array: max = %d, num_active = %d\n"
-		  " Delayed free page = %lld, Current append page = %lld\n",
-		  log_Gl.flush_info.max_toflush,
-		  log_Gl.flush_info.num_toflush,
-		  ((log_Gl.append.delayed_free_log_pgptr ==
-		    NULL) ? NULL_PAGEID : logpb_get_page_id (log_Gl.append.
-							     delayed_free_log_pgptr)),
-		  ((log_Gl.append.log_pgptr ==
-		    NULL) ? NULL_PAGEID : logpb_get_page_id (log_Gl.append.
-							     log_pgptr)));
+  fprintf (out_fp,
+	   " Next IO_LSA = %lld|%d, Current append LSA = %lld|%d,"
+	   " Prev append LSA = %lld|%d\n"
+	   " Prior LSA = %lld|%d, Prev prior LSA = %lld|%d\n\n",
+	   (long long int) log_Gl.append.nxio_lsa.pageid,
+	   log_Gl.append.nxio_lsa.offset,
+	   (long long int) log_Gl.hdr.append_lsa.pageid,
+	   log_Gl.hdr.append_lsa.offset,
+	   (long long int) log_Gl.append.prev_lsa.pageid,
+	   log_Gl.append.prev_lsa.offset,
+	   (long long int) log_Gl.prior_info.prior_lsa.pageid,
+	   log_Gl.prior_info.prior_lsa.offset,
+	   (long long int) log_Gl.prior_info.prev_lsa.pageid,
+	   log_Gl.prior_info.prev_lsa.offset);
+
+  if (log_Gl.append.delayed_free_log_pgptr == NULL)
+    {
+      delayed_free = NULL_PAGEID;
+    }
+  else
+    {
+      delayed_free = logpb_get_page_id (log_Gl.append.delayed_free_log_pgptr);
+    }
+
+  if (log_Gl.append.log_pgptr == NULL)
+    {
+      append = NULL_PAGEID;
+    }
+  else
+    {
+      append = logpb_get_page_id (log_Gl.append.log_pgptr);
+    }
+
+  fprintf (out_fp,
+	   " Append to_flush array: max = %d, num_active = %d\n"
+	   " Delayed free page = %lld, Current append page = %lld\n",
+	   log_Gl.flush_info.max_toflush,
+	   log_Gl.flush_info.num_toflush, delayed_free, append);
 }
 
 /*
@@ -1708,7 +1723,7 @@ logpb_dump_to_flush_page (FILE * out_fp)
 	      fprintf (out_fp, ",");
 	    }
 	}
-      fprintf (out_fp, " %4lld", log_bufptr->pageid);
+      fprintf (out_fp, " %4lld", (long long int) log_bufptr->pageid);
     }
 
   fprintf (out_fp, "\n");
@@ -1774,7 +1789,7 @@ logpb_print_hash_entry (FILE * outfp, const void *key, void *ent,
   struct log_buffer *log_bufptr = (struct log_buffer *) ent;
 
   fprintf (outfp, "Pageid = %5lld, Address = %p\n",
-	   *pageid, (void *) log_bufptr);
+	   (long long int) (*pageid), (void *) log_bufptr);
 
   return (true);
 }
@@ -6081,6 +6096,7 @@ logpb_get_guess_archive_num (THREAD_ENTRY * thread_p, LOG_PAGEID pageid)
   bool isfound = false;
   LOG_PAGEID from_pageid;
   LOG_PAGEID to_pageid;
+  long long int f, t;
 
   assert (LOG_CS_OWN (thread_p));
 
@@ -6107,9 +6123,10 @@ logpb_get_guess_archive_num (THREAD_ENTRY * thread_p, LOG_PAGEID pageid)
 	    {
 	      /* A candidate for a guess */
 	      if (sscanf (line + TIME_SIZE_OF_DUMP_LOG_INFO,
-			  "%*s %d %*s %lld %lld",
-			  &next_arvnum, &from_pageid, &to_pageid) == 3)
+			  "%*s %d %*s %lld %lld", &next_arvnum, &f, &t) == 3)
 		{
+		  from_pageid = f;
+		  to_pageid = t;
 
 		  last_arvnum = next_arvnum;
 
@@ -6726,7 +6743,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
   if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
     {
       fprintf (stdout, "\n **log_fetch_from_archive has been called on"
-	       " pageid = %lld ** \n", pageid);
+	       " pageid = %lld ** \n", (long long int) pageid);
       fflush (stdout);
     }
 #endif
@@ -8985,17 +9002,22 @@ logpb_dump_checkpoint_trans (FILE * out_fp, int length, void *data)
 	       " posp_nxlsa = %lld|%d)\n",
 	       chkpt_one->trid, log_state_string (chkpt_one->state),
 	       chkpt_one->isloose_end,
-	       chkpt_one->head_lsa.pageid, chkpt_one->head_lsa.offset,
-	       chkpt_one->tail_lsa.pageid, chkpt_one->tail_lsa.offset,
-	       chkpt_one->undo_nxlsa.pageid, chkpt_one->undo_nxlsa.offset,
-	       chkpt_one->posp_nxlsa.pageid, chkpt_one->posp_nxlsa.offset,
-	       chkpt_one->savept_lsa.pageid, chkpt_one->savept_lsa.offset,
-	       chkpt_one->tail_topresult_lsa.pageid,
+	       (long long int) chkpt_one->head_lsa.pageid,
+	       chkpt_one->head_lsa.offset,
+	       (long long int) chkpt_one->tail_lsa.pageid,
+	       chkpt_one->tail_lsa.offset,
+	       (long long int) chkpt_one->undo_nxlsa.pageid,
+	       chkpt_one->undo_nxlsa.offset,
+	       (long long int) chkpt_one->posp_nxlsa.pageid,
+	       chkpt_one->posp_nxlsa.offset,
+	       (long long int) chkpt_one->savept_lsa.pageid,
+	       chkpt_one->savept_lsa.offset,
+	       (long long int) chkpt_one->tail_topresult_lsa.pageid,
 	       chkpt_one->tail_topresult_lsa.offset,
 	       chkpt_one->user_name,
-	       chkpt_one->client_undo_lsa.pageid,
+	       (long long int) chkpt_one->client_undo_lsa.pageid,
 	       chkpt_one->client_undo_lsa.offset,
-	       chkpt_one->client_posp_lsa.pageid,
+	       (long long int) chkpt_one->client_posp_lsa.pageid,
 	       chkpt_one->client_posp_lsa.offset);
     }
   (void) fprintf (out_fp, "\n");
@@ -9032,12 +9054,14 @@ logpb_dump_checkpoint_topops (FILE * out_fp, int length, void *data)
       fprintf (out_fp,
 	       "     Trid = %d, Lastparent_lsa = %lld|%d, Postpone_lsa = %lld|%d,"
 	       "     Client_Postpone_lsa = %lld|%d, Client_undo_lsa = %lld|%d\n",
-	       chkpt_topone->trid, chkpt_topone->lastparent_lsa.pageid,
+	       chkpt_topone->trid,
+	       (long long int) chkpt_topone->lastparent_lsa.pageid,
 	       chkpt_topone->lastparent_lsa.offset,
-	       chkpt_topone->posp_lsa.pageid, chkpt_topone->posp_lsa.offset,
-	       chkpt_topone->client_posp_lsa.pageid,
+	       (long long int) chkpt_topone->posp_lsa.pageid,
+	       chkpt_topone->posp_lsa.offset,
+	       (long long int) chkpt_topone->client_posp_lsa.pageid,
 	       chkpt_topone->client_posp_lsa.offset,
-	       chkpt_topone->client_undo_lsa.pageid,
+	       (long long int) chkpt_topone->client_undo_lsa.pageid,
 	       chkpt_topone->client_undo_lsa.offset);
     }
   (void) fprintf (out_fp, "\n");
@@ -9306,7 +9330,7 @@ loop:
 
       fprintf (backup_verbose_fp,
 	       "[ Database backup has been suspended for %lld seconds due to checkpoint. ]\n\n",
-	       time (NULL) - wait_checkpoint_begin_time);
+	       (long long int) (time (NULL) - wait_checkpoint_begin_time));
     }
 
   /* block checkpoint process */
@@ -9588,8 +9612,8 @@ loop:
 	       num_perm_vols);
 
       fprintf (session.verbose_fp, "- HA apply info: %s %lld %lld %d\n\n",
-	       log_Gl.hdr.prefix_name, log_Gl.hdr.db_creation,
-	       log_Gl.hdr.smallest_lsa_at_last_chkpt.pageid,
+	       log_Gl.hdr.prefix_name, (long long int) log_Gl.hdr.db_creation,
+	       (long long int) log_Gl.hdr.smallest_lsa_at_last_chkpt.pageid,
 	       log_Gl.hdr.smallest_lsa_at_last_chkpt.offset);
 
       fprintf (session.verbose_fp, "- backup progress status\n\n");
@@ -11944,7 +11968,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 	      const char *db_fullname, const char *logpath,
 	      const char *prefix_logname, bool force_delete)
 {
-  const char *vlabel;		/* Name of volume     */
+  char *vlabel;			/* Name of volume     */
   char vol_fullname[PATH_MAX];	/* Name of volume     */
   struct log_header disk_hdr;	/* Log header area    */
   struct log_header *loghdr;	/* Log header pointer */
@@ -12849,25 +12873,31 @@ logpb_dump_log_header (FILE * outfp)
 {
   fprintf (outfp, "Log Header:\n");
 
-  fprintf (outfp, "\tfirst log page id : %lld\n", log_Gl.hdr.fpageid);
+  fprintf (outfp, "\tfirst log page id : %lld\n",
+	   (long long int) log_Gl.hdr.fpageid);
 
   fprintf (outfp, "\tcurrent log append lsa : (%lld, %d)\n",
-	   log_Gl.hdr.append_lsa.pageid, log_Gl.hdr.append_lsa.offset);
+	   (long long int) log_Gl.hdr.append_lsa.pageid,
+	   log_Gl.hdr.append_lsa.offset);
 
   fprintf (outfp, "\tlast log append lsa : (%lld, %d)\n",
-	   log_Gl.append.prev_lsa.pageid, log_Gl.append.prev_lsa.offset);
+	   (long long int) log_Gl.append.prev_lsa.pageid,
+	   log_Gl.append.prev_lsa.offset);
 
   fprintf (outfp,
 	   "\tlowest lsa which hasn't been written to disk : (%lld, %d)\n",
-	   log_Gl.append.nxio_lsa.pageid, log_Gl.append.nxio_lsa.offset);
+	   (long long int) log_Gl.append.nxio_lsa.pageid,
+	   log_Gl.append.nxio_lsa.offset);
 
   fprintf (outfp, "\tcheckpoint lsa : (%lld, %d)\n",
-	   log_Gl.hdr.chkpt_lsa.pageid, log_Gl.hdr.chkpt_lsa.offset);
+	   (long long int) log_Gl.hdr.chkpt_lsa.pageid,
+	   log_Gl.hdr.chkpt_lsa.offset);
 
-  fprintf (outfp, "\tnext archive page id : %lld\n", log_Gl.hdr.nxarv_pageid);
+  fprintf (outfp, "\tnext archive page id : %lld\n",
+	   (long long int) log_Gl.hdr.nxarv_pageid);
 
   fprintf (outfp, "\tnext archive physical page id : %lld\n",
-	   log_Gl.hdr.nxarv_phy_pageid);
+	   (long long int) log_Gl.hdr.nxarv_phy_pageid);
 
   fprintf (outfp, "\tnext archive number : %d\n", log_Gl.hdr.nxarv_num);
 
@@ -12878,15 +12908,15 @@ logpb_dump_log_header (FILE * outfp)
 	   log_Gl.hdr.last_deleted_arv_num);
 
   fprintf (outfp, "\tbackup level 0 lsa : (%lld, %d)\n",
-	   log_Gl.hdr.bkup_level0_lsa.pageid,
+	   (long long int) log_Gl.hdr.bkup_level0_lsa.pageid,
 	   log_Gl.hdr.bkup_level0_lsa.offset);
 
   fprintf (outfp, "\tbackup level 1 lsa : (%lld, %d)\n",
-	   log_Gl.hdr.bkup_level1_lsa.pageid,
+	   (long long int) log_Gl.hdr.bkup_level1_lsa.pageid,
 	   log_Gl.hdr.bkup_level1_lsa.offset);
 
   fprintf (outfp, "\tbackup level 2 lsa : (%lld, %d)\n",
-	   log_Gl.hdr.bkup_level2_lsa.pageid,
+	   (long long int) log_Gl.hdr.bkup_level2_lsa.pageid,
 	   log_Gl.hdr.bkup_level2_lsa.offset);
 }
 

@@ -5343,7 +5343,8 @@ disk_vhdr_dump (FILE * fp, const DISK_VAR_HEADER * vhdr)
   (void) fprintf (fp,
 		  " Database creation time = %s\n"
 		  " Lowest Checkpoint for recovery = %lld|%d\n",
-		  time_val, vhdr->chkpt_lsa.pageid, vhdr->chkpt_lsa.offset);
+		  time_val, (long long int) vhdr->chkpt_lsa.pageid,
+		  vhdr->chkpt_lsa.offset);
   (void) fprintf (fp,
 		  "Boot_hfid: volid %d, fileid %d header_pageid %d\n",
 		  vhdr->boot_hfid.vfid.volid, vhdr->boot_hfid.vfid.fileid,
@@ -6052,7 +6053,8 @@ disk_rv_dump_set_creation_time (FILE * fp, int length_ignore, void *data)
 
   fprintf (fp, "Label = %s, Db_creation = %lld, chkpt = %lld|%d\n",
 	   change->vol_fullname, (long long) change->db_creation,
-	   change->chkpt_lsa.pageid, change->chkpt_lsa.offset);
+	   (long long int) change->chkpt_lsa.pageid,
+	   change->chkpt_lsa.offset);
 }
 
 /*

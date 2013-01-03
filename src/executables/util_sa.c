@@ -1523,6 +1523,8 @@ diagdb (UTIL_FUNCTION_ARG * arg)
       /* this dumps the content of log */
       int isforward, dump_npages, desired_tranid;
       LOG_PAGEID start_logpageid;
+      long long int s;
+
       if (diag == DIAGDUMP_ALL
 	  || utility_get_option_string_table_size (arg_map) == 1)
 	{
@@ -1533,13 +1535,14 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	      printf ("isforward (1 or 0) ? ");
 	      scanf ("%d", &isforward);
 	      printf ("start_logpageid (-1 for the first/last page) ? ");
-	      scanf ("%lld", &start_logpageid);
+	      scanf ("%lld", &s);
+	      start_logpageid = s;
 	      printf ("dump_npages (-1 for all pages) ? ");
 	      scanf ("%d", &dump_npages);
 	      printf ("desired_tranid (-1 for all transactions) ? ");
 	      scanf ("%d", &desired_tranid);
 	      printf ("log_dump(%d, %lld, %d, %d) (y/n) ? ",
-		      isforward, start_logpageid, dump_npages,
+		      isforward, (long long int) start_logpageid, dump_npages,
 		      desired_tranid);
 	      scanf ("%1s", yn);
 	    }

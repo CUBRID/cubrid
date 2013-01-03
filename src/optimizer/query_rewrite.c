@@ -6324,12 +6324,12 @@ qo_rewrite_index_hints (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if ((hint_node->etc == (void *) PT_IDX_HINT_CLASS_NONE
 	       || ((hint_node->etc == (void *) PT_IDX_HINT_IGNORE
 		    || hint_node->etc == (void *) PT_IDX_HINT_FORCE)
-		   && intl_identifier_casecmp
-		   (hint_node->info.name.original,
-		    next_node->info.name.original) == 0))
-	      && intl_identifier_casecmp
-	      (hint_node->info.name.resolved,
-	       next_node->info.name.resolved) == 0)
+		   && (intl_identifier_casecmp (hint_node->info.name.original,
+						next_node->info.name.
+						original) == 0)))
+	      && (intl_identifier_casecmp (hint_node->info.name.resolved,
+					   next_node->info.name.resolved) ==
+		  0))
 	    {
 	      is_hint_masked = true;
 	    }
@@ -6371,6 +6371,8 @@ exit:
       break;
     case PT_DELETE:
       statement->info.delete_.using_index = using_index;
+      break;
+    default:
       break;
     }
 }
