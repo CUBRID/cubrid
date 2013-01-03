@@ -925,6 +925,11 @@ ws_vmop (MOP class_mop, int flags, DB_VALUE * keys)
 	{
 	  return mop;
 	}
+      mop = db_real_instance (mop);
+      if (mop == NULL)
+	{
+	  return NULL;
+	}
       db_make_object (keys, mop);
       break;
     case DB_TYPE_OID:
@@ -1999,7 +2004,7 @@ ws_clean (MOP op)
  *    function(in): function to apply to the dirty list elements
  *    args(in): arguments to pass to map function
  *    classes_only(in): flag indicating map over class objects only
- *    reverse_dirty_link(in): flag indicating to reverse dirty link 
+ *    reverse_dirty_link(in): flag indicating to reverse dirty link
  *
  * Note:
  *    As a side effect, non-dirty objects that are still in the dirty list
@@ -2168,7 +2173,7 @@ ws_map_dirty_internal (MAPFUNC function, void *args, bool classes_only,
  *    return: map status code
  *    function(in): map function
  *    args(in): map function argument
- *    reverse_dirty_link(in): flag indicating to reverse dirty link 
+ *    reverse_dirty_link(in): flag indicating to reverse dirty link
  */
 int
 ws_map_dirty (MAPFUNC function, void *args, bool reverse_dirty_link)
@@ -2335,7 +2340,7 @@ ws_set_class (MOP inst, MOP class_mop)
  *    class_op(in/out): class of a mop to iterate over
  *    function(in): map function
  *    args(in): map function argument
- *    reverse_dirty_link(in): flag indicating to reverse dirty link 
+ *    reverse_dirty_link(in): flag indicating to reverse dirty link
  *
  * Note:
  * The mapping (calling the map function) will continue as long as the

@@ -73,11 +73,6 @@
  *                         -------------------
  */
 
-#if __WORDSIZE == 32
-#define GET_PTR_FOR_HASH(key) ((unsigned int)(key))
-#else
-#define GET_PTR_FOR_HASH(key) ((unsigned int)((key) && 0xFFFFFFFF))
-#endif
 
 /* constants for rehash */
 static const float MHT_REHASH_TRESHOLD = 0.7f;

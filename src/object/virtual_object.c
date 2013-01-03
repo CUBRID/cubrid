@@ -1562,6 +1562,11 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
 	   */
 	  obj = DB_GET_OBJECT (&keys);
 	}
+      else if (keys.domain.general_info.type == DB_TYPE_VOBJ)
+	{
+	  assert (false);
+	  vid_vobj_to_object (&keys, &obj);
+	}
       else
 	{
 	  obj = NULL;
