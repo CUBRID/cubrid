@@ -1,4 +1,3 @@
-#!/bin/sh
 
 CUBRID=/opt/cubrid
 CUBRID_DATABASES=$CUBRID/databases

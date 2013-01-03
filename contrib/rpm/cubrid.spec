@@ -49,8 +49,8 @@ rm -rf %{buildroot}
 make install
 
 install -d %{buildroot}%{_sysconfdir}/profile.d
-install -c -m 755 contrib/rpm/cubrid.sh %{buildroot}%{_sysconfdir}/profile.d/cubrid.sh
-install -c -m 755 contrib/rpm/cubrid.csh %{buildroot}%{_sysconfdir}/profile.d/cubrid.csh
+install -c -m 644 contrib/rpm/cubrid.sh %{buildroot}%{_sysconfdir}/profile.d/cubrid.sh
+install -c -m 644 contrib/rpm/cubrid.csh %{buildroot}%{_sysconfdir}/profile.d/cubrid.csh
 
 
 %pre

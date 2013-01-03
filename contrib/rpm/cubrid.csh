@@ -1,4 +1,3 @@
-#!/bin/csh
 
 setenv CUBRID /opt/cubrid
 setenv CUBRID_DATABASES $CUBRID/databases
