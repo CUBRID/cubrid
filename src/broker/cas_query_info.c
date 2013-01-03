@@ -285,17 +285,18 @@ query_info_add_end:
 int
 query_info_add_ne (T_QUERY_INFO * qi, char *end_date)
 {
-  int qi_idx = -1;
-  int i;
-  int retval;
-
 #ifndef TEST
   /* query_info_arr_ne is used only in TEST mode */
   return 0;
 #else
+  int qi_idx = -1;
+  int i;
+  int retval;
 
   if (check_log_time (qi->start_date, end_date) < 0)
-    return 0;
+    {
+      return 0;
+    }
 
 #ifdef MT_MODE
   MUTEX_LOCK (query_info_mutex);
@@ -353,7 +354,6 @@ query_info_add_ne_end:
   MUTEX_UNLOCK (query_info_mutex);
 #endif
   return retval;
-
 #endif /* define TEST */
 }
 

@@ -813,11 +813,9 @@ appl_info_display (T_SHM_APPL_SERVER * shm_appl,
 		   APPL_MONITORING_ITEM * appl_mnt_old, time_t current_time,
 		   double elapsed_time)
 {
-  struct tm cur_tm;
   UINT64 qps;
   UINT64 lqs;
   int col_len;
-  time_t last_access_time, last_connect_time;
 #if !defined (CUBRID_SHARD)
   time_t tran_start_time;
   char ip_str[16];
@@ -825,7 +823,9 @@ appl_info_display (T_SHM_APPL_SERVER * shm_appl,
 
   int as_id;
   int proxy_id;
+#if !defined (WINDOWS)
   int psize;
+#endif
   char buf[256];
 
   if (as_info_p->service_flag != SERVICE_ON)
@@ -1374,8 +1374,9 @@ br_monitor (char *br_vector)
       int num_client_wait, num_busy, num_client_wait_nsec, num_busy_nsec;
 #if defined(CUBRID_SHARD)
       int proxy_index, shard_index, cas_index, tot_proxy, tot_cas;
-#endif /* CUBRID_SHARD */
+#else /* !CUBRID_SHARD */
       time_t cur_time;
+#endif /* CUBRID_SHARD */
       char shortened_broker_name[FIELD_WIDTH_BROKER_NAME + 1];
 
       num_select_queries = 0;
@@ -1493,7 +1494,6 @@ br_monitor (char *br_vector)
 	      print_value (FIELD_PID, &(shm_br->br_info[i].pid), FIELD_T_INT);
 	      if (full_info_flag)
 		{
-		  int process_size;
 #if defined(WINDOWS)
 		  if (shm_appl->use_pdh_flag == TRUE)
 		    {
@@ -1502,6 +1502,8 @@ br_monitor (char *br_vector)
 				   FIELD_T_INT);
 		    }
 #else
+		  int process_size;
+
 		  process_size = getsize (shm_br->br_info[i].pid);
 		  print_value (FIELD_PSIZE, &process_size, FIELD_T_INT);
 #endif
@@ -2512,7 +2514,6 @@ print_title (char *buf_p, int buf_offset, FIELD_NAME name,
 static void
 print_value (FIELD_NAME name, const void *value_p, FIELD_TYPE type)
 {
-  char format_string[256];
   struct status_field *field_p = NULL;
   struct tm cur_tm;
   char time_buf[64];
@@ -2632,7 +2633,7 @@ get_access_mode_string (T_ACCESS_MODE_VALUE mode)
 }
 
 static const char *
-get_status_string (T_APPL_SERVER_INFO * as_info_p, const char appl_server)
+get_status_string (T_APPL_SERVER_INFO * as_info_p, char appl_server)
 {
   assert (as_info_p != NULL);
 
