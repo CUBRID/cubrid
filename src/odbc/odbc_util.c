@@ -850,7 +850,7 @@ replace_oid (char *sql_text, char **org_param_pos_pt,
 	    break;
 
 	  oid_buf = UT_MAKE_STRING (pt + 1, (int) (pt_tmp - pt - 1));
-	  trim (oid_buf);
+	  odbc_trim (oid_buf);
 
 	  if (is_oidstr (oid_buf) == _TRUE_)
 	    {
@@ -887,7 +887,7 @@ replace_oid (char *sql_text, char **org_param_pos_pt,
 
 
 /************************************************************************
- * name: trim
+ * name: odbc_trim
  * arguments:
  * returns/side-effects:
  * description:
@@ -895,7 +895,7 @@ replace_oid (char *sql_text, char **org_param_pos_pt,
  * NOTE:
  ************************************************************************/
 PUBLIC char *
-trim (char *str)
+odbc_trim (char *str)
 {
   char *p;
   char *s;

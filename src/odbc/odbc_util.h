@@ -195,7 +195,7 @@ PUBLIC int element_from_setstring (char **current, char *buf);
 
 PUBLIC void add_element_to_setstring (char *setstring, char *element);
 
-PUBLIC char *trim (char *str);
+PUBLIC char *odbc_trim (char *str);
 PUBLIC RETCODE str_value_assign (const char *in_value,
 				 char *out_buf,
 				 SQLLEN out_buf_len, SQLLEN * val_len_ptr);
