@@ -2026,3 +2026,43 @@ trim (char *str)
 
   return (str);
 }
+
+int
+port_str_to_int (int *ret_p, const char *str_p, int base)
+{
+  long int val;
+  char *end_p;
+
+  assert (ret_p != NULL);
+  assert (str_p != NULL);
+
+  *ret_p = 0;
+
+  errno = 0;
+  val = strtol (str_p, &end_p, base);
+
+  if ((errno == ERANGE && (val == LONG_MAX || val == LONG_MIN))
+      || (errno != 0 && val == 0))
+    {
+      return -1;
+    }
+
+  if (end_p == str_p)
+    {
+      return -1;
+    }
+
+  if (*end_p != '\0')
+    {
+      return -1;
+    }
+
+  if (val < INT_MIN || val > INT_MAX)
+    {
+      return -1;
+    }
+
+  *ret_p = val;
+
+  return 0;
+}

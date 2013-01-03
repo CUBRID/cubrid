@@ -2092,17 +2092,26 @@ admin_shard_conf_change (int master_shm_id, const char *sh_name,
   else if (strcasecmp (conf_name, "APPL_SERVER_MAX_SIZE_HARD_LIMIT") == 0)
     {
       int hard_limit;
+      int max_hard_limit;
 
-      hard_limit = atoi (conf_value);
-      hard_limit *= ONE_K;
-      if (hard_limit <= 0)
+      /* hard limit must be between 1 and INT_MAX / ONE_K (2097151) */
+      if (port_str_to_int (&hard_limit, conf_value, 10) < 0)
 	{
-	  sprintf (admin_err_msg,
-		   "APPL_SERVER_MAX_SIZE_HARD_LIMIT(%dM) must be greater than 0",
-		   hard_limit / ONE_K);
+	  sprintf (admin_err_msg, "Invalid value: %s", conf_value);
 	  goto set_shard_conf_error;
 	}
-      else if (hard_limit < shm_br->br_info[br_index].appl_server_max_size)
+
+      max_hard_limit = INT_MAX / ONE_K;
+      if (hard_limit <= 0 || hard_limit > max_hard_limit)
+	{
+	  sprintf (admin_err_msg,
+		   "APPL_SERVER_MAX_SIZE_HARD_LIMIT(%dM) must be between 1 and %d",
+		   hard_limit, max_hard_limit);
+	  goto set_shard_conf_error;
+	}
+
+      hard_limit *= ONE_K;
+      if (hard_limit < shm_br->br_info[br_index].appl_server_max_size)
 	{
 	  sprintf (admin_err_msg,
 		   "CONFIGURATION WARNING - the APPL_SERVER_MAX_SIZE_HARD_LIMIT (%dM) "
@@ -2621,17 +2630,26 @@ admin_broker_conf_change (int master_shm_id, const char *br_name,
   else if (strcasecmp (conf_name, "APPL_SERVER_MAX_SIZE_HARD_LIMIT") == 0)
     {
       int hard_limit;
+      int max_hard_limit;
 
-      hard_limit = atoi (conf_value);
-      hard_limit *= ONE_K;
-      if (hard_limit <= 0)
+      /* hard limit must be between 1 and INT_MAX / ONE_K (2097151) */
+      if (port_str_to_int (&hard_limit, conf_value, 10) < 0)
 	{
-	  sprintf (admin_err_msg,
-		   "APPL_SERVER_MAX_SIZE_HARD_LIMIT(%dM) must be greater than 0",
-		   hard_limit / ONE_K);
+	  sprintf (admin_err_msg, "Invalid value: %s", conf_value);
 	  goto set_broker_conf_error;
 	}
-      else if (hard_limit < shm_br->br_info[br_index].appl_server_max_size)
+
+      max_hard_limit = INT_MAX / ONE_K;
+      if (hard_limit <= 0 || hard_limit > max_hard_limit)
+	{
+	  sprintf (admin_err_msg,
+		   "APPL_SERVER_MAX_SIZE_HARD_LIMIT(%dM) must be between 1 and %d",
+		   hard_limit, max_hard_limit);
+	  goto set_broker_conf_error;
+	}
+
+      hard_limit *= ONE_K;
+      if (hard_limit < shm_br->br_info[br_index].appl_server_max_size)
 	{
 	  sprintf (admin_err_msg,
 		   "CONFIGURATION WARNING - the APPL_SERVER_MAX_SIZE_HARD_LIMIT (%dM) "

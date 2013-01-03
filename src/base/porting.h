@@ -710,4 +710,7 @@ extern FILE *port_open_memstream (char **ptr, size_t * sizeloc);
 extern void port_close_memstream (FILE * fp, char **ptr, size_t * sizeloc);
 
 extern char *trim (char *str);
+
+extern int port_str_to_int (int *ret_p, const char *str_p, int base);
+
 #endif /* _PORTING_H_ */
