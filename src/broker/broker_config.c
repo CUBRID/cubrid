@@ -461,12 +461,13 @@ broker_config_read_internal (const char *conf_file,
       br_info[num_brs].appl_server_hard_limit =
 	ini_getint (ini, sec_name, "APPL_SERVER_MAX_SIZE_HARD_LIMIT",
 		    DEFAULT_SERVER_HARD_LIMIT, &lineno);
-      br_info[num_brs].appl_server_hard_limit *= ONE_K;	/* K bytes */
-      if (br_info[num_brs].appl_server_hard_limit <= 0)
+      if (br_info[num_brs].appl_server_hard_limit <= 0
+	  || br_info[num_brs].appl_server_hard_limit > INT_MAX / ONE_K)
 	{
 	  errcode = PARAM_BAD_RANGE;
 	  goto conf_error;
 	}
+      br_info[num_brs].appl_server_hard_limit *= ONE_K;	/* K bytes */
 
       br_info[num_brs].session_timeout =
 	ini_getint (ini, sec_name, "SESSION_TIMEOUT",
