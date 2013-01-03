@@ -94,6 +94,7 @@ class CUBRIDArray {
 		case UUType.U_TYPE_NCHAR:
 		case UUType.U_TYPE_STRING:
 		case UUType.U_TYPE_VARNCHAR:
+		case UUType.U_TYPE_ENUM:
 			internalArray = (Object[]) (new String[length]);
 			break;
 		case UUType.U_TYPE_OBJECT:

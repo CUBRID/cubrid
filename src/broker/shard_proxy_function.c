@@ -1,26 +1,26 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
 
 /*
- * shard_proxy_function.c - 
- *     
+ * shard_proxy_function.c -
+ *
  */
 
 #ident "$Id$"
@@ -88,8 +88,8 @@ proxy_check_cas_error (char *read_msg)
 {
   char *data;
 
-  /* error_ind is ...  
-     old < R8.3.0 : err_no or svr_h_id 
+  /* error_ind is ...
+     old < R8.3.0 : err_no or svr_h_id
      R8.3.0 ~ current : error_indicator or srv_h_id */
   int error_ind;
 
@@ -766,6 +766,7 @@ proxy_get_range_by_param (SP_PARSER_HINT * hint_p, void **argv)
 				   sizeof (int));
 	  }
 	  break;
+	case CCI_U_TYPE_ENUM:
 	case CCI_U_TYPE_STRING:
 	  {
 	    char *s_val;
@@ -820,8 +821,8 @@ proxy_get_range_by_param (SP_PARSER_HINT * hint_p, void **argv)
   return range_p;
 }
 
-/* 
- * request event 
+/*
+ * request event
  */
 int
 fn_proxy_client_end_tran (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
@@ -1057,7 +1058,7 @@ fn_proxy_client_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 
 	case SHARD_STMT_STATUS_IN_PROGRESS:
 
-	  /* if this context was woken up by shard/cas resource 
+	  /* if this context was woken up by shard/cas resource
 	   * and try dummy prepare again */
 	  if (stmt_p->ctx_cid == ctx_p->cid && stmt_p->ctx_uid == ctx_p->uid)
 	    {
@@ -1135,7 +1136,7 @@ fn_proxy_client_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 	  /* check and wakeup statement waiter */
 	  shard_stmt_check_waiter_and_wakeup (stmt_p);
 
-	  /* 
+	  /*
 	   * there must be no context sharing this statement at this time.
 	   * so, we can free statement.
 	   */
@@ -1528,8 +1529,8 @@ fn_proxy_client_execute (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
       goto free_context;
     }
 
-  /* 
-   * find stored server handle id for this shard/cas, if exist, do execute 
+  /*
+   * find stored server handle id for this shard/cas, if exist, do execute
    * with it. otherwise, do dummy prepare for exeucte to get server handle id.
    */
   cas_srv_h_id = shard_stmt_find_srv_h_id_for_shard_cas (srv_h_id,
@@ -1597,7 +1598,7 @@ fn_proxy_client_execute (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
       proxy_update_shard_stats_without_hint (ctx_p->shard_id);
     }
 
-  new_event_p = event_p;	// add comment  
+  new_event_p = event_p;	/* add comment */
 
 relay_request:
 
@@ -1738,8 +1739,8 @@ fn_proxy_client_close_req_handle (T_PROXY_CONTEXT * ctx_p,
     }
 
 out_tran:
-  /* send close_req_handle response to the client, 
-   * if this context is not IN_TRAN, 
+  /* send close_req_handle response to the client,
+   * if this context is not IN_TRAN,
    * or context is IN_TRAN status but cas_srv_h_id is not found */
   error =
     proxy_send_response_to_client_with_new_event (ctx_p, PROXY_EVENT_IO_WRITE,
@@ -1830,8 +1831,8 @@ fn_proxy_client_fetch (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 
   if (ctx_p->is_bypass_msg == false)
     {
-      /* 
-       * find stored server handle id for this shard/cas, if exist, do fetch 
+      /*
+       * find stored server handle id for this shard/cas, if exist, do fetch
        * with it. otherwise, returns proxy internal error to the client.
        */
       net_arg_get_int (&srv_h_id, argv[0]);
@@ -2165,8 +2166,8 @@ fn_proxy_client_not_supported (T_PROXY_CONTEXT * ctx_p,
   return 0;
 }
 
-/* 
- * process cas response 
+/*
+ * process cas response
  */
 int
 fn_proxy_cas_end_tran (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
@@ -2258,7 +2259,7 @@ fn_proxy_cas_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
   int stmt_h_id_n;
   int srv_h_id_offset = MSG_HEADER_SIZE;
   char *srv_h_id_pos;
-  
+
   T_SHARD_STMT *stmt_p;
 
   char *response_p;
@@ -2304,7 +2305,7 @@ fn_proxy_cas_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
 	}
       event_p = NULL;
 
-      /* if stmt's status is SHARD_STMT_STATUS_IN_PROGRESS, 
+      /* if stmt's status is SHARD_STMT_STATUS_IN_PROGRESS,
        * wake up waiters and free statement.
        */
       stmt_p = ctx_p->prepared_stmt;
@@ -2316,7 +2317,7 @@ fn_proxy_cas_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
 	  /* check and wakeup statement waiter */
 	  shard_stmt_check_waiter_and_wakeup (ctx_p->prepared_stmt);
 
-	  /* 
+	  /*
 	   * there must be no context sharing this statement at this time.
 	   * so, we can free statement.
 	   */
@@ -2383,8 +2384,8 @@ fn_proxy_cas_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
 
   if (ctx_p->is_prepare_for_execute)
     {
-      /* 
-       * after finishing prepare_for_execute, process previous client exeucte 
+      /*
+       * after finishing prepare_for_execute, process previous client exeucte
        * request again.
        */
 
@@ -2411,9 +2412,9 @@ fn_proxy_cas_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
     }
   else
     {
-      /* 
-       * after dummy prepare, 
-       * we must not free(unpin) statment event though tran status is OUT_TRAN. 
+      /*
+       * after dummy prepare,
+       * we must not free(unpin) statment event though tran status is OUT_TRAN.
        */
       ctx_p->dont_free_statement = true;
     }
@@ -2651,7 +2652,7 @@ fn_proxy_client_conn_error (T_PROXY_CONTEXT * ctx_p)
 
   ENTER_FUNC ();
 
-  /* 
+  /*
    * we need not send abort while waiting for a response.
    */
   if (ctx_p->is_in_tran && !IS_VALID_CAS_FC (ctx_p->func_code))

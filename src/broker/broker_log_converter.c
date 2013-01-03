@@ -420,6 +420,10 @@ log_bind_value (char *str, int bind_len, int lineno, FILE * outfp)
       bind_len = 0;
       /*type = CCI_U_TYPE_CLOB; */
     }
+  else if (strcmp (p, "ENUM") == 0)
+    {
+      type = CCI_U_TYPE_ENUM;
+    }
   else
     {
       fprintf (stderr, "log error [line:%d]\n", lineno);

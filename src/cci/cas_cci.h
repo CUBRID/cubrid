@@ -308,8 +308,9 @@ extern "C"
     CCI_U_TYPE_DATETIME = 22,
     CCI_U_TYPE_BLOB = 23,
     CCI_U_TYPE_CLOB = 24,
+    CCI_U_TYPE_ENUM = 25,
 
-    CCI_U_TYPE_LAST = CCI_U_TYPE_CLOB
+    CCI_U_TYPE_LAST = CCI_U_TYPE_ENUM
   } T_CCI_U_TYPE;
 
   typedef void *T_CCI_SET;

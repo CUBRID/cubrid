@@ -54,7 +54,7 @@ import cubrid.sql.CUBRIDTimestamp;
 
 abstract public class UUType {
 	public static final int U_TYPE_MIN = 0;
-	public static final int U_TYPE_MAX = 24;
+	public static final int U_TYPE_MAX = 25;
 
 	public static final byte U_TYPE_NULL = 0;
 	public static final byte U_TYPE_CHAR = 1;
@@ -83,6 +83,7 @@ abstract public class UUType {
 	public static final byte U_TYPE_DATETIME = 22;
 	public static final byte U_TYPE_BLOB = 23;
 	public static final byte U_TYPE_CLOB = 24;
+	public static final byte U_TYPE_ENUM = 25;
 
 	static boolean isCollectionType(byte type) {
 		if (type == UUType.U_TYPE_SET || type == UUType.U_TYPE_MULTISET

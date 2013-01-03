@@ -1071,6 +1071,9 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 			} else if (type == UUType.U_TYPE_VARCHAR) {
 				value[4] = new Short((short) java.sql.Types.VARCHAR);
 				value[5] = "VARCHAR";
+			} else if (type == UUType.U_TYPE_ENUM) {
+				value[4] = new Short((short) java.sql.Types.VARCHAR);
+				value[5] = "ENUM";
 			} else if (type == UUType.U_TYPE_NCHAR) {
 				value[4] = new Short((short) java.sql.Types.CHAR);
 				value[5] = "NCHAR";
@@ -1366,6 +1369,11 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 			case UUType.U_TYPE_VARCHAR:
 				value[2] = new Integer(java.sql.Types.VARCHAR);
 				value[3] = "VARCHAR";
+				value[4] = new Integer(0);
+				break;
+			case UUType.U_TYPE_ENUM:
+				value[2] = new Integer(java.sql.Types.VARCHAR);
+				value[3] = "ENUM";
 				value[4] = new Integer(0);
 				break;
 			case UUType.U_TYPE_SHORT:

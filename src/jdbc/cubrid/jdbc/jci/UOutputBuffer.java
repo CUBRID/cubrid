@@ -281,6 +281,7 @@ class UOutputBuffer {
 	case UUType.U_TYPE_NCHAR:
 	case UUType.U_TYPE_STRING:
 	case UUType.U_TYPE_VARNCHAR:
+	case UUType.U_TYPE_ENUM:
 	    stringData = UGetTypeConvertedValue.getString(value);
 	    return addStringWithNull(stringData);
 	case UUType.U_TYPE_NUMERIC:
@@ -404,6 +405,7 @@ class UOutputBuffer {
 	case UUType.U_TYPE_NCHAR:
 	case UUType.U_TYPE_STRING:
 	case UUType.U_TYPE_VARNCHAR:
+	case UUType.U_TYPE_ENUM:
 	    for (int i = 0; i < values.length; i++) {
 		if (values[i] == null) {
 		    collection_size += addNull();

@@ -110,6 +110,15 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 				}
 				break;
 
+			case UUType.U_TYPE_ENUM:
+				col_type_name[i] = "ENUM";
+				col_type[i] = java.sql.Types.VARCHAR;
+				ele_type[i] = -1;
+				if (col_prec[i] > col_disp_size[i]) {
+					col_disp_size[i] = col_prec[i];
+				}
+				break;
+
 			case UUType.U_TYPE_BIT:
 				if (col_prec[i] == 8) {
 					col_type_name[i] = "BIT";
@@ -252,6 +261,10 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 				case UUType.U_TYPE_VARCHAR:
 					ele_type[i] = java.sql.Types.VARCHAR;
 					ele_type_name[i] = "VARCHAR";
+					break;
+				case UUType.U_TYPE_ENUM:
+					ele_type[i] = java.sql.Types.VARCHAR;
+					ele_type_name[i] = "ENUM";
 					break;
 				case UUType.U_TYPE_BIT:
 					if (col_info[i].getColumnPrecision() == 8) {
@@ -421,6 +434,15 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 				}
 				col_class_name[i] = "java.lang.String";
 			}
+			if (r.type[i] == UUType.U_TYPE_ENUM) {
+				col_type[i] = java.sql.Types.VARCHAR;
+				col_type_name[i] = "ENUM";
+				col_prec[i] = r.precision[i];
+				if (col_prec[i] > col_disp_size[i]) {
+					col_disp_size[i] = col_prec[i];
+				}
+				col_class_name[i] = "java.lang.String";
+			}
 			if (r.type[i] == UUType.U_TYPE_NULL) {
 				col_type[i] = java.sql.Types.NULL;
 				col_type_name[i] = "";
@@ -447,6 +469,7 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 			ret_size = 1;
 			break;
 		case UUType.U_TYPE_VARCHAR:
+		case UUType.U_TYPE_ENUM:
 			ret_size = 1;
 			break;
 		case UUType.U_TYPE_BIT:

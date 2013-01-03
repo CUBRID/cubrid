@@ -1967,6 +1967,7 @@ public class UStatement {
 		case UUType.U_TYPE_NCHAR:
 		case UUType.U_TYPE_STRING:
 		case UUType.U_TYPE_VARNCHAR:
+		case UUType.U_TYPE_ENUM:
 			return inBuffer.readString(dataSize,
 					relatedConnection.getCharset());
 		case UUType.U_TYPE_NUMERIC:

@@ -4617,6 +4617,8 @@ dbg_u_type_str (T_CCI_U_TYPE utype)
       return "CCI_U_TYPE_CHAR";
     case CCI_U_TYPE_STRING:
       return "CCI_U_TYPE_STRING";
+    case CCI_U_TYPE_ENUM:
+      return "CCI_U_TYPE_ENUM";
     case CCI_U_TYPE_NCHAR:
       return "CCI_U_TYPE_NCHAR";
     case CCI_U_TYPE_VARNCHAR:

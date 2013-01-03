@@ -975,6 +975,7 @@ netval_to_oraval (void *net_type, void *net_value, DB_VALUE * out_val,
     case CCI_U_TYPE_CHAR:
     case CCI_U_TYPE_NUMERIC:
     case CCI_U_TYPE_STRING:
+    case CCI_U_TYPE_ENUM:
       {
 	char *val;
 	net_arg_get_str (&val, &out_val->size, net_value);

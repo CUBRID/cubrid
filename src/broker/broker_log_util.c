@@ -106,9 +106,10 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
     }
 
   type = atoi (buf + 2);
-  if ((type != CCI_U_TYPE_CHAR) && (type != CCI_U_TYPE_STRING) &&
-      (type != CCI_U_TYPE_NCHAR) && (type != CCI_U_TYPE_VARNCHAR) &&
-      (type != CCI_U_TYPE_BIT) && (type != CCI_U_TYPE_VARBIT))
+  if ((type != CCI_U_TYPE_CHAR) && (type != CCI_U_TYPE_STRING)
+      && (type != CCI_U_TYPE_NCHAR) && (type != CCI_U_TYPE_VARNCHAR)
+      && (type != CCI_U_TYPE_BIT) && (type != CCI_U_TYPE_VARBIT)
+      && (type != CCI_U_TYPE_ENUM))
     {
       return false;
     }
@@ -273,8 +274,7 @@ ut_get_line (FILE * fp, T_STRING * t_str, char **out_str, int *lineno)
       if (is_first)
 	{
 	  bind_with_size = is_bind_with_size (buf, &tot_val_size, &info_size);
-	  if (tot_val_size < 0
-	      || (tot_val_size + info_size) > INT_MAX)
+	  if (tot_val_size < 0 || (tot_val_size + info_size) > INT_MAX)
 	    {
 	      fprintf (stderr, "log error\n");
 	      return -1;

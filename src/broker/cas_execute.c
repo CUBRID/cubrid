@@ -381,7 +381,7 @@ static char cas_u_type[] = { 0,	/* 0 */
   CCI_U_TYPE_DATETIME,		/* 32 */
   CCI_U_TYPE_BLOB,		/* 33 */
   CCI_U_TYPE_CLOB,		/* 34 */
-  CCI_U_TYPE_STRING		/* 35 */
+  CCI_U_TYPE_ENUM		/* 35 */
 };
 
 static T_FETCH_FUNC fetch_func[] = {
@@ -3937,7 +3937,8 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 
   net_arg_get_char (type, net_type);
 
-  if (type == CCI_U_TYPE_STRING || type == CCI_U_TYPE_CHAR)
+  if (type == CCI_U_TYPE_STRING || type == CCI_U_TYPE_CHAR
+      || type == CCI_U_TYPE_ENUM)
     {
       if (desired_type == DB_TYPE_NUMERIC)
 	{
@@ -3981,6 +3982,7 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
       break;
     case CCI_U_TYPE_CHAR:
     case CCI_U_TYPE_STRING:
+    case CCI_U_TYPE_ENUM:
       {
 	char *value, *invalid_pos = NULL;
 	int val_size;
@@ -4615,7 +4617,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
       {
 	add_res_data_string (net_buf, db_get_enum_string (val),
 			     db_get_enum_string_size (val),
-			     col_type ? DB_TYPE_STRING : 0, &data_size);
+			     col_type, &data_size);
 	break;
       }
     case DB_TYPE_SMALLINT:

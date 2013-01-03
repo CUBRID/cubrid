@@ -139,7 +139,8 @@ static const char *type_str_tbl[] = {
   "BIGINT",			/* CCI_U_TYPE_BIGINT */
   "DATETIME",			/* CCI_U_TYPE_DATETIME */
   "BLOB",			/* CCI_U_TYPE_BLOB */
-  "CLOB"			/* CCI_U_TYPE_CLOB */
+  "CLOB",			/* CCI_U_TYPE_CLOB */
+  "ENUM"			/* CCI_U_TYPE_ENUM */
 };
 
 static int query_sequence_num = 0;
@@ -2246,6 +2247,7 @@ bind_value_print (char type, void *net_value, bool slow_log)
     case CCI_U_TYPE_BIT:
     case CCI_U_TYPE_VARBIT:
     case CCI_U_TYPE_NUMERIC:
+    case CCI_U_TYPE_ENUM:
       {
 	char *str_val;
 	int val_size;

@@ -3008,6 +3008,7 @@ qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type,
     case CCI_U_TYPE_NCHAR:
     case CCI_U_TYPE_VARNCHAR:
     case CCI_U_TYPE_NUMERIC:
+    case CCI_U_TYPE_ENUM:
       {
 #ifdef UNICODE_DATA
 	char *tmp_p;
@@ -3184,6 +3185,7 @@ qe_get_data_bigint (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
     case CCI_U_TYPE_NCHAR:
     case CCI_U_TYPE_VARNCHAR:
     case CCI_U_TYPE_NUMERIC:
+    case CCI_U_TYPE_ENUM:
       if (ut_str_to_bigint (col_value_p, &data) < 0)
 	return CCI_ER_TYPE_CONVERSION;
       break;
@@ -3240,6 +3242,7 @@ qe_get_data_int (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
     case CCI_U_TYPE_NCHAR:
     case CCI_U_TYPE_VARNCHAR:
     case CCI_U_TYPE_NUMERIC:
+    case CCI_U_TYPE_ENUM:
       if (ut_str_to_int (col_value_p, &data) < 0)
 	return CCI_ER_TYPE_CONVERSION;
       break;
@@ -3296,6 +3299,7 @@ qe_get_data_float (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
     case CCI_U_TYPE_NCHAR:
     case CCI_U_TYPE_VARNCHAR:
     case CCI_U_TYPE_NUMERIC:
+    case CCI_U_TYPE_ENUM:
       if (ut_str_to_float (col_value_p, &data) < 0)
 	return CCI_ER_TYPE_CONVERSION;
       break;
@@ -3353,6 +3357,7 @@ qe_get_data_double (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
     case CCI_U_TYPE_NCHAR:
     case CCI_U_TYPE_VARNCHAR:
     case CCI_U_TYPE_NUMERIC:
+    case CCI_U_TYPE_ENUM:
       if (ut_str_to_double (col_value_p, &data) < 0)
 	return CCI_ER_TYPE_CONVERSION;
       break;
@@ -4286,11 +4291,12 @@ fetch_info_decode (char *buf, int size, int num_cols,
 	    }
 
 #if defined (WINDOWS)
-	  if (charset != NULL &&
-	      (req_handle->col_info[j].type == CCI_U_TYPE_CHAR ||
-	       req_handle->col_info[j].type == CCI_U_TYPE_STRING ||
-	       req_handle->col_info[j].type == CCI_U_TYPE_NCHAR ||
-	       req_handle->col_info[j].type == CCI_U_TYPE_VARNCHAR))
+	  if (charset != NULL
+	      && (req_handle->col_info[j].type == CCI_U_TYPE_CHAR
+		  || req_handle->col_info[j].type == CCI_U_TYPE_STRING
+		  || req_handle->col_info[j].type == CCI_U_TYPE_NCHAR
+		  || req_handle->col_info[j].type == CCI_U_TYPE_VARNCHAR
+		  || req_handle->col_info[j].type == CCI_U_TYPE_ENUM))
 	    {
 	      err_code =
 		decode_result_col (col_p, data_size,
@@ -4904,6 +4910,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	case CCI_U_TYPE_NCHAR:
 	case CCI_U_TYPE_VARNCHAR:
 	case CCI_U_TYPE_NUMERIC:
+	case CCI_U_TYPE_ENUM:
 	  if (flag == CCI_BIND_PTR)
 	    {
 	      bind_value->value = value;
@@ -5061,6 +5068,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	case CCI_U_TYPE_NCHAR:
 	case CCI_U_TYPE_VARNCHAR:
 	case CCI_U_TYPE_NUMERIC:
+	case CCI_U_TYPE_ENUM:
 	  {
 	    char buf[64];
 	    ut_int_to_str (i_value, buf, 64);
@@ -5110,6 +5118,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	case CCI_U_TYPE_NCHAR:
 	case CCI_U_TYPE_VARNCHAR:
 	case CCI_U_TYPE_NUMERIC:
+	case CCI_U_TYPE_ENUM:
 	  {
 	    char buf[64];
 	    ut_int_to_str (bi_value, buf, 64);
@@ -5159,6 +5168,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	case CCI_U_TYPE_NCHAR:
 	case CCI_U_TYPE_VARNCHAR:
 	case CCI_U_TYPE_NUMERIC:
+	case CCI_U_TYPE_ENUM:
 	  {
 	    char buf[256];
 	    ut_float_to_str (f_value, buf, 256);
@@ -5206,6 +5216,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	case CCI_U_TYPE_NCHAR:
 	case CCI_U_TYPE_VARNCHAR:
 	case CCI_U_TYPE_NUMERIC:
+	case CCI_U_TYPE_ENUM:
 	  {
 	    char buf[512];
 	    ut_double_to_str (d_value, buf, 512);
@@ -5396,6 +5407,7 @@ bind_value_to_net_buf (T_NET_BUF * net_buf, char u_type, void *value,
     case CCI_U_TYPE_STRING:
     case CCI_U_TYPE_NCHAR:
     case CCI_U_TYPE_VARNCHAR:
+    case CCI_U_TYPE_ENUM:
       ADD_ARG_STR (net_buf, value, size, charset);
       break;
     case CCI_U_TYPE_NUMERIC:

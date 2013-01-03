@@ -1000,8 +1000,10 @@ ux_db_type_to_cas_type (int db_type)
     case MYSQL_TYPE_NULL:
       cas_type = CCI_U_TYPE_NULL;
       break;
-    case MYSQL_TYPE_YEAR:
     case MYSQL_TYPE_ENUM:
+      cas_type = CCI_U_TYPE_ENUM;
+      break;
+    case MYSQL_TYPE_YEAR:
     case MYSQL_TYPE_GEOMETRY:
     default:
       cas_type = CCI_U_TYPE_UNKNOWN;
@@ -1116,6 +1118,8 @@ cubval_to_mysqlval (int cub_type)
     case CCI_U_TYPE_TIMESTAMP:
     case CCI_U_TYPE_DATETIME:
       return MYSQL_TYPE_TIMESTAMP;
+    case CCI_U_TYPE_ENUM:
+      return MYSQL_TYPE_ENUM;
     case CCI_U_TYPE_NCHAR:
     case CCI_U_TYPE_NUMERIC:
     case CCI_U_TYPE_OBJECT:

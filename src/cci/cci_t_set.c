@@ -231,6 +231,7 @@ t_set_make (T_SET * set, char ele_type, int size, void *value, int *indicator)
 	case CCI_U_TYPE_NCHAR:
 	case CCI_U_TYPE_VARNCHAR:
 	case CCI_U_TYPE_NUMERIC:
+	case CCI_U_TYPE_ENUM:
 	  {
 	    char *ele_value;
 	    ele_value = ((char **) value)[i];
