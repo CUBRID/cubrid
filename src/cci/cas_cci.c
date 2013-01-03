@@ -484,6 +484,7 @@ cci_connect_with_url_internal (char *url, char *user, char *pass,
     {
       user = (char *) "";
     }
+
   if (pass == NULL)
     {
       pass = (char *) "";
@@ -542,19 +543,23 @@ cci_connect_with_url_internal (char *url, char *user, char *pass,
 
       return CCI_ER_CON_HANDLE;
     }
+
   reset_error_buffer (&(con_handle->err_buf));
 
   snprintf (con_handle->url, SRV_CON_URL_SIZE,
 	    "cci:cubrid:%s:%d:%s:%s:********:%s",
 	    host, port, dbname, user, property);
+
   if (property != NULL)
     {
       error = cci_conn_set_properties (con_handle, property);
       API_SLOG (con_handle);
+
       if (con_handle->log_trace_api)
 	{
 	  CCI_LOGF_DEBUG (con_handle->logger, "URL[%s]", url);
 	}
+
       if (error < 0)
 	{
 	  hm_con_handle_free (con_handle);
@@ -571,15 +576,19 @@ cci_connect_with_url_internal (char *url, char *user, char *pass,
   error = cas_connect (con_handle, &(con_handle->err_buf));
   if (error < 0)
     {
+      copy_error_buffer (err_buf, &(con_handle->err_buf));
       hm_con_handle_free (con_handle);
       goto ret;
     }
+
   error = qe_end_tran (con_handle, CCI_TRAN_COMMIT, &con_handle->err_buf);
   if (error < 0)
     {
+      copy_error_buffer (err_buf, &(con_handle->err_buf));
       hm_con_handle_free (con_handle);
       goto ret;
     }
+
   SET_AUTOCOMMIT_FROM_CASINFO (con_handle);
   RESET_START_TIME (con_handle);
 
