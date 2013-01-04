@@ -732,13 +732,14 @@ proc_execute (const char *file, const char *args[], bool wait_child,
     }
 
   GetStartupInfo (&si);
+  si.dwFlags = si.dwFlags | STARTF_USESTDHANDLES;
   si.hStdOutput = GetStdHandle (STD_OUTPUT_HANDLE);
   si.hStdError = GetStdHandle (STD_ERROR_HANDLE);
+  inherited_handle = TRUE;
 
   if (close_output)
     {
       si.hStdOutput = NULL;
-      inherited_handle = FALSE;
     }
 
   if (close_err)
