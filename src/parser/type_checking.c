@@ -21542,9 +21542,13 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
     {
       if (expr_coll_modifier != -1)
 	{
-	  /* the result is string (was checked above), force collation */
-	  assert (PT_HAS_COLLATION (expr->type_enum)
-		  || op == PT_EVALUATE_VARIABLE || pt_is_comp_op (op));
+	  if (!(op == PT_EVALUATE_VARIABLE || pt_is_comp_op (op))
+	      && !PT_HAS_COLLATION (expr->type_enum))
+	    {
+	      PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_COLLATE_NOT_ALLOWED);
+	      goto error_exit;
+	    }
 	  goto coerce_result;
 	}
       return NO_ERROR;
