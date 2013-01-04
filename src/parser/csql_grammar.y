@@ -14697,7 +14697,17 @@ opt_analytic_partition_by
 	| PARTITION BY sort_spec_list
 		{{
 
+			PT_NODE *list;
 			$$ = $3;
+
+			for (list = $3; list != NULL; list = list->next)
+			  {
+			    if (list->info.sort_spec.expr != NULL)
+			      {
+				list->info.sort_spec.expr->do_not_fold = true;
+			      }
+			  }
+
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
@@ -14713,7 +14723,16 @@ opt_analytic_order_by
 	| ORDER BY sort_spec_list
 		{{
 
+			PT_NODE *list;
 			$$ = $3;
+
+			for (list = $3; list != NULL; list = list->next)
+			  {
+			    if (list->info.sort_spec.expr != NULL)
+			      {
+				list->info.sort_spec.expr->do_not_fold = true;
+			      }
+			  }
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}

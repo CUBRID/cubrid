@@ -10249,7 +10249,8 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 				       &info);
 	    }
 	}
-      else if (pt_has_analytic (parser, node))
+
+      if (pt_has_analytic (parser, node))
 	{
 	  (void) parser_walk_tree (parser, node->info.query.q.select.list,
 				   pt_check_analytic_function, (void *) node,

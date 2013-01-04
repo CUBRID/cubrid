@@ -16797,6 +16797,13 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_LEFT:
 	case PT_RIGHT:
 	case PT_STRCMP:
+	case PT_EQ:
+	case PT_NE:
+	case PT_GE:
+	case PT_GT:
+	case PT_LT:
+	case PT_LE:
+	case PT_NULLSAFE_EQ:
 	  return (pt_is_const_expr_node (node->info.expr.arg1)
 		  && pt_is_const_expr_node (node->info.
 					    expr.arg2)) ? true : false;
