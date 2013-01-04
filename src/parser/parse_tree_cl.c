@@ -636,7 +636,7 @@ pt_lambda_check_reduce_eq (PARSER_CONTEXT * parser,
 			   void *void_arg, int *continue_walk)
 {
   PT_LAMBDA_ARG *lambda_arg = (PT_LAMBDA_ARG *) void_arg;
-  PT_NODE *arg1, *tree;
+  PT_NODE *arg1, *tree, *name;
 
   if (!tree_or_name)
     {
@@ -661,6 +661,7 @@ pt_lambda_check_reduce_eq (PARSER_CONTEXT * parser,
       break;
     case PT_EXPR:
       tree = lambda_arg->tree;
+      name = lambda_arg->name;
 
       /* check for variable string type */
       if (tree->type_enum == PT_TYPE_VARCHAR ||
@@ -674,6 +675,41 @@ pt_lambda_check_reduce_eq (PARSER_CONTEXT * parser,
 	    case PT_CHAR_LENGTH:
 	      *continue_walk = PT_LIST_WALK;	/* don't dive into */
 	      break;
+	    case PT_CAST:
+	      if (PT_HAS_COLLATION (name->type_enum)
+		  && tree_or_name->info.expr.op == PT_CAST
+		  && PT_HAS_COLLATION (tree_or_name->type_enum)
+		  && pt_name_equal (parser, name,
+				    tree_or_name->info.expr.arg1))
+		{
+		  int cast_coll = LANG_SYS_COLLATION;
+		  int name_coll = LANG_SYS_COLLATION;
+
+		  name_coll = PT_GET_COLLATION_MODIFIER (name);
+
+		  if (name_coll == -1 && name->data_type != NULL)
+		    {
+		      name_coll =
+			name->data_type->info.data_type.collation_id;
+		    }
+
+		  if (PT_EXPR_INFO_IS_FLAGED
+		      (tree_or_name, PT_EXPR_INFO_CAST_COLL_MODIFIER))
+		    {
+		      cast_coll = PT_GET_COLLATION_MODIFIER (tree_or_name);
+		    }
+		  else if (tree_or_name->data_type != NULL)
+		    {
+		      cast_coll =
+			tree_or_name->data_type->info.data_type.collation_id;
+		    }
+
+		  if (cast_coll != name_coll)
+		    {
+		      /* predicate evaluates with different collation */
+		      *continue_walk = PT_LIST_WALK;	/* don't dive into */
+		    }
+		}
 	    default:
 	      break;
 	    }

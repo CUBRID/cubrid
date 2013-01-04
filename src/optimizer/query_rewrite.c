@@ -1195,6 +1195,42 @@ qo_collect_name_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	  /* simply give up when we find serial
 	   */
 	  info->query_serial_num++;
+	  break;
+	}
+
+      if (PT_HAS_COLLATION (info->c_name->type_enum)
+	  && node->info.expr.op == PT_CAST
+	  && PT_HAS_COLLATION (node->type_enum)
+	  && node->info.expr.arg1 != NULL
+	  && node->info.expr.arg1->node_type == PT_NAME
+	  && node->info.expr.arg1->info.name.spec_id
+	  == info->c_name->info.name.spec_id)
+	{
+	  int cast_coll = LANG_SYS_COLLATION;
+	  int name_coll = LANG_SYS_COLLATION;
+
+	  name_coll = PT_GET_COLLATION_MODIFIER (info->c_name);
+
+	  if (name_coll == -1 && info->c_name->data_type != NULL)
+	    {
+	      name_coll =
+		info->c_name->data_type->info.data_type.collation_id;
+	    }
+
+	  if (PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_COLL_MODIFIER))
+	    {
+	      cast_coll = PT_GET_COLLATION_MODIFIER (node);
+	    }
+	  else if (node->data_type != NULL)
+	    {
+	      cast_coll = node->data_type->info.data_type.collation_id;
+	    }
+
+	  if (cast_coll != name_coll)
+	    {
+	      /* predicate evaluates with different collation */
+	      info->query_serial_num++;
+	    }
 	}
       break;
     default:
