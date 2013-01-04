@@ -9105,12 +9105,21 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    if (PT_EXPR_INFO_IS_FLAGED
 			(node, PT_EXPR_INFO_CAST_COLL_MODIFIER))
 		      {
-			regu = r2;
 			domain = pt_xasl_data_type_to_domain (parser,
 							      node->info.
 							      expr.cast_type);
 			assert (domain->collation_id
 				== PT_GET_COLLATION_MODIFIER (node));
+			if (node->info.expr.arg1
+			    && node->info.expr.arg1->node_type == PT_NAME)
+			  {
+			    regu = pt_make_regu_arith (r1, r2, NULL, op,
+						       domain);
+			  }
+			else
+			  {
+			    regu = r2;
+			  }
 			regu->domain = domain;
 			REGU_VARIABLE_SET_FLAG (regu,
 						REGU_VARIABLE_APPLY_COLLATION);
@@ -16030,7 +16039,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 		  goto error_exit;
 		}
 
-              ptr[0] = '\0';
+	      ptr[0] = '\0';
 	      strcpy (ptr, context->sql_plan_text);
 
 	      context->sql_plan_text = ptr;

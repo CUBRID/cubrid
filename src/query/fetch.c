@@ -2234,8 +2234,42 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       break;
 
     case T_CAST:
-      if (tp_value_strict_cast (peek_right, arithptr->value,
-				arithptr->domain) != NO_ERROR)
+      if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_APPLY_COLLATION))
+	{
+	  pr_clone_value (peek_right, arithptr->value);
+
+	  if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (regu_var->domain)))
+	    {
+	      if (!DB_IS_NULL (arithptr->value))
+		{
+		  assert (TP_IS_CHAR_TYPE (DB_VALUE_TYPE (arithptr->value)));
+		  assert (regu_var->domain->codeset
+			  == DB_GET_STRING_CODESET (arithptr->value));
+		}
+	      db_string_put_cs_and_collation (arithptr->value,
+					      regu_var->domain->codeset,
+					      regu_var->domain->collation_id);
+	    }
+	  else
+	    {
+	      assert (TP_DOMAIN_TYPE (regu_var->domain) ==
+		      DB_TYPE_ENUMERATION);
+
+	      if (!DB_IS_NULL (arithptr->value))
+		{
+		  assert (DB_VALUE_DOMAIN_TYPE (arithptr->value)
+			  == DB_TYPE_ENUMERATION);
+		  assert (regu_var->domain->codeset
+			  == DB_GET_ENUM_CODESET (arithptr->value));
+		}
+	      db_enum_put_cs_and_collation (arithptr->value,
+					    regu_var->domain->codeset,
+					    regu_var->domain->collation_id);
+
+	    }
+	}
+      else if (tp_value_strict_cast (peek_right, arithptr->value,
+				     arithptr->domain) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
 		  pr_type_name (DB_VALUE_DOMAIN_TYPE (peek_right)),
@@ -2245,16 +2279,52 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       break;
 
     case T_CAST_NOFAIL:
-      {
-	TP_DOMAIN_STATUS status;
+      if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_APPLY_COLLATION))
+	{
+	  pr_clone_value (peek_right, arithptr->value);
 
-	status = tp_value_cast (peek_right, arithptr->value, arithptr->domain,
-				false);
-	if (status != NO_ERROR)
-	  {
-	    PRIM_SET_NULL (arithptr->value);
-	  }
-      }
+	  if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (regu_var->domain)))
+	    {
+	      if (!DB_IS_NULL (arithptr->value))
+		{
+		  assert (TP_IS_CHAR_TYPE (DB_VALUE_TYPE (arithptr->value)));
+		  assert (regu_var->domain->codeset
+			  == DB_GET_STRING_CODESET (arithptr->value));
+		}
+	      db_string_put_cs_and_collation (arithptr->value,
+					      regu_var->domain->codeset,
+					      regu_var->domain->collation_id);
+	    }
+	  else
+	    {
+	      assert (TP_DOMAIN_TYPE (regu_var->domain) ==
+		      DB_TYPE_ENUMERATION);
+
+	      if (!DB_IS_NULL (arithptr->value))
+		{
+		  assert (DB_VALUE_DOMAIN_TYPE (arithptr->value)
+			  == DB_TYPE_ENUMERATION);
+		  assert (regu_var->domain->codeset
+			  == DB_GET_ENUM_CODESET (arithptr->value));
+		}
+	      db_enum_put_cs_and_collation (arithptr->value,
+					    regu_var->domain->codeset,
+					    regu_var->domain->collation_id);
+
+	    }
+	}
+      else
+	{
+	  TP_DOMAIN_STATUS status;
+
+	  status =
+	    tp_value_cast (peek_right, arithptr->value, arithptr->domain,
+			   false);
+	  if (status != NO_ERROR)
+	    {
+	      PRIM_SET_NULL (arithptr->value);
+	    }
+	}
       break;
 
     case T_CASE:
