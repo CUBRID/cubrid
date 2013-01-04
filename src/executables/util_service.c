@@ -717,7 +717,6 @@ proc_execute (const char *file, const char *args[], bool wait_child,
 
   if (close_output)
     {
-      si.dwFlags = si.dwFlags | STARTF_USESTDHANDLES;
       si.hStdOutput = NULL;
       inherited_handle = FALSE;
     }
