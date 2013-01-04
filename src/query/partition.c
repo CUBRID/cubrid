@@ -190,6 +190,10 @@ static int partition_prune_heap_scan (PRUNING_CONTEXT * pinfo);
 
 static int partition_prune_index_scan (PRUNING_CONTEXT * pinfo);
 
+static int partition_find_inherited_btid (THREAD_ENTRY * thread_p,
+					  OID * src_class, OID * dest_class,
+					  BTID * src_btid, BTID * dest_btid);
+
 /* misc pruning functions */
 static bool partition_decrement_value (DB_VALUE * val);
 
@@ -3602,7 +3606,6 @@ partition_prune_unique_btid (PRUNING_CONTEXT * pcontext, DB_VALUE * key,
   MATCH_STATUS status = MATCH_NOT_FOUND;
   PRUNING_BITSET pruned;
   PRUNING_BITSET_ITERATOR it;
-  char *btree_name = NULL;
   OID partition_oid;
   HFID partition_hfid;
   BTID partition_btid;
@@ -3615,6 +3618,17 @@ partition_prune_unique_btid (PRUNING_CONTEXT * pcontext, DB_VALUE * key,
 
   *is_global_btid = false;
 
+  if (pcontext->pruning_type == DB_PARTITION_CLASS)
+    {
+      /* btid is the BTID of the index corresponding to the partition. Find
+       * the BTID of the root class and use that one */
+      error = partition_find_inherited_btid (pcontext->thread_p, class_oid,
+					     &pcontext->root_oid, btid, btid);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
   error = partition_get_position_in_key (pcontext, btid);
   if (error != NO_ERROR)
     {
@@ -3651,33 +3665,69 @@ partition_prune_unique_btid (PRUNING_CONTEXT * pcontext, DB_VALUE * key,
 
   *is_global_btid = false;
 
-  error = heap_get_indexinfo_of_btid (pcontext->thread_p, class_oid,
-				      btid, NULL, NULL, NULL, NULL,
-				      &btree_name, NULL);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
   pruningset_iterator_init (&pruned, &it);
   pos = pruningset_iterator_next (&it);
   COPY_OID (&partition_oid, &pcontext->partitions[pos + 1].class_oid);
   HFID_COPY (&partition_hfid, &pcontext->partitions[pos + 1].class_hfid);
 
-  error = heap_get_index_with_name (pcontext->thread_p, &partition_oid,
-				    btree_name, &partition_btid);
+  error = partition_find_inherited_btid (pcontext->thread_p,
+					 &pcontext->root_oid, &partition_oid,
+					 btid, &partition_btid);
   if (error != NO_ERROR)
     {
-      goto cleanup;
+      return error;
     }
 
   COPY_OID (class_oid, &partition_oid);
   HFID_COPY (class_hfid, &partition_hfid);
   BTID_COPY (btid, &partition_btid);
 
+  return error;
+}
+
+/*
+ * partition_find_inherited_btid () - find the inherited BTID for a class
+ * return : error code or NO_ERROR
+ * thread_p(in)	    : thread entry
+ * src_class (in)   : class which owns src_btid
+ * dest_class (in)  : class in which to search matching BTID
+ * src_btid (in)    : BTID to search for
+ * dest_btid (in/out) : matching BTID
+ */
+static int
+partition_find_inherited_btid (THREAD_ENTRY * thread_p, OID * src_class,
+			       OID * dest_class, BTID * src_btid,
+			       BTID * dest_btid)
+{
+  char *btree_name = NULL;
+  int error = NO_ERROR;
+  error = heap_get_indexinfo_of_btid (thread_p, src_class, src_btid, NULL,
+				      NULL, NULL, NULL, &btree_name, NULL);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+  error = heap_get_index_with_name (thread_p, dest_class, btree_name,
+				    dest_btid);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  if (BTID_IS_NULL (dest_btid))
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_INVALID_INDEX_ID, 3,
+	      src_btid->vfid.fileid, src_btid->vfid.volid,
+	      src_btid->root_pageid);
+      error = ER_BTREE_INVALID_INDEX_ID;
+    }
+
 cleanup:
   if (btree_name != NULL)
     {
+      /* heap_get_indexinfo_of_btid calls strdup on the index name so we have
+         to free it with free_and_init */
       free_and_init (btree_name);
     }
   return error;

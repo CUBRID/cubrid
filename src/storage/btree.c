@@ -3263,7 +3263,7 @@ xbtree_find_multi_uniques (THREAD_ENTRY * thread_p, OID * class_oid,
 
 		  /* find the class oid for found oid */
 		  if (heap_get_class_oid (thread_p, &found_class_oid,
-					  &found_oids[i]) == NULL)
+					  &found_oids[idx]) == NULL)
 		    {
 		      error = ER_FAILED;
 		      result = BTREE_ERROR_OCCURRED;

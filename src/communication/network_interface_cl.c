@@ -7173,6 +7173,7 @@ cleanup:
 				      &local_count);
   if (result == BTREE_ERROR_OCCURRED)
     {
+      EXIT_SERVER ();
       return result;
     }
 
@@ -7183,6 +7184,7 @@ cleanup:
       if (*oids == NULL)
 	{
 	  db_private_free (NULL, local_oids);
+	  EXIT_SERVER ();
 	  return BTREE_ERROR_OCCURRED;
 	}
       *oids_count = local_count;
