@@ -693,11 +693,12 @@ proc_execute (const char *file, const char *args[], bool wait_child,
 {
   STARTUPINFO si;
   PROCESS_INFORMATION pi;
-  int i, cmd_arg_len;
+  int i, j, k, cmd_arg_len;
   char cmd_arg[1024];
   char executable_path[PATH_MAX];
   int ret_code = NO_ERROR;
   bool inherited_handle = TRUE;
+  char fixed_arg[1024];		/* replace " with "" */
 
   if (out_pid)
     {
@@ -708,7 +709,26 @@ proc_execute (const char *file, const char *args[], bool wait_child,
 
   for (i = 0, cmd_arg_len = 0; args[i]; i++)
     {
-      cmd_arg_len += sprintf (cmd_arg + cmd_arg_len, "\"%s\" ", args[i]);
+      if (strchr (args[i], '"') == NULL)
+	{
+	  cmd_arg_len += sprintf (cmd_arg + cmd_arg_len, "\"%s\" ", args[i]);
+	}
+      else
+	{
+	  k = 0;
+	  for (j = 0; j < strlen (args[i]); j++)
+	    {
+	      if (args[i][j] == '"')
+		{
+		  fixed_arg[k++] = '"';
+		}
+	      fixed_arg[k++] = args[i][j];
+	    }
+	  fixed_arg[k] = '\0';
+
+	  cmd_arg_len +=
+	    sprintf (cmd_arg + cmd_arg_len, "\"%s\" ", fixed_arg);
+	}
     }
 
   GetStartupInfo (&si);
