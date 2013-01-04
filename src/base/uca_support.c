@@ -3498,7 +3498,9 @@ create_opt_ce_w_exp (LOCALE_COLLATION * lc)
   int coll_key_list_cnt = 0;
   bool use_level_4;
   UCA_OPTIONS uca_exp_next_opt =
-    { TAILOR_PRIMARY, false, false, 0, true, CONTR_IGNORE, true };
+    { TAILOR_PRIMARY, false, false, 0, true, CONTR_IGNORE, true,
+    MATCH_CONTR_BOUND_FORBID
+  };
   UCA_OPTIONS *saved_uca_opt = NULL;
 
   coll_key_list =
