@@ -2,9 +2,9 @@
 <VisualStudioProject
 	ProjectType="Visual C++"
 	Version="9.00"
-	Name="migrate_r40beta2ga"
+	Name="migrate_90beta_to_91"
 	ProjectGUID="{A5F2A05C-6739-4AC0-85B3-4124B3B83F7A}"
-	RootNamespace="migrate_r40beta2ga"
+	RootNamespace="migrate_90beta_to_91"
 	TargetFrameworkVersion="196613"
 	>
 	<Platforms>

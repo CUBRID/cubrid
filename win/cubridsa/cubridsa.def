@@ -772,3 +772,4 @@ EXPORTS
     rel_bit_platform
     envvar_root
     envvar_bindir_file
+    btree_fix_overflow_oid_page_all_btrees

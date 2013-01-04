@@ -22387,3 +22387,309 @@ btree_is_new_file (BTID_INT * btid_int)
       return false;
     }
 }
+
+/*****************************************************************************/
+/* For migrate_90beta_to_91                                                  */
+/*****************************************************************************/
+#define MIGRATE_90BETA_TO_91
+
+#if defined(MIGRATE_90BETA_TO_91)
+
+extern int btree_fix_overflow_oid_page_all_btrees (void);
+
+static int btree_fix_ovfl_oid_pages_by_btid (THREAD_ENTRY * thread_p,
+					     BTID * btid);
+static int btree_fix_ovfl_oid_pages_tree (THREAD_ENTRY * thread_p,
+					  BTID * btid, char *btname);
+static int btree_fix_ovfl_oid_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
+				    PAGE_PTR pg_ptr, char *btname);
+static int btree_compare_oid (const void *oid_mem1, const void *oid_mem2);
+
+static int fixed_pages;
+
+int
+btree_fix_overflow_oid_page_all_btrees (void)
+{
+  int num_files, i;
+  BTID btid;
+  FILE_TYPE file_type;
+  THREAD_ENTRY *thread_p;
+
+  thread_p = thread_get_thread_entry_info ();
+
+  num_files = file_get_numfiles (thread_p);
+  if (num_files < 0)
+    {
+      return ER_FAILED;
+    }
+
+  for (i = 0; i < num_files; i++)
+    {
+      if (file_find_nthfile (thread_p, &btid.vfid, i) != 1)
+	{
+	  break;
+	}
+
+      file_type = file_get_type (thread_p, &btid.vfid);
+      if (file_type == FILE_UNKNOWN_TYPE)
+	{
+	  return ER_FAILED;
+	}
+
+      if (file_type != FILE_BTREE)
+	{
+	  continue;
+	}
+
+      if (btree_fix_ovfl_oid_pages_by_btid (thread_p, &btid) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+static int
+btree_fix_ovfl_oid_pages_by_btid (THREAD_ENTRY * thread_p, BTID * btid)
+{
+  char area[FILE_DUMP_DES_AREA_SIZE];
+  char *fd = area;
+  int fd_size = FILE_DUMP_DES_AREA_SIZE, size;
+  FILE_BTREE_DES *btree_des;
+  char *btname;
+  VPID vpid;
+  int ret = NO_ERROR;
+
+  size = file_get_descriptor (thread_p, &btid->vfid, fd, fd_size);
+  if (size < 0)
+    {
+      fd_size = -size;
+      fd = (char *) malloc (fd_size);
+      if (fd == NULL)
+	{
+	  fd = area;
+	  fd_size = FILE_DUMP_DES_AREA_SIZE;
+	}
+      else
+	{
+	  size = file_get_descriptor (thread_p, &btid->vfid, fd, fd_size);
+	}
+    }
+
+  btree_des = (FILE_BTREE_DES *) fd;
+
+  /* get the index name of the index key */
+  ret = heap_get_indexinfo_of_btid (thread_p, &(btree_des->class_oid),
+				    btid, NULL, NULL, NULL,
+				    NULL, &btname, NULL);
+  if (ret != NO_ERROR)
+    {
+      goto exit_on_end;
+    }
+
+  if (file_find_nthpages (thread_p, &btid->vfid, &vpid, 0, 1) != 1)
+    {
+      ret = ER_FAILED;
+      goto exit_on_end;
+    }
+
+  btid->root_pageid = vpid.pageid;
+  ret = btree_fix_ovfl_oid_pages_tree (thread_p, btid, btname);
+
+exit_on_end:
+
+  if (fd != area)
+    {
+      free_and_init (fd);
+    }
+
+  if (btname)
+    {
+      free_and_init (btname);
+    }
+
+  return ret;
+}
+
+static int
+btree_fix_ovfl_oid_pages_tree (THREAD_ENTRY * thread_p, BTID * btid,
+			       char *btname)
+{
+  DISK_ISVALID valid = DISK_ERROR;
+  VPID vpid;
+  PAGE_PTR pgptr = NULL;
+  BTID_INT btid_int;
+  RECDES rec;
+  BTREE_ROOT_HEADER root_header;
+  char *header_ptr;
+
+  /* fetch the root page */
+
+  vpid.pageid = btid->root_pageid;
+  vpid.volid = btid->vfid.volid;
+
+  pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ,
+		     PGBUF_UNCONDITIONAL_LATCH);
+  if (pgptr == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  if (spage_get_record (pgptr, HEADER, &rec, PEEK) != S_SUCCESS)
+    {
+      pgbuf_unfix_and_init (thread_p, pgptr);
+      return ER_FAILED;
+    }
+
+  btree_read_root_header (&rec, &root_header);
+
+  btid_int.sys_btid = btid;
+  if (btree_glean_root_header_info (thread_p, &root_header,
+				    &btid_int) != NO_ERROR)
+    {
+      pgbuf_unfix_and_init (thread_p, pgptr);
+      return ER_FAILED;
+    }
+
+  pgbuf_unfix_and_init (thread_p, pgptr);
+
+  if (BTREE_IS_UNIQUE (&btid_int))
+    {
+      return NO_ERROR;
+    }
+
+  pgptr = btree_find_first_leaf (thread_p, btid, &vpid, NULL);
+  if (pgptr == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  fixed_pages = 0;
+  fprintf (stdout, "Index: %-50s %8d", btname, fixed_pages);
+
+  /* traverse leaf page links */
+
+  while (true)
+    {
+      if (btree_fix_ovfl_oid_page (thread_p, &btid_int, pgptr,
+				   btname) != NO_ERROR)
+	{
+	  pgbuf_unfix_and_init (thread_p, pgptr);
+	  fprintf (stdout, "\n");
+	  return ER_FAILED;
+	}
+
+      btree_get_header_ptr (pgptr, &header_ptr);
+      BTREE_GET_NODE_NEXT_VPID (header_ptr, &vpid);
+      pgbuf_unfix_and_init (thread_p, pgptr);
+
+      if (VPID_ISNULL (&vpid))
+	{
+	  break;
+	}
+
+      pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ,
+			 PGBUF_UNCONDITIONAL_LATCH);
+      if (pgptr == NULL)
+	{
+	  fprintf (stdout, "\n");
+	  return ER_FAILED;
+	}
+    }
+
+  fprintf (stdout, "\n");
+
+  return NO_ERROR;
+}
+
+static int
+btree_fix_ovfl_oid_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
+			 PAGE_PTR pg_ptr, char *btname)
+{
+  RECDES leaf_rec, ovfl_rec;
+  int key_cnt, i, offset;
+  char *header_ptr;
+  LEAF_REC leaf_pnt;
+  bool dummy;
+  VPID ovfl_vpid;
+  PAGE_PTR ovfl_page = NULL;
+  char *rv_data = NULL;
+  int rv_data_len;
+  char rv_data_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
+
+  rv_data = PTR_ALIGN (rv_data_buf, BTREE_MAX_ALIGN);
+
+  btree_get_header_ptr (pg_ptr, &header_ptr);
+  assert_release (BTREE_GET_NODE_TYPE (header_ptr) == BTREE_LEAF_NODE);
+
+  key_cnt = BTREE_GET_NODE_KEY_CNT (header_ptr);
+  assert_release (key_cnt >= 0);
+
+  for (i = 1; i <= key_cnt; i++)
+    {
+      if (spage_get_record (pg_ptr, i, &leaf_rec, PEEK) != S_SUCCESS)
+	{
+	  return ER_FAILED;
+	}
+
+      VPID_SET_NULL (&leaf_pnt.ovfl);
+      btree_read_record (thread_p, btid, &leaf_rec, NULL, &leaf_pnt,
+			 BTREE_LEAF_NODE, &dummy, &offset, PEEK_KEY_VALUE);
+
+      ovfl_vpid = leaf_pnt.ovfl;
+
+      while (!VPID_ISNULL (&ovfl_vpid))
+	{
+	  ovfl_page = pgbuf_fix (thread_p, &ovfl_vpid, OLD_PAGE,
+				 PGBUF_LATCH_WRITE,
+				 PGBUF_UNCONDITIONAL_LATCH);
+	  if (ovfl_page == NULL)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  btree_get_header_ptr (ovfl_page, &header_ptr);
+	  btree_get_next_overflow_vpid (header_ptr, &ovfl_vpid);
+
+	  if (spage_get_record (ovfl_page, 1, &ovfl_rec, PEEK) != S_SUCCESS)
+	    {
+	      pgbuf_unfix_and_init (thread_p, ovfl_page);
+	      return ER_FAILED;
+	    }
+
+	  /* undo log only */
+	  btree_rv_write_log_record (rv_data, &rv_data_len, &ovfl_rec,
+				     BTREE_LEAF_NODE);
+	  log_append_undo_data2 (thread_p, RVBT_NDRECORD_UPD,
+				 &btid->sys_btid->vfid, ovfl_page,
+				 1, rv_data_len, rv_data);
+
+	  qsort (ovfl_rec.data, CEIL_PTVDIV (ovfl_rec.length, OR_OID_SIZE),
+		 OR_OID_SIZE, btree_compare_oid);
+
+	  pgbuf_set_dirty (thread_p, ovfl_page, FREE);
+
+	  fprintf (stdout, "\rIndex: %-50s %8d", btname, ++fixed_pages);
+	  if (fixed_pages % 100 == 0)
+	    {
+	      fflush (stdout);
+	    }
+	}
+    }
+
+  fflush (stdout);
+  return NO_ERROR;
+}
+
+static int
+btree_compare_oid (const void *oid_mem1, const void *oid_mem2)
+{
+  OID oid1, oid2;
+
+  OR_GET_OID (oid_mem1, &oid1);
+  OR_GET_OID (oid_mem2, &oid2);
+
+  return oid_compare (&oid1, &oid2);
+}
+#endif /* MIGRATE_90BETA_TO_91 */
