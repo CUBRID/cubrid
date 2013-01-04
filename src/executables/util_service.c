@@ -1397,10 +1397,20 @@ process_server (int command_type, int argc, char **argv,
 		      break;
 		    }
 		}
+	      if (is_server_running (CHECK_SERVER, token, 0))
+		{
+		  print_message (stdout,
+				 MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S,
+				 PRINT_SERVER_NAME, token);
+		  continue;
+		}
+	      else
+		{
+		  status =
+		    proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args,
+				  true, false, false, NULL);
+		}
 
-	      status =
-		proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
-			      false, false, NULL);
 	      status =
 		is_server_running (CHECK_SERVER, token,
 				   0) ? NO_ERROR : ER_GENERIC_ERROR;
