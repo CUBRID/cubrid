@@ -128,8 +128,6 @@ xcopy %SRC_DIR%\..\..\..\locales\loclib_win_%3 %DEST_DIR%\locales\loclib /e /c /
 copy %SRC_DIR%\..\..\..\src\base\locale_lib_common.h %DEST_DIR%\locales\loclib\locale_lib_common.h /y
 copy %SRC_DIR%\..\..\..\locales\make_locale_%3.bat %DEST_DIR%\bin\make_locale.bat /y
 
-del %DEST_DIR%\bin\migrate_90beta_to_91.exe
-
 echo on
 for %%f in (%MSG_EN_US_DIR%,%MSG_EN_US_UTF8_DIR%,%MSG_EUCKR_DIR%,%MSG_UTFKR_DIR%,%MSG_TR_UTF8_DIR%) do %GENCAT% %%f\csql.cat %%f\csql.msg
 for %%f in (%MSG_EN_US_DIR%,%MSG_EN_US_UTF8_DIR%,%MSG_EUCKR_DIR%,%MSG_UTFKR_DIR%,%MSG_TR_UTF8_DIR%) do %GENCAT% %%f\cubrid.cat %%f\cubrid.msg
