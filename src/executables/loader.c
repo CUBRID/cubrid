@@ -1489,6 +1489,7 @@ ldr_act_attr (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_VALUE_OVERFLOW, 1,
 	      context->num_attrs);
       CHECK_ERR (err, ER_LDR_VALUE_OVERFLOW);
+      goto error_exit;
     }
 
   if (context->validation_only)
