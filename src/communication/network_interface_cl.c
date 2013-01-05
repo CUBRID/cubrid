@@ -10591,7 +10591,7 @@ es_posix_get_file_size (const char *path)
   off_t file_size = -1;
   int req_error, request_size, strlen;
   char *request, *reply;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT64_SIZE) a_reply;
   char *ptr;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
@@ -10602,7 +10602,7 @@ es_posix_get_file_size (const char *path)
     {
       ptr = pack_const_string_with_length (request, path, strlen);
 
-      req_error = net_client_request (NET_SERVER_ES_DELETE_FILE,
+      req_error = net_client_request (NET_SERVER_ES_GET_FILE_SIZE,
 				      request, request_size,
 				      reply, OR_ALIGNED_BUF_SIZE (a_reply),
 				      NULL, 0, NULL, 0);
