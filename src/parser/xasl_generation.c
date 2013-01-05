@@ -9105,13 +9105,30 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    if (PT_EXPR_INFO_IS_FLAGED
 			(node, PT_EXPR_INFO_CAST_COLL_MODIFIER))
 		      {
+			PT_NODE *arg = node->info.expr.arg1;
+
 			domain = pt_xasl_data_type_to_domain (parser,
 							      node->info.
 							      expr.cast_type);
 			assert (domain->collation_id
 				== PT_GET_COLLATION_MODIFIER (node));
-			if (node->info.expr.arg1
-			    && node->info.expr.arg1->node_type == PT_NAME)
+			/* COLLATE modifier eliminates extra T_CAST operator
+			 * with some exceptions: 
+			 * 1. argument is PT_NAME; attributes may be
+			 * fetched from shared DB_VALUEs, and we may end up
+			 * overwriting collation of the same attribute used in
+			 * another context;
+			 * 2. argument is a normal CAST (without COLLATE
+			 * modifier) : normal CAST should be executed normally
+			 * if that CAST is changing the charset of its
+			 * argument
+			 */
+			if (arg != NULL
+			    && (arg->node_type == PT_NAME
+				|| (arg->node_type == PT_EXPR
+				    && arg->info.expr.op == PT_CAST
+				    && !PT_EXPR_INFO_IS_FLAGED (arg,
+								PT_EXPR_INFO_CAST_COLL_MODIFIER))))
 			  {
 			    regu = pt_make_regu_arith (r1, r2, NULL, op,
 						       domain);

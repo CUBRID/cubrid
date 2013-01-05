@@ -23355,6 +23355,19 @@ pt_set_collation_modifier (PARSER_CONTEXT *parser, PT_NODE *node,
 		     MSGCAT_SEMANTIC_COLLATE_NOT_ALLOWED);
 	  return node;
 	}
+      else if (node->info.expr.op == PT_CAST
+	       && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_COLL_MODIFIER))
+	{
+	  LANG_COLLATION *lc_node = lang_get_collation (PT_GET_COLLATION_MODIFIER (node));
+	  if (lc_node->codeset != lang_coll->codeset)
+	    {
+	      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			   MSGCAT_SEMANTIC_CS_MATCH_COLLATE,
+			   lang_get_codeset_name (lc_node->codeset),
+			   lang_get_codeset_name (lang_coll->codeset));
+	      return node;
+	    }
+	}
       PT_SET_NODE_COLL_MODIFIER (node, lang_coll->coll.coll_id);
       if (!pt_is_comp_op (node->info.expr.op))
 	{
