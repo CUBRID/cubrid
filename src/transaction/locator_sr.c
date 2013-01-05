@@ -5027,6 +5027,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 		    {
 		      error_code = ER_FAILED;
 		    }
+		  goto error2;
 		}
 	      local_func_preds = ins_cache->func_index_pred;
 	      local_scan_cache = &ins_cache->scan_cache;

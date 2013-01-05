@@ -12972,7 +12972,7 @@ pt_link_regu_to_selupd_list (PARSER_CONTEXT * parser,
 	{
 	  return NULL;
 	}
-      if (is_partition == 1)
+      if (is_partition != DB_NOT_PARTITIONED_CLASS)
 	{
 	  /* if target class is a partitioned class,
 	   * the class to access will be determimed
