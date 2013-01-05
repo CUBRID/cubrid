@@ -6831,7 +6831,7 @@ error_loading_symbol:
 	      "library.\n Check configuration and recompile locale"
 	      ", if necessary,\n using the make_locale script");
     }
-  LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, false);
+  LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, is_load_for_dump);
 
   return ER_LOC_INIT;
 }
