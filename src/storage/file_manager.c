@@ -10038,8 +10038,15 @@ file_compress (THREAD_ENTRY * thread_p, const VFID * vfid,
       if (do_partial_compaction == true
 	  && allocset->num_holes < NUM_HOLES_NEED_COMPACTION)
 	{
+          prev_allocset_vpid = allocset_vpid;
+          prev_allocset_offset = allocset_offset;
+
 	  allocset_vpid = allocset->next_allocset_vpid;
 	  allocset_offset = allocset->next_allocset_offset;
+
+	  ftb_vpid = allocset->end_pages_vpid;
+	  ftb_offset = allocset->end_pages_offset;
+
 	  pgbuf_unfix_and_init (thread_p, allocset_pgptr);
 	  continue;
 	}
