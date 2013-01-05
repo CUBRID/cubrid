@@ -1817,7 +1817,6 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement,
 	      attr = attr->next;
 	    }
 
-	  assert (attr != NULL && attr->node_type == PT_NAME);
 	  save_data_type = attr->data_type;
 	  attr->data_type = NULL;
 
@@ -1838,7 +1837,7 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement,
 	      attr = attr->next;
 	    }
 
-	  assert (attr != NULL);
+	  assert (attr != NULL && attr->node_type == PT_NAME);
 	  save_data_type = attr->data_type;
 	  attr->data_type = NULL;
 
