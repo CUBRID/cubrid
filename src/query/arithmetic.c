@@ -2213,13 +2213,6 @@ round_date (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       day = 1;
       break;
     case DT_DD:
-    case DT_HH24:
-    case DT_HH12:
-    case DT_HH:
-    case DT_H:
-    case DT_MI:
-    case DT_SS:
-    case DT_MS:
       if (hour >= 12)		/* rounds up on 12:00 AM */
 	{
 	  error = move_n_days (&month, &day, &year, 1);
@@ -2228,6 +2221,59 @@ round_date (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	      goto end;
 	    }
 	}
+      break;
+    case DT_HH24:
+    case DT_HH12:
+    case DT_HH:
+    case DT_H:
+      if (minute >= 30)		/* rounds up on HH:30 */
+	{
+	  if (++hour == 24)	/* rounds up to next day */
+	    {
+	      error = move_n_days (&month, &day, &year, 1);
+	      if (error != NO_ERROR)
+		{
+		  goto end;
+		}
+	    }
+	}
+      break;
+    case DT_MI:
+      if (second >= 30)		/*rounds up on HH:MM:30 */
+	{
+	  if (++minute == 60)
+	    {
+	      if (++hour == 24)
+		{
+		  error = move_n_days (&month, &day, &year, 1);
+		  if (error != NO_ERROR)
+		    {
+		      goto end;
+		    }
+		}
+	    }
+	}
+      break;
+    case DT_SS:
+      if (millisecond >= 500)	/* rounds up on HH:MM:SS.500 */
+	{
+	  if (++second == 60)
+	    {
+	      if (++minute == 60)
+		{
+		  if (++hour == 24)
+		    {
+		      error = move_n_days (&month, &day, &year, 1);
+		      if (error != NO_ERROR)
+			{
+			  goto end;
+			}
+		    }
+		}
+	    }
+	}
+      break;
+    case DT_MS:		/* do nothing */
       break;
     case DT_Q:			/* quarter */
       /* rounds up on the 16th day of the second month of the quarter */
@@ -2257,6 +2303,15 @@ round_date (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     case DT_DAY:
     case DT_DY:		/* rounds up on thursday of a week */
     case DT_D:
+      if (hour >= 12)		/* first round 'dd' */
+	{
+	  error = move_n_days (&month, &day, &year, 1);
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	}
+
       weekday = day_of_week (julian_encode (month, day, year));
       if (weekday < 4)
 	{
