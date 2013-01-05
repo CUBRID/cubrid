@@ -1401,20 +1401,6 @@ mq_substitute_select_in_statement (PARSER_CONTEXT * parser,
       return NULL;
     }
 
-  if (statement->node_type != PT_SELECT)
-    {
-      PT_NODE *spec_name = query_spec_from->info.spec.entity_name;
-
-      if (do_is_partitioned_subclass (NULL, spec_name->info.name.original,
-				      NULL))
-	{
-	  PT_ERRORmf (parser, class_, MSGCAT_SET_PARSER_RUNTIME,
-		      MSGCAT_RUNTIME_NOT_ALLOWED_ACCESS_TO_PARTITION,
-		      spec_name->info.name.original);
-	  statement = NULL;
-	}
-    }
-
   /* fix up resolution of any method calls in the statement */
   info.old_id = class_->info.name.spec_id;
   info.new_id = query_spec_from->info.spec.id;
