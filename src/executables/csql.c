@@ -72,6 +72,14 @@ enum
   EDITOR_INPUT = 2		/* command buffer */
 };
 
+/* the return value of csql_do_session_cmd() */
+enum
+{
+  DO_CMD_SUCCESS = 0,
+  DO_CMD_FAILURE = 1,
+  DO_CMD_EXIT = 2
+};
+
 #define CSQL_SESSION_COMMAND_PREFIX(C)	(((C) == ';') || ((C) == '!'))
 
 /* size of input buffer */
@@ -199,7 +207,7 @@ static void csql_exit_session (int error);
 static int csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 				    const void *stream, int line_no);
 
-static bool csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg);
+static int csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 #if !defined(WINDOWS)
@@ -667,10 +675,23 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 
       if (CSQL_SESSION_COMMAND_PREFIX (line_read[0]) && is_in_block == false)
 	{
-	  if (csql_do_session_cmd (line_read, csql_arg) == false)
+	  int ret;
+	  ret = csql_do_session_cmd (line_read, csql_arg);
+	  if (ret == DO_CMD_EXIT)
+	    {
+	      if (line_read_alloced != NULL)
+		{
+		  free (line_read_alloced);
+		  line_read_alloced = NULL;
+		}
+	      csql_edit_contents_finalize ();
+	      csql_exit_session (0);
+	    }
+	  else if (ret == DO_CMD_FAILURE)
 	    {
 	      goto error_continue;
 	    }
+
 	  if (csql_Is_interactive)
 	    {
 	      line_no = 0;
@@ -758,7 +779,7 @@ fatal_error:
 }
 
 
-static bool
+static int
 csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 {
   char *ptr;
@@ -806,13 +827,13 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 
   if (*sess_cmd == '\0' && csql_arg->single_line_execution == false)
     {
-      return true;
+      return DO_CMD_SUCCESS;
     }
 
   cmd_no = csql_get_session_cmd_no (sess_cmd);
   if (cmd_no == -1)
     {
-      return false;
+      return DO_CMD_FAILURE;
     }
 
   /* restore line_read string */
@@ -857,9 +878,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       break;
 
     case S_CMD_EXIT:		/* exit */
-      csql_edit_contents_finalize ();
-      csql_exit_session (0);
-      break;
+      return DO_CMD_EXIT;
 
       /* Edit stuffs */
 
@@ -870,7 +889,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
     case S_CMD_EDIT:		/* invoke system editor */
       if (csql_invoke_system_editor () != CSQL_SUCCESS)
 	{
-	  return false;
+	  return DO_CMD_FAILURE;
 	}
       break;
 
@@ -1174,7 +1193,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	      {
 		csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
 
-		return false;
+		return DO_CMD_FAILURE;
 	      }
 
 	    strcpy (temp_argument, argument);
@@ -1196,7 +1215,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 			free_and_init (temp_argument);
 		      }
 
-		    return false;
+		    return DO_CMD_FAILURE;
 		  }
 	      }
 	    else
@@ -1374,7 +1393,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 		      if (csql_edit_contents_append (hist->line, true) !=
 			  CSQL_SUCCESS)
 			{
-			  return false;
+			  return DO_CMD_FAILURE;
 			}
 		    }
 		  else
@@ -1433,7 +1452,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       break;
     }
 
-  return true;
+  return DO_CMD_SUCCESS;
 }
 
 /*
