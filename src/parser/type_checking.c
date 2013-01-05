@@ -21355,7 +21355,7 @@ pt_common_collation (const int arg1_coll, const INTL_CODESET arg1_cs,
       goto error;
     }
 
-  if (arg1_coerc_level == arg2_coerc_level)
+  if (arg1_coll != arg2_coll && arg1_coerc_level == arg2_coerc_level)
     {
       goto error;
     }
@@ -21413,7 +21413,9 @@ pt_common_collation (const int arg1_coll, const INTL_CODESET arg1_cs,
     }
   else
     {
-      assert (arg1_coerc_level < arg2_coerc_level);
+      assert ((arg1_coerc_level < arg2_coerc_level)
+	      || (arg1_coerc_level == arg2_coerc_level
+		  && arg1_coll == arg2_coll));
 
       /* coerce arg2 collation */
       if (!INTL_CAN_COERCE_CS (arg2_cs, arg1_cs))
