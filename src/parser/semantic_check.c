@@ -10555,20 +10555,6 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 	  break;
 	}
 
-      /* check if target and source are the same */
-      if (node->info.merge.into->info.spec.flat_entity_list
-	  && node->info.merge.using->info.spec.flat_entity_list
-	  && !intl_identifier_casecmp (node->info.merge.into->info.spec.
-				       flat_entity_list->info.name.original,
-				       node->info.merge.using->info.spec.
-				       flat_entity_list->info.name.original))
-	{
-	  PT_ERRORm (parser, node->info.merge.into,
-		     MSGCAT_SET_PARSER_SEMANTIC,
-		     MSGCAT_SEMANTIC_MERGE_CANT_AFFECT_SOURCE_TABLE);
-	  break;
-	}
-
       pt_check_assignments (parser, node);
       pt_no_double_updates (parser, node);
 
