@@ -6413,6 +6413,10 @@ sm_virtual_queries (DB_OBJECT * class_object)
 	      cl->virtual_query_cache = tmp;
 	    }
 
+	  /* need to re-evalutate current_schema_id as global_schema_version
+	   * was changed by the call to mq_virtual_queries() */
+	  current_schema_id = sm_local_schema_version ()
+	    + sm_global_schema_version ();
 	  cl->virtual_cache_schema_id = current_schema_id;
 	}
 
