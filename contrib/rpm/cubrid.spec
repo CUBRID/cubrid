@@ -103,6 +103,7 @@ rm -rf %{buildroot}
 /opt/cubrid/java
 /opt/cubrid/jdbc
 /opt/cubrid/lib
+%exclude /opt/cubrid/lib/*.la
 /opt/cubrid/locales
 /opt/cubrid/log
 /opt/cubrid/msg
