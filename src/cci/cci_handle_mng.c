@@ -889,14 +889,17 @@ req_close_query_result (T_REQ_HANDLE * req_handle)
 {
   assert (req_handle != NULL);
 
+  hm_req_handle_fetch_buf_free (req_handle);
+  hm_conv_value_buf_clear (&(req_handle->conv_value_buffer));
+
   if (req_handle->num_query_res == 0 || req_handle->qr == NULL)
     {
+      assert (req_handle->num_query_res == 0 && req_handle->qr == NULL);
+
       return CCI_ER_RESULT_SET_CLOSED;
     }
 
   QUERY_RESULT_FREE (req_handle);
-  hm_req_handle_fetch_buf_free (req_handle);
-  hm_conv_value_buf_clear (&(req_handle->conv_value_buffer));
 
   return CCI_ER_NO_ERROR;
 }
