@@ -593,7 +593,8 @@ static PAGE_PTR heap_vpid_prealloc_set (THREAD_ENTRY * thread_p,
 static PAGE_PTR heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
 				 PAGE_PTR hdr_pgptr,
 				 HEAP_HDR_STATS * heap_hdr, int needed_space,
-				 HEAP_SCANCACHE * scan_cache);
+				 HEAP_SCANCACHE * scan_cache,
+				 FILE_IS_NEW_FILE new_valid);
 static VPID *heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid,
 			       HEAP_HDR_STATS * heap_hdr, VPID * rm_vpid);
 static int heap_vpid_next (const HFID * hfid, PAGE_PTR pgptr,
@@ -3830,7 +3831,17 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
        * be accurate.
        */
 
-      if (file_is_new_file (thread_p, &(hfid->vfid)) == FILE_NEW_FILE
+      FILE_IS_NEW_FILE new_valid;
+
+      new_valid = file_is_new_file (thread_p, &(hfid->vfid));
+      if (new_valid == FILE_ERROR)
+	{
+	  assert_release (false);
+	  pgbuf_unfix_and_init (thread_p, addr_hdr.pgptr);
+	  return NULL;
+	}
+
+      if (new_valid == FILE_NEW_FILE
 	  && log_is_tran_in_system_op (thread_p) == true)
 	{
 	  log_append_undo_data (thread_p, RVHF_STATS, &addr_hdr,
@@ -3838,7 +3849,7 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 	}
 
       pgptr = heap_vpid_alloc (thread_p, hfid, addr_hdr.pgptr, heap_hdr,
-			       total_space, scan_cache);
+			       total_space, scan_cache, new_valid);
       assert (pgptr != NULL
 	      || er_errid () == ER_INTERRUPTED
 	      || er_errid () == ER_FILE_NOT_ENOUGH_PAGES_IN_DATABASE);
@@ -4854,6 +4865,7 @@ heap_vpid_prealloc_set (THREAD_ENTRY * thread_p, const HFID * hfid,
  *   heap_hdr(in): The heap header structure
  *   needed_space(in): The minimal space needed on new page
  *   scan_cache(in): Scan cache
+ *   new_valid(in): is new file
  *
  * Note: Allocate and initialize a new heap page. The heap header is
  * updated to reflect a newly allocated best space page and
@@ -4863,7 +4875,8 @@ heap_vpid_prealloc_set (THREAD_ENTRY * thread_p, const HFID * hfid,
 static PAGE_PTR
 heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
 		 PAGE_PTR hdr_pgptr, HEAP_HDR_STATS * heap_hdr,
-		 int needed_space, HEAP_SCANCACHE * scan_cache)
+		 int needed_space, HEAP_SCANCACHE * scan_cache,
+		 FILE_IS_NEW_FILE new_valid)
 {
   VPID vpid;			/* Volume and page identifiers */
   LOG_DATA_ADDR addr;		/* Address of logging data */
@@ -4970,18 +4983,28 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
   heap_hdr->estimates.best[best].freespace =
     spage_max_space_for_new_record (thread_p, new_pgptr);
 
-  if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
+  if (new_valid == FILE_NEW_FILE)
     {
-      int rc;
+      /* do can not register vpid of new file.
+       * because the vpid can be dealloced when rollback.
+       */
+    }
+  else
+    {
+      if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
+	{
+	  int rc;
 
-      rc = pthread_mutex_lock (&heap_Bestspace->bestspace_mutex);
+	  rc = pthread_mutex_lock (&heap_Bestspace->bestspace_mutex);
 
-      (void) heap_stats_add_bestspace (thread_p, hfid, &vpid, DB_PAGESIZE);
+	  (void) heap_stats_add_bestspace (thread_p, hfid, &vpid,
+					   DB_PAGESIZE);
 
-      assert (mht_count (heap_Bestspace->vpid_ht) ==
-	      mht_count (heap_Bestspace->hfid_ht));
+	  assert (mht_count (heap_Bestspace->vpid_ht) ==
+		  mht_count (heap_Bestspace->hfid_ht));
 
-      pthread_mutex_unlock (&heap_Bestspace->bestspace_mutex);
+	  pthread_mutex_unlock (&heap_Bestspace->bestspace_mutex);
+	}
     }
 
   addr.pgptr = hdr_pgptr;
