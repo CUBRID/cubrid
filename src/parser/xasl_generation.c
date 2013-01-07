@@ -22437,6 +22437,14 @@ pt_to_merge_insert_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
   corr_subq->info.query.q.select.from = parser_copy_tree (parser, info->into);
   corr_subq->info.query.q.select.where =
     parser_copy_tree_list (parser, info->search_cond);
+  /* add class where part */
+  if (info->insert.class_where)
+    {
+      corr_subq->info.query.q.select.where =
+	parser_append_node (parser_copy_tree_list (parser,
+						   info->insert.class_where),
+			    corr_subq->info.query.q.select.where);
+    }
 
   corr_subq->info.query.q.select.flavor = PT_USER_SELECT;
   corr_subq->info.query.is_subquery = PT_IS_SUBQUERY;

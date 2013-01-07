@@ -2559,6 +2559,7 @@ struct pt_merge_info
     PT_NODE *attr_list;		/* PT_NAME */
     PT_NODE *value_clauses;	/* PT_NODE_LIST (list) */
     PT_NODE *search_cond;	/* PT_EXPR */
+    PT_NODE *class_where;	/* PT_EXPR */
     PT_NODE *index_hint;	/* PT_NAME (list) */
   } insert;
   PT_NODE *check_where;		/* check option */

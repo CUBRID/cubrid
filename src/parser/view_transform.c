@@ -8234,7 +8234,7 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement,
 {
   PT_NODE *spec;
   PT_NODE **specptr = NULL;
-  PT_NODE **where_part = NULL;
+  PT_NODE **where_part = NULL, **where_part_ex = NULL;
   PT_NODE **check_where_part = NULL;
   PT_NODE *newspec = NULL;
   PT_NODE *oldnext = NULL;
@@ -8508,6 +8508,7 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement,
     case PT_MERGE:
       specptr = &statement->info.merge.into;
       where_part = &statement->info.merge.update.search_cond;
+      where_part_ex = &statement->info.merge.insert.class_where;
       /* Add to statement expressions to check if 'with check option'
        * specified */
       check_where_part = NULL;
@@ -8740,6 +8741,18 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement,
       *where_part =
 	parser_append_node (parser_copy_tree_list (parser, class_where_part),
 			    *where_part);
+      /* class where part of merge insert clause */
+      if (where_part_ex)
+	{
+	  if ((*where_part_ex) && (*where_part_ex)->node_type == PT_EXPR)
+	    {
+	      (*where_part_ex)->info.expr.paren_type = 1;
+	    }
+	  *where_part_ex =
+	    parser_append_node (parser_copy_tree_list (parser,
+						       class_where_part),
+				*where_part_ex);
+	}
     }
   if (check_where_part)
     {

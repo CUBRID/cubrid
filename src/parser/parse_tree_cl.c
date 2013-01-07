@@ -16468,6 +16468,8 @@ pt_apply_merge (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g,
     g (parser, p->info.merge.insert.value_clauses, arg);
   p->info.merge.insert.search_cond =
     g (parser, p->info.merge.insert.search_cond, arg);
+  p->info.merge.insert.class_where =
+    g (parser, p->info.merge.insert.class_where, arg);
   p->info.merge.update.assignment =
     g (parser, p->info.merge.update.assignment, arg);
   p->info.merge.update.search_cond =
@@ -16493,6 +16495,7 @@ pt_init_merge (PT_NODE * p)
   p->info.merge.search_cond = NULL;
   p->info.merge.insert.attr_list = NULL;
   p->info.merge.insert.search_cond = NULL;
+  p->info.merge.insert.class_where = NULL;
   p->info.merge.insert.value_clauses = NULL;
   p->info.merge.update.assignment = NULL;
   p->info.merge.update.search_cond = NULL;
