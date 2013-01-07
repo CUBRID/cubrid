@@ -306,8 +306,8 @@ static int number_to_char (const DB_VALUE * src_value,
 static int lob_to_bit_char (const DB_VALUE * src_value,
 			    DB_VALUE * result_value, DB_TYPE lob_type,
 			    int max_length);
-static int lob_from_file (const char *path, DB_VALUE * lob_value,
-			  DB_TYPE lob_type);
+static int lob_from_file (const char *path, const DB_VALUE * src_value,
+                          DB_VALUE * lob_value,DB_TYPE lob_type);
 static int lob_length (const DB_VALUE * src_value, DB_VALUE * result_value);
 
 static int make_number_to_char (const INTL_LANG lang, char *num_string,
@@ -16308,7 +16308,8 @@ lob_to_bit_char (const DB_VALUE * src_value, DB_VALUE * result_value,
  * lob_from_file () -
  */
 static int
-lob_from_file (const char *path, DB_VALUE * lob_value, DB_TYPE lob_type)
+lob_from_file (const char *path, const DB_VALUE * src_value,
+               DB_VALUE * lob_value, DB_TYPE lob_type)
 {
   int error_status = NO_ERROR;
   DB_ELO temp_elo, *result_elo;
@@ -16324,8 +16325,9 @@ lob_from_file (const char *path, DB_VALUE * lob_value, DB_TYPE lob_type)
   size = db_elo_size (&temp_elo);
   if (size < 0)
     {
-      error_status = ER_QSTR_BAD_LENGTH;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      error_status = ER_ES_INVALID_PATH;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status,
+              1, DB_PULL_STRING (src_value));
       return error_status;
     }
 
@@ -22510,7 +22512,7 @@ db_blob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
 	       MIN (src_size, PATH_MAX - path_buf_len));
       path_buf[path_buf_len + MIN (src_size, PATH_MAX - path_buf_len)] = '\0';
 
-      error_status = lob_from_file (path_buf, result_value, DB_TYPE_BLOB);
+      error_status = lob_from_file (path_buf, src_value, result_value, DB_TYPE_BLOB);
     }
   else
     {
@@ -22714,7 +22716,7 @@ db_clob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
 	       MIN (src_size, PATH_MAX - path_buf_len));
       path_buf[path_buf_len + MIN (src_size, PATH_MAX - path_buf_len)] = '\0';
 
-      error_status = lob_from_file (path_buf, result_value, DB_TYPE_CLOB);
+      error_status = lob_from_file (path_buf, src_value, result_value, DB_TYPE_CLOB);
     }
   else
     {
