@@ -309,7 +309,8 @@ extern "C"
 					  int holdable);
   extern int hm_get_con_handle_holdable (T_CON_HANDLE * con_handle);
 
-  extern int hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int req_id);
+  extern int hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int req_id,
+				 T_REQ_HANDLE * req);
   extern int hm_req_get_from_pool (T_CON_HANDLE * con, T_REQ_HANDLE ** req,
 				   char *sql);
 

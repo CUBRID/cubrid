@@ -2093,7 +2093,7 @@ cci_close_req_handle (int mapped_stmt_id)
 	}
 
       error = hm_req_add_to_pool (con_handle, req_handle->sql_text,
-				  mapped_stmt_id);
+				  mapped_stmt_id, req_handle);
       if (error == CCI_ER_NO_ERROR)
 	{
 	  goto cci_close_req_handle_end;

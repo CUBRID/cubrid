@@ -462,7 +462,8 @@ hm_req_handle_alloc (T_CON_HANDLE * con_handle,
 }
 
 int
-hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int mapped_statement_id)
+hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int mapped_statement_id,
+		    T_REQ_HANDLE * statement)
 {
   char *key;
   int *data;
@@ -470,9 +471,6 @@ hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int mapped_statement_id)
   data = mht_get (con->stmt_pool, sql);
   if (data != NULL)
     {
-      T_REQ_HANDLE *statement = NULL;
-
-      hm_get_statement (mapped_statement_id, NULL, &statement);
       hm_pool_drop_node_from_list (&con->pool_use_head, &con->pool_use_tail,
 				   statement);
       return CCI_ER_REQ_HANDLE;
