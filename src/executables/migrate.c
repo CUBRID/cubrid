@@ -38,6 +38,7 @@
 #include "boot_sr.h"
 #include "log_impl.h"
 #include "btree.h"
+#include "transform.h"
 
 #define V9_0_LEVEL (9.0f)
 #define V9_1_LEVEL (9.1f)
@@ -109,6 +110,7 @@ static int get_active_log_vol_path (const char *db_path, char *logvol_path);
 static int check_and_fix_compat_level (const char *db_name,
 				       const char *vol_path);
 static int get_db_path (const char *db_name, char *db_full_path);
+static int change_db_collation_query_spec (void);
 
 static int
 get_active_log_vol_path (const char *db_path, char *logvol_path)
@@ -248,6 +250,62 @@ get_db_path (const char *db_name, char *db_full_path)
   return NO_ERROR;
 }
 
+static int
+change_db_collation_query_spec (void)
+{
+  DB_OBJECT *mop;
+  char stmt[2048];
+
+  printf ("Start to fix db_collation view query specification\n\n");
+
+  mop = db_find_class (CTV_DB_COLLATION_NAME);
+  if (mop == NULL)
+    {
+      return er_errid ();
+    }
+
+  sprintf (stmt,
+	   "SELECT [c].[coll_id], [c].[coll_name],"
+	   " CASE [c].[charset_id]"
+	   "  WHEN %d THEN 'iso88591'"
+	   "  WHEN %d THEN 'utf8'"
+	   "  WHEN %d THEN 'euckr'"
+	   "  WHEN %d THEN 'ascii'"
+	   "  WHEN %d THEN 'raw-bits'"
+	   "  WHEN %d THEN 'raw-bytes'"
+	   "  WHEN %d THEN 'NONE'"
+	   "  ELSE 'OTHER'"
+	   " END,"
+	   " CASE [c].[built_in]"
+	   "  WHEN 0 THEN 'No'"
+	   "  WHEN 1 THEN 'Yes'"
+	   "  ELSE 'ERROR'"
+	   " END,"
+	   " CASE [c].[expansions]"
+	   "  WHEN 0 THEN 'No'"
+	   "  WHEN 1 THEN 'Yes'"
+	   "  ELSE 'ERROR'"
+	   " END,"
+	   " [c].[contractions],"
+	   " CASE [c].[uca_strength]"
+	   "  WHEN 0 THEN 'Not applicable'"
+	   "  WHEN 1 THEN 'Primary'"
+	   "  WHEN 2 THEN 'Secondary'"
+	   "  WHEN 3 THEN 'Tertiary'"
+	   "  WHEN 4 THEN 'Quaternary'"
+	   "  WHEN 5 THEN 'Identity'"
+	   "  ELSE 'Unknown'"
+	   " END"
+	   " FROM [%s] [c]"
+	   " ORDER BY [c].[coll_id]",
+	   INTL_CODESET_ISO88591, INTL_CODESET_UTF8,
+	   INTL_CODESET_KSC5601_EUC, INTL_CODESET_ASCII,
+	   INTL_CODESET_RAW_BITS, INTL_CODESET_RAW_BYTES,
+	   INTL_CODESET_NONE, CT_COLLATION_NAME);
+
+  return db_change_query_spec (mop, stmt, 1);
+}
+
 #if defined(WINDOWS)
 static BOOL WINAPI
 #else
@@ -320,7 +378,7 @@ main (int argc, char *argv[])
 
   if (db_restart (argv[0], TRUE, db_name) != NO_ERROR)
     {
-      printf ("%s\n", db_error_string (3));
+      printf ("\n%s\n", db_error_string (3));
 
       if (undo_fix_compat_level (db_full_path) != NO_ERROR)
 	{
@@ -331,10 +389,13 @@ main (int argc, char *argv[])
       return EXIT_FAILURE;
     }
 
-  printf ("Start to fix BTREE Overflow OID pages\n\n");
+  au_disable ();
 
-  if (btree_fix_overflow_oid_page_all_btrees () != NO_ERROR)
+  if (change_db_collation_query_spec () != NO_ERROR
+      || btree_fix_overflow_oid_page_all_btrees () != NO_ERROR)
     {
+      printf ("\n%s\n", db_error_string (3));
+
       db_abort_transaction ();
       db_shutdown ();
 

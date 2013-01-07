@@ -22415,6 +22415,8 @@ btree_fix_overflow_oid_page_all_btrees (void)
   FILE_TYPE file_type;
   THREAD_ENTRY *thread_p;
 
+  printf ("Start to fix BTREE Overflow OID pages\n\n");
+
   thread_p = thread_get_thread_entry_info ();
 
   num_files = file_get_numfiles (thread_p);
