@@ -3005,6 +3005,7 @@ struct parser_node
 				 * for PT_SELECT that "values" generated */
   unsigned do_not_replace_orderby:1;	/* when checking query in create/alter
 					   view, do not replace order by */
+  unsigned is_added_by_parser:1;	/* is added by parser during parsing */
   PT_STATEMENT_INFO info;	/* depends on 'node_type' field */
 };
 

@@ -1,5 +1,3 @@
-/* vim: set fdc=3 fdm=marker: */
-
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
@@ -6565,6 +6563,7 @@ update_assignment
 					if ((e2 = parser_new_node (this_parser, PT_VALUE)) == NULL)
 					  break;	/* error */
 					e2->type_enum = PT_TYPE_NULL;
+					e2->is_added_by_parser = 1;
 				      }
 				    else
 				      {
@@ -14369,7 +14368,10 @@ reserved_func
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_VALUE);
 			if (node)
-			  node->type_enum = PT_TYPE_NULL;
+			  {
+			    node->type_enum = PT_TYPE_NULL;
+			    node->is_added_by_parser = 1;
+			  }
 
 			$$ = parser_make_expression (PT_STR_TO_DATE, $4, node, parser_make_date_lang (2, NULL));
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -14821,8 +14823,9 @@ case_expr
 
 			    if (expr->info.expr.arg2)
 			      {
-				expr->info.expr.arg2->type_enum = PT_TYPE_NULL;
-                                expr->info.expr.arg2->is_hidden_column = 1;
+				    expr->info.expr.arg2->type_enum = PT_TYPE_NULL;
+				    expr->info.expr.arg2->is_hidden_column = 1;
+				    expr->info.expr.arg2->is_added_by_parser = 1;
 			      }
 			  }
 
@@ -14835,7 +14838,7 @@ case_expr
 
 			int i;
 			PT_NODE *case_oper = $2;
-			PT_NODE *node, *prev, *tmp, *curr, *ppp;
+			PT_NODE *node, *prev, *tmp, *curr, *p;
 
 			int count = parser_count_list ($3);
 			node = prev = $3;
@@ -14848,7 +14851,8 @@ case_expr
 			    (tmp->info.expr.arg3)->info.expr.arg1 =
 			      parser_copy_tree_list (this_parser, case_oper);
 			  }
-			while ((tmp = tmp->next));
+			while ((tmp = tmp->next))
+			  ;
 
 			curr = node;
 			for (i = 2; i <= count; i++)
@@ -14863,17 +14867,20 @@ case_expr
 			    prev = curr;
 			  }
 
-			ppp = $4;
+			p = $4;
 			if (prev)
-			  prev->info.expr.arg2 = ppp;
+			  prev->info.expr.arg2 = p;
 			PICE (prev);
 
 			if (prev && !prev->info.expr.arg2)
 			  {
-			    ppp = parser_new_node (this_parser, PT_VALUE);
-			    if (ppp)
-			      ppp->type_enum = PT_TYPE_NULL;
-			    prev->info.expr.arg2 = ppp;
+			    p = parser_new_node (this_parser, PT_VALUE);
+			    if (p)
+			      {
+				    p->type_enum = PT_TYPE_NULL;
+				    p->is_added_by_parser = 1;
+			      }
+			    prev->info.expr.arg2 = p;
 			    PICE (prev);
 			  }
 
@@ -14888,7 +14895,7 @@ case_expr
 		{{
 
 			int i;
-			PT_NODE *node, *prev, *curr, *ppp;
+			PT_NODE *node, *prev, *curr, *p;
 
 			int count = parser_count_list ($2);
 			node = prev = $2;
@@ -14908,17 +14915,20 @@ case_expr
 			    prev = curr;
 			  }
 
-			ppp = $3;
+			p = $3;
 			if (prev)
-			  prev->info.expr.arg2 = ppp;
+			  prev->info.expr.arg2 = p;
 			PICE (prev);
 
 			if (prev && !prev->info.expr.arg2)
 			  {
-			    ppp = parser_new_node (this_parser, PT_VALUE);
-			    if (ppp)
-			      ppp->type_enum = PT_TYPE_NULL;
-			    prev->info.expr.arg2 = ppp;
+			    p = parser_new_node (this_parser, PT_VALUE);
+			    if (p)
+			      {
+				    p->type_enum = PT_TYPE_NULL;
+				    p->is_added_by_parser = 1;
+			      }
+			    prev->info.expr.arg2 = p;
 			    PICE (prev);
 			  }
 
@@ -14965,26 +14975,26 @@ simple_when_clause
 	: WHEN expression_ THEN expression_
 		{{
 
-			PT_NODE *node, *ppp, *qqq;
-			ppp = $2;
+			PT_NODE *node, *p, *q;
+			p = $2;
 			node = parser_new_node (this_parser, PT_EXPR);
 			if (node)
 			  {
 			    node->info.expr.op = PT_CASE;
 			    node->info.expr.qualifier = PT_SIMPLE_CASE;
-			    qqq = parser_new_node (this_parser, PT_EXPR);
-			    if (qqq)
+			    q = parser_new_node (this_parser, PT_EXPR);
+			    if (q)
 			      {
-				qqq->info.expr.op = PT_EQ;
-				qqq->info.expr.arg2 = ppp;
-				node->info.expr.arg3 = qqq;
-				PICE (qqq);
+				q->info.expr.op = PT_EQ;
+				q->info.expr.arg2 = p;
+				node->info.expr.arg3 = q;
+				PICE (q);
 			      }
 			  }
 
-			ppp = $4;
+			p = $4;
 			if (node)
-			  node->info.expr.arg1 = ppp;
+			  node->info.expr.arg1 = p;
 			PICE (node);
 
 			$$ = node;
@@ -15014,7 +15024,7 @@ searched_when_clause
 	: WHEN search_condition THEN expression_
 		{{
 
-			PT_NODE *node, *ppp;
+			PT_NODE *node, *p;
 			node = parser_new_node (this_parser, PT_EXPR);
 			if (node)
 			  {
@@ -15022,14 +15032,14 @@ searched_when_clause
 			    node->info.expr.qualifier = PT_SEARCHED_CASE;
 			  }
 
-			ppp = $2;
+			p = $2;
 			if (node)
-			  node->info.expr.arg3 = ppp;
+			  node->info.expr.arg3 = p;
 			PICE (node);
 
-			ppp = $4;
+			p = $4;
 			if (node)
-			  node->info.expr.arg1 = ppp;
+			  node->info.expr.arg1 = p;
 			PICE (node);
 
 			$$ = node;
@@ -22120,6 +22130,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
           return NULL;
         }
       val->type_enum = PT_TYPE_NULL;
+      val->is_added_by_parser = 1;
 
       between_ge_lt = parser_make_expression (PT_BETWEEN_GE_LT, a2, a2->next, NULL);
       if (between_ge_lt == NULL)
@@ -22134,7 +22145,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
           return NULL;
         }
 
-      between->do_not_fold = true;
+      between->do_not_fold = 1;
 
       return parser_make_expression (key->op, a1, between, a3);
 
@@ -22460,6 +22471,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	  if (a2)
 	    {
 	      a2->type_enum = PT_TYPE_NULL;
+	      a2->is_added_by_parser = 1;
 	    }
 	}
 
@@ -22550,64 +22562,64 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_DECODE:
       {
 	int i;
-	PT_NODE *case_oper, *ppp, *qqq, *rrr, *nodep, *node, *curr, *prev;
+	PT_NODE *case_oper, *p, *q, *r, *nodep, *node, *curr, *prev;
 	int count;
 
 	if (c < 3)
 	  return NULL;
 
 	case_oper = args;
-	ppp = args->next;
+	p = args->next;
 	args->next = NULL;
-	curr = ppp->next;
-	ppp->next = NULL;
+	curr = p->next;
+	p->next = NULL;
 
 	node = parser_new_node (this_parser, PT_EXPR);
 	if (node)
 	  {
 	    node->info.expr.op = PT_DECODE;
-	    qqq = parser_new_node (this_parser, PT_EXPR);
-	    if (qqq)
+	    q = parser_new_node (this_parser, PT_EXPR);
+	    if (q)
 	      {
-		qqq->info.expr.op = PT_EQ;
-		qqq->info.expr.qualifier = PT_EQ_TORDER;
-		qqq->info.expr.arg1 =
+		q->info.expr.op = PT_EQ;
+		q->info.expr.qualifier = PT_EQ_TORDER;
+		q->info.expr.arg1 =
 		  parser_copy_tree_list (this_parser, case_oper);
-		qqq->info.expr.arg2 = ppp;
-		node->info.expr.arg3 = qqq;
-		PICE (qqq);
+		q->info.expr.arg2 = p;
+		node->info.expr.arg3 = q;
+		PICE (q);
 	      }
 
-	    ppp = curr->next;
+	    p = curr->next;
 	    curr->next = NULL;
 	    node->info.expr.arg1 = curr;
 	    PICE (node);
 	  }
 
 	prev = node;
-	count = parser_count_list (ppp);
+	count = parser_count_list (p);
 	for (i = 1; i <= count; i++)
 	  {
 	    if (i % 2 == 0)
 	      {
-		rrr = ppp->next;
-		ppp->next = NULL;
+		r = p->next;
+		p->next = NULL;
 		nodep = parser_new_node (this_parser, PT_EXPR);
 		if (nodep)
 		  {
 		    nodep->info.expr.op = PT_DECODE;
-		    qqq = parser_new_node (this_parser, PT_EXPR);
-		    if (qqq)
+		    q = parser_new_node (this_parser, PT_EXPR);
+		    if (q)
 		      {
-			qqq->info.expr.op = PT_EQ;
-			qqq->info.expr.qualifier = PT_EQ_TORDER;
-			qqq->info.expr.arg1 =
+			q->info.expr.op = PT_EQ;
+			q->info.expr.qualifier = PT_EQ_TORDER;
+			q->info.expr.arg1 =
 			  parser_copy_tree_list (this_parser, case_oper);
-			qqq->info.expr.arg2 = ppp;
-			nodep->info.expr.arg3 = qqq;
+			q->info.expr.arg2 = p;
+			nodep->info.expr.arg3 = q;
 			PICE (nodep);
 		      }
-		    nodep->info.expr.arg1 = rrr;
+		    nodep->info.expr.arg1 = r;
 		    nodep->info.expr.continued_case = 1;
 		  }
 		PICE (nodep);
@@ -22617,8 +22629,8 @@ parser_keyword_func (const char *name, PT_NODE * args)
 		PICE (prev);
 		prev = nodep;
 
-		ppp = rrr->next;
-		rrr->next = NULL;
+		p = r->next;
+		r->next = NULL;
 	      }
 	  }
 
@@ -22626,15 +22638,18 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	if (i % 2 == 0)
 	  {
 	    if (prev)
-	      prev->info.expr.arg2 = ppp;
+	      prev->info.expr.arg2 = p;
 	    PICE (prev);
 	  }
 	else if (prev && prev->info.expr.arg2 == NULL)
 	  {
-	    ppp = parser_new_node (this_parser, PT_VALUE);
-	    if (ppp)
-	      ppp->type_enum = PT_TYPE_NULL;
-	    prev->info.expr.arg2 = ppp;
+	    p = parser_new_node (this_parser, PT_VALUE);
+	    if (p)
+	      {
+		    p->type_enum = PT_TYPE_NULL;
+		    p->is_added_by_parser = 1;
+	      }
+	    prev->info.expr.arg2 = p;
 	    PICE (prev);
 	  }
 
@@ -22815,8 +22830,9 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	    val = parser_new_node (this_parser, PT_VALUE);
 	    if (val)
 	      {
-		val->type_enum = PT_TYPE_NULL;
-		val->is_hidden_column = 1;
+		    val->type_enum = PT_TYPE_NULL;
+		    val->is_hidden_column = 1;
+		    val->is_added_by_parser = 1;
 	      }
 	    expr->info.expr.arg2 = val;
 	  }

@@ -207,6 +207,7 @@ static PT_TYPE_ENUM pt_infer_common_type (const PT_OP_TYPE op,
 					  const TP_DOMAIN * expected_domain);
 static bool pt_get_expression_definition (const PT_OP_TYPE op,
 					  EXPRESSION_DEFINITION * def);
+static bool does_op_specially_treat_null_arg (PT_OP_TYPE op);
 static int pt_apply_expressions_definition (PARSER_CONTEXT * parser,
 					    PT_NODE ** expr);
 static PT_TYPE_ENUM pt_expr_get_return_type (PT_NODE * expr,
@@ -5538,6 +5539,36 @@ pt_is_range_or_comp (PT_OP_TYPE op)
     }
 }
 
+static bool
+does_op_specially_treat_null_arg (PT_OP_TYPE op)
+{
+  if (pt_is_operator_logical (op))
+    {
+      return true;
+    }
+
+  switch (op)
+    {
+    case PT_NVL:
+    case PT_IFNULL:
+    case PT_ISNULL:
+    case PT_NVL2:
+    case PT_COALESCE:
+    case PT_NULLIF:
+    case PT_RPAD:
+    case PT_TRANSLATE:
+    case PT_RAND:
+    case PT_DRAND:
+    case PT_RANDOM:
+    case PT_DRANDOM:
+    case PT_CONCAT:
+    case PT_CONCAT_WS:
+      return true;
+    default:
+      return false;
+    }
+}
+
 /*
  *  pt_apply_expressions_definition () - evaluate which expression signature
  *					 best matches the received arguments
@@ -5599,6 +5630,20 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
   if (arg3)
     {
       arg3_type = arg3->type_enum;
+    }
+
+  /* check the expression contains NULL argument.
+   * If the op does not specially treat NULL args, for instance, NVL, NVL2,
+   * IS [NOT] NULL and so on, just decide the retun type as NULL.
+   */
+  if (!does_op_specially_treat_null_arg (op)
+      && ((arg1 && !arg1->is_added_by_parser && arg1_type == PT_TYPE_NULL)
+	  || (arg2 && !arg2->is_added_by_parser && arg2_type == PT_TYPE_NULL)
+	  || (arg3 && !arg3->is_added_by_parser
+	      && arg3_type == PT_TYPE_NULL)))
+    {
+      expr->type_enum = PT_TYPE_NULL;
+      return NO_ERROR;
     }
 
   matches = -1;
@@ -17376,25 +17421,25 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
     case PT_DECODE:
       /* If arg3 = NULL, then arg2 = NULL and arg1 != NULL.  For this case,
        * we've already finished checking case_search_condition. */
-      if (arg3 && (DB_VALUE_TYPE (arg3) == DB_TYPE_INTEGER &&
-		   !DB_GET_INT (arg3)))
-	{
-	  if (tp_value_coerce (arg2, result, domain) != DOMAIN_COMPATIBLE)
-	    {
-	      PT_ERRORmf2 (parser, o2, MSGCAT_SET_PARSER_SEMANTIC,
-			   MSGCAT_SEMANTIC_CANT_COERCE_TO,
-			   pt_short_print (parser, o2),
-			   pt_show_type_enum (rTyp));
-	      return 0;
-	    }
-	}
-      else
+      if (arg3 && (DB_VALUE_TYPE (arg3) == DB_TYPE_INTEGER
+		   && DB_GET_INT (arg3) != 0))
 	{
 	  if (tp_value_coerce (arg1, result, domain) != DOMAIN_COMPATIBLE)
 	    {
 	      PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_SEMANTIC,
 			   MSGCAT_SEMANTIC_CANT_COERCE_TO,
 			   pt_short_print (parser, o1),
+			   pt_show_type_enum (rTyp));
+	      return 0;
+	    }
+	}
+      else
+	{
+	  if (tp_value_coerce (arg2, result, domain) != DOMAIN_COMPATIBLE)
+	    {
+	      PT_ERRORmf2 (parser, o2, MSGCAT_SET_PARSER_SEMANTIC,
+			   MSGCAT_SEMANTIC_CANT_COERCE_TO,
+			   pt_short_print (parser, o2),
 			   pt_show_type_enum (rTyp));
 	      return 0;
 	    }
@@ -21511,6 +21556,12 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 
   assert (expr != NULL);
   assert (expr->node_type == PT_EXPR);
+
+  /* NULL has no collation */
+  if (expr->type_enum == PT_TYPE_NULL)
+    {
+      return NO_ERROR;
+    }
 
   op = expr->info.expr.op;
   arg1 = expr->info.expr.arg1;
