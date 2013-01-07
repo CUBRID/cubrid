@@ -1236,34 +1236,50 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       {
 	long result;
 	char *endptr;
+	char *temp_argument = NULL;
 
 	if (*argument != '\0')
 	  {
-	    errno = 0;		/* To distinguish success/failure after call */
+	    temp_argument = malloc (strlen (argument) + 1);
+	    if (temp_argument == NULL)
+	      {
+		csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
 
-	    result = strtol (argument, &endptr, 10);
+		return DO_CMD_FAILURE;
+	      }
+
+	    strcpy (temp_argument, argument);
+	    trim (temp_argument);
+
+	    errno = 0;		/* To distinguish success/failure after call */
+	    result = strtol (temp_argument, &endptr, 10);
 	    if ((errno == ERANGE
 		 && (result == LONG_MAX || result == LONG_MIN))
 		|| (errno != 0 && result == 0))
 	      {
 		fprintf (csql_Error_fp,
-			 "ERROR: Invalid string-width(%s).\n", argument);
+			 "ERROR: Invalid string-width(%s).\n", temp_argument);
 		break;
 	      }
 	    if (endptr && *endptr != '\0')
 	      {
 		fprintf (csql_Error_fp,
-			 "ERROR: Invalid string-width(%s).\n", argument);
+			 "ERROR: Invalid string-width(%s).\n", temp_argument);
 		break;
 	      }
 	    if (result > INT_MAX || result < 0)
 	      {
 		fprintf (csql_Error_fp,
-			 "ERROR: Invalid string-width(%s).\n", argument);
+			 "ERROR: Invalid string-width(%s).\n", temp_argument);
 		break;
 	      }
 
 	    csql_arg->string_width = result;
+
+	    if (temp_argument != NULL)
+	      {
+		free_and_init (temp_argument);
+	      }
 	  }
 	else
 	  {
@@ -3010,8 +3026,9 @@ get_column_width_argument (char **column_name, int *column_width,
       return CSQL_FAILURE;
     }
 
-  errno = 0;			/* To distinguish success/failure after call */
+  trim (s_width);
 
+  errno = 0;			/* To distinguish success/failure after call */
   result = strtol (s_width, &endptr, 10);
   if ((errno == ERANGE
        && (result == LONG_MAX || result == LONG_MIN))
