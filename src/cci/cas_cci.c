@@ -374,21 +374,26 @@ cci_connect_internal (char *ip, int port, char *db, char *user, char *pass,
 
       return CCI_ER_CON_HANDLE;
     }
+
   reset_error_buffer (&(con_handle->err_buf));
 
   SET_START_TIME_FOR_LOGIN (con_handle);
   error = cas_connect (con_handle, &(con_handle->err_buf));
   if (error < 0)
     {
+      copy_error_buffer (err_buf, &(con_handle->err_buf));
       hm_con_handle_free (con_handle);
       goto error;
     }
+
   error = qe_end_tran (con_handle, CCI_TRAN_COMMIT, &con_handle->err_buf);
   if (error < 0)
     {
+      copy_error_buffer (err_buf, &(con_handle->err_buf));
       hm_con_handle_free (con_handle);
       goto error;
     }
+
   SET_AUTOCOMMIT_FROM_CASINFO (con_handle);
   RESET_START_TIME (con_handle);
 
