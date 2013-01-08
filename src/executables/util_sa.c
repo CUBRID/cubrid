@@ -2717,6 +2717,9 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
   char *vclass_names = NULL;
   int vclass_names_used = 0;
   int vclass_names_alloced = 0;
+  char *part_tables = NULL;
+  int part_tables_used = 0;
+  int part_tables_alloced = 0;
   bool need_manual_sync = false;
 
   assert (db_name != NULL);
@@ -2888,14 +2891,14 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 	  /* first drop foreign keys on attributes using collation */
 	  /* CLASS_NAME, INDEX_NAME */
 
-	  sprintf (query, "SELECT A.class_of.class_name, I.index_name " 
-		   "from _db_attribute A, _db_index I, " 
-		   "_db_index_key IK, _db_domain D " 
-		   "where D.object_of = A AND D.collation_id = %d AND " 
-		   "NOT (A.class_of.class_name IN (SELECT " 
-		   "CONCAT (P.class_of.class_name, '__p__', P.pname) " 
-		   "FROM _db_partition P WHERE " 
-		   "CONCAT (P.class_of.class_name, '__p__', P.pname) = " 
+	  sprintf (query, "SELECT A.class_of.class_name, I.index_name "
+		   "from _db_attribute A, _db_index I, "
+		   "_db_index_key IK, _db_domain D "
+		   "where D.object_of = A AND D.collation_id = %d AND "
+		   "NOT (A.class_of.class_name IN (SELECT "
+		   "CONCAT (P.class_of.class_name, '__p__', P.pname) "
+		   "FROM _db_partition P WHERE "
+		   "CONCAT (P.class_of.class_name, '__p__', P.pname) = "
 		   "A.class_of.class_name AND P.pname IS NOT NULL))"
 		   "AND A.attr_name = IK.key_attr_name AND IK in I.key_attrs "
 		   "AND I.is_foreign_key = 1 AND I.class_of = A.class_of",
@@ -2964,15 +2967,21 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 		   "WHEN 26 THEN 'NCHAR' WHEN 35 THEN 'ENUM' END, "
 		   "IF (D.prec < 0 AND "
 		   "(D.data_type = 4 OR D.data_type = 27) ,"
-		   "'', CONCAT ('(', D.prec,')')))) "
+		   "'', CONCAT ('(', D.prec,')')))), "
+		   "CASE WHEN A.class_of.sub_classes IS NULL THEN 0 "
+		   "ELSE NVL((SELECT 1 FROM _db_partition p "
+		   "WHERE p.class_of = A.class_of AND p.pname IS NULL AND "
+		   "LOCATE(A.attr_name, TRIM(SUBSTRING(p.pexpr FROM 8 FOR "
+		   "(POSITION(' FROM ' IN p.pexpr)-8)))) > 0 ), 0) "
+		   "END "
 		   "FROM _db_domain D,_db_attribute A "
 		   "WHERE D.object_of = A AND D.collation_id = %d "
 		   "AND NOT (A.class_of.class_name IN "
 		   "(SELECT CONCAT (P.class_of.class_name, '__p__', P.pname) "
 		   "FROM _db_partition P WHERE "
 		   "CONCAT (P.class_of.class_name, '__p__', P.pname) "
-		   " = A.class_of.class_name AND P.pname IS NOT NULL))",
-		   db_coll->coll_id);
+		   " = A.class_of.class_name AND P.pname IS NOT NULL)) "
+		   "ORDER BY A.class_of.class_name", db_coll->coll_id);
 
 	  db_status = db_execute (query, &query_result, &query_error);
 
@@ -2987,6 +2996,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 	      DB_VALUE attr;
 	      DB_VALUE ct;
 	      DB_VALUE attr_data_type;
+	      DB_VALUE has_part;
 
 	      fprintf (stdout, "----------------------------------------\n");
 	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
@@ -2996,6 +3006,8 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 
 	      while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
 		{
+		  bool add_to_part_tables = false;
+
 		  if (db_query_get_tuple_value (query_result, 0, &class_name)
 		      != NO_ERROR
 		      || db_query_get_tuple_value (query_result, 1, &ct)
@@ -3004,7 +3016,9 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 		      != NO_ERROR
 		      || db_query_get_tuple_value (query_result, 3,
 						   &attr_data_type) !=
-		      NO_ERROR)
+		      NO_ERROR
+		      || db_query_get_tuple_value (query_result, 4, &has_part)
+		      != NO_ERROR)
 		    {
 		      status = EXIT_FAILURE;
 		      goto exit;
@@ -3014,13 +3028,26 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 		  assert (DB_VALUE_TYPE (&attr) == DB_TYPE_STRING);
 		  assert (DB_VALUE_TYPE (&ct) == DB_TYPE_INTEGER);
 		  assert (DB_VALUE_TYPE (&attr_data_type) == DB_TYPE_STRING);
+		  assert (DB_VALUE_TYPE (&has_part) == DB_TYPE_INTEGER);
 
-		  fprintf (stdout, "%s | %s\n", DB_GET_STRING (&class_name),
-			   DB_GET_STRING (&attr));
+		  fprintf (stdout, "%s | %s %s\n",
+			   DB_GET_STRING (&class_name), DB_GET_STRING (&attr),
+			   DB_GET_STRING (&attr_data_type));
 
 		  /* output query to fix schema */
 		  if (DB_GET_INTEGER (&ct) == 0)
 		    {
+		      if (DB_GET_INTEGER (&has_part) == 1)
+			{
+			  /* class is partitioned, remove partition;
+			   * we cannot change the collation of an attribute
+			   * having partitions */
+			  fprintf (f_stmt,
+				   "ALTER TABLE [%s] REMOVE PARTITIONING;\n",
+				   DB_GET_STRING (&class_name));
+			  add_to_part_tables = true;
+			}
+
 		      snprintf (query, sizeof (query) - 1, "ALTER TABLE [%s] "
 				"MODIFY [%s] %s COLLATE utf8_bin;",
 				DB_GET_STRING (&class_name),
@@ -3061,6 +3088,60 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 		    }
 		  fprintf (f_stmt, "%s\n", query);
 		  need_manual_sync = true;
+
+		  if (add_to_part_tables)
+		    {
+		      if (part_tables == NULL
+			  || part_tables_alloced <= part_tables_used)
+			{
+			  if (part_tables_alloced == 0)
+			    {
+			      part_tables_alloced =
+				1 + DB_MAX_IDENTIFIER_LENGTH;
+			    }
+			  part_tables =
+			    db_private_realloc (NULL, part_tables,
+						2 * part_tables_alloced);
+
+			  if (part_tables == NULL)
+			    {
+			      status = EXIT_FAILURE;
+			      goto exit;
+			    }
+			  part_tables_alloced *= 2;
+			}
+
+		      memcpy (part_tables + part_tables_used,
+			      DB_GET_STRING (&class_name),
+			      DB_GET_STRING_SIZE (&class_name));
+		      part_tables_used += DB_GET_STRING_SIZE (&class_name);
+		      memcpy (part_tables + part_tables_used, "\0", 1);
+		      part_tables_used += 1;
+		    }
+		}
+	      if (part_tables != NULL)
+		{
+		  char *curr_tbl = part_tables;
+		  int tbl_size = strlen (curr_tbl);
+
+		  fprintf (stdout,
+			   "----------------------------------------\n");
+		  fprintf (stdout,
+			   msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_SYNCCOLLDB,
+					   SYNCCOLLDB_MSG_PARTITION_OBS_COLL),
+			   db_coll->coll_name);
+
+		  while (tbl_size > 0)
+		    {
+		      printf ("%s\n", curr_tbl);
+		      curr_tbl += tbl_size + 1;
+		      if (curr_tbl >= part_tables + part_tables_used)
+			{
+			  break;
+			}
+		      tbl_size = strlen (curr_tbl);
+		    }
 		}
 	    }
 
@@ -3304,6 +3385,16 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 	}
     }
 
+  if (!need_manual_sync)
+    {
+      if (f_stmt != NULL)
+	{
+	  fclose (f_stmt);
+	  f_stmt = NULL;
+	}
+      remove (f_stmt_name);
+    }
+
   if (lang_collation_count () != sys_coll_found_cnt)
     {
       fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
@@ -3355,6 +3446,12 @@ exit:
     {
       db_private_free (NULL, vclass_names);
       vclass_names = NULL;
+    }
+
+  if (part_tables != NULL)
+    {
+      db_private_free (NULL, part_tables);
+      part_tables = NULL;
     }
 
   if (f_stmt != NULL)

@@ -984,6 +984,7 @@ language-string	 区域语言字符串用于输出区域共享库.\n\
   -z, --normalization   dump normalization data; 默认 : 关闭\n
 
 $set 48 MSGCAT_UTIL_SET_SYNCCOLLDB
+43 Partitioning must be removed before changing the current collation '%s' of their partitioning attribute.\nClass name\n
 44 Foreign keys on attributes having collation '%s' must be dropped before changing collation of attributes.\nTable | Foreign Key\n
 45 Classes having collation '%s'; they should be redefined :\nClass name\n
 46 Function indexes having expression containing collation '%s'; they should be redefined :\n\
