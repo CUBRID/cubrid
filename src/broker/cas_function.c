@@ -1604,10 +1604,6 @@ fn_execute_batch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
   net_arg_get_char (auto_commit_mode, argv[arg_index]);
   arg_index++;
-  if (auto_commit_mode == TRUE)
-    {
-      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
-    }
 
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info->client_version,
 					   PROTOCOL_V4))
@@ -1626,7 +1622,8 @@ fn_execute_batch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
   cas_log_write (0, true, "execute_batch %d", argc - arg_index);
 
-  ux_execute_batch (argc - arg_index, argv + arg_index, net_buf, req_info);
+  ux_execute_batch (argc - arg_index, argv + arg_index, net_buf, req_info,
+		    auto_commit_mode);
 
   cas_log_write (0, true, "execute_batch end");
 

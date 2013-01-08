@@ -144,7 +144,7 @@ extern int ux_execute_array (T_SRV_HANDLE * srv_h_id, int argc, void **argv,
 			     T_NET_BUF * net_buf, T_REQ_INFO * req_info);
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 extern int ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
-			     T_REQ_INFO * req_info);
+			     T_REQ_INFO * req_info, char auto_commit_mode);
 extern int ux_cursor_update (T_SRV_HANDLE * srv_handle, int cursor_pos,
 			     int argc, void **argv, T_NET_BUF * net_buf);
 extern void ux_cursor_close (T_SRV_HANDLE * srv_handle);

@@ -2085,7 +2085,7 @@ next_result_error:
 
 int
 ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
-		  T_REQ_INFO * req_info)
+		  T_REQ_INFO * req_info, char auto_commit_mode)
 {
   int query_index;
   int err_code, sql_size, res_count, stmt_id;
@@ -2176,7 +2176,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
       db_query_end (result);
       db_close_session (session);
 
-      if (req_info->need_auto_commit == TRAN_AUTOCOMMIT)
+      if (auto_commit_mode == TRUE)
 	{
 	  db_commit_transaction ();
 	}
@@ -2188,7 +2188,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
       err_code = db_error_code ();
       if (err_code < 0)
 	{
-	  if (req_info->need_auto_commit == TRAN_AUTOCOMMIT
+	  if (auto_commit_mode == FALSE
 	      && (ER_IS_SERVER_DOWN_ERROR (err_code)
 		  || ER_IS_ABORTED_DUE_TO_DEADLOCK (err_code)))
 	    {
@@ -2227,7 +2227,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
 	  db_close_session (session);
 	}
 
-      if (req_info->need_auto_commit == TRAN_AUTOCOMMIT)
+      if (auto_commit_mode == TRUE)
 	{
 	  db_abort_transaction ();
 	}
