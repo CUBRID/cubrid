@@ -2871,7 +2871,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 		  fprintf (stdout, "%s\n", DB_GET_STRING (&class_name));
 
 		  /* output query to fix schema */
-		  snprintf (query, sizeof (query) - 1, "ALTER TABLE %s "
+		  snprintf (query, sizeof (query) - 1, "ALTER TABLE [%s] "
 			    "COLLATE utf8_bin;", DB_GET_STRING (&class_name));
 		  fprintf (f_stmt, "%s\n", query);
 		  need_manual_sync = true;
@@ -2887,13 +2887,76 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 
       if (check_atts)
 	{
-	  /* CLASS_NAME, CLASS_TYPE, ATTR_NAME ATTR_FULL_TYPE */
+	  /* first drop foreign keys on attributes using collation */
+	  /* CLASS_NAME, INDEX_NAME */
+
+	  sprintf (query, "SELECT A.class_of.class_name, I.index_name " 
+		   "from _db_attribute A, _db_index I, " 
+		   "_db_index_key IK, _db_domain D " 
+		   "where D.object_of = A AND D.collation_id = %d AND " 
+		   "NOT (A.class_of.class_name IN (SELECT " 
+		   "CONCAT (P.class_of.class_name, '__p__', P.pname) " 
+		   "FROM _db_partition P WHERE " 
+		   "CONCAT (P.class_of.class_name, '__p__', P.pname) = " 
+		   "A.class_of.class_name AND P.pname IS NOT NULL))"
+		   "AND A.attr_name = IK.key_attr_name AND IK in I.key_attrs "
+		   "AND I.is_foreign_key = 1 AND I.class_of = A.class_of",
+		   db_coll->coll_id);
+
+	  db_status = db_execute (query, &query_result, &query_error);
+
+	  if (db_status < 0)
+	    {
+	      status = EXIT_FAILURE;
+	      goto exit;
+	    }
+	  else if (db_status > 0)
+	    {
+	      DB_VALUE class_name;
+	      DB_VALUE index_name;
+
+	      fprintf (stdout, "----------------------------------------\n");
+	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
+					       MSGCAT_UTIL_SET_SYNCCOLLDB,
+					       SYNCCOLLDB_MSG_FK_OBS_COLL),
+		       db_coll->coll_name);
+
+	      while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
+		{
+		  if (db_query_get_tuple_value (query_result, 0, &class_name)
+		      != NO_ERROR
+		      || db_query_get_tuple_value (query_result, 1,
+						   &index_name) != NO_ERROR)
+		    {
+		      status = EXIT_FAILURE;
+		      goto exit;
+		    }
+		  assert (DB_VALUE_TYPE (&class_name) == DB_TYPE_STRING);
+		  assert (DB_VALUE_TYPE (&index_name) == DB_TYPE_STRING);
+		  fprintf (stdout, "%s | %s\n", DB_GET_STRING (&class_name),
+			   DB_GET_STRING (&index_name));
+		  snprintf (query, sizeof (query) - 1,
+			    "ALTER TABLE [%s] DROP FOREIGN KEY [%s];",
+			    DB_GET_STRING (&class_name),
+			    DB_GET_STRING (&index_name));
+		  fprintf (f_stmt, "%s\n", query);
+		  need_manual_sync = true;
+		}
+	    }
+
+	  if (query_result != NULL)
+	    {
+	      db_query_end (query_result);
+	      query_result = NULL;
+	    }
+
+
+	  /* CLASS_NAME, CLASS_TYPE, ATTR_NAME, ATTR_FULL_TYPE */
 	  /* ATTR_FULL_TYPE = CHAR(20) */
 	  /* or               ENUM ('a', 'b') */
 
 	  sprintf (query, "SELECT A.class_of.class_name, "
-		   "A.class_of.class_type, "
-		   "CONCAT (A.attr_name, ' ' , "
+		   "A.class_of.class_type, A.attr_name, "
 		   "IF (D.data_type = 35,"
 		   "CONCAT ('ENUM (', "
 		   "(SELECT GROUP_CONCAT(concat('''',EV.a,'''')) "
@@ -2903,7 +2966,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 		   "WHEN 26 THEN 'NCHAR' WHEN 35 THEN 'ENUM' END, "
 		   "IF (D.prec < 0 AND "
 		   "(D.data_type = 4 OR D.data_type = 27) ,"
-		   "'', CONCAT ('(', D.prec,')'))))) "
+		   "'', CONCAT ('(', D.prec,')')))) "
 		   "FROM _db_domain D,_db_attribute A "
 		   "WHERE D.object_of = A AND D.collation_id = %d "
 		   "AND NOT (A.class_of.class_name IN "
@@ -2925,6 +2988,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 	      DB_VALUE class_name;
 	      DB_VALUE attr;
 	      DB_VALUE ct;
+	      DB_VALUE attr_data_type;
 
 	      fprintf (stdout, "----------------------------------------\n");
 	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
@@ -2939,7 +3003,10 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 		      || db_query_get_tuple_value (query_result, 1, &ct)
 		      != NO_ERROR
 		      || db_query_get_tuple_value (query_result, 2, &attr)
-		      != NO_ERROR)
+		      != NO_ERROR
+		      || db_query_get_tuple_value (query_result, 3,
+						   &attr_data_type) !=
+		      NO_ERROR)
 		    {
 		      status = EXIT_FAILURE;
 		      goto exit;
@@ -2948,6 +3015,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 		  assert (DB_VALUE_TYPE (&class_name) == DB_TYPE_STRING);
 		  assert (DB_VALUE_TYPE (&attr) == DB_TYPE_STRING);
 		  assert (DB_VALUE_TYPE (&ct) == DB_TYPE_INTEGER);
+		  assert (DB_VALUE_TYPE (&attr_data_type) == DB_TYPE_STRING);
 
 		  fprintf (stdout, "%s | %s\n", DB_GET_STRING (&class_name),
 			   DB_GET_STRING (&attr));
@@ -2955,14 +3023,15 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 		  /* output query to fix schema */
 		  if (DB_GET_INTEGER (&ct) == 0)
 		    {
-		      snprintf (query, sizeof (query) - 1, "ALTER TABLE %s "
-				"MODIFY %s COLLATE utf8_bin;",
+		      snprintf (query, sizeof (query) - 1, "ALTER TABLE [%s] "
+				"MODIFY [%s] %s COLLATE utf8_bin;",
 				DB_GET_STRING (&class_name),
-				DB_GET_STRING (&attr));
+				DB_GET_STRING (&attr),
+				DB_GET_STRING (&attr_data_type));
 		    }
 		  else
 		    {
-		      snprintf (query, sizeof (query) - 1, "DROP VIEW %s;",
+		      snprintf (query, sizeof (query) - 1, "DROP VIEW [%s];",
 				DB_GET_STRING (&class_name));
 
 		      if (vclass_names == NULL
@@ -3075,7 +3144,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 
 		  if (!already_dropped)
 		    {
-		      snprintf (query, sizeof (query) - 1, "DROP VIEW %s;",
+		      snprintf (query, sizeof (query) - 1, "DROP VIEW [%s];",
 				DB_GET_STRING (&view));
 		      fprintf (f_stmt, "%s\n", query);
 		    }
@@ -3133,7 +3202,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 			   DB_GET_STRING (&trig_cond));
 
 		  /* output query to fix schema */
-		  snprintf (query, sizeof (query) - 1, "DROP TRIGGER %s;",
+		  snprintf (query, sizeof (query) - 1, "DROP TRIGGER [%s];",
 			    DB_GET_STRING (&trig_name));
 		  fprintf (f_stmt, "%s\n", query);
 		  need_manual_sync = true;
@@ -3197,8 +3266,8 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 			   DB_GET_STRING (&func_expr));
 
 		  /* output query to fix schema */
-		  snprintf (query, sizeof (query) - 1, "ALTER TABLE %s "
-			    "DROP INDEX %s;", DB_GET_STRING (&class_name),
+		  snprintf (query, sizeof (query) - 1, "ALTER TABLE [%s] "
+			    "DROP INDEX [%s];", DB_GET_STRING (&class_name),
 			    DB_GET_STRING (&index_name));
 		  fprintf (f_stmt, "%s\n", query);
 		  need_manual_sync = true;

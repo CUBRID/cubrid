@@ -984,6 +984,7 @@ các tùy chọn khả dụng:\n\
   -z, --normalization   xóa bỏ dữ liệu chuẩn tắc; mặc định : tắt\n
 
 $set 48 MSGCAT_UTIL_SET_SYNCCOLLDB
+44 Foreign keys on attributes having collation '%s' must be dropped before changing collation of attributes.\nTable | Foreign Key\n
 45 Classes having collation '%s'; they should be redefined :\nClass name\n
 46 Function indexes having expression containing collation '%s'; they should be redefined :\n\
 Table | Index | Function expression\n
