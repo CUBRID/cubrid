@@ -9524,7 +9524,8 @@ static void
 update_query_execution_count (T_APPL_SERVER_INFO * as_info_p, char stmt_type)
 {
   assert (as_info_p != NULL);
-  assert (0 < stmt_type && stmt_type < CUBRID_MAX_STMT_TYPE);
+  assert (CUBRID_STMT_ALTER_CLASS <= stmt_type
+	  && stmt_type < CUBRID_MAX_STMT_TYPE);
 
   as_info_p->num_queries_processed %= MAX_DIAG_DATA_VALUE;
   as_info_p->num_queries_processed++;
