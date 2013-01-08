@@ -562,7 +562,14 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
       db_private_free_and_init (thread_p, func_unpack_info);
     }
 
-  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+  if (sort_args->cache_attr_id < 0)
+    {
+      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+    }
+  else
+    {
+      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
+    }
   addr.vfid = NULL;
   addr.pgptr = NULL;
   addr.offset = 0;
