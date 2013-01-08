@@ -9019,6 +9019,7 @@ pt_apply_spec (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g,
     g (parser, p->info.spec.flat_entity_list, arg);
   p->info.spec.method_list = g (parser, p->info.spec.method_list, arg);
   p->info.spec.on_cond = g (parser, p->info.spec.on_cond, arg);
+  p->info.spec.partition = g (parser, p->info.spec.partition, arg);
   /* p->info.spec.using_cond = g(parser, p->info.spec.using_cond, arg);
      -- does not support named columns join */
 
@@ -9041,6 +9042,7 @@ pt_init_spec (PT_NODE * p)
   p->info.spec.using_cond = NULL;
   p->info.spec.lock_hint = LOCKHINT_NONE;
   p->info.spec.auth_bypass_mask = DB_AUTH_NONE;
+  p->info.spec.partition = NULL;
   return p;
 }
 
@@ -9122,6 +9124,13 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       r1 = pt_print_bytes (parser, p->info.spec.entity_name);
       q = pt_append_varchar (parser, q, r1);
+      if (p->info.spec.partition)
+	{
+	  q = pt_append_nulstring (parser, q, " PARTITION (");
+	  r1 = pt_print_bytes (parser, p->info.spec.partition);
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, ")");
+	}
       parser->custom_print = save_custom;
       if (p->info.spec.except_list)
 	{

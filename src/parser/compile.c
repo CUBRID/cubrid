@@ -62,6 +62,7 @@ typedef struct pt_class_locks PT_CLASS_LOCKS;
 struct pt_class_locks
 {
   int num_classes;
+  int allocated_count;
   DB_FETCH_MODE lock_type;
   char **classes;
   int *only_all;
@@ -96,6 +97,9 @@ static PT_NODE *pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node,
 static PT_NODE *pt_find_lck_class_from_name (PARSER_CONTEXT * parser,
 					     PT_NODE * node, void *arg,
 					     int *continue_walk);
+static PT_NODE *pt_find_lck_class_from_partition (PARSER_CONTEXT * parser,
+						  PT_NODE * node,
+						  PT_CLASS_LOCKS * locks);
 static PT_NODE *pt_fix_lck_classes_for_delete (PARSER_CONTEXT * parser,
 					       PT_NODE * node, void *arg,
 					       int *continue_walk);
@@ -481,8 +485,11 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
   lcks.locks = NULL;
 
   /* we don't pre fetch for non query statements */
-  if (!statement)
-    return NULL;
+  if (statement == NULL)
+    {
+      return NULL;
+    }
+
   switch (statement->node_type)
     {
     case PT_DELETE:
@@ -528,6 +535,7 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* allocate the arrays */
+  lcks.allocated_count = lcks.num_classes;
   lcks.classes = (char **) malloc ((lcks.num_classes + 1) * sizeof (char *));
   if (lcks.classes == NULL)
     {
@@ -650,6 +658,10 @@ pt_count_entities (PARSER_CONTEXT * parser, PT_NODE * node,
   if (node->node_type == PT_SPEC)
     {
       (*cnt)++;
+      if (node->info.spec.partition != NULL)
+	{
+	  (*cnt)++;
+	}
     }
 
   return node;
@@ -690,6 +702,48 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks,
 		   PT_NODE * spec)
 {
   int len = 0;
+
+  if (lcks->num_classes >= lcks->allocated_count)
+    {
+      /* Need to allocate more space in the locks array. Do not free locks
+       * array if memory allocation fails, it will be freed by the caller
+       * of this function */
+      void *ptr = NULL;
+      size_t new_size = lcks->allocated_count + 1;
+
+      /* expand classes */
+      ptr = realloc (lcks->classes, new_size * sizeof (char *));
+      if (ptr == NULL)
+	{
+	  PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_RUNTIME,
+		      MSGCAT_RUNTIME_OUT_OF_MEMORY,
+		      new_size * sizeof (char *));
+	  return ER_FAILED;
+	}
+      lcks->classes = (char **) ptr;
+
+      /* expand only_all */
+      ptr = realloc (lcks->only_all, new_size * sizeof (int));
+      if (ptr == NULL)
+	{
+	  PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_RUNTIME,
+		      MSGCAT_RUNTIME_OUT_OF_MEMORY, new_size * sizeof (int));
+	  return ER_FAILED;
+	}
+      lcks->only_all = (int *) ptr;
+
+      /* expand locks */
+      ptr = realloc (lcks->locks, new_size * sizeof (LOCK));
+      if (ptr == NULL)
+	{
+	  PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_RUNTIME,
+		      MSGCAT_RUNTIME_OUT_OF_MEMORY, new_size * sizeof (LOCK));
+	  return ER_FAILED;
+	}
+      lcks->locks = (LOCK *) ptr;
+
+      lcks->allocated_count++;
+    }
 
   /* need to lowercase the class name so that the lock manager
    * can find it. */
@@ -737,7 +791,7 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks,
  * PT_SELECT, PT_UNION, PT_DIFFERENCE, or PT_INTERSECTION) it will set
  * the correct lock mode for the first entity in the statement.
  * All other entities will be fetched in with a read lock mode. Also, for the
- * PT_UPDATE and PT_DELETE all antities will be fetched in with a read lock
+ * PT_UPDATE and PT_DELETE all entities will be fetched in with a read lock
  * mode.
  *
  * This will only work when the writable class is the first class encountered
@@ -792,6 +846,16 @@ pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node,
       return node;
     }
 
+  if (node->info.spec.partition != NULL)
+    {
+      /* add specified lock on specified partition */
+      node = pt_find_lck_class_from_partition (parser, node, lcks);
+      if (node == NULL)
+	{
+	  *continue_walk = PT_STOP_WALK;
+	  return NULL;
+	}
+    }
   /* only add to the array, if not there already in this lock mode. */
   if (!pt_in_lck_array (lcks,
 			node->info.spec.entity_name->info.name.original))
@@ -900,6 +964,16 @@ pt_find_lck_class_from_name (PARSER_CONTEXT * parser, PT_NODE * node,
   else
     {
       /* only add to the array, if not there already in this lock mode. */
+      if (found_spec->info.spec.partition != NULL)
+	{
+	  found_spec =
+	    pt_find_lck_class_from_partition (parser, found_spec, lcks);
+	  if (found_spec == NULL)
+	    {
+	      *continue_walk = PT_STOP_WALK;
+	      return NULL;
+	    }
+	}
       if (!pt_in_lck_array (lcks,
 			    found_spec->info.spec.entity_name->info.name.
 			    original))
@@ -909,6 +983,58 @@ pt_find_lck_class_from_name (PARSER_CONTEXT * parser, PT_NODE * node,
 	      *continue_walk = PT_STOP_WALK;
 	      return node;
 	    }
+	}
+    }
+
+  return node;
+}
+
+/*
+ * pt_find_lck_class_from_partition - add pre-fetch locks for specified
+ *				      partition
+ * return: spec
+ * parser (in) : parser context
+ * node	  (in) : partition spec
+ * locks (in)  : locks array
+ */
+static PT_NODE *
+pt_find_lck_class_from_partition (PARSER_CONTEXT * parser, PT_NODE * node,
+				  PT_CLASS_LOCKS * locks)
+{
+  int error = NO_ERROR;
+  const char *entity_name = NULL;
+  const char *partition_name = NULL;
+
+  if (node == NULL || node->info.spec.partition == NULL)
+    {
+      return node;
+    }
+
+  entity_name = node->info.spec.entity_name->info.name.original;
+  partition_name =
+    pt_partition_name (parser, entity_name,
+		       node->info.spec.partition->info.name.original);
+  if (partition_name == NULL)
+    {
+      if (!pt_has_error (parser))
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate memory");
+	  return NULL;
+	}
+    }
+
+  if (!pt_in_lck_array (locks, partition_name))
+    {
+      /* Set lock on specified partition. Only add to the array if not there
+       * already in this lock mode. */
+      node->info.spec.entity_name->info.name.original = partition_name;
+      error = pt_add_lock_class (parser, locks, node);
+
+      /* restore spec name */
+      node->info.spec.entity_name->info.name.original = entity_name;
+      if (error != NO_ERROR)
+	{
+	  return NULL;
 	}
     }
 
@@ -944,6 +1070,15 @@ pt_fix_lck_classes_for_delete (PARSER_CONTEXT * parser, PT_NODE * node,
 	  || found_spec->info.spec.entity_name->node_type != PT_NAME)
 	{
 	  return node;
+	}
+
+      if (found_spec->info.spec.partition != NULL)
+	{
+	  /* name resolving should remove the partition spec */
+	  assert (false);
+	  *continue_walk = PT_STOP_WALK;
+	  PT_INTERNAL_ERROR (parser, "Found resolved partition spec");
+	  return NULL;
 	}
 
       /* only add to the array, if not there already in this lock mode. */
@@ -997,6 +1132,14 @@ pt_set_locks_for_parenthesized_entity_list (PARSER_CONTEXT * parser,
 	  PT_CLASS_LOCKS *lcks = (PT_CLASS_LOCKS *) arg;
 
 	  /* add lock for the spec if it is not already in the locks list */
+	  if (node->info.spec.partition)
+	    {
+	      node = pt_find_lck_class_from_partition (parser, node, lcks);
+	      if (node == NULL)
+		{
+		  return NULL;
+		}
+	    }
 	  if (!pt_in_lck_array
 	      (lcks, node->info.spec.entity_name->info.name.original))
 	    {
@@ -1057,6 +1200,16 @@ pt_fix_lck_classes_for_update (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks,
 	}
       else
 	{
+	  if (found_spec->info.spec.partition)
+	    {
+	      found_spec = pt_find_lck_class_from_partition (parser,
+							     found_spec,
+							     lcks);
+	      if (found_spec == NULL)
+		{
+		  return ER_FAILED;
+		}
+	    }
 	  /* add lock for the spec if it is not already in the locks list */
 	  if (!pt_in_lck_array (lcks,
 				found_spec->info.spec.entity_name->info.name.
@@ -1187,7 +1340,16 @@ pt_fix_lck_classes_for_update (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks,
 		}
 	      if (found_spec->info.spec.entity_name->node_type == PT_NAME)
 		{
-		  /* ignore if this spec with this lock is already there */
+		  if (found_spec->info.spec.partition)
+		    {
+		      found_spec =
+			pt_find_lck_class_from_partition (parser,
+							  found_spec, lcks);
+		      if (found_spec == NULL)
+			{
+			  return ER_FAILED;
+			}
+		    }
 		  if (!pt_in_lck_array (lcks,
 					found_spec->info.spec.entity_name->
 					info.name.original))
@@ -1828,6 +1990,14 @@ pt_fix_lck_classes_for_merge (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks,
     }
   else
     {
+      if (spec->info.spec.partition)
+	{
+	  spec = pt_find_lck_class_from_partition (parser, spec, lcks);
+	  if (spec == NULL)
+	    {
+	      return ER_FAILED;
+	    }
+	}
       /* add lock for the spec if it is not already in the locks list */
       if (spec->info.spec.entity_name
 	  && !pt_in_lck_array (lcks,

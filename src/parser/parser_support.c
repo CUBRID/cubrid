@@ -11096,3 +11096,35 @@ pt_find_node_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
     }
   return node;
 }
+
+/*
+ * pt_partition_name - get actual class name of a partition from root class name
+ *		       and partition suffix
+ * return: partition class name
+ * parser (in)	  : parser context
+ * class_name (in): partitioned class name
+ * partition (in) : partition suffix
+ */
+const char *
+pt_partition_name (PARSER_CONTEXT * parser, const char *class_name,
+		   const char *partition)
+{
+  char *name = NULL, *buf = NULL;
+  int size = 0;
+  size = strlen (class_name) + strlen (partition) +
+    strlen (PARTITIONED_SUB_CLASS_TAG);
+
+  buf = (char *) calloc (size + 1, sizeof (char));
+  if (buf == NULL)
+    {
+      PT_ERRORm (parser, NULL, MSGCAT_SET_PARSER_SEMANTIC,
+		 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return NULL;
+    }
+
+  sprintf (buf, "%s" PARTITIONED_SUB_CLASS_TAG "%s", class_name, partition);
+  name = pt_append_string (parser, name, buf);
+
+  free (buf);
+  return name;
+}

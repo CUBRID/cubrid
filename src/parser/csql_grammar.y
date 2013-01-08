@@ -473,8 +473,6 @@ static void pt_value_set_charset_coll (PARSER_CONTEXT *parser,
 static void pt_value_set_collation_info (PARSER_CONTEXT *parser,
 					 PT_NODE *node,
 					 PT_NODE *coll_node);
-static PT_NODE *pt_fix_partition_spec (PARSER_CONTEXT * parser,
-				       PT_NODE * spec, PT_NODE * partition);
 static PT_MISC_TYPE parser_attr_type;
 
 static bool allow_attribute_ordering;
@@ -4396,8 +4394,7 @@ only_all_class_spec
 			    ocs->info.spec.meta_class = PT_CLASS;
 			    if ($2)
 			      {
-				ocs = pt_fix_partition_spec (this_parser, ocs,
-							     $2);
+				ocs->info.spec.partition = $2;
 			      }
 			  }
 
@@ -5688,7 +5685,7 @@ insert_name_clause_header
 			    ocs->info.spec.meta_class = PT_CLASS;
 			    if ($4)
 			      {
-			        ocs = pt_fix_partition_spec (this_parser, ocs, $4);
+			        ocs->info.spec.partition = $4;
 			      }
 			  }
 
@@ -23286,49 +23283,6 @@ pt_value_set_collation_info (PARSER_CONTEXT *parser, PT_NODE *node,
     }
 
   node->info.value.print_collation = true;
-}
-
-static PT_NODE *
-pt_fix_partition_spec (PARSER_CONTEXT * parser, PT_NODE * spec,
-		       PT_NODE * partition)
-{
-  PT_NODE *entity_name = NULL;
-  char *part_name;
-  int size = 0;
-  size = strlen (spec->info.spec.entity_name->info.name.original) +
-  	 strlen (PARTITIONED_SUB_CLASS_TAG) +
-	 strlen (partition->info.name.original);
-  if (size > DB_MAX_IDENTIFIER_LENGTH)
-    {
-      PT_ERRORf (parser, spec, "identifier too long %d", size);
-      return NULL;      	  
-    }
-  part_name = parser_allocate_string_buffer (parser, size + 1, sizeof (char));
-  if (part_name == NULL)
-    {
-      PT_ERRORf (parser, spec, "cannot alloc %d bytes", size + 1);
-      return NULL;      
-    }
-
-  /* replace original spec with specified partition */
-  memset (part_name, 0, DB_MAX_IDENTIFIER_LENGTH);
-  snprintf (part_name, size + 1, "%s" PARTITIONED_SUB_CLASS_TAG "%s",
-  	    spec->info.spec.entity_name->info.name.original,
-	    partition->info.name.original);
-
-  entity_name = pt_name (parser, part_name);
-  if (entity_name == NULL)
-    {
-      PT_INTERNAL_ERROR (parser, "allocate new node");
-      return NULL;
-    }
-
-  /* set current entity name as alias for now. It will be overriden later
-   * if the spec gets an alias.
-   */
-  spec->info.spec.range_var = spec->info.spec.entity_name;
-  spec->info.spec.entity_name = entity_name;
-  return spec;
 }
 
 static PT_NODE *

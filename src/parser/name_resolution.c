@@ -125,6 +125,9 @@ static PT_NODE *pt_resolve_correlation (PARSER_CONTEXT * parser,
 					PT_NODE * in_node, PT_NODE * scope,
 					PT_NODE * exposed_spec, int col_name,
 					PT_NODE ** p_entity);
+static PT_NODE *pt_resolve_partition_spec (PARSER_CONTEXT * parser,
+					   PT_NODE * partition_spec,
+					   PT_NODE * spec_parent);
 static int pt_spec_in_domain (PT_NODE * cls, PT_NODE * lst);
 static PT_NODE *pt_get_resolution (PARSER_CONTEXT * parser,
 				   PT_BIND_NAMES_ARG * bind_arg,
@@ -5644,6 +5647,16 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec,
       return NULL;
     }
 
+  if (spec->info.spec.partition != NULL)
+    {
+      spec = pt_resolve_partition_spec (parser, spec, spec_parent);
+      if (spec == NULL)
+	{
+	  return spec;
+	}
+      return spec->info.spec.flat_entity_list;
+    }
+
   if ((name = spec->info.spec.entity_name) == 0)
     {
       /* is a derived table */
@@ -7987,4 +8000,116 @@ pt_bind_names_merge_update (PARSER_CONTEXT * parser, PT_NODE * node,
 			  bind_arg, pt_bind_names_post, bind_arg);
     }
   node->info.merge.into->next = NULL;
+}
+
+/*
+ * pt_resolve_partition_spec - resolve a spec specified with PARTITION keyword
+ *			       to the actual partition spec
+ * return: partition spec
+ * parser (in) : parser context
+ * spec (in)   : spec
+ * spec_parent (in) : spec parent
+ */
+static PT_NODE *
+pt_resolve_partition_spec (PARSER_CONTEXT * parser, PT_NODE * spec,
+			   PT_NODE * spec_parent)
+{
+  const char *partition_suffix = NULL;
+  const char *partition_name = NULL;
+  DB_OBJECT *root_op, *partition_op = NULL;
+  SM_CLASS *class_ = NULL;
+  PT_NODE *entity_name = NULL, *partition_node = NULL;
+  const char *root_name = NULL;
+
+  if (spec == NULL || spec->info.spec.partition == NULL)
+    {
+      return spec;
+    }
+
+  entity_name = spec->info.spec.entity_name;
+  root_name = entity_name->info.name.original;
+  partition_node = spec->info.spec.partition;
+  partition_suffix = partition_node->info.name.original;
+  partition_name = pt_partition_name (parser, root_name, partition_suffix);
+  if (partition_name == NULL)
+    {
+      return NULL;
+    }
+
+  /* set the actual partition name to the partition node */
+  partition_node->info.name.original = partition_name;
+
+  /* use partition name to make flat list */
+  spec->info.spec.entity_name = partition_node;
+  spec->info.spec.partition = NULL;
+  spec->info.spec.flat_entity_list =
+    pt_make_flat_name_list (parser, spec, spec_parent);
+  if (spec->info.spec.flat_entity_list == NULL)
+    {
+      return NULL;
+    }
+
+  /* Verify if current spec is a partition of the saved entity name */
+  root_op = db_find_class (root_name);
+  if (root_op == NULL)
+    {
+      PT_ERRORc (parser, spec, er_msg ());
+      return NULL;
+    }
+
+  partition_op = spec->info.spec.entity_name->info.name.db_object;
+  if (partition_op == NULL)
+    {
+      /* We have successfully resolved it, it should not be null */
+      PT_INTERNAL_ERROR (parser, "resolution");
+      return NULL;
+    }
+
+  /* do not check authorization here */
+  if (au_fetch_class_force (partition_op, &class_, AU_FETCH_READ) != NO_ERROR)
+    {
+      PT_ERRORc (parser, spec, er_msg ());
+      return NULL;
+    }
+
+  if (class_->partition_of == NULL)
+    {
+      /* no partition information */
+      PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_SEMANTIC,
+		  MSGCAT_SEMANTIC_PARTITION_DOES_NOT_EXIST, partition_suffix);
+      return NULL;
+    }
+
+  if (class_->users != NULL)
+    {
+      /* this is a partitioned class, it cannot be a partition of the
+       * specified class */
+      PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_SEMANTIC,
+		  MSGCAT_SEMANTIC_PARTITION_DOES_NOT_EXIST, partition_suffix);
+      return NULL;
+    }
+
+  /* class_ is a partition, we only have to verify that its superclass
+   * is root_op */
+  if (class_->inheritance->op != root_op)
+    {
+      /* class_ is a partition of a different class */
+      PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_SEMANTIC,
+		  MSGCAT_SEMANTIC_PARTITION_DOES_NOT_EXIST, partition_suffix);
+      return NULL;
+    }
+
+  /* set root class name as alias for this spec */
+  if (spec->info.spec.range_var == NULL)
+    {
+      spec->info.spec.range_var = entity_name;
+      entity_name = NULL;
+    }
+
+  if (entity_name != NULL)
+    {
+      parser_free_tree (parser, entity_name);
+    }
+
+  return spec;
 }

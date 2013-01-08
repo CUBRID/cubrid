@@ -902,6 +902,10 @@ extern "C"
   extern int pt_split_delete_stmt (PARSER_CONTEXT * parser,
 				   PT_NODE * delete_stmt);
 
+  extern const char *pt_partition_name (PARSER_CONTEXT * parser,
+					const char *class_name,
+					const char *partition);
+
 #ifdef __cplusplus
 }
 #endif
