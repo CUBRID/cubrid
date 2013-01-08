@@ -154,6 +154,7 @@ EXPORTS
 	genlocale
 	dumplocale
 	synccolldb
+	synccoll_force
 
 ;
 ;	enable below two functions when
@@ -773,3 +774,9 @@ EXPORTS
     envvar_root
     envvar_bindir_file
     btree_fix_overflow_oid_page_all_btrees
+	catcls_get_db_collation
+; db private
+	db_private_alloc
+	db_private_realloc
+	db_private_strdup
+	db_private_free	

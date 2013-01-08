@@ -1694,7 +1694,6 @@ boot_remove_unknown_temp_volumes (THREAD_ENTRY * thread_p)
   const char *temp_path;
   const char *temp_name;
   char *alloc_tempath = NULL;
-  int i;
 
   alloc_tempath = (char *) malloc (strlen (boot_Db_full_name) + 1);
   if (alloc_tempath == NULL)
@@ -3713,10 +3712,30 @@ xboot_register_client (THREAD_ENTRY * thread_p,
   bool check_db_coll = true;
 
 #if defined(SA_MODE)
+  char *adm_prg_file_name = NULL;
+
   if (client_credential != NULL
-      && client_credential->client_type == BOOT_CLIENT_ADMIN_UTILITY
       && client_credential->program_name != NULL
-      && strcasecmp (client_credential->program_name, "synccolldb") == 0)
+      && client_credential->client_type == BOOT_CLIENT_ADMIN_UTILITY)
+    {
+      adm_prg_file_name = client_credential->program_name
+	+ strlen (client_credential->program_name) - 1;
+      while (adm_prg_file_name > client_credential->program_name
+	     && *adm_prg_file_name != PATH_SEPARATOR)
+	{
+	  adm_prg_file_name--;
+	}
+
+      if (*adm_prg_file_name == PATH_SEPARATOR)
+	{
+	  adm_prg_file_name++;
+	}
+    }
+  if (adm_prg_file_name != NULL
+      && (strncasecmp (adm_prg_file_name, "synccolldb",
+		       strlen ("synccolldb")) == 0
+	  || strncasecmp (adm_prg_file_name, "migrate_90beta_to_91",
+			  strlen ("migrate_90beta_to_91")) == 0))
     {
       check_db_coll = false;
     }

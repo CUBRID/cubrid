@@ -1402,6 +1402,7 @@ extern int acldb (UTIL_FUNCTION_ARG * arg_map);
 extern int genlocale (UTIL_FUNCTION_ARG * arg_map);
 extern int dumplocale (UTIL_FUNCTION_ARG * arg_map);
 extern int synccolldb (UTIL_FUNCTION_ARG * arg_map);
+extern int synccoll_force (void);
 
 extern void util_admin_usage (const char *argv0);
 extern void util_admin_version (const char *argv0);

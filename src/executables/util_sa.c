@@ -95,8 +95,6 @@ static int parse_user_define_file (FILE * user_define_file,
 static int parse_up_to_date (char *up_to_date, struct tm *time_date);
 static int synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 			   int *new_sys_coll_cnt);
-static int synccoll_force (void);
-
 /*
  * util_admin_usage - display an usage of this utility
  *
@@ -3385,7 +3383,7 @@ exit:
  * synccoll_force() - sync_collations force new collation into DB
  *   return: EXIT_SUCCESS/EXIT_FAILURE
  */
-static int
+int
 synccoll_force (void)
 {
   DB_OBJECT *class_mop;
