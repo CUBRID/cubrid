@@ -638,8 +638,8 @@ static void invalid_class_id_error (LDR_CONTEXT * context, int id);
 static int ldr_init_loader (LDR_CONTEXT * context);
 static void ldr_abort (void);
 static void ldr_process_object_ref (LDR_OBJECT_REF * ref, int type);
-static void ldr_act_add_class_all_attrs (LDR_CONTEXT * context,
-					 const char *class_name);
+static int ldr_act_add_class_all_attrs (LDR_CONTEXT * context,
+					const char *class_name);
 
 /* default action */
 void (*ldr_act) (LDR_CONTEXT * context, const char *str, int len,
@@ -6512,14 +6512,19 @@ ldr_process_object_ref (LDR_OBJECT_REF * ref, int type)
   free_and_init (ref);
 }
 
-void
+int
 ldr_init_class_spec (const char *class_name)
 {
   ldr_act_init_context (ldr_Current_context, class_name, strlen (class_name));
-  ldr_act_add_class_all_attrs (ldr_Current_context, class_name);
+
+  /* 
+   * If there is no class or not authorized,
+   * Error message is printed and ER_FAILED is returned.
+   */
+  return ldr_act_add_class_all_attrs (ldr_Current_context, class_name);
 }
 
-static void
+static int
 ldr_act_add_class_all_attrs (LDR_CONTEXT * context, const char *class_name)
 {
   int err = NO_ERROR;
@@ -6550,11 +6555,8 @@ ldr_act_add_class_all_attrs (LDR_CONTEXT * context, const char *class_name)
       class_mop = context->cls;
     }
 
-  err = au_fetch_class (class_mop, &class_, AU_FETCH_READ, AU_SELECT);
-  if (err != NO_ERROR)
-    {
-      goto error_exit;
-    }
+  CHECK_ERR (err,
+	     au_fetch_class (class_mop, &class_, AU_FETCH_READ, AU_SELECT));
 
   for (att = class_->ordered_attributes; att != NULL; att = att->order_link)
     {
@@ -6562,7 +6564,7 @@ ldr_act_add_class_all_attrs (LDR_CONTEXT * context, const char *class_name)
 			strlen (att->header.name));
     }
 
-  return;
+  return NO_ERROR;
 
 error_exit:
   if (err != NO_ERROR)
@@ -6571,5 +6573,5 @@ error_exit:
       ldr_abort ();
     }
 
-  return;
+  return ER_FAILED;
 }

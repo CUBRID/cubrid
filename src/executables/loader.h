@@ -170,7 +170,7 @@ extern void ldr_increment_err_total (LDR_CONTEXT * context);
 
 extern void ldr_process_constants (LDR_CONSTANT * c);
 
-extern void ldr_init_class_spec (const char *class_name);
+extern int ldr_init_class_spec (const char *class_name);
 /*
  * Action to deal with instance attributes, arguments for
  * constructors and set elements

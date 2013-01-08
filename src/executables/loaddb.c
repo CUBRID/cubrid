@@ -401,6 +401,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   FILE *error_file = NULL;
   int status = 0;
   int errors, objects, defaults;
+  int ldr_init_ret = NO_ERROR;
 #if !defined (LDR_OLD_LOADDB)
   int lastcommit = 0;
 #endif /* !LDR_OLD_LOADDB */
@@ -792,7 +793,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 #if !defined (LDR_OLD_LOADDB)
 	  if (Table_name[0] != '\0')
 	    {
-	      ldr_init_class_spec (Table_name);
+	      ldr_init_ret = ldr_init_class_spec (Table_name);
 	    }
 #endif
 	  do_loader_parse (object_file);
@@ -807,13 +808,14 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  errors = 0;
 	}
 
+
       if (errors)
 	{
 	  print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS,
 					    MSGCAT_UTIL_SET_LOADDB,
 					    LOADDB_MSG_ERROR_COUNT), errors);
 	}
-      else if (!Syntax_check)
+      else if (ldr_init_ret == NO_ERROR && Syntax_check == false)
 	{
 	  /* now do it for real if there were no errors and we aren't
 	     doing a simple syntax check */
