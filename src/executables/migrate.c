@@ -385,7 +385,7 @@ check_collations (const char *db_name, int *need_manual_migr)
   f_stmt = fopen (f_stmt_name, "wt");
   if (f_stmt == NULL)
     {
-      printf ("\Unable to create report file %s.\n", f_stmt_name);
+      printf ("Unable to create report file %s.\n", f_stmt_name);
       goto exit;
     }
 
@@ -553,7 +553,7 @@ check_collations (const char *db_name, int *need_manual_migr)
 		  assert (DB_VALUE_TYPE (&ct) == DB_TYPE_INTEGER);
 		  assert (DB_VALUE_TYPE (&has_part) == DB_TYPE_INTEGER);
 
-		  printf ("%s | %s\n", DB_GET_STRING (&class_name),
+		  printf ("%s | %s %s\n", DB_GET_STRING (&class_name),
 			  DB_GET_STRING (&attr), DB_GET_STRING (&attr_def));
 
 		  /* output query to fix schema */
