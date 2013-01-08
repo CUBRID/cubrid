@@ -61,8 +61,10 @@ typedef int mode_t;
 #endif /* WINDOWS */
 
 #define CAS_LOG_BUFFER_SIZE (8192)
+#define SQL_LOG_BUFFER_SIZE 163840
 
 static char cas_log_buffer[CAS_LOG_BUFFER_SIZE];	/* 8K buffer */
+static char sql_log_buffer[SQL_LOG_BUFFER_SIZE];
 
 static char *make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf,
 				    size_t buf_size, const char *br_name,
@@ -174,6 +176,11 @@ cas_log_open (char *br_name, int as_index)
 	{
 	  log_fp = cas_fopen (log_filepath, "w");
 	  saved_log_fpos = 0;
+	}
+
+      if (log_fp)
+	{
+	  setvbuf (log_fp, sql_log_buffer, _IOFBF, SQL_LOG_BUFFER_SIZE);
 	}
     }
   else
