@@ -87,8 +87,8 @@ extern bool tran_is_in_libcas (void);
 #endif /* !LIBCAS_FOR_JSP */
 #endif
 
-static void increase_error_query_count (T_APPL_SERVER_INFO * as_info_p,
-					const T_ERROR_INFO * err_info_p);
+static void update_error_query_count (T_APPL_SERVER_INFO * as_info_p,
+				      const T_ERROR_INFO * err_info_p);
 
 static const char *tran_type_str[] = { "COMMIT", "ROLLBACK" };
 
@@ -427,7 +427,7 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv,
 #ifndef LIBCAS_FOR_JSP
   if (srv_h_id < 0)
     {
-      increase_error_query_count (as_info, &err_info);
+      update_error_query_count (as_info, &err_info);
     }
 #endif /* !LIBCAS_FOR_JSP */
 
@@ -706,7 +706,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv,
 
       if (ret_code < 0)
 	{
-	  increase_error_query_count (as_info, &err_info);
+	  update_error_query_count (as_info, &err_info);
 	}
 
       if (as_info->cur_slow_log_mode == SLOW_LOG_MODE_ON)
@@ -1749,7 +1749,7 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
       if (ret_code < 0)
 	{
-	  increase_error_query_count (as_info, &err_info);
+	  update_error_query_count (as_info, &err_info);
 	}
 
       if (as_info->cur_slow_log_mode == SLOW_LOG_MODE_ON)
@@ -2645,8 +2645,8 @@ set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout)
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 static void
-increase_error_query_count (T_APPL_SERVER_INFO * as_info_p,
-			    const T_ERROR_INFO * err_info_p)
+update_error_query_count (T_APPL_SERVER_INFO * as_info_p,
+			  const T_ERROR_INFO * err_info_p)
 {
   assert (as_info_p != NULL);
   assert (err_info_p != NULL);

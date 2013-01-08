@@ -243,8 +243,8 @@ static char database_user[SRV_CON_DBUSER_SIZE] = "";
 static char database_passwd[SRV_CON_DBPASSWD_SIZE] = "";
 static int multi_byte_character_max_length = 3;
 
-static void increase_executed_query_count (T_APPL_SERVER_INFO * as_info_p,
-					   char stmt_type);
+static void update_query_execution_count (T_APPL_SERVER_INFO * as_info_p,
+					  char stmt_type);
 
 int
 ux_check_connection (void)
@@ -545,7 +545,7 @@ ux_execute_internal (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
   n = cas_mysql_stmt_execute (stmt);
 
-  increase_executed_query_count (as_info, srv_handle->stmt_type);
+  update_query_execution_count (as_info, srv_handle->stmt_type);
 
   SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, n);
   if (n < 0)
@@ -736,7 +736,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
 
       n = cas_mysql_stmt_execute (stmt);
 
-      increase_executed_query_count (as_info, srv_handle->stmt_type);
+      update_query_execution_count (as_info, srv_handle->stmt_type);
 
       SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, n);
 
@@ -2980,7 +2980,7 @@ ux_prepare_call_info_free (T_PREPARE_CALL_INFO * call_info)
 }
 
 static void
-increase_executed_query_count (T_APPL_SERVER_INFO * as_info_p, char stmt_type)
+update_query_execution_count (T_APPL_SERVER_INFO * as_info_p, char stmt_type)
 {
   assert (as_info_p != NULL);
 
