@@ -9338,13 +9338,13 @@ lock_has_lock_on_object (const OID * oid, const OID * class_oid,
   if (oid == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2,
-	      "lock_has_exclusive_lock_on_object", "NULL OID pointer");
+	      "lock_has_lock_on_object", "NULL OID pointer");
       return ER_LK_BAD_ARGUMENT;
     }
   if (tran_index == NULL_TRAN_INDEX)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2,
-	      "lock_has_exclusive_lock_on_object", "NULL_TRAN_INDEX");
+	      "lock_has_lock_on_object", "NULL_TRAN_INDEX");
       return ER_LK_BAD_ARGUMENT;
     }
 
