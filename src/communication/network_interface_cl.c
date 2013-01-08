@@ -7789,7 +7789,7 @@ qmgr_prepare_and_execute_query (char *xasl_buffer, int xasl_size,
   int i, size;
   char *ptr, *senddata, *replydata;
   DB_VALUE *dbval;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 4) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 5) a_request;
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE * 3 + OR_PTR_ALIGNED_SIZE) a_reply;
   char *reply;
