@@ -141,6 +141,7 @@ static const char *prohibited_classes[] = {
   CTV_STORED_PROC_NAME,
   CTV_STORED_PROC_ARGS_NAME,
   CTV_PARTITION_NAME,
+  CTV_DB_COLLATION_NAME,
   NULL
 };
 
