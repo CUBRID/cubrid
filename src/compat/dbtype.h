@@ -592,11 +592,11 @@ struct db_midxkey
 
 /*
  * DB_ELO
- * This is the run-time state structure for an ELO. The ELO is part of 
- * the implementation of large object type and not intended to be used 
- * directly by the API. 
+ * This is the run-time state structure for an ELO. The ELO is part of
+ * the implementation of large object type and not intended to be used
+ * directly by the API.
  *
- * NOTE: 
+ * NOTE:
  *  1. LOID and related definition which were in storage_common.h moved here.
  *  2. DB_ELO definition in dbi_compat.h does not expose the LOID and
  *     related data type. BE CAREFUL when you change following definitions.

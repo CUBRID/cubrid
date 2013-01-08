@@ -112,10 +112,14 @@ struct disk_var_header
 extern int disk_goodvol_decache (THREAD_ENTRY * thread_p);
 extern bool disk_goodvol_refresh (THREAD_ENTRY * thread_p,
 				  int hint_max_nvols);
-extern INT16 disk_goodvol_find (THREAD_ENTRY * thread_p, INT16 hint_volid,
+extern VOLID disk_add_auto_volume_extension (THREAD_ENTRY * thread_p,
+					     DKNPAGES min_npages,
+					     DISK_SETPAGE_TYPE setpage_type,
+					     DISK_VOLPURPOSE vol_purpose);
+extern VOLID disk_find_goodvol (THREAD_ENTRY * thread_p, INT16 hint_volid,
 				INT16 undesirable_volid, INT32 exp_numpages,
-				DISK_VOLPURPOSE vol_purpose,
-				DISK_SETPAGE_TYPE setpage_type);
+				DISK_SETPAGE_TYPE setpage_type,
+				DISK_VOLPURPOSE vol_purpose);
 extern bool disk_goodvol_refresh_with_new (THREAD_ENTRY * thread_p,
 					   INT16 volid);
 

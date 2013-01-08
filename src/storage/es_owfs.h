@@ -38,6 +38,8 @@ extern ssize_t es_owfs_read_file (const char *path, void *buf, size_t count,
 extern int es_owfs_delete_file (const char *path);
 extern int es_owfs_copy_file (const char *src_path, char *metaname,
 			      char *new_path);
+extern int es_owfs_rename_file (const char *src_path, const char *metaname,
+				char *new_path);
 extern off_t es_owfs_get_file_size (const char *path);
 
 #endif /* _ES_OWFS_H_ */

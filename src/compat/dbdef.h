@@ -435,11 +435,11 @@ struct dbdef_vol_ext_info
 {
   char *path;			/* Directory where the volume extension is created.
 				 *  If NULL, is given, it defaults to the system parameter. */
-  char *name;			/* Name of the volume extension
+  const char *name;		/* Name of the volume extension
 				 * If NULL, system generates one like "db".ext"volid" where
 				 * "db" is the database name and "volid" is the volume
 				 * identifier to be assigned to the volume extension. */
-  char *comments;		/* Comments which are included in the volume extension header. */
+  const char *comments;		/* Comments which are included in the volume extension header. */
   int npages;			/* Number of pages */
   int max_writesize_in_sec;	/* the amount of volume written per second */
   DB_VOLPURPOSE purpose;	/* The purpose of the volume extension. One of the following:

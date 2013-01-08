@@ -75,7 +75,8 @@ extern DKNPAGES boot_max_pages_for_new_auto_volume_extension (void);
 extern DKNPAGES boot_max_pages_for_new_temp_volume (void);
 extern VOLID boot_add_auto_volume_extension (THREAD_ENTRY * thread_p,
 					     DKNPAGES min_npages,
-					     DISK_SETPAGE_TYPE setpage_type);
+					     DISK_SETPAGE_TYPE setpage_type,
+					     DISK_VOLPURPOSE vol_purpose);
 extern VOLID boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES npages);
 extern DKNPAGES boot_get_temp_temp_vol_max_npages (void);
 extern int boot_add_temp_volume_and_file (VFID * vfid, DKNPAGES npages);

@@ -1102,7 +1102,8 @@ boot_xadd_volume_extension (THREAD_ENTRY * thread_p,
  */
 VOLID
 boot_add_auto_volume_extension (THREAD_ENTRY * thread_p, DKNPAGES min_npages,
-				DISK_SETPAGE_TYPE setpage_type)
+				DISK_SETPAGE_TYPE setpage_type,
+				DISK_VOLPURPOSE vol_purpose)
 {
   VOLID volid;
   DBDEF_VOL_EXT_INFO ext_info;

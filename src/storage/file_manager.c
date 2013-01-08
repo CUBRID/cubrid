@@ -306,6 +306,7 @@ static int file_new_files_hash_cmpeq (const void *hash_key1,
 static int file_dump_all_newfiles (THREAD_ENTRY * thread_p, FILE * fp,
 				   bool tmptmp_only);
 static const char *file_type_to_string (FILE_TYPE fstruct_type);
+static DISK_VOLPURPOSE file_get_primary_vol_purpose (FILE_TYPE ftype);
 static const VFID *file_cache_newfile (THREAD_ENTRY * thread_p,
 				       const VFID * vfid,
 				       FILE_TYPE file_type);
@@ -1350,6 +1351,53 @@ file_type_to_string (FILE_TYPE fstruct_type)
 }
 
 /*
+ * file_get_primary_vol_purpose () - Get vol_purpose of the given file type
+ *   return:
+ *   ftype(in):
+ */
+static DISK_VOLPURPOSE
+file_get_primary_vol_purpose (FILE_TYPE ftype)
+{
+  DISK_VOLPURPOSE purpose;
+
+  switch (ftype)
+    {
+    case FILE_TRACKER:
+    case FILE_HEAP:
+    case FILE_HEAP_REUSE_SLOTS:
+    case FILE_MULTIPAGE_OBJECT_HEAP:
+    case FILE_CATALOG:
+    case FILE_EXTENDIBLE_HASH:
+    case FILE_EXTENDIBLE_HASH_DIRECTORY:
+    case FILE_LONGDATA:
+      purpose = DISK_PERMVOL_DATA_PURPOSE;
+      break;
+
+    case FILE_BTREE:
+    case FILE_BTREE_OVERFLOW_KEY:
+      purpose = DISK_PERMVOL_INDEX_PURPOSE;
+      break;
+
+    case FILE_TMP_TMP:
+      purpose = DISK_TEMPVOL_TEMP_PURPOSE;
+      break;
+
+    case FILE_QUERY_AREA:
+    case FILE_EITHER_TMP:
+    case FILE_TMP:
+      purpose = DISK_EITHER_TEMP_PURPOSE;
+      break;
+
+    case FILE_UNKNOWN_TYPE:
+    default:
+      purpose = DISK_UNKNOWN_PURPOSE;
+      break;
+    }
+
+  return purpose;
+}
+
+/*
  * file_find_goodvol () - Find a volume with at least the expected number of free
  *                 pages
  *   return: volid or NULL_VOLID
@@ -1364,50 +1412,22 @@ file_find_goodvol (THREAD_ENTRY * thread_p, INT16 hint_volid,
 		   INT16 undesirable_volid, INT32 exp_numpages,
 		   DISK_SETPAGE_TYPE setpage_type, FILE_TYPE file_type)
 {
+  DISK_VOLPURPOSE vol_purpose;
+
   if (exp_numpages <= 0)
     {
       exp_numpages = 1;
     }
 
-  switch (file_type)
+  vol_purpose = file_get_primary_vol_purpose (file_type);
+  if (vol_purpose == DISK_UNKNOWN_PURPOSE)
     {
-    case FILE_TRACKER:
-    case FILE_HEAP:
-    case FILE_HEAP_REUSE_SLOTS:
-    case FILE_MULTIPAGE_OBJECT_HEAP:
-    case FILE_CATALOG:
-    case FILE_EXTENDIBLE_HASH:
-    case FILE_EXTENDIBLE_HASH_DIRECTORY:
-    case FILE_LONGDATA:
-      return disk_goodvol_find (thread_p, hint_volid, undesirable_volid,
-				exp_numpages, DISK_PERMVOL_DATA_PURPOSE,
-				setpage_type);
-
-    case FILE_BTREE:
-    case FILE_BTREE_OVERFLOW_KEY:
-      return disk_goodvol_find (thread_p, hint_volid, undesirable_volid,
-				exp_numpages, DISK_PERMVOL_INDEX_PURPOSE,
-				setpage_type);
-
-
-    case FILE_TMP_TMP:
-      /* Either a permanent or temporary volume with temporary purposes */
-      return disk_goodvol_find (thread_p, hint_volid, undesirable_volid,
-				exp_numpages, DISK_TEMPVOL_TEMP_PURPOSE,
-				setpage_type);
-
-    case FILE_QUERY_AREA:
-    case FILE_EITHER_TMP:
-    case FILE_TMP:
-      /* Either a permanent or temporary volume with temporary purposes */
-      return disk_goodvol_find (thread_p, hint_volid, undesirable_volid,
-				exp_numpages, DISK_EITHER_TEMP_PURPOSE,
-				setpage_type);
-
-    case FILE_UNKNOWN_TYPE:
-    default:
+      assert (false);
       return hint_volid;
     }
+
+  return disk_find_goodvol (thread_p, hint_volid, undesirable_volid,
+			    exp_numpages, setpage_type, vol_purpose);
 }
 
 /*
@@ -1537,7 +1557,7 @@ file_ftabvpid_alloc (THREAD_ENTRY * thread_p, INT16 hint_volid,
 {
   INT32 pageid;
   int i;
-  INT16 original_hint_volid;
+  VOLID original_hint_volid;
   INT32 original_hint_pageid;
 
   /*
@@ -4561,7 +4581,8 @@ file_get_numpages_overhead (THREAD_ENTRY * thread_p, const VFID * vfid)
  */
 INT32
 file_get_numpages_plus_numpages_overhead (THREAD_ENTRY * thread_p,
-					  const VFID * vfid, INT32 * numpages,
+					  const VFID * vfid,
+					  INT32 * numpages,
 					  INT32 * overhead_numpages)
 {
   PAGE_PTR fhdr_pgptr = NULL;
@@ -6002,9 +6023,8 @@ file_allocset_new_set (THREAD_ENTRY * thread_p, INT16 last_allocset_volid,
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
 
   /* Find a volume with at least the expected number of pages. */
-  volid =
-    file_find_goodvol (thread_p, NULL_VOLID, last_allocset_volid,
-		       exp_numpages, setpage_type, fhdr->type);
+  volid = file_find_goodvol (thread_p, NULL_VOLID, last_allocset_volid,
+			     exp_numpages, setpage_type, fhdr->type);
   if (volid == NULL_VOLID)
     {
       return ER_FAILED;
@@ -6940,10 +6960,11 @@ exit_on_error:
  *       pages (e.g., query list manager, sort manager).
  */
 VPID *
-file_alloc_pages_as_noncontiguous (THREAD_ENTRY * thread_p, const VFID * vfid,
+file_alloc_pages_as_noncontiguous (THREAD_ENTRY * thread_p,
+				   const VFID * vfid,
 				   VPID * first_alloc_vpid,
-				   INT32 * first_alloc_nthpage, INT32 npages,
-				   const VPID * near_vpid,
+				   INT32 * first_alloc_nthpage,
+				   INT32 npages, const VPID * near_vpid,
 				   bool (*fun) (THREAD_ENTRY * thread_p,
 						const VFID * vfid,
 						const FILE_TYPE file_type,
@@ -7478,8 +7499,8 @@ file_allocset_find_page (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 						   INT16 allocset_offset,
 						   PAGE_PTR pgptr,
 						   INT32 * aid_ptr,
-						   INT32 pageid, void *args),
-			 void *args)
+						   INT32 pageid,
+						   void *args), void *args)
 {
   FILE_HEADER *fhdr;
   FILE_ALLOCSET *allocset;
@@ -7621,7 +7642,8 @@ file_allocset_dealloc_contiguous_pages (THREAD_ENTRY * thread_p,
 					FILE_ALLOCSET * allocset,
 					PAGE_PTR fhdr_pgptr,
 					PAGE_PTR allocset_pgptr,
-					INT16 allocset_offset, PAGE_PTR pgptr,
+					INT16 allocset_offset,
+					PAGE_PTR pgptr,
 					INT32 * first_aid_ptr,
 					INT32 ncont_page_entries)
 {
@@ -7729,13 +7751,14 @@ file_allocset_remove_contiguous_pages (THREAD_ENTRY * thread_p,
 				       FILE_ALLOCSET * allocset,
 				       PAGE_PTR fhdr_pgptr,
 				       PAGE_PTR allocset_pgptr,
-				       INT16 allocset_offset, PAGE_PTR pgptr,
-				       INT32 * aid_ptr, INT32 num_contpages)
+				       INT16 allocset_offset,
+				       PAGE_PTR pgptr, INT32 * aid_ptr,
+				       INT32 num_contpages)
 {
   LOG_DATA_ADDR addr;
   int i;
-  INT32 prealloc_mem[FILE_PREALLOC_MEMSIZE] =
-    { NULL_PAGEID_MARKED_DELETED, NULL_PAGEID_MARKED_DELETED,
+  INT32 prealloc_mem[FILE_PREALLOC_MEMSIZE] = {
+    NULL_PAGEID_MARKED_DELETED, NULL_PAGEID_MARKED_DELETED,
     NULL_PAGEID_MARKED_DELETED, NULL_PAGEID_MARKED_DELETED,
     NULL_PAGEID_MARKED_DELETED, NULL_PAGEID_MARKED_DELETED,
     NULL_PAGEID_MARKED_DELETED, NULL_PAGEID_MARKED_DELETED,
@@ -9753,9 +9776,10 @@ exit_on_error:
  */
 static int
 file_allocset_compact (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
-		       VPID * prev_allocset_vpid, INT16 prev_allocset_offset,
-		       VPID * allocset_vpid, INT16 * allocset_offset,
-		       VPID * ftb_vpid, INT16 * ftb_offset)
+		       VPID * prev_allocset_vpid,
+		       INT16 prev_allocset_offset, VPID * allocset_vpid,
+		       INT16 * allocset_offset, VPID * ftb_vpid,
+		       INT16 * ftb_offset)
 {
   FILE_HEADER *fhdr;
   PAGE_PTR allocset_pgptr = NULL;
@@ -10038,8 +10062,8 @@ file_compress (THREAD_ENTRY * thread_p, const VFID * vfid,
       if (do_partial_compaction == true
 	  && allocset->num_holes < NUM_HOLES_NEED_COMPACTION)
 	{
-          prev_allocset_vpid = allocset_vpid;
-          prev_allocset_offset = allocset_offset;
+	  prev_allocset_vpid = allocset_vpid;
+	  prev_allocset_offset = allocset_offset;
 
 	  allocset_vpid = allocset->next_allocset_vpid;
 	  allocset_offset = allocset->next_allocset_offset;
@@ -11724,8 +11748,8 @@ file_mark_deleted_file_list_remove (VFID * vfid, const FILE_TYPE file_type)
  *       cleaning the contents of the mark deleted file.
  */
 VFID *
-file_reuse_deleted (THREAD_ENTRY * thread_p, VFID * vfid, FILE_TYPE file_type,
-		    const void *file_des)
+file_reuse_deleted (THREAD_ENTRY * thread_p, VFID * vfid,
+		    FILE_TYPE file_type, const void *file_des)
 {
   PAGE_PTR trk_fhdr_pgptr = NULL;
   PAGE_PTR fhdr_pgptr = NULL;
@@ -11740,7 +11764,9 @@ file_reuse_deleted (THREAD_ENTRY * thread_p, VFID * vfid, FILE_TYPE file_type,
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
-  VFID tmp_vfid = { NULL_FILEID, NULL_VOLID };
+  VFID tmp_vfid = {
+    NULL_FILEID, NULL_VOLID
+  };
   VPID tmp_vpid;
 
   assert (file_type <= FILE_LAST);
@@ -12427,8 +12453,8 @@ file_rv_allocset_dump_sector (FILE * fp, int length_ignore, void *data)
   (void) fprintf (fp, "Num_sects = %d, Curr_sectid = %d,\n"
 		  "Sector Table end: pageid = %d|%d, offset = %d\n",
 		  rvsect->num_sects, rvsect->curr_sectid,
-		  rvsect->end_sects_vpid.volid, rvsect->end_sects_vpid.pageid,
-		  rvsect->end_sects_offset);
+		  rvsect->end_sects_vpid.volid,
+		  rvsect->end_sects_vpid.pageid, rvsect->end_sects_offset);
 }
 
 /*

@@ -6743,7 +6743,7 @@ fileio_initialize_backup_verbose_file (const char *backup_verbose_file_name,
 
   FILE *verbose_file = NULL;
 
-  char *verbose_fp_mode;
+  const char *verbose_fp_mode;
 
   if (backup_verbose_file_name && *backup_verbose_file_name)
     {
