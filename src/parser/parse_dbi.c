@@ -1778,8 +1778,6 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
       retval->enumeration.collation_id = collation_id;
       DOM_SET_ENUM_ELEMENTS (retval, enumeration.elements);
       DOM_SET_ENUM_ELEMS_COUNT (retval, enumeration.count);
-
-      retval = tp_domain_cache (retval);
     }
   else
     {
