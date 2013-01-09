@@ -62,6 +62,12 @@ my %opts = (
     'LINKTYPE'      => 'dynamic',
 );
 
+eval {require_version DBI 1.61;};
+if ($@) {
+    warn $@;
+    exit 1;
+}
+
 WriteMakefile(%opts);
 
 package MY;
