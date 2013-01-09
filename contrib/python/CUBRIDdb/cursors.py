@@ -13,11 +13,14 @@ class BaseCursor(object):
         default number of rows fetchmany() will fetch
     """
 
-    def __init__(self, _cs):
-        self._cs = _cs
+    def __init__(self, conn):
+        self._cs = conn.connection.cursor()
         self.arraysize = 1
         self.rowcount = -1
         self.description = None
+        
+        self.charset = conn.charset
+        self._cs._set_charset_name(conn.charset)
 
     def __del__(self):
         self.close()
@@ -27,12 +30,25 @@ class BaseCursor(object):
         self._cs.close()
 
     def _bind_params(self, args):
+        if type(args) not in (tuple, list):
+            args = [args,]
         args = list(args)
         for i in range(len(args)):
-            args[i] = str(args[i])
+            if args[i] == None:
+                pass
+            elif isinstance(args[i], bool):
+                if args[i] == True:
+                    args[i] = '1'
+                else:
+                    args[i] = '0'
+            elif isinstance(args[i], unicode):
+                args[i] = args[i].encode(self.charset)
+            else:
+                args[i] = str(args[i])
+
             self._cs.bind_param(i+1, args[i])
 
-    def execute(self, query, *args):
+    def execute(self, query, args=None):
         """
         Execute a query.
         
@@ -41,12 +57,10 @@ class BaseCursor(object):
 
         Returns long integer rows affected, if any
         """
-        if len(args) == 1 and type(args[0]) in (tuple, list):
-            args = args[0]
-
         self._cs.prepare(query)
-        
-        self._bind_params(args)
+
+        if args != None:
+            self._bind_params(args)
 
         r = self._cs.execute()
         self.rowcount = self._cs.rowcount
@@ -123,6 +137,22 @@ class BaseCursor(object):
 
         """
         pass
+
+    def __iter__(self):
+        """
+        Iteration over the result set which calls self.fetchone()
+        and returns the next row.
+        """
+        return self  # iter(self.fetchone, None)
+
+    def next(self):
+        return self.__next__()
+
+    def __next__(self):
+        row = self.fetchone()
+        if row is None:
+            raise StopIteration
+        return row
 
 class CursorTupleRowsMixIn(object):
 

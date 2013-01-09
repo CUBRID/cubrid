@@ -6,7 +6,7 @@ from _cubrid import *
 print 'establish connect...'
 print
 
-con = _cubrid.connect('CUBRID:localhost:33000:demodb', 'public')
+con = _cubrid.connect('CUBRID:localhost:33000:demodb:::', 'public')
 
 print 'server verison:', con.server_version()
 print 'client verison:', con.client_version()
@@ -16,6 +16,8 @@ cur = con.cursor()
 
 print 'create a table - test_cubrid'
 print
+cur.prepare('DROP TABLE IF EXISTS test_cubrid')
+cur.execute()
 cur.prepare('CREATE TABLE test_cubrid (id NUMERIC AUTO_INCREMENT(2009122350, 1), name VARCHAR(50))')
 cur.execute()
 

@@ -15,8 +15,11 @@ class Connection(object):
     def __init__(self, *args, **kwargs):
 
         'Create a connecton to the database.'
+        self.charset = ''
+        kwargs2 = kwargs.copy()
+        self.charset = kwargs2.pop('charset', 'utf8')
 
-        self._db = _cubrid.connect(*args, **kwargs)
+        self.connection = _cubrid.connect(*args, **kwargs2)
 
     def __del__(self):
         pass
@@ -26,16 +29,31 @@ class Connection(object):
             cursorClass = DictCursor
         else:
             cursorClass = Cursor
-        return cursorClass(self._db.cursor())
+        return cursorClass(self)
         
+    def set_autocommit(self, value):
+        if value:
+            switch = 'TRUE'
+        else:
+            switch = 'FALSE'
+        self.connection.set_autocommit(switch)
+
+    def get_autocommit(self):
+        if self.connection.autocommit == 'TRUE':
+            return True
+        else:
+            return False
+        
+    autocommit = property(get_autocommit, set_autocommit, doc = "autocommit value for current Cubrid session")
+
     def commit(self):
-        self._db.commit()
+        self.connection.commit()
 
     def rollback(self):
-        self._db.rollback()
+        self.connection.rollback()
 
     def close(self):
-        self._db.close()
+        self.connection.close()
 
     def escape_string(self, buf):
-        return self._db.escape_string(buf)
+        return self.connection.escape_string(buf)

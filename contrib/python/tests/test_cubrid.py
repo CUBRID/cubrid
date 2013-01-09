@@ -59,18 +59,6 @@ class DatabaseTest(unittest.TestCase):
                 issubclass(self.driver.DatabaseError,self.driver.Error)
                 )
         self.failUnless(
-                issubclass(self.driver.OperationalError,self.driver.Error)
-                )
-        self.failUnless(
-                issubclass(self.driver.IntegrityError,self.driver.Error)
-                )
-        self.failUnless(
-                issubclass(self.driver.InternalError,self.driver.Error)
-                )
-        self.failUnless(
-                issubclass(self.driver.ProgrammingError,self.driver.Error)
-                )
-        self.failUnless(
                 issubclass(self.driver.NotSupportedError,self.driver.Error)
                 )
 
@@ -334,6 +322,7 @@ class DatabaseTest(unittest.TestCase):
         ddl_date = 'create table test_cubrid (birthday date)'
         con = self._connect()
         cur = con.cursor()
+        error = 0
         try:
             cur.prepare(ddl_date)
             cur.execute()
@@ -341,9 +330,12 @@ class DatabaseTest(unittest.TestCase):
             # if pass wrong params, there should be an exception
             cur.bind_param(1, "2011-2-31")
             cur.execute()
+        except DatabaseError, e:
+            error = 1
         finally:
             cur.close()
             con.close()
+        self.assertEqual(error, 1, "catch one except.")
 
     def test_bind_date(self):
         ddl_date = 'create table test_cubrid (birthday date)'

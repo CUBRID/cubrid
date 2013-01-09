@@ -1,6 +1,8 @@
 
 from distutils.core import setup, Extension 
+
 import os
+import sys
 import platform
 
 if os.environ["CUBRID"]:
@@ -9,6 +11,7 @@ if os.environ["CUBRID"]:
 else:
     raise KeyError
 
+# Install CUBRID-Python driver.
 setup(
     name = "CUBRID-Python", 
     version = "9.1.0.0001",
@@ -17,11 +20,11 @@ setup(
             "Python interface to CUBRID conforming to the python DB API 2.0 "
             "specification.\n"
             "See http://www.python.org/topics/database/DatabaseAPI-2.0.html.",
-    py_modules=["_cubrid_exceptions", "CUBRIDdb.connections", "CUBRIDdb.cursors", "CUBRIDdb.FIELD_TYPE"],
-    author = "zhanghui",
+    py_modules=["CUBRIDdb.connections", "CUBRIDdb.cursors", "CUBRIDdb.FIELD_TYPE"],
+    author = "Zhang hui",
     author_email = "zhanghui@nhn.com",
     license = "BSD",
-    url = "https://cubridinterface.svn.sourceforge.net/svnroot/cubridinterface/python",
+    url = "http://svn.cubrid.org/cubridapis/python/",
     ext_modules=[
         Extension(
             name = "_cubrid", 

@@ -2,7 +2,7 @@
 
 import _cubrid
 
-con = _cubrid.connect('CUBRID:localhost:33000:demodb', 'public')
+con = _cubrid.connect('CUBRID:localhost:33000:demodb:::', 'public')
 
 cur = con.cursor()
 

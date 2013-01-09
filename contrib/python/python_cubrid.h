@@ -1,5 +1,6 @@
 #include "Python.h"
 #include "structmember.h"
+#include "datetime.h"
 #include "cas_cci.h"
 
 #if PY_MAJOR_VERSION >= 3
@@ -61,6 +62,7 @@ typedef struct
   int row_count;
   int bind_num;
   int cursor_pos;
+  char charset[128];
   T_CCI_CUBRID_STMT sql_type;
   T_CCI_COL_INFO *col_info;
   PyObject *description;  

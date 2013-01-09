@@ -1,6 +1,9 @@
 import unittest
 import CUBRIDdb
 import time
+import sys
+import decimal
+import datetime
 
 class DBAPI20Test(unittest.TestCase):
     driver = CUBRIDdb
@@ -10,8 +13,11 @@ class DBAPI20Test(unittest.TestCase):
 
     ddl1 = 'create table %sbooze (name varchar(20))' % table_prefix
     ddl2 = 'create table %sbarflys (name varchar(20))' % table_prefix
+    ddl3 = 'create table %sdatatype (col1 int, col2 float, col3 numeric(12,3), \
+            col4 time, col5 date, col6 datetime, col7 timestamp)' % table_prefix
     xddl1 = 'drop table if exists %sbooze' % table_prefix
     xddl2 = 'drop table if exists %sbarflys' % table_prefix
+    xddl3 = 'drop table if exists %sdatatype' % table_prefix
 
     def executeDDL1(self, cursor):
         cursor.execute(self.ddl1)
@@ -19,6 +25,9 @@ class DBAPI20Test(unittest.TestCase):
     def executeDDL2(self, cursor):
         cursor.execute(self.ddl2)
 
+    def executeDDL3(self, cursor):
+        cursor.execute(self.ddl3)
+    
     def setup(self):
         pass
 
@@ -29,6 +38,7 @@ class DBAPI20Test(unittest.TestCase):
         cursor = connect.cursor()
         cursor.execute(self.xddl1)
         cursor.execute(self.xddl2)
+        cursor.execute(self.xddl3)
         connect.commit()
         cursor.close()
 
@@ -66,10 +76,10 @@ class DBAPI20Test(unittest.TestCase):
         except AttributeError:
             self.fail("Driver doesn't define paramstyle")
 
+    # APIS-368
     def test_Exceptions(self):
         # Make sure required exceptions exist, and are in the
         # defined heirarchy.
-        self.failUnless(issubclass(self.driver.Warning, Exception))
         self.failUnless(issubclass(self.driver.Error, Exception))
         self.failUnless(
                 issubclass(self.driver.InterfaceError, self.driver.Error)
@@ -77,21 +87,32 @@ class DBAPI20Test(unittest.TestCase):
         self.failUnless(
                 issubclass(self.driver.DatabaseError,self.driver.Error)
                 )
-        self.failUnless(
-                issubclass(self.driver.OperationalError,self.driver.Error)
-                )
-        self.failUnless(
-                issubclass(self.driver.IntegrityError,self.driver.Error)
-                )
-        self.failUnless(
-                issubclass(self.driver.InternalError,self.driver.Error)
-                )
-        self.failUnless(
-                issubclass(self.driver.ProgrammingError,self.driver.Error)
-                )
-        self.failUnless(
-                issubclass(self.driver.NotSupportedError,self.driver.Error)
-                )
+
+        con = self._connect()
+        error = 0
+        try:
+            cur = con.cursor()
+            cur.execute("insert into %sbooze values error_sql ('Hello') " % (self.table_prefix))
+        except CUBRIDdb.DatabaseError, e:
+            error = 1
+        finally:
+            con.close()
+        #print >>sys.stderr,  "Error %d: %s" % (e.args[0], e.args[1])
+        self.assertEqual(error, 1, "catch one except.")
+
+        con = self._connect()
+        error = 0
+        try:
+            cur = con.cursor()
+            cur.fetchone()
+            cur.execute("insert into %sbooze values ('Hello', 'hello2') " % (self.table_prefix))
+        except CUBRIDdb.Error, e:
+            error = 1
+            #print >>sys.stderr,  "Error %d: %s" % (e.args[0], e.args[1])
+        finally:
+            con.close()
+        self.assertEqual(error, 1, "catch one except. OK.")
+
 
     def test_commit(self):
         con = self._connect()
@@ -213,6 +234,10 @@ class DBAPI20Test(unittest.TestCase):
 
     def _paraminsert(self, cur):
         self.executeDDL1(cur)
+        # cur.execute shall return 0 when no row in table
+        res = cur.execute('select name from %sbooze' % self.table_prefix)
+        self.assertEqual(res, 0,
+                'cur.execute should return 0 if a query retrieves no rows')
         cur.execute("insert into %sbooze values ('Victoria Bitter')" % (
             self.table_prefix
             ))
@@ -302,6 +327,59 @@ class DBAPI20Test(unittest.TestCase):
             self.assertEqual(beers[1], "Cooper's", 'incorrect data retrieved')
         finally:
             con.close()
+
+    # APIS-348
+    def test_autocommit(self):
+        con = self._connect()
+        try:
+            cur = con.cursor()
+            self.executeDDL1(cur)
+
+            con.set_autocommit(False)
+            self.assertEqual(con.get_autocommit(), False, "autocommit is off")
+
+            cur.execute("insert into %sbooze values ('Hello')" % (self.table_prefix))
+            con.rollback()
+            cur.execute("select * from %sbooze" % self.table_prefix)
+            rows = cur.fetchall()
+
+            self.assertEqual(len(rows), 0, "0 lines affected")
+            
+            con.set_autocommit(True)
+            self.assertEqual(con.get_autocommit(), True, "autocommit is on")
+
+            cur.execute("insert into %sbooze values ('Hello')" % (self.table_prefix))
+            cur.execute("select * from %sbooze" % self.table_prefix)
+            rows = cur.fetchall()
+
+            self.assertEqual(len(rows), 1, "1 lines affected")
+        finally:
+            con.close()
+
+    # APIS-372-373
+    def test_datatype(self):
+        con = self._connect()
+       
+        try:
+            cur = con.cursor()
+            self.executeDDL3(cur)
+           
+            cur.execute("insert into %sdatatype values (2012, 2012.345, 20.12345,'11:21:30 am',\
+                    '2012-10-26', '2012-10-26 11:21:30 am',\
+                    '11:21:30 am 2012-10-26')" % self.table_prefix)
+
+            cur.execute("select * from %sdatatype" % self.table_prefix)
+            row = cur.fetchone()
+
+            datatypes = [int, float, decimal.Decimal, datetime.time,\
+                         datetime.date, datetime.datetime, datetime.datetime]
+           
+            for i in range(0,7):
+                self.assertEqual(isinstance(row[i], datatypes[i]), True,
+                        'incorrect data type converted from CUBRID to Python')
+        finally:
+            con.close()
+
 
     def test_fetchone(self):
         con = self._connect()

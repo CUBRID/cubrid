@@ -15,10 +15,6 @@ paramstyle = 'qmark'
 from _cubrid import *
 from CUBRIDdb import FIELD_TYPE
 
-from _cubrid_exceptions import Warning, Error, InterfaceError, DataError, \
-        DatabaseError, OperationalError, IntegrityError, InternalError, \
-        NotSupportedError, ProgrammingError
-
 from time import localtime
 from datetime import date, datetime, time
 
@@ -66,21 +62,13 @@ def Connect(*args, **kwargs):
 
 connect = connection = Connect
 
-Warning = Warning
 Error = Error
 InterfaceError = InterfaceError
 DatabaseError = DatabaseError
-DataError = DataError
-OperationalError = OperationalError
-IntegrityError = IntegrityError
-InternalError = InternalError
-ProgrammingError = ProgrammingError
 NotSupportedError = NotSupportedError
 
-__all__ = [ 'Connect', 'connection', 'connect', 'connections','DataError', 
-    'DatabaseError', 'Error', 'IntegrityError', 'InterfaceError', 
-    'InternalError', 'CUBRIDError', 'Warning', 'NotSupportedError', 
-    'OperationalError', 'ProgrammingError', 'apilevel', 'Cursor', 
+__all__ = [ 'Connect', 'connection', 'connect', 'connections', 'DatabaseError', 
+    'Error', 'InterfaceError', 'NotSupportedError', 'apilevel', 'Cursor', 
     'DictCursor', 'paramstyle', 'threadsafety', 'STRING', 'BINARY', 'NUMBER',
     'DATE', 'TIME', 'TIMESTAMP', 'DATETIME', 'ROWID', 'SET', 'BLOB', 'CLOB'] 
     
