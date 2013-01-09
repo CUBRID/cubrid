@@ -1351,7 +1351,9 @@ cfg_host_exists (char *host_list, char *hostname, int num_items)
 {
   char *current_host;
   char *next_sep;
-  int i = 0;
+  int i = 0, len, hostname_len;
+
+  hostname_len = strlen (hostname);
 
   current_host = host_list;
   while ((current_host != NULL) && (i < num_items))
@@ -1370,7 +1372,10 @@ cfg_host_exists (char *host_list, char *hostname, int num_items)
 	}
       else
 	{
-	  if (strncmp (current_host, hostname, next_sep - current_host) == 0)
+	  len = next_sep - current_host;
+
+	  if (len == hostname_len
+	      && strncmp (current_host, hostname, len) == 0)
 	    {
 	      return true;
 	    }
