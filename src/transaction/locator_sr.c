@@ -8754,18 +8754,6 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
       isallvalid = DISK_INVALID;
     }
 
-error:
-  if (isid.oid_list.oidp)
-    {
-      free_and_init (isid.oid_list.oidp);
-    }
-
-  /* free index key copy_buf */
-  if (isid.copy_buf)
-    {
-      db_private_free_and_init (thread_p, isid.copy_buf);
-    }
-
   if (num_heap_oids != num_btree_oids)
     {
       if (!OID_ISNULL (class_oid))
@@ -8785,7 +8773,20 @@ error:
 	{
 	  free_and_init (class_name_p);
 	}
+
       isallvalid = DISK_INVALID;
+    }
+
+error:
+  if (isid.oid_list.oidp)
+    {
+      free_and_init (isid.oid_list.oidp);
+    }
+
+  /* free index key copy_buf */
+  if (isid.copy_buf)
+    {
+      db_private_free_and_init (thread_p, isid.copy_buf);
     }
 
   if (heap_scancache_end (thread_p, &scan_cache) != NO_ERROR)
