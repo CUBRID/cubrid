@@ -5540,11 +5540,8 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid,
   XASL_NODE_HEADER xasl_header;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_XASL_ID_SIZE) a_reply;
   int error = NO_ERROR;
-  COMPILE_CONTEXT context;
-  XASL_STREAM stream;
-
-  memset (&context, 0x00, sizeof (COMPILE_CONTEXT));
-  memset (&stream, 0x00, sizeof (XASL_STREAM));
+  COMPILE_CONTEXT context = { NULL, NULL, 0, NULL, NULL, 0 };
+  XASL_STREAM stream = { NULL, NULL, NULL, 0 };
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -5700,7 +5697,6 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
   char *sql_id;
 
   EXECUTION_INFO info = { NULL, NULL, NULL };
-
 
   if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
     {
@@ -5964,7 +5960,7 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
   int xasl_size;
   char *ptr, *var_data, *list_data;
   DB_VALUE *dbvals;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 3 + OR_PTR_ALIGNED_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 4 + OR_PTR_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   PAGE_PTR page_ptr;
   int page_size;

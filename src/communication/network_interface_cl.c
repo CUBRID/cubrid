@@ -7381,8 +7381,6 @@ qfile_get_list_file_page (QUERY_ID query_id, VOLID volid, PAGEID pageid,
 #endif /* !CS_MODE */
 }
 
-
-
 /*
  * qmgr_prepare_query - Send a SERVER_QM_PREPARE request to the server
  *
@@ -7430,20 +7428,14 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream,
     }
 
   /* pack query alias string as a request data */
-  ptr =
-    pack_const_string_with_length (request, context->sql_hash_text,
-				   sql_hash_text_len);
-
+  ptr = pack_const_string_with_length (request, context->sql_hash_text,
+				       sql_hash_text_len);
   /* pack query plan as a request data */
-  ptr =
-    pack_const_string_with_length (ptr, context->sql_plan_text,
-				   sql_plan_text_len);
-
+  ptr = pack_const_string_with_length (ptr, context->sql_plan_text,
+				       sql_plan_text_len);
   /* pack query string as a request data */
-  ptr =
-    pack_const_string_with_length (ptr, context->sql_user_text,
-				   context->sql_user_text_len);
-
+  ptr = pack_const_string_with_length (ptr, context->sql_user_text,
+				       context->sql_user_text_len);
   /* pack OID of the current user */
   ptr = or_pack_oid (ptr, (OID *) user_oid);
   /* pack size of XASL stream */
@@ -7495,7 +7487,6 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream,
     }
 
   return stream->xasl_id;
-
 #else /* CS_MODE */
   XASL_ID *p;
 
@@ -7729,8 +7720,8 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
       if (replydata_listid && replydata_size_listid)
 	{
 	  /* unpack list file id of query result from the reply data */
-	  ptr =
-	    or_unpack_unbound_listid (replydata_listid, (void **) &list_id);
+	  ptr = or_unpack_unbound_listid (replydata_listid,
+					  (void **) (&list_id));
 	  /* QFILE_LIST_ID shipped with last page */
 	  if (replydata_size_page)
 	    {
@@ -7791,7 +7782,7 @@ qmgr_prepare_and_execute_query (char *xasl_buffer, int xasl_size,
   DB_VALUE *dbval;
   OR_ALIGNED_BUF (OR_INT_SIZE * 5) a_request;
   char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 3 + OR_PTR_ALIGNED_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 4 + OR_PTR_ALIGNED_SIZE) a_reply;
   char *reply;
   char *page_ptr;
   int page_size, dummy_plan_size, request_type;
@@ -7862,7 +7853,8 @@ qmgr_prepare_and_execute_query (char *xasl_buffer, int xasl_size,
          kind of range checking here */
       if (replydata != NULL && size)
 	{
-	  ptr = or_unpack_unbound_listid (replydata, (void **) &regu_result);
+	  ptr =
+	    or_unpack_unbound_listid (replydata, (void **) (&regu_result));
 	  regu_result->last_pgptr = NULL;
 	  if (page_size)
 	    {
