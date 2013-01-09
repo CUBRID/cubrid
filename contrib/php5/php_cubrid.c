@@ -248,7 +248,8 @@ static const DB_TYPE_INFO db_type_info[] = {
 
     {"OBJECT", CCI_U_TYPE_OBJECT, MAX_LEN_OBJECT},
     {"BLOB", CCI_U_TYPE_BLOB, MAX_LEN_LOB},
-    {"CLOB", CCI_U_TYPE_CLOB, MAX_LEN_LOB}
+    {"CLOB", CCI_U_TYPE_CLOB, MAX_LEN_LOB},
+    {"ENUM", CCI_U_TYPE_ENUM, -1},
 };
 
 /* DB parameters */
@@ -1265,7 +1266,7 @@ static void php_cubrid_do_connect(INTERNAL_FUNCTION_PARAMETERS, int persistent)
         /* try to find if we already have this link in our persistent list */
         if (zend_hash_find(&EG(persistent_list), hashed_details, hashed_details_length+1, (void **) &le) == FAILURE) { /* we don't */
             zend_rsrc_list_entry new_le;
-    
+
             if ((cubrid_conn = cci_connect_ex(host, port, dbname, userid, passwd, &error)) < 0) {
                 handle_error(cubrid_conn, &error, NULL);
                 RETURN_FALSE;
@@ -1340,7 +1341,7 @@ static void php_cubrid_do_connect(INTERNAL_FUNCTION_PARAMETERS, int persistent)
                 zend_hash_del(&EG(regular_list), hashed_details, hashed_details_length+1);
             }
         }
-    
+   
         if ((cubrid_conn = cci_connect_ex(host, port, dbname, userid, passwd, &error)) < 0) {
     	handle_error(cubrid_conn, &error, NULL);
     	RETURN_FALSE;
@@ -1426,7 +1427,7 @@ static void php_cubrid_do_connect_with_url(INTERNAL_FUNCTION_PARAMETERS, int per
         /* try to find if we already have this link in our persistent list */
         if (zend_hash_find(&EG(persistent_list), hashed_details, hashed_details_length + 1, (void **) &le) == FAILURE) { /* we don't */
             zend_rsrc_list_entry new_le;
-    
+   
             if ((cubrid_conn = cci_connect_with_url_ex(buf, userid, passwd, &error)) < 0) {
                 handle_error(cubrid_conn, &error, NULL);
                 RETURN_FALSE;
@@ -6290,6 +6291,9 @@ static int type2str(T_CCI_COL_INFO * column_info, char *type_name, int type_name
     case CCI_U_TYPE_CLOB:
         snprintf(buf, sizeof(buf), "clob");
         break;
+    case CCI_U_TYPE_ENUM:
+        snprintf(buf, sizeof(buf), "enum");
+        break;
     default:
 	/* should not enter here */
         snprintf(buf, sizeof(buf), "[unknown]");
@@ -6688,6 +6692,8 @@ static void php_cubrid_fetch_hash(INTERNAL_FUNCTION_PARAMETERS, long type, int i
             }
 
             fci.no_separation = 1;
+
+            fcc.initialized = 1;
             fcc.function_handler = ce->constructor;
             fcc.calling_scope = EG(scope);
 #if PHP_MINOR_VERSION < 3

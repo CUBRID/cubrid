@@ -37,9 +37,6 @@ print "done!";
 ?>
 
 <?php
-$host = "localhost";
-$port = 33000;
-$db = "demodb";
 $user = "public_error_user";
 $passwd = "";
 $connect_url = "CUBRID:$host:$port:$db:::";
@@ -50,9 +47,6 @@ if (!$conn) {
     printf("[005] [%d] %s\n", cubrid_error_code(), cubrid_error_msg());
 }
 
-$host = "localhost";
-$port = 33000;
-$db = "demodb";
 $user = "public";
 $passwd = "wrong_password";
 $connect_url = "CUBRID:$host:$port:$db:::";

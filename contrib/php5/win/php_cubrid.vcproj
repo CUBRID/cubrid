@@ -3,14 +3,16 @@
 	ProjectType="Visual C++"
 	Version="9.00"
 	Name="php_cubrid"
-	ProjectGUID="{8D9AC140-A29F-4EEE-B221-BF449421253F}"
+	ProjectGUID="{5367675B-455D-4D3C-B893-EB7BDEB88D15}"
 	RootNamespace="php_cubrid"
-	Keyword="Win32Proj"
-	TargetFrameworkVersion="196613"
+	TargetFrameworkVersion="0"
 	>
 	<Platforms>
 		<Platform
 			Name="Win32"
+		/>
+		<Platform
+			Name="x64"
 		/>
 	</Platforms>
 	<ToolFiles>
@@ -18,11 +20,13 @@
 	<Configurations>
 		<Configuration
 			Name="Release_TS|Win32"
-			OutputDirectory="$(SolutionDir)$(ConfigurationName)"
-			IntermediateDirectory="$(ConfigurationName)"
+			OutputDirectory=".\php_cubrid___Win32_Release_TS"
+			IntermediateDirectory=".\php_cubrid___Win32_Release_TS"
 			ConfigurationType="2"
+			InheritedPropertySheets="$(VCInstallDir)VCProjectDefaults\UpgradeFromVC60.vsprops"
+			UseOfMFC="0"
+			ATLMinimizesCRunTimeLibraryUsage="false"
 			CharacterSet="2"
-			WholeProgramOptimization="1"
 			>
 			<Tool
 				Name="VCPreBuildEventTool"
@@ -38,40 +42,53 @@
 			/>
 			<Tool
 				Name="VCMIDLTool"
+				PreprocessorDefinitions="NDEBUG"
+				MkTypLibCompatible="true"
+				SuppressStartupBanner="true"
+				TargetEnvironment="1"
+				TypeLibraryName=".\php_cubrid___Win32_Release_TS/php_cubrid.tlb"
+				HeaderFileName=""
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="2"
-				EnableIntrinsicFunctions="true"
-				AdditionalIncludeDirectories="&quot;$(PHP5_SRC)&quot;;&quot;$(PHP5_SRC)\main&quot;;&quot;$(PHP5_SRC)\TSRM&quot;;&quot;$(PHP5_SRC)\Zend&quot;;&quot;$(CUBRID)\include&quot;"
-				PreprocessorDefinitions="NDEBUG;WIN32;_WINDOWS;_USRDLL;PHP_CUBRID_EXPORTS;PHP_WIN32;ZEND_WIN32;ZTS=1;COMPILE_DL_CUBRID;ZEND_DEBUG=0;_USE_32BIT_TIME_T"
+				InlineFunctionExpansion="1"
+				AdditionalIncludeDirectories="$(PHP5_SRC),$(PHP5_SRC)\main,$(PHP5_SRC)\Zend,$(PHP5_SRC)\TSRM,$(CUBRID)\include"
+				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_USRDLL;PHP_CUBRID_EXPORTS;ZEND_DEBUG=0;ZTS;COMPILE_DL_CUBRID;ZEND_WIN32;PHP_WIN32"
 				StringPooling="true"
-				RuntimeLibrary="2"
+				RuntimeLibrary="0"
 				EnableFunctionLevelLinking="true"
-				UsePrecompiledHeader="0"
+				PrecompiledHeaderFile=".\php_cubrid___Win32_Release_TS/php_cubrid.pch"
+				AssemblerListingLocation=".\php_cubrid___Win32_Release_TS/"
+				ObjectFile=".\php_cubrid___Win32_Release_TS/"
+				ProgramDataBaseFileName=".\php_cubrid___Win32_Release_TS/"
+				BrowseInformation="1"
 				WarningLevel="3"
-				DebugInformationFormat="3"
-				CompileAs="1"
-				DisableSpecificWarnings="4100;"
+				SuppressStartupBanner="true"
 			/>
 			<Tool
 				Name="VCManagedResourceCompilerTool"
 			/>
 			<Tool
 				Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="NDEBUG"
+				Culture="2052"
 			/>
 			<Tool
 				Name="VCPreLinkEventTool"
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="cascci.lib php5ts.lib"
+				AdditionalOptions="/libpath:&quot;&quot;$(CUBRID)\lib&quot;&quot;"
+				AdditionalDependencies="odbc32.lib odbccp32.lib cascci.lib php5ts.lib"
+				OutputFile=".\php_cubrid___Win32_Release_TS/php_cubrid.dll"
 				LinkIncremental="1"
-				AdditionalLibraryDirectories="&quot;$(PHPRC)\dev&quot;;&quot;$(CUBRID)\lib&quot;"
-				GenerateDebugInformation="true"
-				SubSystem="2"
-				OptimizeReferences="2"
-				EnableCOMDATFolding="2"
+				SuppressStartupBanner="true"
+				AdditionalLibraryDirectories="$(PHPRC)\dev,$(CUBRID)\lib"
+				ProgramDatabaseFile=".\php_cubrid___Win32_Release_TS/php_cubrid.pdb"
+				RandomizedBaseAddress="1"
+				DataExecutionPrevention="0"
+				ImportLibrary=".\php_cubrid___Win32_Release_TS/php_cubrid.lib"
 				TargetMachine="1"
 			/>
 			<Tool
@@ -85,6 +102,8 @@
 			/>
 			<Tool
 				Name="VCBscMakeTool"
+				SuppressStartupBanner="true"
+				OutputFile=".\php_cubrid___Win32_Release_TS/php_cubrid.bsc"
 			/>
 			<Tool
 				Name="VCFxCopTool"
@@ -97,10 +116,13 @@
 			/>
 		</Configuration>
 		<Configuration
-			Name="DEBUG_TS|Win32"
-			OutputDirectory="$(SolutionDir)$(ConfigurationName)"
-			IntermediateDirectory="$(ConfigurationName)"
+			Name="Release_TS|x64"
+			OutputDirectory=".\php_cubrid___x64_Release_TS/"
+			IntermediateDirectory=".\php_cubrid___x64_Release_TS/"
 			ConfigurationType="2"
+			InheritedPropertySheets="$(VCInstallDir)VCProjectDefaults\UpgradeFromVC60.vsprops"
+			UseOfMFC="0"
+			ATLMinimizesCRunTimeLibraryUsage="false"
 			CharacterSet="2"
 			>
 			<Tool
@@ -117,37 +139,151 @@
 			/>
 			<Tool
 				Name="VCMIDLTool"
+				PreprocessorDefinitions="NDEBUG"
+				MkTypLibCompatible="true"
+				SuppressStartupBanner="true"
+				TargetEnvironment="3"
+				TypeLibraryName=".\php_cubrid___Win32_Release_TS/php_cubrid.tlb"
+				HeaderFileName=""
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				Optimization="0"
-				AdditionalIncludeDirectories="&quot;$(PHP5_SRC)&quot;;&quot;$(PHP5_SRC)\main&quot;;&quot;$(PHP5_SRC)\TSRM&quot;;&quot;$(PHP5_SRC)\Zend&quot;;&quot;$(CUBRID)\include&quot;"
-				PreprocessorDefinitions="NDEBUG;WIN32;_WINDOWS;_USRDLL;PHP_CUBRID_EXPORTS;PHP_WIN32;ZEND_WIN32;ZTS=1;COMPILE_DL_CUBRID;ZEND_DEBUG=0;_USE_32BIT_TIME_T"
+				Optimization="2"
+				InlineFunctionExpansion="1"
+				AdditionalIncludeDirectories="$(PHP5_SRC),$(PHP5_SRC)\main,$(PHP5_SRC)\Zend,$(PHP5_SRC)\TSRM,$(CUBRID)\include"
+				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_USRDLL;PHP_CUBRID_EXPORTS;ZEND_DEBUG=0;ZTS;COMPILE_DL_CUBRID;ZEND_WIN32;PHP_WIN32"
 				StringPooling="true"
-				MinimalRebuild="false"
-				BasicRuntimeChecks="0"
-				RuntimeLibrary="1"
-				UsePrecompiledHeader="0"
+				RuntimeLibrary="0"
+				EnableFunctionLevelLinking="true"
+				PrecompiledHeaderFile=".\php_cubrid___x64_Release_TS/php_cubrid.pch"
+				AssemblerListingLocation=".\php_cubrid___x64_Release_TS/"
+				ObjectFile=".\php_cubrid___x64_Release_TS/"
+				ProgramDataBaseFileName=".\php_cubrid___x64_Release_TS/"
+				BrowseInformation="1"
 				WarningLevel="3"
-				DebugInformationFormat="4"
-				CompileAs="1"
+				SuppressStartupBanner="true"
 			/>
 			<Tool
 				Name="VCManagedResourceCompilerTool"
 			/>
 			<Tool
 				Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="NDEBUG"
+				Culture="2052"
 			/>
 			<Tool
 				Name="VCPreLinkEventTool"
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="cascci.lib php5ts.lib"
+				AdditionalOptions="/libpath:&quot;&quot;$(CUBRID)\lib&quot;&quot;"
+				AdditionalDependencies="odbc32.lib odbccp32.lib cascci.lib php5ts.lib"
+				OutputFile=".\php_cubrid___x64_Release_TS/php_cubrid.dll"
 				LinkIncremental="1"
-				AdditionalLibraryDirectories="$(PHPRC)\dev;&quot;$(CUBRID)\lib&quot;"
+				SuppressStartupBanner="true"
+				AdditionalLibraryDirectories="$(PHPRC)\dev,$(CUBRID)\lib"
+				ProgramDatabaseFile=".\php_cubrid___x64_Release_TS/php_cubrid.pdb"
+				ProfileGuidedDatabase=""
+				RandomizedBaseAddress="1"
+				DataExecutionPrevention="0"
+				ImportLibrary="$(TargetDir)$(TargetName).lib"
+				TargetMachine="17"
+			/>
+			<Tool
+				Name="VCALinkTool"
+			/>
+			<Tool
+				Name="VCManifestTool"
+			/>
+			<Tool
+				Name="VCXDCMakeTool"
+			/>
+			<Tool
+				Name="VCBscMakeTool"
+				SuppressStartupBanner="true"
+				OutputFile="$(TargetDir)$(TargetName).bsc"
+			/>
+			<Tool
+				Name="VCFxCopTool"
+			/>
+			<Tool
+				Name="VCAppVerifierTool"
+			/>
+			<Tool
+				Name="VCPostBuildEventTool"
+			/>
+		</Configuration>
+		<Configuration
+			Name="Debug|Win32"
+			OutputDirectory=".\Debug"
+			IntermediateDirectory=".\Debug"
+			ConfigurationType="2"
+			InheritedPropertySheets="$(VCInstallDir)VCProjectDefaults\UpgradeFromVC60.vsprops"
+			UseOfMFC="0"
+			ATLMinimizesCRunTimeLibraryUsage="false"
+			CharacterSet="2"
+			>
+			<Tool
+				Name="VCPreBuildEventTool"
+			/>
+			<Tool
+				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="VCXMLDataGeneratorTool"
+			/>
+			<Tool
+				Name="VCWebServiceProxyGeneratorTool"
+			/>
+			<Tool
+				Name="VCMIDLTool"
+				PreprocessorDefinitions="_DEBUG"
+				MkTypLibCompatible="true"
+				SuppressStartupBanner="true"
+				TargetEnvironment="1"
+				TypeLibraryName=".\Debug/php_cubrid.tlb"
+				HeaderFileName=""
+			/>
+			<Tool
+				Name="VCCLCompilerTool"
+				Optimization="0"
+				AdditionalIncludeDirectories="$(PHP5_SRC),$(PHP5_SRC)\main,$(PHP5_SRC)\Zend,$(PHP5_SRC)\TSRM,$(CUBRID)\include"
+				PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_USRDLL;PHP_CUBRID_EXPORTS;ZEND_DEBUG=0;COMPILE_DL_CUBRID;ZEND_WIN32;PHP_WIN32"
+				MinimalRebuild="true"
+				BasicRuntimeChecks="3"
+				RuntimeLibrary="1"
+				PrecompiledHeaderFile=".\Debug/php_cubrid.pch"
+				AssemblerListingLocation=".\Debug/"
+				ObjectFile=".\Debug/"
+				ProgramDataBaseFileName=".\Debug/"
+				WarningLevel="3"
+				SuppressStartupBanner="true"
+				DebugInformationFormat="4"
+			/>
+			<Tool
+				Name="VCManagedResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="_DEBUG"
+				Culture="2052"
+			/>
+			<Tool
+				Name="VCPreLinkEventTool"
+			/>
+			<Tool
+				Name="VCLinkerTool"
+				AdditionalOptions="/libpath:&quot;&quot;$(CUBRID)\lib&quot;&quot;"
+				AdditionalDependencies="odbc32.lib odbccp32.lib cascci.lib php5.lib"
+				OutputFile=".\Debug/php_cubrid.dll"
+				LinkIncremental="2"
+				SuppressStartupBanner="true"
+				AdditionalLibraryDirectories="$(PHPRC)\dev,$(CUBRID)\lib"
 				GenerateDebugInformation="true"
-				SubSystem="2"
+				ProgramDatabaseFile=".\Debug/php_cubrid.pdb"
+				RandomizedBaseAddress="1"
+				DataExecutionPrevention="0"
+				ImportLibrary=".\Debug/php_cubrid.lib"
 				TargetMachine="1"
 			/>
 			<Tool
@@ -161,6 +297,491 @@
 			/>
 			<Tool
 				Name="VCBscMakeTool"
+				SuppressStartupBanner="true"
+				OutputFile=".\Debug/php_cubrid.bsc"
+			/>
+			<Tool
+				Name="VCFxCopTool"
+			/>
+			<Tool
+				Name="VCAppVerifierTool"
+			/>
+			<Tool
+				Name="VCPostBuildEventTool"
+			/>
+		</Configuration>
+		<Configuration
+			Name="Debug|x64"
+			OutputDirectory="$(PlatformName)\$(ConfigurationName)"
+			IntermediateDirectory="$(PlatformName)\$(ConfigurationName)"
+			ConfigurationType="2"
+			InheritedPropertySheets="$(VCInstallDir)VCProjectDefaults\UpgradeFromVC60.vsprops"
+			UseOfMFC="0"
+			ATLMinimizesCRunTimeLibraryUsage="false"
+			CharacterSet="2"
+			>
+			<Tool
+				Name="VCPreBuildEventTool"
+			/>
+			<Tool
+				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="VCXMLDataGeneratorTool"
+			/>
+			<Tool
+				Name="VCWebServiceProxyGeneratorTool"
+			/>
+			<Tool
+				Name="VCMIDLTool"
+				PreprocessorDefinitions="_DEBUG"
+				MkTypLibCompatible="true"
+				SuppressStartupBanner="true"
+				TargetEnvironment="3"
+				TypeLibraryName=".\Debug/php_cubrid.tlb"
+				HeaderFileName=""
+			/>
+			<Tool
+				Name="VCCLCompilerTool"
+				Optimization="0"
+				AdditionalIncludeDirectories="$(PHP5_SRC),$(PHP5_SRC)\main,$(PHP5_SRC)\Zend,$(PHP5_SRC)\TSRM,$(CUBRID)\include"
+				PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_USRDLL;PHP_CUBRID_EXPORTS;ZEND_DEBUG=0;COMPILE_DL_CUBRID;ZEND_WIN32;PHP_WIN32"
+				MinimalRebuild="true"
+				BasicRuntimeChecks="3"
+				RuntimeLibrary="1"
+				PrecompiledHeaderFile=".\Debug/php_cubrid.pch"
+				AssemblerListingLocation=".\Debug/"
+				ObjectFile=".\Debug/"
+				ProgramDataBaseFileName=".\Debug/"
+				WarningLevel="3"
+				SuppressStartupBanner="true"
+				DebugInformationFormat="3"
+			/>
+			<Tool
+				Name="VCManagedResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="_DEBUG"
+				Culture="2052"
+			/>
+			<Tool
+				Name="VCPreLinkEventTool"
+			/>
+			<Tool
+				Name="VCLinkerTool"
+				AdditionalOptions="/libpath:&quot;&quot;$(CUBRID)\lib&quot;&quot;"
+				AdditionalDependencies="odbc32.lib odbccp32.lib cascci.lib php5.lib"
+				OutputFile=".\Debug/php_cubrid.dll"
+				LinkIncremental="2"
+				SuppressStartupBanner="true"
+				AdditionalLibraryDirectories="$(PHPRC)\dev,$(CUBRID)\lib"
+				GenerateDebugInformation="true"
+				ProgramDatabaseFile=".\Debug/php_cubrid.pdb"
+				RandomizedBaseAddress="1"
+				DataExecutionPrevention="0"
+				ImportLibrary=".\Debug/php_cubrid.lib"
+				TargetMachine="17"
+			/>
+			<Tool
+				Name="VCALinkTool"
+			/>
+			<Tool
+				Name="VCManifestTool"
+			/>
+			<Tool
+				Name="VCXDCMakeTool"
+			/>
+			<Tool
+				Name="VCBscMakeTool"
+				SuppressStartupBanner="true"
+				OutputFile=".\Debug/php_cubrid.bsc"
+			/>
+			<Tool
+				Name="VCFxCopTool"
+			/>
+			<Tool
+				Name="VCAppVerifierTool"
+			/>
+			<Tool
+				Name="VCPostBuildEventTool"
+			/>
+		</Configuration>
+		<Configuration
+			Name="Release|Win32"
+			OutputDirectory=".\Release"
+			IntermediateDirectory=".\Release"
+			ConfigurationType="2"
+			InheritedPropertySheets="$(VCInstallDir)VCProjectDefaults\UpgradeFromVC60.vsprops"
+			UseOfMFC="0"
+			ATLMinimizesCRunTimeLibraryUsage="false"
+			CharacterSet="2"
+			>
+			<Tool
+				Name="VCPreBuildEventTool"
+			/>
+			<Tool
+				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="VCXMLDataGeneratorTool"
+			/>
+			<Tool
+				Name="VCWebServiceProxyGeneratorTool"
+			/>
+			<Tool
+				Name="VCMIDLTool"
+				PreprocessorDefinitions="NDEBUG"
+				MkTypLibCompatible="true"
+				SuppressStartupBanner="true"
+				TargetEnvironment="1"
+				TypeLibraryName=".\Release/php_cubrid.tlb"
+				HeaderFileName=""
+			/>
+			<Tool
+				Name="VCCLCompilerTool"
+				Optimization="2"
+				InlineFunctionExpansion="1"
+				AdditionalIncludeDirectories="$(PHP5_SRC),$(PHP5_SRC)\main,$(PHP5_SRC)\Zend,$(PHP5_SRC)\TSRM,$(CUBRID)\include"
+				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_USRDLL;PHP_CUBRID_EXPORTS;ZEND_DEBUG=0;COMPILE_DL_CUBRID;ZEND_WIN32;PHP_WIN32"
+				StringPooling="true"
+				RuntimeLibrary="0"
+				EnableFunctionLevelLinking="true"
+				PrecompiledHeaderFile=".\Release/php_cubrid.pch"
+				AssemblerListingLocation=".\Release/"
+				ObjectFile=".\Release/"
+				ProgramDataBaseFileName=".\Release/"
+				WarningLevel="3"
+				SuppressStartupBanner="true"
+			/>
+			<Tool
+				Name="VCManagedResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="NDEBUG"
+				Culture="2052"
+			/>
+			<Tool
+				Name="VCPreLinkEventTool"
+			/>
+			<Tool
+				Name="VCLinkerTool"
+				AdditionalOptions="/libpath:&quot;&quot;$(CUBRID)\lib&quot;&quot;"
+				AdditionalDependencies="odbc32.lib odbccp32.lib cascci.lib php5.lib"
+				OutputFile=".\Release/php_cubrid.dll"
+				LinkIncremental="1"
+				SuppressStartupBanner="true"
+				AdditionalLibraryDirectories="$(PHPRC)\dev,$(CUBRID)\lib"
+				ProgramDatabaseFile=".\Release/php_cubrid.pdb"
+				RandomizedBaseAddress="1"
+				DataExecutionPrevention="0"
+				ImportLibrary=".\Release/php_cubrid.lib"
+				TargetMachine="1"
+			/>
+			<Tool
+				Name="VCALinkTool"
+			/>
+			<Tool
+				Name="VCManifestTool"
+			/>
+			<Tool
+				Name="VCXDCMakeTool"
+			/>
+			<Tool
+				Name="VCBscMakeTool"
+				SuppressStartupBanner="true"
+				OutputFile=".\Release/php_cubrid.bsc"
+			/>
+			<Tool
+				Name="VCFxCopTool"
+			/>
+			<Tool
+				Name="VCAppVerifierTool"
+			/>
+			<Tool
+				Name="VCPostBuildEventTool"
+			/>
+		</Configuration>
+		<Configuration
+			Name="Release|x64"
+			OutputDirectory="$(PlatformName)\$(ConfigurationName)"
+			IntermediateDirectory="$(PlatformName)\$(ConfigurationName)"
+			ConfigurationType="2"
+			InheritedPropertySheets="$(VCInstallDir)VCProjectDefaults\UpgradeFromVC60.vsprops"
+			UseOfMFC="0"
+			ATLMinimizesCRunTimeLibraryUsage="false"
+			CharacterSet="2"
+			>
+			<Tool
+				Name="VCPreBuildEventTool"
+			/>
+			<Tool
+				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="VCXMLDataGeneratorTool"
+			/>
+			<Tool
+				Name="VCWebServiceProxyGeneratorTool"
+			/>
+			<Tool
+				Name="VCMIDLTool"
+				PreprocessorDefinitions="NDEBUG"
+				MkTypLibCompatible="true"
+				SuppressStartupBanner="true"
+				TargetEnvironment="3"
+				TypeLibraryName=".\Release/php_cubrid.tlb"
+				HeaderFileName=""
+			/>
+			<Tool
+				Name="VCCLCompilerTool"
+				Optimization="2"
+				InlineFunctionExpansion="1"
+				AdditionalIncludeDirectories="$(PHP5_SRC),$(PHP5_SRC)\main,$(PHP5_SRC)\Zend,$(PHP5_SRC)\TSRM,$(CUBRID)\include"
+				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_USRDLL;PHP_CUBRID_EXPORTS;ZEND_DEBUG=0;COMPILE_DL_CUBRID;ZEND_WIN32;PHP_WIN32"
+				StringPooling="true"
+				RuntimeLibrary="0"
+				EnableFunctionLevelLinking="true"
+				PrecompiledHeaderFile=".\Release/php_cubrid.pch"
+				AssemblerListingLocation=".\Release/"
+				ObjectFile=".\Release/"
+				ProgramDataBaseFileName=".\Release/"
+				WarningLevel="3"
+				SuppressStartupBanner="true"
+			/>
+			<Tool
+				Name="VCManagedResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="NDEBUG"
+				Culture="2052"
+			/>
+			<Tool
+				Name="VCPreLinkEventTool"
+			/>
+			<Tool
+				Name="VCLinkerTool"
+				AdditionalOptions="/libpath:&quot;&quot;$(CUBRID)\lib&quot;&quot;"
+				AdditionalDependencies="odbc32.lib odbccp32.lib cascci.lib php5.lib"
+				OutputFile=".\Release/php_cubrid.dll"
+				LinkIncremental="1"
+				SuppressStartupBanner="true"
+				AdditionalLibraryDirectories="$(PHPRC)\dev,$(CUBRID)\lib"
+				ProgramDatabaseFile=".\Release/php_cubrid.pdb"
+				RandomizedBaseAddress="1"
+				DataExecutionPrevention="0"
+				ImportLibrary=".\Release/php_cubrid.lib"
+				TargetMachine="17"
+			/>
+			<Tool
+				Name="VCALinkTool"
+			/>
+			<Tool
+				Name="VCManifestTool"
+			/>
+			<Tool
+				Name="VCXDCMakeTool"
+			/>
+			<Tool
+				Name="VCBscMakeTool"
+				SuppressStartupBanner="true"
+				OutputFile=".\Release/php_cubrid.bsc"
+			/>
+			<Tool
+				Name="VCFxCopTool"
+			/>
+			<Tool
+				Name="VCAppVerifierTool"
+			/>
+			<Tool
+				Name="VCPostBuildEventTool"
+			/>
+		</Configuration>
+		<Configuration
+			Name="Debug_TS|Win32"
+			OutputDirectory=".\php_cubrid___Win32_Debug_TS"
+			IntermediateDirectory=".\php_cubrid___Win32_Debug_TS"
+			ConfigurationType="2"
+			InheritedPropertySheets="$(VCInstallDir)VCProjectDefaults\UpgradeFromVC60.vsprops"
+			UseOfMFC="0"
+			ATLMinimizesCRunTimeLibraryUsage="false"
+			CharacterSet="2"
+			>
+			<Tool
+				Name="VCPreBuildEventTool"
+			/>
+			<Tool
+				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="VCXMLDataGeneratorTool"
+			/>
+			<Tool
+				Name="VCWebServiceProxyGeneratorTool"
+			/>
+			<Tool
+				Name="VCMIDLTool"
+				PreprocessorDefinitions="_DEBUG"
+				MkTypLibCompatible="true"
+				SuppressStartupBanner="true"
+				TargetEnvironment="1"
+				TypeLibraryName=".\php_cubrid___Win32_Debug_TS/php_cubrid.tlb"
+				HeaderFileName=""
+			/>
+			<Tool
+				Name="VCCLCompilerTool"
+				Optimization="0"
+				AdditionalIncludeDirectories="$(PHP5_SRC),$(PHP5_SRC)\main,$(PHP5_SRC)\Zend,$(PHP5_SRC)\TSRM,$(CUBRID)\include"
+				PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_USRDLL;PHP_CUBRID_EXPORTS;ZEND_DEBUG=0;ZTS;COMPILE_DL_CUBRID;ZEND_WIN32;PHP_WIN32"
+				MinimalRebuild="true"
+				BasicRuntimeChecks="3"
+				RuntimeLibrary="1"
+				PrecompiledHeaderFile=".\php_cubrid___Win32_Debug_TS/php_cubrid.pch"
+				AssemblerListingLocation=".\php_cubrid___Win32_Debug_TS/"
+				ObjectFile=".\php_cubrid___Win32_Debug_TS/"
+				ProgramDataBaseFileName=".\php_cubrid___Win32_Debug_TS/"
+				WarningLevel="3"
+				SuppressStartupBanner="true"
+				DebugInformationFormat="4"
+			/>
+			<Tool
+				Name="VCManagedResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="_DEBUG"
+				Culture="2052"
+			/>
+			<Tool
+				Name="VCPreLinkEventTool"
+			/>
+			<Tool
+				Name="VCLinkerTool"
+				AdditionalOptions="/libpath:&quot;&quot;$(CUBRID)\lib&quot;&quot;"
+				AdditionalDependencies="odbc32.lib odbccp32.lib cascci.lib php5ts.lib"
+				OutputFile=".\php_cubrid___Win32_Debug_TS/php_cubrid.dll"
+				LinkIncremental="2"
+				SuppressStartupBanner="true"
+				AdditionalLibraryDirectories="$(PHPRC)\dev,$(CUBRID)\lib"
+				GenerateDebugInformation="true"
+				ProgramDatabaseFile=".\php_cubrid___Win32_Debug_TS/php_cubrid.pdb"
+				RandomizedBaseAddress="1"
+				DataExecutionPrevention="0"
+				ImportLibrary=".\php_cubrid___Win32_Debug_TS/php_cubrid.lib"
+				TargetMachine="1"
+			/>
+			<Tool
+				Name="VCALinkTool"
+			/>
+			<Tool
+				Name="VCManifestTool"
+			/>
+			<Tool
+				Name="VCXDCMakeTool"
+			/>
+			<Tool
+				Name="VCBscMakeTool"
+				SuppressStartupBanner="true"
+				OutputFile=".\php_cubrid___Win32_Debug_TS/php_cubrid.bsc"
+			/>
+			<Tool
+				Name="VCFxCopTool"
+			/>
+			<Tool
+				Name="VCAppVerifierTool"
+			/>
+			<Tool
+				Name="VCPostBuildEventTool"
+			/>
+		</Configuration>
+		<Configuration
+			Name="Debug_TS|x64"
+			OutputDirectory="$(PlatformName)\$(ConfigurationName)"
+			IntermediateDirectory="$(PlatformName)\$(ConfigurationName)"
+			ConfigurationType="2"
+			InheritedPropertySheets="$(VCInstallDir)VCProjectDefaults\UpgradeFromVC60.vsprops"
+			UseOfMFC="0"
+			ATLMinimizesCRunTimeLibraryUsage="false"
+			CharacterSet="2"
+			>
+			<Tool
+				Name="VCPreBuildEventTool"
+			/>
+			<Tool
+				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="VCXMLDataGeneratorTool"
+			/>
+			<Tool
+				Name="VCWebServiceProxyGeneratorTool"
+			/>
+			<Tool
+				Name="VCMIDLTool"
+				PreprocessorDefinitions="_DEBUG"
+				MkTypLibCompatible="true"
+				SuppressStartupBanner="true"
+				TargetEnvironment="3"
+				TypeLibraryName=".\php_cubrid___Win32_Debug_TS/php_cubrid.tlb"
+				HeaderFileName=""
+			/>
+			<Tool
+				Name="VCCLCompilerTool"
+				Optimization="0"
+				AdditionalIncludeDirectories="$(PHP5_SRC),$(PHP5_SRC)\main,$(PHP5_SRC)\Zend,$(PHP5_SRC)\TSRM,$(CUBRID)\include"
+				PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_USRDLL;PHP_CUBRID_EXPORTS;ZEND_DEBUG=0;ZTS;COMPILE_DL_CUBRID;ZEND_WIN32;PHP_WIN32"
+				MinimalRebuild="true"
+				BasicRuntimeChecks="3"
+				RuntimeLibrary="1"
+				PrecompiledHeaderFile=".\php_cubrid___Win32_Debug_TS/php_cubrid.pch"
+				AssemblerListingLocation=".\php_cubrid___Win32_Debug_TS/"
+				ObjectFile=".\php_cubrid___Win32_Debug_TS/"
+				ProgramDataBaseFileName=".\php_cubrid___Win32_Debug_TS/"
+				WarningLevel="3"
+				SuppressStartupBanner="true"
+				DebugInformationFormat="3"
+			/>
+			<Tool
+				Name="VCManagedResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="_DEBUG"
+				Culture="2052"
+			/>
+			<Tool
+				Name="VCPreLinkEventTool"
+			/>
+			<Tool
+				Name="VCLinkerTool"
+				AdditionalOptions="/libpath:&quot;&quot;$(CUBRID)\lib&quot;&quot;"
+				AdditionalDependencies="odbc32.lib odbccp32.lib cascci.lib php5ts.lib"
+				OutputFile=".\php_cubrid___Win32_Debug_TS/php_cubrid.dll"
+				LinkIncremental="2"
+				SuppressStartupBanner="true"
+				AdditionalLibraryDirectories="$(PHPRC)\dev,$(CUBRID)\lib"
+				GenerateDebugInformation="true"
+				ProgramDatabaseFile=".\php_cubrid___Win32_Debug_TS/php_cubrid.pdb"
+				RandomizedBaseAddress="1"
+				DataExecutionPrevention="0"
+				ImportLibrary=".\php_cubrid___Win32_Debug_TS/php_cubrid.lib"
+				TargetMachine="17"
+			/>
+			<Tool
+				Name="VCALinkTool"
+			/>
+			<Tool
+				Name="VCManifestTool"
+			/>
+			<Tool
+				Name="VCXDCMakeTool"
+			/>
+			<Tool
+				Name="VCBscMakeTool"
+				SuppressStartupBanner="true"
+				OutputFile=".\php_cubrid___Win32_Debug_TS/php_cubrid.bsc"
 			/>
 			<Tool
 				Name="VCFxCopTool"
@@ -174,11 +795,13 @@
 		</Configuration>
 		<Configuration
 			Name="Release_NTS|Win32"
-			OutputDirectory="$(SolutionDir)$(ConfigurationName)"
+			OutputDirectory="$(ConfigurationName)"
 			IntermediateDirectory="$(ConfigurationName)"
 			ConfigurationType="2"
+			InheritedPropertySheets="$(VCInstallDir)VCProjectDefaults\UpgradeFromVC60.vsprops"
+			UseOfMFC="0"
+			ATLMinimizesCRunTimeLibraryUsage="false"
 			CharacterSet="2"
-			WholeProgramOptimization="1"
 			>
 			<Tool
 				Name="VCPreBuildEventTool"
@@ -194,40 +817,53 @@
 			/>
 			<Tool
 				Name="VCMIDLTool"
+				PreprocessorDefinitions="NDEBUG"
+				MkTypLibCompatible="true"
+				SuppressStartupBanner="true"
+				TargetEnvironment="1"
+				TypeLibraryName=".\php_cubrid___Win32_Release_TS/php_cubrid.tlb"
+				HeaderFileName=""
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="2"
-				EnableIntrinsicFunctions="true"
-				AdditionalIncludeDirectories="&quot;$(PHP5_SRC)&quot;;&quot;$(PHP5_SRC)\main&quot;;&quot;$(PHP5_SRC)\TSRM&quot;;&quot;$(PHP5_SRC)\Zend&quot;;&quot;$(CUBRID)\include&quot;"
-				PreprocessorDefinitions="NDEBUG;WIN32;_WINDOWS;_USRDLL;PHP_CUBRID_EXPORTS;PHP_WIN32;ZEND_WIN32;COMPILE_DL_CUBRID;ZEND_DEBUG=0;_USE_32BIT_TIME_T"
+				InlineFunctionExpansion="1"
+				AdditionalIncludeDirectories="$(PHP5_SRC),$(PHP5_SRC)\main,$(PHP5_SRC)\Zend,$(PHP5_SRC)\TSRM,$(CUBRID)\include"
+				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_USRDLL;PHP_CUBRID_EXPORTS;ZEND_DEBUG=0;COMPILE_DL_CUBRID;ZEND_WIN32;PHP_WIN32"
 				StringPooling="true"
-				RuntimeLibrary="2"
+				RuntimeLibrary="0"
 				EnableFunctionLevelLinking="true"
-				UsePrecompiledHeader="0"
+				PrecompiledHeaderFile=".\php_cubrid___Win32_Release_NTS/php_cubrid.pch"
+				AssemblerListingLocation=".\php_cubrid___Win32_Release_NTS/"
+				ObjectFile=".\php_cubrid___Win32_Release_NTS/"
+				ProgramDataBaseFileName=".\php_cubrid___Win32_Release_NTS/"
+				BrowseInformation="1"
 				WarningLevel="3"
-				DebugInformationFormat="3"
-				CompileAs="1"
-				DisableSpecificWarnings="4100;"
+				SuppressStartupBanner="true"
 			/>
 			<Tool
 				Name="VCManagedResourceCompilerTool"
 			/>
 			<Tool
 				Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="NDEBUG"
+				Culture="2052"
 			/>
 			<Tool
 				Name="VCPreLinkEventTool"
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="cascci.lib php5.lib"
+				AdditionalOptions="/libpath:&quot;&quot;$(CUBRID)\lib&quot;&quot;"
+				AdditionalDependencies="odbc32.lib odbccp32.lib cascci.lib php5.lib"
+				OutputFile=".\php_cubrid___Win32_Release_NTS/php_cubrid.dll"
 				LinkIncremental="1"
-				AdditionalLibraryDirectories="&quot;$(PHPRC)\dev&quot;;&quot;$(CUBRID)\lib&quot;"
-				GenerateDebugInformation="true"
-				SubSystem="2"
-				OptimizeReferences="2"
-				EnableCOMDATFolding="2"
+				SuppressStartupBanner="true"
+				AdditionalLibraryDirectories="$(PHPRC)\dev,$(CUBRID)\lib"
+				ProgramDatabaseFile=".\php_cubrid___Win32_Release_NTS/php_cubrid.pdb"
+				RandomizedBaseAddress="1"
+				DataExecutionPrevention="0"
+				ImportLibrary=".\php_cubrid___Win32_Release_NTS/php_cubrid.lib"
 				TargetMachine="1"
 			/>
 			<Tool
@@ -241,6 +877,8 @@
 			/>
 			<Tool
 				Name="VCBscMakeTool"
+				SuppressStartupBanner="true"
+				OutputFile=".\php_cubrid___Win32_Release_NTS/php_cubrid.bsc"
 			/>
 			<Tool
 				Name="VCFxCopTool"
@@ -253,10 +891,13 @@
 			/>
 		</Configuration>
 		<Configuration
-			Name="Debug_NTS|Win32"
-			OutputDirectory="$(SolutionDir)$(ConfigurationName)"
-			IntermediateDirectory="$(ConfigurationName)"
+			Name="Release_NTS|x64"
+			OutputDirectory=".\php_cubrid___x64_Release_NTS/"
+			IntermediateDirectory=".\php_cubrid___x64_Release_NTS/"
 			ConfigurationType="2"
+			InheritedPropertySheets="$(VCInstallDir)VCProjectDefaults\UpgradeFromVC60.vsprops"
+			UseOfMFC="0"
+			ATLMinimizesCRunTimeLibraryUsage="false"
 			CharacterSet="2"
 			>
 			<Tool
@@ -273,38 +914,55 @@
 			/>
 			<Tool
 				Name="VCMIDLTool"
+				PreprocessorDefinitions="NDEBUG"
+				MkTypLibCompatible="true"
+				SuppressStartupBanner="true"
+				TargetEnvironment="3"
+				TypeLibraryName=".\php_cubrid___Win32_Release_TS/php_cubrid.tlb"
+				HeaderFileName=""
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				Optimization="0"
-				AdditionalIncludeDirectories="&quot;$(PHP5_SRC)&quot;;&quot;$(PHP5_SRC)\main&quot;;&quot;$(PHP5_SRC)\TSRM&quot;;&quot;$(PHP5_SRC)\Zend&quot;;&quot;$(CUBRID)\include&quot;"
-				PreprocessorDefinitions="NDEBUG;WIN32;_WINDOWS;_USRDLL;PHP_CUBRID_EXPORTS;PHP_WIN32;ZEND_WIN32;COMPILE_DL_CUBRID;ZEND_DEBUG=0;_USE_32BIT_TIME_T"
+				Optimization="2"
+				InlineFunctionExpansion="1"
+				AdditionalIncludeDirectories="$(PHP5_SRC),$(PHP5_SRC)\main,$(PHP5_SRC)\Zend,$(PHP5_SRC)\TSRM,$(CUBRID)\include"
+				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_USRDLL;PHP_CUBRID_EXPORTS;ZEND_DEBUG=0;COMPILE_DL_CUBRID;ZEND_WIN32;PHP_WIN32"
 				StringPooling="true"
-				MinimalRebuild="false"
-				BasicRuntimeChecks="0"
-				RuntimeLibrary="1"
-				UsePrecompiledHeader="0"
+				RuntimeLibrary="0"
+				EnableFunctionLevelLinking="true"
+				PrecompiledHeaderFile=".\php_cubrid___x64_Release_NTS/php_cubrid.pch"
+				AssemblerListingLocation=".\php_cubrid___x64_Release_NTS/"
+				ObjectFile=".\php_cubrid___x64_Release_NTS/"
+				ProgramDataBaseFileName=".\php_cubrid___x64_Release_NTS/"
+				BrowseInformation="1"
 				WarningLevel="3"
-				DebugInformationFormat="4"
-				CompileAs="1"
+				SuppressStartupBanner="true"
 			/>
 			<Tool
 				Name="VCManagedResourceCompilerTool"
 			/>
 			<Tool
 				Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="NDEBUG"
+				Culture="2052"
 			/>
 			<Tool
 				Name="VCPreLinkEventTool"
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="cascci.lib php5.lib"
+				AdditionalOptions="/libpath:&quot;&quot;$(CUBRID)\lib&quot;&quot;"
+				AdditionalDependencies="odbc32.lib odbccp32.lib cascci.lib php5.lib"
+				OutputFile=".\php_cubrid___x64_Release_NTS/php_cubrid.dll"
 				LinkIncremental="1"
-				AdditionalLibraryDirectories="$(PHPRC)\dev;&quot;$(CUBRID)\lib&quot;"
-				GenerateDebugInformation="true"
-				SubSystem="2"
-				TargetMachine="1"
+				SuppressStartupBanner="true"
+				AdditionalLibraryDirectories="$(PHPRC)\dev,$(CUBRID)\lib"
+				ProgramDatabaseFile=".\php_cubrid___x64_Release_NTS/php_cubrid.pdb"
+				ProfileGuidedDatabase=""
+				RandomizedBaseAddress="1"
+				DataExecutionPrevention="0"
+				ImportLibrary="$(TargetDir)$(TargetName).lib"
+				TargetMachine="17"
 			/>
 			<Tool
 				Name="VCALinkTool"
@@ -317,6 +975,8 @@
 			/>
 			<Tool
 				Name="VCBscMakeTool"
+				SuppressStartupBanner="true"
+				OutputFile="$(TargetDir)$(TargetName).bsc"
 			/>
 			<Tool
 				Name="VCFxCopTool"
@@ -334,32 +994,119 @@
 	<Files>
 		<Filter
 			Name="Source Files"
-			Filter="cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx"
-			UniqueIdentifier="{4FC737F1-C7A5-4376-A066-2A32D752A2FF}"
+			Filter="cpp;c;cxx;rc;def;r;odl;idl;hpj;bat"
 			>
 			<File
-				RelativePath="..\php_cubrid.c"
+				RelativePath="php_cubrid.c"
 				>
+				<FileConfiguration
+					Name="Release_TS|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						AdditionalIncludeDirectories=""
+						PreprocessorDefinitions=""
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release_TS|x64"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						AdditionalIncludeDirectories=""
+						PreprocessorDefinitions=""
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						AdditionalIncludeDirectories=""
+						PreprocessorDefinitions=""
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug|x64"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						AdditionalIncludeDirectories=""
+						PreprocessorDefinitions=""
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						AdditionalIncludeDirectories=""
+						PreprocessorDefinitions=""
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|x64"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						AdditionalIncludeDirectories=""
+						PreprocessorDefinitions=""
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug_TS|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						AdditionalIncludeDirectories=""
+						PreprocessorDefinitions=""
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug_TS|x64"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						AdditionalIncludeDirectories=""
+						PreprocessorDefinitions=""
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release_NTS|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						AdditionalIncludeDirectories=""
+						PreprocessorDefinitions=""
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release_NTS|x64"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						AdditionalIncludeDirectories=""
+						PreprocessorDefinitions=""
+					/>
+				</FileConfiguration>
 			</File>
 		</Filter>
 		<Filter
 			Name="Header Files"
-			Filter="h;hpp;hxx;hm;inl;inc;xsd"
-			UniqueIdentifier="{93995380-89BD-4b04-88EB-625FBE52EBFB}"
+			Filter="h;hpp;hxx;hm;inl"
 			>
 			<File
-				RelativePath="..\php_cubrid.h"
+				RelativePath="php_cubrid.h"
 				>
 			</File>
 			<File
-				RelativePath="..\php_cubrid_version.h"
+				RelativePath="php_cubrid_version.h"
 				>
 			</File>
 		</Filter>
 		<Filter
 			Name="Resource Files"
-			Filter="rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav"
-			UniqueIdentifier="{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}"
+			Filter="ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe"
 			>
 		</Filter>
 	</Files>

@@ -47,7 +47,7 @@ printf ("cubrid_error_code: %d\n", cubrid_error_code());
 printf ("cubrid_error_msg: %s\n", cubrid_error_msg());
 printf ("cubrid_error_facility: %d\n", cubrid_error_code_facility());
 
-if ($conn = @cubrid_connect($host . '_unknown', $port, $db, $user . '_unknown', $passwd)) {
+if ($conn = @cubrid_connect($host, 111, $db, $user . '_unknown', $passwd)) {
     printf("[005] Can connect to the server using host=%s, port=%d, dbname=%s, user=%s, passwd=***\n", $host . '_unknown', $port, $db, $user . '_unknown');
 } else {
     $errno = cubrid_errno();
