@@ -13147,6 +13147,11 @@ exit:
       ctemplate = NULL;
     }
 
+  if (sub_partitions)
+    {
+      free_and_init (sub_partitions);
+    }
+
   if (error != NO_ERROR && tran_saved && error != ER_LK_UNILATERALLY_ABORTED)
     {
       (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_ATTR);

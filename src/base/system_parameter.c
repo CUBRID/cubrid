@@ -3994,6 +3994,7 @@ sysprm_validate_change_parameters (const char *data, bool check,
 	  else
 	    {
 	      /* bad value */
+	      free_and_init (assign);
 	      break;
 	    }
 	}
