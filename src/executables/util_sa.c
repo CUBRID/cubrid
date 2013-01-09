@@ -2822,7 +2822,8 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 
       if (check_tables)
 	{
-	  /* get table names having collation */
+	  /* get table names having collation; do not include partition
+	   * sub-classes */
 	  sprintf (query, "SELECT C.class_name, C.class_type "
 		   "FROM _db_class C "
 		   "WHERE C.collation_id = %d "
@@ -2888,7 +2889,8 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 
       if (check_atts)
 	{
-	  /* first drop foreign keys on attributes using collation */
+	  /* first drop foreign keys on attributes using collation;
+	   * do not include partition sub-classes */
 	  /* CLASS_NAME, INDEX_NAME */
 
 	  sprintf (query, "SELECT A.class_of.class_name, I.index_name "
@@ -2952,6 +2954,8 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 	    }
 
 
+	  /* attributes having collation; do not include partition
+	   * sub-classes */
 	  /* CLASS_NAME, CLASS_TYPE, ATTR_NAME, ATTR_FULL_TYPE */
 	  /* ATTR_FULL_TYPE = CHAR(20) */
 	  /* or               ENUM ('a', 'b') */
@@ -3297,10 +3301,18 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 
       if (check_func_index)
 	{
+	  /* Function indexes using collation;
+	   * do not include partition sub-classes */
+	  /* INDEX_NAME, FUNCTION_EXPRESSION, CLASS_NAME */
 	  sprintf (query, "SELECT index_of.index_name, func, "
 		   "index_of.class_of.class_name FROM "
-		   "_db_index_key WHERE LOCATE ('%s', func) > 0",
-		   db_coll->coll_name);
+		   "_db_index_key WHERE LOCATE ('%s', func) > 0 "
+		   "AND NOT (index_of.class_of.class_name IN "
+		   "(SELECT CONCAT (P.class_of.class_name, '__p__', P.pname) "
+		   "FROM _db_partition P WHERE "
+		   "CONCAT (P.class_of.class_name, '__p__', P.pname) "
+		   " = index_of.class_of.class_name "
+		   "AND P.pname IS NOT NULL)) ", db_coll->coll_name);
 
 	  db_status = db_execute (query, &query_result, &query_error);
 
