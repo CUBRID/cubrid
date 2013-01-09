@@ -22071,8 +22071,8 @@ pt_check_recursive_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
       PT_NODE *arg2 = expr->info.expr.arg2;
       int arg1_coll = -1;
       int arg2_coll = -1;
-      INTL_CODESET arg1_cs;
-      PT_COLL_COERC_LEV arg1_coerc_level;
+      INTL_CODESET arg1_cs, arg2_cs;
+      PT_COLL_COERC_LEV arg1_coerc_level, arg2_coerc_level;
 
       if (pt_get_collation_info (arg1, &arg1_coll, &arg1_cs,
 				 &arg1_coerc_level))
@@ -22098,25 +22098,62 @@ pt_check_recursive_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 	    }
 	  else
 	    {
-	      /* use this node's collation */
 	      if (recurs_coll != -1)
 		{
 		  need_arg_coerc = true;
 		}
-	      recurs_coll = arg1_coll;
-	      recurs_cs = arg1_cs;
-	      recurs_coerc_level = MIN (recurs_coerc_level, arg1_coerc_level);
+
+	      if (recurs_coerc_level > arg1_coerc_level || recurs_coll == -1)
+		{
+		  recurs_coerc_level = arg1_coerc_level;
+		  recurs_coll = arg1_coll;
+		  recurs_cs = arg1_cs;
+		}
 	    }
 	}
 
-      if (PT_IS_LEFT_RECURSIVE_EXPRESSION (expr))
+      if (arg2 != NULL
+	  && (arg2->node_type != PT_EXPR || op != arg2->info.expr.op)
+	  && pt_get_collation_info (arg2, &arg2_coll, &arg2_cs,
+				    &arg2_coerc_level))
 	{
-	  expr = arg1;
+	  if (arg2_cs == INTL_CODESET_KSC5601_EUC)
+	    {
+	      has_euc_cs = true;
+	    }
+	  else if (arg2_cs == INTL_CODESET_UTF8)
+	    {
+	      has_utf8_cs = true;
+	    }
+
+	  if (has_utf8_cs && has_euc_cs)
+	    {
+	      goto error;
+	    }
+
+	  if (recurs_coll != -1 && recurs_coll != arg2_coll
+	      && recurs_coerc_level == arg2_coerc_level)
+	    {
+	      goto error;
+	    }
+	  else
+	    {
+	      if (recurs_coll != -1)
+		{
+		  need_arg_coerc = true;
+		}
+
+	      if (recurs_coerc_level > arg2_coerc_level || recurs_coll == -1)
+		{
+		  recurs_coerc_level = arg2_coerc_level;
+		  recurs_coll = arg2_coll;
+		  recurs_cs = arg2_cs;
+		}
+	    }
 	}
-      else
-	{
-	  expr = arg2;
-	}
+
+      assert (PT_IS_RIGHT_RECURSIVE_EXPRESSION (expr));
+      expr = arg2;
     }
 
   expr = *node;
@@ -22127,8 +22164,8 @@ pt_check_recursive_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
       PT_NODE *arg2 = expr->info.expr.arg2;
       int arg1_coll = -1;
       int arg2_coll = -1;
-      INTL_CODESET arg1_cs;
-      PT_COLL_COERC_LEV arg1_coerc_level;
+      INTL_CODESET arg1_cs, arg2_cs;
+      PT_COLL_COERC_LEV arg1_coerc_level, arg2_coerc_level;
 
       if (PT_HAS_COLLATION (arg1->type_enum))
 	{
@@ -22148,14 +22185,45 @@ pt_check_recursive_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 	  expr->info.expr.arg1 = arg1;
 	}
 
-      if (PT_IS_LEFT_RECURSIVE_EXPRESSION (expr))
+      if (arg2 != NULL)
 	{
-	  expr = arg1;
+	  if (arg2->node_type != PT_EXPR || op != arg2->info.expr.op)
+	    {
+	      if (PT_HAS_COLLATION (arg2->type_enum))
+		{
+		  (void) pt_get_collation_info (arg2, &arg2_coll, &arg2_cs,
+						&arg2_coerc_level);
+		}
+
+	      if ((PT_HAS_COLLATION (arg2->type_enum)
+		   && arg2_coll != recurs_coll)
+		  || arg2->type_enum == PT_TYPE_MAYBE)
+		{
+		  arg2 = pt_coerce_node_collation (parser, arg2, recurs_coll,
+						   recurs_cs, false, false);
+		  if (arg2 == NULL)
+		    {
+		      goto error;
+		    }
+		  expr->info.expr.arg2 = arg2;
+		}
+	    }
+	  else if (arg2->node_type == PT_EXPR && op == arg2->info.expr.op
+		   && PT_HAS_COLLATION (arg2->type_enum))
+	    {
+	      /* force collation on recursive expression node */
+	      arg2 = pt_coerce_node_collation (parser, arg2, recurs_coll,
+					       recurs_cs, true, false);
+	      if (arg2 == NULL)
+		{
+		  goto error;
+		}
+	      expr->info.expr.arg2 = arg2;
+	    }
 	}
-      else
-	{
-	  expr = arg2;
-	}
+
+      assert (PT_IS_RIGHT_RECURSIVE_EXPRESSION (expr));
+      expr = arg2;
     }
 
   expr = *node;
