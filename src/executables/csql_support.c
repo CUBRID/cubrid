@@ -150,7 +150,7 @@ csql_get_user_home (char *homedir, int homedir_size)
  *   characters other than the path name itself. If error occurred from O.S,
  *   give up the extension and just return the `pathname'.
  */
-const char *
+char *
 csql_get_real_path (const char *pathname)
 {
 #if defined(WINDOWS)

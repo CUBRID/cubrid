@@ -295,7 +295,7 @@ extern void csql_exit (int exit_status);
 extern int csql (const char *argv0, CSQL_ARGUMENT * csql_arg);
 extern const char *csql_get_message (int message_index);
 
-extern const char *csql_get_real_path (const char *pathname);
+extern char *csql_get_real_path (const char *pathname);
 extern void csql_invoke_system (const char *command);
 extern int csql_invoke_system_editor (void);
 extern void csql_fputs (const char *str, FILE * fp);

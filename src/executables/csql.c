@@ -1161,7 +1161,6 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
     case S_CMD_COLUMN_WIDTH:
       {
 	char *column_name = NULL;
-	char *temp_argument = NULL;
 	int width, result;
 
 	if (*argument == '\0')
@@ -1188,17 +1187,8 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	  }
 	else
 	  {
-	    temp_argument = malloc (strlen (argument) + 1);
-	    if (temp_argument == NULL)
-	      {
-		csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
-
-		return DO_CMD_FAILURE;
-	      }
-
-	    strcpy (temp_argument, argument);
 	    result =
-	      get_column_width_argument (&column_name, &width, temp_argument);
+	      get_column_width_argument (&column_name, &width, argument);
 	    if (result == 1)
 	      {
 		width = csql_get_column_width (column_name);
@@ -1210,24 +1200,14 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 		if (csql_set_column_width_info (column_name, width) !=
 		    CSQL_SUCCESS)
 		  {
-		    if (temp_argument != NULL)
-		      {
-			free_and_init (temp_argument);
-		      }
-
 		    return DO_CMD_FAILURE;
 		  }
 	      }
 	    else
 	      {
 		fprintf (csql_Error_fp,
-			 "ERROR: Invalid argument(%s).\n", temp_argument);
+			 "ERROR: Invalid argument(%s).\n", argument);
 	      }
-	  }
-
-	if (temp_argument != NULL)
-	  {
-	    free_and_init (temp_argument);
 	  }
       }
       break;
@@ -1236,50 +1216,35 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       {
 	long result;
 	char *endptr;
-	char *temp_argument = NULL;
 
 	if (*argument != '\0')
 	  {
-	    temp_argument = malloc (strlen (argument) + 1);
-	    if (temp_argument == NULL)
-	      {
-		csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
-
-		return DO_CMD_FAILURE;
-	      }
-
-	    strcpy (temp_argument, argument);
-	    trim (temp_argument);
+	    trim (argument);
 
 	    errno = 0;		/* To distinguish success/failure after call */
-	    result = strtol (temp_argument, &endptr, 10);
+	    result = strtol (argument, &endptr, 10);
 	    if ((errno == ERANGE
 		 && (result == LONG_MAX || result == LONG_MIN))
 		|| (errno != 0 && result == 0))
 	      {
 		fprintf (csql_Error_fp,
-			 "ERROR: Invalid string-width(%s).\n", temp_argument);
+			 "ERROR: Invalid string-width(%s).\n", argument);
 		break;
 	      }
 	    if (endptr && *endptr != '\0')
 	      {
 		fprintf (csql_Error_fp,
-			 "ERROR: Invalid string-width(%s).\n", temp_argument);
+			 "ERROR: Invalid string-width(%s).\n", argument);
 		break;
 	      }
 	    if (result > INT_MAX || result < 0)
 	      {
 		fprintf (csql_Error_fp,
-			 "ERROR: Invalid string-width(%s).\n", temp_argument);
+			 "ERROR: Invalid string-width(%s).\n", argument);
 		break;
 	      }
 
 	    csql_arg->string_width = result;
-
-	    if (temp_argument != NULL)
-	      {
-		free_and_init (temp_argument);
-	      }
 	  }
 	else
 	  {
@@ -1480,7 +1445,7 @@ static void
 csql_read_file (const char *file_name)
 {
   static char current_file[PATH_MAX] = "";
-  const char *p, *q;		/* pointer to string */
+  char *p, *q;			/* pointer to string */
   FILE *fp = (FILE *) NULL;	/* file stream */
 
   p = csql_get_real_path (file_name);	/* get real path name */
@@ -1502,8 +1467,15 @@ csql_read_file (const char *file_name)
 	}
     }
 
-  for (q = p; *q != '\0' && !iswspace ((wint_t) * q); q++)
+  for (q = p; *q != '\0' && !iswspace ((wint_t) (*q)); q++)
     ;
+
+  /* trim trailing blanks */
+  for (; *q != '\0' && iswspace ((wint_t) (*q)); q++)
+    {
+      *q = '\0';
+    }
+
   if (*q != '\0')
     {				/* contains more than one file name */
       csql_Error_code = CSQL_ERR_TOO_MANY_FILE_NAMES;
@@ -1554,7 +1526,7 @@ csql_write_file (const char *file_name, int append_flag)
 {
   static char current_file[PATH_MAX] = "";
   /* the name of the last file written */
-  const char *p, *q;		/* pointer to string */
+  char *p, *q;			/* pointer to string */
   FILE *fp = (FILE *) NULL;	/* file stream */
 
   p = csql_get_real_path (file_name);	/* get real path name */
@@ -1574,8 +1546,15 @@ csql_write_file (const char *file_name, int append_flag)
 	}
     }
 
-  for (q = p; *q != '\0' && !iswspace ((wint_t) * q); q++)
+  for (q = p; *q != '\0' && !iswspace ((wint_t) (*q)); q++)
     ;
+
+  /* trim trailing blanks */
+  for (; *q != '\0' && iswspace ((wint_t) (*q)); q++)
+    {
+      *q = '\0';
+    }
+
   if (*q != '\0')
     {				/* contains more than one file name */
       csql_Error_code = CSQL_ERR_TOO_MANY_FILE_NAMES;
