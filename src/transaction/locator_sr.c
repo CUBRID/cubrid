@@ -4158,7 +4158,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 	  isid.indx_info = NULL;
 	  memset ((void *) (&(isid.multi_range_opt)), 0,
 		  sizeof (MULTI_RANGE_OPT));
-
+	  isid.duplicate_key_locked = false;
 	  scan_init_iss (&isid);
 
 	  is_upd_scan_init = false;
