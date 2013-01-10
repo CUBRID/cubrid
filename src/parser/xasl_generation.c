@@ -14533,7 +14533,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 		      QO_PLAN * qo_plan)
 {
   XASL_NODE *xasl;
-  PT_NODE *saved_current_class;
+  PT_NODE *saved_current_class, *spec = NULL;
   int groupby_ok = 1;
   AGGREGATE_TYPE *aggregate = NULL;
   SYMBOL_INFO *symbols;
@@ -14595,6 +14595,11 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 			     &xasl->instnum_val, &xasl->ordbynum_val);
   pt_set_numbering_node_etc (parser, select_node->info.query.orderby_for,
 			     &xasl->instnum_val, &xasl->ordbynum_val);
+  for (spec = from; spec != NULL; spec = spec->next)
+    {
+      pt_set_numbering_node_etc (parser, spec->info.spec.on_cond,
+				 &xasl->instnum_val, &xasl->ordbynum_val);
+    }
 
   /* assume parse tree correct, and PT_DISTINCT only other possibility */
   if (select_node->info.query.all_distinct == PT_ALL)
@@ -15473,7 +15478,7 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
   XASL_NODE *xasl;
   BUILDVALUE_PROC_NODE *buildvalue;
   AGGREGATE_TYPE *aggregate;
-  PT_NODE *saved_current_class;
+  PT_NODE *saved_current_class, *spec = NULL;
   XASL_NODE *dptr_head;
 
   if (!select_node || select_node->node_type != PT_SELECT ||
@@ -15498,6 +15503,12 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 			     &xasl->instnum_val, &xasl->ordbynum_val);
   pt_set_numbering_node_etc (parser, select_node->info.query.orderby_for,
 			     &xasl->instnum_val, &xasl->ordbynum_val);
+  for (spec = select_node->info.query.q.select.from; spec != NULL;
+       spec = spec->next)
+    {
+      pt_set_numbering_node_etc (parser, spec->info.spec.on_cond,
+				 &xasl->instnum_val, &xasl->ordbynum_val);
+    }
 
   /* assume parse tree correct, and PT_DISTINCT only other possibility */
   xasl->option = ((select_node->info.query.all_distinct == PT_ALL)
