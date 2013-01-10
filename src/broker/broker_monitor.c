@@ -2045,10 +2045,11 @@ metadata_monitor (void)
 	}
 
       shard_stat_items_old_p =
-	(SHARD_STAT_ITEM *) (shard_stat_items_old +
+	(SHARD_STAT_ITEM *) (((char *) shard_stat_items_old) +
 			     (shard_stat_items_size * i));
       key_stat_items_old_p =
-	(KEY_STAT_ITEM *) (key_stat_items_old + (key_stat_items_size * i));
+	(KEY_STAT_ITEM *) (((char *) key_stat_items_old) +
+			   (key_stat_items_size * i));
 
       shm_user_p = shard_metadata_get_user (shm_metadata_cp);
       shm_key_p = shard_metadata_get_key (shm_metadata_cp);
