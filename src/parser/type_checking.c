@@ -8526,6 +8526,10 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  return NULL;
 	}
       op = node->info.expr.op;
+      if (pt_has_error (parser))
+	{
+	  goto error;
+	}
     }
   /* shortcut for FUNCTION HOLDER */
   if (op == PT_FUNCTION_HOLDER)
@@ -22266,6 +22270,19 @@ pt_node_to_enumeration_expr (PARSER_CONTEXT * parser, PT_NODE * data_type,
       return NULL;
     }
 
+  if (PT_HAS_COLLATION (node->type_enum) && node->data_type != NULL)
+    {
+      if (!INTL_CAN_COERCE_CS (node->data_type->info.data_type.units,
+			       data_type->info.data_type.units))
+	{
+	  PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		       MSGCAT_SEMANTIC_COERCE_UNSUPPORTED,
+		       pt_short_print (parser, node),
+		       pt_show_type_enum (PT_TYPE_ENUMERATION));
+	  return node;
+	}
+    }
+
   expr = parser_new_node (parser, PT_EXPR);
   if (expr == NULL)
     {
@@ -22273,6 +22290,7 @@ pt_node_to_enumeration_expr (PARSER_CONTEXT * parser, PT_NODE * data_type,
 		 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
       return NULL;
     }
+
   expr->info.expr.arg1 = node;
   expr->type_enum = PT_TYPE_ENUMERATION;
   expr->data_type = parser_copy_tree (parser, data_type);

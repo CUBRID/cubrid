@@ -8337,6 +8337,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	int val_str_size = 0;
 	char *val_str = NULL;
 	bool exit = false, alloc_string = true;
+	DB_VALUE conv_val;
+
+	DB_MAKE_NULL (&conv_val);
 
 	if (src->domain.general_info.is_null)
 	  {
@@ -8456,8 +8459,47 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    break;
 	  case DB_TYPE_CHAR:
 	  case DB_TYPE_VARCHAR:
-	    val_str = DB_GET_STRING (src);
-	    val_str_size = DB_GET_STRING_SIZE (src);
+	    if (DB_GET_STRING_CODESET (src)
+		!= TP_DOMAIN_CODESET (desired_domain))
+	      {
+		DB_DATA_STATUS data_status = DATA_STATUS_OK;
+
+		if (TP_DOMAIN_CODESET (desired_domain)
+		    == INTL_CODESET_ISO88591)
+		  {
+		    /* avoid data truncation when converting to ISO charset */
+		    db_value_domain_init (&conv_val, DB_VALUE_TYPE (src),
+					  DB_GET_STRING_SIZE (src), 0);
+		  }
+		else
+		  {
+		    db_value_domain_init (&conv_val, DB_VALUE_TYPE (src),
+					  DB_VALUE_PRECISION (src), 0);
+		  }
+
+		db_string_put_cs_and_collation (&conv_val,
+						TP_DOMAIN_CODESET
+						(desired_domain),
+						TP_DOMAIN_COLLATION
+						(desired_domain));
+
+		if (db_char_string_coerce (src, &conv_val, &data_status)
+		    != NO_ERROR || data_status != DATA_STATUS_OK)
+		  {
+		    status = DOMAIN_ERROR;
+		    pr_clear_value (&conv_val);
+		  }
+		else
+		  {
+		    val_str = DB_GET_STRING (&conv_val);
+		    val_str_size = DB_GET_STRING_SIZE (&conv_val);
+		  }
+	      }
+	    else
+	      {
+		val_str = DB_GET_STRING (src);
+		val_str_size = DB_GET_STRING_SIZE (src);
+	      }
 	    break;
 	  case DB_TYPE_ENUMERATION:
 	    if (DOM_GET_ENUM_ELEMS_COUNT (desired_domain) == 0)
@@ -8523,13 +8565,10 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		/* We have the index, we need to get the actual string value
 		 * from the desired domain
 		 */
-		if (val_idx > DOM_GET_ENUM_ELEMS_COUNT (desired_domain))
+		if (val_idx == 0
+		    || val_idx > DOM_GET_ENUM_ELEMS_COUNT (desired_domain))
 		  {
 		    status = DOMAIN_OVERFLOW;
-		  }
-		else if (val_idx == 0)
-		  {
-		    status = DOMAIN_ERROR;
 		  }
 		else
 		  {
@@ -8547,12 +8586,22 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		char *enum_str;
 
 		assert (val_str != NULL);
+
+		if (!DB_IS_NULL (&conv_val))
+		  {
+		    /* if charset conversion, than use the converted value
+		     * buffer to avoid an additional copy */
+		    alloc_string = false;
+		    conv_val.need_clear = false;
+		  }
+
 		if (alloc_string)
 		  {
 		    enum_str = db_private_alloc (NULL, val_str_size + 1);
 		    if (enum_str == NULL)
 		      {
 			status = DOMAIN_ERROR;
+			pr_clear_value (&conv_val);
 			break;
 		      }
 		    else
@@ -8571,6 +8620,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		target->need_clear = true;
 	      }
 	  }
+	pr_clear_value (&conv_val);
       }
       break;
 

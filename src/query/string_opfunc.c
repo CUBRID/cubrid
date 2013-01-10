@@ -307,7 +307,7 @@ static int lob_to_bit_char (const DB_VALUE * src_value,
 			    DB_VALUE * result_value, DB_TYPE lob_type,
 			    int max_length);
 static int lob_from_file (const char *path, const DB_VALUE * src_value,
-                          DB_VALUE * lob_value,DB_TYPE lob_type);
+			  DB_VALUE * lob_value, DB_TYPE lob_type);
 static int lob_length (const DB_VALUE * src_value, DB_VALUE * result_value);
 
 static int make_number_to_char (const INTL_LANG lang, char *num_string,
@@ -16309,7 +16309,7 @@ lob_to_bit_char (const DB_VALUE * src_value, DB_VALUE * result_value,
  */
 static int
 lob_from_file (const char *path, const DB_VALUE * src_value,
-               DB_VALUE * lob_value, DB_TYPE lob_type)
+	       DB_VALUE * lob_value, DB_TYPE lob_type)
 {
   int error_status = NO_ERROR;
   DB_ELO temp_elo, *result_elo;
@@ -16327,7 +16327,7 @@ lob_from_file (const char *path, const DB_VALUE * src_value,
     {
       error_status = ER_ES_INVALID_PATH;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status,
-              1, DB_PULL_STRING (src_value));
+	      1, DB_PULL_STRING (src_value));
       return error_status;
     }
 
@@ -22512,7 +22512,8 @@ db_blob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
 	       MIN (src_size, PATH_MAX - path_buf_len));
       path_buf[path_buf_len + MIN (src_size, PATH_MAX - path_buf_len)] = '\0';
 
-      error_status = lob_from_file (path_buf, src_value, result_value, DB_TYPE_BLOB);
+      error_status =
+	lob_from_file (path_buf, src_value, result_value, DB_TYPE_BLOB);
     }
   else
     {
@@ -22716,7 +22717,8 @@ db_clob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
 	       MIN (src_size, PATH_MAX - path_buf_len));
       path_buf[path_buf_len + MIN (src_size, PATH_MAX - path_buf_len)] = '\0';
 
-      error_status = lob_from_file (path_buf, src_value, result_value, DB_TYPE_CLOB);
+      error_status =
+	lob_from_file (path_buf, src_value, result_value, DB_TYPE_CLOB);
     }
   else
     {
@@ -24866,11 +24868,15 @@ db_value_to_enumeration_value (const DB_VALUE * src, DB_VALUE * result,
   status = tp_value_cast (src, result, enum_domain, false);
   if (status != DOMAIN_COMPATIBLE)
     {
-      er_clear ();
+      if (status == DOMAIN_ERROR)
+	{
+	  return ER_FAILED;
+	}
       DB_MAKE_ENUMERATION (result, 0, NULL, 0,
 			   TP_DOMAIN_CODESET (enum_domain),
 			   TP_DOMAIN_COLLATION (enum_domain));
-      return NO_ERROR;
+      er_clear ();
+      /* continue, no error */
     }
 
   return NO_ERROR;
