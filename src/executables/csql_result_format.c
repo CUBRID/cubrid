@@ -1588,9 +1588,49 @@ csql_db_value_as_string (DB_VALUE * value, int *length)
       break;
 
     case DB_TYPE_ENUMERATION:
-      result = string_to_string (db_get_enum_string (value),
-				 default_string_profile.string_delimiter,
-				 '\0', db_get_enum_string_size (value), &len);
+      {
+	int bytes_size, decomp_size;
+	bool need_decomp = false;
+	char *str;
+	char *decomposed = NULL;
+
+	str = db_get_enum_string (value);
+	bytes_size = db_get_enum_string_size (value);
+	if (bytes_size > 0
+	    && db_get_enum_codeset (value) == INTL_CODESET_UTF8)
+	  {
+	    need_decomp =
+	      unicode_string_need_decompose (str, bytes_size, &decomp_size,
+					     lang_get_generic_unicode_norm
+					     ());
+	  }
+
+	if (need_decomp)
+	  {
+	    decomposed = (char *) malloc (decomp_size * sizeof (char));
+	    if (decomposed != NULL)
+	      {
+		unicode_decompose_string (str, bytes_size, decomposed,
+					  &decomp_size,
+					  lang_get_generic_unicode_norm ());
+
+		str = decomposed;
+		bytes_size = decomp_size;
+	      }
+	    else
+	      {
+		return NULL;
+	      }
+	  }
+
+	result = string_to_string (str,
+				   default_string_profile.string_delimiter,
+				   '\0', bytes_size, &len);
+	if (decomposed != NULL)
+	  {
+	    free_and_init (decomposed);
+	  }
+      }
       break;
 
     default:

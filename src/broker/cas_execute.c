@@ -4617,9 +4617,55 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
       break;
     case DB_TYPE_ENUMERATION:
       {
-	add_res_data_string (net_buf, db_get_enum_string (val),
-			     db_get_enum_string_size (val),
-			     col_type, &data_size);
+	char *str;
+	int bytes_size = 0;
+	int decomp_size;
+	char *decomposed = NULL;
+	bool need_decomp = false;
+
+	str = db_get_enum_string (val);
+	bytes_size = db_get_enum_string_size (val);
+	if (max_col_size > 0)
+	  {
+	    bytes_size = MIN (bytes_size, max_col_size);
+	  }
+
+	if (db_get_enum_codeset (val) == INTL_CODESET_UTF8)
+	  {
+	    need_decomp =
+	      unicode_string_need_decompose (str, bytes_size, &decomp_size,
+					     lang_get_generic_unicode_norm
+					     ());
+	  }
+
+	if (need_decomp)
+	  {
+	    decomposed = (char *) MALLOC (decomp_size * sizeof (char));
+	    if (decomposed != NULL)
+	      {
+		unicode_decompose_string (str, bytes_size, decomposed,
+					  &decomp_size,
+					  lang_get_generic_unicode_norm ());
+
+		str = decomposed;
+		bytes_size = decomp_size;
+	      }
+	    else
+	      {
+		/* set error indicator and send empty string */
+		ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+		bytes_size = 0;
+	      }
+	  }
+
+	add_res_data_string (net_buf, str, bytes_size, col_type, &data_size);
+
+	if (decomposed != NULL)
+	  {
+	    FREE (decomposed);
+	    decomposed = NULL;
+	  }
+
 	break;
       }
     case DB_TYPE_SMALLINT:
