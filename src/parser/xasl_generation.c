@@ -22706,7 +22706,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   if (aptr_statement == NULL)
     {
       error = er_errid ();
-      if (error == NO_ERROR)
+      if (error == NO_ERROR && !pt_has_error (parser))
 	{
 	  error = ER_GENERIC_ERROR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -22718,7 +22718,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   if (aptr_statement == NULL)
     {
       error = er_errid ();
-      if (error == NO_ERROR)
+      if (error == NO_ERROR && !pt_has_error (parser))
 	{
 	  error = ER_GENERIC_ERROR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -22730,7 +22730,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   if (xasl == NULL || xasl->aptr_list == NULL)
     {
       error = er_errid ();
-      if (error == NO_ERROR)
+      if (error == NO_ERROR && !pt_has_error (parser))
 	{
 	  error = ER_GENERIC_ERROR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -22908,7 +22908,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	      if (upd_cls->att_id[cl * upd_cls->no_attrs + a] < 0)
 		{
 		  error = er_errid ();
-		  if (error == NO_ERROR)
+		  if (error == NO_ERROR && !pt_has_error (parser))
 		    {
 		      error = ER_GENERIC_ERROR;
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -23145,7 +23145,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   if (aptr_statement == NULL)
     {
       error = er_errid ();
-      if (error == NO_ERROR)
+      if (error == NO_ERROR && !pt_has_error (parser))
 	{
 	  error = ER_GENERIC_ERROR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -23156,7 +23156,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   if (aptr_statement == NULL)
     {
       error = er_errid ();
-      if (error == NO_ERROR)
+      if (error == NO_ERROR && !pt_has_error (parser))
 	{
 	  error = ER_GENERIC_ERROR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -23214,7 +23214,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   if (xasl == NULL || xasl->aptr_list == NULL)
     {
       error = er_errid ();
-      if (error == NO_ERROR)
+      if (error == NO_ERROR && !pt_has_error (parser))
 	{
 	  error = ER_GENERIC_ERROR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);

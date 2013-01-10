@@ -493,8 +493,21 @@ pt_check_hint (const char *text, PT_HINT hint_table[],
 				    parser_new_node (this_parser, PT_NAME);
 				  if (arg)
 				    {
-				      arg->info.name.original =
-					pt_makename (arg_start);
+				      temp = strstr (arg_start, ".");
+				      if (temp && temp < &(hint_p[j]))
+					{
+					  *temp = '\0';
+					  arg->info.name.resolved =
+					    pt_makename (arg_start);
+					  *temp++ = '.';
+					  arg->info.name.original =
+					    pt_makename (temp);
+					}
+				      else
+					{
+					  arg->info.name.original =
+					    pt_makename (arg_start);
+					}
 				      arg->info.name.meta_class =
 					PT_HINT_NAME;
 				      hint_table[i].arg_list =
@@ -545,8 +558,21 @@ pt_check_hint (const char *text, PT_HINT hint_table[],
 			      arg = parser_new_node (this_parser, PT_NAME);
 			      if (arg)
 				{
-				  arg->info.name.original =
-				    pt_makename (arg_start);
+				  temp = strstr (arg_start, ".");
+				  if (temp && temp < &(hint_p[j]))
+				    {
+				      *temp = '\0';
+				      arg->info.name.resolved =
+					pt_makename (arg_start);
+				      *temp++ = '.';
+				      arg->info.name.original =
+					pt_makename (temp);
+				    }
+				  else
+				    {
+				      arg->info.name.original =
+					pt_makename (arg_start);
+				    }
 				  arg->info.name.meta_class = PT_HINT_NAME;
 				  hint_table[i].arg_list =
 				    parser_append_node (arg,
