@@ -11792,8 +11792,9 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs,
 
 	      if (lhs->type_enum == PT_TYPE_ENUMERATION)
 		{
-		  d =
-		    pt_data_type_to_db_domain (parser, lhs->data_type, NULL);
+		  d = pt_data_type_to_db_domain (parser, lhs->data_type,
+						 NULL);
+		  d = tp_domain_cache (d);
 		}
 	      else
 		{
