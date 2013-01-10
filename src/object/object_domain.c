@@ -977,6 +977,10 @@ domain_init (TP_DOMAIN * domain, DB_TYPE typeid_)
     {
       domain->codeset = LANG_SYS_CODESET;
       domain->collation_id = LANG_SYS_COLLATION;
+      if (typeid_ == DB_TYPE_ENUMERATION)
+	{
+	  domain->enumeration.collation_id = LANG_SYS_COLLATION;
+	}
     }
   else
     {
