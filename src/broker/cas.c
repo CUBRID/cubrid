@@ -1485,14 +1485,16 @@ cas_free (bool free_srv_handle)
   if (as_info->psize > max_process_size)
     {
       cas_log_write_and_end (0, true,
-			     "CAS MEMORY USAGE HAS EXCEEDED MAX SIZE (%dM)",
+			     "CAS MEMORY USAGE (%dM) HAS EXCEEDED MAX SIZE (%dM)",
+			     as_info->psize / ONE_K,
 			     max_process_size / ONE_K);
     }
 
   if (as_info->psize > shm_appl->appl_server_hard_limit)
     {
       cas_log_write_and_end (0, true,
-			     "CAS MEMORY USAGE HAS EXCEEDED HARD LIMIT (%dM)",
+			     "CAS MEMORY USAGE (%dM) HAS EXCEEDED HARD LIMIT (%dM)",
+			     as_info->psize / ONE_K,
 			     shm_appl->appl_server_hard_limit / ONE_K);
     }
 
