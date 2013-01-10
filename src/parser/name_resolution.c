@@ -6203,7 +6203,6 @@ pt_resolve_vclass_args (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       if (!attr)
 	{
-	  int name_length = strlen (name);
 	  /* create attribute & default value and update rest_lists */
 	  attr = parser_new_node (parser, PT_NAME);
 	  if (!attr)
@@ -6211,14 +6210,12 @@ pt_resolve_vclass_args (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      PT_ERROR (parser, statement, "allocation error");
 	      goto error;
 	    }
-	  attr->info.name.original =
-	    malloc ((name_length + 1) * sizeof (char));
-	  if (!attr->info.name.original)
+	  attr->info.name.original = pt_append_string (parser, NULL, name);
+	  if (attr->info.name.original == NULL)
 	    {
-	      PT_ERROR (parser, statement, "allocation error");
+	      PT_ERRORc (parser, statement, er_msg ());
 	      goto error;
 	    }
-	  memcpy (attr->info.name.original, name, name_length + 1);
 	  if (rest_attrs)
 	    {
 	      rest_attrs = parser_append_node (attr, rest_attrs);
