@@ -6909,12 +6909,13 @@ qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p)
 		  int precision = DB_VALUE_PRECISION (dbval_p);
 		  int string_length = DB_GET_STRING_LENGTH (dbval_p);
 
-                  assert_release (string_length <= precision);
-
 		  if (precision == TP_FLOATING_PRECISION_VALUE)
 		    {
 		      precision = DB_MAX_STRING_LENGTH;
 		    }
+
+		  assert_release (string_length <= precision);
+
 		  if (val_size < 0)
 		    {
 		      return ER_FAILED;
