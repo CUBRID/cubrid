@@ -6906,15 +6906,34 @@ qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p)
 	      val_size = (*(type_p->data_lengthval)) (dbval_p, 1);
 	      if (pr_is_string_type (dbval_type))
 		{
-		  int p = DB_VALUE_PRECISION (dbval_p);
-		  if (p == TP_FLOATING_PRECISION_VALUE)
+		  int precision = DB_VALUE_PRECISION (dbval_p);
+		  int string_length = DB_GET_STRING_LENGTH (dbval_p);
+
+                  assert_release (string_length <= precision);
+
+		  if (precision == TP_FLOATING_PRECISION_VALUE)
 		    {
-		      p = DB_MAX_STRING_LENGTH;
+		      precision = DB_MAX_STRING_LENGTH;
 		    }
-		  if (val_size < 0 || DB_GET_STRING_LENGTH (dbval_p) > p)
+		  if (val_size < 0)
 		    {
-		      /* The size of db_value is incorrect. */
 		      return ER_FAILED;
+		    }
+		  else if (string_length > precision)
+		    {
+		      /* The size of db_value is greater than it's precision.
+		       * This case is abnormal (assertion failure).
+		       * Code below is remained for backward compatibility.
+		       */
+		      if (db_string_truncate (dbval_p, precision) != NO_ERROR)
+			{
+			  return ER_FAILED;
+			}
+		      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+			      ER_DATA_IS_TRUNCATED_TO_PRECISION, 2, precision,
+			      string_length);
+
+		      val_size = (*(type_p->data_lengthval)) (dbval_p, 1);
 		    }
 		}
 	    }

@@ -1397,7 +1397,9 @@
 
 #define ER_BTREE_NO_SPACE			    -1110
 
-#define ER_LAST_ERROR                               -1111
+#define ER_DATA_IS_TRUNCATED_TO_PRECISION           -1111
+
+#define ER_LAST_ERROR                               -1112
 
 /*
  * CAUTION!

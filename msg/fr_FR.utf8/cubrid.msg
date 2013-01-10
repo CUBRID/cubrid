@@ -1177,7 +1177,8 @@ $ LOADDB
 1108 Invalid bucket number for WIDTH_BUCKET. Should be greater than zero and less than 2,147,483,647.
 1109 Invalid value for partition definition.
 1110 Insufficient space in btree leaf page. (key len: %d)\n%s
-1111 Dernière erreur
+1111 Result value is truncated, because the precision(%1$d) is less than it's length(%2$d).
+1112 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %d):
