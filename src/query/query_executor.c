@@ -23895,6 +23895,10 @@ qexec_clear_internal_classes (THREAD_ENTRY * thread_p,
 	  db_private_free (thread_p,
 			   classes[i].unique_stats.unique_stat_info);
 	}
+      if (classes[i].is_attr_info_inited)
+	{
+	  heap_attrinfo_end (thread_p, &classes[i].attr_info);
+	}
       if (classes[i].needs_pruning)
 	{
 	  partition_clear_pruning_context (&classes[i].context);
