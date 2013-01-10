@@ -7201,15 +7201,6 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
   scan_end_scan (thread_p, &spec->s_id);
   scan_close_scan (thread_p, &spec->s_id);
 
-  /* clear attribute cache because it refers another class */
-  if (spec->s.cls_node.cache_pred != NULL)
-    {
-      heap_attrinfo_end (thread_p, spec->s.cls_node.cache_pred);
-    }
-  if (spec->s.cls_node.cache_rest != NULL)
-    {
-      heap_attrinfo_end (thread_p, spec->s.cls_node.cache_rest);
-    }
   /* we also need to reset caches for attributes */
   qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_pred);
   qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_rest);
@@ -7238,8 +7229,15 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
     }
   if (spec->type == TARGET_CLASS && spec->access == SEQUENTIAL)
     {
-      spec->s_id.s.hsid.scancache_inited = false;
-      spec->s_id.s.hsid.caches_inited = false;
+      HEAP_SCAN_ID *hsidp = &spec->s_id.s.hsid;
+      if (hsidp->caches_inited)
+	{
+	  heap_attrinfo_end (thread_p, hsidp->pred_attrs.attr_cache);
+	  heap_attrinfo_end (thread_p, hsidp->rest_attrs.attr_cache);
+	  hsidp->caches_inited = false;
+	}
+      hsidp->scancache_inited = false;
+
       error =
 	scan_open_heap_scan (thread_p, &spec->s_id, readonly_scan,
 			     scan_op_type, fixed, spec->lock_hint, grouped,
@@ -7257,6 +7255,17 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
     }
   else if (spec->type == TARGET_CLASS && spec->access == INDEX)
     {
+      INDX_SCAN_ID *isidp = &spec->s_id.s.isid;
+      if (isidp->caches_inited)
+	{
+	  if (isidp->key_pred.regu_list)
+	    {
+	      heap_attrinfo_end (thread_p, isidp->key_attrs.attr_cache);
+	    }
+	  heap_attrinfo_end (thread_p, isidp->pred_attrs.attr_cache);
+	  heap_attrinfo_end (thread_p, isidp->rest_attrs.attr_cache);
+	  isidp->caches_inited = false;
+	}
       idxptr = spec->indexptr;
       idxptr->indx_id = index_id;
       spec->s_id.s.isid.scancache_inited = false;
