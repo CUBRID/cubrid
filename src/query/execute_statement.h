@@ -76,8 +76,6 @@ extern int do_get_xaction (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_prepare_to_commit (PARSER_CONTEXT * parser,
 				 PT_NODE * statement);
 extern int do_rollback (PARSER_CONTEXT * parser, PT_NODE * statement);
-extern int do_rollback_savepoints (PARSER_CONTEXT * parser,
-				   const char *sp_name);
 extern int do_savepoint (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_set_optimization_param (PARSER_CONTEXT * parser,
 				      PT_NODE * statement);
@@ -94,7 +92,8 @@ extern int do_execute_trigger (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_remove_trigger (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 extern int do_delete (PARSER_CONTEXT * parser, PT_NODE * statement);
-extern int do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern int do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement,
+			      PT_NODE * parent);
 extern int do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 extern int do_drop (PARSER_CONTEXT * parser, PT_NODE * statement);

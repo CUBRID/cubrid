@@ -2926,7 +2926,7 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   switch (statement->node_type)
     {
     case PT_DELETE:
-      err = do_prepare_delete (parser, statement);
+      err = do_prepare_delete (parser, statement, NULL);
       break;
     case PT_INSERT:
       err = do_prepare_insert (parser, statement);
@@ -3980,23 +3980,6 @@ do_commit (PARSER_CONTEXT * parser, PT_NODE * statement)
    */
   db_update_row_count_cache (-1);
   return tran_commit (statement->info.commit_work.retain_lock ? true : false);
-}
-
-/*
- * do_rollback_savepoints() - Rollback savepoints
- *   return: Error code
- *   parser(in): Parser context
- *   sp_nane(in): Savepoint name
- */
-int
-do_rollback_savepoints (PARSER_CONTEXT * parser, const char *sp_name)
-{
-  if (!sp_name)
-    {
-      return db_abort_transaction ();
-    }
-
-  return NO_ERROR;
 }
 
 /*
@@ -8312,7 +8295,6 @@ do_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
   int result = NO_ERROR;
-  int rollbacktosp = 0;
   const char *savepoint_name = NULL;
 
   CHECK_MODIFICATION_ERROR ();
@@ -8325,10 +8307,22 @@ do_update (PARSER_CONTEXT * parser, PT_NODE * statement)
    */
   AU_DISABLE (parser->au_save);
 
-  /* if the update statement contains more than one update component,
-   * we savepoint the update components to try to guarantee update
-   * statement atomicity.
-   */
+  /* savepoint for statement atomicity */
+  if (statement != NULL && statement->next != NULL)
+    {
+      savepoint_name = mq_generate_name (parser, "UmusP",
+					 &update_savepoint_number);
+      if (savepoint_name == NULL)
+	{
+	  error = ER_GENERIC_ERROR;
+	  goto end;
+	}
+      error = tran_system_savepoint (savepoint_name);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
 
   while (statement && (error >= 0))
     {
@@ -8370,12 +8364,13 @@ do_update (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* if error and a savepoint was created, rollback to savepoint.
    * No need to rollback if the TM aborted the transaction.
    */
-  if ((error < NO_ERROR) && rollbacktosp
-      && (error != ER_LK_UNILATERALLY_ABORTED))
+  if (error < NO_ERROR && savepoint_name
+      && error != ER_LK_UNILATERALLY_ABORTED)
     {
-      do_rollback_savepoints (parser, savepoint_name);
+      db_abort_to_savepoint (savepoint_name);
     }
 
+end:
   if (error < 0)
     {
       result = error;
@@ -8780,7 +8775,7 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int err, result = 0;
   PT_NODE *flat, *spec = NULL;
-  const char *savepoint_name;
+  const char *savepoint_name = NULL;
   DB_OBJECT *class_obj;
   QFILE_LIST_ID *list_id;
   int au_save;
@@ -8790,10 +8785,21 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  /* If the UPDATE statement contains more than one update component,
-     we savepoint the update components to try to guarantee UPDATE statement
-     atomicity. */
-  savepoint_name = NULL;
+  /* savepoint for statement atomicity */
+  if (statement != NULL && statement->next != NULL)
+    {
+      savepoint_name = mq_generate_name (parser, "UmusP",
+					 &update_savepoint_number);
+      if (savepoint_name == NULL)
+	{
+	  return ER_GENERIC_ERROR;
+	}
+      err = tran_system_savepoint (savepoint_name);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
+    }
 
   for (err = NO_ERROR, result = 0; statement && (err >= NO_ERROR);
        statement = statement->next)
@@ -9026,10 +9032,9 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* If error and a savepoint was created, rollback to savepoint.
      No need to rollback if the TM aborted the transaction. */
-  if ((err < NO_ERROR) && savepoint_name
-      && (err != ER_LK_UNILATERALLY_ABORTED))
+  if (err < NO_ERROR && savepoint_name && err != ER_LK_UNILATERALLY_ABORTED)
     {
-      do_rollback_savepoints (parser, savepoint_name);
+      db_abort_to_savepoint (savepoint_name);
     }
 
   return (err < NO_ERROR) ? err : result;
@@ -9629,7 +9634,6 @@ do_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
   int error = NO_ERROR;
   int result = NO_ERROR;
   PT_NODE *spec;
-  int rollbacktosp = 0;
   const char *savepoint_name = NULL;
 
   CHECK_MODIFICATION_ERROR ();
@@ -9642,9 +9646,25 @@ do_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   AU_DISABLE (parser->au_save);
 
+  /* savepoint for statement atomicity */
+  if (statement != NULL && statement->next != NULL)
+    {
+      savepoint_name = mq_generate_name (parser, "UmdsP",
+					 &delete_savepoint_number);
+      if (savepoint_name == NULL)
+	{
+	  error = ER_GENERIC_ERROR;
+	  goto end;
+	}
+      error = tran_system_savepoint (savepoint_name);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
   while (statement && error >= 0)
     {
-
       if (statement->node_type != PT_DELETE)
 	{
 	  /* bullet proofing, should not get here */
@@ -9679,12 +9699,13 @@ do_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* if error and a savepoint was created, rollback to savepoint.
      No need to rollback if the TM aborted the transaction. */
 
-  if ((error < NO_ERROR) && rollbacktosp
-      && (error != ER_LK_UNILATERALLY_ABORTED))
+  if (error < NO_ERROR && savepoint_name
+      && error != ER_LK_UNILATERALLY_ABORTED)
     {
-      do_rollback_savepoints (parser, savepoint_name);
+      db_abort_to_savepoint (savepoint_name);
     }
 
+end:
   if (error < 0)
     {
       result = error;
@@ -9703,9 +9724,11 @@ do_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
  *   return: Error code
  *   parser(in/out): Parser context
  *   statement(in/out): Delete statement
+ *   parent(in): Parent statement if using multi-delete list
  */
 int
-do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement,
+		   PT_NODE * parent)
 {
   int err;
   PT_NODE *flat;
@@ -9713,6 +9736,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
   int has_trigger, au_save;
   bool server_delete, has_virt_obj;
   PT_NODE *node = NULL;
+  PT_NODE *save_stmt = statement;
 
   if (parser == NULL)
     {
@@ -9720,7 +9744,6 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      0);
       return ER_OBJ_INVALID_ARGUMENTS;
     }
-
 
   for (err = NO_ERROR; statement && (err >= NO_ERROR);
        statement = statement->next)
@@ -9828,7 +9851,8 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (parser->long_string_skipped || parser->print_type_ambiguity)
 	    {
 	      statement->cannot_prepare = 1;
-	      return NO_ERROR;
+	      err = NO_ERROR;
+	      break;
 	    }
 
 	  /* look up server's XASL cache for this query string
@@ -9941,7 +9965,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (err != NO_ERROR)
 	    {
 	      parser_free_tree (parser, select_statement);
-	      return err;
+	      break;
 	    }
 	  /* translate views or virtual classes into base classes;
 	     If we are updating a proxy, the SELECT is not yet fully
@@ -9965,13 +9989,13 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 			 MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
 	      err = er_errid ();
 	    }
-
 	}
 
       if (statement->info.delete_.del_stmt_list != NULL)
 	{
 	  err = do_prepare_delete (parser,
-				   statement->info.delete_.del_stmt_list);
+				   statement->info.delete_.del_stmt_list,
+				   statement);
 	  if (err != NO_ERROR)
 	    {
 	      break;
@@ -9982,6 +10006,25 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
          query_prepare() into 'statement->xasl_id'
          to be used by do_execute_delete() */
       statement->xasl_id = stream.xasl_id;
+    }
+
+  /* if something failed or cannot be prepared in in del_stmt_list
+   * clear all statement->xasl_id */
+  if (err != NO_ERROR
+      || (statement != NULL && statement->cannot_prepare == 1))
+    {
+      for (node = save_stmt; node != statement; node = node->next)
+	{
+	  if (node->xasl_id)
+	    {
+	      free_and_init (node->xasl_id);
+	    }
+	}
+      if (err == NO_ERROR)
+	{
+	  /* set cannot_prepare to parent */
+	  parent->cannot_prepare = 1;
+	}
     }
 
   return err;
@@ -9998,7 +10041,7 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int err, result = 0;
   PT_NODE *flat, *node;
-  const char *savepoint_name;
+  const char *savepoint_name = NULL;
   DB_OBJECT *class_obj;
   QFILE_LIST_ID *list_id;
   int au_save, isvirt = 0;
@@ -10009,10 +10052,21 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  /* If the DELETE statement contains more than one delete component,
-     we savepoint the delete components to try to guarantee DELETE statement
-     atomicity. */
-  savepoint_name = NULL;
+  /* savepoint for statement atomicity */
+  if (statement != NULL && statement->next != NULL)
+    {
+      savepoint_name = mq_generate_name (parser, "UmdsP",
+					 &delete_savepoint_number);
+      if (savepoint_name == NULL)
+	{
+	  return ER_GENERIC_ERROR;
+	}
+      err = tran_system_savepoint (savepoint_name);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
+    }
 
   for (err = NO_ERROR, result = 0; statement && (err >= NO_ERROR);
        statement = statement->next)
@@ -10201,10 +10255,9 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* If error and a savepoint was created, rollback to savepoint.
      No need to rollback if the TM aborted the transaction. */
-  if ((err < NO_ERROR) && savepoint_name
-      && (err != ER_LK_UNILATERALLY_ABORTED))
+  if (err < NO_ERROR && savepoint_name && err != ER_LK_UNILATERALLY_ABORTED)
     {
-      do_rollback_savepoints (parser, savepoint_name);
+      db_abort_to_savepoint (savepoint_name);
     }
 
   return (err < NO_ERROR) ? err : result;
@@ -15493,8 +15546,7 @@ exit:
     }
   /* If error and a savepoint was created, rollback to savepoint.
      No need to rollback if the TM aborted the transaction. */
-  if ((err < NO_ERROR) && savepoint_name
-      && (err != ER_LK_UNILATERALLY_ABORTED))
+  if (err < NO_ERROR && savepoint_name && err != ER_LK_UNILATERALLY_ABORTED)
     {
       (void) db_abort_to_savepoint (savepoint_name);
     }
@@ -16279,10 +16331,9 @@ exit:
     }
   /* If error and a savepoint was created, rollback to savepoint.
      No need to rollback if the TM aborted the transaction. */
-  if ((err < NO_ERROR) && savepoint_name
-      && (err != ER_LK_UNILATERALLY_ABORTED))
+  if (err < NO_ERROR && savepoint_name && err != ER_LK_UNILATERALLY_ABORTED)
     {
-      (void) db_abort_to_savepoint (savepoint_name);
+      db_abort_to_savepoint (savepoint_name);
     }
 
   return (err < NO_ERROR) ? err : result;

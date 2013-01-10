@@ -6423,11 +6423,9 @@ mq_insert_symbol (PARSER_CONTEXT * parser, PT_NODE ** listhead,
     }
 
   new_node = mq_lookup_symbol (parser, *listhead, attr);
-
   if (new_node == NULL)
     {
       new_node = parser_copy_tree (parser, attr);
-
       *listhead = parser_append_node (new_node, *listhead);
     }
 }
@@ -6450,9 +6448,9 @@ mq_generate_name (PARSER_CONTEXT * parser, const char *root, int *version)
   sprintf (temp, "_%d", *version);
 
   /* avoid "stepping" on root */
-  generatedname = pt_append_string
-    (parser, pt_append_string (parser, NULL, root), temp);
-
+  generatedname = pt_append_string (parser,
+				    pt_append_string (parser, NULL, root),
+				    temp);
   return generatedname;
 }
 
