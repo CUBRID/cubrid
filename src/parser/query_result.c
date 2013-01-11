@@ -364,8 +364,11 @@ pt_report_to_ersys_with_statement (PARSER_CONTEXT * parser,
 			      PT_CONVERT_RANGE | PT_SHORT_PRINT);
       stmt_string = (char *) statement->alias_print;
     }
-  if (!stmt_string)
-    stmt_string = (char *) "";
+  if (stmt_string == NULL)
+    {
+      stmt_string = (char *) "";
+    }
+
   if (error_node && error_node->node_type == PT_ZZ_ERROR_MSG)
     {
       err = er_errid ();
