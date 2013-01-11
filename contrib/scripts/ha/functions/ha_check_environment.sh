@@ -14,6 +14,7 @@ cubrid_path=
 cubrid_db_path=
 repl_log_path=
 cubrid_lang=
+is_slave=$NO
 
 #################################################################################
 # program function
@@ -29,6 +30,7 @@ function print_usage()
 	echo "    -d [cubrid_db_path]"
 	echo "    -r [repl_log_path]"
 	echo "    -l [cubrid_lang]"
+	echo "    -s"
 	echo ""
 }
 
@@ -69,6 +71,7 @@ do
 		"d") cubrid_db_path="${OPTARG}";;
 		"r") repl_log_path="${OPTARG}";;
 		"l") cubrid_lang="${OPTARG}";;
+		"s") is_slave=$YES;;
 		"?") print_usage;;
 		":") print_usage;;
 		*) print_usage;;
@@ -84,7 +87,11 @@ if [ "$CUBRID_DATABASES" != "$cubrid_db_path" ]; then
 	exit 1
 fi
 if [ ! -d $repl_log_path ]; then
-	exit 1
+        if [ $is_slave -eq $YES ]; then
+	        mkdir -p $repl_log_path
+	else
+		exit 1
+	fi
 fi
 if [ "$CUBRID_LANG" != "$cubrid_lang" ]; then
 	exit 1

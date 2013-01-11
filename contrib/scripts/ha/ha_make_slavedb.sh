@@ -636,7 +636,7 @@ function check_environment()
 	echo "#  * details"
 	echo '#   - test $CUBRID == '"$CUBRID"
 	echo '#   - test $CUBRID_DATABASES == '"$CUBRID_DATABASES"
-	echo "#   - test -d $repl_log_home/$db_name"
+	echo "#   - test -d $repl_log_home"
 	echo '#   - test $CUBRID_LANG == '"$CUBRID_LANG"
 	echo "#"
 	echo "################################################################################"
@@ -649,8 +649,8 @@ function check_environment()
 	mkdir $env_output
 	for host in $master_host $slave_host ${replica_hosts[@]}; do
 		if [ "$current_host" == "$host" ]; then
-			echo "[$cubrid_user@$current_host]$ sh $CURR_DIR/functions/ha_check_environment.sh -t $ha_temp_home -o $env_output/$host -c $CUBRID -d $CUBRID_DATABASES -r $repl_log_home -l $CUBRID_LANG"			
-			sh $CURR_DIR/functions/ha_check_environment.sh -t $ha_temp_home -o $env_output/$host -c $CUBRID -d $CUBRID_DATABASES -r $repl_log_home -l $CUBRID_LANG
+			echo "[$cubrid_user@$current_host]$ sh $CURR_DIR/functions/ha_check_environment.sh -t $ha_temp_home -o $env_output/$host -c $CUBRID -d $CUBRID_DATABASES -r $repl_log_home -l $CUBRID_LANG -s"			
+			sh $CURR_DIR/functions/ha_check_environment.sh -t $ha_temp_home -o $env_output/$host -c $CUBRID -d $CUBRID_DATABASES -r $repl_log_home -l $CUBRID_LANG -s
 		else
 			ssh_expect $cubrid_user "$server_password" "$host" "sh $function_home/ha_check_environment.sh -t $ha_temp_home -o $env_output -c $CUBRID -d $CUBRID_DATABASES -r $repl_log_home -l $CUBRID_LANG"
 			scp_from_expect $cubrid_user "$server_password" $env_output $host $env_output/$host
@@ -858,7 +858,7 @@ function init_ha_info_on_master()
 	
 	# 1. remove old copy log.
 	echo -ne "\n - 1. remove old copy log.\n\n"
-	ssh_cubrid $master_host "rm -rf $CUBRID_DATABASES/$db_name\_$slave_host/*"
+	ssh_cubrid $master_host "rm -rf $repl_log_home/$db_name\_$slave_host/*"
 	
 	# 2. init db_ha_apply_info.
 	echo -ne "\n - 2. init db_ha_apply_info.\n\n"
