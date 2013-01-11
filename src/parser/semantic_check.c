@@ -7815,10 +7815,10 @@ pt_check_cyclic_reference_in_view_spec (PARSER_CONTEXT * parser,
 
 	  if (pt_has_error (query_cache))
 	    {
-	      parser->error_msgs =
-		parser_append_node (parser_copy_tree_list
-				    (parser, query_cache->error_msgs),
-				    parser->error_msgs);
+	      PT_ERROR (parser, node,
+			query_cache->error_msgs->info.error_msg.
+			error_message);
+
 	      *continue_walk = PT_STOP_WALK;
 	      break;
 	    }

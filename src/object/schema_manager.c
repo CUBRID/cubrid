@@ -6371,7 +6371,8 @@ sm_virtual_queries (DB_OBJECT * class_object)
       (void) ws_pin (class_object, 1);
 
       if (cl->virtual_query_cache != NULL
-	  && cl->virtual_query_cache->statements != NULL)
+          && cl->virtual_query_cache->view_cache != NULL
+	  && cl->virtual_query_cache->view_cache->vquery_for_query != NULL)
 	{
 	  (void) pt_class_pre_fetch (cl->virtual_query_cache,
 				     cl->virtual_query_cache->view_cache
@@ -6387,8 +6388,7 @@ sm_virtual_queries (DB_OBJECT * class_object)
 	+ sm_global_schema_version ();
 
       if (cl->virtual_query_cache != NULL
-	  && (cl->virtual_cache_schema_id != current_schema_id
-	      || cl->virtual_query_cache->statements == NULL))
+	  && cl->virtual_cache_schema_id != current_schema_id)
 	{
 	  mq_free_virtual_query_cache (cl->virtual_query_cache);
 	  cl->virtual_query_cache = NULL;
