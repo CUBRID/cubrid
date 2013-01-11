@@ -1165,7 +1165,7 @@ $ LOADDB
 1096 Ne zaman bölğm düzeyinde dış anahtar kelimeler referans için kullandığı zamanda, Değişiklik yapılmakta olan bölüm yapısına izin vermez.
 1097 '%s'kapısitesinde bir ilk PRIMARY KEY kelimelerde bir sınırlama ile geçersiz NULL değeri olamaz. 
 1098 Dil '%s'konumu karakter kümesindeki'%s' kullanılmaz.
-1099 DDL deyimini yapılandırma (block_ddl_statement = yes) tarafından izin verilmiyor.
+1099 DDL deyimini yapılandırma (block_ddl_statement = yes) tarafından izin verilmiyor.\n SQL Text: %s
 1100 Jümlelerde görülmeyen konumun ifadesi dış boyutlar tarafından izin verilmez(block_nowhere_statement=yes)
 1101 Kullanılmayan hata kodu.
 1102 Unknown system parameter or bad value.

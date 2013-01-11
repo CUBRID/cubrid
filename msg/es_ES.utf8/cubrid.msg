@@ -1165,7 +1165,7 @@ $ LOADDB
 1096 Alterando esquema de particionamiento cuando la clase particionada es referenciada por una clave externa no es permitido.
 1097 Columna '%s' no puede tener una restriccion PRIMARY KEY y un valor estandar NULL.
 1098 Locales para el idioma '%s' no son disponibles con el conjunto de caracteres '%s'.
-1099 Declaracion DDL no es permitida por configuracion (block_ddl_statement=yes).
+1099 Declaracion DDL no es permitida por configuracion (block_ddl_statement=yes).\n SQL Text: %s
 1100 Declaracion sin clausula WHERE no es permitida por configuracion (block_nowhere_statement=yes).
 1101 Codigo de error no utilizado.
 1102 Parametro de sistema desconocido o valor malo.

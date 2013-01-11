@@ -1550,19 +1550,6 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
-      error_code = ER_BLOCK_DDL_STMT;
-      goto error_exit;
-    }
-
-  /* if QO_PARAM_LEVEL indicate no execution, just return */
-  if (qo_need_skip_execution ())
-    {
-      return NO_ERROR;
-    }
-
   /* Multiple alter operations in a single statement need to be atomic. */
   error_code = tran_system_savepoint (UNIQUE_SAVEPOINT_MULTIPLE_ALTER);
   if (error_code != NO_ERROR)
@@ -1816,18 +1803,6 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
-      return ER_BLOCK_DDL_STMT;
-    }
-
-  /* if QO_PARAM_LEVEL indicate no execution, just return */
-  if (qo_need_skip_execution ())
-    {
-      return NO_ERROR;
-    }
-
   if (statement == NULL)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
@@ -2025,18 +2000,6 @@ do_drop_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
-      return ER_BLOCK_DDL_STMT;
-    }
-
-  /* if QO_PARAM_LEVEL indicate no execution, just return */
-  if (qo_need_skip_execution ())
-    {
-      return NO_ERROR;
-    }
-
   if (statement == NULL)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
@@ -2084,18 +2047,6 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   const char *user_name, *password;
 
   CHECK_MODIFICATION_ERROR ();
-
-  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
-      return ER_BLOCK_DDL_STMT;
-    }
-
-  /* if QO_PARAM_LEVEL indicate no execution, just return */
-  if (qo_need_skip_execution ())
-    {
-      return NO_ERROR;
-    }
 
   if (statement == NULL)
     {
@@ -2176,18 +2127,6 @@ do_drop (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *entity_list;
 
   CHECK_MODIFICATION_ERROR ();
-
-  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
-      return ER_BLOCK_DDL_STMT;
-    }
-
-  /* if QO_PARAM_LEVEL indicate no execution, just return */
-  if (qo_need_skip_execution ())
-    {
-      return NO_ERROR;
-    }
 
   /* partitioned sub-class check */
   entity_spec_list = statement->info.drop.spec_list;
@@ -2481,18 +2420,6 @@ do_rename (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   const PT_NODE *current_rename = NULL;
 
   CHECK_MODIFICATION_ERROR ();
-
-  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
-      return ER_BLOCK_DDL_STMT;
-    }
-
-  /* if QO_PARAM_LEVEL indicate no execution, just return */
-  if (qo_need_skip_execution ())
-    {
-      return NO_ERROR;
-    }
 
   /* Renaming operations in a single statement need to be atomic. */
   error = tran_system_savepoint (UNIQUE_SAVEPOINT_RENAME);
@@ -2877,18 +2804,6 @@ do_create_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
-      return ER_BLOCK_DDL_STMT;
-    }
-
-  /* if QO_PARAM_LEVEL indicate no execution, just return */
-  if (qo_need_skip_execution ())
-    {
-      return NO_ERROR;
-    }
-
   /* class should be already available */
   assert (statement->info.index.indexed_class);
 
@@ -2934,19 +2849,6 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
   const char *class_name = NULL;
 
   CHECK_MODIFICATION_ERROR ();
-
-  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
-      error_code = ER_BLOCK_DDL_STMT;
-      goto error_exit;
-    }
-
-  /* if QO_PARAM_LEVEL indicate no execution, just return */
-  if (qo_need_skip_execution ())
-    {
-      return NO_ERROR;
-    }
 
   index_name = statement->info.index.index_name ?
     statement->info.index.index_name->info.name.original : NULL;
@@ -3063,19 +2965,6 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
      code in do_drop_index in order to remove duplicate code */
 
   CHECK_MODIFICATION_ERROR ();
-
-  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
-      error = ER_BLOCK_DDL_STMT;
-      goto error_exit;
-    }
-
-  /* if QO_PARAM_LEVEL indicate no execution, just return */
-  if (qo_need_skip_execution ())
-    {
-      return NO_ERROR;
-    }
 
   index_name = statement->info.index.index_name ?
     statement->info.index.index_name->info.name.original : NULL;
@@ -3777,18 +3666,6 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
   bool reuse_oid = false;
 
   CHECK_MODIFICATION_ERROR ();
-
-  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
-      return ER_BLOCK_DDL_STMT;
-    }
-
-  /* if QO_PARAM_LEVEL indicate no execution, just return */
-  if (qo_need_skip_execution ())
-    {
-      return NO_ERROR;
-    }
 
   alter_info = hash_parts = newparts = hashtail = NULL;
   parts = parts_save = fmin = NULL;
@@ -7372,18 +7249,6 @@ do_drop_partition (MOP class_, int drop_sub_flag)
   int error = NO_ERROR;
 
   CHECK_MODIFICATION_ERROR ();
-
-  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
-      return ER_BLOCK_DDL_STMT;
-    }
-
-  /* if QO_PARAM_LEVEL indicate no execution, just return */
-  if (qo_need_skip_execution ())
-    {
-      return NO_ERROR;
-    }
 
   if (!class_)
     {
@@ -11802,19 +11667,6 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_NODE *tbl_opt_charset, *tbl_opt_coll, *cs_node, *coll_node;
 
   CHECK_MODIFICATION_ERROR ();
-
-  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
-      error = ER_BLOCK_DDL_STMT;
-      goto error_exit;
-    }
-
-  /* if QO_PARAM_LEVEL indicate no execution, just return */
-  if (qo_need_skip_execution ())
-    {
-      return NO_ERROR;
-    }
 
   tbl_opt_charset = tbl_opt_coll = cs_node = coll_node = NULL;
 

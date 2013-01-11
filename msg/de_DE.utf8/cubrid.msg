@@ -1165,7 +1165,7 @@ $ LOADDB
 1096 Änderung der Partitionsschema ist nicht erlaubt, wenn die partitionierte Klasse von einer Fremdschlüssel referenziert wird.
 1097 Spalte '%s' kann keine PRIMARY KEY Einschränkung und zugleich einen NULL Default-Wert haben.
 1098 Sprachumgebungen für Sprache '%s' sind im Zeichenvorrat '%s' nicht verfügbar.
-1099 DDL-Anweisung ist in der Konfiguration nicht erlaubt (block_ddl_statement=yes).
+1099 DDL-Anweisung ist in der Konfiguration nicht erlaubt (block_ddl_statement=yes).\n SQL Text: %s
 1100 Anweisung ohne WHERE Klausel ist in der Konfiguration nicht erlaubt (block_nowhere_statement=yes).
 1101 Unbenutzter Fehler Code.
 1102 Unbekannter Systemparameter oder falscher Wert.

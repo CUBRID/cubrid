@@ -1165,7 +1165,7 @@ $ LOADDB
 1096 Thay đổi kế hoạch phân mảng không được cho phép khi hạng phân mảng được tham chiếu bởi một phím bên ngoài.
 1097 Cột '%s' không thể có ràng buộc PRIMARY KEY và giá trị mặc định NULL.
 1098 Thiết lập cục bộ cho ngôn ngữ '%s' không khả dụng với bộ ký tự '%s'.
-1099 Tuyên bố DDL không được cho phép bởi cấu hình (block_ddl_statement=yes).
+1099 Tuyên bố DDL không được cho phép bởi cấu hình (block_ddl_statement=yes).\n SQL Text: %s
 1100 Tuyên bố không có mệnh đề Ở WHERE không được cho phép bởi cấu hình (block_nowhere_statementiyes).
 1101 Mã lỗi chưa được dùng.
 1102 Không biết hệ thống tham số hoặc giá trị xấu.

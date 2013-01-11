@@ -1165,7 +1165,7 @@ $ LOADDB
 1096 La modification de schéma de partitionnement n'est pas autorisée lorsque la classe partitionnée est référencée par une clé étrangère.
 1097 Colonne '%s' ne peut pas avoir une contrainte PRIMARY KEY et une valeur par défaut NULL.
 1098 Paramètres régionaux pour la langue '%s' ne sont pas disponibles avec jeux de caractères codés '%s'.
-1099 Instruction DDL est interdit par la configuration (block_ddl_statement=yes).
+1099 Instruction DDL est interdit par la configuration (block_ddl_statement=yes).\n SQL Text: %s
 1100 Instruction sans clause WHERE est interdit par la configuration (block_nowhere_statement=yes).
 1101 Code d'erreur pas utilisé.
 1102 Paramètre du système inconnu ou mauvaise valeur.

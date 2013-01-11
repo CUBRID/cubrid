@@ -1165,7 +1165,7 @@ $ LOADDB
 1096 当分区表引用一个外键时 不允许修改分区表结构.
 1097 列 '%s' 不能同时制定主键约束和 NULL缺省值.
 1098 区域中的语言 '%s' 在字符集 '%s' 中无效.
-1099 DDL 语句在配置中设为不允许 (block_ddl_statement=yes).
+1099 DDL 语句在配置中设为不允许 (block_ddl_statement=yes).\n SQL Text: %s
 1100 没有where子句的语句在配置中设为不允许 (block_nowhere_statement=yes).
 1101 未使用的错误号.
 1102 未知系统参数或错误的值.

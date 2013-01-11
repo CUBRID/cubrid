@@ -1115,12 +1115,6 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
-      return ER_BLOCK_DDL_STMT;
-    }
-
   db_make_null (&value);
   db_make_null (&zero);
   db_make_null (&e37);
@@ -1873,12 +1867,6 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
-      return ER_BLOCK_DDL_STMT;
-    }
-
   db_make_null (&value);
   db_make_null (&zero);
   db_make_null (&e37);
@@ -2457,12 +2445,6 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
-      return ER_BLOCK_DDL_STMT;
-    }
-
   db_make_null (&class_name_val);
   OID_SET_NULL (&serial_obj_id);
 
@@ -2577,6 +2559,31 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (statement)
     {
+      /* skip ddl execution in case of parameter or opt. level */
+      if (pt_is_ddl_statement (statement) == true)
+	{
+	  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
+	    {
+	      char *cp = statement->sql_user_text;
+	      if (cp == NULL)
+		{
+		  cp = statement->alias_print;
+		}
+
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 1,
+		      cp);
+	      error = ER_BLOCK_DDL_STMT;
+	      goto end;
+	    }
+
+	  /* if QO_PARAM_LEVEL indicate no execution, just return */
+	  if (qo_need_skip_execution ())
+	    {
+	      error = NO_ERROR;
+	      goto end;
+	    }
+	}
+
       /* only SELECT query can be executed in async mode */
       old_exec_mode = parser->exec_mode;
       parser->exec_mode = (statement->node_type == PT_SELECT) ?
@@ -2600,12 +2607,16 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = locator_all_flush (LC_STOP_ON_ERROR);
 	  if (error != NO_ERROR)
 	    {
+	      /* restore execution flag */
+	      parser->exec_mode = old_exec_mode;
 	      goto end;
 	    }
 
 	  suppress_repl_error = db_set_suppress_repl_on_transaction (true);
 	  if (suppress_repl_error != NO_ERROR)
 	    {
+	      /* restore execution flag */
+	      parser->exec_mode = old_exec_mode;
 	      goto end;
 	    }
 	}
@@ -2980,6 +2991,30 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
      set its host variable info again to search host variables at parent parser */
   SET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
 
+  /* skip ddl execution in case of parameter or opt. level */
+  if (pt_is_ddl_statement (statement) == true)
+    {
+      if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
+	{
+	  char *cp = statement->sql_user_text;
+	  if (cp == NULL)
+	    {
+	      cp = statement->alias_print;
+	    }
+
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 1, cp);
+	  err = ER_BLOCK_DDL_STMT;
+	  goto end;
+	}
+
+      /* if QO_PARAM_LEVEL indicate no execution, just return */
+      if (qo_need_skip_execution ())
+	{
+	  err = NO_ERROR;
+	  goto end;
+	}
+    }
+
   /* only SELECT query can be executed in async mode */
   old_exec_mode = parser->exec_mode;
   parser->exec_mode = (statement->node_type == PT_SELECT) ?
@@ -3002,12 +3037,16 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       err = locator_all_flush (LC_STOP_ON_ERROR);
       if (err != NO_ERROR)
 	{
+	  /* restore execution flag */
+	  parser->exec_mode = old_exec_mode;
 	  goto end;
 	}
 
       suppress_repl_error = db_set_suppress_repl_on_transaction (true);
       if (suppress_repl_error != NO_ERROR)
 	{
+	  /* restore execution flag */
+	  parser->exec_mode = old_exec_mode;
 	  goto end;
 	}
     }
@@ -5820,12 +5859,6 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   int error = NO_ERROR;
   CHECK_MODIFICATION_ERROR ();
 
-  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
-      return ER_BLOCK_DDL_STMT;
-    }
-
   name = PT_NODE_TR_NAME (statement);
   status = PT_NODE_TR_STATUS (statement);
 
@@ -5954,12 +5987,6 @@ do_drop_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJLIST *triggers, *t;
 
   CHECK_MODIFICATION_ERROR ();
-
-  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
-      return ER_BLOCK_DDL_STMT;
-    }
 
   /* The grammar has beem define such that DROP TRIGGER can only
      be used with an explicit list of named triggers.  Although
@@ -6161,12 +6188,6 @@ do_remove_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
-      return ER_BLOCK_DDL_STMT;
-    }
-
   speclist = statement->info.remove_trigger.trigger_spec_list;
   error = convert_speclist_to_objlist (&triggers, speclist);
 
@@ -6199,12 +6220,6 @@ do_rename_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJECT *trigger;
 
   CHECK_MODIFICATION_ERROR ();
-
-  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
-      return ER_BLOCK_DDL_STMT;
-    }
 
   old_name = statement->info.rename_trigger.old_name->info.name.original;
   new_name = statement->info.rename_trigger.new_name->info.name.original;

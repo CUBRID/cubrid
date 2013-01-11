@@ -1165,7 +1165,7 @@ $ LOADDB
 1096 Modificazione dello schema di partizionamento non è permessa quando la classe partizionata fa riferimento a una chiave esterna.
 1097 Colonna '%s' non può avere un vincolo PRIMARY KEY e un valore predefinito NULL.
 1098 Impostazioni internazionali per la lingua '%s' non sono disponibili con charset '%s'.
-1099 Istruzione DDL non è permessa dalla configurazione (block_ddl_statement=yes).
+1099 Istruzione DDL non è permessa dalla configurazione (block_ddl_statement=yes).\n SQL Text: %s
 1100 Instruzione senza clausola WHERE non è permessa dalla configurazione (block_nowhere_statement=yes).
 1101 Codice di errore non utilizzato.
 1102 Parametro di sistema sconosciuto o valore non valido.
