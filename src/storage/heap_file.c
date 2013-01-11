@@ -20174,13 +20174,13 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p,
       if (QSTR_IS_BIT (src_type))
 	{
 	  curr_prec = DB_GET_STRING_LENGTH (&(value->dbvalue));
-	  dest_prec = dest_dom->precision;
 	}
-      else
+      else if (QSTR_IS_ANY_CHAR (src_type))
 	{
 	  curr_prec = DB_GET_STRING_SIZE (&(value->dbvalue));
-	  dest_prec = dest_dom->precision;
 	}
+
+      dest_prec = dest_dom->precision;
 
       if (QSTR_IS_ANY_CHAR_OR_BIT (src_type) &&
 	  QSTR_IS_ANY_CHAR_OR_BIT (dest_type))

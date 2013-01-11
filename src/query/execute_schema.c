@@ -14655,8 +14655,8 @@ build_att_coll_change_map (TP_DOMAIN * curr_domain, DB_DOMAIN * req_domain,
 			   SM_ATTR_PROP_CHG * attr_chg_properties)
 {
   /* check collation change */
-  if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (curr_domain))
-      && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (req_domain)))
+  if (TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (curr_domain))
+      && TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (req_domain)))
     {
       const int curr_coll_id = TP_DOMAIN_COLLATION (curr_domain);
       const int req_coll_id = TP_DOMAIN_COLLATION (req_domain);
@@ -14679,7 +14679,7 @@ build_att_coll_change_map (TP_DOMAIN * curr_domain, DB_DOMAIN * req_domain,
 	  if (is_att_prop_set (attr_chg_properties->p[P_PREFIX_INDEX],
 			       ATT_CHG_PROPERTY_PRESENT_OLD))
 	    {
-	      /* check collation if expansions */
+	      /* check if new collation has expansions */
 	      LANG_COLLATION *lc = lang_get_collation (req_coll_id);
 
 	      assert (lc != NULL);
