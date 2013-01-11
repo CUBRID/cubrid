@@ -988,6 +988,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 	  if (op == PT_BETWEEN || op == PT_NOT_BETWEEN)
 	    {
 	      /* special handling for PT_BETWEEN and PT_NOT_BETWEEN */
+	      assert (tree->info.expr.arg2->node_type == PT_EXPR);
 	      arg2 = tree->info.expr.arg2->info.expr.arg1;
 	      arg3 = tree->info.expr.arg2->info.expr.arg2;
 	    }

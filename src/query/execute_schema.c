@@ -5883,6 +5883,7 @@ select_hash_partition (PRUNING_INFO * ppi, PT_NODE * expr)
       break;
 
     case PT_BETWEEN:
+      assert (expr->info.expr.arg2->node_type == PT_EXPR);
       rst = check_hash_range (ppi, partmap, PT_BETWEEN_GE_LE,
 			      expr->info.expr.arg2->info.expr.arg1,
 			      expr->info.expr.arg2->info.expr.arg2, 1);
@@ -6182,6 +6183,7 @@ select_range_partition (PRUNING_INFO * ppi, PT_NODE * expr)
 	      return 0;
 	    }
 
+	  assert (expr->info.expr.arg2->node_type == PT_EXPR);
 	  lval = pt_value_to_db (ppi->parser,	/* BETWEEN .. AND */
 				 expr->info.expr.arg2->info.expr.arg1);
 	  if (lval == NULL)

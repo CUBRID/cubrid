@@ -11009,7 +11009,7 @@ pt_check_ordby_num_for_mro_internal (PARSER_CONTEXT * parser,
       PT_NODE *between_upper = NULL;
       int between_op;
 
-      assert (between_and != NULL);
+      assert (between_and != NULL && between_and->node_type == PT_EXPR);
       between_upper = between_and->info.expr.arg2;
       between_op = between_and->info.expr.op;
       switch (between_op)

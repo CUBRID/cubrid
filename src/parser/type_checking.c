@@ -8782,12 +8782,13 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_BETWEEN:
     case PT_NOT_BETWEEN:
       {
-	/* between and rage operators are written like:
+	/* between and range operators are written like:
 	   PT_BETWEEN(arg1, PT_BETWEEN_AND(arg2,arg3))
 	   We convert it to PT_BETWEEN(arg1, arg2, arg2) to be able to
 	   decide the correct common type of all arguments and we will
 	   convert it back once we apply the correct casts */
-	if (pt_is_between_range_op (arg2->info.expr.op))
+	if (arg2->node_type == PT_EXPR
+	    && pt_is_between_range_op (arg2->info.expr.op))
 	  {
 	    arg2 = node->info.expr.arg2;
 	    node->info.expr.arg2 = arg2->info.expr.arg1;
@@ -8962,7 +8963,8 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	       We convert it to PT_BETWEEN(arg1, arg2, arg2) to be able to
 	       decide the correct common type of all arguments and we will
 	       convert it back once we apply the correct casts */
-	    if (pt_is_between_range_op (arg2->info.expr.op))
+	    if (arg2->node_type == PT_EXPR
+		&& pt_is_between_range_op (arg2->info.expr.op))
 	      {
 		arg2->info.expr.arg1 = node->info.expr.arg2;
 		arg2->info.expr.arg2 = node->info.expr.arg3;
@@ -18257,9 +18259,16 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
     }
 
   /* special handling for PT_BETWEEN and PT_NOT_BETWEEN */
-  opd2 = (op == PT_BETWEEN || op == PT_NOT_BETWEEN)
-    ? expr->info.expr.arg2->info.expr.arg1 : expr->info.expr.arg2;
-
+  if ((op == PT_BETWEEN || op == PT_NOT_BETWEEN)
+      && (expr->info.expr.arg2->node_type == PT_EXPR
+	  && pt_is_between_range_op (expr->info.expr.arg2->info.expr.op)))
+    {
+      opd2 = expr->info.expr.arg2->info.expr.arg1;
+    }
+  else
+    {
+      opd2 = expr->info.expr.arg2;
+    }
 
   if (opd2 && opd2->node_type == PT_VALUE)
     {
@@ -18487,8 +18496,17 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
     }
 
   /* special handling for PT_BETWEEN and PT_NOT_BETWEEN */
-  opd3 = ((op == PT_BETWEEN || op == PT_NOT_BETWEEN)
-	  ? expr->info.expr.arg2->info.expr.arg2 : expr->info.expr.arg3);
+  if ((op == PT_BETWEEN || op == PT_NOT_BETWEEN)
+      && (expr->info.expr.arg2->node_type == PT_EXPR
+	  && pt_is_between_range_op (expr->info.expr.arg2->info.expr.op)))
+    {
+      opd3 = expr->info.expr.arg2->info.expr.arg2;
+    }
+  else
+    {
+      opd3 = expr->info.expr.arg3;
+    }
+
   if (opd3 && opd3->node_type == PT_VALUE)
     {
       arg3 = pt_value_to_db (parser, opd3);
@@ -21639,6 +21657,16 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
   if (arg3)
     {
       arg3_type = arg3->type_enum;
+    }
+
+  /* will not check collation for BETWEEN op when arg1 does not have collation
+   * or arg2 is a range expression */
+  if ((op == PT_BETWEEN || op == PT_NOT_BETWEEN)
+      && (!(PT_HAS_COLLATION (arg1_type) || arg1_type == PT_TYPE_MAYBE)
+	  || (arg2 && arg2->node_type == PT_EXPR
+	      && pt_is_between_range_op (arg2->info.expr.op))))
+    {
+      return NO_ERROR;
     }
 
   if (PT_HAS_COLLATION (arg1_type) || arg1_type == PT_TYPE_MAYBE)

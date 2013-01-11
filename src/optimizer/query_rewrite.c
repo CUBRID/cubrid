@@ -2398,6 +2398,7 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 	      if (cnf_node == dnf_node && dnf_node->or_next == NULL)
 		{
 		  arg2 = dnf_node->info.expr.arg2;
+		  assert (arg2->node_type == PT_EXPR);
 		  /* term of '-attr >= opd1' */
 		  dnf_node->info.expr.arg2 = arg2->info.expr.arg1;
 		  op_type = dnf_node->info.expr.op = PT_GE;
@@ -4073,6 +4074,7 @@ qo_convert_to_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
     case PT_BETWEEN:
       between_and = node->info.expr.arg2;
+      assert (between_and->node_type == PT_EXPR);
       /* replace PT_BETWEEN_AND with PT_BETWEEN_GE_LE */
       if (between_and->info.expr.op == PT_BETWEEN_AND)
 	{
@@ -4215,6 +4217,7 @@ qo_convert_to_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	  break;
 	case PT_BETWEEN:
 	  between_and = sibling->info.expr.arg2;
+	  assert (between_and->node_type == PT_EXPR);
 	  /* replace PT_BETWEEN_AND with PT_BETWEEN_GE_LE */
 	  if (between_and->info.expr.op == PT_BETWEEN_AND)
 	    {
@@ -6754,6 +6757,7 @@ qo_do_auto_parameterize (PARSER_CONTEXT * parser, PT_NODE * where)
 	      break;
 	    case PT_BETWEEN:
 	      between_and = dnf_node->info.expr.arg2;
+	      assert (between_and->node_type == PT_EXPR);
 	      if (pt_is_const_not_hostvar (between_and->info.expr.arg1)
 		  && !PT_IS_NULL_NODE (between_and->info.expr.arg1))
 		{
