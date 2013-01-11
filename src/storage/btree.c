@@ -3094,7 +3094,7 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid,
 		    OID * oid, bool is_all_class_srch)
 {
   BTREE_SCAN btree_scan;
-  int oid_cnt;
+  int oid_cnt = 0;
   BTREE_SEARCH status;
   INDX_SCAN_ID index_scan_id;
   /* Unique btree can have at most 1 OID for a key */
@@ -3103,16 +3103,7 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid,
 
   BTREE_INIT_SCAN (&btree_scan);
 
-  index_scan_id.oid_list.oid_cnt = oid_cnt = 0;
-  index_scan_id.oid_list.oidp = temp_oid;
-  /* do not use copy_buf for key-val scan, only use for key-range scan */
-  index_scan_id.copy_buf = NULL;
-  index_scan_id.copy_buf_len = 0;
-  memset ((void *) (&(index_scan_id.indx_cov)), 0, sizeof (INDX_COV));
-  index_scan_id.indx_info = NULL;
-  memset ((void *) (&(index_scan_id.multi_range_opt)), 0,
-	  sizeof (MULTI_RANGE_OPT));
-  scan_init_iss (&index_scan_id);
+  scan_init_index_scan (&index_scan_id, temp_oid);
 
   if (key == NULL || db_value_is_null (key)
       || btree_multicol_key_is_null (key))
@@ -3344,23 +3335,14 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid,
 			DB_VALUE * key, OID * class_oid)
 {
   BTREE_SCAN btree_scan;
-  int oid_cnt;
+  int oid_cnt = 0;
   INDX_SCAN_ID index_scan_id;
   OID oid_buf[2];
   KEY_VAL_RANGE key_val_range;
 
   BTREE_INIT_SCAN (&btree_scan);
 
-  index_scan_id.oid_list.oid_cnt = oid_cnt = 0;
-  index_scan_id.oid_list.oidp = oid_buf;
-  /* do not use copy_buf for key-val scan, only use for key-range scan */
-  index_scan_id.copy_buf = NULL;
-  index_scan_id.copy_buf_len = 0;
-  memset ((void *) (&(index_scan_id.indx_cov)), 0, sizeof (INDX_COV));
-  index_scan_id.indx_info = NULL;
-  memset ((void *) (&(index_scan_id.multi_range_opt)), 0,
-	  sizeof (MULTI_RANGE_OPT));
-  scan_init_iss (&index_scan_id);
+  scan_init_index_scan (&index_scan_id, oid_buf);
 
   if (key == NULL || db_value_is_null (key)
       || btree_multicol_key_is_null (key))
@@ -4965,15 +4947,7 @@ btree_keyoid_checkscan_check (THREAD_ENTRY * thread_p,
   /* initialize scan structure */
   BTREE_INIT_SCAN (&btscan->btree_scan);
 
-  isid.oid_list.oid_cnt = 0;
-  isid.oid_list.oidp = btscan->oid_ptr;
-  /* do not use copy_buf for key-val scan, only use for key-range scan */
-  isid.copy_buf = NULL;
-  isid.copy_buf_len = 0;
-  memset ((void *) (&(isid.indx_cov)), 0, sizeof (INDX_COV));
-  isid.indx_info = NULL;
-  memset ((void *) (&(isid.multi_range_opt)), 0, sizeof (MULTI_RANGE_OPT));
-  scan_init_iss (&isid);
+  scan_init_index_scan (&isid, btscan->oid_ptr);
 
   assert (!pr_is_set_type (DB_VALUE_DOMAIN_TYPE (key)));
 

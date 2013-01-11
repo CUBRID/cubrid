@@ -4149,18 +4149,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 	      db_private_free_and_init (thread_p, oid_buf);
 	      goto error3;
 	    }
-
-	  isid.oid_list.oid_cnt = 0;
-	  isid.oid_list.oidp = oid_buf;
-	  isid.copy_buf = NULL;
-	  isid.copy_buf_len = 0;
-	  memset ((void *) (&(isid.indx_cov)), 0, sizeof (INDX_COV));
-	  isid.indx_info = NULL;
-	  memset ((void *) (&(isid.multi_range_opt)), 0,
-		  sizeof (MULTI_RANGE_OPT));
-	  isid.duplicate_key_locked = false;
-	  scan_init_iss (&isid);
-
+	  scan_init_index_scan (&isid, oid_buf);
 	  is_upd_scan_init = false;
 	  pr_clone_value (key, &key_val_range.key1);
 	  pr_clone_value (key, &key_val_range.key2);
@@ -4476,16 +4465,8 @@ locator_repair_object_cache (THREAD_ENTRY * thread_p, OR_INDEX * index,
 	}
 
       BTREE_INIT_SCAN (&bt_scan);
-      isid.oid_list.oid_cnt = 0;
-      isid.oid_list.oidp = oid_buf;
-      isid.copy_buf = NULL;
-      isid.copy_buf_len = 0;
-      memset ((void *) (&(isid.indx_cov)), 0, sizeof (INDX_COV));
-      isid.indx_info = NULL;
-      memset ((void *) (&(isid.multi_range_opt)), 0,
-	      sizeof (MULTI_RANGE_OPT));
 
-      scan_init_iss (&isid);
+      scan_init_index_scan (&isid, oid_buf);
 
       is_upd_scan_init = false;
       pr_clone_value (key, &key_val_range.key1);
@@ -4730,16 +4711,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p,
 	      goto error3;
 	    }
 
-	  isid.oid_list.oid_cnt = 0;
-	  isid.oid_list.oidp = oid_buf;
-	  isid.copy_buf = NULL;
-	  isid.copy_buf_len = 0;
-	  isid.indx_info = NULL;
-	  memset ((void *) (&(isid.indx_cov)), 0, sizeof (INDX_COV));
-	  memset ((void *) (&(isid.multi_range_opt)), 0,
-		  sizeof (MULTI_RANGE_OPT));
-
-	  scan_init_iss (&isid);
+	  scan_init_index_scan (&isid, oid_buf);
 
 	  is_upd_scan_init = false;
 	  pr_clone_value (key, &key_val_range.key1);
@@ -8460,10 +8432,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 #endif /* SERVER_MODE */
 
-  isid.oid_list.oidp = NULL;
-  isid.copy_buf = NULL;
-  isid.copy_buf_len = 0;
-  isid.indx_info = NULL;
+  scan_init_index_scan (&isid, NULL);
 
   /* Start a scan cursor and a class attribute information */
   if (heap_scancache_start (thread_p, &scan_cache, hfid, class_oid, true,
@@ -8850,14 +8819,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 #if defined(SERVER_MODE)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 #endif /* SERVER_MODE */
-  isid.oid_list.oidp = NULL;
-  isid.copy_buf = NULL;
-  isid.copy_buf_len = 0;
-  isid.indx_info = NULL;
-  memset ((void *) (&(isid.indx_cov)), 0, sizeof (INDX_COV));
-  memset ((void *) (&(isid.multi_range_opt)), 0, sizeof (MULTI_RANGE_OPT));
-
-  scan_init_iss (&isid);
+  scan_init_index_scan (&isid, NULL);
 
   /* get all the heap files associated with this unique btree */
   if ((or_get_unique_hierarchy (thread_p, classrec, attr_ids[0], btid,

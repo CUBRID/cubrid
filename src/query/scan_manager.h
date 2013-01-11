@@ -406,7 +406,7 @@ extern void scan_save_scan_pos (SCAN_ID * s_id, SCAN_POS * scan_pos);
 extern SCAN_CODE scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 				     SCAN_POS * scan_pos);
 extern int scan_init_iss (INDX_SCAN_ID * isidp);
-
+extern void scan_init_index_scan (INDX_SCAN_ID * isidp, OID * oid_buf);
 extern void scan_initialize (void);
 extern void scan_finalize (void);
 

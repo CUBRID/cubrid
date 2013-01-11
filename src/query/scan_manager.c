@@ -305,6 +305,33 @@ scan_init_iss (INDX_SCAN_ID * isidp)
 }
 
 /*
+ * scan_init_index_scan () - initialize an index scan structure with the
+ *			     specified OID buffer
+ * return : void
+ * isidp (in)	: index scan 
+ * oid_buf (in) : OID buffer
+ */
+void
+scan_init_index_scan (INDX_SCAN_ID * isidp, OID * oid_buf)
+{
+  if (isidp == NULL)
+    {
+      assert (false);
+      return;
+    }
+
+  isidp->oid_list.oid_cnt = 0;
+  isidp->oid_list.oidp = oid_buf;
+  isidp->copy_buf = NULL;
+  isidp->copy_buf_len = 0;
+  memset ((void *) (&(isidp->indx_cov)), 0, sizeof (INDX_COV));
+  isidp->indx_info = NULL;
+  memset ((void *) (&(isidp->multi_range_opt)), 0, sizeof (MULTI_RANGE_OPT));
+  isidp->duplicate_key_locked = false;
+  scan_init_iss (isidp);
+}
+
+/*
  * scan_save_range_details () - save range details from the index scan id to
  *                              a "backup" iss_range_details structure.
  *    return: error code
