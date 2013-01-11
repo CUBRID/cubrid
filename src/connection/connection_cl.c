@@ -1071,10 +1071,14 @@ css_connect_to_cubrid_server (char *host_name, char *server_name)
 	    case SERVER_CLIENTS_EXCEEDED:
 	    case SERVER_INACCESSIBLE_IP:
 	      {
+		error_area = NULL;
 		if (css_receive_error (conn, rid, &error_area, &error_length))
 		  {
-		    er_set_area_error ((void *) error_area);
-		    free_and_init (error_area);
+		    if (error_area != NULL)
+		      {
+			er_set_area_error ((void *) error_area);
+			free_and_init (error_area);
+		      }
 		  }
 		break;
 	      }
