@@ -2334,13 +2334,13 @@ free_and_error:
       free ((char *) key_stat_items);
     }
   if (shm_metadata_cp != NULL)
-  {
+    {
       uw_shm_detach (shm_metadata_cp);
-  }
+    }
   if (shm_as_cp != NULL)
-  {
+    {
       uw_shm_detach (shm_as_cp);
-  }
+    }
   return -1;
 }
 
