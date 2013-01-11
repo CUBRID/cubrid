@@ -11609,10 +11609,7 @@ execute_create_select_query (PARSER_CONTEXT * parser,
     }
 
   error = do_statement (parser, insert_into);
-  if (insert_into->xasl_id)
-    {
-      free_and_init (insert_into->xasl_id);
-    }
+  pt_free_statement_xasl_id (insert_into);
   if (error < 0)
     {
       goto error_exit;

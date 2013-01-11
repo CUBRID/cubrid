@@ -1905,7 +1905,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 	    {
 	      (void) qmgr_drop_query_plan (NULL, NULL, statement->xasl_id,
 					   false);
-	      free_and_init (statement->xasl_id);
+	      pt_free_statement_xasl_id (statement);
 	    }
 	  /* forget all errors */
 	  er_clear ();
@@ -3016,10 +3016,7 @@ db_execute_statement_local (DB_SESSION * session, int stmt_ndx,
     {
       /* free XASL_ID allocated by query_prepare()
          before freeing the statement */
-      if (statement->xasl_id)
-	{
-	  free_and_init (statement->xasl_id);
-	}
+      pt_free_statement_xasl_id (statement);
       parser_free_tree (session->parser, statement);
       session->statements[stmt_ndx - 1] = NULL;
     }
@@ -3073,8 +3070,8 @@ db_drop_statement (DB_SESSION * session, int stmt)
 	      (void) qmgr_drop_query_plan (NULL, NULL, statement->xasl_id,
 					   false);
 	    }
-	  free_and_init (statement->xasl_id);
 	}
+      pt_free_statement_xasl_id (statement);
       parser_free_tree (session->parser, statement);
       session->statements[stmt - 1] = NULL;
       session->stage[stmt - 1] = StatementInitialStage;
@@ -3108,8 +3105,8 @@ db_drop_all_statements (DB_SESSION * session)
 		  (void) qmgr_drop_query_plan (NULL, NULL, statement->xasl_id,
 					       false);
 		}
-	      free_and_init (statement->xasl_id);
 	    }
+	  pt_free_statement_xasl_id (statement);
 	  parser_free_tree (session->parser, statement);
 	  session->statements[stmt] = NULL;
 	  session->stage[stmt] = StatementInitialStage;
@@ -3166,8 +3163,8 @@ db_close_session_local (DB_SESSION * session)
 		      (void) qmgr_drop_query_plan (NULL, NULL,
 						   statement->xasl_id, false);
 		    }
-		  free_and_init (statement->xasl_id);
 		}
+	      pt_free_statement_xasl_id (statement);
 	      parser_free_tree (parser, statement);
 	      session->statements[i] = NULL;
 	    }

@@ -11128,3 +11128,36 @@ pt_partition_name (PARSER_CONTEXT * parser, const char *class_name,
   free (buf);
   return name;
 }
+
+/*
+ * pt_free_statement_xasl_id () - free XASL_ID object of a prepared statement
+ * return : void
+ * statement (in) : statement
+ */
+void
+pt_free_statement_xasl_id (PT_NODE * statement)
+{
+  if (statement == NULL)
+    {
+      return;
+    }
+
+  if (statement->xasl_id != NULL)
+    {
+      free_and_init (statement->xasl_id);
+    }
+
+  if (statement->node_type == PT_DELETE)
+    {
+      /* free xasl_id for computed individual select statements */
+      PT_NODE *del_stmt;
+      for (del_stmt = statement->info.delete_.del_stmt_list; del_stmt != NULL;
+	   del_stmt = del_stmt->next)
+	{
+	  if (del_stmt->xasl_id != NULL)
+	    {
+	      free_and_init (del_stmt->xasl_id);
+	    }
+	}
+    }
+}

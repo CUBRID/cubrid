@@ -905,6 +905,7 @@ extern "C"
   extern const char *pt_partition_name (PARSER_CONTEXT * parser,
 					const char *class_name,
 					const char *partition);
+  extern void pt_free_statement_xasl_id (PT_NODE * statement);
 
 #ifdef __cplusplus
 }

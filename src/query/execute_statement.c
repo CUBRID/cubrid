@@ -10030,10 +10030,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement,
     {
       for (node = save_stmt; node != statement; node = node->next)
 	{
-	  if (node->xasl_id)
-	    {
-	      free_and_init (node->xasl_id);
-	    }
+	  pt_free_statement_xasl_id (node);
 	}
       if (err == NO_ERROR)
 	{
