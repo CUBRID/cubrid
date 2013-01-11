@@ -2000,7 +2000,7 @@ metadata_monitor (void)
 				    shm_br->num_broker);
       if (shard_stat_items_old == NULL)
 	{
-	  return -1;
+	  goto free_and_error;
 	}
       memset ((void *) shard_stat_items_old, 0,
 	      shard_stat_items_size * shm_br->num_broker);
@@ -2012,7 +2012,7 @@ metadata_monitor (void)
 	(KEY_STAT_ITEM *) calloc (key_stat_items_size, shm_br->num_broker);
       if (key_stat_items_old == NULL)
 	{
-	  return -1;
+	  goto free_and_error;
 	}
       memset ((void *) key_stat_items_old, 0,
 	      key_stat_items_size * shm_br->num_broker);
@@ -2036,12 +2036,7 @@ metadata_monitor (void)
       if (shm_metadata_cp == NULL)
 	{
 	  str_out ("%s", "shared memory open error");
-
-	  if (key_stat_items != NULL)
-	    {
-	      free ((char *) key_stat_items);
-	    }
-	  return -1;
+	  goto free_and_error;
 	}
 
       shard_stat_items_old_p =
@@ -2093,14 +2088,13 @@ metadata_monitor (void)
       if (shm_as_cp == NULL)
 	{
 	  str_out ("%s", "shared memory open error");
-	  return -1;
+	  goto free_and_error;
 	}
       shm_proxy_p = shard_shm_get_proxy (shm_as_cp);
       if (shm_proxy_p == NULL)
 	{
 	  str_out ("%s", "shared memory open error");
-	  uw_shm_detach (shm_as_cp);
-	  return -1;
+	  goto free_and_error;
 	}
 
       if (shard_stat_items != NULL)
@@ -2113,8 +2107,7 @@ metadata_monitor (void)
       if (shard_stat_items == NULL)
 	{
 	  str_out ("%s", "malloc error");
-	  uw_shm_detach (shm_as_cp);
-	  return -1;
+	  goto free_and_error;
 	}
       memset ((char *) shard_stat_items, 0,
 	      sizeof (SHARD_STAT_ITEM) * shm_conn_p->num_shard_conn);
@@ -2128,8 +2121,7 @@ metadata_monitor (void)
 	  if (shard_stat_p == NULL)
 	    {
 	      str_out ("%s", "shard_stat open error");
-	      uw_shm_detach (shm_as_cp);
-	      return -1;
+	      goto free_and_error;
 	    }
 	  for (j = 0; j < proxy_info_p->num_shard_conn;
 	       shard_stat_p = shard_shm_get_shard_stat (proxy_info_p, ++j))
@@ -2216,8 +2208,7 @@ metadata_monitor (void)
 	  if (key_stat_items == NULL)
 	    {
 	      str_out ("%s", "malloc error");
-	      uw_shm_detach (shm_as_cp);
-	      return -1;
+	      goto free_and_error;
 	    }
 	  memset ((char *) key_stat_items, 0,
 		  sizeof (KEY_STAT_ITEM) * shm_key_p->num_shard_key);
@@ -2231,8 +2222,7 @@ metadata_monitor (void)
 	      if (key_stat_p == NULL)
 		{
 		  str_out ("%s", "key_stat open error");
-		  uw_shm_detach (shm_as_cp);
-		  return -1;
+		  goto free_and_error;
 		}
 
 	      for (j = 0;
@@ -2323,6 +2313,8 @@ metadata_monitor (void)
 
       uw_shm_detach (shm_metadata_cp);
       uw_shm_detach (shm_as_cp);
+
+      shm_metadata_cp = shm_as_cp = NULL;
     }
 
   if (elapsed_time > 0)
@@ -2331,6 +2323,25 @@ metadata_monitor (void)
     }
 
   return 0;
+
+free_and_error:
+  if (shard_stat_items != NULL)
+    {
+      free ((char *) shard_stat_items);
+    }
+  if (key_stat_items != NULL)
+    {
+      free ((char *) key_stat_items);
+    }
+  if (shm_metadata_cp != NULL)
+  {
+      uw_shm_detach (shm_metadata_cp);
+  }
+  if (shm_as_cp != NULL)
+  {
+      uw_shm_detach (shm_as_cp);
+  }
+  return -1;
 }
 
 static int
@@ -2452,6 +2463,7 @@ client_monitor (void)
 	      print_newline ();
 	    }
 	}
+      uw_shm_detach (shm_as_cp);
     }
   return 0;
 }
