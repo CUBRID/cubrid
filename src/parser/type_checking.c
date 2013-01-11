@@ -10039,6 +10039,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	      && arg1->node_type == PT_HOST_VAR)
 	    {
 	      d = pt_node_to_db_domain (parser, node, NULL);
+	      d = tp_domain_cache (d);
 	      SET_EXPECTED_DOMAIN (arg1, d);
 	      pt_preset_hostvar (parser, arg1);
 	    }
@@ -21002,11 +21003,11 @@ error:
  *	   codeset by previously applying the coercion on its arguments.
  *
  *	   use_collate_modifier : if true and wrap_with_cast is done, the
- *	   CAST operator is flagged with PT_EXPR_INFO_CAST_COLL_MODIFIER; this 
+ *	   CAST operator is flagged with PT_EXPR_INFO_CAST_COLL_MODIFIER; this
  *	   flag is set only when CAST operation does not change charset, but
  *	   only collation; this kind of CAST is not transformed into T_CAST
- *	   during XASL generation, but into a flagged REGU_VARIABLE which 
- *	   "knows" to "update" its collation after "fetch". See usage of 
+ *	   during XASL generation, but into a flagged REGU_VARIABLE which
+ *	   "knows" to "update" its collation after "fetch". See usage of
  *	   REGU_VARIABLE_APPLY_COLLATION flag.
  *
  */
