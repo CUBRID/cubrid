@@ -180,8 +180,10 @@ static PT_NODE *pt_find_outer_entity_in_scopes (PARSER_CONTEXT * parser,
 static PT_NODE *pt_make_flat_list_from_data_types (PARSER_CONTEXT * parser,
 						   PT_NODE * res_list,
 						   PT_NODE * entity);
-static PT_NODE *pt_undef_names (PARSER_CONTEXT * parser, PT_NODE * node,
-				void *arg, int *continue_walk);
+static PT_NODE *pt_undef_names_pre (PARSER_CONTEXT * parser, PT_NODE * node,
+				    void *arg, int *continue_walk);
+static PT_NODE *pt_undef_names_post (PARSER_CONTEXT * parser, PT_NODE * node,
+				     void *arg, int *continue_walk);
 static void fill_in_insert_default_function_arguments (PARSER_CONTEXT *
 						       parser,
 						       PT_NODE * const node);
@@ -207,36 +209,118 @@ static void pt_bind_names_merge_update (PARSER_CONTEXT * parser,
 					PT_EXTRA_SPECS_FRAME * specs_frame);
 
 /*
- * pt_undef_names () - Set error if name matching spec is found.
- * 	Used in insert to make sure no "correlated" names are used
- * 	in subqueries
- *   return:
- *   parser(in):
- *   node(in):
- *   arg(in):
- *   continue_walk(in):
+ * pt_undef_names_pre () - Set error if name matching spec is found. Used in
+ *			   insert to make sure no "correlated" names are used
+ * 			   in subqueries.
+ *
+ * return	      : Unchanged node argument. 
+ * parser (in)	      : Parser context.
+ * node (in)	      : Parse tree node.
+ * arg (in)	      : Insert spec.
+ * continue_walk (in) : Continue walk.
+ *
+ * NOTE: Insert spec will store in etc the correlation level in regard with
+ *	 INSERT VALUE clause. Only if level is greater than 0, names should
+ *	 be undefined. INSERT INTO SET attr_i = EXPR (attr_j1, attr_j2, ...)
+ *	 is allowed.
+ *	 If etc is NULL, correlation level is ignored and all names are
+ *	 undefined.
  */
 static PT_NODE *
-pt_undef_names (PARSER_CONTEXT * parser, PT_NODE * node,
-		void *arg, int *continue_walk)
+pt_undef_names_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+		    int *continue_walk)
 {
   PT_NODE *spec = (PT_NODE *) arg;
+  short *level_p = NULL;
 
-  if (node->node_type == PT_NAME)
+  if (spec == NULL)
     {
-      /* Using "correlated" names in INSERT statements is incorrect except
-         when they are arguments of the DEFAULT() function. */
-      if (node->info.name.spec_id == spec->info.spec.id &&
-	  !PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_FILL_DEFAULT))
-	{
-	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-		      MSGCAT_SEMANTIC_IS_NOT_DEFINED, pt_short_print (parser,
-								      node));
-	}
+      *continue_walk = PT_STOP_WALK;
+      return node;
     }
+
+  level_p = (short *) spec->etc;
+
+  switch (node->node_type)
+    {
+    case PT_NAME:
+      if (level_p == NULL || *level_p > 0)
+	{
+	  /* Using "correlated" names in INSERT VALUES clause is incorrect
+	   * except when they are arguments of the DEFAULT() function.
+	   */
+	  if (node->info.name.spec_id == spec->info.spec.id &&
+	      !PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_FILL_DEFAULT))
+	    {
+	      int save_custom_print = parser->custom_print;
+	      parser->custom_print |= PT_SUPPRESS_RESOLVED;
+	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_IS_NOT_DEFINED,
+			  pt_short_print (parser, node));
+	      parser->custom_print = save_custom_print;
+	    }
+	}
+      break;
+    case PT_SELECT:
+    case PT_UNION:
+    case PT_INTERSECTION:
+    case PT_DIFFERENCE:
+    case PT_INSERT:
+      if (level_p != NULL)
+	{
+	  (*level_p)++;
+	}
+      break;
+    default:
+      break;
+    }
+
   return node;
 }
 
+/*
+ * pt_undef_names_post () - Function to be used with pt_undef_names_pre. Helps
+ *			    with counting the correlation level.
+ *
+ * return	      : Unchanged node argument.
+ * parser (in)	      : Parser context.
+ * node (in)	      : Parse tree node.
+ * arg (in)	      : Insert spec.
+ * continue_walk (in) : Continue walk.
+ */
+static PT_NODE *
+pt_undef_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+		     int *continue_walk)
+{
+  PT_NODE *spec = (PT_NODE *) arg;
+  short *level_p = NULL;
+
+  if (spec == NULL)
+    {
+      return node;
+    }
+
+  level_p = (short *) spec->etc;
+  if (level_p == NULL)
+    {
+      return node;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+    case PT_UNION:
+    case PT_INTERSECTION:
+    case PT_DIFFERENCE:
+    case PT_INSERT:
+      (*level_p)--;
+      break;
+    default:
+      break;
+    }
+
+  return node;
+}
 
 /*
  * pt_resolved() -  check if this path expr was previously resolved
@@ -1539,15 +1623,18 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
   SCOPES scopestack;
   PT_NODE *node1 = NULL;
   PT_EXTRA_SPECS_FRAME spec_frame;
-  PT_NODE *prev_attr, *attr, *next_attr, *as_attr, *resolved_attrs;
-  PT_NODE *spec, *derived_table, *flat, *range_var;
+  PT_NODE *prev_attr = NULL, *attr = NULL, *next_attr = NULL, *as_attr = NULL;
+  PT_NODE *resolved_attrs = NULL, *spec = NULL;
+  PT_NODE *derived_table = NULL, *flat = NULL, *range_var = NULL;
   bool do_resolve = true;
-  PT_NODE *seq;
-  PT_NODE *cnf, *prev, *next, *lhs, *rhs, *lhs_spec, *rhs_spec, *last, *save;
-  PT_NODE *p_spec;
-  PT_NODE *result;
-  short i, k, lhs_location, rhs_location;
+  PT_NODE *seq = NULL;
+  PT_NODE *cnf = NULL, *prev = NULL, *next = NULL, *last = NULL, *save = NULL;
+  PT_NODE *lhs = NULL, *rhs = NULL, *lhs_spec = NULL, *rhs_spec = NULL;
+  PT_NODE *p_spec = NULL;
+  PT_NODE *result = NULL;
+  short i, k, lhs_location, rhs_location, level;
   PT_JOIN_TYPE join_type;
+  void *save_etc = NULL;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -2605,6 +2692,18 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       parser_walk_leaves (parser, node, pt_bind_names, bind_arg,
 			  pt_bind_names_post, bind_arg);
 
+      /* flag any "correlated" names as undefined.
+       * only names in subqueries and sub-inserts should be undefined.
+       * use spec->etc to store the correlation level in value_clauses.
+       */
+      save_etc = node->info.insert.spec->etc;
+      level = 0;
+      node->info.insert.spec->etc = &level;
+      parser_walk_tree (parser, node->info.insert.value_clauses,
+			pt_undef_names_pre, node->info.insert.spec,
+			pt_undef_names_post, node->info.insert.spec);
+      node->info.insert.spec->etc = save_etc;
+
       if (save != NULL)
 	{
 	  SCOPES extended_scope;
@@ -2614,6 +2713,12 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 
 	  /* restore ON DUPLICATE KEY UPDATE node */
 	  node->info.insert.odku_assignments = save;
+
+	  /* pt_undef_names_pre may have generated an error */
+	  if (pt_has_error (parser))
+	    {
+	      goto insert_end;
+	    }
 
 	  if (PT_IS_SELECT (value_list))
 	    {
@@ -2711,9 +2816,13 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       parser_walk_leaves (parser, node, pt_bind_names, bind_arg,
 			  pt_bind_names_post, bind_arg);
 
-      /* flag any "correlated" names as undefined. */
+      /* flag any "correlated" names as undefined. make sure etc is NULL. */
+      save_etc = node->info.merge.into->etc;
+      node->info.merge.into->etc = NULL;
       parser_walk_tree (parser, node->info.merge.insert.value_clauses,
-			pt_undef_names, node->info.merge.into, NULL, NULL);
+			pt_undef_names_pre, node->info.merge.into, NULL,
+			NULL);
+      node->info.merge.into->etc = save_etc;
 
       bind_arg->spec_frames = bind_arg->spec_frames->next;
       bind_arg->scopes = bind_arg->scopes->next;
