@@ -1351,7 +1351,7 @@ btree_leaf_remove_last_oid (BTID_INT * btid, RECDES * recp, short node_type,
 	{
 	  vpid_size = DB_ALIGN (DISK_VPID_SIZE, INT_ALIGNMENT);
 	  offset = recp->data + recp->length - vpid_size;
-	  memcpy (offset - oid_size, offset, vpid_size);
+	  memmove (offset - oid_size, offset, vpid_size);
 	}
     }
 
@@ -6544,7 +6544,7 @@ btree_delete_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid,
     {
       del_oid_p = ovfl_rec->data + del_oid_offset;
       shift_len = ovfl_rec->length - del_oid_offset;
-      memcpy (del_oid_p, del_oid_p + OR_OID_SIZE, shift_len);
+      memmove (del_oid_p, del_oid_p + OR_OID_SIZE, shift_len);
     }
 
   if (spage_update (thread_p, ovfl_page, 1, ovfl_rec) != SP_SUCCESS)
