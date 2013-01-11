@@ -6375,7 +6375,8 @@ ldr_process_constants (LDR_CONSTANT * cons)
 	     * currency symbol is not localized) */
 	    char *curr_str =
 	      intl_get_money_esc_ISO_symbol (mon->currency_type);
-	    int full_mon_str_len = strlen (str->val) + strlen (curr_str);
+	    unsigned int full_mon_str_len = (strlen (str->val)
+					     + strlen (curr_str));
 
 	    if (full_mon_str_len >= sizeof (full_mon_str))
 	      {
@@ -6437,7 +6438,7 @@ static void
 ldr_process_object_ref (LDR_OBJECT_REF * ref, int type)
 {
   bool ignore_class = false;
-  char *class_name;
+  const char *class_name;
   DB_OBJECT *ref_class = NULL;
 
   if (ref->class_id && ref->class_id->val)
@@ -6517,7 +6518,7 @@ ldr_init_class_spec (const char *class_name)
 {
   ldr_act_init_context (ldr_Current_context, class_name, strlen (class_name));
 
-  /* 
+  /*
    * If there is no class or not authorized,
    * Error message is printed and ER_FAILED is returned.
    */
@@ -6532,7 +6533,7 @@ ldr_act_add_class_all_attrs (LDR_CONTEXT * context, const char *class_name)
   SM_ATTRIBUTE *att;
   DB_OBJECT *class_mop;
 
-  RETURN_IF_NOT_VALID (context);
+  RETURN_IF_NOT_VALID_WITH (context, ER_FAILED);
 
   if (context->validation_only)
     {
