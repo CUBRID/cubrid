@@ -3962,9 +3962,23 @@ join_condition
 		DBG_PRINT}}
 	  search_condition
 		{{
+			PT_NODE *condition = $3;
+			bool instnum_flag = false;
+			
 			parser_restore_wjc ();
 			parser_restore_ic ();
-			$$ = $3;
+			
+			(void) parser_walk_tree (this_parser, condition,
+									 pt_check_instnum_pre, NULL,
+									 pt_check_instnum_post, &instnum_flag);
+			if (instnum_flag)
+			  {
+			    PT_ERRORmf(this_parser, condition, MSGCAT_SET_PARSER_SEMANTIC,
+					       MSGCAT_SEMANTIC_EXPR_NOT_ALLOWED_IN_JOIN_COND,
+					       "INST_NUM()/ROWNUM");
+			  }
+			
+			$$ = condition;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
 

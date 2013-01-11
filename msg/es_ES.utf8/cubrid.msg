@@ -1599,6 +1599,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 269 Session variable cannot have a different collation than system collation ('%s').
 270 Invalid function index expression.
 271 The query specification of %s has a cyclic reference to itself.
+272 %s expression not allowed in join condition.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sin memoria virtual: incapaz de asignar %d bytes.
