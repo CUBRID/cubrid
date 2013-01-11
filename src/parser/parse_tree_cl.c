@@ -16042,8 +16042,9 @@ pt_print_error_msg (PARSER_CONTEXT * parser, PT_NODE * p)
  *   g(in):
  *   arg(in):
  */
-static PT_NODE *pt_apply_constraint
-  (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+static PT_NODE *
+pt_apply_constraint (PARSER_CONTEXT * parser, PT_NODE * p,
+		     PT_NODE_FUNCTION g, void *arg)
 {
   switch (p->info.constraint.type)
     {
