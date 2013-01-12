@@ -994,6 +994,8 @@ extern char *or_pack_monetary (char *ptr, DB_MONETARY * money);
 extern char *or_pack_utime (char *ptr, DB_UTIME utime);
 #endif
 extern char *or_pack_short (char *ptr, short number);
+extern char *or_pack_string_with_null_padding (char *ptr, const char *stream,
+					       size_t len);
 extern char *or_pack_stream (char *ptr, const char *stream, size_t len);
 extern char *or_pack_string (char *ptr, const char *string);
 extern char *or_pack_string_with_length (char *ptr, const char *string,

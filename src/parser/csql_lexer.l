@@ -1054,6 +1054,7 @@ _[uU][tT][fF]8[']		{
 					  {
 					    csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr, "\\");
 					    unput(*(yytext + 1));
+					    yybuffer_pos--;
 					  }
 					else
 					  {

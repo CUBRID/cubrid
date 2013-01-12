@@ -495,6 +495,7 @@ void pop_msg (void);
 char *g_query_string;
 int g_query_string_len;
 PT_NODE *g_last_stmt;
+int g_original_buffer_len;
 
 
 /* 
@@ -1550,6 +1551,21 @@ stmt
 			    int pos = @$.buffer_pos;
 			    int stmt_n = this_parser->statement_number;
 
+			    if (g_original_buffer_len == 0)
+			      {
+				g_original_buffer_len = strlen (this_parser->original_buffer);
+			      }
+
+			    /* below assert & defence code is for yybuffer_pos mismatch
+			     * (like unput in lexer and do not modify yybuffer_pos)
+			     */
+			    assert (pos <= g_original_buffer_len);
+
+			    if (pos > g_original_buffer_len)
+			      {
+				pos = g_original_buffer_len;
+			      }
+
 			    g_query_string = this_parser->original_buffer + pos;
 			
 			    /* set query length of previous statement */
@@ -1614,6 +1630,21 @@ stmt
 			    int pos = @$.buffer_pos;
 			    PT_NODE *node = $3;
 			  
+			    if (g_original_buffer_len == 0)
+			      {
+				g_original_buffer_len = strlen (this_parser->original_buffer);
+			      }
+
+			    /* below assert & defence code is for yybuffer_pos mismatch
+			     * (like unput in lexer and do not modify yybuffer_pos)
+			     */
+			    assert (pos <= g_original_buffer_len);
+
+			    if (pos > g_original_buffer_len)
+			      {
+				pos = g_original_buffer_len;
+			      }
+
 			    if (node)
 			      {
 				char *curr_ptr = this_parser->original_buffer + pos;
@@ -21703,6 +21734,7 @@ parser_main (PARSER_CONTEXT * parser)
   g_query_string = NULL;
   g_query_string_len = 0;
   g_last_stmt = NULL;
+  g_original_buffer_len = 0;
 
   rv = yyparse ();
   pt_cleanup_hint (parser, parser_hint_table);
@@ -21796,6 +21828,8 @@ parse_one_statement (int state)
   g_query_string = NULL;
   g_query_string_len = 0;
   g_last_stmt = NULL;
+  g_original_buffer_len = 0;
+
 
   rv = yyparse ();
   pt_cleanup_hint (this_parser, parser_hint_table);
@@ -23385,5 +23419,6 @@ pt_set_collation_modifier (PARSER_CONTEXT *parser, PT_NODE *node,
 
   return node;
 }
+
 
 

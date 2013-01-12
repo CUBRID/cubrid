@@ -3043,6 +3043,26 @@ or_pack_string (char *ptr, const char *string)
   return ptr;
 }
 
+
+/*
+ * or_pack_string_with_null_padding - make stream to string and pack
+ *    return: advanced buffer pointer
+ *    ptr(out): current buffer pointer
+ *    string(in): string to pack
+ *    len(in): stream len
+ */
+char *
+or_pack_string_with_null_padding (char *ptr, const char *string, size_t len)
+{
+  char *ret_ptr;
+
+  ret_ptr = or_pack_stream (ptr, string, len + 1);
+
+  ptr[OR_INT_SIZE + len] = '\0';	/* NULL Padding */
+
+  return ret_ptr;
+}
+
 /*
  * or_pack_stream - Puts a stream into the buffer.
  *    return: advanced buffer pointer

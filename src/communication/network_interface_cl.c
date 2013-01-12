@@ -102,7 +102,10 @@ static int db_Execution_plan_length = -1;
 
 #if defined(CS_MODE)
 static char *pack_const_string (char *buffer, const char *cstring);
+static char *pack_string_with_null_padding (char *buffer, const char *stream,
+					    int len);
 static int length_const_string (const char *cstring, int *strlen);
+static int length_string_with_null_padding (int len);
 #endif /* CS_MODE */
 static BTREE_SEARCH
 btree_find_unique_internal (BTID * btid, DB_VALUE * key, OID * class_oid,
@@ -123,6 +126,24 @@ static char *
 pack_const_string (char *buffer, const char *cstring)
 {
   return or_pack_string (buffer, cstring);
+}
+
+/*
+ * pack_string_with_null_padding - pack stream and add null. 
+ *                                 so stream is made as null terminated string.
+ *
+ * return:
+ *
+ *   buffer(in):
+ *   stream(in): 
+ *   len(in):
+ *
+ * NOTE:
+ */
+static char *
+pack_string_with_null_padding (char *buffer, const char *stream, int len)
+{
+  return or_pack_string_with_null_padding (buffer, stream, len);
 }
 
 /*
@@ -154,6 +175,20 @@ static int
 length_const_string (const char *cstring, int *strlen)
 {
   return or_packed_string_length (cstring, strlen);
+}
+
+
+/*
+ * length_string_with_null_padding - calculate length with null padding
+ *
+ * return:
+ *
+ *   len(in): stream length
+ */
+static int
+length_string_with_null_padding (int len)
+{
+  return or_packed_stream_length (len + 1);	/* 1 for NULL padding */
 }
 #endif /* CS_MODE */
 
@@ -7403,7 +7438,7 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream,
 {
 #if defined(CS_MODE)
   int error = NO_ERROR;
-  int req_error, request_size;
+  int req_error, request_size = 0;
   int sql_hash_text_len, sql_plan_text_len, reply_buffer_size = 0;
   char *request = NULL, *reply = NULL, *ptr = NULL, *reply_buffer = NULL;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_XASL_ID_SIZE) a_reply;
@@ -7413,12 +7448,22 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream,
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = length_const_string (context->sql_hash_text, &sql_hash_text_len) +	/* query alias string */
-    length_const_string (context->sql_plan_text, &sql_plan_text_len) +	/* query plan */
-    OR_INT_SIZE + OR_INT_SIZE + context->sql_user_text_len + 1 +	/* query string */
-    OR_OID_SIZE +		/* user_oid */
-    OR_INT_SIZE +		/* size */
-    OR_INT_SIZE;		/* get_xasl_header */
+  /* sql hash text */
+  request_size +=
+    length_const_string (context->sql_hash_text, &sql_hash_text_len);
+
+  /* sql plan text */
+  request_size +=
+    length_const_string (context->sql_plan_text, &sql_plan_text_len);
+
+  /* sql user text */
+  request_size +=
+    length_string_with_null_padding (context->sql_user_text_len);
+
+  request_size += OR_OID_SIZE;	/* user_oid */
+  request_size += OR_INT_SIZE;	/* size */
+  request_size += OR_INT_SIZE;	/* get_xasl_header */
+
   request = (char *) malloc (request_size);
   if (!request)
     {
@@ -7434,8 +7479,10 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream,
   ptr = pack_const_string_with_length (ptr, context->sql_plan_text,
 				       sql_plan_text_len);
   /* pack query string as a request data */
-  ptr = pack_const_string_with_length (ptr, context->sql_user_text,
+  ptr = pack_string_with_null_padding (ptr, context->sql_user_text,
 				       context->sql_user_text_len);
+
+
   /* pack OID of the current user */
   ptr = or_pack_oid (ptr, (OID *) user_oid);
   /* pack size of XASL stream */
