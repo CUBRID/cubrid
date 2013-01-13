@@ -12102,12 +12102,7 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
       VFID_COPY (&root_header.ovfid, &btid_int.ovfid);
       if (btree_write_root_header (&peek_rec, &root_header) != NO_ERROR)
 	{
-	  goto error;
-	}
-
-      if (spage_update (thread_p, P, HEADER, &peek_rec) != SP_SUCCESS)
-	{
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+          log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
 	  goto error;
 	}
 
