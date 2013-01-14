@@ -10,8 +10,8 @@
 # set -x
 RootDir="CUBRID"
 
-CUBRID_LANG=en_US
-export CUBRID_LANG
+CUBRID_CHARSET=en_US
+export CUBRID_CHARSET
 
 usage() {
 	echo "usage: $0 database" 1>&2
