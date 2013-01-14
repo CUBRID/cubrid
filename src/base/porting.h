@@ -698,6 +698,13 @@ extern UINT64 win32_exchange64 (UINT64 volatile *ptr, UINT64 new_val);
 
 #endif /* WINDOWS */
 
+#if defined(WINDOWS)
+extern double strtod_win (const char *str, char **end_ptr);
+#define string_to_double(str, end_ptr) strtod_win((str), (end_ptr));
+#else
+#define string_to_double(str, end_ptr) strtod((str), (end_ptr))
+#endif
+
 extern INT64 timeval_diff_in_msec (const struct timeval *end_time,
 				   const struct timeval *start_time);
 extern int timeval_add_msec (struct timeval *added_time,

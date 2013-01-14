@@ -4748,7 +4748,7 @@ tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
 
   /* don't use atof() which cannot detect the error. */
   errno = 0;
-  d = strtod (strp, &p);
+  d = string_to_double (strp, &p);
 
   if (errno == ERANGE)
     {
