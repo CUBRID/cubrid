@@ -1812,10 +1812,26 @@ partition_get_value_from_key (PRUNING_CONTEXT * pinfo,
 	  }
 	break;
       }
+
     case TYPE_INARITH:
       error =
 	partition_get_value_from_regu_var (pinfo, key, attr_key, is_present);
       break;
+
+    case TYPE_CONSTANT:
+      if (key->value.dbvalptr != NULL)
+	{
+	  error = pr_clone_value (key->value.dbvalptr, attr_key);
+	  *is_present = true;
+	}
+      else
+	{
+	  DB_MAKE_NULL (attr_key);
+	  error = NO_ERROR;
+	  *is_present = false;
+	}
+      break;
+
     default:
       assert (false);
 
