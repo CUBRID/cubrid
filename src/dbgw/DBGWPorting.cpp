@@ -762,7 +762,7 @@ namespace dbgw
 
     long _Thread::MIN_SLEEP_TIME_MILSEC()
     {
-      return 1;
+      return 1000;
     }
 
     _Thread::_Thread(_ThreadFunction pFunc) :
@@ -877,30 +877,28 @@ namespace dbgw
      */
     bool _Thread::sleep(unsigned long ulMilSec) const
     {
-      struct timeval beginTime;
-      struct timeval endTime;
-      unsigned long ulWaitTimeMilSec = 0;
+      unsigned long ulMinSleepTimeMilSec = MIN_SLEEP_TIME_MILSEC();
 
-      gettimeofday(&beginTime, NULL);
-
+      bool bIsRunning = false;
       while (true)
         {
-          gettimeofday(&endTime, NULL);
+          bIsRunning = isRunning();
 
-          ulWaitTimeMilSec = ((endTime.tv_sec - beginTime.tv_sec) * 1000);
-          ulWaitTimeMilSec += ((endTime.tv_usec - beginTime.tv_usec) / 1000);
-
-          if (ulMilSec <= ulWaitTimeMilSec)
+          if (bIsRunning == false || ulMilSec <= 0)
             {
-              return true;
+              return bIsRunning;
             }
 
-          if (isRunning() == false)
+          if (ulMilSec > ulMinSleepTimeMilSec)
             {
-              return false;
+              SLEEP_MILISEC(0, ulMinSleepTimeMilSec);
+              ulMilSec -= ulMinSleepTimeMilSec;
             }
-
-          SLEEP_MILISEC(0, MIN_SLEEP_TIME_MILSEC());
+          else
+            {
+              SLEEP_MILISEC(0, ulMilSec);
+              ulMilSec = 0;
+            }
         }
     }
 
