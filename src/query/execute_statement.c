@@ -2571,7 +2571,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 		}
 
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 1,
-		      cp);
+		      cp ? cp : "unknown");
 	      error = ER_BLOCK_DDL_STMT;
 	      goto end;
 	    }
@@ -3002,7 +3002,8 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      cp = statement->alias_print;
 	    }
 
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 1, cp);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 1, 
+		  cp ? cp : "unknown");
 	  err = ER_BLOCK_DDL_STMT;
 	  goto end;
 	}
