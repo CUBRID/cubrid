@@ -9311,7 +9311,7 @@ lock_get_object_lock (const OID * oid, const OID * class_oid, int tran_index)
 }
 
 /*
- * lock_has_lock_on_object - 
+ * lock_has_lock_on_object -
  *
  * return:
  *
@@ -10245,6 +10245,11 @@ start:
 		{
 		  /* WFG contains a false edge, rebuid WFG */
 		  assert (0);
+		  if (lk_Gl.max_TWFG_edge > LK_MID_TWFG_EDGE_COUNT)
+		    {
+		      free_and_init (lk_Gl.TWFG_edge);
+		    }
+
 		  goto start;
 		}
 	    }
