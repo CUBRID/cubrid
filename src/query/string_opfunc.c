@@ -15958,7 +15958,9 @@ number_to_char (const DB_VALUE * src_value,
       if (scientific_to_decimal_string (number_lang_id, tmp_str, &cs) !=
 	  NO_ERROR)
 	{
-	  return ER_FAILED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OBJ_INVALID_ARGUMENTS, 0);
+	  return ER_OBJ_INVALID_ARGUMENTS;
 	}
       break;
 
@@ -15972,7 +15974,9 @@ number_to_char (const DB_VALUE * src_value,
       if (scientific_to_decimal_string (number_lang_id, tmp_str, &cs) !=
 	  NO_ERROR)
 	{
-	  return ER_FAILED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OBJ_INVALID_ARGUMENTS, 0);
+	  return ER_OBJ_INVALID_ARGUMENTS;
 	}
       break;
 
@@ -15987,7 +15991,9 @@ number_to_char (const DB_VALUE * src_value,
       if (scientific_to_decimal_string (number_lang_id, tmp_str, &cs) !=
 	  NO_ERROR)
 	{
-	  return ER_FAILED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OBJ_INVALID_ARGUMENTS, 0);
+	  return ER_OBJ_INVALID_ARGUMENTS;
 	}
       break;
 
