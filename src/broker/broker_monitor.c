@@ -252,6 +252,11 @@ struct br_monitoring_item
   UINT64 eqs_ui;
   UINT64 eqs;
   UINT64 its;
+  UINT64 num_select_query;
+  UINT64 num_insert_query;
+  UINT64 num_update_query;
+  UINT64 num_delete_query;
+  UINT64 num_others_query;
 #if defined(CUBRID_SHARD)
   UINT64 num_hnqx;
   UINT64 num_hkqx;
@@ -1238,11 +1243,17 @@ br_monitor (char *br_vector)
   UINT64 tps = 0, qps = 0;
   static unsigned int tty_print_header = 0;
   double elapsed_time;
-  UINT64 num_select_queries = 0;
-  UINT64 num_insert_queries = 0;
-  UINT64 num_update_queries = 0;
-  UINT64 num_delete_queries = 0;
-  UINT64 num_other_queries = 0;
+  UINT64 num_select_query_cur = 0;
+  UINT64 num_insert_query_cur = 0;
+  UINT64 num_update_query_cur = 0;
+  UINT64 num_delete_query_cur = 0;
+  UINT64 num_others_query_cur = 0;
+  UINT64 num_select_query = 0;
+  UINT64 num_insert_query = 0;
+  UINT64 num_update_query = 0;
+  UINT64 num_delete_query = 0;
+  UINT64 num_others_query = 0;
+
 #if defined(CUBRID_SHARD)
   char *shm_as_cp = NULL;
 
@@ -1379,11 +1390,6 @@ br_monitor (char *br_vector)
 #endif /* CUBRID_SHARD */
       char shortened_broker_name[FIELD_WIDTH_BROKER_NAME + 1];
 
-      num_select_queries = 0;
-      num_insert_queries = 0;
-      num_update_queries = 0;
-      num_delete_queries = 0;
-      num_other_queries = 0;
       if (br_vector[i] == 0)
 	{
 	  continue;
@@ -1563,6 +1569,11 @@ br_monitor (char *br_vector)
 	      num_eq_cur = 0;
 	      num_eq_ui_cur = 0;
 	      num_interrupts_cur = 0;
+	      num_select_query_cur = 0;
+	      num_insert_query_cur = 0;
+	      num_update_query_cur = 0;
+	      num_delete_query_cur = 0;
+	      num_others_query_cur = 0;
 
 #if defined(CUBRID_SHARD)
 	      tot_cas = tot_proxy = 0;
@@ -1591,7 +1602,22 @@ br_monitor (char *br_vector)
 			  num_eq_ui_cur +=
 			    as_info_p->num_unique_error_queries;
 			  num_interrupts_cur += as_info_p->num_interrupts;
+			  num_select_query_cur +=
+			    as_info_p->num_select_queries;
+			  num_insert_query_cur +=
+			    as_info_p->num_insert_queries;
+			  num_update_query_cur +=
+			    as_info_p->num_update_queries;
+			  num_delete_query_cur +=
+			    as_info_p->num_delete_queries;
+
 			}
+		      num_others_query_cur = (num_qx_cur -
+					      num_select_query_cur -
+					      num_insert_query_cur -
+					      num_update_query_cur -
+					      num_delete_query_cur);
+
 		      tot_cas += cas_index;
 		    }		/* SHARD */
 		  num_hnqx_cur +=
@@ -1615,36 +1641,46 @@ br_monitor (char *br_vector)
 		  num_eq_cur += as_info_p->num_error_queries;
 		  num_eq_ui_cur += as_info_p->num_unique_error_queries;
 		  num_interrupts_cur += as_info_p->num_interrupts;
-		  num_select_queries += as_info_p->num_select_queries;
-		  num_insert_queries += as_info_p->num_insert_queries;
-		  num_update_queries += as_info_p->num_update_queries;
-		  num_delete_queries += as_info_p->num_delete_queries;
-		  num_other_queries +=
-		    (num_qx_cur - num_select_queries - num_insert_queries -
-		     num_update_queries - num_delete_queries);
+		  num_select_query_cur += as_info_p->num_select_queries;
+		  num_insert_query_cur += as_info_p->num_insert_queries;
+		  num_update_query_cur += as_info_p->num_update_queries;
+		  num_delete_query_cur += as_info_p->num_delete_queries;
 		}		/* CAS */
+	      num_others_query_cur = (num_qx_cur -
+				      num_select_query_cur -
+				      num_insert_query_cur -
+				      num_update_query_cur -
+				      num_delete_query_cur);
 #endif /* CUBRID_SHARD */
 
 	      if (elapsed_time > 0)
 		{
-		  tps = ((num_tx_cur - br_mnt_olds[i].num_tx) / elapsed_time);
-		  qps = ((num_qx_cur - br_mnt_olds[i].num_qx) / elapsed_time);
-		  lts = ((num_lt_cur - br_mnt_olds[i].num_lt) / elapsed_time);
-		  lqs = ((num_lq_cur - br_mnt_olds[i].num_lq) / elapsed_time);
-		  eqs = ((num_eq_cur - br_mnt_olds[i].num_eq) / elapsed_time);
-		  eqs_ui = ((num_eq_ui_cur -
-			     br_mnt_olds[i].num_eq_ui) / elapsed_time);
-		  its = ((num_interrupts_cur -
-			  br_mnt_olds[i].num_interrupt) / elapsed_time);
+		  tps = (num_tx_cur - br_mnt_olds[i].num_tx) / elapsed_time;
+		  qps = (num_qx_cur - br_mnt_olds[i].num_qx) / elapsed_time;
+		  lts = num_lt_cur - br_mnt_olds[i].num_lt;
+		  lqs = num_lq_cur - br_mnt_olds[i].num_lq;
+		  eqs = num_eq_cur - br_mnt_olds[i].num_eq;
+		  eqs_ui = num_eq_ui_cur - br_mnt_olds[i].num_eq_ui;
+		  its = num_interrupts_cur - br_mnt_olds[i].num_interrupt;
+		  num_select_query =
+		    num_select_query_cur - br_mnt_olds[i].num_select_query;
+		  num_insert_query =
+		    num_insert_query_cur - br_mnt_olds[i].num_insert_query;
+		  num_update_query =
+		    num_update_query_cur - br_mnt_olds[i].num_update_query;
+		  num_delete_query =
+		    num_delete_query_cur - br_mnt_olds[i].num_delete_query;
+		  num_others_query =
+		    num_others_query_cur - br_mnt_olds[i].num_others_query;
 #if defined(CUBRID_SHARD)
 		  hnqps =
-		    ((num_hnqx_cur - br_mnt_olds[i].num_hnqx) / elapsed_time);
+		    (num_hnqx_cur - br_mnt_olds[i].num_hnqx) / elapsed_time;
 		  hkqps =
-		    ((num_hkqx_cur - br_mnt_olds[i].num_hkqx) / elapsed_time);
+		    (num_hkqx_cur - br_mnt_olds[i].num_hkqx) / elapsed_time;
 		  hiqps =
-		    ((num_hiqx_cur - br_mnt_olds[i].num_hiqx) / elapsed_time);
+		    (num_hiqx_cur - br_mnt_olds[i].num_hiqx) / elapsed_time;
 		  haqps =
-		    ((num_haqx_cur - br_mnt_olds[i].num_haqx) / elapsed_time);
+		    (num_haqx_cur - br_mnt_olds[i].num_haqx) / elapsed_time;
 #endif /* CUBRID_SHARD */
 		  br_mnt_olds[i].num_tx = num_tx_cur;
 		  br_mnt_olds[i].num_qx = num_qx_cur;
@@ -1666,6 +1702,11 @@ br_monitor (char *br_vector)
 		  br_mnt_olds[i].eqs = eqs;
 		  br_mnt_olds[i].eqs_ui = eqs_ui;
 		  br_mnt_olds[i].its = its;
+		  br_mnt_olds[i].num_select_query = num_select_query_cur;
+		  br_mnt_olds[i].num_insert_query = num_insert_query_cur;
+		  br_mnt_olds[i].num_update_query = num_update_query_cur;
+		  br_mnt_olds[i].num_delete_query = num_delete_query_cur;
+		  br_mnt_olds[i].num_others_query = num_others_query_cur;
 #if defined(CUBRID_SHARD)
 		  br_mnt_olds[i].hnqps = hnqps;
 		  br_mnt_olds[i].hkqps = hkqps;
@@ -1682,6 +1723,11 @@ br_monitor (char *br_vector)
 		  eqs = br_mnt_olds[i].eqs;
 		  eqs_ui = br_mnt_olds[i].eqs_ui;
 		  its = br_mnt_olds[i].its;
+		  num_select_query = br_mnt_olds[i].num_select_query;
+		  num_insert_query = br_mnt_olds[i].num_insert_query;
+		  num_update_query = br_mnt_olds[i].num_update_query;
+		  num_delete_query = br_mnt_olds[i].num_delete_query;
+		  num_others_query = br_mnt_olds[i].num_others_query;
 #if defined(CUBRID_SHARD)
 		  hnqps = br_mnt_olds[i].hnqps;
 		  hkqps = br_mnt_olds[i].hkqps;
@@ -1694,29 +1740,22 @@ br_monitor (char *br_vector)
 	      print_value (FIELD_ACTIVE_P, &tot_proxy, FIELD_T_INT);
 	      print_value (FIELD_ACTIVE_C, &tot_cas, FIELD_T_INT);
 #endif /* CUBRID_SHARD */
-	      if (refresh_sec > 0)
-		{
-		  print_value (FIELD_TPS, &tps, FIELD_T_UINT64);
-		  print_value (FIELD_QPS, &qps, FIELD_T_UINT64);
-		}
-	      else
-		{
-		  print_value (FIELD_TPS, &num_tx_cur, FIELD_T_UINT64);
-		  print_value (FIELD_QPS, &num_qx_cur, FIELD_T_UINT64);
-		}
+
+	      print_value (FIELD_TPS, &tps, FIELD_T_UINT64);
+	      print_value (FIELD_QPS, &qps, FIELD_T_UINT64);
 
 	      if (full_info_flag == false)
 		{
 		  print_value (FIELD_NUM_OF_SELECT_QUERIES,
-			       &num_select_queries, FIELD_T_UINT64);
+			       &num_select_query, FIELD_T_UINT64);
 		  print_value (FIELD_NUM_OF_INSERT_QUERIES,
-			       &num_insert_queries, FIELD_T_UINT64);
+			       &num_insert_query, FIELD_T_UINT64);
 		  print_value (FIELD_NUM_OF_UPDATE_QUERIES,
-			       &num_update_queries, FIELD_T_UINT64);
+			       &num_update_query, FIELD_T_UINT64);
 		  print_value (FIELD_NUM_OF_DELETE_QUERIES,
-			       &num_delete_queries, FIELD_T_UINT64);
+			       &num_delete_query, FIELD_T_UINT64);
 		  print_value (FIELD_NUM_OF_OTHERS_QUERIES,
-			       &num_other_queries, FIELD_T_UINT64);
+			       &num_others_query, FIELD_T_UINT64);
 		}
 
 #if defined(CUBRID_SHARD)
