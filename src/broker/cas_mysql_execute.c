@@ -515,6 +515,8 @@ ux_execute_internal (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
       goto execute_all_error;
     }
 
+  cas_mysql_autocommit (srv_handle->auto_commit_mode);
+
   num_bind = call_info->num_args;
   if (num_bind > 0)
     {
