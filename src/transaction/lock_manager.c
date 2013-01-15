@@ -9815,6 +9815,8 @@ lock_notify_isolation_incons (THREAD_ENTRY * thread_p,
   int tran_index;
   LK_TRAN_LOCK *tran_lock;
   LK_ENTRY *curr, *prev, *next;
+  LK_ENTRY *incon_non2pl_list_header = NULL;
+  LK_ENTRY *incon_non2pl_list_tail = NULL;
   bool ret_val;
   int rv;
 
@@ -9850,7 +9852,8 @@ lock_notify_isolation_incons (THREAD_ENTRY * thread_p,
 	{
 	  /* the notification area is full */
 	  pthread_mutex_unlock (&(tran_lock->non2pl_mutex));
-	  return;
+
+	  goto end;
 	}
 
       /* the non-2pl entry should be freed. */
@@ -9867,13 +9870,38 @@ lock_notify_isolation_incons (THREAD_ENTRY * thread_p,
 
       tran_lock->num_incons_non2pl -= 1;
 
-      /* 2. remove it from resource non2pl list and free it */
-      lock_remove_non2pl (curr, tran_index);
+      /* 2. append current entry to incon_non2pl_list */
+      curr->tran_next = NULL;
+      if (incon_non2pl_list_header == NULL)
+	{
+	  incon_non2pl_list_header = curr;
+	  incon_non2pl_list_tail = curr;
+	}
+      else
+	{
+	  incon_non2pl_list_tail->tran_next = curr;
+	  incon_non2pl_list_tail = curr;
+	}
+
       curr = next;
     }
 
   /* release transaction non2pl mutex */
   pthread_mutex_unlock (&tran_lock->non2pl_mutex);
+
+end:
+
+  curr = incon_non2pl_list_header;
+  while (curr != NULL)
+    {
+      next = curr->tran_next;
+
+      /* remove it from resource non2pl list and free it */
+      lock_remove_non2pl (curr, tran_index);
+
+      curr = next;
+    }
+
   return;
 #endif /* !SERVER_MODE */
 }
