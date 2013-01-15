@@ -11603,6 +11603,9 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
 	}
       break;
 
+    case PT_CHARSET:
+    case PT_COLLATION:
+      do_detect_collation = false;
     case PT_TRIM:
     case PT_LTRIM:
     case PT_RTRIM:
@@ -11616,9 +11619,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
     case PT_RPAD:
     case PT_HEX:
     case PT_SUBSTRING:
-    case PT_CHARSET:
     case PT_COERCIBILITY:
-    case PT_COLLATION:
       assert (dt == NULL);
       dt = pt_make_prim_data_type (parser, node->type_enum);
       dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
@@ -11761,8 +11762,9 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
       if (do_detect_collation && PT_HAS_COLLATION (common_type))
 	{
 	  if (arg1 != NULL && PT_HAS_COLLATION (arg1->type_enum)
-	      && arg2 != NULL && !PT_HAS_COLLATION (arg2->type_enum)
-	      && arg1->data_type != NULL)
+	      && arg1->data_type != NULL
+	      && (arg2 == NULL
+		  || (arg2 != NULL && !PT_HAS_COLLATION (arg2->type_enum))))
 	    {
 	      dt->info.data_type.units =
 		arg1->data_type->info.data_type.units;
@@ -11770,8 +11772,10 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
 		arg1->data_type->info.data_type.collation_id;
 	    }
 	  else if (arg2 != NULL && PT_HAS_COLLATION (arg2->type_enum)
-		   && arg2 != NULL && !PT_HAS_COLLATION (arg1->type_enum)
-		   && arg2->data_type != NULL)
+		   && arg2->data_type != NULL
+		   && (arg1 == NULL
+		       || (arg1 != NULL
+			   && !PT_HAS_COLLATION (arg1->type_enum))))
 	    {
 	      dt->info.data_type.units =
 		arg2->data_type->info.data_type.units;
@@ -20598,6 +20602,8 @@ pt_is_op_w_collation (const PT_OP_TYPE op)
     case PT_LE:
     case PT_NULLSAFE_EQ:
     case PT_BETWEEN:
+    case PT_NOT_BETWEEN:
+    case PT_BETWEEN_AND:
     case PT_BETWEEN_GE_LE:
     case PT_BETWEEN_GE_LT:
     case PT_BETWEEN_GT_LE:
@@ -20660,6 +20666,10 @@ pt_is_op_w_collation (const PT_OP_TYPE op)
     case PT_STRCMP:
     case PT_IF:
     case PT_FIELD:
+    case PT_REVERSE:
+    case PT_CONNECT_BY_ROOT:
+    case PT_PRIOR:
+    case PT_QPRIOR:
       return true;
     default:
       return false;
@@ -22047,6 +22057,10 @@ coerce_result:
     case PT_DATEF:
     case PT_TIMEF:
     case PT_IF:
+    case PT_REVERSE:
+    case PT_CONNECT_BY_ROOT:
+    case PT_PRIOR:
+    case PT_QPRIOR:
       new_node = pt_coerce_node_collation (parser, expr, common_coll,
 					   common_cs, true, false);
       if (new_node == NULL)
