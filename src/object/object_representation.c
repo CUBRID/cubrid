@@ -5463,7 +5463,8 @@ or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
 	       * Since I guess the NULL "domain" can logically be a part of all
 	       * sets, initialize the domain for NULL.
 	       */
-	      db_value_domain_init (&value, DB_TYPE_NULL, 0, 0);
+	      db_value_domain_init (&value, DB_TYPE_NULL,
+				    DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	      db_make_null (&value);
 	      /*
 	       * if this is a fixed width element array, skip over the null

@@ -3016,7 +3016,8 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
 		      value->info.value.data_value.str->bytes);
 	  return (DB_VALUE *) NULL;
 	}
-      db_value_domain_init (db_value, DB_TYPE_DATE, 0, 0);
+      db_value_domain_init (db_value, DB_TYPE_DATE, DB_DEFAULT_PRECISION,
+			    DB_DEFAULT_SCALE);
       db_value_put_encoded_date (db_value, &date);
       break;
 
@@ -3029,7 +3030,8 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
 		      value->info.value.data_value.str->bytes);
 	  return (DB_VALUE *) NULL;
 	}
-      db_value_domain_init (db_value, DB_TYPE_TIME, 0, 0);
+      db_value_domain_init (db_value, DB_TYPE_TIME, DB_DEFAULT_PRECISION,
+			    DB_DEFAULT_SCALE);
       db_value_put_encoded_time (db_value, &time);
       break;
 

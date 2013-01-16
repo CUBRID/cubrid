@@ -17049,7 +17049,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
       {
 	DB_DATETIME *tmp_datetime;
 
-	db_value_domain_init (result, DB_TYPE_DATE, 0, 0);
+	db_value_domain_init (result, DB_TYPE_DATE, DB_DEFAULT_PRECISION,
+			      DB_DEFAULT_SCALE);
 	tmp_datetime = db_get_datetime (&parser->sys_datetime);
 	db_value_put_encoded_date (result, &tmp_datetime->date);
 
@@ -17099,7 +17100,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	DB_DATETIME *tmp_datetime;
 	DB_TIME tmp_time;
 
-	db_value_domain_init (result, DB_TYPE_TIME, 0, 0);
+	db_value_domain_init (result, DB_TYPE_TIME, DB_DEFAULT_PRECISION,
+			      DB_DEFAULT_SCALE);
 	tmp_datetime = db_get_datetime (&parser->sys_datetime);
 	tmp_time = tmp_datetime->time / 1000;
 	db_value_put_encoded_time (result, &tmp_time);
@@ -17114,7 +17116,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	DB_TIME tmp_time;
 	DB_TIMESTAMP tmp_timestamp;
 
-	db_value_domain_init (result, DB_TYPE_TIMESTAMP, 0, 0);
+	db_value_domain_init (result, DB_TYPE_TIMESTAMP, DB_DEFAULT_PRECISION,
+			      DB_DEFAULT_SCALE);
 	tmp_datetime = db_get_datetime (&parser->sys_datetime);
 	tmp_date = tmp_datetime->date;
 	tmp_time = tmp_datetime->time / 1000;
@@ -17127,7 +17130,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
       {
 	DB_DATETIME *tmp_datetime;
 
-	db_value_domain_init (result, DB_TYPE_DATETIME, 0, 0);
+	db_value_domain_init (result, DB_TYPE_DATETIME, DB_DEFAULT_PRECISION,
+			      DB_DEFAULT_SCALE);
 	tmp_datetime = db_get_datetime (&parser->sys_datetime);
 
 	db_make_datetime (result, tmp_datetime);

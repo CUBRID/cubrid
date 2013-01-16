@@ -4612,7 +4612,7 @@ sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid,
 		  char *request, int reqlen)
 {
   BTID btid;
-  BTID *return_btid;
+  BTID *return_btid = NULL;
   TP_DOMAIN *key_type;
   OID class_oid;
   int attr_id, unique_btree;
@@ -4631,9 +4631,12 @@ sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid,
   if (return_btid == NULL)
     {
       return_error_to_client (thread_p, rid);
+      ptr = or_pack_int (reply, er_errid ());
     }
-
-  ptr = or_pack_int (reply, er_errid ());
+  else
+    {
+      ptr = or_pack_int (reply, NO_ERROR);
+    }
   ptr = or_pack_btid (ptr, &btid);
   css_send_data_to_client (thread_p->conn_entry, rid, reply,
 			   OR_ALIGNED_BUF_SIZE (a_reply));
@@ -4655,7 +4658,7 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid,
 		   char *request, int reqlen)
 {
   BTID btid;
-  BTID *return_btid;
+  BTID *return_btid = NULL;
   OID *class_oids = NULL;
   HFID *hfids = NULL;
   int unique_flag;
@@ -4782,7 +4785,14 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid,
 
 end:
 
-  ptr = or_pack_int (reply, er_errid ());
+  if (return_btid == NULL)
+    {
+      ptr = or_pack_int (reply, er_errid ());
+    }
+  else
+    {
+      ptr = or_pack_int (reply, NO_ERROR);
+    }
   ptr = or_pack_btid (ptr, &btid);
   css_send_data_to_client (thread_p->conn_entry, rid, reply,
 			   OR_ALIGNED_BUF_SIZE (a_reply));

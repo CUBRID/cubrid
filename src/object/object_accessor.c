@@ -1232,7 +1232,8 @@ get_set_value (MOP op, SM_ATTRIBUTE * att, char *mem,
   owner = op;
   if (mem != NULL)
     {
-      db_value_domain_init (&setval, TP_DOMAIN_TYPE (att->domain), 0, 0);
+      db_value_domain_init (&setval, TP_DOMAIN_TYPE (att->domain),
+			    DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
       if (PRIM_GETMEM (att->domain->type, att->domain, mem, &setval))
 	{
 	  return er_errid ();

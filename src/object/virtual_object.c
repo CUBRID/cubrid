@@ -1002,8 +1002,10 @@ vid_compare_non_updatable_objects (MOP mop1, MOP mop2)
       mem2 = inst2 + att2->offset;
       if (pr_is_set_type (att1->type->id))
 	{
-	  db_value_domain_init (&val1, att1->type->id, 0, 0);
-	  db_value_domain_init (&val2, att1->type->id, 0, 0);
+	  db_value_domain_init (&val1, att1->type->id, DB_DEFAULT_PRECISION,
+				DB_DEFAULT_SCALE);
+	  db_value_domain_init (&val2, att1->type->id, DB_DEFAULT_PRECISION,
+				DB_DEFAULT_SCALE);
 	  PRIM_GETMEM (att1->type, att1->domain, mem1, &val1);
 	  PRIM_GETMEM (att2->type, att2->domain, mem2, &val2);
 	  set1 = DB_GET_SET (&val1);
@@ -1024,8 +1026,10 @@ vid_compare_non_updatable_objects (MOP mop1, MOP mop2)
 	}
       else if (att1->type == tp_Type_object)
 	{
-	  db_value_domain_init (&val1, DB_TYPE_OBJECT, 0, 0);
-	  db_value_domain_init (&val2, DB_TYPE_OBJECT, 0, 0);
+	  db_value_domain_init (&val1, DB_TYPE_OBJECT, DB_DEFAULT_PRECISION,
+				DB_DEFAULT_SCALE);
+	  db_value_domain_init (&val2, DB_TYPE_OBJECT, DB_DEFAULT_PRECISION,
+				DB_DEFAULT_SCALE);
 	  PRIM_GETMEM (att1->type, att1->domain, mem1, &val1);
 	  PRIM_GETMEM (att2->type, att2->domain, mem2, &val2);
 	  attobj1 = DB_GET_OBJECT (&val1);

@@ -1981,7 +1981,8 @@ pr_make_value (void)
 
   if (value != NULL)
     {
-      db_value_domain_init (value, DB_TYPE_NULL, 0, 0);
+      db_value_domain_init (value, DB_TYPE_NULL, DB_DEFAULT_PRECISION,
+			    DB_DEFAULT_SCALE);
     }
 
   return value;
@@ -2003,7 +2004,8 @@ pr_make_ext_value (void)
   value = (DB_VALUE *) area_alloc (Value_area);
   if (value != NULL)
     {
-      db_value_domain_init (value, DB_TYPE_NULL, 0, 0);
+      db_value_domain_init (value, DB_TYPE_NULL, DB_DEFAULT_PRECISION,
+			    DB_DEFAULT_SCALE);
     }
   return value;
 }
@@ -6574,7 +6576,8 @@ mr_setval_set_internal (DB_VALUE * dest, const DB_VALUE * src,
     }
   else
     {
-      db_value_domain_init (dest, set_type, 0, 0);
+      db_value_domain_init (dest, set_type, DB_DEFAULT_PRECISION,
+			    DB_DEFAULT_SCALE);
     }
   return error;
 

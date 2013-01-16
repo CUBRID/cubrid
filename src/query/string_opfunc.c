@@ -1240,11 +1240,13 @@ db_string_concatenate (const DB_VALUE * string1,
 	      if (string_type1 == DB_TYPE_VARCHAR
 		  || string_type2 == DB_TYPE_VARCHAR)
 		{
-		  db_value_domain_init (result, DB_TYPE_VARCHAR, 0, 0);
+		  db_value_domain_init (result, DB_TYPE_VARCHAR,
+					DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 		}
 	      else
 		{
-		  db_value_domain_init (result, DB_TYPE_CHAR, 0, 0);
+		  db_value_domain_init (result, DB_TYPE_CHAR,
+					DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 		}
 	    }
 	  else if (QSTR_IS_NATIONAL_CHAR (string_type1))
@@ -1252,11 +1254,13 @@ db_string_concatenate (const DB_VALUE * string1,
 	      if (string_type1 == DB_TYPE_VARNCHAR
 		  || string_type2 == DB_TYPE_VARNCHAR)
 		{
-		  db_value_domain_init (result, DB_TYPE_VARNCHAR, 0, 0);
+		  db_value_domain_init (result, DB_TYPE_VARNCHAR,
+					DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 		}
 	      else
 		{
-		  db_value_domain_init (result, DB_TYPE_NCHAR, 0, 0);
+		  db_value_domain_init (result, DB_TYPE_NCHAR,
+					DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 		}
 	    }
 	  else
@@ -1264,11 +1268,15 @@ db_string_concatenate (const DB_VALUE * string1,
 	      if (string_type1 == DB_TYPE_VARBIT
 		  || string_type2 == DB_TYPE_VARBIT)
 		{
-		  db_value_domain_init (result, DB_TYPE_VARBIT, 0, 0);
+		  db_value_domain_init (result, DB_TYPE_VARBIT,
+					DB_DEFAULT_PRECISION,
+					DB_DEFAULT_SCALE);
 		}
 	      else
 		{
-		  db_value_domain_init (result, DB_TYPE_BIT, 0, 0);
+		  db_value_domain_init (result, DB_TYPE_BIT,
+					DB_DEFAULT_PRECISION,
+					DB_DEFAULT_SCALE);
 		}
 	    }
 	}
@@ -3066,7 +3074,8 @@ db_string_byte_length (const DB_VALUE * string, DB_VALUE * byte_count)
     }
   else if (DB_IS_NULL (string))
     {
-      db_value_domain_init (byte_count, DB_TYPE_INTEGER, 0, 0);
+      db_value_domain_init (byte_count, DB_TYPE_INTEGER, DB_DEFAULT_PRECISION,
+			    DB_DEFAULT_SCALE);
     }
   else
     {
@@ -3131,7 +3140,8 @@ db_string_bit_length (const DB_VALUE * string, DB_VALUE * bit_count)
     }
   else if (DB_IS_NULL (string))
     {
-      db_value_domain_init (bit_count, DB_TYPE_INTEGER, 0, 0);
+      db_value_domain_init (bit_count, DB_TYPE_INTEGER,
+			    DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
     }
   else
     {
@@ -3201,7 +3211,8 @@ db_string_char_length (const DB_VALUE * string, DB_VALUE * char_count)
     }
   else if (DB_IS_NULL (string))
     {
-      db_value_domain_init (char_count, DB_TYPE_INTEGER, 0, 0);
+      db_value_domain_init (char_count, DB_TYPE_INTEGER,
+			    DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
     }
   else
     {
@@ -3476,11 +3487,13 @@ db_string_trim (const MISC_OPERAND tr_operand,
     {
       if (QSTR_IS_CHAR (DB_VALUE_DOMAIN_TYPE (src_string)))
 	{
-	  db_value_domain_init (trimmed_string, DB_TYPE_VARCHAR, 0, 0);
+	  db_value_domain_init (trimmed_string, DB_TYPE_VARCHAR,
+				DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	}
       else
 	{
-	  db_value_domain_init (trimmed_string, DB_TYPE_VARNCHAR, 0, 0);
+	  db_value_domain_init (trimmed_string, DB_TYPE_VARNCHAR,
+				DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	}
       return error_status;
     }
@@ -3501,11 +3514,13 @@ db_string_trim (const MISC_OPERAND tr_operand,
     {
       if (QSTR_IS_CHAR (DB_VALUE_DOMAIN_TYPE (src_string)))
 	{
-	  db_value_domain_init (trimmed_string, DB_TYPE_VARCHAR, 0, 0);
+	  db_value_domain_init (trimmed_string, DB_TYPE_VARCHAR,
+				DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	}
       else
 	{
-	  db_value_domain_init (trimmed_string, DB_TYPE_VARNCHAR, 0, 0);
+	  db_value_domain_init (trimmed_string, DB_TYPE_VARNCHAR,
+				DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	}
       return error_status;
     }
@@ -3857,11 +3872,13 @@ db_string_pad (const MISC_OPERAND pad_operand, const DB_VALUE * src_string,
     {
       if (QSTR_IS_CHAR (DB_VALUE_DOMAIN_TYPE (src_string)))
 	{
-	  db_value_domain_init (padded_string, DB_TYPE_VARCHAR, 0, 0);
+	  db_value_domain_init (padded_string, DB_TYPE_VARCHAR,
+				DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	}
       else
 	{
-	  db_value_domain_init (padded_string, DB_TYPE_VARNCHAR, 0, 0);
+	  db_value_domain_init (padded_string, DB_TYPE_VARNCHAR,
+				DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	}
       return error_status;
     }
@@ -3872,11 +3889,13 @@ db_string_pad (const MISC_OPERAND pad_operand, const DB_VALUE * src_string,
       /*error_status = ER_QPROC_INVALID_PARAMETER; */
       if (QSTR_IS_CHAR (DB_VALUE_DOMAIN_TYPE (src_string)))
 	{
-	  db_value_domain_init (padded_string, DB_TYPE_VARCHAR, 0, 0);
+	  db_value_domain_init (padded_string, DB_TYPE_VARCHAR,
+				DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	}
       else
 	{
-	  db_value_domain_init (padded_string, DB_TYPE_VARNCHAR, 0, 0);
+	  db_value_domain_init (padded_string, DB_TYPE_VARNCHAR,
+				DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	}
       return error_status;
     }
@@ -5026,13 +5045,13 @@ db_string_replace (const DB_VALUE * src_string, const DB_VALUE * srch_string,
 	{
 	  error_status =
 	    db_value_domain_init (replaced_string, DB_TYPE_VARCHAR,
-				  DB_DEFAULT_PRECISION, 0);
+				  DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	}
       else
 	{
 	  error_status =
 	    db_value_domain_init (replaced_string, DB_TYPE_VARNCHAR,
-				  DB_DEFAULT_PRECISION, 0);
+				  DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	}
       return error_status;
     }
@@ -5294,13 +5313,13 @@ db_string_translate (const DB_VALUE * src_string,
 	{
 	  error_status =
 	    db_value_domain_init (transed_string, DB_TYPE_VARCHAR,
-				  DB_DEFAULT_PRECISION, 0);
+				  DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	}
       else
 	{
 	  error_status =
 	    db_value_domain_init (transed_string, DB_TYPE_VARNCHAR,
-				  DB_DEFAULT_PRECISION, 0);
+				  DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	}
       return error_status;
     }
@@ -5566,7 +5585,7 @@ db_bit_string_coerce (const DB_VALUE * src_string,
   else if (DB_IS_NULL (src_string))
     {
       db_value_domain_init (dest_string, DB_VALUE_DOMAIN_TYPE (dest_string),
-			    0, 0);
+			    DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
     }
   else
     {
@@ -5673,7 +5692,7 @@ db_char_string_coerce (const DB_VALUE * src_string,
   else if (DB_IS_NULL (src_string))
     {
       db_value_domain_init (dest_string, DB_VALUE_DOMAIN_TYPE (dest_string),
-			    0, 0);
+			    DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
     }
   else
     {
@@ -9904,7 +9923,8 @@ db_datetime_to_timestamp (const DB_VALUE * src_datetime,
       temp_p = result_timestamp;
     }
 
-  error = db_value_domain_init (temp_p, DB_TYPE_TIMESTAMP, 0, 0);
+  error = db_value_domain_init (temp_p, DB_TYPE_TIMESTAMP,
+				DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
   if (error != NO_ERROR)
     {
       /* error message has been set */
@@ -11127,7 +11147,8 @@ db_timestamp (const DB_VALUE * src_datetime1, const DB_VALUE * src_time2,
       return ER_QPROC_INVALID_PARAMETER;
     }
 
-  db_value_domain_init (result_datetime, DB_TYPE_DATETIME, 0, 0);
+  db_value_domain_init (result_datetime, DB_TYPE_DATETIME,
+			DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 
   /* Return NULL if NULL is explicitly given as the second argument.
    * If no second argument is given, we consider it as 0.
@@ -11285,7 +11306,8 @@ db_add_months (const DB_VALUE * src_date,
   assert (nmonth != (DB_VALUE *) NULL);
   assert (result_date != (DB_VALUE *) NULL);
 
-  db_value_domain_init (result_date, DB_TYPE_DATE, 0, 0);
+  db_value_domain_init (result_date, DB_TYPE_DATE, DB_DEFAULT_PRECISION,
+			DB_DEFAULT_SCALE);
 
   if (DB_IS_NULL (src_date) || DB_IS_NULL (nmonth))
     {
@@ -11435,7 +11457,8 @@ db_sys_date (DB_VALUE * result_date)
   assert (result_date != (DB_VALUE *) NULL);
 
   /* now return null */
-  db_value_domain_init (result_date, DB_TYPE_DATE, 0, 0);
+  db_value_domain_init (result_date, DB_TYPE_DATE, DB_DEFAULT_PRECISION,
+			DB_DEFAULT_SCALE);
 
   /* Need checking error */
 
@@ -11473,7 +11496,8 @@ db_sys_time (DB_VALUE * result_time)
   assert (result_time != (DB_VALUE *) NULL);
 
   /* now return null */
-  db_value_domain_init (result_time, DB_TYPE_TIME, 0, 0);
+  db_value_domain_init (result_time, DB_TYPE_TIME, DB_DEFAULT_PRECISION,
+			DB_DEFAULT_SCALE);
 
   /* Need checking error */
 
@@ -11509,7 +11533,8 @@ db_sys_timestamp (DB_VALUE * result_timestamp)
   assert (result_timestamp != (DB_VALUE *) NULL);
 
   /* now return null */
-  db_value_domain_init (result_timestamp, DB_TYPE_TIMESTAMP, 0, 0);
+  db_value_domain_init (result_timestamp, DB_TYPE_TIMESTAMP,
+			DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 
   if (time (&tloc) == -1 || OR_CHECK_INT_OVERFLOW (tloc))
     {
@@ -11538,7 +11563,8 @@ db_sys_datetime (DB_VALUE * result_datetime)
   assert (result_datetime != (DB_VALUE *) NULL);
 
   /* now return null */
-  db_value_domain_init (result_datetime, DB_TYPE_DATETIME, 0, 0);
+  db_value_domain_init (result_datetime, DB_TYPE_DATETIME,
+			DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 
   if (ftime (&tloc) != 0)
     {
@@ -11577,7 +11603,8 @@ db_sys_timezone (DB_VALUE * result_timezone)
   assert (result_timezone != (DB_VALUE *) NULL);
 
   /* now return null */
-  db_value_domain_init (result_timezone, DB_TYPE_INTEGER, 0, 0);
+  db_value_domain_init (result_timezone, DB_TYPE_INTEGER,
+			DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 
   /* Need checking error                  */
 

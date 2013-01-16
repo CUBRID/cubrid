@@ -388,7 +388,8 @@ cursor_copy_vobj_to_dbvalue (OR_BUF * buffer_p, DB_VALUE * value_p)
       return ER_FAILED;
     }
 
-  if (db_value_domain_init (&vobj_dbval, pr_type->id, 0, 0) != NO_ERROR)
+  if (db_value_domain_init (&vobj_dbval, pr_type->id, DB_DEFAULT_PRECISION,
+			    DB_DEFAULT_SCALE) != NO_ERROR)
     {
       return ER_FAILED;
     }
