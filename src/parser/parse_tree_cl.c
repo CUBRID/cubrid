@@ -17467,7 +17467,6 @@ pt_is_allowed_as_function_index (const PT_NODE * expr)
     case PT_LEFT:
     case PT_RIGHT:
     case PT_REPEAT:
-    case PT_SPACE:
     case PT_MID:
     case PT_STRCMP:
     case PT_REVERSE:
