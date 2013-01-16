@@ -3444,75 +3444,11 @@ log_append_ha_server_state (THREAD_ENTRY * thread_p, int state)
 }
 
 /*
- * log_skip_tailsa_logging - A log entry was not recorded intentionally
- *                                 by the caller
- *
- * return: nothing
- *
- *   addr(in): Address (Volume, page, and offset) of data
- *
- * NOTE: A log entry was not recorded intentionally by the caller. For
- *              example, if the data is not accurate, the logging could be
- *              avoided since it will be brought up to date later by the
- *              normal execution of the database.
- *
- *              This function is used to place the tail LSA of the current
- *              transaction to the data page. This is needed when the portion
- *              of the data that it is not logged depends upon something that
- *              may be rolled back. Typical example is the heap statistics
- *              which are not logged but references newly allocated pages that
- *              may not be permanent in the case of system crashes.
- *              This function is used to avoid warning of unlogged pages.
- */
-void
-log_skip_tailsa_logging (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
-{
-  LOG_TDES *tdes;		/* Transaction descriptor */
-  int tran_index;
-  int error_code = NO_ERROR;
-
-#if defined(CUBRID_DEBUG)
-  if (addr->pgptr == NULL)
-    {
-      er_log_debug (ARG_FILE_LINE, "log_tailsa_logging_skipped:"
-		    " A data page pointer must be given as part of the"
-		    " address... ignored\n");
-      return;
-    }
-#endif /* CUBRID_DEBUG */
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tdes = LOG_FIND_TDES (tran_index);
-  if (tdes == NULL)
-    {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
-      error_code = ER_LOG_UNKNOWN_TRANINDEX;
-      return;
-    }
-
-  /*
-   * Set the page to either the current transaction LSA if any or the max LSA
-   * of the log
-   */
-
-  if ((!LSA_ISNULL (&tdes->tail_lsa))
-      && LSA_GT (&tdes->tail_lsa, &log_Gl.rcv_phase_lsa))
-    {
-      (void) pgbuf_set_lsa (thread_p, addr->pgptr, &tdes->tail_lsa);
-    }
-  else
-    {
-      log_skip_logging (thread_p, addr);
-    }
-}
-
-/*
  * log_skip_logging_set_lsa -  A log entry was not recorded intentionally
  *                             by the caller. set page LSA
  *
  * return: nothing
- *
+*
  *   addr(in): Address (Volume, page, and offset) of data
  *
  * NOTE: A log entry was not recorded intentionally by the caller. For

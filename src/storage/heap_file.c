@@ -4850,7 +4850,7 @@ heap_vpid_prealloc_set (THREAD_ENTRY * thread_p, const HFID * hfid,
 
   heap_hdr->estimates.num_pages += npages;
   addr.pgptr = hdr_pgptr;
-  log_skip_tailsa_logging (thread_p, &addr);
+  log_skip_logging_set_lsa (thread_p, &addr);
   pgbuf_set_dirty (thread_p, hdr_pgptr, DONT_FREE);
 
   return new_pgptr;		/* new_pgptr is lock and fetch */
@@ -5008,7 +5008,7 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
     }
 
   addr.pgptr = hdr_pgptr;
-  log_skip_tailsa_logging (thread_p, &addr);
+  log_skip_logging_set_lsa (thread_p, &addr);
 
   return new_pgptr;		/* new_pgptr is lock and fetch */
 }
