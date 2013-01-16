@@ -4640,7 +4640,7 @@ xsysprm_get_force_server_parameters (void)
   SYSPRM_PARAM *prm = NULL;
   int i;
 
-  for (i = 0; i <= NUM_PRM; i++)
+  for (i = 0; i < NUM_PRM; i++)
     {
       prm = GET_PRM (i);
       if (PRM_GET_FROM_SERVER (prm->flag))
