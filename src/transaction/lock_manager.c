@@ -577,8 +577,8 @@ static void lock_update_non2pl_list (LK_RES * res_ptr, int tran_index,
 				     LOCK lock);
 static int lock_add_WFG_edge (int from_tran_index, int to_tran_index,
 			      int holder_flag, time_t edge_wait_stime);
-static void lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s,
-					 int t, int *count_cycle_waiters);
+static void lock_select_deadlock_victim (THREAD_ENTRY * thread_p,
+					 int s, int t);
 static void lock_dump_deadlock_victims (THREAD_ENTRY * thread_p,
 					FILE * outfile);
 static int lock_compare_lock_info (const void *lockinfo1,
@@ -5908,8 +5908,7 @@ lock_add_WFG_edge (int from_tran_index, int to_tran_index,
  * Note:
  */
 static void
-lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t,
-			     int *count_cycle_waiters)
+lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 {
   LK_WFG_NODE *TWFG_node;
   LK_WFG_EDGE *TWFG_edge;
@@ -6027,7 +6026,6 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t,
 	  TWFG_node[v].ancestor = -1;
 	  v = w;
 	}
-      *count_cycle_waiters = 0;
       return;
     }
 
@@ -6199,10 +6197,15 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t,
 #endif /* CUBRID_DEBUG */
       TWFG_node[victims[victim_count].tran_index].current = -1;
       victim_count++;
-      *count_cycle_waiters = 0;
     }
   else
     {
+      /* We can't find active holder.
+       * In this case, this cycle is regarded as a false deadlock.
+       */
+      TWFG_edge[TWFG_node[s].current].to_tran_index = -2;
+      TWFG_node[s].current = TWFG_edge[TWFG_node[s].current].next;
+
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE, "No victim in deadlock cycle....\n");
       if (lock_holder_found == false)
@@ -6231,8 +6234,6 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t,
 	    }
 	}
 #endif /* CUBRID_DEBUG */
-
-      (*count_cycle_waiters)++;
 
       /* wait for some short time */
       /* TODO: remove const 1000 */
@@ -9975,10 +9976,9 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
   LK_WFG_NODE *TWFG_node;
   LK_WFG_EDGE *TWFG_edge;
   int i, rv;
-  int compat1, compat2, count_cycle_waiters;
+  int compat1, compat2;
 
 start:
-  count_cycle_waiters = 0;
   /* initialize deadlock detection related structures */
 
   /* initialize transaction WFG node table..
@@ -10218,12 +10218,18 @@ start:
 	      t = TWFG_node[s].ancestor;
 	      TWFG_node[s].ancestor = -1;
 	      s = t;
-	      if (s != -2)
+	      if (s != -2 && TWFG_node[s].current != -1)
 		{
+		  assert_release (TWFG_node[s].current >= 0
+				  && TWFG_node[s].current <
+				  lk_Gl.max_TWFG_edge);
 		  TWFG_node[s].current = TWFG_edge[TWFG_node[s].current].next;
 		}
 	      continue;
 	    }
+
+	  assert_release (TWFG_node[s].current >= 0
+			  && TWFG_node[s].current < lk_Gl.max_TWFG_edge);
 
 	  t = TWFG_edge[TWFG_node[s].current].to_tran_index;
 
@@ -10263,22 +10269,10 @@ start:
 	  if (TWFG_node[t].ancestor != -1)
 	    {
 	      /* A deadlock cycle is found */
-	      lock_select_deadlock_victim (thread_p, s, t,
-					   &count_cycle_waiters);
+	      lock_select_deadlock_victim (thread_p, s, t);
 	      if (victim_count >= LK_MAX_VICTIM_COUNT)
 		{
 		  goto final;
-		}
-	      if (count_cycle_waiters >= 10)
-		{
-		  /* WFG contains a false edge, rebuid WFG */
-		  assert (0);
-		  if (lk_Gl.max_TWFG_edge > LK_MID_TWFG_EDGE_COUNT)
-		    {
-		      free_and_init (lk_Gl.TWFG_edge);
-		    }
-
-		  goto start;
 		}
 	    }
 	  else
