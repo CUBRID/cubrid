@@ -584,7 +584,7 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
   ADD_ARG_BYTES (&net_buf, &flag, 1);
   ADD_ARG_INT (&net_buf, max_col_size);
   ADD_ARG_INT (&net_buf, req_handle->max_row);
-  if (req_handle->stmt_type == CUBRID_STMT_CALL_SP)
+  if (req_handle->first_stmt_type == CUBRID_STMT_CALL_SP)
     {
       ADD_ARG_BYTES (&net_buf, req_handle->bind_mode, req_handle->num_bind);
     }
@@ -593,7 +593,7 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
       ADD_ARG_BYTES (&net_buf, NULL, 0);
     }
 
-  if (req_handle->stmt_type == CUBRID_STMT_SELECT)
+  if (req_handle->first_stmt_type == CUBRID_STMT_SELECT)
     {
       fetch_flag = 1;
     }
@@ -693,10 +693,10 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
       req_handle->qr = qr;
     }
 
-  if (req_handle->stmt_type == CUBRID_STMT_SELECT
-      || req_handle->stmt_type == CUBRID_STMT_GET_STATS
-      || req_handle->stmt_type == CUBRID_STMT_CALL
-      || req_handle->stmt_type == CUBRID_STMT_EVALUATE)
+  if (req_handle->first_stmt_type == CUBRID_STMT_SELECT
+      || req_handle->first_stmt_type == CUBRID_STMT_GET_STATS
+      || req_handle->first_stmt_type == CUBRID_STMT_CALL
+      || req_handle->first_stmt_type == CUBRID_STMT_EVALUATE)
     {
       if (flag & CCI_EXEC_ASYNC)
 	{
@@ -707,7 +707,7 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
 	  req_handle->num_tuple = res_count;
 	}
     }
-  else if (req_handle->stmt_type == CUBRID_STMT_CALL_SP)
+  else if (req_handle->first_stmt_type == CUBRID_STMT_CALL_SP)
     {
       req_handle->num_tuple = res_count;
     }
@@ -744,7 +744,7 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
      is processed together.
      So, fetching results are included in result_msg.
    */
-  if (req_handle->stmt_type == CUBRID_STMT_SELECT)
+  if (req_handle->first_stmt_type == CUBRID_STMT_SELECT)
     {
       int num_tuple;
 
@@ -4170,6 +4170,7 @@ prepare_info_decode (char *buf, int *size, T_REQ_HANDLE * req_handle)
   req_handle->num_col_info = num_col_info;
   req_handle->col_info = col_info;
   req_handle->stmt_type = (T_CCI_CUBRID_STMT) stmt_type;
+  req_handle->first_stmt_type = req_handle->stmt_type;
   req_handle->updatable_flag = updatable_flag;
 
   *size = remain_size;

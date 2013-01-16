@@ -84,6 +84,7 @@ public class UStatement {
 	private HashMap<String, Integer> colNameToIndex;
 	private UResultInfo resultInfo[];
 	private byte commandTypeIs;
+	private byte firstStmtType;
 	private byte executeFlag;
 
 	private int fetchDirection;
@@ -152,6 +153,7 @@ public class UStatement {
 		if (result_cache_lifetime >= 0 && UJCIManager.result_cache_enable)
 			result_cacheable = true;
 		commandTypeIs = inBuffer.readByte();
+		firstStmtType = commandTypeIs;
 		parameterNumber = inBuffer.readInt();
 		isUpdatable = (inBuffer.readByte() == 1) ? true : false;
 		columnNumber = inBuffer.readInt();
@@ -667,7 +669,7 @@ public class UStatement {
 	outBuffer.addInt(maxField < 0 ? 0 : maxField);
 	outBuffer.addInt(0);
 
-	if (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_CALL_SP
+	if (firstStmtType == CUBRIDCommandType.CUBRID_STMT_CALL_SP
 		&& bindParameter != null) {
 	    outBuffer.addBytes(bindParameter.paramMode);
 	} else {
@@ -675,7 +677,7 @@ public class UStatement {
 	}
 
 	/* fetch flag */
-	if (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_SELECT) {
+	if (firstStmtType == CUBRIDCommandType.CUBRID_STMT_SELECT) {
 	    outBuffer.addByte((byte) 1);
 	} else {
 	    outBuffer.addByte((byte) 0);
@@ -797,7 +799,7 @@ public class UStatement {
 		isOnlyPlan, isHoldable, isSensitive);
 	currentFirstCursor = -1;
 	fetchedTupleNumber = 0;
-	if (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_CALL_SP) {
+	if (firstStmtType == CUBRIDCommandType.CUBRID_STMT_CALL_SP) {
 	    cursorPosition = 0;
 	} else {
 	    cursorPosition = -1;

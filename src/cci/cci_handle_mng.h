@@ -150,6 +150,7 @@ extern "C"
     int server_handle_id;
     int num_tuple;
     T_CCI_CUBRID_STMT stmt_type;
+    T_CCI_CUBRID_STMT first_stmt_type;
     int num_bind;
     T_BIND_VALUE *bind_value;
     char *bind_mode;
