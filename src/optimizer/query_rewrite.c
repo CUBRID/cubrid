@@ -75,6 +75,13 @@ typedef enum COMP_DBVALUE_WITH_OPTYPE_RESULT
   CompResultError = 3		/* error */
 } COMP_DBVALUE_WITH_OPTYPE_RESULT;
 
+typedef enum
+{
+  DNF_RANGE_VALID = 0,
+  DNF_RANGE_ALWAYS_FALSE = 1,
+  DNF_RANGE_ALWAYS_TRUE = 2
+} DNF_MERGE_RANGE_RESULT;
+
 typedef struct qo_reset_location_info RESET_LOCATION_INFO;
 struct qo_reset_location_info
 {
@@ -4377,14 +4384,14 @@ qo_compare_dbvalue_with_optype (DB_VALUE * val1, PT_OP_TYPE op1,
 
 /*
  * qo_merge_range_helper () -
- *   return:
+ *   return: valid, always false or always true
  *   parser(in):
  *   node(in):
  */
-static void
+static DNF_MERGE_RANGE_RESULT
 qo_merge_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  PT_NODE *range, *sibling, *prev;
+  PT_NODE *range, *sibling, *current, *prev = NULL;
   PT_OP_TYPE r_op, r_lop, r_uop, s_op, s_lop, s_uop;
   DB_VALUE *r_lv, *r_uv, *s_lv, *s_uv;
   bool r_lv_copied = false, r_uv_copied = false;
@@ -4398,15 +4405,18 @@ qo_merge_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   r_lv = r_uv = s_lv = s_uv = NULL;
+  current = NULL;
+  range = range = node->info.expr.arg2;
   prev = NULL;
-  /* for each range spec of the RANGE node */
-  for (range = node->info.expr.arg2; range; range = range->or_next)
+  while (range)
     {
       if (!pt_is_const_not_hostvar (range->info.expr.arg1)
 	  || (range->info.expr.arg2
 	      && !pt_is_const_not_hostvar (range->info.expr.arg2)))
 	{
 	  /* not constant; cannot be merged */
+	  prev = range;
+	  range = range->or_next;
 	  continue;
 	}
 
@@ -4414,20 +4424,22 @@ qo_merge_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
       if (pt_between_to_comp_op (r_op, &r_lop, &r_uop) != 0)
 	{
 	  /* something wrong; continue to next range spec */
+	  prev = range;
+	  range = range->or_next;
 	  continue;
 	}
 
       /* search DNF list from the next to the node and keep track of the
          pointer to previous node */
-      prev = range;
-      while ((sibling = prev->or_next))
+      current = range;
+      while ((sibling = current->or_next))
 	{
 	  if (!pt_is_const_not_hostvar (sibling->info.expr.arg1)
 	      || (sibling->info.expr.arg2
 		  && !pt_is_const_not_hostvar (sibling->info.expr.arg2)))
 	    {
 	      /* not constant; cannot be merged */
-	      prev = prev->or_next;
+	      current = current->or_next;
 	      continue;
 	    }
 
@@ -4435,7 +4447,7 @@ qo_merge_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	  if (pt_between_to_comp_op (s_op, &s_lop, &s_uop) != 0)
 	    {
 	      /* something wrong; continue to next range spec */
-	      prev = prev->or_next;
+	      current = current->or_next;
 	      continue;
 	    }
 
@@ -4541,14 +4553,14 @@ qo_merge_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	      cmp3 == CompResultError || cmp4 == CompResultError)
 	    {
 	      /* somthine wrong; continue to next range spec */
-	      prev = prev->or_next;
+	      current = current->or_next;
 	      continue;
 	    }
 	  if ((cmp1 == CompResultLess || cmp1 == CompResultGreater)
 	      && cmp1 == cmp2 && cmp1 == cmp3 && cmp1 == cmp4)
 	    {
 	      /* they are disjoint; continue to next range spec */
-	      prev = prev->or_next;
+	      current = current->or_next;
 	      continue;
 	    }
 
@@ -4668,13 +4680,14 @@ qo_merge_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      /* the merge result is unbound range spec, INF_INF; this means
 	         that this RANGE node is always true and meaningless */
-	      r_op = (PT_OP_TYPE) 0;
+	      return DNF_RANGE_ALWAYS_TRUE;
 	    }
 	  /* check if the range is invalid, that is, lower bound is greater
 	     than upper bound */
 	  cmp1 = qo_compare_dbvalue_with_optype (r_lv, r_lop, r_uv, r_uop);
 	  if (cmp1 == CompResultGreaterAdj || cmp1 == CompResultGreater)
 	    {
+	      /* this is always false */
 	      r_op = (PT_OP_TYPE) 0;
 	    }
 	  else if (cmp1 == CompResultEqual)
@@ -4699,21 +4712,56 @@ qo_merge_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	  /* no need to recover the sibling because it is to be deleted */
 
 	  /* delete the sibling node and adjust linked list */
-	  prev->or_next = sibling->or_next;
+	  current->or_next = sibling->or_next;
 	  sibling->next = sibling->or_next = NULL;
 	  parser_free_tree (parser, sibling);
 
 	  if (r_op == 0)
 	    {
-	      /* unbound range spec; mark this fact at the RANGE node */
-	      PT_EXPR_INFO_SET_FLAG (node, PT_EXPR_INFO_EMPTY_RANGE);
-	      return;
+	      /* We determined that this range is always false. If we
+	       * successfully merged all ranges in this DNF and the final
+	       * result is false, we can return false. If we haven't reached
+	       * the end yet or we found disjoint ranges along the way,
+	       * we need to remove this node from the DNF.
+	       */
+	      if (prev == NULL && range->or_next == NULL)
+		{
+		  return DNF_RANGE_ALWAYS_FALSE;
+		}
+	      current = range->or_next;
+	      range->or_next = NULL;
+	      parser_free_tree (parser, range);
+	      range = current;
+	      if (prev == NULL)
+		{
+		  /* first node */
+		  node->info.expr.arg2 = range;
+		  range = NULL;
+		}
+	      else
+		{
+		  prev->or_next = range;
+		  /* go to next node */
+		  range = prev;
+		}
+	      /* no sense in handling siblings since current range was
+	       * invalidated */
+	      break;
 	    }
 
 	  /* with merged range,
 	     search DNF list from the next to the node and keep track of the
 	     pointer to previous node */
+	  current = range;
+	}
+      if (range == NULL)
+	{
+	  range = node->info.expr.arg2;
+	}
+      else
+	{
 	  prev = range;
+	  range = range->or_next;
 	}
     }
 
@@ -4735,6 +4783,7 @@ qo_merge_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	  range->info.expr.arg2 = NULL;
 	}
     }
+  return DNF_RANGE_VALID;
 }
 
 /*
@@ -4821,10 +4870,25 @@ qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	      if (dnf_node->info.expr.op == PT_RANGE)
 		{
 		  /* merge range specs in the RANGE node */
-		  (void) qo_merge_range_helper (parser, dnf_node);
+		  DNF_MERGE_RANGE_RESULT result;
+		  result = qo_merge_range_helper (parser, dnf_node);
+		  if (result == DNF_RANGE_ALWAYS_FALSE)
+		    {
+		      /* An empty range is always false so change it to
+		         0<>0 */
+		      DB_VALUE db_zero;
+		      parser_free_tree (parser, dnf_node->info.expr.arg1);
+		      parser_free_tree (parser, dnf_node->info.expr.arg2);
+		      DB_MAKE_INT (&db_zero, 0);
 
-		  if (PT_EXPR_INFO_IS_FLAGED (dnf_node,
-					      PT_EXPR_INFO_EMPTY_RANGE))
+		      dnf_node->info.expr.arg1 = pt_dbval_to_value (parser,
+								    &db_zero);
+		      dnf_node->info.expr.arg2 = pt_dbval_to_value (parser,
+								    &db_zero);
+		      dnf_node->info.expr.op = PT_NE;
+
+		    }
+		  else if (result == DNF_RANGE_ALWAYS_TRUE)
 		    {
 		      /* change unbound range spec to IS NOT NULL node */
 		      parser_free_tree (parser, dnf_node->info.expr.arg2);
