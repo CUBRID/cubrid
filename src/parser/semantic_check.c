@@ -6154,10 +6154,14 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	   chkflag = false;
 	   attr && attr->node_type == PT_ATTR_DEF; attr = attr->next)
 	{
-	  if ((pattr = attr->info.attr_def.attr_name) == NULL)
-	    continue;
-	  if (!intl_identifier_casecmp
-	      (pcol->info.name.original, pattr->info.name.original))
+	  pattr = attr->info.attr_def.attr_name;
+	  if (pattr == NULL)
+	    {
+	      continue;
+	    }
+
+	  if (!intl_identifier_casecmp (pcol->info.name.original,
+					pattr->info.name.original))
 	    {
 	      if (attr->info.attr_def.attr_type != PT_NORMAL)
 		{
@@ -6175,16 +6179,18 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 		}
 	      else
 		{
-		  pcol->data_type =
-		    pt_domain_to_data_type (parser,
-					    pt_type_enum_to_db_domain
-					    (pcol->type_enum));
+		  TP_DOMAIN *d;
+
+		  d = pt_type_enum_to_db_domain (pcol->type_enum);
+		  d = tp_domain_cache (d);
+		  pcol->data_type = pt_domain_to_data_type (parser, d);
 		}
 	      pinfo->info.partition.keycol = parser_copy_tree (parser, pcol);
 	      chkflag = true;
 	      break;
 	    }
 	}
+
       /* check if partitioning is requested by a column in SELECT query */
       if (!chkflag && stmt->info.create_entity.create_select != NULL)
 	{
@@ -6194,7 +6200,6 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 
 	  error = pt_get_select_query_columns (parser, qry_select,
 					       &query_columns);
-
 	  if (error != NO_ERROR)
 	    {
 	      /* error message already set at the above compilation step */
@@ -6485,7 +6490,6 @@ pvl_free_end:
  * - partition max
  * - valid hash size
  */
-
 static int
 partition_range_min_max (DB_VALUE ** dest, DB_VALUE * inval, int min_max)
 {
@@ -6499,7 +6503,7 @@ partition_range_min_max (DB_VALUE ** dest, DB_VALUE * inval, int min_max)
 
   if (inval == NULL)
     {
-      db_make_null (&nullval);
+      DB_MAKE_NULL (&nullval);
       inval = &nullval;
     }
 
@@ -6511,7 +6515,7 @@ partition_range_min_max (DB_VALUE ** dest, DB_VALUE * inval, int min_max)
 	    {
 	      return 1;
 	    }
-	  pr_clear_value (*dest);
+	  pr_free_ext_value (*dest);
 	}
       *dest = db_value_copy (inval);
       return 0;
@@ -6535,9 +6539,10 @@ partition_range_min_max (DB_VALUE ** dest, DB_VALUE * inval, int min_max)
 	    }
 	}
       op = (min_max == RANGE_MIN) ? DB_GT : DB_LT;
-      if ((rst = db_value_compare (*dest, inval)) == op)
+      rst = db_value_compare (*dest, inval);
+      if (rst == op)
 	{
-	  pr_clear_value (*dest);
+	  pr_free_ext_value (*dest);
 	  *dest = db_value_copy (inval);
 	}
       else if (rst == DB_EQ)
@@ -6548,7 +6553,6 @@ partition_range_min_max (DB_VALUE ** dest, DB_VALUE * inval, int min_max)
 
   return 0;
 }
-
 
 /*
  * db_value_list_add () -
@@ -6569,7 +6573,7 @@ db_value_list_add (DB_VALUE_PLIST ** ptail, DB_VALUE * val)
 
   if (val == NULL)
     {
-      db_make_null (&nullval);
+      DB_MAKE_NULL (&nullval);
       chkval = &nullval;
     }
   else
@@ -6618,7 +6622,7 @@ db_value_list_find (const DB_VALUE_PLIST * phead, const DB_VALUE * val)
 
   if (val == NULL)
     {
-      db_make_null (&nullval);
+      DB_MAKE_NULL (&nullval);
       chkval = &nullval;
     }
   else
@@ -6657,7 +6661,7 @@ db_value_list_finddel (DB_VALUE_PLIST ** phead, DB_VALUE * val)
 
   if (val == NULL)
     {
-      db_make_null (&nullval);
+      DB_MAKE_NULL (&nullval);
       chkval = &nullval;
     }
   else
@@ -6679,7 +6683,7 @@ db_value_list_finddel (DB_VALUE_PLIST ** phead, DB_VALUE * val)
 	      pre->next = tmp->next;
 	    }
 
-	  pr_clear_value (tmp->val);
+	  pr_free_ext_value (tmp->val);
 	  free_and_init (tmp);
 
 	  return 1;
@@ -6724,11 +6728,12 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
   DB_VALUE_PLIST *outlist_head = NULL, *outlist_tail = NULL;
   DB_VALUE_PLIST *inlist_head = NULL, *inlist_tail = NULL;
   DB_VALUE_PLIST *min_list, *max_list;
+  DB_VALUE_PLIST *p, *next;
   PT_NODE *column_dt = NULL;
 
   assert (parser != NULL);
 
-  if (!stmt)
+  if (stmt == NULL)
     {
       return;
     }
@@ -6837,9 +6842,9 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 
   AU_DISABLE (au_save);
   au_disable_flag = true;
-  db_make_null (&ptype);
-  db_make_null (&pattr);
-  db_make_null (&attname);
+  DB_MAKE_NULL (&ptype);
+  DB_MAKE_NULL (&pattr);
+  DB_MAKE_NULL (&attname);
   if (db_get (smclass->partition_of, PARTITION_ATT_PTYPE, &ptype))
     {
       PT_ERRORm (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC,
@@ -6868,8 +6873,8 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 		     MSGCAT_SEMANTIC_INVALID_PARTITION_INFO);
 	  goto check_end;	/* get partition type */
 	}
-      keyattr =
-	classobj_find_attribute (smclass, DB_GET_STRING (&attname), 0);
+      keyattr = classobj_find_attribute (smclass, DB_GET_STRING (&attname),
+					 0);
       if (keyattr == NULL)
 	{
 	  PT_ERRORm (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC,
@@ -6880,8 +6885,8 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
       column_dt = pt_domain_to_data_type (parser, keyattr->domain);
       pr_clear_value (&pattr);
       pr_clear_value (&attname);
-      db_make_null (&pattr);
-      db_make_null (&attname);
+      DB_MAKE_NULL (&pattr);
+      DB_MAKE_NULL (&attname);
     }
 
   chkflag = 0;
@@ -6896,8 +6901,10 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	  chkflag = 1;
 	}
       break;
+
     case PT_ANALYZE_PARTITION:	/* ALL */
       break;
+
     case PT_ADD_HASHPARTITION:	/* HASH */
     case PT_COALESCE_PARTITION:
       if (ptype.data.i != PT_PARTITION_HASH)
@@ -6905,6 +6912,7 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	  chkflag = 1;
 	}
       break;
+
     default:
       break;
     }
@@ -6918,10 +6926,9 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
       goto check_end;
     }
 
-  db_make_null (&null_val);
+  DB_MAKE_NULL (&null_val);
   for (objs = smclass->users; objs; objs = objs->next)
     {
-
       if (au_fetch_class (objs->op, &subcls, AU_FETCH_READ,
 			  AU_SELECT) != NO_ERROR || !subcls->partition_of)
 	{
@@ -6929,10 +6936,12 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	}
 
       orig_cnt++;
-      db_make_null (&minele);
-      db_make_null (&maxele);
-      db_make_null (&pname);
-      db_make_null (&pattr);
+
+      DB_MAKE_NULL (&minele);
+      DB_MAKE_NULL (&maxele);
+      DB_MAKE_NULL (&pname);
+      DB_MAKE_NULL (&pattr);
+
       if (psize == NULL)
 	{			/* RANGE or LIST */
 	  if (db_get (subcls->partition_of, PARTITION_ATT_PNAME, &pname)
@@ -7037,7 +7046,9 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 			}
 
 		      if (db_value_list_add (&outlist_tail, &minele))
-			goto out_of_mem_fail;
+			{
+			  goto out_of_mem_fail;
+			}
 
 		      if (outlist_head == NULL)
 			{
@@ -7117,13 +7128,11 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	  part_name = (char *) parts->info.parts.name->info.name.original;
 	  if (parts->info.parts.values)
 	    {
-	      parts->info.parts.values = parser_walk_tree (parser,
-							   parts->info.
-							   parts.values,
-							   pt_check_and_replace_hostvar,
-							   &chkflag, NULL,
-							   NULL);
-	      if ((parts->info.parts.type == PT_PARTITION_RANGE)
+	      parts->info.parts.values =
+		parser_walk_tree (parser, parts->info.parts.values,
+				  pt_check_and_replace_hostvar, &chkflag,
+				  NULL, NULL);
+	      if (parts->info.parts.type == PT_PARTITION_RANGE
 		  && parts->info.parts.values->type_enum == PT_TYPE_NULL)
 		{
 		  PT_ERRORmf (parser, stmt,
@@ -7137,12 +7146,12 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	  if (ptype.data.i == PT_PARTITION_RANGE)
 	    {
 	      val = parts->info.parts.values;
-	      if (val != NULL && (val->type_enum != column_dt->type_enum
-				  || (val->data_type != NULL
-				      && val->data_type->info.data_type.
-				      collation_id !=
-				      column_dt->data_type->info.data_type.
-				      collation_id)))
+
+	      if (val != NULL
+		  && (val->type_enum != column_dt->type_enum
+		      || (val->data_type != NULL
+			  && val->data_type->info.data_type.collation_id !=
+			  column_dt->data_type->info.data_type.collation_id)))
 		{
 		  if (pt_coerce_value (parser, parts->info.parts.values,
 				       parts->info.parts.values,
@@ -7195,11 +7204,10 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	      for (val = parts->info.parts.values;
 		   val && val->node_type == PT_VALUE; val = val->next)
 		{
-
-		  if (val->type_enum != column_dt->type_enum ||
-		      (val->data_type != NULL &&
-		       val->data_type->info.data_type.collation_id !=
-		       column_dt->data_type->info.data_type.collation_id))
+		  if (val->type_enum != column_dt->type_enum
+		      || (val->data_type != NULL
+			  && val->data_type->info.data_type.collation_id !=
+			  column_dt->data_type->info.data_type.collation_id))
 		    {		/* LIST-NULL */
 		      if (pt_coerce_value (parser, val, val,
 					   column_dt->type_enum,
@@ -7212,6 +7220,7 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 			  goto check_end;
 			}
 		    }
+
 		  parts_val = pt_value_to_db (parser, val);
 		  if (parts_val == NULL)
 		    {
@@ -7227,6 +7236,7 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 				  part_name);
 		      goto check_end;
 		    }
+
 		  if (db_value_list_add (&minmax_tail, parts_val))
 		    {
 		      PT_ERRORm (parser, stmt,
@@ -7253,6 +7263,7 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 		  db_value_list_finddel (&inlist_head, parts_val);
 		}
 	    }
+
 	  parts_cnt++;
 	  if (parts->partition_pruned)
 	    {
@@ -7268,8 +7279,11 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 			}
 		    }
 		  if (names != NULL)
-		    continue;
+		    {
+		      continue;
+		    }
 		}
+
 	      PT_ERRORmf (parser, stmt,
 			  MSGCAT_SET_PARSER_SEMANTIC,
 			  MSGCAT_SEMANTIC_DUPLICATE_PARTITION_DEF, part_name);
@@ -7431,42 +7445,44 @@ check_end:
       parser_free_tree (parser, column_dt);
       column_dt = NULL;
     }
+
   pr_clear_value (&ptype);
   pr_clear_value (&pname);
   pr_clear_value (&attname);
   if (maxval)
     {
-      pr_clear_value (maxval);
+      pr_free_ext_value (maxval);
     }
   if (minval)
     {
-      pr_clear_value (minval);
+      pr_free_ext_value (minval);
     }
   if (partmax)
     {
-      pr_clear_value (partmax);
+      pr_free_ext_value (partmax);
     }
   if (partmin)
     {
-      pr_clear_value (partmin);
+      pr_free_ext_value (partmin);
     }
-  for (min_list = minmax_head; min_list; min_list = max_list)
+
+  for (p = minmax_head; p; p = next)
     {
-      max_list = min_list->next;
-      pr_clear_value (min_list->val);
-      free_and_init (min_list);
+      next = p->next;
+      pr_free_ext_value (p->val);
+      free_and_init (p);
     }
-  for (min_list = inlist_head; min_list; min_list = max_list)
+  for (p = inlist_head; p; p = next)
     {
-      max_list = min_list->next;
-      pr_clear_value (min_list->val);
-      free_and_init (min_list);
+      next = p->next;
+      pr_free_ext_value (p->val);
+      free_and_init (p);
     }
-  for (min_list = outlist_head; min_list; min_list = max_list)
+  for (p = outlist_head; p; p = next)
     {
-      max_list = min_list->next;
-      pr_clear_value (min_list->val);
-      free_and_init (min_list);
+      next = p->next;
+      pr_free_ext_value (p->val);
+      free_and_init (p);
     }
 
   if (au_disable_flag == true)

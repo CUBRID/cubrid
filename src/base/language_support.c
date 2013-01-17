@@ -2410,6 +2410,8 @@ lang_server_charset_init (void)
 	      strcpy (lang_Server_lang_name,
 		      lang_get_lang_name_from_id (lang_Server_lang_id));
 	    }
+
+	  pr_clear_value (&value);
 	}
     }
   else

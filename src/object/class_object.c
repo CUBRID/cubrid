@@ -3084,8 +3084,8 @@ classobj_make_class_constraints (DB_SET * class_props,
    */
   for (k = 0; k < num_constraint_types; k++)
     {
-      if (classobj_get_prop
-	  (class_props, Constraint_properties[k], &pvalue) > 0)
+      if (classobj_get_prop (class_props, Constraint_properties[k],
+			     &pvalue) > 0)
 	{
 	  /* get the sequence & its size */
 	  if (DB_VALUE_TYPE (&pvalue) != DB_TYPE_SEQUENCE)
@@ -3100,7 +3100,7 @@ classobj_make_class_constraints (DB_SET * class_props,
 	   *
 	   * {
 	   *    name, { BTID, [att_name, asc_dsc], {fk_info | pk_info | prefix_length}, filter_predicate},
-	   *    name, { BTID, [att_name, asc_dsc],  {fk_info | pk_info | prefix_length, filter_predicate},
+	   *    name, { BTID, [att_name, asc_dsc], {fk_info | pk_info | prefix_length}, filter_predicate},
 	   *    ...
 	   * }
 	   */
@@ -3477,11 +3477,10 @@ classobj_make_class_constraints (DB_SET * class_props,
     {
       *con_ptr = constraints;
     }
+
   return NO_ERROR;
 
-
   /* ERROR PROCESSING */
-
 structure_error:
 
   /* should have a more appropriate error for this */
@@ -3489,7 +3488,6 @@ structure_error:
 
 memory_error:
 other_error:
-
   /* clean up our values and return the error that has been set */
   pr_clear_value (&fvalue);
   pr_clear_value (&avalue);
