@@ -39,6 +39,9 @@
 #include "log_impl.h"
 #include "btree.h"
 #include "transform.h"
+#include "message_catalog.h"
+#include "error_manager.h"
+#include "system_parameter.h"
 
 #define V9_0_LEVEL (9.0f)
 #define V9_1_LEVEL (9.1f)
@@ -330,7 +333,7 @@ intr_handler (int sig_no)
 }
 
 /*
- * check_collations() - 
+ * check_collations() -
  *   return: EXIT_SUCCESS/EXIT_FAILURE
  */
 static int
@@ -919,6 +922,20 @@ main (int argc, char *argv[])
     {
       return EXIT_FAILURE;
     }
+
+  if (utility_initialize () != NO_ERROR)
+    {
+      goto error_undo_compat;
+    }
+
+  if (er_init ("./migrate_90beta_to_91.err", ER_NEVER_EXIT) != NO_ERROR)
+    {
+      printf ("Failed to initialize error manager.\n");
+      goto error_undo_compat;
+    }
+
+  sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
+  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   AU_DISABLE_PASSWORDS ();
 
