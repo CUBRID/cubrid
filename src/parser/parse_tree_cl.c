@@ -6278,7 +6278,6 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = 0, *r1;
   char s[PT_MEMB_BUF_SIZE];
-  bool show_collation = false;
 
   if (!(parser->custom_print & PT_SUPPRESS_META_ATTR_CLASS)
       && p->info.attr_def.attr_type == PT_META_ATTR)
@@ -6321,10 +6320,6 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_VARNCHAR:
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
-      if (p->data_type && p->data_type->info.data_type.has_coll_spec)
-	{
-	  show_collation = true;
-	}
     case PT_TYPE_BIT:
     case PT_TYPE_VARBIT:
     case PT_TYPE_FLOAT:
@@ -6361,15 +6356,6 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
 	      sprintf (s, "(%d)", precision);
 	      q = pt_append_nulstring (parser, q, s);
 	    }
-
-	  if (show_collation)
-	    {
-	      sprintf (s, " collate %s",
-		       lang_get_collation_name (p->data_type->info.data_type.
-						collation_id));
-	      q = pt_append_nulstring (parser, q, s);
-	    }
-
 	}
       break;
     case PT_TYPE_INTEGER:
@@ -6387,16 +6373,16 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
       /* no type is a blank attr def, as in view creation */
       break;
     case PT_TYPE_ENUMERATION:
-      r1 = pt_print_bytes_l (parser, p->data_type);
-      q = pt_append_varchar (parser, q, r1);
-
-      if (p->data_type && p->data_type->info.data_type.has_coll_spec)
+      /* print only elements of the ENUMERATION */
+      q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
+      q = pt_append_nulstring (parser, q, "(");
+      if (p->data_type != NULL)
 	{
-	  sprintf (s, " collate %s",
-		   lang_get_collation_name (p->data_type->info.data_type.
-					    collation_id));
-	  q = pt_append_nulstring (parser, q, s);
+	  r1 = pt_print_bytes_l (parser,
+				 p->data_type->info.data_type.enumeration);
 	}
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
       break;
     default:
       q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
@@ -6408,6 +6394,17 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_nulstring (parser, q, ")");
 	}
       break;
+    }
+
+  /* collation must be the first to be printed after type, precision */
+  if (PT_HAS_COLLATION (p->type_enum) && p->data_type != NULL
+      && (p->data_type->info.data_type.has_coll_spec
+	  || p->data_type->info.data_type.has_cs_spec))
+    {
+      sprintf (s, " collate %s",
+	       lang_get_collation_name (p->data_type->info.data_type.
+					collation_id));
+      q = pt_append_nulstring (parser, q, s);
     }
 
   if (p->info.attr_def.data_default)
