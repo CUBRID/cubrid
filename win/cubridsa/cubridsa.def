@@ -130,6 +130,8 @@ EXPORTS
     ml_size
     sm_class_name
     tr_map_trigger
+    er_init
+    prm_get_name
 ; utility functions
 	createdb
 	renamedb
