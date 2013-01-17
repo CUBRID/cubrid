@@ -21228,12 +21228,21 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
 		}
 	      else
 		{
+		  bool cast_should_fold = false;
+
 		  if (node->node_type == PT_VALUE)
 		    {
-		      /* force using COLLATE modifier for VALUEs;
-		       * this avoids printing an invalid data type (CHAR(-1)
-		       * in PT_CAST expression */
-		      use_collate_modifier = true;
+		      if (node->data_type
+			  && codeset == node->data_type->info.data_type.units)
+			{
+			  /* force using COLLATE modifier for VALUEs when
+			   * codeset is not changed */
+			  use_collate_modifier = true;
+			}
+		      else
+			{
+			  cast_should_fold = true;
+			}
 		    }
 
 		  node =
@@ -21248,6 +21257,14 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
 		      PT_EXPR_INFO_SET_FLAG (node,
 					     PT_EXPR_INFO_CAST_COLL_MODIFIER);
 		      PT_SET_NODE_COLL_MODIFIER (node, coll_id);
+		    }
+
+		  if (node != NULL && cast_should_fold)
+		    {
+		      assert (node->node_type == PT_EXPR
+			      && node->info.expr.op == PT_CAST);
+		      PT_EXPR_INFO_IS_FLAGED (node,
+					      PT_EXPR_INFO_CAST_SHOULD_FOLD);
 		    }
 		}
 
