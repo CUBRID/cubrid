@@ -434,6 +434,7 @@ EXPORTS
     spacedb
     lockdb
     killtran
+    tranlist
     checkdb
     plandump
     paramdump
