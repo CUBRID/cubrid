@@ -308,7 +308,7 @@ scan_init_iss (INDX_SCAN_ID * isidp)
  * scan_init_index_scan () - initialize an index scan structure with the
  *			     specified OID buffer
  * return : void
- * isidp (in)	: index scan 
+ * isidp (in)	: index scan
  * oid_buf (in) : OID buffer
  */
 void
@@ -4985,8 +4985,10 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 							 btid, NULL, NULL,
 							 NULL, NULL,
 							 &indx_name_p, NULL);
-		      class_name_p =
-			heap_get_class_name (thread_p, &isidp->cls_oid);
+
+		      class_name_p = heap_get_class_name (thread_p,
+							  &isidp->cls_oid);
+
 		      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 			      ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE2, 11,
 			      (indx_name_p) ? indx_name_p : "*UNKNOWN-INDEX*",
@@ -4997,9 +4999,15 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			      isidp->curr_oidp->pageid,
 			      isidp->curr_oidp->slotid, btid->vfid.volid,
 			      btid->vfid.fileid, btid->root_pageid);
+
 		      if (class_name_p)
 			{
 			  free_and_init (class_name_p);
+			}
+
+		      if (indx_name_p)
+			{
+			  free_and_init (indx_name_p);
 			}
 
 		      continue;	/* continue to the next object */
@@ -5013,8 +5021,10 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 							 btid, NULL, NULL,
 							 NULL, NULL,
 							 &indx_name_p, NULL);
-		      class_name_p =
-			heap_get_class_name (thread_p, &isidp->cls_oid);
+
+		      class_name_p = heap_get_class_name (thread_p,
+							  &isidp->cls_oid);
+
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			      ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE2, 11,
 			      (indx_name_p) ? indx_name_p : "*UNKNOWN-INDEX*",
@@ -5025,9 +5035,15 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			      isidp->curr_oidp->pageid,
 			      isidp->curr_oidp->slotid, btid->vfid.volid,
 			      btid->vfid.fileid, btid->root_pageid);
+
 		      if (class_name_p)
 			{
 			  free_and_init (class_name_p);
+			}
+
+		      if (indx_name_p)
+			{
+			  free_and_init (indx_name_p);
 			}
 		    }
 

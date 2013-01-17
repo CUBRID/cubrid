@@ -1189,7 +1189,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 
       if (alter_code != PT_ANALYZE_PARTITION)
 	{
-	  /* Disable updating statistics until partitioning schema 
+	  /* Disable updating statistics until partitioning schema
 	   * modification is finished */
 	  sm_Disable_updating_statistics = true;
 	}
@@ -3961,14 +3961,14 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	  newpci->temp->partition_parent_atts = smclass->attributes;
 	  newpci->obj = dbt_finish_class (newpci->temp);
 
-	  sm_set_class_collation (newpci->obj, smclass->collation_id);
-
 	  if (newpci->obj == NULL)
 	    {
 	      dbt_abort_class (newpci->temp);
 	      error = er_errid ();
 	      goto end_create;
 	    }
+
+          sm_set_class_collation (newpci->obj, smclass->collation_id);
 
 	  if (reuse_oid)
 	    {
