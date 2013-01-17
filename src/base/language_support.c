@@ -6243,7 +6243,11 @@ lang_strmatch_ko (const LANG_COLLATION * lang_coll, bool is_match,
   assert (cmp == 0);
 
   c1 = c2 = ZERO;
-  if (size2 > 0)
+  if (size1 == size2)
+    {
+      return 0;
+    }
+  else if (size2 > 0)
     {
       if (is_match)
 	{
