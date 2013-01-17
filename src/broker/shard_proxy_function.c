@@ -990,7 +990,7 @@ fn_proxy_client_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 
   PROXY_DEBUG_LOG ("Process requested prepare sql statement. "
 		   "(sql_stmt:[%s]). context(%s).",
-		   sql_stmt, proxy_str_context (ctx_p));
+		   shard_str_sqls (sql_stmt), proxy_str_context (ctx_p));
 
   if (proxy_info_p->ignore_shard_hint == OFF)
     {
@@ -1017,7 +1017,8 @@ fn_proxy_client_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
     }
   PROXY_DEBUG_LOG ("Rewrite sql statement. "
 		   "(organized_sql_stmt:[%s]). context(%s).",
-		   organized_sql_stmt, proxy_str_context (ctx_p));
+		   shard_str_sqls (organized_sql_stmt),
+		   proxy_str_context (ctx_p));
 
   client_version = proxy_client_io_version_find_by_ctx (ctx_p);
 

@@ -30,6 +30,8 @@
 #include "broker_util.h"
 #include "cas_util.h"
 
+#define PROXY_LOG_BUFFER_SIZE 	(8192)
+
 static char *make_proxy_log_filename (char *filename_buf,
 				      size_t buf_size, const char *br_name,
 				      int proxy_index);
@@ -176,36 +178,60 @@ static void
 proxy_log_write_internal (int level, char *svc_code, bool do_flush,
 			  const char *fmt, va_list ap)
 {
-  char buf[LINE_MAX], *p;
-  int len, n;
+  char buf[PROXY_LOG_BUFFER_SIZE], *p;
+  int write_len, remain, n;
 
   p = buf;
-  len = LINE_MAX;
+  remain = PROXY_LOG_BUFFER_SIZE;
+
   n = ut_time_string (p, NULL);
-  len -= n;
+  remain -= n;
   p += n;
-  if (len > 0)
+
+  if (remain > 0)
     {
       if (svc_code == NULL)
 	{
-	  n = snprintf (p, len, " [%s] ", proxy_log_level_str[level]);
+	  n = snprintf (p, remain, " [%s] ", proxy_log_level_str[level]);
 	}
       else
 	{
 	  n =
-	    snprintf (p, len, " [%s][%s] ", proxy_log_level_str[level],
+	    snprintf (p, remain, " [%s][%s] ", proxy_log_level_str[level],
 		      svc_code);
 	}
-      len -= n;
-      p += n;
-      if (len > 0)
+
+      if (n < 0)
 	{
-	  n = vsnprintf (p, len, fmt, ap);
-	  len -= n;
+	  n = 0;
+	}
+      else if (n >= remain)
+	{
+	  n = (remain - 1);
+	}
+
+      remain -= n;
+      p += n;
+
+      if (remain > 0)
+	{
+	  n = vsnprintf (p, remain, fmt, ap);
+	  if (n < 0)
+	    {
+	      n = 0;
+	    }
+	  else if (n >= remain)
+	    {
+	      n = (remain - 1);
+	    }
+
+	  remain -= n;
 	  p += n;
 	}
     }
-  fwrite (buf, (p - buf), 1, log_fp);
+
+  write_len = MIN ((p - buf), PROXY_LOG_BUFFER_SIZE);
+  fwrite (buf, write_len, 1, log_fp);
   fputc ('\n', log_fp);
 
   if (do_flush == true)

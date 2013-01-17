@@ -1098,7 +1098,7 @@ proxy_context_print (bool print_all)
 char *
 proxy_str_context (T_PROXY_CONTEXT * ctx_p)
 {
-  static char buffer[LINE_MAX];
+  static char buffer[BUFSIZ];
 
   if (ctx_p == NULL)
     {
@@ -1970,4 +1970,45 @@ proxy_timer_process (void)
   old = now;
 
   return;
+}
+
+char *
+shard_str_sqls (char *sql)
+{
+  static char buffer[LINE_MAX];
+  int len;
+  int head_len, ws_len, tail_len;
+  char *from, *to;
+
+  if (sql == NULL)
+    {
+      return (char *) "-";
+    }
+
+  len = strlen (sql);
+  if (len < (int) sizeof (buffer))
+    {
+      return sql;
+    }
+
+  ws_len = 32;
+  head_len = sizeof (buffer) / 2;
+  tail_len = sizeof (buffer) - head_len - ws_len;
+
+  /* head */
+  memcpy (buffer, sql, head_len);
+
+  /* ws */
+  *(buffer + head_len) = '\n';
+  memset ((buffer + head_len + 1), (int) '.', ws_len - 2);
+  *(buffer + head_len + ws_len - 1) = '\n';
+
+  /* tail */
+  to = (sql + len);
+  from = (to - tail_len);
+  memcpy ((buffer + head_len + ws_len), from, tail_len);
+
+  buffer[LINE_MAX - 1] = '\0';	/* bulletproof */
+
+  return buffer;
 }

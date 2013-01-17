@@ -859,7 +859,7 @@ shard_stmt_dump_all (FILE * fp)
 char *
 shard_str_stmt (T_SHARD_STMT * stmt_p)
 {
-  static char buffer[LINE_MAX];
+  static char buffer[BUFSIZ];
 
   if (stmt_p == NULL)
     {
@@ -879,7 +879,8 @@ shard_str_stmt (T_SHARD_STMT * stmt_p)
 	    stmt_p->num_pinned,
 	    stmt_p->lru_next, stmt_p->lru_prev,
 	    (stmt_p->parser) ? ((stmt_p->parser->sql_stmt) ?
-				stmt_p->parser->sql_stmt : "-") : "-");
+				shard_str_sqls (stmt_p->parser->
+						sql_stmt) : "-") : "-");
 
   return (char *) buffer;
 }

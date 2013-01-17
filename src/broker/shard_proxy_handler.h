@@ -131,4 +131,6 @@ extern void proxy_event_free (T_PROXY_EVENT * event_p);
 extern char *proxy_str_event (T_PROXY_EVENT * event_p);
 
 extern void proxy_timer_process (void);
+
+extern char *shard_str_sqls (char *sql);
 #endif /* _SHARD_PROXY_HANDLER_H_ */
