@@ -280,7 +280,7 @@ struct lk_WFG_node
   int candidate;
   int current;
   int ancestor;
-  time_t thrd_wait_stime;
+  INT64 thrd_wait_stime;
   int tran_edge_seq_num;
   bool checked_by_deadlock_detector;
   bool DL_victim;
@@ -293,7 +293,7 @@ struct lk_WFG_edge
   int edge_seq_num;
   int holder_flag;
   int next;
-  time_t edge_wait_stime;
+  INT64 edge_wait_stime;
 };
 
 typedef struct lk_deadlock_victim LK_DEADLOCK_VICTIM;
@@ -576,7 +576,7 @@ static void lock_remove_non2pl (LK_ENTRY * non2pl, int tran_index);
 static void lock_update_non2pl_list (LK_RES * res_ptr, int tran_index,
 				     LOCK lock);
 static int lock_add_WFG_edge (int from_tran_index, int to_tran_index,
-			      int holder_flag, time_t edge_wait_stime);
+			      int holder_flag, INT64 edge_wait_stime);
 static void lock_select_deadlock_victim (THREAD_ENTRY * thread_p,
 					 int s, int t);
 static void lock_dump_deadlock_victims (THREAD_ENTRY * thread_p,
@@ -2651,7 +2651,7 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
   entry_ptr->thrd_entry->lockwait_state = (int) LOCK_SUSPENDED;
 
   lk_Gl.TWFG_node[entry_ptr->tran_index].thrd_wait_stime =
-    (time_t) (entry_ptr->thrd_entry->lockwait_stime / 1000LL);
+    entry_ptr->thrd_entry->lockwait_stime;
 
   /* wakeup the dealock detect thread */
   thread_wakeup_deadlock_detect_thread ();
@@ -2665,6 +2665,8 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
   /* suspend the worker thread (transaction) */
   thread_suspend_wakeup_and_unlock_entry (entry_ptr->thrd_entry,
 					  THREAD_LOCK_SUSPENDED);
+
+  lk_Gl.TWFG_node[entry_ptr->tran_index].thrd_wait_stime = 0;
 
   if (tdes)
     {
@@ -2687,8 +2689,6 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
     {
       assert (entry_ptr->thrd_entry->resume_status == THREAD_LOCK_RESUMED);
     }
-
-  lk_Gl.TWFG_node[entry_ptr->tran_index].thrd_wait_stime = 0;
 
   thread_lock_entry (entry_ptr->thrd_entry);
   while (entry_ptr->thrd_entry->tran_next_wait)
@@ -5763,7 +5763,7 @@ lock_update_non2pl_list (LK_RES * res_ptr, int tran_index, LOCK lock)
  */
 static int
 lock_add_WFG_edge (int from_tran_index, int to_tran_index,
-		   int holder_flag, time_t edge_wait_stime)
+		   int holder_flag, INT64 edge_wait_stime)
 {
   int prev, curr;
   int i;
@@ -5914,7 +5914,7 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
   LK_WFG_EDGE *TWFG_edge;
   TRANID tranid;
   int can_timeout;
-  int u, v, w, n;
+  int i, u, v, w, n;
   bool false_dd_cycle = false;
   bool lock_holder_found = false;
   bool inact_trans_found = false;
@@ -5931,6 +5931,8 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
   int unit_size = LOG_USERNAME_MAX + MAXHOSTNAMELEN + PATH_MAX + 10;
   char *client_prog_name, *client_user_name, *client_host_name;
   int client_pid;
+  int next_node;
+
 
   /* simple notation */
   TWFG_node = lk_Gl.TWFG_node;
@@ -6203,8 +6205,35 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
       /* We can't find active holder.
        * In this case, this cycle is regarded as a false deadlock.
        */
-      TWFG_edge[TWFG_node[s].current].to_tran_index = -2;
-      TWFG_node[s].current = TWFG_edge[TWFG_node[s].current].next;
+      for (i = 0, v = s; i < num_tran_in_cycle;
+	   v = TWFG_node[v].ancestor, i++)
+	{
+	  assert_release (TWFG_node[v].current >= 0
+			  && TWFG_node[v].current < lk_Gl.max_TWFG_edge);
+
+	  next_node = TWFG_edge[TWFG_node[v].current].to_tran_index;
+
+	  if (TWFG_node[next_node].checked_by_deadlock_detector == false
+	      || TWFG_node[next_node].thrd_wait_stime == 0
+	      || TWFG_node[next_node].thrd_wait_stime >
+	      TWFG_edge[TWFG_node[next_node].current].edge_wait_stime)
+	    {
+	      /* The edge from v to next_node is removed(false edge). */
+	      TWFG_node[next_node].first_edge = -1;
+	      TWFG_node[next_node].current = -1;
+	      TWFG_edge[TWFG_node[v].current].to_tran_index = -2;
+	      TWFG_node[v].current = TWFG_edge[TWFG_node[v].current].next;
+	      break;
+	    }
+	}
+
+      if (i == num_tran_in_cycle)
+	{
+	  /* can't find false edge */
+	  assert_release (0);
+	  TWFG_edge[TWFG_node[s].current].to_tran_index = -2;
+	  TWFG_node[s].current = TWFG_edge[TWFG_node[s].current].next;
+	}
 
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE, "No victim in deadlock cycle....\n");
@@ -6234,10 +6263,6 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 	    }
 	}
 #endif /* CUBRID_DEBUG */
-
-      /* wait for some short time */
-      /* TODO: remove const 1000 */
-      thread_sleep (0, 1000);	/* sleep for 1000 micro seconds */
     }
 }
 #endif /* SERVER_MODE */
@@ -9978,7 +10003,6 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
   int i, rv;
   int compat1, compat2;
 
-start:
   /* initialize deadlock detection related structures */
 
   /* initialize transaction WFG node table..
@@ -10103,9 +10127,8 @@ start:
 		    {
 		      (void) lock_add_WFG_edge (hj->tran_index,
 						hi->tran_index, true,
-						(time_t) (hj->thrd_entry->
-							  lockwait_stime /
-							  1000LL));
+						hj->thrd_entry->
+						lockwait_stime);
 		    }
 
 		  compat1 = lock_Comp[hi->blocked_mode][hj->granted_mode];
@@ -10115,9 +10138,8 @@ start:
 		    {
 		      (void) lock_add_WFG_edge (hi->tran_index,
 						hj->tran_index, true,
-						(time_t) (hi->thrd_entry->
-							  lockwait_stime /
-							  1000LL));
+						hi->thrd_entry->
+						lockwait_stime);
 		    }
 		}
 	    }
@@ -10140,9 +10162,8 @@ start:
 		    {
 		      (void) lock_add_WFG_edge (hj->tran_index,
 						hi->tran_index, true,
-						(time_t) (hj->thrd_entry->
-							  lockwait_stime /
-							  1000LL));
+						hj->thrd_entry->
+						lockwait_stime);
 		    }
 		}
 	    }
@@ -10162,9 +10183,8 @@ start:
 		    {
 		      (void) lock_add_WFG_edge (hj->tran_index,
 						hi->tran_index, false,
-						(time_t) (hj->thrd_entry->
-							  lockwait_stime /
-							  1000LL));
+						hj->thrd_entry->
+						lockwait_stime);
 		    }
 		}
 	    }
