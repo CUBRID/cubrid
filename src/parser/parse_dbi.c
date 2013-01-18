@@ -1466,6 +1466,7 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
     case DB_TYPE_RESULTSET:
       break;
     }
+
   return retval;
 }
 
@@ -1645,7 +1646,7 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
 
   if (dt == NULL)
     {
-      return (DB_DOMAIN *) NULL;
+      return NULL;
     }
 
   enumeration.count = 0;
@@ -1679,7 +1680,7 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
       if (dt->info.data_type.virt_object)
 	{
 	  return tp_domain_construct (DB_TYPE_VOBJ, class_obj, precision,
-				      scale, (DB_DOMAIN *) 0);
+				      scale, NULL);
 	}
 
       if (dt->info.data_type.entity
@@ -1689,18 +1690,18 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
 
 	  name = dt->info.data_type.entity->info.name.original;
 	  class_obj = db_find_class (name);
+
 	  /* If the attribute domain is the name of the class being created,
 	     indicate with a -1. */
-	  if (!class_obj)
+	  if (class_obj == NULL)
 	    {
-	      if (class_name
-		  && name
-		  && (intl_identifier_casecmp (name, class_name) != 0))
+	      if (class_name != NULL && name != NULL
+		  && intl_identifier_casecmp (name, class_name) != 0)
 		{
 		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
 			  ER_SM_DOMAIN_NOT_A_CLASS, 1,
 			  dt->info.data_type.entity->info.name.original);
-		  return (DB_DOMAIN *) 0;
+		  return NULL;
 		}
 	      class_obj = (DB_OBJECT *) TP_DOMAIN_SELF_REF;
 	    }
@@ -1716,6 +1717,7 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
       collation_id = dt->info.data_type.collation_id;
       assert (collation_id >= 0);
       break;
+
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       precision = dt->info.data_type.precision;
@@ -1757,7 +1759,7 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
     {
       if (class_obj == (DB_OBJECT *) TP_DOMAIN_SELF_REF)
 	{
-	  retval->class_mop = (DB_OBJECT *) 0;
+	  retval->class_mop = NULL;
 	  retval->self_ref = 1;
 	}
       else

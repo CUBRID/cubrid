@@ -2363,11 +2363,7 @@ pt_to_pred_expr (PARSER_CONTEXT * parser, PT_NODE * node)
   return pt_to_pred_expr_with_arg (parser, node, NULL);
 }
 
-
-
-
 #if defined (ENABLE_UNUSED_FUNCTION)
-
 /*
  * look_for_unique_btid () - Search for a UNIQUE constraint B-tree ID
  *   return: 1 on a UNIQUE BTID is found
@@ -2405,8 +2401,6 @@ look_for_unique_btid (DB_OBJECT * classop, const char *name, BTID * btid)
 }				/* look_for_unique_btid */
 #endif /* ENABLE_UNUSED_FUNCTION */
 
-
-
 /*
  * pt_xasl_type_enum_to_domain () - Given a PT_TYPE_ENUM generate a domain
  *                                  for it and cache it
@@ -2419,12 +2413,8 @@ pt_xasl_type_enum_to_domain (const PT_TYPE_ENUM type)
   TP_DOMAIN *dom;
 
   dom = pt_type_enum_to_db_domain (type);
-  if (dom)
-    return tp_domain_cache (dom);
-  else
-    return NULL;
+  return tp_domain_cache (dom);
 }
-
 
 /*
  * pt_xasl_node_to_domain () - Given a PT_NODE generate a domain
@@ -2440,14 +2430,15 @@ pt_xasl_node_to_domain (PARSER_CONTEXT * parser, const PT_NODE * node)
 
   dom = pt_node_to_db_domain (parser, (PT_NODE *) node, NULL);
   if (dom)
-    return tp_domain_cache (dom);
+    {
+      return tp_domain_cache (dom);
+    }
   else
     {
       PT_ERRORc (parser, node, er_msg ());
       return NULL;
     }
-}				/* pt_xasl_node_to_domain */
-
+}
 
 /*
  * pt_xasl_data_type_to_domain () - Given a PT_DATA_TYPE node generate
@@ -2462,12 +2453,8 @@ pt_xasl_data_type_to_domain (PARSER_CONTEXT * parser, const PT_NODE * node)
   TP_DOMAIN *dom;
 
   dom = pt_data_type_to_db_domain (parser, (PT_NODE *) node, NULL);
-  if (dom)
-    return tp_domain_cache (dom);
-  else
-    return NULL;
-
-}				/* pt_xasl_data_type_to_domain */
+  return tp_domain_cache (dom);
+}
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
@@ -6366,7 +6353,7 @@ pt_make_regu_pred (const PRED_EXPR * pred)
       return NULL;
     }
 
-  domain = pt_type_enum_to_db_domain (PT_TYPE_INTEGER);
+  domain = tp_domain_resolve_default (DB_TYPE_INTEGER);
   if (domain == NULL)
     {
       return NULL;
@@ -6387,9 +6374,6 @@ pt_make_regu_pred (const PRED_EXPR * pred)
 
   return regu;
 }
-
-
-
 
 /*
  * pt_make_vid () - takes a pt_data_type and a regu variable and makes

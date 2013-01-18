@@ -2637,7 +2637,7 @@ do_cast_host_variables_to_expected_domain (DB_SESSION * session)
   DB_VALUE *host_vars = session->parser->host_variables;
   TP_DOMAIN **expected_domains = session->parser->host_var_expected_domains;
   DB_VALUE *hv = NULL;
-  TP_DOMAIN *hv_dom = NULL;
+  TP_DOMAIN *hv_dom = NULL, *d = NULL;
   int i = 0;
 
   for (i = 0; i < hv_count; i++)
@@ -2653,14 +2653,16 @@ do_cast_host_variables_to_expected_domain (DB_SESSION * session)
       if (tp_value_cast_preserve_domain (hv, hv, hv_dom, false, true) !=
 	  DOMAIN_COMPATIBLE)
 	{
+	  d = pt_type_enum_to_db_domain (TP_DOMAIN_TYPE (hv_dom));
 	  PT_ERRORmf2 (session->parser, NULL, MSGCAT_SET_PARSER_SEMANTIC,
-		       MSGCAT_SEMANTIC_CANT_COERCE_TO, "host var",
-		       pt_type_enum_to_db_domain (TP_DOMAIN_TYPE (hv_dom)));
+		       MSGCAT_SEMANTIC_CANT_COERCE_TO, "host var", d);
+	  tp_domain_free (d);
 	  pt_report_to_ersys (session->parser, PT_EXECUTION);
 	  pt_reset_error (session->parser);
 	  return ER_PT_EXECUTE;
 	}
     }
+
   return NO_ERROR;
 }
 

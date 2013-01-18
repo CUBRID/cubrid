@@ -1040,8 +1040,7 @@ tp_domain_new (DB_TYPE type)
  *    The setdomain must also be a transient domain list.
  */
 TP_DOMAIN *
-tp_domain_construct (DB_TYPE domain_type,
-		     DB_OBJECT * class_obj,
+tp_domain_construct (DB_TYPE domain_type, DB_OBJECT * class_obj,
 		     int precision, int scale, TP_DOMAIN * setdomain)
 {
   TP_DOMAIN *new_;

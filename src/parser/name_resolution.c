@@ -3937,9 +3937,7 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
   PT_NODE *result = NULL, *s;
   PT_TYPE_ENUM t;
 
-
   t = (PT_TYPE_ENUM) pt_db_to_type_enum (TP_DOMAIN_TYPE (domain));
-
   switch (t)
     {
     case PT_TYPE_NUMERIC:
@@ -3961,6 +3959,7 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
       result->info.data_type.collation_id = db_domain_collation_id (domain);
       assert (result->info.data_type.collation_id >= 0);
       break;
+
     case PT_TYPE_OBJECT:
       /* get the object */
       if (!(result = parser_new_node (parser, PT_DATA_TYPE)))
@@ -4074,9 +4073,9 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
       result->type_enum = t;
       break;
     }
+
   return result;
 }
-
 
 /*
  * pt_flat_spec_pre () - resolve the entity spec into a flat name list
@@ -7531,9 +7530,11 @@ pt_make_method_call (PARSER_CONTEXT * parser,
 
   new_node->info.method_call.call_or_expr = PT_IS_MTHD_EXPR;
 
-  if (jsp_is_exist_stored_procedure
-      (new_node->info.method_call.method_name->info.name.original))
+  if (jsp_is_exist_stored_procedure (new_node->info.method_call.method_name->
+				     info.name.original))
     {
+      TP_DOMAIN *d = NULL;
+
       new_node->info.method_call.method_name->info.name.spec_id =
 	(UINTPTR) new_node->info.method_call.method_name;
 
@@ -7547,8 +7548,9 @@ pt_make_method_call (PARSER_CONTEXT * parser,
 	((DB_TYPE) jsp_get_return_type
 	 (new_node->info.method_call.method_name->info.name.original));
 
-      new_node->data_type = pt_domain_to_data_type
-	(parser, pt_type_enum_to_db_domain (new_node->type_enum));
+      d = pt_type_enum_to_db_domain (new_node->type_enum);
+      d = tp_domain_cache (d);
+      new_node->data_type = pt_domain_to_data_type (parser, d);
 
       new_node->info.method_call.method_id = (UINTPTR) new_node;
 

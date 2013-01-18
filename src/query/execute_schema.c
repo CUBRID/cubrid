@@ -3968,7 +3968,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	      goto end_create;
 	    }
 
-          sm_set_class_collation (newpci->obj, smclass->collation_id);
+	  sm_set_class_collation (newpci->obj, smclass->collation_id);
 
 	  if (reuse_oid)
 	    {
@@ -4466,10 +4466,12 @@ adjust_name_with_type (PARSER_CONTEXT * parser, PT_NODE * node,
 
   if (node->node_type == PT_NAME || node->node_type == PT_DOT_)
     {
-      node->type_enum = (PT_TYPE_ENUM) * key_type;
-      node->data_type = pt_domain_to_data_type (parser,
-						pt_type_enum_to_db_domain
-						(node->type_enum));
+      TP_DOMAIN *d = NULL;
+
+      node->type_enum = (PT_TYPE_ENUM) (*key_type);
+      d = pt_type_enum_to_db_domain (node->type_enum);
+      d = tp_domain_cache (d);
+      node->data_type = pt_domain_to_data_type (parser, d);
     }
 
   return node;
@@ -15251,6 +15253,7 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute,
       else
 	{
 	  DB_VALUE src, dest;
+	  TP_DOMAIN *d = NULL;
 
 	  DB_MAKE_NULL (&src);
 	  DB_MAKE_NULL (&dest);
@@ -15263,9 +15266,9 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute,
 	    }
 
 	  pt_evaluate_tree_having_serial (parser, def_val, &src, 1);
-	  if (tp_value_coerce (&src, &dest, (TP_DOMAIN *)
-			       pt_type_enum_to_db_domain (desired_type))
-	      != DOMAIN_COMPATIBLE)
+	  d = pt_type_enum_to_db_domain (desired_type);
+	  d = tp_domain_cache (d);
+	  if (tp_value_coerce (&src, &dest, d) != DOMAIN_COMPATIBLE)
 	    {
 	      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC,
 			   MSGCAT_SEMANTIC_CANT_COERCE_TO,
@@ -16403,6 +16406,7 @@ pt_node_to_function_index (PARSER_CONTEXT * parser, PT_NODE * spec,
   FUNC_PRED *func_pred;
   PT_NODE *expr = NULL;
   char *expr_str = NULL;
+  TP_DOMAIN *d = NULL;
 
   if (node->node_type == PT_SORT_SPEC)
     {
@@ -16424,24 +16428,26 @@ pt_node_to_function_index (PARSER_CONTEXT * parser, PT_NODE * spec,
 
   if (expr->data_type)
     {
-      func_index_info->fi_domain =
-	pt_data_type_to_db_domain (parser, expr->data_type, NULL);
+      d = pt_data_type_to_db_domain (parser, expr->data_type, NULL);
     }
   else
     {
-      func_index_info->fi_domain =
-	pt_type_enum_to_db_domain (expr->type_enum);
+      d = pt_type_enum_to_db_domain (expr->type_enum);
     }
-
-  assert (func_index_info->fi_domain != NULL);
 
   if (node->node_type == PT_SORT_SPEC)
     {
-      func_index_info->fi_domain->is_desc =
-	(node->info.sort_spec.asc_or_desc == PT_ASC ? 0 : 1);
+      d->is_desc = (node->info.sort_spec.asc_or_desc == PT_ASC ? 0 : 1);
     }
+
+  d = tp_domain_cache (d);
+  func_index_info->fi_domain = d;
+
+  assert (func_index_info->fi_domain != NULL);
+
   expr_str = parser_print_tree_with_quotes (parser, expr);
   assert (expr_str != NULL);
+
   func_index_info->expr_str = strdup (expr_str);
   if (func_index_info->expr_str == NULL)
     {
