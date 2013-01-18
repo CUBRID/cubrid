@@ -817,6 +817,10 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   net_buf_init (&net_buf);
 
   /* prepare info */
+  if (hm_get_broker_version (con_handle) == CAS_PROTO_MAKE_VER (PROTOCOL_V2))
+    {
+      func_code = CAS_FC_PREPARE_AND_EXECUTE_FOR_PROTO_V2;
+    }
   net_buf_cp_str (&net_buf, &func_code, 1);
   prepare_argc_count += con_handle->deferred_close_handle_count;
   ADD_ARG_INT (&net_buf, prepare_argc_count);

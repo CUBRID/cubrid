@@ -456,7 +456,7 @@ main (int argc, char *argv[])
     CAS_INFO_RESERVED_DEFAULT
   };
   FN_RETURN fn_ret = FN_KEEP_CONN;
- 
+
   struct timeval cas_start_time;
 
   char func_code = 0x01;
@@ -1711,6 +1711,22 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     }
 
 #ifndef LIBCAS_FOR_JSP
+  /* PROTOCOL_V2 is used only 9.0.0 */
+  if (DOES_CLIENT_MATCH_THE_PROTOCOL (req_info->client_version, PROTOCOL_V2))
+    {
+      switch (func_code)
+	{
+	case CAS_FC_PREPARE_AND_EXECUTE:
+	  func_code = CAS_FC_PREPARE_AND_EXECUTE_FOR_PROTO_V2;
+	  break;
+	case CAS_FC_CURSOR_CLOSE:
+	  func_code = CAS_FC_CURSOR_CLOSE_FOR_PROTO_V2;
+	  break;
+	default:
+	  break;
+	}
+    }
+
   con_status_to_restore = -1;
 
   if (FUNC_NEEDS_RESTORING_CON_STATUS (func_code))
@@ -1732,21 +1748,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   strcpy (as_info->log_msg, server_func_name[func_code - 1]);
 #endif /* !LIBCAS_FOR_JSP */
 
-  /* PROTOCOL_V2 is used only 9.0.0 */
-  if (DOES_CLIENT_MATCH_THE_PROTOCOL (req_info->client_version, PROTOCOL_V2))
-    {
-      switch (func_code)
-	{
-	case CAS_FC_PREPARE_AND_EXECUTE:
-	  func_code = CAS_FC_CURSOR_CLOSE;
-	  break;
-	case CAS_FC_CURSOR_CLOSE:
-	  func_code = CAS_FC_PREPARE_AND_EXECUTE;
-	  break;
-	default:
-	  break;
-	}
-    }
   server_fn = server_fn_table[func_code - 1];
 
 #ifndef LIBCAS_FOR_JSP

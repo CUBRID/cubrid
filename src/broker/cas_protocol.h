@@ -192,7 +192,11 @@ extern "C"
      * you must add a corresponding function entry to server_fn_table 
      * of both CUBRID and (MySQL, Oracle).
      */
-    CAS_FC_MAX
+    CAS_FC_MAX,
+
+    /* function code list of protocol version V2 - 9.0.0.xxxx */
+    CAS_FC_CURSOR_CLOSE_FOR_PROTO_V2 = 41,
+    CAS_FC_PREPARE_AND_EXECUTE_FOR_PROTO_V2 = 42
   };
   typedef enum t_cas_func_code T_CAS_FUNC_CODE;
 

@@ -1696,6 +1696,13 @@ public class UConnection {
 		return brokerVersion;
 	}
 
+	public boolean protoVersionIsSame(int ver) {
+		if (brokerInfoVersion() == makeProtoVersion(ver)) {
+			return true;
+		}
+		return false;
+	}
+
 	public boolean protoVersionIsAbove(int ver) {
 		if (isServerSideJdbc()
 				|| (brokerInfoVersion() >= makeProtoVersion(ver))) {

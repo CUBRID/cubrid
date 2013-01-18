@@ -598,7 +598,11 @@ public class UStatement {
 		}
 		
 		try {
-			outBuffer.newRequest(UFunctionCode.CURSOR_CLOSE);
+		    	byte code = UFunctionCode.CURSOR_CLOSE;
+		    	if (relatedConnection.protoVersionIsSame(UConnection.PROTOCOL_V2)) {
+		    	    code = UFunctionCode.CURSOR_CLOSE_FOR_PROTOCOL_V2;
+		    	}
+			outBuffer.newRequest(code);
 			outBuffer.addInt(serverHandler);
 			relatedConnection.send_recv_msg();
 		} catch (UJciException e) {
