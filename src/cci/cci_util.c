@@ -718,7 +718,7 @@ cci_url_match (const char *src, char *token[])
     {
       const char *t = src + match[match_idx[i]].rm_so;
       size_t n = match[match_idx[i]].rm_eo - match[match_idx[i]].rm_so;
-      token[i] = malloc (n + 1);
+      token[i] = MALLOC (n + 1);
       if (token[i] == NULL)
 	{
 	  error = CCI_ER_NO_MORE_MEMORY;	/* out of memory */
