@@ -6181,9 +6181,7 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 	  WFG_nidx += 1;
 	}
 #endif
-      w = TWFG_node[v].ancestor;
-      TWFG_node[v].ancestor = -1;
-      v = w;
+      v = TWFG_node[v].ancestor;
     }
 
   if (victims[victim_count].tran_index != NULL_TRAN_INDEX)
@@ -6230,7 +6228,6 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
       if (i == num_tran_in_cycle)
 	{
 	  /* can't find false edge */
-	  assert_release (0);
 	  TWFG_edge[TWFG_node[s].current].to_tran_index = -2;
 	  TWFG_node[s].current = TWFG_edge[TWFG_node[s].current].next;
 	}
@@ -6263,6 +6260,13 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 	    }
 	}
 #endif /* CUBRID_DEBUG */
+    }
+
+  for (v = s; v != t;)
+    {
+      w = TWFG_node[v].ancestor;
+      TWFG_node[v].ancestor = -1;
+      v = w;
     }
 }
 #endif /* SERVER_MODE */
