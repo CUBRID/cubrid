@@ -303,8 +303,8 @@ static void lang_init_coll_en_ci (LANG_COLLATION * lang_coll);
 static void lang_init_coll_utf8_en_cs (LANG_COLLATION * lang_coll);
 static void lang_init_coll_utf8_tr_cs (LANG_COLLATION * lang_coll);
 static int lang_fastcmp_ko (const LANG_COLLATION * lang_coll,
-			    const unsigned char *string1, const int size1,
-			    const unsigned char *string2, const int size2);
+			    const unsigned char *string1, int size1,
+			    const unsigned char *string2, int size2);
 static int lang_strmatch_ko (const LANG_COLLATION * lang_coll, bool is_match,
 			     const unsigned char *str1, int size1,
 			     const unsigned char *str2, int size2,
@@ -6079,32 +6079,45 @@ lang_initloc_ko_euc (LANG_LOCALE_DATA * ld)
  */
 static int
 lang_fastcmp_ko (const LANG_COLLATION * lang_coll,
-		 const unsigned char *string1, const int size1,
-		 const unsigned char *string2, const int size2)
+		 const unsigned char *string1, int size1,
+		 const unsigned char *string2, int size2)
 {
-  int n, i, cmp, pad_size = 0;
-  unsigned char c1, c2, pad[2];
+  int cmp;
+  unsigned char c1, c2;
+  const unsigned char *str1_end;
+  const unsigned char *str2_end;
 
   assert (size1 >= 0 && size2 >= 0);
 
-  pad[0] = pad[1] = '\241';
-  pad_size = 2;
+#define EUC_SPACE 0xa1
+#define ASCII_SPACE 0x20
+#define ZERO '\0'
 
-#define PAD pad[i % pad_size]
-#define SPACE PAD		/* smallest character in the collation sequence */
-#define ZERO '\0'		/* space is treated as zero */
-  n = size1 < size2 ? size1 : size2;
-  for (i = 0, cmp = 0; i < n && cmp == 0; i++)
+  str1_end = string1 + size1;
+  str2_end = string2 + size2;
+
+  for (cmp = 0; string1 < str1_end && string2 < str2_end && cmp == 0;)
     {
       c1 = *string1++;
-      if (c1 == SPACE)
+      if (c1 == ASCII_SPACE)
 	{
 	  c1 = ZERO;
 	}
+      else if (c1 == EUC_SPACE && string1 < str1_end && *string1 == EUC_SPACE)
+	{
+	  c1 = ZERO;
+	  string1++;
+	}
+
       c2 = *string2++;
-      if (c2 == SPACE)
+      if (c2 == ASCII_SPACE)
 	{
 	  c2 = ZERO;
+	}
+      else if (c2 == EUC_SPACE && string2 < str2_end && *string2 == EUC_SPACE)
+	{
+	  c2 = ZERO;
+	  string2++;
 	}
       cmp = c1 - c2;
     }
@@ -6112,42 +6125,69 @@ lang_fastcmp_ko (const LANG_COLLATION * lang_coll,
     {
       return cmp;
     }
+
+  size1 = str1_end - string1;
+  size2 = str2_end - string2;
+
+  assert (size1 == 0 || size2 == 0);
+
+  c1 = c2 = ZERO;
   if (size1 == size2)
     {
       return cmp;
     }
-
-  c1 = c2 = ZERO;
   if (size1 < size2)
     {
-      n = size2 - size1;
-      for (i = 0; i < n && cmp == 0; i++)
+      assert (size1 == 0 && size2 > 0);
+
+      for (; string2 < str2_end;)
 	{
 	  c2 = *string2++;
-	  if (c2 == PAD)
+	  if (c2 == ASCII_SPACE)
 	    {
 	      c2 = ZERO;
 	    }
-	  cmp = c1 - c2;
+	  else if (c2 == EUC_SPACE && string2 < str2_end
+		   && *string2 == EUC_SPACE)
+	    {
+	      c2 = ZERO;
+	      string2++;
+	    }
+
+	  if (c2 > 0)
+	    {
+	      return -1;
+	    }
 	}
     }
   else
     {
-      n = size1 - size2;
-      for (i = 0; i < n && cmp == 0; i++)
+      assert (size1 > 0 && size2 == 0);
+
+      for (; string1 < str1_end;)
 	{
 	  c1 = *string1++;
-	  if (c1 == PAD)
+	  if (c1 == ASCII_SPACE)
 	    {
 	      c1 = ZERO;
 	    }
-	  cmp = c1 - c2;
+	  else if (c1 == EUC_SPACE && string1 < str1_end
+		   && *string1 == EUC_SPACE)
+	    {
+	      c1 = ZERO;
+	      string1++;
+	    }
+
+	  if (c1 > 0)
+	    {
+	      return 1;
+	    }
 	}
     }
   return cmp;
-#undef SPACE
+#undef EUC_SPACE
+#undef ASCII_SPACE
 #undef ZERO
-#undef PAD
 }
 
 /*
@@ -6180,16 +6220,14 @@ lang_strmatch_ko (const LANG_COLLATION * lang_coll, bool is_match,
   const unsigned char *str2_next;
   const unsigned char *str1_begin;
   const unsigned char *str2_begin;
-  int char1_size, char2_size, cmp = 0, i, pad_size = 0;
-  unsigned char c1, c2, pad[2];
+  int char1_size, char2_size, cmp = 0;
+  unsigned int c1, c2;
 
   assert (size1 >= 0 && size2 >= 0);
 
-  pad[0] = pad[1] = '\241';
-  pad_size = 2;
-
-#define PAD pad[i % pad_size]
-#define ZERO '\0'		/* space is treated as zero */
+#define EUC_SPACE 0xa1
+#define ASCII_SPACE 0x20
+#define ZERO '\0'
 
   str1_begin = str1;
   str2_begin = str2;
@@ -6215,7 +6253,27 @@ lang_strmatch_ko (const LANG_COLLATION * lang_coll, bool is_match,
 	    }
 	}
 
-      if (char1_size != char2_size)
+      c1 = *str1;
+      c2 = *str2;
+      if (*str1 == ASCII_SPACE
+	  || (*str1 == EUC_SPACE && str1 + 1 < str1_end
+	      && *(str1 + 1) == EUC_SPACE))
+	{
+	  c1 = ZERO;
+	}
+
+      if (*str2 == ASCII_SPACE
+	  || (*str2 == EUC_SPACE && str2 + 1 < str2_end
+	      && *(str2 + 1) == EUC_SPACE))
+	{
+	  c2 = ZERO;
+	}
+
+      if (c1 == c2 && c1 == 0)
+	{
+	  ;
+	}
+      else if (char1_size != char2_size)
 	{
 	  return (char1_size < char2_size) ? (-1) : 1;
 	}
@@ -6244,7 +6302,6 @@ lang_strmatch_ko (const LANG_COLLATION * lang_coll, bool is_match,
   assert (size1 == 0 || size2 == 0);
   assert (cmp == 0);
 
-  c1 = c2 = ZERO;
   if (size1 == size2)
     {
       return 0;
@@ -6255,10 +6312,21 @@ lang_strmatch_ko (const LANG_COLLATION * lang_coll, bool is_match,
 	{
 	  return -1;
 	}
-      for (i = 0; i < size2; i++)
+
+      for (; str2 < str2_end;)
 	{
 	  c2 = *str2++;
-	  if (c2 != PAD && c2 != ZERO)
+	  if (c2 == ASCII_SPACE)
+	    {
+	      c2 = ZERO;
+	    }
+	  else if (c2 == EUC_SPACE && str2 < str2_end && *str2 == EUC_SPACE)
+	    {
+	      c2 = ZERO;
+	      str2++;
+	    }
+
+	  if (c2 > 0)
 	    {
 	      return -1;
 	    }
@@ -6273,18 +6341,29 @@ lang_strmatch_ko (const LANG_COLLATION * lang_coll, bool is_match,
 	  return 0;
 	}
 
-      for (i = 0; i < size1; i++)
+      for (; str1 < str1_end;)
 	{
 	  c1 = *str1++;
-	  if (c1 != PAD && c1 != ZERO)
+	  if (c1 == ASCII_SPACE)
+	    {
+	      c1 = ZERO;
+	    }
+	  else if (c1 == EUC_SPACE && str1 < str1_end && *str1 == EUC_SPACE)
+	    {
+	      c1 = ZERO;
+	      str1++;
+	    }
+
+	  if (c1 > 0)
 	    {
 	      return 1;
 	    }
 	}
     }
   return cmp;
+#undef EUC_SPACE
+#undef ASCII_SPACE
 #undef ZERO
-#undef PAD
 }
 
 /*
