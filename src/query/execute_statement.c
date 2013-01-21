@@ -3002,7 +3002,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      cp = statement->alias_print;
 	    }
 
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 1, 
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 1,
 		  cp ? cp : "unknown");
 	  err = ER_BLOCK_DDL_STMT;
 	  goto end;
@@ -8753,6 +8753,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      /* get XASL_ID by calling do_prepare_select() */
 	      err = do_prepare_select (parser, select_statement);
 	      stream.xasl_id = select_statement->xasl_id;
+	      select_statement->xasl_id = NULL;
 	      parser_free_tree (parser, select_statement);
 	    }
 	  else
@@ -9997,6 +9998,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement,
 	      /* get XASL_ID by calling do_prepare_select() */
 	      err = do_prepare_select (parser, select_statement);
 	      stream.xasl_id = select_statement->xasl_id;
+	      select_statement->xasl_id = NULL;
 	      parser_free_tree (parser, select_statement);
 	    }
 	  else
@@ -15965,8 +15967,11 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      /* get XASL_ID by calling do_prepare_select() */
 	      err = do_prepare_select (parser, select_statement);
+
 	      /* save the XASL_ID to be used by do_execute_merge() */
 	      statement->xasl_id = select_statement->xasl_id;
+	      select_statement->xasl_id = NULL;
+
 	      /* deallocate the SELECT statement */
 	      parser_free_tree (parser, select_statement);
 	    }

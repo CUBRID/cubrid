@@ -4804,6 +4804,7 @@ qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 {
   PT_NODE *cnf_node, *dnf_node, *cnf_prev, *dnf_prev;
   PT_NODE *arg1_prior;
+  DNF_MERGE_RANGE_RESULT result;
 
   /* traverse CNF list and keep track of the pointer to previous node */
   cnf_prev = NULL;
@@ -4870,7 +4871,6 @@ qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	      if (dnf_node->info.expr.op == PT_RANGE)
 		{
 		  /* merge range specs in the RANGE node */
-		  DNF_MERGE_RANGE_RESULT result;
 		  result = qo_merge_range_helper (parser, dnf_node);
 		  if (result == DNF_RANGE_ALWAYS_FALSE)
 		    {
