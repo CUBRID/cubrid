@@ -2294,17 +2294,24 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
     }
 
   num_markers = srv_handle->num_markers;
+  if (num_markers < 1)
+    {
+      net_buf_cp_int (net_buf, 0, NULL);	/* result code */
+      net_buf_cp_int (net_buf, 0, NULL);	/* num_query */
+      return 0;
+    }
 
   net_buf_cp_int (net_buf, 0, NULL);	/* result code */
 
   num_query = 0;
   net_buf_cp_int (net_buf, num_query, &num_query_msg_offset);
 
-  if (argc <= 2 || num_markers < 1)
+  if (argc <= 1)
     {
-      return 0;
+      assert (false);
+      err_code = ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      goto execute_array_error;
     }
-
   num_bind = argc / 2;
 
   err_code = make_bind_value (num_bind, argc, argv, &value_list,

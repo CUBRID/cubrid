@@ -1666,10 +1666,20 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   int driver_query_timeout;
   int arg_index = 0;
   char auto_commit_mode;
+  int min_argc;
 
   /* argv[0] : service handle
-     argv[1] : auto commit flag */
-  if (argc < 2)
+   * argv[1] : auto commit flag
+   */
+  min_argc = 2;
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info->client_version,
+					   PROTOCOL_V4))
+    {
+      /* argv[2] : driver_query_timeout */
+      min_argc++;
+    }
+
+  if (argc < min_argc)
     {
       net_buf_cp_int (net_buf, CAS_ER_ARGS, NULL);
       return FN_KEEP_CONN;
