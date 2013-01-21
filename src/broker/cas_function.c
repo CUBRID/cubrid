@@ -549,7 +549,28 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv,
     }
   else
     {
-      net_arg_get_char (fetch_flag, argv[arg_idx++]);
+      /* PROTOCOL_V2 is used only 9.0.0 */
+      if (DOES_CLIENT_MATCH_THE_PROTOCOL (req_info->client_version,
+					  PROTOCOL_V2))
+	{
+#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
+	  if (srv_handle->stmt_type == CUBRID_STMT_SELECT)
+#else
+	  if (srv_handle->q_result->stmt_type == CUBRID_STMT_SELECT)
+#endif
+	    {
+	      fetch_flag = 1;
+	    }
+	  else
+	    {
+	      fetch_flag = 0;
+	    }
+	}
+      else
+	{
+	  net_arg_get_char (fetch_flag, argv[arg_idx++]);
+	}
+
       net_arg_get_char (auto_commit_mode, argv[arg_idx++]);
       net_arg_get_char (forward_only_cursor, argv[arg_idx++]);
     }
