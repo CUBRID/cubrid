@@ -16075,6 +16075,7 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node,
 {
   XASL_NODE *xasl = NULL;
   PT_NODE *query;
+  bool query_Plan_dump_fp_open = false;
 
   /* we should propagate abort error from the server */
   if (!parser->abort && PT_IS_QUERY (node))
@@ -16098,10 +16099,22 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node,
       switch (node->node_type)
 	{
 	case PT_SELECT:
+	  /* This function is reenterable by pt_plan_query 
+	   * so, query_Plan_dump_fp should be open once at first call
+	   * and be closed at that call.
+	   */
 	  if (query_Plan_dump_filename != NULL)
 	    {
-	      query_Plan_dump_fp = fopen (query_Plan_dump_filename, "a");
+	      if (query_Plan_dump_fp == NULL || query_Plan_dump_fp == stdout)
+		{
+		  query_Plan_dump_fp = fopen (query_Plan_dump_filename, "a");
+		  if (query_Plan_dump_fp != NULL)
+		    {
+		      query_Plan_dump_fp_open = true;
+		    }
+		}
 	    }
+
 	  if (query_Plan_dump_fp == NULL)
 	    {
 	      query_Plan_dump_fp = stdout;
@@ -16122,8 +16135,12 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node,
 	    }
 	  node->info.query.xasl = xasl;
 
-	  if (query_Plan_dump_fp != NULL && query_Plan_dump_fp != stdout)
+	  /* close file handle if this function open it */
+	  if (query_Plan_dump_fp_open == true)
 	    {
+	      assert (query_Plan_dump_fp != NULL
+		      && query_Plan_dump_fp != stdout);
+
 	      fclose (query_Plan_dump_fp);
 	      query_Plan_dump_fp = stdout;
 	    }
