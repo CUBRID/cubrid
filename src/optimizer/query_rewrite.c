@@ -3876,7 +3876,7 @@ qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** cnf_list)
 				    (pattern->expected_domain));
 	    }
 
-	  if (escape)
+	  if (escape != NULL)
 	    {
 	      escape_type = escape->type_enum;
 	      if (escape_type == PT_TYPE_MAYBE && escape->expected_domain)
@@ -4401,12 +4401,12 @@ qo_merge_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
   if (node->info.expr.arg2->or_next == NULL)
     {
       /* one range spec; nothing to merge */
-      return;
+      return DNF_RANGE_VALID;
     }
 
   r_lv = r_uv = s_lv = s_uv = NULL;
   current = NULL;
-  range = range = node->info.expr.arg2;
+  range = node->info.expr.arg2;
   prev = NULL;
   while (range)
     {
