@@ -565,6 +565,8 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv,
 	    {
 	      fetch_flag = 0;
 	    }
+
+	  arg_idx++; /* skip fetch_flag from driver */
 	}
       else
 	{
