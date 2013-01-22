@@ -50,33 +50,33 @@ static int net_buf_realloc (T_NET_BUF * net_buf, int size);
 void
 net_buf_init (T_NET_BUF * net_buf)
 {
-  memset (net_buf, 0, sizeof (T_NET_BUF));
+  net_buf->data = NULL;
+  net_buf->alloc_size = 0;
+  net_buf->data_size = 0;
+  net_buf->err_code = 0;
+#if !defined(CUBRID_SHARD)
+  net_buf->post_file_size = 0;
+  net_buf->post_send_file = NULL;
+#endif
+  net_buf->client_version = 0;
 }
 
 void
 net_buf_clear (T_NET_BUF * net_buf)
 {
-  int alloc_size;
-  char *data;
-
-  /* save alloc info */
-  alloc_size = net_buf->alloc_size;
-  data = net_buf->data;
-
+  net_buf->data_size = 0;
+  net_buf->err_code = 0;
 #if !defined(CUBRID_SHARD)
+  net_buf->post_file_size = 0;
   FREE_MEM (net_buf->post_send_file);
 #endif /* CUBRID_SHARD */
-  net_buf_init (net_buf);
-
-  /* restore alloc info */
-  net_buf->alloc_size = alloc_size;
-  net_buf->data = data;
 }
 
 void
 net_buf_destroy (T_NET_BUF * net_buf)
 {
   FREE_MEM (net_buf->data);
+  net_buf->alloc_size = 0;
   net_buf_clear (net_buf);
 }
 
@@ -306,6 +306,13 @@ net_buf_error_msg_set (T_NET_BUF * net_buf, int err_indicator,
   if (ver >= CAS_MAKE_VER (8, 3, 0))
     {
       net_buf_cp_int (net_buf, err_indicator, NULL);
+    }
+  if (err_indicator == CAS_ERROR_INDICATOR
+      && (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (ver, PROTOCOL_V2)
+	  || DOES_CLIENT_MATCH_THE_PROTOCOL (ver, PROTOCOL_V3)
+	  || DOES_CLIENT_MATCH_THE_PROTOCOL (ver, PROTOCOL_V4)))
+    {
+      err_code += 9000;
     }
 #else /* CAS_CUBRID || CAS_FOR_MYSQL || CAS_FOR_ORACLE */
   /* shard_proxy do not use net_buf_error_msg_set. it is dummy code. */

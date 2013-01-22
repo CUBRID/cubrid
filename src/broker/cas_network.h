@@ -52,49 +52,6 @@
 #define NET_SIZE_TIMESTAMP	(NET_SIZE_SHORT * 6)
 #define NET_SIZE_DATETIME       (NET_SIZE_SHORT * 7)
 
-#define NET_WRITE_ERROR_CODE_WITH_MSG(SOCK_FD, clt_version, cas_info, ERROR_INDICATOR, ERROR_CODE, ERROR_MSG) \
-        do {                                                    	\
-			if (clt_version >= CAS_MAKE_VER (8, 3, 0)) \
-			{	\
-				net_write_int (SOCK_FD, NET_SIZE_INT + strlen (ERROR_MSG) + NET_SIZE_INT + 1);      	\
-			} 	\
-			else 	\
-			{	\
-				net_write_int (SOCK_FD, strlen (ERROR_MSG) + NET_SIZE_INT + 1);      	\
-			}	\
-			if (cas_info_size > 0)					\
-			{								\
-				net_write_stream (SOCK_FD, cas_info, cas_info_size); 	\
-			}                                                     	\
-			if (clt_version >= CAS_MAKE_VER (8, 3, 0)) \
-			{	\
-				net_write_int (SOCK_FD, ERROR_INDICATOR);	\
-			} 	\
-			net_write_int (SOCK_FD, ERROR_CODE);                  	\
-			net_write_stream (SOCK_FD, ERROR_MSG, strlen (ERROR_MSG) + 1);\
-        } while (0)
-
-#define NET_WRITE_ERROR_CODE(SOCK_FD, clt_version, cas_info, ERROR_INDICATOR, ERROR_CODE)       	\
-        do {                                            		\
-			if (clt_version >= CAS_MAKE_VER (8, 3, 0)) \
-			{	\
-				net_write_int(SOCK_FD, NET_SIZE_INT + NET_SIZE_INT);	\
-			}	\
-			else 	\
-			{	\
-				net_write_int(SOCK_FD, NET_SIZE_INT);                    		\
-			}	\
-			if (cas_info_size > 0) 					\
-			{								\
-				net_write_stream(SOCK_FD, cas_info, cas_info_size);       	\
-			}								\
-			if (clt_version >= CAS_MAKE_VER (8, 3, 0)) \
-			{	\
-				net_write_int(SOCK_FD, ERROR_INDICATOR);	\
-			}	\
-			net_write_int(SOCK_FD, ERROR_CODE);           		\
-        } while (0)
-
 #define NET_ARG_GET_SIZE(SIZE, ARG)                     \
 	do {                                            \
 	  int	tmp_i;                                  \
@@ -343,4 +300,7 @@ extern int net_read_header (SOCKET sock_fd, MSG_HEADER * header);
 extern int net_write_header (SOCKET sock_fd, MSG_HEADER * header);
 extern bool is_net_timed_out (void);
 
+extern void net_write_error (int sock, int version, char *cas_info,
+			     int cas_info_size, int indicator,
+			     int code, char *msg);
 #endif /* _CAS_NETWORK_H_ */

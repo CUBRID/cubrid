@@ -4279,14 +4279,14 @@ proxy_client_io_version_find_by_ctx (T_PROXY_CONTEXT * ctx_p)
 
   if (ctx_p == NULL)
     {
-      return CAS_PROTO_CURRENT_VER;
+      return CURRENT_PROTOCOL;
     }
 
   cli_io_p = proxy_client_io_find_by_ctx (ctx_p->client_id, ctx_p->cid,
 					  ctx_p->uid);
   if (cli_io_p == NULL)
     {
-      return CAS_PROTO_CURRENT_VER;
+      return CURRENT_PROTOCOL;
     }
 
   return cli_io_p->client_version;
@@ -4301,14 +4301,14 @@ proxy_client_io_version_find_by_fd (T_SOCKET_IO * sock_io_p)
 
   if (sock_io_p == NULL)
     {
-      return CAS_PROTO_CURRENT_VER;
+      return CURRENT_PROTOCOL;
     }
 
   cli_io_p =
     proxy_client_io_find_by_fd (sock_io_p->id.client_id, sock_io_p->fd);
   if (cli_io_p == NULL)
     {
-      return CAS_PROTO_CURRENT_VER;
+      return CURRENT_PROTOCOL;
     }
 
   return cli_io_p->client_version;

@@ -99,6 +99,7 @@ struct t_net_buf
   int post_file_size;
   char *post_send_file;
 #endif				/* CUBRID_SHARD */
+  T_BROKER_VERSION client_version;
 };
 
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)

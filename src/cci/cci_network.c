@@ -575,6 +575,22 @@ net_send_msg (T_CON_HANDLE * con_handle, char *msg, int size)
   return 0;
 }
 
+static int
+convert_error_by_version (T_CON_HANDLE * con_handle, int error)
+{
+  T_BROKER_VERSION broker;
+
+  broker = hm_get_broker_version (con_handle);
+  if (broker < CAS_PROTO_MAKE_VER (PROTOCOL_V2)
+      || broker == CAS_PROTO_MAKE_VER (PROTOCOL_V3)
+      || broker == CAS_PROTO_MAKE_VER (PROTOCOL_V4))
+    {
+      return error - 9000;
+    }
+
+  return error;
+}
+
 int
 net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
 		      T_CCI_ERROR * err_buf, int timeout)
@@ -703,6 +719,10 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
 		  err_buf->err_code = err_code;
 		}
 	      err_code = CCI_ER_DBMS;
+	    }
+	  else
+	    {
+	      err_code = convert_error_by_version (con_handle, err_code);
 	    }
 	  FREE_MEM (tmp_p);
 	  return err_code;

@@ -207,6 +207,8 @@ extern "C"
     PROTOCOL_V2 = 2,		/* send columns meta-data with the result for executing */
     PROTOCOL_V3 = 3,		/* session information extend with server session key */
     PROTOCOL_V4 = 4,		/* send as_index to driver */
+    /* CURRENT_PROTOCOL should be greater than the LAST PROTOCOL of 8.4.4 */
+    CURRENT_PROTOCOL = PROTOCOL_V4 + 1,
   };
   typedef enum t_cas_protocol T_CAS_PROTOCOL;
 
@@ -215,9 +217,6 @@ extern "C"
 	(fc >= CAS_FC_END_TRAN && fc < CAS_FC_MAX)
 #endif				/* CUBRID_SHARD */
 
-/* Current protocol version */
-#define CAS_PROTOCOL_VERSION    (0x04)
-
 /* Indicates version variable holds CAS protocol version. */
 #define CAS_PROTO_INDICATOR     (0x40)
 
@@ -225,7 +224,7 @@ extern "C"
 #define CAS_PROTO_MAKE_VER(VER)         \
         ((T_BROKER_VERSION) (CAS_PROTO_INDICATOR << 24 | (VER)))
 #define CAS_PROTO_CURRENT_VER           \
-        ((T_BROKER_VERSION) CAS_PROTO_MAKE_VER(CAS_PROTOCOL_VERSION))
+        ((T_BROKER_VERSION) CAS_PROTO_MAKE_VER(CURRENT_PROTOCOL))
 
 #define DOES_CLIENT_MATCH_THE_PROTOCOL(CLIENT, MATCH) ((CLIENT) == CAS_PROTO_MAKE_VER((MATCH)))
 #define DOES_CLIENT_UNDERSTAND_THE_PROTOCOL(CLIENT, REQUIRE) ((CLIENT) >= CAS_PROTO_MAKE_VER((REQUIRE)))
@@ -237,7 +236,7 @@ extern "C"
 #define CAS_PROTO_UNPACK_NET_VER(VER)       \
         (CAS_PROTO_MAKE_VER(CAS_PROTO_VER_MASK & (char)(VER)))
 #define CAS_PROTO_PACK_CURRENT_NET_VER      \
-        CAS_PROTO_PACK_NET_VER(CAS_PROTOCOL_VERSION)
+        CAS_PROTO_PACK_NET_VER(CURRENT_PROTOCOL)
 
 #define CAS_MAKE_VER(MAJOR, MINOR, PATCH)       \
 	((T_BROKER_VERSION) (((MAJOR) << 16) | ((MINOR) << 8) | (PATCH)))

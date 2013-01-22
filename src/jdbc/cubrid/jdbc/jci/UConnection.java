@@ -80,8 +80,16 @@ public class UConnection {
 	// this value is defined in broker/cas_protocol.h
 	private final static String magicString = "CUBRK";
 	private final static byte CAS_CLIENT_JDBC = 3;
+
+	public static final int PROTOCOL_V0 = 0;
+	public static final int PROTOCOL_V1 = 1;
+	public static final int PROTOCOL_V2 = 2;
+	public static final int PROTOCOL_V3 = 3;
+	public static final int PROTOCOL_V4 = 4;
+
 	/* Current protocol version */
-	private final static byte CAS_PROTOCOL_VERSION = 0x04;
+	// CURRENT_PROTOCOL should be greater than the LAST PROTOCOL of 8.4.4
+	private final static byte CAS_PROTOCOL_VERSION = PROTOCOL_V4 + 1;
 	private final static byte CAS_PROTO_INDICATOR = 0x40;
 	private final static byte CAS_PROTO_VER_MASK = 0x3F;
 
@@ -135,12 +143,6 @@ public class UConnection {
 	public static final String ZERO_DATETIME_BEHAVIOR_CONVERT_TO_NULL = "convertToNull";
 	public static final String ZERO_DATETIME_BEHAVIOR_EXCEPTION = "exception";
 	public static final String ZERO_DATETIME_BEHAVIOR_ROUND = "round";
-
-	public static final int PROTOCOL_V0 = 0;
-	public static final int PROTOCOL_V1 = 1;
-	public static final int PROTOCOL_V2 = 2;
-	public static final int PROTOCOL_V3 = 3;
-	public static final int PROTOCOL_V4 = 4;
 
 	UOutputBuffer outBuffer;
 	CUBRIDConnection cubridcon;
@@ -1698,6 +1700,13 @@ public class UConnection {
 
 	public boolean protoVersionIsSame(int ver) {
 		if (brokerInfoVersion() == makeProtoVersion(ver)) {
+			return true;
+		}
+		return false;
+	}
+
+	public boolean protoVersionIsUnder(int ver) {
+		if (brokerInfoVersion() < makeProtoVersion(ver)) {
 			return true;
 		}
 		return false;

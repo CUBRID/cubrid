@@ -537,6 +537,7 @@ conn_retry:
 
   /* This is a only use in proxy-cas internal message */
   req_info.client_version = CAS_PROTO_CURRENT_VER;
+  net_buf.client_version = req_info.client_version;
 
   set_cas_info_size ();
 
@@ -930,6 +931,7 @@ main (int argc, char *argv[])
 	  }
 
 	req_info.client_version = as_info->clt_version;
+	net_buf.client_version = as_info->clt_version;
 
 	set_cas_info_size ();
 
@@ -1041,9 +1043,9 @@ main (int argc, char *argv[])
 
 	if (net_read_stream (client_sock_fd, read_buf, db_info_size) < 0)
 	  {
-	    NET_WRITE_ERROR_CODE (client_sock_fd, req_info.client_version,
-				  cas_info, CAS_ERROR_INDICATOR,
-				  CAS_ER_COMMUNICATION);
+	    net_write_error (client_sock_fd, req_info.client_version,
+			     cas_info, cas_info_size, CAS_ERROR_INDICATOR,
+			     CAS_ER_COMMUNICATION, NULL);
 	  }
 	else
 	  {
@@ -1121,12 +1123,10 @@ main (int argc, char *argv[])
 		    sprintf (err_msg,
 			     "Authorization error.(Address is rejected)");
 
-		    NET_WRITE_ERROR_CODE_WITH_MSG (client_sock_fd,
-						   req_info.client_version,
-						   cas_info,
-						   DBMS_ERROR_INDICATOR,
-						   CAS_ER_NOT_AUTHORIZED_CLIENT,
-						   err_msg);
+		    net_write_error (client_sock_fd, req_info.client_version,
+				     cas_info, cas_info_size,
+				     DBMS_ERROR_INDICATOR,
+				     CAS_ER_NOT_AUTHORIZED_CLIENT, err_msg);
 
 		    set_hang_check_time ();
 
@@ -1155,19 +1155,17 @@ main (int argc, char *argv[])
 	      {
 		if (db_err_msg == NULL)
 		  {
-		    NET_WRITE_ERROR_CODE (client_sock_fd,
-					  req_info.client_version, cas_info,
-					  err_info.err_indicator,
-					  err_info.err_number);
+		    net_write_error (client_sock_fd, req_info.client_version,
+				     cas_info, cas_info_size,
+				     err_info.err_indicator,
+				     err_info.err_number, NULL);
 		  }
 		else
 		  {
-		    NET_WRITE_ERROR_CODE_WITH_MSG (client_sock_fd,
-						   req_info.client_version,
-						   cas_info,
-						   err_info.err_indicator,
-						   err_info.err_number,
-						   db_err_msg);
+		    net_write_error (client_sock_fd, req_info.client_version,
+				     cas_info, cas_info_size,
+				     err_info.err_indicator,
+				     err_info.err_number, db_err_msg);
 		  }
 		CLOSE_SOCKET (client_sock_fd);
 		FREE_MEM (db_err_msg);
@@ -1374,6 +1372,8 @@ libcas_main (SOCKET jsp_sock_fd)
     }
   net_buf.alloc_size = NET_BUF_ALLOC_SIZE;
 
+  net_buf.client_version = req_info.client_version;
+
   while (1)
     {
       if (process_request (client_sock_fd, &net_buf,
@@ -1571,9 +1571,9 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   if (err_code < 0)
     {
       const char *cas_log_msg = NULL;
-      NET_WRITE_ERROR_CODE (sock_fd, req_info->client_version,
-			    cas_msg_header.info_ptr, CAS_ERROR_INDICATOR,
-			    CAS_ER_COMMUNICATION);
+      net_write_error (sock_fd, req_info->client_version,
+		       cas_msg_header.info_ptr, cas_info_size,
+		       CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);
       fn_ret = FN_CLOSE_CONN;
 
       if (is_net_timed_out ())
@@ -1620,9 +1620,9 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   if (err_code < 0)
     {
       const char *cas_log_msg = NULL;
-      NET_WRITE_ERROR_CODE (sock_fd, req_info->client_version,
-			    cas_msg_header.info_ptr, CAS_ERROR_INDICATOR,
-			    CAS_ER_COMMUNICATION);
+      net_write_error (sock_fd, req_info->client_version,
+		       cas_msg_header.info_ptr, cas_info_size,
+		       CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);
       fn_ret = FN_CLOSE_CONN;
 
 #ifndef LIBCAS_FOR_JSP
@@ -1672,18 +1672,18 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
   if (read_msg == NULL)
     {
-      NET_WRITE_ERROR_CODE (sock_fd, req_info->client_version,
-			    cas_msg_header.info_ptr, CAS_ERROR_INDICATOR,
-			    CAS_ER_NO_MORE_MEMORY);
+      net_write_error (sock_fd, req_info->client_version,
+		       cas_msg_header.info_ptr, cas_info_size,
+		       CAS_ERROR_INDICATOR, CAS_ER_NO_MORE_MEMORY, NULL);
       return FN_CLOSE_CONN;
     }
   if (net_read_stream (sock_fd, read_msg,
 		       *(client_msg_header.msg_body_size_ptr)) < 0)
     {
       FREE_MEM (read_msg);
-      NET_WRITE_ERROR_CODE (sock_fd, req_info->client_version,
-			    cas_msg_header.info_ptr, CAS_ERROR_INDICATOR,
-			    CAS_ER_COMMUNICATION);
+      net_write_error (sock_fd, req_info->client_version,
+		       cas_msg_header.info_ptr, cas_info_size,
+		       CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);
       cas_log_write_and_end (0, true,
 			     "COMMUNICATION ERROR net_read_stream()");
       return FN_CLOSE_CONN;
@@ -1694,9 +1694,9 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   if (argc < 0)
     {
       FREE_MEM (read_msg);
-      NET_WRITE_ERROR_CODE (sock_fd, req_info->client_version,
-			    cas_msg_header.info_ptr, CAS_ERROR_INDICATOR,
-			    CAS_ER_COMMUNICATION);
+      net_write_error (sock_fd, req_info->client_version,
+		       cas_msg_header.info_ptr, cas_info_size,
+		       CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);
       return FN_CLOSE_CONN;
     }
 
@@ -1704,9 +1704,9 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     {
       FREE_MEM (argv);
       FREE_MEM (read_msg);
-      NET_WRITE_ERROR_CODE (sock_fd, req_info->client_version,
-			    cas_msg_header.info_ptr, CAS_ERROR_INDICATOR,
-			    CAS_ER_COMMUNICATION);
+      net_write_error (sock_fd, req_info->client_version,
+		       cas_msg_header.info_ptr, cas_info_size,
+		       CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);
       return FN_CLOSE_CONN;
     }
 
@@ -1894,9 +1894,9 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
   if (net_buf->err_code)
     {
-      NET_WRITE_ERROR_CODE (sock_fd, req_info->client_version,
-			    cas_msg_header.info_ptr, CAS_ERROR_INDICATOR,
-			    net_buf->err_code);
+      net_write_error (sock_fd, req_info->client_version,
+		       cas_msg_header.info_ptr, cas_info_size,
+		       CAS_ERROR_INDICATOR, net_buf->err_code, NULL);
       fn_ret = FN_CLOSE_CONN;
       goto exit_on_end;
     }

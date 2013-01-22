@@ -728,3 +728,43 @@ unset_net_timeout_flag (void)
 {
   net_timeout_flag = false;
 }
+
+void
+net_write_error (int sock, int version, char *cas_info, int cas_info_size,
+		 int indicator, int code, char *msg)
+{
+  size_t len = NET_SIZE_INT;
+
+  if (version >= CAS_MAKE_VER (8, 3, 0))
+    {
+      len += NET_SIZE_INT;
+    }
+  if (msg != NULL)
+    {
+      len += (strlen (msg) + 1);
+    }
+  net_write_int (sock, len);
+
+  if (cas_info_size > 0)
+    {
+      net_write_stream (sock, cas_info, cas_info_size);
+    }
+
+  if (version >= CAS_MAKE_VER (8, 3, 0))
+    {
+      net_write_int (sock, indicator);
+    }
+
+  if (indicator == CAS_ERROR_INDICATOR
+      && (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (version, PROTOCOL_V2)
+	  || DOES_CLIENT_MATCH_THE_PROTOCOL (version, PROTOCOL_V3)
+	  || DOES_CLIENT_MATCH_THE_PROTOCOL (version, PROTOCOL_V4)))
+    {
+      code += 9000;
+    }
+  net_write_int (sock, code);
+  if (msg != NULL)
+    {
+      net_write_stream (sock, msg, strlen (msg) + 1);
+    }
+}

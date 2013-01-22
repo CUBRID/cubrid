@@ -96,8 +96,19 @@ class UInputBuffer {
 			int eCode = readInt();
 			String msg = readString(remainedCapacity(),
 					UJCIManager.sysCharsetName);
+			eCode = convertErrorByVersion(eCode);
 			throw uconn.createJciException(UErrorCode.ER_DBMS, resCode, eCode, msg);
 		}
+	}
+
+	int convertErrorByVersion(int error) {
+	    if (uconn.protoVersionIsUnder(UConnection.PROTOCOL_V2)
+		|| uconn.protoVersionIsSame(UConnection.PROTOCOL_V3)
+		|| uconn.protoVersionIsSame(UConnection.PROTOCOL_V4)) {
+		return error - 9000;
+	    }
+
+	    return error;
 	}
 
 	byte[] getCasInfo() {
