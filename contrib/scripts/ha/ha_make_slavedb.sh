@@ -97,6 +97,8 @@ step_func_replica_from_slave=(
 step_func_replica_from_replica=(
 	"get_password"
 	"show_environment"
+	"copy_script_to_master"
+	"copy_script_to_slave"
 	"copy_script_to_target"
 	"check_environment"
 	"online_backup_db"
