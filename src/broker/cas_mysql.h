@@ -56,6 +56,7 @@ struct mysql_database_info
 };
 
 extern int cas_mysql_stmt_num_fields (MYSQL_STMT * stmt);
+extern void cas_mysql_stmt_free_result (MYSQL_STMT * stmt);
 extern void cas_mysql_stmt_close (MYSQL_STMT * stmt);
 extern int cas_mysql_stmt_num_rows (MYSQL_STMT * stmt);
 extern int cas_mysql_stmt_affected_rows (MYSQL_STMT * stmt);

@@ -190,9 +190,9 @@ hm_srv_handle_free_all (bool free_holdable)
     {
       srv_handle = srv_handle_table[i];
       if (srv_handle == NULL)
-        {
-          continue;
-        }
+	{
+	  continue;
+	}
 
       if (srv_handle->is_holdable && !free_holdable)
 	{
@@ -276,9 +276,9 @@ hm_srv_handle_set_pooled ()
     {
       srv_handle = srv_handle_table[i];
       if (srv_handle == NULL)
-        {
-          continue;
-        }
+	{
+	  continue;
+	}
 
       srv_handle->is_pooled = 1;
     }
@@ -299,6 +299,14 @@ hm_qresult_end (T_SRV_HANDLE * srv_handle, char free_flag)
 
   q_result = srv_handle->q_result;
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
+
+#if defined(CAS_FOR_MYSQL)
+  if (srv_handle->session)
+    {
+      cas_mysql_stmt_free_result (srv_handle->session);
+    }
+#endif /* CAS_FOR_MYSQL */
+
   if (free_flag == TRUE)
     {
       ux_free_result (q_result);
@@ -413,9 +421,9 @@ srv_handle_content_free (T_SRV_HANDLE * srv_handle)
   else if (srv_handle->schema_type == CCI_SCH_TRIGGER)
     {
       if (srv_handle->session)
-        {
-          db_objlist_free ((DB_OBJLIST *) (srv_handle->session));
-        }
+	{
+	  db_objlist_free ((DB_OBJLIST *) (srv_handle->session));
+	}
       srv_handle->cur_result = NULL;
     }
   else if (srv_handle->schema_type == CCI_SCH_IMPORTED_KEYS

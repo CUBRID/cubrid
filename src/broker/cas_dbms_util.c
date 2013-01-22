@@ -56,6 +56,11 @@ cfg_free_dbinfo_all (DB_INFO * databases)
        db_info_p = next_info_p)
     {
       next_info_p = db_info_p->next;
+
+      if (db_info_p->alias != NULL)
+	{
+	  free_and_init (db_info_p->alias);
+	}
       if (db_info_p->dbinfo != NULL)
 	{
 	  free_and_init (db_info_p->dbinfo);

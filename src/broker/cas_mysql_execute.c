@@ -428,6 +428,10 @@ ux_end_tran (int tran_type, bool reset_con_status)
     {
       hm_srv_handle_free_all (true);
     }
+  else
+    {
+      hm_srv_handle_qresult_end_all (false);
+    }
 
   err_code = cas_mysql_end_tran (tran_type);
   cas_log_debug (ARG_FILE_LINE,
@@ -2007,6 +2011,11 @@ send_prepare_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
 	}
     }
 
+  if (result != NULL)
+    {
+      cas_mysql_free_result (result);
+    }
+
   return err_code;
 
 error:
@@ -2190,6 +2199,12 @@ set_metadata_info (T_SRV_HANDLE * srv_handle)
 	  defines[i].error = NULL;
 	}
     }
+
+  if (result != NULL)
+    {
+      cas_mysql_free_result (result);
+    }
+
   return err_code;
 
 error:
@@ -2443,7 +2458,7 @@ cas_mysql_find_db (const char *alias, char *dbname, char *host, int *port)
       else
 	{
 	  memset (tmpdbinfo, 0x00, PATH_MAX);
-	  memcpy (tmpdbinfo, db_info_p->dbinfo, PATH_MAX);
+	  strncpy (tmpdbinfo, db_info_p->dbinfo, PATH_MAX - 1);
 
 	  str = strtok_r (tmpdbinfo, delim, &save);	/* SET DBNAME */
 	  if (str == NULL)
@@ -2688,6 +2703,13 @@ cas_mysql_free_result (MYSQL_RES * result)
 {
   mysql_free_result (result);
   result = NULL;
+}
+
+void
+cas_mysql_stmt_free_result (MYSQL_STMT * stmt)
+{
+  (void) mysql_stmt_free_result (stmt);
+  return;
 }
 
 void
