@@ -1779,9 +1779,25 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 #endif /* !LIBCAS_FOR_JSP */
   cas_send_result_flag = TRUE;
 
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+  /* for 9.0 driver */
+  if (DOES_CLIENT_MATCH_THE_PROTOCOL (req_info->client_version, PROTOCOL_V2))
+    {
+      ux_set_utype_for_enum (CCI_U_TYPE_STRING);
+    }
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+
   set_hang_check_time ();
   fn_ret = (*server_fn) (sock_fd, argc, argv, net_buf, req_info);
   set_hang_check_time ();
+
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+  /* set back original utype for enum */
+  if (DOES_CLIENT_MATCH_THE_PROTOCOL (req_info->client_version, PROTOCOL_V2))
+    {
+      ux_set_utype_for_enum (CCI_U_TYPE_ENUM);
+    }
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 #ifndef LIBCAS_FOR_JSP
   cas_log_debug (ARG_FILE_LINE, "process_request: %s() err_code %d",

@@ -3594,6 +3594,12 @@ ux_db_type_to_cas_type (int db_type)
   return (cas_u_type[db_type]);
 }
 
+void
+ux_set_utype_for_enum (char u_type)
+{
+  cas_u_type[DB_TYPE_ENUMERATION] = u_type;
+}
+
 int
 ux_schema_info (int schema_type, char *arg1, char *arg2, char flag,
 		T_NET_BUF * net_buf, T_REQ_INFO * req_info,
