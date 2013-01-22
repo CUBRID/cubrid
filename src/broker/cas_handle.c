@@ -355,11 +355,11 @@ hm_qresult_end (T_SRV_HANDLE * srv_handle, char free_flag)
   if (free_flag == TRUE)
     {
       srv_handle->q_result = NULL;
+      srv_handle->num_q_result = 0;
+      srv_handle->cur_result_index = 0;
     }
 
-  srv_handle->num_q_result = 0;
   srv_handle->cur_result = NULL;
-  srv_handle->cur_result_index = 0;
   srv_handle->num_result_set = 0;
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 }
