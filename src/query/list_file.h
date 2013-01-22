@@ -175,7 +175,8 @@ extern int qfile_dump_list_cache_internal (THREAD_ENTRY * thread_p,
 extern int qfile_dump_list_cache (THREAD_ENTRY * thread_p, const char *fname);
 #endif
 /* query result(list file) cache entry manipulation functions */
-void qfile_clear_uncommited_list_cache_entry (int tran_index);
+void qfile_clear_uncommited_list_cache_entry (THREAD_ENTRY * thread_p,
+					      int tran_index);
 QFILE_LIST_CACHE_ENTRY *qfile_lookup_list_cache_entry (THREAD_ENTRY *
 						       thread_p,
 						       int list_ht_no,

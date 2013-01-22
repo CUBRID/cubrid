@@ -29,6 +29,7 @@
 #include <string.h>
 #include <math.h>
 #include <search.h>
+#include <stddef.h>
 
 #include "porting.h"
 #include "error_manager.h"
@@ -128,10 +129,7 @@ struct qfile_list_cache_candidate
 
 /* list cache entry pooling */
 #define FIXED_SIZE_OF_POOLED_LIST_CACHE_ENTRY   4096
-#define ADDITION_FOR_POOLED_LIST_CACHE_ENTRY    sizeof(int)	/* s.next field */
-static const int RESERVED_SIZE_FOR_LIST_CACHE_ENTRY =
-  (FIXED_SIZE_OF_POOLED_LIST_CACHE_ENTRY -
-   ADDITION_FOR_POOLED_LIST_CACHE_ENTRY);
+#define ADDITION_FOR_POOLED_LIST_CACHE_ENTRY    offsetof(QFILE_POOLED_LIST_CACHE_ENTRY, s.entry)
 
 #define POOLED_LIST_CACHE_ENTRY_FROM_LIST_CACHE_ENTRY(p) \
   ((QFILE_POOLED_LIST_CACHE_ENTRY *) ((char*) p - ADDITION_FOR_POOLED_LIST_CACHE_ENTRY))
@@ -150,6 +148,10 @@ union qfile_pooled_list_cache_entry
    * and reserved spaces for list_cache_ent.param_values
    */
 };
+
+static const int RESERVED_SIZE_FOR_LIST_CACHE_ENTRY =
+  (FIXED_SIZE_OF_POOLED_LIST_CACHE_ENTRY -
+   ADDITION_FOR_POOLED_LIST_CACHE_ENTRY);
 
 typedef struct qfile_list_cache_entry_pool QFILE_LIST_CACHE_ENTRY_POOL;
 struct qfile_list_cache_entry_pool
@@ -5618,9 +5620,15 @@ qfile_allocate_list_cache_entry (int req_size)
   else
     {
       /* get one from the pool */
+      assert ((qfile_List_cache_entry_pool.free_list <=
+	       qfile_List_cache_entry_pool.n_entries)
+	      && (qfile_List_cache_entry_pool.free_list >= 0));
       pent =
 	&qfile_List_cache_entry_pool.pool[qfile_List_cache_entry_pool.
 					  free_list];
+
+      assert (pent->s.next <= qfile_List_cache_entry_pool.n_entries
+	      && pent->s.next >= -1);
       qfile_List_cache_entry_pool.free_list = pent->s.next;
       pent->s.next = -1;
     }
@@ -5628,7 +5636,10 @@ qfile_allocate_list_cache_entry (int req_size)
   /* initialize */
   if (pent)
     {
-      (void) memset ((void *) &pent->s.entry, 0, req_size);
+      assert (sizeof (pent->s.entry) >= sizeof (QFILE_LIST_CACHE_ENTRY));
+
+      (void) memset ((void *) &pent->s.entry, 0,
+		     sizeof (QFILE_LIST_CACHE_ENTRY));
     }
 
   return (pent ? &pent->s.entry : NULL);
@@ -5647,8 +5658,11 @@ qfile_free_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
   /* this function should be called within CSECT_QPROC_LIST_CACHE */
   QFILE_POOLED_LIST_CACHE_ENTRY *pent;
   QFILE_LIST_CACHE_ENTRY *lent = (QFILE_LIST_CACHE_ENTRY *) data;
-  int i;
   HL_HEAPID old_pri_heap_id;
+  int i;
+#if !defined (NDEBUG)
+  int idx;
+#endif
 
   if (data == NULL)
     {
@@ -5677,6 +5691,12 @@ qfile_free_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
       /* return it back to the pool */
       (void) memset (&pent->s.entry, 0, sizeof (QFILE_LIST_CACHE_ENTRY));
       pent->s.next = qfile_List_cache_entry_pool.free_list;
+
+#if !defined (NDEBUG)
+      idx = (int) (pent - qfile_List_cache_entry_pool.pool);
+      assert (idx <= qfile_List_cache_entry_pool.n_entries && idx >= 0);
+#endif
+
       qfile_List_cache_entry_pool.free_list =
 	CAST_BUFLEN (pent - qfile_List_cache_entry_pool.pool);
     }
@@ -5901,12 +5921,19 @@ qfile_add_uncommitted_list_cache_entry (int tran_index,
  *   tran_index(in)     :
  */
 void
-qfile_clear_uncommited_list_cache_entry (int tran_index)
+qfile_clear_uncommited_list_cache_entry (THREAD_ENTRY * thread_p,
+					 int tran_index)
 {
 #if defined(SERVER_MODE)
   QFILE_LIST_CACHE_ENTRY *lent, *tran_next;
 
-  if (qfile_List_cache.tran_list == NULL)
+  if (qfile_List_cache.tran_list == NULL
+      || qfile_List_cache.tran_list[tran_index] == NULL)
+    {
+      return;
+    }
+
+  if (csect_enter (thread_p, CSECT_QPROC_LIST_CACHE, INF_WAIT) != NO_ERROR)
     {
       return;
     }
@@ -5920,6 +5947,8 @@ qfile_clear_uncommited_list_cache_entry (int tran_index)
       lent = tran_next;
     }
   qfile_List_cache.tran_list[tran_index] = NULL;
+
+  csect_exit (CSECT_QPROC_LIST_CACHE);
 #endif /* SERVER_MODE */
 }
 
@@ -5937,7 +5966,10 @@ qfile_delete_uncommitted_list_cache_entry (int tran_index,
 #if defined(SERVER_MODE)
   QFILE_LIST_CACHE_ENTRY *prev;
 
+  assert (lent != NULL);
+
   prev = qfile_List_cache.tran_list[tran_index];
+
   if (prev == lent)
     {
       qfile_List_cache.tran_list[tran_index] = lent->tran_next;
@@ -6081,6 +6113,9 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no,
   size_t num_elements;
 #endif
 #endif /* SERVER_MODE */
+#if !defined (NDEBUG)
+  int i, num_active_users;
+#endif
 
   if (QFILE_IS_LIST_CACHE_DISABLED)
     {
@@ -6163,6 +6198,19 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no,
 			      sizeof (int), qfile_compare_tran_id);
 	      lent->last_ta_idx = num_elements;
 	    }
+
+#if !defined (NDEBUG)
+	  for (i = 0, num_active_users = 0; i < MAX_NTRANS; i++)
+	    {
+	      if (lent->tran_index_array[i] > 0)
+		{
+		  num_active_users++;
+		}
+	    }
+
+	  assert (lent->last_ta_idx == num_active_users);
+#endif
+
 #endif /* SERVER_MODE */
 	  (void) gettimeofday (&lent->time_last_used, NULL);
 	  lent->ref_count++;
@@ -6333,6 +6381,10 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr,
   unsigned int n;
   HL_HEAPID old_pri_heap_id;
   int i, j, k;
+  int alloc_size;
+#if !defined (NDEBUG)
+  int num_active_users;
+#endif
 
   if (QFILE_IS_LIST_CACHE_DISABLED)
     {
@@ -6421,6 +6473,19 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr,
 			  &num_elements, sizeof (int), qfile_compare_tran_id);
 	  lent->last_ta_idx = num_elements;
 	}
+
+#if !defined (NDEBUG)
+      for (i = 0, num_active_users = 0; i < MAX_NTRANS; i++)
+	{
+	  if (lent->tran_index_array[i] > 0)
+	    {
+	      num_active_users++;
+	    }
+	}
+
+      assert (lent->last_ta_idx == num_active_users);
+#endif
+
 #endif /* SERVER_MODE */
       (void) gettimeofday (&lent->time_last_used, NULL);
       lent->ref_count++;
@@ -6556,9 +6621,8 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr,
   /* make new QFILE_LIST_CACHE_ENTRY */
 
   /* get new entry from the QFILE_LIST_CACHE_ENTRY_POOL */
-  lent =
-    qfile_allocate_list_cache_entry
-    (qfile_get_list_cache_entry_size_for_allocate (params->size));
+  alloc_size = qfile_get_list_cache_entry_size_for_allocate (params->size);
+  lent = qfile_allocate_list_cache_entry (alloc_size);
   if (lent == NULL)
     {
       goto end;
@@ -6612,6 +6676,19 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr,
 		      &num_elements, sizeof (int), qfile_compare_tran_id);
       lent->last_ta_idx = num_elements;
     }
+
+#if !defined (NDEBUG)
+  for (i = 0, num_active_users = 0; i < MAX_NTRANS; i++)
+    {
+      if (lent->tran_index_array[i] > 0)
+	{
+	  num_active_users++;
+	}
+    }
+
+  assert (lent->last_ta_idx == num_active_users);
+#endif
+
 #endif /* SERVER_MODE */
 
   /* insert (or update) the entry into the hash table */
@@ -6666,6 +6743,9 @@ qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p,
   size_t num_elements;
 #endif
 #endif /* SERVER_MODE */
+#if !defined (NDEBUG)
+  int i, num_active_users;
+#endif
 
   if (QFILE_IS_LIST_CACHE_DISABLED)
     {
@@ -6705,6 +6785,19 @@ qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p,
 	}
     }
   while (p && p < r);
+
+#if !defined (NDEBUG)
+  for (i = 0, num_active_users = 0; i < MAX_NTRANS; i++)
+    {
+      if (lent->tran_index_array[i] > 0)
+	{
+	  num_active_users++;
+	}
+    }
+
+  assert (lent->last_ta_idx == num_active_users);
+#endif
+
 #endif /* SERVER_MODE */
 
   /* if this entry will be deleted */

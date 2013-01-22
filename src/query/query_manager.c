@@ -2597,8 +2597,8 @@ xqmgr_drop_query_plan (THREAD_ENTRY * thread_p, const char *qstmt,
       if (is_drop)
 	{
 	  /* delete the XASL cache entry */
-	  if (qexec_remove_xasl_cache_ent_by_qstr
-	      (thread_p, qstmt, user_oid_p) != NO_ERROR)
+	  if (qexec_remove_xasl_cache_ent_by_qstr (thread_p, qstmt,
+						   user_oid_p) != NO_ERROR)
 	    {
 	      er_log_debug (ARG_FILE_LINE,
 			    "xqm_query_drop_plan: xs_remove_xasl_cache_ent_by_qstr failed for query_str %s\n",
@@ -2758,7 +2758,7 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index,
 
   if (!QFILE_IS_LIST_CACHE_DISABLED)
     {
-      qfile_clear_uncommited_list_cache_entry (tran_index);
+      qfile_clear_uncommited_list_cache_entry (thread_p, tran_index);
     }
 
   /* if the transaction is aborting, clear relative cache entries */
@@ -3175,8 +3175,8 @@ qmgr_get_old_page (THREAD_ENTRY * thread_p, VPID * vpid_p,
   else
     {
       /* return temp file page */
-      page_p = pgbuf_fix (thread_p, vpid_p, OLD_PAGE, PGBUF_LATCH_WRITE,
-			  PGBUF_UNCONDITIONAL_LATCH);
+      page_p = pgbuf_fix (thread_p, vpid_p, OLD_PAGE,
+			  PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
     }
 
   return page_p;
