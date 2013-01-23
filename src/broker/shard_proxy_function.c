@@ -57,6 +57,14 @@ static T_SHARD_KEY_RANGE *proxy_get_range_by_param (SP_PARSER_HINT * hint_p,
 static void proxy_update_shard_stats (T_SHARD_STMT * stmt_p,
 				      T_SHARD_KEY_RANGE * range_p);
 static void proxy_update_shard_stats_without_hint (int shard_id);
+static int proxy_client_execute_internal (T_PROXY_CONTEXT * ctx_p,
+					  T_PROXY_EVENT * event_p, int argc,
+					  char **argv, char _func_code,
+					  int query_timeout,
+					  int bind_value_index);
+static int proxy_cas_execute_internal (T_PROXY_CONTEXT * ctx_p,
+				       T_PROXY_EVENT * event_p);
+
 
 void
 proxy_set_wait_timeout (T_PROXY_CONTEXT * ctx_p, int query_timeout)
@@ -1317,26 +1325,59 @@ int
 fn_proxy_client_execute (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 			 int argc, char **argv)
 {
+  int query_timeout;
+  int bind_value_index = 9;
+  T_BROKER_VERSION client_version;
+
+  char func_code = CAS_FC_EXECUTE;
+
+  client_version = proxy_client_io_version_find_by_ctx (ctx_p);
+  if (client_version >= CAS_PROTO_MAKE_VER (PROTOCOL_V1))
+    {
+      bind_value_index++;
+
+      net_arg_get_int (&query_timeout, argv[9]);
+      if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V2))
+	{
+	  /* protocol version v1 driver send query timeout in second */
+	  query_timeout *= 1000;
+	}
+    }
+  else
+    {
+      query_timeout = 0;
+    }
+
+  return proxy_client_execute_internal (ctx_p, event_p, argc, argv,
+					func_code, query_timeout,
+					bind_value_index);
+}
+
+static int
+proxy_client_execute_internal (T_PROXY_CONTEXT * ctx_p,
+			       T_PROXY_EVENT * event_p, int argc, char **argv,
+			       char _func_code, int query_timeout,
+			       int bind_value_index)
+{
   int error = 0;
   int srv_h_id;
   int cas_srv_h_id;
-  int query_timeout;
   char *prepare_request = NULL;
-  int shard_id;
+  int i;
+  int shard_id, next_shard_id;
   int length;
   SP_HINT_TYPE hint_type;
-  int bind_value_index = 9;
+  int bind_value_size;
   int argc_mod_2;
   T_CAS_IO *cas_io_p;
   T_SHARD_STMT *stmt_p;
   T_SHARD_KEY_RANGE *range_p = NULL;
-  T_BROKER_VERSION client_version;
 
   T_PROXY_EVENT *new_event_p = NULL;
 
   char *request_p;
 
-  char func_code = CAS_FC_EXECUTE;
+  char func_code = _func_code;
 
   ENTER_FUNC ();
 
@@ -1369,23 +1410,6 @@ fn_proxy_client_execute (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
       return -1;
     }
 
-  client_version = proxy_client_io_version_find_by_ctx (ctx_p);
-  if (client_version >= CAS_PROTO_MAKE_VER (PROTOCOL_V1))
-    {
-      bind_value_index++;
-
-      net_arg_get_int (&query_timeout, argv[9]);
-      if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V2))
-	{
-	  /* protocol version v1 driver send query timeout in second */
-	  query_timeout *= 1000;
-	}
-    }
-  else
-    {
-      query_timeout = 0;
-    }
-
   argc_mod_2 = bind_value_index % 2;
 
   if ((argc < bind_value_index) || (argc % 2 != argc_mod_2))
@@ -1405,7 +1429,7 @@ fn_proxy_client_execute (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 
   net_arg_get_int (&srv_h_id, argv[0]);
 
-  /* arg9/10 ~ : bind variables, even:bind type, odd:bind value */
+  /* bind variables, even:bind type, odd:bind value */
 
   stmt_p = shard_stmt_find_by_stmt_h_id (srv_h_id);
   if (stmt_p == NULL)
@@ -1467,6 +1491,38 @@ fn_proxy_client_execute (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 
 	  EXIT_FUNC ();
 	  return -1;
+	}
+
+      if (func_code == CAS_FC_EXECUTE_ARRAY)
+	{
+	  /* bind value size = bind count * 2(type:value) */
+	  bind_value_size = stmt_p->parser->bind_count * 2;
+
+	  /* compare with next batch shard_id when execute_array */
+	  for (i = bind_value_index + bind_value_size; i < argc;
+	       i += bind_value_size)
+	    {
+	      next_shard_id =
+		proxy_get_shard_id (stmt_p, (void **) (argv + i), &range_p);
+
+	      if (shard_id != next_shard_id)
+		{
+		  PROXY_LOG (PROXY_LOG_MODE_ERROR,
+			     "Shard id is different. "
+			     "(first_shard_id:%d, next_shard_id:%d). context(%s).",
+			     shard_id, next_shard_id,
+			     proxy_str_context (ctx_p));
+
+		  proxy_context_set_error (ctx_p, CAS_ERROR_INDICATOR,
+					   CAS_ER_INTERNAL);
+
+		  proxy_event_free (event_p);
+		  event_p = NULL;
+
+		  EXIT_FUNC ();
+		  return -1;
+		}
+	    }
 	}
 
       if (ctx_p->shard_id != PROXY_INVALID_SHARD
@@ -2148,6 +2204,33 @@ fn_proxy_client_cursor_close (T_PROXY_CONTEXT * ctx_p,
 }
 
 int
+fn_proxy_client_execute_array (T_PROXY_CONTEXT * ctx_p,
+			       T_PROXY_EVENT * event_p, int argc, char **argv)
+{
+  int query_timeout;
+  int bind_value_index = 2;
+  T_BROKER_VERSION client_version;
+
+  char func_code = CAS_FC_EXECUTE_ARRAY;
+
+  client_version = proxy_client_io_version_find_by_ctx (ctx_p);
+  if (client_version >= CAS_PROTO_MAKE_VER (PROTOCOL_V4))
+    {
+      bind_value_index++;
+
+      net_arg_get_int (&query_timeout, argv[1]);
+    }
+  else
+    {
+      query_timeout = 0;
+    }
+
+  return proxy_client_execute_internal (ctx_p, event_p, argc, argv,
+					func_code, query_timeout,
+					bind_value_index);
+}
+
+int
 fn_proxy_client_not_supported (T_PROXY_CONTEXT * ctx_p,
 			       T_PROXY_EVENT * event_p, int argc, char **argv)
 {
@@ -2477,6 +2560,12 @@ fn_proxy_cas_execute (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
   /* INT : SRV_CACHE_TIME.SEC */
   /* INT : SRV_CACHE_TIME.USEC */
 
+  return proxy_cas_execute_internal (ctx_p, event_p);
+}
+
+static int
+proxy_cas_execute_internal (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
+{
   int error;
   int error_ind;
   bool is_in_tran;
@@ -2568,6 +2657,31 @@ free_context:
 
   EXIT_FUNC ();
   return -1;
+}
+
+int
+fn_proxy_cas_execute_array (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
+{
+  /* Protocol Phase 0 : MSG_HEADER */
+
+  /* Protocol Phase 1 : GENERAL INFO */
+  /* INT : RESULT_CODE */
+  /* INT : NUM_QUERY */
+
+  /* Protocol Phase 2 : QUERY RESULT(NUM_QEURY) */
+  /* CASE 1 : QUERY SUCCESS */
+  /* CHAR : STMT_TYPE */
+  /* INT : TUPLE_COUNT */
+  /* T_OBJECT : INS_OID */
+
+  /* CASE 2 : QUERY FAIL */
+  /* CHAR : STMT_TYPE */
+  /* INT : ERROR_INDICATOR */
+  /* INT : ERROR_CODE */
+  /* INT : ERROR_MSG_LEN */
+  /* STR : ERROR_MSG */
+
+  return proxy_cas_execute_internal (ctx_p, event_p);
 }
 
 int
