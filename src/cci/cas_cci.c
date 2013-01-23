@@ -2228,6 +2228,13 @@ cci_get_data (int mapped_stmt_id, int col_no, int a_type, void *value,
 				    dbg_a_type_str (a_type)));
 #endif
 
+  if (indicator == NULL || value == NULL)
+    {
+      return CCI_ER_INVALID_ARGS;
+    }
+
+  *indicator = -1;
+
   error = hm_get_statement (mapped_stmt_id, &con_handle, &req_handle);
   if (error != CCI_ER_NO_ERROR)
     {
