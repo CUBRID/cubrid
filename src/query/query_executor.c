@@ -19645,6 +19645,7 @@ qexec_initialize_analytic_state (ANALYTIC_STATE * analytic_state,
 				 QFILE_TUPLE_RECORD * tplrec)
 {
   REGU_VARIABLE_LIST regu_list = NULL;
+  ANALYTIC_TYPE *func_p;
 
   analytic_state->state = NO_ERROR;
 
@@ -19712,6 +19713,12 @@ qexec_initialize_analytic_state (ANALYTIC_STATE * analytic_state,
     }
   analytic_state->current_key.area_size = DB_PAGESIZE;
   analytic_state->output_tplrec = tplrec;
+
+  /* initialize runtime structure */
+  for (func_p = a_func_list; func_p != NULL; func_p = func_p->next)
+    {
+      memset (&func_p->info, 0, sizeof (ANALYTIC_FUNCTION_INFO));
+    }
 
   /* resolve domains in regulist */
   for (regu_list = a_regu_list; regu_list; regu_list = regu_list->next)
