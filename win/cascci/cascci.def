@@ -91,6 +91,7 @@ EXPORTS
 	cci_set_charset
 	cci_row_count
 	cci_last_insert_id
+	cci_get_last_insert_id
 	cci_get_autocommit
 	cci_set_autocommit
 	cci_property_create

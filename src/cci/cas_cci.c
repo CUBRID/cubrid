@@ -3968,8 +3968,56 @@ cci_row_count (int mapped_conn_id, int *row_count, T_CCI_ERROR * err_buf)
   return error;
 }
 
+/*
+ * IMPORTANT: cci_last_insert_id and cci_get_last_insert_id
+ *
+ *   cci_get_last_insert_id set value as last insert id in con_handle
+ *   so it could be changed when new insertion is executed.
+ *   
+ *   cci_last_insert_id set value as allocated last insert id
+ *   so it won't be changed but user should free it manually.
+ * 
+ *   But, It's possible to make some problem when it working with 
+ *   user own memory allocators or Windows shared library memory space.
+ *
+ *   So we deprecate cci_last_insert_id and strongly recommend to use
+ *   cci_get_last_insert_id.
+ */
 int
 cci_last_insert_id (int mapped_conn_id, void *value, T_CCI_ERROR * err_buf)
+{
+  int error = CCI_ER_NO_ERROR;
+  char *ptr, *val;
+
+  /* value init & null check are in below function */
+  error = cci_get_last_insert_id (mapped_conn_id, &ptr, err_buf);
+
+  if (error == CCI_ER_NO_ERROR && ptr != NULL)
+    {
+      /* 2 for sign & null termination */
+      int value_len = strnlen (ptr, MAX_NUMERIC_PRECISION + 2);
+      assert (value_len < MAX_NUMERIC_PRECISION + 2);
+
+      val = MALLOC (value_len + 1);
+      if (val == NULL)
+	{
+	  error = CCI_ER_NO_MORE_MEMORY;
+	  set_error_buffer (err_buf, error, NULL);
+	  return error;
+	}
+
+      strncpy (val, ptr, value_len);
+      val[value_len] = '\0';
+
+      *(char **) value = val;
+    }
+
+  return error;
+}
+
+int
+cci_get_last_insert_id (int mapped_conn_id, void *value,
+			T_CCI_ERROR * err_buf)
 {
   int error = CCI_ER_NO_ERROR;
   int req_handle_id = -1;
@@ -3978,16 +4026,27 @@ cci_last_insert_id (int mapped_conn_id, void *value, T_CCI_ERROR * err_buf)
 
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg
-		   ("(%d)cci_last_insert_id", mapped_conn_id));
+		   ("(%d)cci_get_last_insert_id", mapped_conn_id));
 #endif
 
   reset_error_buffer (err_buf);
+
+  if (value == NULL)
+    {
+      error = CCI_ER_INVALID_ARGS;
+      set_error_buffer (err_buf, error, NULL);
+      return error;
+    }
+
+  *(char **) value = NULL;
+
   error = hm_get_connection (mapped_conn_id, &con_handle);
   if (error != CCI_ER_NO_ERROR)
     {
       set_error_buffer (err_buf, error, NULL);
       return error;
     }
+
   reset_error_buffer (&(con_handle->err_buf));
 
   if (IS_OUT_TRAN_STATUS (con_handle))

@@ -231,6 +231,8 @@ qe_con_close (T_CON_HANDLE * con_handle)
 
   hm_req_handle_free_all (con_handle);
 
+  FREE_MEM (con_handle->last_insert_id);
+
   if (IS_INVALID_SOCKET (con_handle->sock_fd))
     return 0;
 
@@ -2296,10 +2298,14 @@ qe_get_last_insert_id (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   int result_msg_size;
   int valsize = 0;
   char type = 0;
-  char *ptr = NULL, *val = NULL;
+  char *ptr = NULL;
   net_buf_init (&net_buf);
 
   net_buf_cp_str (&net_buf, &func_code, 1);
+
+  /* initialize */
+  assert (value != NULL);
+  *(char **) value = NULL;
 
   if (net_buf.err_code < 0)
     {
@@ -2310,19 +2316,26 @@ qe_get_last_insert_id (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 
   err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
+
   if (err_code < 0)
-    return err_code;
+    {
+      return err_code;
+    }
 
   err_code = net_recv_msg (con_handle, &result_msg, &result_msg_size,
 			   err_buf);
+
   if (err_code < 0)
-    return err_code;
+    {
+      return err_code;
+    }
 
   if (result_msg_size < 4)
     {
       FREE_MEM (result_msg);
       return CCI_ER_COMMUNICATION;
     }
+
   NET_STR_TO_INT (err_code, result_msg);
   ptr = result_msg + NET_SIZE_INT;
 
@@ -2330,32 +2343,48 @@ qe_get_last_insert_id (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   NET_STR_TO_INT (valsize, ptr);
   if (valsize == -1)
     {
-      /* null value */
-      *((char **) value) = NULL;
+      /* 
+       * CCI_ER_NO_ERROR with NULL value 
+       * means DB NULL
+       */
       FREE_MEM (result_msg);
       return CCI_ER_NO_ERROR;
     }
 
   ptr = ptr + NET_SIZE_INT;
+  valsize--;			/* skip type byte */
+
   /* decode type */
   type = *ptr;
   if (type != CCI_U_TYPE_NUMERIC)
     {
-      *((char **) value) = NULL;
       FREE_MEM (result_msg);
       return CCI_ER_COMMUNICATION;
     }
+
   ptr = ptr + NET_SIZE_BYTE;
-  /* copy value */
-  ALLOC_N_COPY (val, ptr, valsize, char *);
-  if (val == NULL)
+
+  /* copy to con_handle->last_insert_id */
+  if (con_handle->last_insert_id == NULL)
     {
-      err_code = CCI_ER_NO_MORE_MEMORY;
-      FREE_MEM (result_msg);
-      return err_code;
+      /* 2 for sign & null termination */
+      con_handle->last_insert_id = MALLOC (MAX_NUMERIC_PRECISION + 2);
+      if (con_handle->last_insert_id == NULL)
+	{
+	  err_code = CCI_ER_NO_MORE_MEMORY;
+	  FREE_MEM (result_msg);
+	  return err_code;
+	}
     }
-  val[valsize - 1] = 0;
-  *((char **) value) = val;
+
+  /* valsize include null terminate byte */
+  assert (valsize < MAX_NUMERIC_PRECISION + 2);
+
+  strncpy (con_handle->last_insert_id, ptr, valsize - 1);
+  con_handle->last_insert_id[valsize - 1] = '\0';
+
+  *((char **) value) = con_handle->last_insert_id;
+
   FREE_MEM (result_msg);
   return err_code;
 }

@@ -256,6 +256,7 @@ extern "C"
     void *logger;
     int is_holdable;
     int no_backslash_escapes;
+    char *last_insert_id;
     T_CCI_ERROR err_buf;
   } T_CON_HANDLE;
 

@@ -419,6 +419,12 @@ static int cubrid_get_charset_internal(int conn, T_CCI_ERROR *error);
 static void linked_list_append(LINKED_LIST *list, void *data);
 static void linked_list_delete(LINKED_LIST *list, void *data);
 
+static void *libcascci = NULL;
+typedef int (*CCI_GET_LAST_INSERT_ID) (int con, void *buff,
+				       T_CCI_ERROR * err_buf);
+static CCI_GET_LAST_INSERT_ID cci_get_last_insert_id_fp = NULL;
+
+
 /************************************************************************
 * INTERFACE VARIABLES
 ************************************************************************/
@@ -1095,6 +1101,14 @@ ZEND_MSHUTDOWN_FUNCTION(cubrid)
 {
     UNREGISTER_INI_ENTRIES();
     cci_end();
+
+    if (libcascci != NULL) {
+#if defined (WINDOWS)
+        FreeLibrary (libcascci);
+#else
+        dlclose (libcascci);
+#endif
+    }
 
     return SUCCESS;
 }
@@ -4495,16 +4509,30 @@ ZEND_FUNCTION(cubrid_insert_id)
             RETURN_LONG(0);
         }
 
-        if ((cubrid_retval = cci_last_insert_id(connect->handle, &last_id, &error)) < 0) {
-            handle_error(cubrid_retval, &error, connect);
-            RETURN_FALSE;
-        } 
+        if (cci_get_last_insert_id_fp != NULL) {
+	    /* cci_get_last_id set last_id as con_handle's static buffer */
+	    cubrid_retval = cci_get_last_insert_id_fp (connect->handle,
+						     &last_id, &error);
+	}
+        else {
+	    /* cci_last_id set last_id as allocated string */
+	    cubrid_retval = cci_last_insert_id (connect->handle, &last_id, &error);
+	}
+
+        if (cubrid_retval < 0) {
+	    handle_error (cubrid_retval, &error, connect);
+	    RETURN_FALSE;
+	}
         
         if (last_id == NULL) {
             RETURN_LONG(0);
         } else {
             RETURN_STRINGL(last_id, strlen(last_id), 1);
-            free(last_id);
+
+	    /* free last_id which is allocated in cci_last_insert_id */
+	    if (cci_get_last_insert_id_fp == NULL) {
+	        free (last_id);
+	    }
         } 
 
         break;
@@ -5665,6 +5693,26 @@ static void php_cubrid_init_globals(zend_cubrid_globals * cubrid_globals)
 
     cubrid_globals->default_userid = "PUBLIC";
     cubrid_globals->default_passwd = "";
+
+    /* 
+     * use cci_get_last_id if possible
+     * early distributed libraries don't include it
+     */
+#if defined(WINDOWS)
+    libcascci = LoadLibrary ("cascci.dll");
+
+    if (libcascci != NULL) {
+        cci_get_last_insert_id_fp =
+	(CCI_GET_LAST_INSERT_ID) GetProcAddress (libcascci,
+						 "cci_get_last_insert_id");
+    }
+#else
+    libcascci = dlopen ("libcascci.so", RTLD_LAZY);
+
+    if (libcascci != NULL) {
+        cci_get_last_insert_id_fp = dlsym (libcascci, "cci_get_last_insert_id");
+    }
+#endif
 }
 
 static int init_error(void)

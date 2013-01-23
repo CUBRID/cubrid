@@ -877,8 +877,27 @@ extern "C"
   extern int cci_set_charset (int con_h_id, char *charset);
   extern int cci_row_count (int con_h_id, int *row_count,
 			    T_CCI_ERROR * err_buf);
+
+  /*
+   * IMPORTANT: cci_last_insert_id and cci_get_last_insert_id
+   *
+   *   cci_get_last_insert_id set value as last insert id in con_handle
+   *   so it could be changed when new insertion is executed.
+   *   
+   *   cci_last_insert_id set value as allocated last insert id
+   *   so it won't be changed but user should free it manually.
+   *
+   *   But, It's possible to make some problem when it working with 
+   *   user own memory allocators or Windows shared library memory space.
+   *
+   *   So we deprecate cci_last_insert_id and strongly recommend to use
+   *   cci_get_last_insert_id.
+   */
   extern int cci_last_insert_id (int con_h_id, void *value,
 				 T_CCI_ERROR * err_buf);
+
+  extern int cci_get_last_insert_id (int con_h_id, void *value,
+				     T_CCI_ERROR * err_buf);
   extern T_CCI_PROPERTIES *cci_property_create (void);
   extern void cci_property_destroy (T_CCI_PROPERTIES * properties);
   extern int cci_property_set (T_CCI_PROPERTIES * properties, char *key,

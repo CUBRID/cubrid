@@ -246,6 +246,9 @@ extern "C"
   typedef unsigned long in_addr_t;
 #endif
 
+
+#define MAX_NUMERIC_PRECISION	38
+
 /************************************************************************
  * PUBLIC TYPE DEFINITIONS						*
  ************************************************************************/
