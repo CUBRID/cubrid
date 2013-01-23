@@ -243,7 +243,7 @@ cubrid 管理者ユーティリティー、バージョン　%s\n\
     off         <シャード名>\n\
     reset       <シャード名>\n\
     acl         <status|reload> [シャード名]\n\
-    getid       -b <broker-name> [-f] shard-key\n
+    getid       -b <ブローカー名> [-f] シャードキー\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 警告: -tオプションは独立実行モードでは無視されます。\n
@@ -296,10 +296,10 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 正しくないコマンド「%s」\n
 43 出力ファイル「%s」が開けられません。\n
 44 既存データベースが削除できません。\n
-45 Creating database with %s size. The total amount of disk space needed is %s.\n
+45 データベース(サイズ:%s)を生成しています。必要なディスクスペースは「%s」です。
 46 データベースが生成できません。\n
 47 ユーザーファイル「%s」に問題があります。\n
-48 The given '%s', %s is out of range. Choose a size between %s and %s.\n
+48 あげられたバリュー：「%s」。「%s」は範囲を超えてしまいました。「%s」と「%s」の内のバリューを入力してください。
 49 %sの内容の中で「%s」が正しくありません。\n
 60 \
 createdb: データベース生成。\n\
@@ -611,14 +611,14 @@ emergency_patchlog: 緊急状況でデータベースログのパッチ\n\
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB
 20 ページ数%dが正しくありません。\n
 21 ボリュームの使い道'%s'が正しくありません。\n
-22 WARNING: --max-writesize-in-sec option is ignored in stand-alone mode execution.\n
+22 WARNING：--max-writesize-in-secオプションはスタンドアローンモードでは無視されます。\n
 60 \
 addvoldb: データベースボリュームファイルを追加。\n\
 使い方: %s addvoldb [オプション] <データベース名>\n\
 \n\
 オプション:\n\
       --db-volume-size=SIZE        追加するボリュームのサイズ; デフォルト: 設定から読み込む。\n\
-      --max-writesize-in-sec=SIZE  the amount of volume written per second; (ex. 512K, 1M, 10M); default: not used; minimum: 160K\n\
+      --max-writesize-in-sec=SIZE  一秒に書かれるボリューム量; (ex. 512K, 1M, 10M); デフォルト: 使用しない; 最小: 160K\n\
   -n, --volume-name=NAME           ボリューム名; デフォルト: "db"_ext1のような名前で生成。\n\
   -F, --file-path=PATH             データベースファイルのパス; デフォルト: 現在ディレクトリー\n\
       --comment=COMMENT            ボリュームコメント; デフォルト: なし\n\
@@ -771,7 +771,7 @@ $set 26 MSGCAT_UTIL_SET_KILLTRAN
 29 トランザクションーインデックス「%d」で指定されたトランザクションを終了させます。\n
 30 次のトランザクションを終了が失敗しました。\n\n
 31 トランザクションが終わりませんでした。ロールバックかも知れません。\nしばらく待ってからまたやり直してください。\n
-32 Invalid tranindex(%s).\n
+32 正しくないトランザクションインデックス「%s」。\n
 59 killtranはスタンドアロンモードで実行できません。\n
 60 \
 killtran: データベーストランザクションを管理\n\
@@ -782,10 +782,10 @@ killtran: データベーストランザクションを管理\n\
       --kill-user-name=ID            IDに対するユーザーのトランザクションを全部終了\n\
       --kill-host-name=HOST          HOSTに対するクライアントのトランザクションを全部終了\n\
       --kill-program-name=NAME       NAMEに対するトランザクションを全部終了\n\
-      --kill-sql-id=SQL_ID           kill all transactions with SQL_ID\n\
+      --kill-sql-id=SQL_ID           SQL_IDに対するすべてのトランザクションを中止する。\n\
   -p, --dba-password=PASS            DBAパスワード; 指定されてない場合は入力プロンプトが表示される。\n\
   -d, --display-information          現在アクティブトランザクションの情報を表示\n\
-  -q, --query-exec-info              display information about query execution information of active transactions\n\
+  -q, --query-exec-info              アクティブトランザクションのクエリ実行情報を表示する。\n\
   -f, --force                        強制に確認なしでトランザクションを終了\n
 
 
@@ -928,7 +928,7 @@ applyinfo: CUBRID HA Apply情報を出力。\n\
   -L, --copied-log-path=PATH  コピーしたログブリュームのパス; コピーしたログ情報を出力。\n\
   -p, --pageid=ID             ページID; デフォルト : 0(アクティブページ)\n\
   -v, --verbose               多様な進行情報を出力; デフォルト: 出力しない\n\
-  -i, --interval=S            print information every S secs\n	
+  -i, --interval=S            S秒のたびに表示される情報を更新する。\n	
 
 $set 45 MSGCAT_UTIL_SET_ACLDB
 59  acldbはスタンドアロンモードで実行できません。\n
@@ -984,57 +984,57 @@ language-string　　　　　生成するシェアードライブラリーの�
   -z, --normalization 正規化データをダンプ; デフォルト : しない\n
 
 $set 48 MSGCAT_UTIL_SET_SYNCCOLLDB
-43 Partitioning must be removed before changing the current collation '%s' of their partitioning attribute.\nClass name\n
-44 Foreign keys on attributes having collation '%s' must be dropped before changing collation of attributes.\nTable | Foreign Key\n
-45 Classes having collation '%s'; they should be redefined :\nClass name\n
-46 Function indexes having expression containing collation '%s'; they should be redefined :\n\
-Table | Index | Function expression\n
-47 Synchronization of collations was not performed. Database was not changed.\n
-48 Contents of '%s' system table was updated with new system collations.\n
-49 Updating system collations may cause corruption of database. Continue (y/n) ?\n
-50 Collation '%s' (Id: %d) not found in database or changed in new system configuration.\n
-51 Triggers having condition containing collation '%s'; they should be redefined :\nTrigger | Condition\n
-52 Query views containing collation '%s'; they should be redefined :\nView | Query\n
-53 Attributes having collation '%s'; they should be redefined.\nTable | Attribute Domain\n
-54 Manual intervention on database is required.\n\
-Please check file '%s' and execute it before forcing collations into database.\n
-55 Synchronization is not needed.\n
-56 Synchronization of system collation into database is required.\n\
-Run 'cubrid synccolldb -f %s'\n
-57 There are %d new collations in system configuration compared to database:\n
-58 All collations in database '%s' are found in the new system configuration.\n
-59 There are %d collations in database which are not configured or are changed compared to system collations.\n
+43 パーティショニングアトリビュートの現在コーレーション「%s」を変える前にパーティショニングを削除しないといけません。\nクラス名\n
+44 アトリビュートのコーレーションを変える前に「%s」コーレーションを持つ外来キーを削除しないといけません。\nテーブル | 外来キー\n
+45 クラスのコーレーション「%s」；必ず再正義する必要があります。:\nクラス名\n
+46 ファンクションインデックスはコーレーション「%s」を含めるエクスプレッションを持ちます。；必ず再正義する必要があります。:\n\
+テーブル | インデックス | ファンクションエクスプレッション\n
+47 コーレーションの同期が実行されませんでした。データベースは変えられませんでした。\n
+48 システムテーブル「%s」の内容が新しいシステムコーレーションに更新されました。\n
+49 システムコーレーションの更新はデータベースを壊す原因になるかもしれません。続けましか(y/n) ?\n
+50 コーレーション「%s」(Id: %d)はデータベースにないか、またはもう新しいシステム設定に更新されました。\n
+51 トリガーはコーレーション「%s」を含めるコンディションを持っています。;必ず再正義する必要があります。:\nトリガー | コンディション\n
+52 クエリビューはコーレーション「%s」を含めています。; 必ず再正義する必要があります。 :\nビュー | クエリ\n
+53 アトリビュートはコーレーション「%s」を含めています。; 必ず再正義する必要があります。\nテーブル | アトリビュートドメイン\n
+54 マニュアルでデータベースをチェックする必要があります。\n\
+データベースのコーレーションを強制に適用する前にファイル「%s」をチェックしてください。\n
+55 同機する必要がありません。\n
+56 データベースのシステムコーレーション同機化が必要になります。\n\
+「cubrid synccolldb -f %s」を実行してください。\n
+57 新しいシステム設定の%d個のコーレーションとデータベースのコーレーションとの比較をかんりょうしました。:\n
+58 データベース「%s」のすべてのコーレーションが新しいシステム設定にあることを確認しました。\n
+59 データベースに%d個のコーレーションが設定されていないか、システムコーレーションに変わりました。\n
 60 \
-synccolldb: Synchronizes the collations from database with collations of system.\n\
-usage: %s synccolldb [OPTION] database-name\n\
+synccolldb: データベースのコーレーションをシステムコーレーションに同期します。\n\
+使い方: %s synccolldb [オプション] データベース名\n\
 \n\
-valid options:\n\
-  -c, --check-only    Checks the collations from databases with collation of system.\n\
-		      If collations synchronization is required, error code 1 is returned.\n\
-		      Displays a report of incompatible collations.\n\
-  -f, --force-only    Updates the collations in databases to be same as the collations of new sytem configuration.\n\
+オプション:\n\
+  -c, --check-only    データベースのコーレーションとシステムコーレーションの同期作業をチェックします。\n\
+		      もし、コーレーションの同機化が必要になると、エラーコード１がリターンされます。\n\
+		      また、互換しないコーレーションの結果を表示します。\n\
+  -f, --force-only    データベースのコーレーションをシステムの新しいコーレーションに強制更新します。\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 Enter %s password: 
+20 「%s」のパスワードを入力してください: 
 22 トランザクションーインデックス  ユーザー名     ホスト名     プロセスID     プログラム名\n
 23 -------------------------------------------------------------------------------\n
 24 %4d%-10s %14s %14s %15d %17s\n
 25 トランザクションがありません。\n
-26 tranlist can only be performed by the DBA or a DBA group member.\n
-32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+26 tranlistはDBAユーザー、またはDBAグループのメンバーが実行できます。\n
+32 トランインデックス　　　　プロセスid       プログラム名　　　　　　　　　　　　　クエリタイム　　　　トランタイム　　　　　　　　　　　ロックゴールだウェート　　　　     SQL ID        SQLテキスト\n
 33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
-42 Tran index          User name      Host name      Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+42 トランインデックス　　　　　ユーザー名　　　　　　ホスト名　　　　　　　プロセスid　　　　　プログラム名　　　　　　　　　　　　　クエリタイム　　　　トランタイム　　　　　　　　　　　ロックウェート　　　　　　　　　ホルダー　　　　　SQL_ID       SQLテキスト\n
 43 %4d%-10s %14s %14s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
-45 Tran index : %d
+45 トランザクションインデックス : %d
 46 SQL_ID: %s\n
 59 tranlistはスタンドアロンモードで実行できません。\n
 60 \
-tranlist: Dump active transaction information.\n\
-usage: %s tranlist [OPTION] database-name\n\
+tranlist: アクティブトランザクション情報をダンプします。\n\
+使い方: %s tranlist [オプション] データベース名\n\
 \n\
-valid options:\n\
-  -u, --user=ID                user ID for database access; default: DBA user\n\
-  -p, --password=PASS          user password; default: none\n\
-  -s, --summary                print summarized information of transaction\n
+オプション:\n\
+  -u, --user=ID                データベースに接続するユーザーID; デフォルト: DBAユーザー\n\
+  -p, --password=PASS          ユーザーパスワード; デフォルト: なし\n\
+  -s, --summary                トランザクション情報を要約して出力する。\n

@@ -40,7 +40,7 @@ $set 1 MSGCAT_CSQL_SET_CSQL
   -c, --command=ARG            CSQLコマンド\n\
   -l, --line-output            一つのラインでバリューを表示\n\
   -r, --read-only              リードオンリーモード\n\
-      --string-width           display each column which is a string type in this width\n\
+      --string-width           ストリングタイプの格コラムが表示される長さを制限する。\n\
       --no-auto-commit         自動コミットしない\n\
       --no-pager               ページ単位で表示しない\n\
       --no-single-line         シングルラインで実行しない\n\
@@ -165,8 +165,8 @@ $ csql help messages
    ;TRigger [`*'|trigger-name]  - トリガー正義を出力。\n\
    ;Get system_parameter        - システムパラメーターを表示。\n\
    ;SEt system_parameter=value  - システムパラメーターを設定。\n\
-   ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
-   ;COLumn-width [name]=[width] - set width that a specific column is displayed.\n\
+   ;STring-width [width]        - ストリングタイプの格コラムが表示される長さを「width」に制限する。\n\\n\
+   ;COLumn-width [name]=[width] - 特定コラムが表示される長さを「width」に制限する。\n\
    ;PLan [simple|detail|off]    - クエリプランの表示を設定。\n\
    ;Info <command>              - インターナル情報を出力。\n\
    ;TIme [ON/OFF]               - クエリー実行時間の\n\

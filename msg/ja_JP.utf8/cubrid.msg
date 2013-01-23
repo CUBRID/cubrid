@@ -59,11 +59,11 @@ $set 4 MSGCAT_SET_PARAMETER
 17 UNIXエラー: %s
 18 対するメッセージがありません。
 19 バリューが範囲を超えました。デフォルトバリューに設定します。
-20 キーワード = 「%s」    バリュー = %d    デフォルト = %d\n
-21 キーワード = '%s'   バリュー = %f    デフォルト = %f\n
+20 キーワード = 「%s」   バリュー = %d    デフォルト = %d\n
+21 キーワード = 「%s」   バリュー = %f    デフォルト = %f\n
 22 お勧めしないパラメーターです。
 23 システム設定「%s」と「%s」は同時に使用できません。\n
-31 The '%s' parameter:
+31 パラメーター「%s」
 
 $set 5 MSGCAT_SET_ERROR
 1 エラーコード「%1$d」に対するメッセージがありません。
@@ -188,7 +188,7 @@ $set 5 MSGCAT_SET_ERROR
 120 ボリュームの最大数「%1$d」を超えました。
 121 データベースの永久ボリューム「%1$s」削除します。
 122 システムメッセージカタログが使えません。
-123 Unable to create %1$s for database "%2$s". Please refer "%3$s" for additional information.
+123 データベース「%2$s」に必要な「%1$s」が生成できません。詳しい情報は「%3$s」を参考してください。
 124 ボリューム「%1$s」もう存在します。
 125 「%2$d」ページのキェネリックボリューム「%1$s」が生成されて拡張されました。
 126 ライン「%2$d」のボリューム使い「%1$s」は許可されていません。
@@ -1119,7 +1119,7 @@ $ LOADDB
 1050 アトリビュート「%1$s」が変更できません。アトリビュートのドメインが変更できません。アトリビュートがインデックスを持っています。
 1051 アトリビュート「%1$s」が変更できません。制約条件を追加するためにアトリビュートを変えるのは許可しません。存在するアトリビュートバリューは制約条件を検査しない恐れがあります。
 1052 アトリビュート「%1$s」が変更できませんでした。アトリビュート表現で正しい変更が見つかりません。
-1053 The statements REPLACE INTO... and INSERT ... ON DUPLICATE KEY UPDATE are not allowed for classes that are part of an inheritance chain.
+1053 「REPLACE INTO ...」と「INSERT ... ON DUPLICATE KEY UPDATE」ステートメントはインヘリタンスチェーンの部分になるクラスに使えません。
 1054 AUTO INCREMENT制約条件の新しいバリューは現在より大きいか同じバリューである必要があります。
 1055 AUTO INCREMENT制約条件の新しいバリューは最大数より小さい必要があります。
 1056 曖昧さをさけるためにテーブルは一つのAUTO_INCREMENTカラムしか持てないし、(seed, increment)部分があってはいけません。
@@ -1145,7 +1145,7 @@ $ LOADDB
 1076 システム設定が読み込めません。
 1077 「%3$s」ファイルの「%2$d」ラインの「%1$s」パラメーター : わからないパラメーター
 1078 オフセット「%d」の文字は現在コードセットに正しくありません。
-1079 Codesets of database(%1$s) and server configuration(%2$s) are incompatible.
+1079 データベース「%1$s」のコードセットとサーバー設定「%2$s」は互換しません。
 1080 フィルターが予測したストリングの最大レングスは必ず「%1$d」です。
 1081 フィルターやファンクションインデックスに関するアトリビュートはALTERステートメントで変えられません。
 1082 すべてのページバッファーがダーティーになりました。(LRU: %1$d)
@@ -1165,19 +1165,19 @@ $ LOADDB
 1096 パーティショニングスキーマのALTERステートメントはパーティションされたクラスがフォーリンキーによってレファレンスされた場合は許可されていません。
 1097 カラム「%s」はPRIMARY KEY制約条件とNULLデフォルトバリュー制約条件が持てません。
 1098 言語のLocales「%s」はキャラクターセット「%s」の設定では正しくありません。
-1099 システムパラメーター「block_ddl_statement=yes「の設定によってDDLクエリーが実行できません。\n SQL Text: %s
+1099 システムパラメーター「block_ddl_statement=yes「の設定によってDDLクエリーが実行できません。\n SQLテキスト: %s
 1100 システムパラメーター「block_nowhere_statement=yes」の設定によってWHEREクローズがないクエリーが実行できません。
 1101 使わないエラーコードです。
 1102 わからないシステムパラメータか、正しくないバリュー。
 1103 システムパラメーターが変更できません。
-1104 Slow query (%d msec)\n%s
-1105 Internal error: partially failed to flush dirty object. 
-1106 Multiple rows in source table match the same row in destination table.
-1107 Invalid bucket number for NTILE. Should be greater than zero and no more than 2,147,483,647.
-1108 Invalid bucket number for WIDTH_BUCKET. Should be greater than zero and less than 2,147,483,647.
-1109 Invalid value for partition definition.
-1110 Insufficient space in btree leaf page. (key len: %d)\n%s
-1111 Result value is truncated, because the precision(%1$d) is less than it's length(%2$d).
+1104 スロークエリ(%d msec)\n%s
+1105 インターナルエラー：ダーティーオブジェクトのフラッシュの一部が失敗しました。
+1106 ソーステーブルのいくつのローがターゲットテーブルに既に存在しています。
+1107 正しくないNTILEバケット数。NTILEバケット数はゼロと2,147,483,647の間ではなければいけません。
+1108 正しくないWIDTH_BUCKETバケット数。WIDTH_BUCKETバケット数はゼロと2,147,483,647の間ではなければいけません。
+1109 正しくないパーティション定義。
+1110 btreeリーフページにフーリスペースが足りません。(キーレングス: %d)\n%s
+1111 プレシジョン「%1$d」が結果の長さ「%2$d」より短いため、結果が切りました。
 1112 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
@@ -1322,10 +1322,10 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 113 before ' %s'\n
 114 before END OF STATEMENT\n
 115 正しくないセットネーム\n  set_names: SET NAMES キャラクターセット [{COLLATE | COLLATION} collation]\n
-116 正しくないchrファンクションの使い方\n  CHR ( 数字 [using charset] )\n
-117 正しくないcharsetファンクションです。\n  CHARSET ( expression )\n
-118 正しくないcollationファンクションです。\n  COLLATION ( expression )\n
-119 正しくないclob_to_charファンクションです。\n  CLOB_TO_CHAR ( 数字 [using charset] )\n
+116 正しくないchrの使い方\n  CHR (　数字 [using charset]　)\n
+117 正しくないcharsetの使い方です。\n  CHARSET ( expression )\n
+118 正しくないcollationの使い方です。\n  COLLATION ( expression )\n
+119 正しくないclob_to_charの使い方です。\n  CLOB_TO_CHAR ( 数字 [using charset] )\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 メモリーが足りません。
@@ -1593,13 +1593,13 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 263 相続されたアトリビュートはパーティショニングキーで使えません。
 264 イーナムレーションエレメントの総計サイズが大きすぎます。
 265 ソーススペシフィケーションで対象テーブルが使えません。
-266 COLLATE is not allowed in this context.
-267 COLLATE modifier cannot change codeset (from '%s' to '%s'). Try using CAST instead.
-268 Invalid codeset '%1$s' for partition value. Expecting '%2$s' codeset.
-269 Session variable cannot have a different collation than system collation ('%s').
-270 Invalid function index expression.
-271 The query specification of %s has a cyclic reference to itself.
-272 %s expression not allowed in join condition.
+266 COLLATEはこの文脈で許可されていません。
+267 COLLATEはコードセット「%s」を「%s」に変えられません。その代わりCASTを使ってください。
+268 パーティションバリューに正しくないコードセット「%1$s」。適切なコードセット：「%2$s」
+269 セッション変数はシステムコーレーションと違うコーレーションを持ってはいけません。
+270 正しくないインデックス表現ファンクション。
+271 「%s」のクエリスペシフィケーションは自分を参照する循環参照を持ちます。
+272 表現「%s」はジョインコンディションでは使用できません。
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 バチャールメモリーが足りません。: %dバイトがアロケーションできません。
