@@ -2816,18 +2816,22 @@ qe_query_result_copy (T_REQ_HANDLE * req_handle, T_CCI_QUERY_RESULT ** res_qr)
   *res_qr = NULL;
 
   if (req_handle->qr == NULL || num_query == 0)
-    return 0;
+    {
+      return 0;
+    }
 
   qr =
     (T_CCI_QUERY_RESULT *) MALLOC (sizeof (T_CCI_QUERY_RESULT) * num_query);
   if (qr == NULL)
-    return CCI_ER_NO_MORE_MEMORY;
-  memset (qr, 0, sizeof (T_CCI_QUERY_RESULT) * num_query);
+    {
+      return CCI_ER_NO_MORE_MEMORY;
+    }
 
   for (i = 0; i < num_query; i++)
     {
       qr[i].result_count = req_handle->qr[i].result_count;
       qr[i].stmt_type = req_handle->qr[i].stmt_type;
+      qr[i].err_no = req_handle->qr[i].err_no;
       ALLOC_COPY (qr[i].err_msg, req_handle->qr[i].err_msg);
       strcpy (qr[i].oid, req_handle->qr[i].oid);
     }
@@ -5504,10 +5508,13 @@ execute_array_info_decode (char *buf, int size, char flag,
   remain_size -= 4;
   cur_p += 4;
 
-  if (num_query < 0)
+  if (num_query == 0)
     {
       assert (0);
-      return CCI_ER_COMMUNICATION;
+      *res_qr = NULL;
+      *res_remain_size = remain_size;
+
+      return num_query;
     }
 
   qr =
