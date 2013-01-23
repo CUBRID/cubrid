@@ -466,6 +466,9 @@ static PT_NODE * pt_create_char_string_literal (PARSER_CONTEXT *parser,
 						const PT_TYPE_ENUM char_type,
 						const char *str,
 						const INTL_CODESET codeset);
+static PT_NODE * pt_create_date_value (PARSER_CONTEXT *parser,
+				       const PT_TYPE_ENUM type,
+				       const char *str);
 static void pt_value_set_charset_coll (PARSER_CONTEXT *parser,
 				       PT_NODE *node,
 				       const int codeset_id,
@@ -20254,89 +20257,41 @@ of_integer_real_literal
 	;
 
 date_or_time_literal
-	: Date char_string_literal
+	: Date CHAR_STRING
 		{{
+			PT_NODE *val;
 
-			PT_NODE *val = $2;
-			if (val)
-			  {
-			    val->type_enum = PT_TYPE_DATE;
-			    if (val->info.value.text)
-			      {
-				/* overwrite text in order to print
-				 * "date value"
-				 */
-				 val->info.value.text = NULL;
-				 PT_NODE_PRINT_VALUE_TO_TEXT (this_parser,
-							      val);
-			      }
-			  }
+			val = pt_create_date_value (this_parser, PT_TYPE_DATE, $2);
+
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
 		DBG_PRINT}}
-	| Time char_string_literal
+	| Time CHAR_STRING
 		{{
+			PT_NODE *val;
 
-			PT_NODE *val = $2;
-			if (val)
-			  {
-			    val->type_enum = PT_TYPE_TIME;
-			    if (val->info.value.text)
-			      {
-				/* overwrite text in order to print
-				 * "time value"
-				 */
-				 val->info.value.text = NULL;
-				 PT_NODE_PRINT_VALUE_TO_TEXT (this_parser,
-							      val);
-			      }
-			  }
+			val = pt_create_date_value (this_parser, PT_TYPE_TIME, $2);
+
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
 		DBG_PRINT}}
-	| TIMESTAMP char_string_literal
+	| TIMESTAMP CHAR_STRING
 		{{
+			PT_NODE *val;
 
-			PT_NODE *val = $2;
-			if (val)
-			  {
-			    val->type_enum = PT_TYPE_TIMESTAMP;
-			    if (val->info.value.text)
-			      {
-				/* overwrite text in order to print
-				 * "timestamp value"
-				 */
-				 val->info.value.text = NULL;
-				 PT_NODE_PRINT_VALUE_TO_TEXT (this_parser,
-							      val);
-			      }
-			  }
+			val = pt_create_date_value (this_parser, PT_TYPE_TIMESTAMP, $2);
+
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
 		DBG_PRINT}}
-	| DATETIME char_string_literal
+	| DATETIME CHAR_STRING
 		{{
+			PT_NODE *val;
 
-			PT_NODE *val = $2;
-			if (val)
-			  {
-			    val->type_enum = PT_TYPE_DATETIME;
-			    if (val->info.value.text)
-			      {
-				/* overwrite text in order to print
-				 * "datetime value"
-				 */
-				 val->info.value.text = NULL;
-				 PT_NODE_PRINT_VALUE_TO_TEXT (this_parser,
-							      val);
-			      }
-			  }
+			val = pt_create_date_value (this_parser, PT_TYPE_DATETIME, $2);			
+
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
 		DBG_PRINT}}
 	;
 
@@ -23184,6 +23139,25 @@ pt_create_char_string_literal (PARSER_CONTEXT *parser, const PT_TYPE_ENUM char_t
 	node->info.value.data_value.str = pt_append_bytes (this_parser, NULL, str, str_size);
 	PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
       }
+
+  return node;
+}
+
+static PT_NODE *
+pt_create_date_value (PARSER_CONTEXT *parser, const PT_TYPE_ENUM type,
+		      const char *str)
+{
+  PT_NODE *node = NULL;
+
+  node = parser_new_node (this_parser, PT_VALUE);
+
+  if (node)
+    {
+      node->type_enum = type;
+
+      node->info.value.data_value.str = pt_append_bytes (this_parser, NULL, str, strlen (str));
+      PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
+    }
 
   return node;
 }
