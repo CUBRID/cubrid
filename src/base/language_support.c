@@ -5090,7 +5090,7 @@ lang_split_key_euc (const LANG_COLLATION * lang_coll, const bool is_desc,
 	    }
 	  while (is_zero_weight && str1 < str1_end);
 
-	  key_size = str1 - str1_end + char1_size;
+	  key_size = str1_next - str1_begin;
 	}
     }
 
