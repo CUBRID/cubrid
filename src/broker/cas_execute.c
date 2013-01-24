@@ -2216,7 +2216,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
 
       net_buf_cp_byte (net_buf, stmt_type);
 
-      if (client_version >= CAS_MAKE_VER (8, 4, 3))
+      if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V3))
 	{
 	  net_buf_cp_int (net_buf, DBMS_ERROR_INDICATOR, NULL);
 	}
@@ -2434,7 +2434,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
 	  err_msg = (char *) "";
 	}
 
-      if (client_version >= CAS_MAKE_VER (8, 4, 3))
+      if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V3))
 	{
 	  net_buf_cp_int (net_buf, DBMS_ERROR_INDICATOR, NULL);
 	}

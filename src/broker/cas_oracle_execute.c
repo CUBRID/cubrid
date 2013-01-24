@@ -1575,7 +1575,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
       err_code = err_info.err_number;
       err_msg = err_info.err_string;
 
-      if (client_version >= CAS_MAKE_VER (8, 4, 3))
+      if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V3))
 	{
 	  net_buf_cp_int (net_buf, DBMS_ERROR_INDICATOR, NULL);
 	}
