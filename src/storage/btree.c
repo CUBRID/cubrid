@@ -910,8 +910,8 @@ btree_write_root_header (RECDES * rec, BTREE_ROOT_HEADER * root_header)
   BTREE_PUT_OVFID (rec->data, &root_header->ovfid);
 
   or_init (&buf, rec->data + BTREE_KEY_TYPE_OFFSET,
-	   rec->area_size ==
-	   -1 ? -1 : rec->area_size - BTREE_KEY_TYPE_OFFSET);
+	   ((rec->area_size == -1)
+	    ? -1 : (rec->area_size - BTREE_KEY_TYPE_OFFSET)));
   rc = or_put_domain (&buf, root_header->key_type, 0, 0);
 
   rec->type = REC_HOME;
@@ -12102,7 +12102,7 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
       VFID_COPY (&root_header.ovfid, &btid_int.ovfid);
       if (btree_write_root_header (&peek_rec, &root_header) != NO_ERROR)
 	{
-          log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
 	  goto error;
 	}
 
@@ -21885,7 +21885,8 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
 #endif
 
   if (DB_VALUE_DOMAIN_TYPE (&(bts->cur_key)) != DB_TYPE_MIDXKEY
-      || !multi_range_opt->use || multi_range_opt->sort_att_idx < 0)
+      || multi_range_opt->use == NULL
+      || multi_range_opt->sort_att_idx == NULL)
     {
       return ER_FAILED;
     }

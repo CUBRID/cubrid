@@ -43,11 +43,14 @@
 #include <stdlib.h>
 #if defined(WINDOWS)
 #include <direct.h>
+#else
+#include <sys/time.h>
 #endif
 
 /*
  * OTHER IMPORTED HEADER FILES
  */
+#include "porting.h"
 #include "cci_handle_mng.h"
 #include "cci_log.h"
 

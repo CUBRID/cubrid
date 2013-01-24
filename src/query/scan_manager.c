@@ -4692,8 +4692,9 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
        * (OID list or covering index instead of "on the fly" lists),
        * if sorting column is not yet set at this stage;
        * also 'grouped' is not supported*/
-      if (isidp->multi_range_opt.use &&
-	  (isidp->multi_range_opt.sort_att_idx < 0 || scan_id->grouped))
+      if (isidp->multi_range_opt.use
+	  && (isidp->multi_range_opt.sort_att_idx == NULL
+	      || scan_id->grouped))
 	{
 	  isidp->multi_range_opt.use = false;
 	}

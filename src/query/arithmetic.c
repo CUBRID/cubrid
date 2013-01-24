@@ -71,6 +71,18 @@ static double truncate_double (double num, double integer);
 static DB_BIGINT truncate_bigint (DB_BIGINT num, DB_BIGINT integer);
 static DB_DATE *truncate_date (DB_DATE * date, const DB_VALUE * format_str);
 static int get_number_dbval_as_double (double *d, const DB_VALUE * value);
+static int get_number_dbval_as_long_double (long double *ld,
+					    const DB_VALUE * value);
+static int db_width_bucket_calculate_numeric (double *result,
+					      const DB_VALUE * value1,
+					      const DB_VALUE * value2,
+					      const DB_VALUE * value3,
+					      const DB_VALUE * value4);
+static int db_width_bucket_calculate_long_double (double *result,
+						  long double value1,
+						  long double value2,
+						  long double value3,
+						  long double value4);
 
 /*
  * db_floor_dbval () - take floor of db_value
@@ -4378,21 +4390,352 @@ db_typeof_dbval (DB_VALUE * result, DB_VALUE * value)
 }
 
 /*
+ * get_number_dbval_as_long_double () -
+ *   return:
+ *   long double(out):
+ *   value(in) : 
+ */
+static int
+get_number_dbval_as_long_double (long double *ld, const DB_VALUE * value)
+{
+  short s;
+  int i;
+  float f;
+  long double dtmp;
+  DB_BIGINT bi;
+  char num_string[2 * DB_MAX_NUMERIC_PRECISION + 2];
+  char *tail_ptr = NULL;
+
+  switch (DB_VALUE_DOMAIN_TYPE (value))
+    {
+    case DB_TYPE_SHORT:
+      s = DB_GET_SHORT (value);
+      dtmp = (long double) s;
+      break;
+
+    case DB_TYPE_INTEGER:
+      i = DB_GET_INT (value);
+      dtmp = (long double) i;
+      break;
+
+    case DB_TYPE_BIGINT:
+      bi = DB_GET_BIGINT (value);
+      dtmp = (long double) bi;
+      break;
+
+    case DB_TYPE_FLOAT:
+      f = DB_GET_FLOAT (value);
+      dtmp = (long double) f;
+      break;
+
+    case DB_TYPE_DOUBLE:
+      dtmp = (long double) DB_GET_DOUBLE (value);
+      break;
+
+    case DB_TYPE_NUMERIC:
+      numeric_coerce_num_to_dec_str ((DB_C_NUMERIC) db_locate_numeric (value),
+				     num_string);
+#ifdef _ISOC99_SOURCE
+      dtmp =
+	strtold (num_string, &tail_ptr) / powl (10.0, DB_VALUE_SCALE (value));
+#else
+      dtmp = atof (num_string) / pow (10.0, DB_VALUE_SCALE (value));
+#endif
+      break;
+
+    case DB_TYPE_MONETARY:
+      dtmp = (long double) (DB_GET_MONETARY (value))->amount;
+      break;
+
+    default:
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+      return ER_QPROC_INVALID_DATATYPE;
+    }
+
+  *ld = dtmp;
+  return NO_ERROR;
+}
+
+/*
+ * db_width_bucket_calculate_numeric() -
+ *   return:
+ *   result(out):
+ *   value1-4(in) : input db_value
+ */
+static int
+db_width_bucket_calculate_numeric (double *result,
+				   const DB_VALUE * value1,
+				   const DB_VALUE * value2,
+				   const DB_VALUE * value3,
+				   const DB_VALUE * value4)
+{
+  int er_status = NO_ERROR, c;
+  DB_VALUE cmp_result;
+  DB_VALUE n1, n2, n3, n4;
+  double res = 0.0;
+
+  assert (value1 != NULL && value2 != NULL
+	  && value3 != NULL && value4 != NULL && result != NULL);
+
+  assert (DB_VALUE_TYPE (value1) == DB_TYPE_NUMERIC
+	  && DB_VALUE_TYPE (value2) == DB_TYPE_NUMERIC
+	  && DB_VALUE_TYPE (value3) == DB_TYPE_NUMERIC
+	  && DB_VALUE_TYPE (value4) == DB_TYPE_NUMERIC);
+
+  DB_MAKE_NULL (&cmp_result);
+  DB_MAKE_NULL (&n1);
+  DB_MAKE_NULL (&n2);
+  DB_MAKE_NULL (&n3);
+  DB_MAKE_NULL (&n4);
+
+  er_status = numeric_db_value_compare (value2, value3, &cmp_result);
+  if (er_status != NO_ERROR)
+    {
+      return er_status;
+    }
+
+  c = DB_GET_INTEGER (&cmp_result);
+  if (c == 0 || c == -1)
+    {
+      /* value2 <= value3 */
+
+      er_status = numeric_db_value_compare (value1, value2, &cmp_result);
+      if (er_status != NO_ERROR)
+	{
+	  return er_status;
+	}
+
+      if (DB_GET_INTEGER (&cmp_result) < 0)
+	{
+	  res = 0.0;
+	}
+      else
+	{
+	  er_status = numeric_db_value_compare (value3, value1, &cmp_result);
+	  if (er_status != NO_ERROR)
+	    {
+	      return er_status;
+	    }
+
+	  if (DB_GET_INTEGER (&cmp_result) < 1)
+	    {
+	      numeric_coerce_num_to_double (DB_GET_NUMERIC (value4),
+					    DB_VALUE_SCALE (value4), &res);
+	      res += 1.0;
+	    }
+	  else
+	    {
+	      /* floor ((v1-v2)/(v3-v2)*v4) + 1 */
+	      er_status = numeric_db_value_sub (value1, value2, &n1);
+	      if (er_status != NO_ERROR)
+		{
+		  return er_status;
+		}
+
+	      er_status = numeric_db_value_sub (value3, value2, &n2);
+	      if (er_status != NO_ERROR)
+		{
+		  return er_status;
+		}
+
+	      er_status = numeric_db_value_div (&n1, &n2, &n3);
+	      if (er_status != NO_ERROR)
+		{
+		  return er_status;
+		}
+
+	      er_status = numeric_db_value_mul (&n3, value4, &n4);
+	      if (er_status != NO_ERROR)
+		{
+		  return er_status;
+		}
+
+	      numeric_coerce_num_to_double (DB_GET_NUMERIC (&n4),
+					    DB_VALUE_SCALE (&n4), &res);
+	      if (OR_CHECK_DOUBLE_OVERFLOW (res))
+		{
+		  return ER_QPROC_OVERFLOW_HAPPENED;
+		}
+
+	      res = floor (res) + 1.0;
+	    }
+	}
+    }
+  else
+    {
+      /* value2 > value3 */
+      assert (c == 1);
+
+      er_status = numeric_db_value_compare (value2, value1, &cmp_result);
+      if (er_status != NO_ERROR)
+	{
+	  return er_status;
+	}
+
+      if (DB_GET_INTEGER (&cmp_result) < 0)
+	{
+	  res = 0.0;
+	}
+      else
+	{
+	  er_status = numeric_db_value_compare (value2, value3, &cmp_result);
+	  if (er_status != NO_ERROR)
+	    {
+	      return er_status;
+	    }
+
+	  if (DB_GET_INTEGER (&cmp_result) < 1)
+	    {
+	      numeric_coerce_num_to_double (DB_GET_NUMERIC (value4),
+					    DB_VALUE_SCALE (value4), &res);
+	      res += 1.0;
+	    }
+	  else
+	    {
+	      /* floor ((v2-v1)/(v2-v3)*v4) + 1 */
+	      er_status = numeric_db_value_sub (value2, value1, &n1);
+	      if (er_status != NO_ERROR)
+		{
+		  return er_status;
+		}
+
+	      er_status = numeric_db_value_sub (value2, value3, &n2);
+	      if (er_status != NO_ERROR)
+		{
+		  return er_status;
+		}
+
+	      er_status = numeric_db_value_div (&n1, &n2, &n3);
+	      if (er_status != NO_ERROR)
+		{
+		  return er_status;
+		}
+
+	      er_status = numeric_db_value_mul (&n3, value4, &n4);
+	      if (er_status != NO_ERROR)
+		{
+		  return er_status;
+		}
+
+	      numeric_coerce_num_to_double (DB_GET_NUMERIC (&n4),
+					    DB_VALUE_SCALE (&n4), &res);
+	      if (OR_CHECK_DOUBLE_OVERFLOW (res))
+		{
+		  return ER_QPROC_OVERFLOW_HAPPENED;
+		}
+
+	      res = floor (res) + 1.0;
+	    }
+	}
+    }
+
+  if (OR_CHECK_DOUBLE_OVERFLOW (res))
+    {
+      return ER_QPROC_OVERFLOW_HAPPENED;
+    }
+
+  *result = res;
+  return NO_ERROR;
+}
+
+/*
+ * db_width_bucket_calculate_long_double() -
+ *   return:
+ *   result(out):
+ *   value1-4(in) : input long double
+ */
+static int
+db_width_bucket_calculate_long_double (double *result, long double value1,
+				       long double value2, long double value3,
+				       long double value4)
+{
+  if (value2 <= value3)
+    {
+      if (value1 < value2)
+	{
+	  *result = 0.0;
+	}
+      else if (value3 <= value1)
+	{
+	  *result = value4 + 1.0;
+	}
+      else
+	{
+	  /* d_ret = floor ((d1 - d2) / (d3 - d2) * d4) + 1.0 */
+	  *result = (double) (floorl ((value1 - value2)
+				      / (value3 - value2) * value4) + 1.0);
+	}
+    }
+  else
+    {
+      if (value2 < value1)
+	{
+	  *result = 0.0;
+	}
+      else if (value1 <= value3)
+	{
+	  *result = value4 + 1.0;
+	}
+      else
+	{
+	  /* d_ret = floor ((d2 - d1) / (d2 - d3) * d4) + 1.0 */
+	  *result = (double) (floorl ((value2 - value1)
+				      / (value2 - value3) * value4) + 1.0);
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * db_width_bucket() -
  *   return:
  *   result(out):
  *   value1-4(in) : input db_value
  */
 int
-db_width_bucket (DB_VALUE * result, DB_VALUE * value1,
-		 DB_VALUE * value2, DB_VALUE * value3, DB_VALUE * value4)
+db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
+		 const DB_VALUE * value2, const DB_VALUE * value3,
+		 const DB_VALUE * value4)
 {
-  double d1, d2, d3, d4;
-  int i_ret, i4;
-  DB_TYPE type;
+#define RETURN_ERROR(err) \
+  do \
+    { \
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true) \
+	{ \
+	  DB_MAKE_NULL (result); \
+	  return NO_ERROR; \
+	} \
+      else \
+	{ \
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, (err), 0); \
+	  return (err); \
+	} \
+    } \
+  while (0)
+
+  double d1, d2, d3, d4, d_ret;
+  double tmp_d1 = 0.0, tmp_d2 = 0.0, tmp_d3 = 0.0, tmp_d4 = 0.0;
+  DB_TYPE type, cast_type;
+  DB_VALUE cast_value1, cast_value2, cast_value3, cast_value4;
+  TP_DOMAIN *cast_domain = NULL;
+  TP_DOMAIN *numeric_domain = NULL;
+  TP_DOMAIN_STATUS cast_status;
+  bool is_deal_with_numeric = false;
+  bool is_deal_with_long_double = false;
+  int er_status = NO_ERROR;
+#ifdef __GNUC__
+  long double tmp_ld1 = 0.0, tmp_ld2 = 0.0, tmp_ld3 = 0.0, tmp_ld4 = 0.0;
+#endif
 
   assert (result != NULL && value1 != NULL
 	  && value2 != NULL && value3 != NULL && value4 != NULL);
+
+  DB_MAKE_NULL (&cast_value1);
+  DB_MAKE_NULL (&cast_value2);
+  DB_MAKE_NULL (&cast_value3);
+  DB_MAKE_NULL (&cast_value4);
 
   if (DB_VALUE_TYPE (value1) == DB_TYPE_NULL
       || DB_VALUE_TYPE (value2) == DB_TYPE_NULL
@@ -4406,20 +4749,91 @@ db_width_bucket (DB_VALUE * result, DB_VALUE * value1,
   d4 = DB_GET_DOUBLE (value4);
   if (d4 < 1 || d4 >= DB_INT32_MAX)
     {
-      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+      RETURN_ERROR (ER_PROC_WIDTH_BUCKET_COUNT);
+    }
+
+  d4 = (int) floor (d4);
+
+  /* find the common type of value1, value2 and value3
+   * and cast them to the common type
+   */
+  type = DB_VALUE_DOMAIN_TYPE (value1);
+  switch (type)
+    {
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARNCHAR:
+      /* try double */
+      cast_type = DB_TYPE_UNKNOWN;
+      cast_domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+      cast_status = tp_value_coerce (value1, &cast_value1, cast_domain);
+      if (cast_status == DOMAIN_COMPATIBLE)
 	{
-	  DB_MAKE_NULL (result);
-	  return NO_ERROR;
+	  cast_type = DB_TYPE_DOUBLE;
 	}
       else
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_PROC_WIDTH_BUCKET_COUNT, 0);
-	  return ER_PROC_WIDTH_BUCKET_COUNT;
+	  /* try datetime
+	   * date, timestamp is compatible with datetime
+	   */
+	  cast_domain = tp_domain_resolve_default (DB_TYPE_DATETIME);
+	  cast_status = tp_value_coerce (value1, &cast_value1, cast_domain);
+	  if (cast_status == DOMAIN_COMPATIBLE)
+	    {
+	      cast_type = DB_TYPE_DATETIME;
+	    }
+	  else
+	    {
+	      /* try time */
+	      cast_domain = tp_domain_resolve_default (DB_TYPE_TIME);
+	      cast_status = tp_value_coerce (value1, &cast_value1,
+					     cast_domain);
+	      if (cast_status == DOMAIN_COMPATIBLE)
+		{
+		  cast_type = DB_TYPE_TIME;
+		}
+	      else
+		{
+		  RETURN_ERROR (ER_QPROC_INVALID_DATATYPE);
+		}
+	    }
 	}
-    }
-  i4 = (int) floor (d4);
 
+      value1 = &cast_value1;
+
+      /* coerce value2 with the type of value1 */
+      if (cast_type != DB_VALUE_DOMAIN_TYPE (value2))
+	{
+	  cast_domain = tp_domain_resolve_default (cast_type);
+	  cast_status = tp_value_coerce (value2, &cast_value2, cast_domain);
+	  if (cast_status != DOMAIN_COMPATIBLE)
+	    {
+	      RETURN_ERROR (ER_QPROC_INVALID_DATATYPE);
+	    }
+
+	  value2 = &cast_value2;
+	}
+
+      /* coerce value3 with the type of value1 */
+      if (cast_type != DB_VALUE_DOMAIN_TYPE (value3))
+	{
+	  cast_domain = tp_domain_resolve_default (cast_type);
+	  cast_status = tp_value_coerce (value3, &cast_value3, cast_domain);
+	  if (cast_status != DOMAIN_COMPATIBLE)
+	    {
+	      RETURN_ERROR (ER_QPROC_INVALID_DATATYPE);
+	    }
+
+	  value3 = &cast_value3;
+	}
+      break;
+
+    default:
+      break;
+    }
+
+  /* the type of value1 is fixed */
   type = DB_VALUE_DOMAIN_TYPE (value1);
   switch (type)
     {
@@ -4456,59 +4870,176 @@ db_width_bucket (DB_VALUE * result, DB_VALUE * value1,
     case DB_TYPE_FLOAT:
     case DB_TYPE_DOUBLE:
     case DB_TYPE_MONETARY:
-    case DB_TYPE_BIGINT:
-    case DB_TYPE_NUMERIC:
       get_number_dbval_as_double (&d1, value1);
       get_number_dbval_as_double (&d2, value2);
       get_number_dbval_as_double (&d3, value3);
       break;
 
-    default:
-      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+    case DB_TYPE_BIGINT:
+    case DB_TYPE_NUMERIC:
+      /* gcc fully support long double (80 or 128bits)
+       * if long double is not fully supported, do calculation with numeric
+       */
+#ifdef __GNUC__
+      get_number_dbval_as_long_double (&tmp_ld1, value1);
+      get_number_dbval_as_long_double (&tmp_ld2, value2);
+      get_number_dbval_as_long_double (&tmp_ld3, value3);
+      tmp_ld4 = (long double) d4;
+
+      is_deal_with_long_double = true;
+#else
+      numeric_domain = tp_domain_new (DB_TYPE_NUMERIC);
+      if (numeric_domain == NULL)
 	{
-	  DB_MAKE_NULL (result);
-	  return NO_ERROR;
+	  RETURN_ERROR (er_errid ());
+	}
+
+      cast_domain = numeric_domain;
+
+      if (type == DB_TYPE_BIGINT)
+	{
+	  /* cast bigint to numeric
+	   * Compiler doesn't support long double (80 or 128bits), so we use 
+	   * numeric instead.
+	   * If a high precision lib is introduced or long double is full 
+	   * supported, remove this part and use the lib or long double 
+	   * to calculate.
+	   */
+	  cast_domain->precision = 2 * DB_DEFAULT_NUMERIC_PRECISION;
+	  cast_domain->scale = DB_DEFAULT_NUMERIC_PRECISION;
+
+	  /* convert value1 */
+	  cast_status = tp_value_coerce (value1, &cast_value1, cast_domain);
+	  if (cast_status != DOMAIN_COMPATIBLE)
+	    {
+	      tp_domain_free (numeric_domain);
+	      RETURN_ERROR (ER_QPROC_OVERFLOW_HAPPENED);
+	    }
+
+	  value1 = &cast_value1;
 	}
       else
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_QPROC_INVALID_DATATYPE, 0);
-	  return ER_QPROC_INVALID_DATATYPE;
+	  cast_domain->precision = DB_VALUE_PRECISION (value1);
+	  cast_domain->scale = DB_VALUE_SCALE (value1);
 	}
+
+      /* cast value2, value3, value4 to numeric to make the calculation */
+      cast_status = tp_value_coerce (value2, &cast_value2, cast_domain);
+      if (cast_status != DOMAIN_COMPATIBLE)
+	{
+	  tp_domain_free (numeric_domain);
+	  RETURN_ERROR (ER_QPROC_OVERFLOW_HAPPENED);
+	}
+
+      cast_status = tp_value_coerce (value3, &cast_value3, cast_domain);
+      if (cast_status != DOMAIN_COMPATIBLE)
+	{
+	  tp_domain_free (numeric_domain);
+	  RETURN_ERROR (ER_QPROC_OVERFLOW_HAPPENED);
+	}
+
+      DB_MAKE_INT (&cast_value4, ((int) d4));
+      cast_status = tp_value_coerce (&cast_value4, &cast_value4, cast_domain);
+      if (cast_status != DOMAIN_COMPATIBLE)
+	{
+	  tp_domain_free (numeric_domain);
+	  RETURN_ERROR (ER_QPROC_OVERFLOW_HAPPENED);
+	}
+
+      value2 = &cast_value2;
+      value3 = &cast_value3;
+      value4 = &cast_value4;
+
+      is_deal_with_numeric = true;
+
+      tp_domain_free (numeric_domain);
+      numeric_domain = NULL;
+#endif
+      break;
+
+    default:
+      RETURN_ERROR (ER_QPROC_INVALID_DATATYPE);
     }
 
-  if (d2 <= d3)
+  if (is_deal_with_numeric)
     {
-      if (d1 < d2)
+      er_status = db_width_bucket_calculate_numeric (&d_ret, value1, value2,
+						     value3, value4);
+      if (er_status != NO_ERROR)
 	{
-	  i_ret = 0;
-	}
-      else if (d3 <= d1)
-	{
-	  i_ret = i4 + 1;
-	}
-      else
-	{
-	  i_ret = floor ((d1 - d2) / (d3 - d2) * i4) + 1;
+	  RETURN_ERROR (er_status);
 	}
     }
+#ifdef __GNUC__
+  else if (is_deal_with_long_double)
+    {
+      er_status = db_width_bucket_calculate_long_double (&d_ret, tmp_ld1,
+							 tmp_ld2, tmp_ld3,
+							 tmp_ld4);
+      if (er_status != NO_ERROR)
+	{
+	  RETURN_ERROR (er_status);
+	}
+    }
+#endif
   else
     {
-      if (d2 < d1)
+      if (d2 <= d3)
 	{
-	  i_ret = 0;
-	}
-      else if (d1 <= d3)
-	{
-	  i_ret = i4 + 1;
+	  if (d1 < d2)
+	    {
+	      d_ret = 0.0;
+	    }
+	  else if (d3 <= d1)
+	    {
+	      d_ret = d4 + 1.0;
+	    }
+	  else
+	    {
+	      /* d_ret = floor ((d1 - d2) / (d3 - d2) * d4) + 1.0 */
+	      tmp_d1 = d1 - d2;
+	      tmp_d2 = d3 - d2;
+	      tmp_d3 = tmp_d1 / tmp_d2;
+	      tmp_d4 = tmp_d3 * d4;
+	      d_ret = floor (tmp_d4) + 1.0;
+	    }
 	}
       else
 	{
-	  i_ret = floor ((d2 - d1) / (d2 - d3) * i4) + 1;
+	  if (d2 < d1)
+	    {
+	      d_ret = 0.0;
+	    }
+	  else if (d1 <= d3)
+	    {
+	      d_ret = d4 + 1.0;
+	    }
+	  else
+	    {
+	      /* d_ret = floor ((d2 - d1) / (d2 - d3) * d4) + 1.0 */
+	      tmp_d1 = d2 - d1;
+	      tmp_d2 = d2 - d3;
+	      tmp_d3 = tmp_d1 / tmp_d2;
+	      tmp_d4 = tmp_d3 * d4;
+	      d_ret = floor (tmp_d4) + 1.0;
+	    }
 	}
     }
 
-  DB_MAKE_INT (result, i_ret);
+  /* check overflow */
+  if (OR_CHECK_INT_OVERFLOW (d_ret)
+      || OR_CHECK_DOUBLE_OVERFLOW (tmp_d1)
+      || OR_CHECK_DOUBLE_OVERFLOW (tmp_d2)
+      || OR_CHECK_DOUBLE_OVERFLOW (tmp_d3)
+      || OR_CHECK_DOUBLE_OVERFLOW (tmp_d4))
+    {
+      RETURN_ERROR (ER_QPROC_INVALID_DATATYPE);
+    }
 
-  return NO_ERROR;
+  DB_MAKE_INT (result, ((int) d_ret));
+
+  return er_status;
+
+#undef RETURN_ERROR
 }

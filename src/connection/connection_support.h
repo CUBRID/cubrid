@@ -127,7 +127,7 @@ extern const char *css_ha_mode_string (HA_MODE mode);
 extern void css_register_server_timeout_fn (CSS_SERVER_TIMEOUT_FN
 					    callback_fn);
 #endif /* !SERVER_MODE */
-#endif /* _CONNECTION_SUPPORT_H_ */
 
 extern int css_send_magic (CSS_CONN_ENTRY * conn);
 extern int css_check_magic (CSS_CONN_ENTRY * conn);
+#endif /* _CONNECTION_SUPPORT_H_ */

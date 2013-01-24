@@ -238,7 +238,8 @@ extern char db_Program_name[];
 
 #define DB_GET_OID(value)		(db_get_oid(value))
 
-#define db_locate_numeric(value) ((value)->data.num.d.buf)
+#define db_locate_numeric(value) \
+  ((const DB_C_NUMERIC) ((value)->data.num.d.buf))
 
 extern int db_init (const char *program, int print_version,
 		    const char *dbname, const char *db_path,

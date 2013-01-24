@@ -45,13 +45,13 @@ extern void numeric_init_power_value_string (void);
 #endif
 
 /* Arithmetic routines */
-extern int numeric_db_value_add (DB_VALUE * dbv1,
-				 DB_VALUE * dbv2, DB_VALUE * answer);
-extern int numeric_db_value_sub (DB_VALUE * dbv1, DB_VALUE * dbv2,
+extern int numeric_db_value_add (const DB_VALUE * dbv1,
+				 const DB_VALUE * dbv2, DB_VALUE * answer);
+extern int numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2,
 				 DB_VALUE * answer);
-extern int numeric_db_value_mul (DB_VALUE * dbv1, DB_VALUE * dbv2,
+extern int numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2,
 				 DB_VALUE * answer);
-extern int numeric_db_value_div (DB_VALUE * dbv1, DB_VALUE * dbv2,
+extern int numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2,
 				 DB_VALUE * answer);
 extern int numeric_db_value_negate (DB_VALUE * answer);
 extern void numeric_db_value_abs (DB_C_NUMERIC src_num,
@@ -59,8 +59,9 @@ extern void numeric_db_value_abs (DB_C_NUMERIC src_num,
 extern int numeric_db_value_increase (DB_VALUE * arg);
 
 /* Comparison routines */
-extern int numeric_db_value_compare (DB_VALUE * dbv1,
-				     DB_VALUE * dbv2, DB_VALUE * answer);
+extern int numeric_db_value_compare (const DB_VALUE * dbv1,
+				     const DB_VALUE * dbv2,
+				     DB_VALUE * answer);
 
 /* Coercion routines */
 extern void numeric_coerce_int_to_num (int arg, DB_C_NUMERIC answer);

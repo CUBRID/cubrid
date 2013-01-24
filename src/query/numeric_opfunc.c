@@ -154,14 +154,16 @@ static void numeric_div (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2,
 			 DB_C_NUMERIC answer, DB_C_NUMERIC remainder);
 static int numeric_compare (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2);
 static int numeric_scale_by_ten (DB_C_NUMERIC arg, bool is_long_num);
-static int numeric_scale_dec (DB_C_NUMERIC arg,
+static int numeric_scale_dec (const DB_C_NUMERIC arg,
 			      int dscale, DB_C_NUMERIC answer);
 static int numeric_scale_dec_long (DB_C_NUMERIC answer, int dscale,
 				   bool is_long_num);
-static int numeric_common_prec_scale (DB_VALUE * dbv1, DB_VALUE * dbv2,
+static int numeric_common_prec_scale (const DB_VALUE * dbv1,
+				      const DB_VALUE * dbv2,
 				      DB_VALUE * dbv1_common,
 				      DB_VALUE * dbv2_common);
-static int numeric_prec_scale_when_overflow (DB_VALUE * dbv1, DB_VALUE * dbv2,
+static int numeric_prec_scale_when_overflow (const DB_VALUE * dbv1,
+					     const DB_VALUE * dbv2,
 					     DB_VALUE * dbv1_common,
 					     DB_VALUE * dbv2_common);
 static void numeric_coerce_big_num_to_dec_str (unsigned char *num,
@@ -1318,7 +1320,7 @@ numeric_scale_by_ten (DB_C_NUMERIC arg, bool is_long_num)
  *       given number of decimal places.  The result is returned in answer.
  */
 static int
-numeric_scale_dec (DB_C_NUMERIC arg, int dscale, DB_C_NUMERIC answer)
+numeric_scale_dec (const DB_C_NUMERIC arg, int dscale, DB_C_NUMERIC answer)
 {
   int ret = NO_ERROR;
 
@@ -1367,18 +1369,17 @@ numeric_scale_dec_long (DB_C_NUMERIC answer, int dscale, bool is_long_num)
  *   return: NO_ERROR, or ER_code
  *     Errors:
  *       ER_NUM_OVERFLOW          - if scaling would exceed max scale
- *   dbv1(in)   : ptr to a DB_VALUE structure of type DB_TYPE_NUMERIC
- *   dbv2(in)   : ptr to a DB_VALUE structure of type DB_TYPE_NUMERIC
- *   dbv1_common(in)    : ptr to a DB_VALUE structure of type DB_TYPE_NUMERIC
- *   dbv2_common(in)    : ptr to a DB_VALUE structure of type DB_TYPE_NUMERIC
+ *   dbv1(in): ptr to a DB_VALUE structure of type DB_TYPE_NUMERIC
+ *   dbv2(in): ptr to a DB_VALUE structure of type DB_TYPE_NUMERIC
+ *   dbv1_common(out): ptr to a DB_VALUE structure of type DB_TYPE_NUMERIC
+ *   dbv2_common(out): ptr to a DB_VALUE structure of type DB_TYPE_NUMERIC
  *
  * Note: This routine returns two DB_VALUE's of type numeric with the same
  *       scale.  dbv1_common, dbv2_common are set to dbv1, dbv2 respectively
  *       when an error occurs.
  */
 static int
-numeric_common_prec_scale (DB_VALUE * dbv1,
-			   DB_VALUE * dbv2,
+numeric_common_prec_scale (const DB_VALUE * dbv1, const DB_VALUE * dbv2,
 			   DB_VALUE * dbv1_common, DB_VALUE * dbv2_common)
 {
   unsigned char temp[DB_NUMERIC_BUF_SIZE];	/* copy of a DB_C_NUMERIC */
@@ -1437,12 +1438,12 @@ numeric_common_prec_scale (DB_VALUE * dbv1,
  *   return: NO_ERROR, or ER_code
  *   dbv1(in)   :
  *   dbv2(in)   :
- *   dbv1_common(in)    :
- *   dbv2_common(in)    :
+ *   dbv1_common(out)    :
+ *   dbv2_common(out)    :
  */
 static int
-numeric_prec_scale_when_overflow (DB_VALUE * dbv1,
-				  DB_VALUE * dbv2,
+numeric_prec_scale_when_overflow (const DB_VALUE * dbv1,
+				  const DB_VALUE * dbv2,
 				  DB_VALUE * dbv1_common,
 				  DB_VALUE * dbv2_common)
 {
@@ -1624,7 +1625,8 @@ numeric_get_msb_for_dec (int src_prec,
  *
  */
 int
-numeric_db_value_add (DB_VALUE * dbv1, DB_VALUE * dbv2, DB_VALUE * answer)
+numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2,
+		      DB_VALUE * answer)
 {
   DB_VALUE dbv1_common, dbv2_common;
   int ret = NO_ERROR;
@@ -1723,7 +1725,8 @@ exit_on_error:
  * The answer is set to a NULL-valued DB_C_NUMERIC's when an error occurs.
  */
 int
-numeric_db_value_sub (DB_VALUE * dbv1, DB_VALUE * dbv2, DB_VALUE * answer)
+numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2,
+		      DB_VALUE * answer)
 {
   DB_VALUE dbv1_common, dbv2_common;
   int ret = NO_ERROR;
@@ -1823,7 +1826,8 @@ exit_on_error:
  * The answer is set to a NULL-valued DB_C_NUMERIC's when an error occurs.
  */
 int
-numeric_db_value_mul (DB_VALUE * dbv1, DB_VALUE * dbv2, DB_VALUE * answer)
+numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2,
+		      DB_VALUE * answer)
 {
   int ret = NO_ERROR;
   int prec;
@@ -1905,7 +1909,8 @@ exit_on_error:
  * The answer is set to a NULL-valued DB_C_NUMERIC's when an error occurs.
  */
 int
-numeric_db_value_div (DB_VALUE * dbv1, DB_VALUE * dbv2, DB_VALUE * answer)
+numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2,
+		      DB_VALUE * answer)
 {
   int prec;
   int max_scale, scale1, scale2;
@@ -2127,7 +2132,8 @@ numeric_db_value_is_positive (const DB_VALUE * dbvalue)
  *           1   if    dbv1 > dbv2.
  */
 int
-numeric_db_value_compare (DB_VALUE * dbv1, DB_VALUE * dbv2, DB_VALUE * answer)
+numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2,
+			  DB_VALUE * answer)
 {
   int ret = NO_ERROR;
   int prec1 = 0, prec2 = 0, scale1 = 0, scale2 = 0;

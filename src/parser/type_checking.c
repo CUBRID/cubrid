@@ -351,6 +351,11 @@ static bool pt_is_enumeration_special_comparison (PT_NODE * arg1,
 						  PT_NODE * arg2);
 static PT_NODE *pt_fix_enumeration_comparison (PARSER_CONTEXT * parser,
 					       PT_NODE * expr);
+static PT_TYPE_ENUM pt_get_common_arg_type_of_width_bucket (PARSER_CONTEXT *
+							    parser,
+							    PT_NODE * node);
+static bool pt_is_const_foldable_width_bucket (PARSER_CONTEXT * parser,
+					       PT_NODE * expr);
 
 /*
  * pt_get_expression_definition () - get the expression definition for the
@@ -3949,14 +3954,29 @@ pt_get_expression_definition (const PT_OP_TYPE op,
     case PT_WIDTH_BUCKET:
       num = 0;
 
-      /* five overloads */
+      /* six overloads */
 
       /* generic number */
       sig.arg1_type.is_generic = true;
       sig.arg1_type.val.type = PT_GENERIC_TYPE_NUMBER;
 
-      sig.arg2_type.is_generic = false;
-      sig.arg2_type.val.type = PT_TYPE_DOUBLE;	/* between */
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.type = PT_GENERIC_TYPE_NUMBER;	/* between */
+
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_DOUBLE;
+
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+
+      def->overloads[num++] = sig;
+
+      /* generic string */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.type = PT_GENERIC_TYPE_STRING;
+
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.type = PT_GENERIC_TYPE_STRING;	/* between */
 
       sig.arg3_type.is_generic = false;
       sig.arg3_type.val.type = PT_TYPE_DOUBLE;
@@ -5194,6 +5214,11 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr,
   if (arg2)
     {
       arg2_type = arg2->type_enum;
+
+      if (op == PT_WIDTH_BUCKET)
+	{
+	  arg2_type = pt_get_common_arg_type_of_width_bucket (parser, expr);
+	}
     }
 
   arg3 = expr->info.expr.arg3;
@@ -5202,12 +5227,12 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr,
       arg3_type = arg3->type_enum;
     }
 
-  arg1_eq_type =
-    pt_get_equivalent_type_with_op (sig.arg1_type, arg1_type, op);
-  arg2_eq_type =
-    pt_get_equivalent_type_with_op (sig.arg2_type, arg2_type, op);
-  arg3_eq_type =
-    pt_get_equivalent_type_with_op (sig.arg3_type, arg3_type, op);
+  arg1_eq_type = pt_get_equivalent_type_with_op (sig.arg1_type, arg1_type,
+						 op);
+  arg2_eq_type = pt_get_equivalent_type_with_op (sig.arg2_type, arg2_type,
+						 op);
+  arg3_eq_type = pt_get_equivalent_type_with_op (sig.arg3_type, arg3_type,
+						 op);
 
   if (pt_is_symmetric_op (op))
     {
@@ -5222,15 +5247,15 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr,
 	{
 	  /* We should make sure that, for symmetric operators, all arguments
 	     are of the same type. */
-	  common_type =
-	    pt_infer_common_type (op, &arg1_eq_type, &arg2_eq_type,
-				  &arg3_eq_type, expr->expected_domain);
+	  common_type = pt_infer_common_type (op, &arg1_eq_type,
+					      &arg2_eq_type, &arg3_eq_type,
+					      expr->expected_domain);
 	}
+
       if (common_type == PT_TYPE_NONE)
 	{
 	  /* this is an error */
 	  return NULL;
-
 	}
 
       if (pt_is_range_or_comp (op)
@@ -5249,6 +5274,7 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr,
 		{
 		  arg3_eq_type = arg1_type;
 		}
+
 	      /* if column type is number (except NUMERIC) and operator
 	       * is not EQ cast const node to DOUBLE to enhance correctness
 	       * of results */
@@ -5623,6 +5649,12 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
       if (arg2)
 	{
 	  arg2_type = arg2->type_enum;
+
+	  if (op == PT_WIDTH_BUCKET)
+	    {
+	      arg2_type =
+		pt_get_common_arg_type_of_width_bucket (parser, expr);
+	    }
 	}
     }
 
@@ -13472,6 +13504,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
   DB_DATA_STATUS truncation;
   TP_DOMAIN_STATUS status;
   DB_TYPE res_type;
+  PT_NODE *between_ge_lt, *between_ge_lt_arg1, *between_ge_lt_arg2;
+  DB_VALUE *width_bucket_arg2 = NULL, *width_bucket_arg3 = NULL;
 
   assert (parser != NULL);
 
@@ -18025,6 +18059,42 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	}
       break;
 
+    case PT_WIDTH_BUCKET:
+      between_ge_lt = o2->info.expr.arg2;
+      assert (between_ge_lt != NULL
+	      && between_ge_lt->node_type == PT_EXPR
+	      && between_ge_lt->info.expr.op == PT_BETWEEN_GE_LT);
+
+      between_ge_lt_arg1 = between_ge_lt->info.expr.arg1;
+      assert (between_ge_lt_arg1 != NULL
+	      && between_ge_lt_arg1->node_type == PT_VALUE);
+
+      between_ge_lt_arg2 = between_ge_lt->info.expr.arg2;
+      assert (between_ge_lt_arg2 != NULL
+	      && between_ge_lt_arg2->node_type == PT_VALUE);
+
+      width_bucket_arg2 = pt_value_to_db (parser, between_ge_lt_arg1);
+      if (width_bucket_arg2 == NULL)
+	{
+	  /* error is set in pt_value_to_db */
+	  return 0;
+	}
+      width_bucket_arg3 = pt_value_to_db (parser, between_ge_lt_arg2);
+      if (width_bucket_arg3 == NULL)
+	{
+	  return 0;
+	}
+
+      /* get all the parameters */
+      error = db_width_bucket (result, arg1, width_bucket_arg2,
+			       width_bucket_arg3, arg3);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      break;
+
     default:
       break;
     }
@@ -18057,6 +18127,9 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
   short location;
   const char *alias_print;
   unsigned is_hidden_column;
+  PT_NODE *between_ge_lt = NULL;
+  PT_NODE *between_ge_lt_arg1 = NULL;
+  PT_NODE *between_ge_lt_arg2 = NULL;
 
   if (expr == NULL)
     {
@@ -18797,7 +18870,10 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		   && (opd2->type_enum == PT_TYPE_NA
 		       || opd2->type_enum == PT_TYPE_NULL)
 		   && (opd3->type_enum == PT_TYPE_NA
-		       || opd3->type_enum == PT_TYPE_NULL))))
+		       || opd3->type_enum == PT_TYPE_NULL))
+	       /* width_bucket special case */
+	       || (op == PT_WIDTH_BUCKET
+		   && pt_is_const_foldable_width_bucket (parser, expr))))
     {
       PT_MISC_TYPE qualifier = (PT_MISC_TYPE) 0;
       TP_DOMAIN *domain;
@@ -21263,8 +21339,8 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
 		    {
 		      assert (node->node_type == PT_EXPR
 			      && node->info.expr.op == PT_CAST);
-		      PT_EXPR_INFO_IS_FLAGED (node,
-					      PT_EXPR_INFO_CAST_SHOULD_FOLD);
+		      PT_EXPR_INFO_SET_FLAG (node,
+					     PT_EXPR_INFO_CAST_SHOULD_FOLD);
 		    }
 		}
 
@@ -21409,8 +21485,6 @@ cannot_coerce:
     }
   return node;
 }
-
-
 
 /*
  * pt_common_collation () - compute common collation of an operation
@@ -22687,4 +22761,109 @@ pt_fix_enumeration_comparison (PARSER_CONTEXT * parser, PT_NODE * expr)
     }
 
   return expr;
+}
+
+/*
+ * pt_get_common_arg_type_of_width_bucket () -
+ *      get the common type of args that should have the same types
+ *      width_bucket (arg1, arg2, arg3, arg4);
+ *              arg2 and arg3 should be the same type
+ *  return:
+ *  parser(in):
+ *  node(in):
+ */
+static PT_TYPE_ENUM
+pt_get_common_arg_type_of_width_bucket (PARSER_CONTEXT * parser,
+					PT_NODE * node)
+{
+  PT_TYPE_ENUM common_type = PT_TYPE_NONE;
+  PT_NODE *arg1 = NULL;
+  PT_NODE *arg2 = NULL;
+  PT_NODE *arg3 = NULL;
+  PT_NODE *between, *between_ge_lt;
+
+  assert (node != NULL && node->node_type == PT_EXPR
+	  && node->info.expr.op == PT_WIDTH_BUCKET);
+
+  arg1 = node->info.expr.arg1;
+  assert (arg1 != NULL);
+
+  between = node->info.expr.arg2;
+  assert (between != NULL);
+  if (between->node_type != PT_EXPR || between->info.expr.op != PT_BETWEEN)
+    {
+      return PT_TYPE_NONE;
+    }
+
+  between_ge_lt = between->info.expr.arg2;
+  assert (between_ge_lt != NULL);
+  if (between_ge_lt->node_type != PT_EXPR
+      || between_ge_lt->info.expr.op != PT_BETWEEN_GE_LT)
+    {
+      return PT_TYPE_NONE;
+    }
+
+  arg2 = between_ge_lt->info.expr.arg1;
+  arg3 = between_ge_lt->info.expr.arg2;
+  if (arg2 == NULL || arg3 == NULL)
+    {
+      return PT_TYPE_NONE;
+    }
+
+  /* get the common type for arg2 and arg3 */
+  common_type = pt_common_type (arg2->type_enum, arg3->type_enum);
+  if (common_type == PT_TYPE_NONE)
+    {
+      /* if no common type for arg2 and arg3, try arg1_type */
+      common_type = arg1->type_enum;
+    }
+
+  return common_type;
+}
+
+/*
+ * pt_is_const_foldable_width_bucket () - check whether width_bucket function 
+ *                                        is constant foldable or not.
+ *  return: true/false
+ *  parser(in):
+ *  expr(in):
+ */
+static bool
+pt_is_const_foldable_width_bucket (PARSER_CONTEXT * parser, PT_NODE * expr)
+{
+  PT_NODE *opd1 = NULL, *opd2 = NULL, *opd3 = NULL;
+  PT_NODE *between_ge_lt = NULL;
+  PT_NODE *between_ge_lt_arg1 = NULL, *between_ge_lt_arg2 = NULL;
+
+  assert (expr->info.expr.op == PT_WIDTH_BUCKET);
+
+  opd1 = expr->info.expr.arg1;
+  opd2 = expr->info.expr.arg2;
+  opd3 = expr->info.expr.arg3;
+  assert (opd1 != NULL && opd2 != NULL && opd3 != NULL
+	  && opd2->node_type == PT_EXPR && opd2->info.expr.op == PT_BETWEEN);
+
+  if (opd1->node_type == PT_VALUE && opd3->node_type == PT_VALUE)
+    {
+      between_ge_lt = opd2->info.expr.arg2;
+      assert (between_ge_lt != NULL
+	      && between_ge_lt->node_type == PT_EXPR
+	      && between_ge_lt->info.expr.op == PT_BETWEEN_GE_LT);
+
+      between_ge_lt_arg1 = between_ge_lt->info.expr.arg1;
+      assert (between_ge_lt_arg1 != NULL);
+
+      if (between_ge_lt_arg1->node_type == PT_VALUE)
+	{
+	  between_ge_lt_arg2 = between_ge_lt->info.expr.arg2;
+	  assert (between_ge_lt_arg2 != NULL);
+
+	  if (between_ge_lt_arg2->node_type == PT_VALUE)
+	    {
+	      return true;
+	    }
+	}
+    }
+
+  return false;
 }
