@@ -1776,6 +1776,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
   char *next;
   int next_size;
   int key_size = -1;
+  int max_key_len;
   int rec_length;
 
   temp_recdes.data = OR_ALIGNED_BUF_START (a_temp_data);
@@ -1866,11 +1867,11 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 	      goto error;
 	    }
 
-	  key_size =
+	  max_key_len =
 	    BTREE_GET_KEY_LEN_IN_PAGE (BTREE_LEAF_NODE,
 				       load_args->cur_key_len);
 
-	  load_args->max_recsize = BTREE_MAX_OIDLEN_INPAGE + key_size;
+	  load_args->max_recsize = BTREE_MAX_OIDLEN_INPAGE + max_key_len;
 	}
       else
 	{			/* This is not the first call to this function */
@@ -2143,9 +2144,10 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 		  goto error;
 		}
 
-	      key_size = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_LEAF_NODE,
-						    load_args->cur_key_len);
-	      load_args->max_recsize = BTREE_MAX_OIDLEN_INPAGE + key_size;
+	      max_key_len = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_LEAF_NODE,
+						       load_args->
+						       cur_key_len);
+	      load_args->max_recsize = BTREE_MAX_OIDLEN_INPAGE + max_key_len;
 	    }			/* different key */
 	}
 
