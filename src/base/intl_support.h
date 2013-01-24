@@ -268,6 +268,13 @@ extern "C"
 #endif
   extern int intl_put_char (unsigned char *dest, const unsigned char *char_p,
 			    const INTL_CODESET codeset);
+  extern bool intl_is_space (const char *str, const char *str_end,
+			     const INTL_CODESET codeset, int *space_size);
+  extern const char *intl_skip_spaces (const char *str, const char *str_end,
+				       const INTL_CODESET codeset);
+  extern const char *intl_backskip_spaces (const char *str_begin,
+					   const char *str_end,
+					   const INTL_CODESET codeset);
 #if defined (ENABLE_UNUSED_FUNCTION)
   extern int intl_mbs_lower (const char *mbs1, char *mbs2);
   extern int intl_mbs_nlower (char *dest, const char *src, const int max_len);

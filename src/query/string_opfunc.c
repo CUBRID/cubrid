@@ -322,9 +322,10 @@ static int scientific_to_decimal_string (const INTL_LANG lang,
 static int to_number_next_state (const int previous_state,
 				 const int input_char,
 				 const INTL_LANG number_lang_id);
-static int make_number (char *src, char *last_src, char *token, int
-			*token_length, DB_VALUE * r, const int precision,
-			const int scale, const INTL_LANG number_lang_id);
+static int make_number (char *src, char *last_src, INTL_CODESET codeset,
+			char *token, int *token_length, DB_VALUE * r,
+			const int precision, const int scale,
+			const INTL_LANG number_lang_id);
 static int get_number_token (const INTL_LANG lang, char *fsp, int *length,
 			     char *last_position, char **next_fsp);
 static int get_next_format (char *sp, const INTL_CODESET codeset,
@@ -1241,12 +1242,14 @@ db_string_concatenate (const DB_VALUE * string1,
 		  || string_type2 == DB_TYPE_VARCHAR)
 		{
 		  db_value_domain_init (result, DB_TYPE_VARCHAR,
-					DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+					DB_DEFAULT_PRECISION,
+					DB_DEFAULT_SCALE);
 		}
 	      else
 		{
 		  db_value_domain_init (result, DB_TYPE_CHAR,
-					DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+					DB_DEFAULT_PRECISION,
+					DB_DEFAULT_SCALE);
 		}
 	    }
 	  else if (QSTR_IS_NATIONAL_CHAR (string_type1))
@@ -1255,12 +1258,14 @@ db_string_concatenate (const DB_VALUE * string1,
 		  || string_type2 == DB_TYPE_VARNCHAR)
 		{
 		  db_value_domain_init (result, DB_TYPE_VARNCHAR,
-					DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+					DB_DEFAULT_PRECISION,
+					DB_DEFAULT_SCALE);
 		}
 	      else
 		{
 		  db_value_domain_init (result, DB_TYPE_NCHAR,
-					DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+					DB_DEFAULT_PRECISION,
+					DB_DEFAULT_SCALE);
 		}
 	    }
 	  else
@@ -12193,6 +12198,9 @@ db_to_date (const DB_VALUE * src_str,
   cs = initial_buf_str;
   last_src = cs + strlen (cs);
 
+  last_src = (char *) intl_backskip_spaces (cs, last_src - 1, codeset);
+  last_src = last_src + 1;
+
   no_user_format = (format_str == NULL) || (!has_user_format);
 
   if (no_user_format)
@@ -12785,6 +12793,9 @@ db_to_time (const DB_VALUE * src_str,
   cs = initial_buf_str;
   last_src = cs + strlen (cs);
 
+  last_src = (char *) intl_backskip_spaces (cs, last_src - 1, codeset);
+  last_src = last_src + 1;
+
   no_user_format = (format_str == NULL) || (!has_user_format);
   if (no_user_format)
     {
@@ -13258,6 +13269,9 @@ db_to_timestamp (const DB_VALUE * src_str,
     }
   cs = initial_buf_str;
   last_src = cs + strlen (cs);
+
+  last_src = (char *) intl_backskip_spaces (cs, last_src - 1, codeset);
+  last_src = last_src + 1;
 
   no_user_format = (format_str == NULL) || (!has_user_format);
 
@@ -14040,6 +14054,9 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str,
     }
   cs = initial_buf_str;
   last_src = cs + strlen (cs);
+
+  last_src = (char *) intl_backskip_spaces (cs, last_src - 1, codeset);
+  last_src = last_src + 1;
 
   no_user_format = (format_str == NULL) || (!has_user_format);
 
@@ -15051,6 +15068,10 @@ db_to_number (const DB_VALUE * src_str, const DB_VALUE * format_str,
 	}
     }
 
+  last_cs = (char *) intl_backskip_spaces (cs, last_cs - 1,
+					   DB_GET_STRING_CODESET (src_str));
+  last_cs = last_cs + 1;
+
   /* Skip space, tab, CR  */
   while (cs < last_cs && strchr (WHITE_CHARS, *cs))
     {
@@ -15131,8 +15152,10 @@ db_to_number (const DB_VALUE * src_str, const DB_VALUE * format_str,
 	      goto exit;
 	    }
 
-	  error_status = make_number (cs, last_cs, format_str_ptr,
-				      &token_length, result_num, precision,
+	  error_status = make_number (cs, last_cs,
+				      DB_GET_STRING_CODESET (src_str),
+				      format_str_ptr, &token_length,
+				      result_num, precision,
 				      scale, number_lang_id);
 	  if (error_status == NO_ERROR)
 	    {
@@ -17541,9 +17564,9 @@ to_number_next_state (const int previous_state, const int input_char,
  *	 grouping symbols.
  */
 static int
-make_number (char *src, char *last_src, char *token, int *token_length,
-	     DB_VALUE * r, const int precision, const int scale,
-	     const INTL_LANG number_lang_id)
+make_number (char *src, char *last_src, INTL_CODESET codeset, char *token,
+	     int *token_length, DB_VALUE * r, const int precision,
+	     const int scale, const INTL_LANG number_lang_id)
 {
   int error_status = NO_ERROR;
   int state = 1;
@@ -17751,8 +17774,8 @@ make_number (char *src, char *last_src, char *token, int *token_length,
 	}
 
       if (error_status != NO_ERROR ||
-	  numeric_coerce_string_to_num (result_str, strlen (result_str), r)
-	  != NO_ERROR)
+	  numeric_coerce_string_to_num (result_str, strlen (result_str),
+					codeset, r) != NO_ERROR)
 	{
 	  /*       patch for to_number('-1.23e+03','9.99eeee')    */
 	  return ER_QSTR_MISMATCHING_ARGUMENTS;
@@ -17779,8 +17802,8 @@ make_number (char *src, char *last_src, char *token, int *token_length,
 	}
 
       if (error_status != NO_ERROR ||
-	  numeric_coerce_string_to_num (result_str, strlen (result_str), r)
-	  != NO_ERROR)
+	  numeric_coerce_string_to_num (result_str, strlen (result_str),
+					codeset, r) != NO_ERROR)
 	{
 	  return ER_QSTR_MISMATCHING_ARGUMENTS;
 	}
@@ -18352,7 +18375,10 @@ db_format (const DB_VALUE * value, const DB_VALUE * decimals,
 	    convert_locale_number (c, len, number_lang_id, INTL_LANG_ENGLISH);
 	  }
 
-	error = numeric_coerce_string_to_num (c, len, &numeric_val);
+	error =
+	  numeric_coerce_string_to_num (c, len,
+					DB_GET_STRING_CODESET (&trimmed_val),
+					&numeric_val);
 	if (error != NO_ERROR)
 	  {
 	    pr_clear_value (&trimmed_val);

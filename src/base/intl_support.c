@@ -3284,6 +3284,236 @@ intl_put_char (unsigned char *dest, const unsigned char *char_p,
   return 1;
 }
 
+
+/*
+ * intl_is_space() - checks if character is white-space
+ *   return:
+ *   str(in):
+ *   str_end(in): end of string (pointer to first character after last
+ *		  character of string) or NULL if str is null terminated
+ *   codeset(in): codeset of string
+ *   space_size(out): size in bytes of 'whitespace' character
+ *
+ *  Note : White spaces are: ASCII space, TAB character, CR and LF
+ *	   If codeset is EUC also the double byte character space (A1 A1) is
+ *	   considered;
+ *
+ */
+bool
+intl_is_space (const char *str, const char *str_end,
+	       const INTL_CODESET codeset, int *space_size)
+{
+  assert (str != NULL);
+
+  if (space_size != NULL)
+    {
+      *space_size = 1;
+    }
+
+  switch (codeset)
+    {
+    case INTL_CODESET_KSC5601_EUC:
+      if (str_end == NULL)
+	{
+	  if (*((unsigned char *) str) == 0xa1
+	      && *((unsigned char *) (str + 1)) == 0xa1)
+	    {
+	      if (space_size != NULL)
+		{
+		  *space_size = 2;
+		}
+	      return true;
+	    }
+	  else if (char_isspace (*str))
+	    {
+	      return true;
+	    }
+	}
+      else
+	{
+	  if (str < str_end)
+	    {
+	      if (*((const unsigned char *) str) == 0xa1
+		  && str + 1 < str_end
+		  && *((const unsigned char *) (str + 1)) == 0xa1)
+		{
+		  if (space_size != NULL)
+		    {
+		      *space_size = 2;
+		    }
+		  return true;
+		}
+	      else if (char_isspace (*str))
+		{
+		  return true;
+		}
+	    }
+	}
+      break;
+    case INTL_CODESET_UTF8:
+    case INTL_CODESET_ISO88591:
+    default:
+      if (str_end == NULL)
+	{
+	  if (char_isspace (*str))
+	    {
+	      return true;
+	    }
+	}
+      else
+	{
+	  if (str < str_end && char_isspace (*str))
+	    {
+	      return true;
+	    }
+	}
+      break;
+    }
+
+  return false;
+}
+
+/*
+ * intl_skip_spaces() - skips white spaces in string
+ *   return: begining of non-whitespace characters or end of string
+ *   str(in):
+ *   str_end(in): end of string (pointer to first character after last
+ *		  character of string) or NULL if str is null terminated
+ *   codeset(in): codeset of string
+ *
+ *  Note : White spaces are: ASCII space, TAB character, CR and LF
+ *	   If codeset is EUC also the double byte character space (A1 A1) is
+ *	   considered;
+ *
+ */
+const char *
+intl_skip_spaces (const char *str, const char *str_end,
+		  const INTL_CODESET codeset)
+{
+  assert (str != NULL);
+
+  switch (codeset)
+    {
+    case INTL_CODESET_KSC5601_EUC:
+      if (str_end == NULL)
+	{
+	  while (*str != '\0')
+	    {
+	      if (*((unsigned char *) str) == 0xa1
+		  && *((unsigned char *) (str + 1)) == 0xa1)
+		{
+		  str++;
+		  str++;
+		}
+	      else if (char_isspace (*str))
+		{
+		  str++;
+		}
+	      else
+		{
+		  break;
+		}
+	    }
+	}
+      else
+	{
+	  while (str < str_end)
+	    {
+	      if (*((const unsigned char *) str) == 0xa1
+		  && str + 1 < str_end
+		  && *((const unsigned char *) (str + 1)) == 0xa1)
+		{
+		  str++;
+		  str++;
+		}
+	      else if (char_isspace (*str))
+		{
+		  str++;
+		}
+	      else
+		{
+		  break;
+		}
+	    }
+	}
+      break;
+    case INTL_CODESET_UTF8:
+    case INTL_CODESET_ISO88591:
+    default:
+      if (str_end == NULL)
+	{
+	  while (char_isspace (*str))
+	    {
+	      str++;
+	    }
+	}
+      else
+	{
+	  while (str < str_end && char_isspace (*str))
+	    {
+	      str++;
+	    }
+	}
+      break;
+    }
+
+  return str;
+}
+
+/*
+ * intl_backskip_spaces() - skips trailing white spaces in end of string
+ *   return: end of non-whitespace characters or end of string
+ *   str_begin(in): start of string
+ *   str_end(in): end of string (pointer to last character)
+ *   codeset(in): codeset of string
+ *
+ *  Note : White spaces are: ASCII space, TAB character, CR and LF
+ *	   If codeset is EUC also the double byte character space (A1 A1) is
+ *	   considered;
+ *
+ */
+const char *
+intl_backskip_spaces (const char *str_begin, const char *str_end,
+		      const INTL_CODESET codeset)
+{
+  assert (str_begin != NULL);
+  assert (str_end != NULL);
+
+  switch (codeset)
+    {
+    case INTL_CODESET_KSC5601_EUC:
+      while (str_end > str_begin)
+	{
+	  if (*((const unsigned char *) str_end) == 0xa1
+	      && str_end - 1 > str_begin
+	      && *((const unsigned char *) (str_end - 1)) == 0xa1)
+	    {
+	      str_end--;
+	      str_end--;
+	    }
+	  else if (char_isspace (*str_end))
+	    {
+	      str_end--;
+	    }
+	  else
+	    {
+	      break;
+	    }
+	}
+      break;
+    case INTL_CODESET_UTF8:
+    case INTL_CODESET_ISO88591:
+    default:
+      while (str_end > str_begin && char_isspace (*str_end))
+	{
+	  str_end++;
+	}
+      break;
+    }
+
+  return str_end;
+}
+
 /*
  * intl_cp_to_utf8() - converts a unicode codepoint to its
  *                            UTF-8 encoding 

@@ -2995,7 +2995,8 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
       if (numeric_coerce_string_to_num (value->info.value.data_value.str->
 					bytes,
 					value->info.value.data_value.str->
-					length, db_value) != NO_ERROR)
+					length, codeset,
+					db_value) != NO_ERROR)
 	{
 	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME,
 		      MSGCAT_RUNTIME_BAD_NUMERIC,

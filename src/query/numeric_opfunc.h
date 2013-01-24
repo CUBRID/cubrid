@@ -30,6 +30,7 @@
 
 #include "config.h"
 
+#include "intl_support.h"
 #include "dbtype.h"
 #include "error_manager.h"
 
@@ -92,6 +93,7 @@ extern int numeric_coerce_double_to_num (double adouble,
 #endif
 
 extern int numeric_coerce_string_to_num (const char *astring, int astring_len,
+					 INTL_CODESET codeset,
 					 DB_VALUE * num);
 
 extern int numeric_coerce_num_to_num (DB_C_NUMERIC src_num,

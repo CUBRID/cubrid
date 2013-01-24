@@ -2181,6 +2181,7 @@ jsp_unpack_numeric_value (char *buffer, DB_VALUE * retval)
 
   ptr = or_unpack_string_nocopy (buffer, &val);
   if (val == NULL || numeric_coerce_string_to_num (val, strlen (val),
+						   lang_get_client_charset (),
 						   retval) != NO_ERROR)
     {
       ptr = NULL;

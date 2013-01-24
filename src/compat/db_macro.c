@@ -4799,7 +4799,7 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 	 * and scale.
 	 */
 
-	if (numeric_coerce_string_to_num (buf, buflen,
+	if (numeric_coerce_string_to_num (buf, buflen, LANG_SYS_CODESET,
 					  &tmp_value) != NO_ERROR)
 	  {
 	    status = C_TO_VALUE_CONVERSION_ERROR;

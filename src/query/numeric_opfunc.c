@@ -3111,6 +3111,7 @@ numeric_coerce_double_to_num (double adouble,
  *   return:
  *   astring(in) : ptr to the input character string
  *   astring_length(in) : length of the input character string
+ *   codeset(in) : codeset of string
  *   result(out) : DB_VALUE of type numeric
  *
  * Note: This routine converts a string into a DB_VALUE.
@@ -3119,7 +3120,7 @@ numeric_coerce_double_to_num (double adouble,
  */
 int
 numeric_coerce_string_to_num (const char *astring, int astring_length,
-			      DB_VALUE * result)
+			      INTL_CODESET codeset, DB_VALUE * result)
 {
   char num_string[TWICE_NUM_MAX_PREC + 1];
   unsigned char num[DB_NUMERIC_BUF_SIZE];
@@ -3133,12 +3134,14 @@ numeric_coerce_string_to_num (const char *astring, int astring_length,
   bool trailing_spaces = false;
   bool decimal_part = false;
   int ret = NO_ERROR;
+  int skip_size = 1;
 
   /* Remove the decimal point, track the prec & scale */
   prec = 0;
   scale = 0;
-  for (i = 0; i < astring_length && ret == NO_ERROR; i++)
+  for (i = 0; i < astring_length && ret == NO_ERROR; i += skip_size)
     {
+      skip_size = 1;
       if (astring[i] == '.')
 	{
 	  leading_zeroes = false;
@@ -3176,7 +3179,7 @@ numeric_coerce_string_to_num (const char *astring, int astring_length,
 	      /* leading pad '0' found */
 	      pad_character_zero = true;
 	    }
-	  else if (astring[i] == ' ')
+	  else if (intl_is_space (astring + i, NULL, codeset, &skip_size))
 	    {
 	      /* Just skip this.  OK to have leading spaces */
 	      ;
@@ -3193,11 +3196,12 @@ numeric_coerce_string_to_num (const char *astring, int astring_length,
 	   * If the first space character is shown after digits,
 	   * we consider it as the beginning of trailer.
 	   */
-	  if (trailing_spaces && astring[i] != ' ')
+	  if (trailing_spaces
+	      && !intl_is_space (astring + i, NULL, codeset, &skip_size))
 	    {
 	      ret = DOMAIN_INCOMPATIBLE;
 	    }
-	  else if (astring[i] == ' ')
+	  else if (intl_is_space (astring + i, NULL, codeset, &skip_size))
 	    {
 	      if (!trailing_spaces)
 		{

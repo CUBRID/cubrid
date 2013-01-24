@@ -4671,7 +4671,9 @@ tp_atonumeric (const DB_VALUE * src, DB_VALUE * temp)
 
   str_len = DB_GET_STRING_SIZE (src);
 
-  if (numeric_coerce_string_to_num (strp, str_len, temp) != NO_ERROR)
+  if (numeric_coerce_string_to_num (strp, str_len,
+				    DB_GET_STRING_CODESET (src),
+				    temp) != NO_ERROR)
     {
       status = ER_FAILED;
     }
@@ -4702,11 +4704,13 @@ tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
   char *p, *end;
   int status = NO_ERROR;
   unsigned int size;
+  INTL_CODESET codeset;
 
   *data_stat = DATA_STATUS_OK;
 
   p = DB_GET_STRING (src);
   size = DB_GET_STRING_SIZE (src);
+  codeset = DB_GET_STRING_CODESET (src);
   end = p + size - 1;
 
   if (*end)
@@ -4760,11 +4764,7 @@ tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
     }
 
   /* ignore trailing spaces */
-  while (char_isspace (*p))
-    {
-      p++;
-    }
-
+  p = (char *) intl_skip_spaces (p, NULL, codeset);
   if (*p)			/* all input does not consumed */
     {
       *data_stat = DATA_STATUS_NOT_CONSUMED;
@@ -4804,6 +4804,7 @@ tp_atobi (const DB_VALUE * src, DB_BIGINT * num_value,
   char *p;
   int status = NO_ERROR;
   bool round = false, is_negative, truncated = false;
+  INTL_CODESET codeset = DB_GET_STRING_CODESET (src);
 
   if (strp == NULL)
     {
@@ -4876,10 +4877,7 @@ tp_atobi (const DB_VALUE * src, DB_BIGINT * num_value,
     }
 
   /* skip trailing whitespace characters */
-  while (p != stre && char_isspace (*p))
-    {
-      p++;
-    }
+  p = (char *) intl_skip_spaces (p, stre, codeset);
 
   if (p != stre)
     {

@@ -1163,11 +1163,13 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* get all values as string */
-  numeric_coerce_string_to_num ("0", 1, &zero);
+  numeric_coerce_string_to_num ("0", 1, INTL_CODESET_ISO88591, &zero);
   numeric_coerce_string_to_num ("10000000000000000000000000000000000000",
-				DB_MAX_NUMERIC_PRECISION, &e37);
+				DB_MAX_NUMERIC_PRECISION,
+				INTL_CODESET_ISO88591, &e37);
   numeric_coerce_string_to_num ("-1000000000000000000000000000000000000",
-				DB_MAX_NUMERIC_PRECISION, &under_e36);
+				DB_MAX_NUMERIC_PRECISION,
+				INTL_CODESET_ISO88591, &under_e36);
   db_make_int (&cmp_result, 0);
 
   start_val_node = PT_NODE_SR_START_VAL (statement);
@@ -1598,9 +1600,10 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object,
   db_make_null (&max_val);
   db_make_null (&min_val);
 
-  numeric_coerce_string_to_num ("0", 1, &zero);
+  numeric_coerce_string_to_num ("0", 1, INTL_CODESET_ISO88591, &zero);
   numeric_coerce_string_to_num ("99999999999999999999999999999999999999",
-				DB_MAX_NUMERIC_PRECISION, &e38);
+				DB_MAX_NUMERIC_PRECISION,
+				INTL_CODESET_ISO88591, &e38);
 
   assert_release (att->info.attr_def.auto_increment != NULL);
   auto_increment_node = att->info.attr_def.auto_increment;
@@ -1757,7 +1760,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object,
 
       (void) numeric_coerce_string_to_num (num,
 					   dtyp->info.data_type.precision,
-					   &value);
+					   INTL_CODESET_ISO88591, &value);
       break;
     default:
       /* max numeric */
@@ -1981,11 +1984,13 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* Now, get new values from node */
 
-  numeric_coerce_string_to_num ("0", 1, &zero);
+  numeric_coerce_string_to_num ("0", 1, INTL_CODESET_ISO88591, &zero);
   numeric_coerce_string_to_num ("10000000000000000000000000000000000000",
-				DB_MAX_NUMERIC_PRECISION, &e37);
+				DB_MAX_NUMERIC_PRECISION,
+				INTL_CODESET_ISO88591, &e37);
   numeric_coerce_string_to_num ("-1000000000000000000000000000000000000",
-				DB_MAX_NUMERIC_PRECISION, &under_e36);
+				DB_MAX_NUMERIC_PRECISION,
+				INTL_CODESET_ISO88591, &under_e36);
   db_make_int (&cmp_result, 0);
 
   db_value_domain_init (&new_inc_val, DB_TYPE_NUMERIC,
