@@ -7819,7 +7819,9 @@ pt_check_cyclic_reference_in_view_spec (PARSER_CONTEXT * parser,
       while (db_query_spec)
 	{
 	  query_spec_string = db_query_spec_string (db_query_spec);
-	  result = parser_parse_string (query_cache, query_spec_string);
+	  result =
+	    parser_parse_string_use_sys_charset (query_cache,
+						 query_spec_string);
 
 	  if (result != NULL)
 	    {

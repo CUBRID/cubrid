@@ -3369,7 +3369,7 @@ db_validate_query_spec (DB_OBJECT * vclass, const char *query_spec)
       return rc;
     }
 
-  spec = parser_parse_string (parser, query_spec);
+  spec = parser_parse_string_use_sys_charset (parser, query_spec);
   if (spec != NULL && !pt_has_error (parser))
     {
       rc = pt_validate_query_spec (parser, *spec, vclass);

@@ -11562,7 +11562,7 @@ pt_fix_first_term_func_index_for_iss (PARSER_CONTEXT * parser,
 
   snprintf (query_str, query_str_len, "SELECT %s FROM [%s]",
 	    func_index->expr_str, class_name);
-  stmt = parser_parse_string (parser, query_str);
+  stmt = parser_parse_string_use_sys_charset (parser, query_str);
   if (stmt == NULL || *stmt == NULL || pt_has_error (parser))
     {
       error = ER_FAILED;

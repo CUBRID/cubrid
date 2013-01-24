@@ -5592,7 +5592,8 @@ mq_translate_subqueries (PARSER_CONTEXT * parser,
     {
       /* parse and compile the next query spec */
       query_spec_string = db_query_spec_string (db_query_spec);
-      result = parser_parse_string (parser, query_spec_string);
+      result =
+	parser_parse_string_use_sys_charset (parser, query_spec_string);
 
       /* a system error, that allowed a syntax error to be in
        * a query spec string. May want to augment the error messages

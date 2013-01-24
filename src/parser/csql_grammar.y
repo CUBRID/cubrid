@@ -19455,17 +19455,33 @@ char_string
 		{{
 
 			PT_NODE *node = NULL;
+			INTL_CODESET charset;
+			int collation_id;
+			bool force;
+			
+			if (lang_get_parser_use_client_charset ())
+			  {
+			    charset = lang_get_client_charset ();
+			    collation_id = lang_get_client_collation ();
+			    force = false;
+			  }
+			else
+			  {
+			    charset = LANG_SYS_CODESET;
+			    collation_id = LANG_SYS_COLLATION;
+			    force = true;
+			  }
 
-			node = pt_create_char_string_literal (this_parser, PT_TYPE_CHAR,
-							      $1, lang_get_client_charset ());
+			node = pt_create_char_string_literal (this_parser,
+							      PT_TYPE_CHAR,
+							      $1, charset);
 
-			if (node && lang_get_parser_use_client_charset ())
+			if (node)
 			  {
 			    pt_value_set_charset_coll (this_parser, node,
-						       lang_get_client_charset (),
-						       lang_get_client_collation (),
-						       false);
-			    node->info.value.has_cs_introducer = false;
+						       charset, collation_id,
+						       force);
+			    node->info.value.has_cs_introducer = force;
 			  }
 
 			$$ = node;
@@ -19476,17 +19492,33 @@ char_string
 		{{
 
 			PT_NODE *node = NULL;
+			INTL_CODESET charset;
+			int collation_id;
+			bool force;
+			
+			if (lang_get_parser_use_client_charset ())
+			  {
+			    charset = lang_get_client_charset ();
+			    collation_id = lang_get_client_collation ();
+			    force = false;
+			  }
+			else
+			  {
+			    charset = LANG_SYS_CODESET;
+			    collation_id = LANG_SYS_COLLATION;
+			    force = true;
+			  }
 
-			node = pt_create_char_string_literal (this_parser, PT_TYPE_NCHAR,
-							      $1, lang_get_client_charset ());
+			node = pt_create_char_string_literal (this_parser,
+							      PT_TYPE_NCHAR,
+							      $1, charset);
 
 			if (node && lang_get_parser_use_client_charset ())
 			  {
 			    pt_value_set_charset_coll (this_parser, node,
-						       lang_get_client_charset (),
-						       lang_get_client_collation (),
-						       false);
-			    node->info.value.has_cs_introducer = false;
+						       charset, collation_id,
+						       force);
+			    node->info.value.has_cs_introducer = force;
 			  }
 
 			$$ = node;

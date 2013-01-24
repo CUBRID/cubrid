@@ -1492,7 +1492,7 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser,
     }
   stmt_str = pt_append_string (parser, stmt_str, ";");
 
-  statement_p = parser_parse_string (parser, stmt_str);
+  statement_p = parser_parse_string_use_sys_charset (parser, stmt_str);
   if (statement_p == NULL || *statement_p == NULL)
     return NULL;
   statement = *statement_p;

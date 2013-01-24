@@ -1752,6 +1752,32 @@ pt_top (PARSER_CONTEXT * parser)
 }
 
 /*
+ * parser_parse_string_use_sys_charset () - Parses a string and generates
+ *					    parse tree. String constants will
+ *					    use system charset if no charset
+ *					    is specified.
+ *
+ * return      : Parse tree.
+ * parser (in) : Parser context.
+ * buffer (in) : Query string.
+ *
+ * NOTE: This function should be used instead of parser_parse_string () if the
+ *	 query string may contain string constants.
+ */
+PT_NODE **
+parser_parse_string_use_sys_charset (PARSER_CONTEXT * parser,
+				     const char *buffer)
+{
+  PT_NODE **result = NULL;
+
+  lang_set_parser_use_client_charset (false);
+  result = parser_parse_string (parser, buffer);
+  lang_set_parser_use_client_charset (true);
+
+  return result;
+}
+
+/*
  * parser_parse_string() - reset and initialize the parser
  *   return:
  *   parser(in/out): the parser context

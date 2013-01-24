@@ -9019,9 +9019,7 @@ pt_make_query_show_exec_stats (PARSER_CONTEXT * parser)
    * and avoid nested parser statement. */
   parser_parse_string (parser, ";");
 
-  lang_set_parser_use_client_charset (false);
-  node = parser_parse_string (parser, query);
-  lang_set_parser_use_client_charset (true);
+  node = parser_parse_string_use_sys_charset (parser, query);
   if (node == NULL)
     {
       return NULL;
@@ -9108,9 +9106,7 @@ pt_make_query_show_exec_stats_all (PARSER_CONTEXT * parser)
    * and avoid nested parser statement. */
   parser_parse_string (parser, ";");
 
-  lang_set_parser_use_client_charset (false);
-  node = parser_parse_string (parser, query);
-  lang_set_parser_use_client_charset (true);
+  node = parser_parse_string_use_sys_charset (parser, query);
   if (node == NULL)
     {
       return NULL;

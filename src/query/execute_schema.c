@@ -4503,7 +4503,8 @@ evaluate_partition_expr (DB_VALUE * expr, DB_VALUE * ival)
       return NULL;
     }
 
-  newnode = parser_parse_string (expr_parser, DB_GET_STRING (expr));
+  newnode =
+    parser_parse_string_use_sys_charset (expr_parser, DB_GET_STRING (expr));
   if (newnode && *newnode)
     {
       pcol = (*newnode)->info.query.q.select.list;
@@ -16575,7 +16576,7 @@ do_recreate_func_index_constr (PARSER_CONTEXT * parser,
     }
   snprintf (query_str, query_str_len, "SELECT %s FROM [%s]",
 	    fi_info->expr_str, class_name);
-  stmt = parser_parse_string (parser, query_str);
+  stmt = parser_parse_string_use_sys_charset (parser, query_str);
   if (stmt == NULL || *stmt == NULL || pt_has_error (parser))
     {
       error = ER_FAILED;
@@ -16783,7 +16784,7 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
     }
   snprintf (query_str, query_str_len, "SELECT * FROM [%s] WHERE %s",
 	    class_name, filter_index_info->pred_string);
-  stmt = parser_parse_string (parser, query_str);
+  stmt = parser_parse_string_use_sys_charset (parser, query_str);
   if (stmt == NULL || *stmt == NULL || pt_has_error (parser))
     {
       error = ER_FAILED;
