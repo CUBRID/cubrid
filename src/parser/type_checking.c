@@ -21520,10 +21520,10 @@ pt_common_collation (const int arg1_coll, const INTL_CODESET arg1_cs,
 
   /* arguments can have only one multibyte charset */
   if ((arg1_cs == INTL_CODESET_UTF8 || arg2_cs == INTL_CODESET_UTF8
-       || arg3_cs == INTL_CODESET_UTF8)
+       || (op_has_3_args && arg3_cs == INTL_CODESET_UTF8))
       && (arg1_cs == INTL_CODESET_KSC5601_EUC
 	  || arg2_cs == INTL_CODESET_KSC5601_EUC
-	  || arg3_cs == INTL_CODESET_KSC5601_EUC))
+	  || (op_has_3_args && arg3_cs == INTL_CODESET_KSC5601_EUC)))
     {
       goto error;
     }
