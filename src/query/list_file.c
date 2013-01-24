@@ -828,7 +828,8 @@ qfile_compare_tuple_values (QFILE_TUPLE tuple1, QFILE_TUPLE tuple2,
     }
   else
     {
-      *compare_result = (*(pr_type_p->cmpval)) (&dbval1, &dbval2, 0, 1, NULL);
+      *compare_result = (*(pr_type_p->cmpval)) (&dbval1, &dbval2, 0, 1, NULL,
+						-1);
     }
 
   if (is_copy)

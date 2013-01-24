@@ -103,7 +103,8 @@ typedef struct pr_type
 		       int do_coercion, int total_order, int *start_colp);
   /* db value compare */
   int (*cmpval) (DB_VALUE * value, DB_VALUE * value2,
-		 int do_coercion, int total_order, int *start_colp);
+		 int do_coercion, int total_order, int *start_colp,
+		 int collation);
 } PR_TYPE, *PRIM;
 
 

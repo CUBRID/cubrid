@@ -6049,7 +6049,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
 	  opr_dbval_p = &dbval;
 	  if (agg_p->curr_cnt < 1
 	      || (*(agg_p->domain->type->cmpval)) (agg_p->value, &dbval,
-						   1, 1, NULL) > 0)
+						   1, 1, NULL, -1) > 0)
 	    {
 	      copy_opr = true;
 	    }
@@ -6059,7 +6059,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
 	  opr_dbval_p = &dbval;
 	  if (agg_p->curr_cnt < 1
 	      || (*(agg_p->domain->type->cmpval)) (agg_p->value, &dbval,
-						   1, 1, NULL) < 0)
+						   1, 1, NULL, -1) < 0)
 	    {
 	      copy_opr = true;
 	    }
@@ -9441,7 +9441,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
       opr_dbval_p = &dbval;
       if (func_p->curr_cnt < 1
 	  || (*(func_p->domain->type->cmpval)) (func_p->value, &dbval,
-						1, 1, NULL) > 0)
+						1, 1, NULL, -1) > 0)
 	{
 	  copy_opr = true;
 	}
@@ -9451,7 +9451,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
       opr_dbval_p = &dbval;
       if (func_p->curr_cnt < 1
 	  || (*(func_p->domain->type->cmpval)) (func_p->value, &dbval,
-						1, 1, NULL) < 0)
+						1, 1, NULL, -1) < 0)
 	{
 	  copy_opr = true;
 	}

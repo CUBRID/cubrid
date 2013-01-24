@@ -17167,7 +17167,8 @@ qexec_compare_valptr_with_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE tpl,
       else
 	{
 	  equal =
-	    ((*(pr_type_p->cmpval)) (&dbval1, dbvalp2, 0, 1, NULL) == DB_EQ);
+	    ((*(pr_type_p->cmpval)) (&dbval1, dbvalp2, 0, 1, NULL, -1)
+	     == DB_EQ);
 	}
 
       if (copy)

@@ -9010,15 +9010,18 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 			     int do_coercion, int total_order,
 			     bool * can_compare)
 {
-  DB_VALUE temp1, temp2;
-  int status, coercion;
+  DB_VALUE temp1, temp2, tmp_char_conv;
+  int status, coercion, char_conv;
   DB_VALUE *v1, *v2;
   DB_TYPE vtype1, vtype2;
   DB_OBJECT *mop;
   DB_IDENTIFIER *oid1, *oid2;
+  bool use_collation_of_v1 = false;
+  bool use_collation_of_v2 = false;
 
   status = DB_UNK;
   coercion = 0;
+  char_conv = 0;
 
   if (can_compare != NULL)
     {
@@ -9042,6 +9045,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
     }
   else
     {
+      int common_coll = -1;
       v1 = (DB_VALUE *) value1;
       v2 = (DB_VALUE *) value2;
 
@@ -9184,6 +9188,34 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 		{
 		  /* vtype1 is more general, coerce value 2 */
 		  TP_DOMAIN *d1 = tp_domain_resolve_default (vtype1);
+
+		  if (TP_TYPE_HAS_COLLATION (vtype2)
+		      && TP_IS_CHAR_TYPE (vtype1))
+		    {
+		      /* create a new domain with type of v1 */
+		      d1 = tp_domain_copy (d1, false);
+		      if (TP_IS_CHAR_TYPE (vtype2))
+			{
+			  /* keep the codeset and collation from original
+			   * value v2 */
+			  d1->codeset = DB_GET_STRING_CODESET (v2);
+			  d1->collation_id = DB_GET_STRING_COLLATION (v2);
+			}
+		      else
+			{
+			  /* v2 is ENUM, and is coerced to string 
+			   * this should happend when the other operand is
+			   * a HV; in this case we remember to use collation
+			   * and charset from ENUM (v2) */
+			  use_collation_of_v2 = true;
+			  d1->codeset = DB_GET_ENUM_CODESET (v2);
+			  d1->collation_id = DB_GET_ENUM_COLLATION (v2);
+			  common_coll = d1->collation_id;
+			}
+
+		      d1 = tp_domain_cache (d1);
+		    }
+
 		  status = tp_value_coerce (v2, &temp2, d1);
 		  if (status != DOMAIN_COMPATIBLE)
 		    {
@@ -9203,6 +9235,34 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 		{
 		  /* coerce value1 to value2's type */
 		  TP_DOMAIN *d2 = tp_domain_resolve_default (vtype2);
+
+		  if (TP_TYPE_HAS_COLLATION (vtype1)
+		      && TP_IS_CHAR_TYPE (vtype2))
+		    {
+		      /* create a new domain with type of v2 */
+		      d2 = tp_domain_copy (d2, false);
+		      if (TP_IS_CHAR_TYPE (vtype1))
+			{
+			  /* keep the codeset and collation from original
+			   * value v1 */
+			  d2->codeset = DB_GET_STRING_CODESET (v1);
+			  d2->collation_id = DB_GET_STRING_COLLATION (v1);
+			}
+		      else
+			{
+			  /* v1 is ENUM, and is coerced to string 
+			   * this should happend when the other operand is
+			   * a HV; in this case we remember to use collation
+			   * and charset from ENUM (v1) */
+			  use_collation_of_v1 = true;
+			  d2->codeset = DB_GET_ENUM_CODESET (v1);
+			  d2->collation_id = DB_GET_ENUM_COLLATION (v1);
+			  common_coll = d2->collation_id;
+			}
+
+		      d2 = tp_domain_cache (d2);
+		    }
+
 		  status = tp_value_coerce (v1, &temp1, d2);
 		  if (status != DOMAIN_COMPATIBLE)
 		    {
@@ -9267,69 +9327,92 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 		  && (DB_GET_STRING_CODESET (v1)
 		      != DB_GET_STRING_CODESET (v2)))
 		{
-		  int common_coll;
 		  INTL_CODESET codeset;
 		  DB_DATA_STATUS data_status;
 		  int error_status;
 
-		  DB_MAKE_NULL (&temp1);
-		  DB_MAKE_NULL (&temp2);
-		  coercion = 1;
+		  DB_MAKE_NULL (&tmp_char_conv);
+		  char_conv = 1;
 
-		  LANG_RT_COMMON_COLL (DB_GET_STRING_COLLATION (v1),
-				       DB_GET_STRING_COLLATION (v2),
-				       common_coll);
+		  if (use_collation_of_v1)
+		    {
+		      assert (!use_collation_of_v2);
+		      common_coll = DB_GET_STRING_COLLATION (v1);
+		    }
+		  else if (use_collation_of_v2)
+		    {
+		      common_coll = DB_GET_STRING_COLLATION (v2);
+		    }
+		  else
+		    {
+		      LANG_RT_COMMON_COLL (DB_GET_STRING_COLLATION (v1),
+					   DB_GET_STRING_COLLATION (v2),
+					   common_coll);
+		    }
 
 		  codeset = lang_get_collation (common_coll)->codeset;
 
 		  if (DB_GET_STRING_CODESET (v1) != codeset)
 		    {
-		      db_value_domain_init (&temp1, vtype1,
+		      db_value_domain_init (&tmp_char_conv, vtype1,
 					    DB_VALUE_PRECISION (v1), 0);
 
-		      db_string_put_cs_and_collation (&temp1, codeset,
+		      db_string_put_cs_and_collation (&tmp_char_conv, codeset,
 						      common_coll);
 		      error_status =
-			db_char_string_coerce (v1, &temp1, &data_status);
+			db_char_string_coerce (v1, &tmp_char_conv,
+					       &data_status);
 
 		      if (error_status != NO_ERROR)
 			{
 			  status = DB_UNK;
-			  pr_clear_value (&temp1);
+			  pr_clear_value (&tmp_char_conv);
+			  if (coercion)
+			    {
+			      pr_clear_value (&temp1);
+			      pr_clear_value (&temp2);
+			    }
 			  return status;
 			}
 
 		      assert (data_status == DATA_STATUS_OK);
 
-		      v1 = &temp1;
+		      v1 = &tmp_char_conv;
 		    }
 		  else
 		    {
 		      assert (DB_GET_STRING_CODESET (v2) != codeset);
 
-		      db_value_domain_init (&temp2, vtype2,
+		      db_value_domain_init (&tmp_char_conv, vtype2,
 					    DB_VALUE_PRECISION (v2), 0);
 
-		      db_string_put_cs_and_collation (&temp2, codeset,
+		      db_string_put_cs_and_collation (&tmp_char_conv, codeset,
 						      common_coll);
 		      error_status =
-			db_char_string_coerce (v2, &temp2, &data_status);
+			db_char_string_coerce (v2, &tmp_char_conv,
+					       &data_status);
 
 		      if (error_status != NO_ERROR)
 			{
-			  pr_clear_value (&temp2);
+			  pr_clear_value (&tmp_char_conv);
+			  if (coercion)
+			    {
+			      pr_clear_value (&temp1);
+			      pr_clear_value (&temp2);
+			    }
 			  status = DB_UNK;
 			  return status;
 			}
 
 		      assert (data_status == DATA_STATUS_OK);
 
-		      v2 = &temp2;
+		      v2 = &tmp_char_conv;
 		    }
 
 		}
 	      status = (*(pr_type->cmpval)) (v1, v2,
-					     do_coercion, total_order, NULL);
+					     do_coercion, total_order, NULL,
+					     common_coll);
 	      if (status == DB_UNK)
 		{
 		  /* safe guard */
@@ -9352,6 +9435,10 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 	{
 	  pr_clear_value (&temp1);
 	  pr_clear_value (&temp2);
+	}
+      if (char_conv)
+	{
+	  pr_clear_value (&tmp_char_conv);
 	}
     }
 
