@@ -22697,6 +22697,8 @@ pt_fix_enumeration_comparison (PARSER_CONTEXT * parser, PT_NODE * expr)
       switch (arg2->node_type)
 	{
 	case PT_VALUE:
+	  assert (PT_IS_COLLECTION_TYPE (arg2->type_enum)
+		  || arg2->type_enum == PT_TYPE_EXPR_SET);
 	  /* convert this value to a multiset */
 	  node = parser_new_node (parser, PT_FUNCTION);
 	  if (node == NULL)

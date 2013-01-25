@@ -15862,7 +15862,15 @@ predicate_expr_sub
 			      {
 				rhs = rhs->info.value.data_value.set;
 			      }
-
+			    else if (rhs->node_type == PT_VALUE
+				     && !(PT_IS_COLLECTION_TYPE (rhs->type_enum)
+					  || rhs->type_enum == PT_TYPE_EXPR_SET))
+			      {
+				PT_ERRORmf2 (this_parser, rhs, MSGCAT_SET_PARSER_SYNTAX,
+					     MSGCAT_SYNTAX_ERROR_MSG1,
+					     pt_show_binopcode ($2),
+					     "SELECT or '('");
+			      }
 
 			    /* for each rhs elements, convert parentheses
 			     * set expr value into sequence value */
