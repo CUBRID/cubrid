@@ -296,10 +296,10 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 Commande inconnue '%s'\n
 43 Impossible d'ouvrir le fichier de sortie '%s'\n
 44 Impossible de supprimer la base de données existante.\n
-45 Creating database with %s size. The total amount of disk space needed is %s.\n
+45 Création de base de données avec une taille de %s. Le montant total de l'espace disque nécessaire est %s.\n
 46 Impossible de créer la base de données.\n
 47 Problème avec le fichier '%s' d'utilisateur\n
-48 The given '%s', %s is out of range. Choose a size between %s and %s.\n
+48 Le donné '%s', %s est hors plage. Choisissez une taille comprise entre %s et %s.\n
 49 La valeur de %s '%s' n'est pas valide.\n
 60 \
 createdb: crée une base de données.\n\
@@ -614,14 +614,14 @@ options valids:\n\
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB
 20 Valeur incorrecte %d pour npages\n
 21 Valeur incorrecte '%s' dans le but de stockage de volume.\n
-22 WARNING: --max-writesize-in-sec option is ignored in stand-alone mode execution.\n
+22 AVERTISSEMENT: option --max-writesize-in-sec est ignorée dans le mode d'exécution autonome.\n
 60 \
 addvoldb: Ajouter un volume à la base de données.\n\
 usage: %s addvoldb [OPTION] database-name\n\
 \n\
 options valids:\n\
       --db-volume-size=TAILLE      TAILLE du volume supplémentaire; par défaut: db_volume_size dans cubrid.conf\n\
-      --max-writesize-in-sec=SIZE  the amount of volume written per second; (ex. 512K, 1M, 10M); default: not used; minimum: 160K\n\
+      --max-writesize-in-sec=SIZE  la quantité de données écrite par seconde; (ex. 512K, 1M, 10M);par défaut: non utilisé; minimum: 160K\n\
   -n, --volume-name=NOM            NOM du volume d'information; par défaut: générer tels que "db"_ext1)\n\
   -F, --file-path=CHEMIN           CHEMIN pour l'ajout de fichier de volume; par défaut: répertoire de travail\n\
       --comment=COMMENTAIRE        COMMENTAIRE pour ajouter du volume; par défaut: aucun\n\
@@ -774,7 +774,7 @@ $set 26 MSGCAT_UTIL_SET_KILLTRAN
 29 Arrêter transaction associée à l'index %d de transaction\n
 30 L'arrêt des transactions suivantes a échoué\n\n
 31 La transaction n'est pas encore fini, mais il peut faire le travail de restauration.\n S'il vous plaît, attendez un peu et essayer plus tard si nécessaire.\n
-32 Invalid tranindex(%s).\n
+32 Tranindex(%s) non valid.\n
 59 killtran ne peut pas fonctionner en mode autonome.\n
 60 \
 killtran: Gère les transactions de la base de données.\n\
@@ -785,10 +785,10 @@ options valids:\n\
       --kill-user-name=ID            arrête tous les transactions avec with l'utilisateur ID\n\
       --kill-host-name=HÔTE          arrête tous les transactions avec le client HÔTE\n\
       --kill-program-name=NOM        arrête tous les transactions avec cet NOM du programme du client\n\
-      --kill-sql-id=SQL_ID           kill all transactions with SQL_ID\n\
+      --kill-sql-id=SQL_ID           arrêter toutes les transactions avec SQL_ID\n\
   -p, --dba-password=MOT-DE-PASSE    MOT DE PASSE de l'utilisateur DBA; demandé si ne pas spécifier\n\
   -d, --display-information          affiche des informations sur les transactions actives\n\
-  -q, --query-exec-info              display information about query execution information of active transactions\n\
+  -q, --query-exec-info              afficher des informations sur l'exécution de requêtes au sein des transactions actives\n\
   -f, --force                        arrête la transaction sans demande de vérification\n
 
 
@@ -913,7 +913,7 @@ usage: %s statdump [OPTION] database-name\n\
 options valids:\n\
   -o, --output-file=FICHIER    redirige les messages de sortie à FICHIER; par défaut: aucun\n\
   -c, --cumulative             affiche les statistiques cumulatives\n\
-  -i, --interval=S             affiche les statistiques de S à S secondes\n\
+  -i, --interval=S             affiche les statistiques toutes les S secondes\n\
   -s, --substr=CHAÎNE          affiche seulement les articles statistiques qui correspondent à le CHAÎNE\n
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
@@ -994,57 +994,57 @@ options valids:\n\
   -z, --normalization       affiche les données de normalisation; par défaut: désactivé\n
 
 $set 48 MSGCAT_UTIL_SET_SYNCCOLLDB
-43 Partitioning must be removed before changing the current collation '%s' of their partitioning attribute.\nClass name\n
-44 Foreign keys on attributes having collation '%s' must be dropped before changing collation of attributes.\nTable | Foreign Key\n
-45 Classes having collation '%s'; they should be redefined :\nClass name\n
-46 Function indexes having expression containing collation '%s'; they should be redefined :\n\
-Table | Index | Function expression\n
-47 Synchronization of collations was not performed. Database was not changed.\n
-48 Contents of '%s' system table was updated with new system collations.\n
-49 Updating system collations may cause corruption of database. Continue (y/n) ?\n
-50 Collation '%s' (Id: %d) not found in database or changed in new system configuration.\n
-51 Triggers having condition containing collation '%s'; they should be redefined :\nTrigger | Condition\n
-52 Query views containing collation '%s'; they should be redefined :\nView | Query\n
-53 Attributes having collation '%s'; they should be redefined.\nTable | Attribute Domain\n
-54 Manual intervention on database is required.\n\
-Please check file '%s' and execute it before forcing collations into database.\n
-55 Synchronization is not needed.\n
-56 Synchronization of system collation into database is required.\n\
-Run 'cubrid synccolldb -f %s'\n
-57 There are %d new collations in system configuration compared to database:\n
-58 All collations in database '%s' are found in the new system configuration.\n
-59 There are %d collations in database which are not configured or are changed compared to system collations.\n
+43 Le partitionnement doit être enlevé avant de modifier le classement actuel '%s' de leur attribut de partitionnement.\nNom de la classe\n
+44 Les clés étrangères sur les attributs ayant classement '%s' doit être supprimée avant de changer de collation des attributs.\nTable | Clé étrangère\n
+45 Classes ayant classement '%s'; elles doivent être redéfinies:\nNom de la classe\n
+46 Indices de fonction ayant classement '%s' pour l'expression contenant; Ils doivent être redéfinis:\n\
+Table | Index | Fonction expression\n
+47 Synchronisation des classements n'a pas été effectuée. Base de données n'a pas été modifié.\n
+48 Contenu de la table système '%s'  a été mis à jour avec de nouveaux classements du système.\n
+49 Mise à jour des classements du système peut entraîner une corruption de base de données. Continuer (y/n)?\n
+50 Classement '%s' (Id: %d) ne figure pas dans la base de données ou modifiés dans la nouvelle configuration.\n
+51 Déclencheurs ayant une condition qui contient collation '%s'; ils doivent être redéfinis:\nDéclencheur | Condition\n
+52 Les vues de requête contenant classement '%s'; elles doivent être redéfinies :\nVue | Requête\n
+53 Attributs ayant classement '%s'; ils doivent être redéfinis.\nTable | Domaine d'attribut\n
+54 Une intervention manuelle sur base de données est nécessaire.\n\
+S'il vous plaît vérifiez le fichier '%s' et l'exécuter avant de forcer les classements en base de données.\n
+55 Synchronisation n'est pas nécessaire.\n
+56 Synchronisation de classement système dans la base de données est nécessaire.\n\
+Exécutez 'cubrid synccolldb -f %s'\n
+57 Il ya %d nouveaux classements dans la configuration du système par rapport à la base de données:\n
+58 Tous les classements dans base de données '%s' se trouvent dans la nouvelle configuration du système.\n
+59 Il ya %d classements dans la base de données qui ne sont pas configurés ou sont changés par rapport à classements du système.\n
 60 \
-synccolldb: Synchronizes the collations from database with collations of system.\n\
+synccolldb: Synchronise les classements de base de données avec les classements du système.\n\
 usage: %s synccolldb [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -c, --check-only    Checks the collations from databases with collation of system.\n\
-		      If collations synchronization is required, error code 1 is returned.\n\
-		      Displays a report of incompatible collations.\n\
-  -f, --force-only    Updates the collations in databases to be same as the collations of new sytem configuration.\n\
+options valides:\n\
+  -c, --check-only    Vérifie les classements des bases de données avec collation du système.\n\
+		      Si la synchronisation des classements est nécessaire, code d'erreur 1 est retourné.\n\
+		      Affiche un rapport des classements incompatibles.\n\
+  -f, --force-only    Mises à jour des classements dans les bases de données d'être les mêmes que les classements de sytem nouvelle configuration.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 Enter %s password: 
-22 Index de tran.       Nom d'utilisateur   Nom de l'hôte   ID de processus   Nom du programme\n
+20 Entrez le mot de passe %s: 
+22 Indice de tran.       Utilisateur         Nom d'hôte      ID de processus   Nom du programme\n
 23 -------------------------------------------------------------------------------\n
 24 %4d%-10s %14s %14s %15d %17s\n
-25 Il n'existe pas de transactions\n
-26 tranlist can only be performed by the DBA or a DBA group member.\n
-32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+25 Il n'ya pas de transactions\n
+26 tranlist peuvent être effectuées uniquement par le DBA ou un membre du groupe DBA.\n
+32 Indice de tran.    Processus id  Nom du programme          Temps de req. Temps de tran.         Attendre le dét. de verr. SQL_ID       SQL Texte\n
 33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
-42 Tran index          User name      Host name      Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+42 Indice de tran.     Utilisateur    Nom d'hôte     Processus id  Nom du programme          Temps de req. Temps de tran.         Attendre le dét. de verr. SQL_ID       SQL Texte\n
 43 %4d%-10s %14s %14s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
-45 Tran index : %d
+45 Indice de transaction: %d
 46 SQL_ID: %s\n
 59 tranlist ne peut pas fonctionner en mode autonome.\n
 60 \
-tranlist: Dump active transaction information.\n\
+tranlist: Affiche les informations de transaction active.\n\
 usage: %s tranlist [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -u, --user=ID                user ID for database access; default: DBA user\n\
-  -p, --password=PASS          user password; default: none\n\
-  -s, --summary                print summarized information of transaction\n
+options valides:\n\
+  -u, --user=ID                ID d'utilisateur pour l'accès à la base de données; par défaut: utilisateur DBA\n\
+  -p, --password=PASS          mot de passe d'utilisateur; par défaut: aucun\n\
+  -s, --summary                affichage des informations résumées de(s) transaction(s)\n
