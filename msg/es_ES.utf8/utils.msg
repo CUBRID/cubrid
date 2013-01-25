@@ -296,10 +296,10 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 Comando desconocido '%s'\n
 43 No se puede abrir archivo de salida '%s'\n
 44 No se puede eliminar base de datos existente.\n
-45 Creating database with %s size. The total amount of disk space needed is %s.\n
+45 Creando base de datos con tamano %s. Cantidad total de espacio de disco necesaria es %s.\n
 46 No se pudo crear base de datos.\n
 47 Problema con el archivo de utilizador '%s'\n
-48 The given '%s', %s is out of range. Choose a size between %s and %s.\n
+48 Para el '%s' dado, %s es fuera de rango. Escoger un tamano entre %s y %s.\n
 49 El valor de %s '%s' no es valido.\n
 60 \
 createdb: Crear una base de datos.\n\
@@ -611,14 +611,14 @@ opciones validas:\n\
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB
 20 Valor equivocado %d para npages\n
 21 Valor equivocado '%s' para proposito de almacenamiento de volumen.\n
-22 WARNING: --max-writesize-in-sec option is ignored in stand-alone mode execution.\n
+22 ADVERTENCIA: opcion --max-writesize-in-sec es ignorada en modo de ejecucion stand-alone.\n
 60 \
 addvoldb: Agregar un archivo de volumen para la base de datos.\n\
 uso: %s addvoldb [OPTION] database-name\n\
 \n\
 opciones validas:\n\
       --db-volume-size=SIZE        tamano de volumen adicional; estandar: db_volume_size en cubrid.conf\n\
-      --max-writesize-in-sec=SIZE  the amount of volume written per second; (ex. 512K, 1M, 10M); default: not used; minimum: 160K\n\
+      --max-writesize-in-sec=SIZE  la cantidad de volumen escrita por segundo; (ex. 512K, 1M, 10M); estandar: no utilizado; minimum: 160K\n\
   -n, --volume-name=NAME           NOMBRE de volumen de informacion; estandar: generar como "db"_ext1)\n\
   -F, --file-path=PATH             RUTA para archivo de agregacion volumen; estandar: directorio de trabajo\n\
       --comment=COMMENT            COMENTARIO para archivo de agregacion volumen; estandar: ninguno\n\
@@ -734,21 +734,21 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 60 \
-diagdb: Abandonar una base de datos.\n\
+diagdb: Imprimir una base de datos.\n\
 uso: %s diagdb [OPTION] database-name\n\
 \n\
 opciones validas:\n\
-  -d, --dump-type=TYPE         TIPO de abandono\n\
-                               -1 abandonar todo\n\
-                                1 abandonar tablas de archivo\n\
-                                2 abandonar capacidades de archivo\n\
-                                3 abandonar capacidades de heap\n\
-                                4 abandonar capacidades de indice\n\
-                                5 abandonar nombres de clase\n\
-                                6 abandonar mapas de bits de disco\n\
-                                7 abandonar catalogo\n\
-                                8 abandonar registro\n\
-                                9 abandonar heap\n
+  -d, --dump-type=TYPE         TIPO de imprimir\n\
+                               -1 imprimir todo\n\
+                                1 imprimir tablas de archivo\n\
+                                2 imprimir capacidades de archivo\n\
+                                3 imprimir capacidades de heap\n\
+                                4 imprimir capacidades de indice\n\
+                                5 imprimir nombres de clase\n\
+                                6 imprimir mapas de bits de disco\n\
+                                7 imprimir catalogo\n\
+                                8 imprimir registro\n\
+                                9 imprimir heap\n
 
 
 $set 25 MSGCAT_UTIL_SET_LOCKDB
@@ -771,7 +771,7 @@ $set 26 MSGCAT_UTIL_SET_KILLTRAN
 29 Matando transaccion asociada con el indice de transaccion %d\n
 30 Fracaso al matar las siguentes transacciones\n\n
 31 La transaccion todavia no acaba, pero puede que haga trabajo de reversion.\n Por favor, espere un segundo y reintentar luego si todavia necesario.\n
-32 Invalid tranindex(%s).\n
+32 Indice de transaccion tranindex(%s) no valido.\n
 59 killtran no puede ejecutar en modo independiente.\n
 60 \
 killtran: Patrocinar transacciones de una base de datos.\n\
@@ -782,10 +782,10 @@ opciones validas:\n\
       --kill-user-name=ID            matar todas transacciones con ID de utilizador\n\
       --kill-host-name=HOST          matar todas transacciones con HOST de cliente\n\
       --kill-program-name=NAME       matar todas transacciones con NOMBRE de programa de cliente\n\
-      --kill-sql-id=SQL_ID           kill all transactions with SQL_ID\n\
+      --kill-sql-id=SQL_ID           matar todas transacciones con SQL_ID\n\
   -p, --dba-password=PASS            contrasena del utilizador DBA; va a ser pedida si no es especificado\n\
   -d, --display-information          mostrar informacion relacionada a las transacciones activas\n\
-  -q, --query-exec-info              display information about query execution information of active transactions\n\
+  -q, --query-exec-info              mostrar informacion sobre informacion de ejecucion de transacciones activas de la consulta\n\
   -f, --force                        matar la transaccion sin un aviso para verificar\n
 
 
@@ -843,12 +843,12 @@ $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 22 Parametros de sistema cargados por el servidor '%s'\n
 23 Parametros de sistema a ser utilizados en modo independiente.\n
 60 \
-paramdump: Abandonar ajustes de los parametros de sistema.\n\
+paramdump: Imprimir ajustes de los parametros de sistema.\n\
 uso: %s paramdump [OPTION] database-name\n\
 \n\
 opciones validas:\n\
   -o, --output-file=FILE       redireccionar mensaje de salida al ARCHIVO; estandar: ninguno\n\
-  -b, --both                   abandonar parametros de cliente y servidor\n\
+  -b, --both                   imprimir parametros de cliente y servidor\n\
   -S, --SA-mode                modo de ejecucion independiente\n\
   -C, --CS-mode                modo de ejecucion cliente-servidor\n
 
@@ -904,7 +904,7 @@ $set 43 MSGCAT_UTIL_SET_STATDUMP
 11 No se puede abrir archivo de salida '%s'\n
 59 statdump no puede ejecutar como modo independiente.\n
 60 \
-statdump: Abandonar estadisticas globales.\n\
+statdump: Imprimir estadisticas globales.\n\
 uso: %s statdump [OPTION] database-name\n\
 \n\
 opciones validas:\n\
@@ -928,7 +928,7 @@ opciones validas:\n\
   -L, --copied-log-path=PATH  ruta de los volumenes de registro copiados; mostrar informacion de registro copiado \n\
   -p, --pageid=ID             id de pagina; estandar : 0(pagina activa)\n\
   -v, --verbose               habilitar mensajes de estado verbose; estandar : inhabilitar\n\
-  -i, --interval=S            print information every S secs\n	
+  -i, --interval=S            imprimir informacion casa S segundos\n	
 
 $set 45 MSGCAT_UTIL_SET_ACLDB
 59 acldb no puede ejecutar como modo independiente.\n
@@ -960,81 +960,81 @@ $set 47 MSGCAT_UTIL_SET_DUMPLOCALE
 dumplocale: Abandona el contenido de la biblioteca local compartida generada anteriormente utilizando el archivo de entrada LDML.\n\
 uso: %s dumplocale [OPTION] [language-string]\n\
 \n\
-language-string	 string de idiomas local para cual abandonar biblioteca compartida local.\n\
+language-string	 string de idiomas local para cual imprimir biblioteca compartida local.\n\
 		         Si no hay ningun string de idioma dado, todos los idiomas en 'cubrid_locales.txt'\n\
 		         van a ser procesados.\n\
 opciones validas:\n\
   -i, --input-file    ruta para biblioteca local compartida de entrada (generada anteriormente).\n\
                       Puede ser utilizada solo cuando no hay ningun string de idioma dado.\n\
-  -d, --calendar      abandonar calendar y la informacion fecha/tiempo; estandar : inhabilitar\n\
-  -n, --numeric		  abandonar informacion numerica; estandar : inhabilitar\n\
-  -a, --alphabet=l|lower|u|upper|both	     abandonar alfabeto y informacion de carcasa; estandar : inhabilitar\n\
-      --identifier-alphabet=l|lower|u|upper	 abandonar alfabeto y informacion de carcasapara identificadores; estandar : inhabilitar\n\
-  -c, --codepoint-order	 abandonar informacion de colacion ordenada basado en valores codepoint\n\
+  -d, --calendar      imprimir calendar y la informacion fecha/tiempo; estandar : inhabilitar\n\
+  -n, --numeric		  imprimir informacion numerica; estandar : inhabilitar\n\
+  -a, --alphabet=l|lower|u|upper|both	     imprimir alfabeto y informacion de carcasa; estandar : inhabilitar\n\
+      --identifier-alphabet=l|lower|u|upper	 imprimir alfabeto y informacion de carcasapara identificadores; estandar : inhabilitar\n\
+  -c, --codepoint-order	 imprimir informacion de colacion ordenada basado en valores codepoint\n\
                          (cp, char, weight, next-cp, char y weight);\n\
                          estandar : inhabilitar\n\
-  -w, --weight-order  abandonar informacion de colacion ordenada basado en valores weight\n\
+  -w, --weight-order  imprimir informacion de colacion ordenada basado en valores weight\n\
                       (weight, cp, char); estandar : disable\n\
   -s, --start-value	  opcion de filtrar; inicializando codepoint para\n\
                       -a, --identificador-alfabeto, -c, -w; estandar : 0\n\
   -e, --end-value     opcion de filtrar; terminando codepoint para \n\
                       -a, --identificador-alfabeto, -c, -w; \n\
                       estandar : valor maximo leido de la biblioteca compartida local\n\
-  -k, --console-conversion  abandonar datos de la conversion de consola; estandar : inhabilitar\n\
-  -z, --normalization   abandonar datos de normalizacion; estandar : inhabilitar\n
+  -k, --console-conversion  imprimir datos de la conversion de consola; estandar : inhabilitar\n\
+  -z, --normalization   imprimir datos de normalizacion; estandar : inhabilitar\n
 
 $set 48 MSGCAT_UTIL_SET_SYNCCOLLDB
-43 Partitioning must be removed before changing the current collation '%s' of their partitioning attribute.\nClass name\n
-44 Foreign keys on attributes having collation '%s' must be dropped before changing collation of attributes.\nTable | Foreign Key\n
-45 Classes having collation '%s'; they should be redefined :\nClass name\n
-46 Function indexes having expression containing collation '%s'; they should be redefined :\n\
-Table | Index | Function expression\n
-47 Synchronization of collations was not performed. Database was not changed.\n
-48 Contents of '%s' system table was updated with new system collations.\n
-49 Updating system collations may cause corruption of database. Continue (y/n) ?\n
-50 Collation '%s' (Id: %d) not found in database or changed in new system configuration.\n
-51 Triggers having condition containing collation '%s'; they should be redefined :\nTrigger | Condition\n
-52 Query views containing collation '%s'; they should be redefined :\nView | Query\n
-53 Attributes having collation '%s'; they should be redefined.\nTable | Attribute Domain\n
-54 Manual intervention on database is required.\n\
-Please check file '%s' and execute it before forcing collations into database.\n
-55 Synchronization is not needed.\n
-56 Synchronization of system collation into database is required.\n\
-Run 'cubrid synccolldb -f %s'\n
-57 There are %d new collations in system configuration compared to database:\n
-58 All collations in database '%s' are found in the new system configuration.\n
-59 There are %d collations in database which are not configured or are changed compared to system collations.\n
+43 Particionamiento debe ser eliminado antes de cambiar la colacion actual '%s" de su atributo de paticionamiento.\nClass name\n
+44 Claves externas en atributos teniendo colacion '%s' deben ser bajadas antes de cambiar la colacion de atributos.\nTable | Foreign Key\n
+45 Clases teniendo colacion '%s'; deberian ser redefinidas:\nClass name\n
+46 Indices de funcion teniendo expresion que contiene colacion '%s'; deberian ser redefinidas:\n\
+Tabla | Indice | Expresion de funcion\n
+47 Sincronizacion de colaciones no ha sido ejecutada. La base de datos no ha sido cambiada.\n
+48 Contenido de '%s' tabla de sistema ha sido actualizado con nuevas colaciones de sistema.\n
+49 Actualizar colaciones de sistema podria causar corrupcion de la base de datos. Desea continuar (y/n)?\n
+50 Colacion '%s' (Id: %d) no encontrada el la base de datos o cambiada en la nueva configuracion de sistema.\n
+51 Disparadores teniendo condicion que tiene colacion '%s'; deberian ser redefinidos:\nTrigger | Condition\n
+52 Vistas de consulta que contienen colacion '%s'; deberian ser redefinidas:\nView | Query\n
+53 Atributos teniendo colacion '%s'; deberian ser redefinidos.\nTable | Attribute Domain\n
+54 Intervención manual en la base de datos se requiere.\n\
+Por favor verificar archivo '%s' y ejecutarlo antes de forzar colaciones en la base de datos.\n
+55 Sincronizacion no es necesaria.\n
+56 Sincronizacion de colacion de sistema en la base de datos es requerida.\n\
+Ejecutar 'cubrid synccolldb -f %s'\n
+57 Hay %d colaciones nuevas en la configuracion de sistema comparado con la base de datos:\n
+58 Todas colaciones en la base de datos '%s' son encontradas en la nueva configuracion de sistema.\n
+59 Hay %d colaciones en la base de datos que no son configuradas o son cambiadas comparado con las colaciones del sistema.\n
 60 \
-synccolldb: Synchronizes the collations from database with collations of system.\n\
-usage: %s synccolldb [OPTION] database-name\n\
+synccolldb: Sincroniza las colaciones de la base de datos con la colaciones del sistema.\n\
+uso: %s synccolldb [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -c, --check-only    Checks the collations from databases with collation of system.\n\
-		      If collations synchronization is required, error code 1 is returned.\n\
-		      Displays a report of incompatible collations.\n\
-  -f, --force-only    Updates the collations in databases to be same as the collations of new sytem configuration.\n\
+opciones validas:\n\
+  -c, --check-only    Verifica las colaciones de la base de datos con las colaciones del sistema.\n\
+		      Si se requiere sincronizacion de colaciones, codigo de error 1 es returnado.\n\
+		      Muestra un informe de las colaciones incompatibles.\n\
+  -f, --force-only    Actualiza las colaciones en la base de datos para que sean iguales con las colaciones de la nueva configuracion del sistema.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 Enter %s password: 
+20 Introducir %s clave: 
 22 Tran index          User name      Host name      Process id      Program name\n
 23 -------------------------------------------------------------------------------\n
 24 %4d%-10s %14s %14s %15d %17s\n
 25 No hay transacciones\n
-26 tranlist can only be performed by the DBA or a DBA group member.\n
+26 tranlist puede ser ejecutada solamente por el DBA or por un miembro del grupo DBA.\n
 32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
 33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
 42 Tran index          User name      Host name      Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
 43 %4d%-10s %14s %14s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
-45 Tran index : %d
+45 Tran index: %d
 46 SQL_ID: %s\n
-59 tranlist no puede ejecutar en modo independiente.\n
+59 tranlist no puede ser ejecutado en modo standalone.\n
 60 \
-tranlist: Dump active transaction information.\n\
-usage: %s tranlist [OPTION] database-name\n\
+tranlist: Imprimir informacion de transaccion activa.\n\
+uso: %s tranlist [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -u, --user=ID                user ID for database access; default: DBA user\n\
-  -p, --password=PASS          user password; default: none\n\
-  -s, --summary                print summarized information of transaction\n
+opciones validas:\n\
+  -u, --user=ID                ID de utilizador para acceso a la base de datos; estandar: utilizador DBA\n\
+  -p, --password=PASS          clave del utilizador; estandar: ninguna\n\
+  -s, --summary                imprimir resume de informacion de la transaccion\n

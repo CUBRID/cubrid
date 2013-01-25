@@ -40,7 +40,7 @@ opciones validas:\n\
   -c, --command=ARG            CSQL-comandos\n\
   -l, --line-output            muestra cada valor en una linea\n\
   -r, --read-only              modo read-only\n\
-      --string-width           display each column which is a string type in this width\n\
+      --string-width           muestra cada columna de tipo string en esta anchura\n\
       --no-auto-commit         inhabilitar modo de ejecucion cometer automaticamente\n\
       --no-pager               no utilize pager\n\
       --no-single-line         desactivar modo de ejecucion linea suelta\n\
@@ -165,8 +165,8 @@ $ csql help messages
    ;TRigger [`*'|trigger-name]  - mostrar informacion de disparador.\n\
    ;Get system_parameter        - obtener el valor de un parametro de sistema.\n\
    ;SEt system_parameter=value  - ajustar el valor de un parametro de sistema.\n\
-   ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
-   ;COLumn-width [name]=[width] - set width that a specific column is displayed.\n\
+   ;STring-width [width]        - ajusta la anchura en que cada columna de tipo string sera mostrada.\n\
+   ;COLumn-width [name]=[width] - establecer amplitud para que una columna especifica sea mostrada.\n\
    ;PLan [simple/detail/off]    - mostrar el plan de ejecucion de la consulta.\n\
    ;Info <command>              - mostrar informacion interna.\n\
    ;TIme [ON/OFF]               - habilitar/inhabilitar para mostrar la consulta \n\

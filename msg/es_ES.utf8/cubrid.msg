@@ -61,9 +61,9 @@ $set 4 MSGCAT_SET_PARAMETER
 19 Valor es fuera de rango. Restableciendo al valor predeterminado.
 20 Keyword = '%s'    Value = %d    Default Value = %d\n
 21 Keyword = '%s'    Value = %f    Default Value = %f\n
-22 Deprecated parameter
-23 The '%s' and '%s' parameters can not be used together.\n
-31 The '%s' parameter:
+22 Parámetro obsoleto
+23 Los parámetros '%s' e '%s' no pueden utilizarse juntos.\n
+31 El parametro '%s':
 
 $set 5 MSGCAT_SET_ERROR
 1 Faltando mensaje para el codigo de error %1$d.
@@ -188,7 +188,7 @@ $set 5 MSGCAT_SET_ERROR
 120 El numero maximo de volumenes (%1$d) ha sido excedido.
 121 Tratando de eliminar "%1$s", un volumen permanente de la base de datos.
 122 No se puede acceder al catálogo del sistema de mensajes.
-123 Unable to create %1$s for database "%2$s". Please refer "%3$s" for additional information.
+123 No se puede crear %1$s para base de datos "%2$s". Consulte "%3$s" para informacion adicional.
 124 Volumen "%1$s" ya existe.
 125 Una extension automatica de volumen "%1$s" de %2$d paginas y propósito de almacenamiento genérico ha sido creada.
 126 Propósito desconocido "%1$s" dado en la linea %2$d.
@@ -1119,7 +1119,7 @@ $ LOADDB
 1050 No se puede cambiar atributo "%1$s". CUBRID no puede actualmente cambiar el dominio del atributo. El atributo tiene adjuntado un indice.
 1051 No se puede cambiar atributo "%1$s". CUBRID no puede actualmente cambiar el atributo que agregue una restriccion. Valores existentes del atributo pueden no checar la restriccion.
 1052 Atributo "%1$s" no ha sido cambiado. CUBRID no ha detectado ningun cambio efectivo en la representacion del atributo.
-1053 The statements REPLACE INTO... and INSERT ... ON DUPLICATE KEY UPDATE are not allowed for classes that are part of an inheritance chain.
+1053 Las declaraciones REPLACE INTO... e INSERT... ON DUPLICATE KEY UPDATE no son permitidas para clases que son parte de una cadena de herencia.
 1054 El nuevo valor de una restriccion de incremento automatico tendria que ser superior o igual al valor actual.
 1055 El nuevo valor de una restriccion de incremento automatico tendria que ser inferior al valor maximo.
 1056 Para evitar ambigüedad, la opcion de la tabla AUTO_INCREMENT requiere que la tabla tenga exactamente una columna AUTO_INCREMENT y ninguna especificacion seed/increment.
@@ -1145,7 +1145,7 @@ $ LOADDB
 1076 No se puede cargar parametro de sistema.
 1077 Parametro '%s' en linea %d en archivo '%s' : Parametro desconocido.
 1078 Caracter en offset %d no valido con el conjunto de codigo actual.
-1079 Codesets of database(%1$s) and server configuration(%2$s) are incompatible.
+1079 Conjuntos de codigo de la base de datos (%1$s) y la configuracion del servidor (%2$s) no son compatibles.
 1080 Longitud maxima del string de predicado del filtro tiene que ser %1$d.
 1081 No se puede alterar un atributo involucrado en un indice de filtro o de funcion.
 1082 Todos buferes de paginas son sucios (LRU: %1$d).
@@ -1165,19 +1165,19 @@ $ LOADDB
 1096 Alterando esquema de particionamiento cuando la clase particionada es referenciada por una clave externa no es permitido.
 1097 Columna '%s' no puede tener una restriccion PRIMARY KEY y un valor estandar NULL.
 1098 Locales para el idioma '%s' no son disponibles con el conjunto de caracteres '%s'.
-1099 Declaracion DDL no es permitida por configuracion (block_ddl_statement=yes).\n SQL Text: %s
+1099 Declaracion DDL no es permitida por configuracion (block_ddl_statement=yes).\n SQL Texto: %s
 1100 Declaracion sin clausula WHERE no es permitida por configuracion (block_nowhere_statement=yes).
 1101 Codigo de error no utilizado.
 1102 Parametro de sistema desconocido o valor malo.
 1103 No se puede cambiar el parametro de sistema.
-1104 Slow query (%d msec)\n%s
-1105 Internal error: partially failed to flush dirty object. 
-1106 Multiple rows in source table match the same row in destination table.
-1107 Invalid bucket number for NTILE. Should be greater than zero and no more than 2,147,483,647.
-1108 Invalid bucket number for WIDTH_BUCKET. Should be greater than zero and less than 2,147,483,647.
-1109 Invalid value for partition definition.
-1110 Insufficient space in btree leaf page. (key len: %d)\n%s
-1111 Result value is truncated, because the precision(%1$d) is less than it's length(%2$d).
+1104 Consulta lenta (%d mseg)\n%s
+1105 Error interno: parcialmente no se pudo limpiar objeto sucio.
+1106 Varias filas de la tabla fuente coinciden con la misma fila en la tabla de destino.
+1107 Numero de bucket no valido para NTILE. Deberia ser mayor que 0 y menor que 2, 147, 483, 647.
+1108 Numero de bucket no valido para WIDTH_BUCKET. Deberia ser mayor que 0 y menor que 2, 147, 483, 647.
+1109 Valor para definicion de particion no valido.
+1110 Espacio insuficiente en pagina btree leaf. (key len: %d)\n%s
+1111 Valor del resultado es truncado, porque la precision (%1$d) es menor que su longitud (%2$d).
 1112 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
@@ -1323,9 +1323,9 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 114 before END OF STATEMENT\n
 115 Ajusta nombres invalido\n set_names: SET NAMES charset [{COLLATE | COLLATION} collation]\n
 116 Uso de chr no valido\n CHR ( number [using charset] )\n
-117 Uso de charset no valido\n  CHARSET ( expression )\n
-118 Uso de collation no valido\n  COLLATION ( expression )\n
-119 Uso de clob_to_char no valido\n  CLOB_TO_CHAR ( expression [using charset] )\n
+117 Uso de charset no valido\n CHARSET ( expression )\n
+118 Uso de collation no valido\n COLLATION ( expression )\n
+119 Uso de clob_to_char no valido\n CLOB_TO_CHAR ( expression [using charset] )\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Sin memoria.
@@ -1593,13 +1593,13 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 263 Un atributo heredado no puede ser utilizado como clave de particion.
 264 El tamaño de los agregados de elementos de la enumeración es demasiado grande.
 265 No se puede utilizar tabla de destino en especificaciones de origen.
-266 COLLATE is not allowed in this context.
-267 COLLATE modifier cannot change codeset (from '%s' to '%s'). Try using CAST instead.
-268 Invalid codeset '%1$s' for partition value. Expecting '%2$s' codeset.
-269 Session variable cannot have a different collation than system collation ('%s').
-270 Invalid function index expression.
-271 The query specification of %s has a cyclic reference to itself.
-272 %s expression not allowed in join condition.
+266 COLLATE no es permitido en este contexto.
+267 El modificador de COLLATE no puede cambiar conjunto de codigo (de '%s' en '%s'). En cambio, intentar utilizar CAST.
+268 Cojunto de codigo '%1$s' no valido para el valor de particion. Esperando conjunto de codigo '%2$s'.
+269 Variable de sesion no puede tener una colacion diferente que la colacion del sistema ('%s').
+270 Expresion de indice de funcion no valida.
+271 La especificacion de consulta de %s tiene una referencia ciclica a si misma.
+272 %s expresion no permitida en la condicion join.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sin memoria virtual: incapaz de asignar %d bytes.
