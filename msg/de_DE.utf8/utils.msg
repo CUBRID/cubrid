@@ -296,10 +296,10 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 Unbekannter Befehl '%s'\n
 43 Ausgabedatei konnte nicht geöffnet werden '%s'\n
 44 Vorhandene Datenbank konnte nicht gelöscht werden.\n
-45 Creating database with %s size. The total amount of disk space needed is %s.\n
+45 Datenbank mit Größe %s wird erstellt. Der gesamt nötige Speicher ist %s.\n
 46 Datenbank konnte nicht erstellt werden.\n
 47 Problem mit Benutzerdatei '%s'\n
-48 The given '%s', %s is out of range. Choose a size between %s and %s.\n
+48 Der angegebene '%s', %s ist außerhalb des Bereichs. Eine Größe zwischen %s und %s wählen.\n
 49 Der Wert von %s '%s' ist ungültig.\n
 60 \
 createdb: Datenbank erstellen.\n\
@@ -611,14 +611,14 @@ gültige Optionen:\n\
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB
 20 Ungültiger Wert %d für npages\n
 21 Ungültiger Wert '%s' für Datenträger.\n
-22 WARNING: --max-writesize-in-sec option is ignored in stand-alone mode execution.\n
+22 WARNING: --max-writesize-in-sec Option wird in Stand-Alone-Modus ignoriert.\n
 60 \
 addvoldb: Datenträger für die Datenbank hinzufügen.\n\
 Anwendung: %s addvoldb [OPTION] Datenbanknamen\n\
 \n\
 gültige Optionen:\n\
       --db-volume-size=GRÖSSE      Größe des zusätzlichen Datenträger; Standard: db_volume_size in cubrid.conf\n\
-      --max-writesize-in-sec=SIZE  the amount of volume written per second; (ex. 512K, 1M, 10M); default: not used; minimum: 160K\n\
+      --max-writesize-in-sec=SIZE  Speichergröße pro Sekunde; (ex. 512K, 1M, 10M); Standardwert: nicht benutzt; Minimum: 160K\n\
   -n, --volume-name=NAME           NAME des Datenträgers; Standard: erzeugt wie "db"_ext1)\n\
   -F, --file-path=PFAD             PFAD des neuen Datenträgers; Standard: Arbeitsverzeichnis\n\
       --comment=KOMMENTAR          KOMMENTAR fürs neue Datenträger; Standard: keinen\n\
@@ -771,7 +771,7 @@ $set 26 MSGCAT_UTIL_SET_KILLTRAN
 29 Transaktion mit Index %d wird abgebrochen\n
 30 Abbrechen der folgenden Transaktion fehlgeschlagen\n\n
 31 Die Transaktion ist noch nicht abgeschlossen, aber es könnte ein Rollback ausführen.\n Bitte warten Sie einen Augenblick, versuchen Sie bei Bedarf später.\n
-32 Invalid tranindex(%s).\n
+32 Ungültiges tranindex(%s).\n
 59 killtran darf nicht in Stand-Alone-Modus ausgeführt werden.\n
 60 \
 killtran: Transaktionen der Datenbank verwalten.\n\
@@ -782,10 +782,10 @@ gültige Optionen:\n\
       --kill-user-name=ID            alle Transaktionen mit Benutzer ID abbrechen\n\
       --kill-host-name=HOST          alle Transaktionen mit Client HOST abbrechen\n\
       --kill-program-name=NAME       alle Transaktionen mit Client-Programm NAME abbrechen\n\
-      --kill-sql-id=SQL_ID           kill all transactions with SQL_ID\n\
+      --kill-sql-id=SQL_ID           alle Transaktionen mit SQL_ID schließen\n\
   -p, --dba-password=PASSWORT        Passwort des DBA-Benutzers; es wird angefordert, wenn nicht angegeben\n\
   -d, --display-information          Information über aktive Transaktionen anzeigen \n\
-  -q, --query-exec-info              display information about query execution information of active transactions\n\
+  -q, --query-exec-info              Informationen zur Abfrageausführung anzeigen; Informationen zur aktiven Transaktionen\n\
   -f, --force                        Transaktion ohne Bestätigung abbrechen \n
 
 
@@ -898,7 +898,7 @@ Anwendung: %s applylogdb [OPTION] Datenbanknamen\n\
 \n\
 gültige Optionen:\n\
   -L, --log-path=PFAD         Verzeichnispfad der kopierten Logdatenträger\n\
-      --max-mem-size=GRÖSSE     maximale Prozessgröße GRÖSSE in MB; max. 500\n
+      --max-mem-size=GRÖSSE   maximale Prozessgröße GRÖSSE in MB; max. 500\n
 
 $set 43 MSGCAT_UTIL_SET_STATDUMP
 11 Ausgangdatei kann nicht geöffnet werden '%s'\n
@@ -908,10 +908,10 @@ statdump: Globale Statistiken exportieren.\n\
 Anwendung: %s statdump [OPTION] Datenbanknamen\n\
 \n\
 gültige Optionen:\n\
-  -o, --output-file=DATEI       Umleiten der Ausgabemeldungen in DATEI; Standard: keine\n\
-  -c, --cumulative             kumulative Statistiken anzeigen \n\
-  -i, --interval=S             Statistiken jede S Sekunden anzeigen\n\
-  -s, --substr=STRING          nur die Statistiken anzeigen, die zum String anpassen\n
+  -o, --output-file=DATEI     Umleiten der Ausgabemeldungen in DATEI; Standard: keine\n\
+  -c, --cumulative            kumulative Statistiken anzeigen \n\
+  -i, --interval=S            Informationen jede S Sekunden drucken\n\
+  -s, --substr=STRING         nur die Statistiken anzeigen, die zum String anpassen\n
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 DBA-Passwort eingeben:
@@ -924,7 +924,7 @@ Anwendung: %s applyinfo [OPTION] Datenbanknamen\n\
 \n\
 gültige Optionen:\n\
   -r, --remote-host-name      Remote-Hostnamen; aktiven Log-Information des Remoteknoten anzeigen\n\
-  -a, --applied-info 	      Übernommene Information anzeigen \n\
+  -a, --applied-info          Übernommene Information anzeigen \n\
   -L, --copied-log-path=PFAD  Pfad der kopierten Logdatenträger; kopierte Loginformation anzeigen \n\
   -p, --pageid=ID             Seiten-ID; Standard: 0(aktive Seite)\n\
   -v, --verbose               ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n
@@ -983,58 +983,57 @@ gültige Optionen:\n\
   -z, --normalization   Normalisierungsdaten exportieren; Standard: inaktiv\n
 
 $set 48 MSGCAT_UTIL_SET_SYNCCOLLDB
-43 Partitioning must be removed before changing the current collation '%s' of their partitioning attribute.\nClass name\n
-44 Foreign keys on attributes having collation '%s' must be dropped before changing collation of attributes.\nTable | Foreign Key\n
-45 Classes having collation '%s'; they should be redefined :\nClass name\n
-46 Function indexes having expression containing collation '%s'; they should be redefined :\n\
-Table | Index | Function expression\n
-47 Synchronization of collations was not performed. Database was not changed.\n
-48 Contents of '%s' system table was updated with new system collations.\n
-49 Updating system collations may cause corruption of database. Continue (y/n) ?\n
-50 Collation '%s' (Id: %d) not found in database or changed in new system configuration.\n
-51 Triggers having condition containing collation '%s'; they should be redefined :\nTrigger | Condition\n
-52 Query views containing collation '%s'; they should be redefined :\nView | Query\n
-53 Attributes having collation '%s'; they should be redefined.\nTable | Attribute Domain\n
-54 Manual intervention on database is required.\n\
-Please check file '%s' and execute it before forcing collations into database.\n
-55 Synchronization is not needed.\n
-56 Synchronization of system collation into database is required.\n\
-Run 'cubrid synccolldb -f %s'\n
-57 There are %d new collations in system configuration compared to database:\n
-58 All collations in database '%s' are found in the new system configuration.\n
-59 There are %d collations in database which are not configured or are changed compared to system collations.\n
+43 Die Partitionierung muss entfernt werden, bevor die aktuelle Kollation '%s' des Partitionierungsattribut geändert wird.\n Klassenname\n
+44 Fremdschlüssel auf Attribute mit Kollation '%s' müssen vor Änderung der Kollation der Attributen, gelöscht werden.\n Tabelle | Fremdschlüssel\n
+45 Klassen mit Kollation '%s'; sie sollten neu definiert werden:\n Klassenname\n
+46 Funktion Indexen mit Kollation '%s'; sie sollten neu definiert werden:\n\
+Tabelle | Index | Funktion Ausdruck\n
+47 Synchronisierung der Kollationen wurde nicht durchgeführt. Die Datenbank wurde nicht geändert.\n
+48 Inhalt der '%s' Systemtabelle wurde mit den neuen Systemkollationen aktualisiert.\n
+49 Die Aktualisierung der Systemkollationen kann zur Korruption der Datenbank durchführen. Weiter (y/n)?\n
+50 Kollation '%s' (Id: %d) nicht gefunden, oder sie wurde in der neuen Systemkonfiguration geändert.\n
+51 Trigger mit Bedingungen mit Kollation '%s'; sie sollten neu definiert werden:\nTrigger | Bedingung\n
+52 Abfrageanzeige mit Kollation '%s'; sie sollten neu definiert werden :\nAnzeige | Abfrage\n
+53 Attribute mit Kollation '%s'; sie sollten neu definiert werden.\nTabelle | Attributdomäne\n
+54 Manueller Eingriff in der Datenbank ist erforderlich.\n\
+Bitte Datei '%s' überprüfen und ausführen, bevor Sie Kollationen in die Datenbank zwingen.\n
+55 Synchronisierung nicht erforderlich.\n
+56 Synchronisierung der Systemkollationen der Datenbank erforderlich.\n\
+'cubrid synccolldb -f %s' ausführen\n
+57 Es gibt %d neue Kollationen in der Systemkonfiguration, in Vergleich zur Datenbank:\n
+58 Alle Kollationen in der Datenbank '%s' sind in der neuen Systemkonfiguration gefunden.\n
+59 Es gibt %d Kollationen in der Datenbank, die nicht konfiguriert sind, oder wurden in Vergleich zu den Systemkollationen geändert.\n
 60 \
-synccolldb: Synchronizes the collations from database with collations of system.\n\
-usage: %s synccolldb [OPTION] database-name\n\
+synccolldb: Synchronisiert die Datenbank- mit den Systemkollationen.\n\
+Anwendung: %s synccolldb [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -c, --check-only    Checks the collations from databases with collation of system.\n\
-		      If collations synchronization is required, error code 1 is returned.\n\
-		      Displays a report of incompatible collations.\n\
-  -f, --force-only    Updates the collations in databases to be same as the collations of new sytem configuration.\n\
+gültige Optionen:\n\
+  -c, --check-only    Überprüft die Kollationen der Datenbank mit der Systemkollation.\n\
+		      Wenn Kollationen Synchronisierung  ist erforderlich, Fehlerkode 1 wird zurückgegeben.\n\
+		      Zeigt einen Bericht der inkompatiblen Kollationen.\n\
+  -f, --force-only    Aktualisiert die Kollationen in der Datenbank, so dass sie gleich mit den Kollationen einer neuen Systemkonfiguration sind.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 Enter %s password: 
-22 Tran index          Benutzername      Hostname      Prozes-ID      Programname\n
+20 Passwort %s eingeben: 
+22 Tran index          Benutzername      Hostname      Prozess ID      Programmname\n
 23 -------------------------------------------------------------------------------\n
 24 %4d%-10s %14s %14s %15d %17s\n
 25 Es gibt keine Transaktionen\n
-26 tranlist can only be performed by the DBA or a DBA group member.\n
-32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+26 tranlist darf nur von DBA oder einem Mitglied der DBA Gruppe durchgeführt werden.\n
+32 Tran index         Prozess ID    Programmname              Abfragezeit   Tran Zeit              Warten auf Sperrhalter    SQL_ID       SQL Text\n
 33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
-42 Tran index          User name      Host name      Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+42 Tran index          Benutzername   Hostname       Prozess ID    Programmname              Abfragezeit   Tran Zeit              Warten auf Sperrhalter    SQL_ID       SQL Text\n
 43 %4d%-10s %14s %14s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
 45 Tran index : %d
 46 SQL_ID: %s\n
-59 tranlist darf nicht in Stand-Alone-Modus ausgeführt werden.\n
+59 tranlist dar nicht in Stand-Alone-Modus durchgeführt werden.\n
 60 \
-tranlist: Dump active transaction information.\n\
-usage: %s tranlist [OPTION] database-name\n\
+tranlist: Informationen der aktiven Transaktion wegwerfen.\n\
+usage: %s tranlist [OPTION] Datenbankname\n\
 \n\
-valid options:\n\
-  -u, --user=ID                user ID for database access; default: DBA user\n\
-  -p, --password=PASS          user password; default: none\n\
-  -s, --summary                print summarized information of transaction\n
-  
+gültige Optionen:\n\
+  -u, --user=ID                Benutzer ID für Datenbankzugang; Standardwert: DBA Benutzer\n\
+  -p, --password=PASS          Benutzerpasswort; Standardwert: Keinen\n\
+  -s, --summary                zusammengefasste Transaktionsinformationen anzeigen\n

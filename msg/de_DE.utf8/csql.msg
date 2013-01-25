@@ -40,7 +40,7 @@ gültigen Optionen:\n\
   -c, --command=ARG            CSQL-Befehle\n\
   -l, --line-output            jeden Wert in einer Zeile anzeigen\n\
   -r, --read-only              Nur-Lese-Modus\n\
-      --string-width           display each column which is a string type in this width\n\
+      --string-width           jede Spalte der Art String in dieser Breite anzeigen\n\
       --no-auto-commit         Auto-Commit-Modus deaktivieren\n\
       --no-pager               Pager nicht verwenden\n\
       --no-single-line         Ausführung ausgerichtet auf einer Zeile deaktivieren\n\
@@ -166,13 +166,13 @@ $ csql help messages
    ;TRigger [`*'|trigger-name]  - Trigger-definition anzeigen.\n\
    ;Get system_parameter        - Wert eines System-Parameter erhalten.\n\
    ;SEt system_parameter=value  - Wert eines System-Parameter setzen.\n\
-   ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
-   ;COLumn-width [name]=[width] - set width that a specific column is displayed.\n\
+   ;STring-width [width]        - Breite setzen, in der jeder Spalte der Art String angezeigt wird.\n\
+   ;COLumn-width [name]=[width] - Breite einer bestimmten Spalte setzen.\n\
    ;PLan [simple/detail/off]    - Abfrageausführungsplan anzeigen.\n\
    ;Info <command>              - interne Information anzeigen.\n\
    ;TIme [ON/OFF]               - aktivieren/deaktivieren, um die Ausführungszeit\n\
 					der Abfrage anzuzeigen.\n\
-   ;LINe-output [ON/OFF]        - aktivieren/deaktivieren, jeden Wert in einer Zeile anzeigen\n\
+   ;LINe-output [ON/OFF]        - Anzeigen in einer Zeile aktivieren/deaktivieren.\n\
    ;HISTORYList                 - Liste der ausgeführten Abfragen anzeigen.\n\
    ;HISTORYRead <history_num>   - Eintrag über die Verlaufszahl in den Befehlspuffer schreiben.\n\
    ;HElp                        - Hilfe anzeigen.\n\n
