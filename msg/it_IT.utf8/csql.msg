@@ -40,7 +40,7 @@ opzioni valide:\n\
   -c, --command=ARG            commandi-CSQL\n\
   -l, --line-output            ogni valore visualizzato in una riga\n\
   -r, --read-only              modalità read-only\n\
-      --string-width           display each column which is a string type in this width\n\
+      --string-width           visualizzare ogni colonna che è un tipo stringa in questa larghezza\n\
       --no-auto-commit         disattivare modalità di esecuzione auto-commit\n\
       --no-pager               non utilizzare pager\n\
       --no-single-line         disattivare l'esecuzione orientata singola riga\n\
@@ -165,13 +165,13 @@ $ messaggi di aiuto csql
    ;TRigger [`*'|nome-trigger]  - visualizzare la definizione di trigger.\n\
    ;Get parametro_sistema       - ottenere il valore di un parametro di sistema.\n\
    ;SEt parametro_sistema=value - impostare il valore di un parametro di sistema.\n\
-   ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
-   ;COLumn-width [name]=[width] - set width that a specific column is displayed.\n\
+   ;STring-width [width]        - impostare la larghezza di che ogni colonna che è un tipo string viene visualizzata.\n\
+   ;COLumn-width [name]=[width] - impostare la larghezza di una colonna specifica che viene visualizzato.\n\
    ;PLan [simple/detail/off]    - visualizza il piano di esecuzione di query.\n\
    ;Info <comando>              - visualizzare informazioni interne.\n\
    ;TIme [ON/OFF]               - attivare/disattivare visualizzazione di query\n\
                                   tempo di esecuzione.\n\
-   ;LINe-output [ON/OFF]        - attivare/disattivare ogni valore visualizzato in una riga\n\
+   ;LINe-output [ON/OFF]        - abilitare/disabilitare la visualizzazione di ogni valore in una riga\n\
    ;HISTORYList                 - visualizzare l'elenco delle query eseguite.\n\
    ;HISTORYRead <history_num>   - leggere la voce del numero storia in buffer dei comandi.\n\
    ;HElp                        - visualizza questo messaggio di aiuto.\n\n

@@ -296,10 +296,10 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 Comando sconosciuto '%s'\n
 43 Impossibile aprire il file di output '%s'\n
 44 Impossibile rimuovere database esistente.\n
-45 Creating database with %s size. The total amount of disk space needed is %s.\n
+45 Creazione di database con dimensione %s. La quantità totale di spazio necessario è %s.\n
 46 Impossibile creare database.\n
 47 Problema con file utente '%s'\n
-48 The given '%s', %s is out of range. Choose a size between %s and %s.\n
+48 La data '%s', %s è fuori portata. Scegliere una dimensione tra %s e %s.\n
 49 Il valore di %s '%s' non è valido.\n
 60 \
 createdb: Creare un database.\n\
@@ -611,14 +611,14 @@ opzioni valide:\n\
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB
 20 Valore errato %d for npages\n
 21 Valore errato '%s' per volume storage scopo.\n
-22 WARNING: --max-writesize-in-sec option is ignored in stand-alone mode execution.\n
+22 ATTENZIONE: opzione --max-writesize-in-sec viene ignorato in modalità di esecuzione stand-alone.\n
 60 \
 addvoldb: Aggiungere un file-volume per il database.\n\
 uso: %s addvoldb [OPZIONE] nome-database\n\
 \n\
 opzioni valide:\n\
       --db-volume-size=SIZE        dimensione del volume addizionale; predefinito: db_volume_size in cubrid.conf\n\
-      --max-writesize-in-sec=SIZE  the amount of volume written per second; (ex. 512K, 1M, 10M); default: not used; minimum: 160K\n\
+      --max-writesize-in-sec=SIZE  la quantità di volume scritti al secondo; (ex. 512K, 1M, 10M); predefinito: non utilizzato; minimo: 160K\n\
   -n, --volume-name=NAME           NAME del volume di informazioni; predefinito: generate such as "db"_ext1)\n\
   -F, --file-path=PATH             PATH per l'aggiunta di file di volume; predefinito: directory di lavoro\n\
       --comment=COMMENT            COMMENT per aggiungere file di volume; predefinito: nessuno\n\
@@ -771,7 +771,7 @@ $set 26 MSGCAT_UTIL_SET_KILLTRAN
 29 Chiusura transazione associati con indice di transazione %d\n
 30 Chiusura delle seguenti transazioni non è riuscito\n\n
 31 La transazione non ancora finito, ma può essere fare il rollback lavoro.\n si prega, attendere un secondo e provarlo in seguito se necessario.\n
-32 Invalid tranindex(%s).\n
+32 Non valido tranindex(%s).\n
 59 killtran non è possibile eseguire come modalità standalone.\n
 60 \
 killtran: Gestire le transazioni del database.\n\
@@ -782,10 +782,10 @@ opzioni valide:\n\
       --kill-user-name=ID            chiudere tutte le transazioni con l'ID utente\n\
       --kill-host-name=HOST          chiudere tutte le transazioni con client HOST\n\
       --kill-program-name=NOME       chiudere tutte le transazioni con programma client NOME\n\
-      --kill-sql-id=SQL_ID           kill all transactions with SQL_ID\n\
+      --kill-sql-id=SQL_ID           chiudere tutte le transazioni con SQL_ID\n\
   -p, --dba-password=PASS            la password dell'utente DBA; richiesta se non specificherà\n\
   -d, --display-information          visualizzare le informazioni sulle transazioni attive\n\
-  -q, --query-exec-info              display information about query execution information of active transactions\n\
+  -q, --query-exec-info              visualizzare le informazioni sulle esecuzione query di transazioni attive\n\
   -f, --force                        chiudere la transazione senza una richiesta per la verifica\n
 
 
@@ -984,43 +984,43 @@ opzioni valide:\n\
   -z, --normalization   scaricare i dati di normalizzazione; predefinito : non attivo\n
 
 $set 48 MSGCAT_UTIL_SET_SYNCCOLLDB
-43 Partitioning must be removed before changing the current collation '%s' of their partitioning attribute.\nClass name\n
-44 Foreign keys on attributes having collation '%s' must be dropped before changing collation of attributes.\nTable | Foreign Key\n
-45 Classes having collation '%s'; they should be redefined :\nClass name\n
-46 Function indexes having expression containing collation '%s'; they should be redefined :\n\
+43 Partizionamento deve essere rimosso prima di cambiare la collations corrente '%s' del loro attributo partizionamento.\nNome classe\n
+44 Foreign keys su attributi con collation '%s' deve essere eliminato prima di cambiare la collation.\nTable | Foreign Key\n
+45 Classi con collation '%s'; devono essere ridefinite :\nNome classe\n
+46 Function indexes avendo espressioni con collation '%s'; devono essere ridefinite :\n\
 Table | Index | Function expression\n
-47 Synchronization of collations was not performed. Database was not changed.\n
-48 Contents of '%s' system table was updated with new system collations.\n
-49 Updating system collations may cause corruption of database. Continue (y/n) ?\n
-50 Collation '%s' (Id: %d) not found in database or changed in new system configuration.\n
-51 Triggers having condition containing collation '%s'; they should be redefined :\nTrigger | Condition\n
-52 Query views containing collation '%s'; they should be redefined :\nView | Query\n
-53 Attributes having collation '%s'; they should be redefined.\nTable | Attribute Domain\n
-54 Manual intervention on database is required.\n\
-Please check file '%s' and execute it before forcing collations into database.\n
-55 Synchronization is not needed.\n
-56 Synchronization of system collation into database is required.\n\
-Run 'cubrid synccolldb -f %s'\n
-57 There are %d new collations in system configuration compared to database:\n
-58 All collations in database '%s' are found in the new system configuration.\n
-59 There are %d collations in database which are not configured or are changed compared to system collations.\n
+47 Sincronizzazione delle collations non è stata eseguita. Database non è stato modificato.\n
+48 Contenuti di '%s' tabella di sistema è stato aggiornato con collations di nuovo sistema.\n
+49 L'aggiornamento delle collations può causare la corruzione del database. Continuare (y/n)?\n
+50 Collation '%s' (Id: %d) non trovato nel database o modificata in nuova configurazione del sistema.\n
+51 Triggers avendo condizione con collation '%s'; devono essere ridefinite :\nTrigger | Condition\n
+52 Query views avendo condizione con collation '%s'; devono essere ridefinite :\nView | Query\n
+53 Attributes con collation '%s'; devono essere ridefinite.\nTable | Attribute Domain\n
+54 Intervento manuale sul database è necessario.\n\
+Controlla il file '%s' e eseguirlo prima di forzare le collations nel database.\n
+55 La sincronizzazione non è necessaria.\n
+56 Sincronizzazione di collations di sistema nel database è necessario.\n\
+Eseguire 'cubrid synccolldb -f %s'\n
+57 Ci sono %d nuovi collations in configurazione di sistema rispetto al database:\n
+58 Tutte le collations di database '%s' si trovano nella nuova configurazione del sistema.\n
+59 Ci sono %d collations nel database che non sono configurati o sono state modificate rispetto a collation del sistema.\n
 60 \
-synccolldb: Synchronizes the collations from database with collations of system.\n\
-usage: %s synccolldb [OPTION] database-name\n\
+synccolldb: Sincronizza le collations del database con collations di sistema.\n\
+usage: %s synccolldb [OPTION] nome-database\n\
 \n\
-valid options:\n\
-  -c, --check-only    Checks the collations from databases with collation of system.\n\
-		      If collations synchronization is required, error code 1 is returned.\n\
-		      Displays a report of incompatible collations.\n\
-  -f, --force-only    Updates the collations in databases to be same as the collations of new sytem configuration.\n\
+opzioni valide:\n\
+  -c, --check-only    Controlla le collations del database con collations di sistema.\n\
+		      Se la sincronizzazione di collations è necessario, il codice di errore 1 viene restituito.\n\
+		      Visualizza un rapporto di collations incompatibili.\n\
+  -f, --force-only    Aggiornamenti delle collations di database per essere lo stesso le collations di nuova configurazione del sistema.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 Enter %s password: 
+20 Inserire la password %s: 
 22 Tran index          User name      Host name      Process id      Program name\n
 23 -------------------------------------------------------------------------------\n
 24 %4d%-10s %14s %14s %15d %17s\n
 25 Non ci sono transazioni\n
-26 tranlist can only be performed by the DBA or a DBA group member.\n
+26 tranlist può essere eseguita solo dal DBA o un membro del gruppo DBA.\n
 32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
 33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
@@ -1029,12 +1029,12 @@ $set 49 MSGCAT_UTIL_SET_TRANLIST
 44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
 45 Tran index : %d
 46 SQL_ID: %s\n
-59 tranlist non è possibile eseguire come modalità standalone.\n
+59 tranlist non può essere eseguito nella modalità standalone.\n
 60 \
-tranlist: Dump active transaction information.\n\
-usage: %s tranlist [OPTION] database-name\n\
+tranlist: Dump le informazioni delle transazioni attive.\n\
+usage: %s tranlist [OPZIONE] nome-database\n\
 \n\
-valid options:\n\
-  -u, --user=ID                user ID for database access; default: DBA user\n\
-  -p, --password=PASS          user password; default: none\n\
-  -s, --summary                print summarized information of transaction\n
+opzioni valide:\n\
+  -u, --user=ID                utente per l'accesso al database; predefinito: utente DBA\n\
+  -p, --password=PASS          password utente; predefinito: nessuno\n\
+  -s, --summary                stampa informazioni riepilogative della transazione\n
