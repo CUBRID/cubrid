@@ -686,7 +686,7 @@ fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage)
       fileio_Flushed_page_count = 0;
     }
 
-  if (need_sync && !LOG_CS_OWN_WRITE_MODE (thread_p))
+  if (need_sync)
     {
       fileio_synchronize_all (thread_p, false);
     }
