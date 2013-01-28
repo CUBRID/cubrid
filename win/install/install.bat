@@ -70,7 +70,6 @@ rem -------------------------------------------
 rem Conf
 copy %SRC_DIR%\..\..\..\conf\*conf* %DEST_DIR%\conf
 copy %SRC_DIR%\..\..\..\conf\*.txt %DEST_DIR%\conf
-copy %SRC_DIR%\..\..\..\conf\cubrid_*.xml %DEST_DIR%\conf
 copy %SRC_DIR%\..\..\..\cmserver\conf\*.conf %DEST_DIR%\conf
 copy %SRC_DIR%\..\..\..\cmserver\conf\*.pass %DEST_DIR%\conf
 
