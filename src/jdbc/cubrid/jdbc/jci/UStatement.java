@@ -2202,4 +2202,8 @@ public class UStatement {
 	public UBindParameter getBindParameter() {
 		return bindParameter;
 	}
+
+	public boolean hasBatch() {
+	    return batchParameter != null && batchParameter.size() != 0;
+	}
 }

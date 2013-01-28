@@ -751,8 +751,11 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		try {
 			synchronized (con) {
 				synchronized (this) {
-				    	u_con.setBeginTime();
 					checkIsOpen();
+					if (!u_stmt.hasBatch()) {
+					    return new int[0];
+					}
+				    	u_con.setBeginTime();
 					if (!completed)
 						complete();
 					checkIsOpen();

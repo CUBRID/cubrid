@@ -2308,9 +2308,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
 
   if (argc <= 1)
     {
-      assert (false);
-      err_code = ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      goto execute_array_error;
+      return 0;
     }
   num_bind = argc / 2;
 

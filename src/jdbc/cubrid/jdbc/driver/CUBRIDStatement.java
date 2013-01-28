@@ -396,8 +396,12 @@ public class CUBRIDStatement implements Statement {
 		try {
 			synchronized (con) {
 				synchronized (this) {
-				    	u_con.setBeginTime();
 					checkIsOpen();
+					if (batchs.size() == 0) {
+						return new int[0];
+					}
+
+					u_con.setBeginTime();
 					if (!completed) {
 						complete();
 					}
@@ -409,6 +413,7 @@ public class CUBRIDStatement implements Statement {
 					batch_results = u_con.batchExecute(batch_querys, query_timeout);
 					error = u_con.getRecentError();
 
+				    	batchs.clear();
 					switch (error.getErrorCode()) {
 					case UErrorCode.ER_NO_ERROR:
 						break;
