@@ -342,14 +342,13 @@ cwd=`pwd`
 is_protego="no" 
 
 cat COPYING | more -d
-while [ : ]
-do
+while true; do
 	echo -n "Do you agree to the above license terms? (yes or no) : "
 	read agree_terms
 
-	if [ "$agree_terms" == "yes" ]; then
+	if [ "$agree_terms" = "yes" ]; then
 		break
-	elif [ "$agree_terms" == "no" ]; then
+	elif [ "$agree_terms" = "no" ]; then
 		echo "If you don't agree to the license you can't install this software."
 		exit 0
 	fi
