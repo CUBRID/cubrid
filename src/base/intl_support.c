@@ -63,6 +63,10 @@
               && ((unsigned char) ch <= (unsigned char) 0xfe) )
 #endif
 
+#define CHAR_BYTE_TO_LOWER(c) ((c) + ('a' - 'A'))
+
+#define CHAR_BYTE_TO_UPPER(c) ((c) - ('a' - 'A'))
+
 /* conversion from turkish ISO 8859-9 to UTF-8 */
 #define ISO_8859_9_FIRST_CP 0x11e
 #define ISO_8859_9_LAST_CP 0x15f
@@ -729,12 +733,12 @@ intl_copy_lowercase (const wchar_t * ws, size_t n)
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
- * ASCII/ISO 8859-1 encoding functions
+ * ISO 8859-1 encoding functions
  */
 
 /*
- * intl_tolower_iso8859() - replaces all upper case ASCII characters
- *                        with their lower case codes.
+ * intl_tolower_iso8859() - replaces all upper case ISO88591 characters
+ *                          with their lower case codes.
  *   return: character counts
  *   s(in/out): string to lowercase
  *   length(in): length of the string
@@ -742,20 +746,16 @@ intl_copy_lowercase (const wchar_t * ws, size_t n)
 int
 intl_tolower_iso8859 (unsigned char *s, int length)
 {
-  int char_count = 0;
+  int char_count = length;
   unsigned char *end;
 
   assert (s != NULL);
 
-  for (end = s + length; s < end; s++, char_count++)
+  for (end = s + length; s < end; s++)
     {
-      if (char_isupper (*s))
+      if (char_isupper_iso8859 (*s))
 	{
-	  *s = char_tolower (*s);
-	}
-      else if (char_isupper_iso8859 (*s))
-	{
-	  *s = char_tolower_iso8859 (*s);
+	  *s = CHAR_BYTE_TO_LOWER (*s);
 	}
     }
 
@@ -763,8 +763,8 @@ intl_tolower_iso8859 (unsigned char *s, int length)
 }
 
 /*
- * intl_toupper_iso8859() - replaces all lower case ASCII characters
- *                        with their upper case codes.
+ * intl_toupper_iso8859() - replaces all lower case ISO88591 characters
+ *                          with their upper case codes.
  *   return: character counts
  *   s(in/out): string to uppercase
  *   length(in): length of the string
@@ -772,20 +772,16 @@ intl_tolower_iso8859 (unsigned char *s, int length)
 int
 intl_toupper_iso8859 (unsigned char *s, int length)
 {
-  int char_count = 0;
+  int char_count = length;
   unsigned char *end;
 
   assert (s != NULL);
 
-  for (end = s + length; s < end; s++, char_count++)
+  for (end = s + length; s < end; s++)
     {
-      if (char_islower (*s))
+      if (char_islower_iso8859 (*s))
 	{
-	  *s = char_toupper (*s);
-	}
-      else if (char_islower_iso8859 (*s))
-	{
-	  *s = char_toupper_iso8859 (*s);
+	  *s = CHAR_BYTE_TO_UPPER (*s);
 	}
     }
 
@@ -856,7 +852,7 @@ intl_prevchar_euc (unsigned char *s, const unsigned char *s_start,
 
 /*
  * intl_tolower_euc() - Replaces all upper case ASCII characters inside an EUC
- *                    encoded string with their lower case codes.
+ *                      encoded string with their lower case codes.
  *   return: character counts
  *   s(in/out): EUC string to lowercase
  *   length_in_chars(in): length of the string measured in characters
@@ -880,7 +876,7 @@ intl_tolower_euc (unsigned char *s, int length_in_chars)
 
 /*
  * intl_toupper_euc() - Replaces all upper case ASCII characters inside an EUC
- *                    encoded string with their upper case codes.
+ *                      encoded string with their upper case codes.
  *   return: character counts
  *   s(in/out): EUC string to uppercase
  *   length_in_chars(in): length of the string measured in characters
@@ -1594,8 +1590,8 @@ intl_upper_string_size (const void *alphabet, unsigned char *src,
 }
 
 /*
- * intl_upper_string() - replace all lower case ASCII characters with their
- *                      upper case characters
+ * intl_upper_string() - replace all lower case characters with their
+ *                       upper case characters
  *   return: character counts
  *   alphabet(in): alphabet data
  *   src(in/out): string source to uppercase
@@ -1614,14 +1610,13 @@ intl_upper_string (const void *alphabet, unsigned char *src,
     {
     case INTL_CODESET_ISO88591:
       {
-	int byte_count;
-	intl_char_size (src, length_in_chars, INTL_CODESET_ISO88591,
-			&byte_count);
-	if (byte_count > 0)
+	unsigned char *d, *s;
+
+	for (d = dst, s = src; d < dst + length_in_chars; d++, s++)
 	  {
-	    memcpy (dst, src, byte_count);
-	    char_count = intl_toupper_iso8859 (dst, length_in_chars);
+	    *d = char_toupper_iso8859 (*s);
 	  }
+	char_count = length_in_chars;
       }
       break;
 
@@ -1726,14 +1721,13 @@ intl_lower_string (const void *alphabet, unsigned char *src,
     {
     case INTL_CODESET_ISO88591:
       {
-	int byte_count;
-	intl_char_size (src, length_in_chars, INTL_CODESET_ISO88591,
-			&byte_count);
-	if (byte_count > 0)
+	unsigned char *d, *s;
+
+	for (d = dst, s = src; d < dst + length_in_chars; d++, s++)
 	  {
-	    memcpy (dst, src, byte_count);
-	    char_count = intl_tolower_iso8859 (dst, length_in_chars);
+	    *d = char_tolower_iso8859 (*s);
 	  }
+	char_count = length_in_chars;
       }
       break;
 
@@ -2389,45 +2383,18 @@ intl_char_toupper_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s,
 }
 
 /*
- * intl_strcasecmp() -
- *   return:  0 if strings are equal, -1 if str1 < str2 , 1 if str1 > str2
- *   str1(in):
- *   str2(in):
- *   len(in): number of characters to compare
- *   identifier_mode(in): true if compares identifiers, false otherwise
- *
- *  Note : Comparing identifiers has some exceptions: the casing for some
- *	   letters overriddes the casing of current language.
- */
-int
-intl_strcasecmp (const INTL_LANG lang_id, unsigned char *str1,
-		 unsigned char *str2, int len, bool identifier_mode)
-{
-  int str1_size, str2_size;
-
-  (void) intl_char_size (str1, len, lang_charset (), &str1_size);
-  (void) intl_char_size (str2, len, lang_charset (), &str2_size);
-
-  return intl_strcasecmp_w_size (lang_id, str1, str2, str1_size, str2_size,
-				 identifier_mode);
-}
-
-/*
- * intl_strcasecmp_w_size()
+ * intl_identifier_casecmp_w_size()
  *   return:  0 if strings are equal, -1 if str1 < str2 , 1 if str1 > str2
  *   str1(in):
  *   str2(in):
  *   size_str1(in): size in bytes of str1
  *   size_str2(in): size in bytes of str2
- *   identifier_mode(in): true if compares identifiers, false otherwise
  *
- *  Note : Comparing identifiers has some exceptions: the casing for some
- *	   letters overriddes the casing of current language.
  */
 int
-intl_strcasecmp_w_size (const INTL_LANG lang_id, unsigned char *str1,
-			unsigned char *str2, const int size_str1,
-			const int size_str2, bool identifier_mode)
+intl_identifier_casecmp_w_size (const INTL_LANG lang_id, unsigned char *str1,
+				unsigned char *str2, const int size_str1,
+				const int size_str2)
 {
 #if INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER <= 1
   if (size_str1 != size_str2)
@@ -2436,54 +2403,91 @@ intl_strcasecmp_w_size (const INTL_LANG lang_id, unsigned char *str1,
     }
 #endif
 
-  if (lang_charset () == INTL_CODESET_UTF8)
+  switch (lang_charset ())
     {
-      unsigned char *str1_end, *str2_end;
-      unsigned char *dummy;
-      unsigned int cp1, cp2;
-      const LANG_LOCALE_DATA *loc =
-	lang_get_specific_locale (lang_id, INTL_CODESET_UTF8);
-      const ALPHABET_DATA *alphabet;
+    case INTL_CODESET_UTF8:
+      {
+	unsigned char *str1_end, *str2_end;
+	unsigned char *dummy;
+	unsigned int cp1, cp2;
+	const LANG_LOCALE_DATA *loc =
+	  lang_get_specific_locale (lang_id, INTL_CODESET_UTF8);
+	const ALPHABET_DATA *alphabet;
 
-      assert (loc != NULL);
+	assert (loc != NULL);
 
-      alphabet = identifier_mode ? &(loc->ident_alphabet) : &(loc->alphabet);
+	alphabet = &(loc->ident_alphabet);
 
-      str1_end = str1 + size_str1;
-      str2_end = str2 + size_str2;
+	str1_end = str1 + size_str1;
+	str2_end = str2 + size_str2;
 
-      for (; str1 < str1_end && str2 < str2_end;)
+	for (; str1 < str1_end && str2 < str2_end;)
+	  {
+	    int skip_size1 = 0, skip_size2 = 0;
+	    int res;
+
+	    cp1 = intl_utf8_to_cp (str1, str1_end - str1, &dummy);
+	    cp2 = intl_utf8_to_cp (str2, str2_end - str2, &dummy);
+
+	    res =
+	      intl_strcasecmp_utf8_one_cp (alphabet, str1, str2,
+					   str1_end - str1, str2_end - str2,
+					   cp1, cp2, &skip_size1,
+					   &skip_size2);
+
+	    if (res != 0)
+	      {
+		return res;
+	      }
+
+	    str1 += skip_size1;
+	    str2 += skip_size2;
+	  }
+
+	return (str1 < str1_end) ? 1 : ((str2 < str2_end) ? -1 : 0);
+      }
+      break;
+
+    case INTL_CODESET_ISO88591:
+      {
+	unsigned char *str1_end, *str2_end;
+	unsigned char lower1, lower2;
+
+	if (size_str1 != size_str2)
+	  {
+	    return (size_str1 < size_str2) ? -1 : 1;
+	  }
+
+	str1_end = str1 + size_str1;
+	str2_end = str2 + size_str2;
+
+	for (; str1 < str1_end && str2 < str2_end; str1++, str2++)
+	  {
+	    if (*str1 != *str2)
+	      {
+		lower1 = char_tolower_iso8859 (*str1);
+		lower2 = char_tolower_iso8859 (*str2);
+		if (lower1 != lower2)
+		  {
+		    return (lower1 < lower2) ? -1 : 1;
+		  }
+	      }
+	  }
+
+	return (str1 < str1_end) ? 1 : ((str2 < str2_end) ? -1 : 0);
+      }
+    case INTL_CODESET_KSC5601_EUC:
+    default:
+      /* ASCII */
+      if (size_str1 != size_str2)
 	{
-	  int skip_size1 = 0, skip_size2 = 0;
-	  int res;
-
-	  cp1 = intl_utf8_to_cp (str1, str1_end - str1, &dummy);
-	  cp2 = intl_utf8_to_cp (str2, str2_end - str2, &dummy);
-
-	  res =
-	    intl_strcasecmp_utf8_one_cp (alphabet, str1, str2,
-					 str1_end - str1, str2_end - str2,
-					 cp1, cp2, &skip_size1, &skip_size2);
-
-	  if (res != 0)
-	    {
-	      return res;
-	    }
-
-	  str1 += skip_size1;
-	  str2 += skip_size2;
+	  return (size_str1 < size_str2) ? -1 : 1;
 	}
 
-      return (str1 < str1_end) ? 1 : ((str2 < str2_end) ? -1 : 0);
+      return strncasecmp ((char *) str1, (char *) str2, size_str1);
     }
 
-  /* ASCII */
-  if (size_str1 != size_str2)
-    {
-      return (size_str1 < size_str2) ? -1 : 1;
-    }
-
-  return strncasecmp ((char *) str1, (char *) str2, size_str1);
+  return 0;
 }
 
 /*
@@ -2516,57 +2520,92 @@ intl_case_match_tok (const INTL_LANG lang_id, const INTL_CODESET codeset,
 
   *matched_size_src = 0;
 
-  if (codeset == INTL_CODESET_UTF8)
+  switch (codeset)
     {
-      unsigned char *tok_end, *src_end;
-      unsigned char *dummy;
-      unsigned int cp1, cp2;
-      const LANG_LOCALE_DATA *loc =
-	lang_get_specific_locale (lang_id, INTL_CODESET_UTF8);
-      const ALPHABET_DATA *alphabet;
+    case INTL_CODESET_UTF8:
+      {
+	unsigned char *tok_end, *src_end;
+	unsigned char *dummy;
+	unsigned int cp1, cp2;
+	const LANG_LOCALE_DATA *loc =
+	  lang_get_specific_locale (lang_id, INTL_CODESET_UTF8);
+	const ALPHABET_DATA *alphabet;
 
-      assert (loc != NULL);
+	assert (loc != NULL);
 
-      alphabet = &(loc->alphabet);
+	alphabet = &(loc->alphabet);
 
-      tok_end = tok + size_tok;
-      src_end = src + size_src;
+	tok_end = tok + size_tok;
+	src_end = src + size_src;
 
-      for (; tok < tok_end && src < src_end;)
+	for (; tok < tok_end && src < src_end;)
+	  {
+	    int skip_size_tok = 0, skip_size_src = 0;
+	    int res;
+
+	    cp1 = intl_utf8_to_cp (tok, tok_end - tok, &dummy);
+	    cp2 = intl_utf8_to_cp (src, src_end - src, &dummy);
+
+	    res =
+	      intl_strcasecmp_utf8_one_cp (alphabet, tok, src,
+					   tok_end - tok, src_end - src,
+					   cp1, cp2, &skip_size_tok,
+					   &skip_size_src);
+
+	    if (res != 0)
+	      {
+		return res;
+	      }
+
+	    tok += skip_size_tok;
+	    src += skip_size_src;
+	    *matched_size_src += skip_size_src;
+	  }
+
+	return (tok < tok_end) ? 1 : 0;
+      }
+      break;
+
+    case INTL_CODESET_ISO88591:
+      {
+	unsigned char *tok_end, *src_end;
+	unsigned char lower1, lower2;
+	tok_end = tok + size_tok;
+	src_end = src + size_src;
+
+	if (size_tok > size_src)
+	  {
+	    return 1;
+	  }
+
+	*matched_size_src = size_tok;
+	for (; tok < tok_end && src < src_end; tok++, src++)
+	  {
+	    if (*tok != *src)
+	      {
+		lower1 = char_tolower_iso8859 (*tok);
+		lower2 = char_tolower_iso8859 (*src);
+		if (lower1 != lower2)
+		  {
+		    return (lower1 < lower2) ? -1 : 1;
+		  }
+	      }
+	  }
+      }
+      break;
+
+    case INTL_CODESET_KSC5601_EUC:
+    default:
+      if (size_tok > size_src)
 	{
-	  int skip_size_tok = 0, skip_size_src = 0;
-	  int res;
-
-	  cp1 = intl_utf8_to_cp (tok, tok_end - tok, &dummy);
-	  cp2 = intl_utf8_to_cp (src, src_end - src, &dummy);
-
-	  res =
-	    intl_strcasecmp_utf8_one_cp (alphabet, tok, src,
-					 tok_end - tok, src_end - src,
-					 cp1, cp2, &skip_size_tok,
-					 &skip_size_src);
-
-	  if (res != 0)
-	    {
-	      return res;
-	    }
-
-	  tok += skip_size_tok;
-	  src += skip_size_src;
-	  *matched_size_src += skip_size_src;
+	  return 1;
 	}
 
-      return (tok < tok_end) ? 1 : 0;
+      *matched_size_src = size_tok;
+      return strncasecmp ((char *) tok, (char *) src, size_tok);
     }
 
-  /* ASCII */
-  if (size_tok > size_src)
-    {
-      return 1;
-    }
-
-  *matched_size_src = size_tok;
-  return strncasecmp ((char *) tok, (char *) src, size_tok);
+  return 0;
 }
 
 /*
@@ -2760,7 +2799,7 @@ intl_strcasecmp_utf8_one_cp (const ALPHABET_DATA * alphabet,
  *   str1(in):
  *   str2(in):
  *
- * NOTE: identifier comparison is special, see intl_strcasecmp_w_size ()
+ * NOTE: identifier comparison is special, see intl_identifier_casecmp_w_size
  *	 for details on comparing identifiers of different length.
  */
 int
@@ -2769,9 +2808,9 @@ intl_identifier_casecmp (const char *str1, const char *str2)
   int str1_size = strlen (str1);
   int str2_size = strlen (str2);
 
-  return intl_strcasecmp_w_size (lang_id (), (unsigned char *) str1,
-				 (unsigned char *) str2, str1_size, str2_size,
-				 true);
+  return intl_identifier_casecmp_w_size (lang_id (), (unsigned char *) str1,
+					 (unsigned char *) str2, str1_size,
+					 str2_size);
 }
 
 /*
@@ -2786,8 +2825,16 @@ intl_identifier_casecmp (const char *str1, const char *str2)
 int
 intl_identifier_ncasecmp (const char *str1, const char *str2, const int len)
 {
-  return intl_strcasecmp (lang_id (), (unsigned char *) str1,
-			  (unsigned char *) str2, len, true);
+  int str1_size, str2_size;
+
+  (void) intl_char_size ((unsigned char *) str1, len, lang_charset (),
+			 &str1_size);
+  (void) intl_char_size ((unsigned char *) str2, len, lang_charset (),
+			 &str2_size);
+
+  return intl_identifier_casecmp_w_size (lang_id (), (unsigned char *) str1,
+					 (unsigned char *) str2, str1_size,
+					 str2_size);
 }
 
 /*
@@ -2840,9 +2887,9 @@ intl_identifier_namecmp (const char *str1, const char *str2)
       str2_size -= 2;
     }
 
-  return intl_strcasecmp_w_size (lang_id (), (unsigned char *) cp1,
-				 (unsigned char *) cp2, str1_size, str2_size,
-				 true);
+  return intl_identifier_casecmp_w_size (lang_id (), (unsigned char *) cp1,
+					 (unsigned char *) cp2, str1_size,
+					 str2_size);
 }
 
 /*
@@ -2932,7 +2979,7 @@ intl_identifier_lower (const char *src, char *dst)
 {
   int d_size = 0;
   int length_in_bytes = 0;
-  unsigned char *d;
+  unsigned char *d, *s;
 
   if (src)
     {
@@ -2951,28 +2998,26 @@ intl_identifier_lower (const char *src, char *dst)
 	d = dst + d_size;
       }
       break;
+
     case INTL_CODESET_ISO88591:
+      {
+	for (d = (unsigned char *) dst, s = (unsigned char *) src;
+	     d < (unsigned char *) dst + length_in_bytes; d++, s++)
+	  {
+	    *d = char_tolower_iso8859 (*s);
+	  }
+      }
+      break;
+
     case INTL_CODESET_KSC5601_EUC:
     default:
       {
-	memcpy (dst, src, length_in_bytes);
-
-	for (d = (unsigned char *) dst;
-	     d < (unsigned char *) dst + length_in_bytes; d++)
+	for (d = (unsigned char *) dst, s = (unsigned char *) src;
+	     d < (unsigned char *) dst + length_in_bytes; d++, s++)
 	  {
-	    if (char_isupper (*d))
-	      {
-		*d = char_tolower (*d);
-	      }
-	    else if (char_isupper_iso8859 (*d))
-	      {
-		*d = char_tolower_iso8859 (*d);
-	      }
+	    *d = char_tolower (*s);
 	  }
       }
-
-      assert ((char *) d - dst <= length_in_bytes);
-
       break;
     }
 
@@ -3068,7 +3113,7 @@ intl_identifier_upper (const char *src, char *dst)
 {
   int d_size = 0;
   int length_in_bytes = 0;
-  unsigned char *d;
+  unsigned char *d, *s;
 
   if (src)
     {
@@ -3088,26 +3133,23 @@ intl_identifier_upper (const char *src, char *dst)
       }
       break;
     case INTL_CODESET_ISO88591:
+      {
+	for (d = (unsigned char *) dst, s = (unsigned char *) src;
+	     d < (unsigned char *) dst + length_in_bytes; d++, s++)
+	  {
+	    *d = char_toupper_iso8859 (*s);
+	  }
+      }
+      break;
     case INTL_CODESET_KSC5601_EUC:
     default:
       {
-	memcpy (dst, src, length_in_bytes);
-
-	for (d = (unsigned char *) dst;
-	     d < (unsigned char *) dst + length_in_bytes; d++)
+	for (d = (unsigned char *) dst, s = (unsigned char *) src;
+	     d < (unsigned char *) dst + length_in_bytes; d++, s++)
 	  {
-	    if (char_islower (*d))
-	      {
-		*d = char_toupper (*d);
-	      }
-	    else if (char_islower_iso8859 (*d))
-	      {
-		*d = char_toupper_iso8859 (*d);
-	      }
+	    *d = char_toupper (*s);
 	  }
       }
-      assert ((char *) d - dst <= length_in_bytes);
-
       break;
     }
 

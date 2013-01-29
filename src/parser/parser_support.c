@@ -8456,8 +8456,7 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser,
   PT_NODE *order_by_item = NULL;
   PT_NODE *sub_query = NULL;
   PT_NODE *outer_query = NULL;
-  char lower_table_name[DB_MAX_IDENTIFIER_LENGTH *
-			INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER];
+  char lower_table_name[DB_MAX_IDENTIFIER_LENGTH];
   PT_NODE *value = NULL, *value_list = NULL;
   DB_VALUE db_valuep[9];
   const char **psubquery_aliases = NULL, **pquery_names = NULL,
@@ -8940,8 +8939,7 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser,
 {
   PT_NODE *node = NULL;
   PT_NODE *from_item = NULL;
-  char lower_view_name[DB_MAX_IDENTIFIER_LENGTH *
-		       INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER];
+  char lower_view_name[DB_MAX_IDENTIFIER_LENGTH];
 
   assert (view_identifier != NULL);
   assert (view_identifier->node_type == PT_NAME);
@@ -9298,8 +9296,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser,
   PT_NODE *where_expr = NULL;
   PT_NODE *concat_node = NULL;
   PT_NODE *group_by_item = NULL;
-  char user_name[SM_MAX_IDENTIFIER_LENGTH *
-		 INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER + 1] = { 0 };
+  char user_name[SM_MAX_IDENTIFIER_LENGTH];
   int i = 0;
 
   assert (original_user_name != NULL);
@@ -9838,8 +9835,7 @@ pt_make_query_describe_w_identifier (PARSER_CONTEXT * parser,
       assert (att_id->node_type == PT_NAME);
       if (att_id->node_type == PT_NAME)
 	{
-	  char lower_att_name[DB_MAX_IDENTIFIER_LENGTH *
-			      INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER];
+	  char lower_att_name[DB_MAX_IDENTIFIER_LENGTH];
 	  /* build WHERE */
 	  intl_identifier_lower (att_id->info.name.original, lower_att_name);
 	  where_node =
@@ -9886,8 +9882,7 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
   PT_NODE *from_item = NULL;
   PT_NODE *order_by_item = NULL;
   PT_NODE *query = NULL;
-  char lower_table_name[DB_MAX_IDENTIFIER_LENGTH *
-			INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER];
+  char lower_table_name[DB_MAX_IDENTIFIER_LENGTH];
   PT_NODE *value = NULL, *value_list = NULL;
   DB_VALUE db_valuep[12];
   const char *aliases[] = {

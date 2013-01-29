@@ -3657,8 +3657,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
   PT_NODE *parttemp, *entity_name = NULL;
   PART_CLASS_INFO pci = { NULL, NULL, NULL, NULL };
   PART_CLASS_INFO *newpci, *wpci;
-  char class_name[DB_MAX_IDENTIFIER_LENGTH *
-		  INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER];
+  char class_name[DB_MAX_IDENTIFIER_LENGTH];
   DB_VALUE *minval, *parts_val, *fmin_val, partsize;
   int part_cnt = 0, part_add = -1;
   int size;

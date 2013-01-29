@@ -4346,7 +4346,7 @@ catalog_update (THREAD_ENTRY * thread_p, RECDES * record_p, OID * class_oid_p)
     }
 
   if (catalog_get_last_representation_id (thread_p, class_oid_p,
-                                          &current_repr_id) < 0)
+					  &current_repr_id) < 0)
     {
       return er_errid ();
     }
@@ -5287,8 +5287,7 @@ catalog_get_cardinality_by_name (THREAD_ENTRY * thread_p,
   BTID found_btid;
   BTID curr_bitd;
   OID class_oid;
-  char cls_lower[DB_MAX_IDENTIFIER_LENGTH *
-		 INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER] = { 0 };
+  char cls_lower[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
   LC_FIND_CLASSNAME status;
 
   BTID_SET_NULL (&found_btid);

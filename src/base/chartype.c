@@ -178,8 +178,9 @@ static const int SMALL_THORN = 254;
 int
 char_isupper_iso8859 (int c)
 {
-  return ((c) >= A_GRAVE_ACCENT && (c) <= CAPITAL_THORN
-	  && (c) != MULT_ISO8859);
+  return (char_isupper (c)
+	  || ((c) >= A_GRAVE_ACCENT && (c) <= CAPITAL_THORN
+	      && (c) != MULT_ISO8859));
 }
 
 /*
@@ -191,7 +192,9 @@ char_isupper_iso8859 (int c)
 int
 char_islower_iso8859 (int c)
 {
-  return ((c) >= a_GRAVE_ACCENT && (c) <= SMALL_THORN && (c) != DIV_ISO8859);
+  return (char_islower (c)
+	  || ((c) >= a_GRAVE_ACCENT && (c) <= SMALL_THORN
+	      && (c) != DIV_ISO8859));
 }
 
 /*
@@ -213,5 +216,5 @@ char_tolower_iso8859 (int c)
 int
 char_toupper_iso8859 (int c)
 {
-  return (char_islower ((c)) ? ((c) + ('A' - 'a')) : (c));
+  return (char_islower_iso8859 ((c)) ? ((c) + ('A' - 'a')) : (c));
 }

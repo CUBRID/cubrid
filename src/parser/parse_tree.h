@@ -3032,7 +3032,7 @@ typedef struct keyword_record KEYWORD_RECORD;
 struct keyword_record
 {
   short value;
-  char keyword[MAX_KEYWORD_SIZE * INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER];
+  char keyword[MAX_KEYWORD_SIZE];
   short unreserved;		/* keyword can be used as an identifier, 0 means it is reserved and cannot be used as an identifier, nonzero means it can be  */
 };
 

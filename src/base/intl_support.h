@@ -240,13 +240,11 @@ extern "C"
 				     const unsigned char *chr);
   extern int intl_set_min_bound_chr (INTL_CODESET codeset, char *chr);
   extern int intl_set_max_bound_chr (INTL_CODESET codeset, char *chr);
-  extern int intl_strcasecmp (const INTL_LANG lang_id, unsigned char *str1,
-			      unsigned char *str2, int len,
-			      bool identifier_mode);
-  extern int intl_strcasecmp_w_size (const INTL_LANG lang_id,
-				     unsigned char *str1, unsigned char *str2,
-				     const int size_str1, const int size_str2,
-				     bool identifier_mode);
+  extern int intl_identifier_casecmp_w_size (const INTL_LANG lang_id,
+					     unsigned char *str1,
+					     unsigned char *str2,
+					     const int size_str1,
+					     const int size_str2);
   extern int intl_case_match_tok (const INTL_LANG lang_id,
 				  const INTL_CODESET codeset,
 				  unsigned char *tok, unsigned char *src,
