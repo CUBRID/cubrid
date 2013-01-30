@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 #
 # Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
 #
@@ -18,7 +18,7 @@
 #
 APP_NAME=$0
 
-function show_usage ()
+show_usage ()
 {
   echo "Usage: $APP_NAME [OPTIONS] [LOCALE]"
   echo " OPTIONS"
@@ -45,13 +45,13 @@ LOCALE_PARAM=
 
   while getopts ":t:m:h" opt; do
     case $opt in
-      t ) if [ "$BUILD_TARGET" == "." ]; then
+      t ) if [ "$BUILD_TARGET" = "." ]; then
 			BUILD_TARGET="$OPTARG"
 		  else
 		    GOTO error_target
 		  fi			
 	  ;;
-      m ) if [ "$BUILD_MODE" == "." ]; then
+      m ) if [ "$BUILD_MODE" = "." ]; then
 			BUILD_MODE="$OPTARG"
 		  else
 		    GOTO error_build_mode
@@ -67,7 +67,7 @@ show_usage
 echo "Invalid number of parameters."
 exit 1
 else
-if [ ".$1" == "." ]; then
+if [ ".$1" = "." ]; then
 SELECTED_LOCALE=all_locales
 else
 LOCALE_PARAM=$1
