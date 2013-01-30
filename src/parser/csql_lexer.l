@@ -845,7 +845,7 @@ _[uU][tT][fF]8[']		{
 					csql_yylval.cptr = pt_append_string(this_parser, NULL, "");
 				}
 
-([a-zA-Z_#]|([\xc2-\xfe]))([a-zA-Z_#0-9]|([\x80-\xfe]))* { begin_token(yytext);   
+([a-zA-Z_#]|([\xc0-\xfe]))([a-zA-Z_#0-9]|([\x80-\xfe]))* { begin_token(yytext);   
 							   if (strlen(yytext) >= 254) 
 							     yytext[254] = 0;
 							   csql_yylval.cptr = pt_makename(yytext);
