@@ -1589,6 +1589,7 @@ timespec_to_msec (const struct timespec *abstime)
 static int
 win_custom_cond_init (pthread_cond_t * cond, const pthread_condattr_t * attr)
 {
+  cond->initialized = true;
   cond->waiting = 0;
   InitializeCriticalSection (&cond->lock_waiting);
 
@@ -1609,6 +1610,11 @@ win_custom_cond_init (pthread_cond_t * cond, const pthread_condattr_t * attr)
 static int
 win_custom_cond_destroy (pthread_cond_t * cond)
 {
+  if (!cond->initialized)
+    {
+      return 0;
+    }
+
   DeleteCriticalSection (&cond->lock_waiting);
 
   if (CloseHandle (cond->events[COND_SIGNAL]) == 0 ||
@@ -1627,6 +1633,8 @@ win_custom_cond_timedwait (pthread_cond_t * cond, pthread_mutex_t * mutex,
 {
   int result;
   int msec;
+
+  assert (cond->initialized == true);
 
   msec = timespec_to_msec (abstime);
   WaitForSingleObject (cond->broadcast_block_event, INFINITE);
@@ -1657,6 +1665,8 @@ win_custom_cond_timedwait (pthread_cond_t * cond, pthread_mutex_t * mutex,
 static int
 win_custom_cond_signal (pthread_cond_t * cond)
 {
+  assert (cond->initialized == true);
+
   EnterCriticalSection (&cond->lock_waiting);
 
   if (cond->waiting > 0)
@@ -1672,6 +1682,8 @@ win_custom_cond_signal (pthread_cond_t * cond)
 static int
 win_custom_cond_broadcast (pthread_cond_t * cond)
 {
+  assert (cond->initialized == true);
+
   EnterCriticalSection (&cond->lock_waiting);
 
   if (cond->waiting > 0)

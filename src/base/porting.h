@@ -467,6 +467,7 @@ typedef union
 
   struct
   {
+    bool initialized;
     unsigned int waiting;
     CRITICAL_SECTION lock_waiting;
     enum
