@@ -1489,7 +1489,7 @@ cci_value_to_odbc (void *c_value, short concise_type,
 				 * cf) The max precision of numeric is 38 in CUBRID
 				 */
 	short i;
-	unsigned char num_add_zero = 0;
+	int num_add_zero = 0;
 
 
 	((SQL_NUMERIC_STRUCT *) c_value)->precision =
@@ -1516,12 +1516,19 @@ cci_value_to_odbc (void *c_value, short concise_type,
 	    ++pt2;
 	    strcat (str, pt2);
 	    num_add_zero = scale - strlen (pt2);
+		if (num_add_zero < 0)
+		{
+			str[strlen(str) + num_add_zero] = '\0';
+		}
+		else
+		{
 	    // add additional '0' for scale
 	    for (pt = str + strlen (str), i = 1; i <= num_add_zero; ++pt, ++i)
 	      {
 		*pt = '0';
 	      }
 	    *pt = '\0';
+		  }
 	  }
 	else
 	  {

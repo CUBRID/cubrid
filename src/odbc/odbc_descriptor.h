@@ -99,6 +99,10 @@ typedef struct st_odbc_desc
   /* header fields */
   short alloc_type;
   unsigned long array_size;
+
+  // the previous array_size of fetch call (SQLFetch, SQLExtendedFetch, SQLFetchScroll)
+  unsigned long fetched_size;
+
   unsigned short *array_status_ptr;
   long *bind_offset_ptr;
   long bind_type;

@@ -87,6 +87,7 @@ odbc_alloc_desc (ODBC_CONNECTION * conn, ODBC_DESC ** desc_ptr)
 
   desc_node->alloc_type = SQL_DESC_ALLOC_AUTO;
   desc_node->array_size = 1;
+  desc_node->fetched_size = -1;
   desc_node->array_status_ptr = NULL;
   desc_node->bind_offset_ptr = NULL;
   desc_node->bind_type = SQL_BIND_BY_COLUMN;	/* equal to SQL_PARAM_BY_COLUMN */
@@ -1628,6 +1629,7 @@ PRIVATE void
 header_desc_field_copy (ODBC_DESC * source_desc, ODBC_DESC * dest_desc)
 {
   dest_desc->array_size = source_desc->array_size;
+  dest_desc->fetched_size = source_desc->fetched_size;
   dest_desc->array_status_ptr = source_desc->array_status_ptr;
   dest_desc->bind_offset_ptr = source_desc->bind_offset_ptr;
   dest_desc->bind_type = source_desc->bind_type;

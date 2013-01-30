@@ -804,6 +804,11 @@ odbc_connect_new (ODBC_CONNECTION * conn,
   if (connhd < 0)
     goto error;
 
+  // CCI auto-commit mode has little problem in async mode, 
+  // ODBC has own auto-commit mechanism, we should turn off CCI auto-commit mode
+  rc = cci_set_autocommit(connhd, CCI_AUTOCOMMIT_FALSE);
+  ERROR_GOTO (rc, error);
+
   conn->connhd = connhd;
 
   if (conn->charset[0] != '\0')

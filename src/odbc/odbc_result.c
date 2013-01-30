@@ -961,7 +961,8 @@ move_advanced_cursor (ODBC_STATEMENT * stmt,
   long bookmark;
 
   result_set_size = stmt->tpl_number;
-  row_set_size = stmt->ard->array_size;
+  row_set_size = stmt->ard->fetched_size < 0 ? stmt->ard->array_size : stmt->ard->fetched_size;
+  stmt->ard->fetched_size = stmt->ard->array_size;
 
   switch (fetch_orientation)
     {
