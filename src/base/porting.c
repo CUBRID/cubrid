@@ -1624,6 +1624,7 @@ win_custom_cond_destroy (pthread_cond_t * cond)
       return EINVAL;
     }
 
+  cond->initialized = false;
   return 0;
 }
 

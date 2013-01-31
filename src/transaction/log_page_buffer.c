@@ -7675,7 +7675,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p,
 			       MSGCAT_LOG_MAX_ARCHIVES_HAS_BEEN_EXCEEDED);
       if (catmsg == NULL)
 	{
-	  catmsg = "Number of active log archives has been exceeded"
+	  catmsg = (char *) "Number of active log archives has been exceeded"
 	    " the max desired number.";
 	}
       deleted_count = logpb_remove_archive_logs_internal (thread_p,
@@ -8420,7 +8420,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 				 * actions
 				 */
   int length_all_chkpt_trans;
-  int length_all_tops = 0;
+  size_t length_all_tops = 0;
   int i, j;
   const char *catmsg;
   int num_perm_vols;
@@ -9495,7 +9495,10 @@ loop:
 						    FILEIO_PROMPT_DISPLAY_ONLY,
 						    old_bkpath, NULL, NULL,
 						    -1, -1, NULL, -1);
-		      error_code = ER_FAILED;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_LOG_DBBACKUP_FAIL, 1,
+			      log_Gl.hdr.prefix_name);
+		      error_code = ER_LOG_DBBACKUP_FAIL;
 		      goto error;
 		    }
 		  beenwarned = true;
@@ -10144,8 +10147,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 
   sprintf (format_string, "%%%ds", PATH_MAX - 1);
 
-  while (success == NO_ERROR && try_level >= FILEIO_BACKUP_FULL_LEVEL
-	 && try_level < FILEIO_BACKUP_UNDEFINED_LEVEL)
+  while (success == NO_ERROR && try_level < FILEIO_BACKUP_UNDEFINED_LEVEL)
     {
       /*
        * Open the backup information/directory file. This backup file contains
