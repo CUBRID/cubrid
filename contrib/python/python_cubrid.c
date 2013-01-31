@@ -1,6 +1,13 @@
 #include "python_cubrid.h"
 #include <fcntl.h>
 
+/* Loading dynamic library need this header. */
+#ifdef MS_WINDOWS
+#include <windows.h>
+#else
+#include <dlfcn.h>
+#endif
+
 #ifndef Py_TYPE
 #define Py_TYPE(ob) (((PyObject*)(ob))->ob_type)
 #endif
@@ -101,6 +108,16 @@ static struct _error_message
   {
   0, ""}
 };
+
+static void *libcascci = NULL;
+typedef int (*CCI_GET_LAST_INSERT_ID) (int con, void *buff,
+                                       T_CCI_ERROR * err_buf);
+static CCI_GET_LAST_INSERT_ID cci_get_last_insert_id_fp = NULL;
+
+
+#if (PY_MAJOR_VERSION == 2 && PY_MINOR_VERSION <= 4)
+typedef int Py_ssize_t;
+#endif
 
 static PyObject *
 _cubrid_return_PyUnicode_FromString (const char *buf, Py_ssize_t size, 
@@ -861,7 +878,17 @@ _cubrid_ConnectionObject_last_insert_id (_cubrid_ConnectionObject * self,
   int res;
   T_CCI_ERROR error;
 
-  res = cci_last_insert_id (self->handle, &name, &error);
+  if (cci_get_last_insert_id_fp != NULL) 
+    {
+      /* cci_get_last_id set last_id as con_handle's static buffer */
+      res = cci_get_last_insert_id_fp (self->handle, &name, &error);
+    }
+  else
+    {
+      /* cci_last_id set last_id as allocated string */
+      res = cci_last_insert_id (self->handle, &name, &error);
+    }
+
   if (res < 0)
     {
       return handle_error (res, &error);
@@ -875,7 +902,12 @@ _cubrid_ConnectionObject_last_insert_id (_cubrid_ConnectionObject * self,
   else
     {
       strncpy (ret, name, sizeof (ret) - 1);
-      free (name);
+      if (cci_get_last_insert_id_fp == NULL) 
+        {
+#ifndef MS_WINDOWS
+          free (name);
+#endif
+        }
     }
 
   return _cubrid_return_PyString_FromString (ret);
@@ -1373,12 +1405,14 @@ _cubrid_CursorObject_reset (_cubrid_CursorObject * self)
 
 static char _cubrid_CursorObject_prepare__doc__[] =
 "prepare(sql)\n\
-This function is sort of API which represents SQL statements compiled\n\
-previously. Accordingly, you can use this statement effectively to\n\
-execute several times repeatedly or to process long data Only a single\n\
-statement can be used and a parameter may put a question mark (?) to\n\
-appropriate area in the SQL statement. Add a parameter when you bind\n\
-a value in the VALUES clause of INSERT statement or in the WHERE clause.\n\
+This function creates a prepared statement. A prepared statement is a\n\
+server-side object that can be used to optimize performance. You can \n\
+use this statement effectively to execute repeatedly or to process \n\
+long data. Only a single statement can be used. The SQL statement can \n\
+contain zero or more question mark (?) parameter markers for which real \n\
+values will be substituted when the statement is executed. Add a \n\
+parameter when you bind a value in the VALUES clause of INSERT statement \n\
+or in the WHERE clause.\n\
 \n\
 sql: string, the sql statement you want to execute.";
 
@@ -1728,15 +1762,14 @@ _cubrid_CursorObject_result_info (_cubrid_CursorObject * self,
 
 static char _cubrid_CursorObject_execute__doc__[] =
 "execute([option[,max_col_size]])\n\
-execute the prepared SQL statement, which is executing prepare() and\n\
-bind_param()/bind_lob(). The function of retrieving the query result\n\
-from the server through a flag can be classified as synchronous or\n\
-asynchronous. If the flag is set to CUBRID_EXEC_QUERY_ALL, a\n\
-synchronous mode(sync_mode) is used to retrieve query results\n\
-immediately after executing prepared queries. If it is set to\n\
-CUBRID_EXEC_ASYNC, an asynchronous mode (async_mode) is used to\n\
+Executes a prepared Query.\n\
+A option can be used when retrieving the query result from the server.\n\
+A option can be classified as synchronous or asynchronous. \n\
+If the option is set to CUBRID_EXEC_QUERY_ALL, a synchronous mode(sync_mode) \n\
+is used to retrieve query results immediately after executing prepared queries. \n\
+If it is set to CUBRID_EXEC_ASYNC, an asynchronous mode (async_mode) is used to\n\
 retrieve the result immediately each time a query result is created.\n\
-The flag is set to CUBRID_EXEC_QUERY_ALL by default, and in such\n\
+The option is set to CUBRID_EXEC_QUERY_ALL by default, and in such\n\
 cases the following rules are applied:\n\
   - The return value is the result of the first query.\n\
   - If an error occurs in any query, the execution is processed\n\
@@ -1753,7 +1786,7 @@ prepared query is CHAR, VARCHAR, NCHAR, VARNCHAR, BIT or VARBIT.\n\
 If it is set to 0, all data is transferred.\n\
 \n\
 Parameters::\n\
-  flag: Exec flag, flag maybe the following values:\n\
+  option: Exec option, option maybe the following values:\n\
     CUBRID_EXEC_ASYNC\n\
     CUBRID_EXEC_QUERY_ALL\n\
     CUBRID_EXEC_QUERY_INFO\n\
@@ -3600,6 +3633,29 @@ init_cubrid (void)
 #endif
 {
   PyObject *dict, *module, *mDecimal;
+
+  /* 
+   * use cci_get_last_id if possible
+   * early distributed libraries don't include it
+   */
+#ifdef MS_WINDOWS
+    libcascci = LoadLibrary ("cascci.dll");
+
+    if (libcascci != NULL) 
+      {
+        cci_get_last_insert_id_fp =
+            (CCI_GET_LAST_INSERT_ID) GetProcAddress (libcascci, 
+                                                    "cci_get_last_insert_id");
+      }
+#else
+    libcascci = dlopen ("libcascci.so", RTLD_LAZY);
+
+    if (libcascci != NULL) 
+      {
+        cci_get_last_insert_id_fp = dlsym (libcascci, "cci_get_last_insert_id");
+      }
+#endif
+
 
 #if PY_MAJOR_VERSION >= 3
   module = PyModule_Create (&cubriddef);

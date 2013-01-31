@@ -11,6 +11,15 @@ if os.environ["CUBRID"]:
 else:
     raise KeyError
 
+if sys.version_info[0] == 2 and sys.version_info[1] >= 5:
+    py_modules = [
+        "CUBRIDdb.connections", "CUBRIDdb.cursors", "CUBRIDdb.FIELD_TYPE",
+        "django_cubrid.base", "django_cubrid.client", "django_cubrid.compiler", 
+        "django_cubrid.creation", "django_cubrid.introspection", "django_cubrid.validation",
+        ]
+else:
+    py_modules = ["CUBRIDdb.connections", "CUBRIDdb.cursors", "CUBRIDdb.FIELD_TYPE"]
+
 # Install CUBRID-Python driver.
 setup(
     name = "CUBRID-Python", 
@@ -20,9 +29,9 @@ setup(
             "Python interface to CUBRID conforming to the python DB API 2.0 "
             "specification.\n"
             "See http://www.python.org/topics/database/DatabaseAPI-2.0.html.",
-    py_modules=["CUBRIDdb.connections", "CUBRIDdb.cursors", "CUBRIDdb.FIELD_TYPE"],
-    author = "Zhang hui",
-    author_email = "zhanghui@nhn.com",
+    py_modules = py_modules,
+    author = "Li Jinhu, Li Lin, Zhang hui",
+    author_email = "beagem@nhn.com",
     license = "BSD",
     url = "http://svn.cubrid.org/cubridapis/python/",
     ext_modules=[
@@ -35,4 +44,5 @@ setup(
         )
     ] 
 )
+
 

@@ -41,10 +41,22 @@ class BaseCursor(object):
                     args[i] = '1'
                 else:
                     args[i] = '0'
-            elif isinstance(args[i], unicode):
-                args[i] = args[i].encode(self.charset)
             else:
-                args[i] = str(args[i])
+                # Python3.X dosen't support unicode keyword.
+                try:
+                    mytest = unicode
+                except NameError:
+                    if isinstance(args[i], str):
+                        pass
+                    elif isinstance(args[i], bytes):
+                        args[i] = args[i].decode(self.charset)
+                    else:
+                        args[i] = str(args[i])
+                else:
+                    if isinstance(args[i], unicode):
+                        args[i] = args[i].encode(self.charset)
+                    else:
+                        args[i] = str(args[i])
 
             self._cs.bind_param(i+1, args[i])
 

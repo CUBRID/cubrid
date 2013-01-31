@@ -1,3 +1,5 @@
+# -*- encoding:utf-8 -*-
+
 import unittest
 import CUBRIDdb
 import time
@@ -9,6 +11,8 @@ class DBAPI20Test(unittest.TestCase):
     driver = CUBRIDdb
     connect_args = ('CUBRID:localhost:33000:demodb:::', 'public', '')
     connect_kw_args = {}
+    connect_kw_args2 = {'charset': 'utf8'}
+
     table_prefix = 'dbapi20test_'
 
     ddl1 = 'create table %sbooze (name varchar(20))' % table_prefix
@@ -335,6 +339,8 @@ class DBAPI20Test(unittest.TestCase):
             cur = con.cursor()
             self.executeDDL1(cur)
 
+            self.assertEqual(con.get_autocommit(), True, "autocommit is on by default")
+
             con.set_autocommit(False)
             self.assertEqual(con.get_autocommit(), False, "autocommit is off")
 
@@ -636,6 +642,38 @@ class DBAPI20Test(unittest.TestCase):
     def test_ROWID(self):
         self.failUnless(hasattr(self.driver,'ROWID'),
                 'module.ROWID must be defined')
+
+    # APIS-426
+    def test_execute_args(self):
+        ret = 0
+        con = self.driver.connect(
+                *self.connect_args, **self.connect_kw_args2
+                )
+        try:
+            cur = con.cursor()
+
+            cur.execute('DROP TABLE IF EXISTS test_cubrid')
+            cur.execute('CREATE TABLE test_cubrid (id NUMERIC AUTO_INCREMENT(2009122350, 1), text VARCHAR(50))')
+            cur.execute("insert into test_cubrid (text) values (?)", ['Tom',])
+
+            try:
+                mytest = unicode
+            except NameError:
+                cur.execute("insert into test_cubrid (text) values (?)", [b'Jenny',])
+                cur.execute("insert into test_cubrid (text) values (?)", ['小王',])
+            else:
+                cur.execute("insert into test_cubrid (text) values (?)", [b'Jenny',])
+                cur.execute("insert into test_cubrid (text) values (?)", ['张三',])
+                cur.execute("insert into test_cubrid (text) values (?)", ['李四'.decode('utf8'), ])
+
+        except Exception:
+            ret = 1
+        finally:
+            con.close()
+
+        self.assertEqual(ret, 0)
+
+
         
 def suite():
     suite = unittest.TestSuite()

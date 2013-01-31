@@ -1,3 +1,4 @@
+# -*- encoding:utf-8 -*- 
 # sample_CUBRIDdb.py
 
 import CUBRIDdb 
@@ -12,7 +13,7 @@ cur.execute('CREATE TABLE test_cubrid (id NUMERIC AUTO_INCREMENT(2009122350, 1),
 
 cur.execute("insert into test_cubrid (name) values ('Zhang San'), ('Li Si'), ('Wang Wu'), ('Ma Liu'), ('Niu Qi')")
 
-cur.execute("insert into test_cubrid (name) values (?), (?)", ['Lily', 'John'])
+cur.execute("insert into test_cubrid (name) values (?), (?)", ['中文zh-cn', 'John'])
 
 cur.execute("insert into test_cubrid (name) values (?)", ['Tom',])
 
