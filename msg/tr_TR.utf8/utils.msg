@@ -231,7 +231,7 @@ Mevcut komut:\n\
 38 HA için ayarlanan sunucu ha_db_list.\n görülmedi. \n Listesinde
 39 HA için ayarlanan sunucu in_ ha_node_list.\n görülmedi. \n Listesinde
 62 Cubrid kullanım amacı, Versiyon %s\n\
-usage: %s shard <komut> [args]\n\
+kullanım: %s shard <komut> [args]\n\
 \n\
 Mevcut komut:\n\
     start\n\
@@ -296,10 +296,10 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 Bilinmeyen komut '%s'\n
 43 Çıktı dosyası '%s' açılamadı\n
 44 Varolan veritabanı kaldırılamadı\n
-45 Creating database with %s size. The total amount of disk space needed is %s.\n
+45 %s boyut ile veri tabanı oluşturulması. Gerekli olan disk alanı toplam miktarı %s.\n
 46 Veritabanı oluşturulamadı.\n
 47 '%s' Kullanıcı dosya ile ilgili sorun\n
-48 The given '%s', %s is out of range. Choose a size between %s and %s.\n
+48 Verilen '%s', %s kapsam dışı. %s ve %s arasında bir boyut seçin.\n
 49 %s Sayısal değeri '%s' geçersiz. \n
 60 \
 createdb: Bir veritabanı oluştur.\n\
@@ -611,7 +611,7 @@ geçerli seçenekler:\n\
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB
 20 Npages için yanlış değer %d\n
 21 Yoğunlaştırma depolama amacıyla yanlış bir değeri '%s'.\n
-22 WARNING: --max-writesize-in-sec option is ignored in stand-alone mode execution.\n
+22 UYARI: --max-writesize-in-sec seçeneği bağımsız mod çalıştırmada yok sayıldı.\n
 60 \
 addvoldb: Add a volume-file for the database.\n\
 kullanım: %s addvoldb [SEÇENEK] database-name\n\
@@ -771,7 +771,7 @@ $set 26 MSGCAT_UTIL_SET_KILLTRAN
 29 İptal etme işlemi işlemin endeksi %d ile ilişkili\n
 30 Aşağıdaki işlemleri İptal etme başarısız oldu\n\n
 31 işlemin henüz bitmiş değil, ama geri alma işi olabilir.\n bir saniye bekleyin ve gerekirse daha sonra deneyin.\n
-32 Invalid tranindex(%s).\n
+32 Geçersiz tranindex(%s).\n
 59 killtran bağımsız modu olarak çalıştıramazsınız.\n
 60 \
 killtran: Veritabanı işlemleri yönetin.\n\
@@ -782,10 +782,10 @@ geçerli seçenekler:\n\
       --kill-user-name=ID            kullanıcı ID ile tüm işlemleri iptal etme\n\
       --kill-host-name=HOST          istemci HOST ile tüm işlemleri iptal etme\n\
       --kill-program-name=NAME       istemci programı NAME ile tüm işlemleri iptal etme\n\
-      --kill-sql-id=SQL_ID           kill all transactions with SQL_ID\n\
+      --kill-sql-id=SQL_ID           li tüm geçişleri sonlandırır\n\
   -p, --dba-password=PASS            DBA kullanıcı şifresi; belirtmezseniz isteyecektir\n\
   -d, --display-information          etkin işlemler hakkında bilgi görüntülemek\n\
-  -q, --query-exec-info              display information about query execution information of active transactions\n\
+  -q, --query-exec-info              aktif geçişlerin sorgulama çalışması bilgisi hakkında bilgiyi görüntüler\n\
   -f, --force                        doğrulaması için bir istemi olmadan işlemi iptal etme\n
 
 
@@ -910,7 +910,7 @@ kullanım: %s statdump [SEÇENEK] database-name\n\
 geçerli seçenekler:\n\
   -o, --output-file=FILE       FILE çıktı iletiyi yönlendirmek; varsayılan: hiçbir\n\
   -c, --cumulative             kümülatif istatistikler Yazdırma\n\
-  -i, --interval=S             istatistikleri her S saniye Yazdırma\n\
+  -i, --interval=S             bilgiyi her S saniye görüntüler\n\
   -s, --substr=STRING          substring eşleşen, stat öğeyi Yazdırma\n
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
@@ -984,43 +984,43 @@ geçerli seçenekler: \n\
   -z, --normalization   Normalleştirilen verileri bırakmak; Hata: Hayır\n
 
 $set 48 MSGCAT_UTIL_SET_SYNCCOLLDB
-43 Partitioning must be removed before changing the current collation '%s' of their partitioning attribute.\nClass name\n
-44 Foreign keys on attributes having collation '%s' must be dropped before changing collation of attributes.\nTable | Foreign Key\n
-45 Classes having collation '%s'; they should be redefined :\nClass name\n
-46 Function indexes having expression containing collation '%s'; they should be redefined :\n\
+43 Onların bölünme özelliğinin '%s'güncel derlemesini değiştirmeden önce bölümlere ayırma kaldırılmalıdır.\nClass name\n
+44 Derleme '%s' olan özelliklerde yabancı tuşlar özelliklerin derlemesi değiştirilmeden önce düşürülmelidir.\nTable | Foreign Key\n
+45 '%s' derlemesine sahip sınıflar; tekrardan tanımlanmalıdırlar:\nClass name\n
+46 Derleme '%s' içeren ifadeye sahip fonksiyon indeksleri; tekrardan tanımlanmalıdırlar:\n\
 Table | Index | Function expression\n
-47 Synchronization of collations was not performed. Database was not changed.\n
-48 Contents of '%s' system table was updated with new system collations.\n
-49 Updating system collations may cause corruption of database. Continue (y/n) ?\n
-50 Collation '%s' (Id: %d) not found in database or changed in new system configuration.\n
-51 Triggers having condition containing collation '%s'; they should be redefined :\nTrigger | Condition\n
-52 Query views containing collation '%s'; they should be redefined :\nView | Query\n
-53 Attributes having collation '%s'; they should be redefined.\nTable | Attribute Domain\n
-54 Manual intervention on database is required.\n\
-Please check file '%s' and execute it before forcing collations into database.\n
-55 Synchronization is not needed.\n
-56 Synchronization of system collation into database is required.\n\
-Run 'cubrid synccolldb -f %s'\n
-57 There are %d new collations in system configuration compared to database:\n
-58 All collations in database '%s' are found in the new system configuration.\n
-59 There are %d collations in database which are not configured or are changed compared to system collations.\n
+47 Derlemelerin senkronizasyonu gerçekleştirilmedi. Veri tabanı değişmedi.\n
+48 '%s' sistem tablosu içerikleri yeni sistem derlemeleri ile güncellendi.\n
+49 Sistem derlemeleri güncellemesi veri tabanı çökmesine neden olabilir. Devam (y/n) ?\n
+50 Derleme '%s' (Id: %d) veri tabanında bulunmadı veya yeni sistem konfigürasyonunda değişti.\n
+51 Derlee '%s' içeren koşula sahip tetikler; tekrardan tanımlanmalıdırlar:\nTrigger | Condition\n
+52 Derleme '%s' içeren sorgulama görüntüle; tekrardan tanımlanmalıdırlar:\nView | Query\n
+53 Derleme'%s' sahip özellikler; tekrardan tanımlanmalıdırlar.\nTable | Attribute Domain\n
+54 Veri tabanında manüel müdahale gerekli.\n\
+Lütfen dosya '%s' kontrol ediniz ve onu derlemeleri veri tabanı içine zorlamadan önce çalıştırın.\n
+55 Senkronizasyon gerekli değil.\n
+56 Sistem derlemesinin veri tabanı içine senkronizasyonu talep edilmektedir.\n\
+Çalıştır 'cubrid synccolldb -f %s'\n
+57 Veri tabanı ile karşılaştırıldığında sistem konfigürasyonunda %d yeni derlemeler vardır:\n
+58 Veri tabanı '%s' teki tüm derlemeler yeni sistem konfigürasyonunda bulunmuştur.\n
+59 Konfigüre edilmemiş veya sistem derlemelerine kıyasla değişmiş olan veri tabanında %d derlemeler var.\n
 60 \
-synccolldb: Synchronizes the collations from database with collations of system.\n\
-usage: %s synccolldb [OPTION] database-name\n\
+synccolldb: Derlemeleri sistem derlemeleri ile veri tabanından senkronize eder.\n\
+kullanım: %s synccolldb [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -c, --check-only    Checks the collations from databases with collation of system.\n\
-		      If collations synchronization is required, error code 1 is returned.\n\
-		      Displays a report of incompatible collations.\n\
-  -f, --force-only    Updates the collations in databases to be same as the collations of new sytem configuration.\n\
+geçerli seçenekler:\n\
+  -c, --check-only    Sistemin derlemesi ile veri tabanından derlemeleri control eder.\n\
+		      Eğer derleme senkronizasyonu talep edildiyse, hata kodu 1 geri döner.\n\
+		      Uyumsuz derlemenin bir raporunu görüntüler.\n\
+  -f, --force-only    derlemeleri veri tabanında yeni sistem konfigürasyonu ile aynı olacak şekilde günceller.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 Enter %s password: 
+20 %s şifre gir: 
 22 Tran index          User name      Host name      Process id      Program name\n
 23 -------------------------------------------------------------------------------\n
 24 %4d%-10s %14s %14s %15d %17s\n
-25 Hiçbir işlem bulunmamaktadır\n
-26 tranlist can only be performed by the DBA or a DBA group member.\n
+25 Geçişler yok\n
+26 tranlist sadece DBA veya bir DBA grup üyesi tarafından uygulanabilir.\n
 32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
 33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
@@ -1029,12 +1029,12 @@ $set 49 MSGCAT_UTIL_SET_TRANLIST
 44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
 45 Tran index : %d
 46 SQL_ID: %s\n
-59 tranlist bağımsız modu olarak çalıştıramazsınız.\n
+59 tranlist standalone mode olarak çalışamaz.\n
 60 \
-tranlist: Dump active transaction information.\n\
-usage: %s tranlist [OPTION] database-name\n\
+tranlist: Aktif geçiş bilgisini boşalt.\n\
+kullanım: %s tranlist [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -u, --user=ID                user ID for database access; default: DBA user\n\
-  -p, --password=PASS          user password; default: none\n\
-  -s, --summary                print summarized information of transaction\n
+geçerli seçenekler:\n\
+  -u, --user=ID                veri tabanı erişimi için kullanıcı kimliği; default: DBA user\n\
+  -p, --password=PASS          kullanıcı şifresi; default: none\n\
+  -s, --summary                geçişin sonuçlandırılmış bilgisini yazdır\n

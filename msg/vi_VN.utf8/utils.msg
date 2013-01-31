@@ -296,10 +296,10 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 Lệnh '%s' không rõ\n
 43 Không thể mở tệp tin đầu ra '%s'\n
 44 Không thể gỡ bỏ cơ sở dữ liệu hiện có.\n
-45 Creating database with %s size. The total amount of disk space needed is %s.\n
+45 Lập cơ sở dữ liệu với kích thước %s. Tổng dung lượng trống cần bằng %s.\n
 46 Không thể tạo cơ sở dữ liệu.\n
 47 Vấn đề với tệp tin người dùng '%s'\n
-48 The given '%s', %s is out of range. Choose a size between %s and %s.\n
+48 Với '%s' đã cho, %s nằm ngoài khoảng. Lựa chọn kích thước giữa %s và %s.\n
 49 Giá trị %s '%s' vô hiệu.\n
 60 \
 createdb: Tạo một cơ sở dữ liệu.\n\
@@ -611,7 +611,7 @@ các tùy chọn hợp lệ:\n\
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB
 20 Giá trị sai %d cho npages\n
 21 Giá trị sai '%s' cho mục đích lưu trữ bộ đĩa.\n
-22 WARNING: --max-writesize-in-sec option is ignored in stand-alone mode execution.\n
+22 CẢNH BÁO: --max-writesize-in-sec lựa chọn bị bỏ qua khi thực hiện ở chế độ độc lập.\n
 60 \
 addvoldb: Thêm một tệp tin bộ đĩa cho cơ sở dữ liệu.\n\
 cách sử dụng: %s addvoldb [TÙY CHỌN] tên-cơ sở dữ liệu\n\
@@ -771,7 +771,7 @@ $set 26 MSGCAT_UTIL_SET_KILLTRAN
 29 Xóa bỏ giao dịch kết nối với chỉ mục giao dịch %d\n
 30 Thất bại xóa bỏ các giao dịch sau đây\n\n
 31 Giao dịch chưa được hoàn thành, nhưng nó có thể thực hiện việc quay lui lại.\n Xin vui lòng chờ một lát và thử lại sau đó nếu cần.\n
-32 Invalid tranindex(%s).\n
+32 Vô hiệu tranindex(%s).\n
 59 killtran không thể chạy như chế độ độc lập.\n
 60 \
 killtran: Quản lý giao dịch của cơ sở dữ liệu.\n\
@@ -782,10 +782,10 @@ các tùy chọn hợp lệ:\n\
       --kill-user-name=ID            xóa bỏ tất cả giao dịch với ID người dùng\n\
       --kill-host-name=HOST          xóa bỏ tất cả giao dịch với client HOST\n\
       --kill-program-name=NAME       xóa bỏ tất cả giao dịch với tên chương trình máy khách NAME\n\
-      --kill-sql-id=SQL_ID           kill all transactions with SQL_ID\n\
+      --kill-sql-id=SQL_ID           hủy bỏ tất cả giao dịch với SQL_ID\n\
   -p, --dba-password=PASS            mật mã cho người dùng DBA; sẽ nhắc nếu không chỉ định\n\
   -d, --display-information          hiển thị thông tin về các giao dịch đang hoạt động\n\
-  -q, --query-exec-info              display information about query execution information of active transactions\n\
+  -q, --query-exec-info              hiển thị thông tin về thông tin thực hiện câu hỏi của các giao dịch hiện hoạt\n\
   -f, --force                        xóa bỏ giao dịch mà không có nhắc nhở kiểm chứng\n
 
 
@@ -910,7 +910,7 @@ cách sử dụng: %s statdump [TÙY CHỌN] tên-cơ sở dữ liệu\n\
 các tùy chọn hợp lệ:\n\
   -o, --output-file=FILE       chuyển hướng thông báo đầu ra đến tệp tin FILE; mặc định: không có \n\
   -c, --cumulative             in thống kê tích lũy\n\
-  -i, --interval=S             in thống kê mỗi S giây\n\
+  -i, --interval=S             in các thông tin  S giây một lần\n\
   -s, --substr=STRING          in mục thống kê chỉ khi nó khớp với chuỗi con\n
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
@@ -984,43 +984,43 @@ các tùy chọn khả dụng:\n\
   -z, --normalization   xóa bỏ dữ liệu chuẩn tắc; mặc định : tắt\n
 
 $set 48 MSGCAT_UTIL_SET_SYNCCOLLDB
-43 Partitioning must be removed before changing the current collation '%s' of their partitioning attribute.\nClass name\n
-44 Foreign keys on attributes having collation '%s' must be dropped before changing collation of attributes.\nTable | Foreign Key\n
-45 Classes having collation '%s'; they should be redefined :\nClass name\n
-46 Function indexes having expression containing collation '%s'; they should be redefined :\n\
+43 Phân vùng phải được loại bỏ trước khi thay đổi đối chiếu '%s' hiện tại của thuộc tính phân vùng của chúng.\nClass name\n
+44 Các phím ngoại lai trên thuộc tính có đối chiếu '%s' phải dừng lại trước khi thay đổi đối chiếu thuộc tính.\nTable | Foreign Key\n
+45 Các cấp có thuộc tính '%s'; chúng nên được định nghĩa lại :\nClass name\n
+46 Các chỉ số chức năng có biểu thức chứa đối chiếu '%s'; chúng nên được định nghĩa lại :\n\
 Table | Index | Function expression\n
-47 Synchronization of collations was not performed. Database was not changed.\n
-48 Contents of '%s' system table was updated with new system collations.\n
-49 Updating system collations may cause corruption of database. Continue (y/n) ?\n
-50 Collation '%s' (Id: %d) not found in database or changed in new system configuration.\n
-51 Triggers having condition containing collation '%s'; they should be redefined :\nTrigger | Condition\n
-52 Query views containing collation '%s'; they should be redefined :\nView | Query\n
-53 Attributes having collation '%s'; they should be redefined.\nTable | Attribute Domain\n
-54 Manual intervention on database is required.\n\
-Please check file '%s' and execute it before forcing collations into database.\n
-55 Synchronization is not needed.\n
-56 Synchronization of system collation into database is required.\n\
-Run 'cubrid synccolldb -f %s'\n
-57 There are %d new collations in system configuration compared to database:\n
-58 All collations in database '%s' are found in the new system configuration.\n
-59 There are %d collations in database which are not configured or are changed compared to system collations.\n
+47 Đồng bộ hóa các đối chiếu chưa được thực hiện. Cơ sở dữ liệu không bị thay đổi.\n
+48 Nội dung bảng hệ thống '%s' được cập nhật bằng các đối chiếu hệ thống mới.\n
+49 Cập nhật đối chiếu hệ thống có thể gây gián đoạn cơ sở dữ liệu. Tiếp tục (y/n) ?\n
+50 Đối chiếu '%s' (Id: %d) không tìm thấy trong cơ sở dữ liệu hoặc được thay đổi trong cài đặt hệ thống mới.\n
+51 Các kích hoạt có điều kiện chứa đối chiếu '%s'; chúng nên được định nghĩa lại :\nTrigger | Condition\n
+52 Trình xem câu hỏi chứa đối chiếu '%s'; chúng nên được định nghĩa lại :\nView | Query\n
+53 Các thuộc tính chứa đối chiếu '%s'; chúng nên được định nghĩa lại.\nTable | Attribute Domain\n
+54 Yêu cầu can thiệp thủ công vào cơ sở dữ liệu.\n\
+Hãy kiểm tra file '%s' và chạy file trước khi ép đối chiếu vào cơ sở dữ liệu.\n
+55 Không cần đồng bộ.\n
+56 Cần đồng bộ phân loại hệ thống vào cơ sở dữ liệu.\n\
+Chạy 'cubrid synccolldb -f %s'\n
+57 Có các đối chiếu mới %d trong cài đặt hệ thống so với cơ sở dữ liệu:\n
+58 Tất cả đối chiếu trong cơ sở dữ liệu '%s' được tìm thấy trong cài đặt hệ thống mới.\n
+59 Có đối chiếu %d trong cơ sở dữ liệu không được cài đặt hoặc bị thay đổi so với các đối chiếu hệ thống.\n
 60 \
-synccolldb: Synchronizes the collations from database with collations of system.\n\
+synccolldb: Đồng bộ các đối chiếu từ cơ sở dữ liệu với các đối chiếu của hệ thống.\n\
 usage: %s synccolldb [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -c, --check-only    Checks the collations from databases with collation of system.\n\
-		      If collations synchronization is required, error code 1 is returned.\n\
-		      Displays a report of incompatible collations.\n\
-  -f, --force-only    Updates the collations in databases to be same as the collations of new sytem configuration.\n\
+lựa chọn có giá trị:\n\
+  -c, --check-only    Kiểm tra các đối chiếu từ cơ sở dữ liệu với các đối chiếu của hệ thống.\n\
+		      Nếu cần đồng bộ hóa các đối chiếu, mã lỗi 1 được trả lại.\n\
+		      Hiển thị báo cáo các đối chiếu không tương thích.\n\
+  -f, --force-only    Cập nhật các đối chiếu trong cơ sở dữ liệu giống như các đối chiếu của cài đặt hệ thông mới.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 Enter %s password: 
+20 Nhập mật khẩu %s:  
 22 Chỉ mục giao dịch      Tên người dùng      Tên máy chủ      Id tiến trình      Tên chương trình\n
 23 -------------------------------------------------------------------------------\n
 24 %4d%-10s %14s %14s %15d %17s\n
-25 Không có giao dịch nào\n
-26 tranlist can only be performed by the DBA or a DBA group member.\n
+25 Không có giao dịch\n
+26 tranlist chỉ có thể được thực hiện bởi DBA hoặc một thành viên nhóm DBA.\n
 32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
 33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
@@ -1031,10 +1031,10 @@ $set 49 MSGCAT_UTIL_SET_TRANLIST
 46 SQL_ID: %s\n
 59 tranlist không thể chạy như chế độ độc lập.\n
 60 \
-tranlist: Dump active transaction information.\n\
+tranlist: Đổ các thông tin giao dịch hiện hoạt.\n\
 usage: %s tranlist [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -u, --user=ID                user ID for database access; default: DBA user\n\
-  -p, --password=PASS          user password; default: none\n\
-  -s, --summary                print summarized information of transaction\n
+lựa chọn có giá trị:\n\
+  -u, --user=ID                ID người dùng để truy cập cơ sở dữ liệu; default: DBA user\n\
+  -p, --password=PASS          mật khẩu người dùng; default: none\n\
+  -s, --summary                in các thông tin tổng hợp về giao dịch\n

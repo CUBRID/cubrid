@@ -40,7 +40,7 @@ tùy chọn có thể dùng:\n\
   -c, --command=ARG            CSQL-các lệnh\n\
   -l, --line-output            hiển thị mỗi giá trị trên một dòng\n\
   -r, --read-only              chế độ chỉ-đọc\n\
-      --string-width           display each column which is a string type in this width\n\
+      --string-width           hiển thị từng cột dạng chuỗi theo chiều rộng này\n\
       --no-auto-commit         tắt thực thi chế độ tự động cam kết\n\
       --no-pager               không dùng bộ phân trang\n\
       --no-single-line         tắt thực thi theo định hướng dòng đơn\n\
@@ -165,13 +165,13 @@ $ csql help messages
    ;TRigger [`*'|trigger-name]  - hiển thị định nghĩa trigger.\n\
    ;Get system_parameter        - lấy giá trị của một tham số hệ thống.\n\
    ;SEt system_parameter=value  - thiết lập giá trị của một tham số hệ thống.\n\
-   ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
-   ;COLumn-width [name]=[width] - set width that a specific column is displayed.\n\
+   ;STring-width [width]        - đặt chiều rộng mà từng cột dạng chuỗi được hiển thị.\n\
+   ;COLumn-width [name]=[width] - đặt chiều rộng mà một cột riêng nào đó được hiển thị.\n\
    ;PLan [simple/detail/off]    - hiện kế hoạch thực thi truy vấn.\n\
    ;Info <command>              - hiển thị thông tin nội tại.\n\
    ;TIme [ON/OFF]               - bật/tắt để hiển thị thời gian\n\
                                  thực thi truy vấn.\n\
-   ;LINe-output [ON/OFF]        - bật/tắt hiển thị mỗi giá trị trên một dòng\n\
+   ;LINe-output [ON/OFF]        - bật/tắt hiển thị từng giá trị trong một dòng\n\
    ;HISTORYList                 - hiển thị danh sách của các truy vấn được thực thi.\n\
    ;HISTORYRead <history_num>   - đọc mục nhập trên số lịch sử vào bộ đệm lệnh.\n\
    ;HElp                        - hiển thị tin nhắn trợ giúp.\n\n

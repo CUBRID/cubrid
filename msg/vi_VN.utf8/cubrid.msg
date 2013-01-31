@@ -63,7 +63,7 @@ $set 4 MSGCAT_SET_PARAMETER
 21 Từ khóa = '%s'    Giá trị = %f    Giá trị mặc định = %f\n
 22 Tham số không được chấp thuận
 23 Tham số '%s' và '%s' không thể được dùng cùng nhau.\n
-31 The '%s' parameter:
+31 '%s' thông số:
 
 $set 5 MSGCAT_SET_ERROR
 1 Thiếu thông báo cho mã lỗi %1$d.
@@ -188,7 +188,7 @@ $set 5 MSGCAT_SET_ERROR
 120 Số bộ đĩa đĩa tối đa (%1$d) đã bị vượt quá.
 121 Cố gắng gỡ bỏ "%1$s" một bộ đĩa thường trực từ cơ sở dữ liệu.
 122 Không thể truy cập catalog thông báo hệ thống.
-123 Unable to create %1$s for database "%2$s". Please refer "%3$s" for additional information.
+123 Không thể tạo %1$s cho cơ sở dữ liệu "%2$s". Hãy tham khảo "%3$s" để biết thêm thông tin.
 124 Bộ đĩa "%1$s" đã tồn tại.
 125 Phần mở rộng bộ đĩa tự động "%1$s" của trang %2$d và mục đích lưu trữ generic đã được tạo.
 126 Mục đích "%1$s" không biết được đưa ra trên dòng %2$d.
@@ -1119,7 +1119,7 @@ $ LOADDB
 1050 Không thể thay đổi thuộc tính "%1$s". CUBRID hiện tại không thể thay đổi miền của thuộc tính. Thuộc tính có một chỉ mục trên nó.
 1051 Không thể thay đổi thuộc tính "%1$s". CUBRID hiện tại không thể thay đổi thuộc tính để thêm một ràng buộc. Giá trị thuộc tính hiện có có thể không kiểm tra ràng buộc.
 1052 Thuộc tính "%1$s" đã không được thay đổi. CUBRID đã không phát hiện bất kỳ thay đổi có hiệu lực nào trong đại diện của thuộc tính.
-1053 The statements REPLACE INTO... and INSERT ... ON DUPLICATE KEY UPDATE are not allowed for classes that are part of an inheritance chain.
+1053 Các thông điệp REPLACE INTO... và INSERT ... ON DUPLICATE KEY UPDATE không được phép đối với các lớp thuộc một chuỗi kế thừa.
 1054 Giá trị mới của một ràng buộc AUTO INCREMENT phải lớn hơn hoặc bằng với giá trị hiện tại.
 1055 Giá trị mới của một ràng buộc AUTO INCREMENT phải nhỏ hơn giá trị tối đa.
 1056 Để tránh sự mơ hồ, tùy chọn bảng AUTO_INCREMENT yêu cầu bảng có chính xác một cột AUTO_INCREMENT và không có đặc tả khởi đầu/gia tăng.
@@ -1145,7 +1145,7 @@ $ LOADDB
 1076 Không thể tải tham số hệ thống.
 1077 Tham số '%s' tại dòng %d trong tệp tin '%s' : Tham số không biết
 1078 Ký tự ở vị trí chuyển vị %d không có giá trị với bộ mã hiện tại.
-1079 Codesets of database(%1$s) and server configuration(%2$s) are incompatible.
+1079 Các bộ mã của cơ sở dữ liệu(%1$s) và cài đặt máy chủ(%2$s) không tương thích.
 1080 Chiều dài chuỗi xác nhận lọc tối đa phải bằng %1$d.
 1081 Không thể thay đổi thuộc tính của bộ lọc hoặc chỉ mục chức năng.
 1082 Tất cả các tấm đệm trang đều bẩn (LRU: %1$d).
@@ -1165,19 +1165,19 @@ $ LOADDB
 1096 Thay đổi kế hoạch phân mảng không được cho phép khi hạng phân mảng được tham chiếu bởi một phím bên ngoài.
 1097 Cột '%s' không thể có ràng buộc PRIMARY KEY và giá trị mặc định NULL.
 1098 Thiết lập cục bộ cho ngôn ngữ '%s' không khả dụng với bộ ký tự '%s'.
-1099 Tuyên bố DDL không được cho phép bởi cấu hình (block_ddl_statement=yes).\n SQL Text: %s
+1099 Thông điệp DDL không được cho phép bởi cài đặt (block_ddl_statement=yes).\n Đoạn chữ SQL: %s
 1100 Tuyên bố không có mệnh đề Ở WHERE không được cho phép bởi cấu hình (block_nowhere_statementiyes).
 1101 Mã lỗi chưa được dùng.
 1102 Không biết hệ thống tham số hoặc giá trị xấu.
 1103 Không thể thay đổi tham số hệ thống.
 1104 Slow query (%d msec)\n%s
-1105 Internal error: partially failed to flush dirty object. 
-1106 Multiple rows in source table match the same row in destination table.
-1107 Invalid bucket number for NTILE. Should be greater than zero and no more than 2,147,483,647.
-1108 Invalid bucket number for WIDTH_BUCKET. Should be greater than zero and less than 2,147,483,647.
-1109 Invalid value for partition definition.
-1110 Insufficient space in btree leaf page. (key len: %d)\n%s
-1111 Result value is truncated, because the precision(%1$d) is less than it's length(%2$d).
+1105 Lỗi nội bộ: thất bại một phần trong việc xóa đối tượng bẩn. 
+1106 Nhiều dòng trong bảng nguồn khớp với cùng một dòng ở bảng đích.
+1107 Mã vùng chứa vô hiệu do lỗi NTILE. Cần lớn hơn 0 và không lớn hơn 2,147,483,647.
+1108 Mã vùng chứa vô hiệu do lỗi WIDTH_BUCKET. Cần lớn hơn 0 và không bé hơn 2,147,483,647.
+1109 Giá trị cho định nghĩa phân vùng vô hiệu.
+1110 Không đủ bộ nhớ trống ở trang lá b-tree. (key len: %d)\n%s
+1111 Giá trị kết quả bị cắt cụt, do độ nét(%1$d) nhỏ hơn chiều dài của nó(%2$d).
 1112 Lỗi sau cùng
 
 $set 6 MSGCAT_SET_INTERNAL
@@ -1322,10 +1322,10 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 113 before ' %s'\n
 114 before END OF STATEMENT\n
 115 tên đặt vô hiệu\n  set_names: SET NAMES charset [{COLLATE | COLLATION} collation]\n
-116 sử dụng chr không hợp lệ\n  CHR ( number [using charset] )\n
-117 sử dụng charset không hợp lệ\n  CHARSET ( expression )\n
-118 sử dụng collation không hợp lệ\n  COLLATION ( expression )\n
-119 sử dụng clob_to_char không hợp lệ\n  CLOB_TO_CHAR ( expression [using charset] )\n
+116 sử dụng ký tự vô hiệu\n  CHR ( number [using charset] )\n
+117 sử dụng bộ chữ vô hiệu\n CHARSET ( expression )\n
+118 sử dụng phân loại vô hiệu\n COLLATION ( expression )\n
+119 sử dụng clob_to_char vô hiệu\n CLOB_TO_CHAR ( expression [using charset] )\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Không đủ bộ nhớ.
@@ -1593,14 +1593,13 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 263 Thuộc tính kế thừa không được sử dụng như phím phân mảng.
 264 Tổng kích thước các yếu tố liệt kê quá lớn.
 265 Không thể sử dụng bảng đích trong đặc điểm nguồn.
-266 COLLATE is not allowed in this context.
-267 COLLATE modifier cannot change codeset (from '%s' to '%s'). Try using CAST instead.
-268 Invalid codeset '%1$s' for partition value. Expecting '%2$s' codeset.
-269 Session variable cannot have a different collation than system collation ('%s').
-270 Invalid function index expression.
-271 The query specification of %s has a cyclic reference to itself.
-272 %s expression not allowed in join condition.
-
+266 COLLATE không được cho phép trong trường hợp này.
+267 Bộ điều chỉnh COLLATE không thể thay đổi bộ mã (from '%s' to '%s'). Cố gắng thay bằng sử dụng CAST.
+268 Bộ mã '%1$s' cho giá trị phân vùng vô hiệu. Kỳ vọng '%2$s' bộ mã.
+269 Biến số phiên không thể có phân loại khác với phân loại hệ thống ('%s').
+270 Biểu thức chỉ số chức năng vô hiệu.
+271 Thuyết minh câu hỏi %s tự tham chiếu tới câu hỏi.
+272 %s biểu thức không được cho phép trong điều kiện chung.
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Không đủ bộ nhớ ảo: không thể cấp phát %d bytes.
 2 Cấp độ cô lập giao dịch phải là 1, 2, 3, 4, 5 or 6.

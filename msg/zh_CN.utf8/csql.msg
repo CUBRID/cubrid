@@ -40,7 +40,7 @@ $set 1 MSGCAT_CSQL_SET_CSQL
   -c, --command=ARG            CSQL命令\n\
   -l, --line-output            每个值都用单独的行表示\n\
   -r, --read-only              只读模式\n\
-      --string-width           display each column which is a string type in this width\n\
+      --string-width           用这个宽度显示每个字符串类型的列\n\
       --no-auto-commit         禁用自动提交执行模式\n\
       --no-pager               不要将查询结果分页\n\
       --no-single-line         关闭单行执行模式\n\
@@ -165,13 +165,13 @@ $ csql help messages
    ;TRigger [`*'|trigger-name]  - 显示触发器的定义.\n\
    ;Get system_parameter        - 获取一个系统参数的值.\n\
    ;SEt system_parameter=value  - 设置一个系统参数的值.\n\
-   ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
-   ;COLumn-width [name]=[width] - set width that a specific column is displayed.\n\
+   ;STring-width [width]        - 设置每个字符串类型的列的显示宽度.\n\
+   ;COLumn-width [name]=[width] - 设置指定列显示的宽度.\n\
    ;PLan [simple/detail/off]    - 显示查询执行计划.\n\
    ;Info <command>              - 显示内部信息.\n\
    ;TIme [ON/OFF]               - 启用/停用 显示查询\n\
                                   执行时间.\n\
-   ;LINe-output [ON/OFF]        - 启用/停用 每个值都用单独的行表示\n\
+   ;LINe-output [ON/OFF]        - 打开/关闭 显示一行中的每一个值\n\
    ;HISTORYList                 - 显示已经执行的查询列表.\n\
    ;HISTORYRead <history_num>   - 将histroy_num所对应的内容读取到命令缓冲区.\n\
    ;HElp                        - 显示帮助信息.\n\n

@@ -296,10 +296,10 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 commandដែលមិនស្គាល់ `%s'\n
 43 មិនអាចបើក output file `%s'\n
 44 មិនអាចផ្លាស់ប្តូរទីតាំងដែលតាបេសដែលមាន។\n
-45 Creating database with %s size. The total amount of disk space needed is %s.\n
+45 បងើ្កតទិន្នន័យដែលមានទំហំ %s. ទំហំថាសដែលត្រូវការស្មើនឹង%s.\n
 46 មិនអាំចបង្កើតដែលតាបេស\n
 47 បញ្ហាជាមួយ user file `%s'\n
-48 The given '%s', %s is out of range. Choose a size between %s and %s.\n
+48 ទំហំ '%s', %s ហួសកំណត់. សូមជ្រើសរើសទំហំរវាង %s និង %s.\n
 49 តំលៃនៃ%s'%s'មោឃ\n
 60 \
 createdb: បង្កើតដែលតាបេស\n\
@@ -611,7 +611,7 @@ usage: %s emergency_patchlog [OPTION] ឈ្មោះដែលតាបេស\n\
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB
 20 តម្លៃខុស %d សម្រាប់ npages\n
 21 តម្លៃខុស '%s' សម្រាប់បំណងរក្សាទុក volume ។ \n
-22 WARNING: --max-writesize-in-sec option is ignored in stand-alone mode execution.\n
+22 ព្រមមាន: --max-writesize-in-sec ប្រការនេះមិនអនុវត្តក្រោមទំរង់ឯករាជ្យទេ.\n
 60 \
 addvoldb: បន្ថែម volume-fileមួយសម្រាប់ដែលតាបេសនេះ។ \n\
 usage: %s addvoldb [OPTION] ឈ្មោះដែលតាបេស \n\
@@ -771,7 +771,7 @@ $set 26 MSGCAT_UTIL_SET_KILLTRAN
 29 ការបំផ្លាញកិច្ចសម្រួលដំណើរការដែលទាក់ទងនឹងindexនៃកិច្ចសម្រួលដំណើរការ %d\n
 30 ការបំផ្លាញកិច្ចសម្រួលដំណើរការជាបន្តរបន្ទាប់ត្រូវបរាជ័យ។ \n\n
 31 កិច្ចសម្រួលដំណើរការនេះ មិនទាន់ចប់ទេ, ប៉ុន្តែវាអាចបន្តដំណើរការត្រឡប់វិញ។ \n សូមរងចាំសិននិងព្យាយាមនៅពេលក្រោយបើចាំបាច់។ \n
-32 Invalid tranindex(%s).\n
+32 អត់មានប្រសិទ្ធិភាព tranindex(%s).\n
 59 killtran មិនអាចដំណើរការជា standalone mode។ \n
 60 \
 killtran: គ្រប់គ្រងកិច្ចសម្រួលដំណើរការនៃដែលតាបេស។ \n\
@@ -782,10 +782,10 @@ usage: %s killtran [OPTION] ឈ្មោះដែលតាបេស\n\
       --kill-user-name=ID            បំផ្លាញកិច្ចសម្រួលដំណើរការទាំងអស់ ជាមួយនឹងuser ID\n\
       --kill-host-name=HOST          បំផ្លាញកិច្ចសម្រួលដំណើរការទាំងអស់ ជាមួយនឹងclient HOST\n\
       --kill-program-name=NAME       បំផ្លាញកិច្ចសម្រួលដំណើរការទាំងអស់ ជាមួយនឹងclient program NAME\n\
-      --kill-sql-id=SQL_ID           kill all transactions with SQL_ID\n\
+      --kill-sql-id=SQL_ID           លុបចោលការជួញដូរទាំងអស់ដោយសារ SQL_ID\n\
   -p, --dba-password=PASS            កំណត់សម្គាល់សម្ងាត់នៃDBA user; នឹងកើតមានប្រសិនបើ មិនជាក់លាក់\n\
   -d, --display-information          បង្ហាញពត៌មានអំពីកិច្ចសម្រួលដំណើរការសកម្ម \n\
-  -q, --query-exec-info              display information about query execution information of active transactions\n\
+  -q, --query-exec-info              បង្ហាញនូវព័ត៌មានឆែកឆេរការជួញដូរដែលកំពុងធ្វើ\n\
   -f, --force                        បំផ្លាញកិច្ចសម្រួលដំណើរការជាមួយនឹងការចាំបាច់សម្រាប់ការពិនិត្យបញ្ជាក់
 
 
@@ -928,7 +928,7 @@ usage: %s applyinfo [OPTION] ឈ្មោះដែលតាបេស \n\
   -L, --copied-log-path=PATH  path នៃlog volumesដែលថតចម្លងរួច; បង្ហាញពត៌មានlogដែលថតចម្លងរួច \n\
   -p, --pageid=ID             ទំព័រ id; default : 0(ទំព័រសកម្ម)\n\
   -v, --verbose               បង្កើនសមត្ថភាពសារ verbose status ; default : មិនអាច\n\
-  -i, --interval=S            print information every S secs\n	
+  -i, --interval=S            បោះពុម្ពព័ត៌មានអំពី S secs\n	
 
 $set 45 MSGCAT_UTIL_SET_ACLDB
 59 acldb មិនអាចដំណើរការជា standalone modeទេ។ \n
@@ -984,43 +984,43 @@ language-string ខ្សែអក្សរភាសាទីតាំង បោ
   -z, --normalization   បោះចោលលេខដែលធ្វើអោយទៅជាធម្មតា កំហុស មិនបាទទេ\n
 
 $set 48 MSGCAT_UTIL_SET_SYNCCOLLDB
-43 Partitioning must be removed before changing the current collation '%s' of their partitioning attribute.\nClass name\n
-44 Foreign keys on attributes having collation '%s' must be dropped before changing collation of attributes.\nTable | Foreign Key\n
-45 Classes having collation '%s'; they should be redefined :\nClass name\n
-46 Function indexes having expression containing collation '%s'; they should be redefined :\n\
+43 ការបែងចែកថាសត្រូវលុបចោលមុនពេលកែប្រែលក្ខខ័ណ្ឌនៃការរៀចំទិន្នន័យដែលមាន.\nClass name\n
+44 លក្ខខ័ណ្ឌនៃពាក្យសំខាន់ដែលរៀបចំដោយ'%s' ត្រូវលុបចោលមុនពេលកែលក្ខខ័ណ្ឌនៃការរៀបចំ.\nTable | Foreign Key\n
+45 ប្រភេទដែលរៀបចំដោយ'%s'; ត្រូវកំណត់ជាថ្មីទៀត :\nClass name\n
+46 ការស្វែងរកពាក្យសំខាន់ដែលបានប្រើប្រាស់និងរៀបចំដោយ'%s'; ត្រូវកំណត់ជាថ្មីទៀត :\n\
 Table | Index | Function expression\n
-47 Synchronization of collations was not performed. Database was not changed.\n
-48 Contents of '%s' system table was updated with new system collations.\n
-49 Updating system collations may cause corruption of database. Continue (y/n) ?\n
-50 Collation '%s' (Id: %d) not found in database or changed in new system configuration.\n
-51 Triggers having condition containing collation '%s'; they should be redefined :\nTrigger | Condition\n
-52 Query views containing collation '%s'; they should be redefined :\nView | Query\n
-53 Attributes having collation '%s'; they should be redefined.\nTable | Attribute Domain\n
-54 Manual intervention on database is required.\n\
-Please check file '%s' and execute it before forcing collations into database.\n
-55 Synchronization is not needed.\n
-56 Synchronization of system collation into database is required.\n\
-Run 'cubrid synccolldb -f %s'\n
-57 There are %d new collations in system configuration compared to database:\n
-58 All collations in database '%s' are found in the new system configuration.\n
-59 There are %d collations in database which are not configured or are changed compared to system collations.\n
+47 បើការរៀបចំទិន្នន័យមិនស៊ីគ្នានោះទិន្នន័យមិនអាចកែប្រែទេ.\n
+48 ខ្លឹមសារអំពី '%s'នៅក្នុងតារាងប្រព័ន្ធអាចប្តូរថ្មីជាមួយការរៀបចំទិន្នន័យដោយប្រព័ន្ធថ្មី.\n
+49 ផ្តល់នូវការរៀបចំទិន្នន័យថ្មីបំផុតនៅក្នុងប្រព័ន្ធប្រហាក់ប្រហែលខូចទិន្នន័យ. បន្ត (y/n) ?\n
+50 ការរៀបចំដែលមាន '%s' (Id: %d) មិនអាចរកឃើញបាននៅក្នុងទិន្នន័យឬមានការប្រែប្រួលតាមទំរង់ប្រព័ន្ធថ្មី.\n
+51 លក្ខខ័ណ្ឌនៃការរៀបចំដែលមាន '%s'; ត្រូវកំណត់ជាថ្មីទៀត :\nTrigger | Condition\n
+52 នៅក្នុងដំណើរការឆែកឆេរទិន្នន័យដែលមាន '%s'; ការឆែកឆេរត្រូវកំណត់ជាថ្មីទៀត :\nView | Query\n
+53 លក្ខខ័ណ្ឌនៃការរៀបំចំដែលមាន '%s'; ត្រូវកំណត់ជាថ្មីទៀត.\nTable | Attribute Domain\n
+54 ការរៀបចំទិន្និន័យដោយមនុស្សគឺចាំបាច់.\n\
+សូមមើលមើល៍ឯកសារ'%s'រួចហើយអនុវត្តបានមុនពេលរៀបចំទិន្នន័យ.\n
+55 ការស៊ីគ្នាមិនបាច់ទេ.\n
+56 ការរៀបចំទិន្នន័យដោយប្រព័ន្ធត្រូវចាំបាច់ស៊ីគ្នា.\n\
+រត់(ចាប់ដំណើរការ) 'cubrid synccolldb -f %s'\n
+57 អំពី %d មានការរៀបចំថ្មីតាមទំរង់ប្រព័ន្ធចំពោះទិន្នន័យ:\n
+58 ការរៀបចំទិន្នន័យទាំងអស់'%s' អាចរកឃើញបាននៅក្នុងទំរង់ប្រព័ន្ធថ្មី.\n
+59 បើមាន %d នៅក្នុងការរៀបចំទិន្នន័យនោះមិនអាចកំណត់ឬមិនអាចកែប្រែទេបើប្រៀបធៀបទៅនឹងការរៀបចំដោយប្រព័ន្ធ.\n
 60 \
-synccolldb: Synchronizes the collations from database with collations of system.\n\
+synccolldb: ការរៀបចំទិន្នន័យត្រូវស៊ីគ្នាជាមួយការរៀបចំដោយប្រព័ន្ធ.\n\
 usage: %s synccolldb [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -c, --check-only    Checks the collations from databases with collation of system.\n\
-		      If collations synchronization is required, error code 1 is returned.\n\
-		      Displays a report of incompatible collations.\n\
-  -f, --force-only    Updates the collations in databases to be same as the collations of new sytem configuration.\n\
+ប្រការមានប្រសិទ្ធិភាព:\n\
+  -c, --check-only    ត្រួតពិនិត្យការរៀបចំទិន្នន័យតាមទំរង់ការរៀបចំដោយប្រព័ន្ធ.\n\
+		      បើការរៀបចំត្រូវការស៊ីគ្នា, កូដកំហុស១ត្រូវត្រឡប់មកវិញ.\n\
+		      បង្ហាញនូវរបាយការណ៍អំពីការរៀបចំដែលមិនស៊ីគ្នា.\n\
+  -f, --force-only     ផ្តល់នូវការរៀបចំទិន្នន័យថ្មីបំផុតនិងការរៀបចំតាមទំរង់ប្រព័ន្ធថ្មីដូចគ្នា.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 Enter %s password: 
-22 Tran index          ឈ្មោះUser      ឈ្មោះHost      ដំណើរការ id      ឈ្មោះProgram \n
+20 បញ្ចូល %s លេខសំងាត់: 
+22 Tran index          User name      Host name      Process id    Program name \n
 23 -------------------------------------------------------------------------------\n
 24 %4d%-10s %14s %14s %15d %17s\n
-25 ពុំមានកិច្ចសម្រួលដំណើរការទេ\n
-26 tranlist can only be performed by the DBA or a DBA group member.\n
+25 អត់មានការជួញដូរទេ\n
+26 tranlist មានតែអនុវត្តតាមក្រុម the DBA or a DBA group member.\n
 32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
 33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
@@ -1029,12 +1029,12 @@ $set 49 MSGCAT_UTIL_SET_TRANLIST
 44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
 45 Tran index : %d
 46 SQL_ID: %s\n
-59 tranlist មិនអាចដំណើរការជា standalone mode។ \n
+59 tranlist មិនអាចចាប់ដំណើរការក្រោម standalone mode។ \n
 60 \
-tranlist: Dump active transaction information.\n\
+tranlist: ទាត់ចោលព័ត៌មានអំពីការជួញដូរ.\n\
 usage: %s tranlist [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -u, --user=ID                user ID for database access; default: DBA user\n\
-  -p, --password=PASS          user password; default: none\n\
-  -s, --summary                print summarized information of transaction\n
+ប្រការមានប្រសិទ្ធិភាព:\n\
+  -u, --user=ID                ID របស់អ្នកប្រើប្រាស់សំរាប់ឆែកឆេរទិន្នន័យ; default: DBA user\n\
+  -p, --password=PASS          លេខសំងាត់នៃអ្នកប្រើប្រាស់; default: none\n\
+  -s, --summary                ចេញក្រដាស(បោះពុម្ព)ព័ត៌មានអំពីការជួញដូរ\n

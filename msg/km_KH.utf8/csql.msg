@@ -40,7 +40,7 @@ valid options:\n\
   -c, --command=ARG            CSQL-commands\n\
   -l, --line-output            បង្ហាញតម្លៃនីមួយៗក្នុងបន្ទាត់មួយ\n\
   -r, --read-only              ទម្រង់read-only\n\
-      --string-width           display each column which is a string type in this width\n\
+      --string-width           បង្ហាញនូវជួរនិមួយៗដែលមានប្រវែងទទឹងស្មើនឹងប្រភេទខ្សែអក្សរ\n\
       --no-auto-commit         មិនអាចស្វ័យធ្វើប្រតិបត្តិការទម្រង់(mode execution)\n\
       --no-pager               កុំប្រើទំព័រ\n\
       --no-single-line         បិទបន្ទាត់ឯក(single line)ដែលតម្រង់រកការប្រតិបត្តិ\n\
@@ -165,13 +165,13 @@ $ csql help messages
    ;TRigger [`*'|trigger-name]  - បង្ហាញនិយមន័យtrigger។\n\
    ;Get system_parameter        - ទទួលយកតម្លៃនៃប៉ារ៉ាម៉ែត្រប្រព័ន្ធ។\n\
    ;SEt system_parameter=value  - កំណត់តម្លៃនៃប៉ារ៉ាម៉ែត្រប្រព័ន្ធ។\n\
-   ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
-   ;COLumn-width [name]=[width] - set width that a specific column is displayed.\n\
+   ;STring-width [width]        - ស៊េរីប្រវែងទទឹងនៃជួរនិមួយៗដែលបានបង្ហាញនូវប្រភេទខ្សែអក្សរ.\n\
+   ;COLumn-width [name]=[width] - ស៊េរីប្រវែងទទឹងនៃជួរពិសេសដែលបានបង្ហាញហើយ.\n\
    ;PLan [simple/detail/off]    - បង្ហាញផែនការណ៍ប្រតិបត្តិquery។\n\
    ;Info <command>              - បង្ហាញពត៌មានខាងក្នុង។\n\
    ;TIme [ON/OFF]               - មិនអាចបង្ហាញ query\n\
                                                                                                                        ម៉ោងប្រតិបត្តិ\n\
-   ;LINe-output [ON/OFF]        - បង្ហាញតម្លៃនីមួយៗក្នុងបន្ទាត់មួយ\n\
+   ;LINe-output [ON/OFF]        - អាច/មិនអាចបង្ហាញនូវតម្លៃនិមួយៗក្នុងមួយជួរ\n\
    ;HISTORYList                 - បង្ហាញតារាងឈ្មោះqueriesដែលបានប្រតិបត្តិ។\n\
    ;HISTORYRead <history_num>   - ដំណើរការentryនៅលើចំនួន historyទៅក្នុងcommand buffer។\n\
    ;HElp                        - បង្ហាញសារជំនួយនេះ (help message)។\n\n

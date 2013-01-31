@@ -63,7 +63,7 @@ $set 4 MSGCAT_SET_PARAMETER
 21 ពាក្យគន្លឺះ = '%s'    តម្លៃ = %f    តម្លៃDefault = %f\n
 22 ប៉ារ៉ាម៉ែត្រមិនបានការ
 23  ប៉ារ៉ាម៉ែត្រ '%s' និង '%s'នេះ អាចនឹងមិនត្រូវបានប្រើជាមួយគ្នា។​ \n
-31 The '%s' parameter:
+31 បណ្តាល'%s'ផ្នែក:
 
 $set 5 MSGCAT_SET_ERROR
 1 ពុំមានសារសម្រាប់កូដ error %1$d។
@@ -188,7 +188,7 @@ $set 5 MSGCAT_SET_ERROR
 120 ចំនួនអតិបរមានៃ volumes (%1$d) លើសកំណត់។
 121 ព្យាយាមដើម្បីផ្លាស់ចេញនូវ "%1$s"ជាvolumeអចិន្រ្តៃយ៍ ពីដែលតាបេសនេះ។
 122 មិនអាចមានសិទិ្ធចូលសារ catalogទេ។
-123 Unable to create %1$s for database "%2$s". Please refer "%3$s" for additional information.
+123 មិនអាចបង្កើត %1$s សំរាប់មូលដ្ឋានទិន្នន័យទេ "%2$s". សូមមើល"%3$s" ដើម្បីទទួលបានព័ត៌មានបន្ថែមទៀត.
 124 Volume "%1$s" មានរួចហើយ។
 125 ស្វ័យភ្ជាប់volume "%1$s"មួយនៃទំព័រ %2$dនិងបំណងផ្ទុកតាមប្រភេទ ត្រូវបានបង្កើតឡើង។
 126 បំណង "%1$s"ដែលមិនស្គាល់ ត្រូវបានផ្តល់លើ line %2$d។
@@ -1145,7 +1145,7 @@ $ LOADDB
 1076 មិនអាំចផ្ទុកប៉ារ៉ាម៉ែត្រប្រព័ន្ធ។
 1077 ប៉ារ៉ាម៉ែត្រ'%s'ត្រង់line %d ក្នុង file '%s' : ប៉ារ៉ាម៉ែត្រដែលមិនស្គាល់
 1078 លក្ខណនែស្ថានីយចាប់ផ្តើម%dជាមោឃនៅក្នុងមូលដ្ឋានអក្សរកូដដែលថ្មីៗ
-1079 Codesets of database(%1$s) and server configuration(%2$s) are incompatible.
+1079 មូលដ្ឋានទិន្នន័យនៃអក្សរកូដ(%1$s) និងរៀបចំផ្នែកសឺវើ(server)(%2$s)មិនស៊ីគ្នាទេ.
 1080 ប្រវែងអតិបរមាណនែខ្សែអក្សរតំរងត្រូវជា%1$d។
 1081 មិនអាចកែលក្ខណដែលទាក់ទង់ឧបករត្រងឬ មុខតំណែង។
 1082 ឧបករចន្ទាសនៃគេហទំព័រទាំងអស់អាក្រក(LRU: %1$d)។
@@ -1165,20 +1165,20 @@ $ LOADDB
 1096 រចនាសម័្ពន្ធចំណែកដែលកំពុងកែប្រែមិនអាចទទួលអនុញ្ញាត ពេលថ្នាក់ចំណែកត្រូវពាក្យសំខាន់យកទៅធ្វើជាយោងសេចក្តី។
 1097 ជូរឈរមិនអាចមានពាក្យសំខាន់មួយ PRIMARY KEY យមកកំណត់និងតំលៃមួយមិនត្រូវ NULL មោឃ។
 1098 ១០៩៨ទីកន្លែងនៃភាសារ'%s'ដែលនៅក្នុងសំណុំតូអក្សរ'%s'មិនអាចប្រើ
-1099 សេចក្តីថ្លែងការនៃDDLមិនអាចទទួលអនុញ្ញាតពីរូបសណ្ឋានក្រៅ(block_ddl_statement=yes)\n SQL Text: %s
+1099 ឃ្លា(ពាក្យ)DDL មិនអាចសរសេរតាមបែបបទ (block_ddl_statement=yes).\n SQL អក្សរ: %s
 1100 សេចក្តីថ្លែងការនៃទីកន្លែងដែលមិននៅក្នុងឃ្លា មិនអាចទទួលអនុញ្ញាតពីរូបសណ្ឋានក្រៅ(block_nowhere_statement=yes)
 1101 កូដerrorដែលមិនបានប្រើ។
 1102 ១១០២ លេខប្រព័ន្ធដែលមិនស្គាល់ឬលេខខុស.
 1103 ១១០៣លេខប្រព័ន្ធដែលមិនអាចកែប្រែ.
-1104 Slow query (%d msec)\n%s
-1105 Internal error: partially failed to flush dirty object. 
-1106 Multiple rows in source table match the same row in destination table.
-1107 Invalid bucket number for NTILE. Should be greater than zero and no more than 2,147,483,647.
-1108 Invalid bucket number for WIDTH_BUCKET. Should be greater than zero and less than 2,147,483,647.
-1109 Invalid value for partition definition.
-1110 Insufficient space in btree leaf page. (key len: %d)\n%s
-1111 Result value is truncated, because the precision(%1$d) is less than it's length(%2$d).
-1112 ១១០៤ កំហុសទីបំផុត
+1104 សំនួរយ៉ាងយឺតយ៉ាវ (%d msec)\n%s
+1105 កំហុសផ្ទៃក្នុង: លុបចោលឯកសារដែលជាសំរាមមិនបានទេ. 
+1106 ជួរជាច្រើននៅក្នុងតារាងដើម(កំណើត)មានជួរមួយស៊ីគ្នានៅក្នុងតារាងគោលដៅ.
+1107 តួលេខដែលទុកជាមោឃៈសំរាប់NTILE. ត្រូវធំជាងសូន្យតែតូចជាងចំនួន2,147,483,647.
+1108 តួលេខដែលទុកជាមោឃៈសំរាប់WIDTH_BUCKET. ត្រូវធំជាងសូន្យតែតូចជាងចំនួន2,147,483,647.
+1109 តម្លៃឥតបានការសំរាប់កំណត់ការបែងចែក.
+1110 នៅក្នុងទំព័រមាតិកាអត់មានថាសទំនេរគ្រប់គ្រាន់ទេ. (key len: %d)\n%s
+1111 តម្លៃនៃលទ្ធផលត្រូវកាត់បន្ថយ, ពិព្រោះភាពទៀងទាត់អំពី (%1$d) ត្រូវតិចជាងប្រវែងរបស់ខ្លួនដែលមាន(%2$d).
+1112 កំហុសចុងក្រោយ
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error ក្នុងអនុប្រព័ន្ធ error (line %d):
@@ -1323,9 +1323,9 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 114 before END OF STATEMENT\n
 115 ឈ្មោះមោឃ\nឈ្មោះ: SET NAMES charset [{COLLATE | COLLATION} collation]\n
 116 ការប្រើមោឃនៃchr\n  CHR ( number [using charset] )\n
-117 ការប្រើមោឃនៃcharset\n  CHARSET ( expression )\n
-118 ការប្រើមោឃនៃcollation\n  COLLATION ( expression )\n
-119 ការប្រើមោឃនៃclob_to_char\n  CLOB_TO_CHAR ( expression [using charset] )\n
+117 ប្រើប្រាស់អក្សរកូដឥតបានការ\n  CHARSET ( expression )\n
+118 ការរៀបចំឥតបានការ\n  COLLATION ( expression )\n
+119 ការប្រើប្រាស់clob_to_charត្រូវចាត់ទុកជាមោឃៈ\n  CLOB_TO_CHAR ( expression [using charset] )\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 គ្មាន memory។
@@ -1593,13 +1593,13 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 263 សេចក្តីកំណត់ដែលទទួលមរតកមិនអាចប្រើដូចជាពាក្យសំខាន់សំរាប់ចែក
 264 ទំហំសរុបនៃធាតុការរៀបរាប់ធំណាស់
 265 មិនអាចប្រើតារាងគោលដៅនៅក្នុងគំរូធនធាន
-266 COLLATE is not allowed in this context.
-267 COLLATE modifier cannot change codeset (from '%s' to '%s'). Try using CAST instead.
-268 Invalid codeset '%1$s' for partition value. Expecting '%2$s' codeset.
-269 Session variable cannot have a different collation than system collation ('%s').
-270 Invalid function index expression.
-271 The query specification of %s has a cyclic reference to itself.
-272 %s expression not allowed in join condition.
+266 ការរៀបចំមិនអាចធ្វើបានក្នុងអត្ថបទ.
+267 ការកែលំអការរៀបចំមិនអាចកែប្រែអក្សរកូដទេ (from '%s' to '%s'). សាកល្បងប្រើប្រាស់ជំនួស CAST.
+268 អក្សរកូដឥតបានការដែលមាន '%1$s' សំរាប់តម្លៃបែងចែក. ប៉ាន់ស្មាន '%2$s' អក្សរកូដ.
+269 ការរៀបចំដែលអាចផ្លាស់ប្តូរបានមិនខុសពីការរៀបចំដោយប្រព័ន្ធ ('%s').
+270 ឃ្លាមុខងារអំពីតារាងរៀងតាមអក្សរត្រូវចាត់ទុកជាមោឃៈ
+271 បែបបទសាកសួរអំពី %s អាចកើតមានឡើងចំពោះការដកស្រង់យកមកប្រើ.
+272 %s ឃ្លានេះមិនអាចសរសេរក្នុងករណីរួម.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 អស់ memoryជាក់ស្តែង: មិនអាចប្រើ %d bytes។

@@ -63,7 +63,7 @@ $set 4 MSGCAT_SET_PARAMETER
 21 关键字 = '%s'    值 = %f    默认值 = %f\n
 22 废弃的参数
 23 '%s' 和 '%s' 参数不能一起使用.\n
-31 The '%s' parameter:
+31 参数 '%s':
 
 $set 5 MSGCAT_SET_ERROR
 1 错误代码 %1$d 缺少对应的错误信息.
@@ -74,7 +74,7 @@ $set 5 MSGCAT_SET_ERROR
 6 一个指向NULL内存的哈希表被提供给了哈希函数.
 7 试图用一个不正确的页数值 %2$d 格式化磁盘卷 "%1$s".
 8 无法用 %2$d 页(%3$lld 字节)格式化磁盘卷 "%1$s".
-9 因为空间不够无法用 %2$d 页 (%3$lld 千字节)格式化磁盘卷 "%1$s". 当前的可用空间是 %4$d 页 (%5$lld 千字节).
+9 因为空间不足，不能以 %2$d 的页大小 (%3$lld 千字节)来格式化磁盘卷 "%1$s". 当前可以空间为 %4$d 页 (%5$lld 千字节).
 10 无法加载磁盘卷 "%1$s".
 11 无法加载磁盘卷 "%1$s". 磁盘卷所属的数据库 "%2$s" 正在被用户 %3$s 通过在主机 %5$s 上的进程 %4$d 所使用, 从 %6$s 开始.
 12 卸载卷 "%1$s" 时出现问题.
@@ -188,7 +188,7 @@ $set 5 MSGCAT_SET_ERROR
 120 超出了卷 (%1$d) 的最大数目.
 121 试图从数据库删除永久性的卷 "%1$s".
 122 无法访问系统消息目录.
-123 Unable to create %1$s for database "%2$s". Please refer "%3$s" for additional information.
+123 不能为数据库"%2$s" 创建 %1$s. 更多信息，请参考"%3$s".
 124 卷 "%1$s" 已经存在.
 125 一个具有 %2$d 页的通用存储用户的自动卷扩展 "%1$s" 被创建.
 126 未知的purpose "%1$s" 在行 %2$d 被给定.
@@ -1119,7 +1119,7 @@ $ LOADDB
 1050 不能修改列 "%1$s". CUBRID 不能修改列的domain. 列上存在索引.
 1051 不能修改列 "%1$s". CUBRID 不能在列上添加一个约束. 已有的列数据可能不check改约束.
 1052 不能修改列 "%1$s". CUBRID 没有检测到任何有效的修改在列的representation.
-1053 The statements REPLACE INTO... and INSERT ... ON DUPLICATE KEY UPDATE are not allowed for classes that are part of an inheritance chain.
+1053 语句 REPLACE INTO... and INSERT ... ON DUPLICATE KEY UPDATE 不支持，如果其中涉及的表在继承链中.
 1054 auto increment 约束的新值应该大于或等于当前值.
 1055 auto increment 约束的新值应小于最大值.
 1056 为了避免二义性, AUTO_INCREMENT的表选项需要表有一个AUTO_INCREMENT列，并且没有指定seed/increment.
@@ -1145,7 +1145,7 @@ $ LOADDB
 1076 不能加载系统参数.
 1077 '%s' 参数 在第 %d 行的文件 '%s' 中: 未知参数
 1078 偏移量为 %d 的字符在当前字符集是非法的.
-1079 Codesets of database(%1$s) and server configuration(%2$s) are incompatible.
+1079 数据库(%1$s)的字符集 与 服务器设置(%2$s)不匹配.
 1080 用作过滤的谓词字符串的最大长度是 %1$d.
 1081 无法改变在filter或 function索引中使用的列.
 1082 所有的缓冲页都是脏页 (LRU: %1$d).
@@ -1165,19 +1165,19 @@ $ LOADDB
 1096 当分区表引用一个外键时 不允许修改分区表结构.
 1097 列 '%s' 不能同时制定主键约束和 NULL缺省值.
 1098 区域中的语言 '%s' 在字符集 '%s' 中无效.
-1099 DDL 语句在配置中设为不允许 (block_ddl_statement=yes).\n SQL Text: %s
+1099 配置 DDL 语句是不支持的 (block_ddl_statement=yes).\n SQL 语句: %s
 1100 没有where子句的语句在配置中设为不允许 (block_nowhere_statement=yes).
 1101 未使用的错误号.
 1102 未知系统参数或错误的值.
 1103 不能改变系统参数.
-1104 Slow query (%d msec)\n%s
-1105 Internal error: partially failed to flush dirty object. 
-1106 Multiple rows in source table match the same row in destination table.
-1107 Invalid bucket number for NTILE. Should be greater than zero and no more than 2,147,483,647.
-1108 Invalid bucket number for WIDTH_BUCKET. Should be greater than zero and less than 2,147,483,647.
-1109 Invalid value for partition definition.
-1110 Insufficient space in btree leaf page. (key len: %d)\n%s
-1111 Result value is truncated, because the precision(%1$d) is less than it's length(%2$d).
+1104 慢查询 (%d 毫秒)\n%s
+1105 内部错误：部分无法刷新脏对象.
+1106 源表中的多行与目标表中的相同行匹配.
+1107 非法的NTILE桶大小. 桶大小应该大于0，小于等于 2,147,483,647.
+1108 非法的WIDTH_BUCKET桶大小. 桶大小应该大于0，小于等于 2,147,483,647.
+1109 分区定义数非法.
+1110 B树叶子节点页空间不足. (key len: %d)\n%s
+1111 结果值被截断, 因为精度(%1$d) 小于它的长度(%2$d).
 1112 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
@@ -1323,9 +1323,9 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 114 before END OF STATEMENT\n
 115 集合名无效\n  set_names: SET NAMES charset [{COLLATE | COLLATION} collation]\n
 116 chr无效使用\n  CHR ( number [using charset] )\n
-117 charset无效使用\n  CHARSET ( expression )\n
-118 collation无效使用\n  COLLATION ( expression )\n
-119 clob_to_char无效使用\n  CLOB_TO_CHAR ( expression [using charset] )\n
+117 非法使用字符集\n  CHARSET ( expression )\n
+118 非法使用排序规则\n  COLLATION ( expression )\n
+119 非法使用clob_to_char\n  CLOB_TO_CHAR ( expression [using charset] )\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 内存耗尽.
@@ -1593,13 +1593,13 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 263 继承属性不能用作分区键.
 264 枚举元素的聚合大小超出上限.
 265 不能在源spec中使用目标表.
-266 COLLATE is not allowed in this context.
-267 COLLATE modifier cannot change codeset (from '%s' to '%s'). Try using CAST instead.
-268 Invalid codeset '%1$s' for partition value. Expecting '%2$s' codeset.
-269 Session variable cannot have a different collation than system collation ('%s').
-270 Invalid function index expression.
-271 The query specification of %s has a cyclic reference to itself.
-272 %s expression not allowed in join condition.
+266 在该上下文中不支持COLLATE.
+267 COLLATE 不能能改变字符集 (从 '%s' 到 '%s'). 应该使用 CAST.
+268 给分区值的字符集 '%1$s' 非法. 期待的字符集 '%2$s'.
+269 会话变量使用的排序规则不能与系统排序规则不同 ('%s').
+270 非法函数索引表达式.
+271 指定查询 %s 存在自我引用.
+272 %s 表达式不支持连接条件.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %d 字节.

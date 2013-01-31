@@ -40,7 +40,7 @@ geçerli ayarlar:\n\
   -c, --command=ARG            CSQL-komutları\n\
   -l, --line-output            bir çizgi üzerinde her değeri görüntüle\n\
   -r, --read-only              sadece-oku modu\n\
-      --string-width           display each column which is a string type in this width\n\
+      --string-width           bu genişlikte bir dizin tipi olan her sütunu görüntüler\n\
       --no-auto-commit         Otomatik tamamlama modu yürütme devre dışı\n\
       --no-pager               do not use pager\n\
       --no-single-line         tek satır odaklı yürütmeyi kapatın\n\
@@ -165,13 +165,13 @@ $ csql help messages
    ;TRigger [`*'|trigger-name]  - tetik tanımı görüntüler.\n\
    ;Get system_parameter        - bir sistem parametre değeri edinin.\n\
    ;SEt system_parameter=value  - bir sistem parametre değeri ayarla.\n\
-   ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
-   ;COLumn-width [name]=[width] - set width that a specific column is displayed.\n\
+   ;STring-width [width]        - bir dizin tipi görüntülenmiş olan her sütunun genişliğini ayarlayın.\n\
+   ;COLumn-width [name]=[width] - belirli sütunu görüntülenmiş olan genişlik ayarla.\n\
    ;PLan [simple/detail/off]    - sorgu yürütme planı göster.\n\
    ;Info <command>              - iç bilgileri görüntüler.\n\
    ;TIme [ON/OFF]               - Sorgu görüntülemek için etkin / devre dışı\n\
                                   yürütme zamanı.\n\
-   ;LINe-output [ON/OFF]        - bir çizgi üzerinde her değeri görüntüle etkin / devre dışı\n\
+   ;LINe-output [ON/OFF]        - bir satırda her bir değeri görüntülemek için etkinleştir/devre dışı bırak\n\
    ;HISTORYList                 - çalıştırılan sorguların listesini görüntüleyebilir.\n\
    ;HISTORYRead <history_num>   - komut buffer içine geçmiş numarası üzerinde giriş okuyun.\n\
    ;HElp                        - yardım mesajını görüntüler.\n\n

@@ -63,7 +63,7 @@ $set 4 MSGCAT_SET_PARAMETER
 21 Anahtar = '%s' değeri = %f varsayılan değer = %f\n
 22 Reddedilen parametre
 23 '%s' ve '%s' parametreler birlikte kullanılamaz. \n
-31 The '%s' parameter:
+31 '%s' parametresi:
 
 $set 5 MSGCAT_SET_ERROR
 1 Hata kodu %1$d eksik mesaj.
@@ -188,7 +188,7 @@ $set 5 MSGCAT_SET_ERROR
 120 Yoğunlukların maksimum sayısı (%1$d) değerini aştı.
 121 "%1$s" kaldırmak için çalışılıyor veritabanından kalıcı bir yoğunluk.
 122 Sistem mesajı kataloguna erişilemiyor.
-123 Unable to create %1$s for database "%2$s". Please refer "%3$s" for additional information.
+123 "%2$s" veri tabanı için %1$s oluşturulamıyor. Ek bilgi için lütfen "%3$s" bakınız.
 124 Yoğunluk "%1$s" zaten bulunmakta.
 125 Otomatik yoğunluk uzantısı "%1$s" nın %2$d sayfaları ve genel depolama amaçlı oluşturuldu.
 126 Bilinmeyen amaç "%1$s" satırında verilen %2$d.
@@ -1119,7 +1119,7 @@ $ LOADDB
 1050 "%1$s" özniteliği değiştirilemiyor. CUBRID özniteliğin etki alanı henüz değiştiremezsiniz.Özniteliği üzerinde bir dizin vardır.
 1051 "%1$s" özniteliği değiştirilemiyor. CUBRID kısıtlama eklemek için öznitelik henüz değiştiremezsiniz. Mevcut öznitelik değerleri kısıtlaması kontrol edilmeyebilir.
 1052 Öznitelik "%1$s" değişmedi. CUBRID did not detect any effective changes in the attribute representation.
-1053 The statements REPLACE INTO... and INSERT ... ON DUPLICATE KEY UPDATE are not allowed for classes that are part of an inheritance chain.
+1053 Açıklamalar  REPLACE INTO... ve INSERT ... ON DUPLICATE KEY UPDATE bir intikal zinciri parçası olan sınıflar için izin verilmemiştir.
 1054 Otomatik artış kısıtlama yeni değeri veya daha büyük mevcut değerine eşit olmalıdır.
 1055 Otomatik artış kısıtlama yeni değeri maksimum değerden daha düşük olmalıdır.
 1056 Karışıklığı önlemek için auto_increment tablosu seçeneğini tablo tam olarak bir tane AUTO_INCREMENT sütunu ve herhangi bir çekirdek/artırma özellikleri olması gerekir.
@@ -1145,7 +1145,7 @@ $ LOADDB
 1076 Sistem parametresi yüklenemedi.
 1077 Dosya '%s' satır %d '%s' parametresi: Bilinmeyen parametre
 1078 Başlangıç yerideki %d özellikleri güncel kod ayarını geçersiz.
-1079 Codesets of database(%1$s) and server configuration(%2$s) are incompatible.
+1079 Veri tabanı kod takımları (%1$s) ve sunucu konfigürasyonu (%2$s) uyumlu değildir.
 1080 Fitre dizesi uzunluğu en fazla %1$d olmalıdır.
 1081 Filtre veya fonksiyon indeksi özellikleri ile ilgili değişiklik yapılamaz.
 1082 Tüm sayfa tamponlar kirlidir (LRU: %1$d).
@@ -1165,19 +1165,19 @@ $ LOADDB
 1096 Ne zaman bölğm düzeyinde dış anahtar kelimeler referans için kullandığı zamanda, Değişiklik yapılmakta olan bölüm yapısına izin vermez.
 1097 '%s'kapısitesinde bir ilk PRIMARY KEY kelimelerde bir sınırlama ile geçersiz NULL değeri olamaz. 
 1098 Dil '%s'konumu karakter kümesindeki'%s' kullanılmaz.
-1099 DDL deyimini yapılandırma (block_ddl_statement = yes) tarafından izin verilmiyor.\n SQL Text: %s
+1099 DDL açıklaması konfigürasyon tarafından izin verilmemiştir (block_ddl_statement=yes).\n SQL Text: %s
 1100 Jümlelerde görülmeyen konumun ifadesi dış boyutlar tarafından izin verilmez(block_nowhere_statement=yes)
 1101 Kullanılmayan hata kodu.
 1102 Unknown system parameter or bad value.
 1103 Cannot change system parameter.
-1104 Slow query (%d msec)\n%s
-1105 Internal error: partially failed to flush dirty object. 
-1106 Multiple rows in source table match the same row in destination table.
-1107 Invalid bucket number for NTILE. Should be greater than zero and no more than 2,147,483,647.
-1108 Invalid bucket number for WIDTH_BUCKET. Should be greater than zero and less than 2,147,483,647.
-1109 Invalid value for partition definition.
-1110 Insufficient space in btree leaf page. (key len: %d)\n%s
-1111 Result value is truncated, because the precision(%1$d) is less than it's length(%2$d).
+1104 Yavaş sorgula (%d msec)\n%s
+1105 İç hata: kirli nesnenin temizlenmesi kısmi başarısız
+1106 Kaynak tablosunda çoklu satırlar hedef tabloda aynı satır ile uyumlu.
+1107 NTILE için geçersiz bellek bölümü numarası. Sıfırdan büyük ve 2,147,483,647 den küçük olmalıdır.
+1108 WIDTH_BUCKET için geçersiz bellek bölümü numarası. Sıfırdan büyük ve 2,147,483,647 den küçük olmalıdır.
+1109 Bölüm tanımlama için geçersiz değer.
+1110 Btree yaprak sayfasında yetersiz alan. (key len: %d)\n%s
+1111 Sonuç değeri kısaltıldı, çünkü hassasiyet (%1$d) uzunluğundan az(%2$d).
 1112 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
@@ -1323,9 +1323,9 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 114 before END OF STATEMENT\n
 115 Geçersiz grup\n adı: SET NAMES charset [{COLLATE | COLLATION} collation]\n
 116 invalid use of chr\n  CHR ( number [using charset] )\n
-117 invalid use of charset\n  CHARSET ( expression )\n
-118 invalid use of collation\n  COLLATION ( expression )\n
-119 invalid use of clob_to_char\n  CLOB_TO_CHAR ( expression [using charset] )\n
+117 Karakter kümesi kullanımı geçersiz \n CHARSET ( expression )\n
+118 derlemenin geçersiz kullanımı \n COLLATION ( expression )\n
+119 clob_to_char geçersiz kullanımı\n CLOB_TO_CHAR ( expression [using charset] )\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Bellek yetersiz.
@@ -1593,13 +1593,13 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 263 Miras alan özellik bölünme için kullanılmaz.
 264 Sayım elemanının toplam büyüklüğü
 265 Kaynak numunelerinde hedef formu kullanılmayacak
-266 COLLATE is not allowed in this context.
-267 COLLATE modifier cannot change codeset (from '%s' to '%s'). Try using CAST instead.
-268 Invalid codeset '%1$s' for partition value. Expecting '%2$s' codeset.
-269 Session variable cannot have a different collation than system collation ('%s').
-270 Invalid function index expression.
-271 The query specification of %s has a cyclic reference to itself.
-272 %s expression not allowed in join condition.
+266 COLLATE bu içerikte izin verilmemiştir.
+267 COLLATE değiştirici kod kümesini değiştiremiyor (from '%s' to '%s'). Yerine CAST kullanın.
+268 Bölme değeri için geçersiz kod takımı '%1$s'. Beklenene kod takımı '%2$s'.
+269 Oturum değişkeni sistem harmanlamasından farklı bir harmanlamaya sahip olamaz ('%s').
+270 Geçersiz fonksiyon indeks ifadesi.
+271 %s sorgulama spesifikasyonu kendisine dönüşlü bir referansa sahiptir.
+272 %s ifadesi bağlanma koşulunda izin verilmemiştir. 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %d bayt bölüm ayıramadı.

@@ -296,10 +296,10 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 未知的命令 '%s'\n
 43 无法打开输出文件 '%s'\n
 44 无法移除已存在的数据库.\n
-45 Creating database with %s size. The total amount of disk space needed is %s.\n
+45 创建数据库大小为 %s. 总共需要磁盘空间为 %s.\n
 46 无法创建数据库.\n
 47 用户文件 '%s' 存在问题\n
-48 The given '%s', %s is out of range. Choose a size between %s and %s.\n
+48 给定值 '%s', %s 超过了范围. 选择大小在 %s 和 %s之间的数.\n
 49 %s '%s'的值是非法的.\n
 60 \
 createdb: 创建一个数据库.\n\
@@ -611,7 +611,7 @@ usage: %s emergency_patchlog [选项] 数据库名\n\
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB
 20 错误的值 %d 对于 页的数目\n
 21 错误的值 '%s' 对于卷存储目的.\n
-22 WARNING: --max-writesize-in-sec option is ignored in stand-alone mode execution.\n
+22 警告: --max-writesize-in-sec 选项在单机模式下是忽略的.\n
 60 \
 addvoldb: 为数据库添加一个卷文件.\n\
 usage: %s addvoldb [选项] 数据库名\n\
@@ -771,7 +771,7 @@ $set 26 MSGCAT_UTIL_SET_KILLTRAN
 29 取消与事务索引 %d相关联的事务\n
 30 取消如下事务失败\n\n
 31 事务目前还没有终止，但是可能在做一些回滚工作.\n 请稍等片刻，如果有必要，可以稍后再做尝试.\n
-32 Invalid tranindex(%s).\n
+32 非法的tranindex(%s).\n
 59 无法在单机模式下取消事务.\n
 60 \
 killtran: 管理数据库的事务.\n\
@@ -782,10 +782,10 @@ usage: %s killtran [选项] 数据库名\n\
       --kill-user-name=ID            通过用户ID取消所有事务\n\
       --kill-host-name=HOST          通过客户端主机名取消所有事务\n\
       --kill-program-name=NAME       通过客户端程序名取消所有事务\n\
-      --kill-sql-id=SQL_ID           kill all transactions with SQL_ID\n\
+      --kill-sql-id=SQL_ID           取消所有sql-id为SQL_ID的事务\n\
   -p, --dba-password=PASS            DBA用户的密码; 如果没有指定将提示输入\n\
   -d, --display-information          显示关于活动事务的信息\n\
-  -q, --query-exec-info              display information about query execution information of active transactions\n\
+  -q, --query-exec-info              显示活动事务查询执行的信息\n\
   -f, --force                        取消事务而不需要核对提示\n
 
 
@@ -984,43 +984,43 @@ language-string	 区域语言字符串用于输出区域共享库.\n\
   -z, --normalization   dump normalization data; 默认 : 关闭\n
 
 $set 48 MSGCAT_UTIL_SET_SYNCCOLLDB
-43 Partitioning must be removed before changing the current collation '%s' of their partitioning attribute.\nClass name\n
-44 Foreign keys on attributes having collation '%s' must be dropped before changing collation of attributes.\nTable | Foreign Key\n
-45 Classes having collation '%s'; they should be redefined :\nClass name\n
-46 Function indexes having expression containing collation '%s'; they should be redefined :\n\
+43 改变当前排序规则的分区属性之前，必须先移除分区.\nClass name\n
+44 外键存在排序规则'%s'的，在改变排序规则属性之前必须先删除.\nTable | Foreign Key\n
+45 表包含排序规则'%s'; 它们需要被重新定义 :\nClass name\n
+46 函数索引的表达式中包含排序规则 '%s'; 它们需要被重新定义 :\n\
 Table | Index | Function expression\n
-47 Synchronization of collations was not performed. Database was not changed.\n
-48 Contents of '%s' system table was updated with new system collations.\n
-49 Updating system collations may cause corruption of database. Continue (y/n) ?\n
-50 Collation '%s' (Id: %d) not found in database or changed in new system configuration.\n
-51 Triggers having condition containing collation '%s'; they should be redefined :\nTrigger | Condition\n
-52 Query views containing collation '%s'; they should be redefined :\nView | Query\n
-53 Attributes having collation '%s'; they should be redefined.\nTable | Attribute Domain\n
-54 Manual intervention on database is required.\n\
-Please check file '%s' and execute it before forcing collations into database.\n
-55 Synchronization is not needed.\n
-56 Synchronization of system collation into database is required.\n\
-Run 'cubrid synccolldb -f %s'\n
-57 There are %d new collations in system configuration compared to database:\n
-58 All collations in database '%s' are found in the new system configuration.\n
-59 There are %d collations in database which are not configured or are changed compared to system collations.\n
+47 同步排序规则没有执行. 数据库没有被改变.\n
+48 系统表'%s'的内容被更新成新的系统排序规则.\n
+49 更新系统排序规则可能导致系统， 是否继续 (y/n) ?\n
+50 排序规则 '%s' (Id: %d) 在数据库中不存在或改变在新的系统配置中.\n
+51 触发器的条件中包含排序规则 '%s'; 它们需要被重新定义 :\nTrigger | Condition\n
+52 查询视图中包含排序规则 '%s'; 它们需要被重新定义 :\nView | Query\n
+53 属性中包含排序规则 '%s'; 它们需要被重新定义.\nTable | Attribute Domain\n
+54 需要手动干预数据库.\n\
+请检查文件 '%s' 并在强制排序规则到数据库中前执行它.\n
+55 不需要同步.\n
+56 需要同步系统排序规则到数据库中.\n\
+运行 'cubrid synccolldb -f %s'\n
+57 相比数据库，系统配置中有 %d 个新的排序规则:\n
+58 所有数据库'%s'中的排序规则都内在新的系统配置中找到.\n
+59 数据库中的这些排序规则 %d 没有被配置或 与系统排序规则相比被改变.\n
 60 \
-synccolldb: Synchronizes the collations from database with collations of system.\n\
-usage: %s synccolldb [OPTION] database-name\n\
+synccolldb: 从数据库的排序规则同步到系统的排序规则.\n\
+usage: %s synccolldb [OPTION] 数据库名\n\
 \n\
-valid options:\n\
-  -c, --check-only    Checks the collations from databases with collation of system.\n\
-		      If collations synchronization is required, error code 1 is returned.\n\
-		      Displays a report of incompatible collations.\n\
-  -f, --force-only    Updates the collations in databases to be same as the collations of new sytem configuration.\n\
+可用选项::\n\
+  -c, --check-only    检查从数据库的排序规则到系统的排序规则.\n\
+		      如果需要同步排序规则， 返回错误代码 1.\n\
+		      显示不兼容的排序规则报告.\n\
+  -f, --force-only    更新数据库的排序规则与新的系统排序规则一致.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 Enter %s password: 
-22 事务索引             用户名         主机名         进程 id         程序名   \n
+20 输入密码 %s: 
+22 Tran index          User name      Host name      Process id    Program name   \n
 23 -------------------------------------------------------------------------------\n
 24 %4d%-10s %14s %14s %15d %17s\n
 25 没有事务\n
-26 tranlist can only be performed by the DBA or a DBA group member.\n
+26 tranlist只能被DBA或DBA组成员来执行.\n
 32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
 33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
@@ -1031,10 +1031,10 @@ $set 49 MSGCAT_UTIL_SET_TRANLIST
 46 SQL_ID: %s\n
 59 tranlist 无法在单机模式下运行.\n
 60 \
-tranlist: Dump active transaction information.\n\
-usage: %s tranlist [OPTION] database-name\n\
+tranlist: 输出活动事务信息.\n\
+usage: %s tranlist [OPTION] 数据库名\n\
 \n\
-valid options:\n\
-  -u, --user=ID                user ID for database access; default: DBA user\n\
-  -p, --password=PASS          user password; default: none\n\
-  -s, --summary                print summarized information of transaction\n
+可用选项:\n\
+  -u, --user=ID                访问数据库的用户ID; default: DBA user\n\
+  -p, --password=PASS          用户密码; default: none\n\
+  -s, --summary                打印事务的汇总信息\n
