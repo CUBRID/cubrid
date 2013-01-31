@@ -445,6 +445,7 @@ thread_start_workers (void)
        thread_index++)
     {
       thread_p = &thread_Manager.thread_array[thread_index];
+
       r = pthread_mutex_lock (&thread_p->th_entry_lock);
       if (r != 0)
 	{
@@ -452,10 +453,10 @@ thread_start_workers (void)
 			       ER_CSS_PTHREAD_MUTEX_LOCK, 0);
 	  return ER_CSS_PTHREAD_MUTEX_LOCK;
 	}
+
       /* If win32, then "thread_attr" is ignored, else "p->thread_handle". */
-      r =
-	pthread_create (&thread_p->tid, &thread_attr, thread_worker,
-			thread_p);
+      r = pthread_create (&thread_p->tid, &thread_attr, thread_worker, 
+			  thread_p);
       if (r != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -2249,6 +2250,7 @@ thread_worker (void *arg_p)
   int rv;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
+
   /* wait until THREAD_CREATE() finish */
   rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
   pthread_mutex_unlock (&tsd_ptr->th_entry_lock);

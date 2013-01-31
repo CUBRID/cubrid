@@ -176,6 +176,7 @@ static int css_test_for_client_errors (CSS_CONN_ENTRY * conn,
 				       unsigned int eid);
 static int css_wait_worker_thread_on_jobq (THREAD_ENTRY * thrd,
 					   int jobq_index);
+static bool css_can_occupy_worker_thread_on_jobq (int jobq_index);
 static int css_wakeup_worker_thread_on_jobq (int jobq_index);
 static int css_check_accessibility (SOCKET new_fd);
 
@@ -275,19 +276,18 @@ css_make_job_entry (CSS_CONN_ENTRY * conn, CSS_THREAD_FN func,
 void
 css_free_job_entry (CSS_JOB_ENTRY * job_entry_p)
 {
-  int rv;
+  int rv, jobq_index;
 
   if (job_entry_p != NULL)
     {
-      rv =
-	pthread_mutex_lock (&css_Job_queue[job_entry_p->jobq_index].
-			    free_lock);
+      jobq_index = job_entry_p->jobq_index;
 
-      job_entry_p->next = css_Job_queue[job_entry_p->jobq_index].free_list;
-      css_Job_queue[job_entry_p->jobq_index].free_list = job_entry_p;
+      rv = pthread_mutex_lock (&css_Job_queue[jobq_index].free_lock);
 
-      pthread_mutex_unlock (&css_Job_queue[job_entry_p->jobq_index].
-			    free_lock);
+      job_entry_p->next = css_Job_queue[jobq_index].free_list;
+      css_Job_queue[jobq_index].free_list = job_entry_p;
+
+      pthread_mutex_unlock (&css_Job_queue[jobq_index].free_lock);
     }
 }
 
@@ -317,6 +317,7 @@ css_init_job_queue (void)
 
       css_initialize_list (&css_Job_queue[i].job_list, num_job_list);
       css_Job_queue[i].free_list = NULL;
+
       for (j = 0; j < num_job_list; j++)
 	{
 	  job_entry_p = (CSS_JOB_ENTRY *) malloc (sizeof (CSS_JOB_ENTRY));
@@ -326,6 +327,7 @@ css_init_job_queue (void)
 		      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (CSS_JOB_ENTRY));
 	      break;
 	    }
+
 	  job_entry_p->jobq_index = i;
 	  job_entry_p->next = css_Job_queue[i].free_list;
 	  css_Job_queue[i].free_list = job_entry_p;
@@ -351,11 +353,13 @@ css_broadcast_shutdown_thread (void)
 
       thrd = css_Job_queue[i].worker_thrd_list;
       thread_count = 0;
+
       while (thrd)
 	{
 	  thread_wakeup (thrd, THREAD_RESUME_DUE_TO_SHUTDOWN);
 	  thrd = thrd->worker_thrd_list;
 	  thread_count++;
+
 	  if (thread_count > thread_num_worker_threads ())
 	    {
 	      /* prevent infinite loop */
@@ -377,14 +381,32 @@ void
 css_add_to_job_queue (CSS_JOB_ENTRY * job_entry_p)
 {
   int rv;
+  int i, jobq_index;
 
-  rv = pthread_mutex_lock (&css_Job_queue[job_entry_p->jobq_index].job_lock);
+  jobq_index = job_entry_p->jobq_index;
 
-  css_add_list (&css_Job_queue[job_entry_p->jobq_index].job_list,
-		job_entry_p);
-  css_wakeup_worker_thread_on_jobq (job_entry_p->jobq_index);
+  for (i = 0; i <= CSS_NUM_JOB_QUEUE; i++)
+    {
+      rv = pthread_mutex_lock (&css_Job_queue[jobq_index].job_lock);
 
-  pthread_mutex_unlock (&css_Job_queue[job_entry_p->jobq_index].job_lock);
+      if (i == CSS_NUM_JOB_QUEUE
+	  || css_can_occupy_worker_thread_on_jobq (jobq_index))
+	{
+	  /* If there's no available thread even though it has probed
+	   * the entire job queues, just add the job to the original job queue.
+	   */
+	  css_add_list (&css_Job_queue[jobq_index].job_list, job_entry_p);
+	  css_wakeup_worker_thread_on_jobq (jobq_index);
+
+	  pthread_mutex_unlock (&css_Job_queue[jobq_index].job_lock);
+	  return;
+	}
+
+      pthread_mutex_unlock (&css_Job_queue[jobq_index].job_lock);
+
+      /* linear probing */
+      jobq_index = (++jobq_index) % CSS_NUM_JOB_QUEUE;
+    }
 }
 
 /*
@@ -412,6 +434,7 @@ css_get_new_job (void)
 	  return NULL;
 	}
     }
+
   job_entry_p = (CSS_JOB_ENTRY *)
     css_remove_list_from_head (&css_Job_queue[jobq_index].job_list);
 
@@ -2272,26 +2295,55 @@ css_wakeup_worker_thread_on_jobq (int jobq_index)
        wait_thrd; wait_thrd = wait_thrd->worker_thrd_list)
     {
       /* wakeup a free worker thread */
-      if (wait_thrd->status == TS_FREE
-	  && ((r = thread_wakeup (wait_thrd, THREAD_JOB_QUEUE_RESUMED)) ==
-	      NO_ERROR))
+      if (wait_thrd->status == TS_FREE)
 	{
-	  if (prev_thrd == NULL)
+	  r = thread_wakeup (wait_thrd, THREAD_JOB_QUEUE_RESUMED);
+	  if (r == NO_ERROR)
 	    {
-	      css_Job_queue[jobq_index].worker_thrd_list =
-		wait_thrd->worker_thrd_list;
+	      if (prev_thrd == NULL)
+		{
+		  css_Job_queue[jobq_index].worker_thrd_list =
+		    wait_thrd->worker_thrd_list;
+		}
+	      else
+		{
+		  prev_thrd->worker_thrd_list = wait_thrd->worker_thrd_list;
+		}
+
+	      wait_thrd->worker_thrd_list = NULL;
+	      break;
 	    }
-	  else
-	    {
-	      prev_thrd->worker_thrd_list = wait_thrd->worker_thrd_list;
-	    }
-	  wait_thrd->worker_thrd_list = NULL;
-	  break;
 	}
+
       prev_thrd = wait_thrd;
     }
 
   return r;
+}
+
+/*
+ * css_can_occupy_worker_thread_on_jobq () -
+ *   return:
+ *   jobq_index(in):
+ *
+ * NOTE: The caller should hold mutex on css_Job_queue[jobq_index]
+ *       to call this function.
+ */
+static bool
+css_can_occupy_worker_thread_on_jobq (int jobq_index)
+{
+  THREAD_ENTRY *wait_thrd;
+
+  for (wait_thrd = css_Job_queue[jobq_index].worker_thrd_list;
+       wait_thrd; wait_thrd = wait_thrd->worker_thrd_list)
+    {
+      if (wait_thrd->status == TS_FREE)
+        {
+          return true;
+        }
+    }
+
+  return false;
 }
 
 /*
