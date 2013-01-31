@@ -541,8 +541,7 @@ static FILEIO_BACKUP_SESSION
 			       const char *db_fullname, char *backup_src,
 			       FILEIO_BACKUP_SESSION * session,
 			       FILEIO_BACKUP_LEVEL level,
-			       const char *restore_verbose_file,
-			       bool newvolpath);
+			       FILE * restore_verbose_file, bool newvolpath);
 static int fileio_read_restore (THREAD_ENTRY * thread_p,
 				FILEIO_BACKUP_SESSION * session,
 				int toread_nbytes);
@@ -8980,7 +8979,7 @@ fileio_initialize_restore (THREAD_ENTRY * thread_p,
 			   char *backup_source_p,
 			   FILEIO_BACKUP_SESSION * session_p,
 			   FILEIO_BACKUP_LEVEL level,
-			   const char *restore_verbose_file_p,
+			   FILE * restore_verbose_file_p,
 			   bool is_new_vol_path)
 {
   char orig_name[PATH_MAX];
@@ -9356,8 +9355,7 @@ fileio_start_restore (THREAD_ENTRY * thread_p,
 		      FILEIO_BACKUP_LEVEL level,
 		      bool is_authenticate,
 		      INT64 match_backup_creation_time,
-		      const char *restore_verbose_file_p,
-		      bool is_new_vol_path)
+		      FILE * restore_verbose_file_p, bool is_new_vol_path)
 {
   FILEIO_BACKUP_SESSION *temp_session_p;
 

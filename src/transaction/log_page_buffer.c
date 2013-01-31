@@ -10075,10 +10075,28 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
   struct stat stat_buf;
   int error_code = NO_ERROR, success = NO_ERROR;
   bool printtoc;
-  const char *verbose_file;
+  FILE *restore_verbose_fp = NULL;
   char format_string[64];
   INT64 backup_time;
   REL_COMPATIBILITY compat;
+
+  if (r_args->verbose_file != NULL && r_args->verbose_file[0] != '\0')
+    {
+      const char *verbose_mode = "w";
+
+      if (r_args->level != 0)
+	{
+	  verbose_mode = "a";
+	}
+
+      restore_verbose_fp = fopen (r_args->verbose_file, verbose_mode);
+      if (restore_verbose_fp == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_IO_CANNOT_OPEN_VERBOSE_FILE, 1, r_args->verbose_file);
+	  return ER_IO_CANNOT_OPEN_VERBOSE_FILE;
+	}
+    }
 
   try_level = (FILEIO_BACKUP_LEVEL) r_args->level;
   memset (&session_storage, 0, sizeof (FILEIO_BACKUP_SESSION));
@@ -10305,12 +10323,12 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 	}
 
       printtoc = (r_args->printtoc) ? false : true;
-      verbose_file = (r_args->verbose_file) ? r_args->verbose_file : NULL;
       if (fileio_start_restore (thread_p, db_fullname, from_volbackup,
 				db_creation, &bkdb_iopagesize,
 				&bkdb_compatibility, &session_storage,
 				try_level, printtoc, bkup_match_time,
-				verbose_file, r_args->newvolpath) == NULL)
+				restore_verbose_fp,
+				r_args->newvolpath) == NULL)
 	{
 	  /* Cannot access backup file.. Restore from backup is cancelled */
 	  if (er_errid () == ER_GENERIC_ERROR)

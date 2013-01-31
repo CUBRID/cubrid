@@ -541,7 +541,7 @@ extern FILEIO_BACKUP_SESSION
 			  FILEIO_BACKUP_LEVEL level,
 			  bool authenticate,
 			  INT64 match_bkupcreation,
-			  const char *restore_verbose_file, bool newvolpath);
+			  FILE * restore_verbose_file, bool newvolpath);
 extern int fileio_finish_restore (THREAD_ENTRY * thread_p,
 				  FILEIO_BACKUP_SESSION * session);
 extern void fileio_abort_restore (THREAD_ENTRY * thread_p,
