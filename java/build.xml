@@ -66,7 +66,7 @@
     </target>
 
     <target name="compile" depends="src-copy">
-        <javac destdir="${build}" target="1.5" encoding="EUC-KR" debug="true" debuglevel="lines,source" deprecation="off" includeantruntime="no">
+        <javac destdir="${build}" source="1.5" target="1.5" encoding="EUC-KR" debug="true" debuglevel="lines,source" deprecation="off" includeantruntime="no">
             <src path="src-jsp"/>
             <include name="**/*.java"/>
         </javac>
