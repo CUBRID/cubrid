@@ -643,6 +643,8 @@ use strict;
     1, 0, 2, 0, 0, 0, "BIGINT", -1, -1, SQL_INTEGER, -1, 10, -1],
 ["DATETIME", SQL_TYPE_TIMESTAMP, 23, q{DATETIME '}, q{'}, undef,
     1, 0, 2, 0, 0, 0, "DATETIME", -1, -1, SQL_DATETIME, 3, -1, -1],
+["ENUM", SQL_VARCHAR, 0, undef, undef, undef,
+    1, 0, 3, 0, 0, 0, "ENUM", -1, -1, SQL_VARCHAR, -1, -1, -1],
 ["BLOB", SQL_BLOB, 0, undef, undef, undef,
     1, 0, 3, 0, 0, 0, "BLOB", -1, -1, SQL_BLOB, -1, -1, -1],
 ["CLOB", SQL_CLOB, 0, undef, undef, undef,
@@ -1140,6 +1142,7 @@ CLOB. The following are data types supported by CUBRID.
     | TIMESTAMP     | SQL_TYPE_TIMESTAMP    |
     | BIGINT        | SQL_BIGINT            |
     | DATETIME      | SQL_TYPE_TIMESTAMP    |
+    | ENUM          | SQL_VARCHAR           |
     -----------------------------------------
     | BLOB          | SQL_BLOB              |
     | CLOB          | SQL_CLOB              |

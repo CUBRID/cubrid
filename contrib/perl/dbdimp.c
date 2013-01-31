@@ -35,6 +35,13 @@
 #define  open(file, flag, mode) PerlLIO_open3(file, flag, mode)
 #endif
 
+/* Loading dynamic cascci library needs this header. */
+#ifdef WIN32
+#include <windows.h>
+#else
+#include <dlfcn.h>
+#endif
+
 #define CUBRID_ER_MSG_LEN 1024
 #define CUBRID_BUFFER_LEN 4096
 
@@ -47,8 +54,14 @@ static struct _error_message {
     {CUBRID_ER_WRITE_FILE, "Cannot write file"},
     {CUBRID_ER_READ_FILE, "Cannot read file"},
     {CUBRID_ER_NOT_LOB_TYPE, "Not a lob type, can only support SQL_BLOB or SQL_CLOB"},
+    {CUBRID_ER_INVALID_PARAM, "Invalid parameter"},
     {0, ""}
 };
+
+static void *libcascci = NULL;
+typedef int (*CCI_GET_LAST_INSERT_ID) (int con, void *buff,
+                                       T_CCI_ERROR * err_buf);
+static CCI_GET_LAST_INSERT_ID cci_get_last_insert_id_fp = NULL;
 
 
 /***************************************************************************
@@ -112,6 +125,26 @@ dbd_init( dbistate_t *dbistate )
 {
     DBIS = dbistate;
     cci_init();
+
+    /* 
+     * use cci_get_last_id if possible
+     * early distributed libraries don't include it
+     */
+#ifdef WIN32
+    libcascci = LoadLibrary ("cascci.dll");
+
+    if (libcascci != NULL) {
+        cci_get_last_insert_id_fp =
+            (CCI_GET_LAST_INSERT_ID) GetProcAddress (libcascci,
+                                                 "cci_get_last_insert_id");
+    }
+#else
+    libcascci = dlopen ("libcascci.so", RTLD_LAZY);
+
+    if (libcascci != NULL) {
+        cci_get_last_insert_id_fp = dlsym (libcascci, "cci_get_last_insert_id");
+    }
+#endif
 }
 
 /***************************************************************************
@@ -136,6 +169,14 @@ dbd_discon_all( SV *drh, imp_drh_t *imp_drh )
         sv_setiv(DBIc_ERR(imp_drh), (IV)1);
         sv_setpv(DBIc_ERRSTR(imp_drh), (char*)"disconnect_all not implemented");
         return FALSE;
+    }
+
+    if (libcascci != NULL) {
+#ifdef WIN32
+        FreeLibrary (libcascci);
+#else
+        dlclose (libcascci);
+#endif
     }
 
     return FALSE;
@@ -437,7 +478,15 @@ dbd_db_last_insert_id( SV *dbh, imp_dbh_t *imp_dbh,
     int res;
     T_CCI_ERROR error;
 
-    if ((res = cci_last_insert_id (imp_dbh->handle, &name, &error))) {
+    if (cci_get_last_insert_id_fp != NULL) {
+        /* cci_get_last_id set last_id as con_handle's static buffer */
+        res = cci_get_last_insert_id (imp_dbh->handle, &name, &error);
+    } else {
+        /* cci_last_id set last_id as allocated string */
+        res = cci_last_insert_id (imp_dbh->handle, &name, &error);
+    }
+    
+    if (res < 0) {
         handle_error (dbh, res, &error);
         return Nullsv;
     }
@@ -446,7 +495,13 @@ dbd_db_last_insert_id( SV *dbh, imp_dbh_t *imp_dbh,
         return Nullsv;
     } else {
         sv = newSVpvn (name, strlen(name));
-        free (name);
+
+        /* free last_id which is allocated in cci_last_insert_id */
+        if (cci_get_last_insert_id_fp == NULL) {
+#ifndef WIN32
+            free(name);
+#endif
+        }
     }
 
     return sv_2mortal (sv);
@@ -934,10 +989,13 @@ int
 dbd_bind_ph( SV *sth, imp_sth_t *imp_sth, SV *param, SV *value,
              IV sql_type, SV *attribs, int is_inout, IV maxlen )
 {
-    int res;
+    int res = 0;
     char *bind_value = NULL;
     STRLEN bind_value_len;
     T_CCI_ERROR error;
+    int buffer_is_null= 0;
+
+    T_CCI_U_TYPE u_type = 0;
 
     int index = SvIV(param);
     if (index < 1 || index > DBIc_NUM_PARAMS(imp_sth)) {
@@ -947,8 +1005,26 @@ dbd_bind_ph( SV *sth, imp_sth_t *imp_sth, SV *param, SV *value,
 
     bind_value = SvPV (value, bind_value_len);
 
-    if (sql_type == SQL_BLOB || sql_type == SQL_CLOB) {
+    buffer_is_null = !(SvOK(newSVsv(value)) && newSVsv(value));
 
+    if (SvOK(value) &&
+            (sql_type == SQL_NUMERIC  ||
+             sql_type == SQL_DECIMAL  ||
+             sql_type == SQL_INTEGER  ||
+             sql_type == SQL_SMALLINT ||
+             sql_type == SQL_FLOAT    ||   
+             sql_type == SQL_REAL     ||   
+             sql_type == SQL_DOUBLE) )
+    {
+        if (! looks_like_number(value)) {
+            handle_error(sth, CUBRID_ER_INVALID_PARAM, NULL);
+            return FALSE;
+        }
+    }
+
+    switch(sql_type) {
+    case SQL_BLOB:
+    case SQL_CLOB:
         if ((res = _cubrid_lob_bind (sth, 
                                      index, 
                                      sql_type, 
@@ -957,14 +1033,40 @@ dbd_bind_ph( SV *sth, imp_sth_t *imp_sth, SV *param, SV *value,
             handle_error (sth, res, &error);
             return FALSE;
         }
-
         return TRUE;
+
+    case SQL_NUMERIC:
+        u_type = CCI_U_TYPE_NUMERIC;
+        break;
+
+    case SQL_INTEGER:
+        u_type = CCI_U_TYPE_INT;
+        break;
+
+    case SQL_SMALLINT:
+        u_type = CCI_U_TYPE_SHORT;
+        break;
+
+    case SQL_BIGINT:
+        u_type = CCI_U_TYPE_BIGINT;
+        break;
+
+    case SQL_TINYINT:
+        u_type = CCI_U_TYPE_SHORT;
+        break;
+
+    default:
+        u_type = CCI_U_TYPE_CHAR;
+        break;
     }
 
+    if (! buffer_is_null) {
+        res = cci_bind_param (imp_sth->handle, index, CCI_A_TYPE_STR, bind_value, u_type, 0);
+    } else {
+        res = cci_bind_param (imp_sth->handle, index, CCI_A_TYPE_STR, NULL, u_type, 0);
+    }
 
-    if ((res = cci_bind_param (imp_sth->handle, 
-                    index, CCI_A_TYPE_STR,
-                    bind_value, CCI_U_TYPE_CHAR, 0)) < 0) {
+    if (res < 0) {
         handle_error(sth, res, NULL);
         return FALSE;
     }
@@ -1080,6 +1182,8 @@ cubrid_st_lob_get( SV *sth, int col )
     imp_sth->lob = (T_CUBRID_LOB *) malloc (
             imp_sth->affected_rows * sizeof (T_CUBRID_LOB)
             );
+
+    memset(imp_sth->lob, 0, imp_sth->affected_rows * sizeof (T_CUBRID_LOB));
 
     while (1) {
 
@@ -1213,17 +1317,19 @@ cubrid_st_lob_import( SV *sth,
         return FALSE;
     }
 
+    if ((fd = open (filename, O_RDONLY, 0400)) < 0) {
+        res = CCI_ER_FILE;
+        handle_error(sth, res, NULL);
+
+        return FALSE;
+    }
+
     if ((res = _cubrid_lob_new (imp_sth->conn, 
                                 &lob,
                                 u_type, 
                                 &error)) < 0 ) {
         handle_error (sth, res, &error);
         return FALSE;
-    }
-
-    if ((fd = open (filename, O_RDONLY, 0400)) < 0) {
-        res = CCI_ER_FILE;
-        goto ER_LOB_IMPORT;
     }
 
     while (1) {
