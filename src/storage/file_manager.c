@@ -1559,6 +1559,7 @@ file_ftabvpid_alloc (THREAD_ENTRY * thread_p, INT16 hint_volid,
   int i;
   VOLID original_hint_volid;
   INT32 original_hint_pageid;
+  bool old_check_interrupt;
 
   /*
    * If the file is of type FILE_TMP, it can have allocated pages which are
@@ -1612,6 +1613,9 @@ file_ftabvpid_alloc (THREAD_ENTRY * thread_p, INT16 hint_volid,
 
 	  search_wrap_around = (create_or_expand_file_table
 				== FILE_CREATE_FILE_TABLE);
+#if defined(SERVER_MODE)
+	  old_check_interrupt = thread_set_check_interrupt (thread_p, false);
+#endif /* SERVER_MODE */
 	  pageid = disk_alloc_page (thread_p, hint_volid,
 				    DISK_SECTOR_WITH_ALL_PAGES,
 				    num_ftb_pages, hint_pageid,
@@ -1625,12 +1629,13 @@ file_ftabvpid_alloc (THREAD_ENTRY * thread_p, INT16 hint_volid,
 		  ftb_vpids->pageid = pageid + i;
 		  ftb_vpids++;
 		}
+
+#if defined(SERVER_MODE)
+	      (void) thread_set_check_interrupt (thread_p,
+						 old_check_interrupt);
+#endif /* SERVER_MODE */
+
 	      return NO_ERROR;
-	    }
-	  else if (er_errid () == ER_INTERRUPTED)
-	    {
-	      er_clear ();
-	      continue;
 	    }
 	}
 
