@@ -3183,15 +3183,22 @@ intl_identifier_fix (char *name)
 
   assert (name != NULL);
 
-  if (codeset != INTL_CODESET_UTF8)
+  if (codeset == INTL_CODESET_ISO88591)
     {
       return NO_ERROR;
     }
 
   length_bytes = strlen (name);
 
+  assert (codeset == INTL_CODESET_KSC5601_EUC
+	  || codeset == INTL_CODESET_UTF8);
+
+  /* we do not check contents of non-ASCII if codeset is UTF-8 or EUC;
+   * valid codeset sequences are checked with 'intl_check_string' when
+   * enabled */
+
   /* check if last char of identifier may have been truncated */
-  if (length_bytes + INTL_UTF8_MAX_CHAR_SIZE > DB_MAX_IDENTIFIER_LENGTH)
+  if (length_bytes + INTL_CODESET_MULT (codeset) > DB_MAX_IDENTIFIER_LENGTH)
     {
       /* count original size based on the size given by first byte of each
        * char */
@@ -3204,9 +3211,10 @@ intl_identifier_fix (char *name)
       assert (i >= length_bytes);
 
       /* assume the original last character was truncated */
-      if (i > length_bytes && i < length_bytes + INTL_UTF8_MAX_CHAR_SIZE &&
-	  *name_char > 0x80)
+      if (i > length_bytes)
 	{
+	  assert (i < length_bytes + INTL_CODESET_MULT (codeset));
+	  assert ((unsigned char) *(name_char - char_size) > 0x80);
 	  /* truncate after the last full character */
 	  i -= char_size;
 	  length_bytes = i;
