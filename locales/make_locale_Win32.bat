@@ -99,7 +99,7 @@ goto :BUILD
 
 if exist "%VS100COMNTOOLS%..\..\VC\%VCVARS%" (
 echo Found %BUILD_TARGET% configuration in Visual Studio 2010.
-call "%VS90COMNTOOLS%..\..\VC\%VCVARS%"
+call "%VS100COMNTOOLS%..\..\VC\%VCVARS%"
 goto :BUILD
 )
 
