@@ -1236,10 +1236,6 @@ csql_yyerror (const char *s)
 				   MSGCAT_SET_PARSER_SYNTAX,
 				   MSGCAT_SYNTAX_UNEXPECTED));
       int len = 0;
-      int fixed_len = strlen (context_saved_char_str) /* size of fixed part of
-						         the context message */
-		      + 11 * 2; /* maximum size of printed line number and
-				   column number */
       PT_NODE *dummy;
 
       if ((strlen (s) > strlen (cmp_str)) &&
@@ -1259,9 +1255,33 @@ csql_yyerror (const char *s)
 	}
       if (token_type)
 	{
-	  msg = (char *) csql_yyalloc (fixed_len + strlen(s) 
-				       + strlen (token_val) 
-				       + next_ptr_len + 2);
+	  char *msg_context = NULL;
+	  int fixed_len = 11 * 2; /* maximum size of printed line number and
+				     column number */
+	  int msg_size = fixed_len + next_ptr_len + strlen (before_token)
+			 + strlen (token_val) + 4;
+			 /* 4 = 3 more characters when printing before_token
+			  * and 'token_val' + the string terminator */
+
+	  if (end_statement == 0)
+	    {
+	      msg_size += strlen (context_saved_char_str);
+	      msg_size += 1; /* one printed char in the message */
+	    }
+	  else
+	    {
+	      msg_context = msgcat_message (MSGCAT_CATALOG_CUBRID,
+					    MSGCAT_SET_PARSER_SYNTAX,
+					    MSGCAT_SYNTAX_CONTEXT);
+	      msg_size += strlen (msg_context);
+	    }
+
+	  if (after_token)
+	    {
+	      msg_size += strlen (after_token);
+	    }
+
+	  msg = (char *) csql_yyalloc (msg_size);
 	  if (msg == NULL)
 	    {
 	      YY_FATAL_ERROR( "out of dynamic memory in csql_yyerror()" );
@@ -1276,9 +1296,8 @@ csql_yyerror (const char *s)
 	    }
 	  else
 	    {
-	      sprintf (msg, msgcat_message (MSGCAT_CATALOG_CUBRID,
-					    MSGCAT_SET_PARSER_SYNTAX,
-					    MSGCAT_SYNTAX_CONTEXT),
+	      assert (msg_context != NULL);
+	      sprintf (msg, msg_context,
 		       csql_yylloc.first_line, csql_yylloc.first_column,
 		       next_ptr);
 	    }
