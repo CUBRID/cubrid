@@ -21884,8 +21884,9 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
   bool use_unlocking;
 #endif
 
+  assert (multi_range_opt->use == true);
+
   if (DB_VALUE_DOMAIN_TYPE (&(bts->cur_key)) != DB_TYPE_MIDXKEY
-      || multi_range_opt->use == NULL
       || multi_range_opt->sort_att_idx == NULL)
     {
       return ER_FAILED;

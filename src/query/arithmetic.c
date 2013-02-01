@@ -4866,8 +4866,8 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
 	  cast_status = tp_value_coerce (value1, &cast_value1, cast_domain);
 	  if (cast_status != DOMAIN_COMPATIBLE)
 	    {
-	      (void) tp_value_domain_name (value1, buf1, sizeof (buf1));
-	      (void) tp_domain_name (numeric_domain, buf2, sizeof (buf2));
+	      tp_value_domain_name (value1, buf1, MAX_DOMAIN_NAME_SIZE);
+	      tp_domain_name (numeric_domain, buf2, MAX_DOMAIN_NAME_SIZE);
 	      tp_domain_free (numeric_domain);
 	      RETURN_ERROR_WITH_TWO_ARGS (ER_TP_CANT_COERCE_OVERFLOW, buf1,
 					  buf2);
@@ -4882,8 +4882,8 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
 	  cast_status = tp_value_coerce (value2, &cast_value2, cast_domain);
 	  if (cast_status != DOMAIN_COMPATIBLE)
 	    {
-	      (void) tp_value_domain_name (value2, buf1, sizeof (buf1));
-	      (void) tp_domain_name (numeric_domain, buf2, sizeof (buf2));
+	      tp_value_domain_name (value2, buf1, MAX_DOMAIN_NAME_SIZE);
+	      tp_domain_name (numeric_domain, buf2, MAX_DOMAIN_NAME_SIZE);
 	      tp_domain_free (numeric_domain);
 	      RETURN_ERROR_WITH_TWO_ARGS (ER_TP_CANT_COERCE_OVERFLOW, buf1,
 					  buf2);
@@ -4897,8 +4897,8 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
 	  cast_status = tp_value_coerce (value3, &cast_value3, cast_domain);
 	  if (cast_status != DOMAIN_COMPATIBLE)
 	    {
-	      (void) tp_value_domain_name (value3, buf1, sizeof (buf1));
-	      (void) tp_domain_name (numeric_domain, buf2, sizeof (buf2));
+	      tp_value_domain_name (value3, buf1, MAX_DOMAIN_NAME_SIZE);
+	      tp_domain_name (numeric_domain, buf2, MAX_DOMAIN_NAME_SIZE);
 	      tp_domain_free (numeric_domain);
 	      RETURN_ERROR_WITH_TWO_ARGS (ER_TP_CANT_COERCE_OVERFLOW, buf1,
 					  buf2);

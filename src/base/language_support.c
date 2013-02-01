@@ -4770,7 +4770,8 @@ lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is_desc,
   int ce_index1 = 0, ce_index2 = 0;
   unsigned int w1 = 0, w2 = 0;
   const COLL_DATA *cd = &(lang_coll->coll);
-  int dummy, key_size;
+  unsigned int dummy;
+  int key_size;
   int last_str1_unit_size = 1, last_str2_unit_size = 1;
   bool force_key = false;
 

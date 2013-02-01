@@ -1048,7 +1048,7 @@ static int bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain,
 			      int *start_colp);
 static int bf2df_str_cmpval (DB_VALUE * value1, DB_VALUE * value2,
 			     int do_coercion, int total_order,
-			     int *start_colp);
+			     int *start_colp, int collation);
 static void qexec_resolve_domains_on_sort_list (SORT_LIST * order_list,
 						REGU_VARIABLE_LIST
 						reference_regu_list);
@@ -18597,7 +18597,8 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain,
  */
 static int
 bf2df_str_cmpval (DB_VALUE * value1, DB_VALUE * value2,
-		  int do_coercion, int total_order, int *start_colp)
+		  int do_coercion, int total_order, int *start_colp,
+		  int collation)
 {
   int c;
   unsigned char *string1, *string2;
