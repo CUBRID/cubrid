@@ -609,8 +609,14 @@ qo_term_string (QO_TERM * term)
 	{
 	  PARSER_CONTEXT *parser = QO_ENV_PARSER (QO_TERM_ENV (term));
 	  PT_PRINT_VALUE_FUNC saved_func = parser->print_db_value;
+          unsigned int save_custom = parser->custom_print;
+
+          parser->custom_print |= PT_CONVERT_RANGE;
 	  parser->print_db_value = NULL;
+
 	  p = parser_print_tree (parser, conj);
+
+          parser->custom_print = save_custom;
 	  parser->print_db_value = saved_func;
 	}
     }
