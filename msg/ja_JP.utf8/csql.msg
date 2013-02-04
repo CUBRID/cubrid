@@ -165,7 +165,7 @@ $ csql help messages
    ;TRigger [`*'|trigger-name]  - トリガー正義を出力。\n\
    ;Get system_parameter        - システムパラメーターを表示。\n\
    ;SEt system_parameter=value  - システムパラメーターを設定。\n\
-   ;STring-width [width]        - ストリングタイプの格コラムが表示される長さを「width」に制限する。\n\\n\
+   ;STring-width [width]        - ストリングタイプの格コラムが表示される長さを「width」に制限する。\n\
    ;COLumn-width [name]=[width] - 特定コラムが表示される長さを「width」に制限する。\n\
    ;PLan [simple|detail|off]    - クエリプランの表示を設定。\n\
    ;Info <command>              - インターナル情報を出力。\n\

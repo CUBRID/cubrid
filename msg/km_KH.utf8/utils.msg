@@ -549,12 +549,12 @@ usage: %s compactdb [OPTION] ឈ្មោះដែលតាបេស [class_name
 ជម្រើសសុពល:\n\
   -v, --verbose                     បង្កើនសមត្ថភាពសារ verbose status; default: ដែលមិនអាច\n\
   -i, --input-class-file=FILE       បញ្ជូល FILE of នៃឈ្មោះតារាង\n\
-                                                                                                   តារាងឈ្មោះclass_name ត្រូវតែទទេ។\n\
+                                    តារាងឈ្មោះclass_name ត្រូវតែទទេ។\n\
                                     default: បង្ហាប់classesទាំងអស់\n\
-                                                                                                   បង្កើនសមត្ថភាពតែក្នុង CS-mode\n\
+                                    បង្កើនសមត្ថភាពតែក្នុង CS-mode\n\
   -p, --pages-commited-once=NUMBER  ចំនួនអតិបរមានៃទំព័រ ត្រូវប្រតិបត្តិម្តង។\n\
                                     default: 10\n\
-                                                                                                   បង្កើនសមត្ថភាពតែក្នុង CS-mode\n\
+                                    បង្កើនសមត្ថភាពតែក្នុង CS-mode\n\
   -S, --SA-mode                     ការប្រតិបត្តិstand-alone mode \n\
   -C, --CS-mode                     ការប្រតិបត្តិclient-server mode \n\
   -d, --delete-old-repr             ដកចេញតំណាង classចាស់ពី catalog; default: ដែលមិអាច\n\
@@ -786,7 +786,7 @@ usage: %s killtran [OPTION] ឈ្មោះដែលតាបេស\n\
   -p, --dba-password=PASS            កំណត់សម្គាល់សម្ងាត់នៃDBA user; នឹងកើតមានប្រសិនបើ មិនជាក់លាក់\n\
   -d, --display-information          បង្ហាញពត៌មានអំពីកិច្ចសម្រួលដំណើរការសកម្ម \n\
   -q, --query-exec-info              បង្ហាញនូវព័ត៌មានឆែកឆេរការជួញដូរដែលកំពុងធ្វើ\n\
-  -f, --force                        បំផ្លាញកិច្ចសម្រួលដំណើរការជាមួយនឹងការចាំបាច់សម្រាប់ការពិនិត្យបញ្ជាក់
+  -f, --force                        បំផ្លាញកិច្ចសម្រួលដំណើរការជាមួយនឹងការចាំបាច់សម្រាប់ការពិនិត្យបញ្ជាក់\n
 
 
 $set 31 MSGCAT_UTIL_SET_MIGRATE
@@ -1020,7 +1020,7 @@ $set 49 MSGCAT_UTIL_SET_TRANLIST
 23 -------------------------------------------------------------------------------\n
 24 %4d%-10s %14s %14s %15d %17s\n
 25 អត់មានការជួញដូរទេ\n
-26 tranlist មានតែអនុវត្តតាមក្រុម the DBA or a DBA group member.\n
+26 tranlist អាចអនុវត្តតាមតែ DBA ឬសមាជិកក្រុម DBA.\n
 32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
 33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n

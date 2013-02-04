@@ -148,7 +148,7 @@ $ csql help messages
 \n\
    ;RUn                         - ប្រតិបត្តិ sql ក្នុង command buffer។\n\
    ;Xrun                        - ប្រតិបត្តិ sql ក្នុង command buffer,\n\
-                                                                                                                      និងជម្រះ command buffer។\n\
+                                  និងជម្រះ command buffer។\n\
    ;COMmit                      - ប្រតិបត្តិកិច្ចសម្រួលដំណើរការបច្ចុប្បន្ន។\n\
    ;ROllback                    - បន្ថយកិច្ចសម្រួលដំណើរការបច្ចុប្បន្ន។\n\
    ;AUtocommit [ON|OFF]         - មិនអាចស្វ័យប្រតិបត្តិទម្រង់(mode)។\n\
@@ -170,7 +170,7 @@ $ csql help messages
    ;PLan [simple/detail/off]    - បង្ហាញផែនការណ៍ប្រតិបត្តិquery។\n\
    ;Info <command>              - បង្ហាញពត៌មានខាងក្នុង។\n\
    ;TIme [ON/OFF]               - មិនអាចបង្ហាញ query\n\
-                                                                                                                       ម៉ោងប្រតិបត្តិ\n\
+                                  ម៉ោងប្រតិបត្តិ\n\
    ;LINe-output [ON/OFF]        - អាច/មិនអាចបង្ហាញនូវតម្លៃនិមួយៗក្នុងមួយជួរ\n\
    ;HISTORYList                 - បង្ហាញតារាងឈ្មោះqueriesដែលបានប្រតិបត្តិ។\n\
    ;HISTORYRead <history_num>   - ដំណើរការentryនៅលើចំនួន historyទៅក្នុងcommand buffer។\n\

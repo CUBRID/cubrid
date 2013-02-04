@@ -54,7 +54,7 @@ Ek bilgi için, adresine bakın http://www.cubrid.com\n
 46 %d komut (lar) başarıyla işlendi.
 47 kommand içinde %d satırından,
 48 %d satırında , sütun %d,
-49 Tür `;Yardım' yardım mesajları için.
+49 Tür `;help' yardım mesajları için.
 50 HATA: 
 51 CUBRID SQL Yorumlayıcı
 52 Güncellemeler bulunmaktadır. İşlemek istiyormusunuz ? (`E' or `H') 
