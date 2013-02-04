@@ -5932,6 +5932,7 @@ cci_set_allocators (CCI_MALLOC_FUNCTION malloc_func,
 		    CCI_REALLOC_FUNCTION realloc_func,
 		    CCI_CALLOC_FUNCTION calloc_func)
 {
+#if !defined(WINDOWS)
   /* none or all should be set */
   if (malloc_func == NULL && free_func == NULL
       && realloc_func == NULL && calloc_func == NULL)
@@ -5955,6 +5956,7 @@ cci_set_allocators (CCI_MALLOC_FUNCTION malloc_func,
       cci_realloc = realloc_func;
       cci_calloc = calloc_func;
     }
+#endif
 
   return CCI_ER_NO_ERROR;
 }
