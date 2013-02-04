@@ -1637,6 +1637,10 @@ file_ftabvpid_alloc (THREAD_ENTRY * thread_p, INT16 hint_volid,
 
 	      return NO_ERROR;
 	    }
+
+#if defined(SERVER_MODE)
+	  (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
+#endif /* SERVER_MODE */
 	}
 
       hint_volid = file_find_goodvol (thread_p, NULL_VOLID, hint_volid,
