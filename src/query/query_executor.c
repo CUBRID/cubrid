@@ -19485,12 +19485,6 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   if (list_id->tuple_cnt == 0)
     {
       /* empty list files, no need to proceed */
-      qfile_close_list (thread_p, analytic_state.interm_file);
-      qfile_close_list (thread_p, analytic_state.output_file);
-      qfile_destroy_list (thread_p, list_id);
-      qfile_destroy_list (thread_p, analytic_state.interm_file);
-      qfile_copy_list_id (list_id, analytic_state.output_file, true);
-
       analytic_state.state = NO_ERROR;
       goto wrapup;
     }
@@ -19552,13 +19546,34 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       QEXEC_CLEAR_ANALYTIC_LIST_VALUE (analytic_state.a_func_list);
     }
 
-  qfile_close_list (thread_p, analytic_state.interm_file);
-  qfile_close_list (thread_p, analytic_state.output_file);
-  qfile_destroy_list (thread_p, list_id);
-  qfile_destroy_list (thread_p, analytic_state.interm_file);
-  qfile_copy_list_id (list_id, analytic_state.output_file, true);
-
 wrapup:
+  if (analytic_state.state == NO_ERROR)
+    {
+      /* clear current input: sort items and input scan */
+      if (analytic_state.curr_sort_page.page_p != NULL)
+	{
+	  qmgr_free_old_page (thread_p, analytic_state.curr_sort_page.page_p,
+			      analytic_state.input_scan->list_id.tfile_vfid);
+	  analytic_state.curr_sort_page.page_p = NULL;
+	  analytic_state.curr_sort_page.vpid.pageid = NULL_PAGEID;
+	  analytic_state.curr_sort_page.vpid.volid = NULL_VOLID;
+	}
+      if (analytic_state.input_scan)
+	{
+	  qfile_close_scan (thread_p, analytic_state.input_scan);
+	  analytic_state.input_scan = NULL;
+	}
+
+      /* replace current input with output */
+      qfile_close_list (thread_p, analytic_state.output_file);
+      qfile_destroy_list (thread_p, list_id);
+      qfile_copy_list_id (list_id, analytic_state.output_file, true);
+
+      qfile_free_list_id (analytic_state.output_file);
+      analytic_state.output_file = NULL;
+    }
+
+  /* clear internal processing items */
   qexec_clear_analytic_state (thread_p, &analytic_state);
 
   for (func_list = analytic_func_p; func_list != NULL;
@@ -20228,6 +20243,7 @@ qexec_clear_analytic_state (THREAD_ENTRY * thread_p,
   if (analytic_state->interm_file)
     {
       qfile_close_list (thread_p, analytic_state->interm_file);
+      qfile_destroy_list (thread_p, analytic_state->interm_file);
       qfile_free_list_id (analytic_state->interm_file);
       analytic_state->interm_file = NULL;
     }
