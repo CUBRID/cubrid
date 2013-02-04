@@ -89,6 +89,7 @@ struct qmgr_temp_file
 #ifdef SERVER_MODE
   pthread_mutex_t membuf_mutex;
   THREAD_ENTRY *membuf_thread_p;
+  unsigned membuf_mutex_inited:1;
 #if 0				/* async wakeup */
   PAGE_PTR wait_page_ptr;
 #endif

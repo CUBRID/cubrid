@@ -3540,7 +3540,6 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p,
   QFILE_PAGE_HEADER pgheader = { 0, NULL_PAGEID, NULL_PAGEID, 0, NULL_PAGEID,
     NULL_VOLID, NULL_VOLID, NULL_VOLID
   };
-  bool created = false;
 
   assert (QMGR_IS_VALID_MEMBUF_TYPE (membuf_type));
   if (!QMGR_IS_VALID_MEMBUF_TYPE (membuf_type))
@@ -3558,7 +3557,6 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p,
   if (tfile_vfid_p == NULL)
     {
       tfile_vfid_p = qmgr_allocate_tempfile_with_buffer (num_buffer_pages);
-      created = true;
     }
 
   if (tfile_vfid_p == NULL)
@@ -3599,9 +3597,10 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p,
     }
 
 #if defined (SERVER_MODE)
-  if (created)
+  if (tfile_vfid_p->membuf_mutex_inited == 0)
     {
       pthread_mutex_init (&tfile_vfid_p->membuf_mutex, NULL);
+      tfile_vfid_p->membuf_mutex_inited = 1;
     }
   tfile_vfid_p->membuf_thread_p = NULL;
 #if 0				/* async wakeup */
@@ -3713,6 +3712,7 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 
 #if defined (SERVER_MODE)
   pthread_mutex_init (&tfile_vfid_p->membuf_mutex, NULL);
+  tfile_vfid_p->membuf_mutex_inited = 1;
   tfile_vfid_p->membuf_thread_p = NULL;
 #endif
 
@@ -3849,6 +3849,7 @@ qmgr_free_query_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 	    }
 	  pthread_mutex_unlock (&temp->membuf_mutex);
 	  pthread_mutex_destroy (&temp->membuf_mutex);
+	  temp->membuf_mutex_inited = 0;
 #endif
 
 	  if (temp->temp_file_type != FILE_QUERY_AREA)
@@ -3935,6 +3936,7 @@ qmgr_free_temp_file_list (THREAD_ENTRY * thread_p,
 
       pthread_mutex_unlock (&temp->membuf_mutex);
       pthread_mutex_destroy (&temp->membuf_mutex);
+      temp->membuf_mutex_inited = 0;
 #endif
 
       if (temp->temp_file_type != FILE_QUERY_AREA)
@@ -4081,6 +4083,7 @@ qmgr_free_list_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id,
 
       pthread_mutex_unlock (&tfile_vfid_p->membuf_mutex);
       pthread_mutex_destroy (&tfile_vfid_p->membuf_mutex);
+      tfile_vfid_p->membuf_mutex_inited = 0;
 #endif
 
       if (tfile_vfid_p->temp_file_type != FILE_QUERY_AREA)
