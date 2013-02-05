@@ -219,9 +219,9 @@ namespace DBGW3
     DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, const char *szName,
         char *szBuffer, int BufferSize, size_t *pLen);
     DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, int nIndex,
-        size_t *pSize, char **pValue);
+        size_t *pSize, const char **pValue);
     DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, const char *szName,
-        size_t *pSize, char **pValue);
+        size_t *pSize, const char **pValue);
     DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, int nIndex,
         struct tm *pValue);
     DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, const char *szName,

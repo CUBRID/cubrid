@@ -1369,7 +1369,7 @@ namespace dbgw
       }
   }
 
-  bool DBGWClientResult::getCString(int nIndex, char **pValue) const
+  bool DBGWClientResult::getCString(int nIndex, const char **pValue) const
   {
     clearException();
 
@@ -1603,7 +1603,8 @@ namespace dbgw
       }
   }
 
-  bool DBGWClientResult::getBytes(int nIndex, size_t *pSize, char **pValue) const
+  bool DBGWClientResult::getBytes(int nIndex, size_t *pSize,
+      const char **pValue) const
   {
     clearException();
 
@@ -1732,7 +1733,8 @@ namespace dbgw
       }
   }
 
-  bool DBGWClientResult::getCString(const char *szKey, char **pValue) const
+  bool DBGWClientResult::getCString(const char *szKey,
+      const char **pValue) const
   {
     clearException();
 
@@ -1834,7 +1836,8 @@ namespace dbgw
       }
   }
 
-  bool DBGWClientResult::getBytes(const char *szKey, size_t *pSize, char **pValue) const
+  bool DBGWClientResult::getBytes(const char *szKey, size_t *pSize,
+      const char **pValue) const
   {
     clearException();
 

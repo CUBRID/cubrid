@@ -883,7 +883,7 @@ namespace dbgw
       int64 lValue;
       float fValue;
       double dValue;
-      char *szValue;
+      const char *szValue;
       bool bNull;
       for (it = parameterList.begin(); it != parameterList.end(); it++)
         {
@@ -1703,7 +1703,7 @@ namespace dbgw
     }
 
     bool _DBGWCUBRIDCallableStatement::getCString(int nIndex,
-        char **pValue) const
+        const char **pValue) const
     {
       clearException();
 
@@ -1951,7 +1951,7 @@ namespace dbgw
     }
 
     bool _DBGWCUBRIDCallableStatement::getBytes(int nIndex, size_t *pSize,
-        char **pValue) const
+        const char **pValue) const
     {
       clearException();
 
@@ -2366,7 +2366,7 @@ namespace dbgw
         }
     }
 
-    bool _DBGWCUBRIDResultSet::getCString(int nIndex, char **pValue) const
+    bool _DBGWCUBRIDResultSet::getCString(int nIndex, const char **pValue) const
     {
       clearException();
 
@@ -2498,7 +2498,8 @@ namespace dbgw
         }
     }
 
-    bool _DBGWCUBRIDResultSet::getBytes(int nIndex, size_t *pSize, char **pValue) const
+    bool _DBGWCUBRIDResultSet::getBytes(int nIndex, size_t *pSize,
+        const char **pValue) const
     {
       return m_resultSet.getBytes(nIndex, pSize, pValue);
     }

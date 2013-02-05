@@ -107,7 +107,7 @@ namespace dbgw
       vector<int64> m_longList;
       vector<float> m_floatList;
       vector<double> m_doubleList;
-      vector<char *> m_cstrList;
+      vector<const char *> m_cstrList;
       vector<int> m_nullIndList;
     };
 
@@ -243,13 +243,14 @@ namespace dbgw
     public:
       virtual bool getType(int nIndex, DBGWValueType *pType) const;
       virtual bool getInt(int nIndex, int *pValue) const;
-      virtual bool getCString(int nIndex, char **pValue) const;
+      virtual bool getCString(int nIndex, const char **pValue) const;
       virtual bool getLong(int nIndex, int64 *pValue) const;
       virtual bool getChar(int nIndex, char *pValue) const;
       virtual bool getFloat(int nIndex, float *pValue) const;
       virtual bool getDouble(int nIndex, double *pValue) const;
       virtual bool getDateTime(int nIndex, struct tm *pValue) const;
-      virtual bool getBytes(int nIndex, size_t *pSize, char **pValue) const;
+      virtual bool getBytes(int nIndex, size_t *pSize,
+          const char **pValue) const;
       virtual const DBGWValue *getValue(int nIndex) const;
 
     public:
@@ -310,13 +311,14 @@ namespace dbgw
       virtual int getRowCount() const;
       virtual bool getType(int nIndex, DBGWValueType *pType) const;
       virtual bool getInt(int nIndex, int *pValue) const;
-      virtual bool getCString(int nIndex, char **pValue) const;
+      virtual bool getCString(int nIndex, const char **pValue) const;
       virtual bool getLong(int nIndex, int64 *pValue) const;
       virtual bool getChar(int nIndex, char *pValue) const;
       virtual bool getFloat(int nIndex, float *pValue) const;
       virtual bool getDouble(int nIndex, double *pValue) const;
       virtual bool getDateTime(int nIndex, struct tm *pValue) const;
-      virtual bool getBytes(int nIndex, size_t *pSize, char **pValue) const;
+      virtual bool getBytes(int nIndex, size_t *pSize,
+          const char **pValue) const;
       virtual const DBGWValue *getValue(int nIndex) const;
       virtual DBGWResultSetMetaDataSharedPtr getMetaData() const;
 

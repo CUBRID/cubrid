@@ -1406,13 +1406,13 @@ namespace DBGW3
     }
 
     DECLSPECIFIER bool __stdcall GetParameter(Handle hResult, int nIndex,
-        size_t *pSize, char **pValue)
+        size_t *pSize, const char **pValue)
     {
       return GetColumn(hResult, nIndex, pSize, pValue);
     }
 
     DECLSPECIFIER bool __stdcall GetParameter(Handle hResult,
-        const char *szName, size_t *pSize, char **pValue)
+        const char *szName, size_t *pSize, const char **pValue)
     {
       return GetColumn(hResult, szName, pSize, pValue);
     }
@@ -1661,7 +1661,7 @@ namespace DBGW3
               throw dbgw::getLastException();
             }
 
-          int nValueSize = pValue->size();
+          int nValueSize = pValue->getLength();
 
           if (pValue->isNull())
             {
@@ -1669,17 +1669,17 @@ namespace DBGW3
             }
           else
             {
-              if (nValueSize > BufferSize)
+              if (nValueSize >= BufferSize)
                 {
                   dbgw::NotEnoughBufferException e;
                   DBGW_LOG_ERROR(e.what());
                   throw e;
                 }
 
-              char *szValue = NULL;
+              const char *szValue = NULL;
               pValue->getCString(&szValue);
 
-              memcpy(szBuffer, szValue, nValueSize);
+              memcpy(szBuffer, szValue, nValueSize + 1);
             }
 
           *pLen = nValueSize;
@@ -1712,7 +1712,7 @@ namespace DBGW3
               throw dbgw::getLastException();
             }
 
-          int nValueSize = pValue->size();
+          int nValueSize = pValue->getLength();
 
           if (pValue->isNull())
             {
@@ -1720,17 +1720,17 @@ namespace DBGW3
             }
           else
             {
-              if (nValueSize > BufferSize)
+              if (nValueSize >= BufferSize)
                 {
                   dbgw::NotEnoughBufferException e;
                   DBGW_LOG_ERROR(e.what());
                   throw e;
                 }
 
-              char *szValue = NULL;
+              const char *szValue = NULL;
               pValue->getCString(&szValue);
 
-              memcpy(szBuffer, szValue, nValueSize);
+              memcpy(szBuffer, szValue, nValueSize + 1);
             }
 
           *pLen = nValueSize;
@@ -1744,7 +1744,7 @@ namespace DBGW3
     }
 
     DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, int nIndex,
-        size_t *pSize, char **pValue)
+        size_t *pSize, const char **pValue)
     {
       dbgw::clearException();
 
@@ -1772,7 +1772,7 @@ namespace DBGW3
     }
 
     DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, const char *szName,
-        size_t *pSize, char **pValue)
+        size_t *pSize, const char **pValue)
     {
       dbgw::clearException();
 

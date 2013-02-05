@@ -78,10 +78,10 @@ namespace dbgw
      * bool getFloat(float *pValue) const;
      * bool getDouble(double *pValue) const;
      */
-    bool getCString(char **pValue) const;
+    bool getCString(const char **pValue) const;
     bool getChar(char *pValue) const;
     bool getDateTime(struct tm *pValue) const;
-    bool getBytes(size_t *pSize, char **pValue) const;
+    bool getBytes(size_t *pSize, const char **pValue) const;
     DBGWValueType getType() const;
     void *getVoidPtr() const;
     int getLength() const;
@@ -90,10 +90,10 @@ namespace dbgw
     bool toFloat(float *pValue) const;
     bool toDouble(double *pValue) const;
     bool toChar(char *pValue) const;
-    bool toTime(char **pValue) const;
-    bool toDate(char **pValue) const;
-    bool toDateTime(char **pValue) const;
-    bool toBytes(size_t *pSize, char **pValue) const;
+    bool toTime(const char **pValue) const;
+    bool toDate(const char **pValue) const;
+    bool toDateTime(const char **pValue) const;
+    bool toBytes(size_t *pSize, const char **pValue) const;
     string toString() const;
     bool isNull() const;
     int size() const;
@@ -104,9 +104,10 @@ namespace dbgw
 
   private:
     void init(DBGWValueType type, const void *pValue, bool bNull);
+    void calcValueSize(const void *pValue, int nSize);
     void alloc(DBGWValueType type, const void *pValue, bool bNull, int nSize);
     void alloc(DBGWValueType type, const struct tm *pValue);
-    int resize(DBGWValueType type, const char *pValue, int nSize);
+    void resize(DBGWValueType type, const char *pValue, int nSize);
 #ifdef ENABLE_LOB
     void init(DBGWValueType type, const void *pValue, bool bNull,
         bool bLateBinding);
@@ -123,7 +124,8 @@ namespace dbgw
     DBGWValueType m_type;
     _DBGWRawValue m_stValue;
     bool m_bNull;
-    int m_nSize;
+    int m_nBufferSize;
+    int m_nValueSize;
 
   private:
     static const int MAX_BOUNDARY_SIZE;
@@ -190,24 +192,24 @@ namespace dbgw
     const DBGWValue *getValue(const char *szKey) const;
     const DBGWValue *getValueWithoutException(const char *szKey) const;
     bool getInt(const char *szKey, int *pValue) const;
-    bool getCString(const char *szKey, char **pValue) const;
+    bool getCString(const char *szKey, const char **pValue) const;
     bool getLong(const char *szKey, int64 *pValue) const;
     bool getChar(const char *szKey, char *pValue) const;
     bool getFloat(const char *szKey, float *pValue) const;
     bool getDouble(const char *szKey, double *pValue) const;
     bool getDateTime(const char *szKey, struct tm *pValue) const;
-    bool getBytes(const char *szKey, size_t *pSize, char **pValue) const;
+    bool getBytes(const char *szKey, size_t *pSize, const char **pValue) const;
     bool getType(const char *szKey, DBGWValueType *pType) const;
     bool isNull(const char *szKey, bool *pNull) const;
     const DBGWValue *getValue(size_t nIndex) const;
     bool getInt(int nIndex, int *pValue) const;
-    bool getCString(int nIndex, char **pValue) const;
+    bool getCString(int nIndex, const char **pValue) const;
     bool getLong(int nIndex, int64 *pValue) const;
     bool getChar(int nIndex, char *pValue) const;
     bool getFloat(int nIndex, float *pValue) const;
     bool getDouble(int nIndex, double *pValue) const;
     bool getDateTime(int nIndex, struct tm *pValue) const;
-    bool getBytes(int nIndex, size_t *pSize, char **pValue) const;
+    bool getBytes(int nIndex, size_t *pSize, const char **pValue) const;
     bool getType(int nIndex, DBGWValueType *pType) const;
     bool isNull(int nIndex, bool *pNull) const;
     size_t size() const;

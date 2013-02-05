@@ -407,7 +407,7 @@ namespace dbgw
         return;
       }
 
-    char *szValue = NULL;
+    const char *szValue = NULL;
     if (pValue->toTime(&szValue) == false && !m_bUseDefaultParameterValue)
       {
         throw getLastException();
@@ -431,7 +431,7 @@ namespace dbgw
         return;
       }
 
-    char *szValue = NULL;
+    const char *szValue = NULL;
     if (pValue->toDate(&szValue) == false && !m_bUseDefaultParameterValue)
       {
         throw getLastException();
@@ -455,7 +455,7 @@ namespace dbgw
         return;
       }
 
-    char *szValue = NULL;
+    const char *szValue = NULL;
     if (pValue->toDateTime(&szValue) == false && !m_bUseDefaultParameterValue)
       {
         throw getLastException();
@@ -480,7 +480,7 @@ namespace dbgw
       }
 
     size_t nSize = 0;
-    char *pBytesValue = NULL;
+    const char *pBytesValue = NULL;
     if (pValue->toBytes(&nSize, &pBytesValue) == false
         && !m_bUseDefaultParameterValue)
       {

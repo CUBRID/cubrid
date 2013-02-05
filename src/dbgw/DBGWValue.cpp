@@ -83,7 +83,7 @@ namespace dbgw
 #endif
 
   DBGWValue::DBGWValue(DBGWValueType type, struct tm tmValue) :
-    m_type(type), m_bNull(false), m_nSize(-1)
+    m_type(type), m_bNull(false), m_nBufferSize(-1), m_nValueSize(-1)
   {
     clearException();
     try
@@ -110,7 +110,7 @@ namespace dbgw
 
   DBGWValue::DBGWValue(DBGWValueType type, const void *pValue, bool bNull,
       int nSize) :
-    m_type(type), m_bNull(bNull), m_nSize(-1)
+    m_type(type), m_bNull(bNull), m_nBufferSize(-1), m_nValueSize(-1)
   {
     clearException();
     try
@@ -125,7 +125,8 @@ namespace dbgw
   }
 
   DBGWValue::DBGWValue(const DBGWValue &value) :
-    m_type(value.m_type), m_bNull(value.m_bNull), m_nSize(value.m_nSize)
+    m_type(value.m_type), m_bNull(value.m_bNull), m_nBufferSize(value.m_nBufferSize),
+    m_nValueSize(value.m_nValueSize)
   {
     clearException();
 
@@ -134,17 +135,17 @@ namespace dbgw
         memset(&m_stValue, 0, sizeof(_DBGWRawValue));
         if (isStringBasedValue())
           {
-            m_stValue.szValue = (char *) malloc(m_nSize);
+            m_stValue.szValue = (char *) malloc(m_nBufferSize);
             if (m_stValue.szValue == NULL)
               {
                 m_bNull = true;
-                m_nSize = -1;
-                MemoryAllocationFail e(m_nSize);
+                m_nBufferSize = -1;
+                MemoryAllocationFail e(m_nBufferSize);
                 DBGW_LOG_ERROR(e.what());
                 throw e;
               }
 
-            memcpy(m_stValue.szValue, value.m_stValue.szValue, m_nSize);
+            memcpy(m_stValue.szValue, value.m_stValue.szValue, m_nBufferSize);
           }
         else
           {
@@ -241,7 +242,7 @@ namespace dbgw
       }
   }
 
-  bool DBGWValue::getCString(char **pValue) const
+  bool DBGWValue::getCString(const char **pValue) const
   {
     clearException();
 
@@ -333,7 +334,7 @@ namespace dbgw
       }
   }
 
-  bool DBGWValue::getBytes(size_t *pSize, char **pValue) const
+  bool DBGWValue::getBytes(size_t *pSize, const char **pValue) const
   {
     clearException();
 
@@ -346,7 +347,7 @@ namespace dbgw
             throw e;
           }
 
-        *pSize = m_nSize;
+        *pSize = m_nBufferSize;
         *pValue = m_stValue.szValue;
         return true;
       }
@@ -408,39 +409,14 @@ namespace dbgw
 
     try
       {
-        switch (m_type)
+        if (m_type == DBGW_VAL_TYPE_UNDEFINED)
           {
-          case DBGW_VAL_TYPE_BYTES:
-            return m_nSize;
-          case DBGW_VAL_TYPE_STRING:
-          case DBGW_VAL_TYPE_DATE:
-          case DBGW_VAL_TYPE_TIME:
-          case DBGW_VAL_TYPE_DATETIME:
-            if (m_stValue.szValue == NULL)
-              {
-                return 0;
-              }
-            return strlen(m_stValue.szValue);
-#ifdef ENABLE_LOB
-          case DBGW_VAL_TYPE_CLOB:
-          case DBGW_VAL_TYPE_BLOB:
-            return m_nSize;
-#endif
-          case DBGW_VAL_TYPE_CHAR:
-            return sizeof(char);
-          case DBGW_VAL_TYPE_INT:
-            return sizeof(int);
-          case DBGW_VAL_TYPE_LONG:
-            return sizeof(int64);
-          case DBGW_VAL_TYPE_FLOAT:
-            return sizeof(float);
-          case DBGW_VAL_TYPE_DOUBLE:
-            return sizeof(double);
-          default:
             InvalidValueTypeException e(m_type);
             DBGW_LOG_ERROR(e.what());
             throw e;
           }
+
+        return m_nValueSize;
       }
     catch (DBGWException &e)
       {
@@ -700,7 +676,7 @@ namespace dbgw
       }
   }
 
-  bool DBGWValue::toTime(char **pValue) const
+  bool DBGWValue::toTime(const char **pValue) const
   {
     clearException();
 
@@ -733,7 +709,7 @@ namespace dbgw
       }
   }
 
-  bool DBGWValue::toDate(char **pValue) const
+  bool DBGWValue::toDate(const char **pValue) const
   {
     clearException();
 
@@ -766,7 +742,7 @@ namespace dbgw
       }
   }
 
-  bool DBGWValue::toDateTime(char **pValue) const
+  bool DBGWValue::toDateTime(const char **pValue) const
   {
     clearException();
 
@@ -799,7 +775,7 @@ namespace dbgw
       }
   }
 
-  bool DBGWValue::toBytes(size_t *pSize, char **pValue) const
+  bool DBGWValue::toBytes(size_t *pSize, const char **pValue) const
   {
     clearException();
 
@@ -897,7 +873,7 @@ namespace dbgw
 
   int DBGWValue::size() const
   {
-    return m_nSize;
+    return m_nBufferSize;
   }
 
   bool DBGWValue::operator==(const DBGWValue &value) const
@@ -992,10 +968,77 @@ namespace dbgw
     m_bNull = bNull;
   }
 
+  void DBGWValue::calcValueSize(const void *pValue, int nSize)
+  {
+    if (isStringBasedValue())
+      {
+        if (m_type == DBGW_VAL_TYPE_CHAR)
+          {
+            m_nValueSize = nSize = 1;
+          }
+
+        if (m_bNull)
+          {
+            return;
+          }
+
+        if (nSize <= 0)
+          {
+            if (m_type == DBGW_VAL_TYPE_BYTES)
+              {
+                InvalidValueSizeException e(nSize);
+                DBGW_LOG_ERROR(e.what());
+                throw e;
+              }
+            else if (m_type == DBGW_VAL_TYPE_DATE)
+              {
+                // yyyy-mm-dd
+                nSize = 10;
+              }
+            else if (m_type == DBGW_VAL_TYPE_TIME)
+              {
+                // HH:MM:SS
+                nSize = 8;
+              }
+            else if (m_type == DBGW_VAL_TYPE_DATETIME)
+              {
+                // yyyy-mm-dd HH:MM:SS
+                nSize = 19;
+              }
+            else if (m_type == DBGW_VAL_TYPE_STRING)
+              {
+                if (pValue != NULL)
+                  {
+                    nSize = strlen((char *) pValue);
+                  }
+              }
+          }
+
+        m_nValueSize = nSize;
+      }
+    else if (m_type == DBGW_VAL_TYPE_INT)
+      {
+        m_nValueSize = sizeof(int);
+      }
+    else if (m_type == DBGW_VAL_TYPE_LONG)
+      {
+        m_nValueSize = sizeof(int64);
+      }
+    else if (m_type == DBGW_VAL_TYPE_FLOAT)
+      {
+        m_nValueSize = sizeof(float);
+      }
+    else if (m_type == DBGW_VAL_TYPE_DOUBLE)
+      {
+        m_nValueSize = sizeof(double);
+      }
+  }
+
   void DBGWValue::alloc(DBGWValueType type, const void *pValue, bool bNull,
       int nSize)
   {
     init(type, pValue, bNull);
+    calcValueSize(pValue, nSize);
 
     if (m_bNull)
       {
@@ -1005,12 +1048,12 @@ namespace dbgw
     if (isStringBasedValue())
       {
         char *p = (char *) pValue;
-        nSize = resize(type, p, nSize);
-        memcpy(m_stValue.szValue, p, nSize);
+        resize(type, p, m_nValueSize);
+        memcpy(m_stValue.szValue, p, m_nValueSize);
 
         if (m_type != DBGW_VAL_TYPE_BYTES)
           {
-            m_stValue.szValue[nSize] = '\0';
+            m_stValue.szValue[m_nValueSize] = '\0';
           }
         return;
       }
@@ -1153,6 +1196,7 @@ namespace dbgw
   void DBGWValue::alloc(DBGWValueType type, const struct tm *pValue)
   {
     init(type, pValue, false);
+    calcValueSize(pValue, -1);
 
     if (m_bNull)
       {
@@ -1161,28 +1205,14 @@ namespace dbgw
 
     if (m_stValue.szValue == NULL)
       {
-        if (type == DBGW_VAL_TYPE_DATE)
-          {
-            // yyyy-mm-dd
-            m_nSize = 11;
-          }
-        else if (type == DBGW_VAL_TYPE_TIME)
-          {
-            // HH:MM:SS
-            m_nSize = 9;
-          }
-        else
-          {
-            // yyyy-mm-dd HH:MM:SS
-            m_nSize = 20;
-          }
+        m_nBufferSize = m_nValueSize + 1;
 
-        m_stValue.szValue = (char *) malloc(m_nSize);
+        m_stValue.szValue = (char *) malloc(m_nBufferSize);
         if (m_stValue.szValue == NULL)
           {
             m_bNull = true;
-            m_nSize = -1;
-            MemoryAllocationFail e(m_nSize);
+            m_nBufferSize = -1;
+            MemoryAllocationFail e(m_nBufferSize);
             DBGW_LOG_ERROR(e.what());
             throw e;
           }
@@ -1191,57 +1221,40 @@ namespace dbgw
     char datetime[20];
     if (type == DBGW_VAL_TYPE_TIME)
       {
-        snprintf(datetime, 16, "%02d:%02d:%02d", pValue->tm_hour,
+        snprintf(datetime, m_nBufferSize, "%02d:%02d:%02d", pValue->tm_hour,
             pValue->tm_min, pValue->tm_sec);
       }
     else if (type == DBGW_VAL_TYPE_DATE)
       {
-        snprintf(datetime, 16, "%04d-%02d-%02d", 1900 + pValue->tm_year,
+        snprintf(datetime, m_nBufferSize, "%04d-%02d-%02d", 1900 + pValue->tm_year,
             pValue->tm_mon + 1, pValue->tm_mday);
       }
     else
       {
-        snprintf(datetime, 16, "%04d-%02d-%02d %02d:%02d:%02d",
+        snprintf(datetime, m_nBufferSize, "%04d-%02d-%02d %02d:%02d:%02d",
             1900 + pValue->tm_year, pValue->tm_mon + 1, pValue->tm_mday,
             pValue->tm_hour, pValue->tm_min, pValue->tm_sec);
       }
 
-    memcpy(m_stValue.szValue, datetime, m_nSize - 1);
-    m_stValue.szValue[m_nSize - 1] = '\0';
+    memcpy(m_stValue.szValue, datetime, m_nValueSize);
+    m_stValue.szValue[m_nValueSize] = '\0';
   }
 
-  int DBGWValue::resize(DBGWValueType type, const char *pValue, int nSize)
+  void DBGWValue::resize(DBGWValueType type, const char *pValue, int nSize)
   {
-    if (m_type == DBGW_VAL_TYPE_CHAR)
-      {
-        nSize = 1;
-      }
-
-    if (nSize <= 0)
+    if (m_nBufferSize <= nSize)
       {
         if (m_type == DBGW_VAL_TYPE_BYTES)
           {
-            InvalidValueSizeException e(nSize);
-            DBGW_LOG_ERROR(e.what());
-            throw e;
+            m_nBufferSize = nSize;
           }
-
-        nSize = strlen(pValue);
-      }
-
-    if (m_nSize <= nSize)
-      {
-        if (m_type == DBGW_VAL_TYPE_BYTES)
+        else if (m_nBufferSize == -1 || nSize > MAX_BOUNDARY_SIZE)
           {
-            m_nSize = nSize;
-          }
-        else if (m_nSize == -1 || nSize > MAX_BOUNDARY_SIZE)
-          {
-            m_nSize = nSize + 1;
+            m_nBufferSize = nSize + 1;
           }
         else
           {
-            m_nSize = nSize * 2;
+            m_nBufferSize = nSize * 2;
           }
 
         if (m_stValue.szValue != NULL)
@@ -1249,18 +1262,16 @@ namespace dbgw
             free(m_stValue.szValue);
           }
 
-        m_stValue.szValue = (char *) malloc(m_nSize);
+        m_stValue.szValue = (char *) malloc(m_nBufferSize);
         if (m_stValue.szValue == NULL)
           {
             m_bNull = true;
-            m_nSize = -1;
-            MemoryAllocationFail e(m_nSize);
+            m_nBufferSize = -1;
+            MemoryAllocationFail e(m_nBufferSize);
             DBGW_LOG_ERROR(e.what());
             throw e;
           }
       }
-
-    return nSize;
   }
 
   bool DBGWValue::isStringBasedValue() const
@@ -1348,9 +1359,9 @@ namespace dbgw
 
     int nHex = 0;
 
-    if (m_nSize < 20)
+    if (m_nBufferSize < 20)
       {
-        for (int i = 0; i < m_nSize; i++)
+        for (int i = 0; i < m_nBufferSize; i++)
           {
             if (i % 2 == 0)
               {
@@ -1369,11 +1380,11 @@ namespace dbgw
         ADD_HEX_TO_STREAM(2);
         ADD_HEX_TO_STREAM(3);
         sstream << " ... ";
-        ADD_HEX_TO_STREAM(m_nSize - 4);
-        ADD_HEX_TO_STREAM(m_nSize - 3);
+        ADD_HEX_TO_STREAM(m_nBufferSize - 4);
+        ADD_HEX_TO_STREAM(m_nBufferSize - 3);
         sstream << " ";
-        ADD_HEX_TO_STREAM(m_nSize - 2);
-        ADD_HEX_TO_STREAM(m_nSize - 1);
+        ADD_HEX_TO_STREAM(m_nBufferSize - 2);
+        ADD_HEX_TO_STREAM(m_nBufferSize - 1);
       }
 
     return sstream.str();
@@ -1792,7 +1803,7 @@ namespace dbgw
       }
   }
 
-  bool _DBGWValueSet::getCString(const char *szKey, char **pValue) const
+  bool _DBGWValueSet::getCString(const char *szKey, const char **pValue) const
   {
     clearException();
 
@@ -1930,7 +1941,8 @@ namespace dbgw
       }
   }
 
-  bool _DBGWValueSet::getBytes(const char *szKey, size_t *pSize, char **pValue) const
+  bool _DBGWValueSet::getBytes(const char *szKey, size_t *pSize,
+      const char **pValue) const
   {
     clearException();
 
@@ -2046,7 +2058,7 @@ namespace dbgw
       }
   }
 
-  bool _DBGWValueSet::getCString(int nIndex, char **pValue) const
+  bool _DBGWValueSet::getCString(int nIndex, const char **pValue) const
   {
     clearException();
 
@@ -2184,7 +2196,8 @@ namespace dbgw
       }
   }
 
-  bool _DBGWValueSet::getBytes(int nIndex, size_t *pSize, char **pValue) const
+  bool _DBGWValueSet::getBytes(int nIndex, size_t *pSize,
+      const char **pValue) const
   {
     clearException();
 

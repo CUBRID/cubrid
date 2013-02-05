@@ -235,13 +235,14 @@ namespace dbgw
     public:
       virtual bool getType(int nIndex, DBGWValueType *pType) const = 0;
       virtual bool getInt(int nIndex, int *pValue) const = 0;
-      virtual bool getCString(int nIndex, char **pValue) const = 0;
+      virtual bool getCString(int nIndex, const char **pValue) const = 0;
       virtual bool getLong(int nIndex, int64 *pValue) const = 0;
       virtual bool getChar(int nIndex, char *pValue) const = 0;
       virtual bool getFloat(int nIndex, float *pValue) const = 0;
       virtual bool getDouble(int nIndex, double *pValue) const = 0;
       virtual bool getDateTime(int nIndex, struct tm *pValue) const = 0;
-      virtual bool getBytes(int nIndex, size_t *pSize, char **pValue) const = 0;
+      virtual bool getBytes(int nIndex, size_t *pSize,
+          const char **pValue) const = 0;
       virtual const DBGWValue *getValue(int nIndex) const = 0;
     };
 
@@ -277,13 +278,14 @@ namespace dbgw
       virtual int getRowCount() const = 0;
       virtual bool getType(int nIndex, DBGWValueType *pType) const = 0;
       virtual bool getInt(int nIndex, int *pValue) const = 0;
-      virtual bool getCString(int nIndex, char **pValue) const = 0;
+      virtual bool getCString(int nIndex, const char **pValue) const = 0;
       virtual bool getLong(int nIndex, int64 *pValue) const = 0;
       virtual bool getChar(int nIndex, char *pValue) const = 0;
       virtual bool getFloat(int nIndex, float *pValue) const = 0;
       virtual bool getDouble(int nIndex, double *pValue) const = 0;
       virtual bool getDateTime(int nIndex, struct tm *pValue) const = 0;
-      virtual bool getBytes(int nIndex, size_t *pSize, char **pValue) const = 0;
+      virtual bool getBytes(int nIndex, size_t *pSize,
+          const char **pValue) const = 0;
       virtual const DBGWValue *getValue(int nIndex) const = 0;
       virtual DBGWResultSetMetaDataSharedPtr getMetaData() const = 0;
 
