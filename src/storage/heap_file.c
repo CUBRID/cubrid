@@ -7009,6 +7009,11 @@ try_again:
 			      ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid,
 			      oid->pageid, oid->slotid);
 		    }
+		  else if (er_errid () == NO_ERROR)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_GENERIC_ERROR, 0);
+		    }
 
 		  goto error;
 		}
@@ -7081,7 +7086,11 @@ try_again:
 				      ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid,
 				      oid->pageid, oid->slotid);
 			    }
-
+			  else if (er_errid () == NO_ERROR)
+			    {
+			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				      ER_GENERIC_ERROR, 0);
+			    }
 			  goto error;
 			}
 		      else
@@ -7105,6 +7114,11 @@ try_again:
 				      ER_HEAP_UNKNOWN_OBJECT, 3,
 				      forward_oid.volid, forward_oid.pageid,
 				      forward_oid.slotid);
+			    }
+			  else if (er_errid () == NO_ERROR)
+			    {
+			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				      ER_GENERIC_ERROR, 0);
 			    }
 
 			  goto error;
@@ -7340,7 +7354,11 @@ try_again:
 			      ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid,
 			      oid->pageid, oid->slotid);
 		    }
-
+		  else if (er_errid () == NO_ERROR)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_GENERIC_ERROR, 0);
+		    }
 		  goto error;
 		}
 	      else
@@ -7499,7 +7517,11 @@ try_again:
 				  ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid,
 				  oid->pageid, oid->slotid);
 			}
-
+		      else if (er_errid () == NO_ERROR)
+			{
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				  ER_GENERIC_ERROR, 0);
+			}
 		      goto error;
 		    }
 		  else
@@ -8029,6 +8051,11 @@ try_again:
 			      ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid,
 			      oid->pageid, oid->slotid);
 		    }
+		  else if (er_errid () == NO_ERROR)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_GENERIC_ERROR, 0);
+		    }
 		  goto error;
 		}
 	      else
@@ -8148,7 +8175,11 @@ try_again:
 			      ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid,
 			      oid->pageid, oid->slotid);
 		    }
-
+		  else if (er_errid () == NO_ERROR)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_GENERIC_ERROR, 0);
+		    }
 		  goto error;
 		}
 	      else
@@ -10420,6 +10451,11 @@ try_again:
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid,
 			  oid->pageid, oid->slotid);
+		}
+	      else if (er_errid () == NO_ERROR)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
+			  0);
 		}
 	      return S_ERROR;
 	    }
