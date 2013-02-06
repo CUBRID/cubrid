@@ -372,6 +372,9 @@ public class UConnection {
 			outBuffer.addByte(getAutoCommit() ? (byte) 1 : (byte) 0);
 			if (protoVersionIsAbove(UConnection.PROTOCOL_V4)) {
 			    long remainingTime = getRemainingTime(queryTimeout * 1000);
+			    if (queryTimeout > 0 && remainingTime <= 0) {
+				throw createJciException(UErrorCode.ER_TIMEOUT);
+			    }
 			    outBuffer.addInt((int) remainingTime);
 			}
 

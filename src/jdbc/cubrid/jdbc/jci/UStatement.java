@@ -666,6 +666,7 @@ public class UStatement {
     private void writeExecuteRequest(int maxField, boolean isScrollable, int queryTimeout)
     	    throws IOException, UJciException {
 	byte is_auto_commit = (byte) 0, is_forward_only = (byte) 0;
+	long remainingTime = 0;
 
 	outBuffer.newRequest(UFunctionCode.EXECUTE);
 	outBuffer.addInt(serverHandler);
@@ -701,13 +702,15 @@ public class UStatement {
 	// query timeout support only if protocol version 1 or above
 	if (relatedConnection.protoVersionIsAbove(UConnection.PROTOCOL_V2)) {
 	    // send queryTimeout in milliseconds
-	    long remainingTime = relatedConnection.getRemainingTime(queryTimeout * 1000);
-	    outBuffer.addInt((int) remainingTime);
+	    remainingTime = relatedConnection.getRemainingTime(queryTimeout * 1000);
 	} else if (relatedConnection.protoVersionIsAbove(UConnection.PROTOCOL_V1)) {
 	    // send queryTimeout in seconds
-	    long remainingTime = relatedConnection.getRemainingTime(queryTimeout);
-	    outBuffer.addInt((int) remainingTime);
+	    remainingTime = relatedConnection.getRemainingTime(queryTimeout);
 	}
+	if (queryTimeout > 0 && remainingTime <= 0) {
+	    throw relatedConnection.createJciException(UErrorCode.ER_TIMEOUT);
+	}
+	outBuffer.addInt((int) remainingTime);
 
 	if (bindParameter != null) {
 	    bindParameter.writeParameter(outBuffer);
@@ -899,6 +902,9 @@ public class UStatement {
 	    outBuffer.addInt(serverHandler);
 	    if (relatedConnection.protoVersionIsAbove(UConnection.PROTOCOL_V4)) {
 		long remainingTime = relatedConnection.getRemainingTime(queryTimeout * 1000);
+		if (queryTimeout > 0 && remainingTime <= 0) {
+		    throw relatedConnection.createJciException(UErrorCode.ER_TIMEOUT);
+		}
 		outBuffer.addInt((int) remainingTime);
 	    }
 	    outBuffer.addByte(isAutoCommit ? (byte) 1 : (byte) 0);

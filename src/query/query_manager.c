@@ -5303,14 +5303,19 @@ qmgr_set_query_exec_info_to_tdes (int tran_index, int query_timeout,
 	{
 	  tdes_p->query_timeout = 0;
 	}
+      else if (query_timeout != -1)
+	{
+	  /* already expired */
+	  tdes_p->query_timeout = tdes_p->query_start_time;
+	}
       else
 	{
 	  /*
+	   * query_timeout == -1
 	   * This means that the query is not the first of a bundle of queries.
 	   * We will apply a timeout to the bundle, not each query.
 	   * Actually CAS always sends -1 in this case.
 	   */
-	  assert (query_timeout == -1);
 	}
       if (tdes_p->tran_start_time == 0)
 	{
