@@ -671,7 +671,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
   T_PREPARE_CALL_INFO *call_info;
   MYSQL_BIND *value_list = NULL;
   DB_VALUE **db_vals = NULL;
-  void **start_argv = argv + 2;
+  void **start_argv = argv;
   T_BROKER_VERSION client_version = req_info->client_version;
 
   cas_mysql_autocommit (srv_handle->auto_commit_mode);
@@ -718,7 +718,11 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
   num_query = 0;
   net_buf_cp_int (net_buf, num_query, &num_query_msg_offset);
 
-  num_value = (argc - 2) / 2;
+  if (argc <= 1)
+    {
+      return 0;
+    }
+  num_value = argc / 2;
 
   for (va = 0; va < num_value; va += num_bind)
     {

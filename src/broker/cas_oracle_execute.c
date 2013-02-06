@@ -1502,9 +1502,13 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
   num_query = 0;
   net_buf_cp_int (net_buf, num_query, (int *) &num_query_msg_offset);
 
-  num_value = (argc - 2) / 2;
+  if (argc <= 1)
+    {
+      return 0;
+    }
+  num_value = argc / 2;
 
-  value_array = make_value_array (argc - 2, argv + 2, net_buf);
+  value_array = make_value_array (argc, argv, net_buf);
   if (value_array == NULL)
     {
       err_code = CAS_ER_INTERNAL;
