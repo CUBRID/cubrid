@@ -10321,7 +10321,10 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 	  mht_destroy (pages_cache.ht);
 	  db_destroy_fixed_heap (pages_cache.heap_id);
 	  LOG_CS_EXIT ();
-	  fclose (restore_verbose_fp);
+	  if (restore_verbose_fp)
+	    {
+	      fclose (restore_verbose_fp);
+	    }
 	  return error_code;
 	}
 
@@ -10374,7 +10377,10 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 		  mht_destroy (pages_cache.ht);
 		  db_destroy_fixed_heap (pages_cache.heap_id);
 		  LOG_CS_EXIT ();
-		  fclose (restore_verbose_fp);
+		  if (restore_verbose_fp)
+		    {
+		      fclose (restore_verbose_fp);
+		    }
 		  return error_code;
 		}
 	    }
