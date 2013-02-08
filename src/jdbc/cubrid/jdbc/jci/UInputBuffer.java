@@ -96,12 +96,16 @@ class UInputBuffer {
 			int eCode = readInt();
 			String msg = readString(remainedCapacity(),
 					UJCIManager.sysCharsetName);
-			eCode = convertErrorByVersion(eCode);
+			eCode = convertErrorByVersion(resCode, eCode);
 			throw uconn.createJciException(UErrorCode.ER_DBMS, resCode, eCode, msg);
 		}
 	}
 
-	int convertErrorByVersion(int error) {
+	int convertErrorByVersion(int indicator, int error) {
+	    if (indicator != UErrorCode.CAS_ERROR_INDICATOR) {
+		return error;
+	    }
+
 	    if (uconn.protoVersionIsUnder(UConnection.PROTOCOL_V2)
 		|| uconn.protoVersionIsSame(UConnection.PROTOCOL_V3)
 		|| uconn.protoVersionIsSame(UConnection.PROTOCOL_V4)) {
