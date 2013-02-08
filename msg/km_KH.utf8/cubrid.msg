@@ -1119,7 +1119,7 @@ $ LOADDB
 1050 មិនអាចផ្លាស់ប្តូរ attribute "%1$s". CUBRID បច្ចុប្បន្នមិនអាចផ្លាស់ប្តូរ  domain របស់ attribute។ attributeនធ មានindexមួយលើវា។
 1051 មិនអាចផ្លាស់ប្តូរ attribute "%1$s". CUBRID បច្ចុប្បន្នមិនអាចផ្លាស់ប្តូរ  attribute ដើម្បីបន្ថែមកម្រិត។  តម្លៃattributeឌេលមាន មិនអាចត្រួតពិនិត្យកម្រិតបានទេ។
 1052 Attribute "%1$s" មិនត្រូវបានប្តូរទេ។ CUBRID ចាប់មិនបានការផ្លាស់ប្តូរមានប្រសិទ្ធិភាពណាមួយ ក្នុងតំណាងattribute។
-1053 The statements REPLACE INTO... and INSERT ... ON DUPLICATE KEY UPDATE are not allowed for classes that are part of an inheritance chain.
+1053 ឃ្លានេះដែលមាន REPLACE INTO... និង INSERT ... ON DUPLICATE KEY UPDATE មិនអាចសរសេរតាមប្រភេទណាមួយដែលបន្តៗគ្នា។.
 1054 តម្លៃថ្មីនៃកម្រិតស្វ័យបន្ថែម គួរតែធំជាង ឬស្មើនឹតម្លៃបច្ចុប្បន្ន។
 1055 តម្លៃថ្មីនៃកម្រិតស្វ័យបន្ថែម គួរតែទាំបជាងតម្លៃអតិបរមា។
 1056 ដើម្បីជៀសវាងន័យមិនប្រាកដ, ជម្រើសតារាងAUTO_INCREMENT ទាមទារឲ្យតារាងនេះ មានយ៉ាងពិតប្រាកដនូវ ជួរឈរAUTO_INCREMENTមួយ និងគ្មានការកំណត់ពិសេសនៃ seed/increment ។
