@@ -485,10 +485,6 @@ public class UStatement {
 
 	public void clearBatch() {
 		errorHandler = new UError(relatedConnection);
-		if (isClosed == true) {
-			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
-			return;
-		}
 		if (batchParameter == null)
 			return;
 		synchronized (batchParameter) {
@@ -498,9 +494,6 @@ public class UStatement {
 
 	synchronized public void clearBind() {
 		errorHandler = new UError(relatedConnection);
-		if (isClosed == true) {
-		    return;
-		}
 		if (bindParameter == null)
 			return;
 		synchronized (bindParameter) {

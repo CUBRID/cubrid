@@ -1594,7 +1594,8 @@ public class UConnection {
 		    int code = is.readInt();
 		    byte msg[] = new byte[dataLength - 8];
 		    is.readFully(msg);
-		    throw new UJciException(UErrorCode.ER_DBMS, response, code, new String(msg));
+		    throw new UJciException(UErrorCode.ER_DBMS, response, code,
+			    new String(msg, 0, msg.length - 1));
 		}
 
 		processId = response;
