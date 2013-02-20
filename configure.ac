@@ -617,7 +617,7 @@ AC_ARG_WITH([regex],
 	[with_regex=builtin])
 AS_IF([test "$with_regex" = "builtin"],
 	[AC_CONFIG_SUBDIRS([external/libregex38a])
-	REGEX_LIBS="\$(top_builddir)/external/lib/libregex38a.la"
+	REGEX_LIBS="\$(top_builddir)/external/libregex38a/libregex38a.la"
 	REGEX_INC="-I\$(top_builddir)/external/include/libregex38a"
 	EXTERNAL_PKGS="$EXTERNAL_PKGS libregex38a"],
 	[REGEX_LIBS="-L$with_regex/lib"
