@@ -88,10 +88,10 @@ public class UConnection {
 	public static final int PROTOCOL_V4 = 4;
 
 	/* Current protocol version */
-	// CURRENT_PROTOCOL should be greater than the LAST PROTOCOL of 8.4.4
-	private final static byte CAS_PROTOCOL_VERSION = PROTOCOL_V4 + 1;
+	private final static byte CAS_PROTOCOL_VERSION = PROTOCOL_V4;
 	private final static byte CAS_PROTO_INDICATOR = 0x40;
 	private final static byte CAS_PROTO_VER_MASK = 0x3F;
+	private final static byte CAS_RENEWED_ERROR_CODE = (byte) 0x80;
 
 	@SuppressWarnings("unused")
 	private final static byte GET_COLLECTION_VALUE = 1,
@@ -131,13 +131,13 @@ public class UConnection {
 	@SuppressWarnings("unused")
 	private final static int BROKER_INFO_CCI_PCONNECT = 3;
 	private final static int BROKER_INFO_PROTO_VERSION = 4;
-	private final static int BROKER_INFO_RESERVED1 = 5;
+	private final static int BROKER_INFO_FUNCTION_FLAG = 5;
 	private final static int BROKER_INFO_RESERVED2 = 6;
 	@SuppressWarnings("unused")
 	private final static int BROKER_INFO_RESERVED3 = 7;
 	/* For backward compatibility */
 	private final static int BROKER_INFO_MAJOR_VERSION = BROKER_INFO_PROTO_VERSION;
-	private final static int BROKER_INFO_MINOR_VERSION = BROKER_INFO_RESERVED1;
+	private final static int BROKER_INFO_MINOR_VERSION = BROKER_INFO_FUNCTION_FLAG;
 	private final static int BROKER_INFO_PATCH_VERSION = BROKER_INFO_RESERVED2;
 
 	public static final String ZERO_DATETIME_BEHAVIOR_CONVERT_TO_NULL = "convertToNull";
@@ -196,7 +196,8 @@ public class UConnection {
 		UJCIUtil.copy_byte(driverInfo, 0, 5, magicString);
 		driverInfo[5] = CAS_CLIENT_JDBC;
 		driverInfo[6] = CAS_PROTO_INDICATOR | CAS_PROTOCOL_VERSION;
-		driverInfo[7] = driverInfo[8] = 0; /* reserved */
+		driverInfo[7] = CAS_RENEWED_ERROR_CODE;
+		driverInfo[8] = 0; /* reserved */
 	}
 
 	/*
@@ -1137,6 +1138,16 @@ public class UConnection {
 			return true;
 		else
 			return false;
+	}
+
+	public boolean brokerInfoRenewedErrorCode() {
+	    if ((broker_info[BROKER_INFO_PROTO_VERSION] & CAS_PROTO_INDICATOR)
+		    != CAS_PROTO_INDICATOR) {
+		return false;
+	    }
+
+	    return (broker_info[BROKER_INFO_FUNCTION_FLAG] & CAS_RENEWED_ERROR_CODE)
+	    	== CAS_RENEWED_ERROR_CODE;
 	}
 
 	synchronized public void xa_endTransaction(Xid xid, boolean type) {

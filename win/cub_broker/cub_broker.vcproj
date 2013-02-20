@@ -370,6 +370,10 @@
 					RelativePath="..\..\src\broker\broker_wsa_init.c"
 					>
 				</File>
+				<File
+					RelativePath="..\..\src\broker\cas_meta.c"
+					>
+				</File>
 			</Filter>
 			<Filter
 				Name="base"

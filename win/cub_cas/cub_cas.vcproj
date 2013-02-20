@@ -410,6 +410,10 @@
 					RelativePath="..\..\src\broker\broker_acl.c"
 					>
 				</File>
+				<File
+					RelativePath="..\..\src\broker\cas_meta.c"
+					>
+				</File>
 			</Filter>
 		</Filter>
 		<Filter

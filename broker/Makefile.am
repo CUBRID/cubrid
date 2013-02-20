@@ -121,7 +121,8 @@ cub_cas_SOURCES = \
 	$(BROKER_DIR)/broker_filename.c \
 	$(BROKER_DIR)/broker_error.c \
 	$(BROKER_DIR)/cas_error.c \
-	$(BROKER_DIR)/broker_acl.c
+	$(BROKER_DIR)/broker_acl.c \
+	$(BROKER_DIR)/cas_meta.c
 cub_cas_CPPFLAGS = $(AM_CPPFLAGS) -DCAS_CUBRID
 cub_cas_LDADD = $(BROKER_CAS_LIBS) -lrt
 

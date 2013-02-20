@@ -47,6 +47,7 @@
 #include <sys/time.h>
 #endif
 
+#include "cas_error.h"
 #include "cas_common.h"
 #include "broker_error.h"
 #include "broker_env_def.h"
@@ -58,7 +59,6 @@
 #include "broker_filename.h"
 #include "broker_er_html.h"
 
-#include "cas_intf.h"
 #include "broker_send_fd.h"
 
 #if defined(WINDOWS)
@@ -180,6 +180,12 @@
 	  }						\
 	} while (0)
 
+#define CAS_SEND_ERROR_CODE(FD, VAL)	\
+	do {				\
+	  int   write_val;		\
+	  write_val = htonl(VAL);	\
+	  write_to_client(FD, (char*) &write_val, 4);	\
+	} while (0)
 
 #define JOB_COUNT_MAX		1000000
 
@@ -772,6 +778,27 @@ cleanup (int signo)
   exit (0);
 }
 
+static void
+send_error_to_driver (int sock, int error, char *driver_info)
+{
+  int write_val;
+  int driver_version;
+
+  driver_version = CAS_MAKE_PROTO_VER (driver_info);
+
+  if (driver_version == CAS_PROTO_MAKE_VER (PROTOCOL_V2)
+      || cas_di_understand_renewed_error_code (driver_info))
+    {
+      write_val = htonl (error);
+    }
+  else
+    {
+      write_val = htonl (CAS_CONV_ERROR_TO_OLD (error));
+    }
+
+  write_to_client (sock, (char *) &write_val, sizeof (int));
+}
+
 static const char *cas_client_type_str[] = {
   "UNKNOWN",			/* CAS_CLIENT_NONE */
   "CCI",			/* CAS_CLIENT_CCI */
@@ -939,7 +966,8 @@ receiver_thr_f (void *arg)
 	  || cas_client_type < CAS_CLIENT_TYPE_MIN
 	  || cas_client_type > CAS_CLIENT_TYPE_MAX)
 	{
-	  CAS_SEND_ERROR_CODE (clt_sock_fd, CAS_ER_COMMUNICATION);
+	  send_error_to_driver (clt_sock_fd, CAS_ER_COMMUNICATION,
+				cas_req_header);
 	  CLOSE_SOCKET (clt_sock_fd);
 	  continue;
 	}
@@ -977,7 +1005,8 @@ receiver_thr_f (void *arg)
 
 	  if (uw_acl_check (ip_addr) < 0)
 	    {
-	      CAS_SEND_ERROR_CODE (clt_sock_fd, CAS_ER_NOT_AUTHORIZED_CLIENT);
+	      send_error_to_driver (clt_sock_fd, CAS_ER_NOT_AUTHORIZED_CLIENT,
+				    cas_req_header);
 	      CLOSE_SOCKET (clt_sock_fd);
 	      continue;
 	    }
@@ -985,7 +1014,8 @@ receiver_thr_f (void *arg)
 
       if (job_queue[0].id == job_queue_size)
 	{
-	  CAS_SEND_ERROR_CODE (clt_sock_fd, CAS_ER_FREE_SERVER);
+	  send_error_to_driver (clt_sock_fd, CAS_ER_FREE_SERVER,
+				cas_req_header);
 	  CLOSE_SOCKET (clt_sock_fd);
 	  continue;
 	}
@@ -1006,6 +1036,7 @@ receiver_thr_f (void *arg)
       memcpy (new_job.ip_addr, &(clt_sock_addr.sin_addr), 4);
       strcpy (new_job.prg_name, cas_client_type_str[(int) cas_client_type]);
       new_job.clt_version = client_version;
+      memcpy (new_job.driver_info, cas_req_header, SRV_CON_CLIENT_INFO_SIZE);
 
       while (1)
 	{
@@ -1084,7 +1115,7 @@ dispatch_thr_f (void *arg)
 	  memcpy (&ip_addr, cur_job.ip_addr, 4);
 	  ret_val =
 	    send_fd (proxy_fd, cur_job.clt_sock_fd, ip_addr,
-		     cur_job.clt_version);
+		     cur_job.clt_version, cur_job.driver_info);
 	  if (ret_val > 0)
 	    {
 	      ret_val =
@@ -1096,9 +1127,9 @@ dispatch_thr_f (void *arg)
 		{
 		  broker_delete_proxy_conn_by_fd (proxy_fd);
 		  CLOSE_SOCKET (proxy_fd);
-
-		  CAS_SEND_ERROR_CODE (cur_job.clt_sock_fd,
-				       CAS_ER_FREE_SERVER);
+		  send_error_to_driver (cur_job.clt_sock_fd,
+					CAS_ER_FREE_SERVER,
+					cur_job.driver_info);
 		}
 	    }
 	  else
@@ -1106,12 +1137,14 @@ dispatch_thr_f (void *arg)
 	      broker_delete_proxy_conn_by_fd (proxy_fd);
 	      CLOSE_SOCKET (proxy_fd);
 
-	      CAS_SEND_ERROR_CODE (cur_job.clt_sock_fd, CAS_ER_FREE_SERVER);
+	      send_error_to_driver (cur_job.clt_sock_fd, CAS_ER_FREE_SERVER,
+				    cur_job.driver_info);
 	    }
 	}
       else
 	{
-	  CAS_SEND_ERROR_CODE (cur_job.clt_sock_fd, CAS_ER_FREE_SERVER);
+	  send_error_to_driver (cur_job.clt_sock_fd, CAS_ER_FREE_SERVER,
+				cur_job.driver_info);
 	}
 
       CLOSE_SOCKET (cur_job.clt_sock_fd);
@@ -1186,6 +1219,8 @@ dispatch_thr_f (void *arg)
       shm_appl->as_info[as_index].num_connect_requests++;
 #if !defined(WIN_FW)
       shm_appl->as_info[as_index].clt_version = cur_job.clt_version;
+      memcpy (shm_appl->as_info[as_index].driver_info, cur_job.driver_info,
+	      SRV_CON_CLIENT_INFO_SIZE);
       shm_appl->as_info[as_index].cas_client_type = cur_job.cas_client_type;
       memcpy (shm_appl->as_info[as_index].cas_clt_ip, cur_job.ip_addr, 4);
       shm_appl->as_info[as_index].cas_clt_port = cur_job.port;
@@ -1233,7 +1268,7 @@ dispatch_thr_f (void *arg)
 	  memcpy (&ip_addr, cur_job.ip_addr, 4);
 	  ret_val =
 	    send_fd (srv_sock_fd, cur_job.clt_sock_fd, ip_addr,
-		     cur_job.clt_version);
+		     cur_job.clt_version, cur_job.driver_info);
 	  if (ret_val > 0)
 	    {
 	      ret_val =
@@ -1246,7 +1281,8 @@ dispatch_thr_f (void *arg)
 
 	  if (ret_val < 0)
 	    {
-	      CAS_SEND_ERROR_CODE (cur_job.clt_sock_fd, CAS_ER_FREE_SERVER);
+	      send_error_to_driver (cur_job.clt_sock_fd, CAS_ER_FREE_SERVER,
+				    cur_job.driver_info);
 	    }
 	  else
 	    {
@@ -1314,7 +1350,8 @@ service_thr_f (void *arg)
       srv_sock_fd = connect_srv (shm_br->br_info[br_index].name, self_index);
       if (IS_INVALID_SOCKET (srv_sock_fd))
 	{
-	  CAS_SEND_ERROR_CODE (clt_sock_fd, CAS_ER_FREE_SERVER);
+	  send_error_to_driver (clt_sock_fd, CAS_ER_FREE_SERVER,
+				cur_job.driver_info);
 	  shm_appl->as_info[self_index].uts_status = UTS_STATUS_IDLE;
 	  CLOSE_SOCKET (cur_job.clt_sock_fd);
 	  continue;

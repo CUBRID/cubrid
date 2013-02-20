@@ -219,6 +219,7 @@ struct t_appl_server_info
   char reset_flag;
   char uts_status;		/* flag whether the uts is busy or idle */
   T_BROKER_VERSION clt_version;
+  char driver_info[SRV_CON_CLIENT_INFO_SIZE];
   char cas_client_type;
   char service_ready_flag;
   char con_status;
@@ -293,6 +294,7 @@ struct t_client_info
   int client_ip;		/* client ip address */
   time_t connect_time;		/* first connect time */
   T_BROKER_VERSION client_version;	/* client protocol version */
+  char driver_info[SRV_CON_CLIENT_INFO_SIZE];
 
   int func_code;		/* current request function code */
 

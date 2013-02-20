@@ -31,11 +31,15 @@
 #include <stddef.h>
 #include <errno.h>
 #include <stdlib.h>
+#include <memory.h>
+#include <assert.h>
 
 #ifdef SOLARIS
 #include <sys/sockio.h>
 #endif
 
+#include "porting.h"
+#include "cas_protocol.h"
 #include "broker_send_fd.h"
 #include "broker_send_recv_msg.h"
 
@@ -46,7 +50,8 @@
 #define SYSV
 
 int
-send_fd (int server_fd, int client_fd, int rid, int client_version)
+send_fd (int server_fd, int client_fd, int rid, int client_version,
+	 char *driver_info)
 {
   struct iovec iov[1];
   struct msghdr msg;
@@ -56,9 +61,12 @@ send_fd (int server_fd, int client_fd, int rid, int client_version)
 #endif
   struct sendmsg_s send_msg;
 
+  assert (driver_info != NULL);
+
   /* set send message */
   send_msg.rid = rid;
   send_msg.client_version = client_version;
+  memcpy (send_msg.driver_info, driver_info, SRV_CON_CLIENT_INFO_SIZE);
 
   /* Pass the fd to the server */
   iov[0].iov_base = (char *) &send_msg;

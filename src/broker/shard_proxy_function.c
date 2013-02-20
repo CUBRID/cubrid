@@ -31,7 +31,7 @@
 #include <assert.h>
 #include <math.h>
 
-
+#include "porting.h"
 #include "shard_proxy.h"
 #include "shard_proxy_handler.h"
 #include "shard_proxy_function.h"

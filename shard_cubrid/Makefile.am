@@ -145,7 +145,8 @@ shard_cas_SOURCES = \
 	$(BROKER_DIR)/shard_metadata.c \
 	$(BROKER_DIR)/shard_admin_pub.c \
 	$(BROKER_DIR)/shard_shm.c \
-	$(BROKER_DIR)/broker_acl.c
+	$(BROKER_DIR)/broker_acl.c \
+	$(BROKER_DIR)/cas_meta.c
 shard_cas_CPPFLAGS = $(AM_CPPFLAGS) -DCAS_CUBRID
 shard_cas_LDADD = $(SHARD_BROKER_CAS_LIBS) -lrt
 
@@ -169,7 +170,8 @@ shard_proxy_SOURCES = \
 	$(BROKER_DIR)/shard_key_func.c \
 	$(BROKER_DIR)/shard_proxy_log.c \
 	$(BROKER_DIR)/cas_util.c \
-	$(BROKER_DIR)/broker_acl.c
+	$(BROKER_DIR)/broker_acl.c \
+	$(BROKER_DIR)/cas_meta.c
 shard_proxy_LDADD = $(SHARD_BROKER_CAS_LIBS)
 
 shard_broker_log_converter_SOURCES = \

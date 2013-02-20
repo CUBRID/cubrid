@@ -41,11 +41,11 @@ extern "C"
  * 8.4.0 patch 1 or earlier versions hold minor and patch version on them.
  */
 #define SRV_CON_MSG_IDX_PROTO_VERSION   6
-#define SRV_CON_MSG_IDX_RESERVED1       7
+#define SRV_CON_MSG_IDX_FUNCTION_FLAG   7
 #define SRV_CON_MSG_IDX_RESERVED2       8
 /* For backward compatibility */
 #define SRV_CON_MSG_IDX_MAJOR_VER	(SRV_CON_MSG_IDX_PROTO_VERSION)
-#define SRV_CON_MSG_IDX_MINOR_VER	(SRV_CON_MSG_IDX_RESERVED1)
+#define SRV_CON_MSG_IDX_MINOR_VER	(SRV_CON_MSG_IDX_FUNCTION_FLAG)
 #define SRV_CON_MSG_IDX_PATCH_VER	(SRV_CON_MSG_IDX_RESERVED2)
 
 #define SRV_CON_DBNAME_SIZE		32
@@ -102,17 +102,11 @@ extern "C"
 #define MSG_HEADER_SIZE             (MSG_HEADER_INFO_SIZE +  MSG_HEADER_MSG_SIZE)
 
 #define BROKER_INFO_SIZE			8
-#define BROKER_INFO_DBMS_TYPE                   0
-#define BROKER_INFO_KEEP_CONNECTION		1
-#define BROKER_INFO_STATEMENT_POOLING           2
-#define BROKER_INFO_CCI_PCONNECT                3
-#define BROKER_INFO_PROTO_VERSION               4
-#define BROKER_INFO_RESERVED1                   5
-#define BROKER_INFO_RESERVED2                   6
-#define BROKER_INFO_RESERVED3                   7
+#define BROKER_RENEWED_ERROR_CODE		0x80
+
 /* For backward compatibility */
 #define BROKER_INFO_MAJOR_VERSION               (BROKER_INFO_PROTO_VERSION)
-#define BROKER_INFO_MINOR_VERSION               (BROKER_INFO_RESERVED1)
+#define BROKER_INFO_MINOR_VERSION               (BROKER_INFO_FUNCTION_FLAG)
 #define BROKER_INFO_PATCH_VERSION               (BROKER_INFO_RESERVED2)
 #define BROKER_INFO_RESERVED                    (BROKER_INFO_RESERVED3)
 
@@ -207,11 +201,44 @@ extern "C"
     PROTOCOL_V2 = 2,		/* send columns meta-data with the result for executing */
     PROTOCOL_V3 = 3,		/* session information extend with server session key */
     PROTOCOL_V4 = 4,		/* send as_index to driver */
-    /* CURRENT_PROTOCOL should be greater than the LAST PROTOCOL of 8.4.4 */
-    CURRENT_PROTOCOL = PROTOCOL_V4 + 1,
+    CURRENT_PROTOCOL = PROTOCOL_V4,
   };
   typedef enum t_cas_protocol T_CAS_PROTOCOL;
 
+  enum t_broker_info_pos
+  {
+    BROKER_INFO_DBMS_TYPE = 0,
+    BROKER_INFO_KEEP_CONNECTION,
+    BROKER_INFO_STATEMENT_POOLING,
+    BROKER_INFO_CCI_PCONNECT,
+    BROKER_INFO_PROTO_VERSION,
+    BROKER_INFO_FUNCTION_FLAG,
+    BROKER_INFO_RESERVED2,
+    BROKER_INFO_RESERVED3
+  };
+  typedef enum t_broker_info_pos T_BROKER_INFO_POS;
+
+  enum t_driver_info_pos
+  {
+    DRIVER_INFO_MAGIC1 = 0,
+    DRIVER_INFO_MAGIC2,
+    DRIVER_INFO_MAGIC3,
+    DRIVER_INFO_MAGIC4,
+    DRIVER_INFO_MAGIC5,
+    DRIVER_INFO_CLIENT_TYPE,
+    DRIVER_INFO_PROTOCOL_VERSION,
+    DRIVER_INFO_FUNCTION_FLAG,
+    DRIVER_INFO_RESERVED,
+  };
+  typedef enum t_driver_info_pos T_DRIVER_INFO_POS;
+
+  enum t_dbms_type
+  {
+    CAS_DBMS_CUBRID = 1,
+    CAS_DBMS_MYSQL = 2,
+    CAS_DBMS_ORACLE = 3
+  };
+  typedef enum t_dbms_type T_DBMS_TYPE;
 #if defined(CUBRID_SHARD)
 #define IS_VALID_CAS_FC(fc) \
 	(fc >= CAS_FC_END_TRAN && fc < CAS_FC_MAX)
@@ -238,10 +265,38 @@ extern "C"
 #define CAS_PROTO_PACK_CURRENT_NET_VER      \
         CAS_PROTO_PACK_NET_VER(CURRENT_PROTOCOL)
 
+#define CAS_CONV_ERROR_TO_OLD(V) (V + 9000)
+#define CAS_CONV_ERROR_TO_NEW(V) (V - 9000)
+
 #define CAS_MAKE_VER(MAJOR, MINOR, PATCH)       \
 	((T_BROKER_VERSION) (((MAJOR) << 16) | ((MINOR) << 8) | (PATCH)))
+
+#define CAS_MAKE_PROTO_VER(DRIVER_INFO) \
+    (((DRIVER_INFO)[SRV_CON_MSG_IDX_PROTO_VERSION]) & CAS_PROTO_INDICATOR) ? \
+        CAS_PROTO_UNPACK_NET_VER ((DRIVER_INFO)[SRV_CON_MSG_IDX_PROTO_VERSION]) : \
+        CAS_MAKE_VER ((DRIVER_INFO)[SRV_CON_MSG_IDX_MAJOR_VER], \
+                      (DRIVER_INFO)[SRV_CON_MSG_IDX_MINOR_VER], \
+                      (DRIVER_INFO)[SRV_CON_MSG_IDX_PATCH_VER])
+
   typedef int T_BROKER_VERSION;
 
+  extern const char *cas_bi_get_broker_info (void);
+  extern char cas_bi_get_dbms_type (void);
+  extern void cas_bi_set_dbms_type (const char dbms_type);
+  extern void cas_bi_set_keep_connection (const char keep_connection);
+  extern char cas_bi_get_keep_connection (void);
+  extern void cas_bi_set_statement_pooling (const char statement_pooling);
+  extern char cas_bi_get_statement_pooling (void);
+  extern void cas_bi_set_cci_pconnect (const char cci_pconnect);
+  extern char cas_bi_get_cci_pconnect (void);
+  extern void cas_bi_set_protocol_version (const char protocol_version);
+  extern char cas_bi_get_protocol_version (void);
+  extern void cas_bi_set_renewed_error_code (const bool renewed_error_code);
+  extern bool cas_bi_get_renewed_error_code (void);
+  extern bool cas_di_understand_renewed_error_code (const char *driver_info);
+  extern void cas_bi_make_broker_info (char *broker_info,
+				       char statement_pooling,
+				       char cci_pconnect);
 #ifdef __cplusplus
 }
 #endif

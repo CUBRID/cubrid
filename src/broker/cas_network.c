@@ -730,8 +730,8 @@ unset_net_timeout_flag (void)
 }
 
 void
-net_write_error (int sock, int version, char *cas_info, int cas_info_size,
-		 int indicator, int code, char *msg)
+net_write_error (int sock, int version, char *driver_info, char *cas_info,
+		 int cas_info_size, int indicator, int code, char *msg)
 {
   size_t len = NET_SIZE_INT;
 
@@ -755,13 +755,16 @@ net_write_error (int sock, int version, char *cas_info, int cas_info_size,
       net_write_int (sock, indicator);
     }
 
-  if (indicator == CAS_ERROR_INDICATOR
-      && (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (version, PROTOCOL_V2)
-	  || DOES_CLIENT_MATCH_THE_PROTOCOL (version, PROTOCOL_V3)
-	  || DOES_CLIENT_MATCH_THE_PROTOCOL (version, PROTOCOL_V4)))
+  if (!DOES_CLIENT_MATCH_THE_PROTOCOL (version, PROTOCOL_V2)
+      && !cas_di_understand_renewed_error_code (driver_info))
     {
-      code += 9000;
+      if (indicator == CAS_ERROR_INDICATOR
+	  || code == CAS_ER_NOT_AUTHORIZED_CLIENT)
+	{
+	  code = CAS_CONV_ERROR_TO_OLD (code);
+	}
     }
+
   net_write_int (sock, code);
   if (msg != NULL)
     {

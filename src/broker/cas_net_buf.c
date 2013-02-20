@@ -58,7 +58,6 @@ net_buf_init (T_NET_BUF * net_buf)
   net_buf->post_file_size = 0;
   net_buf->post_send_file = NULL;
 #endif
-  net_buf->client_version = 0;
 }
 
 void
@@ -307,12 +306,15 @@ net_buf_error_msg_set (T_NET_BUF * net_buf, int err_indicator,
     {
       net_buf_cp_int (net_buf, err_indicator, NULL);
     }
-  if (err_indicator == CAS_ERROR_INDICATOR
-      && (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (ver, PROTOCOL_V2)
-	  || DOES_CLIENT_MATCH_THE_PROTOCOL (ver, PROTOCOL_V3)
-	  || DOES_CLIENT_MATCH_THE_PROTOCOL (ver, PROTOCOL_V4)))
+
+  if (!DOES_CLIENT_MATCH_THE_PROTOCOL (ver, PROTOCOL_V2)
+      && !cas_di_understand_renewed_error_code (as_info->driver_info))
     {
-      err_code += 9000;
+      if (err_indicator == CAS_ERROR_INDICATOR
+	  || err_code == CAS_ER_NOT_AUTHORIZED_CLIENT)
+	{
+	  err_code = CAS_CONV_ERROR_TO_OLD (err_code);
+	}
     }
 #else /* CAS_CUBRID || CAS_FOR_MYSQL || CAS_FOR_ORACLE */
   /* shard_proxy do not use net_buf_error_msg_set. it is dummy code. */

@@ -1007,6 +1007,20 @@ hm_get_broker_version (T_CON_HANDLE * con_handle)
   return version;
 }
 
+bool
+hm_broker_understand_renewed_error_code (T_CON_HANDLE * con_handle)
+{
+  char f = con_handle->broker_info[BROKER_INFO_FUNCTION_FLAG];
+  char p = con_handle->broker_info[BROKER_INFO_PROTO_VERSION];
+
+  if ((p & CAS_PROTO_INDICATOR) != CAS_PROTO_INDICATOR)
+    {
+      return false;
+    }
+
+  return (f & BROKER_RENEWED_ERROR_CODE) == BROKER_RENEWED_ERROR_CODE;
+}
+
 void
 hm_check_rc_time (T_CON_HANDLE * con_handle)
 {

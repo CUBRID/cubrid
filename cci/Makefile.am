@@ -32,7 +32,6 @@ noinst_HEADERS = \
 	$(BASE_DIR)/error_code.h \
 	$(BROKER_DIR)/cas_protocol.h \
 	$(CCI_DIR)/cas_cci.h \
-	$(CCI_DIR)/cas_intf.h \
 	$(CCI_DIR)/cci_common.h \
 	$(CCI_DIR)/cci_handle_mng.h \
 	$(CCI_DIR)/cci_log.h \

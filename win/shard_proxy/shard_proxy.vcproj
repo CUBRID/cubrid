@@ -418,6 +418,10 @@
 					RelativePath="..\..\src\broker\shard_statement.c"
 					>
 				</File>
+				<File
+					RelativePath="..\..\src\broker\cas_meta.c"
+					>
+				</File>
 			</Filter>
 			<Filter
 				Name="base"

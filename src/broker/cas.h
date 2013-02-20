@@ -71,6 +71,7 @@ typedef struct t_req_info T_REQ_INFO;
 struct t_req_info
 {
   T_BROKER_VERSION client_version;
+  char driver_info[SRV_CON_CLIENT_INFO_SIZE];
   enum tran_auto_commit need_auto_commit;
   char need_rollback;
 };

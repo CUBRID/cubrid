@@ -306,6 +306,9 @@ extern "C"
   extern int hm_put_con_to_pool (int con);
 
   extern T_BROKER_VERSION hm_get_broker_version (T_CON_HANDLE * con_handle);
+  extern bool hm_broker_understand_renewed_error_code (T_CON_HANDLE *
+						       con_handle);
+
 
   extern void hm_set_con_handle_holdable (T_CON_HANDLE * con_handle,
 					  int holdable);

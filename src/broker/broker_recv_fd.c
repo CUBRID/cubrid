@@ -34,6 +34,8 @@
 #include <errno.h>
 #include <stdlib.h>
 
+#include "porting.h"
+#include "cas_protocol.h"
 #include "broker_recv_fd.h"
 #include "broker_send_recv_msg.h"
 
@@ -54,7 +56,7 @@
    In CAS, client_version is set in shared memory.
  */
 int
-recv_fd (int fd, int *rid, int *client_version)
+recv_fd (int fd, int *rid, int *client_version, char *driver_info)
 {
   int new_fd = 0, rc;
   struct iovec iov[1];
@@ -93,6 +95,10 @@ recv_fd (int fd, int *rid, int *client_version)
 
   *rid = send_msg.rid;
   *client_version = send_msg.client_version;
+  if (driver_info)
+    {
+      memcpy (driver_info, send_msg.driver_info, SRV_CON_CLIENT_INFO_SIZE);
+    }
 
   pid = getpid ();
 #if defined(LINUX) || defined(ALPHA_LINUX) || defined(UNIXWARE7)

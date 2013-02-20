@@ -27,6 +27,7 @@
 
 #ident "$Id$"
 
-extern int send_fd (int server_fd, int client_fd, int rid, int clt_version);
+extern int send_fd (int server_fd, int client_fd, int rid, int clt_version,
+		    char *driver_info);
 
 #endif /* _BROKER_SEND_FD_H_ */

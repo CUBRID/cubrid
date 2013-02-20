@@ -27,6 +27,6 @@
 
 #ident "$Id$"
 
-extern int recv_fd (int fd, int *rid, int *client_version);
+extern int recv_fd (int fd, int *rid, int *client_version, char *driver_info);
 
 #endif /* _BROKER_RECV_FD_H_ */

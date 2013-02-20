@@ -29,6 +29,7 @@
 #include <errno.h>
 
 /* SHARD TODO : MV include .. */
+#include "porting.h"
 #include "shard_proxy.h"
 #include "shard_proxy_handler.h"
 #include "shard_key_func.h"

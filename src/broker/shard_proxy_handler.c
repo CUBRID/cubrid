@@ -812,8 +812,8 @@ proxy_handler_process_client_wakeup_by_shard (T_PROXY_EVENT * event_p)
   else if (shard_shm_set_as_client_info (proxy_info_p, event_p->shard_id,
 					 event_p->cas_id,
 					 client_info_p->client_ip,
-					 client_info_p->client_version) ==
-	   false)
+					 client_info_p->client_version,
+					 client_info_p->driver_info) == false)
     {
 
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
@@ -1951,7 +1951,8 @@ proxy_timer_process (void)
   static int old = 0;
   int now, diff_time;
 
-  num_called = ((++num_called) % PROXY_MAX_IGNORE_TIMER_CHECK);
+  num_called ++;
+  num_called = (num_called % PROXY_MAX_IGNORE_TIMER_CHECK);
   if (num_called != 0)
     {
       return;

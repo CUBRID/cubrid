@@ -430,6 +430,10 @@
 					RelativePath="..\..\src\broker\shard_shm.c"
 					>
 				</File>
+				<File
+					RelativePath="..\..\src\broker\cas_meta.c"
+					>
+				</File>
 			</Filter>
 		</Filter>
 		<Filter

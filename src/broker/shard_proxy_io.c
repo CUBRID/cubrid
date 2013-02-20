@@ -29,6 +29,7 @@
 #include <assert.h>
 #include <signal.h>
 
+#include "porting.h"
 #include "shard_proxy_io.h"
 #include "shard_proxy_handler.h"
 #include "cas_protocol.h"
@@ -116,7 +117,8 @@ static void proxy_socket_io_read_error (T_SOCKET_IO * sock_io_p);
 static int proxy_client_io_initialize (void);
 static void proxy_client_io_destroy (void);
 static T_CLIENT_IO *proxy_client_io_new (SOCKET fd,
-					 T_BROKER_VERSION client_version);
+					 T_BROKER_VERSION client_version,
+					 char *driver_info);
 
 static int proxy_cas_io_initialize (int shard_id, T_CAS_IO ** cas_io_pp,
 				    int size);
@@ -531,8 +533,8 @@ proxy_init_net_buf (T_NET_BUF * net_buf)
 /* error */
 int
 proxy_io_make_error_msg (T_BROKER_VERSION client_version, char **buffer,
-			 int error_ind, int error_code, char *error_msg,
-			 char is_in_tran)
+                         int error_ind, int error_code, char *error_msg,
+                         char is_in_tran)
 {
   int error;
   T_NET_BUF net_buf;
@@ -829,26 +831,8 @@ proxy_io_make_client_dbinfo_ok (T_BROKER_VERSION client_version,
 
   assert (buffer);
 
-  memset (broker_info, 0, BROKER_INFO_SIZE);
-  broker_info[BROKER_INFO_DBMS_TYPE] = CCI_DBMS_CUBRID;
-  broker_info[BROKER_INFO_MAJOR_VERSION] = MAJOR_VERSION;
-  broker_info[BROKER_INFO_MINOR_VERSION] = MINOR_VERSION;
-  broker_info[BROKER_INFO_PATCH_VERSION] = PATCH_VERSION;
-  if (shm_as_p->statement_pooling)
-    {
-      broker_info[BROKER_INFO_STATEMENT_POOLING] = CAS_STATEMENT_POOLING_ON;
-    }
-  else
-    {
-      broker_info[BROKER_INFO_STATEMENT_POOLING] = CAS_STATEMENT_POOLING_OFF;
-    }
-  broker_info[BROKER_INFO_CCI_PCONNECT] =
-    (shm_as_p->cci_pconnect ? CCI_PCONNECT_ON : CCI_PCONNECT_OFF);
-
-  broker_info[BROKER_INFO_PROTO_VERSION] = CAS_PROTO_PACK_CURRENT_NET_VER;
-  broker_info[BROKER_INFO_RESERVED1] = 0;
-  broker_info[BROKER_INFO_RESERVED2] = 0;
-  broker_info[BROKER_INFO_RESERVED3] = 0;
+  cas_bi_make_broker_info (broker_info, shm_as_p->statement_pooling,
+			   shm_as_p->cci_pconnect);
 
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V4))
     {
@@ -1253,6 +1237,7 @@ proxy_socket_io_new_client (SOCKET lsnr_fd)
   T_CLIENT_INFO *client_info_p;
   int proxy_status = 0;
   T_BROKER_VERSION client_version;
+  char driver_info[SRV_CON_CLIENT_INFO_SIZE];
 #if !defined (WINDOWS)
   T_PROXY_EVENT *event_p;
   int length;
@@ -1265,7 +1250,8 @@ proxy_socket_io_new_client (SOCKET lsnr_fd)
   client_version = CAS_MAKE_VER (9, 1, 0);
 
 #else /* WINDOWS */
-  client_fd = recv_fd (lsnr_fd, &client_ip, (int *) &client_version);
+  client_fd = recv_fd (lsnr_fd, &client_ip, (int *) &client_version,
+		       driver_info);
   if (client_fd < 0)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
@@ -1299,7 +1285,7 @@ proxy_socket_io_new_client (SOCKET lsnr_fd)
       return -1;
     }
 
-  cli_io_p = proxy_client_io_new (client_fd, client_version);
+  cli_io_p = proxy_client_io_new (client_fd, client_version, driver_info);
   if (cli_io_p == NULL)
     {
       proxy_socket_io_delete (client_fd);
@@ -1318,6 +1304,8 @@ proxy_socket_io_new_client (SOCKET lsnr_fd)
   client_info_p->client_ip = client_ip;
   client_info_p->connect_time = time (NULL);
   client_info_p->client_version = cli_io_p->client_version;
+  memcpy (client_info_p->driver_info, cli_io_p->driver_info,
+	  SRV_CON_CLIENT_INFO_SIZE);
 
 #if !defined(WINDOWS)
   /* send client_conn_ok to the client */
@@ -2693,7 +2681,8 @@ proxy_str_client_io (T_CLIENT_IO * cli_io_p)
 }
 
 static T_CLIENT_IO *
-proxy_client_io_new (SOCKET fd, T_BROKER_VERSION client_version)
+proxy_client_io_new (SOCKET fd, T_BROKER_VERSION client_version,
+		     char *driver_info)
 {
   T_PROXY_CONTEXT *ctx_p;
   T_CLIENT_IO *cli_io_p = NULL;
@@ -2727,6 +2716,7 @@ proxy_client_io_new (SOCKET fd, T_BROKER_VERSION client_version)
       cli_io_p->ctx_cid = ctx_p->cid;
       cli_io_p->ctx_uid = ctx_p->uid;
       cli_io_p->client_version = client_version;
+      memcpy (cli_io_p->driver_info, driver_info, SRV_CON_CLIENT_INFO_SIZE);
 
       ctx_p->client_id = cli_io_p->client_id;
 
@@ -2757,6 +2747,7 @@ proxy_client_io_free (T_CLIENT_IO * cli_io_p)
   cli_io_p->ctx_cid = PROXY_INVALID_CONTEXT;
   cli_io_p->ctx_uid = 0;
   cli_io_p->client_version = 0;
+  memset (cli_io_p, 0, SRV_CON_CLIENT_INFO_SIZE);
 
   proxy_Client_io.cur_client--;
   if (proxy_Client_io.cur_client < 0)
@@ -3185,8 +3176,8 @@ proxy_cas_io_free (int shard_id, int cas_id)
 
   if (cas_io_p->is_in_tran == true)
     {
-      if (shard_shm_set_as_client_info (proxy_info_p, shard_id, cas_id, 0, 0)
-	  == false)
+      if (shard_shm_set_as_client_info (proxy_info_p, shard_id, cas_id, 0, 0,
+					NULL) == false)
 	{
 	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
 		     "Unable to find CAS info in shared memory. "
@@ -3271,7 +3262,7 @@ proxy_cas_io_free_by_ctx (int shard_id, int cas_id, int ctx_cid,
     }
 
   if (shard_shm_set_as_client_info
-      (proxy_info_p, shard_id, cas_id, 0, 0) == false)
+      (proxy_info_p, shard_id, cas_id, 0, 0, NULL) == false)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
 		 "Unable to find CAS info in shared memory. "
@@ -3551,8 +3542,8 @@ proxy_cas_alloc_by_ctx (int shard_id, int cas_id, int ctx_cid,
   else if (shard_shm_set_as_client_info (proxy_info_p, cas_io_p->shard_id,
 					 cas_io_p->cas_id,
 					 client_info_p->client_ip,
-					 client_info_p->client_version) ==
-	   false)
+					 client_info_p->client_version,
+					 client_info_p->driver_info) == false)
     {
 
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
@@ -3642,7 +3633,7 @@ proxy_cas_release_by_ctx (int shard_id, int cas_id, int ctx_cid,
     }
 
   if (shard_shm_set_as_client_info
-      (proxy_info_p, shard_id, cas_id, 0, 0) == false)
+      (proxy_info_p, shard_id, cas_id, 0, 0, NULL) == false)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
 		 "Unable to find CAS info in shared memory. "

@@ -364,8 +364,7 @@ cas_set_session_id (T_CAS_PROTOCOL protocol, char *session)
 
 static void
 cas_send_connect_reply_to_driver (T_CAS_PROTOCOL protocol,
-				  SOCKET client_sock_fd, char *cas_info,
-				  char *broker_info)
+				  SOCKET client_sock_fd, char *cas_info)
 {
   char msgbuf[CAS_CONNECTION_REPLY_SIZE + 8];
   char *p = msgbuf;
@@ -400,7 +399,7 @@ cas_send_connect_reply_to_driver (T_CAS_PROTOCOL protocol,
   v = htonl (getpid ());
   memcpy (p, &v, CAS_PID_SIZE);
   p += CAS_PID_SIZE;
-  memcpy (p, broker_info, BROKER_INFO_SIZE);
+  memcpy (p, cas_bi_get_broker_info (), BROKER_INFO_SIZE);
   p += BROKER_INFO_SIZE;
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (protocol, PROTOCOL_V4))
     {
@@ -537,7 +536,6 @@ conn_retry:
 
   /* This is a only use in proxy-cas internal message */
   req_info.client_version = CAS_PROTO_CURRENT_VER;
-  net_buf.client_version = req_info.client_version;
 
   set_cas_info_size ();
 
@@ -794,7 +792,6 @@ main (int argc, char *argv[])
 #else
   int con_status;
 #endif /* WINDOWS */
-  char broker_info[BROKER_INFO_SIZE];
   int client_ip_addr;
   char cas_info[CAS_INFO_SIZE] = { CAS_INFO_STATUS_INACTIVE,
     CAS_INFO_RESERVED_DEFAULT,
@@ -804,6 +801,7 @@ main (int argc, char *argv[])
   FN_RETURN fn_ret = FN_KEEP_CONN;
   char client_ip_str[16];
   int do_not_use_client_version;
+  char do_not_use_driver_info[SRV_CON_CLIENT_INFO_SIZE];
 
   prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
 
@@ -834,19 +832,11 @@ main (int argc, char *argv[])
 
   memset (&req_info, 0, sizeof (req_info));
 
-  memset (broker_info, 0, sizeof (broker_info));
 #if defined(CAS_FOR_ORACLE)
-  broker_info[BROKER_INFO_DBMS_TYPE] = CCI_DBMS_ORACLE;
+  cas_bi_set_dbms_type (CAS_DBMS_ORACLE);
 #elif defined(CAS_FOR_MYSQL)
-  broker_info[BROKER_INFO_DBMS_TYPE] = CCI_DBMS_MYSQL;
-#else /* CAS_FOR_MYSQL */
-  broker_info[BROKER_INFO_DBMS_TYPE] = CCI_DBMS_CUBRID;
+  cas_bi_set_dbms_type (CAS_DBMS_MYSQL);
 #endif /* CAS_FOR_MYSQL */
-
-  broker_info[BROKER_INFO_PROTO_VERSION] = CAS_PROTO_PACK_CURRENT_NET_VER;
-  broker_info[BROKER_INFO_RESERVED1] = 0;
-  broker_info[BROKER_INFO_RESERVED2] = 0;
-  broker_info[BROKER_INFO_RESERVED3] = 0;
 
   set_cubrid_home ();
 
@@ -931,7 +921,8 @@ main (int argc, char *argv[])
 	  }
 
 	req_info.client_version = as_info->clt_version;
-	net_buf.client_version = as_info->clt_version;
+	memcpy (req_info.driver_info, as_info->driver_info,
+		SRV_CON_CLIENT_INFO_SIZE);
 
 	set_cas_info_size ();
 
@@ -970,7 +961,8 @@ main (int argc, char *argv[])
 	  }
 
 	client_sock_fd =
-	  recv_fd (br_sock_fd, &client_ip_addr, &do_not_use_client_version);
+	  recv_fd (br_sock_fd, &client_ip_addr, &do_not_use_client_version,
+		   do_not_use_driver_info);
 	if (client_sock_fd == -1)
 	  {
 	    cas_log_write_and_end (0, false, "HANDSHAKE ERROR recv_fd %d",
@@ -1026,6 +1018,8 @@ main (int argc, char *argv[])
 	  }
 #endif
 	req_info.client_version = as_info->clt_version;
+	memcpy (req_info.driver_info, as_info->driver_info,
+		SRV_CON_CLIENT_INFO_SIZE);
 	cas_client_type = as_info->cas_client_type;
 
 	if (req_info.client_version < CAS_MAKE_VER (8, 2, 0))
@@ -1044,6 +1038,7 @@ main (int argc, char *argv[])
 	if (net_read_stream (client_sock_fd, read_buf, db_info_size) < 0)
 	  {
 	    net_write_error (client_sock_fd, req_info.client_version,
+			     req_info.driver_info,
 			     cas_info, cas_info_size, CAS_ERROR_INDICATOR,
 			     CAS_ER_COMMUNICATION, NULL);
 	  }
@@ -1124,6 +1119,7 @@ main (int argc, char *argv[])
 			     "Authorization error.(Address is rejected)");
 
 		    net_write_error (client_sock_fd, req_info.client_version,
+				     req_info.driver_info,
 				     cas_info, cas_info_size,
 				     DBMS_ERROR_INDICATOR,
 				     CAS_ER_NOT_AUTHORIZED_CLIENT, err_msg);
@@ -1156,6 +1152,7 @@ main (int argc, char *argv[])
 		if (db_err_msg == NULL)
 		  {
 		    net_write_error (client_sock_fd, req_info.client_version,
+				     req_info.driver_info,
 				     cas_info, cas_info_size,
 				     err_info.err_indicator,
 				     err_info.err_number, NULL);
@@ -1163,6 +1160,7 @@ main (int argc, char *argv[])
 		else
 		  {
 		    net_write_error (client_sock_fd, req_info.client_version,
+				     req_info.driver_info,
 				     cas_info, cas_info_size,
 				     err_info.err_indicator,
 				     err_info.err_number, db_err_msg);
@@ -1196,26 +1194,19 @@ main (int argc, char *argv[])
 				   cas_default_lock_timeout);
 
 	    as_info->cur_keep_con = shm_appl->keep_connection;
-	    broker_info[BROKER_INFO_KEEP_CONNECTION] = CAS_KEEP_CONNECTION_ON;
-
+	    cas_bi_set_statement_pooling (shm_appl->statement_pooling);
 	    if (shm_appl->statement_pooling)
 	      {
-		broker_info[BROKER_INFO_STATEMENT_POOLING] =
-		  CAS_STATEMENT_POOLING_ON;
 		as_info->cur_statement_pooling = ON;
 	      }
 	    else
 	      {
-		broker_info[BROKER_INFO_STATEMENT_POOLING] =
-		  CAS_STATEMENT_POOLING_OFF;
 		as_info->cur_statement_pooling = OFF;
 	      }
-	    broker_info[BROKER_INFO_CCI_PCONNECT] =
-	      (shm_appl->cci_pconnect ? CCI_PCONNECT_ON : CCI_PCONNECT_OFF);
+	    cas_bi_set_cci_pconnect (shm_appl->cci_pconnect);
 
 	    cas_send_connect_reply_to_driver (req_info.client_version,
-					      client_sock_fd, cas_info,
-					      broker_info);
+					      client_sock_fd, cas_info);
 
 	    as_info->cci_default_autocommit =
 	      shm_appl->cci_default_autocommit;
@@ -1362,6 +1353,7 @@ libcas_main (SOCKET jsp_sock_fd)
   memset (&req_info, 0, sizeof (req_info));
 
   req_info.client_version = CAS_PROTO_CURRENT_VER;
+  req_info.driver_info[DRIVER_INFO_FUNCTION_FLAG] = BROKER_RENEWED_ERROR_CODE;
   client_sock_fd = jsp_sock_fd;
 
   net_buf_init (&net_buf);
@@ -1371,8 +1363,6 @@ libcas_main (SOCKET jsp_sock_fd)
       return 0;
     }
   net_buf.alloc_size = NET_BUF_ALLOC_SIZE;
-
-  net_buf.client_version = req_info.client_version;
 
   while (1)
     {
@@ -1572,6 +1562,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     {
       const char *cas_log_msg = NULL;
       net_write_error (sock_fd, req_info->client_version,
+		       req_info->driver_info,
 		       cas_msg_header.info_ptr, cas_info_size,
 		       CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);
       fn_ret = FN_CLOSE_CONN;
@@ -1621,6 +1612,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     {
       const char *cas_log_msg = NULL;
       net_write_error (sock_fd, req_info->client_version,
+		       req_info->driver_info,
 		       cas_msg_header.info_ptr, cas_info_size,
 		       CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);
       fn_ret = FN_CLOSE_CONN;
@@ -1673,6 +1665,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   if (read_msg == NULL)
     {
       net_write_error (sock_fd, req_info->client_version,
+		       req_info->driver_info,
 		       cas_msg_header.info_ptr, cas_info_size,
 		       CAS_ERROR_INDICATOR, CAS_ER_NO_MORE_MEMORY, NULL);
       return FN_CLOSE_CONN;
@@ -1682,6 +1675,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     {
       FREE_MEM (read_msg);
       net_write_error (sock_fd, req_info->client_version,
+		       req_info->driver_info,
 		       cas_msg_header.info_ptr, cas_info_size,
 		       CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);
       cas_log_write_and_end (0, true,
@@ -1695,6 +1689,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     {
       FREE_MEM (read_msg);
       net_write_error (sock_fd, req_info->client_version,
+		       req_info->driver_info,
 		       cas_msg_header.info_ptr, cas_info_size,
 		       CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);
       return FN_CLOSE_CONN;
@@ -1705,6 +1700,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       FREE_MEM (argv);
       FREE_MEM (read_msg);
       net_write_error (sock_fd, req_info->client_version,
+		       req_info->driver_info,
 		       cas_msg_header.info_ptr, cas_info_size,
 		       CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);
       return FN_CLOSE_CONN;
@@ -1895,6 +1891,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   if (net_buf->err_code)
     {
       net_write_error (sock_fd, req_info->client_version,
+		       req_info->driver_info,
 		       cas_msg_header.info_ptr, cas_info_size,
 		       CAS_ERROR_INDICATOR, net_buf->err_code, NULL);
       fn_ret = FN_CLOSE_CONN;
@@ -2137,6 +2134,8 @@ net_read_process (SOCKET proxy_sock_fd,
 
 	  /* This is a real client protocol version */
 	  req_info->client_version = as_info->clt_version;
+	  memcpy (req_info->driver_info, as_info->driver_info,
+		  SRV_CON_CLIENT_INFO_SIZE);
 	}
     }
 

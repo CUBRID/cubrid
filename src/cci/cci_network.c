@@ -161,7 +161,7 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id,
   strncpy (client_info, SRV_CON_CLIENT_MAGIC_STR, SRV_CON_CLIENT_MAGIC_LEN);
   client_info[SRV_CON_MSG_IDX_CLIENT_TYPE] = cci_client_type;
   client_info[SRV_CON_MSG_IDX_PROTO_VERSION] = CAS_PROTO_PACK_CURRENT_NET_VER;
-  client_info[SRV_CON_MSG_IDX_RESERVED1] = 0;
+  client_info[SRV_CON_MSG_IDX_FUNCTION_FLAG] = BROKER_RENEWED_ERROR_CODE;
   client_info[SRV_CON_MSG_IDX_RESERVED2] = 0;
 
   info = db_info;
@@ -576,16 +576,20 @@ net_send_msg (T_CON_HANDLE * con_handle, char *msg, int size)
 }
 
 static int
-convert_error_by_version (T_CON_HANDLE * con_handle, int error)
+convert_error_by_version (T_CON_HANDLE * con_handle, int indicator, int error)
 {
   T_BROKER_VERSION broker;
 
   broker = hm_get_broker_version (con_handle);
-  if (broker < CAS_PROTO_MAKE_VER (PROTOCOL_V2)
-      || broker == CAS_PROTO_MAKE_VER (PROTOCOL_V3)
-      || broker == CAS_PROTO_MAKE_VER (PROTOCOL_V4))
+
+  if (broker != CAS_PROTO_MAKE_VER (PROTOCOL_V2)
+      && !hm_broker_understand_renewed_error_code (con_handle))
     {
-      return error - 9000;
+      if (indicator == CAS_ERROR_INDICATOR
+	  || error == CAS_ER_NOT_AUTHORIZED_CLIENT)
+	{
+	  return CAS_CONV_ERROR_TO_NEW (error);
+	}
     }
 
   return error;
@@ -707,6 +711,8 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
 	  memcpy ((char *) &err_code, tmp_p + CAS_PROTOCOL_ERR_CODE_INDEX,
 		  CAS_PROTOCOL_ERR_CODE_SIZE);
 	  err_code = ntohl (err_code);
+	  err_code = convert_error_by_version (con_handle, result_code,
+					       err_code);
 	  if (result_code == DBMS_ERROR_INDICATOR)
 	    {
 	      if (err_buf)
@@ -719,10 +725,6 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
 		  err_buf->err_code = err_code;
 		}
 	      err_code = CCI_ER_DBMS;
-	    }
-	  else
-	    {
-	      err_code = convert_error_by_version (con_handle, err_code);
 	    }
 	  FREE_MEM (tmp_p);
 	  return err_code;
@@ -816,7 +818,7 @@ net_check_broker_alive (unsigned char *ip_addr, int port, int timeout_msec)
   strncpy (client_info, SRV_CON_CLIENT_MAGIC_STR, SRV_CON_CLIENT_MAGIC_LEN);
   client_info[SRV_CON_MSG_IDX_CLIENT_TYPE] = cci_client_type;
   client_info[SRV_CON_MSG_IDX_PROTO_VERSION] = CAS_PROTO_PACK_CURRENT_NET_VER;
-  client_info[SRV_CON_MSG_IDX_RESERVED1] = 0;
+  client_info[SRV_CON_MSG_IDX_FUNCTION_FLAG] = BROKER_RENEWED_ERROR_CODE;
   client_info[SRV_CON_MSG_IDX_RESERVED2] = 0;
 
   snprintf (db_name, SRV_CON_DBNAME_SIZE, HEALTH_CHECK_DUMMY_DB);

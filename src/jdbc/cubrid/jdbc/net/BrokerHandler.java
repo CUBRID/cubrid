@@ -43,8 +43,7 @@ public class BrokerHandler {
 	    out.flush();
 	    int code = in.readInt();
 	    if (code < 0) {
-		int error = in.readInt();
-		throw new UJciException(UErrorCode.ER_DBMS, code, error, null);
+		throw new UJciException(code);
 	    } else if (code == 0) {
 		return toBroker;
 	    }

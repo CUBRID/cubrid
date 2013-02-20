@@ -40,7 +40,8 @@ libcas_la_SOURCES = \
 	$(BROKER_DIR)/cas_sql_log2.c \
 	$(BROKER_DIR)/broker_filename.c \
 	$(BROKER_DIR)/broker_util.c \
-	$(BROKER_DIR)/cas_error.c 
+	$(BROKER_DIR)/cas_error.c \
+	$(BROKER_DIR)/cas_meta.c
 libcas_la_CFLAGS = $(AM_CFLAGS) -fPIC
 libcas_la_CPPFLAGS = $(AM_CPPFLAGS) -DLIBCAS_FOR_JSP
 libcas_la_LDFLAGS = -static

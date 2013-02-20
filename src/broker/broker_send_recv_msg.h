@@ -31,6 +31,7 @@ struct sendmsg_s
 {
   int rid;
   int client_version;
+  char driver_info[SRV_CON_CLIENT_INFO_SIZE];
 };
 
 #endif /* _BROKER_SEND_RECV_MSG_H_ */

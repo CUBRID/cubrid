@@ -46,6 +46,7 @@ struct t_max_heap_node
   char prg_name[PRE_SEND_PRG_NAME_SIZE];
   T_BROKER_VERSION clt_version;
   char cas_client_type;
+  char driver_info[SRV_CON_CLIENT_INFO_SIZE];
 };
 
 int max_heap_insert (T_MAX_HEAP_NODE * max_heap, int max_heap_size,
