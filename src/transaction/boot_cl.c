@@ -1514,6 +1514,10 @@ boot_client_initialize_css (DB_INFO * db, int client_type,
 	      error =
 		net_client_ping_server_with_handshake (client_type,
 						       check_capabilities);
+	      if (error != NO_ERROR)
+		{
+		  css_terminate (false);
+		}
 	    }
 
 	  /* connect error to the db at the host */
@@ -1536,7 +1540,6 @@ boot_client_initialize_css (DB_INFO * db, int client_type,
 	      /* try to connect to next host */
 	      er_log_debug (ARG_FILE_LINE,
 			    "error %d. try to connect to next host\n", error);
-	      css_terminate (false);
 	      break;
 	    default:
 	      /* ?? */

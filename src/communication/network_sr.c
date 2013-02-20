@@ -1339,24 +1339,28 @@ net_server_start (const char *server_name)
   if (msgcat_init () != NO_ERROR)
     {
       printf ("Failed to initialize message catalog\n");
-      return -1;
+      status = -1;
+      goto end;
     }
   sysprm_load_and_init (NULL, NULL);
   sysprm_set_er_log_file (server_name);
   if (thread_initialize_manager () != NO_ERROR)
     {
       printf ("Failed to initialize thread manager\n");
-      return -1;
+      status = -1;
+      goto end;
     }
   if (csect_initialize () != NO_ERROR)
     {
       printf ("Failed to intialize critical section\n");
-      return -1;
+      status = -1;
+      goto end;
     }
   if (er_init_internal (NULL, ER_NEVER_EXIT, true) != NO_ERROR)
     {
       printf ("Failed to initialize error manager\n");
-      return -1;
+      status = -1;
+      goto end;
     }
 
   net_server_init ();
@@ -1412,6 +1416,7 @@ net_server_start (const char *server_name)
   csect_finalize ();
   thread_final_manager ();
 
+end:
 #if defined(WINDOWS)
   css_windows_shutdown ();
 #endif /* WINDOWS */

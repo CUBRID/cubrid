@@ -60,6 +60,7 @@ static int css_Wsa_error = CSS_ER_WINSOCK_NOERROR;
 static FARPROC old_hook = NULL;
 static int max_socket_fds = _SYS_OPEN;
 
+static unsigned int wsa_Init_count = 0;
 static unsigned int css_fd_error (SOCKET fd);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -129,6 +130,8 @@ css_windows_startup (void)
     }
 #endif
 
+  wsa_Init_count++;
+
   return 1;
 }
 
@@ -147,7 +150,11 @@ css_windows_shutdown (void)
       (void) WSASetBlockingHook (old_hook);
     }
 #endif
-  err = WSACleanup ();
+  if (wsa_Init_count > 0)
+    {
+      err = WSACleanup ();
+      wsa_Init_count--;
+    }
 }
 
 /*
