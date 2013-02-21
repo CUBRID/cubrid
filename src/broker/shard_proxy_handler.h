@@ -32,8 +32,7 @@
 #include "porting.h"
 #include "shard_proxy_common.h"
 
-typedef int (*T_PROXY_EVENT_FUNC) (T_BROKER_VERSION client_version,
-				   char **buffer);
+typedef int (*T_PROXY_EVENT_FUNC) (char *driver_info, char **buffer);
 
 extern T_WAIT_CONTEXT *proxy_waiter_new (int ctx_cid, unsigned int ctx_uid,
 					 int timeout);
@@ -91,16 +90,16 @@ extern int proxy_wakeup_context_by_statement (T_WAIT_CONTEXT * waiter_p);
 extern T_PROXY_EVENT *proxy_event_new (unsigned int type, int from_cas);
 extern T_PROXY_EVENT *proxy_event_dup (T_PROXY_EVENT * event_p);
 extern
-  T_PROXY_EVENT *proxy_event_new_with_req (T_BROKER_VERSION version,
+  T_PROXY_EVENT *proxy_event_new_with_req (char *driver_info,
 					   unsigned int type, int from,
 					   T_PROXY_EVENT_FUNC req_func);
-extern T_PROXY_EVENT *proxy_event_new_with_rsp (T_BROKER_VERSION version,
+extern T_PROXY_EVENT *proxy_event_new_with_rsp (char *driver_info,
 						unsigned int type, int from,
 						T_PROXY_EVENT_FUNC resp_func);
-extern T_PROXY_EVENT *proxy_event_new_with_error (T_BROKER_VERSION version,
+extern T_PROXY_EVENT *proxy_event_new_with_error (char *driver_info,
 						  unsigned int type, int from,
 						  int (*err_func)
-						  (T_BROKER_VERSION version,
+						  (char *driver_info,
 						   char **buffer,
 						   int error_ind,
 						   int error_code,

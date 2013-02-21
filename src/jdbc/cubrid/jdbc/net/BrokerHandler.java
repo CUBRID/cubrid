@@ -1,5 +1,6 @@
 package cubrid.jdbc.net;
 
+import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -115,9 +116,8 @@ public class BrokerHandler {
 	}
     }
 
-    private static byte[] CANCEL_INFO = { 'C', 'A', 'N', 'C', 'E', 'L' };
-    public static void cancelBroker(String ip, int port, int process, int timeout)
-	    throws IOException, UJciException {
+    private static void cancelRequest(String ip, int port, byte[] data, int timeout)
+    	    throws IOException, UJciException {
 	Socket toBroker = null;
 	DataInputStream in = null;
 	DataOutputStream out = null;
@@ -140,8 +140,7 @@ public class BrokerHandler {
 	    in = new DataInputStream(toBroker.getInputStream());
 	    out = new DataOutputStream(toBroker.getOutputStream());
 
-	    out.write(CANCEL_INFO);
-	    out.writeInt(process);
+	    out.write(data);
 	    out.flush();
 
 	    int error = in.readInt();
@@ -157,4 +156,29 @@ public class BrokerHandler {
 	}
     }
 
+    private static byte[] CANCEL_INFO = { 'C', 'A', 'N', 'C', 'E', 'L' };
+    public static void cancelBroker(String ip, int port, int process, int timeout)
+	    throws IOException, UJciException {
+	ByteArrayOutputStream bao = new ByteArrayOutputStream(10);
+	DataOutputStream dao = new DataOutputStream(bao);
+	dao.write(CANCEL_INFO);
+	dao.writeInt(process);
+
+	cancelRequest(ip, port, bao.toByteArray(), timeout);
+    }
+
+    public static void cancelBrokerEx(String ip, int port, int process, int timeout)
+    	    throws IOException, UJciException {
+	ByteArrayOutputStream bao = new ByteArrayOutputStream(10);
+	DataOutputStream dao = new DataOutputStream(bao);
+	dao.write('X');
+	dao.write('1');
+	dao.write(UConnection.driverInfo[6]);
+	dao.write(UConnection.driverInfo[7]);
+	dao.write(UConnection.driverInfo[8]);
+	dao.write(UConnection.driverInfo[9]);
+	dao.writeInt(process);
+
+	cancelRequest(ip, port, bao.toByteArray(), timeout);
+    }
 }

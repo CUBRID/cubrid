@@ -180,11 +180,11 @@ proxy_send_request_to_cas_with_new_event (T_PROXY_CONTEXT * ctx_p,
 {
   int error = 0;
   T_PROXY_EVENT *event_p = NULL;
-  T_BROKER_VERSION client_version;
+  char *driver_info;
 
-  client_version = proxy_client_io_version_find_by_ctx (ctx_p);
+  driver_info = proxy_get_driver_info_by_ctx (ctx_p);
 
-  event_p = proxy_event_new_with_req (client_version, type, from, req_func);
+  event_p = proxy_event_new_with_req (driver_info, type, from, req_func);
   if (event_p == NULL)
     {
       error = -1;
@@ -351,12 +351,12 @@ proxy_send_response_to_client_with_new_event (T_PROXY_CONTEXT * ctx_p,
 					      T_PROXY_EVENT_FUNC resp_func)
 {
   int error = 0;
-  T_BROKER_VERSION client_version;
+  char *driver_info;
   T_PROXY_EVENT *event_p = NULL;
 
-  client_version = proxy_client_io_version_find_by_ctx (ctx_p);
+  driver_info = proxy_get_driver_info_by_ctx (ctx_p);
 
-  event_p = proxy_event_new_with_rsp (client_version, type, from, resp_func);
+  event_p = proxy_event_new_with_rsp (driver_info, type, from, resp_func);
   if (event_p == NULL)
     {
       error = -1;
@@ -922,6 +922,7 @@ fn_proxy_client_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
   int shard_id;
   T_SHARD_KEY_RANGE *dummy_range_p = NULL;
 
+  char *driver_info;
   T_BROKER_VERSION client_version;
 
   char *request_p;
@@ -1028,8 +1029,8 @@ fn_proxy_client_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 		   shard_str_sqls (organized_sql_stmt),
 		   proxy_str_context (ctx_p));
 
-  client_version = proxy_client_io_version_find_by_ctx (ctx_p);
-
+  driver_info = proxy_get_driver_info_by_ctx (ctx_p);
+  client_version = CAS_MAKE_PROTO_VER (driver_info);
   stmt_p = shard_stmt_find_by_sql (organized_sql_stmt, client_version);
   if (stmt_p)
     {
@@ -1108,9 +1109,8 @@ fn_proxy_client_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
       goto free_context;
     }
 
-  stmt_p =
-    shard_stmt_new (organized_sql_stmt, ctx_p->cid, ctx_p->uid,
-		    client_version);
+  stmt_p = shard_stmt_new (organized_sql_stmt, ctx_p->cid, ctx_p->uid,
+			   client_version);
   if (stmt_p == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
@@ -1328,10 +1328,12 @@ fn_proxy_client_execute (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
   int query_timeout;
   int bind_value_index = 9;
   T_BROKER_VERSION client_version;
+  char *driver_info;
 
   char func_code = CAS_FC_EXECUTE;
 
-  client_version = proxy_client_io_version_find_by_ctx (ctx_p);
+  driver_info = proxy_get_driver_info_by_ctx (ctx_p);
+  client_version = CAS_MAKE_PROTO_VER (driver_info);
   if (client_version >= CAS_PROTO_MAKE_VER (PROTOCOL_V1))
     {
       bind_value_index++;
@@ -1991,14 +1993,14 @@ fn_proxy_client_check_cas (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 {
   int error = 0;
   char *response_p;
-  T_BROKER_VERSION client_version;
+  char *driver_info;
   T_PROXY_EVENT *new_event_p = NULL;
 
   ENTER_FUNC ();
 
-  client_version = proxy_client_io_version_find_by_ctx (ctx_p);
+  driver_info = proxy_get_driver_info_by_ctx (ctx_p);
   new_event_p =
-    proxy_event_new_with_rsp (client_version, PROXY_EVENT_IO_WRITE,
+    proxy_event_new_with_rsp (driver_info, PROXY_EVENT_IO_WRITE,
 			      PROXY_EVENT_FROM_CLIENT,
 			      proxy_io_make_check_cas_ok);
   if (new_event_p == NULL)
@@ -2210,10 +2212,12 @@ fn_proxy_client_execute_array (T_PROXY_CONTEXT * ctx_p,
   int query_timeout;
   int bind_value_index = 2;
   T_BROKER_VERSION client_version;
+  char *driver_info;
 
   char func_code = CAS_FC_EXECUTE_ARRAY;
 
-  client_version = proxy_client_io_version_find_by_ctx (ctx_p);
+  driver_info = proxy_get_driver_info_by_ctx (ctx_p);
+  client_version = CAS_MAKE_PROTO_VER (driver_info);
   if (client_version >= CAS_PROTO_MAKE_VER (PROTOCOL_V4))
     {
       bind_value_index++;
@@ -2349,6 +2353,7 @@ fn_proxy_cas_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
   char *response_p;
 
   T_BROKER_VERSION client_version;
+  char *driver_info;
 
   ENTER_FUNC ();
 
@@ -2369,7 +2374,8 @@ fn_proxy_cas_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
   error_ind = proxy_check_cas_error (response_p);
   if (error_ind < 0)
     {
-      client_version = proxy_client_io_version_find_by_ctx (ctx_p);
+      driver_info = proxy_get_driver_info_by_ctx (ctx_p);
+      client_version = CAS_MAKE_PROTO_VER (driver_info);
       error_code = proxy_get_cas_error_code (response_p, client_version);
 
       PROXY_LOG (PROXY_LOG_MODE_NOTICE, "CAS response error. "

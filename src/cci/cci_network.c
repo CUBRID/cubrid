@@ -458,6 +458,23 @@ net_cancel_request_wo_local_port (unsigned char *ip_addr, int port, int pid)
   return net_cancel_request_internal (ip_addr, port, msg, sizeof (msg));
 }
 
+static int
+net_cancel_request_ex (unsigned char *ip_addr, int port, int pid)
+{
+  char msg[10];
+
+  msg[0] = 'X';
+  msg[1] = '1';
+  msg[2] = CAS_CLIENT_CCI;
+  msg[3] = BROKER_RENEWED_ERROR_CODE;
+  msg[4] = 0;
+  msg[5] = 0;
+  pid = htonl (pid);
+  memcpy (msg + 6, (char *) &pid, 4);
+
+  return net_cancel_request_internal (ip_addr, port, msg, sizeof (msg));
+}
+
 int
 net_cancel_request (T_CON_HANDLE * con_handle)
 {
@@ -476,7 +493,13 @@ net_cancel_request (T_CON_HANDLE * con_handle)
       broker_port = con_handle->alter_hosts[con_handle->alter_host_id].port;
     }
 
-  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (1))
+  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V4))
+    {
+      return net_cancel_request_ex (con_handle->ip_addr, broker_port,
+				    con_handle->cas_pid);
+    }
+  else if (hm_get_broker_version (con_handle) >=
+	   CAS_PROTO_MAKE_VER (PROTOCOL_V1))
     {
       local_sockaddr_len = sizeof (local_sockaddr);
       error = getsockname (con_handle->sock_fd,

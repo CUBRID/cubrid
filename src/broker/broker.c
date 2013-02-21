@@ -905,7 +905,8 @@ receiver_thr_f (void *arg)
        *   CLIENT_PORT can be 0 if the client failed to get its local port.
        */
       if (strncmp (cas_req_header, "QC", 2) == 0
-	  || strncmp (cas_req_header, "CANCEL", 6) == 0)
+	  || strncmp (cas_req_header, "CANCEL", 6) == 0
+	  || strncmp (cas_req_header, "X1", 2) == 0)
 	{
 	  int ret_code = 0;
 #if !defined(WINDOWS)
@@ -955,7 +956,19 @@ receiver_thr_f (void *arg)
 
 #endif /* CUBRID_SHARD */
 #endif
-	  CAS_SEND_ERROR_CODE (clt_sock_fd, ret_code);
+	  if (cas_req_header[0] == 'X')
+	    {
+	      char driver_info[SRV_CON_CLIENT_INFO_SIZE];
+
+	      driver_info[SRV_CON_MSG_IDX_PROTO_VERSION] = cas_req_header[2];
+	      driver_info[SRV_CON_MSG_IDX_FUNCTION_FLAG] = cas_req_header[3];
+	      send_error_to_driver (clt_sock_fd, ret_code, driver_info);
+	    }
+	  else
+	    {
+	      ret_code = CAS_CONV_ERROR_TO_OLD (ret_code);
+	      CAS_SEND_ERROR_CODE (clt_sock_fd, ret_code);
+	    }
 	  CLOSE_SOCKET (clt_sock_fd);
 	  continue;
 	}
@@ -1113,9 +1126,8 @@ dispatch_thr_f (void *arg)
       if (proxy_fd != INVALID_SOCKET)
 	{
 	  memcpy (&ip_addr, cur_job.ip_addr, 4);
-	  ret_val =
-	    send_fd (proxy_fd, cur_job.clt_sock_fd, ip_addr,
-		     cur_job.clt_version, cur_job.driver_info);
+	  ret_val = send_fd (proxy_fd, cur_job.clt_sock_fd, ip_addr,
+			     cur_job.driver_info);
 	  if (ret_val > 0)
 	    {
 	      ret_val =
@@ -1266,9 +1278,8 @@ dispatch_thr_f (void *arg)
 	    }
 
 	  memcpy (&ip_addr, cur_job.ip_addr, 4);
-	  ret_val =
-	    send_fd (srv_sock_fd, cur_job.clt_sock_fd, ip_addr,
-		     cur_job.clt_version, cur_job.driver_info);
+	  ret_val = send_fd (srv_sock_fd, cur_job.clt_sock_fd, ip_addr,
+			     cur_job.driver_info);
 	  if (ret_val > 0)
 	    {
 	      ret_val =

@@ -56,7 +56,7 @@
    In CAS, client_version is set in shared memory.
  */
 int
-recv_fd (int fd, int *rid, int *client_version, char *driver_info)
+recv_fd (int fd, int *rid, char *driver_info)
 {
   int new_fd = 0, rc;
   struct iovec iov[1];
@@ -94,7 +94,6 @@ recv_fd (int fd, int *rid, int *client_version, char *driver_info)
     }
 
   *rid = send_msg.rid;
-  *client_version = send_msg.client_version;
   if (driver_info)
     {
       memcpy (driver_info, send_msg.driver_info, SRV_CON_CLIENT_INFO_SIZE);

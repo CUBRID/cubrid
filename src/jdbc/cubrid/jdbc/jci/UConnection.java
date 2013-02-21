@@ -197,7 +197,8 @@ public class UConnection {
 		driverInfo[5] = CAS_CLIENT_JDBC;
 		driverInfo[6] = CAS_PROTO_INDICATOR | CAS_PROTOCOL_VERSION;
 		driverInfo[7] = CAS_RENEWED_ERROR_CODE;
-		driverInfo[8] = 0; /* reserved */
+		driverInfo[8] = 0; // reserved
+		driverInfo[9] = 0; // reserved
 	}
 
 	/*
@@ -1540,7 +1541,11 @@ public class UConnection {
 	}
 
 	void cancel() throws UJciException, IOException {
+	    if (protoVersionIsAbove(PROTOCOL_V4)) {
+		BrokerHandler.cancelBrokerEx(CASIp, CASPort, processId, 0);
+	    } else {
 	    	BrokerHandler.cancelBroker(CASIp, CASPort, processId, 0);
+	    }
 	}
 
 	UUrlCache getUrlCache() {

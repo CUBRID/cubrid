@@ -158,7 +158,6 @@ struct t_client_io
   int ctx_cid;
   unsigned int ctx_uid;
 
-  T_BROKER_VERSION client_version;
   char driver_info[SRV_CON_CLIENT_INFO_SIZE];
 
   /* send queue ? */

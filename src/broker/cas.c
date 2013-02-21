@@ -800,7 +800,6 @@ main (int argc, char *argv[])
   };
   FN_RETURN fn_ret = FN_KEEP_CONN;
   char client_ip_str[16];
-  int do_not_use_client_version;
   char do_not_use_driver_info[SRV_CON_CLIENT_INFO_SIZE];
 
   prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
@@ -961,8 +960,7 @@ main (int argc, char *argv[])
 	  }
 
 	client_sock_fd =
-	  recv_fd (br_sock_fd, &client_ip_addr, &do_not_use_client_version,
-		   do_not_use_driver_info);
+	  recv_fd (br_sock_fd, &client_ip_addr, do_not_use_driver_info);
 	if (client_sock_fd == -1)
 	  {
 	    cas_log_write_and_end (0, false, "HANDSHAKE ERROR recv_fd %d",

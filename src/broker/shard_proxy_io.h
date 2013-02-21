@@ -96,45 +96,35 @@ extern void proxy_set_force_out_tran (char *msg);
 extern void proxy_unset_force_out_tran (char *msg);
 extern int proxy_make_net_buf (T_NET_BUF * net_buf, int size);
 
-extern int proxy_io_make_error_msg (T_BROKER_VERSION client_version,
+extern int proxy_io_make_error_msg (char *driver_info,
 				    char **buffer, int error_ind,
 				    int error_code, char *error_msg,
 				    char is_in_tran);
-extern int proxy_io_make_no_error (T_BROKER_VERSION client_version,
-				   char **buffer);
-extern int proxy_io_make_con_close_ok (T_BROKER_VERSION client_version,
-				       char **buffer);
-extern int proxy_io_make_end_tran_ok (T_BROKER_VERSION client_version,
-				      char **buffer);
-extern int proxy_io_make_check_cas_ok (T_BROKER_VERSION client_version,
-				       char **buffer);
+extern int proxy_io_make_no_error (char *driver_info, char **buffer);
+extern int proxy_io_make_con_close_ok (char *driver_info, char **buffer);
+extern int proxy_io_make_end_tran_ok (char *driver_info, char **buffer);
+extern int proxy_io_make_check_cas_ok (char *driver_info, char **buffer);
 
-extern int proxy_io_make_end_tran_request (T_BROKER_VERSION client_version,
+extern int proxy_io_make_end_tran_request (char *driver_info,
 					   char **buffer, bool commit);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int proxy_io_make_end_tran_commit (char **buffer);
 #endif /* ENABLE_UNUSED_FUNCTION */
-extern int proxy_io_make_end_tran_abort (T_BROKER_VERSION client_version,
-					 char **buffer);
-extern int proxy_io_make_close_req_handle_ok (T_BROKER_VERSION client_version,
+extern int proxy_io_make_end_tran_abort (char *driver_info, char **buffer);
+extern int proxy_io_make_close_req_handle_ok (char *driver_info,
 					      char **buffer, bool is_in_tran);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int proxy_io_make_close_req_handle_in_tran_ok (char **buffer);
 #endif /* ENABLE_UNUSED_FUNCTION */
-extern int proxy_io_make_close_req_handle_out_tran_ok (T_BROKER_VERSION
-						       client_version,
+extern int proxy_io_make_close_req_handle_out_tran_ok (char *driver_info,
 						       char **buffer);
 
-extern int proxy_io_make_get_db_version (T_BROKER_VERSION client_version,
-					 char **buffer);
-extern int proxy_io_make_client_conn_ok (T_BROKER_VERSION client_version,
-					 char **buffer);
-extern int proxy_io_make_client_proxy_alive (T_BROKER_VERSION client_version,
+extern int proxy_io_make_get_db_version (char *driver_info, char **buffer);
+extern int proxy_io_make_client_conn_ok (char *driver_info, char **buffer);
+extern int proxy_io_make_client_proxy_alive (char *driver_info,
 					     char **buffer);
-extern int proxy_io_make_client_dbinfo_ok (T_BROKER_VERSION client_version,
-					   char **buffer);
-extern int proxy_io_make_client_acl_fail (T_BROKER_VERSION client_version,
-					  char **buffer);
+extern int proxy_io_make_client_dbinfo_ok (char *driver_info, char **buffer);
+extern int proxy_io_make_client_acl_fail (char *driver_info, char **buffer);
 
 
 extern int proxy_socket_set_write_event (T_SOCKET_IO * sock_io_p,
@@ -177,9 +167,8 @@ extern void proxy_io_destroy (void);
 
 extern int proxy_socket_io_delete (SOCKET fd);
 
-extern T_BROKER_VERSION proxy_client_io_version_find_by_ctx (T_PROXY_CONTEXT *
-							     ctx_p);
-extern T_BROKER_VERSION proxy_client_io_version_find_by_fd (T_SOCKET_IO *
-							    sock_io_p);
+extern char *proxy_get_driver_info_by_ctx (T_PROXY_CONTEXT * ctx_p);
+extern char *proxy_get_driver_info_by_fd (T_SOCKET_IO * sock_io_p);
+
 extern void proxy_available_cas_wait_timer (void);
 #endif /* _SHARD_PROXY_IO_H_ */

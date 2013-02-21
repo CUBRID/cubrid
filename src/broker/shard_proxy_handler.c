@@ -307,17 +307,17 @@ proxy_context_send_error (T_PROXY_CONTEXT * ctx_p)
   int error;
   char *error_msg = NULL;
   T_PROXY_EVENT *event_p;
-  T_BROKER_VERSION client_version;
+  char *driver_info;
 
   ENTER_FUNC ();
 
   assert (ctx_p->error_ind != CAS_NO_ERROR);
   assert (ctx_p->error_code != CAS_NO_ERROR);
 
-  client_version = proxy_client_io_version_find_by_ctx (ctx_p);
+  driver_info = proxy_get_driver_info_by_ctx (ctx_p);
 
   event_p =
-    proxy_event_new_with_error (client_version, PROXY_EVENT_IO_WRITE,
+    proxy_event_new_with_error (driver_info, PROXY_EVENT_IO_WRITE,
 				PROXY_EVENT_FROM_CLIENT,
 				proxy_io_make_error_msg,
 				ctx_p->error_ind, ctx_p->error_code,
@@ -812,7 +812,6 @@ proxy_handler_process_client_wakeup_by_shard (T_PROXY_EVENT * event_p)
   else if (shard_shm_set_as_client_info (proxy_info_p, event_p->shard_id,
 					 event_p->cas_id,
 					 client_info_p->client_ip,
-					 client_info_p->client_version,
 					 client_info_p->driver_info) == false)
     {
 
@@ -1744,7 +1743,7 @@ proxy_event_dup (T_PROXY_EVENT * event_p)
 }
 
 T_PROXY_EVENT *
-proxy_event_new_with_req (T_BROKER_VERSION client_version,
+proxy_event_new_with_req (char *driver_info,
 			  unsigned int type, int from,
 			  T_PROXY_EVENT_FUNC req_func)
 {
@@ -1758,7 +1757,7 @@ proxy_event_new_with_req (T_BROKER_VERSION client_version,
       return NULL;
     }
 
-  length = req_func (client_version, &msg);
+  length = req_func (driver_info, &msg);
   if (length <= 0)
     {
       proxy_event_free (event_p);
@@ -1771,17 +1770,17 @@ proxy_event_new_with_req (T_BROKER_VERSION client_version,
 }
 
 T_PROXY_EVENT *
-proxy_event_new_with_rsp (T_BROKER_VERSION client_version,
+proxy_event_new_with_rsp (char *driver_info,
 			  unsigned int type, int from,
 			  T_PROXY_EVENT_FUNC resp_func)
 {
-  return proxy_event_new_with_req (client_version, type, from, resp_func);
+  return proxy_event_new_with_req (driver_info, type, from, resp_func);
 }
 
 T_PROXY_EVENT *
-proxy_event_new_with_error (T_BROKER_VERSION client_version,
+proxy_event_new_with_error (char *driver_info,
 			    unsigned int type, int from,
-			    int (*err_func) (T_BROKER_VERSION client_version,
+			    int (*err_func) (char *driver_info,
 					     char **buffer, int error_ind,
 					     int error_code, char *error_msg,
 					     char is_in_tran), int error_ind,
@@ -1797,9 +1796,8 @@ proxy_event_new_with_error (T_BROKER_VERSION client_version,
       return NULL;
     }
 
-  length =
-    err_func (client_version, &msg, error_ind, error_code, error_msg,
-	      is_in_tran);
+  length = err_func (driver_info, &msg, error_ind, error_code, error_msg,
+		     is_in_tran);
   if (length <= 0)
     {
       proxy_event_free (event_p);
@@ -1951,7 +1949,7 @@ proxy_timer_process (void)
   static int old = 0;
   int now, diff_time;
 
-  num_called ++;
+  num_called++;
   num_called = (num_called % PROXY_MAX_IGNORE_TIMER_CHECK);
   if (num_called != 0)
     {

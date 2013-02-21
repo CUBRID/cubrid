@@ -50,8 +50,7 @@
 #define SYSV
 
 int
-send_fd (int server_fd, int client_fd, int rid, int client_version,
-	 char *driver_info)
+send_fd (int server_fd, int client_fd, int rid, char *driver_info)
 {
   struct iovec iov[1];
   struct msghdr msg;
@@ -65,7 +64,6 @@ send_fd (int server_fd, int client_fd, int rid, int client_version,
 
   /* set send message */
   send_msg.rid = rid;
-  send_msg.client_version = client_version;
   memcpy (send_msg.driver_info, driver_info, SRV_CON_CLIENT_INFO_SIZE);
 
   /* Pass the fd to the server */
