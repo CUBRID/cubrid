@@ -1608,6 +1608,12 @@ public class UConnection {
 		int response = is.readInt();
 		if (response < 0) {
 		    int code = is.readInt();
+		    // the error greater than -10000 with CAS_ERROR_INDICATOR is sent by old broker
+		    // -1018 (CAS_ER_NOT_AUTHORIZED_CLIENT) is especial case
+		    if ((response == UErrorCode.CAS_ERROR_INDICATOR && code > -10000)
+			    || code == -1018) {
+			code -= 9000;
+		    }
 		    byte msg[] = new byte[dataLength - 8];
 		    is.readFully(msg);
 		    throw new UJciException(UErrorCode.ER_DBMS, response, code,

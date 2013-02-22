@@ -233,6 +233,13 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id,
   err_code = ntohl (err_code);
   if (err_code < 0)
     {
+      /* in here, all errors are sent by only a broker
+       * the error greater than -10000 is sent by old broker
+       */
+      if (err_code > -10000)
+	{
+	  err_code -= 9000;
+	}
       goto connect_srv_error;
     }
 
@@ -290,6 +297,14 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id,
       memcpy (&err_code, msg_buf + CAS_PROTOCOL_ERR_CODE_INDEX,
 	      CAS_PROTOCOL_ERR_CODE_SIZE);
       err_code = ntohl (err_code);
+      /* the error greater than -10000 with CAS_ERROR_INDICATOR is sent by old broker
+       * -1018 (CAS_ER_NOT_AUTHORIZED_CLIENT) is especial case
+       */
+      if ((err_indicator == CAS_ERROR_INDICATOR && err_code > -10000)
+	  || err_code == -1018)
+	{
+	  err_code -= 9000;
+	}
       if (err_indicator == DBMS_ERROR_INDICATOR)
 	{
 	  if (err_buf)

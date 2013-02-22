@@ -44,6 +44,11 @@ public class BrokerHandler {
 	    out.flush();
 	    int code = in.readInt();
 	    if (code < 0) {
+		// in here, all errors are sent by only a broker
+		// the error greater than -10000 is sent by old broker
+		if (code > -10000) {
+		    code -= 9000;
+		}
 		throw new UJciException(code);
 	    } else if (code == 0) {
 		return toBroker;
