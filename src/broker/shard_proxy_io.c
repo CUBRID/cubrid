@@ -1250,8 +1250,10 @@ proxy_socket_io_new_client (SOCKET lsnr_fd)
 #if defined(WINDOWS)
   client_fd = lsnr_fd;
   client_ip = accept_ip_addr;
-  client_version = CAS_MAKE_VER (9, 1, 0);
-
+  memset (driver_info, 0, SRV_CON_CLIENT_INFO_SIZE);
+  driver_info[SRV_CON_MSG_IDX_PROTO_VERSION] =
+    CAS_PROTO_UNPACK_NET_VER (PROTOCOL_V4);
+  driver_info[SRV_CON_MSG_IDX_FUNCTION_FLAG] = BROKER_RENEWED_ERROR_CODE;
 #else /* WINDOWS */
   client_fd = recv_fd (lsnr_fd, &client_ip, driver_info);
   if (client_fd < 0)
