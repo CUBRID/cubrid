@@ -3805,6 +3805,7 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser,
 
   new_query->info.query.q.select.from = new_spec;
   new_query->info.query.is_subquery = PT_IS_SUBQUERY;
+  new_query->cannot_prepare = statement->cannot_prepare;
 
   /* free path entities, which will be handled by push_path */
   parser_free_tree (parser, new_spec->info.spec.path_entities);
@@ -3968,6 +3969,7 @@ mq_rewrite_aggregate_as_derived (PARSER_CONTEXT * parser, PT_NODE * agg_sel)
 
   /* derived tables are always subqueries */
   derived->info.query.is_subquery = PT_IS_SUBQUERY;
+  derived->cannot_prepare = agg_sel->cannot_prepare;
 
   /* move spec over */
   info.from = derived->info.query.q.select.from;
