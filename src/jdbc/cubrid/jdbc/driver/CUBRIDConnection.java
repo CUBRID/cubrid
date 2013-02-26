@@ -428,6 +428,15 @@ public class CUBRIDConnection implements Connection {
 	}
 
 	public synchronized int getHoldability() throws SQLException {
+		if (holdability == ResultSet.HOLD_CURSORS_OVER_COMMIT) {
+				if (u_con.brokerInfoSupportHoldableResult()) {
+					return ResultSet.HOLD_CURSORS_OVER_COMMIT;
+				}
+				else {
+					return ResultSet.CLOSE_CURSORS_AT_COMMIT;
+				}
+		}
+		
 		return holdability;
 	}
 
@@ -752,7 +761,8 @@ public class CUBRIDConnection implements Connection {
 				|| resultSetConcurrency == ResultSet.CONCUR_UPDATABLE) {
 			prepareFlag = UConnection.PREPARE_UPDATABLE;
 		}
-		if (resultHoldability == ResultSet.HOLD_CURSORS_OVER_COMMIT) {
+		if (resultHoldability == ResultSet.HOLD_CURSORS_OVER_COMMIT
+				&& u_con.brokerInfoSupportHoldableResult()) {
 			prepareFlag = UConnection.PREPARE_HOLDABLE;
 		}
 		UStatement us = prepare(sql, prepareFlag);

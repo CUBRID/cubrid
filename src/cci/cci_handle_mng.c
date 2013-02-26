@@ -981,7 +981,15 @@ hm_set_con_handle_holdable (T_CON_HANDLE * con_handle, int holdable)
 int
 hm_get_con_handle_holdable (T_CON_HANDLE * con_handle)
 {
-  return con_handle->is_holdable;
+  if (con_handle->is_holdable
+      && hm_broker_support_holdable_result (con_handle))
+    {
+      return true;
+    }
+  else
+    {
+      return false;
+    }
 }
 
 T_BROKER_VERSION
@@ -1019,6 +1027,15 @@ hm_broker_understand_renewed_error_code (T_CON_HANDLE * con_handle)
     }
 
   return (f & BROKER_RENEWED_ERROR_CODE) == BROKER_RENEWED_ERROR_CODE;
+}
+
+bool
+hm_broker_support_holdable_result (T_CON_HANDLE * con_handle)
+{
+  char f = con_handle->broker_info[BROKER_INFO_FUNCTION_FLAG];
+
+  return (f & BROKER_SUPPORT_HOLDABLE_RESULT)
+    == BROKER_SUPPORT_HOLDABLE_RESULT;
 }
 
 void

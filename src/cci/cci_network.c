@@ -161,7 +161,8 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id,
   strncpy (client_info, SRV_CON_CLIENT_MAGIC_STR, SRV_CON_CLIENT_MAGIC_LEN);
   client_info[SRV_CON_MSG_IDX_CLIENT_TYPE] = cci_client_type;
   client_info[SRV_CON_MSG_IDX_PROTO_VERSION] = CAS_PROTO_PACK_CURRENT_NET_VER;
-  client_info[SRV_CON_MSG_IDX_FUNCTION_FLAG] = BROKER_RENEWED_ERROR_CODE;
+  client_info[SRV_CON_MSG_IDX_FUNCTION_FLAG]
+    = BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT;
   client_info[SRV_CON_MSG_IDX_RESERVED2] = 0;
 
   info = db_info;
@@ -481,7 +482,7 @@ net_cancel_request_ex (unsigned char *ip_addr, int port, int pid)
   msg[0] = 'X';
   msg[1] = '1';
   msg[2] = CAS_CLIENT_CCI;
-  msg[3] = BROKER_RENEWED_ERROR_CODE;
+  msg[3] = BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT;
   msg[4] = 0;
   msg[5] = 0;
   pid = htonl (pid);

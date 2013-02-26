@@ -38,14 +38,15 @@ static char broker_info[BROKER_INFO_SIZE] = {
   CAS_STATEMENT_POOLING_ON,
   CCI_PCONNECT_ON,
   CAS_PROTO_PACK_CURRENT_NET_VER,
-  BROKER_RENEWED_ERROR_CODE,
+  BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT,
   0,
   0
 };
 
 typedef enum
 {
-  BI_FUNC_ERROR_CODE
+  BI_FUNC_ERROR_CODE,
+  BI_FUNC_SUPPORT_HOLDABLE_RESULT
 } BI_FUNCTION_CODE;
 
 const char *
@@ -141,6 +142,10 @@ cas_bi_set_function_enable (BI_FUNCTION_CODE function_code)
       SET_BIT (broker_info[BROKER_INFO_FUNCTION_FLAG],
 	       BROKER_RENEWED_ERROR_CODE);
       break;
+    case BI_FUNC_SUPPORT_HOLDABLE_RESULT:
+      SET_BIT (broker_info[BROKER_INFO_FUNCTION_FLAG],
+	       BROKER_SUPPORT_HOLDABLE_RESULT);
+      break;
     default:
       assert (false);
       break;
@@ -156,6 +161,10 @@ cas_bi_set_function_disable (BI_FUNCTION_CODE function_code)
       CLEAR_BIT (broker_info[BROKER_INFO_FUNCTION_FLAG],
 		 BROKER_RENEWED_ERROR_CODE);
       break;
+    case BI_FUNC_SUPPORT_HOLDABLE_RESULT:
+      CLEAR_BIT (broker_info[BROKER_INFO_FUNCTION_FLAG],
+		 BROKER_SUPPORT_HOLDABLE_RESULT);
+      break;
     default:
       assert (false);
       break;
@@ -170,6 +179,9 @@ cas_bi_is_enabled_function (BI_FUNCTION_CODE function_code)
     case BI_FUNC_ERROR_CODE:
       return IS_SET_BIT (broker_info[BROKER_INFO_FUNCTION_FLAG],
 			 BROKER_RENEWED_ERROR_CODE);
+    case BI_FUNC_SUPPORT_HOLDABLE_RESULT:
+      return IS_SET_BIT (broker_info[BROKER_INFO_FUNCTION_FLAG],
+			 BROKER_SUPPORT_HOLDABLE_RESULT);
     default:
       return 0;
     }
@@ -198,7 +210,7 @@ bool
 cas_di_understand_renewed_error_code (const char *driver_info)
 {
   if (!IS_SET_BIT (driver_info[SRV_CON_MSG_IDX_PROTO_VERSION],
-                   CAS_PROTO_INDICATOR))
+		   CAS_PROTO_INDICATOR))
     {
       return false;
     }
@@ -225,7 +237,8 @@ cas_bi_make_broker_info (char *broker_info, char statement_pooling,
     (cci_pconnect ? CCI_PCONNECT_ON : CCI_PCONNECT_OFF);
 
   broker_info[BROKER_INFO_PROTO_VERSION] = CAS_PROTO_PACK_CURRENT_NET_VER;
-  broker_info[BROKER_INFO_FUNCTION_FLAG] = BROKER_RENEWED_ERROR_CODE;
+  broker_info[BROKER_INFO_FUNCTION_FLAG]
+    = BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT;
   broker_info[BROKER_INFO_RESERVED2] = 0;
   broker_info[BROKER_INFO_RESERVED3] = 0;
 }

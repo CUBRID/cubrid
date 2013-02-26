@@ -104,7 +104,13 @@ public class CUBRIDStatement implements Statement {
 		concurrency = concur;
 		is_scrollable = t != ResultSet.TYPE_FORWARD_ONLY;
 		is_updatable = concur == ResultSet.CONCUR_UPDATABLE;
-		is_holdable = hold == ResultSet.HOLD_CURSORS_OVER_COMMIT;
+		
+		is_holdable = false;
+		if(hold == ResultSet.HOLD_CURSORS_OVER_COMMIT
+				&& u_con.brokerInfoSupportHoldableResult()) {
+			is_holdable = true;
+		}
+		
 		is_sensitive = t == ResultSet.TYPE_SCROLL_SENSITIVE;
 		fetch_direction = ResultSet.FETCH_FORWARD;
 		fetch_size = 0;

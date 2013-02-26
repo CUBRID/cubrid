@@ -1,26 +1,26 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
 
 /*
  * shard_proxy_io.c -
- *               
+ *
  */
 
 #ident "$Id$"
@@ -167,8 +167,8 @@ T_SHARD_IO_GLOBAL proxy_Shard_io;
 /* SHARD ONLY SUPPORT client_version.8.2.0 ~ */
 int cas_info_size = CAS_INFO_SIZE;
 
-/*** 
-  THIS FUNCTION IS LOCATED IN ORIGINAL CAS FILES 
+/***
+  THIS FUNCTION IS LOCATED IN ORIGINAL CAS FILES
  ***/
 #if 1				/* SHARD TODO -- remove this functions -- tigger */
 void
@@ -1253,7 +1253,8 @@ proxy_socket_io_new_client (SOCKET lsnr_fd)
   memset (driver_info, 0, SRV_CON_CLIENT_INFO_SIZE);
   driver_info[SRV_CON_MSG_IDX_PROTO_VERSION] =
     CAS_PROTO_UNPACK_NET_VER (PROTOCOL_V4);
-  driver_info[SRV_CON_MSG_IDX_FUNCTION_FLAG] = BROKER_RENEWED_ERROR_CODE;
+  driver_info[SRV_CON_MSG_IDX_FUNCTION_FLAG]
+    = BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT;
 #else /* WINDOWS */
   client_fd = recv_fd (lsnr_fd, &client_ip, driver_info);
   if (client_fd < 0)
@@ -2440,8 +2441,8 @@ proxy_socket_io_write (T_SOCKET_IO * sock_io_p)
       PROXY_DEBUG_LOG ("Unexpected socket status. (fd:%d, status:%d). \n",
 		       sock_io_p->fd, sock_io_p->status);
 
-      /* 
-       * free writer event when sock status is 'close wait' 
+      /*
+       * free writer event when sock status is 'close wait'
        */
       if (sock_io_p->write_event)
 	{
@@ -4269,7 +4270,7 @@ proxy_get_driver_info_by_ctx (T_PROXY_CONTEXT * ctx_p)
     'C', 'U', 'B', 'R', 'K',
     CAS_CLIENT_JDBC,
     CAS_PROTO_INDICATOR | CURRENT_PROTOCOL,
-    BROKER_RENEWED_ERROR_CODE,
+    BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT,
     0,
     0
   };
@@ -4300,7 +4301,7 @@ proxy_get_driver_info_by_fd (T_SOCKET_IO * sock_io_p)
     'C', 'U', 'B', 'R', 'K',
     CAS_CLIENT_JDBC,
     CAS_PROTO_INDICATOR | CURRENT_PROTOCOL,
-    BROKER_RENEWED_ERROR_CODE,
+    BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT,
     0,
     0
   };

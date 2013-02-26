@@ -421,7 +421,8 @@ qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   ADD_ARG_STR (&net_buf, req_handle->sql_text, sql_stmt_size,
 	       con_handle->charset);
 
-  if (con_handle->is_holdable)
+  if (con_handle->is_holdable
+      && hm_broker_support_holdable_result (con_handle))
     {
       /* make sure statement is holdable */
       flag |= CCI_PREPARE_HOLDABLE;
@@ -2343,8 +2344,8 @@ qe_get_last_insert_id (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   NET_STR_TO_INT (valsize, ptr);
   if (valsize == -1)
     {
-      /* 
-       * CCI_ER_NO_ERROR with NULL value 
+      /*
+       * CCI_ER_NO_ERROR with NULL value
        * means DB NULL
        */
       FREE_MEM (result_msg);

@@ -126,7 +126,10 @@ public class CUBRIDResultSet implements ResultSet {
 		is_scrollable = t != TYPE_FORWARD_ONLY;
 		is_updatable = concur == CONCUR_UPDATABLE;
 		is_sensitive = t == TYPE_SCROLL_SENSITIVE;
-		is_holdable = holdable;
+		is_holdable = false;
+		if(holdable && con.u_con.brokerInfoSupportHoldableResult()) {
+			is_holdable = true;
+		}
 
 		fetch_direction = s.getFetchDirection();
 		u_stmt.setFetchDirection(fetch_direction);

@@ -103,6 +103,7 @@ extern "C"
 
 #define BROKER_INFO_SIZE			8
 #define BROKER_RENEWED_ERROR_CODE		0x80
+#define BROKER_SUPPORT_HOLDABLE_RESULT		0x40
 
 /* For backward compatibility */
 #define BROKER_INFO_MAJOR_VERSION               (BROKER_INFO_PROTO_VERSION)
@@ -182,8 +183,8 @@ extern "C"
     CAS_FC_PREPARE_AND_EXECUTE = 41,
     CAS_FC_CURSOR_CLOSE = 42,
 
-    /* Whenever you want to introduce a new function code, 
-     * you must add a corresponding function entry to server_fn_table 
+    /* Whenever you want to introduce a new function code,
+     * you must add a corresponding function entry to server_fn_table
      * of both CUBRID and (MySQL, Oracle).
      */
     CAS_FC_MAX,

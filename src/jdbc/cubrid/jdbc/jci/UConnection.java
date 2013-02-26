@@ -92,6 +92,7 @@ public class UConnection {
 	private final static byte CAS_PROTO_INDICATOR = 0x40;
 	private final static byte CAS_PROTO_VER_MASK = 0x3F;
 	private final static byte CAS_RENEWED_ERROR_CODE = (byte) 0x80;
+	private final static byte CAS_SUPPORT_HOLDABLE_RESULT = (byte) 0x40;
 
 	@SuppressWarnings("unused")
 	private final static byte GET_COLLECTION_VALUE = 1,
@@ -196,7 +197,7 @@ public class UConnection {
 		UJCIUtil.copy_byte(driverInfo, 0, 5, magicString);
 		driverInfo[5] = CAS_CLIENT_JDBC;
 		driverInfo[6] = CAS_PROTO_INDICATOR | CAS_PROTOCOL_VERSION;
-		driverInfo[7] = CAS_RENEWED_ERROR_CODE;
+		driverInfo[7] = CAS_RENEWED_ERROR_CODE | CAS_SUPPORT_HOLDABLE_RESULT;
 		driverInfo[8] = 0; // reserved
 		driverInfo[9] = 0; // reserved
 	}
@@ -250,6 +251,20 @@ public class UConnection {
 			casinfo[CAS_INFO_RESERVED_1] = 0;
 			casinfo[CAS_INFO_RESERVED_2] = 0;
 			casinfo[CAS_INFO_RESERVED_3] = 0;
+			
+			/* create default broker info */
+			broker_info = new byte[BROKER_INFO_SIZE];
+			broker_info[BROKER_INFO_DBMS_TYPE] = DBMS_CUBRID;
+			broker_info[BROKER_INFO_RESERVED4] = 0;
+			broker_info[BROKER_INFO_STATEMENT_POOLING] = 1;
+			broker_info[BROKER_INFO_CCI_PCONNECT] = 0;
+			broker_info[BROKER_INFO_PROTO_VERSION] 
+			            = CAS_PROTO_INDICATOR | CAS_PROTOCOL_VERSION;
+			broker_info[BROKER_INFO_FUNCTION_FLAG] 
+			            = CAS_RENEWED_ERROR_CODE | CAS_SUPPORT_HOLDABLE_RESULT;
+			broker_info[BROKER_INFO_RESERVED2] = 0;
+			broker_info[BROKER_INFO_RESERVED3] = 0;
+			
 			isServerSideJdbc = true;
 			lastAutoCommit = false;
 			this.curThread = curThread;
@@ -1149,6 +1164,11 @@ public class UConnection {
 
 	    return (broker_info[BROKER_INFO_FUNCTION_FLAG] & CAS_RENEWED_ERROR_CODE)
 	    	== CAS_RENEWED_ERROR_CODE;
+	}
+	
+	public boolean brokerInfoSupportHoldableResult() {
+	    return (broker_info[BROKER_INFO_FUNCTION_FLAG] & CAS_SUPPORT_HOLDABLE_RESULT)
+	    	== CAS_SUPPORT_HOLDABLE_RESULT;
 	}
 
 	synchronized public void xa_endTransaction(Xid xid, boolean type) {

@@ -1083,7 +1083,8 @@ cci_is_holdable (int mapped_stmt_id)
 
   con_handle->used = false;
 
-  return (req_handle->prepare_flag & CCI_PREPARE_HOLDABLE) != 0;
+  return (((req_handle->prepare_flag & CCI_PREPARE_HOLDABLE) != 0)
+	  && hm_broker_support_holdable_result (con_handle));
 }
 
 T_CCI_COL_INFO *
@@ -3973,11 +3974,11 @@ cci_row_count (int mapped_conn_id, int *row_count, T_CCI_ERROR * err_buf)
  *
  *   cci_get_last_insert_id set value as last insert id in con_handle
  *   so it could be changed when new insertion is executed.
- *   
+ *
  *   cci_last_insert_id set value as allocated last insert id
  *   so it won't be changed but user should free it manually.
- * 
- *   But, It's possible to make some problem when it working with 
+ *
+ *   But, It's possible to make some problem when it working with
  *   user own memory allocators or Windows shared library memory space.
  *
  *   So we deprecate cci_last_insert_id and strongly recommend to use
