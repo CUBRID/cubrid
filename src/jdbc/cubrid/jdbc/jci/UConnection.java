@@ -265,6 +265,8 @@ public class UConnection {
 			broker_info[BROKER_INFO_RESERVED2] = 0;
 			broker_info[BROKER_INFO_RESERVED3] = 0;
 			
+			brokerVersion = makeProtoVersion(CAS_PROTOCOL_VERSION);
+			
 			isServerSideJdbc = true;
 			lastAutoCommit = false;
 			this.curThread = curThread;
@@ -1169,6 +1171,15 @@ public class UConnection {
 	public boolean brokerInfoSupportHoldableResult() {
 	    return (broker_info[BROKER_INFO_FUNCTION_FLAG] & CAS_SUPPORT_HOLDABLE_RESULT)
 	    	== CAS_SUPPORT_HOLDABLE_RESULT;
+	}
+	
+	public boolean supportHoldableResult() {
+	    if (brokerInfoSupportHoldableResult()
+				|| protoVersionIsSame(UConnection.PROTOCOL_V2)) {
+		return true;
+	    }
+
+	    return false;
 	}
 
 	synchronized public void xa_endTransaction(Xid xid, boolean type) {

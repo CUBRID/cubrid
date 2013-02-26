@@ -313,6 +313,8 @@ extern "C"
   extern void hm_set_con_handle_holdable (T_CON_HANDLE * con_handle,
 					  int holdable);
   extern int hm_get_con_handle_holdable (T_CON_HANDLE * con_handle);
+  extern int hm_get_req_handle_holdable (T_CON_HANDLE * con_handle,
+					 T_REQ_HANDLE * req_handle);
 
   extern int hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int req_id,
 				 T_REQ_HANDLE * req);

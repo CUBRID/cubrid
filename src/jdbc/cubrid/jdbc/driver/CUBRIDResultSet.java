@@ -127,7 +127,7 @@ public class CUBRIDResultSet implements ResultSet {
 		is_updatable = concur == CONCUR_UPDATABLE;
 		is_sensitive = t == TYPE_SCROLL_SENSITIVE;
 		is_holdable = false;
-		if(holdable && con.u_con.brokerInfoSupportHoldableResult()) {
+		if(holdable && con.u_con.supportHoldableResult()) {
 			is_holdable = true;
 		}
 

@@ -1083,8 +1083,7 @@ cci_is_holdable (int mapped_stmt_id)
 
   con_handle->used = false;
 
-  return (((req_handle->prepare_flag & CCI_PREPARE_HOLDABLE) != 0)
-	  && hm_broker_support_holdable_result (con_handle));
+  return hm_get_req_handle_holdable (con_handle, req_handle);
 }
 
 T_CCI_COL_INFO *

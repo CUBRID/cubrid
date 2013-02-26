@@ -107,7 +107,7 @@ public class CUBRIDStatement implements Statement {
 		
 		is_holdable = false;
 		if(hold == ResultSet.HOLD_CURSORS_OVER_COMMIT
-				&& u_con.brokerInfoSupportHoldableResult()) {
+				&& u_con.supportHoldableResult()) {
 			is_holdable = true;
 		}
 		

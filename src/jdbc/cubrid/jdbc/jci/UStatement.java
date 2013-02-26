@@ -648,7 +648,7 @@ public class UStatement {
 	    executeFlag |= EXEC_FLAG_QUERY_INFO;
 	    executeFlag |= EXEC_FLAG_ONLY_QUERY_PLAN;
 	}
-	if (isHoldable && relatedConnection.brokerInfoSupportHoldableResult()) {
+	if (isHoldable && relatedConnection.supportHoldableResult()) {
 	    executeFlag |= EXEC_FLAG_HOLDABLE_RESULT;
 	}
 

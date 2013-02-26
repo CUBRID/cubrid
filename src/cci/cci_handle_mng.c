@@ -981,15 +981,42 @@ hm_set_con_handle_holdable (T_CON_HANDLE * con_handle, int holdable)
 int
 hm_get_con_handle_holdable (T_CON_HANDLE * con_handle)
 {
-  if (con_handle->is_holdable
-      && hm_broker_support_holdable_result (con_handle))
+  T_BROKER_VERSION broker;
+
+  if (con_handle->is_holdable)
     {
-      return true;
+      broker = hm_get_broker_version (con_handle);
+
+      if (hm_broker_support_holdable_result (con_handle)
+	  || broker == CAS_PROTO_MAKE_VER (PROTOCOL_V2))
+	{
+	  return true;
+	}
     }
-  else
+
+  return false;
+}
+
+int
+hm_get_req_handle_holdable (T_CON_HANDLE * con_handle,
+			    T_REQ_HANDLE * req_handle)
+{
+  T_BROKER_VERSION broker;
+
+  assert (con_handle != NULL && req_handle != NULL);
+
+  if ((req_handle->prepare_flag & CCI_PREPARE_HOLDABLE) != 0)
     {
-      return false;
+      broker = hm_get_broker_version (con_handle);
+
+      if (hm_broker_support_holdable_result (con_handle)
+	  || broker == CAS_PROTO_MAKE_VER (PROTOCOL_V2))
+	{
+	  return true;
+	}
     }
+
+  return false;
 }
 
 T_BROKER_VERSION

@@ -421,8 +421,7 @@ qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   ADD_ARG_STR (&net_buf, req_handle->sql_text, sql_stmt_size,
 	       con_handle->charset);
 
-  if (con_handle->is_holdable
-      && hm_broker_support_holdable_result (con_handle))
+  if (hm_get_con_handle_holdable (con_handle))
     {
       /* make sure statement is holdable */
       flag |= CCI_PREPARE_HOLDABLE;
