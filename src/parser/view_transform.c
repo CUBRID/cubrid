@@ -6726,6 +6726,21 @@ mq_reset_spec_ids (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
 	}
       break;
 
+    case PT_MERGE:
+      for (spec = node->info.merge.into; spec; spec = spec->next)
+	{
+	  /* only reset IDs, in case query will be rewritten as SELECT for
+	     broker execution */
+	  mq_reset_ids (parser, node, spec);
+	}
+      for (spec = node->info.merge.using; spec; spec = spec->next)
+	{
+	  /* only reset IDs, in case query will be rewritten as SELECT for
+	     broker execution */
+	  mq_reset_ids (parser, node, spec);
+	}
+      break;
+
     default:
       break;
     }
