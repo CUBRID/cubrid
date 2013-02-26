@@ -609,21 +609,10 @@ esac
 AM_CONDITIONAL([BUILD_CMSERVER], [test "$with_cmserver" != "no"])
 AC_MSG_RESULT([$with_cmserver])
 
-AC_MSG_CHECKING([for regex library])
-AC_ARG_WITH([regex],
-	AS_HELP_STRING([--with-regex=PATH],
-		[prefix for installed regex @<:@default=builtin@:>@]),
-	[with_regex=$withval],
-	[with_regex=builtin])
-AS_IF([test "$with_regex" = "builtin"],
-	[AC_CONFIG_SUBDIRS([external/libregex38a])
-	REGEX_LIBS="\$(top_builddir)/external/libregex38a/libregex38a.la"
-	REGEX_INC="-I\$(top_builddir)/external/include/libregex38a"
-	EXTERNAL_PKGS="$EXTERNAL_PKGS libregex38a"],
-	[REGEX_LIBS="-L$with_regex/lib"
-	REGEX_INC="-I$with_regex/include"
-	EXTERNAL_DIST="$EXTERNAL_DIST libregex38a"])
-AC_MSG_RESULT([$with_regex])
+AC_CONFIG_SUBDIRS([external/libregex38a])
+REGEX_LIBS="\$(top_builddir)/external/libregex38a/libregex38a.la"
+REGEX_INC="-I\$(top_builddir)/external/include/libregex38a"
+EXTERNAL_PKGS="$EXTERNAL_PKGS libregex38a"
 
 AC_MSG_CHECKING([for expat library])
 AC_ARG_WITH([expat],

@@ -29,4 +29,23 @@ Main.c, debug.c, split.c are used for regression testing but are not part
 of the RE routines themselves.
 
 Regex.h goes in /usr/include.  All other .h files are internal only.
---------
+
+-------------------------------------------------------------------------------
+
+  MODIFICATED LISTS IN THIS CUBRID PROJECT
+  
+  This regex library (written by Henry Spencer) is modified to suit 
+  our needs. Belows are modified lists.
+
+  - changed the default memory manager (malloc/realloc/free) to CUBRID's 
+    db_private_alloc/db_private_realloc/db_private_free
+
+  - renamed the library's exported functions, flags and structs 
+    so they will not conflict in any way with the ismplementation from libc
+
+  - rewritten the build system using autotools; integrated it with CUBRID's
+
+  This external library should be built using "noinst_LTLIBRARIES"
+  to statically be included in libcascci.a
+
+-------------------------------------------------------------------------------

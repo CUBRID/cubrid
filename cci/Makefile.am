@@ -79,6 +79,8 @@ libcascci_la_SOURCES = \
 	$(CCI_DIR)/cci_log.cpp \
 	$(CCI_DIR)/cci_map.cpp \
 	$(CCI_DIR)/cci_properties.c
+libcascci_la_CFLAGS = $(AM_CFLAGS) -fPIC
+libcascci_la_CXXFLAGS = $(AM_CXXFLAGS) -fPIC
 libcascci_la_LDFLAGS = -version-number @LT_VERSION@ @EXT_LIBS@
 
 VERSIONED_FILES = \
