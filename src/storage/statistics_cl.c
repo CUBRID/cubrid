@@ -344,10 +344,10 @@ stats_free_statistics (CLASS_STATS * class_statsp)
 static void
 stats_print_min_max (ATTR_STATS * attr_stats_p, FILE * file_p)
 {
-  (void) fprintf (file_p, "    Mininum value: ");
+  (void) fprintf (file_p, "    Minimum value: ");
   db_print_data (attr_stats_p->type, &attr_stats_p->min_value, file_p);
 
-  (void) fprintf (file_p, "\n    Maxinum value: ");
+  (void) fprintf (file_p, "\n    Maximum value: ");
   db_print_data (attr_stats_p->type, &attr_stats_p->max_value, file_p);
 
   (void) fprintf (file_p, "\n");
@@ -512,11 +512,11 @@ stats_dump (const char *class_name_p, FILE * file_p)
 	  break;
 
 	case DB_TYPE_NCHAR:
-	  fprintf (file_p, "DB_TYPE_NCHARL\n");
+	  fprintf (file_p, "DB_TYPE_NCHAR\n");
 	  break;
 
 	case DB_TYPE_VARNCHAR:
-	  fprintf (file_p, "DB_TYPE_VARNCHARL\n");
+	  fprintf (file_p, "DB_TYPE_VARNCHAR\n");
 	  break;
 
 	case DB_TYPE_DB_VALUE:

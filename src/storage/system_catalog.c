@@ -4695,7 +4695,7 @@ catalog_dump_disk_attribute (DISK_ATTR * attr_p)
     }
 
   catalog_print_min_max (attr_p);
-  fprintf (stdout, " BTree statisitics:\n");
+  fprintf (stdout, " BTree statistics:\n");
 
   for (k = 0; k < attr_p->n_btstats; k++)
     {
@@ -4727,10 +4727,10 @@ catalog_dump_disk_attribute (DISK_ATTR * attr_p)
 static void
 catalog_print_min_max (DISK_ATTR * attr_p)
 {
-  fprintf (stdout, " Mininum value: ");
+  fprintf (stdout, " Minimum value: ");
   db_print_data (attr_p->type, &attr_p->min_value, stdout);
 
-  (void) fprintf (stdout, "\n Maxinum value: ");
+  (void) fprintf (stdout, "\n Maximum value: ");
   db_print_data (attr_p->type, &attr_p->max_value, stdout);
 
   (void) fprintf (stdout, "\n");

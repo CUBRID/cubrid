@@ -1022,10 +1022,10 @@ stats_compare_data (DB_DATA * data1_p, DB_DATA * data2_p, DB_TYPE type)
 static void
 stats_print_min_max (ATTR_STATS * attr_stats, FILE * fpp)
 {
-  (void) fprintf (fpp, "    Mininum value: ");
+  (void) fprintf (fpp, "    Minimum value: ");
   db_print_data (attr_stats->type, &attr_stats->min_value, fpp);
 
-  (void) fprintf (fpp, "\n    Maxinum value: ");
+  (void) fprintf (fpp, "\n    Maximum value: ");
   db_print_data (attr_stats->type, &attr_stats->max_value, fpp);
 
   (void) fprintf (fpp, "\n");
@@ -1170,11 +1170,11 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
 	  break;
 
 	case DB_TYPE_NCHAR:
-	  fprintf (fpp, "DB_TYPE_NCHARL \n");
+	  fprintf (fpp, "DB_TYPE_NCHAR \n");
 	  break;
 
 	case DB_TYPE_VARNCHAR:
-	  fprintf (fpp, "DB_TYPE_VARNCHARL \n");
+	  fprintf (fpp, "DB_TYPE_VARNCHAR \n");
 	  break;
 
 	default:
