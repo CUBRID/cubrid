@@ -59,6 +59,8 @@ DBISTATE_DECLARE;
 #define CUBRID_ER_READ_FILE                 -30004
 #define CUBRID_ER_NOT_LOB_TYPE              -30005
 #define CUBRID_ER_INVALID_PARAM             -30006
+#define CUBRID_ER_ROW_INDEX_EXCEEDED        -30007
+#define CUBRID_ER_EXPORT_NULL_LOB_INVALID   -30008 
 #define CUBRID_ER_END                       -31000
 
 /* end of cubrid.h */

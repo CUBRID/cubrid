@@ -65,6 +65,7 @@ my %opts = (
 eval {require_version DBI 1.61;};
 if ($@) {
     warn $@;
+    print "Please install DBI version 1.61 or higher. Exit.\n";
     exit 1;
 }
 

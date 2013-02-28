@@ -64,6 +64,7 @@ struct imp_sth_st {
         T_CCI_CUBRID_STMT   sql_type;
         T_CCI_COL_INFO      *col_info;
         T_CUBRID_LOB        *lob;
+        int     col_selected;  /* used for lob_get, lob_export */
 };
 
 /* ------ define functions and external variables ------ */

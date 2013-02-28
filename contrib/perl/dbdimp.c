@@ -55,6 +55,8 @@ static struct _error_message {
     {CUBRID_ER_READ_FILE, "Cannot read file"},
     {CUBRID_ER_NOT_LOB_TYPE, "Not a lob type, can only support SQL_BLOB or SQL_CLOB"},
     {CUBRID_ER_INVALID_PARAM, "Invalid parameter"},
+    {CUBRID_ER_ROW_INDEX_EXCEEDED, "Row index exceeds the allowed range(1 ~ the number of affected rows)"},
+    {CUBRID_ER_EXPORT_NULL_LOB_INVALID, "Exporting NULL LOB is invalid"},
     {0, ""}
 };
 
@@ -1164,68 +1166,16 @@ cubrid_st_lob_get( SV *sth, int col )
         return FALSE;
     }
 
-    res = cci_cursor (imp_sth->handle, 0, CCI_CURSOR_CURRENT, &error);
-    if (res == CCI_ER_NO_MORE_DATA) {
-        return TRUE;
-    }
-    else if (res < 0) {
-        handle_error (sth, res, &error);
-        return FALSE;
-    }
-
     u_type = CCI_GET_RESULT_INFO_TYPE (imp_sth->col_info, col);
     if (!(u_type == CCI_U_TYPE_BLOB ||  u_type == CCI_U_TYPE_CLOB)) {
         handle_error (sth, CUBRID_ER_NOT_LOB_TYPE, NULL);
         return FALSE;
     }
 
-    imp_sth->lob = (T_CUBRID_LOB *) malloc (
-            imp_sth->affected_rows * sizeof (T_CUBRID_LOB)
-            );
+    imp_sth->col_selected = col;
 
+    imp_sth->lob = (T_CUBRID_LOB *) malloc (imp_sth->affected_rows * sizeof (T_CUBRID_LOB));
     memset(imp_sth->lob, 0, imp_sth->affected_rows * sizeof (T_CUBRID_LOB));
-
-    while (1) {
-
-        if ((res = cci_fetch(imp_sth->handle, &error)) < 0) {
-            handle_error (sth, res, &error);
-            return FALSE;
-        }
-
-        if ( u_type == CCI_U_TYPE_BLOB) {
-            imp_sth->lob[i].type = CCI_U_TYPE_BLOB;
-            if ((res = cci_get_data (imp_sth->handle,
-                                     col,
-                                     CCI_A_TYPE_BLOB,
-                                     (void *)&imp_sth->lob[i].lob,
-                                     &ind)) < 0) {
-                handle_error (sth, res, NULL);
-                return FALSE;
-            }
-        }
-        else {
-            imp_sth->lob[i].type = CCI_U_TYPE_BLOB;
-            if ((res = cci_get_data (imp_sth->handle,
-                                     col,
-                                     CCI_A_TYPE_CLOB,
-                                     (void *)&imp_sth->lob[i].lob,
-                                     (&ind))) < 0) {
-                handle_error (sth, res, NULL);
-                return FALSE;
-            }
-        }
-
-        i++;
-
-        res = cci_cursor (imp_sth->handle, 1, CCI_CURSOR_CURRENT, &error);
-        if (res == CCI_ER_NO_MORE_DATA) {
-            break;
-        }
-        else if (res < 0) {
-            handle_error (sth, res, &error);
-            return FALSE;
-        }
-    }
 
     return TRUE;
 }
@@ -1237,8 +1187,71 @@ cubrid_st_lob_export( SV *sth, int index, char *filename )
     int fd, res, size;
     long long pos = 0, lob_size;
     T_CCI_ERROR error;
+    T_CCI_U_TYPE u_type;
+    int ind = 0;
 
     D_imp_sth (sth);
+
+    if (imp_sth->lob == NULL) {
+        handle_error (sth, CUBRID_ER_CANNOT_FETCH_DATA, NULL);
+        return FALSE;
+    }
+
+    if (index > imp_sth->affected_rows || index < 1) {
+        handle_error (sth, CUBRID_ER_ROW_INDEX_EXCEEDED, NULL);
+        return FALSE;
+    }
+
+    if (imp_sth->col_selected < 1 || imp_sth->col_selected > DBIc_NUM_FIELDS (imp_sth)) {
+        handle_error (sth, CCI_ER_COLUMN_INDEX, NULL);
+        return FALSE;
+    }
+
+    u_type = CCI_GET_RESULT_INFO_TYPE (imp_sth->col_info, imp_sth->col_selected);
+    if (!(u_type == CCI_U_TYPE_BLOB ||  u_type == CCI_U_TYPE_CLOB)) {
+        handle_error (sth, CUBRID_ER_NOT_LOB_TYPE, NULL);
+        return FALSE;
+    }
+
+    res = cci_cursor (imp_sth->handle, index, CCI_CURSOR_FIRST, &error);
+    if (res == CCI_ER_NO_MORE_DATA) {
+        return TRUE;
+    } else if (res < 0) {
+        handle_error (sth, res, &error);
+        return FALSE;
+    }
+
+    if ((res = cci_fetch(imp_sth->handle, &error)) < 0) {
+        handle_error (sth, res, &error);
+        return FALSE;
+    }
+
+    if ( u_type == CCI_U_TYPE_BLOB) {
+        imp_sth->lob[index-1].type = CCI_U_TYPE_BLOB;
+        if ((res = cci_get_data (imp_sth->handle,
+                        imp_sth->col_selected,
+                        CCI_A_TYPE_BLOB,
+                        (void *)&imp_sth->lob[index-1].lob,
+                        &ind)) < 0) {
+            handle_error (sth, res, NULL);
+            return FALSE;
+        }
+    } else {
+        imp_sth->lob[index-1].type = CCI_U_TYPE_BLOB;
+        if ((res = cci_get_data (imp_sth->handle,
+                        imp_sth->col_selected,
+                        CCI_A_TYPE_CLOB,
+                        (void *)&imp_sth->lob[index-1].lob,
+                        (&ind))) < 0) {
+            handle_error (sth, res, NULL);
+            return FALSE;
+        }
+    }
+
+    if ( ind == -1 ) {
+        handle_error (sth, CUBRID_ER_EXPORT_NULL_LOB_INVALID, NULL);
+        return FALSE;
+    }
 
     if ( imp_sth->lob == NULL || imp_sth->lob[index-1].lob == NULL) {
         handle_error (sth, CCI_ER_INVALID_LOB_HANDLE, NULL);

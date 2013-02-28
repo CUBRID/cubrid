@@ -317,6 +317,9 @@ use strict;
         for my $row (@$desc) {
 
             my $type = $row->{type};
+            if (!defined($type)) {
+                $type = "NULL";
+            }
 
             my $info = {
                 TABLE_CAT               => $catalog,
@@ -450,6 +453,9 @@ use strict;
                 else {
                     $info->{COLUMN_SIZE} = 1073741823;
                 }
+            }
+            elsif ($type =~ /^NULL$/) {
+                $info->{DATA_TYPE} = SQL_UNKNOWN_TYPE;
             }
             else {
                 $info->{DATA_TYPE} = SQL_VARCHAR;
