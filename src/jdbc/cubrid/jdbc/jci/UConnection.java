@@ -1175,6 +1175,9 @@ public class UConnection {
 	}
 	
 	public boolean brokerInfoSupportHoldableResult() {
+		if (broker_info == null)
+			return false;
+			
 	    return (broker_info[BROKER_INFO_FUNCTION_FLAG] & CAS_SUPPORT_HOLDABLE_RESULT)
 	    	== CAS_SUPPORT_HOLDABLE_RESULT;
 	}
