@@ -881,7 +881,8 @@ public class UConnection {
 	}
     }
 
-    private UStatement prepareInternal(String sql, byte flag, boolean recompile)
+    private UStatement prepareInternal(String sql, byte flag, boolean recompile,
+	    boolean isFirstPrepareInTran)
 	    throws IOException, UJciException {
 	errorHandler.clear();
 
@@ -914,6 +915,10 @@ public class UConnection {
 	}
 
 	pooled_ustmts.add(stmt);
+	if (isFirstPrepareInTran) {
+	    stmt.setFirstPrepareInTran();
+	}
+	
 	return stmt;
     }
 
@@ -930,13 +935,14 @@ public class UConnection {
 	}
 
 	UStatement stmt = null;
+	boolean isFirstPrepareInTran = !isActive();
 
 	skip_checkcas = true;
 	need_checkcas = false;
 
 	// first
 	try {
-	    stmt = prepareInternal(sql, flag, recompile);
+	    stmt = prepareInternal(sql, flag, recompile, isFirstPrepareInTran);
 	    return stmt;
 	} catch (UJciException e) {
 	    logException(e);
@@ -956,11 +962,11 @@ public class UConnection {
 
 	// second
 	try {
-	    if (isActive()) {
+	    if (isActive() && !isFirstPrepareInTran) {
 		return null;
 	    }
-
-	    stmt = prepareInternal(sql, flag, recompile);
+		    
+	    stmt = prepareInternal(sql, flag, recompile, isFirstPrepareInTran);
 	    return stmt;
 	} catch (UJciException e) {
 	    logException(e);

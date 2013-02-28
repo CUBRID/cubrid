@@ -109,6 +109,7 @@ public class UStatement {
 	private UInputBuffer tmp_inbuffer;
 	private boolean isAutoCommit = false;
 	private boolean isGeneratedKeys = false;
+	private boolean isFirstPrepareInTran = false;
 
 	/*
 	 * 3.0 private int resultset_index; private int resultset_index_flag;
@@ -806,6 +807,9 @@ public class UStatement {
 	}
 	result_cacheable = false;
 
+	boolean isFirstExecInTran = !relatedConnection.isActive() 
+	                            || isFirstPrepareInTran;
+
 	try {
 	    executeInternal(maxRow, maxField, isScrollable, queryTimeout);
 	    return;
@@ -815,12 +819,14 @@ public class UStatement {
 	} catch (IOException e) {
 	    relatedConnection.logException(e);
 	    errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
+	} finally {
+	    isFirstPrepareInTran = false;
 	}
 
 	if (relatedConnection.isErrorToReconnect(errorHandler.getJdbcErrorCode())) {
 	    relatedConnection.clientSocketClose();
 
-	    if (!relatedConnection.isActive()) {
+	    if (!relatedConnection.isActive() || isFirstExecInTran) {
 		try {
 		    reset();
 		    executeInternal(maxRow, maxField, isScrollable, queryTimeout);
@@ -834,7 +840,7 @@ public class UStatement {
 		}
 	    }
 	}
-
+	
 	while (relatedConnection.brokerInfoStatementPooling() &&
 		errorHandler.getJdbcErrorCode() == UErrorCode.CAS_ER_STMT_POOLING) {
 	    try {
@@ -942,6 +948,7 @@ public class UStatement {
 		    inBuffer.readShort();
 		}
 	    }
+	    
 	    return batchResult;
 	}
 
@@ -961,7 +968,10 @@ public class UStatement {
 		    errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 		    return null; 
 		}
-	    } 
+	    }
+	    
+	    boolean isFirstExecInTran = !relatedConnection.isActive() 
+	                                || isFirstPrepareInTran;
 
 	    try {
 		batchResult = executeBatchInternal(queryTimeout);
@@ -973,12 +983,14 @@ public class UStatement {
 		relatedConnection.logException(e);
 		if (errorHandler.getErrorCode() != UErrorCode.ER_CONNECTION)
 		    errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
-	    } 
+	    } finally {
+		isFirstPrepareInTran = false;
+	    }
 
 	    if (relatedConnection.isErrorToReconnect(errorHandler.getJdbcErrorCode())) {
 		relatedConnection.clientSocketClose(); 
 
-		if (!relatedConnection.isActive()) {
+		if (!relatedConnection.isActive() || isFirstExecInTran) {
 		    try {
 			reset();
 			batchResult = executeBatchInternal(queryTimeout);
@@ -992,7 +1004,7 @@ public class UStatement {
 		    }
 		}
 	    }
-
+	    
 	    while (relatedConnection.brokerInfoStatementPooling() &&
 		    errorHandler.getJdbcErrorCode() == UErrorCode.CAS_ER_STMT_POOLING) {
 		try {
@@ -2204,5 +2216,9 @@ public class UStatement {
 
 	public boolean hasBatch() {
 	    return batchParameter != null && batchParameter.size() != 0;
+	}
+	
+	public void setFirstPrepareInTran() {
+	    isFirstPrepareInTran = true;
 	}
 }

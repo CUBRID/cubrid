@@ -925,11 +925,14 @@ cci_prepare (int mapped_conn_id, char *sql_stmt, char flag,
     }
   SET_START_TIME_FOR_QUERY (con_handle, req_handle);
 
+  req_handle->is_first_prepare_in_tran = IS_OUT_TRAN (con_handle);
+
   error = qe_prepare (req_handle, con_handle, sql_stmt, flag,
 		      &(con_handle->err_buf), 0);
   if (error != CCI_ER_NO_ERROR)
     {
-      if (IS_OUT_TRAN (con_handle))
+      if (IS_OUT_TRAN (con_handle)
+	  || req_handle->is_first_prepare_in_tran == true)
 	{
 	  if (IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
 	    {
@@ -1299,6 +1302,7 @@ cci_execute (int mapped_stmt_id, char flag, int max_col_size,
   int error = CCI_ER_NO_ERROR;
   int con_err_code = 0;
   struct timeval st, et;
+  bool is_first_exec_in_tran = false;
 
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg
@@ -1346,6 +1350,9 @@ cci_execute (int mapped_stmt_id, char flag, int max_col_size,
 				     &(con_handle->err_buf));
     }
 
+  is_first_exec_in_tran = (IS_OUT_TRAN (con_handle)
+			   || req_handle->is_first_prepare_in_tran == true);
+
   if (error >= 0)
     {
       if (flag & CCI_EXEC_THREAD)
@@ -1369,7 +1376,7 @@ cci_execute (int mapped_stmt_id, char flag, int max_col_size,
 
   if (error < 0)
     {
-      if (IS_OUT_TRAN (con_handle))
+      if (IS_OUT_TRAN (con_handle) || is_first_exec_in_tran == true)
 	{
 	  if (IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
 	    {
@@ -1377,14 +1384,16 @@ cci_execute (int mapped_stmt_id, char flag, int max_col_size,
 		{
 		  goto execute_end;
 		}
-	      error =
-		qe_prepare (req_handle, con_handle, req_handle->sql_text,
-			    req_handle->prepare_flag, &(con_handle->err_buf),
-			    1);
+
+	      error = qe_prepare (req_handle, con_handle,
+				  req_handle->sql_text,
+				  req_handle->prepare_flag,
+				  &(con_handle->err_buf), 1);
 	      if (error < 0)
 		{
 		  goto execute_end;
 		}
+
 	      error = qe_execute (req_handle, con_handle, flag, max_col_size,
 				  &(con_handle->err_buf));
 	    }
@@ -1453,6 +1462,7 @@ thread_end:
   set_error_buffer (&(con_handle->err_buf), error, NULL);
   copy_error_buffer (err_buf, &(con_handle->err_buf));
   con_handle->used = false;
+  req_handle->is_first_prepare_in_tran = false;
 
   return error;
 }
@@ -1527,12 +1537,14 @@ cci_prepare_and_execute (int mapped_conn_id, char *sql_stmt,
     }
 
   SET_START_TIME_FOR_QUERY (con_handle, req_handle);
+  req_handle->is_first_prepare_in_tran = IS_OUT_TRAN (con_handle);
 
   error = qe_prepare_and_execute (req_handle, con_handle, sql_stmt,
 				  max_col_size, &(con_handle->err_buf));
   if (error < 0)
     {
-      if (IS_OUT_TRAN (con_handle))
+      if (IS_OUT_TRAN (con_handle)
+	  || req_handle->is_first_prepare_in_tran == true)
 	{
 	  if (IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
 	    {
@@ -1540,9 +1552,10 @@ cci_prepare_and_execute (int mapped_conn_id, char *sql_stmt,
 		{
 		  goto prepare_execute_error;
 		}
-	      error =
-		qe_prepare_and_execute (req_handle, con_handle, sql_stmt,
-					max_col_size, &(con_handle->err_buf));
+
+	      error = qe_prepare_and_execute (req_handle, con_handle,
+					      sql_stmt, max_col_size,
+					      &(con_handle->err_buf));
 	      if (error < 0)
 		{
 		  goto prepare_execute_error;
@@ -1593,6 +1606,7 @@ cci_prepare_and_execute (int mapped_conn_id, char *sql_stmt,
 
   map_open_ots (statement_id, &req_handle->mapped_stmt_id);
   con_handle->used = false;
+  req_handle->is_first_prepare_in_tran = false;
 
   return req_handle->mapped_stmt_id;
 
@@ -1696,6 +1710,7 @@ cci_execute_array (int mapped_stmt_id, T_CCI_QUERY_RESULT ** qr,
   T_CON_HANDLE *con_handle = NULL;
   int error = CCI_ER_NO_ERROR;
   int con_err_code = CCI_ER_NO_ERROR;
+  bool is_first_exec_in_tran = false;
 
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg
@@ -1732,6 +1747,9 @@ cci_execute_array (int mapped_stmt_id, T_CCI_QUERY_RESULT ** qr,
 				     &(con_handle->err_buf));
     }
 
+  is_first_exec_in_tran = (IS_OUT_TRAN (con_handle)
+			   || req_handle->is_first_prepare_in_tran == true);
+
   if (error >= 0)
     {
       error = qe_execute_array (req_handle, con_handle, qr,
@@ -1740,7 +1758,7 @@ cci_execute_array (int mapped_stmt_id, T_CCI_QUERY_RESULT ** qr,
 
   if (error < 0)
     {
-      if (IS_OUT_TRAN (con_handle))
+      if (IS_OUT_TRAN (con_handle) || is_first_exec_in_tran == true)
 	{
 	  if (IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
 	    {
@@ -1748,14 +1766,16 @@ cci_execute_array (int mapped_stmt_id, T_CCI_QUERY_RESULT ** qr,
 		{
 		  goto execute_end;
 		}
-	      error =
-		qe_prepare (req_handle, con_handle, req_handle->sql_text,
-			    req_handle->prepare_flag, &(con_handle->err_buf),
-			    1);
+
+	      error = qe_prepare (req_handle, con_handle,
+				  req_handle->sql_text,
+				  req_handle->prepare_flag,
+				  &(con_handle->err_buf), 1);
 	      if (error < 0)
 		{
 		  goto execute_end;
 		}
+
 	      error = qe_execute_array (req_handle, con_handle, qr,
 					&(con_handle->err_buf));
 	    }
@@ -1804,6 +1824,7 @@ execute_end:
   set_error_buffer (&(con_handle->err_buf), error, NULL);
   copy_error_buffer (err_buf, &(con_handle->err_buf));
   con_handle->used = false;
+  req_handle->is_first_prepare_in_tran = false;
 
   return error;
 }
@@ -4948,6 +4969,8 @@ connect_prepare_again (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle,
     }
 
   req_handle_content_free (req_handle, 1);
+  req_handle->is_first_prepare_in_tran = IS_OUT_TRAN (con_handle);
+
   error = qe_prepare (req_handle, con_handle, req_handle->sql_text,
 		      req_handle->prepare_flag, err_buf, 1);
   if (error == CCI_ER_NO_ERROR)
@@ -4963,11 +4986,13 @@ connect_prepare_again (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle,
 	}
     }
 
-  if (IS_OUT_TRAN (con_handle))
+  if (IS_OUT_TRAN (con_handle)
+      || req_handle->is_first_prepare_in_tran == true)
     {
       error = qe_prepare (req_handle, con_handle, req_handle->sql_text,
 			  req_handle->prepare_flag, err_buf, 1);
     }
+
   return error;
 }
 
