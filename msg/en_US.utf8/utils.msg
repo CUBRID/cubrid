@@ -632,7 +632,7 @@ valid options:\n\
 
 $set 18 MSGCAT_UTIL_SET_CHECKDB
 20 Some inconsistencies were detected in your database.\n Please consult error_log_file %s for additional information.\n
-21 %s: Cannot find the class. It will be ommitted.\n
+21 %s: Cannot find the class. It will be omitted.\n
 60 \
 checkdb: Check consistency of the database.\n\
 usage: %s checkdb [OPTION] database-name [class_name1 class_name2 ...]\n\

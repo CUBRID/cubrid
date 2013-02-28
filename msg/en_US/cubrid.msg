@@ -464,12 +464,12 @@ $set 5 MSGCAT_SET_ERROR
 396 Octal digit out of range exists in escape.
 397 Regular expression not delimited properly.
 398 Text search called before expression compiled.
-399 A unmatched parenthesis is found in the regular expression.
+399 An unmatched parenthesis is found in the regular expression.
 400 Parentheses too deeply nested in the regular expression.
 401 More than two numbers specified in a range.
-402 A unmatched curly brace is found in the regular expession.
+402 An unmatched curly brace is found in the regular expression.
 403 First number in range expression is larger than second.
-404 A unmatched bracket is found in the regular expression.
+404 An unmatched bracket is found in the regular expression.
 405 The regular expression was too long to compile.
 406 Invalid B+tree index identifier: (vfid = (%1$d, %2$d), rt_pgid: %3$d).
 407 Unknown key %1$s referenced in B+tree index {vfid: (%2$d, %3$d), rt_pgid: %4$d, key_type: %5$s}.
@@ -1068,7 +1068,7 @@ $ LOADDB
 999 Cannot create table '%1$s' like table '%2$s' because the existing table has features that will not be duplicated (%3$s).
 1000 '%1$s' is a CLASS or SHARED attribute but only normal attributes are allowed in this context.
 1001 An unexpected condition or state has been reached. '%1$s'
-1002 The current transaction could not aquire a database lock it requires to continue processing.
+1002 The current transaction could not acquire a database lock it requires to continue processing.
 1003 The constraint '%1$s' exists but has a different type.
 1004 Please note that when using ALTER TABLE DROP FOREIGN KEY, CUBRID drops both the constraint and its associated index.
 1005 Unused error code.
