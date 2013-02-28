@@ -32,6 +32,8 @@ class Connection(object):
         return cursorClass(self)
         
     def set_autocommit(self, value):
+        if not isinstance(value, bool):
+            raise ValueError("Parameter should be a boolean value")
         if value:
             switch = 'TRUE'
         else:
