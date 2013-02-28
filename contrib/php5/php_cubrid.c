@@ -166,6 +166,10 @@ typedef enum
 /* Max Cubrid supported charsets */
 #define MAX_DB_CHARSETS 6
 
+/* In CCI, CCI_U_TYPE_UNKNOWN == CCI_U_TYPE_NULL == 0, 
+ * so use below macro to denote the UNKNOWN type */
+#define U_TYPE_UNKNOWN -1
+
 typedef struct
 {
     int err_code;
@@ -216,7 +220,7 @@ typedef struct
 /* Define Cubrid supported date types */
 static const DB_TYPE_INFO db_type_info[] = {
     {"NULL", CCI_U_TYPE_NULL, 0},
-    {"UNKNOWN", CCI_U_TYPE_UNKNOWN, MAX_LEN_OBJECT},
+    {"UNKNOWN", U_TYPE_UNKNOWN, MAX_LEN_OBJECT},
 
     {"CHAR", CCI_U_TYPE_CHAR, -1},
     {"STRING", CCI_U_TYPE_STRING, -1},
@@ -418,12 +422,6 @@ static int cubrid_get_charset_internal(int conn, T_CCI_ERROR *error);
 
 static void linked_list_append(LINKED_LIST *list, void *data);
 static void linked_list_delete(LINKED_LIST *list, void *data);
-
-static void *libcascci = NULL;
-typedef int (*CCI_GET_LAST_INSERT_ID) (int con, void *buff,
-				       T_CCI_ERROR * err_buf);
-static CCI_GET_LAST_INSERT_ID cci_get_last_insert_id_fp = NULL;
-
 
 /************************************************************************
 * INTERFACE VARIABLES
@@ -1102,14 +1100,6 @@ ZEND_MSHUTDOWN_FUNCTION(cubrid)
     UNREGISTER_INI_ENTRIES();
     cci_end();
 
-    if (libcascci != NULL) {
-#if defined (WINDOWS)
-        FreeLibrary (libcascci);
-#else
-        dlclose (libcascci);
-#endif
-    }
-
     return SUCCESS;
 }
 
@@ -1703,8 +1693,7 @@ ZEND_FUNCTION(cubrid_bind)
     } else {
 	u_type = get_cubrid_u_type_by_name(bind_value_type);
 	/* collection type should be made by cci_set_make before calling cci_bind_param */
-	if (u_type == CCI_U_TYPE_UNKNOWN || u_type == CCI_U_TYPE_SET || 
-	    u_type == CCI_U_TYPE_MULTISET || u_type == CCI_U_TYPE_SEQUENCE) {
+	if (u_type == CCI_U_TYPE_SET || u_type == CCI_U_TYPE_MULTISET || u_type == CCI_U_TYPE_SEQUENCE) {
 	    php_error_docref(NULL TSRMLS_CC, E_WARNING, "Bind value type unknown : %s\n", bind_value_type);
 	    RETURN_FALSE;
 	}
@@ -1712,6 +1701,9 @@ ZEND_FUNCTION(cubrid_bind)
 
     if (u_type == CCI_U_TYPE_NULL || Z_TYPE_P(bind_value) == IS_NULL) {
         cubrid_retval = cci_bind_param(request->handle, bind_index, CCI_A_TYPE_STR, NULL, u_type, 0);
+    } else if (u_type == U_TYPE_UNKNOWN) {
+        php_error_docref(NULL TSRMLS_CC, E_WARNING, "Bind value type unknown : %s\n", bind_value_type);
+        RETURN_FALSE;
     } else {
         if (u_type == CCI_U_TYPE_BLOB || u_type == CCI_U_TYPE_CLOB) {
             if (Z_TYPE_P(bind_value) == IS_RESOURCE) {
@@ -3318,7 +3310,11 @@ ZEND_FUNCTION(cubrid_error)
         ZEND_FETCH_RESOURCE2(connect, T_CUBRID_CONNECT *, &conn_id, -1, "CUBRID-Connect", le_connect, le_pconnect);
     } else {
 	if (CUBRID_G(last_connect_id) == -1) {
-            RETURN_FALSE; 
+            if (CUBRID_G(recent_error).msg[0] != 0) {
+                RETURN_STRING(CUBRID_G(recent_error).msg, 1);
+            } else {
+                RETURN_FALSE;
+            }
         } 
 
         ZEND_FETCH_RESOURCE2(connect, T_CUBRID_CONNECT *, NULL, CUBRID_G(last_connect_id), "CUBRID-Connect", le_connect, le_pconnect);
@@ -3340,7 +3336,11 @@ ZEND_FUNCTION(cubrid_errno)
         ZEND_FETCH_RESOURCE2(connect, T_CUBRID_CONNECT *, &conn_id, -1, "CUBRID-Connect", le_connect, le_pconnect);
     } else {
 	if (CUBRID_G(last_connect_id) == -1) {
-            RETURN_FALSE; 
+            if (CUBRID_G(recent_error).code != 0) {
+                RETURN_LONG(CUBRID_G(recent_error).code);
+            } else {
+                RETURN_FALSE;
+            }
         } 
 
         ZEND_FETCH_RESOURCE2(connect, T_CUBRID_CONNECT *, NULL, CUBRID_G(last_connect_id), "CUBRID-Connect", le_connect, le_pconnect);
@@ -4480,6 +4480,7 @@ ZEND_FUNCTION(cubrid_insert_id)
     int cubrid_retval = 0;
 
     char *last_id = NULL;
+    char *out_str = NULL;
 
     init_error();
 
@@ -4509,30 +4510,16 @@ ZEND_FUNCTION(cubrid_insert_id)
             RETURN_LONG(0);
         }
 
-        if (cci_get_last_insert_id_fp != NULL) {
-	    /* cci_get_last_id set last_id as con_handle's static buffer */
-	    cubrid_retval = cci_get_last_insert_id_fp (connect->handle,
-						     &last_id, &error);
-	}
-        else {
-	    /* cci_last_id set last_id as allocated string */
-	    cubrid_retval = cci_last_insert_id (connect->handle, &last_id, &error);
-	}
-
-        if (cubrid_retval < 0) {
-	    handle_error (cubrid_retval, &error, connect);
-	    RETURN_FALSE;
-	}
+        if ((cubrid_retval = cci_get_last_insert_id(connect->handle, &last_id, &error)) < 0) {
+            handle_error(cubrid_retval, &error, connect);
+            RETURN_FALSE;
+        } 
         
         if (last_id == NULL) {
             RETURN_LONG(0);
         } else {
-            RETURN_STRINGL(last_id, strlen(last_id), 1);
-
-	    /* free last_id which is allocated in cci_last_insert_id */
-	    if (cci_get_last_insert_id_fp == NULL) {
-	        free (last_id);
-	    }
+            out_str = estrndup(last_id, strlen(last_id));
+            RETURN_STRINGL(out_str, strlen(out_str), 0);
         } 
 
         break;
@@ -5693,26 +5680,6 @@ static void php_cubrid_init_globals(zend_cubrid_globals * cubrid_globals)
 
     cubrid_globals->default_userid = "PUBLIC";
     cubrid_globals->default_passwd = "";
-
-    /* 
-     * use cci_get_last_id if possible
-     * early distributed libraries don't include it
-     */
-#if defined(WINDOWS)
-    libcascci = LoadLibrary ("cascci.dll");
-
-    if (libcascci != NULL) {
-        cci_get_last_insert_id_fp =
-	(CCI_GET_LAST_INSERT_ID) GetProcAddress (libcascci,
-						 "cci_get_last_insert_id");
-    }
-#else
-    libcascci = dlopen ("libcascci.so", RTLD_LAZY);
-
-    if (libcascci != NULL) {
-        cci_get_last_insert_id_fp = dlsym (libcascci, "cci_get_last_insert_id");
-    }
-#endif
 }
 
 static int init_error(void)
@@ -6265,9 +6232,11 @@ ERR_CUBRID_MAKE_SET:
 static int type2str(T_CCI_COL_INFO * column_info, char *type_name, int type_name_len)
 {
     char buf[64] = {'\0'};
+    int u_type;
 
-    switch (CCI_GET_COLLECTION_DOMAIN(column_info->type)) {
-    case CCI_U_TYPE_UNKNOWN:
+    u_type = CCI_GET_COLLECTION_DOMAIN(column_info->type);
+    switch (u_type) {
+    case U_TYPE_UNKNOWN:
         snprintf(buf, sizeof(buf), "unknown");
 	break;
     case CCI_U_TYPE_CHAR:
@@ -6343,9 +6312,13 @@ static int type2str(T_CCI_COL_INFO * column_info, char *type_name, int type_name
         snprintf(buf, sizeof(buf), "enum");
         break;
     default:
-	/* should not enter here */
+        /* 
+         * Enter here:
+         * set(set), set(multiset) ...
+         * multiset(int, CHAR(1))  ...
+         */
         snprintf(buf, sizeof(buf), "[unknown]");
-	return -1;
+        break;
     }
 
     if (CCI_IS_SET_TYPE(column_info->type)) {
@@ -6387,7 +6360,7 @@ static int get_cubrid_u_type_by_name(const char *type_name)
 	}
     }
 
-    return CCI_U_TYPE_UNKNOWN;
+    return U_TYPE_UNKNOWN;
 }
 
 static int get_cubrid_u_type_len(T_CCI_U_TYPE type)

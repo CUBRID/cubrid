@@ -17,7 +17,15 @@ if (!$conn) {
 }
 
 $db_list = cubrid_list_dbs($conn);
-var_dump($db_list);
+$i = 0;
+$cnt = count($db_list);
+while ($i < $cnt) {
+    $db_name = cubrid_db_name($db_list, $i);
+    if ($db_name == "demodb") {
+        printf("database name: %s\n", $db_name);
+    }   
+    $i++;
+}
 
 cubrid_disconnect($conn);
 
@@ -25,8 +33,5 @@ print "done!";
 ?>
 --CLEAN--
 --EXPECTF--
-array(1) {
-  [0]=>
-  string(6) "demodb"
-}
+database name: demodb
 done!
