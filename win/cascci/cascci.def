@@ -84,7 +84,6 @@ EXPORTS
 	cci_get_dbms_type
 	cci_register_out_param
 	cci_cancel
-	cci_get_thread_result
 	cci_get_error_msg
 	cci_get_err_msg
 	

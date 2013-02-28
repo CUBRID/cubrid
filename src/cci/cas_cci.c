@@ -171,9 +171,6 @@ static const char *dbg_oid_cmd_str (T_CCI_OID_CMD oid_cmd);
 static const char *dbg_isolation_str (T_CCI_TRAN_ISOLATION isol_level);
 #endif
 
-static THREAD_FUNC execute_thread (void *arg);
-static int get_thread_result (T_CON_HANDLE * con_handle,
-			      T_CCI_ERROR * err_buf);
 static int connect_prepare_again (T_CON_HANDLE * con_handle,
 				  T_REQ_HANDLE * req_handle,
 				  T_CCI_ERROR * err_buf);
@@ -1355,21 +1352,6 @@ cci_execute (int mapped_stmt_id, char flag, int max_col_size,
 
   if (error >= 0)
     {
-      if (flag & CCI_EXEC_THREAD)
-	{
-	  T_THREAD thrid;
-
-	  reset_error_buffer (&(con_handle->thr_arg.err_buf));
-	  con_handle->thr_arg.req_handle = req_handle;
-	  con_handle->thr_arg.flag = flag ^ CCI_EXEC_THREAD;
-	  con_handle->thr_arg.max_col_size = max_col_size;
-	  con_handle->thr_arg.con_handle = con_handle;
-	  con_handle->thr_arg.ret_code = CCI_ER_THREAD_RUNNING;
-	  THREAD_BEGIN (thrid, execute_thread, &(con_handle->thr_arg));
-	  error = CCI_ER_THREAD_RUNNING;
-	  goto thread_end;
-	}
-
       error = qe_execute (req_handle, con_handle, flag, max_col_size,
 			  &(con_handle->err_buf));
     }
@@ -1456,8 +1438,6 @@ execute_end:
 			  con_handle->id, elapsed, req_handle->sql_text);
 	}
     }
-
-thread_end:
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
   copy_error_buffer (err_buf, &(con_handle->err_buf));
@@ -1632,30 +1612,6 @@ prepare_execute_error:
     }
 
 error:
-  set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
-  con_handle->used = false;
-
-  return error;
-}
-
-int
-cci_get_thread_result (int mapped_conn_id, T_CCI_ERROR * err_buf)
-{
-  int error = CCI_ER_NO_ERROR;
-  T_CON_HANDLE *con_handle = NULL;
-
-  reset_error_buffer (err_buf);
-  error = hm_get_connection (mapped_conn_id, &con_handle);
-  if (error != CCI_ER_NO_ERROR)
-    {
-      set_error_buffer (err_buf, error, NULL);
-      return error;
-    }
-  reset_error_buffer (&(con_handle->err_buf));
-
-  error = get_thread_result (con_handle, &(con_handle->err_buf));
-
   set_error_buffer (&(con_handle->err_buf), error, NULL);
   copy_error_buffer (err_buf, &(con_handle->err_buf));
   con_handle->used = false;
@@ -4872,89 +4828,6 @@ dbg_isolation_str (T_CCI_TRAN_ISOLATION isol_level)
     }
 }
 #endif
-
-static THREAD_FUNC
-execute_thread (void *arg)
-{
-  T_EXEC_THR_ARG *exec_arg = (T_EXEC_THR_ARG *) arg;
-  T_CON_HANDLE *curr_con_handle = (T_CON_HANDLE *) (exec_arg->con_handle);
-  int error;
-
-  assert (exec_arg != NULL);
-  assert (curr_con_handle != NULL);
-
-  if (curr_con_handle != NULL)
-    {
-      reset_error_buffer (&(curr_con_handle->err_buf));
-    }
-
-  /* Do not support timeout feature in thread execute. */
-  RESET_START_TIME (curr_con_handle);
-
-  error = qe_execute (exec_arg->req_handle, curr_con_handle,
-		      exec_arg->flag, exec_arg->max_col_size,
-		      &(exec_arg->err_buf));
-  if (error < 0)
-    {
-      int con_err_code = 0;
-      int connect_done;
-
-      con_err_code = cas_connect_with_ret (curr_con_handle,
-					   &(exec_arg->err_buf),
-					   &connect_done);
-      if (con_err_code < 0)
-	{
-	  error = con_err_code;
-	  goto execute_end;
-	}
-
-      if (connect_done)
-	{
-	  req_handle_content_free (exec_arg->req_handle, 1);
-	  error = qe_prepare (exec_arg->req_handle, curr_con_handle,
-			      (exec_arg->req_handle)->sql_text,
-			      (exec_arg->req_handle)->prepare_flag,
-			      &(exec_arg->err_buf), 1);
-	  if (error < 0)
-	    {
-	      goto execute_end;
-	    }
-	  error = qe_execute (exec_arg->req_handle, curr_con_handle,
-			      exec_arg->flag, exec_arg->max_col_size,
-			      &(exec_arg->err_buf));
-	}
-    }
-  if (IS_BROKER_STMT_POOL (curr_con_handle))
-    {
-      while (error == CAS_ER_STMT_POOLING)
-	{
-	  req_handle_content_free (exec_arg->req_handle, 1);
-	  error = qe_prepare (exec_arg->req_handle, curr_con_handle,
-			      exec_arg->req_handle->sql_text,
-			      exec_arg->req_handle->prepare_flag,
-			      &(exec_arg->err_buf), 1);
-	  if (error < 0)
-	    {
-	      goto execute_end;
-	    }
-	  error = qe_execute (exec_arg->req_handle, curr_con_handle,
-			      exec_arg->flag, exec_arg->max_col_size,
-			      &(exec_arg->err_buf));
-	}
-    }
-
-execute_end:
-  exec_arg->ret_code = error;
-  THREAD_RETURN (NULL);
-}
-
-static int
-get_thread_result (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf)
-{
-  *err_buf = con_handle->thr_arg.err_buf;
-
-  return con_handle->thr_arg.ret_code;
-}
 
 static int
 connect_prepare_again (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle,

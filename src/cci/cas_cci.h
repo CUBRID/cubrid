@@ -866,7 +866,6 @@ extern "C"
   extern int cci_get_dbms_type (int con_h_id);
   extern int cci_register_out_param (int req_h_id, int index);
   extern int cci_cancel (int con_h_id);
-  extern int cci_get_thread_result (int con_id, T_CCI_ERROR * err_buf);
   extern int cci_get_error_msg (int err_code, T_CCI_ERROR * err_buf,
 				char *out_buf, int out_buf_size);
   extern int cci_get_err_msg (int err_code, char *buf, int bufsize);
