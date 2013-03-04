@@ -29,6 +29,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <assert.h>
 
 #if defined(WINDOWS)
 #include <winsock2.h>
@@ -49,6 +50,7 @@
 #include "cas.h"
 #include "broker_env_def.h"
 #include "cas_execute.h"
+#include "error_code.h"
 
 #if defined(WINDOWS)
 #include "broker_wsa_init.h"
@@ -735,6 +737,8 @@ net_write_error (int sock, int version, char *driver_info, char *cas_info,
 {
   size_t len = NET_SIZE_INT;
 
+  assert (code != NO_ERROR);
+
   if (version >= CAS_MAKE_VER (8, 3, 0))
     {
       len += NET_SIZE_INT;
@@ -756,7 +760,8 @@ net_write_error (int sock, int version, char *driver_info, char *cas_info,
     }
 
   if (!DOES_CLIENT_MATCH_THE_PROTOCOL (version, PROTOCOL_V2)
-      && !cas_di_understand_renewed_error_code (driver_info))
+      && !cas_di_understand_renewed_error_code (driver_info)
+      && code != NO_ERROR)
     {
       if (indicator == CAS_ERROR_INDICATOR
 	  || code == CAS_ER_NOT_AUTHORIZED_CLIENT)

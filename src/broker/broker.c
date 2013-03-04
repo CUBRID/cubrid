@@ -30,6 +30,7 @@
 #include <signal.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <assert.h>
 
 #if !defined(WINDOWS)
 #include <pthread.h>
@@ -786,14 +787,21 @@ send_error_to_driver (int sock, int error, char *driver_info)
 
   driver_version = CAS_MAKE_PROTO_VER (driver_info);
 
-  if (driver_version == CAS_PROTO_MAKE_VER (PROTOCOL_V2)
-      || cas_di_understand_renewed_error_code (driver_info))
+  if (error == NO_ERROR)
     {
-      write_val = htonl (error);
+      write_val = 0;
     }
   else
     {
-      write_val = htonl (CAS_CONV_ERROR_TO_OLD (error));
+      if (driver_version == CAS_PROTO_MAKE_VER (PROTOCOL_V2)
+	  || cas_di_understand_renewed_error_code (driver_info))
+	{
+	  write_val = htonl (error);
+	}
+      else
+	{
+	  write_val = htonl (CAS_CONV_ERROR_TO_OLD (error));
+	}
     }
 
   write_to_client (sock, (char *) &write_val, sizeof (int));

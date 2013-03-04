@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <assert.h>
 
 #if defined(WINDOWS)
 #include <winsock2.h>
@@ -44,6 +45,7 @@
 #else
 #include "cas_dbms_util.h"
 #endif
+#include "error_code.h"
 
 static int net_buf_realloc (T_NET_BUF * net_buf, int size);
 
@@ -298,6 +300,8 @@ net_buf_error_msg_set (T_NET_BUF * net_buf, int err_indicator,
   T_BROKER_VERSION ver;
 #endif /* !LIBCAS_FOR_JSP */
 
+  assert (err_code != NO_ERROR);
+
   net_buf_clear (net_buf);
 #ifndef LIBCAS_FOR_JSP
 #if defined(CAS_CUBRID) || defined(CAS_FOR_MYSQL) || defined(CAS_FOR_ORACLE)
@@ -308,7 +312,8 @@ net_buf_error_msg_set (T_NET_BUF * net_buf, int err_indicator,
     }
 
   if (!DOES_CLIENT_MATCH_THE_PROTOCOL (ver, PROTOCOL_V2)
-      && !cas_di_understand_renewed_error_code (as_info->driver_info))
+      && !cas_di_understand_renewed_error_code (as_info->driver_info)
+      && err_code != NO_ERROR)
     {
       if (err_indicator == CAS_ERROR_INDICATOR
 	  || err_code == CAS_ER_NOT_AUTHORIZED_CLIENT)
