@@ -519,8 +519,6 @@ ux_execute_internal (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
       goto execute_all_error;
     }
 
-  cas_mysql_autocommit (srv_handle->auto_commit_mode);
-
   num_bind = call_info->num_args;
   if (num_bind > 0)
     {
@@ -673,8 +671,6 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
   DB_VALUE **db_vals = NULL;
   void **start_argv = argv;
   T_BROKER_VERSION client_version = req_info->client_version;
-
-  cas_mysql_autocommit (srv_handle->auto_commit_mode);
 
   if (srv_handle->auto_commit_mode == TRUE)
     {
@@ -2546,6 +2542,8 @@ cas_mysql_connect_db (char *alias, char *user, char *passwd)
   set_db_connect_status (DB_CONNECTION_STATUS_CONNECTED);
   cas_mysql_set_host_connected (dbname, host, port);
 
+  cas_mysql_autocommit (false);
+
   return 0;
 }
 
@@ -2585,8 +2583,6 @@ cas_mysql_prepare (T_SRV_HANDLE ** new_handle, char *sql_stmt, int flag,
   (*new_handle)->schema_type = -1;
   (*new_handle)->prepare_flag = flag;
   (*new_handle)->auto_commit_mode = auto_commit_mode;
-
-  cas_mysql_autocommit (auto_commit_mode);
 
   ALLOC_COPY ((*new_handle)->sql_stmt, sql_stmt);
   if ((*new_handle)->sql_stmt == NULL)
