@@ -969,7 +969,7 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written,
       *len -= i;
     }
 
-  do
+  while (true)
     {
       po[0].fd = fd;
       po[0].events = POLLOUT;
@@ -1000,11 +1000,15 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written,
 
     write_again:
       n = writev (fd, *vec, *len);
-      if (n == 0)
+      if (n > 0)
 	{
-	  break;		/* ??? */
+	  return n;
 	}
-      else if (n < 0)
+      else if (n == 0)
+	{
+	  return 0;		/* ??? */
+	}
+      else
 	{
 	  if (errno == EINTR)
 	    {
@@ -1025,9 +1029,8 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written,
 	  return n;		/* error, return < 0 */
 	}
     }
-  while (false);
 
-  return n;
+  return -1;
 }
 #endif /* !WINDOWS */
 
