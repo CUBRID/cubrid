@@ -1850,6 +1850,7 @@ proxy_event_set_buffer (T_PROXY_EVENT * event_p, char *data,
 			unsigned int size)
 {
   assert (event_p);
+  assert (data != NULL);
 
   event_p->buffer.length = size;
   event_p->buffer.offset = 0;

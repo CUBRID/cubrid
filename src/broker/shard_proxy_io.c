@@ -816,6 +816,11 @@ proxy_io_make_client_proxy_alive (char *driver_info, char **buffer)
   net_buf.data_size = 0;
   proxy_init_net_buf (&net_buf);
 
+  *buffer = net_buf.data;
+  set_data_length (*buffer, net_buf.data_size);
+
+  net_buf.data = NULL;
+
   return MSG_HEADER_SIZE;
 }
 
@@ -1376,8 +1381,7 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
 
   if (strcmp (db_name, HEALTH_CHECK_DUMMY_DB) == 0)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Incoming health check request from client.");
+      PROXY_DEBUG_LOG ("Incoming health check request from client.");
       /* send proxy_alive response to the client */
       event_p =
 	proxy_event_new_with_rsp (driver_info, PROXY_EVENT_IO_WRITE,
