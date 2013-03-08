@@ -1288,6 +1288,7 @@ qe_close_req_handle_all (T_CON_HANDLE * con_handle)
 	}
       req_handle = con_handle->req_handle_table[i];
 
+      map_close_ots (req_handle->mapped_stmt_id);
       qe_close_req_handle_internal (req_handle, con_handle, false);
     }
   hm_req_handle_free_all (con_handle);

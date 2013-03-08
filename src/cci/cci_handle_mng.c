@@ -550,6 +550,7 @@ hm_get_connection_by_resolved_id (int resolved_id, T_CON_HANDLE ** connection)
     }
 
   *connection = con_handle_table[resolved_id - 1];
+  assert (*connection != NULL);
   return CCI_ER_NO_ERROR;
 }
 
@@ -647,6 +648,7 @@ hm_get_statement (int mapped_id, T_CON_HANDLE ** connection,
       *connection = conn;
     }
 
+  assert (*statement != NULL);
   return CCI_ER_NO_ERROR;
 }
 
