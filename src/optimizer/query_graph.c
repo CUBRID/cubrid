@@ -2241,7 +2241,9 @@ qo_analyze_term (QO_TERM * term, int term_type)
 		    case PT_NULLSAFE_EQ:
 		      break;
 		    case PT_RANGE:
-		      if (!QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
+		      if (!QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP)
+			  && !PT_EXPR_INFO_IS_FLAGED (pt_expr,
+						      PT_EXPR_INFO_FULL_RANGE))
 			{
 			  lhs_indexable = 0;
 			}
