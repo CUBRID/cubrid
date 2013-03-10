@@ -2031,7 +2031,17 @@ cci_close_query_result (int mapped_stmt_id, T_CCI_ERROR * err_buf)
     }
   reset_error_buffer (&(con_handle->err_buf));
 
-  error = req_close_query_result (req_handle);
+  error = qe_close_query_result (req_handle, con_handle);
+  if (error == CCI_ER_COMMUNICATION
+      && con_handle->con_status == CCI_CON_STATUS_OUT_TRAN)
+    {
+      error = CCI_ER_NO_ERROR;
+    }
+
+  if (error == CCI_ER_NO_ERROR)
+    {
+      error = req_close_query_result (req_handle);
+    }
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
   copy_error_buffer (err_buf, &(con_handle->err_buf));
@@ -2064,6 +2074,8 @@ cci_close_req_handle (int mapped_stmt_id)
 
   if (DOES_CONNECTION_HAVE_STMT_POOL (con_handle))
     {
+      qe_close_query_result (req_handle, con_handle);
+
       /* free req_handle resources */
       req_handle_content_free_for_pool (req_handle);
 

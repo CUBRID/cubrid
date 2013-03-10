@@ -1819,9 +1819,10 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 #ifndef LIBCAS_FOR_JSP
   if (fn_ret == FN_KEEP_CONN && net_buf->err_code == 0
       && as_info->con_status == CON_STATUS_IN_TRAN
-      && req_info->need_auto_commit != TRAN_NOT_AUTOCOMMIT)
+      && req_info->need_auto_commit != TRAN_NOT_AUTOCOMMIT
+      && err_info.err_number != CAS_ER_STMT_POOLING)
     {
-      /* no error and auto commit is needed */
+      /* no communication error and auto commit is needed */
       err_code = ux_auto_commit (net_buf, req_info);
       if (err_code < 0)
 	{
@@ -2188,18 +2189,6 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd,
 	    {
 	      ret_value = -1;
 	      break;
-	    }
-	  /* if out-of-transaction state, check whether restart is needed */
-	  if (as_info->con_status == CON_STATUS_OUT_TRAN
-	      && is_net_timed_out ())
-	    {
-	      if (restart_is_needed ())
-		{
-		  cas_log_debug (ARG_FILE_LINE, "net_read_int_keep_con_auto: "
-				 "restart_is_needed()");
-		  ret_value = -1;
-		  break;
-		}
 	    }
 	}
       else

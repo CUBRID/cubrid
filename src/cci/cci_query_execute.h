@@ -330,6 +330,8 @@ extern int qe_get_db_parameter (T_CON_HANDLE * con_handle,
 extern int qe_set_db_parameter (T_CON_HANDLE * con_handle,
 				T_CCI_DB_PARAM param_name,
 				void *value, T_CCI_ERROR * err_buf);
+extern int qe_close_query_result (T_REQ_HANDLE * req_handle,
+				  T_CON_HANDLE * con_handle);
 extern int qe_close_req_handle (T_REQ_HANDLE * req_handle,
 				T_CON_HANDLE * con_handle);
 extern void qe_close_req_handle_all (T_CON_HANDLE * con_handle);

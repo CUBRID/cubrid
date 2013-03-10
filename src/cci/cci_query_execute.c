@@ -1190,6 +1190,42 @@ qe_set_db_parameter (T_CON_HANDLE * con_handle, T_CCI_DB_PARAM param_name,
 }
 
 int
+qe_close_query_result (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle)
+{
+  int err_code = 0;
+  T_NET_BUF net_buf;
+  char func_code = CAS_FC_CURSOR_CLOSE;
+
+  net_buf_init (&net_buf);
+
+  if (hm_get_broker_version (con_handle) == CAS_PROTO_MAKE_VER (PROTOCOL_V2))
+    {
+      func_code = CAS_FC_CURSOR_CLOSE_FOR_PROTO_V2;
+    }
+
+  net_buf_cp_str (&net_buf, &func_code, 1);
+  ADD_ARG_INT (&net_buf, req_handle->server_handle_id);
+
+  if (net_buf.err_code < 0)
+    {
+      err_code = net_buf.err_code;
+      net_buf_clear (&net_buf);
+      return err_code;
+    }
+
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
+  net_buf_clear (&net_buf);
+  if (err_code < 0)
+    {
+      return err_code;
+    }
+
+  err_code = net_recv_msg (con_handle, NULL, NULL, NULL);
+
+  return err_code;
+}
+
+int
 qe_close_req_handle (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle)
 {
   return qe_close_req_handle_internal (req_handle, con_handle, false);
