@@ -126,15 +126,12 @@ public class UConnection {
 
 	private final static int BROKER_INFO_SIZE = 8;
 	private final static int BROKER_INFO_DBMS_TYPE = 0;
-	@SuppressWarnings("unused")
 	private final static int BROKER_INFO_RESERVED4 = 1;
 	private final static int BROKER_INFO_STATEMENT_POOLING = 2;
-	@SuppressWarnings("unused")
 	private final static int BROKER_INFO_CCI_PCONNECT = 3;
 	private final static int BROKER_INFO_PROTO_VERSION = 4;
 	private final static int BROKER_INFO_FUNCTION_FLAG = 5;
 	private final static int BROKER_INFO_RESERVED2 = 6;
-	@SuppressWarnings("unused")
 	private final static int BROKER_INFO_RESERVED3 = 7;
 	/* For backward compatibility */
 	private final static int BROKER_INFO_MAJOR_VERSION = BROKER_INFO_PROTO_VERSION;
@@ -1726,7 +1723,8 @@ public class UConnection {
 							int errno = e.getJciError();
 							if (errno == UErrorCode.ER_COMMUNICATION
 								|| errno == UErrorCode.ER_CONNECTION
-								|| errno == UErrorCode.ER_TIMEOUT) {
+								|| errno == UErrorCode.ER_TIMEOUT
+								|| errno == UErrorCode.CAS_ER_FREE_SERVER) {
 								CUBRIDDriver.addToUnreachableHosts(altHosts
 										.get(hostId));
 							} else {
