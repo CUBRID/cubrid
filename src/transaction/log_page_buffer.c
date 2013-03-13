@@ -9184,7 +9184,7 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid,
  *                                 not needed any longer to recovery from
  *                                 crashes when the backup just created is
  *                                 used.
- *   backup_verbose_file(in): verbose mode file path
+ *   backup_verbose_file_path(in): verbose mode file path
  *   num_threads(in): number of threads
  *   zip_method(in): compression method
  *   zip_level(in): compression level
@@ -9196,7 +9196,7 @@ int
 logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols,
 	      const char *allbackup_path, FILEIO_BACKUP_LEVEL backup_level,
 	      bool delete_unneeded_logarchives,
-	      const char *backup_verbose_file, int num_threads,
+	      const char *backup_verbose_file_path, int num_threads,
 	      FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level,
 	      int skip_activelog, int sleep_msecs)
 {
@@ -9240,7 +9240,6 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols,
   time_t tmp_time;
   char time_val[CTIME_MAX];
 
-  FILE *backup_verbose_fp = NULL;
   bool print_backupdb_waiting_reason = false;
 
   memset (&session, 0, sizeof (FILEIO_BACKUP_SESSION));
@@ -9262,17 +9261,16 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols,
     }
 #endif
 
-  if (backup_verbose_file && *backup_verbose_file)
+  /* Initialization gives us some useful information about the
+   * backup location.
+   */
+  session.type = FILEIO_BACKUP_WRITE;	/* access backup device for write */
+  if (fileio_initialize_backup (log_Db_fullname, allbackup_path, &session,
+				backup_level, backup_verbose_file_path,
+				num_threads, sleep_msecs) == NULL)
     {
-      backup_verbose_fp =
-	fileio_initialize_backup_verbose_file (backup_verbose_file,
-					       FILEIO_BACKUP_WRITE,
-					       backup_level);
-      if (backup_verbose_fp == NULL)
-	{
-	  error_code = ER_FAILED;
-	  goto failure;
-	}
+      error_code = ER_FAILED;
+      goto error;
     }
 
   /*
@@ -9288,7 +9286,8 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols,
       LOG_CS_EXIT ();
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_LOG_BKUP_DUPLICATE_REQUESTS, 0);
-      return ER_LOG_BKUP_DUPLICATE_REQUESTS;
+      error_code = ER_LOG_BKUP_DUPLICATE_REQUESTS;
+      goto error;
     }
 
   log_Gl.backup_in_progress = true;
@@ -9303,9 +9302,10 @@ loop:
     {
       bool continue_check;
       LOG_CS_EXIT ();
-      if (print_backupdb_waiting_reason == false && backup_verbose_fp != NULL)
+      if (print_backupdb_waiting_reason == false
+	  && session.verbose_fp != NULL)
 	{
-	  fprintf (backup_verbose_fp,
+	  fprintf (session.verbose_fp,
 		   "[ Database backup will start after checkpointing is complete. ]\n\n");
 	  print_backupdb_waiting_reason = true;
 	}
@@ -9319,16 +9319,16 @@ loop:
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
 	    error_code = ER_INTERRUPTED;
-	    goto failure;
+	    goto error;
 	  }
 
       thread_sleep (1, 0);
       goto loop;
     }
-  if (print_backupdb_waiting_reason == true && backup_verbose_fp != NULL)
+  if (print_backupdb_waiting_reason == true && session.verbose_fp != NULL)
     {
 
-      fprintf (backup_verbose_fp,
+      fprintf (session.verbose_fp,
 	       "[ Database backup has been suspended for %lld seconds due to checkpoint. ]\n\n",
 	       (long long int) (time (NULL) - wait_checkpoint_begin_time));
     }
@@ -9366,7 +9366,7 @@ loop:
 		  backup_level - 1);
 	  fileio_finalize_backup_info (FILEIO_FIRST_BACKUP_VOL_INFO);
 	  error_code = ER_LOG_BACKUP_LEVEL_NOGAPS;
-	  goto failure;
+	  goto error;
 	}
       else
 	{
@@ -9384,7 +9384,7 @@ loop:
 		  backup_level - 1);
 	  fileio_finalize_backup_info (FILEIO_FIRST_BACKUP_VOL_INFO);
 	  error_code = ER_LOG_BACKUP_LEVEL_NOGAPS;
-	  goto failure;
+	  goto error;
 	}
       else
 	{
@@ -9399,18 +9399,6 @@ loop:
       LSA_SET_NULL (&bkup_start_lsa);
       backup_level = FILEIO_BACKUP_FULL_LEVEL;
       break;
-    }
-
-  /* Initialization gives us some useful information about the
-   * backup location.
-   */
-  session.type = FILEIO_BACKUP_WRITE;	/* access backup device for write */
-  if (fileio_initialize_backup (log_Db_fullname, allbackup_path,
-				&session, backup_level, backup_verbose_fp,
-				num_threads, sleep_msecs) == NULL)
-    {
-      error_code = ER_FAILED;
-      goto error;
     }
 
   /*
@@ -9910,13 +9898,6 @@ error:
    */
   fileio_abort_backup (thread_p, &session, bkup_in_progress);
 
-failure:
-  if (session.verbose_fp)
-    {
-      fclose (session.verbose_fp);
-      session.verbose_fp = NULL;
-    }
-
 #if defined(SERVER_MODE)
   LOG_CS_ENTER (thread_p);
   log_Gl.run_nxchkpt_atpageid = saved_run_nxchkpt_atpageid;
@@ -10075,28 +10056,9 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
   struct stat stat_buf;
   int error_code = NO_ERROR, success = NO_ERROR;
   bool printtoc;
-  FILE *restore_verbose_fp = NULL;
   char format_string[64];
   INT64 backup_time;
   REL_COMPATIBILITY compat;
-
-  if (r_args->verbose_file != NULL && r_args->verbose_file[0] != '\0')
-    {
-      const char *verbose_mode = "w";
-
-      if (r_args->level != 0)
-	{
-	  verbose_mode = "a";
-	}
-
-      restore_verbose_fp = fopen (r_args->verbose_file, verbose_mode);
-      if (restore_verbose_fp == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_IO_CANNOT_OPEN_VERBOSE_FILE, 1, r_args->verbose_file);
-	  return ER_IO_CANNOT_OPEN_VERBOSE_FILE;
-	}
-    }
 
   try_level = (FILEIO_BACKUP_LEVEL) r_args->level;
   memset (&session_storage, 0, sizeof (FILEIO_BACKUP_SESSION));
@@ -10321,10 +10283,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 	  mht_destroy (pages_cache.ht);
 	  db_destroy_fixed_heap (pages_cache.heap_id);
 	  LOG_CS_EXIT ();
-	  if (restore_verbose_fp)
-	    {
-	      fclose (restore_verbose_fp);
-	    }
+
 	  return error_code;
 	}
 
@@ -10333,7 +10292,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 				db_creation, &bkdb_iopagesize,
 				&bkdb_compatibility, &session_storage,
 				try_level, printtoc, bkup_match_time,
-				restore_verbose_fp,
+				r_args->verbose_file,
 				r_args->newvolpath) == NULL)
 	{
 	  /* Cannot access backup file.. Restore from backup is cancelled */
@@ -10377,10 +10336,6 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 		  mht_destroy (pages_cache.ht);
 		  db_destroy_fixed_heap (pages_cache.heap_id);
 		  LOG_CS_EXIT ();
-		  if (restore_verbose_fp)
-		    {
-		      fclose (restore_verbose_fp);
-		    }
 		  return error_code;
 		}
 	    }

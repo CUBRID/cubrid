@@ -541,7 +541,8 @@ static FILEIO_BACKUP_SESSION
 			       const char *db_fullname, char *backup_src,
 			       FILEIO_BACKUP_SESSION * session,
 			       FILEIO_BACKUP_LEVEL level,
-			       FILE * restore_verbose_file, bool newvolpath);
+			       const char *restore_verbose_file_path,
+			       bool newvolpath);
 static int fileio_read_restore (THREAD_ENTRY * thread_p,
 				FILEIO_BACKUP_SESSION * session,
 				int toread_nbytes);
@@ -6518,7 +6519,7 @@ fileio_initialize_backup_thread (FILEIO_BACKUP_SESSION * session_p,
  *   backup_destination(in): Name of backup device (file or directory)
  *   session(out): The session array
  *   level(in): The presumed backup level
- *   verbose_file(in): verbose mode file path
+ *   verbose_file_path(in): verbose mode file path
  *   num_threads(in): number of threads
  *   sleep_msecs(in): sleep interval in msecs
  */
@@ -6527,7 +6528,7 @@ fileio_initialize_backup (const char *db_full_name_p,
 			  const char *backup_destination_p,
 			  FILEIO_BACKUP_SESSION * session_p,
 			  FILEIO_BACKUP_LEVEL level,
-			  FILE * verbose_file_fp,
+			  const char *verbose_file_path,
 			  int num_threads, int sleep_msecs)
 {
   int vol_fd;
@@ -6536,6 +6537,7 @@ fileio_initialize_backup (const char *db_full_name_p,
   struct stat stbuf;
   int buf_size;
   int io_page_size;
+  const char *verbose_fp_mode;
 
   /*
    * First assume that backup device is a regular file or a raw device.
@@ -6665,7 +6667,8 @@ fileio_initialize_backup (const char *db_full_name_p,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      session_p->bkup.iosize);
-      return NULL;
+
+      goto error;
     }
 
   session_p->dbfile.area = (FILEIO_BACKUP_PAGE *) malloc (size);
@@ -6673,8 +6676,8 @@ fileio_initialize_backup (const char *db_full_name_p,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      size);
-      free_and_init (session_p->bkup.buffer);
-      return NULL;
+
+      goto error;
     }
 
   session_p->bkup.bkuphdr =
@@ -6683,9 +6686,8 @@ fileio_initialize_backup (const char *db_full_name_p,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      FILEIO_BACKUP_HEADER_IO_SIZE);
-      free_and_init (session_p->bkup.buffer);
-      free_and_init (session_p->dbfile.area);
-      return NULL;
+
+      goto error;
     }
 
   session_p->bkup.ptr = session_p->bkup.buffer;
@@ -6724,29 +6726,12 @@ fileio_initialize_backup (const char *db_full_name_p,
 
   if (fileio_initialize_backup_thread (session_p, num_threads) != NO_ERROR)
     {
-      return NULL;
+      goto error;
     }
 
-  session_p->verbose_fp = verbose_file_fp;
-  session_p->sleep_msecs = sleep_msecs;
-
-  return session_p;
-}
-
-FILE *
-fileio_initialize_backup_verbose_file (const char *backup_verbose_file_name,
-				       FILEIO_BACKUP_TYPE type,
-				       FILEIO_BACKUP_LEVEL level)
-{
-
-
-  FILE *verbose_file = NULL;
-
-  const char *verbose_fp_mode;
-
-  if (backup_verbose_file_name && *backup_verbose_file_name)
+  if (verbose_file_path && *verbose_file_path)
     {
-      if (type == FILEIO_BACKUP_WRITE && level == 0)
+      if (session_p->type == FILEIO_BACKUP_WRITE && level == 0)
 	{
 	  verbose_fp_mode = "w";
 	}
@@ -6755,24 +6740,46 @@ fileio_initialize_backup_verbose_file (const char *backup_verbose_file_name,
 	  verbose_fp_mode = "a";
 	}
 
-      verbose_file = fopen (backup_verbose_file_name, verbose_fp_mode);
-
-      if (verbose_file == NULL)
+      session_p->verbose_fp = fopen (verbose_file_path, verbose_fp_mode);
+      if (session_p->verbose_fp == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_IO_CANNOT_OPEN_VERBOSE_FILE, 1,
-		  backup_verbose_file_name);
+		  ER_IO_CANNOT_OPEN_VERBOSE_FILE, 1, verbose_file_path);
 
-	  return NULL;
+	  goto error;
 	}
 
-      setbuf (verbose_file, NULL);
+      setbuf (session_p->verbose_fp, NULL);
     }
   else
     {
-      verbose_file = NULL;
+      session_p->verbose_fp = NULL;
     }
-  return verbose_file;
+
+  session_p->sleep_msecs = sleep_msecs;
+
+  return session_p;
+
+error:
+  if (session_p->bkup.buffer != NULL)
+    {
+      free_and_init (session_p->bkup.buffer);
+    }
+  if (session_p->dbfile.area != NULL)
+    {
+      free_and_init (session_p->dbfile.area);
+    }
+  if (session_p->bkup.bkuphdr != NULL)
+    {
+      free_and_init (session_p->bkup.bkuphdr);
+    }
+  if (session_p->verbose_fp != NULL)
+    {
+      fclose (session_p->verbose_fp);
+      session_p->verbose_fp = NULL;
+    }
+
+  return NULL;
 }
 
 static void
@@ -6912,7 +6919,7 @@ fileio_abort_backup (THREAD_ENTRY * thread_p,
 	}
     }
 
-  if (session_p->bkup.bkuphdr && session_p->verbose_fp)
+  if (session_p->verbose_fp)
     {
       fclose (session_p->verbose_fp);
       session_p->verbose_fp = NULL;
@@ -8966,7 +8973,7 @@ fileio_write_backup_header (FILEIO_BACKUP_SESSION * session_p)
  *   backup_src(in): Name of backup device (file or directory)
  *   session(in/out): The session array
  *   level(in): The presumed backup level
- *   restore_verbose_file(in):
+ *   restore_verbose_file_path(in):
  *   newvolpath(in): restore the database and log volumes to the path
  *                   specified in the database-loc-file
  *
@@ -8979,7 +8986,7 @@ fileio_initialize_restore (THREAD_ENTRY * thread_p,
 			   char *backup_source_p,
 			   FILEIO_BACKUP_SESSION * session_p,
 			   FILEIO_BACKUP_LEVEL level,
-			   FILE * restore_verbose_file_p,
+			   const char *restore_verbose_file_path,
 			   bool is_new_vol_path)
 {
   char orig_name[PATH_MAX];
@@ -9010,7 +9017,7 @@ fileio_initialize_restore (THREAD_ENTRY * thread_p,
 	   is_new_vol_path ? db_full_name_p : "", PATH_MAX);
   return (fileio_initialize_backup
 	  (db_full_name_p, (const char *) backup_source_p,
-	   session_p, level, restore_verbose_file_p,
+	   session_p, level, restore_verbose_file_path,
 	   0 /* no multi-thread */ , 0 /* no sleep */ ));
 }
 
@@ -9340,7 +9347,7 @@ fileio_read_restore_header (FILEIO_BACKUP_SESSION * session_p)
  *   level(in): The presumed backup level
  *   authenticate(in): true when validation of new bkup volume header needed
  *   match_bkupcreation(in): explicit timestamp to match in new backup volume
- *   restore_verbose_file(in):
+ *   restore_verbose_file_path(in):
  *   newvolpath(in): restore the database and log volumes to the path
  *                   specified in the database-loc-file
  */
@@ -9355,13 +9362,14 @@ fileio_start_restore (THREAD_ENTRY * thread_p,
 		      FILEIO_BACKUP_LEVEL level,
 		      bool is_authenticate,
 		      INT64 match_backup_creation_time,
-		      FILE * restore_verbose_file_p, bool is_new_vol_path)
+		      const char *restore_verbose_file_path,
+		      bool is_new_vol_path)
 {
   FILEIO_BACKUP_SESSION *temp_session_p;
 
   /* Initialize the session array and open the backup source device. */
   if (fileio_initialize_restore (thread_p, db_full_name_p, backup_source_p,
-				 session_p, level, restore_verbose_file_p,
+				 session_p, level, restore_verbose_file_path,
 				 is_new_vol_path) == NULL)
     {
       return NULL;
@@ -9854,7 +9862,7 @@ fileio_finish_restore (THREAD_ENTRY * thread_p,
   int success;
 
   success = fileio_synchronize_all (thread_p, false);
-  fileio_abort_backup (thread_p, session_p, false);
+  fileio_abort_restore (thread_p, session_p);
 
   return success;
 }
