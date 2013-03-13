@@ -1036,7 +1036,9 @@ logpb_invalidate_pool (THREAD_ENTRY * thread_p)
   for (i = 0; i < log_Pb.num_buffers; i++)
     {
       log_bufptr = LOGPB_FIND_BUFPTR (i);
-      if (log_bufptr->fcnt <= 0 && log_bufptr->dirty == false)
+      if ((log_bufptr->pageid == LOGPB_HEADER_PAGE_ID
+	   || log_bufptr->pageid > NULL_PAGEID)
+	  && log_bufptr->fcnt <= 0 && log_bufptr->dirty == false)
 	{
 	  (void) mht_rem (log_Pb.ht, &log_bufptr->pageid, NULL, NULL);
 	  logpb_initialize_log_buffer (log_bufptr);
