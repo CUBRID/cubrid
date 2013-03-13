@@ -2076,6 +2076,22 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
 				 disk_vhdr_length_of_varfields (vhdr), vhdr);
     }
 
+  /* Even though the volume header page is not completed at this moment, 
+   * to write REDO log for the header page is crucial for redo recovery
+   * since disk_map_init and disk_set_link will write their redo logs.
+   * These functions will access the header page during restart recovery.
+   *
+   * Another REDO log for RVDK_FORMAT will be written to completely log
+   * the header page including the volume link.
+   */
+  if (vol_purpose != DISK_TEMPVOL_TEMP_PURPOSE)
+    {
+      addr.offset = 0;		/* Header is located at position zero */
+      log_append_redo_data (thread_p, RVDK_FORMAT, &addr,
+			    sizeof (*vhdr) +
+			    disk_vhdr_length_of_varfields (vhdr), vhdr);
+    }
+
   /* Now initialize the sector and page allocator tables and link the volume
      to previous allocated volume */
 
