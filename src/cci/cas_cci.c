@@ -4568,7 +4568,10 @@ cas_connect_internal (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
 		  return CCI_ER_NO_ERROR;
 		}
 
-	      if (error == CCI_ER_COMMUNICATION || error == CCI_ER_CONNECT)
+	      if (error == CCI_ER_COMMUNICATION
+		  || error == CCI_ER_CONNECT
+		  || error == CCI_ER_LOGIN_TIMEOUT
+		  || error == CAS_ER_FREE_SERVER)
 		{
 		  hm_set_host_status (con_handle, i, false);
 		}
