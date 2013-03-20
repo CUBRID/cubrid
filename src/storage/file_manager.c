@@ -3760,8 +3760,7 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 		    {
 		      ret =
 			file_reset_contiguous_temporary_pages (thread_p,
-							       allocset->
-							       volid,
+							       allocset->volid,
 							       batch_firstid,
 							       batch_ndealloc,
 							       false);
@@ -4173,7 +4172,7 @@ file_mark_as_deleted (THREAD_ENTRY * thread_p, const VFID * vfid)
   PAGE_PTR fhdr_pgptr = NULL;
   LOG_DATA_ADDR addr;
   VPID vpid;
-  int deleted = true;
+  INT16 deleted = true;
 
   addr.vfid = vfid;
 
@@ -11768,7 +11767,7 @@ file_reuse_deleted (THREAD_ENTRY * thread_p, VFID * vfid,
 					   Limited to FILE_SET_NUMVPIDS each time */
   int num_files;		/* Number of known files */
   int num_found;		/* Number of files found in each cycle */
-  int clean;
+  INT16 clean;
   int i, j;
 #if defined(SERVER_MODE)
   int rv;
@@ -12384,7 +12383,17 @@ file_rv_undoredo_mark_as_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 #endif /* SERVER_MODE */
   int ret = NO_ERROR;
 
-  isdeleted = *(INT16 *) rcv->data;
+  assert (rcv->length == 2 || rcv->length == 4);
+  if (rcv->length == 2)
+    {
+      isdeleted = *(INT16 *) rcv->data;
+    }
+  else
+    {
+      /* As safe guard, In old log of RB-8.4.3 or before, the function
+       * file_mark_as_deleted() writes 4 bytes as isdeleted flag. */
+      isdeleted = (INT16) (*((INT32 *) rcv->data));
+    }
 
   fhdr = (FILE_HEADER *) (rcv->pgptr + FILE_HEADER_OFFSET);
 
