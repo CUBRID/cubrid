@@ -333,6 +333,10 @@ static char run_proxy_flag = 0;
 
 static char run_appl_server_flag = 0;
 
+#if !defined(CUBRID_SHARD)
+static int current_dropping_as_index = -1;
+#endif
+
 static int process_flag = 1;
 
 static int num_busy_uts = 0;
@@ -693,7 +697,10 @@ main (int argc, char *argv[])
 	  pthread_mutex_lock (&service_flag_mutex);
 	  drop_as_index = find_drop_as_index ();
 	  if (drop_as_index >= 0)
-	    shm_appl->as_info[drop_as_index].service_flag = SERVICE_OFF_ACK;
+	    {
+	      current_dropping_as_index = drop_as_index;
+	      shm_appl->as_info[drop_as_index].service_flag = SERVICE_OFF_ACK;
+	    }
 	  pthread_mutex_unlock (&service_flag_mutex);
 
 	  if (drop_as_index >= 0)
@@ -745,6 +752,7 @@ main (int argc, char *argv[])
 				PROXY_INVALID_ID, SHARD_INVALID_ID,
 				drop_as_index);
 	    }
+	  current_dropping_as_index = -1;
 	}			/* end of if (cur_num > min_num) */
 
     }				/* end of while (process_flag) */
@@ -2882,8 +2890,11 @@ find_add_as_index ()
 
   for (i = 0; i < shm_br->br_info[br_index].appl_server_max_num; i++)
     {
-      if (shm_appl->as_info[i].service_flag == SERVICE_OFF_ACK)
-	return i;
+      if (shm_appl->as_info[i].service_flag == SERVICE_OFF_ACK
+	  && current_dropping_as_index != i)
+	{
+	  return i;
+	}
     }
   return -1;
 }
