@@ -568,13 +568,13 @@ hm_get_connection_internal (int mapped_id, T_CON_HANDLE ** connection,
   *connection = NULL;
 
   error = map_get_otc_value (mapped_id, &connection_id, force);
-  if (connection_id < 1 || connection_id > MAX_CON_HANDLE)
-    {
-      return CCI_ER_CON_HANDLE;
-    }
   if (error != CCI_ER_NO_ERROR)
     {
       return error;
+    }
+  if (connection_id < 1 || connection_id > MAX_CON_HANDLE)
+    {
+      return CCI_ER_CON_HANDLE;
     }
 
   *connection = con_handle_table[connection_id - 1];
