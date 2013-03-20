@@ -578,6 +578,38 @@ er_call_stack_init (void)
 }
 
 /*
+ * er_call_stack_final -
+ *   return: none
+ */
+static void
+er_call_stack_final (void)
+{
+#if defined(LINUX)
+  if (fname_table == NULL)
+    {
+      return;
+    }
+
+  mht_map (fname_table, er_fname_free, NULL);
+  mht_destroy (fname_table);
+  fname_table = NULL;
+#endif
+}
+
+/*
+ * er_fname_free -
+ *   return: error code
+ */
+static int
+er_fname_free (const void *key, void *data, void *args)
+{
+  free (key);
+  free (data);
+
+  return NO_ERROR;
+}
+
+/*
  * er_init - Initialize parameters for message module
  *   return: none
  *   msglog_filename(in): name of message log file
@@ -1184,40 +1216,7 @@ er_start (void)
 }
 #endif /* SERVER_MODE */
 
-
 #if defined (SERVER_MODE)
-
-/*
- * er_fname_free -
- *   return: error code
- */
-static int
-er_fname_free (const void *key, void *data, void *args)
-{
-  free (key);
-  free (data);
-
-  return NO_ERROR;
-}
-
-/*
- * er_call_stack_final -
- *   return: none
- */
-static void
-er_call_stack_final (void)
-{
-#if defined(LINUX)
-  if (fname_table == NULL)
-    {
-      return;
-    }
-
-  mht_map (fname_table, er_fname_free, NULL);
-  mht_destroy (fname_table);
-  fname_table = NULL;
-#endif
-}
 
 /*
  * er_final - Terminate the error message module
@@ -1320,7 +1319,7 @@ er_final (void)
 
   er_event_final ();
 
-  if (er_Msg != NULL)
+  if (er_hasalready_initiated)
     {
       er_stack_clear ();
       if (er_msglog_fh != NULL && er_msglog_fh != stderr)
@@ -1335,6 +1334,14 @@ er_final (void)
 	  er_accesslog_fh = NULL;
 	}
 
+      for (i = 0; i < (int) DIM (er_fmt_list); i++)
+	{
+	  er_clear_fmt (&er_fmt_list[i]);
+	}
+    }
+
+  if (er_Msg != NULL)
+    {
       ER_FREE_AREA (er_Msg->msg_area);
       er_Msg->msg_area = er_emergency_buf;
       er_Msg->msg_area_size = sizeof (er_emergency_buf);
@@ -1343,11 +1350,6 @@ er_final (void)
 	  free_and_init (er_Msg->args);
 	}
       er_Msg->nargs = 0;
-
-      for (i = 0; i < (int) DIM (er_fmt_list); i++)
-	{
-	  er_clear_fmt (&er_fmt_list[i]);
-	}
 
       er_Msg = NULL;
     }
@@ -1360,6 +1362,8 @@ er_final (void)
 	  er_cached_msg[i] = (char *) er_builtin_msg[i];
 	}
     }
+
+  er_call_stack_final ();
 
   er_hasalready_initiated = false;
 }
