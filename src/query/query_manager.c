@@ -276,19 +276,25 @@ qmgr_is_page_in_temp_file_buffer (PAGE_PTR page_p,
 static bool
 qmgr_is_not_allowed_result_cache (QUERY_FLAG flag)
 {
-  return (prm_get_integer_value (PRM_ID_LIST_QUERY_CACHE_MODE) == 0
-	  || (prm_get_integer_value (PRM_ID_LIST_QUERY_CACHE_MODE) == 1
+  int query_cache_mode;
+
+  query_cache_mode = prm_get_integer_value (PRM_ID_LIST_QUERY_CACHE_MODE);
+  return (query_cache_mode == QFILE_LIST_QUERY_CACHE_MODE_OFF
+	  || (query_cache_mode == QFILE_LIST_QUERY_CACHE_MODE_SELECTIVELY_OFF
 	      && (flag & RESULT_CACHE_INHIBITED))
-	  || (prm_get_integer_value (PRM_ID_LIST_QUERY_CACHE_MODE) == 2
+	  || (query_cache_mode == QFILE_LIST_QUERY_CACHE_MODE_SELECTIVELY_ON
 	      && !(flag & RESULT_CACHE_REQUIRED)));
 }
 
 static bool
 qmgr_can_not_get_result_from_cache (QUERY_FLAG flag)
 {
-  return (prm_get_integer_value (PRM_ID_LIST_QUERY_CACHE_MODE) == 0
-	  || (prm_get_integer_value (PRM_ID_LIST_QUERY_CACHE_MODE) > 0
-	      && ((flag) & NOT_FROM_RESULT_CACHE)));
+  int query_cache_mode;
+
+  query_cache_mode = prm_get_integer_value (PRM_ID_LIST_QUERY_CACHE_MODE);
+  return (query_cache_mode == QFILE_LIST_QUERY_CACHE_MODE_OFF
+	  || (query_cache_mode != QFILE_LIST_QUERY_CACHE_MODE_OFF
+	      && (flag & NOT_FROM_RESULT_CACHE)));
 }
 
 static void
@@ -3196,13 +3202,16 @@ qmgr_free_old_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
   int rv;
 #endif /* SERVER_MODE */
 
-  if (tfile_vfid_p == NULL)	/* already closed */
+  if (page_p == NULL)
     {
+      assert (0);
       return;
     }
 
-  if (!qmgr_is_page_in_temp_file_buffer (page_p, tfile_vfid_p))
+  if (tfile_vfid_p == NULL
+      || !qmgr_is_page_in_temp_file_buffer (page_p, tfile_vfid_p))
     {
+      /* The list files came from list file cache have no tfile_vfid_p. */
       pgbuf_unfix (thread_p, page_p);
     }
 #if defined (SERVER_MODE)

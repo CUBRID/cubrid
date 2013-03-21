@@ -92,6 +92,13 @@ struct qfile_list_cache_entry
   bool deletion_marker;		/* this entry will be deleted if marker set */
 };
 
+enum
+{
+  QFILE_LIST_QUERY_CACHE_MODE_OFF = 0,
+  QFILE_LIST_QUERY_CACHE_MODE_SELECTIVELY_OFF = 1,
+  QFILE_LIST_QUERY_CACHE_MODE_SELECTIVELY_ON = 2
+};
+
 /* List manipulation routines */
 extern int qfile_initialize (void);
 extern void qfile_finalize (void);

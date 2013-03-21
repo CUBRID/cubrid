@@ -32,6 +32,14 @@
 #include "dbtype.h"
 #include "thread.h"
 
+#define qmgr_free_old_page_and_init(thread_p, page_p, tfile_vfidp) \
+  do \
+    { \
+      qmgr_free_old_page ((thread_p), (page_p), (tfile_vfidp)); \
+      (page_p) = NULL; \
+    } \
+  while (0)
+
 #define NULL_PAGEID_ASYNC -2
 #define QMGR_VPID_ARRAY_SIZE    20
 #define QMGR_QUERY_ENTRY_ARRAY_SIZE     100
@@ -174,8 +182,9 @@ extern int qmgr_allocate_tran_entries (THREAD_ENTRY * thread_p,
 extern void qmgr_dump (void);
 extern int qmgr_initialize (THREAD_ENTRY * thread_p);
 extern void qmgr_finalize (THREAD_ENTRY * thread_p);
-extern void qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index,
-				     bool tran_died, bool is_abort);
+extern void qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p,
+				     int tran_index, bool tran_died,
+				     bool is_abort);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern QMGR_TRAN_STATUS qmgr_get_tran_status (THREAD_ENTRY * thread_p,
 					      int tran_index);
@@ -213,8 +222,9 @@ extern int qmgr_free_temp_file_list (THREAD_ENTRY * thread_p,
 #if defined(SERVER_MODE)
 extern bool qmgr_is_thread_executing_async_query (THREAD_ENTRY * thrd_entry);
 #endif
-extern void *qmgr_get_area_error_async (THREAD_ENTRY * thread_p, int *length,
-					int count, QUERY_ID query_id);
+extern void *qmgr_get_area_error_async (THREAD_ENTRY * thread_p,
+					int *length, int count,
+					QUERY_ID query_id);
 extern bool qmgr_interrupt_query (THREAD_ENTRY * thread_p, QUERY_ID query_id);
 extern bool qmgr_is_async_query_interrupted (THREAD_ENTRY * thread_p,
 					     QUERY_ID query_id);

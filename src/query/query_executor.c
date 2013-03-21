@@ -2821,9 +2821,8 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes,
 		  /* free currently fixed page */
 		  if (info->fixed_page != NULL)
 		    {
-		      qmgr_free_old_page (info->fixed_page,
-					  list_idp->tfile_vfid);
-		      info->fixed_page = NULL;
+		      qmgr_free_old_page_and_init (info->fixed_page,
+						   list_idp->tfile_vfid);
 		    }
 
 		  /* fix page and cache fixed vpid */
@@ -2915,7 +2914,8 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes,
 		    }
 		}
 #if 1				/* SortCache */
-	      qmgr_free_old_page (thread_p, page, list_idp->tfile_vfid);
+	      qmgr_free_old_page_and_init (thread_p, page,
+					   list_idp->tfile_vfid);
 #endif
 	    }
 	  else
@@ -3500,8 +3500,7 @@ qexec_clear_groupby_state (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
   /* free currently fixed page */
   if (gbstate->fixed_page != NULL)
     {
-      qmgr_free_old_page (gbstate->fixed_page, list_idp->tfile_vfid);
-      gbstate->fixed_page = NULL;
+      qmgr_free_old_page_and_init (gbstate->fixed_page, list_idp->tfile_vfid);
     }
 #endif
 
@@ -3888,8 +3887,8 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 	      /* free currently fixed page */
 	      if (info->fixed_page != NULL)
 		{
-		  qmgr_free_old_page (info->fixed_page, list_idp->tfile_vfid);
-		  info->fixed_page = NULL;
+		  qmgr_free_old_page_and_init (info->fixed_page,
+					       list_idp->tfile_vfid);
 		}
 
 	      /* fix page and cache fixed vpid */
@@ -4041,8 +4040,7 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 #if 1				/* SortCache */
       if (page)
 	{
-	  qmgr_free_old_page (thread_p, page, list_idp->tfile_vfid);
-	  page = NULL;
+	  qmgr_free_old_page_and_init (thread_p, page, list_idp->tfile_vfid);
 	}
 #endif
 
@@ -4052,7 +4050,7 @@ wrapup:
 #if 1				/* SortCache */
   if (page)
     {
-      qmgr_free_old_page (thread_p, page, list_idp->tfile_vfid);
+      qmgr_free_old_page_and_init (thread_p, page, list_idp->tfile_vfid);
     }
 #endif
 
@@ -4261,8 +4259,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       QFILE_LIST_ID *list_idp;
 
       list_idp = &(gbstate.input_scan->list_id);
-      qmgr_free_old_page (gbstate.fixed_page, list_idp->tfile_vfid);
-      gbstate.fixed_page = NULL;
+      qmgr_free_old_page_and_init (gbstate.fixed_page, list_idp->tfile_vfid);
     }
 #endif
   qfile_destroy_list (thread_p, list_id);
@@ -16614,9 +16611,8 @@ exit_on_error:
 	{
 	  if (lfscan_id.curr_pgptr != NULL)
 	    {
-	      qmgr_free_old_page (thread_p, lfscan_id.curr_pgptr,
-				  lfscan_id.list_id.tfile_vfid);
-	      lfscan_id.curr_pgptr = NULL;
+	      qmgr_free_old_page_and_init (thread_p, lfscan_id.curr_pgptr,
+					   lfscan_id.list_id.tfile_vfid);
 	    }
 
 	  lfscan_id.list_id.tfile_vfid = NULL;
@@ -16633,9 +16629,8 @@ exit_on_error:
 	{
 	  if (lfscan_id.curr_pgptr != NULL)
 	    {
-	      qmgr_free_old_page (thread_p, lfscan_id.curr_pgptr,
-				  lfscan_id.list_id.tfile_vfid);
-	      lfscan_id.curr_pgptr = NULL;
+	      qmgr_free_old_page_and_init (thread_p, lfscan_id.curr_pgptr,
+					   lfscan_id.list_id.tfile_vfid);
 	    }
 
 	  lfscan_id.list_id.tfile_vfid = NULL;
@@ -19596,9 +19591,10 @@ wrapup:
       /* clear current input: sort items and input scan */
       if (analytic_state.curr_sort_page.page_p != NULL)
 	{
-	  qmgr_free_old_page (thread_p, analytic_state.curr_sort_page.page_p,
-			      analytic_state.input_scan->list_id.tfile_vfid);
-	  analytic_state.curr_sort_page.page_p = NULL;
+	  qmgr_free_old_page_and_init (thread_p,
+				       analytic_state.curr_sort_page.page_p,
+				       analytic_state.input_scan->list_id.
+				       tfile_vfid);
 	  analytic_state.curr_sort_page.vpid.pageid = NULL_PAGEID;
 	  analytic_state.curr_sort_page.vpid.volid = NULL_VOLID;
 	}
@@ -19875,9 +19871,9 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes,
 	{
 	  if (analytic_state->curr_sort_page.page_p != NULL)
 	    {
-	      qmgr_free_old_page (thread_p,
-				  analytic_state->curr_sort_page.page_p,
-				  list_idp->tfile_vfid);
+	      qmgr_free_old_page_and_init (thread_p,
+					   analytic_state->curr_sort_page.
+					   page_p, list_idp->tfile_vfid);
 	    }
 
 	  analytic_state->curr_sort_page.page_p =
@@ -20265,9 +20261,10 @@ qexec_clear_analytic_state (THREAD_ENTRY * thread_p,
 
   if (analytic_state->curr_sort_page.page_p != NULL)
     {
-      qmgr_free_old_page (thread_p, analytic_state->curr_sort_page.page_p,
-			  analytic_state->input_scan->list_id.tfile_vfid);
-      analytic_state->curr_sort_page.page_p = NULL;
+      qmgr_free_old_page_and_init (thread_p,
+				   analytic_state->curr_sort_page.page_p,
+				   analytic_state->input_scan->list_id.
+				   tfile_vfid);
       analytic_state->curr_sort_page.vpid.pageid = NULL_PAGEID;
       analytic_state->curr_sort_page.vpid.volid = NULL_VOLID;
     }
