@@ -497,69 +497,69 @@ namespace dbgw
               const Value *pReturnValue;
               const Value *pInternalvalue;
               const char *szColumnName;
-              while (m_pExternalResultSet->next()
-                  && m_pInternalResultSet->next())
+
+              if (m_pExternalResultSet->next() == false)
                 {
-                  const trait<ClientResultSetMetaData>::sp pMetaData =
-                      m_pExternalResultSet->getMetaData();
+                  throw getLastException();
+                }
 
-                  for (size_t i = 0; i < pMetaData->getColumnCount(); i++)
+              if (m_pInternalResultSet->next() == false)
+                {
+                  throw getLastException();
+                }
+
+              const trait<ClientResultSetMetaData>::sp pMetaData =
+                  m_pExternalResultSet->getMetaData();
+
+              for (size_t i = 0; i < pMetaData->getColumnCount(); i++)
+                {
+                  pReturnValue = m_pExternalResultSet->getValue(i);
+                  pInternalvalue = m_pInternalResultSet->getValue(i);
+                  if (pMetaData->getColumnName(i, &szColumnName) == false)
                     {
-                      pReturnValue = m_pExternalResultSet->getValue(i);
-                      pInternalvalue = m_pInternalResultSet->getValue(i);
-                      if (pMetaData->getColumnName(i, &szColumnName) == false)
-                        {
-                          throw getLastException();
-                        }
+                      throw getLastException();
+                    }
 
-                      if (pInternalvalue == NULL)
-                        {
-                          ValidateValueFailException e(szColumnName,
-                              pReturnValue->toString());
-                          DBGW_LOG_ERROR(
-                              m_logger.getLogMessage(e.what()).c_str());
-                          throw e;
-                        }
+                  if (pInternalvalue == NULL)
+                    {
+                      ValidateValueFailException e(szColumnName,
+                          pReturnValue->toString());
+                      DBGW_LOG_ERROR(
+                          m_logger.getLogMessage(e.what()).c_str());
+                      throw e;
+                    }
 
-                      if (*pReturnValue != *pInternalvalue)
-                        {
-                          ValidateValueFailException e(szColumnName,
-                              pReturnValue->toString(),
-                              pInternalvalue->toString());
-                          DBGW_LOG_ERROR(
-                              m_logger.getLogMessage(e.what()).c_str());
-                          throw e;
-                        }
+                  if (*pReturnValue != *pInternalvalue)
+                    {
+                      ValidateValueFailException e(szColumnName,
+                          pReturnValue->toString(),
+                          pInternalvalue->toString());
+                      DBGW_LOG_ERROR(
+                          m_logger.getLogMessage(e.what()).c_str());
+                      throw e;
+                    }
 
-                      if (pReturnValue->getType() != pInternalvalue->getType())
-                        {
-                          ValidateTypeFailException e(szColumnName,
-                              pReturnValue->toString(),
-                              getValueTypeString(pReturnValue->getType()),
-                              pInternalvalue->toString(),
-                              getValueTypeString(pInternalvalue->getType()));
-                          DBGW_LOG_ERROR(
-                              m_logger.getLogMessage(e.what()).c_str());
-                          throw e;
-                        }
+                  if (pReturnValue->getType() != pInternalvalue->getType())
+                    {
+                      ValidateTypeFailException e(szColumnName,
+                          pReturnValue->toString(),
+                          getValueTypeString(pReturnValue->getType()),
+                          pInternalvalue->toString(),
+                          getValueTypeString(pInternalvalue->getType()));
+                      DBGW_LOG_ERROR(
+                          m_logger.getLogMessage(e.what()).c_str());
+                      throw e;
                     }
                 }
 
               m_pExternalResultSet->first();
+
+              fetchAllDataOfInternalResultSet();
             }
         }
       catch (Exception &)
         {
-          /**
-           * if select query is executed,
-           * we have to fetch all data or send end tran rollback.
-           */
-          if (m_pInternalResultSet->isNeedFetch())
-            {
-              while (m_pInternalResultSet->next())
-                {
-                }
-            }
+          fetchAllDataOfInternalResultSet();
 
           if (m_pExternalResultSet->isNeedFetch())
             {
@@ -649,6 +649,26 @@ namespace dbgw
 
               throw m_lastException;
             }
+        }
+    }
+
+    void fetchAllDataOfInternalResultSet()
+    {
+
+      if (m_pInternalResultSet != NULL)
+        {
+          /**
+           * if select query is executed,
+           * we have to fetch all data or send end tran rollback.
+           */
+          if (m_pInternalResultSet->isNeedFetch())
+            {
+              while (m_pInternalResultSet->next())
+                {
+                }
+            }
+
+          m_pInternalResultSet.reset();
         }
     }
 
