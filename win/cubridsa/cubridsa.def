@@ -778,7 +778,9 @@ EXPORTS
     btree_fix_overflow_oid_page_all_btrees
 	catcls_get_db_collation
 ; db private
-	db_private_alloc
+	db_private_alloc_debug
+	db_private_alloc_release
 	db_private_realloc
 	db_private_strdup
-	db_private_free	
+	db_private_free_debug
+	db_private_free_release

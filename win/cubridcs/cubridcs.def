@@ -869,9 +869,11 @@ EXPORTS
 	db_create_fbo
 	elo_init_structure
 ; db private
-	db_private_alloc
+	db_private_alloc_debug
+	db_private_alloc_release
 	db_private_realloc
 	db_private_strdup
-	db_private_free
+	db_private_free_debug
+	db_private_free_release
 	ws_mop
 	oid_compare

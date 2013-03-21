@@ -384,6 +384,25 @@ db_destroy_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id)
  *             determine the appropriate thread context
  *   size(in): size to allocate
  */
+
+/* dummy definition for Windows */
+#if defined(WINDOWS)
+#if !defined(NDEBUG)
+void *
+db_private_alloc_release (void *thrd, size_t size, bool rc_track)
+{
+  return NULL;                   
+}    
+#else
+void *
+db_private_alloc_debug (void *thrd, size_t size, bool rc_track,
+			const char *caller_file, int caller_line)
+{
+  return NULL;
+}                           
+#endif                      
+#endif
+
 #if !defined(NDEBUG)
 void *
 db_private_alloc_debug (void *thrd, size_t size, bool rc_track,
@@ -494,12 +513,13 @@ void *
 db_private_realloc (void *thrd, void *ptr, size_t size)
 {
   void *new_ptr = NULL;
+#if defined (SERVER_MODE)
+  HL_HEAPID heap_id;
+#endif
 
 #if defined (CS_MODE)
   return db_ws_realloc (ptr, size);
 #elif defined (SERVER_MODE)
-  HL_HEAPID heap_id;
-
   if (size <= 0)
     {
       return NULL;
@@ -617,6 +637,25 @@ db_private_strdup (void *thrd, const char *s)
  *   thrd(in): thread conext if it is server, otherwise NULL
  *   ptr(in): memory pointer to free
  */
+
+/* dummy definition for Windows */
+#if defined(WINDOWS)
+#if !defined(NDEBUG)
+void
+db_private_free_release (void *thrd, void *ptr, bool rc_track)
+{
+  return;                   
+}    
+#else
+void
+db_private_free_debug (void *thrd, void *ptr, bool rc_track,
+		       const char *caller_file, int caller_line)
+{
+  return;
+}                           
+#endif                      
+#endif
+
 #if !defined(NDEBUG)
 void
 db_private_free_debug (void *thrd, void *ptr, bool rc_track,
@@ -710,9 +749,9 @@ void
 db_private_free_external (void *thrd, void *ptr)
 {
 #if !defined(NDEBUG)
-  return db_private_free_debug (thrd, ptr, true, __FILE__, __LINE__);
+  db_private_free_debug (thrd, ptr, true, __FILE__, __LINE__);
 #else /* NDEBUG */
-  return db_private_free_release (thrd, ptr, false);
+  db_private_free_release (thrd, ptr, false);
 #endif /* NDEBUG */
 }
 

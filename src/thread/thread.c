@@ -3713,7 +3713,7 @@ thread_rc_track_initialize (THREAD_ENTRY * thread_p)
 
   thread_p->track = NULL;
   thread_p->track_depth = -1;
-  thread_p->track_threshold = INT8_MAX;	/* 127 */
+  thread_p->track_threshold = 0x7F;	/* 127 */
   thread_p->track_free_list = NULL;
 
   (void) thread_rc_track_clear_all (thread_p);
@@ -3865,7 +3865,7 @@ thread_rc_track_alloc (THREAD_ENTRY * thread_p)
 		  else
 		    {
 		      new_track->meter[i][j].m_amount = 0;
-		      new_track->meter[i][j].m_threshold = INT16_MAX;	/* for future work, get PRM */
+		      new_track->meter[i][j].m_threshold = 0x7FFF;	/* for future work, get PRM */
 		      new_track->meter[i][j].m_add_file_name = NULL;
 		      new_track->meter[i][j].m_add_line_no = -1;
 		      new_track->meter[i][j].m_sub_file_name = NULL;
