@@ -2645,8 +2645,8 @@ db_string_md5 (DB_VALUE const *val, DB_VALUE * result)
 	    }
 
 	  qstr_make_typed_string (DB_TYPE_CHAR, &hash_string, 32,
-				  hashString, 32, LANG_COERCIBLE_CODESET,
-				  LANG_COERCIBLE_COLL);
+				  hashString, 32, DB_GET_STRING_CODESET (val),
+				  DB_GET_STRING_COLLATION (val));
 	  hash_string.need_clear = false;
 	  pr_clone_value (&hash_string, result);
 	}
