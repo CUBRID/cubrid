@@ -394,14 +394,15 @@ db_private_alloc_release (void *thrd, size_t size, bool rc_track)
 #endif				/* NDEBUG */
 {
   void *ptr = NULL;
+#if defined (SERVER_MODE)
+  HL_HEAPID heap_id;
+#endif
 
   assert (size > 0);
 
 #if defined (CS_MODE)
   return db_ws_alloc (size);
 #elif defined (SERVER_MODE)
-  HL_HEAPID heap_id;
-
   if (size <= 0)
     {
       return NULL;
