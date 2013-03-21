@@ -117,9 +117,15 @@ extern "C"
   extern void cci_log_set_level(Logger logger, CCI_LOG_LEVEL level);
   extern bool cci_log_is_writable(Logger logger, CCI_LOG_LEVEL level);
   extern void cci_log_set_force_flush(Logger logger, bool force_flush);
+  extern void cci_log_use_default_newline(Logger logger,
+      bool use_default_newline);
+  extern void cci_log_use_default_prefix(Logger logger,
+      bool use_default_prefix);
+  extern void cci_log_change_max_file_size_appender(Logger logger,
+      int max_file_size_kbytes, int max_backup_count);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif				/* CCI_LOG_H_ */
+#endif                          /* CCI_LOG_H_ */

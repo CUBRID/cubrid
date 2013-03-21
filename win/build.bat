@@ -78,7 +78,7 @@ for /f "tokens=* delims= " %%a IN ("%BUILD_LIST%") DO set BUILD_LIST=%%a
 echo Build list is [%BUILD_LIST%].
 set BUILD_LIST=%BUILD_LIST:ALL=BUILD DIST%
 set BUILD_LIST=%BUILD_LIST:BUILD=CUBRID JDBC MANAGER%
-set BUILD_LIST=%BUILD_LIST:DIST=EXE_PACKAGE ZIP_PACKAGE CCI_PACKAGE JDBC_PACKAGE%
+set BUILD_LIST=%BUILD_LIST:DIST=EXE_PACKAGE ZIP_PACKAGE CCI_PACKAGE DBGWCI_PACKAGE JDBC_PACKAGE%
 
 call :BUILD_PREPARE
 if ERRORLEVEL 1 echo *** [%DATE% %TIME%] Preparing failed. & GOTO :EOF
@@ -262,7 +262,6 @@ del conf\shard_connection.txt-dist
 del conf\shard_key.txt-dist
 del conf\cubrid_locales.all.txt-dist
 del conf\cubrid_locales.txt-dist
-
 echo Package created. [%DIST_DIR%\%CUBRID_PACKAGE_NAME%.exe]
 set DIST_PKGS=%DIST_PKGS% %CUBRID_PACKAGE_NAME%.exe
 GOTO :EOF
@@ -305,6 +304,66 @@ echo Package created. [%DIST_DIR%\%CUBRID_CCI_PACKAGE_NAME%.zip]
 set DIST_PKGS=%DIST_PKGS% %CUBRID_CCI_PACKAGE_NAME%.zip
 GOTO :EOF
 
+:BUILD_DBGWCI_PACKAGE
+echo Buiding DBGWCI package in %BUILD_DIR% ...
+if NOT EXIST %BUILD_PREFIX% echo Cannot found built directory. & GOTO :EOF
+cd /d %BUILD_PREFIX%
+
+if EXIST cubrid-dbgwci-%BUILD_NUMBER% rd /s /q cubrid-dbgwci-%BUILD_NUMBER%
+md cubrid-dbgwci-%BUILD_NUMBER%\include
+md cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3
+md cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3\system
+md cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3\sql
+md cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3\client
+md cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3\adapter
+md cubrid-dbgwci-%BUILD_NUMBER%\lib
+md cubrid-dbgwci-%BUILD_NUMBER%\bin
+
+copy %BUILD_PREFIX%\include\cas_cci.h cubrid-dbgwci-%BUILD_NUMBER%\include
+copy %BUILD_PREFIX%\include\cas_error.h cubrid-dbgwci-%BUILD_NUMBER%\include
+copy %BUILD_PREFIX%\include\cci_log.h cubrid-dbgwci-%BUILD_NUMBER%\include
+copy %BUILD_PREFIX%\include\DBGWClient.h cubrid-dbgwci-%BUILD_NUMBER%\include
+copy %BUILD_PREFIX%\include\DBGWConnector3.h cubrid-dbgwci-%BUILD_NUMBER%\include
+copy %BUILD_PREFIX%\include\dbgw3\Common.h cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3
+copy %BUILD_PREFIX%\include\dbgw3\Exception.h cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3
+copy %BUILD_PREFIX%\include\dbgw3\Lob.h cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3
+copy %BUILD_PREFIX%\include\dbgw3\Logger.h cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3
+copy %BUILD_PREFIX%\include\dbgw3\Value.h cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3
+copy %BUILD_PREFIX%\include\dbgw3\ValueSet.h cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3
+copy %BUILD_PREFIX%\include\dbgw3\SynchronizedResource.h cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3
+copy %BUILD_PREFIX%\include\dbgw3\system\ThreadEx.h cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3\system
+copy %BUILD_PREFIX%\include\dbgw3\system\DBGWPorting.h cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3\system
+copy %BUILD_PREFIX%\include\dbgw3\sql\CallableStatement.h cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3\sql
+copy %BUILD_PREFIX%\include\dbgw3\sql\Connection.h cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3\sql
+copy %BUILD_PREFIX%\include\dbgw3\sql\DatabaseInterface.h cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3\sql
+copy %BUILD_PREFIX%\include\dbgw3\sql\DriverManager.h cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3\sql
+copy %BUILD_PREFIX%\include\dbgw3\sql\PreparedStatement.h cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3\sql
+copy %BUILD_PREFIX%\include\dbgw3\sql\ResultSet.h cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3\sql
+copy %BUILD_PREFIX%\include\dbgw3\sql\ResultSetMetaData.h cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3\sql
+copy %BUILD_PREFIX%\include\dbgw3\sql\Statement.h cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3\sql
+copy %BUILD_PREFIX%\include\dbgw3\client\Interface.h cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3\client
+copy %BUILD_PREFIX%\include\dbgw3\client\Mock.h cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3\client
+copy %BUILD_PREFIX%\include\dbgw3\client\ConfigurationObject.h cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3\client
+copy %BUILD_PREFIX%\include\dbgw3\client\Configuration.h cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3\client
+copy %BUILD_PREFIX%\include\dbgw3\client\ClientResultSet.h cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3\client
+copy %BUILD_PREFIX%\include\dbgw3\client\Resource.h cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3\client
+copy %BUILD_PREFIX%\include\dbgw3\client\QueryMapper.h cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3\client
+copy %BUILD_PREFIX%\include\dbgw3\client\Client.h cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3\client
+copy %BUILD_PREFIX%\include\dbgw3\adapter\Adapter.h cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3\adapter
+copy %BUILD_PREFIX%\bin\DBGWConnector3.dll cubrid-dbgwci-%BUILD_NUMBER%\bin
+copy %BUILD_PREFIX%\lib\DBGWConnector3.lib cubrid-dbgwci-%BUILD_NUMBER%\lib
+if "%BUILD_TARGET%" == "Win32" (
+  set CUBRID_DBGWCI_PACKAGE_NAME=CUBRID-DBGWCI-Windows-x86-%BUILD_NUMBER%
+) ELSE (
+  set CUBRID_DBGWCI_PACKAGE_NAME=CUBRID-DBGWCI-Windows-x64-%BUILD_NUMBER%
+)
+echo drop %CUBRID_DBGWCI_PACKAGE_NAME%.zip into %DIST_DIR%
+zip -r %DIST_DIR%\%CUBRID_DBGWCI_PACKAGE_NAME%.zip cubrid-dbgwci-%BUILD_NUMBER%
+if ERRORLEVEL 1 echo FAILD. & GOTO :EOF
+echo Package created. [%DIST_DIR%\%CUBRID_DBGWCI_PACKAGE_NAME%.zip]
+set DIST_PKGS=%DIST_PKGS% %CUBRID_DBGWCI_PACKAGE_NAME%.zip
+GOTO :EOF
+
 
 :BUILD_JDBC_PACKAGE
 echo Buiding JDBC package in %BUILD_DIR%...
@@ -342,4 +401,5 @@ GOTO :EOF
 @echo.  %0 /32 BUILD       # 64bit release build only
 @echo.  %0 /64 /Debug DIST # Create 64bit debug mode packages
 GOTO :EOF
+
 

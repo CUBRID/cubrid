@@ -923,6 +923,56 @@ function build_package ()
 	  fi
 	fi
       ;;
+      dbgwci)
+	if [ ! -d "$install_dir" ]; then
+	  print_fatal "Installed directory not found"
+	fi
+
+	package_basename="$product_name-DBGWCI-$build_number-$build_target"
+	if [ ! "$build_mode" = "release" ]; then
+	  package_name="$package_basename-$build_mode.tar.gz"
+	else
+	  package_name="$package_basename.tar.gz"
+	fi
+	cci_headers="include/cas_cci.h include/cas_error.h"
+	dbgw_headers="
+		include/cci_log.h
+		include/DBGWClient.h
+		include/DBGWConnector3.h
+		include/dbgw3/Common.h
+		include/dbgw3/Exception.h
+		include/dbgw3/Lob.h
+		include/dbgw3/Logger.h
+		include/dbgw3/Value.h
+		include/dbgw3/ValueSet.h
+		include/dbgw3/SynchronizedResource.h
+		include/dbgw3/system/ThreadEx.h
+		include/dbgw3/system/DBGWPorting.h
+		include/dbgw3/sql/CallableStatement.h
+		include/dbgw3/sql/Connection.h
+		include/dbgw3/sql/DatabaseInterface.h
+		include/dbgw3/sql/DriverManager.h
+		include/dbgw3/sql/PreparedStatement.h
+		include/dbgw3/sql/ResultSet.h
+		include/dbgw3/sql/ResultSetMetaData.h
+		include/dbgw3/sql/Statement.h
+		include/dbgw3/client/Interface.h
+		include/dbgw3/client/Mock.h
+		include/dbgw3/client/ConfigurationObject.h
+		include/dbgw3/client/Configuration.h
+		include/dbgw3/client/ClientResultSet.h
+		include/dbgw3/client/Resource.h
+		include/dbgw3/client/QueryMapper.h
+		include/dbgw3/client/Client.h
+		"
+	cci_libs="lib/libcascci.a lib/libcascci.so*"
+	dbgw_libs="lib/libdbgw3*.a lib/libdbgw3*.so*"
+	for file in $cci_headers $dbgw_headers $cci_libs $dbgw_libs; do
+	  pack_file_list="$pack_file_list $product_name/$file"
+	done
+	(cd $install_dir && tar czf $output_dir/$package_name $pack_file_list)
+	[ $? -eq 0 ] && output_packages="$output_packages $package_name"
+      ;;
     esac
     [ $? -eq 0 ] && print_result "OK [$package_name]" || print_fatal "Packaging for $package failed"
   done
@@ -1057,7 +1107,7 @@ function get_options ()
     fi
   done
   if [ "$packages" = "all" -o "$packages" = "ALL" ]; then
-    packages="src cci_src php_src tarball shell cci jdbc srpm rpm"
+    packages="src cci_src php_src tarball shell cci jdbc srpm rpm dbgwci"
   fi
 
   if [ "x$output_dir" = "x" ]; then

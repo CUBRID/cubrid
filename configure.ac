@@ -557,12 +557,16 @@ AC_ARG_ENABLE([dbgw],
                [build as dbgw lib @<:@default=no@:>@])],
        [enable_dbgw=$enableval],
        [enable_dbgw=no])
+       
 AM_CONDITIONAL([BUILD_DBGW], [test "$enable_dbgw" != "no"])
 AS_IF([test "$with_cci_only" = "yes"], [enable_dbgw=no])
-AS_IF([test "$enable_dbgw" = "yes"],
-	[AC_LANG_PUSH([C++])
+AM_CONDITIONAL([BUILD_DBGW_ORACLE], [test "$enable_dbgw" != "no" && test "$with_oracle" != "no"])
+if test "$enable_dbgw" = "yes"
+then
+	AC_LANG_PUSH([C++])
 	AC_CHECK_HEADERS([boost/property_tree/ptree.hpp], [], [AC_MSG_ERROR(Boost library is required.(version 1.41.0 or higher))])
-	AC_LANG_POP([C++])])
+	AC_LANG_POP([C++])
+fi
 
 AC_MSG_CHECKING([for cubrid manager server])
 AC_ARG_WITH([cmserver],

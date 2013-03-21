@@ -38,6 +38,37 @@ namespace cci
       return pthread_mutex_unlock (&mutex);
     }
   };
+
+  class _MutexAutolock
+  {
+  public:
+    explicit _MutexAutolock(_Mutex *mutex) :
+      mutex(mutex), is_unlocked(true)
+    {
+      mutex->lock();
+    }
+
+    virtual ~_MutexAutolock()
+    {
+      unlock();
+    }
+
+    void unlock()
+    {
+      if (is_unlocked)
+        {
+          is_unlocked = false;
+          mutex->unlock();
+        }
+    }
+
+  private:
+    _Mutex *mutex;
+    bool is_unlocked;
+
+    _MutexAutolock(const _MutexAutolock &);
+    void operator=(const _MutexAutolock &);
+  };
 }
 
 
