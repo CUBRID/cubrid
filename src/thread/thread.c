@@ -164,6 +164,28 @@ static int thread_wakeup_internal (THREAD_ENTRY * thread_p, int resume_reason,
 				   bool had_mutex);
 static void thread_reset_nrequestors_of_log_flush_thread (void);
 
+static void thread_rc_track_clear_all (THREAD_ENTRY * thread_p);
+static int thread_rc_track_meter_check (THREAD_ENTRY * thread_p,
+					THREAD_RC_METER * meter,
+					THREAD_RC_METER * prev_meter);
+static int thread_rc_track_check (THREAD_ENTRY * thread_p);
+static void thread_rc_track_initialize (THREAD_ENTRY * thread_p);
+static void thread_rc_track_finalize (THREAD_ENTRY * thread_p);
+static THREAD_RC_TRACK *thread_rc_track_alloc (THREAD_ENTRY * thread_p);
+static void thread_rc_track_free (THREAD_ENTRY * thread_p, int id);
+static const char *thread_rc_track_rcname (int rc_idx);
+static const char *thread_rc_track_mgrname (int mgr_idx);
+static void thread_rc_track_meter_dump (THREAD_ENTRY * thread_p, FILE * outfp,
+					THREAD_RC_METER * meter);
+static void thread_rc_track_dump (THREAD_ENTRY * thread_p, FILE * outfp,
+				  THREAD_RC_TRACK * track, int depth);
+#if !defined(NDEBUG)
+static void
+thread_rc_track_meter_at (THREAD_RC_METER * meter,
+			  const char *caller_file, int caller_line,
+			  int amount, void *ptr);
+#endif
+
 /*
  * Thread Specific Data management
  *
@@ -455,7 +477,7 @@ thread_start_workers (void)
 	}
 
       /* If win32, then "thread_attr" is ignored, else "p->thread_handle". */
-      r = pthread_create (&thread_p->tid, &thread_attr, thread_worker, 
+      r = pthread_create (&thread_p->tid, &thread_attr, thread_worker,
 			  thread_p);
       if (r != 0)
 	{
@@ -1089,6 +1111,8 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
   entry_p->log_data_length = 0;
   entry_p->log_data_ptr = NULL;
 
+  (void) thread_rc_track_initialize (entry_p);
+
   return NO_ERROR;
 }
 
@@ -1162,6 +1186,8 @@ thread_finalize_entry (THREAD_ENTRY * entry_p)
       free_and_init (entry_p->log_data_ptr);
       entry_p->log_data_length = 0;
     }
+
+  (void) thread_rc_track_finalize (entry_p);
 
   db_destroy_private_heap (entry_p, entry_p->private_heap_id);
 
@@ -2055,6 +2081,8 @@ thread_dump_threads (void)
 	       thread_p->index, thread_p->tid, thread_p->client_id,
 	       thread_p->tran_index, thread_p->rid,
 	       status[thread_p->status], thread_p->interrupted);
+
+      (void) thread_rc_track_dump_all (thread_p, stderr);
     }
 
   fflush (stderr);
@@ -3517,4 +3545,747 @@ thread_set_info (THREAD_ENTRY * thread_p, int client_id, int rid,
   thread_p->lockwait_state = -1;
   thread_p->query_entry = NULL;
   thread_p->tran_next_wait = NULL;
+
+  (void) thread_rc_track_clear_all (thread_p);
 }
+
+/*
+ * thread_rc_track_meter_check () -
+ *   return:
+ *   thread_p(in):
+ */
+static int
+thread_rc_track_meter_check (THREAD_ENTRY * thread_p, THREAD_RC_METER * meter,
+			     THREAD_RC_METER * prev_meter)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  assert_release (thread_p != NULL);
+  assert_release (meter != NULL);
+
+  /* assert (meter->m_amount >= 0);
+   * assert (meter->m_amount <= meter->m_threshold);
+   */
+  if (meter->m_amount < 0 || meter->m_amount > meter->m_threshold)
+    {
+      return ER_FAILED;
+    }
+
+  if (prev_meter != NULL)
+    {
+      /* assert (meter->m_amount == prev_meter->m_amount);
+       */
+      if (meter->m_amount != prev_meter->m_amount)
+	{
+	  return ER_FAILED;
+	}
+    }
+  else
+    {
+      /* assert (meter->m_amount == 0);
+       */
+      if (meter->m_amount != 0)
+	{
+	  return ER_FAILED;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * thread_rc_track_check () -
+ *   return:
+ *   thread_p(in):
+ */
+static int
+thread_rc_track_check (THREAD_ENTRY * thread_p)
+{
+  int i, j;
+  THREAD_RC_TRACK *track, *prev_track;
+  THREAD_RC_METER *meter, *prev_meter;
+  int num_invalid_meter;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  assert_release (thread_p != NULL);
+  assert_release (thread_p->track != NULL);
+
+  num_invalid_meter = 0;	/* init */
+
+  if (thread_p->track != NULL)
+    {
+      track = thread_p->track;
+      prev_track = track->prev;
+
+      for (i = 0; i < RC_LAST; i++)
+	{
+	  for (j = 0; j < MGR_LAST; j++)
+	    {
+	      meter = &(track->meter[i][j]);
+
+	      if (prev_track != NULL)
+		{
+		  prev_meter = &(prev_track->meter[i][j]);
+		}
+	      else
+		{
+		  prev_meter = NULL;
+		}
+
+	      if (thread_rc_track_meter_check (thread_p, meter, prev_meter) !=
+		  NO_ERROR)
+		{
+#if !defined(NDEBUG)
+		  FILE *outfp;
+		  const char *rcname, *mgrname;
+
+		  outfp = stderr;
+
+		  fprintf (outfp, "\n");	/* start margin */
+
+		  rcname = thread_rc_track_rcname (i);
+		  fprintf (outfp, "   +--- %s\n", rcname);
+
+		  mgrname = thread_rc_track_mgrname (j);
+		  fprintf (outfp, "      +--- %s\n", mgrname);
+
+		  (void) thread_rc_track_meter_dump (thread_p, outfp, meter);
+
+		  fprintf (outfp, "\n");	/* end margin */
+#endif
+
+		  num_invalid_meter++;
+		}
+	    }			/* for */
+	}			/* for */
+    }
+
+  return (num_invalid_meter == 0) ? NO_ERROR : ER_FAILED;
+}
+
+/*
+ * thread_rc_track_clear_all () -
+ *   return:
+ *   thread_p(in):
+ */
+static void
+thread_rc_track_clear_all (THREAD_ENTRY * thread_p)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  assert_release (thread_p != NULL);
+
+  /* pop/free every track info */
+  while (thread_p->track != NULL)
+    {
+      (void) thread_rc_track_free (thread_p, thread_p->track_depth);
+    }
+
+  assert_release (thread_p->track_depth == -1);
+
+  thread_p->track_depth = -1;	/* defence */
+}
+
+/*
+ * thread_rc_track_initialize () -
+ *   return:
+ *   thread_p(in):
+ */
+static void
+thread_rc_track_initialize (THREAD_ENTRY * thread_p)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  assert_release (thread_p != NULL);
+
+  thread_p->track = NULL;
+  thread_p->track_depth = -1;
+  thread_p->track_threshold = INT8_MAX;	/* 127 */
+  thread_p->track_free_list = NULL;
+
+  (void) thread_rc_track_clear_all (thread_p);
+}
+
+/*
+ * thread_rc_track_finalize () -
+ *   return:
+ *   thread_p(in):
+ */
+static void
+thread_rc_track_finalize (THREAD_ENTRY * thread_p)
+{
+  THREAD_RC_TRACK *track;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  assert_release (thread_p != NULL);
+
+  (void) thread_rc_track_clear_all (thread_p);
+
+  while (thread_p->track_free_list != NULL)
+    {
+      track = thread_p->track_free_list;
+      thread_p->track_free_list = track->prev;
+      track->prev = NULL;	/* cut-off */
+
+      free (track);
+    }
+}
+
+/*
+ * thread_rc_track_rcname () - TODO
+ *   return:
+ *   rc_idx(in):
+ */
+static const char *
+thread_rc_track_rcname (int rc_idx)
+{
+  const char *name;
+
+  assert_release (rc_idx >= 0);
+  assert_release (rc_idx < RC_LAST);
+
+  switch (rc_idx)
+    {
+    case RC_VMEM:
+      name = "Virtual Memory";
+      break;
+#if 0
+    case RC_PGBUF:
+      name = "Page Buffer";
+      break;
+#endif
+    default:
+      name = "**UNKNOWN_RESOURCE**";
+      break;
+    }
+
+  return name;
+}
+
+/*
+ * thread_rc_track_mgrname () - TODO
+ *   return:
+ *   mgr_idx(in):
+ */
+static const char *
+thread_rc_track_mgrname (int mgr_idx)
+{
+  const char *name;
+
+  assert_release (mgr_idx >= 0);
+  assert_release (mgr_idx < MGR_LAST);
+
+  switch (mgr_idx)
+    {
+#if 0
+    case MGR_BTREE:
+      name = "Index Manager";
+      break;
+    case MGR_QUERY:
+      name = "Query Manager";
+      break;
+    case MGR_SPAGE:
+      name = "Slotted-Page Manager";
+      break;
+#endif
+    case MGR_DEF:
+      name = "Default Manager";
+      break;
+    default:
+      name = "**UNKNOWN_MANAGER**";
+      break;
+    }
+
+  return name;
+}
+
+/*
+ * thread_rc_track_alloc ()
+ *   return:
+ *   thread_p(in):
+ */
+static THREAD_RC_TRACK *
+thread_rc_track_alloc (THREAD_ENTRY * thread_p)
+{
+  int i, j;
+  THREAD_RC_TRACK *new_track;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  assert_release (thread_p != NULL);
+  assert_release (thread_p->track_depth < thread_p->track_threshold);
+
+  new_track = NULL;		/* init */
+
+  if (thread_p->track_depth < thread_p->track_threshold)
+    {
+      if (thread_p->track_free_list != NULL)
+	{
+	  new_track = thread_p->track_free_list;
+	  thread_p->track_free_list = new_track->prev;
+	}
+      else
+	{
+	  new_track = malloc (sizeof (THREAD_RC_TRACK));
+	}
+      assert_release (new_track != NULL);
+
+      if (new_track != NULL)
+	{
+	  /* keep current track info */
+	  for (i = 0; i < RC_LAST; i++)
+	    {
+	      for (j = 0; j < MGR_LAST; j++)
+		{
+		  if (thread_p->track != NULL)
+		    {
+		      /* struct copy */
+		      new_track->meter[i][j] = thread_p->track->meter[i][j];
+		    }
+		  else
+		    {
+		      new_track->meter[i][j].m_amount = 0;
+		      new_track->meter[i][j].m_threshold = INT16_MAX;	/* for future work, get PRM */
+		      new_track->meter[i][j].m_add_file_name = NULL;
+		      new_track->meter[i][j].m_add_line_no = -1;
+		      new_track->meter[i][j].m_sub_file_name = NULL;
+		      new_track->meter[i][j].m_sub_line_no = -1;
+#if !defined(NDEBUG)
+		      new_track->meter[i][j].m_add_buf[0] = '\0';
+		      new_track->meter[i][j].m_add_buf_size = 0;
+		      new_track->meter[i][j].m_sub_buf[0] = '\0';
+		      new_track->meter[i][j].m_sub_buf_size = 0;
+#endif
+		    }
+		}
+	    }
+
+	  /* push current track info */
+	  new_track->prev = thread_p->track;
+	  thread_p->track = new_track;
+
+	  thread_p->track_depth++;
+	}
+    }
+
+  return new_track;
+}
+
+/*
+ * thread_rc_track_free ()
+ *   return:
+ *   thread_p(in):
+ */
+static void
+thread_rc_track_free (THREAD_ENTRY * thread_p, int id)
+{
+  THREAD_RC_TRACK *prev_track;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  assert_release (thread_p != NULL);
+  assert_release (id == thread_p->track_depth);
+
+  if (thread_p->track != NULL)
+    {
+      prev_track = thread_p->track->prev;
+
+      /* add to free list */
+      thread_p->track->prev = thread_p->track_free_list;
+      thread_p->track_free_list = thread_p->track;
+
+      /* pop previous track info */
+      thread_p->track = prev_track;
+
+      thread_p->track_depth--;
+    }
+}
+
+/*
+ * thread_rc_track_enter () - save current track info
+ *   return:
+ *   thread_p(in):
+ */
+int
+thread_rc_track_enter (THREAD_ENTRY * thread_p)
+{
+  THREAD_RC_TRACK *track;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  assert_release (thread_p != NULL);
+
+  track = thread_rc_track_alloc (thread_p);
+  assert (track != NULL);
+
+  return thread_p->track_depth;
+}
+
+/*
+ * thread_rc_track_exit () -
+ *   return:
+ *   thread_p(in):
+ *   id(in): saved track id
+ */
+int
+thread_rc_track_exit (THREAD_ENTRY * thread_p, int id)
+{
+  int ret = NO_ERROR;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  assert_release (thread_p != NULL);
+
+  ret = thread_rc_track_check (thread_p);
+#if !defined(NDEBUG)
+  if (ret != NO_ERROR)
+    {
+      (void) thread_rc_track_dump_all (thread_p, stderr);
+    }
+#endif
+
+  (void) thread_rc_track_free (thread_p, id);
+
+  return ret;
+}
+
+/*
+ * thread_rc_track_meter () -
+ *   return:
+ *   thread_p(in):
+ */
+void
+thread_rc_track_meter (THREAD_ENTRY * thread_p,
+		       const char *file_name, const int line_no,
+		       int amount, void *ptr, int rc_idx, int mgr_idx)
+{
+  THREAD_RC_TRACK *track;
+  THREAD_RC_METER *meter;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  assert_release (thread_p != NULL);
+
+  if (thread_p->track == NULL)
+    {
+      return;			/* not in track enter */
+    }
+
+  assert_release (thread_p->track != NULL);
+
+  assert_release (0 <= rc_idx);
+  assert_release (rc_idx < RC_LAST);
+  assert_release (0 <= mgr_idx);
+  assert_release (mgr_idx < MGR_LAST);
+
+  assert_release (amount != 0);
+
+  track = thread_p->track;
+
+  if (track != NULL
+      && 0 <= rc_idx && rc_idx < RC_LAST
+      && 0 <= mgr_idx && mgr_idx < MGR_LAST)
+    {
+      meter = &(track->meter[rc_idx][mgr_idx]);
+
+      meter->m_amount += amount;
+
+      assert_release (0 <= meter->m_amount);
+      assert_release (meter->m_amount <= meter->m_threshold);
+
+      if (amount > 0)
+	{
+	  meter->m_add_file_name = file_name;
+	  meter->m_add_line_no = line_no;
+	}
+      else if (amount < 0)
+	{
+	  meter->m_sub_file_name = file_name;
+	  meter->m_sub_line_no = line_no;
+	}
+#if !defined(NDEBUG)
+      (void) thread_rc_track_meter_at (meter, file_name, line_no, amount,
+				       ptr);
+#endif
+    }
+}
+
+
+/*
+ * thread_rc_track_meter_dump () -
+ *   return:
+ *   thread_p(in):
+ *   outfp(in):
+ *   meter(in):
+ */
+static void
+thread_rc_track_meter_dump (THREAD_ENTRY * thread_p, FILE * outfp,
+			    THREAD_RC_METER * meter)
+{
+  int i;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  assert_release (thread_p != NULL);
+  assert_release (meter != NULL);
+
+  if (outfp == NULL)
+    {
+      outfp = stderr;
+    }
+
+  if (meter != NULL)
+    {
+      fprintf (outfp, "         +--- amount = %d (threshold = %d)\n",
+	       meter->m_amount, meter->m_threshold);
+      fprintf (outfp, "         +--- add_file_line = %s:%d\n",
+	       meter->m_add_file_name, meter->m_add_line_no);
+      fprintf (outfp, "         +--- sub_file_line = %s:%d\n",
+	       meter->m_sub_file_name, meter->m_sub_line_no);
+#if !defined(NDEBUG)
+      if (meter->m_add_buf_size > 0)
+	{
+	  fprintf (outfp, "            +--- add_at = ");
+	  for (i = 0; i < meter->m_add_buf_size; i++)
+	    {
+	      fputc (meter->m_add_buf[i], outfp);
+	    }
+	  fprintf (outfp, "\n");
+	}
+      if (meter->m_sub_buf_size > 0)
+	{
+	  fprintf (outfp, "            +--- sub_at = ");
+	  for (i = 0; i < meter->m_sub_buf_size; i++)
+	    {
+	      fputc (meter->m_sub_buf[i], outfp);
+	    }
+	  fprintf (outfp, "\n");
+	}
+#endif
+    }
+}
+
+/*
+ * thread_rc_track_dump () -
+ *   return:
+ *   thread_p(in):
+ *   outfp(in):
+ *   track(in):
+ *   depth(in):
+ */
+static void
+thread_rc_track_dump (THREAD_ENTRY * thread_p, FILE * outfp,
+		      THREAD_RC_TRACK * track, int depth)
+{
+  int i, j;
+  const char *rcname, *mgrname;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  assert_release (thread_p != NULL);
+  assert_release (track != NULL);
+  assert_release (depth >= 0);
+
+  if (outfp == NULL)
+    {
+      outfp = stderr;
+    }
+
+  if (track != NULL)
+    {
+      fprintf (outfp, "+--- track depth = %d\n", depth);
+      for (i = 0; i < RC_LAST; i++)
+	{
+	  rcname = thread_rc_track_rcname (i);
+	  fprintf (outfp, "   +--- %s\n", rcname);
+
+	  for (j = 0; j < MGR_LAST; j++)
+	    {
+	      mgrname = thread_rc_track_mgrname (j);
+	      fprintf (outfp, "      +--- %s\n", mgrname);
+
+	      (void) thread_rc_track_meter_dump (thread_p, outfp,
+						 &(track->meter[i][j]));
+	    }
+	}
+
+      fflush (outfp);
+    }
+}
+
+/*
+ * thread_rc_track_dump_all () -
+ *   return:
+ *   thread_p(in):
+ */
+void
+thread_rc_track_dump_all (THREAD_ENTRY * thread_p, FILE * outfp)
+{
+  THREAD_RC_TRACK *track;
+  int depth;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  assert_release (thread_p != NULL);
+
+  if (outfp == NULL)
+    {
+      outfp = stderr;
+    }
+
+  fprintf (outfp,
+	   "------------ Thread[%d] Resource Track Info: ------------\n",
+	   thread_p->index);
+
+  fprintf (outfp, "track_depth = %d\n", thread_p->track_depth);
+  fprintf (outfp, "track_threshold = %d\n", thread_p->track_threshold);
+  for (track = thread_p->track_free_list, depth = 0; track != NULL;
+       track = track->prev, depth++)
+    {
+      ;
+    }
+  fprintf (outfp, "track_free_list size = %d\n", depth);
+
+  for (track = thread_p->track, depth = thread_p->track_depth;
+       track != NULL; track = track->prev, depth--)
+    {
+      (void) thread_rc_track_dump (thread_p, outfp, track, depth);
+    }
+  assert_release (depth == -1);
+
+  fprintf (outfp, "\n");
+
+  fflush (outfp);
+}
+
+#if !defined(NDEBUG)
+/*
+ * thread_rc_track_meter_at () -
+ *   return:
+ *   meter(in):
+ */
+static void
+thread_rc_track_meter_at (THREAD_RC_METER * meter,
+			  const char *caller_file, int caller_line,
+			  int amount, void *ptr)
+{
+  char buf[256];
+  const char *p;
+  int buf_size, remain_size;
+
+  assert_release (meter != NULL);
+  assert_release (amount != 0);
+
+  p = (char *) caller_file + strlen (caller_file);
+  while (p)
+    {
+      if (p == caller_file)
+	{
+	  break;
+	}
+
+      if (*p == '/' || *p == '\\')
+	{
+	  p++;
+	  break;
+	}
+
+      p--;
+    }
+
+#if 1				/* remove me if needed for debug */
+  ptr = NULL;
+#endif
+
+  if (ptr != NULL)
+    {
+      buf_size = snprintf (buf, 256, "%s:%d(%p) ", p, caller_line, ptr);
+    }
+  else
+    {
+      buf_size = snprintf (buf, 256, "%s:%d ", p, caller_line);
+    }
+
+  if (amount > 0)
+    {
+      if (meter->m_add_buf_size <= ONE_K)
+	{
+	  if (strstr (meter->m_add_buf, buf) == NULL)
+	    {
+	      remain_size = ONE_K - meter->m_add_buf_size;
+	      buf_size = MIN (buf_size, remain_size);
+	      strncat (meter->m_add_buf, buf, buf_size);
+	      meter->m_add_buf_size += buf_size;
+	    }
+	}
+      else
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"thread_rc_track_meter_at: add_buf overflow: %d",
+			meter->m_add_buf_size);
+	}
+    }
+  else if (amount < 0)
+    {
+      if (meter->m_sub_buf_size <= ONE_K)
+	{
+	  if (strstr (meter->m_sub_buf, buf) == NULL)
+	    {
+	      remain_size = ONE_K - meter->m_sub_buf_size;
+	      buf_size = MIN (buf_size, remain_size);
+	      strncat (meter->m_sub_buf, buf, buf_size);
+	      meter->m_sub_buf_size += buf_size;
+	    }
+	}
+      else
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"thread_rc_track_meter_at: sub_buf overflow: %d",
+			meter->m_sub_buf_size);
+	}
+    }
+
+  return;
+}
+#endif

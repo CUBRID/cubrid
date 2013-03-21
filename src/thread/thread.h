@@ -40,19 +40,24 @@
 #endif /* SERVER_MODE */
 
 #if !defined(SERVER_MODE)
+
 #define thread_get_thread_entry_info()  (NULL)
 #define thread_num_worker_threads()  (1)
 #define thread_num_total_threads()   (1)
 #define thread_get_current_session_id() (db_Session_id)
 
 typedef void THREAD_ENTRY;
+
+#define thread_rc_track_enter(thread_p) (-1)
+#define thread_rc_track_exit(thread_p, idx) (NO_ERROR)
+#define thread_rc_track_dump_all(thread_p, outfp)
+#define thread_rc_track_meter(thread_p, file, line, amount, ptr, rc_idx, mgr_idx)
+
 #else /* !SERVER_MODE */
 
 #if defined(HPUX)
 #define thread_set_thread_entry_info(entry)
 #endif /* HPUX */
-
-typedef struct thread_entry THREAD_ENTRY;
 
 enum
 { TS_DEAD = 0, TS_FREE, TS_RUN, TS_WAIT, TS_CHECK };
@@ -89,6 +94,50 @@ enum
 enum
 { THREAD_STOP_WORKERS_EXCEPT_LOGWR, THREAD_STOP_LOGWR };
 
+/*
+ * thread resource track info matrix: thread_p->track.meter[RC][MGR]
+ * +-------+-----+-------+------+
+ * |RC/MGR | DEF | BTREE | LAST |
+ * +-------+-----+-------+------+
+ * | VMEM  |     |   X   |   X  |
+ * +-------+-----+-------+------+
+ * | LAST  |  X  |   X   |   X  |
+ * +-------+-----+-------+------+
+ */
+
+/* resource track meters */
+enum
+{ RC_VMEM = 0, RC_LAST };
+
+/* resource track managers */
+enum
+{ MGR_DEF = 0, MGR_LAST };
+
+typedef struct thread_resource_meter THREAD_RC_METER;
+struct thread_resource_meter
+{
+  INT32 m_amount;		/* resource hold counter */
+  INT32 m_threshold;		/* for future work, get PRM */
+  char *m_add_file_name;	/* last add file name, line number */
+  INT32 m_add_line_no;
+  char *m_sub_file_name;	/* last sub file name, line number */
+  INT32 m_sub_line_no;
+#if !defined(NDEBUG)
+  char m_add_buf[ONE_K];	/* total add file name, line number */
+  INT32 m_add_buf_size;
+  char m_sub_buf[ONE_K];	/* total sub file name, line number */
+  INT32 m_sub_buf_size;
+#endif
+};
+
+typedef struct thread_resource_track THREAD_RC_TRACK;
+struct thread_resource_track
+{
+  THREAD_RC_METER meter[RC_LAST][MGR_LAST];
+  THREAD_RC_TRACK *prev;
+};
+
+typedef struct thread_entry THREAD_ENTRY;
 struct thread_entry
 {
 #if defined(WINDOWS)
@@ -151,6 +200,12 @@ struct thread_entry
   void *log_zip_redo;
   char *log_data_ptr;
   int log_data_length;
+
+  /* resource track info */
+  THREAD_RC_TRACK *track;
+  int track_depth;
+  int track_threshold;		/* for future work, get PRM */
+  THREAD_RC_TRACK *track_free_list;
 };
 
 #define DOES_THREAD_RESUME_DUE_TO_SHUTDOWN(thread_p) \
@@ -287,6 +342,15 @@ extern HL_HEAPID css_set_private_heap (THREAD_ENTRY * thread_p,
 
 extern void thread_set_info (THREAD_ENTRY * thread_p, int client_id, int rid,
 			     int tran_index);
+
+extern int thread_rc_track_enter (THREAD_ENTRY * thread_p);
+extern int thread_rc_track_exit (THREAD_ENTRY * thread_p, int id);
+extern void thread_rc_track_dump_all (THREAD_ENTRY * thread_p, FILE * outfp);
+extern void thread_rc_track_meter (THREAD_ENTRY * thread_p,
+				   const char *file_name,
+				   const int line_no, int amount, void *ptr,
+				   int rc_idx, int mgr_idx);
+
 #if defined(WINDOWS)
 extern unsigned __stdcall thread_worker (void *);
 
@@ -298,6 +362,7 @@ extern pthread_mutex_t css_Internal_mutex_for_mutex_initialize;
 #else /* WINDOWS */
 extern void *thread_worker (void *);
 #endif /* !WINDOWS */
+
 #endif /* SERVER_MODE */
 
 #endif /* _THREAD_H_ */

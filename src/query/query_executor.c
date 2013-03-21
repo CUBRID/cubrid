@@ -10038,6 +10038,9 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   int n_indexes = 0;
   int error = 0;
   ODKU_INFO *odku_assignments = insert->odku;
+#if 0 /* !defined(NDEBUG) */	/* TODO */
+  int track_id;
+#endif
 
   aptr = xasl->aptr_list;
   val_no = insert->no_vals;
@@ -10073,6 +10076,10 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       return ER_FAILED;
     }
   savepoint_used = 1;
+
+#if 0 /* !defined(NDEBUG) */	/* TODO */
+  track_id = thread_rc_track_enter (thread_p);
+#endif
 
   if (insert->is_first_value)
     {
@@ -10268,6 +10275,13 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			   &specp->s_id, xasl_state->query_id,
 			   xasl->composite_locking) != NO_ERROR)
 	{
+#if 0 /* !defined(NDEBUG) */	/* TODO */
+	  if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
+	    {
+	      assert_release (false);
+	    }
+#endif
+
 	  if (savepoint_used)
 	    {
 	      xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
@@ -10661,6 +10675,14 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       partition_clear_pruning_context (pcontext);
       pcontext = NULL;
     }
+
+#if 0 /* !defined(NDEBUG) */	/* TODO */
+  if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
+    {
+      assert_release (false);
+    }
+#endif
+
   if (savepoint_used)
     {
       if (xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER,
@@ -10735,6 +10757,14 @@ exit_on_error:
     {
       (void) locator_end_force_scan_cache (thread_p, &scan_cache);
     }
+
+#if 0 /* !defined(NDEBUG) */	/* TODO */
+  if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
+    {
+      assert_release (false);
+    }
+#endif
+
   if (savepoint_used)
     {
       xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
@@ -13267,6 +13297,9 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
 #endif /* CUBRID_DEBUG */
   QMGR_QUERY_ENTRY *query_entryp;
   struct drand48_data *rand_buf_p;
+#if 0 /* !defined(NDEBUG) */	/* TODO */
+  int track_id;
+#endif
 
 #if defined(CUBRID_DEBUG)
   {
@@ -13376,9 +13409,20 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
        * transaction is unilaterally aborted during query execution.
        */
 
+#if 0 /* !defined(NDEBUG) */	/* TODO */
+      track_id = thread_rc_track_enter (thread_p);
+#endif
+
       xasl->query_in_progress = true;
       stat = qexec_execute_mainblock (thread_p, xasl, &xasl_state);
       xasl->query_in_progress = false;
+
+#if 0 /* !defined(NDEBUG) */	/* TODO */
+      if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
+	{
+	  assert_release (false);
+	}
+#endif
 
       if (stat != NO_ERROR)
 	{

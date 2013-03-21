@@ -1016,6 +1016,9 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request,
   int status = CSS_NO_ERRORS;
   int error_code;
   CSS_CONN_ENTRY *conn;
+#if 0 /* !defined(NDEBUG) */	/* TODO - final hope */
+  int track_id;
+#endif
 #if defined (DIAG_DEVEL)
   struct timeval diag_start_time, diag_end_time, diag_elapsed_time;
 #endif /* DIAG_DEVEL */
@@ -1126,7 +1129,18 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request,
   assert (func != NULL);
   if (func)
     {
+#if 0 /* !defined(NDEBUG) */	/* TODO - final hope */
+      track_id = thread_rc_track_enter (thread_p);
+#endif
+
       (*func) (thread_p, rid, buffer, size);
+
+#if 0 /* !defined(NDEBUG) */	/* TODO - final hope */
+      if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
+	{
+	  assert_release (false);
+	}
+#endif
     }
 
   /* check the defined action attribute */

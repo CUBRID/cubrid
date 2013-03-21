@@ -5336,6 +5336,7 @@ coerce_date_to_dbvalue (DB_VALUE * value, char *buf)
 		length = 1;
 	      }
 
+	    DB_MAKE_NULL (&tmp_value);
 	    qstr_make_typed_string (db_type, &tmp_value, length, tmp, length,
 				    LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
@@ -5418,6 +5419,7 @@ coerce_time_to_dbvalue (DB_VALUE * value, char *buf)
 		length = 1;
 	      }
 
+	    DB_MAKE_NULL (&tmp_value);
 	    qstr_make_typed_string (db_type, &tmp_value, length, tmp, length,
 				    LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
@@ -5497,6 +5499,7 @@ coerce_timestamp_to_dbvalue (DB_VALUE * value, char *buf)
 		length = 1;
 	      }
 
+	    DB_MAKE_NULL (&tmp_value);
 	    qstr_make_typed_string (db_type, &tmp_value, length, tmp, length,
 				    LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
@@ -5602,6 +5605,7 @@ coerce_datetime_to_dbvalue (DB_VALUE * value, char *buf)
 		length = 1;
 	      }
 
+	    DB_MAKE_NULL (&tmp_value);
 	    qstr_make_typed_string (db_type, &tmp_value, length, tmp, length,
 				    LANG_SYS_CODESET, LANG_SYS_COLLATION);
 

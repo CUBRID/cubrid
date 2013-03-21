@@ -2862,7 +2862,11 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	  else
 	    {
 	      DB_VALUE tmp_len, tmp_val, tmp_arg3;
-	      int tmp = db_get_int (peek_third);
+	      int tmp;
+
+	      DB_MAKE_NULL (&tmp_val);
+
+	      tmp = db_get_int (peek_third);
 	      if (tmp < 1)
 		{
 		  db_make_int (&tmp_arg3, 1);
@@ -2894,6 +2898,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	      if (db_string_position (peek_left, &tmp_val,
 				      arithptr->value) != NO_ERROR)
 		{
+		  (void) pr_clear_value (&tmp_val);
 		  goto error;
 		}
 	      if (db_get_int (arithptr->value) > 0)
@@ -2902,6 +2907,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 			       db_get_int (arithptr->value) +
 			       db_get_int (&tmp_arg3) - 1);
 		}
+
+	      (void) pr_clear_value (&tmp_val);
 	    }
 	}
       break;

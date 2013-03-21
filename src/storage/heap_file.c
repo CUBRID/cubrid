@@ -16452,6 +16452,8 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids,
 	  return NULL;
 	}
 
+      (void) pr_clear_value (db_value);
+
       DB_MAKE_MIDXKEY (db_value, &midxkey);
 
       if (midxkey_size > DBVAL_BUFSIZE)
@@ -20527,7 +20529,7 @@ heap_eval_function_index (THREAD_ENTRY * thread_p,
   int expr_stream_size = 0;
   FUNC_PRED *func_pred = NULL;
   void *unpack_info = NULL;
-  DB_VALUE *res;
+  DB_VALUE *res = NULL;
   REGU_VARIABLE *regu_var;
   int nr_atts;
   ATTR_ID *atts;

@@ -27,6 +27,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 
 #include "misc_string.h"
 #include "dbtype.h"
@@ -383,10 +384,18 @@ db_destroy_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id)
  *             determine the appropriate thread context
  *   size(in): size to allocate
  */
+#if !defined(NDEBUG)
 void *
-db_private_alloc (void *thrd, size_t size)
+db_private_alloc_debug (void *thrd, size_t size, bool rc_track,
+			const char *caller_file, int caller_line)
+#else /* NDEBUG */
+void *
+db_private_alloc_release (void *thrd, size_t size, bool rc_track)
+#endif				/* NDEBUG */
 {
   void *ptr = NULL;
+
+  assert (size > 0);
 
 #if defined (CS_MODE)
   return db_ws_alloc (size);
@@ -414,6 +423,18 @@ db_private_alloc (void *thrd, size_t size)
 		  1, size);
 	}
     }
+
+#if !defined (NDEBUG)
+  if (rc_track)
+    {
+      if (ptr != NULL)
+	{
+	  thread_rc_track_meter ((THREAD_ENTRY *) thrd, caller_file,
+				 caller_line, 1, ptr, RC_VMEM, MGR_DEF);
+	}
+    }
+#endif /* !NDEBUG */
+
   return ptr;
 #else /* SA_MODE */
   if (!db_on_server)
@@ -595,8 +616,14 @@ db_private_strdup (void *thrd, const char *s)
  *   thrd(in): thread conext if it is server, otherwise NULL
  *   ptr(in): memory pointer to free
  */
+#if !defined(NDEBUG)
 void
-db_private_free (void *thrd, void *ptr)
+db_private_free_debug (void *thrd, void *ptr, bool rc_track,
+		       const char *caller_file, int caller_line)
+#else /* NDEBUG */
+void
+db_private_free_release (void *thrd, void *ptr, bool rc_track)
+#endif				/* NDEBUG */
 {
 #if defined (SERVER_MODE)
   HL_HEAPID heap_id;
@@ -619,8 +646,20 @@ db_private_free (void *thrd, void *ptr)
     }
   else
     {
-      free_and_init (ptr);
+      free (ptr);
     }
+
+#if !defined (NDEBUG)
+  if (rc_track)
+    {
+      if (ptr != NULL)
+	{
+	  thread_rc_track_meter ((THREAD_ENTRY *) thrd, caller_file,
+				 caller_line, -1, ptr, RC_VMEM, MGR_DEF);
+	}
+    }
+#endif /* !NDEBUG */
+
 #else /* SA_MODE */
 
   if (private_heap_id == 0)
@@ -652,4 +691,142 @@ db_private_free (void *thrd, void *ptr)
 	}
     }
 #endif /* SA_MODE */
+}
+
+
+void *
+db_private_alloc_external (void *thrd, size_t size)
+{
+#if !defined(NDEBUG)
+  return db_private_alloc_debug (thrd, size, true, __FILE__, __LINE__);
+#else /* NDEBUG */
+  return db_private_alloc_release (thrd, size, false);
+#endif /* NDEBUG */
+}
+
+
+void
+db_private_free_external (void *thrd, void *ptr)
+{
+#if !defined(NDEBUG)
+  return db_private_free_debug (thrd, ptr, true, __FILE__, __LINE__);
+#else /* NDEBUG */
+  return db_private_free_release (thrd, ptr, false);
+#endif /* NDEBUG */
+}
+
+
+void *
+db_private_realloc_external (void *thrd, void *ptr, size_t size)
+{
+  return db_private_realloc (thrd, ptr, size);
+}
+
+
+/*
+ * os_malloc () -
+ *   return: allocated memory pointer
+ *   size(in): size to allocate
+ */
+#if !defined(NDEBUG)
+void *
+os_malloc_debug (size_t size, bool rc_track,
+		 const char *caller_file, int caller_line)
+#else /* NDEBUG */
+void *
+os_malloc_release (size_t size, bool rc_track)
+#endif				/* NDEBUG */
+{
+  void *ptr = NULL;
+
+  assert (size > 0);
+
+  ptr = malloc (size);
+  if (ptr == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, size);
+    }
+
+#if !defined (NDEBUG)
+  if (rc_track)
+    {
+      if (ptr != NULL)
+	{
+	  thread_rc_track_meter (NULL, caller_file,
+				 caller_line, 1, ptr, RC_VMEM, MGR_DEF);
+	}
+    }
+#endif /* !NDEBUG */
+
+  return ptr;
+}
+
+
+/*
+ * os_calloc () -
+ *   return: allocated memory pointer
+ *   size(in): size to allocate
+ */
+#if !defined(NDEBUG)
+void *
+os_calloc_debug (size_t n, size_t size, bool rc_track,
+		 const char *caller_file, int caller_line)
+#else /* NDEBUG */
+void *
+os_calloc_release (size_t n, size_t size, bool rc_track)
+#endif				/* NDEBUG */
+{
+  void *ptr = NULL;
+
+  assert (size > 0);
+
+  ptr = calloc (n, size);
+  if (ptr == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, size);
+    }
+
+#if !defined (NDEBUG)
+  if (rc_track)
+    {
+      if (ptr != NULL)
+	{
+	  thread_rc_track_meter (NULL, caller_file,
+				 caller_line, 1, ptr, RC_VMEM, MGR_DEF);
+	}
+    }
+#endif /* !NDEBUG */
+
+  return ptr;
+}
+
+
+/*
+ * os_free () -
+ *   return:
+ *   ptr(in): memory pointer to free
+ */
+#if !defined(NDEBUG)
+void
+os_free_debug (void *ptr, bool rc_track,
+	       const char *caller_file, int caller_line)
+#else /* NDEBUG */
+void
+os_free_release (void *ptr, bool rc_track)
+#endif				/* NDEBUG */
+{
+  free (ptr);
+
+#if !defined (NDEBUG)
+  if (rc_track)
+    {
+      if (ptr != NULL)
+	{
+	  thread_rc_track_meter (NULL, caller_file,
+				 caller_line, -1, ptr, RC_VMEM, MGR_DEF);
+	}
+    }
+#endif /* !NDEBUG */
 }

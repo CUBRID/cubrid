@@ -2036,6 +2036,9 @@ db_string_substring (const MISC_OPERAND substr_operand,
 
   if (DB_IS_NULL (src_string) || DB_IS_NULL (start_position))
     {
+#if defined(SERVER_MODE)
+      assert (DB_IS_NULL (sub_string));
+#endif
       DB_MAKE_NULL (sub_string);
     }
   else
@@ -2237,11 +2240,13 @@ db_string_repeat (const DB_VALUE * src_string,
       error_status = qstr_grow_string (&dummy, result, expected_size);
       if (error_status < 0)
 	{
+	  pr_clear_value (&dummy);
 	  return error_status;
 	}
       /* qstr_grow_string may return DB_NULL if size too big */
       if (DB_IS_NULL (result))
 	{
+	  pr_clear_value (&dummy);
 	  return NO_ERROR;
 	}
 
@@ -2624,6 +2629,8 @@ db_string_md5 (DB_VALUE const *val, DB_VALUE * result)
 
 	  DB_VALUE hash_string;
 
+	  DB_MAKE_NULL (&hash_string);
+
 	  md5_buffer (DB_PULL_STRING (val), DB_GET_STRING_LENGTH (val),
 		      hashString);
 
@@ -2828,25 +2835,10 @@ db_string_insert_substring (DB_VALUE * src_string,
   else
     {
       DB_DATA_STATUS data_status;
+
       /*  result = string1 + substring + string2 */
 
       /* string1 = left(string,position) */
-      error_status =
-	db_string_make_empty_typed_string (NULL, &string1, src_type,
-					   TP_FLOATING_PRECISION_VALUE,
-					   src_cs, src_coll);
-      if (error_status != NO_ERROR)
-	{
-	  goto exit;
-	}
-
-      if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) == true
-	  && DB_IS_NULL (&string1)
-	  && QSTR_IS_ANY_CHAR_OR_BIT (DB_VALUE_DOMAIN_TYPE (&string1)))
-	{
-	  /*intermediate value : clear is_null flag */
-	  string1.domain.general_info.is_null = 0;
-	}
 
       if (position_i > 1)
 	{
@@ -2863,24 +2855,27 @@ db_string_insert_substring (DB_VALUE * src_string,
 	    }
 	}
 
+      if (DB_IS_NULL (&string1))	/* make dummy for concat */
+	{
+	  error_status =
+	    db_string_make_empty_typed_string (NULL, &string1, src_type,
+					       TP_FLOATING_PRECISION_VALUE,
+					       src_cs, src_coll);
+	  if (error_status != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+
+	  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) == true
+	      && DB_IS_NULL (&string1)
+	      && QSTR_IS_ANY_CHAR_OR_BIT (DB_VALUE_DOMAIN_TYPE (&string1)))
+	    {
+	      /*intermediate value : clear is_null flag */
+	      string1.domain.general_info.is_null = 0;
+	    }
+	}
+
       /* string2 = susbtring(string,position+len) */
-      error_status =
-	db_string_make_empty_typed_string (NULL, &string2, src_type,
-					   TP_FLOATING_PRECISION_VALUE,
-					   src_cs, src_coll);
-
-      if (error_status != NO_ERROR)
-	{
-	  goto exit;
-	}
-
-      if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) == true
-	  && DB_IS_NULL (&string2)
-	  && QSTR_IS_ANY_CHAR_OR_BIT (DB_VALUE_DOMAIN_TYPE (&string2)))
-	{
-	  /*intermediate value : clear is_null flag */
-	  string2.domain.general_info.is_null = 0;
-	}
 
       /* get string2 if the conditions are fullfilled :
        * 1. length_i >= 0 - compatibility with MySql
@@ -2901,6 +2896,27 @@ db_string_insert_substring (DB_VALUE * src_string,
 	  if (error_status != NO_ERROR)
 	    {
 	      goto exit;
+	    }
+	}
+
+      if (DB_IS_NULL (&string2))	/* make dummy for concat */
+	{
+	  error_status =
+	    db_string_make_empty_typed_string (NULL, &string2, src_type,
+					       TP_FLOATING_PRECISION_VALUE,
+					       src_cs, src_coll);
+
+	  if (error_status != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+
+	  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) == true
+	      && DB_IS_NULL (&string2)
+	      && QSTR_IS_ANY_CHAR_OR_BIT (DB_VALUE_DOMAIN_TYPE (&string2)))
+	    {
+	      /*intermediate value : clear is_null flag */
+	      string2.domain.general_info.is_null = 0;
 	    }
 	}
 
@@ -4365,9 +4381,9 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern,
   pattern_length = DB_GET_STRING_SIZE (pattern);
 
   /* initialize regex library memory allocator */
-  cub_regset_malloc ((CUB_REG_MALLOC) db_private_alloc);
-  cub_regset_realloc ((CUB_REG_REALLOC) db_private_realloc);
-  cub_regset_free ((CUB_REG_FREE) db_private_free);
+  cub_regset_malloc ((CUB_REG_MALLOC) db_private_alloc_external);
+  cub_regset_realloc ((CUB_REG_REALLOC) db_private_realloc_external);
+  cub_regset_free ((CUB_REG_FREE) db_private_free_external);
 
   /* extract case sensitivity */
   is_case_sensitive = (case_sensitive->data.i != 0);
@@ -15236,6 +15252,16 @@ db_to_number (const DB_VALUE * src_str, const DB_VALUE * format_str,
 
   result_num->domain.numeric_info.precision = precision;
   result_num->domain.numeric_info.scale = scale;
+
+  if (do_free_buf_str)
+    {
+      db_private_free (NULL, initial_buf_str);
+    }
+
+  if (do_free_buf_format)
+    {
+      db_private_free (NULL, initial_buf_format);
+    }
 
   return error_status;
 

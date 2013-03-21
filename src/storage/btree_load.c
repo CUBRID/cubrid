@@ -219,6 +219,10 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
   DB_TYPE single_node_type = DB_TYPE_NULL;
   void *buf_info = NULL;
   void *func_unpack_info = NULL;
+  HL_HEAPID old_pri_heap_id;
+#if !defined(NDEBUG)
+  int track_id;
+#endif
 
   /* Check for robustness */
   if (!btid || !hfids || !class_oids || !attr_ids || !key_type)
@@ -247,6 +251,10 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
     {
       return NULL;
     }
+
+#if !defined(NDEBUG)
+  track_id = thread_rc_track_enter (thread_p);
+#endif
 
   btid_int.sys_btid = btid;
   btid_int.unique = unique_flag;
@@ -447,7 +455,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
   load_args->out_recdes.length = 0;
   load_args->out_recdes.type = REC_HOME;
   load_args->n_keys = 0;
-  load_args->out_recdes.data = (char *) malloc (DB_PAGESIZE);
+  load_args->out_recdes.data = (char *) os_malloc (DB_PAGESIZE);
   if (load_args->out_recdes.data == NULL)
     {
       goto error;
@@ -512,7 +520,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
       /* There is at least one leaf page */
 
       /* Release the memory area */
-      free_and_init (load_args->out_recdes.data);
+      os_free_and_init (load_args->out_recdes.data);
       pr_clear_value (&load_args->current_key);
 
       /* deallocate unused pages from the index file */
@@ -537,7 +545,8 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 	  goto error;
 	}
       file_created = 0;
-      free_and_init (load_args->out_recdes.data);
+      os_free_and_init (load_args->out_recdes.data);
+      pr_clear_value (&load_args->current_key);
 
       btid->vfid.volid = save_volid;
       xbtree_add_index (thread_p, btid, key_type, &class_oids[0], attr_ids[0],
@@ -545,10 +554,16 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 			load_args->n_keys);
     }
 
-
+  if (sort_args->filter)
+    {
+      /* to clear db values from dbvalue regu variable */
+      qexec_clear_pred_context (thread_p, sort_args->filter, true);
+    }
   if (buf_info)
     {
+      stx_free_additional_buff (thread_p, buf_info);
       stx_free_xasl_unpack_info (buf_info);
+      db_private_free_and_init (thread_p, buf_info);
     }
   if (sort_args->func_index_info && sort_args->func_index_info->expr)
     {
@@ -561,6 +576,13 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
       stx_free_xasl_unpack_info (func_unpack_info);
       db_private_free_and_init (thread_p, func_unpack_info);
     }
+
+#if !defined(NDEBUG)
+  if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
+    {
+      assert_release (false);
+    }
+#endif
 
   if (sort_args->cache_attr_id < 0)
     {
@@ -602,7 +624,6 @@ error:
 			      expr)->cache_attrinfo);
 	}
     }
-
   if (file_created)
     {
       (void) file_destroy (thread_p, &btid->vfid);
@@ -611,8 +632,10 @@ error:
   btid->root_pageid = NULL_PAGEID;
   if (load_args->out_recdes.data)
     {
-      free_and_init (load_args->out_recdes.data);
+      os_free_and_init (load_args->out_recdes.data);
     }
+  pr_clear_value (&load_args->current_key);
+
   if (load_args->leaf.pgptr)
     {
       pgbuf_unfix_and_init (thread_p, load_args->leaf.pgptr);
@@ -625,9 +648,16 @@ error:
     {
       pgbuf_unfix_and_init (thread_p, load_args->nleaf.pgptr);
     }
+  if (sort_args->filter)
+    {
+      /* to clear db values from dbvalue regu variable */
+      qexec_clear_pred_context (thread_p, sort_args->filter, true);
+    }
   if (buf_info)
     {
+      stx_free_additional_buff (thread_p, buf_info);
       stx_free_xasl_unpack_info (buf_info);
+      db_private_free_and_init (thread_p, buf_info);
     }
   if (sort_args->func_index_info && sort_args->func_index_info->expr)
     {
@@ -641,6 +671,14 @@ error:
       stx_free_xasl_unpack_info (func_unpack_info);
       db_private_free_and_init (thread_p, func_unpack_info);
     }
+
+#if !defined(NDEBUG)
+  if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
+    {
+      assert_release (false);
+    }
+#endif
+
   log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
 
   return NULL;
@@ -965,7 +1003,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
   db_make_null (&first_key);
   db_make_null (&prefix_key);
 
-  temp_data = (char *) malloc (DB_PAGESIZE);
+  temp_data = (char *) os_malloc (DB_PAGESIZE);
   if (temp_data == NULL)
     {
       goto exit_on_error;
@@ -1434,7 +1472,7 @@ end:
     }
   if (temp_data)
     {
-      free_and_init (temp_data);
+      os_free_and_init (temp_data);
     }
 
   return ret;
@@ -2791,7 +2829,7 @@ add_list (BTREE_NODE ** list, VPID * pageid)
   BTREE_NODE *next_node;
   int ret = NO_ERROR;
 
-  new_node = (BTREE_NODE *) malloc (sizeof (BTREE_NODE));
+  new_node = (BTREE_NODE *) os_malloc (sizeof (BTREE_NODE));
   if (new_node == NULL)
     {
       goto exit_on_error;
@@ -2839,7 +2877,7 @@ remove_first (BTREE_NODE ** list)
     {
       temp = *list;
       *list = (*list)->next;
-      free_and_init (temp);
+      os_free_and_init (temp);
     }
 }
 

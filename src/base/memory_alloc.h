@@ -113,6 +113,14 @@ extern void db_scramble (void *region, int size);
             (ptr) = NULL; \
           } \
         } while (0)
+
+#define os_free_and_init(ptr) \
+        do { \
+          if ((ptr)) { \
+            os_free((ptr)); \
+            (ptr) = NULL; \
+          } \
+        } while (0)
 #else /* NDEBUG */
 #define db_private_free_and_init(thrd, ptr) \
         do { \
@@ -125,13 +133,51 @@ extern void db_scramble (void *region, int size);
           free ((ptr)); \
           (ptr) = NULL; \
 	} while (0)
+
+#define os_free_and_init(ptr) \
+        do { \
+          os_free((ptr)); \
+          (ptr) = NULL; \
+        } while (0)
 #endif /* NDEBUG */
 
 extern int ansisql_strcmp (const char *s, const char *t);
 extern int ansisql_strcasecmp (const char *s, const char *t);
 
 #if !defined (SERVER_MODE)
+
 extern HL_HEAPID private_heap_id;
+
+#define os_malloc(size) (malloc (size))
+#define os_free(ptr) (free (ptr))
+
+#else /* SERVER_MODE */
+
+#if !defined(NDEBUG)
+#define os_malloc(size) \
+        os_malloc_debug(size, true, __FILE__, __LINE__)
+extern void *os_malloc_debug (size_t size, bool rc_track,
+			      const char *caller_file, int caller_line);
+#define os_calloc(n, size) \
+        os_calloc_debug(n, size, true, __FILE__, __LINE__)
+extern void *os_calloc_debug (size_t n, size_t size, bool rc_track,
+			      const char *caller_file, int caller_line);
+#define os_free(ptr) \
+        os_free_debug(ptr, true, __FILE__, __LINE__)
+extern void os_free_debug (void *ptr, bool rc_track,
+			   const char *caller_file, int caller_line);
+#else /* NDEBUG */
+#define os_malloc(size) \
+        os_malloc_release(size, false)
+extern void *os_malloc_release (size_t size, bool rc_track);
+#define os_calloc(n, size) \
+        os_calloc_release(n, size, false)
+extern void *os_calloc_release (size_t n, size_t size, bool rc_track);
+#define os_free(ptr) \
+        os_free_release(ptr, false)
+extern void os_free_release (void *ptr, bool rc_track);
+#endif /* NDEBUG */
+
 #endif /* SERVER_MODE */
 
 /*
@@ -163,10 +209,32 @@ extern HL_HEAPID db_change_private_heap (THREAD_ENTRY * thread_p,
 extern HL_HEAPID db_replace_private_heap (THREAD_ENTRY * thread_p);
 extern void db_destroy_private_heap (THREAD_ENTRY * thread_p,
 				     HL_HEAPID heap_id);
-extern void *db_private_alloc (void *thrd, size_t size);
+#if !defined(NDEBUG)
+#define db_private_alloc(thrd, size) \
+        db_private_alloc_debug(thrd, size, true, __FILE__, __LINE__)
+extern void *db_private_alloc_debug (void *thrd, size_t size, bool rc_track,
+				     const char *caller_file,
+				     int caller_line);
+#define db_private_free(thrd, ptr) \
+        db_private_free_debug(thrd, ptr, true, __FILE__, __LINE__)
+extern void db_private_free_debug (void *thrd, void *ptr, bool rc_track,
+				   const char *caller_file, int caller_line);
+#else /* NDEBUG */
+#define db_private_alloc(thrd, size) \
+        db_private_alloc_release(thrd, size, false)
+extern void *db_private_alloc_release (void *thrd, size_t size,
+				       bool rc_track);
+#define db_private_free(thrd, ptr) \
+        db_private_free_release(thrd, ptr, false)
+extern void db_private_free_release (void *thrd, void *ptr, bool rc_track);
+#endif /* NDEBUG */
 extern void *db_private_realloc (void *thrd, void *ptr, size_t size);
 extern char *db_private_strdup (void *thrd, const char *s);
-extern void db_private_free (void *thrd, void *ptr);
+
+/* for external package */
+extern void *db_private_alloc_external (void *thrd, size_t size);
+extern void db_private_free_external (void *thrd, void *ptr);
+extern void *db_private_realloc_external (void *thrd, void *ptr, size_t size);
 
 extern HL_HEAPID db_create_fixed_heap (int req_size, int recs_per_chunk);
 extern void db_destroy_fixed_heap (HL_HEAPID heap_id);
