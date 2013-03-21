@@ -382,7 +382,7 @@ std::string _MaxSizeLogAppender::get_curr_date_time()
   char buf[16];
   time_t now = time(NULL);
 
-  localtime_r(&context.now.tv_sec, &cal);
+  localtime_r((const time_t *) &context.now.tv_sec, &cal);
   cal.tm_year += 1900;
   cal.tm_mon += 1;
   snprintf(buf, 16, "%d%02d%02d%02d%02d%02d", cal.tm_year, cal.tm_mon,
@@ -417,7 +417,7 @@ std::string _DailyLogAppender::getCurrDate()
   char buf[16];
   time_t now = time(NULL);
 
-  localtime_r(&context.now.tv_sec, &cal);
+  localtime_r((const time_t *) &context.now.tv_sec, &cal);
   cal.tm_year += 1900;
   cal.tm_mon += 1;
   snprintf(buf, 16, "%d-%02d-%02d", cal.tm_year, cal.tm_mon, cal.tm_mday);
@@ -538,7 +538,7 @@ void _Logger::logPrefix(CCI_LOG_LEVEL level)
 
   t = context.now.tv_sec;
 
-  localtime_r(&t, &cal);
+  localtime_r((const time_t *) &t, &cal);
   cal.tm_year += 1900;
   cal.tm_mon += 1;
 

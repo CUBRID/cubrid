@@ -802,7 +802,7 @@ namespace dbgw
     struct tm now;
 
     gettimeofday(&tp, NULL);
-    localtime_r(&tp.tv_sec, &now);
+    localtime_r((const time_t *) &tp.tv_sec, &now);
 
     char szBuffer[128];
     snprintf(szBuffer, 128, "%d-%02d-%02d %02d:%02d:%02d.%03d",
