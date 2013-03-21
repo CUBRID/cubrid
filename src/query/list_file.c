@@ -2296,6 +2296,7 @@ qfile_get_list_page_with_waiting (THREAD_ENTRY * thread_p,
       return true;
     }
   QFILE_GET_NEXT_VPID (&next_vpid, page_p);
+  QFILE_COPY_VPID (&(arg_p->next_vpid), &next_vpid);
   qmgr_free_old_page_and_init (thread_p, page_p, arg_p->tfile_vfidp);
 
   /* if the next page is not ready yet, return 0 */
@@ -2334,6 +2335,7 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id,
   QMGR_WAIT_ARGS arg;
   int error = NO_ERROR;
   int rv;
+  bool is_async_query = false;
 #endif /* SERVER_MODE */
 
   *page_size_p = 0;
@@ -2355,6 +2357,11 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id,
     }
 
 #if defined(SERVER_MODE)
+  if (query_entry_p->query_mode == ASYNC_MODE)
+    {
+      is_async_query = true;
+    }
+
   error = qmgr_get_query_error_with_entry (query_entry_p);
   if (error < 0)
     {
@@ -2550,10 +2557,13 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id,
 	      arg.query_id = query_id;
 	      arg.vpid = vpid;
 	      arg.tfile_vfidp = tfile_vfid_p;
+	      VPID_SET_NULL (&arg.next_vpid);
 	      qmgr_free_old_page_and_init (thread_p, page_p, tfile_vfid_p);
 	      thread_wait (thread_p, (CSS_THREAD_FN)
 			   qfile_get_list_page_with_waiting,
 			   (CSS_THREAD_ARG *) (&arg));
+
+	      QFILE_COPY_VPID (&next_vpid, &arg.next_vpid);
 	    }
 
 	  /* interrupted? */
@@ -2562,20 +2572,45 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id,
 	    {
 	      return ER_INTERRUPTED;
 	    }
-
-	  error = qmgr_get_query_error_with_id (thread_p, query_id);
-	  if (error < 0)
-	    {
-	      if (error == ER_LK_UNILATERALLY_ABORTED)
-		{
-		  tran_server_unilaterally_abort_tran (thread_p);
-		}
-	      return error;
-	    }
 	}
       else
 	{
 	  qmgr_free_old_page_and_init (thread_p, page_p, tfile_vfid_p);
+	}
+
+      if (next_vpid.pageid == NULL_PAGEID)
+	{
+	  /* this was the last page written by async query, we wait for
+	   * query completion to catch a potential execution error */
+	  do
+	    {
+	      query_entry_p = qmgr_get_query_entry (thread_p, query_id,
+						    tran_index);
+	      if (query_entry_p == NULL)
+		{
+		  return ER_QPROC_UNKNOWN_QUERYID;
+		}
+	      thread_sleep (0, 10000);
+	    }
+	  while (query_entry_p->query_mode == ASYNC_MODE);
+	}
+    }
+
+  /* Check query error only if the initial status was async and it became
+   * completed. If the query is still in ASYNC status, and an error was set,
+   * we will detect the error at the next page fetching : we favor queries
+   * which are successfull, instead of checking for query error in a more
+   * aggresive way */
+  if (is_async_query && query_entry_p->query_mode == QUERY_COMPLETED)
+    {
+      error = qmgr_get_query_error_with_id (thread_p, query_id);
+      if (error < 0)
+	{
+	  if (error == ER_LK_UNILATERALLY_ABORTED)
+	    {
+	      tran_server_unilaterally_abort_tran (thread_p);
+	    }
+	  return error;
 	}
     }
 

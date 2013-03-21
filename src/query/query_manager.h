@@ -113,6 +113,7 @@ struct qmgr_wait_args
 {
   QUERY_ID query_id;
   VPID vpid;
+  VPID next_vpid;
   QMGR_TEMP_FILE *tfile_vfidp;
 };
 

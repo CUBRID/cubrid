@@ -25363,7 +25363,7 @@ end:
  *   return: status
  *   result(out): result (string type)
  *   val(in): input value
- *   mode(in): 0 : get charset, 1 : ger collation
+ *   mode(in): 0 : get charset, 1 : get collation
  *
  */
 int

@@ -12389,6 +12389,7 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	{
 	  er_log_debug (ARG_FILE_LINE,
 			"This statement has no record by 'limit 0' clause.\n");
+	  qexec_clear_mainblock_iterations (thread_p, xasl);
 	  return NO_ERROR;
 	}
       else if (l == V_ERROR)

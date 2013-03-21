@@ -4835,7 +4835,8 @@ qmgr_is_async_executable (XASL_NODE * xasl_p, QMGR_QUERY_TYPE * query_type_p)
     }
 
   /* ORDER BY */
-  if (xasl_type == BUILDLIST_PROC && xasl_p->orderby_list)
+  if ((xasl_type == BUILDLIST_PROC || xasl_type == BUILD_SCHEMA_PROC)
+      && xasl_p->orderby_list)
     {
       if (xasl_p->ordbynum_val != NULL
 	  || !qfile_is_sort_list_covered (xasl_p->after_iscan_list,
