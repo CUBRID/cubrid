@@ -21313,8 +21313,6 @@ qexec_clear_partition_expression (THREAD_ENTRY * thread_p,
 
   memset (&xasl_node, 0, sizeof (XASL_NODE));
 
-  XASL_SET_FLAG (&xasl_node, XASL_QEXEC_MODE_ASYNC);
-
   qexec_clear_regu_var (&xasl_node, expr, true);
 
   return NO_ERROR;

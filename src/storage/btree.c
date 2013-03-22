@@ -3959,8 +3959,8 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info)
 
   if (env->stat_info->has_function > 0)
     {
-      DB_MAKE_NULL (&env->stat_info->min_value);
-      DB_MAKE_NULL (&env->stat_info->max_value);
+      pr_clear_value (&env->stat_info->min_value);
+      pr_clear_value (&env->stat_info->max_value);
     }
 
   ret = btree_find_lower_bound_leaf (thread_p, BTS, stat_info);

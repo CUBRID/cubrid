@@ -142,6 +142,13 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p)
   int i, j;
   OID *partitions = NULL;
   int count = 0, error_code = NO_ERROR;
+#if !defined(NDEBUG)
+  int track_id;
+#endif
+
+#if !defined(NDEBUG)
+  track_id = thread_rc_track_enter (thread_p);
+#endif
 
   cls_info_p = catalog_get_class_info (thread_p, class_id_p);
   if (cls_info_p == NULL)
@@ -165,6 +172,14 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p)
 	}
 
       catalog_free_class_info (cls_info_p);
+
+#if !defined(NDEBUG)
+      if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
+	{
+	  assert_release (false);
+	}
+#endif
+
       return NO_ERROR;
     }
 
@@ -190,6 +205,14 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p)
 	{
 	  goto error;
 	}
+
+#if !defined(NDEBUG)
+      if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
+	{
+	  assert_release (false);
+	}
+#endif
+
       return NO_ERROR;
     }
 
@@ -352,6 +375,13 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p)
       catalog_free_class_info (cls_info_p);
     }
 
+#if !defined(NDEBUG)
+  if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
+    {
+      assert_release (false);
+    }
+#endif
+
   return NO_ERROR;
 
 error:
@@ -374,6 +404,13 @@ error:
     {
       catalog_free_class_info (cls_info_p);
     }
+
+#if !defined(NDEBUG)
+  if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
+    {
+      assert_release (false);
+    }
+#endif
 
   return er_errid ();
 }
@@ -446,34 +483,42 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
   int i, j, k, size, n_attrs, tot_n_btstats, tot_key_info_size;
   int tot_bt_min_max_size;
   char *buf_p, *start_p;
+#if !defined(NDEBUG)
+  int track_id;
+#endif
+
+  /* init */
+  cls_info_p = NULL;
+  disk_repr_p = NULL;
+
+#if !defined(NDEBUG)
+  track_id = thread_rc_track_enter (thread_p);
+#endif
 
   *length_p = -1;
 
   cls_info_p = catalog_get_class_info (thread_p, class_id_p);
-  if (!cls_info_p)
+  if (cls_info_p == NULL)
     {
-      return NULL;
+      goto exit_on_error;
     }
 
   if (time_stamp > 0 && time_stamp >= cls_info_p->time_stamp)
     {
-      catalog_free_class_info (cls_info_p);
       *length_p = 0;
-      return NULL;
+      goto exit_on_error;
     }
 
   if (catalog_get_last_representation_id (thread_p, class_id_p, &repr_id) !=
       NO_ERROR)
     {
-      catalog_free_class_info (cls_info_p);
-      return NULL;
+      goto exit_on_error;
     }
 
   disk_repr_p = catalog_get_representation (thread_p, class_id_p, repr_id);
-  if (!disk_repr_p)
+  if (disk_repr_p == NULL)
     {
-      catalog_free_class_info (cls_info_p);
-      return NULL;
+      goto exit_on_error;
     }
 
   n_attrs = disk_repr_p->n_fixed + disk_repr_p->n_variable;
@@ -532,9 +577,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
   start_p = buf_p = (char *) malloc (size);
   if (buf_p == NULL)
     {
-      catalog_free_representation (disk_repr_p);
-      catalog_free_class_info (cls_info_p);
-      return NULL;
+      goto exit_on_error;
     }
   memset (start_p, 0, size);
 
@@ -757,7 +800,34 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 
   *length_p = CAST_STRLEN (buf_p - start_p);
 
+#if !defined(NDEBUG)
+  if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
+    {
+      assert_release (false);
+    }
+#endif
+
   return start_p;
+
+exit_on_error:
+
+  if (disk_repr_p)
+    {
+      catalog_free_representation (disk_repr_p);
+    }
+  if (cls_info_p)
+    {
+      catalog_free_class_info (cls_info_p);
+    }
+
+#if !defined(NDEBUG)
+  if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
+    {
+      assert_release (false);
+    }
+#endif
+
+  return NULL;
 }
 
 /*
@@ -1392,8 +1462,8 @@ stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
 	    }
 	  memset (stddev[btree_iter].pkeys, 0,
 		  mean[btree_iter].key_size * sizeof (double));
-	  DB_MAKE_NULL (&btree_stats_p->min_value);
-	  DB_MAKE_NULL (&btree_stats_p->max_value);
+	  pr_clear_value (&(btree_stats_p->min_value));
+	  pr_clear_value (&(btree_stats_p->max_value));
 	  btree_iter++;
 	}
     }

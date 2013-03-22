@@ -101,13 +101,15 @@ enum
  * +-------+-----+-------+------+
  * | VMEM  |     |   X   |   X  |
  * +-------+-----+-------+------+
+ * | PGBUF |     |   X   |   X  |
+ * +-------+-----+-------+------+
  * | LAST  |  X  |   X   |   X  |
  * +-------+-----+-------+------+
  */
 
 /* resource track meters */
 enum
-{ RC_VMEM = 0, RC_LAST };
+{ RC_VMEM = 0, RC_PGBUF, RC_LAST };
 
 /* resource track managers */
 enum
@@ -133,6 +135,7 @@ struct thread_resource_meter
 typedef struct thread_resource_track THREAD_RC_TRACK;
 struct thread_resource_track
 {
+  HL_HEAPID private_heap_id;	/* id of thread private memory allocator */
   THREAD_RC_METER meter[RC_LAST][MGR_LAST];
   THREAD_RC_TRACK *prev;
 };

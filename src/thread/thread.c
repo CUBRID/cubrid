@@ -3766,11 +3766,9 @@ thread_rc_track_rcname (int rc_idx)
     case RC_VMEM:
       name = "Virtual Memory";
       break;
-#if 0
     case RC_PGBUF:
       name = "Page Buffer";
       break;
-#endif
     default:
       name = "**UNKNOWN_RESOURCE**";
       break;
@@ -3852,35 +3850,41 @@ thread_rc_track_alloc (THREAD_ENTRY * thread_p)
 
       if (new_track != NULL)
 	{
-	  /* keep current track info */
+	  /* keep current track info
+	   */
+
+	  /* id of thread private memory allocator */
+	  new_track->private_heap_id = thread_p->private_heap_id;
+
 	  for (i = 0; i < RC_LAST; i++)
 	    {
 	      for (j = 0; j < MGR_LAST; j++)
 		{
 		  if (thread_p->track != NULL)
 		    {
-		      /* struct copy */
-		      new_track->meter[i][j] = thread_p->track->meter[i][j];
+		      new_track->meter[i][j].m_amount =
+			thread_p->track->meter[i][j].m_amount;
 		    }
 		  else
 		    {
 		      new_track->meter[i][j].m_amount = 0;
-		      new_track->meter[i][j].m_threshold = 0x7FFF;	/* for future work, get PRM */
-		      new_track->meter[i][j].m_add_file_name = NULL;
-		      new_track->meter[i][j].m_add_line_no = -1;
-		      new_track->meter[i][j].m_sub_file_name = NULL;
-		      new_track->meter[i][j].m_sub_line_no = -1;
-#if !defined(NDEBUG)
-		      new_track->meter[i][j].m_add_buf[0] = '\0';
-		      new_track->meter[i][j].m_add_buf_size = 0;
-		      new_track->meter[i][j].m_sub_buf[0] = '\0';
-		      new_track->meter[i][j].m_sub_buf_size = 0;
-#endif
 		    }
+		  new_track->meter[i][j].m_threshold = 0x7FFF;	/* for future work, get PRM */
+		  new_track->meter[i][j].m_add_file_name = NULL;
+		  new_track->meter[i][j].m_add_line_no = -1;
+		  new_track->meter[i][j].m_sub_file_name = NULL;
+		  new_track->meter[i][j].m_sub_line_no = -1;
+#if !defined(NDEBUG)
+		  new_track->meter[i][j].m_add_buf[0] = '\0';
+		  new_track->meter[i][j].m_add_buf_size = 0;
+		  new_track->meter[i][j].m_sub_buf[0] = '\0';
+		  new_track->meter[i][j].m_sub_buf_size = 0;
+#endif
 		}
 	    }
 
-	  /* push current track info */
+	  /* push current track info
+	   */
 	  new_track->prev = thread_p->track;
 	  thread_p->track = new_track;
 
@@ -4018,6 +4022,15 @@ thread_rc_track_meter (THREAD_ENTRY * thread_p,
       && 0 <= rc_idx && rc_idx < RC_LAST
       && 0 <= mgr_idx && mgr_idx < MGR_LAST)
     {
+      /* check iff is tracking one */
+      if (rc_idx == RC_VMEM)
+	{
+	  if (track->private_heap_id != thread_p->private_heap_id)
+	    {
+	      return;		/* ignore */
+	    }
+	}
+
       meter = &(track->meter[rc_idx][mgr_idx]);
 
       meter->m_amount += amount;

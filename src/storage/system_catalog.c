@@ -486,6 +486,8 @@ catalog_get_btree_statistics (BTREE_STATS * stat_p, char *rec_p)
     }
 #endif
 
+  DB_MAKE_NULL (&(stat_p->min_value));
+  DB_MAKE_NULL (&(stat_p->max_value));
   if (stat_p->has_function > 0)
     {
       buf = rec_p + CATALOG_BT_STATS_SIZE;
@@ -908,6 +910,7 @@ catalog_free_representation (DISK_REPR * repr_p)
 {
   int attr_cnt, k, j;
   DISK_ATTR *attr_p;
+  BTREE_STATS *stat_p;
 
   if (repr_p != NULL)
     {
@@ -926,11 +929,13 @@ catalog_free_representation (DISK_REPR * repr_p)
 	    {
 	      for (j = 0; j < attr_p->n_btstats; j++)
 		{
-		  if (attr_p->bt_stats[j].pkeys != NULL)
+		  stat_p = &(attr_p->bt_stats[j]);
+		  if (stat_p->pkeys != NULL)
 		    {
-		      db_private_free_and_init (NULL,
-						attr_p->bt_stats[j].pkeys);
+		      db_private_free_and_init (NULL, stat_p->pkeys);
 		    }
+		  pr_clear_value (&(stat_p->min_value));
+		  pr_clear_value (&(stat_p->max_value));
 		}
 	      db_private_free_and_init (NULL, attr_p->bt_stats);
 	    }
