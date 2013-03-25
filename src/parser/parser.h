@@ -871,18 +871,11 @@ extern "C"
 						 PT_NODE * charset_node,
 						 PT_NODE * coll_node,
 						 int *charset, int *coll_id);
-  extern bool pt_get_collation_info (PT_NODE * node, int *coll_id,
-				     INTL_CODESET * codeset,
-				     PT_COLL_COERC_LEV * coerc_level);
-  extern int pt_common_collation (const int arg1_coll,
-				  const INTL_CODESET arg1_cs,
-				  PT_COLL_COERC_LEV arg1_coerc_level,
-				  const int arg2_coll,
-				  const INTL_CODESET arg2_cs,
-				  PT_COLL_COERC_LEV arg2_coerc_level,
-				  const int arg3_coll,
-				  const INTL_CODESET arg3_cs,
-				  PT_COLL_COERC_LEV arg3_coerc_level,
+  extern bool pt_get_collation_info (PT_NODE * node,
+				     PT_COLL_INFER * coll_infer);
+  extern int pt_common_collation (PT_COLL_INFER * arg1_coll_infer,
+				  PT_COLL_INFER * arg2_coll_infer,
+				  PT_COLL_INFER * arg3_coll_infer,
 				  const int args_w_coll, bool op_has_3_args,
 				  int *common_coll, INTL_CODESET * common_cs);
   extern PT_NODE *pt_make_tuple_value_reference (PARSER_CONTEXT * parser,

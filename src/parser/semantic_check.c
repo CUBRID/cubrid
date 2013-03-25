@@ -60,9 +60,7 @@ typedef struct seman_compatible_info
   PT_TYPE_ENUM type_enum;
   int prec;
   int scale;
-  int collation_id;
-  INTL_CODESET cs;
-  PT_COLL_COERC_LEV coerc;
+  PT_COLL_INFER coll_infer;
 } SEMAN_COMPATIBLE_INFO;
 
 typedef enum
@@ -517,27 +515,29 @@ pt_update_compatible_info (PARSER_CONTEXT * parser,
     {
       assert (PT_HAS_COLLATION (common_type));
 
-      if (att1_info->collation_id != att2_info->collation_id)
+      if (att1_info->coll_infer.coll_id != att2_info->coll_infer.coll_id)
 	{
-	  if (pt_common_collation (att1_info->collation_id, att1_info->cs,
-				   att1_info->coerc,
-				   att2_info->collation_id, att2_info->cs,
-				   att2_info->coerc,
-				   0, 0, 0, 2, false, &(cinfo->collation_id),
-				   &(cinfo->cs)) != 0)
+	  if (pt_common_collation (&(att1_info->coll_infer),
+				   &(att2_info->coll_infer), NULL,
+				   2, false, &(cinfo->coll_infer.coll_id),
+				   &(cinfo->coll_infer.codeset)) != 0)
 	    {
 	      is_compatible = false;
 	    }
 	  else
 	    {
-	      cinfo->coerc = MIN (att1_info->coerc, att2_info->coerc);
+	      cinfo->coll_infer.coerc_level =
+		MIN (att1_info->coll_infer.coerc_level,
+		     att2_info->coll_infer.coerc_level);
 	    }
 	}
       else
 	{
-	  cinfo->collation_id = att1_info->collation_id;
-	  cinfo->cs = att1_info->cs;
-	  cinfo->coerc = MIN (att1_info->coerc, att2_info->coerc);
+	  cinfo->coll_infer.coll_id = att1_info->coll_infer.coll_id;
+	  cinfo->coll_infer.codeset = att1_info->coll_infer.codeset;
+	  cinfo->coll_infer.coerc_level =
+	    MIN (att1_info->coll_infer.coerc_level,
+		 att2_info->coll_infer.coerc_level);
 	}
     }
 
@@ -759,9 +759,10 @@ pt_get_compatible_info (PARSER_CONTEXT * parser, PT_NODE * node,
 		  cinfo[k].type_enum = PT_TYPE_NONE;
 		  cinfo[k].prec = DB_DEFAULT_PRECISION;
 		  cinfo[k].scale = DB_DEFAULT_SCALE;
-		  cinfo[k].collation_id = LANG_SYS_COLLATION;
-		  cinfo[k].cs = LANG_SYS_CODESET;
-		  cinfo[k].coerc = PT_COLLATION_NOT_COERC;
+		  cinfo[k].coll_infer.coll_id = LANG_SYS_COLLATION;
+		  cinfo[k].coll_infer.codeset = LANG_SYS_CODESET;
+		  cinfo[k].coll_infer.coerc_level = PT_COLLATION_NOT_COERC;
+		  cinfo[k].coll_infer.can_force_cs = false;
 		}
 	    }
 
@@ -837,8 +838,8 @@ pt_make_cast_with_compatible_info (PARSER_CONTEXT * parser,
       temp_data_type->dec_precision = cinfo->scale;
       if (PT_HAS_COLLATION (cinfo->type_enum))
 	{
-	  temp_data_type->collation_id = cinfo->collation_id;
-	  temp_data_type->units = (int) cinfo->cs;
+	  temp_data_type->collation_id = cinfo->coll_infer.coll_id;
+	  temp_data_type->units = (int) cinfo->coll_infer.codeset;
 	}
 
       att->type_enum = att->info.expr.cast_type->type_enum;
@@ -848,8 +849,8 @@ pt_make_cast_with_compatible_info (PARSER_CONTEXT * parser,
       temp_data_type->dec_precision = cinfo->scale;
       if (PT_HAS_COLLATION (cinfo->type_enum))
 	{
-	  temp_data_type->collation_id = cinfo->collation_id;
-	  temp_data_type->units = (int) cinfo->cs;
+	  temp_data_type->collation_id = cinfo->coll_infer.coll_id;
+	  temp_data_type->units = (int) cinfo->coll_infer.codeset;
 	}
 
       new_att = att;
@@ -896,8 +897,8 @@ pt_make_cast_with_compatible_info (PARSER_CONTEXT * parser,
       temp_data_type->dec_precision = cinfo->scale;
       if (PT_HAS_COLLATION (cinfo->type_enum))
 	{
-	  temp_data_type->collation_id = cinfo->collation_id;
-	  temp_data_type->units = (int) cinfo->cs;
+	  temp_data_type->collation_id = cinfo->coll_infer.coll_id;
+	  temp_data_type->units = (int) cinfo->coll_infer.codeset;
 	}
 
       new_att->type_enum = new_dt->type_enum;
@@ -1010,7 +1011,8 @@ pt_get_values_query_compatible_info (PARSER_CONTEXT * parser, PT_NODE * node,
 		  if (cinfo[i].type_enum == cinfo_cur[i].type_enum
 		      && cinfo[i].prec == cinfo_cur[i].prec
 		      && cinfo[i].scale == cinfo_cur[i].scale
-		      && cinfo[i].collation_id == cinfo_cur[i].collation_id)
+		      && cinfo[i].coll_infer.coll_id
+		      == cinfo_cur[i].coll_infer.coll_id)
 		    {
 		      assert (cinfo[i].idx == cinfo_cur[i].idx);
 		      continue;
@@ -2463,19 +2465,17 @@ pt_union_compatible (PARSER_CONTEXT * parser,
 	    {
 	      if (PT_HAS_COLLATION (common_type))
 		{
-		  int coll1, coll2;
-		  INTL_CODESET cs1, cs2;
-		  PT_COLL_COERC_LEV coerc1, coerc2;
+		  PT_COLL_INFER coll_infer1, coll_infer2;
 
-		  (void) pt_get_collation_info (item1, &coll1, &cs1, &coerc1);
-		  (void) pt_get_collation_info (item2, &coll2, &cs2, &coerc2);
+		  (void) pt_get_collation_info (item1, &coll_infer1);
+		  (void) pt_get_collation_info (item2, &coll_infer2);
 
 		  /* TODO : should infer common collation here with
 		   * 'pt_common_collation', but with current algorithm of
 		   * compatibility check for UNION which performs paired
 		   * checks, the results are not coherent when changing order
 		   * of SELECT lists */
-		  if (coll1 != coll2)
+		  if (coll_infer1.coll_id != coll_infer2.coll_id)
 		    {
 		      return PT_UNION_INCOMP_CANNOT_FIX;
 		    }
@@ -2635,13 +2635,13 @@ pt_is_compatible_without_cast (PARSER_CONTEXT * parser,
     {
       if (src->data_type != NULL
 	  && src->data_type->info.data_type.collation_id
-	  != dest_sci->collation_id)
+	  != dest_sci->coll_infer.coll_id)
 	{
 	  INTL_CODESET att_cs;
 
 	  att_cs = (INTL_CODESET) src->data_type->info.data_type.units;
 
-	  if (!INTL_CAN_COERCE_CS (att_cs, dest_sci->cs))
+	  if (!INTL_CAN_COERCE_CS (att_cs, dest_sci->coll_infer.codeset))
 	    {
 	      *is_cast_allowed = false;
 	    }
@@ -2855,9 +2855,10 @@ pt_get_compatible_info_from_node (const PT_NODE * att,
 {
   assert (cinfo != NULL);
 
-  cinfo->collation_id = -1;
-  cinfo->cs = INTL_CODESET_NONE;
-  cinfo->coerc = PT_COLLATION_NOT_COERC;
+  cinfo->coll_infer.coll_id = -1;
+  cinfo->coll_infer.codeset = INTL_CODESET_NONE;
+  cinfo->coll_infer.coerc_level = PT_COLLATION_NOT_COERC;
+  cinfo->coll_infer.can_force_cs = false;
   cinfo->prec = cinfo->scale = 0;
 
   cinfo->type_enum = att->type_enum;
@@ -2896,8 +2897,7 @@ pt_get_compatible_info_from_node (const PT_NODE * att,
 
   if (PT_HAS_COLLATION (att->type_enum))
     {
-      (void) pt_get_collation_info ((PT_NODE *) att, &(cinfo->collation_id),
-				    &(cinfo->cs), &(cinfo->coerc));
+      (void) pt_get_collation_info ((PT_NODE *) att, &(cinfo->coll_infer));
     }
 }
 
@@ -11775,8 +11775,7 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs,
 
       if (PT_HAS_COLLATION (lhs->type_enum))
 	{
-	  (void) pt_get_collation_info (lhs, &(sci.collation_id),
-					&(sci.cs), &(sci.coerc));
+	  (void) pt_get_collation_info (lhs, &(sci.coll_infer));
 	}
 
       if (pt_is_compatible_without_cast (parser, &sci, rhs, &is_cast_allowed))
@@ -11840,8 +11839,8 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs,
 			  d = hv_domain;
 			  if (TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (d)))
 			    {
-			      d->codeset = sci.cs;
-			      d->collation_id = sci.collation_id;
+			      d->codeset = sci.coll_infer.codeset;
+			      d->collation_id = sci.coll_infer.coll_id;
 			    }
 			}
 		      else
@@ -11859,8 +11858,8 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs,
 			  if (PT_HAS_COLLATION (lhs->type_enum))
 			    {
 			      d = tp_domain_copy (d, false);
-			      d->codeset = sci.cs;
-			      d->collation_id = sci.collation_id;
+			      d->codeset = sci.coll_infer.codeset;
+			      d->collation_id = sci.coll_infer.coll_id;
 			      d = tp_domain_cache (d);
 			    }
 			}

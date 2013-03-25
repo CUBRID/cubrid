@@ -3184,6 +3184,19 @@ enum pt_coll_coerc_lev
   PT_COLLATION_FULLY_COERC = PT_COLLATION_L5_COERC
 };
 
+typedef struct pt_coll_infer PT_COLL_INFER;
+struct pt_coll_infer
+{
+  int coll_id;
+  INTL_CODESET codeset;
+  PT_COLL_COERC_LEV coerc_level;
+  bool can_force_cs;		/* used for auto-CAST expressions around numbers:
+				 * initially the string data type of CAST is created
+				 * with system charset by generic type checking
+				 * but that charset can be forced to another charset
+				 * (of another argument) if this flag is set */
+};
+
 void *parser_allocate_string_buffer (const PARSER_CONTEXT * parser,
 				     const int length, const int align);
 
