@@ -3236,6 +3236,76 @@ intl_identifier_fix (char *name)
   return NO_ERROR;
 }
 
+/*
+ * intl_identifier_mht_1strhash - hash a identifier key (in lowercase)
+ *   return: hash value
+ *   key(in): key to hash
+ *   ht_size(in): size of hash table
+ *
+ * Note: Charset dependent version of 'mht_1strlowerhashTaken' function
+ */
+unsigned int
+intl_identifier_mht_1strlowerhash (const void *key,
+				   const unsigned int ht_size)
+{
+  unsigned int hash;
+  unsigned const char *byte_p = (unsigned char *) key;
+  unsigned int ch;
+
+  assert (key != NULL);
+
+  switch (lang_charset ())
+    {
+    case INTL_CODESET_UTF8:
+      {
+	const LANG_LOCALE_DATA *locale = lang_locale ();
+	const ALPHABET_DATA *alphabet = &(locale->ident_alphabet);
+	int key_size = strlen (key);
+	unsigned char *next;
+
+	for (hash = 0; key_size > 0;)
+	  {
+	    ch = intl_utf8_to_cp (byte_p, key_size, &next);
+	    if (ch < (unsigned int) (alphabet->l_count))
+	      {
+		assert (alphabet->lower_multiplier == 1);
+		ch = alphabet->lower_cp[ch];
+	      }
+
+	    key_size -= next - byte_p;
+	    byte_p = next;
+
+	    hash = (hash << 5) - hash + ch;
+	  }
+      }
+      break;
+    case INTL_CODESET_ISO88591:
+      for (hash = 0; *byte_p; byte_p++)
+	{
+	  if (char_isupper_iso8859 (*byte_p))
+	    {
+	      ch = char_tolower_iso8859 (*byte_p);
+	    }
+	  else
+	    {
+	      ch = char_tolower (*byte_p);
+	    }
+	  hash = (hash << 5) - hash + ch;
+	}
+      break;
+    case INTL_CODESET_KSC5601_EUC:
+    default:
+      for (hash = 0; *byte_p; byte_p++)
+	{
+	  ch = char_tolower (*byte_p);
+	  hash = (hash << 5) - hash + ch;
+	}
+      break;
+    }
+
+  return hash % ht_size;
+}
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * intl_strncat() - concatenates at most len characters from 'src' to 'dest'

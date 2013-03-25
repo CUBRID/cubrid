@@ -178,6 +178,9 @@ struct lang_collation
 		    const unsigned char *str1, const int size1,
 		    const unsigned char *str2, const int size2,
 		    unsigned char **key, int *byte_size);
+  /* compute hash value pseudokey (mht_2str_pseudo_key) */
+  unsigned int (*mht2str) (const LANG_COLLATION * lang_coll,
+			   const unsigned char *str, const int size);
   /* collation data init function */
   void (*init_coll) (LANG_COLLATION * lang_coll);
 };

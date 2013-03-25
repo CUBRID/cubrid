@@ -37,6 +37,7 @@
 #include "authenticate.h"
 #include "environment_variable.h"
 #include "db.h"
+#include "memory_hash.h"
 #if !defined(WINDOWS)
 #include <dlfcn.h>
 #endif
@@ -260,10 +261,14 @@ static int lang_strmatch_utf8_uca (const LANG_COLLATION * lang_coll,
 				   const unsigned char *escape,
 				   const bool has_last_escape,
 				   int *str1_match_size);
-static int lang_strcmp_check_trail_spaces (const unsigned char *str1,
-					   const int size1,
-					   const unsigned char *str2,
-					   const int size2);
+static int lang_str_utf8_trail_zero_weights (const LANG_COLLATION * lang_coll,
+					     const unsigned char *str,
+					     int size);
+static int lang_str_utf8_trail_zero_weights_w_exp (const COLL_DATA *
+						   coll_data,
+						   const int level,
+						   const unsigned char *str,
+						   int size);
 static int lang_next_coll_char_utf8 (const LANG_COLLATION * lang_coll,
 				     const unsigned char *seq, const int size,
 				     unsigned char *next_seq, int *len_next);
@@ -297,6 +302,21 @@ static int lang_split_key_euc (const LANG_COLLATION * lang_coll,
 			       const unsigned char *str1, const int size1,
 			       const unsigned char *str2, const int size2,
 			       unsigned char **key, int *byte_size);
+static unsigned int lang_mht2str_byte (const LANG_COLLATION * lang_coll,
+				       const unsigned char *str,
+				       const int size);
+static unsigned int lang_mht2str_default (const LANG_COLLATION * lang_coll,
+					  const unsigned char *str,
+					  const int size);
+static unsigned int lang_mht2str_utf8 (const LANG_COLLATION * lang_coll,
+				       const unsigned char *str,
+				       const int size);
+static unsigned int lang_mht2str_utf8_exp (const LANG_COLLATION * lang_coll,
+					   const unsigned char *str,
+					   const int size);
+static unsigned int lang_mht2str_ko (const LANG_COLLATION * lang_coll,
+				     const unsigned char *str,
+				     const int size);
 static void lang_init_coll_en_ci (LANG_COLLATION * lang_coll);
 static void lang_init_coll_utf8_en_cs (LANG_COLLATION * lang_coll);
 static void lang_init_coll_utf8_tr_cs (LANG_COLLATION * lang_coll);
@@ -362,6 +382,7 @@ static LANG_COLLATION coll_iso_binary = {
   lang_strmatch_iso_88591,
   lang_next_alpha_char_iso88591,
   lang_split_key_iso,
+  lang_mht2str_default,
   NULL
 };
 
@@ -380,6 +401,7 @@ static LANG_COLLATION coll_utf8_binary = {
   /* 'next' and 'split_point' functions must handle UTF-8 chars */
   lang_next_coll_char_utf8,
   lang_split_key_utf8,
+  lang_mht2str_byte,
   NULL
 };
 
@@ -396,6 +418,7 @@ static LANG_COLLATION coll_iso88591_en_cs = {
   lang_strmatch_iso_88591,
   lang_next_alpha_char_iso88591,
   lang_split_key_iso,
+  lang_mht2str_default,
   NULL
 };
 
@@ -412,6 +435,7 @@ static LANG_COLLATION coll_iso88591_en_ci = {
   lang_strmatch_iso_88591,
   lang_next_coll_byte,
   lang_split_key_byte,
+  lang_mht2str_byte,
   lang_init_coll_en_ci
 };
 
@@ -428,6 +452,7 @@ static LANG_COLLATION coll_utf8_en_cs = {
   lang_strmatch_utf8,
   lang_next_coll_char_utf8,
   lang_split_key_utf8,
+  lang_mht2str_byte,
   lang_init_coll_utf8_en_cs
 };
 
@@ -444,6 +469,7 @@ static LANG_COLLATION coll_utf8_en_ci = {
   lang_strmatch_utf8,
   lang_next_coll_char_utf8,
   lang_split_key_utf8,
+  lang_mht2str_byte,
   lang_init_coll_en_ci
 };
 
@@ -460,6 +486,7 @@ static LANG_COLLATION coll_utf8_tr_cs = {
   lang_strmatch_utf8,
   lang_next_coll_char_utf8,
   lang_split_key_utf8,
+  lang_mht2str_utf8,
   lang_init_coll_utf8_tr_cs
 };
 
@@ -476,6 +503,7 @@ static LANG_COLLATION coll_utf8_ko_cs = {
   lang_strmatch_utf8,
   lang_next_coll_char_utf8,
   lang_split_key_utf8,
+  lang_mht2str_utf8,
   lang_init_coll_utf8_en_cs
 };
 
@@ -492,6 +520,7 @@ static LANG_COLLATION coll_euckr_bin = {
   lang_strmatch_ko,
   lang_next_alpha_char_ko,
   lang_split_key_euc,
+  lang_mht2str_ko,
   NULL
 };
 
@@ -2790,14 +2819,12 @@ lang_strmatch_utf8 (const LANG_COLLATION * lang_coll, bool is_match,
   const unsigned char *str1_end;
   const unsigned char *str2_end;
   const unsigned char *str1_begin;
-  const unsigned char *str2_begin;
   unsigned char *str1_next, *str2_next;
   unsigned int cp1, cp2, w_cp1, w_cp2;
   const int alpha_cnt = lang_coll->coll.w_count;
   const unsigned int *weight_ptr = lang_coll->coll.weights;
 
   str1_begin = str1;
-  str2_begin = str2;
   str1_end = str1 + size1;
   str2_end = str2 + size2;
 
@@ -2868,14 +2895,10 @@ lang_strmatch_utf8 (const LANG_COLLATION * lang_coll, bool is_match,
 	  return -1;
 	}
 
-      for (; str2 < str2_end;)
+      if (lang_str_utf8_trail_zero_weights (lang_coll, str2, str2_end - str2)
+	  != 0)
 	{
-	  /* ignore trailing white spaces */
-	  if (*str2 != 32 && *str2 != 0)
-	    {
-	      return -1;
-	    }
-	  str2 += intl_Len_utf8_char[*str2];
+	  return -1;
 	}
     }
   else
@@ -2887,14 +2910,10 @@ lang_strmatch_utf8 (const LANG_COLLATION * lang_coll, bool is_match,
 	  return 0;
 	}
 
-      for (; str1 < str1_end;)
+      if (lang_str_utf8_trail_zero_weights (lang_coll, str1, str1_end - str1)
+	  != 0)
 	{
-	  /* ignore trailing white spaces */
-	  if (*str1 != 32 && *str1 != 0)
-	    {
-	      return 1;
-	    }
-	  str1 += intl_Len_utf8_char[*str1];
+	  return 1;
 	}
     }
 
@@ -2946,7 +2965,6 @@ lang_strmatch_utf8_w_contr (const LANG_COLLATION * lang_coll, bool is_match,
   const unsigned char *str1_end;
   const unsigned char *str2_end;
   const unsigned char *str1_begin;
-  const unsigned char *str2_begin;
   unsigned char *str1_next, *str2_next;
   unsigned int cp1, cp2, w_cp1, w_cp2;
   const COLL_DATA *coll = &(lang_coll->coll);
@@ -2958,7 +2976,6 @@ lang_strmatch_utf8_w_contr (const LANG_COLLATION * lang_coll, bool is_match,
   str1_end = str1 + size1;
   str2_end = str2 + size2;
   str1_begin = str1;
-  str2_begin = str2;
 
   for (; str1 < str1_end && str2 < str2_end;)
     {
@@ -3069,7 +3086,7 @@ lang_strmatch_utf8_w_contr (const LANG_COLLATION * lang_coll, bool is_match,
   if (is_match)
     {
       assert (str1_match_size != NULL);
-      *str1_match_size = size1;
+      *str1_match_size = str1 - str1_begin;
     }
 
   if (size1 == size2)
@@ -3083,14 +3100,13 @@ lang_strmatch_utf8_w_contr (const LANG_COLLATION * lang_coll, bool is_match,
 	  return -1;
 	}
 
-      for (; str2 < str2_end;)
+      /* use same function as for collation without contractions : we suppose
+       * that there are no contractions with zero weights or having starting
+       * codepoints with zero weight */
+      if (lang_str_utf8_trail_zero_weights (lang_coll, str2, str2_end - str2)
+	  != 0)
 	{
-	  /* ignore trailing white spaces */
-	  if (*str2 != 32 && *str2 != 0)
-	    {
-	      return -1;
-	    }
-	  str2 += intl_Len_utf8_char[*str2];
+	  return -1;
 	}
     }
   else
@@ -3100,15 +3116,90 @@ lang_strmatch_utf8_w_contr (const LANG_COLLATION * lang_coll, bool is_match,
 	{
 	  return 0;
 	}
-      for (; str1 < str1_end;)
+
+      /* same function as for collation without contractions */
+      if (lang_str_utf8_trail_zero_weights (lang_coll, str1, str1_end - str1)
+	  != 0)
 	{
-	  /* ignore trailing white spaces */
-	  if (*str1 != 32 && *str1 != 0)
-	    {
-	      return 1;
-	    }
-	  str1 += intl_Len_utf8_char[*str1];
+	  return 1;
 	}
+    }
+
+  return 0;
+}
+
+#define ADD_TO_HASH(pseudo_key, w)	    \
+  do {					    \
+    unsigned int i;			    \
+    pseudo_key = (pseudo_key << 4) + w;	    \
+    i = pseudo_key & 0xf0000000;	    \
+    if (i != 0)				    \
+      {					    \
+	pseudo_key ^= i >> 24;		    \
+	pseudo_key ^= i;		    \
+      }					    \
+  } while (0)
+
+/*
+ * lang_mht2str_utf8() - computes hash 2 style for a UTF-8 string having
+ *			 collation without expansions
+ *
+ *   return: hash value
+ *   lang_coll(in) : collation data
+ *   str(in):
+ *   size(in):
+ */
+static unsigned int
+lang_mht2str_utf8 (const LANG_COLLATION * lang_coll,
+		   const unsigned char *str, const int size)
+{
+  const unsigned char *str_end;
+  unsigned char *str_next;
+  unsigned int cp, w;
+  const COLL_DATA *coll = &(lang_coll->coll);
+  const int alpha_cnt = coll->w_count;
+  const unsigned int *weight_ptr = lang_coll->coll.weights;
+  unsigned int pseudo_key = 0;
+
+  str_end = str + size;
+
+  for (; str < str_end;)
+    {
+      assert (str_end - str > 0);
+
+      cp = intl_utf8_to_cp (str, str_end - str, &str_next);
+
+      if (cp < (unsigned int) alpha_cnt)
+	{
+	  COLL_CONTRACTION *contr = NULL;
+
+	  if (coll->count_contr > 0
+	      && str_end - str >= coll->contr_min_size
+	      && cp >= coll->cp_first_contr_offset
+	      && cp < (coll->cp_first_contr_offset +
+		       coll->cp_first_contr_count)
+	      && ((contr =
+		   lang_get_contr_for_string (coll, str,
+					      str_end - str, cp)) != NULL))
+	    {
+	      assert (contr != NULL);
+
+	      w = contr->wv;
+	      str_next = (unsigned char *) str + contr->size;
+	    }
+	  else
+	    {
+	      w = weight_ptr[cp];
+	    }
+	}
+      else
+	{
+	  w = cp;
+	}
+
+      ADD_TO_HASH (pseudo_key, w);
+
+      str = str_next;
     }
 
   return 0;
@@ -3772,23 +3863,35 @@ lang_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, const int level,
       num_ce2--;
     }
 
-  if (str1_end - str1 > 0 || str2_end - str2 > 0)
+  if (str2 < str2_end)
     {
-      result = lang_strcmp_check_trail_spaces (str1, str1_end - str1,
-					       str2, str2_end - str2);
-      goto exit;
+      assert (str1 == str1_end);
+      if (lang_str_utf8_trail_zero_weights_w_exp (coll_data, level, str2,
+						  str2_end - str2) != 0)
+	{
+	  result = -1;
+	}
+    }
+  else if (str1 < str1_end)
+    {
+      assert (str2 == str2_end);
+      if (lang_str_utf8_trail_zero_weights_w_exp (coll_data, level, str1,
+						  str1_end - str1) != 0)
+	{
+	  result = 1;
+	}
     }
   else
     {
+      assert (str2 == str2_end && str1 == str1_end);
+
       if (num_ce1 > num_ce2)
 	{
 	  result = 1;
-	  goto exit;
 	}
       else if (num_ce1 < num_ce2)
 	{
 	  result = -1;
-	  goto exit;
 	}
     }
 
@@ -3805,6 +3908,132 @@ exit:
     }
   return result;
 }
+
+/*
+ * lang_mht2str_utf8_exp() - 
+ *
+ *   return: negative if str1 < str2, positive if str1 > str2, zero otherwise
+ *   coll_data(in) : collation data
+ *   level(in) : current UCA level to compare
+ *   is_match(in) : true if match, otherwise is compare
+ *   str1(in):
+ *   size1(in):
+ *   str2(in): this is the pattern string in case of match
+ *   size2(in):
+ *   escape(in): pointer to escape character (multi-byte allowed)
+ *		 (used in context of LIKE)
+ *   has_last_escape(in): true if it should check if last character is the
+ *			  escape character
+ *   offset_next_level(in/out) : offset in bytes from which to start the
+ *				 compare; used to avoid compare between
+ *				 binary identical part in consecutive compare
+ *				 levels
+ *   str1_match_size(out): size from str1 which is matched with str2
+ */
+static unsigned int
+lang_mht2str_utf8_exp (const LANG_COLLATION * lang_coll,
+		       const unsigned char *str, const int size)
+{
+  const unsigned char *str_end;
+  unsigned char *str_next;
+  const COLL_DATA *coll_data = &(lang_coll->coll);
+  UCA_L13_W *uca_w_l13 = NULL;
+  UCA_L4_W *uca_w_l4 = NULL;
+  int num_ce = 0;
+  int ce_index = 0;
+  unsigned int w, cp;
+  const int alpha_cnt = coll_data->w_count;
+  const int exp_num = coll_data->uca_exp_num;
+  unsigned int pseudo_key = 0;
+  int level;
+  int rem_size;
+
+  str_end = str + size;
+
+  str_next = (unsigned char *) str;
+
+  for (;;)
+    {
+      if (num_ce == 0)
+	{
+	  str = str_next;
+	  if (str >= str_end)
+	    {
+	      break;
+	    }
+
+	  rem_size = str_end - str;
+	  cp = intl_utf8_to_cp (str, rem_size, &str_next);
+
+	  if (cp < (unsigned int) alpha_cnt)
+	    {
+	      COLL_CONTRACTION *contr = NULL;
+
+	      if (coll_data->count_contr > 0
+		  && rem_size >= coll_data->contr_min_size
+		  && cp >= coll_data->cp_first_contr_offset
+		  && cp < (coll_data->cp_first_contr_offset
+			   + coll_data->cp_first_contr_count)
+		  && ((contr = lang_get_contr_for_string (coll_data, str,
+							  rem_size, cp))
+		      != NULL))
+		{
+		  assert (contr != NULL);
+		  uca_w_l13 = contr->uca_w_l13;
+		  if (coll_data->uca_opt.sett_strength >= TAILOR_QUATERNARY)
+		    {
+		      uca_w_l4 = contr->uca_w_l4;
+		    }
+		  num_ce = contr->uca_num;
+		  str_next = (unsigned char *) str + contr->size;
+		}
+	      else
+		{
+		  uca_w_l13 = &(coll_data->uca_w_l13[cp * exp_num]);
+		  if (coll_data->uca_opt.sett_strength >= TAILOR_QUATERNARY)
+		    {
+		      uca_w_l4 = &(coll_data->uca_w_l4[cp * exp_num]);
+		    }
+		  num_ce = coll_data->uca_num[cp];
+		  /* leave next pointer to the value returned by
+		   * 'intl_utf8_to_cp' */
+		}
+	    }
+	  else
+	    {
+	      uca_w_l13 = &uca_l13_max_weight;
+	      if (coll_data->uca_opt.sett_strength >= TAILOR_QUATERNARY)
+		{
+		  uca_w_l4 = &uca_l4_max_weight;
+		}
+	      num_ce = 1;
+	      /* leave next pointer to the value returned by 
+	       * 'intl_utf8_to_cp' */
+	    }
+
+	  assert (num_ce > 0);
+
+	  ce_index = 0;
+	}
+
+      if (num_ce == 0 && str >= str_end)
+	{
+	  break;
+	}
+
+      for (level = 0; level < coll_data->uca_opt.sett_strength; level++)
+	{
+	  w = GET_UCA_WEIGHT (level, ce_index, uca_w_l13, uca_w_l4);
+	  ADD_TO_HASH (pseudo_key, w);
+	}
+
+      ce_index++;
+      num_ce--;
+    }
+
+  return pseudo_key;
+}
+
 
 /*
  * lang_back_strmatch_utf8_uca_w_level() - string match or compare for UTF8
@@ -4269,50 +4498,91 @@ lang_strmatch_utf8_uca_w_coll_data (const COLL_DATA * coll_data,
 }
 
 /*
- * lang_strcmp_check_trail_spaces() - string compare the trailing spaces
- *				      of UTF-8 sequence
- *   return:
- *   string1(in):
- *   size1(in):
- *   string2(in):
- *   size2(in):
+ * lang_str_utf8_trail_zero_weights() - cheks if remaining characters of an
+ *					UTF-8 string have all zero weights
+ *
+ *   return: 0 if all remaining characters have zero weight, 1 otherwise
+ *   lang_coll(in): collation data
+ *   str(in):
+ *   size(in):
  */
 static int
-lang_strcmp_check_trail_spaces (const unsigned char *str1, const int size1,
-				const unsigned char *str2, const int size2)
+lang_str_utf8_trail_zero_weights (const LANG_COLLATION * lang_coll,
+				  const unsigned char *str, int size)
 {
-  if (size1 == size2)
-    {
-      assert (size1 == 0);
-      return 0;
-    }
-  else if (size1 < size2)
-    {
-      const unsigned char *str2_end = str2 + size2;
+  unsigned char *str_next;
+  unsigned int cp;
 
-      for (; str2 < str2_end;)
-	{
-	  /* ignore trailing white spaces */
-	  if (*str2 != 32 && *str2 != 0)
-	    {
-	      return -1;
-	    }
-	  str2 += intl_Len_utf8_char[*str2];
-	}
-    }
-  else
+  while (size > 0)
     {
-      const unsigned char *str1_end = str1 + size1;
+      cp = intl_utf8_to_cp (str, size, &str_next);
 
-      for (; str1 < str1_end;)
+      if ((int) cp >= lang_coll->coll.w_count
+	  || lang_coll->coll.weights[cp] != 0)
 	{
-	  /* ignore trailing white spaces */
-	  if (*str1 != 32 && *str1 != 0)
-	    {
-	      return 1;
-	    }
-	  str1 += intl_Len_utf8_char[*str1];
+	  return 1;
 	}
+      size -= str_next - str;
+      str = str_next;
+    }
+
+  return 0;
+}
+
+/*
+ * lang_str_utf8_trail_zero_weights_w_exp() - cheks if remaining characters of
+ *					 an UTF-8 string have all zero weights
+ *					 collation with expansions.
+ *
+ *   return: 0 if all remaining characters have zero weight, 1 otherwise
+ *   coll_data(in): collation data
+ *   level(in):current level of matching
+ *   str(in):
+ *   size(in):
+ */
+static int
+lang_str_utf8_trail_zero_weights_w_exp (const COLL_DATA * coll_data,
+					const int level,
+					const unsigned char *str, int size)
+{
+  UCA_L13_W *uca_w_l13 = NULL;
+  UCA_L4_W *uca_w_l4 = NULL;
+  unsigned char *str_next;
+  int num_ce = 0;
+  int ce_index = 0;
+  unsigned int dummy;
+
+  str_next = (unsigned char *) str;
+  while (size > 0)
+    {
+      if (num_ce == 0)
+	{
+	  str = str_next;
+
+	  if (level == 3)
+	    {
+	      lang_get_uca_w_l4 (coll_data, true, str, size,
+				 &uca_w_l4, &num_ce, &str_next, &dummy);
+	    }
+	  else
+	    {
+	      lang_get_uca_w_l13 (coll_data, true, str, size,
+				  &uca_w_l13, &num_ce, &str_next, &dummy);
+	    }
+	  assert (num_ce > 0);
+
+	  ce_index = 0;
+	  size -= str_next - str;
+	  str = str_next;
+	}
+
+      if (GET_UCA_WEIGHT (level, ce_index, uca_w_l13, uca_w_l4) != 0)
+	{
+	  return 1;
+	}
+
+      ce_index++;
+      num_ce--;
     }
 
   return 0;
@@ -5558,6 +5828,46 @@ lang_fastcmp_byte (const LANG_COLLATION * lang_coll,
 }
 
 /*
+ * lang_mht2str_default () - 
+ *   return:
+ *   lang_coll(in):
+ *   str(in):
+ *   size(in):
+ *
+ */
+static unsigned int
+lang_mht2str_default (const LANG_COLLATION * lang_coll,
+		      const unsigned char *str, const int size)
+{
+  return mht_2str_pseudo_key (str, size);
+}
+
+/*
+ * lang_mht2str_byte () - 
+ *   return:
+ *   lang_coll(in):
+ *   str(in):
+ *   size(in):
+ *
+ */
+static unsigned int
+lang_mht2str_byte (const LANG_COLLATION * lang_coll,
+		   const unsigned char *str, const int size)
+{
+  const unsigned char *str_end = str + size;
+  unsigned int pseudo_key = 0;
+  unsigned int w;
+
+  for (; str < str_end; str++)
+    {
+      w = lang_coll->coll.weights[*str];
+      ADD_TO_HASH (pseudo_key, w);
+    }
+
+  return pseudo_key;
+}
+
+/*
  * lang_next_alpha_char_iso88591() - computes the next alphabetical char
  *   return: size in bytes of the next alphabetical char
  *   lang_coll(in): collation data
@@ -6189,6 +6499,74 @@ lang_fastcmp_ko (const LANG_COLLATION * lang_coll,
 #undef ZERO
 }
 
+
+/*
+ * lang_mht2str_ko () - 
+ *
+ * Arguments:
+ *    lang_coll: collation data
+ *      str: character string
+ *        size: size of string
+ *
+ *
+ */
+static unsigned int
+lang_mht2str_ko (const LANG_COLLATION * lang_coll,
+		 const unsigned char *str, const int size)
+{
+#define EUC_SPACE 0xa1
+#define ASCII_SPACE 0x20
+#define ZERO '\0'
+  const unsigned char *str_end;
+  unsigned int pseudo_key = 0;
+  unsigned int w;
+
+  assert (size >= 0);
+
+  str_end = str + size;
+
+  /* the caller of hash function eliminated only trailing ASCII spaces */
+  /* eliminate the remaining both trailing EUC and ASCII spaces */
+  while (str_end > str)
+    {
+      if (*(str_end - 1) == ASCII_SPACE)
+	{
+	  str_end--;
+	  continue;
+	}
+      else if (str_end > str + 1
+	       && *(str_end - 1) == EUC_SPACE && *(str_end - 2) == EUC_SPACE)
+	{
+	  str_end--;
+	  str_end--;
+	  continue;
+	}
+      break;
+    }
+
+  for (; str < str_end;)
+    {
+      w = *str++;
+      if (w == EUC_SPACE && str < str_end && *str == EUC_SPACE)
+	{
+	  w = ZERO;
+	  str++;
+	}
+      else if (w == ASCII_SPACE)
+	{
+	  w = ZERO;
+	}
+
+      ADD_TO_HASH (pseudo_key, w);
+    }
+#undef EUC_SPACE
+#undef ASCII_SPACE
+#undef ZERO
+
+  return pseudo_key;
+}
+
+
 /*
  * lang_strmatch_ko () - compare two EUC-KR character strings
  *
@@ -6218,7 +6596,6 @@ lang_strmatch_ko (const LANG_COLLATION * lang_coll, bool is_match,
   const unsigned char *str1_next;
   const unsigned char *str2_next;
   const unsigned char *str1_begin;
-  const unsigned char *str2_begin;
   int char1_size, char2_size, cmp = 0;
   unsigned int c1, c2;
 
@@ -6229,7 +6606,6 @@ lang_strmatch_ko (const LANG_COLLATION * lang_coll, bool is_match,
 #define ZERO '\0'
 
   str1_begin = str1;
-  str2_begin = str2;
   str1_end = str1 + size1;
   str2_end = str2 + size2;
 
@@ -6883,6 +7259,7 @@ lang_locale_data_load_from_lib (LANG_LOCALE_DATA * lld,
 	  lang_coll->strmatch = lang_strmatch_utf8_uca;
 	  lang_coll->next_coll_seq = lang_next_coll_seq_utf8_w_contr;
 	  lang_coll->split_key = lang_split_key_w_exp;
+	  lang_coll->mht2str = lang_mht2str_utf8_exp;
 	  lang_coll->options.allow_like_rewrite = false;
 	  lang_coll->options.allow_prefix_index = false;
 	}
@@ -6892,6 +7269,7 @@ lang_locale_data_load_from_lib (LANG_LOCALE_DATA * lld,
 	  lang_coll->strmatch = lang_strmatch_utf8_w_contr;
 	  lang_coll->next_coll_seq = lang_next_coll_seq_utf8_w_contr;
 	  lang_coll->split_key = lang_split_key_utf8;
+	  lang_coll->mht2str = lang_mht2str_utf8;
 	}
       else
 	{
@@ -6899,6 +7277,7 @@ lang_locale_data_load_from_lib (LANG_LOCALE_DATA * lld,
 	  lang_coll->strmatch = lang_strmatch_utf8;
 	  lang_coll->next_coll_seq = lang_next_coll_char_utf8;
 	  lang_coll->split_key = lang_split_key_utf8;
+	  lang_coll->mht2str = lang_mht2str_utf8;
 	}
 
       err_status = register_collation (lang_coll);

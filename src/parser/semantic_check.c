@@ -6372,19 +6372,6 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 		     MSGCAT_SET_PARSER_SEMANTIC,
 		     MSGCAT_SEMANTIC_INVALID_PARTITION_SIZE);
 	}
-      else if (PT_HAS_COLLATION (pcol->type_enum) && pcol->data_type != NULL)
-	{
-	  int coll_id = pcol->data_type->info.data_type.collation_id;
-
-	  if (coll_id >= LANG_MAX_BUILTIN_COLLATIONS
-	      || coll_id == LANG_COLL_ISO_EN_CI
-	      || coll_id == LANG_COLL_UTF8_EN_CI)
-	    {
-	      PT_ERRORm (parser, stmt,
-			 MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_INVALID_PARTITION_COLUMN_TYPE);
-	    }
-	}
     }
   else
     {				/* RANGE or LIST */

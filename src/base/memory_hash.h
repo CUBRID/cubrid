@@ -33,6 +33,10 @@
 #include "memory_alloc.h"
 #include "thread.h"
 
+
+#define MHT2STR_COLL(id, str, size) \
+  (lang_get_collation (id))->mht2str ((lang_get_collation (id)), (str), (size))
+
 /* Hash Table Entry - linked list */
 typedef struct hentry HENTRY;
 typedef struct hentry *HENTRY_PTR;
@@ -74,6 +78,7 @@ struct mht_table
   HL_HEAPID heap_id;		/* Id of heap allocator */
 };
 
+extern unsigned int mht_2str_pseudo_key (const void *key, int key_size);
 extern unsigned int mht_1strlowerhash (const void *key,
 				       const unsigned int ht_size);
 extern unsigned int mht_1strhash (const void *key,
@@ -93,9 +98,7 @@ extern unsigned int mht_get_hash_number (const int ht_size,
 					 const DB_VALUE * val);
 extern unsigned int mht_ptrhash (const void *ptr, const unsigned int ht_size);
 extern unsigned int mht_valhash (const void *key, const unsigned int ht_size);
-extern int mht_compare_strings_are_case_insensitively_equal (const void *key1,
-							     const void
-							     *key2);
+extern int mht_compare_identifiers_equal (const void *key1, const void *key2);
 extern int mht_compare_strings_are_equal (const void *key1, const void *key2);
 extern int mht_compare_ints_are_equal (const void *key1, const void *key2);
 extern int mht_compare_logpageids_are_equal (const void *key1,

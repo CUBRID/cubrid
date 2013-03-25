@@ -53,6 +53,7 @@
 #include "message_catalog.h"
 #include "environment_variable.h"
 #include "set_object.h"
+#include "language_support.h"
 #include "intl_support.h"
 /* this must be the last header file included! */
 #include "dbval.h"
@@ -93,7 +94,6 @@ enum mht_put_opt
  */
 
 static unsigned int mht_1str_pseudo_key (const void *key, int key_size);
-static unsigned int mht_2str_pseudo_key (const void *key, int key_size);
 static unsigned int mht_3str_pseudo_key (const void *key, int key_size,
 					 const unsigned int max_value);
 static unsigned int mht_4str_pseudo_key (const void *key, int key_size);
@@ -172,8 +172,10 @@ mht_1str_pseudo_key (const void *key, int key_size)
  *
  * Note: It generates a pseudo integer key based on hash function from
  *       Aho, Sethi, and Ullman's dragon book; pp. 436.
+ *	 This function can handles strings when they are binary different.
+ *	 For collation dependent function use 'mht2str'.
  */
-static unsigned int
+unsigned int
 mht_2str_pseudo_key (const void *key, int key_size)
 {
   unsigned const char *byte_p = (unsigned char *) key;
@@ -416,6 +418,8 @@ mht_5str_pseudo_key (const void *key, int key_size)
  *   ht_size(in): size of hash table
  *
  * Note: Taken from Gosling's emacs
+ *	 This handles only ASCII characters; for charset-independent version
+ *	 use 'intl_identifier_mht_1strlowerhash'
  */
 unsigned int
 mht_1strlowerhash (const void *key, const unsigned int ht_size)
@@ -462,6 +466,8 @@ mht_1strhash (const void *key, const unsigned int ht_size)
  *
  * Note: Form to hash strings.
  *       Taken from Aho, Sethi, and Ullman's dragon book; pp. 436.
+ *	 This function uses 'mht_2str_pseudo_key'.
+ *	 For collation dependent function use 'mht2str'.
  */
 unsigned int
 mht_2strhash (const void *key, const unsigned int ht_size)
@@ -748,14 +754,13 @@ mht_compare_logpageids_are_equal (const void *key1, const void *key2)
 }
 
 /*
- * mht_strcasecmpeq - compare two string keys (ignoring case)
+ * mht_compare_identifiers_equal - compare two identifiers keys (ignoring case)
  *   return: 0 or 1 (key1 == key2)
  *   key1(in): pointer to string key1
  *   key2(in): pointer to string key2
  */
 int
-mht_compare_strings_are_case_insensitively_equal (const void *key1,
-						  const void *key2)
+mht_compare_identifiers_equal (const void *key1, const void *key2)
 {
   return ((intl_identifier_casecmp ((const char *) key1,
 				    (const char *) key2)) == 0);
@@ -1932,7 +1937,9 @@ mht_get_hash_number (const int ht_size, const DB_VALUE * val)
 		}
 	      for (i--; i && ptr[i]; i--)
 		{
-		  if (!char_isspace (ptr[i]))
+		  /* only the trailing ASCII space is ignored;
+		   * the hashing for other characters depend on collation */
+		  if (ptr[i] != 0x20)
 		    {
 		      break;
 		    }
@@ -1945,7 +1952,8 @@ mht_get_hash_number (const int ht_size, const DB_VALUE * val)
 	    }
 	  else
 	    {
-	      hashcode = mht_2str_pseudo_key (ptr, i) % ht_size;
+	      hashcode = MHT2STR_COLL (db_get_string_collation (val), ptr, i);
+	      hashcode %= ht_size;
 	    }
 	  break;
 

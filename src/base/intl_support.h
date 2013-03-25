@@ -259,6 +259,9 @@ extern "C"
   extern int intl_identifier_upper_string_size (const char *src);
   extern int intl_identifier_upper (const char *src, char *dst);
   extern int intl_identifier_fix (char *name);
+  extern unsigned int intl_identifier_mht_1strlowerhash (const void *key,
+							 const unsigned int
+							 ht_size);
 #if defined (ENABLE_UNUSED_FUNCTION)
   extern int intl_strncat (unsigned char *dest, const unsigned char *src,
 			   int len);
