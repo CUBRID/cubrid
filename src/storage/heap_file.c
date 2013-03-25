@@ -20262,7 +20262,7 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p,
 	}
 
       if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (dest_dom))
-	  && !TP_IS_CHAR_TYPE (src_type)
+	  && !(TP_IS_CHAR_TYPE (src_type) || src_type == DB_TYPE_ENUMERATION)
 	  && prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT)
 	  == false)
 	{

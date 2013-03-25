@@ -1178,7 +1178,8 @@ $ LOADDB
 1109 Valore non valido per la definizione delle partizioni.
 1110 Spazio insufficiente nella pagina btree leaf. (key len: %d)\n%s
 1111 Valore risultante viene troncato, poiché la precisione(%1$d) è inferiore alla sua lunghezza(%2$d).
-1112 Ultimo errore
+1112 A character could not be converted from '%1$s' to '%2$s'.
+1113 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %d):

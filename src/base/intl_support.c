@@ -39,6 +39,7 @@
 #include "chartype.h"
 #include "system_parameter.h"
 #include "locale_support.h"
+#include "charset_converters.h"
 
 #define IS_8BIT(c)              ((c) >> 7)
 /* Special values for EUC encodings */
@@ -4864,8 +4865,8 @@ intl_text_utf8_to_dbcs (const char *in_buf, const int in_size,
  * intl_fast_iso88591_to_utf8() - converts a buffer containing text with ISO
  *				  8859-1 encoding to UTF-8
  *
- *   return: 0 if no conversion perfomed, 1 conversion ok, 2 conversion done,
- *	     but invalid characters where found
+ *   return: 0 conversion ok, 1 conversion done, but invalid characters where
+ *	     found
  *   in_buf(in): buffer
  *   in_size(in): size of input string (NUL terminator not included)
  *   out_buf(int/out) : output buffer : uses the pre-allocated buffer passed
@@ -4898,12 +4899,296 @@ intl_fast_iso88591_to_utf8 (const unsigned char *in_buf, const int in_size,
 	{
 	  /* ISO 8859-1 characters in this range are not valid */
 	  *p_out++ = '?';
-	  status = 2;
+	  status = 1;
 	}
       else
 	{
 	  *p_out++ = (unsigned char) (0xc0 | (*p_in >> 6));
 	  *p_out++ = (unsigned char) (0x80 | (*p_in & 0x3f));
+	}
+    }
+
+  *out_size = p_out - *(out_buf);
+
+  return status;
+}
+
+/*
+ * intl_euckr_to_utf8() - converts a buffer containing text with EUC-KR
+ *			  + JISX0212 to UTF-8
+ *
+ *   return: 0 conversion ok, 1 conversion done, but invalid characters where
+ *	     found
+ *   in_buf(in): buffer
+ *   in_size(in): size of input string (NUL terminator not included)
+ *   out_buf(int/out) : output buffer : uses the pre-allocated buffer passed
+ *			as input or a new allocated buffer;
+ *   out_size(out): size of string (NUL terminator not included)
+ */
+int
+intl_euckr_to_utf8 (const unsigned char *in_buf, const int in_size,
+		    unsigned char **out_buf, int *out_size)
+{
+  const unsigned char *p_in = NULL;
+  const unsigned char *p_end;
+  unsigned char *p_out = NULL;
+  unsigned int unicode_cp;
+  int utf8_size;
+  int status = 0;
+
+  assert (in_size > 0);
+  assert (in_buf != NULL);
+  assert (out_buf != NULL);
+  assert (out_size != NULL);
+
+  for (p_in = in_buf, p_end = p_in + in_size,
+       p_out = (unsigned char *) *out_buf; p_in < p_end; p_in++)
+    {
+      if (*p_in < 0x80)
+	{
+	  *p_out++ = *p_in;
+	}
+      else if (*p_in >= 0xa1 && *p_in < 0xff && p_end - p_in >= 2)
+	{
+	  if (*(p_in + 1) >= 0xa1 && *(p_in + 1) < 0xff)
+	    {
+	      /* KSC5601 two-bytes character */
+	      unsigned char ksc_buf[2];
+
+	      ksc_buf[0] = *p_in - 0x80;
+	      ksc_buf[1] = *(p_in + 1) - 0x80;
+
+	      if (ksc5601_mbtowc (&unicode_cp, ksc_buf, 2) <= 0)
+		{
+		  *p_out++ = '?';
+		  status = 1;
+		}
+	      else
+		{
+		  utf8_size = intl_cp_to_utf8 (unicode_cp, p_out);
+		  p_out += utf8_size;
+		}
+	    }
+	  else
+	    {
+	      *p_out++ = '?';
+	      status = 1;
+	    }
+
+	  /* skip one additional byte */
+	  p_in++;
+	}
+      else if (*p_in == 0x8f && p_end - p_in >= 3)
+	{
+	  if (*(p_in + 1) >= 0xa1 && *(p_in + 1) < 0xff
+	      && *(p_in + 2) >= 0xa1 && *(p_in + 2) < 0xff)
+	    {
+	      /* JISX0212 three bytes character */
+	      unsigned char jis_buf[2];
+
+	      jis_buf[0] = *(p_in + 1) - 0x80;
+	      jis_buf[1] = *(p_in + 2) - 0x80;
+
+	      if (jisx0212_mbtowc (&unicode_cp, jis_buf, 2) <= 0)
+		{
+		  *p_out++ = '?';
+		  status = 1;
+		}
+	      else
+		{
+		  utf8_size = intl_cp_to_utf8 (unicode_cp, p_out);
+		  p_out += utf8_size;
+		}
+	    }
+	  else
+	    {
+	      *p_out++ = '?';
+	      status = 1;
+	    }
+
+	  /* skip two additional bytes */
+	  p_in++;
+	  p_in++;
+	}
+      else
+	{
+	  /* EUC-KR byte not valid */
+	  *p_out++ = '?';
+	  status = 1;
+	}
+    }
+
+  *out_size = p_out - *(out_buf);
+
+  return status;
+}
+
+
+/*
+ * intl_utf8_to_euckr() - converts a buffer containing UTF8 text to EUC-KR
+ *			  + JISX0212 encoding
+ *
+ *   return: 0 conversion ok, 1 conversion done, but invalid characters where
+ *	     found
+ *   in_buf(in): buffer
+ *   in_size(in): size of input string (NUL terminator not included)
+ *   out_buf(int/out) : output buffer : uses the pre-allocated buffer passed
+ *			as input or a new allocated buffer;
+ *   out_size(out): size of string (NUL terminator not included)
+ */
+int
+intl_utf8_to_euckr (const unsigned char *in_buf, const int in_size,
+		    unsigned char **out_buf, int *out_size)
+{
+  const unsigned char *p_in = NULL;
+  const unsigned char *p_end;
+  unsigned char *p_out = NULL;
+  int status = 0;
+
+  assert (in_size > 0);
+  assert (in_buf != NULL);
+  assert (out_buf != NULL);
+  assert (out_size != NULL);
+
+  for (p_in = in_buf, p_end = p_in + in_size,
+       p_out = (unsigned char *) *out_buf; p_in < p_end;)
+    {
+      if (*p_in < 0x80)
+	{
+	  *p_out++ = *p_in++;
+	}
+      else
+	{
+	  unsigned char euc_buf[2];
+	  int euc_bytes;
+	  unsigned int unicode_cp;
+	  unsigned char *next_utf8;
+
+	  unicode_cp = intl_utf8_to_cp (p_in, p_end - p_in, &next_utf8);
+
+	  /* try to convert to KSC5601 */
+	  euc_bytes = ksc5601_wctomb (euc_buf, unicode_cp, next_utf8 - p_in);
+
+	  assert (euc_bytes != 0);
+	  if (euc_bytes == 2)
+	    {
+	      *p_out = euc_buf[0] + 0x80;
+	      *(p_out + 1) = euc_buf[1] + 0x80;
+	      p_out++;
+	      p_out++;
+	      p_in = next_utf8;
+	      continue;
+	    }
+
+	  assert (euc_bytes == RET_ILUNI);
+	  /* not found as KSC encoding, try as JISX0212 */
+	  euc_bytes = jisx0212_wctomb (euc_buf, unicode_cp, next_utf8 - p_in);
+
+	  assert (euc_bytes != 0);
+	  if (euc_bytes == 2)
+	    {
+	      *p_out = 0x8f;
+	      *(p_out + 1) = euc_buf[0] + 0x80;
+	      *(p_out + 2) = euc_buf[1] + 0x80;
+	      p_out += 3;
+	      p_in = next_utf8;
+	      continue;
+	    }
+
+	  /* illegal Unicode or impossible to convert to EUC */
+	  assert (euc_bytes == RET_ILUNI);
+
+	  p_in = next_utf8;
+	  *p_out = '?';
+	  p_out++;
+	  status = 1;
+	}
+    }
+
+  *out_size = p_out - *(out_buf);
+
+  return status;
+}
+
+/*
+ * intl_iso88591_to_euckr() - converts a buffer containing ISO88591 text to
+ *			      EUC-KR encoding
+ *
+ *   return: 0 conversion ok, 1 conversion done, but invalid characters where
+ *	     found
+ *   in_buf(in): buffer
+ *   in_size(in): size of input string (NUL terminator not included)
+ *   out_buf(int/out) : output buffer : uses the pre-allocated buffer passed
+ *			as input or a new allocated buffer;
+ *   out_size(out): size of string (NUL terminator not included)
+ */
+int
+intl_iso88591_to_euckr (const unsigned char *in_buf, const int in_size,
+			unsigned char **out_buf, int *out_size)
+{
+  const unsigned char *p_in = NULL;
+  const unsigned char *p_end;
+  unsigned char *p_out = NULL;
+  int status = 0;
+
+  assert (in_size > 0);
+  assert (in_buf != NULL);
+  assert (out_buf != NULL);
+  assert (out_size != NULL);
+
+  for (p_in = in_buf, p_end = p_in + in_size,
+       p_out = (unsigned char *) *out_buf; p_in < p_end; p_in++)
+    {
+      if (*p_in < 0x80)
+	{
+	  *p_out++ = *p_in;
+	}
+      else
+	{
+	  unsigned char euc_buf[2];
+	  int euc_bytes;
+
+	  if (*p_in < 0xa0)
+	    {
+	      *p_out = '?';
+	      p_out++;
+	      status = 1;
+	      continue;
+	    }
+
+	  /* try to convert to KSC5601 */
+	  euc_bytes = ksc5601_wctomb (euc_buf, *p_in, 2);
+
+	  assert (euc_bytes != 0);
+	  if (euc_bytes == 2)
+	    {
+	      *p_out = euc_buf[0] + 0x80;
+	      *(p_out + 1) = euc_buf[1] + 0x80;
+	      p_out++;
+	      p_out++;
+	      continue;
+	    }
+
+	  /* illegal ISO8859-1 or impossible to convert to KSC */
+	  assert (euc_bytes == RET_ILUNI);
+
+	  /* try to convert to JISX0212 */
+	  euc_bytes = jisx0212_wctomb (euc_buf, *p_in, 2);
+
+	  assert (euc_bytes != 0);
+	  if (euc_bytes == 2)
+	    {
+	      *p_out = 0x8f;
+	      *(p_out + 1) = euc_buf[0] + 0x80;
+	      *(p_out + 2) = euc_buf[1] + 0x80;
+	      p_out++;
+	      p_out++;
+	      p_out++;
+	      continue;
+	    }
+
+	  *p_out = '?';
+	  p_out++;
 	  status = 1;
 	}
     }

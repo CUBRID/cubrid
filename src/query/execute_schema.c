@@ -14664,7 +14664,7 @@ build_att_coll_change_map (TP_DOMAIN * curr_domain, DB_DOMAIN * req_domain,
 
       if (curr_coll_id != req_coll_id)
 	{
-	  if (curr_cs != req_cs)
+	  if (!INTL_CAN_COERCE_CS (curr_cs, req_cs))
 	    {
 	      /* change of codeset not supported */
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;

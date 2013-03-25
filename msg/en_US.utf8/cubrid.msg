@@ -1178,7 +1178,8 @@ $ LOADDB
 1109 Invalid value for partition definition.
 1110 Insufficient space in btree leaf page. (key len: %d)\n%s
 1111 Result value is truncated, because the precision(%1$d) is less than it's length(%2$d).
-1112 Last Error
+1112 A character could not be converted from '%1$s' to '%2$s'.
+1113 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %d):

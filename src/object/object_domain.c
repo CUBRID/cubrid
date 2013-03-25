@@ -8515,6 +8515,50 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		 */
 		val_idx = DB_GET_ENUM_SHORT (src);
 	      }
+	    else
+	      {
+		if (DB_GET_ENUM_CODESET (src)
+		    != TP_DOMAIN_CODESET (desired_domain))
+		  {
+		    /* first convert charset of the original value to
+		     * charset of destination domain */
+		    DB_VALUE tmp;
+		    DB_DATA_STATUS data_status = DATA_STATUS_OK;
+
+		    /* charset conversion can handle only CHAR/VARCHAR
+		     * DB_VALUEs, create a STRING value with max precision (so
+		     * that no truncation occurs) from the ENUM source string
+		     */
+		    DB_MAKE_VARCHAR (&tmp, DB_MAX_STRING_LENGTH,
+				     val_str, val_str_size,
+				     DB_GET_ENUM_CODESET (src),
+				     DB_GET_ENUM_COLLATION (src));
+
+		    /* initialize destination value of conversion */
+		    db_value_domain_init (&conv_val, DB_TYPE_STRING,
+					  DB_MAX_STRING_LENGTH, 0);
+		    db_string_put_cs_and_collation (&conv_val,
+						    TP_DOMAIN_CODESET
+						    (desired_domain),
+						    TP_DOMAIN_COLLATION
+						    (desired_domain));
+
+		    if (db_char_string_coerce (&tmp, &conv_val, &data_status)
+			!= NO_ERROR || data_status != DATA_STATUS_OK)
+		      {
+			status = DOMAIN_ERROR;
+			pr_clear_value (&conv_val);
+			val_str = NULL;
+			val_idx = 0;
+		      }
+		    else
+		      {
+			val_str = DB_GET_STRING (&conv_val);
+			val_str_size = DB_GET_STRING_SIZE (&conv_val);
+		      }
+		    pr_clear_value (&tmp);
+		  }
+	      }
 	    break;
 	  default:
 	    status = DOMAIN_INCOMPATIBLE;

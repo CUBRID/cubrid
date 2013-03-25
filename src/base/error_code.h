@@ -1399,7 +1399,9 @@
 
 #define ER_DATA_IS_TRUNCATED_TO_PRECISION           -1111
 
-#define ER_LAST_ERROR                               -1112
+#define ER_CHAR_CONV_NO_MATCH			    -1112
+
+#define ER_LAST_ERROR                               -1113
 
 /*
  * CAUTION!

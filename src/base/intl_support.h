@@ -88,13 +88,12 @@
 
 /* Checks if string having charset 'cs_from' can be coerced (transformed) as 
  * having charset 'cs_to'.
- * All strings can be transformed to ISO-8859-1 charset (reinterpreted).
- * Another allowed tranformation is from ISO to UTF-8
- * Transformation from EUC-KR to UTF-8 is not implemented.
+ * All strings can be transformed to ISO-8859-1 charset by reinterpreting data
+ * The other transformations require charset conversion.
+ * In some cases, the destination charset may not contain an encoding of the
+ * original character, and is replaced with '?' character (ASCII 3f)
  */
-#define INTL_CAN_COERCE_CS(cs_from,cs_to)  \
-    ((cs_from) == (cs_to) || (cs_to) == INTL_CODESET_ISO88591		  \
-     || ((cs_to) == INTL_CODESET_UTF8 && (cs_from) == INTL_CODESET_ISO88591))
+#define INTL_CAN_COERCE_CS(cs_from,cs_to)  true
 
 extern bool intl_Mbs_support;
 #if !defined (SERVER_MODE)
@@ -339,6 +338,15 @@ extern "C"
 					 const int in_size,
 					 unsigned char **out_buf,
 					 int *out_size);
+  extern int intl_euckr_to_utf8 (const unsigned char *in_buf,
+				 const int in_size, unsigned char **out_buf,
+				 int *out_size);
+  extern int intl_utf8_to_euckr (const unsigned char *in_buf,
+				 const int in_size, unsigned char **out_buf,
+				 int *out_size);
+  extern int intl_iso88591_to_euckr (const unsigned char *in_buf,
+				     const int in_size,
+				     unsigned char **out_buf, int *out_size);
   extern bool intl_is_currency_symbol (const char *src,
 				       DB_CURRENCY * currency,
 				       int *symbol_size,

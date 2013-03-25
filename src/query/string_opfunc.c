@@ -8942,23 +8942,51 @@ qstr_coerce (const unsigned char *src,
     }
   else
     {
-      /* this is the only case of charset conversion at coercion */
-      if (src_codeset == INTL_CODESET_ISO88591
-	  && dest_codeset == INTL_CODESET_UTF8)
+      int conv_status = 0;
+
+      assert (copy_size >= 0);
+      if (copy_size == 0)
+	{
+	  assert (alloc_size > 0);
+	  **dest = '\0';
+	}
+      else if (src_codeset == INTL_CODESET_ISO88591
+	       && dest_codeset == INTL_CODESET_UTF8)
 	{
 	  int conv_size = 0;
 
-	  if (copy_size > 0)
-	    {
-	      intl_fast_iso88591_to_utf8 (src, copy_size, dest, &conv_size);
-	      copy_size = conv_size;
-	    }
-	  else
-	    {
-	      assert (copy_size == 0);
-	      assert (alloc_size > 0);
-	      **dest = '\0';
-	    }
+	  assert (copy_size > 0);
+	  conv_status = intl_fast_iso88591_to_utf8 (src, copy_size, dest,
+						    &conv_size);
+	  copy_size = conv_size;
+	}
+      else if (src_codeset == INTL_CODESET_KSC5601_EUC
+	       && dest_codeset == INTL_CODESET_UTF8)
+	{
+	  int conv_size = 0;
+
+	  assert (copy_size > 0);
+	  conv_status = intl_euckr_to_utf8 (src, copy_size, dest, &conv_size);
+	  copy_size = conv_size;
+	}
+      else if (src_codeset == INTL_CODESET_UTF8
+	       && dest_codeset == INTL_CODESET_KSC5601_EUC)
+	{
+	  int conv_size = 0;
+
+	  assert (copy_size > 0);
+	  conv_status = intl_utf8_to_euckr (src, copy_size, dest, &conv_size);
+	  copy_size = conv_size;
+	}
+      else if (src_codeset == INTL_CODESET_ISO88591
+	       && dest_codeset == INTL_CODESET_KSC5601_EUC)
+	{
+	  int conv_size = 0;
+
+	  assert (copy_size > 0);
+	  conv_status = intl_iso88591_to_euckr (src, copy_size, dest,
+						&conv_size);
+	  copy_size = conv_size;
 	}
       else
 	{
@@ -8979,6 +9007,14 @@ qstr_coerce (const unsigned char *src,
 						dest_codeset);
       *dest_size = CAST_STRLEN (end_of_string - (char *) (*dest));
       assert (*dest_size <= alloc_size);
+
+      if (conv_status != 0 && er_errid () != ER_CHAR_CONV_NO_MATCH)
+	{
+	  /* set a warning */
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_CHAR_CONV_NO_MATCH,
+		  2, lang_charset_cubrid_name (src_codeset),
+		  lang_charset_cubrid_name (dest_codeset));
+	}
     }
 
   return error_status;
