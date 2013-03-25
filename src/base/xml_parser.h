@@ -29,6 +29,7 @@
 #ident "$Id$"
 
 #include "config.h"
+#include "porting.h"
 /* static linking for expat */
 #define XML_STATIC
 #include "expat.h"
@@ -40,12 +41,14 @@
 #define XML_CUB_ERR_HEADER_ENCODING	  (XML_CUB_ERR_BASE + 2)
 #define XML_CUB_ERR_FILE_READ		  (XML_CUB_ERR_BASE + 3)
 #define XML_CUB_ERR_PARSER		  (XML_CUB_ERR_BASE + 4)
-
+#define XML_CUB_ERR_FILE_MISSING	  (XML_CUB_ERR_BASE + 5)
+#define XML_CUB_ERR_INCLUDE_LOOP	  (XML_CUB_ERR_BASE + 6)
+#define XML_CUB_ERR_PARSER_INIT_FAIL	  (XML_CUB_ERR_BASE + 7)
 
 /* XML parser schema */
 #define MAX_ELEMENT_NAME  30
-#define MAX_ELEMENT_FULL_NAME  256
 
+#define MAX_ENCODE_LEN  10
 /* 
  * start_xxxxxxxxx - XML element start function
  *		       function be called when an element starts 
@@ -92,7 +95,7 @@ typedef struct xml_element XML_ELEMENT;
 struct xml_element
 {
   XML_ELEMENT_DEF *def;
-  char short_name[MAX_ELEMENT_NAME];
+  const char *short_name;
   XML_ELEMENT *parent;		/* parent element */
   XML_ELEMENT *child;		/* first child element */
   XML_ELEMENT *next;		/* next element (same level) */
@@ -119,6 +122,10 @@ struct xml_parser_data
   char *buf;			/* file read parser buffer */
   bool verbose;			/* to print debug info */
   void *ud;			/* user data */
+  char filepath[PATH_MAX];	/* path to current XML file */
+  char encoding[MAX_ENCODE_LEN];	/* encoding to use by parser and subparsers */
+  XML_PARSER_DATA *prev;	/* pointer to the encapsulating parser data */
+  XML_PARSER_DATA *next;	/* pointer to the encapsulated parser data */
 };
 
 #ifdef __cplusplus
@@ -126,15 +133,19 @@ extern "C"
 {
 #endif
 
-  XML_Parser xml_init_parser (void *data, const char *encoding,
+  XML_Parser xml_init_parser (void *data, const char *xml_file,
+			      const char *encoding,
 			      XML_ELEMENT_DEF ** element_array,
 			      const int count);
   void xml_destroy_parser (void *data);
-  int xml_parse (void *data, FILE * fp, bool * is_finished);
+  void xml_destroy_parser_data (void *data);
+  void xml_parser_exec (XML_PARSER_DATA * pd);
   int xml_check_att_value (const char **attrs, const char *att_name,
 			   const char *att_value);
   int xml_get_att_value (const char **attrs, const char *att_name,
 			 char **p_att_value);
+  XML_PARSER_DATA *xml_create_subparser (XML_PARSER_DATA * data,
+					 char *new_file);
 
 #ifdef __cplusplus
 }

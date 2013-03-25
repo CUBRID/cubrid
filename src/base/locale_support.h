@@ -76,6 +76,7 @@
 #define LOC_DATA_BUFF_SIZE  256
 
 #define COLL_NAME_SIZE 32
+#define LOC_LIB_SYMBOL_NAME_SIZE 64
 
 
 /* constants for Gregorian calendar */
@@ -334,6 +335,24 @@ struct uca_options
   COLL_MATCH_CONTR sett_match_contr;
 };
 
+/* Below there are members containing the symbol name from where to load
+   * certain weight arrays. By default, the symbol name is the corresponding
+   * name of the exported weight array. However, if 2 collations have
+   * identical weight arrays after compiling, the symbol name corresponding to
+   * one of the arrays will be set to the name of the other, and the actual
+   * array will not be exported into the shared library */
+typedef struct coll_data_ref COLL_DATA_REF;
+struct coll_data_ref
+{
+  char coll_weights_ref[LOC_LIB_SYMBOL_NAME_SIZE];
+  char coll_next_cp_ref[LOC_LIB_SYMBOL_NAME_SIZE];
+  char coll_uca_num_ref[LOC_LIB_SYMBOL_NAME_SIZE];
+  char coll_uca_w_l13_ref[LOC_LIB_SYMBOL_NAME_SIZE];
+  char coll_uca_w_l4_ref[LOC_LIB_SYMBOL_NAME_SIZE];
+  char coll_contr_list_ref[LOC_LIB_SYMBOL_NAME_SIZE];
+  char coll_cp_first_contr_array_ref[LOC_LIB_SYMBOL_NAME_SIZE];
+};
+
 typedef struct coll_data COLL_DATA;
 struct coll_data
 {
@@ -537,6 +556,7 @@ struct locale_collation
 {
   COLL_TAILORING tail_coll;	/* collation info gathered from LDML */
   COLL_DATA opt_coll;		/* optimized collation data */
+  COLL_DATA_REF coll_ref;	/* collation array export identifiers */
   bool do_not_save;		/* set true if collation is shared and already
 				 * processed */
 };
@@ -645,7 +665,12 @@ extern "C"
   int locale_check_and_set_default_files (LOCALE_FILE * lf,
 					  bool is_lang_init);
   int locale_prepare_C_file (void);
-  int locale_compile_locale (LOCALE_FILE * lf, bool is_verbose);
+  int locale_compile_locale (LOCALE_FILE * lf, LOCALE_DATA * ld,
+			     bool is_verbose);
+  void locale_mark_duplicate_collations (LOCALE_DATA ** ld, int start_index,
+					 int end_index, bool is_verbose);
+  int locale_save_all_to_C_file (LOCALE_DATA ** ld, int start_index,
+				 int end_index, LOCALE_FILE * lf);
   int locale_dump (void *data, LOCALE_FILE * lf,
 		   int dl_settings, int start_value, int end_value);
   int locale_dump_lib_collations (void *lib_handle, const LOCALE_FILE * lf,

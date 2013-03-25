@@ -44,22 +44,32 @@ typedef unsigned short int UCA_L4_W;
 typedef struct coll_contraction COLL_CONTRACTION;
 struct coll_contraction
 {
-  /* number of codepoints in contraction */
-  int cp_count;
+  /* WARNING: Changing the order of the elements breaks locale library 
+   * backwards compatibility :
+   *  - 'save_contraction_to_C_file' function needs to be updated
+   *  - checksum of collation with contraction changes */
+
+  /* next sequence (codepoint or contraction which sorts after this
+   * contraction) */
+  unsigned int next;
+
+  /* weight value for contraction (collation without expansions) */
+  unsigned int wv;
+
+  /* weight values for contraction (collation with expansions) */
+  UCA_L13_W uca_w_l13[MAX_UCA_EXP_CE];
+  UCA_L4_W uca_w_l4[MAX_UCA_EXP_CE];
 
   /* buffer of contraction contraction, nul-terminated */
   char c_buf[LOC_MAX_UCA_CHARS_SEQ * INTL_UTF8_MAX_CHAR_SIZE];
-  int size;
 
-  /* weight value for contraction */
-  unsigned int wv;
+  /* number of codepoints in contraction */
+  unsigned char cp_count;
+  /* size in bytes of c_buf */
+  unsigned char size;
 
-  /* UCA weights values */
-  char uca_num;
-  UCA_L13_W uca_w_l13[MAX_UCA_EXP_CE];
-  UCA_L4_W uca_w_l4[MAX_UCA_EXP_CE];
-  /* next sequence */
-  unsigned int next;
+  /* UCA weight count (collation with expansions) */
+  unsigned char uca_num;
 };
 
 #define TEXT_CONV_MAX_BYTES 3

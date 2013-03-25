@@ -2063,9 +2063,11 @@ genlocale (UTIL_FUNCTION_ARG * arg)
   LOCALE_FILE *curr_lf = NULL;
   int count_loc = 0, i;
   int start_lf_pos = -1;
+  int end_lf_pos = -1;
   char er_msg_file[PATH_MAX];
   int str_count = 0;
   UTIL_ARG_MAP *arg_map = NULL;
+  LOCALE_DATA **ld;
 
   int err_status = EXIT_SUCCESS;
 
@@ -2128,6 +2130,7 @@ genlocale (UTIL_FUNCTION_ARG * arg)
 	  printf ("\n\nFound %d locale files\n\n", count_loc);
 	}
       start_lf_pos = 0;
+      end_lf_pos = count_loc;
     }
   else
     {
@@ -2139,6 +2142,7 @@ genlocale (UTIL_FUNCTION_ARG * arg)
 	    {
 	      curr_lf = &(lf[i]);
 	      start_lf_pos = i;
+	      end_lf_pos = i + 1;
 	      break;
 	    }
 	}
@@ -2171,13 +2175,31 @@ genlocale (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  if (locale_prepare_C_file () != NO_ERROR)
+  ld = (LOCALE_DATA **) malloc (count_loc * sizeof (LOCALE_DATA *));
+  if (ld == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (input_path));
       err_status = EXIT_FAILURE;
       goto exit;
     }
+  memset (ld, 0, count_loc * sizeof (LOCALE_DATA *));
 
-  for (i = start_lf_pos; i < count_loc; i++)
+
+  for (i = start_lf_pos; i < end_lf_pos; i++)
+    {
+      ld[i] = (LOCALE_DATA *) malloc (sizeof (LOCALE_DATA));
+      if (ld[i] == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (input_path));
+	  err_status = EXIT_FAILURE;
+	  goto exit;
+	}
+      memset (ld[i], 0, sizeof (LOCALE_DATA));
+    }
+
+  for (i = start_lf_pos; i < end_lf_pos; i++)
     {
       if (locale_check_and_set_default_files (&(lf[i]), false) != NO_ERROR)
 	{
@@ -2194,7 +2216,7 @@ genlocale (UTIL_FUNCTION_ARG * arg)
 	  printf ("Output Library: %s\n", lf[i].lib_file);
 	}
 
-      if (locale_compile_locale (&(lf[i]), is_verbose) != NO_ERROR)
+      if (locale_compile_locale (&(lf[i]), ld[i], is_verbose) != NO_ERROR)
 	{
 	  err_status = EXIT_FAILURE;
 	  goto exit;
@@ -2204,6 +2226,16 @@ genlocale (UTIL_FUNCTION_ARG * arg)
 	{
 	  break;
 	}
+    }
+
+  locale_mark_duplicate_collations (ld, start_lf_pos, end_lf_pos, is_verbose);
+
+  if (locale_prepare_C_file () != NO_ERROR
+      || locale_save_all_to_C_file (ld, start_lf_pos,
+				    end_lf_pos, lf) != NO_ERROR)
+    {
+      err_status = EXIT_FAILURE;
+      goto exit;
     }
 
 exit:
@@ -2223,7 +2255,14 @@ exit:
 	{
 	  free_and_init (lf[i].lib_file);
 	}
+      if (ld[i] != NULL)
+	{
+	  locale_destroy_data (ld[i]);
+	  free (ld[i]);
+	}
     }
+
+  free (ld);
 
   locale_free_shared_data ();
 

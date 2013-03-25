@@ -44,8 +44,6 @@
 /* this must be the last header file included! */
 #include "dbval.h"
 
-#define SYMBOL_NAME_SIZE 128
-
 static INTL_LANG lang_Lang_id = INTL_LANG_ENGLISH;
 static INTL_CODESET lang_Loc_charset = INTL_CODESET_ISO88591;
 static char lang_Loc_name[LANG_MAX_LANGNAME] = LANG_NAME_DEFAULT;
@@ -3214,7 +3212,7 @@ lang_get_contr_for_string (const COLL_DATA * coll_data,
 
   do
     {
-      if (contr->size > str_size)
+      if ((int) contr->size > str_size)
 	{
 	  cmp = memcmp (contr->c_buf, str, str_size);
 	  if (cmp == 0)
@@ -4425,7 +4423,7 @@ lang_next_coll_seq_utf8_w_contr (const LANG_COLLATION * lang_coll,
 	      contr_list[INTL_GET_NEXT_CONTR_ID (next_seq_id)]);
 	  memcpy (next_seq, contr->c_buf, contr->size);
 	  *len_next = contr->cp_count;
-	  return contr->cp_count;
+	  return contr->size;
 	}
       else
 	{
@@ -6523,21 +6521,38 @@ static LANG_LOCALE_DATA lc_Korean_euckr = {
 #define GET_SYM_ADDR(lib, sym) dlsym(lib, sym)
 #endif
 
-#define SHLIB_GET_ADDR(v, SYM_NAME, SYM_TYPE, lh, LOC_NAME)               \
-  do {				                                          \
-    snprintf (sym_name, SYMBOL_NAME_SIZE, "" SYM_NAME "_%s", LOC_NAME);   \
-    v = (SYM_TYPE) GET_SYM_ADDR (lh, sym_name);				  \
-    if (v == NULL)			                                  \
-      {					                                  \
-	goto error_loading_symbol;	                                  \
-      }					                                  \
-  } while (0);				                                  \
+#define SHLIB_GET_ADDR(v, SYM_NAME, SYM_TYPE, lh, LOC_NAME)		    \
+  do {									    \
+    snprintf (sym_name, LOC_LIB_SYMBOL_NAME_SIZE, "" SYM_NAME "_%s",	    \
+	      LOC_NAME);						    \
+    v = (SYM_TYPE) GET_SYM_ADDR (lh, sym_name);				    \
+    if (v == NULL)							    \
+      {									    \
+	goto error_loading_symbol;					    \
+      }									    \
+  } while (0)
 
+#define SHLIB_GET_ADDR_W_REF(v, SYM_NAME, SYM_TYPE, lh, LOC_NAME)	    \
+  do {									    \
+    snprintf (sym_name, LOC_LIB_SYMBOL_NAME_SIZE, "" SYM_NAME "_ref_%s",    \
+	      LOC_NAME);						    \
+    temp_char_sym = (char *) GET_SYM_ADDR (lh, sym_name);		    \
+    if (temp_char_sym == NULL)						    \
+      {									    \
+	goto error_loading_symbol;					    \
+      }									    \
+    strcpy (sym_name, temp_char_sym);					    \
+    v = (SYM_TYPE) GET_SYM_ADDR (lh, sym_name);				    \
+    if (v == NULL)							    \
+      {									    \
+	goto error_loading_symbol;					    \
+      }									    \
+  } while (0)
 
 #define SHLIB_GET_VAL(v, SYM_NAME, SYM_TYPE, lh, LOC_NAME)	\
   do {								\
     SYM_TYPE* aux;						\
-    SHLIB_GET_ADDR(aux, SYM_NAME, SYM_TYPE*, lh, LOC_NAME)	\
+    SHLIB_GET_ADDR(aux, SYM_NAME, SYM_TYPE*, lh, LOC_NAME);	\
     v = *aux;							\
   } while (0);
 
@@ -6556,7 +6571,7 @@ lang_locale_data_load_from_lib (LANG_LOCALE_DATA * lld,
 				void *lib_handle, const LOCALE_FILE * lf,
 				bool is_load_for_dump)
 {
-  char sym_name[SYMBOL_NAME_SIZE + 1];
+  char sym_name[LOC_LIB_SYMBOL_NAME_SIZE + 1];
   char err_msg[ERR_MSG_SIZE + PATH_MAX];
   char **temp_array_sym;
   int *temp_num_sym;
@@ -6936,7 +6951,7 @@ lang_load_count_coll_from_lib (int *count_coll, void *lib_handle,
 			       const LOCALE_FILE * lf)
 {
   char err_msg[ERR_MSG_SIZE + PATH_MAX];
-  char sym_name[SYMBOL_NAME_SIZE + 1];
+  char sym_name[LOC_LIB_SYMBOL_NAME_SIZE + 1];
 
   assert (count_coll != NULL);
   assert (lib_handle != NULL);
@@ -6971,7 +6986,7 @@ lang_load_get_coll_name_from_lib (const int coll_pos, char **coll_name,
 				  void *lib_handle, const LOCALE_FILE * lf)
 {
   char err_msg[ERR_MSG_SIZE + PATH_MAX];
-  char sym_name[SYMBOL_NAME_SIZE + 1];
+  char sym_name[LOC_LIB_SYMBOL_NAME_SIZE + 1];
   char coll_suffix[COLL_NAME_SIZE + LANG_MAX_LANGNAME + 5];
 
   assert (coll_name != NULL);
@@ -7007,7 +7022,7 @@ int
 lang_load_coll_from_lib (COLL_DATA * cd, void *lib_handle,
 			 const LOCALE_FILE * lf)
 {
-  char sym_name[SYMBOL_NAME_SIZE + 1];
+  char sym_name[LOC_LIB_SYMBOL_NAME_SIZE + 1];
   char *temp_char_sym;
   int *temp_num_sym;
   char err_msg[ERR_MSG_SIZE + PATH_MAX];
@@ -7077,8 +7092,8 @@ lang_load_coll_from_lib (COLL_DATA * cd, void *lib_handle,
 
   if (cd->count_contr > 0)
     {
-      SHLIB_GET_ADDR (cd->contr_list, "coll_contr_list", COLL_CONTRACTION *,
-		      lib_handle, cd->coll_name);
+      SHLIB_GET_ADDR_W_REF (cd->contr_list, "coll_contr_list",
+			    COLL_CONTRACTION *, lib_handle, cd->coll_name);
 
       SHLIB_GET_VAL (cd->contr_min_size, "coll_contr_min_size", int,
 		     lib_handle, cd->coll_name);
@@ -7089,33 +7104,35 @@ lang_load_coll_from_lib (COLL_DATA * cd, void *lib_handle,
       SHLIB_GET_VAL (cd->cp_first_contr_count, "coll_cp_first_contr_count",
 		     int, lib_handle, cd->coll_name);
 
-      SHLIB_GET_ADDR (cd->cp_first_contr_array, "coll_cp_first_contr_array",
-		      int *, lib_handle, cd->coll_name);
+      SHLIB_GET_ADDR_W_REF (cd->cp_first_contr_array,
+			    "coll_cp_first_contr_array", int *,
+			    lib_handle, cd->coll_name);
     }
 
   if (cd->uca_opt.sett_expansions)
     {
       assert (cd->uca_exp_num > 1);
-      SHLIB_GET_ADDR (cd->uca_w_l13, "coll_uca_w_l13", UCA_L13_W *,
-		      lib_handle, cd->coll_name);
+
+      SHLIB_GET_ADDR_W_REF (cd->uca_w_l13, "coll_uca_w_l13", UCA_L13_W *,
+			    lib_handle, cd->coll_name);
 
       if (cd->uca_opt.sett_strength >= TAILOR_QUATERNARY)
 	{
-	  SHLIB_GET_ADDR (cd->uca_w_l4, "coll_uca_w_l4", UCA_L4_W *,
-			  lib_handle, cd->coll_name);
+	  SHLIB_GET_ADDR_W_REF (cd->uca_w_l4, "coll_uca_w_l4", UCA_L4_W *,
+				lib_handle, cd->coll_name);
 	}
 
-      SHLIB_GET_ADDR (cd->uca_num, "coll_uca_num", char *,
-		      lib_handle, cd->coll_name);
+      SHLIB_GET_ADDR_W_REF (cd->uca_num, "coll_uca_num", char *, lib_handle,
+			    cd->coll_name);
     }
   else
     {
-      SHLIB_GET_ADDR (cd->weights, "coll_weights", unsigned int *,
-		      lib_handle, cd->coll_name);
+      SHLIB_GET_ADDR_W_REF (cd->weights, "coll_weights", unsigned int *,
+			    lib_handle, cd->coll_name);
     }
 
-  SHLIB_GET_ADDR (cd->next_cp, "coll_next_cp", unsigned int *,
-		  lib_handle, cd->coll_name);
+  SHLIB_GET_ADDR_W_REF (cd->next_cp, "coll_next_cp", unsigned int *,
+			lib_handle, cd->coll_name);
 
 
 exit:
@@ -7146,7 +7163,7 @@ lang_locale_load_alpha_from_lib (ALPHABET_DATA * a,
 				 const char *alpha_suffix,
 				 void *lib_handle, const LOCALE_FILE * lf)
 {
-  char sym_name[SYMBOL_NAME_SIZE + 1];
+  char sym_name[LOC_LIB_SYMBOL_NAME_SIZE + 1];
   char err_msg[ERR_MSG_SIZE + PATH_MAX];
   int err_status = NO_ERROR;
 
@@ -7313,7 +7330,7 @@ lang_locale_load_normalization_from_lib (UNICODE_NORMALIZATION * norm,
 					 void *lib_handle,
 					 const LOCALE_FILE * lf)
 {
-  char sym_name[SYMBOL_NAME_SIZE + 1];
+  char sym_name[LOC_LIB_SYMBOL_NAME_SIZE + 1];
   char err_msg[ERR_MSG_SIZE + PATH_MAX];
 
   assert (norm != NULL);

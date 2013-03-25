@@ -30,8 +30,8 @@
 #include <assert.h>
 #include <string.h>
 
-
 #include "xml_parser.h"
+#include "utility.h"
 
 #if defined(WINDOWS)
 #define strtok_r	strtok_s
@@ -56,6 +56,10 @@ typedef enum
 static XML_ELEMENT *xml_init_schema_tree (XML_ELEMENT_DEF ** element_array,
 					  const int count);
 static void xml_destroy_schema_tree (XML_ELEMENT * pt);
+static XML_ELEMENT *xml_clone_node (XML_ELEMENT * schema_src,
+				    XML_ELEMENT * parent,
+				    XML_ELEMENT * prev, bool * has_error);
+static bool xml_copy_schema_tree (XML_ELEMENT * src, XML_ELEMENT ** dest);
 
 static XML_ELEMENT *create_xml_node (XML_ELEMENT_DEF * new_elem);
 static int add_xml_element (XML_ELEMENT * xml_node,
@@ -66,8 +70,9 @@ static XML_ELEMENT *select_xml_branch_node (XML_ELEMENT * xml_node,
 static XML_ELEMENT *select_xml_node_for_ins (XML_ELEMENT * xml_node,
 					     const char *sel_name,
 					     XML_INS_POS * insert_pos);
-static char *get_short_elem_name (const XML_ELEMENT_DEF * el_def,
-				  const int level, char *short_name);
+static char *get_elem_path_token_at (const XML_ELEMENT_DEF * el_def,
+				     const int level, char *short_name);
+static const char *get_short_elem_name (const XML_ELEMENT_DEF * el_def);
 
 static int check_xml_elem_name (XML_ELEMENT * el, const char *check_el_name);
 
@@ -80,6 +85,10 @@ static void XMLCALL xml_elem_start (void *data, const char *parsed_el_name,
 static void XMLCALL xml_elem_end (void *data, const char *parsed_el_name);
 static void XMLCALL xml_data_handler (void *data, const XML_Char * s,
 				      int len);
+static XML_Parser xml_init_parser_common (void *data, const char *xml_file,
+					  const char *encoding);
+static int xml_parse (void *data, FILE * fp, bool * is_finished);
+static bool xml_check_include_loop (XML_PARSER_DATA * pd, char *new_file);
 
 /* XML root element */
 XML_ELEMENT_DEF xml_elem_XML = { "XML", XML_ROOT_DEPTH, NULL, NULL, NULL };
@@ -109,7 +118,7 @@ xml_init_schema_tree (XML_ELEMENT_DEF ** element_array, const int count)
   xml_parse_tree->next = NULL;
   xml_parse_tree->prev = NULL;
   xml_parse_tree->parent = NULL;
-  strcpy (xml_parse_tree->short_name, xml_elem_XML.full_name);
+  xml_parse_tree->short_name = xml_elem_XML.full_name;
 
   for (i = 0; i < count; i++)
     {
@@ -146,8 +155,82 @@ xml_destroy_schema_tree (XML_ELEMENT * pt)
   pt->def = NULL;
   pt->parent = NULL;
   pt->prev = NULL;
-  assert (pt->short_name != '\0');
+  assert (pt->short_name != NULL);
   free (pt);
+}
+
+/*
+ * xml_clone_node() - clone an XML parsing node
+ *   return: tree parse schema (root node)
+ *   schema_src(in): parse tree schema node to copy
+ *   parent (in): parent node of the node being created
+ *   prev(in): previous node of the node being created
+ *   has_error(out): true if errors were found, false otherwise
+ *
+ */
+static XML_ELEMENT *
+xml_clone_node (XML_ELEMENT * schema_src, XML_ELEMENT * parent,
+		XML_ELEMENT * prev, bool * has_error)
+{
+  XML_ELEMENT *xml_parse_tree = NULL;
+
+  *has_error = false;
+
+  if (schema_src == NULL)
+    {
+      return NULL;
+    }
+
+  xml_parse_tree = malloc (sizeof (XML_ELEMENT));
+  if (xml_parse_tree == NULL)
+    {
+      *has_error = true;
+      goto exit;
+    }
+
+  xml_parse_tree->def = schema_src->def;
+  xml_parse_tree->match = false;
+  xml_parse_tree->short_name = schema_src->short_name;
+
+  xml_parse_tree->prev = prev;
+  xml_parse_tree->parent = parent;
+
+  xml_parse_tree->child = xml_clone_node (schema_src->child,
+					  xml_parse_tree, NULL, has_error);
+
+  if (*has_error)
+    {
+      goto exit;
+    }
+  xml_parse_tree->next = xml_clone_node (schema_src->next,
+					 xml_parse_tree->parent,
+					 xml_parse_tree, has_error);
+  if (*has_error)
+    {
+      goto exit;
+    }
+
+exit:
+  return xml_parse_tree;
+}
+
+/*
+ * xml_copy_schema_def() - clone an XML parsing node
+ *
+ *   return: true if success, false otherwise
+ *   src(in): XML_ELEMENT tree to copy
+ *   dest(in/out): address where to create the XML_ELEMENT tree clone
+ *
+ * NOTE: only the linked structure and definitions are copyied. The "match"
+ *	 field is set to false, so the schema can be entirely reused.
+ */
+static bool
+xml_copy_schema_tree (XML_ELEMENT * src, XML_ELEMENT ** dest)
+{
+  bool has_error = false;
+  *dest = xml_clone_node (src, NULL, NULL, &has_error);
+
+  return !has_error;
 }
 
 /*
@@ -172,7 +255,7 @@ create_xml_node (XML_ELEMENT_DEF * new_elem)
   xml_node->prev = NULL;
   xml_node->parent = NULL;
   xml_node->match = false;
-  *(xml_node->short_name) = '\0';
+  xml_node->short_name = NULL;
 
   return xml_node;
 }
@@ -188,7 +271,7 @@ create_xml_node (XML_ELEMENT_DEF * new_elem)
 static int
 add_xml_element (XML_ELEMENT * xml_node, XML_ELEMENT_DEF * new_elem_def)
 {
-  char new_elem_short_name[MAX_ELEMENT_NAME];
+  const char *new_elem_short_name;
   char new_elem_branch_name[MAX_ELEMENT_NAME];
 
   assert (xml_node != NULL);
@@ -197,8 +280,9 @@ add_xml_element (XML_ELEMENT * xml_node, XML_ELEMENT_DEF * new_elem_def)
   assert (xml_node->def != NULL);
   assert (new_elem_def->depth >= xml_node->def->depth);
 
-  if (get_short_elem_name (new_elem_def, new_elem_def->depth,
-			   new_elem_short_name) == NULL)
+  new_elem_short_name = get_short_elem_name (new_elem_def);
+
+  if (new_elem_short_name == NULL || strlen (new_elem_short_name) == 0)
     {
       return XML_CUB_SCHEMA_BROKEN;
     }
@@ -224,7 +308,7 @@ add_xml_element (XML_ELEMENT * xml_node, XML_ELEMENT_DEF * new_elem_def)
       assert (insert_pos == XML_INS_POS_AFTER ||
 	      insert_pos == XML_INS_POS_BEFORE);
 
-      strcpy (xml_new_node->short_name, new_elem_short_name);
+      xml_new_node->short_name = new_elem_short_name;
       xml_new_node->parent = xml_node->parent;
 
       if (insert_pos == XML_INS_POS_AFTER)
@@ -279,7 +363,7 @@ add_xml_element (XML_ELEMENT * xml_node, XML_ELEMENT_DEF * new_elem_def)
 
       xml_new_node->parent = xml_node;
       xml_node->child = xml_new_node;
-      strcpy (xml_new_node->short_name, new_elem_short_name);
+      xml_new_node->short_name = new_elem_short_name;
 
       return XML_CUB_NO_ERROR;
     }
@@ -291,8 +375,8 @@ add_xml_element (XML_ELEMENT * xml_node, XML_ELEMENT_DEF * new_elem_def)
     {
       int el_order = 0;
 
-      if (get_short_elem_name (new_elem_def, xml_node->def->depth,
-			       new_elem_branch_name) == NULL)
+      if (get_elem_path_token_at (new_elem_def, xml_node->def->depth,
+				  new_elem_branch_name) == NULL)
 	{
 	  return XML_CUB_SCHEMA_BROKEN;
 	}
@@ -320,8 +404,8 @@ add_xml_element (XML_ELEMENT * xml_node, XML_ELEMENT_DEF * new_elem_def)
   while (xml_node->def->depth < new_elem_def->depth)
     {
       /* select branch at this level */
-      if (get_short_elem_name (new_elem_def, xml_node->def->depth,
-			       new_elem_branch_name) == NULL)
+      if (get_elem_path_token_at (new_elem_def, xml_node->def->depth,
+				  new_elem_branch_name) == NULL)
 	{
 	  return XML_CUB_SCHEMA_BROKEN;
 	}
@@ -442,7 +526,9 @@ select_xml_node_for_ins (XML_ELEMENT * xml_node, const char *sel_name,
 }
 
 /*
- * get_short_elem_name() - returns the short name of a element definition
+ * get_elem_path_token_at() - returns the short name of an XML node located
+ *			      inside an element definition long name (or path)
+ *			      element definition, at the specified depth/level
  *
  *   return: short name or NULL if required level exceeds the node depth
  *   el_def(in): element node definition
@@ -450,31 +536,72 @@ select_xml_node_for_ins (XML_ELEMENT * xml_node, const char *sel_name,
  *   short_name(out): short name
  */
 static char *
-get_short_elem_name (const XML_ELEMENT_DEF * el_def, const int level,
-		     char *short_name)
+get_elem_path_token_at (const XML_ELEMENT_DEF * el_def, const int level,
+			char *short_name)
 {
-  char *t = NULL;
-  char *s = NULL;
-  char *q = NULL;
-  char tokenized[MAX_ELEMENT_FULL_NAME];
   int l = 1;
+  const char *tok_start = NULL;
+  const char *tok_end = NULL;
 
   assert (short_name != NULL);
   assert (el_def != NULL);
   assert (el_def->full_name != NULL);
 
-
-  assert (strlen (el_def->full_name) < MAX_ELEMENT_FULL_NAME);
-
-  strcpy (tokenized, el_def->full_name);
-  t = strtok_r (tokenized, " ", &q);
-  while (l < level && t != NULL)
+  tok_start = el_def->full_name;
+  tok_end = strchr (tok_start, ' ');
+  if (tok_end == NULL)
     {
-      t = strtok_r (NULL, " ", &q);
+      tok_end = tok_start + strlen (tok_start);
+    }
+
+  while (l < level)
+    {
+      tok_start = tok_end + 1;
+      tok_end = strchr (tok_start, ' ');
+      if (tok_end == NULL)
+	{
+	  tok_end = tok_start + strlen (tok_start);
+	  if (l < level - 1)
+	    {
+	      /* end of string reached, and level requested is too big */
+	      return NULL;
+	    }
+	}
       l++;
     }
 
-  return (t != NULL) ? strcpy (short_name, t) : NULL;
+  memcpy (short_name, tok_start, tok_end - tok_start);
+  short_name[tok_end - tok_start] = '\0';
+
+  return short_name;
+}
+
+/*
+ * get_short_elem_name() - returns the short name of an element definition
+ *
+ *   return: short name
+ *   el_def(in): element node definition
+ */
+static const char *
+get_short_elem_name (const XML_ELEMENT_DEF * el_def)
+{
+  const char *result = NULL;
+
+  assert (el_def != NULL);
+  assert (el_def->full_name != NULL && *(el_def->full_name) != '\0');
+
+  result = strrchr (el_def->full_name, ' ');
+  if (result == NULL)
+    {
+      /* root element, its path is the actual short element name */
+      return el_def->full_name;
+    }
+
+  /* skip the space */
+  result++;
+  assert (*result != '\0');
+
+  return result;
 }
 
 /*
@@ -761,34 +888,40 @@ xml_data_handler (void *data, const XML_Char * s, int len)
 
 /* XML interface functions */
 /*
- * xml_init_parser() - XML parser initializer
+ * xml_init_parser_common() - common initialization for XML parser/subparsers
  *
  *   return: pointer to expat XML parser
  *   data(in): XML parser data
+ *   xml_file(in): path to the XML file to be parsed
  *   encoding(in): encoding charset
- *   element_array(in): array of element definition nodes (schema definition)
- *   count(in): number of elements in schema definition
  */
-XML_Parser
-xml_init_parser (void *data, const char *encoding,
-		 XML_ELEMENT_DEF ** element_array, const int count)
+static XML_Parser
+xml_init_parser_common (void *data, const char *xml_file,
+			const char *encoding)
 {
   XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
   XML_Parser p = NULL;
 
   assert (pd != NULL);
+  assert (XML_USER_DATA (pd) != NULL);
+
+  pd->xml_error = XML_CUB_NO_ERROR;
 
   p = XML_ParserCreate (encoding);
-
   if (p == NULL)
     {
+      pd->xml_error = XML_CUB_ERR_PARSER_INIT_FAIL;
       return NULL;
     }
+
+  strncpy (pd->encoding, encoding, MAX_ENCODE_LEN);
 
   pd->xml_parser = p;
   pd->xml_error = XML_CUB_NO_ERROR;
   pd->xml_error_line = -1;
   pd->xml_error_column = -1;
+
+  strcpy (pd->filepath, xml_file);
 
   XML_SetUserData (p, pd);
   /* XML parser : callbacks */
@@ -804,15 +937,52 @@ xml_init_parser (void *data, const char *encoding,
   pd->buf = malloc (XML_READ_BUFFSIZE);
   if (pd->buf == NULL)
     {
-      return NULL;
+      pd->xml_error = XML_CUB_OUT_OF_MEMORY;
     }
+
+  pd->sc = NULL;
+  pd->ce = NULL;
+  pd->depth = 0;
+
+  pd->prev = NULL;
+  pd->next = NULL;
+
+  return p;
+}
+
+/*
+ * xml_init_parser() - XML parser initializer
+ *
+ *   return: pointer to expat XML parser
+ *   data(in): XML parser data
+ *   xml_file(in): path to the XML file to be parsed
+ *   encoding(in): encoding charset
+ *   element_array(in): array of element definition nodes (schema definition)
+ *   count(in): number of elements in schema definition
+ */
+XML_Parser
+xml_init_parser (void *data, const char *xml_file, const char *encoding,
+		 XML_ELEMENT_DEF ** element_array, const int count)
+{
+  XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
+  XML_Parser p = NULL;
+
+  assert (pd != NULL);
+  assert (XML_USER_DATA (pd) != NULL);
+
+  p = xml_init_parser_common (data, xml_file, encoding);
+  if (pd->xml_error != XML_CUB_NO_ERROR)
+    {
+      return p;
+    }
+
+  pd = (XML_PARSER_DATA *) data;
 
   pd->sc = xml_init_schema_tree (element_array, count);
 
   if (pd->sc == NULL)
     {
-      XML_ParserFree (p);
-      return NULL;
+      pd->xml_error = XML_CUB_OUT_OF_MEMORY;
     }
 
   pd->ce = pd->sc;
@@ -832,37 +1002,130 @@ void
 xml_destroy_parser (void *data)
 {
   XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
+  XML_PARSER_DATA *cpd = NULL;
+
+  cpd = pd->next;
+  while (cpd != NULL)
+    {
+      pd->next = cpd->next;
+      xml_destroy_parser_data (cpd);
+      free (cpd);
+      cpd = pd->next;
+    }
+  xml_destroy_parser_data (pd);
+}
+
+/*
+ * xml_create_subparser() - initialize a parser for an included XML file
+ *
+ *   return: initialized XML parser data (containing the expat XML parser) for
+ *	     the file path supplied as input (new_file)
+ *   data(in): XML parser data
+ *   new_file(in): path to the XML file to be parsed
+ */
+XML_PARSER_DATA *
+xml_create_subparser (XML_PARSER_DATA * pd, char *new_file)
+{
+  XML_Parser p = NULL;
+  XML_PARSER_DATA *new_pd = NULL;
+  bool is_success = true;
 
   assert (pd != NULL);
-  assert (pd->xml_parser != NULL);
 
-  XML_ParserFree (pd->xml_parser);
-  pd->xml_parser = NULL;
+  if (xml_check_include_loop (pd, new_file))
+    {
+      pd->xml_error = XML_CUB_ERR_INCLUDE_LOOP;
+      return NULL;
+    }
 
-  xml_destroy_schema_tree (pd->sc);
-  pd->sc = NULL;
-  pd->ce = NULL;
-  pd->depth = 0;
+  new_pd = (XML_PARSER_DATA *) malloc (sizeof (XML_PARSER_DATA));
+  if (new_pd == NULL)
+    {
+      pd->xml_error = XML_CUB_OUT_OF_MEMORY;
+      return NULL;
+    }
+  memset (new_pd, 0, sizeof (XML_PARSER_DATA));
+  new_pd->ud = pd->ud;
+
+  p = xml_init_parser_common (new_pd, new_file, pd->encoding);
+  if (new_pd->xml_error != XML_CUB_NO_ERROR)
+    {
+      pd->xml_error = new_pd->xml_error;
+      goto error;
+    }
+
+  is_success = xml_copy_schema_tree (pd->sc, &(new_pd->sc));
+  if (!is_success && new_pd->sc != NULL)
+    {
+      xml_destroy_schema_tree (new_pd->sc);
+      new_pd->sc = NULL;
+    }
+  if (new_pd->sc == NULL)
+    {
+      pd->xml_error = XML_CUB_ERR_PARSER_INIT_FAIL;
+      goto error;
+    }
+
+  new_pd->ce = new_pd->sc;
+  new_pd->ce->match = false;
+  new_pd->depth = 0;
+
+  pd->next = new_pd;
+  new_pd->prev = pd;
+
+  return new_pd;
+
+error:
+  xml_destroy_parser_data (new_pd);
+  free (new_pd);
+
+  return NULL;
+}
+
+/*
+ * xml_destroy_parser_data() - destroy the data inside a CUB_PARSER structure.
+ *
+ *   return:
+ *   data(in): XML parser data
+ */
+void
+xml_destroy_parser_data (void *data)
+{
+  XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
+
+  if (pd == NULL)
+    {
+      return;
+    }
+
+  if (pd->sc != NULL)
+    {
+      xml_destroy_schema_tree (pd->sc);
+    }
+
+  if (pd->xml_parser != NULL)
+    {
+      XML_ParserFree (pd->xml_parser);
+    }
 
   if (pd->buf != NULL)
     {
       free (pd->buf);
-      pd->buf = NULL;
     }
 
-  /* used data is not freed */
-  pd->ud = NULL;
+  memset (pd, 0, sizeof (XML_PARSER_DATA));
 }
 
 /*
- * xml_destroy_parser() - frees XML parser
+ * xml_parse() - parses the selected file using the current XML_Parser
+ *		 inside the XML_PARSER_DATA variable
  *
  *   return: error code
  *   data(in): XML parser data
  *   fp(in): file to read from
  *   is_finished(out): true if parser has finished
  */
-int
+static int
 xml_parse (void *data, FILE * fp, bool * is_finished)
 {
   XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
@@ -961,4 +1224,70 @@ xml_get_att_value (const char **attrs, const char *att_name,
     }
 
   return 1;
+}
+
+/*
+ * xml_check_include_loop() - checks if a parser is already created for
+ *			      new_file.
+ *
+ *   return: true if loop is detected, false otherwise
+ *   pd(in): pointer to the current parser data
+ *   new_file(in): file path to check
+ *
+ *  NOTE:  If a parser is already created and opened for new_file, it should
+ *	   not be possible to create another parser for the same file until
+ *	   the existing parser will be closed, because this will lead to an
+ *	   inclusion loop in the input parser list.
+ */
+static bool
+xml_check_include_loop (XML_PARSER_DATA * pd, char *new_file)
+{
+  XML_PARSER_DATA *cpd;
+
+  cpd = pd;
+  while (cpd != NULL)
+    {
+      if (strcmp (cpd->filepath, new_file) == 0)
+	{
+	  return true;
+	}
+      cpd = cpd->prev;
+    }
+
+  return false;
+}
+
+/*
+ * xml_parser_exec() - calls the parser using the information
+ *		       inside the XML_PARSER_DATA variable
+ *
+ *   return: error code
+ *   data(in): XML parser data
+ */
+void
+xml_parser_exec (XML_PARSER_DATA * pd)
+{
+  bool is_finished = false;
+  FILE *fp = NULL;
+
+  fp = fopen_ex (pd->filepath, "rb");
+  if (fp == NULL)
+    {
+      pd->xml_error = XML_CUB_ERR_FILE_MISSING;
+      goto exit;
+    }
+
+  for (; pd->xml_error == XML_CUB_NO_ERROR && !is_finished;)
+    {
+      if (xml_parse (pd, fp, &is_finished) != XML_CUB_NO_ERROR)
+	{
+	  goto exit;
+	}
+    }
+
+exit:
+  if (fp != NULL)
+    {
+      fclose (fp);
+    }
 }

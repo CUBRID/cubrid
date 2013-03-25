@@ -2068,7 +2068,8 @@ optimize_coll_contractions (LOCALE_COLLATION * lc)
       int c_buf_size = strlen ((char *) c_buf);
       unsigned int cp;
 
-      lc->opt_coll.contr_list[i].size = c_buf_size;
+      assert (c_buf_size < LOC_MAX_UCA_CHARS_SEQ * INTL_UTF8_MAX_CHAR_SIZE);
+      lc->opt_coll.contr_list[i].size = (unsigned char) c_buf_size;
 
       lc->opt_coll.contr_min_size =
 	MIN (lc->opt_coll.contr_min_size, c_buf_size);
@@ -2235,6 +2236,7 @@ add_opt_coll_contraction (LOCALE_COLLATION * lc,
   *p_buf = '\0';
 
   opt_contr->wv = wv;
+  assert (p_buf - opt_contr->c_buf < sizeof (opt_contr->c_buf));
   opt_contr->size = p_buf - opt_contr->c_buf;
 
   if (use_expansions)
