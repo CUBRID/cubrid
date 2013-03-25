@@ -2502,6 +2502,7 @@ admin_broker_conf_change (int master_shm_id, const char *br_name,
 	  for (i = 0; i < shm_br->br_info[br_index].appl_server_max_num; i++)
 	    {
 	      shm_appl->as_info[i].cur_sql_log_mode = sql_log_mode;
+	      shm_appl->as_info[i].cas_log_reset = CAS_LOG_RESET_REOPEN;
 	    }
 	}
       else
@@ -2512,6 +2513,8 @@ admin_broker_conf_change (int master_shm_id, const char *br_name,
 	      goto set_broker_conf_error;
 	    }
 	  shm_appl->as_info[as_number - 1].cur_sql_log_mode = sql_log_mode;
+	  shm_appl->as_info[as_number - 1].cas_log_reset =
+	    CAS_LOG_RESET_REOPEN;
 	}
     }
   else if (strcasecmp (conf_name, "SLOW_LOG") == 0)
@@ -2532,6 +2535,7 @@ admin_broker_conf_change (int master_shm_id, const char *br_name,
 	  for (i = 0; i < shm_br->br_info[br_index].appl_server_max_num; i++)
 	    {
 	      shm_appl->as_info[i].cur_slow_log_mode = slow_log_mode;
+	      shm_appl->as_info[i].cas_slow_log_reset = CAS_LOG_RESET_REOPEN;
 	    }
 	}
       else
@@ -2542,6 +2546,8 @@ admin_broker_conf_change (int master_shm_id, const char *br_name,
 	      goto set_broker_conf_error;
 	    }
 	  shm_appl->as_info[as_number - 1].cur_slow_log_mode = slow_log_mode;
+	  shm_appl->as_info[as_number - 1].cas_slow_log_reset =
+	    CAS_LOG_RESET_REOPEN;
 	}
     }
   else if (strcasecmp (conf_name, "ACCESS_MODE") == 0)
@@ -4045,6 +4051,7 @@ shard_shm_set_param_as_internal (T_APPL_SERVER_INFO * as_info,
 	}
 
       as_info->cur_sql_log_mode = sql_log_mode;
+      as_info->cas_log_reset = CAS_LOG_RESET_REOPEN;
     }
   else if (strcasecmp (param_name, "SLOW_LOG") == 0)
     {
@@ -4059,6 +4066,7 @@ shard_shm_set_param_as_internal (T_APPL_SERVER_INFO * as_info,
 	}
 
       as_info->cur_slow_log_mode = slow_log_mode;
+      as_info->cas_slow_log_reset = CAS_LOG_RESET_REOPEN;
     }
   else if (strcasecmp (param_name, "ACCESS_MODE") == 0)
     {

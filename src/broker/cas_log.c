@@ -207,7 +207,10 @@ cas_log_reset (char *br_name, int as_index)
 	  cas_unlink (log_filepath);
 	}
 
-      cas_log_open (br_name, as_index);
+      if (as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
+	{
+	  cas_log_open (br_name, as_index);
+	}
     }
 #endif /* LIBCAS_FOR_JSP */
 }
@@ -979,7 +982,10 @@ cas_slow_log_reset (char *br_name, int as_index)
 	  cas_unlink (slow_log_filepath);
 	}
 
-      cas_slow_log_open (br_name, as_index);
+      if (as_info->cur_slow_log_mode != SLOW_LOG_MODE_OFF)
+	{
+	  cas_slow_log_open (br_name, as_index);
+	}
     }
 #endif /* LIBCAS_FOR_JSP */
 }
