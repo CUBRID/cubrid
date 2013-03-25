@@ -36835,7 +36835,7 @@ pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p, const char *str,
 		  (invalid_pos != NULL) ? invalid_pos - str : 0);
       return NULL;			
     }
-  else if (intl_identifier_fix ((char *) str) != NO_ERROR)
+  else if (intl_identifier_fix ((char *) str, -1) != NO_ERROR)
     {
       PT_ERRORf (parser, p, "invalid identifier : %s", str);
       return NULL;

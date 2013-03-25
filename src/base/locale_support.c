@@ -7512,29 +7512,6 @@ exit:
   return 0;
 }
 
-/*
- * hash_to_string() - converts a 16 byte hash to the hex representation
- *
- * hashString(in):
- * hexString(out):
- */
-static void
-hash_to_string (const char *hashString, char *hexString)
-{
-  static char const hexDigits[] = "0123456789abcdef";
-  int i = 16;
-
-  while (i > 0)
-    {
-      i--;
-
-      /* least significant digit last */
-      hexString[(i << 1) + 1] = hexDigits[hashString[i] & 0x0F];
-      hexString[(i << 1)] = hexDigits[(hashString[i] & 0xF0) >> 4];
-    }
-  hexString[32] = '\0';
-}
-
 /* 
  * locale_compute_coll_checksum() - Computes the MD5 checksum of collation
  *
@@ -7547,7 +7524,6 @@ locale_compute_coll_checksum (COLL_DATA * cd)
   int input_size = 0;
   char *input_buf = NULL;
   char *buf_pos;
-  char hash[33];
 
   if (cd->uca_opt.sett_expansions)
     {
@@ -7641,11 +7617,12 @@ locale_compute_coll_checksum (COLL_DATA * cd)
 
   assert (buf_pos - input_buf == input_size);
 
-  md5_buffer (input_buf, input_size, hash);
+  memset (cd->checksum, 0, sizeof (cd->checksum));
+  md5_buffer (input_buf, input_size, cd->checksum);
 
   free (input_buf);
 
-  hash_to_string (hash, cd->checksum);
+  md5_hash_to_hex (cd->checksum, cd->checksum);
 
   return NO_ERROR;
 }
@@ -7708,7 +7685,6 @@ locale_compute_locale_checksum (LOCALE_DATA * ld)
   int input_size = 0;
   char *input_buf = NULL;
   char *buf_pos;
-  char hash[33];
 
   input_size += sizeof (ld->dateFormat);
   input_size += sizeof (ld->timeFormat);
@@ -7905,11 +7881,12 @@ locale_compute_locale_checksum (LOCALE_DATA * ld)
 
   assert (buf_pos - input_buf == input_size);
 
-  md5_buffer (input_buf, input_size, hash);
+  memset (ld->checksum, 0, sizeof (ld->checksum));
+  md5_buffer (input_buf, input_size, ld->checksum);
 
   free (input_buf);
 
-  hash_to_string (hash, ld->checksum);
+  md5_hash_to_hex (ld->checksum, ld->checksum);
 
   return NO_ERROR;
 }

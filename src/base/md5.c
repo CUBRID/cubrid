@@ -463,3 +463,28 @@ md5_process_block (const void *buffer, size_t len, struct md5_ctx *ctx)
   ctx->C = C;
   ctx->D = D;
 }
+
+/*
+ * md5_hash_to_hex() - converts a 16 byte hash to the hex representation
+ *
+ * hashString(in):
+ * hexString(out): has to be 32 bytes size + 1 byte string terminator
+ *
+ * Note : hexString can be reuse the same buffer of hashString
+ */
+void
+md5_hash_to_hex (const char *hashString, char *hexString)
+{
+  static char const hexDigits[] = "0123456789abcdef";
+  int i = 16;
+
+  while (i > 0)
+    {
+      i--;
+
+      /* least significant digit last */
+      hexString[(i << 1) + 1] = hexDigits[hashString[i] & 0x0F];
+      hexString[(i << 1)] = hexDigits[(hashString[i] & 0xF0) >> 4];
+    }
+  hexString[32] = '\0';
+}

@@ -3175,7 +3175,7 @@ intl_identifier_upper (const char *src, char *dst)
  *	   Only UTF-8 charset are handled.
  */
 int
-intl_identifier_fix (char *name)
+intl_identifier_fix (char *name, int ident_max_size)
 {
   int i, length_bytes;
   unsigned char *name_char = (unsigned char *) name;
@@ -3184,8 +3184,19 @@ intl_identifier_fix (char *name)
 
   assert (name != NULL);
 
+  if (ident_max_size == -1)
+    {
+      ident_max_size = DB_MAX_IDENTIFIER_LENGTH;
+    }
+
+  assert (ident_max_size > 0 && ident_max_size <= DB_MAX_IDENTIFIER_LENGTH);
+
   if (codeset == INTL_CODESET_ISO88591)
     {
+      if (ident_max_size < DB_MAX_IDENTIFIER_LENGTH)
+	{
+	  name[ident_max_size] = '\0';
+	}
       return NO_ERROR;
     }
 
@@ -3199,8 +3210,13 @@ intl_identifier_fix (char *name)
    * enabled */
 
   /* check if last char of identifier may have been truncated */
-  if (length_bytes + INTL_CODESET_MULT (codeset) > DB_MAX_IDENTIFIER_LENGTH)
+  if (length_bytes + INTL_CODESET_MULT (codeset) > ident_max_size)
     {
+      if (ident_max_size < length_bytes)
+	{
+	  length_bytes = ident_max_size;
+	}
+
       /* count original size based on the size given by first byte of each
        * char */
       for (i = 0; i < length_bytes;)
@@ -3211,7 +3227,8 @@ intl_identifier_fix (char *name)
 
       assert (i >= length_bytes);
 
-      /* assume the original last character was truncated */
+      /* i == length_bytes means last character fit entirely in 'length_bytes'
+       * otherwise assume the last character was truncated */
       if (i > length_bytes)
 	{
 	  assert (i < length_bytes + INTL_CODESET_MULT (codeset));
@@ -3226,8 +3243,10 @@ intl_identifier_fix (char *name)
   /* ensure that lower or upper versions of identifier do not exceed maximum 
    * allowed size of an identifier */
 #if (INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER > 1)
-  if (intl_identifier_upper_string_size (name) > DB_MAX_IDENTIFIER_LENGTH
-      || intl_identifier_lower_string_size (name) > DB_MAX_IDENTIFIER_LENGTH)
+  if (ident_max_size == DB_MAX_IDENTIFIER_LENGTH
+      && (intl_identifier_upper_string_size (name) > DB_MAX_IDENTIFIER_LENGTH
+	  || intl_identifier_lower_string_size (name) >
+	  DB_MAX_IDENTIFIER_LENGTH))
     {
       return ER_GENERIC_ERROR;
     }

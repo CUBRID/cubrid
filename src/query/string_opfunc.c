@@ -2618,14 +2618,8 @@ db_string_md5 (DB_VALUE const *val, DB_VALUE * result)
 
       if (QSTR_IS_ANY_CHAR (val_type))
 	{
-	  static
-	    /* conversion table, to represent the hash as a sequence
-	     * of hexadecimal digits */
-	  char const hexDigits[] = "0123456789abcdef";
-
 	  /* MD5 hash string buffer */
-	  char hashString[33] = { '\0' };
-	  int i = 16;
+	  char hashString[32] = { '\0' };
 
 	  DB_VALUE hash_string;
 
@@ -2634,16 +2628,9 @@ db_string_md5 (DB_VALUE const *val, DB_VALUE * result)
 	  md5_buffer (DB_PULL_STRING (val), DB_GET_STRING_LENGTH (val),
 		      hashString);
 
+	  md5_hash_to_hex (hashString, hashString);
+
 	  /* dump result as hex string */
-	  while (i)
-	    {
-	      i--;
-
-	      /* least significant digit last */
-	      hashString[(i << 1) + 1] = hexDigits[hashString[i] & 0x0F];
-	      hashString[(i << 1)] = hexDigits[(hashString[i] & 0xF0) >> 4];
-	    }
-
 	  qstr_make_typed_string (DB_TYPE_CHAR, &hash_string, 32,
 				  hashString, 32, DB_GET_STRING_CODESET (val),
 				  DB_GET_STRING_COLLATION (val));

@@ -258,7 +258,7 @@ extern "C"
   extern int intl_identifier_lower (const char *src, char *dst);
   extern int intl_identifier_upper_string_size (const char *src);
   extern int intl_identifier_upper (const char *src, char *dst);
-  extern int intl_identifier_fix (char *name);
+  extern int intl_identifier_fix (char *name, int ident_max_size);
   extern unsigned int intl_identifier_mht_1strlowerhash (const void *key,
 							 const unsigned int
 							 ht_size);

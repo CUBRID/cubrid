@@ -10611,6 +10611,13 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 						     (const char **)
 						     att_names, asc_desc,
 						     constraint_name);
+		  if (constraint_name == NULL)
+		    {
+		      error = er_errid ();
+		      free_and_init (asc_desc);
+		      goto constraint_error;
+		    }
+
 		  error =
 		    smt_add_constraint (ctemplate, constraint_type,
 					constraint_name,
@@ -10682,6 +10689,12 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 						     (const char **)
 						     att_names, asc_desc,
 						     constraint_name);
+		  if (constraint_name == NULL)
+		    {
+		      free_and_init (asc_desc);
+		      error = er_errid ();
+		      goto constraint_error;
+		    }
 
 		  error = smt_add_constraint (ctemplate,
 					      DB_CONSTRAINT_PRIMARY_KEY,

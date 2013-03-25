@@ -71,6 +71,7 @@
 #include "transaction_cl.h"
 #include "release_string.h"
 #include "execute_statement.h"
+#include "md5.h"
 
 #include "db.h"
 #include "object_accessor.h"
@@ -6371,12 +6372,12 @@ sm_virtual_queries (DB_OBJECT * class_object)
       (void) ws_pin (class_object, 1);
 
       if (cl->virtual_query_cache != NULL
-          && cl->virtual_query_cache->view_cache != NULL
+	  && cl->virtual_query_cache->view_cache != NULL
 	  && cl->virtual_query_cache->view_cache->vquery_for_query != NULL)
 	{
 	  (void) pt_class_pre_fetch (cl->virtual_query_cache,
-				     cl->virtual_query_cache->view_cache
-				     ->vquery_for_query);
+				     cl->virtual_query_cache->view_cache->
+				     vquery_for_query);
 	  if (pt_has_error (cl->virtual_query_cache))
 	    {
 	      mq_free_virtual_query_cache (cl->virtual_query_cache);
@@ -14016,6 +14017,7 @@ sm_default_constraint_name (const char *class_name,
 			    DB_CONSTRAINT_TYPE type,
 			    const char **att_names, const int *asc_desc)
 {
+#define MAX_ATTR_IN_AUTO_GEN_NAME 30
   const char **ptr;
   char *name = NULL;
   int name_length = 0;
@@ -14033,6 +14035,9 @@ sm_default_constraint_name (const char *class_name,
     {
       const char *prefix;
       int i, k;
+      int class_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
+      int att_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
+      char md5_str[32 + 1] = { '\0' };
 
       /* Constraint Type */
       prefix = (type == DB_CONSTRAINT_INDEX) ? "i_" :
@@ -14047,7 +14052,7 @@ sm_default_constraint_name (const char *class_name,
       /*
        *  Count the number of characters that we'll need for the name
        */
-      name_length = sizeof (prefix);
+      name_length = strlen (prefix);
       name_length += strlen (class_name);	/* class name */
 
       for (ptr = att_names; *ptr != NULL; ptr++)
@@ -14081,6 +14086,67 @@ sm_default_constraint_name (const char *class_name,
 	    }
 	}			/* for (ptr = ...) */
 
+      if (name_length >= DB_MAX_IDENTIFIER_LENGTH)
+	{
+	  /* constraint name will contain a descriptive prefix + prefixes of
+	   * class name + prefixes of the first MAX_ATTR_IN_AUTO_GEN_NAME
+	   * attributes + MD5 of the entire string of concatenated class name
+	   * and attributes names */
+	  char *name_all = NULL;
+	  int size_class_and_attrs =
+	    DB_MAX_IDENTIFIER_LENGTH - 1 - strlen (prefix) - 32 - 1;
+
+	  name_all = (char *) malloc (name_length + 1);
+	  if (name_all == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, name_length + 1);
+	      goto exit;
+	    }
+	  strcpy (name_all, class_name);
+	  for (ptr = att_names, i = 0; i < n_attrs; ptr++, i++)
+	    {
+	      strcat (name_all, *ptr);
+	      if (asc_desc && !DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (type)
+		  && asc_desc[i] == 1)
+		{
+		  strcat (name_all, "d");
+		}
+	    }
+
+	  md5_buffer (name_all, strlen (name_all), md5_str);
+	  md5_hash_to_hex (md5_str, md5_str);
+
+	  free_and_init (name_all);
+
+	  if (n_attrs > MAX_ATTR_IN_AUTO_GEN_NAME)
+	    {
+	      n_attrs = MAX_ATTR_IN_AUTO_GEN_NAME;
+	    }
+
+	  att_name_prefix_size = size_class_and_attrs / (n_attrs + 1);
+	  class_name_prefix_size = att_name_prefix_size;
+
+	  if (strlen (class_name) < class_name_prefix_size)
+	    {
+	      class_name_prefix_size = strlen (class_name);
+	    }
+	  else
+	    {
+	      char class_name_trunc[DB_MAX_IDENTIFIER_LENGTH];
+
+	      strncpy (class_name_trunc, class_name, class_name_prefix_size);
+
+	      /* make sure last character is not truncated */
+	      intl_identifier_fix (class_name_trunc, class_name_prefix_size);
+	      class_name_prefix_size = strlen (class_name_trunc);
+	    }
+
+	  /* includes '_' between attributes */
+	  att_name_prefix_size =
+	    ((size_class_and_attrs - class_name_prefix_size) / n_attrs) - 1;
+	  name_length = DB_MAX_IDENTIFIER_LENGTH;
+	}
       /*
        *  Allocate space for the name and construct it
        */
@@ -14091,11 +14157,12 @@ sm_default_constraint_name (const char *class_name,
 	  strcpy (name, prefix);
 
 	  /* Class name */
-	  strcat (name, class_name);
+	  strncat (name, class_name, class_name_prefix_size);
 
 	  /* separated list of attribute names */
 	  k = 0;
 	  i = 0;
+	  /* n_attrs is already limited to MAX_ATTR_IN_AUTO_GEN_NAME here */
 	  for (ptr = att_names; k < n_attrs; ptr++, i++)
 	    {
 	      do_desc = false;	/* init */
@@ -14113,15 +14180,49 @@ sm_default_constraint_name (const char *class_name,
 
 	      strcat (name, "_");
 
-	      intl_identifier_lower (*ptr, &name[strlen (name)]);
-
-	      /* attr is marked as 'desc' */
-	      if (do_desc)
+	      if (att_name_prefix_size == DB_MAX_IDENTIFIER_LENGTH)
 		{
-		  strcat (name, "_d");
+		  intl_identifier_lower (*ptr, &name[strlen (name)]);
+
+		  /* attr is marked as 'desc' */
+		  if (do_desc)
+		    {
+		      strcat (name, "_d");
+		    }
+		}
+	      else
+		{
+		  char att_name_trunc[DB_MAX_IDENTIFIER_LENGTH];
+
+		  intl_identifier_lower (*ptr, att_name_trunc);
+
+		  if (do_desc)
+		    {
+		      /* make sure last character is not truncated */
+		      assert (att_name_prefix_size > 2);
+		      intl_identifier_fix (att_name_trunc,
+					   att_name_prefix_size - 2);
+		      strcat (att_name_trunc, "_d");
+		    }
+		  else
+		    {
+		      intl_identifier_fix (att_name_trunc,
+					   att_name_prefix_size);
+		    }
+
+		  strcat (name, att_name_trunc);
 		}
 	      k++;
-	      /* now, strcat already appended terminating NULL character */
+	    }
+
+	  if (att_name_prefix_size != DB_MAX_IDENTIFIER_LENGTH
+	      || class_name_prefix_size != DB_MAX_IDENTIFIER_LENGTH)
+	    {
+	      /* append MD5 */
+	      strcat (name, "_");
+	      strcat (name, md5_str);
+
+	      assert (strlen (name) <= DB_MAX_IDENTIFIER_LENGTH);
 	    }
 	}
       else
@@ -14131,7 +14232,10 @@ sm_default_constraint_name (const char *class_name,
 	}
     }
 
+exit:
   return name;
+
+#undef MAX_ATTR_IN_AUTO_GEN_NAME
 }
 
 /*

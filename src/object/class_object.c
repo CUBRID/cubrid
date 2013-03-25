@@ -6339,9 +6339,14 @@ classobj_copy_constraint_like (DB_CTMPL * ctemplate,
   auto_cons_name = sm_produce_constraint_name (like_class_name,
 					       constraint_type, att_names,
 					       constraint->asc_desc, NULL);
+  if (auto_cons_name == NULL)
+    {
+      error = er_errid ();
+      goto error_exit;
+    }
+
   /* check if constraint's name was generated automatically */
-  if (auto_cons_name != NULL
-      && strcmp (auto_cons_name, constraint->name) == 0)
+  if (strcmp (auto_cons_name, constraint->name) == 0)
     {
       /* regenerate name automatically for new class */
       new_cons_name = sm_produce_constraint_name_tmpl (ctemplate,
@@ -6349,6 +6354,11 @@ classobj_copy_constraint_like (DB_CTMPL * ctemplate,
 						       att_names,
 						       constraint->asc_desc,
 						       NULL);
+      if (new_cons_name == NULL)
+	{
+	  error = er_errid ();
+	  goto error_exit;
+	}
     }
   else
     {

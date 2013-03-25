@@ -5384,9 +5384,7 @@ int
 qmgr_get_sql_id (THREAD_ENTRY * thread_p, char **sql_id_buf,
 		 char *query, int sql_len)
 {
-  int i = 16;
   char hashstring[32] = { '\0' };
-  const char hexdigits[] = "0123456789abcdef";
   char *ret_buf;
 
   if (sql_id_buf == NULL)
@@ -5405,15 +5403,7 @@ qmgr_get_sql_id (THREAD_ENTRY * thread_p, char **sql_id_buf,
 
   md5_buffer (query, sql_len, hashstring);	/* 16 bytes hash value */
 
-  /* dump result as hex string */
-  while (i)
-    {
-      i--;
-
-      /* least significant digit last */
-      hashstring[(i << 1) + 1] = hexdigits[hashstring[i] & 0x0F];
-      hashstring[(i << 1)] = hexdigits[(hashstring[i] & 0xF0) >> 4];
-    }
+  md5_hash_to_hex (hashstring, hashstring);
 
   /* copy last 13 hexa-digit to ret_buf */
   strncpy (ret_buf, hashstring + 19, QMGR_SQL_ID_LENGTH);

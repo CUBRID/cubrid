@@ -125,4 +125,6 @@ __md5_init_ctx (struct md5_ctx *ctx)
      extern void *__md5_buffer (const char *buffer, size_t len,
 				void *resblock) __THROW;
 
+     extern void md5_hash_to_hex (const char *hashString, char *hexString);
+
 #endif /* md5.h */
