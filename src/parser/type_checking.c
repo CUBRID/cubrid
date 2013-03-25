@@ -19670,6 +19670,15 @@ pt_coerce_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest,
 		temp->info.value.print_collation =
 		  dest->info.value.print_collation;
 		*dest = *temp;
+		if (data_type != NULL)
+		  {
+		    dest->data_type =
+		      parser_copy_tree_list (parser, data_type);
+		    if (dest->data_type == NULL)
+		      {
+			err = ER_GENERIC_ERROR;
+		      }
+		  }
 		dest->next = dest_next;
 		temp->info.value.db_value_is_in_workspace = 0;
 		parser_free_node (parser, temp);

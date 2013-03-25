@@ -5422,7 +5422,7 @@ mq_set_types (PARSER_CONTEXT * parser, PT_NODE * query_spec,
 	      if (col->node_type == PT_VALUE)
 		{
 		  (void) pt_coerce_value (parser, col, col,
-					  attr->type_enum, NULL);
+					  attr->type_enum, attr->data_type);
 		  /* this should also set an error code if it fails */
 		}
 	      else
