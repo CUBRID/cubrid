@@ -2458,6 +2458,8 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
   char midxkey_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
   int result;
 
+  DB_MAKE_NULL (&dbvalue);
+
   aligned_midxkey_buf = PTR_ALIGN (midxkey_buf, MAX_ALIGNMENT);
 
   sort_args = (SORT_ARGS *) arg;
@@ -2652,6 +2654,10 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 				       sort_args->cache_attr_id,
 				       sort_args->fk_name) != NO_ERROR)
 	    {
+	      if (dbvalue_ptr == &dbvalue)
+		{
+		  pr_clear_value (&dbvalue);
+		}
 	      return SORT_ERROR_OCCURRED;
 	    }
 	}

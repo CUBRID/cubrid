@@ -16402,6 +16402,9 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids,
   DB_VALUE *fi_res = NULL;
   int fi_attr_index_start = -1;
   int fi_col_id = -1;
+
+  assert (DB_IS_NULL (db_value));
+
   if (func_index_info)
     {
       fi_attr_index_start = func_index_info->attr_index_start;
@@ -16414,6 +16417,7 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids,
 	}
       fi_res = db_value;
     }
+
   /*
    *  Multi-column index.  The key is a sequence of the attribute values.
    *  Return a pointer to the attributes DB_VALUE.

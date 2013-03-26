@@ -8422,10 +8422,11 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
   OR_INDEX *index = NULL;
   DB_LOGICAL ev_res;
   OR_CLASSREP *classrepr = NULL;
-
 #if defined(SERVER_MODE)
   int tran_index;
 #endif /* SERVER_MODE */
+
+  DB_MAKE_NULL (&dbvalue);
 
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
@@ -8748,6 +8749,12 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
     }
 
 error:
+
+  if (key == &dbvalue)
+    {
+      pr_clear_value (key);
+    }
+
   if (isid.oid_list.oidp)
     {
       free_and_init (isid.oid_list.oidp);
@@ -10788,6 +10795,8 @@ xlocator_check_fk_validity (THREAD_ENTRY * thread_p, OID * cls_oid,
   DB_VALUE *key_val, tmpval;
   char midxkey_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
   int error_code;
+
+  DB_MAKE_NULL (&tmpval);
 
   aligned_midxkey_buf = PTR_ALIGN (midxkey_buf, MAX_ALIGNMENT);
 
