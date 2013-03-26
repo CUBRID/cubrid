@@ -49,7 +49,7 @@
  * stdin / stdout / stderr
  * RESERVED
  * */
-#define RESERVED_FD 24
+#define RESERVED_FD 	(128)	/* include broker/proxy connection */
 
 #define PROXY_INVALID_ID			(-1)
 #define PROXY_INVALID_SHARD			(PROXY_INVALID_ID)
@@ -168,6 +168,7 @@ struct t_client_io_global
 {
   int max_client;
   int cur_client;
+  int max_context;
 
   T_SHARD_CQUEUE freeq;
   T_CLIENT_IO *ent;

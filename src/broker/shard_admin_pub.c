@@ -356,7 +356,6 @@ shard_proxy_activate (int as_shm_id, int proxy_id, char *shm_as_cp)
 #endif
 
   T_SHM_APPL_SERVER *shm_as_p = NULL;
-  T_SHM_PROXY *shm_proxy_p = NULL;
   T_PROXY_INFO *proxy_info_p = NULL;
   T_SHARD_INFO *shard_info_p = NULL;
 
@@ -383,23 +382,19 @@ shard_proxy_activate (int as_shm_id, int proxy_id, char *shm_as_cp)
       return -1;
     }
 
-  /* Check the fd count of proxy is greater than MAX_FD. */
-  /* MAX_FD >= broker + max_client + (max_num_appl_server * each shard) + RESERVED_FD */
-  fd_cnt = 1 + proxy_info_p->max_client;
-  fd_cnt += shard_info_p->max_appl_server * proxy_info_p->max_shard;
-
-  if (MAX_FD - RESERVED_FD < fd_cnt)
+  /* max_context should be GE max_client */
+  if (proxy_info_p->max_context < proxy_info_p->max_client)
     {
-
       sprintf (admin_err_msg,
-	       "fd set count %d is greater than %d [%s]\n\n"
+	       "max_client %d is greater than %d [%s]\n\n"
 	       "please check your $CUBRID/conf/shard.conf\n\n"
 	       "[%%%s]\n"
 	       "%-20s = %d\n"
-	       "%-20s = %d * %d\n", fd_cnt, MAX_FD - RESERVED_FD,
-	       shm_as_p->broker_name, shm_as_p->broker_name, "MAX_CLIENT",
-	       proxy_info_p->max_client, "MAX_NUM_APPL_SERVER",
-	       shard_info_p->max_appl_server, proxy_info_p->max_shard);
+	       "%-20s = %d * %d\n", proxy_info_p->max_client,
+	       proxy_info_p->max_context, shm_as_p->broker_name,
+	       shm_as_p->broker_name, "MAX_CLIENT", proxy_info_p->max_client,
+	       "MAX_NUM_APPL_SERVER", shard_info_p->max_appl_server,
+	       proxy_info_p->max_shard);
       return -1;
     }
 

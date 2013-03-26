@@ -2451,7 +2451,7 @@ client_monitor (void)
 	  str_out ("%s", line_buf);
 	  print_newline ();
 	  client_info_p = shard_shm_get_first_client_info (proxy_info_p);
-	  for (client_index = 0; client_index < proxy_info_p->max_client;
+	  for (client_index = 0; client_index < proxy_info_p->max_context;
 	       client_index++, client_info_p =
 	       shard_shm_get_next_client_info (client_info_p))
 	    {
@@ -2466,14 +2466,14 @@ client_monitor (void)
 	      str_out ("%20s", ip_str);
 	      localtime_r (&client_info_p->connect_time, &ct1);
 	      ct1.tm_year += 1900;
-	      str_out ("   %4d/%2d/%2d %2d:%2d:%2d", ct1.tm_year,
+	      str_out ("   %04d/%02d/%02d %02d:%02d:%02d", ct1.tm_year,
 		       ct1.tm_mon + 1, ct1.tm_mday, ct1.tm_hour, ct1.tm_min,
 		       ct1.tm_sec);
 	      if (client_info_p->req_time > 0)
 		{
 		  localtime_r (&client_info_p->req_time, &ct1);
 		  ct1.tm_year += 1900;
-		  str_out ("   %4d/%2d/%2d %2d:%2d:%2d", ct1.tm_year,
+		  str_out ("   %04d/%02d/%02d %02d:%02d:%02d", ct1.tm_year,
 			   ct1.tm_mon + 1, ct1.tm_mday, ct1.tm_hour,
 			   ct1.tm_min, ct1.tm_sec);
 		}
@@ -2486,7 +2486,7 @@ client_monitor (void)
 		{
 		  localtime_r (&client_info_p->res_time, &ct1);
 		  ct1.tm_year += 1900;
-		  str_out ("   %4d/%2d/%2d %2d:%2d:%2d", ct1.tm_year,
+		  str_out ("   %04d/%02d/%02d %02d:%02d:%02d", ct1.tm_year,
 			   ct1.tm_mon + 1, ct1.tm_mday, ct1.tm_hour,
 			   ct1.tm_min, ct1.tm_sec);
 		}

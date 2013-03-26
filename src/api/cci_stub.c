@@ -529,6 +529,7 @@ err_from_cci (int err)
     case CAS_ER_INVALID_CALL_STMT:
     case CAS_ER_STMT_POOLING:
     case CAS_ER_DBSERVER_DISCONNECTED:
+    case CAS_ER_MAX_CLIENT_EXCEEDED:
     case CAS_ER_IS:
     case CCI_ER_NOT_IMPLEMENTED:
       return ER_INTERFACE_BROKER;

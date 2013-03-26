@@ -1354,15 +1354,18 @@ proxy_socket_io_new_client (SOCKET lsnr_fd)
 static int
 proxy_process_client_register (T_SOCKET_IO * sock_io_p)
 {
-  int error;
-  char *db_name, *db_user, *db_passwd, *url, *db_sessionid;
+  int error = 0;
+  char *db_name = NULL, *db_user = NULL, *db_passwd = NULL;
+  char *url = NULL, *db_sessionid = NULL;
   struct timeval client_start_time;
+  T_PROXY_CONTEXT *ctx_p;
   T_IO_BUFFER *read_buffer;
   T_SHARD_USER *user_p;
   T_PROXY_EVENT *event_p;
   unsigned char *ip_addr;
   char *driver_info;
   T_BROKER_VERSION client_version;
+  char err_msg[256];
 
   ENTER_FUNC ();
 
@@ -1378,6 +1381,22 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
 
   db_name = read_buffer->data;
   db_name[SRV_CON_DBNAME_SIZE - 1] = '\0';
+
+  ctx_p = proxy_context_find_by_socket_client_io (sock_io_p);
+  if (ctx_p == NULL)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Failed to find context for this socket. (fd:%d)",
+		 sock_io_p->fd);
+      error = -1;
+      goto clear_event_and_return;
+    }
+
+  if (ctx_p->error_ind != CAS_NO_ERROR)
+    {
+      /* Skip authorization and process error */
+      goto connection_established;
+    }
 
   if (strcmp (db_name, HEALTH_CHECK_DUMMY_DB) == 0)
     {
@@ -1409,7 +1428,7 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
 	  EXIT_FUNC ();
 	  return -1;
 	}
-      goto finished;
+      goto clear_event_and_return;
     }
 
   db_user = db_name + SRV_CON_DBNAME_SIZE;
@@ -1445,13 +1464,16 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
 	  || strcmp (db_user, user_p->db_user)
 	  || strcmp (db_passwd, user_p->db_password))
 	{
+	  snprintf (err_msg, sizeof (err_msg), "Authorization error.");
+	  proxy_context_set_error_with_msg (ctx_p, DBMS_ERROR_INDICATOR,
+					    CAS_ER_NOT_AUTHORIZED_CLIENT,
+					    err_msg);
+
 	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Authentication failure. "
 		     "(db_name:[%s], db_user:[%s], db_passwd:[%s]).",
 		     db_name, db_user, db_passwd);
-	  proxy_socket_io_read_error (sock_io_p);
 
-	  EXIT_FUNC ();
-	  return -1;
+	  goto connection_established;
 	}
     }
   else
@@ -1460,13 +1482,15 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
 	  || strcasecmp (db_user, user_p->db_user)
 	  || strcmp (db_passwd, user_p->db_password))
 	{
+	  snprintf (err_msg, sizeof (err_msg), "Authorization error.");
+	  proxy_context_set_error_with_msg (ctx_p, DBMS_ERROR_INDICATOR,
+					    CAS_ER_NOT_AUTHORIZED_CLIENT,
+					    err_msg);
+
 	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Authentication failure. "
 		     "(db_name:[%s], db_user:[%s], db_passwd:[%s]).",
 		     db_name, db_user, db_passwd);
-	  proxy_socket_io_read_error (sock_io_p);
-
-	  EXIT_FUNC ();
-	  return -1;
+	  goto connection_established;
 	}
     }
 
@@ -1478,6 +1502,12 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
       if (access_control_check_right (shm_as_p, db_name, db_user, ip_addr) <
 	  0)
 	{
+	  snprintf (err_msg, sizeof (err_msg),
+		    "Authorization error.(Address is rejected)");
+	  proxy_context_set_error_with_msg (ctx_p, DBMS_ERROR_INDICATOR,
+					    CAS_ER_NOT_AUTHORIZED_CLIENT,
+					    err_msg);
+
 	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Authentication failure. "
 		     "(db_name:[%s], db_user:[%s], db_passwd:[%s]).",
 		     db_name, db_user, db_passwd);
@@ -1485,69 +1515,55 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
 	  if (shm_as_p->access_log == ON)
 	    {
 	      proxy_access_log (&client_start_time,
-				sock_io_p->ip_addr, db_name, db_user, false);
+				sock_io_p->ip_addr, (db_name) ? db_name : "-",
+				(db_user) ? db_user : "-", true);
 	    }
 
-	  /* send authentication failure to the client */
-	  event_p = proxy_event_new_with_rsp (driver_info,
-					      PROXY_EVENT_IO_WRITE,
-					      PROXY_EVENT_FROM_CLIENT,
-					      proxy_io_make_client_acl_fail);
-	  if (event_p == NULL)
-	    {
-	      proxy_socket_io_read_error (sock_io_p);
-	      EXIT_FUNC ();
-	      return -1;
-	    }
-
-	  /* set write event to the socket io */
-	  error = proxy_socket_set_write_event (sock_io_p, event_p);
-	  if (error)
-	    {
-	      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to set write buffer. "
-			 "(fd:%d). event(%s).",
-			 sock_io_p->fd, proxy_str_event (event_p));
-
-	      proxy_event_free (event_p);
-	      event_p = NULL;
-
-	      proxy_socket_io_read_error (sock_io_p);
-	      EXIT_FUNC ();
-	      return -1;
-	    }
-
-	  /* client will close the socket */
-	  EXIT_FUNC ();
-	  return -1;
+	  goto connection_established;
 	}
     }
 
-
-  /* send dbinfo_ok to the client */
-  event_p = proxy_event_new_with_rsp (driver_info, PROXY_EVENT_IO_WRITE,
-				      PROXY_EVENT_FROM_CLIENT,
-				      proxy_io_make_client_dbinfo_ok);
-  if (event_p == NULL)
+connection_established:
+  if (ctx_p->error_ind != CAS_NO_ERROR)
     {
-      proxy_socket_io_read_error (sock_io_p);
-      EXIT_FUNC ();
-      return -1;
+      /* 
+       * Process error message if exists. 
+       * context will be freed after sending error message.
+       */
+      proxy_context_send_error (ctx_p);
+      proxy_context_clear_error (ctx_p);
+
+      ctx_p->free_on_client_io_write = true;
     }
-
-  /* set write event to the socket io */
-  error = proxy_socket_set_write_event (sock_io_p, event_p);
-  if (error)
+  else
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to set write buffer. "
-		 "(fd:%d). event(%s).",
-		 sock_io_p->fd, proxy_str_event (event_p));
+      /* send dbinfo_ok to the client */
+      event_p =
+	proxy_event_new_with_rsp (driver_info, PROXY_EVENT_IO_WRITE,
+				  PROXY_EVENT_FROM_CLIENT,
+				  proxy_io_make_client_dbinfo_ok);
+      if (event_p == NULL)
+	{
+	  proxy_socket_io_read_error (sock_io_p);
+	  EXIT_FUNC ();
+	  return -1;
+	}
 
-      proxy_event_free (event_p);
-      event_p = NULL;
+      /* set write event to the socket io */
+      error = proxy_socket_set_write_event (sock_io_p, event_p);
+      if (error)
+	{
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to set write buffer. "
+		     "(fd:%d). event(%s).",
+		     sock_io_p->fd, proxy_str_event (event_p));
 
-      proxy_socket_io_read_error (sock_io_p);
-      EXIT_FUNC ();
-      return -1;
+	  proxy_event_free (event_p);
+	  event_p = NULL;
+
+	  proxy_socket_io_read_error (sock_io_p);
+	  EXIT_FUNC ();
+	  return -1;
+	}
     }
 
   sock_io_p->status = SOCK_IO_ESTABLISHED;
@@ -1555,16 +1571,17 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
   if (shm_as_p->access_log == ON)
     {
       proxy_access_log (&client_start_time,
-			sock_io_p->ip_addr, db_name, db_user, true);
+			sock_io_p->ip_addr, (db_name) ? db_name : "-",
+			(db_user) ? db_user : "-", true);
     }
 
-finished:
+clear_event_and_return:
   assert (sock_io_p->read_event);
   proxy_event_free (sock_io_p->read_event);
   sock_io_p->read_event = NULL;
 
   EXIT_FUNC ();
-  return 0;
+  return error;
 }
 
 static int
@@ -2567,15 +2584,16 @@ static int
 proxy_client_io_initialize (void)
 {
   int error;
-  int i;
+  int i, size;
   T_CLIENT_IO *client_io_ent_p;
 
   proxy_Client_io.max_client = shm_proxy_p->max_client;
   proxy_Client_io.cur_client = 0;
+  proxy_Client_io.max_context = shm_proxy_p->max_context;
 
   error =
     shard_cqueue_initialize (&proxy_Client_io.freeq,
-			     proxy_Client_io.max_client);
+			     proxy_Client_io.max_context);
   if (error)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to initialize client entries. "
@@ -2584,19 +2602,17 @@ proxy_client_io_initialize (void)
     }
 
   /* make client io entry */
-  proxy_Client_io.ent =
-    (T_CLIENT_IO *) malloc (sizeof (T_CLIENT_IO) *
-			    proxy_Client_io.max_client);
+  size = proxy_Client_io.max_context * sizeof (T_CLIENT_IO);
+  proxy_Client_io.ent = (T_CLIENT_IO *) malloc (size);
   if (proxy_Client_io.ent == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR, "Not enough virtual memory. "
 		 "Failed to alloc client entries. "
-		 "(errno:%d, size:%d).", errno,
-		 sizeof (T_CLIENT_IO) * proxy_Client_io.max_client);
+		 "(errno:%d, size:%d).", errno, size);
       goto error_return;
     }
 
-  for (i = 0; i < proxy_Client_io.max_client; i++)
+  for (i = 0; i < proxy_Client_io.max_context; i++)
     {
       client_io_ent_p = &(proxy_Client_io.ent[i]);
 
@@ -2646,6 +2662,8 @@ proxy_client_io_print (bool print_all)
   PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL, "%-20s = %d",
 	     "max_client", proxy_Client_io.max_client);
   PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL, "%-20s = %d",
+	     "max_context", proxy_Client_io.max_context);
+  PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL, "%-20s = %d",
 	     "cur_client", proxy_Client_io.cur_client);
 
   PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL,
@@ -2653,7 +2671,7 @@ proxy_client_io_print (bool print_all)
 	     "busy", "fd", "context_id", "uid");
   if (proxy_Client_io.ent)
     {
-      for (i = 0; i < proxy_Client_io.max_client; i++)
+      for (i = 0; i < proxy_Client_io.max_context; i++)
 	{
 	  cli_io_p = &(proxy_Client_io.ent[i]);
 	  if (!print_all && !cli_io_p->is_busy)
@@ -2704,11 +2722,6 @@ proxy_client_io_new (SOCKET fd, char *driver_info)
       cli_io_p->is_busy = true;
 
       proxy_Client_io.cur_client++;
-      if (proxy_Client_io.cur_client > proxy_Client_io.max_client)
-	{
-	  assert (false);
-	  proxy_Client_io.cur_client = proxy_Client_io.max_client;
-	}
       proxy_info_p->cur_client = proxy_Client_io.cur_client;
 
       ctx_p = proxy_context_new ();
@@ -2731,6 +2744,22 @@ proxy_client_io_new (SOCKET fd, char *driver_info)
       PROXY_LOG (PROXY_LOG_MODE_SHARD_DETAIL,
 		 "New client connected. client(%s).",
 		 proxy_str_client_io (cli_io_p));
+
+      if (proxy_Client_io.cur_client > proxy_Client_io.max_client)
+	{
+	  /* 
+	   * Error message would be retured when processing 
+	   * register(db_info) request.
+	   */
+	  char err_msg[256];
+
+	  snprintf (err_msg, sizeof (err_msg),
+		    "Proxy refused client connection. max clients exceeded");
+
+	  proxy_context_set_error_with_msg (ctx_p, DBMS_ERROR_INDICATOR,
+					    CAS_ER_MAX_CLIENT_EXCEEDED,
+					    err_msg);
+	}
     }
 
 #if defined(PROXY_VERBOSE_DEBUG)
@@ -2796,11 +2825,11 @@ proxy_client_io_find_by_ctx (int client_id, int ctx_cid, unsigned int ctx_uid)
 {
   T_CLIENT_IO *cli_io_p;
 
-  if (client_id < 0 || client_id >= proxy_Client_io.max_client)
+  if (client_id < 0 || client_id >= proxy_Client_io.max_context)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Invalid client id. (client_id;%d, max_client:%d).",
-		 client_id, proxy_Client_io.max_client);
+		 "Invalid client id. (client_id;%d, max_context:%d).",
+		 client_id, proxy_Client_io.max_context);
       return NULL;
     }
 
@@ -2822,11 +2851,11 @@ proxy_client_io_find_by_fd (int client_id, SOCKET fd)
 {
   T_CLIENT_IO *cli_io_p;
 
-  if (client_id < 0 || client_id >= proxy_Client_io.max_client)
+  if (client_id < 0 || client_id >= proxy_Client_io.max_context)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Invalid client id. (client_id;%d, max_client:%d).",
-		 client_id, proxy_Client_io.max_client);
+		 "Invalid client id. (client_id:%d, max_context:%d).",
+		 client_id, proxy_Client_io.max_context);
       return NULL;
     }
 

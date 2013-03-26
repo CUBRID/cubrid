@@ -61,8 +61,10 @@ static int shard_shm_get_client_info_offset (T_PROXY_INFO * proxy_info_p);
 static int shard_shm_get_shard_stat_offset (T_PROXY_INFO * proxy_info_p);
 static void shard_shm_init_key_stat (T_SHM_SHARD_KEY_STAT * key_stat_p,
 				     T_SHARD_KEY * shard_key);
-static void shard_shm_init_shard_stat (T_SHM_SHARD_CONN_STAT * shard_stat_p,
+static void shard_shm_init_shard_stat (T_SHM_SHARD_CONN_STAT *
+				       shard_stat_p,
 				       T_SHARD_CONN * shard_conn);
+static int shard_shm_get_max_context (int max_num_appl_server);
 
 void
 shard_shm_set_shm_as (T_SHM_APPL_SERVER * shm_as_p, T_BROKER_INFO * br_info_p)
@@ -153,6 +155,8 @@ shard_shm_set_shm_proxy (T_SHM_PROXY * shm_proxy_p, T_BROKER_INFO * br_info_p)
     {
       shm_proxy_p->max_client = 1;	/* at least one client */
     }
+  shm_proxy_p->max_context =
+    shard_shm_get_max_context (br_info_p->appl_server_max_num);
 
   /* SHARD SHARD_KEY_ID */
   shm_proxy_p->shard_key_modular = br_info_p->shard_key_modular;
@@ -251,7 +255,7 @@ shard_shm_initialize (T_BROKER_INFO * br_info_p, char *shm_metadata_cp)
   int key_stat_size;
   int shard_stat_size;
 
-  int max_client;
+  int max_context;
   int num_shard;
   int num_key;
 
@@ -310,13 +314,13 @@ shard_shm_initialize (T_BROKER_INFO * br_info_p, char *shm_metadata_cp)
   shard_stat_size = sizeof (T_SHM_SHARD_CONN_STAT);
 
   client_info_size = sizeof (T_CLIENT_INFO);
-  max_client = br_info_p->max_client;
+  max_context = shard_shm_get_max_context (br_info_p->appl_server_max_num);
 
   proxy_info_size =
     sizeof (T_PROXY_INFO)
     - sizeof (T_SHM_SHARD_KEY_STAT) + (key_stat_size * num_key)
     - sizeof (T_SHM_SHARD_CONN_STAT) + (shard_stat_size * num_shard)
-    - sizeof (T_CLIENT_INFO) + (client_info_size * max_client)
+    - sizeof (T_CLIENT_INFO) + (client_info_size * max_context)
     - sizeof (T_SHARD_INFO) + (shard_info_size * num_shard);
 
   proxy_size =
@@ -400,6 +404,7 @@ shard_shm_initialize (T_BROKER_INFO * br_info_p, char *shm_metadata_cp)
       proxy_info_p->max_shard = num_shard;
       proxy_info_p->max_client = shm_proxy_p->max_client;
       proxy_info_p->cur_client = 0;
+      proxy_info_p->max_context = shm_proxy_p->max_context;
       proxy_info_p->max_prepared_stmt_count =
 	br_info_p->proxy_max_prepared_stmt_count;
       proxy_info_p->ignore_shard_hint = br_info_p->ignore_shard_hint;
@@ -433,7 +438,7 @@ shard_shm_initialize (T_BROKER_INFO * br_info_p, char *shm_metadata_cp)
 	}
 
       first_client_info_p = shard_shm_get_first_client_info (proxy_info_p);
-      for (j = 0, client_offset = 0; j < max_client;
+      for (j = 0, client_offset = 0; j < max_context;
 	   j++, client_offset += client_info_size)
 	{
 	  client_info_p =
@@ -891,6 +896,7 @@ shard_shm_dump_proxy (FILE * fp, char *shm_as_cp)
   fprintf (fp, "%-30s = %-30d \n", "MAX_NUM_PROXY",
 	   shm_proxy_p->max_num_proxy);
   fprintf (fp, "%-30s = %-30d \n", "MAX_CLIENT", shm_proxy_p->max_client);
+  fprintf (fp, "%-30s = %-30d \n", "MAX_CONTEXT", shm_proxy_p->max_context);
   fprintf (fp, "%-30s = %-30x \n", "METADATA_SHM_ID",
 	   shm_proxy_p->metadata_shm_id);
 
@@ -1197,17 +1203,17 @@ static int
 shard_shm_get_shard_info_offset (T_PROXY_INFO * proxy_info_p)
 {
   int offset = 0;
-  int num_shard_key, num_shard_conn, max_client;
+  int num_shard_key, num_shard_conn, max_context;
 
   assert (proxy_info_p);
   num_shard_key = proxy_info_p->num_shard_key;
   num_shard_conn = proxy_info_p->num_shard_conn;
-  max_client = proxy_info_p->max_client;
+  max_context = proxy_info_p->max_context;
 
   offset += offsetof (T_PROXY_INFO, key_stat);
   offset += (sizeof (T_SHM_SHARD_KEY_STAT) * num_shard_key);	/* T_SHM_SHARD_KEY_STAT[1] */
   offset += (sizeof (T_SHM_SHARD_CONN_STAT) * num_shard_conn);	/* T_SHM_SHARD_CONN_STAT[1] */
-  offset += (sizeof (T_CLIENT_INFO) * max_client);	/* T_CLIENT_INFO[1] */
+  offset += (sizeof (T_CLIENT_INFO) * max_context);	/* T_CLIENT_INFO[1] */
   return offset;
 }
 
@@ -1243,4 +1249,26 @@ shard_shm_get_shard_stat_offset (T_PROXY_INFO * proxy_info_p)
   offset += (sizeof (T_SHM_SHARD_KEY_STAT) * num_shard_key);	/* T_SHM_SHARD_KEY_STAT[1] */
 
   return offset;
+}
+
+static int
+shard_shm_get_max_context (int max_num_appl_server)
+{
+  int max_context;
+
+  if (max_num_appl_server <= 0)
+    {
+      assert (false);
+      max_num_appl_server = 0;
+    }
+
+  /* 
+   * In case, max_num_appl_server < max_num_shard, 
+   * shard's max_num_appl_server might be tuned. 
+   * so, we need to reserve enough RESERVED_FD. 
+   */
+  max_context =
+    (MAX_FD - RESERVED_FD - max_num_appl_server /* proxy/cas connection */ );
+
+  return max_context;
 }

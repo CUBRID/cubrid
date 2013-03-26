@@ -916,7 +916,7 @@ proxy_context_initialize (void)
       return 0;
     }
 
-  proxy_Context.size = shm_proxy_p->max_client;
+  proxy_Context.size = shm_proxy_p->max_context;
 
   error = shard_cqueue_initialize (&proxy_Context.freeq, proxy_Context.size);
   if (error)

@@ -324,7 +324,7 @@ broker_find_available_proxy (T_SHM_PROXY * shm_proxy_p)
 {
   int min_cur_client = -1;
   int cur_client = -1;
-  int max_client = -1;
+  int max_context = -1;
   T_PROXY_INFO *proxy_info_p;
 #if defined(WINDOWS)
   T_PROXY_INFO *find_proxy_info_p;
@@ -348,7 +348,7 @@ broker_find_available_proxy (T_SHM_PROXY * shm_proxy_p)
 	  continue;
 	}
 
-      max_client = proxy_info_p->max_client - 1;
+      max_context = proxy_info_p->max_context;
       cur_client = proxy_info_p->cur_client;
 
 #if !defined(WINDOWS)
@@ -366,7 +366,7 @@ broker_find_available_proxy (T_SHM_PROXY * shm_proxy_p)
 	  min_cur_client = cur_client;
 	}
 
-      if (cur_client < max_client && cur_client <= min_cur_client)
+      if (cur_client < max_context && cur_client <= min_cur_client)
 	{
 #if defined(WINDOWS)
 	  find_proxy_info_p = proxy_info_p;

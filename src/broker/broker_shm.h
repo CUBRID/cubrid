@@ -387,6 +387,7 @@ struct t_proxy_info
   int max_shard;
   int max_client;
   int cur_client;
+  int max_context;
 
   char appl_server;		/* APPL_SERVER_CAS | APPL_SERVER_CAS_MYSQL | APPL_SERVER_CAS_ORACLE */
 
@@ -437,6 +438,7 @@ struct t_shm_proxy
   int min_num_proxy;
   int max_num_proxy;
   int max_client;
+  int max_context;
 
   /* SHARD SHARD_KEY_ID */
   int shard_key_modular;

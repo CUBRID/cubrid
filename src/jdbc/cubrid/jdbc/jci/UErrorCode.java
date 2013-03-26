@@ -101,6 +101,7 @@ abstract public class UErrorCode {
 	public static final int CAS_ER_HOLDABLE_NOT_ALLOWED = -10027;
 	public static final int CAS_ER_HOLDABLE_NOT_ALLOWED_KEEP_CON_OFF = -10028;
 	public static final int CAS_ER_NOT_IMPLEMENTED = -10100;
+	public static final int CAS_ER_MAX_CLIENT_EXCEEDED = -10101;
 	public static final int CAS_ER_IS = -10200;
 
 	public final static int CAS_ERROR_INDICATOR = -1;
@@ -227,6 +228,7 @@ abstract public class UErrorCode {
 				"Holdable results are not allowed while KEEP_CONNECTION is off");
 		CASMessageString.put(new Integer(CAS_ER_NOT_IMPLEMENTED),
 				"Attempt to use a not supported service");
+		CASMessageString.put(new Integer(CAS_ER_MAX_CLIENT_EXCEEDED), "Proxy refused client connection. max clients exceeded");
 		CASMessageString.put(new Integer(CAS_ER_IS), "Authentication failure");
 	}
 }

@@ -4263,6 +4263,9 @@ cci_get_err_msg_internal (int error)
     case CAS_ER_HOLDABLE_NOT_ALLOWED:
       return "Holdable results may not be updatable or sensitive";
 
+    case CAS_ER_MAX_CLIENT_EXCEEDED:
+      return "Proxy refused client connection. max clients exceeded";
+
     case CAS_ER_IS:
       return "Not used";
 
