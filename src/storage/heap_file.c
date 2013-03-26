@@ -4236,9 +4236,8 @@ heap_get_last_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 
   *last_vpid = heap_hdr->estimates.last_vpid;
 
-  pgptr =
-    heap_scan_pb_lock_and_fetch (thread_p, last_vpid, OLD_PAGE, X_LOCK,
-				 scan_cache);
+  pgptr = heap_scan_pb_lock_and_fetch (thread_p, last_vpid, OLD_PAGE, X_LOCK,
+				       scan_cache);
   if (pgptr == NULL)
     {
       assert (false);
@@ -4890,12 +4889,12 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
   addr.vfid = &hfid->vfid;
   addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
 
-  last_pgptr =
-    heap_get_last_page (thread_p, hfid, heap_hdr, scan_cache, &last_vpid);
+  last_pgptr = heap_get_last_page (thread_p, hfid, heap_hdr, scan_cache,
+				   &last_vpid);
   if (last_pgptr == NULL)
     {
-      assert (false);
       /* something went wrong, return error */
+      assert (false);
       return NULL;
     }
   assert (!VPID_ISNULL (&last_vpid));
@@ -16374,9 +16373,9 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes,
  *                  structure contains the BTID's, the attributes and their
  *                  values.
  *   recdes(in):
- *   db_value(in): Pointer to a DB_VALUE.  This db_value will be used to
- *                 contain the set key in the case of multi-column B-trees.
- *                 It is ignored for single-column B-trees.
+ *   db_valuep(in): Pointer to a DB_VALUE.  This db_valuep will be used to
+ *                  contain the set key in the case of multi-column B-trees.
+ *                  It is ignored for single-column B-trees.
  *   buf(in):
  *
  * Note: Return a key for the specified attribute ID's
@@ -16395,27 +16394,27 @@ DB_VALUE *
 heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids,
 			    int *atts_prefix_length,
 			    HEAP_CACHE_ATTRINFO * attr_info, RECDES * recdes,
-			    DB_VALUE * db_value, char *buf,
+			    DB_VALUE * db_valuep, char *buf,
 			    FUNCTION_INDEX_INFO * func_index_info)
 {
-  DB_VALUE *ret_val;
+  DB_VALUE *ret_valp;
   DB_VALUE *fi_res = NULL;
   int fi_attr_index_start = -1;
   int fi_col_id = -1;
 
-  assert (DB_IS_NULL (db_value));
+  assert (DB_IS_NULL (db_valuep));
 
   if (func_index_info)
     {
       fi_attr_index_start = func_index_info->attr_index_start;
       fi_col_id = func_index_info->col_id;
-      if (heap_eval_function_index
-	  (thread_p, func_index_info, n_atts, att_ids, attr_info, recdes, -1,
-	   db_value, NULL) != NO_ERROR)
+      if (heap_eval_function_index (thread_p, func_index_info, n_atts,
+				    att_ids, attr_info, recdes, -1, db_valuep,
+				    NULL) != NO_ERROR)
 	{
 	  return NULL;
 	}
-      fi_res = db_value;
+      fi_res = db_valuep;
     }
 
   /*
@@ -16456,16 +16455,16 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids,
 	  return NULL;
 	}
 
-      (void) pr_clear_value (db_value);
+      (void) pr_clear_value (db_valuep);
 
-      DB_MAKE_MIDXKEY (db_value, &midxkey);
+      DB_MAKE_MIDXKEY (db_valuep, &midxkey);
 
       if (midxkey_size > DBVAL_BUFSIZE)
 	{
-	  db_value->need_clear = true;
+	  db_valuep->need_clear = true;
 	}
 
-      ret_val = db_value;
+      ret_valp = db_valuep;
     }
   else
     {
@@ -16475,25 +16474,25 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids,
        */
       if (func_index_info)
 	{
-	  ret_val = db_value;
-	  return ret_val;
+	  ret_valp = db_valuep;
+	  return ret_valp;
 	}
-      ret_val = heap_attrinfo_access (att_ids[0], attr_info);
 
-      if (ret_val != NULL && atts_prefix_length && n_atts == 1)
+      ret_valp = heap_attrinfo_access (att_ids[0], attr_info);
+      if (ret_valp != NULL && atts_prefix_length && n_atts == 1)
 	{
-
-	  if (*atts_prefix_length != -1 &&
-	      QSTR_IS_ANY_CHAR_OR_BIT (DB_VALUE_DOMAIN_TYPE (ret_val)))
+	  if (*atts_prefix_length != -1
+	      && QSTR_IS_ANY_CHAR_OR_BIT (DB_VALUE_DOMAIN_TYPE (ret_valp)))
 	    {
-	      pr_clone_value (ret_val, db_value);
-	      db_string_truncate (db_value, *atts_prefix_length);
-	      ret_val = db_value;
+	      /* prefix index */
+	      pr_clone_value (ret_valp, db_valuep);
+	      db_string_truncate (db_valuep, *atts_prefix_length);
+	      ret_valp = db_valuep;
 	    }
 	}
     }
 
-  return ret_val;
+  return ret_valp;
 }
 
 /*

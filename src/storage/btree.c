@@ -19846,14 +19846,16 @@ btree_rv_save_keyval (BTID_INT * btid, DB_VALUE * key,
   OR_BUF buf;
   PR_TYPE *pr_type;
   int ret = NO_ERROR;
+  size_t size;
 
   *length = 0;
 
   key_len = (int) btree_get_key_length (key);
-  *data = (char *) db_private_alloc (NULL,
-				     OR_BTID_ALIGNED_SIZE +
-				     (2 * OR_OID_SIZE) + key_len +
-				     INT_ALIGNMENT + INT_ALIGNMENT);
+
+  size = (OR_BTID_ALIGNED_SIZE + (2 * OR_OID_SIZE) + key_len
+	  + INT_ALIGNMENT + INT_ALIGNMENT);
+
+  *data = (char *) db_private_alloc (NULL, size);
   if (*data == NULL)
     {
       goto exit_on_error;
@@ -19881,6 +19883,8 @@ btree_rv_save_keyval (BTID_INT * btid, DB_VALUE * key,
   datap += key_len;
 
   *length = CAST_STRLEN (datap - *data);
+
+  assert (0 < *length && *length <= size);
 
   return ret;
 

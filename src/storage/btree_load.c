@@ -2456,6 +2456,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
   int next_size;
   int oid_size;
   char midxkey_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
+  int *prefix_lengthp;
   int result;
 
   DB_MAKE_NULL (&dbvalue);
@@ -2587,19 +2588,18 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 					   sort_args->filter->cache_pred)
 	      != NO_ERROR)
 	    {
-	      return (SORT_ERROR_OCCURRED);
+	      return SORT_ERROR_OCCURRED;
 	    }
 
-	  if ((result =
-	       (*sort_args->filter_eval_func) (thread_p,
-					       sort_args->filter->pred, NULL,
-					       &sort_args->cur_oid))
-	      != V_TRUE)
+	  result = (*sort_args->filter_eval_func) (thread_p,
+						   sort_args->filter->pred,
+						   NULL, &sort_args->cur_oid);
+	  if (result == V_ERROR)
 	    {
-	      if (result == V_ERROR)
-		{
-		  return (SORT_ERROR_OCCURRED);
-		}
+	      return SORT_ERROR_OCCURRED;
+	    }
+	  else if (result != V_TRUE)
+	    {
 	      continue;
 	    }
 	}
@@ -2612,7 +2612,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 					    func_index_info->expr)->
 					   cache_attrinfo) != NO_ERROR)
 	    {
-	      return (SORT_ERROR_OCCURRED);
+	      return SORT_ERROR_OCCURRED;
 	    }
 	}
 
@@ -2622,24 +2622,27 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 					   &sort_args->in_recdes,
 					   &sort_args->attr_info) != NO_ERROR)
 	    {
-	      return (SORT_ERROR_OCCURRED);
+	      return SORT_ERROR_OCCURRED;
 	    }
+	}
+
+      prefix_lengthp = NULL;
+      if (sort_args->attrs_prefix_length)
+	{
+	  prefix_lengthp = sort_args->attrs_prefix_length[attr_offset];
 	}
 
       dbvalue_ptr =
 	heap_attrinfo_generate_key (thread_p, sort_args->n_attrs,
 				    &sort_args->attr_ids[attr_offset],
-				    (sort_args->attrs_prefix_length
-				     ?
-				     &sort_args->attrs_prefix_length
-				     [attr_offset] : NULL),
+				    prefix_lengthp,
 				    &sort_args->attr_info,
 				    &sort_args->in_recdes, &dbvalue,
 				    aligned_midxkey_buf,
 				    sort_args->func_index_info);
       if (dbvalue_ptr == NULL)
 	{
-	  return (SORT_ERROR_OCCURRED);
+	  return SORT_ERROR_OCCURRED;
 	}
 
       if (sort_args->fk_refcls_oid && !OID_ISNULL (sort_args->fk_refcls_oid))
