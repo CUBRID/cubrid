@@ -809,7 +809,12 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 		 T_REQ_INFO * req_info, CACHE_TIME * clt_cache_time,
 		 int *clt_cache_reusable)
 {
-  return ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
+  int err_code;
+
+  err_code = ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
+  NET_BUF_ERR_SET (net_buf);
+
+  return err_code;
 }
 
 int
