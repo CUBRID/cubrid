@@ -2629,7 +2629,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
       prefix_lengthp = NULL;
       if (sort_args->attrs_prefix_length)
 	{
-	  prefix_lengthp = sort_args->attrs_prefix_length[attr_offset];
+	  prefix_lengthp = &(sort_args->attrs_prefix_length[attr_offset]);
 	}
 
       dbvalue_ptr =
