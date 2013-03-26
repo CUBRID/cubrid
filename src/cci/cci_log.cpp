@@ -96,8 +96,8 @@ public:
   virtual void flush();
 
 protected:
-  virtual void role() = 0;
-  virtual bool isRole() = 0;
+  virtual void roll() = 0;
+  virtual bool isRolling() = 0;
 
   std::string rename(const char *newPath, const char *postfix);
   int getLogSizeKBytes();
@@ -119,11 +119,11 @@ public:
   virtual ~_MaxSizeLogAppender() {}
 
 protected:
-  virtual void role();
-  virtual bool isRole();
+  virtual void roll();
+  virtual bool isRolling();
 
 private:
-  std::string get_curr_date_time();
+  std::string getCurrDateTime();
 
 private:
   int maxFileSizeKBytes;
@@ -139,8 +139,8 @@ public:
   virtual ~_DailyLogAppender() {}
 
 protected:
-  virtual void role();
-  virtual bool isRole();
+  virtual void roll();
+  virtual bool isRolling();
 
 private:
   std::string getCurrDate();
@@ -241,9 +241,9 @@ void _LogAppenderBase::write(const char *msg)
 
   checkFileIsOpen();
 
-  if (this->isRole())
+  if (this->isRolling())
     {
-      this->role();
+      this->roll();
     }
 
   out << msg;
@@ -346,10 +346,10 @@ _MaxSizeLogAppender::_MaxSizeLogAppender(const _LoggerContext &context,
 {
 }
 
-void _MaxSizeLogAppender::role()
+void _MaxSizeLogAppender::roll()
 {
   std::stringstream newPath_stream;
-  newPath_stream << context.path << "." << get_curr_date_time();
+  newPath_stream << context.path << "." << getCurrDateTime();
 
   std::stringstream postfix_stream;
   postfix_stream << "(" << currBackupCount++ << ")";
@@ -371,12 +371,12 @@ void _MaxSizeLogAppender::role()
     }
 }
 
-bool _MaxSizeLogAppender::isRole()
+bool _MaxSizeLogAppender::isRolling()
 {
   return getLogSizeKBytes() > maxFileSizeKBytes;
 }
 
-std::string _MaxSizeLogAppender::get_curr_date_time()
+std::string _MaxSizeLogAppender::getCurrDateTime()
 {
   struct tm cal;
   char buf[16];
@@ -396,7 +396,7 @@ _DailyLogAppender::_DailyLogAppender(const _LoggerContext &context) :
 {
 }
 
-void _DailyLogAppender::role()
+void _DailyLogAppender::roll()
 {
   std::stringstream newPathStream;
   newPathStream << context.path << "." << getCurrDate();
@@ -404,7 +404,7 @@ void _DailyLogAppender::role()
   rename(newPathStream.str().c_str(), NULL);
 }
 
-bool _DailyLogAppender::isRole()
+bool _DailyLogAppender::isRolling()
 {
   int roleDay = context.now.tv_sec / 86400;
   int nowDay = time(NULL) / 86400;
@@ -552,7 +552,9 @@ void _Logger::logPrefix(CCI_LOG_LEVEL level)
   write(buf);
 }
 
-typedef std::map<std::string, _Logger *> _logger_map;
+typedef std::pair<_Logger *, int> _LoggerReference;
+
+typedef std::map<std::string, _LoggerReference> _LoggerMap;
 
 class _LoggerManager
 {
@@ -566,20 +568,20 @@ public:
 
 private:
   cci::_Mutex critical;
-  _logger_map map;
+  _LoggerMap map;
 };
 
 _Logger *_LoggerManager::getLogger(const char *path)
 {
   cci::_MutexAutolock lock(&critical);
 
-  _logger_map::iterator it = map.find(path);
+  _LoggerMap::iterator it = map.find(path);
   if (it == map.end())
     {
       try
         {
           _Logger *logger = new _Logger(path);
-          map[path] = logger;
+          map[path] = _LoggerReference(logger, 1);
           return logger;
         }
       catch (...)
@@ -587,19 +589,27 @@ _Logger *_LoggerManager::getLogger(const char *path)
           return NULL;
         }
     }
+  else
+    {
+      it->second.second++;
+    }
 
-  return it->second;
+  return it->second.first;
 }
 
 void _LoggerManager::removeLogger(const char *path)
 {
   cci::_MutexAutolock lock(&critical);
 
-  _logger_map::iterator it = map.find(path);
+  _LoggerMap::iterator it = map.find(path);
   if (it != map.end())
     {
-      delete it->second;
-      map.erase(it);
+      it->second.second--;
+      if (it->second.second == 0)
+        {
+          delete it->second.first;
+          map.erase(it);
+        }
     }
 }
 
@@ -607,10 +617,10 @@ void _LoggerManager::clearLogger()
 {
   cci::_MutexAutolock lock(&critical);
 
-  _logger_map::iterator it = map.begin();
+  _LoggerMap::iterator it = map.begin();
   for (; it != map.end(); it++)
     {
-      delete it->second;
+      delete it->second.first;
     }
 
   map.clear();
