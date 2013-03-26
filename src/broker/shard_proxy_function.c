@@ -1094,6 +1094,10 @@ fn_proxy_client_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 	      goto free_context;
 	    }
 
+	  proxy_info_p->stmt_waiter_count++;
+	  PROXY_DEBUG_LOG ("Add stmt waiter. (waiter_coutn:%d).",
+			   proxy_info_p->stmt_waiter_count);
+
 	  ctx_p->waiting_event = event_p;
 	  event_p = NULL;	/* DO NOT DELETE */
 

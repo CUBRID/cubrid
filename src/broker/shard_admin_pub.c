@@ -503,7 +503,7 @@ shard_proxy_inactivate (T_BROKER_INFO * br_info_p,
        shard_info_p;
        shard_info_p = shard_shm_get_next_shard_info (shard_info_p))
     {
-      for (i = 0; i < shard_info_p->num_appl_server; i++)
+      for (i = 0; i < shard_info_p->max_appl_server; i++)
 	{
 	  as_info_p = &(shard_info_p->as_info[i]);
 	  if (as_info_p->pid)
@@ -693,6 +693,19 @@ shard_as_inactivate (T_BROKER_INFO * br_info_p,
   as_info_p->last_access_time = time (0);
   as_info_p->service_flag = SERVICE_OFF;
   as_info_p->service_ready_flag = FALSE;
+
+  /* initialize statistics */
+  as_info_p->num_request = 0;
+  as_info_p->num_requests_received = 0;
+  as_info_p->num_transactions_processed = 0;
+  as_info_p->num_queries_processed = 0;
+  as_info_p->num_long_queries = 0;
+  as_info_p->num_error_queries = 0;
+
+  /* initialize con / uts status */
+  as_info_p->uts_status = UTS_STATUS_IDLE;
+  as_info_p->con_status = CON_STATUS_CLOSE;
+
   CON_STATUS_LOCK_DESTROY (as_info_p);
 
   /* 

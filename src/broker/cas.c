@@ -114,6 +114,7 @@ static int cas_register_to_proxy (SOCKET proxy_sock_fd);
 static int net_read_process (SOCKET proxy_sock_fd,
 			     MSG_HEADER * client_msg_header,
 			     T_REQ_INFO * req_info);
+static int get_graceful_down_timeout ();
 #else
 static int net_read_int_keep_con_auto (SOCKET clt_sock_fd,
 				       MSG_HEADER * client_msg_header,
@@ -520,7 +521,8 @@ conn_retry:
 	{
 	  SLEEP_SEC (1);
 	}
-      while (as_info->uts_status == UTS_STATUS_RESTART);
+      while (as_info->uts_status == UTS_STATUS_RESTART
+	     || as_info->uts_status == UTS_STATUS_STOP);
     }
   is_first = false;
 
@@ -747,6 +749,12 @@ conn_retry:
 	    cas_final ();
 	    return 0;
 	  }
+#if defined(CUBRID_SHARD)
+	else if (fn_ret == FN_GRACEFUL_DOWN)
+	  {
+	    as_info->uts_status = UTS_STATUS_STOP;
+	  }
+#endif
 	else
 	  {
 	    as_info->uts_status = UTS_STATUS_CON_WAIT;
@@ -1574,10 +1582,22 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
       if (is_net_timed_out ())
 	{
+#if defined(CUBRID_SHARD)
+	  if (get_graceful_down_timeout () > 0)
+	    {
+	      cas_log_msg = "SESSION TIMEOUT AND EXPIRE IDLE TIMEOUT";
+	      fn_ret = FN_GRACEFUL_DOWN;
+	    }
+	  else
+	    {
+#endif
 #if defined(CAS_FOR_MYSQL)
-	  cas_log_msg = "SESSION TIMEOUT OR MYSQL CONNECT TIMEOUT";
+	      cas_log_msg = "SESSION TIMEOUT OR MYSQL CONNECT TIMEOUT";
 #else
-	  cas_log_msg = "SESSION TIMEOUT";
+	      cas_log_msg = "SESSION TIMEOUT";
+#endif
+#if defined(CUBRID_SHARD)
+	    }
 #endif
 	}
       else
@@ -2053,6 +2073,7 @@ net_read_process (SOCKET proxy_sock_fd,
 {
   int ret_value = 0;
   int elapsed_sec = 0, elapsed_msec = 0;
+  int timeout;
 
   if (as_info->con_status == CON_STATUS_IN_TRAN)
     {
@@ -2060,11 +2081,20 @@ net_read_process (SOCKET proxy_sock_fd,
     }
   else
     {
+      timeout = get_graceful_down_timeout ();
+      if (timeout > 0)
+	{
 #if defined(CAS_FOR_MYSQL)
-      net_timeout_set (MYSQL_CONNECT_TIMEOUT);
-#else
-      net_timeout_set (-1);
+	  timeout = MIN (timeout, MYSQL_CONNECT_TIMEOUT);
 #endif
+	}
+#if defined(CAS_FOR_MYSQL)
+      else
+	{
+	  timeout = MYSQL_CONNECT_TIMEOUT;
+	}
+#endif
+      net_timeout_set (timeout);
     }
 
   do
@@ -2104,8 +2134,9 @@ net_read_process (SOCKET proxy_sock_fd,
 		  ret_value = -1;
 		  break;
 		}
-#if defined(CAS_FOR_MYSQL)
+#if defined(CUBRID_SHARD) || defined (CAS_FOR_MYSQL)
 	      /* MYSQL_CONNECT_TIMEOUT case */
+	      /* SHARD_CAS expire idle time and restart case */
 	      ret_value = -1;
 	      break;
 #endif
@@ -2480,5 +2511,16 @@ return_error:
     }
 
   return -1;
+}
+
+static int
+get_graceful_down_timeout ()
+{
+  if (shm_as_index < shard_info_p->min_appl_server)
+    {
+      return -1;
+    }
+
+  return 1 * 60;		/* 1 min */
 }
 #endif /* CUBRID_SHARD */

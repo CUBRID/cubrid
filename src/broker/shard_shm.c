@@ -845,9 +845,10 @@ shard_shm_dump_shard (FILE * fp, T_SHARD_INFO * shard_info_p)
 	   shard_info_p->db_password);
   fprintf (fp, BLANK_6 "%-30s = %-30s \n", "DB_CONN_INFO",
 	   shard_info_p->db_conn_info);
+  fprintf (fp, BLANK_6 "%-30s = %-30d \n", "WAITER_COUNT",
+	   shard_info_p->waiter_count);
 
-
-  for (; i < shard_info_p->num_appl_server; i++)
+  for (; i < shard_info_p->max_appl_server; i++)
     {
       fprintf (fp, "\n");
       fprintf (fp, BLANK_9 "<CAS %d>\n", i);

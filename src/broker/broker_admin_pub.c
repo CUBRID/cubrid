@@ -4012,7 +4012,7 @@ shard_shm_set_param_as (T_SHARD_INFO * shard_info_p, const char *param_name,
 
   if (as_number < 0)
     {
-      for (i = 0; i < shard_info_p->num_appl_server; i++)
+      for (i = 0; i < shard_info_p->max_appl_server; i++)
 	{
 	  if (shard_shm_set_param_as_internal (&shard_info_p->as_info[i],
 					       param_name, param_value) < 0)

@@ -368,8 +368,14 @@ shard_stmt_check_waiter_and_wakeup (T_SHARD_STMT * stmt_p)
   while ((waiter_p =
 	  (T_WAIT_CONTEXT *) shard_queue_dequeue (&stmt_p->waitq)) != NULL)
     {
-      PROXY_DEBUG_LOG ("Wakeup context by statement. statement(%s).",
-		       shard_str_stmt (stmt_p));
+      if (proxy_info_p->stmt_waiter_count > 0)
+	{
+	  proxy_info_p->stmt_waiter_count--;
+	}
+
+      PROXY_DEBUG_LOG
+	("Wakeup context by statement. statement(%s) waiter_count(%d).",
+	 shard_str_stmt (stmt_p), proxy_info_p->stmt_waiter_count);
 
       error = proxy_wakeup_context_by_statement (waiter_p);
       if (error)
@@ -1258,7 +1264,8 @@ shard_statement_wait_timer (void)
 	  continue;
 	}
 
-      proxy_waiter_timeout (&stmt_p->waitq, now);
+      proxy_waiter_timeout (&stmt_p->waitq, &proxy_info_p->stmt_waiter_count,
+			    now);
     }
 
   return;

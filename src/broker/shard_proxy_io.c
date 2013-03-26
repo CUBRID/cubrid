@@ -3811,6 +3811,7 @@ proxy_client_add_waiter_by_shard (T_SHARD_IO * shard_io_p, int ctx_cid,
 {
   int error;
   T_WAIT_CONTEXT *waiter_p;
+  T_SHARD_INFO *shard_info_p = NULL;
 
   ENTER_FUNC ();
 
@@ -3836,6 +3837,15 @@ proxy_client_add_waiter_by_shard (T_SHARD_IO * shard_io_p, int ctx_cid,
       return -1;
     }
 
+  shard_info_p =
+    shard_shm_find_shard_info (proxy_info_p, shard_io_p->shard_id);
+  if (shard_info_p != NULL)
+    {
+      shard_info_p->waiter_count++;
+      PROXY_DEBUG_LOG ("Add waiter by shard. (waiter_count:%d).",
+		       shard_info_p->waiter_count);
+    }
+
   EXIT_FUNC ();
   return 0;
 }
@@ -3846,6 +3856,7 @@ proxy_client_check_waiter_and_wakeup (T_SHARD_IO * shard_io_p,
 {
   int error;
   T_WAIT_CONTEXT *waiter_p = NULL;
+  T_SHARD_INFO *shard_info_p = NULL;
 
   ENTER_FUNC ();
 
@@ -3853,10 +3864,20 @@ proxy_client_check_waiter_and_wakeup (T_SHARD_IO * shard_io_p,
   assert (cas_io_p);
 
   waiter_p = (T_WAIT_CONTEXT *) shard_queue_dequeue (&shard_io_p->waitq);
-  if (waiter_p)
+  while (waiter_p)
     {
       PROXY_DEBUG_LOG ("Wakeup waiter by shard. (shard_id:%d, cas_id:%d).",
 		       cas_io_p->shard_id, cas_io_p->cas_id);
+
+      shard_info_p =
+	shard_shm_find_shard_info (proxy_info_p, shard_io_p->shard_id);
+      if ((shard_info_p != NULL) && (shard_info_p->waiter_count > 0))
+	{
+	  shard_info_p->waiter_count--;
+	  PROXY_DEBUG_LOG ("Wakeup context by shard. (waiter_count:%d).",
+			   shard_info_p->waiter_count);
+	}
+
       error =
 	proxy_wakeup_context_by_shard (waiter_p, cas_io_p->shard_id,
 				       cas_io_p->cas_id);
@@ -3866,9 +3887,12 @@ proxy_client_check_waiter_and_wakeup (T_SHARD_IO * shard_io_p,
 		     "Failed to wakeup context by shard. "
 		     "(error:%d, shard_id:%d, cas_id:%d).",
 		     error, cas_io_p->shard_id, cas_io_p->cas_id);
+	  FREE_MEM (waiter_p);
+	  continue;
 	}
 
       FREE_MEM (waiter_p);
+      break;
     }
 
   EXIT_FUNC ();
@@ -4629,6 +4653,8 @@ void
 proxy_available_cas_wait_timer (void)
 {
   T_SHARD_IO *shard_io_p;
+  T_SHARD_INFO *shard_info_p = NULL;
+  T_WAIT_CONTEXT *waiter_p;
   int i, now;
 
   now = time (NULL);
@@ -4636,7 +4662,23 @@ proxy_available_cas_wait_timer (void)
   for (i = 0; i < proxy_Shard_io.max_shard; i++)
     {
       shard_io_p = &(proxy_Shard_io.ent[i]);
-      proxy_waiter_timeout (&shard_io_p->waitq, now);
+      proxy_waiter_timeout (&shard_io_p->waitq,
+			    (shard_info_p !=
+			     NULL) ? &shard_info_p->waiter_count : NULL, now);
+
+      waiter_p =
+	(T_WAIT_CONTEXT *) shard_queue_peek_value (&shard_io_p->waitq);
+      if (waiter_p == NULL)
+	{
+	  shard_info_p =
+	    shard_shm_find_shard_info (proxy_info_p, shard_io_p->shard_id);
+	  if ((shard_info_p != NULL) && (shard_info_p->waiter_count > 0))
+	    {
+	      shard_info_p->waiter_count = 0;
+	      PROXY_DEBUG_LOG ("Clear shard(%d) waiter queue by timer.",
+			       shard_io_p->shard_id);
+	    }
+	}
     }
 
   return;

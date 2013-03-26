@@ -198,7 +198,7 @@ proxy_waiter_free (T_WAIT_CONTEXT * waiter)
 }
 
 void
-proxy_waiter_timeout (T_SHARD_QUEUE * waitq, int now)
+proxy_waiter_timeout (T_SHARD_QUEUE * waitq, int *counter, int now)
 {
   T_PROXY_CONTEXT *ctx_p;
   T_WAIT_CONTEXT *waiter_p;
@@ -218,6 +218,12 @@ proxy_waiter_timeout (T_SHARD_QUEUE * waitq, int now)
 
       waiter_p = (T_WAIT_CONTEXT *) shard_queue_dequeue (waitq);
       assert (waiter_p != NULL);
+
+      if (counter != NULL && *counter > 0)
+	{
+	  (*counter)--;
+	  PROXY_DEBUG_LOG ("Waiter timeout. (counter:%d).", *counter);
+	}
 
       ctx_p = proxy_context_find (waiter_p->ctx_cid, waiter_p->ctx_uid);
       if (ctx_p == NULL)

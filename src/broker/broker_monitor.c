@@ -129,7 +129,9 @@ typedef enum
   FIELD_TRANSACTION_STIME,
   FIELD_CONNECT,
   FIELD_RESTART,
-  FIELD_LAST = FIELD_RESTART
+  FIELD_STMT_Q_SIZE,
+  FIELD_SHARD_Q_SIZE,		/* = 50 */
+  FIELD_LAST = FIELD_SHARD_Q_SIZE
 } FIELD_NAME;
 
 typedef enum
@@ -221,7 +223,9 @@ struct status_field fields[FIELD_LAST + 1] = {
   {FIELD_SQL_LOG_MODE, 15, "SQL_LOG_MODE", FIELD_RIGHT_ALIGN},
   {FIELD_TRANSACTION_STIME, 19, "TRANSACTION STIME", FIELD_RIGHT_ALIGN},
   {FIELD_CONNECT, 9, "#CONNECT", FIELD_RIGHT_ALIGN},
-  {FIELD_RESTART, 9, "#RESTART", FIELD_RIGHT_ALIGN}
+  {FIELD_RESTART, 9, "#RESTART", FIELD_RIGHT_ALIGN},
+  {FIELD_STMT_Q_SIZE, 7, "STMT-Q", FIELD_RIGHT_ALIGN},
+  {FIELD_SHARD_Q_SIZE, 7, "SHARD-Q", FIELD_RIGHT_ALIGN}
 };
 
 /* structure for appl monitoring */
@@ -1165,7 +1169,7 @@ appl_monitor (char *br_vector)
 		    {
 		      /* j == cas_index */
 		      for (cas_index = 0;
-			   cas_index < shard_info_p->num_appl_server;
+			   cas_index < shard_info_p->max_appl_server;
 			   cas_index++, appl_offset++)
 			{
 			  appl_info_display (shm_appl,
@@ -1255,6 +1259,7 @@ br_monitor (char *br_vector)
   UINT64 num_others_query = 0;
 
 #if defined(CUBRID_SHARD)
+  UINT64 num_stmt_q = 0, num_shard_q = 0;
   char *shm_as_cp = NULL;
 
   T_SHM_PROXY *shm_proxy_p = NULL;
@@ -1280,6 +1285,9 @@ br_monitor (char *br_vector)
 #if defined(CUBRID_SHARD)
   buf_offset = print_title (buf, buf_offset, FIELD_ACTIVE_P, NULL);
   buf_offset = print_title (buf, buf_offset, FIELD_ACTIVE_C, NULL);
+
+  buf_offset = print_title (buf, buf_offset, FIELD_STMT_Q_SIZE, NULL);
+  buf_offset = print_title (buf, buf_offset, FIELD_SHARD_Q_SIZE, NULL);
 #else
   if (full_info_flag)
     {
@@ -1577,6 +1585,7 @@ br_monitor (char *br_vector)
 
 #if defined(CUBRID_SHARD)
 	      tot_cas = tot_proxy = 0;
+	      num_stmt_q = num_shard_q = 0;
 	      for (proxy_index = 0, proxy_info_p =
 		   shard_shm_get_first_proxy_info (shm_proxy_p); proxy_info_p;
 		   proxy_index++, proxy_info_p =
@@ -1619,6 +1628,7 @@ br_monitor (char *br_vector)
 					      num_delete_query_cur);
 
 		      tot_cas += cas_index;
+		      num_shard_q += shard_info_p->waiter_count;
 		    }		/* SHARD */
 		  num_hnqx_cur +=
 		    proxy_info_p->num_hint_none_queries_processed;
@@ -1627,6 +1637,7 @@ br_monitor (char *br_vector)
 		  num_hiqx_cur += proxy_info_p->num_hint_id_queries_processed;
 		  num_haqx_cur +=
 		    proxy_info_p->num_hint_all_queries_processed;
+		  num_stmt_q += proxy_info_p->stmt_waiter_count;
 		}		/* PROXY */
 	      tot_proxy += proxy_index;
 #else
@@ -1739,6 +1750,9 @@ br_monitor (char *br_vector)
 #if defined(CUBRID_SHARD)
 	      print_value (FIELD_ACTIVE_P, &tot_proxy, FIELD_T_INT);
 	      print_value (FIELD_ACTIVE_C, &tot_cas, FIELD_T_INT);
+
+	      print_value (FIELD_STMT_Q_SIZE, &num_stmt_q, FIELD_T_INT);
+	      print_value (FIELD_SHARD_Q_SIZE, &num_shard_q, FIELD_T_INT);
 #endif /* CUBRID_SHARD */
 
 	      print_value (FIELD_TPS, &tps, FIELD_T_UINT64);

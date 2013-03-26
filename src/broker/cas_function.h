@@ -33,7 +33,8 @@ typedef enum
 {
   FN_KEEP_CONN = 0,
   FN_CLOSE_CONN = -1,
-  FN_KEEP_SESS = -2
+  FN_KEEP_SESS = -2,
+  FN_GRACEFUL_DOWN = -3
 } FN_RETURN;
 
 typedef FN_RETURN (*T_SERVER_FUNC) (SOCKET, int, void **, T_NET_BUF *,

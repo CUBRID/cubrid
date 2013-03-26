@@ -56,6 +56,7 @@
 #endif
 #if defined(CUBRID_SHARD)
 #define         UTS_STATUS_CON_WAIT     5
+#define 	UTS_STATUS_STOP		6
 #endif /* CUBRID_SHARD */
 
 #define 	PROXY_STATUS_BUSY	1
@@ -334,6 +335,9 @@ struct t_shard_info
   char db_user[SRV_CON_DBUSER_SIZE];
   char db_password[SRV_CON_DBPASSWD_SIZE];
 
+  /* shard queue stat */
+  INT64 waiter_count;
+
   char db_conn_info[LINE_MAX];	/* cubrid - hostname(ip)
 				 * mysql  - hostname(ip):port
 				 * oracle - tns
@@ -399,6 +403,7 @@ struct t_proxy_info
 #endif
 
   int wait_timeout;
+  int stmt_waiter_count;
 
   int max_prepared_stmt_count;
   char ignore_shard_hint;
