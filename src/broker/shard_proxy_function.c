@@ -1837,6 +1837,19 @@ fn_proxy_client_cursor (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 
   const char func_code = CAS_FC_CURSOR;
 
+  ENTER_FUNC ();
+
+  if (ctx_p->is_in_tran == false)
+    {
+      proxy_context_set_error (ctx_p, CAS_ERROR_INDICATOR, CAS_ER_SRV_HANDLE);
+
+      proxy_event_free (event_p);
+      event_p = NULL;
+
+      EXIT_FUNC ();
+      return -1;
+    }
+
   if (ctx_p->is_bypass_msg)
     {
       error = proxy_send_request_to_cas (ctx_p, event_p);
@@ -1869,6 +1882,17 @@ fn_proxy_client_fetch (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
   const char func_code = CAS_FC_FETCH;
 
   ENTER_FUNC ();
+
+  if (ctx_p->is_in_tran == false)
+    {
+      proxy_context_set_error (ctx_p, CAS_ERROR_INDICATOR, CAS_ER_SRV_HANDLE);
+
+      proxy_event_free (event_p);
+      event_p = NULL;
+
+      EXIT_FUNC ();
+      return -1;
+    }
 
   /* find idle cas */
   cas_io_p = proxy_cas_alloc_by_ctx (ctx_p->shard_id, ctx_p->cas_id,

@@ -1053,7 +1053,10 @@ proxy_socket_io_destroy (void)
       if (sock_io_p->fd != INVALID_SOCKET)
 	{
 #if defined(LINUX)
-	  /* socket fd will be removed from epoll sets automatically. */
+	  if (sock_io_p->status != SOCK_IO_CLOSE_WAIT)
+	    {
+	      (void) proxy_del_epoll_event (sock_io_p->fd);
+	    }
 #else /* LINUX */
 	  FD_CLR (sock_io_p->fd, &allset);
 	  FD_CLR (sock_io_p->fd, &wnewset);
@@ -1224,7 +1227,10 @@ proxy_socket_io_delete (SOCKET fd)
   if (sock_io_p->fd != INVALID_SOCKET)
     {
 #if defined(LINUX)
-      /* socket fd will be removed from epoll sets automatically. */
+      if (sock_io_p->status != SOCK_IO_CLOSE_WAIT)
+	{
+	  (void) proxy_del_epoll_event (sock_io_p->fd);
+	}
 #else /* LINUX */
       FD_CLR (sock_io_p->fd, &allset);
       FD_CLR (sock_io_p->fd, &wnewset);
@@ -2069,10 +2075,6 @@ proxy_process_cas_conn_error (T_SOCKET_IO * sock_io_p)
 
   if (cas_io_p->is_in_tran == false)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unexpected CAS transaction status. "
-		 "(expected tran status:%d). CAS(%s).", true,
-		 proxy_str_cas_io (cas_io_p));
-
       /* __FOR_DEBUG */
       assert (cas_io_p->ctx_cid == PROXY_INVALID_CONTEXT);
       assert (cas_io_p->ctx_uid == 0);
@@ -4465,7 +4467,14 @@ retry_select:
 	  if ((ep_Event[i].events & EPOLLERR)
 	      || (ep_Event[i].events & EPOLLHUP))
 	    {
-	      proxy_socket_io_read_error (sock_io_p);
+	      if (ep_Event[i].events & EPOLLIN)
+		{
+		  proxy_socket_io_read (sock_io_p);
+		}
+	      else
+		{
+		  proxy_socket_io_read_error (sock_io_p);
+		}
 	    }
 	  else
 	    {
