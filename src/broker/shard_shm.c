@@ -64,7 +64,11 @@ static void shard_shm_init_key_stat (T_SHM_SHARD_KEY_STAT * key_stat_p,
 static void shard_shm_init_shard_stat (T_SHM_SHARD_CONN_STAT *
 				       shard_stat_p,
 				       T_SHARD_CONN * shard_conn);
+#if defined(LINUX)
+static int shard_shm_get_max_context (int max_client);
+#else /* LINUX */
 static int shard_shm_get_max_context (int max_num_appl_server);
+#endif /* !LINUX */
 
 void
 shard_shm_set_shm_as (T_SHM_APPL_SERVER * shm_as_p, T_BROKER_INFO * br_info_p)
@@ -153,10 +157,17 @@ shard_shm_set_shm_proxy (T_SHM_PROXY * shm_proxy_p, T_BROKER_INFO * br_info_p)
     (br_info_p->max_client / br_info_p->max_num_proxy);
   if (shm_proxy_p->max_client == 0)
     {
-      shm_proxy_p->max_client = 1;	/* at least one client */
+      shm_proxy_p->max_client = 1;
     }
+#if defined(LINUX)
   shm_proxy_p->max_context =
-    shard_shm_get_max_context (br_info_p->appl_server_max_num);
+    shard_shm_get_max_context (br_info_p->max_client /
+			       br_info_p->max_num_proxy);
+#else /* LINUX */
+  shm_proxy_p->max_context =
+    shard_shm_get_max_context (br_info_p->appl_server_max_num /
+			       br_info_p->max_num_proxy);
+#endif /* !LINUX */
 
   /* SHARD SHARD_KEY_ID */
   shm_proxy_p->shard_key_modular = br_info_p->shard_key_modular;
@@ -314,7 +325,15 @@ shard_shm_initialize (T_BROKER_INFO * br_info_p, char *shm_metadata_cp)
   shard_stat_size = sizeof (T_SHM_SHARD_CONN_STAT);
 
   client_info_size = sizeof (T_CLIENT_INFO);
-  max_context = shard_shm_get_max_context (br_info_p->appl_server_max_num);
+#if defined(LINUX)
+  max_context =
+    shard_shm_get_max_context (br_info_p->max_client /
+			       br_info_p->max_num_proxy);
+#else /* LINUX */
+  max_context =
+    shard_shm_get_max_context (br_info_p->appl_server_max_num /
+			       br_info_p->max_num_proxy);
+#endif /* !LINUX */
 
   proxy_info_size =
     sizeof (T_PROXY_INFO)
@@ -1251,6 +1270,18 @@ shard_shm_get_shard_stat_offset (T_PROXY_INFO * proxy_info_p)
   return offset;
 }
 
+#if defined(LINUX)
+static int
+shard_shm_get_max_context (int max_client)
+{
+  if (max_client <= 0)
+    {
+      max_client = 1;
+    }
+
+  return (MIN (max_client, PROXY_MAX_CLIENT) + RESERVED_FD);
+}
+#else /* LINUX */
 static int
 shard_shm_get_max_context (int max_num_appl_server)
 {
@@ -1258,8 +1289,7 @@ shard_shm_get_max_context (int max_num_appl_server)
 
   if (max_num_appl_server <= 0)
     {
-      assert (false);
-      max_num_appl_server = 0;
+      max_num_appl_server = 1;
     }
 
   /* 
@@ -1272,3 +1302,4 @@ shard_shm_get_max_context (int max_num_appl_server)
 
   return max_context;
 }
+#endif /* !LINUX */

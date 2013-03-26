@@ -53,6 +53,8 @@ T_SHM_SHARD_CONN *shm_conn_p = NULL;
 static int proxy_shm_initialize (void);
 /* END OF SHARD SHM */
 
+bool proxy_Keep_running;
+
 static void cleanup (int signo);
 
 static void proxy_set_hang_check_time (void);
@@ -68,7 +70,7 @@ proxy_term (void)
   proxy_io_destroy ();
   shard_stmt_destroy ();
 
-  exit (0);
+  return;
 }
 
 static void
@@ -77,6 +79,7 @@ cleanup (int signo)
   signal (signo, SIG_IGN);
 
   proxy_term ();
+  exit (0);
 
   return;
 }
@@ -235,7 +238,8 @@ main (int argc, char *argv[])
     }
 
   PROXY_LOG (PROXY_LOG_MODE_ERROR, "Shard proxy started.");
-  while (ENDLESS)
+  proxy_Keep_running = true;
+  while (proxy_Keep_running == true)
     {
       /*
        * Since every operation in proxy main is non-blocking
@@ -257,6 +261,8 @@ main (int argc, char *argv[])
       proxy_unset_hang_check_time ();
     }
   PROXY_LOG (PROXY_LOG_MODE_NOTICE, "Shard proxy going down.");
+
+  proxy_term ();
   return 0;
 }
 

@@ -37,8 +37,12 @@
 #if defined(WINDOWS)
 #define MAX_FD 1024
 #else /* WINDOWS */
+#if defined(LINUX)
+#define PROXY_MAX_CLIENT 	(100000)
+#else /* LINUX */
 #undef MAX_FD
 #define MAX_FD FD_SETSIZE
+#endif /* !LINUX */
 #endif /* !WINDOWS */
 
 /*
@@ -49,7 +53,11 @@
  * stdin / stdout / stderr
  * RESERVED
  * */
-#define RESERVED_FD 	(128)	/* include broker/proxy connection */
+#if defined(LINUX)
+#define RESERVED_FD 	(256)
+#else /* LINUX */
+#define RESERVED_FD 	(128)
+#endif /* !LINUX */
 
 #define PROXY_INVALID_ID			(-1)
 #define PROXY_INVALID_SHARD			(PROXY_INVALID_ID)

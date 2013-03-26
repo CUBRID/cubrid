@@ -28,6 +28,10 @@
 
 #include <assert.h>
 #include <signal.h>
+#include <string.h>
+#if defined(LINUX)
+#include <sys/epoll.h>
+#endif /* LINUX */
 
 #include "porting.h"
 #include "shard_proxy_io.h"
@@ -70,6 +74,7 @@ extern T_PROXY_HANDLER proxy_Handler;
 extern T_PROXY_CONTEXT proxy_Context;
 
 extern void proxy_term (void);
+extern bool proxy_Keep_running;
 
 extern const char *rel_build_number (void);
 
@@ -149,7 +154,20 @@ static SOCKET proxy_io_cas_accept (SOCKET lsnr_fd);
 
 static void proxy_init_net_buf (T_NET_BUF * net_buf);
 
+#if defined(LINUX)
+static int proxy_get_max_socket (void);
+static int proxy_add_epoll_event (int fd, unsigned int events);
+static int proxy_mod_epoll_event (int fd, unsigned int events);
+static int proxy_del_epoll_event (int fd);
+
+static int max_Socket = 0;
+static int ep_Fd = INVALID_SOCKET;
+static struct epoll_event *ep_Event = NULL;
+#else /* LINUX */
+int maxfd = 0;
 fd_set rset, wset, allset, wnewset, wallset;
+#endif /* !LINUX */
+
 #if defined(WINDOWS)
 int broker_port = 0;
 int accept_ip_addr = 0;
@@ -158,7 +176,6 @@ SOCKET client_lsnr_fd = INVALID_SOCKET;
 SOCKET broker_conn_fd = INVALID_SOCKET;
 #endif /* !WINDOWS */
 SOCKET cas_lsnr_fd = INVALID_SOCKET;
-int maxfd = 0;
 
 T_SOCKET_IO_GLOBAL proxy_Socket_io;
 T_CLIENT_IO_GLOBAL proxy_Client_io;
@@ -990,10 +1007,14 @@ proxy_socket_io_initialize (void)
       return 0;
     }
 
+#if defined(LINUX)
+  proxy_Socket_io.max_socket = max_Socket;
+#else /* LINUX */
   proxy_Socket_io.max_socket = MAX_FD;
+#endif /* !LINUX */
   proxy_Socket_io.cur_socket = 0;
 
-  size = sizeof (T_SOCKET_IO) * MAX_FD;
+  size = sizeof (T_SOCKET_IO) * proxy_Socket_io.max_socket;
   proxy_Socket_io.ent = (T_SOCKET_IO *) malloc (size);
   if (proxy_Socket_io.ent == NULL)
     {
@@ -1004,7 +1025,7 @@ proxy_socket_io_initialize (void)
     }
   memset (proxy_Socket_io.ent, 0, size);
 
-  for (i = 0; i < MAX_FD; i++)
+  for (i = 0; i < proxy_Socket_io.max_socket; i++)
     {
       sock_io_p = &(proxy_Socket_io.ent[i]);
 
@@ -1031,9 +1052,12 @@ proxy_socket_io_destroy (void)
 
       if (sock_io_p->fd != INVALID_SOCKET)
 	{
+#if defined(LINUX)
+	  /* socket fd will be removed from epoll sets automatically. */
+#else /* LINUX */
 	  FD_CLR (sock_io_p->fd, &allset);
 	  FD_CLR (sock_io_p->fd, &wnewset);
-
+#endif /* !LINUX */
 	  CLOSE_SOCKET (sock_io_p->fd);
 	}
       proxy_socket_io_clear (sock_io_p);
@@ -1106,6 +1130,7 @@ proxy_socket_io_print (bool print_all)
 static T_SOCKET_IO *
 proxy_socket_io_add (SOCKET fd, bool from_cas)
 {
+  int error;
   T_SOCKET_IO *sock_io_p;
 
   assert (proxy_Socket_io.ent);
@@ -1114,10 +1139,11 @@ proxy_socket_io_add (SOCKET fd, bool from_cas)
       return NULL;
     }
 
-  if (fd >= MAX_FD)
+  if (fd >= proxy_Socket_io.max_socket)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "socket fd exceeds MAX_FD. (fd:%d, MAX_FD:%d).", fd, MAX_FD);
+		 "socket fd exceeds max socket fd. (fd:%d, max socket fd:%d).",
+		 fd, proxy_Socket_io.max_socket);
       return NULL;
     }
 
@@ -1129,6 +1155,20 @@ proxy_socket_io_add (SOCKET fd, bool from_cas)
 		 proxy_Socket_io.cur_socket, proxy_Socket_io.max_socket);
       return NULL;
     }
+
+  shard_io_set_fl (fd, O_NONBLOCK);
+
+#if defined(LINUX)
+  error = proxy_add_epoll_event (fd, EPOLLIN | EPOLLOUT);
+  if (error < 0)
+    {
+      CLOSE_SOCKET (fd);
+      return NULL;
+    }
+#else /* LINUX */
+  FD_SET (fd, &allset);
+  maxfd = max (maxfd, fd);
+#endif /* !LINUX */
 
   sock_io_p = &(proxy_Socket_io.ent[fd]);
 
@@ -1148,11 +1188,6 @@ proxy_socket_io_add (SOCKET fd, bool from_cas)
   assert (sock_io_p->write_event == NULL);
   sock_io_p->read_event = NULL;
   sock_io_p->write_event = NULL;
-
-  shard_io_set_fl (fd, O_NONBLOCK);
-
-  FD_SET (fd, &allset);
-  maxfd = max (maxfd, fd);
 
   proxy_Socket_io.cur_socket++;
 
@@ -1175,10 +1210,11 @@ proxy_socket_io_delete (SOCKET fd)
   assert (proxy_Socket_io.ent);
   assert (proxy_Socket_io.cur_socket > 0);
 
-  if (fd >= MAX_FD)
+  if (fd >= proxy_Socket_io.max_socket)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "socket fd exceeds MAX_FD. (fd:%d, MAX_FD:%d).", fd, MAX_FD);
+		 "socket fd exceeds max socket fd. (fd:%d, max_socket_fd:%d).",
+		 fd, proxy_Socket_io.max_socket);
       EXIT_FUNC ();
       return -1;
     }
@@ -1187,8 +1223,12 @@ proxy_socket_io_delete (SOCKET fd)
 
   if (sock_io_p->fd != INVALID_SOCKET)
     {
+#if defined(LINUX)
+      /* socket fd will be removed from epoll sets automatically. */
+#else /* LINUX */
       FD_CLR (sock_io_p->fd, &allset);
       FD_CLR (sock_io_p->fd, &wnewset);
+#endif /* !LINUX */
 
       PROXY_DEBUG_LOG ("Close socket. (fd:%d).", sock_io_p->fd);
       CLOSE_SOCKET (sock_io_p->fd);
@@ -1215,25 +1255,39 @@ int
 proxy_socket_set_write_event (T_SOCKET_IO * sock_io_p,
 			      T_PROXY_EVENT * event_p)
 {
+  int error;
   assert (sock_io_p);
   assert (event_p);
 
   if (sock_io_p->write_event)
     {
       /* the procotol between driver and proxy must be broken */
-      proxy_event_free (sock_io_p->write_event);
-      sock_io_p->write_event = NULL;
-
-      return -1;
+      goto error_return;
     }
 
-  event_p->buffer.offset = 0;	// set offset to start of the write buffer
+#if defined(LINUX)
+  error = proxy_mod_epoll_event (sock_io_p->fd, EPOLLIN | EPOLLOUT);
+  if (error < 0)
+    {
+      goto error_return;
+    }
+#else /* LINUX */
+  FD_SET (sock_io_p->fd, &wnewset);
+#endif /* !LINUX */
 
+  event_p->buffer.offset = 0;	// set offset to start of the write buffer
   sock_io_p->write_event = event_p;
 
-  FD_SET (sock_io_p->fd, &wnewset);
-
   return 0;
+
+error_return:
+
+  if (sock_io_p->write_event)
+    {
+      proxy_event_free (sock_io_p->write_event);
+      sock_io_p->write_event = NULL;
+    }
+  return -1;
 }
 
 static int
@@ -1269,7 +1323,8 @@ proxy_socket_io_new_client (SOCKET lsnr_fd)
 		 "(lsnf_fd:%d, client_fd:%d).", lsnr_fd, client_fd);
 
       /* shard_broker must be abnormal status */
-      proxy_term ();
+      proxy_Keep_running = false;
+      return -1;
     }
 
   proxy_status = 0;
@@ -1635,7 +1690,7 @@ proxy_process_client_request (T_SOCKET_IO * sock_io_p)
 static int
 proxy_process_client_conn_error (T_SOCKET_IO * sock_io_p)
 {
-  int error;
+  int error = 0;
   T_PROXY_CONTEXT *ctx_p;
   T_CLIENT_INFO *client_info_p;
   T_PROXY_EVENT *event_p;
@@ -1648,9 +1703,17 @@ proxy_process_client_conn_error (T_SOCKET_IO * sock_io_p)
 
   sock_io_p->status = SOCK_IO_CLOSE_WAIT;
 
+#if defined(LINUX)
+  error = proxy_del_epoll_event (sock_io_p->fd);
+  if (error < 0)
+    {
+      return -1;
+    }
+#else /* LINUX */
   /* disable socket read/write */
   FD_CLR (sock_io_p->fd, &allset);
   FD_CLR (sock_io_p->fd, &wnewset);
+#endif /* !LINUX */
 
   ctx_p = proxy_context_find_by_socket_client_io (sock_io_p);
   if (ctx_p == NULL)
@@ -1727,7 +1790,14 @@ proxy_process_client_read_error (T_SOCKET_IO * sock_io_p)
 
   assert (sock_io_p);
 
+#if defined(LINUX)
+  /* 
+   * If connection error event was triggered by EPOLLERR, EPOLLHUP, 
+   * there could be no error events. 
+   */
+#else /* LINUX */
   assert (sock_io_p->read_event);
+#endif /* !LINUX */
   if (sock_io_p->read_event)
     {
       proxy_event_free (sock_io_p->read_event);
@@ -1967,9 +2037,17 @@ proxy_process_cas_conn_error (T_SOCKET_IO * sock_io_p)
 
   sock_io_p->status = SOCK_IO_CLOSE_WAIT;
 
+#if defined(LINUX)
+  error = proxy_del_epoll_event (sock_io_p->fd);
+  if (error == -1)
+    {
+      return -1;
+    }
+#else /* LINUX */
   /* disable socket read/write */
   FD_CLR (sock_io_p->fd, &allset);
   FD_CLR (sock_io_p->fd, &wnewset);
+#endif /* !LINUX */
 
   cas_io_p = proxy_cas_io_find_by_fd (sock_io_p->id.shard.shard_id,
 				      sock_io_p->id.shard.cas_id,
@@ -2083,7 +2161,14 @@ proxy_process_cas_read_error (T_SOCKET_IO * sock_io_p)
 
   assert (sock_io_p);
 
+#if defined(LINUX)
+  /* 
+   * If connection error event was triggered by EPOLLERR, EPOLLHUP, 
+   * there could be no error events. 
+   */
+#else /* LINUX */
   assert (sock_io_p->read_event);
+#endif /* !LINUX */
   if (sock_io_p->read_event)
     {
       proxy_event_free (sock_io_p->read_event);
@@ -2168,7 +2253,11 @@ proxy_socket_io_write_internal (T_SOCKET_IO * sock_io_p)
       if ((errno == EWOULDBLOCK) || (errno == EAGAIN) || (errno == EINTR))
 #endif
 	{
+#if defined(LINUX)
+	  /* Nothing to do. epoll events has not been changed. */
+#else /* LINUX */
 	  FD_SET (sock_io_p->fd, &wnewset);
+#endif /* !LINUX */
 	  return 0;
 	}
 
@@ -2179,7 +2268,11 @@ proxy_socket_io_write_internal (T_SOCKET_IO * sock_io_p)
 
   if (send_buffer->offset < send_buffer->length)
     {
+#if defined(LINUX)
+      /* Nothing to do. epoll events has not been changed. */
+#else /* LINUX */
       FD_SET (sock_io_p->fd, &wnewset);
+#endif /* !LINUX */
       return write_len;
     }
 
@@ -2188,7 +2281,11 @@ write_end:
   proxy_event_free (sock_io_p->write_event);
   sock_io_p->write_event = NULL;
 
+#if defined(LINUX)
+  (void) proxy_mod_epoll_event (sock_io_p->fd, EPOLLIN);
+#else /* LINUX */
   FD_CLR (sock_io_p->fd, &wnewset);
+#endif /* !LINUX */
 
   return write_len;
 }
@@ -2471,14 +2568,22 @@ proxy_socket_io_write (T_SOCKET_IO * sock_io_p)
 	  sock_io_p->write_event = NULL;
 	}
 
+#if defined(LINUX)
+      (void) proxy_mod_epoll_event (sock_io_p->fd, EPOLLIN);
+#else /* LINUX */
       FD_CLR (sock_io_p->fd, &wnewset);
+#endif /* !LINUX */
 
       return;
     }
 
   if (sock_io_p->write_event == NULL)
     {
+#if defined(LINUX)
+      (void) proxy_mod_epoll_event (sock_io_p->fd, EPOLLIN);
+#else /* LINUX */
       FD_CLR (sock_io_p->fd, &wnewset);
+#endif /* !LINUX */
 
       PROXY_DEBUG_LOG ("Write event couldn't be NULL. (fd:%d, status:%d). \n",
 		       sock_io_p->fd, sock_io_p->status);
@@ -3819,6 +3924,7 @@ static int
 proxy_io_register_to_broker (void)
 {
   SOCKET fd = INVALID_SOCKET;
+  int error;
   int tmp_proxy_id;
   int len;
   int num_retry = 0;
@@ -3847,9 +3953,20 @@ proxy_io_register_to_broker (void)
       return -1;
     }
 
+#if defined(LINUX)
+  shard_io_set_fl (fd, O_NONBLOCK);
+
+  error = proxy_add_epoll_event (fd, EPOLLIN | EPOLLPRI);
+  if (error < 0)
+    {
+      CLOSE_SOCKET (fd);
+      return -1;
+    }
+#else /* LINUX */
+  FD_SET (fd, &allset);
+  maxfd = max (maxfd, fd);
+#endif /* !LINUX */
   broker_conn_fd = fd;
-  FD_SET (broker_conn_fd, &allset);
-  maxfd = max (maxfd, broker_conn_fd);
 
   return 0;
 }
@@ -3910,7 +4027,6 @@ proxy_io_unixd_lsnr (char *unixd_sock_name)
 {
   SOCKET fd;
   int len, backlog_size;
-
   struct sockaddr_un shard_sock_addr;
 
   if ((fd = socket (AF_UNIX, SOCK_STREAM, 0)) < 0)
@@ -3955,6 +4071,7 @@ proxy_io_unixd_lsnr (char *unixd_sock_name)
 static int
 proxy_io_cas_lsnr (void)
 {
+  int error = 0;
   SOCKET fd;
 
 #if defined(WINDOWS)
@@ -3981,9 +4098,20 @@ proxy_io_cas_lsnr (void)
       return -1;		/* FAIELD */
     }
 
+#if defined(LINUX)
+  shard_io_set_fl (fd, O_NONBLOCK);
+
+  error = proxy_add_epoll_event (fd, EPOLLIN | EPOLLPRI);
+  if (error < 0)
+    {
+      CLOSE_SOCKET (fd);
+      return -1;
+    }
+#else /* LINUX */
+  FD_SET (fd, &allset);
+  maxfd = max (maxfd, fd);
+#endif /* !LINUX */
   cas_lsnr_fd = fd;
-  FD_SET (cas_lsnr_fd, &allset);
-  maxfd = max (maxfd, cas_lsnr_fd);
 
   return 0;			/* SUCCESS */
 }
@@ -4064,9 +4192,34 @@ proxy_io_initialize (void)
   char *port;
 #endif /* WINDOWS */
 
+#if defined(LINUX)
+  max_Socket = proxy_get_max_socket ();
+  assert (max_Socket > RESERVED_FD);
+
+  /* create epoll */
+  ep_Fd = epoll_create (max_Socket);
+  if (ep_Fd == INVALID_SOCKET)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Failed to create epoll fd. (errno=%d[%s])", errno,
+		 strerror (errno));
+      return -1;
+    }
+
+  ep_Event = calloc (max_Socket, sizeof (struct epoll_event));
+  if (ep_Event == NULL)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Not enough virtual memory for epoll event. (error:%d[%s]).",
+		 errno, strerror (errno));
+      return -1;
+    }
+
+#else /* LINUX */
   /* clear fds */
   FD_ZERO (&allset);
   FD_ZERO (&wnewset);
+#endif /* !LINUX */
 
 #if defined(WINDOWS)
   if ((port = getenv (PORT_NUMBER_ENV_STR)) == NULL)
@@ -4183,47 +4336,152 @@ proxy_io_close_all_fd (void)
     }
 #endif /* !WINDOWS */
 
-  return 1;
+#if defined(LINUX)
+  if (ep_Fd != INVALID_SOCKET)
+    {
+      CLOSE_SOCKET (ep_Fd);
+    }
+#endif /* LINUX */
+  return 0;
 }
 
 int
 proxy_io_process (void)
 {
   int error;
-  int select_ret;
   int cas_fd;
   int i;
   unsigned int num_new_client = 0;
 #if defined(WINDOWS)
   int client_fd;
 #endif
+  int n;
 
+#if defined(LINUX)
+  int sock_fd;
+  int timeout;
+#else /* LINUX */
+  fd_set eset;
   struct timeval tv;
+#endif /* !LINUX */
 
   T_SOCKET_IO *sock_io_p;
 
 retry_select:
+
+#if defined(LINUX)
+  timeout = 1000 / HZ;
+
+  n = epoll_wait (ep_Fd, ep_Event, max_Socket, timeout);
+#else /* LINUX */
   rset = allset;
   wset = wallset = wnewset;
 
   tv.tv_sec = 0;
   tv.tv_usec = 1000000 / HZ;
-
-  select_ret = select (maxfd + 1, &rset, &wset, NULL, &tv);
-  if (select_ret < 0)
+  n = select (maxfd + 1, &rset, &wset, NULL, &tv);
+#endif /* !LINUX */
+  if (n < 0)
     {
       if (errno != EINTR)
 	{
 	  perror ("select error");
 	  return -1;
 	}
-      return 0;			/* or -1 */
     }
-  else if (select_ret == 0)
+  else if (n == 0)
     {
       // print_statistics ();
       return 0;			/* or -1 */
     }
+
+#if defined(LINUX)
+  for (i = 0; i < n; i++)
+    {
+      if (cas_lsnr_fd == ep_Event[i].data.fd)	/* new cas */
+	{
+	  if ((ep_Event[i].events & EPOLLERR)
+	      || (ep_Event[i].events & EPOLLHUP))
+	    {
+	      proxy_Keep_running = false;
+	      return -1;
+	    }
+	  else if (ep_Event[i].events & EPOLLIN
+		   || ep_Event[i].events & EPOLLPRI)
+	    {
+	      cas_fd = proxy_io_cas_accept (cas_lsnr_fd);
+	      if (cas_fd >= 0)
+		{
+		  if (proxy_socket_io_add (cas_fd, PROXY_IO_FROM_CAS) == NULL)
+		    {
+		      PROXY_DEBUG_LOG ("Close socket. (fd:%d). \n",
+				       sock_io_p->fd);
+		      CLOSE_SOCKET (cas_fd);
+		    }
+		}
+	      else
+		{
+		  PROXY_LOG (PROXY_LOG_MODE_ERROR,
+			     "Accept socket failure. (fd:%d).", cas_fd);
+		  return 0;	/* or -1 */
+		}
+
+	    }
+	}
+      else if (broker_conn_fd == ep_Event[i].data.fd)	/* new client */
+	{
+	  if ((ep_Event[i].events & EPOLLERR)
+	      || (ep_Event[i].events & EPOLLHUP))
+	    {
+	      proxy_Keep_running = false;
+	      return -1;
+	    }
+	  else if (ep_Event[i].events & EPOLLIN
+		   || ep_Event[i].events & EPOLLPRI)
+	    {
+	      error = proxy_socket_io_new_client (broker_conn_fd);
+	      if (error == 0)
+		{
+		  num_new_client++;
+		  if (num_new_client < MAX_NUM_NEW_CLIENT)
+		    {
+		      goto retry_select;
+		    }
+		}
+	    }
+	}
+      else
+	{
+	  sock_fd = ep_Event[i].data.fd;
+	  assert (sock_fd <= proxy_Socket_io.max_socket);
+
+	  sock_io_p = &(proxy_Socket_io.ent[sock_fd]);
+	  if (sock_io_p->fd != sock_fd)
+	    {
+	      assert (false);
+	      continue;
+	    }
+
+	  if ((ep_Event[i].events & EPOLLERR)
+	      || (ep_Event[i].events & EPOLLHUP))
+	    {
+	      proxy_socket_io_read_error (sock_io_p);
+	    }
+	  else
+	    {
+	      if (ep_Event[i].events & EPOLLOUT)
+		{
+		  proxy_socket_io_write (sock_io_p);
+		}
+
+	      if (ep_Event[i].events & EPOLLIN)
+		{
+		  proxy_socket_io_read (sock_io_p);
+		}
+	    }
+	}
+    }
+#else /* LINUX */
 
   /* new cas */
   if (FD_ISSET (cas_lsnr_fd, &rset))
@@ -4280,7 +4538,6 @@ retry_select:
 	{
 	  continue;
 	}
-
       if (!IS_INVALID_SOCKET (sock_io_p->fd)
 	  && FD_ISSET (sock_io_p->fd, &wset))
 	{
@@ -4292,6 +4549,7 @@ retry_select:
 	  proxy_socket_io_read (sock_io_p);
 	}
     }
+#endif /* !LINUX */
 
   return 0;
 }
@@ -4374,3 +4632,92 @@ proxy_available_cas_wait_timer (void)
 
   return;
 }
+
+#if defined(LINUX)
+static int
+proxy_get_max_socket (void)
+{
+  int max_socket = 0;
+  T_SHARD_INFO *first_shard_info_p;
+
+  first_shard_info_p = shard_shm_get_first_shard_info (proxy_info_p);
+  assert (first_shard_info_p != NULL);
+
+  max_socket = proxy_info_p->max_context;
+  max_socket +=
+    (proxy_info_p->max_shard * first_shard_info_p->max_appl_server);
+
+  return max_socket;
+}
+
+static int
+proxy_add_epoll_event (int fd, unsigned int events)
+{
+  int error;
+  struct epoll_event ep_ev;
+
+  assert (ep_Fd != INVALID_SOCKET);
+
+  ep_ev.data.fd = fd;
+  ep_ev.events = events;
+  error = epoll_ctl (ep_Fd, EPOLL_CTL_ADD, fd, &ep_ev);
+  if (error == -1)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Failed to add epoll event. (fd:%d), (error=%d[%s])", fd,
+		 errno, strerror (errno));
+      CLOSE_SOCKET (fd);
+      return error;
+    }
+
+  return error;
+}
+
+static int
+proxy_mod_epoll_event (int fd, unsigned int events)
+{
+  int error;
+  struct epoll_event ep_ev;
+
+  assert (ep_Fd != INVALID_SOCKET);
+
+  ep_ev.data.fd = fd;
+  ep_ev.events = events;
+  error = epoll_ctl (ep_Fd, EPOLL_CTL_MOD, fd, &ep_ev);
+  if (error == -1)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Failed to modify epoll event. (fd:%d), (error=%d[%s])", fd,
+		 errno, strerror (errno));
+      CLOSE_SOCKET (fd);
+      return error;
+    }
+
+  return error;
+}
+
+static int
+proxy_del_epoll_event (int fd)
+{
+  int error;
+  struct epoll_event ep_ev;
+
+  assert (ep_Fd != INVALID_SOCKET);
+
+  ep_ev.data.fd = INVALID_SOCKET;
+  /* events will be ignored, and it is only for portability */
+  ep_ev.events = 0;
+  error = epoll_ctl (ep_Fd, EPOLL_CTL_DEL, fd, &ep_ev);
+  if (error == -1)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Failed to delete epoll event. (fd:%d), (error=%d[%s])", fd,
+		 errno, strerror (errno));
+      CLOSE_SOCKET (fd);
+      return error;
+    }
+
+  return error;
+
+}
+#endif /* LINUX */

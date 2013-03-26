@@ -77,9 +77,11 @@ CAS_INFO_SIZE : cas_info
 #define PROXY_IO_FROM_CAS               (true)
 #define PROXY_IO_FROM_CLIENT    (false)
 
+#if !defined(LINUX)
 /* for network global variables */
 extern fd_set rset, wset, allset, wnewset, wallset;
 extern int maxfd;
+#endif /* !LINUX */
 
 extern T_CLIENT_IO_GLOBAL proxy_Client_io;
 extern T_SHARD_IO_GLOBAL proxy_Shard_io;
