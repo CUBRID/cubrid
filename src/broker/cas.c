@@ -338,7 +338,7 @@ cas_make_session_for_driver (char *out)
 static void
 cas_set_session_id (T_CAS_PROTOCOL protocol, char *session)
 {
-  SESSION_ID id;
+  SESSION_ID id = DB_EMPTY_SESSION;
 
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (protocol, PROTOCOL_V3))
     {
@@ -354,8 +354,7 @@ cas_set_session_id (T_CAS_PROTOCOL protocol, char *session)
       char key[] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 
       cas_log_write_and_end (0, false,
-			     "session id (old protocol) for connection %s",
-			     session);
+			     "session id (old protocol) for connection 0");
       db_set_server_session_key (key);
       db_set_session_id (DB_EMPTY_SESSION);
     }
@@ -1084,10 +1083,17 @@ main (int argc, char *argv[])
 	      {
 		db_sessionid = url + SRV_CON_URL_SIZE;
 		db_sessionid[SRV_CON_DBSESS_ID_SIZE - 1] = '\0';
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-		cas_set_session_id (req_info.client_version, db_sessionid);
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 	      }
+	    else
+	      {
+		/* even drivers do not send session id (under RB-8.4.0)
+		 * the cas_set_session_id() should be called
+		 */
+		db_sessionid = NULL;
+	      }
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+	    cas_set_session_id (req_info.client_version, db_sessionid);
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 	    set_hang_check_time ();
 
