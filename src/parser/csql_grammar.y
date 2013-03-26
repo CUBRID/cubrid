@@ -14062,6 +14062,10 @@ reserved_func
 			    set_dt->data_type = dt;
 			    dt = set_dt;
 			  }
+			if (dt->type_enum == PT_TYPE_ENUMERATION)
+			  {
+			    (void) pt_check_enum_data_type(this_parser, dt);
+			  }
 
 			expr->info.expr.cast_type = dt;
 			$$ = expr;

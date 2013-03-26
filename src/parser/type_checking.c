@@ -18626,7 +18626,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	case PT_LPAD:
 	case PT_RPAD:
 	  {
-	    char pad_str[3] = { '\0' };
+	    char pad_str[2] = { '\0' };
 	    int pad_size;
 	    INTL_CODESET arg1_cs = DB_IS_NULL (arg1) ? LANG_SYS_CODESET :
 	      DB_GET_STRING_CODESET (arg1);

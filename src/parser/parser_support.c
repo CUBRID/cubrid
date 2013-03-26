@@ -11152,3 +11152,128 @@ pt_free_statement_xasl_id (PT_NODE * statement)
 	}
     }
 }
+
+/*
+ * pt_check_enum_data_type - validate the ENUM data type
+ * return: NO_ERROR or error code
+ * parser (in)	  : parser context
+ * dt (in/out) : ENUM data type
+ *
+ * NOTE: The function removes trailing pads for each ENUM element, checks that
+ * the number of elements is lower or equal than DB_ENUM_ELEMENTS_MAX, checks
+ * that the aggregate size of the ENUM elements is not greater than
+ * DB_ENUM_ELEMENTS_MAX_AGG_SIZE and checks for duplicates
+ */
+int
+pt_check_enum_data_type (PARSER_CONTEXT * parser, PT_NODE * dt)
+{
+  int count = 0, err = NO_ERROR;
+  PT_NODE *node = NULL, *temp = NULL;
+  TP_DOMAIN *domain = NULL;
+  int pad_size = 0, trimmed_length = 0, trimmed_size = 0;
+  int char_count = 0;
+  int codeset = LANG_SYS_CODESET, collation = LANG_SYS_COLLATION;
+  unsigned char pad[2];
+
+  if (dt == NULL || dt->node_type != PT_DATA_TYPE
+      || dt->type_enum != PT_TYPE_ENUMERATION)
+    {
+      return NO_ERROR;
+    }
+
+  /* remove trailing pads for each element */
+  intl_pad_char (dt->info.data_type.units, pad, &pad_size);
+  node = dt->info.data_type.enumeration;
+  while (node != NULL)
+    {
+      intl_char_count (node->info.value.data_value.str->bytes,
+		       node->info.value.data_value.str->length,
+		       dt->info.data_type.units, &char_count);
+      qstr_trim_trailing (pad, pad_size,
+			  node->info.value.data_value.str->bytes,
+			  pt_node_to_db_type (node), char_count,
+			  node->info.value.data_value.str->length,
+			  dt->info.data_type.units, &trimmed_length,
+			  &trimmed_size);
+      if (trimmed_size < node->info.value.data_value.str->length)
+	{
+	  node->info.value.data_value.str =
+	    pt_append_bytes (parser, NULL,
+			     node->info.value.data_value.str->bytes,
+			     trimmed_size);
+	  node->info.value.data_value.str->length = trimmed_size;
+	  if (node->info.value.db_value.need_clear)
+	    {
+	      pr_clear_value (&node->info.value.db_value);
+	    }
+	  if (node->info.value.db_value_is_initialized)
+	    {
+	      node->info.value.db_value_is_initialized = false;
+	      pt_value_to_db (parser, node);
+	    }
+	}
+
+      node = node->next;
+      count++;
+    }
+
+  /* check that number of elements is lower or equal than
+     DB_ENUM_ELEMENTS_MAX */
+  if (count > DB_ENUM_ELEMENTS_MAX)
+    {
+      PT_ERRORmf2 (parser, dt, MSGCAT_SET_PARSER_SEMANTIC,
+		   MSGCAT_SEMANTIC_ENUM_TYPE_TOO_MANY_VALUES, count,
+		   DB_ENUM_ELEMENTS_MAX);
+      err = ER_FAILED;
+      goto end;
+    }
+
+  /* check that the aggregate size of the ENUM elements is not greater
+     than DB_ENUM_ELEMENTS_MAX_AGG_SIZE */
+  domain = pt_data_type_to_db_domain (parser, dt, NULL);
+  if (domain == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "Cannot create domain");
+      return ER_FAILED;
+    }
+  count = or_packed_domain_size (domain, 0);
+  if (count > DB_ENUM_ELEMENTS_MAX_AGG_SIZE)
+    {
+      PT_ERRORm (parser, dt, MSGCAT_SET_PARSER_SEMANTIC,
+		 MSGCAT_SEMANTIC_ENUM_AGG_STRINGS_SIZE_TOO_LARGE);
+      err = ER_FAILED;
+      goto end;
+    }
+
+  /* check duplicates */
+  node = dt->info.data_type.enumeration;
+  while (node != NULL && err == NO_ERROR)
+    {
+      temp = node->next;
+      while (temp != NULL)
+	{
+	  if (QSTR_COMPARE (domain->collation_id,
+			    node->info.value.data_value.str->bytes,
+			    node->info.value.data_value.str->length,
+			    temp->info.value.data_value.str->bytes,
+			    temp->info.value.data_value.str->length) == 0)
+	    {
+	      PT_ERRORm (parser, temp, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_ENUM_TYPE_DUPLICATE_VALUES);
+
+	      err = ER_FAILED;
+	      break;
+	    }
+	  temp = temp->next;
+	}
+      node = node->next;
+    }
+
+end:
+  if (domain != NULL)
+    {
+      tp_domain_free (domain);
+    }
+
+  return err;
+}

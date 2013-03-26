@@ -9882,6 +9882,10 @@ validate_attribute_domain (PARSER_CONTEXT * parser,
 		  }
 		  break;
 
+		case PT_TYPE_ENUMERATION:
+		  (void) pt_check_enum_data_type (parser, dtyp);
+		  break;
+
 		default:
 		  break;
 		}

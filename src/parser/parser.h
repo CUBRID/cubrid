@@ -902,6 +902,7 @@ extern "C"
 					const char *class_name,
 					const char *partition);
   extern void pt_free_statement_xasl_id (PT_NODE * statement);
+  extern int pt_check_enum_data_type (PARSER_CONTEXT * parser, PT_NODE * dt);
 
 #ifdef __cplusplus
 }
