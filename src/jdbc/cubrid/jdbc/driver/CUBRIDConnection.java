@@ -833,6 +833,16 @@ public class CUBRIDConnection implements Connection {
 		return result;
 	}
 
+	public synchronized int getShardId() {
+		int lastShardId; 
+
+		synchronized (u_con) {
+			lastShardId = u_con.getShardId();
+		}
+
+		return lastShardId;
+	}
+
 	/*
 	 * 3.0 private int createSavepointId() throws SQLException { int tempid=0;
 	 * do { Random r = new Random(); tempid = Math.abs(r.nextInt()) % 1000000 +

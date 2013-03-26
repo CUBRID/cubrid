@@ -172,6 +172,7 @@ extern "C"
     int is_closed;
     int is_from_current_transaction;
     int is_first_prepare_in_tran;
+    int shard_id;
     void *prev;
     void *next;
   } T_REQ_HANDLE;
@@ -259,6 +260,9 @@ extern "C"
     int no_backslash_escapes;
     char *last_insert_id;
     T_CCI_ERROR err_buf;
+
+    /* shard */
+    int shard_id;
   } T_CON_HANDLE;
 
 /************************************************************************

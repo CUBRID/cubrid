@@ -90,12 +90,15 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		try {
 			synchronized (con) {
 				synchronized (this) {
-				    	long begin = 0;
+				  	long begin = 0;
 
-				    	u_con.setBeginTime();
-				    	if (u_con.getLogSlowQuery()) {
-				    	    	begin = System.currentTimeMillis();
-				    	}
+	    			setShardId(UStatement.SHARD_ID_INVALID);
+
+				   	u_con.setBeginTime();
+					if (u_con.getLogSlowQuery()) {
+				   		begin = System.currentTimeMillis();
+				  	}
+
 					checkIsOpen();
 					if (!completed) {
 						complete();
@@ -125,12 +128,15 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		try {
 			synchronized (con) {
 				synchronized (this) {
-				    	long begin = 0;
+				   	long begin = 0;
 
-				    	u_con.setBeginTime();
-				    	if (u_con.getLogSlowQuery()) {
-				    	    	begin = System.currentTimeMillis();
-				    	}
+	    			setShardId(UStatement.SHARD_ID_INVALID);
+
+				   	u_con.setBeginTime();
+				    if (u_con.getLogSlowQuery()) {
+				   		begin = System.currentTimeMillis();
+					}
+
 					checkIsOpen();
 					if (!completed) {
 						complete();
@@ -454,12 +460,15 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		try {
 			synchronized (con) {
 				synchronized (this) {
-				    	long begin = 0;
+				   	long begin = 0;
 
-				    	u_con.setBeginTime();
-				    	if (u_con.getLogSlowQuery()) {
-				    	    	begin = System.currentTimeMillis();
-				    	}
+	    			setShardId(UStatement.SHARD_ID_INVALID);
+
+				   	u_con.setBeginTime();
+				   	if (u_con.getLogSlowQuery()) {
+				   		begin = System.currentTimeMillis();
+				   	}
+
 					checkIsOpen();
 					if (!completed) {
 						complete();
@@ -711,6 +720,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		try {
 			synchronized (con) {
 				synchronized (this) {
+	    			setShardId(UStatement.SHARD_ID_INVALID);
 					if (is_closed)
 						return;
 					is_closed = true;
@@ -751,18 +761,22 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		try {
 			synchronized (con) {
 				synchronized (this) {
+	    			setShardId(UStatement.SHARD_ID_INVALID);
+
 					checkIsOpen();
 					if (!u_stmt.hasBatch()) {
 					    return new int[0];
 					}
-				    	u_con.setBeginTime();
+				   	u_con.setBeginTime();
+
 					if (!completed)
 						complete();
 					checkIsOpen();
 					u_stmt.setAutoCommit(u_con.getAutoCommit());
 					UBatchResult results = u_stmt.executeBatch(query_timeout);
-					error = u_stmt.getRecentError();
+					setShardId(u_con.getShardId());
 
+					error = u_stmt.getRecentError();
 					switch (error.getErrorCode()) {
 					case UErrorCode.ER_NO_ERROR:
 						break;
@@ -870,8 +884,10 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		try {
 			synchronized (con) {
 				synchronized (this) {
-				    	u_con.setBeginTime();
-				    	checkIsOpen();
+	    			setShardId(UStatement.SHARD_ID_INVALID);
+
+				   	u_con.setBeginTime();
+				  	checkIsOpen();
 					if (!completed) {
 						complete();
 					}

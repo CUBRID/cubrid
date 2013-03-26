@@ -1385,6 +1385,16 @@ ux_execute_internal (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 	}
     }
 
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL
+      (req_info->client_version, PROTOCOL_V5))
+    {
+#if defined(CUBRID_SHARD)
+      net_buf_cp_int (net_buf, shm_shard_id, NULL);
+#else /* CUBRID_SHARD */
+      net_buf_cp_int (net_buf, SHARD_ID_UNSUPPORTED, NULL);
+#endif /* !CUBRID_SHARD */
+    }
+
   return err_code;
 
 execute_error:
@@ -1590,6 +1600,16 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
     }
 
   net_buf_overwrite_int (net_buf, num_query_msg_offset, num_query);
+
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
+    {
+#if defined(CUBRID_SHARD)
+      net_buf_cp_int (net_buf, shm_shard_id, NULL);
+#else /* CUBRID_SHARD */
+      net_buf_cp_int (net_buf, SHARD_ID_UNSUPPORTED, NULL);
+#endif /* !CUBRID_SHARD */
+    }
+
   for (i = 0; i < num_value; i++)
     {
       db_value_clear (&value_array[i]);

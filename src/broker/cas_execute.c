@@ -1470,6 +1470,15 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 	}
     }
 
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
+    {
+#if defined(CUBRID_SHARD)
+      net_buf_cp_int (net_buf, shm_shard_id, NULL);
+#else /* CUBRID_SHARD */
+      net_buf_cp_int (net_buf, SHARD_ID_UNSUPPORTED, NULL);
+#endif /* !CUBRID_SHARD */
+    }
+
   return err_code;
 
 execute_error:
@@ -1806,6 +1815,15 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 	}
     }
 
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
+    {
+#if defined(CUBRID_SHARD)
+      net_buf_cp_int (net_buf, shm_shard_id, NULL);
+#else /* CUBRID_SHARD */
+      net_buf_cp_int (net_buf, SHARD_ID_UNSUPPORTED, NULL);
+#endif /* !CUBRID_SHARD */
+    }
+
   return err_code;
 
 execute_all_error:
@@ -1990,6 +2008,15 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 	      goto execute_error;
 	    }
 	}
+    }
+
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
+    {
+#if defined(CUBRID_SHARD)
+      net_buf_cp_int (net_buf, shm_shard_id, NULL);
+#else /* CUBRID_SHARD */
+      net_buf_cp_int (net_buf, SHARD_ID_UNSUPPORTED, NULL);
+#endif /* !CUBRID_SHARD */
     }
 
   return err_code;
@@ -2235,6 +2262,15 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
 	}
     }
 
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
+    {
+#if defined(CUBRID_SHARD)
+      net_buf_cp_int (net_buf, shm_shard_id, NULL);
+#else /* CUBRID_SHARD */
+      net_buf_cp_int (net_buf, SHARD_ID_UNSUPPORTED, NULL);
+#endif /* !CUBRID_SHARD */
+    }
+
   return 0;
 
 execute_batch_error:
@@ -2277,7 +2313,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
     {
       net_buf_cp_int (net_buf, 0, NULL);	/* result code */
       net_buf_cp_int (net_buf, 0, NULL);	/* num_query */
-      return 0;
+      goto return_success;
     }
 
   hm_qresult_end (srv_handle, FALSE);
@@ -2298,7 +2334,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
     {
       net_buf_cp_int (net_buf, 0, NULL);	/* result code */
       net_buf_cp_int (net_buf, 0, NULL);	/* num_query */
-      return 0;
+      goto return_success;
     }
 
   net_buf_cp_int (net_buf, 0, NULL);	/* result code */
@@ -2308,7 +2344,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
 
   if (argc <= 1)
     {
-      return 0;
+      goto return_success;
     }
   num_bind = argc / 2;
 
@@ -2464,6 +2500,17 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
 	}
       FREE_MEM (value_list);
     }
+
+return_success:
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
+    {
+#if defined(CUBRID_SHARD)
+      net_buf_cp_int (net_buf, shm_shard_id, NULL);
+#else /* CUBRID_SHARD */
+      net_buf_cp_int (net_buf, SHARD_ID_UNSUPPORTED, NULL);
+#endif /* !CUBRID_SHARD */
+    }
+
   return 0;
 
 execute_array_error:

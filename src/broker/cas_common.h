@@ -51,6 +51,9 @@
 
 #define INT_STR_LEN     16
 
+#define SHARD_ID_INVALID 		(-1)
+#define SHARD_ID_UNSUPPORTED	(-2)
+
 #define MALLOC(SIZE)            malloc(SIZE)
 #define REALLOC(PTR, SIZE)      \
         ((PTR == NULL) ? malloc(SIZE) : realloc(PTR, SIZE))

@@ -436,7 +436,6 @@ hm_req_handle_alloc (T_CON_HANDLE * con_handle,
   *ret_req_handle = NULL;
 
   req_handle_id = new_req_handle_id (con_handle);
-
   if (req_handle_id < 0)
     {
       return (req_handle_id);
@@ -453,6 +452,7 @@ hm_req_handle_alloc (T_CON_HANDLE * con_handle,
   req_handle->mapped_stmt_id = -1;
   req_handle->fetch_size = 100;
   req_handle->query_timeout = con_handle->query_timeout;
+  req_handle->shard_id = CCI_SHARD_ID_INVALID;
 
   con_handle->req_handle_table[req_handle_id - 1] = req_handle;
   ++(con_handle->req_handle_count);
@@ -827,6 +827,7 @@ hm_invalidate_all_req_handle (T_CON_HANDLE * con_handle)
 	}
 
       curr_req_handle->valid = 0;
+      curr_req_handle->shard_id = CCI_SHARD_ID_INVALID;
       ++count;
     }
 }
@@ -867,6 +868,7 @@ req_handle_content_free (T_REQ_HANDLE * req_handle, int reuse)
 
   req_close_query_result (req_handle);
   req_handle_col_info_free (req_handle);
+  req_handle->shard_id = CCI_SHARD_ID_INVALID;
 
   if (!reuse)
     {
@@ -1240,6 +1242,8 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
   con_handle->is_holdable = 1;
   con_handle->no_backslash_escapes = CCI_NO_BACKSLASH_ESCAPES_NOT_SET;
   con_handle->last_insert_id = NULL;
+
+  con_handle->shard_id = CCI_SHARD_ID_INVALID;
 
   return 0;
 }

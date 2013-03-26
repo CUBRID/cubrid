@@ -202,7 +202,8 @@ extern "C"
     PROTOCOL_V2 = 2,		/* send columns meta-data with the result for executing */
     PROTOCOL_V3 = 3,		/* session information extend with server session key */
     PROTOCOL_V4 = 4,		/* send as_index to driver */
-    CURRENT_PROTOCOL = PROTOCOL_V4,
+    PROTOCOL_V5 = 5,		/* shard feature */
+    CURRENT_PROTOCOL = PROTOCOL_V5
   };
   typedef enum t_cas_protocol T_CAS_PROTOCOL;
 
@@ -244,6 +245,9 @@ extern "C"
 #define IS_VALID_CAS_FC(fc) \
 	(fc >= CAS_FC_END_TRAN && fc < CAS_FC_MAX)
 #endif				/* CUBRID_SHARD */
+
+/* Current protocol version */
+#define CAS_PROTOCOL_VERSION    ((unsigned char)(CURRENT_PROTOCOL))
 
 /* Indicates version variable holds CAS protocol version. */
 #define CAS_PROTO_INDICATOR     (0x40)

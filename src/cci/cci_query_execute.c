@@ -575,6 +575,7 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
   int remain_msg_size = 0;
   int remaining_time = 0;
   bool use_server_query_cancel = false;
+  int shard_id;
 
   QUERY_RESULT_FREE (req_handle);
 
@@ -742,6 +743,18 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
 	}
     }
 
+  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V5))
+    {
+      msg = result_msg + (result_msg_size - remain_msg_size);
+
+      NET_STR_TO_INT (shard_id, msg);
+      remain_msg_size -= NET_SIZE_INT;
+      msg += NET_SIZE_INT;
+
+      con_handle->shard_id = shard_id;
+      req_handle->shard_id = shard_id;
+    }
+
   /* If fetch_flag is 1, executing query and fetching data
      is processed together.
      So, fetching results are included in result_msg.
@@ -804,6 +817,7 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   char execute_flag = CCI_EXEC_QUERY_ALL;
   int prepare_argc_count = 3;
   bool use_server_query_cancel = false;
+  int shard_id;
 
   QUERY_RESULT_FREE (req_handle);
 
@@ -1005,6 +1019,18 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 	      return err_code;
 	    }
 	}
+    }
+
+  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V5))
+    {
+      msg = result_msg + (result_msg_size - remain_msg_size);
+
+      NET_STR_TO_INT (shard_id, msg);
+      remain_msg_size -= NET_SIZE_INT;
+      msg += NET_SIZE_INT;
+
+      con_handle->shard_id = shard_id;
+      req_handle->shard_id = shard_id;
     }
 
   /* If fetch_flag is 1, executing query and fetching data
@@ -2657,9 +2683,11 @@ qe_execute_array (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   T_BIND_VALUE cur_cell;
   int row, idx;
   char *result_msg = NULL;
+  char *msg;
   int result_msg_size;
   int remain_size;
   int remaining_time = 0;
+  int shard_id;
 
   net_buf_init (&net_buf);
 
@@ -2855,6 +2883,20 @@ qe_execute_array (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   err_code = execute_array_info_decode (result_msg + 4, result_msg_size - 4,
 					EXECUTE_ARRAY, qr, &remain_size);
 
+  if (err_code >= 0
+      && hm_get_broker_version (con_handle) >=
+      CAS_PROTO_MAKE_VER (PROTOCOL_V5))
+    {
+      msg = result_msg + (result_msg_size - remain_size);
+
+      NET_STR_TO_INT (shard_id, msg);
+      remain_size -= NET_SIZE_INT;
+      msg += NET_SIZE_INT;
+
+      con_handle->shard_id = shard_id;
+      req_handle->shard_id = shard_id;
+    }
+
   FREE_MEM (result_msg);
   return err_code;
 }
@@ -2995,11 +3037,13 @@ qe_execute_batch (T_CON_HANDLE * con_handle, int num_query, char **sql_stmt,
   char func_code = CAS_FC_EXECUTE_BATCH;
   int err_code;
   char *result_msg = NULL;
+  char *msg;
   int result_msg_size;
   int sql_len;
   int i;
   int remain_size;
   int remaining_time = 0;
+  int shard_id;
 
   net_buf_init (&net_buf);
 
@@ -3064,6 +3108,19 @@ qe_execute_batch (T_CON_HANDLE * con_handle, int num_query, char **sql_stmt,
   err_code =
     execute_array_info_decode (result_msg + 4, result_msg_size - 4,
 			       EXECUTE_BATCH, qr, &remain_size);
+
+  if (err_code >= 0
+      && hm_get_broker_version (con_handle) >=
+      CAS_PROTO_MAKE_VER (PROTOCOL_V5))
+    {
+      msg = result_msg + (result_msg_size - remain_size);
+
+      NET_STR_TO_INT (shard_id, msg);
+      remain_size -= NET_SIZE_INT;
+      msg += NET_SIZE_INT;
+
+      con_handle->shard_id = shard_id;
+    }
 
   FREE_MEM (result_msg);
 

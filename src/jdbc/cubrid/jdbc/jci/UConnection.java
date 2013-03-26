@@ -86,9 +86,10 @@ public class UConnection {
 	public static final int PROTOCOL_V2 = 2;
 	public static final int PROTOCOL_V3 = 3;
 	public static final int PROTOCOL_V4 = 4;
+	public static final int PROTOCOL_V5 = 5;
 
 	/* Current protocol version */
-	private final static byte CAS_PROTOCOL_VERSION = PROTOCOL_V4;
+	private final static byte CAS_PROTOCOL_VERSION = PROTOCOL_V5;
 	private final static byte CAS_PROTO_INDICATOR = 0x40;
 	private final static byte CAS_PROTO_VER_MASK = 0x3F;
 	private final static byte CAS_RENEWED_ERROR_CODE = (byte) 0x80;
@@ -198,6 +199,8 @@ public class UConnection {
 		driverInfo[8] = 0; // reserved
 		driverInfo[9] = 0; // reserved
 	}
+
+	private int lastShardId = UStatement.SHARD_ID_INVALID;
 
 	/*
 	 * the normal constructor of the class UConnection
@@ -371,6 +374,8 @@ public class UConnection {
 
 	synchronized public UBatchResult batchExecute(String batchSqlStmt[], int queryTimeout) {
 		errorHandler = new UError(this);
+		setShardId(UStatement.SHARD_ID_INVALID);
+
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return null;
@@ -421,6 +426,10 @@ public class UConnection {
 					inBuffer.readShort();
 					inBuffer.readShort();
 				}
+			}
+
+			if (protoVersionIsAbove(UConnection.PROTOCOL_V5)) {
+				setShardId(inBuffer.readInt());
 			}
 
 			update_executed = true;
@@ -2028,5 +2037,15 @@ public class UConnection {
 
     public void resetBeginTime() {
 	beginTime = 0;
+    }
+
+    public void setShardId(int shardId)
+    {
+		lastShardId = shardId;
+    }
+
+    public int getShardId()
+    {
+		return lastShardId;
     }
 }

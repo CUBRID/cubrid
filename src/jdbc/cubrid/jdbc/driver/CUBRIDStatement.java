@@ -85,6 +85,7 @@ public class CUBRIDStatement implements Statement {
 	private ArrayList<String> batchs;
 	private int result_index;
 	private boolean is_from_current_transaction;
+	private int lastShardId;
 
 	protected CUBRIDStatement(CUBRIDConnection c, int t, int concur,
                 int hold) {
@@ -120,6 +121,7 @@ public class CUBRIDStatement implements Statement {
 		query_info_flag = false;
 		only_query_plan = false;
 		is_from_current_transaction = true;
+		lastShardId = UStatement.SHARD_ID_INVALID; 
 	}
 
 	/*
@@ -130,12 +132,15 @@ public class CUBRIDStatement implements Statement {
 		try {
 			synchronized (con) {
 				synchronized (this) {
-				    	long begin = 0;
+				   	long begin = 0;
+  	  	
+	    			setShardId(UStatement.SHARD_ID_INVALID);
 
-				    	u_con.setBeginTime();
-				    	if (u_con.getLogSlowQuery()) {
-				    	    	begin = System.currentTimeMillis();
-				    	}
+				   	u_con.setBeginTime();
+				   	if (u_con.getLogSlowQuery()) {
+				   		begin = System.currentTimeMillis();
+					}
+
 					checkIsOpen();
 					if (!completed) {
 						complete();
@@ -175,6 +180,7 @@ public class CUBRIDStatement implements Statement {
 		try {
 			synchronized (con) {
 				synchronized (this) {
+				    lastShardId = UStatement.SHARD_ID_INVALID;	
 					if (is_closed) {
 						return;
 					}
@@ -402,6 +408,8 @@ public class CUBRIDStatement implements Statement {
 		try {
 			synchronized (con) {
 				synchronized (this) {
+	    			setShardId(UStatement.SHARD_ID_INVALID);
+
 					checkIsOpen();
 					if (batchs.size() == 0) {
 						return new int[0];
@@ -417,9 +425,11 @@ public class CUBRIDStatement implements Statement {
 						batch_querys[i] = (String) batchs.get(i);
 					}
 					batch_results = u_con.batchExecute(batch_querys, query_timeout);
+					setShardId(u_con.getShardId());
+
 					error = u_con.getRecentError();
 
-				    	batchs.clear();
+				    batchs.clear();
 					switch (error.getErrorCode()) {
 					case UErrorCode.ER_NO_ERROR:
 						break;
@@ -508,12 +518,15 @@ public class CUBRIDStatement implements Statement {
 		try {
 			synchronized (con) {
 				synchronized (this) {
-				    	long begin = 0;
+				   	long begin = 0;
 
-				    	u_con.setBeginTime();
-				    	if (u_con.getLogSlowQuery()) {
-				    	    	begin = System.currentTimeMillis();
-				    	}
+	    			setShardId(UStatement.SHARD_ID_INVALID);
+
+				   	u_con.setBeginTime();
+				   	if (u_con.getLogSlowQuery()) {
+				   		begin = System.currentTimeMillis();
+					}
+
 					checkIsOpen();
 					if (!completed) {
 						complete();
@@ -644,7 +657,9 @@ public class CUBRIDStatement implements Statement {
 		try {
 			synchronized (con) {
 				synchronized (this) {
-				    	u_con.setBeginTime();
+	    			setShardId(UStatement.SHARD_ID_INVALID);
+				
+				   	u_con.setBeginTime();
 
 					checkIsOpen();
 					if (!completed) {
@@ -762,12 +777,15 @@ public class CUBRIDStatement implements Statement {
 		completed = false;
 		setCurrentTransaction(true);
 
+	    setShardId(UStatement.SHARD_ID_INVALID);
+
 		if (query_timeout > 0) {
 			t = new CUBRIDCancelQueryThread(this, query_timeout);
 			t.start();
 		}
 
 		CUBRIDOID oid = u_stmt.executeInsert(false);
+		setShardId(u_con.getShardId());
 
 		if (query_timeout > 0) {
 			t.queryended();
@@ -840,6 +858,8 @@ public class CUBRIDStatement implements Statement {
 		boolean is_holdable = false;
 		boolean isQueryCancelThreadStarted = false;
 
+	    setShardId(UStatement.SHARD_ID_INVALID);
+
 		if (query_timeout > 0
 				&& (u_con.isConnectedToCubrid() == false || 
 						u_con.protoVersionIsAbove(1) == false)) {
@@ -855,6 +875,7 @@ public class CUBRIDStatement implements Statement {
 		u_stmt.execute(false, max_rows, max_field_size, all, is_sensitive,
 				is_scrollable, query_info_flag, only_query_plan, is_holdable,
 				cache_data, query_timeout);
+		setShardId(u_con.getShardId());
 
 		if (isQueryCancelThreadStarted) {
 			t.queryended();
@@ -994,5 +1015,13 @@ public class CUBRIDStatement implements Statement {
 	
 	public boolean isFromCurrentTransaction() {
 		return is_from_current_transaction;
+	}
+
+	public int getShardId() {
+		return lastShardId;
+	}
+
+	protected void setShardId(int shardId) {
+		lastShardId = shardId;
 	}
 }

@@ -178,6 +178,10 @@ extern "C"
 #define CCI_CONSTRAINT_TYPE_UNIQUE	0
 #define CCI_CONSTRAINT_TYPE_INDEX	1
 
+/* shard */
+#define CCI_SHARD_ID_INVALID 		(-1)
+#define CCI_SHARD_ID_UNSUPPORTED	(-2)
+
 #if defined(WINDOWS)
 #define SSIZEOF(val) ((SSIZE_T) sizeof(val))
 #else
@@ -872,6 +876,11 @@ extern "C"
   extern int cci_set_charset (int con_h_id, char *charset);
   extern int cci_row_count (int con_h_id, int *row_count,
 			    T_CCI_ERROR * err_buf);
+
+  extern int cci_get_shard_id_with_con_handle (int con_h_id, int *shard_id,
+					       T_CCI_ERROR * err_buf);
+  extern int cci_get_shard_id_with_req_handle (int req_h_id, int *shard_id,
+					       T_CCI_ERROR * err_buf);
 
   /*
    * IMPORTANT: cci_last_insert_id and cci_get_last_insert_id

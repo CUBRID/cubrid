@@ -696,6 +696,7 @@ cci_disconnect (int mapped_conn_id, T_CCI_ERROR * err_buf)
       return error;
     }
   reset_error_buffer (&(con_handle->err_buf));
+  con_handle->shard_id = CCI_SHARD_ID_INVALID;
 
   API_SLOG (con_handle);
 
@@ -1316,6 +1317,8 @@ cci_execute (int mapped_stmt_id, char flag, int max_col_size,
       return error;
     }
   reset_error_buffer (&(con_handle->err_buf));
+  con_handle->shard_id = CCI_SHARD_ID_INVALID;
+  req_handle->shard_id = CCI_SHARD_ID_INVALID;
 
   if (con_handle->log_slow_queries)
     {
@@ -1484,6 +1487,7 @@ cci_prepare_and_execute (int mapped_conn_id, char *sql_stmt,
       return error;
     }
   reset_error_buffer (&(con_handle->err_buf));
+  con_handle->shard_id = CCI_SHARD_ID_INVALID;
 
   if (sql_stmt == NULL)
     {
@@ -1509,6 +1513,7 @@ cci_prepare_and_execute (int mapped_conn_id, char *sql_stmt,
       error = statement_id;
       goto prepare_execute_error;
     }
+  req_handle->shard_id = CCI_SHARD_ID_INVALID;
 
   if (IS_OUT_TRAN (con_handle) && IS_FORCE_FAILBACK (con_handle)
       && !IS_INVALID_SOCKET (con_handle->sock_fd))
@@ -1689,6 +1694,8 @@ cci_execute_array (int mapped_stmt_id, T_CCI_QUERY_RESULT ** qr,
       return error;
     }
   reset_error_buffer (&(con_handle->err_buf));
+  con_handle->shard_id = CCI_SHARD_ID_INVALID;
+  req_handle->shard_id = CCI_SHARD_ID_INVALID;
 
   if (IS_OUT_TRAN (con_handle) && IS_FORCE_FAILBACK (con_handle)
       && !IS_INVALID_SOCKET (con_handle->sock_fd))
@@ -2977,6 +2984,7 @@ cci_execute_batch (int mapped_conn_id, int num_query, char **sql_stmt,
       return error;
     }
   reset_error_buffer (&(con_handle->err_buf));
+  con_handle->shard_id = CCI_SHARD_ID_INVALID;
 
   if (qr != NULL)
     {
@@ -3955,6 +3963,46 @@ cci_row_count (int mapped_conn_id, int *row_count, T_CCI_ERROR * err_buf)
   con_handle->used = false;
 
   return error;
+}
+
+int
+cci_get_shard_id_with_con_handle (int mapped_conn_id, int *shard_id,
+				  T_CCI_ERROR * err_buf)
+{
+  T_CON_HANDLE *con_handle = NULL;
+  int error = CCI_ER_NO_ERROR;
+
+  reset_error_buffer (err_buf);
+  error = hm_get_connection (mapped_conn_id, &con_handle);
+  if (error != CCI_ER_NO_ERROR)
+    {
+      return error;
+    }
+
+  *shard_id = con_handle->shard_id;
+  con_handle->used = false;
+
+  return CCI_ER_NO_ERROR;
+}
+
+int
+cci_get_shard_id_with_req_handle (int mapped_stmt_id, int *shard_id,
+				  T_CCI_ERROR * err_buf)
+{
+  T_CON_HANDLE *con_handle = NULL;
+  T_REQ_HANDLE *req_handle = NULL;
+  int error = CCI_ER_NO_ERROR;
+
+  reset_error_buffer (err_buf);
+  error = hm_get_statement (mapped_stmt_id, &con_handle, &req_handle);
+  if (error != CCI_ER_NO_ERROR)
+    {
+      return error;
+    }
+  *shard_id = req_handle->shard_id;
+  con_handle->used = false;
+
+  return CCI_ER_NO_ERROR;
 }
 
 /*
@@ -5281,6 +5329,7 @@ cci_disconnect_force (int resolved_id, bool try_close)
       return;
     }
   reset_error_buffer (&(con_handle->err_buf));
+  con_handle->shard_id = CCI_SHARD_ID_INVALID;
 
   API_SLOG (con_handle);
   if (try_close)
