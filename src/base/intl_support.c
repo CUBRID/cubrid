@@ -1811,23 +1811,18 @@ intl_language (int category)
  *   lang_id(in): language identifier
  */
 INTL_ZONE
-intl_zone (const INTL_LANG lang_id)
+intl_zone (int category)
 {
-  INTL_ZONE zone_id;
-
-  switch (lang_id)
+  switch (lang_id ())
     {
+    case INTL_LANG_ENGLISH:
+      return INTL_ZONE_US;
     case INTL_LANG_KOREAN:
-      zone_id = INTL_ZONE_KR;
-      break;
-    case INTL_LANG_TURKISH:
-      zone_id = INTL_ZONE_TR;
-      break;
+      return INTL_ZONE_KR;
     default:
-      zone_id = INTL_ZONE_US;
+      return INTL_ZONE_US;
     }
-
-  return zone_id;
+  return INTL_ZONE_US;
 }
 
 /*

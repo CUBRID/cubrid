@@ -172,7 +172,7 @@ extern "C"
 #if defined (ENABLE_UNUSED_FUNCTION)
   extern INTL_LANG intl_language (int category);
 #endif				/* ENABLE_UNUSED_FUNCTION */
-  extern INTL_ZONE intl_zone (const INTL_LANG lang_id);
+  extern INTL_ZONE intl_zone (int category);
 
   extern int intl_convert_charset (unsigned char *src,
 				   int length_in_chars,
