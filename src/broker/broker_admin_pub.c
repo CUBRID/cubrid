@@ -1218,7 +1218,8 @@ admin_broker_resume_cmd (int master_shm_id, const char *broker_name)
 int
 admin_reset_cmd (int master_shm_id, const char *broker_name)
 {
-  int i, br_index;
+  bool reset_next = FALSE;
+  int i, as_index, br_index;
   T_SHM_BROKER *shm_br;
 #if defined(CUBRID_SHARD)
   T_BROKER_INFO *br_info_p;
@@ -1296,7 +1297,32 @@ admin_reset_cmd (int master_shm_id, const char *broker_name)
 	   shard_info_p;
 	   shard_info_p = shard_shm_get_next_shard_info (shard_info_p))
 	{
-	  for (i = 0; i < shard_info_p->num_appl_server; i++)
+	  as_index = shard_info_p->num_appl_server / 2;
+
+	  for (i = 0; i < as_index; i++)
+	    {
+	      shard_info_p->as_info[i].reset_flag = TRUE;
+	    }
+
+	  while (1)
+	    {
+	      for (i = 0; i < as_index; i++)
+		{
+		  if (shard_info_p->as_info[i].reset_flag == FALSE)
+		    {
+		      reset_next = TRUE;
+		      break;
+		    }
+		  SLEEP_MILISEC (0, 10);
+		}
+
+	      if (reset_next)
+		{
+		  break;
+		}
+	    }
+
+	  for (i = as_index; i < shard_info_p->num_appl_server; i++)
 	    {
 	      shard_info_p->as_info[i].reset_flag = TRUE;
 	    }
@@ -1320,6 +1346,7 @@ admin_reset_cmd (int master_shm_id, const char *broker_name)
     {
       shm_appl->as_info[i].reset_flag = TRUE;
     }
+
   uw_shm_detach (shm_appl);
 #endif /* CUBRID_SHARD */
 

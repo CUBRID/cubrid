@@ -3818,10 +3818,10 @@ set_waiter:
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
 		 "Failed to allocate shard/cas. "
-		 "No available cas in this shard."
+		 "No available cas in this shard. "
+		 "Wait until shard has available cas. "
 		 "(cur_num_cas:%d, max_num_cas:%d)", shard_io_p->cur_num_cas,
 		 shard_io_p->max_num_cas);
-      return NULL;
     }
 
   error =

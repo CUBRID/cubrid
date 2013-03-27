@@ -84,6 +84,7 @@
 #include "shard_shm.h"
 #endif /* CUBRID_SHARD */
 
+static const int DEFAULT_CHECK_INTERVAL = 1;
 
 #define FUNC_NEEDS_RESTORING_CON_STATUS(func_code) \
   (((func_code) == CAS_FC_GET_DB_PARAMETER) \
@@ -119,6 +120,8 @@ static int get_graceful_down_timeout ();
 static int net_read_int_keep_con_auto (SOCKET clt_sock_fd,
 				       MSG_HEADER * client_msg_header,
 				       T_REQ_INFO * req_info);
+static int net_read_header_keep_con_on (SOCKET clt_sock_fd,
+					MSG_HEADER * client_msg_header);
 #endif /* CUBRID_SHARD */
 
 #else /* !LIBCAS_FOR_JSP */
@@ -1585,23 +1588,23 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
       if (is_net_timed_out ())
 	{
-#if defined(CUBRID_SHARD)
-	  if (get_graceful_down_timeout () > 0)
+	  if (as_info->reset_flag == TRUE)
+	    {
+	      cas_log_msg = "CONNECTION RESET";
+	    }
+	  else if (get_graceful_down_timeout () > 0)
 	    {
 	      cas_log_msg = "SESSION TIMEOUT AND EXPIRE IDLE TIMEOUT";
 	      fn_ret = FN_GRACEFUL_DOWN;
 	    }
 	  else
 	    {
-#endif
 #if defined(CAS_FOR_MYSQL)
 	      cas_log_msg = "SESSION TIMEOUT OR MYSQL CONNECT TIMEOUT";
 #else
 	      cas_log_msg = "SESSION TIMEOUT";
 #endif
-#if defined(CUBRID_SHARD)
 	    }
-#endif
 	}
       else
 	{
@@ -1609,6 +1612,10 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	}
       cas_log_write_and_end (0, true, cas_log_msg);
       return fn_ret;
+    }
+  else
+    {
+      as_info->uts_status = UTS_STATUS_BUSY;
     }
 #else /* CUBRID_SHARD */
 #ifndef LIBCAS_FOR_JSP
@@ -1620,8 +1627,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     }
   else
     {
-      net_timeout_set (shm_appl->session_timeout);
-      err_code = net_read_header (sock_fd, &client_msg_header);
+      err_code = net_read_header_keep_con_on (sock_fd, &client_msg_header);
 
       if (as_info->cur_keep_con == KEEP_CON_ON
 	  && as_info->con_status == CON_STATUS_OUT_TRAN)
@@ -1656,7 +1662,18 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	{
 	  if (is_net_timed_out ())
 	    {
+#ifndef LIBCAS_FOR_JSP
+	      if (as_info->reset_flag == TRUE)
+		{
+		  cas_log_msg = "CONNECTION RESET";
+		}
+	      else
+		{
+		  cas_log_msg = "SESSION TIMEOUT";
+		}
+#else
 	      cas_log_msg = "SESSION TIMEOUT";
+#endif /* !LIBCAS_FOR_JSP */
 	    }
 	  else
 	    {
@@ -2076,7 +2093,7 @@ net_read_process (SOCKET proxy_sock_fd,
 {
   int ret_value = 0;
   int elapsed_sec = 0, elapsed_msec = 0;
-  int timeout;
+  int timeout = 0, remained_timeout = 0;
 
   if (as_info->con_status == CON_STATUS_IN_TRAN)
     {
@@ -2084,6 +2101,8 @@ net_read_process (SOCKET proxy_sock_fd,
     }
   else
     {
+      net_timeout_set (DEFAULT_CHECK_INTERVAL);
+
       timeout = get_graceful_down_timeout ();
       if (timeout > 0)
 	{
@@ -2097,7 +2116,8 @@ net_read_process (SOCKET proxy_sock_fd,
 	  timeout = MYSQL_CONNECT_TIMEOUT;
 	}
 #endif
-      net_timeout_set (timeout);
+
+      remained_timeout = timeout;
     }
 
   do
@@ -2111,11 +2131,16 @@ net_read_process (SOCKET proxy_sock_fd,
 	{
 	  break;
 	}
+      else if (as_info->con_status == CON_STATUS_OUT_TRAN)
+	{
+	  remained_timeout -= DEFAULT_CHECK_INTERVAL;
+	}
 
       /*
          net_read_header error case.
          case 1 : disconnect with proxy_sock_fd
          case 2 : CON_STATUS_IN_TRAN && session_timeout
+         case 3 : reset_flag is TRUE
        */
       if (net_read_header (proxy_sock_fd, client_msg_header) < 0)
 	{
@@ -2130,6 +2155,12 @@ net_read_process (SOCKET proxy_sock_fd,
 	  if (as_info->con_status == CON_STATUS_OUT_TRAN
 	      && is_net_timed_out ())
 	    {
+	      if (as_info->reset_flag == TRUE)
+		{
+		  ret_value = -1;
+		  break;
+		}
+
 	      if (restart_is_needed ())
 		{
 		  cas_log_debug (ARG_FILE_LINE, "net_read_process: "
@@ -2137,6 +2168,13 @@ net_read_process (SOCKET proxy_sock_fd,
 		  ret_value = -1;
 		  break;
 		}
+
+	      /* this is not real timeout. try again. */
+	      if (timeout < 0 || remained_timeout > 0)
+		{
+		  continue;
+		}
+
 #if defined(CUBRID_SHARD) || defined (CAS_FOR_MYSQL)
 	      /* MYSQL_CONNECT_TIMEOUT case */
 	      /* SHARD_CAS expire idle time and restart case */
@@ -2200,7 +2238,7 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd,
     }
   else
     {
-      net_timeout_set (1);
+      net_timeout_set (DEFAULT_CHECK_INTERVAL);
       new_req_sock_fd = srv_sock_fd;
     }
 
@@ -2229,6 +2267,24 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd,
 	    {
 	      ret_value = -1;
 	      break;
+	    }
+	  /* if out-of-transaction state, check whether restart is needed */
+	  if (as_info->con_status == CON_STATUS_OUT_TRAN
+	      && is_net_timed_out ())
+	    {
+	      if (restart_is_needed ())
+		{
+		  cas_log_debug (ARG_FILE_LINE, "net_read_int_keep_con_auto: "
+				 "restart_is_needed()");
+		  ret_value = -1;
+		  break;
+		}
+
+	      if (as_info->reset_flag == TRUE)
+		{
+		  ret_value = -1;
+		  break;
+		}
 	    }
 	}
       else
@@ -2264,6 +2320,66 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd,
     }
 
   CON_STATUS_UNLOCK (&(shm_appl->as_info[shm_as_index]), CON_STATUS_LOCK_CAS);
+
+  return ret_value;
+}
+static int
+net_read_header_keep_con_on (SOCKET clt_sock_fd,
+			     MSG_HEADER * client_msg_header)
+{
+  int ret_value = 0;
+  int timeout = 0, remained_timeout = 0;
+
+  if (as_info->con_status == CON_STATUS_IN_TRAN)
+    {
+      net_timeout_set (shm_appl->session_timeout);
+    }
+  else
+    {
+      net_timeout_set (DEFAULT_CHECK_INTERVAL);
+      timeout = shm_appl->session_timeout;
+      remained_timeout = timeout;
+    }
+
+  do
+    {
+      if (as_info->con_status == CON_STATUS_OUT_TRAN)
+	{
+	  remained_timeout -= DEFAULT_CHECK_INTERVAL;
+	}
+
+      if (net_read_header (clt_sock_fd, client_msg_header) < 0)
+	{
+	  /* if in-transaction state, return network error */
+	  if (as_info->con_status == CON_STATUS_IN_TRAN
+	      || !is_net_timed_out ())
+	    {
+	      ret_value = -1;
+	      break;
+	    }
+	  /* if out-of-transaction state, check whether restart is needed */
+	  if (as_info->con_status == CON_STATUS_OUT_TRAN
+	      && is_net_timed_out ())
+	    {
+	      if (as_info->reset_flag == TRUE)
+		{
+		  ret_value = -1;
+		  break;
+		}
+
+	      if (timeout > 0 && remained_timeout <= 0)
+		{
+		  ret_value = -1;
+		  break;
+		}
+	    }
+	}
+      else
+	{
+	  break;
+	}
+    }
+  while (1);
 
   return ret_value;
 }
