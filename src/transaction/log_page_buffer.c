@@ -3075,24 +3075,31 @@ prior_lsa_copy_undo_crumbs_to_node (LOG_PRIOR_NODE * node,
   int i, length;
   char *ptr;
 
+  assert ((num_crumbs == 0 && crumbs == NULL)
+	  || (num_crumbs != 0 && crumbs != NULL));
+
   for (i = 0, length = 0; i < num_crumbs; i++)
     {
       length += crumbs[i].length;
     }
 
-  node->udata = (char *) malloc (length);
-  if (node->udata == NULL)
+  assert (node->udata == NULL);
+  if (length > 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, length);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
+      node->udata = (char *) malloc (length);
+      if (node->udata == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, length);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
 
-  ptr = node->udata;
-  for (i = 0; i < num_crumbs; i++)
-    {
-      memcpy (ptr, crumbs[i].data, crumbs[i].length);
-      ptr += crumbs[i].length;
+      ptr = node->udata;
+      for (i = 0; i < num_crumbs; i++)
+	{
+	  memcpy (ptr, crumbs[i].data, crumbs[i].length);
+	  ptr += crumbs[i].length;
+	}
     }
 
   node->ulength = length;
@@ -3116,24 +3123,30 @@ prior_lsa_copy_redo_crumbs_to_node (LOG_PRIOR_NODE * node,
   int i, length;
   char *ptr;
 
+  assert ((num_crumbs == 0 && crumbs == NULL)
+	  || (num_crumbs != 0 && crumbs != NULL));
   for (i = 0, length = 0; i < num_crumbs; i++)
     {
       length += crumbs[i].length;
     }
 
-  node->rdata = (char *) malloc (length);
-  if (node->rdata == NULL)
+  assert (node->rdata == NULL);
+  if (length > 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, length);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
+      node->rdata = (char *) malloc (length);
+      if (node->rdata == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, length);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
 
-  ptr = node->rdata;
-  for (i = 0; i < num_crumbs; i++)
-    {
-      memcpy (ptr, crumbs[i].data, crumbs[i].length);
-      ptr += crumbs[i].length;
+      ptr = node->rdata;
+      for (i = 0; i < num_crumbs; i++)
+	{
+	  memcpy (ptr, crumbs[i].data, crumbs[i].length);
+	  ptr += crumbs[i].length;
+	}
     }
 
   node->rlength = length;
