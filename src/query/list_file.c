@@ -6243,7 +6243,7 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no,
 	    }
 
 #if !defined (NDEBUG)
-	  for (i = 0, num_active_users = 0; i < MAX_NTRANS; i++)
+	  for (i = 0, num_active_users = 0; i < lent->last_ta_idx; i++)
 	    {
 	      if (lent->tran_index_array[i] > 0)
 		{
@@ -6518,7 +6518,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr,
 	}
 
 #if !defined (NDEBUG)
-      for (i = 0, num_active_users = 0; i < MAX_NTRANS; i++)
+      for (i = 0, num_active_users = 0; i < lent->last_ta_idx; i++)
 	{
 	  if (lent->tran_index_array[i] > 0)
 	    {
@@ -6721,7 +6721,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr,
     }
 
 #if !defined (NDEBUG)
-  for (i = 0, num_active_users = 0; i < MAX_NTRANS; i++)
+  for (i = 0, num_active_users = 0; i < lent->last_ta_idx; i++)
     {
       if (lent->tran_index_array[i] > 0)
 	{
@@ -6830,7 +6830,7 @@ qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p,
   while (p && p < r);
 
 #if !defined (NDEBUG)
-  for (i = 0, num_active_users = 0; i <= lent->last_ta_idx; i++)
+  for (i = 0, num_active_users = 0; i < lent->last_ta_idx; i++)
     {
       if (lent->tran_index_array[i] > 0)
 	{
