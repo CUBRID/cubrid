@@ -63,6 +63,11 @@ import cubrid.sql.CUBRIDOID;
 
 public class UConnection {
 	public final static byte DBMS_CUBRID = 1;
+	public final static byte DBMS_MYSQL = 2;
+	public final static byte DBMS_ORACLE = 3;
+	public final static byte DBMS_PROXY_CUBRID = 4;
+	public final static byte DBMS_PROXY_MYSQL = 5;
+	public final static byte DBMS_PROXY_ORACLE = 6;
 
 	/* prepare flags */
 	public final static byte PREPARE_INCLUDE_OID = 0x01;
@@ -200,7 +205,10 @@ public class UConnection {
 		driverInfo[9] = 0; // reserved
 	}
 
-	private int lastShardId = UStatement.SHARD_ID_INVALID;
+	private int lastShardId = UShardInfo.SHARD_ID_INVALID;
+
+    private int numShard = 0;
+	UShardInfo[] shardInfo = null;
 
 	/*
 	 * the normal constructor of the class UConnection
@@ -374,7 +382,7 @@ public class UConnection {
 
 	synchronized public UBatchResult batchExecute(String batchSqlStmt[], int queryTimeout) {
 		errorHandler = new UError(this);
-		setShardId(UStatement.SHARD_ID_INVALID);
+		setShardId(UShardInfo.SHARD_ID_INVALID);
 
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
@@ -757,7 +765,7 @@ public class UConnection {
 	}
 
 	synchronized public UStatement getSchemaInfo(int type, String arg1,
-			String arg2, byte flag) {
+			String arg2, byte flag, int shard_id) {
 		UStatement returnValue = null;
 
 		errorHandler = new UError(this);
@@ -789,6 +797,10 @@ public class UConnection {
 			else
 				outBuffer.addStringWithNull(arg2);
 			outBuffer.addByte(flag);
+
+			if (protoVersionIsAbove(PROTOCOL_V5)) {
+				outBuffer.addInt(shard_id);
+			}
 
 			UInputBuffer inBuffer;
 			inBuffer = send_recv_msg();
@@ -1157,7 +1169,22 @@ public class UConnection {
 	}
 
 	public boolean isConnectedToCubrid() {
-		return getDbmsType() == DBMS_CUBRID ? true : false;
+	    byte dbms_type = getDbmsType();
+		if (dbms_type == DBMS_CUBRID 
+			|| dbms_type == DBMS_PROXY_CUBRID) {
+			return true;
+		}
+		return false;
+	}
+
+	public boolean isConnectedToProxy() {
+	    byte dbms_type = getDbmsType();
+		if (dbms_type == DBMS_PROXY_CUBRID 
+			|| dbms_type == DBMS_PROXY_MYSQL 
+			|| dbms_type == DBMS_PROXY_ORACLE) {
+			return true;
+		}
+		return false;
 	}
 
 	public boolean brokerInfoStatementPooling() {
@@ -2048,4 +2075,111 @@ public class UConnection {
     {
 		return lastShardId;
     }
+
+	public int getShardCount()
+	{
+		if (isConnectedToProxy() == false)
+		{
+			return 0;
+		}
+
+		if (numShard == 0)
+		{
+   			 int num_shard = shardInfo();
+			 if (num_shard == 0 
+			 	|| errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
+			 {
+				return 0;
+			 }
+		}
+
+		return numShard;
+	}
+
+   synchronized public int shardInfo() {
+		errorHandler = new UError(this);
+
+		if (isClosed == true) {
+			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
+			return 0;
+		}
+
+        if (isConnectedToProxy() == false)
+		{
+			errorHandler.setErrorCode(UErrorCode.ER_NO_SHARD_AVAILABLE);
+			return 0;
+		}
+
+		if (numShard > 0) {
+			return numShard;	// return cached shard info
+		}
+
+		try {
+			checkReconnect();
+			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR) {
+				return 0;
+			}
+
+			outBuffer.newRequest(output, UFunctionCode.GET_SHARD_INFO);
+
+			UInputBuffer inBuffer;
+			inBuffer = send_recv_msg();
+
+			int num_shard = inBuffer.getResCode();
+			if (num_shard > 0) {
+				shardInfo = new UShardInfo[num_shard];
+
+				for (int i=0; i<num_shard; i++) {
+					shardInfo[i] = new UShardInfo(inBuffer.readInt());
+					
+					shardInfo[i].setDBName(inBuffer.readString(inBuffer.readInt(), UJCIManager.sysCharsetName));
+					shardInfo[i].setDBServer(inBuffer.readString(inBuffer.readInt(), UJCIManager.sysCharsetName));
+				}
+
+				numShard = num_shard;
+			}
+
+		} catch (UJciException e) {
+		   	logException(e);
+			e.toUError(errorHandler);
+		} catch (IOException e) {
+		   	logException(e);
+			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
+		}
+
+		return numShard;
+   }
+
+   synchronized public UShardInfo getShardInfo(int shard_id) {
+		errorHandler = new UError(this);
+
+		if (isClosed == true) {
+			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
+			return null;
+		}
+
+        if (isConnectedToProxy() == false)
+		{
+			errorHandler.setErrorCode(UErrorCode.ER_NO_SHARD_AVAILABLE);
+			return null;
+		}
+
+		if (numShard == 0)
+		{
+   			 int num_shard = shardInfo();
+			 if (num_shard == 0 
+			 	|| errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
+			 {
+				return null;
+			 }
+		}
+		
+		if (shard_id < 0 || shard_id >= numShard)
+		{
+			errorHandler.setErrorCode(UErrorCode.ER_INVALID_SHARD);
+			return null;
+		}
+
+		return shardInfo[shard_id];
+	}
 }

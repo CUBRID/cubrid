@@ -202,6 +202,8 @@ static int xa_prepare_info_decode (char *buf, int buf_size, int count,
 				   XID * xid, int num_xid_buf);
 static void net_str_to_xid (char *buf, XID * xid);
 #endif
+static int shard_info_decode (char *buf_p, int size, int num_shard,
+			      T_CCI_SHARD_INFO ** shard_info);
 
 /************************************************************************
  * INTERFACE VARIABLES							*
@@ -1785,7 +1787,7 @@ qe_get_cur_oid (T_REQ_HANDLE * req_handle, char *oid_str_buf)
 
 int
 qe_schema_info (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
-		int type, char *arg1, char *arg2, char flag,
+		int type, char *arg1, char *arg2, char flag, int shard_id,
 		T_CCI_ERROR * err_buf)
 {
   T_NET_BUF net_buf;
@@ -1808,6 +1810,10 @@ qe_schema_info (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   else
     ADD_ARG_STR (&net_buf, arg2, strlen (arg2) + 1, con_handle->charset);
   ADD_ARG_BYTES (&net_buf, &flag, 1);
+  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V5))
+    {
+      ADD_ARG_INT (&net_buf, shard_id);
+    }
 
   if (net_buf.err_code < 0)
     {
@@ -4127,6 +4133,109 @@ qe_lob_read (T_CON_HANDLE * con_handle, T_LOB * lob,
   return bytes_read;
 }
 
+
+int
+qe_get_shard_info (T_CON_HANDLE * con_handle, T_CCI_SHARD_INFO ** shard_info,
+		   T_CCI_ERROR * err_buf)
+{
+  T_NET_BUF net_buf;
+  char func_code = CAS_FC_GET_SHARD_INFO;
+  char *result_msg = NULL;
+  int result_msg_size;
+  int err_code;
+  int num_shard;
+
+  if (shard_info)
+    {
+      *shard_info = NULL;
+    }
+
+  net_buf_init (&net_buf);
+  net_buf_cp_str (&net_buf, &func_code, 1);
+  if (net_buf.err_code < 0)
+    {
+      err_code = net_buf.err_code;
+      net_buf_clear (&net_buf);
+      return err_code;
+    }
+
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
+  net_buf_clear (&net_buf);
+  if (err_code < 0)
+    {
+      return err_code;
+    }
+
+  num_shard =
+    net_recv_msg (con_handle, &result_msg, &result_msg_size, err_buf);
+  if (num_shard < 0)
+    {
+      FREE_MEM (result_msg);
+      return num_shard;
+    }
+
+  assert (num_shard != 0);
+  if (num_shard)
+    {
+      err_code =
+	shard_info_decode (result_msg + 4, result_msg_size - 4, num_shard,
+			   shard_info);
+      if (err_code < 0)
+	{
+	  num_shard = err_code;
+	}
+    }
+
+  FREE_MEM (result_msg);
+
+  return num_shard;
+}
+
+int
+qe_shard_info_free (T_CCI_SHARD_INFO * shard_info)
+{
+  int i;
+  T_CCI_SHARD_INFO *cur_shard_info;
+  int prev_shard_id = SHARD_ID_INVALID;
+
+  for (cur_shard_info = shard_info;
+       cur_shard_info->shard_id != SHARD_ID_INVALID; cur_shard_info++)
+    {
+      if (cur_shard_info->shard_id <= prev_shard_id)
+	{
+	  assert (cur_shard_info->shard_id == SHARD_ID_INVALID);	/* fence */
+	  break;
+	}
+
+      FREE_MEM (cur_shard_info->db_name);
+      FREE_MEM (cur_shard_info->db_server);
+
+      if (cur_shard_info != shard_info)
+	{
+	  prev_shard_id = cur_shard_info->shard_id;
+	}
+    }
+
+  FREE_MEM (shard_info);
+  return CCI_ER_NO_ERROR;
+}
+
+int
+qe_is_shard (T_CON_HANDLE * con_handle)
+{
+  int type;
+
+  type = con_handle->broker_info[BROKER_INFO_DBMS_TYPE];
+  if (IS_CONNECTED_TO_PROXY (type))
+    {
+      return 1;
+    }
+  else
+    {
+      return 0;
+    }
+}
+
 /************************************************************************
  * IMPLEMENTATION OF PRIVATE FUNCTIONS	 				*
  ************************************************************************/
@@ -5913,3 +6022,90 @@ net_str_to_xid (char *buf, XID * xid)
   memcpy (xid->data, buf, xid->gtrid_length + xid->bqual_length);
 }
 #endif
+
+static int
+shard_info_decode (char *buf_p, int size, int num_shard,
+		   T_CCI_SHARD_INFO ** res_shard_info)
+{
+  T_CCI_SHARD_INFO *shard_info = NULL;
+  char *cur_p = buf_p;
+  int remain_size = size;
+  int num_shard_tmp;
+  int str_size;
+  int i;
+
+  num_shard_tmp = num_shard + 1 /* fence */ ;
+
+  shard_info =
+    (T_CCI_SHARD_INFO *) MALLOC (sizeof (T_CCI_SHARD_INFO) * num_shard_tmp);
+  if (shard_info == NULL)
+    {
+      return CCI_ER_NO_MORE_MEMORY;
+    }
+
+  for (i = 0; i < num_shard_tmp; i++)
+    {
+      shard_info[i].shard_id = SHARD_ID_INVALID;
+      shard_info[i].db_name = NULL;
+      shard_info[i].db_server = NULL;
+    }
+
+  for (i = 0; i < num_shard; i++)
+    {
+      if (remain_size < 4)
+	{
+	  goto shard_info_decode_error;
+	}
+
+      /* shard id */
+      NET_STR_TO_INT (shard_info[i].shard_id, cur_p);
+      remain_size -= NET_SIZE_INT;
+      cur_p += NET_SIZE_INT;
+
+      /* shard real db name */
+      NET_STR_TO_INT (str_size, cur_p);
+      remain_size -= NET_SIZE_INT;
+      cur_p += NET_SIZE_INT;
+      if (remain_size < str_size)
+	{
+	  goto shard_info_decode_error;
+	}
+      ALLOC_N_COPY (shard_info[i].db_name, cur_p, str_size, char *);
+      if (shard_info[i].db_name == NULL)
+	{
+	  goto shard_info_decode_error;
+	}
+      remain_size -= str_size;
+      cur_p += str_size;
+
+      /* shard read db server */
+      NET_STR_TO_INT (str_size, cur_p);
+      remain_size -= NET_SIZE_INT;
+      cur_p += NET_SIZE_INT;
+      if (remain_size < str_size)
+	{
+	  goto shard_info_decode_error;
+	}
+      ALLOC_N_COPY (shard_info[i].db_server, cur_p, str_size, char *);
+      if (shard_info[i].db_server == NULL)
+	{
+	  goto shard_info_decode_error;
+	}
+      remain_size -= str_size;
+      cur_p += str_size;
+    }
+
+  assert (remain_size == 0);
+
+  *(res_shard_info) = shard_info;
+  return CCI_ER_NO_ERROR;
+
+shard_info_decode_error:
+  if (shard_info)
+    {
+      qe_shard_info_free (shard_info);
+      shard_info = NULL;
+    }
+
+  return CCI_ER_COMMUNICATION;
+}

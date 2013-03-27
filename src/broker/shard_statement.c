@@ -51,6 +51,12 @@ static int shard_stmt_set_srv_h_id (T_SHARD_STMT * stmt_p, int shard_id,
 				    int cas_id, int srv_h_id);
 
 static T_SHARD_STMT *shard_stmt_find_unused (void);
+static T_SHARD_STMT *shard_stmt_new_internal (int stmt_type, char *sql_stmt,
+					      int ctx_cid,
+					      unsigned int ctx_uid,
+					      T_BROKER_VERSION
+					      client_version);
+
 static int shard_stmt_change_shard_val_to_id (char **sql_stmt,
 					      const char **buf,
 					      char appl_server);
@@ -368,6 +374,8 @@ shard_stmt_check_waiter_and_wakeup (T_SHARD_STMT * stmt_p)
   while ((waiter_p =
 	  (T_WAIT_CONTEXT *) shard_queue_dequeue (&stmt_p->waitq)) != NULL)
     {
+      assert (stmt_p->stmt_type == SHARD_STMT_TYPE_PREPARED);
+
       if (proxy_info_p->stmt_waiter_count > 0)
 	{
 	  proxy_info_p->stmt_waiter_count--;
@@ -396,21 +404,38 @@ shard_stmt_check_waiter_and_wakeup (T_SHARD_STMT * stmt_p)
   return;
 }
 
-T_SHARD_STMT *
-shard_stmt_new (char *sql_stmt, int ctx_cid, unsigned int ctx_uid,
-		T_BROKER_VERSION client_version)
+static T_SHARD_STMT *
+shard_stmt_new_internal (int stmt_type, char *sql_stmt, int ctx_cid,
+			 unsigned int ctx_uid,
+			 T_BROKER_VERSION client_version)
 {
   int error;
   int i, num_cas;
   char *sql_stmt_tp = NULL;
   T_SHARD_STMT *stmt_p = NULL;
 
-  assert (sql_stmt);
+  assert ((stmt_type == SHARD_STMT_TYPE_PREPARED && sql_stmt != NULL)
+	  || (stmt_type == SHARD_STMT_TYPE_SCHEMA_INFO
+	      && sql_stmt == NULL && client_version == 0));
 
-  stmt_p = shard_stmt_find_by_sql (sql_stmt, client_version);
-  if (stmt_p)
+  if (stmt_type == SHARD_STMT_TYPE_PREPARED)
     {
-      return stmt_p;
+      stmt_p = shard_stmt_find_by_sql (sql_stmt, client_version);
+      if (stmt_p)
+	{
+	  assert (stmt_p->stmt_type == stmt_type);
+	  if (stmt_p->stmt_type == stmt_type)
+	    {
+	      return stmt_p;
+	    }
+	  else
+	    {
+	      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+			 "Statement type mismatch. expect(%d), statement(%s)",
+			 SHARD_STMT_TYPE_PREPARED, shard_str_stmt (stmt_p));
+	      return NULL;
+	    }
+	}
     }
 
   num_cas = shard_Stmt.max_num_shard * shard_Stmt.num_cas_per_shard;
@@ -455,9 +480,25 @@ shard_stmt_new (char *sql_stmt, int ctx_cid, unsigned int ctx_uid,
 	(stmt_p->num_alloc * shard_Stmt.max_num_stmt) + stmt_p->index;
 
       stmt_p->status = SHARD_STMT_STATUS_IN_PROGRESS;
+      stmt_p->stmt_type = stmt_type;
+      if (stmt_p->stmt_type == SHARD_STMT_TYPE_PREPARED)
+	{
+	  stmt_p->client_version =
+	    shard_stmt_make_protocol_version (client_version);
 
-      stmt_p->client_version =
-	shard_stmt_make_protocol_version (client_version);
+	  stmt_p->parser = sp_create_parser (sql_stmt);
+	  if (stmt_p->parser == NULL)
+	    {
+	      shard_stmt_free (stmt_p);
+	      return NULL;
+	    }
+	}
+      else
+	{
+	  stmt_p->client_version = 0;
+	  assert (stmt_p->parser == NULL);
+	  stmt_p->parser = NULL;
+	}
 
       stmt_p->ctx_cid = ctx_cid;
       stmt_p->ctx_uid = ctx_uid;
@@ -465,13 +506,6 @@ shard_stmt_new (char *sql_stmt, int ctx_cid, unsigned int ctx_uid,
       stmt_p->num_pinned = 0;
       stmt_p->lru_prev = NULL;
       stmt_p->lru_next = NULL;
-
-      stmt_p->parser = sp_create_parser (sql_stmt);
-      if (stmt_p->parser == NULL)
-	{
-	  shard_stmt_free (stmt_p);
-	  return NULL;
-	}
 
       /* __FOR_DEBUG */
       assert (stmt_p->request_buffer_length == 0);
@@ -500,6 +534,31 @@ shard_stmt_new (char *sql_stmt, int ctx_cid, unsigned int ctx_uid,
 
       stmt_p->num_alloc += 1;
     }
+
+  return stmt_p;
+}
+
+T_SHARD_STMT *
+shard_stmt_new_prepared_stmt (char *sql_stmt, int ctx_cid,
+			      unsigned int ctx_uid,
+			      T_BROKER_VERSION client_version)
+{
+  T_SHARD_STMT *stmt_p = NULL;
+
+  stmt_p =
+    shard_stmt_new_internal (SHARD_STMT_TYPE_PREPARED, sql_stmt, ctx_cid,
+			     ctx_uid, client_version);
+  return stmt_p;
+}
+
+T_SHARD_STMT *
+shard_stmt_new_schema_info (int ctx_cid, unsigned int ctx_uid)
+{
+  T_SHARD_STMT *stmt_p = NULL;
+
+  stmt_p =
+    shard_stmt_new_internal (SHARD_STMT_TYPE_SCHEMA_INFO, NULL, ctx_cid,
+			     ctx_uid, 0);
   return stmt_p;
 }
 
@@ -576,6 +635,7 @@ shard_stmt_free (T_SHARD_STMT * stmt_p)
 
   stmt_p->stmt_h_id = SHARD_STMT_INVALID_HANDLE_ID;
   stmt_p->status = SHARD_STMT_STATUS_UNUSED;
+  stmt_p->stmt_type = -1;
 
   stmt_p->client_version = 0;
 
@@ -755,6 +815,15 @@ shard_stmt_set_hint_list (T_SHARD_STMT * stmt_p)
   SP_PARSER_HINT *hint_p = NULL;
   SP_HINT_TYPE hint_type = HT_NONE;
 
+  assert (stmt_p->stmt_type == SHARD_STMT_TYPE_PREPARED);
+  if (stmt_p->stmt_type != SHARD_STMT_TYPE_PREPARED)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Unexpected statement type. (expect:%d, current:%d).",
+		 SHARD_STMT_TYPE_PREPARED, stmt_p->stmt_type);
+      return -1;
+    }
+
   ret = sp_parse_sql (stmt_p->parser);
   if (ret < 0)
     {
@@ -801,6 +870,16 @@ shard_stmt_get_hint_type (T_SHARD_STMT * stmt_p)
 		 "Invalid statement. Statement couldn't be NULL.");
       return HT_INVAL;
     }
+
+  assert (stmt_p->stmt_type == SHARD_STMT_TYPE_PREPARED);
+  if (stmt_p->stmt_type != SHARD_STMT_TYPE_PREPARED)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Unexpected statement type. (expect:%d, current:%d).",
+		 SHARD_STMT_TYPE_PREPARED, stmt_p->stmt_type);
+      return -1;
+    }
+
   if (stmt_p->parser == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
@@ -875,12 +954,14 @@ shard_str_stmt (T_SHARD_STMT * stmt_p)
   snprintf (buffer, sizeof (buffer),
 	    "index:%u, num_alloc:%u, "
 	    "stmt_h_id:%d, status:%d, "
+	    "stmt_type:%d, "
 	    "context id:%d, context uid:%d, "
 	    "num pinned:%d, "
 	    "lru_next:%p, lru_prev:%p, "
 	    "sql_stmt:[%s]",
 	    stmt_p->index, stmt_p->num_alloc,
 	    stmt_p->stmt_h_id, stmt_p->status,
+	    stmt_p->stmt_type,
 	    stmt_p->ctx_cid, stmt_p->ctx_uid,
 	    stmt_p->num_pinned,
 	    stmt_p->lru_next, stmt_p->lru_prev,

@@ -135,6 +135,9 @@ extern "C"
 #define CAS_REQ_HEADER_OLEDB	"OLEDB"
 #define CAS_REQ_HEADER_CCI	"CCI"
 
+#define SHARD_ID_INVALID 		(-1)
+#define SHARD_ID_UNSUPPORTED	(-2)
+
 /* db_name used by client's broker health checker */
 #define HEALTH_CHECK_DUMMY_DB "___health_check_dummy_db___"
 
@@ -182,6 +185,7 @@ extern "C"
     CAS_FC_GET_LAST_INSERT_ID = 40,
     CAS_FC_PREPARE_AND_EXECUTE = 41,
     CAS_FC_CURSOR_CLOSE = 42,
+    CAS_FC_GET_SHARD_INFO = 43,
 
     /* Whenever you want to introduce a new function code,
      * you must add a corresponding function entry to server_fn_table
@@ -238,9 +242,17 @@ extern "C"
   {
     CAS_DBMS_CUBRID = 1,
     CAS_DBMS_MYSQL = 2,
-    CAS_DBMS_ORACLE = 3
+    CAS_DBMS_ORACLE = 3,
+    CAS_PROXY_DBMS_CUBRID = 4,
+    CAS_PROXY_DBMS_MYSQL = 5,
+    CAS_PROXY_DBMS_ORACLE = 6
   };
   typedef enum t_dbms_type T_DBMS_TYPE;
+#define IS_CONNECTED_TO_PROXY(type) \
+	((type) == CAS_PROXY_DBMS_CUBRID \
+	|| (type) == CAS_PROXY_DBMS_MYSQL \
+	|| (type) == CAS_PROXY_DBMS_ORACLE)
+
 #if defined(CUBRID_SHARD)
 #define IS_VALID_CAS_FC(fc) \
 	(fc >= CAS_FC_END_TRAN && fc < CAS_FC_MAX)
@@ -300,6 +312,7 @@ extern "C"
   extern bool cas_bi_get_renewed_error_code (void);
   extern bool cas_di_understand_renewed_error_code (const char *driver_info);
   extern void cas_bi_make_broker_info (char *broker_info,
+				       char dbms_type,
 				       char statement_pooling,
 				       char cci_pconnect);
 #ifdef __cplusplus

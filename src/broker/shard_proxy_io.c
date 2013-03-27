@@ -754,6 +754,13 @@ proxy_io_make_close_req_handle_out_tran_ok (char *driver_info, char **buffer)
 }
 
 int
+proxy_io_make_cursor_close_out_tran_ok (char *driver_info, char **buffer)
+{
+  return proxy_io_make_close_req_handle_ok (driver_info, buffer,
+					    false /* out_tran */ );
+}
+
+int
 proxy_io_make_get_db_version (char *driver_info, char **buffer)
 {
   int error;
@@ -845,6 +852,7 @@ int
 proxy_io_make_client_dbinfo_ok (char *driver_info, char **buffer)
 {
   char *p;
+  char dbms_type;
   int reply_size, reply_nsize;
   int cas_info_size;
   int proxy_pid;
@@ -853,10 +861,32 @@ proxy_io_make_client_dbinfo_ok (char *driver_info, char **buffer)
 
   assert (buffer);
 
-  cas_bi_make_broker_info (broker_info, shm_as_p->statement_pooling,
-			   shm_as_p->cci_pconnect);
+  memset (broker_info, 0, BROKER_INFO_SIZE);
 
   client_version = CAS_MAKE_PROTO_VER (driver_info);
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
+    {
+      if (proxy_info_p->appl_server == APPL_SERVER_CAS_ORACLE)
+	{
+	  dbms_type = CAS_PROXY_DBMS_ORACLE;
+	}
+      else if (proxy_info_p->appl_server == APPL_SERVER_CAS_MYSQL)
+	{
+	  dbms_type = CAS_PROXY_DBMS_MYSQL;
+	}
+      else
+	{
+	  dbms_type = CAS_PROXY_DBMS_CUBRID;
+	}
+    }
+  else
+    {
+      dbms_type = CAS_DBMS_CUBRID;
+    }
+
+  cas_bi_make_broker_info (broker_info, dbms_type,
+			   shm_as_p->statement_pooling,
+			   shm_as_p->cci_pconnect);
 
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V4))
     {
@@ -900,8 +930,6 @@ proxy_io_make_client_dbinfo_ok (char *driver_info, char **buffer)
   memcpy (p, broker_info, BROKER_INFO_SIZE);
   p += BROKER_INFO_SIZE;
 
-  client_version = CAS_MAKE_PROTO_VER (driver_info);
-
   /* proxy id */
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V4))
     {
@@ -937,6 +965,59 @@ proxy_io_make_client_acl_fail (char *driver_info, char **buffer)
 				  DBMS_ERROR_INDICATOR,
 				  CAS_ER_NOT_AUTHORIZED_CLIENT, err_msg,
 				  false);
+}
+
+int
+proxy_io_make_shard_info (char *driver_info, char **buffer)
+{
+  int error;
+  int length;
+  int i;
+  T_SHARD_INFO *shard_info_p;
+  T_NET_BUF net_buf;
+
+  assert (buffer);
+  assert (*buffer == NULL);
+
+  error = proxy_make_net_buf (&net_buf, MSG_HEADER_SIZE);
+  if (error)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Failed to make net buffer. (error:%d).", error);
+      *buffer = NULL;
+      return -1;
+    }
+
+  net_buf.data_size = 0;
+  proxy_init_net_buf (&net_buf);
+
+  /* shard count */
+  net_buf_cp_int (&net_buf, proxy_info_p->max_shard, NULL);
+
+  /* N * shard info */
+  for (i = 0, shard_info_p = shard_shm_get_first_shard_info (proxy_info_p);
+       i < proxy_info_p->max_shard && shard_info_p;
+       i++, shard_info_p = shard_shm_get_next_shard_info (shard_info_p))
+    {
+      /* shard id */
+      net_buf_cp_int (&net_buf, shard_info_p->shard_id, NULL);
+
+      /* shard db name */
+      length = strlen (shard_info_p->db_name) + 1 /* NTS */ ;
+      net_buf_cp_int (&net_buf, length, NULL);
+      net_buf_cp_str (&net_buf, shard_info_p->db_name, length);
+
+      /* shard db server */
+      length = strlen (shard_info_p->db_conn_info) + 1 /* NTS */ ;
+      net_buf_cp_int (&net_buf, length, NULL);
+      net_buf_cp_str (&net_buf, shard_info_p->db_conn_info, length);
+    }
+
+  *buffer = net_buf.data;
+  set_data_length (*buffer, net_buf.data_size);
+
+  net_buf.data = NULL;
+  return (net_buf.data_size + MSG_HEADER_SIZE);
 }
 
 void
@@ -3572,6 +3653,26 @@ proxy_cas_alloc_by_ctx (int shard_id, int cas_id, int ctx_cid,
 	  assert (shard_io_p->cur_num_cas >= shard_io_p->num_cas_in_tran);
 	  assert (cas_io_p->is_in_tran == false);
 	  assert (cas_io_p->ctx_uid == 0);
+	}
+
+      client_info_p = shard_shm_get_client_info (proxy_info_p, ctx_cid);
+      if (client_info_p == NULL)
+	{
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		     "Unable to find cilent info in shared memory. "
+		     "(context id:%d, context uid:%d)", ctx_cid, ctx_uid);
+	}
+      else if (shard_shm_set_as_client_info (proxy_info_p, cas_io_p->shard_id,
+					     cas_io_p->cas_id,
+					     client_info_p->client_ip,
+					     client_info_p->driver_info) ==
+	       false)
+	{
+
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		     "Unable to find CAS info in shared memory. "
+		     "(shard_id:%d, cas_id:%d).", cas_io_p->shard_id,
+		     cas_io_p->cas_id);
 	}
 
       cas_io_p->is_in_tran = true;

@@ -227,6 +227,7 @@ struct t_shard_io_global
 
   T_SHARD_IO *ent;
 };
+
 typedef struct t_context_stmt T_CONTEXT_STMT;
 struct t_context_stmt
 {
@@ -257,9 +258,6 @@ struct t_proxy_context
   bool is_cas_in_tran;		/* cas transaction status */
   bool waiting_dummy_prepare;
   bool dont_free_statement;
-  bool is_bypass_msg;		/* by pass messages between 
-				 * the client and the cas.
-				 */
 
   /* context */
   T_PROXY_EVENT *waiting_event;

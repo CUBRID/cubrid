@@ -47,6 +47,7 @@ import cubrid.jdbc.jci.UResCache;
 import cubrid.jdbc.jci.UResultInfo;
 import cubrid.jdbc.jci.UStatement;
 import cubrid.jdbc.jci.UStatementCacheData;
+import cubrid.jdbc.jci.UShardInfo;
 import cubrid.sql.CUBRIDOID;
 
 /**
@@ -121,7 +122,7 @@ public class CUBRIDStatement implements Statement {
 		query_info_flag = false;
 		only_query_plan = false;
 		is_from_current_transaction = true;
-		lastShardId = UStatement.SHARD_ID_INVALID; 
+		lastShardId = UShardInfo.SHARD_ID_INVALID; 
 	}
 
 	/*
@@ -134,7 +135,7 @@ public class CUBRIDStatement implements Statement {
 				synchronized (this) {
 				   	long begin = 0;
   	  	
-	    			setShardId(UStatement.SHARD_ID_INVALID);
+	    			setShardId(UShardInfo.SHARD_ID_INVALID);
 
 				   	u_con.setBeginTime();
 				   	if (u_con.getLogSlowQuery()) {
@@ -180,7 +181,7 @@ public class CUBRIDStatement implements Statement {
 		try {
 			synchronized (con) {
 				synchronized (this) {
-				    lastShardId = UStatement.SHARD_ID_INVALID;	
+				    lastShardId = UShardInfo.SHARD_ID_INVALID;	
 					if (is_closed) {
 						return;
 					}
@@ -408,7 +409,7 @@ public class CUBRIDStatement implements Statement {
 		try {
 			synchronized (con) {
 				synchronized (this) {
-	    			setShardId(UStatement.SHARD_ID_INVALID);
+	    			setShardId(UShardInfo.SHARD_ID_INVALID);
 
 					checkIsOpen();
 					if (batchs.size() == 0) {
@@ -520,7 +521,7 @@ public class CUBRIDStatement implements Statement {
 				synchronized (this) {
 				   	long begin = 0;
 
-	    			setShardId(UStatement.SHARD_ID_INVALID);
+	    			setShardId(UShardInfo.SHARD_ID_INVALID);
 
 				   	u_con.setBeginTime();
 				   	if (u_con.getLogSlowQuery()) {
@@ -657,7 +658,7 @@ public class CUBRIDStatement implements Statement {
 		try {
 			synchronized (con) {
 				synchronized (this) {
-	    			setShardId(UStatement.SHARD_ID_INVALID);
+	    			setShardId(UShardInfo.SHARD_ID_INVALID);
 				
 				   	u_con.setBeginTime();
 
@@ -777,7 +778,7 @@ public class CUBRIDStatement implements Statement {
 		completed = false;
 		setCurrentTransaction(true);
 
-	    setShardId(UStatement.SHARD_ID_INVALID);
+	    setShardId(UShardInfo.SHARD_ID_INVALID);
 
 		if (query_timeout > 0) {
 			t = new CUBRIDCancelQueryThread(this, query_timeout);
@@ -858,7 +859,7 @@ public class CUBRIDStatement implements Statement {
 		boolean is_holdable = false;
 		boolean isQueryCancelThreadStarted = false;
 
-	    setShardId(UStatement.SHARD_ID_INVALID);
+	    setShardId(UShardInfo.SHARD_ID_INVALID);
 
 		if (query_timeout > 0
 				&& (u_con.isConnectedToCubrid() == false || 

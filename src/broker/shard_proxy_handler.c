@@ -117,7 +117,8 @@ static T_PROXY_CLIENT_FUNC proxy_client_fn_table[] = {
   fn_proxy_client_not_supported,	/* fn_get_row_count */
   fn_proxy_client_not_supported,	/* fn_get_last_insert_id */
   fn_proxy_client_not_supported,	/* fn_prepare_and_execute */
-  fn_proxy_client_cursor_close	/* fn_cursor_close */
+  fn_proxy_client_cursor_close,	/* fn_cursor_close */
+  fn_proxy_get_shard_info	/* fn_get_shard_info */
 };
 
 
@@ -130,7 +131,7 @@ static T_PROXY_CAS_FUNC proxy_cas_fn_table[] = {
   fn_proxy_cas_relay_only,	/* fn_close_req_handle */
   fn_proxy_cas_relay_only,	/* fn_cursor */
   fn_proxy_cas_fetch,		/* fn_fetch */
-  fn_proxy_cas_relay_only,	/* fn_schema_info */
+  fn_proxy_cas_schema_info,	/* fn_schema_info */
   fn_proxy_cas_relay_only,	/* fn_oid_get */
   fn_proxy_cas_relay_only,	/* fn_oid_put */
   fn_proxy_cas_relay_only,	/* fn_deprecated */
@@ -163,7 +164,8 @@ static T_PROXY_CAS_FUNC proxy_cas_fn_table[] = {
   fn_proxy_cas_relay_only,	/* fn_get_row_count */
   fn_proxy_cas_relay_only,	/* fn_get_last_insert_id */
   fn_proxy_cas_relay_only,	/* fn_prepare_and_execute */
-  fn_proxy_cas_relay_only	/* fn_cursor_close */
+  fn_proxy_cas_relay_only,	/* fn_cursor_close */
+  fn_proxy_cas_relay_only	/* fn_get_shard_info */
 };
 
 
@@ -1117,7 +1119,6 @@ proxy_str_context (T_PROXY_CONTEXT * ctx_p)
 	    "free_on_client_io_write:%s, "
 	    "free_context:%s, is_client_in_tran:%s, "
 	    "is_cas_in_tran:%s, "
-	    "is_bypass_msg:%s, "
 	    "waiting_event:(%p, %s), "
 	    "func_code:%d, stmt_h_id:%d, stmt_hint_type:%d, "
 	    "wait_timeout:%d, "
@@ -1132,7 +1133,6 @@ proxy_str_context (T_PROXY_CONTEXT * ctx_p)
 	    (ctx_p->free_context) ? "Y" : "N",
 	    (ctx_p->is_client_in_tran) ? "Y" : "N",
 	    (ctx_p->is_cas_in_tran) ? "Y" : "N",
-	    (ctx_p->is_bypass_msg) ? "Y" : "N",
 	    ctx_p->waiting_event, proxy_str_event (ctx_p->waiting_event),
 	    ctx_p->func_code, ctx_p->stmt_h_id,
 	    ctx_p->stmt_hint_type, ctx_p->wait_timeout, ctx_p->client_id,
@@ -1160,7 +1160,6 @@ proxy_context_clear (T_PROXY_CONTEXT * ctx_p)
   ctx_p->is_cas_in_tran = false;
   ctx_p->waiting_dummy_prepare = false;
   ctx_p->dont_free_statement = false;
-  ctx_p->is_bypass_msg = false;
   ctx_p->wait_timeout = 0;
 
   if (ctx_p->waiting_event)
@@ -1173,14 +1172,25 @@ proxy_context_clear (T_PROXY_CONTEXT * ctx_p)
   ctx_p->stmt_h_id = SHARD_STMT_INVALID_HANDLE_ID;
   ctx_p->stmt_hint_type = HT_INVAL;
 
-  if (ctx_p->prepared_stmt
-      && ctx_p->prepared_stmt->status == SHARD_STMT_STATUS_IN_PROGRESS)
+  if (ctx_p->prepared_stmt != NULL)
     {
-      /* check and wakeup statement waiter */
-      shard_stmt_check_waiter_and_wakeup (ctx_p->prepared_stmt);
+      if (ctx_p->prepared_stmt->status == SHARD_STMT_STATUS_IN_PROGRESS)
+	{
+	  /* check and wakeup statement waiter */
+	  shard_stmt_check_waiter_and_wakeup (ctx_p->prepared_stmt);
 
-      /* free statement */
-      shard_stmt_free (ctx_p->prepared_stmt);
+	  /* free statement */
+	  shard_stmt_free (ctx_p->prepared_stmt);
+	}
+      else if (ctx_p->prepared_stmt->stmt_type == SHARD_STMT_TYPE_SCHEMA_INFO)
+	{
+	  /* 
+	   * shcema info server handle can't be shared with other context
+	   * so, we can free statement at this time. 
+	   */
+
+	  shard_stmt_free (ctx_p->prepared_stmt);
+	}
     }
   ctx_p->prepared_stmt = NULL;
 
@@ -1215,7 +1225,6 @@ proxy_context_set_out_tran (T_PROXY_CONTEXT * ctx_p)
   assert (ctx_p);
 
   ctx_p->is_in_tran = false;
-  ctx_p->is_bypass_msg = false;
   ctx_p->shard_id = PROXY_INVALID_SHARD;
   ctx_p->cas_id = PROXY_INVALID_CAS;
 
@@ -1448,6 +1457,11 @@ proxy_context_free_stmt (T_PROXY_CONTEXT * ctx_p)
       if (stmt_p)
 	{
 	  shard_stmt_unpin (stmt_p);
+	  if (stmt_p->stmt_type == SHARD_STMT_TYPE_SCHEMA_INFO)
+	    {
+	      assert (stmt_p->num_pinned == 0);
+	      shard_stmt_free (stmt_p);
+	    }
 	}
 
       FREE_MEM (stmt_list_p);

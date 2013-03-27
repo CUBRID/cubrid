@@ -566,7 +566,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv,
 	      fetch_flag = 0;
 	    }
 
-	  arg_idx++; /* skip fetch_flag from driver */
+	  arg_idx++;		/* skip fetch_flag from driver */
 	}
       else
 	{
@@ -1127,6 +1127,7 @@ fn_schema_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   char *arg1, *arg2;
   char flag;
   int arg1_size, arg2_size;
+  int shard_id;
   int srv_h_id;
 
   if (argc < 4)
@@ -1140,6 +1141,15 @@ fn_schema_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   net_arg_get_str (&arg1, &arg1_size, argv[1]);
   net_arg_get_str (&arg2, &arg2_size, argv[2]);
   net_arg_get_char (flag, argv[3]);
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info->client_version,
+					   PROTOCOL_V5))
+    {
+      net_arg_get_int (&shard_id, argv[4]);
+    }
+  else
+    {
+      shard_id = 0;
+    }
 
   cas_log_write (QUERY_SEQ_NUM_NEXT_VALUE (), true,
 		 "schema_info %s %s %s %d",
@@ -2616,7 +2626,6 @@ fn_deprecated (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 }
 #endif
 
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
 FN_RETURN
 fn_not_supported (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 		  T_REQ_INFO * req_info)
@@ -2625,7 +2634,6 @@ fn_not_supported (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   NET_BUF_ERR_SET (net_buf);
   return FN_KEEP_CONN;
 }
-#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 void

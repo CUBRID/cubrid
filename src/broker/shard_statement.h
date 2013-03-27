@@ -43,6 +43,12 @@ enum
   SHARD_STMT_STATUS_COMPLETE = 2
 };
 
+enum
+{
+  SHARD_STMT_TYPE_PREPARED = 0,
+  SHARD_STMT_TYPE_SCHEMA_INFO = 1
+};
+
 typedef struct t_shard_stmt T_SHARD_STMT;
 struct t_shard_stmt
 {
@@ -51,6 +57,7 @@ struct t_shard_stmt
 
   int stmt_h_id;		/* stmt handle id for client */
   int status;
+  int stmt_type;
 
   T_BROKER_VERSION client_version;	/* client version */
 
@@ -95,9 +102,13 @@ extern int shard_stmt_unpin (T_SHARD_STMT * stmt_p);
 
 extern void shard_stmt_check_waiter_and_wakeup (T_SHARD_STMT * stmt_p);
 
-extern T_SHARD_STMT *shard_stmt_new (char *sql_stmt, int ctx_cid,
-				     unsigned int ctx_uid,
-				     T_BROKER_VERSION client_version);
+extern T_SHARD_STMT *shard_stmt_new_prepared_stmt (char *sql_stmt,
+						   int ctx_cid,
+						   unsigned int ctx_uid,
+						   T_BROKER_VERSION
+						   client_version);
+extern T_SHARD_STMT *shard_stmt_new_schema_info (int ctx_cid,
+						 unsigned int ctx_uid);
 extern void shard_stmt_free (T_SHARD_STMT * stmt_p);
 extern void shard_stmt_destroy (void);
 extern int shard_stmt_find_srv_h_id_for_shard_cas (int stmt_h_id,

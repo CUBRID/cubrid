@@ -133,11 +133,9 @@ extern FN_RETURN fn_savepoint (SOCKET sock_fd, int argc, void **argv,
 extern FN_RETURN fn_parameter_info (SOCKET sock_fd, int argc, void **argv,
 				    T_NET_BUF * net_buf,
 				    T_REQ_INFO * req_info);
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
 extern FN_RETURN fn_not_supported (SOCKET sock_fd, int argc, void **argv,
 				   T_NET_BUF * net_buf,
 				   T_REQ_INFO * req_info);
-#endif
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 extern FN_RETURN fn_lob_new (SOCKET sock_fd, int argc, void **argv,

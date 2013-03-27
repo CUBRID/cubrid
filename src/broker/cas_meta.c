@@ -220,10 +220,10 @@ cas_di_understand_renewed_error_code (const char *driver_info)
 }
 
 void
-cas_bi_make_broker_info (char *broker_info, char statement_pooling,
-			 char cci_pconnect)
+cas_bi_make_broker_info (char *broker_info, char dbms_type,
+			 char statement_pooling, char cci_pconnect)
 {
-  broker_info[BROKER_INFO_DBMS_TYPE] = CAS_DBMS_CUBRID;
+  broker_info[BROKER_INFO_DBMS_TYPE] = dbms_type;
   broker_info[BROKER_INFO_KEEP_CONNECTION] = CAS_KEEP_CONNECTION_ON;
   if (statement_pooling)
     {

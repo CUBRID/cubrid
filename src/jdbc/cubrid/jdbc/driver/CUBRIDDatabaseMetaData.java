@@ -45,6 +45,7 @@ import cubrid.jdbc.jci.UErrorCode;
 import cubrid.jdbc.jci.USchType;
 import cubrid.jdbc.jci.UStatement;
 import cubrid.jdbc.jci.UUType;
+import cubrid.jdbc.jci.UShardInfo;
 
 /**
  * Title: CUBRID JDBC Driver Description:
@@ -59,6 +60,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 	boolean is_closed;
 	int major_version;
 	int minor_version;
+	int shard_id = UShardInfo.SHARD_ID_INVALID;
 
 	protected CUBRIDDatabaseMetaData(CUBRIDConnection c) {
 		con = c;
@@ -67,6 +69,17 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 		is_closed = false;
 		major_version = -1;
 		minor_version = -1;
+		shard_id = 0;		// default SHARD #0
+	}
+
+	protected CUBRIDDatabaseMetaData(CUBRIDConnection c, int sid) {
+		con = c;
+		u_con = con.u_con;
+		error = null;
+		is_closed = false;
+		major_version = -1;
+		minor_version = -1;
+		shard_id = sid;
 	}
 
 	/*
@@ -816,7 +829,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 		UStatement us = null;
 		synchronized (u_con) {
 			us = u_con.getSchemaInfo(USchType.SCH_CLASS, tableNamePattern,
-					null, (byte) 3);
+					null, (byte) 3, shard_id);
 			error = u_con.getRecentError();
 			switch (error.getErrorCode()) {
 			case UErrorCode.ER_NO_ERROR:
@@ -1007,7 +1020,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 			if (columnNamePattern == null || containsWildcard(columnNamePattern))
 				flag |= 2;
 			us = u_con.getSchemaInfo(USchType.SCH_ATTRIBUTE, tableNamePattern,
-					columnNamePattern, (byte) flag);
+					columnNamePattern, (byte) flag, shard_id);
 			error = u_con.getRecentError();
 			switch (error.getErrorCode()) {
 			case UErrorCode.ER_NO_ERROR:
@@ -1163,7 +1176,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 		UStatement us = null;
 		synchronized (u_con) {
 			us = u_con.getSchemaInfo(USchType.SCH_ATTR_PRIVILEGE, table,
-					columnNamePattern, (byte) 2);
+					columnNamePattern, (byte) 2, shard_id);
 			error = u_con.getRecentError();
 			switch (error.getErrorCode()) {
 			case UErrorCode.ER_NO_ERROR:
@@ -1221,7 +1234,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 		UStatement us = null;
 		synchronized (u_con) {
 			us = u_con.getSchemaInfo(USchType.SCH_CLASS_PRIVILEGE,
-					tableNamePattern, null, (byte) 3);
+					tableNamePattern, null, (byte) 3, shard_id);
 			error = u_con.getRecentError();
 			switch (error.getErrorCode()) {
 			case UErrorCode.ER_NO_ERROR:
@@ -1281,7 +1294,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 		UStatement us = null;
 		synchronized (u_con) {
 			us = u_con.getSchemaInfo(USchType.SCH_CONSTRAIT, table, null,
-					(byte) 2);
+					(byte) 2, shard_id);
 			error = u_con.getRecentError();
 			switch (error.getErrorCode()) {
 			case UErrorCode.ER_NO_ERROR:
@@ -1326,7 +1339,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 		UStatement us2 = null;
 		synchronized (u_con) {
 			us2 = u_con.getSchemaInfo(USchType.SCH_ATTRIBUTE, table, null,
-					(byte) 2);
+					(byte) 2, shard_id);
 			error = u_con.getRecentError();
 			switch (error.getErrorCode()) {
 			case UErrorCode.ER_NO_ERROR:
@@ -1488,7 +1501,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 		UStatement us = null;
 		synchronized (u_con) {
 			us = u_con.getSchemaInfo(USchType.SCH_PRIMARY_KEY, table, null,
-					(byte) 3);
+					(byte) 3, shard_id);
 			error = u_con.getRecentError();
 			switch (error.getErrorCode()) {
 			case UErrorCode.ER_NO_ERROR:
@@ -1571,7 +1584,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 
 		UStatement us = null;
 		synchronized (u_con) {
-			us = u_con.getSchemaInfo(type, table1, table2, (byte) 3);
+			us = u_con.getSchemaInfo(type, table1, table2, (byte) 3, shard_id);
 			error = u_con.getRecentError();
 			switch (error.getErrorCode()) {
 			case UErrorCode.ER_NO_ERROR:
@@ -1861,7 +1874,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 		UStatement us = null;
 		synchronized (u_con) {
 			us = u_con.getSchemaInfo(USchType.SCH_CONSTRAIT, table, null,
-					(byte) 2);
+					(byte) 2, shard_id);
 			error = u_con.getRecentError();
 			switch (error.getErrorCode()) {
 			case UErrorCode.ER_NO_ERROR:
@@ -2166,7 +2179,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 		UStatement us = null;
 		synchronized (u_con) {
 			us = u_con.getSchemaInfo(USchType.SCH_DIRECT_SUPER_CLASS,
-					tableNamePattern, null, (byte) 3);
+					tableNamePattern, null, (byte) 3, shard_id);
 			error = u_con.getRecentError();
 			switch (error.getErrorCode()) {
 			case UErrorCode.ER_NO_ERROR:
@@ -2224,6 +2237,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 		con = null;
 		u_con = null;
 		error = null;
+		shard_id = UShardInfo.SHARD_ID_INVALID;
 	}
 
 	private void checkIsOpen() throws SQLException {
@@ -2240,6 +2254,60 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 
 	private boolean containsWildcard(String s) {
 	  return (s != null && (s.indexOf ('%') >= 0 || s.indexOf ('_') >= 0));
+	}
+
+    public synchronized void setShardId(int sid) throws SQLException {
+		checkIsOpen();
+		shard_id = sid;
+	}
+
+    public synchronized int getShardId() throws SQLException {
+		checkIsOpen();
+		return shard_id;
+	}
+
+	public synchronized String getShardDBName() throws SQLException {
+		UShardInfo shard_info;
+
+		checkIsOpen();
+
+		if (con.isShard() == false)
+		{
+			return null;
+		}
+
+		shard_info = u_con.getShardInfo(shard_id);
+		error = u_con.getRecentError();
+		switch (error.getErrorCode()) {
+		case UErrorCode.ER_NO_ERROR:
+			break;
+		default:
+			throw con.createCUBRIDException(error);
+		}
+
+		return shard_info.getDBName();
+	}
+
+	public synchronized String getShardDBServer() throws SQLException {
+		UShardInfo shard_info;
+
+		checkIsOpen();
+
+		if (con.isShard() == false)
+		{
+			return null;
+		}
+
+		shard_info = u_con.getShardInfo(shard_id);
+		error = u_con.getRecentError();
+		switch (error.getErrorCode()) {
+		case UErrorCode.ER_NO_ERROR:
+			break;
+		default:
+			throw con.createCUBRIDException(error);
+		}
+
+		return shard_info.getDBServer();
 	}
 
 	/* JDK 1.6 */

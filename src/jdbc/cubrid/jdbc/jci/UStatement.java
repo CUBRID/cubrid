@@ -67,9 +67,6 @@ public class UStatement {
 			EXEC_FLAG_QUERY_ALL = 0x02, EXEC_FLAG_QUERY_INFO = 0x04,
 			EXEC_FLAG_ONLY_QUERY_PLAN = 0x08, EXEC_FLAG_HOLDABLE_RESULT = 0x20;
 
-	public static final int SHARD_ID_INVALID = -1;	
-	public static final int SHARD_ID_UNSUPPORTED = -2;
-
 	private byte statementType;
 
 	private UConnection relatedConnection;
@@ -750,7 +747,7 @@ public class UStatement {
 	    boolean isScrollable, int queryTimeout) throws UJciException, IOException {
 	UInputBuffer inBuffer = null;
 	errorHandler.clear();
-	relatedConnection.setShardId(UStatement.SHARD_ID_INVALID);
+	relatedConnection.setShardId(UShardInfo.SHARD_ID_INVALID);
 
 	synchronized (relatedConnection) {
 	    writeExecuteRequest(maxField, isScrollable, queryTimeout);
@@ -930,7 +927,7 @@ public class UStatement {
 	private UBatchResult executeBatchInternal (int queryTimeout) throws IOException, UJciException {
 	    UInputBuffer inBuffer = null;
 	    errorHandler.clear();
-	    relatedConnection.setShardId(UStatement.SHARD_ID_INVALID);
+	    relatedConnection.setShardId(UShardInfo.SHARD_ID_INVALID);
 		
 	    synchronized (relatedConnection) {
 		writeExecuteBatchRequest(queryTimeout);

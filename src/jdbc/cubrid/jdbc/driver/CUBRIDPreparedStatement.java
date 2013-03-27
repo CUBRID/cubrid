@@ -60,6 +60,7 @@ import cubrid.jdbc.jci.UBatchResult;
 import cubrid.jdbc.jci.UColumnInfo;
 import cubrid.jdbc.jci.UErrorCode;
 import cubrid.jdbc.jci.UStatement;
+import cubrid.jdbc.jci.UShardInfo;
 import cubrid.sql.CUBRIDOID;
 
 /**
@@ -92,7 +93,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 				synchronized (this) {
 				  	long begin = 0;
 
-	    			setShardId(UStatement.SHARD_ID_INVALID);
+	    			setShardId(UShardInfo.SHARD_ID_INVALID);
 
 				   	u_con.setBeginTime();
 					if (u_con.getLogSlowQuery()) {
@@ -130,7 +131,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 				synchronized (this) {
 				   	long begin = 0;
 
-	    			setShardId(UStatement.SHARD_ID_INVALID);
+	    			setShardId(UShardInfo.SHARD_ID_INVALID);
 
 				   	u_con.setBeginTime();
 				    if (u_con.getLogSlowQuery()) {
@@ -462,7 +463,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 				synchronized (this) {
 				   	long begin = 0;
 
-	    			setShardId(UStatement.SHARD_ID_INVALID);
+	    			setShardId(UShardInfo.SHARD_ID_INVALID);
 
 				   	u_con.setBeginTime();
 				   	if (u_con.getLogSlowQuery()) {
@@ -720,7 +721,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		try {
 			synchronized (con) {
 				synchronized (this) {
-	    			setShardId(UStatement.SHARD_ID_INVALID);
+	    			setShardId(UShardInfo.SHARD_ID_INVALID);
 					if (is_closed)
 						return;
 					is_closed = true;
@@ -761,7 +762,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		try {
 			synchronized (con) {
 				synchronized (this) {
-	    			setShardId(UStatement.SHARD_ID_INVALID);
+	    			setShardId(UShardInfo.SHARD_ID_INVALID);
 
 					checkIsOpen();
 					if (!u_stmt.hasBatch()) {
@@ -884,7 +885,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 		try {
 			synchronized (con) {
 				synchronized (this) {
-	    			setShardId(UStatement.SHARD_ID_INVALID);
+	    			setShardId(UShardInfo.SHARD_ID_INVALID);
 
 				   	u_con.setBeginTime();
 				  	checkIsOpen();

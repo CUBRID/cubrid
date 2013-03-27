@@ -36,58 +36,36 @@
 
 package cubrid.jdbc.jci;
 
-/**
- * CAS Protocol Function code
- * 
- * since 1.0
- */
+public class UShardInfo {
+	public static final int SHARD_ID_INVALID = -1;
+	public static final int SHARD_ID_UNSUPPORTED = -2;
 
-abstract class UFunctionCode {
-	/* since 1.0 */
-	final static byte END_TRANSACTION = 1;
-	final static byte PREPARE = 2;
-	final static byte EXECUTE = 3;
-	final static byte GET_DB_PARAMETER = 4;
-	final static byte SET_DB_PARAMETER = 5;
-	final static byte CLOSE_USTATEMENT = 6;
-	final static byte CURSOR = 7;
-	final static byte FETCH = 8;
-	final static byte GET_SCHEMA_INFO = 9;
-	final static byte GET_BY_OID = 10;
-	final static byte PUT_BY_OID = 11;
-	final static byte GET_DB_VERSION = 15;
-	final static byte GET_CLASS_NUMBER_OBJECTS = 16;
-	final static byte RELATED_TO_OID = 17;
-	final static byte RELATED_TO_COLLECTION = 18;
-	/* since 2.0 */
-	final static byte NEXT_RESULT = 19;
-	final static byte EXECUTE_BATCH_STATEMENT = 20;
-	final static byte EXECUTE_BATCH_PREPAREDSTATEMENT = 21;
-	final static byte CURSOR_UPDATE = 22;
-	final static byte GET_QUERY_INFO = 24;
+	private int shardId;
+	private String dbName;
+	private String dbServer;
 
-	/* since 3.0 */
-	final static byte SAVEPOINT = 26;
-	final static byte PARAMETER_INFO = 27;
-	final static byte XA_PREPARE = 28;
-	final static byte XA_RECOVER = 29;
-	final static byte XA_END_TRAN = 30;
+	UShardInfo(int shard_id) {
+		shardId = shard_id;
+	}
 
-	final static byte CON_CLOSE = 31;
-	final static byte CHECK_CAS = 32;
+	public void setDBName(String db_name) {
+		dbName = db_name;
+	}
 
-	final static byte MAKE_OUT_RS = 33;
+	public void setDBServer(String db_server) {
+		dbServer = db_server;
+	}
 
-	final static byte GET_GENERATED_KEYS = 34;
+	public int getShardId() {
+		return shardId;
+	}
 
-	final static byte NEW_LOB = 35;
-	final static byte WRITE_LOB = 36;
-	final static byte READ_LOB = 37;
+	public String getDBName() {
+		return dbName;
+	}
 
-	final static byte END_SESSION = 38;
-	final static byte PREPARE_AND_EXECUTE = 41;
-	final static byte CURSOR_CLOSE_FOR_PROTOCOL_V2 = 41;
-	final static byte CURSOR_CLOSE = 42;
-	final static byte GET_SHARD_INFO = 43;
-	final static byte LAST_FUNCTION_CODE = GET_SHARD_INFO;
+	public String getDBServer() {
+		return dbServer;
+	}
 }
+

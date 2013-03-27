@@ -120,6 +120,8 @@ extern int proxy_io_make_close_req_handle_in_tran_ok (char **buffer);
 #endif /* ENABLE_UNUSED_FUNCTION */
 extern int proxy_io_make_close_req_handle_out_tran_ok (char *driver_info,
 						       char **buffer);
+extern int proxy_io_make_cursor_close_out_tran_ok (char *driver_info,
+						   char **buffer);
 
 extern int proxy_io_make_get_db_version (char *driver_info, char **buffer);
 extern int proxy_io_make_client_conn_ok (char *driver_info, char **buffer);
@@ -127,7 +129,7 @@ extern int proxy_io_make_client_proxy_alive (char *driver_info,
 					     char **buffer);
 extern int proxy_io_make_client_dbinfo_ok (char *driver_info, char **buffer);
 extern int proxy_io_make_client_acl_fail (char *driver_info, char **buffer);
-
+extern int proxy_io_make_shard_info (char *driver_info, char **buffer);
 
 extern int proxy_socket_set_write_event (T_SOCKET_IO * sock_io_p,
 					 T_PROXY_EVENT * event_p);

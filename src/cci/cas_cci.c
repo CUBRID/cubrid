@@ -2245,9 +2245,10 @@ cci_get_data (int mapped_stmt_id, int col_no, int a_type, void *value,
   return error;
 }
 
-int
-cci_schema_info (int mapped_conn_id, T_CCI_SCH_TYPE type, char *arg1,
-		 char *arg2, char flag, T_CCI_ERROR * err_buf)
+static int
+cci_schema_info_internal (int mapped_conn_id, T_CCI_SCH_TYPE type, char *arg1,
+			  char *arg2, char flag, int shard_id,
+			  T_CCI_ERROR * err_buf)
 {
   T_CON_HANDLE *con_handle = NULL;
   T_REQ_HANDLE *req_handle = NULL;
@@ -2286,7 +2287,7 @@ cci_schema_info (int mapped_conn_id, T_CCI_SCH_TYPE type, char *arg1,
 	{
 	  error = qe_schema_info (req_handle, con_handle,
 				  (int) type, arg1, arg2, flag,
-				  &(con_handle->err_buf));
+				  shard_id, &(con_handle->err_buf));
 	  if (error < 0)
 	    {
 	      hm_req_handle_free (con_handle, req_handle);
@@ -2307,6 +2308,58 @@ ret:
   copy_error_buffer (err_buf, &(con_handle->err_buf));
 
   return error;
+}
+
+int
+cci_schema_info (int mapped_conn_id, T_CCI_SCH_TYPE type, char *arg1,
+		 char *arg2, char flag, T_CCI_ERROR * err_buf)
+{
+  int error;
+
+  error =
+    cci_schema_info_internal (mapped_conn_id, type, arg1, arg2, flag,
+			      0 /* SHARD #0 */ , err_buf);
+  return error;
+}
+
+int
+cci_shard_schema_info (int mapped_conn_id, int shard_id, T_CCI_SCH_TYPE type,
+		       char *class_name, char *attr_name, char flag,
+		       T_CCI_ERROR * err_buf)
+{
+  int error;
+  int is_shard;
+
+  is_shard = cci_is_shard (mapped_conn_id, err_buf);
+  if (is_shard == 0)
+    {
+      error = CCI_ER_NO_SHARD_AVAILABLE;
+      return error;
+    }
+
+  error =
+    cci_schema_info_internal (mapped_conn_id, type, class_name, attr_name,
+			      flag, shard_id, err_buf);
+  return error;
+}
+
+int
+cci_is_shard (int mapped_conn_id, T_CCI_ERROR * err_buf)
+{
+  T_CON_HANDLE *con_handle = NULL;
+  int is_shard = 0;
+  int error = CCI_ER_NO_ERROR;
+
+  reset_error_buffer (err_buf);
+  error = hm_get_connection (mapped_conn_id, &con_handle);
+  if (error != CCI_ER_NO_ERROR)
+    {
+      return error;
+    }
+  is_shard = qe_is_shard (con_handle);
+  con_handle->used = false;
+
+  return is_shard;
 }
 
 int
@@ -4230,6 +4283,12 @@ cci_get_err_msg_internal (int error)
     case CCI_ER_USED_CONNECTION:
       return "This connection is used already.";
 
+    case CCI_ER_NO_SHARD_AVAILABLE:
+      return "No shard available";
+
+    case CCI_ER_INVALID_SHARD:
+      return "Invalid shard";
+
     case CAS_ER_INTERNAL:
       return "Not used";
 
@@ -5923,6 +5982,43 @@ cci_set_allocators (CCI_MALLOC_FUNCTION malloc_func,
     }
 #endif
 
+  return CCI_ER_NO_ERROR;
+}
+
+int
+cci_get_shard_info (int mapped_conn_id, T_CCI_SHARD_INFO ** shard_info,
+		    T_CCI_ERROR * err_buf)
+{
+  T_CON_HANDLE *con_handle = NULL;
+  int error = CCI_ER_NO_ERROR;
+
+  reset_error_buffer (err_buf);
+  error = hm_get_connection (mapped_conn_id, &con_handle);
+  if (error != CCI_ER_NO_ERROR)
+    {
+      set_error_buffer (err_buf, error, NULL);
+      return error;
+    }
+  reset_error_buffer (&(con_handle->err_buf));
+
+  if (shard_info)
+    {
+      *shard_info = NULL;
+    }
+
+  error = qe_get_shard_info (con_handle, shard_info, &(con_handle->err_buf));
+
+  set_error_buffer (&(con_handle->err_buf), error, NULL);
+  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  con_handle->used = false;
+
+  return error;
+}
+
+int
+cci_shard_info_free (T_CCI_SHARD_INFO * shard_info)
+{
+  (void) qe_shard_info_free (shard_info);
   return CCI_ER_NO_ERROR;
 }
 

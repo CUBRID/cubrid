@@ -345,7 +345,7 @@ extern int qe_get_cur_oid (T_REQ_HANDLE * req_handle, char *oid_str_buf);
 extern int qe_schema_info (T_REQ_HANDLE * req_handle,
 			   T_CON_HANDLE * con_handle,
 			   int type, char *arg1, char *arg2,
-			   char flag, T_CCI_ERROR * err_buf);
+			   char flag, int shard_id, T_CCI_ERROR * err_buf);
 extern int qe_oid_get (T_REQ_HANDLE * req_handle,
 		       T_CON_HANDLE * con_handle,
 		       char *oid_str,
@@ -469,6 +469,11 @@ extern int qe_lob_read (T_CON_HANDLE * con_handle, T_LOB * lob,
 			INT64 start_pos, int length, char *buf,
 			T_CCI_ERROR * err_buf);
 
+extern int qe_get_shard_info (T_CON_HANDLE * con_handle,
+			      T_CCI_SHARD_INFO ** shard_info,
+			      T_CCI_ERROR * err_buf);
+extern int qe_shard_info_free (T_CCI_SHARD_INFO * shard_info);
+extern int qe_is_shard (T_CON_HANDLE * con_handle);
 
 /************************************************************************
  * EXPORTED VARIABLES							*

@@ -428,6 +428,9 @@ extern "C"
     CCI_ER_INVALID_ARGS = -20043,
     CCI_ER_USED_CONNECTION = -20044,
 
+    CCI_ER_NO_SHARD_AVAILABLE = -20045,
+    CCI_ER_INVALID_SHARD = -20046,
+
     CCI_ER_NOT_IMPLEMENTED = -20099,
     CCI_ER_END = -20100
   } T_CCI_ERROR_CODE;
@@ -683,6 +686,13 @@ extern "C"
 
   typedef void *T_CCI_CLOB;
 
+  typedef struct
+  {
+    int shard_id;
+    char *db_name;
+    char *db_server;
+  } T_CCI_SHARD_INFO;
+
   /* memory allocators */
   typedef void *(*CCI_MALLOC_FUNCTION) (size_t);
   typedef void *(*CCI_CALLOC_FUNCTION) (size_t, size_t);
@@ -925,6 +935,16 @@ extern "C"
 				 CCI_FREE_FUNCTION free_func,
 				 CCI_REALLOC_FUNCTION realloc_func,
 				 CCI_CALLOC_FUNCTION calloc_func);
+
+  extern int cci_get_shard_info (int con_h_id, T_CCI_SHARD_INFO ** shard_info,
+				 T_CCI_ERROR * err_buf);
+  extern int cci_shard_info_free (T_CCI_SHARD_INFO * shard_info);
+  extern int cci_shard_schema_info (int con_h_id, int shard_id,
+				    T_CCI_SCH_TYPE type, char *class_name,
+				    char *attr_name, char flag,
+				    T_CCI_ERROR * err_buf);
+  extern int cci_is_shard (int con_h_id, T_CCI_ERROR * err_buf);
+
 #endif
 
 /************************************************************************
