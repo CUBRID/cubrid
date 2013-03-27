@@ -2124,6 +2124,7 @@ set_metadata_info (T_SRV_HANDLE * srv_handle)
 	  scale = col->decimals;
 	  precision = col->length;
 	  columns[i].need_clear = false;
+
 	  switch (type)
 	    {			/* set type specific value */
 	      /*

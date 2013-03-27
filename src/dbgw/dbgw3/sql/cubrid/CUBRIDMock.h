@@ -20,8 +20,6 @@
 #ifndef CUBRIDMOCK_H_
 #define CUBRIDMOCK_H_
 
-#include "dbgw3/client/Mock.h"
-
 #ifdef BUILD_MOCK
 #define cci_connect_with_url cci_mock_connect_with_url
 #define cci_prepare cci_mock_prepare
@@ -30,5 +28,26 @@
 #define cci_set_autocommit cci_mock_set_autocommit
 #define cci_end_tran cci_mock_end_tran
 #endif
+
+namespace dbgw
+{
+
+  namespace sql
+  {
+
+    extern int cci_mock_connect_with_url(char *url, char *user, char *password);
+    extern int cci_mock_prepare(int con_handle, char *sql_stmt, char flag,
+        T_CCI_ERROR *err_buf);
+    extern int cci_mock_execute(int req_handle, char flag, int max_col_size,
+        T_CCI_ERROR *err_buf);
+    extern int cci_mock_execute_array(int req_h_id, T_CCI_QUERY_RESULT **qr,
+        T_CCI_ERROR *err_buf);
+    extern int cci_mock_set_autocommit(int con_handle,
+        CCI_AUTOCOMMIT_MODE autocommit_mode);
+    extern int cci_mock_end_tran(int con_h_id, char type, T_CCI_ERROR *err_buf);
+
+  }
+
+}
 
 #endif

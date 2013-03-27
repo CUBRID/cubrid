@@ -561,6 +561,7 @@ AC_ARG_ENABLE([dbgw],
 AM_CONDITIONAL([BUILD_DBGW], [test "$enable_dbgw" != "no"])
 AS_IF([test "$with_cci_only" = "yes"], [enable_dbgw=no])
 AM_CONDITIONAL([BUILD_DBGW_ORACLE], [test "$enable_dbgw" != "no" && test "$with_oracle" != "no"])
+AM_CONDITIONAL([BUILD_DBGW_MYSQL], [test "$enable_dbgw" != "no" && test "$with_mysql" != "no"])
 if test "$enable_dbgw" = "yes"
 then
 	AC_LANG_PUSH([C++])

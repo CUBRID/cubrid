@@ -40,6 +40,12 @@ else
   DBGW_ORACLE_LIB =
 endif
 
+if BUILD_DBGW_MYSQL
+  DBGW_MYSQL_LIB = libdbgw3_mysql.la
+else
+  DBGW_MYSQL_LIB =
+endif
+
 # DBGW Season 3 Library
 dbgw3_includedir = $(includedir)
 dbgw3_include_HEADERS = \
@@ -132,7 +138,8 @@ dbgw3_SOURCES = \
         $(DBGW_SQL_DIR)/cubrid/CUBRIDPreparedStatement.cpp \
         $(DBGW_SQL_DIR)/cubrid/CUBRIDResultSet.cpp \
         $(DBGW_SQL_DIR)/cubrid/CUBRIDResultSetMetaData.cpp \
-        $(DBGW_SQL_DIR)/cubrid/CUBRIDStatementBase.cpp
+        $(DBGW_SQL_DIR)/cubrid/CUBRIDStatementBase.cpp \
+        $(DBGW_SQL_DIR)/cubrid/CUBRIDMock.cpp
 dbgw3_oracle_SOURCES = \
         $(BASE_DIR)/porting.c \
         $(CCI_DIR)/cci_log.cpp \
@@ -187,8 +194,61 @@ dbgw3_oracle_SOURCES = \
         $(DBGW_SQL_DIR)/oracle/OracleStatementBase.cpp \
         $(DBGW_SQL_DIR)/oracle/OracleResultSet.cpp \
         $(DBGW_SQL_DIR)/oracle/OracleResultSetMetaData.cpp \
-        $(DBGW_SQL_DIR)/oracle/OracleValue.cpp
-lib_LTLIBRARIES = $(DBGW_LIB) $(DBGW_ORACLE_LIB)
+        $(DBGW_SQL_DIR)/oracle/OracleValue.cpp \
+        $(DBGW_SQL_DIR)/oracle/OracleMock.cpp
+dbgw3_mysql_SOURCES = \
+        $(BASE_DIR)/porting.c \
+        $(CCI_DIR)/cci_log.cpp \
+        $(DBGW_DIR)/Exception.cpp \
+        $(DBGW_DIR)/Logger.cpp \
+        $(DBGW_DIR)/SynchronizedResource.cpp \
+        $(DBGW_DIR)/Value.cpp \
+        $(DBGW_DIR)/ValueSet.cpp \
+        $(DBGW_SYS_DIR)/ConditionVariable.cpp \
+        $(DBGW_SYS_DIR)/File.cpp \
+        $(DBGW_SYS_DIR)/Mutex.cpp \
+        $(DBGW_SYS_DIR)/Thread.cpp \
+        $(DBGW_SYS_DIR)/ThreadEx.cpp \
+        $(DBGW_SYS_DIR)/Time.cpp \
+        $(DBGW_SYS_DIR)/DBGWPorting.cpp \
+        $(DBGW_AI_DIR)/Adapter.cpp \
+        $(DBGW_CI_DIR)/AsyncWaiter.cpp \
+        $(DBGW_CI_DIR)/AsyncWorker.cpp \
+        $(DBGW_CI_DIR)/AsyncWorkerJob.cpp \
+        $(DBGW_CI_DIR)/Client.cpp \
+        $(DBGW_CI_DIR)/ClientResultSetImpl.cpp \
+        $(DBGW_CI_DIR)/CharsetConverter.cpp \
+        $(DBGW_CI_DIR)/Configuration.cpp \
+        $(DBGW_CI_DIR)/ConfigurationObject.cpp \
+        $(DBGW_CI_DIR)/Connector.cpp \
+        $(DBGW_CI_DIR)/Executor.cpp \
+        $(DBGW_CI_DIR)/ExecutorHandler.cpp \
+        $(DBGW_CI_DIR)/ExecutorStatement.cpp \
+        $(DBGW_CI_DIR)/Group.cpp \
+        $(DBGW_CI_DIR)/Host.cpp \
+        $(DBGW_CI_DIR)/Mock.cpp \
+        $(DBGW_CI_DIR)/Query.cpp \
+        $(DBGW_CI_DIR)/QueryMapper.cpp \
+        $(DBGW_CI_DIR)/Resource.cpp \
+        $(DBGW_CI_DIR)/Service.cpp \
+        $(DBGW_CI_DIR)/StatisticsMonitor.cpp \
+        $(DBGW_CI_DIR)/Timer.cpp \
+        $(DBGW_CI_DIR)/XmlParser.cpp \
+        $(DBGW_SQL_DIR)/CallableStatement.cpp \
+        $(DBGW_SQL_DIR)/Connection.cpp \
+        $(DBGW_SQL_DIR)/DriverManager.cpp \
+        $(DBGW_SQL_DIR)/PreparedStatement.cpp \
+        $(DBGW_SQL_DIR)/ResultSet.cpp \
+        $(DBGW_SQL_DIR)/Statement.cpp \
+        $(DBGW_SQL_DIR)/mysql/MySQLConnection.cpp \
+        $(DBGW_SQL_DIR)/mysql/MySQLException.cpp \
+        $(DBGW_SQL_DIR)/mysql/MySQLPreparedStatement.cpp \
+        $(DBGW_SQL_DIR)/mysql/MySQLResultSet.cpp \
+        $(DBGW_SQL_DIR)/mysql/MySQLResultSetMetaData.cpp \
+        $(DBGW_SQL_DIR)/mysql/MySQLStatementBase.cpp \
+        $(DBGW_SQL_DIR)/mysql/MySQLValue.cpp \
+        $(DBGW_SQL_DIR)/mysql/MySQLMock.cpp
+lib_LTLIBRARIES = $(DBGW_LIB) $(DBGW_ORACLE_LIB) $(DBGW_MYSQL_LIB)
 libdbgw3_la_SOURCES = \
         $(dbgw3_SOURCES)
 libdbgw3_la_CPPFLAGS = \
@@ -204,6 +264,14 @@ libdbgw3_oracle_la_CPPFLAGS = \
 libdbgw3_oracle_la_LDFLAGS = -version-number @LT_VERSION@ @ORACLE_LIB_PATH@
 libdbgw3_oracle_la_LIBADD = @EXPAT_LIBS@ -lclntsh -lnnz11 -lrt
 libdbgw3_oracle_la_LINK = $(CXXLINK)
+
+libdbgw3_mysql_la_SOURCES = \
+        $(dbgw3_mysql_SOURCES)
+libdbgw3_mysql_la_CPPFLAGS = \
+        $(AM_CPPFLAGS) @SRC_INC@ -I$(CCI_DIR) -I$(BROKER_DIR) @MYSQL_INC_PATH@ -DDBGW_MYSQL
+libdbgw3_mysql_la_LDFLAGS = -version-number @LT_VERSION@ @MYSQL_LIB_PATH@
+libdbgw3_mysql_la_LIBADD = @EXPAT_LIBS@ -lmysqlclient -lrt
+libdbgw3_mysql_la_LINK = $(CXXLINK)
 
 VERSIONED_FILES = \
         $(BASE_DIR)/release_string.c

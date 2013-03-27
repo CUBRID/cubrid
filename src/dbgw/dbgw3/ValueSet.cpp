@@ -1147,8 +1147,7 @@ namespace dbgw
   {
     clear();
 
-    m_valueList = _ValueList(valueSet.m_valueList.begin(),
-        valueSet.m_valueList.end());
+    m_valueList = valueSet.m_valueList;
     return *this;
   }
 
