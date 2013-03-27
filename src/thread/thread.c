@@ -3983,6 +3983,43 @@ thread_rc_track_exit (THREAD_ENTRY * thread_p, int id)
 }
 
 /*
+ * thread_rc_track_amount_pgbuf () -
+ *   return:
+ *   thread_p(in):
+ */
+int
+thread_rc_track_amount_pgbuf (THREAD_ENTRY * thread_p)
+{
+  INT32 amount;
+  THREAD_RC_TRACK *track;
+  THREAD_RC_METER *meter;
+  int j;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  assert_release (thread_p != NULL);
+
+  amount = 0;			/* init */
+
+  track = thread_p->track;
+  if (track != NULL)
+    {
+      for (j = 0; j < MGR_LAST; j++)
+	{
+	  meter = &(track->meter[RC_PGBUF][j]);
+	  amount += meter->m_amount;
+	}
+    }
+
+  assert_release (amount >= 0);
+
+  return amount;
+}
+
+/*
  * thread_rc_track_meter () -
  *   return:
  *   thread_p(in):

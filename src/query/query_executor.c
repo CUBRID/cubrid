@@ -3083,7 +3083,13 @@ qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   REGU_VARIABLE_LIST regu_list;
   SORT_PUT_FUNC *put_fn;
   int limit;
+#if !defined(NDEBUG)
+  int track_id;
+#endif
 
+#if !defined(NDEBUG)
+  track_id = thread_rc_track_enter (thread_p);
+#endif
 
   if (xasl->type == BUILDLIST_PROC)
     {
@@ -3297,9 +3303,23 @@ qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   /* duplicates elimination has already been done at qfile_sort_list_with_func()
    */
 
+#if !defined(NDEBUG)
+  if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
+    {
+      assert_release (false);
+    }
+#endif
+
   return NO_ERROR;
 
 exit_on_error:
+
+#if !defined(NDEBUG)
+  if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
+    {
+      assert_release (false);
+    }
+#endif
 
   return ER_FAILED;
 }
@@ -13295,7 +13315,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
 #endif /* CUBRID_DEBUG */
   QMGR_QUERY_ENTRY *query_entryp;
   struct drand48_data *rand_buf_p;
-#if 0 /* !defined(NDEBUG) */	/* TODO */
+#if 0 /* !defined(NDEBUG) */	/* TODO - care async */
   int track_id;
 #endif
 
@@ -13407,7 +13427,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
        * transaction is unilaterally aborted during query execution.
        */
 
-#if 0 /* !defined(NDEBUG) */	/* TODO */
+#if 0 /* !defined(NDEBUG) */	/* TODO - care async */
       track_id = thread_rc_track_enter (thread_p);
 #endif
 
@@ -13415,7 +13435,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
       stat = qexec_execute_mainblock (thread_p, xasl, &xasl_state);
       xasl->query_in_progress = false;
 
-#if 0 /* !defined(NDEBUG) */	/* TODO */
+#if 0 /* !defined(NDEBUG) */	/* TODO - care async */
       if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
 	{
 	  assert_release (false);

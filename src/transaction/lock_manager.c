@@ -7269,6 +7269,12 @@ lock_object_with_btid (THREAD_ENTRY * thread_p, const OID * oid,
     }
   else
     {
+#if !defined(NDEBUG)
+      if (thread_rc_track_amount_pgbuf (thread_p) > 0)
+	{
+	  assert_release (false);
+	}
+#endif
       wait_msecs = logtb_find_wait_msecs (tran_index);
     }
   isolation = logtb_find_isolation (tran_index);
@@ -7529,6 +7535,12 @@ lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid,
     }
   else
     {
+#if !defined(NDEBUG)
+      if (thread_rc_track_amount_pgbuf (thread_p) > 0)
+	{
+	  assert_release (false);
+	}
+#endif
       wait_msecs = logtb_find_wait_msecs (tran_index);
     }
   isolation = logtb_find_isolation (tran_index);
@@ -7722,6 +7734,12 @@ lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
     }
   else
     {
+#if !defined(NDEBUG)
+      if (thread_rc_track_amount_pgbuf (thread_p) > 0)
+	{
+	  assert_release (false);
+	}
+#endif
       wait_msecs = logtb_find_wait_msecs (tran_index);
     }
   isolation = logtb_find_isolation (tran_index);
@@ -12874,6 +12892,12 @@ lock_object_with_btid_get_granted_mode (THREAD_ENTRY * thread_p,
     }
   else
     {
+#if !defined(NDEBUG)
+      if (thread_rc_track_amount_pgbuf (thread_p) > 0)
+	{
+	  assert_release (false);
+	}
+#endif
       wait_msecs = logtb_find_wait_msecs (tran_index);
     }
   isolation = logtb_find_isolation (tran_index);
@@ -13145,6 +13169,12 @@ lock_btid_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
     }
   else
     {
+#if !defined(NDEBUG)
+      if (thread_rc_track_amount_pgbuf (thread_p) > 0)
+	{
+	  assert_release (false);
+	}
+#endif
       wait_msecs = logtb_find_wait_msecs (tran_index);
     }
   isolation = logtb_find_isolation (tran_index);
