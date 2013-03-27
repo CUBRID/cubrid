@@ -286,8 +286,8 @@ namespace dbgw
                   break;
                 }
 
-              pExecutor = m_executorList.front();
-              m_executorList.pop_front();
+              pExecutor = m_executorList.back();
+              m_executorList.pop_back();
               m_connPoolStatItem[DBGW_CONN_POOL_STAT_COL_IDLE_CNT]--;
               m_poolMutex.unlock();
 
