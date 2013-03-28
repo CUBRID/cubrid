@@ -1179,7 +1179,8 @@ $ LOADDB
 1110 Ungenügend Speicher in Btree-Seite. (Schlüssellänge: %d)\n%s
 1111 Ergebnis abgeschnitten, da die Genauigkeit (%1$d) kleiner als seine Länge (%2$d) ist.
 1112 A character could not be converted from '%1$s' to '%2$s'.
-1113 Letzter Fehler
+1113 Element index out of range.
+1114 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %d):

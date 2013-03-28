@@ -148,7 +148,8 @@ BASE_SOURCES = \
 	$(BASE_DIR)/misc_string.c \
 	$(BASE_DIR)/variable_string.c \
 	$(BASE_DIR)/stringl.c \
-	$(BASE_DIR)/getopt_long.c
+	$(BASE_DIR)/getopt_long.c \
+	$(BASE_DIR)/binaryheap.c
 HEAPLAYER_SOURCES = \
 	$(HEAPLAYER_DIR)/customheaps.cpp \
 	$(HEAPLAYER_DIR)/lea_heap.c

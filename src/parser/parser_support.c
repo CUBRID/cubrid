@@ -4425,6 +4425,7 @@ regu_xasl_node_init (XASL_NODE * ptr, PROC_TYPE type)
   ptr->type = type;
   ptr->option = Q_ALL;
   ptr->iscan_oid_order = prm_get_bool_value (PRM_ID_BT_INDEX_SCAN_OID_ORDER);
+  ptr->topn_items = NULL;
 
   switch (type)
     {

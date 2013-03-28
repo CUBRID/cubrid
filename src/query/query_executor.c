@@ -1088,7 +1088,24 @@ static HEAP_SCANCACHE *qexec_reset_caches (THREAD_ENTRY * thread_p,
 					   PRUNING_CONTEXT * pcontext,
 					   UPDDEL_CLASS_INFO_INTERNAL *
 					   class_, int op_type);
-
+static int qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
+				  VAL_DESCR * vd);
+static BH_CMP_RESULT qexec_topn_compare (const BH_ELEM left,
+					 const BH_ELEM right, BH_CMP_ARG arg);
+static BH_CMP_RESULT qexec_topn_cmpval (DB_VALUE * left, DB_VALUE * right,
+					TP_DOMAIN * domain, SORT_ORDER order);
+static int qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p,
+				    TOPN_TUPLES * sort_stop,
+				    QFILE_TUPLE_DESCRIPTOR * tpldescr);
+static int qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p,
+					 XASL_NODE * xasl,
+					 XASL_STATE * xasl_state,
+					 bool is_final);
+static void qexec_clear_topn_tuple (THREAD_ENTRY * thread_p, DB_VALUE * tuple,
+				    int count);
+static int qexec_get_orderbynum_upper_bound (THREAD_ENTRY * tread_p,
+					     PRED_EXPR * pred, VAL_DESCR * vd,
+					     DB_VALUE * ubound);
 /*
  * Utility routines
  */
@@ -1566,6 +1583,16 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       switch (tpldescr_status)
 	{
 	case QPROC_TPLDESCR_SUCCESS:
+	  if (xasl->topn_items != NULL)
+	    {
+	      if (qexec_add_tuple_to_topn (thread_p, xasl->topn_items,
+					   &xasl->list_id->tpl_descr)
+		  != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	      break;
+	    }
 	  /* generate tuple into list file page */
 	  if (qfile_generate_tuple_into_list (thread_p, xasl->list_id,
 					      T_NORMAL) != NO_ERROR)
@@ -1605,6 +1632,18 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
 	default:
 	  break;
+	}
+
+      if (xasl->topn_items != NULL
+	  && tpldescr_status != QPROC_TPLDESCR_SUCCESS)
+	{
+	  /* abandon top-n processing */
+	  if (qexec_topn_tuples_to_list_id (thread_p, xasl, xasl_state, false)
+	      != NO_ERROR)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	  assert (xasl->topn_items == NULL);
 	}
     }
   else if (xasl->type == BUILDVALUE_PROC)
@@ -2336,6 +2375,20 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
       if (xasl->iscycle_val)
 	{
 	  pr_clear_value (xasl->iscycle_val);
+	}
+      if (xasl->topn_items != NULL)
+	{
+	  int i;
+	  BINARY_HEAP *heap;
+	  heap = xasl->topn_items->heap;
+	  for (i = 0; i < heap->element_count; i++)
+	    {
+	      qexec_clear_topn_tuple (thread_p, heap->members[i],
+				      xasl->topn_items->values_count);
+	      db_private_free (thread_p, heap->members[i]);
+	    }
+	  bh_destroy (thread_p, heap);
+	  db_private_free_and_init (thread_p, xasl->topn_items);
 	}
     }
 
@@ -3090,6 +3143,12 @@ qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 #if !defined(NDEBUG)
   track_id = thread_rc_track_enter (thread_p);
 #endif
+
+  if (xasl->topn_items != NULL)
+    {
+      /* already sorted, just dump tuples to list */
+      return qexec_topn_tuples_to_list_id (thread_p, xasl, xasl_state, true);
+    }
 
   if (xasl->type == BUILDLIST_PROC)
     {
@@ -11868,6 +11927,15 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      }			/* if */
 
 	    QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
+
+	    if (xasl->orderby_list != NULL)
+	      {
+		if (qexec_setup_topn_proc (thread_p, xasl, &xasl_state->vd)
+		    != NO_ERROR)
+		  {
+		    GOTO_EXIT_ON_ERROR;
+		  }
+	      }
 	  }
 	break;
       }
@@ -19178,6 +19246,7 @@ query_multi_range_opt_check_set_sort_col (THREAD_ENTRY * thread_p,
   int error = NO_ERROR;
   MULTI_RANGE_OPT *multi_range_opt = NULL;
   ACCESS_SPEC_TYPE *spec = NULL;
+  TP_DOMAIN *attr_dom = NULL;
 
   if (xasl == NULL || xasl->type != BUILDLIST_PROC
       || xasl->orderby_list == NULL || xasl->spec_list == NULL)
@@ -24251,6 +24320,640 @@ exit_on_error:
     {
       xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
     }
+
+  return error;
+}
+
+/*
+ * qexec_setup_topn_proc () - setup a top-n object
+ * return : error code or NO_ERROR
+ * thread_p (in) :
+ * xasl (in) :
+ * vd (in) :
+ */
+static int
+qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
+		       VAL_DESCR * vd)
+{
+  BINARY_HEAP *heap = NULL;
+  DB_VALUE ubound_val;
+  REGU_VARIABLE_LIST var_list = NULL;
+  TOPN_TUPLES *top_n = NULL;
+  int error = NO_ERROR, ubound = 0, count = 0;
+  UINT64 estimated_size = 0;
+
+  if (xasl->type != BUILDLIST_PROC)
+    {
+      return NO_ERROR;
+    }
+
+  if (xasl->orderby_list == NULL)
+    {
+      /* Not ordered */
+      return NO_ERROR;
+    }
+  if (xasl->ordbynum_pred == NULL)
+    {
+      /* No limit specified */
+      return NO_ERROR;
+    }
+
+  if (xasl->option == Q_DISTINCT)
+    {
+      /* We cannot handle distinct ordering */
+      return NO_ERROR;
+    }
+
+  if (XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY)
+      || XASL_IS_FLAGED (xasl, XASL_SKIP_ORDERBY_LIST)
+      || XASL_IS_FLAGED (xasl, XASL_USES_MRO))
+    {
+      return NO_ERROR;
+    }
+
+  if (xasl->proc.buildlist.groupby_list != NULL
+      || xasl->proc.buildlist.a_func_list != NULL)
+    {
+      /* Cannot handle group by and analytics with order by */
+      return NO_ERROR;
+    }
+
+  DB_MAKE_NULL (&ubound_val);
+  error = qexec_get_orderbynum_upper_bound (thread_p, xasl->ordbynum_pred, vd,
+					    &ubound_val);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  if (DB_IS_NULL (&ubound_val))
+    {
+      return NO_ERROR;
+    }
+  if (DB_VALUE_TYPE (&ubound_val) != DB_TYPE_INTEGER)
+    {
+      TP_DOMAIN_STATUS status;
+      status = tp_value_cast (&ubound_val, &ubound_val, &tp_Integer_domain,
+			      1);
+      if (status != DOMAIN_COMPATIBLE)
+	{
+	  return NO_ERROR;
+	}
+    }
+
+  ubound = DB_GET_INT (&ubound_val);
+  pr_clear_value (&ubound_val);
+
+  if (ubound == 0)
+    {
+      return NO_ERROR;
+    }
+
+  estimated_size = 0;
+  count = 0;
+  var_list = xasl->outptr_list->valptrp;
+  while (var_list)
+    {
+      if (var_list->value.domain == NULL)
+	{
+	  /* probably an error but just abandon top-n */
+	  return NO_ERROR;
+	}
+      if (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (var_list->value.domain)))
+	{
+	  /* do not apply this to collections */
+	  return NO_ERROR;
+	}
+      if (REGU_VARIABLE_IS_FLAGED (&var_list->value,
+				   REGU_VARIABLE_HIDDEN_COLUMN))
+	{
+	  /* skip hidden values */
+	  var_list = var_list->next;
+	  continue;
+	}
+
+      estimated_size += tp_domain_memory_size (var_list->value.domain);
+      count++;
+      var_list = var_list->next;
+    }
+
+  if (estimated_size >= (UINT64) QFILE_MAX_TUPLE_SIZE_IN_PAGE)
+    {
+      /* Do not keep these values in memory */
+    }
+
+  /* At any time, we will handle at most ubound tuples */
+  estimated_size *= ubound;
+
+  if (estimated_size > prm_get_size_value (PRM_ID_SORT_BUFFER_SIZE))
+    {
+      /* Do not use more than the sort buffer size. Using the entire sort
+       * buffer is possible because this is the only sort operation which is
+       * being executed for this transaction at this time.
+       */
+      return NO_ERROR;
+    }
+
+
+  top_n = (TOPN_TUPLES *) db_private_alloc (thread_p, sizeof (TOPN_TUPLES));
+  if (top_n == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  heap = bh_create (thread_p, ubound, qexec_topn_compare, top_n);
+  if (heap == NULL)
+    {
+      db_private_free (thread_p, top_n);
+      return ER_FAILED;
+    }
+
+  top_n->heap = heap;
+  top_n->sort_items = xasl->orderby_list;
+  top_n->values_count = count;
+
+  xasl->topn_items = top_n;
+
+  return NO_ERROR;
+}
+
+/*
+ * qexec_topn_compare () - comparison function for top-n heap
+ * return : comparison result
+ * left (in) :
+ * right (in) :
+ * arg (in) :
+ */
+static BH_CMP_RESULT
+qexec_topn_compare (const BH_ELEM left, const BH_ELEM right, BH_CMP_ARG arg)
+{
+  int pos;
+  SORT_LIST *key = NULL;
+  TOPN_TUPLES *proc = (TOPN_TUPLES *) arg;
+  DB_VALUE *left_tuple = (DB_VALUE *) left;
+  DB_VALUE *right_tuple = (DB_VALUE *) right;
+  BH_CMP_RESULT cmp;
+
+  for (key = proc->sort_items; key != NULL; key = key->next)
+    {
+      pos = key->pos_descr.pos_no;
+      cmp = qexec_topn_cmpval (&left_tuple[pos], &right_tuple[pos],
+			       key->pos_descr.dom, key->s_order);
+      if (cmp == BH_EQ)
+	{
+	  continue;
+	}
+      return cmp;
+    }
+
+  return BH_EQ;
+}
+
+/*
+ * qexec_topn_cmpval () - compare two values
+ * return : comparison result
+ * left (in)  : left value
+ * right (in) : right value
+ * domain (in): domain of left and right
+ * order (in) :	sort order (S_ASC, S_DESC)
+ *
+ * Note: tp_value_compare is too complex for our case 
+ */
+static BH_CMP_RESULT
+qexec_topn_cmpval (DB_VALUE * left, DB_VALUE * right, TP_DOMAIN * domain,
+		   SORT_ORDER order)
+{
+  int cmp;
+  if (DB_IS_NULL (left))
+    {
+      if (DB_IS_NULL (right))
+	{
+	  return BH_EQ;
+	}
+      cmp = DB_LT;
+    }
+  else if (DB_IS_NULL (right))
+    {
+      cmp = DB_GT;
+    }
+  else
+    {
+      if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
+	{
+	  /* In cases like order by val + ?, the domain of the expression
+	   * is not known at compile time */
+	  cmp = tp_value_compare (left, right, 1, 1);
+	}
+      else
+	{
+	  cmp = domain->type->cmpval (left, right, 1, 1, NULL,
+				      domain->collation_id);
+	}
+    }
+  if (order == S_DESC)
+    {
+      cmp = -cmp;
+    }
+
+  switch (cmp)
+    {
+    case DB_GT:
+      return BH_GT;
+
+    case DB_LT:
+      return BH_LT;
+
+    case DB_EQ:
+      return BH_EQ;
+
+    default:
+      break;
+    }
+
+  return BH_CMP_ERROR;
+}
+
+/*
+ * qexec_add_tuple_to_topn () - add a new tuple to top-n tuples
+ * return : error code or NO_ERROR
+ * thread_p (in)  :
+ * topn_items (in): topn items
+ * tpldescr (in)  : new tuple
+ *
+ * Note: We only add a tuple here if the top-n heap has fewer than n elements
+ *  or if the new tuple can replace one of the existing tuples
+ */
+static int
+qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p, TOPN_TUPLES * topn_items,
+			 QFILE_TUPLE_DESCRIPTOR * tpldescr)
+{
+  DB_VALUE *tuple = NULL, *heap_max = NULL;
+  int error = NO_ERROR;
+  BH_CMP_RESULT res = BH_EQ;
+  SORT_LIST *key = NULL;
+  int pos = 0;
+  assert (topn_items != NULL && tpldescr != NULL);
+
+  if (!bh_is_full (topn_items->heap))
+    {
+      /* Add current tuple to heap. We haven't reached top-N yet */
+      error = qdata_tuple_to_values_array (thread_p, tpldescr, &tuple);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      (void) bh_insert (topn_items->heap, tuple);
+
+      return NO_ERROR;
+    }
+
+  /* We only add a tuple to the heap if it is "smaller" than the current
+   * root. Rather than allocating memory for a new tuple and testing it,
+   * we test the heap root directly on the outptr list and replace it
+   * if we have to.
+   */
+  heap_max = bh_peek_max (topn_items->heap);
+
+  assert (heap_max != NULL);
+
+  for (key = topn_items->sort_items; key != NULL; key = key->next)
+    {
+      pos = key->pos_descr.pos_no;
+      res = qexec_topn_cmpval (&heap_max[pos], tpldescr->f_valp[pos],
+			       key->pos_descr.dom, key->s_order);
+      if (res == BH_EQ)
+	{
+	  continue;
+	}
+      if (res == BH_LT)
+	{
+	  /* skip this tuple */
+	  return NO_ERROR;
+	}
+      break;
+    }
+  if (res == BH_EQ)
+    {
+      return NO_ERROR;
+    }
+
+  error = qdata_tuple_to_values_array (thread_p, tpldescr, &tuple);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  heap_max = bh_replace_max (topn_items->heap, (BH_ELEM) tuple);
+
+  qexec_clear_topn_tuple (thread_p, heap_max, tpldescr->f_cnt);
+  db_private_free (thread_p, heap_max);
+  return error;
+}
+
+/*
+ * qexec_topn_tuples_to_list_id () - put tuples from the internal heap to the
+ *				   output listfile
+ * return : error code or NO_ERROR
+ * xasl (in) : xasl node
+ */
+static int
+qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
+			      XASL_STATE * xasl_state, bool is_final)
+{
+  QFILE_LIST_ID *list_id = NULL;
+  QFILE_TUPLE_DESCRIPTOR *tpl_descr = NULL;
+  TOPN_TUPLES *topn = NULL;
+  BINARY_HEAP *heap = NULL;
+  REGU_VARIABLE_LIST varp = NULL;
+  DB_VALUE *tuple = NULL;
+  int row, i, value_size, values_count, error = NO_ERROR;
+  ORDBYNUM_INFO ordby_info;
+  DB_LOGICAL res = V_FALSE;
+
+  /* setup ordby_info so that we can evaluate the orderby_num() predicate */
+  ordby_info.xasl_state = xasl_state;
+  ordby_info.ordbynum_pred = xasl->ordbynum_pred;
+  ordby_info.ordbynum_flag = xasl->ordbynum_flag;
+  ordby_info.ordbynum_pos_cnt = 0;
+  ordby_info.ordbynum_val = xasl->ordbynum_val;
+  DB_MAKE_BIGINT (ordby_info.ordbynum_val, 0);
+
+  list_id = xasl->list_id;
+  topn = xasl->topn_items;
+  heap = topn->heap;
+  tpl_descr = &list_id->tpl_descr;
+  values_count = topn->values_count;
+
+  /* convert binary heap to sorted array */
+  bh_to_sorted_array (heap);
+
+  /* dump all items in heap to listfile */
+  if (tpl_descr->f_valp == NULL && list_id->type_list.type_cnt > 0)
+    {
+      size_t size = values_count * DB_SIZEOF (DB_VALUE *);
+
+      tpl_descr->f_valp = (DB_VALUE **) malloc (size);
+      if (tpl_descr->f_valp == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	  error = ER_FAILED;
+	  goto cleanup;
+	}
+    }
+  varp = xasl->outptr_list->valptrp;
+  for (row = 0; row < heap->element_count; row++)
+    {
+      tuple = (DB_VALUE *) heap->members[row];
+
+      /* evaluate orderby_num predicate */
+      res = qexec_eval_ordbynum_pred (thread_p, &ordby_info);
+      if (res != V_TRUE)
+	{
+	  if (res == V_ERROR)
+	    {
+	      error = ER_FAILED;
+	      goto cleanup;
+	    }
+	  /* skip this tuple */
+	  qexec_clear_topn_tuple (thread_p, tuple, values_count);
+	  db_private_free_and_init (thread_p, tuple);
+	  heap->members[row] = NULL;
+	  continue;
+	}
+
+      tuple = (DB_VALUE *) heap->members[row];
+      tpl_descr->tpl_size = QFILE_TUPLE_LENGTH_SIZE;
+
+      tpl_descr->f_cnt = 0;
+
+      for (varp = xasl->outptr_list->valptrp; varp != NULL; varp = varp->next)
+	{
+	  if (REGU_VARIABLE_IS_FLAGED (&varp->value,
+				       REGU_VARIABLE_HIDDEN_COLUMN))
+	    {
+	      continue;
+	    }
+	  if (varp->value.type == TYPE_ORDERBY_NUM)
+	    {
+	      pr_clone_value (ordby_info.ordbynum_val,
+			      &tuple[tpl_descr->f_cnt]);
+	    }
+	  tpl_descr->f_valp[tpl_descr->f_cnt] = &tuple[tpl_descr->f_cnt];
+	  value_size =
+	    qdata_get_tuple_value_size_from_dbval (&tuple[tpl_descr->f_cnt]);
+	  if (value_size == ER_FAILED)
+	    {
+	      error = value_size;
+	      goto cleanup;
+	    }
+	  tpl_descr->tpl_size += value_size;
+	  tpl_descr->f_cnt++;
+	}
+      error = qfile_generate_tuple_into_list (thread_p, list_id, T_NORMAL);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+      /* clear tuple values */
+      qexec_clear_topn_tuple (thread_p, tuple, values_count);
+      db_private_free_and_init (thread_p, tuple);
+      heap->members[row] = NULL;
+    }
+
+cleanup:
+  if (tuple != NULL)
+    {
+      qexec_clear_topn_tuple (thread_p, tuple, values_count);
+    }
+  for (i = row; i < heap->element_count; i++)
+    {
+      if (heap->members[i] != NULL)
+	{
+	  tuple = (DB_VALUE *) heap->members[i];
+	  qexec_clear_topn_tuple (thread_p, tuple, values_count);
+	  db_private_free (thread_p, tuple);
+	  heap->members[row] = NULL;
+	}
+    }
+  bh_destroy (thread_p, heap);
+  db_private_free (thread_p, xasl->topn_items);
+  xasl->topn_items = NULL;
+  if (is_final)
+    {
+      qfile_close_list (thread_p, list_id);
+    }
+  return error;
+}
+
+/*
+ * qexec_clear_topn_tuple () - clear values of a top-n tuple
+ * return : void
+ * thread_p (in)  :
+ * values (in)	  : tuple values
+ * count (in)	  : number of values
+ */
+static void
+qexec_clear_topn_tuple (THREAD_ENTRY * thread_p, DB_VALUE * values, int count)
+{
+  int i;
+  if (values != NULL)
+    {
+      for (i = 0; i < count; i++)
+	{
+	  pr_clear_value (&values[i]);
+	}
+    }
+}
+
+/*
+ * qexec_get_orderbynum_upper_bound - get upper bound for orderby_num
+ *				      predicate
+ * return: error code or NO_ERROR
+ * thread_p	   : thread entry
+ * pred (in)	   : orderby_num predicate
+ * vd (in)	   : value descriptor
+ * ubound (in/out) : upper bound
+ */
+static int
+qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred,
+				  VAL_DESCR * vd, DB_VALUE * ubound)
+{
+  int error = NO_ERROR;
+  REGU_VARIABLE *lhs, *rhs;
+  REL_OP op;
+  DB_VALUE *val;
+  int cmp;
+  DB_VALUE left_bound, right_bound;
+
+  assert_release (pred != NULL && ubound != NULL);
+
+  DB_MAKE_NULL (ubound);
+  DB_MAKE_NULL (&left_bound);
+  DB_MAKE_NULL (&right_bound);
+
+  if (pred->type == T_PRED && pred->pe.pred.bool_op == B_AND)
+    {
+      error = qexec_get_orderbynum_upper_bound (thread_p, pred->pe.pred.lhs,
+						vd, &left_bound);
+      if (error != NO_ERROR)
+	{
+	  goto error_return;
+	}
+
+      error = qexec_get_orderbynum_upper_bound (thread_p, pred->pe.pred.rhs,
+						vd, &right_bound);
+      if (error != NO_ERROR)
+	{
+	  goto error_return;
+	}
+
+      if (DB_IS_NULL (&left_bound) && DB_IS_NULL (&right_bound))
+	{
+	  /* no valid bounds */
+	  goto cleanup;
+	}
+
+      cmp = tp_value_compare (&left_bound, &right_bound, 1, 1);
+      if (cmp == DB_GT)
+	{
+	  error = pr_clone_value (&left_bound, ubound);
+	}
+      else
+	{
+	  error = pr_clone_value (&right_bound, ubound);
+	}
+
+      if (error != NO_ERROR)
+	{
+	  goto error_return;
+	}
+
+      goto cleanup;
+    }
+
+  if (pred->type == T_EVAL_TERM)
+    {
+      /* This should be TYPE_CONSTANT comp TYPE_VALUE. If not, we bail out */
+      lhs = pred->pe.eval_term.et.et_comp.lhs;
+      rhs = pred->pe.eval_term.et.et_comp.rhs;
+      op = pred->pe.eval_term.et.et_comp.rel_op;
+      if (lhs->type != TYPE_CONSTANT)
+	{
+	  if (lhs->type != TYPE_POS_VALUE && lhs->type != TYPE_DBVAL)
+	    {
+	      goto cleanup;
+	    }
+
+	  if (rhs->type != TYPE_CONSTANT)
+	    {
+	      goto cleanup;
+	    }
+
+	  /* reverse comparison */
+	  rhs = lhs;
+	  lhs = pred->pe.eval_term.et.et_comp.rhs;
+	  switch (op)
+	    {
+	    case R_GT:
+	      op = R_LT;
+	      break;
+	    case R_GE:
+	      op = R_LE;
+	      break;
+	    case R_LT:
+	      op = R_GT;
+	      break;
+	    case R_LE:
+	      op = R_GE;
+	      break;
+	    default:
+	      goto cleanup;
+	    }
+	}
+      if (rhs->type != TYPE_POS_VALUE && rhs->type != TYPE_DBVAL)
+	{
+	  goto cleanup;
+	}
+
+      if (op != R_LT && op != R_LE)
+	{
+	  /* we're only interested in orderby_num less than value */
+	  goto cleanup;
+	}
+
+      error = fetch_peek_dbval (thread_p, rhs, vd, NULL, NULL, NULL, &val);
+      if (error != NO_ERROR)
+	{
+	  goto error_return;
+	}
+
+      if (op == R_LT)
+	{
+	  /* add 1 so we can use R_LE */
+	  DB_VALUE one_val;
+	  DB_MAKE_INT (&one_val, 1);
+	  error = qdata_subtract_dbval (val, &one_val, ubound, rhs->domain);
+	}
+      else
+	{
+	  error = pr_clone_value (val, ubound);
+	}
+
+      if (error != NO_ERROR)
+	{
+	  goto error_return;
+	}
+      goto cleanup;
+    }
+
+  return error;
+
+error_return:
+  DB_MAKE_NULL (ubound);
+
+cleanup:
+  pr_clear_value (&left_bound);
+  pr_clear_value (&right_bound);
 
   return error;
 }

@@ -1179,7 +1179,8 @@ $ LOADDB
 1110 B树叶子节点页空间不足. (key len: %d)\n%s
 1111 结果值被截断, 因为精度(%1$d) 小于它的长度(%2$d).
 1112 A character could not be converted from '%1$s' to '%2$s'.
-1113 Last Error
+1113 Element index out of range.
+1114 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %d):

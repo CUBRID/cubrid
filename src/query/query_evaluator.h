@@ -41,6 +41,7 @@
 #include "parser_support.h"
 #include "thread.h"
 #include "regex38a.h"
+#include "binaryheap.h"
 
 typedef struct qproc_db_value_list *QPROC_DB_VALUE_LIST;	/* TODO */
 struct qproc_db_value_list

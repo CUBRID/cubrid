@@ -1179,7 +1179,8 @@ $ LOADDB
 1110 នៅក្នុងទំព័រមាតិកាអត់មានថាសទំនេរគ្រប់គ្រាន់ទេ. (key len: %d)\n%s
 1111 តម្លៃនៃលទ្ធផលត្រូវកាត់បន្ថយ, ពិព្រោះភាពទៀងទាត់អំពី (%1$d) ត្រូវតិចជាងប្រវែងរបស់ខ្លួនដែលមាន(%2$d).
 1112 A character could not be converted from '%1$s' to '%2$s'.
-1113 កំហុសចុងក្រោយ
+1113 Element index out of range.
+1114 កំហុសចុងក្រោយ
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error ក្នុងអនុប្រព័ន្ធ error (line %d):

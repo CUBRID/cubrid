@@ -314,7 +314,6 @@ static int qdata_process_distinct_or_sort (THREAD_ENTRY * thread_p,
 					   AGGREGATE_TYPE * agg_p,
 					   QUERY_ID query_id);
 
-static int qdata_get_tuple_value_size_from_dbval (DB_VALUE * i2);
 static DB_VALUE
   * qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p,
 						 REGU_VARIABLE * regu_var,
@@ -6879,7 +6878,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
  *   return: tuple_value_size or ER_FAILED
  *   dbval(in)  : db_value node
  */
-static int
+int
 qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p)
 {
   int val_size, align;
@@ -10032,4 +10031,57 @@ error:
   qfile_destroy_list (thread_p, func_p->list_id);
 
   return ER_FAILED;
+}
+
+/*
+ * qdata_tuple_to_values_array () - construct an array of values from a
+ *				    tuple descriptor
+ * return : error code or NO_ERROR
+ * thread_p (in)    : thread entry
+ * tuple (in)	    : tuple descriptor
+ * values (in/out)  : values array
+ *
+ * Note: Values are cloned in the values array
+ */
+int
+qdata_tuple_to_values_array (THREAD_ENTRY * thread_p,
+			     QFILE_TUPLE_DESCRIPTOR * tuple,
+			     DB_VALUE ** values)
+{
+  DB_VALUE *vals;
+  int error = NO_ERROR, i;
+
+  assert_release (tuple != NULL && values != NULL);
+
+  vals = db_private_alloc (thread_p, tuple->f_cnt * sizeof (DB_VALUE));
+  if (vals == NULL)
+    {
+      error = ER_FAILED;
+      goto error_return;
+    }
+
+  for (i = 0; i < tuple->f_cnt; i++)
+    {
+      error = pr_clone_value (tuple->f_valp[i], &vals[i]);
+      if (error != NO_ERROR)
+	{
+	  goto error_return;
+	}
+    }
+
+  *values = vals;
+  return NO_ERROR;
+
+error_return:
+  if (vals != NULL)
+    {
+      int j;
+      for (j = 0; j < i; j++)
+	{
+	  pr_clear_value (&vals[i]);
+	}
+      db_private_free (thread_p, vals);
+    }
+  *values = NULL;
+  return error;
 }

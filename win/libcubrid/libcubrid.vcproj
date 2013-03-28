@@ -355,6 +355,10 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\base\binaryheap.c"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\base\chartype.c"
 					>
 				</File>
@@ -401,7 +405,7 @@
 				<File
 					RelativePath="..\..\src\base\locale_support.c"
 					>
-				</File>					
+				</File>
 				<File
 					RelativePath="..\..\src\base\md5.c"
 					>
@@ -477,7 +481,7 @@
 				<File
 					RelativePath="..\..\src\base\xml_parser.c"
 					>
-				</File>				
+				</File>
 			</Filter>
 			<Filter
 				Name="communication"

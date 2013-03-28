@@ -1402,7 +1402,9 @@
 
 #define ER_CHAR_CONV_NO_MATCH			    -1112
 
-#define ER_LAST_ERROR                               -1113
+#define ER_BINARY_HEAP_OUT_OF_RANGE		    -1113
+
+#define ER_LAST_ERROR                               -1114
 
 #define DB_TRUE 1
 #define DB_FALSE 0

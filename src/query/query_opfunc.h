@@ -297,4 +297,8 @@ extern int qdata_get_cardinality (THREAD_ENTRY * thread_p,
 				  DB_VALUE * db_index_name,
 				  DB_VALUE * db_key_position,
 				  DB_VALUE * result_p);
+extern int qdata_tuple_to_values_array (THREAD_ENTRY * thread_p,
+					QFILE_TUPLE_DESCRIPTOR * tuple,
+					DB_VALUE ** values);
+extern int qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p);
 #endif /* _QUERY_OPFUNC_H_ */

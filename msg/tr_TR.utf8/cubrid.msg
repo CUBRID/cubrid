@@ -1179,7 +1179,8 @@ $ LOADDB
 1110 Btree yaprak sayfasında yetersiz alan. (key len: %d)\n%s
 1111 Sonuç değeri kısaltıldı, çünkü hassasiyet (%1$d) uzunluğundan az(%2$d).
 1112 A character could not be converted from '%1$s' to '%2$s'.
-1113 Son Hata
+1113 Element index out of range.
+1114 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %d):

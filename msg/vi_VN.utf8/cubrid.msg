@@ -1179,7 +1179,8 @@ $ LOADDB
 1110 Không đủ bộ nhớ trống ở trang lá b-tree. (key len: %d)\n%s
 1111 Giá trị kết quả bị cắt cụt, do độ nét(%1$d) nhỏ hơn chiều dài của nó(%2$d).
 1112 A character could not be converted from '%1$s' to '%2$s'.
-1113 Lỗi sau cùng
+1113 Element index out of range.
+1114 Lỗi sau cùng
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Lỗi trong các lỗi hệ thống con (dòng %d):

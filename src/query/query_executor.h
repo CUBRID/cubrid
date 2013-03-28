@@ -543,6 +543,16 @@ struct selupd_list
   int wait_msecs;		/* lock timeout in milliseconds */
 };
 
+/* top-n sorting object */
+typedef struct topn_tuples TOPN_TUPLES;
+struct topn_tuples
+{
+  SORT_LIST *sort_items;	/* sort items position in tuple and sort
+				 * order */
+  BINARY_HEAP *heap;		/* heap used to hold top-n tuples */
+  int values_count;		/* number of values in a tuple */
+};
+
 struct xasl_node
 {
   XASL_NODE_HEADER header;	/* XASL header */
@@ -557,6 +567,7 @@ struct xasl_node
   REGU_VARIABLE *orderby_limit;	/* the limit to use in top K sorting. Computed
 				 * from [ordby_num < X] clauses */
   int ordbynum_flag;		/* stop or continue ordering? */
+  TOPN_TUPLES *topn_items;	/* top-n tuples for orderby limit */
   XASL_STATUS status;		/* current status */
 
   VAL_LIST *single_tuple;	/* single tuple result */

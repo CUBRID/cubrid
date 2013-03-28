@@ -1179,7 +1179,8 @@ $ LOADDB
 1110 Espacio insuficiente en pagina btree leaf. (key len: %d)\n%s
 1111 Valor del resultado es truncado, porque la precision (%1$d) es menor que su longitud (%2$d).
 1112 A character could not be converted from '%1$s' to '%2$s'.
-1113 Ultimo error
+1113 Element index out of range.
+1114 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %d):
