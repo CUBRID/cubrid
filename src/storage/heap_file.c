@@ -7011,7 +7011,8 @@ try_again:
 		  else if (er_errid () == NO_ERROR)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_GENERIC_ERROR, 0);
+			      ER_PAGE_LATCH_ABORTED, 2, home_vpid.volid,
+			      home_vpid.pageid);
 		    }
 
 		  goto error;
@@ -7088,7 +7089,8 @@ try_again:
 			  else if (er_errid () == NO_ERROR)
 			    {
 			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				      ER_GENERIC_ERROR, 0);
+				      ER_PAGE_LATCH_ABORTED, 2,
+				      home_vpid.volid, home_vpid.pageid);
 			    }
 			  goto error;
 			}
@@ -7117,7 +7119,9 @@ try_again:
 			  else if (er_errid () == NO_ERROR)
 			    {
 			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				      ER_GENERIC_ERROR, 0);
+				      ER_PAGE_LATCH_ABORTED, 2,
+				      newhome_vpid.volid,
+				      newhome_vpid.pageid);
 			    }
 
 			  goto error;
@@ -7356,7 +7360,8 @@ try_again:
 		  else if (er_errid () == NO_ERROR)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_GENERIC_ERROR, 0);
+			      ER_PAGE_LATCH_ABORTED, 2, home_vpid.volid,
+			      home_vpid.pageid);
 		    }
 		  goto error;
 		}
@@ -7519,7 +7524,8 @@ try_again:
 		      else if (er_errid () == NO_ERROR)
 			{
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				  ER_GENERIC_ERROR, 0);
+				  ER_PAGE_LATCH_ABORTED, 2, home_vpid.volid,
+				  home_vpid.pageid);
 			}
 		      goto error;
 		    }
@@ -8053,7 +8059,8 @@ try_again:
 		  else if (er_errid () == NO_ERROR)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_GENERIC_ERROR, 0);
+			      ER_PAGE_LATCH_ABORTED, 2, home_vpid.volid,
+			      home_vpid.pageid);
 		    }
 		  goto error;
 		}
@@ -8177,7 +8184,8 @@ try_again:
 		  else if (er_errid () == NO_ERROR)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_GENERIC_ERROR, 0);
+			      ER_PAGE_LATCH_ABORTED, 2, home_vpid.volid,
+			      home_vpid.pageid);
 		    }
 		  goto error;
 		}
@@ -10453,8 +10461,9 @@ try_again:
 		}
 	      else if (er_errid () == NO_ERROR)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
-			  0);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_PAGE_LATCH_ABORTED, 2, forward_vpid.volid,
+			  forward_vpid.pageid);
 		}
 	      return S_ERROR;
 	    }
