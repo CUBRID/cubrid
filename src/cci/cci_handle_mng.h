@@ -171,7 +171,6 @@ extern "C"
     int query_timeout;
     int is_closed;
     int is_from_current_transaction;
-    int is_first_prepare_in_tran;
     int shard_id;
     void *prev;
     void *next;
@@ -314,6 +313,7 @@ extern "C"
   extern bool hm_broker_understand_renewed_error_code (T_CON_HANDLE *
 						       con_handle);
   extern bool hm_broker_support_holdable_result (T_CON_HANDLE * con_handle);
+  extern bool hm_broker_reconnect_down_server (T_CON_HANDLE * con_handle);
 
   extern void hm_set_con_handle_holdable (T_CON_HANDLE * con_handle,
 					  int holdable);

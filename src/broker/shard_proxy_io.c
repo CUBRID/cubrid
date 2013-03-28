@@ -541,6 +541,9 @@ proxy_init_net_buf (T_NET_BUF * net_buf)
   msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] |=
     (shm_as_p->cci_default_autocommit & CAS_INFO_FLAG_MASK_AUTOCOMMIT);
 
+  msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &=
+    ~CAS_INFO_FLAG_MASK_NEW_SESSION_ID;
+
   memcpy (net_buf->data + NET_BUF_HEADER_MSG_SIZE,
 	  msg_header.info_ptr, CAS_INFO_SIZE);
 

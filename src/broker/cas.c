@@ -1565,6 +1565,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 #endif
   T_SERVER_FUNC server_fn;
   FN_RETURN fn_ret = FN_KEEP_CONN;
+  bool retry_by_driver = false;
 
   error_info_clear ();
   init_msg_header (&client_msg_header);
@@ -1833,6 +1834,34 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   set_hang_check_time ();
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+#ifndef LIBCAS_FOR_JSP
+  /* retry to prepare or execute after db server is restarted */
+  if (old_con_status == CON_STATUS_OUT_TRAN
+      && ER_IS_SERVER_DOWN_ERROR (err_info.err_number)
+      && cas_di_understand_reconnect_down_server (req_info->driver_info)
+      && (func_code == CAS_FC_PREPARE
+	  || func_code == CAS_FC_EXECUTE
+	  || func_code == CAS_FC_EXECUTE_ARRAY
+	  || func_code == CAS_FC_PREPARE_AND_EXECUTE))
+    {
+      if (ux_database_reconnect () == 0)
+	{
+	  as_info->reset_flag = FALSE;
+	  hm_srv_handle_unset_prepare_flag_all ();
+#if defined(CUBRID_SHARD)
+	  error_info_clear ();
+	  net_buf_clear (net_buf);
+
+	  set_hang_check_time ();
+	  fn_ret = (*server_fn) (sock_fd, argc, argv, net_buf, req_info);
+	  set_hang_check_time ();
+#else
+	  retry_by_driver = true;
+#endif /* CUBRID_SHARD */
+	}
+    }
+#endif /* !LIBCAS_FOR_JSP */
+
   /* set back original utype for enum */
   if (DOES_CLIENT_MATCH_THE_PROTOCOL (req_info->client_version, PROTOCOL_V2))
     {
@@ -1866,7 +1895,8 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   if (fn_ret == FN_KEEP_CONN && net_buf->err_code == 0
       && as_info->con_status == CON_STATUS_IN_TRAN
       && req_info->need_auto_commit != TRAN_NOT_AUTOCOMMIT
-      && err_info.err_number != CAS_ER_STMT_POOLING)
+      && err_info.err_number != CAS_ER_STMT_POOLING
+      && retry_by_driver == false)
     {
       /* no communication error and auto commit is needed */
       err_code = ux_auto_commit (net_buf, req_info);
@@ -1946,10 +1976,9 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
   if (cas_send_result_flag && net_buf->data != NULL)
     {
-      *(cas_msg_header.msg_body_size_ptr) = htonl (net_buf->data_size);
+      cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &=
+	~CAS_INFO_FLAG_MASK_NEW_SESSION_ID;
 
-      memcpy (net_buf->data, cas_msg_header.msg_body_size_ptr,
-	      NET_BUF_HEADER_MSG_SIZE);
 #ifndef LIBCAS_FOR_JSP
       cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &=
 	~CAS_INFO_FLAG_MASK_AUTOCOMMIT;
@@ -1958,8 +1987,23 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 #if defined(CUBRID_SHARD)
       cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &=
 	~CAS_INFO_FLAG_MASK_FORCE_OUT_TRAN;
-#endif
+#else /* CUBRID_SHARD */
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+      if (retry_by_driver == true)
+	{
+	  char sessid[DRIVER_SESSION_SIZE];
 
+	  cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] |=
+	    CAS_INFO_FLAG_MASK_NEW_SESSION_ID;
+
+	  cas_make_session_for_driver (sessid);
+	  net_buf_cp_str (net_buf, sessid, DRIVER_SESSION_SIZE);
+
+	  as_info->con_status = CON_STATUS_OUT_TRAN;
+	  cas_msg_header.info_ptr[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
+	}
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+#endif /* CUBRID_SHARD */
 #if defined (PROTOCOL_EXTENDS_DEBUG)	/* for debug cas<->jdbc info */
       cas_msg_header.info_ptr[CAS_INFO_RESERVED_1] = func_code - 1;
       cas_msg_header.info_ptr[CAS_INFO_RESERVED_2] =
@@ -1973,6 +2017,11 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 #endif /* end for debug */
 
 #endif /* !LIBCAS_FOR_JSP */
+
+      *(cas_msg_header.msg_body_size_ptr) = htonl (net_buf->data_size);
+      memcpy (net_buf->data, cas_msg_header.msg_body_size_ptr,
+	      NET_BUF_HEADER_MSG_SIZE);
+
       if (cas_info_size > 0)
 	{
 	  memcpy (net_buf->data + NET_BUF_HEADER_MSG_SIZE,

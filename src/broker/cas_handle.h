@@ -211,4 +211,5 @@ extern void hm_srv_handle_set_pooled (void);
 #endif
 
 extern int hm_srv_handle_get_current_count (void);
+extern void hm_srv_handle_unset_prepare_flag_all (void);
 #endif /* _CAS_HANDLE_H_ */

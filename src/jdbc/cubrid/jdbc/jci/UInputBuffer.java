@@ -94,8 +94,20 @@ class UInputBuffer {
 
 		if (resCode < 0) {
 			int eCode = readInt();
-			String msg = readString(remainedCapacity(),
-					UJCIManager.sysCharsetName);
+			String msg;
+			
+			if (con.isRenewedSessionId()) {
+				byte[] newSessionId = new byte[20];
+				
+				msg = readString(remainedCapacity() - newSessionId.length, 
+						 UJCIManager.sysCharsetName);
+				readBytes(newSessionId);
+				con.setNewSessionId (newSessionId);
+			} else {
+				msg = readString(remainedCapacity(), 
+						 UJCIManager.sysCharsetName);
+			}
+			
 			eCode = convertErrorByVersion(resCode, eCode);
 			throw uconn.createJciException(UErrorCode.ER_DBMS, resCode, eCode, msg);
 		}

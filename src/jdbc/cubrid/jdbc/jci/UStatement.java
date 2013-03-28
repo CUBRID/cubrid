@@ -109,7 +109,6 @@ public class UStatement {
 	private UInputBuffer tmp_inbuffer;
 	private boolean isAutoCommit = false;
 	private boolean isGeneratedKeys = false;
-	private boolean isFirstPrepareInTran = false;
 
 	/*
 	 * 3.0 private int resultset_index; private int resultset_index_flag;
@@ -813,8 +812,7 @@ public class UStatement {
 	}
 	result_cacheable = false;
 
-	boolean isFirstExecInTran = !relatedConnection.isActive() 
-	                            || isFirstPrepareInTran;
+	boolean isFirstExecInTran = !relatedConnection.isActive();
 
 	try {
 	    executeInternal(maxRow, maxField, isScrollable, queryTimeout);
@@ -825,13 +823,14 @@ public class UStatement {
 	} catch (IOException e) {
 	    relatedConnection.logException(e);
 	    errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
-	} finally {
-	    isFirstPrepareInTran = false;
 	}
 
 	if (relatedConnection.isErrorToReconnect(errorHandler.getJdbcErrorCode())) {
-	    relatedConnection.clientSocketClose();
-
+	    if (!relatedConnection.brokerInfoReconnectDownServer()
+		|| !relatedConnection.isServerDownError(errorHandler.getJdbcErrorCode())) {
+		relatedConnection.clientSocketClose();
+	    }
+	    
 	    if (!relatedConnection.isActive() || isFirstExecInTran) {
 		try {
 		    reset();
@@ -981,8 +980,7 @@ public class UStatement {
 		}
 	    }
 	    
-	    boolean isFirstExecInTran = !relatedConnection.isActive() 
-	                                || isFirstPrepareInTran;
+	    boolean isFirstExecInTran = !relatedConnection.isActive();
 
 	    try {
 		batchResult = executeBatchInternal(queryTimeout);
@@ -994,12 +992,13 @@ public class UStatement {
 		relatedConnection.logException(e);
 		if (errorHandler.getErrorCode() != UErrorCode.ER_CONNECTION)
 		    errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
-	    } finally {
-		isFirstPrepareInTran = false;
 	    }
 
 	    if (relatedConnection.isErrorToReconnect(errorHandler.getJdbcErrorCode())) {
-		relatedConnection.clientSocketClose(); 
+		if (!relatedConnection.brokerInfoReconnectDownServer()
+		    || !relatedConnection.isServerDownError(errorHandler.getJdbcErrorCode())) {
+		    relatedConnection.clientSocketClose();
+		}
 
 		if (!relatedConnection.isActive() || isFirstExecInTran) {
 		    try {
@@ -2227,9 +2226,5 @@ public class UStatement {
 
 	public boolean hasBatch() {
 	    return batchParameter != null && batchParameter.size() != 0;
-	}
-	
-	public void setFirstPrepareInTran() {
-	    isFirstPrepareInTran = true;
 	}
 }

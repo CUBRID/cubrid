@@ -99,6 +99,7 @@ public class UConnection {
 	private final static byte CAS_PROTO_VER_MASK = 0x3F;
 	private final static byte CAS_RENEWED_ERROR_CODE = (byte) 0x80;
 	private final static byte CAS_SUPPORT_HOLDABLE_RESULT = (byte) 0x40;
+	private final static byte CAS_RECONNECT_DOWN_SERVER = (byte) 0x20;
 
 	@SuppressWarnings("unused")
 	private final static byte GET_COLLECTION_VALUE = 1,
@@ -128,7 +129,11 @@ public class UConnection {
 	private final static int CAS_INFO_STATUS = 0;
 	private final static int CAS_INFO_RESERVED_1 = 1;
 	private final static int CAS_INFO_RESERVED_2 = 2;
-	private final static int CAS_INFO_RESERVED_3 = 3;
+	private final static int CAS_INFO_ADDITIONAL_FLAG = 3;
+	
+	private final static byte CAS_INFO_FLAG_MASK_AUTOCOMMIT = 0x01;
+	private final static byte CAS_INFO_FLAG_MASK_FORCE_OUT_TRAN = 0x02;
+	private final static byte CAS_INFO_FLAG_MASK_NEW_SESSION_ID = 0x04;
 
 	private final static int BROKER_INFO_SIZE = 8;
 	private final static int BROKER_INFO_DBMS_TYPE = 0;
@@ -147,6 +152,8 @@ public class UConnection {
 	public static final String ZERO_DATETIME_BEHAVIOR_CONVERT_TO_NULL = "convertToNull";
 	public static final String ZERO_DATETIME_BEHAVIOR_EXCEPTION = "exception";
 	public static final String ZERO_DATETIME_BEHAVIOR_ROUND = "round";
+	
+	public final static int SESSION_ID_SIZE = 20;
 
 	UOutputBuffer outBuffer;
 	CUBRIDConnection cubridcon;
@@ -200,7 +207,7 @@ public class UConnection {
 		UJCIUtil.copy_byte(driverInfo, 0, 5, magicString);
 		driverInfo[5] = CAS_CLIENT_JDBC;
 		driverInfo[6] = CAS_PROTO_INDICATOR | CAS_PROTOCOL_VERSION;
-		driverInfo[7] = CAS_RENEWED_ERROR_CODE | CAS_SUPPORT_HOLDABLE_RESULT;
+		driverInfo[7] = CAS_RENEWED_ERROR_CODE | CAS_SUPPORT_HOLDABLE_RESULT | CAS_RECONNECT_DOWN_SERVER;
 		driverInfo[8] = 0; // reserved
 		driverInfo[9] = 0; // reserved
 	}
@@ -258,7 +265,7 @@ public class UConnection {
 			casinfo[CAS_INFO_STATUS] = CAS_INFO_STATUS_ACTIVE;
 			casinfo[CAS_INFO_RESERVED_1] = 0;
 			casinfo[CAS_INFO_RESERVED_2] = 0;
-			casinfo[CAS_INFO_RESERVED_3] = 0;
+			casinfo[CAS_INFO_ADDITIONAL_FLAG] = 0;
 			
 			/* create default broker info */
 			broker_info = new byte[BROKER_INFO_SIZE];
@@ -899,8 +906,19 @@ public class UConnection {
 	}
     }
 
-    private UStatement prepareInternal(String sql, byte flag, boolean recompile,
-	    boolean isFirstPrepareInTran)
+    public boolean isServerDownError(int error) {
+	switch (error) {
+	case -111: // ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED
+	case -199: // ER_NET_SERVER_CRASHED
+	case -224: // ER_OBJ_NO_CONNECT
+	case -677: // ER_BO_CONNECT_FAILED
+	    return true;
+	default:
+	    return false;
+	}
+    }
+    
+    private UStatement prepareInternal(String sql, byte flag, boolean recompile)
 	    throws IOException, UJciException {
 	errorHandler.clear();
 
@@ -933,9 +951,6 @@ public class UConnection {
 	}
 
 	pooled_ustmts.add(stmt);
-	if (isFirstPrepareInTran) {
-	    stmt.setFirstPrepareInTran();
-	}
 	
 	return stmt;
     }
@@ -960,7 +975,7 @@ public class UConnection {
 
 	// first
 	try {
-	    stmt = prepareInternal(sql, flag, recompile, isFirstPrepareInTran);
+	    stmt = prepareInternal(sql, flag, recompile);
 	    return stmt;
 	} catch (UJciException e) {
 	    logException(e);
@@ -971,11 +986,13 @@ public class UConnection {
 	    errorHandler.setStackTrace(e.getStackTrace());
 	}
 
-	if (isErrorToReconnect(errorHandler.getJdbcErrorCode())) {
-	    clientSocketClose();
-	}
-	else {
+	if (!isErrorToReconnect(errorHandler.getJdbcErrorCode())) {
 	    return null;
+	} 
+
+	if (!brokerInfoReconnectDownServer() 
+	    || !isServerDownError(errorHandler.getJdbcErrorCode())) {
+	    clientSocketClose();
 	}
 
 	// second
@@ -984,7 +1001,7 @@ public class UConnection {
 		return null;
 	    }
 		    
-	    stmt = prepareInternal(sql, flag, recompile, isFirstPrepareInTran);
+	    stmt = prepareInternal(sql, flag, recompile);
 	    return stmt;
 	} catch (UJciException e) {
 	    logException(e);
@@ -1213,6 +1230,14 @@ public class UConnection {
 			
 	    return (broker_info[BROKER_INFO_FUNCTION_FLAG] & CAS_SUPPORT_HOLDABLE_RESULT)
 	    	== CAS_SUPPORT_HOLDABLE_RESULT;
+	}
+
+	public boolean brokerInfoReconnectDownServer() {
+		if (broker_info == null)
+			return false;
+			
+	    return (broker_info[BROKER_INFO_FUNCTION_FLAG] & CAS_RECONNECT_DOWN_SERVER)
+	    	== CAS_RECONNECT_DOWN_SERVER;
 	}
 	
 	public boolean supportHoldableResult() {
@@ -1927,7 +1952,7 @@ public class UConnection {
 	}
 
 	private byte[] createNullSession() {
-	    return new byte[20];
+	    return new byte[SESSION_ID_SIZE];
 	}
 
 	// jci 3.0
@@ -2064,6 +2089,17 @@ public class UConnection {
 
     public void resetBeginTime() {
 	beginTime = 0;
+    }
+
+    public boolean isRenewedSessionId() {
+	return (brokerInfoReconnectDownServer()
+		&& (casinfo[CAS_INFO_ADDITIONAL_FLAG] 
+	            & CAS_INFO_FLAG_MASK_NEW_SESSION_ID) 
+	                == CAS_INFO_FLAG_MASK_NEW_SESSION_ID);
+    }
+
+    public void setNewSessionId(byte[] newSessionId) {
+	sessionId = newSessionId;
     }
 
     public void setShardId(int shardId)

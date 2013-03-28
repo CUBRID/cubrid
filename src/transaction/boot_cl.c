@@ -1349,14 +1349,14 @@ void
 boot_server_die_or_changed (void)
 {
   /*
-   * If the clinet is restarted, abort the active transaction in the client and
+   * If the client is restarted, abort the active transaction in the client and
    * terminate the client modules
    */
   if (BOOT_IS_CLIENT_RESTARTED ())
     {
       (void) tran_abort_only_client (true);
-      boot_client (NULL_TRAN_INDEX, TRAN_LOCK_INFINITE_WAIT,
-		   TRAN_DEFAULT_ISOLATION);
+      boot_client (NULL_TRAN_INDEX, TM_TRAN_WAIT_MSECS (),
+		   TM_TRAN_ISOLATION ());
       boot_Is_client_all_final = false;
 #if defined(CS_MODE)
       css_terminate (true);

@@ -617,11 +617,10 @@ ux_database_reconnect (void)
 {
   int err_code, client_type;
   const char *host_connected = NULL;
+  int saved_lock_timeout;
+  int saved_isolation_level;
 
-  if (!ux_is_database_connected ())
-    {
-      return 1;
-    }
+  ux_get_tran_setting (&saved_lock_timeout, &saved_isolation_level);
 
   err_code = db_shutdown ();
   if (err_code < 0)
@@ -669,6 +668,16 @@ ux_database_reconnect (void)
   as_info->last_connect_time = time (NULL);
 
   ux_get_default_setting ();
+
+  if (cas_default_isolation_level != saved_isolation_level)
+    {
+      ux_set_isolation_level (saved_isolation_level, NULL);
+    }
+
+  if (cas_default_lock_timeout != saved_lock_timeout)
+    {
+      ux_set_lock_timeout (saved_lock_timeout);
+    }
 
   return 0;
 
@@ -2226,7 +2235,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
 		  db_close_session (session);
 		}
 
-	      err_code = ERROR_INFO_SET (err_code, CAS_ERROR_INDICATOR);
+	      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	      goto execute_batch_error;
 	    }
 	  else
@@ -2453,7 +2462,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
 		  db_close_session (session);
 		}
 
-	      err_code = ERROR_INFO_SET (err_code, CAS_ERROR_INDICATOR);
+	      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	      goto execute_array_error;
 	    }
 	  else

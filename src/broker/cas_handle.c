@@ -220,6 +220,26 @@ hm_srv_handle_free_all (bool free_holdable)
 }
 
 void
+hm_srv_handle_unset_prepare_flag_all (void)
+{
+  T_SRV_HANDLE *srv_handle;
+  int i;
+
+  for (i = 0; i < max_handle_id; i++)
+    {
+      srv_handle = srv_handle_table[i];
+      if (srv_handle == NULL)
+	{
+	  continue;
+	}
+
+      srv_handle->is_prepared = FALSE;
+    }
+
+  hm_srv_handle_qresult_end_all (true);
+}
+
+void
 hm_srv_handle_qresult_end_all (bool end_holdable)
 {
   T_SRV_HANDLE *srv_handle;
