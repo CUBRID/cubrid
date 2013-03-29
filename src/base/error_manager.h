@@ -237,4 +237,5 @@ extern int er_event_restart (void);
 extern void er_clearid (void);
 extern void er_setid (int err_id);
 
+extern bool er_has_error (void);
 #endif /* _ERROR_MANAGER_H_ */

@@ -2140,6 +2140,41 @@ er_severity (void)
 #endif /* SERVER_MODE */
 }
 
+/*
+ * er_has_error - 
+ *   return: true if it has an actual error, otherwise false.
+ *   note: NOTIFICATION and WARNING are not regarded as an actual error.
+ */
+bool
+er_has_error (void)
+{
+#if defined (SERVER_MODE)
+  THREAD_ENTRY *th_entry = thread_get_thread_entry_info ();
+#endif /* SERVER_MODE */
+  int severity;
+
+#if defined (SERVER_MODE)
+  assert (th_entry != NULL);
+
+  severity = ((th_entry->er_Msg != NULL) ? th_entry->er_Msg->severity
+	      : ER_WARNING_SEVERITY);
+#else /* SERVER_MODE */
+  severity = ((er_Msg != NULL) ? er_Msg->severity : ER_WARNING_SEVERITY);
+#endif /* SERVER_MODE */
+
+  if (severity == ER_FATAL_ERROR_SEVERITY || severity == ER_ERROR_SEVERITY
+      || severity == ER_SYNTAX_ERROR_SEVERITY)
+    {
+      return true;
+    }
+  else
+    {
+      assert (severity == ER_NOTIFICATION_SEVERITY
+	      || severity == ER_WARNING_SEVERITY);
+      return false;
+    }
+}
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * er_nlevels - Get number of levels of the last error

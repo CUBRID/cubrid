@@ -6365,7 +6365,7 @@ sm_virtual_queries (DB_OBJECT * class_object)
 {
   SM_CLASS *cl;
   unsigned int current_schema_id;
-  PARSER_CONTEXT *cache = NULL, *tmp = NULL;
+  PARSER_CONTEXT *cache = NULL, *tmp = NULL, *old_cache = NULL;
 
   if (au_fetch_class_force (class_object, &cl, AU_FETCH_READ) == NO_ERROR)
     {
@@ -6378,6 +6378,11 @@ sm_virtual_queries (DB_OBJECT * class_object)
 	  (void) pt_class_pre_fetch (cl->virtual_query_cache,
 				     cl->virtual_query_cache->view_cache->
 				     vquery_for_query);
+	  if (er_has_error ())
+	    {
+	      return NULL;
+	    }
+
 	  if (pt_has_error (cl->virtual_query_cache))
 	    {
 	      mq_free_virtual_query_cache (cl->virtual_query_cache);
@@ -6391,7 +6396,7 @@ sm_virtual_queries (DB_OBJECT * class_object)
       if (cl->virtual_query_cache != NULL
 	  && cl->virtual_cache_schema_id != current_schema_id)
 	{
-	  mq_free_virtual_query_cache (cl->virtual_query_cache);
+	  old_cache = cl->virtual_query_cache;
 	  cl->virtual_query_cache = NULL;
 	}
 
@@ -6405,6 +6410,20 @@ sm_virtual_queries (DB_OBJECT * class_object)
 	   * assigned originally contains the error message.
 	   */
 	  tmp = mq_virtual_queries (class_object);
+	  if (tmp == NULL)
+	    {
+	      if (old_cache)
+		{
+		  cl->virtual_query_cache = old_cache;
+		}
+	      return NULL;
+	    }
+
+	  if (old_cache)
+	    {
+	      mq_free_virtual_query_cache (old_cache);
+	    }
+
 	  if (cl->virtual_query_cache)
 	    {
 	      mq_free_virtual_query_cache (tmp);

@@ -2796,6 +2796,11 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree,
 		    }
 		  else
 		    {
+		      if (er_has_error () || pt_has_error (parser))
+			{
+			  return NULL;
+			}
+
 		      /* a virtual class with no subquery */
 		    }
 		}
