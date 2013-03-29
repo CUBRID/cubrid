@@ -10078,7 +10078,7 @@ error_return:
       int j;
       for (j = 0; j < i; j++)
 	{
-	  pr_clear_value (&vals[i]);
+	  pr_clear_value (&vals[j]);
 	}
       db_private_free (thread_p, vals);
     }
