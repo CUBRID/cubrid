@@ -3140,15 +3140,15 @@ qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   int track_id;
 #endif
 
-#if !defined(NDEBUG)
-  track_id = thread_rc_track_enter (thread_p);
-#endif
-
   if (xasl->topn_items != NULL)
     {
       /* already sorted, just dump tuples to list */
       return qexec_topn_tuples_to_list_id (thread_p, xasl, xasl_state, true);
     }
+
+#if !defined(NDEBUG)
+  track_id = thread_rc_track_enter (thread_p);
+#endif
 
   if (xasl->type == BUILDLIST_PROC)
     {
