@@ -2064,6 +2064,14 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 #endif /* !LIBCAS_FOR_JSP */
 
 exit_on_end:
+#if defined(CUBRID_SHARD)
+  if (as_info->con_status != CON_STATUS_IN_TRAN
+      && as_info->uts_status == UTS_STATUS_BUSY)
+    {
+      as_info->uts_status = UTS_STATUS_IDLE;
+    }
+#endif
+
   net_buf_clear (net_buf);
 
   FREE_MEM (read_msg);
