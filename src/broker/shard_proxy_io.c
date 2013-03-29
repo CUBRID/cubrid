@@ -1259,8 +1259,16 @@ proxy_socket_io_add (SOCKET fd, bool from_cas)
 
   sock_io_p = &(proxy_Socket_io.ent[fd]);
 
-  assert (IS_INVALID_SOCKET (sock_io_p->fd));
-  assert (sock_io_p->status == SOCK_IO_IDLE);
+  if (sock_io_p->fd > INVALID_SOCKET || sock_io_p->status != SOCK_IO_IDLE)
+    {
+      assert (false);
+      proxy_Keep_running = false;
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Receive duplicated socket fd. "
+		 "(received socket:%d, status:%d)",
+		 sock_io_p->fd, sock_io_p->status);
+      return NULL;
+    }
 
   sock_io_p->fd = fd;
   sock_io_p->status = SOCK_IO_REG_WAIT;

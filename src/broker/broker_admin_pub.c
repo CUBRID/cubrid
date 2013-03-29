@@ -53,6 +53,10 @@
 #include <math.h>
 #endif /* WINDOWS */
 
+#if defined(LINUX)
+#include <sys/resource.h>
+#endif /* LINUX */
+
 #include "porting.h"
 #include "cas_common.h"
 #include "broker_shm.h"
@@ -134,6 +138,8 @@ static int shard_shm_set_param_as_in_proxy (T_SHM_PROXY * proxy_p,
 					    const char *param_value,
 					    int proxy_id, int shard_id,
 					    int as_number);
+static int shard_shm_check_max_file_open_limit (T_BROKER_INFO * br_info,
+						T_SHM_PROXY * proxy_p);
 #else /* CUBRID_SHARD */
 static int br_activate (T_BROKER_INFO *, int, T_SHM_BROKER *);
 static int br_inactivate (T_BROKER_INFO *);
@@ -383,6 +389,16 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id,
 
 	  if (access_control_set_shm (shm_as_p, &shm_br->br_info[i],
 				      shm_br, admin_err_msg) < 0)
+	    {
+	      uw_shm_destroy (shm_br->br_info[i].appl_server_shm_id);
+	      uw_shm_destroy (shm_br->br_info[i].metadata_shm_id);
+
+	      res = -1;
+	      break;
+	    }
+
+	  if (shard_shm_check_max_file_open_limit (&shm_br->br_info[i],
+						   proxy_p) < 0)
 	    {
 	      uw_shm_destroy (shm_br->br_info[i].appl_server_shm_id);
 	      uw_shm_destroy (shm_br->br_info[i].metadata_shm_id);
@@ -4185,6 +4201,63 @@ shard_shm_set_param_as_in_proxy (T_SHM_PROXY * proxy_p,
 	}
     }
 
+  return 0;
+}
+
+static int
+shard_shm_check_max_file_open_limit (T_BROKER_INFO * br_info,
+				     T_SHM_PROXY * proxy_p)
+{
+#if defined(LINUX)
+  int error = 0;
+  int required_fd_num = 0;
+  T_PROXY_INFO *proxy_info_p = NULL;
+  T_SHARD_INFO *shard_info_p = NULL;
+  struct rlimit sys_limit;
+
+  proxy_info_p = shard_shm_get_first_proxy_info (proxy_p);
+  if (proxy_info_p == NULL)
+    {
+      sprintf (admin_err_msg, "Cannot find proxy info.\n");
+      return -1;
+    }
+
+  shard_info_p = shard_shm_get_first_shard_info (proxy_info_p);
+  if (shard_info_p == NULL)
+    {
+      sprintf (admin_err_msg, "Cannot find shard info.\n");
+      return -1;
+    }
+
+  required_fd_num += proxy_info_p->max_context;
+  required_fd_num += proxy_info_p->max_shard * shard_info_p->max_appl_server;
+  required_fd_num += RESERVED_FD;
+
+  error = getrlimit (RLIMIT_NOFILE, &sys_limit);
+  if (error < 0)
+    {
+      sprintf (admin_err_msg, "Fail to get system limit.\n");
+      return -1;
+    }
+
+  if (sys_limit.rlim_cur < required_fd_num)
+    {
+      sprintf (admin_err_msg,
+	       "%s (current : %d, required : %d)\n",
+	       "Maximum file descriptor number is less than the required value.",
+	       (int) sys_limit.rlim_cur, required_fd_num);
+      return -1;
+    }
+
+  if (sys_limit.rlim_max < required_fd_num)
+    {
+      sprintf (admin_err_msg,
+	       "%s (current : %d, required : %d)\n",
+	       "Maximum file descriptor number is less than the required value.",
+	       (int) sys_limit.rlim_max, required_fd_num);
+      return -1;
+    }
+#endif /* LINUX */
   return 0;
 }
 #endif /* CUBRID_SHARD */
