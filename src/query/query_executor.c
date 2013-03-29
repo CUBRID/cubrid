@@ -642,6 +642,10 @@ static int qexec_ordby_put_next (THREAD_ENTRY * thread_p,
 static int qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 				   QUERY_OPTIONS option,
 				   XASL_STATE * xasl_state);
+static int qexec_orderby_distinct_by_sorting (THREAD_ENTRY * thread_p, 
+					      XASL_NODE * xasl, 
+					      QUERY_OPTIONS option, 
+					      XASL_STATE * xasl_state);
 static DB_LOGICAL qexec_eval_grbynum_pred (THREAD_ENTRY * thread_p,
 					   GROUPBY_STATE * gbstate);
 static GROUPBY_STATE *qexec_initialize_groupby_state (GROUPBY_STATE * gbstate,
@@ -3102,9 +3106,32 @@ qexec_fill_sort_limit (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   return NO_ERROR;
 }
 
-
 /*
  * qexec_orderby_distinct () -
+ *   return: NO_ERROR, or ER_code
+ *   xasl(in)   :
+ *   option(in) : Distinct/All indication flag
+ *   xasl_state(in)     : Ptr to the XASL_STATE for this tree
+ *
+ */
+static int
+qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
+			QUERY_OPTIONS option, XASL_STATE * xasl_state)
+{
+  if (xasl->topn_items != NULL)
+    {
+      /* already sorted, just dump tuples to list */
+      return qexec_topn_tuples_to_list_id (thread_p, xasl, xasl_state, true);
+    }
+  else
+    {
+      return qexec_orderby_distinct_by_sorting (thread_p, xasl, option,
+						xasl_state);
+    }
+}
+
+/*
+ * qexec_orderby_distinct_by_sorting () -
  *   return: NO_ERROR, or ER_code
  *   xasl(in)   :
  *   option(in) : Distinct/All indication flag
@@ -3119,8 +3146,9 @@ qexec_fill_sort_limit (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
  * eliminated on the fly, thus causing and ordered-distinct list file output.
  */
 static int
-qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
-			QUERY_OPTIONS option, XASL_STATE * xasl_state)
+qexec_orderby_distinct_by_sorting (THREAD_ENTRY * thread_p, XASL_NODE * xasl, 
+				   QUERY_OPTIONS option, 
+				   XASL_STATE * xasl_state)
 {
   QFILE_LIST_ID *list_id = xasl->list_id;
   SORT_LIST *order_list = xasl->orderby_list;
@@ -3139,12 +3167,6 @@ qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 #if !defined(NDEBUG)
   int track_id;
 #endif
-
-  if (xasl->topn_items != NULL)
-    {
-      /* already sorted, just dump tuples to list */
-      return qexec_topn_tuples_to_list_id (thread_p, xasl, xasl_state, true);
-    }
 
 #if !defined(NDEBUG)
   track_id = thread_rc_track_enter (thread_p);
