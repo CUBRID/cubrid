@@ -3945,8 +3945,15 @@ thread_rc_track_enter (THREAD_ENTRY * thread_p)
 
   assert_release (thread_p != NULL);
 
-  track = thread_rc_track_alloc (thread_p);
-  assert (track != NULL);
+  if (prm_get_bool_value (PRM_ID_USE_SYSTEM_MALLOC))
+    {
+      assert_release (thread_p->track == NULL);	/* disable tracking */
+    }
+  else
+    {
+      track = thread_rc_track_alloc (thread_p);
+      assert_release (track != NULL);
+    }
 
   return thread_p->track_depth;
 }
@@ -3969,15 +3976,22 @@ thread_rc_track_exit (THREAD_ENTRY * thread_p, int id)
 
   assert_release (thread_p != NULL);
 
-  ret = thread_rc_track_check (thread_p);
-#if !defined(NDEBUG)
-  if (ret != NO_ERROR)
+  if (prm_get_bool_value (PRM_ID_USE_SYSTEM_MALLOC))
     {
-      (void) thread_rc_track_dump_all (thread_p, stderr);
+      assert_release (thread_p->track == NULL);	/* disable tracking */
     }
+  else
+    {
+      ret = thread_rc_track_check (thread_p);
+#if !defined(NDEBUG)
+      if (ret != NO_ERROR)
+	{
+	  (void) thread_rc_track_dump_all (thread_p, stderr);
+	}
 #endif
 
-  (void) thread_rc_track_free (thread_p, id);
+      (void) thread_rc_track_free (thread_p, id);
+    }
 
   return ret;
 }
