@@ -122,6 +122,8 @@ static PT_NODE *pt_set_trigger_obj_pre (PARSER_CONTEXT * parser,
 static PT_NODE *pt_set_trigger_obj_post (PARSER_CONTEXT * parser,
 					 PT_NODE * node, void *arg,
 					 int *continue_walk);
+static PT_NODE *pt_set_class_chn (PARSER_CONTEXT * parser, PT_NODE * node,
+				  void *arg, int *continue_walk);
 
 /*
  * pt_spec_to_oid_attr () - Generate an oid attribute from a resolved spec.
@@ -622,6 +624,9 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
   parser->num_lcks_classes = lcks.num_classes;
   lcks.classes = NULL;
 
+  (void) parser_walk_tree (parser, statement, pt_set_class_chn, NULL, NULL,
+			   NULL);
+
 cleanup:
   if (lcks.classes)
     {
@@ -640,6 +645,44 @@ cleanup:
   return statement;
 }
 
+/*
+ * pt_set_class_chn() -
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in):
+ *   continue_walk(out):
+ */
+static PT_NODE *
+pt_set_class_chn (PARSER_CONTEXT * parser, PT_NODE * node,
+		  void *arg, int *continue_walk)
+{
+  PT_NODE *class_;
+  MOP clsmop = NULL;
+
+  if (node->node_type == PT_SPEC)
+    {
+      for (class_ = node->info.spec.flat_entity_list;
+	   class_; class_ = class_->next)
+	{
+	  clsmop = class_->info.name.db_object;
+	  if (clsmop == NULL || !db_is_class (clsmop))
+	    {
+	      continue;
+	    }
+
+	  if (locator_flush_class (clsmop) != NO_ERROR)
+	    {
+	      PT_ERRORc (parser, class_, er_msg ());
+	    }
+
+	  class_->info.name.db_object_chn
+	    = locator_get_cache_coherency_number (clsmop);
+	}
+    }
+
+  return node;
+}
 
 /*
  * pt_count_entities () - If the node is an entity spec, bump counter
