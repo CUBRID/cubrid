@@ -10764,8 +10764,8 @@ pt_check_ordby_num_for_multi_range_opt (PARSER_CONTEXT * parser,
 	    }
 	  if (DB_IS_NULL (&lower_limit)
 	      ||
-	      (tp_value_coerce (&lower_limit, &lower_limit, big_int_tp_domain)
-	       != DOMAIN_COMPATIBLE))
+	      tp_value_coerce (&lower_limit, &lower_limit, big_int_tp_domain)
+	      != DOMAIN_COMPATIBLE)
 	    {
 	      goto end_mro_candidate;
 	    }
@@ -10776,8 +10776,8 @@ pt_check_ordby_num_for_multi_range_opt (PARSER_CONTEXT * parser,
 	      goto end;
 	    }
 	  if (DB_IS_NULL (&range)
-	      || (tp_value_coerce (&range, &range, big_int_tp_domain) !=
-		  DOMAIN_COMPATIBLE))
+	      || tp_value_coerce (&range, &range, big_int_tp_domain) !=
+	      DOMAIN_COMPATIBLE)
 	    {
 	      goto end_mro_candidate;
 	    }
@@ -10796,8 +10796,8 @@ pt_check_ordby_num_for_multi_range_opt (PARSER_CONTEXT * parser,
 	    }
 	  if (DB_IS_NULL (&upper_limit)
 	      ||
-	      (tp_value_coerce (&upper_limit, &upper_limit, big_int_tp_domain)
-	       != DOMAIN_COMPATIBLE))
+	      tp_value_coerce (&upper_limit, &upper_limit, big_int_tp_domain)
+	      != DOMAIN_COMPATIBLE)
 	    {
 	      goto end_mro_candidate;
 	    }
@@ -11032,9 +11032,9 @@ pt_check_ordby_num_for_mro_internal (PARSER_CONTEXT * parser,
   pt_evaluate_tree_having_serial (parser, rhs, &limit, 1);
   if (DB_IS_NULL (&limit)
       ||
-      (tp_value_coerce
-       (&limit, &limit,
-	tp_domain_resolve_default (DB_TYPE_BIGINT)) != DOMAIN_COMPATIBLE))
+      tp_value_coerce (&limit, &limit,
+		       tp_domain_resolve_default (DB_TYPE_BIGINT)) !=
+      DOMAIN_COMPATIBLE)
     {
       /* multi range optimization candidate */
       DB_MAKE_NULL (upper_limit);

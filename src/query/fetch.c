@@ -90,6 +90,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
   DB_VALUE *peek_left, *peek_right, *peek_third, *peek_fourth;
   DB_VALUE tmp_value;
   TP_DOMAIN *original_domain = NULL;
+  TP_DOMAIN_STATUS dom_status;
 
   peek_left = NULL;
   peek_right = NULL;
@@ -2268,13 +2269,16 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 
 	    }
 	}
-      else if (tp_value_strict_cast (peek_right, arithptr->value,
-				     arithptr->domain) != NO_ERROR)
+      else
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-		  pr_type_name (DB_VALUE_DOMAIN_TYPE (peek_right)),
-		  pr_type_name (TP_DOMAIN_TYPE (arithptr->domain)));
-	  goto error;
+	  dom_status = tp_value_strict_cast (peek_right, arithptr->value,
+					     arithptr->domain);
+	  if (dom_status != DOMAIN_COMPATIBLE)
+	    {
+	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
+					      peek_right, arithptr->domain);
+	      goto error;
+	    }
 	}
       break;
 
@@ -2356,13 +2360,12 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	  goto error;
 	}
 
-      if (tp_value_coerce (peek_left,
-			   arithptr->value,
-			   regu_var->domain) != DOMAIN_COMPATIBLE)
+      dom_status =
+	tp_value_coerce (peek_left, arithptr->value, regu_var->domain);
+      if (dom_status != DOMAIN_COMPATIBLE)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-		  pr_type_name (DB_VALUE_DOMAIN_TYPE (peek_left)),
-		  pr_type_name (TP_DOMAIN_TYPE (arithptr->domain)));
+	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
+					  peek_left, regu_var->domain);
 	  goto error;
 	}
       break;
@@ -2386,13 +2389,12 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	  goto error;
 	}
 
-      if (tp_value_coerce (peek_left,
-			   arithptr->value,
-			   regu_var->domain) != DOMAIN_COMPATIBLE)
+      dom_status =
+	tp_value_coerce (peek_left, arithptr->value, regu_var->domain);
+      if (dom_status != DOMAIN_COMPATIBLE)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-		  pr_type_name (DB_VALUE_DOMAIN_TYPE (peek_left)),
-		  pr_type_name (TP_DOMAIN_TYPE (arithptr->domain)));
+	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
+					  peek_left, regu_var->domain);
 	  goto error;
 	}
       break;
@@ -2434,13 +2436,12 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	  }
 
 	src = DB_IS_NULL (peek_left) ? peek_right : peek_left;
-	if (tp_value_cast (src,
-			   arithptr->value,
-			   target_domain, false) != DOMAIN_COMPATIBLE)
+	dom_status =
+	  tp_value_cast (src, arithptr->value, target_domain, false);
+	if (dom_status != DOMAIN_COMPATIBLE)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-		    pr_type_name (DB_VALUE_DOMAIN_TYPE (src)),
-		    pr_type_name (TP_DOMAIN_TYPE (target_domain)));
+	    (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, src,
+					    target_domain);
 	    if (need_free)
 	      {
 		tp_domain_free (target_domain);
@@ -2548,13 +2549,12 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	    src = peek_right;
 	  }
 
-	if (tp_value_cast (src,
-			   arithptr->value,
-			   target_domain, false) != DOMAIN_COMPATIBLE)
+	dom_status =
+	  tp_value_cast (src, arithptr->value, target_domain, false);
+	if (dom_status != DOMAIN_COMPATIBLE)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-		    pr_type_name (DB_VALUE_DOMAIN_TYPE (src)),
-		    pr_type_name (TP_DOMAIN_TYPE (target_domain)));
+	    (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, src,
+					    target_domain);
 
 	    if (need_free)
 	      {
@@ -2593,12 +2593,12 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       else
 	{
-	  if (tp_value_coerce (peek_left, arithptr->value, regu_var->domain)
-	      != DOMAIN_COMPATIBLE)
+	  dom_status =
+	    tp_value_coerce (peek_left, arithptr->value, regu_var->domain);
+	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-		      pr_type_name (DB_VALUE_DOMAIN_TYPE (peek_left)),
-		      pr_type_name (TP_DOMAIN_TYPE (regu_var->domain)));
+	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
+					      peek_left, regu_var->domain);
 	      goto error;
 	    }
 	}
@@ -2618,25 +2618,27 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	    }
 	  else if (DB_IS_NULL (peek_left))
 	    {
-	      if (tp_value_coerce
-		  (peek_right, arithptr->value,
-		   regu_var->domain) != DOMAIN_COMPATIBLE)
+	      dom_status =
+		tp_value_coerce (peek_right, arithptr->value,
+				 regu_var->domain);
+	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE,
-			  2, pr_type_name (DB_VALUE_DOMAIN_TYPE (peek_right)),
-			  pr_type_name (TP_DOMAIN_TYPE (regu_var->domain)));
+		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
+						  peek_right,
+						  regu_var->domain);
 		  goto error;
 		}
 	    }
 	  else if (DB_IS_NULL (peek_right))
 	    {
-	      if (tp_value_coerce
-		  (peek_left, arithptr->value,
-		   regu_var->domain) != DOMAIN_COMPATIBLE)
+	      dom_status =
+		tp_value_coerce (peek_left, arithptr->value,
+				 regu_var->domain);
+	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE,
-			  2, pr_type_name (DB_VALUE_DOMAIN_TYPE (peek_left)),
-			  pr_type_name (TP_DOMAIN_TYPE (regu_var->domain)));
+		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
+						  peek_left,
+						  regu_var->domain);
 		  goto error;
 		}
 	    }
@@ -2664,13 +2666,14 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	    }
 	  else
 	    {
-	      if (tp_value_coerce
-		  (peek_left, arithptr->value,
-		   regu_var->domain) != DOMAIN_COMPATIBLE)
+	      dom_status =
+		tp_value_coerce (peek_left, arithptr->value,
+				 regu_var->domain);
+	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE,
-			  2, pr_type_name (DB_VALUE_DOMAIN_TYPE (peek_left)),
-			  pr_type_name (TP_DOMAIN_TYPE (regu_var->domain)));
+		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
+						  peek_left,
+						  regu_var->domain);
 		  goto error;
 		}
 	    }
@@ -2764,12 +2767,12 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	{
 	  DB_VALUE tmp_val, tmp_val2;
 
-	  if (tp_value_coerce (peek_right, &tmp_val2, &tp_Integer_domain) !=
-	      DOMAIN_COMPATIBLE)
+	  dom_status =
+	    tp_value_coerce (peek_right, &tmp_val2, &tp_Integer_domain);
+	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-		      pr_type_name (DB_VALUE_DOMAIN_TYPE (peek_right)),
-		      pr_type_name (DB_TYPE_INTEGER));
+	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
+					      peek_right, &tp_Integer_domain);
 	      goto error;
 	    }
 
@@ -2812,12 +2815,12 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	      break;
 	    }
 
-	  if (tp_value_coerce (peek_right, &tmp_val2, &tp_Integer_domain) !=
-	      DOMAIN_COMPATIBLE)
+	  dom_status =
+	    tp_value_coerce (peek_right, &tmp_val2, &tp_Integer_domain);
+	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-		      pr_type_name (DB_VALUE_DOMAIN_TYPE (peek_right)),
-		      pr_type_name (DB_TYPE_INTEGER));
+	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
+					      peek_right, &tp_Integer_domain);
 	      goto error;
 	    }
 	  /* If len, defined as second argument, is negative value,
@@ -3053,17 +3056,21 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	  {
 	    PRIM_SET_NULL (arithptr->value);
 	  }
-	else if (tp_value_cast (peek_left, arithptr->value, target_domain,
-				false) != DOMAIN_COMPATIBLE)
+	else
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-		    pr_type_name (DB_VALUE_DOMAIN_TYPE (peek_left)),
-		    pr_type_name (TP_DOMAIN_TYPE (target_domain)));
-	    if (need_free)
+	    dom_status =
+	      tp_value_cast (peek_left, arithptr->value, target_domain,
+			     false);
+	    if (dom_status != DOMAIN_COMPATIBLE)
 	      {
-		tp_domain_free (target_domain);
+		(void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
+						peek_left, target_domain);
+		if (need_free)
+		  {
+		    tp_domain_free (target_domain);
+		  }
+		goto error;
 	      }
-	    goto error;
 	  }
 
 	if (need_free)
@@ -3121,12 +3128,13 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	    target_domain = tp_infer_common_domain (arg1, arg2, &need_free);
 	  }
 
-	if (tp_value_cast (arithptr->value, arithptr->value, target_domain,
-			   false) != DOMAIN_COMPATIBLE)
+	dom_status =
+	  tp_value_cast (arithptr->value, arithptr->value, target_domain,
+			 false);
+	if (dom_status != DOMAIN_COMPATIBLE)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-		    pr_type_name (DB_VALUE_DOMAIN_TYPE (arithptr->value)),
-		    pr_type_name (TP_DOMAIN_TYPE (target_domain)));
+	    (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
+					    arithptr->value, target_domain);
 	    if (need_free)
 	      {
 		tp_domain_free (target_domain);
@@ -3181,12 +3189,13 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	    target_domain = tp_infer_common_domain (arg1, arg2, &need_free);
 	  }
 
-	if (tp_value_cast (arithptr->value, arithptr->value, target_domain,
-			   false) != DOMAIN_COMPATIBLE)
+	dom_status =
+	  tp_value_cast (arithptr->value, arithptr->value, target_domain,
+			 false);
+	if (dom_status != DOMAIN_COMPATIBLE)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-		    pr_type_name (DB_VALUE_DOMAIN_TYPE (arithptr->value)),
-		    pr_type_name (TP_DOMAIN_TYPE (target_domain)));
+	    (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
+					    arithptr->value, target_domain);
 	    if (need_free)
 	      {
 		tp_domain_free (target_domain);
@@ -3213,13 +3222,14 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	    goto error;
 	  }
 
-	if (tp_value_coerce
-	    (arithptr->value, arithptr->value,
-	     regu_var->domain) != DOMAIN_COMPATIBLE)
+	dom_status =
+	  tp_value_coerce (arithptr->value, arithptr->value,
+			   regu_var->domain);
+	if (dom_status != DOMAIN_COMPATIBLE)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-		    pr_type_name (DB_VALUE_DOMAIN_TYPE (arithptr->value)),
-		    pr_type_name (TP_DOMAIN_TYPE (regu_var->domain)));
+	    (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
+					    arithptr->value,
+					    regu_var->domain);
 	    goto error;
 	  }
 	break;

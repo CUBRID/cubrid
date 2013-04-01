@@ -1205,7 +1205,7 @@ numeric_longnum_to_shortnum (DB_C_NUMERIC answer, DB_C_NUMERIC long_arg)
 {
   if (numeric_is_longnum_value (long_arg))
     {
-      return ER_NUM_OVERFLOW;
+      return ER_IT_DATA_OVERFLOW;
     }
 
   numeric_copy (answer,
@@ -1263,7 +1263,7 @@ numeric_compare (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2)
 
 /*
  * numeric_scale_by_ten () -
- *   return: NO_ERROR, or ER_code (ER_NUM_OVERFLOW)
+ *   return: NO_ERROR, or ER_code (ER_IT_DATA_OVERFLOW)
  *   arg(in/out)    : ptr to a DB_NUMERIC structure
  *   is_long_num(in): is long NUMERIC
  *
@@ -1298,7 +1298,7 @@ numeric_scale_by_ten (DB_C_NUMERIC arg, bool is_long_num)
 
   if ((int) arg[0] > 0x7f)
     {
-      return ER_NUM_OVERFLOW;
+      return ER_IT_DATA_OVERFLOW;
     }
 
   if (negative)
@@ -1368,7 +1368,7 @@ numeric_scale_dec_long (DB_C_NUMERIC answer, int dscale, bool is_long_num)
  * numeric_common_prec_scale () -
  *   return: NO_ERROR, or ER_code
  *     Errors:
- *       ER_NUM_OVERFLOW          - if scaling would exceed max scale
+ *       ER_IT_DATA_OVERFLOW          - if scaling would exceed max scale
  *   dbv1(in): ptr to a DB_VALUE structure of type DB_TYPE_NUMERIC
  *   dbv2(in): ptr to a DB_VALUE structure of type DB_TYPE_NUMERIC
  *   dbv1_common(out): ptr to a DB_VALUE structure of type DB_TYPE_NUMERIC
@@ -1387,6 +1387,7 @@ numeric_common_prec_scale (const DB_VALUE * dbv1, const DB_VALUE * dbv2,
   int prec1, prec2;
   int cprec;
   int scale_diff;
+  TP_DOMAIN *domain;
 
   /* If scales already match, merely copy them and return */
   scale1 = DB_VALUE_SCALE (dbv1);
@@ -1407,8 +1408,10 @@ numeric_common_prec_scale (const DB_VALUE * dbv1, const DB_VALUE * dbv2,
       prec1 = scale_diff + prec1;
       if (prec1 > DB_MAX_NUMERIC_PRECISION)
 	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_NUM_OVERFLOW, 0);
-	  return ER_NUM_OVERFLOW;
+	  domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
+		  pr_type_name (TP_DOMAIN_TYPE (domain)));
+	  return ER_IT_DATA_OVERFLOW;
 	}
       numeric_scale_dec (db_locate_numeric (dbv1), scale_diff, temp);
       cprec = MAX (prec1, prec2);
@@ -1421,8 +1424,10 @@ numeric_common_prec_scale (const DB_VALUE * dbv1, const DB_VALUE * dbv2,
       prec2 = scale_diff + prec2;
       if (prec2 > DB_MAX_NUMERIC_PRECISION)
 	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_NUM_OVERFLOW, 0);
-	  return ER_NUM_OVERFLOW;
+	  domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
+		  pr_type_name (TP_DOMAIN_TYPE (domain)));
+	  return ER_IT_DATA_OVERFLOW;
 	}
       numeric_scale_dec (db_locate_numeric (dbv2), scale_diff, temp);
       cprec = MAX (prec1, prec2);
@@ -1527,7 +1532,7 @@ numeric_coerce_big_num_to_dec_str (unsigned char *num, char *dec_str)
  * numeric_get_msb_for_dec () -
  *   return:
  *     Errors:
- *       ER_NUM_OVERFLOW          - if src exceeds max precision
+ *       ER_IT_DATA_OVERFLOW          - if src exceeds max precision
  *   src_prec(in)       : int precision of src
  *   src_scale(in)      : int scale of src
  *   src(in)    : buffer to NUMERIC twice the length of the maximum
@@ -1579,7 +1584,7 @@ numeric_get_msb_for_dec (int src_prec,
 	  /* Can't truncate answer - expected results must maintain
 	   * the proper amount of scaling
 	   */
-	  return (ER_NUM_OVERFLOW);
+	  return ER_IT_DATA_OVERFLOW;
 	}
     }
 
@@ -1632,6 +1637,7 @@ numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2,
   int ret = NO_ERROR;
   unsigned int prec;
   unsigned char temp[DB_NUMERIC_BUF_SIZE];	/* Copy of a DB_C_NUMERIC */
+  TP_DOMAIN *domain;
 
   /* Check for bad inputs */
   if (answer == NULL)
@@ -1659,7 +1665,7 @@ numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2,
 
   /* Coerce, if necessary, to make prec & scale match */
   ret = numeric_common_prec_scale (dbv1, dbv2, &dbv1_common, &dbv2_common);
-  if (ret == ER_NUM_OVERFLOW)
+  if (ret == ER_IT_DATA_OVERFLOW)
     {
       ret = numeric_prec_scale_when_overflow (dbv1, dbv2,
 					      &dbv1_common, &dbv2_common);
@@ -1689,8 +1695,10 @@ numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2,
 	}
       else
 	{
-	  ret = ER_NUM_OVERFLOW;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_NUM_OVERFLOW, 0);
+	  domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
+		  pr_type_name (TP_DOMAIN_TYPE (domain)));
+	  ret = ER_IT_DATA_OVERFLOW;
 	  goto exit_on_error;
 	}
     }
@@ -1732,6 +1740,7 @@ numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2,
   int ret = NO_ERROR;
   unsigned int prec;
   unsigned char temp[DB_NUMERIC_BUF_SIZE];	/* Copy of a DB_C_NUMERIC */
+  TP_DOMAIN *domain;
 
   /* Check for bad inputs */
   if (answer == NULL)
@@ -1759,7 +1768,7 @@ numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2,
 
   /* Coerce, if necessary, to make prec & scale match */
   ret = numeric_common_prec_scale (dbv1, dbv2, &dbv1_common, &dbv2_common);
-  if (ret == ER_NUM_OVERFLOW)
+  if (ret == ER_IT_DATA_OVERFLOW)
     {
       ret = numeric_prec_scale_when_overflow (dbv1, dbv2,
 					      &dbv1_common, &dbv2_common);
@@ -1789,8 +1798,10 @@ numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2,
 	}
       else
 	{
-	  ret = ER_NUM_OVERFLOW;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_NUM_OVERFLOW, 0);
+	  domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
+		  pr_type_name (TP_DOMAIN_TYPE (domain)));
+	  ret = ER_IT_DATA_OVERFLOW;
 	  goto exit_on_error;
 	}
     }
@@ -1923,6 +1934,7 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2,
   unsigned char temp_rem[DB_NUMERIC_BUF_SIZE];	/* Copy of a DB_C_NUMERIC */
   int scale, scaleup = 0;
   int ret = NO_ERROR;
+  TP_DOMAIN *domain;
 
   /* Check for bad inputs */
   if (answer == NULL)
@@ -2026,8 +2038,10 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2,
 	}
       else
 	{
-	  ret = ER_NUM_OVERFLOW;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_NUM_OVERFLOW, 0);
+	  domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
+		  pr_type_name (TP_DOMAIN_TYPE (domain)));
+	  ret = ER_IT_DATA_OVERFLOW;
 	  goto exit_on_error;
 	}
     }
@@ -2191,7 +2205,7 @@ numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2,
 	  DB_MAKE_INTEGER (answer, cmp_rez);
 	  return NO_ERROR;
 	}
-      else if (ret == ER_NUM_OVERFLOW)
+      else if (ret == ER_IT_DATA_OVERFLOW)
 	{
 	  /* For example, if we want to compare a NUMERIC(31,2) with a
 	   * NUMERIC(21, 14) the common precision and scale is (43, 14)
@@ -2204,7 +2218,7 @@ numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2,
 	  unsigned char num1_frac[DB_NUMERIC_BUF_SIZE];
 	  unsigned char num2_frac[DB_NUMERIC_BUF_SIZE];
 
-	  er_clear ();		/* reset ER_NUM_OVERFLOW */
+	  er_clear ();		/* reset ER_IT_DATA_OVERFLOW */
 
 	  if (prec1 - scale1 < prec2 - scale2)
 	    {
@@ -2385,7 +2399,7 @@ numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer)
 
   if (scale >= (int) (sizeof (powers_of_10) / sizeof (powers_of_10[0])))
     {
-      return ER_NUM_OVERFLOW;
+      return ER_IT_DATA_OVERFLOW;
     }
 
   if (scale > 0)
@@ -2419,7 +2433,7 @@ numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer)
 
   if (!numeric_is_bigint (zero_scale_arg))
     {
-      return ER_NUM_OVERFLOW;
+      return ER_IT_DATA_OVERFLOW;
     }
 
   /* Copy the lower 64 bits into answer */
@@ -2908,7 +2922,7 @@ numeric_internal_real_to_num (double adouble, int dst_scale,
   switch (get_fp_value_type (adouble))
     {
     case FP_VALUE_TYPE_INFINITE:
-      return ER_NUM_OVERFLOW;
+      return ER_IT_DATA_OVERFLOW;
     case FP_VALUE_TYPE_NAN:
     case FP_VALUE_TYPE_ZERO:
       /* currently CUBRID returns 0 for a NaN converted to NUMERIC (??) */
@@ -2928,7 +2942,7 @@ numeric_internal_real_to_num (double adouble, int dst_scale,
        * overflow/underflow before actual conversion */
       if (NUMERIC_ABS (adouble) > DB_NUMERIC_OVERFLOW_LIMIT)
 	{
-	  return ER_NUM_OVERFLOW;
+	  return ER_IT_DATA_OVERFLOW;
 	}
       else
 	{
@@ -3020,7 +3034,7 @@ numeric_internal_real_to_num (double adouble, int dst_scale,
 		    {
 		      /* should not happen since overflow has been
 		       * checked for previously */
-		      return ER_NUM_OVERFLOW;
+		      return ER_IT_DATA_OVERFLOW;
 		    }
 		  else
 		    {
@@ -3135,6 +3149,7 @@ numeric_coerce_string_to_num (const char *astring, int astring_length,
   bool decimal_part = false;
   int ret = NO_ERROR;
   int skip_size = 1;
+  TP_DOMAIN *domain;
 
   /* Remove the decimal point, track the prec & scale */
   prec = 0;
@@ -3245,8 +3260,10 @@ numeric_coerce_string_to_num (const char *astring, int astring_length,
   /* If there is no overflow, try to parse the decimal string */
   if (prec > DB_MAX_NUMERIC_PRECISION)
     {
-      ret = ER_NUM_OVERFLOW;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NUM_OVERFLOW, 0);
+      domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
+	      pr_type_name (TP_DOMAIN_TYPE (domain)));
+      ret = ER_IT_DATA_OVERFLOW;
       goto exit_on_error;
     }
 
@@ -3370,7 +3387,7 @@ numeric_coerce_num_to_num (DB_C_NUMERIC src_num,
     {
       if (num_string[i] >= '1' && num_string[i] <= '9')
 	{
-	  ret = ER_NUM_OVERFLOW;
+	  ret = ER_IT_DATA_OVERFLOW;
 	  goto exit_on_error;
 	}
     }
@@ -3389,7 +3406,7 @@ numeric_coerce_num_to_num (DB_C_NUMERIC src_num,
 	}
       if (is_all_nine)
 	{
-	  ret = ER_NUM_OVERFLOW;
+	  ret = ER_IT_DATA_OVERFLOW;
 	  goto exit_on_error;
 	}
     }
@@ -3560,7 +3577,7 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest,
       DB_MAKE_NUMERIC (dest, num, desired_precision, desired_scale);
     }
 
-  if (ret == ER_NUM_OVERFLOW)
+  if (ret == ER_IT_DATA_OVERFLOW)
     {
       *data_status = DATA_STATUS_TRUNCATED;
     }
@@ -3569,7 +3586,7 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest,
 
 exit_on_error:
 
-  if (ret == ER_NUM_OVERFLOW)
+  if (ret == ER_IT_DATA_OVERFLOW)
     {
       *data_status = DATA_STATUS_TRUNCATED;
     }
@@ -3607,7 +3624,7 @@ numeric_db_value_coerce_from_num (DB_VALUE * src,
 				      DB_VALUE_SCALE (src), &adouble);
 	if (OR_CHECK_DOUBLE_OVERFLOW (adouble))
 	  {
-	    ret = ER_NUM_OVERFLOW;
+	    ret = ER_IT_DATA_OVERFLOW;
 	    goto exit_on_error;
 	  }
 	DB_MAKE_DOUBLE (dest, adouble);
@@ -3621,7 +3638,7 @@ numeric_db_value_coerce_from_num (DB_VALUE * src,
 				      DB_VALUE_SCALE (src), &adouble);
 	if (OR_CHECK_FLOAT_OVERFLOW (adouble))
 	  {
-	    ret = ER_NUM_OVERFLOW;
+	    ret = ER_IT_DATA_OVERFLOW;
 	    goto exit_on_error;
 	  }
 	DB_MAKE_FLOAT (dest, (float) adouble);
@@ -3644,7 +3661,7 @@ numeric_db_value_coerce_from_num (DB_VALUE * src,
 				      DB_VALUE_SCALE (src), &adouble);
 	if (OR_CHECK_INT_OVERFLOW (adouble))
 	  {
-	    ret = ER_NUM_OVERFLOW;
+	    ret = ER_IT_DATA_OVERFLOW;
 	    goto exit_on_error;
 	  }
 	DB_MAKE_INTEGER (dest, (int) ROUND (adouble));
@@ -3673,7 +3690,7 @@ numeric_db_value_coerce_from_num (DB_VALUE * src,
 				      DB_VALUE_SCALE (src), &adouble);
 	if (OR_CHECK_SHORT_OVERFLOW (adouble))
 	  {
-	    ret = ER_NUM_OVERFLOW;
+	    ret = ER_IT_DATA_OVERFLOW;
 	    goto exit_on_error;
 	  }
 	DB_MAKE_SMALLINT (dest, (DB_C_SHORT) ROUND (adouble));
@@ -3820,7 +3837,7 @@ numeric_db_value_coerce_from_num (DB_VALUE * src,
 	    tmp_bi = (DB_BIGINT) (bi / MILLISECONDS_OF_ONE_DAY);
 	    if (OR_CHECK_INT_OVERFLOW (tmp_bi))
 	      {
-		ret = ER_NUM_OVERFLOW;
+		ret = ER_IT_DATA_OVERFLOW;
 	      }
 	    else
 	      {

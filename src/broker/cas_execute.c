@@ -4459,8 +4459,7 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
       domain = db_type_to_db_domain ((DB_TYPE) desired_type);
       if (domain == NULL)
 	{
-	  return ERROR_INFO_SET (ER_TP_INCOMPATIBLE_DOMAINS,
-				 DBMS_ERROR_INDICATOR);
+	  return ERROR_INFO_SET (ER_TP_CANT_COERCE, DBMS_ERROR_INDICATOR);
 	}
       err_code = db_value_coerce (&db_val, out_val, domain);
       if (err_code < 0)

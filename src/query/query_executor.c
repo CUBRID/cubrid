@@ -3039,6 +3039,7 @@ qexec_fill_sort_limit (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   DB_VALUE *dbvalp = NULL;
   TP_DOMAIN *domainp = tp_domain_resolve_default (DB_TYPE_INTEGER);
   DB_TYPE orig_type;
+  int error = NO_ERROR;
 
   if (limit_ptr == NULL)
     {
@@ -3066,26 +3067,30 @@ qexec_fill_sort_limit (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   if (orig_type != DB_TYPE_INTEGER)
     {
-      TP_DOMAIN_STATUS status = tp_value_coerce (dbvalp, dbvalp, domainp);
-      if (status == DOMAIN_OVERFLOW)
-	{
-	  /* The limit is too bog to fit an integer. However, since this limit
-	   * is used to keep the sort run flushes small (for instance only
-	   * keep the first 10 elements of each run if ORDER BY LIMIT 10 is
-	   * specified), there is no conceivable way this limit would be
-	   * useful if it is larger than 2.147 billion: such a large run
-	   * is infeasible anyway. So if it does not fit into an integer,
-	   * discard it.
-	   */
-	  return NO_ERROR;
-	}
+      TP_DOMAIN_STATUS dom_status;
 
-      if (status != DOMAIN_COMPATIBLE)
+      dom_status = tp_value_coerce (dbvalp, dbvalp, domainp);
+      if (dom_status != DOMAIN_COMPATIBLE)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-		  pr_type_name (orig_type),
-		  pr_type_name (TP_DOMAIN_TYPE (domainp)));
-	  return ER_FAILED;
+	  if (dom_status == DOMAIN_OVERFLOW)
+	    {
+	      /* The limit is too bog to fit an integer. However, since this limit
+	       * is used to keep the sort run flushes small (for instance only
+	       * keep the first 10 elements of each run if ORDER BY LIMIT 10 is
+	       * specified), there is no conceivable way this limit would be
+	       * useful if it is larger than 2.147 billion: such a large run
+	       * is infeasible anyway. So if it does not fit into an integer,
+	       * discard it.
+	       */
+	      return NO_ERROR;
+	    }
+	  else
+	    {
+	      error =
+		tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbvalp,
+					 domainp);
+	      return error;
+	    }
 	}
 
       if (DB_VALUE_DOMAIN_TYPE (dbvalp) != DB_TYPE_INTEGER)
@@ -10320,14 +10325,15 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
       if (TP_DOMAIN_TYPE (attr->domain) != DB_VALUE_TYPE (insert->vals[k]))
 	{
-	  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
-	  status = tp_value_cast (insert->vals[k], insert->vals[k],
-				  attr->domain, false);
-	  if (status != DOMAIN_COMPATIBLE)
+	  TP_DOMAIN_STATUS dom_status;
+
+	  dom_status = tp_value_cast (insert->vals[k], insert->vals[k],
+				      attr->domain, false);
+	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE,
-		      2, pr_type_name (DB_VALUE_TYPE (insert->vals[k])),
-		      pr_type_name (TP_DOMAIN_TYPE (attr->domain)));
+	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
+					      insert->vals[k], attr->domain);
+
 	      GOTO_EXIT_ON_ERROR;
 	    }
 	}
@@ -11740,6 +11746,8 @@ qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p,
   DB_TYPE orig_type;
   REGU_VARIABLE *key_limit_l;
   DB_VALUE *dbvalp;
+  int error = NO_ERROR;
+  TP_DOMAIN_STATUS dom_status;
 
   assert (xasl && xasl->instnum_val);
   DB_MAKE_BIGINT (xasl->instnum_val, 0);
@@ -11766,13 +11774,17 @@ qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p,
       orig_type = DB_VALUE_DOMAIN_TYPE (dbvalp);
       if (orig_type != DB_TYPE_BIGINT)
 	{
-	  if (tp_value_coerce (dbvalp, dbvalp, domainp) != DOMAIN_COMPATIBLE)
+	  dom_status = tp_value_coerce (dbvalp, dbvalp, domainp);
+	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-		      pr_type_name (orig_type),
-		      pr_type_name (TP_DOMAIN_TYPE (domainp)));
+	      error =
+		tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbvalp,
+					 domainp);
+	      assert_release (error != NO_ERROR);
+
 	      goto exit_on_error;
 	    }
+
 	  if (DB_VALUE_DOMAIN_TYPE (dbvalp) != DB_TYPE_BIGINT)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -20501,6 +20513,8 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p,
   SCAN_CODE sc;
   int regu_idx;
   int target_idx;
+  int error = NO_ERROR;
+  TP_DOMAIN_STATUS dom_status;
 
   if (func_p == NULL)
     {
@@ -20565,15 +20579,17 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
-  coerce_status = tp_value_coerce (regulist->value.vfetch_to, &offset_val,
-				   &tp_Integer_domain);
-  if (coerce_status != DOMAIN_COMPATIBLE)
+  dom_status = tp_value_coerce (regulist->value.vfetch_to, &offset_val,
+				&tp_Integer_domain);
+  if (dom_status != DOMAIN_COMPATIBLE)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-	      pr_type_name (DB_VALUE_DOMAIN_TYPE (regulist->value.vfetch_to)),
-	      pr_type_name (TP_DOMAIN_TYPE (&tp_Integer_domain)));
+      error =
+	tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
+				 regulist->value.vfetch_to,
+				 &tp_Integer_domain);
+      assert_release (error != NO_ERROR);
 
-      return ER_FAILED;
+      return error;
     }
 
   /* guard against NULL */
@@ -20674,15 +20690,16 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p,
   else
     {
       /* coerce value to default domain */
-      coerce_status = tp_value_coerce (default_val_p, &default_val,
-				       func_p->domain);
-      if (coerce_status != DOMAIN_COMPATIBLE)
+      dom_status = tp_value_coerce (default_val_p, &default_val,
+				    func_p->domain);
+      if (dom_status != DOMAIN_COMPATIBLE)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-		  pr_type_name (DB_VALUE_DOMAIN_TYPE (default_val_p)),
-		  pr_type_name (TP_DOMAIN_TYPE (func_p->domain)));
+	  error =
+	    tp_domain_status_er_set (dom_status, ARG_FILE_LINE, default_val_p,
+				     func_p->domain);
+	  assert_release (error != NO_ERROR);
 
-	  return ER_FAILED;
+	  return error;
 	}
 
       /* put default value and clean up */

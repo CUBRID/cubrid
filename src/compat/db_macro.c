@@ -3375,33 +3375,13 @@ db_value_coerce (const DB_VALUE * src, DB_VALUE * dest,
   int err = NO_ERROR;
 
   status = tp_value_cast (src, dest, desired_domain, false);
-  switch (status)
+  if (status != DOMAIN_COMPATIBLE)
     {
-    case DOMAIN_INCOMPATIBLE:
-      {
-	err = ER_TP_INCOMPATIBLE_DOMAINS;
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		ER_TP_INCOMPATIBLE_DOMAINS, 2,
-		pr_type_name ((DB_TYPE) src->domain.general_info.type),
-		pr_type_name (TP_DOMAIN_TYPE (desired_domain)));
-      }
-      break;
-    case DOMAIN_OVERFLOW:
-      {
-	err = ER_IT_DATA_OVERFLOW;
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		ER_IT_DATA_OVERFLOW, 1,
-		pr_type_name (TP_DOMAIN_TYPE (desired_domain)));
-      }
-      break;
-    case DOMAIN_ERROR:
-      err = er_errid ();
-      break;
-    default:
-      break;
+      err =
+	tp_domain_status_er_set (status, ARG_FILE_LINE, src, desired_domain);
     }
 
-  return (err);
+  return err;
 }
 
 /*

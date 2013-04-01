@@ -241,10 +241,10 @@
 
 #define ER_MR_TEMP_OID_WITHOUT_MOP                  -178
 
-#define ER_TP_INCOMPATIBLE_DOMAINS                  -179
+#define ER_TP_INCOMPATIBLE_DOMAINS                  -179	/* not used */
 #define ER_TP_INCOMPATIBLE_VALUE                    -180
 #define ER_TP_CANT_COERCE                           -181
-#define ER_TP_CANT_COERCE_OVERFLOW                  -182
+#define ER_TP_CANT_COERCE_OVERFLOW                  -182	/* not used */
 
 #define ER_NET_DATASIZE_MISMATCH                    -183
 #define ER_NET_CANT_ALLOC_BUFFER                    -184
@@ -531,7 +531,7 @@
 #define ER_QPROC_NOMORE_QFILE_PAGES                 -455
 #define ER_QPROC_INCOMPATIBLE_TYPES                 -456
 #define ER_QPROC_INVALID_RESTYPE                    -457
-#define ER_QPROC_OVERFLOW_HAPPENED                  -458
+#define ER_QPROC_OVERFLOW_ADDITION                  -458
 #define ER_QPROC_INVALID_QRY_SINGLE_TUPLE           -459
 
 #define ER_UCI_TOO_FEW_HOST_VARS                    -460
@@ -837,7 +837,7 @@
 #define ER_CPLUS_INVALID_ITER                       -691
 #define ER_CPLUS_WRONG_ITER                         -692
 
-#define ER_NUM_OVERFLOW                             -693
+#define ER_NUM_OVERFLOW                             -693	/* not used */
 
 #define ER_BTREE_LOAD_FAILED			    -694
 
@@ -902,7 +902,7 @@
 #define ER_QPROC_OVERFLOW_MULTIPLICATION            -730
 #define ER_QPROC_OVERFLOW_DIVISION                  -731
 #define ER_QPROC_OVERFLOW_UMINUS                    -732
-#define ER_QPROC_OVERFLOW_COERCION                  -733
+#define ER_QPROC_OVERFLOW_COERCION                  -733	/* not used */
 
 #define ER_FILE_INCONSISTENT_HEADER                 -734
 

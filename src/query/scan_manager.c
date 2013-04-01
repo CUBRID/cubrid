@@ -873,9 +873,8 @@ scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp,
 {
   DB_VALUE *dbvalp;
   TP_DOMAIN *domainp = tp_domain_resolve_default (DB_TYPE_BIGINT);
-  DB_TYPE orig_type;
   bool is_lower_limit_negative = false;
-
+  TP_DOMAIN_STATUS dom_status;
 
   if (key_infop->key_limit_l != NULL)
     {
@@ -884,14 +883,15 @@ scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp,
 	{
 	  goto exit_on_error;
 	}
-      orig_type = DB_VALUE_DOMAIN_TYPE (dbvalp);
-      if (tp_value_coerce (dbvalp, dbvalp, domainp) != DOMAIN_COMPATIBLE)
+      dom_status = tp_value_coerce (dbvalp, dbvalp, domainp);
+      if (dom_status != DOMAIN_COMPATIBLE)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-		  pr_type_name (orig_type),
-		  pr_type_name (TP_DOMAIN_TYPE (domainp)));
+	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbvalp,
+					  domainp);
+
 	  goto exit_on_error;
 	}
+
       if (DB_VALUE_DOMAIN_TYPE (dbvalp) != DB_TYPE_BIGINT)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -932,12 +932,12 @@ scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp,
 	{
 	  goto exit_on_error;
 	}
-      orig_type = DB_VALUE_DOMAIN_TYPE (dbvalp);
-      if (tp_value_coerce (dbvalp, dbvalp, domainp) != DOMAIN_COMPATIBLE)
+      dom_status = tp_value_coerce (dbvalp, dbvalp, domainp);
+      if (dom_status != DOMAIN_COMPATIBLE)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-		  pr_type_name (orig_type),
-		  pr_type_name (TP_DOMAIN_TYPE (domainp)));
+	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbvalp,
+					  domainp);
+
 	  goto exit_on_error;
 	}
       if (DB_VALUE_DOMAIN_TYPE (dbvalp) != DB_TYPE_BIGINT)

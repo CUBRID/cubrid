@@ -386,7 +386,7 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
   SM_ATTRIBUTE *att;
   SM_CLASS *smclass;
   int error;
-  TP_DOMAIN_STATUS status;
+  TP_DOMAIN_STATUS dom_status;
   char *user_name;
 
   assert (class_name->node_type == PT_NAME);
@@ -438,24 +438,27 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 
 	  if (error != NO_ERROR)
 	    {
-	      return error;
+	      break;
 	    }
+
 	  /* make sure the default value can be used for this attribute */
-	  status =
+	  dom_status =
 	    tp_value_strict_cast (&att->default_value.value,
 				  &att->default_value.value, att->domain);
-	  if (status != DOMAIN_COMPATIBLE)
+	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-		      pr_type_name (DB_VALUE_TYPE
-				    (&att->default_value.value)),
-		      pr_type_name (TP_DOMAIN_TYPE (att->domain)));
-	      return ER_FAILED;
+	      error =
+		tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
+					 &att->default_value.value,
+					 att->domain);
+	      assert_release (error != NO_ERROR);
+
+	      break;
 	    }
 	}
     }
 
-  return NO_ERROR;
+  return error;
 }
 
 /*
@@ -6256,6 +6259,7 @@ do_set_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
   DB_VALUE src, dst;
+  TP_DOMAIN_STATUS dom_status;
 
   DB_MAKE_NULL (&src);
   DB_MAKE_NULL (&dst);
@@ -6265,39 +6269,28 @@ do_set_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       pt_report_to_ersys (parser, PT_SEMANTIC);
       error = er_errid ();
+      if (error == ER_TP_CANT_COERCE || error == ER_IT_DATA_OVERFLOW)
+	{
+	  char buf1[MAX_DOMAIN_NAME_SIZE];
+	  char buf2[MAX_DOMAIN_NAME_SIZE];
+	  (void) tp_value_domain_name (&src, buf1, sizeof (buf1));
+	  (void) tp_domain_name (&tp_Integer_domain, buf2, sizeof (buf2));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, buf1, buf2);
+	}
     }
   else
     {
-      switch (tp_value_coerce (&src, &dst, &tp_Integer_domain))
+      dom_status = tp_value_coerce (&src, &dst, &tp_Integer_domain);
+      if (dom_status != DOMAIN_COMPATIBLE)
 	{
-	case DOMAIN_INCOMPATIBLE:
-	  error = ER_TP_CANT_COERCE;
-	  break;
-	case DOMAIN_OVERFLOW:
-	  error = ER_TP_CANT_COERCE_OVERFLOW;
-	  break;
-	case DOMAIN_ERROR:
-	  /*
-	   * tp_value_coerce() *appears* to set er_errid whenever it
-	   * returns DOMAIN_ERROR (which probably really means malloc
-	   * failure or something else).
-	   */
-	  error = er_errid ();
-	  break;
-	default:
-	  break;
+	  error =
+	    tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &src,
+				     &tp_Integer_domain);
+	  /* already set error */
 	}
     }
 
-  if (error == ER_TP_CANT_COERCE || error == ER_TP_CANT_COERCE_OVERFLOW)
-    {
-      char buf1[MAX_DOMAIN_NAME_SIZE];
-      char buf2[MAX_DOMAIN_NAME_SIZE];
-      (void) tp_value_domain_name (&src, buf1, sizeof (buf1));
-      (void) tp_domain_name (&tp_Integer_domain, buf2, sizeof (buf2));
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, buf1, buf2);
-    }
-  else if (error == NO_ERROR)
+  if (error == NO_ERROR)
     {
       PT_MISC_TYPE option;
       int v;

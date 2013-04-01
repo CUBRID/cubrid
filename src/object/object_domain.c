@@ -5334,11 +5334,9 @@ tp_ftoa (DB_VALUE const *src, DB_VALUE * result)
     default:
       db_private_free_and_init (NULL, str_float);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_TP_INCOMPATIBLE_DOMAINS, 2,
-	      tp_domain_find_noparam (DB_VALUE_DOMAIN_TYPE (src),
-				      false)->type->name,
-	      tp_domain_find_noparam (DB_VALUE_DOMAIN_TYPE (result),
-				      false)->type->name);
+	      ER_TP_CANT_COERCE, 2,
+	      pr_type_name (DB_VALUE_DOMAIN_TYPE (src)),
+	      pr_type_name (DB_VALUE_DOMAIN_TYPE (result)));
       DB_MAKE_NULL (result);
       break;
     }
@@ -5412,11 +5410,9 @@ tp_dtoa (DB_VALUE const *src, DB_VALUE * result)
     default:
       db_private_free_and_init (NULL, str_double);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_TP_INCOMPATIBLE_DOMAINS, 2,
-	      tp_domain_find_noparam (DB_VALUE_DOMAIN_TYPE (src),
-				      false)->type->name,
-	      tp_domain_find_noparam (DB_VALUE_DOMAIN_TYPE (result),
-				      false)->type->name);
+	      ER_TP_CANT_COERCE, 2,
+	      pr_type_name (DB_VALUE_DOMAIN_TYPE (src)),
+	      pr_type_name (DB_VALUE_DOMAIN_TYPE (result)));
       DB_MAKE_NULL (result);
       break;
     }
@@ -7134,7 +7130,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    int error_code = numeric_db_value_coerce_to_num ((DB_VALUE *) src,
 							     target,
 							     &data_stat);
-	    if (error_code == ER_NUM_OVERFLOW
+	    if (error_code == ER_IT_DATA_OVERFLOW
 		|| data_stat == DATA_STATUS_TRUNCATED)
 	      {
 		status = DOMAIN_OVERFLOW;
@@ -9345,9 +9341,8 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 	    {
 	      *can_compare = false;
 
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_TP_INCOMPATIBLE_DOMAINS, 2, pr_type_name (vtype1),
-		      pr_type_name (vtype2));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
+		      pr_type_name (vtype1), pr_type_name (vtype2));
 	    }
 	}
       else
@@ -10146,4 +10141,65 @@ tp_infer_common_domain (TP_DOMAIN * arg1, TP_DOMAIN * arg2, bool * need_free)
     }
 
   return target_domain;
+}
+
+/*
+ * tp_domain_status_er_set () -
+ *   return:
+ *
+ *  Note :
+ */
+int
+tp_domain_status_er_set (TP_DOMAIN_STATUS status, const char *file_name,
+			 const int line_no, const DB_VALUE * src,
+			 const TP_DOMAIN * domain)
+{
+  int error = NO_ERROR;
+
+  assert (src != NULL);
+  assert (domain != NULL);
+
+  /* prefer to change error code; hide internal errors from users view
+   */
+  if (status == DOMAIN_ERROR)
+    {
+      error = er_errid ();
+
+      if (error == ER_IT_DATA_OVERFLOW)
+	{
+	  status = DOMAIN_OVERFLOW;
+	}
+      else
+	{
+	  status = DOMAIN_INCOMPATIBLE;
+	}
+    }
+
+  assert (status != DOMAIN_ERROR);
+
+  switch (status)
+    {
+    case DOMAIN_INCOMPATIBLE:
+      error = ER_TP_CANT_COERCE;
+      er_set (ER_ERROR_SEVERITY, file_name, line_no, error, 2,
+	      pr_type_name (DB_VALUE_DOMAIN_TYPE (src)),
+	      pr_type_name (TP_DOMAIN_TYPE (domain)));
+      break;
+
+    case DOMAIN_OVERFLOW:
+      error = ER_IT_DATA_OVERFLOW;
+      er_set (ER_ERROR_SEVERITY, file_name, line_no, error, 1,
+	      pr_type_name (TP_DOMAIN_TYPE (domain)));
+      break;
+
+    case DOMAIN_ERROR:
+      assert (false);		/* is impossible */
+      break;
+
+    default:
+      assert (false);		/* is impossible */
+      break;
+    }
+
+  return error;
 }

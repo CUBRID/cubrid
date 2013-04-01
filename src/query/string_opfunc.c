@@ -15008,6 +15008,7 @@ db_to_number (const DB_VALUE * src_str, const DB_VALUE * format_str,
   bool has_user_format;
   bool dummy;
   int number_lang_id;
+  TP_DOMAIN *domain;
 
   assert (src_str != (DB_VALUE *) NULL);
   assert (result_num != (DB_VALUE *) NULL);
@@ -15161,8 +15162,10 @@ db_to_number (const DB_VALUE * src_str, const DB_VALUE * format_str,
 
       if (precision + scale > DB_MAX_NUMERIC_PRECISION)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NUM_OVERFLOW, 0);
-	  error_status = ER_NUM_OVERFLOW;
+	  domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
+		  pr_type_name (TP_DOMAIN_TYPE (domain)));
+	  error_status = ER_IT_DATA_OVERFLOW;
 	  goto exit;
 	}
 
@@ -15201,9 +15204,11 @@ db_to_number (const DB_VALUE * src_str, const DB_VALUE * format_str,
 	      count_format++;
 	      cs += token_length;
 	    }
-	  else if (error_status == ER_NUM_OVERFLOW)
+	  else if (error_status == ER_IT_DATA_OVERFLOW)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1,
+		      pr_type_name (TP_DOMAIN_TYPE (domain)));
 	      goto exit;
 	    }
 	  else
@@ -17698,7 +17703,7 @@ make_number (char *src, char *last_src, INTL_CODESET codeset, char *token,
 
 	  if (k > DB_MAX_NUMERIC_PRECISION)
 	    {
-	      return ER_NUM_OVERFLOW;
+	      return ER_IT_DATA_OVERFLOW;
 	    }
 	  if (k > 0)
 	    {
@@ -17819,7 +17824,7 @@ make_number (char *src, char *last_src, INTL_CODESET codeset, char *token,
       error_status = adjust_precision (result_str, precision, scale);
       if (error_status == DOMAIN_OVERFLOW)
 	{
-	  return ER_NUM_OVERFLOW;
+	  return ER_IT_DATA_OVERFLOW;
 	}
 
       if (error_status != NO_ERROR ||
@@ -17847,7 +17852,7 @@ make_number (char *src, char *last_src, INTL_CODESET codeset, char *token,
       error_status = adjust_precision (result_str, precision, scale);
       if (error_status == DOMAIN_OVERFLOW)
 	{
-	  return ER_NUM_OVERFLOW;
+	  return ER_IT_DATA_OVERFLOW;
 	}
 
       if (error_status != NO_ERROR ||

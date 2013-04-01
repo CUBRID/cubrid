@@ -789,9 +789,9 @@ qdata_add_short (short s, DB_VALUE * dbval_p, DB_VALUE * result_p)
 
   if (OR_CHECK_ADD_OVERFLOW (s, tmp, result))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_HAPPENED,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION,
 	      0);
-      return ER_QPROC_OVERFLOW_HAPPENED;
+      return ER_QPROC_OVERFLOW_ADDITION;
     }
 
   DB_MAKE_SHORT (result_p, result);
@@ -807,9 +807,9 @@ qdata_add_int (int i1, int i2, DB_VALUE * result_p)
 
   if (OR_CHECK_ADD_OVERFLOW (i1, i2, result))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_HAPPENED,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION,
 	      0);
-      return ER_QPROC_OVERFLOW_HAPPENED;
+      return ER_QPROC_OVERFLOW_ADDITION;
     }
 
   DB_MAKE_INT (result_p, result);
@@ -825,9 +825,9 @@ qdata_add_bigint (DB_BIGINT bi1, DB_BIGINT bi2, DB_VALUE * result_p)
 
   if (OR_CHECK_ADD_OVERFLOW (bi1, bi2, result))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_HAPPENED,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION,
 	      0);
-      return ER_QPROC_OVERFLOW_HAPPENED;
+      return ER_QPROC_OVERFLOW_ADDITION;
     }
 
   DB_MAKE_BIGINT (result_p, result);
@@ -843,9 +843,9 @@ qdata_add_float (float f1, float f2, DB_VALUE * result_p)
 
   if (OR_CHECK_FLOAT_OVERFLOW (result))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_HAPPENED,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION,
 	      0);
-      return ER_QPROC_OVERFLOW_HAPPENED;
+      return ER_QPROC_OVERFLOW_ADDITION;
     }
 
   DB_MAKE_FLOAT (result_p, result);
@@ -861,9 +861,9 @@ qdata_add_double (double d1, double d2, DB_VALUE * result_p)
 
   if (OR_CHECK_DOUBLE_OVERFLOW (result))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_HAPPENED,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION,
 	      0);
-      return ER_QPROC_OVERFLOW_HAPPENED;
+      return ER_QPROC_OVERFLOW_ADDITION;
     }
 
   DB_MAKE_DOUBLE (result_p, result);
@@ -904,9 +904,9 @@ qdata_add_numeric (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p,
 
   if (numeric_db_value_add (&dbval_tmp, numeric_val_p, result_p) != NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_HAPPENED,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION,
 	      0);
-      return ER_QPROC_OVERFLOW_HAPPENED;
+      return ER_QPROC_OVERFLOW_ADDITION;
     }
 
   return NO_ERROR;
@@ -940,9 +940,9 @@ qdata_add_monetary (double d1, double d2, DB_CURRENCY type,
 
   if (OR_CHECK_DOUBLE_OVERFLOW (result))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_HAPPENED,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION,
 	      0);
-      return ER_QPROC_OVERFLOW_HAPPENED;
+      return ER_QPROC_OVERFLOW_ADDITION;
     }
 
   DB_MAKE_MONETARY_TYPE_AMOUNT (result_p, type, result);
@@ -1136,9 +1136,9 @@ qdata_add_short_to_utime (DB_VALUE * utime_val_p, short s,
 
   if (OR_CHECK_UNS_ADD_OVERFLOW (u1, u2, utmp) || INT_MAX < utmp)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_HAPPENED,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION,
 	      0);
-      return ER_QPROC_OVERFLOW_HAPPENED;
+      return ER_QPROC_OVERFLOW_ADDITION;
     }
 
   if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
@@ -1195,9 +1195,9 @@ qdata_add_int_to_utime (DB_VALUE * utime_val_p, int i, DB_VALUE * result_p,
 
   if (OR_CHECK_UNS_ADD_OVERFLOW (u1, u2, utmp) || INT_MAX < utmp)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_HAPPENED,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION,
 	      0);
-      return ER_QPROC_OVERFLOW_HAPPENED;
+      return ER_QPROC_OVERFLOW_ADDITION;
     }
 
   if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
@@ -1254,9 +1254,9 @@ qdata_add_bigint_to_utime (DB_VALUE * utime_val_p, DB_BIGINT bi,
 
   if (OR_CHECK_UNS_ADD_OVERFLOW (u1, u2, utmp) || INT_MAX < utmp)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_HAPPENED,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION,
 	      0);
-      return ER_QPROC_OVERFLOW_HAPPENED;
+      return ER_QPROC_OVERFLOW_ADDITION;
     }
   if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
     {
@@ -1364,9 +1364,9 @@ qdata_add_short_to_date (DB_VALUE * date_val_p, short s, DB_VALUE * result_p,
 
   if (OR_CHECK_UNS_ADD_OVERFLOW (u1, u2, utmp) || utmp > DB_DATE_MAX)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_HAPPENED,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION,
 	      0);
-      return ER_QPROC_OVERFLOW_HAPPENED;
+      return ER_QPROC_OVERFLOW_ADDITION;
     }
 
   db_date_decode (&utmp, &month, &day, &year);
@@ -1416,9 +1416,9 @@ qdata_add_int_to_date (DB_VALUE * date_val_p, int i, DB_VALUE * result_p,
 
   if (OR_CHECK_UNS_ADD_OVERFLOW (u1, u2, utmp) || utmp > DB_DATE_MAX)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_HAPPENED,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION,
 	      0);
-      return ER_QPROC_OVERFLOW_HAPPENED;
+      return ER_QPROC_OVERFLOW_ADDITION;
     }
 
   db_date_decode (&utmp, &month, &day, &year);
@@ -1468,9 +1468,9 @@ qdata_add_bigint_to_date (DB_VALUE * date_val_p, DB_BIGINT bi,
 
   if (OR_CHECK_UNS_ADD_OVERFLOW (u1, u2, utmp) || utmp > DB_DATE_MAX)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_HAPPENED,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION,
 	      0);
-      return ER_QPROC_OVERFLOW_HAPPENED;
+      return ER_QPROC_OVERFLOW_ADDITION;
     }
 
   tmp_date = (DB_DATE) utmp;
@@ -1766,8 +1766,8 @@ qdata_add_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p,
       if (numeric_db_value_add (numeric_val_p, dbval_p, result_p) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_QPROC_OVERFLOW_HAPPENED, 0);
-	  return ER_QPROC_OVERFLOW_HAPPENED;
+		  ER_QPROC_OVERFLOW_ADDITION, 0);
+	  return ER_QPROC_OVERFLOW_ADDITION;
 	}
       break;
 
@@ -2059,37 +2059,44 @@ qdata_add_date_to_dbval (DB_VALUE * date_val_p, DB_VALUE * dbval_p,
 static int
 qdata_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p)
 {
+  int error = NO_ERROR;
+  TP_DOMAIN_STATUS dom_status;
+
   if (domain_p != NULL)
     {
-      if (tp_value_coerce (result_p, result_p, domain_p) != DOMAIN_COMPATIBLE)
+      dom_status = tp_value_coerce (result_p, result_p, domain_p);
+      if (dom_status != DOMAIN_COMPATIBLE)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-		  pr_type_name (DB_VALUE_DOMAIN_TYPE (result_p)),
-		  pr_type_name (TP_DOMAIN_TYPE (domain_p)));
-	  return ER_TP_CANT_COERCE;
+	  error =
+	    tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result_p,
+				     domain_p);
+	  assert_release (error != NO_ERROR);
 	}
     }
 
-  return NO_ERROR;
+  return error;
 }
 
 static int
 qdata_cast_to_domain (DB_VALUE * dbval_p, DB_VALUE * result_p,
 		      TP_DOMAIN * domain_p)
 {
+  int error = NO_ERROR;
+  TP_DOMAIN_STATUS dom_status;
+
   if (domain_p != NULL)
     {
-      if (tp_value_cast (dbval_p, result_p, domain_p, false)
-	  != DOMAIN_COMPATIBLE)
+      dom_status = tp_value_cast (dbval_p, result_p, domain_p, false);
+      if (dom_status != DOMAIN_COMPATIBLE)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-		  pr_type_name (DB_VALUE_DOMAIN_TYPE (dbval_p)),
-		  pr_type_name (TP_DOMAIN_TYPE (domain_p)));
-	  return ER_TP_CANT_COERCE;
+	  error =
+	    tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbval_p,
+				     domain_p);
+	  assert_release (error != NO_ERROR);
 	}
     }
 
-  return NO_ERROR;
+  return error;
 }
 
 /*
@@ -2523,18 +2530,11 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p,
 						  result_p);
 	      }
 	  }
-	else if (err_dom == DOMAIN_INCOMPATIBLE)
+	else
 	  {
-	    error = ER_TP_INCOMPATIBLE_DOMAINS;
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		    ER_TP_INCOMPATIBLE_DOMAINS, 2,
-		    pr_type_name ((DB_TYPE) dbval2_p->domain.general_info.
-				  type),
-		    pr_type_name (TP_DOMAIN_TYPE (domain_p)));
-	  }
-	else if (err_dom == DOMAIN_ERROR)
-	  {
-	    error = er_errid ();
+	    error =
+	      tp_domain_status_er_set (err_dom, ARG_FILE_LINE, dbval2_p,
+				       domain_p);
 	  }
       }
       break;
@@ -2778,8 +2778,8 @@ qdata_subtract_utime_to_short_asymmetry (DB_VALUE * utime_val_p, short s,
       if (*utime == DB_UINT32_MAX)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_QPROC_OVERFLOW_HAPPENED, 0);
-	  return ER_QPROC_OVERFLOW_HAPPENED;
+		  ER_QPROC_OVERFLOW_ADDITION, 0);
+	  return ER_QPROC_OVERFLOW_ADDITION;
 	}
 
       (*utime)++;
@@ -2803,8 +2803,8 @@ qdata_subtract_utime_to_int_asymmetry (DB_VALUE * utime_val_p, int i,
       if (*utime == DB_UINT32_MAX)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_QPROC_OVERFLOW_HAPPENED, 0);
-	  return ER_QPROC_OVERFLOW_HAPPENED;
+		  ER_QPROC_OVERFLOW_ADDITION, 0);
+	  return ER_QPROC_OVERFLOW_ADDITION;
 	}
 
       (*utime)++;
@@ -2828,8 +2828,8 @@ qdata_subtract_utime_to_bigint_asymmetry (DB_VALUE * utime_val_p,
       if (*utime == DB_UINT32_MAX)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_QPROC_OVERFLOW_HAPPENED, 0);
-	  return ER_QPROC_OVERFLOW_HAPPENED;
+		  ER_QPROC_OVERFLOW_ADDITION, 0);
+	  return ER_QPROC_OVERFLOW_ADDITION;
 	}
 
       (*utime)++;
@@ -8676,8 +8676,8 @@ qdata_divmod_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
 		  if (OR_CHECK_INT_DIV_OVERFLOW (bi[0], bi[1]))
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_QPROC_OVERFLOW_HAPPENED, 0);
-		      return ER_QPROC_OVERFLOW_HAPPENED;
+			      ER_QPROC_OVERFLOW_ADDITION, 0);
+		      return ER_QPROC_OVERFLOW_ADDITION;
 		    }
 		  db_make_int (result_p, (INT32) (bi[0] / bi[1]));
 		}
@@ -8686,8 +8686,8 @@ qdata_divmod_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
 		  if (OR_CHECK_BIGINT_DIV_OVERFLOW (bi[0], bi[1]))
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_QPROC_OVERFLOW_HAPPENED, 0);
-		      return ER_QPROC_OVERFLOW_HAPPENED;
+			      ER_QPROC_OVERFLOW_ADDITION, 0);
+		      return ER_QPROC_OVERFLOW_ADDITION;
 		    }
 		  db_make_bigint (result_p, bi[0] / bi[1]);
 		}
@@ -8696,8 +8696,8 @@ qdata_divmod_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
 		  if (OR_CHECK_SHORT_DIV_OVERFLOW (bi[0], bi[1]))
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_QPROC_OVERFLOW_HAPPENED, 0);
-		      return ER_QPROC_OVERFLOW_HAPPENED;
+			      ER_QPROC_OVERFLOW_ADDITION, 0);
+		      return ER_QPROC_OVERFLOW_ADDITION;
 		    }
 		  db_make_short (result_p, (INT16) (bi[0] / bi[1]));
 		}
@@ -9295,6 +9295,8 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
   TP_DOMAIN *tmp_domain_p = NULL;
   DB_TYPE dbval_type;
   double ntile_bucket = 0.0;
+  int error = NO_ERROR;
+  TP_DOMAIN_STATUS dom_status;
 
   DB_MAKE_NULL (&dbval);
   DB_MAKE_NULL (&sqr_val);
@@ -9402,14 +9404,17 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 	{
 	  /* the operand is the number of buckets and should be constant within
 	     the window; we can extract it now for later use */
-	  if (tp_value_coerce (&dbval, &dbval, &tp_Double_domain) !=
-	      DOMAIN_COMPATIBLE)
+	  dom_status = tp_value_coerce (&dbval, &dbval, &tp_Double_domain);
+	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
+	      error =
+		tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &dbval,
+					 &tp_Double_domain);
+	      assert_release (error != NO_ERROR);
+
 	      pr_clear_value (&dbval);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-		      pr_type_name (DB_VALUE_DOMAIN_TYPE (&dbval)),
-		      pr_type_name (TP_DOMAIN_TYPE (&tp_Double_domain)));
-	      return ER_FAILED;
+
+	      return error;
 	    }
 
 	  ntile_bucket = DB_GET_DOUBLE (&dbval);

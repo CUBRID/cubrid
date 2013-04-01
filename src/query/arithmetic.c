@@ -2388,7 +2388,7 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   int p, s;
   DB_VALUE cast_value, cast_format;
   int er_status = NO_ERROR;
-  DB_DOMAIN *domain;
+  TP_DOMAIN *domain = NULL;
 
   DB_MAKE_NULL (&cast_value);
   DB_MAKE_NULL (&cast_format);
@@ -2611,9 +2611,12 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 			    }
 			  else
 			    {
+			      domain =
+				tp_domain_resolve_default (DB_TYPE_NUMERIC);
 			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				      ER_NUM_OVERFLOW, 0);
-			      return ER_NUM_OVERFLOW;
+				      ER_IT_DATA_OVERFLOW, 1,
+				      pr_type_name (TP_DOMAIN_TYPE (domain)));
+			      return ER_IT_DATA_OVERFLOW;
 			    }
 			}
 		      break;
@@ -3396,7 +3399,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   DB_VALUE cast_value, cast_format;
   int er_status = NO_ERROR;
   DB_DATE *date_p, date;
-  DB_DOMAIN *domain;
+  TP_DOMAIN *domain;
   TP_DOMAIN_STATUS cast_status;
 
   DB_MAKE_NULL (&cast_value);
@@ -4550,7 +4553,7 @@ db_width_bucket_calculate_numeric (double *result,
 					    DB_VALUE_SCALE (&n4), &res);
 	      if (OR_CHECK_DOUBLE_OVERFLOW (res))
 		{
-		  return ER_QPROC_OVERFLOW_COERCION;
+		  return ER_IT_DATA_OVERFLOW;
 		}
 
 	      res = floor (res) + 1.0;
@@ -4617,7 +4620,7 @@ db_width_bucket_calculate_numeric (double *result,
 					    DB_VALUE_SCALE (&n4), &res);
 	      if (OR_CHECK_DOUBLE_OVERFLOW (res))
 		{
-		  return ER_QPROC_OVERFLOW_COERCION;
+		  return ER_IT_DATA_OVERFLOW;
 		}
 
 	      res = floor (res) + 1.0;
@@ -4627,7 +4630,7 @@ db_width_bucket_calculate_numeric (double *result,
 
   if (OR_CHECK_DOUBLE_OVERFLOW (res))
     {
-      return ER_QPROC_OVERFLOW_HAPPENED;
+      return ER_QPROC_OVERFLOW_ADDITION;
     }
 
   *result = res;
@@ -4661,7 +4664,7 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
     } \
   while (0)
 
-#define RETURN_ERROR_WITH_TWO_ARGS(err, arg1, arg2) \
+#define RETURN_ERROR_WITH_ARG(err, arg) \
   do \
     { \
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true) \
@@ -4671,7 +4674,7 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
         } \
       else \
         { \
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, (err), 2, (arg1), (arg2)); \
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, (err), 1, (arg)); \
           return (err); \
         } \
     } \
@@ -4688,8 +4691,7 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
   TP_DOMAIN_STATUS cast_status;
   bool is_deal_with_numeric = false;
   int er_status = NO_ERROR;
-  char buf1[MAX_DOMAIN_NAME_SIZE];
-  char buf2[MAX_DOMAIN_NAME_SIZE];
+  char buf[MAX_DOMAIN_NAME_SIZE];
 
   assert (result != NULL && value1 != NULL
 	  && value2 != NULL && value3 != NULL && value4 != NULL);
@@ -4866,11 +4868,9 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
 	  cast_status = tp_value_coerce (value1, &cast_value1, cast_domain);
 	  if (cast_status != DOMAIN_COMPATIBLE)
 	    {
-	      tp_value_domain_name (value1, buf1, MAX_DOMAIN_NAME_SIZE);
-	      tp_domain_name (numeric_domain, buf2, MAX_DOMAIN_NAME_SIZE);
+	      tp_domain_name (numeric_domain, buf, MAX_DOMAIN_NAME_SIZE);
 	      tp_domain_free (numeric_domain);
-	      RETURN_ERROR_WITH_TWO_ARGS (ER_TP_CANT_COERCE_OVERFLOW, buf1,
-					  buf2);
+	      RETURN_ERROR_WITH_ARG (ER_IT_DATA_OVERFLOW, buf);
 	    }
 
 	  value1 = &cast_value1;
@@ -4882,11 +4882,9 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
 	  cast_status = tp_value_coerce (value2, &cast_value2, cast_domain);
 	  if (cast_status != DOMAIN_COMPATIBLE)
 	    {
-	      tp_value_domain_name (value2, buf1, MAX_DOMAIN_NAME_SIZE);
-	      tp_domain_name (numeric_domain, buf2, MAX_DOMAIN_NAME_SIZE);
+	      tp_domain_name (numeric_domain, buf, MAX_DOMAIN_NAME_SIZE);
 	      tp_domain_free (numeric_domain);
-	      RETURN_ERROR_WITH_TWO_ARGS (ER_TP_CANT_COERCE_OVERFLOW, buf1,
-					  buf2);
+	      RETURN_ERROR_WITH_ARG (ER_IT_DATA_OVERFLOW, buf);
 	    }
 
 	  value2 = &cast_value2;
@@ -4897,11 +4895,9 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
 	  cast_status = tp_value_coerce (value3, &cast_value3, cast_domain);
 	  if (cast_status != DOMAIN_COMPATIBLE)
 	    {
-	      tp_value_domain_name (value3, buf1, MAX_DOMAIN_NAME_SIZE);
-	      tp_domain_name (numeric_domain, buf2, MAX_DOMAIN_NAME_SIZE);
+	      tp_domain_name (numeric_domain, buf, MAX_DOMAIN_NAME_SIZE);
 	      tp_domain_free (numeric_domain);
-	      RETURN_ERROR_WITH_TWO_ARGS (ER_TP_CANT_COERCE_OVERFLOW, buf1,
-					  buf2);
+	      RETURN_ERROR_WITH_ARG (ER_IT_DATA_OVERFLOW, buf);
 	    }
 
 	  value3 = &cast_value3;
@@ -4914,7 +4910,7 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
       if (cast_status != DOMAIN_COMPATIBLE)
 	{
 	  tp_domain_free (numeric_domain);
-	  RETURN_ERROR (ER_QPROC_OVERFLOW_HAPPENED);
+	  RETURN_ERROR (ER_QPROC_OVERFLOW_ADDITION);
 	}
 
       value4 = &cast_value4;
@@ -4994,7 +4990,7 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
     }
   else if (OR_CHECK_INT_OVERFLOW (d_ret))
     {
-      RETURN_ERROR (ER_QPROC_OVERFLOW_HAPPENED);
+      RETURN_ERROR (ER_QPROC_OVERFLOW_ADDITION);
     }
 
   DB_MAKE_INT (result, ((int) d_ret));
@@ -5002,5 +4998,5 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
   return er_status;
 
 #undef RETURN_ERROR
-#undef RETURN_ERROR_WITH_TWO_ARGS
+#undef RETURN_ERROR_WITH_ARG
 }

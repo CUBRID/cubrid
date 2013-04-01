@@ -17489,7 +17489,9 @@ get_oidcnt_and_oidptr:
 #if defined(SERVER_MODE)
 	  /* save the result of key filtering on the previous key value */
 	  if (saved_inst_oid.pageid == NULL_PAGEID)
-	    bts->prev_KF_satisfied = (int) is_key_filter_satisfied;
+	    {
+	      bts->prev_KF_satisfied = (int) is_key_filter_satisfied;
+	    }
 #endif /* SERVER_MODE */
 
 	  /* apply key range and key filter to the new key value */
@@ -21775,7 +21777,7 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2,
       if (key1_type != DB_TYPE_MIDXKEY)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_TP_INCOMPATIBLE_DOMAINS, 2,
+		  ER_TP_CANT_COERCE, 2,
 		  pr_type_name (key1_type), pr_type_name (dom_type));
 	  assert (false);
 	  return DB_UNK;
@@ -21783,7 +21785,7 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2,
       if (key2_type != DB_TYPE_MIDXKEY)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_TP_INCOMPATIBLE_DOMAINS, 2,
+		  ER_TP_CANT_COERCE, 2,
 		  pr_type_name (key2_type), pr_type_name (dom_type));
 	  assert (false);
 	  return DB_UNK;
@@ -21809,7 +21811,7 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2,
       if (key1_type == DB_TYPE_MIDXKEY)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_TP_INCOMPATIBLE_DOMAINS, 2,
+		  ER_TP_CANT_COERCE, 2,
 		  pr_type_name (key1_type), pr_type_name (dom_type));
 	  assert (false);
 	  return DB_UNK;
@@ -21817,7 +21819,7 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2,
       if (key2_type == DB_TYPE_MIDXKEY)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_TP_INCOMPATIBLE_DOMAINS, 2,
+		  ER_TP_CANT_COERCE, 2,
 		  pr_type_name (key2_type), pr_type_name (dom_type));
 	  assert (false);
 	  return DB_UNK;

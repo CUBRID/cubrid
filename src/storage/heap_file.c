@@ -15093,10 +15093,9 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val,
 	{
 	  if (dom_status == DOMAIN_OVERFLOW)
 	    {
-	      ret = ER_IT_DATA_OVERFLOW;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 1,
-		      pr_type_name (TP_DOMAIN_TYPE
-				    (value->last_attrepr->domain)));
+	      ret =
+		tp_domain_status_er_set (dom_status, ARG_FILE_LINE, attr_val,
+					 value->last_attrepr->domain);
 	    }
 	  else
 	    {

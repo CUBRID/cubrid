@@ -522,5 +522,8 @@ extern int tp_value_string_to_double (const DB_VALUE * value,
 extern void tp_domain_clear_enumeration (DB_ENUMERATION * enumeration);
 extern int tp_enumeration_to_varchar (const DB_VALUE * src,
 				      DB_VALUE * result);
-
+extern int tp_domain_status_er_set (TP_DOMAIN_STATUS status,
+				    const char *file_name, const int line_no,
+				    const DB_VALUE * src,
+				    const TP_DOMAIN * domain);
 #endif /* _OBJECT_DOMAIN_H_ */

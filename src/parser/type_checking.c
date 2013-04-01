@@ -13507,8 +13507,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
   DB_VALUE tmp_val;
   int error, i;
   DB_DATA_STATUS truncation;
-  TP_DOMAIN_STATUS status;
-  DB_TYPE res_type;
+  TP_DOMAIN_STATUS dom_status;
   PT_NODE *between_ge_lt, *between_ge_lt_arg1, *between_ge_lt_arg2;
   DB_VALUE *width_bucket_arg2 = NULL, *width_bucket_arg3 = NULL;
 
@@ -14989,15 +14988,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		  return 0;
 		}
 
-	      res_type = DB_VALUE_DOMAIN_TYPE (result);
-	      if (tp_value_coerce (result, result,
-				   domain) != DOMAIN_COMPATIBLE)
+	      dom_status = tp_value_coerce (result, result, domain);
+	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_TP_CANT_COERCE, 2,
-			  pr_type_name (res_type),
-			  pr_type_name (TP_DOMAIN_TYPE (domain)));
-
+		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
+						  result, domain);
 		  return 0;
 		}
 	      break;
@@ -15399,15 +15394,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		  PT_ERRORc (parser, o1, er_msg ());
 		  return 0;
 		}
-	      res_type = DB_VALUE_DOMAIN_TYPE (result);
-	      if (tp_value_coerce (result, result,
-				   domain) != DOMAIN_COMPATIBLE)
+	      dom_status = tp_value_coerce (result, result, domain);
+	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_TP_CANT_COERCE, 2,
-			  pr_type_name (res_type),
-			  pr_type_name (TP_DOMAIN_TYPE (domain)));
-
+		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
+						  result, domain);
 		  return 0;
 		}
 	      break;
@@ -15693,7 +15684,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 
 	    case DB_TYPE_NUMERIC:
 	      error = numeric_db_value_mul (arg1, arg2, result);
-	      if (error == ER_NUM_OVERFLOW)
+	      if (error == ER_IT_DATA_OVERFLOW)
 		{
 		  goto overflow;
 		}
@@ -15702,15 +15693,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		  PT_ERRORc (parser, o1, er_msg ());
 		  return 0;
 		}
-	      res_type = DB_VALUE_DOMAIN_TYPE (result);
-	      if (tp_value_coerce (result, result,
-				   domain) != DOMAIN_COMPATIBLE)
+	      dom_status = tp_value_coerce (result, result, domain);
+	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_TP_CANT_COERCE, 2,
-			  pr_type_name (res_type),
-			  pr_type_name (TP_DOMAIN_TYPE (domain)));
-
+		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
+						  result, domain);
 		  return 0;
 		}
 	      break;
@@ -15802,7 +15789,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	      if (!numeric_db_value_is_zero (arg2))
 		{
 		  error = numeric_db_value_div (arg1, arg2, result);
-		  if (error == ER_NUM_OVERFLOW)
+		  if (error == ER_IT_DATA_OVERFLOW)
 		    {
 		      goto overflow;
 		    }
@@ -15812,14 +15799,12 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		      return 0;
 		    }
 
-		  res_type = DB_VALUE_DOMAIN_TYPE (result);
-		  if (tp_value_coerce (result, result,
-				       domain) != DOMAIN_COMPATIBLE)
+		  dom_status = tp_value_coerce (result, result, domain);
+		  if (dom_status != DOMAIN_COMPATIBLE)
 		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_TP_CANT_COERCE, 2,
-			      pr_type_name (res_type),
-			      pr_type_name (TP_DOMAIN_TYPE (domain)));
+		      (void) tp_domain_status_er_set (dom_status,
+						      ARG_FILE_LINE, result,
+						      domain);
 		      return 0;
 		    }
 
@@ -17453,8 +17438,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	{
 	  return 0;
 	}
-      status = tp_value_strict_cast (arg1, result, domain);
-      if (status != DOMAIN_COMPATIBLE)
+      dom_status = tp_value_strict_cast (arg1, result, domain);
+      if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  if (PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_CAST_NOFAIL))
 	    {

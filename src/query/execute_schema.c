@@ -268,10 +268,10 @@ static int build_attr_change_map (PARSER_CONTEXT * parser,
 				  SM_ATTR_PROP_CHG * attr_chg_properties);
 
 static int build_att_type_change_map (TP_DOMAIN * curr_domain,
-				      DB_DOMAIN * req_domain,
+				      TP_DOMAIN * req_domain,
 				      SM_ATTR_PROP_CHG * attr_chg_properties);
 static int build_att_coll_change_map (TP_DOMAIN * curr_domain,
-				      DB_DOMAIN * req_domain,
+				      TP_DOMAIN * req_domain,
 				      SM_ATTR_PROP_CHG * attr_chg_properties);
 
 static int check_att_chg_allowed (const char *att_name, const PT_TYPE_ENUM t,
@@ -434,7 +434,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   int error = NO_ERROR;
   DB_ATTRIBUTE *found_attr, *def_attr;
   DB_METHOD *found_mthd;
-  DB_DOMAIN *def_domain;
+  TP_DOMAIN *def_domain;
   DB_VALUE src_val, dest_val;
   DB_TYPE db_desired_type;
   int query_no, class_attr;
@@ -5446,7 +5446,7 @@ convert_expr_to_constant (PARSER_CONTEXT * parser, PT_NODE * node,
 	  castval = pt_value_to_db (parser, node->info.expr.arg1);
 	  if (castval != NULL)
 	    {
-	      DB_DOMAIN *dom = pt_data_type_to_db_domain (parser, node, NULL);
+	      TP_DOMAIN *dom = pt_data_type_to_db_domain (parser, node, NULL);
 
 	      if (tp_value_strict_cast (castval, &retval, dom) == NO_ERROR)
 		{
@@ -9939,7 +9939,7 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
   DB_VALUE *default_value = &stack_value;
   PT_NODE *default_info;
   int error = NO_ERROR;
-  DB_DOMAIN *attr_db_domain;
+  TP_DOMAIN *attr_db_domain;
   MOP auto_increment_obj = NULL;
   SM_ATTRIBUTE *att;
   SM_NAME_SPACE name_space = ID_NULL;
@@ -10927,7 +10927,7 @@ do_add_methods (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
   int arg_num;
   int is_meta;
   int error = NO_ERROR;
-  DB_DOMAIN *arg_db_domain;
+  TP_DOMAIN *arg_db_domain;
 
   /* add each method listed in the class definition */
 
@@ -13045,7 +13045,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 			   SM_ATTR_CHG_SOL * change_mode)
 {
   DB_VALUE stack_value;
-  DB_DOMAIN *attr_db_domain = NULL;
+  TP_DOMAIN *attr_db_domain = NULL;
   DB_VALUE *new_default = NULL;
   DB_VALUE *default_value = &stack_value;
   SM_ATTRIBUTE *found_att = NULL;
@@ -13336,7 +13336,7 @@ build_attr_change_map (PARSER_CONTEXT * parser,
 		       PT_NODE * constraints,
 		       SM_ATTR_PROP_CHG * attr_chg_properties)
 {
-  DB_DOMAIN *attr_db_domain = NULL;
+  TP_DOMAIN *attr_db_domain = NULL;
   SM_ATTRIBUTE *att = NULL;
   SM_CLASS_CONSTRAINT *sm_cls_constr = NULL;
   PT_NODE *cnstr = NULL;
@@ -13913,7 +13913,7 @@ build_attr_change_map (PARSER_CONTEXT * parser,
  *   of attribute
  */
 static int
-build_att_type_change_map (TP_DOMAIN * curr_domain, DB_DOMAIN * req_domain,
+build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain,
 			   SM_ATTR_PROP_CHG * attr_chg_properties)
 {
   int error = NO_ERROR;
@@ -14667,7 +14667,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, DB_DOMAIN * req_domain,
  *   of attribute
  */
 static int
-build_att_coll_change_map (TP_DOMAIN * curr_domain, DB_DOMAIN * req_domain,
+build_att_coll_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain,
 			   SM_ATTR_PROP_CHG * attr_chg_properties)
 {
   /* check collation change */

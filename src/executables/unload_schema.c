@@ -636,6 +636,7 @@ export_serial (FILE * outfp)
   DB_QUERY_RESULT *query_result;
   DB_QUERY_ERROR query_error;
   DB_VALUE values[SERIAL_VALUE_INDEX_MAX], diff_value, answer_value;
+  DB_DOMAIN *domain;
 
   /*
    * You must check SERIAL_VALUE_INDEX enum defined on the top of this file
@@ -762,9 +763,11 @@ export_serial (FILE * outfp)
 	      /* no cyclic case */
 	      if (DB_GET_INTEGER (&values[SERIAL_CYCLIC]) == 0)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NUM_OVERFLOW,
-			  0);
-		  error = ER_NUM_OVERFLOW;
+		  domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_IT_DATA_OVERFLOW, 1,
+			  pr_type_name (TP_DOMAIN_TYPE (domain)));
+		  error = ER_IT_DATA_OVERFLOW;
 		  goto err;
 		}
 
