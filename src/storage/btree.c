@@ -3877,6 +3877,8 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info)
   assert_release (stat_info != NULL);
   assert_release (!BTID_IS_NULL (&stat_info->btid));
 
+  db_make_null (&key_value);
+
   /* set environment variable */
   env = &stat_env;
   env->stat_info = stat_info;
@@ -4000,6 +4002,9 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info)
 		}
 
 	      /* read key-value */
+
+	      assert (clear_key == false);
+
 	      (void) btree_read_record (thread_p, &BTS->btid_int, &rec,
 					&key_value, (void *) &leaf_pnt,
 					BTREE_LEAF_NODE, &clear_key, &offset,
@@ -4072,12 +4077,12 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info)
 		    {
 		      goto exit_on_error;
 		    }
+		}
 
-		  if (clear_key)
-		    {
-		      pr_clear_value (&key_value);
-		      clear_key = false;
-		    }
+	      if (clear_key)
+		{
+		  pr_clear_value (&key_value);
+		  clear_key = false;
 		}
 	    }
 	}

@@ -168,11 +168,13 @@ static void thread_rc_track_clear_all (THREAD_ENTRY * thread_p);
 static int thread_rc_track_meter_check (THREAD_ENTRY * thread_p,
 					THREAD_RC_METER * meter,
 					THREAD_RC_METER * prev_meter);
-static int thread_rc_track_check (THREAD_ENTRY * thread_p);
+static int thread_rc_track_check (THREAD_ENTRY * thread_p, int id);
 static void thread_rc_track_initialize (THREAD_ENTRY * thread_p);
 static void thread_rc_track_finalize (THREAD_ENTRY * thread_p);
 static THREAD_RC_TRACK *thread_rc_track_alloc (THREAD_ENTRY * thread_p);
 static void thread_rc_track_free (THREAD_ENTRY * thread_p, int id);
+static INT32 thread_rc_track_amount_helper (THREAD_ENTRY * thread_p,
+					    int rc_idx);
 static const char *thread_rc_track_rcname (int rc_idx);
 static const char *thread_rc_track_mgrname (int mgr_idx);
 static void thread_rc_track_meter_dump (THREAD_ENTRY * thread_p, FILE * outfp,
@@ -3602,7 +3604,7 @@ thread_rc_track_meter_check (THREAD_ENTRY * thread_p, THREAD_RC_METER * meter,
  *   thread_p(in):
  */
 static int
-thread_rc_track_check (THREAD_ENTRY * thread_p)
+thread_rc_track_check (THREAD_ENTRY * thread_p, int id)
 {
   int i, j;
   THREAD_RC_TRACK *track, *prev_track;
@@ -3616,16 +3618,34 @@ thread_rc_track_check (THREAD_ENTRY * thread_p)
 
   assert_release (thread_p != NULL);
   assert_release (thread_p->track != NULL);
+  assert_release (id == thread_p->track_depth);
 
   num_invalid_meter = 0;	/* init */
 
   if (thread_p->track != NULL)
     {
+      assert_release (id >= 0);
+
       track = thread_p->track;
       prev_track = track->prev;
 
       for (i = 0; i < RC_LAST; i++)
 	{
+	  /* TODO: Currently, skip out Memory leak check for the 1st-Track */
+	  if (id <= 0)
+	    {
+	      if (i == RC_VMEM)
+		{
+		  continue;
+		}
+	    }
+
+	  /* skip out pgbuf_temp check; is included with pgbuf check */
+	  if (i == RC_PGBUF_TEMP)
+	    {
+	      continue;
+	    }
+
 	  for (j = 0; j < MGR_LAST; j++)
 	    {
 	      meter = &(track->meter[i][j]);
@@ -3768,6 +3788,9 @@ thread_rc_track_rcname (int rc_idx)
       break;
     case RC_PGBUF:
       name = "Page Buffer";
+      break;
+    case RC_PGBUF_TEMP:
+      name = "Page Buffer (Temporary)";
       break;
     default:
       name = "**UNKNOWN_RESOURCE**";
@@ -3915,6 +3938,8 @@ thread_rc_track_free (THREAD_ENTRY * thread_p, int id)
 
   if (thread_p->track != NULL)
     {
+      assert_release (id >= 0);
+
       prev_track = thread_p->track->prev;
 
       /* add to free list */
@@ -3975,6 +4000,7 @@ thread_rc_track_exit (THREAD_ENTRY * thread_p, int id)
     }
 
   assert_release (thread_p != NULL);
+  assert_release (id == thread_p->track_depth);
 
   if (prm_get_bool_value (PRM_ID_USE_SYSTEM_MALLOC))
     {
@@ -3982,7 +4008,9 @@ thread_rc_track_exit (THREAD_ENTRY * thread_p, int id)
     }
   else
     {
-      ret = thread_rc_track_check (thread_p);
+      assert_release (id >= 0);
+
+      ret = thread_rc_track_check (thread_p, id);
 #if !defined(NDEBUG)
       if (ret != NO_ERROR)
 	{
@@ -3997,12 +4025,12 @@ thread_rc_track_exit (THREAD_ENTRY * thread_p, int id)
 }
 
 /*
- * thread_rc_track_amount_pgbuf () -
+ * thread_rc_track_amount_helper () -
  *   return:
  *   thread_p(in):
  */
-int
-thread_rc_track_amount_pgbuf (THREAD_ENTRY * thread_p)
+static INT32
+thread_rc_track_amount_helper (THREAD_ENTRY * thread_p, int rc_idx)
 {
   INT32 amount;
   THREAD_RC_TRACK *track;
@@ -4016,6 +4044,9 @@ thread_rc_track_amount_pgbuf (THREAD_ENTRY * thread_p)
 
   assert_release (thread_p != NULL);
 
+  assert_release (rc_idx >= 0);
+  assert_release (rc_idx < RC_LAST);
+
   amount = 0;			/* init */
 
   track = thread_p->track;
@@ -4023,7 +4054,7 @@ thread_rc_track_amount_pgbuf (THREAD_ENTRY * thread_p)
     {
       for (j = 0; j < MGR_LAST; j++)
 	{
-	  meter = &(track->meter[RC_PGBUF][j]);
+	  meter = &(track->meter[rc_idx][j]);
 	  amount += meter->m_amount;
 	}
     }
@@ -4031,6 +4062,28 @@ thread_rc_track_amount_pgbuf (THREAD_ENTRY * thread_p)
   assert_release (amount >= 0);
 
   return amount;
+}
+
+/*
+ * thread_rc_track_amount_pgbuf () -
+ *   return:
+ *   thread_p(in):
+ */
+int
+thread_rc_track_amount_pgbuf (THREAD_ENTRY * thread_p)
+{
+  return thread_rc_track_amount_helper (thread_p, RC_PGBUF);
+}
+
+/*
+ * thread_rc_track_amount_pgbuf_temp () -
+ *   return:
+ *   thread_p(in):
+ */
+int
+thread_rc_track_amount_pgbuf_temp (THREAD_ENTRY * thread_p)
+{
+  return thread_rc_track_amount_helper (thread_p, RC_PGBUF_TEMP);
 }
 
 /*

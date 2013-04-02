@@ -994,6 +994,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, int newpg,
 {
   PGBUF_BUFFER_HASH *hash_anchor;
   PGBUF_BCB *bufptr;
+  PAGE_PTR pgptr;
   int buf_lock_acquired;
   int wait_msecs;
 #if defined(SERVER_MODE)
@@ -1201,10 +1202,22 @@ try_again:
       (void) pgbuf_unlock_page (hash_anchor, vpid, false);
     }
 
+  CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
+
+#if !defined (NDEBUG)
+  thread_rc_track_meter (thread_p, caller_file, caller_line, 1, pgptr,
+			 RC_PGBUF, MGR_DEF);
+  if (pgbuf_is_lsa_temporary (pgptr))
+    {
+      thread_rc_track_meter (thread_p, caller_file, caller_line, 1, pgptr,
+			     RC_PGBUF_TEMP, MGR_DEF);
+    }
+#endif /* NDEBUG */
+
   /* Record number of fetches in statistics */
   mnt_pb_fetches (thread_p);
 
-  return (PAGE_PTR) (&(bufptr->iopage_buffer->iopage.page[0]));
+  return pgptr;
 }
 
 /*
@@ -3816,8 +3829,6 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 #if !defined(NDEBUG)
       sprintf (holder->fixed_at, "%s:%d ", caller_file, caller_line);
       holder->fixed_at_size = strlen (holder->fixed_at);
-      thread_rc_track_meter (thread_p, caller_file,
-			     caller_line, 1, bufptr, RC_PGBUF, MGR_DEF);
 #endif /* NDEBUG */
 
       pthread_mutex_unlock (&bufptr->BCB_mutex);
@@ -3860,9 +3871,6 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 	      holder->fix_count += 1;
 #if !defined(NDEBUG)
 	      pgbuf_add_fixed_at (holder, caller_file, caller_line);
-	      thread_rc_track_meter (thread_p, caller_file,
-				     caller_line, 1, bufptr, RC_PGBUF,
-				     MGR_DEF);
 #endif /* NDEBUG */
 	    }
 #if defined(SERVER_MODE)
@@ -3885,9 +3893,6 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 #if !defined(NDEBUG)
 	      sprintf (holder->fixed_at, "%s:%d ", caller_file, caller_line);
 	      holder->fixed_at_size = strlen (holder->fixed_at);
-	      thread_rc_track_meter (thread_p, caller_file,
-				     caller_line, 1, bufptr, RC_PGBUF,
-				     MGR_DEF);
 #endif /* NDEBUG */
 	    }
 #endif /* SERVER_MODE */
@@ -3909,8 +3914,6 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 	  holder->fix_count += 1;
 #if !defined(NDEBUG)
 	  pgbuf_add_fixed_at (holder, caller_file, caller_line);
-	  thread_rc_track_meter (thread_p, caller_file,
-				 caller_line, 1, bufptr, RC_PGBUF, MGR_DEF);
 #endif /* NDEBUG */
 	  pthread_mutex_unlock (&bufptr->BCB_mutex);
 	  return NO_ERROR;
@@ -3931,8 +3934,6 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
       holder->fix_count += 1;
 #if !defined(NDEBUG)
       pgbuf_add_fixed_at (holder, caller_file, caller_line);
-      thread_rc_track_meter (thread_p, caller_file,
-			     caller_line, 1, bufptr, RC_PGBUF, MGR_DEF);
 #endif /* NDEBUG */
       pthread_mutex_unlock (&bufptr->BCB_mutex);
       return NO_ERROR;
@@ -3946,8 +3947,6 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 	  bufptr->latch_mode = request_mode;	/* PGBUF_LATCH_WRITE */
 #if !defined(NDEBUG)
 	  pgbuf_add_fixed_at (holder, caller_file, caller_line);
-	  thread_rc_track_meter (thread_p, caller_file,
-				 caller_line, 1, bufptr, RC_PGBUF, MGR_DEF);
 #endif /* NDEBUG */
 	  pthread_mutex_unlock (&bufptr->BCB_mutex);
 	  return NO_ERROR;
@@ -4083,6 +4082,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 #endif				/* NDEBUG */
 {
   PGBUF_HOLDER *holder;
+  PAGE_PTR pgptr;
 
   /* the caller is holding bufptr->BCB_mutex */
 
@@ -4111,9 +4111,20 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 
   holder->fix_count--;
 
+  CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
+
 #if !defined(NDEBUG)
-  thread_rc_track_meter (thread_p, caller_file,
-			 caller_line, -1, bufptr, RC_PGBUF, MGR_DEF);
+  thread_rc_track_meter (thread_p, caller_file, caller_line, -1, pgptr,
+			 RC_PGBUF, MGR_DEF);
+  if (pgbuf_is_lsa_temporary (pgptr))
+    {
+      /* for the defense of add vol */
+      if (thread_rc_track_amount_pgbuf_temp (thread_p) > 0)
+	{
+	  thread_rc_track_meter (thread_p, caller_file, caller_line, -1,
+				 pgptr, RC_PGBUF_TEMP, MGR_DEF);
+	}
+    }
 #endif /* NDEBUG */
 
   if (holder->fix_count == 0)
@@ -4427,9 +4438,6 @@ pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thread_p,
 #if !defined(NDEBUG)
 	      sprintf (holder->fixed_at, "%s:%d ", caller_file, caller_line);
 	      holder->fixed_at_size = strlen (holder->fixed_at);
-	      thread_rc_track_meter (thread_p, caller_file,
-				     caller_line, 1, bufptr, RC_PGBUF,
-				     MGR_DEF);
 #endif /* NDEBUG */
 
 	      bufptr->next_wait_thrd = curr_thrd_entry->next_wait_thrd;
@@ -4745,9 +4753,6 @@ pgbuf_wakeup_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 		  sprintf (holder->fixed_at, "%s:%d ", caller_file,
 			   caller_line);
 		  holder->fixed_at_size = strlen (holder->fixed_at);
-		  thread_rc_track_meter (thread_p, caller_file,
-					 caller_line, 1, bufptr, RC_PGBUF,
-					 MGR_DEF);
 #endif /* NDEBUG */
 
 		  /* remove thrd_entry from BCB waiting queue. */

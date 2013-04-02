@@ -4044,6 +4044,19 @@ start:
       /* The object exists in the hash chain &
        * I am not a lock holder of the lockable object.
        */
+
+#if !defined(NDEBUG)
+      /* check iff holding pgbuf and request uncond-lock */
+      if (wait_msecs != LK_FORCE_ZERO_WAIT)
+	{
+	  if (thread_rc_track_amount_pgbuf (thread_p) -
+	      thread_rc_track_amount_pgbuf_temp (thread_p) > 0)
+	    {
+	      assert_release (false);
+	    }
+	}
+#endif
+
       /* 1. I am not a holder & my request can be granted. */
       assert (lock >= NULL_LOCK && res_ptr->total_waiters_mode >= NULL_LOCK
 	      && res_ptr->total_holders_mode >= NULL_LOCK);
@@ -7269,12 +7282,6 @@ lock_object_with_btid (THREAD_ENTRY * thread_p, const OID * oid,
     }
   else
     {
-#if !defined(NDEBUG)
-      if (thread_rc_track_amount_pgbuf (thread_p) > 0)
-	{
-	  assert_release (false);
-	}
-#endif
       wait_msecs = logtb_find_wait_msecs (tran_index);
     }
   isolation = logtb_find_isolation (tran_index);
@@ -7535,12 +7542,6 @@ lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid,
     }
   else
     {
-#if !defined(NDEBUG)
-      if (thread_rc_track_amount_pgbuf (thread_p) > 0)
-	{
-	  assert_release (false);
-	}
-#endif
       wait_msecs = logtb_find_wait_msecs (tran_index);
     }
   isolation = logtb_find_isolation (tran_index);
@@ -7734,12 +7735,6 @@ lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
     }
   else
     {
-#if !defined(NDEBUG)
-      if (thread_rc_track_amount_pgbuf (thread_p) > 0)
-	{
-	  assert_release (false);
-	}
-#endif
       wait_msecs = logtb_find_wait_msecs (tran_index);
     }
   isolation = logtb_find_isolation (tran_index);
@@ -12892,12 +12887,6 @@ lock_object_with_btid_get_granted_mode (THREAD_ENTRY * thread_p,
     }
   else
     {
-#if !defined(NDEBUG)
-      if (thread_rc_track_amount_pgbuf (thread_p) > 0)
-	{
-	  assert_release (false);
-	}
-#endif
       wait_msecs = logtb_find_wait_msecs (tran_index);
     }
   isolation = logtb_find_isolation (tran_index);
@@ -13169,12 +13158,6 @@ lock_btid_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
     }
   else
     {
-#if !defined(NDEBUG)
-      if (thread_rc_track_amount_pgbuf (thread_p) > 0)
-	{
-	  assert_release (false);
-	}
-#endif
       wait_msecs = logtb_find_wait_msecs (tran_index);
     }
   isolation = logtb_find_isolation (tran_index);

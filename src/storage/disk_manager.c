@@ -2129,8 +2129,8 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
        * pages to temporary lsa
        */
 
-      if (vol_purpose == DISK_TEMPVOL_TEMP_PURPOSE ||
-	  vol_purpose == DISK_PERMVOL_TEMP_PURPOSE)
+      if (vol_purpose == DISK_TEMPVOL_TEMP_PURPOSE
+	  || vol_purpose == DISK_PERMVOL_TEMP_PURPOSE)
 	{
 
 	  PAGE_PTR pgptr = NULL;	/* Page pointer                 */
