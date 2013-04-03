@@ -466,6 +466,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_SQL_TRACE_SLOW_MSECS "sql_trace_slow_msecs"
 
+#define PRM_NAME_INTL_COLLATION "intl_collation"
+
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -1247,6 +1249,9 @@ static int prm_sql_trace_slow_msecs_upper = 1000 * 60 * 60 * 24;	/* 24 hours */
 
 bool PRM_SQL_TRACE_EXECUTION_PLAN = false;
 static bool prm_sql_trace_execution_plan_default = false;
+
+char *PRM_INTL_COLLATION = NULL;
+static char *prm_intl_collation_default = NULL;
 
 typedef struct sysprm_param SYSPRM_PARAM;
 struct sysprm_param
@@ -2599,6 +2604,13 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_SQL_TRACE_EXECUTION_PLAN,
    (void *) NULL,
    (void *) NULL,
+   (char *) NULL},
+  {PRM_NAME_INTL_COLLATION,
+   (PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_USER_CHANGE),
+   PRM_STRING,
+   (void *) &prm_intl_collation_default,
+   (void *) &PRM_INTL_COLLATION,
+   (void *) NULL, (void *) NULL,
    (char *) NULL}
 };
 
@@ -3543,6 +3555,23 @@ prm_load_by_section (INI_TABLE * ini, const char *section,
 		  return error;
 		}
 	    }
+
+	  if (strcasecmp (PRM_NAME_INTL_COLLATION, prm->name) == 0)
+	    {
+	      LANG_COLLATION *lc = NULL;
+	      if (value != NULL)
+		{
+		  lc = lang_get_collation_by_name (value);
+		}
+
+	      if (lc == NULL)
+		{
+		  error = PRM_ERR_BAD_VALUE;
+		  prm_report_bad_entry (key + sec_len, ini->lineno[i], error,
+					file);
+		  return error;
+		}
+	    }
 	}
 
       error = prm_set (prm, value, true);
@@ -3957,6 +3986,20 @@ sysprm_validate_change_parameters (const char *data, bool check,
 	      INTL_LANG dummy;
 
 	      if (lang_get_lang_id_from_name (value, &dummy) != 0)
+		{
+		  err = PRM_ERR_BAD_VALUE;
+		  break;
+		}
+	    }
+	  if (strcmp (prm->name, PRM_NAME_INTL_COLLATION) == 0)
+	    {
+	      LANG_COLLATION *lc = NULL;
+	      if (value != NULL)
+		{
+		  lc = lang_get_collation_by_name (value);
+		}
+
+	      if (lc == NULL)
 		{
 		  err = PRM_ERR_BAD_VALUE;
 		  break;
@@ -7838,9 +7881,11 @@ prm_init_intl_param (void)
 {
   SYSPRM_PARAM *prm_date_lang;
   SYSPRM_PARAM *prm_number_lang;
+  SYSPRM_PARAM *prm_intl_collation;
 
   prm_date_lang = prm_find (PRM_NAME_INTL_DATE_LANG, NULL);
   prm_number_lang = prm_find (PRM_NAME_INTL_NUMBER_LANG, NULL);
+  prm_intl_collation = prm_find (PRM_NAME_INTL_COLLATION, NULL);
 
   if (prm_date_lang != NULL)
     {
@@ -7860,6 +7905,18 @@ prm_init_intl_param (void)
 	}
       PRM_CLEAR_BIT (PRM_ALLOCATED, prm_number_lang->flag);
       prm_set (prm_number_lang, lang_get_Lang_name (), true);
+    }
+
+  if (prm_intl_collation != NULL)
+    {
+      if (PRM_GET_STRING (prm_intl_collation->value))
+	{
+	  free_and_init (PRM_GET_STRING (prm_intl_collation->value));
+	}
+      PRM_CLEAR_BIT (PRM_ALLOCATED, prm_intl_collation->flag);
+      prm_set (prm_intl_collation,
+	       lang_get_collation_name
+	       (LANG_GET_BINARY_COLLATION (LANG_SYS_CODESET)), true);
     }
 }
 #endif /* !SERVER_MODE */

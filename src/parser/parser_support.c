@@ -10315,19 +10315,8 @@ pt_check_grammar_charset_collation (PARSER_CONTEXT * parser,
 
       cs_name = (char *) charset_node->info.value.data_value.str->bytes;
 
-      if (strcasecmp (cs_name, "utf8") == 0)
-	{
-	  *charset = INTL_CODESET_UTF8;
-	}
-      else if (strcasecmp (cs_name, "euckr") == 0)
-	{
-	  *charset = INTL_CODESET_KSC5601_EUC;
-	}
-      else if (strcasecmp (cs_name, "iso88591") == 0)
-	{
-	  *charset = INTL_CODESET_ISO88591;
-	}
-      else
+      *charset = lang_charset_cubrid_name_to_id (cs_name);
+      if (*charset == INTL_CODESET_NONE)
 	{
 	  PT_ERRORm (parser, charset_node, MSGCAT_SET_PARSER_SEMANTIC,
 		     MSGCAT_SEMANTIC_INVALID_CHARSET);

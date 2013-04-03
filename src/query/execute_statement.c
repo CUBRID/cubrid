@@ -16381,7 +16381,12 @@ do_set_names (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (error == NO_ERROR)
     {
-      lang_set_client_charset_coll ((INTL_CODESET) charset_id, collation_id);
+      /* size of ('intl_collation=') + collation name */
+      char sys_prm_chg[15 + COLL_NAME_SIZE];
+
+      snprintf (sys_prm_chg, sizeof (sys_prm_chg) - 1,
+		"intl_collation=%s", lang_get_collation_name (collation_id));
+      error = db_set_system_parameters (sys_prm_chg);
     }
 
   return (error != NO_ERROR) ? ER_OBJ_INVALID_ARGUMENTS : NO_ERROR;

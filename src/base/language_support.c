@@ -636,10 +636,6 @@ lang_init_full (void)
 
   set_current_locale (true);
 
-#if !defined (SERVER_MODE)
-  lang_set_client_charset_coll (LANG_SYS_CODESET, LANG_SYS_COLLATION);
-#endif
-
   lang_Fully_Initialized = true;
 
   return (lang_Fully_Initialized);
@@ -2300,9 +2296,6 @@ static char lang_Server_lang_name[LANG_MAX_LANGNAME + 1];
 static int lang_Server_charset_Initialized = 0;
 
 /* client side charset and collation */
-static INTL_CODESET lang_Client_charset = INTL_CODESET_ISO88591;
-static int lang_Client_collation_id = LANG_COLL_ISO_BINARY;
-static int lang_Client_charset_Initialized = 0;
 static bool lang_Parser_use_client_charset = true;
 
 /*
@@ -2676,37 +2669,26 @@ lang_charset_space_char (INTL_CODESET codeset, char *space_char,
 }
 
 /*
- * lang_set_client_charset_coll - Sets Client's charset and collation
- *   return: none
- */
-void
-lang_set_client_charset_coll (const INTL_CODESET codeset,
-			      const int collation_id)
-{
-  assert (codeset == INTL_CODESET_ISO88591
-	  || codeset == INTL_CODESET_UTF8
-	  || codeset == INTL_CODESET_KSC5601_EUC);
-
-  assert (collation_id >= 0 && collation_id < LANG_MAX_COLLATIONS);
-
-  lang_Client_charset = codeset;
-  lang_Client_collation_id = collation_id;
-  lang_Client_charset_Initialized = 1;
-}
-
-/*
  * lang_get_client_charset - Gets Client's charset
  *   return: codeset
  */
 INTL_CODESET
 lang_get_client_charset (void)
 {
-  if (!lang_Client_charset_Initialized)
+  INTL_CODESET charset = LANG_SYS_CODESET;
+  int coll_id = LANG_SYS_COLLATION;
+  char *coll_name = prm_get_string_value (PRM_ID_INTL_COLLATION);
+
+  if (coll_name != NULL)
     {
-      lang_set_client_charset_coll (LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      LANG_COLLATION *lc = lang_get_collation_by_name (coll_name);
+      if (lc != NULL)
+	{
+	  charset = lc->codeset;
+	}
     }
 
-  return lang_Client_charset;
+  return charset;
 }
 
 /*
@@ -2716,12 +2698,19 @@ lang_get_client_charset (void)
 int
 lang_get_client_collation (void)
 {
-  if (!lang_Client_charset_Initialized)
+  int coll_id = LANG_SYS_COLLATION;
+  char *coll_name = prm_get_string_value (PRM_ID_INTL_COLLATION);
+
+  if (coll_name != NULL)
     {
-      lang_set_client_charset_coll (LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      LANG_COLLATION *lc = lang_get_collation_by_name (coll_name);
+      if (lc != NULL)
+	{
+	  coll_id = lc->coll.coll_id;
+	}
     }
 
-  return lang_Client_collation_id;
+  return coll_id;
 }
 
 /*
@@ -2747,6 +2736,31 @@ lang_get_parser_use_client_charset (void)
 }
 
 #endif /* !SERVER_MODE */
+
+/*
+ * lang_charset_cubrid_name_to_id - Returns the INTL_CODESET of the charset
+ *				    with CUBRID name
+ *   return: codeset id, INTL_CODESET_NONE if not found
+ *   name(in): the name of the desired charset
+ */
+INTL_CODESET
+lang_charset_cubrid_name_to_id (const char *name)
+{
+  if (strcasecmp (name, "utf8") == 0)
+    {
+      return INTL_CODESET_UTF8;
+    }
+  else if (strcasecmp (name, "euckr") == 0)
+    {
+      return INTL_CODESET_KSC5601_EUC;
+    }
+  else if (strcasecmp (name, "iso88591") == 0)
+    {
+      return INTL_CODESET_ISO88591;
+    }
+
+  return INTL_CODESET_NONE;
+}
 
 /*
  * lang_charset_introducer() - returns introducer text to print for a charset

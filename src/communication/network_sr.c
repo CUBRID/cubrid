@@ -758,7 +758,6 @@ net_server_init (void)
 
   /* parameter */
   req_p = &net_Requests[NET_SERVER_PRM_SET_PARAMETERS];
-  req_p->action_attribute = CHECK_AUTHORIZATION;
   req_p->processing_function = sprm_server_change_parameters;
   req_p->name = "NET_SERVER_PRM_SET_PARAMETERS";
 
