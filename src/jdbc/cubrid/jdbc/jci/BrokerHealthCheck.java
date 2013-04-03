@@ -37,7 +37,7 @@ import java.net.Socket;
 import cubrid.jdbc.driver.CUBRIDDriver;
 import cubrid.jdbc.net.BrokerHandler;
 
-public class BrokerHeathCheck extends Thread{
+public class BrokerHealthCheck extends Thread{
 
 	private static final String HEALTH_CHECK_DUMMY_DB = "___health_check_dummy_db___";
 	private static final int BROKER_HEALTH_CHECK_TIMEOUT = 5000;
@@ -48,8 +48,13 @@ public class BrokerHeathCheck extends Thread{
 		String ip;
 		int port;
 		long startTime, elapseTime;
+		
 		while (true) {
 			startTime = System.currentTimeMillis();
+			
+			if (CUBRIDDriver.unreachableHosts == null) {
+				return;
+			}
 			if (CUBRIDDriver.unreachableHosts.size() > 0) {
 				for (String host : CUBRIDDriver.unreachableHosts) {
 					ip = host.split(":")[0];

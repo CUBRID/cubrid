@@ -50,7 +50,7 @@ import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import cubrid.jdbc.jci.BrokerHeathCheck;
+import cubrid.jdbc.jci.BrokerHealthCheck;
 import cubrid.jdbc.jci.UConnection;
 import cubrid.jdbc.jci.UJCIManager;
 import cubrid.jdbc.jci.UJCIUtil;
@@ -107,7 +107,7 @@ public class CUBRIDDriver implements Driver {
 			}
 		}
 		unreachableHosts = new CopyOnWriteArrayList<String>();
-		Thread brokerHealthCheck = new Thread(new BrokerHeathCheck());
+		Thread brokerHealthCheck = new Thread(new BrokerHealthCheck());
 		brokerHealthCheck.setDaemon(true);
 		brokerHealthCheck.start();
 	}

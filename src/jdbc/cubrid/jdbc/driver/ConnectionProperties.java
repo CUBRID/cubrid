@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.Properties;
 import java.util.StringTokenizer;
 
-import cubrid.jdbc.jci.BrokerHeathCheck;
+import cubrid.jdbc.jci.BrokerHealthCheck;
 import cubrid.jdbc.jci.UConnection;
 
 public class ConnectionProperties {
@@ -79,8 +79,8 @@ public class ConnectionProperties {
 	if (this.getConnLoadBal() && this.getAltHosts() == null){
 		this.connLoadBal.setValue("false");
 	}
-	if (this.getReconnectTime() < (BrokerHeathCheck.MONITORING_INTERVAL / 1000)) {
-		this.rcTime.setValue((Integer)(BrokerHeathCheck.MONITORING_INTERVAL / 1000));
+	if (this.getReconnectTime() < (BrokerHealthCheck.MONITORING_INTERVAL / 1000)) {
+		this.rcTime.setValue((Integer)(BrokerHealthCheck.MONITORING_INTERVAL / 1000));
 	}
     }
 
