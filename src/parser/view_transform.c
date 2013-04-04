@@ -187,8 +187,10 @@ static bool mq_conditionally_add_objects (PARSER_CONTEXT * parser,
 					  PT_NODE * flat,
 					  DB_OBJECT *** classes, int *index,
 					  int *max);
-static bool mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement,
-				DB_OBJECT *** classes, int *i, int *max);
+static PT_UPDATABILITY mq_updatable_local (PARSER_CONTEXT * parser,
+					   PT_NODE * statement,
+					   DB_OBJECT *** classes, int *i,
+					   int *max);
 static PT_NODE *mq_substitute_select_in_statement (PARSER_CONTEXT * parser,
 						   PT_NODE * statement,
 						   PT_NODE * query_spec,
@@ -237,8 +239,6 @@ static bool pt_sargable_term (PARSER_CONTEXT * parser, PT_NODE * term,
 			      FIND_ID_INFO * infop);
 static bool mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query,
 				     bool is_only_spec);
-static PT_NODE *mq_rewrite_derived_table_for_update (PARSER_CONTEXT * parser,
-						     PT_NODE * spec);
 static int pt_check_copypush_subquery (PARSER_CONTEXT * parser,
 				       PT_NODE * query);
 static void pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec,
@@ -410,6 +410,8 @@ static PT_NODE *mq_fetch_expression_for_real_class_update (PARSER_CONTEXT *
 static PT_NODE *mq_set_names_dbobject (PARSER_CONTEXT * parser,
 				       PT_NODE * node, void *void_arg,
 				       int *continue_walk);
+static bool mq_is_updatable_local (DB_OBJECT * class_object,
+				   PT_FETCH_AS fetch_as);
 static PT_NODE *mq_fetch_one_real_class_get_cache (DB_OBJECT * vclass_object,
 						   PARSER_CONTEXT **
 						   query_cache);
@@ -739,7 +741,7 @@ mq_compute_query_authorization (PT_NODE * statement)
     case PT_SELECT:
       spec = statement->info.query.q.select.from;
 
-      if (spec == NULL || spec->next != NULL)
+      if (spec == NULL)
 	{
 	  auth = DB_AUTH_SELECT;
 	}
@@ -1254,19 +1256,22 @@ mq_conditionally_add_objects (PARSER_CONTEXT * parser, PT_NODE * flat,
  *   num_classes(in/out):
  *   max(in/out):
  */
-static bool
+static PT_UPDATABILITY
 mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement,
 		    DB_OBJECT *** classes, int *num_classes, int *max)
 {
-  bool updatable = statement != NULL;
+  PT_UPDATABILITY global = PT_UPDATABLE;
 
-  if (statement && statement->info.query.all_distinct == PT_DISTINCT)	/* distinct */
+  while ((statement != NULL) && (PT_NOT_UPDATABLE != global))
     {
-      updatable = false;
-    }
+      PT_UPDATABILITY local = PT_UPDATABLE;
 
-  while (updatable && statement)
-    {
+      if (statement && statement->info.query.all_distinct == PT_DISTINCT)
+	{
+	  /* distinct */
+	  local &= PT_NOT_UPDATABLE;
+	}
+
       switch (statement->node_type)
 	{
 	case PT_SELECT:
@@ -1274,56 +1279,88 @@ mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement,
 	      || statement->info.query.q.select.having	/* aggregate */
 	      || statement->info.query.q.select.connect_by	/* HQ */
 	      || statement->info.query.q.select.from == NULL	/* no spec */
-	      || statement->info.query.q.select.from->next	/* join */
-	      || statement->info.query.q.select.from->info.spec.derived_table	/* derived */
 	    )
 	    {
-	      updatable = false;
+	      local &= PT_NOT_UPDATABLE;
 	    }
 
-	  if (updatable)
+	  if (local != PT_NOT_UPDATABLE)
 	    {
-	      updatable = !pt_has_aggregate (parser, statement)
-		&& !pt_has_analytic (parser, statement);
+	      PT_NODE *spec = statement->info.query.q.select.from;
+
+	      while (spec != NULL)
+		{
+		  if (spec->info.spec.derived_table != NULL)
+		    {
+		      if (spec->info.spec.flag & PT_SPEC_FLAG_FROM_VCLASS)
+			{
+			  /* derived table from former view */
+			  local &=
+			    mq_updatable_local (parser,
+						spec->info.spec.derived_table,
+						classes, num_classes, max);
+			}
+		      else
+			{
+			  /* derived tables are not updatable */
+			  local = PT_NOT_UPDATABLE;
+			  break;
+			}
+		    }
+		  spec = spec->next;
+		}
 	    }
-	  if (updatable)
+
+	  if (local != PT_NOT_UPDATABLE
+	      && (pt_has_aggregate (parser, statement)
+		  || pt_has_analytic (parser, statement)))
+	    {
+	      /* aggregate and analytic queries are not updatable */
+	      local &= PT_NOT_UPDATABLE;
+	    }
+
+	  if (local != PT_NOT_UPDATABLE)
 	    {
 	      PT_NODE *from;
-
-	      from = statement->info.query.q.select.from;
-	      updatable = mq_conditionally_add_objects (parser,
-							from->info.spec.
-							flat_entity_list,
-							classes, num_classes,
-							max);
-	    }
-	  if (updatable)
-	    {
 	      int i = 0;
+
+	      for (from = statement->info.query.q.select.from; from != NULL;
+		   from = from->next)
+		{
+		  (void) mq_conditionally_add_objects (parser,
+						       from->info.spec.
+						       flat_entity_list,
+						       classes,
+						       num_classes, max);
+		}
 
 	      for (i = 0; i < *num_classes; ++i)
 		{
 		  if (sm_is_reuse_oid_class ((*classes)[i])
 		      || sm_is_system_class ((*classes)[i]))
 		    {
-		      updatable = false;
+		      local &= PT_NOT_UPDATABLE;
 		      break;
 		    }
 		}
 	    }
+
+	  if (local != PT_NOT_UPDATABLE
+	      && statement->info.query.q.select.from->next)
+	    {
+	      /* last check is for partially updatable queries */
+	      local &= PT_PARTIALLY_UPDATABLE;
+	    }
 	  break;
 
 	case PT_UNION:
-	  if (updatable)
+	  if (local != PT_NOT_UPDATABLE)
 	    {
-	      updatable =	/* both args updatable? */
+	      local &=
 		mq_updatable_local (parser,
 				    statement->info.query.q.union_.arg1,
 				    classes, num_classes, max);
-	    }
-	  if (updatable)
-	    {
-	      updatable =
+	      local &=
 		mq_updatable_local (parser,
 				    statement->info.query.q.union_.arg2,
 				    classes, num_classes, max);
@@ -1331,13 +1368,16 @@ mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  break;
 
 	default:
-	  updatable = false;
+	  local &= PT_NOT_UPDATABLE;
 	  break;
 	}
+
+      /* next statement */
+      global = local & global;
       statement = statement->next;
     }
 
-  return updatable;
+  return global;
 }
 
 /*
@@ -1347,10 +1387,10 @@ mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement,
  *   parser(in):
  *   statement(in):
  */
-bool
+PT_UPDATABILITY
 mq_updatable (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  bool updatable;
+  PT_UPDATABILITY updatable;
   int num_classes = 0;
   int max = MAX_STACK_OBJECTS;
   DB_OBJECT *class_stack_array[MAX_STACK_OBJECTS];
@@ -1618,111 +1658,6 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query,
 }
 
 /*
- * mq_rewrite_derived_table_for_update () - adds ROWOID to select list of
- *					    query so it can be later pulled
- *					    when building the SELECT
- *                                          statement for UPDATEs and DELETEs
- *   returns: rewritten subquery or NULL on error
- *   parser(in): parser context
- *   spec(in): spec whose derived table will be rewritten
- *
- * NOTE: query must be a SELECT statement and must have only one spec
- */
-static PT_NODE *
-mq_rewrite_derived_table_for_update (PARSER_CONTEXT * parser, PT_NODE * spec)
-{
-  PT_NODE *derived_table, *as_attr, *col, *inner_spec;
-  const char *spec_name = NULL;
-
-  if (spec == NULL)
-    {
-      /* bad pointer */
-      assert (false);
-      return NULL;
-    }
-
-  derived_table = spec->info.spec.derived_table;
-  if (derived_table == NULL || derived_table->node_type != PT_SELECT)
-    {
-      /* only SELECT statements allowed */
-      assert (false);
-      return NULL;
-    }
-
-  inner_spec = derived_table->info.query.q.select.from;
-  if (inner_spec == NULL)
-    {
-      /* no specs; error */
-      PT_INTERNAL_ERROR (parser, "subquery with no specs");
-      return NULL;
-    }
-
-  if (inner_spec && inner_spec->next)
-    {
-      /* only a single spec allowed in an updatable query */
-      PT_INTERNAL_ERROR (parser, "subquery not updatable");
-      return NULL;
-    }
-
-  /* retrieve spec's name, which will be appended to OID attribute names */
-  if (spec->info.spec.range_var
-      && spec->info.spec.range_var->node_type == PT_NAME)
-    {
-      spec_name = spec->info.spec.range_var->info.name.original;
-    }
-
-  /* add rowoid to select list of derived table and as_attr_list
-   * of spec; it will be pulled later on when building the select statement
-   * for OID retrieval */
-  derived_table = pt_add_row_oid_name (parser, derived_table);
-  if (derived_table == NULL)
-    {
-      if (!pt_has_error (parser))
-	{
-	  PT_INTERNAL_ERROR (parser, "failed to add spec rowoid");
-	}
-
-      return NULL;
-    }
-
-  col = derived_table->info.query.q.select.list;
-  if (col->data_type && col->data_type->info.data_type.virt_object)
-    {
-      /* no longer comes from a vobj */
-      col->data_type->info.data_type.virt_object = NULL;
-      col->data_type->info.data_type.virt_type_enum = PT_TYPE_NONE;
-    }
-
-  as_attr = pt_name (parser, "rowoid_");
-  as_attr->info.name.original =
-    pt_append_string (parser, as_attr->info.name.original, spec_name);
-  as_attr->info.name.spec_id = spec->info.spec.id;
-  as_attr->info.name.meta_class = PT_OID_ATTR;
-  as_attr->type_enum = col->type_enum;
-  as_attr->data_type = parser_copy_tree (parser, col->data_type);
-
-  as_attr->next = spec->info.spec.as_attr_list;
-  spec->info.spec.as_attr_list = as_attr;
-
-  /* set derived table of spec (should be redundant) */
-  spec->info.spec.derived_table = derived_table;
-
-  /* copy flat_entity_list of derivate table's only spec to parent spec so it
-     will be correctly handled further on */
-  spec->info.spec.flat_entity_list =
-    parser_copy_tree_list (parser, inner_spec->info.spec.flat_entity_list);
-  if (spec->info.spec.flat_entity_list
-      && spec->info.spec.flat_entity_list->node_type == PT_NAME)
-    {
-      spec->info.spec.flat_entity_list->info.name.spec_id =
-	spec->info.spec.id;
-    }
-
-  /* all ok */
-  return spec;
-}
-
-/*
  * mq_update_order_by() - update the position number of order by clause and
  * 			add hidden column(s) at the end of the output list if
  * 			necessary.
@@ -1962,19 +1897,20 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 	  break;
 	}
 
-      /* iterate trough specs and find the spec of class_ */
-      class_spec = statement_spec;
-      while (class_spec
-	     && class_->info.name.spec_id != class_spec->info.spec.id)
-	{
-	  class_spec = class_spec->next;
-	}
-
+      /* check found spec */
+      class_spec = pt_find_spec (parser, statement_spec, class_);
       if (class_spec == NULL)
 	{
 	  /* class_'s spec was not found in spec list */
 	  PT_INTERNAL_ERROR (parser, "class spec not found");
 	  goto exit_on_error;
+	}
+      else
+	{
+	  /* check for (non-pushable) spec set */
+	  rewrite_as_derived =
+	    (class_spec->info.spec.entity_name != NULL
+	     && class_spec->info.spec.entity_name->node_type == PT_SPEC);
 	}
 
       /* determine if class_spec is the only spec in the statement */
@@ -1992,7 +1928,8 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 						   is_only_spec);
 
       /* determine if we have to rewrite vclass_query as a derived table */
-      rewrite_as_derived = !is_pushable_query || is_outer_joined;
+      rewrite_as_derived =
+	rewrite_as_derived || !is_pushable_query || is_outer_joined;
 
       if (PT_IS_QUERY (tmp_result))
 	{
@@ -2115,19 +2052,6 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 					       class_spec->info.spec.
 					       derived_table, query_spec,
 					       tmp_class);
-
-	  if ((tmp_result->node_type == PT_UPDATE
-	       || tmp_result->node_type == PT_DELETE) && is_upd_del_spec)
-	    {
-	      /* add rowoid and classoid to derived table */
-	      class_spec =
-		mq_rewrite_derived_table_for_update (parser, class_spec);
-
-	      if (class_spec == NULL)
-		{
-		  goto exit_on_error;
-		}
-	    }
 
 	  if (tmp_class)
 	    {
@@ -2638,6 +2562,7 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree,
       int update_flag = class_spec->info.spec.flag & PT_SPEC_FLAG_UPDATE;
       int delete_flag = class_spec->info.spec.flag & PT_SPEC_FLAG_DELETE;
       bool fetch_for_update;
+      PT_FETCH_AS fetch_as = PT_NORMAL_SELECT;
 
       if ((what_for == DB_AUTH_SELECT)
 	  || (what_for == DB_AUTH_UPDATE && !update_flag)
@@ -2650,6 +2575,12 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree,
       else
 	{
 	  fetch_for_update = true;
+
+	  if (what_for == DB_AUTH_UPDATE && tree->node_type != PT_MERGE)
+	    {
+	      /* we allow partial access for UPDATE statements */
+	      fetch_as = PT_PARTIAL_SELECT;
+	    }
 	}
 
       had_some_virtual_classes = 0;
@@ -2736,7 +2667,7 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree,
 		    {
 		      subquery = mq_fetch_subqueries_for_update (parser,
 								 entity,
-								 PT_NORMAL_SELECT,
+								 fetch_as,
 								 (DB_AUTH)
 								 what_for);
 		    }
@@ -2838,6 +2769,7 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree,
 						     class_spec->info.spec.
 						     range_var),
 				   real_flat_classes);
+	      my_spec->info.spec.id = class_spec->info.spec.id;
 
 	      real_part =
 		mq_class_lambda (parser, parser_copy_tree (parser, tree),
@@ -3779,20 +3711,14 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser,
       if (v_attr_list && v_attr_list->type_enum == PT_TYPE_OBJECT)
 	{
 	  v_attr_list = v_attr_list->next;	/* skip oid attr */
+	}
 
-	  for (v_attr = v_attr_list; v_attr; v_attr = v_attr->next)
-	    {
-	      v_attr->info.name.spec_id = spec->info.spec.id;	/* init spec id */
-	      mq_insert_symbol (parser,
-				&new_query->info.query.q.select.list, v_attr);
-	    }			/* for (v_attr = ...) */
-	}
-      else
+      for (v_attr = v_attr_list; v_attr; v_attr = v_attr->next)
 	{
-	  /* impossible case. later, it must cause error */
-	  parser_free_tree (parser, new_query->info.query.q.select.list);
-	  new_query->info.query.q.select.list = NULL;
-	}
+	  v_attr->info.name.spec_id = spec->info.spec.id;	/* init spec id */
+	  mq_insert_symbol (parser,
+			    &new_query->info.query.q.select.list, v_attr);
+	}			/* for (v_attr = ...) */
 
       /* free alloced */
       if (v_attr_list)
@@ -3844,11 +3770,13 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser,
 	parser_copy_tree_list (parser, new_query->info.query.q.select.list);
     }
   spec->info.spec.derived_table_type = PT_IS_SUBQUERY;
+  spec->info.spec.flag |= PT_SPEC_FLAG_FROM_VCLASS;
 
   /* move sargable terms */
   if ((statement->node_type == PT_SELECT)
       && (from = new_query->info.query.q.select.from)
-      && (entity_name = from->info.spec.entity_name))
+      && (entity_name = from->info.spec.entity_name)
+      && (entity_name->node_type != PT_SPEC))
     {
       info.type = FIND_ID_VCLASS;	/* vclass */
       /* init input section */
@@ -4215,7 +4143,7 @@ mq_check_delete (PARSER_CONTEXT * parser, PT_NODE * delete_stmt)
 }
 
 /*
- * mq_translate_update() - leaf expansion or vclass/view expansion for update
+ * mq_translate_update() - leaf expansion or view expansion for update
  *   return:
  *   parser(in):
  *   update_statement(in):
@@ -4228,14 +4156,19 @@ mq_translate_update (PARSER_CONTEXT * parser, PT_NODE * update_statement)
 
   from = update_statement->info.update.spec;
 
-  /* set flags for updatable specs */
+  /* mark specs */
   pt_mark_spec_list_for_update (parser, update_statement);
 
+  /* translate statement */
   update_statement = mq_translate_tree (parser, update_statement,
 					from, NULL, DB_AUTH_UPDATE);
 
   if (update_statement)
     {
+      /* mark specs on translated tree and add oids where necessary */
+      pt_mark_spec_list_for_update (parser, update_statement);
+
+      /* check update statement */
       mq_check_update (parser, update_statement);
     }
   if (update_statement == NULL && !pt_has_error (parser))
@@ -4507,7 +4440,7 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 }
 
 /*
- * mq_translate_delete() - leaf expansion or vclass/view expansion
+ * mq_translate_delete() - leaf expansion or view expansion for delete
  *   return:
  *   parser(in):
  *   delete_statement(in):
@@ -4521,11 +4454,15 @@ mq_translate_delete (PARSER_CONTEXT * parser, PT_NODE * delete_statement)
   /* set flags for deletable specs */
   pt_mark_spec_list_for_delete (parser, delete_statement);
 
+  /* translate */
   from = delete_statement->info.delete_.spec;
   delete_statement = mq_translate_tree (parser, delete_statement,
 					from, NULL, DB_AUTH_DELETE);
   if (delete_statement != NULL)
     {
+      /* mark specs again on translated tree and add oids where necessary */
+      pt_mark_spec_list_for_delete (parser, delete_statement);
+
       /* check delete statement */
       mq_check_delete (parser, delete_statement);
 
@@ -4575,10 +4512,10 @@ mq_translate_merge (PARSER_CONTEXT * parser, PT_NODE * merge_statement)
     {
       /* flag spec for update/delete */
       auth |= DB_AUTH_UPDATE;
-      (void) pt_mark_spec_list_for_update (parser, merge_statement);
+      pt_mark_spec_list_for_update (parser, merge_statement);
       if (merge_statement->info.merge.update.has_delete)
 	{
-	  from->info.spec.flag |= PT_SPEC_FLAG_DELETE;
+	  pt_mark_spec_list_for_delete (parser, merge_statement);
 	  auth |= DB_AUTH_DELETE;
 	}
     }
@@ -4593,6 +4530,16 @@ mq_translate_merge (PARSER_CONTEXT * parser, PT_NODE * merge_statement)
   /* check statement */
   if (merge_statement)
     {
+      if (merge_statement->info.merge.update.assignment)
+	{
+	  /* mark specs again and add oids where necessary */
+	  pt_mark_spec_list_for_update (parser, merge_statement);
+	  if (merge_statement->info.merge.update.has_delete)
+	    {
+	      pt_mark_spec_list_for_delete (parser, merge_statement);
+	    }
+	}
+
       (void) mq_check_merge (parser, merge_statement);
 
       flat = merge_statement->info.merge.into->info.spec.flat_entity_list;
@@ -4769,8 +4716,6 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
     {
       /* see 'xtests/10010_vclass_set.sql' and 'err_xtests/check21.sql' */
       if (select_statement->info.query.is_subquery == 0
-	  && select_statement->info.query.is_view_spec == 0
-	  && select_statement->info.query.oids_included == 0
 	  && mq_is_union_translation (parser, from))
 	{
 	  select_statement->info.query.q.select.from =
@@ -5899,6 +5844,7 @@ mq_free_virtual_query_cache (PARSER_CONTEXT * parser)
   parser_free_tree (parser, info->vquery_for_query_in_gdb);
   parser_free_tree (parser, info->vquery_for_update);
   parser_free_tree (parser, info->vquery_for_update_in_gdb);
+  parser_free_tree (parser, info->vquery_for_partial_update);
   parser_free_tree (parser, info->inverted_vquery_for_update);
   parser_free_tree (parser, info->inverted_vquery_for_update_in_gdb);
 
@@ -5994,7 +5940,18 @@ mq_virtual_queries (DB_OBJECT * class_object)
 
 	  if (!pt_has_error (parser) && symbols->vquery_for_query)
 	    {
-	      if (mq_updatable (parser, symbols->vquery_for_query))
+	      PT_UPDATABILITY updatable =
+		mq_updatable (parser, symbols->vquery_for_query);
+
+	      if (updatable == PT_PARTIALLY_UPDATABLE)
+		{
+		  symbols->vquery_for_partial_update =
+		    parser_copy_tree_list (parser, symbols->vquery_for_query);
+		  symbols->vquery_for_partial_update =
+		    mq_flatten_union (parser,
+				      symbols->vquery_for_partial_update);
+		}
+	      else if (updatable == PT_UPDATABLE)
 		{
 		  symbols->vquery_for_update =
 		    parser_copy_tree_list (parser, symbols->vquery_for_query);
@@ -6025,7 +5982,8 @@ mq_virtual_queries (DB_OBJECT * class_object)
 					inverted_vquery_for_update_in_gdb,
 					symbols->attrs);
 		}
-	      else
+
+	      if (updatable != PT_UPDATABLE)
 		{
 		  PT_NODE *virt_class = parser_copy_tree (parser,
 							  symbols->attrs);
@@ -6166,6 +6124,12 @@ mq_check_non_updatable_vclass_oid (PARSER_CONTEXT * parser, PT_NODE * node,
 {
   PT_NODE *dt;
   DB_OBJECT *vclass;
+  bool strict = true, updatable;
+
+  if (void_arg != NULL)
+    {
+      strict = *((bool *) void_arg);
+    }
 
   switch (node->node_type)
     {
@@ -6176,12 +6140,23 @@ mq_check_non_updatable_vclass_oid (PARSER_CONTEXT * parser, PT_NODE * node,
 	  && (vclass = dt->info.data_type.virt_object))
 	{
 	  /* check for non-updatable vclass oid */
-	  if (!mq_is_updatable (vclass))
+	  if (strict)
 	    {
+	      updatable = mq_is_updatable_strict (vclass);
+	    }
+	  else
+	    {
+	      updatable = mq_is_updatable (vclass);
+	    }
+
+	  if (!updatable)
+	    {
+	      /* OID of non-updatable vclass found */
 	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_RUNTIME,
 			  MSGCAT_RUNTIME_NO_VID_FOR_NON_UPDATABLE_VIEW,
 			  /* use function to get name */
 			  db_get_class_name (vclass));
+	      *continue_walk = PT_STOP_WALK;
 	    }
 	}
       break;
@@ -6203,6 +6178,7 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *next;
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+  bool strict = true;
 
   if (!node)
     {
@@ -6220,6 +6196,10 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
     {
       /* only translate translatable statements */
     case PT_SELECT:
+      strict =
+	!PT_SELECT_INFO_IS_FLAGED (node, PT_SELECT_INFO_NO_STRICT_OID_CHECK);
+      /* fall trough */
+
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
@@ -6237,7 +6217,7 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 
       node = parser_walk_tree (parser, node,
 			       mq_mark_location, NULL,
-			       mq_check_non_updatable_vclass_oid, NULL);
+			       mq_check_non_updatable_vclass_oid, &strict);
 
       if (pt_has_error (parser))
 	{
@@ -6287,9 +6267,10 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
       node = parser_walk_tree (parser, node, NULL, NULL, mq_translate_local,
 			       NULL);
 
+      strict = false;		/* no strict OID checking */
       node = parser_walk_tree (parser, node,
 			       mq_mark_location, NULL,
-			       mq_check_non_updatable_vclass_oid, NULL);
+			       mq_check_non_updatable_vclass_oid, &strict);
 
       if (pt_has_error (parser))
 	{
@@ -8823,9 +8804,6 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement,
 		  newspec->info.spec.on_cond = spec->info.spec.on_cond;
 		  spec->info.spec.on_cond = NULL;
 		}
-
-	      /* move spec flag */
-	      newspec->info.spec.flag = spec->info.spec.flag;
 	    }
 	  parser_free_tree (parser, spec);
 
@@ -9982,7 +9960,9 @@ mq_fetch_subqueries_for_update_local (PARSER_CONTEXT * parser,
 				parser->error_msgs);
 	}
 
-      if (!query_cache->view_cache->vquery_for_update && parser)
+      if (!query_cache->view_cache->vquery_for_update
+	  && (!query_cache->view_cache->vquery_for_partial_update
+	      || (fetch_as != PT_PARTIAL_SELECT)) && parser)
 	{
 	  PT_ERRORmf (parser, class_, MSGCAT_SET_PARSER_RUNTIME,
 		      MSGCAT_RUNTIME_VCLASS_NOT_UPDATABLE,
@@ -9997,6 +9977,17 @@ mq_fetch_subqueries_for_update_local (PARSER_CONTEXT * parser,
       if (fetch_as == PT_NORMAL_SELECT)
 	{
 	  return query_cache->view_cache->vquery_for_update_in_gdb;
+	}
+      if (fetch_as == PT_PARTIAL_SELECT)
+	{
+	  if (query_cache->view_cache->vquery_for_update_in_gdb != NULL)
+	    {
+	      return query_cache->view_cache->vquery_for_update_in_gdb;
+	    }
+	  else
+	    {
+	      return query_cache->view_cache->vquery_for_partial_update;
+	    }
 	}
     }
 
@@ -10285,12 +10276,13 @@ mq_set_names_dbobject (PARSER_CONTEXT * parser, PT_NODE * node,
 }
 
 /*
- * mq_is_updatable() - fetches the stored updatable query spec
+ * mq_is_updatable_local() - checks if vclass is updatable
  *   return: 0 if not, 1 if so
  *   class_object(in):
+ *   fetch_as(in): fetch mode
  */
-bool
-mq_is_updatable (DB_OBJECT * class_object)
+static bool
+mq_is_updatable_local (DB_OBJECT * class_object, PT_FETCH_AS fetch_as)
 {
   PT_NODE class_;
   PT_NODE *subquery;
@@ -10310,12 +10302,33 @@ mq_is_updatable (DB_OBJECT * class_object)
   class_.info.name.db_object = class_object;
 
   subquery = mq_fetch_subqueries_for_update (parser, &class_,
-					     PT_NORMAL_SELECT,
-					     DB_AUTH_SELECT);
+					     fetch_as, DB_AUTH_SELECT);
   /* clean up memory */
   parser_free_parser (parser);
 
   return (subquery != NULL);
+}
+
+/*
+ * mq_is_updatable() - checks if vclass is at least partially updatable
+ *   return: 0 if not, 1 if so
+ *   class_object(in):
+ */
+bool
+mq_is_updatable (DB_OBJECT * class_object)
+{
+  return mq_is_updatable_local (class_object, PT_PARTIAL_SELECT);
+}
+
+/*
+ * mq_is_updatable_strict() - checks if vclass is strictly updatable
+ *   return: 0 if not, 1 if so
+ *   class_object(in):
+ */
+bool
+mq_is_updatable_strict (DB_OBJECT * class_object)
+{
+  return mq_is_updatable_local (class_object, PT_NORMAL_SELECT);
 }
 
 /*

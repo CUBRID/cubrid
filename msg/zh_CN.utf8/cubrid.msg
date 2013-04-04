@@ -1602,6 +1602,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 270 非法函数索引表达式.
 271 指定查询 %s 存在自我引用.
 272 %s 表达式不支持连接条件.
+273 Only one table within a view can be updated.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %d 字节.

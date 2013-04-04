@@ -1602,6 +1602,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 270 Expression invalide pout index de fonction.
 271 La spécification de la requête de %s contient une référence cyclique pour lui-même.
 272 Expression %s n'est pas permis dans condition du JOIN.
+273 Only one table within a view can be updated.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Mémoire virtuelle épuisée: impossible d'allouer %d octets.

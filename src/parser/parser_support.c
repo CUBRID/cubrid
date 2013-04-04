@@ -223,6 +223,14 @@ static PT_NODE *pt_create_delete_stmt (PARSER_CONTEXT * parser,
 static PT_NODE *pt_is_spec_referenced (PARSER_CONTEXT * parser,
 				       PT_NODE * node, void *void_arg,
 				       int *continue_walk);
+static PT_NODE *pt_rewrite_derived_for_upd_del (PARSER_CONTEXT * parser,
+						PT_NODE * spec,
+						PT_SPEC_FLAG what_for,
+						bool add_as_attr);
+static PT_NODE *pt_process_spec_for_delete (PARSER_CONTEXT * parser,
+					    PT_NODE * spec);
+static PT_NODE *pt_process_spec_for_update (PARSER_CONTEXT * parser,
+					    PT_NODE * spec, PT_NODE * name);
 #define NULL_ATTRID -1
 
 /*
@@ -10197,35 +10205,394 @@ pt_sort_spec_cover_groupby (PARSER_CONTEXT * parser, PT_NODE * sort_list,
 }
 
 /*
- * pt_mark_spec_list_for_delete () - mark specs that will be deleted
+ * pt_rewrite_derived_for_upd_del () - adds ROWOID to select list of
+ *                                     query so it can be later pulled
+ *                                     when building the SELECT
+ *                                     statement for UPDATEs and DELETEs
+ *   returns: rewritten subquery or NULL on error
+ *   parser(in): parser context
+ *   spec(in): spec whose derived table will be rewritten
+ *
+ * NOTE: query must be a SELECT statement
+ */
+static PT_NODE *
+pt_rewrite_derived_for_upd_del (PARSER_CONTEXT * parser, PT_NODE * spec,
+				PT_SPEC_FLAG what_for, bool add_as_attr)
+{
+  PT_NODE *derived_table, *as_attr, *col, *upd_del_spec, *spec_list;
+  PT_NODE *save_spec, *save_next, *flat_copy;
+  const char *spec_name = NULL;
+  int upd_del_count = 0;
+
+  derived_table = spec->info.spec.derived_table;
+  spec_list = derived_table->info.query.q.select.from;
+  if ((what_for == PT_SPEC_FLAG_DELETE)
+      && (spec_list == NULL || spec_list->next != NULL))
+    {
+      PT_INTERNAL_ERROR (parser, "only one spec expected for delete");
+      return NULL;
+    }
+
+  while (spec_list != NULL)
+    {
+      if (spec_list->info.spec.flag & what_for)
+	{
+	  if (upd_del_count == 0)
+	    {
+	      upd_del_spec = spec_list;
+	    }
+	  upd_del_count++;
+	}
+
+      spec_list = spec_list->next;
+    }
+
+  if (upd_del_spec == NULL)
+    {
+      /* no specs; error */
+      PT_INTERNAL_ERROR (parser, "no target spec for update/delete");
+      return NULL;
+    }
+
+  if (upd_del_count > 1)
+    {
+      PT_ERRORm (parser, spec_list, MSGCAT_SET_PARSER_SEMANTIC,
+		 MSGCAT_SEMANTIC_ONLY_ONE_UPDATE_SPEC_ALLOWED);
+      return NULL;
+    }
+
+  /* dual update/delete checks have been made - check if oids were already
+     added */
+  if (spec->info.spec.flag & PT_SPEC_FLAG_CONTAINS_OID)
+    {
+      return spec;
+    }
+
+  /* retrieve spec's name, which will be appended to OID attribute names */
+  if (spec->info.spec.range_var
+      && spec->info.spec.range_var->node_type == PT_NAME)
+    {
+      spec_name = spec->info.spec.range_var->info.name.original;
+    }
+
+  /* add rowoid to select list of derived table and as_attr_list
+   * of spec; it will be pulled later on when building the select statement
+   * for OID retrieval */
+  save_spec = derived_table->info.query.q.select.from;
+  derived_table->info.query.q.select.from = upd_del_spec;
+  save_next = upd_del_spec->next;
+  upd_del_spec->next = NULL;
+
+  derived_table = pt_add_row_oid_name (parser, derived_table);
+
+  derived_table->info.query.q.select.from = save_spec;
+  upd_del_spec->next = save_next;
+
+  col = derived_table->info.query.q.select.list;
+  if (col->data_type && col->data_type->info.data_type.virt_object)
+    {
+      /* no longer comes from a vobj */
+      col->data_type->info.data_type.virt_object = NULL;
+      col->data_type->info.data_type.virt_type_enum = PT_TYPE_NONE;
+    }
+
+  if (add_as_attr)
+    {
+      /* add reference for column in select list */
+      as_attr = pt_name (parser, "rowoid_");
+      as_attr->info.name.original =
+	pt_append_string (parser, as_attr->info.name.original, spec_name);
+      as_attr->info.name.spec_id = spec->info.spec.id;
+      as_attr->info.name.meta_class = PT_OID_ATTR;
+      as_attr->type_enum = col->type_enum;
+      as_attr->data_type = parser_copy_tree (parser, col->data_type);
+
+      as_attr->next = spec->info.spec.as_attr_list;
+      spec->info.spec.as_attr_list = as_attr;
+    }
+
+  /* copy flat_entity_list of derived table's spec to parent spec so it will
+     be correctly handled further on */
+  flat_copy =
+    parser_copy_tree_list (parser, upd_del_spec->info.spec.flat_entity_list);
+  spec->info.spec.flat_entity_list =
+    parser_append_node (flat_copy, spec->info.spec.flat_entity_list);
+
+  while (flat_copy)
+    {
+      if (flat_copy->node_type == PT_NAME)
+	{
+	  flat_copy->info.name.spec_id = spec->info.spec.id;
+	}
+      flat_copy = flat_copy->next;
+    }
+
+  /* all ok */
+  return spec;
+}
+
+/*
+ * pt_process_spec_for_delete () - recurses trough specs, sets DELETE flag
+ *                                 and adds OIDs where necessary
+ *    returns: same spec or NULL on error
+ *    parser(in): parser context
+ *    spec(in): spec
+ */
+static PT_NODE *
+pt_process_spec_for_delete (PARSER_CONTEXT * parser, PT_NODE * spec)
+{
+  PT_NODE *derived_table, *from, *ret;
+
+  if (parser == NULL || spec == NULL || spec->node_type != PT_SPEC)
+    {
+      /* should not get here */
+      assert (false);
+      return NULL;
+    }
+
+  /* mark spec */
+  spec->info.spec.flag |= PT_SPEC_FLAG_DELETE;
+
+  /* fetch derived table of spec */
+  derived_table = spec->info.spec.derived_table;
+  if (derived_table == NULL)
+    {
+      /* no derived table means nothing to do further */
+      return spec;
+    }
+
+  /* derived table - walk it's spec */
+  if (derived_table->node_type != PT_SELECT)
+    {
+      PT_INTERNAL_ERROR (parser, "invalid derived spec");
+      return NULL;
+    }
+
+  from = derived_table->info.query.q.select.from;
+  if (pt_process_spec_for_delete (parser, from) == NULL)
+    {
+      /* error must have been set */
+      return NULL;
+    }
+
+  /* add oids */
+  ret = pt_rewrite_derived_for_upd_del (parser, spec, PT_SPEC_FLAG_DELETE,
+					true);
+  spec->info.spec.flag |= PT_SPEC_FLAG_CONTAINS_OID;
+
+  return ret;
+}
+
+/*
+ * pt_process_spec_for_update () - recurses trough specs, sets UPDATE flag,
+ *                                 adds OIDs where necessary and resolves name
+ *    returns: resolved name or NULL on error
+ *    parser(in): parser context
+ *    spec(in): spec
+ *    name(in): lhs assignment node
+ */
+static PT_NODE *
+pt_process_spec_for_update (PARSER_CONTEXT * parser, PT_NODE * spec,
+			    PT_NODE * name)
+{
+  PT_NODE *as_attr_list = NULL, *attr_list = NULL;
+  PT_NODE *dt_arg1, *dt_arg2, *derived_table;
+  PT_NODE *spec_list, *subspec;
+  PT_NODE *temp_name, *save_dt;
+  int attr_idx, i;
+
+  if (parser == NULL || spec == NULL || name == NULL
+      || spec->node_type != PT_SPEC || name->node_type != PT_NAME)
+    {
+      /* should not get here */
+      assert (false);
+      return NULL;
+    }
+
+  /* mark spec */
+  spec->info.spec.flag |= PT_SPEC_FLAG_UPDATE;
+
+  /* fetch derived table of spec */
+  dt_arg1 = save_dt = spec->info.spec.derived_table;
+  if (dt_arg1 == NULL)
+    {
+      /* no derived table means nothing to do further */
+      return name;
+    }
+
+  /* check derived table */
+  if (!(spec->info.spec.flag & PT_SPEC_FLAG_FROM_VCLASS))
+    {
+      PT_INTERNAL_ERROR (parser, "derived table not allowed");
+      return NULL;
+    }
+
+  if (dt_arg1->node_type == PT_UNION)
+    {
+      /* union derived table (e.g. UPDATE (view1, view2) SET ...) */
+      dt_arg2 = dt_arg1->info.query.q.union_.arg2;
+      dt_arg1 = dt_arg1->info.query.q.union_.arg1;
+    }
+  else
+    {
+      /* simple derived table */
+      dt_arg2 = NULL;
+    }
+
+  if (dt_arg1->node_type != PT_SELECT
+      || (dt_arg2 != NULL && dt_arg2->node_type != PT_SELECT))
+    {
+      PT_INTERNAL_ERROR (parser, "invalid derived spec");
+      return NULL;
+    }
+
+  /* find name in as_attr_list */
+  attr_idx = 0;
+  as_attr_list = spec->info.spec.as_attr_list;
+  while (as_attr_list != NULL)
+    {
+      if (pt_name_equal (parser, name, as_attr_list))
+	{
+	  break;
+	}
+      as_attr_list = as_attr_list->next;
+      attr_idx++;
+    }
+
+  if (as_attr_list == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "name not found in as_attr_list");
+      return NULL;
+    }
+
+  derived_table = dt_arg1;
+  while (derived_table != NULL)
+    {
+      /* resolve name to real name in select list */
+      attr_list = derived_table->info.query.q.select.list;
+      for (i = 0; i < attr_idx && attr_list != NULL; i++)
+	{
+	  attr_list = attr_list->next;
+	}
+      if (attr_list == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "name not found in list");
+	  return NULL;
+	}
+
+      /* we have a derived table we know came from a view; resolve name further
+         down */
+      spec_list = derived_table->info.query.q.select.from;
+      subspec = pt_find_spec (parser, spec_list, attr_list);
+      if (subspec == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "spec not found for name");
+	  return NULL;
+	}
+
+      /* don't allow other subspecs to be updated; this error will be hit when
+         two passes of the function, called for different assignments, will try
+         to flag two different specs */
+      while (spec_list != NULL)
+	{
+	  if ((spec_list != subspec)
+	      && (spec_list->info.spec.flag & PT_SPEC_FLAG_UPDATE))
+	    {
+	      PT_ERRORm (parser, spec_list, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_ONLY_ONE_UPDATE_SPEC_ALLOWED);
+	      return NULL;
+	    }
+
+	  spec_list = spec_list->next;
+	}
+
+      /* recurse */
+      temp_name = pt_process_spec_for_update (parser, subspec, attr_list);
+      if (temp_name == NULL)
+	{
+	  /* error should have been set lower down */
+	  return NULL;
+	}
+      if (derived_table == dt_arg1)
+	{
+	  /* skip second resolved name */
+	  name = temp_name;
+	}
+
+      /* we now have the derived table subtree populated with oids; we can
+         add oids to this derived table's select list as well */
+      spec->info.spec.derived_table = derived_table;
+      spec =
+	pt_rewrite_derived_for_upd_del (parser, spec, PT_SPEC_FLAG_UPDATE,
+					(derived_table == dt_arg1));
+      spec->info.spec.derived_table = save_dt;
+
+      if (spec == NULL)
+	{
+	  /* error should have been set lower down */
+	  return NULL;
+	}
+
+      /* next derived table of union */
+      derived_table = (derived_table == dt_arg1 ? dt_arg2 : NULL);
+    }
+
+  /* spec has OIDs added */
+  spec->info.spec.flag |= PT_SPEC_FLAG_CONTAINS_OID;
+
+  /* all ok */
+  return name;
+}
+
+/*
+ * pt_mark_spec_list_for_delete () - mark delete targets
  *   return:  none
  *   parser(in): the parser context
  *   delete_statement(in): a delete statement
  */
 void
-pt_mark_spec_list_for_delete (PARSER_CONTEXT * parser,
-			      PT_NODE * delete_statement)
+pt_mark_spec_list_for_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  PT_NODE *node, *from;
+  PT_NODE *node = NULL, *from;
 
-  node = delete_statement->info.delete_.target_classes;
+  if (statement->node_type == PT_DELETE)
+    {
+      node = statement->info.delete_.target_classes;
+    }
+  else if (statement->node_type == PT_MERGE)
+    {
+      node = statement->info.merge.into;
+    }
+
   while (node != NULL)
     {
-      from = pt_find_spec_in_statement (parser, delete_statement, node);
-      if (from == NULL)
+      if (statement->node_type == PT_DELETE)
 	{
-	  PT_INTERNAL_ERROR (parser, "invalid spec id");
-	  return;
+	  from = pt_find_spec_in_statement (parser, statement, node);
+	  if (from == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "invalid spec id");
+	      return;
+	    }
+	}
+      else
+	{
+	  from = node;
 	}
 
-      from->info.spec.flag |= PT_SPEC_FLAG_DELETE;
+      from = pt_process_spec_for_delete (parser, from);
+      if (from == NULL)
+	{
+	  /* error must have been set */
+	  return;
+	}
 
       node = node->next;
     }
 }
 
 /*
- * pt_mark_spec_list_for_update () - mark specs that will be updated
+ * pt_mark_spec_list_for_update () - mark update targets
  *   return:  none
  *   parser(in): the parser context
  *   statement(in): an update/merge statement
@@ -10233,16 +10600,18 @@ pt_mark_spec_list_for_delete (PARSER_CONTEXT * parser,
 void
 pt_mark_spec_list_for_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  PT_NODE *lhs, *node_tmp, *node;
-  PT_NODE *assignments = NULL;
+  PT_NODE *lhs, *node_tmp, *node, *resolved;
+  PT_NODE *assignments = NULL, *spec_list = NULL;
 
   if (statement->node_type == PT_UPDATE)
     {
       assignments = statement->info.update.assignment;
+      spec_list = statement->info.update.spec;
     }
   else if (statement->node_type == PT_MERGE)
     {
       assignments = statement->info.merge.update.assignment;
+      spec_list = statement->info.merge.into;
     }
 
   /* set flags for updatable specs */
@@ -10250,34 +10619,59 @@ pt_mark_spec_list_for_update (PARSER_CONTEXT * parser, PT_NODE * statement)
   while (node != NULL)
     {
       lhs = node->info.expr.arg1;
-      if (lhs->node_type == PT_NAME)
+
+      while (lhs != NULL && lhs->node_type != PT_NAME)
 	{
+	  if (lhs->node_type == PT_EXPR)
+	    {
+	      /* path expression */
+	      lhs = lhs->info.expr.arg1;
+	    }
+	  else if (lhs->node_type == PT_DOT_)
+	    {
+	      /* dot expression */
+	      lhs = lhs->info.dot.arg2;
+	    }
+	  else
+	    {
+	      lhs = NULL;
+	    }
+	}
+
+      if (lhs == NULL)
+	{
+	  /* should not get here */
+	  PT_INTERNAL_ERROR (parser, "malformed assignment");
+	  return;
+	}
+
+      while (lhs != NULL)
+	{
+	  /* resolve to spec */
 	  node_tmp = pt_find_spec_in_statement (parser, statement, lhs);
 	  if (node_tmp == NULL)
 	    {
 	      PT_INTERNAL_ERROR (parser, "invalid spec id");
 	      return;
 	    }
-	  node_tmp->info.spec.flag |= PT_SPEC_FLAG_UPDATE;
-	}
-      else
-	{
-	  lhs = lhs->info.expr.arg1;
-	  while (lhs != NULL)
+
+	  /* resolve name and add rowoid attributes where needed */
+	  resolved = pt_process_spec_for_update (parser, node_tmp, lhs);
+	  if (resolved == NULL || resolved->node_type != PT_NAME)
 	    {
-	      node_tmp = pt_find_spec_in_statement (parser, statement, lhs);
-	      if (node_tmp == NULL)
-		{
-		  PT_INTERNAL_ERROR (parser, "invalid spec id");
-		  return;
-		}
-
-	      node_tmp->info.spec.flag |= PT_SPEC_FLAG_UPDATE;
-
-	      lhs = lhs->next;
+	      /* error should have been set */
+	      break;
 	    }
+
+	  /* flat_entity_list will be propagated trough derived tables of updatable
+	     views, so the assignment name should be able to be resolved to them */
+	  lhs->info.name.original = resolved->info.name.original;
+
+	  /* advance to next name in set (if exists) */
+	  lhs = lhs->next;
 	}
 
+      /* next assignment */
       node = node->next;
     }
 }

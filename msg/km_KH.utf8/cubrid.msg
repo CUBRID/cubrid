@@ -1602,6 +1602,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 270 ឃ្លាមុខងារអំពីតារាងរៀងតាមអក្សរត្រូវចាត់ទុកជាមោឃៈ
 271 បែបបទសាកសួរអំពី %s អាចកើតមានឡើងចំពោះការដកស្រង់យកមកប្រើ.
 272 %s ឃ្លានេះមិនអាចសរសេរក្នុងករណីរួម.
+273 Only one table within a view can be updated.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 អស់ memoryជាក់ស្តែង: មិនអាចប្រើ %d bytes។

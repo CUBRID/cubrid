@@ -31,14 +31,25 @@
 #include "schema_manager.h"
 
 typedef enum PT_FETCH_AS
-{ PT_NORMAL_SELECT, PT_INVERTED_ASSIGNMENTS }
+{ PT_NORMAL_SELECT, PT_INVERTED_ASSIGNMENTS, PT_PARTIAL_SELECT }
 PT_FETCH_AS;
+
+typedef enum pt_updatability PT_UPDATABILITY;
+enum pt_updatability
+{
+  PT_NOT_UPDATABLE = 0x0,	/* non-updatable query */
+  PT_PARTIALLY_UPDATABLE = 0x1,	/* partially updatable query (i.e. vclass whose
+				   definition contains joins, but is otherwise
+				   updatable) */
+  PT_UPDATABLE = 0x3		/* fully updatable query */
+};
 
 extern PT_NODE *mq_bump_correlation_level (PARSER_CONTEXT * parser,
 					   PT_NODE * node, int increment,
 					   int match);
 
-extern bool mq_updatable (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern PT_UPDATABILITY mq_updatable (PARSER_CONTEXT * parser,
+				     PT_NODE * statement);
 
 extern PT_NODE *mq_translate (PARSER_CONTEXT * parser, PT_NODE * node);
 
@@ -67,6 +78,7 @@ extern PT_NODE *mq_set_references (PARSER_CONTEXT * parser,
 extern bool mq_is_outer_join_spec (PARSER_CONTEXT * parser, PT_NODE * spec);
 
 extern bool mq_is_updatable (DB_OBJECT * vclass_object);
+extern bool mq_is_updatable_strict (DB_OBJECT * vclass_object);
 
 extern bool mq_is_updatable_attribute (DB_OBJECT * vclass,
 				       const char *attr_name,

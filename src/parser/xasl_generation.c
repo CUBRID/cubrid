@@ -18094,6 +18094,10 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names,
       if (statement)
 	{
 	  statement->info.query.composite_locking = composite_locking;
+
+	  /* no strict oid checking for generated subquery */
+	  PT_SELECT_INFO_SET_FLAG (statement,
+				   PT_SELECT_INFO_NO_STRICT_OID_CHECK);
 	}
     }
 
@@ -22251,7 +22255,7 @@ PT_NODE *
 pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
 			  PT_MERGE_INFO * info)
 {
-  PT_NODE *statement, *where, *group_by, *oid, *save_next;
+  PT_NODE *statement, *where, *group_by, *oid, *save_next, *save_list, *from;
 
   statement = parser_new_node (parser, PT_SELECT);
   if (!statement)
@@ -22381,6 +22385,9 @@ pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
   statement->info.query.composite_locking = PT_COMPOSITE_LOCKING_UPDATE;
   PT_SELECT_INFO_SET_FLAG (statement, PT_SELECT_INFO_IS_MERGE_QUERY);
   PT_SELECT_INFO_SET_FLAG (statement, PT_SELECT_INFO_MULTI_UPDATE_AGG);
+
+  /* no strict oid checking for generated subquery */
+  PT_SELECT_INFO_SET_FLAG (statement, PT_SELECT_INFO_NO_STRICT_OID_CHECK);
 
   /* we don't need to keep this query */
   statement->cannot_prepare = 1;

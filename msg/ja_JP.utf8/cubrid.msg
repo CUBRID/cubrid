@@ -1602,6 +1602,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 270 正しくないインデックス表現ファンクション。
 271 「%s」のクエリスペシフィケーションは自分を参照する循環参照を持ちます。
 272 表現「%s」はジョインコンディションでは使用できません。
+273 Only one table within a view can be updated.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 バチャールメモリーが足りません。: %dバイトがアロケーションできません。

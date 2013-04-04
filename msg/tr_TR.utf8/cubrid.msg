@@ -1602,6 +1602,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 270 Geçersiz fonksiyon indeks ifadesi.
 271 %s sorgulama spesifikasyonu kendisine dönüşlü bir referansa sahiptir.
 272 %s ifadesi bağlanma koşulunda izin verilmemiştir. 
+273 Only one table within a view can be updated.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %d bayt bölüm ayıramadı.

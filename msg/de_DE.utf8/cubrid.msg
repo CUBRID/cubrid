@@ -1602,6 +1602,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 270 Ungültige Funktion Indexausdruck.
 271 Die Abfrage von %s hat einen zyklischen Verweis auf sich selbst.
 272 %s Ausdruck ist in Join-Bedingung nicht erlaubt.
+273 Only one table within a view can be updated.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Außer virtuellem Speicher: %d Bytes können nicht zugewiesen werden.

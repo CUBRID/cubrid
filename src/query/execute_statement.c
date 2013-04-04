@@ -5246,6 +5246,7 @@ check_trigger (DB_TRIGGER_EVENT event, PT_DO_FUNC * do_func,
 	int idx;
 	PT_ASSIGNMENTS_HELPER ea;
 	PT_NODE *assign = NULL;
+	PT_SPEC_FLAG flag;
 
 	columns = (char **) (malloc (count * sizeof (char *)));
 	if (columns == NULL)
@@ -5260,9 +5261,14 @@ check_trigger (DB_TRIGGER_EVENT event, PT_DO_FUNC * do_func,
 	node = statement->info.update.spec;
 	do
 	  {
+	    /* flag is set to UPDATE to make sure triggers are checked for
+	       statement->info.update.object_parameter too */
+	    flag = PT_SPEC_FLAG_UPDATE;
+
 	    if (node != NULL)
 	      {
 		flat = node->info.spec.flat_entity_list;
+		flag = node->info.spec.flag;
 		node = node->next;
 	      }
 	    else
@@ -5270,8 +5276,7 @@ check_trigger (DB_TRIGGER_EVENT event, PT_DO_FUNC * do_func,
 		flat = statement->info.update.object_parameter;
 	      }
 
-	    if ((node == NULL || (node->info.spec.flag & PT_SPEC_FLAG_UPDATE))
-		&& flat)
+	    if (flag & PT_SPEC_FLAG_UPDATE)
 	      {
 		idx = 0;
 		pt_init_assignments_helper (parser, &ea,
@@ -6986,21 +6991,61 @@ do_set_pruning_type (PARSER_CONTEXT * parser, PT_NODE * spec,
 	}
     }
   /* We're in the context of a table update/insert etc. This is possible only
-   * if the derived table is a SELECT and has only one class
+   * if the derived table is a SELECT and has only one updated class
    */
-  if (spec->info.spec.derived_table->node_type != PT_SELECT)
-    {
-      PT_ERROR (parser, spec, "Generic error");
-      return ER_FAILED;
-    }
   derived = spec->info.spec.derived_table;
-  if (derived->info.query.q.select.from->next != NULL)
+  error = NO_ERROR;
+  if (derived->node_type == PT_SELECT)
     {
-      /* should only have one class */
+      for (spec = derived->info.query.q.select.from; spec != NULL;
+	   spec = spec->next)
+	{
+	  if (error == NO_ERROR
+	      && (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE))
+	    {
+	      error = do_set_pruning_type (parser, spec, cls);
+	    }
+	}
+    }
+  else if (derived->node_type == PT_UNION)
+    {
+      if (derived->info.query.q.union_.arg1 != NULL
+	  && derived->info.query.q.union_.arg1->node_type == PT_SELECT)
+	{
+	  for (spec =
+	       derived->info.query.q.union_.arg1->info.query.q.select.from;
+	       spec != NULL; spec = spec->next)
+	    {
+	      if (error == NO_ERROR
+		  && (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE))
+		{
+		  error = do_set_pruning_type (parser, spec, cls);
+		}
+	    }
+	}
+
+      if (derived->info.query.q.union_.arg2 != NULL
+	  && derived->info.query.q.union_.arg2->node_type == PT_SELECT)
+	{
+	  for (spec =
+	       derived->info.query.q.union_.arg2->info.query.q.select.from;
+	       spec != NULL; spec = spec->next)
+	    {
+	      if (error == NO_ERROR
+		  && (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE))
+		{
+		  error = do_set_pruning_type (parser, spec, cls);
+		}
+	    }
+	}
+    }
+  else
+    {
       PT_ERROR (parser, spec, "Generic error");
       return ER_FAILED;
     }
-  return do_set_pruning_type (parser, derived->info.query.q.select.from, cls);
+
+  return error;
 }
 
 /*
@@ -8473,6 +8518,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      flat = spec->info.spec.flat_entity_list;
 	      class_obj = (flat) ? flat->info.name.db_object : NULL;
+	      assert (class_obj);	/* safeguard */
 	      /* the presence of a proxy trigger should force the update
 	         to be performed through the workspace  */
 	      err =

@@ -1602,6 +1602,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 270 Expresion de indice de funcion no valida.
 271 La especificacion de consulta de %s tiene una referencia ciclica a si misma.
 272 %s expresion no permitida en la condicion join.
+273 Only one table within a view can be updated.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sin memoria virtual: incapaz de asignar %d bytes.

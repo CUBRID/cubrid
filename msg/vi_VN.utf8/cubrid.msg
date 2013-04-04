@@ -1602,6 +1602,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 270 Biểu thức chỉ số chức năng vô hiệu.
 271 Thuyết minh câu hỏi %s tự tham chiếu tới câu hỏi.
 272 %s biểu thức không được cho phép trong điều kiện chung.
+273 Only one table within a view can be updated.
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Không đủ bộ nhớ ảo: không thể cấp phát %d bytes.
 2 Cấp độ cô lập giao dịch phải là 1, 2, 3, 4, 5 or 6.

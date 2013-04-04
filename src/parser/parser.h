@@ -838,7 +838,7 @@ extern "C"
   extern void pt_mark_spec_list_for_update (PARSER_CONTEXT * parser,
 					    PT_NODE * statement);
   extern void pt_mark_spec_list_for_delete (PARSER_CONTEXT * parser,
-					    PT_NODE * delete_statement);
+					    PT_NODE * statement);
   extern void pt_init_assignments_helper (PARSER_CONTEXT * parser,
 					  PT_ASSIGNMENTS_HELPER * helper,
 					  PT_NODE * assignment);

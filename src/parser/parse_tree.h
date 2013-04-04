@@ -1375,7 +1375,11 @@ typedef enum
   PT_SPEC_FLAG_NONE = 0x0,	/* the spec will not be altered */
   PT_SPEC_FLAG_UPDATE = 0x01,	/* the spec will be updated */
   PT_SPEC_FLAG_DELETE = 0x02,	/* the spec will be deleted */
-  PT_SPEC_FLAG_HAS_UNIQUE = 0x04	/* the spec has unique */
+  PT_SPEC_FLAG_HAS_UNIQUE = 0x04,	/* the spec has unique */
+  PT_SPEC_FLAG_FROM_VCLASS = 0x08,	/* applicable for derived tables, marks
+					   one as a rewritten view */
+  PT_SPEC_FLAG_CONTAINS_OID = 0x10	/* classoid and oid were added in the
+					   derived table's select list */
 } PT_SPEC_FLAG;
 
 typedef enum
@@ -1556,6 +1560,7 @@ struct view_cache_info
   PT_NODE *vquery_for_query_in_gdb;
   PT_NODE *vquery_for_update;
   PT_NODE *vquery_for_update_in_gdb;
+  PT_NODE *vquery_for_partial_update;
   PT_NODE *inverted_vquery_for_update;
   PT_NODE *inverted_vquery_for_update_in_gdb;
   char **expressions;
@@ -2373,6 +2378,12 @@ struct pt_select_info
 #define	PT_SELECT_INFO_LIST_PUSHER	1024	/* dummy subquery that pushes a list file
 						 * descriptor to be used at server
 						 * as its own result */
+#define PT_SELECT_INFO_NO_STRICT_OID_CHECK  2048	/* normally, only OIDs of
+							 * updatable views are allowed
+							 * in parse trees; however, for
+							 * MERGE and UPDATE we sometimes
+							 * want to allow OIDs of partially
+							 * updatable views */
 
 #define PT_SELECT_INFO_IS_FLAGED(s, f)  \
           ((s)->info.query.q.select.flag & (short) (f))
