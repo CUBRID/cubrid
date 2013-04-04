@@ -9503,6 +9503,11 @@ pr_complete_enum_value (DB_VALUE * value, TP_DOMAIN * domain)
 
       return NO_ERROR;
     }
+  else if (str_val == NULL)
+    {
+      /* empty string enum value with index 0 */
+      return NO_ERROR;
+    }
 
   for (idx = 0; idx < enum_count; idx++)
     {
@@ -14589,7 +14594,8 @@ mr_setval_enumeration_internal (DB_VALUE * value,
   char *str;
   DB_ENUM_ELEMENT *db_elem = NULL;
 
-  if (domain == NULL || DOM_GET_ENUM_ELEMS_COUNT (domain) == 0 || index == 0)
+  if (domain == NULL || DOM_GET_ENUM_ELEMS_COUNT (domain) == 0 || index == 0
+      || index == DB_ENUM_OVERFLOW_VAL)
     {
       db_make_enumeration (value, index, NULL, 0,
 			   TP_DOMAIN_CODESET (domain),

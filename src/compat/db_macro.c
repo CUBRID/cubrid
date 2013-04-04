@@ -501,18 +501,7 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
       value->domain.char_info.collation_id = collation_id;
       break;
     case DB_TYPE_ENUMERATION:
-      if (enumeration == NULL || enumeration->count <= 0)
-	{
-	  db_make_enumeration (value, 0, (char *) "\40", 1,
-			       codeset, collation_id);
-	}
-      else
-	{
-	  db_make_enumeration (value, 1,
-			       enumeration->elements[0].str_val.medium.buf,
-			       enumeration->elements[0].str_val.medium.size,
-			       (unsigned char) codeset, collation_id);
-	}
+      db_make_enumeration (value, 0, NULL, 0, codeset, collation_id);
       break;
       /* case DB_TYPE_TABLE: internal use only */
     default:
@@ -675,18 +664,20 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
 	{
 	  if (codeset == INTL_CODESET_UTF8)
 	    {
-	      db_make_enumeration (value, DB_UINT16_MAX,
+	      db_make_enumeration (value, DB_ENUM_ELEMENTS_MAX,
 				   (char *) "\xf4\x8f\xbf\xbf", 4,
 				   (unsigned char) codeset, collation_id);
 	    }
 	  else if (codeset == INTL_CODESET_KSC5601_EUC)
 	    {
-	      db_make_enumeration (value, DB_UINT16_MAX, (char *) "\377\377",
-				   2, (unsigned char) codeset, collation_id);
+	      db_make_enumeration (value, DB_ENUM_ELEMENTS_MAX,
+				   (char *) "\377\377", 2,
+				   (unsigned char) codeset, collation_id);
 	    }
 	  else
 	    {
-	      db_make_enumeration (value, DB_UINT16_MAX, (char *) "\377", 1,
+	      db_make_enumeration (value, DB_ENUM_ELEMENTS_MAX,
+				   (char *) "\377", 1,
 				   (unsigned char) codeset, collation_id);
 	    }
 	}
@@ -813,18 +804,7 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type,
       value->domain.char_info.collation_id = collation_id;
       break;
     case DB_TYPE_ENUMERATION:
-      if (enumeration != NULL && enumeration->count > 0)
-	{
-	  db_make_enumeration (value, 1,
-			       enumeration->elements[0].str_val.medium.buf,
-			       enumeration->elements[0].str_val.medium.size,
-			       (unsigned char) codeset, collation_id);
-	}
-      else
-	{
-	  db_value_domain_min (value, type, precision, scale, codeset,
-			       collation_id, enumeration);
-	}
+      db_make_enumeration (value, 0, NULL, 0, codeset, collation_id);
       break;
     default:
       error = ER_UCI_INVALID_DATA_TYPE;
@@ -6418,7 +6398,14 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p,
 	  break;
 
 	case DB_TYPE_ENUMERATION:
-	  if (db_get_enum_string_size (value_p) > 0)
+	  if (db_get_enum_short (value_p) == 0
+	      && db_get_enum_string (value_p) == NULL)
+	    {
+	      /* ENUM special error value */
+	      DB_MAKE_STRING (&dbval, "");
+	      buffer_p = valcnv_convert_data_to_string (buffer_p, &dbval);
+	    }
+	  else if (db_get_enum_string_size (value_p) > 0)
 	    {
 	      DB_MAKE_STRING (&dbval, db_get_enum_string (value_p));
 

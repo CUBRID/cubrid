@@ -123,6 +123,55 @@ pt_misc_to_qp_misc_operand (PT_MISC_TYPE misc_specifier)
   return operand;
 }
 
+/*
+ * pt_is_same_enum_data_type() -  Compares two enum data types
+ *   return:  true if exact match, false otherwise
+ *   dt1(in): first data type
+ *   dt2(in): second data type
+ */
+bool
+pt_is_same_enum_data_type (PT_NODE * dt1, PT_NODE * dt2)
+{
+  PT_NODE *e1 = NULL, *e2 = NULL;
+  PARSER_VARCHAR *pvc1 = NULL, *pvc2 = NULL;
+  int l1 = 0, l2 = 0;
+
+  if (dt1 == dt2)
+    {
+      return true;
+    }
+
+  if (dt1 == NULL || dt1->type_enum != PT_TYPE_ENUMERATION || dt2 == NULL
+      || dt2->type_enum != PT_TYPE_ENUMERATION)
+    {
+      return false;
+    }
+
+  e1 = dt1->info.data_type.enumeration;
+  e2 = dt2->info.data_type.enumeration;
+  for (; e1 != NULL && e2 != NULL; e1 = e1->next, e2 = e2->next)
+    {
+      assert (e1->node_type == PT_VALUE && e2->node_type == PT_VALUE);
+
+      pvc1 = e1->info.value.data_value.str;
+      pvc2 = e2->info.value.data_value.str;
+      l1 = pt_get_varchar_length (pvc1);
+      l2 = pt_get_varchar_length (pvc2);
+      if (l1 != l2
+	  || memcmp (pt_get_varchar_bytes (pvc1), pt_get_varchar_bytes (pvc2),
+		     l1))
+	{
+	  break;
+	}
+    }
+
+  if (e1 == NULL && e2 == NULL)
+    {
+      return true;
+    }
+
+  return false;
+}
 
 /*
  * pt_add_type_to_set() -  add a db_value's data_type to a set of data_types
@@ -141,7 +190,7 @@ pt_add_type_to_set (PARSER_CONTEXT * parser, const PT_NODE * typs,
   PT_TYPE_ENUM typ;
   PT_NODE *s, *ent;
   DB_OBJECT *cls = NULL;
-  int found;
+  bool found = false;
   const char *cls_nam = NULL, *e_nam;
 
   assert (parser != NULL && set != NULL);
@@ -251,6 +300,10 @@ pt_add_type_to_set (PARSER_CONTEXT * parser, const PT_NODE * typs,
 			}
 		      found = true;
 		    }
+		  else if (typ == PT_TYPE_ENUMERATION)
+		    {
+		      found = pt_is_same_enum_data_type (typs->data_type, s);
+		    }
 		  else
 		    {
 		      /* for simple types, equality of type_enum is enough */
@@ -259,27 +312,40 @@ pt_add_type_to_set (PARSER_CONTEXT * parser, const PT_NODE * typs,
 		}
 	      else
 		{
-		  found = 0;
+		  found = false;
 		}
 	    }
 
 	  if (!found)
 	    {
 	      /* prepend it to the set of data_types */
-	      PT_NODE *new_typ = parser_new_node (parser, PT_DATA_TYPE);
-	      if (new_typ)
+	      PT_NODE *new_typ = NULL;
+	      if (typs->data_type == NULL)
 		{
+		  new_typ = parser_new_node (parser, PT_DATA_TYPE);
 		  new_typ->type_enum = typ;
+		}
+	      else
+		{
 		  /* If the node has been parameterized by its data_type,
 		   * node, copy ALL pertinent information into this node.
 		   * Datatype parameterization includes ALL the fields of
 		   * a data_type node (ie, virt_object, proxy_object, etc).
 		   */
-		  if (typs->data_type)
-		    {
-		      new_typ->info.data_type =
-			typs->data_type->info.data_type;
-		    }
+		  new_typ = parser_copy_tree_list (parser, typs->data_type);
+		}
+	      if (new_typ && PT_IS_COLLECTION_TYPE (typs->type_enum))
+		{
+		  /* In case of a set in a multiset the data type must be of
+		   * type set and not just simply adding types of the set into
+		   * the types of multiset */
+		  s = parser_new_node (parser, PT_DATA_TYPE);
+		  s->type_enum = typs->type_enum;
+		  s->data_type = new_typ;
+		  new_typ = s;
+		}
+	      if (new_typ)
+		{
 		  if ((typ == PT_TYPE_OBJECT) && (cls != NULL))
 		    {
 		      PT_NODE *entity = NULL, *t;
@@ -288,6 +354,11 @@ pt_add_type_to_set (PARSER_CONTEXT * parser, const PT_NODE * typs,
 							    (UINTPTR) typs,
 							    PT_CLASS);
 		      new_typ->info.data_type.virt_type_enum = typ;
+		      if (new_typ->info.data_type.entity != NULL)
+			{
+			  parser_free_tree (parser,
+					    new_typ->info.data_type.entity);
+			}
 		      new_typ->info.data_type.entity = entity;
 
 		      /*
@@ -786,10 +857,13 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       size = DB_GET_ENUM_STRING_SIZE (val);
       result->info.value.data_value.enumeration.short_val =
 	DB_GET_ENUM_SHORT (val);
-      result->info.value.data_value.enumeration.str_val =
-	pt_append_bytes (parser, NULL, bytes, size);
-      result->info.value.text =
-	result->info.value.data_value.enumeration.str_val->bytes;
+      if (DB_GET_ENUM_SHORT (val) != 0)
+	{
+	  result->info.value.data_value.enumeration.str_val =
+	    pt_append_bytes (parser, NULL, bytes, size);
+	  result->info.value.text =
+	    result->info.value.data_value.enumeration.str_val->bytes;
+	}
       result->data_type = NULL;
       break;
 

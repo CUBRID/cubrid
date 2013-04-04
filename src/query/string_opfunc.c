@@ -24985,7 +24985,7 @@ db_value_to_enumeration_value (const DB_VALUE * src, DB_VALUE * result,
 	{
 	  return ER_FAILED;
 	}
-      DB_MAKE_ENUMERATION (result, 0, NULL, 0,
+      DB_MAKE_ENUMERATION (result, DB_ENUM_OVERFLOW_VAL, NULL, 0,
 			   TP_DOMAIN_CODESET (enum_domain),
 			   TP_DOMAIN_COLLATION (enum_domain));
       er_clear ();

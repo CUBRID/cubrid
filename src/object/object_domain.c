@@ -5440,21 +5440,9 @@ tp_enumeration_to_varchar (const DB_VALUE * src, DB_VALUE * result)
 
   if (DB_GET_ENUM_STRING (src) == NULL)
     {
-      if (DB_GET_ENUM_SHORT (src) != 0)
-	{
-	  /* we should never get into a situation where we only have
-	   * an index for our enum but we have to cast it to a
-	   * STRING type
-	   */
-	  assert (false);
-	  error = ER_FAILED;
-	}
-      else
-	{
-	  db_make_varchar (result, DB_DEFAULT_PRECISION, "", 0,
-			   DB_GET_ENUM_CODESET (src),
-			   DB_GET_ENUM_COLLATION (src));
-	}
+      db_make_varchar (result, DB_DEFAULT_PRECISION, "", 0,
+		       DB_GET_ENUM_CODESET (src),
+		       DB_GET_ENUM_COLLATION (src));
     }
   else
     {
@@ -8594,7 +8582,22 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		val_idx = i;
 		if (i > elem_count)
 		  {
-		    status = DOMAIN_OVERFLOW;
+		    if (val_str[0] == 0)
+		      {
+			/* The source value is string with length 0 and can be
+			 * matched with enum "special error value" if it's not
+			 * a valid ENUM value */
+			DB_MAKE_ENUMERATION (target, 0, NULL, 0,
+					     TP_DOMAIN_CODESET
+					     (desired_domain),
+					     TP_DOMAIN_COLLATION
+					     (desired_domain));
+			break;
+		      }
+		    else
+		      {
+			status = DOMAIN_OVERFLOW;
+		      }
 		  }
 	      }
 	    else
@@ -8602,10 +8605,18 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		/* We have the index, we need to get the actual string value
 		 * from the desired domain
 		 */
-		if (val_idx == 0
-		    || val_idx > DOM_GET_ENUM_ELEMS_COUNT (desired_domain))
+		if (val_idx > DOM_GET_ENUM_ELEMS_COUNT (desired_domain))
 		  {
 		    status = DOMAIN_OVERFLOW;
+		  }
+		else if (val_idx == 0)
+		  {
+		    /* ENUM Special error value */
+		    DB_MAKE_ENUMERATION (target, 0, NULL, 0,
+					 TP_DOMAIN_CODESET (desired_domain),
+					 TP_DOMAIN_COLLATION
+					 (desired_domain));
+		    break;
 		  }
 		else
 		  {

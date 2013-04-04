@@ -15970,16 +15970,13 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 				       lang_get_collation_name (prt_coll_id));
 	    }
 	}
-      else if (p->info.value.data_value.enumeration.short_val != 0)
+      else
 	{
 	  /* print index if it is a valid value */
 	  sprintf (s, "%ld", p->info.value.data_value.i);
 	  q = pt_append_nulstring (parser, q, s);
 	}
-      else
-	{
-	  q = pt_append_nulstring (parser, q, "''");
-	}
+
       break;
     default:
       q = pt_append_nulstring (parser, q, "-- Unknown value type --");

@@ -4038,7 +4038,8 @@ describe_value (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	  break;
 
 	case DB_TYPE_ENUMERATION:
-	  if (DB_GET_ENUM_STRING (value) == NULL)
+	  if (DB_GET_ENUM_STRING (value) == NULL
+	      && DB_GET_ENUM_SHORT (value) != 0)
 	    {
 	      /* describe value should not be called on an enumeration
 	       * which is not fully constructed

@@ -403,6 +403,8 @@
 #endif /* (__WORDSIZE == 64) || defined(_WIN64) */
 #define DB_ENUM_ELEMENTS_MAX  512
 #define DB_ENUM_ELEMENTS_MAX_AGG_SIZE (DB_PAGESIZE - ROOT_HEADER_FIXED_SIZE - 1)
+/* special ENUM index for PT_TO_ENUMERATION_VALUE function */
+#define DB_ENUM_OVERFLOW_VAL  0xFFFF
 
 /* DB_DATE_MIN and DB_DATE_MAX are calculated by julian_encode function
    with arguments (1,1,1) and (12,31,9999) respectively. */

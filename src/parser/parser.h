@@ -248,6 +248,7 @@ extern "C"
   extern DB_DOMAIN *pt_type_enum_to_db_domain (const PT_TYPE_ENUM t);
   extern void pt_put_type_enum (PARSER_CONTEXT * parser,
 				PT_NODE * node, PT_NODE * data_type);
+  extern bool pt_is_same_enum_data_type (PT_NODE * dt1, PT_NODE * dt2);
   extern const char *pt_data_type_to_db_domain_name (const PT_NODE * dt);
   extern DB_DOMAIN *pt_data_type_to_db_domain (PARSER_CONTEXT * parser,
 					       PT_NODE * dt,

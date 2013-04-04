@@ -1595,8 +1595,18 @@ csql_db_value_as_string (DB_VALUE * value, int *length)
 	char *str;
 	char *decomposed = NULL;
 
-	str = db_get_enum_string (value);
-	bytes_size = db_get_enum_string_size (value);
+	if (db_get_enum_short (value) == 0
+	    && db_get_enum_string (value) == NULL)
+	  {
+	    /* ENUM special error value */
+	    str = "";
+	    bytes_size = 0;
+	  }
+	else
+	  {
+	    str = db_get_enum_string (value);
+	    bytes_size = db_get_enum_string_size (value);
+	  }
 	if (bytes_size > 0
 	    && db_get_enum_codeset (value) == INTL_CODESET_UTF8)
 	  {
