@@ -7339,6 +7339,8 @@ locator_eval_filter_predicate (THREAD_ENTRY * thread_p, BTID * btid,
 	      /*free allocated memory */
 	      if (pred_filter_cache_context)
 		{
+		  stx_free_additional_buff (thread_p,
+					    pred_filter_cache_context);
 		  stx_free_xasl_unpack_info (pred_filter_cache_context);
 		  db_private_free_and_init (thread_p,
 					    pred_filter_cache_context);
@@ -7428,6 +7430,7 @@ end:
          free the filter predicatetree */
       if (pred_filter_cache_context)
 	{
+	  stx_free_additional_buff (thread_p, pred_filter_cache_context);
 	  stx_free_xasl_unpack_info (pred_filter_cache_context);
 	  db_private_free_and_init (thread_p, pred_filter_cache_context);
 	  pred_filter = NULL;

@@ -1059,7 +1059,7 @@ extern char *or_unpack_hfid (char *ptr, HFID * hfid);
 extern char *or_unpack_hfid_array (char *ptr, int n, HFID ** hfids);
 extern char *or_unpack_btid (char *buf, BTID * btid);
 extern char *or_unpack_ehid (char *buf, EHID * btid);
-extern char *or_unpack_listid (char *ptr, void **listid_ptr);
+extern char *or_unpack_listid (char *ptr, void *listid_ptr);
 extern char *or_unpack_unbound_listid (char *ptr, void **listid_ptr);
 extern char *or_unpack_lock (char *ptr, LOCK * lock);
 extern char *or_unpack_set_header (char *buf, DB_TYPE * stype,

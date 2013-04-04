@@ -6299,20 +6299,12 @@ or_pack_listid (char *ptr, void *listid_ptr)
  *    information necesary for casting.
  */
 char *
-or_unpack_listid (char *ptr, void **listid_ptr)
+or_unpack_listid (char *ptr, void *listid_ptr)
 {
   QFILE_LIST_ID *listid;
-  int count, i;
 
-  /*
-   * tuple_cnt 4, vfid.fileid 4, vfid.volid 2, attr_list.oid_flg 2,
-   * attr_list.attr_cnt 4, attr_list.attr_id 4 * n
-   */
-  listid = (QFILE_LIST_ID *) db_private_alloc (NULL, sizeof (QFILE_LIST_ID));
-  if (listid == NULL)
-    {
-      goto error;
-    }
+  listid = (QFILE_LIST_ID *) listid_ptr;
+
   QFILE_CLEAR_LIST_ID (listid);
 
   listid->query_id = OR_GET_PTR (ptr);
@@ -6341,42 +6333,10 @@ or_unpack_listid (char *ptr, void **listid_ptr)
   ptr += OR_INT_SIZE;
   listid->lasttpl_len = OR_GET_INT (ptr);
   ptr += OR_INT_SIZE;
-  count = OR_GET_INT (ptr);
+  listid->type_list.type_cnt = OR_GET_INT (ptr);
   ptr += OR_INT_SIZE;
 
-  listid->type_list.type_cnt = count;
-  listid->type_list.domp = NULL;
-
-  if (count < 0)
-    {
-      goto error;
-    }
-
-  if (count > 0)
-    {
-      listid->type_list.domp =
-	(TP_DOMAIN **) db_private_alloc (NULL, sizeof (TP_DOMAIN *) * count);
-
-      if (listid->type_list.domp == NULL)
-	{
-	  goto error;
-	}
-    }
-
-  for (i = 0; i < count; i++)
-    {
-      ptr = or_unpack_domain (ptr, &listid->type_list.domp[i], NULL);
-    }
-
-  *listid_ptr = (void *) listid;
   return ptr;
-
-error:
-  if (listid)
-    {
-      db_private_free_and_init (NULL, listid);
-    }
-  return NULL;
 }
 
 /*
@@ -6405,40 +6365,10 @@ or_unpack_unbound_listid (char *ptr, void **listid_ptr)
 	      1, sizeof (QFILE_LIST_ID));
       goto error;
     }
-  QFILE_CLEAR_LIST_ID (listid);
 
-  listid->query_id = OR_GET_PTR (ptr);
-  ptr += OR_PTR_SIZE;
+  ptr = or_unpack_listid (ptr, listid);
 
-  listid->tfile_vfid = (struct qmgr_temp_file *) OR_GET_PTR (ptr);
-  ptr += OR_PTR_SIZE;
-
-  listid->tuple_cnt = OR_GET_INT (ptr);
-  ptr += OR_INT_SIZE;
-
-  listid->page_cnt = OR_GET_INT (ptr);
-  ptr += OR_INT_SIZE;
-
-  listid->first_vpid.pageid = OR_GET_INT (ptr);
-  ptr += OR_INT_SIZE;
-  listid->first_vpid.volid = OR_GET_INT (ptr);
-  ptr += OR_INT_SIZE;
-
-  listid->last_vpid.pageid = OR_GET_INT (ptr);
-  ptr += OR_INT_SIZE;
-  listid->last_vpid.volid = OR_GET_INT (ptr);
-  ptr += OR_INT_SIZE;
-
-  listid->last_offset = OR_GET_INT (ptr);
-  ptr += OR_INT_SIZE;
-  listid->lasttpl_len = OR_GET_INT (ptr);
-  ptr += OR_INT_SIZE;
-  count = OR_GET_INT (ptr);
-  ptr += OR_INT_SIZE;
-
-  listid->type_list.type_cnt = count;
-  listid->type_list.domp = NULL;
-
+  count = listid->type_list.type_cnt;
   if (count < 0)
     {
       goto error;
@@ -6455,11 +6385,11 @@ or_unpack_unbound_listid (char *ptr, void **listid_ptr)
 		  1, (sizeof (TP_DOMAIN *) * count));
 	  goto error;
 	}
-    }
 
-  for (i = 0; i < count; i++)
-    {
-      ptr = or_unpack_domain (ptr, &listid->type_list.domp[i], NULL);
+      for (i = 0; i < count; i++)
+	{
+	  ptr = or_unpack_domain (ptr, &listid->type_list.domp[i], NULL);
+	}
     }
 
   *listid_ptr = (void *) listid;

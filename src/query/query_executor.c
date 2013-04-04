@@ -642,9 +642,9 @@ static int qexec_ordby_put_next (THREAD_ENTRY * thread_p,
 static int qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 				   QUERY_OPTIONS option,
 				   XASL_STATE * xasl_state);
-static int qexec_orderby_distinct_by_sorting (THREAD_ENTRY * thread_p, 
-					      XASL_NODE * xasl, 
-					      QUERY_OPTIONS option, 
+static int qexec_orderby_distinct_by_sorting (THREAD_ENTRY * thread_p,
+					      XASL_NODE * xasl,
+					      QUERY_OPTIONS option,
 					      XASL_STATE * xasl_state);
 static DB_LOGICAL qexec_eval_grbynum_pred (THREAD_ENTRY * thread_p,
 					   GROUPBY_STATE * gbstate);
@@ -3151,8 +3151,8 @@ qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
  * eliminated on the fly, thus causing and ordered-distinct list file output.
  */
 static int
-qexec_orderby_distinct_by_sorting (THREAD_ENTRY * thread_p, XASL_NODE * xasl, 
-				   QUERY_OPTIONS option, 
+qexec_orderby_distinct_by_sorting (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
+				   QUERY_OPTIONS option,
 				   XASL_STATE * xasl_state)
 {
   QFILE_LIST_ID *list_id = xasl->list_id;
@@ -14474,7 +14474,9 @@ qexec_free_xasl_cache_clo (XASL_CACHE_CLONE * clo)
     }
 
   /* free XASL tree */
+  stx_free_additional_buff (thread_p, clo->xasl_buf_info);
   stx_free_xasl_unpack_info (clo->xasl_buf_info);
+  db_private_free_and_init (thread_p, clo->xasl_buf_info);
 
   /* initialize */
   QEXEC_INITIALIZE_XASL_CACHE_CLO (clo, NULL);

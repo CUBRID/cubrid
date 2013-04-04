@@ -4584,6 +4584,10 @@ xts_process_method_spec_type (char *ptr, const METHOD_SPEC_TYPE * method_spec)
 static char *
 xts_process_list_id (char *ptr, const QFILE_LIST_ID * list_id)
 {
+  /* is from client to server */
+  assert_release (list_id->type_list.type_cnt == 0);
+  assert_release (list_id->type_list.domp == NULL);
+
   return or_pack_listid (ptr, (void *) list_id);
 }
 

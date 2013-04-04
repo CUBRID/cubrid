@@ -199,6 +199,8 @@ static char *stx_build_filter_pred_node (THREAD_ENTRY * thread_p, char *ptr,
 static char *stx_build_func_pred (THREAD_ENTRY * thread_p, char *tmp,
 				  FUNC_PRED * ptr);
 static char *stx_build_cache_attrinfo (char *tmp);
+static char *stx_build_list_id (THREAD_ENTRY * thread_p, char *tmp,
+				QFILE_LIST_ID * ptr);
 static char *stx_build_union_proc (THREAD_ENTRY * thread_p, char *tmp,
 				   UNION_PROC_NODE * ptr);
 static char *stx_build_fetch_proc (THREAD_ENTRY * thread_p, char *tmp,
@@ -283,6 +285,7 @@ static char *stx_build_analytic_type (THREAD_ENTRY * thread_p, char *tmp,
 				      ANALYTIC_TYPE * ptr);
 static char *stx_build_srlist_id (THREAD_ENTRY * thread_p, char *tmp,
 				  QFILE_SORTED_LIST_ID * ptr);
+static char *stx_build_string (THREAD_ENTRY * thread_p, char *tmp, char *ptr);
 static char *stx_build_sort_list (THREAD_ENTRY * thread_p, char *tmp,
 				  SORT_LIST * ptr);
 static char *stx_build_connectby_proc (THREAD_ENTRY * thread_p, char *tmp,
@@ -367,6 +370,7 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, XASL_NODE ** xasl_tree,
   char *p;
   int header_size;
   int offset;
+  XASL_UNPACK_INFO *unpack_info_p = NULL;
 
   if (!xasl_tree || !xasl_stream || !xasl_unpack_info_ptr
       || xasl_stream_size <= 0)
@@ -376,6 +380,8 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, XASL_NODE ** xasl_tree,
 
   stx_set_xasl_errcode (thread_p, NO_ERROR);
   stx_init_xasl_unpack_info (thread_p, xasl_stream, xasl_stream_size);
+  unpack_info_p = stx_get_xasl_unpack_info_ptr (thread_p);
+  unpack_info_p->track_allocated_bufers = 1;
 
   /* calculate offset to XASL tree in the stream buffer */
   p = or_unpack_int (xasl_stream, &header_size);
@@ -388,7 +394,10 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, XASL_NODE ** xasl_tree,
   xasl = stx_restore_xasl_node (thread_p, xasl_stream + offset);
   if (!xasl)
     {
-      stx_free_xasl_unpack_info (stx_get_xasl_unpack_info_ptr (thread_p));
+      stx_free_additional_buff (thread_p, unpack_info_p);
+      stx_free_xasl_unpack_info (unpack_info_p);
+      db_private_free_and_init (thread_p, unpack_info_p);
+
       goto end;
     }
 
@@ -1371,13 +1380,15 @@ stx_restore_list_id (THREAD_ENTRY * thread_p, char *ptr)
       return list_id;
     }
 
-  or_unpack_listid (ptr, (void **) &list_id);
+  list_id =
+    (QFILE_LIST_ID *) stx_alloc_struct (thread_p, sizeof (QFILE_LIST_ID));
   if (list_id == NULL)
     {
       stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
       return NULL;
     }
-  if (stx_mark_struct_visited (thread_p, ptr, list_id) == ER_FAILED)
+  if (stx_mark_struct_visited (thread_p, ptr, list_id) == ER_FAILED
+      || stx_build_list_id (thread_p, ptr, list_id) == NULL)
     {
       return NULL;
     }
@@ -1420,6 +1431,12 @@ static char *
 stx_restore_string (THREAD_ENTRY * thread_p, char *ptr)
 {
   char *string;
+  int length;
+
+  if (ptr == NULL)
+    {
+      return NULL;
+    }
 
   string = (char *) stx_get_struct_visited_ptr (thread_p, ptr);
   if (string != NULL)
@@ -1427,13 +1444,18 @@ stx_restore_string (THREAD_ENTRY * thread_p, char *ptr)
       return string;
     }
 
-  or_unpack_string (ptr, &string);
+  length = OR_GET_INT (ptr);
+  assert_release (length > 0);
+
+  string = (char *) stx_alloc_struct (thread_p, length);
   if (string == NULL)
     {
       stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
       return NULL;
     }
-  if (stx_mark_struct_visited (thread_p, ptr, string) == ER_FAILED)
+
+  if (stx_mark_struct_visited (thread_p, ptr, string) == ER_FAILED
+      || stx_build_string (thread_p, ptr, string) == NULL)
     {
       return NULL;
     }
@@ -2589,6 +2611,48 @@ stx_build_cache_attrinfo (char *ptr)
   ptr = or_unpack_int (ptr, &dummy);
 
   return ptr;
+}
+
+static char *
+stx_build_list_id (THREAD_ENTRY * thread_p, char *ptr, QFILE_LIST_ID * listid)
+{
+  int count, i;
+
+  ptr = or_unpack_listid (ptr, listid);
+
+  count = listid->type_list.type_cnt;
+  if (count < 0)
+    {
+      goto error;
+    }
+
+  assert_release (count == 0);
+  assert_release (listid->type_list.domp == NULL);
+
+#if 0				/* DEAD CODE - for defense code */
+  if (count > 0)
+    {
+      /* TODO - need to replace with stx_alloc_struct to make tracking */
+      listid->type_list.domp =
+	(TP_DOMAIN **) db_private_alloc (thread_p,
+					 sizeof (TP_DOMAIN *) * count);
+
+      if (listid->type_list.domp == NULL)
+	{
+	  goto error;
+	}
+
+      for (i = 0; i < count; i++)
+	{
+	  ptr = or_unpack_domain (ptr, &listid->type_list.domp[i], NULL);
+	}
+    }
+#endif
+
+  return ptr;
+error:
+  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+  return NULL;
 }
 
 static char *
@@ -5895,6 +5959,20 @@ stx_build_srlist_id (THREAD_ENTRY * thread_p, char *ptr,
 	  return NULL;
 	}
     }
+
+  return ptr;
+}
+
+static char *
+stx_build_string (THREAD_ENTRY * thread_p, char *ptr, char *string)
+{
+  int offset;
+
+  ptr = or_unpack_int (ptr, &offset);
+  assert_release (offset > 0);
+
+  (void) memcpy (string, ptr, offset);
+  ptr += offset;
 
   return ptr;
 }

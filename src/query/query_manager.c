@@ -2177,8 +2177,9 @@ end:
   /* free the XASL tree */
   if (is_sync_query && query_p && query_p->xasl_buf_info)
     {
+      stx_free_additional_buff (thread_p, query_p->xasl_buf_info);
       stx_free_xasl_unpack_info (query_p->xasl_buf_info);
-      query_p->xasl_buf_info = NULL;
+      db_private_free_and_init (thread_p, query_p->xasl_buf_info);
       query_p->xasl = NULL;
     }
 
@@ -2326,8 +2327,9 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
       if (query_p->interrupt)
 	{
 	  /* free the XASL tree */
+	  stx_free_additional_buff (thread_p, query_p->xasl_buf_info);
 	  stx_free_xasl_unpack_info (query_p->xasl_buf_info);
-	  query_p->xasl_buf_info = NULL;
+	  db_private_free_and_init (thread_p, query_p->xasl_buf_info);
 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
 	  qmgr_set_query_error (thread_p, query_p->query_id);
@@ -2355,9 +2357,9 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
 	}
 
       /* free the XASL tree */
+      stx_free_additional_buff (thread_p, query_p->xasl_buf_info);
       stx_free_xasl_unpack_info (query_p->xasl_buf_info);
-      query_p->xasl_buf_info = NULL;
-
+      db_private_free_and_init (thread_p, query_p->xasl_buf_info);
 
       /* set main memory XASL pointer to NULL */
       query_p->xasl = (XASL_NODE *) NULL;
@@ -2567,8 +2569,9 @@ xqmgr_end_query (THREAD_ENTRY * thread_p, QUERY_ID query_id)
   /* free XASL tree if it hasn't been freed yet */
   if (query_p->xasl_buf_info != NULL)
     {
+      stx_free_additional_buff (thread_p, query_p->xasl_buf_info);
       stx_free_xasl_unpack_info (query_p->xasl_buf_info);
-      query_p->xasl = NULL;
+      db_private_free_and_init (thread_p, query_p->xasl_buf_info);
       query_p->xasl_buf_info = NULL;
     }
 
@@ -2896,13 +2899,14 @@ again:
 	  if (q->xasl_buf_info != NULL)
 	    {
 	      (void) qexec_clear_xasl (thread_p, q->xasl, true);
+	      stx_free_additional_buff (thread_p, q->xasl_buf_info);
 	      stx_free_xasl_unpack_info (q->xasl_buf_info);
+	      db_private_free_and_init (thread_p, q->xasl_buf_info);
 	    }
 	  /* must nullify qptr->xasl_buf_info here. otherwise,
 	   * qmgr_prepare_and_execute_query can seg fault in
 	   * its own call to stx_free_xasl_unpack_info.
 	   */
-	  q->xasl_buf_info = NULL;
 	  q->xasl = (XASL_NODE *) NULL;
 	}
 
@@ -4259,10 +4263,12 @@ qmgr_execute_async_select (THREAD_ENTRY * thread_p,
     {
       /* plan_cache=off; called from xqmgr_prepare_and_execute_query() */
       /* free XASL tree */
+      stx_free_additional_buff (thread_p, query_p->xasl_buf_info);
       stx_free_xasl_unpack_info (query_p->xasl_buf_info);
+      db_private_free_and_init (thread_p, query_p->xasl_buf_info);
     }
-  query_p->xasl = (XASL_NODE *) NULL;
   query_p->xasl_buf_info = NULL;
+  query_p->xasl = (XASL_NODE *) NULL;
 
   qmgr_check_waiter_and_wakeup (tran_entry_p, thread_p,
 				query_p->propagate_interrupt);

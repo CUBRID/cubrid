@@ -3586,11 +3586,16 @@ er_vsprintf (ER_FMT * fmt, va_list * ap)
       int size;
 
       if (er_Msg->args)
-	free_and_init (er_Msg->args);
+	{
+	  free_and_init (er_Msg->args);
+	}
+
       size = fmt->nspecs * sizeof (ER_VA_ARG);
       er_Msg->args = (ER_VA_ARG *) ER_MALLOC (size);
       if (er_Msg->args == NULL)
-	return ER_FAILED;
+	{
+	  return ER_FAILED;
+	}
       er_Msg->nargs = fmt->nspecs;
     }
 
