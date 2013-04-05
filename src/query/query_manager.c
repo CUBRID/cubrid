@@ -2572,7 +2572,6 @@ xqmgr_end_query (THREAD_ENTRY * thread_p, QUERY_ID query_id)
       stx_free_additional_buff (thread_p, query_p->xasl_buf_info);
       stx_free_xasl_unpack_info (query_p->xasl_buf_info);
       db_private_free_and_init (thread_p, query_p->xasl_buf_info);
-      query_p->xasl_buf_info = NULL;
     }
 
   /* remove the query entry if not repetitive query */
@@ -4262,10 +4261,11 @@ qmgr_execute_async_select (THREAD_ENTRY * thread_p,
   else
     {
       /* plan_cache=off; called from xqmgr_prepare_and_execute_query() */
-      /* free XASL tree */
-      stx_free_additional_buff (thread_p, query_p->xasl_buf_info);
-      stx_free_xasl_unpack_info (query_p->xasl_buf_info);
-      db_private_free_and_init (thread_p, query_p->xasl_buf_info);
+      /* later, free XASL tree at xqmgr_end_query() */
+      if (query_p->xasl_buf_info != NULL)
+	{
+	  stx_free_xasl_unpack_info (query_p->xasl_buf_info);
+	}
     }
   query_p->xasl_buf_info = NULL;
   query_p->xasl = (XASL_NODE *) NULL;
