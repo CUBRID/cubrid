@@ -1588,6 +1588,13 @@ stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
 	  assert_release (subcls_attr_p->id == disk_attr_p->id);
 	  assert_release (subcls_attr_p->n_btstats == disk_attr_p->n_btstats);
 
+	  if (!(subcls_attr_p->id == disk_attr_p->id
+		&& subcls_attr_p->n_btstats == disk_attr_p->n_btstats))
+	    {
+	      error = ER_FAILED;
+	      goto cleanup;
+	    }
+
 	  for (k = 0, btree_stats_p = disk_attr_p->bt_stats;
 	       k < disk_attr_p->n_btstats; k++, btree_stats_p++)
 	    {

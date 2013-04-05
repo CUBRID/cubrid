@@ -8213,6 +8213,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      {
 		DB_VALUE tmpval;
 
+		DB_MAKE_NULL (&tmpval);
 		err = db_clob_to_char (src, NULL, &tmpval);
 		if (err == NO_ERROR)
 		  {
@@ -8221,6 +8222,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 					      coercion_mode,
 					      do_domain_select, false);
 		  }
+
+		pr_clear_value (&tmpval);
 	      }
 	      break;
 	    }
@@ -8686,6 +8689,10 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
     {
       if (src != dest)
 	{
+#if 0				/* TODO - */
+	  db_value_clear (dest);
+#endif
+
 	  /* make sure this doesn't have any partial results */
 	  if (preserve_domain)
 	    {

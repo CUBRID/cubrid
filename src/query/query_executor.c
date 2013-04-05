@@ -635,6 +635,9 @@ static void qexec_clear_scan_all_lists (THREAD_ENTRY * thread_p,
 					XASL_NODE * xasl_list);
 static void qexec_clear_all_lists (THREAD_ENTRY * thread_p,
 				   XASL_NODE * xasl_list);
+static int qexec_clear_update_assignment (XASL_NODE * xasl_p,
+					  UPDATE_ASSIGNMENT * assignment,
+					  int final);
 static DB_LOGICAL qexec_eval_ordbynum_pred (THREAD_ENTRY * thread_p,
 					    ORDBYNUM_INFO * ordby_info);
 static int qexec_ordby_put_next (THREAD_ENTRY * thread_p,
@@ -1821,6 +1824,9 @@ qexec_clear_regu_var (XASL_NODE * xasl_p, REGU_VARIABLE * regu_var, int final)
       regu_var->value.attr_descr.cache_dbvalp = NULL;
       break;
     case TYPE_CONSTANT:
+#if 0				/* TODO - */
+    case TYPE_ORDERBY_NUM:
+#endif
       pr_clear_value (regu_var->value.dbvalptr);
       break;
     case TYPE_INARITH:
@@ -1859,6 +1865,10 @@ qexec_clear_regu_var (XASL_NODE * xasl_p, REGU_VARIABLE * regu_var, int final)
 	  pr_clear_value (&regu_var->value.dbval);
 	}
       break;
+#if 0				/* TODO - */
+    case TYPE_LIST_ID:
+    case TYPE_POSITION:
+#endif
     default:
       break;
     }
@@ -2398,7 +2408,6 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
 
   switch (xasl->type)
     {
-
     case BUILDLIST_PROC:
       {
 	BUILDLIST_PROC_NODE *buildlist = &xasl->proc.buildlist;
@@ -2531,22 +2540,40 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
 	    qexec_clear_xasl (thread_p, xasl->proc.merge.insert_xasl, final);
 	}
       break;
+
+    case UPDATE_PROC:
+      {
+	int i;
+	UPDATE_ASSIGNMENT *assignment = NULL;
+
+	pg_cnt += qexec_clear_pred (xasl, xasl->proc.update.cons_pred, final);
+
+	for (i = 0; i < xasl->proc.update.no_assigns; i++)
+	  {
+	    assignment = &(xasl->proc.update.assigns[i]);
+	    pg_cnt += qexec_clear_update_assignment (xasl, assignment, final);
+	  }
+      }
+      break;
+
     case INSERT_PROC:
       if (xasl->proc.insert.odku != NULL)
 	{
 	  int i;
 	  UPDATE_ASSIGNMENT *assignment = NULL;
+
+	  pg_cnt +=
+	    qexec_clear_pred (xasl, xasl->proc.insert.odku->cons_pred, final);
+
 	  for (i = 0; i < xasl->proc.insert.odku->no_assigns; i++)
 	    {
-	      assignment = &xasl->proc.insert.odku->assignments[i];
-	      if (assignment->regu_var != NULL)
-		{
-		  pg_cnt += qexec_clear_regu_var (xasl, assignment->regu_var,
-						  final);
-		}
+	      assignment = &(xasl->proc.insert.odku->assignments[i]);
+	      pg_cnt +=
+		qexec_clear_update_assignment (xasl, assignment, final);
 	    }
 	}
       break;
+
     default:
       break;
     }				/* switch */
@@ -2669,6 +2696,33 @@ qexec_clear_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list)
 	  qexec_clear_scan_all_lists (thread_p, xasl->scan_ptr);
 	}
     }
+}
+
+/*
+ * qexec_clear_update_assignment () -
+ *   return:
+ *   thread_p(in) :
+ *   assignment(in)   :
+ *   final(in)  :
+ */
+static int
+qexec_clear_update_assignment (XASL_NODE * xasl_p,
+			       UPDATE_ASSIGNMENT * assignment, int final)
+{
+  AGGREGATE_TYPE *p;
+  int pg_cnt;
+
+  if (!XASL_IS_FLAGED (xasl_p, XASL_QEXEC_MODE_ASYNC))
+    {
+      pr_clear_value (assignment->constant);
+    }
+
+  if (assignment->regu_var != NULL)
+    {
+      pg_cnt += qexec_clear_regu_var (xasl_p, assignment->regu_var, final);
+    }
+
+  return pg_cnt;
 }
 
 /*
@@ -10141,9 +10195,6 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   int n_indexes = 0;
   int error = 0;
   ODKU_INFO *odku_assignments = insert->odku;
-#if 0 /* !defined(NDEBUG) */	/* TODO */
-  int track_id;
-#endif
 
   aptr = xasl->aptr_list;
   val_no = insert->no_vals;
@@ -10179,10 +10230,6 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       return ER_FAILED;
     }
   savepoint_used = 1;
-
-#if 0 /* !defined(NDEBUG) */	/* TODO */
-  track_id = thread_rc_track_enter (thread_p);
-#endif
 
   if (insert->is_first_value)
     {
@@ -10379,13 +10426,6 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			   &specp->s_id, xasl_state->query_id,
 			   xasl->composite_locking) != NO_ERROR)
 	{
-#if 0 /* !defined(NDEBUG) */	/* TODO */
-	  if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
-	    {
-	      assert_release (false);
-	    }
-#endif
-
 	  if (savepoint_used)
 	    {
 	      xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
@@ -10780,13 +10820,6 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       pcontext = NULL;
     }
 
-#if 0 /* !defined(NDEBUG) */	/* TODO */
-  if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
-    {
-      assert_release (false);
-    }
-#endif
-
   if (savepoint_used)
     {
       if (xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER,
@@ -10862,13 +10895,6 @@ exit_on_error:
       (void) locator_end_force_scan_cache (thread_p, &scan_cache);
     }
 
-#if 0 /* !defined(NDEBUG) */	/* TODO */
-  if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
-    {
-      assert_release (false);
-    }
-#endif
-
   if (savepoint_used)
     {
       xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
@@ -10878,6 +10904,7 @@ exit_on_error:
       partition_clear_pruning_context (pcontext);
       pcontext = NULL;
     }
+
   return ER_FAILED;
 }
 
@@ -13417,9 +13444,6 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
 #endif /* CUBRID_DEBUG */
   QMGR_QUERY_ENTRY *query_entryp;
   struct drand48_data *rand_buf_p;
-#if 0 /* !defined(NDEBUG) */	/* TODO - care async */
-  int track_id;
-#endif
 
 #if defined(CUBRID_DEBUG)
   {
@@ -13529,20 +13553,9 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
        * transaction is unilaterally aborted during query execution.
        */
 
-#if 0 /* !defined(NDEBUG) */	/* TODO - care async */
-      track_id = thread_rc_track_enter (thread_p);
-#endif
-
       xasl->query_in_progress = true;
       stat = qexec_execute_mainblock (thread_p, xasl, &xasl_state);
       xasl->query_in_progress = false;
-
-#if 0 /* !defined(NDEBUG) */	/* TODO - care async */
-      if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
-	{
-	  assert_release (false);
-	}
-#endif
 
       if (stat != NO_ERROR)
 	{
@@ -17980,27 +17993,32 @@ qexec_start_connect_by_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       /* parent position pseudocolumn */
       if (i == xasl->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET)
 	{
+	  pr_clear_value (regulist->value.value.dbvalptr);
 	  DB_MAKE_BIT (regulist->value.value.dbvalptr, DB_DEFAULT_PRECISION,
 		       NULL, 8);
 	}
       /* string index pseudocolumn */
       if (i == xasl->outptr_list->valptr_cnt - PCOL_INDEX_STRING_TUPLE_OFFSET)
 	{
+	  pr_clear_value (regulist->value.value.dbvalptr);
 	  DB_MAKE_STRING (regulist->value.value.dbvalptr, "");
 	}
       /* level pseudocolumn */
       if (i == xasl->outptr_list->valptr_cnt - PCOL_LEVEL_TUPLE_OFFSET)
 	{
+	  pr_clear_value (regulist->value.value.dbvalptr);
 	  DB_MAKE_INT (regulist->value.value.dbvalptr, 0);
 	}
       /* connect_by_isleaf pseudocolumn */
       if (i == xasl->outptr_list->valptr_cnt - PCOL_ISLEAF_TUPLE_OFFSET)
 	{
+	  pr_clear_value (regulist->value.value.dbvalptr);
 	  DB_MAKE_INT (regulist->value.value.dbvalptr, 0);
 	}
       /* connect_by_iscycle pseudocolumn */
       if (i == xasl->outptr_list->valptr_cnt - PCOL_ISCYCLE_TUPLE_OFFSET)
 	{
+	  pr_clear_value (regulist->value.value.dbvalptr);
 	  DB_MAKE_INT (regulist->value.value.dbvalptr, 0);
 	}
 
@@ -19248,6 +19266,10 @@ exit_on_error:
 
   if (list_dbvals)
     {
+      for (i = 0; i < ncolumns; i++)
+	{
+	  pr_clear_value (&(list_dbvals[i]));
+	}
       db_private_free (thread_p, list_dbvals);
     }
 
@@ -23477,6 +23499,7 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
       DB_DATA_STATUS data_stat;
 
       db_make_int (&db_int_precision, precision);
+      DB_MAKE_NULL (&db_str_precision);
       if (tp_value_strict_cast (&db_int_precision, &db_str_precision,
 				&tp_String_domain) != DOMAIN_COMPATIBLE)
 	{
@@ -23509,11 +23532,13 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 	  db_value_clear (pprec_scale_arg1);
 	  goto exit_on_error;
 	}
+      db_value_clear (&db_str_precision);
       db_value_clear (pprec_scale_arg1);
 
       if (scale >= 0)
 	{
 	  db_make_int (&db_int_scale, scale);
+	  DB_MAKE_NULL (&db_str_scale);
 	  if (tp_value_strict_cast (&db_int_scale, &db_str_scale,
 				    &tp_String_domain) != DOMAIN_COMPATIBLE)
 	    {
@@ -23545,6 +23570,7 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 	      db_value_clear (pprec_scale_arg1);
 	      goto exit_on_error;
 	    }
+	  db_value_clear (&db_str_scale);
 	  db_value_clear (pprec_scale_arg1);
 	}
 

@@ -1270,6 +1270,8 @@ partition_prune_hash (PRUNING_CONTEXT * pinfo, const DB_VALUE * val_p,
   DB_VALUE val;
   MATCH_STATUS status = MATCH_NOT_FOUND;
 
+  DB_MAKE_NULL (&val);
+
   col_domain = pinfo->partition_pred->func_regu->domain;
   switch (op)
     {
@@ -1315,7 +1317,8 @@ partition_prune_hash (PRUNING_CONTEXT * pinfo, const DB_VALUE * val_p,
 	    /* This is an error and it should be handled outside of the
 	     * pruning environment
 	     */
-	    return MATCH_NOT_FOUND;
+	    status = MATCH_NOT_FOUND;
+	    goto cleanup;
 	  }
 
 	values = DB_GET_COLLECTION (val_p);
@@ -1323,7 +1326,8 @@ partition_prune_hash (PRUNING_CONTEXT * pinfo, const DB_VALUE * val_p,
 	if (size < 0)
 	  {
 	    pinfo->error_code = ER_FAILED;
-	    return MATCH_NOT_FOUND;
+	    status = MATCH_NOT_FOUND;
+	    goto cleanup;
 	  }
 
 	for (i = 0; i < size; i++)
@@ -1333,7 +1337,8 @@ partition_prune_hash (PRUNING_CONTEXT * pinfo, const DB_VALUE * val_p,
 	    if (db_set_get (values, i, &col) != NO_ERROR)
 	      {
 		pinfo->error_code = ER_FAILED;
-		return MATCH_NOT_FOUND;
+		status = MATCH_NOT_FOUND;
+		goto cleanup;
 	      }
 
 	    if (TP_DOMAIN_TYPE (col_domain) != DB_VALUE_TYPE (&col))
@@ -1370,6 +1375,9 @@ partition_prune_hash (PRUNING_CONTEXT * pinfo, const DB_VALUE * val_p,
       status = MATCH_NOT_FOUND;
       break;
     }
+
+cleanup:
+  pr_clear_value (&val);
 
   return status;
 }

@@ -471,18 +471,18 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p,
   pwc = stx_restore_filter_pred_node (thread_p, pred_stream + offset);
   if (!pwc)
     {
-      stx_free_visited_ptrs (thread_p);
       stx_free_additional_buff (thread_p, unpack_info_p);
       stx_free_xasl_unpack_info (unpack_info_p);
       db_private_free_and_init (thread_p, unpack_info_p);
 
-      return stx_get_xasl_errcode (thread_p);
+      goto end;
     }
 
   /* set result */
   *pred = pwc;
   *pred_unpack_info_ptr = unpack_info_p;
 
+end:
   stx_free_visited_ptrs (thread_p);
 #if defined(SERVER_MODE)
   stx_set_xasl_unpack_info_ptr (thread_p, NULL);
@@ -530,18 +530,18 @@ stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED ** xasl,
   p_xasl = stx_restore_func_pred (thread_p, xasl_stream + offset);
   if (!p_xasl)
     {
-      stx_free_visited_ptrs (thread_p);
       stx_free_additional_buff (thread_p, unpack_info_p);
       stx_free_xasl_unpack_info (unpack_info_p);
       db_private_free_and_init (thread_p, unpack_info_p);
 
-      return stx_get_xasl_errcode (thread_p);
+      goto end;
     }
 
   /* set result */
   *xasl = p_xasl;
   *xasl_unpack_info_ptr = unpack_info_p;
 
+end:
   stx_free_visited_ptrs (thread_p);
 #if defined(SERVER_MODE)
   stx_set_xasl_unpack_info_ptr (thread_p, NULL);
@@ -2616,22 +2616,23 @@ stx_build_cache_attrinfo (char *ptr)
 static char *
 stx_build_list_id (THREAD_ENTRY * thread_p, char *ptr, QFILE_LIST_ID * listid)
 {
-  int count, i;
-
   ptr = or_unpack_listid (ptr, listid);
 
-  count = listid->type_list.type_cnt;
-  if (count < 0)
+  if (listid->type_list.type_cnt < 0)
     {
       goto error;
     }
 
-  assert_release (count == 0);
+  assert_release (listid->type_list.type_cnt == 0);
   assert_release (listid->type_list.domp == NULL);
 
 #if 0				/* DEAD CODE - for defense code */
-  if (count > 0)
+  if (listid->type_list.type_cnt > 0)
     {
+      int count, i;
+
+      count = listid->type_list.type_cnt;
+
       /* TODO - need to replace with stx_alloc_struct to make tracking */
       listid->type_list.domp =
 	(TP_DOMAIN **) db_private_alloc (thread_p,

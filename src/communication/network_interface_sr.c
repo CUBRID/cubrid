@@ -9677,13 +9677,17 @@ error:
   goto cleanup;
 
 cleanup:
+  if (data_reply != NULL)
+    {
+      free_and_init (data_reply);
+    }
   if (stmt_info != NULL)
     {
       free_and_init (stmt_info);
     }
-  if (data_reply != NULL)
+  if (name != NULL)
     {
-      free_and_init (data_reply);
+      db_private_free_and_init (thread_p, name);
     }
 }
 

@@ -9422,7 +9422,8 @@ pt_check_method (PARSER_CONTEXT * parser, PT_NODE * node)
   DB_MAKE_NULL (&val);
 
   /* check if call has a target */
-  if (!(target = node->info.method_call.on_call_target))
+  target = node->info.method_call.on_call_target;
+  if (target == NULL)
     {
       if (jsp_is_exist_stored_procedure
 	  (node->info.method_call.method_name->info.name.original))
