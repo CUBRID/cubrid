@@ -157,6 +157,7 @@ static int css_free_job_entry_func (void *data, void *dummy);
 static void css_empty_job_queue (void);
 static void css_setup_server_loop (void);
 static int css_check_conn (CSS_CONN_ENTRY * p);
+static void css_set_shutdown_timeout (int timeout);
 static int css_get_master_request (SOCKET master_fd);
 static int css_process_master_request (SOCKET master_fd);
 static void css_process_shutdown_request (SOCKET master_fd);
@@ -582,6 +583,21 @@ css_check_conn (CSS_CONN_ENTRY * p)
 }
 
 /*
+ * css_set_shutdown_timeout() -
+ *   return:
+ *   timeout(in):
+ */
+static void
+css_set_shutdown_timeout (int timeout)
+{
+  if (gettimeofday (&css_Shutdown_timeout, NULL) == 0)
+    {
+      css_Shutdown_timeout.tv_sec += timeout;
+    }
+  return;
+}
+
+/*
  * css_master_thread() - Master thread, accept/process master process's request
  *   return:
  *   arg(in):
@@ -701,6 +717,9 @@ css_master_thread (void)
 	}
     }
 
+  css_set_shutdown_timeout (prm_get_integer_value
+			    (PRM_ID_SHUTDOWN_WAIT_TIME_IN_SECS));
+
   /* going down, so stop dispatching request */
   css_empty_job_queue ();
 
@@ -795,14 +814,6 @@ css_process_shutdown_request (SOCKET master_fd)
   int r, timeout;
 
   timeout = (int) css_get_master_request (master_fd);
-
-  if (gettimeofday (&css_Shutdown_timeout, NULL) != 0)
-    {
-      return;
-    }
-
-  css_Shutdown_timeout.tv_sec +=
-    prm_get_integer_value (PRM_ID_SHUTDOWN_WAIT_TIME_IN_SECS);
 
   r = css_readn (master_fd, buffer, MASTER_TO_SRV_MSG_SIZE, -1);
   if (r < 0)
@@ -2338,9 +2349,9 @@ css_can_occupy_worker_thread_on_jobq (int jobq_index)
        wait_thrd; wait_thrd = wait_thrd->worker_thrd_list)
     {
       if (wait_thrd->status == TS_FREE)
-        {
-          return true;
-        }
+	{
+	  return true;
+	}
     }
 
   return false;

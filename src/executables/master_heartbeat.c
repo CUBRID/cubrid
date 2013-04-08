@@ -2023,21 +2023,25 @@ hb_resource_job_confirm_start (HB_JOB_ARG * arg)
 
       snprintf (error_string, LINE_MAX, "(exceed max retry count, args:%s)",
 		proc->args);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
-	      "Failed to restart the process", error_string);
 
       if (hb_Resource->state == HB_NSTATE_MASTER
 	  && proc->type == HB_PTYPE_SERVER)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
+		  "Failed to restart the process", error_string);
 	  free_and_init (arg);
 	  css_master_cleanup (SIGTERM);
 	  return;
 	}
       else
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
+		  "Keep checking to confirm the completion of the process startup",
+		  error_string);
 	  proc_arg->retries = 0;
-	  error = hb_resource_job_queue (HB_RJOB_PROC_START, arg,
-					 HB_JOB_TIMER_WAIT_A_SECOND);
+	  error = hb_resource_job_queue (HB_RJOB_CONFIRM_START, arg,
+					 prm_get_integer_value
+					 (PRM_ID_HA_PROCESS_START_CONFIRM_INTERVAL_IN_MSECS));
 	  if (error != NO_ERROR)
 	    {
 	      assert (false);

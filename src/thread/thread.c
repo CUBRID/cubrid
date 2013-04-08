@@ -2527,6 +2527,12 @@ thread_deadlock_detect_thread (void *arg_p)
 	  /* none is lock-waiting */
 	  rv = pthread_mutex_lock (&thread_Deadlock_detect_thread.lock);
 	  thread_Deadlock_detect_thread.is_running = false;
+
+	  if (tsd_ptr->shutdown)
+	    {
+	      pthread_mutex_unlock (&thread_Deadlock_detect_thread.lock);
+	      break;
+	    }
 	  pthread_cond_wait (&thread_Deadlock_detect_thread.cond,
 			     &thread_Deadlock_detect_thread.lock);
 
