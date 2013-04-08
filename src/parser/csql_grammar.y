@@ -630,6 +630,8 @@ typedef struct YYLTYPE
 %type <number> constraint_list
 %type <number> opt_full
 %type <number> of_analytic
+%type <number> of_analytic_first_last
+%type <number> of_analytic_nth_value
 %type <number> of_analytic_lead_lag
 %type <number> of_analytic_no_args
 %type <number> negative_prec_cast_type
@@ -906,6 +908,8 @@ typedef struct YYLTYPE
 %type <node> session_variable_definition
 %type <node> session_variable_expression
 %type <node> session_variable_list
+%type <node> opt_analytic_from_last
+%type <node> opt_analytic_ignore_nulls
 %type <node> opt_analytic_partition_by
 %type <node> opt_analytic_order_by
 %type <node> opt_table_spec_index_hint
@@ -1182,6 +1186,7 @@ typedef struct YYLTYPE
 %token NOT
 %token Null
 %token NULLIF
+%token NULLS
 %token NUMERIC
 %token OBJECT
 %token OCTET_LENGTH
@@ -1223,6 +1228,7 @@ typedef struct YYLTYPE
 %token RENAME
 %token REPLACE
 %token RESIGNAL
+%token RESPECT
 %token RESTRICT
 %token RETURN
 %token RETURNS
@@ -1388,6 +1394,7 @@ typedef struct YYLTYPE
 %token <cptr> DENSE_RANK
 %token <cptr> ELT
 %token <cptr> EXPLAIN
+%token <cptr> FIRST_VALUE
 %token <cptr> GE_INF_
 %token <cptr> GE_LE_
 %token <cptr> GE_LT_
@@ -1411,6 +1418,7 @@ typedef struct YYLTYPE
 %token <cptr> KEYS
 %token <cptr> JAVA
 %token <cptr> LAG
+%token <cptr> LAST_VALUE
 %token <cptr> LCASE
 %token <cptr> LEAD
 %token <cptr> LOCK_
@@ -1423,7 +1431,9 @@ typedef struct YYLTYPE
 %token <cptr> NOCACHE
 %token <cptr> NOMAXVALUE
 %token <cptr> NOMINVALUE
+%token <cptr> NTH_VALUE
 %token <cptr> NTILE
+%token <cptr> NULLS
 %token <cptr> OFFSET
 %token <cptr> OWNER
 %token <cptr> PARTITIONING
@@ -1438,6 +1448,7 @@ typedef struct YYLTYPE
 %token <cptr> REMOVE
 %token <cptr> REORGANIZE
 %token <cptr> REPEATABLE
+%token <cptr> RESPECT
 %token <cptr> RETAIN
 %token <cptr> REUSE_OID
 %token <cptr> REVERSE
@@ -13503,6 +13514,69 @@ reserved_func
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| of_analytic_first_last '(' expression_ ')' opt_analytic_ignore_nulls OVER '(' opt_analytic_partition_by opt_analytic_order_by ')'
+		{{
+
+			PT_NODE *node = parser_new_node (this_parser, PT_FUNCTION);
+
+			if (node)
+			  {
+			    node->info.function.function_type = $1;
+			    node->info.function.all_or_distinct = PT_ALL;
+			    node->info.function.arg_list = $3;
+
+			    if ($5 == PT_IGNORE_NULLS)
+			      {
+			        node->info.function.analytic.ignore_nulls = true;
+			      }
+
+			    node->info.function.analytic.is_analytic = true;
+			    node->info.function.analytic.partition_by = $8;
+			    node->info.function.analytic.order_by = $9;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| of_analytic_nth_value '(' expression_ ',' expression_ ')' opt_analytic_from_last opt_analytic_ignore_nulls OVER '(' opt_analytic_partition_by opt_analytic_order_by ')'
+		{{
+
+			PT_NODE *node = parser_new_node (this_parser, PT_FUNCTION);
+
+			if (node)
+			  {
+			    node->info.function.function_type = $1;
+			    node->info.function.all_or_distinct = PT_ALL;
+			    node->info.function.arg_list = $3;
+
+			    node->info.function.analytic.offset = $5;
+
+			    node->info.function.analytic.default_value = parser_new_node (this_parser, PT_VALUE);
+			    if (node->info.function.analytic.default_value != NULL)
+			      {
+				    node->info.function.analytic.default_value->type_enum = PT_TYPE_NULL;
+			      }
+
+			    if ($7 == PT_FROM_LAST)
+			      {
+			        node->info.function.analytic.from_last = true;
+			      }
+
+			    if ($8 == PT_IGNORE_NULLS)
+			      {
+			        node->info.function.analytic.ignore_nulls = true;
+			      }
+
+			    node->info.function.analytic.is_analytic = true;
+			    node->info.function.analytic.partition_by = $11;
+			    node->info.function.analytic.order_by = $12;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	| of_analytic_lead_lag '(' expression_ ')' OVER '(' opt_analytic_partition_by opt_analytic_order_by ')'
 		{{
 
@@ -14656,6 +14730,30 @@ of_analytic
 	/* add other analytic functions here */
 	;
 
+of_analytic_first_last
+	: FIRST_VALUE
+		{{
+
+			$$ = PT_FIRST_VALUE;
+
+		DBG_PRINT}}
+	| LAST_VALUE
+		{{
+
+			$$ = PT_LAST_VALUE;
+
+		DBG_PRINT}}
+	;
+
+of_analytic_nth_value
+	: NTH_VALUE
+		{{
+
+			$$ = PT_NTH_VALUE;
+
+		DBG_PRINT}}
+	;
+
 of_analytic_lead_lag
 	: LEAD
 		{{
@@ -14734,6 +14832,48 @@ opt_agg_order_by
 
 			$$ = $3;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
+opt_analytic_from_last
+	: /* empty */
+		{{
+
+			$$ = NULL;
+
+		DBG_PRINT}}
+	| FROM FIRST
+		{{
+
+			$$ = NULL;
+
+		DBG_PRINT}}
+	| FROM LAST
+		{{
+
+			$$ = PT_FROM_LAST;
+
+		DBG_PRINT}}
+	;
+
+opt_analytic_ignore_nulls
+	: /* empty */
+		{{
+
+			$$ = NULL;
+
+		DBG_PRINT}}
+	| RESPECT NULLS
+		{{
+
+			$$ = NULL;
+
+		DBG_PRINT}}
+	| IGNORE_ NULLS
+		{{
+
+			$$ = PT_IGNORE_NULLS;
 
 		DBG_PRINT}}
 	;
@@ -19380,6 +19520,71 @@ identifier
 		DBG_PRINT}}
 /*}}}*/
 	| NTILE
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p != NULL)
+			  {
+			    p->info.name.original = $1;
+			  }
+
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| FIRST_VALUE
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p != NULL)
+			  {
+			    p->info.name.original = $1;
+			  }
+
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| LAST_VALUE
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p != NULL)
+			  {
+			    p->info.name.original = $1;
+			  }
+
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| NTH_VALUE
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p != NULL)
+			  {
+			    p->info.name.original = $1;
+			  }
+
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| RESPECT
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p != NULL)
+			  {
+			    p->info.name.original = $1;
+			  }
+
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| NULLS
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);

@@ -1180,7 +1180,8 @@ $ LOADDB
 1111 プレシジョン「%1$d」が結果の長さ「%2$d」より短いため、結果が切りました。
 1112 A character could not be converted from '%1$s' to '%2$s'.
 1113 Element index out of range.
-1114 ラストエラー
+1114 Argument '%s' is out of range.
+1115 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %d):

@@ -21075,6 +21075,8 @@ pt_to_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree,
     (func_info->all_or_distinct == PT_ALL) ? Q_ALL : Q_DISTINCT;
   analytic->domain = pt_xasl_node_to_domain (parser, tree);
   analytic->value = (DB_VALUE *) tree->etc;
+  analytic->from_last = func_info->analytic.from_last;
+  analytic->ignore_nulls = func_info->analytic.ignore_nulls;
 
   /* set value types */
   if (!regu_dbval_type_init (analytic->value, pt_node_to_db_type (tree)) ||
@@ -21131,9 +21133,10 @@ pt_to_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree,
       analytic->sort_list = NULL;
     }
 
-  /* find indexes of offset and default values for LEAD/LAG */
+  /* find indexes of offset and default values for LEAD/LAG/NTH_VALUE */
   if (func_info->function_type == PT_LEAD
-      || func_info->function_type == PT_LAG)
+      || func_info->function_type == PT_LAG
+      || func_info->function_type == PT_NTH_VALUE)
     {
       bool off_found = false, def_found = false;
       int idx = 0;
@@ -21453,7 +21456,8 @@ pt_expand_analytic_node (PARSER_CONTEXT * parser, PT_NODE * node,
     }
 
   if (node->info.function.function_type == PT_LEAD
-      || node->info.function.function_type == PT_LAG)
+      || node->info.function.function_type == PT_LAG
+      || node->info.function.function_type == PT_NTH_VALUE)
     {
       /* add offset and default value expressions to select list */
       ptr = pt_point_ref (parser, node->info.function.analytic.offset);

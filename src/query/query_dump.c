@@ -1316,6 +1316,12 @@ qdump_function_type_string (FUNC_TYPE ftype)
       return "DENSE_RANK";
     case PT_NTILE:
       return "NTILE";
+    case PT_FIRST_VALUE:
+      return "FIRST_VALUE";
+    case PT_LAST_VALUE:
+      return "LAST_VALUE";
+    case PT_NTH_VALUE:
+      return "NTH_VALUE";
     case F_TABLE_SET:
       return "F_TABLE_SET";
     case F_TABLE_MULTISET:

@@ -9335,6 +9335,9 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
     }
 
   if (DB_IS_NULL (&dbval) && func_p->function != PT_ROW_NUMBER
+      && func_p->function != PT_FIRST_VALUE
+      && func_p->function != PT_LAST_VALUE
+      && func_p->function != PT_NTH_VALUE
       && func_p->function != PT_RANK && func_p->function != PT_DENSE_RANK)
     {
       if (func_p->function == PT_COUNT || func_p->function == PT_COUNT_STAR)
@@ -9349,6 +9352,21 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 	}
 
       goto exit;
+    }
+
+  /* handle IGNORE NULLS */
+  if (func_p->ignore_nulls && DB_IS_NULL (&dbval))
+    {
+      switch (func_p->function)
+	{
+	case PT_FIRST_VALUE:
+	case PT_LAST_VALUE:
+	  goto exit;
+	  break;
+
+	default:
+	  break;
+	}
     }
 
   if (func_p->option == Q_DISTINCT)
@@ -9436,6 +9454,21 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 
     case PT_LEAD:
     case PT_LAG:
+      /* just copy */
+      pr_clear_value (func_p->value);
+      pr_clone_value (&dbval, func_p->value);
+      break;
+
+    case PT_FIRST_VALUE:
+      opr_dbval_p = &dbval;
+      if (func_p->curr_cnt < 1)
+	{
+	  copy_opr = true;
+	}
+      break;
+
+    case PT_LAST_VALUE:
+    case PT_NTH_VALUE:
       /* just copy */
       pr_clear_value (func_p->value);
       pr_clone_value (&dbval, func_p->value);

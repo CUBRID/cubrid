@@ -4358,6 +4358,8 @@ regu_analytic_init (ANALYTIC_TYPE * ptr)
   ptr->opr_dbtype = DB_TYPE_NULL;
   ptr->flag = 0;
   ptr->eval_group = -1;
+  ptr->from_last = false;
+  ptr->ignore_nulls = false;
 }
 
 /*

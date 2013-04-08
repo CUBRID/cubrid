@@ -1180,7 +1180,8 @@ $ LOADDB
 1111 Valore risultante viene troncato, poiché la precisione(%1$d) è inferiore alla sua lunghezza(%2$d).
 1112 A character could not be converted from '%1$s' to '%2$s'.
 1113 Element index out of range.
-1114 Ultimo errore
+1114 Argument '%s' is out of range.
+1115 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %d):

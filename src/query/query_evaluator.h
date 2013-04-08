@@ -90,13 +90,17 @@ typedef enum
 
 /* "normal" functions, arguments are values */
   F_SET, F_MULTISET, F_SEQUENCE, F_VID, F_GENERIC, F_CLASS_OF,
-  F_INSERT_SUBSTRING, F_ELT
+  F_INSERT_SUBSTRING, F_ELT,
+
+/* only for FIRST_VALUE. LAST_VALUE, NTH_VALUE analytic functions */
+  PT_FIRST_VALUE, PT_LAST_VALUE, PT_NTH_VALUE
 } FUNC_TYPE;
 
 #define QPROC_ANALYTIC_HAS_SUBPARTITIONS(func_p) \
   (((func_p) != NULL) \
    && ((func_p)->function != PT_LEAD) \
    && ((func_p)->function != PT_LAG) \
+   && ((func_p)->function != PT_NTH_VALUE) \
    && ((func_p)->function != PT_NTILE))
 
 #define NUM_F_GENERIC_ARGS 32
@@ -475,10 +479,12 @@ struct analytic_list_node
   int partition_cnt;		/* number of partition items in sort list */
   int outptr_idx;		/* index of reguvar in list */
   int offset_idx;		/* index of offset value in select list (for
-				   LEAD/LAG functions) */
+				   LEAD/LAG/NTH_value functions) */
   int default_idx;		/* index of default value in select list (for
 				   LEAD/LAG functions) */
   int eval_group;		/* evaluation group id */
+  bool from_last;		/* begin at the last or first row */
+  bool ignore_nulls;		/* ignore or respect NULL values */
 
   /* runtime values */
   ANALYTIC_FUNCTION_INFO info;	/* custom function runtime values */

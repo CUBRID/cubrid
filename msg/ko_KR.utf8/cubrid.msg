@@ -1180,7 +1180,8 @@ $ LOADDB
 1111 결과값의 길이(%2$d)가 precision(%1$d)보다 커서 값이 잘립니다.
 1112 A character could not be converted from '%1$s' to '%2$s'.
 1113 Element index out of range.
-1114 마지막 에러
+1114 Argument '%s' is out of range.
+1115 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %d):

@@ -1046,7 +1046,10 @@ typedef enum
   PT_SP_INOUT,
 
   PT_LOB_INTERNAL,
-  PT_LOB_EXTERNAL
+  PT_LOB_EXTERNAL,
+
+  PT_FROM_LAST,
+  PT_IGNORE_NULLS
 } PT_MISC_TYPE;
 
 /* Enumerated join type */
@@ -2087,7 +2090,9 @@ struct pt_function_info
     PT_NODE *partition_by;	/* partition PT_SORT_SPEC list */
     PT_NODE *order_by;		/* ordering PT_SORT_SPEC list */
     PT_NODE *default_value;	/* LEAD/LAG function default value */
-    PT_NODE *offset;		/* LEAD/LAG function offset */
+    PT_NODE *offset;		/* LEAD/LAG/NTH_VALUE function offset */
+    bool from_last;		/* determines whether the calculation begins at the last or first row */
+    bool ignore_nulls;		/* determines whether the calculation eliminate or includes null values */
     bool is_analytic;		/* is analytic clause */
   } analytic;
 };

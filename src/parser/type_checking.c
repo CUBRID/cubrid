@@ -12314,6 +12314,9 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
     case PT_MAX:
     case PT_MIN:
+    case PT_FIRST_VALUE:
+    case PT_LAST_VALUE:
+    case PT_NTH_VALUE:
       if (!PT_IS_NUMERIC_TYPE (arg_type)
 	  && !PT_IS_STRING_TYPE (arg_type)
 	  && !PT_IS_DATE_TIME_TYPE (arg_type)

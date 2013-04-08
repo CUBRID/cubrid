@@ -19565,9 +19565,10 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       func_list->value = function_regu->value.vfetch_to;
 
       if (func_list->function != PT_ROW_NUMBER
-	  && func_list->function != PT_LEAD && func_list->function != PT_LAG)
+	  && func_list->function != PT_LEAD && func_list->function != PT_LAG
+	  && func_list->function != PT_NTH_VALUE)
 	{
-	  /* for anything but ROWNUM, LEAD and LAG the fetched value should be
+	  /* for anything but ROWNUM, NTH_VALUE, LEAD and LAG the fetched value should be
 	   * put in a secluded place - in this case, the function's old
 	   * DB_VALUE */
 	  function_regu->value.vfetch_to = func_list->save_value;
@@ -19789,7 +19790,8 @@ wrapup:
       /* restore output pointer list */
       if (func_list->function == PT_ROW_NUMBER
 	  || analytic_func_p->function == PT_LEAD
-	  || analytic_func_p->function == PT_LAG)
+	  || analytic_func_p->function == PT_LAG
+	  || analytic_func_p->function == PT_NTH_VALUE)
 	{
 	  func_list->value = func_list->save_value;
 	}
@@ -20194,7 +20196,7 @@ qexec_analytic_eval_instnum_pred (THREAD_ENTRY * thread_p,
   while (func_p != NULL)
     {
       if (func_p->function == PT_LEAD || func_p->function == PT_LAG
-	  || func_p->function == PT_NTILE)
+	  || func_p->function == PT_NTILE || func_p->function == PT_NTH_VALUE)
 	{
 	  /* inst_num() predicate is evaluated at group processing for these
 	     functions, as the result is computed at this stage using all
@@ -20530,7 +20532,6 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p,
 {
   REGU_VARIABLE_LIST regulist;
   REGU_VARIABLE_LIST save_next;
-  TP_DOMAIN_STATUS coerce_status;
   DB_VALUE *default_val_p;
   DB_VALUE *output_val_p;
   DB_VALUE offset_val;
@@ -20540,6 +20541,8 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p,
   int target_idx;
   int error = NO_ERROR;
   TP_DOMAIN_STATUS dom_status;
+  double nth_idx = 0.0;
+  char buf[64];
 
   if (func_p == NULL)
     {
@@ -20547,8 +20550,9 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p,
       return NO_ERROR;
     }
 
-  /* process 'offset' functions (i.e. lead/lag) */
-  if (func_p->function != PT_LEAD && func_p->function != PT_LAG)
+  /* process 'offset' functions (i.e. lead/lag/nth_value) */
+  if (func_p->function != PT_LEAD && func_p->function != PT_LAG
+      && func_p->function != PT_NTH_VALUE)
     {
       /* nothing to do */
       return NO_ERROR;
@@ -20604,27 +20608,30 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
-  dom_status = tp_value_coerce (regulist->value.vfetch_to, &offset_val,
-				&tp_Integer_domain);
-  if (dom_status != DOMAIN_COMPATIBLE)
+  if (func_p->function == PT_LEAD || func_p->function == PT_LAG)
     {
-      error =
-	tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
-				 regulist->value.vfetch_to,
-				 &tp_Integer_domain);
-      assert_release (error != NO_ERROR);
+      dom_status =
+	tp_value_coerce (regulist->value.vfetch_to, &offset_val,
+			 &tp_Integer_domain);
+      if (dom_status != DOMAIN_COMPATIBLE)
+	{
+	  error =
+	    tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
+				     regulist->value.vfetch_to,
+				     &tp_Integer_domain);
+	  assert_release (error != NO_ERROR);
+	  return error;
+	}
 
-      return error;
-    }
-
-  /* guard against NULL */
-  if (!DB_IS_NULL (&offset_val))
-    {
-      target_idx = offset_val.data.i;
-    }
-  else
-    {
-      target_idx = 0;
+      /* guard against NULL */
+      if (!DB_IS_NULL (&offset_val))
+	{
+	  target_idx = offset_val.data.i;
+	}
+      else
+	{
+	  target_idx = 0;
+	}
     }
 
   /* get target tuple index */
@@ -20636,6 +20643,52 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p,
 
     case PT_LAG:
       target_idx = tuple_idx - target_idx;
+      break;
+
+    case PT_NTH_VALUE:
+      dom_status = tp_value_coerce (regulist->value.vfetch_to, &offset_val,
+				    &tp_Double_domain);
+      if (dom_status != DOMAIN_COMPATIBLE)
+	{
+	  error =
+	    tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
+				     regulist->value.vfetch_to,
+				     &tp_Double_domain);
+	  assert_release (error != NO_ERROR);
+	  return error;
+	}
+
+      if (DB_IS_NULL (&offset_val))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_ARG_OUT_OF_RANGE, 1, "NULL");
+	  return ER_FAILED;
+	}
+
+      nth_idx = DB_GET_DOUBLE (&offset_val);
+
+      if (nth_idx < 1.0 || nth_idx > DB_INT32_MAX)
+	{
+	  sprintf (buf, "%.15g", nth_idx);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_ARG_OUT_OF_RANGE, 1, buf);
+	  return ER_FAILED;
+	}
+
+      target_idx = (int) floor (nth_idx);
+
+      if (target_idx <= tuple_idx + 1 && target_idx > 0)
+	{
+	  target_idx = target_idx - 1;
+	  if (func_p->from_last)
+	    {
+	      target_idx = tuple_idx - target_idx;
+	    }
+	}
+      else
+	{
+	  target_idx = -1;
+	}
       break;
 
     default:
@@ -20708,9 +20761,59 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p,
       /* re-fetch function value for new tuple; domains should be the same */
       save_next = regulist->next;
       regulist->next = NULL;
-      fetch_val_list (thread_p, regulist, val_desc, NULL, NULL,
-		      func_p->info.offset.tplrec.tpl, PEEK);
+      error = fetch_val_list (thread_p, regulist, val_desc, NULL, NULL,
+			      func_p->info.offset.tplrec.tpl, PEEK);
+      if (error != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
       regulist->next = save_next;
+
+      /* handle IGNORE NULLS
+       * locate the first non-NULL position for NTH_VALUE() */
+      if (func_p->function == PT_NTH_VALUE && func_p->ignore_nulls)
+	{
+	  while (DB_IS_NULL (output_val_p)
+		 && ((func_p->from_last
+		      && func_p->info.offset.tuple_idx > 0)
+		     || (!func_p->from_last
+			 && func_p->info.offset.tuple_idx < tuple_idx)))
+	    {
+	      if (func_p->from_last)
+		{
+		  sc = qfile_scan_list_prev (thread_p,
+					     &func_p->info.offset.lsid,
+					     &func_p->info.offset.tplrec,
+					     PEEK);
+		  func_p->info.offset.tuple_idx--;
+		}
+	      else
+		{
+		  sc = qfile_scan_list_next (thread_p,
+					     &func_p->info.offset.lsid,
+					     &func_p->info.offset.tplrec,
+					     PEEK);
+		  func_p->info.offset.tuple_idx++;
+		}
+
+	      if (sc != S_SUCCESS)
+		{
+		  return ER_FAILED;
+		}
+
+	      /* re-fetch function value for new tuple; domains should be the same */
+	      save_next = regulist->next;
+	      regulist->next = NULL;
+	      error =
+		fetch_val_list (thread_p, regulist, val_desc, NULL, NULL,
+				func_p->info.offset.tplrec.tpl, PEEK);
+	      if (error != NO_ERROR)
+		{
+		  return ER_FAILED;
+		}
+	      regulist->next = save_next;
+	    }
+	}
     }
   else
     {
@@ -20757,7 +20860,8 @@ qexec_analytic_group_finalize_post_processing (THREAD_ENTRY * thread_p,
 {
   while (func_p != NULL)
     {
-      if (func_p->function == PT_LEAD || func_p->function == PT_LAG)
+      if (func_p->function == PT_LEAD || func_p->function == PT_LAG
+	  || func_p->function == PT_NTH_VALUE)
 	{
 	  /* end scans */
 	  qfile_close_scan (thread_p, &func_p->info.offset.lsid);
@@ -20808,6 +20912,7 @@ qexec_analytic_group_post_processing (THREAD_ENTRY * thread_p,
 
 	case PT_LEAD:
 	case PT_LAG:
+	case PT_NTH_VALUE:
 	  rc = qexec_analytic_evaluate_offset_function (thread_p, func_p,
 							analytic_state,
 							&xasl_state->vd,

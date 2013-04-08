@@ -3726,6 +3726,12 @@ pt_show_function (FUNC_TYPE c)
       return "lag";
     case PT_NTILE:
       return "ntile";
+    case PT_FIRST_VALUE:
+      return "first_value";
+    case PT_LAST_VALUE:
+      return "last_value";
+    case PT_NTH_VALUE:
+      return "nth_value";
 
     case F_SEQUENCE:
       return "sequence";
@@ -11772,6 +11778,8 @@ pt_init_function (PT_NODE * p)
   p->info.function.analytic.order_by = NULL;
   p->info.function.analytic.default_value = NULL;
   p->info.function.analytic.offset = NULL;
+  p->info.function.analytic.from_last = false;
+  p->info.function.analytic.ignore_nulls = false;
   p->info.function.hidden_column = 0;
   p->info.function.is_order_dependent = false;
   p->info.function.coll_modifier = 0;
@@ -11862,6 +11870,20 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
 
       q = pt_append_nulstring (parser, q, ")");
     }
+  else if (code == PT_NTH_VALUE)
+    {
+      q = pt_append_nulstring (parser, q, pt_show_function (code));
+      q = pt_append_nulstring (parser, q, "(");
+
+      r1 = pt_print_bytes (parser, p->info.function.arg_list);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ", ");
+
+      r1 = pt_print_bytes (parser, p->info.function.analytic.offset);
+      q = pt_append_varchar (parser, q, r1);
+
+      q = pt_append_nulstring (parser, q, ")");
+    }
   else if (code == F_SET || code == F_MULTISET || code == F_SEQUENCE)
     {
       if (p->spec_ident)
@@ -11903,6 +11925,14 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (p->info.function.analytic.is_analytic)
     {
+      if (p->info.function.analytic.from_last)
+	{
+	  q = pt_append_nulstring (parser, q, " from last ");
+	}
+      if (p->info.function.analytic.ignore_nulls)
+	{
+	  q = pt_append_nulstring (parser, q, " ignore nulls ");
+	}
       q = pt_append_nulstring (parser, q, " over (");
       if (p->info.function.analytic.partition_by)
 	{

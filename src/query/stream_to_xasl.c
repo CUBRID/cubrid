@@ -5817,6 +5817,7 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr,
 {
   int offset;
   int type;
+  int tmp_i;
   XASL_UNPACK_INFO *xasl_unpack_info =
     stx_get_xasl_unpack_info_ptr (thread_p);
 
@@ -5926,6 +5927,12 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr,
   ptr = or_unpack_int (ptr, &analytic->flag);
 
   ptr = or_unpack_int (ptr, &analytic->eval_group);
+
+  ptr = or_unpack_int (ptr, &tmp_i);
+  analytic->from_last = (bool) tmp_i;
+
+  ptr = or_unpack_int (ptr, &tmp_i);
+  analytic->ignore_nulls = (bool) tmp_i;
 
   return ptr;
 

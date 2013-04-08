@@ -1404,7 +1404,9 @@
 
 #define ER_BINARY_HEAP_OUT_OF_RANGE		    -1113
 
-#define ER_LAST_ERROR                               -1114
+#define ER_ARG_OUT_OF_RANGE                         -1114
+
+#define ER_LAST_ERROR                               -1115
 
 #define DB_TRUE 1
 #define DB_FALSE 0
