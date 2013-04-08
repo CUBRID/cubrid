@@ -2712,6 +2712,7 @@ qexec_clear_update_assignment (XASL_NODE * xasl_p,
   AGGREGATE_TYPE *p;
   int pg_cnt;
 
+  pg_cnt = 0;
   if (!XASL_IS_FLAGED (xasl_p, XASL_QEXEC_MODE_ASYNC))
     {
       pr_clear_value (assignment->constant);
