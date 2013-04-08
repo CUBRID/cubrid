@@ -1074,8 +1074,7 @@ hm_broker_reconnect_down_server (T_CON_HANDLE * con_handle)
 {
   char f = con_handle->broker_info[BROKER_INFO_FUNCTION_FLAG];
 
-  return (f & BROKER_RECONNECT_DOWN_SERVER)
-    == BROKER_RECONNECT_DOWN_SERVER;
+  return (f & BROKER_RECONNECT_DOWN_SERVER) == BROKER_RECONNECT_DOWN_SERVER;
 }
 
 void
@@ -1404,7 +1403,7 @@ hm_thread_health_checker (void *arg)
 	{
 	  ip_addr = host_status[i].host.ip_addr;
 	  port = host_status[i].host.port;
-	  if (net_check_broker_alive
+	  if (!host_status[i].is_reachable && net_check_broker_alive
 	      (ip_addr, port, BROKER_HEALTH_CHECK_TIMEOUT))
 	    {
 	      hm_set_host_status_by_addr (ip_addr, port, true);
