@@ -1537,20 +1537,15 @@ qfile_open_list (THREAD_ENTRY * thread_p,
 void
 qfile_close_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p)
 {
-  if (list_id_p->last_pgptr == NULL)
+  if (list_id_p)
     {
-      return;
-    }
+      if (list_id_p->last_pgptr != NULL)
+	{
+	  QFILE_PUT_NEXT_VPID_NULL (list_id_p->last_pgptr);
 
-  if (list_id_p->last_pgptr != NULL)
-    {
-      QFILE_PUT_NEXT_VPID_NULL (list_id_p->last_pgptr);
-    }
-
-  if (list_id_p->last_pgptr)
-    {
-      qmgr_free_old_page_and_init (thread_p, list_id_p->last_pgptr,
-				   list_id_p->tfile_vfid);
+	  qmgr_free_old_page_and_init (thread_p, list_id_p->last_pgptr,
+				       list_id_p->tfile_vfid);
+	}
     }
 }
 

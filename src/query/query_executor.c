@@ -2226,6 +2226,7 @@ qexec_clear_agg_list (XASL_NODE * xasl_p, AGGREGATE_TYPE * list, int final)
   for (p = list; p; p = p->next)
     {
       pr_clear_value (p->value);
+      pr_clear_value (p->value2);
       pg_cnt += qexec_clear_regu_var (xasl_p, &p->operand, final);
     }
 
@@ -2408,6 +2409,46 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
 
   switch (xasl->type)
     {
+    case CONNECTBY_PROC:
+      {
+	CONNECTBY_PROC_NODE *connect_by = &xasl->proc.connect_by;
+
+	pg_cnt += qexec_clear_pred (xasl, connect_by->start_with_pred, final);
+	pg_cnt +=
+	  qexec_clear_pred (xasl, connect_by->after_connect_by_pred, final);
+
+	pg_cnt +=
+	  qexec_clear_regu_list (xasl, connect_by->regu_list_pred, final);
+	pg_cnt +=
+	  qexec_clear_regu_list (xasl, connect_by->regu_list_rest, final);
+
+	if (connect_by->prior_val_list)
+	  {
+	    qexec_clear_db_val_list (connect_by->prior_val_list->valp);
+	  }
+	if (connect_by->prior_outptr_list)
+	  {
+	    pg_cnt +=
+	      qexec_clear_regu_list (xasl,
+				     connect_by->prior_outptr_list->valptrp,
+				     final);
+	  }
+
+	pg_cnt +=
+	  qexec_clear_regu_list (xasl, connect_by->prior_regu_list_pred,
+				 final);
+	pg_cnt +=
+	  qexec_clear_regu_list (xasl, connect_by->prior_regu_list_rest,
+				 final);
+	pg_cnt +=
+	  qexec_clear_regu_list (xasl, connect_by->after_cb_regu_list_pred,
+				 final);
+	pg_cnt +=
+	  qexec_clear_regu_list (xasl, connect_by->after_cb_regu_list_rest,
+				 final);
+      }
+      break;
+
     case BUILDLIST_PROC:
       {
 	BUILDLIST_PROC_NODE *buildlist = &xasl->proc.buildlist;
@@ -16857,7 +16898,9 @@ qexec_replace_prior_regu_vars_prior_expr (THREAD_ENTRY * thread_p,
 	     i++, vl = vl->next, vl_prior = vl_prior->next)
 	  {
 	    if (regu->value.dbvalptr == vl->val)
-	      regu->value.dbvalptr = vl_prior->val;
+	      {
+		regu->value.dbvalptr = vl_prior->val;
+	      }
 	  }
       }
       break;

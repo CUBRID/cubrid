@@ -2645,6 +2645,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	  else
 	    {
 	      DB_VALUE tmp_val;
+
+	      DB_MAKE_NULL (&tmp_val);
 	      if (qdata_strcat_dbval (peek_left, peek_third,
 				      &tmp_val, regu_var->domain) != NO_ERROR)
 		{
@@ -2654,8 +2656,10 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 				      arithptr->value,
 				      regu_var->domain) != NO_ERROR)
 		{
+		  (void) pr_clear_value (&tmp_val);
 		  goto error;
 		}
+	      (void) pr_clear_value (&tmp_val);
 	    }
 	}
       else

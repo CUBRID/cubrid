@@ -5127,6 +5127,10 @@ cleanup:
     }
   if (keys != NULL)
     {
+      for (i = 0; i < count; i++)
+	{
+	  pr_clear_value (&keys[i]);
+	}
       db_private_free (thread_p, keys);
     }
   if (oids != NULL)

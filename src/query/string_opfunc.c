@@ -4651,6 +4651,7 @@ db_string_fix_string_size (DB_VALUE * src_string)
   int string_size = 0;
   int error_status = NO_ERROR;
   DB_TYPE src_type;
+  bool save_need_clear;
 
   assert (src_string != (DB_VALUE *) NULL);
 
@@ -4666,11 +4667,13 @@ db_string_fix_string_size (DB_VALUE * src_string)
   string_size = strlen (DB_PULL_STRING (src_string));
   assert (val_size >= string_size);
 
+  save_need_clear = src_string->need_clear;
   qstr_make_typed_string (src_type, src_string,
 			  DB_VALUE_PRECISION (src_string),
 			  DB_PULL_STRING (src_string), string_size,
 			  DB_GET_STRING_CODESET (src_string),
 			  DB_GET_STRING_COLLATION (src_string));
+  src_string->need_clear = save_need_clear;
 
   assert (error_status == NO_ERROR);
 

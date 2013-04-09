@@ -3217,7 +3217,6 @@ partition_prune_insert (THREAD_ENTRY * thread_p, const OID * class_oid,
     }
   else
     {
-      pcontext->is_from_cache = true;
       keep_pruning_context = true;
 
       if (pcontext->partitions == NULL)

@@ -2925,7 +2925,7 @@ catcls_expand_or_value_by_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p)
       size = set_size (set_p);
       if (size > 0)
 	{
-	  set_get_element (set_p, 0, &element);
+	  set_get_element_nocopy (set_p, 0, &element);
 	  if (DB_VALUE_TYPE (&element) == DB_TYPE_OID)
 	    {
 	      oid_p = DB_PULL_OID (&element);

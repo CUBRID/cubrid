@@ -2772,6 +2772,7 @@ qdata_subtract_utime_to_short_asymmetry (DB_VALUE * utime_val_p, short s,
 					 TP_DOMAIN * domain_p)
 {
   DB_VALUE tmp;
+  int error = NO_ERROR;
 
   if (s == DB_INT16_MIN)	/* check for asymmetry. */
     {
@@ -2787,7 +2788,9 @@ qdata_subtract_utime_to_short_asymmetry (DB_VALUE * utime_val_p, short s,
     }
 
   DB_MAKE_SHORT (&tmp, -(s));
-  return (qdata_add_dbval (utime_val_p, &tmp, result_p, domain_p));
+  error = qdata_add_dbval (utime_val_p, &tmp, result_p, domain_p);
+
+  return error;
 }
 
 static int
@@ -2797,6 +2800,7 @@ qdata_subtract_utime_to_int_asymmetry (DB_VALUE * utime_val_p, int i,
 				       TP_DOMAIN * domain_p)
 {
   DB_VALUE tmp;
+  int error = NO_ERROR;
 
   if (i == DB_INT32_MIN)	/* check for asymmetry. */
     {
@@ -2812,7 +2816,9 @@ qdata_subtract_utime_to_int_asymmetry (DB_VALUE * utime_val_p, int i,
     }
 
   DB_MAKE_INT (&tmp, -(i));
-  return (qdata_add_dbval (utime_val_p, &tmp, result_p, domain_p));
+  error = qdata_add_dbval (utime_val_p, &tmp, result_p, domain_p);
+
+  return error;
 }
 
 static int
@@ -2822,6 +2828,7 @@ qdata_subtract_utime_to_bigint_asymmetry (DB_VALUE * utime_val_p,
 					  TP_DOMAIN * domain_p)
 {
   DB_VALUE tmp;
+  int error = NO_ERROR;
 
   if (bi == DB_BIGINT_MIN)	/* check for asymmetry. */
     {
@@ -2837,7 +2844,9 @@ qdata_subtract_utime_to_bigint_asymmetry (DB_VALUE * utime_val_p,
     }
 
   DB_MAKE_BIGINT (&tmp, -(bi));
-  return (qdata_add_dbval (utime_val_p, &tmp, result_p, domain_p));
+  error = qdata_add_dbval (utime_val_p, &tmp, result_p, domain_p);
+
+  return error;
 }
 
 static int
@@ -2885,6 +2894,7 @@ qdata_subtract_datetime_to_int_asymmetry (DB_VALUE * datetime_val_p,
 					  TP_DOMAIN * domain_p)
 {
   DB_VALUE tmp;
+  int error = NO_ERROR;
 
   if (i == DB_BIGINT_MIN)	/* check for asymmetry. */
     {
@@ -2899,7 +2909,9 @@ qdata_subtract_datetime_to_int_asymmetry (DB_VALUE * datetime_val_p,
     }
 
   DB_MAKE_BIGINT (&tmp, -(i));
-  return (qdata_add_dbval (datetime_val_p, &tmp, result_p, domain_p));
+  error = qdata_add_dbval (datetime_val_p, &tmp, result_p, domain_p);
+
+  return error;
 }
 
 static int
@@ -6722,7 +6734,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 				}
 			    }
 			}
-		    }
+		    }		/* while (true) */
 
 		  qfile_close_scan (thread_p, &scan_id);
 		  agg_p->curr_cnt = list_id_p->tuple_cnt;
@@ -7945,6 +7957,8 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p,
 				 * expression as the first argument of
 				 * SYS_CONNECT_BY_PATH() */
 
+  assert (DB_IS_NULL (result_p));
+
   /* sanity checks */
   xasl = (XASL_NODE *) xasl_p;
   if (!xasl)
@@ -8141,6 +8155,12 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p,
 	     + strlen (result_path) + 1);
       if (len > len_tmp)
 	{
+	  /* free previously alloced */
+	  if (path_tmp)
+	    {
+	      db_private_free_and_init (thread_p, path_tmp);
+	    }
+
 	  len_tmp = len;
 	  path_tmp =
 	    (char *) db_private_alloc (thread_p, sizeof (char) * len_tmp);
@@ -8210,6 +8230,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p,
   qfile_close_scan (thread_p, &s_id);
 
   DB_MAKE_STRING (result_p, result_path);
+  result_p->need_clear = true;
 
   if (use_extended)
     {
@@ -8275,6 +8296,7 @@ error2:
   if (result_path)
     {
       db_private_free_and_init (thread_p, result_path);
+      result_p->need_clear = false;
     }
 
   if (path_tmp)
@@ -8838,6 +8860,10 @@ qdata_group_concat_first_value (THREAD_ENTRY * thread_p,
 {
   TP_DOMAIN *result_domain;
   DB_TYPE agg_type;
+  int max_allowed_size;
+  DB_VALUE tmp_val;
+
+  DB_MAKE_NULL (&tmp_val);
 
   agg_type = DB_VALUE_DOMAIN_TYPE (agg_p->value);
   /* init the aggregate value domain */
@@ -8861,15 +8887,28 @@ qdata_group_concat_first_value (THREAD_ENTRY * thread_p,
   /* concat the first value */
   result_domain = ((TP_DOMAIN_TYPE (agg_p->domain) == agg_type) ?
 		   agg_p->domain : NULL);
-  if (qdata_concatenate_dbval (thread_p, agg_p->value, dbvalue, agg_p->value,
-			       result_domain,
-			       prm_get_integer_value
-			       (PRM_ID_GROUP_CONCAT_MAX_LEN),
+
+  max_allowed_size = prm_get_integer_value (PRM_ID_GROUP_CONCAT_MAX_LEN);
+
+  if (qdata_concatenate_dbval (thread_p, agg_p->value, dbvalue, &tmp_val,
+			       result_domain, max_allowed_size,
 			       "GROUP_CONCAT()") != NO_ERROR)
     {
       pr_clear_value (dbvalue);
       return ER_FAILED;
     }
+
+  /* check for concat success */
+  if (!DB_IS_NULL (&tmp_val))
+    {
+      (void) pr_clear_value (agg_p->value);
+      pr_clone_value (&tmp_val, agg_p->value);
+    }
+
+cleanup:
+
+  (void) pr_clear_value (&tmp_val);
+
   return NO_ERROR;
 }
 
@@ -8886,37 +8925,62 @@ qdata_group_concat_value (THREAD_ENTRY * thread_p,
 {
   TP_DOMAIN *result_domain;
   DB_TYPE agg_type;
+  int max_allowed_size;
+  DB_VALUE tmp_val;
+
+  DB_MAKE_NULL (&tmp_val);
 
   agg_type = DB_VALUE_DOMAIN_TYPE (agg_p->value);
 
   result_domain = ((TP_DOMAIN_TYPE (agg_p->domain) == agg_type) ?
 		   agg_p->domain : NULL);
+
+  max_allowed_size = prm_get_integer_value (PRM_ID_GROUP_CONCAT_MAX_LEN);
+
   /* add separator if specified (it may be the case for bit string) */
   if (!DB_IS_NULL (agg_p->value2))
     {
       if (qdata_concatenate_dbval (thread_p, agg_p->value, agg_p->value2,
-				   agg_p->value, result_domain,
-				   prm_get_integer_value
-				   (PRM_ID_GROUP_CONCAT_MAX_LEN),
+				   &tmp_val, result_domain, max_allowed_size,
 				   "GROUP_CONCAT()") != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
+
+      /* check for concat success */
+      if (!DB_IS_NULL (&tmp_val))
+	{
+	  (void) pr_clear_value (agg_p->value);
+	  pr_clone_value (&tmp_val, agg_p->value);
+	}
+
     }
   else
     {
       assert (agg_type == DB_TYPE_VARBIT || agg_type == DB_TYPE_BIT);
     }
 
-  if (qdata_concatenate_dbval (thread_p, agg_p->value, dbvalue, agg_p->value,
-			       result_domain,
-			       prm_get_integer_value
-			       (PRM_ID_GROUP_CONCAT_MAX_LEN),
+  pr_clear_value (&tmp_val);
+
+  if (qdata_concatenate_dbval (thread_p, agg_p->value, dbvalue, &tmp_val,
+			       result_domain, max_allowed_size,
 			       "GROUP_CONCAT()") != NO_ERROR)
     {
       pr_clear_value (dbvalue);
       return ER_FAILED;
     }
+
+  /* check for concat success */
+  if (!DB_IS_NULL (&tmp_val))
+    {
+      (void) pr_clear_value (agg_p->value);
+      pr_clone_value (&tmp_val, agg_p->value);
+    }
+
+cleanup:
+
+  pr_clear_value (&tmp_val);
+
   return NO_ERROR;
 }
 
@@ -9779,6 +9843,8 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p,
 	      return ER_FAILED;
 	    }
 
+	  (void) pr_clear_value (func_p->value);
+
 	  DB_MAKE_NULL (func_p->value);
 
 	  while (true)
@@ -9819,7 +9885,7 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p,
 		  if (tp_value_coerce (&dbval, &dbval, tmp_domain_ptr)
 		      != DOMAIN_COMPATIBLE)
 		    {
-		      pr_clear_value (&dbval);
+		      (void) pr_clear_value (&dbval);
 		      qfile_close_scan (thread_p, &scan_id);
 		      qfile_close_list (thread_p, list_id_p);
 		      qfile_destroy_list (thread_p, list_id_p);
@@ -9836,6 +9902,7 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p,
 		  tmp_pr_type = PR_TYPE_FROM_ID (dbval_type);
 		  if (tmp_pr_type == NULL)
 		    {
+		      (void) pr_clear_value (&dbval);
 		      qfile_close_scan (thread_p, &scan_id);
 		      qfile_close_list (thread_p, list_id_p);
 		      qfile_destroy_list (thread_p, list_id_p);
@@ -9853,7 +9920,7 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p,
 						&sqr_val,
 						tmp_domain_ptr) != NO_ERROR)
 			{
-			  pr_clear_value (&dbval);
+			  (void) pr_clear_value (&dbval);
 			  qfile_close_scan (thread_p, &scan_id);
 			  qfile_close_list (thread_p, list_id_p);
 			  qfile_destroy_list (thread_p, list_id_p);
@@ -9881,7 +9948,7 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p,
 						&sqr_val,
 						tmp_domain_ptr) != NO_ERROR)
 			{
-			  pr_clear_value (&dbval);
+			  (void) pr_clear_value (&dbval);
 			  qfile_close_scan (thread_p, &scan_id);
 			  qfile_close_list (thread_p, list_id_p);
 			  qfile_destroy_list (thread_p, list_id_p);
@@ -9892,7 +9959,7 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p,
 					   func_p->value2,
 					   tmp_domain_ptr) != NO_ERROR)
 			{
-			  pr_clear_value (&dbval);
+			  (void) pr_clear_value (&dbval);
 			  pr_clear_value (&sqr_val);
 			  qfile_close_scan (thread_p, &scan_id);
 			  qfile_close_list (thread_p, list_id_p);
@@ -9912,13 +9979,16 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p,
 		  if (qdata_add_dbval (func_p->value, &dbval, func_p->value,
 				       domain_ptr) != NO_ERROR)
 		    {
+		      (void) pr_clear_value (&dbval);
 		      qfile_close_scan (thread_p, &scan_id);
 		      qfile_close_list (thread_p, list_id_p);
 		      qfile_destroy_list (thread_p, list_id_p);
 		      return ER_FAILED;
 		    }
 		}
-	    }
+
+	      (void) pr_clear_value (&dbval);
+	    }			/* while (true) */
 
 	  qfile_close_scan (thread_p, &scan_id);
 	  func_p->curr_cnt = list_id_p->tuple_cnt;
