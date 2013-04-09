@@ -456,11 +456,12 @@ display_empty_result (int stmt_type, int line_no)
   pf = csql_popen (csql_Pager_cmd, csql_Output_fp);
 
   csql_fputs ("\n=== ", pf);
-  csql_fputs (csql_Scratch_text, pf);
+  csql_fputs_console_conv (csql_Scratch_text, pf);
   csql_fputs (" ===\n\n", pf);
-  csql_fputs (msgcat_message (MSGCAT_CATALOG_CSQL,
-			      MSGCAT_CSQL_SET_CSQL,
-			      CSQL_STAT_NONSCR_EMPTY_RESULT_TEXT), pf);
+  csql_fputs_console_conv (msgcat_message (MSGCAT_CATALOG_CSQL,
+					   MSGCAT_CSQL_SET_CSQL,
+					   CSQL_STAT_NONSCR_EMPTY_RESULT_TEXT),
+			   pf);
   csql_fputs ("\n", pf);
 
   csql_pclose (pf, csql_Output_fp);

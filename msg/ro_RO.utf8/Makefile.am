@@ -17,6 +17,17 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 #
 
-codepagesdir = @CUBRID_SHLOCALESDIR@/data/codepages
 
-dist_codepages_DATA = CP1258.TXT CP1250.TXT CP932.TXT CP936.TXT CP949.TXT 8859-1.TXT 8859-15.TXT 8859-9.TXT 
+ro_RO.utf8dir = @CUBRID_LOCALEDIR@/ro_RO.utf8
+dist_ro_RO.utf8_DATA = cubrid.msg csql.msg utils.msg esql.msg
+ro_RO.utf8_DATA = cubrid.cat csql.cat utils.cat esql.cat
+
+GENCAT = $(top_builddir)/util/gencat
+
+SUFFIXES = .msg.cat
+
+.msg.cat:
+	$(GENCAT) $@ $<
+
+distclean-local:
+	-rm -f $(ro_RO.utf8_DATA)

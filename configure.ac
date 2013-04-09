@@ -972,6 +972,7 @@ AS_IF([test "$with_cci_only" = "no"],
 	msg/km_KH.utf8/Makefile
 	msg/vi_VN.utf8/Makefile
 	msg/zh_CN.utf8/Makefile
+	msg/ro_RO.utf8/Makefile
 	demo/Makefile
 	contrib/Makefile
 	jdbc/Makefile

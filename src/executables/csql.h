@@ -299,6 +299,7 @@ extern char *csql_get_real_path (const char *pathname);
 extern void csql_invoke_system (const char *command);
 extern int csql_invoke_system_editor (void);
 extern void csql_fputs (const char *str, FILE * fp);
+extern void csql_fputs_console_conv (const char *str, FILE * fp);
 extern FILE *csql_popen (const char *cmd, FILE * fd);
 extern void csql_pclose (FILE * pf, FILE * fd);
 extern void csql_display_csql_err (int line_no, int col_no);

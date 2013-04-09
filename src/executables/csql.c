@@ -364,7 +364,7 @@ void
 csql_display_msg (const char *string)
 {
   csql_fputs ("\n", csql_Tty_fp);
-  csql_fputs (string, csql_Tty_fp);
+  csql_fputs_console_conv (string, csql_Tty_fp);
   csql_fputs ("\n", csql_Tty_fp);
 }
 
@@ -533,11 +533,11 @@ start_csql (CSQL_ARGUMENT * csql_arg)
   /* display product title */
   sprintf (csql_Scratch_text, "\n\t%s\n\n",
 	   csql_get_message (CSQL_INITIAL_CSQL_TITLE));
-  csql_fputs (csql_Scratch_text, csql_Tty_fp);
+  csql_fputs_console_conv (csql_Scratch_text, csql_Tty_fp);
 
   sprintf (csql_Scratch_text, "\n%s\n\n",
 	   csql_get_message (CSQL_INITIAL_HELP_MSG));
-  csql_fputs (csql_Scratch_text, csql_Tty_fp);
+  csql_fputs_console_conv (csql_Scratch_text, csql_Tty_fp);
 
 #if !defined(WINDOWS)
   if (csql_Is_interactive)
@@ -1703,7 +1703,7 @@ csql_change_working_directory (const char *dirname)
   else
     {
       snprintf (buf, sizeof (buf) - 1, "\n%s %s.\n\n", msg, dirname);
-      csql_fputs (buf, csql_Tty_fp);
+      csql_fputs_console_conv (buf, csql_Tty_fp);
     }
 }
 

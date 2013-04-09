@@ -49,3 +49,4 @@ ko_KR
 tr_TR
 vi_VN
 zh_CN
+ro_RO

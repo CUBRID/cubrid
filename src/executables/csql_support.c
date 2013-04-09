@@ -360,6 +360,49 @@ csql_fputs (const char *str, FILE * fp)
 }
 
 /*
+ * csql_fputs_console_conv() - format and display a string to the CSQL console
+ *			       with console conversion applied, if available
+ *   return: none
+ *   str(in): string to be displayed
+ *   fp(in) : FILE stream
+ *
+ * Note:
+ *   `fputs' version to cope with "\1" in the string. This function displays
+ *   `<', `>' alternatively.
+ */
+void
+csql_fputs_console_conv (const char *str, FILE * fp)
+{
+  char *conv_buf = NULL;
+  const char *conv_buf_ptr = NULL;
+  int conv_buf_size = 0;
+
+  if (!fp)
+    {
+      return;
+    }
+
+  if (csql_text_utf8_to_console != NULL
+      && (*csql_text_utf8_to_console) (str, strlen (str), &conv_buf,
+				       &conv_buf_size) == NO_ERROR
+      && conv_buf != NULL)
+    {
+      conv_buf_ptr = conv_buf;
+    }
+  else
+    {
+      conv_buf_ptr = str;
+    }
+
+  csql_fputs (conv_buf_ptr, fp);
+
+  if (conv_buf != NULL)
+    {
+      free (conv_buf);
+    }
+}
+
+/*
  * csql_popen() - Open & return a pipe file stream to a pager
  *   return: pipe file stream to a pager if stdout is a tty,
  *           otherwise return fd.
@@ -475,7 +518,7 @@ csql_display_csql_err (int line_no, int col_no)
   if (line_no > 0)
     {
       csql_fputs ("\n", csql_Error_fp);
-      csql_fputs (csql_Scratch_text, csql_Error_fp);
+      csql_fputs_console_conv (csql_Scratch_text, csql_Error_fp);
     }
   nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
 }
@@ -504,7 +547,7 @@ csql_display_session_err (DB_SESSION * session, int line_no)
 	{
 	  csql_fputs ("\n", csql_Error_fp);
 	  iq_format_err (csql_Scratch_text, line_no, col_no);
-	  csql_fputs (csql_Scratch_text, csql_Error_fp);
+	  csql_fputs_console_conv (csql_Scratch_text, csql_Error_fp);
 	}
       nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
     }
@@ -957,7 +1000,7 @@ csql_walk_statement (const char *str)
    */
   bool include_stmt = false;
   bool is_last_stmt_valid = true;
-  char *p;
+  const char *p;
   int str_length;
 
   CSQL_STATEMENT_STATE state = csql_Edit_contents.state;

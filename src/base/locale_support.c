@@ -1749,7 +1749,8 @@ start_one_collation (void *data, const char **attr)
   locale_coll->tail_coll.uca_opt.sett_strength = TAILOR_QUATERNARY;
   locale_coll->tail_coll.uca_opt.sett_caseFirst = 1;
 
-  locale_coll->tail_coll.ldml_context.ldml_file = ld->ldml_context.ldml_file;
+  locale_coll->tail_coll.ldml_context.ldml_file =
+    strdup (ld->ldml_context.ldml_file);
   locale_coll->tail_coll.ldml_context.line_no =
     XML_GetCurrentLineNumber (pd->xml_parser);
 
@@ -2992,7 +2993,8 @@ start_one_alphabet (void *data, const char **attr)
 	}
     }
 
-  ld->alpha_tailoring.ldml_context.ldml_file = ld->ldml_context.ldml_file;
+  ld->alpha_tailoring.ldml_context.ldml_file =
+    strdup (ld->ldml_context.ldml_file);
   ld->alpha_tailoring.ldml_context.line_no =
     XML_GetCurrentLineNumber (pd->xml_parser);
 
@@ -4241,6 +4243,12 @@ locale_destroy_data (LOCALE_DATA * ld)
   locale_destroy_console_conversion (&(ld->txt_conv));
 
   locale_destroy_normalization_data (&(ld->unicode_normalization));
+
+  /* ldml context file path */
+  if (ld->ldml_context.ldml_file != NULL)
+    {
+      free (ld->ldml_context.ldml_file);
+    }
 }
 
 /*
@@ -4314,6 +4322,11 @@ locale_destroy_collation_tailorings (const COLL_TAILORING * ct)
     {
       assert (ct->cub_max_rules > 0);
       free (ct->cub_rules);
+    }
+
+  if (ct->ldml_context.ldml_file != NULL)
+    {
+      free (ct->ldml_context.ldml_file);
     }
 
   memset ((void *) ct, 0, sizeof (COLL_TAILORING));
@@ -4411,6 +4424,11 @@ locale_destroy_alphabet_tailoring (const ALPHABET_TAILORING * at)
       free (at->rules);
     }
 
+  if (at->ldml_context.ldml_file != NULL)
+    {
+      free (at->ldml_context.ldml_file);
+    }
+
   memset ((void *) at, 0, sizeof (ALPHABET_TAILORING));
 }
 
@@ -4477,7 +4495,7 @@ locale_compile_locale (LOCALE_FILE * lf, LOCALE_DATA * ld, bool is_verbose)
   ldml_parser.ud = ld;
   ldml_parser.verbose = is_verbose;
 
-  ld->ldml_context.ldml_file = lf->ldml_file;
+  ld->ldml_context.ldml_file = strdup (lf->ldml_file);
   ld->ldml_context.line_no = 1;
 
   ldml_parser.xml_parser =
@@ -4702,7 +4720,10 @@ locale_compile_locale (LOCALE_FILE * lf, LOCALE_DATA * ld, bool is_verbose)
 	      er_status = ER_LOC_GEN;
 	      goto exit;
 	    }
-	  else
+	  else if (strcmp (lc->tail_coll.ldml_context.ldml_file,
+			   coll_sh_entry->ldml_context.ldml_file) != 0
+		   || lc->tail_coll.ldml_context.line_no
+		   != coll_sh_entry->ldml_context.line_no)
 	    {
 	      /* same collation, just put an debug info */
 	      printf ("Warning : Definition of collation %s (id: %d) "
@@ -8033,6 +8054,9 @@ start_include_collation (void *data, const char **attr)
   XML_PARSER_DATA *new_pd = NULL;
   char *att_val = NULL;
   char include_file_path[PATH_MAX] = { 0 };
+  char *prev_ldml_file = NULL;
+  int prev_line_no = 0;
+  LDML_CONTEXT *context = NULL;
 
   assert (data != NULL);
 
@@ -8049,6 +8073,15 @@ start_include_collation (void *data, const char **attr)
   /* build a path and check if the file exists/is accessible */
   envvar_ldmldir_file (include_file_path, PATH_MAX, att_val);
   new_pd = xml_create_subparser (pd, include_file_path);
+
+  ld = (LOCALE_DATA *) XML_USER_DATA (new_pd);
+  assert (ld != NULL);
+
+  context = &(ld->ldml_context);
+  prev_ldml_file = context->ldml_file;
+  prev_line_no = context->line_no;
+  context->ldml_file = strdup (include_file_path);
+  context->line_no = 0;
 
   if (new_pd == NULL)
     {
@@ -8105,6 +8138,10 @@ start_include_collation (void *data, const char **attr)
 
       return -1;
     }
+
+  free (context->ldml_file);
+  context->ldml_file = prev_ldml_file;
+  context->line_no = prev_line_no;
 
   pd->next = new_pd->next;
   xml_destroy_parser_data (new_pd);

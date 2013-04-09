@@ -20,6 +20,7 @@ set MSG_JA_UTF8_DIR=%DEST_DIR%\msg\ja_JP.utf8
 set MSG_KM_UTF8_DIR=%DEST_DIR%\msg\km_KH.utf8
 set MSG_VI_UTF8_DIR=%DEST_DIR%\msg\vi_VN.utf8
 set MSG_ZH_UTF8_DIR=%DEST_DIR%\msg\zh_CN.utf8
+set MSG_RO_UTF8_DIR=%DEST_DIR%\msg\ro_RO.utf8
 
 rem -------------------------------------------
 rem Make directory
@@ -49,6 +50,7 @@ mkdir %MSG_JA_UTF8_DIR%
 mkdir %MSG_KM_UTF8_DIR%
 mkdir %MSG_VI_UTF8_DIR%
 mkdir %MSG_ZH_UTF8_DIR%
+mkdir %MSG_RO_UTF8_DIR%
 mkdir %DEST_DIR%\tmp
 mkdir %DEST_DIR%\var
 
@@ -132,6 +134,7 @@ copy %SRC_DIR%\..\..\..\msg\ja_JP.utf8\*.msg 		%MSG_JA_UTF8_DIR%
 copy %SRC_DIR%\..\..\..\msg\km_KH.utf8\*.msg 		%MSG_KM_UTF8_DIR%
 copy %SRC_DIR%\..\..\..\msg\vi_VN.utf8\*.msg 		%MSG_VI_UTF8_DIR%
 copy %SRC_DIR%\..\..\..\msg\zh_CN.utf8\*.msg 		%MSG_ZH_UTF8_DIR%
+copy %SRC_DIR%\..\..\..\msg\ro_RO.utf8\*.msg 		%MSG_RO_UTF8_DIR%
 
 mkdir %DEST_DIR%\locales
 mkdir %DEST_DIR%\locales\data
@@ -156,8 +159,8 @@ for %%f in (%MSG_DE_UTF8_DIR%,%MSG_ES_UTF8_DIR%,%MSG_FR_UTF8_DIR%,%MSG_IT_UTF8_D
 for %%f in (%MSG_DE_UTF8_DIR%,%MSG_ES_UTF8_DIR%,%MSG_FR_UTF8_DIR%,%MSG_IT_UTF8_DIR%) do %GENCAT% %%f\esql.cat %%f\esql.msg
 for %%f in (%MSG_DE_UTF8_DIR%,%MSG_ES_UTF8_DIR%,%MSG_FR_UTF8_DIR%,%MSG_IT_UTF8_DIR%) do %GENCAT% %%f\utils.cat %%f\utils.msg
 
-for %%f in (%MSG_JA_UTF8_DIR%,%MSG_KM_UTF8_DIR%,%MSG_VI_UTF8_DIR%,%MSG_ZH_UTF8_DIR%) do %GENCAT% %%f\csql.cat %%f\csql.msg
-for %%f in (%MSG_JA_UTF8_DIR%,%MSG_KM_UTF8_DIR%,%MSG_VI_UTF8_DIR%,%MSG_ZH_UTF8_DIR%) do %GENCAT% %%f\cubrid.cat %%f\cubrid.msg
-for %%f in (%MSG_JA_UTF8_DIR%,%MSG_KM_UTF8_DIR%,%MSG_VI_UTF8_DIR%,%MSG_ZH_UTF8_DIR%) do %GENCAT% %%f\esql.cat %%f\esql.msg
-for %%f in (%MSG_JA_UTF8_DIR%,%MSG_KM_UTF8_DIR%,%MSG_VI_UTF8_DIR%,%MSG_ZH_UTF8_DIR%) do %GENCAT% %%f\utils.cat %%f\utils.msg
+for %%f in (%MSG_JA_UTF8_DIR%,%MSG_KM_UTF8_DIR%,%MSG_VI_UTF8_DIR%,%MSG_ZH_UTF8_DIR%,%MSG_RO_UTF8_DIR%) do %GENCAT% %%f\csql.cat %%f\csql.msg
+for %%f in (%MSG_JA_UTF8_DIR%,%MSG_KM_UTF8_DIR%,%MSG_VI_UTF8_DIR%,%MSG_ZH_UTF8_DIR%,%MSG_RO_UTF8_DIR%) do %GENCAT% %%f\cubrid.cat %%f\cubrid.msg
+for %%f in (%MSG_JA_UTF8_DIR%,%MSG_KM_UTF8_DIR%,%MSG_VI_UTF8_DIR%,%MSG_ZH_UTF8_DIR%,%MSG_RO_UTF8_DIR%) do %GENCAT% %%f\esql.cat %%f\esql.msg
+for %%f in (%MSG_JA_UTF8_DIR%,%MSG_KM_UTF8_DIR%,%MSG_VI_UTF8_DIR%,%MSG_ZH_UTF8_DIR%,%MSG_RO_UTF8_DIR%) do %GENCAT% %%f\utils.cat %%f\utils.msg
 :EXIT
