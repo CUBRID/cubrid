@@ -538,11 +538,11 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
    * loader fails, methods will fail when they are invoked
    */
 #if !defined(WINDOWS)
-#if !defined (SOLARIS) && !defined(LINUX)
+#if !defined (SOLARIS) && !defined(LINUX) && !defined(AIX)
   (void) dl_initiate_module (client_credential->program_name);
-#else /* !SOLARIS && !LINUX */
+#else /* !SOLARIS && !LINUX && !AIX */
   (void) dl_initiate_module ();
-#endif /* !SOLARIS && !LINUX */
+#endif /* !SOLARIS && !LINUX && !AIX */
 #endif /* !WINDOWS */
 
 #if defined(CS_MODE)
@@ -915,11 +915,11 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
    * loader fails, methods will fail when they are invoked
    */
 #if !defined(WINDOWS)
-#if !defined (SOLARIS) && !defined(LINUX)
-  (void) dl_initiate_module (program_name);
-#else /* !SOLARIS && !LINUX */
+#if !defined (SOLARIS) && !defined(LINUX) && !defined(AIX)
+  (void) dl_initiate_module (client_credential->program_name);
+#else /* !SOLARIS && !LINUX && !AIX */
   (void) dl_initiate_module ();
-#endif /* !SOLARIS && !LINUX */
+#endif /* !SOLARIS && !LINUX && !AIX */
   dl_initialized = true;
 #endif /* !WINDOWS */
 
@@ -1044,9 +1044,9 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 		"register client { type %d db %s user %s password %s "
 		"program %s login %s host %s pid %d }\n",
 		client_credential->client_type,
-		client_credential->db_name,
-		client_credential->db_user,
-		client_credential->db_password,
+		client_credential->db_name, client_credential->db_user,
+		client_credential->db_password ==
+		NULL ? "(null)" : client_credential->db_password,
 		client_credential->program_name,
 		client_credential->login_name,
 		client_credential->host_name, client_credential->process_id);

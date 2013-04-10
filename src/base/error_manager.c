@@ -829,7 +829,7 @@ er_file_open (const char *path)
   tpath = strdup (path);
   while (1)
     {
-      if (dirname_r (tpath, dir, PATH_MAX) > 0 && access (dir, F_OK) < 0)
+      if (cub_dirname_r (tpath, dir, PATH_MAX) > 0 && access (dir, F_OK) < 0)
 	{
 	  if (mkdir (dir, 0777) < 0 && errno == ENOENT)
 	    {

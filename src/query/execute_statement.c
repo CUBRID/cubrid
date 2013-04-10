@@ -2642,7 +2642,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  sm_Disable_updating_statistics = old_disable_update_stats;
 	  break;
 
-	case PT_ATTACH:
+	case PT_2PC_ATTACH:
 	  error = do_attach (parser, statement);
 	  break;
 
@@ -3167,7 +3167,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_REVOKE:
       err = do_revoke (parser, statement);
       break;
-    case PT_ATTACH:
+    case PT_2PC_ATTACH:
       err = do_attach (parser, statement);
       break;
     case PT_GET_XACTION:
@@ -3979,7 +3979,7 @@ do_attach (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   if (!parser
       || pt_has_error (parser)
-      || !statement || statement->node_type != PT_ATTACH)
+      || !statement || statement->node_type != PT_2PC_ATTACH)
     {
       return ER_GENERIC_ERROR;
     }

@@ -1297,6 +1297,9 @@ typedef struct _ha_config
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"
 #define LIB_UTIL_SA_NAME                "cubridsa.dll"
+#elif defined(_AIX)
+#define LIB_UTIL_CS_NAME                "libcubridcs.a(libcubridcs.so.0)"
+#define LIB_UTIL_SA_NAME                "libcubridsa.a(libcubridsa.so.0)"
 #else
 #define LIB_UTIL_CS_NAME                "libcubridcs.so"
 #define LIB_UTIL_SA_NAME                "libcubridsa.so"

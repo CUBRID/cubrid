@@ -67,6 +67,8 @@ extern "C"
 #if defined(WINDOWS)
 #define __func__		__FUNCTION__
 #define gettid()                GetCurrentThreadId()
+#elif defined(AIX)
+#define gettid()                pthread_self()
 #else
 #define gettid()                syscall(__NR_gettid)
 #endif

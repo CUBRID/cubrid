@@ -33,6 +33,10 @@ extern "C"
 {
 #endif
 
+#if defined(AIX)
+#include <sys/socket.h>
+#endif
+
 #if !defined(__GNUC__)
 #define __attribute__(X)
 #endif
@@ -359,8 +363,14 @@ extern "C"
 #if !defined(HAVE_ASPRINTF)
   extern int asprintf (char **ptr, const char *format, ...);
 #endif				/* HAVE_ASPRINTF */
-
-  extern int dirname_r (const char *path, char *pathbuf, size_t buflen);
+#if defined(HAVE_ERR_H)
+#include <err.h>
+#else
+#define err(fd, ...) do { fprintf(stderr, __VA_ARGS__); exit(1); } while (0)
+#define errx(fd, ...) do { fprintf(stderr, __VA_ARGS__); exit(1); } while (0)
+#endif
+  extern int cub_dirname_r (const char *path, char *pathbuf, size_t buflen);
+  extern double cub_ceil (double x);
 #if !defined(HAVE_DIRNAME)
   char *dirname (const char *path);
 #endif				/* HAVE_DIRNAME */
@@ -424,6 +434,19 @@ extern "C"
 #if defined(WINDOWS)
 #define atoll(a)	_atoi64((a))
 #define llabs(a)	_abs64((a))
+#endif
+
+#if defined(AIX) && !defined(NAME_MAX)
+#define NAME_MAX pathconf("/",_PC_NAME_MAX)
+#endif
+
+#if defined(AIX) && !defined(DONT_HOOK_MALLOC)
+  void *aix_malloc (size_t size);
+#define malloc(a) aix_malloc(a)
+#endif
+
+#if defined(AIX) && !defined(SOL_TCP)
+#define SOL_TCP IPPROTO_TCP
 #endif
 
 #if defined(WINDOWS)

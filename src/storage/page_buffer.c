@@ -299,7 +299,7 @@ struct pgbuf_iopage_buffer
   PGBUF_BCB *bcb;		/* pointer to BCB structure */
 #if (__WORDSIZE == 32)
   int dummy;			/* for 8byte align of iopage */
-#elif !defined(LINUX) && !defined(WINDOWS)
+#elif !defined(LINUX) && !defined(WINDOWS) && !defined(AIX)
 #error "you must check that iopage is aligned by 8byte !!"
 #endif
   FILEIO_PAGE iopage;		/* The actual buffered io page */

@@ -59,6 +59,12 @@
 #define JVM_LIB_PATH "jre/lib/IA64N/hotspot"
 #elif defined(HPUX) && !defined(IA64)
 #define JVM_LIB_PATH "jre/lib/PA_RISC2.0/hotspot"
+#elif defined(AIX)
+#if __WORDSIZE == 32
+#define JVM_LIB_PATH "jre/bin/classic"
+#elif __WORDSIZE == 64
+#define JVM_LIB_PATH "jre/lib/ppc64/classic"
+#endif
 #elif defined(__i386) || defined(__x86_64)
 #if __WORDSIZE == 32
 #define JVM_LIB_PATH "jre/lib/i386/client"
@@ -71,7 +77,7 @@
 
 #if !defined(WINDOWS)
 #if defined(AIX)
-#define JVM_LIB_FILE "libjvm.a"
+#define JVM_LIB_FILE "libjvm.so"
 #elif defined(HPUX) && !defined(IA64)
 #define JVM_LIB_FILE "libjvm.sl"
 #else /* not AIX , not ( HPUX && (not IA64)) */

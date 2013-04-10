@@ -2536,7 +2536,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
 		  ER_BO_DIRECTORY_DOESNOT_EXIST, 1, lob_path);
 	  if (mkdir (lob_path, 0777) < 0)
 	    {
-	      dirname_r (lob_path, fixed_pathbuf, PATH_MAX);
+	      cub_dirname_r (lob_path, fixed_pathbuf, PATH_MAX);
 	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				   ER_ES_GENERAL, 2, "POSIX", fixed_pathbuf);
 	      return NULL_TRAN_INDEX;
@@ -4469,7 +4469,7 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname,
 		      ER_BO_DIRECTORY_DOESNOT_EXIST, 1, p);
 	      if (mkdir (p, 0777) < 0)
 		{
-		  dirname_r (p, fixed_pathbuf, PATH_MAX);
+		  cub_dirname_r (p, fixed_pathbuf, PATH_MAX);
 		  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				       ER_ES_GENERAL, 2, "POSIX",
 				       fixed_pathbuf);

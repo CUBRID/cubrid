@@ -2743,7 +2743,7 @@ pt_show_node_type (PT_NODE * node)
       return "ALTER_USER";
     case PT_ALTER_TRIGGER:
       return "ALTER_TRIGGER";
-    case PT_ATTACH:
+    case PT_2PC_ATTACH:
       return "ATTACH";
     case PT_ATTR_DEF:
       return "ATTR_DEF";
@@ -4700,7 +4700,7 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_ALTER_USER] = pt_apply_alter_user;
   pt_apply_func_array[PT_ALTER_SERIAL] = pt_apply_alter_serial;
   pt_apply_func_array[PT_ALTER_TRIGGER] = pt_apply_alter_trigger;
-  pt_apply_func_array[PT_ATTACH] = pt_apply_attach;
+  pt_apply_func_array[PT_2PC_ATTACH] = pt_apply_attach;
   pt_apply_func_array[PT_ATTR_DEF] = pt_apply_attr_def;
   pt_apply_func_array[PT_ATTR_ORDERING] = pt_apply_attr_ordering;
   pt_apply_func_array[PT_AUTH_CMD] = pt_apply_auth_cmd;
@@ -4809,7 +4809,7 @@ pt_init_init_f (void)
   pt_init_func_array[PT_ALTER_USER] = pt_init_alter_user;
   pt_init_func_array[PT_ALTER_TRIGGER] = pt_init_alter_trigger;
   pt_init_func_array[PT_ALTER_SERIAL] = pt_init_alter_serial;
-  pt_init_func_array[PT_ATTACH] = pt_init_attach;
+  pt_init_func_array[PT_2PC_ATTACH] = pt_init_attach;
   pt_init_func_array[PT_ATTR_DEF] = pt_init_attr_def;
   pt_init_func_array[PT_ATTR_ORDERING] = pt_init_attr_ordering;
   pt_init_func_array[PT_AUTH_CMD] = pt_init_auth_cmd;
@@ -4919,7 +4919,7 @@ pt_init_print_f (void)
   pt_print_func_array[PT_ALTER_USER] = pt_print_alter_user;
   pt_print_func_array[PT_ALTER_TRIGGER] = pt_print_alter_trigger;
   pt_print_func_array[PT_ALTER_SERIAL] = pt_print_alter_serial;
-  pt_print_func_array[PT_ATTACH] = pt_print_attach;
+  pt_print_func_array[PT_2PC_ATTACH] = pt_print_attach;
   pt_print_func_array[PT_ATTR_DEF] = pt_print_attr_def;
   pt_print_func_array[PT_ATTR_ORDERING] = pt_print_attr_ordering;
   pt_print_func_array[PT_AUTH_CMD] = pt_print_auth_cmd;

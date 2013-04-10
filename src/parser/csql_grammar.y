@@ -1789,7 +1789,7 @@ stmt_
 		{ pop_msg(); }
 		{{
 
-			PT_NODE *node = parser_new_node (this_parser, PT_ATTACH);
+			PT_NODE *node = parser_new_node (this_parser, PT_2PC_ATTACH);
 
 			if (node)
 			  {

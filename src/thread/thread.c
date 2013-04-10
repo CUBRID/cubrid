@@ -1727,7 +1727,7 @@ thread_wakeup_with_tran_index (int tran_index, int resume_reason)
 }
 
 /*
- * thread_wait() - wait until func return TRUE.
+ * thread_waiting_for_function() - wait until func return TRUE.
  *   return: void
  *   func(in) : a pointer to a function that will return a non-zero value when
  *	        the thread should resume execution.
@@ -1737,7 +1737,8 @@ thread_wakeup_with_tran_index (int tran_index, int resume_reason)
  *       value. Halts exection of the currently running thread.
  */
 void
-thread_wait (THREAD_ENTRY * thread_p, CSS_THREAD_FN func, CSS_THREAD_ARG arg)
+thread_waiting_for_function (THREAD_ENTRY * thread_p, CSS_THREAD_FN func,
+			     CSS_THREAD_ARG arg)
 {
   if (thread_p == NULL)
     {

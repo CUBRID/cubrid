@@ -396,6 +396,7 @@ qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 {
   T_NET_BUF net_buf;
   char func_code = CAS_FC_PREPARE;
+  char autocommit_flag;
   int sql_stmt_size;
   int err_code;
   char *result_msg = NULL;
@@ -430,7 +431,8 @@ qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
     }
   ADD_ARG_BYTES (&net_buf, &flag, 1);
 
-  ADD_ARG_BYTES (&net_buf, &con_handle->autocommit_mode, 1);
+  autocommit_flag = (char) con_handle->autocommit_mode;
+  ADD_ARG_BYTES (&net_buf, &autocommit_flag, 1);
 
   while (con_handle->deferred_close_handle_count > 0)
     {
@@ -565,6 +567,7 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
 {
   T_NET_BUF net_buf;
   char func_code = CAS_FC_EXECUTE;
+  char autocommit_flag;
   int i;
   int err_code = 0;
   int res_count;
@@ -616,7 +619,8 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
     {
       forward_only_cursor = false;
     }
-  ADD_ARG_BYTES (&net_buf, &con_handle->autocommit_mode, 1);
+  autocommit_flag = (char) con_handle->autocommit_mode;
+  ADD_ARG_BYTES (&net_buf, &autocommit_flag, 1);
   ADD_ARG_BYTES (&net_buf, &forward_only_cursor, 1);
 
   ADD_ARG_CACHE_TIME (&net_buf, 0, 0);
@@ -801,6 +805,7 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 {
   T_NET_BUF net_buf;
   char func_code = CAS_FC_PREPARE_AND_EXECUTE;
+  char autocommit_flag;
   int sql_stmt_size;
   int err_code;
   int result_code;
@@ -845,7 +850,8 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   ADD_ARG_STR (&net_buf, req_handle->sql_text, sql_stmt_size,
 	       con_handle->charset);
   ADD_ARG_BYTES (&net_buf, &prepare_flag, 1);
-  ADD_ARG_BYTES (&net_buf, &con_handle->autocommit_mode, 1);
+  autocommit_flag = (char) con_handle->autocommit_mode;
+  ADD_ARG_BYTES (&net_buf, &autocommit_flag, 1);
 
   while (con_handle->deferred_close_handle_count > 0)
     {
@@ -1364,12 +1370,14 @@ qe_send_close_handle_msg (T_CON_HANDLE * con_handle, int server_handle_id)
   int err_code = 0;
   T_NET_BUF net_buf;
   char func_code = CAS_FC_CLOSE_REQ_HANDLE;
+  char autocommit_flag;
 
   net_buf_init (&net_buf);
 
   net_buf_cp_str (&net_buf, &func_code, 1);
   ADD_ARG_INT (&net_buf, server_handle_id);
-  ADD_ARG_BYTES (&net_buf, &con_handle->autocommit_mode, 1);
+  autocommit_flag = (char) con_handle->autocommit_mode;
+  ADD_ARG_BYTES (&net_buf, &autocommit_flag, 1);
 
   if (net_buf.err_code < 0)
     {
@@ -2080,14 +2088,15 @@ qe_get_db_version (T_CON_HANDLE * con_handle, char *out_buf, int buf_size)
 {
   T_NET_BUF net_buf;
   char func_code = CAS_FC_GET_DB_VERSION;
+  char autocommit_flag;
   char *result_msg = NULL;
   int result_msg_size;
   int err_code, remaining_time = 0;
 
   net_buf_init (&net_buf);
   net_buf_cp_str (&net_buf, &func_code, 1);
-
-  ADD_ARG_BYTES (&net_buf, &con_handle->autocommit_mode, 1);
+  autocommit_flag = (char) con_handle->autocommit_mode;
+  ADD_ARG_BYTES (&net_buf, &autocommit_flag, 1);
 
   if (net_buf.err_code < 0)
     {
@@ -2685,6 +2694,7 @@ qe_execute_array (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 {
   T_NET_BUF net_buf;
   char func_code = CAS_FC_EXECUTE_ARRAY;
+  char autocommit_flag;
   int err_code = 0;
   T_BIND_VALUE cur_cell;
   int row, idx;
@@ -2716,7 +2726,8 @@ qe_execute_array (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
       ADD_ARG_INT (&net_buf, remaining_time);
     }
 
-  ADD_ARG_BYTES (&net_buf, &con_handle->autocommit_mode, 1);
+  autocommit_flag = (char) con_handle->autocommit_mode;
+  ADD_ARG_BYTES (&net_buf, &autocommit_flag, 1);
 
   for (row = 0; row < req_handle->bind_array_size; row++)
     {
@@ -3041,6 +3052,7 @@ qe_execute_batch (T_CON_HANDLE * con_handle, int num_query, char **sql_stmt,
 {
   T_NET_BUF net_buf;
   char func_code = CAS_FC_EXECUTE_BATCH;
+  char autocommit_flag;
   int err_code;
   char *result_msg = NULL;
   char *msg;
@@ -3056,7 +3068,8 @@ qe_execute_batch (T_CON_HANDLE * con_handle, int num_query, char **sql_stmt,
   net_buf_cp_str (&net_buf, &func_code, 1);
 
   /* set AutoCommitMode is FALSE */
-  ADD_ARG_BYTES (&net_buf, &con_handle->autocommit_mode, 1);
+  autocommit_flag = (char) con_handle->autocommit_mode;
+  ADD_ARG_BYTES (&net_buf, &autocommit_flag, 1);
 
   if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V4))
     {

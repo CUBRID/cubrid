@@ -6745,6 +6745,15 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		tmp_float = DB_GET_FLOAT (src);
 		tmp_int = (int) ROUND (tmp_float);
 
+#if defined(AIX)
+		/* in AIX, float/double to int will not overflow, make
+		 * it the same as linux. */
+		if (tmp_float == (float) DB_INT32_MAX)
+		  {
+		    tmp_int = DB_INT32_MIN;
+		  }
+#endif
+
 		if (OR_CHECK_ASSIGN_OVERFLOW (tmp_int, tmp_float))
 		  {
 		    status = DOMAIN_OVERFLOW;
@@ -6859,6 +6868,14 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		tmp_float = DB_GET_FLOAT (src);
 		tmp_bi = (DB_BIGINT) ROUND (tmp_float);
 
+#if defined(AIX)
+		/* in AIX, float/double to int64 will not overflow, make
+		 * it the same as linux. */
+		if (tmp_float == (float) DB_BIGINT_MAX)
+		  {
+		    tmp_bi = DB_BIGINT_MIN;
+		  }
+#endif
 		if (OR_CHECK_ASSIGN_OVERFLOW (tmp_bi, tmp_float))
 		  {
 		    status = DOMAIN_OVERFLOW;
@@ -6884,6 +6901,14 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		tmp_double = DB_GET_DOUBLE (src);
 		tmp_bi = (DB_BIGINT) ROUND (tmp_double);
 
+#if defined(AIX)
+		/* in AIX, float/double to int64 will not overflow, make
+		 * it the same as linux. */
+		if (tmp_double == (double) DB_BIGINT_MAX)
+		  {
+		    tmp_bi = DB_BIGINT_MIN;
+		  }
+#endif
 		if (OR_CHECK_ASSIGN_OVERFLOW (tmp_bi, tmp_double))
 		  {
 		    status = DOMAIN_OVERFLOW;

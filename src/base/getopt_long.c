@@ -31,9 +31,6 @@
 #include "config.h"
 
 #ifndef HAVE_GETOPT_LONG
-#if !defined(WINDOWS)
-#include <err.h>
-#endif
 #include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>

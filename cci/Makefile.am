@@ -25,6 +25,7 @@ CCI_DIR = $(SRC)/cci
 WIN_DIR = $(top_srcdir)/win
 
 AM_CPPFLAGS = @SRC_INC@ @EXT_INC@ @SYS_DEFS@ @VERSION_DEFS@
+LIBS += @SYS_LIBS@
 
 noinst_HEADERS = \
 	$(BASE_DIR)/porting.h \

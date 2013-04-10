@@ -70,6 +70,7 @@
 #define htond(X)                (X)
 #define ntohf(X)                (X)
 #define ntohd(X)                (X)
+#define ntohi64(X)              (X)
 #else
 #define ntohi64(X)              htoni64(X)
 #define ntohf(X)		htonf(X)

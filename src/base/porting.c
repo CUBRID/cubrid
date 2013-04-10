@@ -39,14 +39,40 @@
 #include <conio.h>
 #include <math.h>
 #else
+#if defined(AIX)
+#define _BOOL
 #include <unistd.h>
 #include <curses.h>
+#else
+#include <unistd.h>
+#include <curses.h>
+#endif
 #endif
 
 #include "porting.h"
 
+#if !defined(HAVE_ASPRINTF)
+#include <stdarg.h>
+#endif
+
 #if !defined(CAS_BROKER) && !defined(CAS_CCI)
 #include "storage_common.h"
+#endif
+
+#if defined(AIX) && !defined(DONT_HOOK_MALLOC)
+#undef malloc
+void *
+aix_malloc (size_t size)
+{
+  /* malloc 0 size memory will be failed in AIX */
+  if (size == 0)
+    {
+      size = 1;
+    }
+  return malloc (size);
+}
+
+#define malloc(a) aix_malloc(a)
 #endif
 
 #if defined (WINDOWS)
@@ -859,6 +885,7 @@ strdup (const char *str)
 #endif /* !HAVE_STRDUP */
 
 #if !defined(HAVE_VASPRINTF)
+#if defined(WINDOWS)
 int
 vasprintf (char **ptr, const char *format, va_list ap)
 {
@@ -873,6 +900,41 @@ vasprintf (char **ptr, const char *format, va_list ap)
 
   return _vsprintf_p (*ptr, len, format, ap);
 }
+#else
+int
+vasprintf (char **ptr, const char *format, va_list ap)
+{
+  va_list ap_copy;
+  char *buffer = NULL;
+  int count;
+
+  va_copy (ap_copy, ap);
+  count = vsnprintf (NULL, 0, format, ap);
+  if (count >= 0)
+    {
+      buffer = (char *) malloc (count + 1);
+      if (buffer != NULL)
+	{
+	  count = vsnprintf (buffer, count + 1, format, ap_copy);
+	  if (count < 0)
+	    {
+	      free (buffer);
+	    }
+	  else
+	    {
+	      *ptr = buffer;
+	    }
+	}
+      else
+	{
+	  count = -1;
+	}
+    }
+  va_end (ap_copy);
+
+  return count;
+}
+#endif
 #endif /* !HAVE_VASPRINTF */
 
 #if !defined(HAVE_ASPRINTF)
@@ -893,7 +955,7 @@ asprintf (char **ptr, const char *format, ...)
 #endif /* !HAVE_ASPRINTF */
 
 int
-dirname_r (const char *path, char *pathbuf, size_t buflen)
+cub_dirname_r (const char *path, char *pathbuf, size_t buflen)
 {
   const char *endp;
   ptrdiff_t len;
@@ -964,7 +1026,7 @@ dirname (const char *path)
 	return (NULL);
     }
 
-  return (dirname_r (path, bname, PATH_MAX) < 0) ? NULL : bname;
+  return (cub_dirname_r (path, bname, PATH_MAX) < 0) ? NULL : bname;
 }
 #endif /* !HAVE_DIRNAME */
 

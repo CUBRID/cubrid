@@ -45,7 +45,7 @@
 #include <sys/ioctl.h>
 #endif
 
-#if defined(LINUX) || defined(ALPHA_LINUX) || defined(UNIXWARE7)
+#if defined(LINUX) || defined(ALPHA_LINUX) || defined(UNIXWARE7) || defined(AIX)
 #define CONTROLLEN (sizeof(struct cmsghdr) + sizeof(int))
 #endif
 
@@ -62,7 +62,7 @@ recv_fd (int fd, int *rid, char *driver_info)
   struct iovec iov[1];
   struct msghdr msg;
   int pid;
-#if defined(LINUX) || defined(ALPHA_LINUX) || defined(UNIXWARE7)
+#if defined(LINUX) || defined(ALPHA_LINUX) || defined(UNIXWARE7) || defined(AIX)
   static struct cmsghdr *cmptr = NULL;
 #endif
   struct sendmsg_s send_msg;
@@ -73,7 +73,7 @@ recv_fd (int fd, int *rid, char *driver_info)
   msg.msg_iovlen = 1;
   msg.msg_name = (caddr_t) NULL;
   msg.msg_namelen = 0;
-#if !defined(LINUX) && !defined(ALPHA_LINUX) && !defined(UNIXWARE7)
+#if !defined(LINUX) && !defined(ALPHA_LINUX) && !defined(UNIXWARE7) && !defined(AIX)
   msg.msg_accrights = (caddr_t) & new_fd;	/* address of descriptor */
   msg.msg_accrightslen = sizeof (new_fd);	/* receive 1 descriptor */
 #else
@@ -100,7 +100,7 @@ recv_fd (int fd, int *rid, char *driver_info)
     }
 
   pid = getpid ();
-#if defined(LINUX) || defined(ALPHA_LINUX) || defined(UNIXWARE7)
+#if defined(LINUX) || defined(ALPHA_LINUX) || defined(UNIXWARE7) || defined(AIX)
   new_fd = *(int *) CMSG_DATA (cmptr);
 #endif
 

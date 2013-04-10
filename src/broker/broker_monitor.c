@@ -44,7 +44,12 @@
 #include <windows.h>
 #include <conio.h>
 #else
+#if defined(AIX)
+#define _BOOL
 #include <curses.h>
+#else
+#include <curses.h>
+#endif
 #endif
 
 #if defined(WINDOWS)
@@ -77,6 +82,10 @@
 #define         FIELD_DELIMITER          ' '
 
 #define         FIELD_WIDTH_BROKER_NAME 20
+
+#if defined(WINDOWS) && !defined(PRId64)
+# define PRId64 "lld"
+#endif
 
 typedef enum
 {
@@ -2240,8 +2249,8 @@ metadata_monitor (void)
 	      num_all_qr = num_hint_key_qr + num_hint_id_qr + num_no_hint_qr;
 	    }
 
-	  str_out ("\t%5d %10ld %10ld %15ld %15ld", j,
-		   num_hint_key_qr, num_hint_id_qr, num_no_hint_qr,
+	  str_out ("\t%5d %10" PRId64 " %10" PRId64 " %15" PRId64 " %15"
+		   PRId64, j, num_hint_key_qr, num_hint_id_qr, num_no_hint_qr,
 		   num_all_qr);
 
 	  print_newline ();
@@ -2332,7 +2341,7 @@ metadata_monitor (void)
 			key_stat_items[j].num_range_queries_requested[k];
 		    }
 
-		  str_out ("\t%5d ~ %5d : %10d %9ld", range_p->min,
+		  str_out ("\t%5d ~ %5d : %10d %9" PRId64, range_p->min,
 			   range_p->max, range_p->shard_id, num_range_qr);
 		  print_newline ();
 		}

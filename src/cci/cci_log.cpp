@@ -43,7 +43,9 @@
 #else
 #include <sys/time.h>
 #include <sys/stat.h>
+#if !defined(AIX)
 #include <sys/syscall.h>
+#endif
 #include <unistd.h>
 #endif
 

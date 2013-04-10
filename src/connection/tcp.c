@@ -1062,9 +1062,9 @@ css_open_new_socket_from_master (SOCKET fd, unsigned short *rid)
   struct iovec iov[1];
   struct msghdr msg;
   int pid;
-#if defined(LINUX)
+#if defined(LINUX) || defined(AIX)
   static struct cmsghdr *cmptr = NULL;
-#endif /* LINUX */
+#endif /* LINUX || AIX */
 
   iov[0].iov_base = (char *) &req_id;
   iov[0].iov_len = sizeof (unsigned short);
@@ -1072,10 +1072,10 @@ css_open_new_socket_from_master (SOCKET fd, unsigned short *rid)
   msg.msg_iovlen = 1;
   msg.msg_name = (caddr_t) NULL;
   msg.msg_namelen = 0;
-#if !defined(LINUX)
+#if !defined(LINUX) && !defined(AIX)
   msg.msg_accrights = (caddr_t) & new_fd;	/* address of descriptor */
   msg.msg_accrightslen = sizeof (new_fd);	/* receive 1 descriptor */
-#else /* not LINUX */
+#else /* not LINUX and not AIX */
   if (cmptr == NULL
       && (cmptr = (struct cmsghdr *) malloc (CONTROLLEN)) == NULL)
     {
@@ -1097,9 +1097,9 @@ css_open_new_socket_from_master (SOCKET fd, unsigned short *rid)
   *rid = ntohs (req_id);
 
   pid = getpid ();
-#if defined(LINUX)
+#if defined(LINUX) || defined(AIX)
   new_fd = *(SOCKET *) CMSG_DATA (cmptr);
-#endif /* LINUX */
+#endif /* LINUX || AIX */
 
 #ifdef SYSV
   ioctl (new_fd, SIOCSPGRP, (caddr_t) & pid);
@@ -1125,9 +1125,9 @@ css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid)
   unsigned short req_id;
   struct iovec iov[1];
   struct msghdr msg;
-#if defined(LINUX)
+#if defined(LINUX) || defined(AIX)
   static struct cmsghdr *cmptr = NULL;
-#endif /* LINUX */
+#endif /* LINUX || AIX */
 
   request = htonl (SERVER_START_NEW_CLIENT);
   if (send (server_fd, (char *) &request, sizeof (int), 0) < 0)
@@ -1146,10 +1146,10 @@ css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid)
   msg.msg_iovlen = 1;
   msg.msg_namelen = 0;
   msg.msg_name = (caddr_t) 0;
-#if !defined(LINUX)
+#if !defined(LINUX) && !defined(AIX)
   msg.msg_accrights = (caddr_t) & client_fd;
   msg.msg_accrightslen = sizeof (client_fd);
-#else /* LINUX */
+#else /* LINUX || AIX */
   if (cmptr == NULL
       && (cmptr = (struct cmsghdr *) malloc (CONTROLLEN)) == NULL)
     {
@@ -1161,7 +1161,7 @@ css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid)
   msg.msg_control = (void *) cmptr;
   msg.msg_controllen = CONTROLLEN;
   *(SOCKET *) CMSG_DATA (cmptr) = client_fd;
-#endif /* LINUX */
+#endif /* LINUX || AIX */
 
   if (sendmsg (server_fd, &msg, 0) < 0)
     {

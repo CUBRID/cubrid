@@ -40,7 +40,7 @@ DBMT_DIR = $(SRC)/dbmt
 QATOOLS_DIR = $(SRC)/qatools
 
 AM_CPPFLAGS = @SRC_INC@ @EXT_INC@ \
-	@SYS_DEFS@ @VERSION_DEFS@ -DASYNC_MODE -D_XOPEN_SOURCE -D_BSD_SOURCE \
+	@SYS_DEFS@ @VERSION_DEFS@ -DASYNC_MODE @XOPEN_DEFS@ -D_BSD_SOURCE \
 	-DDIAG_DEVEL -DCAS_BROKER @DIR_DEFS@
 
 BROKER_CAS_LIBS = @CS_LIB@
@@ -90,6 +90,7 @@ broker_changer_SOURCES = \
 broker_changer_LDADD = $(BROKER_CAS_LIBS)
 
 cubrid_broker_SOURCES = \
+	$(BASE_DIR)/porting.c \
 	$(BROKER_DIR)/broker_config.c \
 	$(BROKER_DIR)/broker_admin.c \
 	$(BROKER_DIR)/broker_shm.c \
@@ -166,7 +167,7 @@ libbrokeradmin_la_SOURCES = \
 	$(BROKER_DIR)/broker_acl.c
 libbrokeradmin_la_CPPFLAGS = $(AM_CPPFLAGS) -D_UC_ADMIN_SO_ -DDIAG_DEVEL
 libbrokeradmin_la_LDFLAGS = -version-number @LT_VERSION@
-libbrokeradmin_la_LIBADD = @CS_LIB@
+libbrokeradmin_la_LIBADD = @SYS_LIBS@ @CS_LIB@
 
 VERSIONED_FILES = \
 	$(BROKER_DIR)/broker_admin.c \

@@ -2487,7 +2487,7 @@ ha_mkdir (const char *path, mode_t mode)
       return true;
     }
 
-  dirname_r (path, dir, PATH_MAX);
+  cub_dirname_r (path, dir, PATH_MAX);
   if (stat (dir, &statbuf) == -1)
     {
       if (errno == ENOENT && ha_mkdir (dir, mode))

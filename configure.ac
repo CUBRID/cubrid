@@ -25,6 +25,12 @@ AC_CONFIG_SRCDIR([src/base/error_code.h])
 AC_CONFIG_AUX_DIR(config)
 AC_CONFIG_HEADERS([config.h])
 
+# check system type
+AC_CANONICAL_SYSTEM
+SYSTEM_TYPE="$host_vendor-$host_os"
+MACHINE_TYPE="$host_cpu"
+export SYSTEM_TYPE MACHINE_TYPE
+
 AM_INIT_AUTOMAKE([1.9 tar-pax])
 
 # Checks for programs.
@@ -41,30 +47,50 @@ AC_ARG_ENABLE([64bit],
 		[build 64 bit code @<:@default=no (32 bit code)@:>@])],
 	[enable_64bit=$enableval],
 	[enable_64bit=no])
-
-if test "$enable_64bit" = "yes"
-then
-	BIT_MODEL="-m64"
-else
-	BIT_MODEL="-m32"
-	CC="$CC $BIT_MODEL"
-	CXX="$CXX $BIT_MODEL"
-	case "$build_cpu" in
-		i?86)
-			CC="$CC -march=$build_cpu"
-			CXX="$CXX -march=$build_cpu"
-			;;
-		x86_64|amd64)
-			CC="$CC -march=i686"
-			CXX="$CXX -march=i686"
-			;;
-		*)
-			;;
-	esac
-fi
 AM_CONDITIONAL([BUILD_64], [test "$enable_64bit" = "yes"])
 
-export BIT_MODEL CC CXX
+OBJECT_MODE=""
+case $SYSTEM_TYPE in
+	*linux*) 
+		if test "$enable_64bit" = "yes"
+		then
+		  BIT_MODEL="-m64"
+		else
+		  BIT_MODEL="-m32"
+		  CC="$CC $BIT_MODEL"
+		  CXX="$CXX $BIT_MODEL"
+		  case "$build_cpu" in
+			i?86)
+				CC="$CC -march=$build_cpu"
+				CXX="$CXX -march=$build_cpu"
+				;;
+			x86_64|amd64)
+				CC="$CC -march=i686"
+				CXX="$CXX -march=i686"
+				;;
+			*)
+				;;
+		  esac
+		fi
+		;;
+	*aix*)
+		if test "$enable_64bit" = "yes"
+		then
+		  BIT_MODEL="-maix64"
+		  CC="$CC -maix64"
+		  CXX="$CXX -maix64"
+		  OBJECT_MODE="64"
+		else
+		  BIT_MODEL="-maix32"
+		  CC="$CC -maix32"
+		  CXX="$CXX -maix32"
+		  OBJECT_MODE="32"
+		fi
+		;;
+	*)
+		;;
+esac
+export BIT_MODEL CC CXX OBJECT_MODE
 
 LT_INIT
 AC_PROG_LIBTOOL
@@ -82,17 +108,43 @@ sed < libtool > libtool-2 's/^hardcode_libdir_flag_spec.*$'/'hardcode_libdir_fla
 mv libtool-2 libtool
 chmod 755 libtool
 
-# System type
-SYSTEM_TYPE="$host_vendor-$host_os"
-MACHINE_TYPE="$host_cpu"
-export SYSTEM_TYPE MACHINE_TYPE
-
+WARN=""
+WARN_CXX=""
 case $SYSTEM_TYPE in
-	*linux*) SYS_DEFS="-DGCC -DLINUX -D_GNU_SOURCE -DI386"
-		 SYS_LIBS="" ;;
-	*)       SYS_DEFS=""
-		 SYS_LIBS="" ;;
+	*linux*) 
+		SYS_DEFS="-DGCC -DLINUX -D_GNU_SOURCE -DI386"
+		SYS_LIBS=""
+		XOPEN_DEFS="-D_XOPEN_SOURCE"
+		WARN="-Wextra"
+		WARN_CXX="-Wextra"
+		;;
+	*aix*)
+		SYS_DEFS="-DGCC -DAIX -D_GNU_SOURCE -DPPC -fsigned-char -D_THREAD_SAFE"
+		XOPEN_DEFS=""
+		CC="$CC -pthread"
+		CXX="$CXX -pthread"
+		LDFLAGS="-Wl,-bbigtoc -Wl,-brtl -Wl,-bnortllib -Wl,-bnosymbolic -Wl,-bnoautoexp -Wl,-bexpall"
+		if test "$enable_64bit" = "yes"
+		then
+		  SYS_LIBS="-Wl,-bmaxdata:0x200000000 -Wl,-bnoipath"
+		  SYS_DEFS="$SYS_DEFS -DAIX_PPC64 -D__WORDSIZE=64"
+		else
+		  SYS_LIBS="-Wl,-bmaxdata:0x80000000 -Wl,-bnoipath"
+		  SYS_DEFS="$SYS_DEFS -D_LARGE_FILES -DAIX_PPC32 -D__WORDSIZE=32"
+		fi
+		;;
+	*)
+		SYS_DEFS=""
+		SYS_LIBS=""
+		XOPEN_DEFS=""
+		;;
 esac
+
+WARN="-Wall -W -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wlong-long $WARN"
+WARN_CXX="-Wall -W -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wlong-long $WARN_CXX"
+NOWARN="-Wno-unused"
+CFLAGS="$CFLAGS $WARN $NOWARN"
+CXXFLAGS="$CXXFLAGS $WARN_CXX $NOWARN"
 
 case $MACHINE_TYPE in
 	x86*|i*86)	SYS_DEFS="$SYS_DEFS -DX86" ;;
@@ -125,7 +177,7 @@ AC_CHECK_HEADERS([limits.h],
 AC_CHECK_HEADERS([limits.h],
 	[],
 	[AC_DEFINE([LINE_MAX], [2048], [Max line length])])
-AC_CHECK_HEADERS([sys/param.h sys/socket.h nl_types.h regex.h getopt.h libgen.h rpc/des_crypt.h])
+AC_CHECK_HEADERS([sys/param.h sys/socket.h nl_types.h regex.h getopt.h libgen.h rpc/des_crypt.h err.h vsnprintf])
 
 # Checks for typedefs, structures, and compiler characteristics.
 #AC_TYPE_INT8_T
@@ -158,6 +210,9 @@ AC_CHECK_TYPES([off64_t], [SYS_DEFS="$SYS_DEFS -D_LARGEFILE64_SOURCE -D_FILE_OFF
 CFLAGS="$remember_CFLAGS"
 
 AC_STRUCT_TM
+
+# Generate WORDS_BIGENDIAN in AIX
+AC_C_BIGENDIAN
 
 AS_IF([test "$GCC" = "yes"],
 	[AC_MSG_CHECKING([for --hash-style=both linker support])
@@ -193,6 +248,20 @@ AC_REPLACE_FUNCS([vasprintf asprintf strdup strlcpy strlcat \
 
 # Check reentrant functions
 AC_CHECK_FUNCS([ctime_r localtime_r drand48_r])
+
+if test "$BIT_MODEL" = "-maix64"
+then
+	remember_LDFLAGS="$LDFLAGS"
+	LDFLAGS="$LDFLAGS -L/opt/freeware/lib -lstdc++ -Wl,-bernotok"
+	AC_MSG_CHECKING([for libgcc_s and libstdc++ ...])
+	AC_LANG_PUSH([C++])
+	AC_LINK_IFELSE([AC_LANG_SOURCE([#include <iostream>
+			int main(void) { return 0; }])],
+		       [AC_MSG_RESULT(yes)],
+		       [AC_MSG_ERROR([Cannot compile 64bit program, please check libgcc_s or libcstdc++ in /opt/freeware/lib.])])
+	AC_LANG_POP
+	LDFLAGS="$remember_LDFLAGS"
+fi
 
 # Check gethostbyname_r function
 AC_MSG_CHECKING([for glibc gethostbyname_r])
@@ -232,10 +301,13 @@ AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <netdb.h>]],
 	[AC_MSG_RESULT([no])])
 
 # Check gcc atomic builtins
+# Attention: We used UINT64 in source code. But AIX 32bit seems doesn't support uint64_t type
+# in atomic builtins. so, in AIX32bit, HAVE_GCC_ATOMIC_BUILTINS is undefined.
 AC_MSG_CHECKING([whether gcc provides atomic builtins])
 AC_RUN_IFELSE([AC_LANG_SOURCE([
+	#include <stdint.h>
 	int main() {
-  		long i, j, r;
+  		uint64_t i, j, r;
 		i = 100; j = 200;
 		r = __sync_bool_compare_and_swap(&i, 100, j);
 		if (r == 0 || i != 200) {
@@ -300,12 +372,6 @@ AC_ARG_ENABLE([profile],
 AS_IF([test "$enable_profile" = "yes"],
 	[CFLAGS="$CFLAGS -g -pg"
 	CXXFLAGS="$CXXFLAGS -g -pg"])
-
-WARN="-Wall -W -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wextra -Wlong-long"
-WARN_CXX="-Wall -W -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wextra  -Wlong-long"
-NOWARN="-Wno-unused"
-CFLAGS="$CFLAGS $WARN $NOWARN"
-CXXFLAGS="$CXXFLAGS $WARN_CXX $NOWARN"
 
 AC_MSG_CHECKING([whether build cci library only])
 AC_ARG_WITH(cci-only,
@@ -385,12 +451,19 @@ AS_IF([test "x$with_jdbc" = "xyes"],
 			mddir="linux";;
 		solaris*)
 			mddir="solaris";;
+		aix*)
+			mddir="aix";;
 		*)
 			mddir=""
 	esac
-	AC_CHECK_FILE($JAVA_HOME/include/$mddir/jni_md.h,
-		[JAVA_INC="$JAVA_INC -I$JAVA_HOME/include/$mddir"],
-		AC_MSG_ERROR(jni_md.h is required.))
+
+	if test "x$mddir" != "xaix"
+	then  
+		AC_CHECK_FILE($JAVA_HOME/include/$mddir/jni_md.h,
+			[JAVA_INC="$JAVA_INC -I$JAVA_HOME/include/$mddir"],
+			AC_MSG_ERROR(jni_md.h is required.))
+	fi
+
 	AC_MSG_CHECKING([whether JNI programs can be compiled with $JAVA_INC])
 	CFLAGS="$CFLAGS $JAVA_INC"
 	AC_LINK_IFELSE([AC_LANG_SOURCE([
@@ -898,6 +971,7 @@ AC_SUBST([EXTERNAL_PKGS])
 AC_SUBST([EXTERNAL_DIST])
 AC_SUBST([SYS_DEFS])
 AC_SUBST([SYS_LIBS])
+AC_SUBST([XOPEN_DEFS])
 AC_SUBST([EXT_LIBS])
 AC_SUBST([EXT_INC])
 AC_SUBST([SERVER_DEFS])

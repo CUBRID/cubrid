@@ -590,7 +590,7 @@ hb_create_master_reader (void)
   /* AIX's pthread is slightly different from other systems.
      Its performance highly depends on the pthread's scope and it's related
      kernel parameters. */
-  rv = pthread_attr_setscope (thread_attr,
+  rv = pthread_attr_setscope (&thread_attr,
 			      prm_get_bool_value
 			      (PRM_ID_PTHREAD_SCOPE_PROCESS) ?
 			      PTHREAD_SCOPE_PROCESS : PTHREAD_SCOPE_SYSTEM);

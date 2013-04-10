@@ -58,6 +58,7 @@
 #include "broker_util.h"
 #include "broker_filename.h"
 #include "environment_variable.h"
+#include "porting.h"
 
 static char db_err_log_file[PATH_MAX];
 static char as_pid_file_name[PATH_MAX] = "";

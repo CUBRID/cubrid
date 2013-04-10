@@ -984,7 +984,7 @@ int PRM_LIST_MAX_QUERY_CACHE_PAGES = -1;
 static int prm_list_max_query_cache_pages_default = -1;	/* infinity */
 
 bool PRM_USE_ORDERBY_SORT_LIMIT = true;
-static int prm_use_orderby_sort_limit_default = true;
+static bool prm_use_orderby_sort_limit_default = true;
 
 int PRM_HA_MODE = HA_MODE_OFF;
 static int prm_ha_mode_default = HA_MODE_OFF;

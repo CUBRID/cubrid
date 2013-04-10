@@ -54,6 +54,11 @@
 #include "heartbeat.h"
 #endif
 
+#if defined(AIX)
+#include <procinfo.h>
+#include <sys/types.h>
+#endif
+
 #define LA_DEFAULT_CACHE_BUFFER_SIZE            100
 #define LA_MAX_REPL_ITEM_WITHOUT_RELEASE_PB     50
 #define LA_DEFAULT_LOG_PAGE_SIZE                4096
@@ -6140,6 +6145,14 @@ la_get_mem_size (void)
       vsize *= (sysconf (_SC_PAGESIZE) / ONE_K);
       fclose (fp);
     }
+#elif defined(AIX)
+  struct procentry64 entry;
+  pid_t pid = getpid ();
+
+  if (getprocs64 (&entry, sizeof (entry), NULL, 0, &pid, 1))
+    {
+      vsize = (unsigned long) entry.pi_dvm * (sysconf (_SC_PAGESIZE) / ONE_K);
+    }
 #else
 #	error
 #endif
@@ -6154,8 +6167,13 @@ la_check_mem_size (void)
   unsigned long max_vsize;
 
   vsize = la_get_mem_size ();
+#if defined(AIX)
+  max_vsize = MAX ((unsigned long) (la_Info.max_mem_size * ONE_K),
+		   (la_Info.start_vsize * 60));
+#else
   max_vsize = MAX ((unsigned long) (la_Info.max_mem_size * ONE_K),
 		   (la_Info.start_vsize * 2));
+#endif
   if (vsize > max_vsize)
     {
       /*

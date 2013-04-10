@@ -84,6 +84,8 @@ utility_load_library (DSO_HANDLE * handle, const char *path)
 
 #if defined(WINDOWS)
   (*handle) = LoadLibrary (path);
+#elif defined(_AIX)
+  (*handle) = dlopen (path, RTLD_NOW | RTLD_MEMBER);
 #else
   (*handle) = dlopen (path, RTLD_NOW | RTLD_GLOBAL);
 #endif

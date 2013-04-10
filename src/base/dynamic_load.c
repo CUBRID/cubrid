@@ -171,7 +171,7 @@ struct dynamic_loader
 				   as the daemon to scavenge tmpfiles. */
   } daemon;
 
-#if defined (SOLARIS) || defined(HPUX) || defined(LINUX)
+#if defined (SOLARIS) || defined(HPUX) || defined(LINUX) || defined(AIX)
   struct
   {
     void **handles;		/* An array of handles to the shared objects */
@@ -191,10 +191,6 @@ struct dynamic_loader
   } loader;
 
   const char *image_file;	/* The name of the file that holds the up-to-date symbol table info */
-
-#if defined(_AIX)
-  char *orig_image_file;
-#endif				/* AIX */
 };
 
 int dl_Errno = NO_ERROR;
@@ -226,7 +222,7 @@ static const int HANDLES_PER_EXTENT = 10;
 #if defined(sun) || defined(sparc)
 static const char DEFAULT_LD_NAME[] = "/bin/ld";
 #elif defined(_AIX)
-static const char DEFAULT_LD_NAME[] = "/bin/cc";
+/* this space intentionally blank */
 #elif defined(HPUX)
 /* this space intentionally blank */
 #elif defined(SOLARIS)
@@ -250,7 +246,7 @@ static void dl_record_files (DYNAMIC_LOADER *);
 static int dl_is_valid_image_file (DYNAMIC_LOADER *);
 static int dl_resolve_symbol (DYNAMIC_LOADER *, struct nlist *);
 
-#if !defined (SOLARIS) && !defined(HPUX) && !defined(LINUX)
+#if !defined (SOLARIS) && !defined(HPUX) && !defined(LINUX) && !defined(AIX)
 static void dl_notify_daemon (DYNAMIC_LOADER *);
 static void dl_spawn_daemon (DYNAMIC_LOADER *);
 static void dl_set_pipe_handler (void);
@@ -265,7 +261,7 @@ static char *dl_get_temporary_name (const char *dir, const char *prefix,
 				    int lineno);
 static int dl_open_pipe (int *fd, int lineno);
 #endif /* DEBUG */
-#endif /* !(SOLARIS) && !(HPUX) && !(LINUX) */
+#endif /* !(SOLARIS) && !(HPUX) && !(LINUX) && !(AIX) */
 
 #if (defined(sun) || defined(sparc)) && !defined(SOLARIS)
 static size_t dl_get_image_file_size (const char *);
@@ -274,12 +270,7 @@ static int dl_link_file (DYNAMIC_LOADER *, const char *, caddr_t,
 static int dl_load_objects (DYNAMIC_LOADER *, size_t *, const char **,
 			    const char **, const size_t,
 			    enum dl_estimate_mode);
-#elif defined(_AIX)
-static int dl_link_file (DYNAMIC_LOADER *, const char *, struct nlist *,
-			 const char **);
-static int dl_load_and_resolve_objects (DYNAMIC_LOADER * const char **,
-					const char **, struct nlist *);
-#elif defined(HPUX) || defined(SOLARIS) || defined(LINUX)
+#elif defined(HPUX) || defined(SOLARIS) || defined(LINUX) || defined(AIX)
 static int dl_load_objects (DYNAMIC_LOADER *, const char **);
 #else /* ((sun) || (sparc)) && !(SOLARIS) */
 #error "Unknown machine type."
@@ -292,7 +283,7 @@ dl_get_system_error_message (int n)
 }
 
 #ifdef DEBUG
-#if ((defined(sun) || defined(sparc))&& !defined(SOLARIS)) || defined(_AIX)
+#if ((defined(sun) || defined(sparc))&& !defined(SOLARIS))
 static char *
 dl_get_temporary_name (const char *dir, const char *prefix, int lineno)
 {
@@ -323,7 +314,7 @@ dl_get_temporary_name (const char *dir, const char *prefix, int lineno)
     }
   return result;
 }
-#endif /* (((sun) || (sparc))&& !(SOLARIS)) || (_AIX) */
+#endif /* (((sun) || (sparc))&& !(SOLARIS)) */
 
 static int
 dl_open_object_file (const char *filename, int mode, int lineno)
@@ -364,7 +355,7 @@ dl_close_object_file (int fd, int lineno)
 #endif /* DEBUG */
 
 
-#if !defined (SOLARIS) && !defined(HPUX) && !defined(LINUX)
+#if !defined (SOLARIS) && !defined(HPUX) && !defined(LINUX) && !defined(AIX)
 /*
  * dl_decipher_waitval() - decipher exit status
  *   return: none
@@ -413,7 +404,7 @@ dl_decipher_waitval (int waitval)
 #undef wait
 #endif /* __GNUG__ */
 }
-#endif /* !SOLARIS && !HPUX && !LINUX */
+#endif /* !SOLARIS && !HPUX && !LINUX && !AIX */
 
 /*
  * dl_destroy_candidates()
@@ -472,7 +463,7 @@ dl_validate_file_entry (FILE_ENTRY * this_, const char *filename)
 #elif defined(_AIX)
 #define AR_MAGIC_STR		AIAMAG
 #define AR_MAGIC_STR_SIZ	SAIAMAG
-  char ar_magic[AR_MAGIC_STRING_SIZ];
+  char ar_magic[AR_MAGIC_STR_SIZ];
   struct aouthdr hdr;
 #endif /* ((sun) || (sparc)) && !(SOLARIS) */
   int fd;
@@ -609,7 +600,7 @@ dl_initiate_dynamic_loader (DYNAMIC_LOADER * this_, const char *original)
 
   this_->daemon.daemon_fd = DAEMON_NOT_SPAWNED;
 
-#if defined (SOLARIS) || defined(HPUX) || defined(LINUX)
+#if defined (SOLARIS) || defined(HPUX) || defined(LINUX) || defined(AIX)
   this_->handler.handles =
     (void **) malloc (HANDLES_PER_EXTENT * sizeof (void *));
   if (this_->handler.handles == NULL)
@@ -623,7 +614,7 @@ dl_initiate_dynamic_loader (DYNAMIC_LOADER * this_, const char *original)
     {
       this_->handler.handles[i] = 0;
     }
-#endif /* SOLARIS || HPUX || LINUX */
+#endif /* SOLARIS || HPUX || LINUX || AIX */
 
   this_->loader.cmd = NULL;
   this_->loader.ptr = NULL;
@@ -631,18 +622,9 @@ dl_initiate_dynamic_loader (DYNAMIC_LOADER * this_, const char *original)
 
   this_->image_file = original;
 
-#if defined(_AIX)
-  this_->orig_image_file = strdup ((char *) original);
-  if (this_->orig_image_file == NULL)
-    {
-      DL_SET_ERROR_SYSTEM_MSG ();
-      return ER_FAILED;
-    }
-
-#endif /* _AIX */
-#if !defined (SOLARIS) && !defined(HPUX) && !defined(LINUX)
+#if !defined (SOLARIS) && !defined(HPUX) && !defined(LINUX) && !defined(AIX)
   this_->loader.cmd = DEFAULT_LD_NAME;	/*use the default name. */
-#endif /* !(SOLARIS) && !(HPUX) && !(LINUX) */
+#endif /* !(SOLARIS) && !(HPUX) && !(LINUX) && !(AIX) */
 
   if (dl_Errno == NO_ERROR)
     {
@@ -660,7 +642,7 @@ dl_destroy_dynamic_loader (DYNAMIC_LOADER * this_)
 
   assert (this_ != NULL);
 
-#if defined (SOLARIS) || defined(HPUX) || defined(LINUX)
+#if defined (SOLARIS) || defined(HPUX) || defined(LINUX) || defined(AIX)
   for (i = 0; i < this_->handler.top; i++)
     {
 #if defined(HPUX)
@@ -691,14 +673,12 @@ dl_destroy_dynamic_loader (DYNAMIC_LOADER * this_)
 #if (defined(sun) || defined(sparc) ) && !defined(SOLARIS)
 	  free (this_->loader.ptr[i]);	/* Use free because the storage was
 					   allocated by VALLOC */
-#elif defined(_AIX)
-	  unload ((FUNCTION_POINTER_TYPE) this->loader.ptr[i]);
 #endif /* ((sun) || (sparc)) && !(SOLARIS) */
 	}
       free_and_init (this_->loader.ptr);
     }
 
-#if !defined (SOLARIS) && !defined(HPUX) && !defined(LINUX)
+#if !defined (SOLARIS) && !defined(HPUX) && !defined(LINUX) && !defined(AIX)
   if (!this_->virgin)
     {
       (void) unlink (this_->image_file);
@@ -706,11 +686,7 @@ dl_destroy_dynamic_loader (DYNAMIC_LOADER * this_)
 
   free ((char *) this_->image_file);	/* Don't use free_and_init(),
 					   image_file came from exec_path */
-
-#if defined(AIX)
-  free_and_init (this->orig_image_file);
-#endif /* AIX */
-#endif /* !SOLARIS && !HPUX && !LINUX */
+#endif /* !SOLARIS && !HPUX && !LINUX && !AIX */
 
   if (this_->daemon.daemon_fd >= 0)
     {
@@ -927,7 +903,7 @@ dl_find_daemon (DYNAMIC_LOADER * this_)
     }
 }
 
-#if !defined (SOLARIS) && !defined(HPUX) && !defined(LINUX)
+#if !defined (SOLARIS) && !defined(HPUX) && !defined(LINUX) && !defined(AIX)
 /*
  * dl_parse_extra_options() - Break up a string of options into a vector
  *   return: options vector
@@ -977,9 +953,9 @@ dl_parse_extra_options (int *num_options, char *option_string)
   *num_options = i;
   return option_vec;
 }
-#endif /* !SOLARIS && !HPUX && !LINUX */
+#endif /* !SOLARIS && !HPUX && !LINUX && !AIX */
 
-#if !defined (SOLARIS) && !defined(HPUX) && !defined(LINUX)
+#if !defined (SOLARIS) && !defined(HPUX) && !defined(LINUX) && !defined(AIX)
 /*
  * dl_link_file() - Builds up a "command line" which is then forked via execv()
  *   return: Zero on success, non-zero on failure
@@ -990,15 +966,10 @@ dl_parse_extra_options (int *num_options, char *option_string)
  *   libs(in): array of arguments to be passed to ld
  * Note : You can pass extra parameters to ld with DL_LD_OPTIONS env-variable
  */
-static int
 #if defined(sun) || defined(sparc)
-  static int
+static int
 dl_link_file (DYNAMIC_LOADER * this_, const char *tmp_file,
 	      caddr_t load_point, const char **libs)
-#elif defined(_AIX)
-  static int
-dl_link_file (DYNAMIC_LOADER * this_, const char *tmp_file,
-	      struct nlist *syms, const char **libs)
 #endif				/* (sun) || (sparc) */
 {
   int num_libs = 0;
@@ -1011,166 +982,6 @@ dl_link_file (DYNAMIC_LOADER * this_, const char *tmp_file,
   char load_point_buf[16];
   int i;
   pid_t pid = 0;
-
-#if defined(_AIX)
-  int num_loaded;
-  const char *export_list_filename = (const char *) NULL;
-  FILE *export_list_file = (FILE *) NULL;
-  const char *load_main_tmp = (const char *) NULL;
-  char *load_main_filename = (char *) NULL;
-  FILE *load_main_file = (FILE *) NULL;
-  char *import_list_filename = (char *) NULL;
-  FILE *import_list_file = (FILE *) NULL;
-  char *template_filename = (char *) NULL;
-  FILE *template_file = (FILE *) NULL;
-  char *buf = (char *) NULL;
-  int rc;
-
-  buf = (char *) malloc (PATH_MAX);
-  if (buf == NULL)
-    {
-      DL_SET_ERROR_SYSTEM_MSG ();
-      goto end_link_file;
-    }
-
-  export_list_filename = TEMPNAM (NULL, "exprt");
-  if (export_list_filename == NULL)
-    {
-      DL_SET_ERROR_SYSTEM_MSG ();
-      goto end_link_file;
-    }
-
-  export_list_file = fopen (export_list_filename, "w");
-  if (export_list_file == (FILE *) NULL)
-    {
-      DL_SET_ERROR_SYSTEM_MSG ();
-      goto end_link_file;
-    }
-  (void) sprintf (buf, "#!\n");	/* Make the export list file. The format is
-				   a first line with #!<filename> and subsequent
-				   lines with a function name per line. */
-  if (fwrite (buf, 1, strlen (buf), export_list_file) == 0)
-    {
-      DL_SET_ERROR_SYSTEM_MSG ();
-      goto end_link_file;
-    }
-
-  for (i = 0; syms[i].n_name; ++i)
-    {
-      (void) sprintf (buf, "%s\n", syms[i].n_name);
-      if (fwrite (buf, 1, strlen (buf), export_list_file) == 0)
-	{
-	  DL_SET_ERROR_SYSTEM_MSG ();
-	  goto end_link_file;
-	}
-    }
-
-  if (export_list_file)
-    {
-      fclose (export_list_file);
-    }
-
-  load_main_tmp = TEMPNAM (NULL, "lmain");
-  if (load_main_tmp == NULL)
-    {
-      DL_SET_ERROR_SYSTEM_MSG ();
-      goto end_link_file;
-    }
-  load_main_filename = (char *) malloc (PATH_MAX);
-  if (load_main_filename == NULL)
-    {
-      DL_SET_ERROR_SYSTEM_MSG ();
-      goto end_link_file;
-    }
-  (void) strcpy (load_main_filename, load_main_tmp);
-  free ((void *) load_main_tmp);	/* Don't use free_and_init(); from tempnam(). */
-  (void) strcat (load_main_filename, ".c");
-  load_main_file = fopen (load_main_filename, "w");
-  if (load_main_file == NULL)
-    {
-      DL_SET_ERROR_SYSTEM_MSG ();
-      goto end_link_file;
-    }
-  if (fwrite ("main(){}", 1, strlen ("main(){}"), load_main_file) == 0)
-    {
-      /* source file for the dummy main function. */
-      DL_SET_ERROR_SYSTEM_MSG ();
-      goto end_link_file;
-    }
-  if (load_main_file)
-    fclose (load_main_file);
-
-  template_filename = (char *) malloc (PATH_MAX);
-  if (template_filename == NULL)
-    {
-      DL_SET_ERROR_SYSTEM_MSG ();
-      goto end_link_file;
-    }
-  sprintf (template_filename, "%s/admin/symbols.exp", envvar_root ());
-  template_file = fopen (template_filename, "r");
-  if (template_file == (FILE *) NULL)
-    {
-      DL_SET_ERROR_SYSTEM_MSG ();
-      goto end_link_file;
-    }
-  import_list_filename = TEMPNAM (NULL, "imprt");	/* import list file. */
-  if (import_list_filename == NULL)
-    {
-      DL_SET_ERROR_SYSTEM_MSG ();
-      goto end_link_file;
-    }
-  import_list_file = fopen (import_list_filename, "w");
-  if (import_list_file == (FILE *) NULL)
-    {
-      DL_SET_ERROR_SYSTEM_MSG ();
-      goto end_link_file;
-    }
-  if (fscanf (template_file, "%s\n", buf) <= 0)
-    {
-      DL_SET_ERROR_SYSTEM_MSG ();
-      goto end_link_file;
-    }
-
-  /* Copy the template file admin/symbols.exp and modify the first
-     line to have the name of this executing program. */
-  if ((this_->orig_image_file[0] == '/')
-      || (this_->orig_image_file[0] == '.'))
-    {
-      rc = fprintf (import_list_file, "#!%s\n", this_->orig_image_file);
-    }
-  else
-    {
-      rc = fprintf (import_list_file, "#!%s/bin/%s\n", envvar_root (),
-		    this_->orig_image_file);
-    }
-
-  if (rc <= 0)
-    {
-      DL_SET_ERROR_SYSTEM_MSG ();
-      goto end_link_file;
-    }
-  while ((rc = fscanf (template_file, "%s\n", buf)) != EOF)
-    {
-      if (rc <= 0)
-	{
-	  DL_SET_ERROR_SYSTEM_MSG ();
-	  goto end_link_file;
-	}
-      if (fprintf (import_list_file, "%s\n", buf) <= 0)
-	{
-	  DL_SET_ERROR_SYSTEM_MSG ();
-	  goto end_link_file;
-	}
-    }
-  if (import_list_file)
-    {
-      fclose (import_list_file);
-    }
-  if (template_file)
-    {
-      fclose (template_file);
-    }
-#endif /* _AIX */
 
   extra_options = (char *) getenv ("DL_LD_OPTIONS");	/* to be passed to ld */
   if (extra_options)
@@ -1192,19 +1003,6 @@ dl_link_file (DYNAMIC_LOADER * this_, const char *tmp_file,
   /* ld -N -A <image_file> -T <load_point> -o <tmp_file>
      <...obj_files...> <...libs...> */
   argc = 8 + this_->candidates.num + num_libs + num_options;
-#elif defined(_AIX)
-  /* ld -o <tmp_file> -e main <main source> -bI:<import list file>
-     -bE:<export list file> <already loaded files>
-     <candidates> <options> <libs> */
-  num_loaded = 0;
-  for (i = 0; i < FNAME_TBL_SIZE; ++i)
-    {
-      if (this_->loaded[i])
-	{
-	  ++num_loaded;
-	}
-    }
-  argc = 8 + this_->candidates.num + num_loaded + num_libs + num_options;
 #endif /* ((sun) || (sparc)) && !(SOLARIS) */
 
   argv = malloc (sizeof (const char *) * (argc + 1));
@@ -1226,18 +1024,6 @@ dl_link_file (DYNAMIC_LOADER * this_, const char *tmp_file,
   *argvp++ = load_point_buf;
   *argvp++ = "-o";
   *argvp++ = tmp_file;
-#elif defined(_AIX)
-  *argvp++ = "-o";
-  *argvp++ = tmp_file;
-  *argvp++ = "-G";
-  *argvp++ = "-bnoentry";
-  *argvp++ = "-bexpall";
-  *argvp++ = "-lc";
-  for (i = 0; i < FNAME_TBL_SIZE; ++i)
-    {
-      if (this_->loaded[i])	/* need to build the new loadable executable. */
-	*argvp++ = this_->loaded[i]->filename;
-    }
 #endif /* ((sun) || (sparc)) && !(SOLARIS) */
   for (i = 0; i < this_->candidates.num; ++i)
     {
@@ -1298,32 +1084,10 @@ end_link_file:
   if (option_vec)
     free_and_init (option_vec);
   free_and_init (argv);
-#if defined(_AIX)
-  free_and_init (buf);
-  if (export_list_filename)
-    unlink (export_list_filename);
-  if (load_main_filename)
-    unlink (load_main_filename);
-  if (import_list_filename)
-    unlink (import_list_filename);
-  /* Don't use free_and_init; from tempnam(). */
-  free ((void *) *(&export_list_filename));
-  free ((void *) import_list_filename);
-  if (export_list_file)
-    fclose (export_list_file);
-  if (load_main_file)
-    fclose (load_main_file);
-  if (import_list_file)
-    fclose (import_list_file);
-  free_and_init (load_main_filename);
-  free_and_init (template_filename);
-  if (template_file)
-    fclose (template_file);
-#endif /* _AIX */
 
   return dl_Errno;
 }
-#endif /* !SOLARIS && !HPUX && && !LINUX */
+#endif /* !SOLARIS && !HPUX && !LINUX && !AIX */
 
 
 #if (defined(sun) || defined(sparc)) && !defined(SOLARIS)
@@ -1389,7 +1153,7 @@ cleanup:
 #endif /* ((sun) || (sparc)) && !(SOLARIS) */
 
 
-#if ((defined(sun) || defined(sparc)) && !defined(SOLARIS)) || defined(_AIX)
+#if ((defined(sun) || defined(sparc)) && !defined(SOLARIS))
 #if defined(DEBUG)
 static int
 dl_open_pipe (int *fd, int lineno)
@@ -1504,7 +1268,7 @@ dl_notify_daemon (DYNAMIC_LOADER * this_)
   if (this_->daemon.daemon_fd == DAEMON_NOT_SPAWNED)
     {
       /* Start a daemon if we haven't tried already. */
-      dl_spawn_daemon ();
+      dl_spawn_daemon (this_);
     }
 
   if (this_->daemon.daemon_fd >= 0)
@@ -1542,7 +1306,7 @@ dl_set_new_image_file (DYNAMIC_LOADER * this_, const char *new_image)
   this_->image_file = new_image;
   this_->virgin = false;
 
-  dl_notify_daemon ();
+  dl_notify_daemon (this_);
 }
 
 /*
@@ -1615,12 +1379,12 @@ dl_record_files (DYNAMIC_LOADER * this_)
 static int
 dl_is_valid_image_file (DYNAMIC_LOADER * this_)
 {
-#if defined (SOLARIS) || defined(HPUX) || defined(LINUX)
+#if defined (SOLARIS) || defined(HPUX) || defined(LINUX) || defined(AIX)
   return 1;
-#else /* SOLARIS || HPUX || LINUX */
+#else /* SOLARIS || HPUX || LINUX || AIX */
   assert (this_ != NULL);
   return this_->image_file != NULL;
-#endif /* SOLARIS || HPUX || LINUX */
+#endif /* SOLARIS || HPUX || LINUX || AIX */
 }
 
 
@@ -1807,136 +1571,8 @@ cleanup:
 
   return ER_FAILED;
 }
-#elif defined(_AIX)
-/*
- * dl_load_and_resolve_objects() - Validate and load object files
- *   return: Zero on success, non-zero on failure
- *   this_(in): DYNAMIC_LOADER structure pointer
- *   obj_files(in): array of object file names
- *   libs(in): array of library
- *   syms(in): symbols to be used as Export and Import lists
- */
-static int
-dl_load_and_resolve_objects (DYNAMIC_LOADER * this_, const char **obj_files,
-			     const char **libs, struct nlist *syms)
-{
-  caddr_t load_point = NULL;
-  const char *tmp_file = NULL;
-  int i;
-  struct nlist name_list[2];
-  const char **lib_p;
 
-  dl_Errno = NO_ERROR;
-
-  if (dl_validate_candidates (this_, obj_files))
-    goto cleanup;
-
-  tmp_file = TEMPNAM (NULL, "dynld");
-  if (tmp_file == NULL)
-    {
-      DL_SET_ERROR_SYSTEM_MSG ();
-      goto cleanup;
-    }
-
-  if (libs)
-    {
-      lib_p = libs;
-    }
-  else
-    {
-      lib_p = dl_Default_libs;
-    }
-
-  if (dl_link_file (tmp_file, syms, lib_p))
-    goto cleanup;
-
-  /* This causes loading the module to place it in the process private area */
-  chmod (tmp_file, S_IRUSR | S_IWUSR | S_IXUSR);
-
-  if (!this_->virgin)		/* removes the currently loaded executable */
-    {
-      unload (this_->image_file);
-    }
-
-  load_point =
-    (char *) dl_load_objects (this_, (char *) tmp_file, L_NOAUTODEFER, "");
-  if (load_point == (char *) 0)
-    {
-
-      char *buffer[1024];
-      buffer[0] = "execerror";
-      /* name of program that failed to load */
-      buffer[1] = (char *) tmp_file;
-      loadquery (L_GETMESSAGES, &buffer[2], sizeof buffer - 8);
-      execvp ("/usr/sbin/execerror", buffer);
-
-      DL_SET_ERROR_SYSTEM_MSG ();
-      goto cleanup;
-    }
-
-  dl_set_new_image_file (this_, tmp_file);
-  tmp_file = NULL;
-
-  if (dl_set_new_load_points (this_, load_point))
-    goto cleanup;
-
-  dl_record_files (this_);
-
-cleanup:
-
-  name_list[0].n_name = "main";
-  name_list[1].n_name = NULL;
-  nlist ((char *) this_->image_file, name_list);
-  nlist ((char *) this_->image_file, syms);
-  for (i = 0; syms[i].n_name; ++i)
-    {
-      /* On the IBM, the nlist value of a name is a number */
-      if (syms[i].n_value)
-	{
-	  syms[i].n_value +=
-	    (int) this_->loader.ptr[this_->loader.num - 1] -
-	    name_list[0].n_value;
-	}
-    }
-
-  if (dl_Errno)
-    {
-      for (i = 0; i < this_->candidates.num; ++i)
-	{
-	  this_->candidates.entries[i].valid = false;
-	}
-      if (load_point)
-	{
-	  unload ((FUNCTION_POINTER_TYPE) load_point);
-	}
-      if (tmp_file)
-	{
-	  int rc;
-	  int max_retry = 0;
-
-	  while (((rc = unlink (tmp_file)) != 0)
-		 && (max_retry < MAX_UNLINK_RETRY))
-	    {
-	      if (rc < 0)
-		{
-		  max_retry++;
-		  (void) sleep (3);
-		  continue;
-		}
-	    }
-
-	  free ((char *) tmp_file);	/* Don't use free_and_init(); came from tempnam() */
-	}
-    }
-
-  dl_destroy_candidates (this_);
-
-  if (dl_Errno == NO_ERROR)
-    return NO_ERROR;
-
-  return ER_FAILED;
-}
-#elif defined(SOLARIS) || defined(HPUX) || defined(LINUX)
+#elif defined(SOLARIS) || defined(HPUX) || defined(LINUX) || defined(AIX)
 /*
  * dl_load_objects() - Validate and load object files
  *   return: Zero on success, non-zero on failure
@@ -2063,7 +1699,7 @@ cleanup:
 
   return ER_FAILED;
 }
-#endif /* (SOLARIS) || (HPUX) || (LINUX) */
+#endif /* (SOLARIS) || (HPUX) || (LINUX) || (AIX) */
 
 /*
  * dl_resolve_symbol() - obtain the address of a symbol from a object
@@ -2074,7 +1710,7 @@ cleanup:
 static int
 dl_resolve_symbol (DYNAMIC_LOADER * this_, struct nlist *syms)
 {
-#if defined(HPUX) || defined(SOLARIS) || defined(LINUX)
+#if defined(HPUX) || defined(SOLARIS) || defined(LINUX) || defined(AIX)
 
 #if defined(HPUX)
 #define SYMS_NTYPE_NULL		ST_NULL
@@ -2144,9 +1780,9 @@ dl_resolve_symbol (DYNAMIC_LOADER * this_, struct nlist *syms)
     }
 
   return NO_ERROR;
-#else /* (HPUX) || (SOLARIS) || (LINUX) */
+#else /* (HPUX) || (SOLARIS) || (LINUX) || (AIX) */
   return nlist ((char *) this_->image_file, syms);
-#endif /* (HPUX) || (SOLARIS) || (LINUX) */
+#endif /* (HPUX) || (SOLARIS) || (LINUX) || (AIX) */
 }
 
 /*
@@ -2155,13 +1791,13 @@ dl_resolve_symbol (DYNAMIC_LOADER * this_, struct nlist *syms)
  *   module_name(in): name of the file whose symbol table should be used
  *                      as the starting point for dynamic loading
  */
-#if !defined (SOLARIS) && !defined(LINUX)
+#if !defined (SOLARIS) && !defined(LINUX) && !defined(AIX)
 int
 dl_initiate_module (const char *module_name)
-#else /* !(SOLARIS) && !(LINUX) */
+#else /* !(SOLARIS) && !(LINUX) && !(AIX) */
 int
 dl_initiate_module (void)
-#endif				/* !(SOLARIS) && !(LINUX) */
+#endif				/* !(SOLARIS) && !(LINUX) && !(AIX) */
 {
   const char *image_name = NULL;
 
@@ -2171,14 +1807,14 @@ dl_initiate_module (void)
       return ER_FAILED;
     }
 
-#if !defined (SOLARIS) && !defined(LINUX)
+#if !defined (SOLARIS) && !defined(LINUX) && !defined(AIX)
   image_name = exec_path (module_name);
   if (image_name == NULL)
     {
       DL_SET_ERROR_WITH_CODE_ONE_ARG (ER_DL_IMAGE, module_name);
       return ER_FAILED;
     }
-#endif /* !SOLARIS && !LINUX */
+#endif /* !SOLARIS && !LINUX && !AIX */
 
   dl_Debug = getenv ("DL_DEBUG") != (int) NULL;
 
@@ -2232,7 +1868,7 @@ dl_destroy_module (void)
   return dl_Errno;
 }
 
-#if defined(sun) || defined(sparc) || defined(HPUX) || defined(SOLARIS) || defined(LINUX)
+#if defined(sun) || defined(sparc) || defined(HPUX) || defined(SOLARIS) || defined(LINUX) || defined(AIX)
 /*
  * dl_load_object_module() - loads the named files
  *   return: Zero on success, non-zero on failure.
@@ -2242,14 +1878,14 @@ dl_destroy_module (void)
  *
  * Note: If you feel the need
  */
-#if defined(HPUX) || defined(SOLARIS) || defined(LINUX)
+#if defined(HPUX) || defined(SOLARIS) || defined(LINUX) || defined(AIX)
 int
 dl_load_object_module (const char **obj_files, const char **msgp)
-#else /* (HPUX) || (SOLARIS) || (LINUX) */
+#else /* (HPUX) || (SOLARIS) || (LINUX) || (AIX) */
 int
 dl_load_object_module (const char **obj_files, const char **msgp,
 		       const char **libs)
-#endif				/* (HPUX) || (SOLARIS) || (LINUX) */
+#endif				/* (HPUX) || (SOLARIS) || (LINUX) || (AIX) */
 {
   dl_Errno = NO_ERROR;
 
@@ -2269,7 +1905,7 @@ dl_load_object_module (const char **obj_files, const char **msgp,
       DL_SET_ERROR_WITH_CODE (ER_DL_INVALID);
       return ER_FAILED;
     }
-#if defined(HPUX) || defined(SOLARIS) || defined(LINUX)
+#if defined(HPUX) || defined(SOLARIS) || defined(LINUX) || defined(AIX)
   return dl_load_objects (dl_Loader, obj_files);
 #else /* HPUX */
   return dl_load_objects (dl_Loader, obj_files, libs, 0, NULL, DL_RELATIVE);
@@ -2318,7 +1954,7 @@ dl_resolve_object_symbol (struct nlist *syms)
  *      added to the loader's estimate;
  *      if mode == DL_ABSOLUTE, estimated_size is used as the estimate.
  */
-#if defined(HPUX) || defined(SOLARIS) || defined(LINUX)
+#if defined(HPUX) || defined(SOLARIS) || defined(LINUX) || defined(AIX)
 int
 dl_load_object_with_estimate (const char **obj_files, const char **msgp)
 #elif (defined(sun) || defined(sparc)) && !defined(SOLARIS)
@@ -2329,7 +1965,7 @@ dl_load_object_with_estimate (size_t * actual_size,
 			      const char **libs,
 			      const size_t estimated_size,
 			      enum dl_estimate_mode mode)
-#endif				/* (HPUX) || (SOLARIS) || (LINUX) */
+#endif				/* (HPUX) || (SOLARIS) || (LINUX) || (AIX) */
 {
   dl_Errno = NO_ERROR;
 
@@ -2349,46 +1985,12 @@ dl_load_object_with_estimate (size_t * actual_size,
       DL_SET_ERROR_WITH_CODE (ER_DL_INVALID);
       return ER_FAILED;
     }
-#if defined(HPUX) || defined(SOLARIS) || defined(LINUX)
+#if defined(HPUX) || defined(SOLARIS) || defined(LINUX) || defined(AIX)
   return dl_load_objects (dl_Loader, obj_files);
-#else /* HPUX || SOLARIS || LINUX */
+#else /* HPUX || SOLARIS || LINUX || AIX */
   return dl_load_objects (dl_Loader, obj_files, libs, estimated_size,
 			  actual_size, mode);
-#endif /* HPUX || SOLARIS || LINUX */
+#endif /* HPUX || SOLARIS || LINUX || AIX */
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
-#elif defined(_AIX)
-/*
- * dl_load_and_resolve() - Validate and load object files
- *   return: Zero on success, non-zero on failure
- *   obj_files(in): array of object file names to be loaded
- *   msgp(in) : not used
- *   libs(in): array of library to be passed to ld
- *   syms(in): nlist structure.
- */
-int
-dl_load_and_resolve (const char **obj_files,
-		     const char **msgp, const char **libs, struct nlist *syms)
-{
-  dl_Errno = NO_ERROR;
-
-  if (msgp)
-    {
-      *msgp = "obsolete interface; use standard error interface instead";
-    }
-
-  if (dl_Loader == NULL)
-    {
-      DL_SET_ERROR_WITH_CODE (ER_DL_ABSENT);
-      return ER_FAILED;
-    }
-
-  if (!dl_is_valid_image_file (dl_Loader))
-    {
-      DL_SET_ERROR_WITH_CODE (ER_DL_INVALID);
-      return ER_FAILED;
-    }
-
-  return dl_load_and_resolve_objects (dl_Loader, obj_files, libs, syms);
-}
 #endif

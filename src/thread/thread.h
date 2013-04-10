@@ -282,9 +282,9 @@ extern int thread_wakeup_with_tran_index (int tran_index, int resume_reason);
 extern ADJ_ARRAY *css_get_cnv_adj_buffer (int idx);
 extern void css_set_cnv_adj_buffer (int idx, ADJ_ARRAY * buffer);
 extern int thread_is_manager_initialized (void);
-
-extern void thread_wait (THREAD_ENTRY * thread_p, CSS_THREAD_FN func,
-			 CSS_THREAD_ARG arg);
+extern void thread_waiting_for_function (THREAD_ENTRY * thread_p,
+					 CSS_THREAD_FN func,
+					 CSS_THREAD_ARG arg);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void thread_exit (int exit_code);
 #endif

@@ -43,7 +43,7 @@
 #include "broker_send_fd.h"
 #include "broker_send_recv_msg.h"
 
-#if defined(LINUX) || defined(ALPHA_LINUX) || defined(UNIXWARE7)
+#if defined(LINUX) || defined(ALPHA_LINUX) || defined(UNIXWARE7) || defined(AIX)
 #define CONTROLLEN (sizeof(struct cmsghdr) + sizeof(int))
 #endif
 
@@ -55,7 +55,7 @@ send_fd (int server_fd, int client_fd, int rid, char *driver_info)
   struct iovec iov[1];
   struct msghdr msg;
   int num_bytes;
-#if defined(LINUX) || defined(ALPHA_LINUX) || defined(UNIXWARE7)
+#if defined(LINUX) || defined(ALPHA_LINUX) || defined(UNIXWARE7) || defined(AIX)
   static struct cmsghdr *cmptr = NULL;
 #endif
   struct sendmsg_s send_msg;
@@ -73,7 +73,7 @@ send_fd (int server_fd, int client_fd, int rid, char *driver_info)
   msg.msg_iovlen = 1;
   msg.msg_namelen = 0;
   msg.msg_name = (caddr_t) 0;
-#if !defined(LINUX) && !defined(ALPHA_LINUX) && !defined(UNIXWARE7)
+#if !defined(LINUX) && !defined(ALPHA_LINUX) && !defined(UNIXWARE7) && !defined(AIX)
   msg.msg_accrights = (caddr_t) & client_fd;
   msg.msg_accrightslen = sizeof (client_fd);
 #else

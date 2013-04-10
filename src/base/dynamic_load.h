@@ -41,6 +41,7 @@
 #include <nlist.h>
 #endif /* UPUX */
 #if defined(_AIX)
+#include <dlfcn.h>
 #include <filehdr.h>
 #include <aouthdr.h>
 #include <sys/ldr.h>
@@ -51,7 +52,7 @@
 #include <nlist.h>
 #endif /* LINUX */
 
-#if defined(SOLARIS) || defined(LINUX)
+#if defined(SOLARIS) || defined(LINUX) || defined(AIX)
 /* the nlist types from a.out.h */
 #if !defined(N_UNDF)
 #define N_UNDF  0x0		/* undefined */
@@ -62,7 +63,7 @@
 #if !defined(N_TEXT)
 #define N_TEXT  0x4		/* text */
 #endif
-#endif /* SOLARIS || LINUX */
+#endif /* SOLARIS || LINUX || AIX */
 
 /* Sun has valloc, HP doesn't.  The VALLOC macro hides this.
    Use free, not free_and_init to free the result of VALLOC. */
@@ -90,22 +91,19 @@ extern const char *sys_errlist[];
 extern int nlist (char *, struct nlist *);
 #endif /* !SOLARIS && !HPUX && !AIX && !LINUX */
 
-#if !defined (SOLARIS) && !defined(LINUX)
+#if !defined (SOLARIS) && !defined(LINUX) && !defined(AIX)
 extern int dl_initiate_module (const char *);
-#else /* SOLARIS || LINUX */
+#else /* SOLARIS || LINUX || AIX */
 extern int dl_initiate_module (void);
-#endif /* SOLARIS || LINUX */
+#endif /* SOLARIS || LINUX || AIX */
 
 extern int dl_destroy_module (void);
 
-#if defined (sun) || defined(SOLARIS) || defined(LINUX) || defined(HPUX)
+#if defined (sun) || defined(SOLARIS) || defined(LINUX) || defined(HPUX) || defined(AIX)
 extern int dl_resolve_object_symbol (struct nlist *syms);
-#elif defined(_AIX)
-extern int dl_load_and_resolve (const char **,
-				const char **, const char **, struct nlist *);
-#endif /* _AIX */
+#endif
 
-#if defined(HPUX) || defined(SOLARIS) || defined(LINUX)
+#if defined(HPUX) || defined(SOLARIS) || defined(LINUX) || defined(AIX)
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int dl_load_object_with_estimate (const char **obj_files,
 					 const char **msgp);

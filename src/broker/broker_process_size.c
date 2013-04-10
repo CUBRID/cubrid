@@ -195,7 +195,7 @@ getsize (int pid)
 int
 getsize (int pid)
 {
-  struct procsinfo pinfo_buf;
+  struct procentry64 entry;
   int page_size = sysconf (_SC_PAGESIZE);
   pid_t tmp_pid = pid;
 
@@ -204,7 +204,7 @@ getsize (int pid)
       return -1;
     }
 
-  if (getprocs (&pinfo_buf, sizeof (pinfo_buf), NULL, 0, &tmp_pid, 1) < 0)
+  if (getprocs64 (&entry, sizeof (entry), NULL, 0, &tmp_pid, 1) < 0)
     {
       if (kill (pid, 0) < 0)
 	{
@@ -215,12 +215,12 @@ getsize (int pid)
 	}
       return 1;
     }
-  if (pinfo_buf.pi_pid != pid)
+  if (entry.pi_pid != pid)
     {
       return -1;
     }
 
-  return (int) (((INT64) pinfo_buf.pi_size) * ((INT64) page_size) / 1024);
+  return (int) (((INT64) entry.pi_dvm) * ((INT64) page_size) / 1024);
 }
 #elif defined(UNIXWARE7)
 int

@@ -833,20 +833,36 @@ net_peer_alive (unsigned char *ip_addr, int port, int timeout_msec)
       return false;
     }
 
+send_again:
   ret = WRITE_TO_SOCKET (sock_fd, ping_msg, strlen (ping_msg));
-
   if (ret < 0)
     {
-      CLOSE_SOCKET (sock_fd);
-      return false;
+      if (errno == EAGAIN)
+	{
+	  SLEEP_MILISEC (0, 1);
+	  goto send_again;
+	}
+      else
+	{
+	  CLOSE_SOCKET (sock_fd);
+	  return false;
+	}
     }
 
+recv_again:
   ret = READ_FROM_SOCKET (sock_fd, (char *) &dummy, sizeof (int));
-
   if (ret < 0)
     {
-      CLOSE_SOCKET (sock_fd);
-      return false;
+      if (errno == EAGAIN)
+	{
+	  SLEEP_MILISEC (0, 1);
+	  goto recv_again;
+	}
+      else
+	{
+	  CLOSE_SOCKET (sock_fd);
+	  return false;
+	}
     }
 
   CLOSE_SOCKET (sock_fd);

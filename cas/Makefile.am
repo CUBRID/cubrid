@@ -23,6 +23,7 @@ BROKER_DIR = $(SRC)/broker
 
 AM_CPPFLAGS = @SRC_INC@ @EXT_INC@ \
 	@SYS_DEFS@ @VERSION_DEFS@ @DIR_DEFS@
+LIBS += @SYS_LIBS@
 
 noinst_LTLIBRARIES = libcas.la
 libcas_la_SOURCES = \

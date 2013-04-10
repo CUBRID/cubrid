@@ -40,6 +40,7 @@
 #include "db_date.h"
 #include "memory_alloc.h"
 #include "system_parameter.h"
+#include "byte_order.h"
 
 #if defined(SERVER_MODE)
 #include "thread.h"
@@ -2440,7 +2441,12 @@ numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer)
   ptr = (char *) answer;
   for (i = 0; i < sizeof (DB_BIGINT); i++)
     {
+#if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
       ptr[i] = zero_scale_arg[DB_NUMERIC_BUF_SIZE - (i + 1)];
+#else
+      ptr[sizeof (DB_BIGINT) - (i + 1)] =
+	zero_scale_arg[DB_NUMERIC_BUF_SIZE - (i + 1)];
+#endif
     }
 
   return NO_ERROR;

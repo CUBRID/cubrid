@@ -304,16 +304,13 @@ static int sm_build_function_nlist (METHOD_LINK * links,
 				    struct nlist **nlist_ptr);
 static void sm_free_function_nlist (struct nlist *namelist);
 #endif /* !WINDOWS */
-#if defined (sun) || defined(SOLARIS) || defined(LINUX)
-#if defined(SOLARIS) || defined(LINUX)
+#if defined (sun) || defined(SOLARIS) || defined(LINUX) || defined(AIX)
+#if defined(SOLARIS) || defined(LINUX) || defined(AIX)
 static int sm_link_dynamic_methods (METHOD_LINK * links, const char **files);
-#else /* SOLARIS || LINUX */
+#else /* SOLARIS || LINUX || AIX */
 static int sm_link_dynamic_methods (METHOD_LINK * links, const char **files,
 				    const char **commands);
-#endif /* SOLARIS || LINUX */
-#elif defined (_AIX)
-static int sm_link_dynamic_methods (METHOD_LINK * links, const char **files,
-				    const char **commands);
+#endif /* SOLARIS || LINUX || AIX */
 #elif defined(HPUX)
 static int sm_link_dynamic_methods (METHOD_LINK * links, const char **files,
 				    const char **commands);
@@ -1261,15 +1258,15 @@ sm_free_function_nlist (struct nlist *namelist)
  *   commands(in): array of loader commands (NULL terminated)
  */
 
-#if defined (sun) || defined(SOLARIS) || defined(LINUX)
-#if defined(SOLARIS) || defined(LINUX)
+#if defined (sun) || defined(SOLARIS) || defined(LINUX) || defined(AIX)
+#if defined(SOLARIS) || defined(LINUX) || defined(AIX)
 static int
 sm_link_dynamic_methods (METHOD_LINK * links, const char **files)
-#else /* SOLARIS || LINUX */
+#else /* SOLARIS || LINUX || AIX */
 static int
 sm_link_dynamic_methods (METHOD_LINK * links,
 			 const char **files, const char **commands)
-#endif				/* SOLARIS || LINUX */
+#endif				/* SOLARIS || LINUX || AIX */
 {
   int error = NO_ERROR;
   METHOD_LINK *ml;
@@ -1281,11 +1278,11 @@ sm_link_dynamic_methods (METHOD_LINK * links,
   if (error == NO_ERROR && namelist != NULL)
     {
       /* invoke the linker */
-#if defined(SOLARIS) || defined(LINUX)
+#if defined(SOLARIS) || defined(LINUX) || defined(AIX)
       status = dl_load_object_module (files, &msg);
-#else /* SOLARIS || LINUX */
+#else /* SOLARIS || LINUX || AIX */
       status = dl_load_object_module (files, &msg, commands);
-#endif /* SOLARIS || LINUX */
+#endif /* SOLARIS || LINUX || AIX */
       if (status)
 	{
 	  error = er_errid ();
@@ -1328,64 +1325,6 @@ sm_link_dynamic_methods (METHOD_LINK * links,
 	    }
 	}
       sm_free_function_nlist (namelist);
-    }
-
-  return error;
-}
-
-#elif defined (_AIX)
-static int
-sm_link_dynamic_methods (METHOD_LINK * links,
-			 const char **files, const char **commands)
-{
-  int error = NO_ERROR;
-  METHOD_LINK *ml;
-  struct nlist *nl, *namelist;
-  const char *msg;
-  int status;
-
-  error = sm_build_function_nlist (links, &namelist);
-  if (error == NO_ERROR && namelist != NULL)
-    {
-      /* invoke the linker and resolve functions */
-      status = dl_load_and_resolve (files, &msg, commands, namelist);
-
-      if (status == -1)
-	{
-	  error = er_errid ();
-	}
-      else
-	{
-	  if (status)
-	    {
-	      error = ER_SM_UNRESOLVED_METHODS;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_SM_UNRESOLVED_METHODS, 1, status);
-	    }
-
-	  /* go ahead and try to resolve the ones that exist even if there were
-	     errors on some others */
-	  for (ml = links; ml != NULL; ml = ml->next)
-	    {
-	      nl = &namelist[ml->namelist_index];
-	      ml->method->signatures->function =
-		(METHOD_FUNCTION) nl->n_value;
-	      ml->method->function = (METHOD_FUNCTION) nl->n_value;
-	      if (nl->n_value)
-		{
-		  ml->method->signatures->function =
-		    (METHOD_FUNCTION) nl->n_value;
-		  ml->method->function = (METHOD_FUNCTION) nl->n_value;
-		}
-	      else
-		{
-		  error = ER_SM_UNRESOLVED_METHOD;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
-			  nl->n_name);
-		}
-	    }
-	}
-      db_ws_free (namelist);
     }
 
   return error;
@@ -1771,11 +1710,11 @@ sm_dynamic_link_class (SM_CLASS * class_, METHOD_LINK * links)
 				    (const char ***) &commands);
   if (error == NO_ERROR)
     {
-#if defined(SOLARIS) || defined(LINUX)
+#if defined(SOLARIS) || defined(LINUX) || defined(AIX)
       error = sm_link_dynamic_methods (links, (const char **) sorted_names);
-#else /* SOLARIS || LINUX */
+#else /* SOLARIS || LINUX || AIX */
       error = sm_link_dynamic_methods (links, sorted_names, commands);
-#endif /* SOLARIS || LINUX */
+#endif /* SOLARIS || LINUX || AIX */
       if (commands != NULL)
 	{
 	  sm_free_loader_commands (commands);
@@ -2008,12 +1947,12 @@ sm_prelink_methods (DB_OBJLIST * classes)
 	  names[nfiles] = NULL;
 
 	  /* need to have commands here ! */
-#if defined(SOLARIS) || defined(LINUX)
+#if defined(SOLARIS) || defined(LINUX) || defined(AIX)
 	  error =
 	    sm_link_dynamic_methods (total_links, (const char **) names);
-#else /* SOLARIS || LINUX */
+#else /* SOLARIS || LINUX || AIX */
 	  error = sm_link_dynamic_methods (total_links, names, NULL);
-#endif /* SOLARIS || LINUX */
+#endif /* SOLARIS || LINUX || AIX */
 	  db_ws_free (names);
 	}
     }

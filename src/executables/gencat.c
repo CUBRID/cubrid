@@ -85,7 +85,6 @@ up-to-date.  Many thanks.
 
 #if !defined(WINDOWS)
 #include <arpa/inet.h>		/* Needed for htonl() on POSIX systems */
-#include <err.h>
 #endif
 
 #include <ctype.h>
@@ -95,6 +94,7 @@ up-to-date.  Many thanks.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 #if !defined(WINDOWS)
 #include <unistd.h>
 #endif
@@ -107,10 +107,10 @@ up-to-date.  Many thanks.
 #if defined(WINDOWS)
 #include <io.h>
 #include <winsock2.h>
-#include "porting.h"
 #define int32_t     int
-#define err(fd, ...)    do { fprintf(stderr, __VA_ARGS__); exit(1); } while (0)
 #endif
+
+#include "porting.h"
 
 #ifndef NL_SETMAX
 #define NL_SETMAX 255

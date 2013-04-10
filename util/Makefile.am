@@ -47,6 +47,7 @@ AM_CPPFLAGS = @SRC_INC@ @EXT_INC@ \
 	@SYS_DEFS@ @COMMON_DEFS@ @VERSION_DEFS@ \
 	-DPRODUCE_ANSI_CODE -DUCI_TEMPORARY
 #AM_LDADD = @SYS_LIBS@
+LIBS += @SYS_LIBS@
 
 
 $(EXECUTABLE_DIR)/esql_grammar.c : $(EXECUTABLE_DIR)/esql_grammar.y
@@ -175,11 +176,14 @@ cubrid_LDADD = @SA_LIB@
 
 cub_admin_SOURCES = \
 	$(EXECUTABLE_DIR)/util_admin.c \
-	$(EXECUTABLE_DIR)/util_support.c
+	$(EXECUTABLE_DIR)/util_support.c \
+	$(BASE_DIR)/getopt_long.c
 
-csql_SOURCES = \
-	$(EXECUTABLE_DIR)/csql_launcher.c \
-	$(EXECUTABLE_DIR)/util_support.c
+
+csql_SOURCES = $(EXECUTABLE_DIR)/csql_launcher.c \
+			   $(EXECUTABLE_DIR)/util_support.c \
+			   $(BASE_DIR)/porting.c \
+			   $(BASE_DIR)/getopt_long.c
 
 cubrid_esql_SOURCES = \
 	$(EXECUTABLE_DIR)/esql_symbol_table.c \
@@ -196,4 +200,6 @@ cubrid_esql_CFLAGS = $(AM_CFLAGS) -DPRODUCE_ANSI_CODE -DUCI_TEMPORARY
 cubrid_esql_LDADD = @CS_LIB@
 
 noinst_PROGRAMS = gencat
-gencat_SOURCES = $(EXECUTABLE_DIR)/gencat.c
+gencat_SOURCES = \
+	$(BASE_DIR)/porting.c \
+	$(EXECUTABLE_DIR)/gencat.c

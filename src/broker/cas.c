@@ -2492,8 +2492,17 @@ restart_is_needed (void)
 #else /* WINDOWS */
   int max_process_size;
 
+#if defined(AIX)
+  /* In linux, getsize() returns VSM(55M). but in AIX, getsize() returns
+   * vritual meory size for data(900K). so, the size of cub_cas process exceeds
+   * 'psize_at_start * 2' very easily. the linux's rule to restart cub_cas
+   * is not suit for AIX.*/
+  max_process_size = (shm_appl->appl_server_max_size > 0) ?
+    shm_appl->appl_server_max_size : (psize_at_start * 60);
+#else
   max_process_size = (shm_appl->appl_server_max_size > 0) ?
     shm_appl->appl_server_max_size : (psize_at_start * 2);
+#endif
 
   if (as_info->psize > max_process_size)
     {

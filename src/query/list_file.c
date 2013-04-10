@@ -2554,9 +2554,9 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id,
 	      arg.tfile_vfidp = tfile_vfid_p;
 	      VPID_SET_NULL (&arg.next_vpid);
 	      qmgr_free_old_page_and_init (thread_p, page_p, tfile_vfid_p);
-	      thread_wait (thread_p, (CSS_THREAD_FN)
-			   qfile_get_list_page_with_waiting,
-			   (CSS_THREAD_ARG *) (&arg));
+	      thread_waiting_for_function (thread_p, (CSS_THREAD_FN)
+					   qfile_get_list_page_with_waiting,
+					   (CSS_THREAD_ARG *) (&arg));
 
 	      QFILE_COPY_VPID (&next_vpid, &arg.next_vpid);
 	    }
