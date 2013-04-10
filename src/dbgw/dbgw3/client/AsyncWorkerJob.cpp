@@ -44,6 +44,10 @@ namespace dbgw
 
     ~Impl()
     {
+      if (m_pExecHandler != NULL)
+        {
+          m_pExecHandler->release(false);
+        }
     }
 
     void execute()
@@ -155,6 +159,10 @@ namespace dbgw
 
   _AsyncWorkerJob::~_AsyncWorkerJob()
   {
+    if (m_pImpl != NULL)
+      {
+        delete m_pImpl;
+      }
   }
 
   void _AsyncWorkerJob::execute()
