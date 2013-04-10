@@ -343,6 +343,10 @@ namespace dbgw
       catch (Exception &e)
         {
           setLastException(e);
+          if (m_pExecHandler == NULL)
+            {
+              return trait<ClientResultSet>::spvector();
+            }
         }
 
       return m_pExecHandler->getResultSetList();
