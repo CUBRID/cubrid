@@ -305,6 +305,12 @@ static PT_NODE *mq_mark_location (PARSER_CONTEXT * parser, PT_NODE * node,
 static PT_NODE *mq_check_non_updatable_vclass_oid (PARSER_CONTEXT * parser,
 						   PT_NODE * node, void *arg,
 						   int *continue_walk);
+static bool mq_check_vclass_for_insert (PARSER_CONTEXT * parser,
+					PT_NODE * stmt);
+static PT_NODE *mq_rewrite_upd_del_top_level_specs (PARSER_CONTEXT * parser,
+						    PT_NODE * statement,
+						    void *void_arg,
+						    int *continue_walk);
 static PT_NODE *mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node);
 
 
@@ -4156,9 +4162,6 @@ mq_translate_update (PARSER_CONTEXT * parser, PT_NODE * update_statement)
 
   from = update_statement->info.update.spec;
 
-  /* mark specs */
-  pt_mark_spec_list_for_update (parser, update_statement);
-
   /* translate statement */
   update_statement = mq_translate_tree (parser, update_statement,
 					from, NULL, DB_AUTH_UPDATE);
@@ -4451,9 +4454,6 @@ mq_translate_delete (PARSER_CONTEXT * parser, PT_NODE * delete_statement)
   PT_NODE *from;
   PT_NODE save = *delete_statement;
 
-  /* set flags for deletable specs */
-  pt_mark_spec_list_for_delete (parser, delete_statement);
-
   /* translate */
   from = delete_statement->info.delete_.spec;
   delete_statement = mq_translate_tree (parser, delete_statement,
@@ -4512,10 +4512,8 @@ mq_translate_merge (PARSER_CONTEXT * parser, PT_NODE * merge_statement)
     {
       /* flag spec for update/delete */
       auth |= DB_AUTH_UPDATE;
-      pt_mark_spec_list_for_update (parser, merge_statement);
       if (merge_statement->info.merge.update.has_delete)
 	{
-	  pt_mark_spec_list_for_delete (parser, merge_statement);
 	  auth |= DB_AUTH_DELETE;
 	}
     }
@@ -4716,6 +4714,8 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
     {
       /* see 'xtests/10010_vclass_set.sql' and 'err_xtests/check21.sql' */
       if (select_statement->info.query.is_subquery == 0
+	  && select_statement->info.query.is_view_spec == 0
+	  && select_statement->info.query.oids_included == 0
 	  && mq_is_union_translation (parser, from))
 	{
 	  select_statement->info.query.q.select.from =
@@ -6168,6 +6168,200 @@ mq_check_non_updatable_vclass_oid (PARSER_CONTEXT * parser, PT_NODE * node,
 }
 
 /*
+ * mq_check_vclass_for_insert () - checks if view definition is valid for
+ *                                 INSERT statements (i.e. has only one target)
+ *   return: initial node
+ *   parser(in): parser context
+ *   query_spec(in): view definition
+ */
+static bool
+mq_check_vclass_for_insert (PARSER_CONTEXT * parser, PT_NODE * query_spec)
+{
+  PT_NODE *spec = NULL;
+
+  if (query_spec == NULL || query_spec->node_type != PT_SELECT)
+    {
+      /* nothing to do */
+      return true;
+    }
+
+  /* fetch spec; if spec has a "next" it won't be updatable and the statement
+     will be invalidated later */
+  spec = query_spec->info.query.q.select.from;
+  if (spec->info.spec.flat_entity_list
+      && spec->info.spec.flat_entity_list->next)
+    {
+      PT_ERRORm (parser, spec, MSGCAT_SET_PARSER_SEMANTIC,
+		 MSGCAT_SEMANTIC_MULTIPLE_INSERT_TARGETS);
+      return false;
+    }
+  else if (spec->info.spec.derived_table)
+    {
+      return mq_check_vclass_for_insert (parser,
+					 spec->info.spec.derived_table);
+    }
+
+  /* valid */
+  return true;
+}
+
+/*
+ * mq_rewrite_upd_del_top_level_specs () - rewrite top-level specs of UPDATE or
+ *                                         DELETE statements that are spec sets
+ *                                         or refer views with multiple queries
+ *   return: initial node
+ *   parser(in): parser context
+ *   statement(in): statement
+ *   arg(in):
+ *   continue_walk(in):
+ */
+static PT_NODE *
+mq_rewrite_upd_del_top_level_specs (PARSER_CONTEXT * parser,
+				    PT_NODE * statement, void *void_arg,
+				    int *continue_walk)
+{
+  PT_NODE **spec = NULL;
+
+  if (statement == NULL)
+    {
+      /* nothing to do */
+      return NULL;
+    }
+
+  /* mark specs that will be subject to update or delete and retrieve spec
+     list */
+  switch (statement->node_type)
+    {
+    case PT_UPDATE:
+      pt_mark_spec_list_for_update (parser, statement);
+      spec = &statement->info.update.spec;
+      break;
+
+    case PT_DELETE:
+      pt_mark_spec_list_for_delete (parser, statement);
+      spec = &statement->info.delete_.spec;
+      break;
+
+    case PT_MERGE:
+      spec = &statement->info.merge.into;
+      if (statement->info.merge.update.assignment)
+	{
+	  pt_mark_spec_list_for_update (parser, statement);
+	  if (statement->info.merge.update.has_delete)
+	    {
+	      pt_mark_spec_list_for_delete (parser, statement);
+	    }
+	}
+      break;
+
+    case PT_INSERT:
+      /* INSERT does not support rewrites so we must check that no rewrite is
+         needed */
+      spec = &statement->info.insert.spec;
+      break;
+
+    default:
+      /* nothing to do */
+      return statement;
+    }
+
+  while (*spec)
+    {
+      /* view definitions for select and for update might look different, so
+         make sure to fetch the correct one */
+      PT_FETCH_AS fetch_as = PT_SELECT;
+      bool fetch_for_update =
+	((*spec)->info.spec.flag & PT_SPEC_FLAG_UPDATE)
+	|| ((*spec)->info.spec.flag & PT_SPEC_FLAG_DELETE)
+	|| (statement->node_type == PT_INSERT);
+
+      if (fetch_for_update)
+	{
+	  /* this will fetch a view spec in some illegal cases (e.g. DELETE on
+	     a view containing joins); these cases will be handled later on */
+	  fetch_as = PT_PARTIAL_SELECT;
+	}
+
+      if (!(*spec)->info.spec.derived_table)
+	{
+	  /* fetch entity list */
+	  PT_NODE *subquery = NULL;
+	  PT_NODE *entity = (*spec)->info.spec.flat_entity_list;
+	  /* rewrite if multiple entities */
+	  bool multiple_entity = (entity != NULL && entity->next != NULL);
+	  bool rewrite = false, has_vclass = false;
+
+	  while (entity)
+	    {
+	      if (mq_translatable_class (parser, entity))
+		{
+		  has_vclass = true;
+
+		  /* fetch class even if we've decided to rewrite; we need the
+		     definition later on */
+		  if (!fetch_for_update)
+		    {
+		      subquery = mq_fetch_subqueries (parser, entity);
+		    }
+		  else
+		    {
+		      subquery =
+			mq_fetch_subqueries_for_update (parser, entity,
+							fetch_as,
+							DB_AUTH_SELECT);
+		    }
+
+		  if (subquery != NULL && subquery->next != NULL)
+		    {
+		      /* rewrite if multiple queries in view spec */
+		      rewrite = true;
+		    }
+		}
+
+	      entity = entity->next;
+	    }
+
+	  if (multiple_entity && has_vclass)
+	    {
+	      /* if at least one entity is a view, we need to rewrite */
+	      rewrite = true;
+	    }
+
+	  if (statement->node_type == PT_INSERT)
+	    {
+	      if (rewrite)
+		{
+		  /* can't rewrite INSERT spec, throw error */
+		  PT_ERRORm (parser, *spec, MSGCAT_SET_PARSER_SEMANTIC,
+			     MSGCAT_SEMANTIC_MULTIPLE_INSERT_TARGETS);
+		  return statement;
+		}
+	      else
+		{
+		  /* check deeper in view spec; errors will be set in
+		     mq_check_vclass_for_insert call, so there is no reason
+		     to handle return value */
+		  (void) mq_check_vclass_for_insert (parser, subquery);
+		}
+	    }
+
+	  if (rewrite)
+	    {
+	      /* rewrite is necessary */
+	      *spec =
+		mq_rewrite_vclass_spec_as_derived (parser, statement,
+						   *spec, subquery);
+	    }
+	}
+
+      /* next! */
+      spec = &((*spec)->next);
+    }
+
+  return statement;
+}
+
+/*
  * mq_translate_helper() - main workhorse for mq_translate
  *   return:
  *   parser(in):
@@ -6264,8 +6458,9 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
        * put mq_push_paths as post function.
        */
       node = parser_walk_tree (parser, node, NULL, NULL, mq_push_paths, NULL);
-      node = parser_walk_tree (parser, node, NULL, NULL, mq_translate_local,
-			       NULL);
+      node = parser_walk_tree (parser, node,
+			       mq_rewrite_upd_del_top_level_specs, NULL,
+			       mq_translate_local, NULL);
 
       strict = false;		/* no strict OID checking */
       node = parser_walk_tree (parser, node,

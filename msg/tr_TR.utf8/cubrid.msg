@@ -1604,6 +1604,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 271 %s sorgulama spesifikasyonu kendisine dönüşlü bir referansa sahiptir.
 272 %s ifadesi bağlanma koşulunda izin verilmemiştir. 
 273 Only one table within a view can be updated.
+274 Multiple insert targets not allowed.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %d bayt bölüm ayıramadı.

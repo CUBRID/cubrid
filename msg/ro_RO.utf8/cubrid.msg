@@ -1604,6 +1604,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 271 Specificaţia de interogare a lui %s conţine o referinţa circulară la el însuşi.
 272 Expresia %s nu este permisă în condiţia de JOIN.
 273 O singură tabelă din interiorul unei vizualizări poate fi actualizată.
+274 Inserarea în mai multe tabele nu este permisă.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Memorie virtuală epuizată: nu s-au putut aloca %d bytes.

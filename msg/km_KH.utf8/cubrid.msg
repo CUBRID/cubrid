@@ -1604,6 +1604,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 271 បែបបទសាកសួរអំពី %s អាចកើតមានឡើងចំពោះការដកស្រង់យកមកប្រើ.
 272 %s ឃ្លានេះមិនអាចសរសេរក្នុងករណីរួម.
 273 Only one table within a view can be updated.
+274 Multiple insert targets not allowed.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 អស់ memoryជាក់ស្តែង: មិនអាចប្រើ %d bytes។

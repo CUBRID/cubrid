@@ -1604,6 +1604,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 271 La specifica query %s ha un riferimento ciclico a se stesso.
 272 Espressione %s non consentito in condizione di join.
 273 Only one table within a view can be updated.
+274 Multiple insert targets not allowed.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Fuori di memoria virtuale: Impossibile allocare %d byte.
