@@ -4377,7 +4377,7 @@ thread_rc_track_meter_at (THREAD_RC_METER * meter,
 	{
 	  if (strstr (meter->m_add_buf, buf) == NULL)
 	    {
-	      remain_size = ONE_K - meter->m_add_buf_size;
+	      remain_size = ONE_K - meter->m_add_buf_size - 1;
 	      buf_size = MIN (buf_size, remain_size);
 	      strncat (meter->m_add_buf, buf, buf_size);
 	      meter->m_add_buf_size += buf_size;
@@ -4396,7 +4396,7 @@ thread_rc_track_meter_at (THREAD_RC_METER * meter,
 	{
 	  if (strstr (meter->m_sub_buf, buf) == NULL)
 	    {
-	      remain_size = ONE_K - meter->m_sub_buf_size;
+	      remain_size = ONE_K - meter->m_sub_buf_size - 1;
 	      buf_size = MIN (buf_size, remain_size);
 	      strncat (meter->m_sub_buf, buf, buf_size);
 	      meter->m_sub_buf_size += buf_size;
