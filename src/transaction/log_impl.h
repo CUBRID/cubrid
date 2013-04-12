@@ -2080,5 +2080,5 @@ extern int logtb_is_tran_modification_disabled (THREAD_ENTRY * thread_p);
 extern void xlogtb_dump_trantable (THREAD_ENTRY * thread_p, FILE * out_fp);
 
 extern bool logpb_need_wal (const LOG_LSA * lsa);
-extern LOG_LSA logpb_get_nxio_lsa (void);
+extern void logpb_get_nxio_lsa (LOG_LSA * lsa_p);
 #endif /* _LOG_IMPL_H_ */

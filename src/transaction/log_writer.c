@@ -1574,7 +1574,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p,
 	}
       else
 	{
-	  nxio_lsa = logpb_get_nxio_lsa ();
+	  logpb_get_nxio_lsa (&nxio_lsa);
 	  if (fpageid > nxio_lsa.pageid)
 	    {
 	      fpageid = nxio_lsa.pageid;

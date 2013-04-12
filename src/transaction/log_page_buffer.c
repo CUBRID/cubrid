@@ -5431,7 +5431,7 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
     }
   else if (need_wait == true)
     {
-      nxio_lsa = logpb_get_nxio_lsa ();
+      logpb_get_nxio_lsa (&nxio_lsa);
 
       while (LSA_LT (&nxio_lsa, flush_lsa))
 	{
@@ -5441,7 +5441,7 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 	  (void) timeval_to_timespec (&to, &tmp_timeval);
 
 	  rv = pthread_mutex_lock (&group_commit_info->gc_mutex);
-	  nxio_lsa = logpb_get_nxio_lsa ();
+	  logpb_get_nxio_lsa (&nxio_lsa);
 	  if (LSA_GE (&nxio_lsa, flush_lsa))
 	    {
 	      pthread_mutex_unlock (&group_commit_info->gc_mutex);
@@ -5457,7 +5457,7 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 	  pthread_mutex_unlock (&group_commit_info->gc_mutex);
 
 	  need_wakeup_LFT = true;
-	  nxio_lsa = logpb_get_nxio_lsa ();
+	  logpb_get_nxio_lsa (&nxio_lsa);
 	}
     }
 
@@ -13195,23 +13195,19 @@ logpb_get_data_ptr (THREAD_ENTRY * thread_p)
  * logpb_get_nxio_lsa -
  *
  */
-LOG_LSA
-logpb_get_nxio_lsa (void)
+void
+logpb_get_nxio_lsa (LOG_LSA * nxio_lsa_p)
 {
-  volatile LOG_LSA nxio_lsa;
-
 #if defined(HAVE_ATOMIC_BUILTINS)
   volatile INT64 tmp_int64;
 
   tmp_int64 = ATOMIC_INC_64 ((INT64 *) (&log_Gl.append.nxio_lsa), 0);
-  nxio_lsa = *((LOG_LSA *) (&tmp_int64));
+  memcpy (nxio_lsa_p, (LOG_LSA *) (&tmp_int64), sizeof (LOG_LSA));
 #else
   (void) pthread_mutex_lock (&log_Gl.append.nxio_lsa_mutex);
-  LSA_COPY (&nxio_lsa, &log_Gl.append.nxio_lsa);
+  LSA_COPY (&nxio_lsa_p, &log_Gl.append.nxio_lsa);
   pthread_mutex_unlock (&log_Gl.append.nxio_lsa_mutex);
 #endif /* HAVE_ATOMIC_BUILTINS */
-
-  return nxio_lsa;
 }
 
 /*
@@ -13240,7 +13236,7 @@ logpb_need_wal (const LOG_LSA * lsa)
 {
   LOG_LSA nxio_lsa;
 
-  nxio_lsa = logpb_get_nxio_lsa ();
+  logpb_get_nxio_lsa (&nxio_lsa);
 
   if (LSA_LE (&nxio_lsa, lsa))
     {
