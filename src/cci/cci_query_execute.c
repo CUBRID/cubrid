@@ -3304,12 +3304,12 @@ qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type,
 	  {
 	    return err_code;
 	  }
-	if (hm_conv_value_buf_alloc (conv_val_buf, 128) < 0)
+	if (hm_conv_value_buf_alloc (conv_val_buf, col_val_size) < 0)
 	  {
 	    FREE_MEM (lob);
 	    return CCI_ER_NO_MORE_MEMORY;
 	  }
-	ut_lob_to_str (lob, (char *) conv_val_buf->data, 128);
+	ut_lob_to_str (lob, (char *) conv_val_buf->data, col_val_size);
 	FREE_MEM (lob);
       }
       break;
