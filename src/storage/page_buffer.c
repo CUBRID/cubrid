@@ -1124,6 +1124,8 @@ try_again:
 	      LSA_SET_INIT_TEMP (&bufptr->iopage_buffer->iopage.prv.lsa);
 	      pgbuf_set_dirty_buffer_ptr (thread_p, bufptr);
 	    }
+
+	  mnt_sort_io_pages (thread_p);
 	}
       else
 	{
@@ -1142,6 +1144,8 @@ try_again:
 	    {
 	      LSA_SET_INIT_NONTEMP (&bufptr->iopage_buffer->iopage.prv.lsa);
 	    }
+
+	  mnt_sort_data_pages (thread_p);
 	}
       buf_lock_acquired = true;
     }
@@ -2565,6 +2569,8 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid,
       /* the caller is holding only bufptr->BCB_mutex. */
       pgptr = (PAGE_PTR) (&(bufptr->iopage_buffer->iopage.page[0]));
       memcpy (area, (char *) pgptr + start_offset, length);
+
+      mnt_sort_data_pages (thread_p);
 
       /* release BCB_mutex */
       pthread_mutex_unlock (&bufptr->BCB_mutex);

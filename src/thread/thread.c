@@ -1115,6 +1115,8 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
 
   (void) thread_rc_track_initialize (entry_p);
 
+  entry_p->sort_stats_active = false;
+
   return NO_ERROR;
 }
 
@@ -2164,6 +2166,52 @@ css_set_cnv_adj_buffer (int idx, ADJ_ARRAY * buffer_p)
   assert (thread_p != NULL);
 
   thread_p->cnv_adj_buffer[idx] = buffer_p;
+}
+
+/*
+ * thread_set_sort_stats_active() -
+ *   return:
+ *   flag(in):
+ */
+bool
+thread_set_sort_stats_active (THREAD_ENTRY * thread_p, bool flag)
+{
+  bool old_val = false;
+
+  if (BO_IS_SERVER_RESTARTED ())
+    {
+      if (thread_p == NULL)
+	{
+	  thread_p = thread_get_thread_entry_info ();
+	}
+
+      old_val = thread_p->sort_stats_active;
+      thread_p->sort_stats_active = flag;
+    }
+
+  return old_val;
+}
+
+/*
+ * thread_get_sort_stats_active() -
+ *   return:
+ */
+bool
+thread_get_sort_stats_active (THREAD_ENTRY * thread_p)
+{
+  bool ret_val = false;
+
+  if (BO_IS_SERVER_RESTARTED ())
+    {
+      if (thread_p == NULL)
+	{
+	  thread_p = thread_get_thread_entry_info ();
+	}
+
+      ret_val = thread_p->sort_stats_active;
+    }
+
+  return ret_val;
 }
 
 /*

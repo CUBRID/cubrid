@@ -512,7 +512,7 @@ SetPrivilege (HANDLE hToken, LPCTSTR lpszPrivilege, BOOL bEnablePrivilege)
       tp.Privileges[0].Attributes = 0;
     }
 
-  if (!AdjustTokenPrivileges (hToken, FALSE, &tp, 
+  if (!AdjustTokenPrivileges (hToken, FALSE, &tp,
 			      sizeof (TOKEN_PRIVILEGES), NULL, NULL))
     {
       return FALSE;
@@ -537,8 +537,8 @@ cm_get_proc_stat (T_CM_PROC_STAT * stat, int pid)
   int ret = 0;
 
   stat->pid = pid;
-  if (!OpenThreadToken (GetCurrentThread (), 
-			(TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY), FALSE, 
+  if (!OpenThreadToken (GetCurrentThread (),
+			(TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY), FALSE,
 			&hToken))
     {
       if (GetLastError () == ERROR_NO_TOKEN)
@@ -548,8 +548,8 @@ cm_get_proc_stat (T_CM_PROC_STAT * stat, int pid)
 	      return -1;
 	    }
 
-	  if (!OpenThreadToken (GetCurrentThread (), 
-				(TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY), 
+	  if (!OpenThreadToken (GetCurrentThread (),
+				(TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY),
 				FALSE, &hToken))
 	    {
 	      return -1;
@@ -1054,6 +1054,8 @@ static STATDUMP_PROP statdump_offset[] = {
   {"Num_btree_resumes", offsetof (T_CM_DB_EXEC_STAT, bt_num_resumes)},
   {"Num_btree_multirange_optimization",
    offsetof (T_CM_DB_EXEC_STAT, bt_num_multi_range_opt)},
+  {"Num_btree_splits", offsetof (T_CM_DB_EXEC_STAT, bt_num_splits)},
+  {"Num_btree_merges", offsetof (T_CM_DB_EXEC_STAT, bt_num_merges)},
   {"Num_query_selects", offsetof (T_CM_DB_EXEC_STAT, qm_num_selects)},
   {"Num_query_inserts", offsetof (T_CM_DB_EXEC_STAT, qm_num_inserts)},
   {"Num_query_deletes", offsetof (T_CM_DB_EXEC_STAT, qm_num_deletes)},
@@ -1068,6 +1070,8 @@ static STATDUMP_PROP statdump_offset[] = {
   {"Num_query_objfetches", offsetof (T_CM_DB_EXEC_STAT, qm_num_objfetches)},
   {"Num_query_holdable_cursors",
    offsetof (T_CM_DB_EXEC_STAT, qm_num_holdable_cursors)},
+  {"Num_sort_io_pages", offsetof (T_CM_DB_EXEC_STAT, sort_num_io_pages)},
+  {"Num_sort_data_pages", offsetof (T_CM_DB_EXEC_STAT, sort_num_data_pages)},
   {"Num_network_requests", offsetof (T_CM_DB_EXEC_STAT, net_num_requests)},
   {"Num_adaptive_flush_pages", offsetof (T_CM_DB_EXEC_STAT, fc_num_pages)},
   {"Num_adaptive_flush_log_pages",

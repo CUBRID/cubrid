@@ -1379,8 +1379,10 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt,
   SORT_PARAM sort_param;
   INT32 input_pages;
   int error = NO_ERROR;
-  int i, j;
+  int i;
   int file_pg_cnt_est;
+
+  thread_set_sort_stats_active (thread_p, true);
 
   sort_param.cmp_fn = cmp_fn;
   sort_param.cmp_arg = cmp_arg;
@@ -1388,6 +1390,21 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt,
   sort_param.put_arg = put_arg;
 
   sort_param.limit = limit;
+  sort_param.tot_tempfiles = 0;
+
+  /* initialize temp. overflow file. Real value will be assigned in
+   * sort_inphase_sort function, if long size sorting records are
+   * encountered. */
+  sort_param.multipage_file.volid = NULL_VOLID;
+  sort_param.multipage_file.fileid = NULL_FILEID;
+  sort_param.multipage_npages = 0;
+
+  /* NOTE: This volume list will not be used any more. */
+  /* initialize temporary volume list */
+  sort_param.vol_list.volid = volid;
+  sort_param.vol_list.vol_ent_cnt = 0;
+  sort_param.vol_list.vol_cnt = 0;
+  sort_param.vol_list.vol_info = NULL;
 
   if (est_inp_pg_cnt > 0)
     {
@@ -1417,7 +1434,8 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
 	      1, (sort_param.tot_buffers * DB_PAGESIZE));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto cleanup;
     }
 
   sort_param.half_files = sort_get_num_half_tmpfiles (sort_param.tot_buffers,
@@ -1437,35 +1455,15 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt,
 				  SORT_INITIAL_DYN_ARRAY_SIZE * sizeof (int));
       if (sort_param.file_contents[i].num_pages == NULL)
 	{
-	  for (j = 0; j < i; j++)
-	    {
-	      db_private_free_and_init (thread_p,
-					sort_param.
-					file_contents[j].num_pages);
-	      sort_param.file_contents[j].num_pages = NULL;
-	    }
-
-	  free_and_init (sort_param.internal_memory);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	  sort_param.tot_tempfiles = i;
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto cleanup;
 	}
 
       sort_param.file_contents[i].num_slots = SORT_INITIAL_DYN_ARRAY_SIZE;
       sort_param.file_contents[i].first_run = -1;
       sort_param.file_contents[i].last_run = -1;
     }
-
-  /* initialize temp. overflow file. Real value will be assigned in sort_inphase_sort
-     function, if long size sorting records are encountered. */
-  sort_param.multipage_file.volid = NULL_VOLID;
-  sort_param.multipage_file.fileid = NULL_FILEID;
-  sort_param.multipage_npages = 0;
-
-  /* NOTE: This volume list will not be used any more. */
-  /* initialize temporary volume list */
-  sort_param.vol_list.volid = volid;
-  sort_param.vol_list.vol_ent_cnt = 0;
-  sort_param.vol_list.vol_cnt = 0;
-  sort_param.vol_list.vol_info = NULL;
 
   /* Create only input temporary files
      make file and temporary volume page count estimates */
@@ -1508,8 +1506,8 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt,
 		      (thread_p, &sort_param.temp[i], file_pg_cnt_est,
 		       true) != NO_ERROR)
 		    {
-		      sort_return_used_resources (thread_p, &sort_param);
-		      return er_errid ();
+		      error = er_errid ();
+		      goto cleanup;
 		    }
 		}
 
@@ -1526,7 +1524,9 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt,
 	}			/* if (sort_param.tot_runs > 1) */
     }
 
+cleanup:
   sort_return_used_resources (thread_p, &sort_param);
+  thread_set_sort_stats_active (thread_p, false);
 
   return (error);
 }

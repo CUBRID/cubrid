@@ -478,6 +478,10 @@ mnt_calc_global_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
   stats_diff->bt_num_multi_range_opt =
     CALC_GLOBAL_STAT_DIFF (p->bt_num_multi_range_opt,
 			   q->bt_num_multi_range_opt);
+  stats_diff->bt_num_splits =
+    CALC_GLOBAL_STAT_DIFF (p->bt_num_splits, q->bt_num_splits);
+  stats_diff->bt_num_merges =
+    CALC_GLOBAL_STAT_DIFF (p->bt_num_merges, q->bt_num_merges);
 
   stats_diff->qm_num_selects =
     CALC_GLOBAL_STAT_DIFF (p->qm_num_selects, q->qm_num_selects);
@@ -506,6 +510,11 @@ mnt_calc_global_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
   stats_diff->qm_num_holdable_cursors =
     CALC_GLOBAL_STAT_DIFF (p->qm_num_holdable_cursors,
 			   q->qm_num_holdable_cursors);
+
+  stats_diff->sort_num_io_pages =
+    CALC_GLOBAL_STAT_DIFF (p->sort_num_io_pages, q->sort_num_io_pages);
+  stats_diff->sort_num_data_pages =
+    CALC_GLOBAL_STAT_DIFF (p->sort_num_data_pages, q->sort_num_data_pages);
 
   stats_diff->net_num_requests =
     CALC_GLOBAL_STAT_DIFF (p->net_num_requests, q->net_num_requests);
@@ -1634,6 +1643,8 @@ static const char *mnt_Stats_name[MNT_SIZE_OF_SERVER_EXEC_STATS] = {
   "Num_btree_noncovered",
   "Num_btree_resumes",
   "Num_btree_multirange_optimization",
+  "Num_btree_splits",
+  "Num_btree_merges",
   "Num_query_selects",
   "Num_query_inserts",
   "Num_query_deletes",
@@ -1647,6 +1658,8 @@ static const char *mnt_Stats_name[MNT_SIZE_OF_SERVER_EXEC_STATS] = {
   "Num_query_mjoins",
   "Num_query_objfetches",
   "Num_query_holdable_cursors",
+  "Num_sort_io_pages",
+  "Num_sort_data_pages",
   "Num_network_requests",
   "Num_adaptive_flush_pages",
   "Num_adaptive_flush_log_pages",
@@ -2738,6 +2751,40 @@ mnt_x_bt_multi_range_opt (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * mnt_x_bt_splits - Increase bt_num_splits counter of the current
+ *                   transaction index
+ *   return: none
+ */
+void
+mnt_x_bt_splits (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_num_splits, 1);
+    }
+}
+
+/*
+ * mnt_x_bt_merges - Increase bt_num_merges counter of the current
+ *                   transaction index
+ *   return: none
+ */
+void
+mnt_x_bt_merges (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_num_merges, 1);
+    }
+}
+
+/*
  * mnt_x_qm_selects - Increase qm_num_selects counter of the current
                       transaction index
  *   return: none
@@ -2959,6 +3006,40 @@ mnt_x_qm_holdable_cursor (THREAD_ENTRY * thread_p, int num_cursors)
 }
 
 /*
+ * mnt_x_sort_io_pages - Increase sort_num_io_pages counter of the current
+ *			 transaction index
+ *   return: none
+ */
+void
+mnt_x_sort_io_pages (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, sort_num_io_pages, 1);
+    }
+}
+
+/*
+ * mnt_x_sort_data_pages - Increase sort_num_data_pages counter of the
+ *			   current transaction index
+ *   return: none
+ */
+void
+mnt_x_sort_data_pages (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, sort_num_data_pages, 1);
+    }
+}
+
+/*
  * mnt_x_net_requests - Increase net_num_requests counter of the current
  *                      transaction index
  *   return: none
@@ -3128,6 +3209,10 @@ mnt_calc_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
 		  q->bt_num_noncovered);
   CALC_STAT_DIFF (stats_diff->bt_num_resumes, p->bt_num_resumes,
 		  q->bt_num_resumes);
+  CALC_STAT_DIFF (stats_diff->bt_num_splits, p->bt_num_splits,
+		  q->bt_num_splits);
+  CALC_STAT_DIFF (stats_diff->bt_num_merges, p->bt_num_merges,
+		  q->bt_num_merges);
 
   CALC_STAT_DIFF (stats_diff->qm_num_selects, p->qm_num_selects,
 		  q->qm_num_selects);
@@ -3153,6 +3238,11 @@ mnt_calc_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
 		  q->qm_num_mjoins);
   CALC_STAT_DIFF (stats_diff->qm_num_objfetches, p->qm_num_objfetches,
 		  q->qm_num_objfetches);
+
+  CALC_STAT_DIFF (stats_diff->sort_num_io_pages, p->sort_num_io_pages,
+		  q->sort_num_io_pages);
+  CALC_STAT_DIFF (stats_diff->sort_num_data_pages, p->sort_num_data_pages,
+		  q->sort_num_data_pages);
 
   CALC_STAT_DIFF (stats_diff->net_num_requests, p->net_num_requests,
 		  q->net_num_requests);

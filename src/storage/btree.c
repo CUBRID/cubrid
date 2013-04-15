@@ -7165,6 +7165,8 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 
   btree_clear_key_value (&clear_key, &mid_key);
 
+  mnt_bt_merges (thread_p);
+
   return ret;
 
 exit_on_error:
@@ -7728,6 +7730,8 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   pgbuf_set_dirty (thread_p, P, DONT_FREE);
   btree_clear_key_value (&clear_lkey, &left_key);
   btree_clear_key_value (&clear_rkey, &right_key);
+
+  mnt_bt_merges (thread_p);
 
   return ret;
 
@@ -11250,6 +11254,8 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   /* set child page pointer */
   *child_vpid = page_vpid;
 
+  mnt_bt_splits (thread_p);
+
   return ret;
 
 exit_on_error:
@@ -11638,6 +11644,8 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 
   /* set child page identifier */
   *child_vpid = page_vpid;
+
+  mnt_bt_splits (thread_p);
 
   return ret;
 

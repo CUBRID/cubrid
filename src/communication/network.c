@@ -125,6 +125,10 @@ net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->bt_num_multi_range_opt));
   ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->bt_num_splits));
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->bt_num_merges));
+  ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->qm_num_selects));
   ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->qm_num_inserts));
@@ -150,6 +154,10 @@ net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   OR_PUT_INT64 (ptr, &(stats->qm_num_objfetches));
   ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->qm_num_holdable_cursors));
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->sort_num_io_pages));
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->sort_num_data_pages));
   ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->net_num_requests));
   ptr += OR_INT64_SIZE;
@@ -272,6 +280,10 @@ net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   ptr += OR_INT64_SIZE;
   OR_GET_INT64 (ptr, &(stats->bt_num_multi_range_opt));
   ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->bt_num_splits));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->bt_num_merges));
+  ptr += OR_INT64_SIZE;
   OR_GET_INT64 (ptr, &(stats->qm_num_selects));
   ptr += OR_INT64_SIZE;
   OR_GET_INT64 (ptr, &(stats->qm_num_inserts));
@@ -297,6 +309,10 @@ net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   OR_GET_INT64 (ptr, &(stats->qm_num_objfetches));
   ptr += OR_INT64_SIZE;
   OR_GET_INT64 (ptr, &(stats->qm_num_holdable_cursors));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->sort_num_io_pages));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->sort_num_data_pages));
   ptr += OR_INT64_SIZE;
   OR_GET_INT64 (ptr, &(stats->net_num_requests));
   ptr += OR_INT64_SIZE;

@@ -6892,8 +6892,7 @@ smnt_server_copy_stats (THREAD_ENTRY * thread_p, unsigned int rid,
 
   /* check to see if the pack/unpack functions match the current
      structure definition */
-  assert ((DB_ALIGN (STAT_SIZE_MEMORY, sizeof (void *)))
-	  == sizeof (MNT_SERVER_EXEC_STATS));
+  assert (STAT_SIZE_MEMORY == MNT_SERVER_EXEC_STATS_SIZEOF);
 
   xmnt_server_copy_stats (thread_p, &stats);
   net_pack_stats (reply, &stats);

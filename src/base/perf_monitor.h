@@ -135,9 +135,11 @@ enum t_diag_server_type
 };
 typedef enum t_diag_server_type T_DIAG_SERVER_TYPE;
 
-
 /*
  * Server execution statistic structure
+ * If members are added or removed in this structure then changes must be made
+ * also in MNT_SIZE_OF_SERVER_EXEC_STATS, STAT_SIZE_MEMORY and
+ * MNT_SERVER_EXEC_STATS_SIZEOF
  */
 typedef struct mnt_server_exec_stats MNT_SERVER_EXEC_STATS;
 struct mnt_server_exec_stats
@@ -192,6 +194,8 @@ struct mnt_server_exec_stats
   UINT64 bt_num_noncovered;
   UINT64 bt_num_resumes;
   UINT64 bt_num_multi_range_opt;
+  UINT64 bt_num_splits;
+  UINT64 bt_num_merges;
 
   /* Execution statistics for the query manager */
   UINT64 qm_num_selects;
@@ -207,6 +211,10 @@ struct mnt_server_exec_stats
   UINT64 qm_num_mjoins;
   UINT64 qm_num_objfetches;
   UINT64 qm_num_holdable_cursors;
+
+  /* Execution statistics for external sort */
+  UINT64 sort_num_io_pages;
+  UINT64 sort_num_data_pages;
 
   /* Execution statistics for network communication */
   UINT64 net_num_requests;
@@ -229,11 +237,17 @@ struct mnt_server_exec_stats
   UINT64 pb_hit_ratio;
   /* ((pb_num_fetches - pb_num_ioreads) x 100 / pb_num_fetches) x 100 */
 
+  /* This must be kept as last member. Otherwise the
+   * MNT_SERVER_EXEC_STATS_SIZEOF macro must be modified */
   bool enable_local_stat;	/* used for local stats */
 };
 
 /* number of field of MNT_SERVER_EXEC_STATS structure */
-#define MNT_SIZE_OF_SERVER_EXEC_STATS 62
+#define MNT_SIZE_OF_SERVER_EXEC_STATS 66
+
+/* The exact size of mnt_server_exec_stats structure */
+#define MNT_SERVER_EXEC_STATS_SIZEOF \
+  (offsetof (MNT_SERVER_EXEC_STATS, enable_local_stat) + sizeof (bool))
 
 extern void mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats,
 				   FILE * stream, const char *substr);
@@ -507,6 +521,10 @@ extern int mnt_Num_tran_exec_stats;
   if (mnt_Num_tran_exec_stats > 0) mnt_x_bt_resumes(thread_p)
 #define mnt_bt_multi_range_opt(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_bt_multi_range_opt(thread_p)
+#define mnt_bt_splits(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_bt_splits(thread_p)
+#define mnt_bt_merges(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_bt_merges(thread_p)
 
 /* Execution statistics for the query manager */
 #define mnt_qm_selects(thread_p) \
@@ -535,6 +553,14 @@ extern int mnt_Num_tran_exec_stats;
   if (mnt_Num_tran_exec_stats > 0) mnt_x_qm_objfetches(thread_p)
 #define mnt_qm_holdable_cursor(thread_p, num_cursors) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_qm_holdable_cursor(thread_p, num_cursors)
+
+/* execution statistics for external sort */
+#define mnt_sort_io_pages(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0 && thread_get_sort_stats_active(thread_p)) \
+    mnt_x_sort_io_pages(thread_p)
+#define mnt_sort_data_pages(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0 && thread_get_sort_stats_active(thread_p)) \
+    mnt_x_sort_data_pages(thread_p)
 
 /* Prior LSA */
 #define mnt_prior_lsa_list_size(thread_p, list_size) \
@@ -607,6 +633,8 @@ extern void mnt_x_bt_covered (THREAD_ENTRY * thread_p);
 extern void mnt_x_bt_noncovered (THREAD_ENTRY * thread_p);
 extern void mnt_x_bt_resumes (THREAD_ENTRY * thread_p);
 extern void mnt_x_bt_multi_range_opt (THREAD_ENTRY * thread_p);
+extern void mnt_x_bt_splits (THREAD_ENTRY * thread_p);
+extern void mnt_x_bt_merges (THREAD_ENTRY * thread_p);
 extern void mnt_x_qm_selects (THREAD_ENTRY * thread_p);
 extern void mnt_x_qm_inserts (THREAD_ENTRY * thread_p);
 extern void mnt_x_qm_deletes (THREAD_ENTRY * thread_p);
@@ -621,6 +649,8 @@ extern void mnt_x_qm_mjoins (THREAD_ENTRY * thread_p);
 extern void mnt_x_qm_objfetches (THREAD_ENTRY * thread_p);
 extern void mnt_x_qm_holdable_cursor (THREAD_ENTRY * thread_p,
 				      int num_cursors);
+extern void mnt_x_sort_io_pages (THREAD_ENTRY * thread_p);
+extern void mnt_x_sort_data_pages (THREAD_ENTRY * thread_p);
 extern void mnt_x_net_requests (THREAD_ENTRY * thread_p);
 
 extern void mnt_x_prior_lsa_list_size (THREAD_ENTRY * thread_p,

@@ -54,6 +54,8 @@ typedef void THREAD_ENTRY;
 #define thread_rc_track_amount_pgbuf_temp(thread_p) (0)
 #define thread_rc_track_dump_all(thread_p, outfp)
 #define thread_rc_track_meter(thread_p, file, line, amount, ptr, rc_idx, mgr_idx)
+#define thread_get_sort_stats_active(thread_p) (false)
+#define thread_set_sort_stats_active(thread_p, flag)
 
 #else /* !SERVER_MODE */
 
@@ -213,6 +215,8 @@ struct thread_entry
   int track_depth;
   int track_threshold;		/* for future work, get PRM */
   THREAD_RC_TRACK *track_free_list;
+
+  bool sort_stats_active;
 };
 
 #define DOES_THREAD_RESUME_DUE_TO_SHUTDOWN(thread_p) \
@@ -359,6 +363,8 @@ extern void thread_rc_track_meter (THREAD_ENTRY * thread_p,
 				   const char *file_name,
 				   const int line_no, int amount, void *ptr,
 				   int rc_idx, int mgr_idx);
+extern bool thread_get_sort_stats_active (THREAD_ENTRY * thread_p);
+extern bool thread_set_sort_stats_active (THREAD_ENTRY * thread_p, bool flag);
 
 #if defined(WINDOWS)
 extern unsigned __stdcall thread_worker (void *);
