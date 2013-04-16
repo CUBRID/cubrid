@@ -3487,14 +3487,18 @@ drop_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| DROP opt_table_type IF EXISTS class_spec_list
+	| DROP opt_class_type IF EXISTS class_spec_list
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_DROP);
 			if (node)
 			  {
 			    node->info.drop.spec_list = $5;
-				node->info.drop.if_exists = true;
-			    node->info.drop.entity_type = PT_CLASS;
+			    node->info.drop.if_exists = true;
+			    if ($2 == PT_EMPTY)
+			      node->info.drop.entity_type = PT_MISC_DUMMY;
+			    else
+			      node->info.drop.entity_type = $2;
+
 			  }
 
 			$$ = node;
