@@ -90,7 +90,8 @@ typedef enum
   SERVICE_START_BROKER,
   SERVICE_START_MANAGER,
   SERVER_START_LIST,
-  SERVICE_START_HEARTBEAT
+  SERVICE_START_HEARTBEAT,
+  SERVICE_START_SHARD
 } UTIL_SERVICE_PROPERTY_E;
 
 #if defined(WINDOWS)
@@ -210,6 +211,7 @@ static UTIL_SERVICE_PROPERTY_T us_Property_map[] = {
   {SERVICE_START_MANAGER, NULL},
   {SERVER_START_LIST, NULL},
   {SERVICE_START_HEARTBEAT, NULL},
+  {SERVICE_START_SHARD, NULL},
   {-1, NULL}
 };
 
@@ -1127,6 +1129,7 @@ process_service (int command_type, bool process_window_service)
 	{
 
 	  status = process_master (command_type);
+
 	  if (strcmp (get_property (SERVICE_START_SERVER), PROPERTY_ON) == 0)
 	    {
 	      status =
@@ -1145,7 +1148,11 @@ process_service (int command_type, bool process_window_service)
 	    {
 	      status = process_heartbeat (command_type, 0, NULL);
 	    }
-
+	  if (strcmp (get_property (SERVICE_START_SHARD), PROPERTY_ON) ==
+	      0)
+	    {
+	      status = process_shard (command_type, 0, NULL, false);
+	    }
 	}
       break;
     case STOP:
@@ -1192,6 +1199,10 @@ process_service (int command_type, bool process_window_service)
 	      0)
 	    {
 	      status = process_heartbeat (command_type, 0, NULL);
+	    }
+	  if (strcmp (get_property (SERVICE_START_SHARD), PROPERTY_ON) == 0)
+	    {
+	      status = process_shard (command_type, 0, NULL, false);
 	    }
 	  status = process_master (command_type);
 	}
@@ -3635,6 +3646,7 @@ load_properties (void)
   bool broker_flag = false;
   bool manager_flag = false;
   bool heartbeat_flag = false;
+  bool shard_flag = false;
   char *value = NULL;
 
   if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
@@ -3671,6 +3683,10 @@ load_properties (void)
 	    {
 	      heartbeat_flag = true;
 	    }
+	  else if (strcmp (util, UTIL_TYPE_SHARD) == 0)
+	    {
+	      shard_flag = true;
+	    }
 	  else
 	    {
 	      return ER_GENERIC_ERROR;
@@ -3686,6 +3702,8 @@ load_properties (void)
     strdup (manager_flag ? PROPERTY_ON : PROPERTY_OFF);
   us_Property_map[SERVICE_START_HEARTBEAT].property_value =
     strdup (heartbeat_flag ? PROPERTY_ON : PROPERTY_OFF);
+  us_Property_map[SERVICE_START_SHARD].property_value =
+    strdup (shard_flag ? PROPERTY_ON : PROPERTY_OFF);
 
   /* get service::server list */
   value = prm_get_string_value (PRM_ID_SERVICE_SERVER_LIST);
