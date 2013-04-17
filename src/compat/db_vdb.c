@@ -1981,11 +1981,9 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 	  pt_free_query_etc_area (statement);
 	}
     }
-  else
-    {
-      /* so now, the statement is executed */
-      session->stage[stmt_ndx] = StatementExecutedStage;
-    }
+
+  /* so now, the statement is executed */
+  session->stage[stmt_ndx] = StatementExecutedStage;
 
   /* execution succeeded, maybe. process result of the query */
   if (result && !(err < 0))
