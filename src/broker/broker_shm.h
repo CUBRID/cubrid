@@ -194,7 +194,7 @@ struct access_list
 {
   char dbname[ACL_MAX_DBNAME_LENGTH];
   char dbuser[ACL_MAX_DBUSER_LENGTH];
-  char ip_files[LINE_MAX];
+  char ip_files[LINE_MAX + 1];	/* reserve buffer for '\0' */
   IP_INFO ip_info;
 };
 

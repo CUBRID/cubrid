@@ -4159,6 +4159,8 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
       /* clear all the used keys */
       btree_scan_clear_key (&(isidp->bt_scan));
+      /* clear last_key */
+      (void) scan_init_iss (isidp);
       break;
 
     case S_LIST_SCAN:
@@ -4325,6 +4327,10 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
     case S_METHOD_SCAN:
       method_close_scan (thread_p, &scan_id->s.vaid.scan_buf);
+      break;
+
+    default:
+      /* S_VALUES_SCAN */
       break;
     }
 

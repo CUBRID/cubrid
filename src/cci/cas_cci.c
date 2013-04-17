@@ -5675,7 +5675,7 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err_buf)
     {
       T_CON_HANDLE *handle;
       int id;
-      char new_url[LINE_MAX];
+      char new_url[LINE_MAX + 1];	/* reserve buffer for '\0' */
 
       if (!cci_datasource_make_url (prop, new_url, ds->url, &latest_err_buf))
 	{

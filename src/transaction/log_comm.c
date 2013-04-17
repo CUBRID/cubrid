@@ -45,6 +45,7 @@
 #include "db.h"
 #endif /* CS_MODE */
 #if defined(SERVER_MODE)
+#include "server_support.h"
 #include "connection_defs.h"
 #endif /* SERVER_MODE */
 #endif /* !WINDOWS */

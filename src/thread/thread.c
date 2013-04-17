@@ -4258,6 +4258,8 @@ thread_rc_track_meter_dump (THREAD_ENTRY * thread_p, FILE * outfp,
 	      fputc (meter->m_add_buf[i], outfp);
 	    }
 	  fprintf (outfp, "\n");
+	  fprintf (outfp, "         +--- add_buf_size = %d\n",
+		   meter->m_add_buf_size);
 	}
       if (meter->m_sub_buf_size > 0)
 	{
@@ -4267,6 +4269,8 @@ thread_rc_track_meter_dump (THREAD_ENTRY * thread_p, FILE * outfp,
 	      fputc (meter->m_sub_buf[i], outfp);
 	    }
 	  fprintf (outfp, "\n");
+	  fprintf (outfp, "         +--- sub_buf_size = %d\n",
+		   meter->m_sub_buf_size);
 	}
 #endif
     }
@@ -4418,6 +4422,7 @@ thread_rc_track_meter_at (THREAD_RC_METER * meter,
     {
       buf_size = snprintf (buf, 256, "%s:%d ", p, caller_line);
     }
+  buf[255] = '\0';
 
   if (amount > 0)
     {
@@ -4425,6 +4430,7 @@ thread_rc_track_meter_at (THREAD_RC_METER * meter,
 	{
 	  if (strstr (meter->m_add_buf, buf) == NULL)
 	    {
+	      /* reserve buffer for '\0' */
 	      remain_size = ONE_K - meter->m_add_buf_size - 1;
 	      buf_size = MIN (buf_size, remain_size);
 	      strncat (meter->m_add_buf, buf, buf_size);
@@ -4434,8 +4440,8 @@ thread_rc_track_meter_at (THREAD_RC_METER * meter,
       else
 	{
 	  er_log_debug (ARG_FILE_LINE,
-			"thread_rc_track_meter_at: add_buf overflow: %d",
-			meter->m_add_buf_size);
+			"thread_rc_track_meter_at: add_buf overflow: %d, %s",
+			meter->m_add_buf_size, buf);
 	}
     }
   else if (amount < 0)
@@ -4444,6 +4450,7 @@ thread_rc_track_meter_at (THREAD_RC_METER * meter,
 	{
 	  if (strstr (meter->m_sub_buf, buf) == NULL)
 	    {
+	      /* reserve buffer for '\0' */
 	      remain_size = ONE_K - meter->m_sub_buf_size - 1;
 	      buf_size = MIN (buf_size, remain_size);
 	      strncat (meter->m_sub_buf, buf, buf_size);
@@ -4453,8 +4460,8 @@ thread_rc_track_meter_at (THREAD_RC_METER * meter,
       else
 	{
 	  er_log_debug (ARG_FILE_LINE,
-			"thread_rc_track_meter_at: sub_buf overflow: %d",
-			meter->m_sub_buf_size);
+			"thread_rc_track_meter_at: sub_buf overflow: %d, %s",
+			meter->m_sub_buf_size, buf);
 	}
     }
 

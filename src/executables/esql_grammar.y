@@ -3404,7 +3404,7 @@ validate_input_file (void *fname, FILE * outfp)
 static char *
 ofile_name (char *fname)
 {
-  static char buf[PATH_MAX];
+  static char buf[PATH_MAX + 1]; /* reserve buffer for '\0' */
   char *p;
 
   /* Get the last pathname component into buf. */
@@ -3419,7 +3419,7 @@ ofile_name (char *fname)
     }
   else
     {
-      strncat (buf, ".c", sizeof(buf) - strnlen(buf, sizeof(buf)));
+      strncat (buf, ".c", PATH_MAX - strnlen(buf, sizeof(buf)));
     }
 
   return buf;

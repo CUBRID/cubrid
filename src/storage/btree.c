@@ -21897,7 +21897,7 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
 {
   int compare_id = 0;
   DB_MIDXKEY *new_mkey = NULL;
-  DB_VALUE *new_key_value;
+  DB_VALUE *new_key_value = NULL;
   int error = NO_ERROR, i = 0;
 #if defined(SERVER_MODE)
   bool use_unlocking;
@@ -21930,6 +21930,7 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
 	      sizeof (DB_VALUE *) * multi_range_opt->no_attrs);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+
   for (i = 0; i < multi_range_opt->no_attrs; i++)
     {
       DB_MAKE_NULL (&new_key_value[i]);
@@ -21990,6 +21991,7 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
 	      break;
 	    }
 	}
+
       if (reject_new_elem)
 	{
 	  /* do not add */
@@ -22017,6 +22019,12 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
 		}
 	    }
 #endif
+
+	  if (new_key_value != NULL)
+	    {
+	      db_private_free_and_init (thread_p, new_key_value);
+	    }
+
 	  return NO_ERROR;
 	}
 
@@ -22084,7 +22092,8 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
       curr_item = db_private_alloc (thread_p, sizeof (RANGE_OPT_ITEM));
       if (curr_item == NULL)
 	{
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto exit;
 	}
 
       multi_range_opt->top_n_items[multi_range_opt->cnt] = curr_item;
@@ -22121,6 +22130,12 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
 	    (TP_DOMAIN **) db_private_alloc (thread_p,
 					     multi_range_opt->no_attrs *
 					     sizeof (TP_DOMAIN *));
+	  if (multi_range_opt->sort_col_dom == NULL)
+	    {
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto exit;
+	    }
+
 	  for (i = 0; i < multi_range_opt->no_attrs; i++)
 	    {
 	      multi_range_opt->sort_col_dom[i] =

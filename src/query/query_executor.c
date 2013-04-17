@@ -627,6 +627,10 @@ static int qexec_clear_pred (XASL_NODE * xasl_p, PRED_EXPR * pr, int final);
 static int qexec_clear_access_spec_list (XASL_NODE * xasl_p,
 					 THREAD_ENTRY * thread_p,
 					 ACCESS_SPEC_TYPE * list, int final);
+static int qexec_clear_analytic_function_list (XASL_NODE * xasl_p,
+					       THREAD_ENTRY * thread_p,
+					       ANALYTIC_TYPE * list,
+					       int final);
 static int qexec_clear_agg_list (XASL_NODE * xasl_p, AGGREGATE_TYPE * list,
 				 int final);
 static void qexec_clear_head_lists (THREAD_ENTRY * thread_p,
@@ -1954,7 +1958,8 @@ qexec_clear_pred (XASL_NODE * xasl_p, PRED_EXPR * pr, int final)
   PRED_EXPR *expr;
 
   pg_cnt = 0;
-  if (!pr)
+
+  if (pr == NULL)
     {
       return pg_cnt;
     }
@@ -2138,6 +2143,8 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p,
 	  break;
 	case S_METHOD_SCAN:
 	  break;
+	case S_VALUES_SCAN:
+	  break;
 	}
       if (p->s_id.val_list)
 	{
@@ -2192,8 +2199,11 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p,
 	  break;
 	case TARGET_SET:
 	  pg_cnt +=
-	    qexec_clear_regu_list (xasl_p, p->s.set_node.set_regu_list,
+	    qexec_clear_regu_list (xasl_p, ACCESS_SPEC_SET_REGU_LIST (p),
 				   final);
+	  pg_cnt +=
+	    qexec_clear_regu_var (xasl_p, ACCESS_SPEC_SET_PTR (p), final);
+
 	  pg_cnt +=
 	    qexec_clear_regu_var (xasl_p, p->s_id.s.ssid.set_ptr, final);
 	  pr_clear_value (&p->s_id.s.ssid.set);
@@ -2203,7 +2213,39 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p,
 	    qexec_clear_regu_list (xasl_p, p->s.method_node.method_regu_list,
 				   final);
 	  break;
+	case TARGET_REGUVAL_LIST:
+	  break;
 	}
+    }
+
+  return pg_cnt;
+}
+
+/*
+ * qexec_clear_analytic_function_list () - 
+ *   return:
+ *   xasl_p(in) :
+ *   list(in)   :
+ *   final(in)  :
+ */
+static int
+qexec_clear_analytic_function_list (XASL_NODE * xasl_p,
+				    THREAD_ENTRY * thread_p,
+				    ANALYTIC_TYPE * list, int final)
+{
+  ANALYTIC_TYPE *p;
+  int pg_cnt;
+
+  pg_cnt = 0;
+
+  for (p = list; p; p = p->next)
+    {
+      (void) pr_clear_value (p->value);
+      (void) pr_clear_value (p->value2);
+#if 0 /* TODO - currenty, is not handled at stream_to_xasl */
+      (void) pr_clear_value (p->save_value);
+      (void) pr_clear_value (&(p->part_value));
+#endif
     }
 
   return pg_cnt;
@@ -2505,6 +2547,45 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
 	    if (buildlist->g_grbynum_val)
 	      {
 		pr_clear_value (buildlist->g_grbynum_val);
+	      }
+
+	    /* analytic functions */
+	    pg_cnt +=
+	      qexec_clear_analytic_function_list (xasl, thread_p,
+						  buildlist->a_func_list,
+						  final);
+	    pg_cnt +=
+	      qexec_clear_regu_list (xasl, buildlist->a_regu_list, final);
+	    if (buildlist->a_outptr_list)
+	      {
+		pg_cnt +=
+		  qexec_clear_regu_list (xasl,
+					 buildlist->a_outptr_list->valptrp,
+					 final);
+	      }
+	    if (buildlist->a_outptr_list_ex)
+	      {
+		pg_cnt +=
+		  qexec_clear_regu_list (xasl,
+					 buildlist->a_outptr_list_ex->valptrp,
+					 final);
+	      }
+	    if (buildlist->a_outptr_list_interm)
+	      {
+		pg_cnt +=
+		  qexec_clear_regu_list (xasl,
+					 buildlist->a_outptr_list_interm->
+					 valptrp, final);
+	      }
+	    if (buildlist->a_val_list)
+	      {
+		qexec_clear_db_val_list (buildlist->a_val_list->valp);
+	      }
+	    pg_cnt +=
+	      qexec_clear_pred (xasl, buildlist->a_instnum_pred, final);
+	    if (buildlist->a_instnum_val)
+	      {
+		pr_clear_value (buildlist->a_instnum_val);
 	      }
 	  }
       }
@@ -9692,6 +9773,8 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
   HEAP_SCANCACHE *local_scan_cache = NULL;
   *removed_count = 0;
 
+  DB_MAKE_NULL (&dbvalue);
+
   if (heap_attrinfo_clear_dbvalues (index_attr_info) != NO_ERROR)
     {
       goto error_exit;
@@ -9927,6 +10010,7 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
   HFID class_hfid;
   bool is_global_index = false;
 
+  DB_MAKE_NULL (&dbvalue);
   OID_SET_NULL (unique_oid_p);
 
   if (heap_attrinfo_clear_dbvalues (index_attr_info) != NO_ERROR)
@@ -10347,6 +10431,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	}
       switch (attr->default_value.default_expr)
 	{
+	case DB_DEFAULT_NONE:
+	  break;
 	case DB_DEFAULT_SYSDATE:
 	  DB_MAKE_DATE (insert->vals[k], 1, 1, 1);
 	  insert->vals[k]->data.date = xasl_state->vd.sys_datetime.date;
@@ -23966,6 +24052,8 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	    {
 	      switch (attrepr->default_value.default_expr)
 		{
+		case DB_DEFAULT_NONE:
+		  break;
 		case DB_DEFAULT_SYSDATE:
 		  db_make_string (out_values[idx_val++], "SYS_DATE");
 		  break;

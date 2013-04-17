@@ -6449,6 +6449,7 @@ int
 qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 			       AGGREGATE_TYPE * agg_list_p)
 {
+  int error = NO_ERROR;
   AGGREGATE_TYPE *agg_p;
   DB_VALUE sqr_val;
   DB_VALUE dbval;
@@ -6531,9 +6532,10 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 		qfile_sort_list (thread_p, agg_p->list_id, agg_p->sort_list,
 				 agg_p->option, true);
 
-	      if (!list_id_p)
+	      if (list_id_p == NULL)
 		{
-		  return ER_FAILED;
+		  error = ER_FAILED;
+		  goto exit;
 		}
 
 	      if (agg_p->function == PT_COUNT)
@@ -6545,11 +6547,12 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 		  pr_type_p = list_id_p->type_list.domp[0]->type;
 
 		  /* scan list file, accumulating total for sum/avg */
-		  if (qfile_open_list_scan (list_id_p, &scan_id) != NO_ERROR)
+		  error = qfile_open_list_scan (list_id_p, &scan_id);
+		  if (error != NO_ERROR)
 		    {
 		      qfile_close_list (thread_p, list_id_p);
 		      qfile_destroy_list (thread_p, list_id_p);
-		      return ER_FAILED;
+		      goto exit;
 		    }
 
 		  while (true)
@@ -6574,15 +6577,18 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 			       QFILE_TUPLE_VALUE_HEADER_SIZE,
 			       QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p));
 
-		      if ((*(pr_type_p->data_readval)) (&buf, &dbval,
-							list_id_p->type_list.
-							domp[0], -1, true,
-							NULL, 0) != NO_ERROR)
+		      (void) pr_clear_value (&dbval);
+		      error = (*(pr_type_p->data_readval)) (&buf, &dbval,
+							    list_id_p->
+							    type_list.domp[0],
+							    -1, true, NULL,
+							    0);
+		      if (error != NO_ERROR)
 			{
 			  qfile_close_scan (thread_p, &scan_id);
 			  qfile_close_list (thread_p, list_id_p);
 			  qfile_destroy_list (thread_p, list_id_p);
-			  return ER_FAILED;
+			  goto exit;
 			}
 
 		      if (agg_p->function == PT_VARIANCE
@@ -6595,11 +6601,12 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 			  if (tp_value_coerce (&dbval, &dbval, tmp_domain_ptr)
 			      != DOMAIN_COMPATIBLE)
 			    {
-			      pr_clear_value (&dbval);
+			      (void) pr_clear_value (&dbval);
 			      qfile_close_scan (thread_p, &scan_id);
 			      qfile_close_list (thread_p, list_id_p);
 			      qfile_destroy_list (thread_p, list_id_p);
-			      return ER_FAILED;
+			      error = ER_FAILED;
+			      goto exit;
 			    }
 			}
 
@@ -6612,10 +6619,12 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 			  tmp_pr_type = PR_TYPE_FROM_ID (dbval_type);
 			  if (tmp_pr_type == NULL)
 			    {
+			      (void) pr_clear_value (&dbval);
 			      qfile_close_scan (thread_p, &scan_id);
 			      qfile_close_list (thread_p, list_id_p);
 			      qfile_destroy_list (thread_p, list_id_p);
-			      return ER_FAILED;
+			      error = ER_FAILED;
+			      goto exit;
 			    }
 
 			  if (agg_p->function == PT_STDDEV
@@ -6625,16 +6634,16 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 			      || agg_p->function == PT_STDDEV_SAMP
 			      || agg_p->function == PT_VAR_SAMP)
 			    {
-			      if (qdata_multiply_dbval (&dbval, &dbval,
-							&sqr_val,
-							tmp_domain_ptr) !=
-				  NO_ERROR)
+			      error = qdata_multiply_dbval (&dbval, &dbval,
+							    &sqr_val,
+							    tmp_domain_ptr);
+			      if (error != NO_ERROR)
 				{
-				  pr_clear_value (&dbval);
+				  (void) pr_clear_value (&dbval);
 				  qfile_close_scan (thread_p, &scan_id);
 				  qfile_close_list (thread_p, list_id_p);
 				  qfile_destroy_list (thread_p, list_id_p);
-				  return ER_FAILED;
+				  goto exit;
 				}
 
 			      (*(tmp_pr_type->setval)) (agg_p->value2,
@@ -6642,17 +6651,17 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 			    }
 			  if (agg_p->function == PT_GROUP_CONCAT)
 			    {
-			      int err = NO_ERROR;
-			      err = qdata_group_concat_first_value (thread_p,
-								    agg_p,
-								    &dbval);
-			      if (err != NO_ERROR)
+			      error =
+				qdata_group_concat_first_value (thread_p,
+								agg_p,
+								&dbval);
+			      if (error != NO_ERROR)
 				{
-				  pr_clear_value (&dbval);
+				  (void) pr_clear_value (&dbval);
 				  qfile_close_scan (thread_p, &scan_id);
 				  qfile_close_list (thread_p, list_id_p);
 				  qfile_destroy_list (thread_p, list_id_p);
-				  return err;
+				  goto exit;
 				}
 			    }
 			  else
@@ -6670,44 +6679,45 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 			      || agg_p->function == PT_STDDEV_SAMP
 			      || agg_p->function == PT_VAR_SAMP)
 			    {
-			      if (qdata_multiply_dbval (&dbval, &dbval,
-							&sqr_val,
-							tmp_domain_ptr) !=
-				  NO_ERROR)
+			      error = qdata_multiply_dbval (&dbval, &dbval,
+							    &sqr_val,
+							    tmp_domain_ptr);
+			      if (error != NO_ERROR)
 				{
-				  pr_clear_value (&dbval);
+				  (void) pr_clear_value (&dbval);
 				  qfile_close_scan (thread_p, &scan_id);
 				  qfile_close_list (thread_p, list_id_p);
 				  qfile_destroy_list (thread_p, list_id_p);
-				  return ER_FAILED;
+				  goto exit;
 				}
 
-			      if (qdata_add_dbval (agg_p->value2, &sqr_val,
-						   agg_p->value2,
-						   tmp_domain_ptr) !=
-				  NO_ERROR)
+			      error =
+				qdata_add_dbval (agg_p->value2, &sqr_val,
+						 agg_p->value2,
+						 tmp_domain_ptr);
+			      if (error != NO_ERROR)
 				{
-				  pr_clear_value (&dbval);
-				  pr_clear_value (&sqr_val);
+				  (void) pr_clear_value (&dbval);
+				  (void) pr_clear_value (&sqr_val);
 				  qfile_close_scan (thread_p, &scan_id);
 				  qfile_close_list (thread_p, list_id_p);
 				  qfile_destroy_list (thread_p, list_id_p);
-				  return ER_FAILED;
+				  goto exit;
 				}
 			    }
 
 			  if (agg_p->function == PT_GROUP_CONCAT)
 			    {
-			      int err = NO_ERROR;
-			      err = qdata_group_concat_value (thread_p,
-							      agg_p, &dbval);
-			      if (err != NO_ERROR)
+			      error = qdata_group_concat_value (thread_p,
+								agg_p,
+								&dbval);
+			      if (error != NO_ERROR)
 				{
-				  pr_clear_value (&dbval);
+				  (void) pr_clear_value (&dbval);
 				  qfile_close_scan (thread_p, &scan_id);
 				  qfile_close_list (thread_p, list_id_p);
 				  qfile_destroy_list (thread_p, list_id_p);
-				  return err;
+				  goto exit;
 				}
 			    }
 			  else
@@ -6723,14 +6733,16 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 				  domain_ptr = NULL;
 				}
 
-			      if (qdata_add_dbval (agg_p->value, &dbval,
-						   agg_p->value,
-						   domain_ptr) != NO_ERROR)
+			      error = qdata_add_dbval (agg_p->value, &dbval,
+						       agg_p->value,
+						       domain_ptr);
+			      if (error != NO_ERROR)
 				{
+				  (void) pr_clear_value (&dbval);
 				  qfile_close_scan (thread_p, &scan_id);
 				  qfile_close_list (thread_p, list_id_p);
 				  qfile_destroy_list (thread_p, list_id_p);
-				  return ER_FAILED;
+				  goto exit;
 				}
 			    }
 			}
@@ -6765,10 +6777,11 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 
 	  /* compute AVG(X) = SUM(X)/COUNT(X) */
 	  DB_MAKE_DOUBLE (&dbval, agg_p->curr_cnt);
-	  if (qdata_divide_dbval (agg_p->value, &dbval, &xavgval,
-				  double_domain_ptr) != NO_ERROR)
+	  error = qdata_divide_dbval (agg_p->value, &dbval, &xavgval,
+				      double_domain_ptr);
+	  if (error != NO_ERROR)
 	    {
-	      return ER_FAILED;
+	      goto exit;
 	    }
 
 	  if (agg_p->function == PT_AVG)
@@ -6776,7 +6789,8 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 	      if (tp_value_coerce (&xavgval, agg_p->value, double_domain_ptr)
 		  != DOMAIN_COMPATIBLE)
 		{
-		  return ER_FAILED;
+		  error = ER_FAILED;
+		  goto exit;
 		}
 
 	      continue;
@@ -6807,34 +6821,38 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 	      DB_MAKE_DOUBLE (&dbval, agg_p->curr_cnt);
 	    }
 
-	  if (qdata_divide_dbval (agg_p->value2, &dbval, &x2avgval,
-				  double_domain_ptr) != NO_ERROR)
+	  error = qdata_divide_dbval (agg_p->value2, &dbval, &x2avgval,
+				      double_domain_ptr);
+	  if (error != NO_ERROR)
 	    {
-	      return ER_FAILED;
+	      goto exit;
 	    }
 
 	  /* compute {SUM(X) / (n)} OR  {SUM(X) / (n-1)} for xxx_SAMP agg */
-	  if (qdata_divide_dbval (agg_p->value, &dbval, &xavg_1val,
-				  double_domain_ptr) != NO_ERROR)
+	  error = qdata_divide_dbval (agg_p->value, &dbval, &xavg_1val,
+				      double_domain_ptr);
+	  if (error != NO_ERROR)
 	    {
-	      return ER_FAILED;
+	      goto exit;
 	    }
 
 	  /* compute AVG(X) * {SUM(X) / (n)} , AVG(X) * {SUM(X) / (n-1)} for
 	   * xxx_SAMP agg*/
-	  if (qdata_multiply_dbval (&xavgval, &xavg_1val, &xavg2val,
-				    double_domain_ptr) != NO_ERROR)
+	  error = qdata_multiply_dbval (&xavgval, &xavg_1val, &xavg2val,
+					double_domain_ptr);
+	  if (error != NO_ERROR)
 	    {
-	      return ER_FAILED;
+	      goto exit;
 	    }
 
 	  /* compute VAR(X) = SUM(X^2)/(n) - AVG(X) * {SUM(X) / (n)} OR
 	   * VAR(X) = SUM(X^2)/(n-1) - AVG(X) * {SUM(X) / (n-1)}  for
 	   * xxx_SAMP aggregates */
-	  if (qdata_subtract_dbval (&x2avgval, &xavg2val, &varval,
-				    double_domain_ptr) != NO_ERROR)
+	  error = qdata_subtract_dbval (&x2avgval, &xavg2val, &varval,
+					double_domain_ptr);
+	  if (error != NO_ERROR)
 	    {
-	      return ER_FAILED;
+	      goto exit;
 	    }
 
 	  if (agg_p->function == PT_VARIANCE || agg_p->function == PT_STDDEV
@@ -6859,7 +6877,8 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 	      if (tp_value_coerce (&varval, &dval, tmp_domain_ptr)
 		  != DOMAIN_COMPATIBLE)
 		{
-		  return ER_FAILED;
+		  error = ER_FAILED;
+		  goto exit;
 		}
 
 	      dtmp = DB_GET_DOUBLE (&dval);
@@ -6877,7 +6896,10 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 	}
     }
 
-  return NO_ERROR;
+exit:
+  (void) pr_clear_value (&dbval);
+
+  return error;
 }
 
 /*
@@ -7279,7 +7301,7 @@ qdata_convert_dbvals_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype,
 	}
 
       operand = operand->next;
-      ++n;
+      n++;
     }
 
   set_make_collection (result_p, collection_p);

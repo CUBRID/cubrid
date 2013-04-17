@@ -22589,7 +22589,7 @@ db_blob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
 {
   DB_TYPE src_type;
   int error_status = NO_ERROR;
-  char path_buf[PATH_MAX + 1];
+  char path_buf[PATH_MAX + 1];	/* reserve buffer for '\0' */
   const char *default_prefix = ES_LOCAL_PATH_PREFIX;
 
   assert (src_value != NULL && result_value != NULL);
@@ -22794,7 +22794,7 @@ db_clob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
 {
   DB_TYPE src_type;
   int error_status = NO_ERROR;
-  char path_buf[PATH_MAX + 1];
+  char path_buf[PATH_MAX + 1];	/* reserve buffer for '\0' */
   const char *default_prefix = ES_LOCAL_PATH_PREFIX;
 
   assert (src_value != (DB_VALUE *) NULL);

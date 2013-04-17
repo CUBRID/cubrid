@@ -3931,6 +3931,8 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid,
   bool is_null;
   int error_code = NO_ERROR;
 
+  DB_MAKE_NULL (&dbvalue);
+
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
   num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL,
@@ -4101,6 +4103,10 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
       else if (fkref->del_action == SM_FOREIGN_KEY_CASCADE
 	       || fkref->del_action == SM_FOREIGN_KEY_SET_NULL)
 	{
+	  if (attr_ids)
+	    {
+	      db_private_free_and_init (thread_p, attr_ids);
+	    }
 	  error_code = heap_get_indexinfo_of_btid (thread_p, &fkref->self_oid,
 						   &fkref->self_btid, NULL,
 						   &num_attrs, &attr_ids,
@@ -4286,25 +4292,25 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 			      goto error1;
 			    }
 			}
-		      error_code = locator_attribute_info_force (thread_p,
-								 &hfid,
-								 oid_ptr,
-								 &fkref->
-								 self_btid,
-								 isid.
-								 duplicate_key_locked,
-								 &attr_info,
-								 attr_ids,
-								 index->
-								 n_atts,
-								 LC_FLUSH_UPDATE,
-								 SINGLE_ROW_UPDATE,
-								 &scan_cache,
-								 &force_count,
-								 false,
-								 REPL_INFO_TYPE_STMT_NORMAL,
-								 DB_NOT_PARTITIONED_CLASS,
-								 NULL, NULL);
+		      error_code =
+			locator_attribute_info_force (thread_p,
+						      &hfid,
+						      oid_ptr,
+						      &fkref->
+						      self_btid,
+						      isid.
+						      duplicate_key_locked,
+						      &attr_info,
+						      attr_ids,
+						      index->n_atts,
+						      LC_FLUSH_UPDATE,
+						      SINGLE_ROW_UPDATE,
+						      &scan_cache,
+						      &force_count,
+						      false,
+						      REPL_INFO_TYPE_STMT_NORMAL,
+						      DB_NOT_PARTITIONED_CLASS,
+						      NULL, NULL);
 		      if (error_code != NO_ERROR)
 			{
 			  goto error1;
@@ -4334,12 +4340,8 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 	  error_code = heap_scancache_end (thread_p, &isid.scan_cache);
 	  if (error_code != NO_ERROR)
 	    {
-	      if (oid_buf)
-		{
-		  db_private_free_and_init (thread_p, oid_buf);
-		}
-
-	      return NO_ERROR;
+	      error_code = NO_ERROR;
+	      goto end;
 	    }
 	}
       else
@@ -4348,6 +4350,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 	}
     }
 
+end:
   if (oid_buf)
     {
       db_private_free_and_init (thread_p, oid_buf);
@@ -4373,22 +4376,9 @@ error2:
   (void) heap_scancache_end (thread_p, &isid.scan_cache);
 
 error3:
-  if (attr_ids)
-    {
-      db_private_free_and_init (thread_p, attr_ids);
-    }
-  if (keys_prefix_length)
-    {
-      db_private_free_and_init (thread_p, keys_prefix_length);
-    }
   heap_attrinfo_end (thread_p, &attr_info);
 
-  if (oid_buf)
-    {
-      db_private_free_and_init (thread_p, oid_buf);
-    }
-
-  return error_code;
+  goto end;
 }
 
 /*
@@ -4662,6 +4652,10 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p,
       else if (fkref->upd_action == SM_FOREIGN_KEY_CASCADE
 	       || fkref->upd_action == SM_FOREIGN_KEY_SET_NULL)
 	{
+	  if (attr_ids)
+	    {
+	      db_private_free_and_init (thread_p, attr_ids);
+	    }
 	  error_code = heap_get_indexinfo_of_btid (thread_p, &fkref->self_oid,
 						   &fkref->self_btid, NULL,
 						   &num_attrs, &attr_ids,
@@ -4841,12 +4835,8 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p,
 	  error_code = heap_scancache_end (thread_p, &isid.scan_cache);
 	  if (error_code != NO_ERROR)
 	    {
-	      if (oid_buf)
-		{
-		  db_private_free_and_init (thread_p, oid_buf);
-		}
-
-	      return NO_ERROR;
+	      error_code = NO_ERROR;
+	      goto end;
 	    }
 	}
       else
@@ -4855,6 +4845,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p,
 	}
     }
 
+end:
   if (oid_buf)
     {
       db_private_free_and_init (thread_p, oid_buf);
@@ -4880,24 +4871,9 @@ error2:
   (void) heap_scancache_end (thread_p, &isid.scan_cache);
 
 error3:
-  if (attr_ids)
-    {
-      db_private_free_and_init (thread_p, attr_ids);
-    }
-
-  if (keys_prefix_length)
-    {
-      db_private_free_and_init (thread_p, keys_prefix_length);
-    }
-
   heap_attrinfo_end (thread_p, &attr_info);
 
-  if (oid_buf)
-    {
-      db_private_free_and_init (thread_p, oid_buf);
-    }
-
-  return error_code;
+  goto end;
 }
 
 /*
@@ -6933,6 +6909,8 @@ locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes,
   assert_release (class_oid != NULL);
   assert_release (!OID_ISNULL (class_oid));
 
+  DB_MAKE_NULL (&dbvalue);
+
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
   /*
@@ -7504,6 +7482,9 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
   assert_release (class_oid != NULL);
   assert_release (!OID_ISNULL (class_oid));
 
+  DB_MAKE_NULL (&new_dbvalue);
+  DB_MAKE_NULL (&old_dbvalue);
+
   aligned_newbuf = PTR_ALIGN (newbuf, MAX_ALIGNMENT);
   aligned_oldbuf = PTR_ALIGN (oldbuf, MAX_ALIGNMENT);
 
@@ -7957,6 +7938,8 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid,
   OR_INDEX *index = NULL;
   DB_LOGICAL ev_res;
 
+  DB_MAKE_NULL (&dbvalue);
+
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
   /* allocate memory space for copying an instance image. */
@@ -8007,6 +7990,12 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid,
 
   while (true)
     {
+      if (dbvalue_ptr == &dbvalue)
+	{
+	  pr_clear_value (&dbvalue);
+	  dbvalue_ptr = NULL;
+	}
+
       scan = heap_next (thread_p, hfid, class_oid, &inst_oid, &copy_rec,
 			&scan_cache, COPY);
       if (scan != S_SUCCESS)
@@ -8015,6 +8004,7 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid,
 	    {
 	      break;
 	    }
+
 	  new_area = (char *) realloc (copy_rec.data, -(copy_rec.length));
 	  if (new_area == NULL)
 	    {
@@ -8041,6 +8031,12 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid,
 	{
 	  for (i = 0; i < num_btids; i++)
 	    {
+	      if (dbvalue_ptr == &dbvalue)
+		{
+		  pr_clear_value (&dbvalue);
+		  dbvalue_ptr = NULL;
+		}
+
 	      dbvalue_ptr = heap_attrvalue_get_key (thread_p, i,
 						    &index_attrinfo,
 						    &copy_rec, &inst_btid,
@@ -8074,7 +8070,7 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid,
 	}
 
       /* Delete the instance from the B-tree */
-      if (!key_found)
+      if (key_found == false)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
@@ -8083,12 +8079,11 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid,
       assert (index != NULL);
       if (index->filter_predicate)
 	{
-	  error_code = locator_eval_filter_predicate (thread_p, &index->btid,
-						      index->
-						      filter_predicate,
-						      class_oid, &p_inst_oid,
-						      1, &p_copy_rec,
-						      &ev_res);
+	  error_code =
+	    locator_eval_filter_predicate (thread_p, &index->btid,
+					   index->filter_predicate,
+					   class_oid, &p_inst_oid,
+					   1, &p_copy_rec, &ev_res);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;
@@ -8125,6 +8120,7 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid,
     }
   heap_attrinfo_end (thread_p, &index_attrinfo);
 
+end:
   if (copy_rec.data != NULL)
     {
       free_and_init (copy_rec.data);
@@ -8133,6 +8129,7 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid,
   if (dbvalue_ptr == &dbvalue)
     {
       pr_clear_value (dbvalue_ptr);
+      dbvalue_ptr = NULL;
     }
 
   return error_code;
@@ -8141,16 +8138,8 @@ error:
 
   (void) heap_scancache_end (thread_p, &scan_cache);
   heap_attrinfo_end (thread_p, &index_attrinfo);
-  if (copy_rec.data != NULL)
-    {
-      free_and_init (copy_rec.data);
-    }
-  if (dbvalue_ptr == &dbvalue)
-    {
-      pr_clear_value (dbvalue_ptr);
-    }
 
-  return error_code;
+  goto end;
 }
 
 /*
@@ -8824,6 +8813,8 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 #if defined(SERVER_MODE)
   int tran_index;
 #endif /* SERVER_MODE */
+
+  DB_MAKE_NULL (&dbvalue);
 
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 

@@ -123,6 +123,7 @@ static int xts_save_int_array (int *ptr, int size);
 static int xts_save_hfid_array (HFID * ptr, int size);
 static int xts_save_oid_array (OID * ptr, int size);
 static int xts_save_method_sig_list (const METHOD_SIG_LIST * ptr);
+static int xts_save_method_sig (const METHOD_SIG * ptr, int size);
 static int xts_save_key_range_array (const KEY_RANGE * ptr, int size);
 static int xts_save_upddel_class_info_array (const UPDDEL_CLASS_INFO *
 					     classes, int nelements);
@@ -229,6 +230,8 @@ static char *xts_process_sort_list (char *ptr, const SORT_LIST * sort_list);
 static char *xts_process_method_sig_list (char *ptr,
 					  const METHOD_SIG_LIST *
 					  method_sig_list);
+static char *xts_process_method_sig (char *ptr,
+				     const METHOD_SIG * method_sig, int size);
 static char *xts_process_connectby_proc (char *ptr,
 					 const CONNECTBY_PROC_NODE *
 					 connectby_proc);
@@ -284,6 +287,7 @@ static int xts_sizeof_analytic_type (const ANALYTIC_TYPE * ptr);
 static int xts_sizeof_srlist_id (const QFILE_SORTED_LIST_ID * ptr);
 static int xts_sizeof_sort_list (const SORT_LIST * ptr);
 static int xts_sizeof_method_sig_list (const METHOD_SIG_LIST * ptr);
+static int xts_sizeof_method_sig (const METHOD_SIG * ptr);
 static int xts_sizeof_connectby_proc (const CONNECTBY_PROC_NODE * ptr);
 static int xts_sizeof_regu_value_list (const REGU_VALUE_LIST *
 				       regu_value_list);
@@ -2168,10 +2172,82 @@ end:
 }
 
 static int
+xts_save_method_sig (const METHOD_SIG * method_sig, int count)
+{
+  int offset;
+  int size;
+  OR_ALIGNED_BUF (sizeof (*method_sig) * 2) a_buf;
+  char *buf = OR_ALIGNED_BUF_START (a_buf);
+  char *buf_p = NULL;
+  bool is_buf_alloced = false;
+
+  if (method_sig == NULL)
+    {
+      assert (count == 0);
+      return NO_ERROR;
+    }
+
+  assert (count > 0);
+
+  offset = xts_get_offset_visited_ptr (method_sig);
+  if (offset != ER_FAILED)
+    {
+      return offset;
+    }
+
+  size = xts_sizeof_method_sig (method_sig);
+  if (size == ER_FAILED)
+    {
+      return ER_FAILED;
+    }
+
+  offset = xts_reserve_location_in_stream (size);
+  if (offset == ER_FAILED
+      || xts_mark_ptr_visited (method_sig, offset) == ER_FAILED)
+    {
+      return ER_FAILED;
+    }
+
+  if (size <= (int) OR_ALIGNED_BUF_SIZE (a_buf))
+    {
+      buf_p = buf;
+    }
+  else
+    {
+      buf_p = (char *) malloc (size);
+      if (buf_p == NULL)
+	{
+	  xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
+	  return ER_FAILED;
+	}
+
+      is_buf_alloced = true;
+    }
+
+  buf = xts_process_method_sig (buf_p, method_sig, count);
+  if (buf == NULL)
+    {
+      offset = ER_FAILED;
+      goto end;
+    }
+  assert (buf <= buf_p + size);
+
+  memcpy (&xts_Stream_buffer[offset], buf_p, size);
+
+end:
+  if (is_buf_alloced)
+    {
+      free_and_init (buf_p);
+    }
+
+  return offset;
+}
+
+static int
 xts_save_string (const char *string)
 {
   int offset;
-  int string_length, strlen;
+  int packed_length, length;
 
   offset = xts_get_offset_visited_ptr (string);
   if (offset != ER_FAILED)
@@ -2179,16 +2255,18 @@ xts_save_string (const char *string)
       return offset;
     }
 
-  string_length = or_packed_string_length (string, &strlen);
+  packed_length = or_packed_string_length (string, &length);
 
-  offset = xts_reserve_location_in_stream (string_length);
+  assert ((string != NULL && length > 0) || (string == NULL && length == 0));
+
+  offset = xts_reserve_location_in_stream (packed_length);
   if (offset == ER_FAILED
       || xts_mark_ptr_visited (string, offset) == ER_FAILED)
     {
       return ER_FAILED;
     }
 
-  or_pack_string_with_length (&xts_Stream_buffer[offset], string, strlen);
+  or_pack_string_with_length (&xts_Stream_buffer[offset], string, length);
 
   return offset;
 }
@@ -2976,7 +3054,6 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
     }
   else
     {
-/* because restore_xxx() cannot handle NULL pointer */
       offset = xts_save_string ("*** EMPTY QUERY ***");
     }
   if (offset == ER_FAILED)
@@ -5067,11 +5144,82 @@ xts_process_sort_list (char *ptr, const SORT_LIST * sort_list)
   return ptr;
 }
 
+/* 
+ * xts_process_method_sig_list ( ) -
+ *
+ * Note: do not use or_pack_method_sig_list
+ */
 static char *
 xts_process_method_sig_list (char *ptr,
 			     const METHOD_SIG_LIST * method_sig_list)
 {
-  return or_pack_method_sig_list (ptr, (void *) method_sig_list);
+  int offset;
+
+#if !defined(NDEBUG)
+  {
+    int i = 0;
+    METHOD_SIG *sig;
+
+    for (sig = method_sig_list->method_sig; sig; sig = sig->next)
+      {
+	i++;
+      }
+    assert (method_sig_list->no_methods == i);
+  }
+#endif
+
+  ptr = or_pack_int (ptr, method_sig_list->no_methods);
+
+  offset =
+    xts_save_method_sig (method_sig_list->method_sig,
+			 method_sig_list->no_methods);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  return ptr;
+}
+
+static char *
+xts_process_method_sig (char *ptr, const METHOD_SIG * method_sig, int count)
+{
+  int offset;
+  int n;
+
+  assert (method_sig->method_name != NULL);
+
+  offset = xts_save_string (method_sig->method_name);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_string (method_sig->class_name);	/* is can be null */
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  ptr = or_pack_int (ptr, method_sig->method_type);
+  ptr = or_pack_int (ptr, method_sig->no_method_args);
+
+  for (n = 0; n < method_sig->no_method_args + 1; n++)
+    {
+      ptr = or_pack_int (ptr, method_sig->method_arg_pos[n]);
+    }
+
+  offset = xts_save_method_sig (method_sig->next, count - 1);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  return ptr;
 }
 
 static char *
@@ -6596,9 +6744,29 @@ xts_sizeof_sort_list (const SORT_LIST * sort_lis)
  *   ptr(in)    :
  */
 static int
-xts_sizeof_method_sig_list (const METHOD_SIG_LIST * method_sig_lis)
+xts_sizeof_method_sig_list (const METHOD_SIG_LIST * method_sig_list)
 {
-  return or_method_sig_list_length ((void *) method_sig_lis);
+  int size = 0;
+
+  size += OR_INT_SIZE +		/* no_methods */
+    PTR_SIZE;			/* method_sig */
+
+  return size;
+}
+
+static int
+xts_sizeof_method_sig (const METHOD_SIG * method_sig)
+{
+  int size = 0;
+
+  size += PTR_SIZE +		/* method_name */
+    PTR_SIZE +			/* class_name */
+    OR_INT_SIZE +		/* method_type */
+    OR_INT_SIZE +		/* no_method_args */
+    (OR_INT_SIZE * (method_sig->no_method_args + 1)) +	/* method_arg_pos */
+    PTR_SIZE;			/* next */
+
+  return size;
 }
 
 /*
@@ -6812,5 +6980,6 @@ xts_reserve_location_in_stream (int size)
 
   xts_Free_offset_in_stream += size;
   assert ((xts_Free_offset_in_stream - size) % MAX_ALIGNMENT == 0);
+
   return (xts_Free_offset_in_stream - size);
 }

@@ -3507,10 +3507,12 @@ regu_string_ws_alloc (int length)
 char *
 regu_strdup (const char *srptr, char *(*alloc) (int))
 {
-  char *dtptr;
   int len;
+  char *dtptr;
 
-  if ((dtptr = alloc ((len = strlen (srptr) + 1))) == NULL)
+  len = strlen (srptr) + 1;
+  dtptr = alloc (len);
+  if (dtptr == NULL)
     {
       return NULL;
     }
@@ -4482,6 +4484,10 @@ regu_xasl_node_init (XASL_NODE * ptr, PROC_TYPE type)
     case MERGE_PROC:
       ptr->proc.merge.update_xasl = NULL;
       ptr->proc.merge.insert_xasl = NULL;
+      break;
+
+    default:
+      /* BUILD_SCHEMA_PROC */
       break;
     }
 }

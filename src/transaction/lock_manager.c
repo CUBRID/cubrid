@@ -251,26 +251,6 @@ struct lk_lockinfo
   LOCK lock;
 };
 
-/* composite locking for delete and update operation */
-typedef struct lk_lockcomp_class LK_LOCKCOMP_CLASS;
-struct lk_lockcomp_class
-{
-  OID class_oid;
-  LK_ENTRY *class_lock_ptr;
-  int num_inst_oids;
-  int max_inst_oids;
-  OID *inst_oid_space;
-  LK_LOCKCOMP_CLASS *next;
-};
-
-typedef struct lk_lockcomp LK_LOCKCOMP;
-struct lk_lockcomp
-{
-  int tran_index;
-  int wait_msecs;
-  LK_ENTRY *root_class_ptr;
-  LK_LOCKCOMP_CLASS *class_list;
-};
 
 /* TWFG (transaction wait-for graph) entry and edge */
 typedef struct lk_WFG_node LK_WFG_NODE;
@@ -11123,12 +11103,7 @@ lock_initialize_composite_lock (THREAD_ENTRY * thread_p,
 #else /* !SERVER_MODE */
   LK_LOCKCOMP *lockcomp;
 
-  comp_lock->lockcomp = db_private_alloc (thread_p, sizeof (LK_LOCKCOMP));
-  if (comp_lock->lockcomp == NULL)
-    {
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-  lockcomp = (LK_LOCKCOMP *) comp_lock->lockcomp;
+  lockcomp = &(comp_lock->lockcomp);
   lockcomp->tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   lockcomp->wait_msecs = logtb_find_wait_msecs (lockcomp->tran_index);
   lockcomp->class_list = (LK_LOCKCOMP_CLASS *) NULL;
@@ -11160,12 +11135,7 @@ lock_add_composite_lock (THREAD_ENTRY * thread_p,
   OID *p;
   int max_oids;
 
-  if (comp_lock->lockcomp == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  lockcomp = (LK_LOCKCOMP *) comp_lock->lockcomp;
+  lockcomp = &(comp_lock->lockcomp);
   for (lockcomp_class = lockcomp->class_list;
        lockcomp_class != NULL; lockcomp_class = lockcomp_class->next)
     {
@@ -11301,14 +11271,7 @@ lock_finalize_composite_lock (THREAD_ENTRY * thread_p,
   LK_ENTRY *dummy;
   int i, value = LK_GRANTED;
 
-  if (comp_lock->lockcomp == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2,
-	      "lk_final_composite_lock", "NULL comp_lock->lockcomp pointer");
-      return LK_NOTGRANTED_DUE_ERROR;
-    }
-
-  lockcomp = (LK_LOCKCOMP *) comp_lock->lockcomp;
+  lockcomp = &(comp_lock->lockcomp);
   for (lockcomp_class = lockcomp->class_list;
        lockcomp_class != NULL; lockcomp_class = lockcomp_class->next)
     {
@@ -11368,7 +11331,6 @@ lock_finalize_composite_lock (THREAD_ENTRY * thread_p,
 	}
       db_private_free_and_init (thread_p, lockcomp_class);
     }
-  db_private_free_and_init (thread_p, comp_lock->lockcomp);
 
   return value;
 #endif /* !SERVER_MODE */
@@ -11390,12 +11352,7 @@ lock_abort_composite_lock (LK_COMPOSITE_LOCK * comp_lock)
   LK_LOCKCOMP *lockcomp;
   LK_LOCKCOMP_CLASS *lockcomp_class;
 
-  if (comp_lock->lockcomp == NULL)
-    {
-      return;
-    }
-
-  lockcomp = (LK_LOCKCOMP *) comp_lock->lockcomp;
+  lockcomp = &(comp_lock->lockcomp);
   lockcomp->tran_index = NULL_TRAN_INDEX;
   lockcomp->wait_msecs = 0;
   while (lockcomp->class_list != NULL)
@@ -11408,7 +11365,7 @@ lock_abort_composite_lock (LK_COMPOSITE_LOCK * comp_lock)
 	}
       db_private_free_and_init (NULL, lockcomp_class);
     }
-  db_private_free_and_init (NULL, comp_lock->lockcomp);
+
 #endif /* !SERVER_MODE */
 }
 

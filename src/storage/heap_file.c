@@ -4240,7 +4240,6 @@ heap_get_last_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 				       scan_cache);
   if (pgptr == NULL)
     {
-      assert (false);
       goto exit_on_error;
     }
 
@@ -4281,7 +4280,6 @@ heap_get_last_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 				     scan_cache);
       if (pgptr == NULL)
 	{
-	  assert (false);
 	  goto exit_on_error;
 	}
     }
@@ -16543,6 +16541,9 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index,
   int n_atts, reprid;
   DB_VALUE *ret_val = NULL;
   DB_VALUE *fi_res = NULL;
+
+  assert (DB_IS_NULL (db_value));
+
   /*
    *  check to make sure the idx_attrinfo has been used, it should
    *  never be empty.
@@ -16621,11 +16622,13 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index,
 	  midxkey.buf = buf;
 	}
 
-      if ((heap_midxkey_key_get (recdes, &midxkey, index, idx_attrinfo,
-				 fi_res)) == NULL)
+      if (heap_midxkey_key_get (recdes, &midxkey, index, idx_attrinfo,
+				fi_res) == NULL)
 	{
 	  return NULL;
 	}
+
+      (void) pr_clear_value (db_value);
 
       DB_MAKE_MIDXKEY (db_value, &midxkey);
 
@@ -20541,7 +20544,6 @@ heap_eval_function_index (THREAD_ENTRY * thread_p,
   FUNC_PRED *func_pred = NULL;
   void *unpack_info = NULL;
   DB_VALUE *res = NULL;
-  REGU_VARIABLE *regu_var;
   int nr_atts;
   ATTR_ID *atts;
   bool atts_free = false, attrinfo_clear = false, attrinfo_end = false;
@@ -20621,8 +20623,6 @@ heap_eval_function_index (THREAD_ENTRY * thread_p,
       attrinfo_clear = true;
     }
 
-  regu_var = func_pred->func_regu;
-
   error = fetch_peek_dbval (thread_p, func_pred->func_regu, NULL,
 			    &cache_attr_info->class_oid,
 			    &cache_attr_info->inst_oid, NULL, &res);
@@ -20650,7 +20650,6 @@ end:
       stx_free_additional_buff (thread_p, unpack_info);
       stx_free_xasl_unpack_info (unpack_info);
       db_private_free_and_init (thread_p, unpack_info);
-      func_pred->func_regu = NULL;
     }
 
   return error;

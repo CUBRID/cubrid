@@ -130,10 +130,32 @@ struct lk_acquired_locks
  * lock escalation threshold, we should acquire a lock on the class
  * instead of acquiring a lock on each instance.
  */
+
+/* composite locking for delete and update operation */
+typedef struct lk_lockcomp_class LK_LOCKCOMP_CLASS;
+struct lk_lockcomp_class
+{
+  OID class_oid;
+  LK_ENTRY *class_lock_ptr;
+  int num_inst_oids;
+  int max_inst_oids;
+  OID *inst_oid_space;
+  LK_LOCKCOMP_CLASS *next;
+};
+
+typedef struct lk_lockcomp LK_LOCKCOMP;
+struct lk_lockcomp
+{
+  int tran_index;
+  int wait_msecs;
+  LK_ENTRY *root_class_ptr;
+  LK_LOCKCOMP_CLASS *class_list;
+};
+
 typedef struct lk_composite_lock LK_COMPOSITE_LOCK;
 struct lk_composite_lock
 {
-  void *lockcomp;
+  LK_LOCKCOMP lockcomp;
 };
 
 /* type of locking resource */
