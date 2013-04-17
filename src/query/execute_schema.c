@@ -13480,6 +13480,8 @@ build_attr_change_map (PARSER_CONTEXT * parser,
 	  while (*sm_constr_attr != NULL)
 	    {
 	      if ((*sm_constr_attr)->header.name != NULL &&
+		  (*sm_constr_attr)->header.name_space ==
+		  att->header.name_space &&
 		  !intl_identifier_casecmp ((*sm_constr_attr)->header.name,
 					    attr_name_to_check))
 		{
