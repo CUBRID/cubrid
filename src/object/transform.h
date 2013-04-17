@@ -140,6 +140,7 @@ typedef struct tf_ct_class
 #define CT_PASSWORD_NAME           "db_password"
 #define CT_AUTHORIZATION_NAME      "db_authorization"
 #define CT_AUTHORIZATIONS_NAME     "db_authorizations"
+#define CT_CHARSET_NAME		   "_db_charset"
 
 /* catalog vclasses */
 #define CTV_CLASS_NAME             "db_class"
@@ -159,6 +160,7 @@ typedef struct tf_ct_class
 #define CTV_STORED_PROC_ARGS_NAME  "db_stored_procedure_args"
 #define CTV_PARTITION_NAME         "db_partition"
 #define CTV_DB_COLLATION_NAME      "db_collation"
+#define CTV_DB_CHARSET_NAME	   "db_charset"
 
 #define CT_DBCOLL_COLL_ID_COLUMN	   "coll_id"
 #define CT_DBCOLL_COLL_NAME_COLUMN	   "coll_name"

@@ -166,7 +166,8 @@ const char *AU_DBA_USER_NAME = "DBA";
          strcmp(name, CT_ROOT_NAME) == 0 || \
          strcmp(name, CT_PASSWORD_NAME) == 0 || \
          strcmp(name, CT_AUTHORIZATION_NAME) == 0 || \
-         strcmp(name, CT_AUTHORIZATIONS_NAME) == 0)
+         strcmp(name, CT_AUTHORIZATIONS_NAME) == 0 || \
+	 strcmp(name, CT_CHARSET_NAME) == 0)
 
 /*
  * AU_GRANT

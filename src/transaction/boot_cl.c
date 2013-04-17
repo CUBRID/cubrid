@@ -178,6 +178,8 @@ static int boot_define_stored_procedure_arguments (MOP class_mop);
 static int boot_define_serial (MOP class_mop);
 static int boot_define_ha_apply_info (MOP class_mop);
 static int boot_define_collations (MOP class_mop);
+static int boot_add_charsets (MOP class_mop);
+static int boot_define_charsets (MOP class_mop);
 static int boot_define_view_class (void);
 static int boot_define_view_super_class (void);
 static int boot_define_view_vclass (void);
@@ -3542,6 +3544,129 @@ boot_define_collations (MOP class_mop)
   return NO_ERROR;
 }
 
+#define CT_DBCHARSET_CHARSET_ID		  "charset_id"
+#define CT_DBCHARSET_CHARSET_NAME	  "charset_name"
+#define CT_DBCHARSET_DEFAULT_COLLATION	  "default_collation"
+#define CT_DBCHARSET_CHAR_SIZE		  "char_size"
+
+/*
+ * boot_add_charsets :
+ *
+ * returns : NO_ERROR if all OK, ER_ status otherwise
+ *
+ *   class(IN) :
+ *
+ * Note:
+ *
+ */
+static int
+boot_add_charsets (MOP class_mop)
+{
+  int i;
+  int count_collations;
+  int found_coll = 0;
+
+  count_collations = lang_collation_count ();
+
+  for (i = INTL_CODESET_ISO88591; i <= INTL_CODESET_LAST; i++)
+    {
+      DB_OBJECT *obj;
+      DB_VALUE val;
+      char *charset_name;
+
+      obj = db_create_internal (class_mop);
+      if (obj == NULL)
+	{
+	  return er_errid ();
+	}
+
+      DB_MAKE_INTEGER (&val, i);
+      db_put_internal (obj, CT_DBCHARSET_CHARSET_ID, &val);
+
+      charset_name = (char *) lang_charset_cubrid_name (i);
+      DB_MAKE_VARCHAR (&val, 32, charset_name, strlen (charset_name),
+		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      db_put_internal (obj, CT_DBCHARSET_CHARSET_NAME, &val);
+
+      DB_MAKE_INTEGER (&val, LANG_GET_BINARY_COLLATION (i));
+      db_put_internal (obj, CT_DBCHARSET_DEFAULT_COLLATION, &val);
+
+      DB_MAKE_INTEGER (&val, INTL_CODESET_MULT (i));
+      db_put_internal (obj, CT_DBCHARSET_CHAR_SIZE, &val);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * boot_define_charsets :
+ *
+ * returns : NO_ERROR if all OK, ER_ status otherwise
+ *
+ *   class(IN) :
+ */
+static int
+boot_define_charsets (MOP class_mop)
+{
+  SM_TEMPLATE *def;
+  int error_code = NO_ERROR;
+
+  def = smt_edit_class_mop (class_mop);
+
+  error_code = smt_add_attribute (def, CT_DBCHARSET_CHARSET_ID, "integer",
+				  NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, CT_DBCHARSET_CHARSET_NAME,
+				  "varchar(32)", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, CT_DBCHARSET_DEFAULT_COLLATION,
+				  "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, CT_DBCHARSET_CHAR_SIZE, "integer",
+				  NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = sm_update_class (def, NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  if (locator_has_heap (class_mop) == NULL)
+    {
+      return er_errid ();
+    }
+
+  error_code = au_change_owner (class_mop, Au_dba_user);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = boot_add_charsets (class_mop);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  return NO_ERROR;
+}
+
 /*
  * catcls_class_install :
  *
@@ -3569,7 +3694,8 @@ catcls_class_install (void)
      (DEF_FUNCTION) boot_define_stored_procedure_arguments},
     {CT_SERIAL_NAME, (DEF_FUNCTION) boot_define_serial},
     {CT_HA_APPLY_INFO_NAME, (DEF_FUNCTION) boot_define_ha_apply_info},
-    {CT_COLLATION_NAME, (DEF_FUNCTION) boot_define_collations}
+    {CT_COLLATION_NAME, (DEF_FUNCTION) boot_define_collations},
+    {CT_CHARSET_NAME, (DEF_FUNCTION) boot_define_charsets}
   };
 
   MOP class_mop[sizeof (clist) / sizeof (clist[0])];
@@ -3621,7 +3747,8 @@ boot_define_view_class (void)
     {"class_type", "varchar(6)"},
     {"is_system_class", "varchar(3)"},
     {"partitioned", "varchar(3)"},
-    {"is_reuse_oid_class", "varchar(3)"}
+    {"is_reuse_oid_class", "varchar(3)"},
+    {"collation", "varchar(32)"}
   };
   int num_cols = sizeof (columns) / sizeof (columns[0]);
   int i;
@@ -3653,9 +3780,11 @@ boot_define_view_class (void)
 	   " CASE WHEN MOD([c].[is_system_class], 2) = 1 THEN 'YES' ELSE 'NO' END,"
 	   " CASE WHEN [c].[sub_classes] IS NULL THEN 'NO' ELSE NVL((SELECT 'YES'"
 	   " FROM [%s] [p] WHERE [p].[class_of] = [c] and [p].[pname] IS NULL), 'NO') END,"
-	   " CASE WHEN MOD([c].[is_system_class] / 8, 2) = 1 THEN 'YES' ELSE 'NO' END"
-	   " FROM [%s] [c]"
-	   " WHERE CURRENT_USER = 'DBA' OR"
+	   " CASE WHEN MOD([c].[is_system_class] / 8, 2) = 1 THEN 'YES' ELSE 'NO' END,"
+	   " [coll].[coll_name]"
+	   " FROM [%s] [c], [%s] [coll]"
+	   " WHERE [c].[collation_id] = [coll].[coll_id] AND"
+	   " (CURRENT_USER = 'DBA' OR"
 	   " {[c].[owner].[name]} SUBSETEQ ("
 	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
 	   "  FROM [%s] [u], TABLE([groups]) AS [t]([g])"
@@ -3667,9 +3796,10 @@ boot_define_view_class (void)
 	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
 	   "  FROM [%s] [u], TABLE([groups]) AS [t]([g])"
 	   "  WHERE [u].[name] = CURRENT_USER) AND"
-	   "  [au].[auth_type] = 'SELECT')",
+	   "  [au].[auth_type] = 'SELECT'))",
 	   CT_PARTITION_NAME,
 	   CT_CLASS_NAME,
+	   CT_COLLATION_NAME,
 	   AU_USER_CLASS_NAME, CT_CLASSAUTH_NAME, AU_USER_CLASS_NAME);
 
   error_code = db_add_query_spec (class_mop, stmt);
@@ -3861,7 +3991,8 @@ boot_define_view_attribute (void)
     {"data_type", "varchar(9)"},
     {"prec", "integer"},
     {"scale", "integer"},
-    {"code_set", "integer"},
+    {"charset", "varchar(32)"},
+    {"collation", "varchar(32)"},
     {"domain_class_name", "varchar(255)"},
     {"default_value", "varchar(255)"},
     {"is_nullable", "varchar(3)"}
@@ -3894,7 +4025,15 @@ boot_define_view_attribute (void)
 	   " WHEN [a].[attr_type] = 1 THEN 'CLASS' ELSE 'SHARED' END,"
 	   " [a].[def_order], [a].[from_class_of].[class_name],"
 	   " [a].[from_attr_name], [t].[type_name], [d].[prec], [d].[scale],"
-	   " [d].[code_set], [d].[class_of].[class_name], [a].[default_value],"
+	   " IF ([a].[data_type] IN (4, 25, 26, 27, 35),"
+	   " (SELECT [ch].[charset_name] FROM [%s] [ch]"
+	   " WHERE [d].[code_set] = [ch].[charset_id]),"
+	   " 'Not applicable'), "
+	   " IF ([a].[data_type] IN (4, 25, 26, 27, 35),"
+	   " (SELECT [coll].[coll_name]"
+	   " FROM [%s] [coll] WHERE [d].[collation_id] = [coll].[coll_id]),"
+	   " 'Not applicable'), "
+	   " [d].[class_of].[class_name], [a].[default_value],"
 	   " CASE WHEN [a].[is_nullable] = 1 THEN 'YES' ELSE 'NO' END"
 	   " FROM [%s] [c], [%s] [a], [%s] [d], [%s] [t]"
 	   " WHERE [a].[class_of] = [c] AND [d].[object_of] = [a] AND [d].[data_type] = [t].[type_id] AND"
@@ -3910,6 +4049,8 @@ boot_define_view_attribute (void)
 	   "  FROM [%s] [u], TABLE([groups]) AS [t]([g])"
 	   "  WHERE [u].[name] = CURRENT_USER) AND"
 	   "  [au].[auth_type] = 'SELECT'))",
+	   CT_CHARSET_NAME,
+	   CT_COLLATION_NAME,
 	   CT_CLASS_NAME,
 	   CT_ATTRIBUTE_NAME,
 	   CT_DOMAIN_NAME,
@@ -4983,16 +5124,7 @@ boot_define_view_db_collation (void)
 
   sprintf (stmt,
 	   "SELECT [c].[coll_id], [c].[coll_name],"
-	   " CASE [c].[charset_id]"
-	   "  WHEN %d THEN 'iso88591'"
-	   "  WHEN %d THEN 'utf8'"
-	   "  WHEN %d THEN 'euckr'"
-	   "  WHEN %d THEN 'ascii'"
-	   "  WHEN %d THEN 'raw-bits'"
-	   "  WHEN %d THEN 'raw-bytes'"
-	   "  WHEN %d THEN 'NONE'"
-	   "  ELSE 'OTHER'"
-	   " END,"
+	   "[ch].[charset_name],"
 	   " CASE [c].[built_in]"
 	   "  WHEN 0 THEN 'No'"
 	   "  WHEN 1 THEN 'Yes'"
@@ -5013,14 +5145,75 @@ boot_define_view_db_collation (void)
 	   "  WHEN 5 THEN 'Identity'"
 	   "  ELSE 'Unknown'"
 	   " END"
-	   " FROM [%s] [c]"
-	   " ORDER BY [c].[coll_id]",
-	   INTL_CODESET_ISO88591,
-	   INTL_CODESET_UTF8,
-	   INTL_CODESET_KSC5601_EUC,
-	   INTL_CODESET_ASCII,
-	   INTL_CODESET_RAW_BITS,
-	   INTL_CODESET_RAW_BYTES, INTL_CODESET_NONE, CT_COLLATION_NAME);
+	   " FROM [%s] [c] JOIN [%s] [ch]"
+	   " ON [c].[charset_id]  = [ch].[charset_id]"
+	   " ORDER BY [c].[coll_id]", CT_COLLATION_NAME, CT_CHARSET_NAME);
+
+  error_code = db_add_query_spec (class_mop, stmt);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = au_change_owner (class_mop, Au_dba_user);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * boot_define_view_db_charset :
+ *
+ * returns : NO_ERROR if all OK, ER_ status otherwise
+ */
+static int
+boot_define_view_db_charset (void)
+{
+  MOP class_mop;
+  COLUMN columns[] = {
+    {CT_DBCHARSET_CHARSET_ID, "integer"},
+    {CT_DBCHARSET_CHARSET_NAME, "varchar(32)"},
+    {CT_DBCHARSET_DEFAULT_COLLATION, "varchar(32)"},
+    {CT_DBCHARSET_CHAR_SIZE, "int"}
+  };
+
+  int num_cols = sizeof (columns) / sizeof (columns[0]);
+  int i;
+  char stmt[2048];
+  int error_code = NO_ERROR;
+
+  class_mop = db_create_vclass (CTV_DB_CHARSET_NAME);
+  if (class_mop == NULL)
+    {
+      error_code = er_errid ();
+      return error_code;
+    }
+
+  for (i = 0; i < num_cols; i++)
+    {
+      error_code = db_add_attribute (class_mop, columns[i].name,
+				     columns[i].type, NULL);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+
+  sprintf (stmt,
+	   "SELECT [ch].[charset_id], [ch].[charset_name], "
+	   "[coll].[coll_name], [ch].[char_size] "
+	   "FROM [%s] [ch] JOIN [%s] [coll] "
+	   "ON [ch].[default_collation] = [coll].[coll_id] "
+	   "ORDER BY [ch].[charset_id]", CT_CHARSET_NAME, CT_COLLATION_NAME);
 
   error_code = db_add_query_spec (class_mop, stmt);
   if (error_code != NO_ERROR)
@@ -5069,7 +5262,8 @@ catcls_vclass_install (void)
     {"CTV_STORED_PROC_NAME", boot_define_view_stored_procedure},
     {"CTV_STORED_PROC_ARGS_NAME",
      boot_define_view_stored_procedure_arguments},
-    {"CTV_DB_COLLATION_NAME", boot_define_view_db_collation}
+    {"CTV_DB_COLLATION_NAME", boot_define_view_db_collation},
+    {"CTV_DB_CHARSET_NAME", boot_define_view_db_charset}
   };
 
   int save;
