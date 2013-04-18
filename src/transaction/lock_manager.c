@@ -170,7 +170,7 @@ extern int lock_Comp[11][11];
 #define SET_SCANID_BIT(s, i)    (s[i/8] |= (1 << (i%8)))
 #define RESET_SCANID_BIT(s, i)  (s[i/8] &= ~(1 << (i%8)))
 #define IS_SCANID_BIT_SET(s, i) (s[i/8] & (1 << (i%8)))
-#define RESOURCE_ALLOC_WAIT_TIME 10000	/* 10 msec */
+#define RESOURCE_ALLOC_WAIT_TIME 10	/* 10 msec */
 #define KEY_LOCK_ESCALATION_THRESHOLD 10	/* key lock escalation threshold */
 
 /* state of suspended threads */
@@ -1233,7 +1233,7 @@ try_alloc_entry_again:
 
       count_try_alloc_entry++;
 
-      (void) thread_sleep (0, RESOURCE_ALLOC_WAIT_TIME);
+      (void) thread_sleep (RESOURCE_ALLOC_WAIT_TIME);
       goto try_alloc_entry_again;
     }
 
@@ -1271,7 +1271,7 @@ try_alloc_table_again:
       /* we should notify DBA or applications of insufficient memory space */
       count_try_alloc_table++;
 
-      (void) thread_sleep (0, RESOURCE_ALLOC_WAIT_TIME);
+      (void) thread_sleep (RESOURCE_ALLOC_WAIT_TIME);
       goto try_alloc_table_again;
     }
 
@@ -1427,7 +1427,7 @@ lock_alloc_entry (void)
       pthread_mutex_unlock (&lk_Gl.obj_free_entry_list_mutex);
       count_try_alloc_entry++;
 
-      (void) thread_sleep (0, RESOURCE_ALLOC_WAIT_TIME);
+      (void) thread_sleep (RESOURCE_ALLOC_WAIT_TIME);
       rv = pthread_mutex_lock (&lk_Gl.obj_free_entry_list_mutex);
     }
 
@@ -1463,7 +1463,7 @@ lock_alloc_entry (void)
       /* should notify DBA or applications of insufficient memory space */
       count_try_alloc_table++;
 
-      (void) thread_sleep (0, RESOURCE_ALLOC_WAIT_TIME);	/* sleep: 0.0001 second */
+      (void) thread_sleep (RESOURCE_ALLOC_WAIT_TIME);	/* sleep: 0.01 second */
     }
 
   if (count_try_alloc_table < LK_SLEEP_MAX_COUNT)
@@ -2718,7 +2718,7 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
 						  true);
 		  while (1)
 		    {
-		      thread_sleep (0, 10000);	/* sleep 10 msec */
+		      thread_sleep (10);	/* sleep 10 msec */
 		      thread_wakeup_with_tran_index (entry_ptr->tran_index,
 						     THREAD_RESUME_DUE_TO_INTERRUPT);
 

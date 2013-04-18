@@ -1712,7 +1712,7 @@ loop:
 
   if (repeat_loop)
     {
-      thread_sleep (0, 50000);	/* sleep 0.05 sec */
+      thread_sleep (50);	/* sleep 0.05 sec */
       if (css_is_shutdown_timeout_expired ())
 	{
 	  if (abort_thread_running != NULL)

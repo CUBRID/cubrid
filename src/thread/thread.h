@@ -292,7 +292,7 @@ extern void thread_waiting_for_function (THREAD_ENTRY * thread_p,
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void thread_exit (int exit_code);
 #endif
-extern void thread_sleep (int, int);
+extern void thread_sleep (double);
 extern void thread_get_info_threads (int *num_total_threads,
 				     int *num_worker_threads,
 				     int *num_free_threads,

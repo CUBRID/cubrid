@@ -1223,7 +1223,7 @@ loop:
       if (tran_index == NULL_TRAN_INDEX)
 	{
 	  /* the connected client does not yet finished boot_client_register */
-	  thread_sleep (0, 50000);	/* 50 msec */
+	  thread_sleep (50);	/* 50 msec */
 	  tran_index = conn_p->transaction_id;
 	}
       if (!logtb_is_interrupted_tran (thread_p, false, &continue_check,
@@ -1305,7 +1305,7 @@ loop:
        * for receiving every data from which is sent by a client and all
        * m-drivers. We must have chance to receive data from them.
        */
-      thread_sleep (0, 50000);	/* 50 msec */
+      thread_sleep (50);	/* 50 msec */
     }
 
   if (thrd_cnt > 0)

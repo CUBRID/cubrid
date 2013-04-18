@@ -69,7 +69,7 @@
 #define pthread_mutex_unlock(a)
 static int rv;
 
-#define thread_sleep(a, b)
+#define thread_sleep(a)
 #endif /* not SERVER_MODE */
 
 #define QFILE_CHECK_LIST_FILE_IS_CLOSED(list_id)
@@ -2369,6 +2369,8 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id,
 
   if (query_entry_p->list_id == NULL || page_id == NULL_PAGEID_ASYNC)
     {
+      int sleep_msec = 0;
+
       /*
        * async query does not yet make the output list file;
        * wait for the async query to end and to make the output list file
@@ -2377,18 +2379,13 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id,
       while (query_entry_p->query_mode != QUERY_COMPLETED
 	     || query_entry_p->list_id == NULL)
 	{
-	  int sleep_sec = 0, sleep_msec = 0;
+	  sleep_msec += 5;
 
-	  if ((sleep_msec += 5000) >= 1000000)
+	  if (sleep_msec >= 2000)
 	    {
-	      sleep_sec++;
-	      sleep_msec = 0;
-	      if (sleep_sec >= 2)
-		{
-		  sleep_sec = 0;
-		}
+	      sleep_msec = 5;
 	    }
-	  thread_sleep (sleep_sec, sleep_msec);
+	  thread_sleep (sleep_msec);
 
 	  query_entry_p = qmgr_get_query_entry (thread_p, query_id,
 						tran_index);
@@ -2585,7 +2582,7 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id,
 		{
 		  return ER_QPROC_UNKNOWN_QUERYID;
 		}
-	      thread_sleep (0, 10000);
+	      thread_sleep (10);	/* 10 msec */
 	    }
 	  while (query_entry_p->query_mode == ASYNC_MODE);
 	}
@@ -5595,7 +5592,7 @@ qfile_clear_list_cache (THREAD_ENTRY * thread_p, int list_ht_no, bool release)
       if (rc != NO_ERROR)
 	{
 	  csect_exit (CSECT_QPROC_LIST_CACHE);
-	  thread_sleep (0, 10000);	/* 10 msec */
+	  thread_sleep (10);	/* 10 msec */
 	  if (csect_enter (thread_p, CSECT_QPROC_LIST_CACHE, INF_WAIT) !=
 	      NO_ERROR)
 	    {

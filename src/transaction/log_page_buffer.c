@@ -4519,7 +4519,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p,
 	    {
 	      thread_wakeup_log_flush_thread ();
 
-	      thread_sleep (0, 1000);	/* 1msec */
+	      thread_sleep (1);	/* 1msec */
 	    }
 	  else
 	    {
@@ -9337,7 +9337,7 @@ loop:
 	    goto error;
 	  }
 
-      thread_sleep (1, 0);
+      thread_sleep (1000);	/* 1000 msec */
       goto loop;
     }
   if (print_backupdb_waiting_reason == true && session.verbose_fp != NULL)

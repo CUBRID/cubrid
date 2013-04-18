@@ -2034,7 +2034,7 @@ fileio_initialize_pages (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 	    allowed_millis_for_a_sleep - previous_elapsed_millis;
 	  if (time_to_sleep > 0)
 	    {
-	      thread_sleep (0, time_to_sleep * 1000LL);
+	      thread_sleep (time_to_sleep);
 	    }
 	  gettimeofday (&tv, NULL);
 	  start_in_millis = (tv.tv_sec * 1000LL) + (tv.tv_usec / 1000LL);
@@ -8821,30 +8821,29 @@ fileio_read_backup (THREAD_ENTRY * thread_p,
     }
   else
     {
-      int sleep_nsecs;
+      int sleep_msecs;
 
       if (session_p->sleep_msecs > 0)	/* priority 1 */
 	{
-	  sleep_nsecs = session_p->sleep_msecs * 1000;
+	  sleep_msecs = session_p->sleep_msecs * 1000;
 	}
       else if (prm_get_integer_value (PRM_ID_IO_BACKUP_SLEEP_MSECS) > 0)	/* priority 2 */
 	{
-	  sleep_nsecs =
-	    prm_get_integer_value (PRM_ID_IO_BACKUP_SLEEP_MSECS) * 1000;
+	  sleep_msecs = prm_get_integer_value (PRM_ID_IO_BACKUP_SLEEP_MSECS);
 	}
       else
 	{
-	  sleep_nsecs = 0;
+	  sleep_msecs = 0;
 	}
 
-      if (sleep_nsecs > 0)
+      if (sleep_msecs > 0)
 	{
-	  sleep_nsecs =
-	    (int) (((double) sleep_nsecs) / (ONE_M / io_page_size));
+	  sleep_msecs =
+	    (int) (((double) sleep_msecs) / (ONE_M / io_page_size));
 
-	  if (sleep_nsecs > 0)
+	  if (sleep_msecs > 0)
 	    {
-	      thread_sleep (0, sleep_nsecs);
+	      thread_sleep (sleep_msecs);
 	    }
 	}
     }

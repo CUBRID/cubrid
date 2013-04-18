@@ -2311,11 +2311,10 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p,
   PAGE_PTR pgptr;
   VPID vpid;
 #if defined(SERVER_MODE)
-  int sleep_nsecs;
+  int sleep_msecs;
   int rv;
 
-  sleep_nsecs =
-    (prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_SLEEP_MSECS) * 1000);
+  sleep_msecs = prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_SLEEP_MSECS);
 #endif /* SERVER_MODE */
 
   /* Things must be truly flushed up to this lsa */
@@ -2376,9 +2375,9 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p,
 
 #if defined(SERVER_MODE)
 	  /* Checkpoint Thread is writing data pages slowly to avoid IO burst */
-	  if (sleep_nsecs > 0)
+	  if (sleep_msecs > 0)
 	    {
-	      thread_sleep (0, sleep_nsecs);
+	      thread_sleep (sleep_msecs);
 	    }
 #endif
 	}
@@ -5288,7 +5287,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 		}
 
 #if defined(SERVER_MODE)
-	      thread_sleep (0, 1);	/* 1 microsecond */
+	      thread_sleep (0.001);	/* 1 microsecond */
 #endif /* SERVER_MODE */
 	    }
 	}

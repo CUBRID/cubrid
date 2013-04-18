@@ -1453,7 +1453,7 @@ css_block_all_active_conn (unsigned short stop_phase)
 	{
 	  conn->stop_talk = true;
 	  logtb_set_tran_index_interrupt (NULL, conn->transaction_id, 1);
-	  thread_sleep (0, 10000);	/* 10 msec */
+	  thread_sleep (10);	/* 10 msec */
 	}
 
       csect_exit_critical_section (&conn->csect);
@@ -2777,7 +2777,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state,
 	    {
 	      break;
 	    }
-	  thread_sleep (1, 0);
+	  thread_sleep (1000);	/* 1000 msec */
 	}
 
       if (logtb_count_not_allowed_clients_in_maintenance_mode (thread_p) != 0)
@@ -2801,7 +2801,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state,
 	    }
 	  TR_TABLE_CS_EXIT ();
 
-	  thread_sleep (2, 0);
+	  thread_sleep (2000);	/* 2000 msec */
 	}
       break;
 

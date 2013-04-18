@@ -847,11 +847,11 @@ loop:
 		    }
 		}
 	    }
-	  thread_sleep (0, 10000);	/* 10 msec */
+	  thread_sleep (10);	/* 10 msec */
 	}
     }
 
-  thread_sleep (0, 10000);
+  thread_sleep (10);		/* 10 msec */
   lock_force_timeout_lock_wait_transactions (stop_phase);
 
   /* Signal for blocked on job queue */
@@ -887,7 +887,7 @@ loop:
 	  /* exit process after some tries */
 	  _exit (0);
 	}
-      thread_sleep (1, 0);
+      thread_sleep (1000);	/* 1000 msec */
       goto loop;
     }
 
@@ -956,7 +956,7 @@ loop:
 	  /* exit process after some tries */
 	  _exit (0);
 	}
-      thread_sleep (1, 0);
+      thread_sleep (1000);	/* 1000 msec */
       goto loop;
     }
 
@@ -1007,7 +1007,7 @@ loop:
 	  /* exit process after some tries */
 	  _exit (0);
 	}
-      thread_sleep (1, 0);
+      thread_sleep (1000);	/* 1000 msec */
       goto loop;
     }
 
@@ -1750,7 +1750,7 @@ thread_waiting_for_function (THREAD_ENTRY * thread_p, CSS_THREAD_FN func,
   while ((*func) (thread_p, arg) == false && thread_p->interrupted != true
 	 && thread_p->shutdown != true)
     {
-      thread_sleep (0, 10000);	/* 10 msec */
+      thread_sleep (10);	/* 10 msec */
     }
 }
 
@@ -1835,32 +1835,22 @@ thread_suspend_with_other_mutex (THREAD_ENTRY * thread_p,
 }
 
 /*
- * thread_sleep() - Halts the currently running thread for <seconds> +
- *                      <microseconds>
+ * thread_sleep() - Halts the currently running thread for <milliseconds>
  *   return: void
- *   seconds(in): The number of seconds for the thread to sleep
- *   microseconds(in): The number of microseconds for the thread to sleep
+ *   milliseconds(in): The number of milliseconds for the thread to sleep
  *
  *  Note: Used to temporarly halt the current process.
  */
 void
-thread_sleep (int seconds, int microseconds)
+thread_sleep (double milliseconds)
 {
 #if defined(WINDOWS)
-  int to;
-
-  if (microseconds < 1000)
-    {
-      microseconds = 1000;
-    }
-
-  to = seconds * 1000 + microseconds / 1000;
-  Sleep (to);
+  Sleep ((int) milliseconds);
 #else /* WINDOWS */
   struct timeval to;
 
-  to.tv_sec = seconds;
-  to.tv_usec = microseconds;
+  to.tv_sec = (int) (milliseconds / 1000);
+  to.tv_usec = ((int) (milliseconds * 1000)) % 1000000;
 
   select (0, NULL, NULL, NULL, &to);
 #endif /* WINDOWS */
@@ -2561,7 +2551,7 @@ thread_deadlock_detect_thread (void *arg_p)
   /* during server is active */
   while (!tsd_ptr->shutdown)
     {
-      thread_sleep (0, 100000);
+      thread_sleep (100);	/* 100 msec */
       if (!lock_check_local_deadlock_detection ())
 	{
 	  continue;
@@ -3357,7 +3347,7 @@ thread_log_clock_thread (void *arg_p)
       gettimeofday (&now, NULL);
       clock_milli_sec = (now.tv_sec * 1000LL) + (now.tv_usec / 1000LL);
       ATOMIC_TAS_64 (&log_Clock_msec, clock_milli_sec);
-      thread_sleep (0, 200000);
+      thread_sleep (200);	/* 200 msec */
 
       if (tsd_ptr->shutdown)
 	{
@@ -3469,7 +3459,7 @@ xthread_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index,
 	    }
 	  break;
 	}
-      thread_sleep (1, 0);
+      thread_sleep (1000);	/* 1000 msec */
     }
 
   if (error_code == NO_ERROR && !killed)
