@@ -8334,6 +8334,16 @@ start_point:
 	      goto error;
 	    }
 
+	  if (btree_is_new_file (&btid_int))
+	    {
+	      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
+	    }
+	  else
+	    {
+	      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	    }
+
+	  top_op_active = 0;
 	  pgbuf_unfix_and_init (thread_p, Q);
 	  if (file_dealloc_page (thread_p, &btid->vfid, &Q_vpid) != NO_ERROR)
 	    {
@@ -8345,17 +8355,6 @@ start_point:
 	    {
 	      goto error;
 	    }
-
-	  if (btree_is_new_file (&btid_int))
-	    {
-	      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
-	    }
-	  else
-	    {
-	      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
-	    }
-
-	  top_op_active = 0;
 	}
       else
 	{			/* merge not possible */
@@ -8457,6 +8456,18 @@ start_point:
 
 	      if (VPID_EQ (&child_vpid, &Q_vpid))
 		{
+		  if (btree_is_new_file (&btid_int))
+		    {
+		      log_end_system_op (thread_p,
+					 LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
+		    }
+		  else
+		    {
+		      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+		    }
+
+		  top_op_active = 0;
+
 		  /* child page to be followed is Q */
 		  pgbuf_unfix_and_init (thread_p, Right);
 		  if (file_dealloc_page (thread_p, &btid->vfid, &Right_vpid)
@@ -8465,6 +8476,9 @@ start_point:
 		      goto error;
 		    }
 
+		}
+	      else if (VPID_EQ (&child_vpid, &Right_vpid))
+		{
 		  if (btree_is_new_file (&btid_int))
 		    {
 		      log_end_system_op (thread_p,
@@ -8477,9 +8491,6 @@ start_point:
 
 		  top_op_active = 0;
 
-		}
-	      else if (VPID_EQ (&child_vpid, &Right_vpid))
-		{
 		  /* child page to be followed is Right */
 		  pgbuf_unfix_and_init (thread_p, Q);
 		  if (file_dealloc_page (thread_p, &btid->vfid, &Q_vpid) !=
@@ -8487,18 +8498,6 @@ start_point:
 		    {
 		      goto error;
 		    }
-
-		  if (btree_is_new_file (&btid_int))
-		    {
-		      log_end_system_op (thread_p,
-					 LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
-		    }
-		  else
-		    {
-		      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
-		    }
-
-		  top_op_active = 0;
 
 		  Q = Right;
 		  Right = NULL;
@@ -8591,6 +8590,18 @@ start_point:
 
 	      if (VPID_EQ (&child_vpid, &Q_vpid))
 		{
+		  if (btree_is_new_file (&btid_int))
+		    {
+		      log_end_system_op (thread_p,
+					 LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
+		    }
+		  else
+		    {
+		      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+		    }
+
+		  top_op_active = 0;
+
 		  /* child page to be followed is Q */
 		  pgbuf_unfix_and_init (thread_p, Left);
 		  if (file_dealloc_page (thread_p, &btid->vfid, &Left_vpid) !=
@@ -8598,7 +8609,9 @@ start_point:
 		    {
 		      goto error;
 		    }
-
+		}
+	      else if (VPID_EQ (&child_vpid, &Left_vpid))
+		{
 		  if (btree_is_new_file (&btid_int))
 		    {
 		      log_end_system_op (thread_p,
@@ -8611,9 +8624,6 @@ start_point:
 
 		  top_op_active = 0;
 
-		}
-	      else if (VPID_EQ (&child_vpid, &Left_vpid))
-		{
 		  /* child page to be followed is Left */
 		  pgbuf_unfix_and_init (thread_p, Q);
 		  if (file_dealloc_page (thread_p, &btid->vfid, &Q_vpid) !=
@@ -8621,18 +8631,6 @@ start_point:
 		    {
 		      goto error;
 		    }
-
-		  if (btree_is_new_file (&btid_int))
-		    {
-		      log_end_system_op (thread_p,
-					 LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
-		    }
-		  else
-		    {
-		      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
-		    }
-
-		  top_op_active = 0;
 
 		  Q = Left;
 		  Left = NULL;
