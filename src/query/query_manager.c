@@ -5390,7 +5390,7 @@ int
 qmgr_get_sql_id (THREAD_ENTRY * thread_p, char **sql_id_buf,
 		 char *query, int sql_len)
 {
-  char hashstring[32] = { '\0' };
+  char hashstring[32 + 1] = { '\0' };
   char *ret_buf;
 
   if (sql_id_buf == NULL)

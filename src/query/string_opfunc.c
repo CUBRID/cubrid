@@ -2619,7 +2619,7 @@ db_string_md5 (DB_VALUE const *val, DB_VALUE * result)
       if (QSTR_IS_ANY_CHAR (val_type))
 	{
 	  /* MD5 hash string buffer */
-	  char hashString[32] = { '\0' };
+	  char hashString[32 + 1] = { '\0' };
 
 	  DB_VALUE hash_string;
 
