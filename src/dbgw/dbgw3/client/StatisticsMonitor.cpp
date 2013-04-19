@@ -799,15 +799,19 @@ namespace dbgw
   void _StatisticsItem::writeHeader(std::stringstream &buffer)
   {
     struct timeval tp;
-    struct tm now;
+    struct tm cal;
 
     gettimeofday(&tp, NULL);
-    localtime_r((const time_t *) &tp.tv_sec, &now);
+    time_t t = tp.tv_sec;
+
+    localtime_r(&t, &cal);
+    cal.tm_year += 1900;
+    cal.tm_mon += 1;
 
     char szBuffer[128];
     snprintf(szBuffer, 128, "%d-%02d-%02d %02d:%02d:%02d.%03d",
-        1900 + now.tm_year, now.tm_mon + 1, now.tm_mday, now.tm_hour, now.tm_min,
-        now.tm_sec, (int) tp.tv_usec / 1000);
+        cal.tm_year, cal.tm_mon, cal.tm_mday, cal.tm_hour, cal.tm_min,
+        cal.tm_sec, (int) tp.tv_usec / 1000);
 
     writePrefix(buffer);
     buffer << "\n";

@@ -53,7 +53,7 @@ namespace dbgw
   public:
     virtual const char *getJobName() const = 0;
     virtual const char *getSqlName() const;
-    unsigned long getAbsTimeOutMilSec() const;
+    uint64_t getAbsTimeOutMilSec() const;
     trait<_ExecutorHandler>::sp getExecutorHandler() const;
 
   protected:

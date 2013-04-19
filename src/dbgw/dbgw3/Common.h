@@ -41,6 +41,7 @@
 #if defined(WINDOWS) || defined(_WIN32) || defined(_WIN64)
 #include <sys/timeb.h>
 typedef __int64                         int64;
+typedef unsigned long long int          uint64_t;
 #define __func__                        __FUNCTION__
 #define __FILENAME__                    (strrchr(__FILE__,'\\')+1)
 #define __thread                        __declspec( thread )

@@ -27,29 +27,29 @@ namespace dbgw
   namespace system
   {
 
-    unsigned long getCurrTimeMilSec()
+    uint64_t getCurrTimeMilSec()
     {
       struct timeval now;
       gettimeofday(&now, NULL);
 
-      unsigned long ulCurrTimeMilSec = now.tv_sec * 1000;
-      ulCurrTimeMilSec += now.tv_usec / 1000;
+      uint64_t ulCurrTimeMilSec = ((uint64_t) now.tv_sec) * 1000;
+      ulCurrTimeMilSec += ((uint64_t) now.tv_usec) / 1000;
 
       return ulCurrTimeMilSec;
     }
 
-    unsigned long getdifftimeofday(struct timeval &begin)
+    uint64_t getdifftimeofday(struct timeval &begin)
     {
       struct timeval now;
       gettimeofday(&now, NULL);
 
-      unsigned long ulDiffTimeMilSec = (now.tv_sec - begin.tv_sec) * 1000;
+      uint64_t ulDiffTimeMilSec = (now.tv_sec - begin.tv_sec) * 1000;
       ulDiffTimeMilSec += (now.tv_usec - begin.tv_usec) / 1000;
 
       return ulDiffTimeMilSec;
     }
 
-    std::string getTimeStrFromMilSec(unsigned long ulMilSec)
+    std::string getTimeStrFromMilSec(uint64_t ulMilSec)
     {
       struct tm cal;
       char buf[25];

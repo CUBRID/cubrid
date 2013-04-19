@@ -97,7 +97,7 @@ namespace dbgw
       m_pWorker = pWorker;
     }
 
-    unsigned long getAbsTimeOutMilSec() const
+    uint64_t getAbsTimeOutMilSec() const
     {
       return m_pWaiter->getAbsTimeOutMilSec();
     }
@@ -195,7 +195,7 @@ namespace dbgw
     return "-";
   }
 
-  unsigned long _AsyncWorkerJob::getAbsTimeOutMilSec() const
+  uint64_t _AsyncWorkerJob::getAbsTimeOutMilSec() const
   {
     return m_pImpl->getAbsTimeOutMilSec();
   }

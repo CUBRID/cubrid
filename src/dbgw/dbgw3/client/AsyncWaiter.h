@@ -27,12 +27,12 @@ namespace dbgw
   {
   public:
     _AsyncWaiter(unsigned long ulTimeOutMilSec,
-        unsigned long ulAbsTimeOutMilSec);
+        uint64_t ulAbsTimeOutMilSec);
     _AsyncWaiter(unsigned long ulTimeOutMilSec,
-        unsigned long ulAbsTimeOutMilSec, int nHandleId,
+        uint64_t ulAbsTimeOutMilSec, int nHandleId,
         ExecAsyncCallBack pCallBack);
     _AsyncWaiter(unsigned long ulTimeOutMilSec,
-        unsigned long ulAbsTimeOutMilSec, int nHandleId,
+        uint64_t ulAbsTimeOutMilSec, int nHandleId,
         ExecBatchAsyncCallBack pBatchCallBack);
     virtual ~_AsyncWaiter();
 
@@ -44,7 +44,7 @@ namespace dbgw
 
   public:
     unsigned long getTimeOutMilSec() const;
-    unsigned long getAbsTimeOutMilSec() const;
+    uint64_t getAbsTimeOutMilSec() const;
 
   private:
     class Impl;

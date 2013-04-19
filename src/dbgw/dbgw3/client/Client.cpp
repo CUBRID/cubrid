@@ -600,7 +600,7 @@ namespace dbgw
     void delegateJob(trait<_AsyncWorkerJob>::sp pJob,
         unsigned long ulWaitTimeMilSec)
     {
-      unsigned long ulAbsWaitTimeMilSec = system::getCurrTimeMilSec()
+      uint64_t ulAbsWaitTimeMilSec = system::getCurrTimeMilSec()
           + ulWaitTimeMilSec;
 
       _TimerEvent *pEvent = new _TimerEvent(ulAbsWaitTimeMilSec, pJob);
@@ -625,7 +625,7 @@ namespace dbgw
     int delegateJobAsync(trait<_AsyncWorkerJob>::sp pJob,
         ExecAsyncCallBack pCallBack, unsigned long ulWaitTimeMilSec)
     {
-      unsigned long ulAbsWaitTimeMilSec = system::INFINITE_TIMEOUT;
+      uint64_t ulAbsWaitTimeMilSec = system::INFINITE_TIMEOUT;
 
       if (ulWaitTimeMilSec > system::INFINITE_TIMEOUT)
         {
@@ -642,7 +642,7 @@ namespace dbgw
     int delegateJobAsync(trait<_AsyncWorkerJob>::sp pJob,
         ExecBatchAsyncCallBack pCallBack, unsigned long ulWaitTimeMilSec)
     {
-      unsigned long ulAbsWaitTimeMilSec = system::INFINITE_TIMEOUT;
+      uint64_t ulAbsWaitTimeMilSec = system::INFINITE_TIMEOUT;
 
       if (ulWaitTimeMilSec > system::INFINITE_TIMEOUT)
         {

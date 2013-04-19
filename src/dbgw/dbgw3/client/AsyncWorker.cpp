@@ -110,7 +110,7 @@ namespace dbgw
     }
 
     void delegateJob(trait<_AsyncWorkerJob>::sp pJob,
-        unsigned long ulWaitTimeMilSec, unsigned long ulAbsWaitTimeMilSec)
+        unsigned long ulWaitTimeMilSec, uint64_t ulAbsWaitTimeMilSec)
     {
       system::_MutexAutoLock lock(&m_mutex);
 
@@ -148,7 +148,7 @@ namespace dbgw
 
     int delegateJobAsync(trait<_AsyncWorkerJob>::sp pJob,
         ExecAsyncCallBack pCallBack, unsigned long ulWaitTimeMilSec,
-        unsigned long ulAbsWaitTimeMilSec)
+        uint64_t ulAbsWaitTimeMilSec)
     {
       system::_MutexAutoLock lock(&m_mutex);
 
@@ -183,7 +183,7 @@ namespace dbgw
 
     int delegateJobAsync(trait<_AsyncWorkerJob>::sp pJob,
         ExecBatchAsyncCallBack pCallBack, unsigned long ulWaitTimeMilSec,
-        unsigned long ulAbsWaitTimeMilSec)
+        uint64_t ulAbsWaitTimeMilSec)
     {
       system::_MutexAutoLock lock(&m_mutex);
 
@@ -285,7 +285,7 @@ namespace dbgw
           m_statItem[DBGW_WORKER_STAT_COL_JOB_START_TIME] =
               system::getTimeStrFromMilSec(system::getCurrTimeMilSec()).c_str();
 
-          unsigned long ulTimeOutMilSec = pJob->getAbsTimeOutMilSec();
+          uint64_t ulTimeOutMilSec = pJob->getAbsTimeOutMilSec();
           if (ulTimeOutMilSec == 0)
             {
               m_statItem[DBGW_WORKER_STAT_COL_JOB_TIMEOUT] = "-";
@@ -304,7 +304,7 @@ namespace dbgw
           m_statItem[DBGW_WORKER_STAT_COL_JOB_START_TIME] =
               system::getTimeStrFromMilSec(system::getCurrTimeMilSec()).c_str();
 
-          unsigned long ulTimeOutMilSec = pJob->getAbsTimeOutMilSec();
+          uint64_t ulTimeOutMilSec = pJob->getAbsTimeOutMilSec();
           if (ulTimeOutMilSec == 0)
             {
               m_statItem[DBGW_WORKER_STAT_COL_JOB_TIMEOUT] = "-";
@@ -384,14 +384,14 @@ namespace dbgw
   }
 
   void _AsyncWorker::delegateJob(trait<_AsyncWorkerJob>::sp pJob,
-      unsigned long ulWaitTimeMilSec, unsigned long ulAbsWaitTimeMilSec)
+      unsigned long ulWaitTimeMilSec, uint64_t ulAbsWaitTimeMilSec)
   {
     m_pImpl->delegateJob(pJob, ulWaitTimeMilSec, ulAbsWaitTimeMilSec);
   }
 
   int _AsyncWorker::delegateJobAsync(trait<_AsyncWorkerJob>::sp pJob,
       ExecAsyncCallBack pCallBack, unsigned long ulWaitTimeMilSec,
-      unsigned long ulAbsWaitTimeMilSec)
+      uint64_t ulAbsWaitTimeMilSec)
   {
     return m_pImpl->delegateJobAsync(pJob, pCallBack, ulWaitTimeMilSec,
         ulAbsWaitTimeMilSec);
@@ -399,7 +399,7 @@ namespace dbgw
 
   int _AsyncWorker::delegateJobAsync(trait<_AsyncWorkerJob>::sp pJob,
       ExecBatchAsyncCallBack pCallBack, unsigned long ulWaitTimeMilSec,
-      unsigned long ulAbsWaitTimeMilSec)
+      uint64_t ulAbsWaitTimeMilSec)
   {
     return m_pImpl->delegateJobAsync(pJob, pCallBack, ulWaitTimeMilSec,
         ulAbsWaitTimeMilSec);

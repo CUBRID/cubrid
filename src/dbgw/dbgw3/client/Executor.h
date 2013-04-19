@@ -46,7 +46,7 @@ namespace dbgw
     void init(bool bAutoCommit, sql::TransactionIsolarion isolation);
     void close();
     bool isValid() const;
-    bool isEvictable(unsigned long ulMinEvictableIdleTimeMillis);
+    bool isEvictable(uint64_t ulMinEvictableIdleTimeMillis);
 
     trait<ClientResultSet>::sp execute(trait<_BoundQuery>::sp pQuery,
         _Parameter &parameter);

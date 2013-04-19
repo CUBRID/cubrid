@@ -33,14 +33,14 @@ namespace dbgw
   class _AsyncWaiter::Impl
   {
   public:
-    Impl(unsigned long ulTimeOutMilSec, unsigned long ulAbsTimeOutMilSec) :
+    Impl(unsigned long ulTimeOutMilSec, uint64_t ulAbsTimeOutMilSec) :
       m_ulTimeOutMilSec(ulTimeOutMilSec),
       m_ulAbsTimeOutMilSec(ulAbsTimeOutMilSec), m_nHandleId(-1),
       m_pCallBack(NULL), m_pBatchCallBack(NULL)
     {
     }
 
-    Impl(unsigned long ulTimeOutMilSec, unsigned long ulAbsTimeOutMilSec,
+    Impl(unsigned long ulTimeOutMilSec, uint64_t ulAbsTimeOutMilSec,
         int nHandleId, ExecAsyncCallBack pCallBack) :
       m_ulTimeOutMilSec(ulTimeOutMilSec),
       m_ulAbsTimeOutMilSec(ulAbsTimeOutMilSec), m_nHandleId(nHandleId),
@@ -48,7 +48,7 @@ namespace dbgw
     {
     }
 
-    Impl(unsigned long ulTimeOutMilSec, unsigned long ulAbsTimeOutMilSec,
+    Impl(unsigned long ulTimeOutMilSec, uint64_t ulAbsTimeOutMilSec,
         int nHandleId, ExecBatchAsyncCallBack pBatchCallBack) :
       m_ulTimeOutMilSec(ulTimeOutMilSec),
       m_ulAbsTimeOutMilSec(ulAbsTimeOutMilSec), m_nHandleId(nHandleId),
@@ -108,7 +108,7 @@ namespace dbgw
       return m_ulTimeOutMilSec;
     }
 
-    unsigned long getAbsTimeOutMilSec() const
+    uint64_t getAbsTimeOutMilSec() const
     {
       return m_ulAbsTimeOutMilSec;
     }
@@ -117,7 +117,7 @@ namespace dbgw
     system::_Mutex m_mutex;
     system::_ConditionVariable m_cond;
     unsigned long m_ulTimeOutMilSec;
-    unsigned long m_ulAbsTimeOutMilSec;
+    uint64_t m_ulAbsTimeOutMilSec;
     int m_nHandleId;
     ExecAsyncCallBack m_pCallBack;
     ExecBatchAsyncCallBack m_pBatchCallBack;
@@ -127,20 +127,20 @@ namespace dbgw
   };
 
   _AsyncWaiter::_AsyncWaiter(unsigned long ulTimeOutMilSec,
-      unsigned long ulAbsTimeOutMilSec) :
+      uint64_t ulAbsTimeOutMilSec) :
     m_pImpl(new Impl(ulTimeOutMilSec, ulAbsTimeOutMilSec))
   {
   }
 
   _AsyncWaiter::_AsyncWaiter(unsigned long ulTimeOutMilSec,
-      unsigned long ulAbsTimeOutMilSec, int nHandleId,
+      uint64_t ulAbsTimeOutMilSec, int nHandleId,
       ExecAsyncCallBack pCallBack) :
     m_pImpl(new Impl(ulTimeOutMilSec, ulAbsTimeOutMilSec, nHandleId, pCallBack))
   {
   }
 
   _AsyncWaiter::_AsyncWaiter(unsigned long ulTimeOutMilSec,
-      unsigned long ulAbsTimeOutMilSec, int nHandleId,
+      uint64_t ulAbsTimeOutMilSec, int nHandleId,
       ExecBatchAsyncCallBack pBatchCallBack) :
     m_pImpl(new Impl(ulTimeOutMilSec, ulAbsTimeOutMilSec, nHandleId,
         pBatchCallBack))
@@ -186,7 +186,7 @@ namespace dbgw
     return m_pImpl->getTimeOutMilSec();
   }
 
-  unsigned long _AsyncWaiter::getAbsTimeOutMilSec() const
+  uint64_t _AsyncWaiter::getAbsTimeOutMilSec() const
   {
     return m_pImpl->getAbsTimeOutMilSec();
   }
