@@ -3155,22 +3155,31 @@ intl_identifier_upper (const char *src, char *dst)
 }
 
 /*
- * intl_identifier_fix - Checks if an string can be an identifier;
- *			 Fixes the string if the last char is truncated
+ * intl_identifier_fix - Checks if a string can be an identifier;
+ *			 Truncates the string to a desired size in bytes,
+ *			 while making sure that the last char is not truncated
  *			 Checks that lower and upper case versions of string
  *			 do not exceed maximum allowed size.
  *
  *   return: error code : ER_GENERIC_ERROR or NO_ERROR
- *   name(in): identifier name
+ *   name(in): identifier name, nul-terminated C string
+ *   ident_max_size(in): allowed size of this identifier, may be -1 in which
+ *			 case the maximum allowed system size is used
+ *   error_on_case_overflow(in): if true, will return error if the lower or
+ *				 upper version of truncated identifier exceeds
+ *				 allowed size
  *
  *  Note : Identifier string may be truncated if lexer previously truncated it
  *	   in the middle of the last character;
  *	   No error message is outputed by this function - in case of error,
  *	   the error message should be output by the caller.
- *	   Only UTF-8 charset are handled.
+ *	   DB_MAX_IDENTIFIER_LENGTH is the buffer size for string identifier
+ *	   This includes the nul-terminator byte; the useful bytes are
+ *	   (DB_MAX_IDENTIFIER_LENGTH - 1).
  */
 int
-intl_identifier_fix (char *name, int ident_max_size)
+intl_identifier_fix (char *name, int ident_max_size,
+		     bool error_on_case_overflow)
 {
   int i, length_bytes;
   unsigned char *name_char = (unsigned char *) name;
@@ -3181,29 +3190,28 @@ intl_identifier_fix (char *name, int ident_max_size)
 
   if (ident_max_size == -1)
     {
-      ident_max_size = DB_MAX_IDENTIFIER_LENGTH;
+      ident_max_size = DB_MAX_IDENTIFIER_LENGTH - 1;
     }
 
-  assert (ident_max_size > 0 && ident_max_size <= DB_MAX_IDENTIFIER_LENGTH);
+  assert (ident_max_size > 0 && ident_max_size < DB_MAX_IDENTIFIER_LENGTH);
 
-  if (codeset == INTL_CODESET_ISO88591)
+  length_bytes = strlen (name);
+  if (INTL_CODESET_MULT (codeset) == 1)
     {
-      if (ident_max_size < DB_MAX_IDENTIFIER_LENGTH)
+      if (length_bytes > ident_max_size)
 	{
 	  name[ident_max_size] = '\0';
 	}
       return NO_ERROR;
     }
 
-  length_bytes = strlen (name);
-
-  assert (codeset == INTL_CODESET_KSC5601_EUC
-	  || codeset == INTL_CODESET_UTF8);
+  assert (INTL_CODESET_MULT (codeset) > 1);
 
   /* we do not check contents of non-ASCII if codeset is UTF-8 or EUC;
    * valid codeset sequences are checked with 'intl_check_string' when
    * enabled */
 
+check_truncation:
   /* check if last char of identifier may have been truncated */
   if (length_bytes + INTL_CODESET_MULT (codeset) > ident_max_size)
     {
@@ -3231,19 +3239,32 @@ intl_identifier_fix (char *name, int ident_max_size)
 	  /* truncate after the last full character */
 	  i -= char_size;
 	  length_bytes = i;
-	  name[i] = '\0';
 	}
+      name[length_bytes] = '\0';
     }
 
   /* ensure that lower or upper versions of identifier do not exceed maximum 
    * allowed size of an identifier */
 #if (INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER > 1)
-  if (ident_max_size == DB_MAX_IDENTIFIER_LENGTH
-      && (intl_identifier_upper_string_size (name) > DB_MAX_IDENTIFIER_LENGTH
-	  || intl_identifier_lower_string_size (name) >
-	  DB_MAX_IDENTIFIER_LENGTH))
+  if (intl_identifier_upper_string_size (name) > ident_max_size
+      || intl_identifier_lower_string_size (name) > ident_max_size)
     {
-      return ER_GENERIC_ERROR;
+      if (error_on_case_overflow)
+	{
+	  /* this is grammar context : reject the identifier string */
+	  return ER_GENERIC_ERROR;
+	}
+      else
+	{
+	  /* decrease the initial allowed size and try again */
+	  ident_max_size -= INTL_CODESET_MULT (codeset);
+	  if (ident_max_size <= INTL_CODESET_MULT (codeset))
+	    {
+	      /* we make sure we have room for at least one character */
+	      return ER_GENERIC_ERROR;
+	    }
+	  goto check_truncation;
+	}
     }
 #endif
 

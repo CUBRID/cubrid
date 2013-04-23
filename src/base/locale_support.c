@@ -4570,14 +4570,14 @@ locale_compile_locale (LOCALE_FILE * lf, LOCALE_DATA * ld, bool is_verbose)
       if (ld->alphabet.a_type == ALPHABET_UNICODE)
 	{
 	  er_status = locale_check_and_set_shared_data (LOC_SHARED_ALPHABET,
-							"ascii", NULL,
+							"unicode", NULL,
 							ldml_context,
 							&alphabet_sh_entry);
 	}
       else if (ld->alphabet.a_type == ALPHABET_ASCII)
 	{
 	  er_status = locale_check_and_set_shared_data (LOC_SHARED_ALPHABET,
-							"unicode", NULL,
+							"ascii", NULL,
 							ldml_context,
 							&alphabet_sh_entry);
 	}
@@ -4593,14 +4593,14 @@ locale_compile_locale (LOCALE_FILE * lf, LOCALE_DATA * ld, bool is_verbose)
       if (ld->identif_alphabet.a_type == ALPHABET_UNICODE)
 	{
 	  er_status = locale_check_and_set_shared_data (LOC_SHARED_ALPHABET,
-							"ascii", NULL,
+							"unicode", NULL,
 							ldml_context,
 							&alphabet_sh_entry);
 	}
       else if (ld->identif_alphabet.a_type == ALPHABET_ASCII)
 	{
 	  er_status = locale_check_and_set_shared_data (LOC_SHARED_ALPHABET,
-							"unicode", NULL,
+							"ascii", NULL,
 							ldml_context,
 							&alphabet_sh_entry);
 	}
@@ -4612,6 +4612,91 @@ locale_compile_locale (LOCALE_FILE * lf, LOCALE_DATA * ld, bool is_verbose)
 
       ld->identif_alphabet.do_not_save =
 	(alphabet_sh_entry != NULL) ? true : false;
+      if (ld->identif_alphabet.do_not_save == false)
+	{
+	  /* check that casing data matches the rule of
+	   * INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER:
+	   * the ratio between the size in bytes of lower (or upper) case
+	   * character (or sequence of characters) and the size in bytes of
+	   * original character is less than
+	   * INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER */
+	  unsigned int cp;
+	  ALPHABET_DATA *a = &(ld->identif_alphabet);
+	  unsigned char dummy[INTL_UTF8_MAX_CHAR_SIZE];
+
+	  for (cp = 0; (int) cp < a->l_count; cp++)
+	    {
+	      int case_cnt, case_size, cp_size;
+	      unsigned int *lower_cp =
+		&(a->lower_cp[cp * a->lower_multiplier]);
+	      unsigned int *upper_cp =
+		&(a->upper_cp[cp * a->upper_multiplier]);
+
+	      for (case_size = 0, case_cnt = 0;
+		   case_cnt < a->lower_multiplier && *lower_cp != 0;
+		   case_cnt++, lower_cp++)
+		{
+		  if (*lower_cp == cp)
+		    {
+		      /* character does not have lower case */
+		      case_size = 0;
+		      break;
+		    }
+		  case_size += intl_cp_to_utf8 (*lower_cp, dummy);
+		}
+
+	      if (case_size > 0)
+		{
+		  cp_size = intl_cp_to_utf8 (cp, dummy);
+		  if (case_size
+		      > cp_size * INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER)
+		    {
+		      char msg[ERR_MSG_SIZE];
+
+		      snprintf (msg, sizeof (msg) - 1, "Lower case "
+				"sequence for codepoint Ux%04X is too "
+				"big: %d bytes; expecting at most %d",
+				cp, case_size, cp_size
+				* INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER);
+		      LOG_LOCALE_ERROR (msg, ER_LOC_GEN, true);
+		      er_status = ER_LOC_GEN;
+		      goto exit;
+		    }
+		}
+
+	      for (case_size = 0, case_cnt = 0;
+		   case_cnt < a->upper_multiplier && *upper_cp != 0;
+		   case_cnt++, upper_cp++)
+		{
+		  if (*upper_cp == cp)
+		    {
+		      /* character does not have upper case */
+		      case_size = 0;
+		      break;
+		    }
+		  case_size += intl_cp_to_utf8 (*upper_cp, dummy);
+		}
+
+	      if (case_size > 0)
+		{
+		  cp_size = intl_cp_to_utf8 (cp, dummy);
+		  if (case_size >
+		      cp_size * INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER)
+		    {
+		      char msg[ERR_MSG_SIZE];
+
+		      snprintf (msg, sizeof (msg) - 1, "Upper case "
+				"sequence for codepoint Ux%04X is too "
+				"big: %d bytes; expecting at most %d",
+				cp, case_size, cp_size
+				* INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER);
+		      LOG_LOCALE_ERROR (msg, ER_LOC_GEN, true);
+		      er_status = ER_LOC_GEN;
+		      goto exit;
+		    }
+		}
+	    }
+	}
     }
 
   if (is_verbose)

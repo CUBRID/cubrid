@@ -14094,9 +14094,19 @@ sm_default_constraint_name (const char *class_name,
 	      char class_name_trunc[DB_MAX_IDENTIFIER_LENGTH];
 
 	      strncpy (class_name_trunc, class_name, class_name_prefix_size);
+	      class_name_trunc[class_name_prefix_size] = '\0';
 
 	      /* make sure last character is not truncated */
-	      intl_identifier_fix (class_name_trunc, class_name_prefix_size);
+	      if (intl_identifier_fix (class_name_trunc,
+				       class_name_prefix_size, false)
+		  != NO_ERROR)
+		{
+		  /* this should not happen */
+		  assert (false);
+		  ERROR0 (error, ER_SM_INVALID_DEF_CONSTRAINT_NAME_PARAMS);
+		  name = NULL;
+		  goto exit;
+		}
 	      class_name_prefix_size = strlen (class_name_trunc);
 	    }
 
@@ -14140,7 +14150,7 @@ sm_default_constraint_name (const char *class_name,
 
 	      if (att_name_prefix_size == DB_MAX_IDENTIFIER_LENGTH)
 		{
-		  intl_identifier_lower (*ptr, &name[strlen (name)]);
+		  (void) intl_identifier_lower (*ptr, &name[strlen (name)]);
 
 		  /* attr is marked as 'desc' */
 		  if (do_desc)
@@ -14152,20 +14162,36 @@ sm_default_constraint_name (const char *class_name,
 		{
 		  char att_name_trunc[DB_MAX_IDENTIFIER_LENGTH];
 
-		  intl_identifier_lower (*ptr, att_name_trunc);
+		  (void) intl_identifier_lower (*ptr, att_name_trunc);
 
 		  if (do_desc)
 		    {
 		      /* make sure last character is not truncated */
 		      assert (att_name_prefix_size > 2);
-		      intl_identifier_fix (att_name_trunc,
-					   att_name_prefix_size - 2);
+		      if (intl_identifier_fix (att_name_trunc,
+					       att_name_prefix_size - 2,
+					       false) != NO_ERROR)
+			{
+			  assert (false);
+			  ERROR0 (error,
+				  ER_SM_INVALID_DEF_CONSTRAINT_NAME_PARAMS);
+			  free_and_init (name);
+			  goto exit;
+			}
 		      strcat (att_name_trunc, "_d");
 		    }
 		  else
 		    {
-		      intl_identifier_fix (att_name_trunc,
-					   att_name_prefix_size);
+		      if (intl_identifier_fix (att_name_trunc,
+					       att_name_prefix_size, false)
+			  != NO_ERROR)
+			{
+			  assert (false);
+			  ERROR0 (error,
+				  ER_SM_INVALID_DEF_CONSTRAINT_NAME_PARAMS);
+			  free_and_init (name);
+			  goto exit;
+			}
 		    }
 
 		  strcat (name, att_name_trunc);

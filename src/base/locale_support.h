@@ -43,10 +43,17 @@
 #define INTL_CASING_EXPANSION_MULTIPLIER 2
 
 /* Allowed multiplier for identifier casing. 
- * How many times a string identifier can grow or shrink (in bytes size) when
- * performing lower / upper on DB identifiers . 
- * Do not use for user string.
- * See Turkish casing for 'i' and 'I' */
+ * How many times a string identifier can grow (in bytes size) when
+ * performing lower / upper on DB identifiers. 
+ * This growing can occur only in UTF-8 charset (see Unicode data, for example
+ * lower case for U+023A is U+2C65 - 2 bytes to 3 bytes).
+ * This restriction does not apply to user strings.
+ * The Turkish rules for casing do not apply on identifiers, only for user
+ * strings. Identifier casing rules are the same for locales, assuming they
+ * use the same charset and Unicode data (built-in en_US.utf8,ko_KR.utf8 and
+ * tr_TR.utf8 have different Unicode data then LDML de_DE.utf8, hence they
+ * produce different identifier casing rules).
+ */
 #define INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER 2
 
 /* Mask for next sequence. Used to determine next string in sorting order
