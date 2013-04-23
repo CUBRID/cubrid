@@ -46,8 +46,6 @@ namespace dbgw
    * REQ ID = (0 ~ 99999) * 1
    */
   static const int WORKER_ID_MAX = 20000;
-  static const int WORKER_ID_WEIGHT = 100000;
-  static const int REQ_ID_MAX = 99999;
 
   class _AsyncWorker::Impl
   {
@@ -109,21 +107,10 @@ namespace dbgw
       m_pMonitor->getWorkerStatGroup()->removeItem(workerId.str());
     }
 
-    void delegateJob(trait<_AsyncWorkerJob>::sp pJob,
-        unsigned long ulWaitTimeMilSec, uint64_t ulAbsWaitTimeMilSec)
+    void delegateJob(trait<_AsyncWorkerJob>::sp pJob)
     {
       system::_MutexAutoLock lock(&m_mutex);
 
-      if (m_state == DBGW_WORKTER_STATE_BUSY)
-        {
-          ExecuteAsyncTempUnavailableException e;
-          DBGW_LOG_ERROR(e.what());
-          throw e;
-        }
-
-      trait<_AsyncWaiter>::sp pWaiter(
-          new _AsyncWaiter(ulWaitTimeMilSec, ulAbsWaitTimeMilSec));
-      pJob->bindWaiter(pWaiter);
       pJob->bindWorker(
           boost::shared_static_cast<_AsyncWorker>(m_pSelf->shared_from_this()));
 
@@ -131,89 +118,6 @@ namespace dbgw
 
       m_pJob = pJob;
       m_cond.notify();
-
-      lock.unlock();
-
-      pWaiter->wait();
-
-      lock.lock();
-
-      if (m_state == DBGW_WORKTER_STATE_TIMEOUT)
-        {
-          ExecuteTimeoutExecption e(ulWaitTimeMilSec);
-          DBGW_LOG_ERROR(e.what());
-          throw e;
-        }
-    }
-
-    int delegateJobAsync(trait<_AsyncWorkerJob>::sp pJob,
-        ExecAsyncCallBack pCallBack, unsigned long ulWaitTimeMilSec,
-        uint64_t ulAbsWaitTimeMilSec)
-    {
-      system::_MutexAutoLock lock(&m_mutex);
-
-      if (m_state == DBGW_WORKTER_STATE_BUSY)
-        {
-          ExecuteAsyncTempUnavailableException e;
-          DBGW_LOG_ERROR(e.what());
-          throw e;
-        }
-
-      if (++m_nReqId > REQ_ID_MAX)
-        {
-          m_nReqId = 0;
-        }
-
-      int nCallBackHandleID = m_nWorkerId * WORKER_ID_WEIGHT + m_nReqId;
-
-      trait<_AsyncWaiter>::sp pWaiter(
-          new _AsyncWaiter(ulWaitTimeMilSec, ulAbsWaitTimeMilSec,
-              nCallBackHandleID, pCallBack));
-      pJob->bindWaiter(pWaiter);
-      pJob->bindWorker(
-          boost::shared_static_cast<_AsyncWorker>(m_pSelf->shared_from_this()));
-
-      changeWorkerStateWithOutLock(DBGW_WORKTER_STATE_BUSY, pJob);
-
-      m_pJob = pJob;
-      m_cond.notify();
-
-      return nCallBackHandleID;
-    }
-
-    int delegateJobAsync(trait<_AsyncWorkerJob>::sp pJob,
-        ExecBatchAsyncCallBack pCallBack, unsigned long ulWaitTimeMilSec,
-        uint64_t ulAbsWaitTimeMilSec)
-    {
-      system::_MutexAutoLock lock(&m_mutex);
-
-      if (m_state == DBGW_WORKTER_STATE_BUSY)
-        {
-          ExecuteAsyncTempUnavailableException e;
-          DBGW_LOG_ERROR(e.what());
-          throw e;
-        }
-
-      if (++m_nReqId > REQ_ID_MAX)
-        {
-          m_nReqId = 0;
-        }
-
-      int nCallBackHandleID = m_nWorkerId * WORKER_ID_WEIGHT + m_nReqId;
-
-      trait<_AsyncWaiter>::sp pWaiter(
-          new _AsyncWaiter(ulWaitTimeMilSec, ulAbsWaitTimeMilSec,
-              nCallBackHandleID, pCallBack));
-      pJob->bindWaiter(pWaiter);
-      pJob->bindWorker(
-          boost::shared_static_cast<_AsyncWorker>(m_pSelf->shared_from_this()));
-
-      changeWorkerStateWithOutLock(DBGW_WORKTER_STATE_BUSY, pJob);
-
-      m_pJob = pJob;
-      m_cond.notify();
-
-      return nCallBackHandleID;
     }
 
     void release(bool bIsForceDrop)
@@ -383,26 +287,9 @@ namespace dbgw
       }
   }
 
-  void _AsyncWorker::delegateJob(trait<_AsyncWorkerJob>::sp pJob,
-      unsigned long ulWaitTimeMilSec, uint64_t ulAbsWaitTimeMilSec)
+  void _AsyncWorker::delegateJob(trait<_AsyncWorkerJob>::sp pJob)
   {
-    m_pImpl->delegateJob(pJob, ulWaitTimeMilSec, ulAbsWaitTimeMilSec);
-  }
-
-  int _AsyncWorker::delegateJobAsync(trait<_AsyncWorkerJob>::sp pJob,
-      ExecAsyncCallBack pCallBack, unsigned long ulWaitTimeMilSec,
-      uint64_t ulAbsWaitTimeMilSec)
-  {
-    return m_pImpl->delegateJobAsync(pJob, pCallBack, ulWaitTimeMilSec,
-        ulAbsWaitTimeMilSec);
-  }
-
-  int _AsyncWorker::delegateJobAsync(trait<_AsyncWorkerJob>::sp pJob,
-      ExecBatchAsyncCallBack pCallBack, unsigned long ulWaitTimeMilSec,
-      uint64_t ulAbsWaitTimeMilSec)
-  {
-    return m_pImpl->delegateJobAsync(pJob, pCallBack, ulWaitTimeMilSec,
-        ulAbsWaitTimeMilSec);
+    m_pImpl->delegateJob(pJob);
   }
 
   void _AsyncWorker::release(bool bIsForceDrop)
@@ -489,6 +376,7 @@ namespace dbgw
 
       if (bIsForceDrop)
         {
+          pWorker->detach();
         }
       else
         {

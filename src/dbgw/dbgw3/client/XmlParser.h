@@ -307,6 +307,7 @@ namespace dbgw
     void parseConfiguration(_ExpatXMLProperties &properties);
     void parseQueryMap(_ExpatXMLProperties &properties);
     void parseLog(_ExpatXMLProperties &properties);
+    void parseWorker(_ExpatXMLProperties &properties);
     void parseInclude(_ExpatXMLProperties &properties);
     void parseStatistics(_ExpatXMLProperties &properties);
 

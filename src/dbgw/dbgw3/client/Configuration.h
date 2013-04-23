@@ -28,6 +28,8 @@ namespace dbgw
   class _Service;
   class _StatisticsMonitor;
   class _Timer;
+  class _AsyncWorkerJobManager;
+  class _TimeoutWorkerJobManager;
 
   enum QueryMapperVersion
   {
@@ -55,6 +57,7 @@ namespace dbgw
 
     void setWaitTimeMilSec(unsigned long ulWaitTimeMilSec);
     void setMaxWaitExitTimeMilSec(unsigned long ulMaxWaitExitTimeMilSec);
+    void setJobQueueMaxSize(size_t nMaxSize);
     bool loadConfiguration();
     bool loadConnector(const char *szXmlPath = NULL);
     bool loadQueryMapper();
@@ -66,7 +69,8 @@ namespace dbgw
     trait<_Service>::sp getService(const _ConfigurationVersion &stVersion,
         const char *szNameSpace);
     trait<_QueryMapper>::sp getQueryMapper(const _ConfigurationVersion &stVersion);
-    trait<_AsyncWorker>::sp getAsyncWorker();
+    trait<_AsyncWorkerJobManager>::sp getAsyncWorkerJobManager();
+    trait<_TimeoutWorkerJobManager>::sp getTimeoutWorkerJobManager();
 
   public:
     unsigned long getWaitTimeMilSec() const;

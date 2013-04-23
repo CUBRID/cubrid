@@ -29,6 +29,7 @@
 #include "dbgw3/client/ConfigurationObject.h"
 #include "dbgw3/client/Client.h"
 #include "dbgw3/client/AsyncWorker.h"
+#include "dbgw3/client/AsyncWorkerJob.h"
 #include "dbgw3/client/Configuration.h"
 #include "dbgw3/client/Resource.h"
 #include "dbgw3/client/StatisticsMonitor.h"
@@ -53,7 +54,9 @@ namespace dbgw
       m_pSelf(pSelf), m_ulWaitTimeMilSec(system::INFINITE_TIMEOUT),
       m_ulMaxWaitExitTimeMilSec(DEFAULT_MAX_WAIT_EXIT_TIME_MILSEC()),
       m_pMonitor(new _StatisticsMonitor()),
-      m_workerPool(pSelf), m_pTimer(new _Timer())
+      m_workerPool(pSelf), m_pTimer(new _Timer()),
+      m_pAsyncJobManager(new _AsyncWorkerJobManager(&m_workerPool)),
+      m_pTimeoutJobManager(new _TimeoutWorkerJobManager(&m_workerPool))
     {
     }
 
@@ -62,7 +65,9 @@ namespace dbgw
       m_ulWaitTimeMilSec(system::INFINITE_TIMEOUT),
       m_ulMaxWaitExitTimeMilSec(DEFAULT_MAX_WAIT_EXIT_TIME_MILSEC()),
       m_pMonitor(new _StatisticsMonitor()),
-      m_workerPool(pSelf), m_pTimer(new _Timer())
+      m_workerPool(pSelf), m_pTimer(new _Timer()),
+      m_pAsyncJobManager(new _AsyncWorkerJobManager(&m_workerPool)),
+      m_pTimeoutJobManager(new _TimeoutWorkerJobManager(&m_workerPool))
     {
     }
 
@@ -75,7 +80,8 @@ namespace dbgw
 
       m_pTimer->timedJoin(m_ulMaxWaitExitTimeMilSec);
       m_pMonitor->timedJoin(m_ulMaxWaitExitTimeMilSec);
-
+      m_pAsyncJobManager->timedJoin(m_ulMaxWaitExitTimeMilSec);
+      m_pTimeoutJobManager->timedJoin(m_ulMaxWaitExitTimeMilSec);
     }
 
     void init(bool bNeedLoadXml)
@@ -89,6 +95,8 @@ namespace dbgw
 
           m_pTimer->start();
           m_pMonitor->start();
+          m_pAsyncJobManager->start();
+          m_pTimeoutJobManager->start();
 
           if (bNeedLoadXml)
             {
@@ -112,6 +120,12 @@ namespace dbgw
     void setMaxWaitExitTimeMilSec(unsigned long ulMaxWaitExitTimeMilSec)
     {
       m_ulMaxWaitExitTimeMilSec = ulMaxWaitExitTimeMilSec;
+    }
+
+    void setJobQueueMaxSize(size_t nMaxSize)
+    {
+      m_pAsyncJobManager->setMaxSize(nMaxSize);
+      m_pTimeoutJobManager->setMaxSize(nMaxSize);
     }
 
     bool loadConfiguration()
@@ -320,19 +334,14 @@ namespace dbgw
         }
     }
 
-    trait<_AsyncWorker>::sp getAsyncWorker()
+    trait<_AsyncWorkerJobManager>::sp getAsyncWorkerJobManager()
     {
-      clearException();
+      return m_pAsyncJobManager;
+    }
 
-      try
-        {
-          return m_workerPool.getAsyncWorker();
-        }
-      catch (Exception &e)
-        {
-          setLastException(e);
-          return trait<_AsyncWorker>::sp();
-        }
+    trait<_TimeoutWorkerJobManager>::sp getTimeoutWorkerJobManager()
+    {
+      return m_pTimeoutJobManager;
     }
 
     unsigned long getWaitTimeMilSec() const
@@ -355,6 +364,8 @@ namespace dbgw
     trait<_StatisticsMonitor>::sp m_pMonitor;
     _AsyncWorkerPool m_workerPool;
     trait<_Timer>::sp m_pTimer;
+    trait<_AsyncWorkerJobManager>::sp m_pAsyncJobManager;
+    trait<_TimeoutWorkerJobManager>::sp m_pTimeoutJobManager;
   };
 
   Configuration::Configuration() :
@@ -388,6 +399,11 @@ namespace dbgw
       unsigned long ulMaxWaitExitTimeMilSec)
   {
     m_pImpl->setMaxWaitExitTimeMilSec(ulMaxWaitExitTimeMilSec);
+  }
+
+  void Configuration::setJobQueueMaxSize(size_t nMaxSize)
+  {
+    m_pImpl->setJobQueueMaxSize(nMaxSize);
   }
 
   bool Configuration::loadConfiguration()
@@ -458,9 +474,14 @@ namespace dbgw
     return m_pImpl->getQueryMapper(stVersion);
   }
 
-  trait<_AsyncWorker>::sp Configuration::getAsyncWorker()
+  trait<_AsyncWorkerJobManager>::sp Configuration::getAsyncWorkerJobManager()
   {
-    return m_pImpl->getAsyncWorker();
+    return m_pImpl->getAsyncWorkerJobManager();
+  }
+
+  trait<_TimeoutWorkerJobManager>::sp Configuration::getTimeoutWorkerJobManager()
+  {
+    return m_pImpl->getTimeoutWorkerJobManager();
   }
 
   unsigned long Configuration::getWaitTimeMilSec() const

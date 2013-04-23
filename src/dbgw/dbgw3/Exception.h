@@ -331,6 +331,7 @@ namespace dbgw
   class CreateMaxConnectionException : public Exception
   {
   public:
+    CreateMaxConnectionException() throw();
     CreateMaxConnectionException(int nSize) throw();
   };
 

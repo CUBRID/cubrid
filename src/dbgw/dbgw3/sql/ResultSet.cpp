@@ -47,13 +47,11 @@ namespace dbgw
       m_bClosed = true;
 
       closeResource();
-
-      doClose();
     }
 
     void ResultSet::doUnlinkResource()
     {
-      close();
+      doClose();
     }
 
   }

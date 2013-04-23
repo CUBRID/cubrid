@@ -526,6 +526,10 @@
 							>
 						</File>
 						<File
+							RelativePath="..\..\src\dbgw\dbgw3\sql\cubrid\CUBRIDMock.cpp"
+							>
+						</File>
+						<File
 							RelativePath="..\..\src\dbgw\dbgw3\sql\cubrid\CUBRIDConnection.cpp"
 							>
 						</File>
@@ -721,6 +725,10 @@
 						>
 						<File
 							RelativePath="..\..\src\dbgw\dbgw3\sql\cubrid\CUBRIDCallableStatement.h"
+							>
+						</File>
+						<File
+							RelativePath="..\..\src\dbgw\dbgw3\sql\cubrid\CUBRIDMock.h"
 							>
 						</File>
 						<File

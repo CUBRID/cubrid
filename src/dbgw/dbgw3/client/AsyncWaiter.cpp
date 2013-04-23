@@ -24,6 +24,7 @@
 #include "dbgw3/system/Mutex.h"
 #include "dbgw3/system/ConditionVariable.h"
 #include "dbgw3/client/Client.h"
+#include "dbgw3/client/AsyncWorkerJob.h"
 #include "dbgw3/client/AsyncWaiter.h"
 #include "dbgw3/client/ClientResultSet.h"
 
@@ -33,25 +34,22 @@ namespace dbgw
   class _AsyncWaiter::Impl
   {
   public:
-    Impl(unsigned long ulTimeOutMilSec, uint64_t ulAbsTimeOutMilSec) :
-      m_ulTimeOutMilSec(ulTimeOutMilSec),
-      m_ulAbsTimeOutMilSec(ulAbsTimeOutMilSec), m_nHandleId(-1),
+    Impl(unsigned long ulTimeOutMilSec) :
+      m_ulTimeOutMilSec(ulTimeOutMilSec), m_nHandleId(-1),
       m_pCallBack(NULL), m_pBatchCallBack(NULL)
     {
     }
 
-    Impl(unsigned long ulTimeOutMilSec, uint64_t ulAbsTimeOutMilSec,
-        int nHandleId, ExecAsyncCallBack pCallBack) :
-      m_ulTimeOutMilSec(ulTimeOutMilSec),
-      m_ulAbsTimeOutMilSec(ulAbsTimeOutMilSec), m_nHandleId(nHandleId),
+    Impl(unsigned long ulTimeOutMilSec, int nHandleId,
+        ExecAsyncCallBack pCallBack) :
+      m_ulTimeOutMilSec(ulTimeOutMilSec), m_nHandleId(nHandleId),
       m_pCallBack(pCallBack), m_pBatchCallBack(NULL)
     {
     }
 
-    Impl(unsigned long ulTimeOutMilSec, uint64_t ulAbsTimeOutMilSec,
-        int nHandleId, ExecBatchAsyncCallBack pBatchCallBack) :
-      m_ulTimeOutMilSec(ulTimeOutMilSec),
-      m_ulAbsTimeOutMilSec(ulAbsTimeOutMilSec), m_nHandleId(nHandleId),
+    Impl(unsigned long ulTimeOutMilSec, int nHandleId,
+        ExecBatchAsyncCallBack pBatchCallBack) :
+      m_ulTimeOutMilSec(ulTimeOutMilSec), m_nHandleId(nHandleId),
       m_pCallBack(NULL), m_pBatchCallBack(pBatchCallBack)
     {
     }
@@ -69,37 +67,39 @@ namespace dbgw
     {
       system::_MutexAutoLock lock(&m_mutex);
 
-      m_cond.notify();
+      try
+        {
+          m_cond.notify();
+        }
+      catch (CondVarOperationFailException &)
+        {
+          /**
+           * ignore condition variable fail exception.
+           */
+        }
 
       if (m_pCallBack != NULL)
         {
-          (*m_pCallBack)(m_nHandleId, m_pResultSet, m_exception);
+          (*m_pCallBack)(m_nHandleId, m_pJobResult->getResultSet(),
+              m_pJobResult->getException());
         }
       else if (m_pBatchCallBack != NULL)
         {
-          (*m_pBatchCallBack)(m_nHandleId, m_resultSetList, m_exception);
+          (*m_pBatchCallBack)(m_nHandleId, m_pJobResult->getResultSetList(),
+              m_pJobResult->getException());
         }
     }
 
-    void bindHandleId(int nHandleId)
+    void bindJobResult(trait<_AsyncWorkerJobResult>::sp pJobResult)
     {
-      m_nHandleId = nHandleId;
+      m_pJobResult = pJobResult;
     }
 
-    void bindResultSet(trait<ClientResultSet>::sp pResultSet)
+    trait<_AsyncWorkerJobResult>::sp getJobResult()
     {
-      m_pResultSet = pResultSet;
-    }
-
-    void bindResultSetList(
-        const trait<ClientResultSet>::spvector &resultSetList)
-    {
-      m_resultSetList = resultSetList;
-    }
-
-    void bindException(const Exception &e)
-    {
-      m_exception = e;
+      trait<_AsyncWorkerJobResult>::sp pJobResult = m_pJobResult;
+      m_pJobResult.reset();
+      return pJobResult;
     }
 
   public:
@@ -108,41 +108,30 @@ namespace dbgw
       return m_ulTimeOutMilSec;
     }
 
-    uint64_t getAbsTimeOutMilSec() const
-    {
-      return m_ulAbsTimeOutMilSec;
-    }
-
   private:
     system::_Mutex m_mutex;
     system::_ConditionVariable m_cond;
     unsigned long m_ulTimeOutMilSec;
-    uint64_t m_ulAbsTimeOutMilSec;
     int m_nHandleId;
     ExecAsyncCallBack m_pCallBack;
     ExecBatchAsyncCallBack m_pBatchCallBack;
-    trait<ClientResultSet>::sp m_pResultSet;
-    trait<ClientResultSet>::spvector m_resultSetList;
-    Exception m_exception;
+    trait<_AsyncWorkerJobResult>::sp m_pJobResult;
   };
 
-  _AsyncWaiter::_AsyncWaiter(unsigned long ulTimeOutMilSec,
-      uint64_t ulAbsTimeOutMilSec) :
-    m_pImpl(new Impl(ulTimeOutMilSec, ulAbsTimeOutMilSec))
+  _AsyncWaiter::_AsyncWaiter(unsigned long ulTimeOutMilSec) :
+    m_pImpl(new Impl(ulTimeOutMilSec))
   {
   }
 
-  _AsyncWaiter::_AsyncWaiter(unsigned long ulTimeOutMilSec,
-      uint64_t ulAbsTimeOutMilSec, int nHandleId,
+  _AsyncWaiter::_AsyncWaiter(unsigned long ulTimeOutMilSec, int nHandleId,
       ExecAsyncCallBack pCallBack) :
-    m_pImpl(new Impl(ulTimeOutMilSec, ulAbsTimeOutMilSec, nHandleId, pCallBack))
+    m_pImpl(new Impl(ulTimeOutMilSec, nHandleId, pCallBack))
   {
   }
 
-  _AsyncWaiter::_AsyncWaiter(unsigned long ulTimeOutMilSec,
-      uint64_t ulAbsTimeOutMilSec, int nHandleId,
+  _AsyncWaiter::_AsyncWaiter(unsigned long ulTimeOutMilSec, int nHandleId,
       ExecBatchAsyncCallBack pBatchCallBack) :
-    m_pImpl(new Impl(ulTimeOutMilSec, ulAbsTimeOutMilSec, nHandleId,
+    m_pImpl(new Impl(ulTimeOutMilSec, nHandleId,
         pBatchCallBack))
   {
   }
@@ -165,30 +154,19 @@ namespace dbgw
     m_pImpl->notify();
   }
 
-  void _AsyncWaiter::bindResultSet(trait<ClientResultSet>::sp pResultSet)
+  void _AsyncWaiter::bindJobResult(trait<_AsyncWorkerJobResult>::sp pJobResult)
   {
-    m_pImpl->bindResultSet(pResultSet);
+    m_pImpl->bindJobResult(pJobResult);
   }
 
-  void _AsyncWaiter::bindResultSetList(
-      const trait<ClientResultSet>::spvector &resultSetList)
+  trait<_AsyncWorkerJobResult>::sp _AsyncWaiter::getJobResult()
   {
-    m_pImpl->bindResultSetList(resultSetList);
-  }
-
-  void _AsyncWaiter::bindException(const Exception &e)
-  {
-    m_pImpl->bindException(e);
+    return m_pImpl->getJobResult();
   }
 
   unsigned long _AsyncWaiter::getTimeOutMilSec() const
   {
     return m_pImpl->getTimeOutMilSec();
-  }
-
-  uint64_t _AsyncWaiter::getAbsTimeOutMilSec() const
-  {
-    return m_pImpl->getAbsTimeOutMilSec();
   }
 
 }

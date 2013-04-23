@@ -34,9 +34,9 @@
 namespace dbgw
 {
 
-  _TimerEvent::_TimerEvent(uint64_t ulAbsTimeOutMilSec,
-      _AsyncWorkerJobSharedPtr pJob) :
-    m_ulAbsTimeOutMilSec(ulAbsTimeOutMilSec), m_pJob(pJob), m_bIsDone(false)
+  _TimerEvent::_TimerEvent(_AsyncWorkerJobSharedPtr pJob) :
+    m_ulAbsTimeOutMilSec(pJob->getAbsTimeOutMilSec()), m_pJob(pJob),
+    m_bIsDone(false)
   {
   }
 

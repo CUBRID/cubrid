@@ -174,7 +174,15 @@ namespace dbgw
             }
           catch (Exception &)
             {
-              if ((*it)->isIgnoreResult() == false)
+              trait<_Group>::sp pGroup = (*it);
+
+              for (trait<_Executor>::splist::iterator it = executorList.begin();
+                  it != executorList.end(); it++)
+                {
+                  (*it)->returnToPool(false);
+                }
+
+              if (pGroup->isIgnoreResult() == false)
                 {
                   throw;
                 }

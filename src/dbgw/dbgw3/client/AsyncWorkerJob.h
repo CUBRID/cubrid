@@ -29,6 +29,7 @@ namespace dbgw
   class _ExecutorHandler;
   class _AsyncWorkerJob;
   class _Parameter;
+  class _AsyncWorkerPool;
 
   enum _AsyncWorkerJobStatus
   {
@@ -38,10 +39,40 @@ namespace dbgw
     DBGW_ASYNC_JOB_STATUS_CANCEL
   };
 
+  class _AsyncWorkerJobResult
+  {
+  public:
+    _AsyncWorkerJobResult(const Exception &exception);
+    _AsyncWorkerJobResult(trait<_ExecutorHandler>::sp pExecHandler,
+        const Exception &exception);
+    _AsyncWorkerJobResult(trait<ClientResultSet>::sp pResultSet,
+        const Exception &exception);
+    _AsyncWorkerJobResult(trait<ClientResultSet>::spvector resultSetList,
+        const Exception &exception);
+    _AsyncWorkerJobResult(trait<Lob>::sp pLob, const Exception &exception);
+    virtual ~_AsyncWorkerJobResult();
+
+    trait<_ExecutorHandler>::sp getExecutorHandler();
+    trait<ClientResultSet>::sp getResultSet();
+    trait<ClientResultSet>::spvector getResultSetList();
+    trait<Lob>::sp getLob();
+    const Exception &getException();
+
+  private:
+    trait<_ExecutorHandler>::sp m_pExecHandler;
+    trait<ClientResultSet>::sp m_pResultSet;
+    trait<ClientResultSet>::spvector m_resultSetList;
+    trait<Lob>::sp m_pLob;
+    Exception m_exception;
+  };
+
   class _AsyncWorkerJob : public boost::enable_shared_from_this<_AsyncWorkerJob>
   {
   public:
-    _AsyncWorkerJob();
+    _AsyncWorkerJob(trait<_Service>::sp pService,
+        trait<_QueryMapper>::sp pQueryMapper, unsigned long ulTimeOutMilSec);
+    _AsyncWorkerJob(trait<_ExecutorHandler>::sp pExecHandler,
+        unsigned long ulTimeOutMilSec);
     virtual ~_AsyncWorkerJob();
 
     void execute();
@@ -49,16 +80,18 @@ namespace dbgw
     bool isDone();
     void bindWaiter(trait<_AsyncWaiter>::sp pWaiter);
     void bindWorker(trait<_AsyncWorker>::sp pWorker);
+    void makeExecutorHandler();
+    bool bindExecutorHandler();
 
   public:
     virtual const char *getJobName() const = 0;
     virtual const char *getSqlName() const;
+    unsigned long getTimeOutMilSec() const;
     uint64_t getAbsTimeOutMilSec() const;
-    trait<_ExecutorHandler>::sp getExecutorHandler() const;
 
   protected:
-    virtual void doExecute() = 0;
-    virtual void setExecutorHandler(trait<_ExecutorHandler>::sp pExecHandler);
+    virtual trait<_AsyncWorkerJobResult>::sp doExecute() = 0;
+    trait<_ExecutorHandler>::sp getExecutorHandler() const;
 
   private:
     class Impl;
@@ -69,10 +102,10 @@ namespace dbgw
   {
   public:
     _GetExecutorHandlerJob(trait<_Service>::sp pService,
-        trait<_QueryMapper>::sp pQueryMapper);
+        trait<_QueryMapper>::sp pQueryMapper, unsigned long ulTimeOutMilSec);
     virtual ~_GetExecutorHandlerJob() {}
 
-    virtual void doExecute();
+    virtual trait<_AsyncWorkerJobResult>::sp doExecute();
 
   public:
     virtual const char *getJobName() const;
@@ -82,21 +115,14 @@ namespace dbgw
     trait<_QueryMapper>::sp m_pQueryMapper;
   };
 
-  class _ExecutorHandlerJobBase : public _AsyncWorkerJob
-  {
-  public:
-    _ExecutorHandlerJobBase(trait<_ExecutorHandler>::sp pExecHandler);
-    virtual ~_ExecutorHandlerJobBase() {}
-  };
-
-  class _SetAutoCommitJob : public _ExecutorHandlerJobBase
+  class _SetAutoCommitJob : public _AsyncWorkerJob
   {
   public:
     _SetAutoCommitJob(trait<_ExecutorHandler>::sp pExecHandler,
-        bool bIsAutoCommit);
+        unsigned long ulTimeOutMilSec, bool bIsAutoCommit);
     virtual ~_SetAutoCommitJob() {}
 
-    virtual void doExecute();
+    virtual trait<_AsyncWorkerJobResult>::sp doExecute();
 
   public:
     virtual const char *getJobName() const;
@@ -105,38 +131,44 @@ namespace dbgw
     bool m_bIsAutoCommit;
   };
 
-  class _CommitJob : public _ExecutorHandlerJobBase
+  class _CommitJob : public _AsyncWorkerJob
   {
   public:
-    _CommitJob(trait<_ExecutorHandler>::sp pExecHandler);
+    _CommitJob(trait<_ExecutorHandler>::sp pExecHandler,
+        unsigned long ulTimeOutMilSec);
     virtual ~_CommitJob() {}
 
-    virtual void doExecute();
+    virtual trait<_AsyncWorkerJobResult>::sp doExecute();
 
   public:
     virtual const char *getJobName() const;
   };
 
-  class _RollbackJob : public _ExecutorHandlerJobBase
+  class _RollbackJob : public _AsyncWorkerJob
   {
   public:
-    _RollbackJob(trait<_ExecutorHandler>::sp pExecHandler);
+    _RollbackJob(trait<_ExecutorHandler>::sp pExecHandler,
+        unsigned long ulTimeOutMilSec);
     virtual ~_RollbackJob() {}
 
-    virtual void doExecute();
+    virtual trait<_AsyncWorkerJobResult>::sp doExecute();
 
   public:
     virtual const char *getJobName() const;
   };
 
-  class _ExecuteQueryJob : public _ExecutorHandlerJobBase
+  class _ExecuteQueryJob : public _AsyncWorkerJob
   {
   public:
-    _ExecuteQueryJob(trait<_ExecutorHandler>::sp pExecHandler,
+    _ExecuteQueryJob(trait<_Service>::sp pService,
+        trait<_QueryMapper>::sp pQueryMapper, unsigned long ulTimeOutMilSec,
         const char *szSqlName, const _Parameter *pParameter);
+    _ExecuteQueryJob(trait<_ExecutorHandler>::sp pExecHandler,
+        unsigned long ulTimeOutMilSec, const char *szSqlName,
+        const _Parameter *pParameter);
     virtual ~_ExecuteQueryJob() {}
 
-    virtual void doExecute();
+    virtual trait<_AsyncWorkerJobResult>::sp doExecute();
 
   public:
     virtual const char *getJobName() const;
@@ -147,14 +179,15 @@ namespace dbgw
     _Parameter m_parameter;
   };
 
-  class _ExecuteQueryBatchJob : public _ExecutorHandlerJobBase
+  class _ExecuteQueryBatchJob : public _AsyncWorkerJob
   {
   public:
     _ExecuteQueryBatchJob(trait<_ExecutorHandler>::sp pExecHandler,
-        const char *szSqlName, const _ParameterList &parameterList);
+        unsigned long ulTimeOutMilSec, const char *szSqlName,
+        const _ParameterList &parameterList);
     virtual ~_ExecuteQueryBatchJob() {}
 
-    virtual void doExecute();
+    virtual trait<_AsyncWorkerJobResult>::sp doExecute();
 
   public:
     virtual const char *getJobName() const;
@@ -165,36 +198,76 @@ namespace dbgw
     const _ParameterList &m_parameterList;
   };
 
-  class _CreateClobJob : public _ExecutorHandlerJobBase
+  class _CreateClobJob : public _AsyncWorkerJob
   {
   public:
-    _CreateClobJob(trait<_ExecutorHandler>::sp pExecHandler);
+    _CreateClobJob(trait<_ExecutorHandler>::sp pExecHandler,
+        unsigned long ulTimeOutMilSec);
     virtual ~_CreateClobJob() {}
 
-    virtual void doExecute();
-    trait<Lob>::sp getLob();
+    virtual trait<_AsyncWorkerJobResult>::sp doExecute();
 
   public:
     virtual const char *getJobName() const;
-
-  private:
-    trait<Lob>::sp m_pLob;
   };
 
-  class _CreateBlobJob : public _ExecutorHandlerJobBase
+  class _CreateBlobJob : public _AsyncWorkerJob
   {
   public:
-    _CreateBlobJob(trait<_ExecutorHandler>::sp pExecHandler);
+    _CreateBlobJob(trait<_ExecutorHandler>::sp pExecHandler,
+        unsigned long ulTimeOutMilSec);
     virtual ~_CreateBlobJob() {}
 
-    virtual void doExecute();
-    trait<Lob>::sp getLob();
+    virtual trait<_AsyncWorkerJobResult>::sp doExecute();
 
   public:
     virtual const char *getJobName() const;
+  };
+
+  class _WorkerJobManager : public system::_ThreadEx
+  {
+  public:
+    static size_t DEFAULT_MAX_SIZE();
+
+  public:
+    _WorkerJobManager(_AsyncWorkerPool *pWorkerPool,
+        system::_ThreadFunctionEx pFunc);
+    virtual ~_WorkerJobManager();
+
+    trait<_AsyncWorkerJobResult>::sp delegateJob(trait<_AsyncWorkerJob>::sp pJob);
+    int delegateJobAsync(trait<_AsyncWorkerJob>::sp pJob,
+        ExecAsyncCallBack pCallBack);
+    int delegateJobAsync(trait<_AsyncWorkerJob>::sp pJob,
+        ExecBatchAsyncCallBack pCallBack);
+    void setMaxSize(size_t nMaxSize);
+
+  protected:
+    trait<_AsyncWorkerJob>::sp waitAndGetJob();
+    trait<_AsyncWorkerJob>::sp getJob();
+    trait<_AsyncWorker>::sp getWorker();
+    void removeJob();
 
   private:
-    trait<Lob>::sp m_pLob;
+    class Impl;
+    Impl *m_pImpl;
+  };
+
+  class _AsyncWorkerJobManager : public _WorkerJobManager
+  {
+  public:
+    _AsyncWorkerJobManager(_AsyncWorkerPool *pWorkerPool);
+    virtual ~_AsyncWorkerJobManager();
+
+    static void run(const system::_ThreadEx *pThread);
+  };
+
+  class _TimeoutWorkerJobManager : public _WorkerJobManager
+  {
+  public:
+    _TimeoutWorkerJobManager(_AsyncWorkerPool *pWorkerPool);
+    virtual ~_TimeoutWorkerJobManager();
+
+    static void run(const system::_ThreadEx *pThread);
   };
 
 }

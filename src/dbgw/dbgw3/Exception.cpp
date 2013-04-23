@@ -448,6 +448,13 @@ namespace dbgw
   {
   }
 
+  CreateMaxConnectionException::CreateMaxConnectionException() throw() :
+    Exception(
+        ExceptionFactory::create(DBGW_ER_CLIENT_CREATE_MAX_CONNECTION,
+            ("Cannot create connection anymore.")))
+  {
+  }
+
   CreateMaxConnectionException::CreateMaxConnectionException(int nSize) throw() :
     Exception(
         ExceptionFactory::create(DBGW_ER_CLIENT_CREATE_MAX_CONNECTION,

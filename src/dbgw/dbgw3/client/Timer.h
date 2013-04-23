@@ -32,7 +32,7 @@ namespace dbgw
   class _TimerEvent
   {
   public:
-    _TimerEvent(uint64_t ulTimeOutMilSec, _AsyncWorkerJobSharedPtr pJob);
+    _TimerEvent(_AsyncWorkerJobSharedPtr pJob);
     virtual ~_TimerEvent() {}
 
     void wakeup();

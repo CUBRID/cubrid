@@ -21,14 +21,8 @@
 #include <boost/format.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/algorithm/string.hpp>
-#include "dbgw3/Common.h"
-#include "dbgw3/Exception.h"
-#include "dbgw3/Logger.h"
-#include "dbgw3/Value.h"
-#include "dbgw3/ValueSet.h"
-#include "dbgw3/SynchronizedResource.h"
+#include "dbgw3/client/Client.h"
 #include "dbgw3/system/DBGWPorting.h"
-#include "dbgw3/system/ThreadEx.h"
 #include "dbgw3/system/File.h"
 #include "dbgw3/sql/DatabaseInterface.h"
 #include "dbgw3/sql/Statement.h"
@@ -36,21 +30,17 @@
 #include "dbgw3/sql/CallableStatement.h"
 #include "dbgw3/sql/ResultSetMetaData.h"
 #include "dbgw3/sql/ResultSet.h"
-#include "dbgw3/client/ConfigurationObject.h"
-#include "dbgw3/client/Configuration.h"
 #include "dbgw3/client/XmlParser.h"
 #include "dbgw3/client/CharsetConverter.h"
 #include "dbgw3/client/Group.h"
-#include "dbgw3/client/Resource.h"
 #include "dbgw3/client/Connector.h"
-#include "dbgw3/client/ClientResultSet.h"
 #include "dbgw3/client/Executor.h"
 #include "dbgw3/client/Service.h"
 #include "dbgw3/client/Host.h"
 #include "dbgw3/client/Query.h"
-#include "dbgw3/client/QueryMapper.h"
 #include "dbgw3/client/ClientResultSetImpl.h"
 #include "dbgw3/client/StatisticsMonitor.h"
+#include "dbgw3/client/AsyncWorkerJob.h"
 
 namespace dbgw
 {
@@ -60,6 +50,9 @@ namespace dbgw
   static const char *XN_CONFIGURATION = "configuration";
   static const char *XN_CONFIGURATION_PR_MAX_WAIT_EXIT_TIME_MILLIS =
       "maxWaitExitTimeMillis";
+
+  static const char *XN_JOB_QUEUE= "jobqueue";
+  static const char *XN_JOB_QUEUE_MAX_SIZE = "maxSize";
 
   static const char *XN_CONNECTOR = "connector";
 
@@ -1960,6 +1953,10 @@ namespace dbgw
       {
         parseLog(properties);
       }
+    else if (!strcasecmp(szName, XN_JOB_QUEUE))
+      {
+        parseWorker(properties);
+      }
     else if (!strcasecmp(szName, XN_QUERYMAP))
       {
         parseQueryMap(properties);
@@ -2026,6 +2023,18 @@ namespace dbgw
     _Logger::setForceFlush(
         properties.getBool(XN_LOG_PR_FORCE_FLUSH,
             XN_LOG_PR_FORCE_FLUSH_HIDDEN, false));
+  }
+
+  void _ConfigurationParser::parseWorker(_ExpatXMLProperties &properties)
+  {
+    if (getParentElementName() != XN_CONFIGURATION)
+      {
+        return;
+      }
+
+    m_configuration.setJobQueueMaxSize(
+        properties.getInt(XN_JOB_QUEUE_MAX_SIZE, false,
+            (int) _AsyncWorkerJobManager::DEFAULT_MAX_SIZE()));
   }
 
   void _ConfigurationParser::parseInclude(_ExpatXMLProperties &properties)

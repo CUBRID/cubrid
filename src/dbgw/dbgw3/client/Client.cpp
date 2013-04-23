@@ -72,6 +72,9 @@ namespace dbgw
 
           m_pTimer = m_configuration.getTimer();
 
+          m_pAsyncJobManager = m_configuration.getAsyncWorkerJobManager();
+          m_pTimeoutJobManager = m_configuration.getTimeoutWorkerJobManager();
+
           m_bValidClient = true;
         }
       catch (Exception &e)
@@ -119,14 +122,15 @@ namespace dbgw
         {
           checkClientIsValid();
 
-          ulWaitTimeMilSec = bindAsyncWorker(ulWaitTimeMilSec);
+          ulWaitTimeMilSec = bindExecutorHandler(ulWaitTimeMilSec);
 
           if (ulWaitTimeMilSec > system::INFINITE_TIMEOUT)
             {
               trait<_AsyncWorkerJob>::sp pJob(
-                  new _SetAutoCommitJob(m_pExecHandler, bIsAutoCommit));
+                  new _SetAutoCommitJob(m_pExecHandler, ulWaitTimeMilSec,
+                      bIsAutoCommit));
 
-              delegateJob(pJob, ulWaitTimeMilSec);
+              delegateJob(pJob);
             }
           else
             {
@@ -159,13 +163,14 @@ namespace dbgw
         {
           checkClientIsValid();
 
-          ulWaitTimeMilSec = bindAsyncWorker(ulWaitTimeMilSec);
+          ulWaitTimeMilSec = bindExecutorHandler(ulWaitTimeMilSec);
 
           if (ulWaitTimeMilSec > system::INFINITE_TIMEOUT)
             {
-              trait<_AsyncWorkerJob>::sp pJob(new _CommitJob(m_pExecHandler));
+              trait<_AsyncWorkerJob>::sp pJob(new _CommitJob(m_pExecHandler,
+                  ulWaitTimeMilSec));
 
-              delegateJob(pJob, ulWaitTimeMilSec);
+              delegateJob(pJob);
             }
           else
             {
@@ -196,13 +201,14 @@ namespace dbgw
         {
           checkClientIsValid();
 
-          ulWaitTimeMilSec = bindAsyncWorker(ulWaitTimeMilSec);
+          ulWaitTimeMilSec = bindExecutorHandler(ulWaitTimeMilSec);
 
           if (ulWaitTimeMilSec > system::INFINITE_TIMEOUT)
             {
-              trait<_AsyncWorkerJob>::sp pJob(new _RollbackJob(m_pExecHandler));
+              trait<_AsyncWorkerJob>::sp pJob(new _RollbackJob(m_pExecHandler,
+                  ulWaitTimeMilSec));
 
-              delegateJob(pJob, ulWaitTimeMilSec);
+              delegateJob(pJob);
             }
           else
             {
@@ -241,15 +247,15 @@ namespace dbgw
         {
           checkClientIsValid();
 
-          ulWaitTimeMilSec = bindAsyncWorker(ulWaitTimeMilSec);
+          ulWaitTimeMilSec = bindExecutorHandler(ulWaitTimeMilSec);
 
           if (ulWaitTimeMilSec > system::INFINITE_TIMEOUT)
             {
               trait<_AsyncWorkerJob>::sp pJob(
-                  new _ExecuteQueryJob(m_pExecHandler, szSqlName,
-                      pParameter));
+                  new _ExecuteQueryJob(m_pExecHandler, ulWaitTimeMilSec,
+                      szSqlName, pParameter));
 
-              delegateJob(pJob, ulWaitTimeMilSec);
+              delegateJob(pJob);
             }
           else
             {
@@ -293,13 +299,11 @@ namespace dbgw
         {
           checkClientIsValid();
 
-          ulWaitTimeMilSec = bindAsyncWorker(ulWaitTimeMilSec);
-
           trait<_AsyncWorkerJob>::sp pJob(
-              new _ExecuteQueryJob(m_pExecHandler, szSqlName,
-                  pParameter));
+              new _ExecuteQueryJob(m_pService, m_pQueryMapper, ulWaitTimeMilSec,
+                  szSqlName, pParameter));
 
-          return delegateJobAsync(pJob, pCallBack, ulWaitTimeMilSec);
+          return delegateJobAsync(pJob, pCallBack);
         }
       catch (Exception &e)
         {
@@ -323,15 +327,15 @@ namespace dbgw
         {
           checkClientIsValid();
 
-          ulWaitTimeMilSec = bindAsyncWorker(ulWaitTimeMilSec);
+          ulWaitTimeMilSec = bindExecutorHandler(ulWaitTimeMilSec);
 
           if (ulWaitTimeMilSec > system::INFINITE_TIMEOUT)
             {
               trait<_AsyncWorkerJob>::sp pJob(
-                  new _ExecuteQueryBatchJob(m_pExecHandler, szSqlName,
-                      parameterList));
+                  new _ExecuteQueryBatchJob(m_pExecHandler, ulWaitTimeMilSec,
+                      szSqlName, parameterList));
 
-              delegateJob(pJob, ulWaitTimeMilSec);
+              delegateJob(pJob);
             }
           else
             {
@@ -371,13 +375,13 @@ namespace dbgw
         {
           checkClientIsValid();
 
-          ulWaitTimeMilSec = bindAsyncWorker(ulWaitTimeMilSec);
+          ulWaitTimeMilSec = bindExecutorHandler(ulWaitTimeMilSec);
 
           trait<_AsyncWorkerJob>::sp pJob(
-              new _ExecuteQueryBatchJob(m_pExecHandler, szSqlName,
-                  parameterList));
+              new _ExecuteQueryBatchJob(m_pExecHandler, ulWaitTimeMilSec,
+                  szSqlName, parameterList));
 
-          return delegateJobAsync(pJob, pCallBack, ulWaitTimeMilSec);
+          return delegateJobAsync(pJob, pCallBack);
         }
       catch (Exception &e)
         {
@@ -400,12 +404,13 @@ namespace dbgw
 
           m_bIsClosed = true;
 
-          releaseAsyncWorker();
+          releaseExecutorHandler(false);
 
           m_pService.reset();
           m_pTimer.reset();
+          m_pAsyncJobManager.reset();
+          m_pTimeoutJobManager.reset();
           m_pExecHandler.reset();
-          m_pAsyncWorker.reset();
         }
       catch (Exception &e)
         {
@@ -440,16 +445,16 @@ namespace dbgw
         {
           checkClientIsValid();
 
-          ulWaitTimeMilSec = bindAsyncWorker(ulWaitTimeMilSec);
+          ulWaitTimeMilSec = bindExecutorHandler(ulWaitTimeMilSec);
 
           if (ulWaitTimeMilSec > system::INFINITE_TIMEOUT)
             {
               trait<_AsyncWorkerJob>::sp pJob(
-                  new _CreateClobJob(m_pExecHandler));
+                  new _CreateClobJob(m_pExecHandler, ulWaitTimeMilSec));
 
-              delegateJob(pJob, ulWaitTimeMilSec);
+              trait<_AsyncWorkerJobResult>::sp pJobResult = delegateJob(pJob);
 
-              pLob = ((_CreateClobJob *) pJob.get())->getLob();
+              pLob = pJobResult->getLob();
             }
           else
             {
@@ -481,16 +486,16 @@ namespace dbgw
         {
           checkClientIsValid();
 
-          ulWaitTimeMilSec = bindAsyncWorker(ulWaitTimeMilSec);
+          ulWaitTimeMilSec = bindExecutorHandler(ulWaitTimeMilSec);
 
           if (ulWaitTimeMilSec > system::INFINITE_TIMEOUT)
             {
               trait<_AsyncWorkerJob>::sp pJob(
-                  new _CreateBlobJob(m_pExecHandler));
+                  new _CreateBlobJob(m_pExecHandler, ulWaitTimeMilSec));
 
-              delegateJob(pJob, ulWaitTimeMilSec);
+              trait<_AsyncWorkerJobResult>::sp pJobResult = delegateJob(pJob);
 
-              pLob = ((_CreateClobJob *) pJob.get())->getLob();
+              pLob = pJobResult->getLob();
             }
           else
             {
@@ -539,28 +544,38 @@ namespace dbgw
         }
     }
 
-    unsigned long bindAsyncWorker(unsigned long ulWaitTimeMilSec)
+    unsigned long bindExecutorHandler(unsigned long ulWaitTimeMilSec)
     {
       unsigned long ulRemainWaitTimeMilSec = ulWaitTimeMilSec;
       struct timeval now;
-      if (ulWaitTimeMilSec > system::INFINITE_TIMEOUT)
+      if (ulRemainWaitTimeMilSec > system::INFINITE_TIMEOUT)
         {
           gettimeofday(&now, NULL);
         }
 
-      if (m_pAsyncWorker == NULL
-          || m_pAsyncWorker->getState() == DBGW_WORKTER_STATE_TIMEOUT)
-        {
-          m_pAsyncWorker = m_configuration.getAsyncWorker();
-          if (m_pAsyncWorker == NULL)
-            {
-              throw getLastException();
-            }
-        }
-
       if (m_pExecHandler == NULL)
         {
-          m_pExecHandler = getExecutorHandler(ulRemainWaitTimeMilSec);
+          if (ulRemainWaitTimeMilSec > system::INFINITE_TIMEOUT)
+            {
+              trait<_AsyncWorkerJob>::sp pJob(
+                  new _GetExecutorHandlerJob(m_pService, m_pQueryMapper,
+                      ulRemainWaitTimeMilSec));
+
+              trait<_AsyncWorkerJobResult>::sp pJobResult = delegateJob(pJob);
+
+              m_pExecHandler = pJobResult->getExecutorHandler();
+              if (m_pExecHandler == NULL)
+                {
+                  throw pJobResult->getException();
+                }
+            }
+          else
+            {
+              trait<_ExecutorHandler>::sp pExecHandler(
+                  new _ExecutorHandler(m_pService, m_pQueryMapper));
+              m_pExecHandler = pExecHandler;
+            }
+
           if (ulRemainWaitTimeMilSec > system::INFINITE_TIMEOUT)
             {
               ulRemainWaitTimeMilSec -= system::getdifftimeofday(now);
@@ -577,45 +592,23 @@ namespace dbgw
     }
 
   private:
-    trait<_ExecutorHandler>::sp getExecutorHandler(
-        unsigned int ulWaitTimeMilSec)
+    trait<_AsyncWorkerJobResult>::sp delegateJob(trait<_AsyncWorkerJob>::sp pJob)
     {
-      if (ulWaitTimeMilSec > system::INFINITE_TIMEOUT)
+      if (pJob->getTimeOutMilSec() > system::INFINITE_TIMEOUT)
         {
-          trait<_AsyncWorkerJob>::sp pJob(
-              new _GetExecutorHandlerJob(m_pService, m_pQueryMapper));
-
-          delegateJob(pJob, ulWaitTimeMilSec);
-
-          return pJob->getExecutorHandler();
+          _TimerEvent *pEvent = new _TimerEvent(pJob);
+          m_pTimer->addEvent(pEvent);
         }
-      else
-        {
-          trait<_ExecutorHandler>::sp pExecHandler(
-              new _ExecutorHandler(m_pService, m_pQueryMapper));
-          return pExecHandler;
-        }
-    }
-
-    void delegateJob(trait<_AsyncWorkerJob>::sp pJob,
-        unsigned long ulWaitTimeMilSec)
-    {
-      uint64_t ulAbsWaitTimeMilSec = system::getCurrTimeMilSec()
-          + ulWaitTimeMilSec;
-
-      _TimerEvent *pEvent = new _TimerEvent(ulAbsWaitTimeMilSec, pJob);
-      m_pTimer->addEvent(pEvent);
 
       try
         {
-          m_pAsyncWorker->delegateJob(pJob, ulWaitTimeMilSec,
-              ulAbsWaitTimeMilSec);
+          return m_pTimeoutJobManager->delegateJob(pJob);
         }
       catch (Exception &e)
         {
           if (e.getErrorCode() == DBGW_ER_CLIENT_EXEC_TIMEOUT)
             {
-              releaseAsyncWorker();
+              releaseExecutorHandler(true);
             }
 
           throw;
@@ -623,43 +616,34 @@ namespace dbgw
     }
 
     int delegateJobAsync(trait<_AsyncWorkerJob>::sp pJob,
-        ExecAsyncCallBack pCallBack, unsigned long ulWaitTimeMilSec)
+        ExecAsyncCallBack pCallBack)
     {
-      uint64_t ulAbsWaitTimeMilSec = system::INFINITE_TIMEOUT;
-
-      if (ulWaitTimeMilSec > system::INFINITE_TIMEOUT)
+      if (pJob->getTimeOutMilSec() > system::INFINITE_TIMEOUT)
         {
-          ulAbsWaitTimeMilSec = system::getCurrTimeMilSec() + ulWaitTimeMilSec;
-
-          _TimerEvent *pEvent = new _TimerEvent(ulAbsWaitTimeMilSec, pJob);
+          _TimerEvent *pEvent = new _TimerEvent(pJob);
           m_pTimer->addEvent(pEvent);
         }
 
-      return m_pAsyncWorker->delegateJobAsync(pJob, pCallBack, ulWaitTimeMilSec,
-          ulAbsWaitTimeMilSec);
+      return m_pAsyncJobManager->delegateJobAsync(pJob, pCallBack);
     }
 
     int delegateJobAsync(trait<_AsyncWorkerJob>::sp pJob,
-        ExecBatchAsyncCallBack pCallBack, unsigned long ulWaitTimeMilSec)
+        ExecBatchAsyncCallBack pCallBack)
     {
-      uint64_t ulAbsWaitTimeMilSec = system::INFINITE_TIMEOUT;
-
-      if (ulWaitTimeMilSec > system::INFINITE_TIMEOUT)
+      if (pJob->getTimeOutMilSec() > system::INFINITE_TIMEOUT)
         {
-          ulAbsWaitTimeMilSec = system::getCurrTimeMilSec() + ulWaitTimeMilSec;
-
-          _TimerEvent *pEvent = new _TimerEvent(ulAbsWaitTimeMilSec, pJob);
+          _TimerEvent *pEvent = new _TimerEvent(pJob);
           m_pTimer->addEvent(pEvent);
         }
 
-      return m_pAsyncWorker->delegateJobAsync(pJob, pCallBack, ulWaitTimeMilSec,
-          ulAbsWaitTimeMilSec);
+      return m_pAsyncJobManager->delegateJobAsync(pJob, pCallBack);
     }
 
     void processError(const Exception &e)
     {
       if (e.getErrorCode() == DBGW_ER_NO_ERROR)
         {
+          clearException();
           return;
         }
 
@@ -673,39 +657,13 @@ namespace dbgw
         }
     }
 
-    void releaseAsyncWorker()
+    void releaseExecutorHandler(bool bNeedForceDrop)
     {
-      if (m_pAsyncWorker != NULL)
+      if (m_pExecHandler != NULL)
         {
-          if (m_pAsyncWorker->getState() == DBGW_WORKTER_STATE_IDLE)
-            {
-              if (m_pExecHandler != NULL)
-                {
-                  m_pExecHandler->release();
-                }
-
-              m_pAsyncWorker->release(false);
-            }
-          else if (m_pAsyncWorker->getState() == DBGW_WORKTER_STATE_BUSY)
-            {
-              m_pAsyncWorker->release(false);
-            }
-          else if (m_pAsyncWorker->getState() == DBGW_WORKTER_STATE_TIMEOUT)
-            {
-              if (m_pExecHandler != NULL)
-                {
-                  m_pExecHandler->release(true);
-                }
-
-              m_pAsyncWorker->release(true);
-            }
-        }
-      else if (m_pExecHandler != NULL)
-        {
-          m_pExecHandler->release(false);
+          m_pExecHandler->release(bNeedForceDrop);
         }
 
-      m_pAsyncWorker.reset();
       m_pExecHandler.reset();
     }
 
@@ -716,8 +674,9 @@ namespace dbgw
     trait<_Service>::sp m_pService;
     trait<_QueryMapper>::sp m_pQueryMapper;
     trait<_Timer>::sp m_pTimer;
+    trait<_AsyncWorkerJobManager>::sp m_pAsyncJobManager;
+    trait<_TimeoutWorkerJobManager>::sp m_pTimeoutJobManager;
     trait<_ExecutorHandler>::sp m_pExecHandler;
-    trait<_AsyncWorker>::sp m_pAsyncWorker;
     bool m_bIsClosed;
     bool m_bValidClient;
     bool m_bIsAutoCommit;

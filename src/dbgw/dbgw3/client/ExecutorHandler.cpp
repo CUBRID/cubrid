@@ -48,8 +48,8 @@ namespace dbgw
   {
   public:
     Impl(trait<_Service>::sp pService, trait<_QueryMapper>::sp pQueryMapper) :
-      m_bCheckValidation(false), m_bMakeResult(false), m_bExecuteQuery(false),
-      m_pService(pService), m_pQueryMapper(pQueryMapper),
+      m_bCheckValidation(false), m_bIsReleased(false), m_bMakeResult(false),
+      m_bExecuteQuery(false), m_pService(pService), m_pQueryMapper(pQueryMapper),
       m_executorList(m_pService->getExecutorList()),
       m_execType(DBGW_EXEC_TYPE_NORMAL)
     {
@@ -61,6 +61,15 @@ namespace dbgw
 
     void release(bool bIsForceDrop)
     {
+      if (m_bIsReleased)
+        {
+          return;
+        }
+
+      m_bIsReleased = true;
+
+      clearResult();
+
       trait<_Executor>::splist::iterator it = m_executorList.begin();
       for (; it != m_executorList.end(); it++)
         {
@@ -674,6 +683,7 @@ namespace dbgw
 
   private:
     bool m_bCheckValidation;
+    bool m_bIsReleased;
     bool m_bMakeResult;
     bool m_bExecuteQuery;
     trait<_Service>::sp m_pService;

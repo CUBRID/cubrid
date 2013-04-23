@@ -26,25 +26,20 @@ namespace dbgw
   class _AsyncWaiter
   {
   public:
-    _AsyncWaiter(unsigned long ulTimeOutMilSec,
-        uint64_t ulAbsTimeOutMilSec);
-    _AsyncWaiter(unsigned long ulTimeOutMilSec,
-        uint64_t ulAbsTimeOutMilSec, int nHandleId,
+    _AsyncWaiter(unsigned long ulTimeOutMilSec);
+    _AsyncWaiter(unsigned long ulTimeOutMilSec, int nHandleId,
         ExecAsyncCallBack pCallBack);
-    _AsyncWaiter(unsigned long ulTimeOutMilSec,
-        uint64_t ulAbsTimeOutMilSec, int nHandleId,
+    _AsyncWaiter(unsigned long ulTimeOutMilSec, int nHandleId,
         ExecBatchAsyncCallBack pBatchCallBack);
     virtual ~_AsyncWaiter();
 
     void wait();
     void notify();
-    void bindResultSet(trait<ClientResultSet>::sp pResultSet);
-    void bindResultSetList(const trait<ClientResultSet>::spvector &resultSetList);
-    void bindException(const Exception &e);
+    void bindJobResult(trait<_AsyncWorkerJobResult>::sp pJobResult);
 
   public:
+    trait<_AsyncWorkerJobResult>::sp getJobResult();
     unsigned long getTimeOutMilSec() const;
-    uint64_t getAbsTimeOutMilSec() const;
 
   private:
     class Impl;

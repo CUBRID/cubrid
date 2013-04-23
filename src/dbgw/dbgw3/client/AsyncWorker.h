@@ -55,16 +55,7 @@ namespace dbgw
         int nWorkerId);
     virtual ~_AsyncWorker();
 
-    void delegateJob(trait<_AsyncWorkerJob>::sp pJob,
-        unsigned long ulWaitTimeMilSec, uint64_t ulAbsWaitTimeMilSec);
-    int delegateJobAsync(trait<_AsyncWorkerJob>::sp pJob,
-        ExecAsyncCallBack pCallBack,
-        unsigned long ulWaitTimeMilSec = system::INFINITE_TIMEOUT,
-        uint64_t ulAbsWaitTimeMilSec = system::INFINITE_TIMEOUT);
-    int delegateJobAsync(trait<_AsyncWorkerJob>::sp pJob,
-        ExecBatchAsyncCallBack pCallBack,
-        unsigned long ulWaitTimeMilSec = system::INFINITE_TIMEOUT,
-        uint64_t ulAbsWaitTimeMilSec = system::INFINITE_TIMEOUT);
+    void delegateJob(trait<_AsyncWorkerJob>::sp pJob);
     void release(bool bIsForceDrop = false);
     void changeWorkerState(_AsyncWorkerState state,
         trait<_AsyncWorkerJob>::sp pJob = trait<_AsyncWorkerJob>::sp());
