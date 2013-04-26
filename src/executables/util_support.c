@@ -36,6 +36,7 @@
 #include "error_code.h"
 #include "util_support.h"
 #include "utility.h"
+#include "porting.h"
 
 static int
 util_parse_string_table (UTIL_MAP * util_map, int index, int count,

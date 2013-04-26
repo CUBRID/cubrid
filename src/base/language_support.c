@@ -3960,7 +3960,7 @@ lang_mht2str_utf8_exp (const LANG_COLLATION * lang_coll,
   const int exp_num = coll_data->uca_exp_num;
   unsigned int pseudo_key = 0;
   int level;
-  int rem_size;
+  int str_size;
 
   str_end = str + size;
 
@@ -3976,20 +3976,20 @@ lang_mht2str_utf8_exp (const LANG_COLLATION * lang_coll,
 	      break;
 	    }
 
-	  rem_size = str_end - str;
-	  cp = intl_utf8_to_cp (str, rem_size, &str_next);
+	  str_size = str_end - str;
+	  cp = intl_utf8_to_cp (str, str_size, &str_next);
 
 	  if (cp < (unsigned int) alpha_cnt)
 	    {
 	      COLL_CONTRACTION *contr = NULL;
 
 	      if (coll_data->count_contr > 0
-		  && rem_size >= coll_data->contr_min_size
+		  && str_size >= coll_data->contr_min_size
 		  && cp >= coll_data->cp_first_contr_offset
 		  && cp < (coll_data->cp_first_contr_offset
 			   + coll_data->cp_first_contr_count)
 		  && ((contr = lang_get_contr_for_string (coll_data, str,
-							  rem_size, cp))
+							  str_size, cp))
 		      != NULL))
 		{
 		  assert (contr != NULL);

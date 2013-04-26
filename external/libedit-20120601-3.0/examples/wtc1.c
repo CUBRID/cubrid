@@ -2,7 +2,6 @@
 #include <string.h>
 #include <signal.h>
 #include <sys/wait.h>
-#include <err.h>
 #include <ctype.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -12,6 +11,12 @@
 
 #include <histedit.h>
 
+#if !defined(_AIX)
+#include <err.h>
+#else
+#define err(fd, ...) do { fprintf(stderr, __VA_ARGS__); exit(1); } while (0)
+#define errx(fd, ...) do { fprintf(stderr, __VA_ARGS__); exit(1); } while (0)
+#endif
 
 static int continuation;
 volatile sig_atomic_t gotsig;

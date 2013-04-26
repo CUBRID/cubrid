@@ -9555,7 +9555,7 @@ static PT_NODE *
 pt_is_spec_referenced (PARSER_CONTEXT * parser, PT_NODE * node,
 		       void *void_arg, int *continue_walk)
 {
-  int spec_id = *(int *) void_arg;
+  UINTPTR spec_id = *(UINTPTR *) void_arg;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -9563,7 +9563,7 @@ pt_is_spec_referenced (PARSER_CONTEXT * parser, PT_NODE * node,
       && node->info.name.meta_class != PT_METHOD
       && node->info.name.meta_class != PT_INDEX_NAME)
     {
-      *(int *) void_arg = 0;
+      *(UINTPTR *) void_arg = 0;
       *continue_walk = PT_STOP_WALK;
       return node;
     }
@@ -9658,7 +9658,7 @@ pt_split_delete_stmt (PARSER_CONTEXT * parser, PT_NODE * delete_stmt)
     NULL;
   PT_NODE *prev_name = NULL, *new_del_stmts = NULL, *last_new_del_stmt = NULL;
   PT_NODE *rem_name = NULL;
-  int spec_id = 0;
+  UINTPTR spec_id = 0;
 
   if (delete_stmt == NULL || delete_stmt->node_type != PT_DELETE)
     {

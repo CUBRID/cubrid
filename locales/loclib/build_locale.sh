@@ -37,16 +37,24 @@ exit 1
 fi
 fi
 
+SYS=`uname -s`
+if [ "x$SYS" = "xAIX" ]; then
+GCC32="gcc -maix32"
+GCC64="gcc -maix64"
+else
+GCC32="gcc -m32"
+GCC64="gcc -m64"
+fi
 
 if [ "$1" = "64bit" ]
 then
-gcc $DBG_PARAM -m64 -Wall -fPIC -c locale.c
-gcc -m64 -shared -o libcubrid_$3.so locale.o
+$GCC64 $DBG_PARAM -Wall -fPIC -c locale.c
+$GCC64 -shared -o libcubrid_$3.so locale.o
 else
 if [ "$1" = "32bit" ]
 then
-gcc $DBG_PARAM -m32 -Wall -fPIC -c locale.c
-gcc -m32 -shared -o libcubrid_$3.so locale.o
+$GCC32 $DBG_PARAM -Wall -fPIC -c locale.c
+$GCC32 -shared -o libcubrid_$3.so locale.o
 else
 show_usage
 exit 1

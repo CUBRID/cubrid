@@ -195,6 +195,9 @@ public class TargetMethod {
 		argClassMap.put("[Ljava.sql.Time;", Time[].class);
 		argClassMap.put("[Ljava.sql.Timestamp;", Timestamp[].class);
 		argClassMap.put("[Lcubrid.sql.CUBRIDOID;", CUBRIDOID[].class);
+
+		argClassMap.put("[[Ljava.lang.Integer;", Integer[][].class);
+		argClassMap.put("[[Ljava.lang.Float;", Float[][].class);
 	}
 
 	private static void initdescriptorMap() {

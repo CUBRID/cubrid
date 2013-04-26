@@ -370,7 +370,11 @@ extern "C"
 #define errx(fd, ...) do { fprintf(stderr, __VA_ARGS__); exit(1); } while (0)
 #endif
   extern int cub_dirname_r (const char *path, char *pathbuf, size_t buflen);
-  extern double cub_ceil (double x);
+#if defined(AIX)
+  double aix_ceil (double x);
+#define ceil(x) aix_ceil(x)
+#endif
+
 #if !defined(HAVE_DIRNAME)
   char *dirname (const char *path);
 #endif				/* HAVE_DIRNAME */

@@ -177,7 +177,8 @@ cubrid_LDADD = @SA_LIB@
 cub_admin_SOURCES = \
 	$(EXECUTABLE_DIR)/util_admin.c \
 	$(EXECUTABLE_DIR)/util_support.c \
-	$(BASE_DIR)/getopt_long.c
+	$(BASE_DIR)/getopt_long.c \
+	$(BASE_DIR)/porting.c
 
 
 csql_SOURCES = $(EXECUTABLE_DIR)/csql_launcher.c \

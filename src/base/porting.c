@@ -1013,6 +1013,23 @@ cub_dirname_r (const char *path, char *pathbuf, size_t buflen)
   return (int) len;
 }
 
+#if defined(AIX)
+#undef ceil
+double
+aix_ceil (double x)
+{
+  double result = ceil (x);
+  /* e.g ceil(-0.5) should be -0, in AIX, it is 0 */
+  if ((x < 0) && (result == 0))
+    {
+      result = -result;
+    }
+  return result;
+}
+
+#define ceil(x) aix_ceil(x)
+#endif
+
 #if !defined(HAVE_DIRNAME)
 char *
 dirname (const char *path)

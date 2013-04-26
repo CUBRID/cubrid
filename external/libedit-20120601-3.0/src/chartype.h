@@ -40,6 +40,11 @@
 
 #ifdef WIDECHAR
 
+#if defined(_AIX)
+/* wchar_t uses ISO 10646-1 (2nd ed., published 2000-09-15) / Unicode 3.1.  */
+#define __STDC_ISO_10646__              200009L
+#endif
+
 /* Ideally we should also test the value of the define to see if it
  * supports non-BMP code points without requiring UTF-16, but nothing
  * seems to actually advertise this properly, despite Unicode 3.1 having

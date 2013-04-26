@@ -2379,7 +2379,7 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   int i1;
   float f1;
   double d1, d2 = 0.0;
-  DB_BIGINT bi1, bi2;
+  DB_BIGINT bi1, bi2, bi_tmp;
   double dtmp;
   unsigned char num[DB_NUMERIC_BUF_SIZE];
   char num_string[(2 * DB_MAX_NUMERIC_PRECISION) + 4];
@@ -2505,7 +2505,16 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     case DB_TYPE_BIGINT:
       bi1 = DB_GET_BIGINT (value1);
       dtmp = round_double ((double) bi1, d2);
-      DB_MAKE_BIGINT (result, (DB_BIGINT) dtmp);
+      bi_tmp = (DB_BIGINT) dtmp;
+#if defined(AIX)
+      /* in AIX, double to long will not overflow, make
+       * it the same as linux. */
+      if (dtmp == (double) DB_BIGINT_MAX)
+	{
+	  bi_tmp = DB_BIGINT_MIN;
+	}
+#endif
+      DB_MAKE_BIGINT (result, bi_tmp);
       break;
     case DB_TYPE_FLOAT:
       f1 = DB_GET_FLOAT (value1);
