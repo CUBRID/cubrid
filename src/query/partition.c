@@ -1917,7 +1917,7 @@ static MATCH_STATUS
 partition_match_pred_expr (PRUNING_CONTEXT * pinfo, const PRED_EXPR * pr,
 			   PRUNING_BITSET * pruned)
 {
-  MATCH_STATUS status = MATCH_OK;
+  MATCH_STATUS status = MATCH_NOT_FOUND;
   REGU_VARIABLE *part_expr = pinfo->partition_pred->func_regu;
 
   if (pr == NULL)
@@ -1935,6 +1935,14 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo, const PRED_EXPR * pr,
 	 * the right PRED_EXPR and merge or intersect the lists */
 	PRUNING_BITSET left_set, right_set;
 	MATCH_STATUS lstatus, rstatus;
+	BOOL_OP op = pr->pe.pred.bool_op;
+
+	if (op != B_AND && op != B_OR)
+	  {
+	    /* only know how to handle AND/OR predicates */
+	    status = MATCH_NOT_FOUND;
+	    break;
+	  }
 
 	pruningset_init (&left_set, PARTITIONS_COUNT (pinfo));
 	pruningset_init (&right_set, PARTITIONS_COUNT (pinfo));
@@ -1944,7 +1952,7 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo, const PRED_EXPR * pr,
 	rstatus = partition_match_pred_expr (pinfo, pr->pe.pred.rhs,
 					     &right_set);
 
-	if (pr->pe.pred.bool_op == B_AND)
+	if (op == B_AND)
 	  {
 	    /* do intersection between left and right */
 	    if (lstatus == MATCH_NOT_FOUND)
@@ -1966,8 +1974,9 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo, const PRED_EXPR * pr,
 		pruningset_copy (pruned, &left_set);
 	      }
 	  }
-	else if (pr->pe.pred.bool_op == B_OR)
+	else
 	  {
+	    /* this is the OR operator so union the two sets */
 	    if (lstatus == MATCH_NOT_FOUND || rstatus == MATCH_NOT_FOUND)
 	      {
 		status = MATCH_NOT_FOUND;
