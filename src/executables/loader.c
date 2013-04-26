@@ -265,11 +265,7 @@ static LDR_MOP_TEMPOID_MAPS *ldr_Mop_tempoid_maps = NULL;
 
 struct LDR_CONTEXT
 {
-
   DB_OBJECT *cls;		/* Current class                      */
-  DB_OBJECT *partition_of;	/* Current class's partition indo.    */
-  PARTITION_SELECT_INFO *psi;	/* partition selection information    */
-  int key_attr_idx;		/* partition key attr index(of attrs) */
 
   char *class_name;		/* Class name of current class        */
 
@@ -277,7 +273,8 @@ struct LDR_CONTEXT
   MOBJ mobj;			/* Memory object of instance          */
   int obj_pin;			/* pins returned when pinning the     */
   int class_pin;		/* current class                      */
-
+  int class_type;		/* not partitioned, partitioned,
+				 * partition                          */
   LDR_ATTDESC *attrs;		/* array of attribute descriptors for */
   /* the current class.                 */
   int num_attrs;		/* Number of attributes for class     */
@@ -625,7 +622,6 @@ static int check_commit (LDR_CONTEXT * context);
 static void ldr_restore_pin_and_drop_obj (LDR_CONTEXT * context,
 					  bool drop_obj);
 static int ldr_finish_context (LDR_CONTEXT * context);
-static int ldr_partition_info (LDR_CONTEXT * context);
 static int ldr_refresh_attrs (LDR_CONTEXT * context);
 static int update_default_count (CLASS_TABLE * table, OID * oid);
 static int update_default_instances_stats (LDR_CONTEXT * context);
@@ -1162,14 +1158,13 @@ static void
 ldr_clear_context (LDR_CONTEXT * context)
 {
   context->cls = NULL;
-  context->partition_of = NULL;
-  context->psi = NULL;
   context->class_name = NULL;
 
   context->obj = NULL;
   context->mobj = NULL;
   context->obj_pin = 0;
   context->class_pin = 0;
+  context->class_type = DB_NOT_PARTITIONED_CLASS;
 
   context->attrs = NULL;
 
@@ -1251,11 +1246,6 @@ ldr_clear_and_free_context (LDR_CONTEXT * context)
       free_and_init (context->class_name);
     }
 
-  if (context->psi)
-    {
-      do_clear_partition_select (context->psi);
-    }
-
   ldr_clear_context (context);
 
   return;
@@ -1282,7 +1272,7 @@ ldr_clear_and_free_context (LDR_CONTEXT * context)
  *    context(in/out): context
  * Note:
  *    This can be called by an upper level when an error is detected
- *    and we need to reset the interal loader state.
+ *    and we need to reset the internal loader state.
  *    Call this when serious errors are encountered and we need to
  *    stop immediately.  Probably we could longjmp out of parser here to
  *    avoid parsing the rest of the file.
@@ -1473,9 +1463,6 @@ ldr_act_attr (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type)
 {
   LDR_ATTDESC *attdesc;
   int err = NO_ERROR;
-  char *mem;
-  DB_VALUE curval;
-  MOP retobj;
 
   CHECK_SKIP ();
 
@@ -1529,42 +1516,6 @@ ldr_act_attr (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type)
       CHECK_ERR (err,
 		 (*(attdesc->setter[type])) (context, str, len,
 					     attdesc->att));
-      if (context->partition_of)
-	{
-	  if (context->psi &&
-	      context->key_attr_idx >= 0 &&
-	      context->key_attr_idx == context->next_attr)
-	    {
-	      if (type == LDR_NULL)
-		{
-		  DB_MAKE_NULL (&curval);
-		}
-	      else
-		{
-		  mem = context->mobj + attdesc->att->offset;
-		  CHECK_ERR (err,
-			     PRIM_GETMEM_NOCOPY (attdesc->att->domain->type,
-						 attdesc->att->domain, mem,
-						 &curval));
-		}
-	      CHECK_ERR (err,
-			 do_select_partition (context->psi, &curval,
-					      &retobj));
-	      if (retobj == NULL
-		  || ws_mop_compare (context->cls, retobj) != 0)
-		{
-		  int is_partition;
-		  if (sm_partitioned_class_type (context->cls, &is_partition,
-						 NULL, NULL) != NO_ERROR
-		      || is_partition != DB_PARTITIONED_CLASS)
-		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_PARTITION_WORK_FAILED, 0);
-		      CHECK_ERR (err, ER_PARTITION_WORK_FAILED);
-		    }
-		}
-	    }
-	}
     }
 
 error_exit:
@@ -4151,6 +4102,10 @@ ldr_reset_context (LDR_CONTEXT * context)
 	      display_error (0);
 	      goto error_exit;
 	    }
+
+	  /* set pruning type to be performed on this object */
+	  context->obj->pruning_type = context->class_type;
+
 	  /*
 	   * Mark this mop as released so that we can cull it when we
 	   * complete inserting this instance.
@@ -4361,80 +4316,6 @@ ldr_act_finish_line (LDR_CONTEXT * context)
 	}
     }
 
-  if (context->partition_of)
-    {
-      int is_partition = DB_NOT_PARTITIONED_CLASS;
-
-      err =
-	sm_partitioned_class_type (context->cls, &is_partition, NULL, NULL);
-
-      if (err == NO_ERROR && is_partition == DB_PARTITIONED_CLASS)
-	{
-	  /* partitioned parent class */
-	  MOP sub_table;
-	  DB_VALUE key_value, key_attname;
-
-	  db_make_null (&key_value);
-	  db_make_null (&key_attname);
-
-	  err = set_get_element (DB_GET_SET (context->psi->pattr),
-				 0, &key_attname);
-
-	  if (err == NO_ERROR)
-	    {
-	      err = db_get (context->obj, DB_GET_STRING (&key_attname),
-			    &key_value);
-	    }
-
-	  if (err == NO_ERROR)
-	    {
-	      err = do_select_partition (context->psi, &key_value,
-					 &sub_table);
-	    }
-
-	  if (err == NO_ERROR)
-	    {
-	      ldr_restore_pin_and_drop_obj (context, true);
-	      context->obj_pin = 0;
-	      context->class_pin = 0;
-	      context->obj = db_create_internal (sub_table);
-
-	      if (context->obj != NULL)
-		{
-		  ws_release_instance (context->obj);
-
-		  err =
-		    au_fetch_instance (context->obj, &context->mobj,
-				       AU_FETCH_UPDATE, AU_UPDATE);
-		  if (err == NO_ERROR)
-		    {
-		      context->next_attr = 0;
-		      ldr_process_constants (context->cons);
-
-		      err =
-			locator_flush_all_instances (context->obj->class_mop,
-						     DECACHE,
-						     LC_STOP_ON_ERROR);
-		    }
-		}
-	      else
-		{
-		  err = ER_PARTITION_WORK_FAILED;
-		}
-	    }
-
-	  db_value_clear (&key_value);
-	  db_value_clear (&key_attname);
-	}
-
-      if (err != NO_ERROR)
-	{
-	  err = ER_PARTITION_WORK_FAILED;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
-	  LDR_INCREMENT_ERR_COUNT (context, 1);
-	}
-    }
-
   ldr_restore_pin_and_drop_obj (context, ((context->err_count != 0) ||
 					  (err != NO_ERROR)) ||
 				skip_current_instance);
@@ -4589,68 +4470,6 @@ error_exit:
 }
 
 /*
- * ldr_partition_info -
- *    return:
- *    context():
- */
-static int
-ldr_partition_info (LDR_CONTEXT * context)
-{
-  SM_CLASS *smclass;
-  DB_OBJECT *root_op = NULL;
-  int error = NO_ERROR;
-  int au_save;
-
-  if (!context || !context->cls)
-    {
-      return -1;
-    }
-
-  AU_DISABLE (au_save);
-
-  if (au_fetch_class (context->cls, &smclass,
-		      AU_FETCH_READ, AU_SELECT) != NO_ERROR)
-    {
-      er_clear ();		/* not a partition class */
-      AU_ENABLE (au_save);
-      return NO_ERROR;
-    }
-
-  if (smclass->partition_of && context->partition_of != smclass->partition_of)
-    {
-      /* this is a partition, get the root table */
-      context->partition_of = smclass->partition_of;
-      context->psi = NULL;
-      context->key_attr_idx = -1;
-
-      error = do_get_partition_parent (context->cls, &root_op);
-      if (error != NO_ERROR)
-	{
-	  goto error_return;
-	}
-
-      if (root_op == NULL)
-	{
-	  /* this is the partitioned class */
-	  root_op = context->cls;
-	}
-
-      error = do_init_partition_select (root_op, &context->psi);
-    }
-  else
-    {
-      AU_ENABLE (au_save);
-
-      return NO_ERROR;
-    }
-
-error_return:
-  AU_ENABLE (au_save);
-
-  return error;
-}
-
-/*
  * ldr_act_init_context -
  *    return:
  *    context():
@@ -4717,11 +4536,9 @@ ldr_act_init_context (LDR_CONTEXT * context, const char *class_name, int len)
 	      ldr_abort ();
 	      CHECK_ERR (err, err);
 	    }
-	  if (context->psi)
-	    {
-	      do_clear_partition_select (context->psi);
-	    }
-	  if (ldr_partition_info (context) != NO_ERROR)
+	  err = sm_partitioned_class_type (class_mop, &context->class_type,
+					   NULL, NULL);
+	  if (err != NO_ERROR)
 	    {
 	      CHECK_CONTEXT_VALIDITY (context, true);
 	      ldr_abort ();
@@ -4859,7 +4676,6 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
   int i, n;
   LDR_ATTDESC *attdesc, *attrs_old;
   SM_CLASS *class_;
-  DB_VALUE ele;
 
   CHECK_SKIP ();
   RETURN_IF_NOT_VALID (context);
@@ -5097,24 +4913,6 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
     default:
       break;
     }
-  if (context->partition_of && context->psi)
-    {
-      err = set_get_element (context->psi->pattr->data.set, 0, &ele);
-      if (err != NO_ERROR || db_value_is_null (&ele))
-	{
-	  goto error_exit;
-	}
-      if (db_value_type (&ele) != DB_TYPE_STRING)
-	{
-	  pr_clear_value (&ele);
-	  goto error_exit;
-	}
-      if (intl_identifier_casecmp (attr_name, db_pull_string (&ele)) == 0)
-	{
-	  context->key_attr_idx = n;
-	}
-      pr_clear_value (&ele);
-    }
 
 error_exit:
   if (err != NO_ERROR)
@@ -5170,7 +4968,7 @@ ldr_refresh_attrs (LDR_CONTEXT * context)
 						   (SM_COMPONENT **) &
 						   attdesc->att));
     }
-  CHECK_ERR (err, ldr_partition_info (context));
+
 error_exit:
   return err;
 }

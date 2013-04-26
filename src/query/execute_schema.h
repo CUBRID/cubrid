@@ -53,24 +53,6 @@
 #define CHECK_PARTITION_PARENT  0x0001
 #define CHECK_PARTITION_SUBS    0x0010
 
-typedef struct partition_insert_cache PARTITION_INSERT_CACHE;
-struct partition_insert_cache
-{
-  PT_NODE *attr;
-  DB_VALUE *val;
-  DB_ATTDESC *desc;
-  struct partition_insert_cache *next;
-};
-
-typedef struct partition_select_info PARTITION_SELECT_INFO;
-struct partition_select_info
-{
-  DB_VALUE *ptype;
-  DB_VALUE *pexpr;
-  DB_VALUE *pattr;
-  SM_CLASS *smclass;
-};
-
 typedef struct client_update_info CLIENT_UPDATE_INFO;
 typedef struct client_update_class_info CLIENT_UPDATE_CLASS_INFO;
 /* Class info structure used in update execution on client */
@@ -98,16 +80,8 @@ struct client_update_info
   CLIENT_UPDATE_INFO *next;	/* next assignment from the same class */
 };
 
-extern int do_init_partition_select (MOP classobj,
-				     PARTITION_SELECT_INFO ** psi);
-extern int do_select_partition (PARTITION_SELECT_INFO * psi, DB_VALUE * val,
-				MOP * retobj);
-extern void do_clear_partition_select (PARTITION_SELECT_INFO * psi);
 extern int do_drop_partition (MOP class_, int drop_sub_flag,
 			      bool is_cascade_constraints);
-extern MOP do_is_partition_changed (PARSER_CONTEXT * parser,
-				    SM_CLASS * smclass, MOP editobj,
-				    CLIENT_UPDATE_INFO * first_assign);
 extern int do_is_partitioned_subclass (int *is_partitioned,
 				       const char *classname, char *keyattr);
 extern int do_get_partition_parent (DB_OBJECT * const classop,
