@@ -2270,6 +2270,18 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 							       orderby_for),
 					result->info.query.orderby_for);
 		}
+
+	      if (query_spec->info.query.limit != NULL)
+		{
+		  result->info.query.limit =
+		    parser_append_node (parser_copy_tree_list
+					(parser,
+					 query_spec->info.query.limit),
+					result->info.query.limit);
+
+		  result->info.query.rewrite_limit = 1;
+		}
+
 	    }
 	}			/* else */
       break;
