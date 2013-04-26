@@ -1605,6 +1605,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 272 %s ឃ្លានេះមិនអាចសរសេរក្នុងករណីរួម.
 273 Only one table within a view can be updated.
 274 Multiple insert targets not allowed.
+275 '%s' type is vclass, drop vclass with cascade constraints is not allowed.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 អស់ memoryជាក់ស្តែង: មិនអាចប្រើ %d bytes។

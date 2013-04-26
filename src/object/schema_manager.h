@@ -89,7 +89,7 @@ extern bool sm_Disable_updating_statistics;
 extern int sm_finish_class (SM_TEMPLATE * template_, MOP * classmop);
 extern int sm_update_class (SM_TEMPLATE * template_, MOP * classmop);
 extern int sm_update_class_auto (SM_TEMPLATE * template_, MOP * classmop);
-extern int sm_delete_class_mop (MOP op);
+extern int sm_delete_class_mop (MOP op, bool is_cascade_constraints);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int sm_delete_class (const char *name);
 #endif

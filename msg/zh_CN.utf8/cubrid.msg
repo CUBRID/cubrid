@@ -1605,6 +1605,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 272 %s 表达式不支持连接条件.
 273 Only one table within a view can be updated.
 274 Multiple insert targets not allowed.
+275 '%s' type is vclass, drop vclass with cascade constraints is not allowed.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %d 字节.

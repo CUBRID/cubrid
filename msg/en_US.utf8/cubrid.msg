@@ -1605,6 +1605,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 272 %s expression not allowed in join condition.
 273 Only one table within a view can be updated.
 274 Multiple insert targets not allowed.
+275 '%s' type is vclass, drop vclass with cascade constraints is not allowed.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %d bytes.

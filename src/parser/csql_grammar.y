@@ -582,6 +582,7 @@ typedef struct YYLTYPE
 /*{{{*/
 %type <boolean> opt_reverse
 %type <boolean> opt_unique
+%type <boolean> opt_cascade_constraints
 %type <number> opt_replace
 %type <number> opt_of_inner_left_right
 %type <number> opt_with_read_uncommitted
@@ -3469,13 +3470,14 @@ do_stmt
 	;
 
 drop_stmt
-	: DROP opt_class_type class_spec_list
+	: DROP opt_class_type class_spec_list opt_cascade_constraints
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_DROP);
 			if (node)
 			  {
 			    node->info.drop.spec_list = $3;
+			    node->info.drop.is_cascade_constraints = $4;
 
 			    if ($2 == PT_EMPTY)
 			      node->info.drop.entity_type = PT_MISC_DUMMY;
@@ -3487,13 +3489,14 @@ drop_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| DROP opt_class_type IF EXISTS class_spec_list
+	| DROP opt_class_type IF EXISTS class_spec_list opt_cascade_constraints
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_DROP);
 			if (node)
 			  {
 			    node->info.drop.spec_list = $5;
 			    node->info.drop.if_exists = true;
+			    node->info.drop.is_cascade_constraints = $6;
 			    if ($2 == PT_EMPTY)
 			      node->info.drop.entity_type = PT_MISC_DUMMY;
 			    else
@@ -4607,6 +4610,21 @@ opt_table_type
 		{{
 
 			$$ = PT_CLASS;
+
+		DBG_PRINT}}
+	;
+
+opt_cascade_constraints
+	: /* empty */
+		{{
+
+			$$ = false;
+
+		DBG_PRINT}}
+	| CASCADE CONSTRAINTS
+		{{
+
+			$$ = true;
 
 		DBG_PRINT}}
 	;

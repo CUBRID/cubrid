@@ -8748,6 +8748,7 @@ pt_init_drop (PT_NODE * p)
 {
   p->info.drop.spec_list = 0;
   p->info.drop.if_exists = false;
+  p->info.drop.is_cascade_constraints = false;
   return p;
 }
 
@@ -8773,6 +8774,10 @@ pt_print_drop (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, "if exists ");
     }
   q = pt_append_varchar (parser, q, r1);
+  if (p->info.drop.is_cascade_constraints)
+    {
+      q = pt_append_nulstring (parser, q, " cascade constraints");
+    }
 
   return q;
 }

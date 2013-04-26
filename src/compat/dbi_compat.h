@@ -3262,6 +3262,8 @@ extern DB_SEQ *db_seq_copy (DB_SEQ * seq);
 extern DB_OBJECT *db_create_class (const char *name);
 extern DB_OBJECT *db_create_vclass (const char *name);
 extern int db_drop_class (DB_OBJECT * classobj);
+extern int db_drop_class_ex (DB_OBJECT * classobj,
+			     bool is_cascade_constraints);
 extern int db_rename_class (DB_OBJECT * classobj, const char *new_name);
 
 extern int db_add_index (DB_OBJECT * classobj, const char *attname);

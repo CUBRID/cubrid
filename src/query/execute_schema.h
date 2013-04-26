@@ -103,7 +103,8 @@ extern int do_init_partition_select (MOP classobj,
 extern int do_select_partition (PARTITION_SELECT_INFO * psi, DB_VALUE * val,
 				MOP * retobj);
 extern void do_clear_partition_select (PARTITION_SELECT_INFO * psi);
-extern int do_drop_partition (MOP class_, int drop_sub_flag);
+extern int do_drop_partition (MOP class_, int drop_sub_flag,
+			      bool is_cascade_constraints);
 extern MOP do_is_partition_changed (PARSER_CONTEXT * parser,
 				    SM_CLASS * smclass, MOP editobj,
 				    CLIENT_UPDATE_INFO * first_assign);

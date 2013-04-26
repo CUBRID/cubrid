@@ -1914,6 +1914,7 @@ struct pt_drop_info
   PT_NODE *internal_stmts;	/* internally created statements to handle TEXT */
   PT_MISC_TYPE entity_type;	/* PT_VCLASS, PT_CLASS   */
   bool if_exists;		/* IF EXISTS clause for DROP TABLE */
+  bool is_cascade_constraints;	/* whether to drop cascade FK key */
 };
 
 /* DROP USER INFO */

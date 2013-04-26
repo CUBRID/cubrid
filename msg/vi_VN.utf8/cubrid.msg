@@ -1605,6 +1605,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 272 %s biểu thức không được cho phép trong điều kiện chung.
 273 Only one table within a view can be updated.
 274 Multiple insert targets not allowed.
+275 '%s' type is vclass, drop vclass with cascade constraints is not allowed.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Không đủ bộ nhớ ảo: không thể cấp phát %d bytes.

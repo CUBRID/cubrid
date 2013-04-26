@@ -301,6 +301,7 @@ EXPORTS
     db_drop
     db_drop_attribute
     db_drop_class
+    db_drop_class_ex
     db_drop_class_attribute
     db_drop_class_method
     db_drop_class_resolution

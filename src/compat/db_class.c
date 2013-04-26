@@ -103,6 +103,18 @@ db_create_class (const char *name)
 int
 db_drop_class (MOP class_)
 {
+  return db_drop_class_ex (class_, false);
+}
+
+/*
+ * db_drop_class_ex() - Implement to remove class.
+ * return   : error code
+ * class(in): class object
+ * is_cascade_constraints(in): whether drop ralative FK constrants
+ */
+int
+db_drop_class_ex (MOP class_, bool is_cascade_constraints)
+{
   int retval;
 
   CHECK_CONNECT_ERROR ();
@@ -113,7 +125,7 @@ db_drop_class (MOP class_)
 
   if (!retval)
     {
-      retval = sm_delete_class_mop (class_);
+      retval = sm_delete_class_mop (class_, is_cascade_constraints);
     }
 
   return (retval);

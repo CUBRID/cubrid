@@ -186,7 +186,7 @@ struct sm_partition_alter_info
   int promoted_count;		/* number of promoted partition */
 };
 
-static int drop_class_name (const char *name);
+static int drop_class_name (const char *name, bool is_cascade_constraints);
 
 static int do_alter_one_clause_with_template (PARSER_CONTEXT * parser,
 					      PT_NODE * alter);
@@ -2093,9 +2093,10 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
  * drop_class_name() - This static routine drops a class by name.
  *   return: Error code
  *   name(in): Class name to drop
+ *   is_cascade_constraints(in): whether drop relative FK constraints
  */
 static int
-drop_class_name (const char *name)
+drop_class_name (const char *name, bool is_cascade_constraints)
 {
   DB_OBJECT *class_mop;
 
@@ -2103,7 +2104,7 @@ drop_class_name (const char *name)
 
   if (class_mop)
     {
-      return db_drop_class (class_mop);
+      return db_drop_class_ex (class_mop, is_cascade_constraints);
     }
   else
     {
@@ -2159,7 +2160,9 @@ do_drop (PARSER_CONTEXT * parser, PT_NODE * statement)
       entity_list = entity_spec->info.spec.flat_entity_list;
       for (entity = entity_list; entity != NULL; entity = entity->next)
 	{
-	  error = drop_class_name (entity->info.name.original);
+	  error = drop_class_name (entity->info.name.original,
+				   statement->info.drop.
+				   is_cascade_constraints);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -7240,11 +7243,12 @@ do_is_partitioned_subclass (int *is_partitioned,
  *   return: Error code
  *   class(in):
  *   drop_sub_flag(in):
+ *   is_cascade_constraints(in):
  *
  * Note:
  */
 int
-do_drop_partition (MOP class_, int drop_sub_flag)
+do_drop_partition (MOP class_, int drop_sub_flag, bool is_cascade_constraints)
 {
   DB_OBJLIST *objs;
   SM_CLASS *smclass, *subclass;
@@ -7293,7 +7297,7 @@ do_drop_partition (MOP class_, int drop_sub_flag)
 	  objs = objs->next;
 	  if (drop_sub_flag)
 	    {
-	      error = sm_delete_class_mop (delobj);
+	      error = sm_delete_class_mop (delobj, is_cascade_constraints);
 	      if (error != NO_ERROR)
 		{
 		  goto fail_return;
@@ -8131,7 +8135,7 @@ do_drop_partition_list (MOP class_, PT_NODE * name_list)
       if (subclass->partition_of)
 	{
 	  delpart = subclass->partition_of;
-	  error = sm_delete_class_mop (classcata);
+	  error = sm_delete_class_mop (classcata, false);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -8917,7 +8921,7 @@ do_remove_partition_post (PARSER_CONTEXT * parser,
 	  error = er_errid ();
 	  return error;
 	}
-      error = sm_delete_class_mop (subclass_mop);
+      error = sm_delete_class_mop (subclass_mop, false);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -9107,7 +9111,7 @@ do_coalesce_partition_post (PARSER_CONTEXT * parser, PT_NODE * alter,
 	  error = er_errid ();
 	  return error;
 	}
-      error = sm_delete_class_mop (subclass_mop);
+      error = sm_delete_class_mop (subclass_mop, false);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -9307,7 +9311,7 @@ do_reorganize_partition_post (PARSER_CONTEXT * parser, PT_NODE * alter,
 	  error = er_errid ();
 	  return error;
 	}
-      error = sm_delete_class_mop (subclass_mop);
+      error = sm_delete_class_mop (subclass_mop, false);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -11784,7 +11788,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	  do_rollback_on_error = true;
 
-	  error = drop_class_name (class_name);
+	  error = drop_class_name (class_name, false);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;

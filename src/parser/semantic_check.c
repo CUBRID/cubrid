@@ -9278,7 +9278,8 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
   parser_walk_tree (parser, node,
 		    pt_flat_spec_pre, &chk_parent, pt_continue_walk, NULL);
 
-  if (node->info.drop.entity_type != PT_MISC_DUMMY)
+  if (node->info.drop.entity_type != PT_MISC_DUMMY
+      || node->info.drop.is_cascade_constraints)
     {
       const char *cls_nam;
       PT_MISC_TYPE typ = node->info.drop.entity_type;
@@ -9292,15 +9293,27 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 	      && (cls_nam = name->info.name.original) != NULL
 	      && (db_obj = db_find_class (cls_nam)) != NULL)
 	    {
-	      name->info.name.db_object = db_obj;
-	      pt_check_user_owns_class (parser, name);
-	      if ((typ == PT_CLASS && !db_is_class (db_obj))
-		  || (typ == PT_VCLASS && !db_is_vclass (db_obj)))
+	      if (typ != PT_MISC_DUMMY)
 		{
-		  PT_ERRORmf2 (parser, node,
-			       MSGCAT_SET_PARSER_SEMANTIC,
-			       MSGCAT_SEMANTIC_IS_NOT_A,
-			       cls_nam, pt_show_misc_type (typ));
+		  name->info.name.db_object = db_obj;
+		  pt_check_user_owns_class (parser, name);
+		  if ((typ == PT_CLASS && !db_is_class (db_obj))
+		      || (typ == PT_VCLASS && !db_is_vclass (db_obj)))
+		    {
+		      PT_ERRORmf2 (parser, node,
+				   MSGCAT_SET_PARSER_SEMANTIC,
+				   MSGCAT_SEMANTIC_IS_NOT_A,
+				   cls_nam, pt_show_misc_type (typ));
+		    }
+		}
+
+	      if (node->info.drop.is_cascade_constraints
+		  && db_is_vclass (db_obj))
+		{
+		  PT_ERRORmf (parser, node,
+			      MSGCAT_SET_PARSER_SEMANTIC,
+			      MSGCAT_SEMANTIC_VIEW_CASCADE_CONSTRAINTS_NOT_ALLOWED,
+			      cls_nam);
 		}
 	    }
 	}

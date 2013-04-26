@@ -473,6 +473,7 @@ static int lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_);
 static int update_class (SM_TEMPLATE * template_, MOP * classmop,
 			 int auto_res);
 static void remove_class_triggers (MOP classop, SM_CLASS * class_);
+static int sm_drop_cascade_foreign_key (SM_CLASS * class_);
 static int sm_exist_index (MOP classop, const char *idxname, BTID * btid);
 static char *sm_default_constraint_name (const char *class_name,
 					 DB_CONSTRAINT_TYPE type,
@@ -12903,16 +12904,72 @@ remove_class_triggers (MOP classop, SM_CLASS * class_)
 }
 
 /*
+ * drop_cascade_foreign_key() - if table include PK, drop the relative
+ *               foreign key constraint.
+ *  return : error code
+ *  class_(in): class structure
+ */
+static int
+sm_drop_cascade_foreign_key (SM_CLASS * class_)
+{
+  int save, error = NO_ERROR;
+  SM_CLASS_CONSTRAINT *pk;
+  MOP fk_class_mop;
+  SM_TEMPLATE *template_;
+
+  assert (class_ != NULL);
+
+  pk = classobj_find_cons_primary_key (class_->constraints);
+  while (pk != NULL && pk->fk_info != NULL)
+    {
+      fk_class_mop = ws_mop (&pk->fk_info->self_oid, sm_Root_class_mop);
+      if (fk_class_mop == NULL)
+	{
+	  error = er_errid ();
+	  goto end;
+	}
+
+      template_ = dbt_edit_class (fk_class_mop);
+      if (template_ == NULL)
+	{
+	  error = er_errid ();
+	  goto end;
+	}
+
+      error = dbt_drop_constraint (template_, DB_CONSTRAINT_FOREIGN_KEY,
+				   pk->fk_info->name, NULL, 0);
+      if (error != NULL)
+	{
+	  dbt_abort_class (template_);
+	  goto end;
+	}
+
+      if (dbt_finish_class (template_) == NULL)
+	{
+	  dbt_abort_class (template_);
+	  error = er_errid ();
+	  goto end;
+	}
+
+      pk = classobj_find_cons_primary_key (class_->constraints);
+    }
+
+end:
+  return error;
+}
+
+/*
  * sm_delete_class() - This will delete a class from the schema and
  *    delete all instances of the class from the database.  All classes that
  *    inherit from this class will be updated so that inherited components
  *    are removed.
  *   return: NO_ERROR on success, non-zero for ERROR
  *   op(in): class object
+ *   is_cascade_constraints(in): whether drop relative FK constrants
  */
 
 int
-sm_delete_class_mop (MOP op)
+sm_delete_class_mop (MOP op, bool is_cascade_constraints)
 {
   int error = NO_ERROR;
   DB_OBJLIST *oldsupers, *oldsubs;
@@ -12943,7 +13000,7 @@ sm_delete_class_mop (MOP op)
 	  return error;
 	}
 
-      error = do_drop_partition (op, 1);
+      error = do_drop_partition (op, 1, is_cascade_constraints);
       if (error != NO_ERROR)
 	{
 	  if (error != ER_LK_UNILATERALLY_ABORTED)
@@ -12996,8 +13053,19 @@ sm_delete_class_mop (MOP op)
   if (pk && pk->fk_info
       && classobj_is_pk_referred (op, pk->fk_info, false, &fk_name))
     {
-      ERROR2 (error, ER_FK_CANT_DROP_PK_REFERRED, pk->name, fk_name);
-      goto end;
+      if (is_cascade_constraints)
+	{
+	  error = sm_drop_cascade_foreign_key (class_);
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	}
+      else
+	{
+	  ERROR2 (error, ER_FK_CANT_DROP_PK_REFERRED, pk->name, fk_name);
+	  goto end;
+	}
     }
 
   /* remove auto_increment serial object if exist */
@@ -13235,7 +13303,7 @@ sm_delete_class (const char *name)
     }
   else
     {
-      error = sm_delete_class_mop (classop);
+      error = sm_delete_class_mop (classop, false);
     }
 
   return error;
