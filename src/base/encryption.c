@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -45,7 +45,7 @@
 
 #if defined (WINDOWS)
 static BYTE des_Keyblob[] = {
-  0x08, 0x02, 0x00, 0x00, 0x01, 0x66, 0x00, 0x00,	// BLOB header 
+  0x08, 0x02, 0x00, 0x00, 0x01, 0x66, 0x00, 0x00,	// BLOB header
   0x08, 0x00, 0x00, 0x00,	// key length, in bytes
   'U', '9', 'a', '$', 'y', '1', '@', 'z'	// DES key with parity
 };
@@ -169,7 +169,7 @@ crypt_encrypt_printable (const char *line, char *crypt, int maxlen)
   unsigned char padchar;
 
   inlen = strnlen (line, sizeof (inbuf));
-  strncpy (inbuf, line, inlen);
+  strncpy ((char *) inbuf, line, inlen);
 
   /* Insert PKCS style padding */
   padchar = 8 - (inlen % 8);
@@ -183,7 +183,7 @@ crypt_encrypt_printable (const char *line, char *crypt, int maxlen)
   inlen += padlen;
 
 #if defined (HAVE_RPC_DES_CRYPT_H)
-  if (DES_FAILED (ecb_crypt (crypt_Key, inbuf, inlen, DES_ENCRYPT)))
+  if (DES_FAILED (ecb_crypt (crypt_Key, (char *) inbuf, inlen, DES_ENCRYPT)))
     {
       return -1;
     }
@@ -203,7 +203,7 @@ crypt_encrypt_printable (const char *line, char *crypt, int maxlen)
 
 /*
  * crypt_decrypt_printable - decrypts a line that was encrypted with
- *                           crypt_encrypt_printable 
+ *                           crypt_encrypt_printable
  *   return: number of chars in decrypted string
  *   crypt(in): buffer to decrypt
  *   decrypt(out): decrypted output buffer
@@ -259,7 +259,7 @@ crypt_decrypt_printable (const char *crypt, char *decrypt, int maxlen)
 }
 
 /*
- * crypt_encrypt_sha1_printable - 
+ * crypt_encrypt_sha1_printable -
  *   return: number of chars in encrypted string
  *   line(in): line to hash
  *   crypt(in): hashed output buffer

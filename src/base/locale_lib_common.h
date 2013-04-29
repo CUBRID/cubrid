@@ -44,7 +44,7 @@ typedef unsigned short int UCA_L4_W;
 typedef struct coll_contraction COLL_CONTRACTION;
 struct coll_contraction
 {
-  /* WARNING: Changing the order of the elements breaks locale library 
+  /* WARNING: Changing the order of the elements breaks locale library
    * backwards compatibility :
    *  - 'save_contraction_to_C_file' function needs to be updated
    *  - checksum of collation with contraction changes */

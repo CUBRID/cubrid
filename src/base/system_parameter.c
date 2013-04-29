@@ -5416,6 +5416,9 @@ sysprm_set_system_parameter_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value)
     case PRM_SIZE:
       prm_set_size_value (prm_id, value.size);
       break;
+    default:
+      assert_release (0);
+      break;
     }
 }
 
@@ -6961,6 +6964,9 @@ sysprm_pack_sysprm_value (char *ptr, SYSPRM_VALUE value,
     case PRM_SIZE:
       ptr = or_pack_int64 (ptr, value.size);
       break;
+    default:
+      assert_release (0);
+      break;
     }
 
   return ptr;
@@ -7103,7 +7109,11 @@ sysprm_unpack_sysprm_value (char *ptr, SYSPRM_VALUE * value,
       break;
 
     case PRM_SIZE:
-      ptr = or_unpack_int64 (ptr, &value->size);
+      {
+	INT64 size;
+	ptr = or_unpack_int64 (ptr, &size);
+	value->size = (UINT64) size;
+      }
       break;
 
     default:
@@ -7212,10 +7222,14 @@ sysprm_unpack_session_parameters (char *ptr,
 
   for (prm_index = 0; prm_index < NUM_SESSION_PRM; prm_index++)
     {
+      int flag;
+
       prm = &session_params[prm_index];
 
       ptr = or_unpack_int (ptr, (int *) (&prm->prm_id));
-      ptr = or_unpack_int (ptr, &prm->flag);
+      ptr = or_unpack_int (ptr, &flag);
+      prm->flag = (unsigned int) flag;
+
       ptr = or_unpack_int (ptr, &prm->datatype);
       ptr = sysprm_unpack_sysprm_value (ptr, &prm->value, prm->datatype);
       if (ptr == NULL)
@@ -7751,6 +7765,9 @@ sysprm_set_sysprm_value_from_parameter (SYSPRM_VALUE * prm_value,
 	    prm_value->integer_list = NULL;
 	  }
       }
+      break;
+    default:
+      assert_release (0);
       break;
     }
 }

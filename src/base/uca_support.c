@@ -230,7 +230,7 @@ static void build_compressed_uca_w_l13 (const UCA_COLL_CE_LIST * ce_list,
 					UCA_L13_W * uca_w_l13);
 static void build_uca_w_l4 (const UCA_COLL_CE_LIST * ce_list,
 			    UCA_L4_W * uca_w_l4);
-/* 
+/*
  * load_ducet - Read the DUCET file (standardised and availabe at Unicode.org)
  *		into the ducet array; parse it and load all the information in
  *		the ducet storage.
@@ -368,7 +368,7 @@ load_ducet (const char *file_path, const int sett_contr_policy)
 	  continue;
 	}
 
-      /* Count number of chars in Uncode item e.g. 
+      /* Count number of chars in Uncode item e.g.
        * codenum will be greater that 1 if contraction found.
        */
       codenum = 1;
@@ -390,7 +390,7 @@ load_ducet (const char *file_path, const int sett_contr_policy)
 
       for (i = 0; i < codenum; i++)
 	{
-	  if (cp_int_list[i] < 0 || cp_int_list[i] > MAX_UCA_CODEPOINT)
+	  if (cp_int_list[i] > MAX_UCA_CODEPOINT)
 	    {
 	      is_allowed = false;
 	      cp_list_count = i;
@@ -456,7 +456,7 @@ load_ducet (const char *file_path, const int sett_contr_policy)
 	  is_variable = ((*s) == '*') ? true : false;
 
 	  /* Now, in weights[...] we have the collation elements stored as strings
-	   * We decompose the N collation elements into 4 weight values 
+	   * We decompose the N collation elements into 4 weight values
 	   * and store them into uca[code].weight[1..4][1..N] */
 	  while (*s)
 	    {
@@ -597,7 +597,7 @@ exit:
   return err_status;
 }
 
-/* 
+/*
  * init_uca_instance - Prepares one UCA instance for processing
  * Returns :  ERR_OUT_OF_VIRTUAL_MEMORY - if an allocation fails;
  *	      NO_ERROR - success if otherwise.
@@ -701,7 +701,7 @@ exit:
   return err_status;
 }
 
-/* 
+/*
  * destroy_uca_instance - Unload the UCa array and all auxiliary arrays.
  * Returns :  NO_ERROR.
  */
@@ -763,7 +763,7 @@ destroy_uca_instance (void)
   return NO_ERROR;
 }
 
-/* 
+/*
  * compare_ce_list - compares two lists of collation elements using the
  *		     settings of locale
  * Returns : -1 if ce_list1 collates before ce_list2;
@@ -852,7 +852,7 @@ compare_ce_list (UCA_COLL_CE_LIST * ce_list1, UCA_COLL_CE_LIST * ce_list2,
 }
 
 /*
- * uca_process_collation - Calls all the functions which 
+ * uca_process_collation - Calls all the functions which
  *			   actually do the processing.
  * Returns: ER_LOC_GEN if a tailoring rule occurs;
  *	    ER_OUT_OF_VIRTUAL_MEMORY if some memory allocation fails;
@@ -963,10 +963,10 @@ exit:
 }
 
 /*
- * apply_tailoring_rules - Loop through the tailoring rules in 
- *			   LOCALE_COLLATION::coll.rules, parse the composed 
- *			   rules if any, and call the function which does 
- *			   the tailoring e.g. execute the rule on the 
+ * apply_tailoring_rules - Loop through the tailoring rules in
+ *			   LOCALE_COLLATION::coll.rules, parse the composed
+ *			   rules if any, and call the function which does
+ *			   the tailoring e.g. execute the rule on the
  *			   already processed data.
  * Returns: error status
  * lc (in/out) : collation settings and optimization results.
@@ -1319,10 +1319,10 @@ exit:
   return err_status;
 }
 
-/* 
+/*
  * compute_weights_per_level_stats - Build statistics regarding the number of
- *				     occurences of each weight on each level 
- *				     in each collation element. 
+ *				     occurences of each weight on each level
+ *				     in each collation element.
  */
 
 static int
@@ -1391,7 +1391,7 @@ exit:
 }
 
 #if 0
-/* 
+/*
  * compact_weight_values - rewrites the weight values for one level in UCA
  *			   storage so that the weights are compact values.
  *
@@ -1466,7 +1466,7 @@ exit:
   return err_status;
 }
 
-/* 
+/*
  * build_weight_remap_filter - builds a filter for remapping weights to a
  *			       compact value range.
  *
@@ -1500,7 +1500,7 @@ build_weight_remap_filter (const UCA_W * w_ocurr, const int max_weight,
 }
 #endif
 
-/* 
+/*
  * build_key_list_groups - builds the collation key lists for each L1 weight
  *			   value
  * Returns: error status
@@ -1558,7 +1558,7 @@ exit:
   return err_status;
 }
 
-/* 
+/*
  * sort_coll_key_lists - Sorts all the collation keys lists grouped
  *			 by weight values of level 1 weight
  * lc(in) : the collation settings.
@@ -1574,13 +1574,13 @@ sort_coll_key_lists (LOCALE_COLLATION * lc)
     }
 }
 
-/* 
+/*
  * sort_one_coll_key_list - Sorts the collation keys grouped in a list
  *			    having the same weight value (= weight index)
  *			    at level 1 in UCA
  * lc(in) : the collation settings.
  * weight_index(in) : the index of the collation keys list to be sorted.
- * 
+ *
  * Note : The collation keys list located at weight_key_list[weight_index] was
  *	  built from collation keys (codepoints or contractions) which have on
  *	  level 1 weight the same value
@@ -1607,7 +1607,7 @@ sort_one_coll_key_list (LOCALE_COLLATION * lc, int weight_index)
  *
  *  Note: This function is used in the first step of computing 'next' sequence
  *	  If result of 'uca_comp_func_coll_key' is zero, the comparison
- *	  is performed on codepooints values. The purpose is to provide a 
+ *	  is performed on codepooints values. The purpose is to provide a
  *	  'deterministic comparison' in order to eliminate unpredictable
  *	  results of sort algorithm (qsort) when computing 'next' fields.
  *
@@ -1673,11 +1673,11 @@ uca_comp_func_coll_key (const void *arg1, const void *arg2)
   return compare_ce_list (ce_list1, ce_list2, uca_opt);
 }
 
-/* 
- * get_ce_list_from_coll_key - get collation element list associated to a 
+/*
+ * get_ce_list_from_coll_key - get collation element list associated to a
  *			       collation key using current UCA storage
  *
- * Returns: collation element list 
+ * Returns: collation element list
  * key(in) : UCA colllation key
  */
 static UCA_COLL_CE_LIST *
@@ -1712,11 +1712,11 @@ get_ce_list_from_coll_key (const UCA_COLL_KEY * key)
   return NULL;
 }
 
-/* 
- * create_opt_weights - Analyze the weight_key_list, compare collation 
- *			elements fo weight keys based on locale settings, 
- *			set the new weights for the keys, create the 
- *			next_key array containing the relationship 
+/*
+ * create_opt_weights - Analyze the weight_key_list, compare collation
+ *			elements fo weight keys based on locale settings,
+ *			set the new weights for the keys, create the
+ *			next_key array containing the relationship
  *			key -> next key in collation.
  * Returns: error status
  * lc(in/out) : contains the collation settings and optimization results.
@@ -1913,7 +1913,7 @@ exit:
   return err_status;
 }
 
-/* 
+/*
  * optimize_coll_contractions - optimizes collation contractions list so that
  *			        contractions are stored in binary ascending
  *				order
@@ -2130,12 +2130,12 @@ exit:
   return err_status;
 }
 
-/* 
+/*
  * set_next_value_for_coll_key - sets the next collation key
  * Returns: error status
  *
  * lc(in/out) : contains the collation settings and optimization results
- * coll_key(in) : collation key 
+ * coll_key(in) : collation key
  * next_key(in) : next key value to set
  */
 static int
@@ -2186,7 +2186,7 @@ set_next_value_for_coll_key (LOCALE_COLLATION * lc,
  * Returns: error status
  *
  * lc(in/out) : contains the collation settings and optimization results
- * contr_key(in) : collation key 
+ * contr_key(in) : collation key
  * wv(in) : weight value to assign for optimized contraction
  * use_expansions(in) :
  */
@@ -2236,7 +2236,7 @@ add_opt_coll_contraction (LOCALE_COLLATION * lc,
   *p_buf = '\0';
 
   opt_contr->wv = wv;
-  assert (p_buf - opt_contr->c_buf < sizeof (opt_contr->c_buf));
+  assert (p_buf - opt_contr->c_buf < (int) sizeof (opt_contr->c_buf));
   opt_contr->size = p_buf - opt_contr->c_buf;
 
   if (use_expansions)
@@ -2270,7 +2270,7 @@ exit:
   return err_status;
 }
 
-/* 
+/*
  * uca_free_data - Unloads data used by UCA
  * Returns:
  */
@@ -2297,8 +2297,8 @@ uca_free_data (void)
   *(ducet.prev_file_path) = '0';
 }
 
-/* 
- * apply_tailoring_rule_cp - Calls the functions which apply the rules 
+/*
+ * apply_tailoring_rule_cp - Calls the functions which apply the rules
  *			     based on their type.
  * Returns: ER_LOC_GEN if cannot apply rule, or the rule has an invald type;
  *	    ER_OUT_OF_VIRTUAL_MEMORY if moving the tailored codepoint inside
@@ -2311,9 +2311,9 @@ uca_free_data (void)
  *		first rule having "anchor" as the anchor key).
  * lvl(in) : weight level used for tailoring (see T_LEVEL for values).
  *
- * Note : Alter the collation elements of the collated element in order for 
- *	  the keys to comply with the specified rule after collation and 
- *	  optimizations. 
+ * Note : Alter the collation elements of the collated element in order for
+ *	  the keys to comply with the specified rule after collation and
+ *	  optimizations.
  *	  If the rule is a "before" rule, checks if it can be applied.
  */
 static int
@@ -2328,7 +2328,7 @@ apply_tailoring_rule (TAILOR_DIR dir, UCA_COLL_KEY * anchor_key,
   return apply_tailoring_rule_w_dir (dir, anchor_key, key, ref_key, lvl);
 }
 
-/* 
+/*
  * apply_tailoring_rule_identity - Apply an identity tailoring rule.
  *
  * Returns: error status
@@ -2379,7 +2379,7 @@ exit:
   return err_status;
 }
 
-/* 
+/*
  * apply_tailoring_rule_w_dir - Applies an After/Before -rule
  * Returns: error status
  *
@@ -2390,9 +2390,9 @@ exit:
  *		   first rule having "anchor" as the anchor key).
  * lvl(in) : weight level used for tailoring (see T_LEVEL for values).
  *
- * Note : Alter the collation elements of the collated element in order for 
- *	  the symbols to comply with the specified rule after collation and 
- *	  optimizations. 
+ * Note : Alter the collation elements of the collated element in order for
+ *	  the symbols to comply with the specified rule after collation and
+ *	  optimizations.
  *	  Collisions are avoided.
  */
 static int
@@ -2510,7 +2510,7 @@ apply_tailoring_rule_w_dir (TAILOR_DIR dir, UCA_COLL_KEY * anchor_key,
 
       if (get_key_with_ce_sublist (&new_ce, lvl) != NULL)
 	{
-	  /* If a collision occurs, go further into the collation element 
+	  /* If a collision occurs, go further into the collation element
 	   * list */
 
 	  if (dir == TAILOR_AFTER)
@@ -2563,12 +2563,12 @@ exit:
 }
 
 /*
- * get_key_with_ce_sublist - Tests if a collation key's collation element list 
- *			     matches uca_item up to lvl(level) and 
+ * get_key_with_ce_sublist - Tests if a collation key's collation element list
+ *			     matches uca_item up to lvl(level) and
  *			     uca_item.num.
  * Returns  : collation key if found, or
  *	      NULL if no partial match was found.
- * uca_item(in) : an object of type UCA_COLL_CE_LIST, containing the list of 
+ * uca_item(in) : an object of type UCA_COLL_CE_LIST, containing the list of
  *		  collation elements to search for.
  * lvl(in) : the level up to which the matching should be done.
  */
@@ -2800,7 +2800,7 @@ string_to_coll_ce_list (char *s, UCA_COLL_CE_LIST * ui)
     {
       switch (state)
 	{
-	case 0:		/* read a '[' (first char from the standard string representation 
+	case 0:		/* read a '[' (first char from the standard string representation
 				 * of a collation element) */
 	  c = str[0];
 	  if (c != '[')
@@ -2837,7 +2837,7 @@ string_to_coll_ce_list (char *s, UCA_COLL_CE_LIST * ui)
 	    }
 	  weight_index++;
 	  break;
-	case 2:		/* Read a dot '.' = the weight separator inside the 
+	case 2:		/* Read a dot '.' = the weight separator inside the
 				 * string representation of a collation element */
 	  c = str[0];
 	  if (c != '.')
@@ -2848,7 +2848,7 @@ string_to_coll_ce_list (char *s, UCA_COLL_CE_LIST * ui)
 	  str++;
 	  state = 1;
 	  break;
-	case 3:		/* Read a ']' (last char from the standard string representation 
+	case 3:		/* Read a ']' (last char from the standard string representation
 				 * of a collation element)*/
 	  c = str[0];
 	  if (c != ']')
@@ -2899,7 +2899,7 @@ string_to_coll_ce_list (char *s, UCA_COLL_CE_LIST * ui)
 }
 
 /*
- * apply_absolute_tailoring_rules - Function for applying the tailor 
+ * apply_absolute_tailoring_rules - Function for applying the tailor
  *				    rules strored in lc->tail_coll.cub_rules.
  * Retuns : ER_LOC_GEN if an invalid rule is found;
  *	    NO_ERROR(0) if parsing is successful.
@@ -2959,8 +2959,8 @@ apply_absolute_tailoring_rules (LOCALE_COLLATION * lc)
 	  goto exit;
 	}
 
-      /* Validate starting weight, step and the number of codepoints in the 
-       * range to be tailored, so that there are no overflows above 
+      /* Validate starting weight, step and the number of codepoints in the
+       * range to be tailored, so that there are no overflows above
        * MAX_WEIGHT (0xFFFF). */
       is_overflow = false;
       for (weight_index = 0; weight_index < MAX_WEIGHT_LEVELS; weight_index++)
@@ -3035,11 +3035,11 @@ exit:
   return err_status;
 }
 
-/* 
- * add_key_to_weight_stats_list - Adds a collation key to the list of 
- *		keys having the selected weight inside the first 
+/*
+ * add_key_to_weight_stats_list - Adds a collation key to the list of
+ *		keys having the selected weight inside the first
  *		collation element on level 1
- * Returns : error code 
+ * Returns : error code
  * key(in): the key to add in a list.
  * wv(in) : the weight value corresponding to the list where the key will be
  *	    added.
@@ -3068,13 +3068,13 @@ exit:
   return err_status;
 }
 
-/* 
- * remove_key_from_weight_stats_list - Remove a collation key from the list of 
- *		keys having a selected weight inside the first 
+/*
+ * remove_key_from_weight_stats_list - Remove a collation key from the list of
+ *		keys having a selected weight inside the first
  *		collation element on level 1
  * Returns : error status
  * cp(in)	    : the codepoint to remove from the list.
- * weight_index(in) : the identifying weight value for the list where 
+ * weight_index(in) : the identifying weight value for the list where
  *		      the codepoint will be removed from.
  */
 static int
@@ -3130,14 +3130,14 @@ exit:
   return err_status;
 }
 
-/* 
- * change_key_weight_list - Removes a collation key from the list of 
- *		keys having a selected weight inside the first 
- *		collation element on level 1, and moving it to another 
+/*
+ * change_key_weight_list - Removes a collation key from the list of
+ *		keys having a selected weight inside the first
+ *		collation element on level 1, and moving it to another
  *		simmilar list.
  * Returns : error status
  * key(in) : the key to move
- * w_from(in) : the identifying weight value for the list from where 
+ * w_from(in) : the identifying weight value for the list from where
  *		the key will be removed.
  * w_to(in) :  the identifying weight value for the list where the key will be
  *	       added.
@@ -3700,7 +3700,7 @@ exit:
  *
  *  Note: This function is used in the first step of computing 'next' sequence
  *	  If result of 'uca_comp_func_coll_list_exp' is zero, the comparison
- *	  is performed on codepooints values. The purpose is to provide a 
+ *	  is performed on codepooints values. The purpose is to provide a
  *	  'deterministic comparison' in order to eliminate unpredictable
  *	  results of sort algorithm (qsort) when computing 'next' fields.
  */
@@ -3767,9 +3767,9 @@ uca_comp_func_coll_list_exp (const void *arg1, const void *arg2)
  * build_compressed_uca_w_l13 - builds the equivalent UCA weights for levels
  *			        1 to 3 of a collation element list
  *
- *  Note : 
+ *  Note :
  *  The encoding of levels 1 to 3 is :
- *  33333332 22222222 1111111 1111111 
+ *  33333332 22222222 1111111 1111111
  *  Ranges
  *  L1 = 0000-ffff
  *  L2 = 0000-01ff

@@ -55,7 +55,7 @@
 #endif
 
 #if defined (ENABLE_UNUSED_FUNCTION)
-/* EUC-KR characters may be used with ISO-88591-1 charset when 
+/* EUC-KR characters may be used with ISO-88591-1 charset when
  * PRM_SINGLE_BYTE_COMPARE is 'no'
  * EUC-KR have either 3 (when first byte is SS3) or two bytes (use this macro
  * to check the byte range) */
@@ -1329,7 +1329,7 @@ intl_next_char_pseudo_kor (unsigned char *s, INTL_CODESET codeset,
  *
  *  Note: it is assumed that both strings contain at least one character of
  *	  the given codeset.
- *	  
+ *
  */
 int
 intl_cmp_char (const unsigned char *s1, const unsigned char *s2,
@@ -1370,7 +1370,7 @@ intl_cmp_char (const unsigned char *s1, const unsigned char *s2,
  *
  *  Note: same as intl_cmp_char, except that with ISO-8859-1 codeset, some
  *	  bytes are handled as Korean characters.
- *	  
+ *
  */
 int
 intl_cmp_char_pseudo_kor (unsigned char *s1, unsigned char *s2,
@@ -1421,7 +1421,7 @@ intl_cmp_char_pseudo_kor (unsigned char *s1, unsigned char *s2,
  *   size(in): max size in bytes to compare
  *
  *  Note: this function is used only in context of 'replace' string function
- *	  strncmp function should be used. 
+ *	  strncmp function should be used.
  */
 int
 intl_kor_cmp (unsigned char *s1, unsigned char *s2, int size)
@@ -1474,7 +1474,7 @@ intl_kor_cmp (unsigned char *s1, unsigned char *s2, int size)
  *     set.  This function will retrieve the pad character for a given
  *     code set.  The pad character is written into an array that must
  *     allocated by the caller.
- *	  
+ *
  */
 void
 intl_pad_char (const INTL_CODESET codeset, unsigned char *pad_char,
@@ -1517,7 +1517,7 @@ intl_pad_char (const INTL_CODESET codeset, unsigned char *pad_char,
  *     set.  This function will retrieve the pad character for a given
  *     code set.  The pad character is written into an array that must
  *     allocated by the caller.
- *	  
+ *
  */
 int
 intl_pad_size (INTL_CODESET codeset)
@@ -1923,7 +1923,7 @@ intl_reverse_string (unsigned char *src, unsigned char *dst,
  * intl_is_max_bound_chr () -
  *
  * return: check if chr points to a char representing the upper bound
- *	   codepoint in the selected codeset, for LIKE index optimization. 
+ *	   codepoint in the selected codeset, for LIKE index optimization.
  *
  * codeset(in) : the codeset to consider
  * chr(in) : upper bound, as bytes
@@ -1961,14 +1961,14 @@ intl_is_max_bound_chr (INTL_CODESET codeset, const unsigned char *chr)
 /*
  * intl_is_min_bound_chr () -
  *
- * return: check if chr points to a ISO char / UTF-8 codepoint representing 
+ * return: check if chr points to a ISO char / UTF-8 codepoint representing
  *	   the lower bound codepoint in the selected codeset, for LIKE
- *         index optimization. 
+ *         index optimization.
  *
  * codeset(in) : the codeset to consider
  * chr(in) : upper bound, as UTF-8 bytes
  *
- * Note: 'chr' buffer should be able to store at least 1 more byte, for 
+ * Note: 'chr' buffer should be able to store at least 1 more byte, for
  *	  one space char.
  */
 bool
@@ -1983,9 +1983,9 @@ intl_is_min_bound_chr (INTL_CODESET codeset, const unsigned char *chr)
 }
 
 /*
- * intl_set_min_bound_chr () - sets chr to a byte array representing 
- *			       the lowest bound codepoint in the selected 
- *			       codeset, for LIKE index optimization. 
+ * intl_set_min_bound_chr () - sets chr to a byte array representing
+ *			       the lowest bound codepoint in the selected
+ *			       codeset, for LIKE index optimization.
  *
  * return: the number of bytes added to chr
  *
@@ -2001,9 +2001,9 @@ intl_set_min_bound_chr (INTL_CODESET codeset, char *chr)
 }
 
 /*
- * intl_set_max_bound_chr () - sets chr to a byte array representing 
- *			       the up-most bound codepoint in the selected 
- *			       codeset, for LIKE index optimization. 
+ * intl_set_max_bound_chr () - sets chr to a byte array representing
+ *			       the up-most bound codepoint in the selected
+ *			       codeset, for LIKE index optimization.
  *
  * return: the number of bytes added to chr
  *
@@ -2012,7 +2012,7 @@ intl_set_min_bound_chr (INTL_CODESET codeset, char *chr)
  *
  * Note: 'chr' buffer should be able to store at least one more char:
  *	 4 bytes (UTF-8), 2 bytes (EUC-KR), 1 byte (ISO-8859-1).
- *	    
+ *
  */
 int
 intl_set_max_bound_chr (INTL_CODESET codeset, char *chr)
@@ -2254,7 +2254,7 @@ intl_count_utf8_bytes (unsigned char *s, int length_in_chars)
  *   s (in): the UTF-8 buffer holding character to be converted
  *   size(in): size of UTF-8 buffer
  *   d (out): output buffer
- *   next (out): pointer to next character 
+ *   next (out): pointer to next character
  *
  *  Note : allocated size of 'd' is assumed to be large enough to fit any
  *	   UTF-8 character
@@ -2320,7 +2320,7 @@ intl_char_tolower_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s,
  *   s (in): the UTF-8 buffer holding character to be converted
  *   size(in): size of UTF-8 buffer
  *   d (out): output buffer
- *   next (out): pointer to next character 
+ *   next (out): pointer to next character
  *
  *  Note : allocated size of 'd' is assumed to be large enough to fit any
  *	   UTF-8 character
@@ -2618,7 +2618,7 @@ intl_case_match_tok (const INTL_LANG lang_id, const INTL_CODESET codeset,
  *   skip_size2(out):  bytes to skip from str2
  *   identifier_mode(in): true if compares identifiers, false otherwise
  *
- *  Note : skip_size1, skip_size2 are valid only when strings are equal 
+ *  Note : skip_size1, skip_size2 are valid only when strings are equal
  *	   (returned value is zero).
  */
 static int
@@ -2678,7 +2678,7 @@ intl_strcasecmp_utf8_one_cp (const ALPHABET_DATA * alphabet,
       return 0;
     }
 
-  /* 
+  /*
    * Multipliers can be either 1 or 2, as imposed by the LDML parsing code.
    * Currently, alphabets with both multipliers equal to 2 are not supported
    * for case sensitive comparisons.
@@ -2789,8 +2789,8 @@ intl_strcasecmp_utf8_one_cp (const ALPHABET_DATA * alphabet,
 }
 
 /*
- * intl_identifier_casecmp() - compares two identifiers strings 
- *			       case insensitive 
+ * intl_identifier_casecmp() - compares two identifiers strings
+ *			       case insensitive
  *   return: 0 if strings are equal, -1 if str1 < str2 , 1 if str1 > str2
  *   str1(in):
  *   str2(in):
@@ -2810,8 +2810,8 @@ intl_identifier_casecmp (const char *str1, const char *str2)
 }
 
 /*
- * intl_identifier_ncasecmp() - compares two identifiers strings 
- *				case insensitive 
+ * intl_identifier_ncasecmp() - compares two identifiers strings
+ *				case insensitive
  *   return:
  *   str1(in):
  *   str2(in):
@@ -2991,7 +2991,7 @@ intl_identifier_lower (const char *src, char *dst)
 	(void) intl_tolower_utf8 (alphabet, (unsigned char *) src,
 				  (unsigned char *) dst,
 				  length_in_bytes, &d_size);
-	d = dst + d_size;
+	d = (unsigned char *) dst + d_size;
       }
       break;
 
@@ -3125,7 +3125,7 @@ intl_identifier_upper (const char *src, char *dst)
 	(void) intl_toupper_utf8 (alphabet, (unsigned char *) src,
 				  (unsigned char *) dst,
 				  length_in_bytes, &d_size);
-	d = dst + d_size;
+	d = (unsigned char *) dst + d_size;
       }
       break;
     case INTL_CODESET_ISO88591:
@@ -3243,7 +3243,7 @@ check_truncation:
       name[length_bytes] = '\0';
     }
 
-  /* ensure that lower or upper versions of identifier do not exceed maximum 
+  /* ensure that lower or upper versions of identifier do not exceed maximum
    * allowed size of an identifier */
 #if (INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER > 1)
   if (intl_identifier_upper_string_size (name) > ident_max_size
@@ -3345,7 +3345,7 @@ intl_identifier_mht_1strlowerhash (const void *key,
 /*
  * intl_strncat() - concatenates at most len characters from 'src' to 'dest'
  *   return: number of bytes copied
- *   dest(in/out): 
+ *   dest(in/out):
  *   src(in);
  *   len(in): length to concatenate (in chars)
  *
@@ -3672,7 +3672,7 @@ intl_backskip_spaces (const char *str_begin, const char *str_end,
 
 /*
  * intl_cp_to_utf8() - converts a unicode codepoint to its
- *                            UTF-8 encoding 
+ *                            UTF-8 encoding
  *  return: number of bytes for UTF-8; 0 means not encoded
  *  codepoint(in) : Unicode code point (32 bit value)
  *  utf8_seq(in/out) : pre-allocated buffer for UTF-8 sequence
@@ -3720,7 +3720,7 @@ intl_cp_to_utf8 (const unsigned int codepoint, unsigned char *utf8_seq)
 }
 
 /*
- * intl_cp_to_dbcs() - converts a codepoint to DBCS encoding 
+ * intl_cp_to_dbcs() - converts a codepoint to DBCS encoding
  *  return: number of bytes for encoding; 0 means not encoded
  *  codepoint(in) : code point (16 bit value)
  *  byte_flag(in): flag array : 0: single byte char,
@@ -3767,7 +3767,7 @@ intl_cp_to_dbcs (const unsigned int codepoint,
 
 /*
  * intl_utf8_to_cp() - converts a UTF-8 encoded char to unicode codepoint
- *  return: unicode code point; 0xffffffff means error 
+ *  return: unicode code point; 0xffffffff means error
  *  utf8(in) : buffer for UTF-8 char
  *  size(in) : size of buffer
  *  next_char(in/out): pointer to next character
@@ -3831,9 +3831,9 @@ intl_utf8_to_cp (const unsigned char *utf8, const int size,
 /*
  * intl_back_utf8_to_cp() - converts a UTF-8 encoded char to unicode codepoint
  *			    but starting from the last byte of a character
- *  return: unicode code point; 0xffffffff means error 
+ *  return: unicode code point; 0xffffffff means error
  *
- *  utf8_start(in) : start of buffer 
+ *  utf8_start(in) : start of buffer
  *  utf8_last(in) : pointer to last byte of buffer (and last byte of last
  *		    character)
  *  last_byte__prev_char(in/out) : pointer to last byte of previous character
@@ -3880,7 +3880,7 @@ intl_back_utf8_to_cp (const unsigned char *utf8_start,
 
 /*
  * intl_dbcs_to_cp() - converts a DBCS encoded char to DBCS codepoint
- *  return: DBCS code point; 0xffffffff means error 
+ *  return: DBCS code point; 0xffffffff means error
  *  seq(in) : buffer for DBCS char
  *  size(in) : size of buffer
  *  byte_flag(in) : array of flags for lead bytes
@@ -3909,7 +3909,7 @@ intl_dbcs_to_cp (const unsigned char *seq, const int size,
 
 
 /*
- * intl_utf8_to_cp_list() - converts a UTF-8 encoded string to a list of 
+ * intl_utf8_to_cp_list() - converts a UTF-8 encoded string to a list of
  *                          unicode codepoint
  *  return: number of codepoints found in string
  *  utf8(in) : buffer for UTF-8 char
@@ -4240,7 +4240,7 @@ intl_check_utf8 (const unsigned char *buf, int size, char **pos)
 
 /*
  * intl_check_euckr - Checks if a string contains valid EUC-KR sequences
- *			    
+ *
  *
  *   return: 0 if valid,
  *	     1 if contains and invalid byte in one char
@@ -4397,8 +4397,11 @@ int
 intl_text_single_byte_to_utf8 (const char *in_buf, const int in_size,
 			       char **out_buf, int *out_size)
 {
-  return intl_text_single_byte_to_utf8_ext (lang_get_txt_conv (), in_buf,
-					    in_size, out_buf, out_size);
+  return intl_text_single_byte_to_utf8_ext (lang_get_txt_conv (),
+					    (const unsigned char *) in_buf,
+					    in_size,
+					    (unsigned char **) out_buf,
+					    out_size);
 }
 
 /*
@@ -4416,9 +4419,11 @@ intl_text_single_byte_to_utf8 (const char *in_buf, const int in_size,
  */
 int
 intl_text_single_byte_to_utf8_ext (void *t,
-				   const char *in_buf, const int in_size,
-				   char **out_buf, int *out_size)
+				   const unsigned char *in_buf,
+				   const int in_size, unsigned char **out_buf,
+				   int *out_size)
 {
+
   const unsigned char *p_in = NULL;
   unsigned char *p_out = NULL;
   TEXT_CONVERSION *txt_conv;
@@ -4431,8 +4436,8 @@ intl_text_single_byte_to_utf8_ext (void *t,
 
   txt_conv = (TEXT_CONVERSION *) t;
 
-  p_in = (const unsigned char *) in_buf;
-  while (p_in < (const unsigned char *) in_buf + in_size)
+  p_in = in_buf;
+  while (p_in < in_buf + in_size)
     {
       if (*p_in++ >= 0x80)
 	{
@@ -4450,7 +4455,7 @@ intl_text_single_byte_to_utf8_ext (void *t,
   if (*out_buf == NULL)
     {
       /* a ISO8859-X character is encoded on maximum 2 bytes in UTF-8 */
-      *out_buf = malloc (in_size * 2 + 1);
+      *out_buf = (unsigned char *) malloc (in_size * 2 + 1);
       if (*out_buf == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
@@ -4468,9 +4473,7 @@ intl_text_single_byte_to_utf8_ext (void *t,
     }
 
   assert (txt_conv->text_last_cp > 0);
-  for (p_in = (const unsigned char *) in_buf,
-       p_out = (unsigned char *) *out_buf;
-       p_in < (const unsigned char *) in_buf + in_size; p_in++)
+  for (p_in = in_buf, p_out = *out_buf; p_in < in_buf + in_size; p_in++)
     {
       if (*p_in >= txt_conv->text_first_cp && *p_in <= txt_conv->text_last_cp)
 	{
@@ -4500,13 +4503,13 @@ intl_text_single_byte_to_utf8_ext (void *t,
     }
 
   *(p_out) = '\0';
-  *out_size = p_out - (unsigned char *) *(out_buf);
+  *out_size = p_out - *(out_buf);
 
   return NO_ERROR;
 }
 
 /*
- * intl_text_utf8_to_single_byte() - converts a buffer containing UTF-8 text 
+ * intl_text_utf8_to_single_byte() - converts a buffer containing UTF-8 text
  *				     to ISO 8859-X encoding
  *
  *   return: error code
@@ -4606,7 +4609,7 @@ intl_text_utf8_to_single_byte (const char *in_buf, const int in_size,
 }
 
 /*
- * intl_init_conv_iso8859_1_to_utf8() - initializes conversion map from 
+ * intl_init_conv_iso8859_1_to_utf8() - initializes conversion map from
  *				        ISO 8859-1 (Latin 1) to UTF-8
  *  return:
  */
@@ -4650,7 +4653,7 @@ intl_init_conv_iso8859_1_to_utf8 (void)
 }
 
 /*
- * intl_init_conv_iso8859_9_to_utf8() - initializes conversion map from 
+ * intl_init_conv_iso8859_9_to_utf8() - initializes conversion map from
  *				        ISO 8859-9 (turkish) to UTF-8
  *  return:
  *
@@ -4736,8 +4739,9 @@ int
 intl_text_dbcs_to_utf8 (const char *in_buf, const int in_size,
 			char **out_buf, int *out_size)
 {
-  return intl_text_dbcs_to_utf8_ext (lang_get_txt_conv (), in_buf, in_size,
-				     out_buf, out_size);
+  return intl_text_dbcs_to_utf8_ext (lang_get_txt_conv (),
+				     (const unsigned char *) in_buf, in_size,
+				     (unsigned char **) out_buf, out_size);
 }
 
 /*
@@ -4754,8 +4758,9 @@ intl_text_dbcs_to_utf8 (const char *in_buf, const int in_size,
  *   out_size(in/out): size of string (NUL terminator not included)
  */
 int
-intl_text_dbcs_to_utf8_ext (void *t, const char *in_buf, const int in_size,
-			    char **out_buf, int *out_size)
+intl_text_dbcs_to_utf8_ext (void *t, const unsigned char *in_buf,
+			    const int in_size, unsigned char **out_buf,
+			    int *out_size)
 {
   const unsigned char *p_in = NULL;
   unsigned char *p_out = NULL;
@@ -4769,8 +4774,8 @@ intl_text_dbcs_to_utf8_ext (void *t, const char *in_buf, const int in_size,
 
   txt_conv = (TEXT_CONVERSION *) t;
 
-  p_in = (const unsigned char *) in_buf;
-  while (p_in < (const unsigned char *) in_buf + in_size)
+  p_in = in_buf;
+  while (p_in < in_buf + in_size)
     {
       if (*p_in++ >= 0x80)
 	{
@@ -4793,7 +4798,7 @@ intl_text_dbcs_to_utf8_ext (void *t, const char *in_buf, const int in_size,
        * Also it may contain single byte characters which may expand to 3
        * bytes characters in UTF-8
        * Apply a safe expansion of 3 */
-      *out_buf = malloc (in_size * 3 + 1);
+      *out_buf = (unsigned char *) malloc (in_size * 3 + 1);
       if (*out_buf == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
@@ -4811,14 +4816,11 @@ intl_text_dbcs_to_utf8_ext (void *t, const char *in_buf, const int in_size,
     }
 
   assert (txt_conv->text_last_cp > 0);
-  for (p_in = (const unsigned char *) in_buf,
-       p_out = (unsigned char *) *out_buf;
-       p_in < (const unsigned char *) in_buf + in_size;)
+  for (p_in = in_buf, p_out = *out_buf; p_in < in_buf + in_size;)
     {
       unsigned char *p_next;
       unsigned int text_cp = intl_dbcs_to_cp (p_in,
-					      (const unsigned char *) in_buf +
-					      in_size - p_in,
+					      in_buf + in_size - p_in,
 					      txt_conv->byte_flag,
 					      &p_next);
 
@@ -4848,18 +4850,18 @@ intl_text_dbcs_to_utf8_ext (void *t, const char *in_buf, const int in_size,
 	    }
 	}
 
-      assert (p_next <= (const unsigned char *) in_buf + in_size);
+      assert (p_next <= in_buf + in_size);
       p_in = p_next;
     }
 
   *(p_out) = '\0';
-  *out_size = p_out - (unsigned char *) *(out_buf);
+  *out_size = p_out - *(out_buf);
 
   return NO_ERROR;
 }
 
 /*
- * intl_text_utf8_to_dbcs() - converts a buffer containing UTF-8 text 
+ * intl_text_utf8_to_dbcs() - converts a buffer containing UTF-8 text
  *			      to DBCS encoding
  *
  *   return: error code
@@ -5636,7 +5638,7 @@ intl_get_currency_symbol_position (const DB_CURRENCY currency)
 }
 
 /*
- * intl_get_money_ISO_symbol() - returns a string representing the currency 
+ * intl_get_money_ISO_symbol() - returns a string representing the currency
  *				 ISO symbol, as a 3 letter string.
  *   return: currency ISO symbol
  *   currency(int): currency code

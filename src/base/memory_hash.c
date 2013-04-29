@@ -1952,7 +1952,8 @@ mht_get_hash_number (const int ht_size, const DB_VALUE * val)
 	    }
 	  else
 	    {
-	      hashcode = MHT2STR_COLL (db_get_string_collation (val), ptr, i);
+	      hashcode = MHT2STR_COLL (db_get_string_collation (val),
+				       (unsigned char *) ptr, i);
 	      hashcode %= ht_size;
 	    }
 	  break;

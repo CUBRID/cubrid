@@ -79,8 +79,8 @@ typedef struct
   char *std_val;		/* Standard value as defined by Unicode Consortium */
 } CANONICAL_COMBINING_CLASS;
 
-/* The maximum number of codepoints to which a single codepoint can be 
- * rewritten in canonically fully decomposed form. 
+/* The maximum number of codepoints to which a single codepoint can be
+ * rewritten in canonically fully decomposed form.
  */
 #define UNICODE_DECOMP_MAP_CP_COUNT 4
 
@@ -130,7 +130,7 @@ static int comp_func_grouping_unicode_cp_mapping (const void *arg1,
 						  const void *arg2);
 
 
-/* 
+/*
  * unicode_process_alphabet() - Process alphabet (casing) data for given
  *				locale
  *
@@ -394,11 +394,11 @@ error:
   return er_status;
 }
 
-/* 
- * load_unicode_data() - Loads the UNICODEDATA file (standardised 
+/*
+ * load_unicode_data() - Loads the UNICODEDATA file (standardised
  *			 and availabe at Unicode.org).
  * Returns: error code
- * ld(in) : locale data 
+ * ld(in) : locale data
  */
 static int
 load_unicode_data (const LOCALE_DATA * ld)
@@ -615,7 +615,7 @@ error:
   return status;
 }
 
-/* 
+/*
  * unicode_free_data() - Frees Unicode data structures.
  * Returns:
  */
@@ -631,7 +631,7 @@ unicode_free_data (void)
   *last_unicode_file = '\0';
 }
 
-/* 
+/*
  * create_alphabet () - allocated arrays for alphabet
  * Returns: error code
  * a(in/out) : alphabet
@@ -709,7 +709,7 @@ er_exit:
   return er_status;
 }
 
-/* 
+/*
  * string_to_int_array() - builds a list of codepoints from a string
  *
  * Returns: count of codepoints found
@@ -721,7 +721,7 @@ er_exit:
  *  Note : the string containts unsigned integers in hexadecimal.
  *	   The case of returned number of codepoints is greater than
  *	    'cp_list_size' should be handled as error.
- *	   
+ *
  */
 int
 string_to_int_array (char *s, uint32 * cp_list, const int cp_list_size,
@@ -764,7 +764,7 @@ string_to_int_array (char *s, uint32 * cp_list, const int cp_list_size,
   return i;
 }
 
-/* 
+/*
  * unicode_process_normalization() - Process character decomposition mappings
  *			  imported from the Unicode data file, and prepare
  *			  the data structures required for converting strings
@@ -877,9 +877,9 @@ unicode_process_normalization (LOCALE_DATA * ld, bool is_verbose)
       cp++;
     }
 
-  /* Decompose each mapping, top-down, until no mapping can be 
+  /* Decompose each mapping, top-down, until no mapping can be
    * further decomposed. Total number of decomposition mappings(steps)
-   * was computed previously for each codepoint in 
+   * was computed previously for each codepoint in
    * unicode_decomp_map_count[cp] and their sum in unicode_decomp_map_total.
    * These constants will be used for validation (as assert args).
    */
@@ -944,15 +944,15 @@ unicode_process_normalization (LOCALE_DATA * ld, bool is_verbose)
       um = &(temp_list_unicode_decomp_maps[i]);
       if (um->size > 0 && unicode_decomp_map_count[um->map[0]] == 0)
 	{
-	  /* This means that for um->cp, the um->map can't be further 
-	   * decomposed, thus being the fully decomposed representation for 
+	  /* This means that for um->cp, the um->map can't be further
+	   * decomposed, thus being the fully decomposed representation for
 	   * um->cp. It will be marked as such.
 	   */
 	  um->is_full_decomp = true;
 	}
     }
 
-  /* Sort/group the decompositions in list_unicode_decomp_maps by the 
+  /* Sort/group the decompositions in list_unicode_decomp_maps by the
    * value of the first codepoint in each mapping.
    * The grouping is necessary for optimizing the future search for
    * possible decompositions when putting a string in fully composed form.
@@ -960,7 +960,7 @@ unicode_process_normalization (LOCALE_DATA * ld, bool is_verbose)
   qsort (temp_list_unicode_decomp_maps, norm->unicode_mappings_count,
 	 sizeof (UNICODE_CP_MAPPING), comp_func_grouping_unicode_cp_mapping);
 
-  /* Build starting indexes for each cp which is the first cp in a 
+  /* Build starting indexes for each cp which is the first cp in a
    * compact group of mappings */
   norm->unicode_mapping_index =
     malloc ((MAX_UNICODE_CHARS + 1) * sizeof (int));
@@ -1000,7 +1000,7 @@ unicode_process_normalization (LOCALE_DATA * ld, bool is_verbose)
   SET_MAPPING_INDEX (norm->unicode_mapping_index[cp + 1], false,
 		     (mapping_start + mapping_count));
 
-  /* Sort descending each range of UNICODE_MAPPINGs from 
+  /* Sort descending each range of UNICODE_MAPPINGs from
    * list_unicode_decomp_maps, having the same codepoint value in
    * UNICODE_MAPPING.map[0], using memcmp.
    * The sorting is necessary for optimizing the future search for
@@ -1054,7 +1054,7 @@ exit:
   return err_status;
 }
 
-/* 
+/*
  * count_full_decomp_cp() - Counts the number of codepoints to needed to store
  *			  the full decomposition representation for a
  *			  codepoint.
@@ -1086,7 +1086,7 @@ count_full_decomp_cp (int cp)
     count_full_decomp_cp ((int) uc->unicode_mapping[0]);
 }
 
-/* 
+/*
  * count_decomp_steps() - Counts the number of steps for putting a codepoint
  *			into fully decomposed form, by replacing one
  *			decomposable codepoint at every step.
@@ -1116,17 +1116,17 @@ count_decomp_steps (int cp)
   return 0;
 }
 
-/* 
+/*
  * unicode_make_normalization_data() - takes the data loaded from UnicodeData,
  *		which was previously sorted, and puts it into optimized form
  *		into the locale data structure, ready to be exported into
  *		a shared library.
  *
  * Returns: ER_LOC_GEN if error
- *	    NO_ERROR otherwise 
+ *	    NO_ERROR otherwise
  * decomp_maps(in): variable holding the loaded and partially processed
  *		    unicode data
- * ld(in/out): locale data 
+ * ld(in/out): locale data
  *
  */
 static int
@@ -1218,7 +1218,7 @@ exit:
 }
 
 #if !defined (SERVER_MODE)
-/* 
+/*
  * unicode_string_need_compose() - Checks if a string needs composition
  *				   and returns the size required by fully
  *				   composed form.
@@ -1271,7 +1271,7 @@ unicode_string_need_compose (const char *str_in, const int size_in,
   return false;
 }
 
-/* 
+/*
  * unicode_compose_string() - Put a string into fully composed form.
  *
  * Returns:
@@ -1346,7 +1346,9 @@ unicode_compose_string (const char *str_in, const int size_in,
 	    {
 	      /* If a composition matches, apply it. */
 	      composed_index +=
-		intl_cp_to_utf8 (um->cp, &(composed_str[composed_index]));
+		intl_cp_to_utf8 (um->cp,
+				 (unsigned char *)
+				 (&(composed_str[composed_index])));
 	      str_cursor += um->size;
 	      match_found = true;
 	      composition_found = true;
@@ -1378,13 +1380,13 @@ unicode_compose_string (const char *str_in, const int size_in,
   return;
 }
 
-/* 
+/*
  * unicode_string_need_decompose() - Checks if a string needs
  *				     decomposition and returns the size
  *				     required by decomposed form.
  *
  * Returns: true if decomposition is required
- * str_in(in) : string to normalize 
+ * str_in(in) : string to normalize
  * size_in(in) : size of string in bytes
  * decomp_size(out) : size required by decomposed form in bytes
  * norm(in) : the unicode context in which the normalization is performed
@@ -1435,8 +1437,9 @@ unicode_string_need_decompose (char *str_in, const int size_in,
   src_end = str_in + size_in;
   while (src_cursor < src_end)
     {
-      cp = intl_utf8_to_cp (src_cursor, src_end - src_cursor,
-			    (unsigned char **) &next);
+      cp =
+	intl_utf8_to_cp ((unsigned char *) src_cursor, src_end - src_cursor,
+			 (unsigned char **) &next);
       bytes_read = next - src_cursor;
 
       decomp_index =
@@ -1471,7 +1474,7 @@ no_decompose_cnt:
   return false;
 }
 
-/* 
+/*
  * unicode_decompose_string() - Put a string into fully decomposed form.
  *
  * Returns: ER_OUT_OF_VIRTUAL_MEMORY if internal memory allocation fails
@@ -1507,8 +1510,9 @@ unicode_decompose_string (char *str_in, const int size_in,
   src_end = str_in + size_in;
   while (src_cursor < src_end)
     {
-      cp = intl_utf8_to_cp (src_cursor, src_end - src_cursor,
-			    (unsigned char **) &next);
+      cp =
+	intl_utf8_to_cp ((unsigned char *) src_cursor, src_end - src_cursor,
+			 (unsigned char **) &next);
       bytes_read = next - src_cursor;
       decomp_index =
 	(cp < MAX_UNICODE_CHARS) ? norm->list_full_decomp[cp] : -1;
@@ -1529,7 +1533,7 @@ unicode_decompose_string (char *str_in, const int size_in,
   *size_out = dest_cursor - str_out;
 }
 #endif /* SERVER_MODE */
-/* 
+/*
  * comp_func_unicode_cp_mapping() - compare function for sorting a group of
  *				    unicode decompositions starting with the
  *				    same codepoint
@@ -1570,8 +1574,8 @@ comp_func_unicode_cp_mapping (const void *arg1, const void *arg2)
   return -result;
 }
 
-/* 
- * comp_func_grouping_unicode_cp_mapping() - compare function for sorting 
+/*
+ * comp_func_grouping_unicode_cp_mapping() - compare function for sorting
  *				    all decompositions
  *
  * Returns: compare result

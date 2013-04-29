@@ -603,7 +603,7 @@ er_call_stack_final (void)
 static int
 er_fname_free (const void *key, void *data, void *args)
 {
-  free (key);
+  free ((void *) key);
   free (data);
 
   return NO_ERROR;
@@ -1839,7 +1839,7 @@ er_log (int err_id)
   char *more_info_p;
   int ret;
   char more_info[MAXHOSTNAMELEN + PATH_MAX + 64];
-  char *log_file_name;
+  const char *log_file_name;
   FILE **log_fh;
 
   if (er_accesslog_filename != NULL && err_id == ER_BO_CLIENT_CONNECTED)
@@ -2147,7 +2147,7 @@ er_severity (void)
 }
 
 /*
- * er_has_error - 
+ * er_has_error -
  *   return: true if it has an actual error, otherwise false.
  *   note: NOTIFICATION and WARNING are not regarded as an actual error.
  */

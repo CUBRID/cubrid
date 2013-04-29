@@ -1129,7 +1129,7 @@ cfg_find_db (const char *db_name)
 		  db_info_p =
 		    cfg_new_db (db_info_p->name, db_info_p->pathname,
 				db_info_p->logpath, db_info_p->lobpath,
-				db_info_p->hosts);
+				(const char **) db_info_p->hosts);
 		}
 	      else
 		{

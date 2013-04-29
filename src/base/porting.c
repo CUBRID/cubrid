@@ -1983,7 +1983,7 @@ strtod_win (const char *str, char **end_ptr)
       return result;
     }
 
-  /* if the string start with "0x", "0X", "+0x", "+0X", "-0x" or "-0X" 
+  /* if the string start with "0x", "0X", "+0x", "+0X", "-0x" or "-0X"
    * then deal with it as hex string
    */
   p = str;
@@ -2164,7 +2164,7 @@ timeval_to_timespec (struct timespec *to, const struct timeval *from)
 
 
 /*
- * port_open_memstream - make memory stream file handle if possible. 
+ * port_open_memstream - make memory stream file handle if possible.
  *			 if not, make temporiry file handle.
  *   return: file handle
  *
@@ -2190,7 +2190,7 @@ port_open_memstream (char **ptr, size_t * sizeloc)
 /*
  * port_close_memstream - flush file handle and close
  *
- *   fp (in): file handle to close 
+ *   fp (in): file handle to close
  *   ptr (in/out): memory stream (out) or temp file name (in)
  *   sizeloc (out): stream size
  *

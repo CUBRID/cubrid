@@ -31,6 +31,8 @@
 #include "mprec.h"
 #include <stdlib.h>
 
+void free_Bigints (struct _Jv_Bigint *p);
+
 static int
 _DEFUN (quorem, (b, S), _Jv_Bigint * b _AND _Jv_Bigint * S)
 {

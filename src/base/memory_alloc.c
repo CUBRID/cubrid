@@ -391,16 +391,16 @@ db_destroy_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id)
 void *
 db_private_alloc_release (void *thrd, size_t size, bool rc_track)
 {
-  return NULL;                   
-}    
+  return NULL;
+}
 #else
 void *
 db_private_alloc_debug (void *thrd, size_t size, bool rc_track,
 			const char *caller_file, int caller_line)
 {
   return NULL;
-}                           
-#endif                      
+}
+#endif
 #endif
 
 #if !defined(NDEBUG)
@@ -644,16 +644,16 @@ db_private_strdup (void *thrd, const char *s)
 void
 db_private_free_release (void *thrd, void *ptr, bool rc_track)
 {
-  return;                   
-}    
+  return;
+}
 #else
 void
 db_private_free_debug (void *thrd, void *ptr, bool rc_track,
 		       const char *caller_file, int caller_line)
 {
   return;
-}                           
-#endif                      
+}
+#endif
 #endif
 
 #if !defined(NDEBUG)
@@ -762,7 +762,7 @@ db_private_realloc_external (void *thrd, void *ptr, size_t size)
   return db_private_realloc (thrd, ptr, size);
 }
 
-
+#if defined (SERVER_MODE)
 /*
  * os_malloc () -
  *   return: allocated memory pointer
@@ -870,3 +870,4 @@ os_free_release (void *ptr, bool rc_track)
     }
 #endif /* !NDEBUG */
 }
+#endif

@@ -64,7 +64,7 @@ typedef struct
   unsigned int unicode_cp;
 } TXT_CONV_ITEM;
 
-/* shared data : this is used during genlocale process 
+/* shared data : this is used during genlocale process
  * data shared by several locales are centralized here; and saved only once
  * in the generated libray */
 typedef enum
@@ -757,7 +757,7 @@ XML_ELEMENT_DEF ldml_elem_consoleconversion =
 };
 
 /*
- * LDML elements list - KEEP the order in this list ! 
+ * LDML elements list - KEEP the order in this list !
  * it is mandatory to put in schema all parent elements, before adding a new
  * element */
 XML_ELEMENT_DEF *ldml_elements[] = {
@@ -854,7 +854,7 @@ XML_ELEMENT_DEF *ldml_elements[] = {
   &ldml_elem_consoleconversion
 };
 
-/* 
+/*
  * start_element_ok() - Dummy XML element start function
  *			Used just for verbose purpose.
  *
@@ -873,7 +873,7 @@ start_element_ok (void *data, const char **attr)
   return 0;
 }
 
-/* 
+/*
  * end_element_ok() - Dummy XML element end function
  *		      Used just for verbose purpose.
  *
@@ -893,7 +893,7 @@ end_element_ok (void *data, const char *el_name)
   return 0;
 }
 
-/* 
+/*
  * start_calendar() - XML element start function
  * "ldml dates calendars calendar"
  *
@@ -915,7 +915,7 @@ start_calendar (void *data, const char **attr)
   return 0;
 }
 
-/* 
+/*
  * end_dateFormatCUBRID() - XML element end function
  * "ldml dates calendars calendar dateFormatCUBRID"
  *
@@ -953,7 +953,7 @@ end_dateFormatCUBRID (void *data, const char *el_name)
   return 0;
 }
 
-/* 
+/*
  * end_timeFormatCUBRID() - XML element end function
  * "ldml dates calendars calendar timeFormatCUBRID"
  *
@@ -991,7 +991,7 @@ end_timeFormatCUBRID (void *data, const char *el_name)
   return 0;
 }
 
-/* 
+/*
  * end_datetimeFormatCUBRID() - XML element end function
  * "ldml dates calendars calendar datetimeFormatCUBRID"
  *
@@ -1029,7 +1029,7 @@ end_datetimeFormatCUBRID (void *data, const char *el_name)
   return 0;
 }
 
-/* 
+/*
  * end_timestampFormatCUBRID() - XML element end function
  * "ldml dates calendars calendar timestampFormatCUBRID"
  *
@@ -1067,7 +1067,7 @@ end_timestampFormatCUBRID (void *data, const char *el_name)
   return 0;
 }
 
-/* 
+/*
  * start_calendar_name_context() - XML element start function
  * "ldml dates calendars calendar months monthContext"
  *
@@ -1134,7 +1134,7 @@ start_month_day_Width (void *data, const char **attr)
   return 1;
 }
 
-/* 
+/*
  * end_month_day_Width() - XML element end function
  * "ldml dates calendars calendar months monthContext monthWidth"
  *
@@ -1160,7 +1160,7 @@ end_month_day_Width (void *data, const char *el_name)
   return 0;
 }
 
-/* 
+/*
  * start_month() - XML element start function
  * "ldml dates calendars calendar months monthContext monthWidth month"
  *
@@ -1205,7 +1205,7 @@ start_month (void *data, const char **attr)
   return 1;
 }
 
-/* 
+/*
  * end_month() - XML element end function
  * "ldml dates calendars calendar months monthContext monthWidth month"
  *
@@ -1265,7 +1265,7 @@ end_month (void *data, const char *el_name)
   return 0;
 }
 
-/* 
+/*
  * start_day() - XML element start function
  * "ldml dates calendars calendar days dayContext dayWidth day"
  *
@@ -1318,7 +1318,7 @@ start_day (void *data, const char **attr)
   return 0;
 }
 
-/* 
+/*
  * end_day() - XML element end function
  * "ldml dates calendars calendar days dayContext dayWidth day"
  *
@@ -1377,7 +1377,7 @@ end_day (void *data, const char *el_name)
   return 0;
 }
 
-/* 
+/*
  * start_dayPeriodWidth() - XML element start function
  * "ldml dates calendars calendar dayPeriods dayPeriodContext dayPeriodWidth"
  *
@@ -1399,7 +1399,7 @@ start_dayPeriodWidth (void *data, const char **attr)
   return 1;
 }
 
-/* 
+/*
  * start_dayPeriod() - XML element start function
  * "ldml dates calendars calendar dayPeriods dayPeriodContext dayPeriodWidth dayPeriod"
  *
@@ -1492,7 +1492,7 @@ end_dayPeriod (void *data, const char *el_name)
   return 0;
 }
 
-/* 
+/*
  * start_numbers_symbols() - XML element start function
  * "ldml numbers symbols"
  *
@@ -1521,7 +1521,7 @@ start_numbers_symbols (void *data, const char **attr)
   return 0;
 }
 
-/* 
+/*
  * end_number_symbol() - XML element end function
  * "ldml numbers symbols decimal"
  *
@@ -1565,7 +1565,7 @@ end_number_symbol (void *data, const char *el_name)
   return 0;
 }
 
-/* 
+/*
  * start_currency() - XML element start function
  * "ldml numbers currencies currency"
  *
@@ -1626,7 +1626,7 @@ start_currency (void *data, const char **attr)
 
 
 /* LDML collation */
-/* 
+/*
  * start_collations() - XML element start function
  * "ldml collations"
  *
@@ -1758,7 +1758,7 @@ start_one_collation (void *data, const char **attr)
   return 0;
 }
 
-/* 
+/*
  * end_one_collation() - XML element end function
  * "ldml collations collation"
  *
@@ -1782,7 +1782,7 @@ end_one_collation (void *data, const char *el_name)
   return 0;
 }
 
-/* 
+/*
  * start_collation_settings() - XML element start function
  * "ldml collations collation settings"
  *
@@ -1815,7 +1815,7 @@ start_collation_settings (void *data, const char **attr)
 	  || curr_coll_tail->coll_id >= LANG_MAX_COLLATIONS)
 	{
 	  snprintf (err_msg, sizeof (err_msg) - 1,
-		    "File %s, line: %d : "
+		    "File %s, line: %lu : "
 		    "Invalid collation numeric identifier : %d"
 		    " for collation '%s'. Valid range is from %d to %d",
 		    ld->ldml_context.ldml_file,
@@ -1859,7 +1859,7 @@ start_collation_settings (void *data, const char **attr)
       else
 	{
 	  snprintf (err_msg, sizeof (err_msg) - 1,
-		    "File %s, line: %d : "
+		    "File %s, line: %lu : "
 		    "Invalid collation strength : '%s'"
 		    " for collation '%s'",
 		    ld->ldml_context.ldml_file,
@@ -1962,7 +1962,7 @@ start_collation_settings (void *data, const char **attr)
   return 0;
 }
 
-/* 
+/*
  * start_collation_reset() - XML element start function
  * "ldml collations collation rules reset"
  *
@@ -2023,7 +2023,7 @@ start_collation_reset (void *data, const char **attr)
   return 0;
 }
 
-/* 
+/*
  * end_collation_reset() - XML element end function
  * "ldml collations collation rules reset"
  *
@@ -2057,7 +2057,7 @@ end_collation_reset (void *data, const char *el_name)
   return -1;
 }
 
-/* 
+/*
  * start_collation_rule() - XML element start function
  * "ldml collations collation rules p"
  *
@@ -2107,7 +2107,7 @@ start_collation_rule (void *data, const char **attr)
   return 0;
 }
 
-/* 
+/*
  * start_collation_cubrid_rule() - XML element start function
  * "ldml collations collation cubridrules set"
  *
@@ -2143,11 +2143,11 @@ start_collation_cubrid_rule (void *data, const char **attr)
   return 0;
 }
 
-/* 
+/*
  * start_collation_cubrid_rule_set_wr - XML element start function
  * "ldml collations collation cubridrules set wr"
  *
- * return: NO_ERROR if it's OK to enter this element, 
+ * return: NO_ERROR if it's OK to enter this element,
  *         ER_LOC_GEN if STEP attribute is a string exceeding the max size.
  * data(in/out): user data
  * attr(in): attribute/value pair array
@@ -2190,7 +2190,7 @@ exit:
   return err_status;
 }
 
-/* 
+/*
  * end_collation_cubrid_rule_set() - XML element end function
  * "ldml collations collation cubridrules ..."
  *
@@ -2228,8 +2228,8 @@ end_collation_cubrid_rule_set (void *data, const char *el_name)
   return 0;
 }
 
-/* 
- * end_collation_cubrid_rule_set_end_cp_ch - XML element end function for 
+/*
+ * end_collation_cubrid_rule_set_end_cp_ch - XML element end function for
  *					    cp, ch, scp, sch
  * "ldml collations collation cubridrules ..."
  *
@@ -2297,8 +2297,8 @@ exit:
   return err_status;
 }
 
-/* 
- * end_collation_cubrid_rule_set_end_ecp - XML element end function 
+/*
+ * end_collation_cubrid_rule_set_end_ecp - XML element end function
  *					   for ech/ecp.
  * "ldml collations collation cubridrules ..."
  *
@@ -2359,11 +2359,11 @@ exit:
   return err_status;
 }
 
-/* 
+/*
  * end_collation_cubrid_rule_set_w_wr() - XML element end function for w / wr.
  * "ldml collations collation cubridrules ..."
  *
- * return: NO_ERROR if parser OK, 
+ * return: NO_ERROR if parser OK,
  *	   ER_LOC_GEN if parser NOK and stop parsing.
  * data(in/out): user data
  * el_name(in): element name
@@ -2472,7 +2472,7 @@ handle_data_collation_rule (void *data, const char *s, int len)
   return 0;
 }
 
-/* 
+/*
  * end_collation_rule() - XML element end function
  * "ldml collations collation rules p"
  *
@@ -2552,7 +2552,7 @@ end_collation_rule (void *data, const char *el_name)
   return 0;
 }
 
-/* 
+/*
  * start_collation_x() - XML element start function
  * "ldml collations collation rules x"
  *
@@ -2857,7 +2857,7 @@ start_collation_logical_pos (void *data, const char **attr)
   return 0;
 }
 
-/* 
+/*
  * end_collation_logical_pos() - XML element end function
  * "ldml collations collation rules reset first_variable"
  *
@@ -3002,7 +3002,7 @@ start_one_alphabet (void *data, const char **attr)
   return 0;
 }
 
-/* 
+/*
  * start_upper_case_rule() - XML element start function
  * "ldml alphabets alphabet u"
  *
@@ -3037,7 +3037,7 @@ start_upper_case_rule (void *data, const char **attr)
   return 0;
 }
 
-/* 
+/*
  * end_case_rule() - XML element end function
  * "ldml alphabets alphabet u"
  *
@@ -3084,7 +3084,7 @@ end_case_rule (void *data, const char *el_name)
   return 0;
 }
 
-/* 
+/*
  * start_lower_case_rule() - XML element start function
  * "ldml alphabets alphabet l"
  *
@@ -3119,7 +3119,7 @@ start_lower_case_rule (void *data, const char **attr)
   return 0;
 }
 
-/* 
+/*
  * end_transform_buffer() - XML element end function
  * "ldml alphabets alphabet u s"
  *
@@ -3206,7 +3206,7 @@ error_exit:
   return -1;
 }
 
-/* 
+/*
  * start_consoleconversion() - XML element start function
  * "ldml consoleconversion"
  *
@@ -3691,7 +3691,7 @@ print_debug_data_content (void *data, const char *msg, const int status)
  *	   Collation is name is in format: charset_lang_desc1_desc2_..
  *	   utf8_de_exp : Collation specific to de (German) with expansions
  *	   utf8_gen_ai_ci : Generic collation, accent and case insensitive
- *	   
+ *
  */
 static void
 locale_alloc_collation_id (COLL_TAILORING * coll_tail)
@@ -3764,7 +3764,7 @@ locale_alloc_collation_id (COLL_TAILORING * coll_tail)
  *
  * return:
  *
- *	   
+ *
  */
 static int
 locale_check_collation_id (const COLL_TAILORING * coll_tail)
@@ -3789,8 +3789,8 @@ locale_check_collation_id (const COLL_TAILORING * coll_tail)
   return NO_ERROR;
 }
 
-/* 
- * load_console_conv_data() - Loads the console conversion file (standardised 
+/*
+ * load_console_conv_data() - Loads the console conversion file (standardised
  *			      and availabe at Unicode.org).
  * Returns: error code
  * ld(in/out) : locale data
@@ -4101,16 +4101,16 @@ error:
 }
 
 /*
- * comp_func_parse_order_index - compare function for sorting parse order 
- *		    indexes for month and weekday names, based on the reversed 
+ * comp_func_parse_order_index - compare function for sorting parse order
+ *		    indexes for month and weekday names, based on the reversed
  *		    binary order of the LDML tokens
  *
  *  Note: this function is used by the genlocale tool
  *	  The elements in the arrays should be NUL-terminated strings, stored
  *	  in fixed length char arrays. Encoding is not relevant, the purpose
- *	  of this comparison is to make sure that the tokenizer first tries 
+ *	  of this comparison is to make sure that the tokenizer first tries
  *	  to match some tokens before others which can be prefixes for them.
- *	  E.g. In Vietnamese(vi_VN), the October translation followed by 
+ *	  E.g. In Vietnamese(vi_VN), the October translation followed by
  *	  a space is a prefix for the translations of November and December.
  */
 static int
@@ -4133,8 +4133,8 @@ comp_func_parse_order_index (const void *arg1, const void *arg2)
 }
 
 /*
- * locale_make_calendar_parse_order() - computes the order in which the 
- *		      string tokenizer should search for matches with 
+ * locale_make_calendar_parse_order() - computes the order in which the
+ *		      string tokenizer should search for matches with
  *		      weekday and month names, both wide and abbreviated.
  *
  * return:
@@ -4277,7 +4277,7 @@ locale_destroy_alphabet_data (const ALPHABET_DATA * a)
 }
 
 /*
- * locale_destroy_collation_tailorings() - frees memory for one locale 
+ * locale_destroy_collation_tailorings() - frees memory for one locale
  *					   collation tailorings
  *    return:
  *    ct(in/out):
@@ -5103,7 +5103,7 @@ locale_mark_duplicate_collations (LOCALE_DATA ** ld, int start_index,
 }
 
 /*
- * locale_save_all_to_C_file - saves all locale data to C source file, for 
+ * locale_save_all_to_C_file - saves all locale data to C source file, for
  *			    later use when compiling them into a locale shared
  *			    library.
  *
@@ -5450,7 +5450,7 @@ save_contraction_to_C_file (FILE * fp, COLL_CONTRACTION * c,
 }
 
 /*
- * locale_prepare_C_file() - saves locale data to C source file, for 
+ * locale_prepare_C_file() - saves locale data to C source file, for
  *			    later use when generating the locale shared
  *			    library.
  *
@@ -5491,7 +5491,7 @@ error:
 }
 
 /*
- * locale_save_to_C_file() - saves locale data to C source file, for 
+ * locale_save_to_C_file() - saves locale data to C source file, for
  *			    later use when generating the locale shared
  *			    library.
  *
@@ -5544,7 +5544,7 @@ locale_save_to_C_file (LOCALE_FILE lf, LOCALE_DATA * ld)
       /* Collation names are user defined: first save fixed name variables
        * containing collations name included in the LDML:
        * collation_1_es_ES = "utf8_es_ES";
-       * collation_2_es_ES = "utf8_es_ES_ci"; 
+       * collation_2_es_ES = "utf8_es_ES_ci";
        */
       snprintf (coll_suffix, sizeof (coll_suffix) - 1, "%d_%s", i,
 		ld->locale_name);
@@ -5557,7 +5557,7 @@ locale_save_to_C_file (LOCALE_FILE lf, LOCALE_DATA * ld)
 	  continue;
 	}
 
-      /* the collation data is decorated with the user defined name of the 
+      /* the collation data is decorated with the user defined name of the
        * collation :
        * coll_weights_utf8_es_ES = { .. };
        * coll_weights_utf8_es_ES_ci = { .. };
@@ -5583,8 +5583,8 @@ error:
 }
 
 /*
- * locale_save_calendar_to_C_file() - saves calendar data to C source file, 
- *			    as variables, for later use when generating the 
+ * locale_save_calendar_to_C_file() - saves calendar data to C source file,
+ *			    as variables, for later use when generating the
  *			    locale shared library.
  *
  * return: error code
@@ -5644,7 +5644,7 @@ locale_save_calendar_to_C_file (FILE * fp, LOCALE_DATA * ld)
 
 /*
  * locale_save_alphabets_to_C_file() - saves alphabet and identifier alphabet
- *			    to C source file as variables, for later use 
+ *			    to C source file as variables, for later use
  *			    when generating the locale shared library.
  *
  * return: error code
@@ -5701,7 +5701,7 @@ locale_save_one_alphabet_to_C_file (FILE * fp, ALPHABET_DATA * a,
 
 /*
  * locale_save_alphabets_to_C_file() - saves alphabet and identifier alphabet
- *			    to C source file as variables, for later use 
+ *			    to C source file as variables, for later use
  *			    when generating the locale shared library.
  *
  * return: error code
@@ -5951,7 +5951,7 @@ locale_save_collation_data_to_C_file (FILE * fp, LOCALE_COLLATION * lc)
 }
 
 /*
- * locale_save_console_conv_to_C_file() - saves console conversion data to 
+ * locale_save_console_conv_to_C_file() - saves console conversion data to
  *					  binary file
  *
  * return: zero if save is successful, non-zero otherwise
@@ -6095,12 +6095,12 @@ str_pop_token (char *str_p, char **token_p, char **next_p)
 }
 
 /*
- * dump_locale_alphabet - dump the selected ALPHABET_DATA structure 
+ * dump_locale_alphabet - dump the selected ALPHABET_DATA structure
  *			  in human-readable text format.
  * Returns : NO_ERROR.
  * ad(in)  : the ALPHABET_DATA to be dumped in text format.
  * dl_settings(in): the commmand line options encoded intoa binary masked int.
- * lower_bound(in): the starting codepoint for the range of items which 
+ * lower_bound(in): the starting codepoint for the range of items which
  *		    -w or -c will dump.
  * upper_bound(in)  : the ending codepoint for the range of items which
  *		    -w or -c will dump.
@@ -6214,12 +6214,12 @@ dump_locale_alphabet (ALPHABET_DATA * ad, int dl_settings,
 }
 
 /*
- * dump_locale_collation - dump the selected COLL_DATA structure 
+ * dump_locale_collation - dump the selected COLL_DATA structure
  *			   in human-readable text format.
  * Returns : NO_ERROR.
  * coll(in)  : the COLL_DATA to be dumped in text format.
  * dl_settings(in): the commmand line options encoded intoa binary masked int.
- * lower_bound(in): the starting codepoint for the range of items which 
+ * lower_bound(in): the starting codepoint for the range of items which
  *		    -w or -c will dump.
  * upper_bound(in)  : the ending codepoint for the range of items which
  *		    -w or -c will dump.
@@ -6245,7 +6245,7 @@ dump_locale_collation (COLL_DATA * coll, int dl_settings,
     }
   if (end_value > 0 && end_value < upper_bound)
     {
-      /* if an upper bound is specified, use the "+1" to make sure that 
+      /* if an upper bound is specified, use the "+1" to make sure that
        * the upper bound codepoint is included in the dump file. */
       upper_bound = end_value + 1;
     }
@@ -6428,7 +6428,7 @@ exit:
  * data(in): the locale data to be dumped in text format.
  * lf(in)  : the LOCALE_FILE i.e. binary file from which ld was imported.
  * dl_settings(in): the commmand line options encoded intoa binary masked int.
- * start_value(in): the starting codepoint for the range of items which 
+ * start_value(in): the starting codepoint for the range of items which
  *		    -w or -c will dump.
  * end_value(in)  : the ending codepoint for the range of items which
  *		    -w or -c will dump.
@@ -6556,7 +6556,7 @@ locale_dump (void *data, LOCALE_FILE * lf, int dl_settings,
 	}
       if (end_value > 0 && end_value < upper_bound)
 	{
-	  /* if an upper bound is specified, use the "+1" to make sure that 
+	  /* if an upper bound is specified, use the "+1" to make sure that
 	   * the upper bound codepoint is included in the dump file. */
 	  upper_bound = end_value + 1;
 	}
@@ -6692,7 +6692,7 @@ exit:
 }
 
 /*
- * comp_func_coll_uca_simple_weights_fo - compare function for sorting 
+ * comp_func_coll_uca_simple_weights_fo - compare function for sorting
  *		      collatable elements according to simple weights order
  *		      but applies full order
  *
@@ -7109,7 +7109,7 @@ exit:
 }
 
 /*
- * locale_free_shared_data - 
+ * locale_free_shared_data -
  *
  *  Note : this is used in context of genlocale tool.
  */
@@ -7222,7 +7222,7 @@ locale_destroy_normalization_data (UNICODE_NORMALIZATION * norm)
 
 /*
  * locale_save_normalization_to_C_file() - saves normalization data
- *			    to C source file as variables, for later use 
+ *			    to C source file as variables, for later use
  *			    when generating the locale shared library.
  *
  * return: error code
@@ -7350,10 +7350,10 @@ dump_locale_normalization (UNICODE_NORMALIZATION * norm)
     }
 }
 
-/* 
+/*
  * dump_unicode_mapping() - Dump a UNICODE_MAPPING to the console.
  *
- * Returns: 
+ * Returns:
  * um(in) : unicode mapping to dump
  */
 static void
@@ -7382,7 +7382,8 @@ dump_unicode_mapping (UNICODE_MAPPING * um, const int mode)
   next = cur_str;
   while (next < um->buffer + um->size)
     {
-      cp = intl_utf8_to_cp (cur_str, INTL_UTF8_MAX_CHAR_SIZE, &next);
+      cp =
+	intl_utf8_to_cp (cur_str, (const int) INTL_UTF8_MAX_CHAR_SIZE, &next);
       printf ("%04X ", cp);
       cur_str = next;
     }
@@ -7402,14 +7403,14 @@ dump_unicode_mapping (UNICODE_MAPPING * um, const int mode)
 static int
 dump_console_conversion (TEXT_CONVERSION * tc)
 {
-  char utf8_seq[INTL_UTF8_MAX_CHAR_SIZE + 1];
-  char cnv_utf8_buf[2 * 3 + 1];
+  unsigned char utf8_seq[INTL_UTF8_MAX_CHAR_SIZE + 1];
+  unsigned char cnv_utf8_buf[2 * 3 + 1];
   unsigned char *cnv_utf8;
   CONV_CP_TO_BYTES *c_item;
   unsigned int utf8_cp, con_cp;
   unsigned char *next;
   int utf8_size;
-  char *char_to_print = NULL;
+  unsigned char *char_to_print = NULL;
   int err;
 
   if (tc == NULL || tc->conv_type == TEXT_CONV_NO_CONVERSION)
@@ -7471,10 +7472,10 @@ dump_console_conversion (TEXT_CONVERSION * tc)
 	    }
 
 	  utf8_size = intl_cp_to_utf8 (utf8_cp, utf8_seq);
-	  assert (utf8_size < sizeof (utf8_seq));
+	  assert ((unsigned int) utf8_size < sizeof (utf8_seq));
 	  utf8_seq[utf8_size] = '\0';
 
-	  char_to_print = (utf8_cp > 0x20) ? utf8_seq : "";
+	  char_to_print = (utf8_cp > 0x20) ? utf8_seq : (unsigned char *) "";
 
 	  dbcs_size = intl_cp_to_dbcs (con_cp, tc->byte_flag, dbcs_seq);
 	  dbcs_seq[dbcs_size] = '\0';
@@ -7506,17 +7507,17 @@ dump_console_conversion (TEXT_CONVERSION * tc)
 
 	  if (cnv_utf8 != NULL)
 	    {
-	      assert (utf8_size <= sizeof (cnv_utf8_buf));
+	      assert ((unsigned int) utf8_size <= sizeof (cnv_utf8_buf));
 	      char_to_print = cnv_utf8;
 	    }
 	}
       else
 	{
 	  utf8_size = intl_cp_to_utf8 (utf8_cp, utf8_seq);
-	  assert (utf8_size < sizeof (utf8_seq));
+	  assert ((unsigned int) utf8_size < sizeof (utf8_seq));
 	  utf8_seq[utf8_size] = '\0';
 
-	  char_to_print = (utf8_cp > 0x20) ? utf8_seq : "";
+	  char_to_print = (utf8_cp > 0x20) ? utf8_seq : (unsigned char *) "";
 	}
 
       if (con_cp <= 0xff)
@@ -7551,7 +7552,7 @@ dump_console_conversion (TEXT_CONVERSION * tc)
       if (utf8_cp > 0x20)
 	{
 	  utf8_size = intl_cp_to_utf8 (utf8_cp, utf8_seq);
-	  assert (utf8_size < sizeof (utf8_seq));
+	  assert ((unsigned int) utf8_size < sizeof (utf8_seq));
 	  utf8_seq[utf8_size] = '\0';
 	}
       else
@@ -7596,7 +7597,7 @@ dump_console_conversion (TEXT_CONVERSION * tc)
 						&utf8_size);
 	      assert (err == NO_ERROR);
 	    }
-	  assert (utf8_size <= sizeof (cnv_utf8_buf));
+	  assert ((unsigned int) utf8_size <= sizeof (cnv_utf8_buf));
 	  char_to_print = cnv_utf8 ? cnv_utf8 : utf8_seq;
 	}
 
@@ -7618,7 +7619,7 @@ exit:
   return 0;
 }
 
-/* 
+/*
  * locale_compute_coll_checksum() - Computes the MD5 checksum of collation
  *
  * Returns: error status
@@ -7733,7 +7734,7 @@ locale_compute_coll_checksum (COLL_DATA * cd)
   return NO_ERROR;
 }
 
-/* 
+/*
  * locale_alphabet_data_size() - Computes the size required by alphabet data
  *
  * Returns: size in bytes
@@ -7751,7 +7752,7 @@ locale_alphabet_data_size (ALPHABET_DATA * a)
   return input_size;
 }
 
-/* 
+/*
  * locale_alphabet_data_to_buf() - Saves alphabet data to a buffer
  *
  * Returns: size in bytes
@@ -7779,7 +7780,7 @@ locale_alphabet_data_to_buf (ALPHABET_DATA * a, char *buf)
   return buf_pos - buf;
 }
 
-/* 
+/*
  * locale_compute_locale_checksum() - Computes the MD5 checksum of locale data
  *
  * Returns: error status
@@ -7997,7 +7998,7 @@ locale_compute_locale_checksum (LOCALE_DATA * ld)
   return NO_ERROR;
 }
 
-/* 
+/*
  * common_collation_end_rule() - finishes a collation rule
  *
  * Returns: error status
@@ -8069,7 +8070,7 @@ common_collation_end_rule (void *data, LOCALE_DATA * ld, const int rule_id,
   return 0;
 }
 
-/* 
+/*
  * common_collation_start_rule() - starts a collation rule
  *
  * Returns: error status
@@ -8122,7 +8123,7 @@ common_collation_start_rule (void *data, const char **attr, LOCALE_DATA * ld,
   return 0;
 }
 
-/* 
+/*
  * start_include_collation() - XML element start function
  * "ldml collations include"
  *

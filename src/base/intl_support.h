@@ -1,25 +1,25 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
 
 /*
- * intl_support.h : internationalization support interfaces 
+ * intl_support.h : internationalization support interfaces
  */
 
 #ifndef _INTL_SUPPORT_H_
@@ -77,7 +77,7 @@
     (((codeset) == INTL_CODESET_UTF8) ? INTL_UTF8_MAX_CHAR_SIZE :	   \
      ((codeset) == INTL_CODESET_KSC5601_EUC) ? 3 : 1)
 
-/* Checks if string having charset 'cs_from' can be safely reinterpreted as 
+/* Checks if string having charset 'cs_from' can be safely reinterpreted as
  * having charset 'cs_to'.
  * All strings can be reinterpreted as ISO-8859-1 charset.
  * Other combinations are not compatible, since 8 bit values are starter for
@@ -86,7 +86,7 @@
 #define INTL_CAN_STEAL_CS(cs_from,cs_to)  \
     ((cs_from) == (cs_to) || (cs_to) == INTL_CODESET_ISO88591)
 
-/* Checks if string having charset 'cs_from' can be coerced (transformed) as 
+/* Checks if string having charset 'cs_from' can be coerced (transformed) as
  * having charset 'cs_to'.
  * All strings can be transformed to ISO-8859-1 charset by reinterpreting data
  * The other transformations require charset conversion.
@@ -326,17 +326,18 @@ extern "C"
 					    const int in_size, char **out_buf,
 					    int *out_size);
   extern int intl_text_single_byte_to_utf8_ext (void *txt_conv,
-						const char *in_buf,
+						const unsigned char *in_buf,
 						const int in_size,
-						char **out_buf,
+						unsigned char **out_buf,
 						int *out_size);
   extern int intl_text_utf8_to_single_byte (const char *in_buf,
 					    const int in_size, char **out_buf,
 					    int *out_size);
   extern int intl_text_dbcs_to_utf8 (const char *in_buf, const int in_size,
 				     char **out_buf, int *out_size);
-  extern int intl_text_dbcs_to_utf8_ext (void *t, const char *in_buf,
-					 const int in_size, char **out_buf,
+  extern int intl_text_dbcs_to_utf8_ext (void *t, const unsigned char *in_buf,
+					 const int in_size,
+					 unsigned char **out_buf,
 					 int *out_size);
   extern int intl_text_utf8_to_dbcs (const char *in_buf, const int in_size,
 				     char **out_buf, int *out_size);

@@ -986,8 +986,8 @@ check_env_lang_val (char *env_val, char *lang_name, char **charset_ptr,
 
   if (strlen (lang_name) == 5)
     {
-      intl_toupper_iso8859 (lang_name + 3, 2);
-      intl_tolower_iso8859 (lang_name, 2);
+      intl_toupper_iso8859 ((unsigned char *) lang_name + 3, 2);
+      intl_tolower_iso8859 ((unsigned char *) lang_name, 2);
     }
   else
     {
@@ -3924,7 +3924,7 @@ exit:
 }
 
 /*
- * lang_mht2str_utf8_exp() - 
+ * lang_mht2str_utf8_exp() -
  *
  *   return: negative if str1 < str2, positive if str1 > str2, zero otherwise
  *   coll_data(in) : collation data
@@ -3959,7 +3959,7 @@ lang_mht2str_utf8_exp (const LANG_COLLATION * lang_coll,
   const int alpha_cnt = coll_data->w_count;
   const int exp_num = coll_data->uca_exp_num;
   unsigned int pseudo_key = 0;
-  int level;
+  T_LEVEL level;
   int str_size;
 
   str_end = str + size;
@@ -4021,7 +4021,7 @@ lang_mht2str_utf8_exp (const LANG_COLLATION * lang_coll,
 		  uca_w_l4 = &uca_l4_max_weight;
 		}
 	      num_ce = 1;
-	      /* leave next pointer to the value returned by 
+	      /* leave next pointer to the value returned by
 	       * 'intl_utf8_to_cp' */
 	    }
 
@@ -5842,7 +5842,7 @@ lang_fastcmp_byte (const LANG_COLLATION * lang_coll,
 }
 
 /*
- * lang_mht2str_default () - 
+ * lang_mht2str_default () -
  *   return:
  *   lang_coll(in):
  *   str(in):
@@ -5857,7 +5857,7 @@ lang_mht2str_default (const LANG_COLLATION * lang_coll,
 }
 
 /*
- * lang_mht2str_byte () - 
+ * lang_mht2str_byte () -
  *   return:
  *   lang_coll(in):
  *   str(in):
@@ -5983,7 +5983,7 @@ static LANG_LOCALE_DATA lc_English_iso88591 = {
   ',',
   DB_CURRENCY_DOLLAR,
   LANG_NO_NORMALIZATION,
-  "6ae1bf7f15e6f132c4361761d203c1b4",
+  (char *) "6ae1bf7f15e6f132c4361761d203c1b4",
   lang_initloc_en_iso88591,
   false
 };
@@ -6020,7 +6020,7 @@ static LANG_LOCALE_DATA lc_English_utf8 = {
   ',',
   DB_CURRENCY_DOLLAR,
   LANG_NO_NORMALIZATION,
-  "945bead220ece6f4d020403835308785",
+  (char *) "945bead220ece6f4d020403835308785",
   lang_initloc_en_utf8,
   false
 };
@@ -6296,7 +6296,7 @@ static LANG_LOCALE_DATA lc_Turkish_iso88591 = {
   '.',
   DB_CURRENCY_TL,
   LANG_NO_NORMALIZATION,
-  "b9ac135bdf8100b205ebb6b7e0e9c3df",
+  (char *) "b9ac135bdf8100b205ebb6b7e0e9c3df",
   lang_initloc_tr_iso,
   false
 };
@@ -6331,7 +6331,7 @@ static LANG_LOCALE_DATA lc_Turkish_utf8 = {
   '.',
   DB_CURRENCY_TL,
   LANG_NO_NORMALIZATION,
-  "a6c90a844ad44f78d0b1a3a9a87ddb2f",
+  (char *) "a6c90a844ad44f78d0b1a3a9a87ddb2f",
   lang_initloc_tr_utf8,
   false
 };
@@ -6515,7 +6515,7 @@ lang_fastcmp_ko (const LANG_COLLATION * lang_coll,
 
 
 /*
- * lang_mht2str_ko () - 
+ * lang_mht2str_ko () -
  *
  * Arguments:
  *    lang_coll: collation data
@@ -6825,7 +6825,7 @@ static LANG_LOCALE_DATA lc_Korean_iso88591 = {
   ',',
   DB_CURRENCY_WON,
   LANG_NO_NORMALIZATION,
-  "8710ffb79b191c2158d4c498e8bc7dea",
+  (char *) "8710ffb79b191c2158d4c498e8bc7dea",
   lang_initloc_ko_iso,
   false
 };
@@ -6863,7 +6863,7 @@ static LANG_LOCALE_DATA lc_Korean_utf8 = {
   ',',
   DB_CURRENCY_WON,
   LANG_NO_NORMALIZATION,
-  "802cff8e10d857952241d19b50a13a27",
+  (char *) "802cff8e10d857952241d19b50a13a27",
   lang_initloc_ko_utf8,
   false
 };
@@ -6900,7 +6900,7 @@ static LANG_LOCALE_DATA lc_Korean_euckr = {
   ',',
   DB_CURRENCY_WON,
   LANG_NO_NORMALIZATION,
-  "c46ff948b4147323edfba0c51f96fe47",
+  (char *) "c46ff948b4147323edfba0c51f96fe47",
   lang_initloc_ko_euc,
   false
 };
