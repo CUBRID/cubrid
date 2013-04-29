@@ -1650,7 +1650,7 @@ fn_execute_batch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     }
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   /* does not support query timeout for execute_batch yet */
-  set_query_timeout (NULL, 0);
+  set_query_timeout (NULL, query_timeout);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
   cas_log_write (0, true, "execute_batch %d", argc - arg_index);
@@ -1727,7 +1727,7 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   /* does not support query timeout for execute_array yet */
-  set_query_timeout (srv_handle, 0);
+  set_query_timeout (srv_handle, driver_query_timeout);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
   net_arg_get_char (auto_commit_mode, argv[arg_index]);

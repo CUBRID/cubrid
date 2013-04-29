@@ -1303,7 +1303,6 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
       db_set_client_cache_time (session, stmt_id, clt_cache_time);
     }
 
-  tran_set_end_of_queries (true);
   n = db_execute_and_keep_statement (session, stmt_id, &result);
 
 #ifndef LIBCAS_FOR_JSP
@@ -1630,7 +1629,6 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 	  db_set_client_cache_time (session, stmt_id, clt_cache_time);
 	}
 
-      tran_set_end_of_queries (db_session_is_last_statement (session));
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
       n = db_execute_and_keep_statement (session, stmt_id, &result);
       SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, n);
@@ -2127,6 +2125,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
 {
   int query_index;
   int err_code, sql_size, res_count, stmt_id;
+  int num_query_offset;
   bool use_plan_cache, use_query_cache;
   char *sql_stmt, *err_msg;
   char stmt_type;
@@ -2138,7 +2137,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
   T_BROKER_VERSION client_version = req_info->client_version;
 
   net_buf_cp_int (net_buf, 0, NULL);	/* result code */
-  net_buf_cp_int (net_buf, argc, NULL);	/* result msg. num_query */
+  net_buf_cp_int (net_buf, argc, &num_query_offset);	/* result msg. num_query */
 
   for (query_index = 0; query_index < argc; query_index++)
     {
@@ -2173,7 +2172,6 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
 	  goto batch_error;
 	}
 
-      tran_set_end_of_queries ((query_index + 1) == argc);
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
       db_get_cacheinfo (session, stmt_id, &use_plan_cache, &use_query_cache);
       cas_log_write2_nonl (" %s\n", use_plan_cache ? "(PC)" : "");
@@ -2268,6 +2266,12 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
       if (auto_commit_mode == TRUE)
 	{
 	  db_abort_transaction ();
+	}
+
+      if (err_code == ER_INTERRUPTED)
+	{
+	  net_buf_overwrite_int (net_buf, num_query_offset, query_index + 1);
+	  break;
 	}
     }
 
@@ -2390,8 +2394,6 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
 	    }
 	}
 
-      tran_set_end_of_queries (num_bind == num_markers);
-
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
       res_count = db_execute_and_keep_statement (session, stmt_id, &result);
       SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, res_count);
@@ -2496,6 +2498,11 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
       if (srv_handle->auto_commit_mode == TRUE)
 	{
 	  db_abort_transaction ();
+	}
+
+      if (err_code == ER_INTERRUPTED)
+	{
+	  break;
 	}
     }
 

@@ -5698,7 +5698,6 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
   CACHE_TIME clt_cache_time;
   CACHE_TIME srv_cache_time;
   int query_timeout;
-  int end_of_queries;
 
   int response_time = 0;
   struct timeval start;
@@ -5733,7 +5732,6 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_int (ptr, &query_flag);
   OR_UNPACK_CACHE_TIME (ptr, &clt_cache_time);
   ptr = or_unpack_int (ptr, &query_timeout);
-  ptr = or_unpack_int (ptr, &end_of_queries);
 
   if (dbval_cnt)
     {
@@ -5782,7 +5780,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
   list_id = xqmgr_execute_query (thread_p, &xasl_id, &query_id,
 				 dbval_cnt, dbvals, &query_flag,
 				 &clt_cache_time, &srv_cache_time,
-				 query_timeout, end_of_queries, &info);
+				 query_timeout, &info);
 
 #if 0
   if (!list_id && !CACHE_TIME_EQ (&clt_cache_time, &srv_cache_time))
@@ -5995,7 +5993,6 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_page_buf;
   QUERY_FLAG flag;
   int query_timeout;
-  int end_of_queries;
 
   aligned_page_buf = PTR_ALIGN (page_buf, MAX_ALIGNMENT);
 
@@ -6023,7 +6020,6 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
   ptr = or_unpack_int (ptr, &var_datasize);
   ptr = or_unpack_int (ptr, &flag);
   ptr = or_unpack_int (ptr, &query_timeout);
-  ptr = or_unpack_int (ptr, &end_of_queries);
 
   if (var_count && var_datasize)
     {
@@ -6064,7 +6060,7 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
   q_result =
     xqmgr_prepare_and_execute_query (thread_p, xasl_buffer, xasl_size,
 				     &query_id, var_count, dbvals, &flag,
-				     query_timeout, end_of_queries);
+				     query_timeout);
   if (xasl_buffer)
     {
       free_and_init (xasl_buffer);	/* allocated at css_receive_data_from_client() */

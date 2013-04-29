@@ -94,8 +94,6 @@ extern int tran_internal_abort_upto_savepoint (const char *savepoint_name,
 					       client_decache_only_insts);
 extern void tran_set_query_timeout (int query_timeout);
 extern int tran_get_query_timeout (void);
-extern void tran_set_end_of_queries (int end_of_queries);
-extern int tran_get_end_of_queries (void);
 extern void tran_begin_libcas_function (void);
 extern void tran_end_libcas_function (void);
 extern bool tran_is_in_libcas (void);

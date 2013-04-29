@@ -79,8 +79,8 @@ int tm_Tran_ID = -1;
  *
  * tm_Is_libcas indicates fn_xxx functions called by libcas_main(i.e, JSP).
  */
+static long tm_Query_begin = 0;
 static int tm_Query_timeout = 0;
-static int tm_End_of_queries = 0;
 static bool tm_Is_libcas = false;
 
 /* this is a local list of user-defined savepoints.  It may be updated upon
@@ -1586,6 +1586,18 @@ tran_internal_abort_upto_savepoint (const char *savepoint_name,
   return error_code;
 }
 
+static UINT64
+tran_current_timemillis (void)
+{
+  struct timeval tv;
+  UINT64 msecs;
+
+  gettimeofday (&tv, NULL);
+  msecs = (tv.tv_sec * 1000) + (tv.tv_usec / 1000);
+
+  return msecs;
+}
+
 /*
  * tran_set_query_timeout() -
  *   return: void
@@ -1595,6 +1607,7 @@ tran_internal_abort_upto_savepoint (const char *savepoint_name,
 void
 tran_set_query_timeout (int query_timeout)
 {
+  tm_Query_begin = tran_current_timemillis ();
   tm_Query_timeout = query_timeout;
 }
 
@@ -1605,34 +1618,23 @@ tran_set_query_timeout (int query_timeout)
 int
 tran_get_query_timeout (void)
 {
-  int timeout = tm_Query_timeout;
+  UINT64 elapsed;
+  int timeout;
 
-  /* Send timeout only for the first execution. -1 will be shipped to
-   * the following executions.
-   */
-  tm_Query_timeout = -1;
+  if (tm_Query_timeout <= 0)
+    {
+      return 0;
+    }
+
+  elapsed = tran_current_timemillis () - tm_Query_begin;
+  timeout = tm_Query_timeout - elapsed;
+  if (timeout <= 0)
+    {
+      /* already expired */
+      timeout = -2;
+    }
 
   return timeout;
-}
-
-/*
- * tran_get_end_of_queries() -
- *   return:
- */
-int
-tran_get_end_of_queries (void)
-{
-  return tm_End_of_queries;
-}
-
-/*
- * tran_set_end_of_queries() -
- *   return:
- */
-void
-tran_set_end_of_queries (int end_of_queries)
-{
-  tm_End_of_queries = end_of_queries;
 }
 
 /*
