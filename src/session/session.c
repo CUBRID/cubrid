@@ -2402,7 +2402,7 @@ session_set_conn_entry_data (THREAD_ENTRY * thread_p,
  * id (in) : parameter id
  */
 SESSION_PARAM *
-session_get_session_parameter (THREAD_ENTRY * thread_p, int id)
+session_get_session_parameter (THREAD_ENTRY * thread_p, PARAM_ID id)
 {
   int i, count;
   SESSION_STATE *session_p = NULL;

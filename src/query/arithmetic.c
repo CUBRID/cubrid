@@ -2105,11 +2105,11 @@ round_double (double num, double integer)
 }
 
 /*
- * move_n_days () - move forward or backward n days from a given date, 
- *                     
+ * move_n_days () - move forward or backward n days from a given date,
+ *
  *   return: error code
- *   yearp(in/out): 
- *   monthp(in/out) : 
+ *   yearp(in/out):
+ *   monthp(in/out) :
  *   dayp(in/out) :
  *   interval(in) : how many days to move, negative number means back
  */
@@ -2132,8 +2132,8 @@ move_n_days (int *monthp, int *dayp, int *yearp, const int interval)
 }
 
 /*
- * db_round_date () - returns a date round by value2('year' | 'month' | 'day') 
- *                     
+ * db_round_date () - returns a date round by value2('year' | 'month' | 'day')
+ *
  *   return: NO_ERROR, ER_FAILED
  *   result(out): resultant db_value
  *   value1(in) : first db_value
@@ -4400,7 +4400,7 @@ db_typeof_dbval (DB_VALUE * result, DB_VALUE * value)
  * get_number_dbval_as_long_double () -
  *   return:
  *   long double(out):
- *   value(in) : 
+ *   value(in) :
  */
 static int
 get_number_dbval_as_long_double (long double *ld, const DB_VALUE * value)
@@ -4527,7 +4527,7 @@ db_width_bucket_calculate_numeric (double *result,
 
 	  if (DB_GET_INTEGER (&cmp_result) < 1)
 	    {
-	      numeric_coerce_num_to_double (DB_GET_NUMERIC (value4),
+	      numeric_coerce_num_to_double ((DB_C_NUMERIC) DB_GET_NUMERIC (value4),
 					    DB_VALUE_SCALE (value4), &res);
 	      res += 1.0;
 	    }
@@ -4594,7 +4594,7 @@ db_width_bucket_calculate_numeric (double *result,
 
 	  if (DB_GET_INTEGER (&cmp_result) < 1)
 	    {
-	      numeric_coerce_num_to_double (DB_GET_NUMERIC (value4),
+	      numeric_coerce_num_to_double ((DB_C_NUMERIC) DB_GET_NUMERIC (value4),
 					    DB_VALUE_SCALE (value4), &res);
 	      res += 1.0;
 	    }

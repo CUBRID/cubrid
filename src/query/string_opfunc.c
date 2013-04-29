@@ -776,7 +776,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1,
 
 		  key = (unsigned char *) string2;
 		  pos += 1;
-		  /* We will take all the bits for the differentiating byte. 
+		  /* We will take all the bits for the differentiating byte.
 		   * This is fine since in this branch we are guaranteed not
 		   * to be at the end of either string. */
 		  bit_use_str1_size = false;
@@ -4818,7 +4818,7 @@ qstr_eval_like (const char *tar, int tar_length,
 			  break;
 			}
 
-		      /* set escape for match: if remains NULL, we don't check 
+		      /* set escape for match: if remains NULL, we don't check
 		       * for escape in matching function */
 		      if (!inescape && escape != NULL
 			  && intl_cmp_char (expr_seq_end,
@@ -4940,7 +4940,7 @@ qstr_eval_like (const char *tar, int tar_length,
 		      break;
 		    }
 
-		  /* set escape for match: if remains NULL, we don't check 
+		  /* set escape for match: if remains NULL, we don't check
 		   * for escape in matching function */
 		  if (!inescape && escape != NULL
 		      && intl_cmp_char (expr_seq_end,
@@ -5911,10 +5911,12 @@ db_find_string_in_in_set (const DB_VALUE * needle, const DB_VALUE * stack,
 	      /* check using collation */
 	      if (needle_size > 0)
 		{
-		  cmp = QSTR_MATCH (coll_id, elem_start,
-				    stack_ptr - elem_start,
-				    needle_str, needle_size,
-				    false, false, &matched_stack_size);
+		  cmp =
+		    QSTR_MATCH (coll_id, (const unsigned char *) elem_start,
+				stack_ptr - elem_start,
+				(const unsigned char *) needle_str,
+				needle_size, false, false,
+				&matched_stack_size);
 		  if (cmp == 0
 		      && matched_stack_size == stack_ptr - elem_start)
 		    {
@@ -25227,7 +25229,7 @@ error:
 
 /*
  * is_valid_ip_slice () - check whether ip slice is valid
- * 
+ *
  * Arguments:
  *  ipslice (in) : IP slice
  *

@@ -1656,7 +1656,7 @@ vid_oid_to_object (const DB_VALUE * value, DB_OBJECT ** mop)
   switch (DB_VALUE_TYPE (value))
     {
     case DB_TYPE_OID:
-      oid = DB_GET_OID (value);
+      oid = (OID *) DB_GET_OID (value);
       if (oid != NULL && !OID_ISNULL (oid))
 	{
 	  *mop = ws_mop (oid, NULL);

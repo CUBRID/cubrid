@@ -2572,7 +2572,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
 	    {
-	      char *cp = statement->sql_user_text;
+	      const char *cp = statement->sql_user_text;
 	      if (cp == NULL)
 		{
 		  cp = statement->alias_print;
@@ -3004,7 +3004,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       if (prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT))
 	{
-	  char *cp = statement->sql_user_text;
+	  const char *cp = statement->sql_user_text;
 	  if (cp == NULL)
 	    {
 	      cp = statement->alias_print;

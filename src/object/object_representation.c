@@ -3198,7 +3198,7 @@ or_unpack_stream (char *ptr, char *stream, size_t len)
   length = OR_GET_INT (ptr);
   ptr += OR_INT_SIZE;
 
-  assert_release (length >= len);
+  assert_release ((size_t) length >= len);
 
   memcpy (stream, ptr, len);
   ptr += length;

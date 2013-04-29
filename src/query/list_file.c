@@ -1072,8 +1072,8 @@ qfile_set_dirty_page_and_skip_logging (THREAD_ENTRY * thread_p,
  * qfile_store_xasl () - Store the XASL stream into the temporary file
  *   return: number of pages or ER_FAILED
  *   stream(in/out): xasl_stream & xasl_stream_size in, xasl_id out
- *                   stream->xasl_id is a pointer to XASL_ID that 
- *                   will be set to XASL file id set to XASL file id; 
+ *                   stream->xasl_id is a pointer to XASL_ID that
+ *                   will be set to XASL file id set to XASL file id;
  *                   first_vpid and temp_vfid
  */
 int
@@ -6149,7 +6149,7 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no,
 #endif
 #endif /* SERVER_MODE */
 #if !defined (NDEBUG)
-  int i, num_active_users;
+  size_t i_idx, num_active_users;
 #endif
 
   if (QFILE_IS_LIST_CACHE_DISABLED)
@@ -6235,9 +6235,9 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no,
 	    }
 
 #if !defined (NDEBUG)
-	  for (i = 0, num_active_users = 0; i < lent->last_ta_idx; i++)
+	  for (i_idx = 0, num_active_users = 0; i_idx < lent->last_ta_idx; i_idx++)
 	    {
-	      if (lent->tran_index_array[i] > 0)
+	      if (lent->tran_index_array[i_idx] > 0)
 		{
 		  num_active_users++;
 		}
@@ -6418,7 +6418,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr,
   int i, j, k;
   int alloc_size;
 #if !defined (NDEBUG)
-  int num_active_users;
+  size_t i_idx, num_active_users;
 #endif
 
   if (QFILE_IS_LIST_CACHE_DISABLED)
@@ -6510,9 +6510,9 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr,
 	}
 
 #if !defined (NDEBUG)
-      for (i = 0, num_active_users = 0; i < lent->last_ta_idx; i++)
+      for (i_idx = 0, num_active_users = 0; i_idx < lent->last_ta_idx; i_idx++)
 	{
-	  if (lent->tran_index_array[i] > 0)
+	  if (lent->tran_index_array[i_idx] > 0)
 	    {
 	      num_active_users++;
 	    }
@@ -6713,9 +6713,9 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr,
     }
 
 #if !defined (NDEBUG)
-  for (i = 0, num_active_users = 0; i < lent->last_ta_idx; i++)
+  for (i_idx = 0, num_active_users = 0; i_idx < lent->last_ta_idx; i_idx++)
     {
-      if (lent->tran_index_array[i] > 0)
+      if (lent->tran_index_array[i_idx] > 0)
 	{
 	  num_active_users++;
 	}
@@ -6779,7 +6779,7 @@ qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p,
 #endif
 #endif /* SERVER_MODE */
 #if !defined (NDEBUG)
-  int i, num_active_users;
+  size_t i_idx, num_active_users;
 #endif
 
   if (QFILE_IS_LIST_CACHE_DISABLED)
@@ -6822,9 +6822,9 @@ qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p,
   while (p && p < r);
 
 #if !defined (NDEBUG)
-  for (i = 0, num_active_users = 0; i < lent->last_ta_idx; i++)
+  for (i_idx = 0, num_active_users = 0; i_idx < lent->last_ta_idx; i_idx++)
     {
-      if (lent->tran_index_array[i] > 0)
+      if (lent->tran_index_array[i_idx] > 0)
 	{
 	  num_active_users++;
 	}

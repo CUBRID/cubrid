@@ -3343,7 +3343,7 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 					(PT_NODE *) where_predicate);
 	  if (filter_expr)
 	    {
-	      pred_index_info.pred_string = filter_expr->bytes;
+	      pred_index_info.pred_string = (char *) filter_expr->bytes;
 	      if (strlen (pred_index_info.pred_string) >
 		  MAX_FILTER_PREDICATE_STRING_LENGTH)
 		{
@@ -7808,7 +7808,7 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 		  if (cnstr->info.constraint.name)
 		    {
 		      constraint_name =
-			cnstr->info.constraint.name->info.name.original;
+			(char *) cnstr->info.constraint.name->info.name.original;
 		    }
 
 		  constraint_name =
@@ -7886,7 +7886,7 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 		  if (cnstr->info.constraint.name)
 		    {
 		      constraint_name =
-			cnstr->info.constraint.name->info.name.original;
+			(char *) cnstr->info.constraint.name->info.name.original;
 		    }
 
 		  constraint_name =
@@ -9850,7 +9850,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
 		  error = sm_add_constraint (class_mop,
 					     saved_constr->constraint_type,
 					     saved_constr->name,
-					     saved_constr->att_names,
+					     (const char **) saved_constr->att_names,
 					     saved_constr->asc_desc,
 					     saved_constr->prefix_length,
 					     false,
@@ -9998,7 +9998,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
 		      ci->constraint_type == DB_CONSTRAINT_PRIMARY_KEY);
 
 	      error = db_add_constraint (class_mop, ci->constraint_type, NULL,
-					 ci->att_names, 0);
+					 (const char **) ci->att_names, 0);
 	    }
 
 	  if (error != NO_ERROR)
@@ -13828,7 +13828,7 @@ do_recreate_func_index_constr (PARSER_CONTEXT * parser,
 	  (*stmt)->info.query.q.select.from->info.spec.entity_name = new_node;
 	}
       (void) parser_walk_tree (parser, expr, pt_replace_names_index_expr,
-			       new_cls_name, NULL, NULL);
+			       (void *) new_cls_name, NULL, NULL);
     }
 
   *stmt = pt_resolve_names (parser, *stmt, &sc_info);
@@ -14037,7 +14037,7 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
 	  (*stmt)->info.query.q.select.from->info.spec.entity_name = new_node;
 	}
       (void) parser_walk_tree (parser, where_predicate,
-			       pt_replace_names_index_expr, new_cls_name,
+			       pt_replace_names_index_expr, (void *) new_cls_name,
 			       NULL, NULL);
     }
 

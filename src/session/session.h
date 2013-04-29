@@ -93,5 +93,5 @@ extern int session_get_exec_stats_and_clear (THREAD_ENTRY * thread_p,
 					     const DB_VALUE * name,
 					     DB_VALUE * result);
 extern SESSION_PARAM *session_get_session_parameter (THREAD_ENTRY * thread_p,
-						     int id);
+						     PARAM_ID id);
 #endif /* _SESSION_H_ */

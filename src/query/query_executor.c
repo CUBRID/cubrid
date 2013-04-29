@@ -1147,10 +1147,10 @@ qexec_eval_instnum_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     {
       PRED_EXPR *pr = xasl->instnum_pred;
 
-      /* this case is for: 
+      /* this case is for:
        *  select * from table limit 3,  or
        *  select * from table where rownum <= 3
-       *  and we can change operator <= to < and reevaluate last 
+       *  and we can change operator <= to < and reevaluate last
        *  condition. (to stop scan at this time)
        */
       if (pr->type == T_EVAL_TERM &&
@@ -2222,7 +2222,7 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p,
 }
 
 /*
- * qexec_clear_analytic_function_list () - 
+ * qexec_clear_analytic_function_list () -
  *   return:
  *   xasl_p(in) :
  *   list(in)   :
@@ -9119,7 +9119,7 @@ qexec_process_unique_stats (THREAD_ENTRY * thread_p, OID * class_oid,
  * return : error code or NO_ERROR
  * thread_p (in) :
  * pcontext (in) :
- * 
+ *
  * Note: Since unique indexes for partitioned classes are either local or
  *    global, it's to expensive to use the validation made on normal class
  *    hierarchies. This function just reflects the unique statistics to the
@@ -9740,7 +9740,7 @@ qexec_free_delete_lob_info_list (THREAD_ENTRY * thread_p,
  *   idx_info(in):
  *   op_type (in): operation type
  *   pruning_type (in): one of DB_NOT_PARTITIONED_CLASS, DB_PARTITIONED_CLASS,
- *			DB_PARTITION_CLASS 
+ *			DB_PARTITION_CLASS
  *   pcontext (in): pruning context
  *   removed_count (in/out):
  */
@@ -24820,7 +24820,7 @@ qexec_topn_compare (const BH_ELEM left, const BH_ELEM right, BH_CMP_ARG arg)
  * domain (in): domain of left and right
  * order (in) :	sort order (S_ASC, S_DESC)
  *
- * Note: tp_value_compare is too complex for our case 
+ * Note: tp_value_compare is too complex for our case
  */
 static BH_CMP_RESULT
 qexec_topn_cmpval (DB_VALUE * left, DB_VALUE * right, TP_DOMAIN * domain,

@@ -838,7 +838,7 @@ tp_enumeration_match (const DB_ENUMERATION * db_enum1,
 	{
 	  return 0;
 	}
-      /* 
+      /*
        * memcmp is used here because it is necessary for domains like
        * ENUM('a', 'b') COLLATE utf8_en_ci and
        * ENUM('A', 'B') COLLATE utf8_en_ci to be regarded as different
@@ -4194,8 +4194,9 @@ tp_domain_select (const TP_DOMAIN * domain_list,
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      return NULL;
 	    }
-	  if (QSTR_COMPARE (d->collation_id, dom_str, dom_size,
-			    val_str, val_size) == 0)
+	  if (QSTR_COMPARE
+	      (d->collation_id, (const unsigned char *) dom_str, dom_size,
+	       (const unsigned char *) val_str, val_size) == 0)
 	    {
 	      if (best == NULL)
 		{
@@ -8600,7 +8601,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 
 		    /* use collation from the PT_TYPE_ENUMERATION */
 		    if (QSTR_COMPARE
-			(desired_domain->collation_id, val_str, val_str_size,
+			(desired_domain->collation_id,
+			 (const unsigned char *) val_str, val_str_size,
+			 (const unsigned char *)
 			 DB_GET_ENUM_ELEM_STRING (db_enum), size) == 0)
 		      {
 			break;
@@ -9286,7 +9289,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 			}
 		      else
 			{
-			  /* v2 is ENUM, and is coerced to string 
+			  /* v2 is ENUM, and is coerced to string
 			   * this should happend when the other operand is
 			   * a HV; in this case we remember to use collation
 			   * and charset from ENUM (v2) */
@@ -9333,7 +9336,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 			}
 		      else
 			{
-			  /* v1 is ENUM, and is coerced to string 
+			  /* v1 is ENUM, and is coerced to string
 			   * this should happend when the other operand is
 			   * a HV; in this case we remember to use collation
 			   * and charset from ENUM (v1) */

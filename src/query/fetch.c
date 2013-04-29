@@ -795,7 +795,10 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	  goto error;
 	}
       break;
-#endif /* ENABLE_UNUSED_FUNCTION */
+#endif
+    case T_UNPLUS:
+      break;
+
 
     case T_UNMINUS:
       if (qdata_unary_minus_dbval (arithptr->value, peek_right) != NO_ERROR)

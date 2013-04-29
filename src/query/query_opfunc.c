@@ -8631,7 +8631,7 @@ qdata_bit_shift_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
 
   if (type[0] != DB_TYPE_NULL && type[1] != DB_TYPE_NULL)
     {
-      if (bi[1] < (sizeof (DB_BIGINT) * 8) && bi[1] >= 0)
+      if (bi[1] < (DB_BIGINT) (sizeof (DB_BIGINT) * 8) && bi[1] >= 0)
 	{
 	  if (op == T_BITSHIFT_LEFT)
 	    {
