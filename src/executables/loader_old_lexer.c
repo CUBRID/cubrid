@@ -703,7 +703,7 @@ char *loader_yytext;
 
 bool loader_In_instance_line = true;
 
-extern void loader_yyerror (char* s);
+extern void loader_yyerror (const char *s);
 extern void loader_reset_string_pool (void);
 extern void loader_initialize_lexer (void);
 
@@ -2166,10 +2166,6 @@ static void loader_yy_load_buffer_state  (void)
 	loader_yyfree((void *) b  );
 }
 
-#ifndef __cplusplus
-extern int isatty (int );
-#endif /* __cplusplus */
-    
 /* Initializes or reinitializes a buffer.
  * This function is sometimes called more than once on the same buffer,
  * such as during a loader_yyrestart() or at EOF.
@@ -2193,7 +2189,7 @@ extern int isatty (int );
         b->yy_bs_column = 0;
     }
 
-        b->yy_is_interactive = file ? (isatty( fileno(file) ) > 0) : 0;
+        b->yy_is_interactive = 0;
     
 	errno = oerrno;
 }
@@ -2618,7 +2614,7 @@ void loader_yyfree (void * ptr )
 
 
 
-void loader_yyerror(char* s)
+void loader_yyerror(const char *s)
 {
   ldr_increment_err_total(ldr_Current_context);
   fprintf(stderr, 

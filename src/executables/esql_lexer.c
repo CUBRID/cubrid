@@ -527,7 +527,7 @@ static void parser_c_comment(void);
 static void parser_line_comment(void);
 static void parser_ignore_comment(void);
 static char* parser_quoted_string(char end);
-static int esql_yyinput(char* buff, int max_size);
+static int esql_yyinput(char *buff, int max_size);
 
 #define JP_MAXNAME	256
 
@@ -1789,10 +1789,6 @@ static void esql_yy_load_buffer_state  (void)
 	esql_yyfree((void *) b  );
 }
 
-#ifndef __cplusplus
-extern int isatty (int );
-#endif /* __cplusplus */
-    
 /* Initializes or reinitializes a buffer.
  * This function is sometimes called more than once on the same buffer,
  * such as during a esql_yyrestart() or at EOF.
@@ -1816,7 +1812,7 @@ extern int isatty (int );
         b->yy_bs_column = 0;
     }
 
-        b->yy_is_interactive = file ? (isatty( fileno(file) ) > 0) : 0;
+        b->yy_is_interactive = 0;
     
 	errno = oerrno;
 }

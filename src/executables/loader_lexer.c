@@ -764,7 +764,7 @@ char *loader_yytext;
 
 bool loader_In_instance_line = true;
 
-extern void loader_yyerror (char* s);
+extern void loader_yyerror (const char *s);
 extern void loader_reset_string_pool (void);
 extern void loader_initialize_lexer (void);
 
@@ -2877,7 +2877,7 @@ void loader_yyfree (void * ptr )
 
 
 
-void loader_yyerror(char* s)
+void loader_yyerror(const char *s)
 {
   ldr_increment_err_total(ldr_Current_context);
   fprintf(stderr, 

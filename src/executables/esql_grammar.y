@@ -62,8 +62,10 @@
 #define inline
 #endif
 
+#if !defined(yytext_ptr)
 extern char *esql_yytext;
 extern int esql_yylineno;
+#endif
 
 #include "config.h"
 #define ECHO_mode START
@@ -167,6 +169,7 @@ extern PARSER_CONTEXT *parser;
 
 varstring *esql_yy_get_buf (void);
 void esql_yy_set_buf (varstring * vstr);
+int esql_yylex(void);
 
 
 extern char g_delay[];
@@ -3308,7 +3311,7 @@ enum esqlmain_msg
 const char *VARCHAR_ARRAY_NAME = "array";
 const char *VARCHAR_LENGTH_NAME = "length";
 const char *pp_include_path;
-const char *pp_include_file = NULL;
+char *pp_include_file = NULL;
 const char *prog_name;
 
 unsigned int pp_uci_opt = 0;

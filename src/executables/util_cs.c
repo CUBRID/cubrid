@@ -511,6 +511,7 @@ util_get_class_oids (dynamic_array * darray)
   char name[SM_MAX_IDENTIFIER_LENGTH];
   int i;
   int num_tables = da_size (darray);
+  MOBJ *obj;
 
   oids = (OID *) malloc (sizeof (OID) * num_tables);
   if (oids == NULL)
@@ -536,7 +537,8 @@ util_get_class_oids (dynamic_array * darray)
       sm_downcase_name (table, name, SM_MAX_IDENTIFIER_LENGTH);
       cls_mop = locator_find_class (name);
 
-      ws_find (cls_mop, (MOBJ *) & cls_sm);
+      obj = (void *) &cls_sm;
+      ws_find (cls_mop, obj);
       if (cls_sm == NULL || cls_sm->class_type != SM_CLASS_CT)
 	{
 	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
@@ -1692,7 +1694,7 @@ kill_transactions (TRANS_INFO * info, int *tran_index_list, int list_size,
 static int
 print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level)
 {
-  char *buf;
+  char *buf = NULL;
   char query_buf[32];
 
   if (tran_info == NULL)
@@ -1938,7 +1940,8 @@ killtran (UTIL_FUNCTION_ARG * arg)
   int list_size = 0;
   int value;
   char delimiter = ',';
-  char *ptr, *tmp;
+  const char *ptr;
+  char *tmp;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -2971,11 +2974,11 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
 #if defined (CS_MODE)
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
-  const char *database_name;
-  const char *log_path;
+  const char *database_name = NULL;
+  const char *log_path = NULL;
   char log_path_buf[PATH_MAX];
   char *log_path_base;
-  int max_mem_size;
+  int max_mem_size = 0;
   int error = NO_ERROR;
   int retried = 0, sleep_nsecs = 1;
 #if !defined(WINDOWS)

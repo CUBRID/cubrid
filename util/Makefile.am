@@ -54,13 +54,13 @@ $(EXECUTABLE_DIR)/esql_grammar.c : $(EXECUTABLE_DIR)/esql_grammar.y
 	$(BISON) --name-prefix=esql_yy -d -r all -o $@ $< 
 
 $(EXECUTABLE_DIR)/esql_lexer.c : $(EXECUTABLE_DIR)/esql_lexer.l
-	$(FLEX) --prefix=esql_yy -o $@ $<
+	$(FLEX) --never-interactive --prefix=esql_yy -o $@ $<
 
 $(EXECUTABLE_DIR)/loader_old_grammar.c : $(EXECUTABLE_DIR)/loader_old_grammar.y
 	$(BISON) --name-prefix=loader_yy -d -r all -o $@ $<
 
 $(EXECUTABLE_DIR)/loader_old_lexer.c : $(EXECUTABLE_DIR)/loader_old_lexer.l
-	$(FLEX) --prefix=loader_yy -o $@ $<
+	$(FLEX) --never-interactive --prefix=loader_yy -o $@ $<
 
 
 include_HEADERS = $(EXECUTABLE_DIR)/cubrid_esql.h

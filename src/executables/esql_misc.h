@@ -154,7 +154,7 @@ extern int pp_emit_line_directives;
 extern int pp_dump_scope_info;
 extern int pp_dump_malloc_info;
 extern const char *pp_include_path;
-extern const char *pp_include_file;
+extern char *pp_include_file;
 extern int pp_enable_uci_trace;
 extern int pp_disable_varchar_length;
 extern int pp_varchar2;

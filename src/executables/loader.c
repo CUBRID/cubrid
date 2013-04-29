@@ -4676,6 +4676,7 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
   int i, n;
   LDR_ATTDESC *attdesc, *attrs_old;
   SM_CLASS *class_;
+  SM_COMPONENT **comp_ptr = NULL;
 
   CHECK_SKIP ();
   RETURN_IF_NOT_VALID (context);
@@ -4743,10 +4744,9 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
 					       context->attribute_type ==
 					       LDR_ATTRIBUTE_CLASS, true,
 					       &attdesc->attdesc));
+  comp_ptr = (void *) (&attdesc->att);
   CHECK_ERR (err, sm_get_descriptor_component (context->cls, attdesc->attdesc, 1,	/* for update */
-					       &class_,
-					       (SM_COMPONENT
-						**) (&attdesc->att)));
+					       &class_, comp_ptr));
 
   context->num_attrs += 1;
 
@@ -4943,6 +4943,7 @@ ldr_refresh_attrs (LDR_CONTEXT * context)
   LDR_ATTDESC *attdesc;
   int i;
   SM_CLASS *class_;
+  SM_COMPONENT **comp_ptr = NULL;
 
   context->cls = ldr_find_class (context->class_name);
   if (context->cls == NULL)
@@ -4963,10 +4964,9 @@ ldr_refresh_attrs (LDR_CONTEXT * context)
       db_free_attribute_descriptor (attdesc->attdesc);
       attdesc->attdesc = db_attdesc;
       /* Get refreshed attribute */
+      comp_ptr = (void *) &attdesc->att;
       CHECK_ERR (err, sm_get_descriptor_component (context->cls, attdesc->attdesc, 1,	/* for update */
-						   &class_,
-						   (SM_COMPONENT **) &
-						   attdesc->att));
+						   &class_, comp_ptr));
     }
 
 error_exit:
@@ -5232,6 +5232,7 @@ construct_instance (LDR_CONTEXT * context)
   int i, a;
   LDR_ATTDESC *attdesc;
   SM_CLASS *class_;
+  SM_COMPONENT **comp_ptr = NULL;
 
   for (i = 0, a = context->arg_index;
        i < context->arg_count && err == NO_ERROR && i < LDR_MAX_ARGS;
@@ -5268,12 +5269,10 @@ construct_instance (LDR_CONTEXT * context)
 	{
 	  attdesc = &context->attrs[context->next_attr];
 
+	  comp_ptr = (void *) &attdesc->att;
 	  err = sm_get_descriptor_component (context->cls,
 					     attdesc->attdesc,
-					     1,
-					     &class_,
-					     (SM_COMPONENT
-					      **) (&attdesc->att));
+					     1, &class_, comp_ptr);
 
 	  if (!err)
 	    {
@@ -6082,7 +6081,7 @@ ldr_act_set_skipCurrentclass (char *classname, size_t size)
 }
 
 bool
-ldr_is_ignore_class (char *classname, size_t size)
+ldr_is_ignore_class (const char *classname, size_t size)
 {
   int i;
   char **p;

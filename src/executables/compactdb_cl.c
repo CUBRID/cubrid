@@ -556,6 +556,7 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag,
   int num_classes_fully_compacted = 0;
   char *class_name = NULL;
   MOP *processed_class_mops = NULL;
+  MOBJ *obj_ptr = NULL;
 
   if (input_filename && input_class_names && input_class_length > 0)
     {
@@ -637,7 +638,8 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag,
   num_classes = 0;
   for (i = 0; i < num_class_mops; i++)
     {
-      ws_find (class_mops[i], (MOBJ *) & class_ptr);
+      obj_ptr = (void *) &class_ptr;
+      ws_find (class_mops[i], obj_ptr);
       if (class_ptr == NULL)
 	{
 	  continue;
@@ -919,7 +921,7 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag,
 			      MSGCAT_UTIL_SET_COMPACTDB,
 			      COMPACTDB_MSG_PASS2));
     }
-  status = do_reclaim_addresses (class_oids, num_classes,
+  status = do_reclaim_addresses ((const OID ** const) class_oids, num_classes,
 				 &num_classes_fully_compacted, verbose_flag,
 				 class_lock_timeout);
   if (status != NO_ERROR)

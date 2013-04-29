@@ -40,6 +40,7 @@
 #include <wctype.h>
 #include <editline/readline.h>
 #include <sys/socket.h>
+#include <arpa/inet.h>
 #include <netdb.h>
 #endif /* !WINDOWS */
 
@@ -784,7 +785,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 {
   char *ptr;
   char *sess_end = NULL;	/* end pos of session command */
-  char sess_end_char;		/* orginal char in end pos of session command */
+  char sess_end_char = '\0';	/* orginal char in end pos of session command */
   char *sess_cmd;		/* session command pointer */
   char *argument;		/* argument str */
   int cmd_no;			/* session command number */

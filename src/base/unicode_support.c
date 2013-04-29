@@ -1394,7 +1394,7 @@ unicode_compose_string (const char *str_in, const int size_in,
  *  Note : Input string is assumed UTF-8 character set.
  */
 bool
-unicode_string_need_decompose (char *str_in, const int size_in,
+unicode_string_need_decompose (const char *str_in, const int size_in,
 			       int *decomp_size,
 			       const UNICODE_NORMALIZATION * norm)
 {
@@ -1486,7 +1486,7 @@ no_decompose_cnt:
  * norm(in) : the unicode context in which the normalization is performed
  */
 void
-unicode_decompose_string (char *str_in, const int size_in,
+unicode_decompose_string (const char *str_in, const int size_in,
 			  char *str_out, int *size_out,
 			  const UNICODE_NORMALIZATION * norm)
 {

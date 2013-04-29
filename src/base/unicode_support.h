@@ -53,11 +53,12 @@ extern "C"
 				      char *str_out, int *size_out,
 				      bool * is_composed,
 				      const UNICODE_NORMALIZATION * norm);
-  extern bool unicode_string_need_decompose (char *str_in, const int size_in,
+  extern bool unicode_string_need_decompose (const char *str_in,
+					     const int size_in,
 					     int *decomp_size,
 					     const UNICODE_NORMALIZATION *
 					     norm);
-  extern void unicode_decompose_string (char *str_in, const int size_in,
+  extern void unicode_decompose_string (const char *str_in, const int size_in,
 					char *str_out, int *size_out,
 					const UNICODE_NORMALIZATION * norm);
 #endif

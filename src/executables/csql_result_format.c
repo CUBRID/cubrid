@@ -566,7 +566,7 @@ double_to_string (double double_value, int field_width,
       int leading_size = (leading_str != NULL) ? strlen (leading_str) : 0;
       int trailing_size = (trailing_str != NULL) ? strlen (trailing_str) : 0;
 
-      if (leading_size + actual_fieldwidth + 1 >
+      if ((size_t) (leading_size + actual_fieldwidth + 1) >
 	  sizeof (numeric_conversion_string))
 	{
 	  return NULL;
@@ -596,7 +596,7 @@ double_to_string (double double_value, int field_width,
 	  actual_fieldwidth = strlen (numeric_conversion_string);
 	}
 
-      if (trailing_size + actual_fieldwidth + 1 >
+      if ((size_t) (trailing_size + actual_fieldwidth + 1) >
 	  sizeof (numeric_conversion_string))
 	{
 	  return NULL;
@@ -1592,7 +1592,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length)
       {
 	int bytes_size, decomp_size;
 	bool need_decomp = false;
-	char *str;
+	const char *str;
 	char *decomposed = NULL;
 
 	if (db_get_enum_short (value) == 0

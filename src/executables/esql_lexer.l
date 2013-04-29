@@ -40,7 +40,7 @@ static void parser_c_comment(void);
 static void parser_line_comment(void);
 static void parser_ignore_comment(void);
 static char* parser_quoted_string(char end);
-static int esql_yyinput(char* buff, int max_size);
+static int esql_yyinput(char *buff, int max_size);
 
 #define JP_MAXNAME	256
 
