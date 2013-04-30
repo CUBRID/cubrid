@@ -170,13 +170,32 @@ ut_str_to_date (char *str, T_CCI_DATE * value)
   p = str;
   q = strchr (p, '/');
   if (q == NULL)
-    return CCI_ER_TYPE_CONVERSION;
-  yr = atoi (p);
-  p = q + 1;
+    {
+      q = strchr (p, '-');
+      if (q == NULL)
+      	{
+      	  return CCI_ER_TYPE_CONVERSION;
+      	}
+      yr = atoi (p);
+      p = q + 1;
 
-  q = strchr (p, '/');
-  if (q == NULL)
-    return CCI_ER_TYPE_CONVERSION;
+      q = strchr (p, '-');
+      if (q == NULL)
+      	{
+      	  return CCI_ER_TYPE_CONVERSION;
+      	}
+    }
+  else
+    {
+      yr = atoi (p);
+      p = q + 1;
+      
+      q = strchr (p, '/');
+      if (q == NULL)
+      	{
+      	  return CCI_ER_TYPE_CONVERSION;
+      	}
+    }
   mon = atoi (p);
 
   day = atoi (q + 1);
