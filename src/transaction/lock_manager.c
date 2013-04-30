@@ -1375,7 +1375,10 @@ lock_alloc_resource_block (void)
       lock_initialize_resource (res_ptr);
       res_ptr->hash_next = &res_block->block[i + 1];
     }
-  res_ptr->hash_next = (LK_RES *) NULL;
+  if (res_ptr != NULL)
+    {
+      res_ptr->hash_next = (LK_RES *) NULL;
+    }
 
   /* connect the allocated node into the node list */
   rv = pthread_mutex_lock (&lk_Gl.obj_res_block_list_mutex);
@@ -1587,7 +1590,10 @@ lock_alloc_entry_block (void)
       lock_initialize_entry (entry_ptr);
       entry_ptr->next = (LK_ENTRY *) (((char *) entry_ptr) + SIZEOF_LK_ENTRY);
     }
-  entry_ptr->next = (LK_ENTRY *) NULL;
+  if (entry_ptr != NULL)
+    {
+      entry_ptr->next = (LK_ENTRY *) NULL;
+    }
 
   /* connect the allocated node into the entry block */
   rv = pthread_mutex_lock (&lk_Gl.obj_entry_block_list_mutex);
@@ -6399,6 +6405,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
   char *classname;		/* Name of the class */
   int num_holders, num_blocked_holders, num_waiters;
   char time_val[CTIME_MAX];
+  int time_str_len;
 
   memset (time_val, 0, sizeof (time_val));
 
@@ -6580,9 +6587,10 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 		  strcpy (time_val, "???");
 		}
 
-	      if (time_val[strlen (time_val) - 1] == '\n')
+	      time_str_len = strlen (time_val);
+	      if (time_str_len > 0 && time_val[time_str_len - 1] == '\n')
 		{
-		  time_val[strlen (time_val) - 1] = 0;
+		  time_val[time_str_len - 1] = 0;
 		}
 	      if (res_ptr->type == LOCK_RESOURCE_INSTANCE)
 		{
@@ -6629,9 +6637,11 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 	  time_t stime =
 	    (time_t) (entry_ptr->thrd_entry->lockwait_stime / 1000LL);
 	  (void) ctime_r (&stime, time_val);
-	  if (time_val[strlen (time_val) - 1] == '\n')
+
+	  time_str_len = strlen (time_val);
+	  if (time_str_len > 0 && time_val[time_str_len - 1] == '\n')
 	    {
-	      time_val[strlen (time_val) - 1] = 0;
+	      time_val[time_str_len - 1] = 0;
 	    }
 	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID,
 					  MSGCAT_SET_LOCK,

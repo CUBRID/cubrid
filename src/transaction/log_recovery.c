@@ -3588,7 +3588,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		  fprintf (stdout,
 			   "TRACE REDOING[1]: LSA = %lld|%d, Rv_index = %s,\n"
 			   "      volid = %d, pageid = %d, offset = %d,\n",
-			   (long long int) rcv_lsa.pageid, rcv_lsa.offset,
+			   (long long int) rcv_lsa.pageid,
+			   (int) rcv_lsa.offset,
 			   rv_rcvindex_string (rcvindex), rcv_vpid.volid,
 			   rcv_vpid.pageid, rcv.offset);
 		  if (rcv_page_lsaptr != NULL)
@@ -3707,7 +3708,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		  fprintf (stdout,
 			   "TRACE REDOING[2]: LSA = %lld|%d, Rv_index = %s,\n"
 			   "      volid = %d, pageid = %d, offset = %d,\n",
-			   (long long int) rcv_lsa.pageid, rcv_lsa.offset,
+			   (long long int) rcv_lsa.pageid,
+			   (int) rcv_lsa.offset,
 			   rv_rcvindex_string (rcvindex), rcv_vpid.volid,
 			   rcv_vpid.pageid, rcv.offset);
 		  if (rcv_page_lsaptr != NULL)
@@ -3873,7 +3875,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		  fprintf (stdout,
 			   "TRACE REDOING[4]: LSA = %lld|%d, Rv_index = %s,\n"
 			   "      volid = %d, pageid = %d, offset = %d,\n",
-			   (long long int) rcv_lsa.pageid, rcv_lsa.offset,
+			   (long long int) rcv_lsa.pageid,
+			   (int) rcv_lsa.offset,
 			   rv_rcvindex_string (rcvindex), rcv_vpid.volid,
 			   rcv_vpid.pageid, rcv.offset);
 		  if (rcv_page_lsaptr != NULL)
@@ -3980,7 +3983,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 		  fprintf (stdout,
 			   "TRACE REDOING[5]: LSA = %lld|%d, Rv_index = %s,\n"
 			   "      volid = %d, pageid = %d, offset = %d,\n",
-			   (long long int) rcv_lsa.pageid, rcv_lsa.offset,
+			   (long long int) rcv_lsa.pageid,
+			   (int) rcv_lsa.offset,
 			   rv_rcvindex_string (rcvindex), rcv_vpid.volid,
 			   rcv_vpid.pageid, rcv.offset);
 		  if (rcv_page_lsaptr != NULL)
@@ -4581,7 +4585,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		      fprintf (stdout,
 			       "TRACE UNDOING[1]: LSA = %lld|%d, Rv_index = %s,\n"
 			       "      volid = %d, pageid = %d, offset = %d,\n",
-			       (long long int) rcv_lsa.pageid, rcv_lsa.offset,
+			       (long long int) rcv_lsa.pageid,
+			       (int) rcv_lsa.offset,
 			       rv_rcvindex_string (rcvindex), rcv_vpid.volid,
 			       rcv_vpid.pageid, rcv.offset);
 		      fflush (stdout);

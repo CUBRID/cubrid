@@ -500,7 +500,7 @@ locator_free_copy_area (LC_COPYAREA * copyarea)
   int rv;
 #endif /* SERVER_MODE */
 
-  if (LOCATOR_CACHED_COPYAREA_SIZE_LIMIT < copyarea->length)
+  if (LOCATOR_CACHED_COPYAREA_SIZE_LIMIT < (size_t) copyarea->length)
     {
       free_and_init (copyarea);
       return;

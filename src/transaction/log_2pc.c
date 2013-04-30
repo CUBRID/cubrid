@@ -2689,6 +2689,7 @@ log_2pc_recovery_analysis_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	    {
 	      LSA_SET_NULL (&prev_tranlsa);
 	    }
+	  free_and_init (ack_list);
 	}			/* while */
     }				/* while */
 

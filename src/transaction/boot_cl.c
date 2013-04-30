@@ -702,7 +702,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 #if defined(CS_MODE)
   const char *hosts[2];
 
-  const char **ha_hosts;
+  char **ha_hosts;
   int num_hosts;
   char *ha_node_list = NULL;
 #endif /* CS_MODE */
@@ -809,7 +809,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
 	  db =
 	    cfg_new_db (client_credential->db_name, NULL, NULL, NULL,
-			ha_hosts);
+			(const char **) ha_hosts);
 
 	  if (ha_hosts)
 	    {
@@ -942,13 +942,18 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       hosts = util_split_string (client_credential->preferred_hosts, ":");
       if (hosts == NULL)
 	{
+	  error_code = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
 	  goto error;
 	}
 
-      tmp_db = cfg_new_db (db->name, NULL, NULL, NULL, hosts);
+      tmp_db = cfg_new_db (db->name, NULL, NULL, NULL, (const char **) hosts);
       if (tmp_db == NULL)
 	{
 	  util_free_string_array (hosts);
+	  error_code = ER_BO_UNKNOWN_DATABASE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1,
+		  db->name);
 	  goto error;
 	}
 
@@ -3584,6 +3589,11 @@ boot_add_charsets (MOP class_mop)
       db_put_internal (obj, CT_DBCHARSET_CHARSET_ID, &val);
 
       charset_name = (char *) lang_charset_cubrid_name (i);
+      if (charset_name == NULL)
+	{
+	  return ER_LANG_CODESET_NOT_AVAILABLE;
+	}
+
       DB_MAKE_VARCHAR (&val, 32, charset_name, strlen (charset_name),
 		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
       db_put_internal (obj, CT_DBCHARSET_CHARSET_NAME, &val);

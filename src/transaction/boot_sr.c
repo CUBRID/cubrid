@@ -1331,7 +1331,7 @@ boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p,
 	    }
 	  else if (intl_mbs_casecmp (token, "NPAGES") == 0)
 	    {
-	      if (sscanf (token_value, "%i", &ext_npages) != 1)
+	      if (sscanf (token_value, "%i", (int *) &ext_npages) != 1)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_BO_PARSE_ADDVOLS_NOGIVEN_NPAGES, 1, line_num);
@@ -2516,6 +2516,13 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
   else
     {
       p = lob_path = strchr (strcpy (lob_pathbuf, lob_path), ':') + 1;
+    }
+
+  if (lob_path == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH,
+	      1, lob_pathbuf);
+      return NULL_TRAN_INDEX;
     }
 
   if (es_get_type (lob_pathbuf) == ES_POSIX)
@@ -5125,6 +5132,10 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete)
        * If I cannot obtain a Lock on database.txt, it is better to quite at
        * this moment. We will not even perform a dirty delete.
        */
+      if (dbtxt_vdes != NULL_VOLDES)
+	{
+	  fileio_dismount (thread_p, dbtxt_vdes);
+	}
       return error_code;
     }
 

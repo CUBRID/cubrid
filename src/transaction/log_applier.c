@@ -4488,7 +4488,7 @@ la_flush_unflushed_insert (MOP class_mop)
 {
   int error = NO_ERROR;
   MOP mop;
-  char *class_name;
+  const char *class_name;
   char primary_key[256];
   int length;
 
@@ -5711,9 +5711,10 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
       snprintf (buffer, sizeof (buffer),
 		"process log record (type:%d). "
 		"skip this log page. LSA: %lld|%d",
-		lrec->type, (long long int) final->pageid, final->offset);
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR,
-	      1, buffer);
+		lrec->type, (long long int) final->pageid,
+		(int) final->offset);
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+	      buffer);
 
       final->pageid++;
       final->offset = 0;
@@ -5866,9 +5867,10 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
       snprintf (buffer, sizeof (buffer),
 		"process log record (type:%d). "
 		"skip this log record. LSA: %lld|%d",
-		lrec->type, (long long int) final->pageid, final->offset);
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR,
-	      1, buffer);
+		lrec->type, (long long int) final->pageid,
+		(int) final->offset);
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+	      buffer);
 
       LSA_COPY (final, &lrec->forw_lsa);
       return ER_INTERRUPTED;
@@ -5912,7 +5914,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
 	{
 	  snprintf (buffer, sizeof (buffer),
 		    "process last log record in archive. LSA: %lld|%d",
-		    (long long int) final->pageid, final->offset);
+		    (long long int) final->pageid, (int) final->offset);
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 		  ER_HA_GENERIC_ERROR, 1, buffer);
 
@@ -6055,7 +6057,7 @@ la_change_state (void)
 		    css_ha_applier_state_string (la_Info.apply_state),
 		    css_ha_applier_state_string (new_state),
 		    (long long int) la_Info.committed_lsa.pageid,
-		    la_Info.committed_lsa.offset);
+		    (int) la_Info.committed_lsa.offset);
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 		  ER_HA_GENERIC_ERROR, 1, buffer);
 
@@ -6557,9 +6559,10 @@ la_print_log_header (const char *database_name, struct log_header *hdr,
   printf ("%-30s : %s\n", "DB name ", database_name);
   printf ("%-30s : %s (%ld)\n", "DB creation time ", timebuf, tloc);
   printf ("%-30s : %lld | %d\n", "EOF LSA",
-	  (long long int) hdr->eof_lsa.pageid, hdr->eof_lsa.offset);
+	  (long long int) hdr->eof_lsa.pageid, (int) hdr->eof_lsa.offset);
   printf ("%-30s : %lld | %d\n", "Append LSA",
-	  (long long int) hdr->append_lsa.pageid, hdr->append_lsa.offset);
+	  (long long int) hdr->append_lsa.pageid,
+	  (int) hdr->append_lsa.offset);
   printf ("%-30s : %s\n", "HA server state",
 	  css_ha_server_state_string (hdr->ha_server_state));
   if (verbose)
@@ -6573,7 +6576,8 @@ la_print_log_header (const char *database_name, struct log_header *hdr,
       printf ("%-30s : %lld\n", "Logical pageid",
 	      (long long int) hdr->fpageid);
       printf ("%-30s : %lld | %d\n", "CHKPT LSA",
-	      (long long int) hdr->chkpt_lsa.pageid, hdr->chkpt_lsa.offset);
+	      (long long int) hdr->chkpt_lsa.pageid,
+	      (int) hdr->chkpt_lsa.offset);
       printf ("%-30s : %lld\n", "Next archive pageid",
 	      (long long int) hdr->nxarv_pageid);
       printf ("%-30s : %lld\n", "Next archive physical pageid",
@@ -6669,7 +6673,7 @@ la_log_page_check (const char *database_name, const char *log_path,
 
 	  printf ("%-30s : %lld | %d\n", "Last committed LSA",
 		  (long long int) ha_apply_info.committed_lsa.pageid,
-		  ha_apply_info.committed_lsa.offset);
+		  (int) ha_apply_info.committed_lsa.offset);
 	  printf ("%-30s : %lld | %d\n", "Last committed replog LSA",
 		  (long long int) ha_apply_info.committed_rep_lsa.pageid,
 		  ha_apply_info.committed_rep_lsa.offset);
@@ -6867,7 +6871,7 @@ la_print_delay_info (LOG_LSA working_lsa, LOG_LSA target_lsa,
     }
   else
     {
-      printf ("%-30s : %ld second(s)\n", "Estimated Delay", estimated_delay);
+      printf ("%-30s : %lld second(s)\n", "Estimated Delay", estimated_delay);
     }
 }
 

@@ -1660,15 +1660,15 @@ logpb_dump_information (FILE * out_fp)
 	   " Prev append LSA = %lld|%d\n"
 	   " Prior LSA = %lld|%d, Prev prior LSA = %lld|%d\n\n",
 	   (long long int) log_Gl.append.nxio_lsa.pageid,
-	   log_Gl.append.nxio_lsa.offset,
+	   (int) log_Gl.append.nxio_lsa.offset,
 	   (long long int) log_Gl.hdr.append_lsa.pageid,
-	   log_Gl.hdr.append_lsa.offset,
+	   (int) log_Gl.hdr.append_lsa.offset,
 	   (long long int) log_Gl.append.prev_lsa.pageid,
-	   log_Gl.append.prev_lsa.offset,
+	   (int) log_Gl.append.prev_lsa.offset,
 	   (long long int) log_Gl.prior_info.prior_lsa.pageid,
-	   log_Gl.prior_info.prior_lsa.offset,
+	   (int) log_Gl.prior_info.prior_lsa.offset,
 	   (long long int) log_Gl.prior_info.prev_lsa.pageid,
-	   log_Gl.prior_info.prev_lsa.offset);
+	   (int) log_Gl.prior_info.prev_lsa.offset);
 
   if (log_Gl.append.delayed_free_log_pgptr == NULL)
     {
@@ -9018,22 +9018,22 @@ logpb_dump_checkpoint_trans (FILE * out_fp, int length, void *data)
 	       chkpt_one->trid, log_state_string (chkpt_one->state),
 	       chkpt_one->isloose_end,
 	       (long long int) chkpt_one->head_lsa.pageid,
-	       chkpt_one->head_lsa.offset,
+	       (int) chkpt_one->head_lsa.offset,
 	       (long long int) chkpt_one->tail_lsa.pageid,
-	       chkpt_one->tail_lsa.offset,
+	       (int) chkpt_one->tail_lsa.offset,
 	       (long long int) chkpt_one->undo_nxlsa.pageid,
-	       chkpt_one->undo_nxlsa.offset,
+	       (int) chkpt_one->undo_nxlsa.offset,
 	       (long long int) chkpt_one->posp_nxlsa.pageid,
-	       chkpt_one->posp_nxlsa.offset,
+	       (int) chkpt_one->posp_nxlsa.offset,
 	       (long long int) chkpt_one->savept_lsa.pageid,
-	       chkpt_one->savept_lsa.offset,
+	       (int) chkpt_one->savept_lsa.offset,
 	       (long long int) chkpt_one->tail_topresult_lsa.pageid,
-	       chkpt_one->tail_topresult_lsa.offset,
+	       (int) chkpt_one->tail_topresult_lsa.offset,
 	       chkpt_one->user_name,
 	       (long long int) chkpt_one->client_undo_lsa.pageid,
-	       chkpt_one->client_undo_lsa.offset,
+	       (int) chkpt_one->client_undo_lsa.offset,
 	       (long long int) chkpt_one->client_posp_lsa.pageid,
-	       chkpt_one->client_posp_lsa.offset);
+	       (int) chkpt_one->client_posp_lsa.offset);
     }
   (void) fprintf (out_fp, "\n");
 }
@@ -9620,7 +9620,7 @@ loop:
       fprintf (session.verbose_fp, "- HA apply info: %s %lld %lld %d\n\n",
 	       log_Gl.hdr.prefix_name, (long long int) log_Gl.hdr.db_creation,
 	       (long long int) log_Gl.hdr.smallest_lsa_at_last_chkpt.pageid,
-	       log_Gl.hdr.smallest_lsa_at_last_chkpt.offset);
+	       (int) log_Gl.hdr.smallest_lsa_at_last_chkpt.offset);
 
       fprintf (session.verbose_fp, "- backup progress status\n\n");
       fprintf (session.verbose_fp,
@@ -9981,14 +9981,24 @@ logpb_check_stop_at_time (FILEIO_BACKUP_SESSION * session,
 			  time_t stop_at, time_t backup_time)
 {
   char ctime_buf1[CTIME_MAX], ctime_buf2[CTIME_MAX];
+  int time_str_len;
 
   if (stop_at < backup_time)
     {
       ctime_r (&stop_at, ctime_buf1);
       ctime_r (&backup_time, ctime_buf2);
 
-      ctime_buf1[strlen (ctime_buf1) - 1] = 0;	/* strip '\n' */
-      ctime_buf2[strlen (ctime_buf2) - 1] = 0;
+      /* strip '\n' */
+      time_str_len = strlen (ctime_buf1);
+      if (time_str_len > 0)
+	{
+	  ctime_buf1[time_str_len - 1] = 0;
+	}
+      time_str_len = strlen (ctime_buf2);
+      if (time_str_len > 0)
+	{
+	  ctime_buf2[time_str_len - 1] = 0;
+	}
 
       fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
 				       MSGCAT_SET_LOG,

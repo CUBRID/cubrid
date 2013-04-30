@@ -380,6 +380,7 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid,
 	  error = ER_REPL_ERROR;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_REPL_ERROR, 1,
 		  "can't allocate memory");
+	  free_and_init (class_name);
 	  return error;
 	}
       repl_rec->repl_data = ptr;

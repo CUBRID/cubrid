@@ -45,7 +45,7 @@
 
 typedef enum boot_server_status BOOT_SERVER_STATUS;
 enum boot_server_status
-{ BOOT_SERVER_UP, BOOT_SERVER_DOWN, BOOT_SERVER_MAINTENANCE };
+{ BOOT_SERVER_UP = 1, BOOT_SERVER_DOWN, BOOT_SERVER_MAINTENANCE };
 extern BOOT_SERVER_STATUS boot_Server_status;
 
 #define BO_IS_SERVER_RESTARTED() \
@@ -65,7 +65,9 @@ extern const char *boot_db_name (void);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern const char *boot_db_full_name (void);
 #endif
+#if !defined(CS_MODE)
 extern const char *boot_get_lob_path (void);
+#endif /* !CS_MODE */
 extern HFID *boot_find_root_heap (void);
 
 extern VOLID boot_find_next_permanent_volid (THREAD_ENTRY * thread_p);
