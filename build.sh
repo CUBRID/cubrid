@@ -791,6 +791,22 @@ function build_package ()
 	  fi
 	fi
       ;;
+      zip_src)
+        if [ ! "$build_mode" = "release" ]; then
+	  print_info "$build_mode mode source zip is not supported. Skip"
+	  package_name="NONE"
+	else
+	  package_name="$product_name_lower-$build_number.zip"
+	  # make dist-zip for pack sources
+	  (cd $build_dir && make dist-zip)
+	  if [ $? -eq 0 ]; then
+	    output_packages="$output_packages $package_name"
+	    [ $build_dir -ef $output_dir ] || mv -f $build_dir/$package_name $output_dir
+	  else
+	    false
+	  fi
+	fi
+      ;;
       cci_src)
 	if [ ! "$build_mode" = "release" ]; then
 	  print_info "$build_mode mode cci source tarball is not supported. Skip"
@@ -1019,7 +1035,7 @@ function show_usage ()
   else
     echo "  -j path Set JAVA_HOME path; [default: $JAVA_HOME]"
   fi
-  echo "  -z arg  Package to generate (src,cci_src,php_src,shell,tarball,cci,jdbc,srpm,rpm);"
+  echo "  -z arg  Package to generate (src,zip_src,cci_src,php_src,shell,tarball,cci,jdbc,srpm,rpm);"
   echo "          [default: all]"
   echo "  -? | -h Show this help message and exit"
   echo ""
@@ -1107,7 +1123,7 @@ function get_options ()
     fi
   done
   if [ "$packages" = "all" -o "$packages" = "ALL" ]; then
-    packages="src cci_src php_src tarball shell cci jdbc srpm rpm dbgwci"
+    packages="src zip_src cci_src php_src tarball shell cci jdbc srpm rpm dbgwci"
   fi
 
   if [ "x$output_dir" = "x" ]; then

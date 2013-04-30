@@ -31,7 +31,7 @@ SYSTEM_TYPE="$host_vendor-$host_os"
 MACHINE_TYPE="$host_cpu"
 export SYSTEM_TYPE MACHINE_TYPE
 
-AM_INIT_AUTOMAKE([1.9 tar-pax])
+AM_INIT_AUTOMAKE([1.9 tar-ustar])
 
 # Checks for programs.
 remember_CFLAGS="$CFLAGS"
