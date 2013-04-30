@@ -3188,10 +3188,6 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
     }
 #endif /* !CS_MODE */
 
-#if !defined (SERVER_MODE)
-  prm_init_intl_param ();
-#endif
-
   /*
    * Read installation configuration file - $CUBRID/conf/cubrid.conf
    * or use conf_file if exist
@@ -3441,7 +3437,18 @@ sysprm_load_and_init (const char *db_name, const char *conf_file)
 int
 sysprm_load_and_init_client (const char *db_name, const char *conf_file)
 {
-  return sysprm_load_and_init_internal (db_name, conf_file, false, true);
+  int r;
+
+  r = sysprm_load_and_init_internal (db_name, conf_file, false, true);
+
+#if !defined (SERVER_MODE)
+  if (r == NO_ERROR)
+    {
+      prm_init_intl_param ();
+    }
+#endif
+
+  return r;
 }
 
 /*
@@ -7891,7 +7898,7 @@ sysprm_print_parameters_for_qry_string (void)
 /*
  * prm_init_intl_param () -
  *
- * return: printed string
+ * return:
  */
 static void
 prm_init_intl_param (void)

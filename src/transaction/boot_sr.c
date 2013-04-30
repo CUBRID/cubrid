@@ -2393,11 +2393,6 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
   assert (db_path_info != NULL);
 
 #if defined(SERVER_MODE)
-  if (!lang_init ())
-    {
-      return NULL_TRAN_INDEX;
-    }
-
   /* open the system message catalog, before prm_ ?  */
   if (msgcat_init () != NO_ERROR)
     {
@@ -2407,7 +2402,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
       return NULL_TRAN_INDEX;
     }
 
-  if (!lang_check_init ())
+  if (!lang_init_full ())
     {
       if (er_errid () == NO_ERROR)
 	{
@@ -2955,11 +2950,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   char *prev_err_msg;
 
 #if defined(SERVER_MODE)
-  if (!lang_init_full ())
-    {
-      return ER_FAILED;
-    }
-
   if (msgcat_init () != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -2967,7 +2957,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
       return ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG;
     }
 
-  if (!lang_check_init ())
+  if (!lang_init_full ())
     {
       if (er_errid () == NO_ERROR)
 	{
@@ -3568,11 +3558,6 @@ int
 xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart,
 			   const char *db_name, BO_RESTART_ARG * r_args)
 {
-  if (!lang_init_full ())
-    {
-      return NULL_TRAN_INDEX;
-    }
-
   /* open the system message catalog, before prm_ ?  */
   if (msgcat_init () != NO_ERROR)
     {
@@ -3581,7 +3566,7 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart,
       return NULL_TRAN_INDEX;
     }
 
-  if (!lang_check_init ())
+  if (!lang_init_full ())
     {
       if (er_errid () == NO_ERROR)
 	{
@@ -5684,11 +5669,6 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name,
     }
 
 #if defined(SERVER_MODE)
-  if (!lang_init_full ())
-    {
-      return ER_FAILED;
-    }
-
   if (msgcat_init () != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -5696,7 +5676,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name,
       return ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG;
     }
 
-  if (!lang_check_init ())
+  if (!lang_init_full ())
     {
       if (er_errid () == NO_ERROR)
 	{

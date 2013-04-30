@@ -328,13 +328,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
    * environment variable, should return an appropriate error code even
    * if we can't actually print anything
    */
-
   if (!lang_init_full ())
-    {
-      return ER_LOC_INIT;
-    }
-
-  if (!lang_check_init ())
     {
       if (er_errid () == NO_ERROR)
 	{
@@ -727,11 +721,6 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
   /* initialize language parameters */
   if (!lang_init_full ())
-    {
-      return ER_LOC_INIT;
-    }
-
-  if (!lang_check_init ())
     {
       if (er_errid () == NO_ERROR)
 	{

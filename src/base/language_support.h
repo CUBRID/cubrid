@@ -257,11 +257,10 @@ extern "C"
 {
 #endif
 
-  extern bool lang_init (void);
+  extern void lang_init_builtin (void);
   extern bool lang_init_full (void);
   extern void lang_init_console_txt_conv (void);
   extern void lang_final (void);
-  extern bool lang_check_init (void);
   extern int lang_locales_count (bool check_codeset);
   extern const char *lang_get_user_loc_name (void);
   extern const char *lang_get_msg_Loc_name (void);

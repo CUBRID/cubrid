@@ -63,10 +63,11 @@ static LANG_LOCALE_DATA lc_Korean_utf8;
 static LANG_LOCALE_DATA lc_Korean_euckr;
 static LANG_LOCALE_DATA *lang_Loc_data = &lc_English_iso88591;
 
+static bool lang_builtin_initialized = false;
 static bool lang_Initialized = false;
-static bool lang_Fully_Initialized = false;
 static bool lang_Init_w_error = false;
 static bool lang_env_initialized = false;
+static bool lang_Msg_env_initialized = false;
 
 typedef struct lang_defaults LANG_DEFAULTS;
 struct lang_defaults
@@ -133,8 +134,8 @@ static const DB_CHARSET lang_Db_charsets[] = {
   {"", "", "", "", "", INTL_CODESET_NONE, 0}
 };
 
-static void set_current_locale (bool is_full_init);
-static int set_lang_from_env (void);
+static int set_msg_lang_from_env (void);
+static int set_cubrid_charset_from_env (void);
 static int check_env_lang_val (char *env_val, char *lang_name,
 			       char **charset_ptr, INTL_CODESET * codeset);
 static void set_default_lang (void);
@@ -538,30 +539,27 @@ static LANG_COLLATION *built_in_collations[] = {
 };
 
 /*
- * lang_init - Initializes any global state required by the multi-language
- *             module
+ * lang_init_builtin - Initializes built-in available languages and sets
+ *		       message catalog language according to env
+ *
  *   return: true if success
  *
  *  Note : this is a "light" language initialization. User defined locales
  *	   are not loaded during this process and if environment cannot be
  *	   resolved, the default language is set.
  */
-bool
-lang_init (void)
+void
+lang_init_builtin (void)
 {
   int i;
 
-  if (lang_Initialized)
+  if (lang_builtin_initialized)
     {
-      return lang_Initialized;
+      return lang_builtin_initialized;
     }
 
-  /* ignore lang_env_initialized (if already set after catalog message init),
-   * and force reading the environment to check any possible errors */
-  if (set_lang_from_env () != NO_ERROR)
-    {
-      return false;
-    }
+  /* ignore msg lang init error */
+  (void) set_msg_lang_from_env ();
 
   /* init all collation placeholders with ISO binary collation */
   for (i = 0; i < LANG_MAX_COLLATIONS; i++)
@@ -592,53 +590,85 @@ lang_init (void)
   (void) register_lang_locale_data (&lc_Korean_utf8);
   (void) register_lang_locale_data (&lc_Turkish_utf8);
 
-  /* set current locale */
-  set_current_locale (false);
+  lang_builtin_initialized = true;
 
-  lang_Initialized = true;
-
-  return (lang_Initialized);
+  return (lang_builtin_initialized);
 }
 
 /*
  * lang_init_full - Initializes the language according to environment
- *		    including user defined language
+ *		    including user defined languages
  *
  *   return: true if success
  */
 bool
 lang_init_full (void)
 {
-  (void) lang_init ();
+  bool found = false;
 
-  if (lang_Fully_Initialized)
+  if (lang_Initialized)
     {
-      return lang_Fully_Initialized;
+      return lang_Initialized;
     }
 
-  /* re-get variables from environment */
-  if (set_lang_from_env () != NO_ERROR)
+  lang_init_builtin ();
+
+  /* get CUBRID_CHARSET from environment */
+  if (set_cubrid_charset_from_env () != NO_ERROR)
     {
       return false;
     }
 
-  assert (lang_Initialized == true);
+  assert (lang_builtin_initialized == true);
 
   /* load & register user locales (no matter the default DB codeset) */
   if (init_user_locales () != NO_ERROR)
     {
       set_default_lang ();
       lang_Init_w_error = true;
-      lang_Fully_Initialized = true;
+      lang_Initialized = true;
 
-      return lang_Fully_Initialized;
+      return lang_Initialized;
     }
 
-  set_current_locale (true);
+  lang_get_lang_id_from_name (lang_Lang_name, &lang_Lang_id);
 
-  lang_Fully_Initialized = true;
+  for (lang_Loc_data = lang_loaded_locales[lang_Lang_id];
+       lang_Loc_data != NULL; lang_Loc_data = lang_Loc_data->next_lld)
+    {
+      assert (lang_Loc_data != NULL);
 
-  return (lang_Fully_Initialized);
+      if (lang_Loc_data->codeset == lang_Loc_charset
+	  && strcasecmp (lang_Lang_name, lang_Loc_data->lang_name) == 0)
+	{
+	  found = true;
+	  break;
+	}
+    }
+
+  if (!found)
+    {
+      char err_msg[ERR_MSG_SIZE];
+
+      lang_Init_w_error = true;
+      snprintf (err_msg, sizeof (err_msg) - 1,
+		"Locale %s.%s was not loaded.\n"
+		" %s not found in cubrid_locales.txt",
+		lang_Lang_name, lang_get_codeset_name (lang_Loc_charset),
+		lang_Lang_name);
+      LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, false);
+      set_default_lang ();
+    }
+
+  lang_Loc_currency = lang_Loc_data->default_currency_code;
+
+  /* static globals in db_date.c should also be initialized with the current
+   * locale (for parsing local am/pm strings for times) */
+  db_date_locale_init ();
+
+  lang_Initialized = true;
+
+  return (!lang_Init_w_error);
 }
 
 /*
@@ -720,93 +750,33 @@ lang_init_console_txt_conv (void)
 }
 
 /*
- * set_current_locale - sets the current locale according to 'lang_Lang_name'
- *			and 'lang_Loc_charset'
- *
- *  is_full_init(in) : true if this is a full language initialization
- */
-static void
-set_current_locale (bool is_full_init)
-{
-  bool found = false;
-
-  lang_get_lang_id_from_name (lang_Lang_name, &lang_Lang_id);
-
-  for (lang_Loc_data = lang_loaded_locales[lang_Lang_id];
-       lang_Loc_data != NULL; lang_Loc_data = lang_Loc_data->next_lld)
-    {
-      assert (lang_Loc_data != NULL);
-
-      if (lang_Loc_data->codeset == lang_Loc_charset
-	  && strcasecmp (lang_Lang_name, lang_Loc_data->lang_name) == 0)
-	{
-	  found = true;
-	  break;
-	}
-    }
-
-  if (!found)
-    {
-      /* when charset is not UTF-8, full init will not be required */
-      if (is_full_init || lang_Loc_charset != INTL_CODESET_UTF8)
-	{
-	  char err_msg[ERR_MSG_SIZE];
-
-	  lang_Init_w_error = true;
-	  snprintf (err_msg, sizeof (err_msg) - 1,
-		    "Locale %s.%s was not loaded.\n"
-		    " %s not found in cubrid_locales.txt",
-		    lang_Lang_name, lang_get_codeset_name (lang_Loc_charset),
-		    lang_Lang_name);
-	  LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, false);
-	}
-      set_default_lang ();
-    }
-
-  lang_Loc_currency = lang_Loc_data->default_currency_code;
-
-  /* static globals in db_date.c should also be initialized with the current
-   * locale (for parsing local am/pm strings for times) */
-  db_date_locale_init ();
-}
-
-/*
- * set_lang_from_env - Initializes language variables from environment
+ * set_msg_lang_from_env - Initializes message language variable from env
  *
  *   return: NO_ERROR if success
  *
- *  Note : This function sets the following global variables according to
- *	   $CUBRID_CHARSET environment variable :
- *	    - lang_user_Loc_name : locale string supplied by user
- *	    - lang_Loc_name : resolved locale string: <lang>.<charset>
- *	    - lang_Lang_name : <lang> string part (without <charset>)
- *	    - lang_Lang_id: id of language
- *	    - lang_Loc_charset : charset id : ISO-8859-1, UTF-8 or EUC-KR
- *	   According to $CUBRID_MSG_LANG:
+ *  Note : This function set the following global variables according to
+ *	   $CUBRID_MSG_LANG:
  *	    - lang_msg_Loc_name : <lang>.<charset>; en_US.utf8;
- *	      if $CUBRID_MSG_LANG is not set, then only $CUBRID_CHARSET is used
+ *	      if $CUBRID_MSG_LANG is not set, then only en_US is used
  */
 static int
-set_lang_from_env (void)
+set_msg_lang_from_env (void)
 {
   const char *env;
   char *charset = NULL;
   char err_msg[ERR_MSG_SIZE];
-  bool is_msg_env_set = false;
   int status = NO_ERROR;
 
-  /*
-   * Determines the locale by examining environment variables.
-   * We check the optional variable CUBRID_MSG_LANG, which decides the
-   * locale for catalog messages; if not set CUBRID_CHARSET is used for catalog
-   * messages
-   * CUBRID_CHARSET is mandatory, it decides the locale in which CUBRID opertes.
-   * This controls the system charset and collation, including charset and
-   * collation of system tables, charset (and casing rules) of identifiers,
-   * default charset and collation of string literals, default locale for
-   * string - date /numeric conversion functions.
-   */
+  if (lang_Msg_env_initialized)
+    {
+      return lang_Msg_env_initialized;
+    }
 
+  /*
+   * Determines the messages language by examining environment variables.
+   * We check the optional variable CUBRID_MSG_LANG, which decides the
+   * locale for catalog messages; if not set, then en_US is used for catalog
+   * messages */
   env = envvar_get ("MSG_LANG");
   if (env != NULL)
     {
@@ -823,12 +793,11 @@ set_lang_from_env (void)
 		   lang_msg_Loc_name);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, err_msg);
 	  strcpy (lang_msg_Loc_name, LANG_NAME_DEFAULT);
-	  lang_env_initialized = true;
+	  lang_Msg_env_initialized = true;
 	  return ER_LOC_INIT;
 	}
       else
 	{
-	  is_msg_env_set = true;
 	  if (charset == NULL && strcasecmp (msg_lang, "en_US") != 0)
 	    {
 	      /* by default all catalog message folders are in .utf8, unless
@@ -837,7 +806,46 @@ set_lang_from_env (void)
 	      strcat (lang_msg_Loc_name, ".utf8");
 	    }
 	}
-      charset = NULL;
+    }
+
+  lang_Msg_env_initialized = true;
+
+  return status;
+}
+
+/*
+ * set_cubrid_charset_from_env - Initializes CUBRID language from environment
+ *
+ *   return: NO_ERROR if success
+ *
+ *  Note : This function sets the following global variables according to
+ *	   $CUBRID_CHARSET environment variable :
+ *	    - lang_user_Loc_name : locale string supplied by user
+ *	    - lang_Loc_name : resolved locale string: <lang>.<charset>
+ *	    - lang_Lang_name : <lang> string part (without <charset>)
+ *	    - lang_Lang_id: id of language
+ *	    - lang_Loc_charset : charset id : ISO-8859-1, UTF-8 or EUC-KR
+ */
+static int
+set_cubrid_charset_from_env (void)
+{
+  const char *env;
+  char *charset = NULL;
+  char err_msg[ERR_MSG_SIZE];
+  int status = NO_ERROR;
+
+  /* CUBRID_CHARSET is mandatory, it decides the locale in which CUBRID
+   * operates.
+   * This controls the system charset and collation, including charset and
+   * collation of system tables, charset (and casing rules) of identifiers,
+   * default charset and collation of string literals, default locale for
+   * string - date /numeric conversion functions.
+   */
+  assert (lang_Msg_env_initialized);
+
+  if (lang_env_initialized)
+    {
+      return lang_Init_w_error ? ER_LOC_INIT : NO_ERROR;
     }
 
   env = envvar_get ("CHARSET");
@@ -850,10 +858,6 @@ set_lang_from_env (void)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
 	      "CUBRID_CHARSET environment variable is not set");
 
-      if (!is_msg_env_set)
-	{
-	  strcpy (lang_msg_Loc_name, LANG_NAME_DEFAULT);
-	}
       lang_env_initialized = true;
       return ER_LOC_INIT;
     }
@@ -866,10 +870,6 @@ set_lang_from_env (void)
     {
       sprintf (err_msg, "invalid value %s for CUBRID_CHARSET", lang_Loc_name);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, err_msg);
-      if (!is_msg_env_set)
-	{
-	  strcpy (lang_msg_Loc_name, LANG_NAME_DEFAULT);
-	}
       lang_env_initialized = true;
       return ER_LOC_INIT;
     }
@@ -897,11 +897,6 @@ set_lang_from_env (void)
 	}
     }
 
-  if (!is_msg_env_set)
-    {
-      strcpy (lang_msg_Loc_name, lang_Loc_name);
-    }
-
   lang_env_initialized = true;
 
   return NO_ERROR;
@@ -911,10 +906,6 @@ error_codeset:
 	   lang_Lang_name);
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, err_msg);
 
-  if (!is_msg_env_set)
-    {
-      strcpy (lang_msg_Loc_name, LANG_NAME_DEFAULT);
-    }
   lang_env_initialized = true;
 
   return ER_LOC_INIT;
@@ -1013,17 +1004,6 @@ set_default_lang (void)
   lang_Loc_data = &lc_English_iso88591;
   lang_Loc_charset = lang_Loc_data->codeset;
   lang_Loc_currency = lang_Loc_data->default_currency_code;
-}
-
-/*
- * lang_check_init -
- *   return: error code if language initialization flag is set
- *
- */
-bool
-lang_check_init (void)
-{
-  return (!lang_Init_w_error);
 }
 
 /*
@@ -1593,8 +1573,8 @@ free_lang_locale_data (LANG_LOCALE_DATA * lld)
 }
 
 /*
- * lang_get_user_loc_name - returns the string provided by user in CUBRID_CHARSET
- *		            according to environment
+ * lang_get_user_loc_name - returns the string provided by user in
+ *		            CUBRID_CHARSET environment variable
  *   return: locale user string
  */
 const char *
@@ -1611,10 +1591,10 @@ lang_get_user_loc_name (void)
 const char *
 lang_get_msg_Loc_name (void)
 {
-  if (!lang_env_initialized)
+  if (!lang_Msg_env_initialized)
     {
       /* ignore any errors, we just need a locale for messages */
-      (void) set_lang_from_env ();
+      (void) set_msg_lang_from_env ();
     }
 
   return lang_msg_Loc_name;
@@ -1629,7 +1609,8 @@ lang_get_Lang_name (void)
 {
   if (!lang_Initialized)
     {
-      lang_init ();
+      assert (false);
+      return NULL;
     }
   return lang_Lang_name;
 }
@@ -1643,7 +1624,8 @@ lang_id (void)
 {
   if (!lang_Initialized)
     {
-      lang_init ();
+      assert (false);
+      return -1;
     }
   return lang_Lang_id;
 }
@@ -1657,7 +1639,8 @@ lang_currency ()
 {
   if (!lang_Initialized)
     {
-      lang_init ();
+      assert (false);
+      return DB_CURRENCY_NULL;
     }
   return lang_Loc_currency;
 }
@@ -1671,7 +1654,8 @@ lang_charset (void)
 {
   if (!lang_Initialized)
     {
-      lang_init ();
+      assert (false);
+      return INTL_CODESET_NONE;
     }
   return lang_Loc_charset;
 }
@@ -1691,8 +1675,8 @@ lang_final (void)
 
   lang_unload_libraries ();
 
+  lang_builtin_initialized = false;
   lang_Initialized = false;
-  lang_Fully_Initialized = false;
 }
 
 /*
@@ -1821,7 +1805,8 @@ lang_locale (void)
 {
   if (!lang_Initialized)
     {
-      lang_init ();
+      assert (false);
+      return NULL;
     }
   return lang_Loc_data;
 }
@@ -1842,7 +1827,8 @@ lang_get_specific_locale (const INTL_LANG lang, const INTL_CODESET codeset)
 {
   if (!lang_Initialized)
     {
-      lang_init ();
+      assert (false);
+      return NULL;
     }
 
   if ((int) lang < lang_count_locales)
@@ -1875,7 +1861,8 @@ lang_get_first_locale_for_lang (const INTL_LANG lang)
 {
   if (!lang_Initialized)
     {
-      lang_init ();
+      assert (false);
+      return NULL;
     }
 
   if ((int) lang < lang_count_locales)
@@ -2095,7 +2082,7 @@ lang_date_format (const INTL_LANG lang_id, const INTL_CODESET codeset,
 {
   const LANG_LOCALE_DATA *lld;
 
-  assert (lang_Fully_Initialized);
+  assert (lang_Initialized);
 
   lld = lang_get_specific_locale (lang_id, codeset);
 
@@ -2345,7 +2332,8 @@ lang_get_client_charset_env_string (char *buf, int buf_size)
 
   if (!lang_Initialized)
     {
-      lang_init ();
+      assert (false);
+      return ER_FAILED;
     }
 
   ret =

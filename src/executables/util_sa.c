@@ -2067,7 +2067,7 @@ genlocale (UTIL_FUNCTION_ARG * arg)
   char er_msg_file[PATH_MAX];
   int str_count = 0;
   UTIL_ARG_MAP *arg_map = NULL;
-  LOCALE_DATA **ld;
+  LOCALE_DATA **ld = NULL;
 
   int err_status = EXIT_SUCCESS;
 
@@ -2109,8 +2109,9 @@ genlocale (UTIL_FUNCTION_ARG * arg)
       goto print_genlocale_usage;
     }
 
-  /* initialization of language module for built-in locales and collations */
-  (void) lang_init ();
+  /* initialization of language module for built-in locales and collations,
+   * we don't care about environment here */
+  lang_init_builtin ();
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1,
@@ -2255,14 +2256,17 @@ exit:
 	{
 	  free_and_init (lf[i].lib_file);
 	}
-      if (ld[i] != NULL)
+      if (ld != NULL && ld[i] != NULL)
 	{
 	  locale_destroy_data (ld[i]);
 	  free (ld[i]);
 	}
     }
 
-  free (ld);
+  if (ld != NULL)
+    {
+      free (ld);
+    }
 
   locale_free_shared_data ();
 

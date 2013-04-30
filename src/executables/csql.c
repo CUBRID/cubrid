@@ -2521,10 +2521,6 @@ csql_exit_init (void)
   csql_Input_fp = stdin;
   csql_Output_fp = stdout;
   csql_Error_fp = stderr;
-
-  lang_init_full ();
-
-  lang_init_console_txt_conv ();
 }
 
 /*
@@ -2638,12 +2634,14 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
       csql_exit (EXIT_FAILURE);
     }
 
-  if (!lang_check_init ())
+  if (!lang_init_full ())
     {
       printf ("Failed to initialize language (%s)\n",
 	      lang_get_user_loc_name ());
       csql_exit (EXIT_FAILURE);
     }
+
+  lang_init_console_txt_conv ();
 
   /* set up prompt and message fields. */
   if (csql_arg->sysadm)
