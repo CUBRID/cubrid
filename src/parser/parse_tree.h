@@ -1492,7 +1492,10 @@ typedef struct pt_node_list_info PT_NODE_LIST_INFO;
 typedef struct pt_table_option_info PT_TABLE_OPTION_INFO;
 typedef struct pt_check_option_info PT_CHECK_OPTION_INFO;
 
-typedef struct pt_agg_info PT_AGG_INFO;
+typedef struct pt_agg_check_info PT_AGG_CHECK_INFO;
+typedef struct pt_agg_rewrite_info PT_AGG_REWRITE_INFO;
+typedef struct pt_agg_find_info PT_AGG_FIND_INFO;
+typedef struct pt_agg_name_info PT_AGG_NAME_INFO;
 
 typedef struct pt_filter_index_info PT_FILTER_INDEX_INFO;
 
@@ -2939,15 +2942,41 @@ union pt_statement_info
 };
 
 
-struct pt_agg_info
+/*
+ * auxiliary structures for tree walking operations related to aggregates
+ */
+struct pt_agg_check_info
 {
-  PT_NODE *from;		/* for all          */
-  PT_NODE *group_by;		/* for check_single */
-  PT_NODE *new_from;		/* for rewrite_agg  */
-  PT_NODE *derived_select;	/* for rewrite_agg  */
-  int arg_list_spec_num;	/* for all       */
-  int depth;			/* for all          */
-  bool agg_found;		/* for all          */
+  PT_NODE *from;		/* initial spec list */
+  PT_NODE *group_by;		/* group by list */
+  int depth;			/* current depth */
+};
+
+struct pt_agg_rewrite_info
+{
+  PT_NODE *select_stack;	/* SELECT statement stack (0 = base) */
+  PT_NODE *from;		/* initial spec list */
+  PT_NODE *new_from;		/* new spec */
+  PT_NODE *derived_select;	/* initial select (that is being derived) */
+  int depth;
+};
+
+struct pt_agg_find_info
+{
+  PT_NODE *select_stack;	/* SELECT statement stack (0 = base) */
+  int base_count;		/* # of aggregate functions that belong to the
+				   statement at the base of the stack */
+  int out_of_context_count;	/* # of aggregate functions that do not belong
+				   to any statement within the stack */
+  bool stop_on_subquery;	/* walk subqueries? */
+};
+
+struct pt_agg_name_info
+{
+  PT_NODE *select_stack;	/* SELECT statement stack (0 = base) */
+  int max_level;		/* maximum level within the stack that is
+				   is referenced by PT_NAMEs */
+  int name_count;		/* # of PT_NAME nodes found */
 };
 
 struct pt_filter_index_info

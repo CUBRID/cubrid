@@ -1475,6 +1475,89 @@ pt_point_ref (PARSER_CONTEXT * parser, const PT_NODE * node)
   return ret;
 }
 
+/*
+ * pt_pointer_stack_push () - push a new PT_POINTER, pointing to node, on a
+ *                            stack of similar pointers
+ *   returns: stack base
+ *   parser(in): parser context
+ *   stack(in): base of stack or NULL for new stack
+ *   node(in): node to be pointed to by new stack entry
+ */
+PT_NODE *
+pt_pointer_stack_push (PARSER_CONTEXT * parser, PT_NODE * stack,
+		       PT_NODE * node)
+{
+  PT_NODE *new_top = pt_point (parser, node);
+  PT_NODE *list = stack;
+
+  if (new_top == NULL)
+    {
+      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+                 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return stack;
+    }
+
+  while (list != NULL && list->next != NULL)
+    {
+      list = list->next;
+    }
+
+  if (list)
+    {
+      list->next = new_top;
+      return stack;
+    }
+  else
+    {
+      return new_top;
+    }
+}
+
+/*
+ * pt_pointer_stack_pop () - push a new PT_POINTER, pointing to node, on a
+ *                            stack of similar pointers
+ *   returns: new stack base
+ *   parser(in): parser context
+ *   stack(in): base of stack
+ *   node(out): popped node
+ */
+PT_NODE *
+pt_pointer_stack_pop (PARSER_CONTEXT * parser, PT_NODE * stack,
+		      PT_NODE ** node)
+{
+  PT_NODE *new_top = NULL;
+  PT_NODE *list = stack;
+
+  if (stack == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "pop operation on empty PT_POINTER stack");
+      return NULL;
+    }
+
+  while (list != NULL && list->next != NULL)
+    {
+      new_top = list;
+      list = list->next;
+    }
+
+  if (node != NULL)
+    {
+      *node = list->info.pointer.node;
+    }
+  list->info.pointer.node = NULL;
+  parser_free_tree (parser, list);
+
+  if (new_top)
+    {
+      new_top->next = NULL;
+      return stack;
+    }
+  else
+    {
+      return NULL;
+    }
+}
+
 
 /*
  * free_node_in_tree_pre () - checks a pointer nodes for a recursive walk

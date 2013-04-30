@@ -14592,7 +14592,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 
   unbox = UNBOX_AS_VALUE;
 
-  if (select_node->info.query.q.select.group_by)
+  if (pt_has_aggregate (parser, select_node))
     {
       int *attr_offsets;
       PT_NODE *group_out_list, *group;

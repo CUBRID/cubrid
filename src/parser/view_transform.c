@@ -893,7 +893,8 @@ static PT_NODE *
 mq_rewrite_agg_names (PARSER_CONTEXT * parser, PT_NODE * node,
 		      void *void_arg, int *continue_walk)
 {
-  PT_AGG_INFO *info = (PT_AGG_INFO *) void_arg;
+  PT_AGG_REWRITE_INFO *info = (PT_AGG_REWRITE_INFO *) void_arg;
+  PT_AGG_NAME_INFO name_info;
   PT_NODE *old_from = info->from;
   PT_NODE *new_from = info->new_from;
   PT_NODE *derived_select = info->derived_select;
@@ -905,6 +906,7 @@ mq_rewrite_agg_names (PARSER_CONTEXT * parser, PT_NODE * node,
   PT_NODE *temparg2;
   int i = 0;
   int line_no, col_no, is_hidden_column;
+  bool agg_found;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -1038,26 +1040,23 @@ mq_rewrite_agg_names (PARSER_CONTEXT * parser, PT_NODE * node,
     case PT_FUNCTION:
       /* We need to push the set functions down with their subqueries.
          init. info->from is already set at mq_rewrite_aggregate_as_derived */
-      info->agg_found = false;
+      agg_found = false;
+
+      /* init name finding structure */
+      name_info.max_level = -1;
+      name_info.name_count = 0;
+      name_info.select_stack = info->select_stack;
 
       if (pt_is_set_type (node))
 	{
-	  if (pt_is_query (node->info.function.arg_list))
+	  if (!pt_is_query (node->info.function.arg_list))
 	    {
-	      return node;
-	    }
+	      (void) parser_walk_tree (parser, node, pt_find_aggregate_names,
+				       &name_info, pt_continue_walk, NULL);
 
-	  /* check for set function
-	   * for example: SELECT {i}, ... FROM x GROUP BY i
-	   */
-
-	  /* at here, pt_find_spec_post() is not need */
-	  if (info->depth == 0)
-	    {
-	      info->arg_list_spec_num = 0;	/* init - at here, do not use it */
+	      agg_found =
+		(name_info.max_level == 0 || name_info.name_count == 0);
 	    }
-	  (void) parser_walk_leaves (parser, node, pt_find_spec_pre, info,
-				     NULL, NULL);
 	}
       else if (pt_is_aggregate_function (parser, node))
 	{
@@ -1065,40 +1064,23 @@ mq_rewrite_agg_names (PARSER_CONTEXT * parser, PT_NODE * node,
 	      || node->info.function.function_type == PT_GROUPBY_NUM)
 	    {
 	      /* found count(*), groupby_num() */
-	      if (info->depth == 0)
-		{		/* not in subqueries */
-		  info->agg_found = true;
-		}
+	      agg_found = (info->depth == 0);
 	    }
 	  else
 	    {
 	      /* check for aggregation function
 	       * for example: SELECT (SELECT max(x.i) FROM y ...) ... FROM x
 	       */
-
-	      if (info->depth == 0)
-		{
-		  /* init */
-		  info->arg_list_spec_num = 0;
-		}
-
-	      (void) parser_walk_tree (parser, node, pt_find_spec_pre, info,
-				       pt_find_spec_post, info);
-	      if (info->depth == 0)
-		{
-		  if (info->arg_list_spec_num == 0)
-		    {
-		      /* if not found any spec at depth 0,
-		       * there is non-spec aggretation; i.e., max(rownum),
-		       * max(rownum+uncorrelated_subquery)
-		       */
-		      info->agg_found = true;
-		    }
-		}
+	      (void) parser_walk_tree (parser, node->info.function.arg_list,
+				       pt_find_aggregate_names,
+				       &name_info, pt_continue_walk, NULL);
+	      agg_found =
+		(name_info.max_level == 0 || name_info.name_count == 0);
 	    }
 	}
 
-      if (info->agg_found)
+      /* rewrite if necessary */
+      if (agg_found)
 	{
 	  node_next = node->next;
 	  type = node->type_enum;
@@ -1159,6 +1141,13 @@ mq_rewrite_agg_names (PARSER_CONTEXT * parser, PT_NODE * node,
 	  *continue_walk = PT_LEAF_WALK;
 	}
 
+      /* push SELECT on stack */
+      if (node->node_type == PT_SELECT)
+	{
+	  info->select_stack =
+	    pt_pointer_stack_push (parser, info->select_stack, node);
+	}
+
       info->depth++;		/* increase query depth as we dive into subqueries */
       break;
 
@@ -1181,16 +1170,20 @@ static PT_NODE *
 mq_rewrite_agg_names_post (PARSER_CONTEXT * parser,
 			   PT_NODE * node, void *void_arg, int *continue_walk)
 {
-  PT_AGG_INFO *info = (PT_AGG_INFO *) void_arg;
+  PT_AGG_REWRITE_INFO *info = (PT_AGG_REWRITE_INFO *) void_arg;
 
   *continue_walk = PT_CONTINUE_WALK;
 
   switch (node->node_type)
     {
+    case PT_SELECT:
+      info->select_stack =
+	pt_pointer_stack_pop (parser, info->select_stack, NULL);
+      /* fall trough */
+
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
-    case PT_SELECT:
       info->depth--;		/* decrease query depth */
       break;
 
@@ -3853,7 +3846,7 @@ PT_NODE *
 mq_rewrite_aggregate_as_derived (PARSER_CONTEXT * parser, PT_NODE * agg_sel)
 {
   PT_NODE *derived, *range, *spec;
-  PT_AGG_INFO info;
+  PT_AGG_REWRITE_INFO info;
   PT_NODE *col, *tmp, *as_attr_list;
   int idx;
 
@@ -3925,6 +3918,7 @@ mq_rewrite_aggregate_as_derived (PARSER_CONTEXT * parser, PT_NODE * agg_sel)
   /* move spec over */
   info.from = derived->info.query.q.select.from;
   info.derived_select = derived;
+  info.select_stack = pt_pointer_stack_push (parser, NULL, derived);
 
   /* set derived range variable */
   range = parser_copy_tree (parser, info.from->info.spec.range_var);
@@ -3962,6 +3956,9 @@ mq_rewrite_aggregate_as_derived (PARSER_CONTEXT * parser, PT_NODE * agg_sel)
     parser_walk_tree (parser, agg_sel->info.query.q.select.where,
 		      mq_rewrite_agg_names, &info, mq_rewrite_agg_names_post,
 		      &info);
+
+  /* cleanup */
+  (void) pt_pointer_stack_pop (parser, info.select_stack, NULL);
 
   if (!derived->info.query.q.select.list)
     {
@@ -6828,10 +6825,26 @@ static PT_NODE *
 mq_clear_all_ids (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
 		  int *continue_walk)
 {
+  int *spec_id_ptr = (int *) void_arg;
+
   if (node->node_type == PT_NAME)
     {
-      node->info.name.spec_id = 0;
+      if ((spec_id_ptr != NULL && node->info.name.spec_id == (*spec_id_ptr))
+	  || (spec_id_ptr == NULL))
+	{
+	  node->info.name.spec_id = 0;
+	}
     }
+
+  if (pt_is_query (node))
+    {
+      *continue_walk = PT_LIST_WALK;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+
   return node;
 }
 
@@ -6872,9 +6885,12 @@ mq_clear_other_ids (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
  *   spec(in):
  */
 PT_NODE *
-mq_clear_ids (PARSER_CONTEXT * parser, PT_NODE * node)
+mq_clear_ids (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec)
 {
-  node = parser_walk_tree (parser, node, mq_clear_all_ids, NULL, NULL, NULL);
+  node = parser_walk_tree (parser, node, mq_clear_all_ids,
+			   (spec != NULL ? &spec->info.spec.id : NULL),
+			   pt_continue_walk, NULL);
+
   return node;
 }
 
@@ -11778,7 +11794,8 @@ mq_rewrite_order_dependent_query (PARSER_CONTEXT * parser, PT_NODE * select,
 	  as_attr = pt_name (parser, name);
 	  if (as_attr == NULL)
 	    {
-	      PT_INTERNAL_ERROR (parser, "node alloc fail");
+	      PT_ERRORm (parser, select, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 	      return NULL;
 	    }
 
@@ -11794,7 +11811,8 @@ mq_rewrite_order_dependent_query (PARSER_CONTEXT * parser, PT_NODE * select,
 	  attr = pt_name (parser, name);
 	  if (attr == NULL)
 	    {
-	      PT_INTERNAL_ERROR (parser, "node alloc fail");
+	      PT_ERRORm (parser, select, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 	      return NULL;
 	    }
 

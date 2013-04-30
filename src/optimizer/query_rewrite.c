@@ -7279,8 +7279,9 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	  && node->info.query.q.select.group_by && *havingp)
 	{
 	  PT_NODE *prev, *cnf, *next;
-	  PT_AGG_INFO info;
+	  PT_AGG_FIND_INFO info;
 	  int has_pseudocolumn;
+	  bool can_move;
 
 	  prev = NULL;		/* init */
 	  for (cnf = *havingp; cnf; cnf = next)
@@ -7289,16 +7290,25 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	      cnf->next = NULL;
 
 	      /* init agg info */
-	      info.from = node->info.query.q.select.from;	/* set as SELECT */
-	      info.agg_found = false;
-	      info.depth = 0;
+	      info.stop_on_subquery = false;
+	      info.out_of_context_count = 0;
+	      info.base_count = 0;
+	      info.select_stack = pt_pointer_stack_push (parser, NULL, node);
+
+	      /* search for aggregate of this select */
 	      (void) parser_walk_tree (parser, cnf,
-				       pt_is_aggregate_node, &info,
-				       pt_is_aggregate_node_post, &info);
+				       pt_find_aggregate_functions_pre, &info,
+				       pt_find_aggregate_functions_post,
+				       &info);
+	      can_move = (info.base_count == 0);
+
+	      /* cleanup */
+	      info.select_stack =
+		pt_pointer_stack_pop (parser, info.select_stack, NULL);
 
 	      /* Note: Do not move the cnf node if it contains a pseudo-column!
 	       */
-	      if (!info.agg_found)
+	      if (can_move)
 		{
 		  has_pseudocolumn = 0;
 		  (void) parser_walk_tree (parser, cnf,
@@ -7306,14 +7316,14 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 					   &has_pseudocolumn, NULL, NULL);
 		  if (has_pseudocolumn)
 		    {
-		      info.agg_found = true;
+		      can_move = false;
 		    }
 		}
 
 	      /* Not found aggregate function in cnf node and no ROLLUP clause.
 	       * So, move it from HAVING clause to WHERE clause.
 	       */
-	      if (!info.agg_found
+	      if (can_move
 		  && !node->info.query.q.select.group_by->with_rollup)
 		{
 		  /* delete cnf node from HAVING clause */

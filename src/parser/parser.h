@@ -97,6 +97,10 @@ extern "C"
   extern PT_NODE *pt_point_l (PARSER_CONTEXT * parser, const PT_NODE * tree);
   extern PT_NODE *pt_point_ref (PARSER_CONTEXT * parser,
 				const PT_NODE * node);
+  extern PT_NODE *pt_pointer_stack_push (PARSER_CONTEXT * parser,
+					 PT_NODE * stack, PT_NODE * node);
+  extern PT_NODE *pt_pointer_stack_pop (PARSER_CONTEXT * parser,
+					PT_NODE * stack, PT_NODE ** node);
 
   extern PT_NODE *parser_walk_leaves (PARSER_CONTEXT * parser,
 				      PT_NODE * node,
@@ -603,19 +607,18 @@ extern "C"
 					   const PT_NODE * node);
   extern PT_NODE *pt_find_spec (PARSER_CONTEXT * parser, const PT_NODE * from,
 				const PT_NODE * name);
-  extern PT_NODE *pt_find_spec_pre (PARSER_CONTEXT * parser, PT_NODE * node,
-				    void *arg, int *continue_walk);
-  extern PT_NODE *pt_find_spec_post (PARSER_CONTEXT * parser, PT_NODE * node,
-				     void *arg, int *continue_walk);
   extern PT_NODE *pt_find_spec_in_statement (PARSER_CONTEXT * parser,
 					     const PT_NODE * stmt,
 					     const PT_NODE * name);
-  extern PT_NODE *pt_is_aggregate_node (PARSER_CONTEXT * parser,
-					PT_NODE * tree, void *arg,
-					int *continue_walk);
-  extern PT_NODE *pt_is_aggregate_node_post (PARSER_CONTEXT * parser,
-					     PT_NODE * tree, void *arg,
-					     int *continue_walk);
+  extern PT_NODE *pt_find_aggregate_names (PARSER_CONTEXT * parser,
+					   PT_NODE * tree, void *arg,
+					   int *continue_walk);
+  extern PT_NODE *pt_find_aggregate_functions_pre (PARSER_CONTEXT * parser,
+						   PT_NODE * tree, void *arg,
+						   int *continue_walk);
+  extern PT_NODE *pt_find_aggregate_functions_post (PARSER_CONTEXT * parser,
+						    PT_NODE * tree, void *arg,
+						    int *continue_walk);
   extern PT_NODE *pt_is_analytic_node (PARSER_CONTEXT * parser,
 				       PT_NODE * tree, void *arg,
 				       int *continue_walk);

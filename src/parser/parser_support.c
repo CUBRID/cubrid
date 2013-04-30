@@ -824,220 +824,216 @@ pt_find_spec (PARSER_CONTEXT * parser, const PT_NODE * from,
 }
 
 /*
- * pt_find_spec_pre () -
- *   return:
- *   parser(in):
- *   node(in):
- *   arg(in/out):
- *   continue_walk(in/out):
+ * pt_find_aggregate_names - find names within select_stack
+ *  returns: unmodified tree
+ *  parser(in): parser context
+ *  tree(in): tree to search into
+ *  arg(in/out): a PT_AGG_NAME_INFO structure
+ *  continue_walk(in/out): walk type
+ *
+ * NOTE: this function is called on an aggregate function or it's arguments
+ * and it returns the maximum level within the stack that owns PT_NAMEs within
+ * the called-on tree.
  */
 PT_NODE *
-pt_find_spec_pre (PARSER_CONTEXT * parser, PT_NODE * node,
-		  void *arg, int *continue_walk)
+pt_find_aggregate_names (PARSER_CONTEXT * parser, PT_NODE * tree,
+			 void *arg, int *continue_walk)
 {
-  PT_AGG_INFO *info = (PT_AGG_INFO *) arg;
-  PT_NODE *arg2;
+  PT_AGG_NAME_INFO *info = (PT_AGG_NAME_INFO *) arg;
+  PT_NODE *node = NULL, *select_stack;
+  int level = 0;
 
-  switch (node->node_type)
+  switch (tree->node_type)
     {
     case PT_SELECT:
-      /* Can not increment level for list portion of walk.
-       * Since those queries are not sub-queries of this query.
-       * Consequently, we recurse separately for the list leading
-       * from a query.  Can't just call pt_to_uncorr_subquery_list()
-       * directly since it needs to do a leaf walk and we want to do a full
-       * walk on the next list.
-       */
-      if (node->next)
-	{
-	  (void) parser_walk_tree (parser, node->next,
-				   pt_find_spec_pre, info, pt_find_spec_post,
-				   info);
-	}
-
-      info->depth++;
+      *continue_walk = PT_LIST_WALK;
       break;
 
     case PT_DOT_:
-      arg2 = node->info.dot.arg2;
-      if (arg2)
-	{
-	  if (info->depth == 0)
-	    {
-	      info->arg_list_spec_num++;
-	    }
-
-	  if (pt_find_spec (parser, info->from, arg2))
-	    {
-	      /* found match */
-	      info->agg_found = true;
-	    }
-	}
+      node = tree->info.dot.arg2;
       break;
 
     case PT_NAME:
-      if (info->depth == 0)
-	{
-	  info->arg_list_spec_num++;	/* found any spec at depth 0 */
-	}
-
-      /* is the name an attribute name ? */
-      if (pt_find_spec (parser, info->from, node))
-	{
-	  /* found match */
-	  info->agg_found = true;
-	}
+      node = tree;
       break;
 
     default:
       break;
     }
 
-  if (info->agg_found)
+  if (node == NULL || node->node_type != PT_NAME)
     {
-      *continue_walk = PT_STOP_WALK;
+      /* nothing to do */
+      return tree;
+    }
+  else
+    {
+      info->name_count++;
     }
 
-  return node;
+  select_stack = info->select_stack;
+  while (select_stack != NULL)
+    {
+      PT_NODE *select = select_stack->info.pointer.node;
+
+      if (select == NULL || select->node_type != PT_SELECT)
+	{
+	  PT_INTERNAL_ERROR (parser, "stack entry is not SELECT");
+	  return tree;
+	}
+
+      if (level > info->max_level
+	  && pt_find_spec (parser, select->info.query.q.select.from, node))
+	{
+	  /* found! */
+	  info->max_level = level;
+	}
+
+      /* next stack level */
+      select_stack = select_stack->next;
+      level++;
+    }
+
+  return tree;
 }
 
 /*
- * pt_find_spec_post () -
- *   return:
- *   parser(in):
- *   node(in):
- *   arg(in/out):
- *   continue_walk(in):
+ * pt_find_aggregate_functions_pre () - finds aggregate functions in a tree
+ *  returns: unmodified tree
+ *  parser(in): parser context
+ *  tree(in): tree to search into
+ *  arg(in/out): a PT_AGG_FIND_INFO structure
+ *  continue_walk(in/out): walk type
+ *
+ * NOTE: this routine searches for aggregate functions that belong to the
+ * SELECT statement at the base of the stack
  */
 PT_NODE *
-pt_find_spec_post (PARSER_CONTEXT * parser, PT_NODE * node,
-		   void *arg, int *continue_walk)
+pt_find_aggregate_functions_pre (PARSER_CONTEXT * parser, PT_NODE * tree,
+				 void *arg, int *continue_walk)
 {
-  PT_AGG_INFO *info = (PT_AGG_INFO *) arg;
+  PT_AGG_FIND_INFO *info = (PT_AGG_FIND_INFO *) arg;
+  PT_NODE *select_stack = info->select_stack;
 
-  switch (node->node_type)
+  if (tree == NULL)
     {
-    case PT_SELECT:
-      info->depth--;		/* decrease query depth */
-      break;
-
-    default:
-      break;
-    }
-
-  return node;
-}
-
-/*
- * pt_is_aggregate_node () -
- *   return:
- *   parser(in):
- *   tree(in):
- *   arg(in/out): true in arg if node is a PT_FUNCTION node with a
- * 	      PT_MIN, PT_MAX, PT_SUM, PT_AVG, PT_GROUP_CONCAT or PT_COUNT type
- *   continue_walk(in/out):
- */
-PT_NODE *
-pt_is_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
-		      void *arg, int *continue_walk)
-{
-  PT_AGG_INFO *info = (PT_AGG_INFO *) arg;
-  PT_NODE *spec;
-
-  if (!tree || info->agg_found)
-    {
+      /* nothing to do */
       return tree;
     }
 
-  *continue_walk = PT_CONTINUE_WALK;
-
-  if (info->from)
-    {				/* for SELECT, agg_function */
-      if (pt_is_aggregate_function (parser, tree))
-	{
-	  if (tree->info.function.function_type == PT_COUNT_STAR ||
-	      tree->info.function.function_type == PT_GROUPBY_NUM)
-	    {
-	      /* found count(*), groupby_num() */
-	      if (info->depth == 0)
-		{		/* not in subqueries */
-		  info->agg_found = true;
-		}
-	    }
-	  else
-	    {
-	      if (info->depth == 0)
-		{
-		  info->arg_list_spec_num = 0;
-		}
-
-	      (void) parser_walk_tree (parser, tree->info.function.arg_list,
-				       pt_find_spec_pre, info,
-				       pt_find_spec_post, info);
-
-	      if (info->depth == 0)
-		{
-		  if (info->arg_list_spec_num == 0)
-		    {
-		      /* if not found any spec at depth 0,
-		       * there is non-spec aggretation; i.e., max(rownum),
-		       * max(rownum+uncorrelated_subquery)
-		       */
-		      info->agg_found = true;
-		    }
-		}
-	    }
-	}
-      else if (tree->node_type == PT_SELECT)
-	{
-	  /* Can not increment level for list portion of walk.
-	   * Since those queries are not sub-queries of this query.
-	   * Consequently, we recurse separately for the list leading
-	   * from a query.  Can't just call pt_to_uncorr_subquery_list()
-	   * directly since it needs to do a leaf walk and we want to do a
-	   * full walk on the next list.
-	   */
-	  if (tree->next)
-	    {
-	      (void) parser_walk_tree (parser, tree->next,
-				       pt_is_aggregate_node, info,
-				       pt_is_aggregate_node_post, info);
-	    }
-
-	  /* don't get confused by uncorrelated, set-derived subqueries. */
-	  if (tree->info.query.correlation_level == 0
-	      || ((spec = tree->info.query.q.select.from)
-		  && spec->info.spec.derived_table
-		  && spec->info.spec.derived_table_type == PT_IS_SET_EXPR))
-	    {
-	      /* no need to dive into the uncorrelated, set-derived
-	         subqueries */
-	      *continue_walk = PT_STOP_WALK;
-	    }
-	  else
-	    {
-	      *continue_walk = PT_LEAF_WALK;
-	    }
-
-	  info->depth++;
-	}
-    }
-  else
-    {				/* for UPDATE */
-      if (pt_is_aggregate_function (parser, tree))
-	{
-	  info->agg_found = true;
-	}
-      else if (pt_is_query (tree))
-	{
-	  *continue_walk = PT_LIST_WALK;
-	}
-    }
-
-  if (info->agg_found)
+  if (pt_is_aggregate_function (parser, tree))
     {
-      *continue_walk = PT_STOP_WALK;
+      if (tree->info.function.function_type == PT_COUNT_STAR ||
+	  tree->info.function.function_type == PT_GROUPBY_NUM)
+	{
+	  /* found count(*), groupby_num() */
+	  if (select_stack == NULL)
+	    {
+	      /* no spec stack, this was not called on a select */
+	      info->out_of_context_count++;
+	    }
+	  else if (select_stack->next == NULL)
+	    {
+	      /* first level on spec stack, this function belongs to the
+	         callee statement */
+	      info->base_count++;
+	    }
+	}
+      else
+	{
+	  PT_AGG_NAME_INFO name_info;
+	  name_info.select_stack = info->select_stack;
+	  name_info.max_level = -1;
+	  name_info.name_count = 0;
+
+	  (void) parser_walk_tree (parser, tree->info.function.arg_list,
+				   pt_find_aggregate_names, &name_info,
+				   pt_continue_walk, NULL);
+
+	  if (name_info.max_level == 0)
+	    {
+	      /* only names from base SELECT were found */
+	      info->base_count++;
+	    }
+	  else if (name_info.max_level < 0 && name_info.name_count > 0)
+	    {
+	      /* no names within stack limit were found */
+	      info->out_of_context_count++;
+	    }
+	  else if (name_info.name_count == 0)
+	    {
+	      /* no names were found at all */
+	      if (select_stack == NULL)
+		{
+		  info->out_of_context_count++;
+		}
+	      else if (select_stack->next == NULL)
+		{
+		  info->base_count++;
+		}
+	    }
+	}
     }
+  else if (tree->node_type == PT_SELECT)
+    {
+      PT_NODE *spec;
+
+      /* we must evaluate nexts before pushing SELECT on stack */
+      if (tree->next)
+	{
+	  (void) parser_walk_tree (parser, tree->next,
+				   pt_find_aggregate_functions_pre, info,
+				   pt_find_aggregate_functions_post, info);
+	  *continue_walk = PT_LEAF_WALK;
+	}
+
+      /* don't walk selects unless necessary */
+      if (info->stop_on_subquery)
+	{
+	  *continue_walk = PT_STOP_WALK;
+	}
+
+      /* don't get confused by uncorrelated, set-derived subqueries. */
+      if (tree->info.query.correlation_level == 0
+	  && (spec = tree->info.query.q.select.from)
+	  && spec->info.spec.derived_table
+	  && spec->info.spec.derived_table_type == PT_IS_SET_EXPR)
+	{
+	  /* no need to dive into the uncorrelated, set-derived
+	     subqueries */
+	  *continue_walk = PT_STOP_WALK;
+	}
+
+      /* stack push */
+      info->select_stack =
+	pt_pointer_stack_push (parser, info->select_stack, tree);
+    }
+
+  return tree;
+}
+
+/*
+ * pt_find_aggregate_functions_post () - finds aggregate functions in a tree
+ *  returns: unmodified tree
+ *  parser(in): parser context
+ *  tree(in): tree to search into
+ *  arg(in/out): a PT_AGG_FIND_INFO structure
+ *  continue_walk(in/out): walk type
+ */
+PT_NODE *
+pt_find_aggregate_functions_post (PARSER_CONTEXT * parser, PT_NODE * tree,
+				  void *arg, int *continue_walk)
+{
+  PT_AGG_FIND_INFO *info = (PT_AGG_FIND_INFO *) arg;
+
+  if (tree->node_type == PT_SELECT)
+    {
+      info->select_stack =
+	pt_pointer_stack_pop (parser, info->select_stack, NULL);
+    }
+
+  /* nothing can stop us! */
+  *continue_walk = PT_CONTINUE_WALK;
 
   return tree;
 }
@@ -1095,35 +1091,6 @@ pt_is_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree,
   else if (PT_IS_QUERY_NODE_TYPE (tree->node_type))
     {
       *continue_walk = PT_LIST_WALK;
-    }
-
-  return tree;
-}
-
-/*
- * pt_is_aggregate_node_post () -
- *   return:
- *   parser(in):
- *   tree(in):
- *   arg(in/out):
- *   continue_walk(in/out):
- */
-PT_NODE *
-pt_is_aggregate_node_post (PARSER_CONTEXT * parser, PT_NODE * tree,
-			   void *arg, int *continue_walk)
-{
-  PT_AGG_INFO *info = (PT_AGG_INFO *) arg;
-
-  *continue_walk = PT_CONTINUE_WALK;
-
-  if (tree->node_type == PT_SELECT)
-    {
-      info->depth--;		/* decrease query depth */
-    }
-
-  if (info->agg_found)
-    {
-      *continue_walk = PT_STOP_WALK;
     }
 
   return tree;
@@ -2767,7 +2734,12 @@ pt_get_spec_name (PARSER_CONTEXT * parser, const PT_NODE * selqry)
 bool
 pt_has_aggregate (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  PT_AGG_INFO info;
+  PT_AGG_FIND_INFO info;
+  PT_NODE *save_next;
+  info.select_stack = NULL;
+  info.base_count = 0;
+  info.out_of_context_count = 0;
+  info.stop_on_subquery = false;
 
   if (!node)
     {
@@ -2792,30 +2764,57 @@ pt_has_aggregate (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
 
       /* STEP 3: check select_list */
-      info.from = node->info.query.q.select.from;	/* set as SELECT */
-      info.agg_found = false;
-      info.depth = 0;
-      (void) parser_walk_tree (parser, node->info.query.q.select.list,
-			       pt_is_aggregate_node, &info,
-			       pt_is_aggregate_node_post, &info);
+      save_next = node->next;
+      node->next = NULL;
+      (void) parser_walk_tree (parser, node, pt_find_aggregate_functions_pre,
+			       &info, pt_find_aggregate_functions_post,
+			       &info);
+      node->next = save_next;
 
-      if (info.agg_found)
+      if (info.base_count > 0)
 	{
 	  /* mark as agg select */
 	  PT_SELECT_INFO_SET_FLAG (node, PT_SELECT_INFO_HAS_AGG);
+	  return true;
+	}
+    }
+  else if (node->node_type == PT_MERGE)
+    {
+      /* for MERGE statement, free aggregates in search condition and in update
+         assignments are not allowed; however, those contained in subqueries
+         are, even if they reference high level specs */
+      info.stop_on_subquery = true;
+      (void) parser_walk_tree (parser, node->info.merge.search_cond,
+			       pt_find_aggregate_functions_pre, &info,
+			       pt_find_aggregate_functions_post, &info);
+      (void) parser_walk_tree (parser, node->info.merge.update.assignment,
+			       pt_find_aggregate_functions_pre, &info,
+			       pt_find_aggregate_functions_post, &info);
+      (void) parser_walk_tree (parser, node->info.merge.insert.value_clauses,
+			       pt_find_aggregate_functions_pre, &info,
+			       pt_find_aggregate_functions_post, &info);
+
+      if (info.out_of_context_count > 0)
+	{
+	  return true;
 	}
     }
   else
     {
-      info.from = NULL;		/* set as non-SELECT(i.e., UPDATE) */
-      info.agg_found = false;
-      info.depth = 0;
-      (void) parser_walk_tree (parser, node,
-			       pt_is_aggregate_node, &info,
-			       pt_is_aggregate_node_post, &info);
+      save_next = node->next;
+      node->next = NULL;
+      (void) parser_walk_tree (parser, node, pt_find_aggregate_functions_pre,
+			       &info, pt_find_aggregate_functions_post,
+			       &info);
+      node->next = save_next;
+
+      if (info.out_of_context_count > 0)
+	{
+	  return true;
+	}
     }
 
-  return info.agg_found;
+  return false;
 }
 
 /*

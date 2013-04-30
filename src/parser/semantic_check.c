@@ -9606,7 +9606,7 @@ static PT_NODE *
 pt_check_single_valued_node (PARSER_CONTEXT * parser, PT_NODE * node,
 			     void *arg, int *continue_walk)
 {
-  PT_AGG_INFO *info = (PT_AGG_INFO *) arg;
+  PT_AGG_CHECK_INFO *info = (PT_AGG_CHECK_INFO *) arg;
   PT_NODE *spec, *arg2, *group, *expr;
   char *node_str;
 
@@ -9635,9 +9635,9 @@ pt_check_single_valued_node (PARSER_CONTEXT * parser, PT_NODE * node,
 
       /* don't get confused by uncorrelated, set-derived subqueries. */
       if (node->info.query.correlation_level == 0
-	  || ((spec = node->info.query.q.select.from)
-	      && spec->info.spec.derived_table
-	      && spec->info.spec.derived_table_type == PT_IS_SET_EXPR))
+	  && (spec = node->info.query.q.select.from)
+	  && spec->info.spec.derived_table
+	  && spec->info.spec.derived_table_type == PT_IS_SET_EXPR)
 	{
 	  /* no need to dive into the uncorrelated subquery */
 	  *continue_walk = PT_STOP_WALK;
@@ -9785,7 +9785,7 @@ static PT_NODE *
 pt_check_single_valued_node_post (PARSER_CONTEXT * parser, PT_NODE * node,
 				  void *arg, int *continue_walk)
 {
-  PT_AGG_INFO *info = (PT_AGG_INFO *) arg;
+  PT_AGG_CHECK_INFO *info = (PT_AGG_CHECK_INFO *) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -10060,12 +10060,6 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 
       pt_check_into_clause (parser, node);
 
-      /* check the order by */
-      if (pt_check_order_by (parser, node) != NO_ERROR)
-	{
-	  break;		/* error */
-	}
-
       if (node->info.query.q.select.with_increment)
 	{
 	  PT_NODE *select_list = node->info.query.q.select.list;
@@ -10077,7 +10071,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 
       if (pt_has_aggregate (parser, node))
 	{
-	  PT_AGG_INFO info;
+	  PT_AGG_CHECK_INFO info;
 	  PT_NODE *r;
 	  QFILE_TUPLE_VALUE_POSITION pos;
 	  PT_NODE *referred_node;
@@ -10151,7 +10145,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 
 	  /* STEP 2: check that grouped things are single valued */
 	  if (prm_get_bool_value (PRM_ID_ONLY_FULL_GROUP_BY)
-	      || !info.group_by)
+	      || node->info.query.q.select.group_by == NULL)
 	    {
 	      (void) parser_walk_tree (parser,
 				       node->info.query.q.select.list,
@@ -10172,6 +10166,12 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 	  (void) parser_walk_tree (parser, node->info.query.q.select.list,
 				   pt_check_analytic_function, (void *) node,
 				   NULL, NULL);
+	}
+
+      /* check the order by */
+      if (pt_check_order_by (parser, node) != NO_ERROR)
+	{
+	  break;		/* error */
 	}
 
       if (node->info.query.q.select.group_by != NULL
@@ -12867,17 +12867,29 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
        */
       if (query->info.query.limit != NULL)
 	{
+	  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
 	  PT_NODE *limit = query->info.query.limit;
-
 	  query->info.query.limit = NULL;
-	  mq_rewrite_aggregate_as_derived (parser, query);
 
-	  /* reset resolved names because we need to redo name resolving on
-	     the modified select list */
+	  /* rewrite as derived table */
+	  query = mq_rewrite_aggregate_as_derived (parser, query);
+	  if (query == NULL || pt_has_error (parser))
+	    {
+	      return ER_FAILED;
+	    }
+
+	  /* clear spec_ids of names referring derived table and re-run
+	   * name resolving; their types are not resolved and, since we're on
+	   * the post stage of the tree walk, this will not happen naturally;
+	   */
 	  query->info.query.q.select.list =
-	    mq_clear_ids (parser, query->info.query.q.select.list);
+	    mq_clear_ids (parser, query->info.query.q.select.list,
+			  query->info.query.q.select.from);
 
-	  query = pt_semantic_check (parser, query);
+	  /* re-resolve names */
+	  sc_info.donot_fold = true;
+	  sc_info.top_node = query;
+	  query = pt_resolve_names (parser, query, &sc_info);
 	  if (pt_has_error (parser) || !query)
 	    {
 	      error = er_errid ();
