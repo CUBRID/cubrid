@@ -4654,6 +4654,9 @@ cas_connect_internal (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
     {
       return CCI_ER_NO_ERROR;
     }
+  CLOSE_SOCKET (con_handle->sock_fd);
+  con_handle->sock_fd = INVALID_SOCKET;
+  con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
 
   if (con_handle->alter_host_count == 0)
     {

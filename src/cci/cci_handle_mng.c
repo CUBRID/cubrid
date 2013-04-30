@@ -479,6 +479,10 @@ hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int mapped_statement_id,
   if (HAS_REACHED_LIMIT_OPEN_STATEMENT (con))
     {
       T_REQ_HANDLE *victim = hm_pool_victimize_last_node_from_lru (con);
+      if (victim == NULL)
+	{
+	  return CCI_ER_REQ_HANDLE;
+	}
 
       if (victim->handle_type == HANDLE_PREPARE
 	  || victim->handle_type == HANDLE_SCHEMA_INFO)

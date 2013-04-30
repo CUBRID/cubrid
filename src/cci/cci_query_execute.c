@@ -2735,6 +2735,7 @@ qe_execute_array (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 	{
 	  cur_cell.flag = BIND_PTR_STATIC;
 	  cur_cell.value = NULL;
+	  cur_cell.size = 0;
 
 	  if (req_handle->bind_value[idx].value == NULL)
 	    {
@@ -6048,6 +6049,11 @@ shard_info_decode (char *buf_p, int size, int num_shard,
   int i;
 
   num_shard_tmp = num_shard + 1 /* fence */ ;
+
+  if (res_shard_info == NULL)
+    {
+      return CCI_ER_INVALID_ARGS;
+    }
 
   shard_info =
     (T_CCI_SHARD_INFO *) MALLOC (sizeof (T_CCI_SHARD_INFO) * num_shard_tmp);
