@@ -30,7 +30,7 @@ RETVAL=0
 prog=cubrid-ha
 
 ### user specific environment ##################
-CUBRID_USER=siwankim
+CUBRID_USER=cubrid1
 
 if [ $WHOAMI = "root" ]; then
 	CUBRID_DATABASES=`su - $CUBRID_USER -c 'printenv CUBRID_DATABASES'`

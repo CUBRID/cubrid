@@ -15,7 +15,7 @@ License:       GPLv2+ and BSD
 Group:         Applications/Databases
 URL:           http://www.cubrid.org
 Source0:       %{name}-%{cubrid_version}.tar.gz
-Requires:      ncurses libstdc++ libgcrypt coreutils /usr/sbin/useradd /usr/sbin/groupadd
+Requires:      ncurses libstdc++ libgcrypt coreutils /sbin/chkconfig /usr/sbin/useradd /usr/sbin/groupadd
 BuildRequires: gcc-c++ elfutils-libelf-devel ncurses-devel libstdc++-devel glibc-devel boost-devel
 BuildRequires: ant >= 0:1.6.0 java-devel >= 0:1.5.0 libgcrypt-devel
 BuildRoot:     %{_tmppath}/%{name}-%{version}-build
@@ -48,10 +48,11 @@ rm -rf %{buildroot}
 
 make install
 
-install -d %{buildroot}%{_sysconfdir}/profile.d
+install -d %{buildroot}%{_sysconfdir}/{profile.d,init.d}
 install -c -m 644 contrib/rpm/cubrid.sh %{buildroot}%{_sysconfdir}/profile.d/cubrid.sh
 install -c -m 644 contrib/rpm/cubrid.csh %{buildroot}%{_sysconfdir}/profile.d/cubrid.csh
-
+install -c -m 755 contrib/init.d/cubrid %{buildroot}%{_sysconfdir}/init.d/cubrid
+install -c -m 755 contrib/init.d/cubrid-ha %{buildroot}%{_sysconfdir}/init.d/cubrid-ha
 
 %pre
 # delete the cubrid group if no cubrid user is found, before adding the user
@@ -73,10 +74,20 @@ chown cubrid:cubrid -R /opt/cubrid
 
 
 %post
-
+# Make cubrid start/shutdown automatically.
+if [ -x /sbin/chkconfig ] ; then
+	/sbin/chkconfig --add cubrid
+fi
 
 %preun
-
+# Stop cubrid before uninstalling it
+if [ -x %{_sysconfdir}/init.d/cubrid ] ; then
+	%{_sysconfdir}/init.d/cubrid stop > /dev/null
+	# Remove autostart of cubrid
+	if [ -x /sbin/chkconfig ] ; then
+		/sbin/chkconfig --del cubrid
+	fi
+fi
 
 %postun
 # All user's data and user should not remove.
@@ -111,9 +122,14 @@ rm -rf %{buildroot}
 /opt/cubrid/tmp
 /opt/cubrid/var
 %config(noreplace) /opt/cubrid/conf
+%attr(755, root, root) %{_sysconfdir}/init.d/cubrid
+%attr(755, root, root) %{_sysconfdir}/init.d/cubrid-ha
 
 
 %changelog
+* Mon Apr 23 2013 Hyunwook Kim <hwkim@nhn.com>
+- Register a service daemon
+
 * Fri May 25 2012 Siwan Kim <siwankim@nhn.com>
 - Fix informations - Summary, Name, License,...
 
