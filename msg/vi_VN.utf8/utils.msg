@@ -247,6 +247,7 @@ Lệnh khả dụng:\n\
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 CẢNH BÁO: tùy chọn -t bị bỏ qua trong thực thi chế độ độc lập.\n
+31 ERROR: Destination-path does not exist or is not a directory.\n
 60 \
 backupdb: Sao lưu một cơ sở dữ liệu.\n\
 cách sử dụng: %s backupdb [TÙY CHỌN] tên-cơ sở dữ liệu\n\

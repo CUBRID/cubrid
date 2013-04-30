@@ -247,6 +247,7 @@ cubrid 管理者ユーティリティー、バージョン　%s\n\
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 警告: -tオプションは独立実行モードでは無視されます。\n
+31 ERROR: Destination-path does not exist or is not a directory.\n
 60 \
 backupdb: データーベースをバックアップします。\n\
 使い方: %s backupdb [オプション] <データーベース名>\n\

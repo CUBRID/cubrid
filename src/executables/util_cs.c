@@ -115,6 +115,7 @@ backupdb (UTIL_FUNCTION_ARG * arg)
   FILEIO_ZIP_LEVEL backup_zip_level = FILEIO_ZIP_NONE_LEVEL;
   bool skip_activelog = false;
   int sleep_msecs;
+  struct stat st_buf;
   char real_pathbuf[PATH_MAX];
   char verbose_file_realpath[PATH_MAX];
 
@@ -184,6 +185,24 @@ backupdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
+  if (backup_path != NULL)
+    {
+      memset (real_pathbuf, 0, sizeof (real_pathbuf));
+      if (realpath (backup_path, real_pathbuf) != NULL)
+	{
+	  backup_path = real_pathbuf;
+	}
+
+      if (stat (backup_path, &st_buf) != 0
+	  || S_ISDIR (st_buf.st_mode) != true)
+	{
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_BACKUPDB,
+					   BACKUPDB_INVALID_PATH));
+	  goto error_exit;
+	}
+    }
+
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1,
 	    "%s_%s.err", database_name, arg->command_name);
@@ -232,15 +251,6 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 	  fprintf (stderr, "%s\n", db_error_string (3));
 	  db_shutdown ();
 	  goto error_exit;
-	}
-
-      if (backup_path != NULL)
-	{
-	  memset (real_pathbuf, 0, sizeof (real_pathbuf));
-	  if (realpath (backup_path, real_pathbuf) != NULL)
-	    {
-	      backup_path = real_pathbuf;
-	    }
 	}
 
       if (backup_verbose_file

@@ -247,6 +247,7 @@ Available command:\n\
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 WARNING: -t option is ignored in stand-alone mode execution.\n
+31 ERROR: Destination-path does not exist or is not a directory.\n
 60 \
 backupdb: Backup a database.\n\
 usage: %s backupdb [OPTION] database-name\n\

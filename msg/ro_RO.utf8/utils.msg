@@ -247,6 +247,7 @@ Comenzi disponibile:\n\
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 AVERTIESMENT: opţiunea -t este ignorată în modul de execuţie independent.\n
+31 ERROR: Destination-path does not exist or is not a directory.\n
 60 \
 backupdb: Creează o copie de rezervă a bazei de date.\n\
 utilizare: %s backupdb [optiune] nume-bază-de-date\n\

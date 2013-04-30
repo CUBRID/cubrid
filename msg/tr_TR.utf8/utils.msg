@@ -247,6 +247,7 @@ Mevcut komut:\n\
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 UYARI: -t seçeneği stand-alone modu yürütülmesine göz ardı edilir.\n
+31 ERROR: Destination-path does not exist or is not a directory.\n
 60 \
 backupdb: Bir veritabanı yedeklemesi.\n\
 kullanım: %s backupdb [SEÇENEK] veritabanı-adı\n\

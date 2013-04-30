@@ -247,6 +247,7 @@ cubrid 管理工具，版本 %s\n\
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 警告: 在单机模式下 -t 选项将被忽略.\n
+31 ERROR: Destination-path does not exist or is not a directory.\n
 60 \
 backupdb: 备份一个数据库.\n\
 usage: %s backupdb [选项] 数据库名\n\
