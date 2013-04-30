@@ -2242,7 +2242,7 @@ qexec_clear_analytic_function_list (XASL_NODE * xasl_p,
     {
       (void) pr_clear_value (p->value);
       (void) pr_clear_value (p->value2);
-#if 0 /* TODO - currenty, is not handled at stream_to_xasl */
+#if 0				/* TODO - currenty, is not handled at stream_to_xasl */
       (void) pr_clear_value (p->save_value);
       (void) pr_clear_value (&(p->part_value));
 #endif
@@ -13443,7 +13443,8 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	       && (!XASL_IS_FLAGED (xasl, XASL_SKIP_ORDERBY_LIST)	/* cannot skip */
 		   || XASL_IS_FLAGED (xasl, XASL_USES_MRO))	/* MRO must go on */
 	       && (xasl->list_id->tuple_cnt > 1	/* the result has more than one tuple */
-		   || xasl->ordbynum_val != NULL))	/* ORDERBY_NUM() is used */
+		   || xasl->ordbynum_val != NULL	/* ORDERBY_NUM() is used */
+		   || xasl->topn_items != NULL))	/* used internal sort */
 	      || (xasl->option == Q_DISTINCT))	/* DISTINCT must be go on */
 	    {
 	      if (qexec_orderby_distinct (thread_p, xasl, xasl->option,

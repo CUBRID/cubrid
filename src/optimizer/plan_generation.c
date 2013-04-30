@@ -71,7 +71,8 @@ static XASL_NODE *add_fetch_proc (QO_ENV * env, XASL_NODE * xasl,
 static XASL_NODE *add_uncorrelated (QO_ENV * env, XASL_NODE * xasl,
 				    XASL_NODE * sub);
 static XASL_NODE *add_subqueries (QO_ENV * env, XASL_NODE * xasl, BITSET *);
-static XASL_NODE *add_sort_spec (QO_ENV *, XASL_NODE *, QO_PLAN *, bool);
+static XASL_NODE *add_sort_spec (QO_ENV *, XASL_NODE *, QO_PLAN *, DB_VALUE *,
+				 bool);
 static XASL_NODE *add_if_predicate (QO_ENV *, XASL_NODE *, PT_NODE *);
 static XASL_NODE *add_after_join_predicate (QO_ENV *, XASL_NODE *, PT_NODE *);
 static XASL_NODE *add_instnum_predicate (QO_ENV *, XASL_NODE *, PT_NODE *);
@@ -994,7 +995,7 @@ add_subqueries (QO_ENV * env, XASL_NODE * xasl, BITSET * subqueries)
  */
 static XASL_NODE *
 add_sort_spec (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan,
-	       bool instnum_flag)
+	       DB_VALUE * ordby_val, bool instnum_flag)
 {
   QO_PLAN *subplan;
 
@@ -1017,6 +1018,36 @@ add_sort_spec (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan,
 	  /* free pointer node list */
 	  parser_free_tree (QO_ENV_PARSER (env), instnum_pred);
 	}
+    }
+
+  if (plan->plan_un.sort.sort_type == SORT_LIMIT)
+    {
+      /* setup ORDER BY list here */
+      int ordbynum_flag;
+      QO_LIMIT_INFO *limit_infop;
+      PARSER_CONTEXT *parser = QO_ENV_PARSER (env);
+      PT_NODE *query = QO_ENV_PT_TREE (env);
+
+      xasl->orderby_list = pt_to_orderby (parser, query->info.query.order_by,
+					  query);
+      XASL_CLEAR_FLAG (xasl, XASL_SKIP_ORDERBY_LIST);
+
+      xasl->orderby_limit = NULL;
+      xasl->ordbynum_pred =
+	pt_to_pred_expr_with_arg (parser, query->info.query.orderby_for,
+				  &ordbynum_flag);
+      if (ordbynum_flag & PT_PRED_ARG_ORDBYNUM_CONTINUE)
+	{
+	  xasl->ordbynum_flag = XASL_ORDBYNUM_FLAG_SCAN_CONTINUE;
+	}
+      limit_infop = qo_get_key_limit_from_ordbynum (parser, plan, xasl,
+						    false);
+      if (limit_infop)
+	{
+	  xasl->orderby_limit = limit_infop->upper;
+	  db_private_free (NULL, limit_infop);
+	}
+      xasl->ordbynum_val = ordby_val;
     }
 
   return xasl;
@@ -1766,6 +1797,8 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries,
 	    }
 	  else
 	    {
+	      /* SORT-LIMIT plans should never be top rooted */
+	      assert (plan->plan_un.sort.sort_type != SORT_LIMIT);
 	      xasl = gen_outer (env,
 				plan->plan_un.sort.subplan,
 				&new_subqueries, inner_scans, fetches, xasl);
@@ -1790,7 +1823,8 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries,
 	  listfile = gen_outer (env,
 				plan->plan_un.sort.subplan,
 				&EMPTY_SET, NULL, NULL, listfile);
-	  listfile = add_sort_spec (env, listfile, plan, false);
+	  listfile = add_sort_spec (env, listfile, plan,
+				    xasl->ordbynum_val, false);
 	  xasl = add_uncorrelated (env, xasl, listfile);
 	  xasl = init_list_scan_proc (env, xasl, listfile, namelist,
 				      &(plan->sarged_terms), NULL);
@@ -1807,7 +1841,9 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries,
 	  xasl = gen_outer (env,
 			    plan->plan_un.sort.subplan,
 			    &new_subqueries, inner_scans, fetches, xasl);
-	  xasl = add_sort_spec (env, xasl, plan, true /*add instnum pred */ );
+	  xasl =
+	    add_sort_spec (env, xasl, plan, NULL,
+			   true /*add instnum pred */ );
 	}
       break;
 

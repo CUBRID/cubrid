@@ -167,6 +167,8 @@ extern ACCESS_SPEC_TYPE *pt_to_spec_list (PARSER_CONTEXT * parser,
 extern XASL_NODE *pt_to_fetch_proc (PARSER_CONTEXT * parser, PT_NODE * spec,
 				    PT_NODE * pred);
 extern VAL_LIST *pt_to_val_list (PARSER_CONTEXT * parser, UINTPTR id);
+extern SORT_LIST *pt_to_orderby (PARSER_CONTEXT * parser,
+				 PT_NODE * order_list, PT_NODE * root);
 extern XASL_NODE *pt_skeleton_buildlist_proc (PARSER_CONTEXT * parser,
 					      PT_NODE * namelist);
 extern XASL_NODE *ptqo_to_scan_proc (PARSER_CONTEXT * parser,

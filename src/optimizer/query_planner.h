@@ -184,6 +184,8 @@ struct qo_plan
   QO_PLAN_ULTI_RANGE_OPT_USE multi_range_opt_use;	/* used to determine if this
 							 * plan uses multi range opt
 							 */
+  bool has_sort_limit;		/* true if this plan or one if its subplans is a
+				 * SORT-LIMIT plan */
 };
 
 #define qo_plan_add_ref(p)	((p->refcount)++, (p))

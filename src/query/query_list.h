@@ -553,7 +553,8 @@ typedef enum
   SORT_TEMP = 0,
   SORT_GROUPBY,
   SORT_ORDERBY,
-  SORT_DISTINCT
+  SORT_DISTINCT,
+  SORT_LIMIT
 } SORT_TYPE;
 
 typedef enum

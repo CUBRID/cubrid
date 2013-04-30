@@ -76,6 +76,9 @@
 #define QO_INFO_INDEX(_M_offset, _bitset)  \
     (_M_offset + (unsigned int)(BITPATTERN(_bitset) & planner->node_mask))
 
+#define QO_IS_LIMIT_NODE(env, node) \
+  (BITSET_MEMBER (QO_ENV_SORT_LIMIT_NODES ((env)), QO_NODE_IDX ((node))))
+
 typedef enum
 { JOIN_RIGHT_ORDER, JOIN_OPPOSITE_ORDER } JOIN_ORDER_TRY;
 
@@ -207,7 +210,7 @@ static int qo_generate_join_index_scan (QO_INFO *, JOIN_TYPE, QO_PLAN *,
 static void qo_generate_seq_scan (QO_INFO *, QO_NODE *);
 static int qo_generate_index_scan (QO_INFO *, QO_NODE *,
 				   QO_NODE_INDEX_ENTRY *);
-
+static int qo_generate_sort_limit_plan (QO_ENV *, QO_INFO *, QO_PLAN *);
 static void qo_plan_add_to_free_list (QO_PLAN *, void *ignore);
 static void qo_nljoin_cost (QO_PLAN *);
 static void qo_plans_teardown (QO_ENV * env);
@@ -282,6 +285,8 @@ static int qo_set_use_desc (QO_PLAN * plan, void *arg);
 static int qo_set_orderby_skip (QO_PLAN * plan, void *arg);
 static int qo_validate_indexes_for_orderby (QO_PLAN * plan, void *arg);
 static int qo_unset_multi_range_optimization (QO_PLAN * plan, void *arg);
+static bool qo_plan_is_orderby_skip_candidate (QO_PLAN * plan);
+static bool qo_is_sort_limit (QO_PLAN * plan);
 
 static QO_PLAN_VTBL qo_seq_scan_plan_vtbl = {
   "sscan",
@@ -543,6 +548,8 @@ qo_plan_malloc (QO_ENV * env)
   bitset_init (&(plan->sarged_terms), env);
   bitset_init (&(plan->subqueries), env);
 
+  plan->has_sort_limit = false;
+
   return plan;
 }
 
@@ -788,16 +795,43 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, bool * is_index_w_prefix)
 
   /* find sortable plan */
   plan = root;
-  while (plan->plan_type == QO_PLANTYPE_FOLLOW
-	 || (plan->plan_type == QO_PLANTYPE_JOIN
-	     && (plan->plan_un.join.join_method == QO_JOINMETHOD_NL_JOIN
-		 || (plan->plan_un.join.join_method ==
-		     QO_JOINMETHOD_IDX_JOIN))))
+  while (plan && plan->plan_type != QO_PLANTYPE_SCAN)
     {
-      plan = ((plan->plan_type == QO_PLANTYPE_FOLLOW)
-	      ? plan->plan_un.follow.head : plan->plan_un.join.outer);
-    }
+      switch (plan->plan_type)
+	{
+	case QO_PLANTYPE_FOLLOW:
+	  plan = plan->plan_un.follow.head;
+	  break;
 
+	case QO_PLANTYPE_JOIN:
+	  if (plan->plan_un.join.join_method == QO_JOINMETHOD_NL_JOIN
+	      || plan->plan_un.join.join_method == QO_JOINMETHOD_IDX_JOIN)
+	    {
+	      plan = plan->plan_un.join.outer;
+	    }
+	  else
+	    {
+	      /* QO_JOINMETHOD_MERGE_JOIN */
+	      plan = NULL;
+	    }
+	  break;
+
+	case QO_PLANTYPE_SORT:
+	  if (plan->plan_un.sort.sort_type == SORT_LIMIT)
+	    {
+	      plan = plan->plan_un.sort.subplan;
+	    }
+	  else
+	    {
+	      plan = NULL;
+	    }
+	  break;
+
+	default:
+	  plan = NULL;
+	  break;
+	}
+    }
   /* check for plan type */
   if (plan == NULL || plan->plan_type != QO_PLANTYPE_SCAN)
     {
@@ -2382,7 +2416,8 @@ qo_sort_new (QO_PLAN * root, QO_EQCLASS * order, SORT_TYPE sort_type)
     {				/* is not top-level plan */
       /* skip out top-level sort plan */
       for (;
-	   subplan && subplan->plan_type == QO_PLANTYPE_SORT;
+	   subplan && subplan->plan_type == QO_PLANTYPE_SORT
+	   && subplan->plan_un.sort.sort_type != SORT_LIMIT;
 	   subplan = subplan->plan_un.sort.subplan)
 	{
 	  if (subplan->top_rooted
@@ -2405,7 +2440,8 @@ qo_sort_new (QO_PLAN * root, QO_EQCLASS * order, SORT_TYPE sort_type)
 
       /* skip out empty sort plan */
       for (;
-	   subplan && subplan->plan_type == QO_PLANTYPE_SORT;
+	   subplan && subplan->plan_type == QO_PLANTYPE_SORT
+	   && subplan->plan_un.sort.sort_type != SORT_LIMIT;
 	   subplan = subplan->plan_un.sort.subplan)
 	{
 	  if (!bitset_is_empty (&(subplan->sarged_terms)))
@@ -2440,6 +2476,7 @@ qo_sort_new (QO_PLAN * root, QO_EQCLASS * order, SORT_TYPE sort_type)
   plan->plan_un.sort.xasl = NULL;	/* To be determined later */
 
   plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_NO;
+  plan->has_sort_limit = (sort_type == SORT_LIMIT);
 
   qo_plan_compute_cost (plan);
 
@@ -2477,6 +2514,10 @@ qo_sort_fprint (QO_PLAN * plan, FILE * f, int howfar)
     case SORT_TEMP:
       fprintf (f, "\n" INDENTED_TITLE_FMT, (int) howfar, ' ', "order:");
       qo_eqclass_fprint_wrt (plan->order, &(plan->info->nodes), f);
+      break;
+
+    case SORT_LIMIT:
+      fprintf (f, "(sort limit)");
       break;
 
     case SORT_GROUPBY:
@@ -2579,9 +2620,26 @@ qo_sort_cost (QO_PLAN * planp)
       && planp->plan_un.sort.sort_type == SORT_TEMP)
     {
       /* This plan won't actually incur any runtime cost because it
-         won't actually exist (its sort spec will supercede the sort
+         won't actually exist (its sort spec will supersede the sort
          spec of the subplan).  We can't just clobber the sort spec on
          the lower plan because it might be shared by others. */
+      planp->fixed_cpu_cost = subplanp->fixed_cpu_cost;
+      planp->fixed_io_cost = subplanp->fixed_io_cost;
+      planp->variable_cpu_cost = subplanp->variable_cpu_cost;
+      planp->variable_io_cost = subplanp->variable_io_cost;
+    }
+  else if (planp->plan_un.sort.sort_type == SORT_LIMIT)
+    {
+      if (subplanp->plan_type == QO_PLANTYPE_SORT)
+	{
+	  /* No sense in having a STOP plan above a SORT plan */
+	  qo_worst_cost (planp);
+	}
+
+      /* SORT-LIMIT plan has the same cost as the subplan (since actually
+       * sorting items in memory is not a big drawback. Costs improvements
+       * will be applied when we consider joining this plan with other plans
+       */
       planp->fixed_cpu_cost = subplanp->fixed_cpu_cost;
       planp->fixed_io_cost = subplanp->fixed_io_cost;
       planp->variable_cpu_cost = subplanp->variable_cpu_cost;
@@ -2689,6 +2747,12 @@ qo_join_new (QO_INFO * info,
 
   bitset_init (&sarg_out_terms, info->env);
 
+  if (inner->has_sort_limit && join_method != QO_JOINMETHOD_MERGE_JOIN)
+    {
+      /* SORT-LIMIT plans are allowed on inner nodes only for merge joins */
+      return NULL;
+    }
+
   plan = qo_plan_malloc (info->env);
   if (plan == NULL)
     {
@@ -2705,6 +2769,7 @@ qo_join_new (QO_INFO * info,
   plan->iscan_sort_list = NULL;
   plan->plan_type = QO_PLANTYPE_JOIN;
   plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_NO;
+  plan->has_sort_limit = (outer->has_sort_limit || inner->has_sort_limit);
 
   switch (join_method)
     {
@@ -2852,6 +2917,23 @@ qo_join_new (QO_INFO * info,
     }
 
   qo_plan_compute_cost (plan);
+
+  if (!plan->has_sort_limit && info->env->use_sort_limit
+      && bitset_is_equivalent (&info->env->sort_limit_nodes, &info->nodes))
+    {
+      /* Consider creating a SORT_LIMIT plan over this plan only if it
+       * cannot skip order by. Since we know that we already have all ORDER BY
+       * nodes in this plan, we can verify orderby_skip at this point
+       */
+      if (!qo_plan_is_orderby_skip_candidate (plan))
+	{
+	  plan = qo_sort_new (plan, QO_UNORDERED, SORT_LIMIT);
+	  if (plan == NULL)
+	    {
+	      return NULL;
+	    }
+	}
+    }
 
 #if 1				/* MERGE_ALWAYS_MAKES_LISTFILE */
   /* This is necessary to get the proper cost model for merge joins,
@@ -3048,7 +3130,19 @@ qo_nljoin_cost (QO_PLAN * planp)
   planp->fixed_io_cost = outer->fixed_io_cost + inner->fixed_io_cost;
 
   /* inner side CPU cost of nested-loop block join */
-  guessed_result_cardinality = (outer->info)->cardinality;
+  if (outer->plan_type == QO_PLANTYPE_SORT
+      && outer->plan_un.sort.sort_type == SORT_LIMIT)
+    {
+      /* cardinality of a SORT_LIMIT plan is given by the value of the query
+       * limit
+       */
+      guessed_result_cardinality =
+	(double) DB_GET_BIGINT (&QO_ENV_LIMIT_VALUE (outer->info->env));
+    }
+  else
+    {
+      guessed_result_cardinality = (outer->info)->cardinality;
+    }
   inner_cpu_cost = guessed_result_cardinality * (double) QO_CPU_WEIGHT;
   /* join cost */
 
@@ -3212,6 +3306,8 @@ qo_mjoin_cost (QO_PLAN * planp)
 {
   QO_PLAN *inner;
   QO_PLAN *outer;
+  QO_ENV *env;
+  double outer_cardinality = 0.0, inner_cardinality = 0.0;
 
   inner = planp->plan_un.join.inner;
 
@@ -3237,14 +3333,33 @@ qo_mjoin_cost (QO_PLAN * planp)
       return;
     }
 
-  /* CPU and IO costs which are fixed againt join */
+  env = outer->info->env;
+  if (outer->has_sort_limit)
+    {
+      outer_cardinality = (double) DB_GET_BIGINT (&QO_ENV_LIMIT_VALUE (env));
+    }
+  else
+    {
+      outer_cardinality = outer->info->cardinality;
+    }
+
+  if (inner->has_sort_limit)
+    {
+      inner_cardinality = (double) DB_GET_BIGINT (&QO_ENV_LIMIT_VALUE (env));
+    }
+  else
+    {
+      inner_cardinality = inner->info->cardinality;
+    }
+
+  /* CPU and IO costs which are fixed against join */
   planp->fixed_cpu_cost = outer->fixed_cpu_cost + inner->fixed_cpu_cost;
   planp->fixed_io_cost = outer->fixed_io_cost + inner->fixed_io_cost;
   /* CPU and IO costs which are variable according to the join plan */
   planp->variable_cpu_cost = outer->variable_cpu_cost +
     inner->variable_cpu_cost;
-  planp->variable_cpu_cost += ((outer->info)->cardinality / 2) *
-    ((inner->info)->cardinality / 2) * (double) QO_CPU_WEIGHT;
+  planp->variable_cpu_cost += (outer_cardinality / 2) *
+    (inner_cardinality / 2) * (double) QO_CPU_WEIGHT;
   /* merge cost */
   planp->variable_io_cost = outer->variable_io_cost + inner->variable_io_cost;
 }
@@ -3613,6 +3728,25 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
   double af, aa, bf, ba;
   QO_NODE *a_node, *b_node;
   QO_PLAN_COMPARE_RESULT temp_res;
+
+  if (qo_is_sort_limit (a))
+    {
+      if (qo_is_sort_limit (b))
+	{
+	  /* compare subplans */
+	  a = a->plan_un.sort.subplan;
+	  b = b->plan_un.sort.subplan;
+	}
+      else if (a->plan_un.sort.subplan == b)
+	{
+	  /* a is a SORT-LIMIT plan over b */
+	  return PLAN_COMP_LT;
+	}
+    }
+  else if (qo_is_sort_limit (b) && a == b->plan_un.sort.subplan)
+    {
+      return PLAN_COMP_GT;
+    }
 
   /* skip out top-level sort plan */
   if (a->top_rooted && b->top_rooted)
@@ -5275,14 +5409,36 @@ qo_check_new_best_plan_on_info (QO_INFO * info, QO_PLAN * plan)
 
       if (cmp == PLAN_COMP_GT)
 	{
-	  if (plan->plan_type != QO_PLANTYPE_SORT)
+	  if (plan->plan_type != QO_PLANTYPE_SORT
+	      || plan->plan_un.sort.sort_type != SORT_LIMIT)
 	    {
 	      int i, EQ;
-	      QO_PLAN *new_plan;
+	      QO_PLAN *new_plan, *sort_plan, *best_plan;
+	      QO_ENV *env;
 	      QO_PLAN_COMPARE_RESULT new_cmp;
 
-	      EQ = info->planner->EQ;
+	      env = info->env;
 
+	      EQ = info->planner->EQ;
+	      best_plan = qo_find_best_plan_on_planvec (&info->best_no_order,
+							1.0);
+	      if (env->use_sort_limit
+		  && !best_plan->has_sort_limit
+		  && bitset_is_equivalent (&QO_ENV_SORT_LIMIT_NODES (env),
+					   &info->nodes)
+		  && !qo_plan_is_orderby_skip_candidate (best_plan))
+		{
+		  /* generate a SORT_LIMIT plan over this plan */
+		  sort_plan = qo_sort_new (best_plan, QO_UNORDERED,
+					   SORT_LIMIT);
+		  if (sort_plan != NULL)
+		    {
+		      if (qo_check_plan_on_info (info, sort_plan) > 0)
+			{
+			  best_plan = sort_plan;
+			}
+		    }
+		}
 	      /*
 	       * Check to see if any of the ordered solutions can be made
 	       * cheaper by sorting this new plan.
@@ -5291,9 +5447,7 @@ qo_check_new_best_plan_on_info (QO_INFO * info, QO_PLAN * plan)
 		{
 		  order = &info->planner->eqclass[i];
 
-		  new_plan =
-		    qo_plan_order_by (qo_find_best_plan_on_planvec
-				      (&info->best_no_order, 1.0), order);
+		  new_plan = qo_plan_order_by (best_plan, order);
 		  if (new_plan)
 		    {
 		      new_cmp =
@@ -5471,7 +5625,7 @@ qo_find_best_nljoin_inner_plan_on_info (QO_PLAN * outer,
       /* if already found idx-join, then exclude sequential inner */
       if (idx_join_plan_n > 0)
 	{
-	  if (qo_is_seq_scan (inner))
+	  if (qo_is_seq_scan (inner) || inner->has_sort_limit)
 	    {
 	      continue;
 	    }
@@ -6188,7 +6342,7 @@ qo_examine_correlated_index (QO_INFO * info,
 	}
 
       /* the index has terms which are a subset of the terms that we're
-         intersted in */
+         interested in */
       if (bitset_intersects (&indexable_terms, &(index_entryp->terms)))
 	{
 
@@ -7893,7 +8047,7 @@ qo_generate_join_index_scan (QO_INFO * infop,
       inner_plan = qo_index_scan_new (inner, nodep, ni_entryp,
 				      &range_terms,
 				      &kf_terms, &QO_NODE_SUBQUERIES (nodep));
-      /* now, key-flter is assigned;
+      /* now, key-filter is assigned;
          exclude key-range, key-filter terms from remaining terms */
       bitset_difference (&remaining_terms, &range_terms);
       bitset_difference (&remaining_terms,
@@ -8358,6 +8512,37 @@ end:
 }
 
 /*
+ * qo_generate_sort_limit_plan () - generate SORT_LIMIT plans
+ * return : number of plans generated
+ * env (in)	:
+ * infop (in)	: info for the plan
+ * subplan (in) : subplan over which to generate the SORT_LIMIT plan
+ */
+static int
+qo_generate_sort_limit_plan (QO_ENV * env, QO_INFO * infop, QO_PLAN * subplan)
+{
+  int n;
+  QO_PLAN *plan;
+
+  if (subplan->order != QO_UNORDERED)
+    {
+      /* Do not put a SORT_LIMIT plan over an ordered plan because we have to
+       * keep the ordered principle. At best, we can place a SORT_LIMIT plan
+       * directly under an ordered one.
+       */
+      return 0;
+    }
+
+  plan = qo_sort_new (subplan, QO_UNORDERED, SORT_LIMIT);
+  if (plan == NULL)
+    {
+      return 0;
+    }
+  n = qo_check_plan_on_info (infop, plan);
+  return n;
+}
+
+/*
  * qo_has_is_not_null_term () - Check if whether a given node has sarg term
  *                              with not null operation
  *   return: 1 if it is found, otherwise 0
@@ -8693,6 +8878,19 @@ qo_search_planner (QO_PLANNER * planner)
 	  qo_generate_seq_scan (info, node);
 	}
 
+      if (QO_NODE_SORT_LIMIT_CANDIDATE (node))
+	{
+	  /* generate a stop plan over the current best plan of the */
+	  QO_PLAN *best_plan;
+	  best_plan = qo_find_best_plan_on_info (info, QO_UNORDERED, 1.0);
+	  if (best_plan->plan_type == QO_PLANTYPE_SCAN
+	      && !best_plan->multi_range_opt_use
+	      && !qo_is_iscan_from_orderby (best_plan)
+	      && !qo_is_iscan_from_groupby (best_plan))
+	    {
+	      qo_generate_sort_limit_plan (planner->env, info, best_plan);
+	    }
+	}
     }
 
   /*
@@ -8946,6 +9144,7 @@ qo_search_partition_join (QO_PLANNER * planner,
   else
     {
       int j, k;
+      QO_ENV *env;
       QO_INFO *i_info, *j_info;
       QO_PLAN *i_plan, *j_plan;
       QO_NODE *i_node, *j_node;
@@ -8954,8 +9153,8 @@ qo_search_partition_join (QO_PLANNER * planner,
       BITSET_ITERATOR bi, bj, bk;
       QO_PLAN_COMPARE_RESULT cmp;
       BITSET derived_nodes;
-
-      bitset_init (&derived_nodes, planner->env);
+      env = planner->env;
+      bitset_init (&derived_nodes, env);
 
       for (i = bitset_iterate (&remaining_nodes, &bi); i != -1;
 	   i = bitset_next_member (&bi))
@@ -9002,6 +9201,16 @@ qo_search_partition_join (QO_PLANNER * planner,
 	       j = bitset_next_member (&bj))
 	    {
 	      j_node = QO_ENV_NODE (planner->env, j);
+	      if ((QO_IS_LIMIT_NODE (env, i_node)
+		   && !QO_IS_LIMIT_NODE (env, j_node))
+		  || (!QO_IS_LIMIT_NODE (env, i_node)
+		      && QO_IS_LIMIT_NODE (env, j_node)))
+		{
+		  /* Also keep the best plan from limit nodes, otherwise we
+		   * might not get a chance to create a SORT-LIMIT plan */
+		  continue;
+		}
+
 	      /* current prefix has only one node */
 	      j_info = planner->node_info[QO_NODE_IDX (j_node)];
 
@@ -11223,6 +11432,8 @@ qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
   int i, pos;
   QO_CLASS_INFO_ENTRY *index_class = ni_entryp->head->class_;
   void *env_seg[2];
+  const char *seg_name;
+  const char *node_name;
 
   /* key_term_status is -1 if no term with key, 0 if isnull or is not null
    * terms with key and 1 if other term with key
@@ -11296,8 +11507,6 @@ qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
 
   for (i = 0; i < env->nsegs; i++)
     {
-      char *seg_name, *node_name;
-
       seg_name = QO_ENV_SEG (env, i)->name;
       if (node->node_type == PT_NAME)
 	{
@@ -12785,4 +12994,65 @@ qo_is_interesting_order_scan (QO_PLAN * plan)
     }
 
   return false;
+}
+
+/*
+ * qo_plan_is_orderby_skip_candidate () - verify if a plan is a candidate for
+ *					  orderby skip
+ * return : true/false
+ * plan (in) : plan to verify
+ */
+static bool
+qo_plan_is_orderby_skip_candidate (QO_PLAN * plan)
+{
+  PARSER_CONTEXT *parser;
+  PT_NODE *order_by, *statement;
+  QO_ENV *env;
+  bool is_prefix = false, is_orderby_skip = false;
+
+  if (plan == NULL || plan->info == NULL)
+    {
+      assert (false);
+      return false;
+    }
+
+  env = plan->info->env;
+  parser = QO_ENV_PARSER (env);
+  statement = QO_ENV_PT_TREE (env);
+  order_by = statement->info.query.order_by;
+
+  (void) qo_plan_compute_iscan_sort_list (plan, &is_prefix);
+
+  if (plan->iscan_sort_list == NULL || is_prefix)
+    {
+      is_orderby_skip = false;
+      goto cleanup;
+    }
+
+  is_orderby_skip = pt_sort_spec_cover (plan->iscan_sort_list, order_by);
+  if (!is_orderby_skip)
+    {
+      /* verify descending */
+      is_orderby_skip = qo_check_orderby_skip_descending (plan);
+    }
+
+cleanup:
+  if (plan->iscan_sort_list)
+    {
+      parser_free_tree (parser, plan->iscan_sort_list);
+      plan->iscan_sort_list = NULL;
+    }
+  return is_orderby_skip;
+}
+
+/*
+ * qo_is_sort_limit () - verify if plan is a SORT-LIMIT plan
+ * return : true/false
+ * plan (in) :
+ */
+static bool
+qo_is_sort_limit (QO_PLAN * plan)
+{
+  return (plan != NULL && plan->plan_type == QO_PLANTYPE_SORT
+	  && plan->plan_un.sort.sort_type == SORT_LIMIT);
 }

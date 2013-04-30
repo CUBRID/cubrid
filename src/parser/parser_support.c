@@ -214,9 +214,13 @@ static PT_NODE *pt_make_query_user_groups (PARSER_CONTEXT * parser,
 					   const char *user_name);
 static char *pt_help_show_create_table (PARSER_CONTEXT * parser,
 					PT_NODE * table_name);
-static bool pt_check_ordby_num_for_mro_internal (PARSER_CONTEXT * parser,
-						 PT_NODE * orderby_for,
-						 DB_VALUE * upper_limit);
+static int pt_get_query_limit_from_orderby_for (PARSER_CONTEXT * parser,
+						PT_NODE * orderby_for,
+						DB_VALUE * upper_limit,
+						bool * has_limit);
+static int pt_get_query_limit_from_limit (PARSER_CONTEXT * parser,
+					  PT_NODE * limit,
+					  DB_VALUE * limit_val);
 static PT_NODE *pt_create_delete_stmt (PARSER_CONTEXT * parser,
 				       PT_NODE * spec,
 				       PT_NODE * target_class);
@@ -11099,6 +11103,137 @@ pt_make_query_show_collation (PARSER_CONTEXT * parser,
 }
 
 /*
+ * pt_get_query_limit_value () - get the value of the LIMIT clause of a query
+ * return : error code or NO_ERROR
+ * parser (in)	      : parser context
+ * limit (in)	      : limit node
+ * limit_val (in/out) : limit value
+ *
+ * Note: this function get the LIMIT clause value of a query as a
+ *  DB_TYPE_BIGINT value. If the LIMIT clause contains a lower limit, the
+ *  returned value is computed as lower bound + range. (i.e.: if it was
+ *  specified as LIMIT x, y this function returns x+y)
+ */
+static int
+pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit,
+			       DB_VALUE * limit_val)
+{
+  int save_set_host_var;
+  TP_DOMAIN *domainp = NULL;
+  int error = NO_ERROR;
+
+  DB_MAKE_NULL (limit_val);
+
+  if (limit == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  domainp = tp_domain_resolve_default (DB_TYPE_BIGINT);
+
+  save_set_host_var = parser->set_host_var;
+  parser->set_host_var = 1;
+
+  pt_evaluate_tree_having_serial (parser, limit, limit_val, 1);
+  if (pt_has_error (parser))
+    {
+      error = ER_FAILED;
+      goto cleanup;
+    }
+
+  if (DB_IS_NULL (limit_val))
+    {
+      goto cleanup;
+    }
+
+  if (tp_value_coerce (limit_val, limit_val, domainp) != DOMAIN_COMPATIBLE)
+    {
+      error = ER_FAILED;
+      goto cleanup;
+    }
+
+  if (limit->next)
+    {
+      DB_VALUE range;
+      DB_MAKE_NULL (&range);
+      /* LIMIT x,y => return x + y */
+      pt_evaluate_tree_having_serial (parser, limit->next, &range, 1);
+      if (pt_has_error (parser))
+	{
+	  error = ER_FAILED;
+	  goto cleanup;
+	}
+
+      if (DB_IS_NULL (&range))
+	{
+	  goto cleanup;
+	}
+
+      if (tp_value_coerce (&range, &range, domainp) != DOMAIN_COMPATIBLE)
+	{
+	  error = ER_FAILED;
+	  goto cleanup;
+	}
+
+      /* add range to current limit */
+      DB_MAKE_BIGINT (limit_val,
+		      DB_GET_BIGINT (limit_val) + DB_GET_BIGINT (&range));
+    }
+
+cleanup:
+  if (error != NO_ERROR)
+    {
+      pr_clear_value (limit_val);
+      DB_MAKE_NULL (limit_val);
+    }
+
+  parser->set_host_var = save_set_host_var;
+  return error;
+}
+
+/*
+ * pt_get_query_limit_value () - get the limit value from a query
+ * return : error code or NO_ERROR
+ * parser (in)	      : parser context
+ * query (in)	      : query
+ * limit_val (in/out) : limit value
+ */
+int
+pt_get_query_limit_value (PARSER_CONTEXT * parser, PT_NODE * query,
+			  DB_VALUE * limit_val)
+{
+  assert_release (limit_val != NULL);
+  DB_MAKE_NULL (limit_val);
+
+  if (query == NULL || !PT_IS_QUERY (query))
+    {
+      return NO_ERROR;
+    }
+
+  if (query->info.query.limit)
+    {
+      return pt_get_query_limit_from_limit (parser, query->info.query.limit,
+					    limit_val);
+    }
+
+  if (query->info.query.orderby_for != NULL)
+    {
+      int error = NO_ERROR;
+      bool has_limit = false;
+      error = pt_get_query_limit_from_orderby_for (parser,
+						   query->info.query.
+						   orderby_for, limit_val,
+						   &has_limit);
+      if (error != NO_ERROR || !has_limit)
+	{
+	  return ER_FAILED;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * pt_check_ordby_num_for_multi_range_opt () - checks if limit/order by for is
  *					       valid for multi range opt
  *
@@ -11115,11 +11250,12 @@ pt_check_ordby_num_for_multi_range_opt (PARSER_CONTEXT * parser,
 					PT_NODE * query, bool * mro_candidate,
 					bool * cannot_eval)
 {
-  PT_NODE *limit = NULL, *orderby_for = NULL;
-  DB_VALUE upper_limit, lower_limit, range;
-  TP_DOMAIN *big_int_tp_domain = tp_domain_resolve_default (DB_TYPE_BIGINT);
+  DB_VALUE limit_val;
+
   int save_set_host_var;
   bool valid = false;
+
+  assert_release (query != NULL);
 
   if (cannot_eval != NULL)
     {
@@ -11130,99 +11266,32 @@ pt_check_ordby_num_for_multi_range_opt (PARSER_CONTEXT * parser,
       *mro_candidate = false;
     }
 
-  assert (parser != NULL);
-  if (parser == NULL)
-    {
-      return false;
-    }
-
   if (!PT_IS_QUERY (query))
     {
       return false;
     }
 
+  DB_MAKE_NULL (&limit_val);
+
   save_set_host_var = parser->set_host_var;
   parser->set_host_var = 1;
 
-  limit = query->info.query.limit;
-  if (limit)
+  if (pt_get_query_limit_value (parser, query, &limit_val) != NO_ERROR)
     {
-      if (limit->next)
-	{
-	  /* LIMIT x,y => upper_limit = x + y */
-	  DB_MAKE_NULL (&lower_limit);
-	  pt_evaluate_tree_having_serial (parser, limit, &lower_limit, 1);
-	  if (pt_has_error (parser))
-	    {
-	      goto end;
-	    }
-	  if (DB_IS_NULL (&lower_limit)
-	      ||
-	      tp_value_coerce (&lower_limit, &lower_limit, big_int_tp_domain)
-	      != DOMAIN_COMPATIBLE)
-	    {
-	      goto end_mro_candidate;
-	    }
-	  DB_MAKE_NULL (&range);
-	  pt_evaluate_tree_having_serial (parser, limit->next, &range, 1);
-	  if (pt_has_error (parser))
-	    {
-	      goto end;
-	    }
-	  if (DB_IS_NULL (&range)
-	      || tp_value_coerce (&range, &range, big_int_tp_domain) !=
-	      DOMAIN_COMPATIBLE)
-	    {
-	      goto end_mro_candidate;
-	    }
-	  DB_MAKE_BIGINT (&upper_limit,
-			  DB_GET_BIGINT (&lower_limit) +
-			  DB_GET_BIGINT (&range));
-	}
-      else
-	{
-	  /* LIMIT x => upper_limit = x */
-	  DB_MAKE_NULL (&upper_limit);
-	  pt_evaluate_tree_having_serial (parser, limit, &upper_limit, 1);
-	  if (pt_has_error (parser))
-	    {
-	      goto end;
-	    }
-	  if (DB_IS_NULL (&upper_limit)
-	      ||
-	      tp_value_coerce (&upper_limit, &upper_limit, big_int_tp_domain)
-	      != DOMAIN_COMPATIBLE)
-	    {
-	      goto end_mro_candidate;
-	    }
-	}
+      goto end;
     }
-  else
+
+  if (DB_IS_NULL (&limit_val))
     {
-      /* ORDER BY FOR clause, try to find upper limit */
-      orderby_for = query->info.query.orderby_for;
-      DB_MAKE_NULL (&upper_limit);
-      if (!pt_check_ordby_num_for_mro_internal
-	  (parser, orderby_for, &upper_limit))
-	{
-	  /* invalid ORDER BY FOR expression, optimization cannot apply */
-	  goto end;
-	}
-      if (pt_has_error (parser))
-	{
-	  goto end;
-	}
-      if (DB_IS_NULL (&upper_limit))
-	{
-	  goto end_mro_candidate;
-	}
+      goto end_mro_candidate;
     }
+
   if (cannot_eval)
     {
       /* upper limit was successfully evaluated */
       *cannot_eval = false;
     }
-  if (DB_GET_BIGINT (&upper_limit) >
+  if (DB_GET_BIGINT (&limit_val) >
       prm_get_integer_value (PRM_ID_MULTI_RANGE_OPT_LIMIT))
     {
       goto end_mro_candidate;
@@ -11249,9 +11318,8 @@ end:
 }
 
 /*
- * pt_check_ordby_num_for_mro_internal () - check order by for clause is
- *					    compatible with multi range
- *					    optimization
+ * pt_get_query_limit_from_orderby_for () - get upper limit value for
+ *					    orderby_for expression
  *
  * return	      : true if a valid order by for expression, else false
  * parser (in)	      : parser context
@@ -11260,16 +11328,16 @@ end:
  *
  * Note:  Only operations that can reduce to ORDERBY_NUM () </<= VALUE are
  *	  allowed:
- *	  1. ORDERBY_NUM () LE/LT (EXPR that evaluates to a value).
- *	  2. (EXPR that evaluates to a values) GE/GT ORDERBY_NUM ().
- *	  3. Any number of #1 and #2 expressions separated by PT_AND logical
+ *	  1. ORDERBY_NUM () LE/LT EXPR (which evaluates to a value).
+ *	  2. EXPR (which evaluates to a values) GE/GT ORDERBY_NUM ().
+ *	  3. Any number of #1 and #2 expressions linked by PT_AND logical
  *	     operator.
  *	  Lower limits are allowed.
  */
-static bool
-pt_check_ordby_num_for_mro_internal (PARSER_CONTEXT * parser,
+static int
+pt_get_query_limit_from_orderby_for (PARSER_CONTEXT * parser,
 				     PT_NODE * orderby_for,
-				     DB_VALUE * upper_limit)
+				     DB_VALUE * upper_limit, bool * has_limit)
 {
   int op;
   PT_NODE *arg_ordby_num = NULL;
@@ -11277,64 +11345,50 @@ pt_check_ordby_num_for_mro_internal (PARSER_CONTEXT * parser,
   PT_NODE *arg1 = NULL, *arg2 = NULL;
   PT_NODE *save_next = NULL;
   DB_VALUE limit;
-  bool result = false;
+  int error = NO_ERROR;
   bool lt = false;
 
   if (orderby_for == NULL || upper_limit == NULL)
     {
-      return false;
+      return NO_ERROR;
     }
+
+  assert_release (has_limit != NULL);
 
   if (!PT_IS_EXPR_NODE (orderby_for))
     {
-      return false;
+      goto unusable_expr;
     }
 
   if (orderby_for->or_next != NULL)
     {
-      /* OR operator is now allowed */
-      return false;
+      /* OR operator is now useful */
+      goto unusable_expr;
     }
+
   if (orderby_for->next)
     {
       /* AND operator */
       save_next = orderby_for->next;
       orderby_for->next = NULL;
-      result =
-	pt_check_ordby_num_for_mro_internal (parser, orderby_for,
-					     upper_limit);
-      if (result)
-	{
-	  result =
-	    pt_check_ordby_num_for_mro_internal (parser, orderby_for->next,
-						 upper_limit);
-	}
+      error = pt_get_query_limit_from_orderby_for (parser, orderby_for,
+						   upper_limit, has_limit);
       orderby_for->next = save_next;
-      return result;
+      if (error != NO_ERROR)
+	{
+	  goto unusable_expr;
+	}
+
+      return pt_get_query_limit_from_orderby_for (parser, orderby_for->next,
+						  upper_limit, has_limit);
     }
 
   op = orderby_for->info.expr.op;
-  if (op == PT_AND)
-    {
-      result =
-	pt_check_ordby_num_for_mro_internal (parser,
-					     orderby_for->info.expr.arg1,
-					     upper_limit);
-      if (result)
-	{
-	  result =
-	    pt_check_ordby_num_for_mro_internal (parser,
-						 orderby_for->info.expr.arg2,
-						 upper_limit);
-	}
-      return result;
-    }
 
   if (op != PT_LT && op != PT_LE && op != PT_GT && op != PT_GE
       && op != PT_BETWEEN)
     {
-      /* only compare operations are allowed */
-      return false;
+      goto unusable_expr;
     }
 
   arg1 = orderby_for->info.expr.arg1;
@@ -11342,7 +11396,7 @@ pt_check_ordby_num_for_mro_internal (PARSER_CONTEXT * parser,
   if (arg1 == NULL || arg2 == NULL)
     {
       /* safe guard */
-      return false;
+      goto unusable_expr;
     }
 
   /* look for orderby_for argument */
@@ -11377,15 +11431,16 @@ pt_check_ordby_num_for_mro_internal (PARSER_CONTEXT * parser,
   else
     {
       /* orderby_for argument was not found, this is not a valid expression */
-      return false;
+      goto unusable_expr;
     }
 
   if (op == PT_GE || op == PT_GT)
     {
-      /* lower limits are accepted */
-      return true;
+      /* lower limits are acceptable but not useful */
+      return NO_ERROR;
     }
-  else if (op == PT_LT)
+
+  if (op == PT_LT)
     {
       lt = true;
     }
@@ -11413,11 +11468,11 @@ pt_check_ordby_num_for_mro_internal (PARSER_CONTEXT * parser,
 	case PT_BETWEEN_EQ_NA:
 	case PT_BETWEEN_GE_INF:
 	case PT_BETWEEN_GT_INF:
-	  /* lower limits are allowed */
-	  return true;
+	  /* lower limits are acceptable but not useful */
+	  return NO_ERROR;
 	default:
 	  /* be conservative */
-	  return false;
+	  goto unusable_expr;
 	}
     }
 
@@ -11425,14 +11480,14 @@ pt_check_ordby_num_for_mro_internal (PARSER_CONTEXT * parser,
   DB_MAKE_NULL (&limit);
   pt_evaluate_tree_having_serial (parser, rhs, &limit, 1);
   if (DB_IS_NULL (&limit)
-      ||
-      tp_value_coerce (&limit, &limit,
-		       tp_domain_resolve_default (DB_TYPE_BIGINT)) !=
+      || tp_value_coerce (&limit, &limit,
+			  tp_domain_resolve_default (DB_TYPE_BIGINT)) !=
       DOMAIN_COMPATIBLE)
     {
-      /* multi range optimization candidate */
-      DB_MAKE_NULL (upper_limit);
-      return true;
+      /* has unusable upper_limit */
+      pr_clear_value (upper_limit);
+      *has_limit = true;
+      return NO_ERROR;
     }
 
   if (lt)
@@ -11444,12 +11499,19 @@ pt_check_ordby_num_for_mro_internal (PARSER_CONTEXT * parser,
       || (DB_GET_BIGINT (upper_limit) > DB_GET_BIGINT (&limit)))
     {
       /* update upper limit */
-      if (db_value_clone (&limit, upper_limit) != NO_ERROR)
+      if (pr_clone_value (&limit, upper_limit) != NO_ERROR)
 	{
-	  return false;
+	  goto unusable_expr;
 	}
     }
-  return true;
+
+  *has_limit = true;
+  return NO_ERROR;
+
+unusable_expr:
+  *has_limit = false;
+  pr_clear_value (upper_limit);
+  return ER_FAILED;
 }
 
 /*

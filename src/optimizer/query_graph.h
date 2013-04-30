@@ -359,12 +359,14 @@ struct qo_node
    *  maintained in QO_NODE_INDEX.
    */
   QO_NODE_INDEX *indexes;
-  QO_USING_INDEX *using_index;	/* indexes specifed in USING INDEX clause */
+  QO_USING_INDEX *using_index;	/* indexes specified in USING INDEX clause */
   /* NULL if no USING INDEX clause in the query */
 
   BITSET outer_dep_set;		/* outer join dependency; to preserve join sequence */
   PT_HINT_ENUM hint;		/* hint comment contained in given */
   bool sargable;		/* whether sargs are applicable to this node */
+  bool sort_limit_candidate;	/* whether this node is a candidate for
+				 * a SORT_LIMIT plan */
 };
 
 #define QO_NODE_ENV(node)		(node)->env
@@ -395,6 +397,7 @@ struct qo_node
 #define QO_NODE_TCARD(node)		(node)->tcard
 #define QO_NODE_HINT(node)		(node)->hint
 #define QO_NODE_INFO_SMCLASS(node)	(node)->info[0].info->smclass
+#define QO_NODE_SORT_LIMIT_CANDIDATE(node)	(node)->sort_limit_candidate
 
 #define QO_NODE_IS_CLASS_HIERARCHY(node)  \
   (QO_NODE_INFO(node) != NULL	\
@@ -843,6 +846,14 @@ struct qo_env
   int npartitions;
   int nedges;
 
+  /* nodes which cannot be excluded from plans which compute query limit */
+  BITSET sort_limit_nodes;
+
+  /* stopping cardinality for the plan (LIMIT, ORDERBY_FOR, etc) */
+  DB_VALUE limit_value;
+
+  /* true if we should consider generating SORT-LIMIT plans */
+  bool use_sort_limit;
   /*
    * True iff we found a conjunct which was not an expression.  We assume
    * that this is a false conjunct and we don't need to optimize a query
@@ -874,7 +885,7 @@ struct qo_env
 
   /*
    * Controls the amount of garbage dumped with plans.  Can be
-   * overriden with the environment variable CUBRID_QO_DUMP_LEVEL.
+   * overridden with the environment variable CUBRID_QO_DUMP_LEVEL.
    */
   bool dump_enable;
 
@@ -902,6 +913,8 @@ struct qo_env
 #define QO_ENV_PARSER(env)              (env)->parser
 #define QO_ENV_PT_TREE(env)		(env)->pt_tree
 #define QO_ENV_TMP_BITSET(env)          (env)->tmp_bitset
+#define QO_ENV_LIMIT_VALUE(env)		(env)->limit_value
+#define QO_ENV_SORT_LIMIT_NODES(env)	(env)->sort_limit_nodes
 
 /*
  *  QO_XASL_INDEX_INFO gathers information about the indexed terms which

@@ -288,7 +288,7 @@ static QO_INDEX_ENTRY *is_index_compatible (QO_CLASS_INFO * class_info,
 					    int n,
 					    QO_INDEX_ENTRY * index_entry);
 
-
+static void qo_discover_sort_limit_nodes (QO_ENV * env);
 static void qo_equivalence (QO_SEGMENT *, QO_SEGMENT *);
 static void qo_seg_nodes (QO_ENV *, BITSET *, BITSET *);
 static QO_ENV *qo_env_new (PARSER_CONTEXT *, PT_NODE *);
@@ -315,8 +315,11 @@ static QO_SEGMENT *qo_eqclass_wrt (QO_EQCLASS *, BITSET *);
 static void qo_env_dump (QO_ENV *, FILE *);
 static bool qo_is_iss_index (QO_ENV * env, QO_NODE * nodep,
 			     QO_INDEX_ENTRY * index_entry);
-
-
+static void qo_discover_sort_limit_join_nodes (QO_ENV * env, QO_NODE * nodep,
+					       BITSET * order_nodes,
+					       BITSET * dep_nodes);
+static bool qo_is_pk_fk_full_join (QO_ENV * env, QO_NODE * fk_node,
+				   QO_NODE * pk_node);
 /*
  * qo_get_optimization_param () - Return the current value of some (global)
  *				  optimization parameter
@@ -671,7 +674,7 @@ qo_optimize_helper (QO_ENV * env)
   get_rank (env);
   qo_discover_indexes (env);
   qo_discover_partitions (env);
-
+  qo_discover_sort_limit_nodes (env);
   /* now optimize */
 
   plan = qo_planner_search (env);
@@ -1370,6 +1373,8 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
   QO_NODE_ENTITY_SPEC (node) = entity;
   QO_NODE_NAME (node) = entity->info.spec.range_var->info.name.original;
   QO_NODE_IDX (node) = env->nnodes;
+  QO_NODE_SORT_LIMIT_CANDIDATE (node) = false;
+
   env->nnodes++;
 
   /*
@@ -6096,6 +6101,9 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
   env->planner = NULL;
   env->dump_enable = prm_get_bool_value (PRM_ID_QO_DUMP);
   bitset_init (&(env->fake_terms), env);
+  bitset_init (&QO_ENV_SORT_LIMIT_NODES (env), env);
+  DB_MAKE_NULL (&QO_ENV_LIMIT_VALUE (env));
+
   assert (query->node_type == PT_SELECT);
   if (PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_INFO_COLS_SCHEMA)
       || PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_FULL_INFO_COLS_SCHEMA))
@@ -6226,6 +6234,8 @@ qo_env_free (QO_ENV * env)
 
       bitset_delset (&(env->final_segs));
       bitset_delset (&(env->fake_terms));
+      bitset_delset (&QO_ENV_SORT_LIMIT_NODES (env));
+      pr_clear_value (&QO_ENV_LIMIT_VALUE (env));
 
       if (env->planner)
 	{
@@ -8515,6 +8525,176 @@ qo_term_clear (QO_ENV * env, int idx)
 }
 
 /*
+ * qo_discover_sort_limit_nodes () - discover the subset of nodes on which
+ *				     a SORT_LIMIT plan can be applied.
+ * return   : void
+ * env (in) : env
+ *
+ * Note: This function discovers a subset of nodes on which a SORT_LIMIT plan
+ *  can be applied without altering the result of the query.
+ */
+static void
+qo_discover_sort_limit_nodes (QO_ENV * env)
+{
+  PT_NODE *query, *orderby, *sort_col, *select_list, *col, *save_next;
+  int i, pos_spec;
+  QO_NODE *node;
+  BITSET order_nodes, dep_nodes, expr_segs, tmp_bitset;
+  BITSET_ITERATOR bi;
+
+  bitset_init (&order_nodes, env);
+  bitset_init (&QO_ENV_SORT_LIMIT_NODES (env), env);
+
+  if (pt_get_query_limit_value (QO_ENV_PARSER (env), QO_ENV_PT_TREE (env),
+				&QO_ENV_LIMIT_VALUE (env)) != NO_ERROR)
+    {
+      /* unusable limit */
+      goto abandon_stop_limit;
+    }
+
+  if (DB_IS_NULL (&QO_ENV_LIMIT_VALUE (env)))
+    {
+      /* unusable limit */
+      goto abandon_stop_limit;
+    }
+
+  if (env->npartitions > 1)
+    {
+      /* not applicable when dealing with more than one partition */
+      goto abandon_stop_limit;
+    }
+
+  if (bitset_cardinality (&QO_PARTITION_NODES (QO_ENV_PARTITION (env, 0)))
+      <= 1)
+    {
+      /* No need to apply this optimization on a single node */
+      goto abandon_stop_limit;
+    }
+
+  query = QO_ENV_PT_TREE (env);
+  if (!PT_IS_SELECT (query))
+    {
+      goto abandon_stop_limit;
+    }
+  if (query->info.query.all_distinct != PT_ALL
+      || query->info.query.q.select.group_by != NULL
+      || query->info.query.q.select.connect_by != NULL)
+    {
+      goto abandon_stop_limit;
+    }
+
+  orderby = query->info.query.order_by;
+  if (orderby == NULL)
+    {
+      goto abandon_stop_limit;
+    }
+
+  /* Assume we can use STOP-LIMIT plans until proven otherwise */
+  env->use_sort_limit = true;
+
+  /* Start by assuming that evaluation of the limit clause depends on all
+   * nodes in the query. Since we only have one partition, we can get the
+   * bitset of nodes from there.
+   */
+  bitset_union (&env->sort_limit_nodes,
+		&QO_PARTITION_NODES (QO_ENV_PARTITION (env, 0)));
+
+  select_list = pt_get_select_list (QO_ENV_PARSER (env), query);
+  assert_release (select_list != NULL);
+
+  /* Only consider ORDER BY expression which is evaluable during a scan.
+   * This means any expression except analytic and aggregate functions.
+   */
+  for (sort_col = orderby; sort_col != NULL; sort_col = sort_col->next)
+    {
+      if (sort_col->node_type != PT_SORT_SPEC)
+	{
+	  goto abandon_stop_limit;
+	}
+
+      bitset_init (&expr_segs, env);
+      bitset_init (&tmp_bitset, env);
+
+      pos_spec = sort_col->info.sort_spec.pos_descr.pos_no;
+
+      /* sort_col is a position specifier in select list. Have to walk the
+       * select list to find the actual node */
+      for (i = 1, col = select_list; col != NULL && i != pos_spec;
+	   col = col->next, i++);
+
+      if (col == NULL)
+	{
+	  assert_release (col != NULL);
+	  goto abandon_stop_limit;
+	}
+
+      save_next = col->next;
+      col->next = NULL;
+      if (pt_has_analytic (QO_ENV_PARSER (env), col)
+	  || pt_has_aggregate (QO_ENV_PARSER (env), col))
+	{
+	  /* abandon search because these expressions cannot be evaluated
+	   * during SORT_LIMIT evaluation
+	   */
+	  col->next = save_next;
+	  goto abandon_stop_limit;
+	}
+
+      /* get segments from col */
+      qo_expr_segs (env, col, &expr_segs);
+      /* get nodes for segments */
+      qo_seg_nodes (env, &expr_segs, &tmp_bitset);
+
+      /* accumulate nodes to order_nodes */
+      bitset_union (&order_nodes, &tmp_bitset);
+
+      bitset_delset (&expr_segs);
+      bitset_delset (&tmp_bitset);
+
+      col->next = save_next;
+    }
+
+  for (i = bitset_iterate (&order_nodes, &bi); i != -1;
+       i = bitset_next_member (&bi))
+    {
+      bitset_init (&dep_nodes, env);
+      node = QO_ENV_NODE (env, i);
+
+      /* For each orderby node, gather nodes which are SORT_LIMIT independent
+       * on this node and remove them from sort_limit_nodes. 
+       */
+      qo_discover_sort_limit_join_nodes (env, node, &order_nodes, &dep_nodes);
+      bitset_difference (&env->sort_limit_nodes, &dep_nodes);
+
+      bitset_delset (&dep_nodes);
+    }
+
+  if (bitset_cardinality (&env->sort_limit_nodes) == 1)
+    {
+      /* Mark this node as a sort stop candidate. We will generate a
+       * SORT-LIMIT plan over this node.
+       */
+      int n = bitset_first_member (&order_nodes);
+      node = QO_ENV_NODE (env, n);
+      QO_NODE_SORT_LIMIT_CANDIDATE (node) = true;
+    }
+  else if (bitset_cardinality (&env->sort_limit_nodes) == env->Nnodes)
+    {
+      /* There is no subset of nodes on which we can apply SORT_LIMIT so 
+       * abandon this optimization
+       */
+      goto abandon_stop_limit;
+    }
+  bitset_delset (&order_nodes);
+  return;
+
+abandon_stop_limit:
+  bitset_delset (&order_nodes);
+  bitset_delset (&QO_ENV_SORT_LIMIT_NODES (env));
+  env->use_sort_limit = false;
+}
+
+/*
  * qo_equivalence () -
  *   return:
  *   sega(in):
@@ -9117,4 +9297,282 @@ qo_check_coll_optimization (QO_INDEX_ENTRY * ent, COLL_OPT * collation_opt)
 	    }
 	}
     }
+}
+
+/*
+ * qo_discover_sort_limit_join_nodes () - discover nodes which are joined to
+ *					  this node and do not need to be
+ *					  taken into consideration when
+ *					  evaluating sort and limit operators
+ * return : void
+ * env (in)	      : environment
+ * node (in)	      : node to process
+ * order_nodes (in)   : nodes on which the query will be ordered
+ * dep_nodes (in/out) : nodes which are dependent on this one for sort and
+ *			limit evaluation
+ *
+ * Note: A node joined to this node is independent of the sort and limit
+ *  operator evaluation if we are not ordering results based on it and
+ *  one of the following conditions is true:
+ *  1. Is left outer joined to to node
+ *  2. Is inner joined to this node through a primary key->foreign key
+ *     relationship (see qo_is_pk_fk_full_join)
+ */
+static void
+qo_discover_sort_limit_join_nodes (QO_ENV * env, QO_NODE * node,
+				   BITSET * order_nodes, BITSET * dep_nodes)
+{
+  BITSET join_nodes;
+  BITSET_ITERATOR bi;
+  QO_TERM *term;
+  int i;
+
+  bitset_init (dep_nodes, env);
+  bitset_init (&join_nodes, env);
+
+  for (i = 0; i < env->nedges; i++)
+    {
+      term = QO_ENV_TERM (env, i);
+      if (BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (node)))
+	{
+	  if (QO_TERM_CLASS (term) == QO_TC_JOIN
+	      && IS_OUTER_JOIN_TYPE (QO_TERM_JOIN_TYPE (term))
+	      && QO_TERM_HEAD (term) == node)
+	    {
+	      /* Other nodes in this term are outer joined with our node. We
+	       * can safely add them to dep_nodes if we're not ordering on
+	       * them
+	       */
+	      bitset_union (dep_nodes, &QO_TERM_NODES (term));
+
+	      /* remove nodes on which we're ordering */
+	      bitset_difference (dep_nodes, order_nodes);
+	    }
+	  else if (QO_TERM_CLASS (term) == QO_TC_PATH)
+	    {
+	      /* path edges are always independent */
+	      bitset_difference (dep_nodes, &QO_TERM_NODES (term));
+	    }
+	  else
+	    {
+	      bitset_union (&join_nodes, &QO_TERM_NODES (term));
+	    }
+	}
+    }
+
+  /* remove nodes on which we're ordering from the list */
+  bitset_difference (&join_nodes, order_nodes);
+
+  /* process inner joins */
+  for (i = bitset_iterate (&join_nodes, &bi); i != -1;
+       i = bitset_next_member (&bi))
+    {
+      if (qo_is_pk_fk_full_join (env, node, QO_ENV_NODE (env, i)))
+	{
+	  bitset_add (dep_nodes, i);
+	}
+    }
+}
+
+/*
+ * qo_is_pk_fk_full_join () - verify if the join between two nodes can be
+ *			      fully expressed through a foreign key->primary
+ *			      key join
+ * return : true if there is a pk->fk relationship, false otherwise
+ * env (in) :
+ * fk_node (in) : node which should have a foreign key
+ * pk_node (in) : node which should have a primary key
+ *
+ * Note: Full PK->FK relationships guarantee that any tuple from the FK node
+ *  generates a single tuple in the PK node. This relationship allows us to
+ *  apply some optimizations (like SORT-LIMIT). This relationship exists if
+ *  the following conditions are met:
+ *  1. PK node has only EQ predicates.
+ *  2. All terms from PK node are join edges
+ *  3. The segments involved in terms are a prefix of the primary key index
+ *  4. There is a foreign key in the fk_node which references the pk_node's
+ *     primary key and the join uses the same prefix of the foreign key as
+ *     that the of the primary key.
+ */
+static bool
+qo_is_pk_fk_full_join (QO_ENV * env, QO_NODE * fk_node, QO_NODE * pk_node)
+{
+  int i, j;
+  QO_NODE_INDEX *node_indexp;
+  QO_INDEX_ENTRY *pk_idx = NULL, *fk_idx = NULL;
+  QO_TERM *term;
+  QO_SEGMENT *fk_seg, *pk_seg;
+
+  node_indexp = QO_NODE_INDEXES (pk_node);
+  if (node_indexp == NULL)
+    {
+      return false;
+    }
+
+  pk_idx = NULL;
+  for (i = 0; i < QO_NI_N (node_indexp); i++)
+    {
+      pk_idx = QO_NI_ENTRY (node_indexp, i)->head;
+      if (pk_idx->constraints->type == SM_CONSTRAINT_PRIMARY_KEY)
+	{
+	  break;
+	}
+      pk_idx = NULL;
+    }
+
+  if (pk_idx == NULL)
+    {
+      /* node either does not have a primary key or it is not referenced in
+       * any way in this statement
+       */
+      return false;
+    }
+
+  /* find the foreign key on fk_node which references pk_node */
+  node_indexp = QO_NODE_INDEXES (fk_node);
+  if (node_indexp == NULL)
+    {
+      return false;
+    }
+
+  fk_idx = NULL;
+  for (i = 0; i < QO_NI_N (node_indexp); i++)
+    {
+      fk_idx = QO_NI_ENTRY (node_indexp, i)->head;
+      if (fk_idx->constraints->type != SM_CONSTRAINT_FOREIGN_KEY)
+	{
+	  fk_idx = NULL;
+	  continue;
+	}
+      if (BTID_IS_EQUAL (&fk_idx->constraints->fk_info->ref_class_pk_btid,
+			 &pk_idx->constraints->index_btid))
+	{
+	  /* These are the droids we're looking for */
+	  break;
+	}
+      fk_idx = NULL;
+    }
+
+  if (fk_idx == NULL)
+    {
+      /* No matching foreign key */
+      return false;
+    }
+
+  /* Make sure we don't have gaps in the primary key columns */
+  for (i = 0; i < pk_idx->nsegs; i++)
+    {
+      if (pk_idx->seg_idxs[i] == -1)
+	{
+	  if (i == 0)
+	    {
+	      /* first col must be present */
+	      return false;
+	    }
+	  /* this has to be the last one */
+	  for (j = i + 1; j < pk_idx->nsegs; j++)
+	    {
+	      if (pk_idx->seg_idxs[j] != -1)
+		{
+		  return false;
+		}
+	    }
+	  break;
+	}
+    }
+
+  if (pk_idx->nsegs > fk_idx->nsegs)
+    {
+      /* The number of segments from primary key should be less than those
+       * referenced in the foreign key. We can have more segments referenced
+       * from the foreign key because we don't care about other terms from
+       * the fk node */
+      return false;
+    }
+
+  /* Verify that all terms from pk_node reference terms from fk_node.
+   * If we find a term which only references pk_node, we can abandon the
+   * search. */
+  for (i = 0; i < env->nterms; i++)
+    {
+      term = QO_ENV_TERM (env, i);
+
+      if (QO_TERM_CLASS (term) == QO_TC_DUMMY_JOIN)
+	{
+	  /* skip always true dummy join terms */
+	  continue;
+	}
+
+      if (!BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (pk_node)))
+	{
+	  continue;
+	}
+
+      if (!BITSET_MEMBER (pk_idx->terms, QO_TERM_IDX (term)))
+	{
+	  /* Term does not use pk_idx. This means that there is a predicate
+	   * on pk_node outside of the primary key
+	   */
+	  return false;
+	}
+
+      if (QO_TERM_JOIN_TYPE (term) != JOIN_INNER)
+	{
+	  /* we're only interested in inner joins */
+	  return false;
+	}
+
+      if (!BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (fk_node)))
+	{
+	  /* found a term belonging to pk_node which does not reference the
+	   * fk_node. This means pk_node is not full joined with fk_node
+	   */
+	  return false;
+	}
+
+      if (QO_TERM_CLASS (term) != QO_TC_JOIN
+	  || !QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
+	{
+	  /* Not a join term, bail out */
+	  return false;
+	}
+
+      /* Iterate through segments and make sure we're joining same columns.
+       * E.g.: For PK(Pa, Pb) and FK (Fa, Fb), make sure the terms are not
+       * Pa = Fb or Pb = Fa
+       */
+      if (term->can_use_index != 2)
+	{
+	  return false;
+	}
+      if (QO_SEG_HEAD (QO_TERM_INDEX_SEG (term, 0)) == fk_node)
+	{
+	  fk_seg = QO_TERM_INDEX_SEG (term, 0);
+	  pk_seg = QO_TERM_INDEX_SEG (term, 1);
+	}
+      else
+	{
+	  pk_seg = QO_TERM_INDEX_SEG (term, 0);
+	  fk_seg = QO_TERM_INDEX_SEG (term, 1);
+	}
+
+      /* make sure pk_seg and fk_seg reference the same position in the
+       * two indexes
+       */
+      for (j = 0; j < pk_idx->nsegs; j++)
+	{
+	  if (pk_idx->seg_idxs[j] == QO_SEG_IDX (pk_seg))
+	    {
+	      assert (j < fk_idx->nsegs);
+	      if (fk_idx->seg_idxs[j] != QO_SEG_IDX (fk_seg))
+		{
+		  /* not joining the same column */
+		  return false;
+		}
+	      break;
+	    }
+	}
+    }
+
+  return true;
 }

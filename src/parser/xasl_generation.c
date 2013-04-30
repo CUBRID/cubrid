@@ -614,9 +614,6 @@ static ACCESS_SPEC_TYPE *pt_make_cselect_access_spec (XASL_NODE * xasl,
 static SORT_LIST *pt_to_after_iscan (PARSER_CONTEXT * parser,
 				     PT_NODE * iscan_list, PT_NODE * root);
 
-static SORT_LIST *pt_to_orderby (PARSER_CONTEXT * parser,
-				 PT_NODE * order_list, PT_NODE * root);
-
 static SORT_LIST *pt_to_groupby (PARSER_CONTEXT * parser,
 				 PT_NODE * group_list, PT_NODE * root);
 
@@ -5616,7 +5613,7 @@ pt_to_after_iscan (PARSER_CONTEXT * parser, PT_NODE * iscan_list,
  *   order_list(in):
  *   root(in):
  */
-static SORT_LIST *
+SORT_LIST *
 pt_to_orderby (PARSER_CONTEXT * parser, PT_NODE * order_list, PT_NODE * root)
 {
   return pt_to_sort_list (parser, order_list,
