@@ -224,7 +224,7 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
       if (len > 0)
 	{
 	  memcpy (size, size_begin, len);
-	  size[len + 1] = '\0';
+	  size[len] = '\0';
 	}
       *tot_val_size = atoi (size);
       if (*tot_val_size < 0)
