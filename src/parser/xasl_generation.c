@@ -1085,8 +1085,6 @@ pt_add_pseudocolumns_placeholders (PARSER_CONTEXT * parser,
 	{
 	  return ER_FAILED;
 	}
-      DB_MAKE_BIT (regu_list_pc->value.value.dbvalptr, DB_DEFAULT_PRECISION,
-		   NULL, 8);
       pt_register_orphan_db_value (parser,
 				   regu_list_pc->value.value.dbvalptr);
     }
@@ -1119,7 +1117,6 @@ pt_add_pseudocolumns_placeholders (PARSER_CONTEXT * parser,
 	{
 	  return ER_FAILED;
 	}
-      DB_MAKE_STRING (regu_list_pc->value.value.dbvalptr, "");
       pt_register_orphan_db_value (parser,
 				   regu_list_pc->value.value.dbvalptr);
     }
@@ -1153,7 +1150,6 @@ pt_add_pseudocolumns_placeholders (PARSER_CONTEXT * parser,
 	{
 	  return ER_FAILED;
 	}
-      DB_MAKE_INT (regu_list_pc->value.value.dbvalptr, 0);
       pt_register_orphan_db_value (parser,
 				   regu_list_pc->value.value.dbvalptr);
     }
@@ -1185,7 +1181,6 @@ pt_add_pseudocolumns_placeholders (PARSER_CONTEXT * parser,
 	{
 	  return ER_FAILED;
 	}
-      DB_MAKE_INT (regu_list_pc->value.value.dbvalptr, 0);
       pt_register_orphan_db_value (parser,
 				   regu_list_pc->value.value.dbvalptr);
     }
@@ -1217,7 +1212,6 @@ pt_add_pseudocolumns_placeholders (PARSER_CONTEXT * parser,
 	{
 	  return ER_FAILED;
 	}
-      DB_MAKE_INT (regu_list_pc->value.value.dbvalptr, 0);
       pt_register_orphan_db_value (parser,
 				   regu_list_pc->value.value.dbvalptr);
     }

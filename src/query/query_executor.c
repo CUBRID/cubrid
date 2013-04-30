@@ -994,12 +994,12 @@ static int qexec_init_index_pseudocolumn_strings (THREAD_ENTRY * thread_p,
 						  int *len_father_index,
 						  char **son_index,
 						  int *len_son_index);
-static void qexec_set_pseudocolumns_val_pointers (XASL_NODE * xasl,
-						  DB_VALUE ** level_valp,
-						  DB_VALUE ** isleaf_valp,
-						  DB_VALUE ** iscycle_valp,
-						  DB_VALUE ** parent_pos_valp,
-						  DB_VALUE ** index_valp);
+static int qexec_set_pseudocolumns_val_pointers (XASL_NODE * xasl,
+						 DB_VALUE ** level_valp,
+						 DB_VALUE ** isleaf_valp,
+						 DB_VALUE ** iscycle_valp,
+						 DB_VALUE ** parent_pos_valp,
+						 DB_VALUE ** index_valp);
 static int qexec_get_index_pseudocolumn_value_from_tuple (THREAD_ENTRY *
 							  thread_p,
 							  XASL_NODE * xasl,
@@ -16106,9 +16106,12 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       GOTO_EXIT_ON_ERROR;
     }
 
-  qexec_set_pseudocolumns_val_pointers (xasl, &level_valp, &isleaf_valp,
-					&iscycle_valp, &parent_pos_valp,
-					&index_valp);
+  if (qexec_set_pseudocolumns_val_pointers (xasl, &level_valp, &isleaf_valp,
+					    &iscycle_valp, &parent_pos_valp,
+					    &index_valp) != NO_ERROR)
+    {
+      GOTO_EXIT_ON_ERROR;
+    }
 
   /* create the node's output list file */
   if (qexec_start_mainblock_iterations (thread_p, xasl, xasl_state) !=
@@ -17691,7 +17694,7 @@ exit_on_error:
  *  parent_pos_valp(out):
  *  index_valp(out):
  */
-static void
+static int
 qexec_set_pseudocolumns_val_pointers (XASL_NODE * xasl,
 				      DB_VALUE ** level_valp,
 				      DB_VALUE ** isleaf_valp,
@@ -17700,7 +17703,7 @@ qexec_set_pseudocolumns_val_pointers (XASL_NODE * xasl,
 				      DB_VALUE ** index_valp)
 {
   REGU_VARIABLE_LIST regulist;
-  int i, n;
+  int i, n, error;
 
   i = 0;
   n = xasl->outptr_list->valptr_cnt;
@@ -17711,28 +17714,38 @@ qexec_set_pseudocolumns_val_pointers (XASL_NODE * xasl,
       if (i == n - PCOL_PARENTPOS_TUPLE_OFFSET)
 	{
 	  *parent_pos_valp = regulist->value.value.dbvalptr;
+	  error = db_value_domain_init (*parent_pos_valp, DB_TYPE_BIT,
+					DB_DEFAULT_PRECISION, 0);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
 	}
-
       if (i == n - PCOL_LEVEL_TUPLE_OFFSET)
 	{
 	  *level_valp = regulist->value.value.dbvalptr;
+	  error = db_value_domain_init (*level_valp, DB_TYPE_VARCHAR,
+					DB_DEFAULT_PRECISION, 0);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
 	}
-
       if (i == n - PCOL_ISLEAF_TUPLE_OFFSET)
 	{
 	  *isleaf_valp = regulist->value.value.dbvalptr;
+	  DB_MAKE_INT (*isleaf_valp, 0);
 	}
-
       if (i == n - PCOL_ISCYCLE_TUPLE_OFFSET)
 	{
 	  *iscycle_valp = regulist->value.value.dbvalptr;
+	  DB_MAKE_INT (*iscycle_valp, 0);
 	}
-
       if (i == n - PCOL_INDEX_STRING_TUPLE_OFFSET)
 	{
 	  *index_valp = regulist->value.value.dbvalptr;
+	  DB_MAKE_INT (*index_valp, 0);
 	}
-
       regulist = regulist->next;
       i++;
     }
@@ -17747,30 +17760,27 @@ qexec_set_pseudocolumns_val_pointers (XASL_NODE * xasl,
 	{
 	  regulist->value.value.dbvalptr = *parent_pos_valp;
 	}
-
       if (i == n - PCOL_LEVEL_TUPLE_OFFSET)
 	{
 	  regulist->value.value.dbvalptr = *level_valp;
 	}
-
       if (i == n - PCOL_ISLEAF_TUPLE_OFFSET)
 	{
 	  regulist->value.value.dbvalptr = *isleaf_valp;
 	}
-
       if (i == n - PCOL_ISCYCLE_TUPLE_OFFSET)
 	{
 	  regulist->value.value.dbvalptr = *iscycle_valp;
 	}
-
       if (i == n - PCOL_INDEX_STRING_TUPLE_OFFSET)
 	{
 	  regulist->value.value.dbvalptr = *index_valp;
 	}
-
       regulist = regulist->next;
       i++;
     }
+
+  return NO_ERROR;
 }
 
 /*
@@ -18065,8 +18075,6 @@ qexec_start_connect_by_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   QFILE_TUPLE_VALUE_TYPE_LIST type_list;
   QFILE_LIST_ID *t_list_id = NULL;
   CONNECTBY_PROC_NODE *connect_by = &xasl->proc.connect_by;
-  REGU_VARIABLE_LIST regulist;
-  int i;
 
   if (qdata_get_valptr_type_list (thread_p, xasl->outptr_list, &type_list) !=
       NO_ERROR)
@@ -18113,47 +18121,6 @@ qexec_start_connect_by_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   if (type_list.domp)
     {
       db_private_free_and_init (thread_p, type_list.domp);
-    }
-
-  /* reset pseudocolumn values */
-  i = 0;
-  regulist = xasl->outptr_list->valptrp;
-  while (regulist)
-    {
-      /* parent position pseudocolumn */
-      if (i == xasl->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET)
-	{
-	  pr_clear_value (regulist->value.value.dbvalptr);
-	  DB_MAKE_BIT (regulist->value.value.dbvalptr, DB_DEFAULT_PRECISION,
-		       NULL, 8);
-	}
-      /* string index pseudocolumn */
-      if (i == xasl->outptr_list->valptr_cnt - PCOL_INDEX_STRING_TUPLE_OFFSET)
-	{
-	  pr_clear_value (regulist->value.value.dbvalptr);
-	  DB_MAKE_STRING (regulist->value.value.dbvalptr, "");
-	}
-      /* level pseudocolumn */
-      if (i == xasl->outptr_list->valptr_cnt - PCOL_LEVEL_TUPLE_OFFSET)
-	{
-	  pr_clear_value (regulist->value.value.dbvalptr);
-	  DB_MAKE_INT (regulist->value.value.dbvalptr, 0);
-	}
-      /* connect_by_isleaf pseudocolumn */
-      if (i == xasl->outptr_list->valptr_cnt - PCOL_ISLEAF_TUPLE_OFFSET)
-	{
-	  pr_clear_value (regulist->value.value.dbvalptr);
-	  DB_MAKE_INT (regulist->value.value.dbvalptr, 0);
-	}
-      /* connect_by_iscycle pseudocolumn */
-      if (i == xasl->outptr_list->valptr_cnt - PCOL_ISCYCLE_TUPLE_OFFSET)
-	{
-	  pr_clear_value (regulist->value.value.dbvalptr);
-	  DB_MAKE_INT (regulist->value.value.dbvalptr, 0);
-	}
-
-      regulist = regulist->next;
-      i++;
     }
 
   return NO_ERROR;
