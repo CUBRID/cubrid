@@ -2705,6 +2705,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
       csql_Error_code = CSQL_ERR_OS_ERROR;
       goto error;
     }
+  er_set_print_property (ER_PRINT_TO_CONSOLE);
 
   /*
    * login and restart database
@@ -2817,6 +2818,8 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 	}
 #endif /* !WINDOWS */
     }
+
+  er_set_print_property (ER_DO_NOT_PRINT);
 
   start_csql (csql_arg);
 

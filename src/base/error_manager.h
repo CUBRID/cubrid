@@ -87,6 +87,12 @@ enum er_exit_ask
   ER_EXIT_DEFAULT = ER_NEVER_EXIT
 };
 
+enum er_print_option
+{
+  ER_DO_NOT_PRINT = 0,
+  ER_PRINT_TO_CONSOLE = 1
+};
+
 /* do not change the order of this enumeration; see er_Fnlog[] */
 enum er_severity
 {
@@ -189,6 +195,8 @@ extern const char *er_get_msglog_filename (void);
 extern int er_init (const char *msglog_filename, int exit_ask);
 extern int er_init_internal (const char *msglog_filename, int exit_ask,
 			     bool make_access);
+extern void er_set_print_property (int print_console);
+
 #if defined (SERVER_MODE)
 extern void er_final (bool do_global_final);
 #else /* SERVER_MODE */

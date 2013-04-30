@@ -300,6 +300,7 @@ static SIGNAL_HANDLER_FUNCTION saved_sig_handler;
 static bool er_hasalready_initiated = false;
 static bool er_isa_null_device = false;
 static int er_Exit_ask = ER_EXIT_DEFAULT;
+static int er_Print_to_console = ER_DO_NOT_PRINT;
 
 static void er_event_sigpipe_handler (int sig);
 static void er_event (void);
@@ -812,6 +813,16 @@ er_init (const char *msglog_filename, int exit_ask)
   return er_init_internal (msglog_filename, exit_ask, false);
 }
 
+/*
+ * er_set_print_property -
+ *   return: void
+ *   print_console(in):
+ */
+void
+er_set_print_property (int print_console)
+{
+  er_Print_to_console = print_console;
+}
 
 /*
  * er_file_open - small utility function to open error log file
@@ -1750,6 +1761,11 @@ er_set_internal (int severity, const char *file_name, const int line_no,
 	    }
 	  ER_CSECT_EXIT_LOG_FILE ();
 	}
+
+      if (er_Print_to_console && er_Msg->msg_area)
+	{
+	  fprintf (stderr, "%s\n", er_Msg->msg_area);
+	}
     }
 
   /*
@@ -2608,6 +2624,11 @@ er_set_area_error (void *server_area)
 	{
 	  (*er_Fnlog[severity]) (err_id);
 	  ER_CSECT_EXIT_LOG_FILE ();
+	}
+
+      if (er_Print_to_console && er_Msg->msg_area)
+	{
+	  fprintf (stderr, "%s\n", er_Msg->msg_area);
 	}
     }
 

@@ -4287,8 +4287,6 @@ net_client_ping_server_with_handshake (int client_type,
   if (compat == REL_NOT_COMPATIBLE)
     {
       error = ER_NET_DIFFERENT_RELEASE;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
-	      server_release, client_release);
       return error;
     }
 
