@@ -42,6 +42,10 @@ namespace dbgw
     unsigned long getTimeOutMilSec() const;
 
   private:
+    _AsyncWaiter(const _AsyncWaiter &);
+    _AsyncWaiter &operator=(const _AsyncWaiter &);
+
+  private:
     class Impl;
     Impl *m_pImpl;
   };

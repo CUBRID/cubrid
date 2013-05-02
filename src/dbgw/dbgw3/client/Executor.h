@@ -68,6 +68,10 @@ namespace dbgw
     _ExecutorStatement *getExecutorProxy(const trait<_BoundQuery>::sp pQuery);
 
   private:
+    _Executor(const _Executor &);
+    _Executor &operator=(const _Executor &);
+
+  private:
     class Impl;
     Impl *m_pImpl;
   };

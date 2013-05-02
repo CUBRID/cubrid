@@ -126,6 +126,10 @@ namespace dbgw
     void doWriteColumn(std::stringstream &buffer, const std::string &value);
 
   private:
+    _StatisticsItemColumn(const _StatisticsItemColumn &);
+    _StatisticsItemColumn &operator=(const _StatisticsItemColumn &);
+
+  private:
     class Impl;
     Impl *m_pImpl;
   };

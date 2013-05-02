@@ -41,6 +41,10 @@ namespace dbgw
       bool isNull() const;
       void finalize();
 
+    private:
+      _OracleValue(const _OracleValue &);
+      _OracleValue &operator=(const _OracleValue &);
+
     protected:
       _OracleContext *m_pContext;
       char *m_pBuffer;

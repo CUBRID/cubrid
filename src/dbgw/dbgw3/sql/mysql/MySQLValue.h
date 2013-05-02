@@ -52,6 +52,10 @@ namespace dbgw
       const _ExternelSource &getExternalSource();
 
     private:
+      _MySQLDefine(const _MySQLDefine &);
+      _MySQLDefine &operator=(const _MySQLDefine &);
+
+    private:
       MYSQL_BIND &m_bind;
       char *m_pBuffer;
       char *m_pConvertedBuffer;
@@ -69,6 +73,10 @@ namespace dbgw
       void init(trait<MySQLResultSetMetaData>::sp pResultSetMeta);
       MYSQL_BIND *get();
       const _ExternelSource &getExternalSource(size_t nIndex);
+
+    private:
+      _MySQLDefineList(const _MySQLDefineList &);
+      _MySQLDefineList &operator=(const _MySQLDefineList &);
 
     private:
       trait<_MySQLDefine>::spvector m_defineList;

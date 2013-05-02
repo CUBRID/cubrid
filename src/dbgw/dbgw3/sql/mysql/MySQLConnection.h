@@ -53,6 +53,10 @@ namespace dbgw
       virtual void doRollback();
 
     private:
+      MySQLConnection(const MySQLConnection &);
+      MySQLConnection &operator=(const MySQLConnection &);
+
+    private:
       class Impl;
       Impl *m_pImpl;
     };

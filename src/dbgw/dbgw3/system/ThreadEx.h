@@ -69,6 +69,10 @@ namespace dbgw
       void execute();
 
     private:
+      _ThreadEx(const _ThreadEx &);
+      _ThreadEx &operator=(const _ThreadEx &);
+
+    private:
       class Impl;
       Impl *m_pImpl;
     };

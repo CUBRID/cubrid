@@ -133,6 +133,10 @@ namespace dbgw
     void addQueryPart(char cToken, const char *szStart, const char *szEnd);
 
   private:
+    _Query(const _Query &);
+    _Query &operator=(const _Query &);
+
+  private:
     class Impl;
     Impl *m_pImpl;
   };

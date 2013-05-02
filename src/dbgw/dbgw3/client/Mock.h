@@ -86,6 +86,10 @@ namespace dbgw
     virtual ~_MockManager();
 
   private:
+    _MockManager(const _MockManager &);
+    _MockManager &operator=(const _MockManager &);
+
+  private:
     class Impl;
     Impl *m_pImpl;
   };

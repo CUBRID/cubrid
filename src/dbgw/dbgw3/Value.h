@@ -116,6 +116,9 @@ namespace dbgw
     bool operator!=(const Value &value) const;
 
   private:
+    Value &operator=(const Value &);
+
+  private:
     class Impl;
     Impl *m_pImpl;
   };

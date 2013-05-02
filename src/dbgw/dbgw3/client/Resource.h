@@ -60,6 +60,10 @@ namespace dbgw
     size_t size() const;
 
   private:
+    _VersionedResource(const _VersionedResource &);
+    _VersionedResource &operator=(const _VersionedResource &);
+
+  private:
     class Impl;
     Impl *m_pImpl;
   };

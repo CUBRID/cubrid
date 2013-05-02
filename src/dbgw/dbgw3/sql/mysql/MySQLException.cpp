@@ -91,6 +91,11 @@ namespace dbgw
               context.errorMessage = errorMessage;
             }
         }
+      else
+        {
+          context.nInterfaceErrorCode = nInterfaceErrorCode;
+          context.errorMessage = errorMessage;
+        }
 
       std::stringstream buffer;
       buffer << "[" << context.nErrorCode << "]";

@@ -53,6 +53,10 @@ namespace dbgw
       virtual void doRollback();
 
     private:
+      OracleConnection(const OracleConnection &);
+      OracleConnection &operator=(const OracleConnection &);
+
+    private:
       class Impl;
       Impl *m_pImpl;
     };

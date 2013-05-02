@@ -94,6 +94,10 @@ namespace dbgw
     trait<_ExecutorHandler>::sp getExecutorHandler() const;
 
   private:
+    _AsyncWorkerJob(const _AsyncWorkerJob &);
+    _AsyncWorkerJob &operator=(const _AsyncWorkerJob &);
+
+  private:
     class Impl;
     Impl *m_pImpl;
   };

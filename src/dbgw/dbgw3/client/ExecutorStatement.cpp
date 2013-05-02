@@ -219,7 +219,8 @@ namespace dbgw
 
         if (_Logger::isWritable(CCI_LOG_LEVEL_DEBUG))
           {
-            if (stParam.mode == sql::DBGW_PARAM_MODE_OUT)
+            if (stParam.mode == sql::DBGW_PARAM_MODE_OUT
+                || stParam.mode == sql::DBGW_PARAM_MODE_NONE)
               {
                 m_paramLogDecorator.addLog("NULL");
                 m_paramLogDecorator.addLogDesc(

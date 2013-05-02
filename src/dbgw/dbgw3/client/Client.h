@@ -105,6 +105,10 @@ namespace dbgw
     Impl *m_pImpl;
 
   private:
+    Client(const Client &);
+    Client &operator=(const Client &);
+
+  private:
     static const char *szVersionString;
   };
 

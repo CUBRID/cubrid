@@ -40,6 +40,10 @@ namespace dbgw
       void timedWait(_Mutex *pMutex, unsigned long ulWaitTimeMilSec);
 
     private:
+      _ConditionVariable(const _ConditionVariable &);
+      _ConditionVariable &operator=(const _ConditionVariable &);
+
+    private:
       class Impl;
       Impl *m_pImpl;
     };

@@ -39,6 +39,10 @@ namespace dbgw
       void detach();
 
     private:
+      _Thread(const _Thread &);
+      _Thread &operator=(const _Thread &);
+
+    private:
       class Impl;
       Impl *m_pImpl;
     };

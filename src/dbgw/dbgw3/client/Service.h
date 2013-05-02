@@ -50,6 +50,10 @@ namespace dbgw
     bool empty() const;
 
   private:
+    _Service(const _Service &);
+    _Service &operator=(const _Service &);
+
+  private:
     class Impl;
     Impl *m_pImpl;
   };

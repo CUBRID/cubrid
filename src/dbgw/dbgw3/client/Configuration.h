@@ -81,6 +81,10 @@ namespace dbgw
     trait<_Timer>::sp getTimer() const;
 
   private:
+    Configuration(const Configuration &);
+    Configuration &operator=(const Configuration &);
+
+  private:
     class Impl;
     Impl *m_pImpl;
   };

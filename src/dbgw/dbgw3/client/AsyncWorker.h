@@ -65,6 +65,10 @@ namespace dbgw
     _AsyncWorkerState getStateWithoutLock() const;
 
   private:
+    _AsyncWorker(const _AsyncWorker &);
+    _AsyncWorker &operator=(const _AsyncWorker &);
+
+  private:
     class Impl;
     Impl *m_pImpl;
   };
@@ -78,6 +82,10 @@ namespace dbgw
     trait<_AsyncWorker>::sp getAsyncWorker();
     void returnWorker(trait<_AsyncWorker>::sp pWorker, bool bIsForceDrop);
     void clear();
+
+  private:
+    _AsyncWorkerPool(const _AsyncWorkerPool &);
+    _AsyncWorkerPool &operator=(const _AsyncWorkerPool &);
 
   private:
     class Impl;

@@ -108,6 +108,10 @@ namespace dbgw
     bool empty() const;
     _StatisticsItem &getStatementStatItem();
 
+  private:
+    _Group(const _Group &);
+    _Group &operator=(const _Group &);
+
     class Impl;
     Impl *m_pImpl;
   };

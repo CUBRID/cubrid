@@ -36,6 +36,10 @@ namespace dbgw
     void unregisterResourceAll();
 
   private:
+    _SynchronizedResourceSubject(const _SynchronizedResourceSubject &);
+    _SynchronizedResourceSubject &operator=(const _SynchronizedResourceSubject &);
+
+  private:
     class Impl;
     Impl *m_pImpl;
   };

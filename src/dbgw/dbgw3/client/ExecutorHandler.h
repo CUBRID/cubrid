@@ -59,6 +59,10 @@ namespace dbgw
     trait<ClientResultSet>::spvector getResultSetList() const;
 
   private:
+    _ExecutorHandler(const _ExecutorHandler &);
+    _ExecutorHandler &operator=(const _ExecutorHandler &);
+
+  private:
     class Impl;
     Impl *m_pImpl;
   };

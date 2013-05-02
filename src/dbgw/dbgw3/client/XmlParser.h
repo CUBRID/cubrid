@@ -171,6 +171,10 @@ namespace dbgw
     virtual void doOnElementEnd(const XML_Char *szName);
 
   private:
+    _ConnectorParser(const _ConnectorParser &);
+    _ConnectorParser &operator=(const _ConnectorParser &);
+
+  private:
     class Impl;
     Impl *m_pImpl;
   };
@@ -202,6 +206,10 @@ namespace dbgw
   public:
     const std::string &getGlobalGroupName() const;
     bool isExistQueryString() const;
+
+  private:
+    _QueryMapContext(const _QueryMapContext &);
+    _QueryMapContext &operator=(const _QueryMapContext &);
 
   private:
     class Impl;
