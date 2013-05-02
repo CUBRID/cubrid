@@ -555,7 +555,7 @@ lang_init_builtin (void)
 
   if (lang_builtin_initialized)
     {
-      return lang_builtin_initialized;
+      return;
     }
 
   /* ignore msg lang init error */
@@ -591,8 +591,6 @@ lang_init_builtin (void)
   (void) register_lang_locale_data (&lc_Turkish_utf8);
 
   lang_builtin_initialized = true;
-
-  return (lang_builtin_initialized);
 }
 
 /*
