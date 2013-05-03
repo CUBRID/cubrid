@@ -32,10 +32,13 @@
 #pragma comment(lib, "DBGWConnector3.lib")
 #endif
 #endif
+typedef __int64 int64;
 #else /* WINDOWS */
 #define __stdcall
 #define DECLSPECIFIER
 #endif /* !WINDOWS */
+
+#include "dbgw3/Exception.h"
 
 namespace DBGW3
 {
