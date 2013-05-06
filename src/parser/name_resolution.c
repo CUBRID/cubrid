@@ -3119,7 +3119,10 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       break;
 
     case PT_SPEC:
-      node->info.spec.location = bind_arg->scopes->location++;
+      if (bind_arg->scopes)
+	{
+	  node->info.spec.location = bind_arg->scopes->location++;
+	}
       if (node->info.spec.on_cond)
 	{
 	  switch (node->info.spec.join_type)
