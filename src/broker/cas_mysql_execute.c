@@ -60,6 +60,8 @@
 
 #include "error_code.h"
 
+#define MYSQL_DEFAULT_WAIT_TIMEOUT 18000
+
 #if !defined(WINDOWS)
 #define STRING_APPEND(buffer_p, avail_size_holder, ...) \
   do {                                                          \
@@ -124,6 +126,8 @@ struct t_attr_table
   char set_domain;
   char is_key;
 };
+
+static int mysql_wait_timeout = MYSQL_DEFAULT_WAIT_TIMEOUT;
 
 static int cubval_to_mysqlval (int cub_type);
 static int make_bind_value (int num_bind, int argc, void **argv,
@@ -245,6 +249,7 @@ static int multi_byte_character_max_length = 3;
 
 static void update_query_execution_count (T_APPL_SERVER_INFO * as_info_p,
 					  char stmt_type);
+static void cas_mysql_set_mysql_wait_timeout (void);
 
 int
 ux_check_connection (void)
@@ -282,6 +287,9 @@ ux_database_connect (char *db_alias, char *db_user, char *db_passwd,
 	{
 	  goto connect_error;
 	}
+
+      cas_mysql_set_mysql_wait_timeout ();
+
       host_connected = cas_mysql_get_connected_host_info ();
 
       mysql_get_character_set_info (_db_conn, &cs);
@@ -3056,5 +3064,88 @@ update_query_execution_count (T_APPL_SERVER_INFO * as_info_p, char stmt_type)
       break;
     default:
       break;
+    }
+}
+
+static void
+cas_mysql_set_mysql_wait_timeout (void)
+{
+  char *p = NULL;
+  int ret_val = 0;
+  int wait_timeout = MYSQL_DEFAULT_WAIT_TIMEOUT;
+  int num_fields = 0;
+  MYSQL_RES *res = NULL;
+  MYSQL_ROW row;
+
+  ret_val =
+    mysql_query (_db_conn, "show session variables like 'wait_timeout'");
+  if (ret_val != 0)
+    {
+      goto release_and_return;
+    }
+
+  res = mysql_store_result (_db_conn);
+  if (res == NULL)
+    {
+      goto release_and_return;
+    }
+
+  row = mysql_fetch_row (res);
+  if (row == NULL)
+    {
+      goto release_and_return;
+    }
+
+  num_fields = mysql_num_fields (res);
+  if (num_fields != 2)
+    {
+      goto release_and_return;
+    }
+
+  wait_timeout = (int) strtol (row[1], &p, 10);
+  if (p != NULL)
+    {
+      goto release_and_return;
+    }
+
+  wait_timeout = (int) (wait_timeout * 2 / 3);
+
+  /**
+   * CAS will be stopped if there is no request 60 seconds.
+   * so we cannot set mysql wait timeout under 60 seconds.
+   */
+  if (wait_timeout < 60)
+    {
+      wait_timeout = 60;
+    }
+
+release_and_return:
+  if (res != NULL)
+    {
+      mysql_free_result (res);
+    }
+
+  mysql_wait_timeout = wait_timeout;
+}
+
+int
+cas_mysql_get_mysql_wait_timeout (void)
+{
+  return mysql_wait_timeout;
+}
+
+int
+cas_mysql_execute_dummy (void)
+{
+  int ret_val = 0;
+
+  ret_val = mysql_query (_db_conn, "select 1 from dual");
+  if (ret_val != 0)
+    {
+      return -1;
+    }
+  else
+    {
+      return 0;
     }
 }

@@ -2161,16 +2161,14 @@ net_read_process (SOCKET proxy_sock_fd,
       net_timeout_set (DEFAULT_CHECK_INTERVAL);
 
       timeout = get_graceful_down_timeout ();
+#if defined(CAS_FOR_MYSQL)
       if (timeout > 0)
 	{
-#if defined(CAS_FOR_MYSQL)
-	  timeout = MIN (timeout, MYSQL_CONNECT_TIMEOUT);
-#endif
+	  timeout = MIN (timeout, cas_mysql_get_mysql_wait_timeout ());
 	}
-#if defined(CAS_FOR_MYSQL)
       else
 	{
-	  timeout = MYSQL_CONNECT_TIMEOUT;
+	  timeout = cas_mysql_get_mysql_wait_timeout ();
 	}
 #endif
 
@@ -2232,12 +2230,19 @@ net_read_process (SOCKET proxy_sock_fd,
 		  continue;
 		}
 
-#if defined(CUBRID_SHARD) || defined (CAS_FOR_MYSQL)
+#if defined (CAS_FOR_MYSQL)
+	      /* execute dummy query to reset wait_timeout of MySQL */
+	      if (cas_mysql_execute_dummy () >= 0)
+		{
+		  remained_timeout = timeout;
+		  continue;
+		}
+#endif /* CAS_FOR_MYSQL */
+
 	      /* MYSQL_CONNECT_TIMEOUT case */
 	      /* SHARD_CAS expire idle time and restart case */
 	      ret_value = -1;
 	      break;
-#endif
 	    }
 	}
       else

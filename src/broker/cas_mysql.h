@@ -60,4 +60,6 @@ extern void cas_mysql_stmt_free_result (MYSQL_STMT * stmt);
 extern void cas_mysql_stmt_close (MYSQL_STMT * stmt);
 extern int cas_mysql_stmt_num_rows (MYSQL_STMT * stmt);
 extern int cas_mysql_stmt_affected_rows (MYSQL_STMT * stmt);
+extern int cas_mysql_get_mysql_wait_timeout(void);
+extern int cas_mysql_execute_dummy (void);
 #endif /* _CAS_MYSQL_H_ */
