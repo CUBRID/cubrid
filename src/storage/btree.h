@@ -331,6 +331,10 @@ extern int btree_multicol_key_has_null (DB_VALUE * key);
 extern DISK_ISVALID btree_find_key (THREAD_ENTRY * thread_p, BTID * btid,
 				    OID * oid, DB_VALUE * key,
 				    bool * clear_key);
+extern int btree_get_prefix_seperator (const DB_VALUE * key1,
+				       const DB_VALUE * key2,
+				       DB_VALUE * prefix_key,
+				       TP_DOMAIN * key_domain);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 /* for migration */
@@ -348,10 +352,9 @@ extern int xbtree_get_keytype_revlevel (BTID * btid, DB_TYPE * keytype,
 extern int btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp,
 				BTID * btid);
 extern int btree_dump_capacity_all (THREAD_ENTRY * thread_p, FILE * fp);
-#if defined (CUBRID_DEBUG)
+
 extern void btree_dump (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid,
 			int level);
-#endif
 /* Recovery routines */
 extern int btree_rv_util_save_page_records (PAGE_PTR page_ptr,
 					    INT16 first_slotid, int rec_cnt,

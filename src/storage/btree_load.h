@@ -74,8 +74,6 @@
     (n1).slotid == (n2).slotid )	/* compare two object identifiers */
 
 #define HEADER 0		/* Header (Oth) record of the page  */
-#define LEFT_MERGE 1		/* Left Merge Operation             */
-#define RIGHT_MERGE 0		/* Right Merge Operation            */
 
 #define BTREE_INVALID_INDEX_ID(btid) \
  ((btid)->vfid.fileid == NULL_FILEID || (btid)->vfid.volid == NULL_VOLID ||\
@@ -98,18 +96,23 @@
 #define BTREE_MAX_OIDLEN_INPAGE ((int)(DB_PAGESIZE / 4))
 
 /* B+tree node types */
-#define BTREE_LEAF_NODE 	((short)0)
-#define BTREE_NON_LEAF_NODE 	((short)1)
-#define BTREE_OVERFLOW_NODE   ((short)2)
+typedef enum
+{
+  BTREE_LEAF_NODE = 0,
+  BTREE_NON_LEAF_NODE,
+  BTREE_OVERFLOW_NODE
+} BTREE_NODE_TYPE;
 
 #define NODE_HEADER_SIZE       BTREE_NUM_OIDS_OFFSET	/* Node Header Disk Size */
 
-/* readers/writers for fields */
-#define BTREE_GET_NODE_TYPE(ptr) \
-  OR_GET_SHORT((ptr) + BTREE_NODE_TYPE_OFFSET)
+int btree_get_node_key_cnt (PAGE_PTR page_ptr);
 
-#define BTREE_GET_NODE_KEY_CNT(ptr) \
-  OR_GET_SHORT((ptr) + BTREE_NODE_KEY_CNT_OFFSET)
+#define BTREE_GET_NODE_TYPE(ptr) \
+  (BTREE_GET_NODE_LEVEL(ptr) > 1 ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE)
+
+/* readers/writers for fields */
+#define BTREE_GET_NODE_LEVEL(ptr) \
+  OR_GET_SHORT((ptr) + BTREE_NODE_LEVEL_OFFSET)
 
 #define BTREE_GET_NODE_MAX_KEY_LEN(ptr) \
   OR_GET_SHORT((ptr) + BTREE_NODE_MAX_KEY_LEN_OFFSET)
@@ -189,11 +192,8 @@
       && (key_len) >= BTREE_MAX_SEPARATOR_KEYLEN_INPAGE)) \
     ? DISK_VPID_SIZE : (key_len))
 
-#define BTREE_PUT_NODE_TYPE(ptr, val) \
-  OR_PUT_SHORT((ptr) + BTREE_NODE_TYPE_OFFSET, val)
-
-#define BTREE_PUT_NODE_KEY_CNT(ptr, val) \
-  OR_PUT_SHORT((ptr) + BTREE_NODE_KEY_CNT_OFFSET, val)
+#define BTREE_PUT_NODE_LEVEL(ptr, val) \
+  OR_PUT_SHORT((ptr) + BTREE_NODE_LEVEL_OFFSET, val)
 
 #define BTREE_PUT_NODE_MAX_KEY_LEN(ptr, val) \
   OR_PUT_SHORT((ptr) + BTREE_NODE_MAX_KEY_LEN_OFFSET, val)
@@ -271,16 +271,15 @@
  * Type definitions related to b+tree structure and operations
  */
 
+/* TODO: alignment  split_info, next_vpid, prev_vpid, ...*/
 typedef struct btree_node_header BTREE_NODE_HEADER;
 struct btree_node_header
 {				/*  Node header information  */
-  short node_type;		/* Leaf(= 0) or Non_Leaf(= 1)          */
-  short key_cnt;		/* Key count for the node              */
-  short max_key_len;		/* Maximum key length for the subtree  */
-  VPID next_vpid;		/* Leaf Page Next Node Pointer         */
-  VPID prev_vpid;		/* Leaf Page Previous Node Pointer     */
-  short padding;		/* padding, used for alignment         */
   BTREE_NODE_SPLIT_INFO split_info;	/* split point info. of the node */
+  VPID prev_vpid;		/* Leaf Page Previous Node Pointer     */
+  VPID next_vpid;		/* Leaf Page Next Node Pointer         */
+  short node_level;		/* btree depth; Leaf(= 1), Non_leaf(> 1) */
+  short max_key_len;		/* Maximum key length for the subtree  */
 };
 
 typedef struct btree_root_header BTREE_ROOT_HEADER;

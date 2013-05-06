@@ -137,7 +137,7 @@ static bool btree_save_last_leafrec (THREAD_ENTRY * thread_p,
 				     LOAD_ARGS * load_args);
 static PAGE_PTR btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key,
 				    int max_key_len, VPID * pageid,
-				    LOAD_ARGS * load_args);
+				    LOAD_ARGS * load_args, int node_level);
 static int btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 			       int n_nulls, int n_oids, int n_keys);
 
@@ -145,7 +145,8 @@ static void btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid,
 			    PAGE_PTR page_ptr);
 static PAGE_PTR btree_get_page (THREAD_ENTRY * thread_p, BTID * btid,
 				VPID * page_id, VPID * nearpg,
-				BTREE_NODE_HEADER * header, short node_type,
+				BTREE_NODE_HEADER * header,
+				int node_level,
 				int *allocated_pgcnt, int *used_pgcnt);
 static PAGE_PTR btree_proceed_leaf (THREAD_ENTRY * thread_p,
 				    LOAD_ARGS * load_args);
@@ -768,7 +769,6 @@ btree_save_last_leafrec (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
 	}
 
       /* Update the node header information for this record */
-      load_args->leaf.hdr.key_cnt++;
       if (load_args->cur_key_len >= BTREE_MAX_KEYLEN_INPAGE)
 	{
 	  if (load_args->leaf.hdr.max_key_len < DISK_VPID_SIZE)
@@ -839,7 +839,7 @@ exit_on_error:
 
 static PAGE_PTR
 btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int max_key_len,
-		    VPID * pageid, LOAD_ARGS * load_args)
+		    VPID * pageid, LOAD_ARGS * load_args, int node_level)
 {
   NON_LEAF_REC nleaf_rec;
   INT16 slotid;
@@ -894,9 +894,6 @@ btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int max_key_len,
        * the current non-leaf page.
        */
 
-      /* Decrement the key counter for this non-leaf node */
-      load_args->nleaf.hdr.key_cnt--;
-
       /* Update the non-leaf page header */
       btree_write_node_header (&temp_recdes, &load_args->nleaf.hdr);
 
@@ -923,7 +920,7 @@ btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int max_key_len,
       load_args->nleaf.pgptr =
 	btree_get_page (thread_p, load_args->btid->sys_btid,
 			&load_args->nleaf.vpid, &load_args->nleaf.vpid,
-			&load_args->nleaf.hdr, BTREE_NON_LEAF_NODE,
+			&load_args->nleaf.hdr, node_level,
 			&load_args->allocated_pgcnt, &load_args->used_pgcnt);
       if (load_args->nleaf.pgptr == NULL)
 	{
@@ -943,7 +940,6 @@ btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int max_key_len,
     }
 
   /* Update the node header information for this record */
-  load_args->nleaf.hdr.key_cnt++;
   if (load_args->nleaf.hdr.max_key_len < max_key_len)
     {
       load_args->nleaf.hdr.max_key_len = max_key_len;
@@ -998,6 +994,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
   bool clear_last_key = false, clear_first_key = false;
   int sp_success;
   int ret = NO_ERROR;
+  int node_level = 2;		/* leaf level = 1, lowest non-leaf level = 2 */
 
   db_make_null (&last_key);
   db_make_null (&first_key);
@@ -1019,7 +1016,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 					   &load_args->nleaf.vpid,
 					   &load_args->nleaf.vpid,
 					   &load_args->nleaf.hdr,
-					   BTREE_NON_LEAF_NODE,
+					   node_level,
 					   &load_args->allocated_pgcnt,
 					   &load_args->used_pgcnt);
   if (load_args->nleaf.pgptr == NULL)
@@ -1027,9 +1024,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
       goto exit_on_error;
     }
 
-  load_args->max_recsize = spage_max_space_for_new_record (thread_p,
-							   load_args->
-							   nleaf.pgptr);
+  load_args->max_recsize =
+    spage_max_space_for_new_record (thread_p, load_args->nleaf.pgptr);
   load_args->push_list = NULL;
   load_args->pop_list = NULL;
 
@@ -1046,161 +1042,117 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
     {
       goto exit_on_error;
     }
-  load_args->leaf.pgptr = pgbuf_fix (thread_p, &load_args->leaf.vpid,
-				     OLD_PAGE, PGBUF_LATCH_WRITE,
-				     PGBUF_UNCONDITIONAL_LATCH);
-  if (load_args->leaf.pgptr == NULL)
+
+  db_make_null (&last_key);
+
+  /* While there are some leaf pages do */
+  while (!VPID_ISNULL (&(load_args->leaf.vpid)))
     {
-      goto exit_on_error;
-    }
-
-  btree_get_header_ptr (load_args->leaf.pgptr, &header_ptr);
-  /* get the maximum key length on this leaf page */
-  max_key_len = BTREE_GET_NODE_MAX_KEY_LEN (header_ptr);
-  /* get the number of keys in this page */
-  key_cnt = BTREE_GET_NODE_KEY_CNT (header_ptr);
-  assert (BTREE_GET_NODE_TYPE (header_ptr) == BTREE_LEAF_NODE
-	  && key_cnt + 1 == spage_number_of_records (load_args->leaf.pgptr));
-
-  BTREE_GET_NODE_NEXT_VPID (header_ptr, &next_vpid);
-
-  /* While there are some more leaf pages do */
-
-  while (next_vpid.pageid != NULL_PAGEID)
-    {
-      /* Learn the last key of the current page */
-      if (spage_get_record (load_args->leaf.pgptr, key_cnt,
-			    &temp_recdes, PEEK) != S_SUCCESS)
+      load_args->leaf.pgptr = pgbuf_fix (thread_p, &load_args->leaf.vpid,
+					 OLD_PAGE, PGBUF_LATCH_WRITE,
+					 PGBUF_UNCONDITIONAL_LATCH);
+      if (load_args->leaf.pgptr == NULL)
 	{
 	  goto exit_on_error;
 	}
 
-      btree_read_record (thread_p, load_args->btid, &temp_recdes, &last_key,
-			 &leaf_pnt, BTREE_LEAF_NODE, &clear_last_key,
-			 &last_key_offset, PEEK_KEY_VALUE);
+      /* obtain the header information for the leaf page */
+      btree_get_header_ptr (load_args->leaf.pgptr, &header_ptr);
+      /* get the maximum key length on this leaf page */
+      max_key_len = BTREE_GET_NODE_MAX_KEY_LEN (header_ptr);
+      /* get the number of keys in this page */
+      key_cnt = btree_get_node_key_cnt (load_args->leaf.pgptr);
+      BTREE_GET_NODE_NEXT_VPID (header_ptr, &next_vpid);
+
+      /* set level 2 to first non-leaf page */
+      load_args->nleaf.hdr.node_level = node_level;
+
+      /* Learn the first key of the leaf page */
+      if (spage_get_record (load_args->leaf.pgptr, 1,
+			    &temp_recdes, PEEK) != S_SUCCESS)
+
+	{
+	  goto exit_on_error;
+	}
+
+      btree_read_record (thread_p, load_args->btid, &temp_recdes,
+			 &first_key, &leaf_pnt, BTREE_LEAF_NODE,
+			 &clear_first_key, &first_key_offset, PEEK_KEY_VALUE);
 
       if (pr_is_prefix_key_type (TP_DOMAIN_TYPE (load_args->btid->key_type)))
 	{
-	  /* Key type is string.
+	  /* 
+	   * Key type is string or midxkey.
 	   * Should insert the prefix key to the parent level
 	   */
 
-	  /* Learn the first key of the next page */
-	  next_pageptr = pgbuf_fix (thread_p, &next_vpid, OLD_PAGE,
-				    PGBUF_LATCH_WRITE,
-				    PGBUF_UNCONDITIONAL_LATCH);
-	  if (next_pageptr == NULL)
-	    {
-	      goto exit_on_error;
-	    }
-	  if (spage_get_record (next_pageptr, 1, &temp_recdes, PEEK)
-	      != S_SUCCESS)
-	    {
-	      goto exit_on_error;
-	    }
-
-	  btree_read_record (thread_p, load_args->btid, &temp_recdes,
-			     &first_key, &leaf_pnt, BTREE_LEAF_NODE,
-			     &clear_first_key, &first_key_offset,
-			     PEEK_KEY_VALUE);
-
 	  /* Insert the prefix key to the parent level */
-	  ret = btree_get_prefix (&last_key, &first_key, &prefix_key,
-				  load_args->btid->key_type);
+	  ret =
+	    btree_get_prefix_seperator (&last_key, &first_key, &prefix_key,
+					load_args->btid->key_type);
 	  if (ret != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
 
-	  /* We may need to update the max_key length if the mid key is larger than
-	   * the max key length.  This will only happen when the varying key length
-	   * is larger than the fixed key length in pathological cases like char(4)
+	  /*
+	   * We may need to update the max_key length if the mid key is
+	   * larger than the max key length.  This will only happen when
+	   * the varying key length is larger than the fixed key length 
+	   * in pathological cases like char(4)
 	   */
 	  new_max = btree_get_key_length (&prefix_key);
 	  new_max = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_NON_LEAF_NODE, new_max);
 	  max_key_len = MAX (new_max, max_key_len);
 
 	  if (btree_connect_page (thread_p, &prefix_key, max_key_len,
-				  &load_args->leaf.vpid, load_args) == NULL)
+				  &load_args->leaf.vpid, load_args,
+				  node_level) == NULL)
 	    {
 	      goto exit_on_error;
 	    }
 
-	  /* Proceed the current leaf page pointer to the next leaf page */
-	  pgbuf_unfix_and_init (thread_p, load_args->leaf.pgptr);
-	  load_args->leaf.vpid = next_vpid;
-	  load_args->leaf.pgptr = next_pageptr;
-	  next_pageptr = NULL;
-
-	  btree_clear_key_value (&clear_first_key, &first_key);
-
-	  /* We always need to clear the prefix key.  It is always a copy. */
+	  /* We always need to clear the prefix key.
+	   * It is always a copy. */
 	  pr_clear_value (&prefix_key);
+
+	  btree_clear_key_value (&clear_last_key, &last_key);
+
+	  /* Learn the last key of the leaf page */
+	  if (spage_get_record (load_args->leaf.pgptr, key_cnt,
+				&temp_recdes, PEEK) != S_SUCCESS)
+	    {
+	      goto exit_on_error;
+	    }
+
+	  btree_read_record (thread_p, load_args->btid, &temp_recdes,
+			     &last_key, &leaf_pnt, BTREE_LEAF_NODE,
+			     &clear_last_key, &last_key_offset,
+			     PEEK_KEY_VALUE);
 	}
       else
-	{			/* key type is not string */
+	{
 	  max_key_len = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_NON_LEAF_NODE,
 						   max_key_len);
 	  /* Insert this key to the parent level */
-	  if (btree_connect_page (thread_p, &last_key, max_key_len,
-				  &load_args->leaf.vpid, load_args) == NULL)
-	    {
-	      goto exit_on_error;
-	    }
-
-	  /* Proceed the current leaf page pointer to the next leaf page */
-	  pgbuf_unfix_and_init (thread_p, load_args->leaf.pgptr);
-	  load_args->leaf.vpid = next_vpid;
-	  load_args->leaf.pgptr = pgbuf_fix (thread_p, &load_args->leaf.vpid,
-					     OLD_PAGE, PGBUF_LATCH_WRITE,
-					     PGBUF_UNCONDITIONAL_LATCH);
-	  if (load_args->leaf.pgptr == NULL)
+	  if (btree_connect_page (thread_p, &first_key, max_key_len,
+				  &load_args->leaf.vpid, load_args,
+				  node_level) == NULL)
 	    {
 	      goto exit_on_error;
 	    }
 	}
 
-      /* obtain the header information for the current leaf page */
-      btree_get_header_ptr (load_args->leaf.pgptr, &header_ptr);
-      /* get the maximum key length on this leaf page */
-      max_key_len = BTREE_GET_NODE_MAX_KEY_LEN (header_ptr);
-      /* get the number of keys in this page */
-      key_cnt = BTREE_GET_NODE_KEY_CNT (header_ptr);
-      assert (BTREE_GET_NODE_TYPE (header_ptr) == BTREE_LEAF_NODE
-	      && key_cnt + 1 ==
-	      spage_number_of_records (load_args->leaf.pgptr));
-      BTREE_GET_NODE_NEXT_VPID (header_ptr, &next_vpid);
+      btree_clear_key_value (&clear_first_key, &first_key);
 
-      btree_clear_key_value (&clear_last_key, &last_key);
+      /* Proceed the current leaf page pointer to the next leaf page */
+      pgbuf_unfix_and_init (thread_p, load_args->leaf.pgptr);
+      load_args->leaf.vpid = next_vpid;
+      load_args->leaf.pgptr = next_pageptr;
+      next_pageptr = NULL;
+
     }				/* while there are some more leaf pages */
 
-  /* Current page is the last leaf page; So, obtain the biggest key
-     and max_key_size from this last page and insert them to the parent level */
-
-  /* Learn the last key of the current page */
-  if (spage_get_record (load_args->leaf.pgptr, key_cnt,
-			&temp_recdes, PEEK) != S_SUCCESS)
-    {
-      goto exit_on_error;
-    }
-
-  btree_read_record (thread_p, load_args->btid, &temp_recdes, &last_key,
-		     &leaf_pnt, BTREE_LEAF_NODE, &clear_last_key,
-		     &last_key_offset, PEEK_KEY_VALUE);
-
-  max_key_len = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_NON_LEAF_NODE, max_key_len);
-  /* Insert this key to the parent level */
-  if (btree_connect_page (thread_p, &last_key, max_key_len,
-			  &load_args->leaf.vpid, load_args) == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  /* Now, we can free the leaf page buffer */
-  pgbuf_unfix_and_init (thread_p, load_args->leaf.pgptr);
-
-  /* Decrement the key counter for this non-leaf node */
-  load_args->nleaf.hdr.key_cnt--;
 
   /* Update the non-leaf page header */
   temp_recdes.area_size = DB_PAGESIZE;
@@ -1239,6 +1191,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 
   while (length_list (load_args->pop_list) > 1)
     {
+      node_level++;
+
       /* while there are more than one page at the previous level do
          construct the next level */
 
@@ -1246,12 +1200,13 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
       load_args->nleaf.pgptr =
 	btree_get_page (thread_p, load_args->btid->sys_btid,
 			&load_args->nleaf.vpid, &load_args->nleaf.vpid,
-			&load_args->nleaf.hdr, BTREE_NON_LEAF_NODE,
+			&load_args->nleaf.hdr, node_level,
 			&load_args->allocated_pgcnt, &load_args->used_pgcnt);
       if (load_args->nleaf.pgptr == NULL)
 	{
 	  goto exit_on_error;
 	}
+
       load_args->max_recsize =
 	spage_max_space_for_new_record (thread_p, load_args->nleaf.pgptr);
 
@@ -1271,31 +1226,33 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 
 	  /* obtain the header information for the current non-leaf page */
 	  btree_get_header_ptr (cur_nleafpgptr, &header_ptr);
-	  /* get the maximum key length on this non-leaf page */
+	  /* get the maximum key length on this leaf page */
 	  max_key_len = BTREE_GET_NODE_MAX_KEY_LEN (header_ptr);
-	  /* get the number of keys in this page */
-	  key_cnt = BTREE_GET_NODE_KEY_CNT (header_ptr);
-	  assert (BTREE_GET_NODE_TYPE (header_ptr) == BTREE_NON_LEAF_NODE
-		  && key_cnt + 2 == spage_number_of_records (cur_nleafpgptr));
 
-	  /* Learn the last key of the current page */
+	  /* Learn the first key of the current page */
 	  /* Notice that since this is a non-leaf node */
-	  if (spage_get_record (cur_nleafpgptr, key_cnt + 1, &temp_recdes,
+	  if (spage_get_record (cur_nleafpgptr, 1, &temp_recdes,
 				PEEK) != S_SUCCESS)
 	    {
 	      goto exit_on_error;
 	    }
 
 	  btree_read_record (thread_p, load_args->btid, &temp_recdes,
-			     &last_key, &nleaf_pnt, BTREE_NON_LEAF_NODE,
-			     &clear_last_key, &last_key_offset,
+			     &first_key, &nleaf_pnt, BTREE_NON_LEAF_NODE,
+			     &clear_first_key, &first_key_offset,
 			     PEEK_KEY_VALUE);
 
 	  max_key_len = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_NON_LEAF_NODE,
 						   max_key_len);
+
+	  /* set level to non-leaf page 
+	   * nleaf page could be changed in btree_connect_page */
+	  load_args->nleaf.hdr.node_level = node_level;
+
 	  /* Insert this key to the parent level */
-	  if (btree_connect_page (thread_p, &last_key, max_key_len,
-				  &cur_nleafpgid, load_args) == NULL)
+	  if (btree_connect_page (thread_p, &first_key, max_key_len,
+				  &cur_nleafpgid, load_args,
+				  node_level) == NULL)
 	    {
 	      goto exit_on_error;
 	    }
@@ -1305,14 +1262,11 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 	  /* Remove this pageid from the pop list */
 	  remove_first (&load_args->pop_list);
 
-	  btree_clear_key_value (&clear_last_key, &last_key);
+	  btree_clear_key_value (&clear_first_key, &first_key);
 	}
       while (length_list (load_args->pop_list) > 0);
 
       /* FLUSH LAST NON-LEAF PAGE */
-
-      /* Decrement the key counter for this non-leaf node */
-      load_args->nleaf.hdr.key_cnt--;
 
       /* Update the non-leaf page header */
       temp_recdes.area_size = DB_PAGESIZE;
@@ -1362,9 +1316,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
     }
 
   /* Prepare the root header by using the last leaf node header */
-  root_header.node.node_type = BTREE_NON_LEAF_NODE;
-  root_header.node.key_cnt = load_args->nleaf.hdr.key_cnt;
   root_header.node.max_key_len = load_args->nleaf.hdr.max_key_len;
+  root_header.node.node_level = node_level;
   VPID_SET_NULL (&root_header.node.next_vpid);
   VPID_SET_NULL (&root_header.node.prev_vpid);
   root_header.node.split_info.pivot = 0.0f;
@@ -1475,6 +1428,9 @@ end:
       os_free_and_init (temp_data);
     }
 
+  btree_clear_key_value (&clear_last_key, &last_key);
+  btree_clear_key_value (&clear_first_key, &first_key);
+
   return ret;
 
 /* error handling */
@@ -1530,8 +1486,8 @@ btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr)
  */
 static PAGE_PTR
 btree_get_page (THREAD_ENTRY * thread_p, BTID * btid, VPID * page_id,
-		VPID * nearpg, BTREE_NODE_HEADER * header, short node_type,
-		int *allocated_pgcnt, int *used_pgcnt)
+		VPID * nearpg, BTREE_NODE_HEADER * header,
+		int node_level, int *allocated_pgcnt, int *used_pgcnt)
 {
   PAGE_PTR page_ptr = NULL;
   VPID ovf_vpid = { NULL_PAGEID, NULL_VOLID };
@@ -1609,8 +1565,7 @@ btree_get_page (THREAD_ENTRY * thread_p, BTID * btid, VPID * page_id,
   if (header)
     {				/* This is going to be a leaf page */
       /* Insert the node header (with initial values) to the leaf node */
-      header->node_type = node_type;
-      header->key_cnt = 0;
+      header->node_level = node_level;
       header->max_key_len = 0;
       VPID_SET_NULL (&header->next_vpid);
       VPID_SET_NULL (&header->prev_vpid);
@@ -1666,8 +1621,7 @@ btree_proceed_leaf (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
   new_leafpgptr = btree_get_page (thread_p, load_args->btid->sys_btid,
 				  &new_leafpgid,
 				  &load_args->leaf.vpid,
-				  &new_leafhdr,
-				  BTREE_LEAF_NODE,
+				  &new_leafhdr, 1,
 				  &load_args->allocated_pgcnt,
 				  &load_args->used_pgcnt);
   if (new_leafpgptr == NULL)
@@ -1873,7 +1827,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 	}
 
       /* Find out if this is the first call to this function */
-      if (load_args->leaf.vpid.pageid == NULL_PAGEID)
+      if (VPID_ISNULL (&(load_args->leaf.vpid)))
 	{
 	  /* This is the first call to this function; so, initilize some fields
 	     in the LOAD_ARGS structure */
@@ -1884,7 +1838,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 	  load_args->leaf.pgptr =
 	    btree_get_page (thread_p, load_args->btid->sys_btid,
 			    &load_args->leaf.vpid, &load_args->leaf.vpid,
-			    &load_args->leaf.hdr, BTREE_LEAF_NODE,
+			    &load_args->leaf.hdr, 1,
 			    &load_args->allocated_pgcnt,
 			    &load_args->used_pgcnt);
 	  if (load_args->leaf.pgptr == NULL)
@@ -1968,7 +1922,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 		      new_ovfpgptr =
 			btree_get_page (thread_p, load_args->btid->sys_btid,
 					&new_ovfpgid, &load_args->ovf.vpid,
-					NULL, BTREE_LEAF_NODE,
+					NULL, 1,
 					&load_args->allocated_pgcnt,
 					&load_args->used_pgcnt);
 		      if (new_ovfpgptr == NULL)
@@ -2026,8 +1980,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 		      load_args->ovf.pgptr =
 			btree_get_page (thread_p, load_args->btid->sys_btid,
 					&load_args->ovf.vpid,
-					&load_args->ovf.vpid, NULL,
-					BTREE_LEAF_NODE,
+					&load_args->ovf.vpid, NULL, 1,
 					&load_args->allocated_pgcnt,
 					&load_args->used_pgcnt);
 		      if (load_args->ovf.pgptr == NULL)
@@ -2050,7 +2003,6 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 			}
 
 		      /* Update the node header information for this record */
-		      load_args->leaf.hdr.key_cnt++;
 		      if (load_args->cur_key_len >= BTREE_MAX_KEYLEN_INPAGE)
 			{
 			  if (load_args->leaf.hdr.max_key_len <
@@ -2134,7 +2086,6 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 		    }
 
 		  /* Update the node header information for this record */
-		  load_args->leaf.hdr.key_cnt++;
 		  if (load_args->cur_key_len >= BTREE_MAX_KEYLEN_INPAGE)
 		    {
 		      if (load_args->leaf.hdr.max_key_len < DISK_VPID_SIZE)
@@ -2188,6 +2139,9 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 	      load_args->max_recsize = BTREE_MAX_OIDLEN_INPAGE + max_key_len;
 	    }			/* different key */
 	}
+
+      /* set level 1 to leaf */
+      load_args->leaf.hdr.node_level = 1;
 
       btree_clear_key_value (&copy, &this_key);
 
@@ -2984,4 +2938,42 @@ btree_rv_dump_create_index (FILE * fp, int length_ignore, void *data)
   vfid = (VFID *) data;
   (void) fprintf (fp, "Undo creation of Index vfid: %d|%d\n",
 		  vfid->volid, vfid->fileid);
+}
+
+/*
+ * btree_get_node_key_cnt () -
+ *   return: int
+ *   page_ptr(in):
+ *
+ */
+int
+btree_get_node_key_cnt (PAGE_PTR page_ptr)
+{
+  int key_cnt;
+
+  assert (page_ptr != NULL);
+
+  key_cnt = spage_number_of_records (page_ptr) - 1;
+
+#if !defined(NDEBUG)
+  {
+    char *header_ptr;
+    BTREE_NODE_TYPE node_type;
+
+    btree_get_header_ptr (page_ptr, &header_ptr);
+    node_type = BTREE_GET_NODE_TYPE (header_ptr);
+
+    if ((node_type == BTREE_NON_LEAF_NODE && key_cnt <= 0)
+	|| (node_type == BTREE_LEAF_NODE && key_cnt < 0))
+      {
+	er_log_debug (ARG_FILE_LINE, "btree_get_node_key_cnt: "
+		      "node key count underflow: %d\n", key_cnt);
+	assert (false);
+      }
+  }
+#endif
+
+  assert_release (key_cnt >= 0);
+
+  return key_cnt;
 }

@@ -98,6 +98,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_ER_LOG_DEBUG "er_log_debug"
 
+#define PRM_NAME_ER_BTREE_DEBUG "er_btree_debug"
+
 #define PRM_NAME_ER_LOG_LEVEL "error_log_level"
 
 #define PRM_NAME_ER_LOG_WARNING "error_log_warning"
@@ -591,6 +593,9 @@ static bool prm_er_log_debug_default = true;
 #else /* !NDEBUG */
 static bool prm_er_log_debug_default = false;
 #endif /* !NDEBUG */
+
+int PRM_ER_BTREE_DEBUG = 0;
+static int prm_er_btree_debug_default = 0;
 
 int PRM_ER_LOG_LEVEL = ER_SYNTAX_ERROR_SEVERITY;
 static int prm_er_log_level_default = ER_SYNTAX_ERROR_SEVERITY;
@@ -1268,10 +1273,17 @@ struct sysprm_param
 
 static SYSPRM_PARAM prm_Def[] = {
   {PRM_NAME_ER_LOG_DEBUG,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_er_log_debug_default,
    (void *) &PRM_ER_LOG_DEBUG,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
+  {PRM_NAME_ER_BTREE_DEBUG,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_INTEGER,
+   (void *) &prm_er_btree_debug_default,
+   (void *) &PRM_ER_BTREE_DEBUG,
    (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_ER_LOG_LEVEL,
