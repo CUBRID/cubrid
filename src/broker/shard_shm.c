@@ -306,15 +306,24 @@ shard_shm_initialize (T_BROKER_INFO * br_info_p, char *shm_metadata_cp)
       return NULL;
     }
 
-  shard_info_size =
-    sizeof (T_SHARD_INFO) - sizeof (T_APPL_SERVER_INFO) +
-    (sizeof (T_APPL_SERVER_INFO) * br_info_p->appl_server_max_num);
-
   num_shard = shm_conn_p->num_shard_conn;
   if (num_shard <= 0)
     {
       return NULL;
     }
+
+  appl_server_min_num =
+    (br_info_p->appl_server_min_num / br_info_p->max_num_proxy / num_shard);
+  appl_server_min_num = MAX (1, appl_server_min_num);
+
+  appl_server_max_num =
+    (br_info_p->appl_server_max_num / br_info_p->max_num_proxy / num_shard);
+  appl_server_max_num = MAX (1, appl_server_max_num);
+
+
+  shard_info_size =
+    sizeof (T_SHARD_INFO) - sizeof (T_APPL_SERVER_INFO) +
+    (sizeof (T_APPL_SERVER_INFO) * appl_server_max_num);
 
   num_key = shm_key_p->num_shard_key;
   if (num_key < 0)
@@ -395,14 +404,6 @@ shard_shm_initialize (T_BROKER_INFO * br_info_p, char *shm_metadata_cp)
       /* SET ERROR */
       return NULL;
     }
-
-  appl_server_min_num =
-    (br_info_p->appl_server_min_num / br_info_p->max_num_proxy / num_shard);
-  appl_server_min_num = (appl_server_min_num == 0) ? 1 : appl_server_min_num;
-
-  appl_server_max_num =
-    (br_info_p->appl_server_max_num / br_info_p->max_num_proxy / num_shard);
-  appl_server_max_num = (appl_server_max_num == 0) ? 1 : appl_server_max_num;
 
   for (i = 0, proxy_offset = 0; i < shm_proxy_p->max_num_proxy;
        i++, proxy_offset += proxy_info_size)
