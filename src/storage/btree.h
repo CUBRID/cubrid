@@ -331,7 +331,7 @@ extern int btree_multicol_key_has_null (DB_VALUE * key);
 extern DISK_ISVALID btree_find_key (THREAD_ENTRY * thread_p, BTID * btid,
 				    OID * oid, DB_VALUE * key,
 				    bool * clear_key);
-extern int btree_get_prefix_seperator (const DB_VALUE * key1,
+extern int btree_get_prefix_separator (const DB_VALUE * key1,
 				       const DB_VALUE * key2,
 				       DB_VALUE * prefix_key,
 				       TP_DOMAIN * key_domain);

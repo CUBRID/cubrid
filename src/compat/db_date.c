@@ -807,7 +807,7 @@ parse_date (const char *buf, int buf_len, DB_DATE * date)
   const char *p;
   int date_style = -1;
   int year_part, month_part, day_part;
-  int seperator = '\0';
+  int separator = '\0';
   const char *strend = buf + buf_len;
 
   if (buf == NULL)
@@ -840,7 +840,7 @@ parse_date (const char *buf, int buf_len, DB_DATE * date)
 	    }
 
 	  /* check date separator ('/' or '-'), if any */
-	  if (seperator != '\0' && c != '\0' && c != seperator)
+	  if (separator != '\0' && c != '\0' && c != separator)
 	    {
 	      return NULL;
 	    }
@@ -849,13 +849,13 @@ parse_date (const char *buf, int buf_len, DB_DATE * date)
 	  if (c == '/')
 	    {
 	      ++p;
-	      seperator = c;
+	      separator = c;
 	      date_style = MMDDYYYY;
 	    }
 	  else if (c == '-')
 	    {
 	      ++p;
-	      seperator = c;
+	      separator = c;
 	      date_style = YYYYMMDD;
 	    }
 	  else

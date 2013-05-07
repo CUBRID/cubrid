@@ -1010,6 +1010,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
       PHASE I : Build the first non_leaf level nodes
    ****************************************************/
 
+  assert (node_level == 2);
+
   /* Initialize the first non-leaf page */
   load_args->nleaf.pgptr = btree_get_page (thread_p,
 					   load_args->btid->sys_btid,
@@ -1087,9 +1089,9 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 	   */
 
 	  /* Insert the prefix key to the parent level */
-	  ret =
-	    btree_get_prefix_seperator (&last_key, &first_key, &prefix_key,
-					load_args->btid->key_type);
+	  ret = btree_get_prefix_separator (&last_key, &first_key,
+					    &prefix_key,
+					    load_args->btid->key_type);
 	  if (ret != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -1105,6 +1107,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 	  new_max = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_NON_LEAF_NODE, new_max);
 	  max_key_len = MAX (new_max, max_key_len);
 
+	  assert (node_level == 2);
 	  if (btree_connect_page (thread_p, &prefix_key, max_key_len,
 				  &load_args->leaf.vpid, load_args,
 				  node_level) == NULL)
@@ -1134,7 +1137,9 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 	{
 	  max_key_len = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_NON_LEAF_NODE,
 						   max_key_len);
+
 	  /* Insert this key to the parent level */
+	  assert (node_level == 2);
 	  if (btree_connect_page (thread_p, &first_key, max_key_len,
 				  &load_args->leaf.vpid, load_args,
 				  node_level) == NULL)
@@ -1184,6 +1189,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
   /*****************************************************
       PHASE II: Build the upper levels of tree
    ****************************************************/
+
+  assert (node_level == 2);
 
   /* Switch the push and pop lists */
   load_args->pop_list = load_args->push_list;
@@ -1247,6 +1254,9 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 
 	  /* set level to non-leaf page 
 	   * nleaf page could be changed in btree_connect_page */
+
+	  assert (node_level > 2);
+
 	  load_args->nleaf.hdr.node_level = node_level;
 
 	  /* Insert this key to the parent level */
@@ -1498,6 +1508,9 @@ btree_get_page (THREAD_ENTRY * thread_p, BTID * btid, VPID * page_id,
   OR_ALIGNED_BUF (NODE_HEADER_SIZE) a_temp_data;
   unsigned short alignment;
 
+  assert ((header != NULL && node_level >= 1)
+	  || (header == NULL && node_level == -1));
+
   temp_recdes.data = OR_ALIGNED_BUF_START (a_temp_data);
   temp_recdes.area_size = NODE_HEADER_SIZE;
 
@@ -1576,6 +1589,8 @@ btree_get_page (THREAD_ENTRY * thread_p, BTID * btid, VPID * page_id,
     }
   else
     {				/* This is going to be an overflow page */
+      assert (node_level == -1);
+
       /* the new overflow page is the last one */
       btree_write_overflow_header (&temp_recdes, &ovf_vpid);
     }
@@ -1922,7 +1937,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 		      new_ovfpgptr =
 			btree_get_page (thread_p, load_args->btid->sys_btid,
 					&new_ovfpgid, &load_args->ovf.vpid,
-					NULL, 1,
+					NULL, -1,
 					&load_args->allocated_pgcnt,
 					&load_args->used_pgcnt);
 		      if (new_ovfpgptr == NULL)
@@ -1980,7 +1995,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 		      load_args->ovf.pgptr =
 			btree_get_page (thread_p, load_args->btid->sys_btid,
 					&load_args->ovf.vpid,
-					&load_args->ovf.vpid, NULL, 1,
+					&load_args->ovf.vpid, NULL, -1,
 					&load_args->allocated_pgcnt,
 					&load_args->used_pgcnt);
 		      if (load_args->ovf.pgptr == NULL)
