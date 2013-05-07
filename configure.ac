@@ -657,9 +657,9 @@ case "$with_cmserver" in
 		  fi
 		  if test "$enable_64bit" = "yes"
                   then
-		    build_64 = "--enable-64bit"
+		    build_64="--enable-64bit"
 		  else
-                    build_64 = ""
+                    build_64=""
 		  fi
 		    cm_common_libdir=`readlink -f $PWD/cm_common`
 		    cm_common_includedir=`readlink -f $srcdir/src/cm_common`
