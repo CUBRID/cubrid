@@ -8468,8 +8468,9 @@ add_query_to_virtual_class (PARSER_CONTEXT * parser,
 }
 
 /*
- * add_union_query() - Adds a query to a virtual class
- *			  object. If the query is a union all query, it is
+ * add_union_query() - Adds a query to a virtual class object.
+ *			  If the query is a union all query
+ *			  without limit and order_by, it is
  * 			  divided into its component queries
  *   return: Error code
  *   parser(in): Parser context
@@ -8487,7 +8488,9 @@ add_union_query (PARSER_CONTEXT * parser,
   /* Add each query listed in the virtual class definition. */
 
   if (query->node_type == PT_UNION
-      && query->info.query.all_distinct == PT_ALL)
+      && query->info.query.all_distinct == PT_ALL
+      && query->info.query.limit == NULL
+      && query->info.query.order_by == NULL)
     {
       error = add_union_query
 	(parser, ctemplate, query->info.query.q.union_.arg1);
@@ -14037,7 +14040,7 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
 	  (*stmt)->info.query.q.select.from->info.spec.entity_name = new_node;
 	}
       (void) parser_walk_tree (parser, where_predicate,
-			       pt_replace_names_index_expr, (void *) new_cls_name,
+			       pt_replace_names_index_expr, (void *) new_cls_name, 
 			       NULL, NULL);
     }
 
