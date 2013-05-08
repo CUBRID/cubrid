@@ -68,9 +68,9 @@ abstract public class UErrorCode {
 	public static final int ER_CMD_IS_NOT_INSERT = -21022;
 	public static final int ER_UNKNOWN = -21023;
 	public static final int ER_TIMEOUT = -21024;
-	public static final int ER_NO_SHARD_AVAILABLE = 21025;
-	public static final int ER_INVALID_SHARD = 21026;
-	public static final int ER_ILLEGAL_TIMESTAMP = 27;
+	public static final int ER_NO_SHARD_AVAILABLE = -21025;
+	public static final int ER_INVALID_SHARD = -21026;
+	public static final int ER_ILLEGAL_TIMESTAMP = -21027;
 
 	/* CAS Error Code */
 
