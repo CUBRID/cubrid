@@ -239,7 +239,7 @@ class UInputBuffer {
 		if (year == 0 && month == 0 && day == 0) {
 			if (uconn.getZeroDateTimeBehavior().equals(
 					UConnection.ZERO_DATETIME_BEHAVIOR_EXCEPTION)) {
-				throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);
+				throw new UJciException(UErrorCode.ER_ILLEGAL_TIMESTAMP);
 			} else if (uconn.getZeroDateTimeBehavior().equals(
 					UConnection.ZERO_DATETIME_BEHAVIOR_CONVERT_TO_NULL)) {
 				return null;
@@ -282,7 +282,7 @@ class UInputBuffer {
 		if (year == 0 && month == 0 && day == 0) {
 			if (uconn.getZeroDateTimeBehavior().equals(
 					UConnection.ZERO_DATETIME_BEHAVIOR_EXCEPTION)) {
-				throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);
+				throw new UJciException(UErrorCode.ER_ILLEGAL_TIMESTAMP);
 			} else if (uconn.getZeroDateTimeBehavior().equals(
 					UConnection.ZERO_DATETIME_BEHAVIOR_CONVERT_TO_NULL)) {
 				return null;
@@ -314,7 +314,7 @@ class UInputBuffer {
 		if (year == 0 && month == 0 && day == 0) {
 			if (uconn.getZeroDateTimeBehavior().equals(
 					UConnection.ZERO_DATETIME_BEHAVIOR_EXCEPTION)) {
-				throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);
+				throw new UJciException(UErrorCode.ER_ILLEGAL_TIMESTAMP);
 			} else if (uconn.getZeroDateTimeBehavior().equals(
 					UConnection.ZERO_DATETIME_BEHAVIOR_CONVERT_TO_NULL)) {
 				return null;

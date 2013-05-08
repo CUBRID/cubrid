@@ -70,6 +70,7 @@ abstract public class UErrorCode {
 	public static final int ER_TIMEOUT = -21024;
 	public static final int ER_NO_SHARD_AVAILABLE = 21025;
 	public static final int ER_INVALID_SHARD = 21026;
+	public static final int ER_ILLEGAL_TIMESTAMP = 27;
 
 	/* CAS Error Code */
 
@@ -172,6 +173,8 @@ abstract public class UErrorCode {
 		messageString.put(new Integer(ER_TIMEOUT), "Request timed out");
 		messageString.put(new Integer(ER_NO_SHARD_AVAILABLE), "No shard available");
 		messageString.put(new Integer(ER_INVALID_SHARD), "Invalid shard");
+		messageString.put(new Integer(ER_ILLEGAL_TIMESTAMP), 
+				"Zero date can not be represented as java.sql.Timestamp");
 	}
 
 	private static void setCASMessageHash() {
