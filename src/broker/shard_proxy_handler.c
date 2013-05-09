@@ -646,6 +646,8 @@ proxy_handler_process_client_request (T_PROXY_EVENT * event_p)
   char func_code;
   T_PROXY_CONTEXT *ctx_p;
   T_CLIENT_INFO *client_info_p;
+  T_BROKER_VERSION client_version;
+  char *driver_info;
 
   T_PROXY_CLIENT_FUNC proxy_client_fn;
 
@@ -701,6 +703,23 @@ proxy_handler_process_client_request (T_PROXY_EVENT * event_p)
 
   /* SHARD TODO : fix cci/jdbc */
   proxy_unset_force_out_tran (request_p);
+
+  driver_info = proxy_get_driver_info_by_ctx (ctx_p);
+  client_version = CAS_MAKE_PROTO_VER (driver_info);
+  if (DOES_CLIENT_MATCH_THE_PROTOCOL (client_version, PROTOCOL_V2))
+    {
+      switch (func_code)
+	{
+	case CAS_FC_PREPARE_AND_EXECUTE:
+	  func_code = CAS_FC_PREPARE_AND_EXECUTE_FOR_PROTO_V2;
+	  break;
+	case CAS_FC_CURSOR_CLOSE:
+	  func_code = CAS_FC_CURSOR_CLOSE_FOR_PROTO_V2;
+	  break;
+	default:
+	  break;
+	}
+    }
 
   shard_shm_set_client_info_request (client_info_p, func_code);
 
