@@ -6796,6 +6796,7 @@ mq_reset_ids (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec)
   range = spec->info.spec.range_var;
   if (range)
     {
+      assert (range->node_type == PT_NAME);
       range->info.name.spec_id = spec->info.spec.id;
     }
 
@@ -6949,6 +6950,28 @@ mq_reset_spec_ids (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
 	  /* only reset IDs, in case query will be rewritten as SELECT for
 	     broker execution */
 	  mq_reset_ids (parser, node, spec);
+	}
+      break;
+    case PT_INSERT:
+      if (node->info.insert.odku_assignments)
+	{
+	  PT_NODE *values = node->info.insert.value_clauses;
+	  PT_NODE *select = values->info.node_list.list;
+
+	  if (select->node_type == PT_SELECT)
+	    {
+	      PT_NODE *assignments = node->info.insert.odku_assignments;
+
+	      spec = select->info.query.q.select.from;
+	      for (; spec; spec = spec->next)
+		{
+		  for (; assignments; assignments = assignments->next)
+		    {
+		      parser_walk_tree (parser, assignments, mq_reset_all_ids,
+					spec, NULL, NULL);
+		    }
+		}
+	    }
 	}
       break;
 

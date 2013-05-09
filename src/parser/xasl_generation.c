@@ -17129,7 +17129,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	}
     }
 
-  if (statement->info.insert.odku_assignments)
+  if (xasl && statement->info.insert.odku_assignments)
     {
       xasl->proc.insert.odku = pt_to_odku_info (parser, statement, xasl,
 						upd_non_null_attrs);

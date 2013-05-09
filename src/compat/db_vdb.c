@@ -1932,6 +1932,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 	     PT_HOST_VAR node. Must duplicate the statement and execute with
 	     the new one and free the copied one before returning */
 	  statement = parser_copy_tree_list (parser, statement);
+	  statement = mq_reset_ids_in_statement (parser, statement);
 
 	  sc_info.top_node = statement;
 	  sc_info.donot_fold = false;
