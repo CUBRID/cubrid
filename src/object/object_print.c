@@ -158,7 +158,8 @@ static const char *obj_print_trigger_action_time (TR_TRIGGER * trigger);
 static PARSER_VARCHAR *obj_print_describe_domain (PARSER_CONTEXT * parser,
 						  PARSER_VARCHAR * buffer,
 						  TP_DOMAIN * domain,
-						  OBJ_PRINT_TYPE prt_type);
+						  OBJ_PRINT_TYPE prt_type,
+						  bool force_print_collation);
 static PARSER_VARCHAR *obj_print_identifier (PARSER_CONTEXT * parser,
 					     PARSER_VARCHAR * buffer,
 					     const char *identifier,
@@ -166,7 +167,8 @@ static PARSER_VARCHAR *obj_print_identifier (PARSER_CONTEXT * parser,
 static char *obj_print_describe_attribute (MOP class_p,
 					   PARSER_CONTEXT * parser,
 					   SM_ATTRIBUTE * attribute_p,
-					   OBJ_PRINT_TYPE prt_type);
+					   OBJ_PRINT_TYPE prt_type,
+					   bool force_print_collation);
 static char *obj_print_describe_partition_parts (PARSER_CONTEXT * parser,
 						 MOP parts,
 						 OBJ_PRINT_TYPE prt_type);
@@ -406,12 +408,15 @@ obj_print_identifier (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
  *  buffer(in) : current buffer pointer
  *  domain(in) : domain structure to describe
  *  prt_type(in): the print type: csql schema or show create table
+ *  force_print_collation(in): true if collation is printed no matter system
+ *			       collation
  *
  */
 
 static PARSER_VARCHAR *
 obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
-			   TP_DOMAIN * domain, OBJ_PRINT_TYPE prt_type)
+			   TP_DOMAIN * domain, OBJ_PRINT_TYPE prt_type,
+			   bool force_print_collation)
 {
   TP_DOMAIN *temp_domain;
   char temp_buffer[27];
@@ -528,7 +533,8 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 		  buffer =
 		    obj_print_describe_domain (parser, buffer,
 					       temp_domain->setdomain,
-					       prt_type);
+					       prt_type,
+					       force_print_collation);
 		  buffer = pt_append_nulstring (parser, buffer, ")");
 		}
 	      else
@@ -536,7 +542,8 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 		  buffer =
 		    obj_print_describe_domain (parser, buffer,
 					       temp_domain->setdomain,
-					       prt_type);
+					       prt_type,
+					       force_print_collation);
 		}
 	    }
 	  break;
@@ -568,7 +575,9 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	  break;
 	}
 
-      if (has_collation && temp_domain->collation_id != LANG_SYS_COLLATION)
+      if (has_collation
+	  && (force_print_collation
+	      || temp_domain->collation_id != LANG_SYS_COLLATION))
 	{
 	  buffer = pt_append_nulstring (parser, buffer, " COLLATE ");
 	  buffer =
@@ -592,13 +601,15 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
  *  parser(in) :
  *  attribute_p(in) : attribute of the class
  *  prt_type(in): the print type: csql schema or show create table
+ *  obj_print_describe_attribute(in):
  *
  */
 
 static char *
 obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser,
 			      SM_ATTRIBUTE * attribute_p,
-			      OBJ_PRINT_TYPE prt_type)
+			      OBJ_PRINT_TYPE prt_type,
+			      bool force_print_collation)
 {
   char *start;
   PARSER_VARCHAR *buffer;
@@ -627,7 +638,8 @@ obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser,
   /* could filter here but do in describe_domain */
 
   buffer =
-    obj_print_describe_domain (parser, buffer, attribute_p->domain, prt_type);
+    obj_print_describe_domain (parser, buffer, attribute_p->domain, prt_type,
+			       force_print_collation);
 
   if (attribute_p->header.name_space == ID_SHARED_ATTRIBUTE)
     {
@@ -1169,9 +1181,11 @@ obj_print_describe_argument (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
     {
       if (argument_p->domain != NULL)
 	{
+	  /* method and its arguments do not inherit collation from class,
+	   * collation printing is not enforced */
 	  buffer =
 	    obj_print_describe_domain (parser, buffer, argument_p->domain,
-				       prt_type);
+				       prt_type, false);
 	}
       else if (argument_p->type)
 	{
@@ -1621,6 +1635,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
   char *description;
   char name_buf[SM_MAX_IDENTIFIER_LENGTH + 2];
   bool include_inherited;
+  bool force_print_att_coll = false;
 
   buffer = NULL;
   if (parser == NULL)
@@ -1643,6 +1658,8 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
   else if (au_fetch_class (op, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
     {
 
+      force_print_att_coll = (class_->collation_id != LANG_SYS_COLLATION)
+	? true : false;
       /* make sure all the information is up to date */
       if (sm_clean_class (op, class_) != NO_ERROR)
 	{
@@ -1812,7 +1829,8 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 		    {
 		      description =
 			obj_print_describe_attribute (op, parser, a,
-						      prt_type);
+						      prt_type,
+						      force_print_att_coll);
 		      if (description == NULL)
 			{
 			  goto error_exit;
@@ -1863,7 +1881,8 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 		    {
 		      description =
 			obj_print_describe_attribute (op, parser, a,
-						      prt_type);
+						      prt_type,
+						      force_print_att_coll);
 		      if (description == NULL)
 			{
 			  goto error_exit;
