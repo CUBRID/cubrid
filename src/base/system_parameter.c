@@ -7923,7 +7923,7 @@ prm_init_intl_param (void)
   prm_number_lang = prm_find (PRM_NAME_INTL_NUMBER_LANG, NULL);
   prm_intl_collation = prm_find (PRM_NAME_INTL_COLLATION, NULL);
 
-  if (prm_date_lang != NULL)
+  if (prm_date_lang != NULL && !PRM_IS_SET (prm_date_lang->flag))
     {
       if (PRM_GET_STRING (prm_date_lang->value))
 	{
@@ -7933,7 +7933,7 @@ prm_init_intl_param (void)
       prm_set (prm_date_lang, lang_get_Lang_name (), true);
     }
 
-  if (prm_number_lang != NULL)
+  if (prm_number_lang != NULL && !PRM_IS_SET (prm_number_lang->flag))
     {
       if (PRM_GET_STRING (prm_number_lang->value))
 	{
@@ -7943,7 +7943,7 @@ prm_init_intl_param (void)
       prm_set (prm_number_lang, lang_get_Lang_name (), true);
     }
 
-  if (prm_intl_collation != NULL)
+  if (prm_intl_collation != NULL && !PRM_IS_SET (prm_intl_collation->flag))
     {
       if (PRM_GET_STRING (prm_intl_collation->value))
 	{
