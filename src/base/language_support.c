@@ -606,7 +606,7 @@ lang_init_full (void)
 
   if (lang_Initialized)
     {
-      return lang_Initialized;
+      return (!lang_Init_w_error);
     }
 
   lang_init_builtin ();
@@ -614,7 +614,8 @@ lang_init_full (void)
   /* get CUBRID_CHARSET from environment */
   if (set_cubrid_charset_from_env () != NO_ERROR)
     {
-      return false;
+      lang_Init_w_error = true;
+      return (!lang_Init_w_error);
     }
 
   assert (lang_builtin_initialized == true);
@@ -626,7 +627,7 @@ lang_init_full (void)
       lang_Init_w_error = true;
       lang_Initialized = true;
 
-      return lang_Initialized;
+      return (!lang_Init_w_error);
     }
 
   lang_get_lang_id_from_name (lang_Lang_name, &lang_Lang_id);
