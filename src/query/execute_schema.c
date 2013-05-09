@@ -4741,9 +4741,9 @@ do_redistribute_partitions_data (const char *classname, const char *keyname,
     {
       query_size = 0;
       query_size += 7;		/* 'UPDATE ' */
-      query_size += strlen (classname);
+      query_size += strlen (classname) + 2;
       query_size += 5;		/* ' SET ' */
-      query_size += strlen (keyname) * 2 + 2;	/* keyname=keyname; */
+      query_size += strlen (keyname) * 2 + 6;	/* [keyname]=[keyname]; */
       query_buf = (char *) malloc (query_size + 1);
       if (query_buf == NULL)
 	{
@@ -4751,7 +4751,7 @@ do_redistribute_partitions_data (const char *classname, const char *keyname,
 		  1, query_size + 1);
 	  return ER_FAILED;
 	}
-      sprintf (query_buf, "UPDATE %s SET %s=%s;", classname, keyname,
+      sprintf (query_buf, "UPDATE [%s] SET [%s]=[%s];", classname, keyname,
 	       keyname);
 
       error = db_execute (query_buf, &query_result, &query_error);
@@ -4771,17 +4771,17 @@ do_redistribute_partitions_data (const char *classname, const char *keyname,
     {
       query_size = 0;
       query_size += 12;		/* 'INSERT INTO ' */
-      query_size += strlen (classname);
+      query_size += strlen (classname) + 2;	/* [classname] */
       query_size += 1;		/* ' ' */
       for (i = 0; i < promoted_count - 1; i++)
 	{
-	  /* add size for 'SELECT * FROM table_name UNION ALL ' */
+	  /* add size for 'SELECT * FROM [table_name] UNION ALL ' */
 	  query_size += 14;	/* 'SELECT * FROM ' */
-	  query_size += strlen (promoted[i]);
+	  query_size += strlen (promoted[i]) + 2;	/* [classname] */
 	  query_size += 11;	/* ' UNION ALL ' */
 	}
       query_size += 14;		/* 'SELECT * FROM ' */
-      query_size += strlen (promoted[promoted_count - 1]);
+      query_size += strlen (promoted[promoted_count - 1]) + 2;
       query_size += 1;		/* ';' */
 
       query_buf = (char *) malloc (query_size + 1);
@@ -4792,16 +4792,16 @@ do_redistribute_partitions_data (const char *classname, const char *keyname,
 	  return ER_FAILED;
 	}
       memset (query_buf, 0, query_size + 1);
-      sprintf (query_buf, "INSERT INTO %s ", classname);
+      sprintf (query_buf, "INSERT INTO [%s] ", classname);
       for (i = 0; i < promoted_count - 1; i++)
 	{
-	  strcat (query_buf, "SELECT * FROM ");
+	  strcat (query_buf, "SELECT * FROM [");
 	  strcat (query_buf, promoted[i]);
-	  strcat (query_buf, " UNION ALL ");
+	  strcat (query_buf, "] UNION ALL ");
 	}
-      strcat (query_buf, "SELECT * FROM ");
+      strcat (query_buf, "SELECT * FROM [");
       strcat (query_buf, promoted[promoted_count - 1]);
-      strcat (query_buf, ";");
+      strcat (query_buf, "];");
 
       error = db_execute (query_buf, &query_result, &query_error);
       if (error >= 0)
@@ -7808,7 +7808,8 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 		  if (cnstr->info.constraint.name)
 		    {
 		      constraint_name =
-			(char *) cnstr->info.constraint.name->info.name.original;
+			(char *) cnstr->info.constraint.name->info.name.
+			original;
 		    }
 
 		  constraint_name =
@@ -7886,7 +7887,8 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 		  if (cnstr->info.constraint.name)
 		    {
 		      constraint_name =
-			(char *) cnstr->info.constraint.name->info.name.original;
+			(char *) cnstr->info.constraint.name->info.name.
+			original;
 		    }
 
 		  constraint_name =
@@ -9853,7 +9855,8 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
 		  error = sm_add_constraint (class_mop,
 					     saved_constr->constraint_type,
 					     saved_constr->name,
-					     (const char **) saved_constr->att_names,
+					     (const char **) saved_constr->
+					     att_names,
 					     saved_constr->asc_desc,
 					     saved_constr->prefix_length,
 					     false,
@@ -14040,8 +14043,8 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
 	  (*stmt)->info.query.q.select.from->info.spec.entity_name = new_node;
 	}
       (void) parser_walk_tree (parser, where_predicate,
-			       pt_replace_names_index_expr, (void *) new_cls_name, 
-			       NULL, NULL);
+			       pt_replace_names_index_expr,
+			       (void *) new_cls_name, NULL, NULL);
     }
 
   *stmt = pt_resolve_names (parser, *stmt, &sc_info);
