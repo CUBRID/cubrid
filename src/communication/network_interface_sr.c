@@ -5981,8 +5981,8 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
   QUERY_ID query_id;
   QFILE_LIST_ID *q_result;
   int csserror, i, listid_length;
-  char *xasl_buffer;
-  int xasl_size;
+  char *xasl_stream;
+  int xasl_stream_size;
   char *ptr, *var_data, *list_data;
   DB_VALUE *dbvals;
   OR_ALIGNED_BUF (OR_INT_SIZE * 4 + OR_PTR_ALIGNED_SIZE) a_reply;
@@ -5996,8 +5996,9 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
 
   aligned_page_buf = PTR_ALIGN (page_buf, MAX_ALIGNMENT);
 
-  xasl_buffer = NULL;
-  xasl_size = 0;
+  xasl_stream = NULL;
+  xasl_stream_size = 0;
+
   var_data = NULL;
   var_datasize = 0;
   dbvals = NULL;
@@ -6007,7 +6008,8 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
   q_result = NULL;
 
   csserror = css_receive_data_from_client (thread_p->conn_entry, rid,
-					   &xasl_buffer, (int *) &xasl_size);
+					   &xasl_stream,
+					   (int *) &xasl_stream_size);
   if (csserror)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE,
@@ -6055,15 +6057,15 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
 
   /*
    * After this point, xqmgr_prepare_and_execute_query has assumed
-   * responsibility for freeing xasl_buffer...
+   * responsibility for freeing xasl_stream...
    */
   q_result =
-    xqmgr_prepare_and_execute_query (thread_p, xasl_buffer, xasl_size,
+    xqmgr_prepare_and_execute_query (thread_p, xasl_stream, xasl_stream_size,
 				     &query_id, var_count, dbvals, &flag,
 				     query_timeout);
-  if (xasl_buffer)
+  if (xasl_stream)
     {
-      free_and_init (xasl_buffer);	/* allocated at css_receive_data_from_client() */
+      free_and_init (xasl_stream);	/* allocated at css_receive_data_from_client() */
     }
 
   /*
@@ -6184,9 +6186,9 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
 				       NULL, dummy_plan_size);
 
 cleanup:
-  if (xasl_buffer)
+  if (xasl_stream)
     {
-      free_and_init (xasl_buffer);	/* allocated at css_receive_data_from_client() */
+      free_and_init (xasl_stream);	/* allocated at css_receive_data_from_client() */
     }
 
   if (var_data)

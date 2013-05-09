@@ -133,6 +133,7 @@
     (xasl->upd_del_class_cnt > 1					      \
      || (xasl->upd_del_class_cnt == 1 && xasl->scan_ptr != NULL))
 
+#if 0
 /* Note: the following macro is used just for replacement of a repetitive
  * text in order to improve the readability.
  */
@@ -142,7 +143,7 @@
 #define pthread_mutex_destroy(a)
 #define pthread_mutex_lock(a)	0
 #define pthread_mutex_unlock(a)
-static int rv;
+#endif
 #endif
 
 #define QEXEC_INITIALIZE_XASL_CACHE_CLO(c, e) \
@@ -13562,9 +13563,6 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
   XASL_STATE xasl_state;
   struct timeb tloc;
   struct tm *c_time_struct, tm_val;
-#if defined(SERVER_MODE)
-  int rv;
-#endif
   int tran_index;
 #if defined(CUBRID_DEBUG)
   static int trace = -1;
@@ -21808,12 +21806,15 @@ qexec_free_filter_pred_cache_clo (THREAD_ENTRY * thread_p,
   /* free XASL tree, clo->xasl_buf_info was allocated in global heap */
   if (clo->xasl)
     {
-      PRED_EXPR_WITH_CONTEXT *pred_filter =
-	(PRED_EXPR_WITH_CONTEXT *) clo->xasl;
+      PRED_EXPR_WITH_CONTEXT *pred_filter;
+
+      pred_filter = (PRED_EXPR_WITH_CONTEXT *) clo->xasl;
       if (pred_filter)
 	{
 	  /* All regu variables from pred expression are cleared. */
-	  HL_HEAPID curr_heap_id = db_change_private_heap (NULL, 0);
+	  HL_HEAPID curr_heap_id;
+
+	  curr_heap_id = db_change_private_heap (NULL, 0);
 	  qexec_clear_pred_context (NULL, pred_filter, true);
 	  db_change_private_heap (NULL, curr_heap_id);
 	}
@@ -21824,6 +21825,7 @@ qexec_free_filter_pred_cache_clo (THREAD_ENTRY * thread_p,
       save_heapid = db_change_private_heap (thread_p, 0);
 
       stx_free_additional_buff (thread_p, clo->xasl_buf_info);
+      stx_free_xasl_unpack_info (clo->xasl_buf_info);
       db_private_free_and_init (thread_p, clo->xasl_buf_info);
 
       (void) db_change_private_heap (thread_p, save_heapid);

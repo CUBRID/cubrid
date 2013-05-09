@@ -2138,13 +2138,8 @@ sentry_to_qentry (const SESSION_QUERY_ENTRY * sentry_p,
   qentry_p->query_flag = sentry_p->query_flag;
   qentry_p->save_vpid.pageid = NULL_PAGEID;
   qentry_p->save_vpid.volid = NULL_VOLID;
-  qentry_p->xasl_buf_info = NULL;
   XASL_ID_SET_NULL (&qentry_p->xasl_id);
   qentry_p->xasl_ent = NULL;
-  qentry_p->xasl = NULL;
-  qentry_p->xasl_data = NULL;
-  qentry_p->xasl_buf_info = NULL;
-  qentry_p->xasl_size = 0;
   qentry_p->er_msg = NULL;
   qentry_p->is_holdable = true;
   qentry_p->repeat = false;

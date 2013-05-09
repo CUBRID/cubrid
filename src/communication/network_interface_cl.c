@@ -7802,8 +7802,8 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
  *
  * return:
  *
- *   xasl_buffer(in):
- *   xasl_size(in):
+ *   xasl_stream(in):
+ *   xasl_stream_size(in):
  *   query_id(in):
  *   dbval_cnt(in):
  *   dbval_ptr(in):
@@ -7813,7 +7813,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
  * NOTE:
  */
 QFILE_LIST_ID *
-qmgr_prepare_and_execute_query (char *xasl_buffer, int xasl_size,
+qmgr_prepare_and_execute_query (char *xasl_stream, int xasl_stream_size,
 				QUERY_ID * query_idp, int dbval_cnt,
 				DB_VALUE * dbval_ptr, QUERY_FLAG flag,
 				int query_timeout)
@@ -7877,7 +7877,7 @@ qmgr_prepare_and_execute_query (char *xasl_buffer, int xasl_size,
 						OR_ALIGNED_BUF_SIZE
 						(a_request), reply,
 						OR_ALIGNED_BUF_SIZE (a_reply),
-						xasl_buffer, xasl_size,
+						xasl_stream, xasl_stream_size,
 						senddata, senddata_size,
 						&replydata,
 						&replydata_size_listid,
@@ -7919,7 +7919,8 @@ qmgr_prepare_and_execute_query (char *xasl_buffer, int xasl_size,
 
   ENTER_SERVER ();
 
-  regu_result = xqmgr_prepare_and_execute_query (NULL, xasl_buffer, xasl_size,
+  regu_result = xqmgr_prepare_and_execute_query (NULL, xasl_stream,
+						 xasl_stream_size,
 						 query_idp, dbval_cnt,
 						 dbval_ptr, &flag,
 						 query_timeout);

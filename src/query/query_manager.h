@@ -147,10 +147,6 @@ struct qmgr_query_entry
   QUERY_ID query_id;		/* unique query identifier */
   XASL_ID xasl_id;		/* XASL tree storage identifier */
   XASL_CACHE_ENTRY *xasl_ent;	/* XASL cache entry for this query */
-  XASL_NODE *xasl;		/* XASL tree root pointer */
-  char *xasl_data;		/* XASL tree memory data area */
-  void *xasl_buf_info;		/* XASL tree buffer info */
-  int xasl_size;		/* XASL tree memory data area size */
   int repeat;			/* repetitive query ? */
   QFILE_LIST_ID *list_id;	/* result list file identifier */
   QFILE_LIST_CACHE_ENTRY *list_ent;	/* list cache entry for this query */

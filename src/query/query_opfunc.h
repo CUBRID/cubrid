@@ -252,7 +252,7 @@ extern int query_execute (const XASL_ID * xasl_id, QUERY_ID * query_idp,
 			  CACHE_TIME * clt_cache_time,
 			  CACHE_TIME * srv_cache_time);
 extern int query_prepare_and_execute (char *stream,
-				      int size,
+				      int stream_size,
 				      QUERY_ID * query_id,
 				      int var_cnt,
 				      DB_VALUE * varptr,

@@ -398,7 +398,7 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, XASL_NODE ** xasl_tree,
 
   /* restore XASL tree from body data of the stream buffer */
   xasl = stx_restore_xasl_node (thread_p, xasl_stream + offset);
-  if (!xasl)
+  if (xasl == NULL)
     {
       stx_free_additional_buff (thread_p, unpack_info_p);
       stx_free_xasl_unpack_info (unpack_info_p);
@@ -427,6 +427,7 @@ end:
 #if defined(SERVER_MODE)
   stx_set_xasl_unpack_info_ptr (thread_p, NULL);
 #endif /* SERVER_MODE */
+
   return stx_get_xasl_errcode (thread_p);
 }
 
@@ -475,7 +476,7 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p,
 
   /* restore XASL tree from body data of the stream buffer */
   pwc = stx_restore_filter_pred_node (thread_p, pred_stream + offset);
-  if (!pwc)
+  if (pwc == NULL)
     {
       stx_free_additional_buff (thread_p, unpack_info_p);
       stx_free_xasl_unpack_info (unpack_info_p);
@@ -493,6 +494,7 @@ end:
 #if defined(SERVER_MODE)
   stx_set_xasl_unpack_info_ptr (thread_p, NULL);
 #endif /* SERVER_MODE */
+
   return stx_get_xasl_errcode (thread_p);
 }
 
@@ -534,7 +536,7 @@ stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED ** xasl,
 
   /* restore XASL tree from body data of the stream buffer */
   p_xasl = stx_restore_func_pred (thread_p, xasl_stream + offset);
-  if (!p_xasl)
+  if (p_xasl == NULL)
     {
       stx_free_additional_buff (thread_p, unpack_info_p);
       stx_free_xasl_unpack_info (unpack_info_p);
@@ -552,6 +554,7 @@ end:
 #if defined(SERVER_MODE)
   stx_set_xasl_unpack_info_ptr (thread_p, NULL);
 #endif /* SERVER_MODE */
+
   return stx_get_xasl_errcode (thread_p);
 }
 

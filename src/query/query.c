@@ -139,7 +139,7 @@ query_execute (const XASL_ID * xasl_id, QUERY_ID * query_idp,
  * query_prepare_and_execute () -
  *   return:
  *   stream(in) : packed XASL tree
- *   size(in)   : size of stream
+ *   stream_size(in)   : size of stream
  *   query_id(in)       :
  *   var_cnt(in)        : number of input values for positional variables
  *   varptr(in) : pointer to the array of input values
@@ -153,7 +153,7 @@ query_execute (const XASL_ID * xasl_id, QUERY_ID * query_idp,
  *       calling regu_free_listid.
  */
 int
-query_prepare_and_execute (char *stream, int size, QUERY_ID * query_id,
+query_prepare_and_execute (char *stream, int stream_size, QUERY_ID * query_id,
 			   int var_cnt, DB_VALUE * varptr,
 			   QFILE_LIST_ID ** result, QUERY_FLAG flag)
 {
@@ -167,7 +167,8 @@ query_prepare_and_execute (char *stream, int size, QUERY_ID * query_id,
   else
     {
       query_timeout = tran_get_query_timeout ();
-      list_idptr = qmgr_prepare_and_execute_query (stream, size, query_id,
+      list_idptr = qmgr_prepare_and_execute_query (stream, stream_size,
+						   query_id,
 						   var_cnt, varptr, flag,
 						   query_timeout);
       if (list_idptr == NULL)
