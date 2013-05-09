@@ -543,7 +543,7 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p)
 
   query_p = qmgr_Query_table.free_query_entry_list_p;
 
-  if (query_p != NULL)
+  if (query_p)
     {
       qmgr_Query_table.free_query_entry_list_p = query_p->next_free;
       qmgr_Query_table.free_query_entry_count--;
@@ -609,13 +609,13 @@ static void
 qmgr_free_query_entry (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * query_p)
 {
 #if defined (SERVER_MODE)
-  if (query_p->er_msg != NULL)
+  if (query_p->er_msg)
     {
       free_and_init (query_p->er_msg);
     }
 #endif
 
-  if (query_p->list_id != NULL)
+  if (query_p->list_id)
     {
       QFILE_FREE_AND_INIT_LIST_ID (query_p->list_id);
     }
@@ -652,19 +652,19 @@ qmgr_free_query_entry_list (THREAD_ENTRY * thread_p,
       return;
     }
 
-  while (query_p != NULL)
+  while (query_p)
     {
       tmp_query_p = query_p;
       query_p = query_p->next;
 
 #if defined (SERVER_MODE)
-      if (tmp_query_p->er_msg != NULL)
+      if (tmp_query_p->er_msg)
 	{
 	  free_and_init (tmp_query_p->er_msg);
 	}
 #endif
 
-      if (tmp_query_p->list_id != NULL)
+      if (tmp_query_p->list_id)
 	{
 	  QFILE_FREE_AND_INIT_LIST_ID (tmp_query_p->list_id);
 	}
@@ -1054,7 +1054,7 @@ qmgr_dump_query_entry (QMGR_QUERY_ENTRY * query_p)
 	       list_id_p->last_offset, list_id_p->lasttpl_len);
     }
 
-  if (query_p->temp_vfid != NULL)
+  if (query_p->temp_vfid)
     {
       temp_vfid_p = query_p->temp_vfid;
 
@@ -1267,7 +1267,7 @@ qmgr_finalize (THREAD_ENTRY * thread_p)
 	{
 	  query_p = &qmgr_Query_table.query_entry_array_p[i][j];
 
-	  if (query_p != NULL && query_p->list_id != NULL)
+	  if (query_p && query_p->list_id)
 	    {
 	      QFILE_FREE_AND_INIT_LIST_ID (query_p->list_id);
 	    }
@@ -2034,18 +2034,28 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
 	{
 #if defined (SERVER_MODE)
 	  /* start the query in asynchronous mode and get temporary QFILE_LIST_ID */
-	  list_id_p = qmgr_process_async_select (thread_p, cache_clone_p,
-						 query_p, dbval_count,
-						 dbvals_p);
-	  if (list_id_p == NULL)
+	  query_p->list_id =
+	    qmgr_process_async_select (thread_p, cache_clone_p, query_p,
+				       dbval_count, dbvals_p);
+	  if (query_p->list_id == NULL)
 	    {
 	      /* error while starting async query */
 	      goto error;
 	    }
+
+	  /* allocate new QFILE_LIST_ID to be returned as the result and copy from
+	     the query result; the caller is responsible to free this */
+	  list_id_p = qfile_clone_list_id (query_p->list_id, false);
+	  if (list_id_p == NULL)
+	    {
+	      goto error;
+	    }
+	  list_id_p->last_pgptr = NULL;
 #else
 	  /* error - cannot run a asynchronous query in stand-alone mode */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_NOT_IN_STANDALONE, 1, "asynchronous query");
+	  list_id_p = NULL;
 #endif
 	}
 
@@ -2370,17 +2380,8 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
 	}
 
       /* copy and return query result file identifier */
-      list_id_p = (QFILE_LIST_ID *) malloc (sizeof (QFILE_LIST_ID));
+      list_id_p = qfile_clone_list_id (query_p->list_id, true);
       if (list_id_p == NULL)
-	{
-	  qmgr_check_waiter_and_wakeup (tran_entry_p, thread_p,
-					query_p->propagate_interrupt);
-	  goto error;
-	}
-
-      QFILE_CLEAR_LIST_ID (list_id_p);
-
-      if (qfile_copy_list_id (list_id_p, query_p->list_id, true) != NO_ERROR)
 	{
 	  qmgr_check_waiter_and_wakeup (tran_entry_p, thread_p,
 					query_p->propagate_interrupt);
@@ -2402,15 +2403,23 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
   else
     {
 #if defined (SERVER_MODE)
-      list_id_p =
+      query_p->list_id =
 	qmgr_process_async_select (thread_p, NULL, query_p, dbval_count,
 				   dbval_p);
-      if (list_id_p == NULL)
+      if (query_p->list_id == NULL)
 	{
 	  goto async_error;
 	}
       else
 	{
+	  /* copy and return query result file identifier */
+	  list_id_p = qfile_clone_list_id (query_p->list_id, true);
+	  if (list_id_p == NULL)
+	    {
+	      goto async_error;
+	    }
+	  list_id_p->last_pgptr = NULL;
+
 	  *query_id_p = query_p->query_id;
 	}
 #else
@@ -2455,7 +2464,7 @@ async_error:
   *query_id_p = 0;
   if (list_id_p)
     {
-      free_and_init (list_id_p);
+      QFILE_FREE_AND_INIT_LIST_ID (list_id_p);
     }
 
   if (DO_NOT_COLLECT_EXEC_STATS (*flag_p) && saved_is_stats_on == true)
@@ -2553,7 +2562,7 @@ xqmgr_end_query (THREAD_ENTRY * thread_p, QUERY_ID query_id)
     }
 
   /* destroy query result list file */
-  if (query_p->list_id != NULL)
+  if (query_p->list_id)
     {
       QFILE_FREE_AND_INIT_LIST_ID (query_p->list_id);
 
@@ -2867,7 +2876,7 @@ again:
 	  q->temp_vfid = NULL;
 	}
       /* destroy the query result if not destroyed yet */
-      if (q->list_id != NULL)
+      if (q->list_id)
 	{
 	  qfile_close_list (thread_p, q->list_id);
 	  QFILE_FREE_AND_INIT_LIST_ID (q->list_id);
@@ -4217,16 +4226,24 @@ qmgr_execute_async_select (THREAD_ENTRY * thread_p,
 
   qmgr_check_active_query_and_wait (thread_p, tran_entry_p, thread_p,
 				    ASYNC_EXEC);
+
+  /* query_p->list_id is alloced at xqmgr{_prepare_and}_execute_query 
+   */
   if (query_p->interrupt)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
       qmgr_set_query_error (thread_p, query_p->query_id);
-      query_p->list_id = qexec_get_xasl_list_id (xasl_p);
     }
   else
     {
-      query_p->list_id = qexec_execute_query (thread_p, xasl_p, dbval_count,
-					      dbval_p, query_id);
+      QFILE_LIST_ID *list_id_p;
+
+      list_id_p = qexec_execute_query (thread_p, xasl_p, dbval_count,
+				       dbval_p, query_id);
+      if (list_id_p)
+	{
+	  QFILE_FREE_AND_INIT_LIST_ID (list_id_p);	/* OK */
+	}
     }
 
   if (dbval_p != NULL)
@@ -4384,7 +4401,7 @@ qmgr_get_area_error_async (THREAD_ENTRY * thread_p, int *length_p,
   ptr = area;
 
 #if 0
-  if (query_p->list_id != NULL)
+  if (query_p->list_id)
     {
       last_pgptr = query_p->list_id->last_pgptr;
       if (last_pgptr)
@@ -4878,6 +4895,8 @@ qmgr_process_async_select (THREAD_ENTRY * thread_p,
   CSS_JOB_ENTRY *job_p;
   QMGR_QUERY_TYPE query_type;
 
+  assert (query_p->list_id == NULL);
+
   xasl_state.vd.dbval_cnt = dbval_count;
   xasl_state.vd.dbval_ptr = (DB_VALUE *) dbval_p;
   xasl_state.vd.xasl_state = &xasl_state;
@@ -5022,29 +5041,27 @@ qmgr_process_async_select (THREAD_ENTRY * thread_p,
 
       (void) qexec_start_mainblock_iterations (thread_p, xasl_p, &xasl_state);
 
-      /* set 'list_id' of 'query_entry' to the 'list_id' of 'xasl_node' */
-      query_p->list_id = xasl_p->list_id;
-      if (query_p->list_id == NULL)
+      if (xasl_p->list_id == NULL)
 	{
 	  free_and_init (tmp_list_p);
 	  return (QFILE_LIST_ID *) NULL;
 	}
-      query_p->list_id->query_id = query_p->query_id;
+      xasl_p->list_id->query_id = query_p->query_id;
 
       /*
        * This is still a streaming query, but we need a real first page.
        * qfile_get_first_page() can return ER_FAILED, so should check it here.
        */
-      if (qfile_get_first_page (thread_p, query_p->list_id) != NO_ERROR)
+      if (qfile_get_first_page (thread_p, xasl_p->list_id) != NO_ERROR)
 	{
 	  free_and_init (tmp_list_p);
 	  return (QFILE_LIST_ID *) NULL;
 	}
 
       /* copy and return query result file identifier */
-      if (qfile_copy_list_id (tmp_list_p, query_p->list_id, true) != NO_ERROR)
+      if (qfile_copy_list_id (tmp_list_p, xasl_p->list_id, true) != NO_ERROR)
 	{
-	  free_and_init (tmp_list_p);
+	  QFILE_FREE_AND_INIT_LIST_ID (tmp_list_p);
 	  return (QFILE_LIST_ID *) NULL;
 	}
     }
@@ -5077,7 +5094,7 @@ qmgr_process_async_select (THREAD_ENTRY * thread_p,
       if (job_p == NULL)
 	{
 	  free_and_init (async_query_p);
-	  free_and_init (tmp_list_p);
+	  QFILE_FREE_AND_INIT_LIST_ID (tmp_list_p);
 	  return (QFILE_LIST_ID *) NULL;
 	}
 
@@ -5087,7 +5104,7 @@ qmgr_process_async_select (THREAD_ENTRY * thread_p,
     }
   else
     {
-      free_and_init (tmp_list_p);
+      QFILE_FREE_AND_INIT_LIST_ID (tmp_list_p);
       return (QFILE_LIST_ID *) NULL;
     }
 }

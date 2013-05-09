@@ -13571,7 +13571,6 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
   static FILE *fp = NULL;
   struct timeval s_tv, e_tv;
 #endif /* CUBRID_DEBUG */
-  QMGR_QUERY_ENTRY *query_entryp;
   struct drand48_data *rand_buf_p;
 
 #if defined(CUBRID_DEBUG)
@@ -13790,15 +13789,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
 		  qfile_close_list (thread_p, xasl->list_id);
 		}
 
-	      query_entryp = qmgr_get_query_entry (thread_p, query_id,
-						   tran_index);
-	      if (query_entryp != NULL)
-		{
-		  rv = pthread_mutex_lock (&query_entryp->lock);
-		  list_id = qexec_get_xasl_list_id (xasl);
-		  query_entryp->list_id = list_id;
-		  pthread_mutex_unlock (&query_entryp->lock);
-		}
+	      list_id = qexec_get_xasl_list_id (xasl);
 
 	      (void) qexec_clear_xasl (thread_p, xasl, true);
 
@@ -13816,16 +13807,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
     }
   while (re_execute);
 
-  /* get query result list file identifier */
-  query_entryp = qmgr_get_query_entry (thread_p, query_id, tran_index);
-
-  if (query_entryp != NULL)
-    {
-      rv = pthread_mutex_lock (&query_entryp->lock);
-      list_id = qexec_get_xasl_list_id (xasl);
-      query_entryp->list_id = list_id;
-      pthread_mutex_unlock (&query_entryp->lock);
-    }
+  list_id = qexec_get_xasl_list_id (xasl);
 
   /* set last_pgptr->next_vpid to NULL */
   if (list_id && list_id->last_pgptr != NULL)
