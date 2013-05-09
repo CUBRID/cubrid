@@ -111,12 +111,12 @@ typedef struct wait_queue_search_arg
 
 #define NUM_NORMAL_CLIENTS (prm_get_integer_value(PRM_ID_CSS_MAX_CLIENTS))
 #define NUM_MASTER_CHANNEL 1
-#define NUM_RESERVED_ADMIN_CHANNEL  1
 
 static const int CSS_MAX_CLIENT_ID = INT_MAX - 1;
 
 static int css_Client_id = 0;
 static pthread_mutex_t css_Client_id_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t css_Conn_rule_lock = PTHREAD_MUTEX_INITIALIZER;
 static CSS_CONN_ENTRY *css_Free_conn_anchor = NULL;
 static int css_Num_free_conn = 0;
 static int css_Num_max_conn = 101;	/* default max_clients + 1 for conn with master */
@@ -209,6 +209,11 @@ static void css_queue_packet (CSS_CONN_ENTRY * conn, int type,
 static int css_remove_and_free_queue_entry (void *data, void *arg);
 static int css_remove_and_free_wait_queue_entry (void *data, void *arg);
 
+static int css_increment_num_conn_internal (CSS_CONN_RULE_INFO *
+					    conn_rule_info);
+static void css_decrement_num_conn_internal (CSS_CONN_RULE_INFO *
+					     conn_rule_info);
+
 /*
  * get_next_client_id() -
  *   return: client id
@@ -298,6 +303,7 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->session_id = DB_EMPTY_SESSION;
 #if defined(SERVER_MODE)
   conn->session_p = NULL;
+  conn->client_type = BOOT_CLIENT_UNKNOWN;
 #endif
 
   err = css_initialize_list (&conn->request_queue, 0);
@@ -425,8 +431,9 @@ css_init_conn_list (void)
   int i, err;
   CSS_CONN_ENTRY *conn;
 
-  css_Num_max_conn = (NUM_NORMAL_CLIENTS + NUM_MASTER_CHANNEL
-		      + NUM_RESERVED_ADMIN_CHANNEL);
+  css_init_conn_rules ();
+
+  css_Num_max_conn = css_get_max_conn () + NUM_MASTER_CHANNEL;
 
   if (css_Conn_array != NULL)
     {
@@ -434,8 +441,8 @@ css_init_conn_list (void)
     }
 
   /*
-   * allocate NUM_NORMAL_CLIENTS + NUM_MASTER_CHANNEL
-   * + NUM_RESERVED_ADMIN_CHANNEL conn entries
+   * allocate NUM_MASTER_CHANNEL + the total number of
+   *  conn entries
    */
   css_Conn_array = (CSS_CONN_ENTRY *)
     malloc (sizeof (CSS_CONN_ENTRY) * (css_Num_max_conn));
@@ -637,6 +644,202 @@ css_get_num_free_conn (void)
 }
 
 /*
+ * css_increment_num_conn_internal() - increments conn counter
+ *   based on client type
+ *   return: error code
+ *   client_type(in): a type of a client trying
+ *   to release the connection
+ */
+static int
+css_increment_num_conn_internal (CSS_CONN_RULE_INFO * conn_rule_info)
+{
+  int error = NO_ERROR;
+
+  switch (conn_rule_info->rule)
+    {
+    case CR_NORMAL_ONLY:
+      if (conn_rule_info->num_curr_conn == conn_rule_info->max_num_conn)
+	{
+	  error = ER_CSS_CLIENTS_EXCEEDED;
+	}
+      else
+	{
+	  conn_rule_info->num_curr_conn++;
+	}
+      break;
+    case CR_NORMAL_FIRST:
+      /* tries to use a normal conn first */
+      if (css_increment_num_conn_internal
+	  (&css_Conn_rules[CSS_CR_NORMAL_ONLY_IDX]) != NO_ERROR)
+	{
+	  /* if normal conns are all occupied, uses a reserved conn */
+	  if (conn_rule_info->num_curr_conn == conn_rule_info->max_num_conn)
+	    {
+	      error = ER_CSS_CLIENTS_EXCEEDED;
+	    }
+	  else
+	    {
+	      conn_rule_info->num_curr_conn++;
+	      assert (conn_rule_info->num_curr_conn <=
+		      conn_rule_info->max_num_conn);
+	    }
+	}
+      break;
+    case CR_RESERVED_FIRST:
+      /* tries to use a reserved conn first */
+      if (conn_rule_info->num_curr_conn < conn_rule_info->max_num_conn)
+	{
+	  conn_rule_info->num_curr_conn++;
+	}
+      else			/* uses a normal conn if no reserved conn is available */
+	{
+	  if (css_increment_num_conn_internal
+	      (&css_Conn_rules[CSS_CR_NORMAL_ONLY_IDX]) != NO_ERROR)
+	    {
+	      error = ER_CSS_CLIENTS_EXCEEDED;
+	    }
+	  else
+	    {
+	      /* also increments its own conn counter */
+	      conn_rule_info->num_curr_conn++;
+	      assert (conn_rule_info->num_curr_conn <=
+		      (css_Conn_rules[CSS_CR_NORMAL_ONLY_IDX].max_num_conn +
+		       conn_rule_info->max_num_conn));
+	    }
+	}
+      break;
+    default:
+      assert (false);
+      break;
+    }
+
+  return error;
+}
+
+/*
+ * css_decrement_num_conn_internal() - decrements conn counter
+ *   based on client type
+ *   return:
+ *   client_type(in): a type of a client trying
+ *   to release the connection
+ */
+static void
+css_decrement_num_conn_internal (CSS_CONN_RULE_INFO * conn_rule_info)
+{
+  int i;
+
+  switch (conn_rule_info->rule)
+    {
+    case CR_NORMAL_ONLY:
+      /* When a normal client decrements the counter, it should
+       * first check that other normal-first-reserved-last clients
+       * need to take the released connection first.
+       */
+      for (i = 1; i < css_Conn_rules_size; i++)
+	{
+	  if (css_Conn_rules[i].rule == CR_NORMAL_FIRST
+	      && css_Conn_rules[i].num_curr_conn > 0)
+	    {
+	      css_Conn_rules[i].num_curr_conn--;
+
+	      return;
+	    }
+	}
+      conn_rule_info->num_curr_conn--;
+      break;
+
+    case CR_NORMAL_FIRST:
+      /* decrements reserved conn counter first if exists */
+      if (conn_rule_info->num_curr_conn > 0)
+	{
+	  conn_rule_info->num_curr_conn--;
+	}
+      else			/* decrements normal conn counter if no reserved conn is in use */
+	{
+	  css_decrement_num_conn_internal (&css_Conn_rules
+					   [CSS_CR_NORMAL_ONLY_IDX]);
+	}
+      break;
+
+    case CR_RESERVED_FIRST:
+      /* decrements normal conn counter if exists */
+      if (conn_rule_info->num_curr_conn > conn_rule_info->max_num_conn)
+	{
+	  css_decrement_num_conn_internal (&css_Conn_rules
+					   [CSS_CR_NORMAL_ONLY_IDX]);
+	}
+      /* also decrements its own conn counter */
+      conn_rule_info->num_curr_conn--;
+      break;
+
+    default:
+      assert (false);
+      break;
+    }
+
+  assert (conn_rule_info->num_curr_conn >= 0);
+
+  return;
+}
+
+/*
+ * css_increment_num_conn() - increment a connection counter
+ * and check if a client can take its connection
+ *   return: error code
+ *   client_type(in): a type of a client trying
+ *   to take the connection
+ */
+int
+css_increment_num_conn (BOOT_CLIENT_TYPE client_type)
+{
+  int i;
+  int error = NO_ERROR;
+
+  for (i = 0; i < css_Conn_rules_size; i++)
+    {
+      if (css_Conn_rules[i].check_client_type_fn (client_type))
+	{
+	  pthread_mutex_lock (&css_Conn_rule_lock);
+	  error = css_increment_num_conn_internal (&css_Conn_rules[i]);
+	  pthread_mutex_unlock (&css_Conn_rule_lock);
+	  break;
+	}
+    }
+
+  return error;
+}
+
+/*
+ * css_decrement_num_conn() - decrement a connection counter
+ *   return:
+ *   client_type(in): a type of a client trying
+ *   to release the connection
+ */
+void
+css_decrement_num_conn (BOOT_CLIENT_TYPE client_type)
+{
+  int i;
+
+  if (client_type == BOOT_CLIENT_UNKNOWN)
+    {
+      return;
+    }
+
+  for (i = 0; i < css_Conn_rules_size; i++)
+    {
+      if (css_Conn_rules[i].check_client_type_fn (client_type))
+	{
+	  pthread_mutex_lock (&css_Conn_rule_lock);
+	  css_decrement_num_conn_internal (&css_Conn_rules[i]);
+	  pthread_mutex_unlock (&css_Conn_rule_lock);
+	  break;
+	}
+    }
+
+  return;
+}
+
+/*
  * css_free_conn() - destroy all connection related structures, and free conn
  *                   entry, delete from css_Active_conn_anchor list
  *   return: void
@@ -677,6 +880,7 @@ css_free_conn (CSS_CONN_ENTRY * conn)
 
   css_shutdown_conn (conn);
   css_dealloc_conn (conn);
+  css_decrement_num_conn (conn->client_type);
 
   csect_exit_critical_section (&css_Active_conn_csect);
 }

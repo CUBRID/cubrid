@@ -47,6 +47,7 @@
 #include "critical_section.h"
 #endif
 #include "thread.h"
+#include "boot.h"
 
 /*
  * These are the types of top-level commands sent to the master server
@@ -423,6 +424,7 @@ struct css_conn_entry
 
 #if defined(SERVER_MODE)
   int idx;			/* connection index */
+  BOOT_CLIENT_TYPE client_type;
   CSS_CRITICAL_SECTION csect;
   bool stop_talk;		/* block and stop this connection */
   unsigned short stop_phase;

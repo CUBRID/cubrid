@@ -306,7 +306,7 @@ css_init_job_queue (void)
   CSS_JOB_ENTRY *job_entry_p;
   int num_job_list;
 
-  num_job_list = NUM_NORMAL_TRANS + NUM_RESERVED_ADMIN_TRANS;
+  num_job_list = NUM_NON_SYSTEM_TRANS;
   for (i = 0; i < CSS_NUM_JOB_QUEUE; i++)
     {
 #if defined(WINDOWS)

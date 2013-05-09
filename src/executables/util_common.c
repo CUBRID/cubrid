@@ -414,6 +414,38 @@ util_is_localhost (char *host)
   return false;
 }
 
+/*
+ * util_get_num_of_ha_nodes - counter the number of nodes
+ *      in either ha_node_list or ha_replica_list
+ *    return: the number of nodes in a node list
+ *    node_list(in): ha_node_list or ha_replica_list
+ */
+int
+util_get_num_of_ha_nodes (const char *node_list)
+{
+  char **ha_node_list_pp = NULL;
+  int num_of_nodes = 0;
+
+  if (node_list == NULL)
+    {
+      return 0;
+    }
+  if ((ha_node_list_pp = util_split_ha_node (node_list)) != NULL)
+    {
+      for (num_of_nodes = 0; ha_node_list_pp[num_of_nodes] != NULL;)
+	{
+	  num_of_nodes++;
+	}
+    }
+
+  if (ha_node_list_pp)
+    {
+      util_free_string_array (ha_node_list_pp);
+    }
+
+  return num_of_nodes;
+}
+
 static char **
 util_split_ha_node (const char *str)
 {

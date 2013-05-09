@@ -334,18 +334,17 @@ server_ping_with_handshake (THREAD_ENTRY * thread_p, unsigned int rid,
       status = CSS_UNPLANNED_SHUTDOWN;
     }
 
-  /*
-   * if I'm going to exhaust the last available connection,
-   * I must be an admin client.
-   * Only an admin client can occupy the reserved admin connection.
-   */
-  if (css_get_num_free_conn () < NUM_RESERVED_ADMIN_TRANS
-      && !BOOT_ADMIN_CLIENT_TYPE (client_type))
+  /* update connection counters for reserved connections */
+  if (css_increment_num_conn (client_type) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_CSS_CLIENTS_EXCEEDED, 1, NUM_NORMAL_TRANS);
       return_error_to_client (thread_p, rid);
       status = CSS_UNPLANNED_SHUTDOWN;
+    }
+  else
+    {
+      thread_p->conn_entry->client_type = client_type;
     }
 
   reply_size = or_packed_string_length (server_release, &strlen1)

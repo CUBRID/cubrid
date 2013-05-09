@@ -32,6 +32,7 @@
 typedef enum boot_client_type BOOT_CLIENT_TYPE;
 enum boot_client_type
 {
+  BOOT_CLIENT_UNKNOWN = -1,
   BOOT_CLIENT_SYSTEM_INTERNAL = 0,
   BOOT_CLIENT_DEFAULT = 1,
   BOOT_CLIENT_CSQL = 2,

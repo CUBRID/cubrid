@@ -345,8 +345,7 @@ thread_initialize_manager (void)
       free_and_init (thread_Manager.thread_array);
     }
 
-  thread_Manager.num_workers = (NUM_NORMAL_TRANS
-				+ NUM_RESERVED_ADMIN_TRANS) * 2;
+  thread_Manager.num_workers = NUM_NON_SYSTEM_TRANS * 2;
   thread_Manager.num_daemons = PREDEFINED_DAEMON_THREAD_NUM;
   thread_Manager.num_total = (thread_Manager.num_workers
 			      + thread_Manager.num_daemons +

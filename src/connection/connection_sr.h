@@ -66,6 +66,10 @@ extern void css_insert_into_active_conn_list (CSS_CONN_ENTRY * conn);
 extern void css_dealloc_conn_csect (CSS_CONN_ENTRY * conn);
 
 extern int css_get_num_free_conn (void);
+
+extern int css_increment_num_conn (BOOT_CLIENT_TYPE client_type);
+extern void css_decrement_num_conn (BOOT_CLIENT_TYPE client_type);
+
 extern void css_free_conn (CSS_CONN_ENTRY * conn);
 extern void css_print_conn_entry_info (CSS_CONN_ENTRY * p);
 extern void css_print_conn_list (void);
