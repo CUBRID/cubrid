@@ -2369,18 +2369,18 @@ psize_check_worker (T_APPL_SERVER_INFO * as_info_p, int br_index,
 static void
 check_proxy_log (char *br_name, T_PROXY_INFO * proxy_info_p)
 {
-  char log_filename[PATH_MAX];
+  char log_filepath[PATH_MAX];
 
   if (proxy_info_p->cur_proxy_log_mode != PROXY_LOG_MODE_NONE)
     {
-      snprintf (log_filename, sizeof (log_filename), "%s%s_%d.log",
+      snprintf (log_filepath, sizeof (log_filepath), "%s/%s_%d.log",
 		shm_appl->proxy_log_dir, br_name, proxy_info_p->proxy_id + 1);
 
-      if (access (log_filename, F_OK) < 0)
+      if (access (log_filepath, F_OK) < 0)
 	{
 	  FILE *fp;
 
-	  fp = fopen (log_filename, "a");
+	  fp = fopen (log_filepath, "a");
 	  if (fp != NULL)
 	    {
 	      fclose (fp);

@@ -32,7 +32,7 @@
 
 #define PROXY_LOG_BUFFER_SIZE 	(8192)
 
-static char *make_proxy_log_filename (char *filename_buf,
+static char *make_proxy_log_filename (char *filepath_buf,
 				      size_t buf_size, const char *br_name,
 				      int proxy_index);
 static void proxy_log_backup (void);
@@ -69,19 +69,19 @@ static const char *proxy_log_level_str[] = {
 };
 
 static char *
-make_proxy_log_filename (char *filename_buf,
+make_proxy_log_filename (char *filepath_buf,
 			 size_t buf_size, const char *br_name,
 			 int proxy_index)
 {
   char dirname[PATH_MAX];
 
-  assert (filename_buf != NULL);
+  assert (filepath_buf != NULL);
 
   strcpy (dirname, shm_as_p->proxy_log_dir);
 
-  snprintf (filename_buf, buf_size, "%s%s_%d.log", dirname, br_name,
+  snprintf (filepath_buf, buf_size, "%s/%s_%d.log", dirname, br_name,
 	    proxy_index + 1);
-  return filename_buf;
+  return filepath_buf;
 }
 
 void
