@@ -1181,7 +1181,9 @@ $ LOADDB
 1112 Un caracter nu a putut fi convertit din '%1$s' în '%2$s'.
 1113 Indexul elementului este în afara domeniului.
 1114 Argumentul '%s' este în afara domeniului.
-1115 Ultima eroare
+1115 Started to update statistics (class "%1$s", oid : %2$d|%3$d|%4$d).
+1116 Finished to update statistics (class "%1$s", oid : %2$d|%3$d|%4$d, error code : %5$d).
+1117 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %d):

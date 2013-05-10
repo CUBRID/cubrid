@@ -1181,7 +1181,9 @@ $ LOADDB
 1112 A character could not be converted from '%1$s' to '%2$s'.
 1113 Element index out of range.
 1114 Argument '%s' is out of range.
-1115 Last Error
+1115 Started to update statistics (class "%1$s", oid : %2$d|%3$d|%4$d).
+1116 Finished to update statistics (class "%1$s", oid : %2$d|%3$d|%4$d, error code : %5$d).
+1117 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %d):

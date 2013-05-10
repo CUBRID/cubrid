@@ -139,12 +139,14 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p)
   SCAN_CODE scan_rc;
   DB_VALUE *db_value_p;
   DB_DATA *db_data_p;
+  char *class_name = NULL;
   int i, j;
   OID *partitions = NULL;
   int count = 0, error_code = NO_ERROR;
 #if !defined(NDEBUG)
   int track_id;
 #endif
+  bool need_free_classname = false;
 
 #if !defined(NDEBUG)
   track_id = thread_rc_track_enter (thread_p);
@@ -155,6 +157,20 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p)
     {
       goto error;
     }
+
+  class_name = heap_get_class_name (thread_p, class_id_p);
+  if (class_name == NULL)
+    {
+      class_name = (char *) "unknown class";
+    }
+  else
+    {
+      need_free_classname = true;
+    }
+
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+	  ER_LOG_STARTED_TO_UPDATE_STATISTICS, 4, class_name,
+	  class_id_p->volid, class_id_p->pageid, class_id_p->slotid);
 
   /* if class information was not obtained */
   if (cls_info_p->hfid.vfid.fileid < 0 || cls_info_p->hfid.vfid.volid < 0)
@@ -171,16 +187,7 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p)
 	  goto error;
 	}
 
-      catalog_free_class_info (cls_info_p);
-
-#if !defined(NDEBUG)
-      if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
-	{
-	  assert_release (false);
-	}
-#endif
-
-      return NO_ERROR;
+      goto end;
     }
 
   error_code = partition_get_partition_oids (thread_p, class_id_p,
@@ -206,14 +213,7 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p)
 	  goto error;
 	}
 
-#if !defined(NDEBUG)
-      if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
-	{
-	  assert_release (false);
-	}
-#endif
-
-      return NO_ERROR;
+      goto end;
     }
 
   if (catalog_get_last_representation_id (thread_p, class_id_p, &repr_id) !=
@@ -365,6 +365,7 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p)
       goto error;
     }
 
+end:
   if (disk_repr_p)
     {
       catalog_free_representation (disk_repr_p);
@@ -382,7 +383,17 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p)
     }
 #endif
 
-  return NO_ERROR;
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+	  ER_LOG_FINISHED_TO_UPDATE_STATISTICS, 5, class_name,
+	  class_id_p->volid, class_id_p->pageid, class_id_p->slotid,
+	  error_code);
+
+  if (need_free_classname)
+    {
+      free_and_init (class_name);
+    }
+
+  return error_code;
 
 error:
   if (hf_cache_attr_info_p)
@@ -395,24 +406,11 @@ error:
       (void) heap_scancache_end (thread_p, hf_scan_cache_p);
     }
 
-  if (disk_repr_p)
+  if (error_code == NO_ERROR && (error_code = er_errid ()) == NO_ERROR)
     {
-      catalog_free_representation (disk_repr_p);
+      error_code = ER_FAILED;
     }
-
-  if (cls_info_p)
-    {
-      catalog_free_class_info (cls_info_p);
-    }
-
-#if !defined(NDEBUG)
-  if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
-    {
-      assert_release (false);
-    }
-#endif
-
-  return er_errid ();
+  goto end;
 }
 
 /*
