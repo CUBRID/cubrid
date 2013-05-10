@@ -326,3 +326,25 @@ ut_get_line (FILE * fp, T_STRING * t_str, char **out_str, int *lineno)
     *lineno = *lineno + 1;
   return out_str_len;
 }
+
+int
+is_cas_log (char *str)
+{
+  if (strlen (str) < CAS_LOG_MSG_INDEX)
+    {
+      return 0;
+    }
+
+  if (str[2] == '-' && str[5] == '-' && str[8] == ' ' && str[11] == ':' &&
+      str[14] == ':' && str[21] == ' ')
+    {
+      return CAS_LOG_BEGIN_WITH_YEAR;
+    }
+  else if (str[2] == '/' && str[5] == ' ' && str[8] == ':' &&
+	   str[11] == ':' && str[18] == ' ')
+    {
+      return CAS_LOG_BEGIN_WITH_MONTH;
+    }
+
+  return 0;
+}

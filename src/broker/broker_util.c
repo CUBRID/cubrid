@@ -494,29 +494,32 @@ ut_time_string (char *buf, struct timeval *time_val)
   tm_p = localtime_r (&sec, &tm);
   tm.tm_mon++;
 
-  buf[0] = (tm.tm_mon / 10) + '0';
-  buf[1] = (tm.tm_mon % 10) + '0';
-  buf[2] = '/';
-  buf[3] = (tm.tm_mday / 10) + '0';
-  buf[4] = (tm.tm_mday % 10) + '0';
-  buf[5] = ' ';
-  buf[6] = (tm.tm_hour / 10) + '0';
-  buf[7] = (tm.tm_hour % 10) + '0';
-  buf[8] = ':';
-  buf[9] = (tm.tm_min / 10) + '0';
-  buf[10] = (tm.tm_min % 10) + '0';
+  buf[0] = ((tm.tm_year % 100) / 10) + '0';
+  buf[1] = (tm.tm_year % 10) + '0';
+  buf[2] = '-';
+  buf[3] = (tm.tm_mon / 10) + '0';
+  buf[4] = (tm.tm_mon % 10) + '0';
+  buf[5] = '-';
+  buf[6] = (tm.tm_mday / 10) + '0';
+  buf[7] = (tm.tm_mday % 10) + '0';
+  buf[8] = ' ';
+  buf[9] = (tm.tm_hour / 10) + '0';
+  buf[10] = (tm.tm_hour % 10) + '0';
   buf[11] = ':';
-  buf[12] = (tm.tm_sec / 10) + '0';
-  buf[13] = (tm.tm_sec % 10) + '0';
-  buf[14] = '.';
-  buf[17] = (millisec % 10) + '0';
+  buf[12] = (tm.tm_min / 10) + '0';
+  buf[13] = (tm.tm_min % 10) + '0';
+  buf[14] = ':';
+  buf[15] = (tm.tm_sec / 10) + '0';
+  buf[16] = (tm.tm_sec % 10) + '0';
+  buf[17] = '.';
+  buf[20] = (millisec % 10) + '0';
   millisec /= 10;
-  buf[16] = (millisec % 10) + '0';
+  buf[19] = (millisec % 10) + '0';
   millisec /= 10;
-  buf[15] = (millisec % 10) + '0';
-  buf[18] = '\0';
+  buf[18] = (millisec % 10) + '0';
+  buf[21] = '\0';
 
-  return 18;
+  return 21;
 }
 
 char *

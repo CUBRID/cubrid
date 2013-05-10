@@ -36,24 +36,31 @@
 #include "cas_common.h"
 #include "log_top_string.h"
 
-#define CAS_LOG_MSG_INDEX 19
+#define CAS_LOG_BEGIN_WITH_YEAR 1
+#define CAS_LOG_BEGIN_WITH_MONTH 2
+
+#define CAS_LOG_MSG_INDEX 22
 #define CAS_RUN_NEW_LINE_CHAR	1
 
-#define GET_MSG_START_PTR(MSG_P, LINEBUF)               \
-        do {                                            \
-          char *tmp_ptr;                                \
-          tmp_ptr = LINEBUF + CAS_LOG_MSG_INDEX;        \
-          tmp_ptr = strchr(tmp_ptr, ' ');               \
-          if (tmp_ptr == NULL)                          \
-            MSG_P = (char *) "";                        \
-          else                                          \
-            MSG_P = tmp_ptr + 1;                        \
+#define GET_MSG_START_PTR(MSG_P, LINEBUF)                       \
+        do {                                                    \
+          char *tmp_ptr;                                        \
+          if (is_cas_log (LINEBUF) == CAS_LOG_BEGIN_WITH_YEAR)  \
+            tmp_ptr = LINEBUF + CAS_LOG_MSG_INDEX;              \
+          else                                                  \
+            tmp_ptr = LINEBUF + CAS_LOG_MSG_INDEX - 3;          \
+          tmp_ptr = strchr(tmp_ptr, ' ');                       \
+          if (tmp_ptr == NULL)                                  \
+            MSG_P = (char *) "";                                \
+          else                                                  \
+            MSG_P = tmp_ptr + 1;                                \
         } while (0)
 
 extern char *ut_trim (char *);
 extern void ut_tolower (char *str);
 extern int ut_get_line (FILE * fp, T_STRING * t_str, char **out_str,
 			int *lineno);
+extern int is_cas_log (char *str);
 
 
 #endif /* _BROKER_LOG_UTIL_H_ */

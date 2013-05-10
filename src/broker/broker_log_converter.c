@@ -45,7 +45,6 @@ static int open_file (char *infilename, char *outfilename, FILE ** infp,
 		      FILE ** outfp);
 static int log_converter (FILE * infp, FILE * outfp);
 static void close_file (FILE * infp, FILE * outfp);
-static int is_cas_log_cmd (char *str);
 static int log_bind_value (char *str, int bind_len, int lineno, FILE * outfp);
 static char *get_execute_type (char *msg_p, int *prepare_flag,
 			       int *execute_flag);
@@ -115,7 +114,7 @@ log_converter (FILE * infp, FILE * outfp)
       if (linebuf[strlen (linebuf) - 1] == '\n')
 	linebuf[strlen (linebuf) - 1] = '\0';
 
-      if (is_cas_log_cmd (linebuf))
+      if (is_cas_log (linebuf))
 	{
 	  if (query_flag)
 	    {
@@ -235,18 +234,6 @@ close_file (FILE * infp, FILE * outfp)
   fflush (outfp);
   if (outfp != stdout)
     fclose (outfp);
-}
-
-static int
-is_cas_log_cmd (char *str)
-{
-  if (strlen (str) < CAS_LOG_MSG_INDEX)
-    return 0;
-
-  if (str[2] == '/' && str[5] == ' ' && str[8] == ':' && str[11] == ':'
-      && str[18] == ' ')
-    return 1;
-  return 0;
 }
 
 static char *

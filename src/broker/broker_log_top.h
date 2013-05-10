@@ -29,10 +29,7 @@
 
 #define LINE_BUF_SIZE           30000
 
-#define DATE_STR_LEN    18
-
-#define IS_CAS_LOG_CMD(STR)     \
-  ((strlen(STR) >= 23 && (STR)[2] == '/' && (STR)[5] == ' ' && (STR)[8] == ':' && (STR)[11] == ':' && (STR)[18] == ' ') ? 1 : 0)
+#define DATE_STR_LEN    21
 
 #define GET_CUR_DATE_STR(BUF, LINEBUF)  \
         do  {                           \

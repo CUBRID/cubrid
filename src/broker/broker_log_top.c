@@ -98,18 +98,25 @@ int
 main (int argc, char *argv[])
 {
   int arg_start;
+  int error = 0;
 
 
   arg_start = get_args (argc, argv);
   if (arg_start < 0)
-    return -1;
+    {
+      return -1;
+    }
 
   if (mode_tran)
-    log_top_tran (argc, argv, arg_start);
+    {
+      error = log_top_tran (argc, argv, arg_start);
+    }
   else
-    log_top_query (argc, argv, arg_start);
+    {
+      error = log_top_query (argc, argv, arg_start);
+    }
 
-  return 0;
+  return error;
 }
 
 int
@@ -232,7 +239,11 @@ log_top_query (int argc, char *argv[], int arg_start)
 	    break;
 	}
 #else
-      log_top (fp, filename, start_offset, end_offset);
+      if (log_top (fp, filename, start_offset, end_offset) < 0)
+	{
+	  fclose (fp);
+	  return -1;
+	}
       fclose (fp);
 #endif
     }
@@ -294,6 +305,7 @@ log_top (FILE * fp, char *filename, long start_offset, long end_offset)
   int i;
   char *msg_p;
   int lineno = 0;
+  int log_type = 0;
   char read_flag = 1;
   char cur_date[DATE_STR_LEN + 1];
   char start_date[DATE_STR_LEN + 1];
@@ -341,8 +353,16 @@ log_top (FILE * fp, char *filename, long start_offset, long end_offset)
 	}
       read_flag = 1;
 
-      if (!IS_CAS_LOG_CMD (linebuf))
-	continue;
+      log_type = is_cas_log (linebuf);
+      if (log_type == CAS_LOG_BEGIN_WITH_MONTH)
+	{
+	  fprintf (stderr, "invaild version of log file\n");
+	  goto log_top_err;
+	}
+      else if (log_type != CAS_LOG_BEGIN_WITH_YEAR)
+	{
+	  continue;
+	}
 
       if (strncmp (linebuf + 23, "END OF LOG", 10) == 0)
 	{
@@ -598,11 +618,11 @@ getargs_err:
 	   argv[0]);
   return -1;
 date_format_err:
-  fprintf (stderr, "invalid date. valid date format is mm/dd hh:mm:ss.\n");
+  fprintf (stderr, "invalid date. valid date format is yy-mm-dd hh:mm:ss.\n");
   return -1;
 }
 
-#define  DATE_VALUE_COUNT 6
+#define  DATE_VALUE_COUNT 7
 static int
 str_to_log_date_format (char *str, char *date_format_str)
 {
@@ -618,23 +638,33 @@ str_to_log_date_format (char *str, char *date_format_str)
     {
       val = strtol (startp, &endp, 10);
       if (startp == endp)
-	goto error;
+	{
+	  goto error;
+	}
       if (val < 0)
-	val = 0;
+	{
+	  val = 0;
+	}
       else if (val > 999)
-	val = 999;
+	{
+	  val = 999;
+	}
       date_val[i] = val;
       if (*endp == '\0')
-	break;
+	{
+	  break;
+	}
       startp = endp + 1;
       if (*startp == '\0')
-	break;
+	{
+	  break;
+	}
     }
 
   sprintf (date_format_str,
-	   "%02d/%02d %02d:%02d:%02d.%03d",
+	   "%02d-%02d-%02d %02d:%02d:%02d.%03d",
 	   date_val[0], date_val[1], date_val[2], date_val[3], date_val[4],
-	   date_val[5]);
+	   date_val[5], date_val[6]);
   return 0;
 
 error:
@@ -648,10 +678,14 @@ read_multi_line_sql (FILE * fp, T_STRING * t_str, char **linebuf, int *lineno,
   while (1)
     {
       if (ut_get_line (fp, t_str, linebuf, lineno) <= 0)
-	return -1;
+	{
+	  return -1;
+	}
 
-      if (IS_CAS_LOG_CMD (*linebuf))
-	return 0;
+      if (is_cas_log (*linebuf) == CAS_LOG_BEGIN_WITH_YEAR)
+	{
+	  return 0;
+	}
 
       if (t_string_add (sql_buf, *linebuf, strlen (*linebuf)) < 0)
 	{
@@ -678,7 +712,7 @@ read_bind_value (FILE * fp, T_STRING * t_str, char **linebuf, int *lineno,
     {
       is_bind_value = 0;
 
-      if (IS_CAS_LOG_CMD (*linebuf))
+      if (is_cas_log (*linebuf) == CAS_LOG_BEGIN_WITH_YEAR)
 	{
 	  GET_MSG_START_PTR (msg_p, *linebuf);
 	  if (strncmp (msg_p, "bind ", 5) == 0)
@@ -692,7 +726,9 @@ read_bind_value (FILE * fp, T_STRING * t_str, char **linebuf, int *lineno,
 	{
 	  linebuf_len = t_string_len (t_str);
 	  if (t_string_add (cas_log_buf, *linebuf, linebuf_len) < 0)
-	    return -1;
+	    {
+	      return -1;
+	    }
 	}
       else
 	{
@@ -700,7 +736,9 @@ read_bind_value (FILE * fp, T_STRING * t_str, char **linebuf, int *lineno,
 	}
 
       if (ut_get_line (fp, t_str, linebuf, lineno) <= 0)
-	return -1;
+	{
+	  return -1;
+	}
     }
   while (1);
 }
@@ -786,7 +824,7 @@ search_offset (FILE * fp, char *string, long *offset, bool start)
 
       while (ut_get_line (fp, linebuf_tstr, &linebuf, &line_no) > 0)
 	{
-	  if (IS_CAS_LOG_CMD (linebuf))
+	  if (is_cas_log (linebuf) == CAS_LOG_BEGIN_WITH_YEAR)
 	    {
 	      break;
 	    }
