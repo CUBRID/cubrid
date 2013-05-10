@@ -4503,7 +4503,7 @@ proxy_io_process (void)
   struct timeval tv;
 #endif /* !LINUX */
 
-  T_SOCKET_IO *sock_io_p;
+  T_SOCKET_IO *sock_io_p = NULL;
 
 retry_select:
 
@@ -4552,8 +4552,7 @@ retry_select:
 		{
 		  if (proxy_socket_io_add (cas_fd, PROXY_IO_FROM_CAS) == NULL)
 		    {
-		      PROXY_DEBUG_LOG ("Close socket. (fd:%d). \n",
-				       sock_io_p->fd);
+		      PROXY_DEBUG_LOG ("Close socket. (fd:%d). \n", cas_fd);
 		      CLOSE_SOCKET (cas_fd);
 		    }
 		}

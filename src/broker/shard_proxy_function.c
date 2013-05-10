@@ -922,6 +922,8 @@ fn_proxy_client_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 
   char *request_p;
 
+  bool has_shard_val_hint = false;
+
   const char func_code = CAS_FC_PREPARE;
 
 
@@ -980,15 +982,9 @@ fn_proxy_client_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 		   "(sql_stmt:[%s]). context(%s).",
 		   shard_str_sqls (sql_stmt), proxy_str_context (ctx_p));
 
-  if (proxy_info_p->ignore_shard_hint == OFF)
-    {
-      organized_sql_stmt =
-	shard_stmt_rewrite_sql (sql_stmt, proxy_info_p->appl_server);
-    }
-  else
-    {
-      organized_sql_stmt = sql_stmt;
-    }
+  organized_sql_stmt =
+    shard_stmt_rewrite_sql (&has_shard_val_hint, sql_stmt,
+			    proxy_info_p->appl_server);
 
   if (organized_sql_stmt == NULL)
     {
@@ -1166,17 +1162,19 @@ fn_proxy_client_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
       goto free_context;
     }
 
-  /* save prepare request */
-  stmt_p->request_buffer = proxy_dup_msg (request_p);
-  if (stmt_p->request_buffer == NULL)
+  error =
+    shard_stmt_save_prepare_request (stmt_p, has_shard_val_hint,
+				     &event_p->buffer.data,
+				     &event_p->buffer.length,
+				     argv[0], argv[1], organized_sql_stmt);
+  if (error)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to duplicate prepared statement request. statement(%s). context(%s).",
+		 "Failed to save prepared statement request. statement(%s). context(%s).",
 		 shard_str_stmt (stmt_p), proxy_str_context (ctx_p));
       goto free_context;
     }
-  stmt_p->request_buffer_length = get_msg_length (request_p);
-
+  request_p = event_p->buffer.data;	/* DO NOT DELETE */
 
 relay_prepare_request:
 
@@ -1363,7 +1361,7 @@ proxy_client_execute_internal (T_PROXY_CONTEXT * ctx_p,
   int i;
   int shard_id, next_shard_id;
   int length;
-  SP_HINT_TYPE hint_type;
+  SP_HINT_TYPE hint_type = HT_NONE;
   int bind_value_size;
   int argc_mod_2;
   T_CAS_IO *cas_io_p;

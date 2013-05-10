@@ -51,6 +51,7 @@ static int shard_stmt_set_srv_h_id (T_SHARD_STMT * stmt_p, int shard_id,
 				    int cas_id, int srv_h_id);
 
 static T_SHARD_STMT *shard_stmt_find_unused (void);
+
 static T_SHARD_STMT *shard_stmt_new_internal (int stmt_type, char *sql_stmt,
 					      int ctx_cid,
 					      unsigned int ctx_uid,
@@ -886,6 +887,7 @@ shard_stmt_get_hint_type (T_SHARD_STMT * stmt_p)
 		 "Invalid parser. Statement parser couldn't be NULL.");
       return HT_INVAL;
     }
+
   hint_p = sp_get_first_hint (stmt_p->parser);
   if (hint_p == NULL)
     {
@@ -893,6 +895,116 @@ shard_stmt_get_hint_type (T_SHARD_STMT * stmt_p)
     }
 
   return hint_p->hint_type;
+}
+
+int
+shard_stmt_save_prepare_request (T_SHARD_STMT * stmt_p,
+				 bool has_shard_val_hint,
+				 char **prepare_req,
+				 int *prepare_req_len,
+				 char *argv_sql_stmt,
+				 char *argv_remainder, char *orgzd_sql)
+{
+  int sql_size;
+  int orgzd_sql_size, n_orgzd_sql_size;
+  int req_msg_size;
+  int remainder_size;
+  int expand_size;
+  unsigned int offset;
+  char *prepare_req_header;
+  char *tmp_prepare_req;
+  char *sql_stmt;
+  char *cur_p;
+
+  prepare_req_header = *(prepare_req);
+
+  net_arg_get_str (&sql_stmt, &sql_size, argv_sql_stmt);
+
+  if (has_shard_val_hint == true)
+    {
+      req_msg_size = get_msg_length (prepare_req_header);
+      orgzd_sql_size = strlen (orgzd_sql) + 1;
+
+      if (sql_size >= orgzd_sql_size)
+	{
+	  expand_size = 0;
+	}
+      else
+	{
+	  expand_size = orgzd_sql_size - sql_size;
+	}
+
+
+      if (expand_size == 0)
+	{
+	  /* replace organized sql */
+	  memcpy ((argv_sql_stmt + NET_SIZE_INT), orgzd_sql, orgzd_sql_size);
+	}
+      else
+	{
+	  stmt_p->request_buffer =
+	    (char *) malloc (req_msg_size + expand_size);
+
+	  if (stmt_p->request_buffer == NULL)
+	    {
+	      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Malloc failed.");
+	      return -1;
+	    }
+
+	  /* 1. append header and function code */
+	  offset = argv_sql_stmt - prepare_req_header;
+	  memcpy (stmt_p->request_buffer, prepare_req_header, offset);
+
+	  /* 2. append argv_sql_stmt : sql statement */
+	  /* 2.1 set length */
+	  cur_p = (char *) stmt_p->request_buffer + offset;
+	  n_orgzd_sql_size = htonl (orgzd_sql_size);
+	  memcpy (cur_p, &n_orgzd_sql_size, NET_SIZE_INT);
+
+	  /* 2.2 set organized sql string */
+	  cur_p += NET_SIZE_INT;
+	  memcpy (cur_p, orgzd_sql, orgzd_sql_size);
+
+	  /* 3. append argv_remainder ~ : the rest argvs */
+	  cur_p += orgzd_sql_size;
+	  remainder_size =
+	    (req_msg_size) - (argv_remainder - prepare_req_header);
+	  memcpy (cur_p, argv_remainder, remainder_size);
+
+	  /* 4. set length */
+	  stmt_p->request_buffer_length = (req_msg_size + expand_size);
+	  set_data_length (stmt_p->request_buffer,
+			   stmt_p->request_buffer_length - MSG_HEADER_SIZE);
+
+	  tmp_prepare_req = proxy_dup_msg (stmt_p->request_buffer);
+	  if (tmp_prepare_req == NULL)
+	    {
+	      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+			 "Failed to duplicate prepare request.");
+	      return -1;
+	    }
+
+	  FREE_MEM (*prepare_req);
+	  *prepare_req = tmp_prepare_req;
+	  *prepare_req_len = stmt_p->request_buffer_length;
+
+	  assert (stmt_p->request_buffer_length ==
+		  get_msg_length (tmp_prepare_req));
+
+	  return 0;
+	}
+    }
+
+  stmt_p->request_buffer = proxy_dup_msg (prepare_req_header);
+  if (stmt_p->request_buffer == NULL)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Failed to duplicate prepare request.");
+      return -1;
+    }
+  stmt_p->request_buffer_length = get_msg_length (prepare_req_header);
+
+  return 0;
 }
 
 #if defined (PROXY_VERBOSE_DEBUG)
@@ -1046,7 +1158,8 @@ shard_stmt_initialize (int initial_size)
 }
 
 char *
-shard_stmt_rewrite_sql (char *sql_stmt, char appl_server)
+shard_stmt_rewrite_sql (bool * has_shard_val_hint, char *sql_stmt,
+			char appl_server)
 {
   int error = NO_ERROR;
   const char *p = NULL;
@@ -1216,6 +1329,8 @@ shard_stmt_rewrite_sql (char *sql_stmt, char appl_server)
 
 		  return NULL;
 		}
+
+	      *(has_shard_val_hint) = true;
 	    }
 	  else
 	    {
