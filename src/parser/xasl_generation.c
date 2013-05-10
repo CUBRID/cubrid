@@ -23401,3 +23401,146 @@ pt_substitute_assigned_name_node (PARSER_CONTEXT * parser, PT_NODE * node,
 
   return node;
 }
+
+/*
+ * pt_set_orderby_for_sort_limit_plan () - setup ORDER BY list to be applied
+ *					   to a SORT-LIMIT plan
+ * return : ORDER BY list on success, NULL on error
+ * parser (in) : parser context
+ * statement (in) : statement
+ * nodes_list (in/out) : list of nodes referenced by the plan
+ *
+ * Note: if an ORDER BY spec is not a name, the node it references is added
+ * to the nodes_list nodes.
+ */
+PT_NODE *
+pt_set_orderby_for_sort_limit_plan (PARSER_CONTEXT * parser,
+				    PT_NODE * statement, PT_NODE * nodes_list)
+{
+  PT_NODE *order_by = NULL, *select_list = NULL, *new_order_by = NULL;
+  PT_NODE *sort_spec = NULL, *node = NULL, *name = NULL, *sort = NULL;
+  PT_NODE *prev = NULL;
+  int pos = 0, names_count = 0, added_count = 0;
+  bool add_node = false;
+
+  order_by = statement->info.query.order_by;
+  select_list = pt_get_select_list (parser, statement);
+
+  /* count nodes in name_list, we will add new nodes at the end of the list */
+  node = nodes_list;
+  names_count = 0;
+  while (node)
+    {
+      prev = node;
+      names_count++;
+      node = node->next;
+    }
+
+  /* create a new ORDER BY list which reflects positions of nodes in the
+   * nodes_list */
+  for (sort_spec = order_by; sort_spec != NULL; sort_spec = sort_spec->next)
+    {
+      add_node = true;
+
+      if (sort_spec->node_type != PT_SORT_SPEC)
+	{
+	  assert_release (sort_spec->node_type == PT_SORT_SPEC);
+	  goto error_return;
+	}
+      /* find the node which is referenced by this sort_spec */
+      for (pos = 1, node = select_list; node != NULL;
+	   pos++, node = node->next)
+	{
+	  if (pos == sort_spec->info.sort_spec.pos_descr.pos_no)
+	    {
+	      break;
+	    }
+	}
+
+      if (node == NULL)
+	{
+	  assert_release (node != NULL);
+	  goto error_return;
+	}
+
+      CAST_POINTER_TO_NODE (node);
+
+      if (node->node_type == PT_NAME)
+	{
+	  /* SORT-LIMIT plans are build over the subset of classes referenced
+	   * in the ORDER BY clause. This means that any name referenced in
+	   * ORDER BY must also be a segment for one of the classes of this
+	   * subplan. We just need to update the sort_spec position.
+	   */
+	  for (pos = 1, name = nodes_list; name != NULL;
+	       pos++, name = name->next)
+	    {
+	      if (pt_name_equal (parser, name, node))
+		{
+		  break;
+		}
+	    }
+
+	  if (name != NULL)
+	    {
+	      add_node = false;
+	    }
+	}
+
+      if (add_node)
+	{
+	  /* this node was not found in the node_list. In order to be able to
+	   * execute the ORDER BY clause, we have to add it to the list
+	   */
+	  pos = names_count + added_count + 1;
+	  name = pt_point (parser, node);
+	  if (name == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      goto error_return;
+	    }
+	  /* add node to the end of name_list */
+	  prev->next = name;
+	  prev = prev->next;
+	  added_count++;
+	}
+      else
+	{
+	  /* just point to it */
+	  name = pt_point (parser, name);
+	  if (name == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      goto error_return;
+	    }
+	}
+
+      /* create a new sort_spec for the original one and add it to the list */
+      sort = parser_new_node (parser, PT_SORT_SPEC);
+      if (sort == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  goto error_return;
+	}
+
+      sort->info.sort_spec.expr = name;
+      sort->info.sort_spec.pos_descr.pos_no = pos;
+      sort->info.sort_spec.asc_or_desc =
+	sort_spec->info.sort_spec.asc_or_desc;
+
+      CAST_POINTER_TO_NODE (name);
+      sort->info.sort_spec.pos_descr.dom = pt_xasl_node_to_domain (parser,
+								   name);
+
+      new_order_by = parser_append_node (sort, new_order_by);
+    }
+
+  return new_order_by;
+
+error_return:
+  if (new_order_by != NULL)
+    {
+      parser_free_tree (parser, new_order_by);
+    }
+  return NULL;
+}

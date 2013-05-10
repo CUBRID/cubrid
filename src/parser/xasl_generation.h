@@ -242,5 +242,7 @@ extern XASL_NODE *pt_to_merge_xasl (PARSER_CONTEXT * parser,
 extern int pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser,
 					   PT_NODE * node,
 					   PT_NODE * select_stmt);
-
+extern PT_NODE *pt_set_orderby_for_sort_limit_plan (PARSER_CONTEXT * parser,
+						    PT_NODE * statement,
+						    PT_NODE * name_list);
 #endif /* _XASL_GENERATION_H_ */

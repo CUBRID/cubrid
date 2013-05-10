@@ -152,7 +152,8 @@ static bool qo_check_parent_eq_class_for_multi_range_opt (QO_PLAN * parent,
 							  QO_PLAN * subplan,
 							  QO_PLAN *
 							  sort_plan);
-
+static XASL_NODE *make_sort_limit_proc (QO_ENV * env, QO_PLAN * plan,
+					PT_NODE * namelist, XASL_NODE * xasl);
 /*
  * make_scan_proc () -
  *   return: XASL_NODE *
@@ -1819,12 +1820,20 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries,
 	  PT_NODE *namelist = NULL;
 
 	  namelist = make_namelist_from_projected_segs (env, plan);
-	  listfile = make_buildlist_proc (env, namelist);
-	  listfile = gen_outer (env,
-				plan->plan_un.sort.subplan,
-				&EMPTY_SET, NULL, NULL, listfile);
-	  listfile = add_sort_spec (env, listfile, plan,
-				    xasl->ordbynum_val, false);
+	  if (plan->plan_un.sort.sort_type == SORT_LIMIT)
+	    {
+	      listfile = make_sort_limit_proc (env, plan, namelist, xasl);
+	    }
+	  else
+	    {
+	      listfile = make_buildlist_proc (env, namelist);
+	      listfile = gen_outer (env,
+				    plan->plan_un.sort.subplan,
+				    &EMPTY_SET, NULL, NULL, listfile);
+	      listfile = add_sort_spec (env, listfile, plan,
+					xasl->ordbynum_val, false);
+	    }
+
 	  xasl = add_uncorrelated (env, xasl, listfile);
 	  xasl = init_list_scan_proc (env, xasl, listfile, namelist,
 				      &(plan->sarged_terms), NULL);
@@ -4850,4 +4859,67 @@ qo_find_subplan_using_multi_range_opt (QO_PLAN * plan, QO_PLAN ** result,
       return NO_ERROR;
     }
   return NO_ERROR;
+}
+
+/*
+ * make_sort_limit_proc () - make sort limit xasl node
+ * return : xasl proc on success, NULL on error
+ * env (in) : optimizer environment
+ * plan (in) : query plan
+ * namelist (in) : list of segments referenced by nodes in the plan
+ * xasl (in) : top xasl
+ */
+static XASL_NODE *
+make_sort_limit_proc (QO_ENV * env, QO_PLAN * plan, PT_NODE * namelist,
+		      XASL_NODE * xasl)
+{
+  PARSER_CONTEXT *parser;
+  XASL_NODE *listfile = NULL;
+  PT_NODE *new_order_by = NULL, *node_list = NULL;
+  PT_NODE *order_by, *statement;
+
+  parser = QO_ENV_PARSER (env);
+  statement = QO_ENV_PT_TREE (env);
+  order_by = statement->info.query.order_by;
+
+  /* make o copy of the namelist to extend it with expressions from the
+   * ORDER BY clause. The extended list will be used to generate the internal
+   * listfile scan but will not be used for the actual XASL node.
+   */
+  node_list = parser_copy_tree_list (parser, namelist);
+  if (node_list == NULL)
+    {
+      listfile = NULL;
+      goto cleanup;
+    }
+
+  /* set new SORT_SPEC list based on the position of items in the node_list */
+  new_order_by = pt_set_orderby_for_sort_limit_plan (parser, statement,
+						     node_list);
+  if (new_order_by == NULL)
+    {
+      listfile = NULL;
+      goto cleanup;
+    }
+
+  statement->info.query.order_by = new_order_by;
+
+  listfile = make_buildlist_proc (env, node_list);
+  listfile = gen_outer (env, plan->plan_un.sort.subplan, &EMPTY_SET, NULL,
+			NULL, listfile);
+  listfile = add_sort_spec (env, listfile, plan, xasl->ordbynum_val, false);
+
+cleanup:
+  if (node_list != NULL)
+    {
+      parser_free_tree (parser, node_list);
+    }
+  if (new_order_by != NULL)
+    {
+      parser_free_tree (parser, new_order_by);
+    }
+
+  statement->info.query.order_by = order_by;
+
+  return listfile;
 }
