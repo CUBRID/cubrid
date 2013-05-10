@@ -13215,7 +13215,7 @@ logpb_get_nxio_lsa (LOG_LSA * nxio_lsa_p)
   memcpy (nxio_lsa_p, (LOG_LSA *) (&tmp_int64), sizeof (LOG_LSA));
 #else
   (void) pthread_mutex_lock (&log_Gl.append.nxio_lsa_mutex);
-  LSA_COPY (&nxio_lsa_p, &log_Gl.append.nxio_lsa);
+  LSA_COPY (nxio_lsa_p, &log_Gl.append.nxio_lsa);
   pthread_mutex_unlock (&log_Gl.append.nxio_lsa_mutex);
 #endif /* HAVE_ATOMIC_BUILTINS */
 }
