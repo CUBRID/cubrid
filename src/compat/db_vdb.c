@@ -755,7 +755,7 @@ db_compile_statement_local (DB_SESSION * session)
      of do_statement() will be used instead. do_statement() makes a XASL
      everytime rather than using XASL cache. Also, it can be executed in
      the server without touching the XASL cache by calling
-     query_prepare_and_execute(). */
+     prepare_and_execute_query(). */
   if (prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) > 0
       && statement->cannot_prepare == 0)
     {
@@ -1879,7 +1879,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
      of do_statement() will be used instead. do_statement() makes a XASL
      everytime rather than using XASL cache. Also, it can be executed in
      the server without touching the XASL cache by calling
-     query_prepare_and_execute(). */
+     prepare_and_execute_query(). */
   do_Trigger_involved = false;
 
   pt_null_etc (statement);
@@ -2584,17 +2584,21 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx)
    * Check if query needs to be recompiled.
    */
   if (!XASL_ID_IS_NULL (&xasl_id)	/* xasl_id should not be null */
-      && xasl_header.mro_info != 0	/* query has to be multi range opt candidate */
       && !statement->info.execute.recompile	/* recompile is already planned */
       && (prepare_info.host_variables.size > prepare_info.auto_param_count))
     {
-      bool mro_info_use_mro =
-	(xasl_header.mro_info & XASL_NODE_HEADER_MRO_IS_USED) != 0;
-      if (db_check_limit_for_mro_need_recompile
-	  (parser, statement, mro_info_use_mro))
+      /* query has to be multi range opt candidate */
+      if (xasl_header.xasl_flag & (MRO_CANDIDATE | MRO_IS_USED))
 	{
-	  /* need recompile, set XASL_ID to NULL */
-	  XASL_ID_SET_NULL (&statement->info.execute.xasl_id);
+	  bool mro_info_use_mro = (xasl_header.xasl_flag & MRO_IS_USED);
+
+	  if (db_check_limit_for_mro_need_recompile (parser,
+						     statement,
+						     mro_info_use_mro))
+	    {
+	      /* need recompile, set XASL_ID to NULL */
+	      XASL_ID_SET_NULL (&statement->info.execute.xasl_id);
+	    }
 	}
     }
 

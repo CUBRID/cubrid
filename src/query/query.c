@@ -42,7 +42,7 @@
 #include "transaction_cl.h"
 
 /*
- * query_prepare () - Prepares a query for later (and repetitive)
+ * prepare_query () - Prepares a query for later (and repetitive)
  *                         execution
  *   return		 : Error code
  *   context (in)	 : query string; used for hash key of the XASL cache
@@ -53,11 +53,11 @@
  *	   requested from server.
  */
 int
-query_prepare (COMPILE_CONTEXT * context, XASL_STREAM * stream)
+prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
 {
+  int ret = NO_ERROR;
 
   assert (context->sql_hash_text);
-
 
   /* if QO_PARAM_LEVEL indicate no execution, just return */
   if (qo_need_skip_execution ())
@@ -79,7 +79,7 @@ query_prepare (COMPILE_CONTEXT * context, XASL_STREAM * stream)
 			  ws_identifier (db_get_user ())) == NULL)
     {
       free_and_init (stream->xasl_id);
-      return er_errid ();
+      return ((ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
     }
 
   /* if the query is not found in the cache */
@@ -87,16 +87,17 @@ query_prepare (COMPILE_CONTEXT * context, XASL_STREAM * stream)
       XASL_ID_IS_NULL (stream->xasl_id))
     {
       free_and_init (stream->xasl_id);
-      return NO_ERROR;
     }
 
-  return NO_ERROR;
+  assert (ret == NO_ERROR);
+
+  return ret;
 }
 
 /*
- * query_execute () - Execute a prepared query
+ * execute_query () - Execute a prepared query
  *   return: Error code
- *   xasl_id(in)        : XASL file id that was a result of query_prepare()
+ *   xasl_id(in)        : XASL file id that was a result of prepare_query()
  *   query_idp(out)     : query id to be used for getting results
  *   var_cnt(in)        : number of host variables
  *   varptr(in) : array of host variables (query input parameters)
@@ -106,12 +107,13 @@ query_prepare (COMPILE_CONTEXT * context, XASL_STREAM * stream)
  *   srv_cache_time(in) :
  */
 int
-query_execute (const XASL_ID * xasl_id, QUERY_ID * query_idp,
+execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
 	       int var_cnt, const DB_VALUE * varptr,
 	       QFILE_LIST_ID ** list_idp, QUERY_FLAG flag,
 	       CACHE_TIME * clt_cache_time, CACHE_TIME * srv_cache_time)
 {
   int query_timeout;
+  int ret = NO_ERROR;
 
   *list_idp = NULL;
 
@@ -127,16 +129,18 @@ query_execute (const XASL_ID * xasl_id, QUERY_ID * query_idp,
 				  clt_cache_time, srv_cache_time,
 				  query_timeout);
 
-  if (!*list_idp)
+  if (*list_idp == NULL)
     {
-      return er_errid ();
+      return ((ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
     }
 
-  return NO_ERROR;
+  assert (ret == NO_ERROR);
+
+  return ret;
 }
 
 /*
- * query_prepare_and_execute () -
+ * prepare_and_execute_query () -
  *   return:
  *   stream(in) : packed XASL tree
  *   stream_size(in)   : size of stream
@@ -153,30 +157,35 @@ query_execute (const XASL_ID * xasl_id, QUERY_ID * query_idp,
  *       calling regu_free_listid.
  */
 int
-query_prepare_and_execute (char *stream, int stream_size, QUERY_ID * query_id,
+prepare_and_execute_query (char *stream, int stream_size, QUERY_ID * query_id,
 			   int var_cnt, DB_VALUE * varptr,
 			   QFILE_LIST_ID ** result, QUERY_FLAG flag)
 {
   QFILE_LIST_ID *list_idptr;
   int query_timeout;
+  int ret = NO_ERROR;
 
   if (qo_need_skip_execution ())
     {
-      list_idptr = NULL;
+      *result = NULL;
+
+      return NO_ERROR;
     }
-  else
+
+  query_timeout = tran_get_query_timeout ();
+  list_idptr = qmgr_prepare_and_execute_query (stream, stream_size,
+					       query_id,
+					       var_cnt, varptr, flag,
+					       query_timeout);
+  if (list_idptr == NULL)
     {
-      query_timeout = tran_get_query_timeout ();
-      list_idptr = qmgr_prepare_and_execute_query (stream, stream_size,
-						   query_id,
-						   var_cnt, varptr, flag,
-						   query_timeout);
-      if (list_idptr == NULL)
-	{
-	  return er_errid ();
-	}
+      return ((ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
     }
 
   *result = list_idptr;
-  return NO_ERROR;
+
+  assert (*result != NULL);
+  assert (ret == NO_ERROR);
+
+  return ret;
 }

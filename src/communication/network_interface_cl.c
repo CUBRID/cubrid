@@ -7465,7 +7465,7 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream,
   request_size += OR_INT_SIZE;	/* get_xasl_header */
 
   request = (char *) malloc (request_size);
-  if (!request)
+  if (request == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_OUT_OF_VIRTUAL_MEMORY, 1, request_size);

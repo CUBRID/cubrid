@@ -7799,7 +7799,9 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from,
 
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization
 					   checking for method */
-      error = query_prepare_and_execute (stream.xasl_stream,
+
+      assert (IS_SYNC_EXEC_MODE (parser->exec_mode));
+      error = prepare_and_execute_query (stream.xasl_stream,
 					 stream.xasl_stream_size,
 					 &query_id,
 					 parser->host_var_count +
@@ -8617,7 +8619,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	     and get XASL file id (XASL_ID) returned if found */
 	  if (statement->recompile == 0)
 	    {
-	      err = query_prepare (&context, &stream);
+	      err = prepare_query (&context, &stream);
 
 	      if (err != NO_ERROR)
 		{
@@ -8682,7 +8684,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	         and get XASL file id returned */
 	      if (stream.xasl_stream && (err >= NO_ERROR))
 		{
-		  err = query_prepare (&context, &stream);
+		  err = prepare_query (&context, &stream);
 
 		  if (err != NO_ERROR)
 		    {
@@ -8810,7 +8812,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}			/* else (server_update) */
 
       /* save the XASL_ID that is allocated and returned by
-         query_prepare() into 'statement->xasl_id'
+         prepare_query() into 'statement->xasl_id'
          to be used by do_execute_update() */
       statement->xasl_id = stream.xasl_id;
 
@@ -8972,7 +8974,7 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      qo_do_auto_parameterize (parser,
 				       statement->info.update.orderby_for);
 	    }
-	  err = query_execute (statement->xasl_id, &parser->query_id,
+	  err = execute_query (statement->xasl_id, &parser->query_id,
 			       parser->host_var_count +
 			       parser->auto_param_count,
 			       parser->host_variables, &list_id, query_flag,
@@ -9489,7 +9491,9 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization
 					   checking for method */
-      error = query_prepare_and_execute (stream.xasl_stream,
+
+      assert (IS_SYNC_EXEC_MODE (parser->exec_mode));
+      error = prepare_and_execute_query (stream.xasl_stream,
 					 stream.xasl_stream_size,
 					 &query_id,
 					 parser->host_var_count +
@@ -9920,7 +9924,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement,
 	     and get XASL file id (XASL_ID) returned if found */
 	  if (statement->recompile == 0)
 	    {
-	      err = query_prepare (&context, &stream);
+	      err = prepare_query (&context, &stream);
 	      if (err != NO_ERROR)
 		{
 		  err = er_errid ();
@@ -9972,7 +9976,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement,
 	         and get XASL file id returned */
 	      if (stream.xasl_stream && (err >= NO_ERROR))
 		{
-		  err = query_prepare (&context, &stream);
+		  err = prepare_query (&context, &stream);
 		  if (err != NO_ERROR)
 		    {
 		      err = er_errid ();
@@ -10065,7 +10069,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement,
 	}
 
       /* save the XASL_ID that is allocated and returned by
-         query_prepare() into 'statement->xasl_id'
+         prepare_query() into 'statement->xasl_id'
          to be used by do_execute_delete() */
       statement->xasl_id = stream.xasl_id;
     }
@@ -10202,7 +10206,7 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 					   checking for method */
       parser->query_id = -1;
       list_id = NULL;
-      err = query_execute (statement->xasl_id,
+      err = execute_query (statement->xasl_id,
 			   &parser->query_id,
 			   parser->host_var_count +
 			   parser->auto_param_count,
@@ -10588,7 +10592,7 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
      and get XASL file id (XASL_ID) returned if found */
   if (statement->recompile == 0)
     {
-      error = query_prepare (&context, &stream);
+      error = prepare_query (&context, &stream);
       if (error != NO_ERROR)
 	{
 	  error = er_errid ();
@@ -10649,7 +10653,7 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
 
       if (stream.xasl_stream && (error >= NO_ERROR))
 	{
-	  error = query_prepare (&context, &stream);
+	  error = prepare_query (&context, &stream);
 	  if (error != NO_ERROR)
 	    {
 	      error = er_errid ();
@@ -10683,7 +10687,7 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
     }
 
   /* save the XASL_ID that is allocated and returned by
-     query_prepare() into 'statement->xasl_id'
+     prepare_query() into 'statement->xasl_id'
      to be used by do_execute_update() */
   statement->xasl_id = stream.xasl_id;
 
@@ -10774,7 +10778,9 @@ do_insert_at_server (PARSER_CONTEXT * parser,
 
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization
 					   checking for method */
-      error = query_prepare_and_execute (stream.xasl_stream,
+
+      assert (IS_SYNC_EXEC_MODE (parser->exec_mode));
+      error = prepare_and_execute_query (stream.xasl_stream,
 					 stream.xasl_stream_size,
 					 &query_id,
 					 (parser->host_var_count +
@@ -13315,7 +13321,7 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   list_id = NULL;
   parser->query_id = -1;
 
-  err = query_execute (statement->xasl_id, &parser->query_id,
+  err = execute_query (statement->xasl_id, &parser->query_id,
 		       parser->host_var_count +
 		       parser->auto_param_count,
 		       parser->host_variables, &list_id, query_flag,
@@ -13724,6 +13730,12 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       else
 	{
+	  if (IS_ASYNC_UNEXECUTABLE (xasl->header.xasl_flag))
+	    {
+	      /* treat as sync query */
+	      query_flag &= ~ASYNC_EXEC;
+	    }
+
 	  if (error >= NO_ERROR)
 	    {
 	      error = xts_map_xasl_to_stream (xasl, &stream);
@@ -13737,7 +13749,7 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  if (error >= NO_ERROR)
 	    {
-	      error = query_prepare_and_execute (stream.xasl_stream,
+	      error = prepare_and_execute_query (stream.xasl_stream,
 						 stream.xasl_stream_size,
 						 &query_id,
 						 parser->host_var_count +
@@ -13891,7 +13903,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       XASL_NODE_HEADER xasl_header;
       stream.xasl_header = &xasl_header;
 
-      err = query_prepare (&context, &stream);
+      err = prepare_query (&context, &stream);
       if (err != NO_ERROR)
 	{
 	  err = er_errid ();
@@ -13899,16 +13911,13 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       else if (stream.xasl_id != NULL)
 	{
 	  /* check xasl header */
-	  if ((stream.xasl_header->
-	       mro_info & XASL_NODE_HEADER_MRO_CANDIDATE) != 0)
+	  if (stream.xasl_header->xasl_flag & MRO_CANDIDATE)
 	    {
 	      /* multi range optimization checks */
 	      bool good_limit =
 		pt_check_ordby_num_for_multi_range_opt (parser, statement,
 							NULL, NULL);
-	      bool mro_used =
-		((stream.xasl_header->
-		  mro_info & XASL_NODE_HEADER_MRO_IS_USED) != 0);
+	      bool mro_used = (stream.xasl_header->xasl_flag & MRO_IS_USED);
 	      if ((good_limit && !mro_used) || (!good_limit && mro_used))
 		{
 		  /* drop cached xasl and prepare again */
@@ -13967,7 +13976,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
          and get XASL file id returned */
       if (stream.xasl_stream && (err == NO_ERROR))
 	{
-	  err = query_prepare (&context, &stream);
+	  err = prepare_query (&context, &stream);
 	  if (err != NO_ERROR)
 	    {
 	      err = er_errid ();
@@ -13999,7 +14008,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  /* save the XASL_ID that is allocated and returned by query_prepare()
+  /* save the XASL_ID that is allocated and returned by prepare_query()
      into 'statement->xasl_id' to be used by do_execute_select() */
   statement->xasl_id = stream.xasl_id;
 
@@ -14100,7 +14109,7 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   CACHE_TIME_RESET (&statement->cache_time);
   statement->clt_cache_reusable = 0;
 
-  err = query_execute (statement->xasl_id,
+  err = execute_query (statement->xasl_id,
 		       &parser->query_id,
 		       parser->host_var_count + parser->auto_param_count,
 		       parser->host_variables,
@@ -14282,7 +14291,7 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   CACHE_TIME_RESET (&statement->cache_time);
   statement->clt_cache_reusable = 0;
 
-  err = query_execute (statement->xasl_id,
+  err = execute_query (statement->xasl_id,
 		       &parser->query_id,
 		       parser->host_var_count + parser->auto_param_count,
 		       parser->host_variables,
@@ -14671,8 +14680,8 @@ do_execute_do (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  /* execute statement */
-  error = query_prepare_and_execute (stream.xasl_stream,
+  assert (IS_SYNC_EXEC_MODE (query_flag));
+  error = prepare_and_execute_query (stream.xasl_stream,
 				     stream.xasl_stream_size,
 				     &query_id,
 				     parser->host_var_count +
@@ -15673,7 +15682,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* lookup in XASL cache */
       if (statement->recompile == 0)
 	{
-	  err = query_prepare (&context, &stream);
+	  err = prepare_query (&context, &stream);
 	  if (err != NO_ERROR)
 	    {
 	      err = er_errid ();
@@ -15751,7 +15760,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* cache the XASL */
 	  if (stream.xasl_stream && (err >= NO_ERROR))
 	    {
-	      err = query_prepare (&context, &stream);
+	      err = prepare_query (&context, &stream);
 	      if (err != NO_ERROR)
 		{
 		  err = er_errid ();
@@ -15963,7 +15972,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       list_id = NULL;
       parser->query_id = -1;
 
-      err = query_execute (statement->xasl_id, &parser->query_id,
+      err = execute_query (statement->xasl_id, &parser->query_id,
 			   parser->host_var_count + parser->auto_param_count,
 			   parser->host_variables, &list_id, query_flag,
 			   NULL, NULL);
@@ -16018,7 +16027,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  list_id = NULL;
 	  parser->query_id = -1;
 	  err =
-	    query_execute (statement->xasl_id, &parser->query_id,
+	    execute_query (statement->xasl_id, &parser->query_id,
 			   parser->host_var_count + parser->auto_param_count,
 			   parser->host_variables, &list_id, query_flag,
 			   NULL, NULL);

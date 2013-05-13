@@ -116,14 +116,10 @@ struct cache_time
 typedef struct xasl_node_header XASL_NODE_HEADER;
 struct xasl_node_header
 {
-  int mro_info;			/* multi range optimization flags */
+  int xasl_flag;		/* multi range optimization, async_mode flags */
 };
 
-#define XASL_NODE_HEADER_SIZE OR_INT_SIZE	/* mro_info */
-
-/* Flags for mro_info in XASL_NODE_HEADER */
-#define XASL_NODE_HEADER_MRO_CANDIDATE   0x1	/* query may use multi range opt */
-#define XASL_NODE_HEADER_MRO_IS_USED	 0x2	/* query uses multi range opt */
+#define XASL_NODE_HEADER_SIZE OR_INT_SIZE	/* xasl_flag */
 
 #define OR_PACK_XASL_NODE_HEADER(PTR, X)	  \
   do					  \
@@ -133,7 +129,7 @@ struct xasl_node_header
 	break;				  \
       }					  \
     ASSERT_ALIGN ((PTR), INT_ALIGNMENT);	  \
-    (PTR) = or_pack_int ((PTR), (X)->mro_info);	  \
+    (PTR) = or_pack_int ((PTR), (X)->xasl_flag);  \
   } while (0)
 
 #define OR_UNPACK_XASL_NODE_HEADER(PTR, X)	  \
@@ -144,7 +140,7 @@ struct xasl_node_header
 	break;				  \
       }					  \
     ASSERT_ALIGN ((PTR), INT_ALIGNMENT);	  \
-    (PTR) = or_unpack_int ((PTR), &(X)->mro_info); \
+    (PTR) = or_unpack_int ((PTR), &(X)->xasl_flag); \
   } while (0)
 
 #define INIT_XASL_NODE_HEADER(X)		  \
@@ -204,7 +200,7 @@ struct xasl_id
       (X1)->temp_vfid.fileid == (X2)->temp_vfid.fileid && \
        (X1)->temp_vfid.volid == (X2)->temp_vfid.volid))
 
-#define OR_XASL_ID_SIZE         (OR_LOID_SIZE + OR_CACHE_TIME_SIZE)
+#define OR_XASL_ID_SIZE (OR_LOID_SIZE + OR_CACHE_TIME_SIZE)
 
 /* pack XASL file id (XASL_ID)
      - borrow LOID structure only for transmission purpose
@@ -713,7 +709,9 @@ enum
   RESULT_CACHE_REQUIRED = 0x10,
   RESULT_CACHE_INHIBITED = 0x20,
   RESULT_HOLDABLE = 0x40,
-  DONT_COLLECT_EXEC_STATS = 0x80
+  DONT_COLLECT_EXEC_STATS = 0x80,
+  MRO_CANDIDATE = 0x0100,
+  MRO_IS_USED = 0x0200
 };
 
 #define IS_SYNC_EXEC_MODE(flag) (!((flag) & ASYNC_EXEC))

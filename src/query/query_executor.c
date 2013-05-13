@@ -15050,6 +15050,7 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
   int tran_index;
   int num_elements;
 #endif /* SERVER_MODE */
+  XASL_NODE_HEADER xasl_header;
 
   if (xasl_ent_cache.max_entries <= 0)
     {
@@ -15287,6 +15288,9 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
     }
 
   XASL_ID_COPY (&ent->xasl_id, stream->xasl_id);
+  qfile_load_xasl_node_header (thread_p, stream->xasl_id, &xasl_header);
+  ent->xasl_header_flag = xasl_header.xasl_flag;
+
   COPY_OID (&ent->creator_oid, oid);
   (void) gettimeofday (&ent->time_created, NULL);
   (void) gettimeofday (&ent->time_last_used, NULL);

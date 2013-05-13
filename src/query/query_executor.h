@@ -741,6 +741,7 @@ struct xasl_cache_ent
   EXECUTION_INFO sql_info;	/* cache entry hash key, user input string & plan */
 
   XASL_ID xasl_id;		/* XASL file identifier */
+  int xasl_header_flag;		/* XASL header info */
 #if defined(SERVER_MODE)
   int *tran_index_array;	/* array of TID(tran index)s that are currently
 				   using this XASL; size is MAX_NTRANS */

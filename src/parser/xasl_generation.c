@@ -291,7 +291,6 @@ static ODKU_INFO *pt_to_odku_info (PARSER_CONTEXT * parser, PT_NODE * insert,
 				   XASL_NODE * xasl,
 				   PT_NODE ** non_null_attrs);
 
-
 #define APPEND_TO_XASL(xasl_head, list, xasl_tail)                      \
     if (xasl_head) {                                                    \
         /* append xasl_tail to end of linked list denoted by list */    \
@@ -716,7 +715,13 @@ static SORT_LIST *pt_agg_orderby_to_sort_list (PARSER_CONTEXT * parser,
 static PT_NODE *pt_substitute_assigned_name_node (PARSER_CONTEXT * parser,
 						  PT_NODE * node, void *arg,
 						  int *continue_walk);
-
+static bool pt_is_async_executable (PARSER_CONTEXT * parser,
+				    XASL_NODE * xasl);
+static bool pt_has_unresolved_types (PARSER_CONTEXT * parser,
+				     XASL_NODE * xasl);
+static bool pt_is_sort_list_covered (PARSER_CONTEXT * parser,
+				     SORT_LIST * covering_list_p,
+				     SORT_LIST * covered_list_p);
 
 static void
 pt_init_xasl_supp_info ()
@@ -15386,6 +15391,19 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	}
     }
 
+  if (!pt_is_async_executable (parser, xasl))
+    {
+      /* treat as sync query */
+      xasl->header.xasl_flag |= ASYNC_UNEXECUTABLE;
+    }
+  else if (pt_has_unresolved_types (parser, xasl))
+    {
+      /* if this query has unresolved types and we want to delay sending
+       * the results to the client until those types have been resolved
+       */
+      xasl->header.xasl_flag |= ASYNC_UNEXECUTABLE;
+    }
+
   /* convert ordbynum to key limit if we have iscan with multiple key ranges */
   if (qo_plan != NULL && qo_plan_multi_range_opt (qo_plan))
     {
@@ -15394,14 +15412,14 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	{
 	  goto exit_on_error;
 	}
-      xasl->header.mro_info |= XASL_NODE_HEADER_MRO_CANDIDATE;
-      xasl->header.mro_info |= XASL_NODE_HEADER_MRO_IS_USED;
+      xasl->header.xasl_flag |= MRO_CANDIDATE;
+      xasl->header.xasl_flag |= MRO_IS_USED;
     }
   else if (qo_plan != NULL
 	   && qo_plan->multi_range_opt_use == PLAN_MULTI_RANGE_OPT_CAN_USE)
     {
       /* Query could use multi range optimization, but limit was too large */
-      xasl->header.mro_info |= XASL_NODE_HEADER_MRO_CANDIDATE;
+      xasl->header.xasl_flag |= MRO_CANDIDATE;
     }
 
   /* set list file descriptor for dummy pusher */
@@ -23543,4 +23561,147 @@ error_return:
       parser_free_tree (parser, new_order_by);
     }
   return NULL;
+}
+
+/*
+ * pt_has_unresolved_types () - check if the outptr list has unresolved
+ *				  types
+ * return : boolean
+ *   parser (in) : parser context
+ *   xasl (in) : XASL tree
+ */
+static bool
+pt_has_unresolved_types (PARSER_CONTEXT * parser, XASL_NODE * xasl)
+{
+  PROC_TYPE xasl_type = xasl->type;
+  REGU_VARIABLE_LIST list = NULL;
+
+  if (xasl->outptr_list == NULL)
+    {
+      return false;
+    }
+
+  switch (xasl_type)
+    {
+    case UNION_PROC:
+    case DIFFERENCE_PROC:
+    case INTERSECTION_PROC:
+    case BUILDLIST_PROC:
+    case BUILDVALUE_PROC:
+    case SCAN_PROC:
+    case MERGELIST_PROC:
+    case CONNECTBY_PROC:
+      break;
+    default:
+      return false;
+      break;
+    }
+  list = xasl->outptr_list->valptrp;
+  while (list != NULL)
+    {
+      if (list->value.domain == NULL)
+	{
+	  continue;
+	}
+      if (TP_DOMAIN_TYPE (list->value.domain) == DB_TYPE_VARIABLE)
+	{
+	  return true;
+	}
+      list = list->next;
+    }
+  return false;
+}
+
+/*
+ * pt_is_async_executable () -
+ *   return:
+ *   parser (in) : parser context
+ *   xasl (in)       :
+ */
+static bool
+pt_is_async_executable (PARSER_CONTEXT * parser, XASL_NODE * xasl)
+{
+  PROC_TYPE xasl_type = xasl->type;
+
+  if (xasl_type == UNION_PROC
+      || xasl_type == DIFFERENCE_PROC || xasl_type == INTERSECTION_PROC)
+    {
+      return false;
+    }
+
+  if (xasl_type == BUILDVALUE_PROC)
+    {
+      return false;
+    }
+
+  if (xasl_type == BUILDLIST_PROC
+      && xasl->proc.buildlist.groupby_list != NULL)
+    {
+      return false;
+    }
+
+  if (xasl_type == BUILDLIST_PROC && xasl->proc.buildlist.a_func_list != NULL)
+    {
+      return false;
+    }
+
+  if (xasl->option == Q_DISTINCT)
+    {
+      return false;
+    }
+
+  /* ORDER BY */
+  if ((xasl_type == BUILDLIST_PROC || xasl_type == BUILD_SCHEMA_PROC)
+      && xasl->orderby_list)
+    {
+      if (xasl->ordbynum_val != NULL
+	  || !pt_is_sort_list_covered (parser, xasl->after_iscan_list,
+				       xasl->orderby_list))
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+/*
+ * pt_is_sort_list_covered () - same as qfile_is_sort_list_covered ()
+ *   return: true or false
+ *   parser (in) : parser context
+ *   covering_list(in): covering sort item list pointer
+ *   covered_list(in): covered sort item list pointer
+ *
+ * Note: if covering_list covers covered_list returns true.
+ *       otherwise, returns false.
+ */
+static bool
+pt_is_sort_list_covered (PARSER_CONTEXT * parser, SORT_LIST * covering_list_p,
+			 SORT_LIST * covered_list_p)
+{
+  SORT_LIST *s1, *s2;
+
+  if (covered_list_p == NULL)
+    {
+      return false;
+    }
+
+  for (s1 = covering_list_p, s2 = covered_list_p;
+       s1 && s2; s1 = s1->next, s2 = s2->next)
+    {
+      if (s1->s_order != s2->s_order
+	  || s1->pos_descr.pos_no != s2->pos_descr.pos_no)
+	{
+	  return false;
+	}
+    }
+
+  if (s1 == NULL && s2)
+    {
+      return false;
+    }
+  else
+    {
+      return true;
+    }
 }
