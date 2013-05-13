@@ -361,6 +361,9 @@ static DB_VALUE
 static int qfile_reopen_list_as_append_mode (THREAD_ENTRY * thread_p,
 					     QFILE_LIST_ID * list_id_p);
 
+static int qfile_compare_with_null_value (int o0, int o1,
+					  SUBKEY_INFO key_info);
+
 /* qfile_modify_type_list () -
  *   return:
  *   type_list(in):
@@ -3954,13 +3957,12 @@ qfile_compare_partial_sort_record (const void *pk0, const void *pk1,
 	  order = (*key_info_p->key[i].sort_f) (d0, d1,
 						key_info_p->key[i].col_dom,
 						0, 1, NULL);
+	  order = key_info_p->key[i].is_desc ? -order : order;
 	}
       else
 	{
-	  order = o0 ? 1 : o1 ? -1 : 0;
+	  order = qfile_compare_with_null_value (o0, o1, key_info_p->key[i]);
 	}
-
-      order = key_info_p->key[i].is_desc ? (0 - order) : order;
 
       if (order != 0)
 	{
@@ -4006,13 +4008,12 @@ qfile_compare_all_sort_record (const void *pk0, const void *pk1, void *arg)
 	  order = (*key_info_p->key[i].sort_f) (d0, d1,
 						key_info_p->key[i].col_dom,
 						0, 1, NULL);
+	  order = key_info_p->key[i].is_desc ? -order : order;
 	}
       else
 	{
-	  order = o0 ? 1 : o1 ? -1 : 0;
+	  order = qfile_compare_with_null_value (o0, o1, key_info_p->key[i]);
 	}
-
-      order = key_info_p->key[i].is_desc ? (0 - order) : order;
 
       if (order != 0)
 	{
@@ -4021,6 +4022,55 @@ qfile_compare_all_sort_record (const void *pk0, const void *pk1, void *arg)
     }
 
   return order;
+}
+
+/*
+ * qfile_compare_with_null_value () -
+ *   return: -1, 0, or 1, strcmp-style
+ *   o0(in): The first value
+ *   o1(in): The second value
+ *   key_info(in): Sub-key info
+ *
+ * Note: These routines are internally used for relative comparisons
+ *       of two values which include NULL value.
+ */
+static int
+qfile_compare_with_null_value (int o0, int o1, SUBKEY_INFO key_info)
+{
+  /* At least one of the values sholud be NULL */
+  assert (o0 == 0 || o1 == 0);
+
+  if (o0 == 0 && o1 == 0)
+    {
+      /* both are unbound */
+      return 0;
+    }
+  else if (o0 == 0)
+    {
+      /* NULL compare_op !NULL */
+      assert (o1 != 0);
+      if (key_info.is_nulls_first)
+	{
+	  return -1;
+	}
+      else
+	{
+	  return 1;
+	}
+    }
+  else
+    {
+      /* !NULL compare_op NULL */
+      assert (o1 == 0);
+      if (key_info.is_nulls_first)
+	{
+	  return 1;
+	}
+      else
+	{
+	  return -1;
+	}
+    }
 }
 
 /* qfile_get_estimated_pages_for_sorting () -
@@ -4128,6 +4178,7 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p,
 	  subkey->col_dom = p->pos_descr.dom;
 	  subkey->sort_f = p->pos_descr.dom->type->data_cmpdisk;
 	  subkey->is_desc = (p->s_order == S_ASC) ? 0 : 1;
+	  subkey->is_nulls_first = (p->s_nulls == S_NULLS_LAST) ? 0 : 1;
 
 	  if (key_info_p->use_original)
 	    {
@@ -4150,6 +4201,7 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p,
 	  subkey->col_dom = types->domp[i];
 	  subkey->sort_f = types->domp[i]->type->data_cmpdisk;
 	  subkey->is_desc = 0;
+	  subkey->is_nulls_first = 1;
 	}
     }
 
@@ -6235,7 +6287,8 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no,
 	    }
 
 #if !defined (NDEBUG)
-	  for (i_idx = 0, num_active_users = 0; i_idx < lent->last_ta_idx; i_idx++)
+	  for (i_idx = 0, num_active_users = 0; i_idx < lent->last_ta_idx;
+	       i_idx++)
 	    {
 	      if (lent->tran_index_array[i_idx] > 0)
 		{
@@ -6510,7 +6563,8 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr,
 	}
 
 #if !defined (NDEBUG)
-      for (i_idx = 0, num_active_users = 0; i_idx < lent->last_ta_idx; i_idx++)
+      for (i_idx = 0, num_active_users = 0; i_idx < lent->last_ta_idx;
+	   i_idx++)
 	{
 	  if (lent->tran_index_array[i_idx] > 0)
 	    {

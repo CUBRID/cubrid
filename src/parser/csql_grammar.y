@@ -636,6 +636,7 @@ typedef struct YYLTYPE
 %type <number> of_analytic_lead_lag
 %type <number> of_analytic_no_args
 %type <number> negative_prec_cast_type
+%type <number> opt_nulls_first_or_last
 /*}}}*/
 
 /* define rule type (node) */
@@ -12822,7 +12823,7 @@ sort_spec_list
 	;
 
 sort_spec
-	: expression_ ASC
+	: expression_ ASC opt_nulls_first_or_last
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_SORT_SPEC);
 
@@ -12830,13 +12831,14 @@ sort_spec
 			  {
 			    node->info.sort_spec.asc_or_desc = PT_ASC;
 			    node->info.sort_spec.expr = $1;
+			    node->info.sort_spec.nulls_first_or_last = $3;
 			  }
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| expression_ DESC
+	| expression_ DESC opt_nulls_first_or_last
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_SORT_SPEC);
@@ -12845,13 +12847,14 @@ sort_spec
 			  {
 			    node->info.sort_spec.asc_or_desc = PT_DESC;
 			    node->info.sort_spec.expr = $1;
+			    node->info.sort_spec.nulls_first_or_last = $3;
 			  }
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| expression_
+	| expression_ opt_nulls_first_or_last
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_SORT_SPEC);
@@ -12860,10 +12863,32 @@ sort_spec
 			  {
 			    node->info.sort_spec.asc_or_desc = PT_ASC;
 			    node->info.sort_spec.expr = $1;
+			    node->info.sort_spec.nulls_first_or_last = $2;
 			  }
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
+opt_nulls_first_or_last
+	: /* empty */
+		{{
+
+			$$ = PT_NULLS_DEFAULT;
+
+		DBG_PRINT}}
+	| NULLS FIRST
+		{{
+
+			$$ = PT_NULLS_FIRST;
+
+		DBG_PRINT}}
+	| NULLS LAST
+		{{
+
+			$$ = PT_NULLS_LAST;
 
 		DBG_PRINT}}
 	;

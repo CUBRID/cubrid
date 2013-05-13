@@ -4754,6 +4754,7 @@ regu_sort_list_init (SORT_LIST * ptr)
   ptr->pos_descr.pos_no = 0;
   ptr->pos_descr.dom = &tp_Integer_domain;
   ptr->s_order = S_ASC;
+  ptr->s_nulls = S_NULLS_FIRST;
 }
 
 /*

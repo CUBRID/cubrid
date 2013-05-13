@@ -5553,6 +5553,23 @@ pt_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
 	(node->info.sort_spec.asc_or_desc == PT_ASC) ? S_ASC : S_DESC;
       sort->pos_descr = node->info.sort_spec.pos_descr;
 
+      switch (node->info.sort_spec.nulls_first_or_last)
+	{
+	case PT_NULLS_FIRST:
+	  sort->s_nulls = S_NULLS_FIRST;
+	  break;
+
+	case PT_NULLS_LAST:
+	  sort->s_nulls = S_NULLS_LAST;
+	  break;
+
+	case PT_NULLS_DEFAULT:
+	default:
+	  sort->s_nulls =
+	    (sort->s_order == S_ASC) ? S_NULLS_FIRST : S_NULLS_LAST;
+	  break;
+	}
+
       /* PT_SORT_SPEC pos_no start from 1, SORT_LIST pos_no start from 0 */
       if (sort_mode == SORT_LIST_GROUPBY)
 	{

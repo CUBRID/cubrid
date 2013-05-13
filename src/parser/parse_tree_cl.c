@@ -1493,7 +1493,7 @@ pt_pointer_stack_push (PARSER_CONTEXT * parser, PT_NODE * stack,
   if (new_top == NULL)
     {
       PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-                 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
       return stack;
     }
 
@@ -14727,6 +14727,7 @@ pt_init_sort_spec (PT_NODE * p)
   p->info.sort_spec.pos_descr.pos_no = 0;
   p->info.sort_spec.pos_descr.dom = NULL;
   p->info.sort_spec.asc_or_desc = PT_ASC;
+  p->info.sort_spec.nulls_first_or_last = PT_NULLS_DEFAULT;
   return p;
 }
 
@@ -14746,6 +14747,15 @@ pt_print_sort_spec (PARSER_CONTEXT * parser, PT_NODE * p)
   if (p->info.sort_spec.asc_or_desc == PT_DESC)
     {
       q = pt_append_nulstring (parser, q, " desc ");
+    }
+
+  if (p->info.sort_spec.nulls_first_or_last == PT_NULLS_FIRST)
+    {
+      q = pt_append_nulstring (parser, q, " nulls first ");
+    }
+  else if (p->info.sort_spec.nulls_first_or_last == PT_NULLS_LAST)
+    {
+      q = pt_append_nulstring (parser, q, " nulls last ");
     }
 
   return q;

@@ -107,6 +107,8 @@ struct SUBKEY_INFO
    * and a big win in maintainability.
    */
   int is_desc;
+
+  int is_nulls_first;
 };
 
 struct SORTKEY_INFO

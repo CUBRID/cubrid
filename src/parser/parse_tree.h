@@ -1049,7 +1049,11 @@ typedef enum
   PT_LOB_EXTERNAL,
 
   PT_FROM_LAST,
-  PT_IGNORE_NULLS
+  PT_IGNORE_NULLS,
+
+  PT_NULLS_DEFAULT,
+  PT_NULLS_FIRST,
+  PT_NULLS_LAST
 } PT_MISC_TYPE;
 
 /* Enumerated join type */
@@ -2473,6 +2477,9 @@ struct pt_sort_spec_info
   PT_NODE *expr;		/* PT_EXPR, PT_VALUE, PT_NAME */
   QFILE_TUPLE_VALUE_POSITION pos_descr;	/* Value position descriptor */
   PT_MISC_TYPE asc_or_desc;	/* enum value will be PT_ASC or PT_DESC    */
+  PT_MISC_TYPE nulls_first_or_last;	/* enum value will be
+					 * PT_NULLS_DEFAULT, PT_NULLS_FIRST
+					 * or PT_NULLS_LAST */
 };
 
 /* Info for Transaction Timeout */

@@ -559,12 +559,19 @@ typedef enum
   S_DESC
 } SORT_ORDER;
 
+typedef enum
+{
+  S_NULLS_FIRST = 1,
+  S_NULLS_LAST
+} SORT_NULLS;
+
 typedef struct sort_list SORT_LIST;
 struct sort_list
 {
   struct sort_list *next;	/* Next sort item */
   QFILE_TUPLE_VALUE_POSITION pos_descr;	/* Value position descriptor */
   SORT_ORDER s_order;		/* Ascending/Descending Order */
+  SORT_NULLS s_nulls;		/* NULLS as First/Last position */
 };				/* Sort item list */
 
 /*

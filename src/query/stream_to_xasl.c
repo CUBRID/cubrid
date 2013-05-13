@@ -6190,6 +6190,7 @@ stx_build_sort_list (THREAD_ENTRY * thread_p, char *ptr,
       return NULL;
     }
   ptr = or_unpack_int (ptr, (int *) &sort_list->s_order);
+  ptr = or_unpack_int (ptr, (int *) &sort_list->s_nulls);
 
   return ptr;
 }

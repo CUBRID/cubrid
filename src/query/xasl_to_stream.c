@@ -5138,6 +5138,7 @@ xts_process_sort_list (char *ptr, const SORT_LIST * sort_list)
     }
 
   ptr = or_pack_int (ptr, sort_list->s_order);
+  ptr = or_pack_int (ptr, sort_list->s_nulls);
 
   /* others (not sent to server) */
 
@@ -6734,6 +6735,8 @@ xts_sizeof_sort_list (const SORT_LIST * sort_lis)
   size +=
     /* other (not sent to server) */
     OR_INT_SIZE;		/* s_order */
+
+  size += OR_INT_SIZE;		/* s_nulls */
 
   return size;
 }
