@@ -244,6 +244,7 @@ shard_stmt_find_by_sql (char *sql_stmt, T_BROKER_VERSION client_version)
     {
       stmt_p = &(shard_Stmt.stmt_ent[i]);
       if (stmt_p->status == SHARD_STMT_STATUS_UNUSED
+	  || stmt_p->stmt_type != SHARD_STMT_TYPE_PREPARED
 	  || stmt_p->client_version != client_protocol_version
 	  || strcmp (sp_get_sql_stmt (stmt_p->parser), sql_stmt))
 	{
@@ -415,7 +416,7 @@ shard_stmt_new_internal (int stmt_type, char *sql_stmt, int ctx_cid,
   char *sql_stmt_tp = NULL;
   T_SHARD_STMT *stmt_p = NULL;
 
-  assert ((stmt_type == SHARD_STMT_TYPE_PREPARED && sql_stmt != NULL)
+  assert ((stmt_type != SHARD_STMT_TYPE_SCHEMA_INFO && sql_stmt != NULL)
 	  || (stmt_type == SHARD_STMT_TYPE_SCHEMA_INFO
 	      && sql_stmt == NULL && client_version == 0));
 
@@ -482,7 +483,7 @@ shard_stmt_new_internal (int stmt_type, char *sql_stmt, int ctx_cid,
 
       stmt_p->status = SHARD_STMT_STATUS_IN_PROGRESS;
       stmt_p->stmt_type = stmt_type;
-      if (stmt_p->stmt_type == SHARD_STMT_TYPE_PREPARED)
+      if (stmt_p->stmt_type != SHARD_STMT_TYPE_SCHEMA_INFO)
 	{
 	  stmt_p->client_version =
 	    shard_stmt_make_protocol_version (client_version);
@@ -560,6 +561,18 @@ shard_stmt_new_schema_info (int ctx_cid, unsigned int ctx_uid)
   stmt_p =
     shard_stmt_new_internal (SHARD_STMT_TYPE_SCHEMA_INFO, NULL, ctx_cid,
 			     ctx_uid, 0);
+  return stmt_p;
+}
+
+T_SHARD_STMT *
+shard_stmt_new_exclusive (char *sql_stmt, int ctx_cid, unsigned int ctx_uid,
+			  T_BROKER_VERSION client_version)
+{
+  T_SHARD_STMT *stmt_p = NULL;
+
+  stmt_p =
+    shard_stmt_new_internal (SHARD_STMT_TYPE_EXCLUSIVE, sql_stmt, ctx_cid,
+			     ctx_uid, client_version);
   return stmt_p;
 }
 
@@ -816,8 +829,8 @@ shard_stmt_set_hint_list (T_SHARD_STMT * stmt_p)
   SP_PARSER_HINT *hint_p = NULL;
   SP_HINT_TYPE hint_type = HT_NONE;
 
-  assert (stmt_p->stmt_type == SHARD_STMT_TYPE_PREPARED);
-  if (stmt_p->stmt_type != SHARD_STMT_TYPE_PREPARED)
+  assert (stmt_p->stmt_type != SHARD_STMT_TYPE_SCHEMA_INFO);
+  if (stmt_p->stmt_type == SHARD_STMT_TYPE_SCHEMA_INFO)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
 		 "Unexpected statement type. (expect:%d, current:%d).",
@@ -872,8 +885,8 @@ shard_stmt_get_hint_type (T_SHARD_STMT * stmt_p)
       return HT_INVAL;
     }
 
-  assert (stmt_p->stmt_type == SHARD_STMT_TYPE_PREPARED);
-  if (stmt_p->stmt_type != SHARD_STMT_TYPE_PREPARED)
+  assert (stmt_p->stmt_type != SHARD_STMT_TYPE_SCHEMA_INFO);
+  if (stmt_p->stmt_type == SHARD_STMT_TYPE_SCHEMA_INFO)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
 		 "Unexpected statement type. (expect:%d, current:%d).",

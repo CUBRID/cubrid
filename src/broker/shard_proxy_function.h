@@ -81,6 +81,9 @@ extern int fn_proxy_client_execute_array (T_PROXY_CONTEXT * ctx_p,
 extern int fn_proxy_get_shard_info (T_PROXY_CONTEXT * ctx_p,
 				    T_PROXY_EVENT * event_p, int argc,
 				    char **argv);
+extern int fn_proxy_client_prepare_and_execute (T_PROXY_CONTEXT * ctx_p,
+						T_PROXY_EVENT * event_p,
+						int argc, char **argv);
 extern int fn_proxy_client_not_supported (T_PROXY_CONTEXT * ctx_p,
 					  T_PROXY_EVENT * event_p, int argc,
 					  char **argv);
@@ -98,6 +101,8 @@ extern int fn_proxy_cas_fetch (T_PROXY_CONTEXT * ctx_p,
 			       T_PROXY_EVENT * event_p);
 extern int fn_proxy_cas_schema_info (T_PROXY_CONTEXT * ctx_p,
 				     T_PROXY_EVENT * event_p);
+extern int fn_proxy_cas_prepare_and_execute (T_PROXY_CONTEXT * ctx_p,
+					     T_PROXY_EVENT * event_p);
 
 extern int fn_proxy_cas_relay_only (T_PROXY_CONTEXT * ctx_p,
 				    T_PROXY_EVENT * event_p);

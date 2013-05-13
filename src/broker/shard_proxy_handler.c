@@ -116,7 +116,7 @@ static T_PROXY_CLIENT_FUNC proxy_client_fn_table[] = {
   fn_proxy_client_not_supported,	/* fn_end_session */
   fn_proxy_client_not_supported,	/* fn_get_row_count */
   fn_proxy_client_not_supported,	/* fn_get_last_insert_id */
-  fn_proxy_client_not_supported,	/* fn_prepare_and_execute */
+  fn_proxy_client_prepare_and_execute,	/* fn_prepare_and_execute */
   fn_proxy_client_cursor_close,	/* fn_cursor_close */
   fn_proxy_get_shard_info	/* fn_get_shard_info */
 };
@@ -163,7 +163,7 @@ static T_PROXY_CAS_FUNC proxy_cas_fn_table[] = {
   fn_proxy_cas_relay_only,	/* fn_end_session */
   fn_proxy_cas_relay_only,	/* fn_get_row_count */
   fn_proxy_cas_relay_only,	/* fn_get_last_insert_id */
-  fn_proxy_cas_relay_only,	/* fn_prepare_and_execute */
+  fn_proxy_cas_prepare_and_execute,	/* fn_prepare_and_execute */
   fn_proxy_cas_relay_only,	/* fn_cursor_close */
   fn_proxy_cas_relay_only	/* fn_get_shard_info */
 };
@@ -553,7 +553,8 @@ proxy_handler_process_cas_conn_error (T_PROXY_EVENT * event_p)
       if (ctx_p->waiting_event
 	  && ctx_p->is_cas_in_tran == false
 	  && (ctx_p->func_code == CAS_FC_PREPARE
-	      || ctx_p->func_code == CAS_FC_EXECUTE))
+	      || ctx_p->func_code == CAS_FC_EXECUTE
+	      || ctx_p->func_code == CAS_FC_PREPARE_AND_EXECUTE))
 	{
 	  PROXY_DEBUG_LOG ("Context is in_tran status "
 			   "and waiting prepare/execute response. "
@@ -1201,7 +1202,7 @@ proxy_context_clear (T_PROXY_CONTEXT * ctx_p)
 	  /* free statement */
 	  shard_stmt_free (ctx_p->prepared_stmt);
 	}
-      else if (ctx_p->prepared_stmt->stmt_type == SHARD_STMT_TYPE_SCHEMA_INFO)
+      else if (ctx_p->prepared_stmt->stmt_type != SHARD_STMT_TYPE_PREPARED)
 	{
 	  /* 
 	   * shcema info server handle can't be shared with other context
@@ -1476,7 +1477,7 @@ proxy_context_free_stmt (T_PROXY_CONTEXT * ctx_p)
       if (stmt_p)
 	{
 	  shard_stmt_unpin (stmt_p);
-	  if (stmt_p->stmt_type == SHARD_STMT_TYPE_SCHEMA_INFO)
+	  if (stmt_p->stmt_type != SHARD_STMT_TYPE_PREPARED)
 	    {
 	      assert (stmt_p->num_pinned == 0);
 	      shard_stmt_free (stmt_p);
