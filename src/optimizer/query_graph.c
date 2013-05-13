@@ -1113,13 +1113,13 @@ static PT_NODE *
 build_query_graph_function_index (PARSER_CONTEXT * parser, PT_NODE * tree,
 				  void *arg, int *continue_walk)
 {
-  PT_NODE *entity;
+  PT_NODE *entity = NULL;
   UINTPTR spec_id = 0;
   int i, k;
   MOP cls;
   SM_CLASS_CONSTRAINT *constraints;
   QO_SEGMENT *seg;
-  QO_NODE *node;
+  QO_NODE *node = NULL;
   QO_SEGMENT *seg_fi;
   const char *seg_name;
   QO_ENV *env = (QO_ENV *) * (long *) arg;
@@ -1139,7 +1139,8 @@ build_query_graph_function_index (PARSER_CONTEXT * parser, PT_NODE * tree,
 		  break;	/* found the node */
 		}
 	    }
-	  if (entity->info.spec.entity_name
+
+	  if (entity != NULL && entity->info.spec.entity_name
 	      && ((cls = sm_find_class (entity->info.spec.entity_name->info.
 					name.original)) != NULL))
 	    {
@@ -1151,9 +1152,11 @@ build_query_graph_function_index (PARSER_CONTEXT * parser, PT_NODE * tree,
 		    {
 		      char *expr_str =
 			parser_print_function_index_expr (env->parser, tree);
-		      if (!intl_identifier_casecmp (expr_str, constraints->
-						    func_index_info->
-						    expr_str))
+
+		      if (expr_str != NULL
+			  && !intl_identifier_casecmp (expr_str, constraints->
+						       func_index_info->
+						       expr_str))
 			{
 			  for (i = 0; i < env->nsegs; i++)
 			    {
@@ -1706,20 +1709,25 @@ lookup_seg (QO_NODE * head, PT_NODE * name, QO_ENV * env)
        */
       const char *expr_str =
 	parser_print_function_index_expr (QO_ENV_PARSER (env), name);
-      for (i = 0; (!found) && (i < env->nsegs); i++)
+
+      if (expr_str != NULL)
 	{
-	  if (QO_SEG_FUNC_INDEX (QO_ENV_SEG (env, i)) == false)
+	  for (i = 0; (!found) && (i < env->nsegs); i++)
 	    {
-	      continue;
-	    }
-	  /* match function index expression against the expression
-	   * in the given query
-	   */
-	  if (!intl_identifier_casecmp (QO_SEG_NAME (QO_ENV_SEG (env, i)),
-					expr_str))
-	    {
-	      found = true;
-	      k = i;
+	      if (QO_SEG_FUNC_INDEX (QO_ENV_SEG (env, i)) == false)
+		{
+		  continue;
+		}
+
+	      /* match function index expression against the expression
+	       * in the given query
+	       */
+	      if (!intl_identifier_casecmp (QO_SEG_NAME (QO_ENV_SEG (env, i)),
+					    expr_str))
+		{
+		  found = true;
+		  k = i;
+		}
 	    }
 	}
 
@@ -5582,7 +5590,7 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
   QO_ATTR_CUM_STATS *cum_statsp;
   QO_SEGMENT *segp;
   QO_NODE *seg_node;
-  QO_CLASS_INFO_ENTRY *class_info_entryp;
+  QO_CLASS_INFO_ENTRY *class_info_entryp = NULL;
   const char *name;
   int attr_id, n_attrs;
   ATTR_STATS *attr_statsp;
@@ -5889,11 +5897,15 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
       if (j == 1 && (ni_entryp->head->is_iss_candidate || is_iss_and_cover)
 	  && cum_statsp->key_size > 1 && cum_statsp->keys > 0)
 	{
-	  CLASS_STATS *stats;
+	  CLASS_STATS *stats = NULL;
 	  long long int first_pkey_card;
 	  long long int row_count;
 
-	  stats = QO_GET_CLASS_STATS (class_info_entryp);
+	  if (class_info_entryp != NULL)
+	    {
+	      stats = QO_GET_CLASS_STATS (class_info_entryp);
+	    }
+
 	  if (stats != NULL && stats->num_objects > 0)
 	    {
 	      /* we have what seems like valid statistics; fetch row count */
@@ -6894,6 +6906,7 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep,
 	{
 	  continue;
 	}
+
       if (QO_SEG_IS_OID_SEG (seg))
 	{
 	  found = false;
@@ -6906,6 +6919,7 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep,
 		  break;
 		}
 	    }
+
 	  if (found == false)
 	    {
 	      continue;

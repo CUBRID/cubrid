@@ -2740,9 +2740,9 @@ qo_join_new (QO_INFO * info,
 	     BITSET * afj_terms,
 	     BITSET * sarged_terms, BITSET * pinned_subqueries)
 {
-  QO_PLAN *plan;
-  QO_NODE *node;
-  PT_NODE *spec;
+  QO_PLAN *plan = NULL;
+  QO_NODE *node = NULL;
+  PT_NODE *spec = NULL;
   BITSET sarg_out_terms;
 
   bitset_init (&sarg_out_terms, info->env);
@@ -2852,8 +2852,20 @@ qo_join_new (QO_INFO * info,
       break;
     }				/* switch (join_method) */
 
+  assert (inner != NULL && outer != NULL);
+  if (inner == NULL || outer == NULL)
+    {
+      return NULL;
+    }
+
   node =
     QO_ENV_NODE (info->env, bitset_first_member (&((inner->info)->nodes)));
+
+  assert (node != NULL);
+  if (node == NULL)
+    {
+      return NULL;
+    }
 
   /* check for cselect of method */
   spec = QO_NODE_ENTITY_SPEC (node);
@@ -2868,6 +2880,7 @@ qo_join_new (QO_INFO * info,
     {
       plan->plan_un.join.join_type = join_type;
     }
+
   plan->plan_un.join.join_method = join_method;
   plan->plan_un.join.outer = qo_plan_add_ref (outer);
   plan->plan_un.join.inner = qo_plan_add_ref (inner);
@@ -2944,7 +2957,9 @@ qo_join_new (QO_INFO * info,
      a rational implementation wouldn't impose this cost, and so I have
      hope that one day we'll be able to eliminate it. */
   if (join_method == QO_JOINMETHOD_MERGE_JOIN)
-    plan = qo_sort_new (plan, plan->order, SORT_TEMP);
+    {
+      plan = qo_sort_new (plan, plan->order, SORT_TEMP);
+    }
 #endif /* MERGE_ALWAYS_MAKES_LISTFILE */
 
   bitset_delset (&sarg_out_terms);
@@ -8996,7 +9011,7 @@ qo_search_planner (QO_PLANNER * planner)
 	}
     }
 
-  if (qo_is_interesting_order_scan (plan))
+  if (plan != NULL && qo_is_interesting_order_scan (plan))
     {
       if (plan->plan_un.scan.index && plan->plan_un.scan.index->head)
 	{
@@ -9013,8 +9028,11 @@ qo_search_planner (QO_PLANNER * planner)
 	  else if (plan->plan_un.scan.index->head->orderby_skip
 		   || plan->plan_un.scan.index->head->multi_range_opt)
 	    {
-	      plan->info->env->pt_tree->info.query.q.select.hint &=
-		~PT_HINT_USE_IDX_DESC;
+	      if (plan->info->env != NULL)
+		{
+		  plan->info->env->pt_tree->info.query.q.select.hint &=
+		    ~PT_HINT_USE_IDX_DESC;
+		}
 	    }
 	}
     }
@@ -9631,7 +9649,10 @@ qo_combine_partitions (QO_PLANNER * planner, BITSET * reamining_subqueries)
   /*
    * Now finalize the topmost node of the tree.
    */
-  qo_plan_finalize (plan);
+  if (plan != NULL)
+    {
+      qo_plan_finalize (plan);
+    }
 
   for (i = planner->E; i < (signed) planner->T; ++i)
     {
@@ -9656,7 +9677,7 @@ qo_combine_partitions (QO_PLANNER * planner, BITSET * reamining_subqueries)
     {
       bitset_union (&(t_plan->sarged_terms), &sarged_terms);
     }
-  else
+  else if (plan != NULL)
     {
       /* invalid plan structure. occur error */
       qo_plan_discard (plan);

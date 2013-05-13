@@ -2830,8 +2830,8 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
 	{
 	  for (j = 0; j < nsegs; j++)
 	    {
-	      if (i >=
-		  sizeof (termp->index_seg) / sizeof (termp->index_seg[0]))
+	      if (i >= (int) (sizeof (termp->index_seg) /
+			      sizeof (termp->index_seg[0])))
 		{
 		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
 			  ER_FAILED_ASSERTION, 1, "false");

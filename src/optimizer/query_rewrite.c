@@ -1693,9 +1693,13 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node,
 	      if (found_join_term)
 		{
 		  join_term = parser_copy_tree (parser, temp);
-		  join_term->etc = (void *) temp;	/* mark as added */
-		  join_term_list = parser_append_node (join_term,
-						       join_term_list);
+
+		  if (join_term != NULL)
+		    {
+		      join_term->etc = (void *) temp;	/* mark as added */
+		      join_term_list = parser_append_node (join_term,
+							   join_term_list);
+		    }
 		}
 
 	    }			/* if (join_term == NULL) */
@@ -1746,6 +1750,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node,
 		      /* be sure to cast to the same enumeration type */
 		      dt = arg1->data_type;
 		    }
+
 		  temp =
 		    pt_wrap_with_cast_op (parser,
 					  parser_copy_tree_list (parser,
@@ -3264,13 +3269,20 @@ qo_find_like_rewrite_bound (PARSER_CONTEXT * const parser,
 			    const int last_safe_logical_pos)
 {
   int error_code = NO_ERROR;
-  PT_NODE *const bound = parser_new_node (parser, PT_VALUE);
+  PT_NODE *bound;
   DB_VALUE tmp_result;
 
   DB_MAKE_NULL (&tmp_result);
 
+  assert (parser != NULL);
+  if (parser == NULL)
+    {
+      return NULL;
+    }
+
   assert (has_escape_char ^ (escape_str == NULL));
 
+  bound = parser_new_node (parser, PT_VALUE);
   if (bound == NULL)
     {
       PT_INTERNAL_ERROR (parser, "allocate new node");
@@ -3311,6 +3323,7 @@ error_exit:
     {
       parser_free_tree (parser, bound);
     }
+
   db_value_clear (&tmp_result);
   return NULL;
 }
@@ -3361,8 +3374,15 @@ qo_rewrite_one_like_term (PARSER_CONTEXT * const parser, PT_NODE * const like,
 
   *perform_generic_rewrite = false;
 
+  assert (pattern != NULL && parser != NULL);
+  if (pattern == NULL || parser == NULL)
+    {
+      return;
+    }
+
   assert (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE
 			   (&pattern->info.value.db_value)));
+
   collation_id = DB_GET_STRING_COLLATION (&pattern->info.value.db_value);
   codeset = DB_GET_STRING_CODESET (&pattern->info.value.db_value);
 
@@ -4034,6 +4054,12 @@ qo_convert_to_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 
   assert (PT_IS_EXPR_NODE (node));
   node_prior = pt_get_first_arg_ignore_prior (node);
+
+  assert (node_prior != NULL);
+  if (node_prior == NULL)
+    {
+      return;
+    }
 
   /* convert the given node to RANGE node */
 
@@ -4923,6 +4949,12 @@ qo_apply_range_intersection_helper (PARSER_CONTEXT * parser,
   COMP_DBVALUE_WITH_OPTYPE_RESULT cmp1, cmp2, cmp3, cmp4, new_cmp;
   bool dont_remove_sibling = false;
   bool include_nonvalue;
+
+  assert (parser != NULL);
+  if (parser == NULL)
+    {
+      return;
+    }
 
   /* for each range spec of the node1 */
   prev = NULL;
@@ -5884,7 +5916,7 @@ qo_rewrite_query_as_derived (PARSER_CONTEXT * parser, PT_NODE * query)
   derived = mq_reset_ids_in_statement (parser, derived);
 
   /* increase correlation level of the query */
-  if (query->info.query.correlation_level)
+  if (derived != NULL && query->info.query.correlation_level)
     {
       derived = mq_bump_correlation_level (parser, derived, 1,
 					   derived->info.
@@ -6151,7 +6183,7 @@ qo_rewrite_hidden_col_as_derived (PARSER_CONTEXT * parser, PT_NODE * node,
 static void
 qo_rewrite_index_hints (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  PT_NODE *using_index, *hint_node, *prev_node, *next_node;
+  PT_NODE *using_index = NULL, *hint_node, *prev_node, *next_node;
 
   bool is_sorted, is_idx_reversed, is_idx_match_nokl, is_hint_masked;
 
@@ -7606,8 +7638,15 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 		{
 		  next = pred->next;
 		  node = qo_rewrite_oid_equality (parser, node, pred, &seqno);
+		  assert_release (node != NULL);
+		  if (node == NULL)
+		    {
+		      return NULL;
+		    }
+
 		  pred = qo_get_next_oid_pred (next);
 		}		/* while (pred) */
+
 	      /* re-analyze paths for possible optimizations */
 	      node->info.query.q.select.from =
 		parser_walk_tree (parser, node->info.query.q.select.from,

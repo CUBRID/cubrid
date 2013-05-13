@@ -8198,6 +8198,12 @@ pt_wrap_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg,
 {
   PT_NODE *new_att, *new_dt, *next_att;
 
+  assert (arg != NULL);
+  if (arg == NULL)
+    {
+      return NULL;
+    }
+
   next_att = arg->next;
   arg->next = NULL;
   new_att = parser_new_node (parser, PT_EXPR);
