@@ -12912,7 +12912,7 @@ remove_class_triggers (MOP classop, SM_CLASS * class_)
 static int
 sm_drop_cascade_foreign_key (SM_CLASS * class_)
 {
-  int save, error = NO_ERROR;
+  int error = NO_ERROR;
   SM_CLASS_CONSTRAINT *pk;
   MOP fk_class_mop;
   SM_TEMPLATE *template_;
@@ -12938,7 +12938,7 @@ sm_drop_cascade_foreign_key (SM_CLASS * class_)
 
       error = dbt_drop_constraint (template_, DB_CONSTRAINT_FOREIGN_KEY,
 				   pk->fk_info->name, NULL, 0);
-      if (error != NULL)
+      if (error != NO_ERROR)
 	{
 	  dbt_abort_class (template_);
 	  goto end;
