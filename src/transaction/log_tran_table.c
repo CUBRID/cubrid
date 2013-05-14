@@ -2174,22 +2174,25 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
 		{
 		  if (ent->sql_info.sql_hash_text != NULL)
 		    {
-		      /* copy query string */
-		      query_exec_info[i].query_stmt =
-			strdup (ent->sql_info.sql_hash_text);
-		      if (query_exec_info[i].query_stmt == NULL)
-			{
-			  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-			  goto error;
-			}
+		      char *sql = ent->sql_info.sql_hash_text;
 
 		      if (qmgr_get_sql_id (thread_p,
 					   &query_exec_info[i].sql_id,
-					   ent->sql_info.sql_hash_text,
-					   strlen (ent->sql_info.
-						   sql_hash_text)) !=
-			  NO_ERROR)
+					   sql, strlen (sql)) != NO_ERROR)
 			{
+			  goto error;
+			}
+
+		      if (ent->sql_info.sql_user_text != NULL)
+			{
+			  sql = ent->sql_info.sql_user_text;
+			}
+
+		      /* copy query string */
+		      query_exec_info[i].query_stmt = strdup (sql);
+		      if (query_exec_info[i].query_stmt == NULL)
+			{
+			  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 			  goto error;
 			}
 		    }
