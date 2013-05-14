@@ -1763,6 +1763,7 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
   int logpg_used_size;
   LOG_PAGEID next_fpageid;
   LOGWR_MODE next_mode;
+  LOGWR_MODE orig_mode = LOGWR_MODE_ASYNC;
   int status;
   int timeout;
   int rv;
@@ -1770,6 +1771,7 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
   bool check_cs_own = false;
   bool is_interrupted = false;
   bool copy_from_file = false;
+  bool need_cs_exit_after_send = true;
   struct timespec to;
   LOGWR_INFO *writer_info = &log_Gl.writer_info;
 
@@ -1789,6 +1791,9 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
 
   while (true)
     {
+      /* In case that a non-ASYNC mode client internally uses ASYNC mode */
+      orig_mode = MAX (mode, orig_mode);
+
       er_log_debug (ARG_FILE_LINE,
 		    "[tid:%ld] xlogwr_get_log_pages, fpageid(%lld), mode(%s)\n",
 		    thread_p->tid, first_pageid,
@@ -1915,13 +1920,14 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
          wait -> done      |  SYNC       ASYNC
        */
 
-      if (mode == LOGWR_MODE_ASYNC
-	  && (entry->status != LOGWR_STATUS_DELAY
-	      || (entry->status == LOGWR_STATUS_DELAY
-		  && status != LOGWR_STATUS_DONE)))
+      if (orig_mode == LOGWR_MODE_ASYNC
+	  || (mode == LOGWR_MODE_ASYNC &&
+	      (entry->status != LOGWR_STATUS_DELAY
+	       || status != LOGWR_STATUS_DONE)))
 	{
 	  logwr_cs_exit (&check_cs_own);
 	  logwr_write_end (writer_info, entry, status);
+	  need_cs_exit_after_send = false;
 	}
 
       error_code = xlog_send_log_pages_to_client (thread_p, logpg_area,
@@ -1944,9 +1950,7 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
       logwr_update_last_eof_lsa (entry);
 
       /* In case of sync mode, unregister the writer and wakeup LFT to finish */
-      if (mode != LOGWR_MODE_ASYNC
-	  || (entry->status == LOGWR_STATUS_DELAY
-	      && status == LOGWR_STATUS_DONE))
+      if (need_cs_exit_after_send)
 	{
 	  logwr_cs_exit (&check_cs_own);
 	  logwr_write_end (writer_info, entry, status);
@@ -1955,6 +1959,7 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
       /* Reset the arguments for the next request */
       first_pageid = next_fpageid;
       mode = next_mode;
+      need_cs_exit_after_send = true;
     }
 
   db_private_free_and_init (thread_p, logpg_area);
