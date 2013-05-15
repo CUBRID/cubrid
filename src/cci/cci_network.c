@@ -1122,7 +1122,13 @@ net_recv_stream (SOCKET sock_fd, int port, char *buf, int size, int timeout)
 
 	  return CCI_ER_COMMUNICATION;
 	}
-
+#if !defined (WINDOWS)
+      else if (po[0].revents & POLLERR || po[0].revents & POLLHUP)
+	{
+	  po[0].revents = 0;
+	  return CCI_ER_COMMUNICATION;
+	}
+#endif /* !WINDOWS */
 
       read_len = READ_FROM_SOCKET (sock_fd, buf + tot_read_len,
 				   size - tot_read_len);
