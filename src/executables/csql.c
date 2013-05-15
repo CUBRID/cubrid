@@ -1837,8 +1837,11 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
       CUBRID_STMT_TYPE stmt_type;	/* statement type */
       DB_QUERY_RESULT *result = NULL;	/* result pointer */
       int db_error;
+      char stmt_msg[LINE_BUFFER_SIZE];
 
       /* Start the execution of stms */
+      stmt_msg[0] = '\0';
+
       if (csql_Is_time_on)
 	{
 	  (void) gettimeofday (&start_time, NULL);
@@ -1963,8 +1966,9 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 	    msg_p = ((csql_Row_count > 1)
 		     ? csql_get_message (CSQL_ROWS)
 		     : csql_get_message (CSQL_ROW));
-	    sprintf (csql_Scratch_text, msg_p, csql_Row_count, "selected");
-	    csql_display_msg (csql_Scratch_text);
+	    snprintf (stmt_msg, LINE_BUFFER_SIZE,
+		      csql_get_message (CSQL_ROWS), csql_Row_count,
+		      "selected");
 	    break;
 	  }
 
@@ -1999,8 +2003,8 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 	    msg_p = ((db_error > 1)
 		     ? csql_get_message (CSQL_ROWS)
 		     : csql_get_message (CSQL_ROW));
-	    sprintf (csql_Scratch_text, msg_p, db_error, "affected");
-	    csql_display_msg (csql_Scratch_text);
+	    snprintf (stmt_msg, LINE_BUFFER_SIZE, msg_p, db_error,
+		      "affected");
 	    break;
 	  }
 
@@ -2027,6 +2031,8 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 
       if (csql_Is_time_on)
 	{
+	  char time[100];
+
 	  (void) gettimeofday (&end_time, NULL);
 
 	  elapsed_time.tv_sec = end_time.tv_sec - start_time.tv_sec;
@@ -2036,9 +2042,9 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 	      elapsed_time.tv_sec--;
 	      elapsed_time.tv_usec += 1000000;
 	    }
-	  fprintf (csql_Output_fp,
-		   "SQL statement execution time: %5ld.%06ld sec\n",
+	  sprintf (time, " (%ld.%06ld sec) ",
 		   elapsed_time.tv_sec, elapsed_time.tv_usec);
+	  strncat (stmt_msg, time, sizeof (time));
 	}
 
       if (csql_arg->auto_commit
@@ -2066,8 +2072,12 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 	      goto error;
 	    }
 	  else
-	    csql_display_msg (csql_get_message (CSQL_STAT_COMMITTED_TEXT));
+	    {
+	      strncat (stmt_msg, csql_get_message (CSQL_STAT_COMMITTED_TEXT),
+		       LINE_BUFFER_SIZE);
+	    }
 	}
+      csql_display_msg (stmt_msg);
       db_drop_statement (session, stmt_id);
     }
 

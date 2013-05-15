@@ -59,8 +59,8 @@ For additional information, see http://www.cubrid.com\n
 51 CUBRID SQL Interpreter
 52 There have been updates. Do you want to commit ? (`Y' or `N') 
 53 Enter `Y' to commit, `N' to abort. 
-54 Current transaction has been committed.
-55 Current transaction has been rolled back.
+54 Committed.
+55 Rolled back.
 56 Command buffer has been saved.
 57 The file has been read into the command buffer.
 58 Command buffer has been sent to the printer.

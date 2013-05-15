@@ -59,8 +59,8 @@ Per ulteriori informazioni, vedere http://www.cubrid.com\n
 51 Interprete CUBRID SQL
 52 Ci sono stati aggiornamenti. Si desidera eseguire il commit? (`Y' o `N') 
 53 Immettere 'Y' per commit, 'N' per annullare. 
-54 Transazione corrente è stato commesso.
-55 Transazione corrente è stato rolled back.
+54 Committed.
+55 Rolled back.
 56 Buffer dei comandi è stato salvato.
 57 Il file è stato letto nel buffer dei comandi.
 58 Buffer di comando è stato inviato alla stampante.

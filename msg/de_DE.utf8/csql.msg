@@ -59,8 +59,8 @@ Für weitere Informationen, siehe http://www.cubrid.com\n
 51 CUBRID SQL Interpreter
 52 Es gibt Updates. Wollen Sie diese verpflichten? (`Y' or `N') 
 53 `Y' für Verpflichtung, `N' für Abbruch eingeben. 
-54 Aktuelle Transaktion wurde begangen.
-55 Aktuelle Transaktion wurde rückgängig gemacht.
+54 Committed.
+55 Rolled back.
 56 Befehlspuffer wurde gespeichert.
 57 Die Datei wurde in den Befehlspuffer gelesen.
 58 Der Befehlspuffer wurde an den Drucker gesendet.
