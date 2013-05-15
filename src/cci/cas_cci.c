@@ -190,6 +190,9 @@ static void copy_error_buffer (T_CCI_ERROR * dest_err_buf_p,
 static int cci_datasource_release_internal (T_CCI_DATASOURCE * ds,
 					    T_CON_HANDLE * con_handle);
 static int cci_end_tran_internal (T_CON_HANDLE * con_handle, char type);
+static void get_last_error (T_CON_HANDLE * con_handle,
+			    T_CCI_ERROR * dest_err_buf);
+
 
 /************************************************************************
  * INTERFACE VARIABLES							*
@@ -378,7 +381,7 @@ cci_connect_internal (char *ip, int port, char *db, char *user, char *pass,
   error = cas_connect (con_handle, &(con_handle->err_buf));
   if (error < 0)
     {
-      copy_error_buffer (err_buf, &(con_handle->err_buf));
+      get_last_error (con_handle, err_buf);
       hm_con_handle_free (con_handle);
       goto error;
     }
@@ -386,7 +389,7 @@ cci_connect_internal (char *ip, int port, char *db, char *user, char *pass,
   error = qe_end_tran (con_handle, CCI_TRAN_COMMIT, &con_handle->err_buf);
   if (error < 0)
     {
-      copy_error_buffer (err_buf, &(con_handle->err_buf));
+      get_last_error (con_handle, err_buf);
       hm_con_handle_free (con_handle);
       goto error;
     }
@@ -395,7 +398,7 @@ cci_connect_internal (char *ip, int port, char *db, char *user, char *pass,
   RESET_START_TIME (con_handle);
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
 
   return con_handle->id;
 
@@ -578,7 +581,7 @@ cci_connect_with_url_internal (char *url, char *user, char *pass,
   error = cas_connect (con_handle, &(con_handle->err_buf));
   if (error < 0)
     {
-      copy_error_buffer (err_buf, &(con_handle->err_buf));
+      get_last_error (con_handle, err_buf);
       hm_con_handle_free (con_handle);
       goto ret;
     }
@@ -586,7 +589,7 @@ cci_connect_with_url_internal (char *url, char *user, char *pass,
   error = qe_end_tran (con_handle, CCI_TRAN_COMMIT, &con_handle->err_buf);
   if (error < 0)
     {
-      copy_error_buffer (err_buf, &(con_handle->err_buf));
+      get_last_error (con_handle, err_buf);
       hm_con_handle_free (con_handle);
       goto ret;
     }
@@ -609,7 +612,7 @@ ret:
     {
       API_ELOG (con_handle, error);
       set_error_buffer (&(con_handle->err_buf), error, NULL);
-      copy_error_buffer (err_buf, &(con_handle->err_buf));
+      get_last_error (con_handle, err_buf);
 
       return con_handle->id;
     }
@@ -728,7 +731,7 @@ cci_disconnect (int mapped_conn_id, T_CCI_ERROR * err_buf)
 	{
 	  map_close_otc (mapped_conn_id);
 	  set_error_buffer (&(con_handle->err_buf), error, NULL);
-	  copy_error_buffer (err_buf, &(con_handle->err_buf));
+	  get_last_error (con_handle, err_buf);
 
 	  MUTEX_LOCK (con_handle_table_mutex);
 	  error = hm_con_handle_free (con_handle);
@@ -740,7 +743,7 @@ cci_disconnect (int mapped_conn_id, T_CCI_ERROR * err_buf)
   if (con_handle != NULL)
     {
       set_error_buffer (&(con_handle->err_buf), error, NULL);
-      copy_error_buffer (err_buf, &(con_handle->err_buf));
+      get_last_error (con_handle, err_buf);
       con_handle->used = false;
     }
 
@@ -829,7 +832,7 @@ cci_end_tran (int mapped_conn_id, char type, T_CCI_ERROR * err_buf)
   error = cci_end_tran_internal (con_handle, type);
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return error;
@@ -1010,7 +1013,7 @@ error:
 #endif
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return error;
@@ -1435,13 +1438,22 @@ execute_end:
       elapsed = ELAPSED_MSECS (et, st);
       if (elapsed > con_handle->slow_query_threshold_millis)
 	{
-	  CCI_LOGF_DEBUG (con_handle->logger, "[%04d][SLOW][%d] SQL[%s]",
-			  con_handle->id, elapsed, req_handle->sql_text);
+	  CCI_LOGF_DEBUG (con_handle->logger, "[CONHANDLE - %04d] "
+			  "[CAS INFO - %d.%d.%d.%d:%d, %d, %d] "
+			  "[SLOW QUERY - ELAPSED : %d] [SQL - %s]",
+			  con_handle->id,
+			  con_handle->ip_addr[0],
+			  con_handle->ip_addr[1],
+			  con_handle->ip_addr[2],
+			  con_handle->ip_addr[3],
+			  con_handle->port,
+			  con_handle->cas_id, con_handle->cas_pid,
+			  elapsed, req_handle->sql_text);
 	}
     }
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return error;
@@ -1572,8 +1584,17 @@ cci_prepare_and_execute (int mapped_conn_id, char *sql_stmt,
       elapsed = ELAPSED_MSECS (et, st);
       if (elapsed > con_handle->slow_query_threshold_millis)
 	{
-	  CCI_LOGF_DEBUG (con_handle->logger, "[%04d][SLOW][%d] SQL[%s]",
-			  con_handle->id, elapsed, sql_stmt);
+	  CCI_LOGF_DEBUG (con_handle->logger, "[CONHANDLE - %04d] "
+			  "[CAS INFO - %d.%d.%d.%d:%d, %d, %d] "
+			  "[SLOW QUERY - ELAPSED : %d] [SQL - %s]",
+			  con_handle->id,
+			  con_handle->ip_addr[0],
+			  con_handle->ip_addr[1],
+			  con_handle->ip_addr[2],
+			  con_handle->ip_addr[3],
+			  con_handle->port,
+			  con_handle->cas_id, con_handle->cas_pid,
+			  elapsed, req_handle->sql_text);
 	}
     }
 
@@ -1612,7 +1633,7 @@ prepare_execute_error:
 
 error:
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return error;
@@ -1644,7 +1665,7 @@ cci_next_result (int mapped_stmt_id, T_CCI_ERROR * err_buf)
 			   &(con_handle->err_buf));
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return error;
@@ -1776,7 +1797,7 @@ execute_end:
     }
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return error;
@@ -1823,7 +1844,7 @@ cci_get_db_parameter (int mapped_conn_id, T_CCI_DB_PARAM param_name,
 
 ret:
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return error;
@@ -1953,7 +1974,7 @@ error:
 	  && mapped_conn_id != CCI_NO_BACKSLASH_ESCAPES_TRUE);
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return ((long) error);
@@ -2014,7 +2035,7 @@ cci_set_db_parameter (int mapped_conn_id, T_CCI_DB_PARAM param_name,
 
 ret:
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return error;
@@ -2055,7 +2076,7 @@ cci_close_query_result (int mapped_stmt_id, T_CCI_ERROR * err_buf)
     }
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return error;
@@ -2158,7 +2179,7 @@ cci_cursor (int mapped_stmt_id, int offset, T_CCI_CURSOR_POS origin,
 
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return error;
@@ -2309,7 +2330,7 @@ ret:
     }
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
 
   return error;
 }
@@ -2442,7 +2463,7 @@ ret:
     }
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
 
   return error;
 }
@@ -2479,7 +2500,7 @@ cci_oid_put (int mapped_conn_id, char *oid_str, char **attr_name,
     }
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return error;
@@ -2517,7 +2538,7 @@ cci_oid_put2 (int mapped_conn_id, char *oid_str, char **attr_name,
     }
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return error;
@@ -2708,7 +2729,7 @@ cci_get_class_num_objs (int mapped_conn_id, char *class_name, int flag,
     }
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return error;
@@ -2748,7 +2769,7 @@ cci_oid (int mapped_conn_id, T_CCI_OID_CMD cmd, char *oid_str,
     }
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return error;
@@ -2787,7 +2808,7 @@ cci_oid_get_class_name (int mapped_conn_id, char *oid_str, char *out_buf,
     }
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return error;
@@ -2849,7 +2870,7 @@ cci_col_get (int mapped_conn_id, char *oid_str, char *col_attr, int *col_size,
 
 error:
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return error;
@@ -2887,7 +2908,7 @@ cci_col_size (int mapped_conn_id, char *oid_str, char *col_attr,
     }
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return error;
@@ -3001,7 +3022,7 @@ cci_cursor_update (int mapped_stmt_id, int cursor_pos, int index,
     }
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return error;
@@ -3083,7 +3104,7 @@ cci_execute_batch (int mapped_conn_id, int num_query, char **sql_stmt,
 
 ret:
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return error;
@@ -3152,7 +3173,7 @@ cci_execute_result (int mapped_stmt_id, T_CCI_QUERY_RESULT ** qr,
   error = qe_query_result_copy (req_handle, qr);
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return error;
@@ -3275,7 +3296,7 @@ cci_get_attr_type_str (int mapped_conn_id, char *class_name, char *attr_name,
     }
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return error;
@@ -3375,7 +3396,7 @@ cci_savepoint (int mapped_conn_id, T_CCI_SAVEPOINT_CMD cmd,
     }
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return error;
@@ -3413,7 +3434,7 @@ cci_get_param_info (int mapped_stmt_id, T_CCI_PARAM_INFO ** param,
 			     &(con_handle->err_buf));
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return error;
@@ -3537,7 +3558,7 @@ cci_lob_new (int mapped_conn_id, void *lob, T_CCI_U_TYPE type,
 
 ret:
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return error;
@@ -3655,7 +3676,7 @@ ret:
     }
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
 
   return error;
 }
@@ -3755,7 +3776,7 @@ ret:
     }
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
 
   return error;
 }
@@ -3849,7 +3870,7 @@ cci_xa_prepare (int mapped_conn_id, XID * xid, T_CCI_ERROR * err_buf)
     }
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
 
   return error;
 }
@@ -3886,7 +3907,7 @@ cci_xa_recover (int mapped_conn_id, XID * xid, int num_xid,
     }
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
 
   return error;
 }
@@ -3922,7 +3943,7 @@ cci_xa_end_tran (int mapped_conn_id, XID * xid, char type,
     }
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
 
   return error;
 }
@@ -4016,7 +4037,7 @@ cci_row_count (int mapped_conn_id, int *row_count, T_CCI_ERROR * err_buf)
     }
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return error;
@@ -4164,7 +4185,7 @@ cci_get_last_insert_id (int mapped_conn_id, void *value,
     }
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return error;
@@ -4503,7 +4524,7 @@ col_set_add_drop (int resolved_id, char col_cmd, char *oid_str,
     }
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return error;
@@ -4537,7 +4558,7 @@ col_seq_op (int resolved_id, char col_cmd, char *oid_str, char *col_attr,
     }
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return error;
@@ -4578,7 +4599,7 @@ fetch_cmd (int mapped_stmt_id, char flag, T_CCI_ERROR * err_buf)
     }
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return error;
@@ -5959,7 +5980,7 @@ cci_datasource_release (T_CCI_DATASOURCE * ds, T_CCI_CONN mapped_conn_id,
   ret = cci_datasource_release_internal (ds, con_handle);
   cci_end_tran_internal (con_handle, CCI_TRAN_ROLLBACK);
   map_close_otc (mapped_conn_id);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return ret;
@@ -6024,7 +6045,7 @@ cci_get_shard_info (int mapped_conn_id, T_CCI_SHARD_INFO ** shard_info,
   error = qe_get_shard_info (con_handle, shard_info, &(con_handle->err_buf));
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
-  copy_error_buffer (err_buf, &(con_handle->err_buf));
+  get_last_error (con_handle, err_buf);
   con_handle->used = false;
 
   return error;
@@ -6126,6 +6147,38 @@ set_error_buffer (T_CCI_ERROR * err_buf_p,
     }
 }
 
+/*
+ * get_last_error ()
+ *   con_handle (in):
+ *   dest_err_buf (out):
+ */
+static void
+get_last_error (T_CON_HANDLE * con_handle, T_CCI_ERROR * dest_err_buf)
+{
+  if (con_handle == NULL || dest_err_buf == NULL)
+    {
+      return;
+    }
+
+  if (con_handle->err_buf.err_code != CCI_ER_NO_ERROR
+      && con_handle->err_buf.err_msg[0] != '\0')
+    {
+      dest_err_buf->err_code = con_handle->err_buf.err_code;
+      snprintf (dest_err_buf->err_msg, sizeof (dest_err_buf->err_msg),
+		"%s[CAS INFO - %d.%d.%d.%d:%d, %d, %d].",
+		con_handle->err_buf.err_msg, con_handle->ip_addr[0],
+		con_handle->ip_addr[1], con_handle->ip_addr[2],
+		con_handle->ip_addr[3], con_handle->port, con_handle->cas_id,
+		con_handle->cas_pid);
+    }
+  else
+    {
+      copy_error_buffer (dest_err_buf, &(con_handle->err_buf));
+    }
+
+  return;
+}
+
 static void
 copy_error_buffer (T_CCI_ERROR * dest_err_buf_p, T_CCI_ERROR * src_err_buf_p)
 {
@@ -6133,4 +6186,61 @@ copy_error_buffer (T_CCI_ERROR * dest_err_buf_p, T_CCI_ERROR * src_err_buf_p)
     {
       *dest_err_buf_p = *src_err_buf_p;
     }
+}
+
+/*
+ * cci_get_cas_info()
+ *   info_buf (out):
+ *   buf_length (in):
+ *   err_buf (in):
+ */
+int
+cci_get_cas_info (int mapped_conn_id, char *info_buf, int buf_length,
+		  T_CCI_ERROR * err_buf)
+{
+  int error = CCI_ER_NO_ERROR;
+  T_CON_HANDLE *con_handle = NULL;
+
+  reset_error_buffer (err_buf);
+
+  if (info_buf == NULL || buf_length <= 0)
+    {
+      set_error_buffer (err_buf, CCI_ER_INVALID_ARGS, NULL);
+      return CCI_ER_INVALID_ARGS;
+    }
+
+  error = hm_get_connection (mapped_conn_id, &con_handle);
+  if (error != CCI_ER_NO_ERROR)
+    {
+      set_error_buffer (err_buf, error, NULL);
+      return error;
+    }
+
+  reset_error_buffer (&(con_handle->err_buf));
+
+  API_SLOG (con_handle);
+
+  snprintf (info_buf, buf_length - 1, "%d.%d.%d.%d:%d,%d,%d",
+	    con_handle->ip_addr[0], con_handle->ip_addr[1],
+	    con_handle->ip_addr[2], con_handle->ip_addr[3],
+	    con_handle->port, con_handle->cas_id, con_handle->cas_pid);
+
+  info_buf[buf_length - 1] = '\0';
+
+  if (con_handle->log_trace_api)
+    {
+      CCI_LOGF_DEBUG (con_handle->logger, "[%s]", info_buf);
+    }
+
+  API_ELOG (con_handle, error);
+
+#ifdef CCI_DEBUG
+  CCI_DEBUG_PRINT (print_debug_msg ("(%d)get_cas_info:%s",
+				    mapped_conn_id, info_buf));
+#endif
+
+  get_last_error (con_handle, err_buf);
+  con_handle->used = false;
+
+  return error;
 }

@@ -897,11 +897,11 @@ extern "C"
    *
    *   cci_get_last_insert_id set value as last insert id in con_handle
    *   so it could be changed when new insertion is executed.
-   *   
+   *
    *   cci_last_insert_id set value as allocated last insert id
    *   so it won't be changed but user should free it manually.
    *
-   *   But, It's possible to make some problem when it working with 
+   *   But, It's possible to make some problem when it working with
    *   user own memory allocators or Windows shared library memory space.
    *
    *   So we deprecate cci_last_insert_id and strongly recommend to use
@@ -944,6 +944,8 @@ extern "C"
 				    char *attr_name, char flag,
 				    T_CCI_ERROR * err_buf);
   extern int cci_is_shard (int con_h_id, T_CCI_ERROR * err_buf);
+  extern int cci_get_cas_info (int mapped_conn_id, char *info_buf,
+			       int buf_length, T_CCI_ERROR * err_buf);
 
 #endif
 

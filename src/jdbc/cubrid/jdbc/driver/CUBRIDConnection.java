@@ -142,6 +142,16 @@ public class CUBRIDConnection implements Connection {
 	 * java.sql.Connection interface
 	 */
 
+	@Override
+	public String toString () {
+	  StringBuffer str = new StringBuffer();
+	  str.append(getClass().getName());
+	  str.append(String.format ("(%s:%d, %d, %d)", u_con.CASIp,
+				     u_con.CASPort, u_con.casId,
+				     u_con.processId));
+	  return str.toString();
+	}
+
 	public synchronized Statement createStatement() throws SQLException {
 		return createStatement(ResultSet.TYPE_FORWARD_ONLY,
 				ResultSet.CONCUR_READ_ONLY);

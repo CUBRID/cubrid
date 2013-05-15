@@ -70,15 +70,23 @@ public class UError {
 	public String getErrorMsg() {
 	    	if (connection != null) {
 	    	    if (connection.protoVersionIsAbove(UConnection.PROTOCOL_V4)) {
-	    		return String.format("CASID[%d],CASPID[%d],SESSION[%d],URL[%s]\n%s", connection.casId,
-	    			connection.processId ,getSessionNumber(connection.sessionId),
-	    			connection.url, errorMessage);
+	    		return String.format("%s[CAS INFO - %s:%d,%d,%d],[SESSION-%d],[URL-%s].",
+				errorMessage, connection.CASIp,
+				connection.CASPort, connection.casId,
+	    			connection.processId ,
+				getSessionNumber(connection.sessionId),
+	    			connection.url);
 	    	    } else if (connection.protoVersionIsAbove(UConnection.PROTOCOL_V3)) {
-	    		return String.format("CASPID[%d],SESSION[%d],URL[%s]\n%s", connection.processId,
-	    			getSessionNumber(connection.sessionId), connection.url, errorMessage);
+	    		return String.format("%s[CAS INFO - %s:%d,%d],[SESSION-%d],[URL-%s].", 
+				errorMessage, connection.CASIp,
+				connection.CASPort,connection.processId,
+	    			getSessionNumber(connection.sessionId),
+				connection.url);
 	    	    } else {
-	    		return String.format("CASPID[%d],SESSION[%d],URL[%s]\n%s", connection.processId,
-	    			connection.oldSessionId, connection.url, errorMessage);
+	    		return String.format("%s[CAS INFO - %s:%d,%d],[SESSION-%d],[URL-%s].", 
+				errorMessage, connection.CASIp,
+				connection.CASPort, connection.processId,
+	    			connection.oldSessionId, connection.url);
 	    	    }
 	    	}
 		return errorMessage;

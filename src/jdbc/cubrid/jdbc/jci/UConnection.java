@@ -163,10 +163,10 @@ public class UConnection {
 	private boolean needReconnection;
 	private UTimedDataInputStream input;
 	private DataOutputStream output;
-	private String CASIp;
-	private int CASPort;
-	int processId;
-	int casId;
+	public String CASIp;
+	public int CASPort;
+	public int processId;
+	public int casId;
 	private Socket client;
 	private UError errorHandler;
 	private boolean isClosed = false;
@@ -2042,32 +2042,36 @@ public class UConnection {
 
     private SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
     public void logSlowQuery(long begin, long end, String sql, UBindParameter p) {
-		if (connectionProperties == null || connectionProperties.getLogSlowQueris() != true) {
-		    return;
-		}
-	
-		long elapsed = end - begin;
-		if (connectionProperties.getSlowQueryThresholdMillis() > elapsed) {
-		    return;
-		}
-	
-		StringBuffer b = new StringBuffer();
-		b.append("SLOW QUERY\n");
-		b.append(String.format("[TIME]\nSTART: %s, ELAPSED: %d\n", dateFormat.format(new Date(begin)), elapsed));
-		b.append("[SQL]\n").append(sql).append('\n');
-		if (p != null) {
-		    b.append("[BIND]\n");
-		    for (int i = 0; i < p.values.length; i++) {
-				if (i != 0)
-				    b.append(", ");
-				b.append(p.values[i].toString());
-		    }
-		    b.append('\n');
-		}
-	
-		synchronized (this) {
-		    getLogger().logInfo(b.toString());
-		}
+	if (connectionProperties == null || connectionProperties.getLogSlowQueris() != true) {
+	    return;
+	}
+
+	long elapsed = end - begin;
+	if (connectionProperties.getSlowQueryThresholdMillis() > elapsed) {
+	    return;
+	}
+
+	StringBuffer b = new StringBuffer();
+	b.append("SLOW QUERY\n");
+	b.append(String.format("[CAS INFO]\n%s:%d, %d, %d\n",
+                 CASIp, CASPort, casId, processId));
+	b.append(String.format("[TIME]\nSTART: %s, ELAPSED: %d\n",
+				dateFormat.format(new Date(begin)),
+				elapsed));
+	b.append("[SQL]\n").append(sql).append('\n');
+	if (p != null) {
+	    b.append("[BIND]\n");
+	    for (int i = 0; i < p.values.length; i++) {
+		if (i != 0)
+		    b.append(", ");
+		b.append(p.values[i].toString());
+	    }
+	    b.append('\n');
+	}
+
+	synchronized (this) {
+	    getLogger().logInfo(b.toString());
+	}
     }
 
     public boolean isActive() {
