@@ -130,6 +130,16 @@ namespace dbgw
       }
   }
 
+  void _Logger::setDefaultPostfix(CCI_LOG_POSTFIX postfix)
+  {
+    system::_MutexAutoLock lock(&g_logMutex);
+
+    if (m_logger != NULL)
+      {
+        cci_log_set_default_postfix(m_logger, postfix);
+      }
+  }
+
   void _Logger::finalize()
   {
     system::_MutexAutoLock lock(&g_logMutex);

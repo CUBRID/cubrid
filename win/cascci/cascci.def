@@ -114,6 +114,7 @@ EXPORTS
 	cci_log_set_level
 	cci_log_is_writable
 	cci_log_set_force_flush
+	cci_log_set_default_postfix
 	
 ;          WEP PRIVATE
 ; To implement your own Windows Exit Procedure add the following

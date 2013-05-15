@@ -42,6 +42,7 @@ namespace dbgw
     static void setLogPath(const char *szLogPath);
     static void setLogLevel(CCI_LOG_LEVEL level);
     static void setForceFlush(bool bForceFlush);
+    static void setDefaultPostfix(CCI_LOG_POSTFIX postfix);
     static void finalize();
     static void writeLogF(const char *szFile, int nLine, CCI_LOG_LEVEL level,
         const char *szFormat, ...);

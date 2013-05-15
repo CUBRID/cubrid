@@ -39,6 +39,12 @@ typedef void *Logger;
 
 typedef enum
 {
+  CCI_LOG_POSTFIX_NONE = 0,
+  CCI_LOG_POSTFIX_DATE
+} CCI_LOG_POSTFIX;
+
+typedef enum
+{
   CCI_LOG_LEVEL_OFF = 0,
   CCI_LOG_LEVEL_ERROR,
   CCI_LOG_LEVEL_WARN,
@@ -123,6 +129,7 @@ extern "C"
       bool use_default_prefix);
   extern void cci_log_change_max_file_size_appender(Logger logger,
       int max_file_size_kbytes, int max_backup_count);
+  extern void cci_log_set_default_postfix(Logger logger, CCI_LOG_POSTFIX postfix);
 
 #ifdef __cplusplus
 }

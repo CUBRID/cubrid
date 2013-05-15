@@ -188,6 +188,7 @@ namespace dbgw
   static const char *XN_LOG_PR_PATH = "path";
   static const char *XN_LOG_PR_FORCE_FLUSH = "forceFlush";
   static const char *XN_LOG_PR_FORCE_FLUSH_HIDDEN = "force-flush";
+  static const char *XN_LOG_PR_POSTFIX = "postfix";
 
   static const char *XN_INCLUDE = "include";
   static const char *XN_INCLUDE_PR_FILE = "file";
@@ -616,6 +617,25 @@ namespace dbgw
 
     InvalidPropertyValueException e(m_xmlParser.getFileName(), szLogLevel,
         "OFF|ERROR|WARNING|INFO|DEBUG");
+    DBGW_LOG_ERROR(e.what());
+    throw e;
+  }
+
+  CCI_LOG_POSTFIX _ExpatXMLProperties::getLogPostfix(const char *szName)
+  {
+    const char *szLogPostfix = get(szName, false);
+
+    if (!strcasecmp(szLogPostfix, "none") || !strcmp(szLogPostfix, ""))
+      {
+        return CCI_LOG_POSTFIX_NONE;
+      }
+    if (!strcasecmp(szLogPostfix, "date"))
+      {
+        return CCI_LOG_POSTFIX_DATE;
+      }
+
+    InvalidPropertyValueException e(m_xmlParser.getFileName(), szLogPostfix,
+        "NONE|PID|DATE");
     DBGW_LOG_ERROR(e.what());
     throw e;
   }
@@ -2023,6 +2043,7 @@ namespace dbgw
     _Logger::setForceFlush(
         properties.getBool(XN_LOG_PR_FORCE_FLUSH,
             XN_LOG_PR_FORCE_FLUSH_HIDDEN, false));
+    _Logger::setDefaultPostfix(properties.getLogPostfix(XN_LOG_PR_POSTFIX));
   }
 
   void _ConfigurationParser::parseWorker(_ExpatXMLProperties &properties)
