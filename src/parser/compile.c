@@ -116,6 +116,9 @@ static int pt_fix_lck_classes_for_merge (PARSER_CONTEXT * parser,
 					 PT_CLASS_LOCKS * lcks,
 					 PT_NODE * statement);
 static int pt_in_lck_array (PT_CLASS_LOCKS * lcks, const char *str);
+
+static void remove_appended_trigger_info (char *msg, int with_evaluate);
+
 static PT_NODE *pt_set_trigger_obj_pre (PARSER_CONTEXT * parser,
 					PT_NODE * node, void *arg,
 					int *continue_walk);
@@ -1448,6 +1451,67 @@ pt_in_lck_array (PT_CLASS_LOCKS * lcks, const char *str)
   return false;			/* not found */
 }
 
+/*
+ * remove_appended_trigger_info () - remove appended trigger info
+ *   msg(in/out):
+ *   with_evaluate(in):
+ */
+static void
+remove_appended_trigger_info (char *msg, int with_evaluate)
+{
+  int i;
+  const char *scope_str = "SCOPE___ ";
+  const char *from_on_str = " FROM ON ";
+  const char *eval_prefix = "EVALUATE ( ";
+  const char *eval_suffix = " ) ";
+  const char single_quote_char = '\'';
+  const char semicolon = ';';
+  char *p = NULL;
+
+  if (msg == NULL)
+    {
+      return;
+    }
+
+  if (with_evaluate)
+    {
+      p = strstr (msg, eval_prefix);
+      if (p != NULL)
+	{
+	  p =
+	    memmove (p, p + strlen (eval_prefix),
+		     strlen (p) - strlen (eval_prefix) + 1);
+	}
+
+      p = strstr (msg, eval_suffix);
+      if (p != NULL)
+	{
+	  p =
+	    memmove (p, p + strlen (eval_suffix),
+		     strlen (p) - strlen (eval_suffix) + 1);
+	}
+    }
+
+  p = strstr (msg, scope_str);
+  if (p != NULL)
+    {
+      p =
+	memmove (p, p + strlen (scope_str),
+		 strlen (p) - strlen (scope_str) + 1);
+    }
+
+  p = strstr (msg, from_on_str);
+  if (p != NULL)
+    {
+      for (i = 0; p[i] != single_quote_char && i < strlen (p); i++)
+	;
+
+      if (i > 0 && p[i - 1] == semicolon)
+	{
+	  p = memmove (p, p + i, strlen (p) - i + 1);
+	}
+    }
+}
 
 /*
  * pt_compile_trigger_stmt () - Compiles the trigger_stmt so that it can be
@@ -1471,6 +1535,8 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser,
   const char *class_name;
   PT_NODE **statement_p, *statement;
   int is_update_object;
+  PT_NODE *err_node;
+  int with_evaluate;
 
   assert (parser != NULL);
 
@@ -1574,6 +1640,21 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser,
     }
 
   statement = pt_compile (parser, statement);
+
+  /* Remove those info we append, which users can't understand them */
+  if (pt_has_error (parser))
+    {
+      err_node = pt_get_errors (parser);
+      with_evaluate =
+	strstr (trigger_stmt, "EVALUATE ( ") != NULL ? true : false;
+      while (err_node)
+	{
+	  remove_appended_trigger_info (err_node->info.error_msg.
+					error_message, with_evaluate);
+	  err_node = err_node->next;
+	}
+    }
+
   /* We need to do view translation here
    * on the expression to be executed. */
   if (statement)
