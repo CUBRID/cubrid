@@ -2074,7 +2074,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 	  else
 	    {
 	      strncat (stmt_msg, csql_get_message (CSQL_STAT_COMMITTED_TEXT),
-		       LINE_BUFFER_SIZE);
+		       LINE_BUFFER_SIZE - 1);
 	    }
 	}
       csql_display_msg (stmt_msg);
