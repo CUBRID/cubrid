@@ -154,6 +154,9 @@ public class UConnection {
 	public static final String ZERO_DATETIME_BEHAVIOR_ROUND = "round";
 	
 	public final static int SESSION_ID_SIZE = 20;
+	
+	public final static int MAX_QUERY_TIMEOUT = 2000000;
+	public final static int MAX_CONNECT_TIMEOUT = 2000000;
 
 	UOutputBuffer outBuffer;
 	CUBRIDConnection cubridcon;

@@ -236,7 +236,7 @@ public class CUBRIDStatement implements Statement {
 
 	public synchronized void setQueryTimeout(int seconds) throws SQLException {
 		checkIsOpen();
-		if (seconds < 0) {
+		if (seconds < 0 || seconds > UConnection.MAX_QUERY_TIMEOUT) {
 			throw new IllegalArgumentException();
 		}
 		query_timeout = seconds;

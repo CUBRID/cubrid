@@ -168,17 +168,25 @@ public class ConnectionProperties {
 
 	@Override
 	boolean validateValue(Object o) {
+	    long value;
+	    
 	    if (o instanceof Integer) {
-		return true;
+		value = ((Integer)o).intValue();
 	    } else if (o instanceof String) {
 		try {
-		    Integer.valueOf((String) o);
+		    value = Integer.valueOf((String) o).intValue();
 		} catch (NumberFormatException e) {
 		    return false;
 		}
-		return true;
+	    } else {
+		return false;
+	      }
+	    
+	   if (value < this.lowerBound || value > this.upperBound) {
+		   return false;
+	   } else {
+		   return true;
 	    }
-	    return false;
 	}
     }
 
@@ -294,7 +302,7 @@ public class ConnectionProperties {
 	    "rcTime", 600, 0, Integer.MAX_VALUE);
 
     IntegerConnectionProperty queryTimeout = new IntegerConnectionProperty(
-	    "queryTimeout", -1, -1, Integer.MAX_VALUE);
+	    "queryTimeout", -1, -1, UConnection.MAX_QUERY_TIMEOUT);
 
     private int getDefaultConnectTimeout() {
 	int timeout = java.sql.DriverManager.getLoginTimeout();
@@ -302,7 +310,7 @@ public class ConnectionProperties {
     }
 
     IntegerConnectionProperty connectTimeout = new IntegerConnectionProperty(
-	    "connectTimeout", getDefaultConnectTimeout(), -1, Integer.MAX_VALUE);
+	    "connectTimeout", getDefaultConnectTimeout(), -1, UConnection.MAX_CONNECT_TIMEOUT);
 
     StringConnectionProperty altHosts = new StringConnectionProperty(
 	    "altHosts", null);
