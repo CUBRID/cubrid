@@ -5782,9 +5782,9 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
 				 query_timeout, &info);
 
 #if 0
-  if (!list_id && !CACHE_TIME_EQ (&clt_cache_time, &srv_cache_time))
+  if (list_id == NULL && !CACHE_TIME_EQ (&clt_cache_time, &srv_cache_time))
 #else
-  if (!list_id)
+  if (list_id == NULL)
 #endif
     {
       return_error_to_client (thread_p, rid);

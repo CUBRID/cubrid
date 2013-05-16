@@ -1994,7 +1994,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
       if (statement->clt_cache_reusable)
 	{
 	  qres = pt_make_cache_hit_result_descriptor ();
-	  if (!qres)
+	  if (qres == NULL)
 	    {
 	      err = er_errid ();
 	    }

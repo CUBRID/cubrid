@@ -1154,9 +1154,12 @@ pt_make_cache_hit_result_descriptor (void)
 
   r = db_alloc_query_result (T_CACHE_HIT, 0);
   if (r == NULL)
-    return NULL;
+    {
+      return NULL;
+    }
 
   db_init_query_result (r, T_CACHE_HIT);
+
   return r;
 }
 

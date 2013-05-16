@@ -2313,7 +2313,7 @@ qfile_get_list_page_with_waiting (THREAD_ENTRY * thread_p,
  *
  * Note: This routine is basically called by the C/S communication
  *              routines to fetch and copy the indicated list file page to
- *              the buffer arae. The area pointed by the buffer must have
+ *              the buffer area. The area pointed by the buffer must have
  *              been allocated by the caller and should be big enough to
  *              store a list file page.
  */
