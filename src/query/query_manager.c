@@ -4226,7 +4226,7 @@ qmgr_execute_async_select (THREAD_ENTRY * thread_p,
 	{
 	  er_log_debug (ARG_FILE_LINE,
 			"qmgr_execute_async_select: "
-                        "dbval_cnt mismatch %d vs %d\n",
+			"dbval_cnt mismatch %d vs %d\n",
 			xasl_p->dbval_cnt, dbval_count);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE,
 		  0);
@@ -4331,8 +4331,12 @@ end:
 
   if (dbvals_p)
     {
+      HL_HEAPID old_pri_heap_id;
       DB_VALUE *dbval;
       int i;
+
+      /* use global heap for memory allocation */
+      old_pri_heap_id = db_change_private_heap (thread_p, 0);
 
       for (i = 0, dbval = dbvals_p; i < dbval_count; i++, dbval++)
 	{
@@ -4340,6 +4344,8 @@ end:
 	}
       db_private_free (thread_p, dbvals_p);
 
+      /* restore private heap */
+      (void) db_change_private_heap (thread_p, old_pri_heap_id);
     }
 
   if (cache_clone_p && cache_clone_p->xasl == xasl_p)
@@ -4367,6 +4373,9 @@ end:
 
   /* Mark the Async Query as completed */
   qmgr_mark_query_as_completed (query_p);
+
+  /* clear memory to be used at async worker thread */
+  db_clear_private_heap (thread_p, 0);
 
   return;
 
