@@ -5208,7 +5208,8 @@ log_update_stats_on_modified_class (THREAD_ENTRY * thread_p,
 {
   if (class->need_update_stats)
     {
-      (void) xstats_update_class_statistics (thread_p, &class->class_oid);
+      (void) xstats_update_class_statistics (thread_p, &class->class_oid,
+					     NULL);
     }
 }
 

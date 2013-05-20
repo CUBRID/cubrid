@@ -4537,16 +4537,18 @@ sqst_update_class_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
 {
   int error, do_now;
   OID classoid;
+  BTID btid;
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   ptr = or_unpack_oid (request, &classoid);
   ptr = or_unpack_int (ptr, &do_now);
+  ptr = or_unpack_btid (ptr, &btid);
 
   if (do_now)
     {
-      error = xstats_update_class_statistics (thread_p, &classoid);
+      error = xstats_update_class_statistics (thread_p, &classoid, &btid);
       if (error != NO_ERROR)
 	{
 	  return_error_to_client (thread_p, rid);

@@ -314,7 +314,7 @@ extern char *xstats_get_statistics_from_server (THREAD_ENTRY * thread_p,
 						unsigned int timestamp,
 						int *length);
 extern int xstats_update_class_statistics (THREAD_ENTRY * thread_p,
-					   OID * classoid);
+					   OID * classoid, BTID * btid);
 extern int xstats_update_statistics (THREAD_ENTRY * thread_p);
 
 extern DKNPAGES xdisk_get_total_numpages (THREAD_ENTRY * thread_p,

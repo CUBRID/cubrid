@@ -479,6 +479,7 @@ static char *sm_default_constraint_name (const char *class_name,
 					 DB_CONSTRAINT_TYPE type,
 					 const char **att_names,
 					 const int *asc_desc);
+static int sm_update_statistics (MOP classop, BTID * btid, bool do_now);
 
 static const char *sm_locate_method_file (SM_CLASS * class_,
 					  const char *function);
@@ -3836,11 +3837,12 @@ sm_get_statistics_force (MOP classop)
 }
 
 /*
- * sm_update_statistics() - Update class statistics on the server for a
- *    particular class. When finished, fetch the new statistics and
+ * sm_update_statistics() - Update statistics on the server for the
+ *    particular class or index. When finished, fetch the new statistics and
  *    cache them with the class.
  *   return: NO_ERROR on success, non-zero for ERROR
  *   classop(in): class object
+ *   btid(in): btree id
  *   do_now(in): update statistics right now or
  *               delay it until a transaction is committed
  *
@@ -3848,9 +3850,8 @@ sm_get_statistics_force (MOP classop)
  *       when it is requested during other processing, such as
  *       "alter table ..." or "create index ...".
  */
-
-int
-sm_update_statistics (MOP classop, bool do_now)
+static int
+sm_update_statistics (MOP classop, BTID * btid, bool do_now)
 {
   int error = NO_ERROR;
   SM_CLASS *class_;
@@ -3874,8 +3875,8 @@ sm_update_statistics (MOP classop, bool do_now)
 	  return er_errid ();
 	}
 
-      error =
-	stats_update_class_statistics (WS_OID (classop), do_now ? 1 : 0);
+      error = stats_update_class_statistics (WS_OID (classop), btid,
+					     do_now ? 1 : 0);
       if (error == NO_ERROR)
 	{
 	  /* only recache if the class itself is cached */
@@ -3907,6 +3908,33 @@ sm_update_statistics (MOP classop, bool do_now)
     }
 
   return error;
+}
+
+/*
+ * sm_update_index_statistics() -
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   classop(in): class object
+ *   btid(in): btree id
+ *   do_now(in): update statistics right now or
+ *               delay it until a transaction is committed
+ */
+int
+sm_update_index_statistics (MOP classop, BTID * btid, bool do_now)
+{
+  return sm_update_statistics (classop, btid, do_now);
+}
+
+/*
+ * sm_update_class_statistics() -
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   classop(in): class object
+ *   do_now(in): update statistics right now or
+ *               delay it until a transaction is committed
+ */
+int
+sm_update_class_statistics (MOP classop, bool do_now)
+{
+  return sm_update_statistics (classop, NULL, do_now);
 }
 
 /*
@@ -4000,7 +4028,7 @@ sm_update_catalog_statistics (const char *class_name)
   obj = db_find_class (class_name);
   if (obj != NULL)
     {
-      error = sm_update_statistics (obj, true);
+      error = sm_update_class_statistics (obj, true);
     }
   else
     {
@@ -11093,7 +11121,7 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_,
       goto structure_error;
     }
 
-  if (sm_update_statistics (classop, false))
+  if (sm_update_class_statistics (classop, false))
     {
       goto structure_error;
     }
@@ -12796,7 +12824,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res)
 	      sm_Disable_updating_statistics = old_val;
 	      if (error == NO_ERROR)
 		{
-		  error = sm_update_statistics (newop, false);
+		  error = sm_update_class_statistics (newop, false);
 		}
 	    }
 	}
@@ -13700,7 +13728,7 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
 	   * to make use of the new index.  Recall that the optimizer
 	   * looks at the statistics structures, not the schema structures.
 	   */
-	  if (sm_update_statistics (classop, false))
+	  if (sm_update_index_statistics (classop, &index, true))
 	    {
 	      goto severe_error;
 	    }
@@ -13921,7 +13949,7 @@ sm_drop_index (MOP classop, const char *constraint_name)
 	      goto severe_error;
 	    }
 
-	  if (sm_update_statistics (classop, false))
+	  if (sm_update_class_statistics (classop, false))
 	    {
 	      goto severe_error;
 	    }

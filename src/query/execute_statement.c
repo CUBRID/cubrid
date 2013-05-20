@@ -3543,7 +3543,7 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      return er_errid ();
 	    }
 
-	  error = sm_update_statistics (obj, true);
+	  error = sm_update_class_statistics (obj, true);
 	  error = sm_partitioned_class_type (obj, &is_partition, NULL,
 					     &sub_partitions);
 	  if (error != NO_ERROR)
@@ -3556,7 +3556,8 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      for (i = 0; sub_partitions[i]; i++)
 		{
-		  error = sm_update_statistics (sub_partitions[i], true);
+		  error = sm_update_class_statistics (sub_partitions[i],
+						      true);
 		  if (error != NO_ERROR)
 		    break;
 		}
