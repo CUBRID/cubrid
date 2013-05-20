@@ -13400,7 +13400,7 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  if (lock_finalize_composite_lock (thread_p, &xasl->composite_lock)
 	      != LK_GRANTED)
 	    {
-	      return ER_FAILED;
+	      GOTO_EXIT_ON_ERROR;
 	    }
 	}
 
