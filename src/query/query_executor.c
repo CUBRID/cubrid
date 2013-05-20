@@ -1105,7 +1105,7 @@ static int qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 static BH_CMP_RESULT qexec_topn_compare (const BH_ELEM left,
 					 const BH_ELEM right, BH_CMP_ARG arg);
 static BH_CMP_RESULT qexec_topn_cmpval (DB_VALUE * left, DB_VALUE * right,
-					TP_DOMAIN * domain, SORT_ORDER order);
+					SORT_LIST * sort_spec);
 static int qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p,
 				    TOPN_TUPLES * sort_stop,
 				    QFILE_TUPLE_DESCRIPTOR * tpldescr);
@@ -3416,10 +3416,12 @@ qexec_orderby_distinct_by_sorting (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		  xasl->spec_list->indexptr->use_desc_index)
 		{
 		  order_ptr->s_order = S_DESC;
+		  order_ptr->s_nulls = S_NULLS_LAST;
 		}
 	      else
 		{
 		  order_ptr->s_order = S_ASC;
+		  order_ptr->s_nulls = S_NULLS_FIRST;
 		}
 	      order_ptr->pos_descr.dom = list_id->type_list.domp[k];
 	      order_ptr->pos_descr.pos_no = k;
@@ -3434,11 +3436,13 @@ qexec_orderby_distinct_by_sorting (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	    {
 	      /* save original content */
 	      temp_ord.s_order = order_ptr->s_order;
+	      temp_ord.s_nulls = order_ptr->s_nulls;
 	      temp_ord.pos_descr.dom = order_ptr->pos_descr.dom;
 	      temp_ord.pos_descr.pos_no = order_ptr->pos_descr.pos_no;
 
 	      /* put original order_by node */
 	      order_ptr->s_order = orderby_ptr->s_order;
+	      order_ptr->s_nulls = orderby_ptr->s_nulls;
 	      order_ptr->pos_descr.dom = orderby_ptr->pos_descr.dom;
 	      order_ptr->pos_descr.pos_no = orderby_ptr->pos_descr.pos_no;
 
@@ -3450,6 +3454,7 @@ qexec_orderby_distinct_by_sorting (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		      order_ptr2->pos_descr.pos_no)
 		    {
 		      order_ptr2->s_order = temp_ord.s_order;
+		      order_ptr2->s_nulls = temp_ord.s_nulls;
 		      order_ptr2->pos_descr.dom = temp_ord.pos_descr.dom;
 		      order_ptr2->pos_descr.pos_no =
 			temp_ord.pos_descr.pos_no;
@@ -16797,6 +16802,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     /* init sort list */
     bf2df_sort_list.next = NULL;
     bf2df_sort_list.s_order = S_ASC;
+    bf2df_sort_list.s_nulls = S_NULLS_FIRST;
     bf2df_sort_list.pos_descr.pos_no =
       xasl->outptr_list->valptr_cnt - PCOL_INDEX_STRING_TUPLE_OFFSET;
     bf2df_sort_list.pos_descr.dom = &bf2df_str_domain;
@@ -24756,8 +24762,7 @@ qexec_topn_compare (const BH_ELEM left, const BH_ELEM right, BH_CMP_ARG arg)
   for (key = proc->sort_items; key != NULL; key = key->next)
     {
       pos = key->pos_descr.pos_no;
-      cmp = qexec_topn_cmpval (&left_tuple[pos], &right_tuple[pos],
-			       key->pos_descr.dom, key->s_order);
+      cmp = qexec_topn_cmpval (&left_tuple[pos], &right_tuple[pos], key);
       if (cmp == BH_EQ)
 	{
 	  continue;
@@ -24773,14 +24778,12 @@ qexec_topn_compare (const BH_ELEM left, const BH_ELEM right, BH_CMP_ARG arg)
  * return : comparison result
  * left (in)  : left value
  * right (in) : right value
- * domain (in): domain of left and right
- * order (in) :	sort order (S_ASC, S_DESC)
+ * sort_spec (in): sort spec for left and right
  *
  * Note: tp_value_compare is too complex for our case
  */
 static BH_CMP_RESULT
-qexec_topn_cmpval (DB_VALUE * left, DB_VALUE * right, TP_DOMAIN * domain,
-		   SORT_ORDER order)
+qexec_topn_cmpval (DB_VALUE * left, DB_VALUE * right, SORT_LIST * sort_spec)
 {
   int cmp;
   if (DB_IS_NULL (left))
@@ -24790,14 +24793,26 @@ qexec_topn_cmpval (DB_VALUE * left, DB_VALUE * right, TP_DOMAIN * domain,
 	  return BH_EQ;
 	}
       cmp = DB_LT;
+      if ((sort_spec->s_order == S_ASC && sort_spec->s_nulls == S_NULLS_LAST)
+	  || (sort_spec->s_order == S_DESC
+	      && sort_spec->s_nulls == S_NULLS_FIRST))
+	{
+	  cmp = -cmp;
+	}
     }
   else if (DB_IS_NULL (right))
     {
       cmp = DB_GT;
+      if ((sort_spec->s_order == S_ASC && sort_spec->s_nulls == S_NULLS_LAST)
+	  || (sort_spec->s_order == S_DESC
+	      && sort_spec->s_nulls == S_NULLS_FIRST))
+	{
+	  cmp = -cmp;
+	}
     }
   else
     {
-      if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
+      if (TP_DOMAIN_TYPE (sort_spec->pos_descr.dom) == DB_TYPE_VARIABLE)
 	{
 	  /* In cases like order by val + ?, the domain of the expression
 	   * is not known at compile time */
@@ -24805,11 +24820,13 @@ qexec_topn_cmpval (DB_VALUE * left, DB_VALUE * right, TP_DOMAIN * domain,
 	}
       else
 	{
-	  cmp = domain->type->cmpval (left, right, 1, 1, NULL,
-				      domain->collation_id);
+	  cmp = sort_spec->pos_descr.dom->type->cmpval (left, right, 1, 1,
+							NULL,
+							sort_spec->pos_descr.
+							dom->collation_id);
 	}
     }
-  if (order == S_DESC)
+  if (sort_spec->s_order == S_DESC)
     {
       cmp = -cmp;
     }
@@ -24878,8 +24895,7 @@ qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p, TOPN_TUPLES * topn_items,
   for (key = topn_items->sort_items; key != NULL; key = key->next)
     {
       pos = key->pos_descr.pos_no;
-      res = qexec_topn_cmpval (&heap_max[pos], tpldescr->f_valp[pos],
-			       key->pos_descr.dom, key->s_order);
+      res = qexec_topn_cmpval (&heap_max[pos], tpldescr->f_valp[pos], key);
       if (res == BH_EQ)
 	{
 	  continue;

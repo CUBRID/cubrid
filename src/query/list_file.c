@@ -451,6 +451,7 @@ qfile_copy_list_id (QFILE_LIST_ID * dest_list_id_p,
 	   src != NULL && dest != NULL; src = src->next, dest = dest->next)
 	{
 	  dest->s_order = src->s_order;
+	  dest->s_nulls = src->s_nulls;
 	  dest->pos_descr.dom = src->pos_descr.dom;
 	  dest->pos_descr.pos_no = src->pos_descr.pos_no;
 	}
@@ -1489,6 +1490,7 @@ qfile_open_list (THREAD_ENTRY * thread_p,
 	       i++, dest_sort_list_p = dest_sort_list_p->next)
 	    {
 	      dest_sort_list_p->s_order = S_ASC;
+	      dest_sort_list_p->s_nulls = S_NULLS_FIRST;
 	      dest_sort_list_p->pos_descr.dom = list_id_p->type_list.domp[i];
 	      dest_sort_list_p->pos_descr.pos_no = i;
 	    }
@@ -1513,6 +1515,7 @@ qfile_open_list (THREAD_ENTRY * thread_p,
 	       dest_sort_list_p->next)
 	    {
 	      dest_sort_list_p->s_order = src_sort_list_p->s_order;
+	      dest_sort_list_p->s_nulls = src_sort_list_p->s_nulls;
 	      dest_sort_list_p->pos_descr.dom =
 		src_sort_list_p->pos_descr.dom;
 	      dest_sort_list_p->pos_descr.pos_no =

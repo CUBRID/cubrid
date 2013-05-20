@@ -290,6 +290,7 @@ static PT_NODE *pt_append_assignment_references (PARSER_CONTEXT * parser,
 static ODKU_INFO *pt_to_odku_info (PARSER_CONTEXT * parser, PT_NODE * insert,
 				   XASL_NODE * xasl,
 				   PT_NODE ** non_null_attrs);
+static SORT_NULLS pt_to_null_ordering (PT_NODE * sort_spec);
 
 #define APPEND_TO_XASL(xasl_head, list, xasl_tail)                      \
     if (xasl_head) {                                                    \
@@ -5551,24 +5552,8 @@ pt_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
       /* set values */
       sort->s_order =
 	(node->info.sort_spec.asc_or_desc == PT_ASC) ? S_ASC : S_DESC;
+      sort->s_nulls = pt_to_null_ordering (node);
       sort->pos_descr = node->info.sort_spec.pos_descr;
-
-      switch (node->info.sort_spec.nulls_first_or_last)
-	{
-	case PT_NULLS_FIRST:
-	  sort->s_nulls = S_NULLS_FIRST;
-	  break;
-
-	case PT_NULLS_LAST:
-	  sort->s_nulls = S_NULLS_LAST;
-	  break;
-
-	case PT_NULLS_DEFAULT:
-	default:
-	  sort->s_nulls =
-	    (sort->s_order == S_ASC) ? S_NULLS_FIRST : S_NULLS_LAST;
-	  break;
-	}
 
       /* PT_SORT_SPEC pos_no start from 1, SORT_LIST pos_no start from 0 */
       if (sort_mode == SORT_LIST_GROUPBY)
@@ -20742,6 +20727,7 @@ pt_agg_orderby_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * order_list,
       /* set values */
       sort->s_order =
 	(node->info.sort_spec.asc_or_desc == PT_ASC) ? S_ASC : S_DESC;
+      sort->s_nulls = pt_to_null_ordering (node);
       sort->pos_descr = node->info.sort_spec.pos_descr;
 
       /* PT_SORT_SPEC pos_no start from 1, SORT_LIST pos_no start from 0 */
@@ -23721,4 +23707,35 @@ pt_is_sort_list_covered (PARSER_CONTEXT * parser, SORT_LIST * covering_list_p,
     {
       return true;
     }
+}
+
+/*
+ * pt_to_null_ordering () - get null ordering from a sort spec
+ * return : null ordering
+ * sort_spec (in) : sort spec
+ */
+static SORT_NULLS
+pt_to_null_ordering (PT_NODE * sort_spec)
+{
+  assert_release (sort_spec != NULL && sort_spec->node_type == PT_SORT_SPEC);
+
+  switch (sort_spec->info.sort_spec.nulls_first_or_last)
+    {
+    case PT_NULLS_FIRST:
+      return S_NULLS_FIRST;
+
+    case PT_NULLS_LAST:
+      return S_NULLS_LAST;
+
+    case PT_NULLS_DEFAULT:
+    default:
+      break;
+    }
+
+  if (sort_spec->info.sort_spec.asc_or_desc == PT_ASC)
+    {
+      return S_NULLS_FIRST;
+    }
+
+  return S_NULLS_LAST;
 }
