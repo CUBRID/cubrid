@@ -1943,6 +1943,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 	  goto error;
 	}
 
+      snprintf (stmt_msg, LINE_BUFFER_SIZE, "Execute OK.");
 
       csql_Row_count = 0;
       switch (stmt_type)
