@@ -4414,7 +4414,7 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 				       select.from);
 	      temp->info.insert.spec = from;
 	      temp = mq_resolve_insert_statement (parser, temp);
-	      if (temp == NULL || parser_has_error (parser))
+	      if (temp == NULL || pt_has_error (parser))
 		{
 		  return NULL;
 		}
