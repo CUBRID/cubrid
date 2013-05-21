@@ -15393,19 +15393,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	}
     }
 
-  if (!pt_is_async_executable (parser, xasl))
-    {
-      /* treat as sync query */
-      xasl->header.xasl_flag |= ASYNC_UNEXECUTABLE;
-    }
-  else if (pt_has_unresolved_types (parser, xasl))
-    {
-      /* if this query has unresolved types and we want to delay sending
-       * the results to the client until those types have been resolved
-       */
-      xasl->header.xasl_flag |= ASYNC_UNEXECUTABLE;
-    }
-
   /* convert ordbynum to key limit if we have iscan with multiple key ranges */
   if (qo_plan != NULL && qo_plan_multi_range_opt (qo_plan))
     {
@@ -15941,6 +15928,22 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
   else
     {
       xasl = pt_to_buildlist_proc (parser, select_node, plan);
+    }
+
+  if (xasl)
+    {
+      if (!pt_is_async_executable (parser, xasl))
+	{
+	  /* treat as sync query */
+	  xasl->header.xasl_flag |= ASYNC_UNEXECUTABLE;
+	}
+      else if (pt_has_unresolved_types (parser, xasl))
+	{
+	  /* if this query has unresolved types and we want to delay sending
+	   * the results to the client until those types have been resolved
+	   */
+	  xasl->header.xasl_flag |= ASYNC_UNEXECUTABLE;
+	}
     }
 
   /* Print out any needed post-optimization info.  Leave a way to find

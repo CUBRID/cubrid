@@ -1943,7 +1943,7 @@ exit_on_error:
  *   xasl_id(in)        : XASL file id that was a result of prepare_query()
  *   query_idp(out)     : query id to be used for getting results
  *   dbval_count(in)      : number of host variables
- *   dbvals(in) : array of host variables (query input parameters)
+ *   data(in) : array of host variables (query input parameters)
  *   flagp(in)  : flag to determine if this is an asynchronous query
  *   clt_cache_time(in) :
  *   srv_cache_time(in) :
@@ -1961,7 +1961,7 @@ QFILE_LIST_ID *
 xqmgr_execute_query (THREAD_ENTRY * thread_p,
 		     const XASL_ID * xasl_id_p,
 		     QUERY_ID * query_id_p, int dbval_count,
-		     const DB_VALUE * dbvals_p,
+		     const char *data,
 		     QUERY_FLAG * flag_p,
 		     CACHE_TIME * client_cache_time_p,
 		     CACHE_TIME * server_cache_time_p,
@@ -1969,6 +1969,11 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
 {
   XASL_CACHE_ENTRY *xasl_cache_entry_p;
   QFILE_LIST_CACHE_ENTRY *list_cache_entry_p;
+  DB_VALUE *dbvals_p, *dbval;
+  HL_HEAPID old_pri_heap_id;
+#if defined (SERVER_MODE)
+  bool use_global_heap;
+#endif
   DB_VALUE_ARRAY params;
   QMGR_QUERY_ENTRY *query_p;
   int tran_index = -1;
@@ -1977,6 +1982,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
   bool cached_result;
   XASL_CACHE_CLONE *cache_clone_p;
   bool saved_is_stats_on;
+  int i;
 
   cached_result = false;
   query_p = NULL;
@@ -1984,6 +1990,11 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
   list_id_p = NULL;
   xasl_cache_entry_p = NULL;
   list_cache_entry_p = NULL;
+
+  dbvals_p = NULL;
+#if defined (SERVER_MODE)
+  use_global_heap = false;
+#endif
 
   saved_is_stats_on = mnt_server_is_stats_on (thread_p);
   if (DO_NOT_COLLECT_EXEC_STATS (*flag_p) && saved_is_stats_on == true)
@@ -2020,10 +2031,61 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
 
 #if defined (SERVER_MODE)
   if (IS_ASYNC_UNEXECUTABLE (xasl_cache_entry_p->xasl_header_flag))
-#endif
     {
       *flag_p &= ~ASYNC_EXEC;	/* treat as sync query */
     }
+
+  if (dbval_count)
+    {
+      char *ptr;
+
+      assert (data != NULL);
+
+      /* use global heap for memory allocation.
+         In the case of async query, the space will be freed
+         when the query is completed. See qmgr_execute_async_select() */
+      if (IS_ASYNC_EXEC_MODE (*flag_p))
+	{
+	  use_global_heap = true;
+	}
+
+      if (use_global_heap)
+	{
+	  old_pri_heap_id = db_change_private_heap (thread_p, 0);
+	}
+
+      dbvals_p = (DB_VALUE *) db_private_alloc (thread_p,
+						sizeof (DB_VALUE) *
+						dbval_count);
+      if (dbvals_p == NULL)
+	{
+	  if (use_global_heap)
+	    {
+	      /* restore private heap */
+	      (void) db_change_private_heap (thread_p, old_pri_heap_id);
+	    }
+
+	  goto exit_on_error;
+	}
+
+      /* unpack DB_VALUEs from the received data */
+      ptr = data;
+      for (i = 0, dbval = dbvals_p; i < dbval_count; i++, dbval++)
+	{
+	  ptr = or_unpack_db_value (ptr, dbval);
+	}
+
+      if (use_global_heap)
+	{
+	  /* restore private heap */
+	  (void) db_change_private_heap (thread_p, old_pri_heap_id);
+	}
+    }
+#else
+  *flag_p &= ~ASYNC_EXEC;	/* treat as sync query */
+
+  dbvals_p = (DB_VALUE *) data;
+#endif
 
   /* If it is not inhibited from getting the cached result, inspect the list
      cache (query result cache) and get the list file id(QFILE_LIST_ID) to be
@@ -2033,7 +2095,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
      parameters (host variables - DB_VALUES) are linked at
      the XASL cache entry. */
   params.size = dbval_count;
-  params.vals = (DB_VALUE *) dbvals_p;
+  params.vals = dbvals_p;
   if (qmgr_can_get_result_from_cache (*flag_p))
     {
       /* lookup the list cache with the parameter values (DB_VALUE array) */
@@ -2285,6 +2347,31 @@ end:
 
   if (IS_SYNC_EXEC_MODE (*flag_p))
     {
+#if defined (SERVER_MODE)
+      /* clear and free space for DB_VALUEs after the query is executed
+         In the case of async query, the space will be freed
+         when the query is completed. See qmgr_execute_async_select() */
+      if (dbvals_p)
+	{
+	  if (use_global_heap)
+	    {
+	      old_pri_heap_id = db_change_private_heap (thread_p, 0);
+	    }
+
+	  for (i = 0, dbval = dbvals_p; i < dbval_count; i++, dbval++)
+	    {
+	      db_value_clear (dbval);
+	    }
+	  db_private_free_and_init (thread_p, dbvals_p);
+
+	  if (use_global_heap)
+	    {
+	      /* restore private heap */
+	      (void) db_change_private_heap (thread_p, old_pri_heap_id);
+	    }
+	}
+#endif
+
       /* save XASL tree */
       if (cache_clone_p)
 	{
@@ -2349,7 +2436,7 @@ exit_on_error:
  *   xasl_stream_size(in)      : memory area size pointed by the xasl_stream
  *   query_id(in)       :
  *   dbval_count(in)      : Number of positional values
- *   dbval_p(in)      : List of positional values
+ *   data(in)      : List of positional values
  *   flag(in)   :
  *   query_timeout(in): set a timeout only if it is positive
  *
@@ -2365,18 +2452,29 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
 				 char *xasl_stream, int xasl_stream_size,
 				 QUERY_ID * query_id_p,
 				 int dbval_count,
-				 DB_VALUE * dbval_p,
+				 const char *data,
 				 QUERY_FLAG * flag_p, int query_timeout)
 {
+  DB_VALUE *dbvals_p, *dbval;
+  HL_HEAPID old_pri_heap_id;
+#if defined (SERVER_MODE)
+  bool use_global_heap;
+#endif
   QMGR_QUERY_ENTRY *query_p;
   QFILE_LIST_ID *list_id_p;
   int tran_index;
   QMGR_TRAN_ENTRY *tran_entry_p;
   bool saved_is_stats_on;
+  int i;
 
   query_p = NULL;
   *query_id_p = -1;
   list_id_p = NULL;
+
+  dbvals_p = NULL;
+#if defined (SERVER_MODE)
+  use_global_heap = false;
+#endif
 
   saved_is_stats_on = mnt_server_is_stats_on (thread_p);
   if (DO_NOT_COLLECT_EXEC_STATS (*flag_p) && saved_is_stats_on == true)
@@ -2400,6 +2498,59 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
 
   /* set a timeout if necessary */
   qmgr_set_query_exec_info_to_tdes (tran_index, query_timeout, NULL);
+#endif
+
+#if defined (SERVER_MODE)
+  if (dbval_count)
+    {
+      char *ptr;
+
+      assert (data != NULL);
+
+      /* use global heap for memory allocation.
+         In the case of async query, the space will be freed
+         when the query is completed. See qmgr_execute_async_select() */
+      if (IS_ASYNC_EXEC_MODE (*flag_p))
+	{
+	  use_global_heap = true;
+	}
+
+      if (use_global_heap)
+	{
+	  old_pri_heap_id = db_change_private_heap (thread_p, 0);
+	}
+
+      dbvals_p = (DB_VALUE *) db_private_alloc (thread_p,
+						sizeof (DB_VALUE) *
+						dbval_count);
+      if (dbvals_p == NULL)
+	{
+	  if (use_global_heap)
+	    {
+	      /* restore private heap */
+	      (void) db_change_private_heap (thread_p, old_pri_heap_id);
+	    }
+
+	  goto exit_on_error;
+	}
+
+      /* unpack DB_VALUEs from the received data */
+      ptr = data;
+      for (i = 0, dbval = dbvals_p; i < dbval_count; i++, dbval++)
+	{
+	  ptr = or_unpack_db_value (ptr, dbval);
+	}
+
+      if (use_global_heap)
+	{
+	  /* restore private heap */
+	  (void) db_change_private_heap (thread_p, old_pri_heap_id);
+	}
+    }
+#else
+  *flag_p &= ~ASYNC_EXEC;	/* treat as sync query */
+
+  dbvals_p = (DB_VALUE *) data;
 #endif
 
   /* allocate a new query entry */
@@ -2438,7 +2589,7 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
     {
       list_id_p = qmgr_process_query (thread_p, NULL,
 				      xasl_stream, xasl_stream_size,
-				      dbval_count, dbval_p, *flag_p,
+				      dbval_count, dbvals_p, *flag_p,
 				      NULL, query_p, tran_entry_p);
       if (list_id_p == NULL)
 	{
@@ -2454,7 +2605,7 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
       /* start the query in asynchronous mode and get temporary QFILE_LIST_ID */
       list_id_p = qmgr_process_async_select (thread_p, NULL,
 					     xasl_stream, xasl_stream_size,
-					     dbval_count, dbval_p, *flag_p,
+					     dbval_count, dbvals_p, *flag_p,
 					     NULL, query_p);
       if (list_id_p == NULL)
 	{
@@ -2469,6 +2620,34 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
     }
 
 end:
+
+  if (IS_SYNC_EXEC_MODE (*flag_p))
+    {
+#if defined (SERVER_MODE)
+      /* clear and free space for DB_VALUEs after the query is executed
+         In the case of async query, the space will be freed
+         when the query is completed. See qmgr_execute_async_select() */
+      if (dbvals_p)
+	{
+	  if (use_global_heap)
+	    {
+	      old_pri_heap_id = db_change_private_heap (thread_p, 0);
+	    }
+
+	  for (i = 0, dbval = dbvals_p; i < dbval_count; i++, dbval++)
+	    {
+	      db_value_clear (dbval);
+	    }
+	  db_private_free_and_init (thread_p, dbvals_p);
+
+	  if (use_global_heap)
+	    {
+	      /* restore private heap */
+	      (void) db_change_private_heap (thread_p, old_pri_heap_id);
+	    }
+	}
+#endif
+    }
 
   if (DO_NOT_COLLECT_EXEC_STATS (*flag_p) && saved_is_stats_on == true)
     {

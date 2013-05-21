@@ -5691,7 +5691,6 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
   char *ptr, *data = NULL, *reply, *replydata = NULL;
   PAGE_PTR page_ptr;
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_page_buf;
-  DB_VALUE *dbvals = NULL, *dbval;
   QUERY_FLAG query_flag;
   OR_ALIGNED_BUF (OR_INT_SIZE * 4 + OR_PTR_ALIGNED_SIZE
 		  + OR_CACHE_TIME_SIZE) a_reply;
@@ -5738,8 +5737,6 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
      allocate space for them */
   if (dbval_cnt)
     {
-      HL_HEAPID old_pri_heap_id;
-
       /* receive parameter values (DB_VALUE) from the client */
       csserror = css_receive_data_from_client (thread_p->conn_entry, rid,
 					       &data, &data_size);
@@ -5754,55 +5751,20 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
 	    }
 	  return;		/* error */
 	}
-
-      /* use global heap for memory allocation.
-         In the case of async query, the space will be freed
-         when the query is completed. See qmgr_execute_async_select() */
-      if (IS_ASYNC_EXEC_MODE (query_flag))
-	{
-	  old_pri_heap_id = db_change_private_heap (thread_p, 0);
-	}
-
-      dbvals = (DB_VALUE *) db_private_alloc (thread_p,
-					      sizeof (DB_VALUE) * dbval_cnt);
-      if (dbvals == NULL)
-	{
-	  if (IS_ASYNC_EXEC_MODE (query_flag))
-	    {
-	      /* restore private heap */
-	      (void) db_change_private_heap (thread_p, old_pri_heap_id);
-	    }
-
-	  css_send_abort_to_client (thread_p->conn_entry, rid);
-	  return;		/* error */
-	}
-
-      /* unpack DB_VALUEs from the received data */
-      ptr = data;
-      for (i = 0, dbval = dbvals; i < dbval_cnt; i++, dbval++)
-	{
-	  ptr = or_unpack_db_value (ptr, dbval);
-	}
-
-      if (IS_ASYNC_EXEC_MODE (query_flag))
-	{
-	  /* restore private heap */
-	  (void) db_change_private_heap (thread_p, old_pri_heap_id);
-	}
-
-      if (data)
-	{
-	  free_and_init (data);
-	}
     }
 
   CACHE_TIME_RESET (&srv_cache_time);
 
   /* call the server routine of query execute */
   list_id = xqmgr_execute_query (thread_p, &xasl_id, &query_id,
-				 dbval_cnt, dbvals, &query_flag,
+				 dbval_cnt, data, &query_flag,
 				 &clt_cache_time, &srv_cache_time,
 				 query_timeout, &info);
+
+  if (data)
+    {
+      free_and_init (data);
+    }
 
 #if 0
   if (list_id == NULL && !CACHE_TIME_EQ (&clt_cache_time, &srv_cache_time))
@@ -5811,18 +5773,6 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
 #endif
     {
       return_error_to_client (thread_p, rid);
-    }
-
-  /* clear and free space for DB_VALUEs after the query is executed
-     In the case of async query, the space will be freed
-     when the query is completed. See qmgr_execute_async_select() */
-  if (IS_SYNC_EXEC_MODE (query_flag) && dbvals)
-    {
-      for (i = 0, dbval = dbvals; i < dbval_cnt; i++, dbval++)
-	{
-	  db_value_clear (dbval);
-	}
-      db_private_free_and_init (thread_p, dbvals);
     }
 
   page_size = 0;
@@ -6003,7 +5953,6 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
   char *xasl_stream;
   int xasl_stream_size;
   char *ptr, *var_data, *list_data;
-  DB_VALUE *dbvals;
   OR_ALIGNED_BUF (OR_INT_SIZE * 4 + OR_PTR_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   PAGE_PTR page_ptr;
@@ -6020,7 +5969,6 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
 
   var_data = NULL;
   var_datasize = 0;
-  dbvals = NULL;
   list_data = NULL;
   page_ptr = NULL;
   page_size = 0;
@@ -6054,24 +6002,6 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
 	  css_send_abort_to_client (thread_p->conn_entry, rid);
 	  goto cleanup;
 	}
-      dbvals = (DB_VALUE *) db_private_alloc (thread_p,
-					      sizeof (DB_VALUE) * var_count);
-      if (dbvals == NULL)
-	{
-	  css_send_abort_to_client (thread_p->conn_entry, rid);
-	  goto cleanup;
-	}
-      ptr = var_data;
-      for (i = 0; i < var_count; i++)
-	{
-	  ptr = or_unpack_db_value (ptr, &dbvals[i]);
-	}
-      /*
-       * Don't need this anymore; might as well return the memory now.  It
-       * could conceivably be largish if we sent down some big sets as host
-       * vars.
-       */
-      free_and_init (var_data);
     }
 
   /*
@@ -6080,24 +6010,16 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
    */
   q_result =
     xqmgr_prepare_and_execute_query (thread_p, xasl_stream, xasl_stream_size,
-				     &query_id, var_count, dbvals, &flag,
+				     &query_id, var_count, var_data, &flag,
 				     query_timeout);
+  if (var_data)
+    {
+      free_and_init (var_data);
+    }
+
   if (xasl_stream)
     {
       free_and_init (xasl_stream);	/* allocated at css_receive_data_from_client() */
-    }
-
-  /*
-   * For streaming queries, the dbvals will be cleared when the query
-   * has completed.
-   */
-  if (IS_SYNC_EXEC_MODE (flag) && (dbvals))
-    {
-      for (i = 0; i < var_count; i++)
-	{
-	  db_value_clear (&dbvals[i]);
-	}
-      db_private_free_and_init (thread_p, dbvals);
     }
 
   if (q_result == NULL)
