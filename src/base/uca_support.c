@@ -1204,7 +1204,8 @@ apply_tailoring_rules (LOCALE_COLLATION * lc)
 							tailor_curr,
 							&tailor_next);
 
-	      if ((int) tailor_cp >= lc->tail_coll.sett_max_cp)
+	      assert (lc->tail_coll.sett_max_cp >= 0);
+	      if (tailor_cp >= (unsigned int) lc->tail_coll.sett_max_cp)
 		{
 		  err_status = ER_LOC_GEN;
 		  snprintf (er_msg, sizeof (er_msg) - 1,
@@ -2077,7 +2078,7 @@ optimize_coll_contractions (LOCALE_COLLATION * lc)
       /* get first code-point */
       cp = intl_utf8_to_cp (c_buf, c_buf_size, &dummy);
 
-      if ((int) cp < lc->opt_coll.w_count &&
+      if (cp < (unsigned int) lc->opt_coll.w_count &&
 	  lc->opt_coll.cp_first_contr_array[cp] == -1)
 	{
 	  lc->opt_coll.cp_first_contr_array[cp] = i;

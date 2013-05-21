@@ -4518,7 +4518,7 @@ lang_str_utf8_trail_zero_weights (const LANG_COLLATION * lang_coll,
     {
       cp = intl_utf8_to_cp (str, size, &str_next);
 
-      if ((int) cp >= lang_coll->coll.w_count
+      if (cp >= (unsigned int) lang_coll->coll.w_count
 	  || lang_coll->coll.weights[cp] != 0)
 	{
 	  return 1;
