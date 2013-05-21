@@ -172,6 +172,7 @@ struct sm_attr_properties_chg
   SM_CONSTRAINT_INFO *new_constr_info;
   int att_id;
   SM_NAME_SPACE name_space;	/* class, shared or normal attribute */
+  SM_NAME_SPACE new_name_space;	/* class, shared or normal attribute */
   bool class_has_subclass;	/* if class is part of a hierarchy and if
 				 * it has subclasses*/
 };
@@ -10604,6 +10605,24 @@ build_attr_change_map (PARSER_CONTEXT * parser,
 
   attr_chg_properties->name_space = att->header.name_space;
 
+  if (attr_def->info.attr_def.attr_type == PT_NORMAL)
+    {
+      attr_chg_properties->new_name_space = ID_ATTRIBUTE;
+    }
+  else if (attr_def->info.attr_def.attr_type == PT_SHARED)
+    {
+      attr_chg_properties->new_name_space = ID_SHARED_ATTRIBUTE;
+    }
+
+  if (attr_def->info.attr_def.data_default != NULL)
+    {
+      if (attr_def->info.attr_def.data_default->info.data_default.shared ==
+	  PT_SHARED)
+	{
+	  attr_chg_properties->new_name_space = ID_SHARED_ATTRIBUTE;
+	}
+    }
+
   /* DEFAULT value */
   attr_chg_properties->p[P_DEFAULT_VALUE] = 0;
   if (attr_def->info.attr_def.data_default != NULL)
@@ -11994,6 +12013,16 @@ check_att_chg_allowed (const char *att_name, const PT_TYPE_ENUM t,
       goto not_allowed;
     }
 
+  if ((attr_chg_prop->name_space == ID_SHARED_ATTRIBUTE
+       && attr_chg_prop->new_name_space == ID_ATTRIBUTE)
+      || (attr_chg_prop->name_space == ID_ATTRIBUTE
+	  && attr_chg_prop->new_name_space == ID_SHARED_ATTRIBUTE))
+    {
+      error = ER_ALTER_CHANGE_ATTR_TO_FROM_SHARED_NOT_ALLOWED;
+      *new_attempt = false;
+      goto not_allowed;
+    }
+
   /* unique key : drop is allowed */
   /* unique key : gaining UK is matter of adding a new constraint */
 
@@ -12368,6 +12397,7 @@ reset_att_property_structure (SM_ATTR_PROP_CHG * attr_chg_properties)
   attr_chg_properties->new_constr_info = NULL;
   attr_chg_properties->att_id = -1;
   attr_chg_properties->name_space = ID_NULL;
+  attr_chg_properties->new_name_space = ID_NULL;
   attr_chg_properties->class_has_subclass = false;
 }
 

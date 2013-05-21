@@ -1183,7 +1183,8 @@ $ LOADDB
 1114 Argument '%s' is out of range.
 1115 Started to update statistics (class "%1$s", oid : %2$d|%3$d|%4$d).
 1116 Finished to update statistics (class "%1$s", oid : %2$d|%3$d|%4$d, error code : %5$d).
-1117 Ultimo errore
+1117 Cannot change attribute "%1$s". CUBRID cannot change an attribute as a SHARED and vice versa.
+1118 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %d):
