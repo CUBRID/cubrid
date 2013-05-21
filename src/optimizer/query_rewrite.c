@@ -91,6 +91,9 @@ struct qo_reset_location_info
   bool found_outerjoin;
 };
 
+static PT_NODE *qo_reset_location (PARSER_CONTEXT * parser, PT_NODE * node,
+				   void *arg, int *continue_walk);
+
 /*
  * qo_find_best_path_type () -
  *   return: PT_NODE *
@@ -5636,7 +5639,9 @@ qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 {
   PT_NODE *spec, *prev_spec, *expr, *ns;
   SPEC_ID_INFO info;
+  RESET_LOCATION_INFO locate_info;
   int nullable_cnt;		/* nullable terms count */
+  bool rewrite_again;
 
   if (node->node_type != PT_SELECT)
     {
@@ -5652,75 +5657,102 @@ qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       return node;
     }
 
-  /* traverse spec list */
-  prev_spec = NULL;
-  for (spec = node->info.query.q.select.from;
-       spec; prev_spec = spec, spec = spec->next)
+  do
     {
-      if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER
-	  || spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER)
+      rewrite_again = false;
+      /* traverse spec list */
+      prev_spec = NULL;
+      for (spec = node->info.query.q.select.from;
+	   spec; prev_spec = spec, spec = spec->next)
 	{
-	  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER)
+	  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER
+	      || spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER)
 	    {
-	      info.id = spec->info.spec.id;
-	    }
-	  else if (prev_spec != NULL)
-	    {
-	      info.id = prev_spec->info.spec.id;
-	    }
-
-	  info.appears = false;
-	  nullable_cnt = 0;
-
-	  /* search where list */
-	  for (expr = node->info.query.q.select.where;
-	       expr; expr = expr->next)
-	    {
-
-	      /* skip out non-null RANGE sarg term only used for index scan;
-	       * 'attr RANGE ( Min ge_inf )'
-	       */
-	      if (PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_FULL_RANGE))
+	      if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER)
 		{
-		  continue;
+		  info.id = spec->info.spec.id;
+		}
+	      else if (prev_spec != NULL)
+		{
+		  info.id = prev_spec->info.spec.id;
 		}
 
-	      if (expr->node_type == PT_EXPR
-		  && expr->info.expr.location == 0
-		  && expr->info.expr.op != PT_IS_NULL
-		  && expr->or_next == NULL)
+	      info.appears = false;
+	      nullable_cnt = 0;
+
+	      /* search where list */
+	      for (expr = node->info.query.q.select.where;
+		   expr; expr = expr->next)
 		{
-		  (void) parser_walk_leaves (parser, expr,
-					     qo_get_name_by_spec_id, &info,
-					     qo_check_nullable_expr,
-					     &nullable_cnt);
-		  /* have found a term which makes outer join to inner */
-		  if (info.appears && nullable_cnt == 0)
+
+		  /* skip out non-null RANGE sarg term only used for index scan;
+		   * 'attr RANGE ( Min ge_inf )'
+		   */
+		  if (PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_FULL_RANGE))
 		    {
-		      spec->info.spec.join_type = PT_JOIN_INNER;
-		      /* rewrite the following connected right outer join
-		       * to inner join */
-		      for (ns = spec->next;	/* traverse next spec */
-			   ns && ns->info.spec.join_type != PT_JOIN_NONE;
-			   ns = ns->next)
+		      continue;
+		    }
+
+		  if (expr->node_type == PT_EXPR
+		      && expr->info.expr.location == 0
+		      && expr->info.expr.op != PT_IS_NULL
+		      && expr->or_next == NULL)
+		    {
+		      (void) parser_walk_leaves (parser, expr,
+						 qo_get_name_by_spec_id,
+						 &info,
+						 qo_check_nullable_expr,
+						 &nullable_cnt);
+		      /* have found a term which makes outer join to inner */
+		      if (info.appears && nullable_cnt == 0)
 			{
-			  if (ns->info.spec.join_type == PT_JOIN_RIGHT_OUTER)
-			    ns->info.spec.join_type = PT_JOIN_INNER;
+			  rewrite_again = true;
+			  spec->info.spec.join_type = PT_JOIN_INNER;
+
+			  locate_info.start = spec->info.spec.location;
+			  locate_info.end = locate_info.start;
+			  (void) parser_walk_tree (parser,
+						   node->info.query.q.select.
+						   where, qo_reset_location,
+						   &locate_info, NULL, NULL);
+
+			  /* rewrite the following connected right outer join
+			   * to inner join */
+			  for (ns = spec->next;	/* traverse next spec */
+			       ns && ns->info.spec.join_type != PT_JOIN_NONE;
+			       ns = ns->next)
+			    {
+			      if (ns->info.spec.join_type ==
+				  PT_JOIN_RIGHT_OUTER)
+				{
+				  ns->info.spec.join_type = PT_JOIN_INNER;
+				  locate_info.start = ns->info.spec.location;
+				  locate_info.end = locate_info.start;
+				  (void) parser_walk_tree (parser,
+							   node->info.query.q.
+							   select.where,
+							   qo_reset_location,
+							   &locate_info, NULL,
+							   NULL);
+				}
+			    }
+			  break;
 			}
-		      break;
 		    }
 		}
 	    }
-	}
 
-      if (spec->info.spec.derived_table
-	  && spec->info.spec.derived_table_type == PT_IS_SUBQUERY)
-	{
-	  /* apply qo_rewrite_outerjoin() to derived table's subquery */
-	  (void) parser_walk_tree (parser, spec->info.spec.derived_table,
-				   qo_rewrite_outerjoin, NULL, NULL, NULL);
+	  if (spec->info.spec.derived_table
+	      && spec->info.spec.derived_table_type == PT_IS_SUBQUERY)
+	    {
+	      /* apply qo_rewrite_outerjoin() to derived table's subquery */
+	      (void) parser_walk_tree (parser, spec->info.spec.derived_table,
+				       qo_rewrite_outerjoin, NULL, NULL,
+				       NULL);
+	    }
 	}
     }
+  while (rewrite_again);
 
   *continue_walk = PT_LIST_WALK;
 
