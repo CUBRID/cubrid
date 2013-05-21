@@ -262,6 +262,8 @@ static void mq_check_update (PARSER_CONTEXT * parser,
 static void mq_check_delete (PARSER_CONTEXT * parser, PT_NODE * delete_stmt);
 static PT_NODE *mq_translate_update (PARSER_CONTEXT * parser,
 				     PT_NODE * update_statement);
+static PT_NODE *mq_resolve_insert_statement (PARSER_CONTEXT * parser,
+					     PT_NODE * insert_statement);
 static PT_NODE *mq_translate_insert (PARSER_CONTEXT * parser,
 				     PT_NODE * insert_statement);
 static PT_NODE *mq_translate_delete (PARSER_CONTEXT * parser,
@@ -4193,6 +4195,53 @@ mq_translate_update (PARSER_CONTEXT * parser, PT_NODE * update_statement)
 }
 
 /*
+ * mq_resolve_insert_statement() - resolve names in insert statement.
+ *   return: insert statement with resolved names.
+ *   parser(in):
+ *   insert_statement(in/out):
+ */
+static PT_NODE *
+mq_resolve_insert_statement (PARSER_CONTEXT * parser,
+			     PT_NODE * insert_statement)
+{
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+  PT_NODE *odku = insert_statement->info.insert.odku_assignments;
+  PT_NODE *from = insert_statement->info.insert.spec;
+  PT_NODE *attr;
+
+  /* reset spec_id for names not referencing the insert statement */
+  if (odku != NULL)
+    {
+      odku =
+	parser_walk_tree (parser, odku, mq_clear_other_ids, from, NULL, NULL);
+    }
+  for (attr = insert_statement->info.insert.attr_list; attr != NULL;
+       attr = attr->next)
+    {
+      attr =
+	parser_walk_tree (parser, attr, mq_clear_other_ids, from, NULL, NULL);
+    }
+
+  /* do name resolving */
+  insert_statement = pt_resolve_names (parser, insert_statement, &sc_info);
+  if (insert_statement == NULL || pt_has_error (parser))
+    {
+      return insert_statement;
+    }
+
+  insert_statement = mq_reset_ids (parser, insert_statement, from);
+
+  if (odku != NULL)
+    {
+      /* need to check this in case something went wrong */
+      insert_statement = pt_check_odku_assignments (parser, insert_statement);
+    }
+
+  return insert_statement;
+}
+
+
+/*
  * mq_translate_insert() - leaf expansion or vclass/view expansion
  *   return:
  *   parser(in):
@@ -4360,8 +4409,15 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 	  /* try to retrieve info from derived table */
 	  if (from_spec->derived_table_type == PT_IS_SUBQUERY)
 	    {
-	      from = from_spec->derived_table->info.query.q.select.from;
+	      from = parser_copy_tree (parser,
+				       from_spec->derived_table->info.query.q.
+				       select.from);
 	      temp->info.insert.spec = from;
+	      temp = mq_resolve_insert_statement (parser, temp);
+	      if (temp == NULL || parser_has_error (parser))
+		{
+		  return NULL;
+		}
 	    }
 	  flat = from->info.spec.flat_entity_list;
 	  if (flat == NULL)
