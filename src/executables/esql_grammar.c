@@ -462,7 +462,7 @@ static const char *const yytname[] =
   "MAX_", "METHOD", "MIN_", "MINUS", "MONEY_LIT", "MULTISET_OF", "NEQ",
   "NOT", "NULL_", "NUMERIC", "OBJECT", "OF", "OID_", "ON_", "ONLY", "OPEN",
   "OPTION", "OR", "ORDER", "PLUS", "PRECISION", "PREPARE", "PRIVILEGES",
-  "PTR_OP", "PUBLIC_", "READ", "READ_ONLY", "REAL", "REAL_LIT",
+  "PTR_OP", "PUBLIC_", "READ", "READ_ONLY_", "REAL", "REAL_LIT",
   "REGISTER_", "RENAME", "REPEATED", "REVOKE", "ROLLBACK", "SECTION",
   "SELECT", "SEQUENCE_OF", "SET", "SETEQ", "SETNEQ", "SET_OF", "SHARED",
   "SHORT_", "SIGNED_", "SLASH", "SMALLINT", "SOME", "SQLCA", "SQLDA",

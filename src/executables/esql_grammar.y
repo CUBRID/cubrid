@@ -308,7 +308,7 @@ extern bool need_line_directive;
 %token<ptr> PTR_OP
 %token<ptr> PUBLIC_
 %token<ptr> READ
-%token<ptr> READ_ONLY
+%token<ptr> READ_ONLY_
 %token<ptr> REAL
 %token<ptr> REAL_LIT
 %token<ptr> REGISTER_

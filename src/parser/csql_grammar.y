@@ -1053,7 +1053,7 @@ typedef struct YYLTYPE
 %token CYCLE
 %token DATA
 %token DATABASE
-%token DATA_TYPE
+%token DATA_TYPE_
 %token Date
 %token DATETIME
 %token DAY_
@@ -1742,7 +1742,7 @@ stmt_
 		{ $$ = $1; }
 	| get_stmt
 		{ $$ = $1; }
-	| DATA_TYPE data_type
+	| DATA_TYPE_ data_type
 		{{
 
 			PT_NODE *dt, *set_dt;

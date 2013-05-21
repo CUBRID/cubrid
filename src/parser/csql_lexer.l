@@ -208,7 +208,7 @@ extern int yycolumn_end;
 [cC][hH][aA][rR]							{ begin_token(yytext);   return CHAR_; }
 [dD][aA][tT][aA]							{ begin_token(yytext);   return DATA; }
 [dD][aA][tT][aA][bB][aA][sS][eE]					{ begin_token(yytext);   return DATABASE; }
-[dD][aA][tT][aA]_[tT][yY][pP][eE]___					{ begin_token(yytext);   return DATA_TYPE; }
+[dD][aA][tT][aA]_[tT][yY][pP][eE]___					{ begin_token(yytext);   return DATA_TYPE_; }
 [dD][aA][tT][eE]_[aA][dD][dD]						{ begin_token(yytext);   
 										csql_yylval.cptr = pt_makename(yytext);
 										return DATE_ADD; }

@@ -155,7 +155,7 @@
      PTR_OP = 372,
      PUBLIC_ = 373,
      READ = 374,
-     READ_ONLY = 375,
+     READ_ONLY_ = 375,
      REAL = 376,
      REAL_LIT = 377,
      REGISTER_ = 378,

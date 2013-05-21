@@ -46,6 +46,7 @@
 #include "rb_tree.h"
 #include "query_list.h"
 #include "lock_manager.h"
+#include "connection_globals.h"
 
 #if defined(SOLARIS)
 #include <netdb.h>		/* for MAXHOSTNAMELEN */
