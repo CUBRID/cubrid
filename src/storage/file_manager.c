@@ -3760,7 +3760,8 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 		    {
 		      ret =
 			file_reset_contiguous_temporary_pages (thread_p,
-							       allocset->volid,
+							       allocset->
+							       volid,
 							       batch_firstid,
 							       batch_ndealloc,
 							       false);
@@ -8109,9 +8110,26 @@ file_dealloc_page (THREAD_ENTRY * thread_p, const VFID * vfid,
 	     Get the next allocation set */
 	  if (VPID_ISNULL (&allocset->next_allocset_vpid))
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_FILE_TABLE_CORRUPTED, 2, vfid->volid, vfid->fileid);
-	      assert_release (0);
+	      if (log_is_in_crash_recovery ())
+		{
+		  /*
+		   * assert check after server up
+		   * because logical page dealloc (like, RVBT_NEW_PGALLOC) for undo recovery
+		   * could be run twice.
+		   */
+		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+			  ER_FILE_TABLE_CORRUPTED, 2, vfid->volid,
+			  vfid->fileid);
+		}
+	      else
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_FILE_TABLE_CORRUPTED, 2, vfid->volid,
+			  vfid->fileid);
+
+		  assert_release (0);
+		}
+
 	      VPID_SET_NULL (&allocset_vpid);
 	    }
 	  else
