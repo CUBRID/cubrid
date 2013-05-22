@@ -5099,6 +5099,8 @@ xts_process_analytic_type (char *ptr, const ANALYTIC_TYPE * analytic)
 
   ptr = or_pack_int (ptr, analytic->ignore_nulls);
 
+  ptr = or_pack_int (ptr, analytic->is_const_operand);
+
   return ptr;
 }
 
@@ -6684,7 +6686,8 @@ xts_sizeof_analytic_type (const ANALYTIC_TYPE * analytic)
     OR_INT_SIZE +		/* flag */
     OR_INT_SIZE +		/* eval_grp */
     OR_INT_SIZE +		/* from_last */
-    OR_INT_SIZE;		/* ignore_nulls */
+    OR_INT_SIZE +		/* ignore_nulls */
+    OR_INT_SIZE;		/* is_const_opr */
 
   tmp_size = xts_sizeof_regu_variable (&analytic->operand);
   if (tmp_size == ER_FAILED)

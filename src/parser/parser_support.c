@@ -719,7 +719,8 @@ pt_is_aggregate_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 	      || function_type == PT_AGG_BIT_AND
 	      || function_type == PT_AGG_BIT_OR
 	      || function_type == PT_AGG_BIT_XOR
-	      || function_type == PT_GROUP_CONCAT))
+	      || function_type == PT_GROUP_CONCAT
+	      || function_type == PT_MEDIAN))
 	{
 	  return true;
 	}
@@ -4365,6 +4366,7 @@ regu_analytic_init (ANALYTIC_TYPE * ptr)
   ptr->eval_group = -1;
   ptr->from_last = false;
   ptr->ignore_nulls = false;
+  ptr->is_const_operand = false;
 }
 
 /*

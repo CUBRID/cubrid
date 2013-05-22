@@ -12684,6 +12684,21 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       }
       break;
 
+    case PT_MEDIAN:
+      if (arg_type != PT_TYPE_NULL
+	  && arg_type != PT_TYPE_NA
+	  && !PT_IS_NUMERIC_TYPE (arg_type)
+	  && !PT_IS_STRING_TYPE (arg_type)
+	  && !PT_IS_DATE_TIME_TYPE (arg_type) && arg_type != PT_TYPE_MAYBE)
+	{
+	  PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		       MSGCAT_SEMANTIC_INCOMPATIBLE_OPDS,
+		       pt_show_function (fcode),
+		       pt_show_type_enum (arg_type));
+	}
+
+      break;
+
     default:
       check_agg_single_arg = false;
       break;
@@ -12796,6 +12811,13 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_VAR_POP:
 	case PT_VAR_SAMP:
 	  node->type_enum = arg_type;
+	  node->data_type = NULL;
+
+	  break;
+
+	case PT_MEDIAN:
+	  /* let calculation decide the type */
+	  node->type_enum = PT_TYPE_MAYBE;
 	  node->data_type = NULL;
 
 	  break;

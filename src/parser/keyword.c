@@ -269,6 +269,7 @@ static KEYWORD_RECORD keywords[] = {
   {Max, "MAX", 0},
   {MAXIMUM, "MAXIMUM", 1},
   {MAXVALUE, "MAXVALUE", 1},
+  {MEDIAN, "MEDIAN", 1},
   {MEMBERS, "MEMBERS", 1},
   {MERGE, "MERGE", 0},
   {METHOD, "METHOD", 0},

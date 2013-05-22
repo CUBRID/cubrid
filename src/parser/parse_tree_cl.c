@@ -3815,6 +3815,8 @@ pt_show_function (FUNC_TYPE c)
       return "last_value";
     case PT_NTH_VALUE:
       return "nth_value";
+    case PT_MEDIAN:
+      return "median";
 
     case F_SEQUENCE:
       return "sequence";

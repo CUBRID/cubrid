@@ -1426,6 +1426,7 @@ typedef struct YYLTYPE
 %token <cptr> LOCK_
 %token <cptr> MAXIMUM
 %token <cptr> MAXVALUE
+%token <cptr> MEDIAN
 %token <cptr> MEMBERS
 %token <cptr> MINVALUE
 %token <cptr> NAME
@@ -13489,14 +13490,18 @@ reserved_func
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_FUNCTION);
-			node->info.function.function_type = $1;
-
-			if ($1 == PT_MAX || $1 == PT_MIN)
-			  node->info.function.all_or_distinct = PT_ALL;
-			else
-			  node->info.function.all_or_distinct = PT_DISTINCT;
-
-			node->info.function.arg_list = $4;
+			
+			if (node != NULL)
+			  {
+			    node->info.function.function_type = $1;
+  
+			    if ($1 == PT_MAX || $1 == PT_MIN || $1 == PT_MEDIAN)
+			      node->info.function.all_or_distinct = PT_ALL;
+			    else
+			      node->info.function.all_or_distinct = PT_DISTINCT;
+  
+			    node->info.function.arg_list = $4;
+			  }
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -13508,7 +13513,7 @@ reserved_func
 
 			PT_NODE *node = parser_new_node (this_parser, PT_FUNCTION);
 
-			if (node)
+			if (node != NULL)
 			  {
 			    node->info.function.function_type = $1;
 			    node->info.function.all_or_distinct = PT_ALL;
@@ -14705,6 +14710,12 @@ of_avg_max_etc
 			$$ = PT_AGG_BIT_XOR;
 
 		DBG_PRINT}}
+	| MEDIAN
+		{{
+		
+			$$ = PT_MEDIAN;
+		
+		DBG_PRINT}}
 	;
 
 of_analytic
@@ -14773,6 +14784,12 @@ of_analytic
 
 			$$ = PT_NTILE;
 
+		DBG_PRINT}}
+	| MEDIAN
+		{{
+		
+			$$ = PT_MEDIAN;
+		
 		DBG_PRINT}}
 	/* add other analytic functions here */
 	;
@@ -19643,6 +19660,19 @@ identifier
 			$$ = p;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
+		DBG_PRINT}}
+	| MEDIAN
+		{{
+		
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p != NULL)
+			  {
+			    p->info.name.original = $1;
+			  }
+
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		
 		DBG_PRINT}}
 	;
 

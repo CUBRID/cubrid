@@ -356,6 +356,11 @@ static int qdata_elt (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p,
 		      VAL_DESCR * val_desc_p, OID * obj_oid_p,
 		      QFILE_TUPLE tuple);
 
+static int qdata_aggregate_evaluate_median_function (THREAD_ENTRY * thread_p,
+						     AGGREGATE_TYPE * agg_p,
+						     QFILE_LIST_SCAN_ID *
+						     scan_id);
+
 static int (*generic_func_ptrs[]) (THREAD_ENTRY * thread_p, DB_VALUE *,
 				   int, DB_VALUE **) =
 {
@@ -5937,6 +5942,8 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
   int copy_opr;
   TP_DOMAIN *tmp_domain_p = NULL;
   DB_TYPE dbval_type;
+  int error = NO_ERROR;
+  TP_DOMAIN_STATUS status;
 
   DB_MAKE_NULL (&dbval);
   DB_MAKE_NULL (&sqr_val);
@@ -6080,7 +6087,6 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
 	case PT_AGG_BIT_OR:
 	case PT_AGG_BIT_XOR:
 	  {
-	    int error;
 	    DB_VALUE tmp_val;
 	    DB_MAKE_BIGINT (&tmp_val, (DB_BIGINT) 0);
 	    copy_opr = false;
@@ -6290,7 +6296,6 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
 
 	    if (agg_p->curr_cnt < 1)
 	      {
-		int error = NO_ERROR;
 		error = qdata_group_concat_first_value (thread_p, agg_p,
 							&dbval);
 		if (error != NO_ERROR)
@@ -6302,7 +6307,6 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
 	      }
 	    else
 	      {
-		int error = NO_ERROR;
 		error = qdata_group_concat_value (thread_p, agg_p, &dbval);
 		if (error != NO_ERROR)
 		  {
@@ -6312,6 +6316,85 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
 	      }
 	    copy_opr = false;
 	  }
+	  break;
+
+	case PT_MEDIAN:
+	  if (agg_p->curr_cnt < 1)
+	    {
+	      /* host var or constant */
+	      if (agg_p->sort_list == NULL)
+		{
+		  switch (agg_p->opr_dbtype)
+		    {
+		    case DB_TYPE_SHORT:
+		    case DB_TYPE_INTEGER:
+		    case DB_TYPE_BIGINT:
+		    case DB_TYPE_FLOAT:
+		    case DB_TYPE_DOUBLE:
+		    case DB_TYPE_MONETARY:
+		    case DB_TYPE_NUMERIC:
+		    case DB_TYPE_DATE:
+		    case DB_TYPE_DATETIME:
+		    case DB_TYPE_TIMESTAMP:
+		    case DB_TYPE_TIME:
+		      break;
+		    default:
+		      assert (agg_p->operand.type == TYPE_CONSTANT);
+
+		      /* try to cast dbval to double, datetime then time */
+		      tmp_domain_p =
+			tp_domain_resolve_default (DB_TYPE_DOUBLE);
+
+		      status = tp_value_cast (&dbval, &dbval,
+					      tmp_domain_p, false);
+		      if (status != DOMAIN_COMPATIBLE)
+			{
+			  /* try datetime */
+			  tmp_domain_p =
+			    tp_domain_resolve_default (DB_TYPE_DATETIME);
+
+			  status = tp_value_cast (&dbval, &dbval,
+						  tmp_domain_p, false);
+			}
+
+		      /* try time */
+		      if (status != DOMAIN_COMPATIBLE)
+			{
+			  tmp_domain_p =
+			    tp_domain_resolve_default (DB_TYPE_TIME);
+
+			  status = tp_value_cast (&dbval, &dbval,
+						  tmp_domain_p, false);
+			}
+
+		      if (status != DOMAIN_COMPATIBLE)
+			{
+			  error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
+				  "MEDIAN", "DOUBLE, DATETIME or TIME");
+
+			  pr_clear_value (&dbval);
+			  return error;
+			}
+
+		      /* update domain */
+		      agg_p->domain = tmp_domain_p;
+		    }
+
+		  pr_clear_value (agg_p->value);
+		  error = db_value_clone (&dbval, agg_p->value);
+		  if (error != NO_ERROR)
+		    {
+		      pr_clear_value (&dbval);
+		      return error;
+		    }
+		}
+	      else
+		{
+		  /* we'll calculate the value when group ends */
+		  DB_MAKE_NULL (agg_p->value);
+		}
+	    }
 	  break;
 
 	default:
@@ -6555,34 +6638,14 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 		      goto exit;
 		    }
 
-		  while (true)
+		  /* median don't need to read all rows */
+		  if (agg_p->function == PT_MEDIAN
+		      && list_id_p->tuple_cnt > 0)
 		    {
-		      scan_code =
-			qfile_scan_list_next (thread_p, &scan_id,
-					      &tuple_record, PEEK);
-		      if (scan_code != S_SUCCESS)
-			{
-			  break;
-			}
-
-		      tuple_p = ((char *) tuple_record.tpl
-				 + QFILE_TUPLE_LENGTH_SIZE);
-		      if (QFILE_GET_TUPLE_VALUE_FLAG (tuple_p) == V_UNBOUND)
-			{
-			  continue;
-			}
-
-		      or_init (&buf,
-			       (char *) tuple_p +
-			       QFILE_TUPLE_VALUE_HEADER_SIZE,
-			       QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p));
-
-		      (void) pr_clear_value (&dbval);
-		      error = (*(pr_type_p->data_readval)) (&buf, &dbval,
-							    list_id_p->
-							    type_list.domp[0],
-							    -1, true, NULL,
-							    0);
+		      error =
+			qdata_aggregate_evaluate_median_function (thread_p,
+								  agg_p,
+								  &scan_id);
 		      if (error != NO_ERROR)
 			{
 			  qfile_close_scan (thread_p, &scan_id);
@@ -6590,163 +6653,215 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 			  qfile_destroy_list (thread_p, list_id_p);
 			  goto exit;
 			}
-
-		      if (agg_p->function == PT_VARIANCE
-			  || agg_p->function == PT_STDDEV
-			  || agg_p->function == PT_VAR_POP
-			  || agg_p->function == PT_STDDEV_POP
-			  || agg_p->function == PT_VAR_SAMP
-			  || agg_p->function == PT_STDDEV_SAMP)
+		    }
+		  else
+		    {
+		      while (true)
 			{
-			  if (tp_value_coerce (&dbval, &dbval, tmp_domain_ptr)
-			      != DOMAIN_COMPATIBLE)
+			  scan_code =
+			    qfile_scan_list_next (thread_p, &scan_id,
+						  &tuple_record, PEEK);
+			  if (scan_code != S_SUCCESS)
 			    {
-			      (void) pr_clear_value (&dbval);
+			      break;
+			    }
+
+			  tuple_p = ((char *) tuple_record.tpl
+				     + QFILE_TUPLE_LENGTH_SIZE);
+			  if (QFILE_GET_TUPLE_VALUE_FLAG (tuple_p) ==
+			      V_UNBOUND)
+			    {
+			      continue;
+			    }
+
+			  or_init (&buf,
+				   (char *) tuple_p +
+				   QFILE_TUPLE_VALUE_HEADER_SIZE,
+				   QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p));
+
+			  (void) pr_clear_value (&dbval);
+			  error = (*(pr_type_p->data_readval)) (&buf, &dbval,
+								list_id_p->
+								type_list.
+								domp[0], -1,
+								true, NULL,
+								0);
+			  if (error != NO_ERROR)
+			    {
 			      qfile_close_scan (thread_p, &scan_id);
 			      qfile_close_list (thread_p, list_id_p);
 			      qfile_destroy_list (thread_p, list_id_p);
-			      error = ER_FAILED;
-			      goto exit;
-			    }
-			}
-
-		      if (DB_IS_NULL (agg_p->value))
-			{
-			  /* first iteration: can't add to a null agg_ptr->value */
-			  PR_TYPE *tmp_pr_type;
-			  DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (&dbval);
-
-			  tmp_pr_type = PR_TYPE_FROM_ID (dbval_type);
-			  if (tmp_pr_type == NULL)
-			    {
-			      (void) pr_clear_value (&dbval);
-			      qfile_close_scan (thread_p, &scan_id);
-			      qfile_close_list (thread_p, list_id_p);
-			      qfile_destroy_list (thread_p, list_id_p);
-			      error = ER_FAILED;
 			      goto exit;
 			    }
 
-			  if (agg_p->function == PT_STDDEV
-			      || agg_p->function == PT_VARIANCE
-			      || agg_p->function == PT_STDDEV_POP
+			  if (agg_p->function == PT_VARIANCE
+			      || agg_p->function == PT_STDDEV
 			      || agg_p->function == PT_VAR_POP
-			      || agg_p->function == PT_STDDEV_SAMP
-			      || agg_p->function == PT_VAR_SAMP)
+			      || agg_p->function == PT_STDDEV_POP
+			      || agg_p->function == PT_VAR_SAMP
+			      || agg_p->function == PT_STDDEV_SAMP)
 			    {
-			      error = qdata_multiply_dbval (&dbval, &dbval,
-							    &sqr_val,
-							    tmp_domain_ptr);
-			      if (error != NO_ERROR)
+			      if (tp_value_coerce
+				  (&dbval, &dbval,
+				   tmp_domain_ptr) != DOMAIN_COMPATIBLE)
 				{
 				  (void) pr_clear_value (&dbval);
 				  qfile_close_scan (thread_p, &scan_id);
 				  qfile_close_list (thread_p, list_id_p);
 				  qfile_destroy_list (thread_p, list_id_p);
+				  error = ER_FAILED;
+				  goto exit;
+				}
+			    }
+
+			  if (DB_IS_NULL (agg_p->value))
+			    {
+			      /* first iteration: can't add to a null agg_ptr->value */
+			      PR_TYPE *tmp_pr_type;
+			      DB_TYPE dbval_type =
+				DB_VALUE_DOMAIN_TYPE (&dbval);
+
+			      tmp_pr_type = PR_TYPE_FROM_ID (dbval_type);
+			      if (tmp_pr_type == NULL)
+				{
+				  (void) pr_clear_value (&dbval);
+				  qfile_close_scan (thread_p, &scan_id);
+				  qfile_close_list (thread_p, list_id_p);
+				  qfile_destroy_list (thread_p, list_id_p);
+				  error = ER_FAILED;
 				  goto exit;
 				}
 
-			      (*(tmp_pr_type->setval)) (agg_p->value2,
-							&sqr_val, true);
-			    }
-			  if (agg_p->function == PT_GROUP_CONCAT)
-			    {
-			      error =
-				qdata_group_concat_first_value (thread_p,
-								agg_p,
-								&dbval);
-			      if (error != NO_ERROR)
+			      if (agg_p->function == PT_STDDEV
+				  || agg_p->function == PT_VARIANCE
+				  || agg_p->function == PT_STDDEV_POP
+				  || agg_p->function == PT_VAR_POP
+				  || agg_p->function == PT_STDDEV_SAMP
+				  || agg_p->function == PT_VAR_SAMP)
 				{
-				  (void) pr_clear_value (&dbval);
-				  qfile_close_scan (thread_p, &scan_id);
-				  qfile_close_list (thread_p, list_id_p);
-				  qfile_destroy_list (thread_p, list_id_p);
-				  goto exit;
+				  error =
+				    qdata_multiply_dbval (&dbval, &dbval,
+							  &sqr_val,
+							  tmp_domain_ptr);
+				  if (error != NO_ERROR)
+				    {
+				      (void) pr_clear_value (&dbval);
+				      qfile_close_scan (thread_p, &scan_id);
+				      qfile_close_list (thread_p, list_id_p);
+				      qfile_destroy_list (thread_p,
+							  list_id_p);
+				      goto exit;
+				    }
+
+				  (*(tmp_pr_type->setval)) (agg_p->value2,
+							    &sqr_val, true);
+				}
+			      if (agg_p->function == PT_GROUP_CONCAT)
+				{
+				  error =
+				    qdata_group_concat_first_value (thread_p,
+								    agg_p,
+								    &dbval);
+				  if (error != NO_ERROR)
+				    {
+				      (void) pr_clear_value (&dbval);
+				      qfile_close_scan (thread_p, &scan_id);
+				      qfile_close_list (thread_p, list_id_p);
+				      qfile_destroy_list (thread_p,
+							  list_id_p);
+				      goto exit;
+				    }
+				}
+			      else
+				{
+				  (*(tmp_pr_type->setval)) (agg_p->value,
+							    &dbval, true);
 				}
 			    }
 			  else
 			    {
-			      (*(tmp_pr_type->setval)) (agg_p->value, &dbval,
-							true);
-			    }
-			}
-		      else
-			{
-			  if (agg_p->function == PT_STDDEV
-			      || agg_p->function == PT_VARIANCE
-			      || agg_p->function == PT_STDDEV_POP
-			      || agg_p->function == PT_VAR_POP
-			      || agg_p->function == PT_STDDEV_SAMP
-			      || agg_p->function == PT_VAR_SAMP)
-			    {
-			      error = qdata_multiply_dbval (&dbval, &dbval,
-							    &sqr_val,
-							    tmp_domain_ptr);
-			      if (error != NO_ERROR)
+			      if (agg_p->function == PT_STDDEV
+				  || agg_p->function == PT_VARIANCE
+				  || agg_p->function == PT_STDDEV_POP
+				  || agg_p->function == PT_VAR_POP
+				  || agg_p->function == PT_STDDEV_SAMP
+				  || agg_p->function == PT_VAR_SAMP)
 				{
-				  (void) pr_clear_value (&dbval);
-				  qfile_close_scan (thread_p, &scan_id);
-				  qfile_close_list (thread_p, list_id_p);
-				  qfile_destroy_list (thread_p, list_id_p);
-				  goto exit;
+				  error =
+				    qdata_multiply_dbval (&dbval, &dbval,
+							  &sqr_val,
+							  tmp_domain_ptr);
+				  if (error != NO_ERROR)
+				    {
+				      (void) pr_clear_value (&dbval);
+				      qfile_close_scan (thread_p, &scan_id);
+				      qfile_close_list (thread_p, list_id_p);
+				      qfile_destroy_list (thread_p,
+							  list_id_p);
+				      goto exit;
+				    }
+
+				  error =
+				    qdata_add_dbval (agg_p->value2, &sqr_val,
+						     agg_p->value2,
+						     tmp_domain_ptr);
+				  if (error != NO_ERROR)
+				    {
+				      (void) pr_clear_value (&dbval);
+				      (void) pr_clear_value (&sqr_val);
+				      qfile_close_scan (thread_p, &scan_id);
+				      qfile_close_list (thread_p, list_id_p);
+				      qfile_destroy_list (thread_p,
+							  list_id_p);
+				      goto exit;
+				    }
 				}
 
-			      error =
-				qdata_add_dbval (agg_p->value2, &sqr_val,
-						 agg_p->value2,
-						 tmp_domain_ptr);
-			      if (error != NO_ERROR)
+			      if (agg_p->function == PT_GROUP_CONCAT)
 				{
-				  (void) pr_clear_value (&dbval);
-				  (void) pr_clear_value (&sqr_val);
-				  qfile_close_scan (thread_p, &scan_id);
-				  qfile_close_list (thread_p, list_id_p);
-				  qfile_destroy_list (thread_p, list_id_p);
-				  goto exit;
+				  error = qdata_group_concat_value (thread_p,
+								    agg_p,
+								    &dbval);
+				  if (error != NO_ERROR)
+				    {
+				      (void) pr_clear_value (&dbval);
+				      qfile_close_scan (thread_p, &scan_id);
+				      qfile_close_list (thread_p, list_id_p);
+				      qfile_destroy_list (thread_p,
+							  list_id_p);
+				      goto exit;
+				    }
+				}
+			      else
+				{
+
+				  TP_DOMAIN *domain_ptr = NOT_NULL_VALUE
+				    (tmp_domain_ptr,
+				     agg_p->domain);
+				  if ((agg_p->function == PT_AVG) &&
+				      (dbval.domain.general_info.type ==
+				       DB_TYPE_NUMERIC))
+				    {
+				      domain_ptr = NULL;
+				    }
+
+				  error =
+				    qdata_add_dbval (agg_p->value, &dbval,
+						     agg_p->value,
+						     domain_ptr);
+				  if (error != NO_ERROR)
+				    {
+				      (void) pr_clear_value (&dbval);
+				      qfile_close_scan (thread_p, &scan_id);
+				      qfile_close_list (thread_p, list_id_p);
+				      qfile_destroy_list (thread_p,
+							  list_id_p);
+				      goto exit;
+				    }
 				}
 			    }
-
-			  if (agg_p->function == PT_GROUP_CONCAT)
-			    {
-			      error = qdata_group_concat_value (thread_p,
-								agg_p,
-								&dbval);
-			      if (error != NO_ERROR)
-				{
-				  (void) pr_clear_value (&dbval);
-				  qfile_close_scan (thread_p, &scan_id);
-				  qfile_close_list (thread_p, list_id_p);
-				  qfile_destroy_list (thread_p, list_id_p);
-				  goto exit;
-				}
-			    }
-			  else
-			    {
-
-			      TP_DOMAIN *domain_ptr = NOT_NULL_VALUE
-				(tmp_domain_ptr,
-				 agg_p->domain);
-			      if ((agg_p->function == PT_AVG) &&
-				  (dbval.domain.general_info.type ==
-				   DB_TYPE_NUMERIC))
-				{
-				  domain_ptr = NULL;
-				}
-
-			      error = qdata_add_dbval (agg_p->value, &dbval,
-						       agg_p->value,
-						       domain_ptr);
-			      if (error != NO_ERROR)
-				{
-				  (void) pr_clear_value (&dbval);
-				  qfile_close_scan (thread_p, &scan_id);
-				  qfile_close_list (thread_p, list_id_p);
-				  qfile_destroy_list (thread_p, list_id_p);
-				  goto exit;
-				}
-			    }
-			}
-		    }		/* while (true) */
+			}	/* while (true) */
+		    }
 
 		  qfile_close_scan (thread_p, &scan_id);
 		  agg_p->curr_cnt = list_id_p->tuple_cnt;
@@ -9383,6 +9498,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
   double ntile_bucket = 0.0;
   int error = NO_ERROR;
   TP_DOMAIN_STATUS dom_status;
+  ANALYTIC_MEDIAN_FUNCTION_INFO *median_info_p = NULL;
 
   DB_MAKE_NULL (&dbval);
   DB_MAKE_NULL (&sqr_val);
@@ -9424,7 +9540,8 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
       && func_p->function != PT_FIRST_VALUE
       && func_p->function != PT_LAST_VALUE
       && func_p->function != PT_NTH_VALUE
-      && func_p->function != PT_RANK && func_p->function != PT_DENSE_RANK)
+      && func_p->function != PT_RANK
+      && func_p->function != PT_DENSE_RANK && func_p->function != PT_MEDIAN)
     {
       if (func_p->function == PT_COUNT || func_p->function == PT_COUNT_STAR)
 	{
@@ -9754,6 +9871,120 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 
 	  pr_clear_value (&sqr_val);
 	}
+      break;
+
+    case PT_MEDIAN:
+      median_info_p = &func_p->info.median;
+
+      if (func_p->curr_cnt < 1)
+	{
+	  /* init the func info */
+	  median_info_p->start_pos = 0;
+	  median_info_p->end_pos = 0;
+	  median_info_p->is_start_null = true;
+
+	  /* the arg is a constant */
+	  if (func_p->is_const_operand)
+	    {
+	      switch (func_p->opr_dbtype)
+		{
+		case DB_TYPE_SHORT:
+		case DB_TYPE_INTEGER:
+		case DB_TYPE_BIGINT:
+		case DB_TYPE_FLOAT:
+		case DB_TYPE_DOUBLE:
+		case DB_TYPE_MONETARY:
+		case DB_TYPE_NUMERIC:
+		case DB_TYPE_DATE:
+		case DB_TYPE_DATETIME:
+		case DB_TYPE_TIMESTAMP:
+		case DB_TYPE_TIME:
+		  break;
+
+		default:
+		  assert (func_p->operand.type == TYPE_CONSTANT);
+
+		  /* try to cast dbval to double, datetime then time */
+		  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+
+		  dom_status = tp_value_cast (&dbval, &dbval,
+					      tmp_domain_p, false);
+		  if (dom_status != DOMAIN_COMPATIBLE)
+		    {
+		      /* try datetime */
+		      tmp_domain_p =
+			tp_domain_resolve_default (DB_TYPE_DATETIME);
+
+		      dom_status = tp_value_cast (&dbval, &dbval,
+						  tmp_domain_p, false);
+		    }
+
+		  /* try time */
+		  if (dom_status != DOMAIN_COMPATIBLE)
+		    {
+		      tmp_domain_p = tp_domain_resolve_default (DB_TYPE_TIME);
+
+		      dom_status = tp_value_cast (&dbval, &dbval,
+						  tmp_domain_p, false);
+		    }
+
+		  if (dom_status != DOMAIN_COMPATIBLE)
+		    {
+		      error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
+			      "MEDIAN", "DOUBLE, DATETIME or TIME");
+
+		      pr_clear_value (&dbval);
+		      return ER_FAILED;
+		    }
+
+		  /* update domain */
+		  func_p->domain = tmp_domain_p;
+		}
+
+	      pr_clear_value (func_p->value);
+	      error = db_value_clone (&dbval, func_p->value);
+	      if (error != NO_ERROR)
+		{
+		  pr_clear_value (&dbval);
+		  return ER_FAILED;
+		}
+	    }
+	  else
+	    {
+	      /* output value is not required now */
+	      DB_MAKE_NULL (func_p->value);
+	    }
+	}
+
+      /* NULL is not considered in the calculation */
+      if (!func_p->is_const_operand)
+	{
+	  error = fetch_peek_dbval (thread_p,
+				    &func_p->operand, val_desc_p, NULL, NULL,
+				    NULL, &opr_dbval_p);
+	  if (error != NO_ERROR)
+	    {
+	      pr_clear_value (&dbval);
+	      return ER_FAILED;
+	    }
+
+	  if (!DB_IS_NULL (opr_dbval_p))
+	    {
+	      if (median_info_p->is_start_null)
+		{
+		  median_info_p->is_start_null = false;
+		}
+
+	      ++median_info_p->end_pos;
+	    }
+	  else if (median_info_p->is_start_null)
+	    {
+	      ++median_info_p->start_pos;
+	      ++median_info_p->end_pos;
+	    }
+	}
+
       break;
 
     default:
@@ -10213,5 +10444,514 @@ error_return:
       db_private_free (thread_p, vals);
     }
   *values = NULL;
+  return error;
+}
+
+/*
+ * qdata_aggregate_evaluate_median_function () -
+ * return : error code or NO_ERROR
+ * thread_p (in)    : thread entry
+ * agg_p (in)       :
+ *
+ * NOTE: scan_id is release at the caller
+ */
+static int
+qdata_aggregate_evaluate_median_function (THREAD_ENTRY * thread_p,
+					  AGGREGATE_TYPE * agg_p,
+					  QFILE_LIST_SCAN_ID * scan_id)
+{
+  int error = NO_ERROR;
+  int tuple_count;
+  double row_num_d, f_row_num_d, c_row_num_d;
+
+  assert (agg_p != NULL && agg_p->function == PT_MEDIAN
+	  && scan_id != NULL && scan_id->status == S_OPENED);
+
+  tuple_count = scan_id->list_id.tuple_cnt;
+  if (tuple_count < 1)
+    {
+      return NO_ERROR;
+    }
+
+  row_num_d = ((double) (tuple_count - 1)) / 2;
+  f_row_num_d = floor (row_num_d);
+  c_row_num_d = ceil (row_num_d);
+
+  error = qdata_get_median_function_result (thread_p, scan_id,
+					    scan_id->list_id.type_list.
+					    domp[0], 0, row_num_d,
+					    f_row_num_d, c_row_num_d,
+					    agg_p->value, &agg_p->domain);
+
+  if (TP_DOMAIN_TYPE (agg_p->domain) != agg_p->opr_dbtype)
+    {
+      agg_p->opr_dbtype = TP_DOMAIN_TYPE (agg_p->domain);
+    }
+
+  return error;
+}
+
+/*
+ * qdata_get_median_function_result () -
+ * return : error code or NO_ERROR
+ * thread_p (in)     : thread entry
+ * scan_id (in)      :
+ * domain (in)       :
+ * pos (in)          : the pos for REGU_VAR
+ * f_number_d (in)   :
+ * c_number_d (in)   :
+ * result (out)      :
+ * result_dom(in/out):
+ *
+ */
+int
+qdata_get_median_function_result (THREAD_ENTRY * thread_p,
+				  QFILE_LIST_SCAN_ID * scan_id,
+				  TP_DOMAIN * domain,
+				  int pos,
+				  double row_num_d,
+				  double f_row_num_d,
+				  double c_row_num_d,
+				  DB_VALUE * result, TP_DOMAIN ** result_dom)
+{
+  int error = NO_ERROR;
+  QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
+  DB_VALUE *f_value, *c_value;
+  DB_VALUE f_fetch_value, c_fetch_value;
+  REGU_VARIABLE regu_var;
+  SCAN_CODE scan_code;
+  DB_TYPE type;
+  DB_BIGINT bi;
+  TP_DOMAIN_STATUS status;
+  /* for calculate */
+  double d1, d2, d_result;
+  DB_DATE date;
+  DB_DATETIME datetime;
+  DB_TIMESTAMP utime;
+  DB_TIME time;
+
+  assert (scan_id != NULL && domain != NULL
+	  && result != NULL && result_dom != NULL);
+
+  DB_MAKE_NULL (&f_fetch_value);
+  DB_MAKE_NULL (&c_fetch_value);
+
+  /* overflow check */
+  if (OR_CHECK_BIGINT_OVERFLOW (f_row_num_d))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 0);
+
+      error = ER_FAILED;
+      goto end;
+    }
+
+  for (bi = (DB_BIGINT) f_row_num_d; bi >= 0; --bi)
+    {
+      scan_code = qfile_scan_list_next (thread_p, scan_id,
+					&tuple_record, PEEK);
+      if (scan_code != S_SUCCESS)
+	{
+	  error = ER_FAILED;
+	  goto end;
+	}
+    }
+
+  regu_var.type = TYPE_POSITION;
+  regu_var.flags = 0;
+  regu_var.xasl = NULL;
+  regu_var.domain = domain;
+  regu_var.value.pos_descr.pos_no = pos;
+  regu_var.value.pos_descr.dom = domain;
+  regu_var.vfetch_to = &f_fetch_value;
+
+  error = fetch_peek_dbval (thread_p, &regu_var, NULL,
+			    NULL, NULL, tuple_record.tpl, &f_value);
+  if (error != NO_ERROR)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+
+  pr_clear_value (result);
+  if (f_row_num_d == c_row_num_d)
+    {
+      /* update result */
+      type = db_value_type (f_value);
+      switch (type)
+	{
+	case DB_TYPE_SHORT:
+	  d_result = (double) DB_GET_SHORT (f_value);
+	  DB_MAKE_DOUBLE (result, d_result);
+
+	  break;
+
+	case DB_TYPE_INTEGER:
+	  d_result = (double) DB_GET_INT (f_value);
+	  DB_MAKE_DOUBLE (result, d_result);
+
+	  break;
+
+	case DB_TYPE_BIGINT:
+	  d_result = (double) DB_GET_BIGINT (f_value);
+	  DB_MAKE_DOUBLE (result, d_result);
+
+	  break;
+
+	case DB_TYPE_FLOAT:
+	  d_result = (double) DB_GET_FLOAT (f_value);
+	  DB_MAKE_DOUBLE (result, d_result);
+
+	  break;
+
+	case DB_TYPE_DOUBLE:
+	  d_result = (double) DB_GET_DOUBLE (f_value);
+	  DB_MAKE_DOUBLE (result, d_result);
+
+	  break;
+
+	case DB_TYPE_MONETARY:
+	  d_result = (DB_GET_MONETARY (f_value))->amount;
+	  DB_MAKE_DOUBLE (result, d_result);
+
+	  break;
+
+	case DB_TYPE_NUMERIC:
+	  numeric_coerce_num_to_double (db_locate_numeric (f_value),
+					DB_VALUE_SCALE (f_value), &d_result);
+	  DB_MAKE_DOUBLE (result, d_result);
+
+	  break;
+
+	case DB_TYPE_DATE:
+	case DB_TYPE_DATETIME:
+	case DB_TYPE_TIMESTAMP:
+	case DB_TYPE_TIME:
+	  pr_clone_value (f_value, result);
+
+	  break;
+
+	default:
+	  if (TP_DOMAIN_TYPE (*result_dom) == DB_TYPE_VARIABLE)
+	    {
+	      /* try to coerce value to double, datetime then time
+	       * and save domain for next coerce
+	       */
+	      *result_dom = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+
+	      status = tp_value_cast (f_value, result, *result_dom, false);
+	      if (status != DOMAIN_COMPATIBLE)
+		{
+		  /* try datetime */
+		  *result_dom = tp_domain_resolve_default (DB_TYPE_DATETIME);
+
+		  status =
+		    tp_value_cast (f_value, result, *result_dom, false);
+		}
+
+	      /* try time */
+	      if (status != DOMAIN_COMPATIBLE)
+		{
+		  *result_dom = tp_domain_resolve_default (DB_TYPE_TIME);
+
+		  status =
+		    tp_value_cast (f_value, result, *result_dom, false);
+		}
+
+	      if (status != DOMAIN_COMPATIBLE)
+		{
+		  error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
+			  "MEDIAN", "DOUBLE, DATETIME or TIME");
+
+		  error = ER_FAILED;
+		  goto end;
+		}
+	    }
+	  else
+	    {
+	      error = db_value_coerce (f_value, result, *result_dom);
+	      if (error != NO_ERROR)
+		{
+		  error = ER_FAILED;
+		  goto end;
+		}
+	    }
+	}
+
+    }
+  else
+    {
+      /* move to next tuple */
+      scan_code = qfile_scan_list_next (thread_p, scan_id,
+					&tuple_record, PEEK);
+      if (scan_code != S_SUCCESS)
+	{
+	  error = ER_FAILED;
+	  goto end;
+	}
+
+      regu_var.vfetch_to = &c_fetch_value;
+
+      /* get value */
+      error = fetch_peek_dbval (thread_p, &regu_var, NULL,
+				NULL, NULL, tuple_record.tpl, &c_value);
+      if (error != NO_ERROR)
+	{
+	  error = ER_FAILED;
+	  goto end;
+	}
+
+      /* calculate according to type
+       * The formular bellow is from Oracle's MEDIAN manual
+       *   result = (CRN - RN) * (value for row at FRN) + (RN - FRN) * (value for row at CRN)
+       */
+      type = db_value_type (f_value);
+      if (!TP_IS_NUMERIC_TYPE (type) && !TP_IS_DATE_OR_TIME_TYPE (type))
+	{
+	  if (TP_DOMAIN_TYPE (*result_dom) == DB_TYPE_VARIABLE)
+	    {
+	      /* try to coerce f_value to double, datetime then time
+	       * and save domain for next coerce
+	       */
+	      *result_dom = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+
+	      status = tp_value_cast (f_value, f_value, *result_dom, false);
+	      if (status != DOMAIN_COMPATIBLE)
+		{
+		  /* try datetime */
+		  *result_dom = tp_domain_resolve_default (DB_TYPE_DATETIME);
+
+		  status = tp_value_cast (f_value, f_value,
+					  *result_dom, false);
+		}
+
+	      /* try time */
+	      if (status != DOMAIN_COMPATIBLE)
+		{
+		  *result_dom = tp_domain_resolve_default (DB_TYPE_TIME);
+
+		  status = tp_value_cast (f_value, f_value,
+					  *result_dom, false);
+		}
+
+	      if (status != DOMAIN_COMPATIBLE)
+		{
+		  error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
+			  "MEDIAN", "DOUBLE, DATETIME or TIME");
+
+		  error = ER_FAILED;
+		  goto end;
+		}
+	    }
+	  else
+	    {
+	      error = db_value_coerce (f_value, f_value, *result_dom);
+	      if (error != NO_ERROR)
+		{
+		  error = ER_FAILED;
+		  goto end;
+		}
+	    }
+
+	  /* coerce c_value */
+	  error = db_value_coerce (c_value, c_value, *result_dom);
+	  if (error != NO_ERROR)
+	    {
+	      error = ER_FAILED;
+	      goto end;
+	    }
+	}
+
+      type = db_value_type (f_value);
+      switch (type)
+	{
+	case DB_TYPE_SHORT:
+	  d1 = (double) DB_GET_SHORT (f_value);
+	  d2 = (double) DB_GET_SHORT (c_value);
+
+	  /* calculate */
+	  d_result = (c_row_num_d - row_num_d) * d1
+	    + (row_num_d - f_row_num_d) * d2;
+
+	  DB_MAKE_DOUBLE (result, d_result);
+
+	  break;
+
+	case DB_TYPE_INTEGER:
+	  d1 = (double) DB_GET_INT (f_value);
+	  d2 = (double) DB_GET_INT (c_value);
+
+	  /* calculate */
+	  d_result = (c_row_num_d - row_num_d) * d1
+	    + (row_num_d - f_row_num_d) * d2;
+
+	  DB_MAKE_DOUBLE (result, d_result);
+
+	  break;
+
+	case DB_TYPE_BIGINT:
+	  d1 = (double) DB_GET_BIGINT (f_value);
+	  d2 = (double) DB_GET_BIGINT (c_value);
+
+	  /* calculate */
+	  d_result = (c_row_num_d - row_num_d) * d1
+	    + (row_num_d - f_row_num_d) * d2;
+
+	  DB_MAKE_DOUBLE (result, d_result);
+
+	  break;
+
+	case DB_TYPE_FLOAT:
+	  d1 = (double) DB_GET_FLOAT (f_value);
+	  d2 = (double) DB_GET_FLOAT (c_value);
+
+	  /* calculate */
+	  d_result = (c_row_num_d - row_num_d) * d1
+	    + (row_num_d - f_row_num_d) * d2;
+
+	  DB_MAKE_DOUBLE (result, d_result);
+
+	  break;
+
+	case DB_TYPE_DOUBLE:
+	  d1 = DB_GET_DOUBLE (f_value);
+	  d2 = DB_GET_DOUBLE (c_value);
+
+	  /* calculate */
+	  d_result = (c_row_num_d - row_num_d) * d1
+	    + (row_num_d - f_row_num_d) * d2;
+
+	  DB_MAKE_DOUBLE (result, d_result);
+
+	  break;
+
+	case DB_TYPE_MONETARY:
+	  d1 = (DB_GET_MONETARY (f_value))->amount;
+	  d2 = (DB_GET_MONETARY (c_value))->amount;
+
+	  /* calculate */
+	  d_result = (c_row_num_d - row_num_d) * d1
+	    + (row_num_d - f_row_num_d) * d2;
+
+	  DB_MAKE_DOUBLE (result, d_result);
+
+	  break;
+
+	case DB_TYPE_NUMERIC:
+	  numeric_coerce_num_to_double (db_locate_numeric (f_value),
+					DB_VALUE_SCALE (f_value), &d1);
+	  numeric_coerce_num_to_double (db_locate_numeric (c_value),
+					DB_VALUE_SCALE (c_value), &d2);
+
+	  /* calculate */
+	  d_result = (c_row_num_d - row_num_d) * d1
+	    + (row_num_d - f_row_num_d) * d2;
+
+	  DB_MAKE_DOUBLE (result, d_result);
+
+	  break;
+
+	case DB_TYPE_DATE:
+	  d1 = (double) *(DB_GET_DATE (f_value));
+	  d2 = (double) *(DB_GET_DATE (c_value));
+	  d_result = (c_row_num_d - row_num_d) * d1
+	    + (row_num_d - f_row_num_d) * d2;
+
+	  date = (DB_DATE) floor (d_result);
+
+	  db_value_put_encoded_date (result, &date);
+
+	  break;
+
+	case DB_TYPE_DATETIME:
+	  datetime = *(DB_GET_DATETIME (f_value));
+	  d1 = ((double) datetime.date) * MILLISECONDS_OF_ONE_DAY
+	    + datetime.time;
+
+	  datetime = *(DB_GET_DATETIME (c_value));
+	  d2 = ((double) datetime.date) * MILLISECONDS_OF_ONE_DAY
+	    + datetime.time;
+
+	  d_result = floor ((c_row_num_d - row_num_d) * d1
+			    + (row_num_d - f_row_num_d) * d2);
+
+	  datetime.date = (unsigned int) (d_result / MILLISECONDS_OF_ONE_DAY);
+	  datetime.time = (unsigned int) (((DB_BIGINT) d_result)
+					  % MILLISECONDS_OF_ONE_DAY);
+
+	  DB_MAKE_DATETIME (result, &datetime);
+
+	  break;
+
+	case DB_TYPE_TIMESTAMP:
+	  error = db_timestamp_to_datetime (DB_GET_TIMESTAMP (f_value),
+					    &datetime);
+	  if (error != NO_ERROR)
+	    {
+	      error = ER_FAILED;
+	      goto end;
+	    }
+
+	  d1 = ((double) datetime.date) * MILLISECONDS_OF_ONE_DAY
+	    + datetime.time;
+
+	  error = db_timestamp_to_datetime (DB_GET_TIMESTAMP (c_value),
+					    &datetime);
+	  if (error != NO_ERROR)
+	    {
+	      error = ER_FAILED;
+	      goto end;
+	    }
+
+	  d2 = ((double) datetime.date) * MILLISECONDS_OF_ONE_DAY
+	    + datetime.time;
+
+	  d_result = floor ((c_row_num_d - row_num_d) * d1
+			    + (row_num_d - f_row_num_d) * d2);
+
+	  datetime.date = (unsigned int) (d_result / MILLISECONDS_OF_ONE_DAY);
+	  datetime.time = (unsigned int) (((DB_BIGINT) d_result)
+					  % MILLISECONDS_OF_ONE_DAY);
+
+	  /* to DB_TIME */
+	  datetime.time /= 1000;
+
+	  error =
+	    db_timestamp_encode (&utime, &datetime.date, &datetime.time);
+	  if (error != NO_ERROR)
+	    {
+	      error = ER_FAILED;
+	      goto end;
+	    }
+
+	  DB_MAKE_TIMESTAMP (result, utime);
+
+	  break;
+
+	case DB_TYPE_TIME:
+	  d1 = (double) (*DB_GET_TIME (f_value));
+	  d2 = (double) (*DB_GET_TIME (c_value));
+
+	  d_result = floor ((c_row_num_d - row_num_d) * d1
+			    + (row_num_d - f_row_num_d) * d2);
+
+	  time = (DB_TIME) d_result;
+
+	  db_value_put_encoded_time (result, &time);
+
+	  break;
+
+	default:
+	  /* never be here! */
+	  assert (false);
+	}
+    }
+
+end:
+
+  pr_clear_value (&f_fetch_value);
+  pr_clear_value (&c_fetch_value);
+
   return error;
 }

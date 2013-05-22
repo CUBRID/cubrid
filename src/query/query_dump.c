@@ -1322,6 +1322,8 @@ qdump_function_type_string (FUNC_TYPE ftype)
       return "LAST_VALUE";
     case PT_NTH_VALUE:
       return "NTH_VALUE";
+    case PT_MEDIAN:
+      return "PT_MEDIAN";
     case F_TABLE_SET:
       return "F_TABLE_SET";
     case F_TABLE_MULTISET:

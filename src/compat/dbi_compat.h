@@ -1411,7 +1411,9 @@
 
 #define ER_ALTER_CHANGE_ATTR_TO_FROM_SHARED_NOT_ALLOWED  -1117
 
-#define ER_LAST_ERROR                               -1118
+#define ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN  -1118
+
+#define ER_LAST_ERROR                               -1119
 
 #define DB_TRUE 1
 #define DB_FALSE 0

@@ -1184,7 +1184,8 @@ $ LOADDB
 1115 통계정보 갱신이 시작되었습니다. (class "%1$s", oid : %2$d|%3$d|%4$d)
 1116 통계정보 갱신이 완료되었습니다. (class "%1$s", oid : %2$d|%3$d|%4$d, error code : %5$d)
 1117 Cannot change attribute "%1$s". CUBRID cannot change an attribute as a SHARED and vice versa.
-1118 마지막 에러
+1118 The argument of "%1$s" can not be coerced to desired domain "%2$s".
+1119 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %d):
@@ -1609,6 +1610,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 273 Only one table within a view can be updated.
 274 Multiple insert targets not allowed.
 275 '%s' type is vclass, drop vclass with cascade constraints is not allowed.
+276 ORDER BY is not allowed in function MEDIAN.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %d 바이트를 할당할 수 없습니다.

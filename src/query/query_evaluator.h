@@ -93,7 +93,10 @@ typedef enum
   F_INSERT_SUBSTRING, F_ELT,
 
 /* only for FIRST_VALUE. LAST_VALUE, NTH_VALUE analytic functions */
-  PT_FIRST_VALUE, PT_LAST_VALUE, PT_NTH_VALUE
+  PT_FIRST_VALUE, PT_LAST_VALUE, PT_NTH_VALUE,
+
+  /* aggregate and analytic functions */
+  PT_MEDIAN
 } FUNC_TYPE;
 
 #define QPROC_ANALYTIC_HAS_SUBPARTITIONS(func_p) \
@@ -101,7 +104,8 @@ typedef enum
    && ((func_p)->function != PT_LEAD) \
    && ((func_p)->function != PT_LAG) \
    && ((func_p)->function != PT_NTH_VALUE) \
-   && ((func_p)->function != PT_NTILE))
+   && ((func_p)->function != PT_NTILE) \
+   && ((func_p)->function != PT_MEDIAN))
 
 #define NUM_F_GENERIC_ARGS 32
 #define NUM_F_INSERT_SUBSTRING_ARGS 4
@@ -454,11 +458,21 @@ struct analytic_ntile_function_info
   int bucket_count;		/* number of required buckets */
 };
 
+typedef struct analytic_median_function_info ANALYTIC_MEDIAN_FUNCTION_INFO;
+struct analytic_median_function_info
+{
+  int start_pos;		/* record the first not null value's pos */
+  int end_pos;			/* record the last not null value's pos */
+  bool is_start_null;		/* deal with null at beginning of list_file */
+};
+
+
 typedef union analytic_function_info ANALYTIC_FUNCTION_INFO;
 union analytic_function_info
 {
   ANALYTIC_OFFSET_FUNCTION_INFO offset;
   ANALYTIC_NTILE_FUNCTION_INFO ntile;
+  ANALYTIC_MEDIAN_FUNCTION_INFO median;
 };
 
 typedef struct analytic_list_node ANALYTIC_TYPE;
@@ -485,6 +499,9 @@ struct analytic_list_node
   int eval_group;		/* evaluation group id */
   bool from_last;		/* begin at the last or first row */
   bool ignore_nulls;		/* ignore or respect NULL values */
+  bool is_const_operand;	/* is the operand a constant or a host var
+				 * for MEDIAN function
+				 */
 
   /* runtime values */
   ANALYTIC_FUNCTION_INFO info;	/* custom function runtime values */

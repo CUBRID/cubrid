@@ -754,6 +754,11 @@ static int qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p,
 						    analytic_state,
 						    VAL_DESCR * val_desc,
 						    int tuple_idx);
+static int qexec_analytic_evaluate_median_function (THREAD_ENTRY * thread_p,
+						    ANALYTIC_TYPE * func_p,
+						    ANALYTIC_STATE *
+						    analytic_state,
+						    int tuple_idx);
 static void qexec_analytic_group_finalize_post_processing (THREAD_ENTRY *
 							   thread_p,
 							   ANALYTIC_TYPE *
@@ -19048,6 +19053,12 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist,
 
 	      if (TP_DOMAIN_TYPE (group_agg->domain) == DB_TYPE_VARIABLE)
 		{
+		  /* set domain at run-time for MEDIAN */
+		  if (group_agg->function == PT_MEDIAN)
+		    {
+		      continue;
+		    }
+
 		  assert (group_agg->function == PT_MIN ||
 			  group_agg->function == PT_MAX ||
 			  group_agg->function == PT_SUM);
@@ -20933,6 +20944,128 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p,
 }
 
 /*
+ * qexec_analytic_evaluate_median_function () -
+ *
+ *   returns: error code or NO_ERROR
+ *   thread_p(in): current thread
+ *   func_p(in): analytic function
+ *   analytic_state(in): analytic state
+ *   tuple_idx(in): current position of main scan in group
+ */
+static int
+qexec_analytic_evaluate_median_function (THREAD_ENTRY * thread_p,
+					 ANALYTIC_TYPE * func_p,
+					 ANALYTIC_STATE * analytic_state,
+					 int tuple_idx)
+{
+  int error = NO_ERROR;
+  ANALYTIC_MEDIAN_FUNCTION_INFO *median_info_p = NULL;
+  SCAN_CODE sc;
+  int i;
+  double row_num_d, c_row_num_d, f_row_num_d;
+  REGU_VARIABLE *regu_var;
+  REGU_VARIABLE_LIST regu_list;
+  QFILE_LIST_SCAN_ID lsid;
+  QFILE_TUPLE_RECORD tplrec;
+
+  assert (func_p != NULL
+	  && analytic_state != NULL && func_p->function == PT_MEDIAN);
+
+  median_info_p = &func_p->info.median;
+
+  /* all NULLs, const value or calculated, just return */
+  if (tuple_idx > 0 || func_p->is_const_operand
+      || median_info_p->start_pos >= median_info_p->end_pos)
+    {
+      return NO_ERROR;
+    }
+
+  /* init local non-pointer vars */
+  lsid.status = S_CLOSED;
+  tplrec.size = 0;
+  tplrec.tpl = NULL;
+
+  /* open scan */
+  if (qfile_open_list_scan (analytic_state->interm_file, &lsid) != NO_ERROR)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+
+  /* if we have a saved position, jump to it */
+  if (analytic_state->last_tuple_pos.vpid.pageid != NULL_PAGEID
+      && analytic_state->last_tuple_pos.vpid.pageid != NULL_PAGEID_ASYNC)
+    {
+      sc = qfile_jump_scan_tuple_position (thread_p,
+					   &lsid,
+					   &analytic_state->
+					   last_tuple_pos, &tplrec, PEEK);
+      if (sc == S_ERROR)
+	{
+	  error = ER_FAILED;
+	  goto end;
+	}
+      else if (sc == S_END)
+	{
+	  /* no tuples in group */
+	  qfile_close_scan (thread_p, &func_p->info.offset.lsid);
+	  goto end;
+	}
+    }
+
+  /* find the tuple pos of operand */
+  regu_list = analytic_state->a_regu_list;
+  while (regu_list != NULL)
+    {
+      if (regu_list->value.type != TYPE_POSITION)
+	{
+	  error = ER_FAILED;
+	  goto end;
+	}
+
+      if (func_p->operand.value.dbvalptr == regu_list->value.vfetch_to)
+	{
+	  break;
+	}
+
+      regu_list = regu_list->next;
+    }
+
+  if (regu_list == NULL)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+
+  regu_var = &regu_list->value;
+  assert (regu_var->type == TYPE_POSITION);
+
+  /* calculate the value only when tuple_idx is 0 */
+  --median_info_p->end_pos;
+  row_num_d = 0.5 * (median_info_p->end_pos + median_info_p->start_pos);
+  f_row_num_d = floor (row_num_d);
+  c_row_num_d = ceil (row_num_d);
+
+  error = qdata_get_median_function_result (thread_p, &lsid,
+					    regu_var->domain,
+					    regu_var->value.pos_descr.pos_no,
+					    row_num_d, f_row_num_d,
+					    c_row_num_d, func_p->value,
+					    &func_p->domain);
+
+  if (TP_DOMAIN_TYPE (func_p->domain) != func_p->opr_dbtype)
+    {
+      func_p->opr_dbtype = TP_DOMAIN_TYPE (func_p->domain);
+    }
+
+end:
+
+  qfile_close_scan (thread_p, &lsid);
+
+  return error;
+}
+
+/*
  * qexec_analytic_group_finalize_post_processing () - finalize post processing
  *                                                    step of analytic funcs
  *   thread_p(in): current thread
@@ -21003,6 +21136,12 @@ qexec_analytic_group_post_processing (THREAD_ENTRY * thread_p,
 	  rc = qexec_analytic_evaluate_offset_function (thread_p, func_p,
 							analytic_state,
 							&xasl_state->vd,
+							tuple_idx);
+	  break;
+
+	case PT_MEDIAN:
+	  rc = qexec_analytic_evaluate_median_function (thread_p, func_p,
+							analytic_state,
 							tuple_idx);
 	  break;
 

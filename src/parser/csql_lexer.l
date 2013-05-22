@@ -433,6 +433,9 @@ extern int yycolumn_end;
 										csql_yylval.cptr = pt_makename(yytext);
 										return MAXVALUE; }
 [mM][eE][dD][iI][uU][mM][iI][nN][tT]				{ begin_token(yytext);   return INTEGER; }
+[mM][eE][dD][iI][aA][nN]							{ begin_token(yytext); 
+										csql_yylval.cptr = pt_makename(yytext);
+										return MEDIAN; }
 [mM][eE][mM][bB][eE][rR][sS]						{ begin_token(yytext);   
 										csql_yylval.cptr = pt_makename(yytext);
 										return MEMBERS; }

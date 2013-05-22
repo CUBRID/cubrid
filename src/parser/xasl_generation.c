@@ -4331,7 +4331,8 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 
       /* GROUP_CONCAT : process ORDER BY and restore SEPARATOR node (just to
        * keep original tree)*/
-      if (aggregate_list->function == PT_GROUP_CONCAT)
+      if (aggregate_list->function == PT_GROUP_CONCAT
+	  || aggregate_list->function == PT_MEDIAN)
 	{
 	  /* Separator of GROUP_CONCAT is not a 'real' argument of
 	   * GROUP_CONCAT, but for convenience it is kept in 'arg_list' of
@@ -21052,6 +21053,7 @@ pt_to_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree,
   ANALYTIC_TYPE *analytic;
   PT_FUNCTION_INFO *func_info;
   PT_NODE *list = NULL, *order_list = NULL, *link = NULL;
+  PT_NODE *arg_list = NULL;
 
   if (parser == NULL || analytic_info == NULL)
     {
@@ -21197,6 +21199,20 @@ pt_to_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree,
       /* fetch operand type */
       analytic->opr_dbtype =
 	pt_node_to_db_type (func_info->arg_list->info.pointer.node);
+
+      /* for MEDIAN */
+      if (func_info->function_type == PT_MEDIAN)
+	{
+	  arg_list = func_info->arg_list->info.pointer.node;
+	  CAST_POINTER_TO_NODE (arg_list);
+
+	  assert (arg_list != NULL);
+
+	  if (PT_IS_CONST (arg_list))
+	    {
+	      analytic->is_const_operand = true;
+	    }
+	}
 
       /* resolve operand dbval_ptr */
       if (pt_resolve_analytic_references

@@ -9847,6 +9847,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
   PT_NODE *t_node;
   PT_NODE *entity;
   PT_ASSIGNMENTS_HELPER ea;
+  PT_NODE *sort_spec = NULL;
 
   assert (parser != NULL);
 
@@ -10012,6 +10013,41 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 	    {
 	      break;
 	    }
+	}
+
+      if (node->info.function.function_type == PT_MEDIAN
+	  && !node->info.function.analytic.is_analytic
+	  && node->info.function.arg_list != NULL
+	  && !PT_IS_CONST (node->info.function.arg_list)
+	  && node->info.function.order_by == NULL)
+	{
+	  /* generate the sort spec for median */
+	  sort_spec = parser_new_node (parser, PT_SORT_SPEC);
+	  if (sort_spec == NULL)
+	    {
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      break;
+	    }
+
+	  sort_spec->info.sort_spec.asc_or_desc = PT_ASC;
+	  sort_spec->info.sort_spec.nulls_first_or_last = PT_NULLS_DEFAULT;
+	  sort_spec->info.sort_spec.expr = parser_copy_tree (parser,
+							     node->info.
+							     function.
+							     arg_list);
+	  if (sort_spec->info.sort_spec.expr == NULL)
+	    {
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      break;
+	    }
+
+	  sort_spec->info.sort_spec.pos_descr.pos_no = 1;
+	  sort_spec->info.sort_spec.pos_descr.dom =
+	    pt_xasl_node_to_domain (parser, node->info.function.arg_list);
+
+	  node->info.function.order_by = sort_spec;
 	}
       break;
 
@@ -14847,6 +14883,7 @@ pt_check_analytic_function (PARSER_CONTEXT * parser, PT_NODE * func,
   PT_NODE *arg_list, *partition_by, *order_by, *select_list;
   PT_NODE *order, *query;
   PT_NODE *link = NULL, *order_list = NULL, *match = NULL;
+  PT_NODE *new_order = NULL;
 
   if (func->node_type != PT_FUNCTION
       || !func->info.function.analytic.is_analytic)
@@ -14874,6 +14911,41 @@ pt_check_analytic_function (PARSER_CONTEXT * parser, PT_NODE * func,
 		  MSGCAT_SEMANTIC_FUNCTION_NO_ARGS,
 		  pt_short_print (parser, func));
       return func;
+    }
+
+  /* median doesn't support over(order by ...) */
+  if (func->info.function.function_type == PT_MEDIAN)
+    {
+      if (func->info.function.analytic.order_by != NULL)
+	{
+	  PT_ERRORm (parser, func, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_MEDIAN_FUNC_NOT_ALLOW_ORDER_BY);
+	  return func;
+	}
+      else if (!PT_IS_CONST (arg_list))
+	{
+	  /* only sort data when arg is not constant */
+	  new_order = parser_new_node (parser, PT_SORT_SPEC);
+	  if (new_order == NULL)
+	    {
+	      PT_ERRORm (parser, func, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      return func;
+	    }
+
+	  new_order->info.sort_spec.asc_or_desc = PT_ASC;
+	  new_order->info.sort_spec.nulls_first_or_last = PT_NULLS_DEFAULT;
+	  new_order->info.sort_spec.expr =
+	    parser_copy_tree (parser, arg_list);
+	  if (new_order->info.sort_spec.expr == NULL)
+	    {
+	      PT_ERRORm (parser, func, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      return func;
+	    }
+
+	  func->info.function.analytic.order_by = new_order;
+	}
     }
 
   /* remove NULL specs */

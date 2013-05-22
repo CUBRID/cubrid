@@ -301,4 +301,13 @@ extern int qdata_tuple_to_values_array (THREAD_ENTRY * thread_p,
 					QFILE_TUPLE_DESCRIPTOR * tuple,
 					DB_VALUE ** values);
 extern int qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p);
+extern int qdata_get_median_function_result (THREAD_ENTRY * thread_p,
+					     QFILE_LIST_SCAN_ID * scan_id,
+					     TP_DOMAIN * domain,
+					     int pos,
+					     double row_num_d,
+					     double f_row_num_d,
+					     double c_row_num_d,
+					     DB_VALUE * result,
+					     TP_DOMAIN ** result_dom);
 #endif /* _QUERY_OPFUNC_H_ */

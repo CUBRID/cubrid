@@ -6108,6 +6108,9 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr,
   ptr = or_unpack_int (ptr, &tmp_i);
   analytic->ignore_nulls = (bool) tmp_i;
 
+  ptr = or_unpack_int (ptr, &tmp_i);
+  analytic->is_const_operand = (bool) tmp_i;
+
   return ptr;
 
 error:
