@@ -163,7 +163,7 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id,
   client_info[SRV_CON_MSG_IDX_PROTO_VERSION] = CAS_PROTO_PACK_CURRENT_NET_VER;
   client_info[SRV_CON_MSG_IDX_FUNCTION_FLAG]
     = BROKER_RENEWED_ERROR_CODE
-    | BROKER_SUPPORT_HOLDABLE_RESULT | BROKER_RECONNECT_DOWN_SERVER;
+    | BROKER_SUPPORT_HOLDABLE_RESULT | BROKER_RECONNECT_WHEN_SERVER_DOWN;
   client_info[SRV_CON_MSG_IDX_RESERVED2] = 0;
 
   info = db_info;
@@ -761,9 +761,9 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
 		(CAS_PROTOCOL_ERR_INDICATOR_SIZE +
 		 CAS_PROTOCOL_ERR_CODE_SIZE);
 
-	      if (con_handle->
-		  cas_info[CAS_INFO_ADDITIONAL_FLAG] &
-		  CAS_INFO_FLAG_MASK_NEW_SESSION_ID)
+	      if (hm_broker_reconnect_when_server_down (con_handle)
+		  && (con_handle->cas_info[CAS_INFO_ADDITIONAL_FLAG]
+		      & CAS_INFO_FLAG_MASK_NEW_SESSION_ID))
 		{
 		  char *p;
 

@@ -937,7 +937,7 @@ cci_prepare (int mapped_conn_id, char *sql_stmt, char flag,
     {
       if (IS_OUT_TRAN (con_handle) || is_first_prepare_in_tran == true)
 	{
-	  if (!hm_broker_reconnect_down_server (con_handle)
+	  if (!hm_broker_reconnect_when_server_down (con_handle)
 	      || IS_ER_COMMUNICATION (error))
 	    {
 	      if (reset_connect (con_handle, req_handle) != CCI_ER_NO_ERROR)
@@ -1366,7 +1366,7 @@ cci_execute (int mapped_stmt_id, char flag, int max_col_size,
     {
       if (IS_OUT_TRAN (con_handle) || is_first_exec_in_tran == true)
 	{
-	  if (!hm_broker_reconnect_down_server (con_handle)
+	  if (!hm_broker_reconnect_when_server_down (con_handle)
 	      || IS_ER_COMMUNICATION (error))
 	    {
 	      if (reset_connect (con_handle, req_handle) != CCI_ER_NO_ERROR)
@@ -1540,7 +1540,7 @@ cci_prepare_and_execute (int mapped_conn_id, char *sql_stmt,
     {
       if (IS_OUT_TRAN (con_handle) || is_first_prepare_in_tran == true)
 	{
-	  if (!hm_broker_reconnect_down_server (con_handle)
+	  if (!hm_broker_reconnect_when_server_down (con_handle)
 	      || IS_ER_COMMUNICATION (error))
 	    {
 	      if (reset_connect (con_handle, req_handle) != CCI_ER_NO_ERROR)
@@ -1737,7 +1737,7 @@ cci_execute_array (int mapped_stmt_id, T_CCI_QUERY_RESULT ** qr,
     {
       if (IS_OUT_TRAN (con_handle) || is_first_exec_in_tran == true)
 	{
-	  if (!hm_broker_reconnect_down_server (con_handle)
+	  if (!hm_broker_reconnect_when_server_down (con_handle)
 	      || IS_ER_COMMUNICATION (error))
 	    {
 	      if (reset_connect (con_handle, req_handle) != CCI_ER_NO_ERROR)
@@ -5009,7 +5009,7 @@ connect_prepare_again (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle,
     {
       if (IS_OUT_TRAN (con_handle) || is_first_prepare_in_tran == true)
 	{
-	  if (!hm_broker_reconnect_down_server (con_handle)
+	  if (!hm_broker_reconnect_when_server_down (con_handle)
 	      || IS_ER_COMMUNICATION (error))
 	    {
 	      if (reset_connect (con_handle, req_handle) != CCI_ER_NO_ERROR)

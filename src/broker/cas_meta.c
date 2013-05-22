@@ -39,7 +39,7 @@ static char broker_info[BROKER_INFO_SIZE] = {
   CCI_PCONNECT_ON,
   CAS_PROTO_PACK_CURRENT_NET_VER,
   BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT
-    | BROKER_RECONNECT_DOWN_SERVER,
+    | BROKER_RECONNECT_WHEN_SERVER_DOWN,
   0,
   0
 };
@@ -221,7 +221,7 @@ cas_di_understand_renewed_error_code (const char *driver_info)
 }
 
 bool
-cas_di_understand_reconnect_down_server (const char *driver_info)
+cas_di_understand_reconnect_when_server_down (const char *driver_info)
 {
   if (!IS_SET_BIT (driver_info[SRV_CON_MSG_IDX_PROTO_VERSION],
 		   CAS_PROTO_INDICATOR))
@@ -230,7 +230,7 @@ cas_di_understand_reconnect_down_server (const char *driver_info)
     }
 
   return IS_SET_BIT (driver_info[DRIVER_INFO_FUNCTION_FLAG],
-		     BROKER_RECONNECT_DOWN_SERVER);
+		     BROKER_RECONNECT_WHEN_SERVER_DOWN);
 }
 
 void

@@ -103,7 +103,7 @@ extern "C"
 #define BROKER_INFO_SIZE			8
 #define BROKER_RENEWED_ERROR_CODE		0x80
 #define BROKER_SUPPORT_HOLDABLE_RESULT          0x40
-#define BROKER_RECONNECT_DOWN_SERVER            0x20
+#define BROKER_RECONNECT_WHEN_SERVER_DOWN       0x20
 
 /* For backward compatibility */
 #define BROKER_INFO_MAJOR_VERSION               (BROKER_INFO_PROTO_VERSION)
@@ -311,9 +311,9 @@ extern "C"
   extern void cas_bi_set_renewed_error_code (const bool renewed_error_code);
   extern bool cas_bi_get_renewed_error_code (void);
   extern bool cas_di_understand_renewed_error_code (const char *driver_info);
-  extern bool cas_di_understand_reconnect_down_server (const char *driver_info);
-  extern void cas_bi_make_broker_info (char *broker_info,
-				       char dbms_type,
+  extern bool cas_di_understand_reconnect_when_server_down (const char
+						       *driver_info);
+  extern void cas_bi_make_broker_info (char *broker_info, char dbms_type,
 				       char statement_pooling,
 				       char cci_pconnect);
 #ifdef __cplusplus

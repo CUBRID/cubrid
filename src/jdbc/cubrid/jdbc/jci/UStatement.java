@@ -826,7 +826,7 @@ public class UStatement {
 	}
 
 	if (relatedConnection.isErrorToReconnect(errorHandler.getJdbcErrorCode())) {
-	    if (!relatedConnection.brokerInfoReconnectDownServer()
+	    if (!relatedConnection.brokerInfoReconnectWhenServerDown()
 		|| !relatedConnection.isServerDownError(errorHandler.getJdbcErrorCode())) {
 		relatedConnection.clientSocketClose();
 	    }
@@ -995,7 +995,7 @@ public class UStatement {
 	    }
 
 	    if (relatedConnection.isErrorToReconnect(errorHandler.getJdbcErrorCode())) {
-		if (!relatedConnection.brokerInfoReconnectDownServer()
+		if (!relatedConnection.brokerInfoReconnectWhenServerDown()
 		    || !relatedConnection.isServerDownError(errorHandler.getJdbcErrorCode())) {
 		    relatedConnection.clientSocketClose();
 		}

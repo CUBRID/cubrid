@@ -1838,7 +1838,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   /* retry to prepare or execute after db server is restarted */
   if (old_con_status == CON_STATUS_OUT_TRAN
       && ER_IS_SERVER_DOWN_ERROR (err_info.err_number)
-      && cas_di_understand_reconnect_down_server (req_info->driver_info)
+      && cas_di_understand_reconnect_when_server_down (req_info->driver_info)
       && (func_code == CAS_FC_PREPARE
 	  || func_code == CAS_FC_EXECUTE
 	  || func_code == CAS_FC_EXECUTE_ARRAY

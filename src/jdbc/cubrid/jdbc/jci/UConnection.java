@@ -99,7 +99,7 @@ public class UConnection {
 	private final static byte CAS_PROTO_VER_MASK = 0x3F;
 	private final static byte CAS_RENEWED_ERROR_CODE = (byte) 0x80;
 	private final static byte CAS_SUPPORT_HOLDABLE_RESULT = (byte) 0x40;
-	private final static byte CAS_RECONNECT_DOWN_SERVER = (byte) 0x20;
+	private final static byte CAS_RECONNECT_WHEN_SERVER_DOWN = (byte) 0x20;
 
 	@SuppressWarnings("unused")
 	private final static byte GET_COLLECTION_VALUE = 1,
@@ -210,7 +210,7 @@ public class UConnection {
 		UJCIUtil.copy_byte(driverInfo, 0, 5, magicString);
 		driverInfo[5] = CAS_CLIENT_JDBC;
 		driverInfo[6] = CAS_PROTO_INDICATOR | CAS_PROTOCOL_VERSION;
-		driverInfo[7] = CAS_RENEWED_ERROR_CODE | CAS_SUPPORT_HOLDABLE_RESULT | CAS_RECONNECT_DOWN_SERVER;
+		driverInfo[7] = CAS_RENEWED_ERROR_CODE | CAS_SUPPORT_HOLDABLE_RESULT | CAS_RECONNECT_WHEN_SERVER_DOWN;
 		driverInfo[8] = 0; // reserved
 		driverInfo[9] = 0; // reserved
 	}
@@ -993,7 +993,7 @@ public class UConnection {
 	    return null;
 	} 
 
-	if (!brokerInfoReconnectDownServer() 
+	if (!brokerInfoReconnectWhenServerDown() 
 	    || !isServerDownError(errorHandler.getJdbcErrorCode())) {
 	    clientSocketClose();
 	}
@@ -1235,12 +1235,12 @@ public class UConnection {
 	    	== CAS_SUPPORT_HOLDABLE_RESULT;
 	}
 
-	public boolean brokerInfoReconnectDownServer() {
+	public boolean brokerInfoReconnectWhenServerDown() {
 		if (broker_info == null)
 			return false;
 			
-	    return (broker_info[BROKER_INFO_FUNCTION_FLAG] & CAS_RECONNECT_DOWN_SERVER)
-	    	== CAS_RECONNECT_DOWN_SERVER;
+	    return (broker_info[BROKER_INFO_FUNCTION_FLAG] & CAS_RECONNECT_WHEN_SERVER_DOWN)
+	    	== CAS_RECONNECT_WHEN_SERVER_DOWN;
 	}
 	
 	public boolean supportHoldableResult() {
@@ -2099,7 +2099,7 @@ public class UConnection {
     }
 
     public boolean isRenewedSessionId() {
-	return (brokerInfoReconnectDownServer()
+	return (brokerInfoReconnectWhenServerDown()
 		&& (casinfo[CAS_INFO_ADDITIONAL_FLAG] 
 	            & CAS_INFO_FLAG_MASK_NEW_SESSION_ID) 
 	                == CAS_INFO_FLAG_MASK_NEW_SESSION_ID);

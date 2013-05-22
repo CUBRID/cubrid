@@ -1074,11 +1074,12 @@ hm_broker_support_holdable_result (T_CON_HANDLE * con_handle)
 }
 
 bool
-hm_broker_reconnect_down_server (T_CON_HANDLE * con_handle)
+hm_broker_reconnect_when_server_down (T_CON_HANDLE * con_handle)
 {
   char f = con_handle->broker_info[BROKER_INFO_FUNCTION_FLAG];
 
-  return (f & BROKER_RECONNECT_DOWN_SERVER) == BROKER_RECONNECT_DOWN_SERVER;
+  return (f & BROKER_RECONNECT_WHEN_SERVER_DOWN) ==
+    BROKER_RECONNECT_WHEN_SERVER_DOWN;
 }
 
 void
