@@ -1409,7 +1409,9 @@
 #define ER_LOG_STARTED_TO_UPDATE_STATISTICS         -1115
 #define ER_LOG_FINISHED_TO_UPDATE_STATISTICS        -1116
 
-#define ER_LAST_ERROR                               -1117
+#define ER_ALTER_CHANGE_ATTR_TO_FROM_SHARED_NOT_ALLOWED  -1117
+
+#define ER_LAST_ERROR                               -1118
 
 #define DB_TRUE 1
 #define DB_FALSE 0
