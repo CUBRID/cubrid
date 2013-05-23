@@ -713,38 +713,33 @@ cci_disconnect (int mapped_conn_id, T_CCI_ERROR * err_buf)
 			  con_handle->id);
 	}
       cci_end_tran_internal (con_handle, CCI_TRAN_ROLLBACK);
-      map_close_otc (mapped_conn_id);
+
+      get_last_error (con_handle, err_buf);
+      con_handle->used = false;
+      hm_release_connection (mapped_conn_id, &con_handle);
     }
   else if (con_handle->broker_info[BROKER_INFO_CCI_PCONNECT]
 	   && hm_put_con_to_pool (con_handle->id) >= 0)
     {
       cci_end_tran_internal (con_handle, CCI_TRAN_ROLLBACK);
-      map_close_otc (mapped_conn_id);
       API_ELOG (con_handle, 0);
+
+      get_last_error (con_handle, err_buf);
+      con_handle->used = false;
+      hm_release_connection (mapped_conn_id, &con_handle);
     }
   else
     {
       error = qe_con_close (con_handle);
       API_ELOG (con_handle, error);
 
-      if (error >= 0)
-	{
-	  map_close_otc (mapped_conn_id);
-	  set_error_buffer (&(con_handle->err_buf), error, NULL);
-	  get_last_error (con_handle, err_buf);
-
-	  MUTEX_LOCK (con_handle_table_mutex);
-	  error = hm_con_handle_free (con_handle);
-	  MUTEX_UNLOCK (con_handle_table_mutex);
-	  con_handle = NULL;
-	}
-    }
-
-  if (con_handle != NULL)
-    {
       set_error_buffer (&(con_handle->err_buf), error, NULL);
       get_last_error (con_handle, err_buf);
       con_handle->used = false;
+
+      MUTEX_LOCK (con_handle_table_mutex);
+      hm_delete_connection (mapped_conn_id, &con_handle);
+      MUTEX_UNLOCK (con_handle_table_mutex);
     }
 
   return error;
@@ -2144,8 +2139,8 @@ cci_close_req_handle (int mapped_stmt_id)
 
 cci_close_req_handle_end:
   API_ELOG (con_handle, error);
-  map_close_ots (mapped_stmt_id);
   con_handle->used = false;
+  hm_release_statement (mapped_stmt_id, &con_handle, &req_handle);
 
   return error;
 }
@@ -5979,9 +5974,10 @@ cci_datasource_release (T_CCI_DATASOURCE * ds, T_CCI_CONN mapped_conn_id,
 
   ret = cci_datasource_release_internal (ds, con_handle);
   cci_end_tran_internal (con_handle, CCI_TRAN_ROLLBACK);
-  map_close_otc (mapped_conn_id);
+
   get_last_error (con_handle, err_buf);
   con_handle->used = false;
+  hm_release_connection (mapped_conn_id, &con_handle);
 
   return ret;
 }

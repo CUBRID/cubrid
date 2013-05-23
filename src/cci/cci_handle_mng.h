@@ -294,6 +294,13 @@ extern "C"
   extern T_CCI_ERROR_CODE hm_get_statement (int statement_id,
 					    T_CON_HANDLE ** connection,
 					    T_REQ_HANDLE ** statement);
+  extern T_CCI_ERROR_CODE hm_release_connection (int connection_id,
+						 T_CON_HANDLE ** connection);
+  extern T_CCI_ERROR_CODE hm_delete_connection (int connection_id,
+						T_CON_HANDLE ** connection);
+  extern T_CCI_ERROR_CODE hm_release_statement (int statement_id,
+						T_CON_HANDLE ** connection,
+						T_REQ_HANDLE ** statement);
   extern void hm_req_handle_fetch_buf_free (T_REQ_HANDLE * req_handle);
   extern int hm_conv_value_buf_alloc (T_VALUE_BUF * val_buf, int size);
 

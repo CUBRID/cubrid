@@ -656,6 +656,59 @@ hm_get_statement (int mapped_id, T_CON_HANDLE ** connection,
   return CCI_ER_NO_ERROR;
 }
 
+static T_CCI_ERROR_CODE
+hm_release_connection_internal (int mapped_id,
+				T_CON_HANDLE ** connection,
+				bool delete_handle)
+{
+  T_CCI_ERROR_CODE error;
+
+  error = map_close_otc (mapped_id);
+  if (error != CCI_ER_NO_ERROR)
+    {
+      return error;
+    }
+
+  if (delete_handle)
+    {
+      error = hm_con_handle_free (*connection);
+    }
+
+  *connection = NULL;
+
+  return error;
+}
+
+T_CCI_ERROR_CODE
+hm_release_connection (int mapped_id, T_CON_HANDLE ** connection)
+{
+  return hm_release_connection_internal (mapped_id, connection, false);
+}
+
+T_CCI_ERROR_CODE
+hm_delete_connection (int mapped_id, T_CON_HANDLE ** connection)
+{
+  return hm_release_connection_internal (mapped_id, connection, true);
+}
+
+T_CCI_ERROR_CODE
+hm_release_statement (int mapped_id, T_CON_HANDLE ** connection,
+		      T_REQ_HANDLE ** statement)
+{
+  T_CCI_ERROR_CODE error;
+
+  error = map_close_ots (mapped_id);
+  if (error != CCI_ER_NO_ERROR)
+    {
+      return error;
+    }
+
+  *connection = NULL;
+  *statement = NULL;
+
+  return error;
+}
+
 void
 hm_req_handle_free (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle)
 {
