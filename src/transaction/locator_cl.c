@@ -143,7 +143,8 @@ static void locator_cache_lock (MOP mop, MOBJ ignore_notgiven_object,
 				void *xcache_lock);
 static void locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object,
 				    void *xlockset);
-static int locator_lock (MOP mop, LOCK lock);
+static LOCK locator_to_prefetched_lock (LOCK class_lock);
+static int lcocator_lock (MOP mop, LOCK lock);
 static int locator_lock_class_of_instance (MOP inst_mop, MOP * class_mop,
 					   LOCK lock);
 static int locator_lock_and_doesexist (MOP mop, LOCK lock);
@@ -419,7 +420,7 @@ locator_cache_lock (MOP mop, MOBJ ignore_notgiven_object, void *xcache_lock)
 
 /* Lock for prefetched instances of the same class */
 static LOCK
-locator_to_prefected_lock (LOCK class_lock)
+locator_to_prefetched_lock (LOCK class_lock)
 {
   if (class_lock == S_LOCK || class_lock == SIX_LOCK)
     {
@@ -583,7 +584,7 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
        * This is a prefetched object
        */
       lock = ws_get_lock (class_mop);
-      lock = locator_to_prefected_lock (lock);
+      lock = locator_to_prefetched_lock (lock);
 
       assert (lock >= NULL_LOCK && ws_get_lock (mop) >= NULL_LOCK);
       lock = lock_Conv[lock][ws_get_lock (mop)];
@@ -764,7 +765,7 @@ locator_lock (MOP mop, LOCK lock)
 	    }
 	  /* Lock for prefetched instances of the same class */
 	  cache_lock.implicit_lock =
-	    locator_to_prefected_lock (cache_lock.class_lock);
+	    locator_to_prefetched_lock (cache_lock.class_lock);
 	}
 
       /* Now acquire the lock and fetch the object if needed */
@@ -2051,7 +2052,7 @@ locator_lock_and_doesexist (MOP mop, LOCK lock)
 	}
       /* Lock for prefetched instances of the same class */
       cache_lock.implicit_lock =
-	locator_to_prefected_lock (cache_lock.class_lock);
+	locator_to_prefetched_lock (cache_lock.class_lock);
     }
 
   /* Now find the existance of the object in the database */
@@ -2727,7 +2728,7 @@ locator_fun_get_all_mops (MOP class_mop,
    */
 
   keep_mops.fun = fun;
-  keep_mops.lock = locator_to_prefected_lock (lock);
+  keep_mops.lock = locator_to_prefetched_lock (lock);
   keep_mops.list = NULL;
 
   /* Find the heap where the instances are stored */
