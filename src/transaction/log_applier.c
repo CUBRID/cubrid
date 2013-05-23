@@ -5186,7 +5186,9 @@ la_apply_schema_log (LA_ITEM * item)
 
 	  /* change owner */
 	  save_user = Au_user;
+	  er_stack_push ();
 	  error = AU_SET_USER (user);
+	  er_stack_pop ();
 	  if (error != NO_ERROR)
 	    {
 	      save_user = NULL;
@@ -5211,11 +5213,14 @@ la_apply_schema_log (LA_ITEM * item)
 
       if (save_user != NULL)
 	{
+	  er_stack_push ();
 	  if (AU_SET_USER (save_user))
 	    {
+	      er_stack_pop ();
 	      /* it can be happened */
 	      abort ();
 	    }
+	  er_stack_pop ();
 	}
       break;
 
