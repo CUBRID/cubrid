@@ -79,8 +79,8 @@ static T_PROXY_CLIENT_FUNC proxy_client_fn_table[] = {
   fn_proxy_client_end_tran,	/* fn_end_tran */
   fn_proxy_client_prepare,	/* fn_prepare */
   fn_proxy_client_execute,	/* fn_execute */
-  fn_proxy_client_not_supported,	/* fn_get_db_parameter */
-  fn_proxy_client_not_supported,	/* fn_set_db_parameter */
+  fn_proxy_client_get_db_parameter,	/* fn_get_db_parameter */
+  fn_proxy_client_set_db_parameter,	/* fn_set_db_parameter */
   fn_proxy_client_close_req_handle,	/* fn_close_req_handle */
   fn_proxy_client_cursor,	/* fn_cursor */
   fn_proxy_client_fetch,	/* fn_fetch */
@@ -1815,6 +1815,33 @@ proxy_event_new_with_rsp (char *driver_info,
 			  T_PROXY_EVENT_FUNC resp_func)
 {
   return proxy_event_new_with_req (driver_info, type, from, resp_func);
+}
+
+T_PROXY_EVENT *
+proxy_event_new_with_rsp_ex (char *driver_info,
+			     unsigned int type, int from,
+			     T_PROXY_EVENT_FUNC_EX resp_func, void *argv)
+{
+  T_PROXY_EVENT *event_p;
+  char *msg = NULL;
+  int length;
+
+  event_p = proxy_event_new (type, from);
+  if (event_p == NULL)
+    {
+      return NULL;
+    }
+
+  length = resp_func (driver_info, &msg, argv);
+  if (length <= 0)
+    {
+      proxy_event_free (event_p);
+      return NULL;
+    }
+
+  proxy_event_set_buffer (event_p, msg, length);
+
+  return event_p;
 }
 
 T_PROXY_EVENT *

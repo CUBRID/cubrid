@@ -61,6 +61,12 @@ extern bool shard_shm_set_as_client_info (T_PROXY_INFO * proxy_info_p,
 					  int shard_id, int as_id,
 					  unsigned int ip_addr,
 					  char *driver_info);
+extern bool shard_shm_set_as_client_info_with_db_param (T_PROXY_INFO *
+							proxy_info_p,
+							int shard_id,
+							int as_id,
+							T_CLIENT_INFO *
+							client_info_p);
 
 extern T_SHM_SHARD_CONN_STAT *shard_shm_get_first_shard_stat (T_PROXY_INFO *
 							      proxy_info_p);

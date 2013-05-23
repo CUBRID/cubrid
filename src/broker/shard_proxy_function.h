@@ -51,6 +51,12 @@ extern int fn_proxy_client_prepare (T_PROXY_CONTEXT * ctx_p,
 extern int fn_proxy_client_execute (T_PROXY_CONTEXT * ctx_p,
 				    T_PROXY_EVENT * event_p, int argc,
 				    char **argv);
+extern int fn_proxy_client_set_db_parameter (T_PROXY_CONTEXT * ctx_p,
+					     T_PROXY_EVENT * event_p,
+					     int argc, char **argv);
+extern int fn_proxy_client_get_db_parameter (T_PROXY_CONTEXT * ctx_p,
+					     T_PROXY_EVENT * event_p,
+					     int argc, char **argv);
 extern int fn_proxy_client_close_req_handle (T_PROXY_CONTEXT * ctx_p,
 					     T_PROXY_EVENT * event_p,
 					     int argc, char **argv);

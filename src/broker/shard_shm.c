@@ -1020,6 +1020,40 @@ shard_shm_set_as_client_info (T_PROXY_INFO * proxy_info_p, int shard_id,
   return true;
 }
 
+bool
+shard_shm_set_as_client_info_with_db_param (T_PROXY_INFO * proxy_info_p,
+					    int shard_id, int as_id,
+					    T_CLIENT_INFO * client_info_p)
+{
+  T_APPL_SERVER_INFO *as_info_p = NULL;
+
+  as_info_p = shard_shm_get_as_info (proxy_info_p, shard_id, as_id);
+  if (as_info_p == NULL)
+    {
+      return false;
+    }
+
+  memcpy (&as_info_p->cas_clt_ip[0], &client_info_p->client_ip,
+	  sizeof (as_info_p->cas_clt_ip));
+  if (client_info_p->driver_info)
+    {
+      as_info_p->clt_version =
+	CAS_MAKE_PROTO_VER (client_info_p->driver_info);
+      memcpy (as_info_p->driver_info, client_info_p->driver_info,
+	      SRV_CON_CLIENT_INFO_SIZE);
+    }
+  else
+    {
+      as_info_p->clt_version = 0;
+      memset (as_info_p->driver_info, 0, SRV_CON_CLIENT_INFO_SIZE);
+    }
+
+  as_info_p->isolation_level = client_info_p->isolation_level;
+  as_info_p->lock_timeout = client_info_p->lock_timeout;
+
+  return true;
+}
+
 T_PROXY_INFO *
 shard_shm_get_proxy_info (char *shm_as_cp, int proxy_id)
 {
@@ -1154,6 +1188,8 @@ shard_shm_init_client_info (T_CLIENT_INFO * client_info_p)
   client_info_p->clt_appl_name[0] = 0;
   client_info_p->clt_req_path_info[0] = 0;
   client_info_p->clt_ip_addr[0] = 0;
+  client_info_p->isolation_level = CAS_USE_DEFAULT_DB_PARAM;
+  client_info_p->lock_timeout = CAS_USE_DEFAULT_DB_PARAM;
 }
 
 void

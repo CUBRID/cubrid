@@ -37,11 +37,12 @@
 #define makestring1(x) #x
 #define makestring(x) makestring1(x)
 
-#define MAX_SERVER_H_ID         256
-#define MAX_BIND_VALUE          10240
-#define MAX_QUERY_LEN           100000
-#define CAS_RUNNER_CONF         "cas_runner.conf"
-#define CAS_RUNNER_CONF_ENV     "CAS_RUNNER_CONF"
+#define MAX_SERVER_H_ID                 256
+#define MAX_BIND_VALUE                  10240
+#define MAX_QUERY_LEN                   100000
+#define CAS_RUNNER_CONF                 "cas_runner.conf"
+#define CAS_RUNNER_CONF_ENV             "CAS_RUNNER_CONF"
+#define CAS_USE_DEFAULT_DB_PARAM        -2
 
 #define ON	1
 #define OFF	0

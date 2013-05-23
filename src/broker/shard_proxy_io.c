@@ -154,6 +154,9 @@ static SOCKET proxy_io_cas_accept (SOCKET lsnr_fd);
 
 static void proxy_init_net_buf (T_NET_BUF * net_buf);
 
+static int proxy_io_make_ex_get_int (char *driver_info, char **buffer,
+				     int *argv);
+
 #if defined(LINUX)
 static int proxy_get_max_socket (void);
 static int proxy_add_epoll_event (int fd, unsigned int events);
@@ -550,6 +553,44 @@ proxy_init_net_buf (T_NET_BUF * net_buf)
   return;
 }
 
+static int
+proxy_io_make_ex_get_int (char *driver_info, char **buffer, int *argv)
+{
+  int error;
+  T_NET_BUF net_buf;
+
+  assert (buffer);
+  assert (*buffer == NULL);
+  assert (argv != NULL);
+
+  error = proxy_make_net_buf (&net_buf, NET_BUF_ALLOC_SIZE);
+  if (error)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Failed to make net buffer. (error:%d).", error);
+      goto error_return;
+    }
+
+  proxy_init_net_buf (&net_buf);
+
+  /* error code */
+  net_buf_cp_int (&net_buf, 0 /* success */ , NULL);
+  /* int arg1 */
+  net_buf_cp_int (&net_buf, *argv, NULL);
+
+  *buffer = net_buf.data;
+  set_data_length (*buffer, net_buf.data_size);
+
+  net_buf.data = NULL;
+
+  return (net_buf.data_size + MSG_HEADER_SIZE);
+
+error_return:
+  *buffer = NULL;
+
+  return -1;
+}
+
 /* error */
 int
 proxy_io_make_error_msg (char *driver_info, char **buffer,
@@ -634,6 +675,26 @@ int
 proxy_io_make_check_cas_ok (char *driver_info, char **buffer)
 {
   return proxy_io_make_no_error (driver_info, buffer);
+}
+
+int
+proxy_io_make_set_db_parameter_ok (char *driver_info, char **buffer)
+{
+  return proxy_io_make_no_error (driver_info, buffer);
+}
+
+int
+proxy_io_make_ex_get_isolation_level (char *driver_info, char **buffer,
+				      void *argv)
+{
+  return proxy_io_make_ex_get_int (driver_info, buffer, argv);
+}
+
+int
+proxy_io_make_ex_get_lock_timeout (char *driver_info, char **buffer,
+				   void *argv)
+{
+  return proxy_io_make_ex_get_int (driver_info, buffer, argv);
 }
 
 int
@@ -3673,11 +3734,10 @@ proxy_cas_alloc_by_ctx (int shard_id, int cas_id, int ctx_cid,
 		     "Unable to find cilent info in shared memory. "
 		     "(context id:%d, context uid:%d)", ctx_cid, ctx_uid);
 	}
-      else if (shard_shm_set_as_client_info (proxy_info_p, cas_io_p->shard_id,
-					     cas_io_p->cas_id,
-					     client_info_p->client_ip,
-					     client_info_p->driver_info) ==
-	       false)
+      else
+	if (shard_shm_set_as_client_info_with_db_param
+	    (proxy_info_p, cas_io_p->shard_id, cas_io_p->cas_id,
+	     client_info_p) == false)
 	{
 
 	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
@@ -3794,10 +3854,10 @@ proxy_cas_alloc_by_ctx (int shard_id, int cas_id, int ctx_cid,
 		 "Unable to find cilent info in shared memory. "
 		 "(context id:%d, context uid:%d)", ctx_cid, ctx_uid);
     }
-  else if (shard_shm_set_as_client_info (proxy_info_p, cas_io_p->shard_id,
-					 cas_io_p->cas_id,
-					 client_info_p->client_ip,
-					 client_info_p->driver_info) == false)
+  else
+    if (shard_shm_set_as_client_info_with_db_param
+	(proxy_info_p, cas_io_p->shard_id, cas_io_p->cas_id,
+	 client_info_p) == false)
     {
 
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
@@ -3811,7 +3871,6 @@ proxy_cas_alloc_by_ctx (int shard_id, int cas_id, int ctx_cid,
   cas_io_p->ctx_uid = ctx_uid;
 
   return cas_io_p;
-
 
 set_waiter:
   if (shard_id >= 0)

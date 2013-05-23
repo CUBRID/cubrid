@@ -106,6 +106,12 @@ extern int proxy_io_make_no_error (char *driver_info, char **buffer);
 extern int proxy_io_make_con_close_ok (char *driver_info, char **buffer);
 extern int proxy_io_make_end_tran_ok (char *driver_info, char **buffer);
 extern int proxy_io_make_check_cas_ok (char *driver_info, char **buffer);
+extern int proxy_io_make_set_db_parameter_ok (char *driver_info,
+					      char **buffer);
+extern int proxy_io_make_ex_get_isolation_level (char *driver_info,
+						 char **buffer, void *argv);
+extern int proxy_io_make_ex_get_lock_timeout (char *driver_info,
+					      char **buffer, void *argv);
 
 extern int proxy_io_make_end_tran_request (char *driver_info,
 					   char **buffer, bool commit);

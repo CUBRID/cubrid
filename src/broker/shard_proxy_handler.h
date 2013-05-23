@@ -33,6 +33,8 @@
 #include "shard_proxy_common.h"
 
 typedef int (*T_PROXY_EVENT_FUNC) (char *driver_info, char **buffer);
+typedef int (*T_PROXY_EVENT_FUNC_EX) (char *driver_info, char **buffer,
+				      void *argv);
 
 extern T_WAIT_CONTEXT *proxy_waiter_new (int ctx_cid, unsigned int ctx_uid,
 					 int timeout);
@@ -97,15 +99,25 @@ extern
 extern T_PROXY_EVENT *proxy_event_new_with_rsp (char *driver_info,
 						unsigned int type, int from,
 						T_PROXY_EVENT_FUNC resp_func);
+extern T_PROXY_EVENT *proxy_event_new_with_rsp_ex (char *driver_info,
+						   unsigned int type,
+						   int from,
+						   T_PROXY_EVENT_FUNC_EX
+						   resp_func, void *argv);
 extern T_PROXY_EVENT *proxy_event_new_with_error (char *driver_info,
 						  unsigned int type, int from,
-						  int (*err_func)
-						  (char *driver_info,
-						   char **buffer,
-						   int error_ind,
-						   int error_code,
-						   char *error_msg,
-						   char is_in_tran),
+						  int (*err_func) (char
+								   *driver_info,
+								   char
+								   **buffer,
+								   int
+								   error_ind,
+								   int
+								   error_code,
+								   char
+								   *error_msg,
+								   char
+								   is_in_tran),
 						  int error_ind,
 						  int error_code,
 						  char *error_msg,

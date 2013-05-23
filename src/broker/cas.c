@@ -116,6 +116,9 @@ static int net_read_process (SOCKET proxy_sock_fd,
 			     MSG_HEADER * client_msg_header,
 			     T_REQ_INFO * req_info);
 static int get_graceful_down_timeout ();
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+static void set_db_parameter (void);
+#endif /* !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) */
 #else
 static int net_read_int_keep_con_auto (SOCKET clt_sock_fd,
 				       MSG_HEADER * client_msg_header,
@@ -1698,6 +1701,12 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 #endif /* !WINDOWS */
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL) */
 
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+#if defined(CUBRID_SHARD)
+  set_db_parameter ();
+#endif /* CUBRID_SHARD */
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL) */
+
   if (shm_appl->session_timeout < 0)
     net_timeout_set (NET_DEFAULT_TIMEOUT);
   else
@@ -2713,4 +2722,42 @@ get_graceful_down_timeout ()
 
   return 1 * 60;		/* 1 min */
 }
+
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+static void
+set_db_parameter (void)
+{
+  int cur_isolation_level;
+  int cur_lock_timeout;
+  int isolation_level = as_info->isolation_level;
+  int lock_timeout = as_info->lock_timeout;
+
+  if (isolation_level == CAS_USE_DEFAULT_DB_PARAM)
+    {
+      isolation_level = cas_default_isolation_level;
+    }
+
+  if (lock_timeout == CAS_USE_DEFAULT_DB_PARAM)
+    {
+      lock_timeout = cas_default_lock_timeout;
+    }
+
+  ux_get_tran_setting (&cur_lock_timeout, &cur_isolation_level);
+  if (cur_lock_timeout != lock_timeout)
+    {
+      ux_set_lock_timeout (lock_timeout);
+
+      cas_log_write_and_end (0, false, "set_db_parameter lock_timeout %d",
+			     lock_timeout);
+    }
+
+  if (cur_isolation_level != isolation_level)
+    {
+      ux_set_isolation_level (isolation_level, NULL);
+
+      cas_log_write_and_end (0, false, "set_db_parameter isolation_level %d",
+			     isolation_level);
+    }
+}
+#endif /* !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) */
 #endif /* CUBRID_SHARD */

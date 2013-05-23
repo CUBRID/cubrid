@@ -285,6 +285,8 @@ struct t_appl_server_info
   INT64 num_delete_queries;
 
   INT64 num_unique_error_queries;
+  int isolation_level;
+  int lock_timeout;
 };
 
 #if defined(CUBRID_SHARD)
@@ -316,6 +318,8 @@ struct t_client_info
   char clt_appl_name[APPL_NAME_LENGTH];
   char clt_req_path_info[APPL_NAME_LENGTH];
   char clt_ip_addr[20];
+  int isolation_level;
+  int lock_timeout;
 };
 
 typedef struct t_shard_info T_SHARD_INFO;
