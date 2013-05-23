@@ -1022,6 +1022,7 @@ $set 49 MSGCAT_UTIL_SET_TRANLIST
 24 %4d%-10s %14s %14s %15d %17s\n
 25 Không có giao dịch\n
 26 tranlist chỉ có thể được thực hiện bởi DBA hoặc một thành viên nhóm DBA.\n
+27 sort-key column number(%d) is invalid.\n
 32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
 33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
@@ -1038,4 +1039,6 @@ usage: %s tranlist [OPTION] database-name\n\
 lựa chọn có giá trị:\n\
   -u, --user=ID                ID người dùng để truy cập cơ sở dữ liệu; default: DBA user\n\
   -p, --password=PASS          mật khẩu người dùng; default: none\n\
-  -s, --summary                in các thông tin tổng hợp về giao dịch\n
+  -s, --summary                in các thông tin tổng hợp về giao dịch\n\
+      --sort-key=COLUMN_NUMBER column number to be sorted\n\
+      --reverse                reverse the sort result\n

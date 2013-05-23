@@ -1047,6 +1047,7 @@ $set 49 MSGCAT_UTIL_SET_TRANLIST
 24 %4d%-10s %14s %14s %15d %17s\n
 25 Nu există tranzacţii\n
 26 tranlist poate fi executat doar de către DBA sau un membru al grupului DBA.\n
+27 sort-key column number(%d) is invalid.\n
 32 Index tranzacţie    ID proces    Nume program         Durată interogare    Durată tranzacţie      Aşteaptă deţinătorul de lock      SQL_ID       Text SQL\n
 33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
@@ -1063,4 +1064,6 @@ utilizare: %s tranlist [OPŢIUNI] nume-bază-de-date\n\
 opţiuni valide:\n\
   -u, --user=ID                ID de utilizator pentru accesul la baza de date; implicit: utilizator DBA\n\
   -p, --password=PAROLA        parola de utilizator; default: nul\n\
-  -s, --summary                afişează informaţii sumare despre tranzacţii\n
+  -s, --summary                afişează informaţii sumare despre tranzacţii\n\
+      --sort-key=COLUMN_NUMBER column number to be sorted\n\
+      --reverse                reverse the sort result\n

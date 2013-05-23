@@ -78,6 +78,16 @@ typedef enum
   TRANDUMP_FULL_INFO
 } TRANDUMP_LEVEL;
 
+typedef enum
+{
+  SORT_COLUMN_TYPE_INT,
+  SORT_COLUMN_TYPE_FLOAT,
+  SORT_COLUMN_TYPE_STR,
+} SORT_COLUMN_TYPE;
+
+static int tranlist_Sort_column = 0;
+static bool tranlist_Sort_desc = false;
+
 static bool is_Sigint_caught = false;
 #if defined(WINDOWS)
 static BOOL WINAPI intr_handler (int sig_no);
@@ -91,6 +101,7 @@ static int spacedb_get_size_str (char *buf, UINT64 num_pages,
 static void print_timestamp (FILE * outfp);
 static int print_tran_entry (const ONE_TRAN_INFO * tran_info,
 			     TRANDUMP_LEVEL dump_level);
+static int tranlist_cmp_f (const void *p1, const void *p2);
 
 /*
  * backupdb() - backupdb main routine
@@ -1809,6 +1820,10 @@ tranlist (UTIL_FUNCTION_ARG * arg)
   password =
     utility_get_option_string_value (arg_map, TRANLIST_PASSWORD_S, 0);
   is_summary = utility_get_option_bool_value (arg_map, TRANLIST_SUMMARY_S);
+  tranlist_Sort_column =
+    utility_get_option_int_value (arg_map, TRANLIST_SORT_KEY_S);
+  tranlist_Sort_desc =
+    utility_get_option_bool_value (arg_map, TRANLIST_REVERSE_S);
 
   if (username == NULL)
     {
@@ -1818,6 +1833,18 @@ tranlist (UTIL_FUNCTION_ARG * arg)
 
   if (check_database_name (database_name) != NO_ERROR)
     {
+      goto error_exit;
+    }
+
+  if (tranlist_Sort_column > 10 || tranlist_Sort_column < 0
+      || (is_summary && tranlist_Sort_column > 5))
+    {
+      fprintf (stderr,
+	       msgcat_message (MSGCAT_CATALOG_UTILS,
+			       MSGCAT_UTIL_SET_TRANLIST,
+			       TRANLIST_MSG_INVALID_SORT_KEY),
+	       tranlist_Sort_column);
+
       goto error_exit;
     }
 
@@ -1894,6 +1921,12 @@ tranlist (UTIL_FUNCTION_ARG * arg)
   if (is_summary)
     {
       dump_level = TRANDUMP_SUMMARY;
+    }
+
+  if (tranlist_Sort_column > 0 || tranlist_Sort_desc == true)
+    {
+      qsort ((void *) info->tran, info->num_trans,
+	     sizeof (ONE_TRAN_INFO), tranlist_cmp_f);
     }
 
   (void) dump_trantb (info, dump_level);
@@ -3516,4 +3549,130 @@ intr_handler (int sig_no)
 
   return FALSE;
 #endif /* WINDOWS */
+}
+
+/*
+ * tranlist_cmp_f() - qsort compare function used in tranlist().
+ *   return:
+ */
+static int
+tranlist_cmp_f (const void *p1, const void *p2)
+{
+  int ret;
+  SORT_COLUMN_TYPE column_type;
+  const ONE_TRAN_INFO *info1, *info2;
+  const char *str_key1 = NULL, *str_key2 = NULL;
+  double number_key1 = 0, number_key2 = 0;
+
+  info1 = (ONE_TRAN_INFO *) p1;
+  info2 = (ONE_TRAN_INFO *) p2;
+
+  switch (tranlist_Sort_column)
+    {
+    case 0:
+    case 1:
+      number_key1 = info1->tran_index;
+      number_key2 = info2->tran_index;
+      column_type = SORT_COLUMN_TYPE_INT;
+      break;
+    case 2:
+      str_key1 = info1->db_user;
+      str_key2 = info2->db_user;
+      column_type = SORT_COLUMN_TYPE_STR;
+      break;
+    case 3:
+      str_key1 = info1->host_name;
+      str_key2 = info2->host_name;
+      column_type = SORT_COLUMN_TYPE_STR;
+      break;
+    case 4:
+      number_key1 = info1->process_id;
+      number_key2 = info2->process_id;
+      column_type = SORT_COLUMN_TYPE_INT;
+      break;
+    case 5:
+      str_key1 = info1->program_name;
+      str_key2 = info2->program_name;
+      column_type = SORT_COLUMN_TYPE_STR;
+      break;
+    case 6:
+      number_key1 = info1->query_exec_info.query_time;
+      number_key2 = info2->query_exec_info.query_time;
+      column_type = SORT_COLUMN_TYPE_FLOAT;
+      break;
+    case 7:
+      number_key1 = info1->query_exec_info.tran_time;
+      number_key2 = info2->query_exec_info.tran_time;
+      column_type = SORT_COLUMN_TYPE_FLOAT;
+      break;
+    case 8:
+      str_key1 = info1->query_exec_info.wait_for_tran_index_string;
+      str_key2 = info2->query_exec_info.wait_for_tran_index_string;
+      column_type = SORT_COLUMN_TYPE_STR;
+      break;
+    case 9:
+      str_key1 = info1->query_exec_info.sql_id;
+      str_key2 = info2->query_exec_info.sql_id;
+      column_type = SORT_COLUMN_TYPE_STR;
+      break;
+    case 10:
+      str_key1 = info1->query_exec_info.query_stmt;
+      str_key2 = info2->query_exec_info.query_stmt;
+      column_type = SORT_COLUMN_TYPE_STR;
+      break;
+    default:
+      assert (0);
+      return 0;
+    }
+
+  switch (column_type)
+    {
+    case SORT_COLUMN_TYPE_INT:
+    case SORT_COLUMN_TYPE_FLOAT:
+      {
+	if (number_key1 == number_key2)
+	  {
+	    ret = 0;
+	  }
+	else if (number_key1 > number_key2)
+	  {
+	    ret = 1;
+	  }
+	else
+	  {
+	    ret = -1;
+	  }
+      }
+      break;
+    case SORT_COLUMN_TYPE_STR:
+      {
+	if (str_key1 == NULL && str_key2 == NULL)
+	  {
+	    ret = 0;
+	  }
+	else if (str_key1 == NULL && str_key2 != NULL)
+	  {
+	    ret = -1;
+	  }
+	else if (str_key1 != NULL && str_key2 == NULL)
+	  {
+	    ret = 1;
+	  }
+	else
+	  {
+	    ret = strcmp (str_key1, str_key2);
+	  }
+      }
+      break;
+    default:
+      assert (0);
+      ret = 0;
+    }
+
+  if (tranlist_Sort_desc == true)
+    {
+      ret *= (-1);
+    }
+
+  return ret;
 }

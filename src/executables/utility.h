@@ -303,6 +303,7 @@ typedef enum
   TRANLIST_MSG_SUMMARY_ENTRY = 24,
   TRANLIST_MSG_NONE_TABLE_ENTRIES = 25,
   TRANLIST_MSG_NOT_DBA_USER = 26,
+  TRANLIST_MSG_INVALID_SORT_KEY = 27,
   TRANLIST_MSG_QUERY_INFO_HEADER = 32,
   TRANLIST_MSG_QUERY_INFO_ENTRY = 33,
   TRANLIST_MSG_QUERY_INFO_UNDERSCORE = 34,
@@ -1015,6 +1016,11 @@ typedef struct _ha_config
 #define TRANLIST_PASSWORD_L                     "password"
 #define TRANLIST_SUMMARY_S                      's'
 #define TRANLIST_SUMMARY_L                      "summary"
+#define TRANLIST_SORT_KEY_S                     'k'
+#define TRANLIST_SORT_KEY_L                     "sort-key"
+#define TRANLIST_REVERSE_S                      'r'
+#define TRANLIST_REVERSE_L                      "reverse"
+
 
 /* killtran option list */
 #define KILLTRAN_KILL_TRANSACTION_INDEX_S       'i'

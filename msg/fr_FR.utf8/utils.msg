@@ -1032,6 +1032,7 @@ $set 49 MSGCAT_UTIL_SET_TRANLIST
 24 %4d%-10s %14s %14s %15d %17s\n
 25 Il n'ya pas de transactions\n
 26 tranlist peuvent être effectuées uniquement par le DBA ou un membre du groupe DBA.\n
+27 sort-key column number(%d) is invalid.\n
 32 Indice de tran.    Processus id  Nom du programme          Temps de req. Temps de tran.         Attendre le dét. de verr. SQL_ID       SQL Texte\n
 33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
@@ -1048,4 +1049,6 @@ usage: %s tranlist [OPTION] database-name\n\
 options valides:\n\
   -u, --user=ID                ID d'utilisateur pour l'accès à la base de données; par défaut: utilisateur DBA\n\
   -p, --password=PASS          mot de passe d'utilisateur; par défaut: aucun\n\
-  -s, --summary                affichage des informations résumées de(s) transaction(s)\n
+  -s, --summary                affichage des informations résumées de(s) transaction(s)\n\
+      --sort-key=COLUMN_NUMBER column number to be sorted\n\
+      --reverse                reverse the sort result\n

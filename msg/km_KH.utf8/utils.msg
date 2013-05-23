@@ -1022,6 +1022,7 @@ $set 49 MSGCAT_UTIL_SET_TRANLIST
 24 %4d%-10s %14s %14s %15d %17s\n
 25 អត់មានការជួញដូរទេ\n
 26 tranlist អាចអនុវត្តតាមតែ DBA ឬសមាជិកក្រុម DBA.\n
+27 sort-key column number(%d) is invalid.\n
 32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
 33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
@@ -1038,4 +1039,6 @@ usage: %s tranlist [OPTION] database-name\n\
 ប្រការមានប្រសិទ្ធិភាព:\n\
   -u, --user=ID                ID របស់អ្នកប្រើប្រាស់សំរាប់ឆែកឆេរទិន្នន័យ; default: DBA user\n\
   -p, --password=PASS          លេខសំងាត់នៃអ្នកប្រើប្រាស់; default: none\n\
-  -s, --summary                ចេញក្រដាស(បោះពុម្ព)ព័ត៌មានអំពីការជួញដូរ\n
+  -s, --summary                ចេញក្រដាស(បោះពុម្ព)ព័ត៌មានអំពីការជួញដូរ\n\
+      --sort-key=COLUMN_NUMBER column number to be sorted\n\
+      --reverse                reverse the sort result\n

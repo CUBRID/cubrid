@@ -155,7 +155,10 @@ static ARG_MAP_TABLE ua_Check_map[] = {
 static ARG_MAP_TABLE ua_Tranlist_map[] = {
   {"-u", "--" TRANLIST_USER_L},
   {"-p", "--" TRANLIST_PASSWORD_L},
-  {"-s", "--" TRANLIST_SUMMARY_L}
+  {"-s", "--" TRANLIST_SUMMARY_L},
+  {"-k", "--" TRANLIST_SORT_KEY_L},
+  {"-r", "--" TRANLIST_REVERSE_L},
+  {0, 0}
 };
 
 static ARG_MAP_TABLE ua_Killtran_map[] = {

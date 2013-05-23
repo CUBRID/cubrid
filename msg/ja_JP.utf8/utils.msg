@@ -1022,6 +1022,7 @@ $set 49 MSGCAT_UTIL_SET_TRANLIST
 24 %4d%-10s %14s %14s %15d %17s\n
 25 トランザクションがありません。\n
 26 tranlistはDBAユーザー、またはDBAグループのメンバーが実行できます。\n
+27 sort-key column number(%d) is invalid.\n
 32 トランインデックス　　　　プロセスid       プログラム名　　　　　　　　　　　　　クエリタイム　　　　トランタイム　　　　　　　　　　　ロックゴールだウェート　　　　     SQL ID        SQLテキスト\n
 33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
@@ -1038,4 +1039,6 @@ tranlist: アクティブトランザクション情報をダンプします。\
 オプション:\n\
   -u, --user=ID                データベースに接続するユーザーID; デフォルト: DBAユーザー\n\
   -p, --password=PASS          ユーザーパスワード; デフォルト: なし\n\
-  -s, --summary                トランザクション情報を要約して出力する。\n
+  -s, --summary                トランザクション情報を要約して出力する。\n\
+      --sort-key=COLUMN_NUMBER column number to be sorted\n\
+      --reverse                reverse the sort result\n
