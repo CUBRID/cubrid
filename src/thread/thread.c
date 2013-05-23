@@ -3675,6 +3675,7 @@ thread_rc_track_check (THREAD_ENTRY * thread_p, int id)
 
       for (i = 0; i < RC_LAST; i++)
 	{
+#if 1				/* TODO - remove me someday */
 	  /* TODO: Currently, skip out Memory leak check for the 1st-Track */
 	  if (id <= 0)
 	    {
@@ -3683,6 +3684,7 @@ thread_rc_track_check (THREAD_ENTRY * thread_p, int id)
 		  continue;
 		}
 	    }
+#endif
 
 	  /* skip out pgbuf_temp check; is included with pgbuf check */
 	  if (i == RC_PGBUF_TEMP)
@@ -4247,7 +4249,7 @@ thread_rc_track_meter_dump (THREAD_ENTRY * thread_p, FILE * outfp,
 	      fputc (meter->m_add_buf[i], outfp);
 	    }
 	  fprintf (outfp, "\n");
-	  fprintf (outfp, "         +--- add_buf_size = %d\n",
+	  fprintf (outfp, "            +--- add_buf_size = %d\n",
 		   meter->m_add_buf_size);
 	}
       if (meter->m_sub_buf_size > 0)
@@ -4258,7 +4260,7 @@ thread_rc_track_meter_dump (THREAD_ENTRY * thread_p, FILE * outfp,
 	      fputc (meter->m_sub_buf[i], outfp);
 	    }
 	  fprintf (outfp, "\n");
-	  fprintf (outfp, "         +--- sub_buf_size = %d\n",
+	  fprintf (outfp, "            +--- sub_buf_size = %d\n",
 		   meter->m_sub_buf_size);
 	}
 #endif

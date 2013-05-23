@@ -1147,6 +1147,7 @@ db_string_concatenate (const DB_VALUE * string1,
   QSTR_CATEGORY string1_code_set, string2_code_set;
   int error_status = NO_ERROR;
   DB_TYPE string_type1, string_type2;
+  bool is_inplace_concat;
 
   /*
    *  Initialize status value
@@ -1159,6 +1160,14 @@ db_string_concatenate (const DB_VALUE * string1,
   assert (string1 != (DB_VALUE *) NULL);
   assert (string2 != (DB_VALUE *) NULL);
   assert (result != (DB_VALUE *) NULL);
+
+  is_inplace_concat = false;	/* init */
+
+  /* check iff is in-place update */
+  if (string1 == result || string2 == result)
+    {
+      is_inplace_concat = true;
+    }
 
   /*
    *  Categorize the parameters into respective code sets.
@@ -1427,6 +1436,12 @@ db_string_concatenate (const DB_VALUE * string1,
 		  result_domain_length = MIN (QSTR_MAX_PRECISION (r_type),
 					      DB_VALUE_PRECISION (string1) +
 					      DB_VALUE_PRECISION (string2));
+		}
+
+	      if (is_inplace_concat)
+		{
+		  /* clear value before in-place update */
+		  (void) pr_clear_value (result);
 		}
 
 	      qstr_make_typed_string (r_type,

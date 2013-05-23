@@ -470,7 +470,7 @@ qdata_copy_db_value (DB_VALUE * dest_p, DB_VALUE * src_p)
     }
 
   /* clear any value from a previous iteration */
-  pr_clear_value (dest_p);
+  (void) pr_clear_value (dest_p);
 
   src_type = DB_VALUE_DOMAIN_TYPE (src_p);
   pr_type_p = PR_TYPE_FROM_ID (src_type);
@@ -8957,6 +8957,7 @@ qdata_list_dbs (THREAD_ENTRY * thread_p, DB_VALUE * result_p,
 	    {
 	      goto error;
 	    }
+	  result_p->need_clear = true;
 	}
       else
 	{
@@ -9658,7 +9659,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
     case PT_LEAD:
     case PT_LAG:
       /* just copy */
-      pr_clear_value (func_p->value);
+      (void) pr_clear_value (func_p->value);
       pr_clone_value (&dbval, func_p->value);
       break;
 
@@ -9673,7 +9674,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
     case PT_LAST_VALUE:
     case PT_NTH_VALUE:
       /* just copy */
-      pr_clear_value (func_p->value);
+      (void) pr_clear_value (func_p->value);
       pr_clone_value (&dbval, func_p->value);
       break;
 
@@ -9831,8 +9832,8 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 	      return ER_FAILED;
 	    }
 
-	  pr_clear_value (func_p->value);
-	  pr_clear_value (func_p->value2);
+	  (void) pr_clear_value (func_p->value);
+	  (void) pr_clear_value (func_p->value2);
 	  dbval_type = DB_VALUE_DOMAIN_TYPE (func_p->value);
 	  pr_type_p = PR_TYPE_FROM_ID (dbval_type);
 	  if (pr_type_p == NULL)
@@ -9996,7 +9997,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
   if (copy_opr)
     {
       /* copy resultant operand value to analytic node */
-      pr_clear_value (func_p->value);
+      (void) pr_clear_value (func_p->value);
       dbval_type = DB_VALUE_DOMAIN_TYPE (func_p->value);
       pr_type_p = PR_TYPE_FROM_ID (dbval_type);
       if (pr_type_p == NULL)

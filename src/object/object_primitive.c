@@ -5643,6 +5643,8 @@ readval_elo_with_type (OR_BUF * buf, DB_VALUE * value,
 	    {
 	      db_private_free_and_init (NULL, e);
 	    }
+
+	  value->need_clear = true;
 	}
       else
 	{

@@ -7868,6 +7868,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 					      coercion_mode,
 					      do_domain_select, false);
 	      }
+	    (void) pr_clear_value (&tmpval);
 	  }
 	  break;
 
@@ -8449,21 +8450,15 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  case DB_TYPE_BLOB:
 	  case DB_TYPE_CLOB:
 	    {
-	      DB_VALUE val;
 	      status =
-		tp_value_cast_internal (src, &val,
+		tp_value_cast_internal (src, &conv_val,
 					tp_domain_resolve_default
 					(DB_TYPE_STRING), coercion_mode,
 					do_domain_select, false);
 	      if (status == DOMAIN_COMPATIBLE)
 		{
-		  val_str = DB_GET_STRING (&val);
-		  val_str_size = DB_GET_STRING_SIZE (&val);
-		  alloc_string = !val.need_clear;
-		  /* we will steal the string value from val and we do not
-		   * want somebody else to call pr_clear_value on val
-		   */
-		  val.need_clear = false;
+		  val_str = DB_GET_STRING (&conv_val);
+		  val_str_size = DB_GET_STRING_SIZE (&conv_val);
 		}
 	    }
 	    break;

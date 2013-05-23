@@ -1870,7 +1870,8 @@ qexec_clear_regu_var (XASL_NODE * xasl_p, REGU_VARIABLE * regu_var, int final)
        * Memory leak will break out when a query which has set
        * (ie, select set{} from ...) is executed under asynchronous mode.
        */
-      if (!XASL_IS_FLAGED (xasl_p, XASL_QEXEC_MODE_ASYNC))
+      if (!XASL_IS_FLAGED (xasl_p, XASL_QEXEC_MODE_ASYNC)
+	  && !XASL_IS_FLAGED (xasl_p, XASL_KEEP_DBVAL))
 	{
 	  pr_clear_value (&regu_var->value.dbval);
 	}
@@ -2841,7 +2842,8 @@ qexec_clear_update_assignment (XASL_NODE * xasl_p,
   int pg_cnt;
 
   pg_cnt = 0;
-  if (!XASL_IS_FLAGED (xasl_p, XASL_QEXEC_MODE_ASYNC))
+  if (!XASL_IS_FLAGED (xasl_p, XASL_QEXEC_MODE_ASYNC)
+      && !XASL_IS_FLAGED (xasl_p, XASL_KEEP_DBVAL))
     {
       pr_clear_value (assignment->constant);
     }
@@ -3812,6 +3814,12 @@ qexec_clear_groupby_state (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
 
   /* cleanup rollup aggregates lists */
   qexec_clear_groupby_rollup (thread_p, gbstate);
+
+  if (gbstate->composite_lock)
+    {
+      /* TODO - return error handling */
+      (void) lock_finalize_composite_lock (thread_p, gbstate->composite_lock);
+    }
 }
 
 /*
@@ -18472,6 +18480,7 @@ qexec_gby_finalize_rollup_group (THREAD_ENTRY * thread_p,
 	{
 	  if (i >= rollup_level)
 	    {
+	      (void) pr_clear_value (gby_vallist->val);
 	      DB_MAKE_NULL (gby_vallist->val);
 	    }
 	  i++;
@@ -21755,7 +21764,7 @@ qexec_clear_pred_context (THREAD_ENTRY * thread_p,
 
   if (!dealloc_dbvalues)
     {
-      XASL_SET_FLAG (&xasl_node, XASL_QEXEC_MODE_ASYNC);
+      XASL_SET_FLAG (&xasl_node, XASL_KEEP_DBVAL);
     }
 
   qexec_clear_pred (&xasl_node, pred_filter->pred, true);

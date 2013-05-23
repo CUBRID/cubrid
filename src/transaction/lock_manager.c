@@ -11144,6 +11144,10 @@ lock_add_composite_lock (THREAD_ENTRY * thread_p,
   LK_LOCKCOMP_CLASS *lockcomp_class;
   OID *p;
   int max_oids;
+  bool need_free;
+  int ret = NO_ERROR;
+
+  need_free = false;		/* init */
 
   lockcomp = &(comp_lock->lockcomp);
   for (lockcomp_class = lockcomp->class_list;
@@ -11154,6 +11158,7 @@ lock_add_composite_lock (THREAD_ENTRY * thread_p,
 	  break;
 	}
     }
+
   if (lockcomp_class == NULL)
     {				/* class is not found */
       /* allocate lockcomp_class */
@@ -11162,14 +11167,20 @@ lock_add_composite_lock (THREAD_ENTRY * thread_p,
 						sizeof (LK_LOCKCOMP_CLASS));
       if (lockcomp_class == NULL)
 	{
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	  ret = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto exit_on_error;
 	}
+
+      need_free = true;
+
+      lockcomp_class->inst_oid_space = NULL;	/* init */
 
       if (lockcomp->root_class_ptr == NULL)
 	{
 	  lockcomp->root_class_ptr =
 	    lock_get_class_lock (oid_Root_class_oid, lockcomp->tran_index);
 	}
+
       /* initialize lockcomp_class */
       COPY_OID (&lockcomp_class->class_oid, class_oid);
       if (lock_internal_perform_lock_object (thread_p, lockcomp->tran_index,
@@ -11179,9 +11190,10 @@ lock_add_composite_lock (THREAD_ENTRY * thread_p,
 					     lockcomp->root_class_ptr)
 	  != LK_GRANTED)
 	{
-	  db_private_free_and_init (thread_p, lockcomp_class);
-	  return ER_FAILED;
+	  ret = ER_FAILED;
+	  goto exit_on_error;
 	}
+
       if (lockcomp_class->class_lock_ptr->granted_mode == X_LOCK)
 	{
 	  lockcomp_class->inst_oid_space = NULL;
@@ -11198,14 +11210,15 @@ lock_add_composite_lock (THREAD_ENTRY * thread_p,
 	      lockcomp_class->max_inst_oids =
 		prm_get_integer_value (PRM_ID_LK_ESCALATION_AT);
 	    }
+
 	  lockcomp_class->inst_oid_space =
 	    (OID *) db_private_alloc (thread_p,
 				      sizeof (OID) *
 				      lockcomp_class->max_inst_oids);
 	  if (lockcomp_class->inst_oid_space == NULL)
 	    {
-	      db_private_free_and_init (thread_p, lockcomp_class);
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	      ret = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto exit_on_error;
 	    }
 	  lockcomp_class->num_inst_oids = 0;
 	}
@@ -11213,6 +11226,8 @@ lock_add_composite_lock (THREAD_ENTRY * thread_p,
       /* connect lockcomp_class into the class_list of lockcomp */
       lockcomp_class->next = lockcomp->class_list;
       lockcomp->class_list = lockcomp_class;
+
+      need_free = false;
     }
 
   if (lockcomp_class->class_lock_ptr->granted_mode < X_LOCK)
@@ -11237,17 +11252,17 @@ lock_add_composite_lock (THREAD_ENTRY * thread_p,
 		(OID *) db_private_realloc (thread_p,
 					    lockcomp_class->inst_oid_space,
 					    sizeof (OID) * max_oids);
-	      if (p != NULL)
+	      if (p == NULL)
 		{
-		  lockcomp_class->inst_oid_space = p;
-		  lockcomp_class->max_inst_oids = max_oids;
+		  ret = ER_OUT_OF_VIRTUAL_MEMORY;
+		  goto exit_on_error;
 		}
-	      else
-		{
-		  return ER_OUT_OF_VIRTUAL_MEMORY;
-		}
+
+	      lockcomp_class->inst_oid_space = p;
+	      lockcomp_class->max_inst_oids = max_oids;
 	    }
 	}
+
       if (lockcomp_class->num_inst_oids < lockcomp_class->max_inst_oids)
 	{
 	  COPY_OID (&lockcomp_class->
@@ -11258,7 +11273,31 @@ lock_add_composite_lock (THREAD_ENTRY * thread_p,
        * lock escalation will be performed. so no more instance OID is stored.
        */
     }
-  return NO_ERROR;
+
+  assert (ret == NO_ERROR);
+
+end:
+
+  if (need_free)
+    {
+      if (lockcomp_class->inst_oid_space)
+	{
+	  db_private_free_and_init (thread_p, lockcomp_class->inst_oid_space);
+	}
+      db_private_free_and_init (thread_p, lockcomp_class);
+    }
+
+  return ret;
+
+exit_on_error:
+
+  assert (ret != NO_ERROR);
+  if (ret == NO_ERROR)
+    {
+      ret = ER_FAILED;
+    }
+
+  goto end;
 #endif /* !SERVER_MODE */
 }
 
