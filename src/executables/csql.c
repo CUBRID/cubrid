@@ -2078,7 +2078,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 		       LINE_BUFFER_SIZE - 1);
 	    }
 	}
-      csql_display_msg (stmt_msg);
+      fprintf (csql_Output_fp, "%s\n", stmt_msg);
       db_drop_statement (session, stmt_id);
     }
 
