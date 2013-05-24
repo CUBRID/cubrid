@@ -1246,6 +1246,7 @@ connect_srv (unsigned char *ip_addr, int port, char is_retry,
   struct timeval timeout_val;
   fd_set rset, wset, eset;
 #else
+  int error, len;
   int flags;
   struct pollfd po[1] = { {0, 0, 0} };
 #endif
@@ -1354,6 +1355,16 @@ connect_retry:
 		  CLOSE_SOCKET (sock_fd);
 		  return CCI_ER_CONNECT;
 		}
+#if defined (AIX)
+	      error = 0;
+	      len = sizeof (error);
+	      getsockopt (sock_fd, SOL_SOCKET, SO_ERROR, &error, &len);
+	      if (error != 0 && error != EISCONN)
+		{
+		  CLOSE_SOCKET (sock_fd);
+		  return CCI_ER_CONNECT;
+		}
+#endif
 #endif
 	    }
 	}
