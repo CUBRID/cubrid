@@ -11368,18 +11368,8 @@ lock_finalize_composite_lock (THREAD_ENTRY * thread_p,
 	}
     }
 
-  lockcomp->tran_index = NULL_TRAN_INDEX;
-  lockcomp->wait_msecs = 0;
-  while (lockcomp->class_list != NULL)
-    {
-      lockcomp_class = lockcomp->class_list;
-      lockcomp->class_list = lockcomp_class->next;
-      if (lockcomp_class->inst_oid_space)
-	{
-	  db_private_free_and_init (thread_p, lockcomp_class->inst_oid_space);
-	}
-      db_private_free_and_init (thread_p, lockcomp_class);
-    }
+  /* free alloced memory for composite locking */
+  lock_abort_composite_lock (comp_lock);
 
   return value;
 #endif /* !SERVER_MODE */

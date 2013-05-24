@@ -445,7 +445,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
   load_args->btid = &btid_int;
   load_args->allocated_pgcnt = init_pgcnt;
   load_args->used_pgcnt = 1;	/* set used page count (first page used for root) */
-  db_make_null (&load_args->current_key);
+  DB_MAKE_NULL (&load_args->current_key);
   VPID_SET_NULL (&load_args->nleaf.vpid);
   load_args->nleaf.pgptr = NULL;
   VPID_SET_NULL (&load_args->leaf.vpid);
@@ -996,9 +996,9 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
   int ret = NO_ERROR;
   int node_level = 2;		/* leaf level = 1, lowest non-leaf level = 2 */
 
-  db_make_null (&last_key);
-  db_make_null (&first_key);
-  db_make_null (&prefix_key);
+  DB_MAKE_NULL (&last_key);
+  DB_MAKE_NULL (&first_key);
+  DB_MAKE_NULL (&prefix_key);
 
   temp_data = (char *) os_malloc (DB_PAGESIZE);
   if (temp_data == NULL)
@@ -1045,7 +1045,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
       goto exit_on_error;
     }
 
-  db_make_null (&last_key);
+  DB_MAKE_NULL (&last_key);
 
   /* While there are some leaf pages do */
   while (!VPID_ISNULL (&(load_args->leaf.vpid)))
@@ -1087,14 +1087,21 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 	   * Key type is string or midxkey.
 	   * Should insert the prefix key to the parent level
 	   */
-
-	  /* Insert the prefix key to the parent level */
-	  ret = btree_get_prefix_separator (&last_key, &first_key,
-					    &prefix_key,
-					    load_args->btid->key_type);
-	  if (ret != NO_ERROR)
+	  if (DB_IS_NULL (&last_key))
 	    {
-	      goto exit_on_error;
+	      /* is the first leaf */
+	      pr_clone_value (&first_key, &prefix_key);
+	    }
+	  else
+	    {
+	      /* Insert the prefix key to the parent level */
+	      ret = btree_get_prefix_separator (&last_key, &first_key,
+						&prefix_key,
+						load_args->btid->key_type);
+	      if (ret != NO_ERROR)
+		{
+		  goto exit_on_error;
+		}
 	    }
 
 	  /*

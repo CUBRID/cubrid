@@ -4435,8 +4435,6 @@ qmgr_execute_async_select (THREAD_ENTRY * thread_p,
 	}
     }
 
-  XASL_SET_FLAG (xasl_p, XASL_QEXEC_MODE_ASYNC);
-
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
 
   query_p->tid = thread_p->tid;

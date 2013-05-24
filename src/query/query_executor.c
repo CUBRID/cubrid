@@ -1861,19 +1861,9 @@ qexec_clear_regu_var (XASL_NODE * xasl_p, REGU_VARIABLE * regu_var, int final)
 				     regu_var->value.reguval_list, final);
       break;
     case TYPE_DBVAL:
-      /* FIXME::
-       * Though regu_var->value.dbval should be freed,
-       * there are a complicated issue on asynchronous query execution.
-       * During executing an asynchrouos query, private heap id is changed
-       * and this brings the problem. We do not know the heap id of
-       * the allocator thread, so we cannot free it at this time.
-       * Memory leak will break out when a query which has set
-       * (ie, select set{} from ...) is executed under asynchronous mode.
-       */
-      if (!XASL_IS_FLAGED (xasl_p, XASL_QEXEC_MODE_ASYNC)
-	  && !XASL_IS_FLAGED (xasl_p, XASL_KEEP_DBVAL))
+      if (!XASL_IS_FLAGED (xasl_p, XASL_KEEP_DBVAL))
 	{
-	  pr_clear_value (&regu_var->value.dbval);
+	  (void) pr_clear_value (&regu_var->value.dbval);
 	}
       break;
 #if 0				/* TODO - */
@@ -2319,68 +2309,35 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
   /* clear the head node */
   pg_cnt += qexec_clear_xasl_head (thread_p, xasl);
 
-  /* abort the composite locking */
-  if (xasl->composite_locking)
-    {
-      lock_abort_composite_lock (&xasl->composite_lock);
-    }
+  /* free alloced memory for composite locking */
+  assert (xasl->composite_lock.lockcomp.class_list == NULL);
+  lock_abort_composite_lock (&xasl->composite_lock);
 
   /* clear the body node */
   if (xasl->aptr_list)
     {
-      if (XASL_IS_FLAGED (xasl, XASL_QEXEC_MODE_ASYNC))
-	{
-	  /* propagate XASL_QEXEC_MODE_ASYNC flag */
-	  XASL_SET_FLAG (xasl->aptr_list, XASL_QEXEC_MODE_ASYNC);
-	}
       pg_cnt += qexec_clear_xasl (thread_p, xasl->aptr_list, final);
     }
   if (xasl->bptr_list)
     {
-      if (XASL_IS_FLAGED (xasl, XASL_QEXEC_MODE_ASYNC))
-	{
-	  /* propagate XASL_QEXEC_MODE_ASYNC flag */
-	  XASL_SET_FLAG (xasl->bptr_list, XASL_QEXEC_MODE_ASYNC);
-	}
       pg_cnt += qexec_clear_xasl (thread_p, xasl->bptr_list, final);
     }
   if (xasl->dptr_list)
     {
-      if (XASL_IS_FLAGED (xasl, XASL_QEXEC_MODE_ASYNC))
-	{
-	  /* propagate XASL_QEXEC_MODE_ASYNC flag */
-	  XASL_SET_FLAG (xasl->dptr_list, XASL_QEXEC_MODE_ASYNC);
-	}
       pg_cnt += qexec_clear_xasl (thread_p, xasl->dptr_list, final);
     }
   if (xasl->fptr_list)
     {
-      if (XASL_IS_FLAGED (xasl, XASL_QEXEC_MODE_ASYNC))
-	{
-	  /* propagate XASL_QEXEC_MODE_ASYNC flag */
-	  XASL_SET_FLAG (xasl->fptr_list, XASL_QEXEC_MODE_ASYNC);
-	}
       pg_cnt += qexec_clear_xasl (thread_p, xasl->fptr_list, final);
     }
   if (xasl->scan_ptr)
     {
-      if (XASL_IS_FLAGED (xasl, XASL_QEXEC_MODE_ASYNC))
-	{
-	  /* propagate XASL_QEXEC_MODE_ASYNC flag */
-	  XASL_SET_FLAG (xasl->scan_ptr, XASL_QEXEC_MODE_ASYNC);
-	}
       pg_cnt += qexec_clear_xasl (thread_p, xasl->scan_ptr, final);
     }
 
   /* clear the CONNECT BY node */
   if (XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY))
     {
-      if (xasl->connect_by_ptr
-	  && XASL_IS_FLAGED (xasl, XASL_QEXEC_MODE_ASYNC))
-	{
-	  /* propagate XASL_QEXEC_MODE_ASYNC flag */
-	  XASL_SET_FLAG (xasl->connect_by_ptr, XASL_QEXEC_MODE_ASYNC);
-	}
       pg_cnt += qexec_clear_xasl (thread_p, xasl->connect_by_ptr, final);
     }
 
@@ -2504,11 +2461,6 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
 
 	if (buildlist->eptr_list)
 	  {
-	    if (XASL_IS_FLAGED (xasl, XASL_QEXEC_MODE_ASYNC))
-	      {
-		/* propagate XASL_QEXEC_MODE_ASYNC flag */
-		XASL_SET_FLAG (buildlist->eptr_list, XASL_QEXEC_MODE_ASYNC);
-	      }
 	    pg_cnt +=
 	      qexec_clear_xasl (thread_p, buildlist->eptr_list, final);
 	  }
@@ -2648,23 +2600,11 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
     case MERGE_PROC:
       if (xasl->proc.merge.update_xasl)
 	{
-	  if (XASL_IS_FLAGED (xasl, XASL_QEXEC_MODE_ASYNC))
-	    {
-	      /* propagate XASL_QEXEC_MODE_ASYNC flag */
-	      XASL_SET_FLAG (xasl->proc.merge.update_xasl,
-			     XASL_QEXEC_MODE_ASYNC);
-	    }
 	  pg_cnt +=
 	    qexec_clear_xasl (thread_p, xasl->proc.merge.update_xasl, final);
 	}
       if (xasl->proc.merge.insert_xasl)
 	{
-	  if (XASL_IS_FLAGED (xasl, XASL_QEXEC_MODE_ASYNC))
-	    {
-	      /* propagate XASL_QEXEC_MODE_ASYNC flag */
-	      XASL_SET_FLAG (xasl->proc.merge.insert_xasl,
-			     XASL_QEXEC_MODE_ASYNC);
-	    }
 	  pg_cnt +=
 	    qexec_clear_xasl (thread_p, xasl->proc.merge.insert_xasl, final);
 	}
@@ -2717,11 +2657,6 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
 
   if (xasl->next)
     {
-      if (XASL_IS_FLAGED (xasl, XASL_QEXEC_MODE_ASYNC))
-	{
-	  /* propagate XASL_QEXEC_MODE_ASYNC flag */
-	  XASL_SET_FLAG (xasl->next, XASL_QEXEC_MODE_ASYNC);
-	}
       pg_cnt += qexec_clear_xasl (thread_p, xasl->next, final);
     }
 
@@ -2842,10 +2777,9 @@ qexec_clear_update_assignment (XASL_NODE * xasl_p,
   int pg_cnt;
 
   pg_cnt = 0;
-  if (!XASL_IS_FLAGED (xasl_p, XASL_QEXEC_MODE_ASYNC)
-      && !XASL_IS_FLAGED (xasl_p, XASL_KEEP_DBVAL))
+  if (!XASL_IS_FLAGED (xasl_p, XASL_KEEP_DBVAL))
     {
-      pr_clear_value (assignment->constant);
+      (void) pr_clear_value (assignment->constant);
     }
 
   if (assignment->regu_var != NULL)
@@ -8923,11 +8857,11 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       qexec_free_delete_lob_info_list (thread_p, &del_lob_info_list);
     }
 
-  if (internal_classes != NULL)
+  if (internal_classes)
     {
       qexec_clear_internal_classes (thread_p, internal_classes,
 				    class_oid_cnt);
-      db_private_free (thread_p, internal_classes);
+      db_private_free_and_init (thread_p, internal_classes);
     }
 
   if (savepoint_used)
@@ -8980,11 +8914,11 @@ exit_on_error:
       xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
     }
 
-  if (internal_classes != NULL)
+  if (internal_classes)
     {
       qexec_clear_internal_classes (thread_p, internal_classes,
 				    class_oid_cnt);
-      db_private_free (thread_p, internal_classes);
+      db_private_free_and_init (thread_p, internal_classes);
     }
 
   return ER_FAILED;
@@ -9236,7 +9170,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
    * used in update */
   error =
     qexec_create_internal_classes (thread_p, delete_->classes,
-				   delete_->no_classes, &internal_classes);
+				   class_oid_cnt, &internal_classes);
   if (error != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
@@ -9257,8 +9191,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   if (qexec_execute_mainblock (thread_p, aptr, xasl_state) != NO_ERROR)
     {
-      qexec_failure_line (__LINE__, xasl_state);
-      return ER_FAILED;
+      GOTO_EXIT_ON_ERROR;
     }
 
   /* This guarantees that the result list file will have a type list.
@@ -9267,8 +9200,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       /* it can be > 2
          || (aptr->list_id->type_list.type_cnt != 2) */ )
     {
-      qexec_failure_line (__LINE__, xasl_state);
-      return ER_FAILED;
+      GOTO_EXIT_ON_ERROR;
     }
 
 
@@ -9532,11 +9464,11 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   qexec_free_delete_lob_info_list (thread_p, &del_lob_info_list);
 
-  if (internal_classes != NULL)
+  if (internal_classes)
     {
       qexec_clear_internal_classes (thread_p, internal_classes,
 				    class_oid_cnt);
-      db_private_free (thread_p, internal_classes);
+      db_private_free_and_init (thread_p, internal_classes);
     }
 
 
@@ -9549,6 +9481,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  return ER_FAILED;
 	}
     }
+
   /* release all locks if the hint was given */
   if (delete_->release_lock)
     {
@@ -9584,11 +9517,11 @@ exit_on_error:
       qexec_close_scan (thread_p, specp);
     }
 
-  if (internal_classes != NULL)
+  if (internal_classes)
     {
       qexec_clear_internal_classes (thread_p, internal_classes,
 				    class_oid_cnt);
-      db_private_free (thread_p, internal_classes);
+      db_private_free_and_init (thread_p, internal_classes);
     }
 
   if (savepoint_used)
@@ -13544,6 +13477,9 @@ exit_on_error:
     {
       qexec_clear_connect_by_lists (thread_p, xasl->connect_by_ptr);
     }
+
+  /* free alloced memory for composite locking */
+  lock_abort_composite_lock (&xasl->composite_lock);
 
   xasl->status = XASL_FAILURE;
 
@@ -24362,6 +24298,10 @@ qexec_create_internal_classes (THREAD_ENTRY * thread_p,
       OID_SET_NULL (&class_->prev_class_oid);
       class_->is_attr_info_inited = 0;
 
+      class_->unique_stats.unique_stat_info = NULL;
+      class_->btids = NULL;
+      class_->btids_dup_key_locked = NULL;
+
       partition_init_pruning_context (&class_->context);
 
       class_->unique_stats.scan_cache_inited = false;
@@ -24430,7 +24370,7 @@ qexec_create_internal_classes (THREAD_ENTRY * thread_p,
   return NO_ERROR;
 
 exit_on_error:
-  if (classes != NULL)
+  if (classes)
     {
       qexec_clear_internal_classes (thread_p, classes, i + 1);
       db_private_free (thread_p, classes);

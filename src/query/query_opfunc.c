@@ -2405,6 +2405,7 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p,
   int res_size = 0, val_size = 0;
   bool warning_size_exceeded = false;
   int spare_bytes = 0;
+  bool save_need_clear;
 
   if ((domain_p != NULL && TP_DOMAIN_TYPE (domain_p) == DB_TYPE_NULL)
       || DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
@@ -2463,6 +2464,7 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p,
 	       * (or char with fewer bytes than 'spare_bytes' to current
 	       * aggregate.
 	       */
+	      save_need_clear = result_p->need_clear;
 	      qstr_make_typed_string (DB_VALUE_DOMAIN_TYPE (result_p),
 				      result_p, DB_VALUE_PRECISION (result_p),
 				      DB_PULL_STRING (result_p),
@@ -2470,6 +2472,7 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p,
 				      spare_bytes,
 				      DB_GET_STRING_CODESET (dbval1_p),
 				      DB_GET_STRING_COLLATION (dbval1_p));
+	      result_p->need_clear = save_need_clear;
 	    }
 	}
       else
@@ -2518,6 +2521,7 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p,
 
 		if (spare_bytes > 0)
 		  {
+		    save_need_clear = result_p->need_clear;
 		    qstr_make_typed_string (DB_VALUE_DOMAIN_TYPE (result_p),
 					    result_p,
 					    DB_VALUE_PRECISION (result_p),
@@ -2527,6 +2531,7 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p,
 					    DB_GET_STRING_CODESET (dbval1_p),
 					    DB_GET_STRING_COLLATION
 					    (dbval1_p));
+		    result_p->need_clear = save_need_clear;
 		  }
 	      }
 	    else
@@ -10265,8 +10270,9 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p,
 	  || func_p->function == PT_VAR_POP
 	  || func_p->function == PT_VAR_SAMP))
     {
-      TP_DOMAIN *double_domain_ptr =
-	tp_domain_resolve_default (DB_TYPE_DOUBLE);
+      TP_DOMAIN *double_domain_ptr;
+
+      double_domain_ptr = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 
       /* compute AVG(X) = SUM(X)/COUNT(X) */
       DB_MAKE_DOUBLE (&dbval, func_p->curr_cnt);
@@ -10278,6 +10284,7 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p,
 
       if (func_p->function == PT_AVG)
 	{
+	  (void) pr_clear_value (func_p->value);
 	  if (tp_value_coerce (&xavgval, func_p->value, double_domain_ptr)
 	      != DOMAIN_COMPATIBLE)
 	    {
@@ -10298,6 +10305,7 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p,
 	  else
 	    {
 	      /* when not enough samples, return NULL */
+	      (void) pr_clear_value (func_p->value);
 	      DB_MAKE_NULL (func_p->value);
 	      goto exit;
 	    }

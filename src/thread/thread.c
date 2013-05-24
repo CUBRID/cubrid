@@ -3675,17 +3675,6 @@ thread_rc_track_check (THREAD_ENTRY * thread_p, int id)
 
       for (i = 0; i < RC_LAST; i++)
 	{
-#if 1				/* TODO - remove me someday */
-	  /* TODO: Currently, skip out Memory leak check for the 1st-Track */
-	  if (id <= 0)
-	    {
-	      if (i == RC_VMEM)
-		{
-		  continue;
-		}
-	    }
-#endif
-
 	  /* skip out pgbuf_temp check; is included with pgbuf check */
 	  if (i == RC_PGBUF_TEMP)
 	    {
