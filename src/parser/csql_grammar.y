@@ -663,6 +663,7 @@ typedef struct YYLTYPE
 %type <node> table_spec_list
 %type <node> join_table_spec
 %type <node> table_spec
+%type <node> original_table_spec
 %type <node> join_condition
 %type <node> class_spec_list
 %type <node> class_spec
@@ -4072,6 +4073,22 @@ opt_outer
 	;
 
 table_spec
+	: '(' table_spec ')' %dprec 1
+		{{
+
+			$$ = $2;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| original_table_spec %dprec 2
+		{{
+
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+
+original_table_spec
 	: class_spec opt_as_identifier_attr_name opt_table_spec_index_hint_list opt_with_read_uncommitted
 		{{
 			PT_NODE *range_var = NULL;
