@@ -10084,7 +10084,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement,
 	{
 	  pt_free_statement_xasl_id (node);
 	}
-      if (err == NO_ERROR)
+      if (err == NO_ERROR && parent != NULL)
 	{
 	  /* set cannot_prepare to parent */
 	  parent->cannot_prepare = 1;
