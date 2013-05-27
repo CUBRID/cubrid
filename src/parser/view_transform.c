@@ -6882,7 +6882,7 @@ static PT_NODE *
 mq_clear_all_ids (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
 		  int *continue_walk)
 {
-  int *spec_id_ptr = (int *) void_arg;
+  UINTPTR *spec_id_ptr = (UINTPTR *) void_arg;
 
   if (node->node_type == PT_NAME)
     {
