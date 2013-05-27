@@ -44,6 +44,7 @@ static void begin_token (char *token);
 extern int yyline;
 extern int yycolumn;
 extern int yycolumn_end;
+extern int dot_flag;
 
 
 
@@ -58,6 +59,9 @@ extern int yycolumn_end;
  * buffer is saved as part of the location information.
  */
 #define YY_USER_ACTION  {yybuffer_pos += csql_yyget_leng (); csql_yylloc.buffer_pos = yybuffer_pos;}
+
+#define IS_BLANK_CHAR(c) \
+                    ((c) == ' ' || (c) == '\t' || (c) == '\r' || (c) == '\n')
 
 
 %}
@@ -785,6 +789,7 @@ extern int yycolumn_end;
 \\N									{ begin_token(yytext);   return Null; }
 
 "->"									{ begin_token(yytext);   return RIGHT_ARROW; }
+"."										{ begin_token(yytext);   return DOT; }
 "||"									{ 
 									  begin_token(yytext);   
 									  if (!prm_get_bool_value (PRM_ID_PIPES_AS_CONCAT))
@@ -869,6 +874,61 @@ _[uU][tT][fF]8[']		{
 							   csql_yylval.cptr = pt_makename(yytext);
 							   return IdName; 
 						         }
+
+"."[ \t\r\n]*([a-zA-Z_#]|([\xc0-\xfe]))([a-zA-Z_#0-9]|([\x80-\xfe]))* {
+								int i = 0;
+								int len = 0;
+								begin_token(yytext);
+								if (dot_flag == 0)
+								  {
+								    yybuffer_pos -= csql_yyleng;
+								    yyless(0);
+								    dot_flag = 1;
+								    return DOT;
+								  }
+								else
+								  {
+								    dot_flag = 0;
+								    len = strlen(yytext);
+								    if (len >= 254)
+								      {
+								        yytext[254] = 0;
+								      }
+								      
+								    for (i = 1; i < len - 1 && IS_BLANK_CHAR (yytext[i]); i++)
+								    ;
+								    csql_yylval.cptr = pt_makename(&yytext[i]);
+								    return IdName;
+								  }
+								}
+
+"->"[ \t\r\n]*([a-zA-Z_#]|([\xc0-\xfe]))([a-zA-Z_#0-9]|([\x80-\xfe]))* {
+								int i = 0;
+								int len = 0;
+								begin_token(yytext);
+								if (dot_flag == 0)
+								  {
+								    yybuffer_pos -= csql_yyleng;
+								    yyless(0);
+								    dot_flag = 1;
+								    return RIGHT_ARROW;
+								  }
+								else
+								  {
+								    dot_flag = 0;
+								    len = strlen(yytext);
+								    if (len >= 254)
+								      {
+								        yytext[254] = 0;
+								      }
+								    
+								    for (i = 2; i < len - 1 && IS_BLANK_CHAR (yytext[i]); i++)
+								    ;
+								    csql_yylval.cptr = pt_makename(&yytext[i]);
+								    return IdName;
+								  }
+								}
+
 0b[0-1]+			{
 					csql_yylval.cptr = pt_append_string(this_parser, NULL, yytext + 2);
 					return BIT_STRING;

@@ -1368,6 +1368,7 @@ typedef struct YYLTYPE
 %token CROATIAN_KUNA_SIGN
 %token SERBIAN_DINAR_SIGN
 
+%token DOT
 %token RIGHT_ARROW
 %token STRCAT
 %token COMP_NOT_EQ
@@ -4521,7 +4522,7 @@ only_all_class_spec
 	;
 
 class_name
-	: identifier '.' identifier
+	: identifier DOT identifier
 		{{
 
 			PT_NODE *user_node = $1;
@@ -6772,7 +6773,7 @@ delete_name
 			$$ = node;
 
 		DBG_PRINT}}
-	| identifier '.' '*'
+	| identifier DOT '*'
 		{{
 
 			PT_NODE *node = $1;
@@ -12279,6 +12280,18 @@ index_name
 		{{
 
 			PT_NODE *node = $1;
+			/* Since both .NONE and ."NONE" (or .[NONE], .`NONE`) will be
+			 * parsed as DOT IdName by lexer. In order to distinguish the 
+			 * ambiguous word "NONE" (reserved word or normal IdName) in the 
+			 * context of USING INDEX clause, we have to check the
+			 * last character of the word "NONE" in the original SQL text.
+			 */
+			if (strcasecmp (node->info.name.original, "none") == 0
+			    && toupper (node->sql_user_text[node->buffer_pos - 1]) == 'E')
+			  { 
+			    PT_ERRORmf2 (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
+			        MSGCAT_SYNTAX_KEYWORD_ERROR, "NONE", "a valid index name");
+			  }
 			node->info.name.meta_class = PT_INDEX_NAME;
 			node->etc = (void *) PT_IDX_HINT_FORCE;
 			$$ = node;
@@ -12289,6 +12302,18 @@ index_name
 		{{
 
 			PT_NODE *node = $1;
+			/* Since both .NONE and ."NONE" (or .[NONE], .`NONE`) will be
+			 * parsed as DOT IdName by lexer. In order to distinguish the 
+			 * ambiguous word "NONE" (reserved word or normal IdName) in the 
+			 * context of USING INDEX clause, we have to check the
+			 * last character of the word "NONE" in the original SQL text.
+			 */
+			if (strcasecmp (node->info.name.original, "none") == 0
+			    && toupper (node->sql_user_text[node->buffer_pos - 1]) == 'E')
+			  { 
+			    PT_ERRORmf2 (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
+			        MSGCAT_SYNTAX_KEYWORD_ERROR, "NONE", "a valid index name");
+			  }
 			node->info.name.meta_class = PT_INDEX_NAME;
 			node->etc = (void *) PT_IDX_HINT_IGNORE;
 			$$ = node;
@@ -12300,22 +12325,25 @@ index_name
 
 			PT_NODE *node = $1;
 			node->info.name.meta_class = PT_INDEX_NAME;
-			node->etc = (void *) PT_IDX_HINT_USE;
+			/* Since both .NONE and ."NONE" (or .[NONE], .`NONE`) will be
+			 * parsed as DOT IdName by lexer. In order to distinguish the 
+			 * ambiguous word "NONE" (reserved word or normal IdName) in the 
+			 * context of USING INDEX clause, we have to check the
+			 * last character of the word "NONE" in the original SQL text.
+			 */
+			if (strcasecmp (node->info.name.original, "none") == 0
+			    && toupper (node->sql_user_text[node->buffer_pos - 1]) == 'E')
+			  {
+			    node->info.name.original = NULL;
+			    node->etc = (void *) PT_IDX_HINT_CLASS_NONE;
+			  }
+			else
+			  {
+			    node->etc = (void *) PT_IDX_HINT_USE;
+			  }
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
-	| identifier '.' NONE
-		{{
-		
-			PT_NODE *node = $1;
-			node->info.name.meta_class = PT_INDEX_NAME;
-			node->info.name.resolved = node->info.name.original;
-			node->info.name.original = NULL;
-			node->etc = (void *) PT_IDX_HINT_CLASS_NONE;
-			$$ = node;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		
 		DBG_PRINT}}
 	;
 
@@ -16650,14 +16678,14 @@ subquery
 
 
 path_expression
-	: path_header '.' IDENTITY		%dprec 5
+	: path_header DOT IDENTITY		%dprec 5
 		{{
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| path_header '.' OBJECT		%dprec 4
+	| path_header DOT OBJECT		%dprec 4
 		{{
 
 			PT_NODE *node = $1;
@@ -16670,7 +16698,7 @@ path_expression
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| path_header '.' '*'			%dprec 3
+	| path_header DOT '*'			%dprec 3
 		{{
 
 			PT_NODE *node = $1;
@@ -16821,7 +16849,7 @@ path_header
 	;
 
 path_dot
-	: '.'
+	: DOT
 	| RIGHT_ARROW
 	;
 
@@ -16862,7 +16890,7 @@ path_id
 	;
 
 simple_path_id
-	: identifier '.' identifier
+	: identifier DOT identifier
 		{{
 
 			PT_NODE *dot = parser_new_node (this_parser, PT_DOT_);
@@ -20945,6 +20973,7 @@ pop_msg ()
 int yyline = 0;
 int yycolumn = 0;
 int yycolumn_end = 0;
+int dot_flag = 0;
 
 int parser_function_code = PT_EMPTY;
 
@@ -22028,6 +22057,7 @@ parser_main (PARSER_CONTEXT * parser)
   yycolumn = yycolumn_end = 1;
   yybuffer_pos=0;
   csql_yylloc.buffer_pos=0;
+  dot_flag = 0;
 
   g_query_string = NULL;
   g_query_string_len = 0;
