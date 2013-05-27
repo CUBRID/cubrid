@@ -6503,7 +6503,7 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
     default:
       q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
-      if (p->data_type)
+      if (PT_IS_PARAMETERIZED_TYPE (p->type_enum) && p->data_type)
 	{
 	  r1 = pt_print_bytes_l (parser, p->data_type);
 	  q = pt_append_nulstring (parser, q, "(");
