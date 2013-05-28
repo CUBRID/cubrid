@@ -2334,6 +2334,7 @@ struct pt_union_info
   PT_NODE *arg1;		/* PT_SELECT_EXPR 1st argument */
   PT_NODE *arg2;		/* PT_SELECT_EXPR 2nd argument */
   PT_NODE *select_list;		/* select list of UNION query */
+  unsigned is_leaf_node:1;
 };
 
 /* Info for an SAVEPOINT node */
