@@ -1400,9 +1400,9 @@
 
 #define ER_DATA_IS_TRUNCATED_TO_PRECISION           -1111
 
-#define ER_CHAR_CONV_NO_MATCH			    -1112
+#define ER_CHAR_CONV_NO_MATCH                       -1112
 
-#define ER_BINARY_HEAP_OUT_OF_RANGE		    -1113
+#define ER_BINARY_HEAP_OUT_OF_RANGE                 -1113
 
 #define ER_ARG_OUT_OF_RANGE                         -1114
 
@@ -1413,7 +1413,10 @@
 
 #define ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN  -1118
 
-#define ER_LAST_ERROR                               -1119
+#define ER_FILE_INCONSISTENT_PAGE_ALLOCED           -1119
+#define ER_FILE_INCONSISTENT_PAGE_NOT_ALLOCED       -1120
+
+#define ER_LAST_ERROR                               -1121
 
 #define DB_TRUE 1
 #define DB_FALSE 0

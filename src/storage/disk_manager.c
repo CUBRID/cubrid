@@ -58,7 +58,6 @@ static int rv;
 
 #define DISK_MIN_NPAGES_TO_TRUNCATE 100
 
-#define DISK_VOLHEADER_PAGE      0	/* Page of the volume header */
 #define DISK_HINT_START_SECT     4
 
 /* do not use assert_release () for performance risk */
@@ -100,7 +99,6 @@ static int rv;
 #define DISK_SECTOR 0
 
 #define DISK_EXPAND_TMPVOL_INCREMENTS 1000
-#define DISK_PAGE_BIT  (DB_PAGESIZE * CHAR_BIT)	/* Num of bits per page   */
 
 typedef enum
 {

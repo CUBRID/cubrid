@@ -1412,8 +1412,10 @@
 
 #define ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN  -1118
 
-#define ER_LAST_ERROR                               -1119
+#define ER_FILE_INCONSISTENT_PAGE_NOT_ALLOCED       -1119
+#define ER_FILE_INCONSISTENT_PAGE_ALLOCED           -1120
 
+#define ER_LAST_ERROR                               -1121
 /*
  * CAUTION!
  *

@@ -40,6 +40,10 @@
 
 #define DISK_NULL_PAGEID_WITH_ENOUGH_DISK_PAGES (NULL_PAGEID - 1)
 
+#define DISK_PAGE_BIT  (DB_PAGESIZE * CHAR_BIT)	/* Num of bits per page   */
+
+#define DISK_VOLHEADER_PAGE      0	/* Page of the volume header */
+
 typedef enum
 {
   DISK_DONT_FLUSH,
@@ -203,7 +207,6 @@ extern char *disk_get_link (THREAD_ENTRY * thread_p, INT16 volid,
 			    char *next_volext_fullname);
 extern INT32 disk_get_max_numpages (THREAD_ENTRY * thread_p,
 				    DISK_VOLPURPOSE vol_purpose);
-
 extern DISK_ISVALID disk_check (THREAD_ENTRY * thread_p, INT16 volid,
 				bool repair);
 extern int disk_dump_all (THREAD_ENTRY * thread_p, FILE * fp);

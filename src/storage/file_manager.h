@@ -338,6 +338,8 @@ extern int file_typecache_clear (void);
 extern int file_dump (THREAD_ENTRY * thread_p, FILE * fp, const VFID * vfid);
 extern int file_tracker_dump (THREAD_ENTRY * thread_p, FILE * fp);
 extern DISK_ISVALID file_tracker_check (THREAD_ENTRY * thread_p);
+extern DISK_ISVALID file_tracker_cross_check_with_disk_idsmap (THREAD_ENTRY *
+							       thread_p);
 extern int file_dump_all_capacities (THREAD_ENTRY * thread_p, FILE * fp);
 extern int file_dump_descriptor (THREAD_ENTRY * thread_p, FILE * fp,
 				 const VFID * vfid);

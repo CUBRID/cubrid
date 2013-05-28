@@ -1185,7 +1185,9 @@ $ LOADDB
 1116 통계정보 갱신이 완료되었습니다. (class "%1$s", oid : %2$d|%3$d|%4$d, error code : %5$d)
 1117 Cannot change attribute "%1$s". CUBRID cannot change an attribute as a SHARED and vice versa.
 1118 The argument of "%1$s" can not be coerced to desired domain "%2$s".
-1119 마지막 에러
+1119 내부 에러: 볼륨 "%2$s"의 페이지 테이블에 할당된 %1$d번 페이지가 어떤 파일에도 속해있지 않습니다.
+1120 내부 에러: 볼륨 "%2$s"의 %1$d번 페이지가 현재 사용중이지만 볼륨의 페이지 테이블에는 할당되어 있지 않습니다.
+1121 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %d):

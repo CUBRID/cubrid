@@ -1185,7 +1185,9 @@ $ LOADDB
 1116 Finished to update statistics (class "%1$s", oid : %2$d|%3$d|%4$d, error code : %5$d).
 1117 Cannot change attribute "%1$s". CUBRID cannot change an attribute as a SHARED and vice versa.
 1118 The argument of "%1$s" can not be coerced to desired domain "%2$s".
-1119 Last Error
+1119 Internal error: Page id %1$d is allocated according to the allocation map of volume "%2$s", but it does not belong to any file. 
+1120 Internal error: Page id %1$d of volume "%2$s" is currently being used, but it is not allocated according to the allocation map of volume.
+1121 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %d):
