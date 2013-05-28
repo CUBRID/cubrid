@@ -8551,7 +8551,7 @@ static void
 qo_discover_sort_limit_nodes (QO_ENV * env)
 {
   PT_NODE *query, *orderby, *sort_col, *select_list, *col, *save_next;
-  int i, pos_spec;
+  int i, pos_spec, limit_max_count;
   QO_NODE *node;
   BITSET order_nodes, dep_nodes, expr_segs, tmp_bitset;
   BITSET_ITERATOR bi;
@@ -8585,6 +8585,13 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
   if (DB_IS_NULL (&QO_ENV_LIMIT_VALUE (env)))
     {
       /* unusable limit */
+      goto abandon_stop_limit;
+    }
+  limit_max_count = prm_get_integer_value (PRM_ID_SORT_LIMIT_MAX_COUNT);
+  if ((DB_BIGINT) limit_max_count < DB_GET_BIGINT (&QO_ENV_LIMIT_VALUE (env))
+      || limit_max_count == 0)
+    {
+      /* either disabled or limit too large to apply this optimization */
       goto abandon_stop_limit;
     }
 

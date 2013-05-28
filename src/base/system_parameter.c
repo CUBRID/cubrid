@@ -472,6 +472,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_GENERIC_VOL_PREALLOC_SIZE "generic_vol_prealloc_size"
 
+#define PRM_NAME_SORT_LIMIT_MAX_COUNT "sort_limit_max_count"
+
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -1264,6 +1266,11 @@ static bool prm_sql_trace_execution_plan_default = false;
 
 char *PRM_INTL_COLLATION = NULL;
 static char *prm_intl_collation_default = NULL;
+
+int PRM_SORT_LIMIT_MAX_COUNT = 1000;
+static int prm_sort_limit_max_count_default = 1000;
+static int prm_sort_limit_max_count_lower = 0;	/* disabled */
+static int prm_sort_limit_max_count_upper = INT_MAX;
 
 typedef struct sysprm_param SYSPRM_PARAM;
 struct sysprm_param
@@ -2638,6 +2645,14 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_GENERIC_VOL_PREALLOC_SIZE,
    (void *) &prm_generic_vol_prealloc_size_upper,
    (void *) &prm_generic_vol_prealloc_size_lower,
+   (char *) NULL},
+  {PRM_NAME_SORT_LIMIT_MAX_COUNT,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_QRY_STRING),
+   PRM_INTEGER,
+   (void *) &prm_sort_limit_max_count_default,
+   (void *) &PRM_SORT_LIMIT_MAX_COUNT,
+   (void *) &prm_sort_limit_max_count_upper,
+   (void *) &prm_sort_limit_max_count_lower,
    (char *) NULL}
 };
 
