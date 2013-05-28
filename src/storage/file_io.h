@@ -393,7 +393,12 @@ extern int fileio_format (THREAD_ENTRY * thread_p, const char *db_fullname,
 			  size_t page_size, int kbytes_to_be_written_per_sec,
 			  bool reuse_file);
 extern DKNPAGES fileio_expand (THREAD_ENTRY * threda_p, VOLID volid,
-			       DKNPAGES npages_toadd);
+			       DKNPAGES npages_toadd,
+			       DISK_VOLPURPOSE purpose);
+extern void *fileio_initialize_pages (THREAD_ENTRY * thread_p, int vdes,
+				      void *io_pgptr, DKNPAGES start_pageid,
+				      DKNPAGES npages, size_t page_size,
+				      int kbytes_to_be_written_per_sec);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern DKNPAGES fileio_truncate (VOLID volid, DKNPAGES npages_to_resize);
 #endif

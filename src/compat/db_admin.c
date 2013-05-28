@@ -294,7 +294,7 @@ db_add_volume (const char *ext_path, const char *ext_name,
   ext_info.path = ext_path;
   ext_info.name = ext_name;
   ext_info.comments = ext_comments;
-  ext_info.npages = ext_npages;
+  ext_info.max_npages = ext_npages;
   ext_info.max_writesize_in_sec = 0;
   ext_info.purpose = ext_purpose;
   ext_info.overwrite = false;
@@ -1777,6 +1777,7 @@ db_purpose_totalpgs_freepgs (int volid,
 			     int *vol_ntotal_pages, int *vol_nfree_pages)
 {
   int retval;
+  int dummy;
 
   CHECK_CONNECT_ZERO ();
 
@@ -1784,7 +1785,7 @@ db_purpose_totalpgs_freepgs (int volid,
     ((int)
      disk_get_purpose_and_total_free_numpages (volid, vol_purpose,
 					       vol_ntotal_pages,
-					       vol_nfree_pages));
+					       vol_nfree_pages, &dummy));
   return (retval);
 }
 

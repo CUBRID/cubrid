@@ -10721,6 +10721,7 @@ log_recreate (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
   DISK_VOLPURPOSE vol_purpose;
   int vol_total_pages;
   int vol_free_pages;
+  int vol_max_pages;
   VOLID volid;
   int vdes;
   LOG_LSA init_nontemp_lsa;
@@ -10750,7 +10751,8 @@ log_recreate (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
       if ((xdisk_get_purpose_and_total_free_numpages (thread_p, volid,
 						      &vol_purpose,
 						      &vol_total_pages,
-						      &vol_free_pages) !=
+						      &vol_free_pages,
+						      &vol_max_pages) !=
 	   volid))
 	{
 	  continue;

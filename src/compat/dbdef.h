@@ -440,7 +440,8 @@ struct dbdef_vol_ext_info
 				 * "db" is the database name and "volid" is the volume
 				 * identifier to be assigned to the volume extension. */
   const char *comments;		/* Comments which are included in the volume extension header. */
-  int npages;			/* Number of pages */
+  int max_npages;		/* Maximum pages of this volume */
+  int extend_npages;		/* Number of pages to extend - used for generic volume only */
   int max_writesize_in_sec;	/* the amount of volume written per second */
   DB_VOLPURPOSE purpose;	/* The purpose of the volume extension. One of the following:
 				 * - DISK_PERMVOL_DATA_PURPOSE,

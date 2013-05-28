@@ -129,13 +129,13 @@ pack_const_string (char *buffer, const char *cstring)
 }
 
 /*
- * pack_string_with_null_padding - pack stream and add null. 
+ * pack_string_with_null_padding - pack stream and add null.
  *                                 so stream is made as null terminated string.
  *
  * return:
  *
  *   buffer(in):
- *   stream(in): 
+ *   stream(in):
  *   len(in):
  *
  * NOTE:
@@ -1920,6 +1920,7 @@ disk_get_purpose (VOLID volid)
  *   vol_purpose(in):
  *   vol_ntotal_pages(in):
  *   vol_nfree_pages(in):
+ *   vol_nmax_pages(in):
  *
  * NOTE:
  */
@@ -1927,7 +1928,8 @@ VOLID
 disk_get_purpose_and_total_free_numpages (VOLID volid,
 					  DISK_VOLPURPOSE * vol_purpose,
 					  DKNPAGES * vol_ntotal_pages,
-					  DKNPAGES * vol_nfree_pages)
+					  DKNPAGES * vol_nfree_pages,
+					  DKNPAGES * vol_nmax_pages)
 {
 #if defined(CS_MODE)
   int temp;
@@ -1935,7 +1937,7 @@ disk_get_purpose_and_total_free_numpages (VOLID volid,
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
   char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 4) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 5) a_reply;
   char *reply;
 
   request = OR_ALIGNED_BUF_START (a_request);
@@ -1953,6 +1955,7 @@ disk_get_purpose_and_total_free_numpages (VOLID volid,
       *vol_purpose = (DB_VOLPURPOSE) temp;
       ptr = or_unpack_int (ptr, vol_ntotal_pages);
       ptr = or_unpack_int (ptr, vol_nfree_pages);
+      ptr = or_unpack_int (ptr, vol_nmax_pages);
       ptr = or_unpack_int (ptr, &temp);
       volid = temp;
     }
@@ -1968,7 +1971,8 @@ disk_get_purpose_and_total_free_numpages (VOLID volid,
 
   volid = xdisk_get_purpose_and_total_free_numpages (NULL, volid, vol_purpose,
 						     vol_ntotal_pages,
-						     vol_nfree_pages);
+						     vol_nfree_pages,
+						     vol_nmax_pages);
 
   EXIT_SERVER ();
 
@@ -4388,7 +4392,7 @@ boot_add_volume_extension (DBDEF_VOL_EXT_INFO * ext_info)
       ptr = pack_const_string_with_length (request, ext_info->path, strlen1);
       ptr = pack_const_string_with_length (ptr, ext_info->name, strlen2);
       ptr = pack_const_string_with_length (ptr, ext_info->comments, strlen3);
-      ptr = or_pack_int (ptr, (int) ext_info->npages);
+      ptr = or_pack_int (ptr, (int) ext_info->max_npages);
       ptr = or_pack_int (ptr, (int) ext_info->max_writesize_in_sec);
       ptr = or_pack_int (ptr, (int) ext_info->purpose);
       ptr = or_pack_int (ptr, (int) ext_info->overwrite);

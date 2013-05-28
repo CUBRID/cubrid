@@ -242,6 +242,7 @@ typedef void *CSS_THREAD_ARG;
 typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
 
 extern DAEMON_THREAD_MONITOR thread_Log_flush_thread;
+extern DAEMON_THREAD_MONITOR thread_Auto_volume_expansion_thread;
 
 #if !defined(HPUX)
 extern int thread_set_thread_entry_info (THREAD_ENTRY * entry);
@@ -256,7 +257,6 @@ extern int thread_stop_active_daemons (void);
 extern int thread_kill_all_workers (void);
 extern void thread_final_manager (void);
 extern void thread_slam_tran_index (THREAD_ENTRY * thread_p, int tran_index);
-
 extern int thread_lock_entry (THREAD_ENTRY * entry);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int thread_lock_entry_with_tran_index (int tran_index);
@@ -328,6 +328,8 @@ extern void thread_wakeup_checkpoint_thread (void);
 extern void thread_wakeup_purge_archive_logs_thread (void);
 extern void thread_wakeup_oob_handler_thread (void);
 extern void thread_wakeup_session_control_thread (void);
+extern void thread_wakeup_auto_volume_expansion_thread (void);
+extern bool thread_auto_volume_expansion_thread_is_running (void);
 extern THREAD_ENTRY *thread_find_first_lockwait_entry (int *thrd_index);
 extern THREAD_ENTRY *thread_find_next_lockwait_entry (int *thrd_index);
 extern THREAD_ENTRY *thread_find_entry_by_index (int thrd_index);

@@ -333,8 +333,9 @@ extern VOLID xdisk_get_purpose_and_total_free_numpages (THREAD_ENTRY *
 							DKNPAGES *
 							vol_ntotal_pages,
 							DKNPAGES *
-							vol_nfree_pages);
-
+							vol_nfree_pages,
+							DKNPAGES *
+							vol_nmax_pages);
 extern int xqfile_get_list_file_page (THREAD_ENTRY * thread_p,
 				      QUERY_ID query_id, VOLID volid,
 				      PAGEID pageid, char *page_bufp,

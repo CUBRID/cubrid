@@ -84,11 +84,16 @@ static int rv;
    									\
     if ((h)->purpose != DISK_TEMPVOL_TEMP_PURPOSE)                     	\
       {                                                                 \
-        assert ((h)->sect_alloctb_npages == 				\
+        assert ((h)->sect_alloctb_npages >= 				\
                 CEIL_PTVDIV ((h)->total_sects, DISK_PAGE_BIT));		\
-        assert ((h)->page_alloctb_npages == 				\
+        assert ((h)->page_alloctb_npages >= 				\
                 CEIL_PTVDIV ((h)->total_pages, DISK_PAGE_BIT));		\
       }									\
+    if ((h)->purpose != DISK_PERMVOL_GENERIC_PURPOSE                    \
+        && (h)->purpose != DISK_TEMPVOL_TEMP_PURPOSE)                   \
+      {                                                                 \
+        assert ((h)->total_pages == (h)->max_npages);                   \
+      }                                                                 \
   } while (0)
 
 #define DISK_PAGE   1
@@ -96,9 +101,6 @@ static int rv;
 
 #define DISK_EXPAND_TMPVOL_INCREMENTS 1000
 #define DISK_PAGE_BIT  (DB_PAGESIZE * CHAR_BIT)	/* Num of bits per page   */
-
-/* volume out of space warning factor; no warning if 0 */
-#define DISK_WARN_OUTSPACE_FACTOR       0.0
 
 typedef enum
 {
@@ -129,6 +131,14 @@ struct disk_recv_change_creation
   char vol_fullname[1];		/* Actually more than one */
 };
 
+typedef struct disk_recv_init_pages_info DISK_RECV_INIT_PAGES_INFO;
+struct disk_recv_init_pages_info
+{				/* Recovery for volume page init */
+  INT32 start_pageid;
+  DKNPAGES npages;
+  INT16 volid;
+};
+
 /* Cache of volumes with their purposes and hint of num of free pages */
 
 typedef struct disk_volfreepgs DISK_VOLFREEPGS;
@@ -143,7 +153,6 @@ struct disk_cache_volinfo
 {
   INT16 max_nvols;		/* Max size supported in the array */
   INT16 nvols;			/* Total number of permanent volumes */
-  float warn_ratio;		/* Warning ratio such as 0.15% */
   struct
   {
 #if !defined(HAVE_ATOMIC_BUILTINS) && defined(SERVER_MODE)
@@ -152,31 +161,31 @@ struct disk_cache_volinfo
     INT16 nvols;		/* Number of volumes for this purpose */
     int total_pages;		/* Number of total pages for this purpose */
     int free_pages;		/* Number of free pages for this purpose */
-    int warnat_free_pages;	/* Send a notification when close to running
-				   out of space */
   } purpose[DISK_UNKNOWN_PURPOSE];
   DISK_VOLFREEPGS *vols;	/* Really a pointer to more than one */
+  VOLID auto_extend_volid;
 };
 
 
 static DISK_CACHE_VOLINFO disk_Cache_struct = {
-  0, 0, 0.0,
+  0, 0,
   {
 #if !defined(HAVE_ATOMIC_BUILTINS) && defined(SERVER_MODE)
-   {PTHREAD_MUTEX_INITIALIZER, 0, 0, 0, 0},
-   {PTHREAD_MUTEX_INITIALIZER, 0, 0, 0, 0},
-   {PTHREAD_MUTEX_INITIALIZER, 0, 0, 0, 0},
-   {PTHREAD_MUTEX_INITIALIZER, 0, 0, 0, 0},
-   {PTHREAD_MUTEX_INITIALIZER, 0, 0, 0, 0}
+   {PTHREAD_MUTEX_INITIALIZER, 0, 0, 0},
+   {PTHREAD_MUTEX_INITIALIZER, 0, 0, 0},
+   {PTHREAD_MUTEX_INITIALIZER, 0, 0, 0},
+   {PTHREAD_MUTEX_INITIALIZER, 0, 0, 0},
+   {PTHREAD_MUTEX_INITIALIZER, 0, 0, 0}
 #else
-   {0, 0, 0, 0},
-   {0, 0, 0, 0},
-   {0, 0, 0, 0},
-   {0, 0, 0, 0},
-   {0, 0, 0, 0}
+   {0, 0, 0},
+   {0, 0, 0},
+   {0, 0, 0},
+   {0, 0, 0},
+   {0, 0, 0}
 #endif
    },
   NULL,
+  NULL_VOLID
 };
 
 static DISK_CACHE_VOLINFO *disk_Cache = &disk_Cache_struct;
@@ -230,8 +239,7 @@ static VOLID disk_find_goodvol_from_disk_cache (THREAD_ENTRY * thread_p,
 static INT16 disk_cache_get_purpose_info (THREAD_ENTRY * thread_p,
 					  DISK_VOLPURPOSE vol_purpose,
 					  INT16 * nvols, int *total_pages,
-					  int *free_pages,
-					  int *warnat_free_pages);
+					  int *free_pages);
 static const char *disk_purpose_to_string (DISK_VOLPURPOSE purpose);
 
 static bool disk_reinit (THREAD_ENTRY * thread_p, INT16 volid, void *ignore);
@@ -274,7 +282,6 @@ static INT32 disk_id_get_max_frees (THREAD_ENTRY * thread_p, INT16 volid,
 static DISK_ISVALID disk_id_isvalid (THREAD_ENTRY * thread_p, INT16 volid,
 				     INT32 at_pg1, INT32 allid);
 
-static INT32 disk_get_num_overhead_for_newvol (INT32 npages);
 static int disk_repair (THREAD_ENTRY * thread_p, INT16 volid, int dk_type);
 
 static int disk_dump_goodvol_system (THREAD_ENTRY * thread_p, FILE * fp,
@@ -438,6 +445,7 @@ disk_cache_goodvol_refresh_onevol (THREAD_ENTRY * thread_p, INT16 volid,
   DISK_VOLPURPOSE vol_purpose;
   INT32 vol_total_pages;
   INT32 vol_free_pages;
+  INT32 vol_max_pages;
   INT16 vol_index;
   int i;
 
@@ -459,7 +467,8 @@ disk_cache_goodvol_refresh_onevol (THREAD_ENTRY * thread_p, INT16 volid,
   if (xdisk_get_purpose_and_total_free_numpages (thread_p, volid,
 						 &vol_purpose,
 						 &vol_total_pages,
-						 &vol_free_pages) == volid)
+						 &vol_free_pages,
+						 &vol_max_pages) == volid)
     {
       switch (vol_purpose)
 	{
@@ -523,30 +532,12 @@ disk_cache_goodvol_refresh_onevol (THREAD_ENTRY * thread_p, INT16 volid,
 	  disk_Cache->purpose[vol_purpose].free_pages = 0;
 	}
 
-      /* Get the global purpose information */
-      if (vol_purpose == DISK_TEMPVOL_TEMP_PURPOSE)
+      if (vol_purpose == DISK_PERMVOL_GENERIC_PURPOSE
+	  && vol_total_pages < vol_max_pages)
 	{
-	  /* Will never give warning about out of space */
-	  disk_Cache->purpose[vol_purpose].warnat_free_pages = -1;
-	}
-      else
-	{
-	  disk_Cache->purpose[vol_purpose].warnat_free_pages =
-	    disk_Cache->purpose[vol_purpose].total_pages;
-
-	  while (disk_Cache->purpose[vol_purpose].warnat_free_pages >
-		 disk_Cache->purpose[vol_purpose].free_pages)
-	    {
-	      disk_Cache->purpose[vol_purpose].warnat_free_pages =
-		(int) ((float) disk_Cache->
-		       purpose[vol_purpose].warnat_free_pages *
-		       disk_Cache->warn_ratio);
-	    }
-
-	  if (disk_Cache->purpose[vol_purpose].warnat_free_pages < 10)
-	    {
-	      disk_Cache->purpose[vol_purpose].warnat_free_pages = 0;
-	    }
+	  assert (csect_check_own (thread_p,
+				   CSECT_DISK_REFRESH_GOODVOL) == 1);
+	  disk_Cache->auto_extend_volid = volid;
 	}
     }
 
@@ -623,11 +614,6 @@ disk_goodvol_refresh (THREAD_ENTRY * thread_p, int hint_max_nvols)
   /* Make sure that nobody is accessing the cache when refreshing. */
   if (disk_Cache->vols == NULL || hint_max_nvols < disk_Cache->max_nvols)
     {
-      if (disk_Cache->vols == NULL)
-	{
-	  disk_Cache->warn_ratio = DISK_WARN_OUTSPACE_FACTOR;
-	}
-
       ptr = realloc (disk_Cache->vols,
 		     sizeof (DISK_VOLFREEPGS) * hint_max_nvols);
       if (ptr == NULL)
@@ -642,6 +628,7 @@ disk_goodvol_refresh (THREAD_ENTRY * thread_p, int hint_max_nvols)
     }
 
   disk_Cache->nvols = 0;
+  disk_Cache->auto_extend_volid = NULL_VOLID;
 
   /* Initialize the volume information purpose */
   for (vol_purpose = DISK_PERMVOL_DATA_PURPOSE;
@@ -662,6 +649,46 @@ disk_goodvol_refresh (THREAD_ENTRY * thread_p, int hint_max_nvols)
   return answer;
 }
 
+/*
+ * disk_cache_get_auto_extend_volid () -
+ *   return:
+ */
+VOLID
+disk_cache_get_auto_extend_volid (THREAD_ENTRY * thread_p)
+{
+  VOLID ret_volid = NULL_VOLID;
+
+  if (csect_enter_as_reader (thread_p,
+			     CSECT_DISK_REFRESH_GOODVOL,
+			     INF_WAIT) == NO_ERROR)
+    {
+      ret_volid = disk_Cache->auto_extend_volid;
+      csect_exit (CSECT_DISK_REFRESH_GOODVOL);
+    }
+
+  return ret_volid;
+}
+
+/*
+ * disk_cache_set_auto_extend_volid () -
+ *   return:
+ */
+int
+disk_cache_set_auto_extend_volid (THREAD_ENTRY * thread_p, VOLID volid)
+{
+  if (csect_enter (thread_p, CSECT_DISK_REFRESH_GOODVOL, INF_WAIT) !=
+      NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  disk_Cache->auto_extend_volid = volid;
+
+  csect_exit (CSECT_DISK_REFRESH_GOODVOL);
+
+  return NO_ERROR;
+}
+
 /* TODO: STL::vector for disk_Cache->purpose */
 /* TODO: STL::list for disk_Cache->vols */
 /*
@@ -674,7 +701,6 @@ disk_goodvol_refresh (THREAD_ENTRY * thread_p, int hint_max_nvols)
  *                          for deallocated and positive for allocated
  *   do_update_total(in): Flag is true if total_pages should be updated
  *                        on purpose information
- *
  */
 static int
 disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
@@ -688,6 +714,11 @@ disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
   int rv;
 #endif
 
+#if defined (SERVER_MODE)
+  int total_free_pages = 0;
+  bool need_to_check_auto_volume_ext = false;
+#endif
+
   if (log_is_in_crash_recovery ())
     {
       /*
@@ -696,6 +727,18 @@ disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
        */
       return NO_ERROR;
     }
+
+#if defined (SERVER_MODE)
+  if (nfree_pages_toadd < 0
+      && prm_get_size_value (PRM_ID_GENERIC_VOL_PREALLOC_SIZE) > 0
+      && (vol_purpose == DISK_PERMVOL_DATA_PURPOSE
+	  || vol_purpose == DISK_PERMVOL_INDEX_PURPOSE
+	  || vol_purpose == DISK_PERMVOL_GENERIC_PURPOSE))
+    {
+      /* we need to check whether generic volume auto extension is needed */
+      need_to_check_auto_volume_ext = true;
+    }
+#endif
 
   if (csect_enter_as_reader
       (thread_p, CSECT_DISK_REFRESH_GOODVOL, INF_WAIT) != NO_ERROR)
@@ -774,71 +817,47 @@ disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
     }
   disk_Cache->purpose[vol_purpose].free_pages += nfree_pages_toadd;
 #endif /* HAVE_ATOMIC_BUILTINS */
+
   if (disk_Cache->purpose[vol_purpose].free_pages < 0)
     {
       assert (false);
       disk_Cache->purpose[vol_purpose].free_pages = 0;
     }
 
-  if (disk_Cache->purpose[vol_purpose].free_pages <
-      disk_Cache->purpose[vol_purpose].warnat_free_pages)
-    {
-      /* A warning/notification need to be issued */
-      disk_Cache->purpose[vol_purpose].warnat_free_pages =
-	(int) ((float) disk_Cache->purpose[vol_purpose].warnat_free_pages *
-	       disk_Cache->warn_ratio);
-
-      if (disk_Cache->purpose[vol_purpose].warnat_free_pages < 10)
-	{
-	  disk_Cache->purpose[vol_purpose].warnat_free_pages = 0;
-	}
-
-      /*
-       * Don't give purpose warnings when there is only one volume for that
-       * purpose or for volumes with temporary purposes
-       *
-       * Don't give a warning when we can have automatic volume extensions of
-       * generic volumes and the current purpose is generic
-       */
-
-      if (!(disk_Cache->purpose[vol_purpose].nvols <= 1
-	    || vol_purpose == DISK_TEMPVOL_TEMP_PURPOSE
-	    || vol_purpose == DISK_PERMVOL_GENERIC_PURPOSE))
-	{
-
-	  if (disk_Cache->purpose[vol_purpose].warnat_free_pages == 0)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ((vol_purpose == DISK_PERMVOL_GENERIC_PURPOSE)
-		       ? ER_DISK_GENERIC_LAST_ALMOST_OUT_OF_SPACE
-		       : ((vol_purpose == DISK_PERMVOL_DATA_PURPOSE)
-			  ? ER_DISK_DATA_LAST_ALMOST_OUT_OF_SPACE
-			  : ((vol_purpose == DISK_PERMVOL_INDEX_PURPOSE)
-			     ? ER_DISK_INDEX_LAST_ALMOST_OUT_OF_SPACE
-			     : ER_DISK_TEMP_LAST_ALMOST_OUT_OF_SPACE))),
-		      2, disk_Cache->purpose[vol_purpose].total_pages,
-		      disk_Cache->purpose[vol_purpose].free_pages);
-	    }
-	  else
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ((vol_purpose == DISK_PERMVOL_GENERIC_PURPOSE)
-		       ? ER_DISK_GENERIC_ALMOST_OUT_OF_SPACE
-		       : ((vol_purpose == DISK_PERMVOL_DATA_PURPOSE)
-			  ? ER_DISK_DATA_ALMOST_OUT_OF_SPACE
-			  : ((vol_purpose == DISK_PERMVOL_INDEX_PURPOSE)
-			     ? ER_DISK_INDEX_ALMOST_OUT_OF_SPACE
-			     : ER_DISK_TEMP_ALMOST_OUT_OF_SPACE))),
-		      2, disk_Cache->purpose[vol_purpose].total_pages,
-		      disk_Cache->purpose[vol_purpose].free_pages);
-	    }
-	}
-    }
-
 #if !defined(HAVE_ATOMIC_BUILTINS)
   pthread_mutex_unlock (&(disk_Cache->purpose[vol_purpose].update_lock));
 #endif /* ! HAVE_ATOMIC_BUILTINS */
+
+#if defined (SERVER_MODE)
+  if (need_to_check_auto_volume_ext == true)
+    {
+      /* calculate remained free pages of generic */
+      start_at = (disk_Cache->purpose[DISK_PERMVOL_DATA_PURPOSE].nvols +
+		  disk_Cache->purpose[DISK_PERMVOL_INDEX_PURPOSE].nvols);
+      end_at =
+	start_at + disk_Cache->purpose[DISK_PERMVOL_GENERIC_PURPOSE].nvols;
+
+      for (i = start_at; i < end_at; i++)
+	{
+	  total_free_pages += disk_Cache->vols[i].hint_freepages;
+	}
+    }
+#endif
+
   csect_exit (CSECT_DISK_REFRESH_GOODVOL);
+
+#if defined (SERVER_MODE)
+  if (need_to_check_auto_volume_ext == true
+      && total_free_pages <
+      (int) (prm_get_size_value (PRM_ID_GENERIC_VOL_PREALLOC_SIZE)
+	     / IO_PAGESIZE))
+    {
+      (void) boot_add_auto_volume_extension (thread_p, 1,
+					     DISK_CONTIGUOUS_PAGES,
+					     DISK_PERMVOL_GENERIC_PURPOSE,
+					     false);
+    }
+#endif
 
   return NO_ERROR;
 }
@@ -1031,24 +1050,42 @@ disk_add_auto_volume_extension (THREAD_ENTRY * thread_p, DKNPAGES min_npages,
 				DISK_VOLPURPOSE vol_purpose)
 {
   VOLID volid;
+  int max_npages;
+  int alloc_npages;
 
   if (min_npages <= 0)
     {
       min_npages = 1;
     }
 
-  min_npages += disk_get_num_overhead_for_newvol (min_npages);
-  min_npages = MIN (min_npages, VOL_MAX_NPAGES (IO_PAGESIZE));
+  if (vol_purpose == DISK_TEMPVOL_TEMP_PURPOSE)
+    {
+      max_npages = boot_get_temp_temp_vol_max_npages ();
+    }
+  else
+    {
+      max_npages = (DKNPAGES) (prm_get_size_value (PRM_ID_DB_VOLUME_SIZE)
+			       / IO_PAGESIZE);
+    }
+
+  if (max_npages < min_npages)
+    {
+      max_npages = min_npages;
+    }
+
+  alloc_npages = min_npages + disk_get_num_overhead_for_newvol (max_npages);
+  alloc_npages = MIN (alloc_npages, VOL_MAX_NPAGES (IO_PAGESIZE));
 
   if (vol_purpose == DISK_TEMPVOL_TEMP_PURPOSE
       || vol_purpose == DISK_EITHER_TEMP_PURPOSE)
     {
-      volid = boot_add_temp_volume (thread_p, min_npages);
+      volid = boot_add_temp_volume (thread_p, alloc_npages);
     }
   else
     {
-      volid = boot_add_auto_volume_extension (thread_p, min_npages,
-					      setpage_type, vol_purpose);
+      volid = boot_add_auto_volume_extension (thread_p, alloc_npages,
+					      setpage_type, vol_purpose,
+					      true);
     }
 
   return volid;
@@ -1077,10 +1114,16 @@ disk_find_goodvol (THREAD_ENTRY * thread_p, INT16 hint_volid,
   VOLID volid;
   bool continue_check;
 
+
+retry:
+  /* If volume is exteded automatically,
+   * we should retry find goodvol after volume extension.
+   */
   volid = disk_find_goodvol_from_disk_cache (thread_p, hint_volid,
 					     undesirable_volid,
 					     exp_numpages, setpage_type,
 					     vol_purpose);
+
   if (volid == NULL_VOLID)
     {
 #if defined (SERVER_MODE)
@@ -1093,35 +1136,19 @@ disk_find_goodvol (THREAD_ENTRY * thread_p, INT16 hint_volid,
 	    }
 	}
 
-      if (csect_enter (thread_p, CSECT_BOOT_SR_DBPARM, INF_WAIT) != NO_ERROR)
-	{
-	  return NULL_VOLID;
-	}
+      volid = disk_add_auto_volume_extension (thread_p, exp_numpages,
+					      setpage_type, vol_purpose);
 
-      /* check if any other thread has already created a new volume. */
-      volid = disk_find_goodvol_from_disk_cache (thread_p, hint_volid,
-						 undesirable_volid,
-						 exp_numpages, setpage_type,
-						 vol_purpose);
-      if (volid == NULL_VOLID)
+      if (volid != NULL_VOLID && vol_purpose == DISK_PERMVOL_GENERIC_PURPOSE)
 	{
-#if defined (SERVER_MODE)
-	  if (thread_get_check_interrupt (thread_p) == true)
-#endif
+	  /* volume is added or expanded, retry find */
+	  if (volid == undesirable_volid)
 	    {
-	      if (logtb_is_interrupted (thread_p, false,
-					&continue_check) == true)
-		{
-		  csect_exit (CSECT_BOOT_SR_DBPARM);
-		  return NULL_VOLID;
-		}
+	      /* this volume was expanded */
+	      undesirable_volid = NULL_VOLID;
 	    }
-
-	  volid = disk_add_auto_volume_extension (thread_p, exp_numpages,
-						  setpage_type, vol_purpose);
+	  goto retry;
 	}
-
-      csect_exit (CSECT_BOOT_SR_DBPARM);
     }
 
   if (volid == NULL_VOLID)
@@ -1491,7 +1518,6 @@ disk_find_goodvol_from_disk_cache (THREAD_ENTRY * thread_p, INT16 hint_volid,
  *   nvols(out): Number of volumes with the given purpose
  *   total_pages(out): Total number of pages with the above storage purpose
  *   free_pages(out): Total number of free pages with the above storage purpose
- *   warnat_free_pages(out): When a warning is set
  *
  * NOte : If the purpose is unknown, it find the total specifications for all
  *        volumes.
@@ -1499,8 +1525,7 @@ disk_find_goodvol_from_disk_cache (THREAD_ENTRY * thread_p, INT16 hint_volid,
 static INT16
 disk_cache_get_purpose_info (THREAD_ENTRY * thread_p,
 			     DISK_VOLPURPOSE vol_purpose, INT16 * nvols,
-			     int *total_pages, int *free_pages,
-			     int *warnat_free_pages)
+			     int *total_pages, int *free_pages)
 {
   if (csect_enter_as_reader (thread_p, CSECT_DISK_REFRESH_GOODVOL, INF_WAIT)
       != NO_ERROR)
@@ -1508,7 +1533,6 @@ disk_cache_get_purpose_info (THREAD_ENTRY * thread_p,
       *nvols = -1;
       *total_pages = -1;
       *free_pages = -1;
-      *warnat_free_pages = -1;
 
       return NULL_VOLID;
     }
@@ -1524,14 +1548,12 @@ disk_cache_get_purpose_info (THREAD_ENTRY * thread_p,
       *nvols = disk_Cache->purpose[vol_purpose].nvols;
       *total_pages = disk_Cache->purpose[vol_purpose].total_pages;
       *free_pages = disk_Cache->purpose[vol_purpose].free_pages;
-      *warnat_free_pages = disk_Cache->purpose[vol_purpose].warnat_free_pages;
     }
   else
     {
       *nvols = 0;
       *total_pages = 0;
       *free_pages = 0;
-      *warnat_free_pages = 0;
 
       for (vol_purpose = DISK_PERMVOL_DATA_PURPOSE;
 	   vol_purpose < DISK_UNKNOWN_PURPOSE;
@@ -1540,8 +1562,6 @@ disk_cache_get_purpose_info (THREAD_ENTRY * thread_p,
 	  *nvols += disk_Cache->purpose[vol_purpose].nvols;
 	  *total_pages += disk_Cache->purpose[vol_purpose].total_pages;
 	  *free_pages += disk_Cache->purpose[vol_purpose].free_pages;
-	  *warnat_free_pages +=
-	    disk_Cache->purpose[vol_purpose].warnat_free_pages;
 	}
     }
 
@@ -1671,11 +1691,8 @@ disk_get_all_total_free_numpages (THREAD_ENTRY * thread_p,
 				  DISK_VOLPURPOSE vol_purpose, INT16 * nvols,
 				  int *total_pages, int *free_pages)
 {
-  int ignore_warnat;
-
   return disk_cache_get_purpose_info (thread_p, vol_purpose, nvols,
-				      total_pages, free_pages,
-				      &ignore_warnat);
+				      total_pages, free_pages);
 }
 
 /*
@@ -1857,13 +1874,22 @@ disk_vhdr_set_vol_remarks (DISK_VAR_HEADER * vhdr, const char *vol_remarks)
  */
 INT16
 disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
-	     const char *vol_fullname, const char *vol_remarks, INT32 npages,
-	     int kbytes_to_be_written_per_sec, DISK_VOLPURPOSE vol_purpose)
+	     DBDEF_VOL_EXT_INFO * ext_info)
 {
   int vdes;			/* Volume descriptor           */
   DISK_VAR_HEADER *vhdr;	/* Pointer to volume header    */
   VPID vpid;			/* Volume and page identifiers */
   LOG_DATA_ADDR addr;		/* Address of logging data     */
+  const char *vol_fullname = ext_info->name;
+  INT32 max_npages = ext_info->max_npages;
+  int kbytes_to_be_written_per_sec = ext_info->max_writesize_in_sec;
+  DISK_VOLPURPOSE vol_purpose = ext_info->purpose;
+  INT32 extend_npages = ext_info->extend_npages;
+
+  if (vol_purpose != DISK_PERMVOL_GENERIC_PURPOSE)
+    {
+      assert_release (max_npages == extend_npages);
+    }
 
 #if defined(CUBRID_DEBUG)
   if (DB_PAGESIZE < sizeof (DISK_VAR_HEADER))
@@ -1923,13 +1949,13 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
   if (vol_purpose == DISK_TEMPVOL_TEMP_PURPOSE)
     {
       vdes = fileio_format (thread_p, dbname, vol_fullname, volid,
-			    npages, false, false, false, IO_PAGESIZE,
+			    max_npages, false, false, false, IO_PAGESIZE,
 			    kbytes_to_be_written_per_sec, false);
     }
   else
     {
       vdes = fileio_format (thread_p, dbname, vol_fullname, volid,
-			    npages, true, false, false, IO_PAGESIZE,
+			    extend_npages, true, false, false, IO_PAGESIZE,
 			    kbytes_to_be_written_per_sec, false);
     }
 
@@ -1962,13 +1988,17 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
   vhdr->volid = volid;
   vhdr->purpose = vol_purpose;
   vhdr->sect_npgs = DISK_SECTOR_NPAGES;
-  vhdr->total_pages = npages;
+  vhdr->total_pages = extend_npages;
   vhdr->free_pages = 0;
-  vhdr->total_sects = CEIL_PTVDIV (npages, DISK_SECTOR_NPAGES);
+  vhdr->total_sects = CEIL_PTVDIV (extend_npages, DISK_SECTOR_NPAGES);
+  vhdr->max_npages = max_npages;
   vhdr->free_sects = 0;
 
-  if (disk_set_alloctables (vol_purpose, vhdr->total_sects, npages,
-			    &vhdr->sect_alloctb_npages,
+  /* page/sect alloctable must be created with max_npages.
+   * not initial size(extend_npages) */
+  if (disk_set_alloctables (vol_purpose,
+			    CEIL_PTVDIV (max_npages, DISK_SECTOR_NPAGES),
+			    max_npages, &vhdr->sect_alloctb_npages,
 			    &vhdr->page_alloctb_npages,
 			    &vhdr->sect_alloctb_page1,
 			    &vhdr->page_alloctb_page1,
@@ -1979,30 +2009,20 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
       return NULL_VOLID;
     }
 
-  if (vhdr->sys_lastpage >= npages)
+  if (vhdr->sys_lastpage >= extend_npages)
     {
       pgbuf_unfix_and_init (thread_p, addr.pgptr);
 
       (void) pgbuf_invalidate_all (thread_p, volid);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_FORMAT_BAD_NPAGES, 2,
-	      vol_fullname, npages);
+	      vol_fullname, max_npages);
       return NULL_VOLID;
     }
 
-  vhdr->free_pages = npages - vhdr->sys_lastpage - 1;
+  vhdr->free_pages = vhdr->total_pages - vhdr->sys_lastpage - 1;
   vhdr->free_sects = (vhdr->total_sects -
 		      CEIL_PTVDIV ((vhdr->sys_lastpage + 1),
 				   DISK_SECTOR_NPAGES));
-
-  if (vol_purpose == DISK_TEMPVOL_TEMP_PURPOSE)
-    {
-      vhdr->warnat = -1;	/* Will never give warning about out of space */
-    }
-  else
-    {
-      vhdr->warnat =
-	(INT32) ((float) vhdr->total_pages * DISK_WARN_OUTSPACE_FACTOR);
-    }
 
   /*
    * Start allocating sectors a little bit away from the top of the volume.
@@ -2059,7 +2079,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
 
       return NULL_VOLID;
     }
-  if (disk_vhdr_set_vol_remarks (vhdr, vol_remarks) != NO_ERROR)
+  if (disk_vhdr_set_vol_remarks (vhdr, ext_info->comments) != NO_ERROR)
     {
       pgbuf_unfix_and_init (thread_p, addr.pgptr);
 
@@ -2076,7 +2096,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
 				 disk_vhdr_length_of_varfields (vhdr), vhdr);
     }
 
-  /* Even though the volume header page is not completed at this moment, 
+  /* Even though the volume header page is not completed at this moment,
    * to write REDO log for the header page is crucial for redo recovery
    * since disk_map_init and disk_set_link will write their redo logs.
    * These functions will access the header page during restart recovery.
@@ -2161,7 +2181,8 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
 	       */
 
 	      (void) pgbuf_invalidate_all (thread_p, volid);	/* Flush and invalidate */
-	      if (fileio_reset_volume (thread_p, vdes, vol_fullname, npages,
+	      if (fileio_reset_volume (thread_p, vdes, vol_fullname,
+				       max_npages,
 				       &init_with_temp_lsa) != NO_ERROR)
 		{
 		  /*
@@ -2271,8 +2292,6 @@ disk_expand_tmp (THREAD_ENTRY * thread_p, INT16 volid, INT32 min_pages,
 
   if (vhdr->purpose != DISK_TEMPVOL_TEMP_PURPOSE)
     {
-      /* We are not allow to expand permanent volumes. The only volumes that
-         can be expanded are temporary volumes for temporary purposes */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_DISK_CANNOT_EXPAND_PERMVOLS, 2,
 	      fileio_get_volume_label (volid, PEEK), vhdr->purpose);
@@ -2296,7 +2315,8 @@ disk_expand_tmp (THREAD_ENTRY * thread_p, INT16 volid, INT32 min_pages,
       npages_toadd = max_pages;
     }
 
-  if (fileio_expand (thread_p, volid, npages_toadd) != npages_toadd)
+  if (fileio_expand (thread_p, volid, npages_toadd, DISK_TEMPVOL_TEMP_PURPOSE)
+      != npages_toadd)
     {
       goto error;
     }
@@ -2312,7 +2332,7 @@ disk_expand_tmp (THREAD_ENTRY * thread_p, INT16 volid, INT32 min_pages,
   /*
    * Add any sectors to covert the new set of pages or until the end of
    * the sector allocation table. That is, the sector allocation table is
-   * not expand beyong its number of pages.
+   * not expand beyond its number of pages.
    */
 
   nsects_toadd = CEIL_PTVDIV (vhdr->total_pages, DISK_SECTOR_NPAGES);
@@ -2347,6 +2367,141 @@ error:
   pgbuf_unfix_and_init (thread_p, hdr_pgptr);
 
   return -1;
+}
+
+/*
+ * disk_expand_perm () -
+ *   return:
+ *   volid(in):
+ *   npages(in):
+ *
+ * Note:
+ */
+int
+disk_expand_perm (THREAD_ENTRY * thread_p, INT16 volid, INT32 npages)
+{
+  DISK_VAR_HEADER *vhdr;
+  PAGE_PTR hdr_pgptr = NULL;
+  VPID vpid;
+  INT32 maxpages;
+  INT32 nsects_toadd;
+  LOG_DATA_ADDR addr;
+  DISK_VOLPURPOSE purpose;
+  DISK_RECV_INIT_PAGES_INFO log_data;
+
+  vpid.volid = volid;
+  vpid.pageid = DISK_VOLHEADER_PAGE;
+
+  assert (csect_check_own (thread_p, CSECT_BOOT_SR_DBPARM) == 1);
+
+  hdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+			 PGBUF_UNCONDITIONAL_LATCH);
+  if (hdr_pgptr == NULL)
+    {
+      return -1;
+    }
+
+  vhdr = (DISK_VAR_HEADER *) hdr_pgptr;
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
+  if (vhdr->purpose != DISK_PERMVOL_GENERIC_PURPOSE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_DISK_CANNOT_EXPAND_PERMVOLS, 2,
+	      fileio_get_volume_label (volid, PEEK), vhdr->purpose);
+      assert_release (vhdr->purpose == DISK_PERMVOL_GENERIC_PURPOSE);
+      pgbuf_unfix_and_init (thread_p, hdr_pgptr);
+
+      return -1;
+    }
+
+  if (vhdr->max_npages - vhdr->total_pages < npages)
+    {
+      /* Add maximum pages that i can add */
+      npages = vhdr->max_npages - vhdr->total_pages;
+    }
+
+  purpose = vhdr->purpose;
+
+  log_data.volid = volid;
+  log_data.start_pageid = vhdr->total_pages;
+  log_data.npages = npages;
+
+  /* release disk header page latch while fileio_expand. */
+  pgbuf_unfix_and_init (thread_p, hdr_pgptr);
+
+  if (fileio_expand (thread_p, volid, npages, purpose) != npages)
+    {
+      return -1;
+    }
+
+  log_append_dboutside_redo (thread_p, RVDK_INIT_PAGES,
+			     sizeof (DISK_RECV_INIT_PAGES_INFO), &log_data);
+
+  hdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+			 PGBUF_UNCONDITIONAL_LATCH);
+  if (hdr_pgptr == NULL)
+    {
+      return -1;
+    }
+
+  vhdr = (DISK_VAR_HEADER *) hdr_pgptr;
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
+  /*
+   * Now apply the changes to the volume header.
+   * NOTE that the bitmap has already been initialized during the format of the
+   *      volume.
+   */
+  vhdr->total_pages += npages;
+  vhdr->free_pages += npages;
+
+  /*
+   * Add any sectors to covert the new set of pages or until the end of
+   * the sector allocation table. That is, the sector allocation table is
+   * not expand beyond its number of pages.
+   */
+
+  nsects_toadd = CEIL_PTVDIV (vhdr->total_pages, DISK_SECTOR_NPAGES);
+  if (nsects_toadd <= (vhdr->sect_alloctb_npages * DISK_PAGE_BIT))
+    {
+      nsects_toadd = nsects_toadd - vhdr->total_sects;
+    }
+  else
+    {
+      nsects_toadd = ((vhdr->sect_alloctb_npages * DISK_PAGE_BIT)
+		      - vhdr->total_sects);
+    }
+
+  vhdr->total_sects += nsects_toadd;
+  vhdr->free_sects += nsects_toadd;
+
+
+  addr.offset = 0;		/* Header is located at position zero */
+  addr.vfid = NULL;
+  addr.pgptr = hdr_pgptr;
+
+  log_append_redo_data (thread_p, RVDK_FORMAT, &addr,
+			sizeof (*vhdr) + disk_vhdr_length_of_varfields (vhdr),
+			vhdr);
+
+  /* Update total_pages and free_pages on disk_Cache. */
+  disk_cache_goodvol_update (thread_p, volid, vhdr->purpose, npages, true);
+
+  if (vhdr->total_pages >= vhdr->max_npages)
+    {
+      /* This generic volume was extended to the max */
+      disk_cache_set_auto_extend_volid (thread_p, NULL_VOLID);
+    }
+
+  DISK_VERIFY_VAR_HEADER (vhdr);
+
+  /* Set dirty header page, free it, and unlock it */
+  pgbuf_set_dirty (thread_p, hdr_pgptr, FREE);
+
+  return npages;
 }
 
 /*
@@ -3129,11 +3284,12 @@ xdisk_get_purpose (THREAD_ENTRY * thread_p, INT16 volid)
 {
   DISK_VOLPURPOSE purpose;
   INT32 ignore_ntotal_pages;
-  INT32 ignore_nfree_pages;
+  INT32 ignore_nfree_pages, ignore_nmax_pages;
 
   xdisk_get_purpose_and_total_free_numpages (thread_p, volid, &purpose,
 					     &ignore_ntotal_pages,
-					     &ignore_nfree_pages);
+					     &ignore_nfree_pages,
+					     &ignore_nmax_pages);
   return purpose;
 }
 
@@ -3146,7 +3302,8 @@ xdisk_get_purpose (THREAD_ENTRY * thread_p, INT16 volid)
  *              information of all volumes is requested.
  *   vol_purpose(out): Purpose for the given volume
  *   vol_ntotal_pages(out): Number of total pages for the given volume
- *   vol_nfree_pages(out): Number of total pages for the given volume
+ *   vol_nfree_pages(out): Number of free pages for the given volume
+ *   vol_nmax_pages(out): Number of maximum pages for the given volume.
  *
  * Note: The free number of pages should be taken as an approximation by the
  *       caller since we do not leave the page locked after the inquire. That
@@ -3157,7 +3314,8 @@ xdisk_get_purpose_and_total_free_numpages (THREAD_ENTRY * thread_p,
 					   VOLID volid,
 					   DISK_VOLPURPOSE * vol_purpose,
 					   int *vol_ntotal_pages,
-					   int *vol_nfree_pages)
+					   int *vol_nfree_pages,
+					   int *vol_nmax_pages)
 {
   DISK_VAR_HEADER *vhdr;
   PAGE_PTR hdr_pgptr = NULL;
@@ -3175,6 +3333,7 @@ xdisk_get_purpose_and_total_free_numpages (THREAD_ENTRY * thread_p,
 	  *vol_purpose = DISK_UNKNOWN_PURPOSE;
 	  *vol_ntotal_pages = -1;
 	  *vol_nfree_pages = -1;
+	  *vol_nmax_pages = -1;
 	  return NULL_VOLID;
 	}
 
@@ -3185,6 +3344,7 @@ xdisk_get_purpose_and_total_free_numpages (THREAD_ENTRY * thread_p,
       *vol_purpose = vhdr->purpose;
       *vol_ntotal_pages = vhdr->total_pages;
       *vol_nfree_pages = vhdr->free_pages;
+      *vol_nmax_pages = vhdr->max_npages;
 
       pgbuf_unfix_and_init (thread_p, hdr_pgptr);
     }
@@ -3195,6 +3355,7 @@ xdisk_get_purpose_and_total_free_numpages (THREAD_ENTRY * thread_p,
 					       vol_ntotal_pages,
 					       vol_nfree_pages);
       *vol_purpose = DISK_PERMVOL_GENERIC_PURPOSE;
+      *vol_nmax_pages = -1;
     }
 
   return volid;
@@ -3253,11 +3414,12 @@ xdisk_get_total_numpages (THREAD_ENTRY * thread_p, INT16 volid)
 {
   DISK_VOLPURPOSE ignore_purpose;
   INT32 ntotal_pages;
-  INT32 ignore_nfree_pages;
+  INT32 ignore_nfree_pages, ignore_nmax_pages;
 
   xdisk_get_purpose_and_total_free_numpages (thread_p, volid, &ignore_purpose,
 					     &ntotal_pages,
-					     &ignore_nfree_pages);
+					     &ignore_nfree_pages,
+					     &ignore_nmax_pages);
 
   return ntotal_pages;
 }
@@ -3275,12 +3437,13 @@ INT32
 xdisk_get_free_numpages (THREAD_ENTRY * thread_p, INT16 volid)
 {
   DISK_VOLPURPOSE ignore_purpose;
-  INT32 ignore_ntotal_pages;
+  INT32 ignore_ntotal_pages, ignore_nmax_pages;
   INT32 nfree_pages;
 
   xdisk_get_purpose_and_total_free_numpages (thread_p, volid, &ignore_purpose,
 					     &ignore_ntotal_pages,
-					     &nfree_pages);
+					     &nfree_pages,
+					     &ignore_nmax_pages);
 
   return nfree_pages;
 }
@@ -3858,33 +4021,6 @@ disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
       /* Update free_pages on disk_Cache. */
       disk_cache_goodvol_update (thread_p, volid, vol_purpose, -npages,
 				 false);
-
-      /*
-       * Send a notification message when the free pages in the volume falls
-       * below the value of the warnat field and the user has allowed us to
-       * send the notification message in this session.
-       */
-      if (disk_Cache->max_nvols > 0 && disk_Cache->warn_ratio > 0.0
-	  && vhdr->free_pages < vhdr->warnat)
-	{
-	  vhdr->warnat =
-	    (INT32) ((float) vhdr->free_pages * DISK_WARN_OUTSPACE_FACTOR);
-	  if (vhdr->warnat < 10)
-	    {
-	      vhdr->warnat = 0;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_DISK_LAST_ALMOST_OUT_OF_SPACE, 3,
-		      fileio_get_volume_label (volid, PEEK),
-		      vhdr->total_pages, vhdr->free_pages);
-	    }
-	  else
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_DISK_ALMOST_OUT_OF_SPACE, 3,
-		      fileio_get_volume_label (volid, PEEK),
-		      vhdr->total_pages, vhdr->free_pages);
-	    }
-	}
 
       if (sectid == DISK_SECTOR_WITH_ALL_PAGES
 	  && (vhdr->hint_allocsect >= (new_pageid / vhdr->sect_npgs))
@@ -5076,7 +5212,7 @@ disk_get_overhead_numpages (THREAD_ENTRY * thread_p, INT16 volid)
  *   return: Number of overhead pages
  *   npages(in): Size of the volume in pages
  */
-static INT32
+INT32
 disk_get_num_overhead_for_newvol (INT32 npages)
 {
   int nsects;
@@ -5489,18 +5625,14 @@ disk_vhdr_dump (FILE * fp, const DISK_VAR_HEADER * vhdr)
 		  vhdr->sect_npgs, vhdr->total_sects);
   (void) fprintf (fp, " FREE = %10d,\n %10s HINT_ALLOC = %10d\n",
 		  vhdr->free_sects, " ", vhdr->hint_allocsect);
-  (void) fprintf (fp, " PAGE:   TOTAL = %10d, FREE = %10d\n",
-		  vhdr->total_pages, vhdr->free_pages);
+  (void) fprintf (fp, " PAGE:   TOTAL = %10d, FREE = %10d, MAX = %10d\n",
+		  vhdr->total_pages, vhdr->free_pages, vhdr->max_npages);
   (void) fprintf (fp,
 		  " SAT:    SIZE IN PAGES = %10d, FIRST_PAGE = %5d\n",
 		  vhdr->sect_alloctb_npages, vhdr->sect_alloctb_page1);
   (void) fprintf (fp,
 		  " PAT:    SIZE IN PAGES = %10d, FIRST_PAGE = %5d\n",
 		  vhdr->page_alloctb_npages, vhdr->page_alloctb_page1);
-  (void) fprintf (fp,
-		  " Warning ratio = %.2f, NEXT AUTOMATIC WARNING TO RUNNING"
-		  " OUT OF SPACE AT = %d\n", DISK_WARN_OUTSPACE_FACTOR,
-		  vhdr->warnat);
 
   tmp_time = (time_t) vhdr->db_creation;
   (void) ctime_r (&tmp_time, time_val);
@@ -5787,8 +5919,8 @@ disk_vhdr_rv_undoredo_free_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   num_pages = *(INT32 *) rcv->data;
 
   vhdr->free_pages += num_pages;
-  disk_cache_goodvol_update (thread_p, vhdr->volid, vhdr->purpose, num_pages,
-			     false);
+  disk_cache_goodvol_update (thread_p, vhdr->volid, vhdr->purpose,
+			     num_pages, false);
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
@@ -5979,8 +6111,8 @@ disk_rv_alloctable_vhdr_only (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
   else
     {
       vhdr->free_pages += delta;
-      disk_cache_goodvol_update (thread_p, vhdr->volid, vhdr->purpose, delta,
-				 false);
+      disk_cache_goodvol_update (thread_p, vhdr->volid, vhdr->purpose,
+				 delta, false);
     }
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
@@ -6290,6 +6422,79 @@ disk_rv_dump_set_boot_hfid (FILE * fp, int length_ignore, void *data)
   hfid = (HFID *) data;
   fprintf (fp, "Heap: Volid = %d, Fileid = %d, Header_pageid = %d\n",
 	   hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
+}
+
+/*
+ *  disk_rv_redo_dboutside_init_pages ()
+ *
+ *   return: NO_ERROR
+ *   rcv(in): Recovery structure
+ */
+int
+disk_rv_redo_dboutside_init_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  DISK_RECV_INIT_PAGES_INFO *info;
+  VOLID volid;
+  int vol_fd;
+  FILEIO_PAGE *malloc_io_page_p;
+
+  info = (DISK_RECV_INIT_PAGES_INFO *) rcv->data;
+
+  volid = info->volid;
+  vol_fd = fileio_get_volume_descriptor (volid);
+
+  if (vol_fd == NULL_VOLDES)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY,
+	      1, fileio_get_volume_label (volid, PEEK));
+      return ER_FAILED;
+    }
+
+  malloc_io_page_p = (FILEIO_PAGE *) malloc (IO_PAGESIZE);
+  if (malloc_io_page_p == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, IO_PAGESIZE);
+      return ER_FAILED;
+    }
+
+  LSA_SET_NULL (&malloc_io_page_p->prv.lsa);
+  MEM_REGION_INIT (&malloc_io_page_p->page[0], DB_PAGESIZE);
+
+  if (fileio_initialize_pages (thread_p, vol_fd, malloc_io_page_p,
+			       info->start_pageid, info->npages,
+			       IO_PAGESIZE, -1) == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY,
+	      1, fileio_get_volume_label (volid, PEEK));
+      free_and_init (malloc_io_page_p);
+
+      return ER_FAILED;
+    }
+
+  free_and_init (malloc_io_page_p);
+
+  return NO_ERROR;
+}
+
+/*
+ * disk_rv_dump_init_pages () -
+ *
+ *   return: void
+ *   length_ignore(in): Length of Recovery Data
+ *   data(in):
+ */
+void
+disk_rv_dump_init_pages (FILE * fp, int length_ignore, void *data)
+{
+  DISK_RECV_INIT_PAGES_INFO *info;
+  VOLID volid;
+  int vol_fd;
+
+  info = (DISK_RECV_INIT_PAGES_INFO *) data;
+
+  fprintf (fp, "Volid = %d, start pageid = %d, npages = %d\n",
+	   info->volid, info->start_pageid, info->npages);
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)

@@ -508,10 +508,6 @@ static VOLID fileio_get_volume_id (int vdes);
 static bool fileio_is_volume_label_equal (THREAD_ENTRY * thread_p,
 					  FILEIO_VOLUME_INFO * vol_info_p,
 					  APPLY_ARG * arg);
-static void *fileio_initialize_pages (THREAD_ENTRY * thread_p, int vdes,
-				      void *io_pgptr, DKNPAGES npages,
-				      size_t page_size,
-				      int kbytes_to_be_written_per_sec);
 static int fileio_expand_permanent_volume_info (FILEIO_VOLUME_HEADER * header,
 						int volid);
 static int fileio_expand_temporary_volume_info (FILEIO_VOLUME_HEADER * header,
@@ -1954,10 +1950,10 @@ fileio_unlock (const char *vol_label_p, int vol_fd,
  *   npages(in): Number of pages to initialize
  *   kbytes_to_be_written_per_sec : size to add volume per sec
  */
-static void *
+void *
 fileio_initialize_pages (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
-			 DKNPAGES npages, size_t page_size,
-			 int kbytes_to_be_written_per_sec)
+			 DKNPAGES start_pageid, DKNPAGES npages,
+			 size_t page_size, int kbytes_to_be_written_per_sec)
 {
   PAGEID page_id;
 #if defined (SERVER_MODE)
@@ -1993,7 +1989,7 @@ fileio_initialize_pages (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
     }
 #endif
 
-  for (page_id = 0; page_id < npages; page_id++)
+  for (page_id = start_pageid; page_id < npages + start_pageid; page_id++)
     {
 #if !defined(CS_MODE)
       /* check for interrupts from user (i.e. Ctrl-C) */
@@ -2523,7 +2519,7 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p,
 			   page_size) == malloc_io_page_p)
 	    && (is_sweep_clean == false
 		|| fileio_initialize_pages (thread_p, vol_fd,
-					    malloc_io_page_p, npages,
+					    malloc_io_page_p, 0, npages,
 					    page_size,
 					    kbytes_to_be_written_per_sec) ==
 		malloc_io_page_p)))
@@ -2567,12 +2563,12 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p,
 }
 
 /*
- * fileio_expand () - Expand a temporary volume with the given number of data pages
+ * fileio_expand () -  Expand a volume with the given number of data pages
  *   return: npages
  *   volid(in): Volume identifier
  *   npages_toadd(in): Number of pages to add
  *
- * Note: The pages are not sweep_clean/initialized since they are part of
+ * Note: Pages are not sweep_clean/initialized if they are part of
  *       temporary volumes.
  *
  *       NOTE: No checking for temporary volumes is performed by this function.
@@ -2584,14 +2580,15 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p,
  *	  written at their designated places.
  */
 DKNPAGES
-fileio_expand (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES npages_toadd)
+fileio_expand (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES npages_toadd,
+	       DISK_VOLPURPOSE purpose)
 {
   int vol_fd;
   const char *vol_label_p;
   FILEIO_PAGE *malloc_io_page_p;
-  off_t offset;
+  off_t start_offset, last_offset;
   DKNPAGES max_npages;
-  DKNPAGES npages;
+  DKNPAGES start_pageid, last_pageid;
 #if defined(WINDOWS) && defined(SERVER_MODE)
   int rv;
   pthread_mutex_t *io_mutex;
@@ -2634,30 +2631,32 @@ fileio_expand (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES npages_toadd)
 
   /* Find the offset to the end of the file, then add the given number of
      pages */
-  offset = lseek (vol_fd, 0, SEEK_END);
+  start_offset = lseek (vol_fd, 0, SEEK_END);
 #if defined(WINDOWS) && defined(SERVER_MODE)
   pthread_mutex_unlock (io_mutex);
 #endif
-  offset += FILEIO_GET_FILE_SIZE (IO_PAGESIZE, npages_toadd - 1);
+  last_offset = start_offset +
+    FILEIO_GET_FILE_SIZE (IO_PAGESIZE, npages_toadd - 1);
 
   /*
    * Make sure that there is enough pages on the given partition before we
    * create and initialize the volume.
    * We should also check for overflow condition.
    */
-  if (npages_toadd > max_npages || offset < npages_toadd)
+  if (npages_toadd > max_npages || last_offset < npages_toadd)
     {
-      if (offset < npages_toadd)
+      if (last_offset < npages_toadd)
 	{
 	  /* Overflow */
-	  offset = FILEIO_GET_FILE_SIZE (IO_PAGESIZE,
-					 VOL_MAX_NPAGES (IO_PAGESIZE));
+	  last_offset = FILEIO_GET_FILE_SIZE (IO_PAGESIZE,
+					      VOL_MAX_NPAGES (IO_PAGESIZE));
 	}
       if (npages_toadd > max_npages && max_npages >= 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_EXPAND_OUT_OF_SPACE,
-		  5, vol_label_p, npages_toadd, offset / 1024, max_npages,
-		  FILEIO_GET_FILE_SIZE (IO_PAGESIZE / 1024, max_npages));
+		  5, vol_label_p, npages_toadd, last_offset / 1024,
+		  max_npages, FILEIO_GET_FILE_SIZE (IO_PAGESIZE / 1024,
+						    max_npages));
 	}
       else
 	{
@@ -2677,24 +2676,46 @@ fileio_expand (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES npages_toadd)
   LSA_SET_NULL (&malloc_io_page_p->prv.lsa);
   MEM_REGION_INIT (&malloc_io_page_p->page[0], DB_PAGESIZE);
 
-  /* Write the last page */
-  npages = (DKNPAGES) (offset / IO_PAGESIZE) + 1;
+  start_pageid = (DKNPAGES) (start_offset / IO_PAGESIZE);
+  last_pageid = (DKNPAGES) (last_offset / IO_PAGESIZE);
 
-  if (fileio_write (thread_p, vol_fd, malloc_io_page_p, npages - 1,
-		    IO_PAGESIZE) != malloc_io_page_p)
+  if (purpose == DISK_TEMPVOL_TEMP_PURPOSE)
+    {
+      /* Write the last page */
+      if (fileio_write (thread_p, vol_fd, malloc_io_page_p, last_pageid,
+			IO_PAGESIZE) != malloc_io_page_p)
+	{
+	  npages_toadd = -1;
+	}
+    }
+  else
+    {
+      /* support generic volume only */
+      assert_release (purpose == DISK_PERMVOL_GENERIC_PURPOSE);
+
+      if (fileio_initialize_pages (thread_p, vol_fd,
+				   malloc_io_page_p, start_pageid,
+				   last_pageid - start_pageid + 1,
+				   IO_PAGESIZE, -1) == NULL)
+	{
+	  npages_toadd = -1;
+	}
+    }
+
+  if (npages_toadd < 0 && er_errid () != ER_INTERRUPTED)
     {
       /* It is likely that we run of space. The partition where the volume was
          created has been used since we checked above. */
       max_npages = fileio_get_number_of_partition_free_pages (vol_label_p,
 							      IO_PAGESIZE);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_EXPAND_OUT_OF_SPACE, 5,
-	      vol_label_p, npages_toadd, offset / 1024, max_npages,
-	      FILEIO_GET_FILE_SIZE (IO_PAGESIZE / 1024, max_npages));
-      free_and_init (malloc_io_page_p);
-      return -1;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_EXPAND_OUT_OF_SPACE,
+	      5, vol_label_p, npages_toadd, last_offset / 1024,
+	      max_npages, FILEIO_GET_FILE_SIZE (IO_PAGESIZE / 1024,
+						max_npages));
     }
 
   free_and_init (malloc_io_page_p);
+
   return npages_toadd;
 }
 

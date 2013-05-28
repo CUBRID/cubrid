@@ -3797,7 +3797,7 @@ sboot_add_volume_extension (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_string_nocopy (request, &ext_info.path);
   ptr = or_unpack_string_nocopy (ptr, &ext_info.name);
   ptr = or_unpack_string_nocopy (ptr, &ext_info.comments);
-  ptr = or_unpack_int (ptr, &ext_info.npages);
+  ptr = or_unpack_int (ptr, &ext_info.max_npages);
   ptr = or_unpack_int (ptr, &ext_info.max_writesize_in_sec);
   ptr = or_unpack_int (ptr, &tmp);
   ext_info.purpose = (DB_VOLPURPOSE) tmp;
@@ -5376,8 +5376,9 @@ sdk_purpose_totalpgs_and_freepgs (THREAD_ENTRY * thread_p,
   DISK_VOLPURPOSE vol_purpose;
   DKNPAGES vol_ntotal_pages;
   DKNPAGES vol_nfree_pages;
+  DKNPAGES vol_nmax_pages;
   char *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 4) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 5) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   (void) or_unpack_int (request, &int_volid);
@@ -5386,7 +5387,8 @@ sdk_purpose_totalpgs_and_freepgs (THREAD_ENTRY * thread_p,
   volid = xdisk_get_purpose_and_total_free_numpages (thread_p, volid,
 						     &vol_purpose,
 						     &vol_ntotal_pages,
-						     &vol_nfree_pages);
+						     &vol_nfree_pages,
+						     &vol_nmax_pages);
   if (volid == NULL_VOLID)
     {
       return_error_to_client (thread_p, rid);
@@ -5395,6 +5397,7 @@ sdk_purpose_totalpgs_and_freepgs (THREAD_ENTRY * thread_p,
   ptr = or_pack_int (reply, vol_purpose);
   ptr = or_pack_int (ptr, vol_ntotal_pages);
   ptr = or_pack_int (ptr, vol_nfree_pages);
+  ptr = or_pack_int (ptr, vol_nmax_pages);
   ptr = or_pack_int (ptr, (int) volid);
   css_send_data_to_client (thread_p->conn_entry, rid, reply,
 			   OR_ALIGNED_BUF_SIZE (a_reply));

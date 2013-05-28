@@ -42,11 +42,35 @@
 #include "log_comm.h"
 #include "file_io.h"
 
+#if defined (SERVER_MODE)
+#define AUTO_ADD_VOL_EXPAND_NPAGES        (20)
+
+typedef struct auto_addvol_job AUTO_ADDVOL_JOB;
+struct auto_addvol_job
+{
+  pthread_mutex_t lock;
+  pthread_cond_t cond;
+  DBDEF_VOL_EXT_INFO ext_info;
+  VOLID ret_volid;
+};
+
+#define BOOT_AUTO_ADDVOL_JOB_INITIALIZER                          \
+  { PTHREAD_MUTEX_INITIALIZER,                                    \
+    PTHREAD_COND_INITIALIZER,                                     \
+    {NULL, NULL, NULL, 0, 0, 0, DISK_PERMVOL_DATA_PURPOSE, false},\
+    NULL_VOLID                                                    \
+  };
+
+#endif
 
 typedef enum boot_server_status BOOT_SERVER_STATUS;
 enum boot_server_status
 { BOOT_SERVER_UP = 1, BOOT_SERVER_DOWN, BOOT_SERVER_MAINTENANCE };
 extern BOOT_SERVER_STATUS boot_Server_status;
+
+#if defined (SERVER_MODE)
+extern AUTO_ADDVOL_JOB boot_Auto_addvol_job;
+#endif
 
 #define BO_IS_SERVER_RESTARTED() \
         (boot_Server_status == BOOT_SERVER_UP \
@@ -78,7 +102,8 @@ extern DKNPAGES boot_max_pages_for_new_temp_volume (void);
 extern VOLID boot_add_auto_volume_extension (THREAD_ENTRY * thread_p,
 					     DKNPAGES min_npages,
 					     DISK_SETPAGE_TYPE setpage_type,
-					     DISK_VOLPURPOSE vol_purpose);
+					     DISK_VOLPURPOSE vol_purpose,
+					     bool wait);
 extern VOLID boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES npages);
 extern DKNPAGES boot_get_temp_temp_vol_max_npages (void);
 extern int boot_add_temp_volume_and_file (VFID * vfid, DKNPAGES npages);
@@ -126,5 +151,4 @@ extern int boot_compact_start (THREAD_ENTRY * thread_p);
 extern int boot_compact_stop (THREAD_ENTRY * thread_p);
 extern bool boot_can_compact (THREAD_ENTRY * thread_p);
 extern bool boot_set_skip_check_ct_classes (bool val);
-
 #endif /* _BOOT_SR_H_ */

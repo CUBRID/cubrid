@@ -146,7 +146,8 @@ extern VOLID
 disk_get_purpose_and_total_free_numpages (VOLID volid,
 					  DISK_VOLPURPOSE * vol_purpose,
 					  DKNPAGES * vol_ntotal_pages,
-					  DKNPAGES * vol_nfree_pages);
+					  DKNPAGES * vol_nfree_pages,
+					  DKNPAGES * vol_nmax_pages);
 extern char *disk_get_fullname (VOLID volid, char *vol_fullname);
 extern LOG_COPY *log_client_get_first_postpone (LOG_LSA * next_lsa);
 extern LOG_COPY *log_client_get_next_postpone (LOG_LSA * next_lsa);

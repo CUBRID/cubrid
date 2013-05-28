@@ -470,6 +470,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_INTL_COLLATION "intl_collation"
 
+#define PRM_NAME_GENERIC_VOL_PREALLOC_SIZE "generic_vol_prealloc_size"
+
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -1246,6 +1248,11 @@ static bool prm_intl_check_input_string_default = false;
 
 int PRM_CHECK_PEER_ALIVE = CSS_CHECK_PEER_ALIVE_BOTH;
 static int prm_check_peer_alive_default = CSS_CHECK_PEER_ALIVE_BOTH;
+
+UINT64 PRM_GENERIC_VOL_PREALLOC_SIZE;
+static UINT64 prm_generic_vol_prealloc_size_default = 52428800ULL;	/* 50M */
+static UINT64 prm_generic_vol_prealloc_size_lower = 0ULL;
+static UINT64 prm_generic_vol_prealloc_size_upper = 21474836480ULL;	/* 20G */
 
 int PRM_SQL_TRACE_SLOW_MSECS = -1;
 static int prm_sql_trace_slow_msecs_default = -1;
@@ -2623,6 +2630,14 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_intl_collation_default,
    (void *) &PRM_INTL_COLLATION,
    (void *) NULL, (void *) NULL,
+   (char *) NULL},
+  {PRM_NAME_GENERIC_VOL_PREALLOC_SIZE,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   PRM_SIZE,
+   (void *) &prm_generic_vol_prealloc_size_default,
+   (void *) &PRM_GENERIC_VOL_PREALLOC_SIZE,
+   (void *) &prm_generic_vol_prealloc_size_upper,
+   (void *) &prm_generic_vol_prealloc_size_lower,
    (char *) NULL}
 };
 

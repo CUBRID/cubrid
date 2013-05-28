@@ -91,12 +91,12 @@ struct thread_manager
 };
 
 /* deadlock + checkpoint + oob + page flush + log flush + flush control
- * + session control + purge archive logs + log clock */
+ * + session control + purge archive logs + log clock + auto_volume_expansion */
 #if defined(HAVE_ATOMIC_BUILTINS)
-static const int PREDEFINED_DAEMON_THREAD_NUM = 9;
+static const int PREDEFINED_DAEMON_THREAD_NUM = 10;
 #define USE_LOG_CLOCK_THREAD
 #else /* HAVE_ATOMIC_BUILTINS */
-static const int PREDEFINED_DAEMON_THREAD_NUM = 8;
+static const int PREDEFINED_DAEMON_THREAD_NUM = 9;
 #endif /* HAVE_ATOMIC_BUILTINS */
 
 static const int THREAD_RETRY_MAX_SLAM_TIMES = 10;
@@ -158,6 +158,12 @@ thread_session_control_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_log_clock_thread (void *);
 #endif /* USE_LOG_CLOCK_THREAD */
+DAEMON_THREAD_MONITOR thread_Auto_volume_expansion_thread =
+  { 0, false, false, false, PTHREAD_MUTEX_INITIALIZER,
+  PTHREAD_COND_INITIALIZER
+};
+static THREAD_RET_T THREAD_CALLING_CONVENTION
+thread_auto_volume_expansion_thread (void *);
 
 static int css_initialize_sync_object (void);
 static int thread_wakeup_internal (THREAD_ENTRY * thread_p, int resume_reason,
@@ -771,6 +777,37 @@ thread_start_workers (void)
     }
 #endif /* USE_LOG_CLOCK_THREAD */
 
+  /* start auto volume expansion thread */
+  thread_Auto_volume_expansion_thread.thread_index = thread_index++;
+  thread_p =
+    &thread_Manager.thread_array[thread_Auto_volume_expansion_thread.
+				 thread_index];
+  r = pthread_mutex_lock (&thread_p->th_entry_lock);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
+      return ER_CSS_PTHREAD_MUTEX_LOCK;
+    }
+
+  r = pthread_create (&thread_p->tid, &thread_attr,
+		      thread_auto_volume_expansion_thread, thread_p);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_CREATE, 0);
+      pthread_mutex_unlock (&thread_p->th_entry_lock);
+      return ER_CSS_PTHREAD_CREATE;
+    }
+
+  pthread_mutex_unlock (&thread_p->th_entry_lock);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
+      return ER_CSS_PTHREAD_MUTEX_UNLOCK;
+    }
+
   /* destroy thread_attribute */
   r = pthread_attr_destroy (&thread_attr);
   if (r != 0)
@@ -930,6 +967,7 @@ thread_stop_active_daemons (void)
   thread_wakeup_flush_control_thread ();
   thread_wakeup_log_flush_thread ();
   thread_wakeup_session_control_thread ();
+  thread_wakeup_auto_volume_expansion_thread ();
 
 loop:
   repeat_loop = false;
@@ -2408,6 +2446,21 @@ css_initialize_sync_object (void)
       return ER_CSS_PTHREAD_MUTEX_INIT;
     }
 
+  r = pthread_cond_init (&thread_Auto_volume_expansion_thread.cond, NULL);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_COND_INIT, 0);
+      return ER_CSS_PTHREAD_COND_INIT;
+    }
+  r = pthread_mutex_init (&thread_Auto_volume_expansion_thread.lock, NULL);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_INIT, 0);
+      return ER_CSS_PTHREAD_MUTEX_INIT;
+    }
+
   r = pthread_cond_init (&thread_Checkpoint_thread.cond, NULL);
   if (r != 0)
     {
@@ -3363,6 +3416,148 @@ thread_log_clock_thread (void *arg_p)
   return (THREAD_RET_T) 0;
 }
 #endif /* USE_LOG_CLOCK_THREAD */
+
+
+/*
+ * thread_auto_volume_expansion_thread() -
+ *   return:
+ */
+static THREAD_RET_T THREAD_CALLING_CONVENTION
+thread_auto_volume_expansion_thread (void *arg_p)
+{
+#if !defined(HPUX)
+  THREAD_ENTRY *tsd_ptr;
+#endif /* !HPUX */
+  int rv;
+  short volid;
+  int npages;
+
+  tsd_ptr = (THREAD_ENTRY *) arg_p;
+  /* wait until THREAD_CREATE() finish */
+  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
+  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
+
+  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
+  tsd_ptr->type = TT_DAEMON;
+  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
+
+  thread_Auto_volume_expansion_thread.is_valid = true;
+
+  thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
+
+  pthread_mutex_init (&boot_Auto_addvol_job.lock, NULL);
+  boot_Auto_addvol_job.ret_volid = NULL_VOLID;
+  memset (&boot_Auto_addvol_job.ext_info, '\0', sizeof (DBDEF_VOL_EXT_INFO));
+
+  rv = pthread_cond_init (&boot_Auto_addvol_job.cond, NULL);
+  if (rv != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_COND_INIT, 0);
+      tsd_ptr->status = TS_DEAD;
+
+      return (THREAD_RET_T) 0;
+    }
+
+  while (!tsd_ptr->shutdown)
+    {
+      er_clear ();
+      rv = pthread_mutex_lock (&thread_Auto_volume_expansion_thread.lock);
+      thread_Auto_volume_expansion_thread.is_running = false;
+
+      if (tsd_ptr->shutdown)
+	{
+	  pthread_mutex_unlock (&thread_Auto_volume_expansion_thread.lock);
+	  break;
+	}
+      pthread_cond_wait (&thread_Auto_volume_expansion_thread.cond,
+			 &thread_Auto_volume_expansion_thread.lock);
+
+      thread_Auto_volume_expansion_thread.is_running = true;
+
+      pthread_mutex_unlock (&thread_Auto_volume_expansion_thread.lock);
+
+      rv = pthread_mutex_lock (&boot_Auto_addvol_job.lock);
+      npages = boot_Auto_addvol_job.ext_info.extend_npages;
+      if (npages <= 0)
+	{
+	  pthread_mutex_unlock (&boot_Auto_addvol_job.lock);
+	  continue;
+	}
+      pthread_mutex_unlock (&boot_Auto_addvol_job.lock);
+
+      volid = disk_cache_get_auto_extend_volid (tsd_ptr);
+
+      if (volid != NULL_VOLID)
+	{
+	  if (csect_enter (tsd_ptr, CSECT_BOOT_SR_DBPARM, INF_WAIT) ==
+	      NO_ERROR)
+	    {
+	      if (disk_expand_perm (tsd_ptr, volid, npages) <= 0)
+		{
+		  volid = NULL_VOLID;
+		}
+
+	      csect_exit (CSECT_BOOT_SR_DBPARM);
+	    }
+	  else
+	    {
+	      volid = NULL_VOLID;
+	    }
+	}
+
+      pthread_mutex_lock (&boot_Auto_addvol_job.lock);
+      boot_Auto_addvol_job.ret_volid = volid;
+      (void) pthread_cond_broadcast (&boot_Auto_addvol_job.cond);
+      memset (&boot_Auto_addvol_job.ext_info, '\0',
+	      sizeof (DBDEF_VOL_EXT_INFO));
+      pthread_mutex_unlock (&boot_Auto_addvol_job.lock);
+    }
+
+  (void) pthread_mutex_destroy (&boot_Auto_addvol_job.lock);
+  (void) pthread_cond_destroy (&boot_Auto_addvol_job.cond);
+
+  er_clear ();
+  thread_Auto_volume_expansion_thread.is_valid = false;
+  tsd_ptr->status = TS_DEAD;
+
+  return (THREAD_RET_T) 0;
+}
+
+/*
+ * thread_auto_volume_expansion_thread_is_running () -
+ *   return:
+ */
+bool
+thread_auto_volume_expansion_thread_is_running (void)
+{
+  int rv;
+  bool ret;
+
+  rv = pthread_mutex_lock (&thread_Auto_volume_expansion_thread.lock);
+  ret = thread_Auto_volume_expansion_thread.is_running;
+  pthread_mutex_unlock (&thread_Auto_volume_expansion_thread.lock);
+
+  return ret;
+}
+
+/*
+ *  thread_wakeup_auto_volume_expansion_thread() -
+ *   return:
+ */
+void
+thread_wakeup_auto_volume_expansion_thread (void)
+{
+  int rv;
+
+  rv = pthread_mutex_lock (&thread_Auto_volume_expansion_thread.lock);
+  if (!thread_Auto_volume_expansion_thread.is_running)
+    {
+      pthread_cond_signal (&thread_Auto_volume_expansion_thread.cond);
+    }
+  pthread_mutex_unlock (&thread_Auto_volume_expansion_thread.lock);
+}
+
 /*
  * thread_slam_tran_index() -
  *   return:

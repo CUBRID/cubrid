@@ -335,7 +335,7 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
   DBDEF_VOL_EXT_INFO ext_info;
 
   ext_info.overwrite = false;
-  ext_info.npages = 0;
+  ext_info.max_npages = 0;
   if (utility_get_option_string_table_size (arg_map) < 1)
     {
       goto print_addvol_usage;
@@ -354,7 +354,7 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
   if (volext_npages_string)
     {
       util_print_deprecated ("number-of-pages");
-      ext_info.npages = atoi (volext_npages_string);
+      ext_info.max_npages = atoi (volext_npages_string);
     }
 
   volext_size_str = utility_get_option_string_value (arg_map,
@@ -473,17 +473,17 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
 	  volext_size = prm_get_size_value (PRM_ID_DB_VOLUME_SIZE);
 	}
 
-      if (ext_info.npages == 0)
+      if (ext_info.max_npages == 0)
 	{
-	  ext_info.npages = (int) (volext_size / IO_PAGESIZE);
+	  ext_info.max_npages = (int) (volext_size / IO_PAGESIZE);
 	}
 
-      if (ext_info.npages <= 0)
+      if (ext_info.max_npages <= 0)
 	{
 	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 					   MSGCAT_UTIL_SET_ADDVOLDB,
 					   ADDVOLDB_MSG_BAD_NPAGES),
-		   ext_info.npages);
+		   ext_info.max_npages);
 	  db_shutdown ();
 	  goto error_exit;
 	}
@@ -822,6 +822,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   T_SPACEDB_SIZE_UNIT size_unit_type;
   int vol_ntotal_pages;
   int vol_nfree_pages;
+  int vol_nmax_pages;
   char vol_label[PATH_MAX];
   UINT64 db_ntotal_pages, db_nfree_pages;
   UINT64 db_summarize_ntotal_pages[SPACEDB_NUM_VOL_PURPOSE];
@@ -968,8 +969,11 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 
   for (i = 0; i < nvols; i++)
     {
-      if (db_purpose_totalpgs_freepgs (i, &vol_purpose, &vol_ntotal_pages,
-				       &vol_nfree_pages) != NULL_VOLID)
+      if (disk_get_purpose_and_total_free_numpages (i, &vol_purpose,
+						    &vol_ntotal_pages,
+						    &vol_nfree_pages,
+						    &vol_nmax_pages) !=
+	  NULL_VOLID)
 	{
 	  db_ntotal_pages += vol_ntotal_pages;
 	  db_nfree_pages += vol_nfree_pages;
@@ -1046,9 +1050,12 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 
   for (i = 0; i < nvols; i++)
     {
-      if (db_purpose_totalpgs_freepgs ((temp_volid + i), &vol_purpose,
-				       &vol_ntotal_pages,
-				       &vol_nfree_pages) != NULL_VOLID)
+      if (disk_get_purpose_and_total_free_numpages ((temp_volid + i),
+						    &vol_purpose,
+						    &vol_ntotal_pages,
+						    &vol_nfree_pages,
+						    &vol_nmax_pages) !=
+	  NULL_VOLID)
 	{
 	  db_ntotal_pages += vol_ntotal_pages;
 	  db_nfree_pages += vol_nfree_pages;
