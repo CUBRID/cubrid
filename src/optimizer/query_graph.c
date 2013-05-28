@@ -8559,6 +8559,22 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
   bitset_init (&order_nodes, env);
   bitset_init (&QO_ENV_SORT_LIMIT_NODES (env), env);
 
+  query = QO_ENV_PT_TREE (env);
+  if (!PT_IS_SELECT (query))
+    {
+      goto abandon_stop_limit;
+    }
+  if (query->info.query.all_distinct != PT_ALL
+      || query->info.query.q.select.group_by != NULL
+      || query->info.query.q.select.connect_by != NULL)
+    {
+      goto abandon_stop_limit;
+    }
+  if (query->info.query.q.select.hint & PT_HINT_NO_SORT_LIMIT)
+    {
+      goto abandon_stop_limit;
+    }
+
   if (pt_get_query_limit_value (QO_ENV_PARSER (env), QO_ENV_PT_TREE (env),
 				&QO_ENV_LIMIT_VALUE (env)) != NO_ERROR)
     {
@@ -8582,18 +8598,6 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
       <= 1)
     {
       /* No need to apply this optimization on a single node */
-      goto abandon_stop_limit;
-    }
-
-  query = QO_ENV_PT_TREE (env);
-  if (!PT_IS_SELECT (query))
-    {
-      goto abandon_stop_limit;
-    }
-  if (query->info.query.all_distinct != PT_ALL
-      || query->info.query.q.select.group_by != NULL
-      || query->info.query.q.select.connect_by != NULL)
-    {
       goto abandon_stop_limit;
     }
 

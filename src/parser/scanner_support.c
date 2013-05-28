@@ -373,6 +373,7 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		}
 	      break;
 	    case PT_HINT_NO_MULTI_RANGE_OPT:
+	    case PT_HINT_NO_SORT_LIMIT:
 	      if (node->node_type == PT_SELECT)
 		{
 		  node->info.query.q.select.hint |= hint_table[i].hint;

@@ -17702,7 +17702,7 @@ pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser, PT_NODE * node,
   int hint_flags = PT_HINT_ORDERED | PT_HINT_USE_IDX_DESC
     | PT_HINT_NO_COVERING_IDX | PT_HINT_NO_IDX_DESC | PT_HINT_USE_NL
     | PT_HINT_USE_IDX | PT_HINT_USE_MERGE | PT_HINT_NO_MULTI_RANGE_OPT
-    | PT_HINT_RECOMPILE;
+    | PT_HINT_RECOMPILE | PT_HINT_NO_SORT_LIMIT;
   PT_NODE *arg = NULL;
 
   switch (node->node_type)

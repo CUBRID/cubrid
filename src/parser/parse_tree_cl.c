@@ -8579,6 +8579,11 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_nulstring (parser, q, " NO_MULTI_RANGE_OPT ");
 	}
 
+      if (p->info.delete_.hint & PT_HINT_NO_SORT_LIMIT)
+	{
+	  q = pt_append_nulstring (parser, q, " NO_SORT_LIMIT ");
+	}
+
       q = pt_append_nulstring (parser, q, " */");
     }
   if (r1)
@@ -14109,6 +14114,11 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	      q = pt_append_nulstring (parser, q, "NO_MULTI_RANGE_OPT ");
 	    }
 
+	  if (p->info.query.q.select.hint & PT_HINT_NO_SORT_LIMIT)
+	    {
+	      q = pt_append_nulstring (parser, q, "NO_SORT_LIMIT ");
+	    }
+
 	  q = pt_append_nulstring (parser, q, "*/ ");
 	}
 
@@ -15216,6 +15226,11 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
       if (p->info.update.hint & PT_HINT_NO_MULTI_RANGE_OPT)
 	{
 	  b = pt_append_nulstring (parser, b, " NO_MULTI_RANGE_OPT ");
+	}
+
+      if (p->info.update.hint & PT_HINT_NO_SORT_LIMIT)
+	{
+	  b = pt_append_nulstring (parser, b, " NO_SORT_LIMIT ");
 	}
 
       b = pt_append_nulstring (parser, b, " */");

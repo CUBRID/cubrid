@@ -1096,8 +1096,9 @@ typedef enum
   /* do not use multi range optimization */
   PT_HINT_USE_UPDATE_IDX = 0x200000,	/* 0010 0000 0000 0000 0000 0000 */
   /* use index for merge update */
-  PT_HINT_USE_INSERT_IDX = 0x400000	/* 0100 0000 0000 0000 0000 0000 */
-    /* use index for merge delete */
+  PT_HINT_USE_INSERT_IDX = 0x400000,	/* 0100 0000 0000 0000 0000 0000 */
+  /* do not generate SORT-LIMIT plan */
+  PT_HINT_NO_SORT_LIMIT = 0x800000	/* 1000 0000 0000 0000 0000 0000 */
 } PT_HINT_ENUM;
 
 

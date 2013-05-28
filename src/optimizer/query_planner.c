@@ -8899,7 +8899,7 @@ qo_search_planner (QO_PLANNER * planner)
 	  QO_PLAN *best_plan;
 	  best_plan = qo_find_best_plan_on_info (info, QO_UNORDERED, 1.0);
 	  if (best_plan->plan_type == QO_PLANTYPE_SCAN
-	      && !best_plan->multi_range_opt_use
+	      && best_plan->multi_range_opt_use != PLAN_MULTI_RANGE_OPT_USE
 	      && !qo_is_iscan_from_orderby (best_plan)
 	      && !qo_is_iscan_from_groupby (best_plan))
 	    {

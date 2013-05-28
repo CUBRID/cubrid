@@ -22213,6 +22213,8 @@ PT_HINT parser_hint_table[] = {
   ,
   {"USE_INSERT_IDX", NULL, PT_HINT_USE_INSERT_IDX}
   ,
+  {"NO_SORT_LIMIT", NULL, PT_HINT_NO_SORT_LIMIT}
+  ,
   {NULL, NULL, -1}		/* mark as end */
 };
 
