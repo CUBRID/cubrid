@@ -493,7 +493,7 @@ db_set_base_server_time (SERVER_INFO * server_info)
 {
   if (server_info->info_bits & SI_SYS_DATETIME)
     {
-      struct tm c_time_struct;
+      struct tm c_time_struct, tz_check;
       DB_DATETIME *dt = &server_info->value[0]->data.datetime;
       int msecs;
 
@@ -507,6 +507,12 @@ db_set_base_server_time (SERVER_INFO * server_info)
 
       c_time_struct.tm_year -= 1900;
       c_time_struct.tm_mon -= 1;
+      c_time_struct.tm_isdst = -1;
+      tz_check = c_time_struct;
+
+      /* get correct timezone setting */
+      mktime (&tz_check);
+      c_time_struct.tm_isdst = tz_check.tm_isdst;
 
       base_server_timeb.time = mktime (&c_time_struct);
       ftime (&base_client_timeb);
