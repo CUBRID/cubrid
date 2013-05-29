@@ -2279,8 +2279,8 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
 
 	  /* the type of the result file should be FILE_QUERY_AREA
 	     in order not to deleted at the time of query_end */
-	  if (file_get_type (thread_p,
-			     &list_id_p->temp_vfid) != FILE_QUERY_AREA)
+	  if (list_id_p->tfile_vfid != NULL
+	      && list_id_p->tfile_vfid->temp_file_type != FILE_QUERY_AREA)
 	    {
 	      /* duplicate the list file */
 	      tmp_list_id_p = qfile_duplicate_list (thread_p, list_id_p,
