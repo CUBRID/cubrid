@@ -50,6 +50,7 @@
 #include "object_print.h"
 #include "file_io.h"
 #include "memory_hash.h"
+#include "schema_manager.h"
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
@@ -136,7 +137,6 @@
    (error == ER_LK_OBJECT_DL_TIMEOUT_CLASS_MSG)       || \
    (error == ER_LK_OBJECT_DL_TIMEOUT_CLASSOF_MSG)     || \
    (error == ER_LK_DEADLOCK_CYCLE_DETECTED))
-
 
 typedef struct la_cache_buffer LA_CACHE_BUFFER;
 struct la_cache_buffer
@@ -514,6 +514,7 @@ static LA_ITEM *la_get_next_repl_item_from_log (LA_ITEM * item,
 static int la_commit_transaction (void);
 static int la_find_last_deleted_arv_num (void);
 
+static bool la_restart_on_bulk_flush_error (int errid);
 
 /*
  * la_shutdown_by_signal() - When the process catches the SIGTERM signal,
@@ -2181,6 +2182,26 @@ la_ignore_on_error (int errid)
     }
 
   return false;
+}
+
+/*
+ * la_restart_on_bulk_flush_error() -
+ *   return: whether to restart or not for a given error
+ *
+ * Note:
+ *     this function is essentially the same as
+ *     la_retry_on_error but it is used when checking
+ *     error while bulk flushing
+ */
+static bool
+la_restart_on_bulk_flush_error (int errid)
+{
+  if (la_ignore_on_error (errid))
+    {
+      return false;
+    }
+
+  return la_retry_on_error (errid);
 }
 
 static bool
@@ -4487,10 +4508,12 @@ static int
 la_flush_unflushed_insert (MOP class_mop)
 {
   int error = NO_ERROR;
+  WS_FLUSH_ERR *flush_err;
   MOP mop;
   const char *class_name;
   char primary_key[256];
   int length;
+  char buf[256];
 
   if (la_Info.num_unflushed_insert > 0)
     {
@@ -4511,7 +4534,23 @@ la_flush_unflushed_insert (MOP class_mop)
 	    {
 	      class_name = NULL;
 
-	      mop = ws_get_error_from_error_link ();
+	      flush_err = ws_get_error_from_error_link ();
+	      if (flush_err == NULL)
+		{
+		  break;
+		}
+
+	      error = flush_err->error_code;
+
+	      if (class_mop == NULL)
+		{
+		  class_mop =
+		    ws_mop (&flush_err->class_oid, sm_Root_class_mop);
+		}
+	      mop = ws_mop (&flush_err->oid, class_mop);
+
+	      ws_free_flush_error (flush_err);
+
 	      if (mop == NULL)
 		{
 		  break;
@@ -4533,7 +4572,7 @@ la_flush_unflushed_insert (MOP class_mop)
 		      er_stack_push ();
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			      ER_HA_LA_FAILED_TO_APPLY_INSERT, 3, class_name,
-			      primary_key, ER_FAILED);
+			      primary_key, error);
 		      er_stack_pop ();
 		    }
 		}
@@ -4541,6 +4580,24 @@ la_flush_unflushed_insert (MOP class_mop)
 	      ws_decache (mop);
 
 	      la_Info.fail_counter++;
+
+	      if (la_restart_on_bulk_flush_error (error))
+		{
+		  snprintf (buf, sizeof (buf),
+			    "applylogdb will reconnect to server due to a failure "
+			    "in flushing changes (error:%d)", error);
+		  er_stack_push ();
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_HA_GENERIC_ERROR, 1, buf);
+		  er_stack_pop ();
+
+		  error = ER_LC_PARTIALLY_FAILED_TO_FLUSH;
+		  la_applier_need_shutdown = true;
+
+		  ws_clear_all_errors_of_error_link ();
+
+		  return error;
+		}
 	    }
 
 	  ws_clear_all_errors_of_error_link ();
@@ -5383,6 +5440,13 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa,
 	    }
 	  else
 	    {
+	      /* reconnect to server due to error in flushing unflushed insert */
+	      if (error == ER_LC_PARTIALLY_FAILED_TO_FLUSH
+		  && la_applier_need_shutdown)
+		{
+		  goto end;
+		}
+
 	      errid = er_errid ();
 
 	      help_sprint_value (&item->key, buf, 255);
@@ -5830,6 +5894,11 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
 	      else if (error == ER_HA_LA_EXCEED_MAX_MEM_SIZE)
 		{
 		  la_applier_need_shutdown = true;
+		  return error;
+		}
+	      else if (error == ER_LC_PARTIALLY_FAILED_TO_FLUSH
+		       && la_applier_need_shutdown)
+		{
 		  return error;
 		}
 
@@ -7253,6 +7322,11 @@ la_apply_log_file (const char *database_name, const char *log_path,
 		      la_applier_need_shutdown = true;
 		      break;
 		    }
+		  else if (error == ER_LC_PARTIALLY_FAILED_TO_FLUSH
+			   && la_applier_need_shutdown)
+		    {
+		      break;
+		    }
 		}
 	      else
 		{
@@ -7489,6 +7563,12 @@ la_apply_log_file (const char *database_name, const char *log_path,
 		      la_shutdown ();
 		      return error;
 		    }
+		  else if (error == ER_LC_PARTIALLY_FAILED_TO_FLUSH
+			   && la_applier_need_shutdown)
+		    {
+		      la_shutdown ();
+		      return error;
+		    }
 
 		  if (error == ER_LOG_PAGE_CORRUPTED)
 		    {
@@ -7524,6 +7604,11 @@ la_apply_log_file (const char *database_name, const char *log_path,
 		  er_log_debug (ARG_FILE_LINE,
 				"we have lost connection with DB server.");
 		  la_applier_need_shutdown = true;
+		  break;
+		}
+	      else if (error == ER_LC_PARTIALLY_FAILED_TO_FLUSH
+		       && la_applier_need_shutdown)
+		{
 		  break;
 		}
 	    }

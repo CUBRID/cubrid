@@ -6448,7 +6448,20 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area,
 	  break;
 	}			/* end-switch */
 
-      obj->error_code = error_code;
+      if (error_code != NO_ERROR)
+	{
+	  obj->error_code = er_errid ();
+
+	  if (obj->error_code == NO_ERROR)
+	    {
+	      obj->error_code = error_code;
+	    }
+	}
+      else
+	{
+	  obj->error_code = NO_ERROR;
+	}
+
       if (continue_on_error == LC_CONTINUE_ON_ERROR
 	  || LOG_CHECK_LOG_APPLIER (thread_p) || num_ignore_error > 0)
 	{

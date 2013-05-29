@@ -34,6 +34,7 @@
 #include "dbtype.h"
 #include "dbdef.h"
 #include "quick_fit.h"
+#include "locator.h"
 
 /*
  * VID_INFO
@@ -61,6 +62,15 @@ union vid_oid
 {
   VID_INFO *vid_info;		/* Matches OID slot and volume                  */
   OID oid;			/* physical oid */
+};
+
+typedef struct ws_flush_err WS_FLUSH_ERR;
+struct ws_flush_err
+{
+  struct ws_flush_err *error_link;
+  OID class_oid;
+  OID oid;
+  int error_code;
 };
 
 /*
@@ -91,7 +101,6 @@ struct db_object
 					 * classes, this member points to the newly
 					 * inserted object in the case of a
 					 * partition change */
-  struct db_object *error_link;	/* link for error list */
   void *version;		/* versioning information */
   LOCK lock;			/* object lock */
 
@@ -112,7 +121,6 @@ struct db_object
   unsigned is_temp:1;		/* set if template MOP (for triggers) */
   unsigned released:1;		/* set by code that knows that an instance can be released, used currently by the loader only */
   unsigned decached:1;		/* set if mop is decached by calling ws_decache function */
-  unsigned is_error:1;		/* set if error while flushing dirty object */
 };
 
 
@@ -722,7 +730,8 @@ extern int ws_set_ignore_error_list_for_mflush (int error_count,
 
 extern void ws_reverse_dirty_link (MOP class_mop);
 
-extern void ws_set_error_into_error_link (MOP mop);
-extern MOP ws_get_error_from_error_link (void);
+extern void ws_set_error_into_error_link (LC_COPYAREA_ONEOBJ * obj);
+extern WS_FLUSH_ERR *ws_get_error_from_error_link (void);
 extern void ws_clear_all_errors_of_error_link (void);
+extern void ws_free_flush_error (WS_FLUSH_ERR * flush_err);
 #endif /* _WORK_SPACE_H_ */

@@ -180,7 +180,7 @@ int ws_Error_ignore_count = 0;
 
 #define OBJLIST_AREA_COUNT 4096
 
-static MOP ws_Error_link = NULL;
+static WS_FLUSH_ERR *ws_Error_link = NULL;
 
 static MOP ws_make_mop (OID * oid);
 static void ws_free_mop (MOP op);
@@ -267,7 +267,6 @@ ws_make_mop (OID * oid)
       op->pruning_type = DB_NOT_PARTITIONED_CLASS;
       op->hash_link = NULL;
       op->commit_link = NULL;
-      op->error_link = NULL;
       op->reference = 0;
       op->version = NULL;
       op->oid_info.oid.volid = 0;
@@ -278,7 +277,6 @@ ws_make_mop (OID * oid)
       op->is_temp = 0;
       op->released = 0;
       op->decached = 0;
-      op->is_error = 0;
 
       /* this is NULL only for the Null_object hack */
       if (oid != NULL)
@@ -4101,7 +4099,6 @@ ws_dump (FILE * fpp)
   int mops, root, unknown, classes, cached_classes, instances,
     cached_instances;
   int count, actual, decached, weird;
-  int errored, error_linked;
   unsigned int slot;
   int classtotal, insttotal, size, isize, icount, deleted;
   MOP mop, inst, setmop;
@@ -4111,7 +4108,6 @@ ws_dump (FILE * fpp)
   mops = root = unknown = classes = cached_classes = instances =
     cached_instances = 0;
   weird = 0;
-  errored = 0;
   for (slot = 0; slot < ws_Mop_table_size; slot++)
     {
       for (mop = ws_Mop_table[slot].head; mop != NULL; mop = mop->hash_link)
@@ -4145,11 +4141,6 @@ ws_dump (FILE * fpp)
 	      if (mop->object != NULL)
 		{
 		  cached_instances++;
-		}
-
-	      if (mop->is_error)
-		{
-		  errored++;
 		}
 	    }
 
@@ -4211,15 +4202,6 @@ ws_dump (FILE * fpp)
     }
   fprintf (fpp, "%d dirty objects, %d clean objects in dirty list\n",
 	   actual, count - actual);
-
-  /* erorr stats */
-  error_linked = 0;
-  for (mop = ws_Error_link; mop != NULL; mop = mop->error_link)
-    {
-      error_linked++;
-    }
-  fprintf (fpp, "%d error objects, %d error objects in error list\n",
-	   errored, error_linked);
 
   /* get class totals */
   fprintf (fpp, "RESIDENT INSTANCE TOTALS: \n");
@@ -5646,17 +5628,24 @@ ws_reverse_dirty_link (MOP class_mop)
  *    mop(in):
  */
 void
-ws_set_error_into_error_link (MOP mop)
+ws_set_error_into_error_link (LC_COPYAREA_ONEOBJ * obj)
 {
-  if (mop->is_error)
+  WS_FLUSH_ERR *flush_err;
+
+  flush_err = (WS_FLUSH_ERR *) malloc (sizeof (WS_FLUSH_ERR));
+  if (flush_err == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, sizeof (WS_FLUSH_ERR));
       return;
     }
-  assert (mop->error_link == NULL);
 
-  mop->is_error = 1;
-  mop->error_link = ws_Error_link;
-  ws_Error_link = mop;
+  flush_err->class_oid = obj->class_oid;
+  flush_err->oid = obj->oid;
+  flush_err->error_code = obj->error_code;
+
+  flush_err->error_link = ws_Error_link;
+  ws_Error_link = flush_err;
 
   return;
 }
@@ -5664,24 +5653,22 @@ ws_set_error_into_error_link (MOP mop)
 /*
  * ws_get_error_from_error_link() -
  *    return: void
- *    mop(in):
  */
-MOP
+WS_FLUSH_ERR *
 ws_get_error_from_error_link (void)
 {
-  MOP mop;
+  WS_FLUSH_ERR *flush_err;
 
-  mop = ws_Error_link;
-  if (mop == NULL)
+  flush_err = ws_Error_link;
+  if (flush_err == NULL)
     {
       return NULL;
     }
 
-  ws_Error_link = mop->error_link;
-  mop->is_error = 0;
-  mop->error_link = NULL;
+  ws_Error_link = flush_err->error_link;
+  flush_err->error_link = NULL;
 
-  return mop;
+  return flush_err;
 }
 
 /*
@@ -5691,16 +5678,26 @@ ws_get_error_from_error_link (void)
 void
 ws_clear_all_errors_of_error_link (void)
 {
-  MOP mop, next;
+  WS_FLUSH_ERR *flush_err, *next;
 
-  for (mop = ws_Error_link; mop; mop = next)
+  for (flush_err = ws_Error_link; flush_err; flush_err = next)
     {
-      next = mop->error_link;
-
-      mop->is_error = 0;
-      mop->error_link = NULL;
+      next = flush_err->error_link;
+      free_and_init (flush_err);
     }
   ws_Error_link = NULL;
+
+  return;
+}
+
+/*
+ * ws_free_flush_error() -
+ *    return: void
+ */
+void
+ws_free_flush_error (WS_FLUSH_ERR * flush_err)
+{
+  free_and_init (flush_err);
 
   return;
 }

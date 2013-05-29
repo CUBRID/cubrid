@@ -4243,7 +4243,6 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	    {
 	      locator_mflush_check_error (mflush);
 	    }
-
 	}
     }
 
@@ -4282,19 +4281,7 @@ locator_mflush_check_error (LOCATOR_MFLUSH_CACHE * mflush)
 	}
       else
 	{
-	  class_mop = ws_mop (&obj->class_oid, sm_Root_class_mop);
-	  if (class_mop == NULL)
-	    {
-	      continue;
-	    }
-
-	  mop = ws_mop (&obj->oid, class_mop);
-	  if (mop == NULL)
-	    {
-	      continue;
-	    }
-
-	  ws_set_error_into_error_link (mop);
+	  ws_set_error_into_error_link (obj);
 	}
     }
 

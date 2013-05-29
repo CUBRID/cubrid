@@ -3173,7 +3173,8 @@ error_exit:
   if (error == ER_NET_SERVER_CRASHED
       || error == ER_NET_CANT_CONNECT_SERVER
       || error == ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER
-      || error == ER_BO_CONNECT_FAILED || error == ER_NET_SERVER_COMM_ERROR)
+      || error == ER_BO_CONNECT_FAILED || error == ER_NET_SERVER_COMM_ERROR
+      || error == ER_LC_PARTIALLY_FAILED_TO_FLUSH)
     {
       (void) sleep (sleep_nsecs);
       /* sleep 1, 2, 4, 8, etc; don't wait for more than 10 sec */
