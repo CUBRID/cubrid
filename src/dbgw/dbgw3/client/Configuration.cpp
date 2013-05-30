@@ -93,11 +93,6 @@ namespace dbgw
           _Logger::finalize();
           _Logger::initialize();
 
-          m_pTimer->start();
-          m_pMonitor->start();
-          m_pAsyncJobManager->start();
-          m_pTimeoutJobManager->start();
-
           if (bNeedLoadXml)
             {
               if (loadConfiguration() == false)
@@ -105,6 +100,11 @@ namespace dbgw
                   throw getLastException();
                 }
             }
+
+          m_pTimer->start();
+          m_pMonitor->start();
+          m_pAsyncJobManager->start();
+          m_pTimeoutJobManager->start();
         }
       catch (Exception &e)
         {

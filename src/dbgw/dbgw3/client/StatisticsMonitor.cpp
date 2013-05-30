@@ -1045,23 +1045,33 @@ namespace dbgw
         int nStatTYpe, unsigned long ulLogIntervalMilSec, int nMaxFileSizeKBytes,
         int nMaxBackupCount)
     {
+      if (strcmp(m_logPath.c_str(), szLogPath) != 0)
+        {
+          clear();
+        }
+
       m_logPath = szLogPath;
       m_nStatType = nStatTYpe;
       m_ulLogIntervalMilSec = ulLogIntervalMilSec;
 
-      m_logger = cci_log_get(szLogPath);
-      cci_log_use_default_prefix(m_logger, false);
-      cci_log_use_default_newline(m_logger, false);
-      cci_log_change_max_file_size_appender(m_logger, nMaxFileSizeKBytes,
+      Logger logger = cci_log_get(szLogPath);
+      cci_log_use_default_prefix(logger, false);
+      cci_log_use_default_newline(logger, false);
+      cci_log_change_max_file_size_appender(logger, nMaxFileSizeKBytes,
           nMaxBackupCount);
+
+      system::_MutexAutoLock lock(&m_mutex);
+      m_logger = logger;
     }
 
     void clear()
     {
+      system::_MutexAutoLock lock(&m_mutex);
+
       if (m_logger != NULL)
         {
-          cci_log_remove(m_logPath.c_str());
           m_logger = NULL;
+          cci_log_remove(m_logPath.c_str());
         }
 
       m_logPath = "";
@@ -1101,6 +1111,7 @@ namespace dbgw
           m_proxyPoolStatGroup.writeGroup(m_buffer);
         }
 
+      system::_MutexAutoLock lock(&m_mutex);
       if (m_logger != NULL)
         {
           CCI_LOG_INFO(m_logger, m_buffer.str().c_str());
@@ -1150,6 +1161,7 @@ namespace dbgw
     _StatisticsGroup m_proxyPoolStatGroup;
 
     Logger m_logger;
+    system::_Mutex m_mutex;
     std::string m_logPath;
     int m_nStatType;
     unsigned long m_ulLogIntervalMilSec;

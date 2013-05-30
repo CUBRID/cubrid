@@ -190,8 +190,8 @@ public:
   void changePostfixAppender(CCI_LOG_POSTFIX postfix);
 
 public:
-  const char *getPath() const;
-  bool isWritable(CCI_LOG_LEVEL level) const;
+  const char *getPath();
+  bool isWritable(CCI_LOG_LEVEL level);
 
 private:
   void write(const char *msg);
@@ -567,6 +567,8 @@ _Logger::_Logger(const char *path) :
 
 _Logger::~_Logger()
 {
+  cci::_MutexAutolock lock(&critical);
+
   if (logAppender != NULL)
     {
       delete logAppender;
@@ -575,21 +577,29 @@ _Logger::~_Logger()
 
 void _Logger::setLogLevel(CCI_LOG_LEVEL level)
 {
+  cci::_MutexAutolock lock(&critical);
+
   this->level = level;
 }
 
 void _Logger::setUseDefaultPrefix(bool useDefaultPrefix)
 {
+  cci::_MutexAutolock lock(&critical);
+
   this->useDefaultPrefix = useDefaultPrefix;
 }
 
 void _Logger::setUseDefaultNewLine(bool useDefaultNewLine)
 {
+  cci::_MutexAutolock lock(&critical);
+
   this->useDefaultNewLine = useDefaultNewLine;
 }
 
 void _Logger::setForceFlush(bool isForceFlush)
 {
+  cci::_MutexAutolock lock(&critical);
+
   this->isForceFlush = isForceFlush;
 }
 
@@ -644,13 +654,17 @@ void _Logger::changePostfixAppender(CCI_LOG_POSTFIX postfix)
     }
 }
 
-const char *_Logger::getPath() const
+const char *_Logger::getPath()
 {
+  cci::_MutexAutolock lock(&critical);
+
   return context.path.c_str();
 }
 
-bool _Logger::isWritable(CCI_LOG_LEVEL level) const
+bool _Logger::isWritable(CCI_LOG_LEVEL level)
 {
+  cci::_MutexAutolock lock(&critical);
+
   return this->level >= level;
 }
 
