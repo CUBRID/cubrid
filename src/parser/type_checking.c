@@ -12197,7 +12197,8 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
   arg_list = node->info.function.arg_list;
   fcode = node->info.function.function_type;
   if (!arg_list && fcode != PT_COUNT_STAR && fcode != PT_GROUPBY_NUM
-      && fcode != PT_ROW_NUMBER && fcode != PT_RANK && fcode != PT_DENSE_RANK)
+      && fcode != PT_ROW_NUMBER && fcode != PT_RANK && fcode != PT_DENSE_RANK
+      && fcode != PT_CUME_DIST && fcode != PT_PERCENT_RANK)
     {
       PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 		  MSGCAT_SEMANTIC_FUNCTION_NO_ARGS,
@@ -12407,6 +12408,11 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    break;
 	  }
       }
+      break;
+
+    case PT_CUME_DIST:
+    case PT_PERCENT_RANK:
+      check_agg_single_arg = false;
       break;
 
     case PT_NTILE:
@@ -12744,6 +12750,11 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_DENSE_RANK:
 	case PT_NTILE:
 	  node->type_enum = PT_TYPE_INTEGER;
+	  break;
+
+	case PT_CUME_DIST:
+	case PT_PERCENT_RANK:
+	  node->type_enum = PT_TYPE_DOUBLE;
 	  break;
 
 	case PT_GROUPBY_NUM:

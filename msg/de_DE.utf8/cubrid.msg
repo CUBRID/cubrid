@@ -1614,6 +1614,10 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 274 Multiple insert targets not allowed.
 275 '%s' type is vclass, drop vclass with cascade constraints is not allowed.
 276 ORDER BY is not allowed in function MEDIAN.
+277 The arguments of the function '%s' must be constant.
+278 Function '%s' must have ORDER BY clause.
+279 For function '%s', the number of arguments does not match the number of ORDER BY columns.
+280 For function '%s', the ORDER BY clause is invalid.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Außer virtuellem Speicher: %d Bytes können nicht zugewiesen werden.

@@ -115,6 +115,7 @@ static FUNCTION_MAP functions[] = {
   {"concat_ws", PT_CONCAT_WS},
   {"cos", PT_COS},
   {"cot", PT_COT},
+  {"cume_dist", PT_CUME_DIST},
   {"curtime", PT_SYS_TIME},
   {"curdate", PT_SYS_DATE},
   {"utc_time", PT_UTC_TIME},
@@ -164,6 +165,7 @@ static FUNCTION_MAP functions[] = {
   {"nvl", PT_NVL},
   {"nvl2", PT_NVL2},
   {"orderby_num", PT_ORDERBY_NUM},
+  {"percent_rank", PT_PERCENT_RANK},
   {"power", PT_POWER},
   {"pow", PT_POWER},
   {"pi", PT_PI},
@@ -636,6 +638,7 @@ typedef struct YYLTYPE
 %type <number> of_analytic_nth_value
 %type <number> of_analytic_lead_lag
 %type <number> of_analytic_no_args
+%type <number> of_cume_dist_percent_rank_function
 %type <number> negative_prec_cast_type
 %type <number> opt_nulls_first_or_last
 /*}}}*/
@@ -1336,6 +1339,7 @@ typedef struct YYLTYPE
 %token WHERE
 %token WHILE
 %token WITH
+%token WITHIN
 %token WITHOUT
 %token WORK
 %token WRITE
@@ -1393,6 +1397,7 @@ typedef struct YYLTYPE
 %token <cptr> COLUMNS
 %token <cptr> COMMITTED
 %token <cptr> COST
+%token <cptr> CUME_DIST
 %token <cptr> DATE_ADD
 %token <cptr> DATE_SUB
 %token <cptr> DECREMENT
@@ -1445,6 +1450,7 @@ typedef struct YYLTYPE
 %token <cptr> PARTITIONING
 %token <cptr> PARTITIONS
 %token <cptr> PASSWORD
+%token <cptr> PERCENT_RANK
 %token <cptr> PRINT
 %token <cptr> PRIORITY
 %token <cptr> QUARTER
@@ -13855,6 +13861,16 @@ reserved_func
 			    node->info.function.analytic.is_analytic = true;
 			    node->info.function.analytic.partition_by = $6;
 			    node->info.function.analytic.order_by = $7;
+				if ($7 == NULL)
+				  {
+					if ($1 == PT_CUME_DIST || $1 == PT_PERCENT_RANK)
+					  {
+						PT_ERRORmf (this_parser, node,
+									MSGCAT_SET_PARSER_SEMANTIC,
+									MSGCAT_SEMANTIC_NULL_ORDER_BY,
+									pt_show_function ($1));
+					  }
+				  }
 			  }
 
 			$$ = node;
@@ -14708,8 +14724,35 @@ reserved_func
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| of_cume_dist_percent_rank_function '(' expression_list ')' WITHIN GROUP_ '('ORDER BY sort_spec_list')'
+		{{
+
+			PT_NODE *node = parser_new_node (this_parser, PT_FUNCTION);
+			if (node)
+			  {
+				node->info.function.function_type = $1;
+				node->info.function.all_or_distinct = PT_ALL;
+				node->info.function.arg_list = $3;
+				node->info.function.analytic.is_analytic = false;
+				node->info.function.order_by = $10;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+        DBG_PRINT}}
 	;
 
+of_cume_dist_percent_rank_function
+	: CUME_DIST        
+		{{
+			$$ = PT_CUME_DIST;
+		DBG_PRINT}}
+
+	|PERCENT_RANK        
+		{{
+			$$ = PT_PERCENT_RANK;
+		DBG_PRINT}}
+    ;
 
 of_dates
 	: SYS_DATE
@@ -14983,6 +15026,16 @@ of_analytic_no_args
 		{{
 
 			$$ = PT_DENSE_RANK;
+
+		DBG_PRINT}}
+	| CUME_DIST
+		{{
+			$$ = PT_CUME_DIST;
+
+		DBG_PRINT}}
+	| PERCENT_RANK
+		{{
+			$$ = PT_PERCENT_RANK;
 
 		DBG_PRINT}}
 	/* add other analytic functions here */
@@ -18844,6 +18897,17 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| CUME_DIST
+		{{
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p != NULL)
+			  {
+				p->info.name.original = $1;
+			  }
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	| DECREMENT
 		{{
 
@@ -19240,6 +19304,18 @@ identifier
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
 			if (p)
 			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| PERCENT_RANK
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p != NULL)
+			  {
+				p->info.name.original = $1;
+			  }
 			$$ = p;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 

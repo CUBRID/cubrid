@@ -720,7 +720,10 @@ pt_is_aggregate_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 	      || function_type == PT_AGG_BIT_OR
 	      || function_type == PT_AGG_BIT_XOR
 	      || function_type == PT_GROUP_CONCAT
-	      || function_type == PT_MEDIAN))
+	      || function_type == PT_MEDIAN
+	      || function_type == PT_CUME_DIST
+	      || function_type == PT_PERCENT_RANK))
+
 	{
 	  return true;
 	}

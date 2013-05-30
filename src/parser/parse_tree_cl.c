@@ -3791,6 +3791,10 @@ pt_show_function (FUNC_TYPE c)
       return "count";
     case PT_COUNT_STAR:
       return "count";
+    case PT_CUME_DIST:
+      return "cume_dist";
+    case PT_PERCENT_RANK:
+      return "percent_rank";
     case PT_GROUPBY_NUM:
       return "groupby_num";
     case PT_AGG_BIT_AND:
@@ -12032,6 +12036,25 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
 
       q = pt_append_nulstring (parser, q, ")");
+    }
+  else if (code == PT_CUME_DIST || code == PT_PERCENT_RANK)
+    {
+      r1 = pt_print_bytes_l (parser, p->info.function.arg_list);
+      q = pt_append_nulstring (parser, q, pt_show_function (code));
+      q = pt_append_nulstring (parser, q, "(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+
+      if (!p->info.function.analytic.is_analytic)
+	{			/* aggregate */
+	  if (p->info.function.order_by)
+	    {
+	      r1 = pt_print_bytes_l (parser, p->info.function.order_by);
+	      q = pt_append_nulstring (parser, q, " within group(order by ");
+	      q = pt_append_varchar (parser, q, r1);
+	      q = pt_append_nulstring (parser, q, ")");
+	    }
+	}
     }
   else if (code == F_SET || code == F_MULTISET || code == F_SEQUENCE)
     {

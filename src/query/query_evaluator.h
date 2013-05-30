@@ -94,9 +94,11 @@ typedef enum
 
 /* only for FIRST_VALUE. LAST_VALUE, NTH_VALUE analytic functions */
   PT_FIRST_VALUE, PT_LAST_VALUE, PT_NTH_VALUE,
-
   /* aggregate and analytic functions */
-  PT_MEDIAN
+  PT_MEDIAN,
+  /* for CUME_DIST and PERCENT_RANK analytic functions */
+  PT_CUME_DIST,
+  PT_PERCENT_RANK
 } FUNC_TYPE;
 
 #define QPROC_ANALYTIC_HAS_SUBPARTITIONS(func_p) \
@@ -105,7 +107,12 @@ typedef enum
    && ((func_p)->function != PT_LAG) \
    && ((func_p)->function != PT_NTH_VALUE) \
    && ((func_p)->function != PT_NTILE) \
-   && ((func_p)->function != PT_MEDIAN))
+   && ((func_p)->function != PT_MEDIAN) \
+   && ((func_p)->function != PT_NTILE) \
+   && ((func_p)->function != PT_CUME_DIST) \
+   && ((func_p)->function != PT_PERCENT_RANK))
+
+
 
 #define NUM_F_GENERIC_ARGS 32
 #define NUM_F_INSERT_SUBSTRING_ARGS 4
@@ -139,7 +146,8 @@ typedef enum
   TYPE_CLASSOID,		/* does not have corresponding field
 				   use current class identifier value */
   TYPE_FUNC,			/* use funcp */
-  TYPE_REGUVAL_LIST		/* use reguval_list */
+  TYPE_REGUVAL_LIST,		/* use reguval_list */
+  TYPE_REGU_VAR_LIST		/* use regu_variable_list for 'CUME_DIST' and 'PERCENT_RANK' */
 } REGU_DATATYPE;
 
 typedef struct regu_value_list REGU_VALUE_LIST;
@@ -178,6 +186,7 @@ struct regu_variable_node
     int val_pos;		/* host variable references */
     struct function_node *funcp;	/* function */
     REGU_VALUE_LIST *reguval_list;	/* for "values" query */
+    struct regu_variable_list_node *regu_var_list;	/* for CUME_DIST and PERCENT_RANK */
   } value;
 };
 
@@ -424,6 +433,14 @@ struct arith_list_node
 					 * pseudo-random sequence */
 };
 
+typedef struct aggregate_dist_percent_info AGGREGATE_DIST_PERCENT_INFO;
+struct aggregate_dist_percent_info
+{
+  DB_VALUE **const_array;
+  int list_len;
+  int nlargers;
+};
+
 typedef struct aggregate_list_node AGGREGATE_TYPE;
 struct aggregate_list_node
 {
@@ -441,6 +458,7 @@ struct aggregate_list_node
   BTID btid;
   SORT_LIST *sort_list;		/* for sorting elements before aggregation;
 				 * used by GROUP_CONCAT */
+  AGGREGATE_DIST_PERCENT_INFO agg_info;	/* for CUME_DIST and PERCENT_RANK calculation; */
 };
 
 typedef struct analytic_offset_function_info ANALYTIC_OFFSET_FUNCTION_INFO;
@@ -458,6 +476,17 @@ struct analytic_ntile_function_info
   int bucket_count;		/* number of required buckets */
 };
 
+typedef struct analytic_cume_percent_function_info
+  ANALYTIC_CUME_PERCENT_FUNCTION_INFO;
+struct analytic_cume_percent_function_info
+{
+  int last_pos;			/* record the current position of the 
+				 * rows that are no larger than the current row 
+				 */
+  double last_res;		/* record the last result */
+};
+
+
 typedef struct analytic_median_function_info ANALYTIC_MEDIAN_FUNCTION_INFO;
 struct analytic_median_function_info
 {
@@ -473,6 +502,7 @@ union analytic_function_info
   ANALYTIC_OFFSET_FUNCTION_INFO offset;
   ANALYTIC_NTILE_FUNCTION_INFO ntile;
   ANALYTIC_MEDIAN_FUNCTION_INFO median;
+  ANALYTIC_CUME_PERCENT_FUNCTION_INFO cume_percent;
 };
 
 typedef struct analytic_list_node ANALYTIC_TYPE;

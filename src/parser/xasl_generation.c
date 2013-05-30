@@ -290,7 +290,12 @@ static PT_NODE *pt_append_assignment_references (PARSER_CONTEXT * parser,
 static ODKU_INFO *pt_to_odku_info (PARSER_CONTEXT * parser, PT_NODE * insert,
 				   XASL_NODE * xasl,
 				   PT_NODE ** non_null_attrs);
+
 static SORT_NULLS pt_to_null_ordering (PT_NODE * sort_spec);
+
+static REGU_VARIABLE
+  * pt_to_cume_dist_percent_rank_regu_variable (PARSER_CONTEXT * parser,
+						PT_NODE * tree, UNBOX unbox);
 
 #define APPEND_TO_XASL(xasl_head, list, xasl_tail)                      \
     if (xasl_head) {                                                    \
@@ -4140,11 +4145,24 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
       if (aggregate_list->function != PT_COUNT_STAR
 	  && aggregate_list->function != PT_GROUPBY_NUM)
 	{
-	  regu = pt_to_regu_variable (parser,
-				      tree->info.function.arg_list,
-				      UNBOX_AS_VALUE);
+	  if (aggregate_list->function != PT_CUME_DIST
+	      && aggregate_list->function != PT_PERCENT_RANK)
+	    {
+	      regu = pt_to_regu_variable (parser,
+					  tree->info.function.arg_list,
+					  UNBOX_AS_VALUE);
+	    }
+	  else
+	    {
+	      /* for CUME_DIST and PERCENT_RANK function, 
+	       * take sort list as variables as well
+	       */
+	      regu = pt_to_cume_dist_percent_rank_regu_variable (parser,
+								 tree,
+								 UNBOX_AS_VALUE);
+	    }
 
-	  if (!regu)
+	  if (regu == NULL)
 	    {
 	      return NULL;
 	    }
@@ -4356,9 +4374,26 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 	  /* restore group concat separator node */
 	  tree->info.function.arg_list->next = group_concat_sep_node_save;
 	}
+      else if (aggregate_list->function == PT_CUME_DIST
+	       || aggregate_list->function == PT_PERCENT_RANK)
+	{
+	  if (tree->info.function.order_by != NULL)
+	    {
+	      /* convert to SORT_LIST */
+	      aggregate_list->sort_list =
+		pt_agg_orderby_to_sort_list (parser,
+					     tree->info.function.order_by,
+					     tree->info.function.arg_list);
+	    }
+	  else
+	    {
+	      aggregate_list->sort_list = NULL;
+	    }
+	}
       else
 	{
-	  /* only GROUP_CONCAT agg supports ORDER BY */
+	  /* only GROUP_CONCAT, CUME_DIST and PERCENT_RANK agg 
+	     supports ORDER BY */
 	  assert (tree->info.function.order_by == NULL);
 	  assert (group_concat_sep_node_save == NULL);
 	}
@@ -23757,4 +23792,67 @@ pt_to_null_ordering (PT_NODE * sort_spec)
     }
 
   return S_NULLS_LAST;
+}
+
+/*
+ * pt_to_cume_dist_percent_rank_regu_variable () - generate regu_variable
+ *					 for 'CUME_DIST' and 'PERCENT_RANK'
+ *   return: REGU_VARIABLE*
+ *   parser(in):
+ *   tree(in):
+ *   unbox(in):
+ */
+static REGU_VARIABLE *
+pt_to_cume_dist_percent_rank_regu_variable (PARSER_CONTEXT * parser,
+					    PT_NODE * tree, UNBOX unbox)
+{
+  REGU_VARIABLE *regu = NULL;
+  XASL_NODE *xasl = NULL;
+  TP_DOMAIN *domain = NULL;
+  DB_VALUE *value, *val = NULL;
+  PT_NODE *arg_list = NULL, *orderby_list = NULL, *node = NULL;
+  REGU_VARIABLE_LIST regu_var_list, regu_var;
+
+  /* set up regu var */
+  regu = regu_var_alloc ();
+  if (regu == NULL)
+    {
+      return NULL;
+    }
+
+  regu->type = TYPE_REGU_VAR_LIST;
+  regu->domain = tp_domain_resolve_default (DB_TYPE_VARIABLE);
+  arg_list = tree->info.function.arg_list;
+  orderby_list = tree->info.function.order_by;
+  assert (arg_list != NULL && orderby_list != NULL);
+
+  /* first insert the first order by item */
+  regu_var_list =
+    pt_to_regu_variable_list (parser,
+			      orderby_list->info.sort_spec.expr,
+			      UNBOX_AS_VALUE, NULL, NULL);
+  if (regu_var_list == NULL)
+    {
+      return NULL;
+    }
+
+  /* insert order by items one by one */
+  regu_var = regu_var_list;
+  for (node = orderby_list->next; node != NULL; node = node->next)
+    {
+      regu_var->next = pt_to_regu_variable_list (parser,
+						 node->info.sort_spec.expr,
+						 UNBOX_AS_VALUE, NULL, NULL);
+      regu_var = regu_var->next;
+    }
+
+  /* order by items have been attached, now the arguments */
+  regu_var->next = pt_to_regu_variable_list (parser,
+					     arg_list,
+					     UNBOX_AS_VALUE, NULL, NULL);
+
+  /* finally setup regu: */
+  regu->value.regu_var_list = regu_var_list;
+
+  return regu;
 }

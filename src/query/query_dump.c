@@ -1290,6 +1290,10 @@ qdump_function_type_string (FUNC_TYPE ftype)
       return "COUNT";
     case PT_COUNT_STAR:
       return "COUNT_STAR";
+    case PT_CUME_DIST:
+      return "CUME_DIST";
+    case PT_PERCENT_RANK:
+      return "PERCENT_RANK";
     case PT_LEAD:
       return "LEAD";
     case PT_LAG:

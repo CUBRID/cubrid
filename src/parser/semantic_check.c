@@ -372,6 +372,8 @@ static void pt_check_filter_index_expr (PARSER_CONTEXT * parser,
 					PT_NODE * atts, PT_NODE * node,
 					MOP db_obj);
 static PT_NODE *pt_get_assignments (PT_NODE * node);
+static int pt_check_cume_dist_percent_rank_order_by (PARSER_CONTEXT * parser,
+						     PT_NODE * func);
 static PT_UNION_COMPATIBLE
 pt_get_select_list_coll_compat (PARSER_CONTEXT * parser, PT_NODE * query,
 				SEMAN_COMPATIBLE_INFO * cinfo, int num_cinfo);
@@ -9995,6 +9997,17 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 	      break;
 	    }
 	}
+      else if (node->info.function.function_type == PT_CUME_DIST
+	       || node->info.function.function_type == PT_PERCENT_RANK)
+	{
+	  /* for CUME_DIST and PERCENT_RANK aggregate function */
+	  if (pt_check_cume_dist_percent_rank_order_by (parser, node) !=
+	      NO_ERROR)
+	    {
+	      break;
+	    }
+	}
+
 
       if (node->info.function.function_type == PT_MEDIAN
 	  && !node->info.function.analytic.is_analytic
@@ -14625,6 +14638,165 @@ error_exit:
 }
 
 /*
+ * pt_check_cume_dist_percent_rank_order_by () - checks an ORDER_BY clause of a
+ *			      CUME_DIST aggregate function;
+ *			      if the expression or identifier from
+ *			      ORDER BY clause matches an argument of function,
+ *			      the ORDER BY item is converted into associated
+ *			      number.
+ *   return: NO_ERROR or error_code
+ *   parser(in):
+ *   func(in): 
+ *
+ *
+ *  Note :
+ *    We need to check arguments and order by, 
+ *    because the arguments must be constant expression and
+ *    match the ORDER BY clause by position.
+ */
+
+static int
+pt_check_cume_dist_percent_rank_order_by (PARSER_CONTEXT * parser,
+					  PT_NODE * func)
+{
+  PT_NODE *arg_list = NULL;
+  PT_NODE *order_by = NULL;
+  PT_NODE *arg = NULL;
+  PT_NODE *order = NULL;
+  PT_NODE *order_expr = NULL;
+  DB_OBJECT *obj = NULL;
+  DB_ATTRIBUTE *att = NULL;
+  TP_DOMAIN *dom = NULL;
+  DB_VALUE *value = NULL;
+  int i, arg_list_len, order_by_list_len;
+  int error = NO_ERROR;
+  const char *func_name;
+
+  /* get function name for ERROR message */
+  if (func->info.function.function_type == PT_CUME_DIST)
+    {
+      func_name = "CUME_DIST";
+    }
+  else if (func->info.function.function_type == PT_PERCENT_RANK)
+    {
+      func_name = "PERCENT_RANK";
+    }
+  else
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  /* first check if the arguments are constant */
+  arg_list = func->info.function.arg_list;
+  order_by = func->info.function.order_by;
+
+  /* for analytic function */
+  if (func->info.function.analytic.is_analytic)
+    {
+      if (arg_list != NULL || order_by != NULL)
+	{
+	  error = ER_FAILED;
+	  PT_ERRORmf (parser, func, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION, func_name);
+	}
+      goto error_exit;
+    }
+
+  /* aggregate function */
+  if (arg_list == NULL || order_by == NULL)
+    {
+      error = ER_FAILED;
+      PT_ERRORmf (parser, func, MSGCAT_SET_PARSER_SEMANTIC,
+		  MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION, func_name);
+      goto error_exit;
+    }
+
+  /* save original length of select_list */
+  arg_list_len = pt_length_of_list (arg_list);
+  order_by_list_len = pt_length_of_list (order_by);
+  if (arg_list_len != order_by_list_len)
+    {
+      PT_ERRORmf (parser, func, MSGCAT_SET_PARSER_SEMANTIC,
+		  MSGCAT_SEMANTIC_UNMACHTED_ARG_ORDER, func_name);
+      goto error_exit;
+    }
+
+  arg = arg_list;
+  order = order_by;
+  for (i = 0; i < arg_list_len; i++)
+    {
+      /* check argument type:
+       *  arguments must be constant 
+       */
+      if (!pt_is_const_expr_node (arg))
+	{
+	  PT_ERRORmf (parser, func, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_INVALID_CONSTANT_PARAMETER, func_name);
+	  goto error_exit;
+	}
+
+      /* check order by */
+      order_expr = order->info.sort_spec.expr;
+      if (order->node_type != PT_SORT_SPEC
+	  || (order_expr->node_type != PT_NAME
+	      && order_expr->node_type != PT_VALUE)
+	  || PT_IS_LOB_TYPE (order_expr->type_enum))
+	{
+	  PT_ERRORmf (parser, func, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_INVALID_FUNCTION_ORDERBY, func_name);
+	  goto error_exit;
+	}
+
+      if (order_expr->node_type == PT_NAME)
+	{
+	  /* check if the arg matches order by clause by position */
+	  dom = NULL;
+	  obj = db_find_class (order_expr->info.name.resolved);
+	  if (obj != NULL)
+	    {
+	      att = db_get_attribute (obj, order_expr->info.name.original);
+	      if (att != NULL)
+		{
+		  dom = att->domain;
+		}
+	    }
+
+	  if (dom == NULL)
+	    {
+	      error = er_errid ();
+	      goto error_exit;
+	    }
+
+	  /* for common values */
+	  if (arg->node_type != PT_EXPR)
+	    {
+	      value = &arg->info.value.db_value;
+	      error = db_value_coerce (value, value, dom);
+	      if (error != NO_ERROR)
+		{
+		  PT_ERRORmf2 (parser, func, MSGCAT_SET_PARSER_SEMANTIC,
+			       MSGCAT_SEMANTIC_CANT_COERCE_TO,
+			       pt_short_print (parser, arg),
+			       pt_show_type_enum (order_expr->type_enum));
+		  goto error_exit;
+		}
+	    }
+	}
+
+      /* to next */
+      order->info.sort_spec.pos_descr.pos_no = i + 1;
+      arg = arg->next;
+      order = order->next;
+    }
+
+error_exit:
+
+  return error;
+}
+
+
+/*
  * pt_has_parameters () - check if a statement uses session variables
  * return	: true if the statement uses session variables
  * parser (in)	: parser context
@@ -14941,7 +15113,9 @@ pt_check_analytic_function (PARSER_CONTEXT * parser, PT_NODE * func,
       && func->info.function.function_type != PT_COUNT_STAR
       && func->info.function.function_type != PT_ROW_NUMBER
       && func->info.function.function_type != PT_RANK
-      && func->info.function.function_type != PT_DENSE_RANK)
+      && func->info.function.function_type != PT_DENSE_RANK
+      && func->info.function.function_type != PT_CUME_DIST
+      && func->info.function.function_type != PT_PERCENT_RANK)
     {
       PT_ERRORmf (parser, func, MSGCAT_SET_PARSER_SEMANTIC,
 		  MSGCAT_SEMANTIC_FUNCTION_NO_ARGS,

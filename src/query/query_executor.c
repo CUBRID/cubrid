@@ -680,6 +680,8 @@ static GROUPBY_STATE *qexec_initialize_groupby_state (GROUPBY_STATE * gbstate,
 						      tplrec);
 static void qexec_clear_groupby_state (THREAD_ENTRY * thread_p,
 				       GROUPBY_STATE * gbstate);
+static void qexec_clear_agg_orderby_const_list (THREAD_ENTRY * thread_p,
+						XASL_NODE * xasl);
 static int qexec_initialize_groupby_rollup (GROUPBY_STATE * gbstate);
 static void qexec_clear_groupby_rollup (THREAD_ENTRY * thread_p,
 					GROUPBY_STATE * gbstate);
@@ -1123,6 +1125,22 @@ static void qexec_clear_topn_tuple (THREAD_ENTRY * thread_p, DB_VALUE * tuple,
 static int qexec_get_orderbynum_upper_bound (THREAD_ENTRY * tread_p,
 					     PRED_EXPR * pred, VAL_DESCR * vd,
 					     DB_VALUE * ubound);
+static int qexec_compare_two_tuple_by_sort_key (QFILE_TUPLE tpl1,
+						QFILE_TUPLE tpl2,
+						SORTKEY_INFO * key_info_p);
+static int
+qexec_analytic_evaluate_cume_dist_percent_rank_function (THREAD_ENTRY *
+							 thread_p,
+							 ANALYTIC_TYPE *
+							 func_p,
+							 ANALYTIC_STATE *
+							 analytic_state,
+							 int tuple_idx);
+
+static int
+qexec_clear_regu_variable_list (XASL_NODE * xasl_p, REGU_VARIABLE_LIST list,
+				int final);
+
 /*
  * Utility routines
  */
@@ -1866,6 +1884,10 @@ qexec_clear_regu_var (XASL_NODE * xasl_p, REGU_VARIABLE * regu_var, int final)
 	  (void) pr_clear_value (&regu_var->value.dbval);
 	}
       break;
+    case TYPE_REGU_VAR_LIST:
+      qexec_clear_regu_variable_list (xasl_p,
+				      regu_var->value.regu_var_list, final);
+      break;
 #if 0				/* TODO - */
     case TYPE_LIST_ID:
     case TYPE_POSITION:
@@ -2340,6 +2362,13 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
     {
       pg_cnt += qexec_clear_xasl (thread_p, xasl->connect_by_ptr, final);
     }
+
+  /* clean up the order-by const list used for CUME_DIST and PERCENT_RANK */
+  if (xasl->type == BUILDVALUE_PROC)
+    {
+      qexec_clear_agg_orderby_const_list (thread_p, xasl);
+    }
+
 
   if (final)
     {
@@ -20889,6 +20918,206 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p,
 }
 
 /*
+ * qexec_compare_two_tuple_by_sort_key () - compare two tuples
+ *                    by sort key for analytic functions 
+ *                    CUME_DIST and PERCENT_RANK)
+ *   returns: DB_EQ if two tuples are equal, else DB_UNK
+ *   tpl1(in): first tuple
+ *   tpl2(in): second tuple
+ *   key_info_p(in): key info
+ */
+static int
+qexec_compare_two_tuple_by_sort_key (QFILE_TUPLE tpl1,
+				     QFILE_TUPLE tpl2,
+				     SORTKEY_INFO * key_info_p)
+{
+  int cmp, nkeys, i, column, val_len, key_idx;
+  QFILE_TUPLE tuple_p1, tuple_p2;
+
+  assert (tuple_p1 != NULL && tuple_p2 != NULL && key_info_p != NULL);
+
+  cmp = DB_EQ;
+  nkeys = key_info_p->nkeys;
+
+  /* all keys in the ORDER BY clause need to be compared */
+  for (i = 0; i < nkeys; i++)
+    {
+      column = key_info_p->key[i].col;
+      tuple_p1 = tpl1 + QFILE_TUPLE_LENGTH_SIZE;
+      tuple_p2 = tpl2 + QFILE_TUPLE_LENGTH_SIZE;
+
+      /* find the position of the key */
+      for (key_idx = 0; key_idx < column; key_idx++)
+	{
+	  /* the length of non-NULL values is different with NULL values  */
+	  val_len = QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p1);
+	  tuple_p1 += QFILE_TUPLE_VALUE_HEADER_SIZE + val_len;
+
+	  val_len = QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p2);
+	  tuple_p2 += QFILE_TUPLE_VALUE_HEADER_SIZE + val_len;
+	}
+
+      /* compare the values
+       * Note: need to consider if the value is NULL or not 
+       */
+      if (QFILE_GET_TUPLE_VALUE_FLAG (tuple_p1) == V_UNBOUND
+	  && QFILE_GET_TUPLE_VALUE_FLAG (tuple_p2) == V_UNBOUND)
+	{
+	  /* NULL and NULL values are equal */
+	  cmp = DB_EQ;
+	}
+      else if (QFILE_GET_TUPLE_VALUE_FLAG (tuple_p2) == V_UNBOUND
+	       || QFILE_GET_TUPLE_VALUE_FLAG (tuple_p2) == V_UNBOUND)
+	{
+	  /* NULL and non-NULL are not equal */
+	  cmp = DB_UNK;
+	}
+      else
+	{
+	  /* non-NULL values compare */
+	  tuple_p1 += QFILE_TUPLE_VALUE_HEADER_SIZE;
+	  tuple_p2 += QFILE_TUPLE_VALUE_HEADER_SIZE;
+	  cmp = (*key_info_p->key[i].sort_f) (tuple_p1,
+					      tuple_p2,
+					      key_info_p->key[i].col_dom,
+					      0, 1, NULL);
+	}
+
+      if (cmp != DB_EQ)
+	{
+	  break;
+	}
+    }
+
+  return cmp;
+}
+
+/*
+ * qexec_analytic_evaluate_cume_dist_percent_rank_function () - 
+ *                    evaluate CUME_DIST and PERCENT_RANK
+ *   returns: error code or NO_ERROR
+ *   thread(in):
+ *   func_p(in/out):
+ *   analytic_state(in):
+ *   tuple_idx(in):
+ */
+static int
+qexec_analytic_evaluate_cume_dist_percent_rank_function (THREAD_ENTRY *
+							 thread_p,
+							 ANALYTIC_TYPE *
+							 func_p,
+							 ANALYTIC_STATE *
+							 analytic_state,
+							 int tuple_idx)
+{
+  int rc = NO_ERROR;
+  int *last_pos = NULL;
+  double *last_res = NULL;
+  int total;
+  double dbl;
+  int i, cmp;
+  SCAN_CODE sc;
+  QFILE_TUPLE_RECORD curr_tplrec, next_tplrec;
+  QFILE_LIST_SCAN_ID scan_id, *scan_id_p;
+  PAGE_PTR page_p;
+  QFILE_TUPLE tuple;
+  QFILE_LIST_ID *list_id;
+
+  assert (func_p != NULL);
+
+  last_pos = &func_p->info.cume_percent.last_pos;
+  last_res = &func_p->info.cume_percent.last_res;
+  total = analytic_state->current_group_input_recs;
+
+  memset ((void *) &curr_tplrec, 0, sizeof (curr_tplrec));
+  memset ((void *) &next_tplrec, 0, sizeof (next_tplrec));
+
+  /* copy the current scan position */
+  memcpy (&scan_id, analytic_state->interm_scan, sizeof (QFILE_LIST_SCAN_ID));
+
+  /* update the analytic info */
+  if (tuple_idx == *last_pos)
+    {
+      /* first get current tuple */
+      page_p = scan_id.curr_pgptr;
+      tuple = (char *) page_p + scan_id.curr_offset;
+      list_id = &scan_id.list_id;
+
+      rc = qfile_get_tuple (thread_p, page_p, tuple, &curr_tplrec, list_id);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+
+      while (1)
+	{
+	  /* find and update the last position */
+	  sc = qfile_scan_list_next (thread_p, &scan_id, &next_tplrec, PEEK);
+	  if (sc != S_SUCCESS)
+	    {
+	      if (sc == S_END)
+		{
+		  (*last_pos)++;
+		}
+	      else
+		{
+		  rc = ER_FAILED;
+		}
+	      break;
+	    }
+
+	  /* check if the next tuple is not equal to the current one */
+	  cmp = qexec_compare_two_tuple_by_sort_key (curr_tplrec.tpl,
+						     next_tplrec.tpl,
+						     &analytic_state->
+						     key_info);
+	  /* increase last pos and check the result */
+	  (*last_pos)++;
+	  if (cmp != DB_EQ || *last_pos == total)
+	    {			/* hooray! got the right number for calculating */
+	      break;
+	    }
+	}
+
+      /* update info */
+      switch (func_p->function)
+	{
+	case PT_CUME_DIST:
+	  *last_res = (double) (*last_pos) / total;
+	  assert (*last_res <= 1.0 && *last_res > 0.0);
+	  break;
+
+	case PT_PERCENT_RANK:
+	  if (total <= 1)
+	    {
+	      *last_res = 0;
+	    }
+	  else
+	    {
+	      *last_res = (double) tuple_idx / (total - 1);
+	    }
+	  assert (*last_res <= 1.0 && *last_res >= 0.0);
+	  break;
+
+	default:
+	  rc = ER_FAILED;
+	}
+    }
+
+  /* write the result */
+  DB_MAKE_DOUBLE (func_p->value, *last_res);
+
+  /* must free the memory for storing the current tuple */
+  if (curr_tplrec.tpl != NULL)
+    {
+      db_private_free_and_init (NULL, curr_tplrec.tpl);
+      curr_tplrec.size = 0;
+    }
+
+  return rc;
+}
+
+/*
  * qexec_analytic_evaluate_median_function () -
  *
  *   returns: error code or NO_ERROR
@@ -21083,7 +21312,14 @@ qexec_analytic_group_post_processing (THREAD_ENTRY * thread_p,
 							&xasl_state->vd,
 							tuple_idx);
 	  break;
-
+	case PT_CUME_DIST:
+	case PT_PERCENT_RANK:
+	  rc =
+	    qexec_analytic_evaluate_cume_dist_percent_rank_function (thread_p,
+								     func_p,
+								     analytic_state,
+								     tuple_idx);
+	  break;
 	case PT_MEDIAN:
 	  rc = qexec_analytic_evaluate_median_function (thread_p, func_p,
 							analytic_state,
@@ -25320,4 +25556,52 @@ cleanup:
   pr_clear_value (&right_bound);
 
   return error;
+}
+
+/*
+ * qexec_clear_agg_orderby_const_list () -
+ *   return:
+ *   xasl(in)        :
+ */
+static void
+qexec_clear_agg_orderby_const_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
+{
+  AGGREGATE_TYPE *agg_list, *agg_p;
+  assert (xasl != NULL);
+
+  agg_list = xasl->proc.buildvalue.agg_list;
+  for (agg_p = agg_list; agg_p; agg_p = agg_p->next)
+    {
+      if ((agg_p->function == PT_CUME_DIST
+	   || agg_p->function == PT_PERCENT_RANK)
+	  && agg_p->agg_info.const_array != NULL)
+	{
+	  db_private_free_and_init (thread_p, agg_p->agg_info.const_array);
+	  agg_p->agg_info.list_len = 0;
+	}
+    }
+}
+
+/*
+ * qexec_clear_regu_variable_list () - clear the db_values in the regu variable list
+ *   return:
+ *   xasl_p(in) :
+ *   list(in)   :
+ *   final(in)  :
+ */
+static int
+qexec_clear_regu_variable_list (XASL_NODE * xasl_p, REGU_VARIABLE_LIST list,
+				int final)
+{
+  REGU_VARIABLE_LIST list_node;
+  int pg_cnt = 0;
+
+  assert (list != NULL);
+
+  for (list_node = list; list_node; list_node = list_node->next)
+    {
+      pg_cnt += qexec_clear_regu_var (xasl_p, &list_node->value, final);
+    }
+
+  return pg_cnt;
 }

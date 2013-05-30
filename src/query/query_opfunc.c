@@ -366,6 +366,11 @@ static int (*generic_func_ptrs[]) (THREAD_ENTRY * thread_p, DB_VALUE *,
 {
 qdata_dummy};
 
+static int
+qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p,
+						  AGGREGATE_TYPE * agg_p,
+						  VAL_DESCR * val_desc_p);
+
 /*
  * qdata_dummy () -
  *   return:
@@ -5913,12 +5918,22 @@ qdata_initialize_aggregate_list (THREAD_ENTRY * thread_p,
       /* create temporary list file to handle distincts */
       if (agg_p->option == Q_DISTINCT || agg_p->sort_list != NULL)
 	{
-	  if (qdata_process_distinct_or_sort (thread_p, agg_p, query_id) !=
-	      NO_ERROR)
+	  /* NOTE: cume_dist and percent_rank do NOT need sorting */
+	  if (agg_p->function != PT_CUME_DIST
+	      && agg_p->function != PT_PERCENT_RANK)
 	    {
-	      return ER_FAILED;
+	      if (qdata_process_distinct_or_sort (thread_p, agg_p, query_id)
+		  != NO_ERROR)
+		{
+		  return ER_FAILED;
+		}
 	    }
 	}
+
+      /* init agg_info */
+      agg_p->agg_info.const_array = NULL;
+      agg_p->agg_info.list_len = 0;
+      agg_p->agg_info.nlargers = 0;
     }
 
   return NO_ERROR;
@@ -5974,6 +5989,20 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
       if (agg_p->function == PT_GROUPBY_NUM)
 	{
 	  /* nothing to do with groupby_num() */
+	  continue;
+	}
+
+      /* first handle the functions with multiple arguments */
+      if (agg_p->function == PT_CUME_DIST
+	  || agg_p->function == PT_PERCENT_RANK)
+	{
+	  if (qdata_calculate_aggregate_cume_dist_percent_rank (thread_p,
+								agg_p,
+								val_desc_p) !=
+	      NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
 	  continue;
 	}
 
@@ -6554,6 +6583,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
   char *tuple_p;
   PR_TYPE *pr_type_p;
   OR_BUF buf;
+  double dbl;
 
   DB_MAKE_NULL (&sqr_val);
   DB_MAKE_NULL (&dbval);
@@ -6590,6 +6620,40 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
       if (agg_p->function == PT_GROUPBY_NUM)
 	{
 	  /* nothing to do with groupby_num() */
+	  continue;
+	}
+
+      if (agg_p->function == PT_CUME_DIST)
+	{
+	  /* calculate the result for CUME_DIST */
+	  dbl =
+	    (double) (agg_p->agg_info.nlargers + 1) / (agg_p->curr_cnt + 1);
+	  assert (dbl <= 1.0 && dbl > 0.0);
+	  DB_MAKE_DOUBLE (agg_p->value, dbl);
+
+	  /* free const_array */
+	  if (agg_p->agg_info.const_array != NULL)
+	    {
+	      db_private_free_and_init (thread_p,
+					agg_p->agg_info.const_array);
+	      agg_p->agg_info.list_len = 0;
+	    }
+	  continue;
+	}
+      else if (agg_p->function == PT_PERCENT_RANK)
+	{
+	  /* calculate the result for PERCENT_RANK */
+	  dbl = (double) (agg_p->agg_info.nlargers) / agg_p->curr_cnt;
+	  assert (dbl <= 1.0 && dbl >= 0.0);
+	  DB_MAKE_DOUBLE (agg_p->value, dbl);
+
+	  /* free const_array */
+	  if (agg_p->agg_info.const_array != NULL)
+	    {
+	      db_private_free_and_init (thread_p,
+					agg_p->agg_info.const_array);
+	      agg_p->agg_info.list_len = 0;
+	    }
 	  continue;
 	}
 
@@ -9444,6 +9508,13 @@ qdata_initialize_analytic_func (THREAD_ENTRY * thread_p,
 
   DB_MAKE_NULL (&func_p->part_value);
 
+  /* init CUME_DIST and PERCENT_RANK info */
+  if (func_p->function == PT_CUME_DIST || func_p->function == PT_PERCENT_RANK)
+    {
+      func_p->info.cume_percent.last_pos = 0;
+      func_p->info.cume_percent.last_res = 0;
+    }
+
   /* create temporary list file to handle distincts */
   if (func_p->option == Q_DISTINCT)
     {
@@ -9559,7 +9630,6 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 	  func_p->info.ntile.is_null = true;
 	  func_p->info.ntile.bucket_count = 0;
 	}
-
       goto exit;
     }
 
@@ -9623,6 +9693,11 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
   copy_opr = false;
   switch (func_p->function)
     {
+    case PT_CUME_DIST:
+    case PT_PERCENT_RANK:
+      /* these functions do not execute here, just in case */
+      break;
+
     case PT_NTILE:
       /* output value is not required now */
       DB_MAKE_NULL (func_p->value);
@@ -10963,4 +11038,212 @@ end:
   pr_clear_value (&c_fetch_value);
 
   return error;
+}
+
+/*
+ * qdata_calculate_aggregate_cume_dist_percent_rank () -
+ *   return: NO_ERROR, or ER_code
+ *   agg_p(in): aggregate type
+ *   val_desc_p(in): 
+ *
+ */
+static int
+qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p,
+						  AGGREGATE_TYPE * agg_p,
+						  VAL_DESCR * val_desc_p)
+{
+  DB_VALUE *val_node, **val_node_p;
+  int *len;
+  int i, nloops, cmp;
+  REGU_VARIABLE_LIST regu_var_list, regu_var_node, regu_tmp_node;
+  AGGREGATE_DIST_PERCENT_INFO *info_p;
+  PR_TYPE *pr_type_p;
+  SORT_LIST *sort_p;
+  SORT_ORDER s_order;
+  SORT_NULLS s_nulls;
+  DB_DOMAIN *dom;
+
+  assert (agg_p != NULL && agg_p->sort_list != NULL);
+
+  regu_var_list = agg_p->operand.value.regu_var_list;
+  info_p = &agg_p->agg_info;
+  assert (regu_var_list != NULL && info_p != NULL);
+
+  sort_p = agg_p->sort_list;
+  assert (sort_p != NULL);
+
+  /* for the first time, init */
+  if (agg_p->curr_cnt == 0)
+    {
+      /* first split the const list and type list:
+       * CUME_DIST and PERCENTAGE_RANK is defined as:
+       *   CUME_DIST( const_list) WITHIN GROUP (ORDER BY type_list) ...
+       *   const list: the hypothetical values for calculation
+       *   type list: field name given in the ORDER BY clause;
+       *
+       * All these information is store in the agg_p->operand.value.regu_var_list; 
+       * First N values are type_list, and the last N values are const_list.
+       */
+      assert (info_p->list_len == 0 && info_p->const_array == NULL);
+
+      regu_var_node = regu_tmp_node = regu_var_list;
+      len = &info_p->list_len;
+      info_p->nlargers = 0;
+      nloops = 0;
+
+      /* find the length of the type list and const list */
+      while (regu_tmp_node)
+	{
+	  ++nloops;
+	  regu_var_node = regu_var_node->next;
+	  regu_tmp_node = regu_tmp_node->next->next;
+	}
+      *len = nloops;
+
+      /* memory alloc for const array */
+      assert (info_p->const_array == NULL);
+      info_p->const_array =
+	(DB_VALUE **) db_private_alloc (thread_p,
+					nloops * sizeof (DB_VALUE *));
+
+      if (info_p->const_array == NULL)
+	{
+	  goto exit_on_error;
+	}
+
+      /* now we have found the start of the const list,
+       *  fetch DB_VALUE from the list into agg_info 
+       */
+      regu_tmp_node = regu_var_list;
+      for (i = 0; i < nloops; i++)
+	{
+	  val_node_p = &info_p->const_array[i];
+	  if (fetch_peek_dbval (thread_p, &regu_var_node->value,
+				val_desc_p, NULL, NULL, NULL,
+				val_node_p) != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+
+	  /* Note: we must cast the const value to the same domain
+	   *       as the compared field in the order by clause
+	   */
+	  dom = regu_tmp_node->value.domain;
+
+	  if (db_value_coerce (*val_node_p, *val_node_p, dom) != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+
+	  regu_var_node = regu_var_node->next;
+	  regu_tmp_node = regu_tmp_node->next;
+	}
+    }
+
+  /* comparing the values of type list and const list */
+  assert (info_p->list_len != 0 && info_p->const_array != NULL);
+
+  regu_var_node = regu_var_list;
+  cmp = 0;
+  nloops = info_p->list_len;
+
+  for (i = 0; i < nloops; i++)
+    {
+      /* Note: To handle 'nulls first/last', we need to compare
+       * NULLs values
+       */
+      s_order = sort_p->s_order;
+      s_nulls = sort_p->s_nulls;
+      sort_p = sort_p->next;
+
+      if (fetch_peek_dbval (thread_p, &regu_var_node->value,
+			    val_desc_p, NULL, NULL,
+			    NULL, &val_node) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      /* compare the value and find the order in asc or desc */
+      if (DB_IS_NULL (val_node) && DB_IS_NULL (info_p->const_array[i]))
+	{
+	  /* NULL and NULL comparison */
+	  cmp = DB_EQ;
+	}
+      else if (!DB_IS_NULL (val_node) && DB_IS_NULL (info_p->const_array[i]))
+	{
+	  /* non-NULL and NULL comparison */
+	  if (s_nulls == S_NULLS_LAST)
+	    {
+	      cmp = DB_LT;
+	    }
+	  else
+	    {
+	      cmp = DB_GT;
+	    }
+	}
+      else if (DB_IS_NULL (val_node) && !DB_IS_NULL (info_p->const_array[i]))
+	{
+	  /* NULL and non-NULL comparison */
+	  if (s_nulls == S_NULLS_LAST)
+	    {
+	      cmp = DB_GT;
+	    }
+	  else
+	    {
+	      cmp = DB_LT;
+	    }
+	}
+      else
+	{
+	  /* non-NULL values comparison */
+	  pr_type_p = PR_TYPE_FROM_ID (DB_VALUE_DOMAIN_TYPE (val_node));
+	  cmp = (*(pr_type_p->cmpval))
+	    (val_node, info_p->const_array[i], 1, 0, NULL, -1);
+
+	  assert (cmp != DB_UNK);
+	}
+
+      if (cmp != DB_EQ)
+	{
+	  if (s_order == S_DESC)
+	    {
+	      /* in a descend order */
+	      cmp = -cmp;
+	    }
+	  break;
+	}
+      /* equal, compare next value */
+      regu_var_node = regu_var_node->next;
+    }
+
+  switch (agg_p->function)
+    {
+    case PT_CUME_DIST:
+      if (cmp <= 0)
+	{
+	  info_p->nlargers++;
+	}
+      break;
+    case PT_PERCENT_RANK:
+      if (cmp < 0)
+	{
+	  info_p->nlargers++;
+	}
+      break;
+    default:
+      goto exit_on_error;
+    }
+
+  agg_p->curr_cnt++;
+
+  return NO_ERROR;
+
+exit_on_error:
+  /* error! free const_array */
+  if (agg_p->agg_info.const_array != NULL)
+    {
+      db_private_free_and_init (thread_p, agg_p->agg_info.const_array);
+    }
+
+  return ER_FAILED;
 }

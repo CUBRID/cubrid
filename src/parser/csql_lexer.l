@@ -201,6 +201,9 @@ extern int dot_flag;
 [cC][oO][uU][nN][tT]							{ begin_token(yytext);   return COUNT; }
 [cC][rR][eE][aA][tT][eE]						{ begin_token(yytext);   return CREATE; }
 [cC][rR][oO][sS][sS]							{ begin_token(yytext);   return CROSS; }
+[cC][uU][mM][eE][_][dD][iI][sS][tT]					{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return CUME_DIST; }
 [cC][uU][rR][rR][eE][nN][tT]						{ begin_token(yytext);   return CURRENT; }
 [cC][uU][rR][rR][eE][nN][tT]_[dD][aA][tT][eE]				{ begin_token(yytext);   return CURRENT_DATE; }
 [cC][uU][rR][rR][eE][nN][tT]_[tT][iI][mM][eE]				{ begin_token(yytext);   return CURRENT_TIME; }
@@ -533,6 +536,9 @@ extern int dot_flag;
 [pP][aA][sS][sS][wW][oO][rR][dD]					{ begin_token(yytext);   
 										csql_yylval.cptr = pt_makename(yytext);
 										return PASSWORD; }
+[pP][eE][rR][cC][eE][nN][tT][_][rR][aA][nN][kK]				{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return PERCENT_RANK; }
 [pP][oO][sS][iI][tT][iI][oO][nN]					{ begin_token(yytext);   return POSITION; }
 [pP][rR][eE][cC][iI][sS][iI][oO][nN]					{ begin_token(yytext);   return PRECISION; }
 [pP][rR][eE][pP][aA][rR][eE]						{ begin_token(yytext);   return PREPARE; }
@@ -774,6 +780,7 @@ extern int dot_flag;
 [wW][hH][eE][rR][eE]							{ begin_token(yytext);   return WHERE; }
 [wW][hH][iI][lL][eE]							{ begin_token(yytext);   return WHILE; }
 [wW][iI][tT][hH]							{ begin_token(yytext);   return WITH; }
+[wW][iI][tT][hH][iI][nN]						{ begin_token(yytext);   return WITHIN; }
 [wW][iI][tT][hH][oO][uU][tT]						{ begin_token(yytext);   return WITHOUT; }
 [wW][oO][rR][kK]							{ begin_token(yytext);   return WORK; }
 [wW][oO][rR][kK][sS][pP][aA][cC][eE]					{ begin_token(yytext);   
