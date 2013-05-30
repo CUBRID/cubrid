@@ -480,7 +480,7 @@ namespace dbgw
       {
         return DBGW_VAL_TYPE_INT;
       }
-    if (!strcasecmp(szType, "long"))
+    if (!strcasecmp(szType, "long") || !strcasecmp(szType, "int64"))
       {
         return DBGW_VAL_TYPE_LONG;
       }
