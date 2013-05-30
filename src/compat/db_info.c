@@ -646,6 +646,41 @@ db_get_subclasses (DB_OBJECT * obj)
 }
 
 /*
+ * db_class_has_instance() -
+ * return : an object list
+ * classobj(in): class object
+ */
+int
+db_class_has_instance (DB_OBJECT * classobj)
+{
+  DB_OBJLIST *sub_list;
+  int has_instance;
+
+  sub_list = db_get_subclasses (classobj);
+  if (sub_list)
+    {
+      for (; sub_list; sub_list = sub_list->next)
+	{
+	  has_instance = db_class_has_instance (sub_list->op);
+	  if (has_instance < 0)
+	    {
+	      return has_instance;
+	    }
+	  else if (has_instance > 0)
+	    {
+	      return 1;
+	    }
+	}
+    }
+  else
+    {
+      return heap_has_instance (sm_get_heap (classobj), WS_OID (classobj));
+    }
+
+  return 0;
+}
+
+/*
  * db_get_type_name() - This function maps a type identifier constant to a
  *    printable string containing the type name.
  * return : string containing type name (or NULL if error)

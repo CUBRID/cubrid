@@ -78,6 +78,7 @@ EXPORTS
     db_change_method_implementation
     db_change_query_spec
     db_check_authorization
+    db_class_has_instance
     db_close_session
     db_col_create
     db_col_domain

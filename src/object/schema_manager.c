@@ -413,7 +413,7 @@ static int allocate_index (MOP classop, SM_CLASS * class_,
 			   DB_OBJLIST * subclasses,
 			   SM_ATTRIBUTE ** attrs, const int *asc_desc,
 			   const int *attrs_prefix_length,
-			   int unique, int reverse,
+			   int unique, int not_null, int reverse,
 			   const char *constraint_name, BTID * index,
 			   OID * fk_refcls_oid, BTID * fk_refcls_pk_btid,
 			   int cache_attr_id, const char *fk_name,
@@ -10278,6 +10278,7 @@ collect_hier_class_info (MOP classop, DB_OBJLIST * subclasses,
  *   attrs(in): attribute getting the index
  *   asc_desc(in): asc/desc info list
  *   unique(in): True if were allocating a UNIQUE index.  False otherwise.
+ *   not_null(in):
  *   reverse(in):
  *   constraint_name(in): Name of constraint.
  *   index(out): The BTID of the returned index.
@@ -10290,8 +10291,8 @@ collect_hier_class_info (MOP classop, DB_OBJLIST * subclasses,
 static int
 allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 		SM_ATTRIBUTE ** attrs, const int *asc_desc,
-		const int *attrs_prefix_length, int unique, int reverse,
-		const char *constraint_name, BTID * index,
+		const int *attrs_prefix_length, int unique, int not_null,
+		int reverse, const char *constraint_name, BTID * index,
 		OID * fk_refcls_oid, BTID * fk_refcls_pk_btid,
 		int cache_attr_id, const char *fk_name,
 		SM_PREDICATE_INFO * filter_index,
@@ -10478,7 +10479,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 		  error =
 		    btree_load_index (index, domain, oids, n_classes, n_attrs,
 				      attr_ids, (int *) attrs_prefix_length,
-				      hfids, unique,
+				      hfids, unique, not_null,
 				      last_key_desc, fk_refcls_oid,
 				      fk_refcls_pk_btid, cache_attr_id,
 				      fk_name,
@@ -10496,7 +10497,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 		  error =
 		    btree_load_index (index, domain, oids, n_classes, n_attrs,
 				      attr_ids, (int *) attrs_prefix_length,
-				      hfids, unique,
+				      hfids, unique, not_null,
 				      last_key_desc, fk_refcls_oid,
 				      fk_refcls_pk_btid, cache_attr_id,
 				      fk_name,
@@ -10734,7 +10735,7 @@ allocate_unique_constraint (MOP classop, SM_CLASS * class_,
 			    SM_CLASS_CONSTRAINT * con,
 			    DB_OBJLIST * subclasses)
 {
-  int unique, reverse;
+  int unique, not_null, reverse;
   SM_CLASS *super_class;
   SM_CLASS_CONSTRAINT *super_con, *shared_con;
   const int *asc_desc;
@@ -10811,10 +10812,11 @@ allocate_unique_constraint (MOP classop, SM_CLASS * class_,
 	    }
 
 	  reverse = SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (con->type);
+	  not_null = con->type == SM_CONSTRAINT_PRIMARY_KEY ? true : false;
 
 	  if (allocate_index
 	      (classop, class_, local_subclasses, con->attributes, asc_desc,
-	       con->attrs_prefix_length, unique, reverse, con->name,
+	       con->attrs_prefix_length, unique, not_null, reverse, con->name,
 	       &con->index_btid, NULL, NULL, -1, NULL, con->filter_predicate,
 	       con->func_index_info))
 	    {
@@ -10925,7 +10927,7 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_,
     {
       if (allocate_index (classop, class_, subclasses, con->attributes, NULL,
 			  con->attrs_prefix_length, false,
-			  false, con->name, &con->index_btid,
+			  false, false, con->name, &con->index_btid,
 			  &(con->fk_info->ref_class_oid),
 			  &(con->fk_info->ref_class_pk_btid),
 			  con->fk_info->cache_attr_id, con->fk_info->name,
@@ -10998,7 +11000,7 @@ allocate_disk_structure_helper (MOP classop, SM_CLASS * class_,
 	  error = allocate_index (classop, class_, NULL, con->attributes,
 				  con->asc_desc,
 				  con->attrs_prefix_length,
-				  false, reverse, con->name,
+				  false, false, reverse, con->name,
 				  &con->index_btid, NULL, NULL, -1, NULL,
 				  con->filter_predicate,
 				  con->func_index_info);
@@ -12836,7 +12838,8 @@ cleanup:
       classobj_free_template (flat);
       abort_subclasses (newsubs);
       if (error == ER_BTREE_UNIQUE_FAILED || error == ER_FK_INVALID
-	  || error == ER_SM_PRIMARY_KEY_EXISTS)
+	  || error == ER_SM_PRIMARY_KEY_EXISTS
+	  || error == ER_NOT_NULL_DOES_NOT_ALLOW_NULL_VALUE)
 	{
 	  (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_NAME);
 	}
@@ -13671,7 +13674,7 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
 	     are existing instances */
 	  BTID_SET_NULL (&index);
 	  error = allocate_index (classop, class_, NULL, attrs, asc_desc,
-				  attrs_prefix_length, false,
+				  attrs_prefix_length, false, false,
 				  reverse_index, constraint_name, &index,
 				  NULL, NULL, -1, NULL, filter_index,
 				  function_index);

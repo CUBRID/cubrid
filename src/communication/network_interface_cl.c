@@ -6667,7 +6667,7 @@ int
 btree_load_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oids,
 		  int n_classes, int n_attrs, int *attr_ids,
 		  int *attrs_prefix_length, HFID * hfids,
-		  int unique_flag, int last_key_desc,
+		  int unique_flag, int not_null_flag, int last_key_desc,
 		  OID * fk_refcls_oid, BTID * fk_refcls_pk_btid,
 		  int cache_attr_id, const char *fk_name,
 		  char *pred_stream, int pred_stream_size,
@@ -6705,6 +6705,7 @@ btree_load_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oids,
     + ((n_classes == 1) ? (n_attrs * OR_INT_SIZE) : 0)	/* attrs_prefix_length */
     + (n_classes * OR_HFID_SIZE)	/* hfids */
     + OR_INT_SIZE		/* unique_flag */
+    + OR_INT_SIZE		/* not_null_flag */
     + OR_INT_SIZE		/* last_key_desc */
     + OR_OID_SIZE		/* fk_refcls_oid */
     + OR_BTID_ALIGNED_SIZE	/* fk_refcls_pk_btid */
@@ -6754,6 +6755,7 @@ btree_load_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oids,
 	}
 
       ptr = or_pack_int (ptr, unique_flag);
+      ptr = or_pack_int (ptr, not_null_flag);
       ptr = or_pack_int (ptr, last_key_desc);
 
       ptr = or_pack_oid (ptr, fk_refcls_oid);
@@ -6818,10 +6820,10 @@ btree_load_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oids,
   btid =
     xbtree_load_index (NULL, btid, key_type, class_oids, n_classes, n_attrs,
 		       attr_ids, attrs_prefix_length, hfids, unique_flag,
-		       last_key_desc, fk_refcls_oid, fk_refcls_pk_btid,
-		       cache_attr_id, fk_name, pred_stream, pred_stream_size,
-		       expr_stream, expr_stream_size, func_col_id,
-		       func_attr_index_start);
+		       not_null_flag, last_key_desc, fk_refcls_oid,
+		       fk_refcls_pk_btid, cache_attr_id, fk_name, pred_stream,
+		       pred_stream_size, expr_stream, expr_stream_size,
+		       func_col_id, func_attr_index_start);
   if (btid == NULL)
     {
       error = er_errid ();

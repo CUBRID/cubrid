@@ -48,6 +48,7 @@ typedef struct sort_args SORT_ARGS;
 struct sort_args
 {				/* Collection of information required for "sr_index_sort" */
   int unique_flag;
+  int not_null_flag;
   HFID *hfids;			/* Array of HFIDs for the class(es) */
   OID *class_ids;		/* Array of class OIDs              */
   OID cur_oid;			/* Identifier of the current object */
@@ -188,6 +189,7 @@ static void print_list (const BTREE_NODE * this_list);
  *   hfids(in): Identifier of the heap file containing the instances of the
  *	        class
  *   unique_flag(in):
+ *   not_null_flag(in):
  *   fk_refcls_oid(in):
  *   fk_refcls_pk_btid(in):
  *   cache_attr_id(in):
@@ -198,7 +200,7 @@ BTID *
 xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 		   OID * class_oids, int n_classes, int n_attrs,
 		   int *attr_ids, int *attrs_prefix_length,
-		   HFID * hfids, int unique_flag,
+		   HFID * hfids, int unique_flag, int not_null_flag,
 		   int last_key_desc, OID * fk_refcls_oid,
 		   BTID * fk_refcls_pk_btid, int cache_attr_id,
 		   const char *fk_name, char *pred_stream,
@@ -287,6 +289,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 
   /* Initialize the fields of sorting argument structures */
   sort_args->unique_flag = unique_flag;
+  sort_args->not_null_flag = not_null_flag;
   sort_args->hfids = hfids;
   sort_args->class_ids = class_oids;
   sort_args->attr_ids = attr_ids;
@@ -2639,6 +2642,20 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 		}
 	      return SORT_ERROR_OCCURRED;
 	    }
+	}
+
+      if (sort_args->not_null_flag
+	  && (db_value_is_null (dbvalue_ptr)
+	      || btree_multicol_key_has_null (dbvalue_ptr)))
+	{
+	  if (dbvalue_ptr == &dbvalue)
+	    {
+	      pr_clear_value (&dbvalue);
+	    }
+
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_NOT_NULL_DOES_NOT_ALLOW_NULL_VALUE, 0);
+	  return SORT_ERROR_OCCURRED;
 	}
 
       if (db_value_is_null (dbvalue_ptr)

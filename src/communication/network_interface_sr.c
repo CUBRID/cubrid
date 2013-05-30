@@ -4662,7 +4662,7 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid,
   BTID *return_btid = NULL;
   OID *class_oids = NULL;
   HFID *hfids = NULL;
-  int unique_flag;
+  int unique_flag, not_null_flag;
   int last_key_desc;
   OID fk_refcls_oid;
   BTID fk_refcls_pk_btid;
@@ -4719,6 +4719,7 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid,
     }
 
   ptr = or_unpack_int (ptr, &unique_flag);
+  ptr = or_unpack_int (ptr, &not_null_flag);
   ptr = or_unpack_int (ptr, &last_key_desc);
 
   ptr = or_unpack_oid (ptr, &fk_refcls_oid);
@@ -4772,8 +4773,8 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid,
 
   return_btid = xbtree_load_index (thread_p, &btid, key_type, class_oids,
 				   n_classes, n_attrs, attr_ids,
-				   attr_prefix_lengths,
-				   hfids, unique_flag,
+				   attr_prefix_lengths, hfids,
+				   unique_flag, not_null_flag,
 				   last_key_desc, &fk_refcls_oid,
 				   &fk_refcls_pk_btid, cache_attr_id,
 				   fk_name, pred_stream, pred_stream_size,

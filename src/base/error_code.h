@@ -1415,7 +1415,10 @@
 #define ER_FILE_INCONSISTENT_PAGE_NOT_ALLOCED       -1119
 #define ER_FILE_INCONSISTENT_PAGE_ALLOCED           -1120
 
-#define ER_LAST_ERROR                               -1121
+#define ER_NOT_NULL_DOES_NOT_ALLOW_NULL_VALUE	    -1121
+
+#define ER_LAST_ERROR                               -1122
+
 /*
  * CAUTION!
  *

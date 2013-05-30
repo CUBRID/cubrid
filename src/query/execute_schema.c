@@ -1336,11 +1336,10 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
    * "add_col_not_null_no_default_behavior" to "cubrid".
    * The parameter is true by default.
    */
-  if (alter_code == PT_ADD_ATTR_MTHD &&
-      prm_get_bool_value (PRM_ID_ADD_COLUMN_UPDATE_HARD_DEFAULT) == true)
+  if (alter_code == PT_ADD_ATTR_MTHD)
     {
-      error =
-	do_update_new_notnull_cols_without_default (parser, alter, vclass);
+      error = do_update_new_notnull_cols_without_default (parser, alter,
+							  vclass);
       if (error != NO_ERROR)
 	{
 	  if (error != ER_LK_UNILATERALLY_ABORTED)
@@ -1351,6 +1350,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  return error;
 	}
     }
+
   switch (alter_code)
     {
     case PT_APPLY_PARTITION:
@@ -12837,6 +12837,17 @@ do_update_new_notnull_cols_without_default (PARSER_CONTEXT * parser,
 	  continue;
 	}
 
+      if (!db_class_has_instance (class_mop))
+	{
+	  continue;
+	}
+
+      if (!prm_get_bool_value (PRM_ID_ADD_COLUMN_UPDATE_HARD_DEFAULT))
+	{
+	  ERROR1 (error, ER_SM_ATTR_NOT_NULL,
+		  attr->info.attr_def.attr_name->info.name.original);
+	  goto end;
+	}
 
       if (get_hard_default_for_type (attr->type_enum) == NULL)
 	{

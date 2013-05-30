@@ -24,6 +24,7 @@ EXPORTS
     da_put
     da_get
     da_size
+    db_class_has_instance
     db_create_internal
     db_error_string
     db_find_all_triggers
