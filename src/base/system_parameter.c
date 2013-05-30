@@ -360,6 +360,10 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS "ha_applylogdb_log_wait_time_in_secs"
 
+#define PRM_NAME_HA_SQL_LOGGING "ha_enable_sql_logging"
+
+#define PRM_NAME_HA_SQL_LOG_MAX_SIZE_IN_MB "ha_sql_log_max_size_in_mbytes"
+
 #define PRM_NAME_JAVA_STORED_PROCEDURE "java_stored_procedure"
 
 #define PRM_NAME_COMPAT_PRIMARY_KEY "compat_primary_key"
@@ -1090,6 +1094,14 @@ static bool *prm_ha_applylogdb_ignore_error_list_default = NULL;
 int PRM_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS = -1;
 static int prm_ha_applylogdb_log_wait_time_in_secs_default = -1;
 static int prm_ha_applylogdb_log_wait_time_in_secs_lower = -1;
+
+bool PRM_HA_SQL_LOGGING = false;
+static bool prm_ha_sql_logging_default = false;
+
+int PRM_HA_SQL_LOG_MAX_SIZE_IN_MB = INT_MIN;
+static int prm_ha_sql_log_max_size_in_mb_default = 50;
+static int prm_ha_sql_log_max_size_in_mb_upper = 2048;
+static int prm_ha_sql_log_max_size_in_mb_lower = 1;
 
 bool PRM_JAVA_STORED_PROCEDURE = false;
 static bool prm_java_stored_procedure_default = false;
@@ -2244,6 +2256,21 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_ha_applylogdb_log_wait_time_in_secs_default,
    (void *) &PRM_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS,
    (void *) NULL, (void *) &prm_ha_applylogdb_log_wait_time_in_secs_lower,
+   (char *) NULL},
+  {PRM_NAME_HA_SQL_LOGGING,
+   (PRM_FOR_CLIENT | PRM_FOR_HA),
+   PRM_BOOLEAN,
+   (void *) &prm_ha_sql_logging_default,
+   (void *) &PRM_HA_SQL_LOGGING,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
+  {PRM_NAME_HA_SQL_LOG_MAX_SIZE_IN_MB,
+   (PRM_FOR_CLIENT | PRM_FOR_HA),
+   PRM_INTEGER,
+   (void *) &prm_ha_sql_log_max_size_in_mb_default,
+   (void *) &PRM_HA_SQL_LOG_MAX_SIZE_IN_MB,
+   (void *) &prm_ha_sql_log_max_size_in_mb_upper,
+   (void *) &prm_ha_sql_log_max_size_in_mb_lower,
    (char *) NULL},
   {PRM_NAME_JAVA_STORED_PROCEDURE,
    (PRM_FOR_SERVER),

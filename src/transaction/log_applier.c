@@ -51,6 +51,7 @@
 #include "file_io.h"
 #include "memory_hash.h"
 #include "schema_manager.h"
+#include "log_applier_sql_log.h"
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
@@ -357,6 +358,8 @@ LA_INFO la_Info;
 static bool la_applier_need_shutdown = false;
 static bool la_applier_shutdown_by_signal = false;
 static char la_slave_db_name[DB_MAX_IDENTIFIER_LENGTH + 1];
+
+static bool la_enable_sql_logging = false;
 
 static void la_shutdown_by_signal ();
 static void la_init_ha_apply_info (LA_HA_APPLY_INFO * ha_apply_info);
@@ -4627,8 +4630,10 @@ static int
 la_apply_delete_log (LA_ITEM * item)
 {
   DB_OBJECT *class_obj;
+  MOBJ mclass;
   int error;
   char buf[256];
+  char sql_log_err[LINE_MAX];
 
   error = la_flush_unflushed_insert (NULL);
   if (error != NO_ERROR)
@@ -4644,6 +4649,26 @@ la_apply_delete_log (LA_ITEM * item)
     }
   else
     {
+      /* get class info */
+      mclass = locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTREAD);
+
+      if (la_enable_sql_logging)
+	{
+	  if (sl_write_delete_sql (item->class_name, mclass, &item->key) !=
+	      NO_ERROR)
+	    {
+	      help_sprint_value (&item->key, buf, 255);
+	      snprintf (sql_log_err, sizeof (sql_log_err),
+			"failed to write SQL log. class: %s, key: %s",
+			item->class_name, buf);
+
+	      er_stack_push ();
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR,
+		      1, sql_log_err);
+	      er_stack_pop ();
+	    }
+	}
+
       error = obj_repl_delete_object_by_pkey (class_obj, &item->key);
       if (error == NO_ERROR)
 	{
@@ -4702,6 +4727,7 @@ la_apply_update_log (LA_ITEM * item)
   bool ovfyn = false;
   LOG_PAGEID old_pageid = -1;
   char buf[256];
+  char sql_log_err[LINE_MAX];
 
   /* get the target log page */
   old_pageid = item->target_lsa.pageid;
@@ -4792,6 +4818,23 @@ la_apply_update_log (LA_ITEM * item)
   if (error != NO_ERROR)
     {
       goto error_rtn;
+    }
+
+  /* write sql log */
+  if (la_enable_sql_logging)
+    {
+      if (sl_write_update_sql (inst_tp, &item->key) != NO_ERROR)
+	{
+	  help_sprint_value (&item->key, buf, 255);
+	  snprintf (sql_log_err, sizeof (sql_log_err),
+		    "failed to write SQL log. class: %s, key: %s",
+		    item->class_name, buf);
+
+	  er_stack_push ();
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR,
+		  1, sql_log_err);
+	  er_stack_pop ();
+	}
     }
 
   /* update object */
@@ -4911,6 +4954,7 @@ la_apply_insert_log (LA_ITEM * item)
   char buf[256];
   static char last_inserted_class_name[DB_MAX_IDENTIFIER_LENGTH] = { 0, };
   DB_OBJECT *last_inserted_class_obj;
+  char sql_log_err[LINE_MAX];
 
   /* get the target log page */
   old_pageid = item->target_lsa.pageid;
@@ -4991,11 +5035,28 @@ la_apply_insert_log (LA_ITEM * item)
       goto error_rtn;
     }
 
-  /* make object using the record rescription */
+  /* make object using the record description */
   error = la_disk_to_obj (mclass, &recdes, inst_tp, &item->key);
   if (error != NO_ERROR)
     {
       goto error_rtn;
+    }
+
+  /* write sql log */
+  if (la_enable_sql_logging)
+    {
+      if (sl_write_insert_sql (inst_tp, &item->key) != NO_ERROR)
+	{
+	  help_sprint_value (&item->key, buf, 255);
+	  snprintf (sql_log_err, sizeof (sql_log_err),
+		    "failed to write SQL log. class: %s, key: %s",
+		    item->class_name, buf);
+
+	  er_stack_push ();
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR,
+		  1, sql_log_err);
+	  er_stack_pop ();
+	}
     }
 
   /* update object */
@@ -5169,6 +5230,7 @@ la_apply_schema_log (LA_ITEM * item)
   int error = NO_ERROR;
   DB_OBJECT *user = NULL, *save_user = NULL;
   char buf[256];
+  char sql_log_err[LINE_MAX];
 
   error = la_flush_unflushed_insert (NULL);
   if (error != NO_ERROR)
@@ -5254,6 +5316,26 @@ la_apply_schema_log (LA_ITEM * item)
 	}
 
       ddl = db_get_string (&item->key);
+
+      /* write sql log */
+      if (la_enable_sql_logging)
+	{
+	  if (sl_write_schema_sql
+	      (item->class_name, item->db_user, item->item_type,
+	       ddl) != NO_ERROR)
+	    {
+	      help_sprint_value (&item->key, buf, 255);
+	      snprintf (sql_log_err, sizeof (sql_log_err),
+			"failed to write SQL log. class: %s, key: %s",
+			item->class_name, buf);
+
+	      er_stack_push ();
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR,
+		      1, sql_log_err);
+	      er_stack_pop ();
+	    }
+	}
+
       if (la_update_query_execute (ddl, false) != NO_ERROR)
 	{
 	  error = er_errid ();
@@ -7140,6 +7222,21 @@ la_apply_log_file (const char *database_name, const char *log_path,
 
   /* init la_Info */
   la_init (log_path, max_mem_size);
+
+  if (prm_get_bool_value (PRM_ID_HA_SQL_LOGGING))
+    {
+      if (sl_init (la_slave_db_name, log_path) != NO_ERROR)
+	{
+	  er_stack_push ();
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR,
+		  1, "Failed to initialize SQL logger");
+	  er_stack_pop ();
+	}
+      else
+	{
+	  la_enable_sql_logging = true;
+	}
+    }
 
   error = la_check_duplicated (la_Info.log_path, la_slave_db_name,
 			       &la_Info.log_path_lockf_vdes,
