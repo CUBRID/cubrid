@@ -5255,7 +5255,7 @@ au_add_method_check_authorization (void)
       goto exit_on_error;
     }
 
-  def = smt_edit_class_mop (auth);
+  def = smt_edit_class_mop (auth, AU_ALTER);
   if (def == NULL)
     {
       goto exit_on_error;
@@ -7856,7 +7856,7 @@ au_install (void)
    * user and  group objects but could be useful in other ways - nice to
    * have the methods here for adding/dropping user
    */
-  def = smt_edit_class_mop (root);
+  def = smt_edit_class_mop (root, AU_ALTER);
   if (def == NULL)
     {
       goto exit_on_error;
@@ -7889,7 +7889,7 @@ au_install (void)
    * temporary support for the old name, need to migrate
    * users over to db_root
    */
-  def = smt_edit_class_mop (old);
+  def = smt_edit_class_mop (old, AU_ALTER);
   if (def == NULL)
     {
       goto exit_on_error;
@@ -7911,7 +7911,7 @@ au_install (void)
   sm_update_class (def, NULL);
 
   /* User/group objects */
-  def = smt_edit_class_mop (user);
+  def = smt_edit_class_mop (user, AU_ALTER);
   if (def == NULL)
     {
       goto exit_on_error;
@@ -7958,7 +7958,7 @@ au_install (void)
   }
 
   /* Password objects */
-  def = smt_edit_class_mop (pass);
+  def = smt_edit_class_mop (pass, AU_ALTER);
   if (def == NULL)
     {
       goto exit_on_error;
@@ -7972,7 +7972,7 @@ au_install (void)
    * read-once lock for the authorization object only.
    */
 
-  def = smt_edit_class_mop (auth);
+  def = smt_edit_class_mop (auth, AU_ALTER);
   if (def == NULL)
     {
       goto exit_on_error;

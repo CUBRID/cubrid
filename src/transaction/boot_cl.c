@@ -1585,7 +1585,7 @@ boot_define_class (MOP class_mop)
   int error_code = NO_ERROR;
   const char *index_col_names[2] = { "class_name", NULL };
 
-  def = smt_edit_class_mop (class_mop);
+  def = smt_edit_class_mop (class_mop, AU_ALTER);
 
   error_code = smt_add_attribute (def, "class_of", "object", NULL);
   if (error_code != NO_ERROR)
@@ -1768,7 +1768,7 @@ boot_define_attribute (MOP class_mop)
   int error_code = NO_ERROR;
   const char *index_col_names[3] = { "class_of", "attr_name", NULL };
 
-  def = smt_edit_class_mop (class_mop);
+  def = smt_edit_class_mop (class_mop, AU_ALTER);
 
   error_code = smt_add_attribute (def, "class_of", CT_CLASS_NAME, NULL);
   if (error_code != NO_ERROR)
@@ -1879,7 +1879,7 @@ boot_define_domain (MOP class_mop)
   int error_code = NO_ERROR;
   const char *index_col_names[2] = { "object_of", NULL };
 
-  def = smt_edit_class_mop (class_mop);
+  def = smt_edit_class_mop (class_mop, AU_ALTER);
 
   error_code = smt_add_attribute (def, "object_of", "object", NULL);
   if (error_code != NO_ERROR)
@@ -1982,7 +1982,7 @@ boot_define_method (MOP class_mop)
   int error_code = NO_ERROR;
   const char *names[3] = { "class_of", "meth_name", NULL };
 
-  def = smt_edit_class_mop (class_mop);
+  def = smt_edit_class_mop (class_mop, AU_ALTER);
 
   error_code = smt_add_attribute (def, "class_of", CT_CLASS_NAME, NULL);
   if (error_code != NO_ERROR)
@@ -2066,7 +2066,7 @@ boot_define_meth_sig (MOP class_mop)
   int error_code = NO_ERROR;
   const char *names[2] = { "meth_of", NULL };
 
-  def = smt_edit_class_mop (class_mop);
+  def = smt_edit_class_mop (class_mop, AU_ALTER);
 
   error_code = smt_add_attribute (def, "meth_of", CT_METHOD_NAME, NULL);
   if (error_code != NO_ERROR)
@@ -2143,7 +2143,7 @@ boot_define_meth_argument (MOP class_mop)
   int error_code = NO_ERROR;
   const char *index_col_names[2] = { "meth_sig_of", NULL };
 
-  def = smt_edit_class_mop (class_mop);
+  def = smt_edit_class_mop (class_mop, AU_ALTER);
 
   error_code = smt_add_attribute (def, "meth_sig_of", CT_METHSIG_NAME, NULL);
   if (error_code != NO_ERROR)
@@ -2213,7 +2213,7 @@ boot_define_meth_file (MOP class_mop)
   int error_code = NO_ERROR;
   const char *index_col_names[2] = { "class_of", NULL };
 
-  def = smt_edit_class_mop (class_mop);
+  def = smt_edit_class_mop (class_mop, AU_ALTER);
 
   error_code = smt_add_attribute (def, "class_of", CT_CLASS_NAME, NULL);
   if (error_code != NO_ERROR)
@@ -2275,7 +2275,7 @@ boot_define_query_spec (MOP class_mop)
   int error_code = NO_ERROR;
   const char *index_col_names[2] = { "class_of", NULL };
 
-  def = smt_edit_class_mop (class_mop);
+  def = smt_edit_class_mop (class_mop, AU_ALTER);
 
   error_code = smt_add_attribute (def, "class_of", CT_CLASS_NAME, NULL);
   if (error_code != NO_ERROR)
@@ -2332,7 +2332,7 @@ boot_define_index (MOP class_mop)
   int error_code = NO_ERROR;
   const char *index_col_names[2] = { "class_of", NULL };
 
-  def = smt_edit_class_mop (class_mop);
+  def = smt_edit_class_mop (class_mop, AU_ALTER);
 
   error_code = smt_add_attribute (def, "class_of", CT_CLASS_NAME, NULL);
   if (error_code != NO_ERROR)
@@ -2440,7 +2440,7 @@ boot_define_index_key (MOP class_mop)
   int error_code = NO_ERROR;
   const char *index_col_names[2] = { "index_of", NULL };
 
-  def = smt_edit_class_mop (class_mop);
+  def = smt_edit_class_mop (class_mop, AU_ALTER);
   if (def == NULL)
     {
       return er_errid ();
@@ -2533,7 +2533,7 @@ boot_define_class_authorization (MOP class_mop)
   int error_code = NO_ERROR;
   const char *index_col_names[2] = { "grantee", NULL };
 
-  def = smt_edit_class_mop (class_mop);
+  def = smt_edit_class_mop (class_mop, AU_ALTER);
 
   error_code = smt_add_attribute (def, "grantor", AU_USER_CLASS_NAME, NULL);
   if (error_code != NO_ERROR)
@@ -2607,7 +2607,7 @@ boot_define_partition (MOP class_mop)
   int error_code = NO_ERROR;
   const char *index_col_names[] = { "class_of", "pname", NULL };
 
-  def = smt_edit_class_mop (class_mop);
+  def = smt_edit_class_mop (class_mop, AU_ALTER);
 
   error_code = smt_add_attribute (def, "class_of", CT_CLASS_NAME, NULL);
   if (error_code != NO_ERROR)
@@ -2733,7 +2733,7 @@ boot_define_data_type (MOP class_mop)
   SM_TEMPLATE *def;
   int error_code = NO_ERROR;
 
-  def = smt_edit_class_mop (class_mop);
+  def = smt_edit_class_mop (class_mop, AU_ALTER);
 
   error_code = smt_add_attribute (def, "type_id", "integer", NULL);
   if (error_code != NO_ERROR)
@@ -2788,7 +2788,7 @@ boot_define_stored_procedure (MOP class_mop)
   int error_code = NO_ERROR;
   const char *index_col_names[2] = { "sp_name", NULL };
 
-  def = smt_edit_class_mop (class_mop);
+  def = smt_edit_class_mop (class_mop, AU_ALTER);
 
   error_code = smt_add_attribute (def, "sp_name", "varchar(255)", NULL);
   if (error_code != NO_ERROR)
@@ -2881,7 +2881,7 @@ boot_define_stored_procedure_arguments (MOP class_mop)
   int error_code = NO_ERROR;
   const char *index_col_names[2] = { "sp_name", NULL };
 
-  def = smt_edit_class_mop (class_mop);
+  def = smt_edit_class_mop (class_mop, AU_ALTER);
 
   error_code = smt_add_attribute (def, "sp_name", "varchar(255)", NULL);
   if (error_code != NO_ERROR)
@@ -2958,7 +2958,7 @@ boot_define_serial (MOP class_mop)
   int error_code = NO_ERROR;
   const char *index_col_names[] = { "name", NULL };
 
-  def = smt_edit_class_mop (class_mop);
+  def = smt_edit_class_mop (class_mop, AU_ALTER);
 
   error_code = smt_add_attribute (def, "name", "string", NULL);
   if (error_code != NO_ERROR)
@@ -3141,7 +3141,7 @@ boot_define_ha_apply_info (MOP class_mop)
   int error_code = NO_ERROR;
   const char *index_col_names[] = { "db_name", "copied_log_path", NULL };
 
-  def = smt_edit_class_mop (class_mop);
+  def = smt_edit_class_mop (class_mop, AU_ALTER);
 
   error_code = smt_add_attribute (def, "db_name", "varchar(255)", NULL);
   if (error_code != NO_ERROR)
@@ -3454,7 +3454,7 @@ boot_define_collations (MOP class_mop)
   SM_TEMPLATE *def;
   int error_code = NO_ERROR;
 
-  def = smt_edit_class_mop (class_mop);
+  def = smt_edit_class_mop (class_mop, AU_ALTER);
 
   error_code = smt_add_attribute (def, CT_DBCOLL_COLL_ID_COLUMN, "integer",
 				  NULL);
@@ -3610,7 +3610,7 @@ boot_define_charsets (MOP class_mop)
   SM_TEMPLATE *def;
   int error_code = NO_ERROR;
 
-  def = smt_edit_class_mop (class_mop);
+  def = smt_edit_class_mop (class_mop, AU_ALTER);
 
   error_code = smt_add_attribute (def, CT_DBCHARSET_CHARSET_ID, "integer",
 				  NULL);

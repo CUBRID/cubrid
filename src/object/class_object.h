@@ -123,6 +123,18 @@
 	  (c) == SM_CONSTRAINT_INDEX)         \
 	  ? true : false)
 
+#define SM_IS_CONSTRAINT_EXCEPT_INDEX_FAMILY(c) \
+        ((SM_IS_CONSTRAINT_UNIQUE_FAMILY(c)    || \
+         (c) == SM_CONSTRAINT_FOREIGN_KEY)        \
+         ? true : false )
+
+#define SM_IS_INDEX_FAMILY(c) \
+        (((c) == SM_CONSTRAINT_UNIQUE          || \
+         (c) == SM_CONSTRAINT_REVERSE_UNIQUE   || \
+         (c) == SM_CONSTRAINT_INDEX            || \
+         (c) == SM_CONSTRAINT_REVERSE_INDEX)      \
+         ? true : false )
+
 #define SM_FIND_NAME_IN_COMPONENT_LIST(complist, name) \
         classobj_complist_search((SM_COMPONENT *)complist, name)
 
@@ -466,6 +478,14 @@ typedef enum
   Meta_class			/* the object is a normal class */
 } SM_METATYPE;
 
+/*
+ *    These are used to classify the type of constraint.
+ */
+typedef enum
+{
+  SM_CONSTRAINT_NAME,
+  SM_INDEX_NAME
+} SM_CONSTRAINT_FAMILY;
 
 /*
  *    This is used at the top of all "meta" objects that are represented
@@ -1071,6 +1091,12 @@ extern int classobj_find_prop_constraint (DB_SEQ * properties,
 					  const char *prop_name,
 					  const char *cnstr_name,
 					  DB_VALUE * cnstr_val);
+
+extern int classobj_rename_constraint (DB_SEQ * properties,
+				       const char *prop_name,
+				       const char *old_name,
+				       const char *new_name);
+
 extern int classobj_get_cached_constraint (SM_CONSTRAINT * constraints,
 					   SM_CONSTRAINT_TYPE type,
 					   BTID * id);
@@ -1100,6 +1126,11 @@ extern SM_CLASS_CONSTRAINT
   * classobj_find_class_constraint (SM_CLASS_CONSTRAINT * constraints,
 				    SM_CONSTRAINT_TYPE type,
 				    const char *name);
+extern SM_CLASS_CONSTRAINT
+  * classobj_find_class_constraint_by_btid (SM_CLASS_CONSTRAINT * constraints,
+					    SM_CONSTRAINT_TYPE type,
+					    BTID btid);
+
 extern SM_CLASS_CONSTRAINT *classobj_find_class_index (SM_CLASS * class_,
 						       const char *name);
 extern SM_CLASS_CONSTRAINT

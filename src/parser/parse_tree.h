@@ -1053,7 +1053,9 @@ typedef enum
 
   PT_NULLS_DEFAULT,
   PT_NULLS_FIRST,
-  PT_NULLS_LAST
+  PT_NULLS_LAST,
+
+  PT_CONSTRAINT_NAME
 } PT_MISC_TYPE;
 
 /* Enumerated join type */
@@ -1153,7 +1155,10 @@ typedef enum
   PT_CHANGE_ATTR,
   PT_CHANGE_AUTO_INCREMENT,
   PT_CHANGE_OWNER,
-  PT_CHANGE_COLLATION
+  PT_CHANGE_COLLATION,
+  PT_RENAME_CONSTRAINT,
+  PT_RENAME_INDEX,
+  PT_REBUILD_INDEX
 } PT_ALTER_CODE;
 
 /* Codes for trigger event type */
@@ -1769,10 +1774,13 @@ struct pt_index_info
   PT_NODE *indexed_class;	/* PT_SPEC */
   PT_NODE *column_names;	/* PT_SORT_SPEC (list) */
   PT_NODE *index_name;		/* PT_NAME */
+  PT_NODE *new_name;		/* PT_NAME */
   PT_NODE *prefix_length;	/* PT_NAME */
   PT_NODE *where;		/* PT_EXPR */
   PT_NODE *function_expr;	/* PT_EXPR - expression to be used in a
 				 * function index */
+  PT_ALTER_CODE code;
+
   int func_pos;			/* the position of the expression in the
 				 * function index's column list */
   int func_no_args;		/* number of arguments in the function index

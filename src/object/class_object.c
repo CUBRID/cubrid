@@ -1939,6 +1939,70 @@ classobj_find_prop_constraint (DB_SEQ * properties, const char *prop_name,
 }
 
 /*
+ * classobj_rename_constraint() - This function is used to rename
+ *                                a constraint name.
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   properties(in): Class property list
+ *   prop_name(in): Class property name
+ *   old_name(in): old constraint name
+ *   new_name(in): new constraint name
+ */
+
+int
+classobj_rename_constraint (DB_SEQ * properties, const char *prop_name,
+			    const char *old_name, const char *new_name)
+{
+  DB_VALUE prop_val, cnstr_val, new_val;
+  DB_SEQ *prop_seq;
+  int found = 0;
+  int error = NO_ERROR;
+
+  db_make_null (&prop_val);
+  db_make_null (&cnstr_val);
+  db_make_null (&new_val);
+
+  found = classobj_get_prop (properties, prop_name, &prop_val);
+  if (found == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      error = ER_SM_INVALID_PROPERTY;
+      goto end;
+    }
+
+  prop_seq = DB_GET_SEQ (&prop_val);
+  found = classobj_get_prop (prop_seq, old_name, &cnstr_val);
+  if (found == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      error = ER_SM_INVALID_PROPERTY;
+      goto end;
+    }
+
+  db_make_string (&new_val, new_name);
+
+  /* found - 1 (should be modified.. It seems to be ambiguous.) */
+  error = set_put_element (prop_seq, found - 1, &new_val);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  found = classobj_put_prop (properties, prop_name, &prop_val);
+  if (found == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      error = ER_SM_INVALID_PROPERTY;
+      goto end;
+    }
+
+end:
+  pr_clear_value (&prop_val);
+  pr_clear_value (&cnstr_val);
+  pr_clear_value (&new_val);
+  return error;
+}
+
+/*
  * classobj_btid_from_property_value() - Little helper function to get a btid out of
  *    a DB_VALUE that was obtained from a property list.
  *    Note that it is still up to the caller to clear this value when they're
@@ -3719,6 +3783,32 @@ classobj_find_class_constraint (SM_CLASS_CONSTRAINT * constraints,
     {
       if ((con->type == type)
 	  && (intl_identifier_casecmp (con->name, name) == 0))
+	{
+	  break;
+	}
+    }
+  return con;
+}
+
+/*
+ * classobj_find_class_constraint_by_btid() - Searches a list of class
+ *    constraint structures for one with a certain btid. Couldn't we be
+ *    using nlist for this?
+ *   return: constraint
+ *   constraints(in): constraint list
+ *   type(in):
+ *   btid(in): btid to look for
+ */
+
+SM_CLASS_CONSTRAINT *
+classobj_find_class_constraint_by_btid (SM_CLASS_CONSTRAINT * constraints,
+					SM_CONSTRAINT_TYPE type, BTID btid)
+{
+  SM_CLASS_CONSTRAINT *con;
+
+  for (con = constraints; con != NULL; con = con->next)
+    {
+      if ((con->type == type) && BTID_IS_EQUAL (&btid, &con->index_btid))
 	{
 	  break;
 	}

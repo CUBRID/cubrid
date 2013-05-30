@@ -474,7 +474,6 @@ static int update_class (SM_TEMPLATE * template_, MOP * classmop,
 			 int auto_res);
 static void remove_class_triggers (MOP classop, SM_CLASS * class_);
 static int sm_drop_cascade_foreign_key (SM_CLASS * class_);
-static int sm_exist_index (MOP classop, const char *idxname, BTID * btid);
 static char *sm_default_constraint_name (const char *class_name,
 					 DB_CONSTRAINT_TYPE type,
 					 const char **att_names,
@@ -11425,8 +11424,11 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 	  continue;
 	}
 
-      new_con = classobj_find_class_constraint (flat_constraints, con->type,
-						con->name);
+      /* We need to find the constraint by BTID because the constraint name
+       * may have been changed by RENAME CONSTRAINT(or INDEX) DDLs. */
+      new_con = classobj_find_class_constraint_by_btid (flat_constraints,
+							con->type,
+							con->index_btid);
       if (new_con == NULL)
 	{
 	  /* Constraint does not exist in the template */
@@ -13354,7 +13356,7 @@ sm_delete_class (const char *name)
  *   classop(in): class object
  *   idxname(in): index name
  */
-static int
+int
 sm_exist_index (MOP classop, const char *idxname, BTID * btid)
 {
   int error = NO_ERROR;
@@ -14509,7 +14511,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type,
     case DB_CONSTRAINT_UNIQUE:
     case DB_CONSTRAINT_REVERSE_UNIQUE:
     case DB_CONSTRAINT_PRIMARY_KEY:
-      def = smt_edit_class_mop (classop);
+      def = smt_edit_class_mop (classop, AU_ALTER);
       if (def == NULL)
 	{
 	  error = er_errid ();
@@ -14532,7 +14534,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type,
       break;
 
     case DB_CONSTRAINT_NOT_NULL:
-      def = smt_edit_class_mop (classop);
+      def = smt_edit_class_mop (classop, AU_ALTER);
       if (def == NULL)
 	{
 	  error = er_errid ();
@@ -14632,7 +14634,7 @@ sm_drop_constraint (MOP classop,
     case DB_CONSTRAINT_UNIQUE:
     case DB_CONSTRAINT_REVERSE_UNIQUE:
     case DB_CONSTRAINT_PRIMARY_KEY:
-      def = smt_edit_class_mop (classop);
+      def = smt_edit_class_mop (classop, AU_ALTER);
       if (def == NULL)
 	{
 	  error = er_errid ();
@@ -14657,7 +14659,7 @@ sm_drop_constraint (MOP classop,
       break;
 
     case DB_CONSTRAINT_NOT_NULL:
-      def = smt_edit_class_mop (classop);
+      def = smt_edit_class_mop (classop, AU_ALTER);
       if (def == NULL)
 	{
 	  error = er_errid ();

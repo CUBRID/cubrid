@@ -132,6 +132,7 @@ extern int sm_drop_constraint (MOP classop,
 			       const char **att_names, bool class_attributes,
 			       bool mysql_index_name);
 extern int sm_drop_index (MOP classop, const char *constraint_name);
+extern int sm_exist_index (MOP classop, const char *idxname, BTID * btid);
 
 /* Misc schema operations */
 extern int sm_rename_class (MOP op, const char *new_name);

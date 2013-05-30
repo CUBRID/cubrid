@@ -498,6 +498,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   const char *entity_name, *new_query;
   const char *attr_name, *mthd_name, *mthd_file, *attr_mthd_name;
   const char *new_name, *old_name, *domain;
+  const char *property_type;
+  char *norm_new_name;
   DB_CTMPL *ctemplate = NULL;
   DB_OBJECT *vclass, *sup_class, *partition_obj;
   int error = NO_ERROR;
@@ -518,9 +520,12 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   HFID *hfid;
 #endif
   SM_PARTITION_ALTER_INFO pinfo;
+  SM_CLASS_CONSTRAINT *sm_constraint = NULL;
+  DB_CONSTRAINT_TYPE ctype;
   bool partition_savepoint = false;
   bool old_disable_stats = sm_Disable_updating_statistics;
   const PT_ALTER_CODE alter_code = alter->info.alter.code;
+  SM_CONSTRAINT_FAMILY constraint_family;
 
   entity_name = alter->info.alter.entity_name->info.name.original;
   if (entity_name == NULL)
@@ -1276,6 +1281,30 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	}
       break;
 
+    case PT_RENAME_CONSTRAINT:
+    case PT_RENAME_INDEX:
+      sm_Disable_updating_statistics = true;
+
+      old_name =
+	alter->info.alter.alter_clause.rename.old_name->info.name.original;
+      new_name =
+	alter->info.alter.alter_clause.rename.new_name->info.name.original;
+
+      if (alter->info.alter.alter_clause.rename.element_type ==
+	  PT_CONSTRAINT_NAME)
+	{
+	  constraint_family = SM_CONSTRAINT_NAME;
+	}
+      else			/* if (alter->info.alter.alter_clause.
+				   rename.element_type == PT_INDEX_NAME) */
+	{
+	  constraint_family = SM_INDEX_NAME;
+	}
+
+      error = smt_rename_constraint (ctemplate, old_name, new_name,
+				     constraint_family);
+      break;
+
     default:
       assert (false);
       dbt_abort_class (ctemplate);
@@ -1301,10 +1330,16 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	{
 	  goto alter_partition_fail;
 	}
+      /* assume that sm_Disable_updating_statistics was used
+       * in Rename constraint/index */
+      sm_Disable_updating_statistics = old_disable_stats;
       return error;
     }
 
   vclass = dbt_finish_class (ctemplate);
+  /* assume that sm_Disable_updating_statistics was used
+   * in Rename constraint/index */
+  sm_Disable_updating_statistics = old_disable_stats;
 
   /* the dbt_finish_class() failed, the template was not freed */
   if (vclass == NULL)
@@ -2999,13 +3034,13 @@ error_exit:
 }
 
 /*
- * do_alter_index() - Alters an index on a class.
+ * do_alter_index_rebuild() - Alters an index on a class (drop and create).
  *   return: Error code if it fails
  *   parser(in): Parser context
  *   statement(in): Parse tree of a alter index statement
  */
-int
-do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
+static int
+do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
 {
   int error = NO_ERROR;
   DB_OBJECT *obj;
@@ -3570,6 +3605,148 @@ error_exit:
     ER_FAILED : error;
 
   goto end;
+}
+
+/*
+ * do_alter_index_rename() - renames an index on a class.
+ *   return: Error code if it fails
+ *   parser(in): Parser context
+ *   statement(in): Parse tree of a alter index statement
+ */
+static int
+do_alter_index_rename (PARSER_CONTEXT * parser, const PT_NODE * statement)
+{
+  int error = NO_ERROR;
+  DB_OBJECT *obj;
+  PT_NODE *cls = NULL;
+  SM_TEMPLATE *ctemplate = NULL;
+  const char *class_name = NULL;
+  const char *index_name = NULL;
+  const char *new_index_name = NULL;
+  bool do_rollback = false;
+  bool old_disable_stats = sm_Disable_updating_statistics;
+
+  index_name =
+    statement->info.index.index_name ? statement->info.index.index_name->info.
+    name.original : NULL;
+
+  new_index_name =
+    statement->info.index.new_name ? statement->info.index.new_name->info.
+    name.original : NULL;
+
+  if (index_name == NULL || new_index_name == NULL)
+    {
+      goto error_exit;
+    }
+
+  cls =
+    statement->info.index.indexed_class ? statement->info.index.
+    indexed_class->info.spec.flat_entity_list : NULL;
+
+  if (cls == NULL)
+    {
+      goto error_exit;
+    }
+
+  class_name = cls->info.name.resolved;
+  obj = db_find_class (class_name);
+
+  if (obj == NULL)
+    {
+      error = er_errid ();
+      assert (error != NO_ERROR);
+      goto error_exit;
+    }
+
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_ALTER_INDEX);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  do_rollback = true;
+
+  /* We do not need to update statistics in Renaming index */
+  sm_Disable_updating_statistics = true;
+
+  ctemplate = smt_edit_class_mop (obj, AU_INDEX);
+  if (ctemplate == NULL)
+    {
+      error = er_errid ();
+      assert (error != NO_ERROR);
+      goto error_exit;
+    }
+
+  error = smt_rename_constraint (ctemplate, index_name,
+				 new_index_name, SM_INDEX_NAME);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  /* classobj_free_template() is included in sm_update_class() */
+  error = sm_update_class (ctemplate, NULL);
+  if (error != NO_ERROR)
+    {
+      /* Even though sm_update() did not return NO_ERROR,
+       * ctemplate is already freed */
+      ctemplate = NULL;
+      goto error_exit;
+    }
+
+
+end:
+  /* roll back the state of sm_Disable_updating_statistics */
+  sm_Disable_updating_statistics = old_disable_stats;
+
+  return error;
+
+error_exit:
+  if (ctemplate != NULL)
+    {
+      /* smt_quit() always returns NO_ERROR */
+      smt_quit (ctemplate);
+    }
+
+  if (do_rollback == true)
+    {
+      if (do_rollback && error != ER_LK_UNILATERALLY_ABORTED)
+	{
+	  tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ALTER_INDEX);
+	}
+    }
+  error = (error == NO_ERROR && (error = er_errid ()) == NO_ERROR) ?
+    ER_FAILED : error;
+
+  goto end;
+}
+
+/*
+ * do_alter_index() - Alters an index on a class.
+ *   return: Error code if it fails
+ *   parser(in): Parser context
+ *   statement(in): Parse tree of a alter index statement
+ */
+int
+do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
+{
+  int error = NO_ERROR;
+
+  CHECK_MODIFICATION_ERROR ();
+
+  if (statement->info.index.code == PT_REBUILD_INDEX)
+    {
+      error = do_alter_index_rebuild (parser, statement);
+    }
+  else if (statement->info.index.code == PT_RENAME_INDEX)
+    {
+      error = do_alter_index_rename (parser, statement);
+    }
+  else
+    {
+      error = ER_FAILED;
+    }
+  return error;
 }
 
 /*

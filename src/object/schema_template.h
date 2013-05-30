@@ -32,7 +32,7 @@
 
 /* Template creation */
 extern SM_TEMPLATE *smt_def_class (const char *name);
-extern SM_TEMPLATE *smt_edit_class_mop (MOP class_);
+extern SM_TEMPLATE *smt_edit_class_mop (MOP class_, DB_AUTH db_auth_type);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern SM_TEMPLATE *smt_edit_class (const char *name);
 #endif /* ENABLE_UNUSED_FUNCTION */
@@ -159,6 +159,10 @@ extern int smt_add_set_argument_domain (SM_TEMPLATE * template_,
 /* Rename functions */
 extern int smt_rename_any (SM_TEMPLATE * template_, const char *name,
 			   const bool class_namespace, const char *new_name);
+
+extern int smt_rename_constraint (SM_TEMPLATE * ctemplate,
+				  const char *old_name, const char *new_name,
+				  SM_CONSTRAINT_FAMILY element_type);
 
 /* Deletion functions */
 extern int smt_delete_any (SM_TEMPLATE * template_, const char *name,

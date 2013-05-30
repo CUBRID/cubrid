@@ -3239,6 +3239,10 @@ pt_show_misc_type (PT_MISC_TYPE p)
       return "out";
     case PT_INPUTOUTPUT:
       return "inout";
+    case PT_CONSTRAINT_NAME:
+      return "constraint";
+    case PT_INDEX_NAME:
+      return "index";
     default:
       return "MISC_TYPE: type unknown";
     }
@@ -5386,6 +5390,15 @@ pt_apply_alter (PARSER_CONTEXT * parser, PT_NODE * p,
       p->info.alter.alter_clause.rename.mthd_name =
 	g (parser, p->info.alter.alter_clause.rename.mthd_name, arg);
       break;
+    case PT_RENAME_CONSTRAINT:
+    case PT_RENAME_INDEX:
+      p->info.alter.alter_clause.rename.old_name = g (parser,
+						      p->info.
+						      alter.alter_clause.
+						      rename.old_name, arg);
+      p->info.alter.alter_clause.rename.new_name =
+	g (parser, p->info.alter.alter_clause.rename.new_name, arg);
+      break;
     case PT_MODIFY_DEFAULT:
     case PT_ALTER_DEFAULT:
       p->info.alter.alter_clause.ch_attr_def.attr_name_list =
@@ -5777,6 +5790,33 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
 	pt_print_bytes (parser, p->info.alter.alter_clause.rename.new_name);
       q = pt_append_varchar (parser, q, r1);
       break;
+
+    case PT_RENAME_CONSTRAINT:
+    case PT_RENAME_INDEX:
+      q = pt_append_nulstring (parser, q, " rename ");
+      q = pt_append_nulstring (parser, q,
+			       pt_show_misc_type (p->info.alter.
+						  alter_clause.rename.
+						  element_type));
+      q = pt_append_nulstring (parser, q, " ");
+
+      switch (p->info.alter.alter_clause.rename.element_type)
+	{
+	default:
+	  break;
+	case PT_CONSTRAINT_NAME:
+	case PT_INDEX_NAME:
+	  r1 = pt_print_bytes (parser,
+			       p->info.alter.alter_clause.rename.old_name);
+	  r2 = pt_print_bytes (parser,
+			       p->info.alter.alter_clause.rename.new_name);
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, " to ");
+	  q = pt_append_varchar (parser, q, r2);
+	  break;
+	}
+      break;
+
     case PT_RENAME_ATTR_MTHD:
       q = pt_append_nulstring (parser, q, " rename ");
       q = pt_append_nulstring (parser, q,
@@ -6170,14 +6210,28 @@ pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p)
 
   b = pt_append_nulstring (parser, b, " ");
 
-  if (p->info.index.where)
-    {
-      r3 = pt_print_and_list (parser, p->info.index.where);
-      b = pt_append_nulstring (parser, b, " where ");
-      b = pt_append_varchar (parser, b, r3);
-    }
 
-  b = pt_append_nulstring (parser, b, "rebuild");
+  if (p->info.index.code == PT_REBUILD_INDEX)
+    {
+      if (p->info.index.where)
+	{
+	  r3 = pt_print_and_list (parser, p->info.index.where);
+	  b = pt_append_nulstring (parser, b, " where ");
+	  b = pt_append_varchar (parser, b, r3);
+	}
+
+      b = pt_append_nulstring (parser, b, "rebuild");
+    }
+  else				/* if (p->info.index.code == PT_RENAME_INDEX) */
+    {
+      b = pt_append_nulstring (parser, b, "rename to ");
+
+      if (p->info.index.new_name)
+	{
+	  const char *new_name = p->info.index.new_name->info.name.original;
+	  b = pt_append_bytes (parser, b, new_name, strlen (new_name));
+	}
+    }
 
   return b;
 }

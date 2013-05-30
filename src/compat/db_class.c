@@ -186,7 +186,7 @@ db_add_attribute_internal (MOP class_, const char *name, const char *domain,
   CHECK_MODIFICATION_ERROR ();
   CHECK_3ARGS_RETURN_EXPR (class_, name, domain, ER_OBJ_INVALID_ARGUMENTS);
 
-  def = smt_edit_class_mop (class_);
+  def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
       error = er_errid ();
@@ -325,7 +325,7 @@ drop_internal (MOP class_, const char *name, SM_NAME_SPACE name_space)
   CHECK_MODIFICATION_ERROR ();
   CHECK_2ARGS_RETURN_EXPR (class_, name, ER_OBJ_INVALID_ARGUMENTS);
 
-  def = smt_edit_class_mop (class_);
+  def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
       error = er_errid ();
@@ -463,7 +463,7 @@ db_add_set_attribute_domain (MOP class_,
   CHECK_MODIFICATION_ERROR ();
   CHECK_3ARGS_RETURN_EXPR (class_, name, domain, ER_OBJ_INVALID_ARGUMENTS);
 
-  def = smt_edit_class_mop (class_);
+  def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
       error = er_errid ();
@@ -535,7 +535,7 @@ db_drop_set_attribute_domain (MOP class_,
   CHECK_MODIFICATION_ERROR ();
   CHECK_3ARGS_RETURN_EXPR (class_, name, domain, ER_OBJ_INVALID_ARGUMENTS);
 
-  def = smt_edit_class_mop (class_);
+  def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
       error = er_errid ();
@@ -606,7 +606,7 @@ db_change_default (MOP class_, const char *name, DB_VALUE * value)
   CHECK_MODIFICATION_ERROR ();
   CHECK_3ARGS_RETURN_EXPR (class_, name, value, ER_OBJ_INVALID_ARGUMENTS);
 
-  def = smt_edit_class_mop (class_);
+  def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
       error = er_errid ();
@@ -678,7 +678,7 @@ db_rename_internal (MOP class_, const char *name,
   CHECK_CONNECT_ERROR ();
   CHECK_MODIFICATION_ERROR ();
 
-  def = smt_edit_class_mop (class_);
+  def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
       error = er_errid ();
@@ -777,7 +777,7 @@ add_method_internal (MOP class_, const char *name, const
   CHECK_MODIFICATION_ERROR ();
   CHECK_2ARGS_RETURN_EXPR (class_, name, ER_OBJ_INVALID_ARGUMENTS);
 
-  def = smt_edit_class_mop (class_);
+  def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
       error = er_errid ();
@@ -900,7 +900,7 @@ db_change_method_implementation (MOP class_, const char *name,
   CHECK_MODIFICATION_ERROR ();
   CHECK_3ARGS_RETURN_EXPR (class_, name, newname, ER_OBJ_INVALID_ARGUMENTS);
 
-  def = smt_edit_class_mop (class_);
+  def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
       error = er_errid ();
@@ -959,7 +959,7 @@ add_arg_domain (DB_OBJECT * class_, const char *name,
   CHECK_MODIFICATION_ERROR ();
   CHECK_2ARGS_RETURN_EXPR (class_, name, ER_OBJ_INVALID_ARGUMENTS);
 
-  def = smt_edit_class_mop (class_);
+  def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
       error = er_errid ();
@@ -1113,7 +1113,7 @@ db_set_loader_commands (MOP class_, const char *commands)
   CHECK_CONNECT_ERROR ();
   CHECK_1ARG_ERROR (class_);
 
-  def = smt_edit_class_mop (class_);
+  def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
       error = er_errid ();
@@ -1166,7 +1166,7 @@ db_add_method_file (MOP class_, const char *name)
   CHECK_MODIFICATION_ERROR ();
   CHECK_2ARGS_RETURN_EXPR (class_, name, ER_OBJ_INVALID_ARGUMENTS);
 
-  def = smt_edit_class_mop (class_);
+  def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
       error = er_errid ();
@@ -1212,7 +1212,7 @@ db_drop_method_file (MOP class_, const char *name)
   CHECK_MODIFICATION_ERROR ();
   CHECK_2ARGS_RETURN_EXPR (class_, name, ER_OBJ_INVALID_ARGUMENTS);
 
-  def = smt_edit_class_mop (class_);
+  def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
       error = er_errid ();
@@ -1255,7 +1255,7 @@ db_drop_method_files (MOP class_)
   CHECK_MODIFICATION_ERROR ();
   CHECK_1ARG_RETURN_EXPR (class_, ER_OBJ_INVALID_ARGUMENTS);
 
-  def = smt_edit_class_mop (class_);
+  def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
       error = er_errid ();
@@ -1331,7 +1331,7 @@ db_add_super_internal (MOP class_, MOP super)
   CHECK_MODIFICATION_ERROR ();
   CHECK_2ARGS_RETURN_EXPR (class_, super, ER_OBJ_INVALID_ARGUMENTS);
 
-  def = smt_edit_class_mop (class_);
+  def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
       error = er_errid ();
@@ -1384,7 +1384,7 @@ db_drop_super (MOP class_, MOP super)
   error = do_check_partitioned_class (class_, CHECK_PARTITION_SUBS, NULL);
   if (!error)
     {
-      def = smt_edit_class_mop (class_);
+      def = smt_edit_class_mop (class_, AU_ALTER);
       if (def == NULL)
 	{
 	  error = er_errid ();
@@ -1436,7 +1436,7 @@ db_drop_super_connect (MOP class_, MOP super)
   error = do_check_partitioned_class (class_, CHECK_PARTITION_SUBS, NULL);
   if (!error)
     {
-      def = smt_edit_class_mop (class_);
+      def = smt_edit_class_mop (class_, AU_ALTER);
       if (def == NULL)
 	{
 	  error = er_errid ();
@@ -1571,7 +1571,7 @@ db_add_resolution (MOP class_, MOP super, const char *name, const char *alias)
   CHECK_CONNECT_ERROR ();
   CHECK_MODIFICATION_ERROR ();
 
-  def = smt_edit_class_mop (class_);
+  def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
       error = er_errid ();
@@ -1618,7 +1618,7 @@ db_add_class_resolution (MOP class_, MOP super, const char *name,
   CHECK_CONNECT_ERROR ();
   CHECK_MODIFICATION_ERROR ();
 
-  def = smt_edit_class_mop (class_);
+  def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
       error = er_errid ();
@@ -1661,7 +1661,7 @@ db_drop_resolution (MOP class_, MOP super, const char *name)
   CHECK_CONNECT_ERROR ();
   CHECK_MODIFICATION_ERROR ();
 
-  def = smt_edit_class_mop (class_);
+  def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
       error = er_errid ();
@@ -1703,7 +1703,7 @@ db_drop_class_resolution (MOP class_, MOP super, const char *name)
   CHECK_CONNECT_ERROR ();
   CHECK_MODIFICATION_ERROR ();
 
-  def = smt_edit_class_mop (class_);
+  def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
       error = er_errid ();

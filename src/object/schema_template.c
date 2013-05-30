@@ -142,6 +142,16 @@ static int smt_change_class_shared_attribute_domain (SM_ATTRIBUTE * att,
 						     DB_DOMAIN * new_domain);
 
 
+static int rename_constraint (SM_TEMPLATE * ctemplate,
+			      const char *old_name, const char *new_name,
+			      SM_CONSTRAINT_FAMILY element_type);
+
+static int rename_constraints_partitioned_class (MOP obj,
+						 const char *old_name,
+						 const char *new_name,
+						 SM_CONSTRAINT_FAMILY
+						 element_type);
+
 /* TEMPLATE SEARCH FUNCTIONS */
 /*
  * These are used to walk over the template structures and extract information
@@ -849,7 +859,7 @@ smt_def_class (const char *name)
  */
 
 SM_TEMPLATE *
-smt_edit_class_mop (MOP op)
+smt_edit_class_mop (MOP op, DB_AUTH db_auth_type)
 {
   SM_TEMPLATE *template_;
   SM_CLASS *class_;
@@ -863,7 +873,8 @@ smt_edit_class_mop (MOP op)
     }
   else
     {
-      if (au_fetch_class (op, &class_, AU_FETCH_WRITE, AU_ALTER) == NO_ERROR)
+      if (au_fetch_class (op, &class_, AU_FETCH_WRITE, db_auth_type) ==
+	  NO_ERROR)
 	{
 	  /* cleanup the class and flush out the run-time information prior to
 	     editing */
@@ -2697,6 +2708,240 @@ smt_rename_any (SM_TEMPLATE * template_, const char *name,
     }
 
   return error;
+}
+
+/*
+ * rename_constraint() - Renames a constraint.
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   template(in/out): schema template
+ *   old_name(in): old name of constraint
+ *   new_name(in): new name of constraint
+ *   element_type(in): type of constraint
+ */
+
+static int
+rename_constraint (SM_TEMPLATE * ctemplate, const char *old_name,
+		   const char *new_name, SM_CONSTRAINT_FAMILY element_type)
+{
+  int error = NO_ERROR;
+  DB_CONSTRAINT_TYPE ctype;
+  SM_CLASS_CONSTRAINT *sm_constraint = NULL;
+  SM_CLASS_CONSTRAINT *sm_cons = NULL;
+  SM_CLASS_CONSTRAINT *existing_con = NULL;
+  const char *property_type = NULL;
+  char *norm_new_name = NULL;
+
+  error = classobj_make_class_constraints (ctemplate->properties,
+					   ctemplate->attributes, &sm_cons);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+  if (sm_cons == NULL)
+    {
+      error = ER_SM_CONSTRAINT_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, old_name);
+      goto error_exit;
+    }
+
+  sm_constraint = classobj_find_constraint_by_name (sm_cons, old_name);
+  if (sm_constraint == NULL)
+    {
+      error = ER_SM_CONSTRAINT_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, old_name);
+      goto error_exit;
+    }
+
+  switch (element_type)
+    {
+    case SM_CONSTRAINT_NAME:	/* "*U", "*RU", "*P", "*FK" */
+      if (!SM_IS_CONSTRAINT_EXCEPT_INDEX_FAMILY (sm_constraint->type))
+	{
+	  error = ER_SM_CONSTRAINT_HAS_DIFFERENT_TYPE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, old_name);
+	  goto error_exit;
+	}
+      break;
+    case SM_INDEX_NAME:	/* "*U", "*I", "*RU", "*RI" */
+      if (!SM_IS_INDEX_FAMILY (sm_constraint->type))
+	{
+	  error = ER_SM_CONSTRAINT_HAS_DIFFERENT_TYPE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, old_name);
+	  goto error_exit;
+	}
+      break;
+    default:
+      error = ER_SM_CONSTRAINT_HAS_DIFFERENT_TYPE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, old_name);
+      goto error_exit;
+      break;
+    }
+
+  ctype = db_constraint_type (sm_constraint);
+
+  norm_new_name =
+    sm_produce_constraint_name (ctemplate->name, ctype, NULL, NULL, new_name);
+  if (norm_new_name == NULL)
+    {
+      error = er_errid ();
+      assert (error != NO_ERROR);
+      goto error_exit;
+    }
+
+  /* check norm_new_name uniqueness */
+  existing_con = classobj_find_constraint_by_name (sm_cons, norm_new_name);
+  if (existing_con)
+    {
+      ERROR2 (error, ER_SM_INDEX_EXISTS, ctemplate->name, existing_con->name);
+      goto error_exit;
+    }
+
+  property_type = classobj_map_constraint_to_property (sm_constraint->type);
+
+  error = classobj_rename_constraint (ctemplate->properties,
+				      property_type, old_name, norm_new_name);
+
+end:
+  if (norm_new_name)
+    {
+      free_and_init (norm_new_name);
+    }
+  if (sm_cons)
+    {
+      classobj_free_class_constraints (sm_cons);
+    }
+  return error;
+
+error_exit:
+  goto end;
+}
+
+/*
+ * rename_constraints_partitioned_class () - This function renames
+ *                   constraints in sub-classes(partition classes).
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   obj(in): database object of the super class (partition class)
+ *   old_name(in): old name of constraint
+ *   new_name(in): new name of constraint
+ *   element_type(in): type of constraint
+ */
+
+static int
+rename_constraints_partitioned_class (MOP obj, const char *old_name,
+				      const char *new_name,
+				      SM_CONSTRAINT_FAMILY element_type)
+{
+  int error = NO_ERROR;
+  int i, is_partition = 0;
+  MOP *sub_partitions = NULL;
+  SM_TEMPLATE *ctemplate = NULL;
+
+  error = sm_partitioned_class_type (obj, &is_partition, NULL,
+				     &sub_partitions);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  if (is_partition == DB_PARTITION_CLASS)
+    {
+      error = ER_NOT_ALLOWED_ACCESS_TO_PARTITION;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto error_exit;
+    }
+  else if (is_partition == DB_NOT_PARTITIONED_CLASS)
+    {
+      goto end;
+    }
+
+  assert (is_partition == DB_PARTITIONED_CLASS);
+
+  for (i = 0; sub_partitions[i]; i++)
+    {
+      if (sm_exist_index (sub_partitions[i], old_name, NULL) != NO_ERROR)
+	{
+	  continue;
+	}
+
+      ctemplate = smt_edit_class_mop (sub_partitions[i], AU_INDEX);
+      if (ctemplate == NULL)
+	{
+	  error = er_errid ();
+	  assert (error != NO_ERROR);
+	  goto error_exit;
+	}
+
+      error = rename_constraint (ctemplate, old_name, new_name, element_type);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
+      /* classobj_free_template() is included in sm_update_class() */
+      error = sm_update_class (ctemplate, NULL);
+      if (error != NO_ERROR)
+	{
+	  /* Even though sm_update() did not return NO_ERROR,
+	   * ctemplate is already freed */
+	  ctemplate = NULL;
+	  goto error_exit;
+	}
+    }
+
+end:
+  if (sub_partitions != NULL)
+    {
+      free_and_init (sub_partitions);
+    }
+  return error;
+
+error_exit:
+  if (ctemplate != NULL)
+    {
+      /* smt_quit() always returns NO_ERROR */
+      smt_quit (ctemplate);
+    }
+  goto end;
+}
+
+/*
+ * smt_rename_constraint() - This function renames constraints in
+ *                           sm_template.
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   ctemplate(in): sm_template of the class
+ *   old_name(in): old name of constraint
+ *   new_name(in): new name of constraint
+ *   element_type(in): type of constraint
+ */
+
+int
+smt_rename_constraint (SM_TEMPLATE * ctemplate, const char *old_name,
+		       const char *new_name,
+		       SM_CONSTRAINT_FAMILY element_type)
+{
+  int error = NO_ERROR;
+
+  assert (ctemplate != NULL);
+
+  error = rename_constraints_partitioned_class (ctemplate->op, old_name,
+						new_name, element_type);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  error = rename_constraint (ctemplate, old_name, new_name, element_type);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+end:
+  return error;
+
+  /* in order to show explicitly the error */
+error_exit:
+  goto end;
 }
 
 /* TEMPLATE DELETION FUNCTIONS */

@@ -444,7 +444,7 @@ db_add_query_spec (MOP vclass, const char *query)
     }
   else
     {
-      def = smt_edit_class_mop (vclass);
+      def = smt_edit_class_mop (vclass, AU_ALTER);
       if (def == NULL)
 	{
 	  error = er_errid ();
@@ -492,7 +492,7 @@ db_drop_query_spec (DB_OBJECT * vclass, const int query_no)
     }
   else
     {
-      def = smt_edit_class_mop (vclass);
+      def = smt_edit_class_mop (vclass, AU_ALTER);
       if (def == NULL)
 	{
 	  error = er_errid ();
@@ -544,7 +544,7 @@ db_change_query_spec (DB_OBJECT * vclass,
     }
   else
     {
-      def = smt_edit_class_mop (vclass);
+      def = smt_edit_class_mop (vclass, AU_ALTER);
       if (def == NULL)
 	{
 	  error = er_errid ();

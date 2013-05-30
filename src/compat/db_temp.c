@@ -125,7 +125,7 @@ dbt_edit_class (MOP classobj)
   CHECK_1ARG_NULL (classobj);
   CHECK_MODIFICATION_NULL ();
 
-  def = smt_edit_class_mop (classobj);
+  def = smt_edit_class_mop (classobj, AU_ALTER);
 
   return (def);
 }
