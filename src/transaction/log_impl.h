@@ -645,10 +645,18 @@ enum update_stats_action_type
   UPDATE_STATS_ACTION_RESET
 };
 
+typedef struct btid_list BTID_LIST;
+struct btid_list
+{
+  BTID_LIST *next;
+  BTID btid;
+};
+
 typedef struct modified_class_entry MODIFIED_CLASS_ENTRY;
 struct modified_class_entry
 {
   MODIFIED_CLASS_ENTRY *next;
+  BTID_LIST *btid_list;
   OID class_oid;
   LOG_LSA last_modified_lsa;
   bool need_update_stats;

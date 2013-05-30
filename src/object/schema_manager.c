@@ -13733,7 +13733,7 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
 	   * to make use of the new index.  Recall that the optimizer
 	   * looks at the statistics structures, not the schema structures.
 	   */
-	  if (sm_update_index_statistics (classop, &index, true))
+	  if (sm_update_index_statistics (classop, &index, false))
 	    {
 	      goto severe_error;
 	    }

@@ -6510,7 +6510,18 @@ stats_update_class_statistics (OID * classoid, BTID * btid, int do_now)
 
   ENTER_SERVER ();
 
-  success = xstats_update_class_statistics (NULL, classoid, btid);
+  if (btid == NULL || BTID_IS_NULL (btid))
+    {
+      success = xstats_update_class_statistics (NULL, classoid, NULL);
+    }
+  else
+    {
+      BTID_LIST b;
+
+      b.next = NULL;
+      BTID_COPY (&b.btid, btid);
+      success = xstats_update_class_statistics (NULL, classoid, &b);
+    }
 
   EXIT_SERVER ();
 

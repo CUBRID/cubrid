@@ -5025,11 +5025,12 @@ log_append_donetime (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
  */
 int
 log_add_to_modified_class_list (THREAD_ENTRY * thread_p,
-				const OID * class_oid,
+				const OID * class_oid, BTID * btid,
 				UPDATE_STATS_ACTION_TYPE update_stats_action)
 {
   LOG_TDES *tdes;
   MODIFIED_CLASS_ENTRY *t = NULL;
+  BTID_LIST *b = NULL;
   int tran_index;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -5060,6 +5061,7 @@ log_add_to_modified_class_list (THREAD_ENTRY * thread_p,
       COPY_OID (&t->class_oid, class_oid);
       LSA_SET_NULL (&t->last_modified_lsa);
       t->need_update_stats = false;
+      t->btid_list = NULL;
       t->next = tdes->modified_class_list;
       tdes->modified_class_list = t;
     }
@@ -5072,6 +5074,20 @@ log_add_to_modified_class_list (THREAD_ENTRY * thread_p,
        * until "the transaction is committed". This is not a modification.
        */
       t->need_update_stats = true;
+      if (btid && !BTID_IS_NULL (btid))
+	{
+	  b = (BTID_LIST *) malloc (sizeof (BTID_LIST));
+	  if (b == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (BTID_LIST));
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+
+	  BTID_COPY (&b->btid, btid);
+	  b->next = t->btid_list;
+	  t->btid_list = b;
+	}
       break;
     case UPDATE_STATS_ACTION_KEEP:
       LSA_COPY (&t->last_modified_lsa, &tdes->tail_lsa);
@@ -5209,7 +5225,7 @@ log_update_stats_on_modified_class (THREAD_ENTRY * thread_p,
   if (class->need_update_stats)
     {
       (void) xstats_update_class_statistics (thread_p, &class->class_oid,
-					     NULL);
+					     class->btid_list);
     }
 }
 
@@ -5236,6 +5252,7 @@ log_map_modified_class_list (THREAD_ENTRY * thread_p,
 					  void *arg), void *arg)
 {
   MODIFIED_CLASS_ENTRY *t;
+  BTID_LIST *b;
 
   t = tdes->modified_class_list;
   while (t != NULL)
@@ -5248,6 +5265,13 @@ log_map_modified_class_list (THREAD_ENTRY * thread_p,
       if (release)
 	{
 	  tdes->modified_class_list = t->next;
+	  b = t->btid_list;
+	  while (b != NULL)
+	    {
+	      t->btid_list = b->next;
+	      free_and_init (b);
+	      b = t->btid_list;
+	    }
 	  free_and_init (t);
 	  t = tdes->modified_class_list;
 	}

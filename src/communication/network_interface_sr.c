@@ -4548,7 +4548,18 @@ sqst_update_class_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (do_now)
     {
-      error = xstats_update_class_statistics (thread_p, &classoid, &btid);
+      if (BTID_IS_NULL (&btid))
+	{
+	  error = xstats_update_class_statistics (thread_p, &classoid, NULL);
+	}
+      else
+	{
+	  BTID_LIST b;
+
+	  b.next = NULL;
+	  BTID_COPY (&b.btid, &btid);
+	  error = xstats_update_class_statistics (thread_p, &classoid, &b);
+	}
       if (error != NO_ERROR)
 	{
 	  return_error_to_client (thread_p, rid);
@@ -4557,7 +4568,7 @@ sqst_update_class_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
   else
     {
       /* Just mark the class as "updating statistics is required". */
-      log_add_to_modified_class_list (thread_p, &classoid,
+      log_add_to_modified_class_list (thread_p, &classoid, &btid,
 				      UPDATE_STATS_ACTION_SET);
       error = NO_ERROR;
     }

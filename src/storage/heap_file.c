@@ -6741,7 +6741,7 @@ heap_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
       && HFID_EQ ((hfid), heap_Classrepr->rootclass_hfid))
     {
 
-      if (log_add_to_modified_class_list (thread_p, oid,
+      if (log_add_to_modified_class_list (thread_p, oid, NULL,
 					  UPDATE_STATS_ACTION_KEEP) !=
 	  NO_ERROR)
 	{
@@ -7721,7 +7721,7 @@ try_again:
   if (heap_Guesschn != NULL && heap_Classrepr->rootclass_hfid != NULL
       && HFID_EQ ((hfid), heap_Classrepr->rootclass_hfid))
     {
-      if (log_add_to_modified_class_list (thread_p, oid,
+      if (log_add_to_modified_class_list (thread_p, oid, NULL,
 					  UPDATE_STATS_ACTION_KEEP) !=
 	  NO_ERROR)
 	{
@@ -7810,7 +7810,7 @@ heap_delete (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * oid,
       && HFID_EQ ((hfid), heap_Classrepr->rootclass_hfid))
     {
 
-      if (log_add_to_modified_class_list (thread_p, oid,
+      if (log_add_to_modified_class_list (thread_p, oid, NULL,
 					  UPDATE_STATS_ACTION_RESET) !=
 	  NO_ERROR)
 	{

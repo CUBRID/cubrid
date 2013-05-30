@@ -102,7 +102,7 @@ static void stats_print_min_max (ATTR_STATS * attr_stats, FILE * fpp);
  *                                    of a given class
  *   return:
  *   class_id(in): Identifier of the class
- *   btid(in):
+ *   btids(in):
  *
  * Note: It first retrieves the whole catalog information about this class,
  *       including all possible forms of disk representations for the instance
@@ -127,7 +127,7 @@ static void stats_print_min_max (ATTR_STATS * attr_stats, FILE * fpp);
  */
 int
 xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
-				BTID * btid)
+				BTID_LIST * btids)
 {
   CLS_INFO *cls_info_p = NULL;
   REPR_ID repr_id;
@@ -344,16 +344,30 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
 	{
 	  assert_release (!BTID_IS_NULL (&btree_stats_p->btid));
 	  assert_release (btree_stats_p->key_size > 0);
-	  if (btid != NULL && !BTID_IS_NULL (btid))
+	  if (btids)
 	    {
-	      if (!BTID_IS_EQUAL (btid, &btree_stats_p->btid))
+	      BTID_LIST *b = btids;
+	      while (b != NULL)
 		{
-		  continue;
+		  if (!BTID_IS_EQUAL (&b->btid, &btree_stats_p->btid))
+		    {
+		      b = b->next;
+		      continue;
+		    }
+
+		  if (btree_get_stats (thread_p, btree_stats_p) != NO_ERROR)
+		    {
+		      goto error;
+		    }
+		  break;
 		}
 	    }
-	  if (btree_get_stats (thread_p, btree_stats_p) != NO_ERROR)
+	  else
 	    {
-	      goto error;
+	      if (btree_get_stats (thread_p, btree_stats_p) != NO_ERROR)
+		{
+		  goto error;
+		}
 	    }
 	}
     }
