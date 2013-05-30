@@ -1168,24 +1168,34 @@ main (int argc, char *argv[])
 
 	    err_code =
 	      ux_database_connect (db_name, db_user, db_passwd, &db_err_msg);
+
 	    if (err_code < 0)
 	      {
+		char msg_buf[LINE_MAX];
+
+		net_write_error (client_sock_fd, req_info.client_version,
+				 req_info.driver_info,
+				 cas_info, cas_info_size,
+				 err_info.err_indicator,
+				 err_info.err_number, db_err_msg);
+
 		if (db_err_msg == NULL)
 		  {
-		    net_write_error (client_sock_fd, req_info.client_version,
-				     req_info.driver_info,
-				     cas_info, cas_info_size,
-				     err_info.err_indicator,
-				     err_info.err_number, NULL);
+		    snprintf (msg_buf, LINE_MAX,
+			      "connect db %s user %s url %s - error : %d",
+			      db_name, db_user, url, err_info.err_number);
 		  }
 		else
 		  {
-		    net_write_error (client_sock_fd, req_info.client_version,
-				     req_info.driver_info,
-				     cas_info, cas_info_size,
-				     err_info.err_indicator,
-				     err_info.err_number, db_err_msg);
+		    snprintf (msg_buf, LINE_MAX,
+			      "connect db %s user %s url %s - error : %d(%s)",
+			      db_name, db_user, url, err_info.err_number,
+			      db_err_msg);
 		  }
+
+		cas_log_write_and_end (0, false, msg_buf);
+		cas_slow_log_write (NULL, 0, false, msg_buf);
+
 		CLOSE_SOCKET (client_sock_fd);
 		FREE_MEM (db_err_msg);
 
