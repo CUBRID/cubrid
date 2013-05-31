@@ -4291,6 +4291,12 @@ cci_get_err_msg_internal (int error)
     case CCI_ER_INVALID_LOB_READ_POS:
       return "Invalid lob read position";
 
+    case CCI_ER_LOGIN_TIMEOUT:
+      return "Connection timed out";
+
+    case CCI_ER_QUERY_TIMEOUT:
+      return "Request timed out";
+
     case CCI_ER_INVALID_HOLDABILITY:
       return "Invalid holdability mode. The only accepted values are 0 or 1";
 
