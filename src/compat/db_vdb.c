@@ -1334,7 +1334,11 @@ db_marker_domain (DB_MARKER * marker)
 
   if (marker)
     {
-      result = pt_node_to_db_domain (NULL, marker, NULL);
+      result = marker->expected_domain;
+      if (result == NULL)
+	{
+	  result = pt_node_to_db_domain (NULL, marker, NULL);
+	}
     }
   /* it is safet to call pt_node_to_db_domain() without parser */
 
