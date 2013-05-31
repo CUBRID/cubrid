@@ -786,10 +786,6 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
 	  return err_code;
 	}
     }
-  else
-    {
-      result_code = CCI_ER_COMMUNICATION;
-    }
 
   if (msg)
     {
