@@ -257,7 +257,7 @@ extern int conf_get_value_access_mode (const char *value);
 #if defined(CUBRID_SHARD)
 extern int conf_get_value_proxy_log_mode (const char *value);
 #endif /* CUBRID_SHARD */
-extern void dir_repath (char *path);
+extern void dir_repath (char *path, size_t path_len);
 
 #if defined(CUBRID_SHARD)
 #if defined(SHARD_VERBOSE_DEBUG)

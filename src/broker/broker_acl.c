@@ -305,7 +305,7 @@ access_control_repath_file (char *path)
 
   trim (path);
   strncpy (tmp_str, path, PATH_MAX);
-  MAKE_FILEPATH (path, tmp_str);
+  MAKE_FILEPATH (path, tmp_str, PATH_MAX);
 
   if (IS_ABS_PATH (path))
     {
@@ -314,7 +314,7 @@ access_control_repath_file (char *path)
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   envvar_confdir_file (tmp_str, PATH_MAX, path);
-  MAKE_FILEPATH (path, tmp_str);
+  MAKE_FILEPATH (path, tmp_str, PATH_MAX);
 #endif
 
   return;

@@ -415,7 +415,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id,
 	      snprintf (proxy_info_p->access_log_file, CONF_LOG_FILE_LEN - 1,
 			"%s/%s_%d.access", CUBRID_BASE_DIR, br_info[i].name,
 			j);
-	      dir_repath (proxy_info_p->access_log_file);
+	      dir_repath (proxy_info_p->access_log_file, CONF_LOG_FILE_LEN);
 	    }
 
 	  res =
@@ -985,7 +985,8 @@ admin_on_cmd (int master_shm_id, const char *broker_name)
 		  snprintf (proxy_info_p->access_log_file,
 			    CONF_LOG_FILE_LEN - 1, "%s/%s_%d.access",
 			    CUBRID_BASE_DIR, shm_br->br_info[i].name, j);
-		  dir_repath (proxy_info_p->access_log_file);
+		  dir_repath (proxy_info_p->access_log_file,
+			      CONF_LOG_FILE_LEN);
 		}
 
 	      res =

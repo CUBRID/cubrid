@@ -51,12 +51,15 @@
 #define	SERVICE_READY_WAIT_COUNT	3000
 #endif /* CUBRID_SHARD */
 
-#define MAKE_FILEPATH(dest,src) \
+#define MAKE_FILEPATH(dest,src,dest_len) \
   do { \
+      char _buf[PATH_MAX]; \
       if ((src) == NULL || (src)[0] == 0) { \
 	  (dest)[0] = 0; \
-      } else if (realpath ((src), (dest)) == NULL) { \
-	  strcpy ((dest), (src)); \
+      } else if (realpath ((src), _buf) != NULL) { \
+	  strncpy ((dest), _buf, (dest_len)); \
+      } else { \
+	  strncpy ((dest), (src), (dest_len)); \
       } \
   } while (0)
 
