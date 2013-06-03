@@ -358,6 +358,7 @@ LA_INFO la_Info;
 static bool la_applier_need_shutdown = false;
 static bool la_applier_shutdown_by_signal = false;
 static char la_slave_db_name[DB_MAX_IDENTIFIER_LENGTH + 1];
+static char la_peer_host[MAXHOSTNAMELEN + 1];
 
 static bool la_enable_sql_logging = false;
 
@@ -518,6 +519,7 @@ static int la_commit_transaction (void);
 static int la_find_last_deleted_arv_num (void);
 
 static bool la_restart_on_bulk_flush_error (int errid);
+static char *la_get_hostname_from_log_path (char *log_path);
 
 /*
  * la_shutdown_by_signal() - When the process catches the SIGTERM signal,
@@ -6041,7 +6043,8 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
 	  && ha_server_state != HA_SERVER_STATE_TO_BE_STANDBY)
 	{
 	  snprintf (buffer, sizeof (buffer),
-		    "ha_server_state is changed to %s",
+		    "the state of HA server (%s@%s) is changed to %s",
+		    la_slave_db_name, la_peer_host,
 		    css_ha_server_state_string (ha_server_state));
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 		  ER_HA_GENERIC_ERROR, 1, buffer);
@@ -6093,6 +6096,49 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
   return NO_ERROR;
 }
 
+static char *
+la_get_hostname_from_log_path (char *log_path)
+{
+  char *hostname = NULL, *p;
+
+  if (log_path == NULL)
+    {
+      return NULL;
+    }
+
+  p = log_path;
+  p += (strlen (log_path) - 1);
+
+  /* log_path: "path/dbname_hostname/" */
+  if (*p == '/')
+    {
+      p--;
+    }
+
+  while (*p != '/')
+    {
+      p--;
+      if (p == log_path)
+	{
+	  return NULL;
+	}
+    }
+
+  hostname = strstr (p, la_slave_db_name);
+  if (hostname == NULL)
+    {
+      return NULL;
+    }
+
+  hostname += strlen (la_slave_db_name);
+  if (*hostname != '_')
+    {
+      return NULL;
+    }
+
+  return hostname + 1;
+}
+
 static int
 la_change_state (void)
 {
@@ -6110,7 +6156,9 @@ la_change_state (void)
 
   if (la_Info.last_server_state != la_Info.act_log.log_hdr->ha_server_state)
     {
-      sprintf (buffer, "change HA server state from '%s' to '%s'",
+      sprintf (buffer,
+	       "change the state of HA server (%s@%s) from '%s' to '%s'",
+	       la_slave_db_name, la_peer_host,
 	       css_ha_server_state_string (la_Info.last_server_state),
 	       css_ha_server_state_string (la_Info.act_log.log_hdr->
 					   ha_server_state));
@@ -7218,6 +7266,16 @@ la_apply_log_file (const char *database_name, const char *log_path,
   if (s)
     {
       *s = '\0';
+    }
+
+  s = la_get_hostname_from_log_path (log_path);
+  if (s)
+    {
+      strncpy (la_peer_host, s, MAXHOSTNAMELEN);
+    }
+  else
+    {
+      strncpy (la_peer_host, "unknown", MAXHOSTNAMELEN);
     }
 
   /* init la_Info */

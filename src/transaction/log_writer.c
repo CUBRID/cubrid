@@ -68,6 +68,8 @@ LOGWR_GLOBAL logwr_Gl = {
   NULL,
   /* db_name */
   {'0'},
+  /* hostname */
+  NULL,
   /* log_path */
   {'0'},
   /* loginf_path */
@@ -317,6 +319,7 @@ logwr_initialize (const char *db_name, const char *log_path, int mode)
   if ((at_char = strchr (logwr_Gl.db_name, '@')) != NULL)
     {
       *at_char = '\0';
+      logwr_Gl.hostname = at_char + 1;
     }
   strncpy (logwr_Gl.log_path, log_path, PATH_MAX - 1);
   /* set the mode */
@@ -874,7 +877,10 @@ logwr_flush_header_page (void)
 
   if (prev_ha_server_state != logwr_Gl.hdr.ha_server_state)
     {
-      sprintf (buffer, "change HA server state from '%s' to '%s'",
+      sprintf (buffer,
+	       "change the state of HA server (%s@%s) from '%s' to '%s'",
+	       logwr_Gl.db_name,
+	       (logwr_Gl.hostname != NULL) ? logwr_Gl.hostname : "unknown",
 	       css_ha_server_state_string (prev_ha_server_state),
 	       css_ha_server_state_string (logwr_Gl.hdr.ha_server_state));
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,

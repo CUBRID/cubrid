@@ -55,6 +55,7 @@ struct logwr_global
   LOG_PAGE *loghdr_pgptr;
 
   char db_name[PATH_MAX];
+  char *hostname;
   char log_path[PATH_MAX];
   char loginf_path[PATH_MAX];
   char active_name[PATH_MAX];
