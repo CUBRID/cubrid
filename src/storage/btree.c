@@ -11670,7 +11670,7 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   LOCK class_lock = NULL_LOCK;
   int tran_index;
   int nextkey_lock_request;
-  int offset;
+  int offset = -1;
   bool dummy;
   int ret_val;
   LEAF_REC leaf_pnt;
@@ -12968,6 +12968,7 @@ curr_key_lock_promote:
 curr_key_lock_consistency:
   if (curr_key_many_locks_needed)
     {
+      assert (offset != -1);
       if (btree_insert_lock_curr_key_remaining_pseudo_oid
 	  (thread_p, btid_int.sys_btid, &peek_rec, offset, &leaf_pnt.ovfl,
 	   oid, &C_class_oid) != NO_ERROR)
@@ -12983,9 +12984,13 @@ curr_key_lock_consistency:
        * unlock remaining PSEUDO-OIDs of current key, previously NS-locked
        */
       assert (curr_key_many_locks_needed == false);
-      btree_insert_unlock_curr_key_remaining_pseudo_oid
-	(thread_p, btid_int.sys_btid, &peek_rec, offset, &leaf_pnt.ovfl,
-	 &C_class_oid);
+      if (key_found == true)
+	{
+	  assert (offset != -1);
+	  btree_insert_unlock_curr_key_remaining_pseudo_oid
+	    (thread_p, btid_int.sys_btid, &peek_rec, offset, &leaf_pnt.ovfl,
+	     &C_class_oid);
+	}
     }
 
   /* valid point for key insertion
