@@ -90,7 +90,6 @@ struct iss_range_details
   SCAN_PRED key_pred;
   RANGE_TYPE range_type;
   int part_key_desc;		/* last partial key domain is descending */
-  int last_key_desc;		/* last key domain is descending */
 };
 
 typedef int QPROC_KEY_VAL_FU (KEY_VAL_RANGE * key_vals, int key_cnt);
@@ -352,7 +351,6 @@ scan_save_range_details (INDX_SCAN_ID * isidp_src,
   rdp_dest->key_pred = isidp_src->key_pred;
   rdp_dest->range_type = isidp_src->indx_info->range_type;
   rdp_dest->part_key_desc = isidp_src->bt_scan.btid_int.part_key_desc;
-  rdp_dest->last_key_desc = isidp_src->bt_scan.btid_int.last_key_desc;
 
   return NO_ERROR;
 }
@@ -384,7 +382,6 @@ scan_restore_range_details (ISS_RANGE_DETAILS * rdp_src,
   isidp_dest->key_pred = rdp_src->key_pred;
   isidp_dest->indx_info->range_type = rdp_src->range_type;
   isidp_dest->bt_scan.btid_int.part_key_desc = rdp_src->part_key_desc;
-  isidp_dest->bt_scan.btid_int.last_key_desc = rdp_src->last_key_desc;
 
   return NO_ERROR;
 }
@@ -534,7 +531,6 @@ scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   fetch_range_det.key_pred.regu_list = NULL;
   fetch_range_det.range_type = R_RANGE;
   fetch_range_det.part_key_desc = descending_skip_key;
-  fetch_range_det.last_key_desc = descending_skip_key;
 
   /* save current range details */
   scan_save_range_details (isidp, &scan_range_det);

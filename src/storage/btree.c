@@ -3063,21 +3063,13 @@ btree_glean_root_header_info (THREAD_ENTRY * thread_p,
    * check for the last element domain of partial-key and key is desc;
    * for btree_range_search, part_key_desc is re-set at btree_initialize_bts
    */
-  btid->part_key_desc = btid->last_key_desc = 0;
+  btid->part_key_desc = 0;
 
   domain = btid->key_type;
   if (TP_DOMAIN_TYPE (domain) == DB_TYPE_MIDXKEY)
     {
       domain = domain->setdomain;
     }
-
-  /* get the last key domain */
-  while (domain->next != NULL)
-    {
-      domain = domain->next;
-    }
-
-  btid->last_key_desc = domain->is_desc;
 
   /* init index key copy_buf info */
   btid->copy_buf = NULL;
@@ -14204,6 +14196,7 @@ btree_initialize_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
   int i;
   int ret = NO_ERROR;
   DB_MIDXKEY *midxkey;
+  TP_DOMAIN *dom;
 
   /* initialize page related fields */
   /* previous leaf page, current leaf page, overflow page */
@@ -14913,47 +14906,20 @@ btree_prepare_first_search (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
     }
   else
     {
-      if (!BTREE_IS_LAST_KEY_DESC (&(bts->btid_int))
-	  || (BTREE_IS_LAST_KEY_DESC (&(bts->btid_int))
-	      && bts->use_desc_index))
-	{			/* normal index */
-	  if (bts->key_range.range == GT_LT
-	      || bts->key_range.range == GT_LE
-	      || bts->key_range.range == GT_INF)
+      if (bts->key_range.range == GT_LT
+	  || bts->key_range.range == GT_LE || bts->key_range.range == GT_INF)
+	{
+	  /* get the next index record */
+	  ret = btree_find_next_index_record (thread_p, bts,
+					      bts->use_desc_index);
+	  if (ret != NO_ERROR)
 	    {
-	      /* get the next index record */
-	      ret = btree_find_next_index_record (thread_p, bts,
-						  bts->use_desc_index);
-	      if (ret != NO_ERROR)
-		{
-		  goto exit_on_error;
-		}
-	    }
-	  else
-	    {
-	      bts->oid_pos = 0;
+	      goto exit_on_error;
 	    }
 	}
-      else if (BTREE_IS_LAST_KEY_DESC (&(bts->btid_int))
-	       || (!BTREE_IS_LAST_KEY_DESC (&(bts->btid_int))
-		   && bts->use_desc_index))
-	{			/* last key element domain is desc */
-	  if (bts->key_range.range == GE_LT
-	      || bts->key_range.range == GT_LT
-	      || bts->key_range.range == INF_LT)
-	    {
-	      /* get the next index record */
-	      ret = btree_find_next_index_record (thread_p, bts,
-						  bts->use_desc_index);
-	      if (ret != NO_ERROR)
-		{
-		  goto exit_on_error;
-		}
-	    }
-	  else
-	    {
-	      bts->oid_pos = 0;
-	    }
+      else
+	{
+	  bts->oid_pos = 0;
 	}
     }
 
@@ -15155,45 +15121,17 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
     }
   else if (c == 0)
     {
-      if (!BTREE_IS_LAST_KEY_DESC (&(bts->btid_int))
-	  || (BTREE_IS_LAST_KEY_DESC (&(bts->btid_int))
-	      && bts->use_desc_index))
-	{			/* normal index */
-	  if (bts->key_range.range != GT_LE
-	      && bts->key_range.range != GE_LE
-	      && bts->key_range.range != INF_LE)
-	    {
-	      *is_key_range_satisfied = false;
-	    }
-	  else
-	    {
-	      *is_key_range_satisfied = true;
+      if (bts->key_range.range == GT_LE
+	  || bts->key_range.range == GE_LE || bts->key_range.range == INF_LE)
+	{
+	  *is_key_range_satisfied = true;
 #if defined(SERVER_MODE)
-	      bts->key_range_max_value_equal = true;
+	  bts->key_range_max_value_equal = true;
 #endif /* SERVER_MODE */
-	    }
-	}
-      else if (BTREE_IS_LAST_KEY_DESC (&(bts->btid_int))
-	       || (!BTREE_IS_LAST_KEY_DESC (&(bts->btid_int))
-		   && bts->use_desc_index))
-	{			/* last key element domain is desc */
-	  if (bts->key_range.range != GE_LT
-	      && bts->key_range.range != GE_LE
-	      && bts->key_range.range != GE_INF)
-	    {
-	      *is_key_range_satisfied = false;
-	    }
-	  else
-	    {
-	      *is_key_range_satisfied = true;
-#if defined(SERVER_MODE)
-	      bts->key_range_max_value_equal = true;
-#endif /* SERVER_MODE */
-	    }
 	}
       else
 	{
-	  assert (0);
+	  *is_key_range_satisfied = false;
 	}
     }
   else
@@ -16677,6 +16615,7 @@ btree_range_search (THREAD_ENTRY * thread_p, BTID * btid,
   int cp_oid_cnt = 0;
   int rec_oid_cnt;
   char *rec_oid_ptr;
+  bool swap_key_range = false;
   bool is_key_range_satisfied = true;
   bool is_key_filter_satisfied = true;
   bool is_condition_satisfied = true;
@@ -16797,23 +16736,34 @@ btree_range_search (THREAD_ENTRY * thread_p, BTID * btid,
 	  goto error;
 	}
 
-      /* check lower value and upper value */
-      /* if partial-key is desc, swap lower value and upper value */
-      if (BTREE_IS_PART_KEY_DESC (&(bts->btid_int)) && !bts->use_desc_index)
+      /* if (key_desc && scan_asc) || (key_asc && scan_desc), 
+       * then swap lower value and upper value
+       */
+      swap_key_range = false;	/* init */
+
+      if (!bts->use_desc_index)
 	{
-	  DB_VALUE *tmp_key;
-	  tmp_key = bts->key_range.lower_key;
-	  bts->key_range.lower_key = bts->key_range.upper_key;
-	  bts->key_range.upper_key = tmp_key;
+	  if (BTREE_IS_PART_KEY_DESC (&(bts->btid_int)))
+	    {
+	      swap_key_range = true;
+	    }
+	}
+      else
+	{
+	  if (!BTREE_IS_PART_KEY_DESC (&(bts->btid_int)))
+	    {
+	      swap_key_range = true;
+	    }
 	}
 
-      if (bts->use_desc_index && !BTREE_IS_PART_KEY_DESC (&(bts->btid_int)))
+      if (swap_key_range)
 	{
 	  DB_VALUE *tmp_key;
+
 	  tmp_key = bts->key_range.lower_key;
 	  bts->key_range.lower_key = bts->key_range.upper_key;
 	  bts->key_range.upper_key = tmp_key;
-	  /* swap the range only if descending and not reverse index */
+
 	  switch (bts->key_range.range)
 	    {
 	    case GT_LE:
@@ -18608,14 +18558,9 @@ start_locking:
 	    {
 	      bts->key_range_max_value_equal = false;
 	    }
-	  else if ((!BTREE_IS_LAST_KEY_DESC (&(bts->btid_int))
-		    && (bts->key_range.range == GT_LE
-			|| bts->key_range.range == GE_LE
-			|| bts->key_range.range == INF_LE))
-		   || (BTREE_IS_LAST_KEY_DESC (&(bts->btid_int))
-		       && (bts->key_range.range == GE_LT
-			   || bts->key_range.range == GE_LE
-			   || bts->key_range.range == GE_INF)))
+	  else if (bts->key_range.range == GT_LE
+		   || bts->key_range.range == GE_LE
+		   || bts->key_range.range == INF_LE)
 	    {
 	      int c;
 	      BTREE_KEYRANGE *range;

@@ -201,7 +201,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 		   OID * class_oids, int n_classes, int n_attrs,
 		   int *attr_ids, int *attrs_prefix_length,
 		   HFID * hfids, int unique_flag, int not_null_flag,
-		   int last_key_desc, OID * fk_refcls_oid,
+		   OID * fk_refcls_oid,
 		   BTID * fk_refcls_pk_btid, int cache_attr_id,
 		   const char *fk_name, char *pred_stream,
 		   int pred_stream_size,
@@ -270,10 +270,9 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 
 
   /*
-   * check for the last element domain of partial-key and key is desc;
    * for btree_range_search, part_key_desc is re-set at btree_initialize_bts
    */
-  btid_int.part_key_desc = btid_int.last_key_desc = last_key_desc;
+  btid_int.part_key_desc = 0;
 
   /* init index key copy_buf info */
   btid_int.copy_buf = NULL;

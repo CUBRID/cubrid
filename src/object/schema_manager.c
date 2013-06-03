@@ -10459,27 +10459,13 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 	     subclasses) into the new B-tree */
 	  else
 	    {
-	      int last_key_desc = 0;
-
-	      if (reverse || (asc_desc && asc_desc[n_attrs - 1] == 1)
-		  || (function_index && function_index->fi_domain->is_desc
-		      && (function_index->col_id == function_index->
-			  attr_index_start)))
-		{
-		  last_key_desc = true;
-		}
-	      else
-		{
-		  last_key_desc = false;
-		}
-
 	      if (function_index)
 		{
 		  error =
 		    btree_load_index (index, domain, oids, n_classes, n_attrs,
 				      attr_ids, (int *) attrs_prefix_length,
 				      hfids, unique, not_null,
-				      last_key_desc, fk_refcls_oid,
+				      fk_refcls_oid,
 				      fk_refcls_pk_btid, cache_attr_id,
 				      fk_name,
 				      SM_GET_FILTER_PRED_STREAM
@@ -10497,7 +10483,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 		    btree_load_index (index, domain, oids, n_classes, n_attrs,
 				      attr_ids, (int *) attrs_prefix_length,
 				      hfids, unique, not_null,
-				      last_key_desc, fk_refcls_oid,
+				      fk_refcls_oid,
 				      fk_refcls_pk_btid, cache_attr_id,
 				      fk_name,
 				      SM_GET_FILTER_PRED_STREAM
