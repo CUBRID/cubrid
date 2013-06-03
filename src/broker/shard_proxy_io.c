@@ -58,8 +58,6 @@
 #define CAS_READ_ERROR(i)       io_error(i, PROC_TYPE_CAS, READ_TYPE)
 #define CAS_WRITE_ERROR(i)      io_error(i, PROC_TYPE_CAS, WRITE_TYPE)
 
-#define MAX_NUM_NEW_CLIENT	5
-
 #define PROXY_START_PORT	1
 #define GET_CLIENT_PORT(broker_port, proxy_index)	(broker_port) + PROXY_START_PORT + (proxy_index)
 #define GET_CAS_PORT(broker_port, proxy_index, proxy_max_count)	(broker_port) + PROXY_START_PORT + (proxy_max_count) + (proxy_index)
@@ -2078,6 +2076,11 @@ error_return:
   if (cas_io_p && shard_id >= 0 && cas_id >= 0)
     {
       proxy_cas_io_free (shard_id, cas_id);
+    }
+  else
+    {
+      /* cas have to retry register to proxy. */
+      proxy_socket_io_delete (sock_io_p->fd);
     }
 
   EXIT_FUNC ();
@@ -4548,7 +4551,6 @@ proxy_io_process (void)
   int error;
   int cas_fd;
   int i;
-  unsigned int num_new_client = 0;
 #if defined(WINDOWS)
   int client_fd;
 #endif
@@ -4563,8 +4565,6 @@ proxy_io_process (void)
 #endif /* !LINUX */
 
   T_SOCKET_IO *sock_io_p = NULL;
-
-retry_select:
 
 #if defined(LINUX)
   timeout = 1000 / HZ;
@@ -4635,15 +4635,7 @@ retry_select:
 	  else if (ep_Event[i].events & EPOLLIN
 		   || ep_Event[i].events & EPOLLPRI)
 	    {
-	      error = proxy_socket_io_new_client (broker_conn_fd);
-	      if (error == 0)
-		{
-		  num_new_client++;
-		  if (num_new_client < MAX_NUM_NEW_CLIENT)
-		    {
-		      goto retry_select;
-		    }
-		}
+	      proxy_socket_io_new_client (broker_conn_fd);
 	    }
 	}
       else
@@ -4717,21 +4709,14 @@ retry_select:
 		     client_fd);
 	  return 0;		/* or -1 */
 	}
-      error = proxy_socket_io_new_client (client_fd);
+      proxy_socket_io_new_client (client_fd);
+    }
 #else /* WINDOWS */
   if (FD_ISSET (broker_conn_fd, &rset))
     {
-      error = proxy_socket_io_new_client (broker_conn_fd);
-#endif /* !WINDOWS */
-      if (error == 0)
-	{
-	  num_new_client++;
-	  if (num_new_client < MAX_NUM_NEW_CLIENT)
-	    {
-	      goto retry_select;
-	    }
-	}
+      proxy_socket_io_new_client (broker_conn_fd);
     }
+#endif /* !WINDOWS */
 
   /* process socket io */
   for (i = 0; i <= maxfd; i++)
