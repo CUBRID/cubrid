@@ -3327,6 +3327,13 @@ pt_register_orphan (PARSER_CONTEXT * parser, const PT_NODE * orphan)
 
   if (orphan)
     {
+      /* this node has already been freed. */
+      if (orphan->node_type == PT_LAST_NODE_NUMBER)
+	{
+	  assert_release (false);
+	  return;
+	}
+
       dummy = parser_new_node (parser, PT_EXPR);
       dummy->info.expr.op = PT_NOT;	/* probably not necessary */
       dummy->info.expr.arg1 = (PT_NODE *) orphan;

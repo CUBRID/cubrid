@@ -990,7 +990,7 @@ pt_walk_private (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg)
 	       */
 	      node_type = node->node_type;
 
-	      if (node_type >= PT_NODE_NUMBER
+	      if (node_type >= PT_LAST_NODE_NUMBER
 		  || !(apply = pt_apply_f[node_type]))
 		{
 		  return NULL;
@@ -1075,7 +1075,8 @@ parser_walk_leaves (PARSER_CONTEXT * parser,
     {
       node_type = walk->node_type;
 
-      if (node_type >= PT_NODE_NUMBER || !(apply = pt_apply_f[node_type]))
+      if (node_type >= PT_LAST_NODE_NUMBER
+	  || !(apply = pt_apply_f[node_type]))
 	{
 	  return NULL;
 	}
@@ -2337,7 +2338,7 @@ parser_init_node (PT_NODE * node)
     {
       PARSER_INIT_NODE_FUNC f;
 
-      assert (node->node_type < PT_NODE_NUMBER);
+      assert (node->node_type < PT_LAST_NODE_NUMBER);
 
       /* don't write over node_type, parser_id, line or column */
       node->next = NULL;
@@ -2432,7 +2433,7 @@ pt_print_bytes (PARSER_CONTEXT * parser, const PT_NODE * node)
 
   t = node->node_type;
 
-  if (t >= PT_NODE_NUMBER || !(f = pt_print_f[t]))
+  if (t >= PT_LAST_NODE_NUMBER || !(f = pt_print_f[t]))
     {
       return NULL;
     }

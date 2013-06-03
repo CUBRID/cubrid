@@ -1662,7 +1662,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 
       if (pt_has_error (parser))
 	{
-	  parser_free_tree (parser, node);
+	  /* this node will be registered to orphan list and freed later */
 	  node = NULL;
 	  goto select_end;
 	}
