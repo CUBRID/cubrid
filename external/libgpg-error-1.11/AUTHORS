@@ -1,0 +1,73 @@
+Package: libgpg-error
+Maintainer: Werner Koch <wk@gnupg.org>
+Bug reports: bug-gnupg@gnupg.org
+Mailing list: gnupg-devel@gnupg.org
+Security related bug reports: security@gnupg.org
+License (library): LGPLv2.1+
+License (tools): GPLv2+ with exception
+
+
+Aron Xu <happyaron.xu at gmail.com>
+ - TRANSLATION [zh_CN]
+
+Clytie Siddall <clytie at riverland.net.au>
+ - TRANSLATION [vi]
+
+Daniel Nylander <po at danielnylander.se>
+ - TRANSLATION [sv]
+
+David Prévot <david at tilapin.org>
+ - TRANSLATION [fr]
+
+Felipe Castro <fefcas at gmail.com>
+ - TRANSLATION [eo]
+
+Francesco Groccia <fgr at anche.no>
+ - TRANSLATION [it]
+
+Freek de Kruijf <f.de.kruijf at gmail.com>
+ - TRANSLATION [nl]
+
+g10 Code GmbH <code at g10code.com>
+ - Design and implementation.
+
+Jakub Bogusz <qboosh at pld-linux.org>
+ - TRANSLATION [pl]
+
+Joe Hansen <joedalton2 at yahoo.dk>
+ - TRANSLATION [da]
+
+Laurentiu Buzdugan <lbuz at rolix.org>
+ - TRANSLATION [ro]
+
+Petr Pisar <petr.pisar at atlas.cz>
+ - TRANSLATION [cs]
+
+Robert Schiele <rschiele at uni-mannheim.de>
+ - libgpg-error.spec
+
+Stephane Roy <sroy at j2n.net>
+ - TRANSLATION [fr]
+
+Takeshi Hamasaki <hmatrjp at users.sourceforge.jp>
+ - TRANSLATION [fp]
+
+Werner Koch <wk at gnupg.org>
+ - TRANSLATION [de]
+
+Yasuaki Taniguchi <yasuakit at gmail.com>
+ - TRANSLATION [fp]
+
+Yuri Chornoivan <yurchor at ukr.net>
+ - TRANSLATION [uk]
+
+
+ Copyright 2003, 2004, 2005, 2006, 2007, 2013 g10 Code GmbH
+
+ This file is free software; as a special exception the author gives
+ unlimited permission to copy and/or distribute it, with or without
+ modifications, as long as this notice is preserved.
+
+ This file is distributed in the hope that it will be useful, but
+ WITHOUT ANY WARRANTY, to the extent permitted by law; without even the
+ implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.

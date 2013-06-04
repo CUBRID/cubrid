@@ -1,0 +1,25 @@
+2011-12-01  Werner Koch  <wk@g10code.com>
+
+	NB: ChangeLog files are no longer manually maintained.  Starting
+	on December 1st, 2011 we put change information only in the GIT
+	commit log, and generate a top-level ChangeLog file from logs at
+	"make dist".  See doc/HACKING for details.
+
+2010-11-15  Marcus Brinkmann  <mb@g10code.com>
+
+	* conf-w32ce-msc/stdint.h: New file.
+	* conf-w32ce-msc/build.mk (conf_sources): Add stdint.h.
+
+2010-11-15  Werner Koch  <wk@g10code.com>
+
+	* conf-w32ce-msc/build.mk (clean): New.
+
+2010-11-02  Werner Koch  <wk@g10code.com>
+
+	* conf-w32ce-msc/build.mk: Change directory layout.  Provide
+	install target.
+
+2010-10-28  Werner Koch  <wk@g10code.com>
+
+	* contrib/conf-w32ce-msc/build.mk: New.
+	* contrib/conf-w32ce-msc/config.h: New.

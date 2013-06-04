@@ -65,8 +65,8 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib gc_debug.lib libregex38a.lib libexpat.lib"
-				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(PlatformName)\$(ConfigurationName)&quot;;..\..\win\external\lib"
+				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib gc_debug.lib libregex38a.lib libexpat.lib libgcrypt.lib"
+				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(PlatformName)\$(ConfigurationName)&quot;;..\..\win\external\lib;..\..\win\external\dll\win32\"
 				IgnoreDefaultLibraryNames="msvcrt.lib"
 				ModuleDefinitionFile="cubridcs.def"
 				GenerateDebugInformation="true"
@@ -141,8 +141,8 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib gc_debug.lib libregex38a.lib libexpat.lib"
-				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(PlatformName)\$(ConfigurationName)&quot;;..\..\win\external\lib64"
+				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib gc_debug.lib libregex38a.lib libexpat.lib libgcrypt.lib"
+				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(PlatformName)\$(ConfigurationName)&quot;;..\..\win\external\lib64;..\..\win\external\dll\x64\"
 				IgnoreDefaultLibraryNames="msvcrt.lib"
 				ModuleDefinitionFile="cubridcs.def"
 				GenerateDebugInformation="true"
@@ -217,8 +217,8 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib gc.lib libregex38a.lib libexpat.lib"
-				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(PlatformName)\$(ConfigurationName)&quot;;..\..\win\external\lib"
+				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib gc.lib libregex38a.lib libexpat.lib libgcrypt.lib"
+				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(PlatformName)\$(ConfigurationName)&quot;;..\..\win\external\lib;..\..\win\external\dll\win32\"
 				IgnoreDefaultLibraryNames="libcmt.lib"
 				ModuleDefinitionFile="cubridcs.def"
 				GenerateDebugInformation="true"
@@ -296,9 +296,9 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib gc.lib libregex38a.lib libexpat.lib"
+				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib gc.lib libregex38a.lib libexpat.lib libgcrypt.lib"
 				LinkIncremental="0"
-				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(PlatformName)\$(ConfigurationName)&quot;;..\..\win\external\lib64"
+				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(PlatformName)\$(ConfigurationName)&quot;;..\..\win\external\lib64;..\..\win\external\dll\x64\"
 				IgnoreDefaultLibraryNames="libcmt.lib"
 				ModuleDefinitionFile="cubridcs.def"
 				GenerateDebugInformation="true"
@@ -407,7 +407,7 @@
 				<File
 					RelativePath="..\..\src\base\locale_support.c"
 					>
-				</File>				
+				</File>
 				<File
 					RelativePath="..\..\src\base\md5.c"
 					>
@@ -483,7 +483,7 @@
 				<File
 					RelativePath="..\..\src\base\xml_parser.c"
 					>
-				</File>				
+				</File>
 			</Filter>
 			<Filter
 				Name="compat"
@@ -843,6 +843,10 @@
 				>
 				<File
 					RelativePath="..\..\src\query\arithmetic.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\query\crypt_opfunc.c"
 					>
 				</File>
 				<File

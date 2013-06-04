@@ -1347,6 +1347,11 @@ typedef enum
   /* width_bucket */
   PT_WIDTH_BUCKET,
 
+  PT_AES_ENCRYPT,
+  PT_AES_DECRYPT,
+  PT_SHA_ONE,
+  PT_SHA_TWO,
+
   /* This is the last entry. Please add a new one before it. */
   PT_LAST_OPCODE
 } PT_OP_TYPE;

@@ -1417,7 +1417,9 @@
 
 #define ER_NOT_NULL_DOES_NOT_ALLOW_NULL_VALUE	    -1121
 
-#define ER_LAST_ERROR                               -1122
+#define ER_ENCRYPTION_LIB_FAILED                    -1122
+
+#define ER_LAST_ERROR                               -1123
 
 /*
  * CAUTION!
