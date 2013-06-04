@@ -204,8 +204,7 @@ QUERY_SOURCES = \
 	$(QUERY_DIR)/numeric_opfunc.c \
 	$(QUERY_DIR)/query.c \
 	$(QUERY_DIR)/string_opfunc.c \
-	$(QUERY_DIR)/xasl_to_stream.c \
-	$(QUERY_DIR)/crypt_opfunc.c
+	$(QUERY_DIR)/xasl_to_stream.c 
 
 OBJECT_SOURCES = \
 	$(OBJECT_DIR)/elo.c \

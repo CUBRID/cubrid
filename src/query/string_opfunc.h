@@ -199,13 +199,6 @@ extern int db_string_substring_index (DB_VALUE * src_string,
 				      DB_VALUE * delim_string,
 				      const DB_VALUE * count,
 				      DB_VALUE * result);
-extern int db_string_aes_encrypt (DB_VALUE const *src, DB_VALUE const *key,
-				  DB_VALUE * result);
-extern int db_string_aes_decrypt (DB_VALUE const *src, DB_VALUE const *key,
-				  DB_VALUE * result);
-extern int db_string_sha_one (DB_VALUE const *val, DB_VALUE * result);
-extern int db_string_sha_two (DB_VALUE const *src, DB_VALUE const *len,
-			      DB_VALUE * result);
 extern int db_string_md5 (DB_VALUE const *val, DB_VALUE * result);
 extern int db_string_space (DB_VALUE const *count, DB_VALUE * result);
 extern int db_string_insert_substring (DB_VALUE * src_string,

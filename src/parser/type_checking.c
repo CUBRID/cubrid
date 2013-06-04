@@ -1956,85 +1956,6 @@ pt_get_expression_definition (const PT_OP_TYPE op,
 
       def->overloads_count = num;
       break;
-    case PT_SHA_ONE:
-      num = 0;
-
-      /* one overload */
-
-      /* arg1 */
-      sig.arg1_type.is_generic = true;
-      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
-
-      /* return type */
-      sig.return_type.is_generic = false;
-      sig.return_type.val.type = PT_TYPE_CHAR;
-      def->overloads[num++] = sig;
-
-      def->overloads_count = num;
-      break;
-
-    case PT_SHA_TWO:
-      num = 0;
-
-      /* one overload */
-
-      /* arg1 */
-      sig.arg1_type.is_generic = true;
-      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
-
-      /* arg2 */
-      sig.arg2_type.is_generic = true;
-      sig.arg2_type.val.type = PT_GENERIC_TYPE_DISCRETE_NUMBER;
-
-      /* return type */
-      sig.return_type.is_generic = false;
-      sig.return_type.val.type = PT_TYPE_VARCHAR;
-      def->overloads[num++] = sig;
-
-      def->overloads_count = num;
-      break;
-
-    case PT_AES_ENCRYPT:
-      num = 0;
-
-      /* one overload */
-
-      /* arg1 */
-      sig.arg1_type.is_generic = true;
-      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
-
-      /* arg2 */
-      sig.arg2_type.is_generic = true;
-      sig.arg2_type.val.type = PT_GENERIC_TYPE_STRING;
-
-      /* return type */
-      sig.return_type.is_generic = false;
-      sig.return_type.val.type = PT_TYPE_VARCHAR;
-      def->overloads[num++] = sig;
-
-      def->overloads_count = num;
-      break;
-
-    case PT_AES_DECRYPT:
-      num = 0;
-
-      /* one overload */
-
-      /* arg1 */
-      sig.arg1_type.is_generic = true;
-      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
-
-      /* arg2 */
-      sig.arg2_type.is_generic = true;
-      sig.arg2_type.val.type = PT_GENERIC_TYPE_STRING;
-
-      /* return type */
-      sig.return_type.is_generic = false;
-      sig.return_type.val.type = PT_TYPE_VARCHAR;
-      def->overloads[num++] = sig;
-
-      def->overloads_count = num;
-      break;
 
     case PT_MID:
       num = 0;
@@ -6265,10 +6186,6 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_COERCIBILITY:
     case PT_COLLATION:
     case PT_WIDTH_BUCKET:
-    case PT_SHA_ONE:
-    case PT_SHA_TWO:
-    case PT_AES_ENCRYPT:
-    case PT_AES_DECRYPT:
       return false;
 
     default:
@@ -8529,10 +8446,6 @@ pt_is_able_to_determine_return_type (const PT_OP_TYPE op)
     case PT_COERCIBILITY:
     case PT_COLLATION:
     case PT_WIDTH_BUCKET:
-    case PT_AES_ENCRYPT:
-    case PT_AES_DECRYPT:
-    case PT_SHA_ONE:
-    case PT_SHA_TWO:
       return true;
 
     default:
@@ -11303,9 +11216,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
       || op == PT_IF || op == PT_IFNULL
       || op == PT_CONCAT || op == PT_CONCAT_WS || op == PT_FIELD
       || op == PT_UNIX_TIMESTAMP || op == PT_BIT_COUNT || op == PT_REPEAT
-      || op == PT_SPACE || op == PT_MD5 || op == PT_TIMEF
-      || op == PT_AES_ENCRYPT
-      || op == PT_AES_DECRYPT || op == PT_SHA_TWO || op == PT_SHA_ONE)
+      || op == PT_SPACE || op == PT_MD5 || op == PT_TIMEF)
     {
       dt = parser_new_node (parser, PT_DATA_TYPE);
       if (dt == NULL)
@@ -11695,21 +11606,6 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
       assert (dt != NULL);
       dt->info.data_type.precision = 32;
       break;
-
-    case PT_AES_ENCRYPT:
-    case PT_AES_DECRYPT:
-    case PT_SHA_TWO:
-      assert (dt != NULL);
-      dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
-      dt->info.data_type.dec_precision = 0;
-      dt->info.data_type.units = 0;
-      break;
-
-    case PT_SHA_ONE:
-      assert (dt != NULL);
-      dt->info.data_type.precision = 40;
-      break;
-
     case PT_LAST_INSERT_ID:
       assert (dt == NULL);
       /* last insert id returns NUMERIC (38, 0) */
@@ -16728,54 +16624,6 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 
     case PT_MD5:
       error = db_string_md5 (arg1, result);
-      if (error < 0)
-	{
-	  PT_ERRORc (parser, o1, er_msg ());
-	  return 0;
-	}
-      else
-	{
-	  return 1;
-	}
-
-    case PT_SHA_ONE:
-      error = db_string_sha_one (arg1, result);
-      if (error < 0)
-	{
-	  PT_ERRORc (parser, o1, er_msg ());
-	  return 0;
-	}
-      else
-	{
-	  return 1;
-	}
-
-    case PT_AES_ENCRYPT:
-      error = db_string_aes_encrypt (arg1, arg2, result);
-      if (error < 0)
-	{
-	  PT_ERRORc (parser, o1, er_msg ());
-	  return 0;
-	}
-      else
-	{
-	  return 1;
-	}
-
-    case PT_AES_DECRYPT:
-      error = db_string_aes_decrypt (arg1, arg2, result);
-      if (error < 0)
-	{
-	  PT_ERRORc (parser, o1, er_msg ());
-	  return 0;
-	}
-      else
-	{
-	  return 1;
-	}
-
-    case PT_SHA_TWO:
-      error = db_string_sha_two (arg1, arg2, result);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());

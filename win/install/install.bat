@@ -6,7 +6,6 @@ if %3 == "" goto exit
 
 set SRC_DIR=%1
 set DEST_DIR=%2
-set PLATFROM=%3
 set GENCAT=%SRC_DIR%\..\..\gencat\gencat.exe
 set MSG_EN_US_DIR=%DEST_DIR%\msg\en_US
 set MSG_EN_US_UTF8_DIR=%DEST_DIR%\msg\en_US.utf8
@@ -71,7 +70,6 @@ rem Binaries
 copy %SRC_DIR%\*.exe %DEST_DIR%\bin
 copy %SRC_DIR%\*.dll %DEST_DIR%\bin
 copy %SRC_DIR%\..\..\external\dll\*.dll %DEST_DIR%\bin
-copy %SRC_DIR%\..\..\external\dll\%PLATFORM%\*.dll %DEST_DIR%\bin
 
 copy %SRC_DIR%\DBGWConnector3.dll %DEST_DIR%\bin
 

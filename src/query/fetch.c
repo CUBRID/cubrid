@@ -164,9 +164,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_ADD_MONTHS:
     case T_MONTHS_BETWEEN:
     case T_TRIM:
-    case T_AES_ENCRYPT:
-    case T_AES_DECRYPT:
-    case T_SHA_TWO:
     case T_LTRIM:
     case T_RTRIM:
     case T_POWER:
@@ -454,7 +451,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_ASCII:
     case T_SPACE:
     case T_MD5:
-    case T_SHA_ONE:
     case T_BIN:
     case T_CAST:
     case T_CAST_NOFAIL:
@@ -1357,53 +1353,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	  PRIM_SET_NULL (arithptr->value);
 	}
       else if (db_string_md5 (peek_right, arithptr->value) != NO_ERROR)
-	{
-	  goto error;
-	}
-      break;
-
-    case T_SHA_ONE:
-      if (DB_IS_NULL (peek_right))
-	{
-	  PRIM_SET_NULL (arithptr->value);
-	}
-      else if (db_string_sha_one (peek_right, arithptr->value) != NO_ERROR)
-	{
-	  goto error;
-	}
-      break;
-
-    case T_AES_ENCRYPT:
-      if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
-	{
-	  PRIM_SET_NULL (arithptr->value);
-	}
-      else if (db_string_aes_encrypt (peek_left, peek_right,
-				      arithptr->value) != NO_ERROR)
-	{
-	  goto error;
-	}
-      break;
-
-    case T_AES_DECRYPT:
-      if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
-	{
-	  PRIM_SET_NULL (arithptr->value);
-	}
-      else if (db_string_aes_decrypt (peek_left, peek_right,
-				      arithptr->value) != NO_ERROR)
-	{
-	  goto error;
-	}
-      break;
-
-    case T_SHA_TWO:
-      if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
-	{
-	  PRIM_SET_NULL (arithptr->value);
-	}
-      else if (db_string_sha_two (peek_left, peek_right,
-				  arithptr->value) != NO_ERROR)
 	{
 	  goto error;
 	}
