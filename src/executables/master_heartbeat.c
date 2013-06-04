@@ -57,6 +57,7 @@
 #include "message_catalog.h"
 #include "utility.h"
 
+#define HB_INFO_STR_MAX         8192
 
 /* list */
 static void hb_list_add (HB_LIST ** p, HB_LIST * n);
@@ -176,11 +177,10 @@ static const char *hb_node_state_string (int nstate);
 static const char *hb_process_state_string (unsigned char ptype, int pstate);
 static int hb_reload_config (void);
 
-/* debug and test */
-static void hb_print_nodes (void);
-static void hb_print_jobs (HB_JOB * jobs);
-static void hb_print_procs (void);
-
+static int hb_help_sprint_processes_info (char *buffer, int max_length);
+static int hb_help_sprint_nodes_info (char *buffer, int max_length);
+static int hb_help_sprint_jobs_info (HB_JOB * jobs, char *buffer,
+				     int max_length);
 
 HB_CLUSTER *hb_Cluster = NULL;
 HB_RESOURCE *hb_Resource = NULL;
@@ -610,6 +610,7 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
   HB_JOB_ARG *job_arg;
   HB_CLUSTER_JOB_ARG *clst_arg;
   HB_NODE_ENTRY *node;
+  char hb_info_str[HB_INFO_STR_MAX];
 
   rv = pthread_mutex_lock (&hb_Cluster->lock);
 
@@ -664,8 +665,6 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
       hb_Cluster->state = HB_NSTATE_UNKNOWN;
       hb_cluster_request_heartbeat_to_all ();
 
-      hb_print_nodes ();
-
       pthread_mutex_unlock (&hb_Cluster->lock);
 
       if (arg)
@@ -676,6 +675,10 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
 	      "More than one master detected and local "
 	      "processes and cub_master will be terminated");
+
+      hb_help_sprint_nodes_info (hb_info_str, HB_INFO_STR_MAX);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
+	      hb_info_str);
 
       /* TODO : hb_terminate() */
       css_master_cleanup (SIGTERM);
@@ -689,8 +692,6 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
     {
       hb_Cluster->state = HB_NSTATE_TO_BE_MASTER;
       hb_cluster_request_heartbeat_to_all ();
-
-      /* hb_print_nodes (); */
 
       pthread_mutex_unlock (&hb_Cluster->lock);
 
@@ -725,7 +726,8 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
       return;
     }
 
-  hb_print_nodes ();
+  hb_help_sprint_nodes_info (hb_info_str, HB_INFO_STR_MAX);
+  er_log_debug (ARG_FILE_LINE, "%s", hb_info_str);
 
 calc_end:
   pthread_mutex_unlock (&hb_Cluster->lock);
@@ -871,12 +873,9 @@ hb_cluster_job_check_ping (HB_JOB_ARG * arg)
   return;
 
 ping_check_cancel:
-  if (hb_Cluster->state == HB_NSTATE_MASTER)
-    {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
-	      "Failback cancelled by ping check");
-    }
-  else
+/* if this node is a master, then failback is cancelled */
+
+  if (hb_Cluster->state != HB_NSTATE_MASTER)
     {
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
 	      "Failover cancelled by ping check");
@@ -917,6 +916,7 @@ hb_cluster_job_failover (HB_JOB_ARG * arg)
 {
   int error, rv;
   int num_master;
+  char hb_info_str[HB_INFO_STR_MAX];
 
   rv = pthread_mutex_lock (&hb_Cluster->lock);
 
@@ -936,6 +936,9 @@ hb_cluster_job_failover (HB_JOB_ARG * arg)
 	      "Failover cancelled");
       hb_Cluster->state = HB_NSTATE_SLAVE;
     }
+
+  hb_help_sprint_nodes_info (hb_info_str, HB_INFO_STR_MAX);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, hb_info_str);
 
   hb_cluster_request_heartbeat_to_all ();
   pthread_mutex_unlock (&hb_Cluster->lock);
@@ -963,6 +966,7 @@ hb_cluster_job_failback (HB_JOB_ARG * arg)
 {
   int error, rv;
   int num_master;
+  char hb_info_str[HB_INFO_STR_MAX];
 
   rv = pthread_mutex_lock (&hb_Cluster->lock);
   rv = pthread_mutex_lock (&hb_Resource->lock);
@@ -972,6 +976,9 @@ hb_cluster_job_failback (HB_JOB_ARG * arg)
 
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
 	  "Master will be slave");
+
+  hb_help_sprint_nodes_info (hb_info_str, HB_INFO_STR_MAX);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, hb_info_str);
 
   pthread_mutex_unlock (&hb_Resource->lock);
   pthread_mutex_unlock (&hb_Cluster->lock);
@@ -1999,6 +2006,7 @@ hb_resource_job_confirm_start (HB_JOB_ARG * arg)
   bool retry = true;
   HB_PROC_ENTRY *proc;
   HB_RESOURCE_JOB_ARG *proc_arg = (arg) ? &(arg->resource_job_arg) : NULL;
+  char hb_info_str[HB_INFO_STR_MAX];
 
   if (arg == NULL || proc_arg == NULL)
     {
@@ -2021,7 +2029,8 @@ hb_resource_job_confirm_start (HB_JOB_ARG * arg)
     {
       pthread_mutex_unlock (&hb_Resource->lock);
 
-      snprintf (error_string, LINE_MAX, "(exceed max retry count, args:%s)",
+      snprintf (error_string, LINE_MAX,
+		"(exceed max retry count for pid: %d, args:%s)", proc->pid,
 		proc->args);
 
       if (hb_Resource->state == HB_NSTATE_MASTER
@@ -2057,11 +2066,11 @@ hb_resource_job_confirm_start (HB_JOB_ARG * arg)
       pthread_mutex_unlock (&hb_Resource->lock);
       if (errno == ESRCH)
 	{
-	  snprintf (error_string, LINE_MAX, "(process not found, args:%s)",
-		    proc->args);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_HB_PROCESS_EVENT, 2, "Failed to restart process",
-		  error_string);
+	  snprintf (error_string, LINE_MAX,
+		    "(process not found, expected pid: %d, args:%s)",
+		    proc->pid, proc->args);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
+		  "Failed to restart process", error_string);
 
 	  error = hb_resource_job_queue (HB_RJOB_PROC_START, arg,
 					 HB_JOB_TIMER_WAIT_A_SECOND);
@@ -2101,7 +2110,8 @@ hb_resource_job_confirm_start (HB_JOB_ARG * arg)
 
   pthread_mutex_unlock (&hb_Resource->lock);
 
-  hb_print_procs ();
+  hb_help_sprint_processes_info (hb_info_str, HB_INFO_STR_MAX);
+  er_log_debug (ARG_FILE_LINE, "%s", hb_info_str);
 
   if (retry)
     {
@@ -2222,6 +2232,7 @@ hb_resource_job_change_mode (HB_JOB_ARG * arg)
 {
   int i, error, rv;
   HB_PROC_ENTRY *proc;
+  char hb_info_str[HB_INFO_STR_MAX];
 
 #if !defined(WINDOWS)
   rv = pthread_mutex_lock (&css_Master_socket_anchor_lock);
@@ -2257,7 +2268,8 @@ hb_resource_job_change_mode (HB_JOB_ARG * arg)
 
   if (hb_Resource->procs)
     {
-      hb_print_procs ();
+      hb_help_sprint_processes_info (hb_info_str, HB_INFO_STR_MAX);
+      er_log_debug (ARG_FILE_LINE, "%s", hb_info_str);
     }
 
   pthread_mutex_unlock (&hb_Resource->lock);
@@ -2679,7 +2691,6 @@ hb_register_new_process (CSS_CONN_ENTRY * conn)
       (proc_state == HB_PSTATE_NOT_REGISTERED
        && proc->pid == (int) ntohl (hbp_proc_register->pid)
        && !(kill (proc->pid, 0) && errno == ESRCH)))
-
     {
       proc->state = proc_state;
       proc->sfd = conn->fd;
@@ -2715,9 +2726,10 @@ hb_register_new_process (CSS_CONN_ENTRY * conn)
       hb_print_procs ();
 #endif
 
-      snprintf (error_string, LINE_MAX, "%s (pid:%d, state:%d, args:%s)",
+      snprintf (error_string, LINE_MAX, "%s (pid:%d, state:%s, args:%s)",
 		HB_RESULT_SUCCESS_STR, ntohl (hbp_proc_register->pid),
-		proc->state, hbp_proc_register->args);
+		hb_process_state_string (proc->type, proc->state),
+		hbp_proc_register->args);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
 	      "Registered as local process entries", error_string);
 
@@ -2727,9 +2739,10 @@ hb_register_new_process (CSS_CONN_ENTRY * conn)
 
   pthread_mutex_unlock (&hb_Resource->lock);
 
-  snprintf (error_string, LINE_MAX, "%s (pid:%d, state:%d, args:%s)",
-	    HB_RESULT_FAILURE_STR, ntohl (hbp_proc_register->pid),
-	    proc->state, hbp_proc_register->args);
+  snprintf (error_string, LINE_MAX,
+	    "%s (expected pid: %d, pid:%d, state:%s, args:%s)",
+	    HB_RESULT_FAILURE_STR, proc->pid, ntohl (hbp_proc_register->pid),
+	    hb_process_state_string (proc->type, proc->state), hbp_proc_register->args);
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
 	  "Registered as local process entries", error_string);
 
@@ -4597,46 +4610,35 @@ hb_check_ping (const char *host)
   return HB_PING_SUCCESS;
 }
 
-
-/* 
- * debug and test
- */
-
-/*
- * hb_print_nodes -
- *   return: none
- *
- */
-static void
-hb_print_nodes (void)
+static int
+hb_help_sprint_nodes_info (char *buffer, int max_length)
 {
-  int i;
   HB_NODE_ENTRY *node;
-  char buffer[8192] = { 0, }, *p, *last;
+  char *p, *last;
 
-  if (NULL == hb_Cluster)
+  if (*buffer != '\0')
     {
-      er_log_debug (ARG_FILE_LINE, "hb_Cluster is null. \n");
-      return;
+      memset (buffer, 0, max_length);
     }
 
-  p = (char *) &buffer[0];
-  last = p + sizeof (buffer);
+  p = buffer;
+  last = buffer + max_length;
 
-  p += snprintf (p, MAX ((last - p), 0), "\n * print cluster * \n");
+  p += snprintf (p, MAX ((last - p), 0), "HA Node Info\n");
   p += snprintf (p, MAX ((last - p), 0), "=============================="
 		 "==================================================\n");
   p +=
     snprintf (p, MAX ((last - p), 0),
-	      " * group_id : %s   host_name : %s   state : %u \n",
-	      hb_Cluster->group_id, hb_Cluster->host_name, hb_Cluster->state);
+	      " * group_id : %s   host_name : %s   state : %s \n",
+	      hb_Cluster->group_id, hb_Cluster->host_name,
+	      hb_node_state_string (hb_Cluster->state));
   p +=
     snprintf (p, MAX ((last - p), 0),
 	      "------------------------------"
 	      "--------------------------------------------------\n");
   p +=
-    snprintf (p, MAX ((last - p), 0), "%-20s %-10s %-10s %-10s %-10s\n",
-	      "name", "priority", "state", "score", "hb_gap");
+    snprintf (p, MAX ((last - p), 0), "%-20s %-10s %-15s %-10s %-20s\n",
+	      "name", "priority", "state", "score", "missed heartbeat");
   p +=
     snprintf (p, MAX ((last - p), 0),
 	      "------------------------------"
@@ -4645,8 +4647,9 @@ hb_print_nodes (void)
   for (node = hb_Cluster->nodes; node; node = node->next)
     {
       p +=
-	snprintf (p, MAX ((last - p), 0), "%-20s %-10u %-10u %-10d %-10d\n",
-		  node->host_name, node->priority, node->state, node->score,
+	snprintf (p, MAX ((last - p), 0), "%-20s %-10u %-15s %-10d %-20d\n",
+		  node->host_name, node->priority,
+		  hb_node_state_string (node->state), node->score,
 		  node->heartbeat_gap);
     }
 
@@ -4654,25 +4657,76 @@ hb_print_nodes (void)
 		 "==================================================\n");
   p += snprintf (p, MAX ((last - p), 0), "\n");
 
-  er_log_debug (ARG_FILE_LINE, "%s", buffer);
+  return p - buffer;
 }
 
-/*
- * hb_print_jobs -
- *   return: none
- *
- */
-static void
-hb_print_jobs (HB_JOB * jobs)
+static int
+hb_help_sprint_processes_info (char *buffer, int max_length)
+{
+  HB_PROC_ENTRY *proc;
+  char *p, *last;
+
+  if (*buffer != '\0')
+    {
+      memset (buffer, 0, max_length);
+    }
+
+  p = buffer;
+  last = p + max_length;
+
+  p += snprintf (p, MAX ((last - p), 0), "HA Process Info\n");
+
+  p += snprintf (p, MAX ((last - p), 0), "=============================="
+		 "==================================================\n");
+  p +=
+    snprintf (p, MAX ((last - p), 0), " * state : %s \n",
+	      hb_node_state_string (hb_Cluster->state));
+
+  p += snprintf (p, MAX ((last - p), 0), "------------------------------"
+		 "--------------------------------------------------\n");
+  p +=
+    snprintf (p, MAX ((last - p), 0), "%-10s %-22s %-15s %-10s\n", "pid",
+	      "state", "type", "socket fd");
+  p +=
+    snprintf (p, MAX ((last - p), 0), "     %-30s %-35s\n", "exec-path",
+	      "args");
+  p +=
+    snprintf (p, MAX ((last - p), 0),
+	      "------------------------------"
+	      "--------------------------------------------------\n");
+
+  for (proc = hb_Resource->procs; proc; proc = proc->next)
+    {
+      if (proc->state == HB_PSTATE_UNKNOWN)
+	continue;
+
+      p +=
+	snprintf (p, MAX ((last - p), 0), "%-10d %-22s %-15s %-10d\n",
+		  proc->pid, hb_process_state_string (proc->type, proc->state),
+		  hb_process_type_string (proc->type), proc->sfd);
+      p +=
+	snprintf (p, MAX ((last - p), 0), "      %-30s %-35s\n",
+		  proc->exec_path, proc->args);
+    }
+
+  p += snprintf (p, MAX ((last - p), 0), "=============================="
+		 "==================================================\n");
+  p += snprintf (p, MAX ((last - p), 0), "\n");
+
+  return p - buffer;
+}
+
+static int
+hb_help_sprint_jobs_info (HB_JOB * jobs, char *buffer, int max_length)
 {
   int rv;
   HB_JOB_ENTRY *job;
-  char buffer[8192] = { 0, }, *p, *last;
+  char *p, *last;
 
   p = (char *) &buffer[0];
   last = p + sizeof (buffer);
 
-  p += snprintf (p, MAX ((last - p), 0), "\n * print jobs * \n");
+  p += snprintf (p, MAX ((last - p), 0), "HA Job Info\n");
   p += snprintf (p, MAX ((last - p), 0), "=============================="
 		 "==================================================\n");
   p += snprintf (p, MAX ((last - p), 0), "%-10s %-20s %-20s %-20s\n", "type",
@@ -4697,66 +4751,5 @@ hb_print_jobs (HB_JOB * jobs)
 		 "==================================================\n");
   p += snprintf (p, MAX ((last - p), 0), "\n");
 
-  er_log_debug (ARG_FILE_LINE, "%s", buffer);
-}
-
-/*
- * hb_print_procs -
- *   return: none
- *
- */
-void
-hb_print_procs (void)
-{
-  int i, rv;
-  HB_PROC_ENTRY *proc;
-  char buffer[8192] = { 0, }, *p, *last;
-
-  if (NULL == hb_Resource)
-    {
-      er_log_debug (ARG_FILE_LINE, "hb_Resource is null. \n");
-      return;
-    }
-
-  p = (char *) &buffer[0];
-  last = p + sizeof (buffer);
-
-  p += snprintf (p, MAX ((last - p), 0), "\n * print process * \n");
-
-  p += snprintf (p, MAX ((last - p), 0), "=============================="
-		 "==================================================\n");
-  p +=
-    snprintf (p, MAX ((last - p), 0), " * state : %u \n", hb_Resource->state);
-
-  p += snprintf (p, MAX ((last - p), 0), "------------------------------"
-		 "--------------------------------------------------\n");
-  p +=
-    snprintf (p, MAX ((last - p), 0), "%-10s %-5s %-5s %-10s\n", "pid",
-	      "state", "type", "sfd");
-  p +=
-    snprintf (p, MAX ((last - p), 0), "     %-30s %-35s\n", "exec-path",
-	      "args");
-  p +=
-    snprintf (p, MAX ((last - p), 0),
-	      "------------------------------"
-	      "--------------------------------------------------\n");
-
-  for (proc = hb_Resource->procs; proc; proc = proc->next)
-    {
-      if (proc->state == HB_PSTATE_UNKNOWN)
-	continue;
-
-      p +=
-	snprintf (p, MAX ((last - p), 0), "%-10d %-5u %-5u %-10d\n",
-		  proc->pid, proc->state, proc->type, proc->sfd);
-      p +=
-	snprintf (p, MAX ((last - p), 0), "      %-30s %-35s\n",
-		  proc->exec_path, proc->args);
-    }
-
-  p += snprintf (p, MAX ((last - p), 0), "=============================="
-		 "==================================================\n");
-  p += snprintf (p, MAX ((last - p), 0), "\n");
-
-  er_log_debug (ARG_FILE_LINE, "%s", buffer);
+  return p - buffer;
 }
