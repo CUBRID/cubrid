@@ -315,12 +315,20 @@ proxy_context_send_error (T_PROXY_CONTEXT * ctx_p)
   int error;
   char *error_msg = NULL;
   T_PROXY_EVENT *event_p;
+  T_CLIENT_INFO *client_info_p = NULL;
   char *driver_info;
 
   ENTER_FUNC ();
 
   assert (ctx_p->error_ind != CAS_NO_ERROR);
   assert (ctx_p->error_code != CAS_NO_ERROR);
+
+  /* reset request and response timeout */
+  client_info_p = shard_shm_get_client_info (proxy_info_p, ctx_p->client_id);
+  if (client_info_p != NULL)
+    {
+      shard_shm_init_client_info_request (client_info_p);
+    }
 
   driver_info = proxy_get_driver_info_by_ctx (ctx_p);
 
@@ -1285,6 +1293,8 @@ proxy_context_new (void)
 static void
 proxy_context_free_client (T_PROXY_CONTEXT * ctx_p)
 {
+  T_CLIENT_INFO *client_info_p = NULL;
+
   ENTER_FUNC ();
 
   assert (ctx_p);
@@ -1296,6 +1306,12 @@ proxy_context_free_client (T_PROXY_CONTEXT * ctx_p)
 		 ctx_p->client_id, proxy_str_context (ctx_p));
       EXIT_FUNC ();
       return;
+    }
+
+  client_info_p = shard_shm_get_client_info (proxy_info_p, ctx_p->client_id);
+  if (client_info_p != NULL)
+    {
+      shard_shm_init_client_info (client_info_p);
     }
 
   proxy_client_io_free_by_ctx (ctx_p->client_id, ctx_p->cid, ctx_p->uid);

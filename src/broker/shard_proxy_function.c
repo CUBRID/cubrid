@@ -355,6 +355,13 @@ proxy_send_response_to_client_with_new_event (T_PROXY_CONTEXT * ctx_p,
   int error = 0;
   char *driver_info;
   T_PROXY_EVENT *event_p = NULL;
+  T_CLIENT_INFO *client_info_p = NULL;
+
+  client_info_p = shard_shm_get_client_info (proxy_info_p, ctx_p->client_id);
+  if (client_info_p != NULL)
+    {
+      client_info_p->res_time = time (NULL);
+    }
 
   driver_info = proxy_get_driver_info_by_ctx (ctx_p);
 
