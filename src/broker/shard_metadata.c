@@ -46,7 +46,6 @@
 #include "cas_common.h"
 #include "broker_filename.h"
 #include "broker_admin_pub.h"
-#include "broker_shm.h"
 #include "broker_util.h"
 #include "shard_metadata.h"
 
@@ -78,36 +77,27 @@ extern char *envvar_confdir_file (char *path, size_t size,
 static void shard_println_1 (FILE * fp);
 static void shard_println_2 (FILE * fp);
 
-static void shard_metadata_user_resize (T_SHM_SHARD_USER ** shm_user_pp,
-					int max_user);
-static void shard_metadata_key_resize (T_SHM_SHARD_KEY ** shm_key_pp,
-				       int max_key);
-static void shard_metadata_conn_resize (T_SHM_SHARD_CONN ** shm_conn_pp,
-					int max_conn);
-static T_SHM_SHARD_USER *shard_metadata_read_user (char *db_name,
-						   char *db_user,
-						   char *db_password);
-static T_SHM_SHARD_KEY *shard_metadata_read_key (const char *filename);
-static T_SHM_SHARD_CONN *shard_metadata_read_conn (const char *filename);
-
+static int shard_metadata_read_user (T_SHM_PROXY * shm_proxy_p, char *db_name,
+				     char *db_user, char *db_password);
+static int shard_metadata_read_key (const char *filename,
+				    T_SHM_PROXY * shm_proxy_p);
+static int shard_metadata_read_conn (const char *filename,
+				     T_SHM_PROXY * shm_proxy_p);
 static int shard_metadata_key_range_comp (const void *p1, const void *p2);
 static int shard_metadata_conn_comp (const void *p1, const void *p2);
 static void shard_metadata_sort_key (T_SHM_SHARD_KEY * shm_key_p);
 static void shard_metadata_sort_conn (T_SHM_SHARD_CONN * shm_conn_p);
 
 
-static int shard_metadata_db_conn (const char *dbname, const char *hosts);
-static char *shard_metadata_shm_initialize (int shmid,
-					    T_SHM_SHARD_USER * shm_user_p,
-					    T_SHM_SHARD_KEY * shm_key_p,
-					    T_SHM_SHARD_CONN * shm_con_p);
 static void shard_metadata_dump_user (FILE * fp,
 				      T_SHM_SHARD_USER * shm_user_p);
 static void shard_metadata_dump_key (FILE * fp, T_SHM_SHARD_KEY * shm_key_p);
 static void shard_metadata_dump_conn (FILE * fp,
 				      T_SHM_SHARD_CONN * shm_conn_p);
+
+
 static int shard_metadata_validate (T_BROKER_INFO * br_info_p,
-				    char *shm_metadata_cp);
+				    T_SHM_PROXY * shm_proxy_p);
 static int shard_metadata_validate_user (T_SHM_SHARD_USER * shm_user_p);
 static int shard_metadata_validate_key_range_internal (T_SHARD_KEY * key_p,
 						       T_SHM_SHARD_CONN *
@@ -139,66 +129,9 @@ shard_println_2 (FILE * fp)
 	   "----------------------------------------\n");
 }
 
-static void
-shard_metadata_user_resize (T_SHM_SHARD_USER ** shm_user_pp, int max_user)
-{
-  int mem_size = sizeof (int) + (max_user * sizeof (T_SHARD_USER));
-
-  assert (shm_user_pp);
-
-  if (*shm_user_pp)
-    {
-      (*shm_user_pp) =
-	(T_SHM_SHARD_USER *) realloc ((*shm_user_pp), mem_size);
-    }
-  else
-    {
-      (*shm_user_pp) = (T_SHM_SHARD_USER *) malloc (mem_size);
-    }
-
-  return;
-}
-
-static void
-shard_metadata_key_resize (T_SHM_SHARD_KEY ** shm_key_pp, int max_key)
-{
-  int mem_size = sizeof (int) + (max_key * sizeof (T_SHARD_KEY));
-
-  assert (shm_key_pp);
-
-  if (*shm_key_pp)
-    {
-      (*shm_key_pp) = (T_SHM_SHARD_KEY *) realloc ((*shm_key_pp), mem_size);
-    }
-  else
-    {
-      (*shm_key_pp) = (T_SHM_SHARD_KEY *) malloc (mem_size);
-    }
-
-  return;
-}
-
-static void
-shard_metadata_conn_resize (T_SHM_SHARD_CONN ** shm_conn_pp, int max_conn)
-{
-  int mem_size = sizeof (int) + (max_conn * sizeof (T_SHARD_CONN));
-
-  assert (shm_conn_pp);
-
-  if (*shm_conn_pp)
-    {
-      (*shm_conn_pp) =
-	(T_SHM_SHARD_CONN *) realloc ((*shm_conn_pp), mem_size);
-    }
-  else
-    {
-      (*shm_conn_pp) = (T_SHM_SHARD_CONN *) malloc (mem_size);
-    }
-  return;
-}
-
-static T_SHM_SHARD_USER *
-shard_metadata_read_user (char *db_name, char *db_user, char *db_password)
+static int
+shard_metadata_read_user (T_SHM_PROXY * shm_proxy_p, char *db_name,
+			  char *db_user, char *db_password)
 {
   int error = NO_ERROR;
   int max_user;
@@ -206,12 +139,10 @@ shard_metadata_read_user (char *db_name, char *db_user, char *db_password)
   T_SHM_SHARD_USER *shm_user_p = NULL;
   T_SHARD_USER *user_p = NULL;
 
+  shm_user_p = shard_metadata_get_user (shm_proxy_p);
+
   max_user = 1;			/* only one user */
-  shard_metadata_user_resize (&shm_user_p, max_user);
-  if (shm_user_p == NULL)
-    {
-      goto error_return;
-    }
+
   shm_user_p->num_shard_user = max_user;
 
   user_p = &(shm_user_p->shard_user[0]);
@@ -224,22 +155,14 @@ shard_metadata_read_user (char *db_name, char *db_user, char *db_password)
 	     "db_user:[%s], db_password:[%s]\n",
 	     0, user_p->db_name, user_p->db_user, user_p->db_password);
 
-  return shm_user_p;
-
-error_return:
-  if (shm_user_p)
-    {
-      free_and_init (shm_user_p);
-    }
-
-  return NULL;
+  return 0;
 }
 
 /*
- * return :key_column count 
+ * return :key_column count
  */
-static T_SHM_SHARD_KEY *
-shard_metadata_read_key (const char *filename)
+static int
+shard_metadata_read_key (const char *filename, T_SHM_PROXY * shm_proxy_p)
 {
   int error = NO_ERROR;
   int nargs;
@@ -256,6 +179,8 @@ shard_metadata_read_key (const char *filename)
   T_SHARD_KEY *key_p = NULL;
   T_SHARD_KEY_RANGE *range_p = NULL;
 
+  shm_key_p = shard_metadata_get_key (shm_proxy_p);
+
   envvar_confdir_file (path, PATH_MAX, filename);
 
   file = fopen (path, "r");
@@ -265,11 +190,7 @@ shard_metadata_read_key (const char *filename)
     }
 
   max_key = DEFAULT_NUM_KEY;
-  shard_metadata_key_resize (&shm_key_p, max_key);
-  if (shm_key_p == NULL)
-    {
-      goto error_return;
-    }
+
   shm_key_p->num_shard_key = 0;
 
   idx_key = idx_range = 0;
@@ -306,12 +227,6 @@ shard_metadata_read_key (const char *filename)
 		}
 	    }
 	  continue;
-	}
-
-      if (shm_key_p->num_shard_key > MAX_SHARD_KEY)
-	{
-	  shm_key_p->num_shard_key = MAX_SHARD_KEY;
-	  break;
 	}
 
       if (shm_key_p->num_shard_key > max_key)
@@ -363,24 +278,19 @@ shard_metadata_read_key (const char *filename)
       key_p->num_key_range = ++idx_range;
     }
 
-  return shm_key_p;
+  return 0;
 
 error_return:
-  if (shm_key_p)
-    {
-      free_and_init (shm_key_p);
-    }
-
   if (file != NULL)
     {
       fclose (file);
     }
 
-  return NULL;
+  return -1;
 }
 
-static T_SHM_SHARD_CONN *
-shard_metadata_read_conn (const char *filename)
+static int
+shard_metadata_read_conn (const char *filename, T_SHM_PROXY * shm_proxy_p)
 {
   int error = NO_ERROR;
   int nargs;
@@ -393,6 +303,8 @@ shard_metadata_read_conn (const char *filename)
   T_SHM_SHARD_CONN *shm_conn_p = NULL;
   T_SHARD_CONN *conn_p = NULL;
 
+  shm_conn_p = shard_metadata_get_conn (shm_proxy_p);
+
   envvar_confdir_file (path, PATH_MAX, filename);
 
   file = fopen (path, "r");
@@ -402,13 +314,8 @@ shard_metadata_read_conn (const char *filename)
     }
 
   max_conn = DEFAULT_NUM_CONN;
-  shard_metadata_conn_resize (&shm_conn_p, max_conn);
-  if (shm_conn_p == NULL)
-    {
-      goto error_return;
-    }
-  shm_conn_p->num_shard_conn = 0;
 
+  shm_conn_p->num_shard_conn = 0;
 
   idx_conn = 0;
   while (fgets (line, LINE_MAX - 1, file) != NULL)
@@ -429,17 +336,7 @@ shard_metadata_read_conn (const char *filename)
 
       if (idx_conn >= MAX_SHARD_CONN)
 	{
-	  break;
-	}
-
-      if (idx_conn >= max_conn)
-	{
-	  max_conn += DEFAULT_NUM_CONN;
-	  shard_metadata_conn_resize (&shm_conn_p, max_conn);
-	  if (shm_conn_p == NULL)
-	    {
-	      goto error_return;
-	    }
+	  goto error_return;
 	}
 
       assert (idx_conn >= 0);
@@ -460,20 +357,15 @@ shard_metadata_read_conn (const char *filename)
       shm_conn_p->num_shard_conn = ++idx_conn;
     }
 
-  return shm_conn_p;
+  return 0;
 
 error_return:
-  if (shm_conn_p)
-    {
-      free_and_init (shm_conn_p);
-    }
-
   if (file != NULL)
     {
       fclose (file);
     }
 
-  return NULL;
+  return -1;
 }
 
 static int
@@ -541,208 +433,94 @@ shard_metadata_sort_conn (T_SHM_SHARD_CONN * shm_conn_p)
 
 
 T_SHM_SHARD_USER *
-shard_metadata_get_user (char *shm_metadata_cp)
+shard_metadata_get_user (T_SHM_PROXY * shm_proxy_p)
 {
   int offset = 0;
   T_SHM_SHARD_USER *shm_user_p;
 
-  assert (shm_metadata_cp);
+  assert (shm_proxy_p);
 
-  offset += sizeof (int);	/* MAGIC */
-  shm_user_p = (T_SHM_SHARD_USER *) (shm_metadata_cp + offset);
+  shm_user_p = &shm_proxy_p->shm_shard_user;
 
   return (shm_user_p);
 }
 
 T_SHM_SHARD_KEY *
-shard_metadata_get_key (char *shm_metadata_cp)
+shard_metadata_get_key (T_SHM_PROXY * shm_proxy_p)
 {
-  int offset = 0;
-  T_SHM_SHARD_USER *shm_user_p;
   T_SHM_SHARD_KEY *shm_key_p;
 
-  assert (shm_metadata_cp);
+  assert (shm_proxy_p);
 
-  offset += sizeof (int);	/* MAGIC */
-  shm_user_p = (T_SHM_SHARD_USER *) (shm_metadata_cp + offset);
-
-  offset +=
-    sizeof (int) + (shm_user_p->num_shard_user * sizeof (T_SHARD_USER));
-  shm_key_p = (T_SHM_SHARD_KEY *) (shm_metadata_cp + offset);
+  shm_key_p = &shm_proxy_p->shm_shard_key;
 
   return (shm_key_p);
 }
 
 T_SHM_SHARD_CONN *
-shard_metadata_get_conn (char *shm_metadata_cp)
+shard_metadata_get_conn (T_SHM_PROXY * shm_proxy_p)
 {
-  int offset = 0;
-  T_SHM_SHARD_USER *shm_user_p;
-  T_SHM_SHARD_KEY *shm_key_p;
   T_SHM_SHARD_CONN *shm_conn_p;
 
-  assert (shm_metadata_cp);
+  assert (shm_proxy_p);
 
-  offset += sizeof (int);	/* MAGIC */
-  shm_user_p = (T_SHM_SHARD_USER *) (shm_metadata_cp + offset);
-
-  offset +=
-    sizeof (int) + (shm_user_p->num_shard_user * sizeof (T_SHARD_USER));
-  shm_key_p = (T_SHM_SHARD_KEY *) (shm_metadata_cp + offset);
-
-  offset += sizeof (int) + (shm_key_p->num_shard_key * sizeof (T_SHARD_KEY));
-  shm_conn_p = (T_SHM_SHARD_CONN *) (shm_metadata_cp + offset);
+  shm_conn_p = &shm_proxy_p->shm_shard_conn;
 
   return (shm_conn_p);
 }
 
 int
-shard_metadata_conn_count (char *shm_metadata_cp)
+shard_metadata_initialize (T_BROKER_INFO * br_info, T_SHM_PROXY * shm_proxy_p)
 {
-  T_SHM_SHARD_CONN *shm_conn_p;
-  int conn_count = 0;
-
-  assert (shm_metadata_cp);
-
-  shm_conn_p = shard_metadata_get_conn (shm_metadata_cp);
-  if (shm_conn_p)
-    {
-      conn_count = shm_conn_p->num_shard_conn;
-    }
-
-  return conn_count;
-}
-
-static char *
-shard_metadata_shm_initialize (int shmid, T_SHM_SHARD_USER * shm_user_p,
-			       T_SHM_SHARD_KEY * shm_key_p,
-			       T_SHM_SHARD_CONN * shm_conn_p)
-{
-  int shm_size = 0;
-  int shm_user_size, shm_key_size, shm_conn_size;
-  int offset;
-  int magic = MAGIC_NUMBER;
-  char *shm_metadata_cp;
-
-  assert (shmid > 0);
-  assert (shm_user_p);
-  assert (shm_key_p);
-  assert (shm_conn_p);
-
-  SHARD_INF ("<SHM> META_SHMID:[%x].\n", shmid);
-
-  shm_user_size =
-    sizeof (int) + (shm_user_p->num_shard_user * sizeof (T_SHARD_USER));
-  shm_key_size =
-    sizeof (int) + (shm_key_p->num_shard_key * sizeof (T_SHARD_KEY));
-  shm_conn_size =
-    sizeof (int) + (shm_conn_p->num_shard_conn * sizeof (T_SHARD_CONN));
-
-  shm_size = sizeof (magic) + shm_user_size + shm_key_size + shm_conn_size;
-  SHARD_INF ("<SHM> META_SHMSIZE:[%d][%d][%d] TOTAL:[%d].\n", shm_user_size,
-	     shm_key_size, shm_conn_size, shm_size);
-
-  shm_metadata_cp = (char *) uw_shm_create (shmid, shm_size, SHM_BROKER);
-  if (shm_metadata_cp == NULL)
-    {
-      return NULL;
-    }
-
-  offset = 0;
-  memcpy (shm_metadata_cp + offset, &magic, sizeof (magic));
-  offset += sizeof (magic);
-  memcpy (shm_metadata_cp + offset, shm_user_p, shm_user_size);
-  offset += shm_user_size;
-  memcpy (shm_metadata_cp + offset, shm_key_p, shm_key_size);
-  offset += shm_key_size;
-  memcpy (shm_metadata_cp + offset, shm_conn_p, shm_conn_size);
-
-  return shm_metadata_cp;
-}
-
-char *
-shard_metadata_initialize (T_BROKER_INFO * br_info)
-{
-  int error;
-  char *shm_metadata_cp = NULL;
-  T_SHM_SHARD_USER *shm_user_p = NULL;
-  T_SHM_SHARD_KEY *shm_key_p = NULL;
-  T_SHM_SHARD_CONN *shm_conn_p = NULL;
+  int res = 0;
 
   assert (br_info);
+  assert (shm_proxy_p);
 
-  shm_user_p = shard_metadata_read_user (br_info->shard_db_name,
-					 br_info->shard_db_user,
-					 br_info->shard_db_password);
-  if (shm_user_p == NULL)
-    {
-      sprintf (admin_err_msg, "failed to read metadata user [%s]",
-	       br_info->name);
-      goto end;
-    }
-  shm_key_p = shard_metadata_read_key (br_info->shard_key_file);
-  if (shm_key_p == NULL)
+  res = shard_metadata_read_user (shm_proxy_p, br_info->shard_db_name,
+				  br_info->shard_db_user,
+				  br_info->shard_db_password);
+
+  res = shard_metadata_read_key (br_info->shard_key_file, shm_proxy_p);
+  if (res < 0)
     {
       sprintf (admin_err_msg, "failed to read metadata key [%s]",
 	       br_info->name);
-      goto end;
+      return res;
     }
-  shard_metadata_sort_key (shm_key_p);
+
+  shard_metadata_sort_key (&shm_proxy_p->shm_shard_key);
 #if defined(SHARD_VERBOSE_DEBUG)
-  shard_metadata_dump_key (stdout, shm_key_p);
+  shard_metadata_dump_key (stdout, &shm_proxy_p->shm_shard_key);
 #endif
 
-  shm_conn_p = shard_metadata_read_conn (br_info->shard_connection_file);
-  if (shm_conn_p == NULL)
+  res =
+    shard_metadata_read_conn (br_info->shard_connection_file, shm_proxy_p);
+  if (res < 0)
     {
       sprintf (admin_err_msg, "failed to read metadata connection [%s]",
 	       br_info->name);
-      goto end;
+      return res;
     }
-  shard_metadata_sort_conn (shm_conn_p);
+
+  shard_metadata_sort_conn (&shm_proxy_p->shm_shard_conn);
 #if defined(SHARD_VERBOSE_DEBUG)
-  shard_metadata_dump_conn (stdout, shm_conn_p);
+  shard_metadata_dump_conn (stdout, &shm_proxy_p->shm_shard_conn);
 #endif
 
   SHARD_INF ("num USER:[%d], num KEY:[%d], num CONN:[%d].\n",
 	     shm_user_p->num_shard_user, shm_key_p->num_shard_key,
 	     shm_conn_p->num_shard_conn);
 
-  shm_metadata_cp =
-    shard_metadata_shm_initialize (br_info->metadata_shm_id, shm_user_p,
-				   shm_key_p, shm_conn_p);
-  if (shm_metadata_cp == NULL)
+  res = shard_metadata_validate (br_info, shm_proxy_p);
+  if (res < 0)
     {
-      sprintf (admin_err_msg,
-	       "failed to initialize metadata shared memory [%s]",
-	       br_info->name);
-      goto end;
-    }
-
-  error = shard_metadata_validate (br_info, shm_metadata_cp);
-  if (error < 0)
-    {
-      shm_metadata_cp = NULL;
       sprintf (admin_err_msg, "failed to metadata validate check [%s]",
 	       br_info->name);
-      goto end;
+      return res;
     }
 
-end:
-  if (shm_user_p)
-    {
-      free_and_init (shm_user_p);
-    }
-  if (shm_key_p)
-    {
-      free_and_init (shm_key_p);
-    }
-  if (shm_conn_p)
-    {
-      free_and_init (shm_conn_p);
-    }
-
-  return shm_metadata_cp;
+  return res;
 }
 
 static void
@@ -832,27 +610,27 @@ shard_metadata_dump_conn (FILE * fp, T_SHM_SHARD_CONN * shm_conn_p)
 }
 
 void
-shard_metadata_dump_internal (FILE * fp, char *shm_metadata_cp)
+shard_metadata_dump_internal (FILE * fp, T_SHM_PROXY * shm_proxy_p)
 {
   T_SHM_SHARD_USER *shm_user_p;
   T_SHM_SHARD_KEY *shm_key_p;
   T_SHM_SHARD_CONN *shm_conn_p;
 
-  assert (shm_metadata_cp);
+  assert (shm_proxy_p);
 
-  shm_user_p = shard_metadata_get_user (shm_metadata_cp);
+  shm_user_p = shard_metadata_get_user (shm_proxy_p);
   if (shm_user_p)
     {
       shard_metadata_dump_user (fp, shm_user_p);
     }
 
-  shm_key_p = shard_metadata_get_key (shm_metadata_cp);
+  shm_key_p = shard_metadata_get_key (shm_proxy_p);
   if (shm_key_p)
     {
       shard_metadata_dump_key (fp, shm_key_p);
     }
 
-  shm_conn_p = shard_metadata_get_conn (shm_metadata_cp);
+  shm_conn_p = shard_metadata_get_conn (shm_proxy_p);
   if (shm_conn_p)
     {
       shard_metadata_dump_conn (fp, shm_conn_p);
@@ -864,38 +642,38 @@ shard_metadata_dump_internal (FILE * fp, char *shm_metadata_cp)
 void
 shard_metadata_dump (FILE * fp, int shmid)
 {
-  char *shm_metadata_cp = NULL;
+  T_SHM_PROXY *shm_proxy_p = NULL;
 
-  shm_metadata_cp =
-    (char *) uw_shm_open (shmid, SHM_BROKER, SHM_MODE_MONITOR);
-  if (shm_metadata_cp == NULL)
+  shm_proxy_p =
+    (T_SHM_PROXY *) uw_shm_open (shmid, SHM_PROXY, SHM_MODE_MONITOR);
+  if (shm_proxy_p == NULL)
     {
       SHARD_ERR ("failed to uw_shm_open(shmid:%x). \n", shmid);
       return;
     }
 
-  shard_metadata_dump_internal (fp, shm_metadata_cp);
+  shard_metadata_dump_internal (fp, shm_proxy_p);
 
-  uw_shm_detach (shm_metadata_cp);
+  uw_shm_detach (shm_proxy_p);
 
   return;
 }
 
 static int
-shard_metadata_validate (T_BROKER_INFO * br_info_p, char *shm_metadata_cp)
+shard_metadata_validate (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy_p)
 {
   int error = 0;
   int modular = 0;
 
   error =
-    shard_metadata_validate_user (shard_metadata_get_user (shm_metadata_cp));
+    shard_metadata_validate_user (shard_metadata_get_user (shm_proxy_p));
   if (error < 0)
     {
       return error;
     }
 
   error =
-    shard_metadata_validate_conn (shard_metadata_get_conn (shm_metadata_cp));
+    shard_metadata_validate_conn (shard_metadata_get_conn (shm_proxy_p));
   if (error < 0)
     {
       return error;
@@ -921,8 +699,8 @@ shard_metadata_validate (T_BROKER_INFO * br_info_p, char *shm_metadata_cp)
 	}
     }
   error =
-    shard_metadata_validate_key (shard_metadata_get_key (shm_metadata_cp),
-				 shard_metadata_get_conn (shm_metadata_cp),
+    shard_metadata_validate_key (shard_metadata_get_key (shm_proxy_p),
+				 shard_metadata_get_conn (shm_proxy_p),
 				 modular);
 
   return error;
@@ -1085,6 +863,7 @@ shard_metadata_validate_key_function (const char *library_name,
   return 0;
 }
 
+
 T_SHARD_KEY *
 shard_metadata_bsearch_key (T_SHM_SHARD_KEY * shm_key_p,
 			    const char *keycolumn)
@@ -1179,14 +958,14 @@ shard_metadata_get_shard_user (T_SHM_SHARD_USER * shm_user_p)
 }
 
 T_SHARD_USER *
-shard_metadata_get_shard_user_from_shm (char *shm_metadata_cp)
+shard_metadata_get_shard_user_from_shm (T_SHM_PROXY * shm_proxy_p)
 {
   T_SHM_SHARD_USER *shm_user_p = NULL;
   T_SHARD_USER *shard_user_p = NULL;
 
-  assert (shm_metadata_cp);
+  assert (shm_proxy_p);
 
-  shm_user_p = shard_metadata_get_user (shm_metadata_cp);
+  shm_user_p = shard_metadata_get_user (shm_proxy_p);
 
   if (shm_user_p == NULL)
     {
@@ -1197,7 +976,6 @@ shard_metadata_get_shard_user_from_shm (char *shm_metadata_cp)
   shard_user_p = &(shm_user_p->shard_user[0]);
   return shard_user_p;
 }
-
 
 int
 load_shard_key_function (const char *library_name, const char *function_name)

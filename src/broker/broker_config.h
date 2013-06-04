@@ -90,6 +90,14 @@
 #define MAX_PROXY_LOG_MAX_SIZE		1000000	/* 1G */
 #endif /* CUBRID_SHARD */
 
+#define SHARD_CONN_STAT_SIZE_LIMIT       256
+#define SHARD_KEY_STAT_SIZE_LIMIT        2
+#define CLIENT_INFO_SIZE_LIMIT           10000
+#define SHARD_INFO_SIZE_LIMIT            256
+
+#define BROKER_INFO_PATH_MAX             (1024)
+#define BROKER_INFO_NAME_MAX             (BROKER_INFO_PATH_MAX)
+
 typedef enum t_sql_log_mode_value T_SQL_LOG_MODE_VALUE;
 enum t_sql_log_mode_value
 {
@@ -191,13 +199,11 @@ struct t_broker_info
   char log_dir[CONF_LOG_FILE_LEN];
   char slow_log_dir[CONF_LOG_FILE_LEN];
   char err_log_dir[CONF_LOG_FILE_LEN];
-#if !defined(CUBRID_SHARD)
   char access_log_file[CONF_LOG_FILE_LEN];
-#endif				/* CUBRID_SHARD */
   char error_log_file[CONF_LOG_FILE_LEN];
   char source_env[CONF_LOG_FILE_LEN];
   char acl_file[CONF_LOG_FILE_LEN];
-  char preferred_hosts[LINE_MAX];
+  char preferred_hosts[BROKER_INFO_NAME_MAX];
 
   char jdbc_cache;
   char jdbc_cache_only_hint;
@@ -212,33 +218,33 @@ struct t_broker_info
   char reject_client_flag;	/* reject clients due to hanging cas/proxy */
   int reject_client_count;
 
-#if defined(CUBRID_SHARD)
+  /*from here, these are used only in shard */
+  int proxy_shm_id;
+
   char proxy_log_mode;
 
   char shard_db_name[SRV_CON_DBNAME_SIZE];
   char shard_db_user[SRV_CON_DBUSER_SIZE];
   char shard_db_password[SRV_CON_DBPASSWD_SIZE];
 
-  int min_num_proxy;
-  int max_num_proxy;
+  int num_proxy;
   char proxy_log_dir[CONF_LOG_FILE_LEN];
   int max_client;
 
-  int metadata_shm_id;
-  char shard_connection_file[LINE_MAX];
-  char shard_key_file[LINE_MAX];
+  char shard_connection_file[BROKER_INFO_PATH_MAX];
+  char shard_key_file[BROKER_INFO_PATH_MAX];
 
   /* SHARD SHARD_KEY_ID */
   int shard_key_modular;
-  char shard_key_library_name[PATH_MAX];
-  char shard_key_function_name[PATH_MAX];
+  char shard_key_library_name[BROKER_INFO_NAME_MAX];
+  char shard_key_function_name[BROKER_INFO_NAME_MAX];
 
   int proxy_log_max_size;
   int proxy_max_prepared_stmt_count;
 
   char ignore_shard_hint;
   int proxy_timeout;
-#endif				/* CUBRID_SHARD */
+  /*to here, these are used only in shard */
 };
 
 extern int broker_config_read (const char *conf_file, T_BROKER_INFO * br_info,

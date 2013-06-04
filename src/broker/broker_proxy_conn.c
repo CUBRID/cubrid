@@ -322,6 +322,7 @@ SOCKET
 broker_find_available_proxy (T_SHM_PROXY * shm_proxy_p)
 #endif				/* !WINDOWS */
 {
+  int proxy_index;
   int min_cur_client = -1;
   int cur_client = -1;
   int max_context = -1;
@@ -339,10 +340,10 @@ broker_find_available_proxy (T_SHM_PROXY * shm_proxy_p)
 
   pthread_mutex_lock (&proxy_conn_mutex);
 #endif /* !WINDOWS */
-  for (proxy_info_p = shard_shm_get_first_proxy_info (shm_proxy_p);
-       proxy_info_p;
-       proxy_info_p = shard_shm_get_next_proxy_info (proxy_info_p))
+  for (proxy_index = 0; proxy_index < shm_proxy_p->num_proxy; proxy_index++)
     {
+      proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, proxy_index);
+
       if (proxy_info_p->pid <= 0)
 	{
 	  continue;

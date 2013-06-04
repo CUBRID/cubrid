@@ -310,7 +310,6 @@ static struct sockaddr_un shard_sock_addr;
 static T_SHM_BROKER *shm_br = NULL;
 static T_SHM_APPL_SERVER *shm_appl;
 #if defined(CUBRID_SHARD)
-static char *shm_as_cp = NULL;
 static T_BROKER_INFO *br_info_p = NULL;
 static T_SHM_PROXY *shm_proxy_p = NULL;
 #endif /* CUBRID_SHARD */
@@ -484,7 +483,7 @@ main (int argc, char *argv[])
       goto error1;
     }
 
-  if (broker_init_proxy_conn (br_info_p->max_num_proxy) < 0)
+  if (broker_init_proxy_conn (br_info_p->num_proxy) < 0)
     {
       goto error1;
     }
@@ -520,17 +519,17 @@ main (int argc, char *argv[])
 	}
 
       /* ADD UTS */
-      for (proxy_index = 0, proxy_info_p =
-	   shard_shm_get_first_proxy_info (shm_proxy_p); proxy_info_p;
-	   proxy_index++, proxy_info_p =
-	   shard_shm_get_next_proxy_info (proxy_info_p))
+      for (proxy_index = 0; proxy_index < shm_proxy_p->num_proxy;
+	   proxy_index++)
 	{
-	  for (shard_index = 0, shard_info_p =
-	       shard_shm_get_first_shard_info (proxy_info_p);
-	       shard_info_p;
-	       shard_index++, shard_info_p =
-	       shard_shm_get_next_shard_info (shard_info_p))
+	  proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, proxy_index);
+
+	  for (shard_index = 0; shard_index < proxy_info_p->num_shard_conn;
+	       shard_index++)
 	    {
+	      shard_info_p =
+		shard_shm_find_shard_info (proxy_info_p, shard_index);
+
 	      if ((shard_info_p->waiter_count > 0) &&
 		  (shard_info_p->num_appl_server <
 		   shard_info_p->max_appl_server))
@@ -538,7 +537,9 @@ main (int argc, char *argv[])
 		  for (i = shard_info_p->min_appl_server;
 		       i < shard_info_p->max_appl_server; i++)
 		    {
-		      as_info_p = &(shard_info_p->as_info[i]);
+		      as_info_p =
+			&(shm_appl->
+			  as_info[i + shard_info_p->as_info_index_base]);
 		      if (as_info_p->service_flag == SERVICE_OFF)
 			{
 			  int pid;
@@ -1658,6 +1659,7 @@ run_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index,
 #if defined(CUBRID_SHARD)
   char proxy_id_env_str[32];
   char shard_id_env_str[32];
+  char shard_cas_id_env_str[32];
   char as_id_env_str[32];
 #else /* CUBRID_SHARD */
   char access_log_env_str[256];
@@ -1732,9 +1734,16 @@ run_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index,
 		SHARD_ID_ENV_STR, shard_index);
       putenv (shard_id_env_str);
 
-      snprintf (as_id_env_str, sizeof (as_id_env_str), "%s=%d", AS_ID_ENV_STR,
-		as_index);
+      snprintf (shard_cas_id_env_str, sizeof (shard_cas_id_env_str), "%s=%d",
+		SHARD_CAS_ID_ENV_STR, as_index);
+      putenv (shard_cas_id_env_str);
+
+      snprintf (as_id_env_str, sizeof (as_id_env_str),
+		"%s=%d", AS_ID_ENV_STR,
+		shm_proxy_p->proxy_info[proxy_index].shard_info[shard_index].
+		as_info_index_base + as_index);
       putenv (as_id_env_str);
+
 #endif /* CUBRID_SHARD */
 
       if (shm_br->br_info[br_index].appl_server == APPL_SERVER_CAS_ORACLE)
@@ -1766,6 +1775,12 @@ run_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index,
 
 #if defined(CUBRID_SHARD)
   as_info_p->uts_status = UTS_STATUS_CON_WAIT;
+  if (as_index >=
+      shm_proxy_p->proxy_info[proxy_index].shard_info[shard_index].
+      min_appl_server)
+    {
+      as_info_p->graceful_down_flag = 1;
+    }
 #endif
 
   CON_STATUS_LOCK_DESTROY (&shm_appl->as_info[as_index]);
@@ -2149,20 +2164,24 @@ cas_monitor_thr_f (void *ar)
     {
       tmp_num_busy_uts = 0;
 #if defined(CUBRID_SHARD)
-      for (proxy_index = 0, proxy_info_p =
-	   shard_shm_get_first_proxy_info (shm_proxy_p); proxy_info_p;
-	   proxy_index++, proxy_info_p =
-	   shard_shm_get_next_proxy_info (proxy_info_p))
+      for (proxy_index = 0; proxy_index < shm_proxy_p->num_proxy;
+	   proxy_index++)
 	{
-	  for (shard_index = 0, shard_info_p =
-	       shard_shm_get_first_shard_info (proxy_info_p);
-	       shard_info_p;
-	       shard_index++, shard_info_p =
-	       shard_shm_get_next_shard_info (shard_info_p))
+	  proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, proxy_index);
+
+	  for (shard_index = 0; shard_index < proxy_info_p->num_shard_conn;
+	       shard_index++)
 	    {
+	      shard_info_p =
+		shard_shm_find_shard_info (proxy_info_p, shard_index);
+
 	      for (i = 0; i < shard_info_p->max_appl_server; i++)
 		{
-		  cas_monitor_worker (&(shard_info_p->as_info[i]), br_index,
+		  cas_monitor_worker (&
+				      (shm_appl->
+				       as_info[i +
+					       shard_info_p->
+					       as_info_index_base]), br_index,
 				      proxy_index, shard_index, i,
 				      &tmp_num_busy_uts);
 		}
@@ -2236,11 +2255,11 @@ hang_check_thr_f (void *ar)
 	    }
 	}
 #else /* !CUBRID_SHARD */
-      for (proxy_index = 0, proxy_info_p =
-	   shard_shm_get_first_proxy_info (shm_proxy_p); proxy_info_p;
-	   proxy_index++, proxy_info_p =
-	   shard_shm_get_next_proxy_info (proxy_info_p))
+      for (proxy_index = 0; proxy_index < shm_proxy_p->num_proxy;
+	   proxy_index++)
 	{
+	  proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, proxy_index);
+
 	  if ((proxy_info_p->service_flag != SERVICE_ON)
 	      || (proxy_info_p->claimed_alive_time == 0))
 	    {
@@ -2499,22 +2518,26 @@ psize_check_thr_f (void *ar)
 	}
 
 #if defined(CUBRID_SHARD)
-      for (proxy_index = 0, proxy_info_p =
-	   shard_shm_get_first_proxy_info (shm_proxy_p); proxy_info_p;
-	   proxy_index++, proxy_info_p =
-	   shard_shm_get_next_proxy_info (proxy_info_p))
+      for (proxy_index = 0; proxy_index < shm_proxy_p->num_proxy;
+	   proxy_index++)
 	{
+	  proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, proxy_index);
+
 	  proxy_check_worker (br_index, proxy_info_p);
 
-	  for (shard_index = 0, shard_info_p =
-	       shard_shm_get_first_shard_info (proxy_info_p);
-	       shard_info_p;
-	       shard_index++, shard_info_p =
-	       shard_shm_get_next_shard_info (shard_info_p))
+	  for (shard_index = 0; shard_index < proxy_info_p->num_shard_conn;
+	       shard_index++)
 	    {
+	      shard_info_p =
+		shard_shm_find_shard_info (proxy_info_p, shard_index);
+
 	      for (i = 0; i < shard_info_p->num_appl_server; i++)
 		{
-		  psize_check_worker (&(shard_info_p->as_info[i]), br_index,
+		  psize_check_worker (&
+				      (shm_appl->
+				       as_info[i +
+					       shard_info_p->
+					       as_info_index_base]), br_index,
 				      proxy_index, shard_index, i);
 		}
 	    }
@@ -2548,22 +2571,26 @@ psize_check_thr_f (void *ar)
   while (process_flag)
     {
 #if defined(CUBRID_SHARD)
-      for (proxy_index = 0, proxy_info_p =
-	   shard_shm_get_first_proxy_info (shm_proxy_p); proxy_info_p;
-	   proxy_index++, proxy_info_p =
-	   shard_shm_get_next_proxy_info (proxy_info_p))
+      for (proxy_index = 0; proxy_index < shm_proxy_p->num_proxy;
+	   proxy_index++)
 	{
+	  proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, proxy_index);
+
 	  proxy_check_worker (br_index, proxy_info_p);
 
-	  for (shard_index = 0, shard_info_p =
-	       shard_shm_get_first_shard_info (proxy_info_p);
-	       shard_info_p;
-	       shard_index++, shard_info_p =
-	       shard_shm_get_next_shard_info (shard_info_p))
+	  for (shard_index = 0; shard_index < proxy_info_p->num_shard_conn;
+	       shard_index++)
 	    {
+	      shard_info_p =
+		shard_shm_find_shard_info (proxy_info_p, shard_index);
+
 	      for (i = 0; i < shard_info_p->num_appl_server; i++)
 		{
-		  psize_check_worker (&(shard_info_p->as_info[i]), br_index,
+		  psize_check_worker (&
+				      (shm_appl->
+				       as_info[i +
+					       shard_info_p->
+					       as_info_index_base]), br_index,
 				      proxy_index, shard_index, i);
 		}
 	    }
@@ -3045,7 +3072,7 @@ broker_init_shm (void)
 {
   char *p;
   int i;
-  int master_shm_key, as_shm_key, port_no;
+  int master_shm_key, as_shm_key, port_no, proxy_shm_id;
 
   p = getenv (MASTER_SHM_KEY_ENV_STR);
   if (p == NULL)
@@ -3094,25 +3121,29 @@ broker_init_shm (void)
   as_shm_key = strtoul (p, NULL, 10);
   SHARD_ERR ("<BROKER> APPL_SERVER_SHM_KEY_STR:[%d:%x]\n", as_shm_key,
 	     as_shm_key);
-  shm_as_cp =
-    (char *) uw_shm_open (as_shm_key, SHM_APPL_SERVER, SHM_MODE_ADMIN);
-  if (shm_as_cp == NULL)
+  shm_appl =
+    (T_SHM_APPL_SERVER *) uw_shm_open (as_shm_key, SHM_APPL_SERVER,
+				       SHM_MODE_ADMIN);
+
+  if (shm_appl == NULL)
     {
       UW_SET_ERROR_CODE (UW_ER_SHM_OPEN, 0);
       goto return_error;
     }
 
-  shm_appl = shard_shm_get_appl_server (shm_as_cp);
-  if (shm_appl == NULL)
+  if ((p = getenv (PROXY_SHM_KEY_STR)) == NULL)
     {
-      /* SHARD TODO : SET ERROR */
+      UW_SET_ERROR_CODE (UW_ER_SHM_OPEN, 0);
       goto return_error;
     }
 
-  shm_proxy_p = shard_shm_get_proxy (shm_as_cp);
+  proxy_shm_id = strtoul (p, NULL, 10);
+
+  shm_proxy_p =
+    (T_SHM_PROXY *) uw_shm_open (proxy_shm_id, SHM_PROXY, SHM_MODE_ADMIN);
   if (shm_proxy_p == NULL)
     {
-      /* SHARD TODO : SET ERROR */
+      UW_SET_ERROR_CODE (UW_ER_SHM_OPEN, 0);
       goto return_error;
     }
 
@@ -3192,11 +3223,11 @@ proxy_monitor_thr_f (void *arg)
   while (process_flag)
     {
       tmp_num_busy_uts = 0;
-      for (proxy_index = 0, proxy_info_p =
-	   shard_shm_get_first_proxy_info (shm_proxy_p); proxy_info_p;
-	   proxy_index++, proxy_info_p =
-	   shard_shm_get_next_proxy_info (proxy_info_p))
+      for (proxy_index = 0; proxy_index < shm_proxy_p->num_proxy;
+	   proxy_index++)
 	{
+	  proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, proxy_index);
+
 	  proxy_monitor_worker (proxy_info_p, br_index, proxy_index);
 	}
       SLEEP_MILISEC (0, 100);

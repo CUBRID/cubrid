@@ -1009,8 +1009,6 @@ appl_monitor (char *br_vector)
 #endif
 
 #if defined(CUBRID_SHARD)
-  char *shm_as_cp = NULL;
-
   T_SHM_PROXY *shm_proxy_p = NULL;
   T_PROXY_INFO *proxy_info_p = NULL;
   T_SHARD_INFO *shard_info_p = NULL;
@@ -1034,44 +1032,26 @@ appl_monitor (char *br_vector)
 	{
 	  if (shm_br->br_info[i].service_flag == SERVICE_ON)
 	    {
-	      shm_as_cp =
-		(char *) uw_shm_open (shm_br->br_info[i].appl_server_shm_id,
-				      SHM_APPL_SERVER, SHM_MODE_MONITOR);
-	      if (shm_as_cp == NULL)
-		{
-		  str_out ("%s [%d : 0x%x]", "shared memory open error", i,
-			   shm_br->br_info[i].appl_server_shm_id);
-		  return -1;
-		}
-	      shm_proxy_p = shard_shm_get_proxy (shm_as_cp);
+	      shm_proxy_p =
+		(T_SHM_PROXY *) uw_shm_open (shm_br->br_info[i].proxy_shm_id,
+					     SHM_PROXY, SHM_MODE_MONITOR);
+
 	      if (shm_proxy_p == NULL)
 		{
 		  str_out ("%s [%d]", "proxy shared memory open error", i);
-		  uw_shm_detach (shm_as_cp);
+		  uw_shm_detach (shm_proxy_p);
 		  return -1;
 		}
 	      proxy_info_p = shard_shm_get_first_proxy_info (shm_proxy_p);
-	      if (proxy_info_p == NULL)
-		{
-		  str_out ("%s [%d]", "proxy info shared memory open error",
-			   i);
-		  uw_shm_detach (shm_as_cp);
-		  return -1;
-		}
+
 	      shard_info_p = shard_shm_get_first_shard_info (proxy_info_p);
-	      if (shard_info_p == NULL)
-		{
-		  str_out ("%s [%d]", "shard shared memory open error", i);
-		  uw_shm_detach (shm_as_cp);
-		  return -1;
-		}
 
 	      tot_appl_cnt[i] =
-		(shm_proxy_p->max_num_proxy * proxy_info_p->max_shard *
+		(shm_proxy_p->num_proxy * proxy_info_p->max_shard *
 		 shard_info_p->max_appl_server);
 
 	      n += tot_appl_cnt[i];
-	      uw_shm_detach (shm_as_cp);
+	      uw_shm_detach (shm_proxy_p);
 	    }
 	  else
 	    {
@@ -1118,11 +1098,12 @@ appl_monitor (char *br_vector)
       if (shm_br->br_info[i].service_flag == SERVICE_ON)
 	{
 #if defined(CUBRID_SHARD)
-	  shm_as_cp =
-	    (char *) uw_shm_open (shm_br->br_info[i].appl_server_shm_id,
-				  SHM_APPL_SERVER, SHM_MODE_MONITOR);
-	  shm_appl = shard_shm_get_appl_server (shm_as_cp);
-	  if (shm_as_cp == NULL || shm_appl == NULL)
+	  shm_appl =
+	    (T_SHM_APPL_SERVER *) uw_shm_open (shm_br->br_info[i].
+					       appl_server_shm_id,
+					       SHM_APPL_SERVER,
+					       SHM_MODE_MONITOR);
+	  if (shm_appl == NULL)
 #else
 	  shm_appl =
 	    (T_SHM_APPL_SERVER *) uw_shm_open (shm_br->br_info[i].
@@ -1157,7 +1138,10 @@ appl_monitor (char *br_vector)
 		  appl_offset += tot_appl_cnt[k];
 		}
 
-	      shm_proxy_p = shard_shm_get_proxy (shm_as_cp);
+	      shm_proxy_p =
+		(T_SHM_PROXY *) uw_shm_open (shm_br->br_info[i].proxy_shm_id,
+					     SHM_PROXY, SHM_MODE_MONITOR);
+
 	      if (shm_proxy_p == NULL)
 		{
 		  str_out ("%s", "shared memory open error");
@@ -1165,25 +1149,29 @@ appl_monitor (char *br_vector)
 		  continue;
 		}
 
-	      for (proxy_index = 0, proxy_info_p =
-		   shard_shm_get_first_proxy_info (shm_proxy_p); proxy_info_p;
-		   proxy_index++, proxy_info_p =
-		   shard_shm_get_next_proxy_info (proxy_info_p))
+	      for (proxy_index = 0; proxy_index < shm_proxy_p->num_proxy;
+		   proxy_index++)
 		{
-		  for (shard_index = 0, shard_info_p =
-		       shard_shm_get_first_shard_info (proxy_info_p);
-		       shard_info_p;
-		       shard_index++, shard_info_p =
-		       shard_shm_get_next_shard_info (shard_info_p))
+		  proxy_info_p =
+		    shard_shm_find_proxy_info (shm_proxy_p, proxy_index);
+
+		  for (shard_index = 0;
+		       shard_index < proxy_info_p->num_shard_conn;
+		       shard_index++)
 		    {
+		      shard_info_p =
+			shard_shm_find_shard_info (proxy_info_p, shard_index);
+
 		      /* j == cas_index */
 		      for (cas_index = 0;
 			   cas_index < shard_info_p->max_appl_server;
 			   cas_index++, appl_offset++)
 			{
 			  appl_info_display (shm_appl,
-					     &(shard_info_p->
-					       as_info[cas_index]), i,
+					     &(shm_appl->
+					       as_info[shard_info_p->
+						       as_info_index_base +
+						       cas_index]), i,
 					     proxy_index, shard_index,
 					     cas_index,
 					     &(appl_mnt_olds[appl_offset]),
@@ -1209,7 +1197,8 @@ appl_monitor (char *br_vector)
 		print_job_queue (job_queue);
 
 #if defined(CUBRID_SHARD)
-	      uw_shm_detach (shm_as_cp);
+	      uw_shm_detach (shm_proxy_p);
+	      uw_shm_detach (shm_appl);
 #else
 	      uw_shm_detach (shm_appl);
 #endif /* CUBRID_SHARD */
@@ -1269,7 +1258,6 @@ br_monitor (char *br_vector)
 
 #if defined(CUBRID_SHARD)
   UINT64 num_stmt_q = 0, num_shard_q = 0;
-  char *shm_as_cp = NULL;
 
   T_SHM_PROXY *shm_proxy_p = NULL;
   T_PROXY_INFO *proxy_info_p = NULL;
@@ -1433,12 +1421,12 @@ br_monitor (char *br_vector)
       if (shm_br->br_info[i].service_flag == SERVICE_ON)
 	{
 #if defined(CUBRID_SHARD)
-	  shm_as_cp =
-	    (char *) uw_shm_open (shm_br->br_info[i].
-				  appl_server_shm_id,
-				  SHM_APPL_SERVER, SHM_MODE_MONITOR);
-	  shm_appl = shard_shm_get_appl_server (shm_as_cp);
-	  if (shm_as_cp == NULL || shm_appl == NULL)
+	  shm_appl =
+	    (T_SHM_APPL_SERVER *) uw_shm_open (shm_br->br_info[i].
+					       appl_server_shm_id,
+					       SHM_APPL_SERVER,
+					       SHM_MODE_MONITOR);
+	  if (shm_appl == NULL)
 #else
 	  shm_appl =
 	    (T_SHM_APPL_SERVER *) uw_shm_open (shm_br->
@@ -1567,7 +1555,11 @@ br_monitor (char *br_vector)
 #endif /* !CUBRID_SHARD */
 
 #if defined(CUBRID_SHARD)
-	      shm_proxy_p = shard_shm_get_proxy (shm_as_cp);
+	      shm_proxy_p =
+		(T_SHM_PROXY *) uw_shm_open (shm_br->br_info[i].
+					     proxy_shm_id, SHM_PROXY,
+					     SHM_MODE_MONITOR);
+
 	      if (shm_proxy_p == NULL)
 		{
 		  str_out ("%s", "shared memory open error");
@@ -1595,22 +1587,27 @@ br_monitor (char *br_vector)
 #if defined(CUBRID_SHARD)
 	      tot_cas = tot_proxy = 0;
 	      num_stmt_q = num_shard_q = 0;
-	      for (proxy_index = 0, proxy_info_p =
-		   shard_shm_get_first_proxy_info (shm_proxy_p); proxy_info_p;
-		   proxy_index++, proxy_info_p =
-		   shard_shm_get_next_proxy_info (proxy_info_p))
+	      for (proxy_index = 0; proxy_index < shm_proxy_p->num_proxy;
+		   proxy_index++)
 		{
-		  for (shard_index = 0, shard_info_p =
-		       shard_shm_get_first_shard_info (proxy_info_p);
-		       shard_info_p;
-		       shard_index++, shard_info_p =
-		       shard_shm_get_next_shard_info (shard_info_p))
+		  proxy_info_p =
+		    shard_shm_find_proxy_info (shm_proxy_p, proxy_index);
+
+		  for (shard_index = 0;
+		       shard_index < proxy_info_p->num_shard_conn;
+		       shard_index++)
 		    {
+		      shard_info_p =
+			shard_shm_find_shard_info (proxy_info_p, shard_index);
+
 		      for (cas_index = 0;
 			   cas_index < shard_info_p->num_appl_server;
 			   cas_index++)
 			{
-			  as_info_p = &(shard_info_p->as_info[cas_index]);
+			  as_info_p =
+			    &(shm_appl->
+			      as_info[shard_info_p->as_info_index_base +
+				      cas_index]);
 			  num_req += as_info_p->num_requests_received;
 			  num_tx_cur += as_info_p->num_transactions_processed;
 			  num_qx_cur += as_info_p->num_queries_processed;
@@ -1824,7 +1821,9 @@ br_monitor (char *br_vector)
 		  str_out ("%s", "	SUSPENDED");
 		  print_newline ();
 		}
-
+#if defined(CUBRID_SHARD)
+	      uw_shm_detach (shm_proxy_p);
+#endif
 	      uw_shm_detach (shm_appl);
 	    }
 	}
@@ -2005,8 +2004,6 @@ endwin ()
 static int
 metadata_monitor (void)
 {
-  char *shm_metadata_cp = NULL;
-
   T_SHM_SHARD_USER *shm_user_p;
   T_SHM_SHARD_KEY *shm_key_p;
   T_SHM_SHARD_CONN *shm_conn_p;
@@ -2019,7 +2016,6 @@ metadata_monitor (void)
   T_SHM_SHARD_KEY_STAT *key_stat_p;
   T_SHM_SHARD_CONN_STAT *shard_stat_p;
 
-  char *shm_as_cp = NULL;
   T_SHM_PROXY *shm_proxy_p = NULL;
   T_PROXY_INFO *proxy_info_p = NULL;
 
@@ -2092,10 +2088,10 @@ metadata_monitor (void)
 	{
 	  continue;
 	}
-      shmid = shm_br->br_info[i].metadata_shm_id;
-      shm_metadata_cp =
-	(char *) uw_shm_open (shmid, SHM_BROKER, SHM_MODE_MONITOR);
-      if (shm_metadata_cp == NULL)
+      shmid = shm_br->br_info[i].proxy_shm_id;
+      shm_proxy_p =
+	(T_SHM_PROXY *) uw_shm_open (shmid, SHM_PROXY, SHM_MODE_MONITOR);
+      if (shm_proxy_p == NULL)
 	{
 	  str_out ("%s", "shared memory open error");
 	  goto free_and_error;
@@ -2108,9 +2104,9 @@ metadata_monitor (void)
 	(KEY_STAT_ITEM *) (((char *) key_stat_items_old) +
 			   (key_stat_items_size * i));
 
-      shm_user_p = shard_metadata_get_user (shm_metadata_cp);
-      shm_key_p = shard_metadata_get_key (shm_metadata_cp);
-      shm_conn_p = shard_metadata_get_conn (shm_metadata_cp);
+      shm_user_p = shard_metadata_get_user (shm_proxy_p);
+      shm_key_p = shard_metadata_get_key (shm_proxy_p);
+      shm_conn_p = shard_metadata_get_conn (shm_proxy_p);
 
       str_out ("%% %s ", shm_br->br_info[i].name);
       str_out ("[%x] ", shmid);
@@ -2144,20 +2140,6 @@ metadata_monitor (void)
 	}
 
       /* PRINT SHARD STATSTICS */
-      shm_as_cp =
-	(char *) uw_shm_open (shm_br->br_info[i].appl_server_shm_id,
-			      SHM_APPL_SERVER, SHM_MODE_MONITOR);
-      if (shm_as_cp == NULL)
-	{
-	  str_out ("%s", "shared memory open error");
-	  goto free_and_error;
-	}
-      shm_proxy_p = shard_shm_get_proxy (shm_as_cp);
-      if (shm_proxy_p == NULL)
-	{
-	  str_out ("%s", "shared memory open error");
-	  goto free_and_error;
-	}
 
       if (shard_stat_items != NULL)
 	{
@@ -2174,11 +2156,11 @@ metadata_monitor (void)
       memset ((char *) shard_stat_items, 0,
 	      sizeof (SHARD_STAT_ITEM) * shm_conn_p->num_shard_conn);
 
-      for (proxy_index = 0, proxy_info_p =
-	   shard_shm_get_first_proxy_info (shm_proxy_p); proxy_info_p;
-	   proxy_index++, proxy_info_p =
-	   shard_shm_get_next_proxy_info (proxy_info_p))
+      for (proxy_index = 0; proxy_index < shm_proxy_p->num_proxy;
+	   proxy_index++)
 	{
+	  proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, proxy_index);
+
 	  shard_stat_p = shard_shm_get_shard_stat (proxy_info_p, 0);
 	  if (shard_stat_p == NULL)
 	    {
@@ -2275,11 +2257,12 @@ metadata_monitor (void)
 	  memset ((char *) key_stat_items, 0,
 		  sizeof (KEY_STAT_ITEM) * shm_key_p->num_shard_key);
 
-	  for (proxy_index = 0, proxy_info_p =
-	       shard_shm_get_first_proxy_info (shm_proxy_p); proxy_info_p;
-	       proxy_index++, proxy_info_p =
-	       shard_shm_get_next_proxy_info (proxy_info_p))
+	  for (proxy_index = 0; proxy_index < shm_proxy_p->num_proxy;
+	       proxy_index++)
 	    {
+	      proxy_info_p =
+		shard_shm_find_proxy_info (shm_proxy_p, proxy_index);
+
 	      key_stat_p = shard_shm_get_key_stat (proxy_info_p, 0);
 	      if (key_stat_p == NULL)
 		{
@@ -2373,10 +2356,9 @@ metadata_monitor (void)
 		  sizeof (KEY_STAT_ITEM) * shm_key_p->num_shard_key);
 	}
 
-      uw_shm_detach (shm_metadata_cp);
-      uw_shm_detach (shm_as_cp);
+      uw_shm_detach (shm_proxy_p);
 
-      shm_metadata_cp = shm_as_cp = NULL;
+      shm_proxy_p = NULL;
     }
 
   if (elapsed_time > 0)
@@ -2395,13 +2377,9 @@ free_and_error:
     {
       free ((char *) key_stat_items);
     }
-  if (shm_metadata_cp != NULL)
+  if (shm_proxy_p != NULL)
     {
-      uw_shm_detach (shm_metadata_cp);
-    }
-  if (shm_as_cp != NULL)
-    {
-      uw_shm_detach (shm_as_cp);
+      uw_shm_detach (shm_proxy_p);
     }
   return -1;
 }
@@ -2409,7 +2387,6 @@ free_and_error:
 static int
 client_monitor (void)
 {
-  char *shm_as_cp = NULL;
   T_SHM_APPL_SERVER *shm_appl = NULL;
   T_SHM_PROXY *shm_proxy_p = NULL;
   T_PROXY_INFO *proxy_info_p = NULL;
@@ -2427,28 +2404,21 @@ client_monitor (void)
 	  continue;
 	}
 
-      shm_as_cp =
-	(char *) uw_shm_open (shm_br->br_info[i].appl_server_shm_id,
-			      SHM_APPL_SERVER, SHM_MODE_MONITOR);
-      if (shm_as_cp == NULL)
-	{
-	  str_out ("%s", "shared memory open error");
-	  return -1;
-	}
-      shm_proxy_p = shard_shm_get_proxy (shm_as_cp);
+      shm_proxy_p =
+	(T_SHM_PROXY *) uw_shm_open (shm_br->br_info[i].proxy_shm_id,
+				     SHM_PROXY, SHM_MODE_MONITOR);
       if (shm_proxy_p == NULL)
 	{
 	  str_out ("%s", "shared memory open error");
-	  uw_shm_detach (shm_as_cp);
+	  uw_shm_detach (shm_proxy_p);
 	  return -1;
 	}
 
-      for (proxy_index = 0, proxy_info_p =
-	   shard_shm_get_first_proxy_info (shm_proxy_p);
-	   proxy_info_p;
-	   proxy_index++, proxy_info_p =
-	   shard_shm_get_next_proxy_info (proxy_info_p))
+      for (proxy_index = 0; proxy_index < shm_proxy_p->num_proxy;
+	   proxy_index++)
 	{
+	  proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, proxy_index);
+
 	  str_out ("%% %s(%d), MAX-CLIENT : %d ",
 		   shm_br->br_info[i].name, proxy_index,
 		   proxy_info_p->max_client);
@@ -2525,7 +2495,7 @@ client_monitor (void)
 	      print_newline ();
 	    }
 	}
-      uw_shm_detach (shm_as_cp);
+      uw_shm_detach (shm_proxy_p);
     }
   return 0;
 }

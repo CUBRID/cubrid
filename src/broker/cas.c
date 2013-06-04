@@ -146,8 +146,6 @@ T_APPL_SERVER_INFO *as_info;
 #if defined(CUBRID_SHARD)
 int shm_proxy_id = -1;
 int shm_shard_id = -1;
-char *shm_as_cp = NULL;
-T_SHARD_INFO *shard_info_p = NULL;
 #endif /* CUBRID_SHARD */
 
 struct timeval tran_start_time;
@@ -552,15 +550,19 @@ conn_retry:
   gettimeofday (&cas_start_time, NULL);
 
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-  snprintf (db_name, MAX_HA_DBNAME_LENGTH, "%s", shard_info_p->db_name);
+  snprintf (db_name, MAX_HA_DBNAME_LENGTH, "%s",
+	    shm_appl->shard_conn_info[shm_shard_id].db_name);
 #else
   snprintf (db_name, MAX_HA_DBNAME_LENGTH, "%s@%s",
-	    shard_info_p->db_name, shard_info_p->db_conn_info);
+	    shm_appl->shard_conn_info[shm_shard_id].db_name,
+	    shm_appl->shard_conn_info[shm_shard_id].db_host);
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
-  strncpy (db_user, shard_info_p->db_user, SRV_CON_DBUSER_SIZE - 1);
+  strncpy (db_user, shm_appl->shard_conn_info[shm_shard_id].db_user,
+	   SRV_CON_DBUSER_SIZE - 1);
   db_user[SRV_CON_DBUSER_SIZE - 1] = '\0';
 
-  strncpy (db_passwd, shard_info_p->db_password, SRV_CON_DBPASSWD_SIZE - 1);
+  strncpy (db_passwd, shm_appl->shard_conn_info[shm_shard_id].db_password,
+	   SRV_CON_DBPASSWD_SIZE - 1);
   db_passwd[SRV_CON_DBPASSWD_SIZE - 1] = '\0';
 
   /* SHARD DO NOT SUPPORT SESSION */
@@ -2635,8 +2637,7 @@ cas_init_shm (void)
 {
   char *p;
   int as_shm_key;
-  int pxy_id, shd_id, as_id;
-  T_PROXY_INFO *proxy_info_p;
+  int pxy_id, shd_id, shard_cas_id, as_id;
 
   p = getenv (APPL_SERVER_SHM_KEY_STR);
   if (p == NULL)
@@ -2644,6 +2645,7 @@ cas_init_shm (void)
       goto return_error;
     }
   as_shm_key = strtoul (p, NULL, 10);
+
   SHARD_ERR ("<CAS> APPL_SERVER_SHM_KEY_STR:[%d:%x]\n", as_shm_key,
 	     as_shm_key);
 
@@ -2653,6 +2655,7 @@ cas_init_shm (void)
       goto return_error;
     }
   pxy_id = strtoul (p, NULL, 10);
+
   SHARD_ERR ("<CAS> PROXY_ID_ENV_STR:[%d]\n", pxy_id);
   shm_proxy_id = pxy_id;
 
@@ -2662,8 +2665,19 @@ cas_init_shm (void)
       goto return_error;
     }
   shd_id = strtoul (p, NULL, 10);
+
   SHARD_ERR ("<CAS> SHARD_ID_ENV_STR:[%d]\n", shd_id);
   shm_shard_id = shd_id;
+
+  p = getenv (SHARD_CAS_ID_ENV_STR);
+  if (p == NULL)
+    {
+      goto return_error;
+    }
+  shard_cas_id = strtoul (p, NULL, 10);
+
+  SHARD_ERR ("<CAS> SHARD_CAS_ID_ENV_STR:[%d]\n", shard_cas_id);
+  shm_as_index = shard_cas_id;
 
   p = getenv (AS_ID_ENV_STR);
   if (p == NULL)
@@ -2671,52 +2685,34 @@ cas_init_shm (void)
       goto return_error;
     }
   as_id = strtoul (p, NULL, 10);
+
   SHARD_ERR ("<CAS> AS_ID_ENV_STR:[%d]\n", as_id);
-  shm_as_index = as_id;
 
-  shm_as_cp =
-    (char *) uw_shm_open (as_shm_key, SHM_APPL_SERVER, SHM_MODE_ADMIN);
-  if (shm_as_cp == NULL)
-    {
-      goto return_error;
-    }
+  shm_appl =
+    (T_SHM_APPL_SERVER *) uw_shm_open (as_shm_key, SHM_APPL_SERVER,
+				       SHM_MODE_ADMIN);
 
-  shm_appl = shard_shm_get_appl_server (shm_as_cp);
   if (shm_appl == NULL)
     {
       goto return_error;
     }
 
-  proxy_info_p = shard_shm_get_proxy_info (shm_as_cp, shm_proxy_id);
-  if (proxy_info_p == NULL)
-    {
-      goto return_error;
-    }
+  as_info = &shm_appl->as_info[as_id];
 
-  shard_info_p = shard_shm_find_shard_info (proxy_info_p, shm_shard_id);
-  if (shard_info_p == NULL)
-    {
-      goto return_error;
-    }
+  return 0;
 
-  as_info = shard_shm_get_as_info (proxy_info_p, shm_shard_id, as_id);
-  if (as_info == NULL)
-    {
-      goto return_error;
-    }
 
 #if 1
   /* SHARD TODO : tuning cur_keep_con parameter */
   as_info->cur_keep_con = 1;
 #endif
-
   return 0;
 return_error:
 
-  if (shm_as_cp)
+  if (shm_appl)
     {
-      uw_shm_detach (shm_as_cp);
-      shm_as_cp = NULL;
+      uw_shm_detach (shm_appl);
+      shm_appl = NULL;
     }
 
   return -1;
@@ -2725,12 +2721,12 @@ return_error:
 static int
 get_graceful_down_timeout ()
 {
-  if (shm_as_index < shard_info_p->min_appl_server)
+  if (as_info->graceful_down_flag)
     {
-      return -1;
+      return 1 * 60;		/* 1 min */
     }
 
-  return 1 * 60;		/* 1 min */
+  return -1;
 }
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)

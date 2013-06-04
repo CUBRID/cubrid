@@ -46,7 +46,6 @@
 #define PROXY_MAX_IGNORE_TIMER_CHECK 	10
 #define PROXY_TIMER_CHECK_INTERVAL 	1	/* sec */
 
-extern char *shm_as_cp;
 extern T_SHM_APPL_SERVER *shm_as_p;
 extern T_SHM_PROXY *shm_proxy_p;
 extern T_PROXY_INFO *proxy_info_p;
@@ -259,7 +258,7 @@ proxy_handler_is_cas_in_tran (int shard_id, int cas_id)
   assert (shard_id >= 0);
   assert (cas_id >= 0);
 
-  as_info = shard_shm_get_as_info (proxy_info_p, shard_id, cas_id);
+  as_info = shard_shm_get_as_info (proxy_info_p, shm_as_p, shard_id, cas_id);
   if (as_info)
     {
       return (as_info->con_status == CON_STATUS_IN_TRAN
@@ -845,8 +844,8 @@ proxy_handler_process_client_wakeup_by_shard (T_PROXY_EVENT * event_p)
 		 "Unable to find cilent info in shared memory. "
 		 "(context id:%d, context uid:%d)", ctx_p->cid, ctx_p->uid);
     }
-  else if (shard_shm_set_as_client_info (proxy_info_p, event_p->shard_id,
-					 event_p->cas_id,
+  else if (shard_shm_set_as_client_info (proxy_info_p, shm_as_p,
+					 event_p->shard_id, event_p->cas_id,
 					 client_info_p->client_ip,
 					 client_info_p->driver_info) == false)
     {
@@ -1212,9 +1211,9 @@ proxy_context_clear (T_PROXY_CONTEXT * ctx_p)
 	}
       else if (ctx_p->prepared_stmt->stmt_type != SHARD_STMT_TYPE_PREPARED)
 	{
-	  /* 
+	  /*
 	   * shcema info server handle can't be shared with other context
-	   * so, we can free statement at this time. 
+	   * so, we can free statement at this time.
 	   */
 
 	  shard_stmt_free (ctx_p->prepared_stmt);

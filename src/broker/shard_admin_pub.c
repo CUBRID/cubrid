@@ -75,14 +75,16 @@ char admin_err_msg[ADMIN_ERR_MSG_SIZE];
 extern char **environ;
 #endif
 
-static int shard_proxy_activate (int as_shm_id, int proxy_id,
-				 char *shm_as_cp);
+static int shard_proxy_activate (int proxy_shm_id, int proxy_id,
+				 T_SHM_APPL_SERVER * shm_as_p,
+				 T_SHM_PROXY * shm_proxy_p);
 static void shard_proxy_inactivate (T_BROKER_INFO * br_info_p,
-				    T_PROXY_INFO * proxy_info_p);
+				    T_PROXY_INFO * proxy_info_p,
+				    T_SHM_APPL_SERVER * shm_as_p);
 
 int
 shard_broker_activate (int master_shm_id, T_BROKER_INFO * br_info_p,
-		       char *shm_as_cp)
+		       T_SHM_APPL_SERVER * shm_as_p)
 {
   int pid, i, env_num;
   int broker_check_loop_count = 30;
@@ -93,18 +95,11 @@ shard_broker_activate (int master_shm_id, T_BROKER_INFO * br_info_p,
   char appl_name_env_str[32];
   char master_shm_key_env_str[32];
   char appl_server_shm_key_env_str[32];
+  char proxy_shm_key_env_str[32];
   char error_log_lock_env_file[128];
   const char *broker_exe_name;
 
   char dirname[PATH_MAX];
-
-  T_SHM_APPL_SERVER *shm_as_p = NULL;
-
-  shm_as_p = shard_shm_get_appl_server (shm_as_cp);
-  if (shm_as_p == NULL)
-    {
-      return -1;
-    }
 
   /* "shard/shard_broker_admin_pub.c" 2787 */
   br_info_p->err_code = UW_ER_NO_ERROR + 1;
@@ -166,10 +161,13 @@ shard_broker_activate (int master_shm_id, T_BROKER_INFO * br_info_p,
 	       master_shm_id);
       sprintf (appl_server_shm_key_env_str, "%s=%d", APPL_SERVER_SHM_KEY_STR,
 	       br_info_p->appl_server_shm_id);
+      sprintf (proxy_shm_key_env_str, "%s=%d", PROXY_SHM_KEY_STR,
+	       br_info_p->proxy_shm_id);
 
       putenv (port_env_str);
       putenv (master_shm_key_env_str);
       putenv (appl_server_shm_key_env_str);
+      putenv (proxy_shm_key_env_str);
 
       if (IS_APPL_SERVER_TYPE_CAS (br_info_p->appl_server))
 	{
@@ -253,10 +251,10 @@ shard_broker_activate (int master_shm_id, T_BROKER_INFO * br_info_p,
 void
 shard_broker_inactivate (T_BROKER_INFO * br_info_p)
 {
+  int proxy_index;
   T_SHM_APPL_SERVER *shm_as_p = NULL;
   T_SHM_PROXY *shm_proxy_p = NULL;
   T_PROXY_INFO *proxy_info_p = NULL;
-  char *shm_as_cp = NULL;
   time_t cur_time = time (NULL);
   struct tm ct;
   char cmd_buf[BUFSIZ];
@@ -278,28 +276,31 @@ shard_broker_inactivate (T_BROKER_INFO * br_info_p)
       SLEEP_MILISEC (1, 0);
     }
 
-  shm_as_cp =
-    (char *) uw_shm_open (br_info_p->appl_server_shm_id, SHM_APPL_SERVER,
-			  SHM_MODE_ADMIN);
-  if (shm_as_cp == NULL)
+  shm_as_p =
+    (T_SHM_APPL_SERVER *) uw_shm_open (br_info_p->appl_server_shm_id,
+				       SHM_APPL_SERVER, SHM_MODE_ADMIN);
+  if (shm_as_p == NULL)
     {
       SHARD_ERR ("failed to uw_shm_open. (shmid:%08x).\n",
 		 br_info_p->appl_server_shm_id);
       goto end;
     }
 
-  shm_proxy_p = shard_shm_get_proxy (shm_as_cp);
+  shm_proxy_p =
+    (T_SHM_PROXY *) uw_shm_open (br_info_p->proxy_shm_id, SHM_PROXY,
+				 SHM_MODE_ADMIN);
   if (shm_proxy_p == NULL)
     {
-      SHARD_ERR ("failed to shard_shm_get_proxy. \n");
+      SHARD_ERR ("failed to uw_shm_open. (shmid:%08x).\n",
+		 br_info_p->proxy_shm_id);
       goto end;
     }
 
-  for (proxy_info_p = shard_shm_get_first_proxy_info (shm_proxy_p);
-       proxy_info_p;
-       proxy_info_p = shard_shm_get_next_proxy_info (proxy_info_p))
+  for (proxy_index = 0; proxy_index < shm_proxy_p->num_proxy; proxy_index++)
     {
-      shard_proxy_inactivate (br_info_p, proxy_info_p);
+      proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, proxy_index);
+
+      shard_proxy_inactivate (br_info_p, proxy_info_p, shm_as_p);
     }
 
   if (br_info_p->log_backup == ON)
@@ -326,18 +327,24 @@ end:
   uw_sem_destroy (&shm_as_p->acl_sem);
 #endif
 
-  if (shm_as_cp)
+  if (shm_as_p)
     {
-      uw_shm_detach (shm_as_cp);
+      uw_shm_detach (shm_as_p);
     }
+  if (shm_proxy_p)
+    {
+      uw_shm_detach (shm_proxy_p);
+    }
+
   uw_shm_destroy (br_info_p->appl_server_shm_id);
-  uw_shm_destroy (br_info_p->metadata_shm_id);
+  uw_shm_destroy (br_info_p->proxy_shm_id);
 
   return;
 }
 
 static int
-shard_proxy_activate (int as_shm_id, int proxy_id, char *shm_as_cp)
+shard_proxy_activate (int proxy_shm_id, int proxy_id,
+		      T_SHM_APPL_SERVER * shm_as_p, T_SHM_PROXY * shm_proxy_p)
 {
   int pid = 0, i, env_num;
   int fd_cnt;
@@ -348,6 +355,7 @@ shard_proxy_activate (int as_shm_id, int proxy_id, char *shm_as_cp)
   char access_log_env_str[256];
 #endif
   char as_shm_id_env_str[32];
+  char proxy_shm_id_env_str[32];
   char proxy_id_env_str[32];
 
   char dirname[PATH_MAX];
@@ -355,20 +363,14 @@ shard_proxy_activate (int as_shm_id, int proxy_id, char *shm_as_cp)
   char process_name[128];
 #endif
 
-  T_SHM_APPL_SERVER *shm_as_p = NULL;
   T_PROXY_INFO *proxy_info_p = NULL;
   T_SHARD_INFO *shard_info_p = NULL;
 
   assert (proxy_id >= 0);
-  assert (shm_as_cp);
+  assert (shm_as_p);
+  assert (shm_proxy_p);
 
-  shm_as_p = shard_shm_get_appl_server (shm_as_cp);
-  if (shm_as_p == NULL)
-    {
-      return -1;
-    }
-
-  proxy_info_p = shard_shm_get_proxy_info (shm_as_cp, proxy_id);
+  proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, proxy_id);
   if (proxy_info_p == NULL)
     {
       return -1;
@@ -438,13 +440,16 @@ shard_proxy_activate (int as_shm_id, int proxy_id, char *shm_as_cp)
 	}
       sprintf (port_env_str, "%s=%s", PORT_NAME_ENV_STR, shm_as_p->port_name);
       snprintf (as_shm_id_env_str, sizeof (as_shm_id_env_str), "%s=%d",
-		APPL_SERVER_SHM_KEY_STR, as_shm_id);
+		APPL_SERVER_SHM_KEY_STR, proxy_info_p->appl_server_shm_id);
+      snprintf (proxy_shm_id_env_str, sizeof (proxy_shm_id_env_str), "%s=%d",
+		PROXY_SHM_KEY_STR, proxy_shm_id);
       snprintf (proxy_id_env_str, sizeof (proxy_id_env_str), "%s=%d",
 		PROXY_ID_ENV_STR, proxy_id);
 
       putenv (port_env_str);
       putenv (as_shm_id_env_str);
       putenv (proxy_id_env_str);
+      putenv (proxy_shm_id_env_str);
       /* SHARD TODO : will delete */
 #if 0
       putenv (access_log_env_str);
@@ -479,9 +484,10 @@ shard_proxy_activate (int as_shm_id, int proxy_id, char *shm_as_cp)
 
 static void
 shard_proxy_inactivate (T_BROKER_INFO * br_info_p,
-			T_PROXY_INFO * proxy_info_p)
+			T_PROXY_INFO * proxy_info_p,
+			T_SHM_APPL_SERVER * shm_as_p)
 {
-  int i;
+  int shard_index, as_index;
   T_SHARD_INFO *shard_info_p;
   T_APPL_SERVER_INFO *as_info_p;
 
@@ -499,18 +505,20 @@ shard_proxy_inactivate (T_BROKER_INFO * br_info_p,
 
   /* SHARD TODO : backup or remove access log file */
 
-  for (shard_info_p = shard_shm_get_first_shard_info (proxy_info_p);
-       shard_info_p;
-       shard_info_p = shard_shm_get_next_shard_info (shard_info_p))
+  for (shard_index = 0; shard_index < proxy_info_p->num_shard_conn;
+       shard_index++)
     {
-      for (i = 0; i < shard_info_p->max_appl_server; i++)
+      shard_info_p = shard_shm_find_shard_info (proxy_info_p, shard_index);
+
+      for (as_index = 0; as_index < shard_info_p->max_appl_server; as_index++)
 	{
-	  as_info_p = &(shard_info_p->as_info[i]);
+	  as_info_p =
+	    &(shm_as_p->as_info[as_index + shard_info_p->as_info_index_base]);
 	  if (as_info_p->pid)
 	    {
 	      shard_as_inactivate (br_info_p, as_info_p,
 				   proxy_info_p->proxy_id,
-				   shard_info_p->shard_id, i);
+				   shard_info_p->shard_id, as_index);
 	    }
 	}
     }
@@ -519,10 +527,10 @@ shard_proxy_inactivate (T_BROKER_INFO * br_info_p,
 }
 
 int
-shard_as_activate (int as_shm_id,
-		   int proxy_id, int shard_id, int as_id, char *shm_as_cp)
+shard_as_activate (int as_shm_id, int proxy_id, int shard_id, int as_id,
+		   T_SHM_APPL_SERVER * shm_as_p, T_SHM_PROXY * shm_proxy_p)
 {
-  /* as_activate() 
+  /* as_activate()
      "shard/shard_broker_admin_pub.c" 2790
    */
   int pid, i, env_num;
@@ -535,6 +543,7 @@ shard_as_activate (int as_shm_id,
 
   char proxy_id_env_str[32];
   char shard_id_env_str[32];
+  char shard_cas_id_env_str[32];
   char as_id_env_str[32];
 
   char appl_name[APPL_SERVER_NAME_MAX_SIZE];
@@ -545,23 +554,19 @@ shard_as_activate (int as_shm_id,
   char process_name[128];
 #endif /* !WINDOWS */
 
-  T_SHM_APPL_SERVER *shm_as_p = NULL;
   T_PROXY_INFO *proxy_info_p = NULL;
   T_APPL_SERVER_INFO *as_info_p = NULL;
 
-  shm_as_p = shard_shm_get_appl_server (shm_as_cp);
-  if (shm_as_p == NULL)
-    {
-      return -1;
-    }
+  assert (shm_as_p);
+  assert (shm_proxy_p);
 
-  proxy_info_p = shard_shm_get_proxy_info (shm_as_cp, proxy_id);
+  proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, proxy_id);
   if (proxy_info_p == NULL)
     {
       return -1;
     }
 
-  as_info_p = shard_shm_get_as_info (proxy_info_p, shard_id, as_id);
+  as_info_p = shard_shm_get_as_info (proxy_info_p, shm_as_p, shard_id, as_id);
   if (as_info_p == NULL)
     {
       return -1;
@@ -580,7 +585,6 @@ shard_as_activate (int as_shm_id,
 #endif
 
   as_info_p->num_request = 0;
-  as_info_p->session_id = 0;
   as_info_p->uts_status = UTS_STATUS_START;
   as_info_p->reset_flag = FALSE;
   as_info_p->cur_sql_log_mode = shm_as_p->sql_log_mode;
@@ -618,8 +622,8 @@ shard_as_activate (int as_shm_id,
 
       sprintf (port_env_str, "%s=%s", PORT_NAME_ENV_STR,
 	       proxy_info_p->port_name);
-      sprintf (appl_server_shm_key_env_str, "%s=%d", APPL_SERVER_SHM_KEY_STR,
-	       as_shm_id);
+      sprintf (appl_server_shm_key_env_str, "%s=%d",
+	       APPL_SERVER_SHM_KEY_STR, as_shm_id);
       sprintf (appl_name_env_str, "%s=%s", APPL_NAME_ENV_STR, appl_name);
 
       sprintf (error_log_env_str, "%s=%s",
@@ -632,7 +636,10 @@ shard_as_activate (int as_shm_id,
 		PROXY_ID_ENV_STR, proxy_id);
       snprintf (shard_id_env_str, sizeof (shard_id_env_str), "%s=%d",
 		SHARD_ID_ENV_STR, shard_id);
+      snprintf (shard_cas_id_env_str, sizeof (shard_cas_id_env_str), "%s=%d",
+		SHARD_CAS_ID_ENV_STR, as_id);
       snprintf (as_id_env_str, sizeof (as_id_env_str), "%s=%d", AS_ID_ENV_STR,
+		proxy_info_p->shard_info[shard_id].as_info_index_base +
 		as_id);
 
       putenv (port_env_str);
@@ -643,6 +650,7 @@ shard_as_activate (int as_shm_id,
 
       putenv (proxy_id_env_str);
       putenv (shard_id_env_str);
+      putenv (shard_cas_id_env_str);
       putenv (as_id_env_str);
 
 #if !defined(WINDOWS)
@@ -673,6 +681,11 @@ shard_as_activate (int as_shm_id,
   as_info_p->psize = getsize (as_info_p->pid);
   as_info_p->uts_status = UTS_STATUS_CON_WAIT;
   as_info_p->service_flag = SERVICE_ON;
+
+  if (as_id >= proxy_info_p->shard_info[shard_id].min_appl_server)
+    {
+      as_info_p->graceful_down_flag = 1;
+    }
 
   free_env (env, env_num);
   return 0;
@@ -708,7 +721,7 @@ shard_as_inactivate (T_BROKER_INFO * br_info_p,
 
   CON_STATUS_LOCK_DESTROY (as_info_p);
 
-  /* 
+  /*
    * shard_cas does not have unix-domain socket and pid lock file.
    * so, we need not delete socket and lock file.
    */
@@ -718,47 +731,36 @@ shard_as_inactivate (T_BROKER_INFO * br_info_p,
 
 int
 shard_process_activate (int master_shm_id, T_BROKER_INFO * br_info_p,
-			T_SHM_BROKER * shm_br_p, char *shm_as_cp)
+			T_SHM_APPL_SERVER * shm_as_p,
+			T_SHM_PROXY * shm_proxy_p)
 {
   int i, j, k, error;
-  T_SHM_APPL_SERVER *shm_as_p;
-
-  T_SHM_PROXY *proxy_p = NULL;
   T_PROXY_INFO *proxy_info_p = NULL;
   T_SHARD_INFO *shard_info_p = NULL;
   T_APPL_SERVER_INFO *as_info_p = NULL;
 
   assert (master_shm_id > 0);
   assert (br_info_p);
-  assert (shm_br_p);
-  assert (shm_as_cp);
+  assert (shm_as_p);
+  assert (shm_proxy_p);
 
   /* start broker */
-  shm_as_p = shard_shm_get_appl_server (shm_as_cp);
-  if (shm_as_p == NULL)
-    {
-      goto error_return;
-    }
-  error = shard_broker_activate (master_shm_id, br_info_p, shm_as_cp);
+  error = shard_broker_activate (master_shm_id, br_info_p, shm_as_p);
   if (error)
     {
       goto error_return;
     }
 
   /* start proxy */
-  proxy_p = shard_shm_get_proxy (shm_as_cp);
-  if (proxy_p == NULL)
+  for (i = 0; i < shm_proxy_p->num_proxy; i++)
     {
-      goto error_return;
-    }
-  for (i = 0, proxy_info_p = shard_shm_get_first_proxy_info (proxy_p);
-       proxy_info_p;
-       i++, proxy_info_p = shard_shm_get_next_proxy_info (proxy_info_p))
-    {
+      proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, i);
+
       proxy_info_p->cur_proxy_log_mode = br_info_p->proxy_log_mode;
 
       error =
-	shard_proxy_activate (br_info_p->appl_server_shm_id, i, shm_as_cp);
+	shard_proxy_activate (br_info_p->proxy_shm_id, i, shm_as_p,
+			      shm_proxy_p);
       if (error)
 	{
 	  SHARD_ERR ("<PROXY START FAILED> PROXY:[%d].\n",
@@ -766,10 +768,9 @@ shard_process_activate (int master_shm_id, T_BROKER_INFO * br_info_p,
 	  goto error_return;
 	}
 
-      for (j = 0, shard_info_p =
-	   shard_shm_get_first_shard_info (proxy_info_p); shard_info_p;
-	   j++, shard_info_p = shard_shm_get_next_shard_info (shard_info_p))
+      for (j = 0; j < proxy_info_p->num_shard_conn; j++)
 	{
+	  shard_info_p = shard_shm_find_shard_info (proxy_info_p, j);
 	  /* start shard (c)as */
 	  /* SHARD TODO : min_appl_server? num_appl_server? */
 	  for (k = 0; k < shard_info_p->num_appl_server; k++)
@@ -779,7 +780,7 @@ shard_process_activate (int master_shm_id, T_BROKER_INFO * br_info_p,
 				   proxy_info_p->proxy_id /*proxy_id */ ,
 				   shard_info_p->shard_id /*shard_id */ ,
 				   k /*as_index */ ,
-				   shm_as_cp);
+				   shm_as_p, shm_proxy_p);
 	      if (error)
 		{
 		  SHARD_ERR
@@ -791,17 +792,18 @@ shard_process_activate (int master_shm_id, T_BROKER_INFO * br_info_p,
 	}
     }
 
-  for (proxy_info_p = shard_shm_get_first_proxy_info (proxy_p);
-       proxy_info_p;
-       proxy_info_p = shard_shm_get_next_proxy_info (proxy_info_p))
+  for (i = 0; i < shm_proxy_p->num_proxy; i++)
     {
-      for (shard_info_p = shard_shm_get_first_shard_info (proxy_info_p);
-	   shard_info_p;
-	   shard_info_p = shard_shm_get_next_shard_info (shard_info_p))
+      proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, i);
+
+      for (j = 0; j < proxy_info_p->num_shard_conn; j++)
 	{
+	  shard_info_p = shard_shm_find_shard_info (proxy_info_p, j);
+
 	  for (k = 0; k < shard_info_p->num_appl_server; k++)
 	    {
-	      as_info_p = &shard_info_p->as_info[k];
+	      as_info_p =
+		&shm_as_p->as_info[k + shard_info_p->as_info_index_base];
 	      if (ut_is_appl_server_ready
 		  (as_info_p->pid, &as_info_p->service_ready_flag) == false)
 		{
@@ -812,8 +814,9 @@ shard_process_activate (int master_shm_id, T_BROKER_INFO * br_info_p,
 			   "%-20s = %s\n"
 			   "%-20s = %s\n",
 			   br_info_p->name, br_info_p->name, "SHARD_DB_NAME",
-			   shard_info_p->db_name, "SHARD_DB_USER",
-			   shard_info_p->db_user);
+			   shm_as_p->shard_conn_info[j].db_name,
+			   "SHARD_DB_USER",
+			   shm_as_p->shard_conn_info[j].db_user);
 		  goto error_return;
 		}
 	    }

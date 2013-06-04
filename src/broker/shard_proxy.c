@@ -1,25 +1,25 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
 
 /*
- * shard_proxy.c - 
+ * shard_proxy.c -
  *
  */
 
@@ -38,14 +38,13 @@
 
 /* SHARD SHM */
 int appl_server_shm_id = -1;
-char *shm_as_cp = NULL;
 T_SHM_APPL_SERVER *shm_as_p = NULL;
 
 int proxy_id = -1;
+int proxy_shm_id = -1;
 T_SHM_PROXY *shm_proxy_p = NULL;
 T_PROXY_INFO *proxy_info_p = NULL;
 
-char *shm_metadata_cp = NULL;
 T_SHM_SHARD_USER *shm_user_p = NULL;
 T_SHM_SHARD_KEY *shm_key_p = NULL;
 T_SHM_SHARD_CONN *shm_conn_p = NULL;
@@ -98,10 +97,10 @@ proxy_shm_initialize (void)
     }
   appl_server_shm_id = strtoul (p, NULL, 10);
 
-  shm_as_cp =
-    (char *) uw_shm_open (appl_server_shm_id, SHM_APPL_SERVER,
-			  SHM_MODE_ADMIN);
-  if (shm_as_cp == NULL)
+  shm_as_p =
+    (T_SHM_APPL_SERVER *) uw_shm_open (appl_server_shm_id, SHM_APPL_SERVER,
+				       SHM_MODE_ADMIN);
+  if (shm_as_p == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to open shared memory. "
 		 "(SHM_APPL_SERVER, shm_key:%d).", appl_server_shm_id);
@@ -112,43 +111,35 @@ proxy_shm_initialize (void)
   if (p == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to getenv(PROXY_ID_ENV_STR).");
+      goto return_error;
     }
   proxy_id = strtoul (p, NULL, 10);
 
-  shm_as_p = shard_shm_get_appl_server (shm_as_cp);
-  if (shm_as_p == NULL)
+  p = getenv (PROXY_SHM_KEY_STR);
+  if (p == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to get shm application server info.");
+		 "Failed to getenv(PROXY_SHM_KEY_STR).");
       goto return_error;
     }
+  proxy_shm_id = strtoul (p, NULL, 10);
 
-  shm_proxy_p = shard_shm_get_proxy (shm_as_cp);
+  shm_proxy_p =
+    (T_SHM_PROXY *) uw_shm_open (proxy_shm_id, SHM_PROXY, SHM_MODE_ADMIN);
   if (shm_proxy_p == NULL)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to get shm proxy info.");
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to get shm proxy.");
       goto return_error;
     }
 
-  proxy_info_p = shard_shm_get_proxy_info (shm_as_cp, proxy_id);
+  proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, proxy_id);
   if (proxy_info_p == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to get proxy info.");
       goto return_error;
     }
 
-  shm_metadata_cp =
-    (char *) uw_shm_open (shm_proxy_p->metadata_shm_id, SHM_BROKER,
-			  SHM_MODE_ADMIN);
-  if (shm_metadata_cp == NULL)
-    {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to open shared memory. "
-		 "(SHARD_METADATA, shm_key:%d).",
-		 shm_proxy_p->metadata_shm_id);
-      goto return_error;
-    }
-
-  shm_user_p = shard_metadata_get_user (shm_metadata_cp);
+  shm_user_p = shard_metadata_get_user (shm_proxy_p);
   if (shm_user_p == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
@@ -156,14 +147,15 @@ proxy_shm_initialize (void)
       goto return_error;
     }
 
-  shm_key_p = shard_metadata_get_key (shm_metadata_cp);
+  shm_key_p = shard_metadata_get_key (shm_proxy_p);
   if (shm_key_p == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
 		 "Failed to get shm metadata shard key info.");
       goto return_error;
     }
-  shm_conn_p = shard_metadata_get_conn (shm_metadata_cp);
+
+  shm_conn_p = shard_metadata_get_conn (shm_proxy_p);
   if (shm_conn_p == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,

@@ -94,7 +94,7 @@
 #endif /* !WINDOWS */
 
 #if defined(CUBRID_SHARD)
-extern T_SHARD_INFO *shard_info_p;
+extern int shm_shard_id;
 #endif /* CUBRID_SHARD */
 
 typedef int (*T_FETCH_FUNC) (T_SRV_HANDLE *, int, int, char, int,
@@ -2447,7 +2447,8 @@ cas_mysql_find_db (const char *alias, char *dbname, char *host, int *port)
 
 #if defined(CUBRID_SHARD)
   memset (tmpdbinfo, 0x00, PATH_MAX);
-  memcpy (tmpdbinfo, shard_info_p->db_conn_info, PATH_MAX);
+  memcpy (tmpdbinfo, shm_appl->shard_conn_info[shm_shard_id].db_host,
+	  PATH_MAX);
 
   strcpy (dbname, alias);
 

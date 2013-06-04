@@ -152,13 +152,26 @@ uw_shm_open (int shm_key, int which_shm, T_SHM_MODE shm_mode)
   if (which_shm == SHM_APPL_SERVER)
     {
       if (((T_SHM_APPL_SERVER *) p)->magic == MAGIC_NUMBER)
-	return p;
+	{
+	  return p;
+	}
     }
-  else
+  else if (which_shm == SHM_BROKER)
     {
       if (((T_SHM_BROKER *) p)->magic == MAGIC_NUMBER)
-	return p;
+	{
+	  return p;
+	}
     }
+#if defined(CUBRID_SHARD)
+  else if (which_shm == SHM_PROXY)
+    {
+      if (((T_SHM_PROXY *) p)->magic == MAGIC_NUMBER)
+	{
+	  return p;
+	}
+    }
+#endif
   UW_SET_ERROR_CODE (UW_ER_SHM_OPEN_MAGIC, 0);
   return NULL;
 }
@@ -345,13 +358,22 @@ uw_shm_create (int shm_key, int size, int which_shm)
 #endif /* USE_MUTEX */
 	  ((T_SHM_APPL_SERVER *) p)->magic = MAGIC_NUMBER;
 	}
-      else
+      else if (which_shm == SHM_BROKER)
 	{
 #ifdef USE_MUTEX
 	  me_reset_sv (&(((T_SHM_BROKER *) p)->lock));
 #endif
 	  ((T_SHM_BROKER *) p)->magic = MAGIC_NUMBER;
 	}
+#if defined(CUBRID_SHARD)
+      else if (which_shm == SHM_PROXY)
+	{
+#ifdef USE_MUTEX
+	  me_reset_sv (&(((T_SHM_PROXY *) p)->lock));
+#endif
+	  ((T_SHM_PROXY *) p)->magic = MAGIC_NUMBER;
+	}
+#endif
     }
   return p;
 }

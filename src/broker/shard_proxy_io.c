@@ -66,6 +66,7 @@ extern T_SHM_APPL_SERVER *shm_as_p;
 extern T_SHM_PROXY *shm_proxy_p;
 extern T_PROXY_INFO *proxy_info_p;
 extern T_SHM_SHARD_USER *shm_user_p;
+extern T_SHM_SHARD_CONN *shm_conn_p;
 extern int proxy_id;
 
 extern T_PROXY_HANDLER proxy_Handler;
@@ -1034,9 +1035,9 @@ proxy_io_make_shard_info (char *driver_info, char **buffer)
 {
   int error;
   int length;
-  int i;
-  T_SHARD_INFO *shard_info_p;
+  int shard_index;
   T_NET_BUF net_buf;
+  T_SHARD_CONN *shard_conn_p;
 
   assert (buffer);
   assert (*buffer == NULL);
@@ -1057,22 +1058,23 @@ proxy_io_make_shard_info (char *driver_info, char **buffer)
   net_buf_cp_int (&net_buf, proxy_info_p->max_shard, NULL);
 
   /* N * shard info */
-  for (i = 0, shard_info_p = shard_shm_get_first_shard_info (proxy_info_p);
-       i < proxy_info_p->max_shard && shard_info_p;
-       i++, shard_info_p = shard_shm_get_next_shard_info (shard_info_p))
+  for (shard_index = 0; shard_index < shm_conn_p->num_shard_conn;
+       shard_index++)
     {
+      shard_conn_p = &shm_conn_p->shard_conn[shard_index];
+
       /* shard id */
-      net_buf_cp_int (&net_buf, shard_info_p->shard_id, NULL);
+      net_buf_cp_int (&net_buf, shard_index, NULL);
 
       /* shard db name */
-      length = strlen (shard_info_p->db_name) + 1 /* NTS */ ;
+      length = strlen (shard_conn_p->db_name) + 1 /* NTS */ ;
       net_buf_cp_int (&net_buf, length, NULL);
-      net_buf_cp_str (&net_buf, shard_info_p->db_name, length);
+      net_buf_cp_str (&net_buf, shard_conn_p->db_name, length);
 
       /* shard db server */
-      length = strlen (shard_info_p->db_conn_info) + 1 /* NTS */ ;
+      length = strlen (shard_conn_p->db_conn_info) + 1 /* NTS */ ;
       net_buf_cp_int (&net_buf, length, NULL);
-      net_buf_cp_str (&net_buf, shard_info_p->db_conn_info, length);
+      net_buf_cp_str (&net_buf, shard_conn_p->db_conn_info, length);
     }
 
   *buffer = net_buf.data;
@@ -1738,8 +1740,8 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
 connection_established:
   if (ctx_p->error_ind != CAS_NO_ERROR)
     {
-      /* 
-       * Process error message if exists. 
+      /*
+       * Process error message if exists.
        * context will be freed after sending error message.
        */
       proxy_context_send_error (ctx_p);
@@ -1948,9 +1950,9 @@ proxy_process_client_read_error (T_SOCKET_IO * sock_io_p)
   assert (sock_io_p);
 
 #if defined(LINUX)
-  /* 
-   * If connection error event was triggered by EPOLLERR, EPOLLHUP, 
-   * there could be no error events. 
+  /*
+   * If connection error event was triggered by EPOLLERR, EPOLLHUP,
+   * there could be no error events.
    */
 #else /* LINUX */
   assert (sock_io_p->read_event);
@@ -2320,9 +2322,9 @@ proxy_process_cas_read_error (T_SOCKET_IO * sock_io_p)
   assert (sock_io_p);
 
 #if defined(LINUX)
-  /* 
-   * If connection error event was triggered by EPOLLERR, EPOLLHUP, 
-   * there could be no error events. 
+  /*
+   * If connection error event was triggered by EPOLLERR, EPOLLHUP,
+   * there could be no error events.
    */
 #else /* LINUX */
   assert (sock_io_p->read_event);
@@ -3010,8 +3012,8 @@ proxy_client_io_new (SOCKET fd, char *driver_info)
 
       if (proxy_Client_io.cur_client > proxy_Client_io.max_client)
 	{
-	  /* 
-	   * Error message would be retured when processing 
+	  /*
+	   * Error message would be retured when processing
 	   * register(db_info) request.
 	   */
 	  char err_msg[256];
@@ -3475,8 +3477,8 @@ proxy_cas_io_free (int shard_id, int cas_id)
 
   if (cas_io_p->is_in_tran == true)
     {
-      if (shard_shm_set_as_client_info (proxy_info_p, shard_id, cas_id, 0,
-					NULL) == false)
+      if (shard_shm_set_as_client_info
+	  (proxy_info_p, shm_as_p, shard_id, cas_id, 0, NULL) == false)
 	{
 	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
 		     "Unable to find CAS info in shared memory. "
@@ -3561,7 +3563,7 @@ proxy_cas_io_free_by_ctx (int shard_id, int cas_id, int ctx_cid,
     }
 
   if (shard_shm_set_as_client_info
-      (proxy_info_p, shard_id, cas_id, 0, NULL) == false)
+      (proxy_info_p, shm_as_p, shard_id, cas_id, 0, NULL) == false)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
 		 "Unable to find CAS info in shared memory. "
@@ -3739,7 +3741,7 @@ proxy_cas_alloc_by_ctx (int shard_id, int cas_id, int ctx_cid,
 	}
       else
 	if (shard_shm_set_as_client_info_with_db_param
-	    (proxy_info_p, cas_io_p->shard_id, cas_io_p->cas_id,
+	    (proxy_info_p, shm_as_p, cas_io_p->shard_id, cas_io_p->cas_id,
 	     client_info_p) == false)
 	{
 
@@ -3859,10 +3861,9 @@ proxy_cas_alloc_by_ctx (int shard_id, int cas_id, int ctx_cid,
     }
   else
     if (shard_shm_set_as_client_info_with_db_param
-	(proxy_info_p, cas_io_p->shard_id, cas_io_p->cas_id,
+	(proxy_info_p, shm_as_p, cas_io_p->shard_id, cas_io_p->cas_id,
 	 client_info_p) == false)
     {
-
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
 		 "Unable to find CAS info in shared memory. "
 		 "(shard_id:%d, cas_id:%d).", cas_io_p->shard_id,
@@ -3949,7 +3950,7 @@ proxy_cas_release_by_ctx (int shard_id, int cas_id, int ctx_cid,
     }
 
   if (shard_shm_set_as_client_info
-      (proxy_info_p, shard_id, cas_id, 0, NULL) == false)
+      (proxy_info_p, shm_as_p, shard_id, cas_id, 0, NULL) == false)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
 		 "Unable to find CAS info in shared memory. "
@@ -4276,7 +4277,7 @@ proxy_io_cas_lsnr (void)
 
 #if defined(WINDOWS)
   int port = GET_CAS_PORT (broker_port, proxy_info_p->proxy_id,
-			   shm_proxy_p->max_num_proxy);
+			   shm_proxy_p->num_proxy);
 
   /* FOR DEBUG */
   PROXY_LOG (PROXY_LOG_MODE_NOTICE, "Listen CAS socket. (port number:[%d])",
