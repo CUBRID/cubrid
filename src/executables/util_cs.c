@@ -204,8 +204,7 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 	  backup_path = real_pathbuf;
 	}
 
-      if (stat (backup_path, &st_buf) != 0
-	  || S_ISDIR (st_buf.st_mode) != true)
+      if (stat (backup_path, &st_buf) != 0 || !S_ISDIR (st_buf.st_mode))
 	{
 	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 					   MSGCAT_UTIL_SET_BACKUPDB,
