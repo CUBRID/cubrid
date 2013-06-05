@@ -31,6 +31,7 @@
 #include "statistics.h"
 #include "system_catalog.h"
 
+extern unsigned int stats_get_time_stamp (void);
 #if defined(CUBRID_DEBUG)
 extern void stats_dump_class_statistics (CLASS_STATS * class_stats,
 					 FILE * fpp);

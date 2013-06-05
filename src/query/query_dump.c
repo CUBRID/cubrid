@@ -2816,12 +2816,13 @@ qdump_print_xasl (XASL_NODE * xasl_p)
   qdump_print_xasl (xasl_p->next);
   fprintf (foutput, "creator OID:");
   qdump_print_oid (&xasl_p->creator_oid);
-  fprintf (foutput, "\nclass/serial OID list:%d ", xasl_p->n_oid_list);
 
+  fprintf (foutput, "\nclass/serial OID, #pages list:%d ",
+	   xasl_p->n_oid_list);
   for (i = 0; i < xasl_p->n_oid_list; ++i)
     {
       qdump_print_oid (&xasl_p->class_oid_list[i]);
-      fprintf (foutput, "/%d ", xasl_p->repr_id_list[i]);
+      fprintf (foutput, "/%d ", xasl_p->tcard_list[i]);
     }
 
   fprintf (foutput, "\ndbval_cnt:%d", xasl_p->dbval_cnt);

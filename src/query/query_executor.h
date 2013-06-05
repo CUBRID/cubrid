@@ -652,7 +652,7 @@ struct xasl_node
   int n_oid_list;		/* size of the referenced OID list */
   OID *class_oid_list;		/* list of class/serial OIDs referenced
 				 * in the XASL */
-  int *repr_id_list;		/* representation ids of the classes in the class OID list */
+  int *tcard_list;		/* list of #pages of the class OIDs */
   const char *query_alias;
   int dbval_cnt;		/* number of host variables in this XASL */
   bool iscan_oid_order;
@@ -753,7 +753,7 @@ struct xasl_cache_ent
   OID creator_oid;		/* OID of the user who created this XASL */
   const OID *class_oid_list;	/* list of class/serial OIDs referenced
 				 * in the XASL */
-  const int *repr_id_list;	/* representation ids of the classes in the class OID list */
+  const int *tcard_list;	/* list of #pages of the class OIDs */
   struct timeval time_created;	/* when this entry created */
   struct timeval time_last_used;	/* when this entry used lastly */
   int n_oid_list;		/* size of the class OID list */
@@ -843,7 +843,7 @@ extern XASL_CACHE_ENTRY *qexec_update_filter_pred_cache_ent (THREAD_ENTRY *
 							     const OID *
 							     class_oids,
 							     const int
-							     *repr_ids,
+							     *tcards,
 							     int dbval_cnt);
 extern int qexec_end_use_of_xasl_cache_ent (THREAD_ENTRY * thread_p,
 					    const XASL_ID * xasl_id,
@@ -851,6 +851,8 @@ extern int qexec_end_use_of_xasl_cache_ent (THREAD_ENTRY * thread_p,
 extern int qexec_end_use_of_filter_pred_cache_ent (THREAD_ENTRY * thread_p,
 						   const XASL_ID * xasl_id,
 						   bool marker);
+extern int qexec_RT_xasl_cache_ent (THREAD_ENTRY * thread_p,
+				    XASL_CACHE_ENTRY * ent);
 extern XASL_CACHE_ENTRY *qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY *
 							     thread_p,
 							     const XASL_ID *

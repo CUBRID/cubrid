@@ -81,7 +81,6 @@ static int stats_compare_utime (DB_UTIME * utime1, DB_UTIME * utime2);
 static int stats_compare_datetime (DB_DATETIME * datetime1_p,
 				   DB_DATETIME * datetime2_p);
 static int stats_compare_money (DB_MONETARY * mn1, DB_MONETARY * mn2);
-static unsigned int stats_get_time_stamp (void);
 static int stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
 						      OID * class_oid,
 						      OID * partitions,
@@ -500,7 +499,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
   DISK_REPR *disk_repr_p;
   DISK_ATTR *disk_attr_p;
   BTREE_STATS *btree_stats_p;
-  int estimated_npages, estimated_nobjs, dummy_avg_length;
+  int npages, estimated_nobjs, dummy_avg_length;
   int i, j, k, size, n_attrs, tot_n_btstats, tot_key_info_size;
   int tot_bt_min_max_size;
   char *buf_p, *start_p;
@@ -605,22 +604,26 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
   OR_PUT_INT (buf_p, cls_info_p->time_stamp);
   buf_p += OR_INT_SIZE;
 
-  estimated_npages = estimated_nobjs = dummy_avg_length = 0;
+  npages = estimated_nobjs = dummy_avg_length = 0;
 
   if (!HFID_IS_NULL (&cls_info_p->hfid)
-      && heap_estimate (thread_p, &cls_info_p->hfid, &estimated_npages,
+      && heap_estimate (thread_p, &cls_info_p->hfid, &npages,
 			&estimated_nobjs, &dummy_avg_length) != ER_FAILED)
     {
       /* use estimates from the heap since it is likely that its estimates
          are more accurate than the ones gathered at update statistics time */
-      assert (estimated_nobjs >= 0 && estimated_npages >= 0);
+      assert (estimated_nobjs >= 0 && npages >= 0);
 
       /* heuristic is that big nobjs is better than small */
       estimated_nobjs = MAX (estimated_nobjs, cls_info_p->tot_objects);
       OR_PUT_INT (buf_p, estimated_nobjs);
       buf_p += OR_INT_SIZE;
 
-      OR_PUT_INT (buf_p, estimated_npages);
+      /* do not use estimated npages, use correct info */
+      assert (!VFID_ISNULL (&cls_info_p->hfid.vfid));
+      npages = file_get_numpages (thread_p, &cls_info_p->hfid.vfid);
+
+      OR_PUT_INT (buf_p, npages);
       buf_p += OR_INT_SIZE;
     }
   else
@@ -752,15 +755,14 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 	     the btree is smaller, we use the gathered statistics since the
 	     btree may have an external file (unknown at this level) to keep
 	     overflow keys. */
-	  estimated_npages = file_get_numpages (thread_p,
-						&btree_stats_p->btid.vfid);
-	  if (estimated_npages > btree_stats_p->pages)
+	  npages = file_get_numpages (thread_p, &btree_stats_p->btid.vfid);
+	  if (npages > btree_stats_p->pages)
 	    {
 	      OR_PUT_INT (buf_p, (btree_stats_p->leafs +
-				  (estimated_npages - btree_stats_p->pages)));
+				  (npages - btree_stats_p->pages)));
 	      buf_p += OR_INT_SIZE;
 
-	      OR_PUT_INT (buf_p, estimated_npages);
+	      OR_PUT_INT (buf_p, npages);
 	      buf_p += OR_INT_SIZE;
 	    }
 	  else
@@ -1024,10 +1026,10 @@ stats_compare_money (DB_MONETARY * money1_p, DB_MONETARY * money2_p)
 }
 
 /*
- * qst_get_time_stamp () - returns the current system time
+ * stats_get_time_stamp () - returns the current system time
  *   return: current system time
  */
-static unsigned int
+unsigned int
 stats_get_time_stamp (void)
 {
   time_t tloc;

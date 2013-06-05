@@ -1349,7 +1349,7 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p,
   int header_size;
   int i;
   OID creator_oid, *class_oid_list_p = NULL;
-  int n_oid_list, *repr_id_list_p = NULL;
+  int n_oid_list, *tcard_list_p = NULL;
   int dbval_cnt;
   XASL_ID temp_xasl_id;
 
@@ -1361,10 +1361,13 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p,
   if (stream->xasl_stream == NULL)
     {
       /* lookup the XASL cache with the query string as the key */
-      cache_entry_p = qexec_lookup_xasl_cache_ent (thread_p,
-						   context->sql_hash_text,
-						   user_oid_p);
-      if (cache_entry_p)
+      cache_entry_p =
+	qexec_lookup_xasl_cache_ent (thread_p, context->sql_hash_text,
+				     user_oid_p);
+
+      /* check recompilation threshold */
+      if (cache_entry_p
+	  && qexec_RT_xasl_cache_ent (thread_p, cache_entry_p) == NO_ERROR)
 	{
 	  XASL_ID_COPY (stream->xasl_id, &(cache_entry_p->xasl_id));
 	  if (stream->xasl_header)
@@ -1397,8 +1400,8 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p,
   if (cache_entry_p)
     {
       er_log_debug (ARG_FILE_LINE,
-		    "xqmgr_prepare_query: second qexec_lookup_xasl_cache_ent qstmt %s\n",
-		    context->sql_hash_text);
+		    "xqmgr_prepare_query: second qexec_lookup_xasl_cache_ent "
+		    "qstmt %s\n", context->sql_hash_text);
       XASL_ID_COPY (stream->xasl_id, &(cache_entry_p->xasl_id));
       goto exit_on_end;
     }
@@ -1421,11 +1424,11 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p,
 
   if (n_oid_list > 0)
     {
-      class_oid_list_p =
-	(OID *) db_private_alloc (thread_p, sizeof (OID) * n_oid_list);
-      repr_id_list_p =
-	(int *) db_private_alloc (thread_p, sizeof (int) * n_oid_list);
-      if (class_oid_list_p == NULL || repr_id_list_p == NULL)
+      class_oid_list_p = (OID *) db_private_alloc (thread_p,
+						   sizeof (OID) * n_oid_list);
+      tcard_list_p = (int *) db_private_alloc (thread_p,
+					       sizeof (int) * n_oid_list);
+      if (class_oid_list_p == NULL || tcard_list_p == NULL)
 	{
 	  goto exit_on_error;
 	}
@@ -1436,19 +1439,19 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p,
 	}
       for (i = 0; i < n_oid_list; i++)
 	{
-	  p = or_unpack_int (p, &repr_id_list_p[i]);
+	  p = or_unpack_int (p, &tcard_list_p[i]);
 	}
     }
   else
     {
       class_oid_list_p = NULL;
-      repr_id_list_p = NULL;
+      tcard_list_p = NULL;
     }
 
   cache_entry_p =
     qexec_update_xasl_cache_ent (thread_p, context, stream,
 				 &creator_oid, n_oid_list,
-				 class_oid_list_p, repr_id_list_p, dbval_cnt);
+				 class_oid_list_p, tcard_list_p, dbval_cnt);
   if (cache_entry_p == NULL)
     {
       XASL_ID *xasl_id = stream->xasl_id;
@@ -1487,9 +1490,9 @@ exit_on_end:
     {
       db_private_free_and_init (thread_p, class_oid_list_p);
     }
-  if (repr_id_list_p)
+  if (tcard_list_p)
     {
-      db_private_free_and_init (thread_p, repr_id_list_p);
+      db_private_free_and_init (thread_p, tcard_list_p);
     }
 
   return stream->xasl_id;

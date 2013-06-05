@@ -7204,8 +7204,7 @@ locator_eval_filter_predicate (THREAD_ENTRY * thread_p, BTID * btid,
   XASL_CACHE_ENTRY *cache_entry_p = NULL;
   OID null_oid;
   XASL_ID pseudo_xasl_id, temp_xasl_id;
-  int n_oid_list = 0, i;
-  int *repr_id_list = NULL;
+  int i;
   XASL_CACHE_CLONE *cache_clone_p = NULL;
   void *pred_filter_cache_context = NULL;
   PRED_EXPR_WITH_CONTEXT *pred_filter = NULL;
@@ -7240,7 +7239,7 @@ locator_eval_filter_predicate (THREAD_ENTRY * thread_p, BTID * btid,
       cache_entry_p =
 	qexec_update_filter_pred_cache_ent (thread_p, or_pred->pred_string,
 					    &pseudo_xasl_id, &null_oid,
-					    1, class_oid, repr_id_list, 0);
+					    1, class_oid, NULL, 0);
       if (cache_entry_p == NULL)
 	{
 	  er_log_debug

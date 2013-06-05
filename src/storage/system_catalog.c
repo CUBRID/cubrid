@@ -963,7 +963,7 @@ catalog_free_representation (DISK_REPR * repr_p)
 void
 catalog_free_class_info (CLS_INFO * class_info_p)
 {
-  if (class_info_p != NULL)
+  if (class_info_p)
     {
       db_private_free_and_init (NULL, class_info_p);
     }

@@ -337,7 +337,7 @@ xts_map_xasl_to_stream (const XASL_NODE * xasl_tree, XASL_STREAM * stream)
     + sizeof (OID)		/* xasl->creator_oid */
     + sizeof (int)		/* xasl->n_oid_list */
     + sizeof (OID) * xasl_tree->n_oid_list	/* xasl->class_oid_list */
-    + sizeof (int) * xasl_tree->n_oid_list;	/* xasl->repr_id_list */
+    + sizeof (int) * xasl_tree->n_oid_list;	/* xasl->tcard_list */
 
   offset = sizeof (int)		/* [size of header data] */
     + header_size		/* [header data] */
@@ -367,7 +367,7 @@ xts_map_xasl_to_stream (const XASL_NODE * xasl_tree, XASL_STREAM * stream)
     }
   for (i = 0; i < xasl_tree->n_oid_list; i++)
     {
-      p = or_pack_int (p, xasl_tree->repr_id_list[i]);
+      p = or_pack_int (p, xasl_tree->tcard_list[i]);
     }
 
   /* set body size of new XASL format */

@@ -4541,7 +4541,7 @@ file_get_numpages (THREAD_ENTRY * thread_p, const VFID * vfid)
 
   fhdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ,
 			  PGBUF_UNCONDITIONAL_LATCH);
-  if (fhdr_pgptr != NULL)
+  if (fhdr_pgptr)
     {
       fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
       num_pgs = fhdr->num_user_pages;

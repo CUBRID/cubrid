@@ -348,7 +348,7 @@ union pooled_xasl_cache_entry
    *   xasl_cache_ent.sql_hash_text,
    *   xasl_cache_ent.sql_plan_text,
    *   xasl_cache_ent.class_oid_list, and
-   *   xasl_cache_ent.repr_id_list */
+   *   xasl_cache_ent.tcard_list */
 };
 
 typedef struct xasl_cache_entry_pool XASL_CACHE_ENTRY_POOL;
@@ -513,7 +513,7 @@ static XASL_CACHE_ENTRY_POOL filter_pred_cache_entry_pool = { NULL, 0, -1 };
 /*
  *  XASL_CACHE_ENTRY memory structure :=
  *      [|ent structure itself|TRANID array(tran_id_array)
- *       |OID array(class_oid_ilst)|int array(repr_id_list)
+ *       |OID array(class_oid_ilst)|int array(tcard_list)
  *	 |char array(sql_hash_text)|char array(sql_plan_text)|char array(sql_user_text)]
  *  ; malloc all in one memory block
 */
@@ -524,14 +524,14 @@ static XASL_CACHE_ENTRY_POOL filter_pred_cache_entry_pool = { NULL, 0, -1 };
         (sizeof(XASL_CACHE_ENTRY)       /* space for structure */ \
          + sizeof(int) * MAX_NTRANS	/* space for tran_index_array */ \
          + sizeof(OID) * (noid)         /* space for class_oid_list */ \
-         + sizeof(int) * (noid)    /* space for repr_id_list */ \
+         + sizeof(int) * (noid)    /* space for tcard_list */ \
          + (qlen))		/* space for sql_hash_text, sql_plan_text, sql_user_text */
 #define XASL_CACHE_ENTRY_TRAN_INDEX_ARRAY(ent) \
         (int *) ((char *) ent + sizeof(XASL_CACHE_ENTRY))
 #define XASL_CACHE_ENTRY_CLASS_OID_LIST(ent) \
         (OID *) ((char *) ent + sizeof(XASL_CACHE_ENTRY) + \
                  sizeof(TRANID) * MAX_NTRANS)
-#define XASL_CACHE_ENTRY_REPR_ID_LIST(ent) \
+#define XASL_CACHE_ENTRY_TCARD_LIST(ent) \
         (int *) ((char *) ent + sizeof(XASL_CACHE_ENTRY) + \
                       sizeof(int) * MAX_NTRANS + \
                       sizeof(OID) * ent->n_oid_list)
@@ -561,11 +561,11 @@ static XASL_CACHE_ENTRY_POOL filter_pred_cache_entry_pool = { NULL, 0, -1 };
 #define XASL_CACHE_ENTRY_ALLOC_SIZE(qlen, noid) \
         (sizeof(XASL_CACHE_ENTRY)       /* space for structure */ \
          + sizeof(OID) * (noid)         /* space for class_oid_list */ \
-         + sizeof(int) * (noid)    /* space for repr_id_list */ \
+         + sizeof(int) * (noid)    /* space for tcard_list */ \
          + (qlen))		/* space for sql_hash_text, sql_plan_text, sql_user_text */
 #define XASL_CACHE_ENTRY_CLASS_OID_LIST(ent) \
         (OID *) ((char *) ent + sizeof(XASL_CACHE_ENTRY))
-#define XASL_CACHE_ENTRY_REPR_ID_LIST(ent) \
+#define XASL_CACHE_ENTRY_TCARD_LIST(ent) \
         (int *) ((char *) ent + sizeof(XASL_CACHE_ENTRY) + \
                       sizeof(OID) * ent->n_oid_list)
 #define XASL_CACHE_ENTRY_SQL_HASH_TEXT(ent) \
@@ -14165,7 +14165,7 @@ qexec_print_xasl_cache_ent (FILE * fp, const void *key, void *data,
   struct tm *c_time_struct, tm_val;
   char *sql_id;
 
-  if (!ent)
+  if (ent == NULL)
     {
       return false;
     }
@@ -14175,7 +14175,7 @@ qexec_print_xasl_cache_ent (FILE * fp, const void *key, void *data,
     }
 
   fprintf (fp, "XASL_CACHE_ENTRY (%p) {\n", data);
-  fprintf (fp, "  sql_user_text=%s\n", ent->sql_info.sql_user_text);
+  fprintf (fp, "     sql_user_text = %s\n", ent->sql_info.sql_user_text);
 
   if (qmgr_get_sql_id (NULL, &sql_id, ent->sql_info.sql_hash_text,
 		       strlen (ent->sql_info.sql_hash_text)) != NO_ERROR)
@@ -14183,7 +14183,7 @@ qexec_print_xasl_cache_ent (FILE * fp, const void *key, void *data,
       sql_id = NULL;
     }
 
-  fprintf (fp, "  sql_hash_text=/* SQL_ID: %s */ %s\n",
+  fprintf (fp, "     sql_hash_text = /* SQL_ID: %s */ %s\n",
 	   sql_id ? sql_id : "(null)", ent->sql_info.sql_hash_text);
 
   if (sql_id != NULL)
@@ -14193,11 +14193,11 @@ qexec_print_xasl_cache_ent (FILE * fp, const void *key, void *data,
 
   if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN) == true)
     {
-      fprintf (fp, "  sql_plan_text=%s\n", ent->sql_info.sql_plan_text);
+      fprintf (fp, "     sql_plan_text = %s\n", ent->sql_info.sql_plan_text);
     }
 
   fprintf (fp,
-	   "  xasl_id = { first_vpid = { %d %d } temp_vfid = { %d %d } }\n",
+	   "           xasl_id = { first_vpid = { %d %d } temp_vfid = { %d %d } }\n",
 	   ent->xasl_id.first_vpid.pageid, ent->xasl_id.first_vpid.volid,
 	   ent->xasl_id.temp_vfid.fileid, ent->xasl_id.temp_vfid.volid);
 #if defined(SERVER_MODE)
@@ -14207,24 +14207,24 @@ qexec_print_xasl_cache_ent (FILE * fp, const void *key, void *data,
       fprintf (fp, " %d", ent->tran_index_array[i]);
     }
   fprintf (fp, " ]\n");
-  fprintf (fp, "  last_ta_idx = %lld\n", (long long) ent->last_ta_idx);
+  fprintf (fp, "       last_ta_idx = %lld\n", (long long) ent->last_ta_idx);
 #endif
-  fprintf (fp, "  creator_oid = { %d %d %d }\n", ent->creator_oid.pageid,
+  fprintf (fp, "       creator_oid = { %d %d %d }\n", ent->creator_oid.pageid,
 	   ent->creator_oid.slotid, ent->creator_oid.volid);
-  fprintf (fp, "  n_oid_list = %d\n", ent->n_oid_list);
-  fprintf (fp, "  class_oid_list = [");
+  fprintf (fp, "        n_oid_list = %d\n", ent->n_oid_list);
+  fprintf (fp, "    class_oid_list = [");
   for (i = 0, o = ent->class_oid_list; i < ent->n_oid_list; i++, o++)
     {
       fprintf (fp, " { %d %d %d }", ent->class_oid_list[i].pageid,
 	       ent->class_oid_list[i].slotid, ent->class_oid_list[i].volid);
     }
   fprintf (fp, " ]\n");
-  fprintf (fp, "  repr_id_list = [");
-  if (ent->repr_id_list)
+  fprintf (fp, "        tcard_list = [");
+  if (ent->tcard_list)
     {
       for (i = 0; i < ent->n_oid_list; i++)
 	{
-	  fprintf (fp, " %d", ent->repr_id_list[i]);
+	  fprintf (fp, " %d", ent->tcard_list[i]);
 	}
     }
   fprintf (fp, " ]\n");
@@ -14233,13 +14233,13 @@ qexec_print_xasl_cache_ent (FILE * fp, const void *key, void *data,
   c_time_struct = localtime_r (&tmp_time, &tm_val);
   if (c_time_struct == NULL)
     {
-      fprintf (fp, "  ent->time_created.tv_sec is invalid (%ld)\n",
+      fprintf (fp, "      time_created.tv_sec is invalid (%ld)\n",
 	       ent->time_created.tv_sec);
     }
   else
     {
       (void) strftime (str, sizeof (str), "%x %X", c_time_struct);
-      fprintf (fp, "  time_created = %s.%d\n", str,
+      fprintf (fp, "      time_created = %s.%d\n", str,
 	       (int) ent->time_created.tv_usec);
     }
 
@@ -14247,27 +14247,28 @@ qexec_print_xasl_cache_ent (FILE * fp, const void *key, void *data,
   c_time_struct = localtime_r (&tmp_time, &tm_val);
   if (c_time_struct == NULL)
     {
-      fprintf (fp, "  ent->time_last_used.tv_sec is invalid (%ld)\n",
+      fprintf (fp, "    time_last_used.tv_sec is invalid (%ld)\n",
 	       ent->time_last_used.tv_sec);
     }
   else
     {
       (void) strftime (str, sizeof (str), "%x %X", c_time_struct);
-      fprintf (fp, "  time_last_used = %s.%d\n", str,
+      fprintf (fp, "    time_last_used = %s.%d\n", str,
 	       (int) ent->time_last_used.tv_usec);
-      fprintf (fp, "  ref_count = %d\n", ent->ref_count);
-      fprintf (fp, "  deletion_marker = %s\n",
-	       (ent->deletion_marker) ? "true" : "false");
-      fprintf (fp, "  dbval_cnt = %d\n", ent->dbval_cnt);
-      fprintf (fp, "  list_ht_no = %d\n", ent->list_ht_no);
-      fprintf (fp, "  clo_list = [");
-      for (clo = ent->clo_list; clo; clo = clo->next)
-	{
-	  fprintf (fp, " %p", (void *) clo);
-	}
-      fprintf (fp, " ]\n");
-      fprintf (fp, "}\n");
     }
+
+  fprintf (fp, "         ref_count = %d\n", ent->ref_count);
+  fprintf (fp, "   deletion_marker = %s\n",
+	   (ent->deletion_marker) ? "true" : "false");
+  fprintf (fp, "         dbval_cnt = %d\n", ent->dbval_cnt);
+  fprintf (fp, "        list_ht_no = %d\n", ent->list_ht_no);
+  fprintf (fp, "          clo_list = [");
+  for (clo = ent->clo_list; clo; clo = clo->next)
+    {
+      fprintf (fp, " %p", (void *) clo);
+    }
+  fprintf (fp, " ]\n");
+  fprintf (fp, "}\n");
 
   return true;
 }
@@ -14791,7 +14792,6 @@ qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
   XASL_CACHE_ENTRY *ent;
 #if 0
   const OID *oidp;
-  const int *rep_idp;
   int id;
   int i;
 #endif
@@ -14839,26 +14839,6 @@ qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
 	  (void) qexec_delete_xasl_cache_ent (thread_p, ent, NULL);
 	  ent = NULL;
 	}
-
-#if 0
-      /* check referenced classes using representation id - validation */
-      if (ent)
-	{
-	  for (i = 0, oidp = ent->class_oid_list, rep_idp = ent->repr_id_list;
-	       ent && i < ent->n_oid_list; i++, oidp++, rep_idp++)
-	    {
-	      if (catalog_get_last_representation_id (thread_p,
-						      (OID *) oidp,
-						      &id) != NO_ERROR
-		  || id != *rep_idp)
-		{
-		  /* delete the entry if any referenced class was changed */
-		  (void) qexec_delete_xasl_cache_ent (thread_p, ent, NULL);
-		  ent = NULL;
-		}
-	    }
-	}
-#endif
 
       /* finally, we found an useful cache entry to reuse */
       if (ent)
@@ -15010,7 +14990,7 @@ qexec_select_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
  *   oid(in)    : creator oid
  *   n_oids(in) : # of class_oids
  *   class_oids(in)     : class_oids which have relation with xasl
- *   repr_ids(in)       : repr_ids of class_oids
+ *   tcards(in)       : #pages of class_oids
  *   dbval_cnt(in)      :
  *
  * Note: Update XASL cache entry if exist or create new one
@@ -15023,7 +15003,7 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
 			     XASL_STREAM * stream,
 			     const OID * oid, int n_oids,
 			     const OID * class_oids,
-			     const int *repr_ids, int dbval_cnt)
+			     const int *tcards, int dbval_cnt)
 {
   XASL_CACHE_ENTRY *ent, **p, **q, **r;
   XASL_CACHE_ENT_CV_INFO *xasl_ent_cv;
@@ -15238,18 +15218,18 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
 #endif
   ent->n_oid_list = n_oids;
 
-  if (class_oids != NULL)
+  if (class_oids)
     {
       ent->class_oid_list =
 	(OID *) memcpy (XASL_CACHE_ENTRY_CLASS_OID_LIST (ent),
 			(void *) class_oids, n_oids * sizeof (OID));
     }
 
-  if (repr_ids != NULL)
+  if (tcards)
     {
-      ent->repr_id_list =
-	(int *) memcpy (XASL_CACHE_ENTRY_REPR_ID_LIST (ent),
-			(void *) repr_ids, n_oids * sizeof (int));
+      ent->tcard_list =
+	(int *) memcpy (XASL_CACHE_ENTRY_TCARD_LIST (ent),
+			(void *) tcards, n_oids * sizeof (int));
     }
 
   ent->sql_info.sql_hash_text =
@@ -15466,6 +15446,129 @@ qexec_end_use_of_xasl_cache_ent (THREAD_ENTRY * thread_p,
 
   csect_exit (CSECT_QPROC_XASL_CACHE);
   return rc;
+}
+
+/*
+ * qexec_RT_xasl_cache_ent () - Check the XASL cache RT
+ *   return: NO_ERROR, or ER_code
+ * thread_p(in) :
+ * ent(ent)     : cache entry
+ *
+ * NOTE: Check Recompilation threshold (RT)
+ *
+ *       abs(t(snapshot) - t(current)) >= RT
+ *
+ *       The recompilation threshold for a table partly determines the
+ *       frequency with which queries that refer to the table recompile.
+ *
+ *       RT is calculated as follows; t refers to a table's total number of
+ *       disk pages when a query plan is compiled.
+ *
+ *       If t <= 50, RT = 50
+ *
+ *       If t > 50, RT = 50 + (0.2 * t)
+ *
+ * NOTE: Batch Compilation, Recompilation, and Plan Caching Issues
+ *       in SQL Server 2005
+ */
+int
+qexec_RT_xasl_cache_ent (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent)
+{
+  int ret = NO_ERROR;
+  int num_found_RT;
+  int i;
+  const OID *oidp;
+  const int *tcardp;
+  CLS_INFO *cls_info_p;
+  int npages;
+  int RT;
+
+#define DEFAULT_RECOMP_THRESHOLD 50
+
+  if (ent == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  num_found_RT = 0;		/* init */
+
+  for (i = 0, oidp = ent->class_oid_list, tcardp = ent->tcard_list;
+       ret == NO_ERROR && i < ent->n_oid_list; i++, oidp++, tcardp++)
+    {
+      if (*tcardp < 0)
+	{
+	  assert (*tcardp == -1);
+	  continue;		/* nop; is not class */
+	}
+
+#if 1				/* TODO - for speed-up purpose; do net delete me */
+      if (*tcardp > DEFAULT_RECOMP_THRESHOLD)
+	{
+	  continue;		/* nop; is not small class */
+	}
+#endif
+
+      /* retrieve the class information */
+      cls_info_p = catalog_get_class_info (thread_p, oidp);
+      assert (cls_info_p != NULL);
+
+      if (cls_info_p && !HFID_IS_NULL (&cls_info_p->hfid))
+	{
+	  assert (!VFID_ISNULL (&cls_info_p->hfid.vfid));
+	  npages = file_get_numpages (thread_p, &cls_info_p->hfid.vfid);
+
+	  if (npages <= DEFAULT_RECOMP_THRESHOLD)
+	    {
+	      RT = DEFAULT_RECOMP_THRESHOLD;
+	    }
+	  else
+	    {
+	      RT = DEFAULT_RECOMP_THRESHOLD + (0.2 * npages);
+	    }
+
+	  if (abs (*tcardp - npages) >= RT)
+	    {
+	      num_found_RT++;
+
+	      /* update time_stamp; statistics for the given class
+	       * will be transmitted to the client
+	       * bia stats_get_statistics ()
+	       */
+	      cls_info_p->time_stamp = stats_get_time_stamp ();
+
+	      ret = catalog_add_class_info (thread_p, oidp, cls_info_p);
+	    }
+	}
+
+      if (cls_info_p)
+	{
+	  catalog_free_class_info (cls_info_p);
+	}
+
+    }				/* for */
+
+  /* delete the entry if any referenced class RT was changed */
+  if (ret != NO_ERROR || num_found_RT > 0)
+    {
+      ret = csect_enter (thread_p, CSECT_QPROC_XASL_CACHE, INF_WAIT);
+      if (ret != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+#if defined(SERVER_MODE)
+      /* remove my transaction id from the entry and do compaction */
+      (void) qexec_remove_my_transaction_id (thread_p, ent);
+#endif
+      (void) qexec_delete_xasl_cache_ent (thread_p, ent, NULL);
+
+      csect_exit (CSECT_QPROC_XASL_CACHE);
+
+      ret = ER_FAILED;
+    }
+
+  return ret;
 }
 
 /*
@@ -21907,6 +22010,7 @@ qexec_alloc_filter_pred_cache_ent (int req_size)
       filter_pred_cache_entry_pool.free_list = pent->s.next;
       pent->s.next = -1;
     }
+
   /* initialize */
   if (pent)
     {
@@ -22407,27 +22511,6 @@ qexec_lookup_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
 	  ent = NULL;
 	}
 
-#if 0
-      /* check referenced classes using representation id - validation */
-      if (ent)
-	{
-	  for (i = 0, oidp = ent->class_oid_list, rep_idp = ent->repr_id_list;
-	       ent && i < ent->n_oid_list; i++, oidp++, rep_idp++)
-	    {
-	      if (catalog_get_last_representation_id (thread_p,
-						      (OID *) oidp,
-						      &id) != NO_ERROR
-		  || id != *rep_idp)
-		{
-		  /* delete the entry if any referenced class was changed */
-		  (void) qexec_delete_filter_pred_cache_ent (thread_p, ent,
-							     NULL);
-		  ent = NULL;
-		}
-	    }
-	}
-#endif
-
       /* finally, we found an useful cache entry to reuse */
       if (ent)
 	{
@@ -22472,7 +22555,7 @@ end:
  *   oid(in)    :
  *   n_oids(in) :
  *   class_oids(in)     :
- *   repr_ids(in)       :
+ *   tcards(in)       : #pages of class_oids
  *   dbval_cnt(in)      :
  *
  * Note: Update filter predicatecache entry if exist or create new one
@@ -22483,7 +22566,7 @@ XASL_CACHE_ENTRY *
 qexec_update_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
 				    XASL_ID * xasl_id, const OID * oid,
 				    int n_oids, const OID * class_oids,
-				    const int *repr_ids, int dbval_cnt)
+				    const int *tcards, int dbval_cnt)
 {
   XASL_CACHE_ENTRY *ent, **p, **q, **r;
   XASL_CACHE_ENT_CV_INFO *filter_pred_ent_cv;
@@ -22493,6 +22576,9 @@ qexec_update_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
   int tran_index;
   int num_elements;
 #endif /* SERVER_MODE */
+
+  assert (tcards == NULL);
+  assert (dbval_cnt == 0);
 
   if (filter_pred_ent_cache.max_entries <= 0)
     {
@@ -22683,19 +22769,21 @@ qexec_update_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
 #endif
   ent->n_oid_list = n_oids;
 
-  if (class_oids != NULL)
+  if (class_oids)
     {
       ent->class_oid_list =
 	(OID *) memcpy (XASL_CACHE_ENTRY_CLASS_OID_LIST (ent),
 			(void *) class_oids, n_oids * sizeof (OID));
     }
 
-  if (repr_ids != NULL)
+  if (tcards)
     {
-      ent->repr_id_list =
-	(int *) memcpy (XASL_CACHE_ENTRY_REPR_ID_LIST (ent),
-			(void *) repr_ids, n_oids * sizeof (int));
+      assert (false);		/* impossible case */
+      ent->tcard_list =
+	(int *) memcpy (XASL_CACHE_ENTRY_TCARD_LIST (ent),
+			(void *) tcards, n_oids * sizeof (int));
     }
+  assert (ent->tcard_list == NULL);
 
   ent->sql_info.sql_hash_text =
     (char *) memcpy (XASL_CACHE_ENTRY_SQL_HASH_TEXT (ent), (void *) qstr,

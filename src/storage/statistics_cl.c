@@ -57,15 +57,15 @@ stats_get_statistics (OID * class_oid_p, unsigned int time_stamp)
   char *buffer_p;
   int length;
 
-  buffer_p =
-    stats_get_statistics_from_server (class_oid_p, time_stamp, &length);
-  if (buffer_p != NULL)
+  buffer_p = stats_get_statistics_from_server (class_oid_p,
+					       time_stamp, &length);
+  if (buffer_p)
     {
       stats_p = stats_client_unpack_statistics (buffer_p);
       free_and_init (buffer_p);
     }
 
-  return (stats_p);
+  return stats_p;
 }
 
 /*
@@ -85,13 +85,13 @@ stats_client_unpack_statistics (char *buf_p)
   BTREE_STATS *btree_stats_p;
   int i, j, k;
 
-  if (!buf_p)
+  if (buf_p == NULL)
     {
       return NULL;
     }
 
   class_stats_p = (CLASS_STATS *) db_ws_alloc (sizeof (CLASS_STATS));
-  if (!class_stats_p)
+  if (class_stats_p == NULL)
     {
       return NULL;
     }
@@ -125,7 +125,7 @@ stats_client_unpack_statistics (char *buf_p)
 
   class_stats_p->attr_stats =
     (ATTR_STATS *) db_ws_alloc (class_stats_p->n_attrs * sizeof (ATTR_STATS));
-  if (!class_stats_p->attr_stats)
+  if (class_stats_p->attr_stats == NULL)
     {
       db_ws_free (class_stats_p);
       return NULL;
@@ -229,7 +229,7 @@ stats_client_unpack_statistics (char *buf_p)
       attr_stats_p->bt_stats =
 	(BTREE_STATS *) db_ws_alloc (attr_stats_p->n_btstats *
 				     sizeof (BTREE_STATS));
-      if (!attr_stats_p->bt_stats)
+      if (attr_stats_p->bt_stats == NULL)
 	{
 	  stats_free_statistics (class_stats_p);
 	  return NULL;

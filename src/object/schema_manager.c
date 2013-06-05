@@ -3793,7 +3793,7 @@ sm_get_class_with_statistics (MOP classop)
 	      stats = stats_get_statistics (WS_OID (classop),
 					    class_->stats->time_stamp);
 	      /* if newly updated statistics are fetched, replace the old one */
-	      if (stats != NULL)
+	      if (stats)
 		{
 		  stats_free_statistics (class_->stats);
 		  class_->stats = stats;
