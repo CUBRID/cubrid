@@ -4246,9 +4246,6 @@ cci_get_err_msg_internal (int error)
     case CCI_ER_REQ_HANDLE:
       return "Cannot allocate request handle";
 
-    case CCI_ER_RESULT_SET_CLOSED:
-      return "Result set is closed";
-
     case CCI_ER_INVALID_CURSOR_POS:
       return "Invalid cursor position";
 
@@ -4285,17 +4282,35 @@ cci_get_err_msg_internal (int error)
     case CCI_ER_INVALID_URL:
       return "Invalid url string";
 
+    case CCI_ER_INVALID_LOB_READ_POS:
+      return "Invalid lob read position";
+
     case CCI_ER_INVALID_LOB_HANDLE:
       return "Invalid lob handle";
 
-    case CCI_ER_INVALID_LOB_READ_POS:
-      return "Invalid lob read position";
+    case CCI_ER_NO_PROPERTY:
+      return "Could not found a property";
+
+    case CCI_ER_PROPERTY_TYPE:
+      return "Invalid property type";
+
+    case CCI_ER_INVALID_DATASOURCE:
+      return "Invalid CCI datasource";
+
+    case CCI_ER_DATASOURCE_TIMEOUT:
+      return "All connections are used";
+
+    case CCI_ER_DATASOURCE_TIMEDWAIT:
+      return "pthread_cond_timedwait error";
 
     case CCI_ER_LOGIN_TIMEOUT:
       return "Connection timed out";
 
     case CCI_ER_QUERY_TIMEOUT:
       return "Request timed out";
+
+    case CCI_ER_RESULT_SET_CLOSED:
+      return "Result set is closed";
 
     case CCI_ER_INVALID_HOLDABILITY:
       return "Invalid holdability mode. The only accepted values are 0 or 1";
@@ -5225,7 +5240,8 @@ cci_property_get_int (T_CCI_PROPERTIES * prop, T_CCI_DATASOURCE_KEY key,
   tmp = cci_property_get (prop, datasource_key[key]);
   if (tmp == NULL)
     {
-      set_error_buffer (err_buf, CCI_ER_NO_PROPERTY, NULL);
+      set_error_buffer (err_buf, CCI_ER_NO_PROPERTY,
+			"Could not found integer property");
       *out_value = default_value;
     }
   else
@@ -5269,7 +5285,8 @@ cci_property_get_bool_internal (T_CCI_PROPERTIES * prop,
   tmp = cci_property_get (prop, datasource_key[key]);
   if (tmp == NULL)
     {
-      set_error_buffer (err_buf, CCI_ER_NO_PROPERTY, NULL);
+      set_error_buffer (err_buf, CCI_ER_NO_PROPERTY,
+			"Could not found boolean property");
       *out_value = default_value;
     }
   else
@@ -5366,7 +5383,8 @@ cci_property_get_isolation (T_CCI_PROPERTIES * prop,
   tmp = cci_property_get (prop, datasource_key[key]);
   if (tmp == NULL)
     {
-      set_error_buffer (err_buf, CCI_ER_NO_PROPERTY, NULL);
+      set_error_buffer (err_buf, CCI_ER_NO_PROPERTY,
+			"Could not found isolation property");
       *out_value = default_value;
     }
   else
@@ -5847,8 +5865,7 @@ cci_datasource_borrow (T_CCI_DATASOURCE * ds, T_CCI_ERROR * err_buf)
 				      (pthread_mutex_t *) ds->mutex, &ts);
 	  if (r == ETIMEDOUT)
 	    {
-	      set_error_buffer (err_buf, CCI_ER_DATASOURCE_TIMEOUT,
-				"All connections are used");
+	      set_error_buffer (err_buf, CCI_ER_DATASOURCE_TIMEOUT, NULL);
 	      pthread_mutex_unlock ((pthread_mutex_t *) ds->mutex);
 	      return CCI_ER_DATASOURCE_TIMEOUT;
 	    }
@@ -5879,8 +5896,7 @@ cci_datasource_borrow (T_CCI_DATASOURCE * ds, T_CCI_ERROR * err_buf)
 
   if (id < 0)
     {
-      set_error_buffer (err_buf, CCI_ER_DATASOURCE_TIMEOUT,
-			"All connections are used");
+      set_error_buffer (err_buf, CCI_ER_DATASOURCE_TIMEOUT, NULL);
       return CCI_ER_DATASOURCE_TIMEOUT;
     }
   else
