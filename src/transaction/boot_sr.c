@@ -3204,6 +3204,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 #if defined(SERVER_MODE)
   if (sysprm_load_and_init (boot_Db_full_name, NULL) != NO_ERROR)
     {
+      cfg_free_directory (dir);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
       return ER_BO_CANT_LOAD_SYSPRM;
     }
@@ -3211,6 +3212,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   if (common_ha_mode != prm_get_integer_value (PRM_ID_HA_MODE)
       && prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
     {
+      cfg_free_directory (dir);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_PRM_CONFLICT_EXISTS_ON_MULTIPLE_SECTIONS, 6, "cubrid.conf",
 	      "common", prm_get_name (PRM_ID_HA_MODE),
@@ -3223,24 +3225,28 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   msgcat_final ();
   if (msgcat_init () != NO_ERROR)
     {
+      cfg_free_directory (dir);
       return ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG;
     }
 
   error_code = css_init_conn_list ();
   if (error_code != NO_ERROR)
     {
+      cfg_free_directory (dir);
       return error_code;
     }
 
   /* reinitialize thread mgr to reflect # of active requests */
   if (thread_initialize_manager () != NO_ERROR)
     {
+      cfg_free_directory (dir);
       return ER_FAILED;
     }
   if (er_init_internal
       (prm_get_string_value (PRM_ID_ER_LOG_FILE),
        prm_get_integer_value (PRM_ID_ER_EXIT_ASK), true) != NO_ERROR)
     {
+      cfg_free_directory (dir);
       return ER_FAILED;
     }
   er_clear ();
@@ -3277,6 +3283,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
     {
       if (from_backup == false || er_errid () == ER_IO_MOUNT_LOCKED)
 	{
+	  cfg_free_directory (dir);
 	  return ER_FAILED;
 	}
     }
@@ -3287,11 +3294,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   error_code = spage_boot (thread_p);
   if (error_code != NO_ERROR)
     {
+      cfg_free_directory (dir);
       return error_code;
     }
   error_code = heap_manager_initialize ();
   if (error_code != NO_ERROR)
     {
+      cfg_free_directory (dir);
       return error_code;
     }
 
@@ -3307,6 +3316,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 				  log_prefix, r_args);
       if (error_code != NO_ERROR)
 	{
+	  cfg_free_directory (dir);
 	  return error_code;
 	}
       else
@@ -3314,6 +3324,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 	  /* if table of contents only do not restart */
 	  if (r_args->printtoc)
 	    {
+	      cfg_free_directory (dir);
 	      return NO_ERROR;
 	    }
 	}
@@ -3640,6 +3651,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   return NO_ERROR;
 
 error:
+  cfg_free_directory (dir);
   prev_err_msg = (char *) er_msg ();
   if (prev_err_msg != NULL)
     {
