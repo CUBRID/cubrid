@@ -908,6 +908,9 @@ extern "C"
 					const char *partition);
   extern void pt_free_statement_xasl_id (PT_NODE * statement);
   extern int pt_check_enum_data_type (PARSER_CONTEXT * parser, PT_NODE * dt);
+  extern bool pt_recompile_for_limit_optimizations (PARSER_CONTEXT * parser,
+						    PT_NODE * statement,
+						    int xasl_flag);
 
 #ifdef __cplusplus
 }

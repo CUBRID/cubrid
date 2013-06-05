@@ -729,6 +729,8 @@ static bool pt_has_unresolved_types (PARSER_CONTEXT * parser,
 static bool pt_is_sort_list_covered (PARSER_CONTEXT * parser,
 				     SORT_LIST * covering_list_p,
 				     SORT_LIST * covered_list_p);
+static int pt_set_limit_optimization_flags (PARSER_CONTEXT * parser,
+					    QO_PLAN * plan, XASL_NODE * xasl);
 
 static void
 pt_init_xasl_supp_info ()
@@ -15430,22 +15432,9 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	}
     }
 
-  /* convert ordbynum to key limit if we have iscan with multiple key ranges */
-  if (qo_plan != NULL && qo_plan_multi_range_opt (qo_plan))
+  if (pt_set_limit_optimization_flags (parser, qo_plan, xasl) != NO_ERROR)
     {
-      if (pt_ordbynum_to_key_limit_multiple_ranges (parser, qo_plan, xasl) !=
-	  NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
-      xasl->header.xasl_flag |= MRO_CANDIDATE;
-      xasl->header.xasl_flag |= MRO_IS_USED;
-    }
-  else if (qo_plan != NULL
-	   && qo_plan->multi_range_opt_use == PLAN_MULTI_RANGE_OPT_CAN_USE)
-    {
-      /* Query could use multi range optimization, but limit was too large */
-      xasl->header.xasl_flag |= MRO_CANDIDATE;
+      goto exit_on_error;
     }
 
   /* set list file descriptor for dummy pusher */
@@ -23885,4 +23874,81 @@ pt_to_cume_dist_percent_rank_regu_variable (PARSER_CONTEXT * parser,
   regu->value.regu_var_list = regu_var_list;
 
   return regu;
+}
+
+/*
+ * pt_set_limit_optimization_flags () - setup XASL flags according to
+ *					query limit optimizations applied
+ *					during plan generation
+ * return : error code or NO_ERROR
+ * parser (in)	: parser context
+ * qo_plan (in) : query plan
+ * xasl (in)	: xasl node
+ */
+static int
+pt_set_limit_optimization_flags (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
+				 XASL_NODE * xasl)
+{
+  if (qo_plan == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  /* Set SORT-LIMIT flags */
+  if (qo_has_sort_limit_subplan (qo_plan))
+    {
+      xasl->header.xasl_flag |= SORT_LIMIT_USED;
+      xasl->header.xasl_flag |= SORT_LIMIT_CANDIDATE;
+    }
+  else
+    {
+      switch (qo_plan->info->env->use_sort_limit)
+	{
+	case QO_SL_USE:
+	  /* A SORT-LIMIT plan can be created but planner found a better plan.
+	   * In this case, there is no point in recompiling the plan a second
+	   * time. There are cases in which suppling a smaller limit to the
+	   * query will cause planner to choose a SORT-LIMIT plan over the
+	   * current one but, since there is no way to know if this is the
+	   * case, it is better to consider that this query will never use
+	   * SORT-LIMIT.
+	   */
+	  break;
+
+	case QO_SL_INVALID:
+	  /* A SORT-LIMIT plan cannot be generated for this query */
+	  break;
+
+	case QO_SL_POSSIBLE:
+	  /* The query might produce a SORT-LIMIT plan but the supplied limit.
+	   * could not be evaluated.
+	   */
+	  xasl->header.xasl_flag |= SORT_LIMIT_CANDIDATE;
+	  break;
+	}
+    }
+
+  /* Set MULTI-RANGE-OPTIMIZATION flags */
+  if (qo_plan_multi_range_opt (qo_plan))
+    {
+      /* convert ordbynum to key limit if we have iscan with multiple key
+       * ranges */
+      int err = pt_ordbynum_to_key_limit_multiple_ranges (parser, qo_plan,
+							  xasl);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
+
+      xasl->header.xasl_flag |= MRO_CANDIDATE;
+      xasl->header.xasl_flag |= MRO_IS_USED;
+    }
+  else if (qo_plan->multi_range_opt_use == PLAN_MULTI_RANGE_OPT_CAN_USE)
+    {
+      /* Query could use multi range optimization, but limit was too
+       * large */
+      xasl->header.xasl_flag |= MRO_CANDIDATE;
+    }
+
+  return NO_ERROR;
 }

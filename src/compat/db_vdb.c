@@ -102,9 +102,9 @@ static int do_process_deallocate_prepare (DB_SESSION * session,
 					  PT_NODE * statement);
 static bool is_allowed_as_prepared_statement (PT_NODE * node);
 static bool is_allowed_as_prepared_statement_with_hv (PT_NODE * node);
-static bool db_check_limit_for_mro_need_recompile (PARSER_CONTEXT * parser,
-						   PT_NODE * statement,
-						   bool mro_info_use_mro);
+static bool db_check_limit_need_recompile (PARSER_CONTEXT * parser,
+					   PT_NODE * statement,
+					   int xasl_flag);
 
 /*
  * get_dimemsion_of() - returns the number of elements of a null-terminated
@@ -2598,13 +2598,11 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx)
       && (prepare_info.host_variables.size > prepare_info.auto_param_count))
     {
       /* query has to be multi range opt candidate */
-      if (xasl_header.xasl_flag & (MRO_CANDIDATE | MRO_IS_USED))
+      if (xasl_header.xasl_flag & (MRO_CANDIDATE | MRO_IS_USED
+				   | SORT_LIMIT_CANDIDATE | SORT_LIMIT_USED))
 	{
-	  bool mro_info_use_mro = (xasl_header.xasl_flag & MRO_IS_USED);
-
-	  if (db_check_limit_for_mro_need_recompile (parser,
-						     statement,
-						     mro_info_use_mro))
+	  if (db_check_limit_need_recompile (parser, statement,
+					     xasl_header.xasl_flag))
 	    {
 	      /* need recompile, set XASL_ID to NULL */
 	      XASL_ID_SET_NULL (&statement->info.execute.xasl_id);
@@ -2721,21 +2719,21 @@ do_set_user_host_variables (DB_SESSION * session, PT_NODE * using_list)
 }
 
 /*
- * db_check_limit_for_mro_need_recompile () - Check if statement that can use
- *					      multi range optimization need
- *					      to recompile.
+ * db_check_limit_need_recompile () - Check if statement has to be recompiled
+ *				      for limit optimizations with supplied
+ *				      limit value
  *
  * return	  : true if recompile is needed, false otherwise
  * parser (in)	  : parser context for statement
  * statement (in) : execute prepare statement
+ * xasl_flag (in) : flag specifying limit optimizations used in XASL
  *
  * NOTE: This function attempts to evaluate superior limit for orderby_num ()
  *	 without doing a full statement recompile.
  */
 static bool
-db_check_limit_for_mro_need_recompile (PARSER_CONTEXT * parent_parser,
-				       PT_NODE * statement,
-				       bool mro_info_use_mro)
+db_check_limit_need_recompile (PARSER_CONTEXT * parent_parser,
+			       PT_NODE * statement, int xasl_flag)
 {
   DB_SESSION *session = NULL;
   PT_NODE *query = NULL, *limit = NULL, *orderby_for = NULL;
@@ -2790,10 +2788,8 @@ db_check_limit_for_mro_need_recompile (PARSER_CONTEXT * parent_parser,
   session->parser->auto_param_count = parent_parser->auto_param_count;
   session->parser->set_host_var = 1;
 
-  use_mro =
-    pt_check_ordby_num_for_multi_range_opt (session->parser, query, NULL,
-					    &cannot_eval);
-  if (cannot_eval || (use_mro != mro_info_use_mro))
+  if (pt_recompile_for_limit_optimizations (session->parser, query,
+					    xasl_flag))
     {
       /* need recompile */
       do_recompile = true;

@@ -11116,7 +11116,8 @@ pt_make_query_show_collation (PARSER_CONTEXT * parser,
 }
 
 /*
- * pt_get_query_limit_value () - get the value of the LIMIT clause of a query
+ * pt_get_query_limit_from_limit () - get the value of the LIMIT clause of a
+ *				      query
  * return : error code or NO_ERROR
  * parser (in)	      : parser context
  * limit (in)	      : limit node
@@ -11746,4 +11747,107 @@ end:
     }
 
   return err;
+}
+
+/*
+ * pt_recompile_for_limit_optimizations () - verify is query plan should be
+ *					     regenerated for a query due to
+ *					     limit change
+ * return : true/false
+ * parser (in) : parser context
+ * statement (in) : statement
+ * xasl_flag (in) : flag which contains plan information
+ *
+ * Note: before executing a query plan, we have to verify if the generated
+ *  plan is still valid with the new limit values. There are four cases:
+ *   I. MRO is used but the new limit value is either too large or invalid
+ *      for this plan. In this case we have to recompile.
+ *  II. MRO is not used but the new limit value is valid for generating such
+ *	a plan. In this case we have to recompile.
+ * III. MRO is not used and the new limit value is invalid for generating this
+ *	plan. In this case we don't have to recompile
+ *  VI. MRO is used and the new limit value is valid for this plan. In this
+ *	case we don't have to recompile
+ *  The same rules apply to SORT-LIMIT plans
+ */
+bool
+pt_recompile_for_limit_optimizations (PARSER_CONTEXT * parser,
+				      PT_NODE * statement, int xasl_flag)
+{
+  DB_VALUE limit_val;
+  bool can_use = false;
+  DB_BIGINT val = 0;
+  int limit_opt_flag =
+    (MRO_CANDIDATE | MRO_IS_USED | SORT_LIMIT_CANDIDATE | SORT_LIMIT_USED);
+
+  if (!(xasl_flag & limit_opt_flag))
+    {
+      return false;
+    }
+
+  if (pt_get_query_limit_value (parser, statement, &limit_val) != NO_ERROR)
+    {
+      val = 0;
+    }
+  else if (DB_IS_NULL (&limit_val))
+    {
+      val = 0;
+    }
+  else
+    {
+      val = DB_GET_BIGINT (&limit_val);
+    }
+
+  /* verify MRO */
+  if (xasl_flag & (MRO_CANDIDATE | MRO_IS_USED))
+    {
+      if (val == 0
+	  || val >
+	  (DB_BIGINT) prm_get_integer_value (PRM_ID_MULTI_RANGE_OPT_LIMIT))
+	{
+	  if (xasl_flag & MRO_IS_USED)
+	    {
+	      /* Need to recompile because limit is not suitable for MRO
+	       * anymore
+	       */
+	      return true;
+	    }
+	}
+      else if ((xasl_flag & MRO_CANDIDATE) && !(xasl_flag & MRO_IS_USED))
+	{
+	  /* Suitable limit for MRO but MRO is not used. Recompile to use
+	   * MRO
+	   */
+	  return true;
+	}
+      return false;
+    }
+
+  /* verify SORT-LIMIT */
+  if (xasl_flag & (SORT_LIMIT_CANDIDATE | SORT_LIMIT_USED))
+    {
+      if (val == 0
+	  || val >
+	  (DB_BIGINT) prm_get_integer_value (PRM_ID_SORT_LIMIT_MAX_COUNT))
+	{
+	  if (xasl_flag & SORT_LIMIT_USED)
+	    {
+	      /* Need to recompile because limit is not suitable for
+	       * SORT-LIMIT anymore
+	       */
+	      return true;
+	    }
+	}
+      else if ((xasl_flag & SORT_LIMIT_CANDIDATE)
+	       && !(xasl_flag & SORT_LIMIT_USED))
+	{
+	  /* Suitable limit for SORT-LIMIT but SORT-LIMIT is not used.
+	   * Recompile to use SORT-LIMIT
+	   */
+	  return true;
+	}
+      return false;
+    }
+
+  return false;
 }

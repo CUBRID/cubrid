@@ -789,6 +789,14 @@ struct qo_partition
 #define QO_PARTITION_PLAN(p)		(p)->plan
 #define QO_PARTITION_IDX(p)		(p)->idx
 
+typedef enum
+{
+  QO_SL_INVALID,		/* SORT-LIMIT plan cannot be created */
+  QO_SL_USE,			/* SORT-LIMIT plan should be created */
+  QO_SL_POSSIBLE		/* All conditions for the SORT-LIMIT plans are met
+				 * but user did not supply a valid limit */
+} QO_SORT_LIMIT_USE;
+
 struct qo_env
 {
   /*
@@ -853,7 +861,7 @@ struct qo_env
   DB_VALUE limit_value;
 
   /* true if we should consider generating SORT-LIMIT plans */
-  bool use_sort_limit;
+  QO_SORT_LIMIT_USE use_sort_limit;
   /*
    * True iff we found a conjunct which was not an expression.  We assume
    * that this is a false conjunct and we don't need to optimize a query
@@ -915,6 +923,7 @@ struct qo_env
 #define QO_ENV_TMP_BITSET(env)          (env)->tmp_bitset
 #define QO_ENV_LIMIT_VALUE(env)		(env)->limit_value
 #define QO_ENV_SORT_LIMIT_NODES(env)	(env)->sort_limit_nodes
+#define QO_ENV_USE_SORT_LIMIT(env)	((env)->use_sort_limit == QO_SL_USE)
 
 /*
  *  QO_XASL_INDEX_INFO gathers information about the indexed terms which

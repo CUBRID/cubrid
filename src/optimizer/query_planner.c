@@ -2931,7 +2931,7 @@ qo_join_new (QO_INFO * info,
 
   qo_plan_compute_cost (plan);
 
-  if (!plan->has_sort_limit && info->env->use_sort_limit
+  if (QO_ENV_USE_SORT_LIMIT (info->env) && !plan->has_sort_limit
       && bitset_is_equivalent (&info->env->sort_limit_nodes, &info->nodes))
     {
       /* Consider creating a SORT_LIMIT plan over this plan only if it
@@ -5437,7 +5437,7 @@ qo_check_new_best_plan_on_info (QO_INFO * info, QO_PLAN * plan)
 	      EQ = info->planner->EQ;
 	      best_plan = qo_find_best_plan_on_planvec (&info->best_no_order,
 							1.0);
-	      if (env->use_sort_limit
+	      if (QO_ENV_USE_SORT_LIMIT (env)
 		  && !best_plan->has_sort_limit
 		  && bitset_is_equivalent (&QO_ENV_SORT_LIMIT_NODES (env),
 					   &info->nodes)
@@ -8893,7 +8893,8 @@ qo_search_planner (QO_PLANNER * planner)
 	  qo_generate_seq_scan (info, node);
 	}
 
-      if (QO_NODE_SORT_LIMIT_CANDIDATE (node))
+      if (QO_ENV_USE_SORT_LIMIT (planner->env)
+	  && QO_NODE_SORT_LIMIT_CANDIDATE (node))
 	{
 	  /* generate a stop plan over the current best plan of the */
 	  QO_PLAN *best_plan;
@@ -13076,4 +13077,41 @@ qo_is_sort_limit (QO_PLAN * plan)
 {
   return (plan != NULL && plan->plan_type == QO_PLANTYPE_SORT
 	  && plan->plan_un.sort.sort_type == SORT_LIMIT);
+}
+
+/*
+ * qo_has_sort_limit_subplan () - verify if a plan has a SORT-LIMIT subplan
+ * return : true if plan has SORT-LIMIT subplan, false otherwise
+ * plan (in) : plan to verify
+ */
+bool
+qo_has_sort_limit_subplan (QO_PLAN * plan)
+{
+  if (plan == NULL)
+    {
+      return false;
+    }
+
+  switch (plan->plan_type)
+    {
+    case QO_PLANTYPE_SCAN:
+      return false;
+
+    case QO_PLANTYPE_SORT:
+      if (plan->plan_un.sort.sort_type == SORT_LIMIT)
+	{
+	  return true;
+	}
+      return qo_has_sort_limit_subplan (plan->plan_un.sort.subplan);
+
+    case QO_PLANTYPE_JOIN:
+      return (qo_has_sort_limit_subplan (plan->plan_un.join.outer)
+	      || qo_has_sort_limit_subplan (plan->plan_un.join.inner));
+
+    case QO_PLANTYPE_FOLLOW:
+    case QO_PLANTYPE_WORST:
+      return false;
+    }
+
+  return false;
 }

@@ -13912,22 +13912,14 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       else if (stream.xasl_id != NULL)
 	{
 	  /* check xasl header */
-	  if (stream.xasl_header->xasl_flag & MRO_CANDIDATE)
+	  if (pt_recompile_for_limit_optimizations (parser, statement,
+						    stream.xasl_header->
+						    xasl_flag))
 	    {
-	      /* multi range optimization checks */
-	      bool good_limit =
-		pt_check_ordby_num_for_multi_range_opt (parser, statement,
-							NULL, NULL);
-	      bool mro_used = (stream.xasl_header->xasl_flag & MRO_IS_USED);
-	      if ((good_limit && !mro_used) || (!good_limit && mro_used))
-		{
-		  /* drop cached xasl and prepare again */
-		  err =
-		    qmgr_drop_query_plan (context.sql_hash_text,
+	      err = qmgr_drop_query_plan (context.sql_hash_text,
 					  ws_identifier (db_get_user ()),
 					  NULL, true);
-		  stream.xasl_id = NULL;
-		}
+	      stream.xasl_id = NULL;
 	    }
 	}
     }
