@@ -1899,10 +1899,19 @@ public class UConnection {
 			dbInfo = createDBInfo(dbname, user, passwd, url);
 		}
 		// set the session id
-		if (protoVersionIsAbove(PROTOCOL_V3)) {
+		if (brokerInfoVersion() == 0) {
+			/* Interpretable session information supporting version 
+			*   later than PROTOCOL_V3 as well as version earlier 
+			*   than PROTOCOL_V3 should be delivered since no broker information 
+			*   is provided at the time of initial connection.
+			*/
+			String id = "0";
+			UJCIUtil.copy_byte(dbInfo, 608, 20, id);
+		}
+		else if (protoVersionIsAbove(PROTOCOL_V3)) {
 			System.arraycopy(sessionId, 0, dbInfo, 608, 20);
 		} else {
-		    	UJCIUtil.copy_byte(dbInfo, 608, 20, new Integer(oldSessionId).toString());
+			UJCIUtil.copy_byte(dbInfo, 608, 20, new Integer(oldSessionId).toString());
 		}
 
 		if (outBuffer == null) {

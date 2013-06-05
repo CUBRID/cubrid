@@ -188,7 +188,17 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id,
   strncpy (info, con_handle->url, SRV_CON_URL_SIZE);
   info += SRV_CON_URL_SIZE;
 
-  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V3))
+  broker_ver = hm_get_broker_version (con_handle);
+  if (broker_ver == 0)
+    {
+      /* Interpretable session information supporting version 
+       *   later than PROTOCOL_V3 as well as version earlier 
+       *   than PROTOCOL_V3 should be delivered since no broker information 
+       *   is provided at the time of initial connection.
+       */
+      snprintf (info, DRIVER_SESSION_SIZE, "%u", 0);
+    }
+  else if (broker_ver >= CAS_PROTO_MAKE_VER (PROTOCOL_V3))
     {
       memcpy (info, con_handle->session_id.id, DRIVER_SESSION_SIZE);
     }
