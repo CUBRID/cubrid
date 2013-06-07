@@ -782,7 +782,7 @@ session_add_variable (SESSION_STATE * state_p, const DB_VALUE * name,
   assert (name_str != NULL);
 
   len = DB_GET_STRING_SIZE (name);
-  if (len > strlen ("collect_exec_stats"))
+  if (len < strlen ("collect_exec_stats"))
     {
       len = strlen ("collect_exec_stats");
     }

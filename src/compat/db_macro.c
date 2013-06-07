@@ -2554,6 +2554,7 @@ int
 db_get_int (const DB_VALUE * value)
 {
   CHECK_1ARG_ZERO (value);
+  assert (value->domain.general_info.type == DB_TYPE_INTEGER);
 
   return value->data.i;
 }
@@ -2567,6 +2568,7 @@ short
 db_get_short (const DB_VALUE * value)
 {
   CHECK_1ARG_ZERO (value);
+  assert (value->domain.general_info.type == DB_TYPE_SHORT);
 
   return value->data.sh;
 }
@@ -2580,6 +2582,7 @@ DB_BIGINT
 db_get_bigint (const DB_VALUE * value)
 {
   CHECK_1ARG_ZERO (value);
+  assert (value->domain.general_info.type == DB_TYPE_BIGINT);
 
   return value->data.bigint;
 }
@@ -2817,6 +2820,7 @@ float
 db_get_float (const DB_VALUE * value)
 {
   CHECK_1ARG_ZERO (value);
+  assert (value->domain.general_info.type == DB_TYPE_FLOAT);
 
   return value->data.f;
 }
@@ -2830,6 +2834,7 @@ double
 db_get_double (const DB_VALUE * value)
 {
   CHECK_1ARG_ZERO (value);
+  assert (value->domain.general_info.type == DB_TYPE_DOUBLE);
 
   return value->data.d;
 }
@@ -2927,6 +2932,7 @@ DB_TIME *
 db_get_time (const DB_VALUE * value)
 {
   CHECK_1ARG_NULL (value);
+  assert (value->domain.general_info.type == DB_TYPE_TIME);
 
   return ((DB_TIME *) (&value->data.time));
 }
@@ -2940,6 +2946,7 @@ DB_TIMESTAMP *
 db_get_timestamp (const DB_VALUE * value)
 {
   CHECK_1ARG_NULL (value);
+  assert (value->domain.general_info.type == DB_TYPE_TIMESTAMP);
 
   return ((DB_TIMESTAMP *) (&value->data.utime));
 }
@@ -2953,6 +2960,7 @@ DB_DATETIME *
 db_get_datetime (const DB_VALUE * value)
 {
   CHECK_1ARG_NULL (value);
+  assert (value->domain.general_info.type == DB_TYPE_DATETIME);
 
   return ((DB_DATETIME *) (&value->data.datetime));
 }
@@ -2966,6 +2974,7 @@ DB_DATE *
 db_get_date (const DB_VALUE * value)
 {
   CHECK_1ARG_NULL (value);
+  assert (value->domain.general_info.type == DB_TYPE_DATE);
 
   return ((DB_DATE *) (&value->data.date));
 }
@@ -2979,6 +2988,7 @@ DB_MONETARY *
 db_get_monetary (const DB_VALUE * value)
 {
   CHECK_1ARG_NULL (value);
+  assert (value->domain.general_info.type == DB_TYPE_MONETARY);
 
   return ((DB_MONETARY *) (&value->data.money));
 }
@@ -3044,6 +3054,8 @@ short
 db_get_enum_short (const DB_VALUE * value)
 {
   CHECK_1ARG_ZERO (value);
+  assert (value->domain.general_info.type == DB_TYPE_ENUMERATION);
+
   return value->data.enumeration.short_val;
 }
 
@@ -3073,6 +3085,8 @@ int
 db_get_enum_string_size (const DB_VALUE * value)
 {
   CHECK_1ARG_ZERO (value);
+  assert (value->domain.general_info.type == DB_TYPE_ENUMERATION);
+
   return value->data.enumeration.str_val.medium.size;
 }
 
@@ -3085,6 +3099,7 @@ DB_RESULTSET
 db_get_resultset (const DB_VALUE * value)
 {
   CHECK_1ARG_ZERO (value);
+  assert (value->domain.general_info.type == DB_TYPE_RESULTSET);
 
   return value->data.rset;
 }
@@ -3441,6 +3456,7 @@ int
 db_get_error (const DB_VALUE * value)
 {
   CHECK_1ARG_ZERO (value);
+  assert (value->domain.general_info.type == DB_TYPE_ERROR);
 
   return value->data.error;
 }
@@ -3478,6 +3494,7 @@ OID *
 db_get_oid (const DB_VALUE * value)
 {
   CHECK_1ARG_NULL (value);
+  assert (value->domain.general_info.type == DB_TYPE_OID);
 
   return (OID *) (&value->data.oid);
 }

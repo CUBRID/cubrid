@@ -2331,7 +2331,6 @@ db_string_substring_index (DB_VALUE * src_string,
   DB_MAKE_NULL (result);
   DB_MAKE_NULL (&empty_string1);
   DB_MAKE_NULL (&empty_string2);
-  count_i = DB_GET_INT (count);
 
   /*
    *  Assert that DB_VALUE structures have been allocated.
@@ -2340,6 +2339,14 @@ db_string_substring_index (DB_VALUE * src_string,
   assert (delim_string != (DB_VALUE *) NULL);
   assert (count != (DB_VALUE *) NULL);
   assert (result != (DB_VALUE *) NULL);
+
+  if (DB_IS_NULL (count))
+    {
+      /* result is DB_TYPE_NULL */
+      goto exit;
+    }
+  count_i = DB_GET_INT (count);
+
   /*
    *  Categorize the parameters into respective code sets.
    *  Verify that the parameters are both character strings.
@@ -2424,12 +2431,7 @@ db_string_substring_index (DB_VALUE * src_string,
       goto exit;
     }
 
-  if (DB_IS_NULL (count))
-    {
-      /* result is DB_TYPE_NULL */
-      goto exit;
-    }
-  else if (!QSTR_IS_ANY_CHAR (src_type) || !QSTR_IS_ANY_CHAR (delim_type))
+  if (!QSTR_IS_ANY_CHAR (src_type) || !QSTR_IS_ANY_CHAR (delim_type))
     {
       error_status = ER_QSTR_INVALID_DATA_TYPE;
     }
@@ -9994,24 +9996,33 @@ db_datetime_to_timestamp (const DB_VALUE * src_datetime,
       /* error message has been set */
       return error;
     }
-  tmp_datetime = db_get_datetime (src_datetime);
-  tmp_date = tmp_datetime->date;
-  tmp_time = tmp_datetime->time / 1000;
-  error = db_timestamp_encode (&tmp_timestamp, &tmp_date, &tmp_time);
-  if (error != NO_ERROR)
-    {
-      /* error message has been set */
-      return error;
-    }
-  db_make_timestamp (temp_p, tmp_timestamp);
 
-  if (same_argument)
+  if (DB_IS_NULL (src_datetime))
     {
-      /* if src_datetime was the same with result_timestamp, copy the result
-       * from temp, and release the temporary value
-       */
-      pr_clone_value (temp_p, result_timestamp);
+      db_make_null (result_timestamp);
     }
+  else
+    {
+      tmp_datetime = db_get_datetime (src_datetime);
+      tmp_date = tmp_datetime->date;
+      tmp_time = tmp_datetime->time / 1000;
+      error = db_timestamp_encode (&tmp_timestamp, &tmp_date, &tmp_time);
+      if (error != NO_ERROR)
+	{
+	  /* error message has been set */
+	  return error;
+	}
+      db_make_timestamp (temp_p, tmp_timestamp);
+
+      if (same_argument)
+	{
+	  /* if src_datetime was the same with result_timestamp, copy the result
+	   * from temp, and release the temporary value
+	   */
+	  pr_clone_value (temp_p, result_timestamp);
+	}
+    }
+
   return NO_ERROR;
 }
 

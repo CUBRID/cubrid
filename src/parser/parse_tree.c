@@ -1124,6 +1124,7 @@ parser_create_parser (void)
   srand48_r (t.tv_usec, &rand_buf);
   lrand48_r (&rand_buf, &parser->lrand);
   drand48_r (&rand_buf, &parser->drand);
+  db_make_null (&parser->sys_datetime);
 
   /* initialization */
   parser->is_in_and_list = false;

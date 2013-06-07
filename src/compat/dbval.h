@@ -97,29 +97,46 @@
         ((v)->domain.char_info.length) : 0))
 
 #define DB_GET_INTEGER(v) \
-    ((v)->data.i)
+    ((assert ((v)->domain.general_info.type==DB_TYPE_INTEGER)),(v)->data.i)
 
 #define DB_GET_BIGINT(v) \
-    ((v)->data.bigint)
+    ((assert((v)->domain.general_info.type==DB_TYPE_BIGINT)),(v)->data.bigint)
 
 #define DB_GET_FLOAT(v) \
-    ((v)->data.f)
+    ((assert ((v)->domain.general_info.type == DB_TYPE_FLOAT)),(v)->data.f)
 
 #define DB_GET_DOUBLE(v) \
-    ((v)->data.d)
+    ((assert ((v)->domain.general_info.type == DB_TYPE_DOUBLE)),(v)->data.d)
 
 /* note : this will have to change when we start using the small and large
           string buffers. */
 #define DB_GET_STRING(v) \
     ((DB_IS_NULL(v) || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_ERROR) ? \
-                          NULL : (v)->data.ch.medium.buf)
+                          NULL : \
+     ((assert ((v)->domain.general_info.type == DB_TYPE_VARCHAR\
+      || (v)->domain.general_info.type == DB_TYPE_CHAR\
+      || (v)->domain.general_info.type == DB_TYPE_VARNCHAR\
+      || (v)->domain.general_info.type == DB_TYPE_NCHAR\
+      || (v)->domain.general_info.type == DB_TYPE_VARBIT\
+      || (v)->domain.general_info.type == DB_TYPE_BIT)),(v)->data.ch.medium.buf))
 
 #define DB_GET_STRING_SAFE(v) \
     ((DB_IS_NULL(v) || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_ERROR) ? \
-                          "" : (v)->data.ch.medium.buf)
+                          "" : \
+     ((assert ((v)->domain.general_info.type == DB_TYPE_VARCHAR\
+      || (v)->domain.general_info.type == DB_TYPE_CHAR\
+      || (v)->domain.general_info.type == DB_TYPE_VARNCHAR\
+      || (v)->domain.general_info.type == DB_TYPE_NCHAR\
+      || (v)->domain.general_info.type == DB_TYPE_VARBIT\
+      || (v)->domain.general_info.type == DB_TYPE_BIT)),(v)->data.ch.medium.buf))
 
 #define DB_PULL_STRING(v) \
-    ((v)->data.ch.medium.buf)
+     ((assert ((v)->domain.general_info.type == DB_TYPE_VARCHAR\
+      || (v)->domain.general_info.type == DB_TYPE_CHAR\
+      || (v)->domain.general_info.type == DB_TYPE_VARNCHAR\
+      || (v)->domain.general_info.type == DB_TYPE_NCHAR\
+      || (v)->domain.general_info.type == DB_TYPE_VARBIT\
+      || (v)->domain.general_info.type == DB_TYPE_BIT)),(v)->data.ch.medium.buf)
 
 #define DB_GET_STRING_PRECISION(v) \
     ((v)->domain.char_info.length)
@@ -136,13 +153,24 @@
     NULL : \
     (intl_char_count((unsigned char *)(v)->data.ch.medium.buf, \
          (v)->data.ch.medium.size, (INTL_CODESET) (v)->data.ch.medium.codeset, (l)), \
-    (v)->data.ch.medium.buf))
+    (assert ((v)->domain.general_info.type == DB_TYPE_VARCHAR\
+      || (v)->domain.general_info.type == DB_TYPE_CHAR\
+      || (v)->domain.general_info.type == DB_TYPE_VARNCHAR\
+      || (v)->domain.general_info.type == DB_TYPE_NCHAR\
+      || (v)->domain.general_info.type == DB_TYPE_VARBIT\
+      || (v)->domain.general_info.type == DB_TYPE_BIT),\
+    (v)->data.ch.medium.buf)))
 
 #define DB_PULL_CHAR(v, l) \
-    ((intl_char_count((unsigned char *)(v)->data.ch.medium.buf, \
+    (intl_char_count((unsigned char *)(v)->data.ch.medium.buf, \
                       (v)->data.ch.medium.size, \
                       (INTL_CODESET) (v)->data.ch.medium.codeset, (l)), \
-     (v)->data.ch.medium.buf))
+     ((assert ((v)->domain.general_info.type == DB_TYPE_VARCHAR\
+      || (v)->domain.general_info.type == DB_TYPE_CHAR\
+      || (v)->domain.general_info.type == DB_TYPE_VARNCHAR\
+      || (v)->domain.general_info.type == DB_TYPE_NCHAR\
+      || (v)->domain.general_info.type == DB_TYPE_VARBIT\
+      || (v)->domain.general_info.type == DB_TYPE_BIT)),(v)->data.ch.medium.buf))
 
 #define DB_GET_NCHAR(v, l) DB_GET_CHAR(v, l)
 #define DB_PULL_NCHAR(v, l) DB_PULL_CHAR(v, l)
@@ -153,10 +181,14 @@
 #define DB_GET_BIT(v, l) \
     ((DB_IS_NULL(v) || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_ERROR) ? \
       NULL : \
-      (((*(l)) = (v)->data.ch.medium.size), (v)->data.ch.medium.buf))
+      (assert ((v)->domain.general_info.type == DB_TYPE_BIT\
+      || (v)->domain.general_info.type == DB_TYPE_VARBIT),\
+          ((*(l)) = (v)->data.ch.medium.size), (v)->data.ch.medium.buf))
 
 #define DB_PULL_BIT(v, l) \
-    ((((*(l)) = (v)->data.ch.medium.size), (v)->data.ch.medium.buf))
+    ((assert ((v)->domain.general_info.type == DB_TYPE_BIT\
+      || (v)->domain.general_info.type == DB_TYPE_VARBIT)),\
+        ((*(l)) = (v)->data.ch.medium.size), (v)->data.ch.medium.buf)
 
 #define DB_GET_OBJECT(v) \
     ((DB_IS_NULL(v) || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_ERROR) ? \
@@ -167,17 +199,25 @@
 
 #define DB_GET_OID(v) \
     ((DB_IS_NULL(v) || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_ERROR) ? \
-     (OID *)(NULL) : &((v)->data.oid))
+     (OID *)(NULL) : \
+     (assert((v)->domain.general_info.type == DB_TYPE_OID),&((v)->data.oid)))
 
 #define DB_PULL_OID(v) \
-    (&((v)->data.oid))
+    (assert((v)->domain.general_info.type == DB_TYPE_OID),&((v)->data.oid))
 
 #define DB_GET_SET(v) \
     ((DB_IS_NULL(v) || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_ERROR) ? \
-     NULL : (v)->data.set)
+     NULL : \
+           (assert ((v)->domain.general_info.type == DB_TYPE_SET\
+          || (v)->domain.general_info.type == DB_TYPE_MULTISET\
+          || (v)->domain.general_info.type == DB_TYPE_SEQUENCE\
+          || (v)->domain.general_info.type == DB_TYPE_VOBJ),(v)->data.set))
 
 #define DB_PULL_SET(v) \
-    ((v)->data.set)
+    (assert ((v)->domain.general_info.type == DB_TYPE_SET\
+          || (v)->domain.general_info.type == DB_TYPE_MULTISET\
+          || (v)->domain.general_info.type == DB_TYPE_SEQUENCE\
+          || (v)->domain.general_info.type == DB_TYPE_VOBJ),(v)->data.set)
 
 #define DB_GET_MULTISET(v) DB_GET_SET(v)
 #define DB_PULL_MULTISET(v) DB_PULL_SET(v)
@@ -189,54 +229,76 @@
 
 #define DB_GET_MIDXKEY(v) \
     ((DB_IS_NULL(v) || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_ERROR) ? \
-                  NULL : (DB_MIDXKEY *)(&(v)->data.midxkey))
+     NULL : (assert ((v)->domain.general_info.type == DB_TYPE_MIDXKEY),\
+                  (DB_MIDXKEY *)(&(v)->data.midxkey)))
 
 #define DB_PULL_MIDXKEY(v) \
-    ((DB_MIDXKEY *)(&(v)->data.midxkey))
+    (assert ((v)->domain.general_info.type == DB_TYPE_MIDXKEY),\
+        (DB_MIDXKEY *)(&(v)->data.midxkey))
 
 #define DB_GET_ELO(v) \
     ((DB_IS_NULL(v) || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_ERROR || \
-      (v)->data.elo.type == ELO_NULL) ? NULL : (DB_ELO *)(&(v)->data.elo))
+      (v)->data.elo.type == ELO_NULL) ? NULL : \
+          (assert ((v)->domain.general_info.type == DB_TYPE_ELO\
+              || (v)->domain.general_info.type == DB_TYPE_CLOB\
+              || (v)->domain.general_info.type == DB_TYPE_BLOB),\
+          (DB_ELO *)(&(v)->data.elo)))
 
 #define DB_PULL_ELO(v) \
-    ((DB_ELO *)&((v)->data.elo))
+    (assert ((v)->domain.general_info.type == DB_TYPE_ELO\
+              || (v)->domain.general_info.type == DB_TYPE_CLOB\
+              || (v)->domain.general_info.type == DB_TYPE_BLOB),\
+        (DB_ELO *)&((v)->data.elo))
 
 #define DB_GET_TIME(v) \
-    ((DB_TIME *)(&(v)->data.time))
+    (assert ((v)->domain.general_info.type == DB_TYPE_TIME),\
+        (DB_TIME *)(&(v)->data.time))
 
 #define DB_GET_DATE(v) \
-    ((DB_DATE *)(&(v)->data.date))
+    (assert ((v)->domain.general_info.type == DB_TYPE_DATE),\
+        (DB_DATE *)(&(v)->data.date))
 
 #define DB_GET_TIMESTAMP(v) \
-    ((DB_TIMESTAMP *)(&(v)->data.utime))
+    (assert ((v)->domain.general_info.type == DB_TYPE_TIMESTAMP),\
+        (DB_TIMESTAMP *)(&(v)->data.utime))
 
 #define DB_GET_DATETIME(v) \
-    ((DB_DATETIME *)(&(v)->data.datetime))
+    (assert ((v)->domain.general_info.type == DB_TYPE_DATETIME),\
+        (DB_DATETIME *)(&(v)->data.datetime))
 
 #define DB_GET_MONETARY(v) \
-    ((DB_MONETARY *)(&(v)->data.money))
+    (assert ((v)->domain.general_info.type == DB_TYPE_MONETARY),\
+        (DB_MONETARY *)(&(v)->data.money))
 
 #define DB_GET_POINTER(v) \
     ((DB_IS_NULL(v) || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_ERROR) ? \
-     NULL : (v)->data.p)
+     NULL : \
+     (assert ((v)->domain.general_info.type == DB_TYPE_POINTER),\
+     (v)->data.p))
 
 #define DB_PULL_POINTER(v) \
-    ((v)->data.p)
+    (assert ((v)->domain.general_info.type == DB_TYPE_POINTER),\
+        (v)->data.p)
 
 #define DB_GET_ERROR(v) \
-    ((v)->data.error)
+    (assert ((v)->domain.general_info.type == DB_TYPE_ERROR),\
+        (v)->data.error)
 
 #define DB_GET_SHORT(v) \
-    ((v)->data.sh)
+    (assert ((v)->domain.general_info.type == DB_TYPE_SHORT),\
+        (v)->data.sh)
 
 #define DB_GET_SMALLINT(v) DB_GET_SHORT(v)
 
 #define DB_GET_NUMERIC(v) \
     ((DB_IS_NULL(v) || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_ERROR) ? \
-                      NULL : (v)->data.num.d.buf)
+                      NULL : \
+     (assert ((v)->domain.general_info.type == DB_TYPE_NUMERIC),\
+     (v)->data.num.d.buf))
 
 #define DB_PULL_NUMERIC(v) \
-    ((v)->data.num.d.buf)
+    (assert ((v)->domain.general_info.type == DB_TYPE_NUMERIC),\
+        (v)->data.num.d.buf)
 
 #define DB_GET_STRING_SIZE(v) \
     (((v)->data.ch.info.style == MEDIUM_STRING) ? \

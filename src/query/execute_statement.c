@@ -388,6 +388,7 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
   int error;
   TP_DOMAIN_STATUS dom_status;
   char *user_name;
+  DB_DATETIME *datetime;
 
   assert (class_name->node_type == PT_NAME);
 
@@ -406,9 +407,17 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 	  switch (att->default_value.default_expr)
 	    {
 	    case DB_DEFAULT_SYSDATE:
-	      error = db_value_put_encoded_date (&att->default_value.value,
-						 DB_GET_DATE (&parser->
-							      sys_datetime));
+	      if (DB_IS_NULL (&parser->sys_datetime))
+		{
+		  db_make_null (&att->default_value.value);
+		}
+	      else
+		{
+		  datetime = DB_GET_DATETIME (&parser->sys_datetime);
+		  error =
+		    db_value_put_encoded_date (&att->default_value.value,
+					       &datetime->date);
+		}
 	      break;
 	    case DB_DEFAULT_SYSDATETIME:
 	      error = pr_clone_value (&parser->sys_datetime,

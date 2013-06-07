@@ -6109,9 +6109,14 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
 
 	case PT_MAX:
 	  opr_dbval_p = &dbval;
-	  if (agg_p->curr_cnt < 1
-	      || (*(agg_p->domain->type->cmpval)) (agg_p->value, &dbval,
-						   1, 1, NULL, -1) < 0)
+
+	  if (agg_p->curr_cnt < 1)
+	    {
+	      copy_opr = true;
+	    }
+	  else if (!DB_IS_NULL (agg_p->value) && !DB_IS_NULL (&dbval)
+		   && (*(agg_p->domain->type->cmpval)) (agg_p->value, &dbval,
+							1, 1, NULL, -1) < 0)
 	    {
 	      copy_opr = true;
 	    }

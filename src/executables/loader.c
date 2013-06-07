@@ -433,6 +433,7 @@ static DB_OBJLIST *internal_classes = NULL;
  *  this code will probably need to change, too.
  */
 
+static DB_VALUE ldr_short_tmpl;
 static DB_VALUE ldr_int_tmpl;
 static DB_VALUE ldr_bigint_tmpl;
 static DB_VALUE ldr_char_tmpl;
@@ -2207,7 +2208,7 @@ ldr_int_db_short (LDR_CONTEXT * context,
   DB_VALUE val;
   char *str_ptr;
 
-  val.domain = ldr_int_tmpl.domain;
+  val.domain = ldr_short_tmpl.domain;
 
   /* Let try take the fastest path here, if we know that number we are
    * getting fits into a long, use strtol, else we need to convert it
@@ -5729,6 +5730,7 @@ ldr_init_loader (LDR_CONTEXT * context)
    * Optimization to avoid calling db_value_domain_init all of the time
    * during loading; we can simply copy these templates much more cheaply.
    */
+  db_make_short (&ldr_short_tmpl, 0);
   db_make_int (&ldr_int_tmpl, 0);
   db_make_bigint (&ldr_bigint_tmpl, 0);
   db_make_char (&ldr_char_tmpl, 1, (char *) "a", 1, LANG_SYS_CODESET,

@@ -11057,42 +11057,51 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   int dead_end = false;
   int unqualified_dead_end = false;
   FETCH_PROC_NODE *fetch = &xasl->proc.fetch;
-  OID *dbvaloid;
-
-  dbvaloid = DB_GET_OID (fetch->arg);
+  OID *dbvaloid = NULL;
 
   /* the fetch_res represents whether current node in a path expression is
    * successfully completed to the end, or failed
    */
   fetch->fetch_res = false;
 
-  /* check for virtual objects */
-  if (!DB_IS_NULL (fetch->arg)
-      && DB_VALUE_DOMAIN_TYPE (fetch->arg) == DB_TYPE_VOBJ)
+  /* object is non_existent ? */
+  if (DB_IS_NULL (fetch->arg))
     {
-      DB_SET *setp = DB_GET_SET (fetch->arg);
-      DB_VALUE dbval, dbval1;
-
-      if ((db_set_size (setp) == 3)
-	  && (db_set_get (setp, 1, &dbval) == NO_ERROR)
-	  && (db_set_get (setp, 2, &dbval1) == NO_ERROR)
-	  && (DB_IS_NULL (&dbval)
-	      || ((DB_VALUE_DOMAIN_TYPE (&dbval) == DB_TYPE_OID)
-		  && OID_ISNULL (DB_GET_OID (&dbval))))
-	  && (DB_VALUE_DOMAIN_TYPE (&dbval1) == DB_TYPE_OID))
+      dead_end = true;
+    }
+  else
+    {
+      /* check for virtual objects */
+      if (DB_VALUE_DOMAIN_TYPE (fetch->arg) != DB_TYPE_VOBJ)
 	{
-	  dbvaloid = DB_GET_OID (&dbval1);
+	  dbvaloid = DB_GET_OID (fetch->arg);
 	}
       else
 	{
-	  return ER_FAILED;
-	}
-    }
+	  DB_SET *setp = DB_GET_SET (fetch->arg);
+	  DB_VALUE dbval, dbval1;
 
-  /* object is non_existent ? */
-  if (DB_IS_NULL (fetch->arg) || OID_ISNULL (dbvaloid))
-    {
-      dead_end = true;
+	  if ((db_set_size (setp) == 3)
+	      && (db_set_get (setp, 1, &dbval) == NO_ERROR)
+	      && (db_set_get (setp, 2, &dbval1) == NO_ERROR)
+	      && (DB_IS_NULL (&dbval)
+		  || ((DB_VALUE_DOMAIN_TYPE (&dbval) == DB_TYPE_OID)
+		      && OID_ISNULL (DB_GET_OID (&dbval))))
+	      && (DB_VALUE_DOMAIN_TYPE (&dbval1) == DB_TYPE_OID))
+	    {
+	      dbvaloid = DB_GET_OID (&dbval1);
+	    }
+	  else
+	    {
+	      return ER_FAILED;
+	    }
+	}
+
+      /* object is non_existent ? */
+      if (OID_ISNULL (dbvaloid))
+	{
+	  dead_end = true;
+	}
     }
 
   /*
@@ -21022,7 +21031,7 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p,
 
 /*
  * qexec_compare_two_tuple_by_sort_key () - compare two tuples
- *                    by sort key for analytic functions 
+ *                    by sort key for analytic functions
  *                    CUME_DIST and PERCENT_RANK)
  *   returns: DB_EQ if two tuples are equal, else DB_UNK
  *   tpl1(in): first tuple
@@ -21061,7 +21070,7 @@ qexec_compare_two_tuple_by_sort_key (QFILE_TUPLE tpl1,
 	}
 
       /* compare the values
-       * Note: need to consider if the value is NULL or not 
+       * Note: need to consider if the value is NULL or not
        */
       if (QFILE_GET_TUPLE_VALUE_FLAG (tuple_p1) == V_UNBOUND
 	  && QFILE_GET_TUPLE_VALUE_FLAG (tuple_p2) == V_UNBOUND)
@@ -21096,7 +21105,7 @@ qexec_compare_two_tuple_by_sort_key (QFILE_TUPLE tpl1,
 }
 
 /*
- * qexec_analytic_evaluate_cume_dist_percent_rank_function () - 
+ * qexec_analytic_evaluate_cume_dist_percent_rank_function () -
  *                    evaluate CUME_DIST and PERCENT_RANK
  *   returns: error code or NO_ERROR
  *   thread(in):

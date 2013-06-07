@@ -840,15 +840,21 @@ catcls_convert_attr_id_to_name (THREAD_ENTRY * thread_p, OR_BUF * orbuf_p,
 	   j = 0; j < (index_atts[4]).sub.count; j++)
 	{
 	  key_atts = keys[j].sub.value;
-	  id = DB_GET_INT (&key_atts[1].value);
 
-	  for (ids = id_val_p->sub.value, k = 0; k < id_val_p->sub.count; k++)
+	  if (!DB_IS_NULL (&key_atts[1].value))
 	    {
-	      id_atts = ids[k].sub.value;
-	      if (id == DB_GET_INT (&id_atts[0].value))
+	      id = DB_GET_INT (&key_atts[1].value);
+
+	      for (ids = id_val_p->sub.value, k = 0; k < id_val_p->sub.count;
+		   k++)
 		{
-		  pr_clear_value (&key_atts[1].value);
-		  pr_clone_value (&id_atts[1].value, &key_atts[1].value);
+		  id_atts = ids[k].sub.value;
+		  if (!DB_IS_NULL (&id_atts[0].value)
+		      && id == DB_GET_INT (&id_atts[0].value))
+		    {
+		      pr_clear_value (&key_atts[1].value);
+		      pr_clone_value (&id_atts[1].value, &key_atts[1].value);
+		    }
 		}
 	    }
 	}
@@ -4503,7 +4509,7 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
  *				       stored in the "db_root" system table
  *   return: NO_ERROR, or error code
  *   thread_p(in)  : thread context
- *   charset_id_p(out): 
+ *   charset_id_p(out):
  *   lang_buf(in/out): buffer language string
  *   lang_buf_size(in): size of buffer language string
  *

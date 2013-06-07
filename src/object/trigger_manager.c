@@ -4332,7 +4332,7 @@ value_as_boolean (DB_VALUE * value)
       status = (DB_GET_INT (value) == 0) ? false : true;
       break;
     case DB_TYPE_BIGINT:
-      status = (DB_GET_BIGINT (value) = 0) ? false : true;
+      status = (DB_GET_BIGINT (value) == 0) ? false : true;
       break;
     case DB_TYPE_FLOAT:
       status = (DB_GET_FLOAT (value) == 0) ? false : true;
