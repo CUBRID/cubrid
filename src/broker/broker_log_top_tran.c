@@ -58,6 +58,7 @@ int
 log_top_tran (int argc, char *argv[], int arg_start)
 {
   int i;
+  int error = 0;
   char *filename;
   FILE *fp;
   long start_offset, end_offset;
@@ -84,12 +85,12 @@ log_top_tran (int argc, char *argv[], int arg_start)
 	  start_offset = end_offset = -1;
 	}
 
-      if (log_top (fp, filename, start_offset, end_offset) < 0)
-	{
-	  fclose (fp);
-	  return -1;
-	}
+      error = log_top (fp, filename, start_offset, end_offset);
       fclose (fp);
+      if (error == LT_INVAILD_VERSION)
+	{
+	  return error;
+	}
     }
 
   print_result ();
@@ -157,7 +158,9 @@ log_top (FILE * fp, char *filename, long start_offset, long end_offset)
       else if (log_type == CAS_LOG_BEGIN_WITH_MONTH)
 	{
 	  fprintf (stderr, "invaild version of log file\n");
-	  goto error;
+	  t_string_free (str_buf);
+	  t_string_free (linebuf_tstr);
+	  return LT_INVAILD_VERSION;
 	}
 
       if (is_first)
@@ -201,12 +204,12 @@ log_top (FILE * fp, char *filename, long start_offset, long end_offset)
   t_string_free (str_buf);
   t_string_free (linebuf_tstr);
 
-  return 0;
+  return LT_NO_ERROR;
 
 error:
   t_string_free (str_buf);
   t_string_free (linebuf_tstr);
-  return -1;
+  return LT_OTHER_ERROR;
 }
 
 static void

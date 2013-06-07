@@ -174,6 +174,7 @@ log_top_query (int argc, char *argv[], int arg_start)
   FILE *fp;
   char *filename;
   int i;
+  int error = 0;
   long start_offset, end_offset;
 #ifdef MT_MODE
   T_THREAD thrid;
@@ -239,12 +240,12 @@ log_top_query (int argc, char *argv[], int arg_start)
 	    break;
 	}
 #else
-      if (log_top (fp, filename, start_offset, end_offset) < 0)
-	{
-	  fclose (fp);
-	  return -1;
-	}
+      error = log_top (fp, filename, start_offset, end_offset);
       fclose (fp);
+      if (error == LT_INVAILD_VERSION)
+	{
+	  return error;
+	}
 #endif
     }
 
@@ -357,7 +358,10 @@ log_top (FILE * fp, char *filename, long start_offset, long end_offset)
       if (log_type == CAS_LOG_BEGIN_WITH_MONTH)
 	{
 	  fprintf (stderr, "invaild version of log file\n");
-	  goto log_top_err;
+	  t_string_free (cas_log_buf);
+	  t_string_free (sql_buf);
+	  t_string_free (linebuf_tstr);
+	  return LT_INVAILD_VERSION;
 	}
       else if (log_type != CAS_LOG_BEGIN_WITH_YEAR)
 	{
@@ -536,13 +540,13 @@ log_top (FILE * fp, char *filename, long start_offset, long end_offset)
   t_string_free (cas_log_buf);
   t_string_free (sql_buf);
   t_string_free (linebuf_tstr);
-  return 0;
+  return LT_NO_ERROR;
 
 log_top_err:
   t_string_free (cas_log_buf);
   t_string_free (sql_buf);
   t_string_free (linebuf_tstr);
-  return -1;
+  return LT_OTHER_ERROR;
 }
 
 static int

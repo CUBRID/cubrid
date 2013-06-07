@@ -44,6 +44,13 @@ enum t_log_top_mode
   MODE_MAX_HANDLE = 1
 };
 
+enum log_top_error_code
+{
+  LT_NO_ERROR = 0,
+  LT_INVAILD_VERSION = -1,
+  LT_OTHER_ERROR = -2
+};
+
 extern int check_log_time (char *start_date, char *end_date);
 extern int log_top_tran (int argc, char *argv[], int arg_start);
 extern int get_file_offset (char *filename, long *start_offset,
