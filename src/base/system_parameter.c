@@ -364,6 +364,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HA_SQL_LOG_MAX_SIZE_IN_MB "ha_sql_log_max_size_in_mbytes"
 
+#define PRM_NAME_HA_COPY_LOG_MAX_ARCHIVES "ha_copy_log_max_archives"
+
 #define PRM_NAME_JAVA_STORED_PROCEDURE "java_stored_procedure"
 
 #define PRM_NAME_COMPAT_PRIMARY_KEY "compat_primary_key"
@@ -1102,6 +1104,11 @@ int PRM_HA_SQL_LOG_MAX_SIZE_IN_MB = INT_MIN;
 static int prm_ha_sql_log_max_size_in_mb_default = 50;
 static int prm_ha_sql_log_max_size_in_mb_upper = 2048;
 static int prm_ha_sql_log_max_size_in_mb_lower = 1;
+
+int PRM_HA_COPY_LOG_MAX_ARCHIVES = 1;
+static int prm_ha_copy_log_max_archives_default = 1;
+static int prm_ha_copy_log_max_archives_upper = INT_MAX;
+static int prm_ha_copy_log_max_archives_lower = 0;
 
 bool PRM_JAVA_STORED_PROCEDURE = false;
 static bool prm_java_stored_procedure_default = false;
@@ -2271,6 +2278,14 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_HA_SQL_LOG_MAX_SIZE_IN_MB,
    (void *) &prm_ha_sql_log_max_size_in_mb_upper,
    (void *) &prm_ha_sql_log_max_size_in_mb_lower,
+   (char *) NULL},
+  {PRM_NAME_HA_COPY_LOG_MAX_ARCHIVES,
+   (PRM_FOR_CLIENT | PRM_FOR_HA),
+   PRM_INTEGER,
+   (void *) &prm_ha_copy_log_max_archives_default,
+   (void *) &PRM_HA_COPY_LOG_MAX_ARCHIVES,
+   (void *) &prm_ha_copy_log_max_archives_upper,
+   (void *) &prm_ha_copy_log_max_archives_lower,
    (char *) NULL},
   {PRM_NAME_JAVA_STORED_PROCEDURE,
    (PRM_FOR_SERVER),

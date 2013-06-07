@@ -7092,7 +7092,8 @@ la_remove_archive_logs (const char *db_name, int last_deleted_arv_num,
 			int nxarv_num)
 {
   int error = NO_ERROR;
-  int log_max_archives = prm_get_integer_value (PRM_ID_LOG_MAX_ARCHIVES);
+  int log_max_archives =
+    prm_get_integer_value (PRM_ID_HA_COPY_LOG_MAX_ARCHIVES);
   const char *info_reason, *catmsg;
   char archive_name[PATH_MAX] = { '\0', }, archive_name_first[PATH_MAX];
   int first_arv_num_to_delete = -1;
