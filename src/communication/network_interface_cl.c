@@ -6509,6 +6509,14 @@ stats_update_class_statistics (OID * classoid, BTID * btid, int do_now)
   int success;
 
   ENTER_SERVER ();
+  if (!do_now)
+    {
+      /* postpone updating statistics */
+      log_add_to_modified_class_list (NULL, classoid, btid,
+				      UPDATE_STATS_ACTION_SET);
+      EXIT_SERVER ();
+      return NO_ERROR;
+    }
 
   if (btid == NULL || BTID_IS_NULL (btid))
     {
