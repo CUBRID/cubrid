@@ -143,11 +143,12 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id,
   SOCKET srv_sock_fd;
   char client_info[SRV_CON_CLIENT_INFO_SIZE];
   char db_info[SRV_CON_DB_INFO_SIZE];
+  char ver_str[SRV_CON_VER_STR_MAX_SIZE];
   MSG_HEADER msg_header;
   int err_code, ret_value;
   int err_indicator;
   int new_port;
-  char *msg_buf, *info, *p;
+  char *msg_buf, *info, *p, *ver_ptr;
   unsigned char *ip_addr;
   int port;
   int body_len;
@@ -185,7 +186,19 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id,
     }
   info += SRV_CON_DBPASSWD_SIZE;
 
-  strncpy (info, con_handle->url, SRV_CON_URL_SIZE);
+  strncpy (info, con_handle->url, SRV_CON_URL_SIZE - 1);
+  strncpy (ver_str, MAKE_STR (BUILD_NUMBER), SRV_CON_VER_STR_MAX_SIZE);
+
+  ver_ptr = info + strlen (con_handle->url) + 1;
+  if (strlen (con_handle->url) + strlen (ver_str) + 3 <= SRV_CON_URL_SIZE)
+    {
+      ver_ptr[0] = (char) strlen (ver_str) + 1;
+      memcpy (ver_ptr + 1, ver_str, strlen (ver_str) + 1);
+    }
+  else
+    {
+      ver_ptr[0] = (char) 0;
+    }
   info += SRV_CON_URL_SIZE;
 
   broker_ver = hm_get_broker_version (con_handle);

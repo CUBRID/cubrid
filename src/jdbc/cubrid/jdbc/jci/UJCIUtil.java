@@ -103,13 +103,20 @@ abstract public class UJCIUtil {
 		return data;
 	}
 
-	static public void copy_byte(byte[] dest, int dIndex, int cpSize, String src) {
+	static public void copy_bytes(byte[] dest, int dIndex, int cpSize, String src) {
 		if (src == null)
 			return;
 
 		byte[] b = src.getBytes();
 		cpSize = (cpSize > b.length) ? b.length : cpSize;
 		System.arraycopy(b, 0, dest, dIndex, cpSize);
+	}
+
+	static public void copy_byte(byte[] dest, int dIndex, byte src) {
+		if (dest.length < dIndex)
+			return;
+
+		dest[dIndex] = src;
 	}
 
 	public static boolean isMysqlMode(Class<?> c) {

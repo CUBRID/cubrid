@@ -134,12 +134,13 @@ typedef enum
   FIELD_HOST,
   FIELD_LAST_CONNECT_TIME,
   FIELD_CLIENT_IP,
+  FIELD_CLIENT_VERSION,
   FIELD_SQL_LOG_MODE,
   FIELD_TRANSACTION_STIME,
   FIELD_CONNECT,
   FIELD_RESTART,
-  FIELD_STMT_Q_SIZE,
-  FIELD_SHARD_Q_SIZE,		/* = 50 */
+  FIELD_STMT_Q_SIZE,		/* = 50 */
+  FIELD_SHARD_Q_SIZE,
   FIELD_LAST = FIELD_SHARD_Q_SIZE
 } FIELD_NAME;
 
@@ -229,6 +230,7 @@ struct status_field fields[FIELD_LAST + 1] = {
   {FIELD_HOST, 16, "HOST", FIELD_RIGHT_ALIGN},
   {FIELD_LAST_CONNECT_TIME, 19, "LAST CONNECT TIME", FIELD_RIGHT_ALIGN},
   {FIELD_CLIENT_IP, 15, "CLIENT IP", FIELD_RIGHT_ALIGN},
+  {FIELD_CLIENT_VERSION, 19, "CLIENT VERSION", FIELD_RIGHT_ALIGN},
   {FIELD_SQL_LOG_MODE, 15, "SQL_LOG_MODE", FIELD_RIGHT_ALIGN},
   {FIELD_TRANSACTION_STIME, 19, "TRANSACTION STIME", FIELD_RIGHT_ALIGN},
   {FIELD_CONNECT, 9, "#CONNECT", FIELD_RIGHT_ALIGN},
@@ -953,6 +955,8 @@ appl_info_display (T_SHM_APPL_SERVER * shm_appl,
       print_value (FIELD_CLIENT_IP,
 		   ut_get_ipv4_string (ip_str, sizeof (ip_str),
 				       as_info_p->cas_clt_ip),
+		   FIELD_T_STRING);
+      print_value (FIELD_CLIENT_VERSION, as_info_p->driver_version,
 		   FIELD_T_STRING);
 #endif /* !CUBRID_SHARD */
       if (as_info_p->cur_sql_log_mode != shm_appl->sql_log_mode)
@@ -1906,6 +1910,7 @@ print_header (bool use_pdh_flag)
 				NULL);
 #if !defined(CUBRID_SHARD)
       buf_offset = print_title (buf, buf_offset, FIELD_CLIENT_IP, NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_CLIENT_VERSION, NULL);
 #endif /* CUBRID_SHARD */
       buf_offset = print_title (buf, buf_offset, FIELD_SQL_LOG_MODE, NULL);
 #if !defined(CUBRID_SHARD)

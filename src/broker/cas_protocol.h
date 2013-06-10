@@ -53,6 +53,7 @@ extern "C"
 #define SRV_CON_DBPASSWD_SIZE		32
 #define SRV_CON_URL_SIZE                512
 #define SRV_CON_DBSESS_ID_SIZE		20
+#define SRV_CON_VER_STR_MAX_SIZE        20
 
 #define SRV_CON_DB_INFO_SIZE \
         (SRV_CON_DBNAME_SIZE + SRV_CON_DBUSER_SIZE + SRV_CON_DBPASSWD_SIZE + \
@@ -294,6 +295,32 @@ extern "C"
         CAS_MAKE_VER ((DRIVER_INFO)[SRV_CON_MSG_IDX_MAJOR_VER], \
                       (DRIVER_INFO)[SRV_CON_MSG_IDX_MINOR_VER], \
                       (DRIVER_INFO)[SRV_CON_MSG_IDX_PATCH_VER])
+
+/* For backward compatibility */
+#define CAS_VER_TO_MAJOR(VER)    ((int) (((VER) >> 16) & 0xFF))
+#define CAS_VER_TO_MINOR(VER)    ((int) (((VER) >> 8) & 0xFF))
+#define CAS_VER_TO_PATCH(VER)    ((int) ((VER) & 0xFF))
+#define CAS_PROTO_TO_VER_STR(MSG_P, VER)			\
+	do {							\
+            switch (VER)					\
+              {							\
+            case PROTOCOL_V1:					\
+                *((char **) (MSG_P)) = (char *) "8.4.1";	\
+                break;						\
+            case PROTOCOL_V2:					\
+                *((char **) (MSG_P)) = (char *) "9.0.0";	\
+                break;						\
+            case PROTOCOL_V3:					\
+                *((char **) (MSG_P)) = (char *) "8.4.3";	\
+                break;						\
+            case PROTOCOL_V4:					\
+                *((char **) (MSG_P)) = (char *) "9.1.0";	\
+                break;						\
+            default:						\
+                *((char **) (MSG_P)) = (char *) "";		\
+                break;						\
+              }							\
+	} while (0)
 
   typedef int T_BROKER_VERSION;
 

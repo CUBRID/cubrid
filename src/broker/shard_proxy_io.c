@@ -1576,9 +1576,12 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
   T_IO_BUFFER *read_buffer;
   T_SHARD_USER *user_p;
   T_PROXY_EVENT *event_p;
+  T_CLIENT_INFO *client_info_p;
   unsigned char *ip_addr;
+  char len;
   char *driver_info;
   T_BROKER_VERSION client_version;
+  char driver_version[SRV_CON_VER_STR_MAX_SIZE];
   char err_msg[256];
 
   ENTER_FUNC ();
@@ -1660,6 +1663,46 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
     {
       url = db_passwd + SRV_CON_DBPASSWD_SIZE;
       url[SRV_CON_URL_SIZE + 1] = '\0';
+      driver_version[0] = '\0';
+      if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
+	{
+	  len = *(url + strlen (url) + 1);
+	  if (len > 0 && len < SRV_CON_VER_STR_MAX_SIZE)
+	    {
+	      memcpy (driver_version, url + strlen (url) + 2, (int) len);
+	      driver_version[len + 1] = '\0';
+	    }
+	  else
+	    {
+	      snprintf (driver_version, SRV_CON_VER_STR_MAX_SIZE,
+			"PROTOCOL V%d",
+			(int) (CAS_PROTO_VER_MASK & client_version));
+	    }
+	}
+      else
+	if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V1))
+	{
+	  char *ver;
+
+	  CAS_PROTO_TO_VER_STR (&ver,
+				(int) (CAS_PROTO_VER_MASK & client_version));
+
+	  strncpy (driver_version, ver, SRV_CON_VER_STR_MAX_SIZE);
+	}
+      else
+	{
+	  snprintf (driver_version, SRV_CON_VER_STR_MAX_SIZE,
+		    "%d.%d.%d", CAS_VER_TO_MAJOR (client_version),
+		    CAS_VER_TO_MINOR (client_version),
+		    CAS_VER_TO_PATCH (client_version));
+	}
+      client_info_p = shard_shm_get_client_info (proxy_info_p,
+						 sock_io_p->id.client_id);
+      if (client_info_p)
+	{
+	  memcpy (client_info_p->driver_version, driver_version,
+		  sizeof (driver_version));
+	}
     }
 
   /* SHARD DO NOT SUPPORT SESSION */
@@ -3483,7 +3526,7 @@ proxy_cas_io_free (int shard_id, int cas_id)
   if (cas_io_p->is_in_tran == true)
     {
       if (shard_shm_set_as_client_info
-	  (proxy_info_p, shm_as_p, shard_id, cas_id, 0, NULL) == false)
+	  (proxy_info_p, shm_as_p, shard_id, cas_id, 0, NULL, NULL) == false)
 	{
 	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
 		     "Unable to find CAS info in shared memory. "
@@ -3568,7 +3611,7 @@ proxy_cas_io_free_by_ctx (int shard_id, int cas_id, int ctx_cid,
     }
 
   if (shard_shm_set_as_client_info
-      (proxy_info_p, shm_as_p, shard_id, cas_id, 0, NULL) == false)
+      (proxy_info_p, shm_as_p, shard_id, cas_id, 0, NULL, NULL) == false)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
 		 "Unable to find CAS info in shared memory. "
@@ -3955,7 +3998,7 @@ proxy_cas_release_by_ctx (int shard_id, int cas_id, int ctx_cid,
     }
 
   if (shard_shm_set_as_client_info
-      (proxy_info_p, shm_as_p, shard_id, cas_id, 0, NULL) == false)
+      (proxy_info_p, shm_as_p, shard_id, cas_id, 0, NULL, NULL) == false)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
 		 "Unable to find CAS info in shared memory. "

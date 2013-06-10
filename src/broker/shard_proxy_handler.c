@@ -847,6 +847,7 @@ proxy_handler_process_client_wakeup_by_shard (T_PROXY_EVENT * event_p)
   else if (shard_shm_set_as_client_info (proxy_info_p, shm_as_p,
 					 event_p->shard_id, event_p->cas_id,
 					 client_info_p->client_ip,
+					 client_info_p->driver_info,
 					 client_info_p->driver_info) == false)
     {
 

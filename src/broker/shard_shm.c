@@ -857,7 +857,7 @@ bool
 shard_shm_set_as_client_info (T_PROXY_INFO * proxy_info_p,
 			      T_SHM_APPL_SERVER * shm_as_p, int shard_id,
 			      int as_id, unsigned int ip_addr,
-			      char *driver_info)
+			      char *driver_info, char *driver_version)
 {
   T_APPL_SERVER_INFO *as_info_p = NULL;
 
@@ -878,6 +878,15 @@ shard_shm_set_as_client_info (T_PROXY_INFO * proxy_info_p,
     {
       as_info_p->clt_version = 0;
       memset (as_info_p->driver_info, 0, SRV_CON_CLIENT_INFO_SIZE);
+    }
+  if (driver_version)
+    {
+      memcpy (as_info_p->driver_version, driver_version,
+	      SRV_CON_VER_STR_MAX_SIZE);
+    }
+  else
+    {
+      as_info_p->driver_version[0] = '\0';
     }
 
   return true;
@@ -912,6 +921,8 @@ shard_shm_set_as_client_info_with_db_param (T_PROXY_INFO * proxy_info_p,
       as_info_p->clt_version = 0;
       memset (as_info_p->driver_info, 0, SRV_CON_CLIENT_INFO_SIZE);
     }
+  memcpy (as_info_p->driver_version, client_info_p->driver_version,
+	  SRV_CON_VER_STR_MAX_SIZE);
 
   as_info_p->isolation_level = client_info_p->isolation_level;
   as_info_p->lock_timeout = client_info_p->lock_timeout;

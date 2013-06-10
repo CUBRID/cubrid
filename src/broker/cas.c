@@ -1060,6 +1060,7 @@ main (int argc, char *argv[])
 	  }
 	else
 	  {
+	    char len;
 	    unsigned char *ip_addr;
 	    char *db_err_msg = NULL, *url;
 	    struct timeval cas_start_time;
@@ -1110,6 +1111,48 @@ main (int argc, char *argv[])
 		 */
 		db_sessionid = NULL;
 	      }
+	    as_info->driver_version[0] = '\0';
+	    if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info.client_version,
+						     PROTOCOL_V5))
+	      {
+		len = *(url + strlen (url) + 1);
+		if (len > 0 && len < SRV_CON_VER_STR_MAX_SIZE)
+		  {
+		    memcpy (as_info->driver_version, url + strlen (url) + 2,
+			    (int) len);
+		    as_info->driver_version[len + 1] = '\0';
+		  }
+		else
+		  {
+		    snprintf (as_info->driver_version,
+			      SRV_CON_VER_STR_MAX_SIZE, "PROTOCOL V%d",
+			      (int) (CAS_PROTO_VER_MASK & req_info.
+				     client_version));
+		  }
+	      }
+	    else
+	      if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL
+		  (req_info.client_version, PROTOCOL_V1))
+	      {
+		char *ver;
+
+		CAS_PROTO_TO_VER_STR (&ver,
+				      (int) (CAS_PROTO_VER_MASK & req_info.
+					     client_version));
+
+		strncpy (as_info->driver_version, ver,
+			 SRV_CON_VER_STR_MAX_SIZE);
+	      }
+	    else
+	      {
+		snprintf (as_info->driver_version,
+			  SRV_CON_VER_STR_MAX_SIZE, "%d.%d.%d",
+			  CAS_VER_TO_MAJOR (req_info.client_version),
+			  CAS_VER_TO_MINOR (req_info.client_version),
+			  CAS_VER_TO_PATCH (req_info.client_version));
+	      }
+	    cas_log_write_and_end (0, false, "CLIENT VERSION %s",
+				   as_info->driver_version);
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 	    cas_set_session_id (req_info.client_version, db_sessionid);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
@@ -2297,6 +2340,8 @@ net_read_process (SOCKET proxy_sock_fd,
 	  req_info->client_version = as_info->clt_version;
 	  memcpy (req_info->driver_info, as_info->driver_info,
 		  SRV_CON_CLIENT_INFO_SIZE);
+	  cas_log_write_and_end (0, false, "CLIENT VERSION %s",
+				 as_info->driver_version);
 	}
     }
 

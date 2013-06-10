@@ -56,7 +56,8 @@ extern bool shard_shm_set_as_client_info (T_PROXY_INFO * proxy_info_p,
 					  T_SHM_APPL_SERVER * shm_as_p,
 					  int shard_id, int as_id,
 					  unsigned int ip_addr,
-					  char *driver_info);
+					  char *driver_info,
+					  char *driver_version);
 extern bool shard_shm_set_as_client_info_with_db_param (T_PROXY_INFO *
 							proxy_info_p,
 							T_SHM_APPL_SERVER *

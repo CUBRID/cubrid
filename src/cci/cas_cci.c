@@ -94,8 +94,6 @@ int wsa_initialize ();
 /************************************************************************
  * PRIVATE DEFINITIONS							*
  ************************************************************************/
-#define MAKE_STRI(x) #x
-#define MAKE_STR(x) MAKE_STRI(x)
 
 #ifdef CCI_DEBUG
 #define CCI_DEBUG_PRINT(DEBUG_MSG_FUNC)		DEBUG_MSG_FUNC

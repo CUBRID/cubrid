@@ -119,6 +119,9 @@ public class UConnection {
 
 	private final static int SOCKET_TIMEOUT = 5000;
 
+    /* driver version */
+	private final static int DRIVER_VERSION_MAX_SIZE = 20;
+
 	/* casinfo */
 	private final static byte CAS_INFO_STATUS_INACTIVE = 0;
 	private final static byte CAS_INFO_STATUS_ACTIVE = 1;
@@ -207,7 +210,7 @@ public class UConnection {
 
 	static {
 		driverInfo = new byte[10];
-		UJCIUtil.copy_byte(driverInfo, 0, 5, magicString);
+		UJCIUtil.copy_bytes(driverInfo, 0, 5, magicString);
 		driverInfo[5] = CAS_CLIENT_JDBC;
 		driverInfo[6] = CAS_PROTO_INDICATOR | CAS_PROTOCOL_VERSION;
 		driverInfo[7] = CAS_RENEWED_ERROR_CODE | CAS_SUPPORT_HOLDABLE_RESULT | CAS_RECONNECT_WHEN_SERVER_DOWN;
@@ -1602,10 +1605,33 @@ public class UConnection {
 		// SRV_CON_DBPASSWD_SIZE + \
 		// SRV_CON_URL_SIZE + SRV_CON_DBSESS_ID_SIZE)
 		byte[] info = new byte[32 + 32 + 32 + 512 + 20];
-		UJCIUtil.copy_byte(info, 0, 32, dbname);
-		UJCIUtil.copy_byte(info, 32, 32, user);
-		UJCIUtil.copy_byte(info, 64, 32, passwd);
-		UJCIUtil.copy_byte(info, 96, 512, url);
+		UJCIUtil.copy_bytes(info, 0, 32, dbname);
+		UJCIUtil.copy_bytes(info, 32, 32, user);
+		UJCIUtil.copy_bytes(info, 64, 32, passwd);
+		UJCIUtil.copy_bytes(info, 96, 511, url);
+
+		if (url == null)
+		{
+			UJCIUtil.copy_byte(info, 96, (byte) 0); // null
+			UJCIUtil.copy_byte(info, 97, (byte) 0); // length
+		}
+		else
+		{
+			String version = CUBRIDDriver.version_string;
+			int index = 96 + url.getBytes().length + 1;
+			if ((version.getBytes().length <= DRIVER_VERSION_MAX_SIZE)
+				&& (url.getBytes().length + version.getBytes().length + 3 <= 512)) {
+				
+				// url = ( url string + length (1byte) + version string )
+				byte len = (byte) version.getBytes().length;
+				UJCIUtil.copy_byte(info, index, len);
+				UJCIUtil.copy_bytes(info, index + 1, version.getBytes().length + 1, version);
+			}
+			else
+			{
+				UJCIUtil.copy_byte(info, index, (byte) 0); // length
+			}
+		}
 		return info;
 	}
 
@@ -1906,12 +1932,12 @@ public class UConnection {
 			*   is provided at the time of initial connection.
 			*/
 			String id = "0";
-			UJCIUtil.copy_byte(dbInfo, 608, 20, id);
+			UJCIUtil.copy_bytes(dbInfo, 608, 20, id);
 		}
 		else if (protoVersionIsAbove(PROTOCOL_V3)) {
 			System.arraycopy(sessionId, 0, dbInfo, 608, 20);
 		} else {
-			UJCIUtil.copy_byte(dbInfo, 608, 20, new Integer(oldSessionId).toString());
+		    	UJCIUtil.copy_bytes(dbInfo, 608, 20, new Integer(oldSessionId).toString());
 		}
 
 		if (outBuffer == null) {
