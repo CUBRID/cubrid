@@ -802,21 +802,22 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
   if (select_node->info.query.q.select.single_table_opt
-      && select_node->info.query.q.select.from
-      && !(select_node->info.query.q.select.from->next)
       && OPTIMIZATION_ENABLED (level))
     {
       /* handle special case of query without joins */
-      PT_NODE *save_where;
+      PT_NODE *save_where, *save_from;
       PT_SELECT_INFO *select_info = &select_node->info.query.q.select;
 
       save_where = select_node->info.query.q.select.where;
       select_node->info.query.q.select.where =
 	select_node->info.query.q.select.connect_by;
+      save_from = select_node->info.query.q.select.from->next;
+      select_node->info.query.q.select.from->next = NULL;
 
       xasl = pt_plan_single_table_hq_iterations (parser, select_node, xasl);
 
       select_node->info.query.q.select.where = save_where;
+      select_node->info.query.q.select.from->next = save_from;
 
       if (xasl == NULL)
 	{

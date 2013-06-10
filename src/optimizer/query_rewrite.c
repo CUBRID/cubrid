@@ -7955,23 +7955,6 @@ qo_optimize_queries_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
 	    }
 	}
 
-      /* some uncorrelated subqueries may have been rewritten to joins, thus
-       * invalidating hierarchical query on single table optimization;
-       * if this is the case restore the hierarchical predicates and clear flag
-       */
-      if (tree->info.query.q.select.connect_by
-	  && tree->info.query.q.select.single_table_opt
-	  && tree->info.query.q.select.from->next)
-	{
-	  assert (tree->info.query.q.select.start_with == NULL);
-	  tree->info.query.q.select.start_with =
-	    tree->info.query.q.select.where;
-	  tree->info.query.q.select.where =
-	    tree->info.query.q.select.after_cb_filter;
-	  tree->info.query.q.select.after_cb_filter = NULL;
-	  tree->info.query.q.select.single_table_opt = 0;
-	}
-
       break;
     default:
       break;
