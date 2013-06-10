@@ -3049,7 +3049,6 @@ btree_glean_root_header_info (THREAD_ENTRY * thread_p,
 			      BTID_INT * btid)
 {
   int rc;
-  TP_DOMAIN *domain;
 
   rc = NO_ERROR;
 
@@ -3060,16 +3059,10 @@ btree_glean_root_header_info (THREAD_ENTRY * thread_p,
   btid->ovfid = root_header->ovfid;	/* structure copy */
 
   /*
-   * check for the last element domain of partial-key and key is desc;
+   * check for the last element domain of partial-key is desc;
    * for btree_range_search, part_key_desc is re-set at btree_initialize_bts
    */
   btid->part_key_desc = 0;
-
-  domain = btid->key_type;
-  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_MIDXKEY)
-    {
-      domain = domain->setdomain;
-    }
 
   /* init index key copy_buf info */
   btid->copy_buf = NULL;
@@ -14196,7 +14189,6 @@ btree_initialize_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
   int i;
   int ret = NO_ERROR;
   DB_MIDXKEY *midxkey;
-  TP_DOMAIN *dom;
 
   /* initialize page related fields */
   /* previous leaf page, current leaf page, overflow page */
