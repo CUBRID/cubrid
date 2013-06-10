@@ -26,11 +26,7 @@
 #define DECLSPECIFIER __declspec(dllexport)
 #else
 #define DECLSPECIFIER __declspec(dllimport)
-#ifdef _DEBUG
-#pragma comment(lib, "DBGWConnector3D.lib")
-#else
 #pragma comment(lib, "DBGWConnector3.lib")
-#endif
 #endif
 typedef __int64 int64;
 #else /* WINDOWS */
