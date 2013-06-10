@@ -2487,14 +2487,13 @@ proxy_socket_io_write_to_client (T_SOCKET_IO * sock_io_p)
       return;
     }
 
-  if (ctx_p->free_on_client_io_write)
+  if (ctx_p->free_on_client_io_write && sock_io_p->write_event == NULL)
     {
       /* init shared memory T_CLIENT_INFO */
       client_info_p =
 	shard_shm_get_client_info (proxy_info_p, sock_io_p->id.client_id);
       shard_shm_init_client_info (client_info_p);
 
-      sock_io_p->status = SOCK_IO_CLOSE_WAIT;
       proxy_context_free (ctx_p);
     }
 
@@ -2735,6 +2734,12 @@ proxy_socket_io_write (T_SOCKET_IO * sock_io_p)
 #endif /* !LINUX */
 
       return;
+    }
+  else if (sock_io_p->status == SOCK_IO_IDLE)
+    {
+      assert (false);
+      PROXY_DEBUG_LOG ("Unexpected socket status. (fd:%d, status:%d). \n",
+		       sock_io_p->fd, sock_io_p->status);
     }
 
   if (sock_io_p->write_event == NULL)
