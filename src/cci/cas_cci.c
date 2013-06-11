@@ -4287,7 +4287,7 @@ cci_get_err_msg_internal (int error)
       return "Invalid lob handle";
 
     case CCI_ER_NO_PROPERTY:
-      return "Could not found a property";
+      return "Cannot find a property";
 
     case CCI_ER_PROPERTY_TYPE:
       return "Invalid property type";
