@@ -2046,14 +2046,17 @@ admin_shard_conf_change (int master_shm_id, const char *sh_name,
     {
       int sql_log_max_size;
 
-      sql_log_max_size = atoi (conf_value);
+      sql_log_max_size = (int) ut_size_string_to_kbyte (conf_value, "K");
+
       if (sql_log_max_size <= 0)
 	{
-	  sql_log_max_size = DEFAULT_SQL_LOG_MAX_SIZE;
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_shard_conf_error;
 	}
-      if (sql_log_max_size > MAX_SQL_LOG_MAX_SIZE)
+      else if (sql_log_max_size > MAX_SQL_LOG_MAX_SIZE)
 	{
-	  sql_log_max_size = MAX_SQL_LOG_MAX_SIZE;
+	  sprintf (admin_err_msg, "value is out of range : %s", conf_value);
+	  goto set_shard_conf_error;
 	}
       br_info_p->sql_log_max_size = sql_log_max_size;
       shm_as_p->sql_log_max_size = sql_log_max_size;
@@ -2062,10 +2065,12 @@ admin_shard_conf_change (int master_shm_id, const char *sh_name,
     {
       float long_query_time;
 
-      long_query_time = (float) strtod (conf_value, NULL);
+      long_query_time = (float) ut_time_string_to_sec (conf_value, "sec");
+
       if (long_query_time <= 0)
 	{
-	  long_query_time = (float) DEFAULT_LONG_QUERY_TIME;
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_shard_conf_error;
 	}
       br_info_p->long_query_time = (int) (long_query_time * 1000.0);
       shm_as_p->long_query_time = (int) (long_query_time * 1000.0);
@@ -2074,10 +2079,13 @@ admin_shard_conf_change (int master_shm_id, const char *sh_name,
     {
       float long_transaction_time;
 
-      long_transaction_time = (float) strtod (conf_value, NULL);
+      long_transaction_time =
+	(float) ut_time_string_to_sec (conf_value, "sec");
+
       if (long_transaction_time <= 0)
 	{
-	  long_transaction_time = (float) DEFAULT_LONG_TRANSACTION_TIME;
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_shard_conf_error;
 	}
       br_info_p->long_transaction_time =
 	(int) (long_transaction_time * 1000.0);
@@ -2088,8 +2096,14 @@ admin_shard_conf_change (int master_shm_id, const char *sh_name,
     {
       int max_size;
 
-      max_size = atoi (conf_value);
-      max_size *= ONE_K;
+      max_size = (int) ut_size_string_to_kbyte (conf_value, "M");
+
+      if (max_size < 0)
+	{
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_shard_conf_error;
+	}
+
       if (max_size > 0
 	  && max_size > (shm_br->br_info[br_index].appl_server_hard_limit))
 	{
@@ -2108,23 +2122,17 @@ admin_shard_conf_change (int master_shm_id, const char *sh_name,
       int hard_limit;
       int max_hard_limit;
 
-      /* hard limit must be between 1 and INT_MAX / ONE_K (2097151) */
-      if (port_str_to_int (&hard_limit, conf_value, 10) < 0)
-	{
-	  sprintf (admin_err_msg, "Invalid value: %s", conf_value);
-	  goto set_shard_conf_error;
-	}
+      hard_limit = (int) ut_size_string_to_kbyte (conf_value, "M");
 
-      max_hard_limit = INT_MAX / ONE_K;
-      if (hard_limit <= 0 || hard_limit > max_hard_limit)
+      max_hard_limit = INT_MAX;
+      if (hard_limit <= 0)
 	{
 	  sprintf (admin_err_msg,
-		   "APPL_SERVER_MAX_SIZE_HARD_LIMIT(%dM) must be between 1 and %d",
-		   hard_limit, max_hard_limit);
+		   "APPL_SERVER_MAX_SIZE_HARD_LIMIT must be between 1 and %d",
+		   max_hard_limit / ONE_K);
 	  goto set_shard_conf_error;
 	}
 
-      hard_limit *= ONE_K;
       if (hard_limit < shm_br->br_info[br_index].appl_server_max_size)
 	{
 	  sprintf (admin_err_msg,
@@ -2153,10 +2161,11 @@ admin_shard_conf_change (int master_shm_id, const char *sh_name,
     {
       int time_to_kill;
 
-      time_to_kill = atoi (conf_value);
+      time_to_kill = (int) ut_time_string_to_sec (conf_value, "sec");
       if (time_to_kill <= 0)
 	{
-	  time_to_kill = DEFAULT_TIME_TO_KILL;
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_shard_conf_error;
 	}
       br_info_p->time_to_kill = time_to_kill;
     }
@@ -2276,10 +2285,16 @@ admin_shard_conf_change (int master_shm_id, const char *sh_name,
     {
       int val;
 
-      val = atoi (conf_value);
-      if (val < 0 || val > MAX_QUERY_TIMEOUT_LIMIT)
+      val = (int) ut_time_string_to_sec (conf_value, "sec");
+
+      if (val < 0)
 	{
 	  sprintf (admin_err_msg, "invalid value: %s", conf_value);
+	  goto set_shard_conf_error;
+	}
+      else if (val > MAX_QUERY_TIMEOUT_LIMIT)
+	{
+	  sprintf (admin_err_msg, "value is out of range : %s", conf_value);
 	  goto set_shard_conf_error;
 	}
       br_info_p->query_timeout = val;
@@ -2363,14 +2378,17 @@ admin_shard_conf_change (int master_shm_id, const char *sh_name,
     {
       int proxy_log_max_size;
 
-      proxy_log_max_size = atoi (conf_value);
+      proxy_log_max_size = (int) ut_size_string_to_kbyte (conf_value, "K");
+
       if (proxy_log_max_size <= 0)
 	{
-	  proxy_log_max_size = DEFAULT_PROXY_LOG_MAX_SIZE;
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_shard_conf_error;
 	}
-      if (proxy_log_max_size > MAX_PROXY_LOG_MAX_SIZE)
+      else if (proxy_log_max_size > MAX_PROXY_LOG_MAX_SIZE)
 	{
-	  proxy_log_max_size = MAX_PROXY_LOG_MAX_SIZE;
+	  sprintf (admin_err_msg, "value is out of range : %s", conf_value);
+	  goto set_shard_conf_error;
 	}
       br_info_p->proxy_log_max_size = proxy_log_max_size;
       shm_as_p->proxy_log_max_size = proxy_log_max_size;
@@ -2552,14 +2570,17 @@ admin_broker_conf_change (int master_shm_id, const char *br_name,
     {
       int sql_log_max_size;
 
-      sql_log_max_size = atoi (conf_value);
+      sql_log_max_size = (int) ut_size_string_to_kbyte (conf_value, "K");
+
       if (sql_log_max_size <= 0)
 	{
-	  sql_log_max_size = DEFAULT_SQL_LOG_MAX_SIZE;
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_broker_conf_error;
 	}
-      if (sql_log_max_size > MAX_SQL_LOG_MAX_SIZE)
+      else if (sql_log_max_size > MAX_SQL_LOG_MAX_SIZE)
 	{
-	  sql_log_max_size = MAX_SQL_LOG_MAX_SIZE;
+	  sprintf (admin_err_msg, "value is out of range : %s", conf_value);
+	  goto set_broker_conf_error;
 	}
       shm_br->br_info[br_index].sql_log_max_size = sql_log_max_size;
       shm_appl->sql_log_max_size = sql_log_max_size;
@@ -2568,10 +2589,11 @@ admin_broker_conf_change (int master_shm_id, const char *br_name,
     {
       float long_query_time;
 
-      long_query_time = (float) strtod (conf_value, NULL);
+      long_query_time = (float) ut_time_string_to_sec (conf_value, "sec");
       if (long_query_time <= 0)
 	{
-	  long_query_time = (float) DEFAULT_LONG_QUERY_TIME;
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_broker_conf_error;
 	}
       shm_br->br_info[br_index].long_query_time =
 	(int) (long_query_time * 1000.0);
@@ -2581,10 +2603,12 @@ admin_broker_conf_change (int master_shm_id, const char *br_name,
     {
       float long_transaction_time;
 
-      long_transaction_time = (float) strtod (conf_value, NULL);
+      long_transaction_time =
+	(float) ut_time_string_to_sec (conf_value, "sec");
       if (long_transaction_time <= 0)
 	{
-	  long_transaction_time = (float) DEFAULT_LONG_TRANSACTION_TIME;
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_broker_conf_error;
 	}
       shm_br->br_info[br_index].long_transaction_time =
 	(int) (long_transaction_time * 1000.0);
@@ -2595,8 +2619,14 @@ admin_broker_conf_change (int master_shm_id, const char *br_name,
     {
       int max_size;
 
-      max_size = atoi (conf_value);
-      max_size *= ONE_K;
+      max_size = (int) ut_size_string_to_kbyte (conf_value, "M");
+
+      if (max_size < 0)
+	{
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_broker_conf_error;
+	}
+
       if (max_size > 0
 	  && max_size > (shm_br->br_info[br_index].appl_server_hard_limit))
 	{
@@ -2615,23 +2645,17 @@ admin_broker_conf_change (int master_shm_id, const char *br_name,
       int hard_limit;
       int max_hard_limit;
 
-      /* hard limit must be between 1 and INT_MAX / ONE_K (2097151) */
-      if (port_str_to_int (&hard_limit, conf_value, 10) < 0)
-	{
-	  sprintf (admin_err_msg, "Invalid value: %s", conf_value);
-	  goto set_broker_conf_error;
-	}
+      hard_limit = (int) ut_size_string_to_kbyte (conf_value, "M");
 
-      max_hard_limit = INT_MAX / ONE_K;
-      if (hard_limit <= 0 || hard_limit > max_hard_limit)
+      max_hard_limit = INT_MAX;
+      if (hard_limit <= 0)
 	{
 	  sprintf (admin_err_msg,
-		   "APPL_SERVER_MAX_SIZE_HARD_LIMIT(%dM) must be between 1 and %d",
-		   hard_limit, max_hard_limit);
+		   "APPL_SERVER_MAX_SIZE_HARD_LIMIT must be between 1 and %d",
+		   max_hard_limit / ONE_K);
 	  goto set_broker_conf_error;
 	}
 
-      hard_limit *= ONE_K;
       if (hard_limit < shm_br->br_info[br_index].appl_server_max_size)
 	{
 	  sprintf (admin_err_msg,
@@ -2660,10 +2684,11 @@ admin_broker_conf_change (int master_shm_id, const char *br_name,
     {
       int time_to_kill;
 
-      time_to_kill = atoi (conf_value);
+      time_to_kill = (int) ut_time_string_to_sec (conf_value, "sec");
       if (time_to_kill <= 0)
 	{
-	  time_to_kill = DEFAULT_TIME_TO_KILL;
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_broker_conf_error;
 	}
       shm_br->br_info[br_index].time_to_kill = time_to_kill;
     }
@@ -2783,10 +2808,16 @@ admin_broker_conf_change (int master_shm_id, const char *br_name,
     {
       int val;
 
-      val = atoi (conf_value);
-      if (val < 0 || val > MAX_QUERY_TIMEOUT_LIMIT)
+      val = (int) ut_time_string_to_sec (conf_value, "sec");
+
+      if (val < 0)
 	{
 	  sprintf (admin_err_msg, "invalid value: %s", conf_value);
+	  goto set_broker_conf_error;
+	}
+      else if (val > MAX_QUERY_TIMEOUT_LIMIT)
+	{
+	  sprintf (admin_err_msg, "value is out of range : %s", conf_value);
 	  goto set_broker_conf_error;
 	}
       shm_br->br_info[br_index].query_timeout = val;

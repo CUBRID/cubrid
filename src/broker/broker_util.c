@@ -590,3 +590,126 @@ ut_is_appl_server_ready (int pid, char *ready_flag)
 
   return false;
 }
+
+double
+ut_size_string_to_kbyte (char *size_str, char *default_unit)
+{
+  double val;
+  char *end;
+  char *unit;
+
+  if (size_str == NULL || default_unit == NULL)
+    {
+      assert (false);
+    }
+
+  val = strtod (size_str, &end);
+  if (end == size_str)
+    {
+      return -1.0;
+    }
+
+  if (isalpha (*end))
+    {
+      unit = end;
+    }
+  else
+    {
+      unit = default_unit;
+    }
+
+  if (strncasecmp (unit, "b", 1) == 0 && strlen (unit) == 1)
+    {
+      /* byte */
+      val = val / ONE_K;
+    }
+  else if ((strncasecmp (unit, "k", 1) == 0 && strlen (unit) == 1)
+	   || (strncasecmp (unit, "kb", 2) == 0 && strlen (unit) == 2))
+    {
+      /* kilo */
+    }
+  else if ((strncasecmp (unit, "m", 1) == 0 && strlen (unit) == 1)
+	   || (strncasecmp (unit, "mb", 2) == 0 && strlen (unit) == 2))
+    {
+      /* mega */
+      val = val * ONE_K;
+    }
+  else if ((strncasecmp (unit, "g", 1) == 0 && strlen (unit) == 1)
+	   || (strncasecmp (unit, "gb", 2) == 0 && strlen (unit) == 2))
+    {
+      /* giga */
+      val = val * ONE_M;
+    }
+  else
+    {
+      return -1.0;
+    }
+
+  if (val > INT_MAX)		/* spec */
+    {
+      return -1.0;
+    }
+
+  return val;
+}
+
+double
+ut_time_string_to_sec (char *time_str, char *default_unit)
+{
+  double val;
+  char *end;
+  char *unit;
+
+  if (time_str == NULL || default_unit == NULL)
+    {
+      assert (false);
+    }
+
+  val = strtod (time_str, &end);
+  if (end == time_str)
+    {
+      return -1.0;
+    }
+
+  if (isalpha (*end))
+    {
+      unit = end;
+    }
+  else
+    {
+      unit = default_unit;
+    }
+
+  if ((strncasecmp (unit, "ms", 2) == 0 && strlen (unit) == 2)
+      || (strncasecmp (unit, "msec", 4) == 0 && strlen (unit) == 4))
+    {
+      /* millisecond */
+      val = val / ONE_SEC;
+    }
+  else if ((strncasecmp (unit, "s", 1) == 0 && strlen (unit) == 1)
+	   || (strncasecmp (unit, "sec", 3) == 0 && strlen (unit) == 3))
+    {
+      /* second */
+    }
+  else if (strncasecmp (unit, "min", 3) == 0 && strlen (unit) == 3)
+    {
+      /* minute */
+      val = val * ONE_MIN / ONE_SEC;
+    }
+  else if (strncasecmp (unit, "h", 1) == 0 && strlen (unit) == 1)
+    {
+      /* hours */
+      val = val * ONE_HOUR / ONE_SEC;
+    }
+  else
+    {
+      return -1.0;
+    }
+
+  if (val > INT_MAX)		/* spec */
+    {
+      return -1.0;
+    }
+
+  return val;
+}

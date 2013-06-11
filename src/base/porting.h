@@ -63,6 +63,10 @@ extern "C"
 #define ONE_T		1099511627776LL
 #define ONE_P		1125899906842624LL
 
+#define ONE_SEC		1000
+#define ONE_MIN		60000
+#define ONE_HOUR	3600000
+
 #define CTIME_MAX 64
 
 #if defined(WINDOWS)
