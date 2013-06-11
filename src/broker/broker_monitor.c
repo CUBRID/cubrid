@@ -2432,11 +2432,11 @@ client_monitor (void)
 	  col_len += sprintf (buf + col_len, "%10s", "CLIENT-ID");
 	  col_len += sprintf (buf + col_len, "%20s", "CLIENT-IP");
 	  col_len += sprintf (buf + col_len, "%22s", "CONN-TIME");
-	  col_len += sprintf (buf + col_len, "%22s", "L-REQ-TIME");
-	  col_len += sprintf (buf + col_len, "%22s", "L-RES-TIME");
+	  col_len += sprintf (buf + col_len, "%22s", "LAST-REQ-TIME");
+	  col_len += sprintf (buf + col_len, "%22s", "LAST-RES-TIME");
 	  if (full_info_flag)
 	    {
-	      col_len += sprintf (buf + col_len, "%12s", "L-REQ-CODE");
+	      col_len += sprintf (buf + col_len, "%15s", "LAST-REQ-CODE");
 	    }
 
 	  for (len = 0; len < col_len; len++)
@@ -2495,7 +2495,7 @@ client_monitor (void)
 
 	      if (full_info_flag)
 		{
-		  str_out ("%11d", client_info_p->func_code - 1);
+		  str_out ("%15d", client_info_p->func_code - 1);
 		}
 	      print_newline ();
 	    }
