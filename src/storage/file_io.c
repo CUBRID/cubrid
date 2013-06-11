@@ -4554,6 +4554,8 @@ fileio_synchronize_all (THREAD_ENTRY * thread_p, bool is_include)
 
   arg.vol_id = NULL_VOLID;
 
+  er_stack_push ();
+
   if (is_include)
     {
       (void) fileio_traverse_system_volume (thread_p,
@@ -4566,8 +4568,10 @@ fileio_synchronize_all (THREAD_ENTRY * thread_p, bool is_include)
 
   if (er_errid () == ER_IO_SYNC)
     {
-      return ER_FAILED;
+      success = ER_FAILED;
     }
+
+  er_stack_pop ();
 
   return success;
 }

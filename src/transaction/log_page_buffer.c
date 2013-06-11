@@ -8978,8 +8978,8 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   /* ******** */
 error_cannot_chkpt:
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
-  log_Gl.run_nxchkpt_atpageid = (log_Gl.hdr.append_lsa.pageid +
-				 log_Gl.chkpt_every_npages);
+  /* to immediately execute the next checkpoint. */
+  log_Gl.run_nxchkpt_atpageid = log_Gl.hdr.append_lsa.pageid;
   LOG_CS_EXIT ();
   return NULL_PAGEID;
 }
