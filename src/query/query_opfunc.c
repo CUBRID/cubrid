@@ -6648,7 +6648,14 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
       else if (agg_p->function == PT_PERCENT_RANK)
 	{
 	  /* calculate the result for PERCENT_RANK */
-	  dbl = (double) (agg_p->agg_info.nlargers) / agg_p->curr_cnt;
+	  if (agg_p->curr_cnt == 0)
+	    {
+	      dbl = 0.0;
+	    }
+	  else
+	    {
+	      dbl = (double) (agg_p->agg_info.nlargers) / agg_p->curr_cnt;
+	    }
 	  assert (dbl <= 1.0 && dbl >= 0.0);
 	  DB_MAKE_DOUBLE (agg_p->value, dbl);
 
