@@ -581,6 +581,7 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
   int remaining_time = 0;
   bool use_server_query_cancel = false;
   int shard_id;
+  T_BROKER_VERSION broker_ver;
 
   QUERY_RESULT_FREE (req_handle);
 
@@ -636,7 +637,8 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
 	}
     }
 
-  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V2))
+  broker_ver = hm_get_broker_version (con_handle);
+  if (hm_broker_understand_the_protocol (broker_ver, PROTOCOL_V2))
     {
       /* In PROTOCOL_V2, cci driver use server query timeout feature,
        * when disconnect_on_query_timeout is false.
@@ -648,8 +650,7 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
 	}
       ADD_ARG_INT (&net_buf, remaining_time);
     }
-  else if (hm_get_broker_version (con_handle) >=
-	   CAS_PROTO_MAKE_VER (PROTOCOL_V1))
+  else if (hm_broker_understand_the_protocol (broker_ver, PROTOCOL_V1))
     {
       /* cci does not use server query timeout in PROTOCOL_V1 */
       ADD_ARG_INT (&net_buf, 0);
@@ -730,7 +731,7 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
   hm_req_handle_fetch_buf_free (req_handle);
   req_handle->cursor_pos = 0;
 
-  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V2))
+  if (hm_broker_understand_the_protocol (broker_ver, PROTOCOL_V2))
     {
       msg = result_msg + (result_msg_size - remain_msg_size);
 
@@ -749,7 +750,7 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
 	}
     }
 
-  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V5))
+  if (hm_broker_understand_the_protocol (broker_ver, PROTOCOL_V5))
     {
       msg = result_msg + (result_msg_size - remain_msg_size);
 
@@ -825,6 +826,7 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   int prepare_argc_count = 3;
   bool use_server_query_cancel = false;
   int shard_id;
+  T_BROKER_VERSION broker_ver;
 
   QUERY_RESULT_FREE (req_handle);
 
@@ -840,7 +842,8 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   net_buf_init (&net_buf);
 
   /* prepare info */
-  if (hm_get_broker_version (con_handle) == CAS_PROTO_MAKE_VER (PROTOCOL_V2))
+  broker_ver = hm_get_broker_version (con_handle);
+  if (hm_broker_match_the_protocol (broker_ver, PROTOCOL_V2))
     {
       func_code = CAS_FC_PREPARE_AND_EXECUTE_FOR_PROTO_V2;
     }
@@ -879,7 +882,7 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 	}
     }
 
-  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V2))
+  if (hm_broker_understand_the_protocol (broker_ver, PROTOCOL_V2))
     {
       /* In PROTOCOL_V2, cci driver use server query timeout feature,
        * when disconnect_on_query_timeout is false.
@@ -891,8 +894,7 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 	}
       ADD_ARG_INT (&net_buf, remaining_time);
     }
-  else if (hm_get_broker_version (con_handle) >=
-	   CAS_PROTO_MAKE_VER (PROTOCOL_V1))
+  else if (hm_broker_understand_the_protocol (broker_ver, PROTOCOL_V1))
     {
       /* cci does not use server query timeout in PROTOCOL_V1 */
       ADD_ARG_INT (&net_buf, 0);
@@ -1010,7 +1012,7 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   hm_req_handle_fetch_buf_free (req_handle);
   req_handle->cursor_pos = 0;
 
-  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V2))
+  if (hm_broker_understand_the_protocol (broker_ver, PROTOCOL_V2))
     {
       msg = result_msg + (result_msg_size - remain_msg_size);
 
@@ -1029,7 +1031,7 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 	}
     }
 
-  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V5))
+  if (hm_broker_understand_the_protocol (broker_ver, PROTOCOL_V5))
     {
       msg = result_msg + (result_msg_size - remain_msg_size);
 
@@ -1103,6 +1105,7 @@ qe_get_db_parameter (T_CON_HANDLE * con_handle, T_CCI_DB_PARAM param_name,
   int result_msg_size;
   int err_code = CCI_ER_NO_ERROR;
   int val;
+  T_BROKER_VERSION broker_ver;
 
   if (ret_val == NULL)
     {
@@ -1149,6 +1152,18 @@ qe_get_db_parameter (T_CON_HANDLE * con_handle, T_CCI_DB_PARAM param_name,
 	  else
 	    {
 	      NET_STR_TO_INT (val, result_msg + NET_SIZE_INT);
+	      if (param_name == CCI_PARAM_LOCK_TIMEOUT)
+		{
+		  broker_ver = hm_get_broker_version (con_handle);
+		  if (!hm_broker_understand_the_protocol
+		      (broker_ver, PROTOCOL_V2))
+		    {
+		      if (val > 0)
+			{
+			  val = val * 1000;	/* second --> millisecond */
+			}
+		    }
+		}
 	      memcpy (ret_val, (char *) &val, sizeof (int));
 	    }
 	}
@@ -1229,10 +1244,12 @@ qe_close_query_result (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle)
   int err_code = 0;
   T_NET_BUF net_buf;
   char func_code = CAS_FC_CURSOR_CLOSE;
+  T_BROKER_VERSION broker_ver;
 
   net_buf_init (&net_buf);
 
-  if (hm_get_broker_version (con_handle) == CAS_PROTO_MAKE_VER (PROTOCOL_V2))
+  broker_ver = hm_get_broker_version (con_handle);
+  if (hm_broker_match_the_protocol (broker_ver, PROTOCOL_V2))
     {
       func_code = CAS_FC_CURSOR_CLOSE_FOR_PROTO_V2;
     }
@@ -1804,6 +1821,7 @@ qe_schema_info (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   int result_code;
   char *result_msg;
   int result_msg_size;
+  T_BROKER_VERSION broker_ver;
 
   net_buf_init (&net_buf);
   net_buf_cp_str (&net_buf, &func_code, 1);
@@ -1818,7 +1836,9 @@ qe_schema_info (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   else
     ADD_ARG_STR (&net_buf, arg2, strlen (arg2) + 1, con_handle->charset);
   ADD_ARG_BYTES (&net_buf, &flag, 1);
-  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V5))
+
+  broker_ver = hm_get_broker_version (con_handle);
+  if (hm_broker_understand_the_protocol (broker_ver, PROTOCOL_V5))
     {
       ADD_ARG_INT (&net_buf, shard_id);
     }
@@ -2704,6 +2724,7 @@ qe_execute_array (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   int remain_size;
   int remaining_time = 0;
   int shard_id;
+  T_BROKER_VERSION broker_ver;
 
   net_buf_init (&net_buf);
 
@@ -2711,7 +2732,8 @@ qe_execute_array (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 
   ADD_ARG_INT (&net_buf, req_handle->server_handle_id);
 
-  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V4))
+  broker_ver = hm_get_broker_version (con_handle);
+  if (hm_broker_understand_the_protocol (broker_ver, PROTOCOL_V4))
     {
       if (TIMEOUT_IS_SET (con_handle))
 	{
@@ -2902,8 +2924,7 @@ qe_execute_array (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 					EXECUTE_ARRAY, qr, &remain_size);
 
   if (err_code >= 0
-      && hm_get_broker_version (con_handle) >=
-      CAS_PROTO_MAKE_VER (PROTOCOL_V5))
+      && hm_broker_understand_the_protocol (broker_ver, PROTOCOL_V5))
     {
       msg = result_msg + (result_msg_size - remain_size);
 
@@ -3063,6 +3084,7 @@ qe_execute_batch (T_CON_HANDLE * con_handle, int num_query, char **sql_stmt,
   int remain_size;
   int remaining_time = 0;
   int shard_id;
+  T_BROKER_VERSION broker_ver;
 
   net_buf_init (&net_buf);
 
@@ -3072,7 +3094,8 @@ qe_execute_batch (T_CON_HANDLE * con_handle, int num_query, char **sql_stmt,
   autocommit_flag = (char) con_handle->autocommit_mode;
   ADD_ARG_BYTES (&net_buf, &autocommit_flag, 1);
 
-  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V4))
+  broker_ver = hm_get_broker_version (con_handle);
+  if (hm_broker_understand_the_protocol (broker_ver, PROTOCOL_V4))
     {
       if (TIMEOUT_IS_SET (con_handle))
 	{
@@ -3130,8 +3153,7 @@ qe_execute_batch (T_CON_HANDLE * con_handle, int num_query, char **sql_stmt,
 			       EXECUTE_BATCH, qr, &remain_size);
 
   if (err_code >= 0
-      && hm_get_broker_version (con_handle) >=
-      CAS_PROTO_MAKE_VER (PROTOCOL_V5))
+      && hm_broker_understand_the_protocol (broker_ver, PROTOCOL_V5))
     {
       msg = result_msg + (result_msg_size - remain_size);
 

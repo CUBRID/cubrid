@@ -204,14 +204,14 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id,
   broker_ver = hm_get_broker_version (con_handle);
   if (broker_ver == 0)
     {
-      /* Interpretable session information supporting version 
-       *   later than PROTOCOL_V3 as well as version earlier 
-       *   than PROTOCOL_V3 should be delivered since no broker information 
+      /* Interpretable session information supporting version
+       *   later than PROTOCOL_V3 as well as version earlier
+       *   than PROTOCOL_V3 should be delivered since no broker information
        *   is provided at the time of initial connection.
        */
       snprintf (info, DRIVER_SESSION_SIZE, "%u", 0);
     }
-  else if (broker_ver >= CAS_PROTO_MAKE_VER (PROTOCOL_V3))
+  else if (hm_broker_understand_the_protocol (broker_ver, PROTOCOL_V3))
     {
       memcpy (info, con_handle->session_id.id, DRIVER_SESSION_SIZE);
     }
@@ -354,7 +354,7 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id,
 
   body_len = *(msg_header.msg_body_size_ptr);
   broker_ver = hm_get_broker_version (con_handle);
-  if (broker_ver >= CAS_PROTO_MAKE_VER (PROTOCOL_V4))
+  if (hm_broker_understand_the_protocol (broker_ver, PROTOCOL_V4))
     {
       if (body_len != CAS_CONNECTION_REPLY_SIZE)
 	{
@@ -362,7 +362,7 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id,
 	  goto connect_srv_error;
 	}
     }
-  else if (broker_ver >= CAS_PROTO_MAKE_VER (PROTOCOL_V3))
+  else if (hm_broker_understand_the_protocol (broker_ver, PROTOCOL_V3))
     {
       if (body_len != CAS_CONNECTION_REPLY_SIZE_V3)
 	{
@@ -379,7 +379,7 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id,
 	}
     }
 
-  if (broker_ver >= CAS_PROTO_MAKE_VER (PROTOCOL_V4))
+  if (hm_broker_understand_the_protocol (broker_ver, PROTOCOL_V4))
     {
       con_handle->cas_id = ntohl (*(int *) p);
       p += CAS_PID_SIZE;
@@ -389,7 +389,7 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id,
       con_handle->cas_id = -1;
     }
 
-  if (broker_ver >= CAS_PROTO_MAKE_VER (PROTOCOL_V3))
+  if (hm_broker_understand_the_protocol (broker_ver, PROTOCOL_V3))
     {
       memcpy (con_handle->session_id.id, p, DRIVER_SESSION_SIZE);
     }
@@ -523,6 +523,7 @@ net_cancel_request (T_CON_HANDLE * con_handle)
   unsigned short local_port = 0;
   int error;
   int broker_port;
+  T_BROKER_VERSION broker_ver;
 
   if (con_handle->alter_host_id < 0)
     {
@@ -533,13 +534,13 @@ net_cancel_request (T_CON_HANDLE * con_handle)
       broker_port = con_handle->alter_hosts[con_handle->alter_host_id].port;
     }
 
-  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (PROTOCOL_V4))
+  broker_ver = hm_get_broker_version (con_handle);
+  if (hm_broker_understand_the_protocol (broker_ver, PROTOCOL_V4))
     {
       return net_cancel_request_ex (con_handle->ip_addr, broker_port,
 				    con_handle->cas_pid);
     }
-  else if (hm_get_broker_version (con_handle) >=
-	   CAS_PROTO_MAKE_VER (PROTOCOL_V1))
+  else if (hm_broker_understand_the_protocol (broker_ver, PROTOCOL_V1))
     {
       local_sockaddr_len = sizeof (local_sockaddr);
       error = getsockname (con_handle->sock_fd,
@@ -641,11 +642,10 @@ net_send_msg (T_CON_HANDLE * con_handle, char *msg, int size)
 static int
 convert_error_by_version (T_CON_HANDLE * con_handle, int indicator, int error)
 {
-  T_BROKER_VERSION broker;
+  T_BROKER_VERSION broker_ver;
 
-  broker = hm_get_broker_version (con_handle);
-
-  if (broker != CAS_PROTO_MAKE_VER (PROTOCOL_V2)
+  broker_ver = hm_get_broker_version (con_handle);
+  if (!hm_broker_match_the_protocol (broker_ver, PROTOCOL_V2)
       && !hm_broker_understand_renewed_error_code (con_handle))
     {
       if (indicator == CAS_ERROR_INDICATOR

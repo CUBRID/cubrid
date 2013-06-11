@@ -868,6 +868,15 @@ fn_get_db_parameter (SOCKET sock_fd, int argc, void **argv,
 		     lock_timeout_string);
 
       net_buf_cp_int (net_buf, 0, NULL);
+      if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info->client_version,
+						PROTOCOL_V2))
+	{
+	  if (lock_timeout > 0)
+	    {
+	      /* protocol version v1 driver receive lock timeout in second */
+	      lock_timeout /= 1000;
+	    }
+	}
       net_buf_cp_int (net_buf, lock_timeout, NULL);
     }
   else if (param_name == CCI_PARAM_MAX_STRING_LENGTH)

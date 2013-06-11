@@ -1118,6 +1118,33 @@ hm_broker_understand_renewed_error_code (T_CON_HANDLE * con_handle)
 }
 
 bool
+hm_broker_understand_the_protocol (T_BROKER_VERSION broker_version,
+				   int require)
+{
+  if (broker_version >= CAS_PROTO_MAKE_VER (require))
+    {
+      return true;
+    }
+  else
+    {
+      return false;
+    }
+}
+
+bool
+hm_broker_match_the_protocol (T_BROKER_VERSION broker_version, int require)
+{
+  if (broker_version == CAS_PROTO_MAKE_VER (require))
+    {
+      return true;
+    }
+  else
+    {
+      return false;
+    }
+}
+
+bool
 hm_broker_support_holdable_result (T_CON_HANDLE * con_handle)
 {
   char f = con_handle->broker_info[BROKER_INFO_FUNCTION_FLAG];

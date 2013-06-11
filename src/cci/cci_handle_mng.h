@@ -319,6 +319,11 @@ extern "C"
   extern T_BROKER_VERSION hm_get_broker_version (T_CON_HANDLE * con_handle);
   extern bool hm_broker_understand_renewed_error_code (T_CON_HANDLE *
 						       con_handle);
+  extern bool hm_broker_understand_the_protocol (T_BROKER_VERSION
+						 broker_version, int require);
+  extern bool hm_broker_match_the_protocol (T_BROKER_VERSION broker_version,
+					    int require);
+
   extern bool hm_broker_support_holdable_result (T_CON_HANDLE * con_handle);
   extern bool hm_broker_reconnect_when_server_down (T_CON_HANDLE *
 						    con_handle);
