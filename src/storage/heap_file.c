@@ -3905,7 +3905,6 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
   VPID vpid = { NULL_PAGEID, NULL_VOLID };
   VPID start_vpid = { NULL_PAGEID, NULL_VOLID };
   VPID next_vpid = { NULL_PAGEID, NULL_VOLID };
-  VPID last_vpid = { NULL_PAGEID, NULL_VOLID };
   VPID stopat_vpid = { NULL_PAGEID, NULL_VOLID };
   int num_pages = 0;
   int num_recs = 0;
@@ -3932,16 +3931,6 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
 
   if (scan_all != true)
     {
-      /*
-       * Start scanning at the last best page in the array and then go back
-       * to beginning of heap if needed looking for good pages with a lot of
-       * free space.
-       */
-      if (file_find_last_page (thread_p, &hfid->vfid, &last_vpid) == NULL)
-	{
-	  return ER_FAILED;
-	}
-
       if (heap_hdr->estimates.num_high_best > 0)
 	{
 	  /* Use recently inserted one first. */
