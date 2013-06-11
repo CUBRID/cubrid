@@ -618,24 +618,21 @@ ut_size_string_to_kbyte (char *size_str, char *default_unit)
       unit = default_unit;
     }
 
-  if (strncasecmp (unit, "b", 1) == 0 && strlen (unit) == 1)
+  if (strcasecmp (unit, "b") == 0)
     {
       /* byte */
       val = val / ONE_K;
     }
-  else if ((strncasecmp (unit, "k", 1) == 0 && strlen (unit) == 1)
-	   || (strncasecmp (unit, "kb", 2) == 0 && strlen (unit) == 2))
+  else if ((strcasecmp (unit, "k") == 0) || (strcasecmp (unit, "kb") == 0))
     {
       /* kilo */
     }
-  else if ((strncasecmp (unit, "m", 1) == 0 && strlen (unit) == 1)
-	   || (strncasecmp (unit, "mb", 2) == 0 && strlen (unit) == 2))
+  else if ((strcasecmp (unit, "m") == 0) || (strcasecmp (unit, "mb") == 0))
     {
       /* mega */
       val = val * ONE_K;
     }
-  else if ((strncasecmp (unit, "g", 1) == 0 && strlen (unit) == 1)
-	   || (strncasecmp (unit, "gb", 2) == 0 && strlen (unit) == 2))
+  else if ((strcasecmp (unit, "g") == 0) || (strcasecmp (unit, "gb") == 0))
     {
       /* giga */
       val = val * ONE_M;
@@ -680,23 +677,21 @@ ut_time_string_to_sec (char *time_str, char *default_unit)
       unit = default_unit;
     }
 
-  if ((strncasecmp (unit, "ms", 2) == 0 && strlen (unit) == 2)
-      || (strncasecmp (unit, "msec", 4) == 0 && strlen (unit) == 4))
+  if ((strcasecmp (unit, "ms") == 0) || (strcasecmp (unit, "msec") == 0))
     {
       /* millisecond */
       val = val / ONE_SEC;
     }
-  else if ((strncasecmp (unit, "s", 1) == 0 && strlen (unit) == 1)
-	   || (strncasecmp (unit, "sec", 3) == 0 && strlen (unit) == 3))
+  else if ((strcasecmp (unit, "s") == 0) || (strcasecmp (unit, "sec") == 0))
     {
       /* second */
     }
-  else if (strncasecmp (unit, "min", 3) == 0 && strlen (unit) == 3)
+  else if (strcasecmp (unit, "min") == 0)
     {
       /* minute */
       val = val * ONE_MIN / ONE_SEC;
     }
-  else if (strncasecmp (unit, "h", 1) == 0 && strlen (unit) == 1)
+  else if (strcasecmp (unit, "h") == 0)
     {
       /* hours */
       val = val * ONE_HOUR / ONE_SEC;
