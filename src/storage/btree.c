@@ -12036,7 +12036,8 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   COPY_OID (&C_class_oid, &class_oid);
 
 start_point:
-  if (next_lock_flag == true || curr_lock_flag == true)
+  if (next_lock_flag == true || curr_lock_flag == true
+      || retry_btree_no_space > 0)
     {
       P_vpid.volid = btid->vfid.volid;	/* read the root page */
       P_vpid.pageid = btid->root_pageid;
@@ -13020,9 +13021,7 @@ key_insertion:
 	      free (ptr);
 	    }
 
-	  retry_btree_no_space++;
-
-	  if (retry_btree_no_space <= 1)
+	  if (retry_btree_no_space < 1)
 	    {
 	      /* ER_BTREE_NO_SPACE can be made by split node algorithm
 	       * In this case, release resource and retry it one time.
@@ -13034,6 +13033,7 @@ key_insertion:
 
 	      pgbuf_unfix_and_init (thread_p, P);
 
+	      retry_btree_no_space++;
 	      goto start_point;
 	    }
 	}
