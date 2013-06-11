@@ -188,6 +188,8 @@ public class CUBRIDResultSet implements ResultSet {
 	 */
 
 	public boolean next() throws SQLException {
+		checkIsOpen();
+		
 		if (u_stmt == null)
 			return false;
 		try {
@@ -1533,19 +1535,21 @@ public class CUBRIDResultSet implements ResultSet {
 
 	// 3.0
 	public synchronized URL getURL(int columnIndex) throws SQLException {
-		return null;
+		throw new UnsupportedOperationException();
 	}
 
 	public synchronized URL getURL(String columnName) throws SQLException {
-		return null;
+		throw new UnsupportedOperationException();
 	}
 
 	public synchronized void updateArray(int columnIndex, Array x)
 			throws SQLException {
+		throw new UnsupportedOperationException();
 	}
 
 	public synchronized void updateArray(String columnName, Array x)
 			throws SQLException {
+		throw new UnsupportedOperationException();
 	}
 
 	public synchronized void updateBlob(int columnIndex, Blob x)
@@ -1570,10 +1574,12 @@ public class CUBRIDResultSet implements ResultSet {
 
 	public synchronized void updateRef(int columnIndex, Ref x)
 			throws SQLException {
+		throw new UnsupportedOperationException();
 	}
 
 	public synchronized void updateRef(String columnName, Ref x)
 			throws SQLException {
+		throw new UnsupportedOperationException();
 	}
 
 	// 3.0
@@ -1852,6 +1858,8 @@ public class CUBRIDResultSet implements ResultSet {
 
 	/* JDK 1.6 */
 	public int getHoldability() throws SQLException {
+		checkIsOpen();
+		
 		return (is_holdable ? ResultSet.HOLD_CURSORS_OVER_COMMIT :
 				ResultSet.CLOSE_CURSORS_AT_COMMIT);
 	}

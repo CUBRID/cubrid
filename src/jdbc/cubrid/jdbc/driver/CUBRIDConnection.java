@@ -453,6 +453,8 @@ public class CUBRIDConnection implements Connection {
 	}
 
 	public synchronized int getHoldability() throws SQLException {
+		checkIsOpen();
+		
 		if (holdability == ResultSet.HOLD_CURSORS_OVER_COMMIT) {
 				if (u_con.supportHoldableResult()) {
 					return ResultSet.HOLD_CURSORS_OVER_COMMIT;
@@ -467,7 +469,7 @@ public class CUBRIDConnection implements Connection {
 
 	public CallableStatement prepareCall(String sql, int type, int concur,
 			int holdable) throws SQLException {
-		return (prepareCall(sql));
+		return prepareCall(sql);
 	}
 
 	public synchronized PreparedStatement prepareStatement(String sql,
@@ -533,6 +535,8 @@ public class CUBRIDConnection implements Connection {
 	}
 
 	public synchronized void setHoldability(int holdable) throws SQLException {
+		checkIsOpen();
+		
 		holdability = holdable;
 	}
 
@@ -689,7 +693,7 @@ public class CUBRIDConnection implements Connection {
 		for (int i = 0; i < statements.size(); i++) {
 			CUBRIDStatement stmt = (CUBRIDStatement) statements.get(i);
 
-			if (stmt.getResultSetHoldability() == ResultSet.HOLD_CURSORS_OVER_COMMIT) {
+			if (stmt.getHoldability() == ResultSet.HOLD_CURSORS_OVER_COMMIT) {
 				stmt.setCurrentTransaction(false);
 				continue;
 			}
@@ -708,7 +712,7 @@ public class CUBRIDConnection implements Connection {
 		for (int i = 0; i < statements.size(); i++) {
 			CUBRIDStatement stmt = (CUBRIDStatement) statements.get(i);
 
-			if (stmt.getResultSetHoldability() == ResultSet.HOLD_CURSORS_OVER_COMMIT
+			if (stmt.getHoldability() == ResultSet.HOLD_CURSORS_OVER_COMMIT
 			    && !stmt.isFromCurrentTransaction()) {
 				continue;
 			}
@@ -726,8 +730,9 @@ public class CUBRIDConnection implements Connection {
 	}
 
 	private void closeAllStatements() throws SQLException {
-		for (int i = 0; i < statements.size(); i++) {
-			CUBRIDStatement stmt = (CUBRIDStatement) statements.get(i);
+		Object stmts[] = statements.toArray();
+		for (int i = 0; i < stmts.length; i++) {
+			CUBRIDStatement stmt = (CUBRIDStatement) stmts[i];
 			stmt.close();
 		}
 		statements.clear();
@@ -927,7 +932,9 @@ public class CUBRIDConnection implements Connection {
 
 	CUBRIDException createCUBRIDException(int errCode, Throwable t) {
 	    CUBRIDException e = new CUBRIDException(errCode, t);
-	    u_con.logException(e);
+	    if (u_con != null) {
+		    u_con.logException(e);
+	    }
 	    return e;
 	}
 

@@ -161,11 +161,13 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 
 	public synchronized String getDriverName() throws SQLException {
 		checkIsOpen();
+		
 		return "CUBRID JDBC Driver";
 	}
 
 	public synchronized String getDriverVersion() throws SQLException {
 		checkIsOpen();
+		
 		return CUBRIDDriver.version_string;
 	}
 
@@ -1658,6 +1660,8 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 
 	public synchronized ResultSet getImportedKeys(String catalog,
 			String schema, String table) throws SQLException {
+		checkIsOpen();
+		
 		if (table == null) {
 			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_table_name, null);
 		}
@@ -1666,6 +1670,8 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 
 	public synchronized ResultSet getExportedKeys(String catalog,
 			String schema, String table) throws SQLException {
+		checkIsOpen();
+		
 		if (table == null) {
 			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_table_name, null);
 		}
@@ -1675,6 +1681,8 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 	public synchronized ResultSet getCrossReference(String primaryCatalog,
 			String primarySchema, String primaryTable, String foreignCatalog,
 			String foreignSchema, String foreignTable) throws SQLException {
+		checkIsOpen();
+		
 		if (primaryTable == null || foreignTable == null) {
 			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_table_name, null);
 		}
@@ -2242,7 +2250,11 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 
 	private void checkIsOpen() throws SQLException {
 		if (is_closed) {
-			throw con.createCUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed, null);
+			if (con != null) {
+				throw con.createCUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed, null);
+			} else {
+				throw new CUBRIDException(CUBRIDJDBCErrorCode.dbmetadata_closed, null);
+			}
 		}
 	}
 
