@@ -7683,7 +7683,21 @@ pt_print_table_option (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (p->info.table_option.val != NULL)
     {
-      r1 = pt_print_bytes_l (parser, p->info.table_option.val);
+      if (p->info.table_option.option == PT_TABLE_OPTION_CHARSET
+	  || p->info.table_option.option == PT_TABLE_OPTION_COLLATION)
+	{
+	  /* print as unquoted string */
+	  assert (p->info.table_option.val != NULL);
+	  assert (p->info.table_option.val->node_type == PT_VALUE);
+	  assert (PT_IS_SIMPLE_CHAR_STRING_TYPE
+		  (p->info.table_option.val->type_enum));
+	  r1 = p->info.table_option.val->info.value.data_value.str;
+	  assert (r1 != NULL);
+	}
+      else
+	{
+	  r1 = pt_print_bytes_l (parser, p->info.table_option.val);
+	}
       q = pt_append_varchar (parser, q, r1);
     }
 

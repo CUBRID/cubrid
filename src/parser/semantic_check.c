@@ -4454,10 +4454,9 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
  * parser(in): parser context
  * attr(in/out) : data default node
  * default_cs(in): codeset of the attribute's class, or override value
+ *		   if special value = -1 is given, then charset implied by
+ *		   default_coll argument is used
  * default_coll(in): collation of the attribute's class, or override value
- * use_cs(in): if true, default_cs is taken into consideration;
- *	       if false, default_cs is assumed to be missing, and the
- *	       corresponding codeset of the default_coll is assumed to be used
  */
 void
 pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * attr,
@@ -4467,6 +4466,8 @@ pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * attr,
   int attr_coll = attr->data_type->info.data_type.collation_id;
   LANG_COLLATION *lc;
 
+  assert (default_coll >= 0);
+
   if (attr->data_type->info.data_type.has_cs_spec)
     {
       if (attr->data_type->info.data_type.has_coll_spec)
@@ -4474,21 +4475,8 @@ pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * attr,
 	  return;
 	}
 
-      if (default_cs == -1)
-	{
-	  lc = lang_get_collation (default_coll);
-	  assert (lc != NULL);
-	  default_cs = lc->codeset;
-	}
-
-      if (attr_cs == default_cs)
-	{
-	  attr_coll = default_coll;
-	}
-      else
-	{
-	  attr_coll = LANG_GET_BINARY_COLLATION (attr_cs);
-	}
+      /* use binary collation of attribute's charset specifier */
+      attr_coll = LANG_GET_BINARY_COLLATION (attr_cs);
     }
   else if (attr->data_type->info.data_type.has_coll_spec)
     {
