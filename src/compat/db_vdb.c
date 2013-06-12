@@ -1828,8 +1828,16 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 
   /* get sys_date, sys_time, sys_timestamp, sys_datetime values from the server */
   server_info.info_bits = 0;	/* init */
-  if (statement->si_datetime)
+  if (statement->si_datetime
+      || (statement->node_type == PT_CREATE_ENTITY
+	  || statement->node_type == PT_ALTER))
     {
+      /* Some create and alter statement require the server timestamp
+       * even though it does not explicitly refer timestamp-related pseudocolumns.
+       * For instance,
+       *   create table foo (a timestamp default systimestamp);
+       *   create view v_foo as select * from foo;
+       */
       db_calculate_current_server_time (parser, &server_info);
     }
 

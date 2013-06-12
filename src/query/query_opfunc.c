@@ -6099,7 +6099,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
 	{
 	case PT_MIN:
 	  opr_dbval_p = &dbval;
-	  if (agg_p->curr_cnt < 1
+	  if ((agg_p->curr_cnt < 1 || DB_IS_NULL (agg_p->value))
 	      || (*(agg_p->domain->type->cmpval)) (agg_p->value, &dbval,
 						   1, 1, NULL, -1) > 0)
 	    {
@@ -6110,13 +6110,9 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
 	case PT_MAX:
 	  opr_dbval_p = &dbval;
 
-	  if (agg_p->curr_cnt < 1)
-	    {
-	      copy_opr = true;
-	    }
-	  else if (!DB_IS_NULL (agg_p->value) && !DB_IS_NULL (&dbval)
-		   && (*(agg_p->domain->type->cmpval)) (agg_p->value, &dbval,
-							1, 1, NULL, -1) < 0)
+	  if ((agg_p->curr_cnt < 1 || DB_IS_NULL (agg_p->value))
+	      || (*(agg_p->domain->type->cmpval)) (agg_p->value, &dbval,
+						   1, 1, NULL, -1) < 0)
 	    {
 	      copy_opr = true;
 	    }
@@ -9772,7 +9768,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 
     case PT_MIN:
       opr_dbval_p = &dbval;
-      if (func_p->curr_cnt < 1
+      if ((func_p->curr_cnt < 1 || DB_IS_NULL (func_p->value))
 	  || (*(func_p->domain->type->cmpval)) (func_p->value, &dbval,
 						1, 1, NULL, -1) > 0)
 	{
@@ -9782,7 +9778,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 
     case PT_MAX:
       opr_dbval_p = &dbval;
-      if (func_p->curr_cnt < 1
+      if ((func_p->curr_cnt < 1 || DB_IS_NULL (func_p->value))
 	  || (*(func_p->domain->type->cmpval)) (func_p->value, &dbval,
 						1, 1, NULL, -1) < 0)
 	{
@@ -11056,7 +11052,7 @@ end:
  * qdata_calculate_aggregate_cume_dist_percent_rank () -
  *   return: NO_ERROR, or ER_code
  *   agg_p(in): aggregate type
- *   val_desc_p(in): 
+ *   val_desc_p(in):
  *
  */
 static int
@@ -11093,7 +11089,7 @@ qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p,
        *   const list: the hypothetical values for calculation
        *   type list: field name given in the ORDER BY clause;
        *
-       * All these information is store in the agg_p->operand.value.regu_var_list; 
+       * All these information is store in the agg_p->operand.value.regu_var_list;
        * First N values are type_list, and the last N values are const_list.
        */
       assert (info_p->list_len == 0 && info_p->const_array == NULL);
@@ -11124,7 +11120,7 @@ qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p,
 	}
 
       /* now we have found the start of the const list,
-       *  fetch DB_VALUE from the list into agg_info 
+       *  fetch DB_VALUE from the list into agg_info
        */
       regu_tmp_node = regu_var_list;
       for (i = 0; i < nloops; i++)

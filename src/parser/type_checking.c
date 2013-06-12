@@ -17162,22 +17162,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
     case PT_SYS_DATE:
       {
 	DB_DATETIME *tmp_datetime;
-	DB_DATE tmp_date;
 
-	if (DB_IS_NULL (&parser->sys_datetime))
-	  {
-	    db_make_null (result);
-	  }
-	else
-	  {
-	    db_value_domain_init (result, DB_TYPE_DATE, DB_DEFAULT_PRECISION,
-				  DB_DEFAULT_SCALE);
+	db_value_domain_init (result, DB_TYPE_DATE, DB_DEFAULT_PRECISION,
+			      DB_DEFAULT_SCALE);
 
-	    tmp_datetime = db_get_datetime (&parser->sys_datetime);
-	    tmp_date = tmp_datetime->date;
+	tmp_datetime = db_get_datetime (&parser->sys_datetime);
 
-	    db_value_put_encoded_date (result, &tmp_date);
-	  }
+	db_value_put_encoded_date (result, &tmp_datetime->date);
 
 	return 1;
       }
@@ -17188,24 +17179,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	DB_DATETIME db_datetime;
 	DB_DATETIME *tmp_datetime;
 
-	DB_DATE db_date;
+	/* extract the timezone part */
+	db_sys_timezone (&timezone);
+	timezone_milis = DB_GET_INT (&timezone) * 60000;
+	tmp_datetime = db_get_datetime (&parser->sys_datetime);
+	db_add_int_to_datetime (tmp_datetime, timezone_milis, &db_datetime);
 
-	if (DB_IS_NULL (&parser->sys_datetime))
-	  {
-	    db_make_null (result);
-	  }
-	else
-	  {
-	    /* extract the timezone part */
-	    db_sys_timezone (&timezone);
-	    timezone_milis = DB_GET_INT (&timezone) * 60000;
-	    tmp_datetime = db_get_datetime (&parser->sys_datetime);
-	    db_add_int_to_datetime (tmp_datetime, timezone_milis,
-				    &db_datetime);
-	    db_date = db_datetime.date;
-
-	    DB_MAKE_ENCODED_DATE (result, &db_date);
-	  }
+	DB_MAKE_ENCODED_DATE (result, &db_datetime.date);
 
 	return 1;
       }
@@ -17217,22 +17197,15 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	int timezone_val;
 	DB_DATETIME *tmp_datetime;
 
-	if (DB_IS_NULL (&parser->sys_datetime))
-	  {
-	    db_make_null (result);
-	  }
-	else
-	  {
-	    tmp_datetime = db_get_datetime (&parser->sys_datetime);
-	    db_time = tmp_datetime->time / 1000;
-	    /* extract the timezone part */
-	    db_sys_timezone (&timezone);
-	    timezone_val = DB_GET_INT (&timezone);
-	    db_time = db_time + timezone_val * 60 + SECONDS_OF_ONE_DAY;
-	    db_time = db_time % SECONDS_OF_ONE_DAY;
+	tmp_datetime = db_get_datetime (&parser->sys_datetime);
+	db_time = tmp_datetime->time / 1000;
+	/* extract the timezone part */
+	db_sys_timezone (&timezone);
+	timezone_val = DB_GET_INT (&timezone);
+	db_time = db_time + timezone_val * 60 + SECONDS_OF_ONE_DAY;
+	db_time = db_time % SECONDS_OF_ONE_DAY;
 
-	    DB_MAKE_ENCODED_TIME (result, &db_time);
-	  }
+	DB_MAKE_ENCODED_TIME (result, &db_time);
 
 	return 1;
       }
@@ -17242,20 +17215,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	DB_DATETIME *tmp_datetime;
 	DB_TIME tmp_time;
 
-	if (DB_IS_NULL (&parser->sys_datetime))
-	  {
-	    db_make_null (result);
-	  }
-	else
-	  {
-	    db_value_domain_init (result, DB_TYPE_TIME, DB_DEFAULT_PRECISION,
-				  DB_DEFAULT_SCALE);
+	db_value_domain_init (result, DB_TYPE_TIME, DB_DEFAULT_PRECISION,
+			      DB_DEFAULT_SCALE);
 
-	    tmp_datetime = db_get_datetime (&parser->sys_datetime);
-	    tmp_time = tmp_datetime->time / 1000;
+	tmp_datetime = db_get_datetime (&parser->sys_datetime);
+	tmp_time = tmp_datetime->time / 1000;
 
-	    db_value_put_encoded_time (result, &tmp_time);
-	  }
+	db_value_put_encoded_time (result, &tmp_time);
 
 	return 1;
       }
@@ -17267,22 +17233,15 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	DB_TIME tmp_time = 0;
 	DB_TIMESTAMP tmp_timestamp;
 
-	if (DB_IS_NULL (&parser->sys_datetime))
-	  {
-	    db_make_null (result);
-	  }
-	else
-	  {
-	    db_value_domain_init (result, DB_TYPE_TIMESTAMP,
-				  DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+	db_value_domain_init (result, DB_TYPE_TIMESTAMP,
+			      DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 
-	    tmp_datetime = db_get_datetime (&parser->sys_datetime);
-	    tmp_date = tmp_datetime->date;
-	    tmp_time = tmp_datetime->time / 1000;
+	tmp_datetime = db_get_datetime (&parser->sys_datetime);
+	tmp_date = tmp_datetime->date;
+	tmp_time = tmp_datetime->time / 1000;
 
-	    db_timestamp_encode (&tmp_timestamp, &tmp_date, &tmp_time);
-	    db_make_timestamp (result, tmp_timestamp);
-	  }
+	db_timestamp_encode (&tmp_timestamp, &tmp_date, &tmp_time);
+	db_make_timestamp (result, tmp_timestamp);
 
 	return 1;
       }
@@ -17291,18 +17250,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
       {
 	DB_DATETIME *tmp_datetime;
 
-	if (DB_IS_NULL (&parser->sys_datetime))
-	  {
-	    db_make_null (result);
-	  }
-	else
-	  {
-	    db_value_domain_init (result, DB_TYPE_DATETIME,
-				  DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	    tmp_datetime = db_get_datetime (&parser->sys_datetime);
+	db_value_domain_init (result, DB_TYPE_DATETIME,
+			      DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+	tmp_datetime = db_get_datetime (&parser->sys_datetime);
 
-	    db_make_datetime (result, tmp_datetime);
-	  }
+	db_make_datetime (result, tmp_datetime);
 
 	return 1;
       }

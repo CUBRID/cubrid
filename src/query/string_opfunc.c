@@ -2342,8 +2342,9 @@ db_string_substring_index (DB_VALUE * src_string,
 
   if (DB_IS_NULL (count))
     {
-      /* result is DB_TYPE_NULL */
-      goto exit;
+      DB_MAKE_NULL (result);
+
+      return NO_ERROR;
     }
   count_i = DB_GET_INT (count);
 
@@ -9974,6 +9975,13 @@ db_datetime_to_timestamp (const DB_VALUE * src_datetime,
   DB_VALUE temp, *temp_p;
   bool same_argument = (src_datetime == result_timestamp);
 
+  if (DB_IS_NULL (src_datetime))
+    {
+      db_make_null (result_timestamp);
+
+      return NO_ERROR;
+    }
+
   if (same_argument)
     {
       /* if the result argument is the same with the source argument, then use
@@ -9997,30 +10005,23 @@ db_datetime_to_timestamp (const DB_VALUE * src_datetime,
       return error;
     }
 
-  if (DB_IS_NULL (src_datetime))
+  tmp_datetime = db_get_datetime (src_datetime);
+  tmp_date = tmp_datetime->date;
+  tmp_time = tmp_datetime->time / 1000;
+  error = db_timestamp_encode (&tmp_timestamp, &tmp_date, &tmp_time);
+  if (error != NO_ERROR)
     {
-      db_make_null (result_timestamp);
+      /* error message has been set */
+      return error;
     }
-  else
-    {
-      tmp_datetime = db_get_datetime (src_datetime);
-      tmp_date = tmp_datetime->date;
-      tmp_time = tmp_datetime->time / 1000;
-      error = db_timestamp_encode (&tmp_timestamp, &tmp_date, &tmp_time);
-      if (error != NO_ERROR)
-	{
-	  /* error message has been set */
-	  return error;
-	}
-      db_make_timestamp (temp_p, tmp_timestamp);
+  db_make_timestamp (temp_p, tmp_timestamp);
 
-      if (same_argument)
-	{
-	  /* if src_datetime was the same with result_timestamp, copy the result
-	   * from temp, and release the temporary value
-	   */
-	  pr_clone_value (temp_p, result_timestamp);
-	}
+  if (same_argument)
+    {
+      /* if src_datetime was the same with result_timestamp, copy the result
+       * from temp, and release the temporary value
+       */
+      pr_clone_value (temp_p, result_timestamp);
     }
 
   return NO_ERROR;
