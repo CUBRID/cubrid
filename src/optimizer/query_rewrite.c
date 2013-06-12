@@ -4879,8 +4879,10 @@ qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	    case PT_IS_IN:
 	    case PT_RANGE:
 
+	      /* should be pure constant in list */
 	      if (dnf_node->info.expr.op == PT_IS_IN
-		  && PT_IS_SET_TYPE (dnf_node->info.expr.arg2))
+		  && PT_IS_SET_TYPE (dnf_node->info.expr.arg2)
+		  && dnf_node->or_next == NULL)
 		{
 		  /* 
 		   * skip merge in list
