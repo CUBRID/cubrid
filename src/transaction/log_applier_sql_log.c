@@ -521,9 +521,9 @@ sl_write_schema_sql (char *class_name, char *db_user, int item_type,
       if (db_user != NULL && strlen (db_user) > 0)
 	{
 	  grant =
-	    pt_append_nulstring (parser, grant, "GRANT ALL PRIVILEGES ON [");
+	    pt_append_nulstring (parser, grant, "GRANT ALL PRIVILEGES ON ");
 	  grant = pt_append_nulstring (parser, grant, class_name);
-	  grant = pt_append_nulstring (parser, grant, "] TO ");
+	  grant = pt_append_nulstring (parser, grant, " TO ");
 	  grant = pt_append_nulstring (parser, grant, db_user);
 	  grant = pt_append_nulstring (parser, grant, ";");
 
