@@ -1148,8 +1148,7 @@ process_service (int command_type, bool process_window_service)
 	    {
 	      status = process_heartbeat (command_type, 0, NULL);
 	    }
-	  if (strcmp (get_property (SERVICE_START_SHARD), PROPERTY_ON) ==
-	      0)
+	  if (strcmp (get_property (SERVICE_START_SHARD), PROPERTY_ON) == 0)
 	    {
 	      status = process_shard (command_type, 0, NULL, false);
 	    }
@@ -1233,6 +1232,11 @@ process_service (int command_type, bool process_window_service)
 	if (strcmp (get_property (SERVICE_START_HEARTBEAT), PROPERTY_ON) == 0)
 	  {
 	    status = process_heartbeat (command_type, 0, NULL);
+	  }
+
+	if (strcmp (get_property (SERVICE_START_SHARD), PROPERTY_ON) == 0)
+	  {
+	    status = process_shard (command_type, 0, NULL, false);
 	  }
       }
       break;
