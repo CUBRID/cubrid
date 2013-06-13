@@ -1710,7 +1710,8 @@ db_set_session_mode_async (DB_SESSION * session)
       return ER_IT_INVALID_SESSION;
     }
 
-  db_set_sync_flag (session, ASYNC_EXEC);
+  /* async execution mode is not supported */
+  db_set_sync_flag (session, SYNC_EXEC);
 
   return NO_ERROR;
 }
@@ -3783,6 +3784,9 @@ db_query_produce_updatable_result (DB_SESSION * session, int stmt_ndx)
 bool
 db_is_query_async_executable (DB_SESSION * session, int stmt_ndx)
 {
+  /* async execution mode is not supported */
+  return false;
+#if 0
   PT_NODE *statement;
   bool sync;
 
@@ -3823,4 +3827,5 @@ db_is_query_async_executable (DB_SESSION * session, int stmt_ndx)
 	       && statement->is_click_counter)) ? true : false);
 
   return !sync;
+#endif
 }

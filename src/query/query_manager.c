@@ -1998,6 +1998,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
 #if defined (SERVER_MODE)
   use_global_heap = false;
 #endif
+  assert_release (IS_SYNC_EXEC_MODE (*flag_p));
 
   saved_is_stats_on = mnt_server_is_stats_on (thread_p);
   if (DO_NOT_COLLECT_EXEC_STATS (*flag_p) && saved_is_stats_on == true)
@@ -2587,6 +2588,8 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
 
   /* to return query id */
   *query_id_p = query_p->query_id;
+
+  assert_release (IS_SYNC_EXEC_MODE (*flag_p));
 
   if (IS_SYNC_EXEC_MODE (*flag_p))
     {

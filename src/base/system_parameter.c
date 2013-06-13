@@ -826,8 +826,8 @@ static UINT64 prm_index_scan_key_buffer_size_lower = 0;
 bool PRM_DONT_REUSE_HEAP_FILE = false;
 static bool prm_dont_reuse_heap_file_default = false;
 
-bool PRM_QUERY_MODE_SYNC = false;
-static bool prm_query_mode_sync_default = false;
+bool PRM_QUERY_MODE_SYNC = true;
+static bool prm_query_mode_sync_default = true;
 
 int PRM_INSERT_MODE = 1 + 8 + 16;
 static int prm_insert_mode_default = 1 + 8 + 16;
