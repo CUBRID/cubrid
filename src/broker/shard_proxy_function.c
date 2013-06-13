@@ -2552,7 +2552,7 @@ fn_proxy_client_cursor_close (T_PROXY_CONTEXT * ctx_p,
 
   if (ctx_p->is_in_tran)
     {
-      cas_io_p = proxy_cas_alloc_by_ctx (ctx_p->shard_id, ctx_p->cas_id,
+      cas_io_p = proxy_cas_alloc_by_ctx (ctx_p->client_id, ctx_p->shard_id, ctx_p->cas_id,
 					 ctx_p->cid, ctx_p->uid,
 					 ctx_p->wait_timeout);
       if (cas_io_p == NULL)
