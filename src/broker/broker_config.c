@@ -316,8 +316,8 @@ broker_config_read_internal (const char *conf_file,
 #if defined(CUBRID_SHARD)
   char library_name[PATH_MAX];
 #endif
-  int size_str[LINE_MAX];
-  int time_str[LINE_MAX];
+  char size_str[LINE_MAX];
+  char time_str[LINE_MAX];
 
   ini = ini_parser_load (conf_file);
   if (ini == NULL)

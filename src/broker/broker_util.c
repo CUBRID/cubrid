@@ -592,7 +592,7 @@ ut_is_appl_server_ready (int pid, char *ready_flag)
 }
 
 double
-ut_size_string_to_kbyte (char *size_str, char *default_unit)
+ut_size_string_to_kbyte (const char *size_str, const char *default_unit)
 {
   double val;
   char *end;
@@ -604,7 +604,7 @@ ut_size_string_to_kbyte (char *size_str, char *default_unit)
     }
 
   val = strtod (size_str, &end);
-  if (end == size_str)
+  if (end == (char *) size_str)
     {
       return -1.0;
     }
@@ -615,7 +615,7 @@ ut_size_string_to_kbyte (char *size_str, char *default_unit)
     }
   else
     {
-      unit = default_unit;
+      unit = (char *) default_unit;
     }
 
   if (strcasecmp (unit, "b") == 0)
@@ -651,7 +651,7 @@ ut_size_string_to_kbyte (char *size_str, char *default_unit)
 }
 
 double
-ut_time_string_to_sec (char *time_str, char *default_unit)
+ut_time_string_to_sec (const char *time_str, const char *default_unit)
 {
   double val;
   char *end;
@@ -663,7 +663,7 @@ ut_time_string_to_sec (char *time_str, char *default_unit)
     }
 
   val = strtod (time_str, &end);
-  if (end == time_str)
+  if (end == (char *) time_str)
     {
       return -1.0;
     }
@@ -674,7 +674,7 @@ ut_time_string_to_sec (char *time_str, char *default_unit)
     }
   else
     {
-      unit = default_unit;
+      unit = (char *) default_unit;
     }
 
   if ((strcasecmp (unit, "ms") == 0) || (strcasecmp (unit, "msec") == 0))
