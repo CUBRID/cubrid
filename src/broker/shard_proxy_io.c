@@ -3708,7 +3708,7 @@ proxy_cas_find_io_by_ctx (int shard_id, int cas_id, int ctx_cid,
 }
 
 T_CAS_IO *
-proxy_cas_alloc_by_ctx (int shard_id, int cas_id, int ctx_cid,
+proxy_cas_alloc_by_ctx (int client_id, int shard_id, int cas_id, int ctx_cid,
 			unsigned int ctx_uid, int timeout)
 {
   int error;
@@ -3780,7 +3780,7 @@ proxy_cas_alloc_by_ctx (int shard_id, int cas_id, int ctx_cid,
 	  assert (cas_io_p->ctx_uid == 0);
 	}
 
-      client_info_p = shard_shm_get_client_info (proxy_info_p, ctx_cid);
+      client_info_p = shard_shm_get_client_info (proxy_info_p, client_id);
       if (client_info_p == NULL)
 	{
 	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
@@ -3900,7 +3900,7 @@ proxy_cas_alloc_by_ctx (int shard_id, int cas_id, int ctx_cid,
   assert (cas_io_p->ctx_uid == 0);
   assert (cas_io_p->fd != INVALID_SOCKET);
 
-  client_info_p = shard_shm_get_client_info (proxy_info_p, ctx_cid);
+  client_info_p = shard_shm_get_client_info (proxy_info_p, client_id);
   if (client_info_p == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,

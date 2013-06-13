@@ -837,7 +837,7 @@ proxy_handler_process_client_wakeup_by_shard (T_PROXY_EVENT * event_p)
   /* set in_tran, shard/cas */
   proxy_context_set_in_tran (ctx_p, event_p->shard_id, event_p->cas_id);
 
-  client_info_p = shard_shm_get_client_info (proxy_info_p, ctx_p->cid);
+  client_info_p = shard_shm_get_client_info (proxy_info_p, ctx_p->client_id);
   if (client_info_p == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
@@ -1671,8 +1671,9 @@ proxy_wakeup_context_by_shard (T_WAIT_CONTEXT * waiter_p,
      ctx_p->uid, shard_id, cas_id);
 
   cas_io_p =
-    proxy_cas_alloc_by_ctx (shard_id, cas_id, waiter_p->ctx_cid,
-			    waiter_p->ctx_uid, ctx_p->wait_timeout);
+    proxy_cas_alloc_by_ctx (ctx_p->client_id, shard_id, cas_id,
+			    waiter_p->ctx_cid, waiter_p->ctx_uid,
+			    ctx_p->wait_timeout);
   if (cas_io_p == NULL)
     {
       PROXY_DEBUG_LOG ("failed to proxy_cas_alloc_by_ctx. "
