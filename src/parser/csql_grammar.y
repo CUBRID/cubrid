@@ -1597,9 +1597,15 @@ stmt
 			    /* set query length of previous statement */
 			    if (g_last_stmt)
 			      {
-				int len = g_query_string - g_last_stmt->sql_user_text; 
+				/* remove ';' character in user sql text */
+				int len = g_query_string - g_last_stmt->sql_user_text - 1; 
 				g_last_stmt->sql_user_text_len = len;
 				g_query_string_len = len;
+			      }
+			    
+			    while (isspace (*g_query_string))
+			      {
+			        g_query_string++;
 			      }
 			  }
 
