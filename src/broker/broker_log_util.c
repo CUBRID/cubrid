@@ -166,7 +166,7 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
       *tot_val_size = 0;
     }
 
-  GET_MSG_START_PTR (msg, buf);
+  msg = get_msg_start_ptr (buf);
   if (strncmp (msg, "bind ", 5) != 0)
     {
       return false;
@@ -347,4 +347,29 @@ is_cas_log (char *str)
     }
 
   return 0;
+}
+
+char *
+get_msg_start_ptr (char *linebuf)
+{
+  char *tmp_ptr;
+
+  if (is_cas_log (linebuf) == CAS_LOG_BEGIN_WITH_YEAR)
+    {
+      tmp_ptr = linebuf + CAS_LOG_MSG_INDEX;
+    }
+  else
+    {
+      tmp_ptr = linebuf + CAS_LOG_MSG_INDEX - 3;
+    }
+
+  tmp_ptr = strchr (tmp_ptr, ' ');
+  if (tmp_ptr == NULL)
+    {
+      return (char *) "";
+    }
+  else
+    {
+      return tmp_ptr + 1;
+    }
 }

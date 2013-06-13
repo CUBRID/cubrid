@@ -110,6 +110,7 @@ log_top (FILE * fp, char *filename, long start_offset, long end_offset)
   char fileinfo_str[1024];
   char cur_date[DATE_STR_LEN + 1];
   char start_date[DATE_STR_LEN + 1];
+  char *msg_p;
 
   start_date[0] = '\0';
 
@@ -142,25 +143,27 @@ log_top (FILE * fp, char *filename, long start_offset, long end_offset)
 	}
 
       log_type = is_cas_log (linebuf);
-      if (log_type == CAS_LOG_BEGIN_WITH_YEAR)
-	{
-	  if (strncmp (linebuf + 23, "END OF LOG", 10) == 0)
-	    {
-	      break;
-	    }
-
-	  GET_CUR_DATE_STR (cur_date, linebuf);
-	  if (start_date[0] == '\0')
-	    {
-	      strcpy (start_date, cur_date);
-	    }
-	}
-      else if (log_type == CAS_LOG_BEGIN_WITH_MONTH)
+      if (log_type == CAS_LOG_BEGIN_WITH_MONTH)
 	{
 	  fprintf (stderr, "invaild version of log file\n");
 	  t_string_free (str_buf);
 	  t_string_free (linebuf_tstr);
 	  return LT_INVAILD_VERSION;
+	}
+      else if (log_type != CAS_LOG_BEGIN_WITH_YEAR)
+	{
+	  continue;
+	}
+
+      if (strncmp (linebuf + 23, "END OF LOG", 10) == 0)
+	{
+	  break;
+	}
+
+      GET_CUR_DATE_STR (cur_date, linebuf);
+      if (start_date[0] == '\0')
+	{
+	  strcpy (start_date, cur_date);
 	}
 
       if (is_first)
@@ -176,12 +179,12 @@ log_top (FILE * fp, char *filename, long start_offset, long end_offset)
 
       t_string_add (str_buf, linebuf, (int) strlen (linebuf));
 
-      if (is_cas_log (linebuf) == CAS_LOG_BEGIN_WITH_YEAR
-	  && (strncmp (linebuf + 23, "***", 3) == 0))
+      msg_p = get_msg_start_ptr (linebuf);
+      if (strncmp (msg_p, "***", 3) == 0)
 	{
 	  float runtime;
 
-	  if (sscanf (linebuf + 27, "%*s %*s %f", &runtime) == 1)
+	  if (sscanf (msg_p + 3 + 1, "%*s %*s %f", &runtime) == 1)
 	    {
 	      T_LOG_INFO tmpinfo;
 	      char *log_str;

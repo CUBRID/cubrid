@@ -123,7 +123,7 @@ log_converter (FILE * infp, FILE * outfp)
 	    }
 	  query_flag = 0;
 
-	  GET_MSG_START_PTR (msg_p, linebuf);
+	  msg_p = get_msg_start_ptr (linebuf);
 	  if (strncmp (msg_p, "execute", 7) == 0)
 	    {
 	      msg_p = get_execute_type (msg_p, &prepare_flag, &execute_flag);
