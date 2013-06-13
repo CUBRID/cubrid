@@ -687,6 +687,15 @@ namespace dbgw
   {
   }
 
+  FailedToParseXmlException::FailedToParseXmlException(
+      const char *szFileName) throw() :
+    Exception(
+        ExceptionFactory::create(DBGW_ER_XML_FAILED_TO_PARSE,
+            (boost::format(
+                "Failed to parse xml. (%s).") % szFileName).str()))
+  {
+  }
+
   MutexOperationFailException::MutexOperationFailException(const char *szOp,
       int nStatus) throw() :
     Exception(

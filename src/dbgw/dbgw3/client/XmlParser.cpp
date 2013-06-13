@@ -772,41 +772,52 @@ namespace dbgw
     enum XML_Status status = XML_STATUS_OK;
     enum XML_Error errCode;
     int nReadLen;
-    try
-      {
-        do
-          {
-            nReadLen = fread(buffer, 1, XML_FILE_BUFFER_SIZE, fp);
-            status = XML_Parse(parser.get(), buffer, nReadLen, 0);
 
-            if (isAborted())
-              {
-                break;
-              }
-          }
-        while (nReadLen > 0 && status != XML_STATUS_ERROR);
-      }
-    catch (Exception &e)
+    do
       {
-        exception = e;
+        nReadLen = fread(buffer, 1, XML_FILE_BUFFER_SIZE, fp);
+        try
+          {
+            status = XML_Parse(parser.get(), buffer, nReadLen, 0);
+          }
+        catch (Exception &e)
+          {
+            exception = e;
+            break;
+          }
+
+        if (isAborted())
+          {
+            break;
+          }
       }
+    while (nReadLen > 0 && status != XML_STATUS_ERROR);
 
     fclose(fp);
-
-    if (status == XML_STATUS_ERROR)
-      {
-        errCode = XML_GetErrorCode(parser.get());
-        InvalidXMLSyntaxException e(XML_ErrorString(errCode),
-            getRealFileName().c_str(),
-            XML_GetCurrentLineNumber(parser.get()),
-            XML_GetCurrentColumnNumber(parser.get()));
-        DBGW_LOG_ERROR(e.what());
-        throw e;
-      }
 
     if (exception.getErrorCode() != DBGW_ER_NO_ERROR)
       {
         throw exception;
+      }
+    else if (status == XML_STATUS_ERROR)
+      {
+        errCode = XML_GetErrorCode(parser.get());
+        const char *szErrMsg = XML_ErrorString(errCode);
+        if (errCode == XML_ERROR_NONE || szErrMsg == NULL)
+          {
+            FailedToParseXmlException e(getRealFileName().c_str());
+            DBGW_LOG_ERROR(e.what());
+            throw e;
+          }
+        else
+          {
+            InvalidXMLSyntaxException e(szErrMsg,
+                getRealFileName().c_str(),
+                XML_GetCurrentLineNumber(parser.get()),
+                XML_GetCurrentColumnNumber(parser.get()));
+            DBGW_LOG_ERROR(e.what());
+            throw e;
+          }
       }
   }
 

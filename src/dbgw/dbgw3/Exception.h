@@ -21,6 +21,7 @@
 #define EXCEPTION_H_
 
 #include <string>
+#include <vector>
 
 namespace dbgw
 {
@@ -89,6 +90,7 @@ namespace dbgw
     DBGW_ER_XML_INVALID_PARAM_INDEX                   = -22709,
     DBGW_ER_XML_DUPLICATE_RESULT_INDEX                = -22710,
     DBGW_ER_XML_INVALID_RESULT_INDEX                  = -22711,
+    DBGW_ER_XML_FAILED_TO_PARSE                       = -22712,
 
     DBGW_ER_EXTERNAL_MUTEX_OPERATION_FAIL             = -22800,
     DBGW_ER_EXTERNAL_STANDARD_ERROR                   = -22801,
@@ -485,6 +487,12 @@ namespace dbgw
   public:
     InvalidResultIndexException(const char *szFileName, const char *szSqlName,
         int nIndex) throw();
+  };
+
+  class FailedToParseXmlException : public Exception
+  {
+  public:
+    FailedToParseXmlException(const char *szFileName) throw();
   };
 
   class MutexOperationFailException : public Exception
