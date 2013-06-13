@@ -726,8 +726,9 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 	    			setShardId(UShardInfo.SHARD_ID_INVALID);
 					if (is_closed)
 						return;
-					is_closed = true;
+					
 					complete();
+					is_closed = true;
 
 					if (u_stmt != null) {
 						u_stmt.close();
