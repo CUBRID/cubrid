@@ -2179,6 +2179,12 @@ set_metadata_info (T_SRV_HANDLE * srv_handle)
 	    case MYSQL_TYPE_VARCHAR:
 	    case MYSQL_TYPE_VAR_STRING:
 	    case MYSQL_TYPE_BIT:
+	      if (type == MYSQL_TYPE_VARCHAR || type == MYSQL_TYPE_VAR_STRING
+		  || type == MYSQL_TYPE_STRING)
+		{
+		  size *= 4;
+		}
+
 	      data = (char *) MALLOC (size);
 	      if (data == NULL)
 		{
