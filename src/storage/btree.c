@@ -17493,6 +17493,8 @@ start_locking:
 	  lock_remove_object_lock (thread_p, OID_ISNULL (&nk_pseudo_oid) ?
 				   &saved_nk_pseudo_oid : &nk_pseudo_oid,
 				   &saved_nk_class_oid, bts->key_lock_mode);
+	  OID_SET_NULL (&saved_nk_pseudo_oid);
+	  OID_SET_NULL (&saved_nk_class_oid);
 	  next_key_locked = false;
 	}
       /*
