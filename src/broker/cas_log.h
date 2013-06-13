@@ -70,6 +70,10 @@ extern void cas_slow_log_end (void);
 extern void cas_slow_log_write (struct timeval *log_time,
 				unsigned int seq_num, bool unit_start,
 				const char *fmt, ...);
+extern void cas_slow_log_write_and_end (struct timeval *log_time,
+					unsigned int seq_num,
+					const char *fmt, ...);
+
 extern void cas_slow_log_write2 (const char *fmt, ...);
 extern void cas_slow_log_write_value_string (char *value, int size);
 extern void cas_slow_log_write_query_string (char *query, int size);

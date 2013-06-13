@@ -1227,19 +1227,19 @@ main (int argc, char *argv[])
 		if (db_err_msg == NULL)
 		  {
 		    snprintf (msg_buf, LINE_MAX,
-			      "connect db %s user %s url %s - error : %d",
+			      "connect db %s user %s url %s, error:%d.",
 			      db_name, db_user, url, err_info.err_number);
 		  }
 		else
 		  {
 		    snprintf (msg_buf, LINE_MAX,
-			      "connect db %s user %s url %s - error : %d(%s)",
+			      "connect db %s user %s url %s, error:%d, %s",
 			      db_name, db_user, url, err_info.err_number,
 			      db_err_msg);
 		  }
 
 		cas_log_write_and_end (0, false, msg_buf);
-		cas_slow_log_write (NULL, 0, false, msg_buf);
+		cas_slow_log_write_and_end (NULL, 0, msg_buf);
 
 		CLOSE_SOCKET (client_sock_fd);
 		FREE_MEM (db_err_msg);

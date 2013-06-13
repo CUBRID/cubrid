@@ -1032,6 +1032,30 @@ cas_slow_log_end ()
 }
 
 void
+cas_slow_log_write_and_end (struct timeval *log_time, unsigned int seq_num,
+			    const char *fmt, ...)
+{
+#ifndef LIBCAS_FOR_JSP
+  if (slow_log_fp == NULL && as_info->cur_slow_log_mode != SLOW_LOG_MODE_OFF)
+    {
+      cas_slow_log_open (shm_appl->broker_name, shm_as_index);
+    }
+
+  if (slow_log_fp != NULL)
+    {
+      va_list ap;
+
+      va_start (ap, fmt);
+      cas_log_write_internal (slow_log_fp, log_time, seq_num, false, fmt, ap);
+      va_end (ap);
+
+      cas_slow_log_end ();
+    }
+
+#endif /* LIBCAS_FOR_JSP */
+}
+
+void
 cas_slow_log_write (struct timeval *log_time, unsigned int seq_num,
 		    bool unit_start, const char *fmt, ...)
 {
