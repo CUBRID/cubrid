@@ -2009,10 +2009,33 @@ css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid)
  *   eid(in): enquiry id
  *   buffer(out): data buffer to send to client.
  *   buffer_size(out): size of data buffer
+ *
+ *   note: caller should know that it returns zero on success and
+ *   returns css error code on failure
  */
 unsigned int
 css_receive_data_from_client (CSS_CONN_ENTRY * conn, unsigned int eid,
 			      char **buffer, int *size)
+{
+  return css_receive_data_from_client_with_timeout (conn, eid, buffer, size,
+						    -1);
+}
+
+/*
+ * css_receive_data_from_client_with_timeout() - return data that was sent by the server
+ *   return:
+ *   eid(in): enquiry id
+ *   buffer(out): data buffer to send to client.
+ *   buffer_size(out): size of data buffer
+ *   timeout(in): timeout in seconds
+ *
+ *   note: caller should know that it returns zero on success and
+ *   returns css error code on failure
+ */
+unsigned int
+css_receive_data_from_client_with_timeout (CSS_CONN_ENTRY * conn,
+					   unsigned int eid, char **buffer,
+					   int *size, int timeout)
 {
   int rc = 0;
 
@@ -2020,7 +2043,7 @@ css_receive_data_from_client (CSS_CONN_ENTRY * conn, unsigned int eid,
 
   *size = 0;
 
-  rc = css_receive_data (conn, CSS_RID_FROM_EID (eid), buffer, size, -1);
+  rc = css_receive_data (conn, CSS_RID_FROM_EID (eid), buffer, size, timeout);
 
   if (rc == NO_ERRORS || rc == RECORD_TRUNCATED)
     {

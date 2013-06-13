@@ -1554,7 +1554,8 @@ css_receive_data (CSS_CONN_ENTRY * conn, unsigned short req_id,
       return NO_DATA_AVAILABLE;
     }
 
-  css_return_queued_data (conn, req_id, buffer, buffer_size, r);
+  css_return_queued_data_timeout (conn, req_id, buffer, buffer_size, r,
+				  timeout);
   rc = *r;
 
   free_and_init (r);
@@ -2421,12 +2422,18 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid,
 								      &abstime,
 								      THREAD_CSS_QUEUE_SUSPENDED);
 
-		  if (r == ETIMEDOUT
-		      || thrd->resume_status != THREAD_CSS_QUEUE_RESUMED)
+		  if (r == ETIMEDOUT)
 		    {
-		      assert (r == ETIMEDOUT
-			      || (thrd->resume_status ==
-				  THREAD_RESUME_DUE_TO_INTERRUPT));
+		      *rc = TIMEDOUT_ON_QUEUE;
+		      *buffer = NULL;
+		      *bufsize = -1;
+		      return TIMEDOUT_ON_QUEUE;
+
+		    }
+		  else if (thrd->resume_status != THREAD_CSS_QUEUE_RESUMED)
+		    {
+		      assert (thrd->resume_status ==
+			      THREAD_RESUME_DUE_TO_INTERRUPT);
 
 		      *buffer = NULL;
 		      *bufsize = -1;

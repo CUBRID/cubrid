@@ -1538,6 +1538,7 @@ thread_suspend_timeout_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p,
 {
   int r;
   int old_status;
+  int error = NO_ERROR;
 
   assert (thread_p->status == TS_RUN || thread_p->status == TS_CHECK);
   old_status = thread_p->status;
@@ -1548,15 +1549,17 @@ thread_suspend_timeout_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p,
   r =
     pthread_cond_timedwait (&thread_p->wakeup_cond, &thread_p->th_entry_lock,
 			    time_p);
-  if (r == ETIMEDOUT)
-    {
-      r = 0;
-    }
-  if (r != 0)
+
+  if (r != 0 && r != ETIMEDOUT)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_COND_TIMEDWAIT, 0);
       return ER_CSS_PTHREAD_COND_TIMEDWAIT;
+    }
+
+  if (r == ETIMEDOUT)
+    {
+      error = ER_CSS_PTHREAD_COND_TIMEDOUT;
     }
 
   thread_p->status = old_status;
@@ -1569,7 +1572,7 @@ thread_suspend_timeout_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p,
       return ER_CSS_PTHREAD_MUTEX_UNLOCK;
     }
 
-  return r;
+  return error;
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -1843,7 +1846,8 @@ thread_suspend_with_other_mutex (THREAD_ENTRY * thread_p,
   /* we should restore thread's status */
   if (r != NO_ERROR)
     {
-      error = ER_CSS_PTHREAD_COND_WAIT;
+      error = (r == ETIMEDOUT) ?
+	ER_CSS_PTHREAD_COND_TIMEDOUT : ER_CSS_PTHREAD_COND_WAIT;
       if (timeout == INF_WAIT || r != ETIMEDOUT)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);

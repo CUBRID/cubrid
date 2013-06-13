@@ -77,6 +77,10 @@ extern unsigned int
 css_receive_data_from_client (CSS_CONN_ENTRY * conn, unsigned int eid,
 			      char **buffer, int *size);
 extern unsigned int
+css_receive_data_from_client_with_timeout (CSS_CONN_ENTRY * conn,
+					   unsigned int eid, char **buffer,
+					   int *size, int timeout);
+extern unsigned int
 css_send_abort_to_client (CSS_CONN_ENTRY * conn, unsigned int eid);
 extern void
 css_initialize_server_interfaces (int (*request_handler)

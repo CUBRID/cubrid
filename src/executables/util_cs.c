@@ -2815,6 +2815,7 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
   int mode = -1;
   int error = NO_ERROR;
   int retried = 0, sleep_nsecs = 1;
+  bool need_er_reinit = false;
 #if !defined(WINDOWS)
   char *binary_name;
   char executable_path[PATH_MAX];
@@ -2929,6 +2930,12 @@ retry:
       goto error_exit;
     }
 
+  if (need_er_reinit)
+    {
+      er_init (er_msg_file, ER_NEVER_EXIT);
+      need_er_reinit = false;
+    }
+
   /* initialize system parameters */
   if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
     {
@@ -2988,6 +2995,7 @@ error_exit:
 	{
 	  sleep_nsecs = 1;
 	}
+      need_er_reinit = true;
       ++retried;
 
       er_init (er_msg_file, ER_NEVER_EXIT);
@@ -3030,6 +3038,7 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
   int max_mem_size = 0;
   int error = NO_ERROR;
   int retried = 0, sleep_nsecs = 1;
+  bool need_er_reinit = false;
 #if !defined(WINDOWS)
   char *binary_name;
   char executable_path[PATH_MAX];
@@ -3123,6 +3132,13 @@ retry:
       fprintf (stderr, "%s\n", db_error_string (3));
       goto error_exit;
     }
+
+  if (need_er_reinit)
+    {
+      er_init (er_msg_file, ER_NEVER_EXIT);
+      need_er_reinit = false;
+    }
+
   /* set lock timeout to infinite */
   db_set_lock_timeout (-1);
 
@@ -3181,8 +3197,8 @@ error_exit:
 	{
 	  sleep_nsecs = 1;
 	}
+      need_er_reinit = true;
       ++retried;
-      er_init (er_msg_file, ER_NEVER_EXIT);
       goto retry;
     }
 

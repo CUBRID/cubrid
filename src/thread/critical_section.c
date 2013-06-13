@@ -1311,7 +1311,8 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p,
 		      assert (0);
 		      return ER_CSS_PTHREAD_MUTEX_UNLOCK;
 		    }
-		  if (error_code != ER_CSS_PTHREAD_COND_WAIT)
+		  if (error_code != ER_CSS_PTHREAD_COND_WAIT
+		      && error_code != ER_CSS_PTHREAD_COND_TIMEDOUT)
 		    {
 		      er_set_with_oserror (ER_ERROR_SEVERITY,
 					   ARG_FILE_LINE,

@@ -366,6 +366,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HA_COPY_LOG_MAX_ARCHIVES "ha_copy_log_max_archives"
 
+#define PRM_NAME_HA_COPY_LOG_TIMEOUT "ha_copy_log_timeout"
+
 #define PRM_NAME_JAVA_STORED_PROCEDURE "java_stored_procedure"
 
 #define PRM_NAME_COMPAT_PRIMARY_KEY "compat_primary_key"
@@ -1109,6 +1111,11 @@ int PRM_HA_COPY_LOG_MAX_ARCHIVES = 1;
 static int prm_ha_copy_log_max_archives_default = 1;
 static int prm_ha_copy_log_max_archives_upper = INT_MAX;
 static int prm_ha_copy_log_max_archives_lower = 0;
+
+int PRM_HA_COPY_LOG_TIMEOUT = 5;
+static int prm_ha_copy_log_timeout_default = 5;
+static int prm_ha_copy_log_timeout_upper = INT_MAX;
+static int prm_ha_copy_log_timeout_lower = -1;
 
 bool PRM_JAVA_STORED_PROCEDURE = false;
 static bool prm_java_stored_procedure_default = false;
@@ -2286,6 +2293,14 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_HA_COPY_LOG_MAX_ARCHIVES,
    (void *) &prm_ha_copy_log_max_archives_upper,
    (void *) &prm_ha_copy_log_max_archives_lower,
+   (char *) NULL},
+  {PRM_NAME_HA_COPY_LOG_TIMEOUT,
+   (PRM_FOR_SERVER | PRM_FOR_HA),
+   PRM_INTEGER,
+   (void *) &prm_ha_copy_log_timeout_default,
+   (void *) &PRM_HA_COPY_LOG_TIMEOUT,
+   (void *) &prm_ha_copy_log_timeout_upper,
+   (void *) &prm_ha_copy_log_timeout_lower,
    (char *) NULL},
   {PRM_NAME_JAVA_STORED_PROCEDURE,
    (PRM_FOR_SERVER),

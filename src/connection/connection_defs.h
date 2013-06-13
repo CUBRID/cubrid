@@ -205,7 +205,8 @@ enum css_error_code
   SERVER_ABORTED = 13,
   INTERRUPTED_READ = 14,
   CANT_ALLOC_BUFFER = 15,
-  OS_ERROR = 16
+  OS_ERROR = 16,
+  TIMEDOUT_ON_QUEUE = 17
 };
 
 /*

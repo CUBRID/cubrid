@@ -920,6 +920,7 @@ logwr_archive_active_log (void)
   int error_code = NO_ERROR;
   int num_pages = 0;
   const char *catmsg;
+  char buffer[LINE_MAX];
   BACKGROUND_ARCHIVING_INFO *bg_arv_info;
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
@@ -950,6 +951,11 @@ logwr_archive_active_log (void)
   /*
    * Now create the archive and start copying pages
    */
+
+  snprintf (buffer, sizeof (buffer), "log archiving started for archive %03d",
+	    arvhdr->arv_num);
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+	  buffer);
 
   fileio_make_log_archive_name (archive_name, logwr_Gl.log_path,
 				logwr_Gl.db_name, arvhdr->arv_num);
@@ -1837,7 +1843,7 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
 						&writer_info->
 						flush_start_mutex, timeout,
 						&to, THREAD_LOGWR_SUSPENDED);
-	  if (rv == ER_CSS_PTHREAD_COND_WAIT)
+	  if (rv == ER_CSS_PTHREAD_COND_TIMEDOUT)
 	    {
 	      pthread_mutex_unlock (&writer_info->flush_start_mutex);
 
@@ -1851,7 +1857,8 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
 	      continue;
 	    }
 	  else if (rv == ER_CSS_PTHREAD_MUTEX_LOCK
-		   || rv == ER_CSS_PTHREAD_MUTEX_UNLOCK)
+		   || rv == ER_CSS_PTHREAD_MUTEX_UNLOCK
+		   || rv == ER_CSS_PTHREAD_COND_WAIT)
 	    {
 	      pthread_mutex_unlock (&writer_info->flush_start_mutex);
 

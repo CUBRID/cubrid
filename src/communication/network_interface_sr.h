@@ -334,6 +334,10 @@ extern int xs_send_method_call_info_to_client (THREAD_ENTRY * thread_p,
 					       method_sig_list);
 extern int xs_receive_data_from_client (THREAD_ENTRY * thread_p, char **area,
 					int *datasize);
+extern int xs_receive_data_from_client_with_timeout (THREAD_ENTRY * thread_p,
+						     char **area,
+						     int *datasize,
+						     int timeout);
 extern int xs_send_action_to_client (THREAD_ENTRY * thread_p,
 				     VACOMM_BUFFER_CLIENT_ACTION action);
 extern void stest_performance (THREAD_ENTRY * thread_p, unsigned int rid,

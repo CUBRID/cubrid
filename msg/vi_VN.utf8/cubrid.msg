@@ -1188,7 +1188,9 @@ $ LOADDB
 1119 Internal error: Page id %1$d is allocated according to the allocation map of volume "%2$s", but it does not belong to any file. 
 1120 Internal error: Page id %1$d of volume "%2$s" is currently being used, but it is not allocated according to the allocation map of volume.
 1121 NOT NULL constraints do not allow NULL value.
-1122 Lỗi sau cùng
+1122 Time out in receiving data.
+1123 pthread_cond_timedwait() timed out. 
+1124 Lỗi sau cùng
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Lỗi trong các lỗi hệ thống con (dòng %d):

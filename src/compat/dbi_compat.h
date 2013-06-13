@@ -1418,7 +1418,11 @@
 
 #define ER_NOT_NULL_DOES_NOT_ALLOW_NULL_VALUE	    -1121
 
-#define ER_LAST_ERROR                               -1122
+#define ER_NET_DATA_RECEIVE_TIMEDOUT                -1122
+
+#define ER_CSS_PTHREAD_COND_TIMEDOUT                -1123
+
+#define ER_LAST_ERROR                               -1124
 
 #define DB_TRUE 1
 #define DB_FALSE 0

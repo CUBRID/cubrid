@@ -6973,7 +6973,28 @@ int
 xs_receive_data_from_client (THREAD_ENTRY * thread_p, char **area,
 			     int *datasize)
 {
+  return xs_receive_data_from_client_with_timeout (thread_p, area, datasize,
+						   -1);
+}
+
+/*
+ * xs_receive_data_from_client_with_timeout -
+ *
+ * return:
+ *
+ *   area(in):
+ *   datasize(in):
+ *   timeout (in):
+ *
+ * NOTE:
+ */
+int
+xs_receive_data_from_client_with_timeout (THREAD_ENTRY * thread_p,
+					  char **area, int *datasize,
+					  int timeout)
+{
   unsigned int rid;
+  int rc = 0;
   bool continue_checking = true;
 
   if (*area)
@@ -6982,18 +7003,28 @@ xs_receive_data_from_client (THREAD_ENTRY * thread_p, char **area,
     }
   rid = thread_get_comm_request_id (thread_p);
 
-  if (css_receive_data_from_client (thread_p->conn_entry, rid, area,
-				    (int *) datasize))
+  rc = css_receive_data_from_client_with_timeout
+    (thread_p->conn_entry, rid, area, (int *) datasize, timeout);
+
+  if (rc == TIMEDOUT_ON_QUEUE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATA_RECEIVE_TIMEDOUT,
+	      0);
+      return ER_NET_DATA_RECEIVE_TIMEDOUT;
+    }
+  else if (rc != 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE,
 	      0);
       return ER_FAILED;
     }
+
   if (logtb_is_interrupted (thread_p, false, &continue_checking))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
       return ER_FAILED;
     }
+
   return NO_ERROR;
 }
 
@@ -7801,13 +7832,17 @@ xlog_get_page_request_with_reply (THREAD_ENTRY * thread_p,
 
   /* Obtain success message from the client, without blocking the
      server. */
-  if ((error = xs_receive_data_from_client (thread_p, &reply, &reply_size))
-      != NO_ERROR)
+  error =
+    xs_receive_data_from_client_with_timeout (thread_p, &reply, &reply_size,
+					      prm_get_integer_value
+					      (PRM_ID_HA_COPY_LOG_TIMEOUT));
+  if (error != NO_ERROR)
     {
       if (reply)
 	{
 	  free_and_init (reply);
 	}
+
       return error;
     }
 
@@ -8483,10 +8518,18 @@ slogwr_get_log_pages (THREAD_ENTRY * thread_p, unsigned int rid,
     {
       return_error_to_client (thread_p, rid);
     }
-  ptr = or_pack_int (reply, (int) END_CALLBACK);
-  ptr = or_pack_int (ptr, error);
-  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply,
-				  OR_ALIGNED_BUF_SIZE (a_reply));
+
+  if (error == NO_ERROR || error == ER_INTERRUPTED)
+    {
+      ptr = or_pack_int (reply, (int) END_CALLBACK);
+      ptr = or_pack_int (ptr, error);
+      (void) css_send_data_to_client (thread_p->conn_entry, rid, reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply));
+    }
+  else if (error == ER_NET_DATA_RECEIVE_TIMEDOUT)
+    {
+      css_end_server_request (thread_p->conn_entry);
+    }
 
   return;
 }
