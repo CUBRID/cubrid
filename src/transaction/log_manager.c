@@ -134,8 +134,6 @@ static int rv;
 #define LOG_NEED_TO_SET_LSA(RCVI, PGPTR) \
    ((RCVI) != RVDK_LINK_PERM_VOLEXT || !pgbuf_is_lsa_temporary(PGPTR))
 
-#define LOG_TOPOP_STACK_INIT_SIZE 1024
-
 /* Assume that locator end with <path>/<meta_name>.<key_name> */
 #define LOCATOR_KEY(locator_) (strrchr (locator_, '.') + 1)
 #define LOCATOR_META(locator_) (strrchr (locator_, '/') + 1)
@@ -147,13 +145,6 @@ static int rv;
      memcpy (meta_name_, meta_, (key_ - meta_) -1); \
      meta_name_[(key_ - meta_) -1] = '\0'; \
    } while (0)
-
-typedef struct log_topop_range LOG_TOPOP_RANGE;
-struct log_topop_range
-{
-  LOG_LSA start_lsa;
-  LOG_LSA end_lsa;
-};
 
 /* definitions for lob locator tree */
 typedef struct lob_savepoint_entry LOB_SAVEPOINT_ENTRY;
@@ -388,9 +379,6 @@ static int log_undo_rec_restartable (THREAD_ENTRY * thread_p,
 				     LOG_RCVINDEX rcvindex, LOG_RCV * rcv);
 static void log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 			  const LOG_LSA * upto_lsa_ptr);
-static int log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
-				    LOG_LSA * start_postpone_lsa,
-				    LOG_TOPOP_RANGE ** out_nxtop_range_stack);
 static int log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 				LOG_PAGE * log_pgptr);
 static void log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa);
@@ -4215,7 +4203,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	   */
 	  log_do_postpone (thread_p, tdes,
 			   &tdes->topops.stack[tdes->topops.last].posp_lsa,
-			   LOG_COMMIT_TOPOPE_WITH_POSTPONE, false);
+			   LOG_COMMIT_TOPOPE_WITH_POSTPONE);
 
 	  if (!LSA_ISNULL
 	      (&tdes->topops.stack[tdes->topops.last].client_posp_lsa))
@@ -5920,7 +5908,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock)
        */
 
       log_do_postpone (thread_p, tdes, &tdes->posp_nxlsa,
-		       LOG_COMMIT_WITH_POSTPONE, false);
+		       LOG_COMMIT_WITH_POSTPONE);
 
       /*
        * The files created by this transaction are not new files any longer.
@@ -10007,7 +9995,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
  * NOTE: Find a nested top system operation which start after
  *              start_postpone_lsa and before tdes->tail_lsa.
  */
-static int
+int
 log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 			 LOG_LSA * start_postpone_lsa,
 			 LOG_TOPOP_RANGE ** out_nxtop_range_stack)
@@ -10147,23 +10135,14 @@ log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
  *   tdes(in): Transaction descriptor
  *   start_posplsa(in): Where to start looking for postpone records
  *   posp_type(in): Type of postpone executed
- *   skip_head(in): Is the current postpone address ignored ?
  *
  * NOTE: Scan the log forward doing postpone operations of given
  *              transaction. This function is invoked after a transaction is
- *              declared committed with postpone actions. The value of
- *              skip_head is only true when the function is called several
- *              times. That is, when the transaction was not fully committed
- *              during crashes. In this case the transaction descriptor must
- *              indicate from where the postpone actions are executed. For
- *              every postpone record that is executed a corresponding
- *              log_run_postpone record is added. The log_run_postpone records
- *              are used to start over in the case of failures.
+ *              declared committed with postpone actions.
  */
 void
 log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
-		 LOG_LSA * start_postpone_lsa, LOG_RECTYPE postpone_type,
-		 bool skip_head)
+		 LOG_LSA * start_postpone_lsa, LOG_RECTYPE postpone_type)
 {
   LOG_LSA end_postpone_lsa;	/* The last postpone record of
 				 * transaction cannot be after this
@@ -10198,7 +10177,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
       return;
     }
 
-  if (skip_head == false)
+  if (log_is_in_crash_recovery () == false)
     {
       /* Log the transaction as committed with postpone actions and then
        * start executing the postpone actions.
@@ -10289,7 +10268,6 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	       */
 	      if (forward_lsa.offset == NULL_OFFSET)
 		{
-		  skip_head = false;
 		  forward_lsa.offset = log_pgptr->hdr.offset;
 		  if (forward_lsa.offset == NULL_OFFSET)
 		    {
@@ -10319,7 +10297,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		  forward_lsa.pageid = log_lsa.pageid + 1;
 		}
 
-	      if (log_rec->trid == tdes->trid && !skip_head)
+	      if (log_rec->trid == tdes->trid)
 		{
 		  switch (log_rec->type)
 		    {
@@ -10345,8 +10323,9 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		      break;
 
 		    case LOG_POSTPONE:
-		      if (log_run_postpone_op (thread_p, &log_lsa, log_pgptr)
-			  != NO_ERROR)
+		      if (log_run_postpone_op (thread_p,
+					       &log_lsa,
+					       log_pgptr) != NO_ERROR)
 			{
 			  goto end;
 			}
@@ -10427,8 +10406,6 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		{
 		  forward_lsa.pageid = log_lsa.pageid;
 		}
-
-	      skip_head = false;
 	    }
 	}
     }

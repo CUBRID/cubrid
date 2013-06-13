@@ -208,7 +208,11 @@ static void log_recovery_resetlog (THREAD_ENTRY * thread_p,
 				   LOG_LSA * new_append_lsa,
 				   bool is_new_append_page,
 				   LOG_LSA * last_lsa);
-
+static int log_recovery_find_first_postpone (THREAD_ENTRY * thread_p,
+					     LOG_LSA * ret_lsa,
+					     LOG_LSA *
+					     start_postpone_lsa,
+					     LOG_TDES * tdes);
 /*
  * CRASH RECOVERY PROCESS
  */
@@ -4329,6 +4333,7 @@ log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p)
   int i;
   int save_tran_index;
   LOG_TDES *tdes;		/* Transaction descriptor */
+  LOG_LSA first_postpone_to_apply;
 
   /* Finish committig transactions with unfinished postpone actions */
 
@@ -4342,6 +4347,8 @@ log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p)
 	      || tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE
 	      || tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE))
 	{
+	  LSA_SET_NULL (&first_postpone_to_apply);
+
 	  LOG_SET_CURRENT_TRAN_INDEX (thread_p, i);
 
 	  if (tdes->state == TRAN_UNACTIVE_WILL_COMMIT
@@ -4350,8 +4357,12 @@ log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p)
 	      /*
 	       * The transaction was the one that was committing
 	       */
-	      log_do_postpone (thread_p, tdes, &tdes->posp_nxlsa,
-			       LOG_COMMIT_WITH_POSTPONE, true);
+	      log_recovery_find_first_postpone (thread_p,
+						&first_postpone_to_apply,
+						&tdes->posp_nxlsa, tdes);
+
+	      log_do_postpone (thread_p, tdes, &first_postpone_to_apply,
+			       LOG_COMMIT_WITH_POSTPONE);
 	      /*
 	       * Are there any postpone client actions that need to be done at the
 	       * client machine ?
@@ -4377,10 +4388,15 @@ log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p)
 	       * A top system operation of the transaction was the one that was
 	       * committing
 	       */
+	      log_recovery_find_first_postpone (thread_p,
+						&first_postpone_to_apply,
+						&tdes->topops.
+						stack[tdes->topops.
+						      last].posp_lsa, tdes);
+
 	      log_do_postpone (thread_p, tdes,
-			       &tdes->topops.stack[tdes->topops.last].
-			       posp_lsa, LOG_COMMIT_TOPOPE_WITH_POSTPONE,
-			       true);
+			       &first_postpone_to_apply,
+			       LOG_COMMIT_TOPOPE_WITH_POSTPONE);
 	      LSA_SET_NULL (&tdes->topops.stack[tdes->topops.last].posp_lsa);
 	      (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
 	      LSA_COPY (&tdes->undo_nxlsa, &tdes->tail_lsa);
@@ -5917,4 +5933,255 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
 error:
 
   return NULL;
+}
+
+/*
+ * log_recovery_find_first_postpone -
+ *      Find the first postpone log lsa to be applied.
+ *
+ * return: error code
+ *
+ *   ret_lsa(out):
+ *   start_postpone_lsa(in):
+ *   tdes(in):
+ *   pospone_type(in):
+ *
+ */
+static int
+log_recovery_find_first_postpone (THREAD_ENTRY * thread_p,
+				  LOG_LSA * ret_lsa,
+				  LOG_LSA * start_postpone_lsa,
+				  LOG_TDES * tdes)
+{
+  LOG_LSA end_postpone_lsa;
+  LOG_LSA start_seek_lsa;
+  LOG_LSA *end_seek_lsa;
+  LOG_LSA next_start_seek_lsa;
+  LOG_LSA log_lsa;
+  LOG_LSA forward_lsa;
+  LOG_LSA next_postpone_lsa;
+  struct log_run_postpone *run_posp;
+
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char *aligned_log_pgbuf;
+  LOG_PAGE *log_pgptr = NULL;
+  LOG_RECORD_HEADER *log_rec;
+  bool isdone;
+
+  LOG_TOPOP_RANGE nxtop_array[LOG_TOPOP_STACK_INIT_SIZE];
+  LOG_TOPOP_RANGE *nxtop_stack = NULL;
+  LOG_TOPOP_RANGE *nxtop_range = NULL;
+  int nxtop_count = 0;
+  bool start_postpone_lsa_wasapplied = false;
+
+  assert (ret_lsa && start_postpone_lsa && tdes);
+
+  LSA_SET_NULL (ret_lsa);
+
+  if (log_is_in_crash_recovery () == false
+      || (tdes->state != TRAN_UNACTIVE_WILL_COMMIT
+	  && tdes->state != TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE
+	  && tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE))
+    {
+      assert (0);
+      return ER_FAILED;
+    }
+
+  if (LSA_ISNULL (start_postpone_lsa))
+    {
+      return NO_ERROR;
+    }
+
+  LSA_SET_NULL (&next_postpone_lsa);
+
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
+
+  LSA_COPY (&end_postpone_lsa, &tdes->tail_lsa);
+  LSA_COPY (&next_start_seek_lsa, start_postpone_lsa);
+
+  nxtop_stack = nxtop_array;
+  nxtop_count = log_get_next_nested_top (thread_p, tdes, start_postpone_lsa,
+					 &nxtop_stack);
+
+  while (!LSA_ISNULL (&next_start_seek_lsa))
+    {
+      LSA_COPY (&start_seek_lsa, &next_start_seek_lsa);
+
+      if (nxtop_count > 0)
+	{
+	  /* This is not possible (top op cannot be nested),
+	   * because log_is_in_crash_recovery.
+	   */
+	  assert (0);
+
+	  nxtop_count--;
+	  nxtop_range = &(nxtop_stack[nxtop_count]);
+
+	  if (LSA_LT (&start_seek_lsa, &(nxtop_range->start_lsa)))
+	    {
+	      end_seek_lsa = &(nxtop_range->start_lsa);
+	      LSA_COPY (&next_start_seek_lsa, &(nxtop_range->end_lsa));
+	    }
+	  else if (LSA_EQ (&start_seek_lsa, &(nxtop_range->end_lsa)))
+	    {
+	      end_seek_lsa = &end_postpone_lsa;
+	      LSA_SET_NULL (&next_start_seek_lsa);
+	    }
+	  else
+	    {
+	      LSA_COPY (&next_start_seek_lsa, &(nxtop_range->end_lsa));
+	      continue;
+	    }
+	}
+      else
+	{
+	  end_seek_lsa = &end_postpone_lsa;
+	  LSA_SET_NULL (&next_start_seek_lsa);
+	}
+
+      /*
+       * Start doing postpone operation for this range
+       */
+
+      LSA_COPY (&forward_lsa, &start_seek_lsa);
+
+      isdone = false;
+      while (!LSA_ISNULL (&forward_lsa) && !isdone)
+	{
+	  /* Fetch the page where the postpone LSA record is located */
+	  log_lsa.pageid = forward_lsa.pageid;
+	  if (logpb_fetch_page (thread_p, log_lsa.pageid, log_pgptr) == NULL)
+	    {
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+				 "log_recovery_find_first_postpone");
+	      goto end;
+	    }
+
+	  while (forward_lsa.pageid == log_lsa.pageid && !isdone)
+	    {
+	      if (LSA_GT (&forward_lsa, end_seek_lsa))
+		{
+		  /* Finish at this point */
+		  isdone = true;
+		  break;
+		}
+	      /*
+	       * If an offset is missing, it is because we archive an incomplete
+	       * log record. This log_record was completed later.
+	       * Thus, we have to find the offset by searching
+	       * for the next log_record in the page.
+	       */
+	      if (forward_lsa.offset == NULL_OFFSET)
+		{
+		  forward_lsa.offset = log_pgptr->hdr.offset;
+		  if (forward_lsa.offset == NULL_OFFSET)
+		    {
+		      /* Continue at next pageid */
+		      if (logpb_is_page_in_archive (log_lsa.pageid))
+			{
+			  forward_lsa.pageid = log_lsa.pageid + 1;
+			}
+		      else
+			{
+			  forward_lsa.pageid = NULL_PAGEID;
+			}
+		      continue;
+		    }
+		}
+
+	      log_lsa.offset = forward_lsa.offset;
+	      log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_lsa);
+
+	      /* Find the next log record in the log */
+	      LSA_COPY (&forward_lsa, &log_rec->forw_lsa);
+
+	      if (forward_lsa.pageid == NULL_PAGEID
+		  && logpb_is_page_in_archive (log_lsa.pageid))
+		{
+		  forward_lsa.pageid = log_lsa.pageid + 1;
+		}
+
+	      if (log_rec->trid == tdes->trid)
+		{
+		  switch (log_rec->type)
+		    {
+		    case LOG_RUN_POSTPONE:
+		      LOG_READ_ADD_ALIGN (thread_p,
+					  sizeof (LOG_RECORD_HEADER),
+					  &log_lsa, log_pgptr);
+
+		      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+							sizeof (struct
+								log_run_postpone),
+							&log_lsa, log_pgptr);
+
+		      run_posp =
+			(struct log_run_postpone *) ((char *) log_pgptr->
+						     area + log_lsa.offset);
+
+		      if (LSA_EQ (start_postpone_lsa, &run_posp->ref_lsa))
+			{
+			  /* run_postpone_log of start_postpone is found,
+			   * next_postpone_lsa is the first postpone
+			   * to be applied.
+			   */
+			  start_postpone_lsa_wasapplied = true;
+			  isdone = true;
+			}
+		      break;
+
+		    case LOG_POSTPONE:
+		      if (LSA_ISNULL (&next_postpone_lsa)
+			  && !LSA_EQ (start_postpone_lsa, &log_lsa))
+			{
+			  /* remember next postpone_lsa */
+			  LSA_COPY (&next_postpone_lsa, &log_lsa);
+			}
+		      break;
+
+		    case LOG_END_OF_LOG:
+		      if (forward_lsa.pageid == NULL_PAGEID
+			  && logpb_is_page_in_archive (log_lsa.pageid))
+			{
+			  forward_lsa.pageid = log_lsa.pageid + 1;
+			}
+		      break;
+
+		    default:
+		      break;
+		    }
+		}
+
+	      /*
+	       * We can fix the lsa.pageid in the case of log_records without
+	       * forward address at this moment.
+	       */
+
+	      if (forward_lsa.offset == NULL_OFFSET
+		  && forward_lsa.pageid != NULL_PAGEID
+		  && forward_lsa.pageid < log_lsa.pageid)
+		{
+		  forward_lsa.pageid = log_lsa.pageid;
+		}
+	    }
+	}
+    }
+
+end:
+  if (nxtop_stack != nxtop_array && nxtop_stack != NULL)
+    {
+      free_and_init (nxtop_stack);
+    }
+
+  if (start_postpone_lsa_wasapplied == false)
+    {
+      LSA_COPY (ret_lsa, start_postpone_lsa);
+    }
+  else
+    {
+      LSA_COPY (ret_lsa, &next_postpone_lsa);
+    }
+
+  return NO_ERROR;
 }
