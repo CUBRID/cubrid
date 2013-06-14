@@ -22,6 +22,8 @@ Changelog
     Fix to allow space in source path
   2013-06-11 xkyu
     Add --jira and --confurl option
+  2013-06-14 xkyu
+    Change default output file name when --jira option is given
 '''
 
 import os
@@ -260,7 +262,7 @@ def usage ():
   print '  %s [options] [files...]' % (os.path.basename (sys.argv[0]))
   print '    -h , --help      : print usage'
   print '    -d , --tempdir   : temporary output path [default: "CODE_REVIEW"]'
-  print '    -o , --output    : output file [default: "CODE_REVIEW.creview"]'
+  print '    -o , --output    : output file [default: "CODE_REVIEW.creview" or "<JIRA_ID>.creview"]'
   print '    -n , --nochange  : do not change(indent,mode) working copy files'
   print '    -y , --yes       : automatic yes to all prompts, nerver prompt'
   print '    -v , --verbose   : turn on verbose mode'
@@ -279,7 +281,7 @@ def main ():
     sys.exit (2)
 
   path = "CODE_REVIEW"
-  crfile = "CODE_REVIEW.creview"
+  crfile = ""
   inputfiles = []
   jira_id = None
   jira_project = ''
@@ -318,6 +320,8 @@ def main ():
       jira_id = a.upper()
       if not jira_id.startswith(jira_project.upper()):
         jira_id = jira_project.upper() + '-' + jira_id
+      if not crfile:
+        crfile = jira_id.lower()
     if o in ("--confurl"):
       import urllib
       try:
@@ -329,6 +333,9 @@ def main ():
         print "The config file has been retrieved. Exit now"
         print "(Run %s without --confurl option to create code review file.)" % (os.path.basename (sys.argv[0]))
         sys.exit (0)
+
+  if not crfile.endswith('.creview'):
+    crfile += '.creview'
 
   # get code review filename
   if len (args) > 0:
