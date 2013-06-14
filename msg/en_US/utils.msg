@@ -217,7 +217,7 @@ usage: %s heartbeat <command> [args]\n\
 \n\
 Available command:\n\
     start       [database-name]\n\
-    stop        [database-name]\n\
+    stop        [-i|database-name]\n\
     copylogdb   <start|stop> database-name node-name\n\
     applylogdb  <start|stop> database-name node-name\n\
     status\n\
@@ -358,6 +358,7 @@ $set 9 MSGCAT_UTIL_SET_MASTER
 18 Server %s notified of shutdown.\nThis may take several minutes. Please wait.
 19 Server %s not found.
 20 Master going down in %d minutes\n
+21 Heartbeat failover was finished. Please wait until all shutdown processes of cub_servers are completed.\n
 
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
@@ -585,6 +586,7 @@ valid options:\n\
   -D, --dereg-process=PID          exit the target process and remove it from managed process entries\n\
   -F, --reconfig-node-list         apply CUBRID heartbeat configuration recently changed\n\
   -U, --deactivate-heartbeat       deactivate CUBRID heartbeat feature and remove the current node from node group\n\
+  -i, --immediately                Immediately kill active ones, if one of HA processes are not terminated while CUBRID heartbeat is shutting down; with -U option; default: disabled\n\
   -T, --activate-heartbeat         activate CUBRID heartbeat feature and current node becomes a member of node group\n\
   -V, --verbose                    enable verbose status messages; default: disabled\n
 28 Sorry, unknown command: %s\n
@@ -598,6 +600,7 @@ valid options:\n\
 36 can't exec shell (%s) for %s, %s
 37 process fork %s, returned %d, %s
 38 can't execute %s
+39 -i(--immediately) option must be used with -U(--deactivate-heartbeat) option.\n
 
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB

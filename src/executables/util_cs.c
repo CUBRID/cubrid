@@ -2907,7 +2907,7 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE))
+  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
     {
       error = hb_process_init (database_name, log_path, true);
       if (error != NO_ERROR)
@@ -3112,7 +3112,7 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE))
+  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
     {
       /* initialize heartbeat */
       error = hb_process_init (database_name, log_path, false);

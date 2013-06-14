@@ -116,6 +116,7 @@ static bool commdb_Arg_is_registered = false;
 static char *commdb_Arg_is_registered_id = NULL;
 static bool commdb_Arg_reconfig_heartbeat = false;
 static bool commdb_Arg_deactivate_heartbeat = false;
+static bool commdb_Arg_deact_immediately = false;
 static bool commdb_Arg_activate_heartbeat = false;
 static bool commdb_Arg_verbose_output = false;
 
@@ -531,7 +532,7 @@ process_server_info_pid (CSS_CONN_ENTRY * conn,
  * process_ha_node_info_query() - process heartbeat node list
  *   return:  none
  *   conn(in): connection info
- *   verbose_yn(in): 
+ *   verbose_yn(in):
  */
 static void
 process_ha_node_info_query (CSS_CONN_ENTRY * conn, int verbose_yn)
@@ -564,7 +565,7 @@ process_ha_node_info_query (CSS_CONN_ENTRY * conn, int verbose_yn)
  process_ha_process_info_query() - process heartbeat process list
  *   return:  none
  *   conn(in): connection info
- *   verbose_yn(in): 
+ *   verbose_yn(in):
  */
 static void
 process_ha_process_info_query (CSS_CONN_ENTRY * conn, int verbose_yn)
@@ -771,37 +772,54 @@ process_reconfig_heartbeat (CSS_CONN_ENTRY * conn)
 }
 
 /*
- * process_deactivate_heartbeat() - deactivate heartbeat 
+ * process_deactivate_heartbeat() - deactivate heartbeat
  *   return:  none
  *   conn(in): connection info
  */
 static void
 process_deactivate_heartbeat (CSS_CONN_ENTRY * conn)
 {
-  char *reply_buffer = NULL;
+  char *reply_buffer1 = NULL;
+  char *reply_buffer2 = NULL;
   int size = 0;
 #if !defined(WINDOWS)
   unsigned short rid;
 #endif /* !WINDOWS */
 
 #if !defined(WINDOWS)
-  rid = send_request_no_args (conn, DEACTIVATE_HEARTBEAT);
-  return_string (conn, rid, &reply_buffer, &size);
+  rid =
+    send_request_one_arg (conn, DEACTIVATE_HEARTBEAT,
+			  (char *) &commdb_Arg_deact_immediately,
+			  sizeof (bool));
+
+  return_string (conn, rid, &reply_buffer1, &size);
+
+  if (size && reply_buffer1[0] != '\0')
+    {
+      printf ("\n%s\n", reply_buffer1);
+
+      return_string (conn, rid, &reply_buffer2, &size);
+
+      if (size && reply_buffer2[0] != '\0')
+	{
+	  printf ("\n%s\n", reply_buffer2);
+	}
+    }
+
+  if (reply_buffer1 != NULL)
+    {
+      free_and_init (reply_buffer1);
+    }
+
+  if (reply_buffer2 != NULL)
+    {
+      free_and_init (reply_buffer2);
+    }
 #endif
-
-  if (size && reply_buffer[0] != '\0')
-    {
-      printf ("\n%s\n", reply_buffer);
-    }
-
-  if (reply_buffer != NULL)
-    {
-      free_and_init (reply_buffer);
-    }
 }
 
 /*
- * process_activate_heartbeat() - activate heartbeat 
+ * process_activate_heartbeat() - activate heartbeat
  *   return:  none
  *   conn(in): connection info
  */
@@ -953,6 +971,7 @@ main (int argc, char **argv)
     {COMMDB_DEACTIVATE_HEARTBEAT_L, 0, 0, COMMDB_DEACTIVATE_HEARTBEAT_S},
     {COMMDB_ACTIVATE_HEARTBEAT_L, 0, 0, COMMDB_ACTIVATE_HEARTBEAT_S},
     {COMMDB_VERBOSE_OUTPUT_L, 0, 0, COMMDB_VERBOSE_OUTPUT_S},
+    {COMMDB_HB_DEACT_IMMEDIATELY_L, 0, 0, COMMDB_HB_DEACT_IMMEDIATELY_S},
     {0, 0, 0, 0}
   };
 
@@ -1066,12 +1085,24 @@ main (int argc, char **argv)
 	case 'V':
 	  commdb_Arg_verbose_output = true;
 	  break;
+	case 'i':
+	  commdb_Arg_deact_immediately = true;
+	  break;
 	default:
 	  goto usage;
 	}
     }
 
   er_init (NULL, ER_NEVER_EXIT);
+
+  if (commdb_Arg_deact_immediately && !commdb_Arg_deactivate_heartbeat)
+    {
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_COMMDB,
+				       COMMDB_INVALID_IMMEDIATELY_OPTION));
+      status = EXIT_FAILURE;
+      goto error;
+    }
 
   if (master_util_config_startup ((argc > 1) ? argv[1] : NULL,
 				  &port_id) == false)

@@ -217,7 +217,7 @@ cách sử dụng: %s heartbeat <lệnh> [đối số]\n\
 \n\
 Lệnh có thể dùng :\n\
     start       [tên cơ sở dữ liệu]\n\
-    stop        [tên cơ sở dữ liệu]\n\
+    stop        [-i|tên cơ sở dữ liệu]\n\
     copylogdb   <start|stop> <tên cơ sở dữ> <liệu tên> node\n\
     applylogdb  <start|stop> <tên cơ sở dữ> <liệu tên> node\n\
     status\n\
@@ -358,7 +358,7 @@ $set 9 MSGCAT_UTIL_SET_MASTER
 18 Server %s được thông báo tắt.\nĐiều này có thể mất vài phút. Xin vui lòng chờ.
 19 Server %s không được tìm thấy.
 20 Master đi xuống trong %d phút\n
-
+21 Heartbeat failover was finished. Please wait until all shutdown processes of cub_servers are completed.\n
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
 11 Không thể mở tệp tin đầu ra '%s'\n
@@ -585,6 +585,7 @@ các tùy chọn hợp lệ:\n\
   -D, --dereg-process=PID          thoát tiến trình đích và gỡ bỏ nó từ các mục tiến trình được quản lý\n\
   -F, --reconfig-node-list         áp dụng cấu hình CUBRID heartbeat vừa được thay đổi\n\
   -U, --deactivate-heartbeat       bỏ kích hoạt tính năng CUBRID heartbeat và gỡ bỏ nút hiện tại từ nhóm nút\n\
+  -i, --immediately                Immediately kill active ones, if one of HA processes are not terminated while CUBRID heartbeat is shutting down; with -U option; default: disabled\n\
   -T, --activate-heartbeat         kích hoạt tính năng CUBRID heartbeat và nút hiện tại trở thành một thành viên của nhóm nút\n\
   -V, --verbose                    bật thông báo trạng thái chi tiết; mặc định: tắt\n
 28 Xin lỗi, câu lệnh không rõ: %s\n
@@ -598,7 +599,7 @@ các tùy chọn hợp lệ:\n\
 36 không thể thực thi shell (%s) cho %s, %s
 37 xử lý fork %s, trả về %d, %s
 38 không thể thực thi %s
-
+39 -i(--immediately) option must be used with -U(--deactivate-heartbeat) option.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \

@@ -157,6 +157,7 @@ typedef enum
   COMMDB_STRING12 = 32,
   COMMDB_STRING13 = 33,
   COMMDB_STRING14 = 34,
+  COMMDB_INVALID_IMMEDIATELY_OPTION = 39
 } MSGCAT_COMMDB_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_COPYDB */
@@ -193,7 +194,8 @@ typedef enum
   MASTER_MSG_SERVER_STATUS = 17,
   MASTER_MSG_SERVER_NOTIFIED = 18,
   MASTER_MSG_SERVER_NOT_FOUND = 19,
-  MASTER_MSG_GOING_DOWN = 20
+  MASTER_MSG_GOING_DOWN = 20,
+  MASTER_MSG_FAILOVER_FINISHED = 21
 } MSGCAT_MASTER_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_RESTOREDB */
@@ -1198,6 +1200,8 @@ typedef struct _ha_config
 #define COMMDB_ACTIVATE_HEARTBEAT_L             "activate-heartbeat"
 #define COMMDB_VERBOSE_OUTPUT_S                 'V'
 #define COMMDB_VERBOSE_OUTPUT_L	                "verbose"
+#define COMMDB_HB_DEACT_IMMEDIATELY_S           'i'
+#define COMMDB_HB_DEACT_IMMEDIATELY_L           "immediately"
 
 /* paramdump option list */
 #define PARAMDUMP_OUTPUT_FILE_S                 'o'

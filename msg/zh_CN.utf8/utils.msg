@@ -217,7 +217,7 @@ cubrid 管理工具，版本 %s\n\
 \n\
 可用命令:\n\
     start       [数据库名]\n\
-    stop        [数据库名]\n\
+    stop        [-i|数据库名]\n\
     copylogdb   <start|stop> 数据库名 节点名\n\
     applylogdb  <start|stop> 数据库名 节点名\n\
     status\n\
@@ -358,7 +358,7 @@ $set 9 MSGCAT_UTIL_SET_MASTER
 18 服务 %s 被通知要关闭.\n这可能会占用几分钟. 请等待.
 19 服务 %s 没有找到.
 20 Master将在 %d 分钟内停止\n
-
+21 Heartbeat failover was finished. Please wait until all shutdown processes of cub_servers are completed.\n
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
 11 无法打开输出文件 '%s'\n
@@ -585,6 +585,7 @@ usage: cub_commdb [选项]\n\
   -D, --dereg-process=PID          退出目标进程并从被管理的进程条目中将其移除\n\
   -F, --reconfig-node-list         应用最近改变的 CUBRID heartbeat 配置\n\
   -U, --deactivate-heartbeat       撤销 CUBRID heartbeat 特征并从节点组中移除当前节点\n\
+  -i, --immediately                Immediately kill active ones, if one of HA processes are not terminated while CUBRID heartbeat is shutting down; with -U option; default: disabled\n\
   -T, --activate-heartbeat         激活CUBRID heartbeat 特征并将当前节点加入到节点组中\n\
   -V, --verbose                    开启详细状态信息; 默认: 不可用\n
 28 对不起，未知的命令: %s\n
@@ -598,7 +599,7 @@ usage: cub_commdb [选项]\n\
 36 无法执行 shell (%s) 关于 %s, %s
 37 进程 fork %s, 返回 %d, %s
 38 无法执行 %s
-
+39 -i(--immediately) option must be used with -U(--deactivate-heartbeat) option.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \

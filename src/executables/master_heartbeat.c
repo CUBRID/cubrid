@@ -58,6 +58,15 @@
 #include "utility.h"
 
 #define HB_INFO_STR_MAX         8192
+#define SERVER_DEREG_MAX_POLL_COUNT 10
+
+typedef struct hb_server_deactivate_info HB_SERVER_DEACTIVATE_INFO;
+struct hb_server_deactivate_info
+{
+  int *pid_list;
+  int server_count;
+  bool info_started;
+};
 
 /* list */
 static void hb_list_add (HB_LIST ** p, HB_LIST * n);
@@ -186,6 +195,10 @@ HB_CLUSTER *hb_Cluster = NULL;
 HB_RESOURCE *hb_Resource = NULL;
 HB_JOB *cluster_Jobs = NULL;
 HB_JOB *resource_Jobs = NULL;
+bool hb_Deactivate_immediately = false;
+
+static HB_SERVER_DEACTIVATE_INFO hb_Server_deactivate_info =
+  { NULL, 0, false };
 
 static bool hb_Is_activated = true;
 
@@ -285,7 +298,7 @@ hb_list_remove (HB_LIST * n)
 
 /*
  * hb_list_move() -
- *   return: none 
+ *   return: none
  *   dest_pp(in):
  *   source_pp(in):
  */
@@ -1079,11 +1092,11 @@ hb_cluster_calc_score (void)
 
   for (node = hb_Cluster->nodes; node; node = node->next)
     {
-      /* If this node does not receive heartbeat message over 
+      /* If this node does not receive heartbeat message over
        * than prm_get_integer_value (PRM_ID_HA_MAX_HEARTBEAT_GAP) times,
-       * (or sufficient time has been elapsed from 
-       * the last received heartbeat message time),  
-       * this node does not know what other node state is. 
+       * (or sufficient time has been elapsed from
+       * the last received heartbeat message time),
+       * this node does not know what other node state is.
        */
       if (node->heartbeat_gap >
 	  prm_get_integer_value (PRM_ID_HA_MAX_HEARTBEAT_GAP)
@@ -1298,8 +1311,8 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from,
 #endif
 
 
-	/* 
-	 * if heartbeat group id is mismatch, ignore heartbeat 
+	/*
+	 * if heartbeat group id is mismatch, ignore heartbeat
 	 */
 	if (strcmp (hbp_header->group_id, hb_Cluster->group_id))
 	  {
@@ -1307,9 +1320,9 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from,
 	    return;
 	  }
 
-	/* 
-	 * must send heartbeat response in order to avoid split-brain 
-	 * when heartbeat configuration changed 
+	/*
+	 * must send heartbeat response in order to avoid split-brain
+	 * when heartbeat configuration changed
 	 */
 	if (hbp_header->r)
 	  {
@@ -2742,7 +2755,8 @@ hb_register_new_process (CSS_CONN_ENTRY * conn)
   snprintf (error_string, LINE_MAX,
 	    "%s (expected pid: %d, pid:%d, state:%s, args:%s)",
 	    HB_RESULT_FAILURE_STR, proc->pid, ntohl (hbp_proc_register->pid),
-	    hb_process_state_string (proc->type, proc->state), hbp_proc_register->args);
+	    hb_process_state_string (proc->type, proc->state),
+	    hbp_proc_register->args);
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
 	  "Registered as local process entries", error_string);
 
@@ -3434,7 +3448,8 @@ hb_master_init (void)
   er_log_debug (ARG_FILE_LINE,
 		"heartbeat params. (ha_mode:%s, heartbeat_nodes:{%s}"
 		", ha_port_id:%d). \n",
-		(prm_get_integer_value (PRM_ID_HA_MODE)) ? "yes" : "no",
+		(prm_get_integer_value (PRM_ID_HA_MODE)
+		 != HA_MODE_OFF) ? "yes" : "no",
 		prm_get_string_value (PRM_ID_HA_NODE_LIST),
 		prm_get_integer_value (PRM_ID_HA_PORT_ID));
 #endif
@@ -3482,6 +3497,8 @@ hb_master_init (void)
       goto error_return;
     }
 
+  hb_Deactivate_immediately = false;
+
   return NO_ERROR;
 
 error_return:
@@ -3515,28 +3532,78 @@ error_return:
 
 /*
  * hb_resource_cleanup() -
- *   return: 
+ *   return:
  *
  */
 static void
 hb_resource_cleanup (void)
 {
-  int rv, i, num_active_process;
+  int rv, loop_count, num_active_process, i, rc;
   HB_PROC_ENTRY *proc;
+  SOCKET_QUEUE_ENTRY *sock_ent, *next;
+  char buffer[MASTER_TO_SRV_MSG_SIZE];
 
   rv = pthread_mutex_lock (&hb_Resource->lock);
+
+  if (hb_Server_deactivate_info.info_started && !hb_Deactivate_immediately)
+    {
+      /* register CUBRID server pid */
+      hb_Server_deactivate_info.pid_list =
+	(int *) calloc (hb_Resource->num_procs, sizeof (int));
+
+      for (i = 0, proc = hb_Resource->procs; proc; proc = proc->next)
+	{
+	  if (proc->conn && proc->type == HB_PTYPE_SERVER)
+	    {
+	      hb_Server_deactivate_info.pid_list[i] = proc->pid;
+	      i++;
+	    }
+	}
+
+      hb_Server_deactivate_info.server_count = i;
+
+      assert (hb_Resource->num_procs >= i);
+    }
 
   /* set process state to deregister and close connection  */
   for (proc = hb_Resource->procs; proc; proc = proc->next)
     {
       if (proc->conn)
 	{
+	  if (proc->type != HB_PTYPE_SERVER)
+	    {
 #if defined (HB_VERBOSE_DEBUG)
-	  er_log_debug (ARG_FILE_LINE,
-			"remove socket-queue entry. (pid:%d). \n", proc->pid);
+	      er_log_debug (ARG_FILE_LINE,
+			    "remove socket-queue entry. (pid:%d). \n",
+			    proc->pid);
 #endif
-	  css_remove_entry_by_conn (proc->conn, &css_Master_socket_anchor);
-	  proc->conn = NULL;
+	      css_remove_entry_by_conn (proc->conn,
+					&css_Master_socket_anchor);
+	      proc->conn = NULL;
+	    }
+	  else
+	    {
+	      /* In case of HA server, just send shutdown request */
+	      sock_ent =
+		css_return_entry_by_conn (proc->conn,
+					  &css_Master_socket_anchor);
+
+	      if (sock_ent)
+		{
+		  memset (buffer, 0, sizeof (buffer));
+		  snprintf (buffer, sizeof (buffer) - 1,
+			    msgcat_message (MSGCAT_CATALOG_UTILS,
+					    MSGCAT_UTIL_SET_MASTER,
+					    MASTER_MSG_SERVER_STATUS),
+			    sock_ent->name + 1, 0);
+
+		  css_process_start_shutdown (sock_ent, 0, buffer);
+		}
+	      else
+		{
+		  proc->conn = NULL;
+		}
+	    }
 	}
       else
 	{
@@ -3547,41 +3614,96 @@ hb_resource_cleanup (void)
       proc->state = HB_PSTATE_DEREGISTERED;
     }
 
-#if defined (HB_VERBOSE_DEBUG)
-  er_log_debug (ARG_FILE_LINE,
-		"close all local heartbeat connection. (timer:%d*%d).\n",
-		prm_get_integer_value (PRM_ID_HA_MAX_PROCESS_DEREG_CONFIRM),
-		prm_get_integer_value
-		(PRM_ID_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS));
-#endif
-
-  /* wait until all process shutdown */
-  for (i = 0; i < prm_get_integer_value (PRM_ID_HA_MAX_PROCESS_DEREG_CONFIRM);
-       i++)
+  /* check whether HA server processes are terminated */
+  for (loop_count = 0; loop_count
+       < prm_get_integer_value (PRM_ID_HA_MAX_PROCESS_DEREG_CONFIRM);
+       loop_count++)
     {
-      for (num_active_process = 0, proc = hb_Resource->procs; proc;
-	   proc = proc->next)
+      int server_count = 0;
+      struct pollfd po[SERVER_DEREG_MAX_POLL_COUNT];
+
+      for (proc = hb_Resource->procs; proc; proc = proc->next)
 	{
-	  if (proc->pid && proc->state != HB_PSTATE_DEAD)
+	  if (proc->type == HB_PTYPE_SERVER && proc->conn == NULL)
 	    {
+	      /* server was deregistered */
+	      proc->state = HB_PSTATE_DEAD;
+	      continue;
+	    }
+
+	  if (proc->conn != NULL && !IS_INVALID_SOCKET (proc->conn->fd))
+	    {
+	      assert (proc->type == HB_PTYPE_SERVER);
+
 	      if (kill (proc->pid, 0) && errno == ESRCH)
 		{
-		  proc->state = HB_PSTATE_DEAD;
-		  continue;
-		}
+		  /* process was terminated */
 #if defined (HB_VERBOSE_DEBUG)
-	      er_log_debug (ARG_FILE_LINE,
-			    "process did not terminated. (pid:%d). \n",
-			    proc->pid);
+		  er_log_debug (ARG_FILE_LINE,
+				"remove socket-queue entry. (pid:%d). \n",
+				proc->pid);
 #endif
-	      num_active_process++;
+		  css_remove_entry_by_conn (proc->conn,
+					    &css_Master_socket_anchor);
+		  proc->conn = NULL;
+		  proc->state = HB_PSTATE_DEAD;
+		}
+	      else if (proc->type == HB_PTYPE_SERVER)
+		{
+		  po[server_count].fd = proc->conn->fd;
+		  po[server_count].events = POLLPRI;
+		  po[server_count].revents = 0;
+
+		  server_count++;
+		  if (server_count >= SERVER_DEREG_MAX_POLL_COUNT)
+		    {
+		      break;
+		    }
+		}
 	    }
 	}
-      if (num_active_process == 0)
+
+      if (server_count == 0)
 	{
+	  break;
+	}
+
+      rc = poll (po, server_count, 1);
+      if (rc > 0)
+	{
+	  i = 0;
+
+	  while (i < server_count && rc > 0)
+	    {
+	      if ((po[i].revents & POLLPRI) || (po[i].revents & POLLHUP))
+		{
+		  /* server socket was closed */
+		  for (proc = hb_Resource->procs; proc; proc = proc->next)
+		    {
+		      if (proc->conn != NULL && proc->conn->fd == po[i].fd)
+			{
+			  /* socket closed */
 #if defined (HB_VERBOSE_DEBUG)
-	  er_log_debug (ARG_FILE_LINE, "all ha processes are terminated. \n");
+			  er_log_debug (ARG_FILE_LINE,
+					"remove socket-queue entry. (pid:%d). \n",
+					proc->pid);
 #endif
+			  css_remove_entry_by_conn (proc->conn,
+						    &css_Master_socket_anchor);
+			  proc->conn = NULL;
+			  proc->state = HB_PSTATE_DEAD;
+
+			  break;
+			}
+		    }
+		  rc--;
+		}
+	      i++;
+	    }
+	}
+
+      if (hb_Deactivate_immediately == true)
+	{
 	  break;
 	}
 
@@ -3590,18 +3712,49 @@ hb_resource_cleanup (void)
 		     (PRM_ID_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS));
     }
 
-  /* send SIGKILL to all active process */
-  for (proc = hb_Resource->procs; proc; proc = proc->next)
+#if defined (HB_VERBOSE_DEBUG)
+  er_log_debug (ARG_FILE_LINE,
+		"close all local heartbeat connection. (timer:%d*%d).\n",
+		prm_get_integer_value (PRM_ID_HA_MAX_PROCESS_DEREG_CONFIRM),
+		prm_get_integer_value
+		(PRM_ID_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS));
+#endif
+
+  /* now all server processes were terminated or dereg time is expired
+   * kill all active processes.
+   */
+  for (num_active_process = 0, proc = hb_Resource->procs; proc;
+       proc = proc->next)
     {
       if (proc->pid && proc->state != HB_PSTATE_DEAD)
 	{
+	  if (kill (proc->pid, 0) && errno == ESRCH)
+	    {
+	      /* process was terminated */
+	      proc->state = HB_PSTATE_DEAD;
+	      continue;
+	    }
+	  else
+	    {
 #if defined (HB_VERBOSE_DEBUG)
-	  er_log_debug (ARG_FILE_LINE,
-			"force kill local process. (pid:%d).\n", proc->pid);
+	      er_log_debug (ARG_FILE_LINE,
+			    "Process (pid:%d) did not terminated."
+			    "It is forced to kill.\n", proc->pid);
+
+	      num_active_process++;
 #endif
-	  kill (proc->pid, SIGKILL);
+	      kill (proc->pid, SIGKILL);
+	    }
 	}
     }
+
+#if defined (HB_VERBOSE_DEBUG)
+  if (num_active_process == 0)
+    {
+      er_log_debug (ARG_FILE_LINE, "all ha processes are terminated. \n");
+    }
+#endif
+
   hb_remove_all_procs (hb_Resource->procs);
   hb_Resource->procs = NULL;
   hb_Resource->num_procs = 0;
@@ -3614,7 +3767,7 @@ hb_resource_cleanup (void)
 
 /*
  * hb_resource_shutdown_and_cleanup() -
- *   return: 
+ *   return:
  *
  */
 void
@@ -3627,7 +3780,7 @@ hb_resource_shutdown_and_cleanup (void)
 
 /*
  * hb_cluster_cleanup() -
- *   return: 
+ *   return:
  *
  */
 static void
@@ -3664,7 +3817,7 @@ hb_cluster_cleanup (void)
 
 /*
  * hb_cluster_cleanup() -
- *   return: 
+ *   return:
  *
  */
 void
@@ -4702,7 +4855,8 @@ hb_help_sprint_processes_info (char *buffer, int max_length)
 
       p +=
 	snprintf (p, MAX ((last - p), 0), "%-10d %-22s %-15s %-10d\n",
-		  proc->pid, hb_process_state_string (proc->type, proc->state),
+		  proc->pid, hb_process_state_string (proc->type,
+						      proc->state),
 		  hb_process_type_string (proc->type), proc->sfd);
       p +=
 	snprintf (p, MAX ((last - p), 0), "      %-30s %-35s\n",
@@ -4752,4 +4906,86 @@ hb_help_sprint_jobs_info (HB_JOB * jobs, char *buffer, int max_length)
   p += snprintf (p, MAX ((last - p), 0), "\n");
 
   return p - buffer;
+}
+
+/*
+ * hb_start_deactivate_server_info -
+ *     Initialize hb_Server_deactivate_info,
+ *     and set info_started flag to true.
+ *
+ *   return: none
+ */
+void
+hb_start_deactivate_server_info (void)
+{
+  assert (hb_Server_deactivate_info.info_started == false);
+
+  if (hb_Server_deactivate_info.pid_list != NULL)
+    {
+      free_and_init (hb_Server_deactivate_info.pid_list);
+    }
+
+  hb_Server_deactivate_info.server_count = 0;
+  hb_Server_deactivate_info.info_started = true;
+}
+
+
+/*
+ * hb_get_deactivating_server_count -
+ *
+ *   return: none
+ */
+int
+hb_get_deactivating_server_count (void)
+{
+  int i, server_count, num_active_server = 0;
+
+  if (hb_Server_deactivate_info.info_started == true)
+    {
+      server_count = hb_Server_deactivate_info.server_count;
+
+      for (i = 0; i < server_count; i++)
+	{
+	  if (hb_Server_deactivate_info.pid_list[i] > 0)
+	    {
+	      if (kill (hb_Server_deactivate_info.pid_list[i], 0)
+		  && errno == ESRCH)
+		{
+		  /* server was terminated */
+		  hb_Server_deactivate_info.pid_list[i] = 0;
+		  hb_Server_deactivate_info.server_count--;
+		}
+	      else
+		{
+		  num_active_server++;
+		}
+	    }
+	}
+
+      return num_active_server;
+    }
+
+  assert (0);
+
+  return 0;
+}
+
+/*
+ * hb_finish_deactivate_server_info -
+ *     clear hb_Server_deactivate_info.
+ *     and set info_started flag to false.
+ *
+ *   return: none
+ */
+void
+hb_finish_deactivate_server_info (void)
+{
+  assert (hb_Server_deactivate_info.info_started == true);
+
+  if (hb_Server_deactivate_info.pid_list != NULL)
+    {
+      free_and_init (hb_Server_deactivate_info.pid_list);
+    }
+  hb_Server_deactivate_info.server_count = 0;
+  hb_Server_deactivate_info.info_started = false;
 }

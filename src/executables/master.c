@@ -240,7 +240,7 @@ css_master_cleanup (int sig)
 #if !defined(WINDOWS)
   unlink (css_get_master_domain_path ());
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE))
+  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
     {
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_STOPPED, 0);
     }
@@ -835,7 +835,7 @@ css_enroll_read_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var)
 }
 
 /*
- * css_enroll_master_read_sockets() - 
+ * css_enroll_master_read_sockets() -
  *   return: none
  *
  *   fd_var(out)
@@ -862,7 +862,7 @@ css_enroll_write_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var)
 }
 
 /*
- * css_enroll_master_write_sockets() - 
+ * css_enroll_master_write_sockets() -
  *
  *   return: none
  *   fd_var(out)
@@ -1252,7 +1252,7 @@ main (int argc, char **argv)
     }
 
 #if !defined(WINDOWS)
-  if (prm_get_integer_value (PRM_ID_HA_MODE))
+  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
     {
       if (hb_master_init () != NO_ERROR)
 	{

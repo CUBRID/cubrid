@@ -121,7 +121,8 @@ static void css_process_ha_deregister_by_args (CSS_CONN_ENTRY * conn,
 static void css_process_reconfig_heartbeat (CSS_CONN_ENTRY * conn,
 					    unsigned short request_id);
 static void css_process_deactivate_heartbeat (CSS_CONN_ENTRY * conn,
-					      unsigned short request_id);
+					      unsigned short request_id,
+					      char *deact_immediately);
 static void css_process_activate_heartbeat (CSS_CONN_ENTRY * conn,
 					    unsigned short request_id);
 
@@ -717,7 +718,7 @@ css_process_kill_master (void)
       hb_cluster_shutdown_and_cleanup ();
     }
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE))
+  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
     {
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_STOPPED, 0);
     }
@@ -1345,32 +1346,81 @@ error_return:
  */
 static void
 css_process_deactivate_heartbeat (CSS_CONN_ENTRY * conn,
-				  unsigned short request_id)
+				  unsigned short request_id,
+				  char *deact_immediately)
 {
 #if !defined(WINDOWS)
   char *buffer = NULL;
+  char *message;
 
   if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
     {
       goto error_return;
     }
 
+  if (deact_immediately != NULL && *((bool *) deact_immediately) == true)
+    {
+      hb_Deactivate_immediately = true;
+    }
+  else
+    {
+      hb_Deactivate_immediately = false;
+    }
+
+  hb_start_deactivate_server_info ();
+
   hb_deactivate_heartbeat (&buffer);
+
   if (buffer == NULL)
     {
       goto error_return;
     }
 
-  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) !=
-      NO_ERRORS)
+  if (hb_get_deactivating_server_count () > 0)
     {
-      css_cleanup_info_connection (conn);
+      /* cub_server was remained,
+       * commdb must wait until all server processes are terminated
+       */
+      message = msgcat_message (MSGCAT_CATALOG_UTILS,
+				MSGCAT_UTIL_SET_MASTER,
+				MASTER_MSG_FAILOVER_FINISHED);
+
+      if (css_send_data (conn, request_id, message,
+			 strlen (message) + 1) == NO_ERRORS)
+	{
+	  /* wait until cub_server processes are terminated */
+	  while (hb_get_deactivating_server_count () > 0)
+	    {
+	      sleep (1);
+	    }
+
+	  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) !=
+	      NO_ERRORS)
+	    {
+	      css_cleanup_info_connection (conn);
+	    }
+	}
+      else
+	{
+	  css_cleanup_info_connection (conn);
+	}
     }
+  else
+    {
+      if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) !=
+	  NO_ERRORS)
+	{
+	  css_cleanup_info_connection (conn);
+	}
+    }
+
+  hb_finish_deactivate_server_info ();
 
   if (buffer != NULL)
     {
       free_and_init (buffer);
     }
+
   return;
 
 error_return:
@@ -1567,7 +1617,7 @@ css_process_info_request (CSS_CONN_ENTRY * conn)
 	  css_process_reconfig_heartbeat (conn, request_id);
 	  break;
 	case DEACTIVATE_HEARTBEAT:
-	  css_process_deactivate_heartbeat (conn, request_id);
+	  css_process_deactivate_heartbeat (conn, request_id, buffer);
 	  break;
 	case ACTIVATE_HEARTBEAT:
 	  css_process_activate_heartbeat (conn, request_id);
@@ -1592,7 +1642,7 @@ css_process_info_request (CSS_CONN_ENTRY * conn)
 
 
 /*
- * css_process_heartbeat_request() - 
+ * css_process_heartbeat_request() -
  *   return: none
  *   conn(in)
  */

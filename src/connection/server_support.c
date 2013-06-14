@@ -678,15 +678,19 @@ css_master_thread (void)
 	      if (run_code == -1)
 		{
 		  css_close_connection_to_master ();
-		  run_code = (prm_get_integer_value (PRM_ID_HA_MODE)) ? 0 : 1;	/* shutdown message received */
+		  /* shutdown message received */
+		  run_code =
+		    (prm_get_integer_value (PRM_ID_HA_MODE) !=
+		     HA_MODE_OFF) ? 0 : 1;
+		}
 
-		  if (run_code == 0)
-		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_HB_PROCESS_EVENT, 2,
-			      "Disconnected with the cub_master and will shut itself down",
-			      "");
-		    }
+	      if (run_code == 0
+		  && prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_HB_PROCESS_EVENT, 2,
+			  "Disconnected with the cub_master and will shut itself down",
+			  "");
 		}
 	    }
 #if !defined(WINDOWS)
@@ -1649,7 +1653,7 @@ css_init (char *server_name, int name_length, int port_id)
       css_Master_conn = conn;
 
 #if !defined(WINDOWS)
-      if (prm_get_integer_value (PRM_ID_HA_MODE))
+      if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
 	{
 	  status = hb_register_to_master (css_Master_conn, HB_PTYPE_SERVER);
 	  if (status != NO_ERROR)
@@ -1687,6 +1691,11 @@ shutdown:
   LOG_CS_EXIT ();
 
   thread_stop_active_workers (THREAD_STOP_LOGWR);
+
+  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+    {
+      css_close_connection_to_master ();
+    }
 
   css_close_server_connection_socket ();
 
@@ -2113,7 +2122,7 @@ css_pack_server_name (const char *server_name, int *name_length)
 	+ strlen (env_name) + 1 + strlen (pid_string) + 1;
 
       /* in order to prepend '#' */
-      if (prm_get_integer_value (PRM_ID_HA_MODE))
+      if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
 	{
 	  (*name_length)++;
 	}
@@ -2129,7 +2138,7 @@ css_pack_server_name (const char *server_name, int *name_length)
       s = packed_name;
       t = server_name;
 
-      if (prm_get_integer_value (PRM_ID_HA_MODE))
+      if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
 	{
 	  *s++ = '#';
 	}

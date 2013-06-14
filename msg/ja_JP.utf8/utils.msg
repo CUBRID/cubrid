@@ -217,7 +217,7 @@ cubrid 管理者ユーティリティー、バージョン　%s\n\
 \n\
 正しいコマンド:\n\
     start           [データベース名]\n\
-    stop            [データベース名]\n\
+    stop            [-i|データベース名]\n\
     copylogdb       <start|stop> [データベース名] [ノード名]\n\
     applylogdb      <start|stop> [データベース名] [ノード名]\n\
     status\n\
@@ -358,7 +358,7 @@ $set 9 MSGCAT_UTIL_SET_MASTER
 18 サーバー%sはシャットダウンされます。\nこの作業は何分かかる恐れがあります。しばらくお待ちください。
 19 サーバー%sが発見できません。
 20 マスターサーバーは%d分内にシャットダウンされます。\n
-
+21 Heartbeat failover was finished. Please wait until all shutdown processes of cub_servers are completed.\n
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
 11 出力ファイル「%s」が開けられません。\n
@@ -585,6 +585,7 @@ cub_commdb: このユーティリティーは使わないでください。そ�
   -D, --dereg-process=PID          対象プロセスを終了して管理リストから削除\n\
   -F, --reconfig-node-list         CUBRID heartbeatノードの設定を再適用\n\
   -U, --deactivate-heartbeat       CUBRID heartbeatを止めてノードグルプから抜く\n\
+  -i, --immediately                Immediately kill active ones, if one of HA processes are not terminated while CUBRID heartbeat is shutting down; with -U option; default: disabled\n\
   -T, --activate-heartbeat         CUBRID heartbeatを始める\n\
   -V, --verbose                    多様な進行情報を出力; デフォルト: 出力しない\n
 28 正しくないコマンドです。: %s\n
@@ -598,7 +599,7 @@ cub_commdb: このユーティリティーは使わないでください。そ�
 36 シェル「%s」が始まりません。%s, %s 
 37 プロセスfork %s, 返還 %d, %s
 38 %sが実行せきません。
-
+39 -i(--immediately) option must be used with -U(--deactivate-heartbeat) option.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \

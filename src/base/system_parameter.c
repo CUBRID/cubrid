@@ -739,8 +739,8 @@ static int prm_log_isolation_level_upper = TRAN_SERIALIZABLE;
 bool PRM_COMMIT_ON_SHUTDOWN = false;
 static bool prm_commit_on_shutdown_default = false;
 
-int PRM_SHUTDOWN_WAIT_TIME_IN_SECS = 60;
-static int prm_shutdown_wait_time_in_secs_default = 60;
+int PRM_SHUTDOWN_WAIT_TIME_IN_SECS = 600;
+static int prm_shutdown_wait_time_in_secs_default = 600;
 static int prm_shutdown_wait_time_in_secs_lower = 60;
 
 bool PRM_CSQL_AUTO_COMMIT = true;
@@ -6268,38 +6268,6 @@ prm_tune_parameters (void)
     }
 
   assert (ha_mode_prm != NULL);
-  if (ha_mode_prm != NULL && PRM_GET_INT (ha_mode_prm->value) != HA_MODE_OFF)
-    {
-      assert (ha_process_dereg_confirm_interval_in_msecs_prm != NULL);
-      assert (ha_max_process_dereg_confirm_prm != NULL);
-      assert (shutdown_wait_time_in_secs_prm != NULL);
-
-      if (ha_process_dereg_confirm_interval_in_msecs_prm != NULL
-	  && ha_max_process_dereg_confirm_prm != NULL
-	  && shutdown_wait_time_in_secs_prm != NULL)
-	{
-	  ha_process_dereg_confirm_interval_in_msecs =
-	    PRM_GET_INT (ha_process_dereg_confirm_interval_in_msecs_prm->
-			 value);
-	  ha_max_process_dereg_confirm =
-	    PRM_GET_INT (ha_max_process_dereg_confirm_prm->value);
-	  shutdown_wait_time_in_secs =
-	    PRM_GET_INT (shutdown_wait_time_in_secs_prm->value);
-
-	  if ((shutdown_wait_time_in_secs * 1000) >
-	      (ha_process_dereg_confirm_interval_in_msecs *
-	       ha_max_process_dereg_confirm))
-	    {
-	      ha_max_process_dereg_confirm =
-		((shutdown_wait_time_in_secs * 1000) /
-		 ha_process_dereg_confirm_interval_in_msecs) + 3;
-
-	      snprintf (newval, sizeof (newval) - 1, "%d",
-			ha_max_process_dereg_confirm);
-	      prm_set (ha_max_process_dereg_confirm_prm, newval, false);
-	    }
-	}
-    }
 
   return;
 }

@@ -217,7 +217,7 @@ Anwendung: %s heartbeat <Befehl> [args]\n\
 \n\
 Vorhandene Befehle:\n\
     start       [database-name]\n\
-    stop        [database-name]\n\
+    stop        [-i|database-name]\n\
     copylogdb   <start|stop> database-name node-name\n\
     applylogdb  <start|stop> database-name node-name\n\
     status\n\
@@ -358,7 +358,7 @@ $set 9 MSGCAT_UTIL_SET_MASTER
 18 Server %s benachrichtigt über Abschaltung.\nDas könnte mehrere Minuten dauern. Bitte warten.
 19 Server %s nicht gefunden.
 20 Master fährt runter in %d Minuten\n
-
+21 Heartbeat failover was finished. Please wait until all shutdown processes of cub_servers are completed.\n
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
 11 Ausgabedatei '%s' konnte nicht geöffnet werden\n
@@ -585,6 +585,7 @@ gültige Optionen:\n\
   -D, --dereg-process=PID          Zielprozess verlassen und aus den verwalteten Prozessen entfernen \n\
   -F, --reconfig-node-list         CUBRID neulich aktualisierte Herzschlagkonfiguration übernehmen\n\
   -U, --deactivate-heartbeat       CUBRID Herzschlag deaktivieren und das aktuelle Knoten aus der Knotengruppe entfernen \n\
+  -i, --immediately                Immediately kill active ones, if one of HA processes are not terminated while CUBRID heartbeat is shutting down; with -U option; default: disabled\n\
   -T, --activate-heartbeat         CUBRID Herzschlag aktivieren und das aktuelle Knoten wird Mitglied der Knotengruppe \n\
   -V, --verbose                    ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n
 28 Unbekannter Befehl: %s\n
@@ -598,7 +599,7 @@ gültige Optionen:\n\
 36 Die Shell (%s) für %s, %s kann nicht ausgeführt werden
 37 Prozessabspaltung %s, %d, %s zurückgegeben 
 38 %s kann nicht ausgeführt werden
-
+39 -i(--immediately) option must be used with -U(--deactivate-heartbeat) option.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \

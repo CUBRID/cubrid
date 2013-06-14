@@ -217,7 +217,7 @@ usage: %s heartbeat <command> [args]\n\
 \n\
 commandដែលមាន:\n\
     start       [database-name]\n\
-    stop        [database-name]\n\
+    stop        [-i|database-name]\n\
     copylogdb   <start|stop> database-name node-name\n\
     applylogdb  <start|stop> database-name node-name\n\
     status\n\
@@ -358,7 +358,7 @@ $set 9 MSGCAT_UTIL_SET_MASTER
 18 Server %s បញ្ជាក់អំពីការបិទ។\nនេះអាចចំណាយពេលជាច្រើននាទី។ សូមរង់ចាំ។
 19 រកមិនឃើញServer %s ។
 20 Master ធ្លាក់ចុះក្នុងនាទី %d \n
-
+21 Heartbeat failover was finished. Please wait until all shutdown processes of cub_servers are completed.\n
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
 11 មិនអាចបើក output file `%s'\n
@@ -585,6 +585,7 @@ usage: cub_commdb [OPTION]\n\
   -D, --dereg-process=PID          បិទដំណើរការជាគោលដៅ​ និងផ្លាស់វាចេញពីរបៀបចូលដំណើរការដែលបានរៀបចំគ្រប់គ្រងរួច\n\
   -F, --reconfig-node-list         ដាក់ដំណើរការCUBRID heartbeat configurationដែលត្រូវបានផ្លាស់ប្តូរថ្មីៗ\n\
   -U, --deactivate-heartbeat       យកមកប្រើក្នុងដំណើរការនូវdeactivate CUBRID heartbeat និងផ្លាស់nodeបច្ចុប្បន្នពីក្រុមnode \n\
+  -i, --immediately                Immediately kill active ones, if one of HA processes are not terminated while CUBRID heartbeat is shutting down; with -U option; default: disabled\n\
   -T, --activate-heartbeat         យកមកប្រើក្នុងដំណើរការនូវactivate CUBRID heartbeat feature ហើយ nodeបច្ចុប្បន្ន ក្លាយជាចំនួនក្រុម node \n\
   -V, --verbose                    បង្កើនសមត្ថភាពសារ verbose status ; default: ដែលមិនអាច\n
 28 សុំអធ្យាស្រ័យ, commandដែលមិនស្គាល់: %s\n
@@ -598,7 +599,7 @@ usage: cub_commdb [OPTION]\n\
 36 មិនអាចប្រតិបត្តិ shell (%s) សម្រាប់ %s, %s
 37 ដំណើរការ fork %s, %d ត្រូវត្រឡប់, %s
 38 មិនអាចប្រតិបត្តិ %s
-
+39 -i(--immediately) option must be used with -U(--deactivate-heartbeat) option.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \

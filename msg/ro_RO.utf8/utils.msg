@@ -217,7 +217,7 @@ utilizare: %s heartbeat <command> [args]\n\
 \n\
 Comenzi disponibile:\n\
     start       [nume-baza-de-date]\n\
-    stop        [nume-baza-de-date]\n\
+    stop        [-i|nume-baza-de-date]\n\
     copylogdb   <start|stop> nume-baza-de-date nume-nod\n\
     applylogdb  <start|stop> nume-baza-de-date nume-nod\n\
     status\n\
@@ -368,7 +368,7 @@ $set 9 MSGCAT_UTIL_SET_MASTER
 18 Serverul %s a primit notificarea de oprire.\nAceastă acţiune poate dura cateva miute. Vă rugăm aşteptaţi.
 19 Serverul %s nu a fost găsit.
 20 Procesul principal (master) se va opri în %d minute\n
-
+21 Heartbeat failover was finished. Please wait until all shutdown processes of cub_servers are completed.\n
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
 11 Fişierul de ieşire '%s' nu a putut fi deschis.\n
@@ -604,6 +604,7 @@ opţiuni valide:\n\
   -D, --dereg-process=PID          încheie procesul ţintă şi îl elimină din lista de procese gestionate\n\
   -F, --reconfig-node-list         aplică configuraţia recent modificată pentru CUBRID heartbeat\n\
   -U, --deactivate-heartbeat       dezactivează CUBRID heartbeat şi elimină nodul curent din grup\n\
+  -i, --immediately                Immediately kill active ones, if one of HA processes are not terminated while CUBRID heartbeat is shutting down; with -U option; default: disabled\n\
   -T, --activate-heartbeat         activează CUBRID heartbeat şi nodul curent devine un membru al grupului de noduri\n\
   -V, --verbose                    activează emsaje de stare detaliate; implicit: dezactivate\n
 28 Regretăm, comandă necunoscută: %s\n
@@ -617,7 +618,7 @@ opţiuni valide:\n\
 36 nu se poate executa shell-ul (%s) pentru %s, %s
 37 creare de proces (fork) %s, a întors %d, %s
 38 nu se poate executa %s
-
+39 -i(--immediately) option must be used with -U(--deactivate-heartbeat) option.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \

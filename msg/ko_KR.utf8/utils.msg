@@ -217,7 +217,7 @@ cubrid 관리자 유틸리티, 버전 %s\n\
 \n\
 가용한 명령어:\n\
     start       [데이터베이스 이름]\n\
-    stop        [데이터베이스 이름]\n\
+    stop        [-i|데이터베이스 이름]\n\
     copylogdb   <start|stop> <데이터베이스 이름> <노드 이름>\n\
     applylogdb  <start|stop> <데이터베이스 이름> <노드 이름>\n\
     status\n\
@@ -358,7 +358,7 @@ $set 9 MSGCAT_UTIL_SET_MASTER
 18 서버 %s는 shutdown됩니다.\n이 작업은 몇 분 걸릴 수 있습니다. 잠시 기다리십시오.
 19 서버 %s를 찾을 수 없습니다
 20 마스터 서버는 %d 분 내에 shutdown 합니다\n
-
+21 절체가 완료되었습니다. 모든 서버 프로세스들의 종료과정이 완료될때 까지 잠시 기다리십시오.\n
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
 11 출력 파일 '%s' 을(를) 열 수 없습니다\n
@@ -585,6 +585,7 @@ cub_commdb: 이 유틸리티는 더 이상 사용하지 않습니다. 'cubrid' �
   -D, --dereg-process=PID          대상 프로세스를 종료하고 관리 대상 목록에서 제거\n\
   -F, --reconfig-node-list         CUBRID heartbeat 노드 설정 정보를 재 적용\n\
   -U, --deactivate-heartbeat       CUBRID heartbeat 기능을 비활성화하고 노드 그룹에서 탈퇴\n\
+  -i, --immediately                비활성화 과정에서, 로컬 프로세스들이 즉시 종료되지 않으면 강제로 종료함;-U 가 지정 되야 함;기본값: 강제종료하지 않음\n\
   -T, --activate-heartbeat         CUBRID heartbeat 기능을 활성화\n\
   -V, --verbose                    많은 상태 메시지 출력; 기본값: 출력하지 않음\n
 28 알 수 없는 명령입니다: %s\n
@@ -598,7 +599,7 @@ cub_commdb: 이 유틸리티는 더 이상 사용하지 않습니다. 'cubrid' �
 36 쉘 (%s) 를 수행할 수 없습니다. %s, %s 
 37 프로세스 fork %s, 반환 %d, %s
 38 %s을(를) 수행할 수 없습니다
-
+39 -i(--immediately)옵션은 -U(--deactivate-heartbeat)옵션이 지정되어야합니다.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \
