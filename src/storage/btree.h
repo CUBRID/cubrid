@@ -54,13 +54,16 @@
   (logtb_is_current_active (thread_p) \
    && (op == SINGLE_ROW_INSERT || op == MULTI_ROW_INSERT || op == SINGLE_ROW_UPDATE))
 
-#if defined(SERVER_MODE)
 /* For next-key locking */
 #define BTREE_CONTINUE                     -1
 #define BTREE_GETOID_AGAIN                 -2
 #define BTREE_GETOID_AGAIN_WITH_CHECK      -3
 #define BTREE_SEARCH_AGAIN_WITH_CHECK      -4
+#define BTREE_GOTO_END_OF_SCAN		   -5
+#define BTREE_GOTO_START_LOCKING	   -6
+#define BTREE_GOTO_LOCKING_DONE		   -7
 
+#if defined(SERVER_MODE)
 #define BTREE_CLASS_LOCK_MAP_MAX_COUNT     10
 #endif /* SERVER_MODE */
 
