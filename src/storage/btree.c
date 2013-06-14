@@ -20074,7 +20074,7 @@ btree_range_search (THREAD_ENTRY * thread_p, BTID * btid,
       /* if (key_desc && scan_asc) || (key_asc && scan_desc), 
        * then swap lower value and upper value
        */
-      btrs_helper.swap_key_range = true;
+      btrs_helper.swap_key_range = false;
 
       if (!bts->use_desc_index)
 	{
