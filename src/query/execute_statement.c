@@ -3204,7 +3204,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       err = do_check_delete_trigger (parser, statement, do_execute_delete);
       break;
     case PT_INSERT:
-      err = do_execute_insert (parser, statement);
+      err = do_check_insert_trigger (parser, statement, do_execute_insert);
       break;
     case PT_UPDATE:
       err = do_check_update_trigger (parser, statement, do_execute_update);
@@ -13310,11 +13310,6 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   QUERY_FLAG query_flag;
 
   CHECK_MODIFICATION_ERROR ();
-
-  if (statement->xasl_id == NULL)
-    {
-      return do_check_insert_trigger (parser, statement, do_insert);
-    }
 
   flat = statement->info.insert.spec->info.spec.flat_entity_list;
   class_obj = (flat) ? flat->info.name.db_object : NULL;
