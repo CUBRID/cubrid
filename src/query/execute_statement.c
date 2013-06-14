@@ -13311,6 +13311,11 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
+  if (statement->xasl_id == NULL)
+    {
+      return do_insert (parser, statement);
+    }
+
   flat = statement->info.insert.spec->info.spec.flat_entity_list;
   class_obj = (flat) ? flat->info.name.db_object : NULL;
 
