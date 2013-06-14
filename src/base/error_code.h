@@ -1421,7 +1421,9 @@
 
 #define ER_CSS_PTHREAD_COND_TIMEDOUT                -1123
 
-#define ER_LAST_ERROR                               -1124
+#define ER_QUERY_EXECUTION_ERROR                    -1124
+
+#define ER_LAST_ERROR                               -1125
 
 /*
  * CAUTION!

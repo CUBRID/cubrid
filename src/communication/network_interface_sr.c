@@ -5720,7 +5720,8 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
 
   MNT_SERVER_EXEC_STATS base_stats, current_stats, diff_stats;
   char stat_buf[STATDUMP_BUF_SIZE];
-  char *sql_id;
+  char *sql_id = NULL;
+  int error_code = NO_ERROR;
 
   EXECUTION_INFO info = { NULL, NULL, NULL };
 
@@ -5785,6 +5786,25 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
   if (list_id == NULL)
 #endif
     {
+      error_code = er_errid ();
+
+      if (error_code != NO_ERROR)
+	{
+	  if (info.sql_hash_text != NULL)
+	    {
+	      if (qmgr_get_sql_id (thread_p, &sql_id,
+				   info.sql_hash_text,
+				   strlen (info.sql_hash_text)) != NO_ERROR)
+		{
+		  sql_id = NULL;
+		}
+	    }
+
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+		  ER_QUERY_EXECUTION_ERROR, 3, error_code, sql_id,
+		  info.sql_user_text);
+	}
+
       return_error_to_client (thread_p, rid);
     }
 
@@ -5886,10 +5906,13 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
 	      stat_buf[0] = '\0';
 	    }
 
-	  if (qmgr_get_sql_id (thread_p, &sql_id, info.sql_hash_text,
-			       strlen (info.sql_hash_text)) != NO_ERROR)
+	  if (sql_id == NULL)
 	    {
-	      sql_id = NULL;
+	      if (qmgr_get_sql_id (thread_p, &sql_id, info.sql_hash_text,
+				   strlen (info.sql_hash_text)) != NO_ERROR)
+		{
+		  sql_id = NULL;
+		}
 	    }
 
 	  queryinfo_string_length =
@@ -5899,11 +5922,6 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
 		      info.sql_user_text,
 		      sql_id ? sql_id : "(null)",
 		      info.sql_hash_text, info.sql_plan_text, stat_buf, line);
-
-	  if (sql_id != NULL)
-	    {
-	      free (sql_id);
-	    }
 
 	  if (queryinfo_string_length >= QUERY_INFO_BUF_SIZE)
 	    {
@@ -5916,6 +5934,11 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
 		  ER_SLOW_QUERY, 2, response_time, queryinfo_string);
 	}
       xmnt_server_stop_stats (thread_p);
+    }
+
+  if (sql_id != NULL)
+    {
+      free_and_init (sql_id);
     }
 
   ptr = or_pack_int (ptr, queryinfo_string_length);

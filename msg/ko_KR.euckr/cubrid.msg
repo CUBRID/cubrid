@@ -1190,7 +1190,8 @@ $ LOADDB
 1121 NOT NULL 제약조건은 NULL 값을 허용하지 않습니다.
 1122 데이터 수신 중 timeout 발생.
 1123 pthread_cond_timedwait() timeout 발생.
-1124 마지막 에러
+1124 질의 실행 에러. ERROR_CODE = %1$d, /* SQL_ID: %2$s */ %3$s
+1125 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %d):

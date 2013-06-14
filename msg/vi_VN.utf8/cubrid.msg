@@ -1190,7 +1190,8 @@ $ LOADDB
 1121 NOT NULL constraints do not allow NULL value.
 1122 Time out in receiving data.
 1123 pthread_cond_timedwait() timed out. 
-1124 Lỗi sau cùng
+1124 Query execution error. ERROR_CODE = %1$d, /* SQL_ID: %2$s */ %3$s
+1125 Lỗi sau cùng
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Lỗi trong các lỗi hệ thống con (dòng %d):

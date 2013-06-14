@@ -1190,7 +1190,8 @@ $ LOADDB
 1121 NOT NULL constraints do not allow NULL value.
 1122 Time out in receiving data.
 1123 pthread_cond_timedwait() timed out. 
-1124 Dernière erreur
+1124 Query execution error. ERROR_CODE = %1$d, /* SQL_ID: %2$s */ %3$s
+1125 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %d):
