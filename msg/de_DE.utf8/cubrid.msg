@@ -1191,9 +1191,12 @@ $ LOADDB
 1122 Time out in receiving data.
 1123 pthread_cond_timedwait() timed out. 
 1124 Query execution error. ERROR_CODE = %1$d, /* SQL_ID: %2$s */ %3$s
-1125 Log recovery is started. The number of log records to be applied: %1$lld. Log page: %2$lld ~ %3$lld.
-1126 Log recovery is finished.
-1127 Letzter Fehler
+1125 Unused error code.
+1126 Unused error code.
+1127 Unused error code.
+1128 Log recovery is started. The number of log records to be applied: %1$lld. Log page: %2$lld ~ %3$lld.
+1129 Log recovery is finished.
+1130 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %d):

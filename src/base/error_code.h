@@ -1423,11 +1423,13 @@
 
 #define ER_QUERY_EXECUTION_ERROR                    -1124
 
-#define ER_LOG_RECOVERY_STARTED                     -1125
 
-#define ER_LOG_RECOVERY_FINISHED                    -1126
 
-#define ER_LAST_ERROR                               -1127
+#define ER_LOG_RECOVERY_STARTED                     -1128
+
+#define ER_LOG_RECOVERY_FINISHED                    -1129
+
+#define ER_LAST_ERROR                               -1130
 
 /*
  * CAUTION!
