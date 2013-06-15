@@ -1424,7 +1424,13 @@
 
 #define ER_QUERY_EXECUTION_ERROR                    -1124
 
-#define ER_LAST_ERROR                               -1125
+#define ER_LOG_RECOVERY_STARTED                     -1125
+
+#define ER_LOG_RECOVERY_FINISHED                    -1126
+
+#define ER_LAST_ERROR                               -1127
+
+
 
 #define DB_TRUE 1
 #define DB_FALSE 0

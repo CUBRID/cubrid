@@ -192,7 +192,8 @@ static void log_recovery_analysis (THREAD_ENTRY * thread_p,
 				   LOG_LSA * start_redolsa,
 				   LOG_LSA * end_redo_lsa, int ismedia_crash,
 				   time_t * stopat,
-				   bool * did_incom_recovery);
+				   bool * did_incom_recovery,
+				   INT64 * num_redo_log_records);
 static void log_recovery_redo (THREAD_ENTRY * thread_p,
 			       const LOG_LSA * start_redolsa,
 			       const LOG_LSA * end_redo_lsa, time_t * stopat);
@@ -678,6 +679,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   LOG_LSA end_redo_lsa;		/* Where to stop the redo phase            */
   bool did_incom_recovery;
   int tran_index;
+  INT64 num_redo_log_records;
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
@@ -740,13 +742,21 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
 
   log_Gl.rcv_phase = LOG_RECOVERY_ANALYSIS_PHASE;
   log_recovery_analysis (thread_p, &rcv_lsa, &start_redolsa, &end_redo_lsa,
-			 ismedia_crash, stopat, &did_incom_recovery);
+			 ismedia_crash, stopat, &did_incom_recovery,
+			 &num_redo_log_records);
+
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+	  ER_LOG_RECOVERY_STARTED, 3, num_redo_log_records,
+	  start_redolsa.pageid, end_redo_lsa.pageid);
+
   LSA_COPY (&log_Gl.chkpt_redo_lsa, &start_redolsa);
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, rcv_tran_index);
   if (logpb_fetch_start_append_page (thread_p) == NULL)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery");
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+	      ER_LOG_RECOVERY_FINISHED, 0);
       return;
     }
 
@@ -829,6 +839,9 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   (void) fileio_synchronize_all (thread_p, false);
 
   logpb_flush_header (thread_p);
+
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_FINISHED,
+	  0);
 }
 
 /*
@@ -2937,7 +2950,8 @@ static void
 log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
 		       LOG_LSA * start_redo_lsa, LOG_LSA * end_redo_lsa,
 		       int is_media_crash, time_t * stop_at,
-		       bool * did_incom_recovery)
+		       bool * did_incom_recovery,
+		       INT64 * num_redo_log_records)
 {
   LOG_LSA checkpoint_lsa = { -1, -1 };
   LOG_LSA lsa;			/* LSA of log record to analyse */
@@ -2963,6 +2977,11 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
   int i;
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+
+  if (num_redo_log_records != NULL)
+    {
+      *num_redo_log_records = 0;
+    }
 
   /*
    * Find the committed, aborted, and unilaterrally aborted (active)
@@ -3143,6 +3162,26 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
 			    (long long int) log_Gl.hdr.append_lsa.pageid,
 			    log_Gl.hdr.append_lsa.offset, tran_id);
 	      log_Gl.hdr.next_trid = tran_id;
+	    }
+
+	  if (num_redo_log_records)
+	    {
+	      switch (log_rtype)
+		{
+		  /* count redo log */
+		case LOG_UNDOREDO_DATA:
+		case LOG_DIFF_UNDOREDO_DATA:
+		case LOG_DBEXTERN_REDO_DATA:
+		case LOG_RUN_POSTPONE:
+		case LOG_COMPENSATE:
+		case LOG_2PC_PREPARE:
+		case LOG_2PC_START:
+		case LOG_2PC_RECV_ACK:
+		  (*num_redo_log_records)++;
+		  break;
+		default:
+		  break;
+		}
 	    }
 
 	  log_rv_analysis_record (thread_p, log_rtype, tran_id, &log_lsa,
