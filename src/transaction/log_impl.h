@@ -712,6 +712,15 @@ typedef struct lob_locator_entry LOB_LOCATOR_ENTRY;
  */
 RB_HEAD (lob_rb_root, lob_locator_entry);
 
+
+typedef enum tran_abort_reason TRAN_ABORT_REASON;
+enum tran_abort_reason
+{
+  TRAN_NORMAL = 0,
+  TRAN_ABORT_DUE_DEADLOCK = 1,
+  TRAN_ABORT_DUE_ROLLBACK_ON_ESCALATION = 2
+};
+
 typedef struct log_tdes LOG_TDES;
 struct log_tdes
 {				/* Transaction descriptor */
@@ -820,6 +829,8 @@ struct log_tdes
   LK_RES *waiting_for_res;	/* resource that i'm waiting for */
 
   int disable_modifications;	/* db_Disable_modification for each tran */
+
+  TRAN_ABORT_REASON tran_abort_reason;
 };
 
 typedef struct log_addr_tdesarea LOG_ADDR_TDESAREA;

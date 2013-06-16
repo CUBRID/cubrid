@@ -105,11 +105,35 @@ return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid)
   char buffer[1024];
   int length = 1024;
   CSS_CONN_ENTRY *conn;
+  LOG_TDES *tdes;
+  bool flag_abort = false;
 
   assert (thread_p != NULL);
 
   conn = thread_p->conn_entry;
   assert (conn != NULL);
+
+  errid = er_errid ();
+  if (errid == ER_LK_UNILATERALLY_ABORTED || errid == ER_DB_NO_MODIFICATIONS)
+    {
+      flag_abort = true;
+    }
+
+  /*
+   * DEFENCE CODE:
+   *  below block means ER_LK_UNILATERALLY_ABORTED ocurrs but another error
+   *  set after that.
+   *  So, re-set that error to rollback in client side.
+   */
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  if (tdes != NULL && tdes->tran_abort_reason != TRAN_NORMAL && flag_abort == false)
+    {
+      flag_abort = true;
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_UNILATERALLY_ABORTED, 4,
+	      thread_p->tran_index, tdes->client.db_user,
+	      tdes->client.host_name, tdes->client.process_id);
+    }
 
   /* check some errors which require special actions */
   /*
@@ -119,11 +143,11 @@ return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid)
    * it means that the user tried to update the database
    * when the server was disabled to modify. (aka standby mode)
    */
-  errid = er_errid ();
-  if (errid == ER_LK_UNILATERALLY_ABORTED || errid == ER_DB_NO_MODIFICATIONS)
+  if (flag_abort)
     {
       tran_server_unilaterally_abort_tran (thread_p);
     }
+
   if (errid == ER_DB_NO_MODIFICATIONS)
     {
       conn->reset_on_commit = true;
@@ -136,6 +160,8 @@ return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid)
       css_send_error_to_client (conn, rid, (char *) area, length);
       conn->db_error = 0;
     }
+
+  tdes->tran_abort_reason = TRAN_NORMAL;
 }
 
 /*

@@ -140,6 +140,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_LK_ESCALATION_AT "lock_escalation"
 
+#define PRM_NAME_LK_ROLLBACK_ON_LOCK_ESCALATION "rollback_on_lock_escalation"
+
 #define PRM_NAME_LK_TIMEOUT_SECS "lock_timeout_in_secs"
 
 #define PRM_NAME_LK_RUN_DEADLOCK_INTERVAL "deadlock_detection_interval_in_secs"
@@ -698,6 +700,9 @@ int PRM_LK_TIMEOUT_MESSAGE_DUMP_LEVEL = 0;
 int PRM_LK_ESCALATION_AT = 100000;
 static int prm_lk_escalation_at_default = 100000;
 static int prm_lk_escalation_at_lower = 5;
+
+bool PRM_LK_ROLLBACK_ON_LOCK_ESCALATION = false;
+static bool prm_lk_rollback_on_lock_escalation_default = false;
 
 int PRM_LK_TIMEOUT_SECS = -1;
 static int prm_lk_timeout_secs_default = -1;	/* Infinite */
@@ -1486,6 +1491,13 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_lk_escalation_at_default,
    (void *) &PRM_LK_ESCALATION_AT,
    (void *) NULL, (void *) &prm_lk_escalation_at_lower,
+   (char *) NULL},
+  {PRM_NAME_LK_ROLLBACK_ON_LOCK_ESCALATION,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   PRM_BOOLEAN,
+   (void *) &prm_lk_rollback_on_lock_escalation_default,
+   (void *) &PRM_LK_ROLLBACK_ON_LOCK_ESCALATION,
+   (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_LK_TIMEOUT_SECS,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),

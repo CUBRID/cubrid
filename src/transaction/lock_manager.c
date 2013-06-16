@@ -507,7 +507,8 @@ static void lock_position_holder_entry (LK_RES * res_ptr,
 					LK_ENTRY * entry_ptr);
 static void lock_set_error_for_timeout (THREAD_ENTRY * thread_p,
 					LK_ENTRY * entry_ptr);
-static void lock_set_error_for_aborted (LK_ENTRY * entry_ptr);
+static void lock_set_error_for_aborted (LK_ENTRY * entry_ptr,
+					TRAN_ABORT_REASON abort_reason);
 static LOCK_WAIT_STATE lock_suspend (THREAD_ENTRY * thread_p,
 				     LK_ENTRY * entry_ptr, int wait_msecs);
 static void lock_resume (LK_ENTRY * entry_ptr, int state);
@@ -520,6 +521,9 @@ static int lock_grant_blocked_waiter (THREAD_ENTRY * thread_p,
 static void lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p,
 					       LK_RES * res_ptr,
 					       LK_ENTRY * from_whom);
+static bool lock_check_escalate (THREAD_ENTRY * thread_p,
+				 LK_ENTRY * class_entry,
+				 LK_TRAN_LOCK * tran_lock);
 static int lock_escalate_if_needed (THREAD_ENTRY * thread_p,
 				    LK_ENTRY * class_entry, int tran_index);
 static int lock_internal_hold_lock_object_instant (int tran_index,
@@ -529,8 +533,8 @@ static int lock_internal_hold_lock_object_instant (int tran_index,
 static int lock_internal_perform_lock_object (THREAD_ENTRY * thread_p,
 					      int tran_index, const OID * oid,
 					      const OID * class_oid,
-					      const BTID * btid,
-					      LOCK lock, int wait_msecs,
+					      const BTID * btid, LOCK lock,
+					      int wait_msecs,
 					      LK_ENTRY ** entry_addr_ptr,
 					      LK_ENTRY * class_entry);
 static void lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p,
@@ -2570,12 +2574,13 @@ set_error:
  * Note:set error code for unilaterally aborted deadlock victim
  */
 static void
-lock_set_error_for_aborted (LK_ENTRY * entry_ptr)
+lock_set_error_for_aborted (LK_ENTRY * entry_ptr, TRAN_ABORT_REASON abort_reason)
 {
   char *client_prog_name;	/* Client user name for transaction  */
   char *client_user_name;	/* Client user name for transaction  */
   char *client_host_name;	/* Client host for transaction       */
   int client_pid;		/* Client process id for transaction */
+  LOG_TDES *tdes;
 
   (void) logtb_find_client_name_host_pid (entry_ptr->tran_index,
 					  &client_prog_name,
@@ -2584,6 +2589,10 @@ lock_set_error_for_aborted (LK_ENTRY * entry_ptr)
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_UNILATERALLY_ABORTED, 4,
 	  entry_ptr->tran_index, client_user_name, client_host_name,
 	  client_pid);
+
+  tdes = LOG_FIND_TDES (entry_ptr->tran_index);
+  assert (tdes != NULL);
+  tdes->tran_abort_reason = abort_reason;
 }
 #endif /* SERVER_MODE */
 
@@ -2708,7 +2717,8 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
        */
       if (logtb_is_current_active (thread_p) == true)
 	{
-	  lock_set_error_for_aborted (entry_ptr);	/* set error code */
+	  /* set error code */
+	  lock_set_error_for_aborted (entry_ptr, TRAN_ABORT_DUE_DEADLOCK);
 
 	  /* wait until other threads finish their works
 	   * A css_server_thread is always running for this transaction.
@@ -3426,12 +3436,63 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr,
 }
 #endif /* SERVER_MODE */
 
-/*
- *  Private Functions Group: lock escalation related functions
- *   - lk_lock_escalation_if_needed()
- */
-
 #if defined(SERVER_MODE)
+/*
+ * lock_check_escalate- check if lcok counts over escalation limits or not
+ *
+ *   return: true if escalation is needed.
+ *   thread_p(in):
+ *   class_entry(in):
+ *   tran_lock(in):
+ *
+ */
+static bool
+lock_check_escalate (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry,
+		     LK_TRAN_LOCK * tran_lock)
+{
+  LK_ENTRY *superclass_entry = NULL;
+  int rv;
+
+  if (tran_lock->lock_escalation_on == true)
+    {
+      /* An another thread of current transaction is doing lock escalation.
+         Therefore, the current thread gives up doing lock escalation.
+       */
+      return false;
+    }
+
+  /* It cannot do lock escalation if class_entry is NULL */
+  if (class_entry == NULL)
+    {
+      return false;
+    }
+
+  superclass_entry = class_entry->class_entry;
+
+  /* check if the lock escalation is needed. */
+  if (superclass_entry != NULL
+      && !OID_IS_ROOTOID (&superclass_entry->res_head->oid))
+    {
+      /* Superclass_entry points to a root class in a class hierarchy.
+       * Escalate locks only if the criteria for the superclass is met.
+       * Superclass keeps a counter for all locks set in the hierarchy.
+       */
+      if (superclass_entry->ngranules <
+	  prm_get_integer_value (PRM_ID_LK_ESCALATION_AT))
+	{
+	  return false;
+	}
+    }
+  else if (class_entry->ngranules <
+	   prm_get_integer_value (PRM_ID_LK_ESCALATION_AT))
+    {
+      return false;
+    }
+
+  return true;
+}
+
+
 /*
  * lock_escalate_if_needed -
  *
@@ -3454,53 +3515,35 @@ lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry,
 			 int tran_index)
 {
   LK_TRAN_LOCK *tran_lock;
-  LK_ENTRY *inst_entry, *superclass_entry = NULL;
+  LK_ENTRY *inst_entry;
   int s_count, x_count;
   LOCK max_class_lock = NULL_LOCK;	/* escalated class lock mode */
   int granted;
   int wait_msecs;
   int rv;
 
-  /* It cannot do lock escalation if class_entry is NULL */
-  if (class_entry == NULL)
-    {
-      return LK_GRANTED;
-    }
-
-  superclass_entry = class_entry->class_entry;
-
+  /* check lock escalation count */
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
   rv = pthread_mutex_lock (&tran_lock->hold_mutex);
 
-  if (tran_lock->lock_escalation_on == true)
+  if (lock_check_escalate (thread_p, class_entry, tran_lock) == false)
     {
-      /* An another thread of current transaction is doing lock escalation.
-         Therefore, the current thread gives up doing lock escalation.
-       */
       pthread_mutex_unlock (&tran_lock->hold_mutex);
-      return LK_GRANTED;
+      return LK_NOTGRANTED;
     }
 
-  /* check if the lock escalation is needed. */
-  if (superclass_entry != NULL
-      && !OID_IS_ROOTOID (&superclass_entry->res_head->oid))
+  /* abort lock escalation if lock_escalation_abort = yes */
+  if (prm_get_bool_value (PRM_ID_LK_ROLLBACK_ON_LOCK_ESCALATION) == true)
     {
-      /* Superclass_entry points to a root class in a class hierarchy.
-       * Escalate locks only if the criteria for the superclass is met.
-       * Superclass keeps a counter for all locks set in the hierarchy.
-       */
-      if (superclass_entry->ngranules <
-	  prm_get_integer_value (PRM_ID_LK_ESCALATION_AT))
-	{
-	  pthread_mutex_unlock (&tran_lock->hold_mutex);
-	  return LK_GRANTED;
-	}
-    }
-  else if (class_entry->ngranules <
-	   prm_get_integer_value (PRM_ID_LK_ESCALATION_AT))
-    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_LK_ROLLBACK_ON_LOCK_ESCALATION, 1,
+	      prm_get_integer_value (PRM_ID_LK_ESCALATION_AT));
+
+      lock_set_error_for_aborted (class_entry,
+				  TRAN_ABORT_DUE_ROLLBACK_ON_ESCALATION);
+
       pthread_mutex_unlock (&tran_lock->hold_mutex);
-      return LK_GRANTED;
+      return LK_NOTGRANTED_DUE_ABORTED;
     }
 
   /* lock escalation should be performed */
@@ -3875,8 +3918,18 @@ start:
       /* do lock escalation if it is needed
        * and check if an implicit lock has been acquired.
        */
-      if (lock_escalate_if_needed (thread_p, class_entry,
-				   tran_index) == LK_GRANTED
+      ret_val = lock_escalate_if_needed (thread_p, class_entry, tran_index);
+      if (ret_val == LK_NOTGRANTED_DUE_ABORTED)
+	{
+	  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+	  if (tdes && tdes->tran_abort_reason ==
+	      TRAN_ABORT_DUE_ROLLBACK_ON_ESCALATION)
+	    {
+	      return ret_val;
+	    }
+	}
+
+      if (ret_val == LK_GRANTED
 	  && lock_is_class_lock_escalated (lock_get_object_lock
 					   (class_oid, oid_Root_class_oid,
 					    tran_index), lock) == true)
@@ -11913,8 +11966,18 @@ start:
       /* do lock escalation if it is needed
        * and check if an implicit lock has been acquired.
        */
-      if (lock_escalate_if_needed (thread_p, class_entry,
-				   tran_index) == LK_GRANTED)
+      ret_val = lock_escalate_if_needed (thread_p, class_entry, tran_index);
+      if (ret_val == LK_NOTGRANTED_DUE_ABORTED)
+	{
+	  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+	  if (tdes && tdes->tran_abort_reason ==
+	      TRAN_ABORT_DUE_ROLLBACK_ON_ESCALATION)
+	    {
+	      return ret_val;
+	    }
+	}
+
+      if (ret_val == LK_GRANTED)
 	{
 	  temp_mode = lock_get_object_lock (class_oid, oid_Root_class_oid,
 					    tran_index);

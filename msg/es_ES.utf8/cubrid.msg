@@ -1196,7 +1196,8 @@ $ LOADDB
 1127 Unused error code.
 1128 Log recovery is started. The number of log records to be applied: %1$lld. Log page: %2$lld ~ %3$lld.
 1129 Log recovery is finished.
-1130 Ultimo error
+1130 Transaction is aborted because transaction lock counts exceeds %1$d.
+1131 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %d):

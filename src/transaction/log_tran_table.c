@@ -544,6 +544,7 @@ logtb_initialize_system_tdes (THREAD_ENTRY * thread_p)
   logtb_set_client_ids_all (&tdes->client, -1, NULL, NULL, NULL, NULL, NULL,
 			    -1);
   tdes->query_timeout = 0;
+  tdes->tran_abort_reason = TRAN_NORMAL;
 
   return NO_ERROR;
 }
@@ -1064,6 +1065,8 @@ logtb_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
 	}
 
       LOG_SET_CURRENT_TRAN_INDEX (thread_p, tran_index);
+
+      tdes->tran_abort_reason = TRAN_NORMAL;
     }
 
   return tran_index;
@@ -1596,6 +1599,8 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   XASL_ID_SET_NULL (&tdes->xasl_id);
   tdes->waiting_for_res = NULL;
   tdes->disable_modifications = db_Disable_modifications;
+
+  tdes->tran_abort_reason = TRAN_NORMAL;
 }
 
 /*
@@ -1658,6 +1663,8 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   XASL_ID_SET_NULL (&tdes->xasl_id);
   tdes->waiting_for_res = NULL;
   tdes->disable_modifications = db_Disable_modifications;
+
+  tdes->tran_abort_reason = TRAN_NORMAL;
 }
 
 /*

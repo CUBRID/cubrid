@@ -6501,10 +6501,20 @@ heap_find_slot_for_insert_with_lock (THREAD_ENTRY * thread_p,
 	}
       else if (lk_result != LK_NOTGRANTED_DUE_TIMEOUT)
 	{
-	  /* This means unknown locking error */
-	  assert (false);
+#if !defined(NDEBUG)
+	  if (lk_result == LK_NOTGRANTED_DUE_ABORTED)
+	    {
+	      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+	      assert (tdes->tran_abort_reason ==
+		      TRAN_ABORT_DUE_ROLLBACK_ON_ESCALATION);
+	    }
+	  else
+	    {
+	      assert (false);	/* unknown locking error */
+	    }
+#endif
 	  OID_SET_NULL (oid);
-
+	  pgbuf_unfix_and_init (thread_p, pgptr);
 	  return NULL;
 	}
     }
@@ -6514,6 +6524,7 @@ heap_find_slot_for_insert_with_lock (THREAD_ENTRY * thread_p,
   assert (false);
   OID_SET_NULL (oid);
 
+  pgbuf_unfix_and_init (thread_p, pgptr);
   return NULL;
 }
 
