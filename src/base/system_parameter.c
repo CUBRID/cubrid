@@ -3013,7 +3013,8 @@ static const int call_stack_dump_error_codes[] = {
   ER_PARTITION_NOT_EXIST,
   ER_FILE_TABLE_OVERFLOW,
   ER_HA_GENERIC_ERROR,
-  ER_DESC_ISCAN_ABORTED
+  ER_DESC_ISCAN_ABORTED,
+  ER_SP_INVALID_HEADER
 };
 
 typedef enum
