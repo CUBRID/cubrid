@@ -4568,11 +4568,21 @@ static bool
 spage_is_unknown_slot (PGSLOTID slot_id, SPAGE_HEADER * page_header_p,
 		       SPAGE_SLOT * slot_p)
 {
+  unsigned int max_offset;
+
   assert (slot_p != NULL);
   SPAGE_VERIFY_HEADER (page_header_p);
 
+  max_offset = DB_PAGESIZE - page_header_p->num_slots * sizeof (SPAGE_SLOT);
+
+  assert_release (slot_p->offset_to_record >= sizeof (SPAGE_HEADER) ||
+		  slot_p->offset_to_record == SPAGE_EMPTY_OFFSET);
+  assert_release (slot_p->offset_to_record <= max_offset);
+
   return (slot_id < 0 || slot_id >= page_header_p->num_slots
-	  || slot_p->offset_to_record == SPAGE_EMPTY_OFFSET);
+	  || slot_p->offset_to_record == SPAGE_EMPTY_OFFSET
+	  || slot_p->offset_to_record < sizeof (SPAGE_HEADER)
+	  || slot_p->offset_to_record > max_offset);
 }
 
 /*

@@ -267,7 +267,7 @@ static bool disk_check_sector_has_npages (THREAD_ENTRY * thread_p,
 static INT32 disk_id_alloc (THREAD_ENTRY * thread_p, INT16 volid,
 			    DISK_VAR_HEADER * vhdr, INT32 nalloc,
 			    INT32 low_allid, INT32 high_allid,
-			    int allid_type, int exp_npages);
+			    int allid_type, int exp_npages, int skip_pageid);
 static int disk_id_dealloc (THREAD_ENTRY * thread_p, INT16 volid,
 			    INT32 at_pg1, INT32 deallid, INT32 ndealloc,
 			    int deallid_type);
@@ -3786,12 +3786,12 @@ disk_alloc_sector (THREAD_ENTRY * thread_p, INT16 volid, INT32 nsects,
   /* Use the hint to start looking for the next sector */
   alloc_sect = disk_id_alloc (thread_p, volid, vhdr, nsects,
 			      vhdr->hint_allocsect, vhdr->total_sects - 1,
-			      DISK_SECTOR, exp_npages);
+			      DISK_SECTOR, exp_npages, NULL_PAGEID);
   if (alloc_sect == NULL_SECTID)
     {
       alloc_sect = disk_id_alloc (thread_p, volid, vhdr, nsects,
 				  1, vhdr->hint_allocsect - 1, DISK_SECTOR,
-				  exp_npages);
+				  exp_npages, NULL_PAGEID);
     }
 
   if (alloc_sect == NULL_SECTID)
@@ -3987,9 +3987,17 @@ disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
       near_pageid = fpageid;
     }
 
-  /* First look at the pages after near_pageid */
+
+  /*
+   * First look at the pages after near_pageid 
+   *
+   * skip near_pageid itself because it's used already.
+   * Normally it's marked in disk bitmap so it's not chosen.
+   * But in abnormal case it could be not marked
+   * (disk & file allocset mismatch)
+   */
   new_pageid = disk_id_alloc (thread_p, volid, vhdr, npages, near_pageid,
-			      lpageid, DISK_PAGE, -1);
+			      lpageid, DISK_PAGE, -1, near_pageid);
 
   if (new_pageid == NULL_PAGEID && near_pageid != fpageid
       && search_wrap_around == true)
@@ -3999,7 +4007,7 @@ disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
 
       lpageid = near_pageid + npages - 2;
       new_pageid = disk_id_alloc (thread_p, volid, vhdr, npages, fpageid,
-				  lpageid, DISK_PAGE, -1);
+				  lpageid, DISK_PAGE, -1, NULL_PAGEID);
     }
 
   if (new_pageid == NULL_PAGEID)
@@ -4156,6 +4164,7 @@ disk_scramble_newpages (INT16 volid, INT32 first_pageid, INT32 npages,
  *   high_allid(in): Last possible allocation page/sector
  *   allid_type(in): Unit type (SECTOR or PAGE)
  *   exp_npages(in): Expected pages that sector will have
+ *   skip_pageid(in): skip pageid (this function will not allocate this pageid)
  *
  * Note: The "nalloc" units should be allocated from "low_allid" to
  *       "high_allid".
@@ -4163,7 +4172,7 @@ disk_scramble_newpages (INT16 volid, INT32 first_pageid, INT32 npages,
 static INT32
 disk_id_alloc (THREAD_ENTRY * thread_p, INT16 volid, DISK_VAR_HEADER * vhdr,
 	       INT32 nalloc, INT32 low_allid, INT32 high_allid,
-	       int allid_type, int exp_npages)
+	       int allid_type, int exp_npages, int skip_pageid)
 {
   int i;
   INT32 nfound = 0;		/* Number of contiguous allocation
@@ -4217,19 +4226,25 @@ disk_id_alloc (THREAD_ENTRY * thread_p, INT16 volid, DISK_VAR_HEADER * vhdr,
 	       i < CHAR_BIT && nfound < nalloc && low_allid <= high_allid;
 	       i++, low_allid++)
 	    {
-	      if (!disk_bit_is_set (at_chptr, i))
+	      if (!disk_bit_is_set (at_chptr, i) && low_allid != skip_pageid)
 		{
 		  if (allid == NULL_PAGEID)
 		    {
 		      allid = low_allid;
 		    }
+
 		  nfound++;
 		}
 	      else
 		{
-		  /* There is not contiguous pages */
+		  /*
+		   * There is not contiguous pages
+		   * try next pageid
+		   */
 		  nfound = 0;
 		  allid = NULL_PAGEID;
+
+		  continue;
 		}
 
 	      /* Checking that sector has enough pages for following page allocation. */
