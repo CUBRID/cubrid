@@ -3519,11 +3519,12 @@ static PT_NODE *
 pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * node,
 			      void *arg, int *continue_walk)
 {
-  bool *already_found = (bool *) arg;
+  bool *found_modified_class = (bool *) arg;
   PT_NODE *class_;
   MOP clsmop = NULL;
+  SM_CLASS *sm_class = NULL;
 
-  if (*already_found)
+  if (*found_modified_class)
     {
       *continue_walk = PT_STOP_WALK;
       return node;
@@ -3536,7 +3537,27 @@ pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * node,
 	   class_; class_ = class_->next)
 	{
 	  clsmop = class_->info.name.db_object;
-	  if (clsmop == NULL || !db_is_class (clsmop))
+
+	  if (clsmop == NULL)
+	    {
+	      continue;
+	    }
+
+	  if (au_fetch_class_force (clsmop, &sm_class,
+				    AU_FETCH_READ) != NO_ERROR)
+	    {
+	      /*
+	       * the class might be dropped. treat error cases
+	       * as the class was modified.
+	       */
+	      *found_modified_class = true;
+
+	      /* don't revisit leaves */
+	      *continue_walk = PT_STOP_WALK;
+	      break;
+	    }
+
+	  if (sm_get_class_type (sm_class) != SM_CLASS_CT)
 	    {
 	      continue;
 	    }
@@ -3549,7 +3570,7 @@ pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * node,
 	  else if (class_->info.name.db_object_chn
 		   != locator_get_cache_coherency_number (clsmop))
 	    {
-	      *already_found = true;
+	      *found_modified_class = true;
 
 	      /* don't revisit leaves */
 	      *continue_walk = PT_STOP_WALK;
@@ -16140,7 +16161,7 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node,
       switch (node->node_type)
 	{
 	case PT_SELECT:
-	  /* This function is reenterable by pt_plan_query 
+	  /* This function is reenterable by pt_plan_query
 	   * so, query_Plan_dump_fp should be open once at first call
 	   * and be closed at that call.
 	   */
