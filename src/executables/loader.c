@@ -2080,7 +2080,7 @@ ldr_int_db_bigint (LDR_CONTEXT * context,
   DB_VALUE val;
   char *str_ptr;
 
-  val.domain = ldr_int_tmpl.domain;
+  val.domain = ldr_bigint_tmpl.domain;
 
   /* Let try take the fastest path here, if we know that number we are
    * getting fits into a long, use strtol, else we need to convert it
