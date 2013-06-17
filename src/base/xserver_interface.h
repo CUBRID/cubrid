@@ -57,8 +57,8 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
 			 TRAN_ISOLATION client_isolation);
 extern const char *xboot_get_server_session_key (void);
 extern int xboot_register_client (THREAD_ENTRY * thread_p,
-				  const BOOT_CLIENT_CREDENTIAL *
-				  client_credential, int client_lock_wait,
+				  BOOT_CLIENT_CREDENTIAL * client_credential,
+				  int client_lock_wait,
 				  TRAN_ISOLATION client_isolation,
 				  TRAN_STATE * tran_state,
 				  BOOT_SERVER_CREDENTIAL * server_credential);

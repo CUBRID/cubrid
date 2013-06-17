@@ -447,6 +447,7 @@ extern SYSPRM_ERR sysprm_validate_change_parameters (const char *data,
 						     bool check,
 						     SYSPRM_ASSIGN_VALUE **
 						     assignments_ptr);
+extern void sysprm_init_intl_param (void);
 #endif /* !SERVER_MODE */
 
 extern int sysprm_print_assign_values (SYSPRM_ASSIGN_VALUE * prm_values,

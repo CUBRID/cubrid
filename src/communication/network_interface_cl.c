@@ -4154,6 +4154,8 @@ boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
 		  ptr =
 		    sysprm_unpack_session_parameters (ptr, &session_params);
 		}
+	      ptr = or_unpack_int (ptr, &server_credential->db_charset);
+	      ptr = or_unpack_string (ptr, &server_credential->db_lang);
 	    }
 	  free_and_init (area);
 	}

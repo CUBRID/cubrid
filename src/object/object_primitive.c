@@ -11624,7 +11624,7 @@ mr_data_lengthval_nchar (DB_VALUE * value, int disk)
 	  intl_convert_charset ((unsigned char *) src, char_count,
 				src_codeset,
 				(unsigned char *) converted_string,
-				lang_server_charset_id (), &unconverted);
+				lang_charset (), &unconverted);
 
 	  if (converted_string)
 	    {
@@ -11705,15 +11705,15 @@ mr_writeval_nchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
       (void) intl_convert_charset ((unsigned char *) src, char_count,
 				   src_codeset,
 				   (unsigned char *) converted_string,
-				   lang_server_charset_id (), &unconverted);
+				   lang_charset (), &unconverted);
       /* Reset the 'src' of the string */
       src = converted_string;
       src_precision = src_precision - unconverted;
       intl_char_size ((unsigned char *) converted_string,
 		      (char_count - unconverted), src_codeset, &src_size);
-      src_codeset = lang_server_charset_id ();
+      src_codeset = lang_charset ();
     }
-  (void) lang_charset_space_char (src_codeset, pad_char, &pad_charsize);
+  intl_pad_char (src_codeset, (unsigned char *) pad_char, &pad_charsize);
 #else
   /*
    * (void) lang_srvr_space_char(pad_char, &pad_charsize);
@@ -12627,7 +12627,7 @@ mr_lengthval_varnchar_internal (DB_VALUE * value, int disk, int align)
 	  intl_convert_charset ((unsigned char *) str, char_count,
 				src_codeset,
 				(unsigned char *) converted_string,
-				lang_server_charset_id (), &unconverted);
+				lang_charset (), &unconverted);
 
 	  if (converted_string)
 	    {
@@ -12677,8 +12677,7 @@ mr_writeval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	  (void) intl_convert_charset ((unsigned char *) str, char_count,
 				       src_codeset,
 				       (unsigned char *) converted_string,
-				       lang_server_charset_id (),
-				       &unconverted);
+				       lang_charset (), &unconverted);
 
 	  if (converted_string)
 	    {

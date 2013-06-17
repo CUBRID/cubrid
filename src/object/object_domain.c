@@ -679,18 +679,6 @@ tp_init (void)
       d->built_in_index = tp_Midxkey_domains[0]->built_in_index;
       d->is_desc = false;
     }
-
-
-  /* update string domains with current codeset */
-  tp_String_domain.codeset = LANG_SYS_CODESET;
-  tp_Char_domain.codeset = LANG_SYS_CODESET;
-  tp_NChar_domain.codeset = LANG_SYS_CODESET;
-  tp_VarNChar_domain.codeset = LANG_SYS_CODESET;
-
-  tp_String_domain.collation_id = LANG_SYS_COLLATION;
-  tp_Char_domain.collation_id = LANG_SYS_COLLATION;
-  tp_NChar_domain.collation_id = LANG_SYS_COLLATION;
-  tp_VarNChar_domain.collation_id = LANG_SYS_COLLATION;
 }
 
 

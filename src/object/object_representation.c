@@ -4335,7 +4335,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
   struct db_object *class_mop = NULL;
   int rc = NO_ERROR;
   int enum_vals_cnt = 0;
-  DB_ENUMERATION db_enum = { NULL, LANG_SYS_COLLATION, 0 };
+  DB_ENUMERATION db_enum = { NULL, 0, 0 };
 
   domain = last = dom = setdomain = NULL;
   precision = scale = 0;

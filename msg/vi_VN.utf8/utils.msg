@@ -297,14 +297,14 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 Lệnh '%s' không rõ\n
 43 Không thể mở tệp tin đầu ra '%s'\n
 44 Không thể gỡ bỏ cơ sở dữ liệu hiện có.\n
-45 Lập cơ sở dữ liệu với kích thước %s. Tổng dung lượng trống cần bằng %s.\n
+45 Creating database with %s size using locale %s. The total amount of disk space needed is %s.\n
 46 Không thể tạo cơ sở dữ liệu.\n
 47 Vấn đề với tệp tin người dùng '%s'\n
 48 Với '%s' đã cho, %s nằm ngoài khoảng. Lựa chọn kích thước giữa %s và %s.\n
 49 Giá trị %s '%s' vô hiệu.\n
 60 \
 createdb: Tạo một cơ sở dữ liệu.\n\
-cách sử dụng: %s createdb [TÙY CHỌN] tên-cơ sở dữ liệu\n\
+usage: %s createdb [OPTION] database-name database-default-locale\n\
 \n\
 các tùy chọn hợp lệ:\n\
       --db-volume-size=SIZE           kích cỡ của bộ đĩa thông tin đầu tiên\n\

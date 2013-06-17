@@ -297,14 +297,14 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 Comando desconocido '%s'\n
 43 No se puede abrir archivo de salida '%s'\n
 44 No se puede eliminar base de datos existente.\n
-45 Creando base de datos con tamano %s. Cantidad total de espacio de disco necesaria es %s.\n
+45 Creating database with %s size using default locale %s. The total amount of disk space needed is %s.\n
 46 No se pudo crear base de datos.\n
 47 Problema con el archivo de utilizador '%s'\n
 48 Para el '%s' dado, %s es fuera de rango. Escoger un tamano entre %s y %s.\n
 49 El valor de %s '%s' no es valido.\n
 60 \
 createdb: Crear una base de datos.\n\
-uso: %s createdb [OPTION] database-name\n\
+usage: %s createdb [OPTION] database-name database-default-locale\n\
 \n\
 opciones validas:\n\
       --db-volume-size=SIZE           tamano del primer volumen de informacion\n\

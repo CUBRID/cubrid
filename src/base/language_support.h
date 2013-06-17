@@ -47,6 +47,7 @@
 #define LANG_CHARSET_ISO88591_ALIAS1   "iso-88591"
 #define LANG_CHARSET_ISO88591_ALIAS2   "iso-8859-1"
 #define LANG_NAME_DEFAULT 	LANG_NAME_ENGLISH
+#define LANG_CHARSET_DEFAULT 	LANG_NAME_ENGLISH "." LANG_CHARSET_ISO88591
 
 #define LANG_MAX_COLLATIONS  256
 #define LANG_MAX_BUILTIN_COLLATIONS  32
@@ -256,13 +257,14 @@ struct lang_locale_compat
 extern "C"
 {
 #endif
-
   extern void lang_init_builtin (void);
-  extern bool lang_init_full (void);
+  extern int lang_init (void);
   extern void lang_init_console_txt_conv (void);
+  extern int lang_set_charset_lang (const char *lang_charset);
+  extern int lang_set_charset (const INTL_CODESET codeset);
+  extern int lang_set_language (const char *lang_str);
   extern void lang_final (void);
   extern int lang_locales_count (bool check_codeset);
-  extern const char *lang_get_user_loc_name (void);
   extern const char *lang_get_msg_Loc_name (void);
   extern const char *lang_get_Lang_name (void);
   extern INTL_LANG lang_id (void);
@@ -323,26 +325,13 @@ extern "C"
 					  const char *lang_name,
 					  const INTL_CODESET charset);
 #if !defined (SERVER_MODE)
-  extern void lang_server_charset_init (void);
-  extern INTL_CODESET lang_server_charset_id (void);
-  extern bool lang_check_server_env (void);
-#if defined(ENABLE_UNUSED_FUNCTION)
-  extern DB_CHARSET lang_server_db_charset (void);
-  extern void lang_server_space_char (char *space, int *size);
-  extern void lang_server_charset_name (char *name);
-  extern void lang_server_charset_desc (char *desc);
-#endif				/* ENABLE_UNUSED_FUNCTION */
   extern int lang_charset_name_to_id (const char *name,
 				      INTL_CODESET * codeset);
-  extern int lang_set_national_charset (const char *codeset_name);
-  extern int lang_charset_space_char (INTL_CODESET codeset, char *space_char,
-				      int *space_size);
+  extern int lang_db_put_charset (void);
   extern INTL_CODESET lang_get_client_charset (void);
   extern int lang_get_client_collation (void);
   extern void lang_set_parser_use_client_charset (bool use);
   extern bool lang_get_parser_use_client_charset (void);
-  extern int lang_get_server_charset_env_string (char *buf, int buf_size);
-  extern int lang_get_client_charset_env_string (char *buf, int buf_size);
 #endif				/* !SERVER_MODE */
 
   extern INTL_CODESET lang_charset_cubrid_name_to_id (const char *name);

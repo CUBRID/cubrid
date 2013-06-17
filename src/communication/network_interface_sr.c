@@ -126,7 +126,8 @@ return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid)
    *  So, re-set that error to rollback in client side.
    */
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
-  if (tdes != NULL && tdes->tran_abort_reason != TRAN_NORMAL && flag_abort == false)
+  if (tdes != NULL && tdes->tran_abort_reason != TRAN_NORMAL
+      && flag_abort == false)
     {
       flag_abort = true;
 
@@ -3569,7 +3570,7 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
   int tran_index, client_lock_wait;
   TRAN_ISOLATION client_isolation;
   TRAN_STATE tran_state;
-  int area_size, strlen1, strlen2, strlen3;
+  int area_size, strlen1, strlen2, strlen3, strlen4;
   char *reply, *area, *ptr;
   char server_session_key[SERVER_SESSION_KEY_SIZE];
   SESSION_KEY session_key;
@@ -3663,6 +3664,9 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
 							    area_size);
     }
 
+  area_size += OR_INT_SIZE;	/* db_charset */
+  area_size += or_packed_string_length (server_credential.db_lang, &strlen4);
+
   area = db_private_alloc (thread_p, area_size);
   if (area == NULL)
     {
@@ -3695,6 +3699,9 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
 	{
 	  ptr = sysprm_pack_session_parameters (ptr, session_params);
 	}
+      ptr = or_pack_int (ptr, server_credential.db_charset);
+      ptr = or_pack_string_with_length (ptr, server_credential.db_lang,
+					strlen4);
     }
 
   ptr = or_pack_int (reply, area_size);

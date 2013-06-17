@@ -3086,11 +3086,6 @@ static int sysprm_packed_sysprm_value_length (SYSPRM_VALUE value,
 static char *sysprm_unpack_sysprm_value (char *ptr, SYSPRM_VALUE * value,
 					 SYSPRM_DATATYPE datatype);
 
-
-#if !defined (SERVER_MODE)
-static void prm_init_intl_param (void);
-#endif /* !SERVER_MODE */
-
 #if defined (SERVER_MODE)
 static SYSPRM_ERR sysprm_set_session_parameter_value (SESSION_PARAM *
 						      session_parameter,
@@ -3549,18 +3544,7 @@ sysprm_load_and_init (const char *db_name, const char *conf_file)
 int
 sysprm_load_and_init_client (const char *db_name, const char *conf_file)
 {
-  int r;
-
-  r = sysprm_load_and_init_internal (db_name, conf_file, false, true);
-
-#if !defined (SERVER_MODE)
-  if (r == NO_ERROR)
-    {
-      prm_init_intl_param ();
-    }
-#endif
-
-  return r;
+  return sysprm_load_and_init_internal (db_name, conf_file, false, true);
 }
 
 /*
@@ -7976,12 +7960,12 @@ sysprm_print_parameters_for_qry_string (void)
 }
 
 /*
- * prm_init_intl_param () -
+ * sysprm_init_intl_param () -
  *
  * return:
  */
-static void
-prm_init_intl_param (void)
+void
+sysprm_init_intl_param (void)
 {
   SYSPRM_PARAM *prm_date_lang;
   SYSPRM_PARAM *prm_number_lang;

@@ -2495,6 +2495,17 @@ la_find_log_pagesize (LA_ACT_LOG * act_log,
 	  sleep (1);
 	  error = ER_LOG_PAGE_CORRUPTED;
 	}
+      else if (act_log->log_hdr->db_charset != lang_charset ())
+	{
+	  char err_msg[ERR_MSG_SIZE];
+	  snprintf (err_msg, sizeof (err_msg) - 1,
+		    "Active log file(%s) charset is not valid (%s), "
+		    "expecting %s.", act_log->path,
+		    lang_charset_cubrid_name (act_log->log_hdr->db_charset),
+		    lang_charset_cubrid_name (lang_charset ()));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, err_msg);
+	  return ER_LOC_INIT;
+	}
       else
 	{
 	  error = NO_ERROR;

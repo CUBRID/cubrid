@@ -1112,7 +1112,7 @@ boot_add_auto_volume_extension (THREAD_ENTRY * thread_p, DKNPAGES min_npages,
 				DISK_VOLPURPOSE vol_purpose, bool wait)
 {
   bool old_check_interrupt;
-  int ret, new_vol_npages;
+  int new_vol_npages;
   VOLID volid;
   DBDEF_VOL_EXT_INFO ext_info;
 
@@ -2511,23 +2511,22 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
   assert (db_path_info != NULL);
 
 #if defined(SERVER_MODE)
+  if (lang_init () != NO_ERROR)
+    {
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
+		  "Failed to initialize language module");
+	}
+      return NULL_TRAN_INDEX;
+    }
+
   /* open the system message catalog, before prm_ ?  */
   if (msgcat_init () != NO_ERROR)
     {
       /* need an appropriate error */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG, 0);
-      return NULL_TRAN_INDEX;
-    }
-
-  if (!lang_init_full ())
-    {
-      if (er_errid () == NO_ERROR)
-	{
-	  char msg[ERR_MSG_SIZE];
-	  sprintf (msg, "language failed (%s)", lang_get_user_loc_name ());
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, msg);
-	}
       return NULL_TRAN_INDEX;
     }
 
@@ -3066,8 +3065,21 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 #endif
   int error_code = NO_ERROR;
   char *prev_err_msg;
+  int db_charset_db_header = INTL_CODESET_NONE;
+  int db_charset_db_root = INTL_CODESET_NONE;
+  char db_lang[LANG_MAX_LANGNAME + 1];
 
-#if defined(SERVER_MODE)
+  /* language data is loaded in context of server */
+  if (lang_init () != NO_ERROR)
+    {
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
+		  "Failed to initialize language module");
+	}
+      return ER_LOC_INIT;
+    }
+
   if (msgcat_init () != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -3075,17 +3087,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
       return ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG;
     }
 
-  if (!lang_init_full ())
-    {
-      if (er_errid () == NO_ERROR)
-	{
-	  char msg[ERR_MSG_SIZE];
-	  sprintf (msg, "language failed (%s)", lang_get_user_loc_name ());
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, msg);
-	}
-      return ER_LOC_INIT;
-    }
-
+#if defined(SERVER_MODE)
   if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
@@ -3286,6 +3288,20 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 	  cfg_free_directory (dir);
 	  return ER_FAILED;
 	}
+    }
+
+  db_charset_db_header =
+    log_get_charset_from_header_page (thread_p, boot_Db_full_name, log_path,
+				      log_prefix);
+
+  if (db_charset_db_header == INTL_CODESET_ERROR)
+    {
+      if (from_backup == false || er_errid () == ER_IO_MOUNT_LOCKED)
+	{
+	  cfg_free_directory (dir);
+	  return ER_FAILED;
+	}
+      db_charset_db_header = INTL_CODESET_NONE;
     }
 
   /* Initialize the transaction table */
@@ -3499,6 +3515,53 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 
   logtb_set_to_system_tran_index (thread_p);
 
+  if (db_charset_db_header == INTL_CODESET_NONE)
+    {
+      /* was unable to read charset from header, use INTL_CODESET_ISO88591;
+       * db_root does not contain fixed CHAR values, it is safe to read it
+       * using ISO charset */
+      (void) lang_set_charset (INTL_CODESET_ISO88591);
+    }
+  else
+    {
+      error_code = lang_set_charset (db_charset_db_header);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+
+  error_code = catcls_get_server_lang_charset (thread_p, &db_charset_db_root,
+					       db_lang, sizeof (db_lang) - 1);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  /* set charset and language using values of "db_root" */
+  error_code = lang_set_charset (db_charset_db_root);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  error_code = lang_set_language (db_lang);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  if (db_charset_db_header >= 0 && db_charset_db_header != db_charset_db_root)
+    {
+      char er_msg[ERR_MSG_SIZE];
+      snprintf (er_msg, sizeof (er_msg) - 1, "Invalid charset in db_root "
+		"system table: expecting %s, found %s",
+		lang_charset_cubrid_name (db_charset_db_header),
+		lang_charset_cubrid_name (db_charset_db_root));
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, er_msg);
+      goto error;
+    }
+
   if (!tf_Metaclass_class.n_variable)
     {
       tf_compile_meta_classes ();
@@ -3517,35 +3580,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 	    }
 	}
     }
-
-#if defined(SERVER_MODE)
-  {
-    int db_charset;
-    char db_lang[LANG_MAX_LANGNAME + 1];
-
-    catcls_get_server_lang_charset (thread_p, &db_charset, db_lang,
-				    LANG_MAX_LANGNAME);
-
-    if (db_charset != lang_charset () ||
-	strcasecmp (lang_get_Lang_name (), db_lang))
-      {
-	char db_env_string[64];
-	char current_env_string[64];
-
-	db_env_string[0] = current_env_string[0] = '\0';
-	lang_get_charset_env_string (db_env_string, 64, db_lang, db_charset);
-	lang_get_charset_env_string (current_env_string, 64,
-				     lang_get_Lang_name (), lang_charset ());
-
-	error_code = ER_INVALID_SERVER_CHARSET;
-	er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-		ER_INVALID_SERVER_CHARSET, 2,
-		db_env_string, current_env_string);
-
-	goto error;
-      }
-  }
-#endif
 
   /* check server collations with database collations */
   if (check_db_coll)
@@ -3688,22 +3722,21 @@ int
 xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart,
 			   const char *db_name, BO_RESTART_ARG * r_args)
 {
+  if (lang_init () != NO_ERROR)
+    {
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
+		  "Failed to initialize language module");
+	}
+      return NULL_TRAN_INDEX;
+    }
+
   /* open the system message catalog, before prm_ ?  */
   if (msgcat_init () != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG, 0);
-      return NULL_TRAN_INDEX;
-    }
-
-  if (!lang_init_full ())
-    {
-      if (er_errid () == NO_ERROR)
-	{
-	  char msg[ERR_MSG_SIZE];
-	  sprintf (msg, "language failed (%s)", lang_get_user_loc_name ());
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, msg);
-	}
       return NULL_TRAN_INDEX;
     }
 
@@ -3826,17 +3859,18 @@ xboot_get_server_session_key (void)
  */
 int
 xboot_register_client (THREAD_ENTRY * thread_p,
-		       const BOOT_CLIENT_CREDENTIAL * client_credential,
+		       BOOT_CLIENT_CREDENTIAL * client_credential,
 		       int client_lock_wait, TRAN_ISOLATION client_isolation,
 		       TRAN_STATE * tran_state,
 		       BOOT_SERVER_CREDENTIAL * server_credential)
 {
   int tran_index;
   bool check_db_coll = true;
+  char *db_user_save;
+  char *adm_prg_file_name = NULL;
+  char db_user_upper[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
 #if defined(SA_MODE)
-  char *adm_prg_file_name = NULL;
-
   if (client_credential != NULL
       && client_credential->program_name != NULL
       && client_credential->client_type == BOOT_CLIENT_ADMIN_UTILITY)
@@ -3879,6 +3913,13 @@ xboot_register_client (THREAD_ENTRY * thread_p,
     }
 #endif /* SA_MODE */
 
+  db_user_save = client_credential->db_user;
+  if (client_credential->db_user != NULL)
+    {
+      intl_identifier_upper (client_credential->db_user, db_user_upper);
+      client_credential->db_user = db_user_upper;
+    }
+
   /* Assign a transaction index to the client */
   tran_index = logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE,
 					client_credential, tran_state,
@@ -3916,6 +3957,8 @@ xboot_register_client (THREAD_ENTRY * thread_p,
 #endif
       memcpy (server_credential->server_session_key, boot_Server_session_key,
 	      SERVER_SESSION_KEY_SIZE);
+      server_credential->db_charset = lang_charset ();
+      server_credential->db_lang = (char *) lang_get_Lang_name ();
 
 #if defined(SERVER_MODE)
       /* Check the server's state for HA action for this client */
@@ -3927,6 +3970,7 @@ xboot_register_client (THREAD_ENTRY * thread_p,
 	      er_log_debug (ARG_FILE_LINE, "xboot_register_client: "
 			    "css_check_ha_server_state_for_client() error\n");
 	      *tran_state = TRAN_UNACTIVE_UNKNOWN;
+	      client_credential->db_user = db_user_save;
 	      return NULL_TRAN_INDEX;
 	    }
 	}
@@ -3943,6 +3987,7 @@ xboot_register_client (THREAD_ENTRY * thread_p,
 	      tran_index);
     }
 
+  client_credential->db_user = db_user_save;
   return tran_index;
 }
 
@@ -5801,6 +5846,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name,
   int dbtxt_vdes = NULL_VOLDES;
   char dbtxt_label[PATH_MAX];
   int error_code = NO_ERROR;
+  int db_charset_db_header = INTL_CODESET_ERROR;
 
   (void) msgcat_init ();
   if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
@@ -5808,26 +5854,6 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
       return ER_FAILED;
     }
-
-#if defined(SERVER_MODE)
-  if (msgcat_init () != NO_ERROR)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG, 0);
-      return ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG;
-    }
-
-  if (!lang_init_full ())
-    {
-      if (er_errid () == NO_ERROR)
-	{
-	  char msg[ERR_MSG_SIZE];
-	  sprintf (msg, "language failed (%s)", lang_get_user_loc_name ());
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, msg);
-	}
-      return ER_LOC_INIT;
-    }
-#endif /* SERVER_MODE */
 
   if (db_name == NULL)
     {
@@ -6009,6 +6035,43 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name,
     {
       fileio_dismount_all (thread_p);
       return ER_FAILED;
+    }
+
+  db_charset_db_header =
+    log_get_charset_from_header_page (thread_p, boot_Db_full_name, log_path,
+				      log_prefix);
+
+  if (db_charset_db_header == INTL_CODESET_ERROR)
+    {
+      int db_charset_db_root;
+      char db_lang[LANG_MAX_LANGNAME];
+
+      if (recreate_log == false)
+	{
+	  return ER_FAILED;
+	}
+
+      (void) lang_set_charset (INTL_CODESET_ISO88591);
+
+      tp_init ();
+
+      error_code =
+	catcls_get_server_lang_charset (thread_p, &db_charset_db_root,
+					db_lang, sizeof (db_lang) - 1);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+
+      db_charset_db_header = db_charset_db_root;
+      tp_final ();
+      area_final ();
+    }
+
+  error_code = lang_set_charset (db_charset_db_header);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
     }
 
   if (recreate_log == true)

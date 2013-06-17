@@ -249,7 +249,8 @@ extern int db_init (const char *program, int print_version,
 		    const bool overwrite, const char *comments,
 		    const char *addmore_vols_file,
 		    int npages, int desired_pagesize,
-		    int log_npages, int desired_log_page_size);
+		    int log_npages, int desired_log_page_size,
+		    const char *lang_charset);
 
 extern int db_parse_one_statement (DB_SESSION * session);
 #ifdef __cplusplus

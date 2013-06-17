@@ -301,14 +301,14 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 Comandă necunoscută '%s'\n
 43 Nu s-a putut deschide fişierul de ieşire '%s'\n
 44 Baza de date existentă nu a putut fi eliminată.\n
-45 Se creează o bază de date de dimensiune %s. Cantitatea totală de spaţiu necesar pe disc este %s.\n
+45 Se creează o bază de date de dimensiune %s si localizare %s. Cantitatea totală de spaţiu necesar pe disc este %s.\n
 46 Baza de date nu a putut fi creată.\n
 47 S-a întâmpinat o problemă cu fişierul '%s' dat de utilizator\n
 48 S-a furnizat '%s', %s este în afara domeniului. Alegeţi o dimensiune cuprinsă între %s şi %s.\n
 49 Valoarea lui %s '%s' nu este validă.\n
 60 \
 createdb: Creează o baza de date.\n\
-utilizare: %s createdb [OPTIUNE] nume-bază-de-date\n\
+utilizare: %s createdb [OPTIUNE] <nume-bază-de-date> <localizare>\n\
 \n\
 opţiuni valide:\n\
       --db-volume-size=MĂRIME            mărimea primului volum de informaţii\n\

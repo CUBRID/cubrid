@@ -682,7 +682,7 @@ static GETOPT_LONG ua_SyncCollDB_Option[] = {
 };
 
 static UTIL_MAP ua_Utility_Map[] = {
-  {CREATEDB, SA_ONLY, 1, UTIL_OPTION_CREATEDB, "createdb",
+  {CREATEDB, SA_ONLY, 2, UTIL_OPTION_CREATEDB, "createdb",
    ua_Create_Option, ua_Create_Option_Map},
   {RENAMEDB, SA_ONLY, 2, UTIL_OPTION_RENAMEDB, "renamedb",
    ua_Rename_Option, ua_Rename_Option_Map},

@@ -4592,17 +4592,10 @@ catcls_get_server_lang_charset (THREAD_ENTRY * thread_p, int *charset_id_p,
 	}
     }
 
-  if (charset_att_id == -1)
+  if (charset_att_id == -1 || lang_att_id == -1)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       goto exit;
-    }
-
-  /* TODO: backward compatibility : support DB without lang */
-  if (lang_att_id == -1)
-    {
-      assert (strlen (LANG_NAME_ENGLISH) < lang_buf_size);
-      strcpy (lang_buf, LANG_NAME_ENGLISH);
     }
 
   (void) heap_scancache_end (thread_p, &scan_cache);

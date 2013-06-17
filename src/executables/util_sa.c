@@ -314,6 +314,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
   const char *init_file_name;
   const char *volume_spec_file_name;
   const char *user_define_file_name;
+  const char *cubrid_charset;
 
   int db_volume_pages;
   int db_page_size;
@@ -330,6 +331,16 @@ createdb (UTIL_FUNCTION_ARG * arg)
 
   database_name = utility_get_option_string_value (arg_map,
 						   OPTION_STRING_TABLE, 0);
+  cubrid_charset = utility_get_option_string_value (arg_map,
+						    OPTION_STRING_TABLE, 1);
+
+  if (database_name == 0 || database_name[0] == 0
+      || cubrid_charset == 0 || cubrid_charset[0] == 0
+      || utility_get_option_string_table_size (arg_map) != 2)
+    {
+      goto print_create_usage;
+    }
+
   if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
     {
       goto error_exit;
@@ -471,12 +482,6 @@ createdb (UTIL_FUNCTION_ARG * arg)
       log_volume_pages = log_volume_size / log_page_size;
     }
 
-  if (database_name == 0 || database_name[0] == 0
-      || utility_get_option_string_table_size (arg_map) != 1)
-    {
-      goto print_create_usage;
-    }
-
   if (check_new_database_name (database_name))
     {
       goto error_exit;
@@ -603,7 +608,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
   fprintf (output_file,
 	   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CREATEDB,
 			   CREATEDB_MSG_CREATING),
-	   er_msg_file, required_size);
+	   er_msg_file, cubrid_charset, required_size);
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1,
@@ -622,7 +627,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
   status = db_init (program_name, true, database_name, volume_path,
 		    NULL, log_path, lob_path, host_name, overwrite, comment,
 		    volume_spec_file_name, db_volume_pages, db_page_size,
-		    log_volume_pages, log_page_size);
+		    log_volume_pages, log_page_size, cubrid_charset);
 
   if (status != NO_ERROR)
     {
@@ -635,7 +640,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
 
   sm_mark_system_classes ();
 
-  lang_set_national_charset (NULL);
+  (void) lang_db_put_charset ();
   if (verbose)
     {
       au_dump_to_file (output_file);

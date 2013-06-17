@@ -131,6 +131,8 @@ struct boot_server_credential
   float disk_compatibility;
   int ha_server_state;		/*  HA_SERVER_STATE */
   char server_session_key[SERVER_SESSION_KEY_SIZE];
+  int db_charset;
+  char *db_lang;
 };
 
 extern char boot_Host_name[MAXHOSTNAMELEN];

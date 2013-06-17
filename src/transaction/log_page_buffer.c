@@ -1879,6 +1879,7 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, struct log_header *loghdr,
   loghdr->avg_ntrans = LOG_ESTIMATE_NACTIVE_TRANS;
   loghdr->avg_nlocks = LOG_ESTIMATE_NOBJ_LOCKS;
   loghdr->npages = npages - 1;	/* Hdr pg is stolen */
+  loghdr->db_charset = lang_charset ();
   loghdr->fpageid = 0;
   loghdr->append_lsa.pageid = loghdr->fpageid;
   loghdr->append_lsa.offset = 0;
@@ -2361,6 +2362,7 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr,
  *   db_iopagesize(in): Set as a side effect to iopagesize
  *   db_creation(in): Set as a side effect to time of database creation
  *   db_compatibility(in): Set as a side effect to database disk compatibility
+ *   db_charset(in): Set as a side effect to database charset
  *
  * NOTE:Find some database creation parameters such as pagesize,
  *              creation time, and disk compatability.
@@ -2371,7 +2373,8 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p,
 			      const char *prefix_logname,
 			      PGLENGTH * io_page_size,
 			      PGLENGTH * log_page_size,
-			      INT64 * creation_time, float *db_compatibility)
+			      INT64 * creation_time, float *db_compatibility,
+			      int *db_charset)
 {
   struct log_header hdr;	/* Log header */
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
@@ -2464,6 +2467,7 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p,
   *log_page_size = hdr.db_logpagesize;
   *creation_time = hdr.db_creation;
   *db_compatibility = hdr.db_compatibility;
+  *db_charset = (int) hdr.db_charset;
 
   /*
    * Make sure that the log is a log file and that it is compatible with the
@@ -10084,6 +10088,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
   char format_string[64];
   INT64 backup_time;
   REL_COMPATIBILITY compat;
+  int dummy;
 
   try_level = (FILEIO_BACKUP_LEVEL) r_args->level;
   memset (&session_storage, 0, sizeof (FILEIO_BACKUP_SESSION));
@@ -10097,7 +10102,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
   if (logpb_find_header_parameters (thread_p, db_fullname, logpath,
 				    prefix_logname, &db_iopagesize,
 				    &log_page_size, &db_creation,
-				    &db_compatibility) == -1)
+				    &db_compatibility, &dummy) == -1)
     {
       db_iopagesize = IO_PAGESIZE;
       log_page_size = LOG_PAGESIZE;

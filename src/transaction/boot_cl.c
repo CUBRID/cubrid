@@ -126,7 +126,9 @@ static BOOT_SERVER_CREDENTIAL boot_Server_credential = {
   /* data page_size */ -1, /* log page_size */ -1,
   /* disk_compatibility */ 0.0,
   /* ha_server_state */ -1,
-  /* server_session_key */ {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
+  /* server_session_key */ {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
+  INTL_CODESET_NONE,
+  NULL
 };
 
 static const char *boot_Client_no_user_string = "(nouser)";
@@ -199,7 +201,9 @@ static int boot_define_view_stored_procedure_arguments (void);
 static int boot_define_view_db_collation (void);
 static int catcls_class_install (void);
 static int catcls_vclass_install (void);
+#if defined(CS_MODE)
 static int boot_check_locales (BOOT_CLIENT_CREDENTIAL * client_credential);
+#endif /* CS_MODE */
 /*
  * boot_client () -
  *
@@ -233,36 +237,22 @@ boot_client (int tran_index, int lock_wait, TRAN_ISOLATION tran_isolation)
  *
  * returns : NO_ERROR if all OK, ER_ status otherwise
  *
- *   program_name(in) : Name of the program that started the system
- *   print_version(in) : Flag which indicates if the version of CUBRID is
- *                      printed at the end of the initialization process.
- *   db_name(in)      : Database Name
- *   db_path(in)      : Directory where the database is created. It allows you
+ *   client_credential(in): Contains database access information such as :
+ *			    database name, user name and password, client type
+ *   db_path_info(in) : Directory where the database is created. It allows you
  *                      to specify the exact pathname of a directory in which
-  *                     to create the new database. If NULL is passed, the
- *                      current directory is used.
- *   log_path(in)     : Directory where the log and backups of the database are
- *                      created. We recommend placing log and backup in a
- *                      different directory and disk device from the directory
- *                      and disk device of the data volumes. If NULL is passed,
- *                      the value of the system parameter is used.
- *   server_host(in)  : Server host where the database will reside. The host is
- *                      needed in a client/server environment to identify the
- *                      server which will maintain (e.g., restart) the database
- *                      If NULL is given, the current host is used.
+  *                     to create the new database.
  *   db_overwrite(in) : Wheater to overwrite the database if it already exist.
- *   db_comments(in)  : Database creation comments such as name of the user who
- *                      created the database, the date of the creation,the name
- *                      of the intended application, or nothing at all. NULL
- *                      can be passed if no comments are desired.
- *   npages(in)       : Total number of pages to allocate for the database.
  *   file_addmore_vols(in): More volumes are created during the initialization
  *                      process.
+ *   npages(in)       : Total number of pages to allocate for the database.
  *   db_desired_pagesize(in): Desired pagesize for the new database.
  *                      The given size must be power of 2 and greater or
  *                      equal than 512.
  *   log_npages(in)   : Number of log pages. If log_npages <=0, default value
  *                      of system parameter is used.
+ *   db_desired_log_page_size(in):
+ *   lang_charset(in): language and charset to set on DB
  *
  * Note:
  *              The first step of any CUBRID application is to initialize a
@@ -289,7 +279,8 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
 			bool db_overwrite, const char *file_addmore_vols,
 			DKNPAGES npages, PGLENGTH db_desired_pagesize,
 			DKNPAGES log_npages,
-			PGLENGTH db_desired_log_page_size)
+			PGLENGTH db_desired_log_page_size,
+			const char *lang_charset)
 {
   OID rootclass_oid;		/* Oid of root class */
   HFID rootclass_hfid;		/* Heap for classes */
@@ -298,11 +289,12 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
   int tran_lock_wait_msecs;	/* Default lock waiting */
   unsigned int length;
   int error_code = NO_ERROR;
-  DB_INFO *db;
+  DB_INFO *db = NULL;
   const char *hosts[2];
 #if defined (CS_MODE)
   char format[BOOT_FORMAT_MAX_LENGTH];
 #endif
+  bool is_db_user_alloced = false;
 
   assert (client_credential != NULL);
   assert (db_path_info != NULL);
@@ -324,19 +316,22 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
 #endif /* WINDOWS */
 
   /*
-   * initialize language parameters, if we can't access the CUBRID
-   * environment variable, should return an appropriate error code even
-   * if we can't actually print anything
-   */
-  if (!lang_init_full ())
+   * initialize language parameters  */
+  if (lang_init () != NO_ERROR)
     {
       if (er_errid () == NO_ERROR)
 	{
-	  char msg[ERR_MSG_SIZE];
-	  sprintf (msg, "language failed (%s)", lang_get_user_loc_name ());
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, msg);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
+		  "Failed to initialize language module");
 	}
-      return ER_LOC_INIT;
+      error_code = ER_LOC_INIT;
+      goto error_exit;
+    }
+
+  if (lang_set_charset_lang (lang_charset) != NO_ERROR)
+    {
+      error_code = ER_LOC_INIT;
+      goto error_exit;
     }
 
   /* database name must be specified */
@@ -344,7 +339,8 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1,
 	      "(null)");
-      return ER_BO_UNKNOWN_DATABASE;
+      error_code = ER_BO_UNKNOWN_DATABASE;
+      goto error_exit;
     }
 
   /* open the system message catalog, before prm_ ?  */
@@ -352,7 +348,8 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG, 0);
-      return ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG;
+      error_code = ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG;
+      goto error_exit;
     }
 
   /* initialize system parameters */
@@ -360,7 +357,8 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
       != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
-      return ER_BO_CANT_LOAD_SYSPRM;
+      error_code = ER_BO_CANT_LOAD_SYSPRM;
+      goto error_exit;
     }
 
   /* initialize the "areas" memory manager */
@@ -378,7 +376,8 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_BO_CWD_FAIL, 0);
-	  return ER_BO_CWD_FAIL;
+	  error_code = ER_BO_CWD_FAIL;
+	  goto error_exit;
 	}
     }
   if (db_path_info->log_path == NULL)
@@ -417,7 +416,8 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
 #endif /* !CUBRID_OWFS */
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_ES_INVALID_PATH, 1, db_path_info->lob_path);
-	      return ER_ES_INVALID_PATH;
+	      error_code = ER_ES_INVALID_PATH;
+	      goto error_exit;
 	    default:
 	      break;
 	    }
@@ -434,7 +434,8 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
 	      ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG, 3, db_path_info->db_path,
 	      client_credential->db_name, length, PATH_MAX);
 
-      return ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG;
+      error_code = ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG;
+      goto error_exit;
     }
 
   /* If a host was not given, assume the current host */
@@ -445,7 +446,8 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
-	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
+	  error_code = ER_BO_UNABLE_TO_FIND_HOSTNAME;
+	  goto error_exit;
 	}
       db_host_buf[MAXHOSTNAMELEN] = '\0';
 #else
@@ -463,7 +465,8 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1,
 	      client_credential->db_name);
-      return ER_BO_UNKNOWN_DATABASE;
+      error_code = ER_BO_UNKNOWN_DATABASE;
+      goto error_exit;
     }
 
   /* Get the absolute path name */
@@ -493,6 +496,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
 	    {
 	      intl_identifier_upper (user_name, upper_case_name);
 	      client_credential->db_user = upper_case_name;
+	      is_db_user_alloced = true;
 	    }
 	  free_and_init (user_name);
 	}
@@ -548,12 +552,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
 				false);
   if (error_code != NO_ERROR)
     {
-      cfg_free_directory (db);
-      if (client_credential->db_user != boot_Client_no_user_string)
-	{
-	  free_and_init (client_credential->db_user);
-	}
-      return error_code;
+      goto error_exit;
     }
 #endif /* CS_MODE */
   boot_User_volid = 0;
@@ -577,11 +576,14 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
 				       log_npages, db_desired_log_page_size,
 				       &rootclass_oid, &rootclass_hfid,
 				       tran_lock_wait_msecs, tran_isolation);
-  /* free the thing get from au_user_name_dup() */
-  if (client_credential->db_user != boot_Client_no_user_string)
+  if (is_db_user_alloced == true)
     {
+      assert (client_credential->db_user != NULL);
+      assert (client_credential->db_user != boot_Client_no_user_string);
       free_and_init (client_credential->db_user);
+      is_db_user_alloced = false;
     }
+
   if (tran_index == NULL_TRAN_INDEX)
     {
       error_code = er_errid ();
@@ -590,8 +592,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
 	  error_code = ER_GENERIC_ERROR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
 	}
-      cfg_free_directory (db);
-      return error_code;
+      goto error_exit;
     }
 
   oid_set_root (&rootclass_oid);
@@ -653,7 +654,27 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
 #endif /* CS_MODE */
     }
 
-  cfg_free_directory (db);
+  if (db != NULL)
+    {
+      cfg_free_directory (db);
+      db = NULL;
+    }
+  return error_code;
+
+error_exit:
+  if (db != NULL)
+    {
+      cfg_free_directory (db);
+      db = NULL;
+    }
+
+  if (is_db_user_alloced == true)
+    {
+      assert (client_credential->db_user != NULL);
+      assert (client_credential->db_user != boot_Client_no_user_string);
+      free_and_init (client_credential->db_user);
+    }
+
   return error_code;
 }
 
@@ -662,10 +683,9 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
  *
  * returns : NO_ERROR if all OK, ER_ status otherwise
  *
- *   program_name(in) : Name of the program that started the system
- *   print_version(in): Flag which indicates if the version of CUBRID is
- *                     printed at the end of the restart process.
- *   db_name(in) : Database Name
+ *   client_credential(in) : Information required to start as client, such as:
+ *			     database name, user name and password, client
+ *			     type.
  *
  * Note:
  *              An application must restart the database system with the
@@ -700,6 +720,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   int num_hosts;
   char *ha_node_list = NULL;
 #endif /* CS_MODE */
+  bool is_db_user_alloced = false;
 
   assert (client_credential != NULL);
 
@@ -720,13 +741,12 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 #endif /* WINDOWS */
 
   /* initialize language parameters */
-  if (!lang_init_full ())
+  if (lang_init () != NO_ERROR)
     {
       if (er_errid () == NO_ERROR)
 	{
-	  char msg[ERR_MSG_SIZE];
-	  sprintf (msg, "language failed (%s)", lang_get_user_loc_name ());
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, msg);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
+		  "Failed to initialize language module");
 	}
       return ER_LOC_INIT;
     }
@@ -836,27 +856,13 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   if (client_credential->db_user == NULL)
     {
       char *user_name = au_user_name_dup ();
-      int upper_case_name_size;
-      char *upper_case_name;
 
       if (user_name != NULL)
 	{
-	  upper_case_name_size =
-	    intl_identifier_upper_string_size (user_name);
-	  upper_case_name = (char *) malloc (upper_case_name_size + 1);
-	  if (upper_case_name == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, upper_case_name_size + 1);
-	    }
-	  else
-	    {
-	      intl_identifier_upper (user_name, upper_case_name);
-	      client_credential->db_user = upper_case_name;
-	    }
-	  free_and_init (user_name);
+	  /* user name is upper-cased in server using server's charset */
+	  client_credential->db_user = user_name;
+	  is_db_user_alloced = true;
 	}
-      upper_case_name = NULL;
 
       if (client_credential->db_user == NULL)
 	{
@@ -865,6 +871,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       else if (client_credential->db_user[0] == '\0')
 	{
 	  free_and_init (client_credential->db_user);
+	  is_db_user_alloced = false;
 	  client_credential->db_user = (char *) AU_PUBLIC_USER_NAME;
 	}
     }
@@ -1052,10 +1059,13 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 				     &transtate, &boot_Server_credential);
 
   /* free the thing get from au_user_name_dup() */
-  if (client_credential->db_user != boot_Client_no_user_string
-      && client_credential->db_user != AU_PUBLIC_USER_NAME)
+  if (is_db_user_alloced == true)
     {
+      assert (client_credential->db_user != NULL);
+      assert (client_credential->db_user != boot_Client_no_user_string);
+      assert (client_credential->db_user != AU_PUBLIC_USER_NAME);
       free_and_init (client_credential->db_user);
+      is_db_user_alloced = false;
     }
   if (tran_index == NULL_TRAN_INDEX)
     {
@@ -1064,6 +1074,17 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     }
 
 #if defined(CS_MODE)
+  if (lang_set_charset (boot_Server_credential.db_charset) != NO_ERROR)
+    {
+      error_code = er_errid ();
+      goto error;
+    }
+  if (lang_set_language (boot_Server_credential.db_lang) != NO_ERROR)
+    {
+      error_code = er_errid ();
+      goto error;
+    }
+
   /* Reset the pagesize according to server.. */
   if (db_set_page_size (boot_Server_credential.page_size,
 			boot_Server_credential.log_page_size) != NO_ERROR)
@@ -1078,6 +1099,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       rel_set_disk_compatible (boot_Server_credential.disk_compatibility);
     }
 #endif /* CS_MODE */
+
+  sysprm_init_intl_param ();
 
   /* Initialize client modules for execution */
   boot_client (tran_index, tran_lock_wait_msecs, tran_isolation);
@@ -1096,11 +1119,13 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       goto error;
     }
 
+#if defined(CS_MODE)
   error_code = boot_check_locales (client_credential);
   if (error_code != NO_ERROR)
     {
       goto error;
     }
+#endif /* CS_MODE */
 
   tr_init ();			/* initialize trigger manager */
 
@@ -1176,13 +1201,12 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 error:
 
   /* free the thing get from au_user_name_dup() */
-  if (client_credential->db_user != NULL)
+  if (is_db_user_alloced == true)
     {
-      if (client_credential->db_user != boot_Client_no_user_string
-	  && client_credential->db_user != AU_PUBLIC_USER_NAME)
-	{
-	  free_and_init (client_credential->db_user);
-	}
+      assert (client_credential->db_user != NULL);
+      assert (client_credential->db_user != boot_Client_no_user_string);
+      assert (client_credential->db_user != AU_PUBLIC_USER_NAME);
+      free_and_init (client_credential->db_user);
     }
 
   /* Protect against falsely returning NO_ERROR to caller */
@@ -5509,41 +5533,24 @@ boot_clear_host_connected (void)
 #endif
 }
 
+#if defined(CS_MODE)
 /*
- * boot_clear_host_connected () -
+ * boot_check_locales () - checks that client locales are compatible with
+ *			   server locales
+ *
+ *  return : error code
+ *
  */
 static int
 boot_check_locales (BOOT_CLIENT_CREDENTIAL * client_credential)
 {
   int error_code = NO_ERROR;
-#if defined(CS_MODE)
   LANG_COLL_COMPAT *server_collations = NULL;
   LANG_LOCALE_COMPAT *server_locales = NULL;
   int server_coll_cnt, server_locales_cnt;
   char cli_text[PATH_MAX];
   char srv_text[DB_MAX_IDENTIFIER_LENGTH + 10];
-#endif
 
-  (void) lang_server_charset_init ();
-
-  if (!lang_check_server_env ())
-    {
-      char server_env_string[64];
-      char client_env_string[64];
-
-      server_env_string[0] = client_env_string[0] = '\0';
-      lang_get_server_charset_env_string (server_env_string, 64);
-      lang_get_client_charset_env_string (client_env_string, 64);
-
-      error_code = ER_INVALID_SERVER_CHARSET;
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_INVALID_SERVER_CHARSET, 2, server_env_string,
-	      client_env_string);
-
-      goto exit;
-    }
-
-#if defined(CS_MODE)
   error_code = boot_get_server_locales (&server_collations, &server_locales,
 					&server_coll_cnt,
 					&server_locales_cnt);
@@ -5566,10 +5573,6 @@ boot_check_locales (BOOT_CLIENT_CREDENTIAL * client_credential)
 
   error_code = lang_check_locale_compat (server_locales, server_locales_cnt,
 					 cli_text, srv_text);
-  if (error_code != NO_ERROR)
-    {
-      goto exit;
-    }
 
 exit:
   if (server_collations != NULL)
@@ -5580,11 +5583,10 @@ exit:
     {
       free_and_init (server_locales);
     }
-#else
-exit:
-#endif
+
   return error_code;
 }
+#endif /* CS_MODE */
 
 /*
  * boot_get_server_session_key () -

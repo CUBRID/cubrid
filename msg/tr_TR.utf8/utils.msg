@@ -297,14 +297,14 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 Bilinmeyen komut '%s'\n
 43 Çıktı dosyası '%s' açılamadı\n
 44 Varolan veritabanı kaldırılamadı\n
-45 %s boyut ile veri tabanı oluşturulması. Gerekli olan disk alanı toplam miktarı %s.\n
+45 Creating database with %s size using locale %s. The total amount of disk space needed is %s.\n
 46 Veritabanı oluşturulamadı.\n
 47 '%s' Kullanıcı dosya ile ilgili sorun\n
 48 Verilen '%s', %s kapsam dışı. %s ve %s arasında bir boyut seçin.\n
 49 %s Sayısal değeri '%s' geçersiz. \n
 60 \
 createdb: Bir veritabanı oluştur.\n\
-kullanım: %s createdb [SEÇENEK] database-name\n\
+usage: %s createdb [OPTION] database-name database-default-locale\n\
 \n\
 geçerli seçenekler:\n\
       --db-volume-size=SIZE           ilk bilgi yoğunluğunun büyüklüğün\

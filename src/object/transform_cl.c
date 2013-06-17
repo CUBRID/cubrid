@@ -1509,9 +1509,7 @@ get_string (OR_BUF * buf, int length)
    */
   my_domain.precision = DB_MAX_VARNCHAR_PRECISION;
 
-  assert (lang_server_charset_id () == LANG_SYS_CODESET);
-
-  my_domain.codeset = lang_server_charset_id ();
+  my_domain.codeset = lang_charset ();
   my_domain.collation_id = LANG_SYS_COLLATION;
 
   (*(tp_VarNChar.data_readval)) (buf, &value, &my_domain, length, true, NULL,
@@ -4355,7 +4353,7 @@ tf_disk_to_class (OID * oid, RECDES * record)
 
   /* restore gc */
   ws_gc_enable ();
-  sm_bump_global_schema_version();
+  sm_bump_global_schema_version ();
 
   buf->error_abort = 0;
   return (class_);

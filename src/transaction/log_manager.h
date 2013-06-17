@@ -242,6 +242,10 @@ extern PGLENGTH log_get_io_page_size (THREAD_ENTRY * thread_p,
 				      const char *db_fullname,
 				      const char *logpath,
 				      const char *prefix_logname);
+extern int log_get_charset_from_header_page (THREAD_ENTRY * thread_p,
+					     const char *db_fullname,
+					     const char *logpath,
+					     const char *prefix_logname);
 extern int log_rv_copy_char (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void log_rv_dump_char (FILE * fp, int length, void *data);
 extern int log_rv_outside_noop_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

@@ -2645,15 +2645,6 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
       csql_exit (EXIT_FAILURE);
     }
 
-  if (!lang_init_full ())
-    {
-      printf ("Failed to initialize language (%s)\n",
-	      lang_get_user_loc_name ());
-      csql_exit (EXIT_FAILURE);
-    }
-
-  lang_init_console_txt_conv ();
-
   /* set up prompt and message fields. */
   if (csql_arg->sysadm)
     {
@@ -2805,6 +2796,8 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
     {
       csql_Pager_cmd[0] = '\0';
     }
+
+  lang_init_console_txt_conv ();
 
   if (csql_Is_interactive)
     {

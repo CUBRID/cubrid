@@ -297,14 +297,14 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 commandដែលមិនស្គាល់ `%s'\n
 43 មិនអាចបើក output file `%s'\n
 44 មិនអាចផ្លាស់ប្តូរទីតាំងដែលតាបេសដែលមាន។\n
-45 បងើ្កតទិន្នន័យដែលមានទំហំ %s. ទំហំថាសដែលត្រូវការស្មើនឹង%s.\n
+45 Creating database with %s size using default locale %s. The total amount of disk space needed is %s.\n
 46 មិនអាំចបង្កើតដែលតាបេស\n
 47 បញ្ហាជាមួយ user file `%s'\n
 48 ទំហំ '%s', %s ហួសកំណត់. សូមជ្រើសរើសទំហំរវាង %s និង %s.\n
 49 តំលៃនៃ%s'%s'មោឃ\n
 60 \
 createdb: បង្កើតដែលតាបេស\n\
-usage: %s createdb [OPTION] ឈ្មោះដែលតាបេស\n\
+usage: %s createdb [OPTION] database-name database-default-locale\n\
 \n\
 ជម្រើសសុពល:\n\
       --db-volume-size=SIZE           ទំហំនៃvolumeពត៌មានទីមួយ\n\

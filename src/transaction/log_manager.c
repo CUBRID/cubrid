@@ -10844,12 +10844,13 @@ log_get_io_page_size (THREAD_ENTRY * thread_p, const char *db_fullname,
   PGLENGTH ignore_log_page_size;
   INT64 ignore_dbcreation;
   float ignore_dbcomp;
+  int dummy;
 
   LOG_CS_ENTER (thread_p);
   if (logpb_find_header_parameters (thread_p, db_fullname, logpath,
 				    prefix_logname, &db_iopagesize,
 				    &ignore_log_page_size, &ignore_dbcreation,
-				    &ignore_dbcomp) == -1)
+				    &ignore_dbcomp, &dummy) == -1)
     {
       /*
        * For case where active log could not be found, user still needs
@@ -10868,6 +10869,54 @@ log_get_io_page_size (THREAD_ENTRY * thread_p, const char *db_fullname,
     {
       LOG_CS_EXIT ();
       return db_iopagesize;
+    }
+}
+
+/*
+ * log_get_charset_from_header_page - get charset stored in header page
+ *
+ * return: charset id (non-negative values are valid)
+ *	   -1 if header page cannot be used to determine database charset
+ *	   -2 if an error occurs
+ *
+ *  See log_get_io_page_size for arguments
+ */
+int
+log_get_charset_from_header_page (THREAD_ENTRY * thread_p,
+				  const char *db_fullname,
+				  const char *logpath,
+				  const char *prefix_logname)
+{
+  PGLENGTH dummy_db_iopagesize;
+  PGLENGTH dummy_ignore_log_page_size;
+  INT64 dummy_ignore_dbcreation;
+  float dummy_ignore_dbcomp;
+  int db_charset = INTL_CODESET_NONE;
+
+  LOG_CS_ENTER (thread_p);
+  if (logpb_find_header_parameters (thread_p, db_fullname, logpath,
+				    prefix_logname, &dummy_db_iopagesize,
+				    &dummy_ignore_log_page_size,
+				    &dummy_ignore_dbcreation,
+				    &dummy_ignore_dbcomp, &db_charset) == -1)
+    {
+      /*
+       * For case where active log could not be found, user still needs
+       * an error.
+       */
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MOUNT_FAIL, 1,
+		  log_Name_active);
+	}
+
+      LOG_CS_EXIT ();
+      return INTL_CODESET_ERROR;
+    }
+  else
+    {
+      LOG_CS_EXIT ();
+      return db_charset;
     }
 }
 

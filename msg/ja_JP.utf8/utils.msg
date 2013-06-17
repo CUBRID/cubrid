@@ -297,14 +297,14 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 正しくないコマンド「%s」\n
 43 出力ファイル「%s」が開けられません。\n
 44 既存データベースが削除できません。\n
-45 データベース(サイズ:%s)を生成しています。必要なディスクスペースは「%s」です。\n
+45 Creating database with %s size using default locale %s. The total amount of disk space needed is %s.\n
 46 データベースが生成できません。\n
 47 ユーザーファイル「%s」に問題があります。\n
 48 あげられたバリュー：「%s」。「%s」は範囲を超えてしまいました。「%s」と「%s」の内のバリューを入力してください。\n
 49 %sの内容の中で「%s」が正しくありません。\n
 60 \
 createdb: データベース生成。\n\
-使い方: %s createdb [オプション] <データベース名>\n\
+usage: %s createdb [OPTION] database-name database-default-locale\n\
 \n\
 使い方:\n\
       --db-volume-size=SIZE           最初に生成されるボリューム(generic)のサイズ\n\

@@ -297,14 +297,14 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 알 수 없는 명령어 '%s'\n
 43 출력 파일 '%s' 을(를) 열 수 없습니다.\n
 44 기존 데이터베이스를 삭제할 수 없습니다.\n
-45 Creating database with %s size. The total amount of disk space needed is %s.\n
+45 Creating database with %s size using default locale %s. The total amount of disk space needed is %s.\n
 46 데이터베이스를 생성할 수 없습니다.\n
 47 user file '%s'에 오류가 있습니다.\n
 48 The given '%s', %s is out of range. Choose a size between %s and %s.\n
 49 %s의 값 '%s'은 유효하지 않습니다.\n
 60 \
 createdb: 데이터베이스 생성.\n\
-사용법: %s createdb [옵션] <데이터베이스 이름>\n\
+usage: %s createdb [OPTION] database-name database-default-locale\n\
 \n\
 옵션:\n\
       --db-volume-size=SIZE           처음 생성되는 볼륨(generic)의 크기\n\

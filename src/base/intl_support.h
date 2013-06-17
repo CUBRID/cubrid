@@ -127,6 +127,7 @@ enum intl_zone
 typedef enum intl_codeset INTL_CODESET;
 enum intl_codeset
 {
+  INTL_CODESET_ERROR = -2,
   INTL_CODESET_NONE = -1,
   INTL_CODESET_ASCII,		/* US English charset, ASCII encoding */
   INTL_CODESET_RAW_BITS,	/* Uninterpreted bits, Raw encoding */

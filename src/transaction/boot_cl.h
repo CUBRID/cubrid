@@ -56,7 +56,8 @@ extern int boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
 				   DKNPAGES npages,
 				   PGLENGTH db_desired_pagesize,
 				   DKNPAGES log_npages,
-				   PGLENGTH db_desired_log_page_size);
+				   PGLENGTH db_desired_log_page_size,
+				   const char *lang_charset);
 extern int boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential);
 extern int boot_shutdown_client (bool iserfinal);
 extern void boot_donot_shutdown_client_at_exit (void);
