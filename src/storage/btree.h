@@ -92,8 +92,8 @@ typedef enum
 #define BTREE_OVERFLOW_KEY 1
 
 #define BTREE_SET_UNIQUE_VIOLATION_ERROR(THREAD,KEY,OID,C_OID,BTID) \
-        btree_set_unique_violation_error(THREAD, KEY, OID, C_OID, BTID, \
-                                         __FILE__, __LINE__)
+		btree_set_error(THREAD, KEY, OID, C_OID, BTID, \
+		ER_ERROR_SEVERITY, ER_BTREE_UNIQUE_FAILED, __FILE__, __LINE__)
 
 /* BTID_INT structure from btree_load.h */
 typedef struct btid_int BTID_INT;
@@ -449,12 +449,10 @@ extern int btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p,
 					 int func_index_col_id);
 extern int btree_coerce_key (DB_VALUE * src_keyp, int keysize,
 			     TP_DOMAIN * btree_domainp, int key_minmax);
-extern int btree_set_unique_violation_error (THREAD_ENTRY * thread_p,
-					     DB_VALUE * key,
-					     OID * obj_oid,
-					     OID * class_oid, BTID * btid,
-					     const char *filename,
-					     int lineno);
+extern int btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key,
+			    OID * obj_oid, OID * class_oid, BTID * btid,
+			    int severity, int err_id,
+			    const char *filename, int lineno);
 extern BTREE_LOCKED_KEYS btree_get_locked_keys (BTID * delete_btid,
 						BTID * search_btid,
 						bool duplicate_key_locked);

@@ -1423,6 +1423,11 @@
 
 #define ER_QUERY_EXECUTION_ERROR                    -1124
 
+#define ER_BTREE_CREATED_OVERFLOW_KEY                 -1125
+
+#define ER_BTREE_CREATED_OVERFLOW_PAGE                -1126
+#define ER_BTREE_DELETED_OVERFLOW_PAGE                -1127
+
 #define ER_LOG_RECOVERY_STARTED                     -1128
 
 #define ER_LOG_RECOVERY_FINISHED                    -1129

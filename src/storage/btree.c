@@ -153,6 +153,22 @@ struct btree_stats_env
   DB_VALUE pkeys_val[BTREE_STATS_PKEYS_NUM];	/* partial key-value */
 };
 
+/* for notification log messages */
+#define BTREE_SET_CREATED_OVERFLOW_KEY_NOTIFICATION(THREAD,KEY,OID,C_OID,BTID) \
+		btree_set_error(THREAD, KEY, OID, C_OID, BTID, \
+		ER_NOTIFICATION_SEVERITY, ER_BTREE_CREATED_OVERFLOW_KEY, \
+		__FILE__, __LINE__)
+
+#define BTREE_SET_CREATED_OVERFLOW_PAGE_NOTIFICATION(THREAD,KEY,OID,C_OID,BTID) \
+		btree_set_error(THREAD, KEY, OID, C_OID, BTID, \
+		ER_NOTIFICATION_SEVERITY, ER_BTREE_CREATED_OVERFLOW_PAGE, \
+		__FILE__, __LINE__)
+
+#define BTREE_SET_DELETED_OVERFLOW_PAGE_NOTIFICATION(THREAD,KEY,OID,C_OID,BTID) \
+		btree_set_error(THREAD, KEY, OID, C_OID, BTID, \
+		ER_NOTIFICATION_SEVERITY, ER_BTREE_DELETED_OVERFLOW_PAGE, \
+		__FILE__, __LINE__)
+
 /* Structure used by btree_range_search to initialize and handle variables
  * needed throughout the process.
  */
@@ -6874,6 +6890,11 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, int *key_deleted,
 	      goto exit_on_error;
 	    }
 
+	  /* notification */
+	  BTREE_SET_DELETED_OVERFLOW_PAGE_NOTIFICATION (thread_p, key,
+							oid, class_oid,
+							btid->sys_btid);
+
 	  if (prev_page == leaf_page)
 	    {
 	      ret = btree_modify_leaf_ovfl_vpid (thread_p, btid, prev_page,
@@ -9388,6 +9409,10 @@ btree_append_overflow_oids_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
       goto exit_on_error;
     }
 
+  /* notification */
+  BTREE_SET_CREATED_OVERFLOW_PAGE_NOTIFICATION (thread_p, key, oid, cls_oid,
+						btid->sys_btid);
+
   /* log the changes to the leaf node record for redo purposes */
   recins.rec_type = REGULAR;
   recins.ovfl_vpid = ovfl_vpid;
@@ -11850,6 +11875,12 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   max_key = root_header.node.max_key_len;
   key_len_in_page = BTREE_GET_KEY_LEN_IN_PAGE (node_type, key_len);
 
+  if (key && DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY)
+    {
+      /* set complete setdomain */
+      key->data.midxkey.domain = btid_int.key_type;
+    }
+
   if (VFID_ISNULL (&btid_int.ovfid)
       && (key_len >= MIN (BTREE_MAX_KEYLEN_INPAGE,
 			  BTREE_MAX_SEPARATOR_KEYLEN_INPAGE)))
@@ -11864,6 +11895,10 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
 	  goto error;
 	}
+
+      /* notification */
+      BTREE_SET_CREATED_OVERFLOW_KEY_NOTIFICATION (thread_p, key, oid,
+						   cls_oid, btid);
 
       log_append_undoredo_data2 (thread_p, RVBT_UPDATE_OVFID,
 				 &btid_int.sys_btid->vfid, P, HEADER,
@@ -11925,11 +11960,6 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
       pgbuf_set_dirty (thread_p, P, DONT_FREE);
       copy_rec.data = NULL;
       copy_rec1.data = NULL;
-    }
-
-  if (key && DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY)
-    {
-      key->data.midxkey.domain = btid_int.key_type;	/* set complete setdomain */
     }
 
   if (key == NULL || db_value_is_null (key)
@@ -18522,10 +18552,11 @@ btree_get_next_overflow_vpid (char *header_ptr, VPID * overflow_vpid_ptr)
 }
 
 int
-btree_set_unique_violation_error (THREAD_ENTRY * thread_p, DB_VALUE * key,
-				  OID * obj_oid, OID * class_oid, BTID * btid,
-				  const char *filename, int lineno)
+btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key,
+		 OID * obj_oid, OID * class_oid, BTID * btid,
+		 int severity, int err_id, const char *filename, int lineno)
 {
+  char key_str[LINE_MAX];
   char *keyval = NULL;
   char *class_name = NULL;
   char *index_name = NULL;
@@ -18533,10 +18564,21 @@ btree_set_unique_violation_error (THREAD_ENTRY * thread_p, DB_VALUE * key,
   char class_oid_msg_buf[OID_MSG_BUF_SIZE];
   char oid_msg_buf[OID_MSG_BUF_SIZE];
 
-  if (key)
+  if (key != NULL)
     {
       keyval = pr_valstring (key);
     }
+
+  if (keyval != NULL)
+    {
+      strncpy (key_str, keyval, LINE_MAX - 1);
+      key_str[LINE_MAX - 1] = '\0';
+    }
+  else
+    {
+      strcpy (key_str, "*UNKNOWN-KEY*");
+    }
+
   if (class_oid)
     {
       class_name = heap_get_class_name (thread_p, class_oid);
@@ -18571,8 +18613,7 @@ btree_set_unique_violation_error (THREAD_ENTRY * thread_p, DB_VALUE * key,
 	  (index_name) ? index_name : "*UNKNOWN-INDEX*",
 	  (index_name && btid) ? btid_msg_buf : "",
 	  (class_name) ? class_name : "*UNKNOWN-CLASS*",
-	  (class_name && class_oid) ? class_oid_msg_buf : "",
-	  (keyval) ? keyval : "*UNKNOWN-KEY*",
+	  (class_name && class_oid) ? class_oid_msg_buf : "", key_str,
 	  (keyval && obj_oid) ? oid_msg_buf : "");
 
   if (keyval)
