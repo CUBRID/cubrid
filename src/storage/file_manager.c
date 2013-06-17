@@ -11076,6 +11076,8 @@ file_tracker_create (THREAD_ENTRY * thread_p, VFID * vfid)
   VPID allocset_vpid;
   INT16 allocset_offset;
 
+  file_Tracker->vfid = NULL;
+
   if (file_create (thread_p, vfid, 0, FILE_TRACKER, NULL, NULL, 0) == NULL)
     {
       goto exit_on_error;
