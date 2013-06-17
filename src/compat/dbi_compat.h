@@ -1430,7 +1430,9 @@
 
 #define ER_LK_ROLLBACK_ON_LOCK_ESCALATION	    -1130
 
-#define ER_LAST_ERROR                               -1131
+#define ER_SP_INVALID_HEADER	                    -1131
+
+#define ER_LAST_ERROR                               -1132
 
 
 
