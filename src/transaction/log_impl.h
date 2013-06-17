@@ -358,6 +358,8 @@ extern int db_Disable_modifications;
 #define MSGCAT_LOG_LOGINFO_COMMENT_UNUSED_ARCHIVE_NAME	29
 #define MSGCAT_LOG_MAX_ARCHIVES_HAS_BEEN_EXCEEDED	30
 
+#define MAX_NUM_EXEC_QUERY_HISTORY                      100
+
 typedef enum log_flush LOG_FLUSH;
 enum log_flush
 { LOG_DONT_NEED_FLUSH, LOG_NEED_FLUSH };
@@ -831,6 +833,10 @@ struct log_tdes
   int disable_modifications;	/* db_Disable_modification for each tran */
 
   TRAN_ABORT_REASON tran_abort_reason;
+
+  /* bind values of executed queries in transaction */
+  int num_exec_queries;
+  DB_VALUE_ARRAY bind_history[MAX_NUM_EXEC_QUERY_HISTORY];
 };
 
 typedef struct log_addr_tdesarea LOG_ADDR_TDESAREA;

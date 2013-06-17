@@ -1538,7 +1538,9 @@ xlogtb_dump_trantable (THREAD_ENTRY * thread_p, FILE * out_fp)
 void
 logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
-  int i;
+  int i, j;
+  DB_VALUE *dbval;
+  HL_HEAPID save_heap_id;
 
   tdes->isloose_end = false;
   tdes->state = TRAN_ACTIVE;
@@ -1584,6 +1586,27 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	  free_and_init (tdes->repl_records[i].repl_data);
 	}
     }
+
+  save_heap_id = db_change_private_heap (thread_p, 0);
+  for (i = 0; i < tdes->num_exec_queries && i < MAX_NUM_EXEC_QUERY_HISTORY; i++)
+    {
+      if (tdes->bind_history[i].vals == NULL)
+        {
+          continue;
+        }
+
+      dbval = tdes->bind_history[i].vals;
+      for (j = 0; j < tdes->bind_history[i].size; j++)
+	{
+	  db_value_clear (dbval);
+	  dbval++;
+	}
+
+      db_private_free_and_init (thread_p, tdes->bind_history[i].vals);
+      tdes->bind_history[i].size = 0;
+    }
+  (void) db_change_private_heap (thread_p, save_heap_id);
+
   tdes->cur_repl_record = 0;
   tdes->append_repl_recidx = -1;
   tdes->fl_mark_repl_recidx = -1;
@@ -1599,8 +1622,8 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   XASL_ID_SET_NULL (&tdes->xasl_id);
   tdes->waiting_for_res = NULL;
   tdes->disable_modifications = db_Disable_modifications;
-
   tdes->tran_abort_reason = TRAN_NORMAL;
+  tdes->num_exec_queries = 0;
 }
 
 /*
@@ -1614,6 +1637,8 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 static void
 logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
 {
+  int i;
+
   tdes->tran_index = tran_index;
   tdes->trid = NULL_TRANID;
   tdes->isloose_end = false;
@@ -1663,8 +1688,14 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   XASL_ID_SET_NULL (&tdes->xasl_id);
   tdes->waiting_for_res = NULL;
   tdes->disable_modifications = db_Disable_modifications;
-
   tdes->tran_abort_reason = TRAN_NORMAL;
+  tdes->num_exec_queries = 0;
+
+  for (i = 0; i < MAX_NUM_EXEC_QUERY_HISTORY; i++)
+    {
+      tdes->bind_history[i].size = 0;
+      tdes->bind_history[i].vals = NULL;
+    }
 }
 
 /*

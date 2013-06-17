@@ -346,22 +346,6 @@ struct t_diag_object_table
         }                                                                            \
     } while(0)
 
-#if !defined(ADD_TIMEVAL)
-#define ADD_TIMEVAL(total, start, end) do {	\
-  total.tv_usec +=                              \
-    (end.tv_usec - start.tv_usec) >= 0 ?        \
-      (end.tv_usec-start.tv_usec)               \
-    : (1000000 + (end.tv_usec-start.tv_usec));  \
-  total.tv_sec +=                               \
-    (end.tv_usec - start.tv_usec) >= 0 ?        \
-      (end.tv_sec-start.tv_sec)                 \
-    : (end.tv_sec-start.tv_sec-1);              \
-  total.tv_sec +=                               \
-    total.tv_usec/1000000;                      \
-  total.tv_usec %= 1000000;                     \
-} while(0)
-#endif /* ADD_TIMEVAL */
-
 #define SET_DIAG_VALUE_SLOW_QUERY(DIAG_EXEC_FLAG, START_TIME, END_TIME, VALUE, SET_TYPE, ERR_BUF)\
     do {                                                                                 \
         if (DIAG_EXEC_FLAG == true) {                                                 \
@@ -409,6 +393,23 @@ extern bool set_diag_value (T_DIAG_OBJ_TYPE type, int value,
         } \
     } while (0)
 #endif
+
+#define ADD_TIMEVAL(total, start, end) do {     \
+  total.tv_usec +=                              \
+    (end.tv_usec - start.tv_usec) >= 0 ?        \
+      (end.tv_usec-start.tv_usec)               \
+    : (1000000 + (end.tv_usec-start.tv_usec));  \
+  total.tv_sec +=                               \
+    (end.tv_usec - start.tv_usec) >= 0 ?        \
+      (end.tv_sec-start.tv_sec)                 \
+    : (end.tv_sec-start.tv_sec-1);              \
+  total.tv_sec +=                               \
+    total.tv_usec/1000000;                      \
+  total.tv_usec %= 1000000;                     \
+} while(0)
+
+#define TO_MSEC(elapsed) \
+  ((int)((elapsed.tv_sec * 1000) + (int) (elapsed.tv_usec / 1000)))
 
 #if defined (EnableThreadMonitoring)
 #define MONITOR_WAITING_THREAD(elpased) \

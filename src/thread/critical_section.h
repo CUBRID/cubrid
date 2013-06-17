@@ -71,6 +71,7 @@ enum
   CSECT_ACL,			/* Latch for accessible IP list table */
   CSECT_QPROC_FILTER_PRED_CACHE,	/* Latch for PRED XASL cache */
   CSECT_PARTITION_CACHE,	/* Latch for partitions cache */
+  CSECT_EVENT_LOG_FILE,         /* Latch for event log file */
   CSECT_LAST
 };
 

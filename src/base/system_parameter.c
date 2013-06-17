@@ -484,6 +484,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_SORT_LIMIT_MAX_COUNT "sort_limit_max_count"
 
+#define PRM_NAME_SQL_TRACE_IOREADS "sql_trace_ioread_pages"
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -1302,6 +1303,10 @@ int PRM_SORT_LIMIT_MAX_COUNT = 1000;
 static int prm_sort_limit_max_count_default = 1000;
 static int prm_sort_limit_max_count_lower = 0;	/* disabled */
 static int prm_sort_limit_max_count_upper = INT_MAX;
+
+int PRM_SQL_TRACE_IOREADS = 0;
+static int prm_sql_trace_ioreads_default = 0;
+static int prm_sql_trace_ioreads_lower = 0;
 
 typedef struct sysprm_param SYSPRM_PARAM;
 struct sysprm_param
@@ -2722,6 +2727,14 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_SORT_LIMIT_MAX_COUNT,
    (void *) &prm_sort_limit_max_count_upper,
    (void *) &prm_sort_limit_max_count_lower,
+   (char *) NULL},
+  {PRM_NAME_SQL_TRACE_IOREADS,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_INTEGER,
+   (void *) &prm_sql_trace_ioreads_default,
+   (void *) &PRM_SQL_TRACE_IOREADS,
+   (void *) NULL,
+   (void *) &prm_sql_trace_ioreads_lower,
    (char *) NULL}
 };
 

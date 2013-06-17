@@ -53,6 +53,7 @@
 #include "log_impl.h"
 #include "thread.h"
 #include "query_manager.h"
+#include "event_log.h"
 
 #ifndef DB_NA
 #define DB_NA           2
@@ -172,6 +173,7 @@ extern int lock_Comp[11][11];
 #define IS_SCANID_BIT_SET(s, i) (s[i/8] & (1 << (i%8)))
 #define RESOURCE_ALLOC_WAIT_TIME 10	/* 10 msec */
 #define KEY_LOCK_ESCALATION_THRESHOLD 10	/* key lock escalation threshold */
+#define MAX_NUM_LOCKS_DUMP_TO_EVENT_LOG 100
 
 /* state of suspended threads */
 typedef enum
@@ -609,6 +611,17 @@ static void lock_decrement_class_granules (LK_ENTRY * class_entry);
 static LK_ENTRY *lock_find_class_entry (int tran_index,
 					const OID * class_oid);
 
+static void lock_event_log_tran_hold_locks (THREAD_ENTRY * thread_p,
+					    FILE * log_fp, int tran_index);
+static void lock_event_log_tran_wait_lock (THREAD_ENTRY * thread_p,
+					   FILE * log_fp, int tran_index);
+static void lock_event_log_blocked_lock (THREAD_ENTRY * thread_p,
+					 FILE * log_fp, LK_ENTRY * entry);
+static void lock_event_log_blocking_locks (THREAD_ENTRY * thread_p,
+					   FILE * log_fp,
+					   LK_ENTRY * wait_entry);
+static void lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp,
+				      LK_ENTRY * entry);
 #endif /* SERVER_MODE */
 
 
@@ -630,6 +643,8 @@ lock_initialize_entry (LK_ENTRY * entry_ptr)
   entry_ptr->history = NULL;
   entry_ptr->recent = NULL;
   entry_ptr->instant_lock_count = 0;
+  entry_ptr->bind_index_in_tran = -1;
+  XASL_ID_SET_NULL (&entry_ptr->xasl_id);
 }
 
 /* initialize lock entry as granted state */
@@ -637,6 +652,8 @@ static void
 lock_initialize_entry_as_granted (LK_ENTRY * entry_ptr, int tran_index,
 				  struct lk_res *res, LOCK lock)
 {
+  LOG_TDES *tdes;
+
   entry_ptr->tran_index = tran_index;
   entry_ptr->res_head = res;
   entry_ptr->granted_mode = lock;
@@ -650,6 +667,16 @@ lock_initialize_entry_as_granted (LK_ENTRY * entry_ptr, int tran_index,
   entry_ptr->history = NULL;
   entry_ptr->recent = NULL;
   entry_ptr->instant_lock_count = 0;
+
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes != NULL && !XASL_ID_IS_NULL (&tdes->xasl_id))
+    {
+      if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
+	{
+	  entry_ptr->bind_index_in_tran = tdes->num_exec_queries - 1;
+	}
+      XASL_ID_COPY (&entry_ptr->xasl_id, &tdes->xasl_id);
+    }
 }
 
 /* initialize lock entry as blocked state */
@@ -658,6 +685,8 @@ lock_initialize_entry_as_blocked (LK_ENTRY * entry_ptr,
 				  THREAD_ENTRY * thread_p, int tran_index,
 				  struct lk_res *res, LOCK lock)
 {
+  LOG_TDES *tdes;
+
   entry_ptr->tran_index = tran_index;
   entry_ptr->thrd_entry = thread_p;
   entry_ptr->res_head = res;
@@ -672,6 +701,16 @@ lock_initialize_entry_as_blocked (LK_ENTRY * entry_ptr,
   entry_ptr->history = NULL;
   entry_ptr->recent = NULL;
   entry_ptr->instant_lock_count = 0;
+
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes != NULL && !XASL_ID_IS_NULL (&tdes->xasl_id))
+    {
+      if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
+	{
+	  entry_ptr->bind_index_in_tran = tdes->num_exec_queries - 1;
+	}
+      XASL_ID_COPY (&entry_ptr->xasl_id, &tdes->xasl_id);
+    }
 }
 
 /* initialize lock entry as non2pl state */
@@ -2559,6 +2598,22 @@ set_error:
       && waitfor_client_users != waitfor_client_users_default)
     {
       free_and_init (waitfor_client_users);
+    }
+
+  if (isdeadlock_timeout == false)
+    {
+      FILE *log_fp;
+
+      log_fp = event_log_start (thread_p, "LOCK_TIMEOUT");
+      if (log_fp == NULL)
+	{
+	  return;
+	}
+
+      lock_event_log_blocked_lock (thread_p, log_fp, entry_ptr);
+      lock_event_log_blocking_locks (thread_p, log_fp, entry_ptr);
+
+      event_log_end (thread_p);
     }
 }
 #endif /* SERVER_MODE */
@@ -6154,7 +6209,9 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
   if (cycle_info_string != NULL)
     {
       int i;
+      FILE *log_fp;
 
+      log_fp = event_log_start (thread_p, "DEADLOCK");
       ptr = cycle_info_string;
 
       for (i = 0, v = s; i < num_tran_in_cycle;
@@ -6172,7 +6229,16 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 	  ptr += n;
 	  assert_release (ptr <
 			  cycle_info_string + unit_size * num_tran_in_cycle);
+
+	  if (log_fp != NULL)
+	    {
+	      event_log_print_client_info (v, 0);
+	      lock_event_log_tran_hold_locks (thread_p, log_fp, v);
+	      lock_event_log_tran_wait_lock (thread_p, log_fp, v);
+	    }
 	}
+
+      event_log_end (thread_p);
     }
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
@@ -10380,6 +10446,7 @@ final:
     }
 #endif /* SERVER_MODE && DIAG_DEVEL */
 
+#if defined (ENABLE_UNUSED_FUNCTION)
   if (victim_count > 0)
     {
       size_t size_loc;
@@ -10400,6 +10467,7 @@ final:
 	    }
 	}
     }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
   /* Now solve the deadlocks (cycles) by executing the cycle resolution
    * function (e.g., aborting victim)
@@ -13691,3 +13759,302 @@ lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p,
   return NO_ERROR;
 #endif
 }
+
+/*
+ * lock dump to event log file (lock timeout, deadlock)
+ */
+
+#if defined(SERVER_MODE)
+/*
+ * lock_event_log_tran_hold_locks - dump transaction holding locks to event log file
+ *   return:
+ *   thread_p(in):
+ *   log_fp(in):
+ *   tran_index(in):
+ *
+ *   note: for deadlock
+ */
+static void
+lock_event_log_tran_hold_locks (THREAD_ENTRY * thread_p, FILE * log_fp,
+				int tran_index)
+{
+  int rv, i, indent = 2;
+  LK_TRAN_LOCK *tran_lock;
+  LK_ENTRY *entry;
+
+  assert (csect_check_own (thread_p, CSECT_EVENT_LOG_FILE) == 1);
+
+  fprintf (log_fp, "hold:\n");
+
+  tran_lock = &lk_Gl.tran_lock_table[tran_index];
+  rv = pthread_mutex_lock (&tran_lock->hold_mutex);
+
+  entry = tran_lock->inst_hold_list;
+  for (i = 0; entry != NULL && i < MAX_NUM_LOCKS_DUMP_TO_EVENT_LOG;
+       entry = entry->tran_next, i++)
+    {
+      fprintf (log_fp, "%*clock: %s", indent, ' ',
+	       LOCK_TO_LOCKMODE_STRING (entry->granted_mode));
+      lock_event_log_lock_info (thread_p, log_fp, entry);
+
+      event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
+      event_log_bind_values (log_fp, tran_index, entry->bind_index_in_tran);
+      fprintf (log_fp, "\n");
+    }
+
+  if (entry != NULL)
+    {
+      fprintf (log_fp, "%*c...\n", indent, ' ');
+    }
+
+  pthread_mutex_unlock (&tran_lock->hold_mutex);
+
+}
+
+/*
+ * lock_event_log_tran_wait_lock - dump transaction waiting locks to event log file
+ *   return:
+ *   thread_p(in):
+ *   log_fp(in):
+ *   tran_index(in):
+ *
+ *   note: for deadlock
+ */
+static void
+lock_event_log_tran_wait_lock (THREAD_ENTRY * thread_p, FILE * log_fp,
+			       int tran_index)
+{
+  LOG_TDES *tdes;
+  LK_ENTRY *entry;
+  int indent = 2;
+  bool blocked_holder = false;
+
+  assert (csect_check_own (thread_p, CSECT_EVENT_LOG_FILE) == 1);
+
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes != NULL)
+    {
+      entry = tdes->waiting_for_res->waiter;
+      while (entry != NULL)
+	{
+	  if (entry->tran_index == tran_index)
+	    {
+	      break;
+	    }
+	  entry = entry->next;
+	}
+
+      if (entry == NULL)
+	{
+	  entry = tdes->waiting_for_res->holder;
+	  while (entry != NULL)
+	    {
+	      if (entry->tran_index == tran_index)
+		{
+		  break;
+		}
+	      entry = entry->next;
+	    }
+
+	  blocked_holder = true;
+	}
+
+      if (entry != NULL)
+	{
+	  fprintf (log_fp, "wait:\n");
+
+	  fprintf (log_fp, "%*clock: %s", indent, ' ',
+		   LOCK_TO_LOCKMODE_STRING (entry->blocked_mode));
+	  lock_event_log_lock_info (thread_p, log_fp, entry);
+
+	  if (blocked_holder == true)
+	    {
+	      fprintf (log_fp, "%*cblocked holder: true", indent, ' ');
+	    }
+
+	  event_log_sql_string (thread_p, log_fp, &tdes->xasl_id, indent);
+
+	  if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
+	    {
+	      event_log_bind_values (log_fp, tran_index,
+				     tdes->num_exec_queries - 1);
+	    }
+
+	  fprintf (log_fp, "\n");
+	}
+      else
+	{
+	  assert (false);
+	}
+    }
+}
+
+/*
+ * lock_event_log_blocked_lock - dump lock waiter info to event log file
+ *   return:
+ *   thread_p(in):
+ *   log_fp(in):
+ *   entry(in):
+ *
+ *   note: for lock timeout
+ */
+static void
+lock_event_log_blocked_lock (THREAD_ENTRY * thread_p, FILE * log_fp,
+			     LK_ENTRY * entry)
+{
+  int indent = 2;
+
+  assert (csect_check_own (thread_p, CSECT_EVENT_LOG_FILE) == 1);
+
+  fprintf (log_fp, "waiter:\n");
+  event_log_print_client_info (entry->tran_index, indent);
+
+  fprintf (log_fp, "%*clock: %s", indent, ' ',
+	   LOCK_TO_LOCKMODE_STRING (entry->blocked_mode));
+  lock_event_log_lock_info (thread_p, log_fp, entry);
+
+  event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
+  event_log_bind_values (log_fp, entry->tran_index,
+			 entry->bind_index_in_tran);
+  fprintf (log_fp, "\n");
+}
+
+/*
+ * lock_event_log_blocking_locks - dump lock blocker info to event log file
+ *   return:
+ *   thread_p(in):
+ *   log_fp(in):
+ *   wait_entry(in):
+ *
+ *   note: for lock timeout
+ */
+static void
+lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp,
+			       LK_ENTRY * wait_entry)
+{
+  LK_ENTRY *entry;
+  LK_RES *res_ptr = NULL;
+  int compat1, compat2, rv, indent = 2;
+
+  assert (csect_check_own (thread_p, CSECT_EVENT_LOG_FILE) == 1);
+
+  res_ptr = wait_entry->res_head;
+  rv = pthread_mutex_lock (&res_ptr->res_mutex);
+
+  fprintf (log_fp, "blocker:\n");
+
+  for (entry = res_ptr->holder; entry != NULL; entry = entry->next)
+    {
+      if (entry == wait_entry)
+	{
+	  continue;
+	}
+
+      compat1 = lock_Comp[entry->granted_mode][wait_entry->blocked_mode];
+      compat2 = lock_Comp[entry->blocked_mode][wait_entry->blocked_mode];
+
+      if (compat1 == false || compat2 == false)
+	{
+	  event_log_print_client_info (entry->tran_index, indent);
+
+	  fprintf (log_fp, "%*clock: %s", indent, ' ',
+		   LOCK_TO_LOCKMODE_STRING (entry->granted_mode));
+	  lock_event_log_lock_info (thread_p, log_fp, entry);
+
+	  event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
+	  event_log_bind_values (log_fp, entry->tran_index,
+				 entry->bind_index_in_tran);
+	  fprintf (log_fp, "\n");
+	}
+    }
+
+  for (entry = res_ptr->waiter; entry != NULL; entry = entry->next)
+    {
+      if (entry == wait_entry)
+	{
+	  continue;
+	}
+
+      compat1 = lock_Comp[entry->blocked_mode][wait_entry->blocked_mode];
+
+      if (compat1 == false)
+	{
+	  event_log_print_client_info (entry->tran_index, indent);
+
+	  fprintf (log_fp, "%*clock: %s", indent, ' ',
+		   LOCK_TO_LOCKMODE_STRING (entry->granted_mode));
+	  lock_event_log_lock_info (thread_p, log_fp, entry);
+
+	  event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
+	  event_log_bind_values (log_fp, entry->tran_index,
+				 entry->bind_index_in_tran);
+	  fprintf (log_fp, "\n");
+	}
+    }
+
+  pthread_mutex_unlock (&res_ptr->res_mutex);
+}
+
+/*
+ * lock_event_log_lock_info - dump lock resource info to event log file
+ *   return:
+ *   thread_p(in):
+ *   log_fp(in):
+ *   entry(in):
+ */
+static void
+lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp,
+			  LK_ENTRY * entry)
+{
+  LK_RES *res_ptr;
+  char *classname, *btname;
+
+  assert (csect_check_own (thread_p, CSECT_EVENT_LOG_FILE) == 1);
+
+  res_ptr = entry->res_head;
+
+  fprintf (log_fp, " (oid=%d|%d|%d", res_ptr->oid.volid,
+	   res_ptr->oid.pageid, res_ptr->oid.slotid);
+
+  switch (res_ptr->type)
+    {
+    case LOCK_RESOURCE_ROOT_CLASS:
+      fprintf (log_fp, ", table=db_root");
+      break;
+
+    case LOCK_RESOURCE_CLASS:
+      classname = heap_get_class_name (thread_p, &res_ptr->oid);
+      if (classname != NULL)
+	{
+	  fprintf (log_fp, ", table=%s", classname);
+	  free_and_init (classname);
+	}
+      break;
+
+    case LOCK_RESOURCE_INSTANCE:
+      classname = heap_get_class_name (thread_p, &res_ptr->class_oid);
+      if (classname != NULL)
+	{
+	  fprintf (log_fp, ", table=%s", classname);
+	  free_and_init (classname);
+	}
+
+      if (!BTID_IS_NULL (&res_ptr->btid))
+	{
+	  if (heap_get_indexinfo_of_btid (thread_p, &res_ptr->class_oid,
+					  &res_ptr->btid, NULL, NULL, NULL,
+					  NULL, &btname, NULL) == NO_ERROR)
+	    {
+	      fprintf (log_fp, ", index=%s", btname);
+	      free_and_init (btname);
+	    }
+	}
+      break;
+
+    default:
+      break;
+    }
+
+  fprintf (log_fp, ")\n");
+}
+#endif /* SERVER_MODE */

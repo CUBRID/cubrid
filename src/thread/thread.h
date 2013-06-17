@@ -217,6 +217,11 @@ struct thread_entry
   THREAD_RC_TRACK *track_free_list;
 
   bool sort_stats_active;
+
+  /* slow query stats for event logging */
+  struct timeval cs_waits;
+  struct timeval lock_waits;
+  struct timeval latch_waits;
 };
 
 #define DOES_THREAD_RESUME_DUE_TO_SHUTDOWN(thread_p) \

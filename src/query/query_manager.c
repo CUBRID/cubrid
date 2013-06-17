@@ -282,6 +282,8 @@ static void qmgr_put_temp_file_into_list (QMGR_TEMP_FILE * temp_file_p);
 static void qmgr_set_query_exec_info_to_tdes (int tran_index,
 					      int query_timeout,
 					      const XASL_ID * xasl_id);
+static int copy_bind_value_to_tdes (THREAD_ENTRY * thread_p,
+				    int num_bind_vals, DB_VALUE * bind_vals);
 
 static bool
 qmgr_is_page_in_temp_file_buffer (PAGE_PTR page_p,
@@ -2100,6 +2102,12 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
      the XASL cache entry. */
   params.size = dbval_count;
   params.vals = dbvals_p;
+
+  if (copy_bind_value_to_tdes (thread_p, dbval_count, dbvals_p) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
   if (qmgr_can_get_result_from_cache (*flag_p))
     {
       /* lookup the list cache with the parameter values (DB_VALUE array) */
@@ -2430,6 +2438,64 @@ exit_on_error:
     }
 
   goto end;
+}
+
+/*
+ * copy_bind_value_to_tdes - copy bind values to transaction descriptor
+ * return:
+ *   thread_p(in):
+ *   num_bind_vals(in):
+ *   bind_vals(in):
+ */
+static int
+copy_bind_value_to_tdes (THREAD_ENTRY * thread_p, int num_bind_vals,
+			 DB_VALUE * bind_vals)
+{
+  LOG_TDES *tdes;
+  DB_VALUE *vals;
+  int i;
+  HL_HEAPID save_heap_id;
+
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  if (tdes == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  if (tdes != NULL && tdes->num_exec_queries < MAX_NUM_EXEC_QUERY_HISTORY)
+    {
+      tdes->bind_history[tdes->num_exec_queries].vals = NULL;
+      tdes->bind_history[tdes->num_exec_queries].size = num_bind_vals;
+
+      if (num_bind_vals > 0)
+	{
+	  save_heap_id = db_change_private_heap (thread_p, 0);
+
+	  vals = (DB_VALUE *) db_private_alloc (thread_p,
+						sizeof (DB_VALUE) *
+						num_bind_vals);
+	  if (vals == NULL)
+	    {
+	      (void) db_change_private_heap (thread_p, save_heap_id);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      sizeof (DB_VALUE) * num_bind_vals);
+
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+
+	  for (i = 0; i < num_bind_vals; i++)
+	    {
+	      pr_clone_value (&bind_vals[i], &vals[i]);
+	    }
+
+	  tdes->bind_history[tdes->num_exec_queries].vals = vals;
+	  (void) db_change_private_heap (thread_p, save_heap_id);
+	}
+    }
+
+  tdes->num_exec_queries++;
+  return NO_ERROR;
 }
 
 /*

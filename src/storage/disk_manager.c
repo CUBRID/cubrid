@@ -47,6 +47,7 @@
 #include "critical_section.h"
 #include "boot_sr.h"
 #include "environment_variable.h"
+#include "event_log.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -2265,6 +2266,10 @@ disk_expand_tmp (THREAD_ENTRY * thread_p, INT16 volid, INT32 min_pages,
   VPID vpid;
   INT32 npages_toadd;
   INT32 nsects_toadd;
+  FILE *log_fp;
+  struct timeval start, end;
+  int elapsed, tran_index, indent = 2;
+  LOG_TDES *tdes;
 
   vpid.volid = volid;
   vpid.pageid = DISK_VOLHEADER_PAGE;
@@ -2313,11 +2318,42 @@ disk_expand_tmp (THREAD_ENTRY * thread_p, INT16 volid, INT32 min_pages,
       npages_toadd = max_pages;
     }
 
+  gettimeofday (&start, NULL);
+
   if (fileio_expand (thread_p, volid, npages_toadd, DISK_TEMPVOL_TEMP_PURPOSE)
       != npages_toadd)
     {
       goto error;
     }
+
+#if defined(SERVER_MODE)
+  log_fp = event_log_start (thread_p, "TEMP_VOLUME_EXPAND");
+  if (log_fp != NULL)
+    {
+      gettimeofday (&end, NULL);
+      elapsed = TO_MSEC (end) - TO_MSEC (start);
+
+      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+      event_log_print_client_info (tran_index, indent);
+
+      tdes = LOG_FIND_TDES (tran_index);
+      if (tdes != NULL)
+        {
+          event_log_sql_string (thread_p, log_fp, &tdes->xasl_id, indent);
+          if (!XASL_ID_IS_NULL (&tdes->xasl_id)
+              && tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
+            {
+              event_log_bind_values (log_fp, tran_index,
+                                     tdes->num_exec_queries - 1);
+            }
+        }
+
+      fprintf (log_fp, "%*ctime: %d\n", indent, ' ', elapsed);
+      fprintf (log_fp, "%*cpages: %d\n\n", indent, ' ', npages_toadd);
+
+      event_log_end (thread_p);
+    }
+#endif /* SERVER_MODE */
 
   /*
    * Now apply the changes to the volume header.

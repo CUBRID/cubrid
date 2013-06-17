@@ -70,6 +70,7 @@
 #include "databases_file.h"
 #include "es.h"
 #include "es_posix.h"
+#include "event_log.h"
 
 #define NET_COPY_AREA_SENDRECV_SIZE (OR_INT_SIZE * 3)
 #define NET_SENDRECV_BUFFSIZE (OR_INT_SIZE)
@@ -87,6 +88,19 @@ static int check_client_capabilities (int client_cap, int rel_compare,
 static void sbtree_find_unique_internal (THREAD_ENTRY * thread_p,
 					 unsigned int rid, char *request,
 					 int reqlen, bool is_replication);
+static int er_log_slow_query (THREAD_ENTRY * thread_p,
+			      EXECUTION_INFO * info,
+			      int time,
+			      MNT_SERVER_EXEC_STATS * diff_stats,
+			      char *queryinfo_string);
+static void event_log_slow_query (THREAD_ENTRY * thread_p,
+				  EXECUTION_INFO * info,
+				  int time,
+				  MNT_SERVER_EXEC_STATS * diff_stats);
+static void event_log_many_ioreads (THREAD_ENTRY * thread_p,
+				    EXECUTION_INFO * info,
+				    int time,
+				    MNT_SERVER_EXEC_STATS * diff_stats);
 
 /*
  * return_error_to_client -
@@ -5752,13 +5766,16 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
   char queryinfo_string[QUERY_INFO_BUF_SIZE];
 
   MNT_SERVER_EXEC_STATS base_stats, current_stats, diff_stats;
-  char stat_buf[STATDUMP_BUF_SIZE];
   char *sql_id = NULL;
   int error_code = NO_ERROR;
+  int trace_slow_msec, trace_ioreads;
 
   EXECUTION_INFO info = { NULL, NULL, NULL };
 
-  if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
+  trace_slow_msec = prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS);
+  trace_ioreads = prm_get_integer_value (PRM_ID_SQL_TRACE_IOREADS);
+
+  if (trace_slow_msec >= 0 || trace_ioreads > 0)
     {
       xmnt_server_start_stats (thread_p, false);
       xmnt_server_copy_stats (thread_p, &base_stats);
@@ -5911,61 +5928,31 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
   /* pack size of a page to return as a third argumnet of the reply */
   ptr = or_pack_int (ptr, page_size);
 
-  if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
+  if (trace_slow_msec >= 0 || trace_ioreads > 0)
     {
       gettimeofday (&end, NULL);
       response_time =
 	(end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec -
 					      start.tv_usec) / 1000;
+      xmnt_server_copy_stats (thread_p, &current_stats);
+      mnt_calc_diff_stats (&diff_stats, &current_stats, &base_stats);
 
-      if (response_time >=
-	  prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS))
+      if (response_time >= trace_slow_msec)
 	{
-	  const char *line =
-	    "--------------------------------------------------------------------------------";
-	  const char *title = "Operation";
-
-	  if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN) == true)
-	    {
-	      xmnt_server_copy_stats (thread_p, &current_stats);
-	      mnt_calc_diff_stats (&diff_stats, &current_stats, &base_stats);
-
-	      mnt_server_dump_stats_to_buffer (&diff_stats, stat_buf,
-					       STATDUMP_BUF_SIZE, NULL);
-	    }
-	  else
-	    {
-	      info.sql_plan_text = "";
-	      stat_buf[0] = '\0';
-	    }
-
-	  if (sql_id == NULL)
-	    {
-	      if (qmgr_get_sql_id (thread_p, &sql_id, info.sql_hash_text,
-				   strlen (info.sql_hash_text)) != NO_ERROR)
-		{
-		  sql_id = NULL;
-		}
-	    }
-
-	  queryinfo_string_length =
-	    snprintf (queryinfo_string, QUERY_INFO_BUF_SIZE,
-		      "%s\n%s\n%s\n %s\n\n /* SQL_ID: %s */ %s%s \n\n%s\n%s\n",
-		      line, title, line,
-		      info.sql_user_text,
-		      sql_id ? sql_id : "(null)",
-		      info.sql_hash_text, info.sql_plan_text, stat_buf, line);
-
-	  if (queryinfo_string_length >= QUERY_INFO_BUF_SIZE)
-	    {
-	      /* string is truncated */
-	      queryinfo_string_length = QUERY_INFO_BUF_SIZE - 1;
-	      queryinfo_string[queryinfo_string_length] = '\0';
-	    }
-
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-		  ER_SLOW_QUERY, 2, response_time, queryinfo_string);
+	  queryinfo_string_length = er_log_slow_query (thread_p, &info,
+						       response_time,
+						       &diff_stats,
+						       queryinfo_string);
+	  event_log_slow_query (thread_p, &info, response_time,
+				&diff_stats);
 	}
+
+      if (trace_ioreads > 0 && diff_stats.pb_num_ioreads >= trace_ioreads)
+	{
+	  event_log_many_ioreads (thread_p, &info, response_time,
+				  &diff_stats);
+	}
+
       xmnt_server_stop_stats (thread_p);
     }
 
@@ -5997,6 +5984,162 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
     {
       QFILE_FREE_AND_INIT_LIST_ID (list_id);
     }
+}
+
+/*
+ * er_log_slow_query - log slow query to error log file
+ * return:
+ *   thread_p(in):
+ *   info(in):
+ *   time(in):
+ *   diff_stats(in):
+ *   queryinfo_string(out):
+ */
+static int
+er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info,
+		   int time, MNT_SERVER_EXEC_STATS * diff_stats,
+		   char *queryinfo_string)
+{
+  char stat_buf[STATDUMP_BUF_SIZE];
+  char *sql_id;
+  int queryinfo_string_length;
+  const char *line =
+    "--------------------------------------------------------------------------------";
+  const char *title = "Operation";
+
+  if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN) == true)
+    {
+      mnt_server_dump_stats_to_buffer (diff_stats, stat_buf,
+				       STATDUMP_BUF_SIZE, NULL);
+    }
+  else
+    {
+      info->sql_plan_text = "";
+      stat_buf[0] = '\0';
+    }
+
+  if (qmgr_get_sql_id (thread_p, &sql_id, info->sql_hash_text,
+		       strlen (info->sql_hash_text)) != NO_ERROR)
+    {
+      sql_id = NULL;
+    }
+
+  queryinfo_string_length =
+    snprintf (queryinfo_string, QUERY_INFO_BUF_SIZE,
+	      "%s\n%s\n%s\n %s\n\n /* SQL_ID: %s */ %s%s \n\n%s\n%s\n",
+	      line, title, line,
+	      info->sql_user_text,
+	      sql_id ? sql_id : "(null)",
+	      info->sql_hash_text, info->sql_plan_text, stat_buf, line);
+
+  if (sql_id != NULL)
+    {
+      free (sql_id);
+    }
+
+  if (queryinfo_string_length >= QUERY_INFO_BUF_SIZE)
+    {
+      /* string is truncated */
+      queryinfo_string_length = QUERY_INFO_BUF_SIZE - 1;
+      queryinfo_string[queryinfo_string_length] = '\0';
+    }
+
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+	  ER_SLOW_QUERY, 2, time, queryinfo_string);
+
+  return queryinfo_string_length;
+}
+
+/*
+ * event_log_slow_query - log slow query to event log file
+ * return:
+ *   thread_p(in):
+ *   info(in):
+ *   time(in):
+ *   diff_stats(in):
+ *   num_bind_vals(in):
+ *   bind_vals(in):
+ */
+static void
+event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info,
+		      int time, MNT_SERVER_EXEC_STATS * diff_stats)
+{
+  FILE *log_fp;
+  DB_VALUE *dbval;
+  int i, indent = 2;
+  LOG_TDES *tdes;
+  int tran_index;
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+  log_fp = event_log_start (thread_p, "SLOW_QUERY");
+
+  if (tdes == NULL || log_fp == NULL)
+    {
+      return;
+    }
+
+  event_log_print_client_info (tran_index, indent);
+  fprintf (log_fp, "%*csql: %s\n", indent, ' ', info->sql_hash_text);
+
+  if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
+    {
+      event_log_bind_values (log_fp, tran_index, tdes->num_exec_queries - 1);
+    }
+
+  fprintf (log_fp, "%*ctime: %d\n", indent, ' ', time);
+  fprintf (log_fp, "%*cbuffer: fetch=%d, ioread=%d, iowrite=%d\n",
+	   indent, ' ', diff_stats->pb_num_fetches,
+	   diff_stats->pb_num_ioreads, diff_stats->pb_num_iowrites);
+  fprintf (log_fp, "%*cwait: cs=%d, lock=%d, latch=%d\n\n", indent, ' ',
+	   TO_MSEC (thread_p->cs_waits), TO_MSEC (thread_p->lock_waits),
+	   TO_MSEC (thread_p->latch_waits));
+
+  event_log_end (thread_p);
+}
+
+/*
+ * event_log_many_ioreads - log many ioreads to event log file
+ * return:
+ *   thread_p(in):
+ *   info(in):
+ *   time(in):
+ *   diff_stats(in):
+ *   num_bind_vals(in):
+ *   bind_vals(in):
+ */
+static void
+event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info,
+			int time, MNT_SERVER_EXEC_STATS * diff_stats)
+{
+  FILE *log_fp;
+  DB_VALUE *dbval;
+  int i, indent = 2;
+  LOG_TDES *tdes;
+  int tran_index;
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+  log_fp = event_log_start (thread_p, "MANY_IOREADS");
+
+  if (tdes == NULL || log_fp == NULL)
+    {
+      return;
+    }
+
+  event_log_print_client_info (tran_index, indent);
+  fprintf (log_fp, "%*csql: %s\n", indent, ' ', info->sql_hash_text);
+
+  if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
+    {
+      event_log_bind_values (log_fp, tran_index, tdes->num_exec_queries - 1);
+    }
+
+  fprintf (log_fp, "%*ctime: %d\n", indent, ' ', time);
+  fprintf (log_fp, "%*cioreads: %d\n\n", indent, ' ',
+	   diff_stats->pb_num_ioreads);
+
+  event_log_end (thread_p);
 }
 
 /*

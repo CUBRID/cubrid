@@ -104,6 +104,8 @@ struct lk_entry
   LK_ACQUISITION_HISTORY *recent;	/* last node of history list        */
   int ngranules;		/* number of finer granules         */
   int instant_lock_count;	/* number of instant lock requests  */
+  int bind_index_in_tran;
+  XASL_ID xasl_id;
   unsigned char scanid_bitset[1];	/* prm_get_integer_value (PRM_ID_LK_MAX_SCANID_BIT)/8];       */
 #else				/* not SERVER_MODE */
   int dummy;

@@ -49,6 +49,7 @@
 #include "message_catalog.h"
 #include "log_impl.h"
 #include "perf_monitor.h"
+#include "event_log.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #endif /* WINDOWS */
@@ -1375,6 +1376,8 @@ net_server_start (const char *server_name)
       status = -1;
       goto end;
     }
+
+  event_log_init (server_name);
 
   net_server_init ();
   css_initialize_server_interfaces (net_server_request, net_server_conn_down);

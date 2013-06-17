@@ -4491,6 +4491,7 @@ pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
   char *client_user_name;	/* Client user name for transaction */
   char *client_host_name;	/* Client host for transaction */
   int client_pid;		/* Client process identifier for transaction */
+  struct timeval start, end;
 
   /* After holding the mutex associated with conditional variable,
      relese the bufptr->BCB_mutex. */
@@ -4515,10 +4516,20 @@ try_again:
   to.tv_sec = time (NULL) + wait_secs;
   to.tv_nsec = 0;
 
+  if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
+    {
+      gettimeofday (&start, NULL);
+    }
+
   thrd_entry->resume_status = THREAD_PGBUF_SUSPENDED;
-  r =
-    pthread_cond_timedwait (&thrd_entry->wakeup_cond,
-			    &thrd_entry->th_entry_lock, &to);
+  r = pthread_cond_timedwait (&thrd_entry->wakeup_cond,
+			      &thrd_entry->th_entry_lock, &to);
+
+  if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
+    {
+      gettimeofday (&end, NULL);
+      ADD_TIMEVAL (thrd_entry->latch_waits, start, end);
+    }
 
   if (r == 0)
     {

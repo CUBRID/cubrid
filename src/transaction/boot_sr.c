@@ -91,6 +91,7 @@
 #include "es.h"
 #include "session.h"
 #include "partition.h"
+#include "event_log.h"
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -1535,6 +1536,10 @@ boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES min_npages)
   char temp_path_buf[PATH_MAX];
   DKNPAGES ext_npages, part_npages;
   DBDEF_VOL_EXT_INFO ext_info;
+  FILE *log_fp;
+  struct timeval start, end;
+  int elapsed, tran_index, indent = 2;
+  LOG_TDES *tdes;
 
   if (boot_Temp_volumes_max_pages == -2)
     {
@@ -1692,12 +1697,45 @@ boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES min_npages)
 	  ext_info.overwrite = true;
 	  ext_info.extend_npages = ext_info.max_npages;
 
+	  gettimeofday (&start, NULL);
+
 	  temp_volid = boot_add_volume (thread_p, &ext_info);
 	  if (temp_volid != NULL_VOLID)
 	    {
 	      boot_Temp_volumes_tpgs += ext_npages;
 	      (void) disk_goodvol_refresh_with_new (thread_p, temp_volid);
 	    }
+
+#if defined(SERVER_MODE)
+	  log_fp = event_log_start (thread_p, "TEMP_VOLUME_CREATE");
+	  if (log_fp != NULL)
+	    {
+	      gettimeofday (&end, NULL);
+	      elapsed = TO_MSEC (end) - TO_MSEC (start);
+
+	      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+	      event_log_print_client_info (tran_index, indent);
+
+	      tdes = LOG_FIND_TDES (tran_index);
+	      if (tdes != NULL)
+		{
+		  event_log_sql_string (thread_p, log_fp, &tdes->xasl_id,
+					indent);
+		  if (!XASL_ID_IS_NULL (&tdes->xasl_id)
+		      && tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
+		    {
+		      event_log_bind_values (log_fp, tran_index,
+					     tdes->num_exec_queries - 1);
+		    }
+		}
+
+	      fprintf (log_fp, "%*ctime: %d\n", indent, ' ', elapsed);
+	      fprintf (log_fp, "%*cpages: %d\n\n", indent, ' ',
+		       possible_max_npages);
+
+	      event_log_end (thread_p);
+	    }
+#endif /* SERVER_MODE */
 	}
     }
 
@@ -4438,6 +4476,7 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, bool is_er_final)
     }
   lang_final ();
   css_free_accessible_ip_info ();
+  event_log_final ();
 #endif /* SERVER_MODE */
 }
 

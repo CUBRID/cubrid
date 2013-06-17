@@ -387,6 +387,10 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\base\event_log.c"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\base\fixed_alloc.c"
 					>
 				</File>

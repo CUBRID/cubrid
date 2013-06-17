@@ -522,6 +522,7 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p,
 #if defined (EnableThreadMonitoring)
   struct timeval start_time, end_time, elapsed_time;
 #endif
+  struct timeval wait_start, wait_end;
 
   assert (cs_ptr != NULL);
 
@@ -565,8 +566,18 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p,
 	      cs_ptr->waiting_writers++;
 	      cs_ptr->total_nwaits++;
 
+	      if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
+		{
+		  gettimeofday (&wait_start, NULL);
+		}
+
 	      error_code = csect_wait_on_writer_queue (thread_p, cs_ptr,
 						       INF_WAIT, NULL);
+	      if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
+		{
+		  gettimeofday (&wait_end, NULL);
+		  ADD_TIMEVAL (thread_p->cs_waits, wait_start, wait_end);
+		}
 
 	      cs_ptr->waiting_writers--;
 	      if (error_code != NO_ERROR)
@@ -621,8 +632,18 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p,
 
 	      cs_ptr->waiting_writers++;
 
+	      if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
+		{
+		  gettimeofday (&wait_start, NULL);
+		}
+
 	      error_code = csect_wait_on_writer_queue (thread_p, cs_ptr,
 						       NOT_WAIT, &to);
+	      if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
+		{
+		  gettimeofday (&wait_end, NULL);
+		  ADD_TIMEVAL (thread_p->cs_waits, wait_start, wait_end);
+		}
 
 	      cs_ptr->waiting_writers--;
 	      if (error_code != NO_ERROR)
@@ -748,6 +769,7 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
 #if defined (EnableThreadMonitoring)
   struct timeval start_time, end_time, elapsed_time;
 #endif
+  struct timeval wait_start, wait_end;
 
   assert (cs_ptr != NULL);
 
@@ -791,8 +813,20 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
 	    {
 	      cs_ptr->total_nwaits++;
 	      thread_p->resume_status = THREAD_CSECT_READER_SUSPENDED;
-	      error_code =
-		pthread_cond_wait (&cs_ptr->readers_ok, &cs_ptr->lock);
+
+	      if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
+		{
+		  gettimeofday (&wait_start, NULL);
+		}
+
+	      error_code = pthread_cond_wait (&cs_ptr->readers_ok,
+					      &cs_ptr->lock);
+	      if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
+		{
+		  gettimeofday (&wait_end, NULL);
+		  ADD_TIMEVAL (thread_p->cs_waits, wait_start, wait_end);
+		}
+
 	      if (error_code != NO_ERROR)
 		{
 		  r = pthread_mutex_unlock (&cs_ptr->lock);
@@ -828,9 +862,19 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
 	      to.tv_nsec = 0;
 
 	      thread_p->resume_status = THREAD_CSECT_READER_SUSPENDED;
-	      error_code =
-		pthread_cond_timedwait (&cs_ptr->readers_ok, &cs_ptr->lock,
-					&to);
+
+	      if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
+		{
+		  gettimeofday (&wait_start, NULL);
+		}
+
+	      error_code = pthread_cond_timedwait (&cs_ptr->readers_ok,
+						   &cs_ptr->lock, &to);
+	      if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
+		{
+		  gettimeofday (&wait_end, NULL);
+		  ADD_TIMEVAL (thread_p->cs_waits, wait_start, wait_end);
+		}
 
 	      if (error_code != 0)
 		{
@@ -959,6 +1003,7 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
 #if defined (EnableThreadMonitoring)
   struct timeval start_time, end_time, elapsed_time;
 #endif
+  struct timeval wait_start, wait_end;
 
   assert (cs_ptr != NULL);
 
@@ -1024,8 +1069,20 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
 	    {
 	      cs_ptr->total_nwaits++;
 	      thread_p->resume_status = THREAD_CSECT_READER_SUSPENDED;
-	      error_code =
-		pthread_cond_wait (&cs_ptr->readers_ok, &cs_ptr->lock);
+
+	      if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
+		{
+		  gettimeofday (&wait_start, NULL);
+		}
+
+	      error_code = pthread_cond_wait (&cs_ptr->readers_ok,
+					      &cs_ptr->lock);
+	      if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
+		{
+		  gettimeofday (&wait_end, NULL);
+		  ADD_TIMEVAL (thread_p->cs_waits, wait_start, wait_end);
+		}
+
 	      if (error_code != NO_ERROR)
 		{
 		  r = pthread_mutex_unlock (&cs_ptr->lock);
@@ -1061,9 +1118,19 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
 	      to.tv_nsec = 0;
 
 	      thread_p->resume_status = THREAD_CSECT_READER_SUSPENDED;
-	      error_code =
-		pthread_cond_timedwait (&cs_ptr->readers_ok, &cs_ptr->lock,
-					&to);
+
+	      if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
+		{
+		  gettimeofday (&wait_start, NULL);
+		}
+
+	      error_code = pthread_cond_timedwait (&cs_ptr->readers_ok,
+						   &cs_ptr->lock, &to);
+              if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
+                {
+                  gettimeofday (&wait_end, NULL);
+                  ADD_TIMEVAL (thread_p->cs_waits, wait_start, wait_end);
+                }
 
 	      if (error_code != 0)
 		{
@@ -1211,6 +1278,7 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p,
 #if defined (EnableThreadMonitoring)
   struct timeval start_time, end_time, elapsed_time;
 #endif
+  struct timeval wait_start, wait_end;
 
   assert (cs_ptr != NULL);
 
@@ -1269,8 +1337,18 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p,
 	      cs_ptr->waiting_writers++;
 	      cs_ptr->total_nwaits++;
 
+	      if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
+		{
+		  gettimeofday (&wait_start, NULL);
+		}
+
 	      error_code = csect_wait_on_promoter_queue (thread_p, cs_ptr,
 							 INF_WAIT, NULL);
+	      if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
+		{
+		  gettimeofday (&wait_end, NULL);
+		  ADD_TIMEVAL (thread_p->cs_waits, wait_start, wait_end);
+		}
 
 	      cs_ptr->waiting_writers--;
 	      if (error_code != NO_ERROR)
@@ -1297,8 +1375,18 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p,
 
 	      cs_ptr->waiting_writers++;
 
+              if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
+                {
+                  gettimeofday (&wait_start, NULL);
+                }
+
 	      error_code = csect_wait_on_promoter_queue (thread_p, cs_ptr,
 							 NOT_WAIT, &to);
+              if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
+                {
+                  gettimeofday (&wait_end, NULL);
+                  ADD_TIMEVAL (thread_p->cs_waits, wait_start, wait_end);
+                }
 
 	      cs_ptr->waiting_writers--;
 	      if (error_code != NO_ERROR)

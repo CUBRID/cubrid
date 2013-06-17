@@ -1154,6 +1154,13 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
 
   entry_p->sort_stats_active = false;
 
+  entry_p->cs_waits.tv_sec = 0;
+  entry_p->cs_waits.tv_usec = 0;
+  entry_p->lock_waits.tv_sec = 0;
+  entry_p->lock_waits.tv_usec = 0;
+  entry_p->latch_waits.tv_sec = 0;
+  entry_p->latch_waits.tv_usec = 0;
+
   return NO_ERROR;
 }
 
@@ -1495,12 +1502,18 @@ thread_suspend_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p,
 {
   int r;
   int old_status;
+  struct timeval start, end;
 
   assert (thread_p->status == TS_RUN || thread_p->status == TS_CHECK);
   old_status = thread_p->status;
   thread_p->status = TS_WAIT;
 
   thread_p->resume_status = suspended_reason;
+
+  if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
+    {
+      gettimeofday (&start, NULL);
+    }
 
   r = pthread_cond_wait (&thread_p->wakeup_cond, &thread_p->th_entry_lock);
   if (r != 0)
@@ -1510,6 +1523,18 @@ thread_suspend_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p,
       return ER_CSS_PTHREAD_COND_WAIT;
     }
 
+  if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
+    {
+      gettimeofday (&end, NULL);
+      if (suspended_reason == THREAD_LOCK_SUSPENDED)
+	{
+	  ADD_TIMEVAL (thread_p->lock_waits, start, end);
+	}
+      else if (suspended_reason == THREAD_PGBUF_SUSPENDED)
+	{
+	  ADD_TIMEVAL (thread_p->latch_waits, start, end);
+	}
+    }
 
   thread_p->status = old_status;
 
@@ -2407,6 +2432,13 @@ thread_worker (void *arg_p)
       tsd_ptr->tran_index = -1;
       pthread_mutex_unlock (&tsd_ptr->tran_index_lock);
       tsd_ptr->check_interrupt = true;
+
+      tsd_ptr->cs_waits.tv_sec = 0;
+      tsd_ptr->cs_waits.tv_usec = 0;
+      tsd_ptr->lock_waits.tv_sec = 0;
+      tsd_ptr->lock_waits.tv_usec = 0;
+      tsd_ptr->latch_waits.tv_sec = 0;
+      tsd_ptr->latch_waits.tv_usec = 0;
     }
 
   er_final (0);
