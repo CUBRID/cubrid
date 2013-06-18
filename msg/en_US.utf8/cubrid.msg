@@ -1559,7 +1559,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 210 Host variable is not allowed on columns in the query specification.
 211 %s can not be an ORDER BY column
 212 %s can not be an GROUP BY column
-213 Can not define '%1$s of %2$s' as an column type.
+213 Can not define '%1$s of %2$s' as a column type.
 214 Invalid value "%s" for prefix length of the index.
 215 '%s' function is not defined on types %s, %s, %s and %s.
 216 '%s' function is not defined on types %s, %s and %s.
