@@ -2661,7 +2661,7 @@ pt_bind_helper (PARSER_CONTEXT * parser,
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
-      node = pt_bind_set_type (parser, node, val, data_type_added);
+      dt = pt_bind_set_type (parser, node, val, data_type_added);
       break;
 
       /*
@@ -2798,9 +2798,8 @@ pt_bind_set_type (PARSER_CONTEXT * parser,
   set_iterator_free (iterator);
   iterator = NULL;
 
-  node->data_type = set_type;
   *data_type_added = (set_type != NULL);
-  return node;
+  return set_type;
 
 error:
   if (iterator)

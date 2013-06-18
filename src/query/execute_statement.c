@@ -16499,6 +16499,7 @@ do_evaluate_insert_values (PARSER_CONTEXT * parser, PT_NODE * attr_list,
   DB_VALUE eval_value;
   PT_NODE *value_list = NULL;
 
+  DB_MAKE_NULL (&eval_value);
   if (attr_list == NULL || value_list_p == NULL || *value_list_p == NULL)
     {
       /* nothing to evaluate */
