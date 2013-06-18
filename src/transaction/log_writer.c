@@ -1298,6 +1298,7 @@ logwr_copy_log_header_check (const char *db_name, bool verbose,
   /* END REQUEST */
   ptr = or_pack_int64 (request, LOGPB_HEADER_PAGE_ID);
   ptr = or_pack_int (ptr, LOGWR_MODE_ASYNC);
+  /* send ER_GENERIC_ERROR to make LWT not wait for more page requests */
   ptr = or_pack_int (ptr, ER_GENERIC_ERROR);
 
   error = net_client_check_log_header (&ctx, request,
