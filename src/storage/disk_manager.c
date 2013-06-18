@@ -3919,6 +3919,7 @@ disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
   INT32 fpageid;
   INT32 lpageid;
   INT32 new_pageid;
+  INT32 skip_pageid;
   VPID vpid;
   LOG_DATA_ADDR addr;
   DISK_VOLPURPOSE vol_purpose;
@@ -4003,6 +4004,7 @@ disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
 	}
     }
 
+  skip_pageid = near_pageid;
   if (sectid == DISK_SECTOR_WITH_ALL_PAGES && near_pageid == NULL_PAGEID)
     {
       near_pageid = DISK_HINT_START_SECT * DISK_SECTOR_NPAGES;
@@ -4025,7 +4027,7 @@ disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
 
 
   /*
-   * First look at the pages after near_pageid 
+   * First look at the pages after near_pageid
    *
    * skip near_pageid itself because it's used already.
    * Normally it's marked in disk bitmap so it's not chosen.
@@ -4033,7 +4035,7 @@ disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
    * (disk & file allocset mismatch)
    */
   new_pageid = disk_id_alloc (thread_p, volid, vhdr, npages, near_pageid,
-			      lpageid, DISK_PAGE, -1, near_pageid);
+			      lpageid, DISK_PAGE, -1, skip_pageid);
 
   if (new_pageid == NULL_PAGEID && near_pageid != fpageid
       && search_wrap_around == true)
