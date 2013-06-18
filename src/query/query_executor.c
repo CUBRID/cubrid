@@ -31,6 +31,9 @@
 #include <math.h>
 #include <search.h>
 #include <sys/timeb.h>
+#if defined(SERVER_MODE)
+#include "jansson.h"
+#endif
 
 #include "porting.h"
 #include "error_manager.h"
@@ -899,6 +902,7 @@ static int qexec_compare_valptr_with_tuple (OUTPTR_LIST * outptr_list,
 					    QFILE_TUPLE_VALUE_TYPE_LIST *
 					    type_list, int *are_equal);
 static int qexec_listfile_orderby (THREAD_ENTRY * thread_p,
+				   XASL_NODE * xasl,
 				   QFILE_LIST_ID * list_file,
 				   SORT_LIST * orderby_list,
 				   XASL_STATE * xasl_state,
@@ -1140,6 +1144,11 @@ qexec_analytic_evaluate_cume_dist_percent_rank_function (THREAD_ENTRY *
 static int
 qexec_clear_regu_variable_list (XASL_NODE * xasl_p, REGU_VARIABLE_LIST list,
 				int final);
+
+#if defined(SERVER_MODE)
+static void qexec_set_xasl_trace_to_session (THREAD_ENTRY * thread_p,
+					     XASL_NODE * xasl);
+#endif /* SERVER_MODE */
 
 /*
  * Utility routines
@@ -3271,16 +3280,46 @@ static int
 qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			QUERY_OPTIONS option, XASL_STATE * xasl_state)
 {
+  int error = NO_ERROR;
+  struct timeval start, end;
+  UINT64 old_sort_pages = 0, old_sort_ioreads = 0;
+
+  if (thread_is_on_trace (thread_p))
+    {
+      gettimeofday (&start, NULL);
+      if (xasl->orderby_stats.orderby_filesort)
+	{
+	  old_sort_pages = mnt_get_sort_data_pages (thread_p);
+	  old_sort_ioreads = mnt_get_sort_io_pages (thread_p);
+	}
+    }
+
   if (xasl->topn_items != NULL)
     {
       /* already sorted, just dump tuples to list */
-      return qexec_topn_tuples_to_list_id (thread_p, xasl, xasl_state, true);
+      error = qexec_topn_tuples_to_list_id (thread_p, xasl, xasl_state, true);
     }
   else
     {
-      return qexec_orderby_distinct_by_sorting (thread_p, xasl, option,
+      error = qexec_orderby_distinct_by_sorting (thread_p, xasl, option,
 						xasl_state);
     }
+
+  if (thread_is_on_trace (thread_p))
+    {
+      gettimeofday (&end, NULL);
+      ADD_TIMEVAL (xasl->orderby_stats.orderby_time, start, end);
+
+      if (xasl->orderby_stats.orderby_filesort)
+	{
+	  xasl->orderby_stats.orderby_pages =
+	    mnt_get_sort_data_pages (thread_p) - old_sort_pages;
+	  xasl->orderby_stats.orderby_ioreads =
+	    mnt_get_sort_io_pages (thread_p) - old_sort_ioreads;
+	}
+    }
+
+  return error;
 }
 
 /*
@@ -3324,6 +3363,8 @@ qexec_orderby_distinct_by_sorting (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 #if !defined(NDEBUG)
   track_id = thread_rc_track_enter (thread_p);
 #endif
+
+  xasl->orderby_stats.orderby_filesort = true;
 
   if (xasl->type == BUILDLIST_PROC)
     {
@@ -4346,6 +4387,8 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   QFILE_LIST_SCAN_ID input_scan_id;
   int ls_flag = 0;
   int tuple_cnt = 0;
+  struct timeval start, end;
+  UINT64 old_sort_pages = 0, old_sort_ioreads = 0;
 
   if (buildlist->groupby_list == NULL)
     {
@@ -4458,6 +4501,15 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       tuple_cnt = list_id->tuple_cnt;
     }
 
+  if (thread_is_on_trace (thread_p))
+    {
+      gettimeofday (&start, NULL);
+      xasl->groupby_stats.run_groupby = true;
+      xasl->groupby_stats.groupby_sort = true;
+      old_sort_pages = mnt_get_sort_data_pages (thread_p);
+      old_sort_ioreads = mnt_get_sort_io_pages (thread_p);
+    }
+
   /*
    * Open a scan on the unsorted input file
    */
@@ -4545,6 +4597,16 @@ wrapup:
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		ER_MERGE_TOO_MANY_SOURCE_ROWS, 0);
 	result = ER_FAILED;
+      }
+
+    if (thread_is_on_trace (thread_p))
+      {
+	gettimeofday (&end, NULL);
+	ADD_TIMEVAL (xasl->groupby_stats.groupby_time, start, end);
+	xasl->groupby_stats.groupby_pages =
+	  mnt_get_sort_data_pages (thread_p) - old_sort_pages;
+	xasl->groupby_stats.groupby_ioreads =
+	  mnt_get_sort_io_pages (thread_p) - old_sort_ioreads;
       }
 
     return result;
@@ -8373,6 +8435,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   PRUNING_CONTEXT *pcontext = NULL;
   DEL_LOB_INFO *del_lob_info_list = NULL;
   RECDES recdes;
+  struct timeval start, end;
 
   class_oid_cnt = update->no_classes;
 
@@ -8401,6 +8464,11 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   if (qexec_execute_mainblock (thread_p, aptr, xasl_state) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
+    }
+
+  if (thread_is_on_trace (thread_p))
+    {
+      gettimeofday (&start, NULL);
     }
 
   /* This guarantees that the result list file will have a type list.
@@ -8928,6 +8996,14 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
 #endif
 
+  if (thread_is_on_trace (thread_p))
+    {
+      gettimeofday (&end, NULL);
+#if defined (SERVER_MODE)
+      ADD_TIMEVAL (update->elapsed_time, start, end);
+#endif
+    }
+
   return NO_ERROR;
 
 exit_on_error:
@@ -9192,6 +9268,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   DEL_LOB_INFO *del_lob_info_list = NULL;
   RECDES recdes;
   bool btid_dup_key_locked = false;
+  struct timeval start, end;
 
   class_oid_cnt = delete_->no_classes;
 
@@ -9221,6 +9298,11 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   if (qexec_execute_mainblock (thread_p, aptr, xasl_state) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
+    }
+
+  if (thread_is_on_trace (thread_p))
+    {
+      gettimeofday (&start, NULL);
     }
 
   /* This guarantees that the result list file will have a type list.
@@ -9536,6 +9618,14 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       qmgr_add_modified_class (class_oid);
     }
 #endif
+
+  if (thread_is_on_trace (thread_p))
+    {
+      gettimeofday (&end, NULL);
+#if defined (SERVER_MODE)
+      ADD_TIMEVAL (delete_->elapsed_time, start, end);
+#endif
+    }
 
   return NO_ERROR;
 
@@ -10302,6 +10392,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   int n_indexes = 0;
   int error = 0;
   ODKU_INFO *odku_assignments = insert->odku;
+  struct timeval start, end;
 
   aptr = xasl->aptr_list;
   val_no = insert->no_vals;
@@ -10314,6 +10405,11 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  qexec_failure_line (__LINE__, xasl_state);
 	  return ER_FAILED;
 	}
+    }
+
+  if (thread_is_on_trace (thread_p))
+    {
+      gettimeofday (&start, NULL);
     }
 
   /* This guarantees that the result list file will have a type list.
@@ -10971,6 +11067,15 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     {
       heap_attrinfo_end (thread_p, odku_assignments->attr_info);
     }
+
+  if (thread_is_on_trace (thread_p))
+    {
+      gettimeofday (&end, NULL);
+#if defined (SERVER_MODE)
+      ADD_TIMEVAL (insert->elapsed_time, start, end);
+#endif
+    }
+
   return NO_ERROR;
 
 exit_on_error:
@@ -13271,6 +13376,17 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  /* process CONNECT BY xasl */
 	  if (XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY))
 	    {
+	      struct timeval start, end;
+	      CONNECTBY_PROC_NODE *cnode;
+	      UINT64 old_fetches, old_ioreads;
+
+	      if (thread_is_on_trace (thread_p))
+		{
+		  gettimeofday (&start, NULL);
+		  old_fetches = mnt_get_pb_fetches (thread_p);
+		  old_ioreads = mnt_get_pb_ioreads (thread_p);
+		}
+
 	      if (qexec_execute_connect_by (thread_p, xasl->connect_by_ptr,
 					    xasl_state, &tplrec) != NO_ERROR)
 		{
@@ -13288,6 +13404,19 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
 	      /* clear CONNECT BY internal lists */
 	      qexec_clear_connect_by_lists (thread_p, xasl->connect_by_ptr);
+
+	      if (thread_is_on_trace (thread_p))
+		{
+		  cnode = &xasl->connect_by_ptr->proc.connect_by;
+
+		  gettimeofday (&end, NULL);
+		  ADD_TIMEVAL (cnode->elapsed_time, start, end);
+
+		  cnode->num_fetches =
+		    mnt_get_pb_fetches (thread_p) - old_fetches;
+		  cnode->num_ioreads =
+		    mnt_get_pb_ioreads (thread_p) - old_ioreads;
+		}
 	    }
 	}
 
@@ -13826,6 +13955,13 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
       }
   }
 #endif /* CUBRID_DEBUG */
+
+#if defined(SERVER_MODE)
+  if (thread_is_on_trace (thread_p))
+    {
+      qexec_set_xasl_trace_to_session (thread_p, xasl);
+    }
+#endif
 
   /* clear XASL tree */
   (void) qexec_clear_xasl (thread_p, xasl, true);
@@ -16274,8 +16410,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   /* sort the start with according to order siblings by */
   if (has_order_siblings_by)
     {
-      if (qexec_listfile_orderby (thread_p,
-				  listfile1,
+      if (qexec_listfile_orderby (thread_p, xasl, listfile1,
 				  xasl->orderby_list,
 				  xasl_state, xasl->outptr_list) != NO_ERROR)
 	{
@@ -16711,10 +16846,8 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	    {
 	      /* sort the listfile2_tmp according to orderby lists */
 	      index = 0;
-	      if (qexec_listfile_orderby (thread_p,
-					  listfile2_tmp,
-					  xasl->orderby_list,
-					  xasl_state,
+	      if (qexec_listfile_orderby (thread_p, xasl, listfile2_tmp,
+					  xasl->orderby_list, xasl_state,
 					  xasl->outptr_list) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
@@ -16898,8 +17031,9 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     bf2df_sort_list.pos_descr.dom = &bf2df_str_domain;
 
     /* sort list file */
-    if (qexec_listfile_orderby (thread_p, xasl->list_id, &bf2df_sort_list,
-				xasl_state, xasl->outptr_list) != NO_ERROR)
+    if (qexec_listfile_orderby (thread_p, xasl, xasl->list_id,
+				&bf2df_sort_list, xasl_state,
+				xasl->outptr_list) != NO_ERROR)
       {
 	GOTO_EXIT_ON_ERROR;
       }
@@ -17684,14 +17818,16 @@ bf2df_str_son_index (THREAD_ENTRY * thread_p,
  *   outptr_list(in): xasl outptr list
  */
 static int
-qexec_listfile_orderby (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_file,
-			SORT_LIST * orderby_list, XASL_STATE * xasl_state,
-			OUTPTR_LIST * outptr_list)
+qexec_listfile_orderby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
+			QFILE_LIST_ID * list_file, SORT_LIST * orderby_list,
+			XASL_STATE * xasl_state, OUTPTR_LIST * outptr_list)
 {
   QFILE_LIST_ID *list_id = list_file;
   int n, i;
   ORDBYNUM_INFO ordby_info;
   REGU_VARIABLE_LIST regu_list;
+  struct timeval start, end;
+  UINT64 old_sort_pages = 0, old_sort_ioreads = 0;
 
   if (orderby_list != NULL)
     {
@@ -17702,6 +17838,13 @@ qexec_listfile_orderby (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_file,
 	}
       else
 	{
+	  if (thread_is_on_trace (thread_p))
+	    {
+	      gettimeofday (&start, NULL);
+	      old_sort_pages = mnt_get_sort_data_pages (thread_p);
+	      old_sort_ioreads = mnt_get_sort_io_pages (thread_p);
+	    }
+
 	  /* sort the list file */
 	  ordby_info.ordbynum_pos_cnt = 0;
 	  ordby_info.ordbynum_pos = ordby_info.reserved;
@@ -17754,6 +17897,18 @@ qexec_listfile_orderby (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_file,
 	  if (list_id == NULL)
 	    {
 	      GOTO_EXIT_ON_ERROR;
+	    }
+
+	  if (thread_is_on_trace (thread_p))
+	    {
+	      gettimeofday (&end, NULL);
+	      ADD_TIMEVAL (xasl->orderby_stats.orderby_time, start, end);
+	      xasl->orderby_stats.orderby_filesort = true;
+
+	      xasl->orderby_stats.orderby_pages =
+		mnt_get_sort_data_pages (thread_p) - old_sort_pages;
+	      xasl->orderby_stats.orderby_ioreads =
+		mnt_get_sort_io_pages (thread_p) - old_sort_ioreads;
 	    }
 	}
     }				/* if */
@@ -19231,6 +19386,7 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   QFILE_TUPLE_RECORD tuple_rec;
   REGU_VARIABLE_LIST regu_list;
   int tuple_cnt = 0;
+  struct timeval start, end;
 
   if (buildlist->groupby_list == NULL)
     {
@@ -19306,6 +19462,13 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   else
     {
       tuple_cnt = list_id->tuple_cnt;
+    }
+
+  if (thread_is_on_trace (thread_p))
+    {
+      gettimeofday (&start, NULL);
+      xasl->groupby_stats.run_groupby = true;
+      xasl->groupby_stats.groupby_sort = false;
     }
 
   /*
@@ -19445,6 +19608,12 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MERGE_TOO_MANY_SOURCE_ROWS,
 	      0);
       result = ER_FAILED;
+    }
+
+  if (thread_is_on_trace (thread_p))
+    {
+      gettimeofday (&end, NULL);
+      ADD_TIMEVAL (xasl->groupby_stats.groupby_time, start, end);
     }
 
 exit_on_error:
@@ -25379,6 +25548,7 @@ qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   heap = topn->heap;
   tpl_descr = &list_id->tpl_descr;
   values_count = topn->values_count;
+  xasl->orderby_stats.orderby_topnsort = true;
 
   /* convert binary heap to sorted array */
   bh_to_sorted_array (heap);
@@ -25702,3 +25872,43 @@ qexec_clear_regu_variable_list (XASL_NODE * xasl_p, REGU_VARIABLE_LIST list,
 
   return pg_cnt;
 }
+
+#if defined(SERVER_MODE)
+/*
+ * qexec_set_xasl_trace_to_session() - save query trace to session
+ *   return:
+ *   xasl(in): sort direction ascending or descending
+ */
+static void
+qexec_set_xasl_trace_to_session (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
+{
+  size_t sizeloc;
+  char *trace_str;
+  FILE *fp;
+  json_t *jval;
+
+  if (thread_p->trace_format == QUERY_TRACE_TEXT)
+    {
+      fp = port_open_memstream (&trace_str, &sizeloc);
+      if (fp)
+	{
+	  qdump_print_stats_text (fp, xasl, 0);
+	  port_close_memstream (fp, &trace_str, &sizeloc);
+	}
+    }
+  else if (thread_p->trace_format == QUERY_TRACE_JSON)
+    {
+      jval = qdump_print_stats_json (xasl);
+
+      trace_str = json_dumps (jval, JSON_INDENT (2) | JSON_PRESERVE_ORDER);
+
+      json_object_clear (jval);
+      json_decref (jval);
+    }
+
+  if (trace_str != NULL)
+    {
+      session_set_trace_stats (thread_p, trace_str, thread_p->trace_format);
+    }
+}
+#endif /* SERVER_MODE */

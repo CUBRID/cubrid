@@ -64,7 +64,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib lzo2.lib gc_debug.lib libregex38a.lib libexpat.lib"
+				AdditionalDependencies="ws2_32.lib lzo2.lib gc_debug.lib libregex38a.lib libexpat.lib jansson.lib"
 				AdditionalLibraryDirectories="&quot;$(JAVA_HOME)\lib&quot;;..\external\lib"
 				IgnoreDefaultLibraryNames="msvcrt.lib"
 				ModuleDefinitionFile="cubridsa.def"
@@ -144,7 +144,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib lzo2.lib gc_debug.lib libregex38a.lib libexpat.lib"
+				AdditionalDependencies="ws2_32.lib lzo2.lib gc_debug.lib libregex38a.lib libexpat.lib jansson64.lib"
 				AdditionalLibraryDirectories="..\external\lib64"
 				IgnoreDefaultLibraryNames="msvcrt.lib"
 				ModuleDefinitionFile="cubridsa.def"
@@ -224,7 +224,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib lzo2.lib gc.lib libregex38a.lib libexpat.lib"
+				AdditionalDependencies="ws2_32.lib lzo2.lib gc.lib libregex38a.lib libexpat.lib jansson.lib"
 				AdditionalLibraryDirectories="&quot;$(JAVA_HOME)\lib&quot;;..\external\lib"
 				IgnoreDefaultLibraryNames="libcmt.lib"
 				ModuleDefinitionFile="cubridsa.def"
@@ -307,7 +307,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib lzo2.lib gc.lib libregex38a.lib libexpat.lib"
+				AdditionalDependencies="ws2_32.lib lzo2.lib gc.lib libregex38a.lib libexpat.lib jansson64.lib"
 				AdditionalLibraryDirectories="..\external\lib64"
 				IgnoreDefaultLibraryNames="libcmt.lib"
 				ModuleDefinitionFile="cubridsa.def"

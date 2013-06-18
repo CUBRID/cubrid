@@ -1161,6 +1161,9 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
   entry_p->latch_waits.tv_sec = 0;
   entry_p->latch_waits.tv_usec = 0;
 
+  entry_p->on_trace = false;
+  entry_p->sort_stats_active = false;
+
   return NO_ERROR;
 }
 
@@ -2439,6 +2442,7 @@ thread_worker (void *arg_p)
       tsd_ptr->lock_waits.tv_usec = 0;
       tsd_ptr->latch_waits.tv_sec = 0;
       tsd_ptr->latch_waits.tv_usec = 0;
+      tsd_ptr->on_trace = false;
     }
 
   er_final (0);
@@ -4679,3 +4683,52 @@ thread_rc_track_meter_at (THREAD_RC_METER * meter,
   return;
 }
 #endif
+
+/*
+ * thread_trace_on () -
+ *   return:
+ *   thread_p(in):
+ */
+void
+thread_trace_on (THREAD_ENTRY * thread_p)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  thread_p->on_trace = true;
+}
+
+/*
+ * thread_set_trace_format () -
+ *   return:
+ *   thread_p(in):
+ *   format(in):
+ */
+void
+thread_set_trace_format (THREAD_ENTRY * thread_p, int format)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  thread_p->trace_format = format;
+}
+
+/*
+ * thread_is_on_trace () -
+ *   return:
+ *   thread_p(in):
+ */
+bool
+thread_is_on_trace (THREAD_ENTRY * thread_p)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  return thread_p->on_trace;
+}

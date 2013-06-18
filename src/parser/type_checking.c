@@ -4047,6 +4047,17 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       def->overloads_count = num;
       break;
 
+    case PT_TRACE_STATS:
+      num = 0;
+
+      /* one overload */
+
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
     default:
       return false;
     }
@@ -6186,6 +6197,7 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_COERCIBILITY:
     case PT_COLLATION:
     case PT_WIDTH_BUCKET:
+    case PT_TRACE_STATS:
       return false;
 
     default:
@@ -11716,6 +11728,11 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
     case PT_EXEC_STATS:
       assert (dt == NULL);
       dt = pt_make_prim_data_type (parser, PT_TYPE_BIGINT);
+      break;
+
+    case PT_TRACE_STATS:
+      assert (dt == NULL);
+      dt = pt_make_prim_data_type (parser, PT_TYPE_VARCHAR);
       break;
 
     default:
@@ -18319,7 +18336,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	   || op == PT_BIT_TO_BLOB || op == PT_CHAR_TO_BLOB
 	   || op == PT_BLOB_TO_BIT || op == PT_BLOB_LENGTH
 	   || op == PT_CHAR_TO_CLOB || op == PT_CLOB_TO_CHAR
-	   || op == PT_CLOB_LENGTH || op == PT_EXEC_STATS)
+	   || op == PT_CLOB_LENGTH || op == PT_EXEC_STATS
+           || op == PT_TRACE_STATS)
     {
       goto end;
     }

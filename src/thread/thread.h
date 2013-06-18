@@ -45,6 +45,11 @@
 #define thread_num_worker_threads()  (1)
 #define thread_num_total_threads()   (1)
 #define thread_get_current_session_id() (db_Session_id)
+#define thread_trace_on(thread_p)
+#define thread_set_trace_format(thread_p, format)
+#define thread_is_on_trace(thread_p) (false)
+#define thread_get_sort_stats_active(thread_p) (false)
+#define thread_set_sort_stats_active(thread_p, flag)
 
 typedef void THREAD_ENTRY;
 
@@ -222,6 +227,10 @@ struct thread_entry
   struct timeval cs_waits;
   struct timeval lock_waits;
   struct timeval latch_waits;
+
+  /* for query profile */
+  int trace_format;
+  bool on_trace;
 };
 
 #define DOES_THREAD_RESUME_DUE_TO_SHUTDOWN(thread_p) \
@@ -372,6 +381,10 @@ extern void thread_rc_track_meter (THREAD_ENTRY * thread_p,
 				   int rc_idx, int mgr_idx);
 extern bool thread_get_sort_stats_active (THREAD_ENTRY * thread_p);
 extern bool thread_set_sort_stats_active (THREAD_ENTRY * thread_p, bool flag);
+
+extern void thread_trace_on (THREAD_ENTRY * thread_p);
+extern void thread_set_trace_format (THREAD_ENTRY * thread_p, int format);
+extern bool thread_is_on_trace (THREAD_ENTRY * thread_p);
 
 #if defined(WINDOWS)
 extern unsigned __stdcall thread_worker (void *);

@@ -4179,7 +4179,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 	    }
 	  else
 	    {
-	      /* for CUME_DIST and PERCENT_RANK function, 
+	      /* for CUME_DIST and PERCENT_RANK function,
 	       * take sort list as variables as well
 	       */
 	      regu = pt_to_cume_dist_percent_rank_regu_variable (parser,
@@ -4417,7 +4417,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 	}
       else
 	{
-	  /* only GROUP_CONCAT, CUME_DIST and PERCENT_RANK agg 
+	  /* only GROUP_CONCAT, CUME_DIST and PERCENT_RANK agg
 	     supports ORDER BY */
 	  assert (tree->info.function.order_by == NULL);
 	  assert (group_concat_sep_node_save == NULL);
@@ -8018,6 +8018,18 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  r3 = pt_to_regu_variable (parser,
 					    node->info.expr.arg3, unbox);
 
+                  domain = pt_xasl_node_to_domain (parser, node);
+                  if (domain == NULL)
+                    {
+                      goto end_expr_op_switch;
+                    }
+                }
+              else if (node->info.expr.op == PT_TRACE_STATS)
+                {
+                  r1 = NULL;
+                  r2 = NULL;
+                  r3 = NULL;
+
 		  domain = pt_xasl_node_to_domain (parser, node);
 		  if (domain == NULL)
 		    {
@@ -9156,7 +9168,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 			assert (domain->collation_id
 				== PT_GET_COLLATION_MODIFIER (node));
 			/* COLLATE modifier eliminates extra T_CAST operator
-			 * with some exceptions: 
+			 * with some exceptions:
 			 * 1. argument is PT_NAME; attributes may be
 			 * fetched from shared DB_VALUEs, and we may end up
 			 * overwriting collation of the same attribute used in
@@ -9343,6 +9355,11 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  regu =
 		    pt_make_regu_arith (r1, r2, r3, T_WIDTH_BUCKET, domain);
 		  break;
+
+                case PT_TRACE_STATS:
+                  regu =
+                    pt_make_regu_arith (r1, r2, r3, T_TRACE_STATS, domain);
+                  break;
 
 		default:
 		  break;
@@ -15920,7 +15937,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 {
   XASL_NODE *xasl;
   QO_PLAN *plan = NULL;
-  int level;
+  int level, trace_format;
   bool hint_ignored = false;
 
   if (select_node->node_type != PT_SELECT)
@@ -16111,6 +16128,20 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 
 	  strcat (context->sql_plan_text, sql_plan);
 	}
+    }
+
+  if (parser->query_trace == true)
+    {
+      trace_format = prm_get_integer_value (PRM_ID_QUERY_TRACE_FORMAT);
+
+      if (trace_format == QUERY_TRACE_TEXT)
+        {
+          qo_top_plan_print_text (parser, xasl, select_node, plan);
+        }
+      else if (trace_format == QUERY_TRACE_JSON)
+        {
+          qo_top_plan_print_json (parser, xasl, select_node, plan);
+        }
     }
 
 error_exit:

@@ -196,4 +196,5 @@ extern int do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_set_names (PARSER_CONTEXT * parser, PT_NODE * statement);
 
+extern int do_set_query_trace (PARSER_CONTEXT * parser, PT_NODE * statement);
 #endif /* _EXECUTE_STATEMENT_H_ */

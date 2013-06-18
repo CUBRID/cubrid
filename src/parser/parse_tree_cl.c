@@ -322,6 +322,8 @@ static PT_NODE *pt_apply_merge (PARSER_CONTEXT * parser, PT_NODE * p,
 				PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_apply_tuple_value (PARSER_CONTEXT * parser, PT_NODE * p,
 				      PT_NODE_FUNCTION g, void *arg);
+static PT_NODE *pt_apply_query_trace (PARSER_CONTEXT * parser, PT_NODE * p,
+				      PT_NODE_FUNCTION g, void *arg);
 
 static PARSER_APPLY_NODE_FUNC pt_apply_func_array[PT_NODE_NUMBER];
 
@@ -414,6 +416,7 @@ static PT_NODE *pt_init_update (PT_NODE * p);
 static PT_NODE *pt_init_value (PT_NODE * p);
 static PT_NODE *pt_init_merge (PT_NODE * p);
 static PT_NODE *pt_init_tuple_value (PT_NODE * p);
+static PT_NODE *pt_init_query_trace (PT_NODE * p);
 
 static PARSER_INIT_NODE_FUNC pt_init_func_array[PT_NODE_NUMBER];
 
@@ -585,6 +588,8 @@ static PARSER_VARCHAR *pt_print_index_columns (PARSER_CONTEXT * parser,
 					       PT_NODE * p);
 
 static PARSER_VARCHAR *pt_print_tuple_value (PARSER_CONTEXT * parser,
+					     PT_NODE * p);
+static PARSER_VARCHAR *pt_print_query_trace (PARSER_CONTEXT * parser,
 					     PT_NODE * p);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static PT_NODE *pt_apply_use (PARSER_CONTEXT * parser, PT_NODE * p,
@@ -1914,6 +1919,16 @@ parser_parse_string_with_escapes (PARSER_CONTEXT * parser, const char *buffer,
   parser->strings_have_no_escapes = strings_have_no_escapes;
   parser->dont_collect_exec_stats = false;
 
+  if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true)
+    {
+      parser->query_trace = true;
+    }
+  else
+    {
+      parser->query_trace = false;
+    }
+  parser->num_plan_trace = 0;
+
   /* reset parser node stack and line/column info */
   parser->stack_top = 0;
   parser->line = 1;
@@ -2014,6 +2029,16 @@ parser_parse_file (PARSER_CONTEXT * parser, FILE * file)
   parser->strings_have_no_escapes = false;
   parser->is_in_and_list = false;
   parser->dont_collect_exec_stats = false;
+
+  if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true)
+    {
+      parser->query_trace = true;
+    }
+  else
+    {
+      parser->query_trace = false;
+    }
+  parser->num_plan_trace = 0;
 
   /* reset parser node stack and line/column info */
   parser->stack_top = 0;
@@ -3244,6 +3269,14 @@ pt_show_misc_type (PT_MISC_TYPE p)
       return "constraint";
     case PT_INDEX_NAME:
       return "index";
+    case PT_TRACE_ON:
+      return "on";
+    case PT_TRACE_OFF:
+      return "off";
+    case PT_TRACE_FORMAT_TEXT:
+      return "text";
+    case PT_TRACE_FORMAT_JSON:
+      return "json";
     default:
       return "MISC_TYPE: type unknown";
     }
@@ -3752,6 +3785,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "collation ";
     case PT_WIDTH_BUCKET:
       return "width_bucket";
+    case PT_TRACE_STATS:
+      return "trace_stats";
     default:
       return "unknown opcode";
     }
@@ -4887,6 +4922,7 @@ pt_init_apply_f (void)
     pt_apply_drop_session_variables;
   pt_apply_func_array[PT_MERGE] = pt_apply_merge;
   pt_apply_func_array[PT_TUPLE_VALUE] = pt_apply_tuple_value;
+  pt_apply_func_array[PT_QUERY_TRACE] = pt_apply_query_trace;
 
   pt_apply_f = pt_apply_func_array;
 }
@@ -4997,6 +5033,7 @@ pt_init_init_f (void)
     pt_init_drop_session_variables;
   pt_init_func_array[PT_MERGE] = pt_init_merge;
   pt_init_func_array[PT_TUPLE_VALUE] = pt_init_tuple_value;
+  pt_init_func_array[PT_QUERY_TRACE] = pt_init_query_trace;
 
   pt_init_f = pt_init_func_array;
 }
@@ -5108,6 +5145,7 @@ pt_init_print_f (void)
     pt_print_drop_session_variables;
   pt_print_func_array[PT_MERGE] = pt_print_merge;
   pt_print_func_array[PT_TUPLE_VALUE] = pt_print_tuple_value;
+  pt_print_func_array[PT_QUERY_TRACE] = pt_print_query_trace;
 
   pt_print_f = pt_print_func_array;
 }
@@ -11246,7 +11284,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	      && p->info.expr.arg1->node_type != PT_VALUE
 	      && p->info.expr.arg1->node_type != PT_HOST_VAR)
 	    {
-	      /* put arg1 in paranthesys (if arg1 is an expression, 
+	      /* put arg1 in paranthesys (if arg1 is an expression,
 	       * COLLATE applies to last subexpression) */
 	      q = pt_append_nulstring (parser, NULL, "(");
 	      q = pt_append_varchar (parser, q, r1);
@@ -11821,6 +11859,9 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 
       q = pt_append_nulstring (parser, q, ")");
 
+      break;
+    case PT_TRACE_STATS:
+      q = pt_append_nulstring (parser, q, " trace_stats()");
       break;
     }
 
@@ -16905,7 +16946,7 @@ pt_print_merge (PARSER_CONTEXT * parser, PT_NODE * p)
 
 /*
  * pt_apply_tuple_value ()
- * return : 
+ * return :
  * parser (in) :
  * p (in) :
  * g (in) :
@@ -16920,8 +16961,8 @@ pt_apply_tuple_value (PARSER_CONTEXT * parser, PT_NODE * p,
 }
 
 /*
- * pt_init_tuple_value () 
- * return : 
+ * pt_init_tuple_value ()
+ * return :
  * p (in) :
  */
 static PT_NODE *
@@ -16936,7 +16977,7 @@ pt_init_tuple_value (PT_NODE * p)
 
 /*
  * pt_print_tuple_value ()
- * return : 
+ * return :
  * parser (in) :
  * p (in) :
  */
@@ -18114,4 +18155,60 @@ pt_sort_spec_list_to_name_node_list (PARSER_CONTEXT * parser,
     }
 
   return name_list;
+}
+
+/*
+ * pt_apply_query_trace ()
+ * return :
+ * parser (in) :
+ * p (in) :
+ * g (in) :
+ * arg (in) :
+ */
+static PT_NODE *
+pt_apply_query_trace (PARSER_CONTEXT * parser, PT_NODE * p,
+		      PT_NODE_FUNCTION g, void *arg)
+{
+  return p;
+}
+
+/*
+ * pt_init_query_trace ()
+ * return :
+ * p (in) :
+ */
+static PT_NODE *
+pt_init_query_trace (PT_NODE * p)
+{
+  p->info.trace.on_off = PT_TRACE_OFF;
+  p->info.trace.format = PT_TRACE_FORMAT_TEXT;
+
+  return p;
+}
+
+/*
+ * pt_print_query_trace ()
+ * return :
+ * parser (in) :
+ * p (in) :
+ */
+static PARSER_VARCHAR *
+pt_print_query_trace (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *b = NULL;
+  PT_MISC_TYPE onoff, format;
+
+  onoff = p->info.trace.on_off;
+  format = p->info.trace.format;
+
+  b = pt_append_nulstring (parser, b, "set trace ");
+  b = pt_append_nulstring (parser, b, pt_show_misc_type (onoff));
+
+  if (onoff == PT_TRACE_ON)
+    {
+      b = pt_append_nulstring (parser, b, " output ");
+      b = pt_append_nulstring (parser, b, pt_show_misc_type (format));
+    }
+
+  return b;
 }

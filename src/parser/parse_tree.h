@@ -28,6 +28,7 @@
 #ident "$Id$"
 
 #include <setjmp.h>
+#include "jansson.h"
 
 #include "config.h"
 
@@ -626,6 +627,7 @@
     } while (0)
 
 #define PT_EMPTY	INT_MAX
+#define MAX_NUM_PLAN_TRACE        100
 
 #define PT_GET_COLLATION_MODIFIER(p)					     \
   (((p)->node_type == PT_EXPR) ? ((p)->info.expr.coll_modifier - 1) :	     \
@@ -823,6 +825,7 @@ enum pt_node_type
   PT_TABLE_OPTION,
   PT_ATTR_ORDERING,
   PT_TUPLE_VALUE,
+  PT_QUERY_TRACE,
   PT_NODE_NUMBER,		/* This is the number of node types */
   PT_LAST_NODE_NUMBER = PT_NODE_NUMBER
 };
@@ -1055,7 +1058,12 @@ typedef enum
   PT_NULLS_FIRST,
   PT_NULLS_LAST,
 
-  PT_CONSTRAINT_NAME
+  PT_CONSTRAINT_NAME,
+
+  PT_TRACE_ON,
+  PT_TRACE_OFF,
+  PT_TRACE_FORMAT_TEXT,
+  PT_TRACE_FORMAT_JSON
 } PT_MISC_TYPE;
 
 /* Enumerated join type */
@@ -1347,6 +1355,8 @@ typedef enum
   /* width_bucket */
   PT_WIDTH_BUCKET,
 
+  PT_TRACE_STATS,
+
   /* This is the last entry. Please add a new one before it. */
   PT_LAST_OPCODE
 } PT_OP_TYPE;
@@ -1506,21 +1516,16 @@ typedef struct pt_agg_check_info PT_AGG_CHECK_INFO;
 typedef struct pt_agg_rewrite_info PT_AGG_REWRITE_INFO;
 typedef struct pt_agg_find_info PT_AGG_FIND_INFO;
 typedef struct pt_agg_name_info PT_AGG_NAME_INFO;
-
 typedef struct pt_filter_index_info PT_FILTER_INDEX_INFO;
 
 typedef struct pt_host_vars PT_HOST_VARS;
-
 typedef struct cursor_id PT_CURSOR_ID;
-
 typedef struct qfile_list_id PT_LIST_ID;
-
 typedef struct view_cache_info VIEW_CACHE_INFO;
-
 typedef struct semantic_chk_info SEMANTIC_CHK_INFO;
-
 typedef struct parser_hint PT_HINT;
 typedef struct pt_set_names_info PT_SET_NAMES_INFO;
+typedef struct pt_trace_info PT_TRACE_INFO;
 
 typedef struct pt_tuple_value_info PT_TUPLE_VALUE_INFO;
 
@@ -2863,6 +2868,12 @@ struct pt_tuple_value_info
   int index;			/* index of the value in cursor */
 };
 
+struct pt_trace_info
+{
+  PT_MISC_TYPE on_off;
+  PT_MISC_TYPE format;
+};
+
 /* Info field of the basic NODE
   If 'xyz' is the name of the field, then the structure type should be
   struct PT_XYZ_INFO xyz;
@@ -2956,6 +2967,7 @@ union pt_statement_info
 #endif
   PT_VALUE_INFO value;
   PT_POINTER_INFO pointer;
+  PT_TRACE_INFO trace;
 };
 
 
@@ -3099,6 +3111,12 @@ struct keyword_record
   short unreserved;		/* keyword can be used as an identifier, 0 means it is reserved and cannot be used as an identifier, nonzero means it can be  */
 };
 
+typedef union pt_plan_trace_info
+{
+  char *text_plan;
+  json_t *json_plan;
+} PT_PLAN_TRACE_INFO;
+
 typedef int (*PT_CASECMP_FUN) (const char *s1, const char *s2);
 typedef int (*PT_INT_FUNCTION) (PARSER_CONTEXT * c);
 
@@ -3197,8 +3215,11 @@ struct parser_context
 				   commits */
   bool dont_collect_exec_stats:1;
   char *ddl_stmt_for_replication;
-
   struct compile_context *context;
+
+  bool query_trace;
+  int num_plan_trace;
+  PT_PLAN_TRACE_INFO plan_trace[MAX_NUM_PLAN_TRACE];
 };
 
 /* used in assignments enumeration */
@@ -3262,8 +3283,6 @@ struct pt_coll_infer
 
 void *parser_allocate_string_buffer (const PARSER_CONTEXT * parser,
 				     const int length, const int align);
-
-
 
 #if !defined (SERVER_MODE)
 #ifdef __cplusplus

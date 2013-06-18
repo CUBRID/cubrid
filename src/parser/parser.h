@@ -912,6 +912,7 @@ extern "C"
 						    PT_NODE * statement,
 						    int xasl_flag);
 
+  extern PT_NODE *pt_make_query_show_trace (PARSER_CONTEXT * parser);
 #ifdef __cplusplus
 }
 #endif

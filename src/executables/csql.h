@@ -228,7 +228,9 @@ typedef enum
 
 /* cmd history stuffs */
   S_CMD_HISTORY_READ,
-  S_CMD_HISTORY_LIST
+  S_CMD_HISTORY_LIST,
+
+  S_CMD_TRACE
 } SESSION_CMD;
 
 /* iq_ function return status */

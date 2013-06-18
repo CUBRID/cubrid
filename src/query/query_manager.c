@@ -1988,6 +1988,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
   XASL_CACHE_CLONE *cache_clone_p;
   bool saved_is_stats_on;
   int i;
+  bool xasl_trace;
 
   cached_result = false;
   query_p = NULL;
@@ -2003,9 +2004,29 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
   assert_release (IS_SYNC_EXEC_MODE (*flag_p));
 
   saved_is_stats_on = mnt_server_is_stats_on (thread_p);
-  if (DO_NOT_COLLECT_EXEC_STATS (*flag_p) && saved_is_stats_on == true)
+
+  xasl_trace = IS_XASL_TRACE_TEXT (*flag_p) || IS_XASL_TRACE_JSON (*flag_p);
+
+  if (DO_NOT_COLLECT_EXEC_STATS (*flag_p))
     {
-      xmnt_server_stop_stats (thread_p);
+      if (saved_is_stats_on == true)
+        {
+          xmnt_server_stop_stats (thread_p);
+        }
+    }
+  else if (xasl_trace == true)
+    {
+      thread_trace_on (thread_p);
+      xmnt_server_start_stats (thread_p, false);
+
+      if (IS_XASL_TRACE_TEXT (*flag_p))
+        {
+          thread_set_trace_format (thread_p, QUERY_TRACE_TEXT);
+        }
+      else if (IS_XASL_TRACE_JSON (*flag_p))
+        {
+          thread_set_trace_format (thread_p, QUERY_TRACE_JSON);
+        }
     }
 
   /* Check the existance of the given XASL. If someone marked it
@@ -2437,6 +2458,18 @@ exit_on_error:
       QFILE_FREE_AND_INIT_LIST_ID (list_id_p);
     }
 
+  if (DO_NOT_COLLECT_EXEC_STATS (*flag_p))
+    {
+      if (saved_is_stats_on == true)
+        {
+          xmnt_server_start_stats (thread_p, false);
+        }
+    }
+  else if (xasl_trace == true && saved_is_stats_on == false)
+    {
+      xmnt_server_stop_stats (thread_p);
+    }
+
   goto end;
 }
 
@@ -2536,6 +2569,7 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
   QMGR_TRAN_ENTRY *tran_entry_p;
   bool saved_is_stats_on;
   int i;
+  bool xasl_trace;
 
   query_p = NULL;
   *query_id_p = -1;
@@ -2547,9 +2581,28 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
 #endif
 
   saved_is_stats_on = mnt_server_is_stats_on (thread_p);
-  if (DO_NOT_COLLECT_EXEC_STATS (*flag_p) && saved_is_stats_on == true)
+  xasl_trace = IS_XASL_TRACE_TEXT (*flag_p) || IS_XASL_TRACE_JSON (*flag_p);
+
+  if (DO_NOT_COLLECT_EXEC_STATS (*flag_p))
     {
-      xmnt_server_stop_stats (thread_p);
+      if (saved_is_stats_on == true)
+        {
+          xmnt_server_stop_stats (thread_p);
+        }
+    }
+  else if (xasl_trace == true)
+    {
+      thread_trace_on (thread_p);
+      xmnt_server_start_stats (thread_p, false);
+
+      if (IS_XASL_TRACE_TEXT (*flag_p))
+        {
+          thread_set_trace_format (thread_p, QUERY_TRACE_TEXT);
+        }
+      else if (IS_XASL_TRACE_JSON (*flag_p))
+        {
+          thread_set_trace_format (thread_p, QUERY_TRACE_JSON);
+        }
     }
 
   /* Make an query entry */
@@ -2762,6 +2815,18 @@ exit_on_async_error:
   if (list_id_p)
     {
       QFILE_FREE_AND_INIT_LIST_ID (list_id_p);
+    }
+
+  if (DO_NOT_COLLECT_EXEC_STATS (*flag_p))
+    {
+      if (saved_is_stats_on == true)
+        {
+          xmnt_server_start_stats (thread_p, false);
+        }
+    }
+  else if (xasl_trace == true && saved_is_stats_on == false)
+    {
+      xmnt_server_stop_stats (thread_p);
     }
 
   goto end;

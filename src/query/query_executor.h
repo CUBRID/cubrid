@@ -31,6 +31,9 @@
 #ident "$Id$"
 
 #include <time.h>
+#if defined(SERVER_MODE)
+#include "jansson.h"
+#endif
 
 #include "storage_common.h"
 #include "oid.h"
@@ -429,6 +432,7 @@ struct update_proc_node
   int no_logging;		/* no logging */
   int release_lock;		/* release lock */
   int no_orderby_keys;		/* no of keys for ORDER_BY */
+  struct timeval elapsed_time;  /* for query trace */
 };
 
 /*on duplicate key update info structure */
@@ -463,6 +467,7 @@ struct insert_proc_node
 				 * clause. */
   int pruning_type;		/* DB_CLASS_PARTITION_TYPE indicating the way
 				 * in which pruning should be performed */
+  struct timeval elapsed_time;  /* for query trace */
 };
 
 typedef struct delete_proc_node DELETE_PROC_NODE;
@@ -473,6 +478,7 @@ struct delete_proc_node
   int wait_msecs;		/* lock timeout in milliseconds */
   int no_logging;		/* no logging */
   int release_lock;		/* release lock */
+  struct timeval elapsed_time;  /* for query trace */
 };
 
 typedef struct connectby_proc_node CONNECTBY_PROC_NODE;
@@ -494,6 +500,11 @@ struct connectby_proc_node
   REGU_VARIABLE_LIST after_cb_regu_list_rest;	/* rest of regu vars */
   bool single_table_opt;	/* single table optimizations */
   QFILE_TUPLE curr_tuple;	/* needed for operators and functions */
+
+  /* for query trace */
+  struct timeval elapsed_time;
+  int num_fetches;
+  int num_ioreads;
 };
 
 typedef struct merge_proc_node MERGE_PROC_NODE;
@@ -551,6 +562,26 @@ struct topn_tuples
 				 * order */
   BINARY_HEAP *heap;		/* heap used to hold top-n tuples */
   int values_count;		/* number of values in a tuple */
+};
+
+typedef struct orderby_stat ORDERBY_STATS;
+struct orderby_stat
+{
+  struct timeval orderby_time;
+  bool orderby_filesort;
+  bool orderby_topnsort;
+  UINT64 orderby_pages;
+  UINT64 orderby_ioreads;
+};
+
+typedef struct groupby_stat GROUPBY_STATS;
+struct groupby_stat
+{
+  struct timeval groupby_time;
+  bool run_groupby;
+  bool groupby_sort;
+  UINT64 groupby_pages;
+  UINT64 groupby_ioreads;
 };
 
 struct xasl_node
@@ -645,6 +676,9 @@ struct xasl_node
   } proc;
 
   double cardinality;		/* estimated cardinality of result */
+
+  ORDERBY_STATS orderby_stats;
+  GROUPBY_STATS groupby_stats;
 
   /* XASL cache related information */
   OID creator_oid;		/* OID of the user who created this XASL */
@@ -944,5 +978,8 @@ extern void qexec_replace_prior_regu_vars_prior_expr (THREAD_ENTRY * thread_p,
 						      XASL_NODE * xasl,
 						      XASL_NODE *
 						      connect_by_ptr);
-
+#if defined (SERVER_MODE)
+extern json_t *qdump_print_stats_json (XASL_NODE * xasl_p);
+extern void qdump_print_stats_text (FILE * fp, XASL_NODE * xasl_p, int indent);
+#endif /* SERVER_MODE */
 #endif /* _QUERY_EXECUTOR_H_ */

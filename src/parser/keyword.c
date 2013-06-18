@@ -244,6 +244,7 @@ static KEYWORD_RECORD keywords[] = {
   {ISOLATION, "ISOLATION", 0},
   {JAVA, "JAVA", 1},
   {JOIN, "JOIN", 0},
+  {JSON, "JSON", 1},
   {KEY, "KEY", 0},
   {KEYS, "KEYS", 1},
   {LANGUAGE, "LANGUAGE", 0},
@@ -433,9 +434,7 @@ static KEYWORD_RECORD keywords[] = {
   {TABLE, "TABLE", 0},
   {TABLES, "TABLES", 1},
   {TEMPORARY, "TEMPORARY", 0},
-#if 0				/* disable TEXT */
   {TEXT, "TEXT", 1},
-#endif /* 0 */
   {THAN, "THAN", 1},
   {THEN, "THEN", 0},
   {Time, "TIME", 0},

@@ -21,6 +21,10 @@
 /*
  * Scan (Server Side)
  */
+#include <time.h>
+#if defined(SERVER_MODE)
+#include "jansson.h"
+#endif
 
 #include "btree.h"		/* TODO: for BTREE_SCAN */
 
@@ -237,6 +241,21 @@ struct scan_pos
   QFILE_TUPLE_POSITION ls_tplpos;	/* List file index scan position  */
 };				/* Scan position structure */
 
+typedef struct scan_stats SCAN_STATS;
+struct scan_stats
+{
+  struct timeval elapsed_scan;
+  int num_rows;
+  int num_fetches;
+  int num_ioreads;
+  struct timeval elapsed_lookup;
+  int num_lookup;
+  int num_rescan;
+  bool covered_index;
+  bool multi_range_opt;
+  bool index_skip_scan;
+};
+
 typedef struct scan_id_struct SCAN_ID;
 struct scan_id_struct
 {
@@ -279,6 +298,7 @@ struct scan_id_struct
     VA_SCAN_ID vaid;		/* Value Array Identifier */
     REGU_VALUES_SCAN_ID rvsid;	/* regu_variable list identifier */
   } s;
+  SCAN_STATS stats;
 };				/* Scan Identifier */
 
 #define SCAN_IS_INDEX_COVERED(iscan_id_p)   ((iscan_id_p)->indx_cov.list_id != NULL)
@@ -409,5 +429,10 @@ extern int scan_init_iss (INDX_SCAN_ID * isidp);
 extern void scan_init_index_scan (INDX_SCAN_ID * isidp, OID * oid_buf);
 extern void scan_initialize (void);
 extern void scan_finalize (void);
+
+#if defined(SERVER_MODE)
+extern json_t * scan_print_stats_json (SCAN_ID * scan_id);
+extern void scan_print_stats_text (FILE *fp, SCAN_ID * scan_id);
+#endif /* SERVER_MODE */
 
 #endif /* _SCAN_MANAGER_H_ */

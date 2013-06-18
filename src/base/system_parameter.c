@@ -486,6 +486,11 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_SQL_TRACE_IOREADS "sql_trace_ioread_pages"
 
+/* For query profile. Internal use only. */
+#define PRM_NAME_QUERY_TRACE "query_trace"
+#define PRM_NAME_QUERY_TRACE_FORMAT "query_trace_format"
+
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -1307,6 +1312,14 @@ static int prm_sort_limit_max_count_upper = INT_MAX;
 int PRM_SQL_TRACE_IOREADS = 0;
 static int prm_sql_trace_ioreads_default = 0;
 static int prm_sql_trace_ioreads_lower = 0;
+
+bool PRM_QUERY_TRACE = false;
+static bool prm_query_trace_default = false;
+
+int PRM_QUERY_TRACE_FORMAT = NULL;
+static int prm_query_trace_format_default = QUERY_TRACE_TEXT;
+static int prm_query_trace_format_lower = QUERY_TRACE_TEXT;
+static int prm_query_trace_format_upper = QUERY_TRACE_JSON;
 
 typedef struct sysprm_param SYSPRM_PARAM;
 struct sysprm_param
@@ -2735,6 +2748,21 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_SQL_TRACE_IOREADS,
    (void *) NULL,
    (void *) &prm_sql_trace_ioreads_lower,
+   (char *) NULL},
+  {PRM_NAME_QUERY_TRACE,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
+   PRM_BOOLEAN,
+   (void *) &prm_query_trace_default,
+   (void *) &PRM_QUERY_TRACE,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
+  {PRM_NAME_QUERY_TRACE_FORMAT,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
+   PRM_KEYWORD,
+   (void *) &prm_query_trace_format_default,
+   (void *) &PRM_QUERY_TRACE_FORMAT,
+   (void *) &prm_query_trace_format_upper,
+   (void *) &prm_query_trace_format_lower,
    (char *) NULL}
 };
 

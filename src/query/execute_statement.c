@@ -117,6 +117,8 @@
 #define PT_NODE_SR_NO_CACHE(node)		\
 	((node)->info.serial.no_cache)
 
+static void do_set_trace_to_query_flag (QUERY_FLAG * query_flag);
+static void do_send_plan_trace_to_session (PARSER_CONTEXT * parser);
 
 #define MAX_SERIAL_INVARIANT	8
 
@@ -2872,6 +2874,10 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = do_set_names (parser, statement);
 	  break;
 
+	case PT_QUERY_TRACE:
+	  error = do_set_query_trace (parser, statement);
+	  break;
+
 	default:
 	  er_set (ER_ERROR_SEVERITY, __FILE__, statement->line_number,
 		  ER_PT_UNKNOWN_STATEMENT, 1, statement->node_type);
@@ -3265,6 +3271,9 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     case PT_SET_NAMES:
       err = do_set_names (parser, statement);
+      break;
+    case PT_QUERY_TRACE:
+      err = do_set_query_trace (parser, statement);
       break;
     default:
       er_set (ER_ERROR_SEVERITY, __FILE__, statement->line_number,
@@ -8965,6 +8974,13 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  query_flag |= NOT_FROM_RESULT_CACHE;
 	  query_flag |= RESULT_CACHE_INHIBITED;
 
+	  if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true
+	      && parser->query_trace == true)
+	    {
+	      do_set_trace_to_query_flag (&query_flag);
+	      do_send_plan_trace_to_session (parser);
+	    }
+
 	  AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization
 					   checking for method */
 	  list_id = NULL;
@@ -10211,6 +10227,13 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       query_flag |= NOT_FROM_RESULT_CACHE;
       query_flag |= RESULT_CACHE_INHIBITED;
+
+      if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true
+	  && parser->query_trace == true)
+	{
+	  do_set_trace_to_query_flag (&query_flag);
+	  do_send_plan_trace_to_session (parser);
+	}
 
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization
 					   checking for method */
@@ -13328,6 +13351,13 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   query_flag |= NOT_FROM_RESULT_CACHE;
   query_flag |= RESULT_CACHE_INHIBITED;
 
+  if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true
+      && parser->query_trace == true)
+    {
+      do_set_trace_to_query_flag (&query_flag);
+      do_send_plan_trace_to_session (parser);
+    }
+
   list_id = NULL;
   parser->query_id = -1;
 
@@ -13687,10 +13717,9 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   int save;
   QUERY_ID query_id = NULL_QUERY_ID;
   QUERY_FLAG query_flag;
-  int async_flag;
-
   COMPILE_CONTEXT context;
   XASL_STREAM stream;
+  bool query_trace = false;
 
   init_compile_context (parser, &context);
   init_xasl_stream (&stream);
@@ -13709,12 +13738,24 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* mark the beginning of another level of xasl packing */
   pt_enter_packing_buf ();
 
-  async_flag = pt_statement_have_methods (parser, statement) ?
-    ASYNC_UNEXECUTABLE : ASYNC_EXECUTABLE;
+  if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true
+      && parser->query_trace == true)
+    {
+      query_trace = true;
+    }
 
-  query_flag = parser->exec_mode | async_flag;
-
-  if (query_flag == (ASYNC_EXEC | ASYNC_UNEXECUTABLE))
+  if (parser->exec_mode == ASYNC_EXEC && query_trace == false)
+    {
+      if (pt_statement_have_methods (parser, statement))
+	{
+	  query_flag = SYNC_EXEC | ASYNC_UNEXECUTABLE;
+	}
+      else
+	{
+	  query_flag = ASYNC_EXEC | ASYNC_EXECUTABLE;
+	}
+    }
+  else
     {
       query_flag = SYNC_EXEC | ASYNC_UNEXECUTABLE;
     }
@@ -13744,6 +13785,12 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      /* treat as sync query */
 	      query_flag &= ~ASYNC_EXEC;
+	    }
+
+	  if (query_trace == true)
+	    {
+	      do_set_trace_to_query_flag (&query_flag);
+	      do_send_plan_trace_to_session (parser);
 	    }
 
 	  if (error >= NO_ERROR)
@@ -14061,10 +14108,17 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_VALUE *vals, *v;
   CACHE_TIME clt_cache_time;
   CURSOR_ID cursor_id;
+  bool query_trace = false;
 
   assert (pt_node_to_cmd_type (statement) == CUBRID_STMT_EXECUTE_PREPARE);
 
-  if (parser->exec_mode == ASYNC_EXEC)
+  if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true
+      && parser->query_trace == true)
+    {
+      query_trace = true;
+    }
+
+  if (parser->exec_mode == ASYNC_EXEC && query_trace == false)
     {
       query_flag = ASYNC_EXEC | ASYNC_EXECUTABLE;
     }
@@ -14076,6 +14130,12 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (parser->is_holdable)
     {
       query_flag |= RESULT_HOLDABLE;
+    }
+
+  if (query_trace == true)
+    {
+      do_set_trace_to_query_flag (&query_flag);
+      do_send_plan_trace_to_session (parser);
     }
 
   /* flush necessary objects before execute */
@@ -14197,6 +14257,8 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   const char *into_label;
   DB_VALUE *vals, *v;
   CACHE_TIME clt_cache_time;
+  int trace_format;
+  bool query_trace = false;
 
   /* check if it is not necessary to execute this statement,
      e.g. false where or not prepared correctly */
@@ -14206,8 +14268,14 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NO_ERROR;
     }
 
+  if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true
+      && parser->query_trace == true)
+    {
+      query_trace = true;
+    }
+
   /* adjust query flag */
-  if (parser->exec_mode == ASYNC_EXEC)
+  if (parser->exec_mode == ASYNC_EXEC && query_trace == false)
     {
       if (pt_statement_have_methods (parser, statement)
 	  || (statement->node_type == PT_SELECT
@@ -14258,6 +14326,12 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (parser->dont_collect_exec_stats == true)
     {
       query_flag |= DONT_COLLECT_EXEC_STATS;
+    }
+
+  if (query_trace == true)
+    {
+      do_set_trace_to_query_flag (&query_flag);
+      do_send_plan_trace_to_session (parser);
     }
 
   /* flush necessary objects before execute */
@@ -14674,6 +14748,14 @@ do_execute_do (PARSER_CONTEXT * parser, PT_NODE * statement)
       error = er_errid ();
       goto end;
     }
+
+  if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true
+      && parser->query_trace == true)
+    {
+      do_set_trace_to_query_flag (&query_flag);
+      do_send_plan_trace_to_session (parser);
+    }
+
 
   /* map XASL to stream */
   error = xts_map_xasl_to_stream (xasl, &stream);
@@ -16655,4 +16737,137 @@ do_replace_names_for_insert_values_pre (PARSER_CONTEXT * parser,
     }
 
   return node;
+}
+
+/*
+ * do_set_query_trace() - Set query trace
+ *   return: NO_ERROR
+ *   parser(in): Parser context
+ *   statement(in): Parse tree of a set statement
+ *
+ */
+int
+do_set_query_trace (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  if (statement->info.trace.on_off == PT_TRACE_ON)
+    {
+      prm_set_bool_value (PRM_ID_QUERY_TRACE, true);
+
+      if (statement->info.trace.format == PT_TRACE_FORMAT_TEXT)
+	{
+	  prm_set_integer_value (PRM_ID_QUERY_TRACE_FORMAT, QUERY_TRACE_TEXT);
+	}
+      else if (statement->info.trace.format == PT_TRACE_FORMAT_JSON)
+	{
+	  prm_set_integer_value (PRM_ID_QUERY_TRACE_FORMAT, QUERY_TRACE_JSON);
+	}
+    }
+  else
+    {
+      prm_set_bool_value (PRM_ID_QUERY_TRACE, false);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * do_set_trace_to_query_flag() -
+ *   return: void
+ *   query_flag(in):
+ */
+static void
+do_set_trace_to_query_flag (QUERY_FLAG * query_flag)
+{
+  int trace_format;
+
+  trace_format = prm_get_integer_value (PRM_ID_QUERY_TRACE_FORMAT);
+
+  if (trace_format == QUERY_TRACE_TEXT)
+    {
+      *query_flag |= XASL_TRACE_TEXT;
+    }
+  else if (trace_format == QUERY_TRACE_JSON)
+    {
+      *query_flag |= XASL_TRACE_JSON;
+    }
+}
+
+/*
+ * do_send_plan_trace_to_session() - send plan dump to server session
+ *   return: void
+ *   parser(in):
+ */
+static void
+do_send_plan_trace_to_session (PARSER_CONTEXT * parser)
+{
+  DB_VALUE var[2];
+  char *plan_str = NULL;
+  int format, i = 0;
+  size_t sizeloc;
+  FILE *fp;
+
+  if (parser->num_plan_trace < 1)
+    {
+      return;
+    }
+
+  format = prm_get_integer_value (PRM_ID_QUERY_TRACE_FORMAT);
+
+  if (format == QUERY_TRACE_TEXT)
+    {
+      if (parser->num_plan_trace > 1)
+	{
+	  fp = port_open_memstream (&plan_str, &sizeloc);
+
+	  if (fp)
+	    {
+	      for (i = 0; i < parser->num_plan_trace; i++)
+		{
+		  fprintf (fp, "%s\n", parser->plan_trace[i].text_plan);
+		  free_and_init (parser->plan_trace[i].text_plan);
+		}
+
+	      port_close_memstream (fp, &plan_str, &sizeloc);
+	    }
+	}
+      else
+	{
+	  plan_str = parser->plan_trace[0].text_plan;
+	}
+    }
+  else if (format == QUERY_TRACE_JSON)
+    {
+      json_t *jplan;
+
+      if (parser->num_plan_trace > 1)
+	{
+	  jplan = json_array ();
+
+	  for (i = 0; i < parser->num_plan_trace; i++)
+	    {
+	      json_array_append_new (jplan, parser->plan_trace[i].json_plan);
+	    }
+	}
+      else
+	{
+	  jplan = parser->plan_trace[0].json_plan;
+	}
+
+      plan_str = json_dumps (jplan, JSON_INDENT (2) | JSON_PRESERVE_ORDER);
+
+      json_object_clear (jplan);
+      json_decref (jplan);
+    }
+
+  parser->num_plan_trace = 0;
+
+  if (plan_str != NULL)
+    {
+      DB_MAKE_CHAR (&var[0], 10, "trace_plan", 10,
+		    LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+      DB_MAKE_STRING (&var[1], plan_str);
+
+      csession_set_session_variables (var, 2);
+      free_and_init (plan_str);
+    }
 }

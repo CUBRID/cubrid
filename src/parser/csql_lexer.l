@@ -395,6 +395,9 @@ extern int dot_flag;
 										csql_yylval.cptr = pt_makename(yytext);
 										return JAVA; }
 [jJ][oO][iI][nN]							{ begin_token(yytext);   return JOIN; }
+[jJ][sS][oO][nN]							{ begin_token(yytext);   
+										csql_yylval.cptr = pt_makename(yytext);
+										return JSON; }
 [kK][eE][yY]								{ begin_token(yytext);   return KEY; }
 [kK][eE][yY][sS]							{ begin_token(yytext);   
 										csql_yylval.cptr = pt_makename(yytext);
@@ -712,6 +715,9 @@ extern int dot_flag;
 										csql_yylval.cptr = pt_makename(yytext);
 										return TABLES; }
 [tT][eE][mM][pP][oO][rR][aA][rR][yY]					{ begin_token(yytext);   return TEMPORARY; }
+[tT][eE][xX][tT]							{ begin_token(yytext);   
+										csql_yylval.cptr = pt_makename(yytext);
+										return TEXT; }
 [tT][hH][eE][nN]							{ begin_token(yytext);   return THEN; }
 [tT][iI][mM][eE][oO][uU][tT]						{ begin_token(yytext);   
 										csql_yylval.cptr = pt_makename(yytext);

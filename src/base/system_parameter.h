@@ -85,6 +85,13 @@ enum compat_mode
      */
 };
 
+typedef enum query_trace_format QUERY_TRACE_FORMAT;
+enum query_trace_format
+{
+  QUERY_TRACE_TEXT = 1,
+  QUERY_TRACE_JSON
+};
+
 /* NOTE:
  * System parameter ids must respect the order in prm_Def array
  */
@@ -294,8 +301,10 @@ enum param_id
   PRM_ID_GENERIC_VOL_PREALLOC_SIZE,
   PRM_ID_SORT_LIMIT_MAX_COUNT,
   PRM_ID_SQL_TRACE_IOREADS,
+  PRM_ID_QUERY_TRACE,
+  PRM_ID_QUERY_TRACE_FORMAT,
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_SQL_TRACE_IOREADS
+  PRM_LAST_ID = PRM_ID_QUERY_TRACE_FORMAT
 };
 
 /*

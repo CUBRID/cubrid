@@ -720,7 +720,9 @@ enum
   MRO_CANDIDATE = 0x0100,
   MRO_IS_USED = 0x0200,
   SORT_LIMIT_CANDIDATE = 0x0400,
-  SORT_LIMIT_USED = 0x0800
+  SORT_LIMIT_USED = 0x0800,
+  XASL_TRACE_TEXT = 0x1000,
+  XASL_TRACE_JSON = 0x2000
 };
 
 #define IS_SYNC_EXEC_MODE(flag) (!((flag) & ASYNC_EXEC))
@@ -733,6 +735,9 @@ enum
 #define DO_NOT_KEEP_PLAN_CACHE(flag)    !((flag) & KEEP_PLAN_CACHE)
 
 #define DO_NOT_COLLECT_EXEC_STATS(flag)    ((flag) & DONT_COLLECT_EXEC_STATS)
+
+#define IS_XASL_TRACE_TEXT(flag)    ((flag) & XASL_TRACE_TEXT)
+#define IS_XASL_TRACE_JSON(flag)    ((flag) & XASL_TRACE_JSON)
 
 typedef int QUERY_FLAG;
 

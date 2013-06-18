@@ -581,9 +581,7 @@ extern int mnt_Num_tran_exec_stats;
 #define mnt_fc_stats(thread_p, num_pages, num_overflows, tokens) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_fc_stats(thread_p, num_pages, num_overflows, tokens)
 
-/*
- * Network Communication level
- */
+/* Network Communication level */
 #define mnt_net_requests(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_net_requests(thread_p)
 
@@ -667,6 +665,12 @@ extern void mnt_x_fc_stats (THREAD_ENTRY * thread_p, unsigned int num_pages,
 			    unsigned int num_log_pages, unsigned int tokens);
 extern UINT64 mnt_x_get_stats_and_clear (THREAD_ENTRY * thread_p,
 					 const char *stat_name);
+
+extern UINT64 mnt_get_pb_fetches (THREAD_ENTRY * thread_p);
+extern UINT64 mnt_get_pb_ioreads (THREAD_ENTRY * thread_p);
+extern UINT64 mnt_get_sort_io_pages (THREAD_ENTRY * thread_p);
+extern UINT64 mnt_get_sort_data_pages (THREAD_ENTRY * thread_p);
+
 #else /* SERVER_MODE || SA_MODE */
 
 #define mnt_file_creates(thread_p)

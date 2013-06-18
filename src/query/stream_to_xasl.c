@@ -2551,6 +2551,9 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	}
     }
 
+  memset (&xasl->orderby_stats, 0, sizeof (xasl->orderby_stats));
+  memset (&xasl->groupby_stats, 0, sizeof (xasl->groupby_stats));
+
   return ptr;
 
 error:
@@ -6424,6 +6427,11 @@ stx_build_connectby_proc (THREAD_ENTRY * thread_p, char *ptr,
   stx_connectby_proc->single_table_opt = (bool) tmp;
 
   stx_connectby_proc->curr_tuple = NULL;
+
+  stx_connectby_proc->elapsed_time.tv_sec = 0;
+  stx_connectby_proc->elapsed_time.tv_usec = 0;
+  stx_connectby_proc->num_fetches = 0;
+  stx_connectby_proc->num_ioreads = 0;
 
   return ptr;
 

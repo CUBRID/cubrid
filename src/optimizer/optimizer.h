@@ -218,5 +218,10 @@ extern bool qo_check_join_for_multi_range_opt (QO_PLAN * plan);
 extern int qo_find_subplan_using_multi_range_opt (QO_PLAN * plan,
 						  QO_PLAN ** result,
 						  int *join_idx);
-
+extern void qo_top_plan_print_json (PARSER_CONTEXT * parser,
+				    XASL_NODE * xasl, PT_NODE * select,
+				    QO_PLAN * plan);
+extern void qo_top_plan_print_text (PARSER_CONTEXT * parser,
+				    XASL_NODE * xasl, PT_NODE * select,
+				    QO_PLAN * plan);
 #endif /* _OPTIMIZER_H_ */

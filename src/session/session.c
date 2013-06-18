@@ -30,6 +30,7 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #endif /* !WINDDOWS */
+#include "jansson.h"
 
 #include "porting.h"
 #include "critical_section.h"
@@ -113,6 +114,9 @@ typedef struct session_state
   struct timeval session_timeout;
   SOCKET related_socket;
   SESSION_PARAM *session_parameters;
+  char *trace_stats;
+  char *plan_string;
+  int trace_format;
 } SESSION_STATE;
 
 /* the active sessions storage */
@@ -349,6 +353,9 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_KEY * key)
   session_p->queries = NULL;
   session_p->related_socket = INVALID_SOCKET;
   session_p->session_parameters = NULL;
+  session_p->trace_stats = NULL;
+  session_p->plan_string = NULL;
+  session_p->trace_format = QUERY_TRACE_TEXT;
 
   /* initialize the timeout */
   if (gettimeofday (&(session_p->session_timeout), NULL) != 0)
@@ -504,6 +511,17 @@ session_free_session (const void *key, void *data, void *args)
 
   pr_clear_value (&session->cur_insert_id);
   pr_clear_value (&session->last_insert_id);
+
+  if (session->trace_stats != NULL)
+    {
+      free_and_init (session->trace_stats);
+    }
+
+  if (session->plan_string != NULL)
+    {
+      free_and_init (session->plan_string);
+    }
+
   free_and_init (session);
 
   return NO_ERROR;
@@ -794,6 +812,15 @@ session_add_variable (SESSION_STATE * state_p, const DB_VALUE * name,
 	{
 	  xmnt_server_stop_stats (NULL);
 	}
+    }
+  else if (strncasecmp (name_str, "trace_plan", 10) == 0)
+    {
+      if (state_p->plan_string != NULL)
+        {
+          free_and_init (state_p->plan_string);
+        }
+
+      state_p->plan_string = strdup (DB_GET_STRING (value));
     }
 
   current = state_p->session_variables;
@@ -2477,4 +2504,125 @@ session_get_session_state (THREAD_ENTRY * thread_p)
 
   return state_p;
 #endif
+}
+
+/*
+ * session_get_trace_stats () - return query trace result
+ *   return  : query trace
+ *   result(out) :
+ */
+int
+session_get_trace_stats (THREAD_ENTRY * thread_p, DB_VALUE * result)
+{
+  SESSION_STATE *state_p = NULL;
+  char *trace_str = NULL;
+  size_t sizeloc;
+  FILE *fp;
+  json_t *plan, *xasl, *stats;
+  DB_VALUE temp_result;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  if (state_p->plan_string == NULL && state_p->trace_stats == NULL)
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  if (state_p->trace_format == QUERY_TRACE_TEXT)
+    {
+      fp = port_open_memstream (&trace_str, &sizeloc);
+      if (fp)
+        {
+          if (state_p->plan_string != NULL)
+            {
+              fprintf (fp, "\nQuery Plan:\n%s", state_p->plan_string);
+              free_and_init (state_p->plan_string);
+            }
+
+          if (state_p->trace_stats != NULL)
+            {
+              fprintf (fp, "\nTrace Statistics:\n%s", state_p->trace_stats);
+              free_and_init (state_p->trace_stats);
+            }
+
+          port_close_memstream (fp, &trace_str, &sizeloc);
+        }
+    }
+  else if (state_p->trace_format == QUERY_TRACE_JSON)
+    {
+      stats = json_object ();
+
+      if (state_p->plan_string != NULL)
+        {
+          plan = json_loads (state_p->plan_string, 0, NULL);
+          if (plan != NULL)
+            {
+              json_object_set_new (stats, "Query Plan", plan);
+            }
+
+          free_and_init (state_p->plan_string);
+        }
+
+      if (state_p->trace_stats != NULL)
+        {
+          xasl = json_loads (state_p->trace_stats, 0, NULL);
+          if (xasl != NULL)
+            {
+              json_object_set_new (stats, "Trace Statistics", xasl);
+            }
+
+          free_and_init (state_p->trace_stats);
+        }
+
+      trace_str = json_dumps (stats, JSON_INDENT (2) | JSON_PRESERVE_ORDER);
+
+      json_object_clear (stats);
+      json_decref (stats);
+    }
+
+  if (trace_str != NULL)
+    {
+      DB_MAKE_STRING (&temp_result, trace_str);
+      pr_clone_value (&temp_result, result);
+      free_and_init (trace_str);
+    }
+  else
+    {
+      DB_MAKE_NULL (result);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * session_set_trace_stats () - save query trace result to session
+ *   return  :
+ *   stats(in) :
+ *   format(in) :
+ */
+int
+session_set_trace_stats (THREAD_ENTRY * thread_p, char *stats, int format)
+{
+  SESSION_STATE *state_p = NULL;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  if (state_p->trace_stats != NULL)
+    {
+      free_and_init (state_p->trace_stats);
+    }
+
+  state_p->trace_stats = stats;
+  state_p->trace_format = format;
+
+  return NO_ERROR;
 }

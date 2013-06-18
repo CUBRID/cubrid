@@ -3040,6 +3040,82 @@ mnt_x_sort_data_pages (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * mnt_get_sort_io_pages - return sort_num_io_pages counter of the current
+ *                       transaction index
+ *   return: none
+ */
+UINT64
+mnt_get_sort_io_pages (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      return stats->sort_num_io_pages;
+    }
+
+  return 0;
+}
+
+/*
+ * mnt_get_sort_data_pages - return sort_num_data_pages counter of the
+ *                         current transaction index
+ *   return: none
+ */
+UINT64
+mnt_get_sort_data_pages (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      return stats->sort_num_data_pages;
+    }
+
+  return 0;
+}
+
+/*
+ * mnt_get_pb_fetches - Return pb_num_fetches counter of the current
+ *                    transaction index
+ *   return: pb_num_fetches
+ */
+UINT64
+mnt_get_pb_fetches (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      return stats->pb_num_fetches;
+    }
+
+  return 0;
+}
+
+/*
+ * mnt_get_pb_ioreads - Return pb_num_ioreads counter of the current
+ *                    transaction index
+ *   return: pb_num_ioreads
+ */
+UINT64
+mnt_get_pb_ioreads (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      return stats->pb_num_ioreads;
+    }
+
+  return 0;
+}
+
+/*
  * mnt_x_net_requests - Increase net_num_requests counter of the current
  *                      transaction index
  *   return: none

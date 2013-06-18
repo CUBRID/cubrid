@@ -586,6 +586,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_ROW_COUNT:
     case T_LAST_INSERT_ID:
     case T_LIST_DBS:
+    case T_TRACE_STATS:
       /* nothing to fetch */
       break;
 
@@ -3501,6 +3502,16 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	{
 	  goto error;
 	}
+      break;
+
+    case T_TRACE_STATS:
+      if (session_get_trace_stats (thread_p, arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    default:
       break;
 
     case T_WIDTH_BUCKET:

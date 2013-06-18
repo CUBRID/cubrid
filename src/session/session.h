@@ -94,4 +94,8 @@ extern int session_get_exec_stats_and_clear (THREAD_ENTRY * thread_p,
 					     DB_VALUE * result);
 extern SESSION_PARAM *session_get_session_parameter (THREAD_ENTRY * thread_p,
 						     PARAM_ID id);
+extern int session_get_trace_stats (THREAD_ENTRY * thread_p,
+                                   DB_VALUE * result);
+extern int session_set_trace_stats (THREAD_ENTRY * thread_p, char *scan_stats,
+                                   int format);
 #endif /* _SESSION_H_ */

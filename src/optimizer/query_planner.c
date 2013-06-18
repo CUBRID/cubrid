@@ -31,6 +31,7 @@
 #if !defined(WINDOWS)
 #include <values.h>
 #endif /* !WINDOWS */
+#include "jansson.h"
 
 #include "parser.h"
 #include "optimizer.h"
@@ -45,6 +46,7 @@
 #include "storage_common.h"
 #include "xasl_generation.h"
 #include "schema_manager.h"
+#include "network_interface_cl.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -287,6 +289,18 @@ static int qo_validate_indexes_for_orderby (QO_PLAN * plan, void *arg);
 static int qo_unset_multi_range_optimization (QO_PLAN * plan, void *arg);
 static bool qo_plan_is_orderby_skip_candidate (QO_PLAN * plan);
 static bool qo_is_sort_limit (QO_PLAN * plan);
+
+static json_t *qo_plan_scan_print_json (QO_PLAN * plan);
+static json_t *qo_plan_sort_print_json (QO_PLAN * plan);
+static json_t *qo_plan_join_print_json (QO_PLAN * plan);
+static json_t *qo_plan_follow_print_json (QO_PLAN * plan);
+static json_t *qo_plan_print_json (QO_PLAN * plan);
+
+static void qo_plan_scan_print_text (FILE * fp, QO_PLAN * plan, int indent);
+static void qo_plan_sort_print_text (FILE * fp, QO_PLAN * plan, int indent);
+static void qo_plan_join_print_text (FILE * fp, QO_PLAN * plan, int indent);
+static void qo_plan_follow_print_text (FILE * fp, QO_PLAN * plan, int indent);
+static void qo_plan_print_text (FILE * fp, QO_PLAN * plan, int indent);
 
 static QO_PLAN_VTBL qo_seq_scan_plan_vtbl = {
   "sscan",
@@ -13114,4 +13128,640 @@ qo_has_sort_limit_subplan (QO_PLAN * plan)
     }
 
   return false;
+}
+
+/*
+ * plan dump for query profile
+ */
+
+/*
+ * qo_plan_scan_print_json ()
+ *   return:
+ *   plan(in):
+ */
+static json_t *
+qo_plan_scan_print_json (QO_PLAN * plan)
+{
+  BITSET_ITERATOR bi;
+  QO_ENV *env;
+  bool natural_desc_index = false;
+  json_t *scan, *range, *filter, *opt;
+  const char *scan_string = "";
+  int i;
+
+  scan = json_object ();
+
+  json_object_set_new (scan, "table",
+                       json_string (QO_NODE_NAME (plan->plan_un.scan.node)));
+
+  switch (plan->plan_un.scan.scan_method)
+    {
+    case QO_SCANMETHOD_SEQ_SCAN:
+      scan_string = "TABLE SCAN";
+      break;
+
+    case QO_SCANMETHOD_INDEX_SCAN:
+    case QO_SCANMETHOD_INDEX_ORDERBY_SCAN:
+    case QO_SCANMETHOD_INDEX_GROUPBY_SCAN:
+      scan_string = "INDEX SCAN";
+      json_object_set_new (scan, "index",
+                           json_string (plan->plan_un.scan.index->head->
+                                        constraints->name));
+
+      env = (plan->info)->env;
+      range = json_array ();
+
+      for (i = bitset_iterate (&(plan->plan_un.scan.terms), &bi);
+           i != -1; i = bitset_next_member (&bi))
+        {
+          json_array_append_new (range,
+                                 json_string (qo_term_string
+                                              (QO_ENV_TERM (env, i))));
+        }
+
+      json_object_set_new (scan, "key range", range);
+
+      if (bitset_cardinality (&(plan->plan_un.scan.kf_terms)) > 0)
+        {
+          filter = json_array ();
+          for (i = bitset_iterate (&(plan->plan_un.scan.kf_terms), &bi);
+               i != -1; i = bitset_next_member (&bi))
+            {
+              json_array_append_new (filter,
+                                     json_string (qo_term_string
+                                                  (QO_ENV_TERM (env, i))));
+            }
+
+          json_object_set_new (scan, "key filter", filter);
+        }
+
+      if (plan->plan_un.scan.index
+          && plan->plan_un.scan.index->head->cover_segments
+          && qo_is_prefix_index (plan->plan_un.scan.index->head) == false)
+        {
+          json_object_set_new (scan, "covered", json_true ());
+        }
+
+      if (plan->plan_un.scan.index
+          && plan->plan_un.scan.index->head->use_descending)
+        {
+          json_object_set_new (scan, "desc_index", json_true ());
+          natural_desc_index = true;
+        }
+
+      if (!natural_desc_index &&
+          (QO_ENV_PT_TREE (plan->info->env)->info.query.q.select.hint &
+           PT_HINT_USE_IDX_DESC))
+        {
+          json_object_set_new (scan, "desc_index forced", json_true ());
+        }
+
+      break;
+    }
+
+  return json_pack ("{s:o}", scan_string, scan);
+}
+
+/*
+ * qo_plan_sort_print_json ()
+ *   return:
+ *   plan(in):
+ */
+static json_t *
+qo_plan_sort_print_json (QO_PLAN * plan)
+{
+  json_t *sort, *subplan = NULL;
+  const char *type;
+
+  switch (plan->plan_un.sort.sort_type)
+    {
+    case SORT_TEMP:
+      type = "SORT (temp)";
+      break;
+
+    case SORT_GROUPBY:
+      type = "SORT (group by)";
+      break;
+
+    case SORT_ORDERBY:
+      type = "SORT (order by)";
+      break;
+
+    case SORT_DISTINCT:
+      type = "SORT (distinct)";
+      break;
+
+    default:
+      break;
+    }
+
+  sort = json_object ();
+
+  if (plan->plan_un.sort.subplan)
+    {
+      subplan = qo_plan_print_json (plan->plan_un.sort.subplan);
+      json_object_set_new (sort, type, subplan);
+    }
+  else
+    {
+      json_object_set_new (sort, type, json_string (""));
+    }
+
+  return sort;
+}
+
+/*
+ * qo_plan_join_print_json ()
+ *   return:
+ *   plan(in):
+ */
+static json_t *
+qo_plan_join_print_json (QO_PLAN * plan)
+{
+  json_t *join, *outer, *inner;
+  const char *type, *method;
+  char buf[32];
+
+  switch (plan->plan_un.join.join_method)
+    {
+    case QO_JOINMETHOD_NL_JOIN:
+    case QO_JOINMETHOD_IDX_JOIN:
+      method = "NESTED LOOPS";
+      break;
+
+    case QO_JOINMETHOD_MERGE_JOIN:
+      method = "MERGE JOIN";
+      break;
+    }
+
+  switch (plan->plan_un.join.join_type)
+    {
+    case JOIN_INNER:
+      if (!bitset_is_empty (&(plan->plan_un.join.join_terms)))
+        {
+          type = "inner join";
+        }
+      else
+        {
+          if (plan->plan_un.join.join_method == QO_JOINMETHOD_IDX_JOIN)
+            {
+              type = "inner join";
+            }
+          else
+            {
+              type = "cross join";
+            }
+        }
+      break;
+    case JOIN_LEFT:
+      type = "left outer join";
+      break;
+    case JOIN_RIGHT:
+      type = "right outer join";
+      break;
+    case JOIN_OUTER:
+      type = "full outer join";
+      break;
+    case JOIN_CSELECT:
+      type = "cselect";
+      break;
+    case NO_JOIN:
+    default:
+      type = "unknown";
+      break;
+    }
+
+  outer = qo_plan_print_json (plan->plan_un.join.outer);
+  inner = qo_plan_print_json (plan->plan_un.join.inner);
+
+  sprintf (buf, "%s (%s)", method, type);
+
+  join = json_pack ("{s:[o,o]}", buf, outer, inner);
+
+  return join;
+}
+
+/*
+ * qo_plan_follow_print_json ()
+ *   return:
+ *   plan(in):
+ */
+static json_t *
+qo_plan_follow_print_json (QO_PLAN * plan)
+{
+  json_t *head, *follow;
+
+  head = qo_plan_print_json (plan->plan_un.follow.head);
+
+  follow = json_object ();
+  json_object_set_new (follow, "edge",
+                       json_string (qo_term_string
+                                    (plan->plan_un.follow.path)));
+  json_object_set_new (follow, "head", head);
+
+  return json_pack ("{s:o}", "FOLLOW", follow);
+
+}
+
+/*
+ * qo_plan_print_json ()
+ *   return:
+ *   plan(in):
+ */
+static json_t *
+qo_plan_print_json (QO_PLAN * plan)
+{
+  json_t *json = NULL;
+
+  switch (plan->plan_type)
+    {
+    case QO_PLANTYPE_SCAN:
+      json = qo_plan_scan_print_json (plan);
+      break;
+
+    case QO_PLANTYPE_SORT:
+      json = qo_plan_sort_print_json (plan);
+      break;
+
+    case QO_PLANTYPE_JOIN:
+      json = qo_plan_join_print_json (plan);
+      break;
+
+    case QO_PLANTYPE_FOLLOW:
+      json = qo_plan_follow_print_json (plan);
+      break;
+
+    default:
+      break;
+    }
+
+  return json;
+}
+
+/*
+ * qo_top_plan_print_json ()
+ *   return:
+ *   parser(in):
+ *   xasl(in):
+ *   select(in):
+ *   plan(in):
+ */
+void
+qo_top_plan_print_json (PARSER_CONTEXT * parser, XASL_NODE * xasl,
+                        PT_NODE * select, QO_PLAN * plan)
+{
+  json_t *json;
+  unsigned int save_custom;
+
+  if (parser->num_plan_trace >= MAX_NUM_PLAN_TRACE)
+    {
+      return;
+    }
+
+  json = qo_plan_print_json (plan);
+
+  if (select->info.query.order_by)
+    {
+      if (xasl && xasl->spec_list && xasl->spec_list->indexptr &&
+          xasl->spec_list->indexptr->orderby_skip)
+        {
+          json_object_set_new (json, "skip order by", json_true ());
+        }
+    }
+
+  if (select->info.query.q.select.group_by)
+    {
+      if (xasl && xasl->spec_list && xasl->spec_list->indexptr &&
+          xasl->spec_list->indexptr->groupby_skip)
+        {
+          json_object_set_new (json, "group by nosort", json_true ());
+        }
+    }
+
+  save_custom = parser->custom_print;
+  parser->custom_print |= PT_CONVERT_RANGE;
+
+  json_object_set_new (json, "rewritten query",
+                       json_string (parser_print_tree (parser, select)));
+
+  parser->custom_print = save_custom;
+
+  parser->plan_trace[parser->num_plan_trace].json_plan = json;
+  parser->num_plan_trace++;
+
+  return;
+}
+
+/*
+ * qo_plan_scan_print_text ()
+ *   return:
+ *   fp(in):
+ *   plan(in):
+ *   indent(in):
+ */
+static void
+qo_plan_scan_print_text (FILE * fp, QO_PLAN * plan, int indent)
+{
+  BITSET_ITERATOR bi;
+  QO_ENV *env;
+  bool natural_desc_index = false;
+  int i;
+
+  indent += 2;
+  fprintf (fp, "%*c", indent, ' ');
+
+  switch (plan->plan_un.scan.scan_method)
+    {
+    case QO_SCANMETHOD_SEQ_SCAN:
+      fprintf (fp, "TABLE SCAN (%s)", QO_NODE_NAME (plan->plan_un.scan.node));
+      break;
+
+    case QO_SCANMETHOD_INDEX_SCAN:
+    case QO_SCANMETHOD_INDEX_ORDERBY_SCAN:
+    case QO_SCANMETHOD_INDEX_GROUPBY_SCAN:
+      fprintf (fp, "INDEX SCAN (%s.%s)",
+               QO_NODE_NAME (plan->plan_un.scan.node),
+               plan->plan_un.scan.index->head->constraints->name);
+
+      env = (plan->info)->env;
+      fprintf (fp, " (");
+
+      for (i = bitset_iterate (&(plan->plan_un.scan.terms), &bi);
+           i != -1; i = bitset_next_member (&bi))
+        {
+          fprintf (fp, "key range: %s",
+                   qo_term_string (QO_ENV_TERM (env, i)));
+        }
+
+      if (bitset_cardinality (&(plan->plan_un.scan.kf_terms)) > 0)
+        {
+          for (i = bitset_iterate (&(plan->plan_un.scan.kf_terms), &bi);
+               i != -1; i = bitset_next_member (&bi))
+            {
+              fprintf (fp, ", key filter: %s",
+                       qo_term_string (QO_ENV_TERM (env, i)));
+            }
+        }
+
+      if (plan->plan_un.scan.index
+          && plan->plan_un.scan.index->head->cover_segments
+          && qo_is_prefix_index (plan->plan_un.scan.index->head) == false)
+        {
+          fprintf (fp, ", covered: true)");
+        }
+
+      if (plan->plan_un.scan.index
+          && plan->plan_un.scan.index->head->use_descending)
+        {
+          fprintf (fp, ", desc_index: true)");
+          natural_desc_index = true;
+        }
+
+      if (!natural_desc_index &&
+          (QO_ENV_PT_TREE (plan->info->env)->info.query.q.select.hint &
+           PT_HINT_USE_IDX_DESC))
+        {
+          fprintf (fp, ", desc_index forced: true)");
+        }
+
+      fprintf (fp, ")");
+      break;
+    }
+
+  fprintf (fp, "\n");
+}
+
+/*
+ * qo_plan_sort_print_text ()
+ *   return:
+ *   fp(in):
+ *   plan(in):
+ *   indent(in):
+ */
+static void
+qo_plan_sort_print_text (FILE * fp, QO_PLAN * plan, int indent)
+{
+  const char *type;
+
+  indent += 2;
+
+  switch (plan->plan_un.sort.sort_type)
+    {
+    case SORT_TEMP:
+      type = "SORT (temp)";
+      break;
+
+    case SORT_GROUPBY:
+      type = "SORT (group by)";
+      break;
+
+    case SORT_ORDERBY:
+      type = "SORT (order by)";
+      break;
+
+    case SORT_DISTINCT:
+      type = "SORT (distinct)";
+      break;
+
+    default:
+      break;
+    }
+
+  fprintf (fp, "%*c%s\n", indent, ' ', type);
+
+  if (plan->plan_un.sort.subplan)
+    {
+      qo_plan_print_text (fp, plan->plan_un.sort.subplan, indent);
+    }
+}
+
+/*
+ * qo_plan_join_print_text ()
+ *   return:
+ *   fp(in):
+ *   plan(in):
+ *   indent(in):
+ */
+static void
+qo_plan_join_print_text (FILE * fp, QO_PLAN * plan, int indent)
+{
+  const char *type, *method;
+
+  indent += 2;
+
+  switch (plan->plan_un.join.join_method)
+    {
+    case QO_JOINMETHOD_NL_JOIN:
+    case QO_JOINMETHOD_IDX_JOIN:
+      method = "NESTED LOOPS";
+      break;
+
+    case QO_JOINMETHOD_MERGE_JOIN:
+      method = "MERGE JOIN";
+      break;
+    }
+
+  switch (plan->plan_un.join.join_type)
+    {
+    case JOIN_INNER:
+      if (!bitset_is_empty (&(plan->plan_un.join.join_terms)))
+        {
+          type = "inner join";
+        }
+      else
+        {
+          if (plan->plan_un.join.join_method == QO_JOINMETHOD_IDX_JOIN)
+            {
+              type = "inner join";
+            }
+          else
+            {
+              type = "cross join";
+            }
+        }
+      break;
+    case JOIN_LEFT:
+      type = "left outer join";
+      break;
+    case JOIN_RIGHT:
+      type = "right outer join";
+      break;
+    case JOIN_OUTER:
+      type = "full outer join";
+      break;
+    case JOIN_CSELECT:
+      type = "cselect";
+      break;
+    case NO_JOIN:
+    default:
+      type = "unknown";
+      break;
+    }
+
+  fprintf (fp, "%*c%s (%s)\n", indent, ' ', method, type);
+  qo_plan_print_text (fp, plan->plan_un.join.outer, indent);
+  qo_plan_print_text (fp, plan->plan_un.join.inner, indent);
+}
+
+/*
+ * qo_plan_follow_print_text ()
+ *   return:
+ *   fp(in):
+ *   plan(in):
+ *   indent(in):
+ */
+static void
+qo_plan_follow_print_text (FILE * fp, QO_PLAN * plan, int indent)
+{
+  const char *type;
+
+  indent += 2;
+
+  fprintf (fp, "%*cFOLLOW (edge: %s)\n", indent, ' ',
+           qo_term_string (plan->plan_un.follow.path));
+
+  qo_plan_print_text (fp, plan->plan_un.follow.head, indent);
+}
+
+/*
+ * qo_plan_print_text ()
+ *   return:
+ *   fp(in):
+ *   plan(in):
+ *   indent(in):
+ */
+static void
+qo_plan_print_text (FILE * fp, QO_PLAN * plan, int indent)
+{
+  switch (plan->plan_type)
+    {
+    case QO_PLANTYPE_SCAN:
+      qo_plan_scan_print_text (fp, plan, indent);
+      break;
+
+    case QO_PLANTYPE_SORT:
+      qo_plan_sort_print_text (fp, plan, indent);
+      break;
+
+    case QO_PLANTYPE_JOIN:
+      qo_plan_join_print_text (fp, plan, indent);
+      break;
+
+    case QO_PLANTYPE_FOLLOW:
+      qo_plan_follow_print_text (fp, plan, indent);
+      break;
+
+    default:
+      break;
+    }
+}
+
+/*
+ * qo_top_plan_print_text ()
+ *   return:
+ *   parser(in):
+ *   xasl(in):
+ *   select(in):
+ *   plan(in):
+ */
+void
+qo_top_plan_print_text (PARSER_CONTEXT * parser, XASL_NODE * xasl,
+                        PT_NODE * select, QO_PLAN * plan)
+{
+  size_t sizeloc;
+  char *ptr, *sql;
+  FILE *fp;
+  int indent;
+  unsigned int save_custom;
+
+  if (parser->num_plan_trace >= MAX_NUM_PLAN_TRACE)
+    {
+      return;
+    }
+
+  fp = port_open_memstream (&ptr, &sizeloc);
+  if (fp == NULL)
+    {
+      return;
+    }
+
+  indent = 0;
+  qo_plan_print_text (fp, plan, indent);
+
+  indent += 2;
+
+  if (select->info.query.order_by)
+    {
+      if (xasl && xasl->spec_list && xasl->spec_list->indexptr &&
+          xasl->spec_list->indexptr->orderby_skip)
+        {
+          fprintf (fp, "%*cskip order by: true\n", indent, ' ');
+        }
+    }
+
+  if (select->info.query.q.select.group_by)
+    {
+      if (xasl && xasl->spec_list && xasl->spec_list->indexptr &&
+          xasl->spec_list->indexptr->groupby_skip)
+        {
+          fprintf (fp, "%*cgroup by nosort: true\n", indent, ' ');
+        }
+    }
+
+  save_custom = parser->custom_print;
+  parser->custom_print |= PT_CONVERT_RANGE;
+  sql = parser_print_tree (parser, select);
+  parser->custom_print = save_custom;
+
+  if (sql != NULL)
+    {
+      fprintf (fp, "\n%*crewritten query: %s\n", indent, ' ', sql);
+    }
+
+  port_close_memstream (fp, &ptr, &sizeloc);
+
+  parser->plan_trace[parser->num_plan_trace].text_plan = ptr;
+  parser->num_plan_trace++;
+
+  return;
 }

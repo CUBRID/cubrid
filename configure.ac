@@ -709,6 +709,26 @@ AS_IF([test "$with_cci_only" = "yes"], [with_expat=no],
 		EXTERNAL_DIST="$EXTERNAL_DIST expat-2.0.1"])])
 AC_MSG_RESULT([$with_expat])
 
+AC_MSG_CHECKING([for jansson library])
+AC_ARG_WITH([jansson],
+        AS_HELP_STRING([--with-jansson=PATH],
+                [prefix for installed jansson @<:@default=builtin@:>@]),
+        [with_jansson=$withval],
+        [with_jansson=builtin])
+
+if test "$with_jansson" = "builtin"
+then
+        AC_CONFIG_SUBDIRS([external/jansson-2.4])
+        JANSSON_LIBS="\$(top_builddir)/external/lib/libjansson.la"
+        JANSSON_INC="-I\$(top_builddir)/external/include/jansson"
+        EXTERNAL_PKGS="$EXTERNAL_PKGS jansson-2.4"
+else
+        JANSSON_LIBS="-L$with_jansson/lib -ljansson"
+        JANSSON_INC="-I$with_jansson/include" 
+        EXTERNAL_DIST="$EXTERNAL_DIST jansson-2.4"
+fi
+AC_MSG_RESULT([$with_jansson])
+
 AC_PREFIX_DEFAULT("$HOME/cubrid")
 
 BUILD_NUMBER=BUILD_NUMBER_STRING
@@ -740,8 +760,8 @@ CCI_LIB="\$(top_builddir)/cci/libcascci.la"
 ESQL_LIB="\$(top_builddir)/util/libcubridesql.la"
 BROKER_ADMIN_LIB="\$(top_builddir)/broker/libbrokeradmin.la"
 
-EXT_LIBS="$LIBEDIT_LIBS $LZO_LIBS $GC_LIBS $REGEX_LIBS $EXPAT_LIBS"
-EXT_INC="$LIBEDIT_INC $LZO_INC $GC_INC $REGEX_INC $EXPAT_INC"
+EXT_LIBS="$LIBEDIT_LIBS $LZO_LIBS $GC_LIBS $REGEX_LIBS $EXPAT_LIBS $JANSSON_LIBS"
+EXT_INC="$LIBEDIT_INC $LZO_INC $GC_INC $REGEX_INC $EXPAT_INC $JANSSON_INC"
 
 AC_MSG_CHECKING([whether to use CUBRID environment variable])
 AC_ARG_ENABLE([cubridenv],
@@ -1006,6 +1026,7 @@ AC_SUBST([BISON])
 AC_SUBST([BUILD_SUBDIRS])
 AC_SUBST([EXTRA_DIST_SUBDIRS])
 AC_SUBST([EXPAT_LIBS])
+AC_SUBST([JANSSON_LIBS])
 AC_SUBST([DBGW_DEFS])
 
 AH_TOP([

@@ -110,7 +110,9 @@ static SESSION_CMD_TABLE csql_Session_cmd_table[] = {
   {"info", S_CMD_INFO},
   /* history stuffs */
   {"historyread", S_CMD_HISTORY_READ},
-  {"historylist", S_CMD_HISTORY_LIST}
+  {"historylist", S_CMD_HISTORY_LIST},
+
+  {"trace", S_CMD_TRACE}
 };
 
 /*

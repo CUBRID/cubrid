@@ -174,6 +174,8 @@ static CSQL_COLUMN_WIDTH_INFO *csql_column_width_info_list = NULL;
 static int csql_column_width_info_list_size = 0;
 static int csql_column_width_info_list_index = 0;
 
+static bool csql_Query_trace = false;
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 #if !defined(WINDOWS)
 static char *csql_keyword_generator (const char *text, int state);
@@ -209,6 +211,8 @@ static int csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 				    const void *stream, int line_no);
 
 static int csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg);
+static void csql_set_trace (const char *arg_str);
+static void csql_display_trace (void);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 #if !defined(WINDOWS)
@@ -718,7 +722,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	  else
 	    {
 	      csql_walk_statement (line_read);
-	      /* because we don't want to execute session commands 
+	      /* because we don't want to execute session commands
 	       * in string block or comment block or identifier block
 	       */
 	      is_in_block = csql_is_statement_in_block ();
@@ -1432,6 +1436,9 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	}
 #endif /* !WINDOWS */
       break;
+    case S_CMD_TRACE:
+      csql_set_trace ((argument[0] == '\0') ? NULL : argument);
+      break;
     }
 
   return DO_CMD_SUCCESS;
@@ -2088,6 +2095,11 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 
   db_close_session (session);
 
+  if (csql_Query_trace == true)
+    {
+      csql_display_trace ();
+    }
+
   return csql_Num_failures;
 
 error:
@@ -2105,7 +2117,9 @@ error:
   csql_display_msg (csql_Scratch_text);
 
   if (session)
-    db_close_session (session);
+    {
+      db_close_session (session);
+    }
 
   free_attr_spec (&attr_spec);
 
@@ -2157,8 +2171,8 @@ csql_print_database (void)
       res = getnameinfo ((struct sockaddr *) &sin, sizeof (sin),
 			 converted_host_name, sizeof (converted_host_name),
 			 NULL, 0, NI_NAMEREQD);
-      /* 
-       * if it fails to resolves hostname, 
+      /*
+       * if it fails to resolves hostname,
        * it will use db_get_host_connected()'s result.
        */
       if (res != 0)
@@ -2307,7 +2321,7 @@ csql_get_sys_param (const char *arg_str)
 }
 
 /*
- * csql_get_sys_param()
+ * csql_set_plan_dump()
  *   return:
  *   arg_str(in)
  */
@@ -2846,11 +2860,11 @@ csql_get_message (int message_index)
 }
 
 /*
- * csql_set_column_width_info() - insert column_name and column_width 
+ * csql_set_column_width_info() - insert column_name and column_width
  *                                in csql_column_width_info_list
  *   return: int
- *   column_name(in): column_name 
- *   column_width(in): column_width 
+ *   column_name(in): column_name
+ *   column_width(in): column_width
  */
 int
 csql_set_column_width_info (const char *column_name, int column_width)
@@ -2935,8 +2949,8 @@ csql_set_column_width_info (const char *column_name, int column_width)
 
 /*
  * csql_get_column_width() - get column_width related column_name
- *   return: column_width 
- *   column_name(in): column_name 
+ *   return: column_width
+ *   column_name(in): column_name
  */
 int
 csql_get_column_width (const char *column_name)
@@ -2976,8 +2990,8 @@ csql_get_column_width (const char *column_name)
 /*
  * get_column_width_argument() - get column_name and column_width from argument
  *   return: int
- *   column_name(out): column name 
- *   column_width(out): column width 
+ *   column_name(out): column name
+ *   column_width(out): column width
  *   argument(in): argument
  */
 static int
@@ -3039,4 +3053,145 @@ get_column_width_argument (char **column_name, int *column_width,
   *column_width = result;
 
   return 2;
+}
+
+/*
+ * csql_set_trace() - set auto trace on or off
+ *   return:
+ *   arg_str(in):
+ */
+static void
+csql_set_trace (const char *arg_str)
+{
+  char line[128];
+  char format[128], *p;
+
+  if (arg_str != NULL)
+    {
+      if (strncmp (arg_str, "on", 2) == 0)
+	{
+	  prm_set_bool_value (PRM_ID_QUERY_TRACE, true);
+	  csql_Query_trace = true;
+
+	  if (sscanf (arg_str, "on %127s", format) == 1)
+	    {
+	      p = trim (format);
+
+	      if (strncmp (p, "text", 4) == 0)
+		{
+		  prm_set_integer_value (PRM_ID_QUERY_TRACE_FORMAT,
+					 QUERY_TRACE_TEXT);
+		}
+	      else if (strncmp (p, "json", 4) == 0)
+		{
+		  prm_set_integer_value (PRM_ID_QUERY_TRACE_FORMAT,
+					 QUERY_TRACE_JSON);
+		}
+	    }
+	}
+      else if (!strncmp (arg_str, "off", 3))
+	{
+	  prm_set_bool_value (PRM_ID_QUERY_TRACE, false);
+	  csql_Query_trace = false;
+	}
+    }
+
+  if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true)
+    {
+      if (prm_get_integer_value (PRM_ID_QUERY_TRACE_FORMAT)
+	  == QUERY_TRACE_JSON)
+	{
+	  snprintf (line, 128, "trace on json");
+	}
+      else
+	{
+	  snprintf (line, 128, "trace on text");
+	}
+    }
+  else
+    {
+      snprintf (line, 128, "trace off");
+    }
+
+  csql_append_more_line (0, line);
+  csql_display_more_lines ("Query Trace");
+  csql_free_more_lines ();
+}
+
+/*
+ * csql_display_trace() -
+ *   return:
+ */
+static void
+csql_display_trace (void)
+{
+  const char *stmts = NULL;
+  DB_SESSION *session = NULL;
+  int stmt_id, dummy;
+  DB_QUERY_RESULT *result = NULL;
+  int db_error;
+  DB_VALUE trace;
+  FILE *pf;
+
+  er_clear ();
+  db_set_interrupt (0);
+  db_make_null (&trace);
+
+  stmts = "SHOW TRACE";
+
+  session = db_open_buffer (stmts);
+  if (session == NULL)
+    {
+      return;
+    }
+
+  stmt_id = db_compile_statement (session);
+
+  if (stmt_id < 0)
+    {
+      goto end;
+    }
+
+  db_set_session_mode_sync (session);
+
+  db_error = db_execute_statement (session, stmt_id, &result);
+
+  if (db_error < 0)
+    {
+      goto end;
+    }
+
+  (void) db_query_set_copy_tplvalue (result, 0 /* peek */ );
+
+  if (db_query_first_tuple (result) < 0)
+    {
+      goto end;
+    }
+
+  if (db_query_get_tuple_value (result, 0, &trace) < 0)
+    {
+      goto end;
+    }
+
+  if (DB_VALUE_TYPE (&trace) == DB_TYPE_STRING)
+    {
+      pf = csql_popen (csql_Pager_cmd, csql_Output_fp);
+      fprintf (pf, "\n=== Auto Trace ===\n");
+      fprintf (pf, "%s\n", db_get_char (&trace, &dummy));
+      csql_pclose (pf, csql_Output_fp);
+    }
+
+end:
+
+  if (result != NULL)
+    {
+      db_query_end (result);
+    }
+
+  if (session != NULL)
+    {
+      db_close_session (session);
+    }
+
+  return;
 }

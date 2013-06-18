@@ -371,6 +371,7 @@
 		<row><td>diagactivitytemplate.conf</td><td>CUBRID</td><td>diagactivitytemplate.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\diagactivitytemplate.conf</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>diagstatustemplate.conf</td><td>CUBRID</td><td>diagstatustemplate.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\diagstatustemplate.conf</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>gc64_dll.dll</td><td>CUBRID</td><td>gc64_dll.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\gc64_dll.dll</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>jansson.dll</td><td>CUBRID</td><td>jansson.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\jansson.dll</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>jspserver.jar</td><td>CUBRID</td><td>jspserver.jar</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\java\jspserver.jar</td><td>1</td><td>NewSubFolder8</td></row>
 		<row><td>libcubrid.dll</td><td>CUBRID</td><td>libcubrid.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\libcubrid.dll</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>libesql.dll</td><td>CUBRID</td><td>libesql.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\libesql.dll</td><td>1</td><td>NewSubFolder5</td></row>
