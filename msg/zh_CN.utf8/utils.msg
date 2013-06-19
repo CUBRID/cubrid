@@ -304,8 +304,9 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 49 %s '%s'的值是非法的.\n
 60 \
 createdb: 创建一个数据库.\n\
-usage: %s createdb [OPTION] database-name database-default-locale\n\
+usage: %s createdb [OPTION] database-name database-locale\n\
 \n\
+database-locale format is <language>.<charset>; examples : en_US.iso88591, ko_KR.utf8\n\
 可用选项:\n\
       --db-volume-size=SIZE           设置数据卷大小\n\
                                       默认: db_volume_size 在 cubrid.conf 文件中\n\

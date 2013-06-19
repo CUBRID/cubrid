@@ -304,8 +304,9 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 49 %sの内容の中で「%s」が正しくありません。\n
 60 \
 createdb: データベース生成。\n\
-usage: %s createdb [OPTION] database-name database-default-locale\n\
+usage: %s createdb [OPTION] database-name database-locale\n\
 \n\
+database-locale format is <language>.<charset>; examples : en_US.iso88591, ko_KR.utf8\n\
 使い方:\n\
       --db-volume-size=SIZE           最初に生成されるボリューム(generic)のサイズ\n\
                                       デフォルト: 「cubrid.conf」の「db_volume_size」\n\

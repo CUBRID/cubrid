@@ -304,8 +304,9 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 49 The value of %s '%s' is invalid.\n
 60 \
 createdb: Create a database.\n\
-usage: %s createdb [OPTION] database-name database-default-locale\n\
+usage: %s createdb [OPTION] database-name database-locale\n\
 \n\
+database-locale format is <language>.<charset>; examples : en_US.iso88591, ko_KR.utf8\n\
 valid options:\n\
       --db-volume-size=SIZE           size of first information volume\n\
                                       default: db_volume_size in cubrid.conf\n\

@@ -304,8 +304,9 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 49 %s의 값 '%s'은 유효하지 않습니다.\n
 60 \
 createdb: 데이터베이스 생성.\n\
-usage: %s createdb [OPTION] database-name database-default-locale\n\
+usage: %s createdb [OPTION] database-name database-locale\n\
 \n\
+database-locale format is <language>.<charset>; examples : en_US.iso88591, ko_KR.utf8\n\
 옵션:\n\
       --db-volume-size=SIZE           처음 생성되는 볼륨(generic)의 크기\n\
                                       기본값: cubrid.conf의 db_volume_size의 값\n\

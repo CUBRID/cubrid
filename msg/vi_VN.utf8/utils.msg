@@ -304,8 +304,9 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 49 Giá trị %s '%s' vô hiệu.\n
 60 \
 createdb: Tạo một cơ sở dữ liệu.\n\
-usage: %s createdb [OPTION] database-name database-default-locale\n\
+usage: %s createdb [OPTION] database-name database-locale\n\
 \n\
+database-locale format is <language>.<charset>; examples : en_US.iso88591, ko_KR.utf8\n\
 các tùy chọn hợp lệ:\n\
       --db-volume-size=SIZE           kích cỡ của bộ đĩa thông tin đầu tiên\n\
                                       mặc định: db_volume_size trong cubrid.conf\n\

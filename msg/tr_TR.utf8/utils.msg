@@ -304,8 +304,9 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 49 %s Sayısal değeri '%s' geçersiz. \n
 60 \
 createdb: Bir veritabanı oluştur.\n\
-usage: %s createdb [OPTION] database-name database-default-locale\n\
+usage: %s createdb [OPTION] database-name database-locale\n\
 \n\
+database-locale format is <language>.<charset>; examples : en_US.iso88591, ko_KR.utf8\n\
 geçerli seçenekler:\n\
       --db-volume-size=SIZE           ilk bilgi yoğunluğunun büyüklüğün\
                                       varsayılan: cubrid.conf içinde db_volume_size\n\

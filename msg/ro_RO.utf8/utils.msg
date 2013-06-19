@@ -310,6 +310,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 createdb: Creează o baza de date.\n\
 utilizare: %s createdb [OPTIUNE] <nume-bază-de-date> <localizare>\n\
 \n\
+localizarea este in formatul <limbă>.<charset>; exemple : en_US.iso88591, ko_KR.utf8\n\
 opţiuni valide:\n\
       --db-volume-size=MĂRIME            mărimea primului volum de informaţii\n\
                                          implicit: valoarea lui db_volume_size din cubrid.conf\n\

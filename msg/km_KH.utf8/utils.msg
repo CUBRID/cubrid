@@ -304,8 +304,9 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 49 តំលៃនៃ%s'%s'មោឃ\n
 60 \
 createdb: បង្កើតដែលតាបេស\n\
-usage: %s createdb [OPTION] database-name database-default-locale\n\
+usage: %s createdb [OPTION] database-name database-locale\n\
 \n\
+database-locale format is <language>.<charset>; examples : en_US.iso88591, ko_KR.utf8\n\
 ជម្រើសសុពល:\n\
       --db-volume-size=SIZE           ទំហំនៃvolumeពត៌មានទីមួយ\n\
                                       default: db_volume_size ក្នុង cubrid.conf\n\
