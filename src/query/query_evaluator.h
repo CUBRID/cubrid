@@ -108,6 +108,7 @@ typedef enum
    && ((func_p)->function != PT_NTH_VALUE) \
    && ((func_p)->function != PT_NTILE) \
    && ((func_p)->function != PT_MEDIAN) \
+   && ((func_p)->function != PT_NTILE) \
    && ((func_p)->function != PT_CUME_DIST) \
    && ((func_p)->function != PT_PERCENT_RANK))
 

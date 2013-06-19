@@ -6011,7 +6011,6 @@ prm_tune_parameters (void)
   query_cache_size_in_pages_prm =
     prm_find (PRM_NAME_LIST_MAX_QUERY_CACHE_PAGES, NULL);
 
-#if 0
   /* temporarily modifies the query result cache feature to be disabled
    * in RB-8.2.2. because it is not verified on 64 bit environment.
    */
@@ -6019,7 +6018,6 @@ prm_tune_parameters (void)
     {
       prm_set (query_cache_mode_prm, "0", false);
     }
-#endif
 
   ha_mode_prm = prm_find (PRM_NAME_HA_MODE, NULL);
   ha_server_state_prm = prm_find (PRM_NAME_HA_SERVER_STATE, NULL);
