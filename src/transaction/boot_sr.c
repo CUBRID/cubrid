@@ -3469,6 +3469,56 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
     }
 
   /*
+   * Initialize system locale using values ffrom db_root system table
+   */
+  if (db_charset_db_header == INTL_CODESET_NONE)
+    {
+      /* was unable to read charset from header, use INTL_CODESET_ISO88591;
+       * db_root does not contain fixed CHAR values, it is safe to read it
+       * using ISO charset */
+      (void) lang_set_charset (INTL_CODESET_ISO88591);
+    }
+  else
+    {
+      error_code = lang_set_charset (db_charset_db_header);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+
+  error_code = catcls_get_server_lang_charset (thread_p, &db_charset_db_root,
+					       db_lang, sizeof (db_lang) - 1);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  /* set charset and language using values of "db_root" */
+  error_code = lang_set_charset (db_charset_db_root);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  error_code = lang_set_language (db_lang);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  if (db_charset_db_header >= 0 && db_charset_db_header != db_charset_db_root)
+    {
+      char er_msg[ERR_MSG_SIZE];
+      snprintf (er_msg, sizeof (er_msg) - 1, "Invalid charset in db_root "
+		"system table: expecting %s, found %s",
+		lang_charset_cubrid_name (db_charset_db_header),
+		lang_charset_cubrid_name (db_charset_db_root));
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, er_msg);
+      goto error;
+    }
+
+  /*
    * Now restart the recovery manager and execute any recovery actions
    */
 
@@ -3552,53 +3602,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
     }
 
   logtb_set_to_system_tran_index (thread_p);
-
-  if (db_charset_db_header == INTL_CODESET_NONE)
-    {
-      /* was unable to read charset from header, use INTL_CODESET_ISO88591;
-       * db_root does not contain fixed CHAR values, it is safe to read it
-       * using ISO charset */
-      (void) lang_set_charset (INTL_CODESET_ISO88591);
-    }
-  else
-    {
-      error_code = lang_set_charset (db_charset_db_header);
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
-    }
-
-  error_code = catcls_get_server_lang_charset (thread_p, &db_charset_db_root,
-					       db_lang, sizeof (db_lang) - 1);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-
-  /* set charset and language using values of "db_root" */
-  error_code = lang_set_charset (db_charset_db_root);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-
-  error_code = lang_set_language (db_lang);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-
-  if (db_charset_db_header >= 0 && db_charset_db_header != db_charset_db_root)
-    {
-      char er_msg[ERR_MSG_SIZE];
-      snprintf (er_msg, sizeof (er_msg) - 1, "Invalid charset in db_root "
-		"system table: expecting %s, found %s",
-		lang_charset_cubrid_name (db_charset_db_header),
-		lang_charset_cubrid_name (db_charset_db_root));
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, er_msg);
-      goto error;
-    }
 
   if (!tf_Metaclass_class.n_variable)
     {
