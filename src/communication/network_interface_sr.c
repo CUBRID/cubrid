@@ -318,14 +318,11 @@ server_ping_with_handshake (THREAD_ENTRY * thread_p, unsigned int rid,
       ptr = or_unpack_int (ptr, &client_bit_platform);
       ptr = or_unpack_int (ptr, &client_type);
       ptr = or_unpack_string_nocopy (ptr, &client_host);
-      client_release =
-	css_add_client_version_string (thread_p, client_release);
       if (client_release != NULL)
 	{
-	  client_release =
-	    css_add_client_version_string (thread_p, client_release);
+	  client_release = css_add_client_version_string (thread_p, 
+							  client_release);
 	}
-
     }
   else
     {

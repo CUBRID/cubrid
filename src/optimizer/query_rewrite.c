@@ -2155,6 +2155,7 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
 					       order->info.sort_spec.expr,
 					       order->next)))
 	    {
+#if 0
 	      if (order->info.sort_spec.asc_or_desc !=
 		  match->info.sort_spec.asc_or_desc)
 		{
@@ -2164,6 +2165,7 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
 		  goto exit_on_error;
 		}
 	      else
+#endif
 		{
 		  order->next = pt_remove_from_list (parser,
 						     match, order->next);

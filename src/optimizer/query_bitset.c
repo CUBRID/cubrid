@@ -62,8 +62,7 @@ static const char nbits[] = {
 };
 
 static BITSET_CARRIER empty_set_words[NWORDS] = { 0 };
-BITSET EMPTY_SET = { NULL, empty_set_words, NWORDS, {{0}}
-};
+BITSET EMPTY_SET = { NULL, empty_set_words, NWORDS, {{0}} };
 
 #if defined (CUBRID_DEBUG)
 /*
@@ -83,8 +82,6 @@ set_stats (FILE * fp)
  *       		       BITSET FUNCTIONS                               *
  *                                                                            *
  *****************************************************************************/
-
-
 
 /*
  * bitset_extend () -
@@ -109,10 +106,11 @@ bitset_extend (BITSET * dst, int nwords)
   memset (words + dst->nwords, 0, NBYTES (nwords - dst->nwords));
   dst->nwords = nwords;
   if (dst->setp != dst->set.word)
-    bitset_free (dst->setp);
+    {
+      bitset_free (dst->setp);
+    }
   dst->setp = words;
 }
-
 
 /*
  * bitset_assign () -
@@ -131,7 +129,6 @@ bitset_assign (BITSET * dst, const BITSET * src)
   memcpy (dst->setp, src->setp, NBYTES (src->nwords));
   memset (dst->setp + src->nwords, 0, NBYTES (dst->nwords - src->nwords));
 }
-
 
 /*
  * bitset_add () -
@@ -153,7 +150,6 @@ bitset_add (BITSET * dst, int x)
   dst->setp[n] |= (1L << _BIT (x));
 }
 
-
 /*
  * bitset_remove () -
  *   return:
@@ -171,7 +167,6 @@ bitset_remove (BITSET * dst, int x)
       dst->setp[n] &= ~(1L << _BIT (x));
     }
 }
-
 
 /*
  * bitset_union () -
@@ -197,7 +192,6 @@ bitset_union (BITSET * dst, const BITSET * src)
     }
 }
 
-
 /*
  * bitset_intersect () -
  *   return:
@@ -222,7 +216,6 @@ bitset_intersect (BITSET * dst, const BITSET * src)
     }
 }
 
-
 /*
  * bitset_difference () -
  *   return:
@@ -241,7 +234,6 @@ bitset_difference (BITSET * dst, const BITSET * src)
       dst->setp[nwords] &= ~src->setp[nwords];
     }
 }
-
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
@@ -263,7 +255,6 @@ bitset_invert (BITSET * dst)
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
-
 /*
  * bitset_subset () -
  *   return:
@@ -280,18 +271,21 @@ bitset_subset (const BITSET * r, const BITSET * s)
     {
       nwords -= 1;
       if (s->setp[nwords])
-	return 0;
+	{
+	  return 0;
+	}
     }
   while (nwords)
     {
       nwords -= 1;
       if ((r->setp[nwords] & s->setp[nwords]) != s->setp[nwords])
-	return 0;
+	{
+	  return 0;
+	}
     }
 
   return 1;
 }
-
 
 /*
  * bitset_intersects () -
@@ -309,12 +303,13 @@ bitset_intersects (const BITSET * r, const BITSET * s)
     {
       nwords -= 1;
       if (r->setp[nwords] & s->setp[nwords])
-	return 1;
+	{
+	  return 1;
+	}
     }
 
   return 0;
 }
-
 
 /*
  * bitset_is_empty () -
@@ -331,12 +326,13 @@ bitset_is_empty (const BITSET * s)
     {
       nwords -= 1;
       if (s->setp[nwords])
-	return 0;
+	{
+	  return 0;
+	}
     }
 
   return 1;
 }
-
 
 /*
  * bitset_is_equivalent () -
@@ -356,7 +352,9 @@ bitset_is_equivalent (const BITSET * r, const BITSET * s)
 	{
 	  nwords -= 1;
 	  if (s->setp[nwords])
-	    return 0;
+	    {
+	      return 0;
+	    }
 	}
     }
   else if (r->nwords > s->nwords)
@@ -366,7 +364,9 @@ bitset_is_equivalent (const BITSET * r, const BITSET * s)
 	{
 	  nwords -= 1;
 	  if (r->setp[nwords])
-	    return 0;
+	    {
+	      return 0;
+	    }
 	}
     }
   else
@@ -378,12 +378,13 @@ bitset_is_equivalent (const BITSET * r, const BITSET * s)
     {
       nwords -= 1;
       if (r->setp[nwords] != s->setp[nwords])
-	return 0;
+	{
+	  return 0;
+	}
     }
 
   return 1;
 }
-
 
 /*
  * bitset_cardinality () -
@@ -413,7 +414,6 @@ bitset_cardinality (const BITSET * s)
   return card;
 }
 
-
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * bitset_position () -
@@ -434,20 +434,27 @@ bitset_position (const BITSET * s, int x)
       pos = 0;
 
       for (i = 0, m = _WORD (x); i < m; i++)
-	for (word = s->setp[i]; word; word >>= 4)
-	  pos += nbits[word & 0xf];
+	{
+	  for (word = s->setp[i]; word; word >>= 4)
+	    {
+	      pos += nbits[word & 0xf];
+	    }
+	}
 
       mask = (1L << x) - 1;
       for (word = s->setp[m] & mask; word; word >>= 4)
-	pos += nbits[word & 0xf];
+	{
+	  pos += nbits[word & 0xf];
+	}
     }
   else
-    pos = -1;
+    {
+      pos = -1;
+    }
 
   return pos;
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
-
 
 /*
  * bitset_iterate () -
@@ -464,7 +471,6 @@ bitset_iterate (const BITSET * s, BITSET_ITERATOR * si)
   return bitset_next_member (si);
 }
 
-
 /*
  * bitset_next_member () -
  *   return:
@@ -480,7 +486,9 @@ bitset_next_member (BITSET_ITERATOR * si)
   current = si->next;
 
   if (current < 0)
-    return -1;
+    {
+      return -1;
+    }
 
   nwords = si->set->nwords;
   for (m = _WORD (current); m < nwords; current = _WORDSIZE * ++m)
@@ -500,7 +508,6 @@ bitset_next_member (BITSET_ITERATOR * si)
   return -1;
 }
 
-
 /*
  * bitset_first_member () -
  *   return:
@@ -512,7 +519,6 @@ bitset_first_member (const BITSET * s)
   BITSET_ITERATOR si;
   return bitset_iterate (s, &si);
 }
-
 
 /*
  * bitset_print () -
@@ -532,7 +538,8 @@ bitset_print (const BITSET * s, FILE * fp)
       int i;
       BITSET_ITERATOR si;
 
-      if ((i = bitset_iterate (s, &si)) != -1)
+      i = bitset_iterate (s, &si);
+      if (i != -1)
 	{
 	  (void) fprintf (fp, "%d", i);
 	  while ((i = bitset_next_member (&si)) != -1)
@@ -542,7 +549,6 @@ bitset_print (const BITSET * s, FILE * fp)
 	}
     }
 }
-
 
 /*
  * bitset_init () -
@@ -558,7 +564,6 @@ bitset_init (BITSET * s, QO_ENV * env)
   s->nwords = NWORDS;
   BITSET_CLEAR (*s);
 }
-
 
 /*
  * bitset_delset () -

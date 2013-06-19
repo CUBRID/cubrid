@@ -13245,6 +13245,7 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 						   order->info.sort_spec.expr,
 						   order->next)))
 	{
+#if 0
 	  if (order->info.sort_spec.asc_or_desc !=
 	      match->info.sort_spec.asc_or_desc)
 	    {
@@ -13255,6 +13256,7 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 	      break;
 	    }
 	  else
+#endif
 	    {
 	      order->next = pt_remove_from_list (parser, match, order->next);
 	    }
@@ -15292,6 +15294,7 @@ pt_check_analytic_function (PARSER_CONTEXT * parser, PT_NODE * func,
 	      pt_find_matching_sort_spec (parser, order, order->next,
 					  select_list)))
 	{
+#if 0
 	  if (order->info.sort_spec.asc_or_desc !=
 	      match->info.sort_spec.asc_or_desc)
 	    {
@@ -15302,6 +15305,7 @@ pt_check_analytic_function (PARSER_CONTEXT * parser, PT_NODE * func,
 	      goto error_exit;
 	    }
 	  else
+#endif
 	    {
 	      /* check if we are going to remove the link */
 	      if (link && match == link)

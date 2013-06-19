@@ -13894,7 +13894,7 @@ sm_drop_index (MOP classop, const char *constraint_name)
 	  error = check_catalog_space (classop, class_);
 	  if (error != NO_ERROR)
 	    {
-	      return error;
+	      goto fail_end;
 	    }
 
 	  /*
@@ -13951,8 +13951,7 @@ fail_end:
   if (savepoint_index && error != NO_ERROR
       && error != ER_LK_UNILATERALLY_ABORTED)
     {
-      (void)
-	tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_INDEX);
+      tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_INDEX);
     }
   if (sub_partitions)
     {

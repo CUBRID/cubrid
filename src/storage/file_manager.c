@@ -4429,13 +4429,6 @@ file_get_type (THREAD_ENTRY * thread_p, const VFID * vfid)
   vpid.volid = vfid->volid;
   vpid.pageid = vfid->fileid;
 
-  /*
-   * Technically, this routine should be locking the page with an S_LOCK
-   * in order to read the header, however, since we know that file types
-   * are not changed once the file is created, this is reasonably safe.
-   * This optimization is done because this routine is called frequenty.
-   */
-
   fhdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ,
 			  PGBUF_UNCONDITIONAL_LATCH);
   if (fhdr_pgptr == NULL)
@@ -4446,7 +4439,7 @@ file_get_type (THREAD_ENTRY * thread_p, const VFID * vfid)
   file_type = fhdr->type;
   if (file_type_cache_add_entry (vfid, file_type) != NO_ERROR)
     {
-      return FILE_UNKNOWN_TYPE;
+      file_type = FILE_UNKNOWN_TYPE;
     }
 
   pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
