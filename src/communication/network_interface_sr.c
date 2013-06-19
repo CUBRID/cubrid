@@ -158,7 +158,7 @@ return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid)
    * it means that the user tried to update the database
    * when the server was disabled to modify. (aka standby mode)
    */
-  if (flag_abort)
+  if (flag_abort == true)
     {
       tran_server_unilaterally_abort_tran (thread_p);
     }
@@ -176,7 +176,10 @@ return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid)
       conn->db_error = 0;
     }
 
-  tdes->tran_abort_reason = TRAN_NORMAL;
+  if (tdes != NULL)
+    {
+      tdes->tran_abort_reason = TRAN_NORMAL;
+    }
 }
 
 /*
@@ -318,14 +321,11 @@ server_ping_with_handshake (THREAD_ENTRY * thread_p, unsigned int rid,
       ptr = or_unpack_int (ptr, &client_bit_platform);
       ptr = or_unpack_int (ptr, &client_type);
       ptr = or_unpack_string_nocopy (ptr, &client_host);
-      client_release =
-	css_add_client_version_string (thread_p, client_release);
       if (client_release != NULL)
 	{
-	  client_release =
-	    css_add_client_version_string (thread_p, client_release);
+	  client_release = css_add_client_version_string (thread_p,
+							  client_release);
 	}
-
     }
   else
     {
@@ -5943,8 +5943,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
 						       response_time,
 						       &diff_stats,
 						       queryinfo_string);
-	  event_log_slow_query (thread_p, &info, response_time,
-				&diff_stats);
+	  event_log_slow_query (thread_p, &info, response_time, &diff_stats);
 	}
 
       if (trace_ioreads > 0 && diff_stats.pb_num_ioreads >= trace_ioreads)
