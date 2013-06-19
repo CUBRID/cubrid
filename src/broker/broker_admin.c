@@ -77,8 +77,8 @@ int
 main (int argc, char **argv)
 {
   T_BROKER_INFO br_info[MAX_BROKER_NUM];
-  char admin_log_file[PATH_MAX];
-  char acl_file[PATH_MAX];
+  char admin_log_file[BROKER_PATH_MAX];
+  char acl_file[BROKER_PATH_MAX];
   bool acl_flag;
   int num_broker, master_shm_id;
   int err;

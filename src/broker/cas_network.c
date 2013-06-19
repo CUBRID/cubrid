@@ -51,6 +51,7 @@
 #include "broker_env_def.h"
 #include "cas_execute.h"
 #include "error_code.h"
+#include "broker_util.h"
 
 #if defined(WINDOWS)
 #include "broker_wsa_init.h"
@@ -82,7 +83,7 @@ SOCKET
 #if defined(WINDOWS)
 net_init_env (int *new_port)
 #else /* WINDOWS */
-net_init_env (void)
+net_init_env (char *port_name)
 #endif				/* WINDOWS */
 {
   int one = 1;
@@ -93,7 +94,6 @@ net_init_env (void)
   int n;
 #else /* WINDOWS */
   struct sockaddr_un sock_addr;
-  char *port_name;
 #endif /* WINDOWS */
 
 #if defined(WINDOWS)
@@ -129,11 +129,6 @@ net_init_env (void)
   n = INADDR_ANY;
   memcpy (&sock_addr.sin_addr, &n, sizeof (int));
 #else /* WINDOWS */
-  if ((port_name = getenv (PORT_NAME_ENV_STR)) == NULL)
-    {
-      CLOSE_SOCKET (sock_fd);
-      return INVALID_SOCKET;
-    }
 
   memset (&sock_addr, 0, sizeof (struct sockaddr_un));
   sock_addr.sun_family = AF_UNIX;
@@ -229,9 +224,12 @@ net_connect_proxy (void)
 
 #else /* WINDOWS */
   struct sockaddr_un shard_sock_addr;
-  char *port_name;
+  char port_name[BROKER_PATH_MAX];
 
-  if ((port_name = getenv (PORT_NAME_ENV_STR)) == NULL)
+  ut_get_proxy_port_name (port_name, shm_appl->broker_name,
+			  as_info->proxy_id, BROKER_PATH_MAX);
+
+  if (port_name == NULL)
     {
       return (INVALID_SOCKET);
     }

@@ -34,7 +34,6 @@
 #if defined(CUBRID_SHARD)
 #include "shard_metadata.h"
 #include "shard_shm.h"
-#include "shard_admin_pub.h"
 #include "shard_key_func.h"
 #endif /* CUBRID_SHARD */
 

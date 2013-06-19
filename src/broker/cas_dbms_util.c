@@ -75,14 +75,14 @@ cfg_get_dbinfo (char *alias, char *dbinfo)
   FILE *file;
   char *save, *token;
   char delim[] = "|";
-  char filename[PATH_MAX];
+  char filename[BROKER_PATH_MAX];
   char line[DBINFO_MAX_LENGTH];
   int ret = -1;
 
 #if defined(CAS_FOR_ORACLE)
-  get_cubrid_file (FID_CAS_FOR_ORACLE_DBINFO, filename, PATH_MAX);
+  get_cubrid_file (FID_CAS_FOR_ORACLE_DBINFO, filename, BROKER_PATH_MAX);
 #elif defined(CAS_FOR_MYSQL)
-  get_cubrid_file (FID_CAS_FOR_MYSQL_DBINFO, filename, PATH_MAX);
+  get_cubrid_file (FID_CAS_FOR_MYSQL_DBINFO, filename, BROKER_PATH_MAX);
 #endif
 
   file = fopen (filename, "r");
@@ -121,7 +121,7 @@ int
 cfg_read_dbinfo (DB_INFO ** db_info_p)
 {
   FILE *file;
-  char filename[PATH_MAX];
+  char filename[BROKER_PATH_MAX];
   char line[DBINFO_MAX_LENGTH];
   char *str = NULL;
   DB_INFO *databases, *db, *last;
@@ -129,9 +129,9 @@ cfg_read_dbinfo (DB_INFO ** db_info_p)
   databases = last = NULL;
 
 #if defined(CAS_FOR_ORACLE)
-  get_cubrid_file (FID_CAS_FOR_ORACLE_DBINFO, filename, PATH_MAX);
+  get_cubrid_file (FID_CAS_FOR_ORACLE_DBINFO, filename, BROKER_PATH_MAX);
 #elif defined(CAS_FOR_MYSQL)
-  get_cubrid_file (FID_CAS_FOR_MYSQL_DBINFO, filename, PATH_MAX);
+  get_cubrid_file (FID_CAS_FOR_MYSQL_DBINFO, filename, BROKER_PATH_MAX);
 #endif
   file = fopen (filename, "r");
   if (file == NULL)

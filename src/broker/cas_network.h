@@ -263,7 +263,7 @@ extern SOCKET
 #if defined(WINDOWS)
   net_init_env (int *new_port);
 #else
-  net_init_env (void);
+  net_init_env (char *port_name);
 #endif
 
 typedef struct

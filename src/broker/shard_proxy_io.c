@@ -58,6 +58,8 @@
 #define CAS_READ_ERROR(i)       io_error(i, PROC_TYPE_CAS, READ_TYPE)
 #define CAS_WRITE_ERROR(i)      io_error(i, PROC_TYPE_CAS, WRITE_TYPE)
 
+#define MAX_NUM_NEW_CLIENT	5
+
 #define PROXY_START_PORT	1
 #define GET_CLIENT_PORT(broker_port, proxy_index)	(broker_port) + PROXY_START_PORT + (proxy_index)
 #define GET_CAS_PORT(broker_port, proxy_index, proxy_max_count)	(broker_port) + PROXY_START_PORT + (proxy_max_count) + (proxy_index)
@@ -3290,7 +3292,7 @@ proxy_shard_io_initialize (void)
       return -1;
     }
 
-  shard_info_p = shard_shm_get_first_shard_info (proxy_info_p);
+  shard_info_p = shard_shm_find_shard_info (proxy_info_p, 0);
   max_appl_server = shard_info_p->max_appl_server;
 
   for (i = 0; i < proxy_Shard_io.max_shard; i++)
@@ -4133,7 +4135,7 @@ proxy_io_connect_to_broker (void)
   struct sockaddr_un shard_sock_addr;
   char *port_name;
 
-  if ((port_name = getenv (PORT_NAME_ENV_STR)) == NULL)
+  if ((port_name = shm_as_p->port_name) == NULL)
     {
       return (-1);
     }
@@ -4437,9 +4439,6 @@ int
 proxy_io_initialize (void)
 {
   int error;
-#if defined(WINDOWS)
-  char *port;
-#endif /* WINDOWS */
 
 #if defined(LINUX)
   max_Socket = proxy_get_max_socket ();
@@ -4471,11 +4470,12 @@ proxy_io_initialize (void)
 #endif /* !LINUX */
 
 #if defined(WINDOWS)
-  if ((port = getenv (PORT_NUMBER_ENV_STR)) == NULL)
+  broker_port = shm_as_p->broker_port;
+
+  if (broker_port <= 0)
     {
       return (-1);
     }
-  broker_port = atoi (port);
 
   /* make listener for client */
   error = proxy_io_client_lsnr ();
@@ -4895,7 +4895,7 @@ proxy_get_max_socket (void)
   int max_socket = 0;
   T_SHARD_INFO *first_shard_info_p;
 
-  first_shard_info_p = shard_shm_get_first_shard_info (proxy_info_p);
+  first_shard_info_p = shard_shm_find_shard_info (proxy_info_p, 0);
   assert (first_shard_info_p != NULL);
 
   max_socket = proxy_info_p->max_context;

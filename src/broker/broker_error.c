@@ -172,7 +172,7 @@ get_error_msg (int err_code, char *msg_buf)
   char *p;
   int i;
   char buf[1024];
-  char default_err_msg_file[PATH_MAX];
+  char default_err_msg_file[BROKER_PATH_MAX];
 
   msg_buf[0] = '\0';
   /* temporarily calculation */
@@ -181,7 +181,7 @@ get_error_msg (int err_code, char *msg_buf)
 #ifdef DISPATCHER
   strcpy (default_err_msg_file, ERROR_MSG_FILE);
 #else
-  get_cubrid_file (FID_UV_ERR_MSG, default_err_msg_file, PATH_MAX);
+  get_cubrid_file (FID_UV_ERR_MSG, default_err_msg_file, BROKER_PATH_MAX);
 #endif
 
 #if defined(WINDOWS) && defined(DISPATCHER)

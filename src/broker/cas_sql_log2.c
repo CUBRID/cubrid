@@ -55,7 +55,7 @@ sql_log2_init (char *br_name, int index, int sql_log_value,
 	       bool log_reuse_flag)
 {
 #if !defined(WINDOWS)
-  char filename[PATH_MAX], dirname[PATH_MAX];
+  char filename[BROKER_PATH_MAX], dirname[BROKER_PATH_MAX];
 
   if (!sql_log_value)
     {
@@ -65,10 +65,10 @@ sql_log2_init (char *br_name, int index, int sql_log_value,
   if (log_reuse_flag == false || sql_log2_file[0] == '\0')
     {
       sprintf (sql_log2_file, "%s/%s.%d.%d.%d",
-	       get_cubrid_file (FID_SQL_LOG2_DIR, dirname, PATH_MAX),
+	       get_cubrid_file (FID_SQL_LOG2_DIR, dirname, BROKER_PATH_MAX),
 	       br_name, index + 1, (int) time (NULL), log_count++);
     }
-  get_cubrid_file (FID_SQL_LOG_DIR, dirname, PATH_MAX);
+  get_cubrid_file (FID_SQL_LOG_DIR, dirname, BROKER_PATH_MAX);
   snprintf (filename, sizeof (filename) - 1, "%s%s", dirname, sql_log2_file);
 
   sql_log2_fp = fopen (filename, "a");

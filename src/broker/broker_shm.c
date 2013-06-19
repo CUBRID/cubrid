@@ -44,6 +44,8 @@
 #include "cas_common.h"
 #include "broker_shm.h"
 #include "broker_error.h"
+#include "broker_filename.h"
+#include "broker_util.h"
 
 #if defined(WINDOWS)
 #include "broker_list.h"
@@ -57,11 +59,30 @@
 static int shm_id_cmp_func (void *key1, void *key2);
 static int shm_info_assign_func (T_LIST * node, void *key, void *value);
 static char *shm_id_to_name (int shm_key);
+static int get_host_ip (unsigned char *ip_addr);
 #endif
 
 #if defined(WINDOWS)
 T_LIST *shm_id_list_header = NULL;
 #endif
+
+static void broker_shm_set_as_info (T_SHM_APPL_SERVER * shm_appl,
+				    T_APPL_SERVER_INFO * as_info_p,
+				    T_BROKER_INFO * br_info_p, int as_index);
+#if defined(CUBRID_SHARD)
+static void
+shard_shm_set_shard_conn_info (T_SHM_APPL_SERVER * shm_as_p,
+			       T_SHM_PROXY * shm_proxy_p);
+#endif /* CUBRID_SHARD */
+
+static void get_access_log_file_name (char *access_log_file,
+				      char *access_log_path,
+				      char *broker_name, int len);
+static void get_error_log_file_name (char *access_log_file,
+				     char *error_log_path, char *broker_name,
+				     int len);
+
+static const char *get_appl_server_name (int appl_server_type);
 
 /*
  * name:        uw_shm_open
@@ -416,6 +437,258 @@ uw_shm_destroy (int shm_key)
 #endif
 }
 
+T_SHM_BROKER *
+broker_shm_initialize_shm_broker (int master_shm_id, T_BROKER_INFO * br_info,
+				  int br_num, int acl_flag, char *acl_file)
+{
+  int i, shm_size;
+  T_SHM_BROKER *shm_br = NULL;
+#if defined(WINDOWS)
+  unsigned char ip_addr[4];
+
+  if (get_host_ip (ip_addr) < 0)
+    {
+      return NULL;
+    }
+#endif /* WINDOWS */
+
+  shm_size = sizeof (T_SHM_BROKER) + (br_num - 1) * sizeof (T_BROKER_INFO);
+
+  shm_br =
+    (T_SHM_BROKER *) uw_shm_create (master_shm_id, shm_size, SHM_BROKER);
+
+  if (shm_br == NULL)
+    {
+      return NULL;
+    }
+
+#if defined(WINDOWS)
+  shm_br->magic = uw_shm_get_magic_number ();
+  memcpy (shm_br->my_ip_addr, ip_addr, 4);
+#else /* WINDOWS */
+  shm_br->owner_uid = getuid ();
+
+  /* create a new session */
+  setsid ();
+#endif /* WINDOWS */
+
+  shm_br->num_broker = br_num;
+  shm_br->access_control = acl_flag;
+
+  if (acl_file != NULL)
+    {
+      strncpy (shm_br->access_control_file, acl_file,
+	       sizeof (shm_br->access_control_file) - 1);
+    }
+
+  for (i = 0; i < br_num; i++)
+    {
+      shm_br->br_info[i] = br_info[i];
+
+#if !defined(CUBRID_SHARD)
+      get_access_log_file_name (shm_br->br_info[i].access_log_file,
+				br_info[i].access_log_file, br_info[i].name,
+				CONF_LOG_FILE_LEN);
+#endif /* !CUBRID_SHARD */
+      get_error_log_file_name (shm_br->br_info[i].error_log_file,
+			       br_info[i].error_log_file, br_info[i].name,
+			       CONF_LOG_FILE_LEN);
+    }
+
+  return shm_br;
+}
+
+T_SHM_APPL_SERVER *
+broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p,
+			      T_SHM_PROXY * shm_proxy_p)
+{
+  int as_index;
+  T_SHM_APPL_SERVER *shm_as_p = NULL;
+  T_APPL_SERVER_INFO *as_info_p = NULL;
+
+#if defined(CUBRID_SHARD)
+  T_PROXY_INFO *proxy_info_p = NULL;
+  T_SHARD_INFO *shard_info_p = NULL;
+  short proxy_id, shard_id, shard_cas_id;
+#endif /* CUBRID_SHARD */
+
+  shm_as_p =
+    (T_SHM_APPL_SERVER *) uw_shm_create (br_info_p->appl_server_shm_id,
+					 sizeof (T_SHM_APPL_SERVER),
+					 SHM_APPL_SERVER);
+
+  if (shm_as_p == NULL)
+    {
+      return NULL;
+    }
+
+  shm_as_p->cci_default_autocommit = br_info_p->cci_default_autocommit;
+  shm_as_p->suspend_mode = SUSPEND_NONE;
+  shm_as_p->job_queue_size = br_info_p->job_queue_size;
+  shm_as_p->job_queue[0].id = 0;	/* initialize max heap */
+  shm_as_p->max_prepared_stmt_count = br_info_p->max_prepared_stmt_count;
+
+  shm_as_p->monitor_hang_flag = br_info_p->monitor_hang_flag;
+
+  strcpy (shm_as_p->log_dir, br_info_p->log_dir);
+  strcpy (shm_as_p->slow_log_dir, br_info_p->slow_log_dir);
+  strcpy (shm_as_p->err_log_dir, br_info_p->err_log_dir);
+  strcpy (shm_as_p->broker_name, br_info_p->name);
+
+  shm_as_p->broker_port = br_info_p->port;
+  shm_as_p->num_appl_server = br_info_p->appl_server_num;
+  shm_as_p->sql_log_mode = br_info_p->sql_log_mode;
+  shm_as_p->sql_log_max_size = br_info_p->sql_log_max_size;
+  shm_as_p->long_query_time = br_info_p->long_query_time;
+  shm_as_p->long_transaction_time = br_info_p->long_transaction_time;
+  shm_as_p->appl_server_max_size = br_info_p->appl_server_max_size;
+  shm_as_p->appl_server_hard_limit = br_info_p->appl_server_hard_limit;
+  shm_as_p->session_timeout = br_info_p->session_timeout;
+  shm_as_p->sql_log2 = br_info_p->sql_log2;
+  shm_as_p->slow_log_mode = br_info_p->slow_log_mode;
+#if defined(WINDOWS)
+  shm_as_p->as_port = br_info_p->appl_server_port;
+#endif /* WINDOWS */
+  shm_as_p->query_timeout = br_info_p->query_timeout;
+  shm_as_p->max_string_length = br_info_p->max_string_length;
+  shm_as_p->stripped_column_name = br_info_p->stripped_column_name;
+  shm_as_p->keep_connection = br_info_p->keep_connection;
+  shm_as_p->cache_user_info = br_info_p->cache_user_info;
+  shm_as_p->statement_pooling = br_info_p->statement_pooling;
+  shm_as_p->access_mode = br_info_p->access_mode;
+  shm_as_p->cci_pconnect = br_info_p->cci_pconnect;
+  shm_as_p->access_log = br_info_p->access_log;
+
+  shm_as_p->jdbc_cache = br_info_p->jdbc_cache;
+  shm_as_p->jdbc_cache_only_hint = br_info_p->jdbc_cache_only_hint;
+  shm_as_p->jdbc_cache_life_time = br_info_p->jdbc_cache_life_time;
+
+  strcpy (shm_as_p->preferred_hosts, br_info_p->preferred_hosts);
+  strcpy (shm_as_p->error_log_file, br_info_p->error_log_file);
+  strcpy (shm_as_p->access_log_file, br_info_p->access_log_file);
+  strcpy (shm_as_p->appl_server_name,
+	  get_appl_server_name (br_info_p->appl_server));
+  ut_get_broker_port_name (shm_as_p->port_name, br_info_p->name,
+			   SHM_PROXY_NAME_MAX);
+
+#if defined(CUBRID_SHARD)
+  strncpy (shm_as_p->proxy_log_dir, br_info_p->proxy_log_dir,
+	   sizeof (shm_as_p->proxy_log_dir) - 1);
+
+  shm_as_p->proxy_log_max_size = br_info_p->proxy_log_max_size;
+
+  for (proxy_id = 0; proxy_id < shm_proxy_p->num_proxy; proxy_id++)
+    {
+      proxy_info_p = &shm_proxy_p->proxy_info[proxy_id];
+
+      for (shard_id = 0; shard_id < proxy_info_p->num_shard_conn; shard_id++)
+	{
+	  shard_info_p = &proxy_info_p->shard_info[shard_id];
+
+	  for (shard_cas_id = 0; shard_cas_id < shard_info_p->max_appl_server;
+	       shard_cas_id++)
+	    {
+	      as_info_p =
+		&(shm_as_p->
+		  as_info[shard_cas_id + shard_info_p->as_info_index_base]);
+
+	      as_info_p->proxy_id = proxy_id;
+	      as_info_p->shard_id = shard_id;
+	      as_info_p->shard_cas_id = shard_cas_id;
+
+	      if (shard_cas_id < shard_info_p->min_appl_server)
+		{
+		  as_info_p->advance_activate_flag = 1;
+		}
+	      else
+		{
+		  as_info_p->advance_activate_flag = 0;
+		}
+	    }
+	}
+    }
+
+  shard_shm_set_shard_conn_info (shm_as_p, shm_proxy_p);
+#endif /* CUBRID_SHARD */
+
+  for (as_index = 0; as_index < br_info_p->appl_server_max_num; as_index++)
+    {
+      as_info_p = &(shm_as_p->as_info[as_index]);
+      broker_shm_set_as_info (shm_as_p, as_info_p, br_info_p, as_index);
+    }
+
+  return shm_as_p;
+}
+
+static void
+broker_shm_set_as_info (T_SHM_APPL_SERVER * shm_appl,
+			T_APPL_SERVER_INFO * as_info_p,
+			T_BROKER_INFO * br_info_p, int as_index)
+{
+  as_info_p->service_flag = SERVICE_OFF;
+  as_info_p->last_access_time = time (NULL);
+  as_info_p->transaction_start_time = (time_t) 0;
+
+  as_info_p->mutex_flag[SHM_MUTEX_BROKER] = FALSE;
+  as_info_p->mutex_flag[SHM_MUTEX_ADMIN] = FALSE;
+  as_info_p->mutex_turn = SHM_MUTEX_BROKER;
+
+  as_info_p->num_request = 0;
+  as_info_p->num_requests_received = 0;
+  as_info_p->num_transactions_processed = 0;
+  as_info_p->num_queries_processed = 0;
+  as_info_p->num_long_queries = 0;
+  as_info_p->num_long_transactions = 0;
+  as_info_p->num_error_queries = 0;
+  as_info_p->num_interrupts = 0;
+  as_info_p->num_connect_requests = 0;
+  as_info_p->num_restarts = 0;
+  as_info_p->auto_commit_mode = FALSE;
+  as_info_p->database_name[0] = '\0';
+  as_info_p->database_host[0] = '\0';
+  as_info_p->last_connect_time = 0;
+  as_info_p->num_holdable_results = 0;
+
+  as_info_p->as_id = as_index;
+  return;
+}
+
+#if defined(CUBRID_SHARD)
+static void
+shard_shm_set_shard_conn_info (T_SHM_APPL_SERVER * shm_as_p,
+			       T_SHM_PROXY * shm_proxy_p)
+{
+  T_SHARD_CONN_INFO *shard_conn_info_p;
+  T_SHM_SHARD_CONN *shm_conn_p = NULL;
+  T_SHM_SHARD_USER *shm_user_p = NULL;
+  T_SHARD_CONN *conn_p = NULL;
+  T_SHARD_USER *user_p = NULL;
+  int i;
+
+
+  shm_user_p = &shm_proxy_p->shm_shard_user;
+  shm_conn_p = &shm_proxy_p->shm_shard_conn;
+
+  user_p = &shm_user_p->shard_user[0];
+
+  for (i = 0; i < shm_conn_p->num_shard_conn; i++)
+    {
+      conn_p = &shm_conn_p->shard_conn[i];
+      shard_conn_info_p = &shm_as_p->shard_conn_info[i];
+
+      strncpy (shard_conn_info_p->db_user, user_p->db_user,
+	       sizeof (shard_conn_info_p->db_user));
+      strncpy (shard_conn_info_p->db_name, conn_p->db_name,
+	       sizeof (shard_conn_info_p->db_name));
+      strncpy (shard_conn_info_p->db_host, conn_p->db_conn_info,
+	       sizeof (shard_conn_info_p->db_host));
+      strncpy (shard_conn_info_p->db_password, user_p->db_password,
+	       sizeof (shard_conn_info_p->db_password));
+    }
+}
+#endif /* CUBRID_SHARD */
+
+
 #if defined(WINDOWS)
 void
 uw_shm_detach (void *p)
@@ -472,7 +745,29 @@ shm_id_to_name (int shm_key)
   sprintf (shm_name, "Global\\v3mapfile%d", shm_key);
   return shm_name;
 }
-#endif
+
+static int
+get_host_ip (unsigned char *ip_addr)
+{
+  char hostname[64];
+  struct hostent *hp;
+
+  if (gethostname (hostname, sizeof (hostname)) < 0)
+    {
+      fprintf (stderr, "gethostname error\n");
+      return -1;
+    }
+  if ((hp = gethostbyname (hostname)) == NULL)
+    {
+      fprintf (stderr, "unknown host : %s\n", hostname);
+      return -1;
+    }
+  memcpy (ip_addr, hp->h_addr_list[0], 4);
+
+  return 0;
+}
+#endif /* WINDOWS */
+
 
 #if 0
 static void
@@ -640,3 +935,33 @@ uw_sem_destroy (sem_t * sem)
   return sem_destroy (sem);
 }
 #endif
+
+static void
+get_access_log_file_name (char *access_log_file, char *access_log_path,
+			  char *broker_name, int len)
+{
+  snprintf (access_log_file, len,
+	    "%s/%s.access", access_log_path, broker_name);
+}
+
+static void
+get_error_log_file_name (char *access_log_file, char *error_log_path,
+			 char *broker_name, int len)
+{
+  snprintf (access_log_file, len, "%s/%s.err", error_log_path, broker_name);
+}
+
+static const char *
+get_appl_server_name (int appl_server_type)
+{
+  if (appl_server_type == APPL_SERVER_CAS_ORACLE)
+    {
+      return APPL_SERVER_CAS_ORACLE_NAME;
+    }
+  else if (appl_server_type == APPL_SERVER_CAS_MYSQL)
+    {
+      return APPL_SERVER_CAS_MYSQL_NAME;
+    }
+
+  return APPL_SERVER_CAS_NAME;
+}

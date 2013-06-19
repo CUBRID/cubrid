@@ -57,7 +57,7 @@ static void cas_error_log_backup (void);
 static void cas_log_write_internal (const char *fmt, ...);
 
 static FILE *error_log_fp = NULL;
-static char error_log_filepath[PATH_MAX];
+static char error_log_filepath[BROKER_PATH_MAX];
 static long saved_error_log_fpos = 0;
 
 static int eid = 0;
@@ -66,11 +66,11 @@ static char *
 make_error_log_filename (char *filename_buf,
 			 size_t buf_size, const char *br_name, int as_index)
 {
-  char dirname[PATH_MAX];
+  char dirname[BROKER_PATH_MAX];
 
   assert (filename_buf != NULL);
 
-  get_cubrid_file (FID_CUBRID_ERR_DIR, dirname, PATH_MAX);
+  get_cubrid_file (FID_CUBRID_ERR_DIR, dirname, BROKER_PATH_MAX);
 #if defined(CUBRID_SHARD)
   snprintf (filename_buf, buf_size, "%s%s_CAS_%d_%d_%d.err", dirname, br_name,
 	    shm_proxy_id + 1, shm_shard_id, (as_index) + 1);
@@ -92,7 +92,7 @@ cas_error_log_open (char *br_name, int as_index)
 
   if (br_name != NULL)
     {
-      make_error_log_filename (error_log_filepath, PATH_MAX, br_name,
+      make_error_log_filename (error_log_filepath, BROKER_PATH_MAX, br_name,
 			       as_index);
     }
 
@@ -129,11 +129,11 @@ cas_error_log_close (bool flag)
 static void
 cas_error_log_backup (void)
 {
-  char backup_filepath[PATH_MAX];
+  char backup_filepath[BROKER_PATH_MAX];
 
   assert (error_log_filepath[0] != '\0');
 
-  snprintf (backup_filepath, PATH_MAX, "%s.bak", error_log_filepath);
+  snprintf (backup_filepath, BROKER_PATH_MAX, "%s.bak", error_log_filepath);
 
   unlink (backup_filepath);
   rename (error_log_filepath, backup_filepath);

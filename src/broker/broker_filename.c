@@ -39,7 +39,7 @@
 #include "broker_filename.h"
 #include "environment_variable.h"
 
-static char cubrid_Dir[PATH_MAX] = "";
+static char cubrid_Dir[BROKER_PATH_MAX] = "";
 
 #define NUM_CUBRID_FILE		MAX_CUBRID_FILE
 static T_CUBRID_FILE_INFO cubrid_file[NUM_CUBRID_FILE] = {
@@ -70,7 +70,7 @@ static T_CUBRID_FILE_INFO cubrid_file[NUM_CUBRID_FILE] = {
 void
 set_cubrid_home ()
 {
-  char dirname[PATH_MAX];
+  char dirname[BROKER_PATH_MAX];
   const char *p;
 
   p = getenv_cubrid_broker ();
@@ -127,24 +127,25 @@ set_cubrid_file (T_CUBRID_FILE_ID fid, char *value)
 	{
 	  if (repath)
 	    {
-	      snprintf (cubrid_file[fid].file_name, PATH_MAX, "%s/%s",
+	      snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s/%s",
 			get_cubrid_home (), value);
 	    }
 	  else
 	    {
-	      snprintf (cubrid_file[fid].file_name, PATH_MAX, value);
+	      snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, value);
 	    }
 	}
       else
 	{
 	  if (repath)
 	    {
-	      snprintf (cubrid_file[fid].file_name, PATH_MAX, "%s/%s/",
+	      snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s/%s/",
 			get_cubrid_home (), value);
 	    }
 	  else
 	    {
-	      snprintf (cubrid_file[fid].file_name, PATH_MAX, "%s/", value);
+	      snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s/",
+			value);
 	    }
 	}
       break;
@@ -153,25 +154,26 @@ set_cubrid_file (T_CUBRID_FILE_ID fid, char *value)
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
       if (repath)
 	{
-	  envvar_confdir_file (cubrid_file[fid].file_name, PATH_MAX, value);
+	  envvar_confdir_file (cubrid_file[fid].file_name, BROKER_PATH_MAX,
+			       value);
 	}
       else
 	{
-	  snprintf (cubrid_file[fid].file_name, PATH_MAX, "%s", value);
+	  snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s", value);
 	}
 #else
-      snprintf (cubrid_file[fid].file_name, PATH_MAX, "%s", value);
+      snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s", value);
 #endif
       break;
     default:
       if (repath)
 	{
-	  snprintf (cubrid_file[fid].file_name, PATH_MAX, "%s/%s",
+	  snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s/%s",
 		    get_cubrid_home (), value);
 	}
       else
 	{
-	  snprintf (cubrid_file[fid].file_name, PATH_MAX, value);
+	  snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, value);
 	}
       break;
     }
@@ -266,22 +268,22 @@ get_cubrid_file (T_CUBRID_FILE_ID fid, char *buf, size_t len)
       envvar_confdir_file (buf, len, "databases_mysql.txt");
       break;
     case FID_SHARD_CONF:
-      envvar_confdir_file (buf, PATH_MAX, "shard.conf");
-      snprintf (cubrid_file[fid].file_name, PATH_MAX, buf);
+      envvar_confdir_file (buf, BROKER_PATH_MAX, "shard.conf");
+      snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, buf);
       break;
     case FID_SHARD_DBINFO:
-      envvar_confdir_file (buf, PATH_MAX, "shard_databases.txt");
-      snprintf (cubrid_file[fid].file_name, PATH_MAX, buf);
+      envvar_confdir_file (buf, BROKER_PATH_MAX, "shard_databases.txt");
+      snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, buf);
       break;
     case FID_SHARD_PROXY_LOG_DIR:
-      envvar_logdir_file (buf, PATH_MAX, "broker/proxy_log/");
-      snprintf (cubrid_file[fid].file_name, PATH_MAX, buf);
+      envvar_logdir_file (buf, BROKER_PATH_MAX, "broker/proxy_log/");
+      snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, buf);
       break;
     default:
       break;
     }
 
-  snprintf (cubrid_file[fid].file_name, PATH_MAX, "%s", buf);
+  snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s", buf);
   return buf;
 }
 

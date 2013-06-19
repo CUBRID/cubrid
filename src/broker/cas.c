@@ -809,6 +809,7 @@ main (int argc, char *argv[])
   int new_port;
 #else
   int con_status;
+  int port_name[BROKER_PATH_MAX];
 #endif /* WINDOWS */
   int client_ip_addr;
   char cas_info[CAS_INFO_SIZE] = { CAS_INFO_STATUS_INACTIVE,
@@ -873,7 +874,9 @@ main (int argc, char *argv[])
     }
   srv_sock_fd = net_init_env (&new_port);
 #else /* WINDOWS */
-  srv_sock_fd = net_init_env ();
+  ut_get_as_port_name (port_name, broker_name, shm_as_index, BROKER_PATH_MAX);
+
+  srv_sock_fd = net_init_env (port_name);
 #endif /* WINDOWS */
   if (IS_INVALID_SOCKET (srv_sock_fd))
     {
@@ -2158,18 +2161,7 @@ cas_init ()
       return -1;
     }
 
-  strncpy (broker_name, shm_appl->broker_name, BROKER_NAME_LEN);
-#else
-  if (as_get_my_as_info (broker_name, &shm_as_index, BROKER_NAME_LEN) < 0)
-    {
-      return -1;
-    }
-
-  if (shm_as_index < 0)
-    {
-      return -1;
-    }
-
+#else /* CUBRID_SHARD */
   tmp_p = getenv (APPL_SERVER_SHM_KEY_STR);
   if (tmp_p == NULL)
     {
@@ -2183,19 +2175,28 @@ cas_init ()
     {
       return -1;
     }
+
+  tmp_p = getenv (AS_ID_ENV_STR);
+  if (tmp_p == NULL)
+    {
+      return -1;
+    }
+
+  shm_as_index = strtoul (tmp_p, NULL, 10);
+
   as_info = &(shm_appl->as_info[shm_as_index]);
-#endif /* CUBRID_SHARD */
+#endif /* !CUBRID_SHARD */
+  strncpy (broker_name, shm_appl->broker_name, BROKER_NAME_LEN);
 
   set_cubrid_file (FID_SQL_LOG_DIR, shm_appl->log_dir);
   set_cubrid_file (FID_SLOW_LOG_DIR, shm_appl->slow_log_dir);
   set_cubrid_file (FID_CUBRID_ERR_DIR, shm_appl->err_log_dir);
 
 #if defined(CUBRID_SHARD)
-  as_pid_file_create (broker_name, shm_proxy_id, shm_shard_id, shm_as_index);
+  as_pid_file_create (broker_name, as_info->as_id);
   as_db_err_log_set (broker_name, shm_proxy_id, shm_shard_id, shm_as_index);
 #else /* CUBRID_SHARD */
-  as_pid_file_create (broker_name, PROXY_INVALID_ID, SHARD_INVALID_ID,
-		      shm_as_index);
+  as_pid_file_create (broker_name, as_info->as_id);
   as_db_err_log_set (broker_name, PROXY_INVALID_ID, SHARD_INVALID_ID,
 		     shm_as_index);
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
@@ -2689,50 +2690,11 @@ cas_init_shm (void)
     {
       goto return_error;
     }
+
   as_shm_key = strtoul (p, NULL, 10);
 
   SHARD_ERR ("<CAS> APPL_SERVER_SHM_KEY_STR:[%d:%x]\n", as_shm_key,
 	     as_shm_key);
-
-  p = getenv (PROXY_ID_ENV_STR);
-  if (p == NULL)
-    {
-      goto return_error;
-    }
-  pxy_id = strtoul (p, NULL, 10);
-
-  SHARD_ERR ("<CAS> PROXY_ID_ENV_STR:[%d]\n", pxy_id);
-  shm_proxy_id = pxy_id;
-
-  p = getenv (SHARD_ID_ENV_STR);
-  if (p == NULL)
-    {
-      goto return_error;
-    }
-  shd_id = strtoul (p, NULL, 10);
-
-  SHARD_ERR ("<CAS> SHARD_ID_ENV_STR:[%d]\n", shd_id);
-  shm_shard_id = shd_id;
-
-  p = getenv (SHARD_CAS_ID_ENV_STR);
-  if (p == NULL)
-    {
-      goto return_error;
-    }
-  shard_cas_id = strtoul (p, NULL, 10);
-
-  SHARD_ERR ("<CAS> SHARD_CAS_ID_ENV_STR:[%d]\n", shard_cas_id);
-  shm_as_index = shard_cas_id;
-
-  p = getenv (AS_ID_ENV_STR);
-  if (p == NULL)
-    {
-      goto return_error;
-    }
-  as_id = strtoul (p, NULL, 10);
-
-  SHARD_ERR ("<CAS> AS_ID_ENV_STR:[%d]\n", as_id);
-
   shm_appl =
     (T_SHM_APPL_SERVER *) uw_shm_open (as_shm_key, SHM_APPL_SERVER,
 				       SHM_MODE_ADMIN);
@@ -2742,15 +2704,36 @@ cas_init_shm (void)
       goto return_error;
     }
 
+  p = getenv (AS_ID_ENV_STR);
+  if (p == NULL)
+    {
+      goto return_error;
+    }
+
+  as_id = strtoul (p, NULL, 10);
+  SHARD_ERR ("<CAS> AS_ID_ENV_STR:[%d]\n", as_id);
   as_info = &shm_appl->as_info[as_id];
 
-  return 0;
+  pxy_id = as_info->proxy_id;
+  SHARD_ERR ("<CAS> PROXY_ID:[%d]\n", pxy_id);
+  shm_proxy_id = pxy_id;
 
+  shd_id = as_info->shard_id;
+  SHARD_ERR ("<CAS> SHARD_ID:[%d]\n", shd_id);
+  shm_shard_id = shd_id;
+
+  shard_cas_id = as_info->shard_cas_id;
+  SHARD_ERR ("<CAS> SHARD_CAS_ID:[%d]\n", shard_cas_id);
+
+  shm_as_index = shard_cas_id;
+
+  return 0;
 
 #if 1
   /* SHARD TODO : tuning cur_keep_con parameter */
   as_info->cur_keep_con = 1;
 #endif
+
   return 0;
 return_error:
 
@@ -2766,12 +2749,12 @@ return_error:
 static int
 get_graceful_down_timeout ()
 {
-  if (as_info->graceful_down_flag)
+  if (as_info->advance_activate_flag)
     {
-      return 1 * 60;		/* 1 min */
+      return -1;
     }
 
-  return -1;
+  return 1 * 60;		/* 1 min */
 }
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)

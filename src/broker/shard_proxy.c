@@ -88,25 +88,6 @@ proxy_shm_initialize (void)
 {
   char *p;
 
-  p = getenv (APPL_SERVER_SHM_KEY_STR);
-  if (p == NULL)
-    {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to getenv(APPL_SERVER_SHM_KEY_STR).");
-      goto return_error;
-    }
-  appl_server_shm_id = strtoul (p, NULL, 10);
-
-  shm_as_p =
-    (T_SHM_APPL_SERVER *) uw_shm_open (appl_server_shm_id, SHM_APPL_SERVER,
-				       SHM_MODE_ADMIN);
-  if (shm_as_p == NULL)
-    {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to open shared memory. "
-		 "(SHM_APPL_SERVER, shm_key:%d).", appl_server_shm_id);
-      goto return_error;
-    }
-
   p = getenv (PROXY_ID_ENV_STR);
   if (p == NULL)
     {
@@ -136,6 +117,16 @@ proxy_shm_initialize (void)
   if (proxy_info_p == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to get proxy info.");
+      goto return_error;
+    }
+
+  shm_as_p =
+    (T_SHM_APPL_SERVER *) uw_shm_open (proxy_info_p->appl_server_shm_id,
+				       SHM_APPL_SERVER, SHM_MODE_ADMIN);
+  if (shm_as_p == NULL)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to open shared memory. "
+		 "(SHM_APPL_SERVER, shm_key:%d).", appl_server_shm_id);
       goto return_error;
     }
 

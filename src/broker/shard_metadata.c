@@ -94,8 +94,6 @@ static void shard_metadata_dump_user (FILE * fp,
 static void shard_metadata_dump_key (FILE * fp, T_SHM_SHARD_KEY * shm_key_p);
 static void shard_metadata_dump_conn (FILE * fp,
 				      T_SHM_SHARD_CONN * shm_conn_p);
-
-
 static int shard_metadata_validate (T_BROKER_INFO * br_info_p,
 				    T_SHM_PROXY * shm_proxy_p);
 static int shard_metadata_validate_user (T_SHM_SHARD_USER * shm_user_p);
@@ -142,7 +140,6 @@ shard_metadata_read_user (T_SHM_PROXY * shm_proxy_p, char *db_name,
   shm_user_p = shard_metadata_get_user (shm_proxy_p);
 
   max_user = 1;			/* only one user */
-
   shm_user_p->num_shard_user = max_user;
 
   user_p = &(shm_user_p->shard_user[0]);
@@ -167,7 +164,7 @@ shard_metadata_read_key (const char *filename, T_SHM_PROXY * shm_proxy_p)
   int error = NO_ERROR;
   int nargs;
   int idx_key, idx_range, max_key;
-  char path[PATH_MAX];
+  char path[BROKER_PATH_MAX];
   char line[LINE_MAX], *p;
   char section[LINE_MAX];
   int len;
@@ -181,7 +178,7 @@ shard_metadata_read_key (const char *filename, T_SHM_PROXY * shm_proxy_p)
 
   shm_key_p = shard_metadata_get_key (shm_proxy_p);
 
-  envvar_confdir_file (path, PATH_MAX, filename);
+  envvar_confdir_file (path, BROKER_PATH_MAX, filename);
 
   file = fopen (path, "r");
   if (file == NULL)
@@ -296,7 +293,7 @@ shard_metadata_read_conn (const char *filename, T_SHM_PROXY * shm_proxy_p)
   int nargs;
   int idx_conn, max_conn;
   char line[LINE_MAX], *p;
-  char path[PATH_MAX];
+  char path[BROKER_PATH_MAX];
   int len;
   FILE *file = NULL;
 
@@ -305,7 +302,7 @@ shard_metadata_read_conn (const char *filename, T_SHM_PROXY * shm_proxy_p)
 
   shm_conn_p = shard_metadata_get_conn (shm_proxy_p);
 
-  envvar_confdir_file (path, PATH_MAX, filename);
+  envvar_confdir_file (path, BROKER_PATH_MAX, filename);
 
   file = fopen (path, "r");
   if (file == NULL)
@@ -484,8 +481,7 @@ shard_metadata_initialize (T_BROKER_INFO * br_info, T_SHM_PROXY * shm_proxy_p)
   res = shard_metadata_read_key (br_info->shard_key_file, shm_proxy_p);
   if (res < 0)
     {
-      sprintf (admin_err_msg, "failed to read metadata key [%s]",
-	       br_info->name);
+      fprintf (stderr, "failed to read metadata key [%s]\n", br_info->name);
       return res;
     }
 
@@ -498,7 +494,7 @@ shard_metadata_initialize (T_BROKER_INFO * br_info, T_SHM_PROXY * shm_proxy_p)
     shard_metadata_read_conn (br_info->shard_connection_file, shm_proxy_p);
   if (res < 0)
     {
-      sprintf (admin_err_msg, "failed to read metadata connection [%s]",
+      fprintf (stderr, "failed to read metadata connection [%s]\n",
 	       br_info->name);
       return res;
     }
@@ -515,7 +511,7 @@ shard_metadata_initialize (T_BROKER_INFO * br_info, T_SHM_PROXY * shm_proxy_p)
   res = shard_metadata_validate (br_info, shm_proxy_p);
   if (res < 0)
     {
-      sprintf (admin_err_msg, "failed to metadata validate check [%s]",
+      fprintf (stderr, "failed to metadata validate check [%s]\n",
 	       br_info->name);
       return res;
     }
@@ -862,7 +858,6 @@ shard_metadata_validate_key_function (const char *library_name,
   close_shard_key_function ();
   return 0;
 }
-
 
 T_SHARD_KEY *
 shard_metadata_bsearch_key (T_SHM_SHARD_KEY * shm_key_p,

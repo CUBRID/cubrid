@@ -1115,7 +1115,7 @@ shard_stmt_initialize (int initial_size)
       return -1;
     }
 
-  shard_info_p = shard_shm_get_first_shard_info (proxy_info_p);
+  shard_info_p = shard_shm_find_shard_info (proxy_info_p, 0);
 
   mem_size = initial_size * sizeof (T_SHARD_STMT);
   shard_Stmt.stmt_ent = (T_SHARD_STMT *) malloc (mem_size);

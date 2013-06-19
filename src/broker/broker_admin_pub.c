@@ -142,28 +142,43 @@ static int shard_shm_set_param_as_in_proxy (T_SHM_PROXY * proxy_p,
 					    int as_number);
 static int shard_shm_check_max_file_open_limit (T_BROKER_INFO * br_info,
 						T_SHM_PROXY * proxy_p);
-#else /* CUBRID_SHARD */
-static int br_activate (T_BROKER_INFO *, int, T_SHM_BROKER *);
+#endif /* CUBRID_SHARD */
+static void rename_access_log_file_name (char *access_log_file,
+					 struct tm *ct);
+static void rename_error_log_file_name (char *error_log_file, struct tm *ct);
+
+static int br_activate (T_BROKER_INFO * br_info, int master_shm_id,
+			T_SHM_BROKER * shm_br);
 static int br_inactivate (T_BROKER_INFO *);
-static void as_activate (T_APPL_SERVER_INFO *, int, T_BROKER_INFO *, char **,
-			 int, T_SHM_APPL_SERVER *, T_SHM_BROKER *);
-static void as_inactivate (int, char *br_name, int as_index);
+static void as_activate (T_SHM_BROKER * shm_br, T_BROKER_INFO * br_info,
+			 T_SHM_APPL_SERVER * shm_as_p,
+			 T_APPL_SERVER_INFO * as_info_p, int as_idex,
+			 char **env, int env_num);
+static void as_inactivate (T_APPL_SERVER_INFO * as_info_p, char *broker_name);
+
 static void free_env (char **env, int env_num);
 static char **make_env (char *env_file, int *env_num);
 static const char *get_appl_server_name (int appl_server_type, char **env,
 					 int env_num);
-#endif /* !CUBRID_SHARD */
 static int broker_create_dir (const char *new_dir);
+
+#if defined(CUBRID_SHARD)
+static int
+proxy_activate (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy_p,
+		T_SHM_APPL_SERVER * shm_as_p, char **env, int env_num);
+static int
+proxy_activate_internal (int proxy_shm_id, T_SHM_APPL_SERVER * shm_as_p,
+			 T_SHM_PROXY * shm_proxy_p, int proxy_id, char **env,
+			 int env_num);
+static void proxy_inactivate (T_BROKER_INFO * br_info_p,
+			      T_PROXY_INFO * proxy_info_p);
+#endif /* !CUBRID_SHARD */
 
 #if !defined(WINDOWS)
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int get_cubrid_version (void);
 #endif
 #endif /* !WINDOWS */
-
-#if defined(WINDOWS)
-static int admin_get_host_ip (unsigned char *ip_addr);
-#endif /* WINDOWS */
 
 char admin_err_msg[ADMIN_ERR_MSG_SIZE];
 
@@ -187,7 +202,7 @@ unix_style_path (char *path)
 static int
 broker_create_dir (const char *new_dir)
 {
-  char *p, path[PATH_MAX];
+  char *p, path[BROKER_PATH_MAX];
 
   if (new_dir == NULL)
     return -1;
@@ -252,28 +267,12 @@ int
 admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id,
 		 bool acl_flag, char *acl_file)
 {
-  T_SHM_BROKER *shm_br;
-  int shm_size, i;
+  int i;
   int res = 0;
-#if defined(WINDOWS)
-  unsigned char ip_addr[4];
-#endif /* WINDOWS */
-  char path[PATH_MAX];
-
-#if defined(CUBRID_SHARD)
-  char *shm_metadata_p = NULL;
+  char path[BROKER_PATH_MAX];
+  T_SHM_BROKER *shm_br;
   T_SHM_APPL_SERVER *shm_as_p = NULL;
   T_SHM_PROXY *shm_proxy_p = NULL;
-  T_PROXY_INFO *proxy_info_p;
-  int j;
-#endif /* CUBRID_SHARD */
-
-#if defined(WINDOWS)
-  if (admin_get_host_ip (ip_addr) < 0)
-    {
-      return -1;
-    }
-#endif /* WINDOWS */
 
   if (br_num <= 0)
     {
@@ -282,15 +281,20 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id,
       return -1;
     }
   chdir ("..");
-  broker_create_dir (get_cubrid_file (FID_VAR_DIR, path, PATH_MAX));
-  broker_create_dir (get_cubrid_file (FID_CAS_TMP_DIR, path, PATH_MAX));
-  broker_create_dir (get_cubrid_file (FID_AS_PID_DIR, path, PATH_MAX));
-  broker_create_dir (get_cubrid_file (FID_SQL_LOG_DIR, path, PATH_MAX));
-  broker_create_dir (get_cubrid_file (FID_SLOW_LOG_DIR, path, PATH_MAX));
-  broker_create_dir (get_cubrid_file (FID_CUBRID_ERR_DIR, path, PATH_MAX));
+  broker_create_dir (get_cubrid_file (FID_VAR_DIR, path, BROKER_PATH_MAX));
+  broker_create_dir (get_cubrid_file
+		     (FID_CAS_TMP_DIR, path, BROKER_PATH_MAX));
+  broker_create_dir (get_cubrid_file (FID_AS_PID_DIR, path, BROKER_PATH_MAX));
+  broker_create_dir (get_cubrid_file
+		     (FID_SQL_LOG_DIR, path, BROKER_PATH_MAX));
+  broker_create_dir (get_cubrid_file
+		     (FID_SLOW_LOG_DIR, path, BROKER_PATH_MAX));
+  broker_create_dir (get_cubrid_file
+		     (FID_CUBRID_ERR_DIR, path, BROKER_PATH_MAX));
 #if !defined(WINDOWS)
-  broker_create_dir (get_cubrid_file (FID_SQL_LOG2_DIR, path, PATH_MAX));
-  broker_create_dir (get_cubrid_file (FID_SOCK_DIR, path, PATH_MAX));
+  broker_create_dir (get_cubrid_file
+		     (FID_SQL_LOG2_DIR, path, BROKER_PATH_MAX));
+  broker_create_dir (get_cubrid_file (FID_SOCK_DIR, path, BROKER_PATH_MAX));
 #endif /* !WINDOWS */
 
 
@@ -317,74 +321,55 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id,
       broker_create_dir (br_info[i].proxy_log_dir);
 #endif /* CUBRID_SHARD */
     }
-  chdir (envvar_bindir_file (path, PATH_MAX, ""));
+  chdir (envvar_bindir_file (path, BROKER_PATH_MAX, ""));
 
   /* create master shared memory */
-  shm_size = sizeof (T_SHM_BROKER) + (br_num - 1) * sizeof (T_BROKER_INFO);
-
-  shm_br =
-    (T_SHM_BROKER *) uw_shm_create (master_shm_id, shm_size, SHM_BROKER);
+  shm_br = broker_shm_initialize_shm_broker (master_shm_id, br_info, br_num,
+					     acl_flag, acl_file);
 
   if (shm_br == NULL)
     {
-      strcpy (admin_err_msg, "Cannot create shared memory");
+      strcpy (admin_err_msg, "failed to initialize broker shared memory");
+      uw_shm_destroy (master_shm_id);
       return -1;
     }
 
-#if defined(WINDOWS)
-  shm_br->magic = uw_shm_get_magic_number ();
-  memcpy (shm_br->my_ip_addr, ip_addr, 4);
-#else /* WINDOWS */
-  shm_br->owner_uid = getuid ();
-
-  /* create a new session */
-  setsid ();
-#endif /* WINDOWS */
-
-  shm_br->num_broker = br_num;
-  /* create appl server shared memory */
   for (i = 0; i < br_num; i++)
     {
-#if defined(CUBRID_SHARD)
-      shm_as_p = NULL;
-      shm_proxy_p = NULL;
-#endif
-      shm_br->br_info[i] = br_info[i];
-#if !defined(CUBRID_SHARD)
-      snprintf (shm_br->br_info[i].access_log_file, CONF_LOG_FILE_LEN - 1,
-		"%s/%s.access", br_info[i].access_log_file, br_info[i].name);
-#endif /* !CUBRID_SHARD */
-      snprintf (shm_br->br_info[i].error_log_file, CONF_LOG_FILE_LEN - 1,
-		"%s/%s.err", br_info[i].error_log_file, br_info[i].name);
-
-      shm_br->access_control = acl_flag;
-
-      if (acl_file != NULL)
-	{
-	  strncpy (shm_br->access_control_file, acl_file,
-		   sizeof (shm_br->access_control_file) - 1);
-	}
+      T_SHM_APPL_SERVER *shm_as_p = NULL;
+      T_SHM_PROXY *shm_proxy_p = NULL;
 
       if (shm_br->br_info[i].service_flag == ON)
 	{
 #if defined(CUBRID_SHARD)
-	  shm_proxy_p = shard_shm_proxy_initialize (&(shm_br->br_info[i]));
+	  shm_proxy_p =
+	    shard_shm_initialize_shm_proxy (&(shm_br->br_info[i]));
 
 	  if (shm_proxy_p == NULL)
 	    {
-	      uw_shm_destroy (shm_br->br_info[i].proxy_shm_id);
+	      sprintf (admin_err_msg,
+		       "%s: failed to initialize proxy shared memory.",
+		       br_info->name);
 
 	      res = -1;
 	      break;
 	    }
 
+	  if (shard_shm_check_max_file_open_limit (&shm_br->br_info[i],
+						   shm_proxy_p) < 0)
+	    {
+	      res = -1;
+	      break;
+	    }
+#endif
 	  shm_as_p =
-	    shard_shm_as_initialize (&(shm_br->br_info[i]), shm_proxy_p);
+	    broker_shm_initialize_shm_as (&(shm_br->br_info[i]), shm_proxy_p);
 
 	  if (shm_as_p == NULL)
 	    {
-	      uw_shm_destroy (shm_br->br_info[i].proxy_shm_id);
-	      uw_shm_destroy (shm_br->br_info[i].appl_server_shm_id);
+	      sprintf (admin_err_msg,
+		       "%s: failed to initialize appl server shared memory.",
+		       br_info->name);
 
 	      res = -1;
 	      break;
@@ -393,44 +378,27 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id,
 	  if (access_control_set_shm (shm_as_p, &shm_br->br_info[i],
 				      shm_br, admin_err_msg) < 0)
 	    {
-	      uw_shm_destroy (shm_br->br_info[i].proxy_shm_id);
-	      uw_shm_destroy (shm_br->br_info[i].appl_server_shm_id);
-
 	      res = -1;
 	      break;
 	    }
 
-
-	  if (shard_shm_check_max_file_open_limit (&shm_br->br_info[i],
-						   shm_proxy_p) < 0)
-	    {
-	      uw_shm_destroy (shm_br->br_info[i].proxy_shm_id);
-	      uw_shm_destroy (shm_br->br_info[i].appl_server_shm_id);
-
-	      res = -1;
-	      break;
-	    }
-
-	  for (j = 0; j < shm_proxy_p->num_proxy; j++)
-	    {
-	      proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, j);
-
-	      snprintf (proxy_info_p->access_log_file, CONF_LOG_FILE_LEN - 1,
-			"%s/%s_%d.access", CUBRID_BASE_DIR, br_info[i].name,
-			j);
-	      dir_repath (proxy_info_p->access_log_file, CONF_LOG_FILE_LEN);
-	    }
-
-	  res =
-	    shard_process_activate (master_shm_id, &(shm_br->br_info[i]),
-				    shm_as_p, shm_proxy_p);
-#else
 	  res = br_activate (&(shm_br->br_info[i]), master_shm_id, shm_br);
-#endif
 	  if (res < 0)
 	    {
 	      break;
 	    }
+
+	  if (shm_as_p)
+	    {
+	      uw_shm_detach (shm_as_p);
+	    }
+#if defined(CUBRID_SHARD)
+	  if (shm_proxy_p)
+	    {
+	      uw_shm_detach (shm_proxy_p);
+	    }
+#endif /* CUBRID_SHARD */
+
 	}
     }
 
@@ -439,32 +407,37 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id,
       char err_msg_backup[ADMIN_ERR_MSG_SIZE];
       memcpy (err_msg_backup, admin_err_msg, ADMIN_ERR_MSG_SIZE);
 
-      for (--i; i >= 0; i--)
+      for (i; i >= 0; i--)
 	{
-#if defined(CUBRID_SHARD)
-	  shard_process_inactivate (&(shm_br->br_info[i]));
-#else
 	  br_inactivate (&(shm_br->br_info[i]));
-#endif /* CUBRID_SHARD */
+
+	  uw_shm_destroy ((shm_br->br_info[i].appl_server_shm_id));
+#if defined(CUBRID_SHARD)
+	  uw_shm_destroy ((shm_br->br_info[i].proxy_shm_id));
+#endif
 	}
+
       memcpy (admin_err_msg, err_msg_backup, ADMIN_ERR_MSG_SIZE);
     }
-
-  uw_shm_detach (shm_br);
-#if defined(CUBRID_SHARD)
-  if (shm_as_p)
+  if (shm_br)
     {
-      uw_shm_detach (shm_as_p);
+      uw_shm_detach (shm_br);
     }
-  if (shm_proxy_p)
-    {
-      uw_shm_detach (shm_proxy_p);
-    }
-#endif /* CUBRID_SHARD */
 
   if (res < 0)
     {
       uw_shm_destroy (master_shm_id);
+
+      if (shm_as_p)
+	{
+	  uw_shm_detach (shm_as_p);
+	}
+#if defined(CUBRID_SHARD)
+      if (shm_proxy_p)
+	{
+	  uw_shm_detach (shm_proxy_p);
+	}
+#endif /* CUBRID_SHARD */
     }
 #if defined(WINDOWS)
   else
@@ -484,7 +457,8 @@ int
 admin_stop_cmd (int master_shm_id)
 {
   T_SHM_BROKER *shm_br;
-  int i;
+  int i, res;
+  char err_msg_backup[ADMIN_ERR_MSG_SIZE];
 
   shm_br = (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER,
 					 SHM_MODE_ADMIN);
@@ -502,17 +476,32 @@ admin_stop_cmd (int master_shm_id)
       return -1;
     }
 #endif /* WINDOWS */
+
+  memcpy (err_msg_backup, admin_err_msg, ADMIN_ERR_MSG_SIZE);
+
   for (i = 0; i < MAX_BROKER_NUM && i < shm_br->num_broker; i++)
     {
       if (shm_br->br_info[i].service_flag == ON)
 	{
+	  res = br_inactivate (&(shm_br->br_info[i]));
+	  if (res < 0)
+	    {
+	      sprintf (admin_err_msg, "Cannot inactivate broker [%s]",
+		       shm_br->br_info[i].name);
+	      uw_shm_detach (shm_br);
+	      return -1;
+	    }
+	  else
+	    {
+	      uw_shm_destroy ((shm_br->br_info[i].appl_server_shm_id));
 #if defined(CUBRID_SHARD)
-	  shard_process_inactivate (&shm_br->br_info[i]);
-#else
-	  br_inactivate (&(shm_br->br_info[i]));
-#endif /* CUBRID_SHARD */
+	      uw_shm_destroy ((shm_br->br_info[i].proxy_shm_id));
+#endif
+	    }
 	}
     }
+
+  memcpy (admin_err_msg, err_msg_backup, ADMIN_ERR_MSG_SIZE);
 
   shm_br->magic = 0;
 #if defined(WINDOWS)
@@ -595,9 +584,8 @@ admin_add_cmd (int master_shm_id, const char *broker)
 
   env = make_env (shm_br->br_info[br_index].source_env, &env_num);
 
-  as_activate (&(shm_appl_server->as_info[as_index]),
-	       as_index, &(shm_br->br_info[br_index]),
-	       env, env_num, shm_appl_server, shm_br);
+  as_activate (shm_br, &(shm_br->br_info[br_index]), shm_appl_server,
+	       &(shm_appl_server->as_info[as_index]), as_index, env, env_num);
 
   shm_appl_server->as_info[as_index].service_flag = SERVICE_ON;
 
@@ -622,11 +610,10 @@ admin_restart_cmd (int master_shm_id, const char *broker, int as_index)
   int pid;
   char **env = NULL;
   int env_num;
-  char port_str[PATH_MAX], appl_name_str[64];
-  char access_log_env_str[256], error_log_env_str[256];
+  char appl_name_str[64];
   char appl_server_shm_key_str[32];
   char appl_name[APPL_SERVER_NAME_MAX_SIZE];
-  char buf[PATH_MAX];
+  char buf[BROKER_PATH_MAX];
 #if !defined(WINDOWS)
   char argv0[128];
 #endif /* !WINDOWS */
@@ -681,11 +668,9 @@ admin_restart_cmd (int master_shm_id, const char *broker, int as_index)
 
   if (IS_APPL_SERVER_TYPE_CAS (shm_br->br_info[br_index].appl_server))
     {
-      /* proxy_id and shard_id argument is only use in CUBRID SHARD */
-      /* so, please set PROXY_INVALID_ID and SHARD_INVALID_ID in normal Broker */
-      ut_kill_process (shm_appl->as_info[as_index].pid,
-		       shm_br->br_info[br_index].name, PROXY_INVALID_ID,
-		       SHARD_INVALID_ID, as_index);
+      ut_kill_as_process (shm_appl->as_info[as_index].pid,
+			  shm_br->br_info[br_index].name, as_index);
+
       shm_appl->as_info[as_index].uts_status = UTS_STATUS_BUSY;
       uw_shm_detach (shm_appl);
       uw_shm_detach (shm_br);
@@ -708,11 +693,8 @@ admin_restart_cmd (int master_shm_id, const char *broker, int as_index)
 
   if (shm_appl->as_info[as_index].pid)
     {
-      /* proxy_id and shard_id argument is only use in CUBRID SHARD */
-      /* so, please set PROXY_INVALID_ID and SHARD_INVALID_ID in normal Broker */
-      ut_kill_process (shm_appl->as_info[as_index].pid,
-		       shm_br->br_info[br_index].name, PROXY_INVALID_ID,
-		       SHARD_INVALID_ID, as_index);
+      ut_kill_as_process (shm_appl->as_info[as_index].pid,
+			  shm_br->br_info[br_index].name, as_index);
     }
 
   SLEEP_SEC (1);
@@ -739,22 +721,10 @@ admin_restart_cmd (int master_shm_id, const char *broker, int as_index)
 	    putenv (env[i]);
 	}
 
-      sprintf (port_str, "%s=%s%s.%d", PORT_NAME_ENV_STR,
-	       get_cubrid_file (FID_SOCK_DIR, buf, PATH_MAX),
-	       shm_br->br_info[br_index].name, as_index + 1);
-      putenv (port_str);
       sprintf (appl_server_shm_key_str, "%s=%d", APPL_SERVER_SHM_KEY_STR,
 	       shm_br->br_info[br_index].appl_server_shm_id);
       putenv (appl_server_shm_key_str);
       strcpy (appl_name, shm_appl->appl_server_name);
-      sprintf (appl_name_str, "%s=%s", APPL_NAME_ENV_STR, appl_name);
-      putenv (appl_name_str);
-      sprintf (access_log_env_str, "%s=%s",
-	       ACCESS_LOG_ENV_STR, shm_br->br_info[br_index].access_log_file);
-      putenv (access_log_env_str);
-      sprintf (error_log_env_str, "%s=%s",
-	       ERROR_LOG_ENV_STR, shm_br->br_info[br_index].error_log_file);
-      putenv (error_log_env_str);
 
 #if !defined(WINDOWS)
       snprintf (argv0, sizeof (argv0) - 1, "%s_%s_%d",
@@ -897,9 +867,8 @@ admin_drop_cmd (int master_shm_id, const char *broker)
   (shm_br->br_info[br_index].appl_server_num)--;
   (shm_appl_server->num_appl_server)--;
 
-  as_inactivate (shm_appl_server->as_info[as_index].pid,
-		 shm_br->br_info[br_index].name, as_index);
-  shm_appl_server->as_info[as_index].pid = 0;
+  as_inactivate (&shm_appl_server->as_info[as_index],
+		 shm_br->br_info[br_index].name);
 
 finale:
   uw_shm_detach (shm_br);
@@ -912,15 +881,10 @@ finale:
 int
 admin_on_cmd (int master_shm_id, const char *broker_name)
 {
-  int i;
+  int i, res = 0;
   T_SHM_BROKER *shm_br;
-  int res = 0;
-#if defined(CUBRID_SHARD)
-  int j;
   T_SHM_APPL_SERVER *shm_as_p = NULL;
   T_SHM_PROXY *shm_proxy_p = NULL;
-  T_PROXY_INFO *proxy_info_p;
-#endif /* CUBRID_SHARD */
 
   shm_br =
     (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_ADMIN);
@@ -946,50 +910,67 @@ admin_on_cmd (int master_shm_id, const char *broker_name)
 	    {
 #if defined(CUBRID_SHARD)
 	      shm_proxy_p =
-		shard_shm_proxy_initialize (&(shm_br->br_info[i]));
+		shard_shm_initialize_shm_proxy (&(shm_br->br_info[i]));
 
 	      if (shm_proxy_p == NULL)
 		{
-		  uw_shm_destroy (shm_br->br_info[i].proxy_shm_id);
+		  sprintf (admin_err_msg, "%s: failed to initialize proxy",
+			   broker_name);
 
 		  res = -1;
 		  break;
 		}
 
+	      if (shard_shm_check_max_file_open_limit (&shm_br->br_info[i],
+						       shm_proxy_p) < 0)
+		{
+		  res = -1;
+		  break;
+		}
+
+#endif /* CUBRID_SHARD */
 	      shm_as_p =
-		shard_shm_as_initialize (&(shm_br->br_info[i]), shm_proxy_p);
+		broker_shm_initialize_shm_as (&(shm_br->br_info[i]),
+					      shm_proxy_p);
 
 	      if (shm_as_p == NULL)
 		{
-		  uw_shm_destroy (shm_br->br_info[i].proxy_shm_id);
-		  uw_shm_destroy (shm_br->br_info[i].appl_server_shm_id);
+		  sprintf (admin_err_msg, "%s: cannot create shared memory",
+			   broker_name);
 
 		  res = -1;
 		  break;
 		}
 
-	      for (j = 0; j < shm_proxy_p->num_proxy; j++)
+	      if (access_control_set_shm (shm_as_p, &shm_br->br_info[i],
+					  shm_br, admin_err_msg) < 0)
 		{
-		  proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, j);
-
-		  snprintf (proxy_info_p->access_log_file,
-			    CONF_LOG_FILE_LEN - 1, "%s/%s_%d.access",
-			    CUBRID_BASE_DIR, shm_br->br_info[i].name, j);
-		  dir_repath (proxy_info_p->access_log_file,
-			      CONF_LOG_FILE_LEN);
+		  res = -1;
+		  break;
 		}
 
 	      res =
-		shard_process_activate (master_shm_id, &(shm_br->br_info[i]),
-					shm_as_p, shm_proxy_p);
-#else
-	      res =
 		br_activate (&(shm_br->br_info[i]), master_shm_id, shm_br);
-#endif /* CUBRID_SHARD */
 	    }
 	  break;
 	}
     }
+
+  if (res < 0)
+    {
+      char err_msg_backup[ADMIN_ERR_MSG_SIZE];
+      memcpy (err_msg_backup, admin_err_msg, ADMIN_ERR_MSG_SIZE);
+
+      br_inactivate (&(shm_br->br_info[i]));
+
+      uw_shm_destroy ((shm_br->br_info[i].appl_server_shm_id));
+#if defined(CUBRID_SHARD)
+      uw_shm_destroy ((shm_br->br_info[i].proxy_shm_id));
+#endif /* CUBRID_SHARD */
+
+      memcpy (admin_err_msg, err_msg_backup, ADMIN_ERR_MSG_SIZE);
+    }
+
   if (i >= shm_br->num_broker)
     {
       sprintf (admin_err_msg, "Cannot find broker [%s]", broker_name);
@@ -1027,7 +1008,7 @@ admin_on_cmd (int master_shm_id, const char *broker_name)
 int
 admin_off_cmd (int master_shm_id, const char *broker_name)
 {
-  int i;
+  int i, res;
   T_SHM_BROKER *shm_br;
 
   shm_br =
@@ -1060,15 +1041,26 @@ admin_off_cmd (int master_shm_id, const char *broker_name)
 	    }
 	  else
 	    {
+	      res = br_inactivate (&(shm_br->br_info[i]));
+	      if (res < 0)
+		{
+		  sprintf (admin_err_msg, "Cannot inactivate broker [%s]",
+			   broker_name);
+		  uw_shm_detach (shm_br);
+		  return -1;
+		}
+	      else
+		{
+		  uw_shm_destroy ((shm_br->br_info[i].appl_server_shm_id));
 #if defined(CUBRID_SHARD)
-	      shard_process_inactivate (&shm_br->br_info[i]);
-#else
-	      br_inactivate (&(shm_br->br_info[i]));
+		  uw_shm_destroy ((shm_br->br_info[i].proxy_shm_id));
 #endif /* CUBRID_SHARD */
+		}
 	    }
 	  break;
 	}
     }
+
   if (i >= shm_br->num_broker)
     {
       sprintf (admin_err_msg, "Cannot find broker [%s]", broker_name);
@@ -1228,14 +1220,11 @@ admin_reset_cmd (int master_shm_id, const char *broker_name)
   bool reset_next = FALSE;
   int i, j, k, as_index, br_index;
   T_SHM_BROKER *shm_br;
+  T_SHM_APPL_SERVER *shm_as_p;
 #if defined(CUBRID_SHARD)
-  T_BROKER_INFO *br_info_p;
   T_SHM_PROXY *proxy_p = NULL;
   T_PROXY_INFO *proxy_info_p;
   T_SHARD_INFO *shard_info_p;
-  T_SHM_APPL_SERVER *shm_as_p;
-#else
-  T_SHM_APPL_SERVER *shm_appl;
 #endif /* CUBRID_SHARD */
 
   shm_br =
@@ -1274,11 +1263,10 @@ admin_reset_cmd (int master_shm_id, const char *broker_name)
       return -1;
     }
 
-#if defined(CUBRID_SHARD)
-  br_info_p = &(shm_br->br_info[br_index]);
   shm_as_p =
-    (T_SHM_APPL_SERVER *) uw_shm_open (br_info_p->appl_server_shm_id,
-				       SHM_APPL_SERVER, SHM_MODE_ADMIN);
+    (T_SHM_APPL_SERVER *) uw_shm_open (shm_br->br_info[br_index].
+				       appl_server_shm_id, SHM_APPL_SERVER,
+				       SHM_MODE_ADMIN);
   if (shm_as_p == NULL)
     {
       SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
@@ -1286,10 +1274,10 @@ admin_reset_cmd (int master_shm_id, const char *broker_name)
       uw_shm_detach (shm_br);
       return -1;
     }
-
+#if defined(CUBRID_SHARD)
   proxy_p =
-    (T_SHM_PROXY *) uw_shm_open (br_info_p->proxy_shm_id, SHM_PROXY,
-				 SHM_MODE_ADMIN);
+    (T_SHM_PROXY *) uw_shm_open (shm_br->br_info[br_index].proxy_shm_id,
+				 SHM_PROXY, SHM_MODE_ADMIN);
 
   if (proxy_p == NULL)
     {
@@ -1345,29 +1333,16 @@ admin_reset_cmd (int master_shm_id, const char *broker_name)
 	    }
 	}
     }
+
   uw_shm_detach (proxy_p);
+#else /* CUBRID_SHARD */
+  for (i = 0; i < shm_as_p->num_appl_server; i++)
+    {
+      shm_as_p->as_info[i].reset_flag = TRUE;
+    }
+#endif /* !CUBRID_SHARD */
+
   uw_shm_detach (shm_as_p);
-#else
-  shm_appl =
-    (T_SHM_APPL_SERVER *) uw_shm_open (shm_br->br_info[br_index].
-				       appl_server_shm_id, SHM_APPL_SERVER,
-				       SHM_MODE_ADMIN);
-  if (shm_appl == NULL)
-    {
-      SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
-			uw_get_os_error_code ());
-      uw_shm_detach (shm_br);
-      return -1;
-    }
-
-  for (i = 0; i < shm_appl->num_appl_server; i++)
-    {
-      shm_appl->as_info[i].reset_flag = TRUE;
-    }
-
-  uw_shm_detach (shm_appl);
-#endif /* CUBRID_SHARD */
-
   uw_shm_detach (shm_br);
   return 0;
 }
@@ -3210,80 +3185,46 @@ admin_acl_reload_cmd (int master_shm_id, const char *broker_name)
   return 0;
 }
 
-#if defined(WINDOWS)
-static int
-admin_get_host_ip (unsigned char *ip_addr)
-{
-  char hostname[64];
-  struct hostent *hp;
-
-  if (gethostname (hostname, sizeof (hostname)) < 0)
-    {
-      strcpy (admin_err_msg, "gethostname error");
-      return -1;
-    }
-  if ((hp = gethostbyname (hostname)) == NULL)
-    {
-      sprintf (admin_err_msg, "unknown host : %s", hostname);
-      return -1;
-    }
-  memcpy (ip_addr, hp->h_addr_list[0], 4);
-
-  return 0;
-}
-#endif /* WINDOWS */
-
-#if !defined(CUBRID_SHARD)
 static int
 br_activate (T_BROKER_INFO * br_info, int master_shm_id,
 	     T_SHM_BROKER * shm_br)
 {
-  int shm_size, pid, i;
+  int pid, i, res = 0;
   T_SHM_APPL_SERVER *shm_appl;
+  T_APPL_SERVER_INFO *as_info_p;
   char **env = NULL;
   int env_num;
-  char port_str[PATH_MAX];
-  char appl_name_str[32];
+  char port_str[BROKER_PATH_MAX];
   char master_shm_key_str[32];
-  char appl_server_shm_key_str[32];
-  char error_log_lock_file[128];
   const char *broker_exe_name;
-  char err_flag = FALSE;
   int broker_check_loop_count = 30;
+#if defined(CUBRID_SHARD)
+  T_SHM_PROXY *shm_proxy_p;
+
+  shm_proxy_p = (T_SHM_PROXY *) uw_shm_open (br_info->proxy_shm_id,
+					     SHM_PROXY, SHM_MODE_ADMIN);
+
+  if (shm_proxy_p == NULL)
+    {
+      sprintf (admin_err_msg, "%s: cannot open shared memory", br_info->name);
+      res = -1;
+      goto end;
+    }
+#endif /* CUBRID_SHARD */
 
   br_info->err_code = UW_ER_NO_ERROR + 1;
   br_info->os_err_code = 0;
   br_info->num_busy_count = 0;
   br_info->reject_client_count = 0;
 
-  shm_size = sizeof (T_SHM_APPL_SERVER);
-
-  shm_appl = (T_SHM_APPL_SERVER *) uw_shm_create (br_info->appl_server_shm_id,
-						  shm_size, SHM_APPL_SERVER);
-
+  shm_appl = (T_SHM_APPL_SERVER *) uw_shm_open (br_info->appl_server_shm_id,
+						SHM_APPL_SERVER,
+						SHM_MODE_ADMIN);
   if (shm_appl == NULL)
     {
-      sprintf (admin_err_msg, "%s: cannot create shared memory",
-	       br_info->name);
-      return -1;
-    }
-
-  shm_appl->cci_default_autocommit = br_info->cci_default_autocommit;
-  shm_appl->suspend_mode = SUSPEND_NONE;
-  shm_appl->job_queue_size = br_info->job_queue_size;
-  shm_appl->job_queue[0].id = 0;	/* initialize max heap */
-  shm_appl->max_prepared_stmt_count = br_info->max_prepared_stmt_count;
-  shm_appl->monitor_hang_flag = br_info->monitor_hang_flag;
-  strcpy (shm_appl->log_dir, br_info->log_dir);
-  strcpy (shm_appl->slow_log_dir, br_info->slow_log_dir);
-  strcpy (shm_appl->err_log_dir, br_info->err_log_dir);
-  strcpy (shm_appl->broker_name, br_info->name);
-
-  if (access_control_set_shm (shm_appl, br_info, shm_br, admin_err_msg) < 0)
-    {
-      uw_shm_detach (shm_appl);
-      uw_shm_destroy (br_info->appl_server_shm_id);
-      return -1;
+      sprintf (admin_err_msg, "%s: cannot open shared memory", br_info->name);
+      res = -1;
+      goto end;
     }
 
 #if defined(WINDOWS)
@@ -3294,23 +3235,19 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
 
   env = make_env (br_info->source_env, &env_num);
 
-  strncpy (shm_appl->appl_server_name,
-	   get_appl_server_name (br_info->appl_server, env, env_num),
-	   APPL_SERVER_NAME_MAX_SIZE);
-  shm_appl->appl_server_name[APPL_SERVER_NAME_MAX_SIZE - 1] = '\0';
-
 #if !defined(WINDOWS)
+#if defined(CUBRID_SHARD)
+  unlink (shm_appl->port_name);
+#endif /* CUBRID_SHARD */
   signal (SIGCHLD, SIG_IGN);
-#endif
+#endif /* !WINDOWS */
 
 #if !defined(WINDOWS)
   if ((pid = fork ()) < 0)
     {
       strcpy (admin_err_msg, "fork error");
-      uw_shm_detach (shm_appl);
-      uw_shm_destroy (br_info->appl_server_shm_id);
-      free_env (env, env_num);
-      return -1;
+      res = -1;
+      goto end;
     }
 #endif /* WINDOWS */
 
@@ -3338,9 +3275,6 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
       sprintf (master_shm_key_str, "%s=%d", MASTER_SHM_KEY_ENV_STR,
 	       master_shm_id);
       putenv (master_shm_key_str);
-      sprintf (appl_server_shm_key_str, "%s=%d", APPL_SERVER_SHM_KEY_STR,
-	       br_info->appl_server_shm_id);
-      putenv (appl_server_shm_key_str);
 
       if (IS_APPL_SERVER_TYPE_CAS (br_info->appl_server))
 	broker_exe_name = NAME_CAS_BROKER;
@@ -3352,13 +3286,6 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
 	  && br_info->appl_server_port < 0)
 	broker_exe_name = NAME_CAS_BROKER2;
 #endif /* WINDOWS */
-
-      sprintf (appl_name_str, "%s=%s", APPL_NAME_ENV_STR, broker_exe_name);
-      putenv (appl_name_str);
-
-      sprintf (error_log_lock_file, "%s=%s.log.lock",
-	       ERROR_LOG_LOCK_FILE_ENV_STR, br_info->name);
-      putenv (error_log_lock_file);
 
 #if !defined(WINDOWS)
       uw_shm_detach (shm_appl);
@@ -3375,82 +3302,68 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
 	}
       exit (0);
     }
+
 #endif /* WINDOWS */
+#if defined(CUBRID_SHARD)
+  if (proxy_activate (br_info, shm_proxy_p, shm_appl, env, env_num) < 0)
+    {
+      res = -1;
+      goto end;
+    }
+#endif /* CUBRID_SHARD */
 
   SLEEP_MILISEC (0, 200);
 
   br_info->pid = pid;
 
-  shm_appl->num_appl_server = br_info->appl_server_num;
-  shm_appl->sql_log_mode = br_info->sql_log_mode;
-  shm_appl->slow_log_mode = br_info->slow_log_mode;
-  shm_appl->sql_log_max_size = br_info->sql_log_max_size;
-  shm_appl->long_query_time = br_info->long_query_time;
-  shm_appl->long_transaction_time = br_info->long_transaction_time;
-  shm_appl->appl_server_max_size = br_info->appl_server_max_size;
-  shm_appl->appl_server_hard_limit = br_info->appl_server_hard_limit;
-  shm_appl->session_timeout = br_info->session_timeout;
-  shm_appl->sql_log2 = br_info->sql_log2;
 #if defined(WINDOWS)
   shm_appl->as_port = br_info->appl_server_port;
 #endif /* WINDOWS */
-  shm_appl->max_string_length = br_info->max_string_length;
-  shm_appl->stripped_column_name = br_info->stripped_column_name;
-  shm_appl->keep_connection = br_info->keep_connection;
-  shm_appl->cache_user_info = br_info->cache_user_info;
-  shm_appl->statement_pooling = br_info->statement_pooling;
-  shm_appl->access_mode = br_info->access_mode;
-  shm_appl->cci_pconnect = br_info->cci_pconnect;
+#if defined(CUBRID_SHARD)
+  for (i = 0; i < br_info->appl_server_max_num; i++)
+    {
+      as_info_p = &shm_appl->as_info[i];
+      if (as_info_p->advance_activate_flag)
+	{
+	  as_activate (shm_br, br_info, shm_appl, as_info_p, i, env, env_num);
+	}
+    }
 
-  shm_appl->access_log = br_info->access_log;
+  for (i = 0; i < br_info->appl_server_max_num; i++)
+    {
+      as_info_p = &shm_appl->as_info[i];
+      if (as_info_p->advance_activate_flag)
+	{
+	  if (ut_is_appl_server_ready
+	      (as_info_p->pid, &as_info_p->service_ready_flag) == false)
+	    {
+	      sprintf (admin_err_msg,
+		       "failed to connect database. [%s]\n\n"
+		       "please check your $CUBRID/conf/shard.conf or database status.\n\n"
+		       "[%%%s]\n"
+		       "%-20s = %s\n"
+		       "%-20s = %s\n",
+		       br_info->name, br_info->name, "SHARD_DB_NAME",
+		       shm_appl->shard_conn_info[as_info_p->shard_id].db_name,
+		       "SHARD_DB_USER",
+		       shm_appl->shard_conn_info[as_info_p->shard_id].
+		       db_user);
+	      res = -1;
+	      goto end;
+	    }
+	}
+    }
 
-  shm_appl->jdbc_cache = br_info->jdbc_cache;
-  shm_appl->jdbc_cache_only_hint = br_info->jdbc_cache_only_hint;
-  shm_appl->jdbc_cache_life_time = br_info->jdbc_cache_life_time;
-
-  strcpy (shm_appl->preferred_hosts, br_info->preferred_hosts);
-
-  shm_appl->query_timeout = br_info->query_timeout;
-
+#else /* CUBRID_SHARD */
   for (i = 0; i < shm_appl->num_appl_server; i++)
     {
-      shm_appl->as_info[i].last_access_time = time (NULL);
-      shm_appl->as_info[i].transaction_start_time = (time_t) 0;
-      as_activate (&(shm_appl->as_info[i]),
-		   i, br_info, env, env_num, shm_appl, shm_br);
+      as_activate (shm_br, br_info, shm_appl, &shm_appl->as_info[i], i,
+		   env, env_num);
     }
-  for (; i < br_info->appl_server_max_num; i++)
-    {
-      shm_appl->as_info[i].service_flag = SERVICE_OFF;
-      shm_appl->as_info[i].last_access_time = time (NULL);
-      shm_appl->as_info[i].transaction_start_time = (time_t) 0;
-      shm_appl->as_info[i].mutex_flag[SHM_MUTEX_BROKER] = FALSE;
-      shm_appl->as_info[i].mutex_flag[SHM_MUTEX_ADMIN] = FALSE;
-      shm_appl->as_info[i].mutex_turn = SHM_MUTEX_BROKER;
-      shm_appl->as_info[i].num_request = 0;
-      shm_appl->as_info[i].num_requests_received = 0;
-      shm_appl->as_info[i].num_transactions_processed = 0;
-      shm_appl->as_info[i].num_queries_processed = 0;
-      shm_appl->as_info[i].num_long_queries = 0;
-      shm_appl->as_info[i].num_long_transactions = 0;
-      shm_appl->as_info[i].num_error_queries = 0;
-      shm_appl->as_info[i].num_interrupts = 0;
-      shm_appl->as_info[i].num_connect_requests = 0;
-      shm_appl->as_info[i].num_restarts = 0;
-      shm_appl->as_info[i].auto_commit_mode = FALSE;
-      shm_appl->as_info[i].database_name[0] = '\0';
-      shm_appl->as_info[i].database_host[0] = '\0';
-      shm_appl->as_info[i].last_connect_time = 0;
-      shm_appl->as_info[i].num_holdable_results = 0;
-      shm_appl->as_info[i].cur_sql_log_mode = br_info->sql_log_mode;
-      shm_appl->as_info[i].cur_slow_log_mode = br_info->slow_log_mode;
-      CON_STATUS_LOCK_INIT (&(shm_appl->as_info[i]));
-    }
+#endif /* !CUBRID_SHARD */
 
   br_info->ready_to_service = true;
   br_info->service_flag = ON;
-
-  uw_shm_detach (shm_appl);
 
   for (i = 0; i < broker_check_loop_count; i++)
     {
@@ -3465,7 +3378,7 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
 	      sprintf (admin_err_msg, "%s: %s", br_info->name,
 		       uw_get_error_message (br_info->err_code,
 					     br_info->os_err_code));
-	      err_flag = TRUE;
+	      res = -1;
 	    }
 	  break;
 	}
@@ -3474,38 +3387,46 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
   if (i == broker_check_loop_count)
     {
       sprintf (admin_err_msg, "%s: unknown error", br_info->name);
-      err_flag = TRUE;
+      res = -1;
     }
 
-  if (err_flag)
+end:
+  if (shm_appl)
     {
-      char err_msg_backup[ADMIN_ERR_MSG_SIZE];
-      memcpy (err_msg_backup, admin_err_msg, ADMIN_ERR_MSG_SIZE);
-      br_inactivate (br_info);
-      memcpy (admin_err_msg, err_msg_backup, ADMIN_ERR_MSG_SIZE);
-      free_env (env, env_num);
-      return -1;
+      uw_shm_detach (shm_appl);
     }
-
+#if defined(CUBRID_SHARD)
+  if (shm_proxy_p)
+    {
+      uw_shm_detach (shm_proxy_p);
+    }
+#endif /* CUBRID_SHARD */
   free_env (env, env_num);
-  return 0;
+
+  return res;
 }
 
 static int
 br_inactivate (T_BROKER_INFO * br_info)
 {
-  T_SHM_APPL_SERVER *shm_appl;
+  int res = 0;
+  int as_index;
+  T_SHM_APPL_SERVER *shm_appl = NULL;
   time_t cur_time = time (NULL);
   struct tm ct;
-  int i;
-  char cmd_buf[BUFSIZ];
+#if defined(CUBRID_SHARD)
+  int proxy_index;
+  T_SHM_PROXY *shm_proxy_p = NULL;
+  T_PROXY_INFO *proxy_info_p = NULL;
+#endif /* CUBRID_SHARD */
 #if defined(WINDOWS)
   char acl_sem_name[BROKER_NAME_LEN];
-#endif
+#endif /* WINDOWS */
 
   if (localtime_r (&cur_time, &ct) == NULL)
     {
-      return -1;
+      res = -1;
+      goto end;
     }
   ct.tm_year += 1900;
 
@@ -3513,8 +3434,10 @@ br_inactivate (T_BROKER_INFO * br_info)
     {
       /* proxy_id and shard_id argument is only use in CUBRID SHARD */
       /* so, please set PROXY_INVALID_ID and SHARD_INVALID_ID in normal Broker */
-      ut_kill_process (br_info->pid, NULL, PROXY_INVALID_ID, SHARD_INVALID_ID,
-		       CAS_INVALID_ID);
+      ut_kill_broker_process (br_info->pid, br_info->name);
+
+      br_info->pid = 0;
+
       SLEEP_MILISEC (1, 0);
     }
 
@@ -3526,36 +3449,52 @@ br_inactivate (T_BROKER_INFO * br_info)
     {
       SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
 			uw_get_os_error_code ());
-      return -1;
+      res = -1;
+      goto end;
     }
 
-  for (i = 0; i < br_info->appl_server_max_num; i++)
+#if defined(CUBRID_SHARD)
+  shm_proxy_p =
+    (T_SHM_PROXY *) uw_shm_open (br_info->proxy_shm_id,
+				 SHM_PROXY, SHM_MODE_ADMIN);
+  if (shm_proxy_p == NULL)
     {
-      as_inactivate (shm_appl->as_info[i].pid, br_info->name, i);
-      shm_appl->as_info[i].pid = 0;
-      CON_STATUS_LOCK_DESTROY (&(shm_appl->as_info[i]));
+      SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
+			uw_get_os_error_code ());
+      res = -1;
+      goto end;
     }
-  br_info->appl_server_num = br_info->appl_server_min_num;
+
+  for (proxy_index = 0; proxy_index < shm_proxy_p->num_proxy; proxy_index++)
+    {
+      proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, proxy_index);
+
+      proxy_inactivate (br_info, proxy_info_p);
+    }
+#endif /* CUBRID_SHARD */
+
+  for (as_index = 0; as_index < br_info->appl_server_max_num; as_index++)
+    {
+      as_inactivate (&shm_appl->as_info[as_index], br_info->name);
+    }
 
   if (br_info->log_backup == ON)
     {
-      sprintf (cmd_buf, "%s.%02d%02d%02d.%02d%02d",
-	       br_info->access_log_file,
-	       ct.tm_year, ct.tm_mon + 1, ct.tm_mday, ct.tm_hour, ct.tm_min);
-      rename (br_info->access_log_file, cmd_buf);
-
-      sprintf (cmd_buf, "%s.%02d%02d%02d.%02d%02d",
-	       br_info->error_log_file,
-	       ct.tm_year, ct.tm_mon + 1, ct.tm_mday, ct.tm_hour, ct.tm_min);
-      rename (br_info->error_log_file, cmd_buf);
+#if !defined(CUBRID_SHARD)
+      rename_access_log_file_name (br_info->access_log_file, &ct);
+#endif /* !CUBRID_SHARD */
+      rename_error_log_file_name (br_info->error_log_file, &ct);
     }
   else
     {
+#if !defined(CUBRID_SHARD)
       unlink (br_info->access_log_file);
+#endif /* !CUBRID_SHARD */
       unlink (br_info->error_log_file);
     }
 
   br_info->num_busy_count = 0;
+  br_info->service_flag = OFF;
 
 #if defined (WINDOWS)
   MAKE_ACL_SEM_NAME (acl_sem_name, shm_appl->broker_name);
@@ -3564,40 +3503,41 @@ br_inactivate (T_BROKER_INFO * br_info)
   uw_sem_destroy (&shm_appl->acl_sem);
 #endif
 
-  uw_shm_detach (shm_appl);
-  uw_shm_destroy (br_info->appl_server_shm_id);
-
-  br_info->service_flag = OFF;
-
-  return 0;
+end:
+  if (shm_appl)
+    {
+      uw_shm_detach (shm_appl);
+    }
+#if defined(CUBRID_SHARD)
+  if (shm_proxy_p)
+    {
+      uw_shm_detach (shm_proxy_p);
+    }
+#endif /* CUBRID_SHARD */
+  return res;
 }
 
 static void
-as_activate (T_APPL_SERVER_INFO * as_info, int as_index,
-	     T_BROKER_INFO * br_info, char **env, int env_num,
-	     T_SHM_APPL_SERVER * shm_appl, T_SHM_BROKER * shm_br)
+as_activate (T_SHM_BROKER * shm_br, T_BROKER_INFO * br_info,
+	     T_SHM_APPL_SERVER * shm_appl, T_APPL_SERVER_INFO * as_info,
+	     int as_index, char **env, int env_num)
 {
   int pid;
-  char port_str[PATH_MAX];
-  char appl_name_str[64];
-  char appl_server_shm_key_str[32];
-  char access_log_env_str[256];
-  char error_log_env_str[256];
+  char appl_server_shm_key_env_str[32];
   char appl_name[APPL_SERVER_NAME_MAX_SIZE];
-  char error_log_lock_file[128];
   int i;
-  char port_name[PATH_MAX], dirname[PATH_MAX];
+  char as_id_env_str[32];
+
 #if !defined(WINDOWS)
   char process_name[128];
-#endif /* !WINDOWS */
+#if !defined(CUBRID_SHARD)
+  char port_name[BROKER_PATH_MAX];
 
-  get_cubrid_file (FID_SOCK_DIR, dirname, PATH_MAX);
-  snprintf (port_name, sizeof (port_name) - 1, "%s%s.%d", dirname,
-	    br_info->name, as_index + 1);
-#if !defined(WINDOWS)
+  ut_get_as_port_name (port_name, br_info->name, as_index, BROKER_PATH_MAX);
+
   unlink (port_name);
+#endif /* !CUBRID_SHARD */
 #endif /* !WINDOWS */
-
   /* mutex variable initialize */
   as_info->mutex_flag[SHM_MUTEX_BROKER] = FALSE;
   as_info->mutex_flag[SHM_MUTEX_ADMIN] = FALSE;
@@ -3641,26 +3581,24 @@ as_activate (T_APPL_SERVER_INFO * as_info, int as_index,
 	    putenv (env[i]);
 	}
 
-      sprintf (port_str, "%s=%s", PORT_NAME_ENV_STR, port_name);
-      putenv (port_str);
-      sprintf (appl_server_shm_key_str, "%s=%d", APPL_SERVER_SHM_KEY_STR,
-	       br_info->appl_server_shm_id);
-      putenv (appl_server_shm_key_str);
+      sprintf (appl_server_shm_key_env_str, "%s=%d",
+	       APPL_SERVER_SHM_KEY_STR, br_info->appl_server_shm_id);
+      putenv (appl_server_shm_key_env_str);
+
+      snprintf (as_id_env_str, sizeof (as_id_env_str), "%s=%d", AS_ID_ENV_STR,
+		as_index);
+      putenv (as_id_env_str);
+
       strcpy (appl_name, shm_appl->appl_server_name);
 
-      sprintf (appl_name_str, "%s=%s", APPL_NAME_ENV_STR, appl_name);
-      putenv (appl_name_str);
-      sprintf (access_log_env_str, "%s=%s",
-	       ACCESS_LOG_ENV_STR, br_info->access_log_file);
-      putenv (access_log_env_str);
-      sprintf (error_log_env_str, "%s=%s",
-	       ERROR_LOG_ENV_STR, br_info->error_log_file);
-      putenv (error_log_env_str);
-      sprintf (error_log_lock_file, "%s=%s.log.lock",
-	       ERROR_LOG_LOCK_FILE_ENV_STR, br_info->name);
-      putenv (error_log_lock_file);
-
 #if !defined(WINDOWS)
+#if defined(CUBRID_SHARD)
+      snprintf (process_name, sizeof (process_name) - 1,
+		"%s_%s_%d_%d_%d", shm_appl->broker_name, appl_name,
+		as_info->proxy_id + 1, as_info->shard_id,
+		as_info->shard_cas_id + 1);
+
+#else /* CUBRID_SHARD */
       if (br_info->appl_server == APPL_SERVER_CAS_ORACLE)
 	{
 	  snprintf (process_name, sizeof (process_name) - 1, "%s", appl_name);
@@ -3670,6 +3608,7 @@ as_activate (T_APPL_SERVER_INFO * as_info, int as_index,
 	  snprintf (process_name, sizeof (process_name) - 1, "%s_%s_%d",
 		    br_info->name, appl_name, as_index + 1);
 	}
+#endif /* !CUBRID_SHARD */
       uw_shm_detach (shm_appl);
       uw_shm_detach (shm_br);
 #endif /* !WINDOWS */
@@ -3685,28 +3624,200 @@ as_activate (T_APPL_SERVER_INFO * as_info, int as_index,
 #endif /* WINDOWS */
     }
 
+#if !defined(CUBRID_SHARD)
   (void) ut_is_appl_server_ready (pid, &as_info->service_ready_flag);
+#endif /* !CUBRID_SHARD */
 
   as_info->pid = pid;
   as_info->last_access_time = time (NULL);
   as_info->transaction_start_time = (time_t) 0;
   as_info->psize_time = time (NULL);
   as_info->psize = getsize (as_info->pid);
+#if defined(CUBRID_SHARD)
+  as_info->uts_status = UTS_STATUS_CON_WAIT;
+#else /* CUBRID_SHARD */
   as_info->uts_status = UTS_STATUS_IDLE;
+#endif /* !CUBRID_SHARD */
+
   as_info->service_flag = SERVICE_ON;
 }
 
 static void
-as_inactivate (int as_pid, char *br_name, int as_index)
+as_inactivate (T_APPL_SERVER_INFO * as_info_p, char *broker_name)
 {
-  if (as_pid)
+  if (as_info_p->pid <= 0)
     {
-      /* proxy_id and shard_id argument is only use in CUBRID SHARD */
-      /* so, please set PROXY_INVALID_ID and SHARD_INVALID_ID in normal Broker */
-      ut_kill_process (as_pid, br_name, PROXY_INVALID_ID, SHARD_INVALID_ID,
-		       as_index);
+      return;
     }
+
+  ut_kill_as_process (as_info_p->pid, broker_name, as_info_p->as_id);
+
+  as_info_p->pid = 0;
+  as_info_p->service_flag = SERVICE_OFF;
+  as_info_p->service_ready_flag = FALSE;
+
+  /* initialize con / uts status */
+  as_info_p->uts_status = UTS_STATUS_IDLE;
+  as_info_p->con_status = CON_STATUS_CLOSE;
+
+  CON_STATUS_LOCK_DESTROY (as_info_p);
+
+  return;
 }
+
+
+#if defined(CUBRID_SHARD)
+static int
+proxy_activate (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy_p,
+		T_SHM_APPL_SERVER * shm_as_p, char **env, int env_num)
+{
+  int i;
+  T_PROXY_INFO *proxy_info_p = NULL;
+
+  for (i = 0; i < shm_proxy_p->num_proxy; i++)
+    {
+      proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, i);
+
+      snprintf (proxy_info_p->access_log_file, CONF_LOG_FILE_LEN - 1,
+		"%s/%s_%d.access", CUBRID_BASE_DIR, br_info_p->name, i);
+      dir_repath (proxy_info_p->access_log_file, CONF_LOG_FILE_LEN);
+
+      proxy_info_p->cur_proxy_log_mode = br_info_p->proxy_log_mode;
+
+      if (proxy_activate_internal (br_info_p->proxy_shm_id, shm_as_p,
+				   shm_proxy_p, i, env, env_num) < 0)
+	{
+	  return -1;
+	}
+    }
+  return 0;
+}
+
+static int
+proxy_activate_internal (int proxy_shm_id, T_SHM_APPL_SERVER * shm_as_p,
+			 T_SHM_PROXY * shm_proxy_p, int proxy_id, char **env,
+			 int env_num)
+{
+  int pid = 0, i;
+  const char *proxy_exe_name = NAME_PROXY;
+  char proxy_shm_id_env_str[32];
+  char proxy_id_env_str[32];
+
+#if !defined (WINDOWS)
+  char process_name[128];
+#endif
+
+  T_PROXY_INFO *proxy_info_p = NULL;
+  T_SHARD_INFO *shard_info_p = NULL;
+
+  proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, proxy_id);
+  if (proxy_info_p == NULL)
+    {
+      return -1;
+    }
+
+  proxy_info_p->cur_client = 0;
+
+  shard_info_p = shard_shm_find_shard_info (proxy_info_p, 0);
+  if (shard_info_p == NULL)
+    {
+      return -1;
+    }
+
+  /* max_context should be GE max_client */
+  if (proxy_info_p->max_context < proxy_info_p->max_client)
+    {
+      sprintf (admin_err_msg,
+	       "max_client %d is greater than %d [%s]\n\n"
+	       "please check your $CUBRID/conf/shard.conf\n\n"
+	       "[%%%s]\n"
+	       "%-20s = %d\n"
+	       "%-20s = %d * %d\n", proxy_info_p->max_client,
+	       proxy_info_p->max_context, shm_as_p->broker_name,
+	       shm_as_p->broker_name, "MAX_CLIENT", proxy_info_p->max_client,
+	       "MAX_NUM_APPL_SERVER", shard_info_p->max_appl_server,
+	       proxy_info_p->max_shard);
+      return -1;
+    }
+
+  ut_get_proxy_port_name (proxy_info_p->port_name, shm_as_p->broker_name,
+			  proxy_info_p->proxy_id, SHM_PROXY_NAME_MAX);
+
+#if !defined(WINDOWS)
+  unlink (proxy_info_p->port_name);
+
+  if ((pid = fork ()) < 0)
+    {
+      strcpy (admin_err_msg, "fork error");
+
+      return -1;
+    }
+#endif /* WINDOWS */
+
+  if (pid == 0)
+    {
+#if !defined(WINDOWS)
+      signal (SIGCHLD, SIG_DFL);
+#endif /* !WINDOWS */
+
+      if (env != NULL)
+	{
+	  for (i = 0; i < env_num; i++)
+	    {
+	      putenv (env[i]);
+	    }
+	}
+      snprintf (proxy_shm_id_env_str, sizeof (proxy_shm_id_env_str), "%s=%d",
+		PROXY_SHM_KEY_STR, proxy_shm_id);
+      snprintf (proxy_id_env_str, sizeof (proxy_id_env_str), "%s=%d",
+		PROXY_ID_ENV_STR, proxy_id);
+
+      putenv (proxy_shm_id_env_str);
+      putenv (proxy_id_env_str);
+
+#if !defined(WINDOWS)
+      snprintf (process_name, sizeof (process_name) - 1, "%s_%s_%d",
+		shm_as_p->broker_name, proxy_exe_name, proxy_id + 1);
+#endif /* !WINDOWS */
+
+
+#if defined(WINDOWS)
+      pid = run_child (proxy_exe_name);
+    }
+#else /* WINDOWS */
+      if (execle (proxy_exe_name, process_name, NULL, environ) < 0)
+	{
+	  perror (process_name);
+	  exit (0);
+	}
+      exit (0);
+    }
+
+#endif /* WINDOWS */
+
+  SLEEP_MILISEC (0, 200);
+
+  proxy_info_p->pid = pid;
+
+  return 0;
+}
+
+static void
+proxy_inactivate (T_BROKER_INFO * br_info_p, T_PROXY_INFO * proxy_info_p)
+{
+  if (proxy_info_p->pid > 0)
+    {
+      ut_kill_proxy_process (proxy_info_p->pid, br_info_p->name,
+			     proxy_info_p->proxy_id);
+    }
+  proxy_info_p->pid = 0;
+  proxy_info_p->cur_client = 0;
+
+  /* SHARD TODO : backup or remove access log file */
+
+  return;
+}
+#endif /* CUBRID_SHARD */
 
 static void
 free_env (char **env, int env_num)
@@ -3799,7 +3910,6 @@ get_appl_server_name (int appl_server_type, char **env, int env_num)
     return APPL_SERVER_CAS_MYSQL_NAME;
   return APPL_SERVER_CAS_NAME;
 }
-#endif /* !CUBRID_SHARD */
 
 #if !defined(WINDOWS)
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -3847,6 +3957,28 @@ get_cubrid_version ()
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 #endif /* !WINDOWS */
+
+static void
+rename_access_log_file_name (char *access_log_file, struct tm *ct)
+{
+  char cmd_buf[BUFSIZ];
+
+  sprintf (cmd_buf, "%s.%02d%02d%02d.%02d%02d",
+	   access_log_file,
+	   ct->tm_year, ct->tm_mon + 1, ct->tm_mday, ct->tm_hour, ct->tm_min);
+  rename (access_log_file, cmd_buf);
+}
+
+static void
+rename_error_log_file_name (char *error_log_file, struct tm *ct)
+{
+  char cmd_buf[BUFSIZ];
+
+  sprintf (cmd_buf, "%s.%02d%02d%02d.%02d%02d",
+	   error_log_file,
+	   ct->tm_year, ct->tm_mon + 1, ct->tm_mday, ct->tm_hour, ct->tm_min);
+  rename (error_log_file, cmd_buf);
+}
 
 #if defined(CUBRID_SHARD)
 static int
@@ -4203,14 +4335,14 @@ shard_shm_check_max_file_open_limit (T_BROKER_INFO * br_info,
   T_SHARD_INFO *shard_info_p = NULL;
   struct rlimit sys_limit;
 
-  proxy_info_p = shard_shm_get_first_proxy_info (proxy_p);
+  proxy_info_p = shard_shm_find_proxy_info (proxy_p, 0);
   if (proxy_info_p == NULL)
     {
       sprintf (admin_err_msg, "Cannot find proxy info.\n");
       return -1;
     }
 
-  shard_info_p = shard_shm_get_first_shard_info (proxy_info_p);
+  shard_info_p = shard_shm_find_shard_info (proxy_info_p, 0);
   if (shard_info_p == NULL)
     {
       sprintf (admin_err_msg, "Cannot find shard info.\n");

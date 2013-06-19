@@ -52,11 +52,7 @@
 
 #define ERROR_LOG_LOCK_FILE_ENV_STR	"ERROR_LOG_LOCK_FILE"
 
-#if defined(CUBRID_SHARD)
 #define PROXY_ID_ENV_STR            "PROXY_ID"
-#define SHARD_ID_ENV_STR            "SHARD_ID"
-#define SHARD_CAS_ID_ENV_STR        "SHARD_CAS_ID"
 #define AS_ID_ENV_STR               "AS_ID"
-#endif /* CUBRID_SHARD */
 
 #endif /* _BROKER_ENV_DEF_H_ */

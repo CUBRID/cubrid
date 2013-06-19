@@ -1046,9 +1046,9 @@ appl_monitor (char *br_vector)
 		  uw_shm_detach (shm_proxy_p);
 		  return -1;
 		}
-	      proxy_info_p = shard_shm_get_first_proxy_info (shm_proxy_p);
+	      proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, 0);
 
-	      shard_info_p = shard_shm_get_first_shard_info (proxy_info_p);
+	      shard_info_p = shard_shm_find_shard_info (proxy_info_p, 0);
 
 	      tot_appl_cnt[i] =
 		(shm_proxy_p->num_proxy * proxy_info_p->max_shard *
@@ -1825,6 +1825,7 @@ br_monitor (char *br_vector)
 		  str_out ("%s", "	SUSPENDED");
 		  print_newline ();
 		}
+
 #if defined(CUBRID_SHARD)
 	      uw_shm_detach (shm_proxy_p);
 #endif
@@ -2448,11 +2449,13 @@ client_monitor (void)
 	  print_newline ();
 	  str_out ("%s", line_buf);
 	  print_newline ();
-	  client_info_p = shard_shm_get_first_client_info (proxy_info_p);
+
 	  for (client_index = 0; client_index < proxy_info_p->max_context;
-	       client_index++, client_info_p =
-	       shard_shm_get_next_client_info (client_info_p))
+	       client_index++)
 	    {
+	      client_info_p =
+		shard_shm_get_client_info (proxy_info_p, client_index);
+
 	      if (client_info_p->client_id == -1)
 		{
 		  continue;

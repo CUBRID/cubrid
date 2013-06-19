@@ -301,11 +301,11 @@ error:
 static void
 access_control_repath_file (char *path)
 {
-  char tmp_str[PATH_MAX];
+  char tmp_str[BROKER_PATH_MAX];
 
   trim (path);
-  strncpy (tmp_str, path, PATH_MAX);
-  MAKE_FILEPATH (path, tmp_str, PATH_MAX);
+  strncpy (tmp_str, path, BROKER_PATH_MAX);
+  MAKE_FILEPATH (path, tmp_str, BROKER_PATH_MAX);
 
   if (IS_ABS_PATH (path))
     {
@@ -313,8 +313,8 @@ access_control_repath_file (char *path)
     }
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-  envvar_confdir_file (tmp_str, PATH_MAX, path);
-  MAKE_FILEPATH (path, tmp_str, PATH_MAX);
+  envvar_confdir_file (tmp_str, BROKER_PATH_MAX, path);
+  MAKE_FILEPATH (path, tmp_str, BROKER_PATH_MAX);
 #endif
 
   return;

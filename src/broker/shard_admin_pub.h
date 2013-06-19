@@ -21,6 +21,7 @@
 /*
  * shard_admin_pub.h -
  */
+#if defined(UNDEFINED)
 
 #ifndef	_SHARD_ADMIN_PUB_H_
 #define	_SHARD_ADMIN_PUB_H_
@@ -53,3 +54,4 @@ extern int shard_process_activate (int master_shm_id, T_BROKER_INFO * br_info,
 extern void shard_process_inactivate (T_BROKER_INFO * br_info_p);
 
 #endif /* _SHARD_ADMIN_PUB_H_ */
+#endif /* UNDEFINED */

@@ -2442,7 +2442,7 @@ cas_mysql_find_db (const char *alias, char *dbname, char *host, int *port)
   DB_INFO *db_info_all_p, *db_info_p;
   int ret;
   char delim[] = ":";
-  char *str, tmpdbinfo[PATH_MAX], *save;
+  char *str, tmpdbinfo[BROKER_PATH_MAX], *save;
 
   db_info_all_p = db_info_p = NULL;
 
@@ -2452,9 +2452,9 @@ cas_mysql_find_db (const char *alias, char *dbname, char *host, int *port)
     }
 
 #if defined(CUBRID_SHARD)
-  memset (tmpdbinfo, 0x00, PATH_MAX);
+  memset (tmpdbinfo, 0x00, BROKER_PATH_MAX);
   memcpy (tmpdbinfo, shm_appl->shard_conn_info[shm_shard_id].db_host,
-	  PATH_MAX);
+	  BROKER_PATH_MAX);
 
   strcpy (dbname, alias);
 
@@ -2497,8 +2497,8 @@ cas_mysql_find_db (const char *alias, char *dbname, char *host, int *port)
 	}
       else
 	{
-	  memset (tmpdbinfo, 0x00, PATH_MAX);
-	  strncpy (tmpdbinfo, db_info_p->dbinfo, PATH_MAX - 1);
+	  memset (tmpdbinfo, 0x00, BROKER_PATH_MAX);
+	  strncpy (tmpdbinfo, db_info_p->dbinfo, BROKER_PATH_MAX - 1);
 
 	  str = strtok_r (tmpdbinfo, delim, &save);	/* SET DBNAME */
 	  if (str == NULL)

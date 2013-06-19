@@ -1529,7 +1529,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   DB_SESSION *session = NULL;
   T_BROKER_VERSION client_version = req_info->client_version;
   T_QUERY_RESULT *q_result;
-  char savepoint[PATH_MAX];
+  char savepoint[BROKER_PATH_MAX];
   char is_savepoint = FALSE;
 
   srv_handle->query_info_flag = FALSE;
@@ -1581,7 +1581,8 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
     {
       static unsigned long long savepoint_count = 0;
 
-      snprintf (savepoint, PATH_MAX, "__MSS$%20lld__", savepoint_count++);
+      snprintf (savepoint, BROKER_PATH_MAX, "__MSS$%20lld__",
+		savepoint_count++);
       db_savepoint_transaction (savepoint);
       is_savepoint = TRUE;
     }

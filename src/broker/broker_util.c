@@ -60,9 +60,6 @@
 #include "environment_variable.h"
 #include "porting.h"
 
-static char db_err_log_file[PATH_MAX];
-static char as_pid_file_name[PATH_MAX] = "";
-
 #if defined (ENABLE_UNUSED_FUNCTION)
 int
 ut_access_log (int as_index, struct timeval *start_time, char error_flag,
@@ -181,8 +178,7 @@ ut_file_unlock (char *lock_file)
 
 #if defined(WINDOWS)
 int
-ut_kill_process (int pid, char *br_name, int proxy_index, int shard_index,
-		 int as_index)
+ut_kill_process (int pid)
 {
   HANDLE phandle;
 
@@ -202,8 +198,7 @@ ut_kill_process (int pid, char *br_name, int proxy_index, int shard_index,
 }
 #else
 int
-ut_kill_process (int pid, char *br_name, int proxy_index, int shard_index,
-		 int as_index)
+ut_kill_process (int pid)
 {
   int i;
 
@@ -217,7 +212,7 @@ ut_kill_process (int pid, char *br_name, int proxy_index, int shard_index,
 	{
 	  if (kill (pid, SIGTERM) < 0)
 	    {
-	      goto clear_sock_file;
+	      return 0;
 	    }
 	  SLEEP_MILISEC (0, 30);
 	  if (kill (pid, 0) < 0)
@@ -235,53 +230,73 @@ ut_kill_process (int pid, char *br_name, int proxy_index, int shard_index,
 	}
     }
 
-clear_sock_file:
-#if defined(CUBRID_SHARD)
-  if (br_name != NULL && (proxy_index < 0 && shard_index < 0 && as_index < 0))
-    {
-      char tmp[PATH_MAX], dirname[PATH_MAX];
-
-      get_cubrid_file (FID_SOCK_DIR, dirname, PATH_MAX);
-      snprintf (tmp, PATH_MAX - 1, "%s%s.B", dirname, br_name);
-      unlink (tmp);
-    }
-
-  if (br_name != NULL && (proxy_index >= 0 && as_index < 0))
-    {
-      char tmp[PATH_MAX], dirname[PATH_MAX];
-
-      get_cubrid_file (FID_SOCK_DIR, dirname, PATH_MAX);
-      snprintf (tmp, PATH_MAX - 1, "%s%s.P%d", dirname, br_name,
-		proxy_index + 1);
-      unlink (tmp);
-    }
-#endif
-
-  if (br_name != NULL && as_index >= 0)
-    {
-      char tmp[PATH_MAX], dirname[PATH_MAX];
-
-#if !defined(CUBRID_SHARD)
-      /* Broker don't use CAS unix socket at CUBRID_SHARD */
-      get_cubrid_file (FID_SOCK_DIR, dirname, PATH_MAX);
-      snprintf (tmp, PATH_MAX - 1, "%s%s.%d", dirname, br_name, as_index + 1);
-      unlink (tmp);
-#endif /* !CUBRID_SHARD */
-
-      get_cubrid_file (FID_AS_PID_DIR, dirname, PATH_MAX);
-#if defined(CUBRID_SHARD)
-      snprintf (tmp, PATH_MAX - 1, "%s%s_%d_%d_%d.pid", dirname, br_name,
-		proxy_index + 1, shard_index, as_index + 1);
-#else
-      snprintf (tmp, PATH_MAX - 1, "%s%s_%d.pid", dirname, br_name,
-		as_index + 1);
-#endif /* CUBRID_SHARD */
-      unlink (tmp);
-    }
-
   return 0;
 }
 #endif
+
+int
+ut_kill_broker_process (int pid, char *broker_name)
+{
+  ut_kill_process (pid);
+
+  if (broker_name != NULL)
+    {
+      char tmp[BROKER_PATH_MAX];
+
+      ut_get_broker_port_name (tmp, broker_name, BROKER_PATH_MAX);
+
+      unlink (tmp);
+
+      return 0;
+    }
+  return -1;
+}
+
+int
+ut_kill_proxy_process (int pid, char *broker_name, int proxy_id)
+{
+  ut_kill_process (pid);
+
+  if (broker_name != NULL && proxy_id >= 0)
+    {
+      char tmp[BROKER_PATH_MAX];
+
+      ut_get_proxy_port_name (tmp, broker_name, proxy_id, BROKER_PATH_MAX);
+
+      unlink (tmp);
+
+      return 0;
+    }
+  return -1;
+}
+
+int
+ut_kill_as_process (int pid, char *broker_name, int as_index)
+{
+  ut_kill_process (pid);
+
+  if (broker_name != NULL)
+    {
+      char tmp[BROKER_PATH_MAX];
+
+#if !defined(CUBRID_SHARD)
+      /*
+       * shard_cas does not have unix-domain socket and pid lock file.
+       * so, we need not delete socket and lock file.
+       */
+      ut_get_as_port_name (tmp, broker_name, as_index, BROKER_PATH_MAX);
+
+      unlink (tmp);
+#endif /* !CUBRID_SHARD */
+
+      ut_get_as_pid_name (tmp, broker_name, as_index, BROKER_PATH_MAX);
+
+      unlink (tmp);
+
+      return 0;
+    }
+  return -1;
+}
 
 int
 ut_set_keepalive (int sock, int keepalivetime)
@@ -351,9 +366,9 @@ run_child (const char *appl_name)
 void
 ut_cd_work_dir (void)
 {
-  char path[PATH_MAX];
+  char path[BROKER_PATH_MAX];
 
-  chdir (envvar_bindir_file (path, PATH_MAX, ""));
+  chdir (envvar_bindir_file (path, BROKER_PATH_MAX, ""));
 }
 
 void
@@ -399,21 +414,13 @@ retry:
 #endif
 
 void
-as_pid_file_create (char *br_name, int proxy_index, int shard_id,
-		    int as_index)
+as_pid_file_create (char *br_name, int as_index)
 {
   FILE *fp;
-  char buf[PATH_MAX];
+  char as_pid_file_name[BROKER_PATH_MAX];
 
-#if defined(CUBRID_SHARD)
-  sprintf (as_pid_file_name, "%s%s_%d_%d_%d.pid",
-	   get_cubrid_file (FID_AS_PID_DIR, buf, PATH_MAX), br_name,
-	   proxy_index + 1, shard_id, as_index + 1);
-#else
-  sprintf (as_pid_file_name, "%s%s_%d.pid",
-	   get_cubrid_file (FID_AS_PID_DIR, buf, PATH_MAX), br_name,
-	   as_index + 1);
-#endif
+  ut_get_as_pid_name (as_pid_file_name, br_name, as_index, BROKER_PATH_MAX);
+
   fp = fopen (as_pid_file_name, "w");
   if (fp)
     {
@@ -425,43 +432,19 @@ as_pid_file_create (char *br_name, int proxy_index, int shard_id,
 void
 as_db_err_log_set (char *br_name, int proxy_index, int shard_id, int as_index)
 {
-  char buf[PATH_MAX];
+  char buf[BROKER_PATH_MAX];
+  char db_err_log_file[BROKER_PATH_MAX];
 
 #if defined(CUBRID_SHARD)
   sprintf (db_err_log_file, "CUBRID_ERROR_LOG=%s%s_%d_%d_%d.err",
-	   get_cubrid_file (FID_CUBRID_ERR_DIR, buf, PATH_MAX), br_name,
-	   proxy_index + 1, shard_id, as_index + 1);
+	   get_cubrid_file (FID_CUBRID_ERR_DIR, buf, BROKER_PATH_MAX),
+	   br_name, proxy_index + 1, shard_id, as_index + 1);
 #else
   sprintf (db_err_log_file, "CUBRID_ERROR_LOG=%s%s_%d.err",
-	   get_cubrid_file (FID_CUBRID_ERR_DIR, buf, PATH_MAX), br_name,
-	   as_index + 1);
+	   get_cubrid_file (FID_CUBRID_ERR_DIR, buf, BROKER_PATH_MAX),
+	   br_name, as_index + 1);
 #endif
   putenv (db_err_log_file);
-}
-
-int
-as_get_my_as_info (char *br_name, int *as_index, int max_length)
-{
-  char *p, *q, *dir_p;
-
-  p = getenv (PORT_NAME_ENV_STR);
-  if (p == NULL)
-    return -1;
-
-  q = strrchr (p, '.');
-  if (q == NULL)
-    return -1;
-
-  dir_p = strrchr (p, '/');
-  if (dir_p == NULL)
-    return -1;
-
-  *q = '\0';
-  strncpy (br_name, dir_p + 1, max_length);
-  *as_index = atoi (q + 1) - 1;
-  *q = '.';
-
-  return 0;
 }
 
 int
@@ -591,6 +574,37 @@ ut_is_appl_server_ready (int pid, char *ready_flag)
   return false;
 }
 
+void
+ut_get_broker_port_name (char *port_name, char *broker_name, int len)
+{
+  char dir_name[BROKER_PATH_MAX];
+
+  get_cubrid_file (FID_SOCK_DIR, dir_name, BROKER_PATH_MAX);
+
+  snprintf (port_name, len, "%s%s.B", dir_name, broker_name);
+}
+
+void
+ut_get_proxy_port_name (char *port_name, char *broker_name, int proxy_id,
+			int len)
+{
+  char dir_name[BROKER_PATH_MAX];
+
+  get_cubrid_file (FID_SOCK_DIR, dir_name, BROKER_PATH_MAX);
+
+  snprintf (port_name, len, "%s%s.P%d", dir_name, broker_name, proxy_id + 1);
+}
+
+void
+ut_get_as_port_name (char *port_name, char *broker_name, int as_id, int len)
+{
+  char dir_name[BROKER_PATH_MAX];
+
+  get_cubrid_file (FID_SOCK_DIR, dir_name, BROKER_PATH_MAX);
+
+  snprintf (port_name, len, "%s%s.%d", dir_name, broker_name, as_id + 1);
+}
+
 double
 ut_size_string_to_kbyte (const char *size_str, const char *default_unit)
 {
@@ -707,4 +721,14 @@ ut_time_string_to_sec (const char *time_str, const char *default_unit)
     }
 
   return val;
+}
+
+void
+ut_get_as_pid_name (char *pid_name, char *br_name, int as_index, int len)
+{
+  char dir_name[BROKER_PATH_MAX];
+
+  get_cubrid_file (FID_AS_PID_DIR, dir_name, BROKER_PATH_MAX);
+
+  snprintf (pid_name, len, "%s%s_%d.pid", dir_name, br_name, as_index + 1);
 }

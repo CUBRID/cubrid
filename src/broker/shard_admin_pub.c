@@ -22,6 +22,7 @@
  * shard_admin_pub.c -
  */
 
+#if defined(UNDEFINED)
 #ident "$Id$"
 
 #if defined(WINDOWS)
@@ -681,7 +682,6 @@ shard_as_activate (int as_shm_id, int proxy_id, int shard_id, int as_id,
   as_info_p->psize = getsize (as_info_p->pid);
   as_info_p->uts_status = UTS_STATUS_CON_WAIT;
   as_info_p->service_flag = SERVICE_ON;
-
   if (as_id >= proxy_info_p->shard_info[shard_id].min_appl_server)
     {
       as_info_p->graceful_down_flag = 1;
@@ -721,7 +721,7 @@ shard_as_inactivate (T_BROKER_INFO * br_info_p,
 
   CON_STATUS_LOCK_DESTROY (as_info_p);
 
-  /*
+  /* 
    * shard_cas does not have unix-domain socket and pid lock file.
    * so, we need not delete socket and lock file.
    */
@@ -840,3 +840,4 @@ shard_process_inactivate (T_BROKER_INFO * br_info_p)
 
   return;
 }
+#endif /* UNDEFINED */

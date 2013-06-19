@@ -34,18 +34,10 @@
 #include "broker_shm.h"
 #include "shard_proxy_common.h"
 
-extern T_PROXY_INFO *shard_shm_get_first_proxy_info (T_SHM_PROXY *
-						     shm_proxy_p);
 extern T_PROXY_INFO *shard_shm_find_proxy_info (T_SHM_PROXY * proxy_p,
 						int proxy_id);
-extern T_SHARD_INFO *shard_shm_get_first_shard_info (T_PROXY_INFO *
-						     proxy_info_p);
 extern T_SHARD_INFO *shard_shm_find_shard_info (T_PROXY_INFO * proxy_info_p,
 						int shard_id);
-extern T_CLIENT_INFO *shard_shm_get_first_client_info (T_PROXY_INFO *
-						       proxy_info_p);
-extern T_CLIENT_INFO *shard_shm_get_next_client_info (T_CLIENT_INFO *
-						      curr_client_p);
 extern T_CLIENT_INFO *shard_shm_get_client_info (T_PROXY_INFO * proxy_info_p,
 						 int idx);
 extern T_APPL_SERVER_INFO *shard_shm_get_as_info (T_PROXY_INFO * proxy_info_p,
@@ -72,19 +64,14 @@ extern T_SHM_SHARD_CONN_STAT *shard_shm_get_shard_stat (T_PROXY_INFO *
 							int idx);
 extern T_SHM_SHARD_KEY_STAT *shard_shm_get_key_stat (T_PROXY_INFO *
 						     proxy_info_p, int idx);
-extern T_SHM_APPL_SERVER *shard_shm_as_initialize (T_BROKER_INFO * br_info,
-						   T_SHM_PROXY * shm_proxy_p);
 
-extern T_SHM_PROXY *shard_shm_proxy_initialize (T_BROKER_INFO * br_info);
+extern T_SHM_PROXY *shard_shm_initialize_shm_proxy (T_BROKER_INFO * br_info);
+
 extern void shard_shm_dump_appl_server_internal (FILE * fp,
 						 T_SHM_PROXY * shm_as_p);
 extern void shard_shm_dump_appl_server (FILE * fp, int shmid);
 
 /* SHARD TODO : MV OTHER HEADER FILE */
-extern void free_env (char **env, int env_num);
-extern char **make_env (char *env_file, int *env_num);
-extern const char *get_appl_server_name (int appl_server_type, char **env,
-					 int env_num);
 
 extern void shard_shm_init_client_info (T_CLIENT_INFO * client_info_p);
 extern void shard_shm_init_client_info_request (T_CLIENT_INFO *

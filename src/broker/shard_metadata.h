@@ -33,6 +33,7 @@
 #include "cas_protocol.h"
 
 #include "shard_key.h"
+
 #include "broker_shm.h"
 
 extern FN_GET_SHARD_KEY fn_get_shard_key;

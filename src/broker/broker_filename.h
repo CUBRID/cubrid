@@ -57,6 +57,8 @@
 #define ERROR_MSG_FILE			"uw_er.msg"
 #endif
 
+#define BROKER_PATH_MAX             (1024)
+
 /* default values */
 #define DEFAULT_LOG_DIR			"log/broker/sql_log/"
 #define DEFAULT_SLOW_LOG_DIR		DEFAULT_LOG_DIR
@@ -97,7 +99,7 @@ typedef struct t_cubrid_file_info T_CUBRID_FILE_INFO;
 struct t_cubrid_file_info
 {
   T_CUBRID_FILE_ID fid;
-  char file_name[PATH_MAX];
+  char file_name[BROKER_PATH_MAX];
 };
 
 extern void set_cubrid_home (void);

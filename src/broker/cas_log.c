@@ -93,7 +93,7 @@ static int error_file_offset;
 static char cas_log_error_flag;
 #endif
 static FILE *log_fp = NULL, *slow_log_fp = NULL;
-static char log_filepath[PATH_MAX], slow_log_filepath[PATH_MAX];
+static char log_filepath[BROKER_PATH_MAX], slow_log_filepath[BROKER_PATH_MAX];
 static long saved_log_fpos = 0;
 
 static size_t cas_fwrite (const void *ptr, size_t size, size_t nmemb,
@@ -115,11 +115,11 @@ static char *
 make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf,
 		       size_t buf_size, const char *br_name, int as_index)
 {
-  char dirname[PATH_MAX];
+  char dirname[BROKER_PATH_MAX];
 
   assert (filename_buf != NULL);
 
-  get_cubrid_file (fid, dirname, PATH_MAX);
+  get_cubrid_file (fid, dirname, BROKER_PATH_MAX);
   switch (fid)
     {
     case FID_SQL_LOG_DIR:
@@ -161,8 +161,8 @@ cas_log_open (char *br_name, int as_index)
     {
       if (br_name != NULL)
 	{
-	  make_sql_log_filename (FID_SQL_LOG_DIR, log_filepath, PATH_MAX,
-				 br_name, as_index);
+	  make_sql_log_filename (FID_SQL_LOG_DIR, log_filepath,
+				 BROKER_PATH_MAX, br_name, as_index);
 	}
 
       /* note: in "a+" mode, output is always appended */
@@ -236,7 +236,7 @@ cas_log_close (bool flag)
 static void
 cas_log_backup (T_CUBRID_FILE_ID fid)
 {
-  char backup_filepath[PATH_MAX];
+  char backup_filepath[BROKER_PATH_MAX];
   char *filepath = NULL;
 
   assert (log_filepath[0] != '\0');
@@ -254,7 +254,7 @@ cas_log_backup (T_CUBRID_FILE_ID fid)
       return;
     }
 
-  snprintf (backup_filepath, PATH_MAX, "%s.bak", filepath);
+  snprintf (backup_filepath, BROKER_PATH_MAX, "%s.bak", filepath);
   cas_unlink (backup_filepath);
   cas_rename (filepath, backup_filepath);
 }
@@ -282,7 +282,7 @@ cas_log_write_and_set_savedpos (FILE * log_fp, const char *fmt, ...)
 static void
 cas_log_rename (int run_time, time_t cur_time, char *br_name, int as_index)
 {
-  char new_filepath[PATH_MAX];
+  char new_filepath[BROKER_PATH_MAX];
   struct tm tmp_tm;
 
   assert (log_filepath[0] != '\0');
@@ -290,7 +290,7 @@ cas_log_rename (int run_time, time_t cur_time, char *br_name, int as_index)
   localtime_r (&cur_time, &tmp_tm);
   tmp_tm.tm_year += 1900;
 
-  snprintf (new_filepath, PATH_MAX, "%s.%02d%02d%02d%02d%02d.%d",
+  snprintf (new_filepath, BROKER_PATH_MAX, "%s.%02d%02d%02d%02d%02d.%d",
 	    log_filepath, tmp_tm.tm_mon + 1, tmp_tm.tm_mday, tmp_tm.tm_hour,
 	    tmp_tm.tm_min, tmp_tm.tm_sec, run_time);
   cas_rename (log_filepath, new_filepath);
@@ -727,7 +727,7 @@ cas_error_log (int err_code, char *err_msg_str, int client_ip_addr)
 {
 #ifndef LIBCAS_FOR_JSP
   FILE *fp;
-  char *err_log_file = getenv (ERROR_LOG_ENV_STR);
+  char *err_log_file = shm_appl->error_log_file;
   char *script_file = getenv (PATH_INFO_ENV_STR);
   time_t t = time (NULL);
   struct tm ct1;
@@ -774,7 +774,7 @@ cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr,
 {
 #ifndef LIBCAS_FOR_JSP
   FILE *fp;
-  char *access_log_file = getenv (ACCESS_LOG_ENV_STR);
+  char *access_log_file = shm_appl->access_log_file;
   char *script = NULL;
   char clt_ip_str[16];
   char *clt_appl = NULL;
@@ -881,10 +881,10 @@ char *
 cas_log_query_plan_file (int id)
 {
 #ifndef LIBCAS_FOR_JSP
-  static char plan_file_name[PATH_MAX];
-  char dirname[PATH_MAX];
-  get_cubrid_file (FID_CAS_TMP_DIR, dirname, PATH_MAX);
-  snprintf (plan_file_name, PATH_MAX - 1, "%s/%d.%d.plan", dirname,
+  static char plan_file_name[BROKER_PATH_MAX];
+  char dirname[BROKER_PATH_MAX];
+  get_cubrid_file (FID_CAS_TMP_DIR, dirname, BROKER_PATH_MAX);
+  snprintf (plan_file_name, BROKER_PATH_MAX - 1, "%s/%d.%d.plan", dirname,
 	    (int) getpid (), id);
   return plan_file_name;
 #else /* LIBCAS_FOR_JSP */
@@ -953,7 +953,7 @@ cas_slow_log_open (char *br_name, int as_index)
       if (br_name != NULL)
 	{
 	  make_sql_log_filename (FID_SLOW_LOG_DIR, slow_log_filepath,
-				 PATH_MAX, br_name, as_index);
+				 BROKER_PATH_MAX, br_name, as_index);
 	}
 
       /* note: in "a+" mode, output is always appended */

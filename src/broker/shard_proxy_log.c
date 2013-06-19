@@ -51,7 +51,7 @@ static char cas_log_error_flag;
 #endif
 static FILE *log_fp = NULL;
 static FILE *access_log_fp = NULL;
-static char log_filepath[PATH_MAX];
+static char log_filepath[BROKER_PATH_MAX];
 
 extern int proxy_id;
 extern T_SHM_APPL_SERVER *shm_as_p;
@@ -73,7 +73,7 @@ make_proxy_log_filename (char *filepath_buf,
 			 size_t buf_size, const char *br_name,
 			 int proxy_index)
 {
-  char dirname[PATH_MAX];
+  char dirname[BROKER_PATH_MAX];
 
   assert (filepath_buf != NULL);
 
@@ -96,7 +96,8 @@ proxy_log_open (char *br_name, int proxy_index)
     {
       if (br_name != NULL)
 	{
-	  make_proxy_log_filename (log_filepath, PATH_MAX, br_name, proxy_id);
+	  make_proxy_log_filename (log_filepath, BROKER_PATH_MAX, br_name,
+				   proxy_id);
 	}
 
       /* note: in "a+" mode, output is always appended */
@@ -145,11 +146,11 @@ proxy_log_close (void)
 static void
 proxy_log_backup (void)
 {
-  char backup_filepath[PATH_MAX];
+  char backup_filepath[BROKER_PATH_MAX];
 
   assert (log_filepath[0] != '\0');
 
-  snprintf (backup_filepath, PATH_MAX, "%s.bak", log_filepath);
+  snprintf (backup_filepath, BROKER_PATH_MAX, "%s.bak", log_filepath);
 
   unlink (backup_filepath);
   rename (log_filepath, backup_filepath);

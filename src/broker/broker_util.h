@@ -53,7 +53,7 @@
 
 #define MAKE_FILEPATH(dest,src,dest_len) \
   do { \
-      char _buf[PATH_MAX]; \
+      char _buf[BROKER_PATH_MAX]; \
       if ((src) == NULL || (src)[0] == 0) { \
 	  (dest)[0] = 0; \
       } else if (realpath ((src), _buf) != NULL) { \
@@ -69,8 +69,11 @@ extern void ut_file_unlock (char *);
 extern int ut_access_log (int as_index, struct timeval *start_time,
 			  char err_flag, int e_offset);
 #endif
-extern int ut_kill_process (int pid, char *br_name, int proxy_index,
-			    int shard_index, int as_index);
+extern int ut_kill_process (int pid);
+extern int ut_kill_broker_process (int pid, char *br_name);
+extern int ut_kill_proxy_process (int pid, char *br_name, int proxy_id);
+extern int ut_kill_as_process (int pid, char *br_name, int as_id);
+
 extern void ut_cd_work_dir (void);
 extern void ut_cd_root_dir (void);
 
@@ -80,17 +83,24 @@ extern int ut_set_keepalive (int sock, int keepalive_time);
 extern int run_child (const char *appl_name);
 #endif
 
-extern int as_get_my_as_info (char *br_name, int *as_index, int max_length);
-extern void as_pid_file_create (char *br_name, int proxy_index, int shard_id,
-				int as_index);
+extern void as_pid_file_create (char *br_name, int as_index);
 extern void as_db_err_log_set (char *br_name, int proxy_index, int shard_id,
 			       int as_index);
+
+extern void ut_get_as_pid_name (char *pid_name, char *br_name, int as_index,
+				int len);
 
 extern int ut_time_string (char *buf, struct timeval *log_time);
 extern char *ut_get_ipv4_string (char *ip_str, int len,
 				 const unsigned char *ip_addr);
 extern float ut_get_avg_from_array (int array[], int size);
 extern bool ut_is_appl_server_ready (int pid, char *ready_flag);
+extern void ut_get_broker_port_name (char *port_name, char *broker_name,
+				     int len);
+extern void ut_get_proxy_port_name (char *port_name, char *broker_name,
+				    int proxy_id, int len);
+extern void ut_get_as_port_name (char *port_name, char *broker_name,
+				 int as_id, int len);
 
 extern double ut_size_string_to_kbyte (const char *size_str,
 				       const char *default_unit);

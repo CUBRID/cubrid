@@ -80,6 +80,10 @@
 #define BROKER_NAME_LEN		64
 #define BROKER_LOG_MSG_SIZE	64
 
+#if !defined(BROKER_PATH_MAX)
+#define BROKER_PATH_MAX       (1024)
+#endif
+
 #if defined(CUBRID_SHARD)
 #define SHARD_NAME_LEN 		64
 #define DEFAULT_MIN_NUM_PROXY	1
@@ -89,7 +93,6 @@
 #define DEFAULT_PROXY_LOG_MAX_SIZE	"100M"
 #define MAX_PROXY_LOG_MAX_SIZE		1048576	/* about 1G */
 #endif /* CUBRID_SHARD */
-
 #define SHARD_CONN_STAT_SIZE_LIMIT       256
 #define SHARD_KEY_STAT_SIZE_LIMIT        2
 #define CLIENT_INFO_SIZE_LIMIT           10000

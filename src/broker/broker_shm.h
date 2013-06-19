@@ -362,10 +362,14 @@ struct t_appl_server_info
   int isolation_level;
   int lock_timeout;
 
-  int graceful_down_flag;	/* it is used only in shard */
+  short proxy_id;
+  short shard_id;
+  short shard_cas_id;
+  short as_id;
+
+  int advance_activate_flag;	/* it is used only in shard */
 };
 
-#if defined(CUBRID_SHARD)
 typedef struct t_client_info T_CLIENT_INFO;
 struct t_client_info
 {
@@ -405,6 +409,7 @@ struct t_shard_info
 
   /* shard queue stat */
   INT64 waiter_count;
+
   int as_info_index_base;
 };
 
@@ -520,8 +525,6 @@ struct t_shm_proxy
   T_PROXY_INFO proxy_info[MAX_PROXY_NUM];
 };
 
-#endif /* CUBRID_SHARD */
-
 typedef struct t_shm_appl_server T_SHM_APPL_SERVER;
 struct t_shm_appl_server
 {
@@ -552,6 +555,8 @@ struct t_shm_appl_server
   char appl_server_name[APPL_SERVER_NAME_MAX_SIZE];
   char preferred_hosts[SHM_APPL_SERVER_NAME_MAX];
 
+  char access_log_file[CONF_LOG_FILE_LEN];
+
   /* from br_info */
   /*from here, these are used only in shard */
   char source_env[CONF_LOG_FILE_LEN];
@@ -565,6 +570,7 @@ struct t_shm_appl_server
   int lock;
 #endif				/* USE_MUTEX */
   int magic;
+  int broker_port;
   int appl_server_max_size;
   int appl_server_hard_limit;
   int session_timeout;
@@ -638,5 +644,11 @@ int uw_sem_wait (sem_t * sem_t);
 int uw_sem_post (sem_t * sem_t);
 int uw_sem_destroy (sem_t * sem_t);
 #endif
+T_SHM_BROKER *broker_shm_initialize_shm_broker (int master_shm_id,
+						T_BROKER_INFO * br_info,
+						int br_num, int acl_flag,
+						char *acl_file);
+T_SHM_APPL_SERVER *broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p,
+						 T_SHM_PROXY * shm_proxy_p);
 
 #endif /* _BROKER_SHM_H_ */

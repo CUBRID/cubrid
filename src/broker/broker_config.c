@@ -230,7 +230,7 @@ check_port_number (T_BROKER_INFO * br_info, int num_brs)
 void
 dir_repath (char *path, size_t path_len)
 {
-  char tmp_str[PATH_MAX];
+  char tmp_str[BROKER_PATH_MAX];
 
   trim (path);
 
@@ -239,7 +239,7 @@ dir_repath (char *path, size_t path_len)
       return;
     }
 
-  strncpy (tmp_str, path, PATH_MAX);
+  strncpy (tmp_str, path, BROKER_PATH_MAX);
   snprintf (path, path_len, "%s/%s", get_cubrid_home (), tmp_str);
 }
 
@@ -314,7 +314,7 @@ broker_config_read_internal (const char *conf_file,
   int errcode = 0;
   const char *ini_string;
 #if defined(CUBRID_SHARD)
-  char library_name[PATH_MAX];
+  char library_name[BROKER_PATH_MAX];
 #endif
   char size_str[LINE_MAX];
   char time_str[LINE_MAX];
@@ -799,7 +799,6 @@ broker_config_read_internal (const char *conf_file,
 	}
 #if defined(CUBRID_SHARD)
       /* SHARD PHASE0 */
-
       proxy_shm_id =
 	ini_gethex (ini, sec_name, "METADATA_SHM_ID", 0, &lineno);
 
@@ -876,6 +875,7 @@ broker_config_read_internal (const char *conf_file,
       br_info[num_brs].max_client =
 	ini_getuint (ini, sec_name, "MAX_CLIENT",
 		     DEFAULT_MAX_CLIENT, &lineno);
+
       if (br_info[num_brs].max_client >
 	  CLIENT_INFO_SIZE_LIMIT * br_info[num_brs].num_proxy)
 	{
@@ -918,12 +918,12 @@ broker_config_read_internal (const char *conf_file,
       if (library_name[0] != 0 && !IS_ABS_PATH (library_name))
 	{
 	  envvar_libdir_file (br_info[num_brs].shard_key_library_name,
-			      PATH_MAX, library_name);
+			      BROKER_PATH_MAX, library_name);
 	}
       else
 	{
-	  snprintf (br_info[num_brs].shard_key_library_name, PATH_MAX, "%s",
-		    library_name);
+	  snprintf (br_info[num_brs].shard_key_library_name, BROKER_PATH_MAX,
+		    "%s", library_name);
 	}
 
       strcpy (br_info[num_brs].shard_key_function_name,
@@ -1134,8 +1134,8 @@ broker_config_read (const char *conf_file, T_BROKER_INFO * br_info,
 {
   int err = 0;
   bool is_conf_found = false;
-  char default_conf_file_path[PATH_MAX], file_name[PATH_MAX],
-    file_being_dealt_with[PATH_MAX];
+  char default_conf_file_path[BROKER_PATH_MAX], file_name[BROKER_PATH_MAX],
+    file_being_dealt_with[BROKER_PATH_MAX];
   struct stat stat_buf;
 
 #if !defined (_UC_ADMIN_SO_)
@@ -1146,11 +1146,12 @@ broker_config_read (const char *conf_file, T_BROKER_INFO * br_info,
   memset (br_info, 0, sizeof (T_BROKER_INFO) * MAX_BROKER_NUM);
 
 #if defined(CUBRID_SHARD)
-  get_cubrid_file (FID_SHARD_CONF, default_conf_file_path, PATH_MAX);
-#else
-  get_cubrid_file (FID_CUBRID_BROKER_CONF, default_conf_file_path, PATH_MAX);
-#endif /* CUBRID_SHARD */
-  basename_r (default_conf_file_path, file_name, PATH_MAX);
+  get_cubrid_file (FID_SHARD_CONF, default_conf_file_path, BROKER_PATH_MAX);
+#else /* CUBRID_SHARD */
+  get_cubrid_file (FID_CUBRID_BROKER_CONF, default_conf_file_path,
+		   BROKER_PATH_MAX);
+#endif /* !CUBRID_SHARD */
+  basename_r (default_conf_file_path, file_name, BROKER_PATH_MAX);
 
   if (conf_file == NULL)
     {
@@ -1190,7 +1191,8 @@ broker_config_read (const char *conf_file, T_BROKER_INFO * br_info,
 #if defined (WINDOWS)
       sprintf (file_being_dealt_with, ".\\%s", file_name);
 #else /* WINDOWS */
-      snprintf (file_being_dealt_with, (PATH_MAX - 1), "./%s", file_name);
+      snprintf (file_being_dealt_with, (BROKER_PATH_MAX - 1), "./%s",
+		file_name);
 #endif /* WINDOWS */
       if (stat (file_being_dealt_with, &stat_buf) == 0)
 	{
