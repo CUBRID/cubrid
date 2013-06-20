@@ -928,10 +928,10 @@ struct log_header
   DKNPAGES npages;		/* Number of pages in the active log portion.
 				 * Does not include the log header page.
 				 */
-  UINT8 db_charset;
-  UINT8 dummy2;			/* Dummy fields for 8byte align */
-  UINT8 dummy3;
-  UINT8 dummy4;
+  INT8 db_charset;
+  INT8 dummy2;			/* Dummy fields for 8byte align */
+  INT8 dummy3;
+  INT8 dummy4;
   LOG_PAGEID fpageid;		/* Logical pageid at physical location 1 in
 				 * active log
 				 */

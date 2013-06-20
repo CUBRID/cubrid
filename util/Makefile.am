@@ -67,7 +67,7 @@ include_HEADERS = $(EXECUTABLE_DIR)/cubrid_esql.h
 
 bin_PROGRAMS = \
 	csql cub_master cub_server cubrid cub_admin cub_commdb \
-	cubrid_esql cubrid_rel loadjava migrate_90beta_to_91
+	cubrid_esql cubrid_rel loadjava migrate_91_to_92
 
 compat_PROGRAMS = \
 	addvoldb backupdb checkdb commdb compactdb copydb \
@@ -101,8 +101,8 @@ get_disk_compat_LDADD = @SA_LIB@
 convert_password_SOURCES = $(EXECUTABLE_DIR)/convert_password.c
 convert_password_LDADD = @SA_LIB@
 
-migrate_90beta_to_91_SOURCES = $(EXECUTABLE_DIR)/migrate.c
-migrate_90beta_to_91_LDADD = @SA_LIB@
+migrate_91_to_92_SOURCES = $(EXECUTABLE_DIR)/migrate.c
+migrate_91_to_92_LDADD = @SA_LIB@
 
 load_noopt_SOURCES = $(EXECUTABLE_DIR)/loader_old_grammar.c \
 		$(EXECUTABLE_DIR)/loader_old_lexer.c \
