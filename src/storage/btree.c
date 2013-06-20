@@ -18609,7 +18609,7 @@ btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key,
 		obj_oid->volid, obj_oid->pageid, obj_oid->slotid);
     }
 
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_UNIQUE_FAILED, 6,
+  er_set (severity, ARG_FILE_LINE, err_id, 6,
 	  (index_name) ? index_name : "*UNKNOWN-INDEX*",
 	  (index_name && btid) ? btid_msg_buf : "",
 	  (class_name) ? class_name : "*UNKNOWN-CLASS*",
