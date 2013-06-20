@@ -154,6 +154,9 @@ static bool qo_check_parent_eq_class_for_multi_range_opt (QO_PLAN * parent,
 							  sort_plan);
 static XASL_NODE *make_sort_limit_proc (QO_ENV * env, QO_PLAN * plan,
 					PT_NODE * namelist, XASL_NODE * xasl);
+static PT_NODE *qo_get_orderby_num_upper_bound_node (PARSER_CONTEXT * parser,
+						     PT_NODE * orderby_for);
+
 /*
  * make_scan_proc () -
  *   return: XASL_NODE *
@@ -1028,15 +1031,33 @@ add_sort_spec (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan,
       QO_LIMIT_INFO *limit_infop;
       PARSER_CONTEXT *parser = QO_ENV_PARSER (env);
       PT_NODE *query = QO_ENV_PT_TREE (env);
+      PT_NODE *upper_bound = NULL, *save_next = NULL;
 
       xasl->orderby_list = pt_to_orderby (parser, query->info.query.order_by,
 					  query);
       XASL_CLEAR_FLAG (xasl, XASL_SKIP_ORDERBY_LIST);
 
       xasl->orderby_limit = NULL;
-      xasl->ordbynum_pred =
-	pt_to_pred_expr_with_arg (parser, query->info.query.orderby_for,
-				  &ordbynum_flag);
+      /* A SORT-LIMIT plan can only handle the upper limit of the orderby_num
+       * predicate. This is because the orderby_num pred will be applied
+       * twice: once for the SORT-LIMIT plan and once for the top plan.
+       * If the lower bound is evaluated twice, some tuples are lost.
+       */
+      upper_bound = query->info.query.orderby_for;
+      upper_bound = qo_get_orderby_num_upper_bound_node (parser, upper_bound);
+      if (upper_bound == NULL)
+	{
+	  /* Must have an upper limit if we're considering a SORT-LIMIT
+	   * plan.
+	   */
+	  return NULL;
+	}
+      save_next = upper_bound->next;
+      upper_bound->next = NULL;
+      xasl->ordbynum_pred = pt_to_pred_expr_with_arg (parser, upper_bound,
+						      &ordbynum_flag);
+      upper_bound->next = save_next;
+
       if (ordbynum_flag & PT_PRED_ARG_ORDBYNUM_CONTINUE)
 	{
 	  xasl->ordbynum_flag = XASL_ORDBYNUM_FLAG_SCAN_CONTINUE;
@@ -4922,4 +4943,102 @@ cleanup:
   statement->info.query.order_by = order_by;
 
   return listfile;
+}
+
+/*
+ * qo_get_orderby_num_upper_bound_node () - get the node which represents the
+ *					    upper bound predicate of an
+ *					    orderby_num predicate
+ * return : node or NULL
+ * parser (in) : parser context
+ * orderby_for (in) : orderby_for predicate list
+ *
+ * Note: A NULL return indicates that this function either found no upper
+ * bound or that it found several predicates which specify an upper bound
+ * for the ORDERBY_NUM predicate.
+ */
+static PT_NODE *
+qo_get_orderby_num_upper_bound_node (PARSER_CONTEXT * parser,
+				     PT_NODE * orderby_for)
+{
+  PT_NODE *upper_bound = NULL, *left = NULL, *right = NULL;
+  PT_NODE *save_next;
+  PT_NODE *orderby_num = NULL, *value_node = NULL;
+  PT_OP_TYPE op;
+
+
+  if (orderby_for == NULL
+      || !PT_IS_EXPR_NODE (orderby_for) || orderby_for->or_next != NULL)
+    {
+      /* orderby_for must be an expression containing only AND predicates */
+      assert (false);
+      return NULL;
+    }
+
+  /* Ranges for ORDERBY_NUM predicates have already been merged (see
+   * qo_reduce_order_by). If the code below finds more than one upper bound,
+   * this is an error.
+   */
+  if (orderby_for->next != NULL)
+    {
+      save_next = orderby_for->next;
+      orderby_for->next = NULL;
+
+      right = save_next;
+      left = orderby_for;
+
+      left = qo_get_orderby_num_upper_bound_node (parser, left);
+      right = qo_get_orderby_num_upper_bound_node (parser, right);
+
+      orderby_for->next = save_next;
+
+      if (left != NULL)
+	{
+	  if (right != NULL)
+	    {
+	      /* There should be exactly one upper bound */
+	      return NULL;
+	    }
+	  return left;
+	}
+      else
+	{
+	  /* If right is NULL, the orderby_num pred is invalid and we messed
+	   * something up somewhere. If it is not NULL, this is the node
+	   * we are looking for.
+	   */
+	  return right;
+	}
+    }
+
+  op = orderby_for->info.expr.op;
+  /* look for orderby_num < argument */
+  if (PT_IS_EXPR_NODE (orderby_for->info.expr.arg1)
+      && orderby_for->info.expr.arg1->info.expr.op == PT_ORDERBY_NUM)
+    {
+      if (op == PT_GE || op == PT_GT)
+	{
+	  /* only interested in orderby_num <[=] arg2 */
+	  return NULL;
+	}
+      return orderby_for;
+    }
+  else
+    {
+      if (!PT_IS_EXPR_NODE (orderby_for->info.expr.arg2)
+	  || orderby_for->info.expr.arg1->info.expr.op != PT_ORDERBY_NUM)
+	{
+	  /* could not find ORDERBY_NUM argument */
+	  return NULL;
+	}
+
+      if (op == PT_LE || op == PT_LT)
+	{
+	  /* only interested in arg1 >[=] orderby_num */
+	  return NULL;
+	}
+      return orderby_for;
+    }
+
+  return NULL;
 }
