@@ -277,7 +277,7 @@ function init_conf()
 	
 	# get conf from cubrid_ha.conf file
 	if [ ! -f $CUBRID/conf/cubrid_ha.conf ]; then
-		error "Not found cubrid_ha.conf on $CUBRID/conf."
+		error "Cannot find cubrid_ha.conf in $CUBRID/conf."
 	fi
 	
 	node_index=1
@@ -317,7 +317,7 @@ function init_conf()
 	if [ $? -ne $SUCCESS ]; then
 		cubrid changemode $db_name@$slave_host 2>/dev/null | grep active >/dev/null
 		if [ $? -ne $SUCCESS ]; then
-			error "Both the master and slave is not active state."
+			error "Neither the master nor the slave is active."
 		fi
 		tmp_host=$master_host
 		master_host=$slave_host
@@ -326,7 +326,7 @@ function init_conf()
 	
 	# get state of the current server (master / slave / replca)
 	if [ $current_host == "$master_host" ]; then
-		error "This script is not running on master server."
+		error "This script is supposed not to run on master."
 	elif [ $current_host == "$slave_host" ]; then
 		current_state="slave"
 	else
@@ -367,7 +367,7 @@ function init_conf()
 	IFS=$OFS
 	
 	if [ "$current_host" == "$target_host" ]; then
-		error "The current host($current_host) and target host($target_host) is equal." 
+		error "The current host($current_host) and target host($target_host) must be different." 
 	fi
 	
 	# check the db server is running on current host.
@@ -421,7 +421,7 @@ function get_password()
 	echo "# get HA/replica user password and DBA password"	
 	echo "#"
 	echo "#  * warning !!!"
-	echo "#   - Because $prog_name use expect (ssh, scp) to control HA/replica node,"
+	echo "#   - Because $prog_name uses expect (ssh, scp) to control HA/replica node,"
 	echo "#     the script has to know these passwords."
 	echo "#"
 	echo "################################################################################"
@@ -585,7 +585,7 @@ function copy_script_to_replica()
 	fi
 	
 	if [ "$replica_hosts" == "" ]; then
-		echo "There is no replication server to copy scripts."
+		echo "There is no replication server to copy scripts to."
 	else
 		cd $HA_DIR
 		execute "tar -zcf ha.tgz ha"
@@ -600,7 +600,7 @@ function copy_script_to_replica()
 		done
 		
 		# 2. extract ha.tgz on replications and check if the script is copyied normally.
-		echo -ne "\n - 2. extract ha.tgz on replications and check if the script is copyied normally.\n\n"
+		echo -ne "\n - 2. extract ha.tgz on replications and check if the script is successfully copied.\n\n"
 		command1="rm -rf ~/.ha"
 		command2="tar -zxf ha.tgz"
 		command3="mv ha $ha_temp_home"
@@ -633,7 +633,7 @@ function check_environment()
 	echo ""
 	echo "##### step $step_no ###################################################################"	
 	echo "#"
-	echo "#  check environment of all ha node"
+	echo "#  check environment of all ha nodes"
 	echo "#"
 	echo "#  * details"
 	echo '#   - test $CUBRID == '"$CUBRID"
@@ -661,7 +661,7 @@ function check_environment()
 	
 	for host in $master_host $slave_host ${replica_hosts[@]}; do
 		if [ ! -f $env_output/$host ]; then
-			error "$host's environment is different others."
+			error "The environment of $host is different from that of others"
 		fi
 	done
 }
@@ -686,7 +686,7 @@ function suspend_master_repl_util()
 	if [ $? -ne $SUCCESS ]; then   
 		error "Fail to suspend copylogdb/applylogdb." true
 	fi
-	echo "Wait for 60s to deregister coppylogdb/applylogdb."
+	echo "Wait for 60s to deregister copylogdb/applylogdb."
 	for (( i = 0; i < 60; i++ )); do
 		echo -ne "."
 		sleep 1
@@ -781,7 +781,7 @@ function copy_backup_db_from_target()
 		execute "mv -f $CUBRID_DATABASES/databases.txt $CUBRID_DATABASES/databases.txt.$now"
 		scp_cubrid_from $target_host "$CUBRID_DATABASES/databases.txt" "$CUBRID_DATABASES/."
 	else
-		echo -ne "\n - thres's already $db_name information in $CUBRID_DATABASES/databases.txt" 
+		echo -ne "\n - there is already $db_name information in $CUBRID_DATABASES/databases.txt" 
 		echo "[$current_host]$ grep $db_name $CUBRID_DATABASES/databases.txt" 
 		echo "$line"
 	fi
@@ -979,8 +979,8 @@ function copy_active_log_from_master()
 	
 	repl_log_path=$repl_log_home_abs/${db_name}_${master_host}
 
-	# 1. remove old replicaton log.
-	echo -ne "\n - 1. remove old replicaton log.\n\n"
+	# 1. remove old replication log.
+	echo -ne "\n - 1. remove old replication log.\n\n"
 	execute "rm -rf $repl_log_path"	
 	execute "mkdir -p $repl_log_path"
 
@@ -1006,7 +1006,7 @@ function copy_active_log_from_slave()
 	echo "#  slave" 
 	echo "#"
 	echo "#  * details"
-	echo "#   - remove old replication log on slave if exist"
+	echo "#   - remove old replication log on slave if exists"
 	echo "#   - start copylogdb to make replication active log"
 	echo "#   - copy archive logs from slave"
 	echo "#"
