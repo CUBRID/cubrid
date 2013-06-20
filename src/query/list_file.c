@@ -736,6 +736,7 @@ qfile_is_sort_list_covered (SORT_LIST * covering_list_p,
        s1 && s2; s1 = s1->next, s2 = s2->next)
     {
       if (s1->s_order != s2->s_order
+	  || s1->s_nulls != s2->s_nulls
 	  || s1->pos_descr.pos_no != s2->pos_descr.pos_no)
 	{
 	  return false;

@@ -8018,17 +8018,17 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  r3 = pt_to_regu_variable (parser,
 					    node->info.expr.arg3, unbox);
 
-                  domain = pt_xasl_node_to_domain (parser, node);
-                  if (domain == NULL)
-                    {
-                      goto end_expr_op_switch;
-                    }
-                }
-              else if (node->info.expr.op == PT_TRACE_STATS)
-                {
-                  r1 = NULL;
-                  r2 = NULL;
-                  r3 = NULL;
+		  domain = pt_xasl_node_to_domain (parser, node);
+		  if (domain == NULL)
+		    {
+		      goto end_expr_op_switch;
+		    }
+		}
+	      else if (node->info.expr.op == PT_TRACE_STATS)
+		{
+		  r1 = NULL;
+		  r2 = NULL;
+		  r3 = NULL;
 
 		  domain = pt_xasl_node_to_domain (parser, node);
 		  if (domain == NULL)
@@ -9356,10 +9356,10 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    pt_make_regu_arith (r1, r2, r3, T_WIDTH_BUCKET, domain);
 		  break;
 
-                case PT_TRACE_STATS:
-                  regu =
-                    pt_make_regu_arith (r1, r2, r3, T_TRACE_STATS, domain);
-                  break;
+		case PT_TRACE_STATS:
+		  regu =
+		    pt_make_regu_arith (r1, r2, r3, T_TRACE_STATS, domain);
+		  break;
 
 		default:
 		  break;
@@ -14503,7 +14503,8 @@ pt_optimize_analytic_list (ANALYTIC_INFO * info)
 	  while (curr_s != NULL && list_s != NULL)
 	    {
 	      if (curr_s->pos_descr.pos_no != list_s->pos_descr.pos_no
-		  || curr_s->s_order != list_s->s_order)
+		  || curr_s->s_order != list_s->s_order
+		  || curr_s->s_nulls != list_s->s_nulls)
 		{
 		  break;
 		}
@@ -16135,13 +16136,13 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
       trace_format = prm_get_integer_value (PRM_ID_QUERY_TRACE_FORMAT);
 
       if (trace_format == QUERY_TRACE_TEXT)
-        {
-          qo_top_plan_print_text (parser, xasl, select_node, plan);
-        }
+	{
+	  qo_top_plan_print_text (parser, xasl, select_node, plan);
+	}
       else if (trace_format == QUERY_TRACE_JSON)
-        {
-          qo_top_plan_print_json (parser, xasl, select_node, plan);
-        }
+	{
+	  qo_top_plan_print_json (parser, xasl, select_node, plan);
+	}
     }
 
 error_exit:
@@ -23819,6 +23820,7 @@ pt_is_sort_list_covered (PARSER_CONTEXT * parser, SORT_LIST * covering_list_p,
        s1 && s2; s1 = s1->next, s2 = s2->next)
     {
       if (s1->s_order != s2->s_order
+	  || s1->s_nulls != s2->s_nulls
 	  || s1->pos_descr.pos_no != s2->pos_descr.pos_no)
 	{
 	  return false;
