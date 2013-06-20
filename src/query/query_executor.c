@@ -168,6 +168,23 @@ typedef SCAN_CODE (*XSAL_SCAN_FUNC) (THREAD_ENTRY * thread_p, XASL_NODE *,
 /* pointer to XASL scan function */
 typedef XSAL_SCAN_FUNC *XASL_SCAN_FNC_PTR;
 
+typedef enum groupby_dimension_flag GROUPBY_DIMENSION_FLAG;
+enum groupby_dimension_flag
+{
+  GROUPBY_DIM_FLAG_NONE = 0,
+  GROUPBY_DIM_FLAG_GROUP_BY = 1,
+  GROUPBY_DIM_FLAG_ROLLUP = 2,
+  GROUPBY_DIM_FLAG_CUBE = 4,
+  GROUPBY_DIM_FLAG_SET = 8
+};
+
+typedef struct groupby_dimension GROUPBY_DIMENSION;
+struct groupby_dimension
+{
+  GROUPBY_DIMENSION_FLAG d_flag;	/* dimension info */
+  AGGREGATE_TYPE *d_agg_list;	/* aggregation colunms list */
+};
+
 typedef struct groupby_state GROUPBY_STATE;
 struct groupby_state
 {
@@ -186,8 +203,7 @@ struct groupby_state
   DB_VALUE *grbynum_val;
   int grbynum_flag;
   XASL_NODE *eptr_list;
-  AGGREGATE_TYPE *g_agg_list;
-  AGGREGATE_TYPE **g_rollup_agg_list;
+  AGGREGATE_TYPE *g_output_agg_list;
   REGU_VARIABLE_LIST g_regu_list;
   VAL_LIST *g_val_list;
   OUTPTR_LIST *g_outptr_list;
@@ -198,8 +214,10 @@ struct groupby_state
   QFILE_TUPLE_RECORD input_tpl;
   QFILE_TUPLE_RECORD *output_tplrec;
   int input_recs;
-  int rollup_levels;
+
   int with_rollup;
+  GROUPBY_DIMENSION *g_dim;	/* dimentions for Data Cube */
+  int g_dim_levels;		/* dimentions size */
 
   SORT_CMP_FUNC *cmp_fn;
   LK_COMPOSITE_LOCK *composite_lock;
@@ -593,12 +611,10 @@ static DB_LOGICAL qexec_eval_instnum_pred (THREAD_ENTRY * thread_p,
 					   XASL_NODE * xasl,
 					   XASL_STATE * xasl_state);
 static int qexec_add_composite_lock (THREAD_ENTRY * thread_p,
-				     REGU_VARIABLE_LIST
-				     reg_var_list,
-				     VAL_LIST * vl,
+				     REGU_VARIABLE_LIST reg_var_list,
 				     XASL_STATE * xasl_state,
-				     LK_COMPOSITE_LOCK *
-				     composite_lock, int upd_del_cls_cnt,
+				     LK_COMPOSITE_LOCK * composite_lock,
+				     int upd_del_cls_cnt,
 				     OID * default_cls_oid);
 static QPROC_TPLDESCR_STATUS qexec_generate_tuple_descriptor (THREAD_ENTRY *
 							      thread_p,
@@ -685,24 +701,26 @@ static void qexec_clear_groupby_state (THREAD_ENTRY * thread_p,
 				       GROUPBY_STATE * gbstate);
 static void qexec_clear_agg_orderby_const_list (THREAD_ENTRY * thread_p,
 						XASL_NODE * xasl);
-static int qexec_initialize_groupby_rollup (GROUPBY_STATE * gbstate);
-static void qexec_clear_groupby_rollup (THREAD_ENTRY * thread_p,
-					GROUPBY_STATE * gbstate);
-static void qexec_gby_start_group (THREAD_ENTRY * thread_p,
-				   GROUPBY_STATE * gbstate,
-				   const RECDES * key);
+static int qexec_gby_init_group_dim (GROUPBY_STATE * gbstate);
+static void qexec_gby_clear_group_dim (THREAD_ENTRY * thread_p,
+				       GROUPBY_STATE * gbstate);
 static void qexec_gby_agg_tuple (THREAD_ENTRY * thread_p,
 				 GROUPBY_STATE * gbstate, QFILE_TUPLE tpl,
 				 int peek);
-static void qexec_gby_finalize_group (THREAD_ENTRY * thread_p,
-				      GROUPBY_STATE * gbstate);
-static void qexec_gby_start_rollup_group (THREAD_ENTRY * thread_p,
+static void qexec_gby_start_group_dim (THREAD_ENTRY * thread_p,
+				       GROUPBY_STATE * gbstate,
+				       const RECDES * recdes);
+static void qexec_gby_start_group (THREAD_ENTRY * thread_p,
+				   GROUPBY_STATE * gbstate,
+				   const RECDES * recdes, int N);
+static void qexec_gby_finalize_group_val_list (THREAD_ENTRY * thread_p,
+					       GROUPBY_STATE * gbstate,
+					       int N);
+static void qexec_gby_finalize_group_dim (THREAD_ENTRY * thread_p,
 					  GROUPBY_STATE * gbstate,
-					  const RECDES * key,
-					  int rollup_level);
-static void qexec_gby_finalize_rollup_group (THREAD_ENTRY * thread_p,
-					     GROUPBY_STATE * gbstate,
-					     int rollup_level);
+					  const RECDES * recdes);
+static void qexec_gby_finalize_group (THREAD_ENTRY * thread_p,
+				      GROUPBY_STATE * gbstate, int N);
 static SORT_STATUS qexec_gby_get_next (THREAD_ENTRY * thread_p,
 				       RECDES * recdes, void *arg);
 static int qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes,
@@ -1259,14 +1277,13 @@ qexec_eval_instnum_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
  *   xasl_state(in) : xasl state. Needed for fetch_peek_dbval.
  *   composite_lock(in/out) : structure that will be filled with composite
  *	  locks.
- *   upd_del_cls_cnt(in): number of classes for wich rows will be updated or
+ *   upd_del_cls_cnt(in): number of classes for which rows will be updated or
  *	  deleted.
  *   default_cls_oid(in): default class oid
  */
 static int
 qexec_add_composite_lock (THREAD_ENTRY * thread_p,
 			  REGU_VARIABLE_LIST reg_var_list,
-			  VAL_LIST * vl,
 			  XASL_STATE * xasl_state,
 			  LK_COMPOSITE_LOCK * composite_lock,
 			  int upd_del_cls_cnt, OID * default_cls_oid)
@@ -1604,7 +1621,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  class_oid = &ACCESS_SPEC_CLS_OID (xasl->aptr_list->spec_list);
 	}
       ret = qexec_add_composite_lock (thread_p, xasl->outptr_list->valptrp,
-				      xasl->val_list, xasl_state,
+				      xasl_state,
 				      &xasl->composite_lock,
 				      xasl->upd_del_class_cnt, class_oid);
       if (ret != NO_ERROR)
@@ -3302,7 +3319,7 @@ qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   else
     {
       error = qexec_orderby_distinct_by_sorting (thread_p, xasl, option,
-						xasl_state);
+						 xasl_state);
     }
 
   if (thread_is_on_trace (thread_p))
@@ -3695,6 +3712,8 @@ qexec_initialize_groupby_state (GROUPBY_STATE * gbstate,
 				QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
 				QFILE_TUPLE_RECORD * tplrec)
 {
+  assert (groupby_list != NULL);
+
   gbstate->state = NO_ERROR;
 
   gbstate->input_scan = NULL;
@@ -3709,7 +3728,7 @@ qexec_initialize_groupby_state (GROUPBY_STATE * gbstate,
   gbstate->grbynum_val = grbynum_val;
   gbstate->grbynum_flag = grbynum_flag;
   gbstate->eptr_list = eptr_list;
-  gbstate->g_agg_list = g_agg_list;
+  gbstate->g_output_agg_list = g_agg_list;
   gbstate->g_regu_list = g_regu_list;
   gbstate->g_val_list = g_val_list;
   gbstate->g_outptr_list = g_outptr_list;
@@ -3728,9 +3747,6 @@ qexec_initialize_groupby_state (GROUPBY_STATE * gbstate,
   gbstate->input_tpl.tpl = 0;
   gbstate->input_recs = 0;
 
-  gbstate->rollup_levels = 0;
-  gbstate->g_rollup_agg_list = NULL;
-
   if (qfile_initialize_sort_key_info (&gbstate->key_info, groupby_list,
 				      type_list) == NULL)
     {
@@ -3745,15 +3761,13 @@ qexec_initialize_groupby_state (GROUPBY_STATE * gbstate,
   gbstate->current_key.area_size = DB_PAGESIZE;
 
   gbstate->output_tplrec = tplrec;
+
   gbstate->with_rollup = with_rollup;
 
-  if (with_rollup)
+  /* initialize aggregate lists */
+  if (qexec_gby_init_group_dim (gbstate) != NO_ERROR)
     {
-      /* initialize rollup aggregate lists */
-      if (qexec_initialize_groupby_rollup (gbstate) != NO_ERROR)
-	{
-	  return NULL;
-	}
+      return NULL;
     }
 
   gbstate->composite_lock = NULL;
@@ -3770,11 +3784,15 @@ qexec_initialize_groupby_state (GROUPBY_STATE * gbstate,
 static void
 qexec_clear_groupby_state (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
 {
+  int i;
 #if 0				/* SortCache */
   QFILE_LIST_ID *list_idp;
 #endif
 
-  QEXEC_CLEAR_AGG_LIST_VALUE (gbstate->g_agg_list);
+  for (i = 0; i < gbstate->g_dim_levels; i++)
+    {
+      QEXEC_CLEAR_AGG_LIST_VALUE (gbstate->g_dim[i].d_agg_list);
+    }
   if (gbstate->eptr_list)
     {
       qexec_clear_head_lists (thread_p, gbstate->eptr_list);
@@ -3816,80 +3834,14 @@ qexec_clear_groupby_state (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
       QFILE_FREE_AND_INIT_LIST_ID (gbstate->output_file);
     }
 
-  /* cleanup rollup aggregates lists */
-  qexec_clear_groupby_rollup (thread_p, gbstate);
+  /* destroy aggregates lists */
+  qexec_gby_clear_group_dim (thread_p, gbstate);
 
   if (gbstate->composite_lock)
     {
       /* TODO - return error handling */
       (void) lock_finalize_composite_lock (thread_p, gbstate->composite_lock);
     }
-}
-
-/*
- * qexec_gby_start_group () -
- *   return:
- *   gbstate(in)        :
- *   key(in)    :
- */
-static void
-qexec_gby_start_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate,
-		       const RECDES * key)
-{
-  XASL_STATE *xasl_state = gbstate->xasl_state;
-  int error;
-
-  if (gbstate->state != NO_ERROR)
-    {
-      return;
-    }
-
-  /*
-   * Record the new key; keep it in SORT_KEY format so we can continue
-   * to use the SORTKEY_INFO version of the comparison functions.
-   *
-   * WARNING: the sort module doesn't seem to set key->area_size
-   * reliably, so the only thing we can rely on is key->length.
-   */
-
-  /* when group by skip, we do not use the RECDES because the list is already
-   * sorted
-   */
-  if (key)
-    {
-      if (gbstate->current_key.area_size < key->length)
-	{
-	  void *tmp;
-
-	  tmp = db_private_realloc (thread_p, gbstate->current_key.data,
-				    key->area_size);
-	  if (tmp == NULL)
-	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
-	  gbstate->current_key.data = (char *) tmp;
-	  gbstate->current_key.area_size = key->area_size;
-	}
-      memcpy (gbstate->current_key.data, key->data, key->length);
-      gbstate->current_key.length = key->length;
-    }
-
-  /*
-   * (Re)initialize the various accumulator variables...
-   */
-  error = qdata_initialize_aggregate_list (thread_p, gbstate->g_agg_list,
-					   gbstate->xasl_state->query_id);
-  if (error != NO_ERROR)
-    {
-      GOTO_EXIT_ON_ERROR;
-    }
-
-wrapup:
-  return;
-
-exit_on_error:
-  gbstate->state = er_errid ();
-  goto wrapup;
 }
 
 /*
@@ -3904,6 +3856,7 @@ qexec_gby_agg_tuple (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate,
 		     QFILE_TUPLE tpl, int peek)
 {
   XASL_STATE *xasl_state = gbstate->xasl_state;
+  int i;
 
   if (gbstate->state != NO_ERROR)
     {
@@ -3920,197 +3873,22 @@ qexec_gby_agg_tuple (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate,
     {
       GOTO_EXIT_ON_ERROR;
     }
-  if (qdata_evaluate_aggregate_list (thread_p, gbstate->g_agg_list,
-				     &gbstate->xasl_state->vd) != NO_ERROR)
-    {
-      GOTO_EXIT_ON_ERROR;
-    }
 
-  /* evaluate rollup aggregates lists */
-  if (gbstate->g_rollup_agg_list)
+  /* evaluate aggregates lists */
+  for (i = 0; i < gbstate->g_dim_levels; i++)
     {
-      int i;
-      for (i = 0; i < gbstate->rollup_levels; i++)
+      assert (gbstate->g_dim[i].d_flag != GROUPBY_DIM_FLAG_NONE);
+
+      if (qdata_evaluate_aggregate_list (thread_p,
+					 gbstate->g_dim[i].d_agg_list,
+					 &gbstate->xasl_state->vd) !=
+	  NO_ERROR)
 	{
-	  if (qdata_evaluate_aggregate_list (thread_p,
-					     gbstate->g_rollup_agg_list[i],
-					     &gbstate->xasl_state->vd)
-	      != NO_ERROR)
-	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
+	  GOTO_EXIT_ON_ERROR;
 	}
     }
 
 wrapup:
-  return;
-
-exit_on_error:
-  gbstate->state = er_errid ();
-  goto wrapup;
-}
-
-/*
- * qexec_gby_finalize_group () -
- *   return:
- *   gbstate(in)        :
- */
-static void
-qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
-{
-  XASL_NODE *xptr;
-  DB_LOGICAL ev_res;
-  QPROC_TPLDESCR_STATUS tpldescr_status;
-  XASL_STATE *xasl_state = gbstate->xasl_state;
-
-  if (gbstate->state != NO_ERROR)
-    {
-      return;
-    }
-
-  /*
-   * See if the currently accumulated row qualifies (i.e., satisfies
-   * any HAVING predicate) and if so, spit it out.
-   */
-  if (qdata_finalize_aggregate_list (thread_p, gbstate->g_agg_list) !=
-      NO_ERROR)
-    {
-      GOTO_EXIT_ON_ERROR;
-    }
-
-  for (xptr = gbstate->eptr_list; xptr; xptr = xptr->next)
-    {
-      if (qexec_execute_mainblock (thread_p, xptr, xasl_state) != NO_ERROR)
-	{
-	  GOTO_EXIT_ON_ERROR;
-	}
-    }
-
-  if (gbstate->having_pred)
-    {
-      ev_res = eval_pred (thread_p, gbstate->having_pred,
-			  &xasl_state->vd, NULL);
-      if (ev_res == V_ERROR)
-	{
-	  GOTO_EXIT_ON_ERROR;
-	}
-    }
-  else
-    {
-      ev_res = V_TRUE;
-    }
-
-  if (ev_res == V_TRUE)
-    {
-      if (gbstate->grbynum_val)
-	{
-	  /* evaluate groupby_num predicates */
-	  ev_res = qexec_eval_grbynum_pred (thread_p, gbstate);
-	  if (ev_res == V_ERROR)
-	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
-	  if (ev_res == V_TRUE)
-	    {
-	      if (gbstate->grbynum_flag & XASL_G_GRBYNUM_FLAG_LIMIT_GT_LT)
-		{
-		  gbstate->grbynum_flag &= ~XASL_G_GRBYNUM_FLAG_LIMIT_GT_LT;
-		  gbstate->grbynum_flag |= XASL_G_GRBYNUM_FLAG_LIMIT_LT;
-		}
-	    }
-	  else
-	    {
-	      if (gbstate->grbynum_flag & XASL_G_GRBYNUM_FLAG_LIMIT_LT)
-		{
-		  gbstate->grbynum_flag |= XASL_G_GRBYNUM_FLAG_SCAN_STOP;
-		}
-	    }
-	  if (gbstate->grbynum_flag & XASL_G_GRBYNUM_FLAG_SCAN_STOP)
-	    {
-	      /* reset grbynum_val for next use */
-	      DB_MAKE_BIGINT (gbstate->grbynum_val, 0);
-	      /* setting SORT_PUT_STOP will make 'sr_in_sort()' stop processing;
-	         the caller, 'qexec_gby_put_next()', returns 'gbstate->state' */
-	      gbstate->state = SORT_PUT_STOP;
-	    }
-	}
-    }
-
-  if (ev_res == V_TRUE)
-    {
-      if (gbstate->composite_lock != NULL)
-	{
-	  if (qexec_add_composite_lock
-	      (thread_p, gbstate->g_outptr_list->valptrp, gbstate->g_val_list,
-	       xasl_state, gbstate->composite_lock,
-	       gbstate->upd_del_class_cnt, NULL) != NO_ERROR)
-	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
-	}
-
-      tpldescr_status = qexec_generate_tuple_descriptor (thread_p,
-							 gbstate->output_file,
-							 gbstate->
-							 g_outptr_list,
-							 &xasl_state->vd);
-      if (tpldescr_status == QPROC_TPLDESCR_FAILURE)
-	{
-	  GOTO_EXIT_ON_ERROR;
-	}
-
-      switch (tpldescr_status)
-	{
-	case QPROC_TPLDESCR_SUCCESS:
-	  /* generate tuple into list file page */
-	  if (qfile_generate_tuple_into_list
-	      (thread_p, gbstate->output_file, T_NORMAL) != NO_ERROR)
-	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
-	  break;
-
-	case QPROC_TPLDESCR_RETRY_SET_TYPE:
-	case QPROC_TPLDESCR_RETRY_BIG_REC:
-	  /* BIG QFILE_TUPLE or a SET-field is included */
-	  if (gbstate->output_tplrec->tpl == NULL)
-	    {
-	      /* allocate tuple descriptor */
-	      gbstate->output_tplrec->size = DB_PAGESIZE;
-	      gbstate->output_tplrec->tpl =
-		(QFILE_TUPLE) db_private_alloc (thread_p, DB_PAGESIZE);
-	      if (gbstate->output_tplrec->tpl == NULL)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
-	    }
-
-	  if (qdata_copy_valptr_list_to_tuple
-	      (thread_p, gbstate->g_outptr_list, &xasl_state->vd,
-	       gbstate->output_tplrec) != NO_ERROR)
-	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
-
-	  if (qfile_add_tuple_to_list (thread_p, gbstate->output_file,
-				       gbstate->output_tplrec->tpl) !=
-	      NO_ERROR)
-	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
-	  break;
-
-	default:
-	  break;
-	}
-    }
-
-wrapup:
-  QEXEC_CLEAR_AGG_LIST_VALUE (gbstate->g_agg_list);
-  if (gbstate->eptr_list)
-    {
-      qexec_clear_head_lists (thread_p, gbstate->eptr_list);
-    }
   return;
 
 exit_on_error:
@@ -4155,7 +3933,6 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 
   QFILE_TUPLE_RECORD dummy;
   int status;
-  int i, j, nkeys;
 
   info = (GROUPBY_STATE *) arg;
   list_idp = &(info->input_scan->list_id);
@@ -4273,18 +4050,7 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 	   * First record we've seen; put it out and set up the group
 	   * comparison key(s).
 	   */
-	  qexec_gby_start_group (thread_p, info, recdes);
-
-	  /* start all rollup groups */
-	  if (info->g_rollup_agg_list)
-	    {
-	      for (i = 0; i < info->rollup_levels; i++)
-		{
-		  qexec_gby_start_rollup_group (thread_p, info, recdes, i);
-		}
-	    }
-
-	  qexec_gby_agg_tuple (thread_p, info, data, peek);
+	  qexec_gby_start_group_dim (thread_p, info, recdes);
 	}
       else if ((*info->cmp_fn) (&info->current_key.data, &key,
 				&info->key_info) == 0)
@@ -4293,7 +4059,6 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 	   * Still in the same group; accumulate the tuple and proceed,
 	   * leaving the group key the same.
 	   */
-	  qexec_gby_agg_tuple (thread_p, info, data, peek);
 	}
       else
 	{
@@ -4301,46 +4066,15 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 	   * We got a new group; finalize the group we were accumulating,
 	   * and start a new group using the current key as the group key.
 	   */
-	  qexec_gby_finalize_group (thread_p, info);
-
+	  qexec_gby_finalize_group_dim (thread_p, info, recdes);
 	  if (info->state == SORT_PUT_STOP)
 	    {
 	      goto wrapup;
 	    }
-
-	  /* handle the rollup groups */
-	  if (info->with_rollup)
-	    {
-	      nkeys = info->key_info.nkeys;
-
-	      /*
-	       * find the first key that fails comparison;
-	       * the rollup level will be key number
-	       */
-	      for (i = 1; i < nkeys; i++)
-		{
-		  info->key_info.nkeys = i;
-
-		  if ((*info->cmp_fn) (&info->current_key.data, &key,
-				       &info->key_info) != 0)
-		    {
-		      /* finalize rollup groups */
-		      for (j = nkeys - 1; j >= i; j--)
-			{
-			  qexec_gby_finalize_rollup_group (thread_p, info, j);
-			  qexec_gby_start_rollup_group (thread_p, info,
-							recdes, j);
-			}
-		      break;
-		    }
-		}
-
-	      info->key_info.nkeys = nkeys;
-	    }
-
-	  qexec_gby_start_group (thread_p, info, recdes);
-	  qexec_gby_agg_tuple (thread_p, info, data, peek);
 	}
+
+      qexec_gby_agg_tuple (thread_p, info, data, peek);
+
       info->input_recs++;
 
 #if 1				/* SortCache */
@@ -4557,15 +4291,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
    */
   if (gbstate.input_recs != 0)
     {
-      qexec_gby_finalize_group (thread_p, &gbstate);
-      if (gbstate.with_rollup)
-	{
-	  int i;
-	  for (i = gbstate.rollup_levels - 1; i >= 0; i--)
-	    {
-	      qexec_gby_finalize_rollup_group (thread_p, &gbstate, i);
-	    }
-	}
+      qexec_gby_finalize_group_dim (thread_p, &gbstate, NULL);
     }
 
   qfile_close_list (thread_p, gbstate.output_file);
@@ -4586,7 +4312,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 wrapup:
   {
     int result;
-    /* SORT_PUT_STOP set by 'qexec_gby_finalize_group()' isn't error */
+    /* SORT_PUT_STOP set by 'qexec_gby_finalize_group_dim ()' isn't error */
     result = (gbstate.state == NO_ERROR || gbstate.state == SORT_PUT_STOP)
       ? NO_ERROR : ER_FAILED;
     qexec_clear_groupby_state (thread_p, &gbstate);
@@ -18626,15 +18352,165 @@ exit_on_error:
   return ER_FAILED;
 }
 
+
 /*
- * qexec_gby_finalize_rollup_group () -
+ * qexec_gby_finalize_group_val_list () -
  *   return:
  *   gbstate(in):
- *   rollup_level(in):
+ *   N(in):
  */
 static void
-qexec_gby_finalize_rollup_group (THREAD_ENTRY * thread_p,
-				 GROUPBY_STATE * gbstate, int rollup_level)
+qexec_gby_finalize_group_val_list (THREAD_ENTRY * thread_p,
+				   GROUPBY_STATE * gbstate, int N)
+{
+  int i;
+  QPROC_DB_VALUE_LIST gby_vallist;
+
+  if (gbstate->state != NO_ERROR)
+    {
+      return;
+    }
+
+  if (gbstate->g_dim == NULL || N >= gbstate->g_dim_levels)
+    {
+      assert (false);
+      return;
+    }
+
+  if (gbstate->g_dim[N].d_flag & GROUPBY_DIM_FLAG_GROUP_BY)
+    {
+      assert (N == 0);
+      return;			/* nop */
+    }
+
+  /* set to NULL (in the summary tuple) the columns that failed comparison */
+  if (gbstate->g_val_list)
+    {
+      assert (N > 0);
+      assert (gbstate->g_dim[N].d_flag & GROUPBY_DIM_FLAG_ROLLUP);
+
+      i = 0;
+      gby_vallist = gbstate->g_val_list->valp;
+
+      while (gby_vallist)
+	{
+	  if (i >= N - 1)
+	    {
+	      (void) pr_clear_value (gby_vallist->val);
+	      DB_MAKE_NULL (gby_vallist->val);
+	    }
+	  i++;
+	  gby_vallist = gby_vallist->next;
+	}
+    }
+
+wrapup:
+  return;
+
+exit_on_error:
+  gbstate->state = er_errid ();
+  goto wrapup;
+}
+
+/*
+ * qexec_gby_finalize_group_dim () -
+ *   return:
+ *   gbstate(in):
+ *   recdes(in):
+ */
+static void
+qexec_gby_finalize_group_dim (THREAD_ENTRY * thread_p,
+			      GROUPBY_STATE * gbstate, const RECDES * recdes)
+{
+  int i, j, nkeys;
+
+  qexec_gby_finalize_group (thread_p, gbstate, 0);
+  if (gbstate->state == SORT_PUT_STOP)
+    {
+      goto wrapup;
+    }
+
+  /* handle the rollup groups */
+  if (gbstate->with_rollup)
+    {
+      if (recdes)
+	{
+	  SORT_REC *key;
+
+	  key = (SORT_REC *) recdes->data;
+	  assert (key != NULL);
+
+	  nkeys = gbstate->key_info.nkeys;	/* save */
+
+	  /* find the first key that fails comparison;
+	   * the rollup level will be key number
+	   */
+	  for (i = 1; i < nkeys; i++)
+	    {
+	      gbstate->key_info.nkeys = i;
+
+	      if ((*gbstate->cmp_fn) (&gbstate->current_key.data, &key,
+				      &gbstate->key_info) != 0)
+		{
+		  /* finalize rollup groups */
+		  for (j = gbstate->g_dim_levels - 1; j > i; j--)
+		    {
+		      assert (gbstate->g_dim[j].
+			      d_flag & GROUPBY_DIM_FLAG_ROLLUP);
+
+		      qexec_gby_finalize_group (thread_p, gbstate, j);
+#if 0				/* TODO - sus-11454 */
+		      if (gbstate->state == SORT_PUT_STOP)
+			{
+			  goto wrapup;
+			}
+#endif
+		      qexec_gby_start_group (thread_p, gbstate, NULL, j);
+		    }
+		  break;
+		}
+	    }
+
+	  gbstate->key_info.nkeys = nkeys;	/* restore */
+	}
+      else
+	{
+	  for (j = gbstate->g_dim_levels - 1; j > 0; j--)
+	    {
+	      assert (gbstate->g_dim[j].d_flag & GROUPBY_DIM_FLAG_ROLLUP);
+
+	      qexec_gby_finalize_group (thread_p, gbstate, j);
+#if 0				/* TODO - sus-11454 */
+	      if (gbstate->state == SORT_PUT_STOP)
+		{
+		  goto wrapup;
+		}
+#endif
+
+	      qexec_gby_start_group (thread_p, gbstate, NULL, j);
+	    }
+	}
+    }
+
+  qexec_gby_start_group (thread_p, gbstate, recdes, 0);
+
+wrapup:
+  return;
+
+exit_on_error:
+  gbstate->state = er_errid ();
+  goto wrapup;
+}
+
+/*
+ * qexec_gby_finalize_group () -
+ *   return:
+ *   gbstate(in):
+ *   N(in):
+ */
+static void
+qexec_gby_finalize_group (THREAD_ENTRY * thread_p,
+			  GROUPBY_STATE * gbstate, int N)
 {
   QPROC_TPLDESCR_STATUS tpldescr_status;
   XASL_NODE *xptr;
@@ -18646,16 +18522,16 @@ qexec_gby_finalize_rollup_group (THREAD_ENTRY * thread_p,
       return;
     }
 
-  if (gbstate->g_rollup_agg_list == NULL
-      || rollup_level >= gbstate->rollup_levels)
+  if (gbstate->g_dim == NULL || N >= gbstate->g_dim_levels)
     {
+      assert (false);
       GOTO_EXIT_ON_ERROR;
     }
 
-  if (gbstate->g_rollup_agg_list[rollup_level] != NULL
-      && qdata_finalize_aggregate_list (thread_p,
-					gbstate->
-					g_rollup_agg_list[rollup_level])
+  assert (gbstate->g_dim[N].d_flag != GROUPBY_DIM_FLAG_NONE);
+
+  if (qdata_finalize_aggregate_list (thread_p,
+				     gbstate->g_dim[N].d_agg_list)
       != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
@@ -18670,63 +18546,47 @@ qexec_gby_finalize_rollup_group (THREAD_ENTRY * thread_p,
 	}
     }
 
-  /* move aggregate rollup values in aggregate list for predicate evaluation
+  /* move aggregate values in aggregate list for predicate evaluation
      and possibly insertion in list file */
-  if (gbstate->g_rollup_agg_list[rollup_level] != NULL)
+  if (gbstate->g_dim[N].d_agg_list != NULL)
     {
-      AGGREGATE_TYPE *agg_list = gbstate->g_agg_list;
-      AGGREGATE_TYPE *rollup_agg_list =
-	gbstate->g_rollup_agg_list[rollup_level];
+      AGGREGATE_TYPE *g_outp = gbstate->g_output_agg_list;
+      AGGREGATE_TYPE *d_aggp = gbstate->g_dim[N].d_agg_list;
 
-      while (agg_list != NULL && rollup_agg_list != NULL)
+      while (g_outp != NULL && d_aggp != NULL)
 	{
-	  if (agg_list->function != PT_GROUPBY_NUM)
+	  if (g_outp->function != PT_GROUPBY_NUM)
 	    {
-	      if (rollup_agg_list->value != NULL && agg_list->value != NULL)
+	      if (d_aggp->value != NULL && g_outp->value != NULL)
 		{
-		  pr_clear_value (agg_list->value);
-		  *agg_list->value = *rollup_agg_list->value;
+		  pr_clear_value (g_outp->value);
+		  *g_outp->value = *d_aggp->value;
 		  /* Don't use DB_MAKE_NULL here to preserve the type information. */
-		  PRIM_SET_NULL (rollup_agg_list->value);
+
+		  PRIM_SET_NULL (d_aggp->value);
 		}
 
-	      if (rollup_agg_list->value2 != NULL && agg_list->value2 != NULL)
-		{
-		  pr_clear_value (agg_list->value2);
-		  *agg_list->value2 = *rollup_agg_list->value2;
-		  DB_MAKE_NULL (rollup_agg_list->value2);
-		}
+	      /* should not touch d_aggp->value2 */
 	    }
 
-	  agg_list = agg_list->next;
-	  rollup_agg_list = rollup_agg_list->next;
+	  g_outp = g_outp->next;
+	  d_aggp = d_aggp->next;
 	}
     }
 
-  /* set to NULL (in the rollup tuple) the columns that failed comparison */
-  if (gbstate->g_val_list)
+  /* set to NULL (in the summary tuple) the columns that failed comparison */
+  if (!(gbstate->g_dim[N].d_flag & GROUPBY_DIM_FLAG_GROUP_BY))
     {
-      int i = 0;
-      QPROC_DB_VALUE_LIST gby_vallist = gbstate->g_val_list->valp;
-
-      while (gby_vallist)
-	{
-	  if (i >= rollup_level)
-	    {
-	      (void) pr_clear_value (gby_vallist->val);
-	      DB_MAKE_NULL (gby_vallist->val);
-	    }
-	  i++;
-	  gby_vallist = gby_vallist->next;
-	}
+      assert (N > 0);
+      (void) qexec_gby_finalize_group_val_list (thread_p, gbstate, N);
     }
 
-  /* evaluate HAVING predicates for summary row */
+  /* evaluate HAVING predicates */
   ev_res = V_TRUE;
-  if (gbstate->having_pred != NULL)
+  if (gbstate->having_pred)
     {
-      ev_res =
-	eval_pred (thread_p, gbstate->having_pred, &xasl_state->vd, NULL);
+      ev_res = eval_pred (thread_p, gbstate->having_pred,
+			  &xasl_state->vd, NULL);
       if (ev_res == V_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
@@ -18736,6 +18596,62 @@ qexec_gby_finalize_rollup_group (THREAD_ENTRY * thread_p,
 	  goto wrapup;
 	}
     }
+
+  assert (ev_res == V_TRUE);
+
+  if (gbstate->grbynum_val)
+    {
+      /* evaluate groupby_num predicates */
+      ev_res = qexec_eval_grbynum_pred (thread_p, gbstate);
+      if (ev_res == V_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+      if (ev_res == V_TRUE)
+	{
+	  if (gbstate->grbynum_flag & XASL_G_GRBYNUM_FLAG_LIMIT_GT_LT)
+	    {
+	      gbstate->grbynum_flag &= ~XASL_G_GRBYNUM_FLAG_LIMIT_GT_LT;
+	      gbstate->grbynum_flag |= XASL_G_GRBYNUM_FLAG_LIMIT_LT;
+	    }
+	}
+      else
+	{
+	  if (gbstate->grbynum_flag & XASL_G_GRBYNUM_FLAG_LIMIT_LT)
+	    {
+	      gbstate->grbynum_flag |= XASL_G_GRBYNUM_FLAG_SCAN_STOP;
+	    }
+	}
+      if (gbstate->grbynum_flag & XASL_G_GRBYNUM_FLAG_SCAN_STOP)
+	{
+	  /* reset grbynum_val for next use */
+	  DB_MAKE_BIGINT (gbstate->grbynum_val, 0);
+	  /* setting SORT_PUT_STOP will make 'sr_in_sort()' stop processing;
+	     the caller, 'qexec_gby_put_next()', returns 'gbstate->state' */
+	  gbstate->state = SORT_PUT_STOP;
+	}
+    }
+
+  if (ev_res != V_TRUE)
+    {
+      goto wrapup;
+    }
+
+  if (N == 0)
+    {
+      if (gbstate->composite_lock != NULL)
+	{
+	  if (qexec_add_composite_lock
+	      (thread_p, gbstate->g_outptr_list->valptrp,
+	       xasl_state, gbstate->composite_lock,
+	       gbstate->upd_del_class_cnt, NULL) != NO_ERROR)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	}
+    }
+
+  assert (ev_res == V_TRUE);
 
   tpldescr_status = qexec_generate_tuple_descriptor (thread_p,
 						     gbstate->output_file,
@@ -18777,6 +18693,7 @@ qexec_gby_finalize_rollup_group (THREAD_ENTRY * thread_p,
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
+
       if (qfile_add_tuple_to_list (thread_p, gbstate->output_file,
 				   gbstate->output_tplrec->tpl) != NO_ERROR)
 	{
@@ -18789,8 +18706,8 @@ qexec_gby_finalize_rollup_group (THREAD_ENTRY * thread_p,
     }
 
 wrapup:
-  /* clear agg_list, since we moved rollup values here beforehand */
-  QEXEC_CLEAR_AGG_LIST_VALUE (gbstate->g_agg_list);
+  /* clear agg_list, since we moved aggreate values here beforehand */
+  QEXEC_CLEAR_AGG_LIST_VALUE (gbstate->g_dim[N].d_agg_list);
   return;
 
 exit_on_error:
@@ -18799,16 +18716,37 @@ exit_on_error:
 }
 
 /*
- * qexec_gby_start_rollup_group () -
+ * qexec_gby_start_group_dim () -
  *   return:
  *   gbstate(in):
- *   key(in):
- *   rollup_level(in):
+ *   recdes(in):
  */
 static void
-qexec_gby_start_rollup_group (THREAD_ENTRY * thread_p,
-			      GROUPBY_STATE * gbstate, const RECDES * key,
-			      int rollup_level)
+qexec_gby_start_group_dim (THREAD_ENTRY * thread_p,
+			   GROUPBY_STATE * gbstate, const RECDES * recdes)
+{
+  int i;
+
+  /* start all groups */
+  for (i = 1; i < gbstate->g_dim_levels; i++)
+    {
+      qexec_gby_start_group (thread_p, gbstate, NULL, i);
+    }
+  qexec_gby_start_group (thread_p, gbstate, recdes, 0);
+
+  return;
+}
+
+/*
+ * qexec_gby_start_group () -
+ *   return:
+ *   gbstate(in):
+ *   recdes(in):
+ *   N(in): dimension ID
+ */
+static void
+qexec_gby_start_group (THREAD_ENTRY * thread_p,
+		       GROUPBY_STATE * gbstate, const RECDES * recdes, int N)
 {
   XASL_STATE *xasl_state = gbstate->xasl_state;
   int error;
@@ -18818,17 +18756,51 @@ qexec_gby_start_rollup_group (THREAD_ENTRY * thread_p,
       return;
     }
 
-  if (gbstate->g_rollup_agg_list == NULL
-      || rollup_level >= gbstate->rollup_levels
-      || gbstate->g_rollup_agg_list[rollup_level] == NULL)
+  if (gbstate->g_dim == NULL || N >= gbstate->g_dim_levels)
     {
+      assert (false);
       GOTO_EXIT_ON_ERROR;
+    }
+
+  assert (gbstate->g_dim[N].d_flag != GROUPBY_DIM_FLAG_NONE);
+
+  if (N == 0)
+    {
+      /*
+       * Record the new key; keep it in SORT_KEY format so we can continue
+       * to use the SORTKEY_INFO version of the comparison functions.
+       *
+       * WARNING: the sort module doesn't seem to set recdes->area_size
+       * reliably, so the only thing we can rely on is recdes->length.
+       */
+
+      /* when group by skip, we do not use the RECDES because the list is already
+       * sorted
+       */
+      if (recdes)
+	{
+	  if (gbstate->current_key.area_size < recdes->length)
+	    {
+	      void *tmp;
+
+	      tmp = db_private_realloc (thread_p, gbstate->current_key.data,
+					recdes->area_size);
+	      if (tmp == NULL)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	      gbstate->current_key.data = (char *) tmp;
+	      gbstate->current_key.area_size = recdes->area_size;
+	    }
+	  memcpy (gbstate->current_key.data, recdes->data, recdes->length);
+	  gbstate->current_key.length = recdes->length;
+	}
     }
 
   /* (Re)initialize the various accumulator variables... */
   error =
     qdata_initialize_aggregate_list (thread_p,
-				     gbstate->g_rollup_agg_list[rollup_level],
+				     gbstate->g_dim[N].d_agg_list,
 				     gbstate->xasl_state->query_id);
   if (error != NO_ERROR)
     {
@@ -18844,113 +18816,136 @@ exit_on_error:
 }
 
 /*
- * qexec_initialize_groupby_rollup () - initialize rollup aggregates lists
+ * qexec_gby_init_group_dim () - initialize Data Set dimentions
  *   return:
  *   gbstate(in):
  */
 static int
-qexec_initialize_groupby_rollup (GROUPBY_STATE * gbstate)
+qexec_gby_init_group_dim (GROUPBY_STATE * gbstate)
 {
   int i;
   AGGREGATE_TYPE *agg, *aggp, *aggr;
 
   if (gbstate == NULL)		/* sanity check */
     {
+      assert (false);
       return ER_FAILED;
     }
 
-  gbstate->rollup_levels = gbstate->key_info.nkeys;
-
-  if (gbstate->rollup_levels > 0)
+#if 1				/* TODO - create Data Set; rollup, cube, grouping set */
+  gbstate->g_dim_levels = 1;
+  if (gbstate->with_rollup)
     {
-      gbstate->g_rollup_agg_list =
-	(AGGREGATE_TYPE **) db_private_alloc (NULL,
-					      gbstate->rollup_levels *
-					      sizeof (AGGREGATE_TYPE *));
-      if (gbstate->g_rollup_agg_list == NULL)
-	{
-	  return ER_FAILED;
-	}
+      gbstate->g_dim_levels += gbstate->key_info.nkeys;
+    }
+#endif
 
-      if (gbstate->g_agg_list)
+  assert (gbstate->g_dim_levels > 0);
+
+  gbstate->g_dim =
+    (GROUPBY_DIMENSION *) db_private_alloc (NULL,
+					    gbstate->g_dim_levels *
+					    sizeof (GROUPBY_DIMENSION));
+  if (gbstate->g_dim == NULL)
+    {
+      return ER_FAILED;
+    }
+
+
+  /* set aggregation colunms */
+  for (i = 0; i < gbstate->g_dim_levels; i++)
+    {
+      gbstate->g_dim[i].d_flag = GROUPBY_DIM_FLAG_NONE;
+
+      if (i == 0)
 	{
-	  for (i = 0; i < gbstate->rollup_levels; i++)
+	  gbstate->g_dim[i].d_flag |= GROUPBY_DIM_FLAG_GROUP_BY;
+	}
+#if 1				/* TODO - set dimension flag */
+      if (gbstate->with_rollup)
+	{
+	  gbstate->g_dim[i].d_flag |= GROUPBY_DIM_FLAG_ROLLUP;
+	}
+#endif
+      gbstate->g_dim[i].d_flag |= GROUPBY_DIM_FLAG_CUBE;
+
+      if (gbstate->g_output_agg_list)
+	{
+	  agg = gbstate->g_output_agg_list;
+	  gbstate->g_dim[i].d_agg_list = aggp =
+	    (AGGREGATE_TYPE *) db_private_alloc (NULL,
+						 sizeof (AGGREGATE_TYPE));
+	  if (aggp == NULL)
 	    {
-	      agg = gbstate->g_agg_list;
-	      gbstate->g_rollup_agg_list[i] = aggp =
+	      return ER_FAILED;
+	    }
+	  memcpy (gbstate->g_dim[i].d_agg_list, agg, sizeof (AGGREGATE_TYPE));
+	  gbstate->g_dim[i].d_agg_list->value = db_value_copy (agg->value);
+	  gbstate->g_dim[i].d_agg_list->value2 = db_value_copy (agg->value2);
+
+	  while ((agg = agg->next))
+	    {
+	      aggr =
 		(AGGREGATE_TYPE *) db_private_alloc (NULL,
 						     sizeof (AGGREGATE_TYPE));
-	      if (aggp == NULL)
+	      if (aggr == NULL)
 		{
 		  return ER_FAILED;
 		}
-	      memcpy (gbstate->g_rollup_agg_list[i], agg,
-		      sizeof (AGGREGATE_TYPE));
-	      gbstate->g_rollup_agg_list[i]->value =
-		db_value_copy (agg->value);
-	      gbstate->g_rollup_agg_list[i]->value2 =
-		db_value_copy (agg->value2);
-
-	      while ((agg = agg->next))
-		{
-		  aggr =
-		    (AGGREGATE_TYPE *) db_private_alloc (NULL,
-							 sizeof
-							 (AGGREGATE_TYPE));
-		  if (aggr == NULL)
-		    {
-		      return ER_FAILED;
-		    }
-		  memcpy (aggr, agg, sizeof (AGGREGATE_TYPE));
-		  aggr->value = db_value_copy (agg->value);
-		  aggr->value2 = db_value_copy (agg->value2);
-		  aggp->next = aggr;
-		  aggp = aggr;
-		}
+	      memcpy (aggr, agg, sizeof (AGGREGATE_TYPE));
+	      aggr->value = db_value_copy (agg->value);
+	      aggr->value2 = db_value_copy (agg->value2);
+	      aggp->next = aggr;
+	      aggp = aggr;
 	    }
 	}
       else
 	{
-	  for (i = 0; i < gbstate->rollup_levels; i++)
-	    {
-	      gbstate->g_rollup_agg_list[i] = NULL;
-	    }
+	  gbstate->g_dim[i].d_agg_list = NULL;
 	}
-    }
-  else
-    {
-      gbstate->g_rollup_agg_list = NULL;
     }
 
   return NO_ERROR;
 }
 
 /*
- * qexec_clear_groupby_rollup () - clears rollup aggregates lists
+ * qexec_gby_clear_group_dim() - destroy aggregates lists
  *   return:
  *   gbstate(in):
  */
 static void
-qexec_clear_groupby_rollup (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
+qexec_gby_clear_group_dim (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
 {
   int i;
   AGGREGATE_TYPE *agg, *next_agg;
 
-  if (gbstate && gbstate->g_rollup_agg_list)
+  assert (gbstate != NULL);
+  assert (gbstate->g_dim != NULL);
+
+  if (gbstate && gbstate->g_dim)
     {
-      for (i = 0; i < gbstate->rollup_levels; i++)
+      for (i = 0; i < gbstate->g_dim_levels; i++)
 	{
-	  agg = gbstate->g_rollup_agg_list[i];
+	  agg = gbstate->g_dim[i].d_agg_list;
 	  while (agg)
 	    {
 	      next_agg = agg->next;
-	      pr_free_ext_value (agg->value);
-	      pr_free_ext_value (agg->value2);
+
+	      db_value_free (agg->value);
+	      db_value_free (agg->value2);
+	      if (agg->list_id)
+		{
+		  /* close and destroy temporary list files */
+		  qfile_close_list (thread_p, agg->list_id);
+		  qfile_destroy_list (thread_p, agg->list_id);
+		}
+
 	      db_private_free (NULL, agg);
+
 	      agg = next_agg;
 	    }
 	}
-      db_private_free_and_init (NULL, gbstate->g_rollup_agg_list);
+      db_private_free_and_init (NULL, gbstate->g_dim);
     }
 }
 
@@ -19394,6 +19389,8 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       return NO_ERROR;
     }
 
+  assert (buildlist->g_with_rollup == 0);
+
   if (qexec_initialize_groupby_state (&gbstate, buildlist->groupby_list,
 				      buildlist->g_having_pred,
 				      buildlist->g_grbynum_pred,
@@ -19410,6 +19407,9 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     {
       GOTO_EXIT_ON_ERROR;
     }
+
+  assert (gbstate.g_dim_levels == 1);
+  assert (gbstate.with_rollup == 0);
 
   /*
    * Create a new listfile to receive the results.
@@ -19493,7 +19493,7 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   /* alloc an array to store db_values */
   list_dbvals = db_private_alloc (thread_p, ncolumns * sizeof (DB_VALUE));
 
-  if (!list_dbvals)
+  if (list_dbvals == NULL)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -19561,26 +19561,26 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  /* First record we've seen; put it out and set up the group
 	   * comparison key(s).
 	   */
-	  qexec_gby_start_group (thread_p, &gbstate, NULL);
-	  qexec_gby_agg_tuple (thread_p, &gbstate, tuple_rec.tpl, PEEK);
+	  qexec_gby_start_group_dim (thread_p, &gbstate, NULL);
 	}
       else if (all_cols_equal)
 	{
 	  /* Still in the same group; accumulate the tuple and proceed,
 	   * leaving the group key the same.
 	   */
-	  qexec_gby_agg_tuple (thread_p, &gbstate, tuple_rec.tpl, PEEK);
 	}
-      else if (!all_cols_equal)
+      else
 	{
+	  assert (gbstate.g_dim_levels == 1);
+	  assert (gbstate.with_rollup == 0);
+
 	  /* We got a new group; finalize the group we were accumulating,
 	   * and start a new group using the current key as the group key.
 	   */
-	  qexec_gby_finalize_group (thread_p, &gbstate);
-
-	  qexec_gby_start_group (thread_p, &gbstate, NULL);
-	  qexec_gby_agg_tuple (thread_p, &gbstate, tuple_rec.tpl, PEEK);
+	  qexec_gby_finalize_group_dim (thread_p, &gbstate, NULL);
 	}
+
+      qexec_gby_agg_tuple (thread_p, &gbstate, tuple_rec.tpl, PEEK);
 
       gbstate.input_recs++;
     }
@@ -19590,7 +19590,7 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   /* There may be one unfinished group in the output. If so, finish it */
   if (gbstate.input_recs != 0)
     {
-      qexec_gby_finalize_group (thread_p, &gbstate);
+      qexec_gby_finalize_group_dim (thread_p, &gbstate, NULL);
     }
 
   qfile_close_list (thread_p, gbstate.output_file);
@@ -19628,7 +19628,7 @@ exit_on_error:
       db_private_free (thread_p, list_dbvals);
     }
 
-  /* SORT_PUT_STOP set by 'qexec_gby_finalize_group()' isn't error */
+  /* SORT_PUT_STOP set by 'qexec_gby_finalize_group_dim ()' isn't error */
   result = (gbstate.state == NO_ERROR || gbstate.state == SORT_PUT_STOP)
     ? NO_ERROR : ER_FAILED;
 
@@ -20080,8 +20080,9 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
    */
   if (analytic_state.input_recs != 0)
     {
-      if (qexec_analytic_update_group_result
-	  (thread_p, &analytic_state, false) != NO_ERROR)
+      if (qexec_analytic_update_group_result (thread_p,
+					      &analytic_state,
+					      false) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}

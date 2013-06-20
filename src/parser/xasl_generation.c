@@ -14616,6 +14616,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 
   if (select_node == NULL || select_node->node_type != PT_SELECT)
     {
+      assert (false);
       return NULL;
     }
 
