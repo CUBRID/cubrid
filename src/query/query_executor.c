@@ -18686,7 +18686,8 @@ qexec_gby_finalize_rollup_group (THREAD_ENTRY * thread_p,
 		{
 		  pr_clear_value (agg_list->value);
 		  *agg_list->value = *rollup_agg_list->value;
-		  DB_MAKE_NULL (rollup_agg_list->value);
+		  /* Don't use DB_MAKE_NULL here to preserve the type information. */
+		  PRIM_SET_NULL (rollup_agg_list->value);
 		}
 
 	      if (rollup_agg_list->value2 != NULL && agg_list->value2 != NULL)
