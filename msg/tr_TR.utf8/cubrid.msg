@@ -1197,7 +1197,8 @@ $ LOADDB
 1128 Log recovery is started. The number of log records to be applied: %1$lld. Log page: %2$lld ~ %3$lld.
 1129 Log recovery is finished.
 1130 Transaction is aborted because transaction lock counts exceeds %1$d.
-1131 Son Hata
+1131 Internal error: The page %1 of volume %2 may be corrupted.\n%3
+1132 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %d):
