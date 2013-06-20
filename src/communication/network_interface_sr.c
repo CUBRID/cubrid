@@ -6013,7 +6013,7 @@ er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info,
     }
   else
     {
-      info->sql_plan_text = "";
+      info->sql_plan_text = (char *) "";
       stat_buf[0] = '\0';
     }
 
@@ -6087,9 +6087,10 @@ event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info,
     }
 
   fprintf (log_fp, "%*ctime: %d\n", indent, ' ', time);
-  fprintf (log_fp, "%*cbuffer: fetch=%d, ioread=%d, iowrite=%d\n",
-	   indent, ' ', diff_stats->pb_num_fetches,
-	   diff_stats->pb_num_ioreads, diff_stats->pb_num_iowrites);
+  fprintf (log_fp, "%*cbuffer: fetch=%lld, ioread=%lld, iowrite=%lld\n",
+	   indent, ' ', (long long int) diff_stats->pb_num_fetches,
+	   (long long int) diff_stats->pb_num_ioreads,
+	   (long long int) diff_stats->pb_num_iowrites);
   fprintf (log_fp, "%*cwait: cs=%d, lock=%d, latch=%d\n\n", indent, ' ',
 	   TO_MSEC (thread_p->cs_waits), TO_MSEC (thread_p->lock_waits),
 	   TO_MSEC (thread_p->latch_waits));
@@ -6135,8 +6136,8 @@ event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info,
     }
 
   fprintf (log_fp, "%*ctime: %d\n", indent, ' ', time);
-  fprintf (log_fp, "%*cioreads: %d\n\n", indent, ' ',
-	   diff_stats->pb_num_ioreads);
+  fprintf (log_fp, "%*cioreads: %lld\n\n", indent, ' ',
+	   (long long int) diff_stats->pb_num_ioreads);
 
   event_log_end (thread_p);
 }

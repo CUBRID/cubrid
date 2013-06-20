@@ -6526,10 +6526,6 @@ scan_print_stats_json (SCAN_ID * scan_id)
     {
       json_object_set_new (stats, "heap", scan);
     }
-  else if (scan_id->type == S_LIST_SCAN)
-    {
-      json_object_set_new (stats, "temp", scan);
-    }
   else if (scan_id->type == S_INDX_SCAN)
     {
       json_object_set_new (stats, "btree", scan);
@@ -6558,6 +6554,22 @@ scan_print_stats_json (SCAN_ID * scan_id)
 	  json_object_set_new (stats, "iss", json_true ());
 	}
     }
+  else if (scan_id->type == S_LIST_SCAN)
+    {
+      json_object_set_new (stats, "temp", scan);
+    }
+  else if (scan_id->type == S_SET_SCAN)
+    {
+      json_object_set_new (stats, "set", scan);
+    }
+  else if (scan_id->type == S_METHOD_SCAN)
+    {
+      json_object_set_new (stats, "method", scan);
+    }
+  else if (scan_id->type == S_CLASS_ATTR_SCAN)
+    {
+      json_object_set_new (stats, "class_attr", scan);
+    }
 
   return stats;
 }
@@ -6574,13 +6586,25 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
     {
       fprintf (fp, "(heap");
     }
+  else if (scan_id->type == S_INDX_SCAN)
+    {
+      fprintf (fp, "(btree");
+    }
   else if (scan_id->type == S_LIST_SCAN)
     {
       fprintf (fp, "(temp");
     }
-  else if (scan_id->type == S_INDX_SCAN)
+  else if (scan_id->type == S_SET_SCAN)
     {
-      fprintf (fp, "(btree");
+      fprintf (fp, "(set");
+    }
+  else if (scan_id->type == S_METHOD_SCAN)
+    {
+      fprintf (fp, "(method");
+    }
+  else if (scan_id->type == S_CLASS_ATTR_SCAN)
+    {
+      fprintf (fp, "(class_attr");
     }
 
   fprintf (fp, " time: %d, fetch: %d, ioread: %d, rows: %d",

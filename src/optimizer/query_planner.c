@@ -13507,13 +13507,13 @@ qo_plan_scan_print_text (FILE * fp, QO_PLAN * plan, int indent)
           && plan->plan_un.scan.index->head->cover_segments
           && qo_is_prefix_index (plan->plan_un.scan.index->head) == false)
         {
-          fprintf (fp, ", covered: true)");
+          fprintf (fp, ", covered: true");
         }
 
       if (plan->plan_un.scan.index
           && plan->plan_un.scan.index->head->use_descending)
         {
-          fprintf (fp, ", desc_index: true)");
+          fprintf (fp, ", desc_index: true");
           natural_desc_index = true;
         }
 
@@ -13521,7 +13521,7 @@ qo_plan_scan_print_text (FILE * fp, QO_PLAN * plan, int indent)
           (QO_ENV_PT_TREE (plan->info->env)->info.query.q.select.hint &
            PT_HINT_USE_IDX_DESC))
         {
-          fprintf (fp, ", desc_index forced: true)");
+          fprintf (fp, ", desc_index forced: true");
         }
 
       fprintf (fp, ")");
