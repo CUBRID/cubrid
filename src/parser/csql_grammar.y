@@ -17936,9 +17936,7 @@ primitive_type
 			int coll_id = -1;
 
 			int elem_cs = -1;
-			int elem_coll = -1;
 			int list_cs = -1;
-			int list_coll = -1;
 			bool has_cs_introducer = false;
 			int has_error = 0;
 
@@ -17955,19 +17953,20 @@ primitive_type
 				elem = elem->next;
 				continue;
 			      }
+
+			    assert (elem->node_type == PT_VALUE);
+			    elem->info.value.print_collation = false;
+			    elem->info.value.print_charset = false;
+
 			    elem_cs = elem->data_type->info.data_type.units;
-			    elem_coll =
-			      elem->data_type->info.data_type.collation_id;
 			    if (elem->info.value.has_cs_introducer)
 			      {
 				if (list_cs == -1)
 				  {
 				    list_cs = elem_cs;
-				    list_coll = elem_coll;
 				    has_cs_introducer = true;
 				  }
-				else if (list_cs != elem_cs
-					 || list_coll != elem_coll)
+				else if (list_cs != elem_cs)
 				  {
 				    PT_ERRORm (this_parser, elem, 
 					       MSGCAT_SET_PARSER_SEMANTIC,
@@ -17991,7 +17990,7 @@ primitive_type
 				if (has_cs_introducer)
 				  {
 				    charset = list_cs;
-				    coll_id = list_coll;
+				    coll_id = LANG_GET_BINARY_COLLATION (list_cs);
 				    dt->info.data_type.has_cs_spec = true;
 				  }
 				else
@@ -18007,8 +18006,7 @@ primitive_type
 					coll_node, &charset,
 					&coll_id) == NO_ERROR)
 			      {
-				if (has_cs_introducer
-				    && (list_cs != charset || list_coll != coll_id))
+				if (has_cs_introducer && list_cs != charset)
 				  {
 				    charset = -1;
 				    coll_id = -1;
