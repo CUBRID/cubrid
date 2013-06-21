@@ -411,7 +411,8 @@ static int la_init_cache_log_buffer (LA_CACHE_PB * cache_pb, int slb_cnt,
 				     int slb_size);
 static int la_fetch_log_hdr (LA_ACT_LOG * act_log);
 static int la_find_log_pagesize (LA_ACT_LOG * act_log,
-				 const char *logpath, const char *dbname);
+				 const char *logpath, const char *dbname,
+				 bool check_charset);
 static bool la_apply_pre (void);
 static int la_does_page_exist (LOG_PAGEID pageid);
 static int la_init_repl_lists (bool need_realloc);
@@ -2413,7 +2414,8 @@ la_fetch_log_hdr (LA_ACT_LOG * act_log)
 
 static int
 la_find_log_pagesize (LA_ACT_LOG * act_log,
-		      const char *logpath, const char *dbname)
+		      const char *logpath, const char *dbname,
+		      bool check_charset)
 {
   int error = NO_ERROR;
 
@@ -2495,7 +2497,8 @@ la_find_log_pagesize (LA_ACT_LOG * act_log,
 	  sleep (1);
 	  error = ER_LOG_PAGE_CORRUPTED;
 	}
-      else if (act_log->log_hdr->db_charset != lang_charset ())
+      else if (check_charset
+	       && act_log->log_hdr->db_charset != lang_charset ())
 	{
 	  char err_msg[ERR_MSG_SIZE];
 	  snprintf (err_msg, sizeof (err_msg) - 1,
@@ -6788,6 +6791,8 @@ la_print_log_header (const char *database_name, struct log_header *hdr,
       printf ("%-30s : %d\n", "Is log shutdown", hdr->is_shutdown);
       printf ("%-30s : %d\n", "Next transaction identifier", hdr->next_trid);
       printf ("%-30s : %d\n", "Number of pages", hdr->npages);
+      printf ("%-30s : %d (%s)\n", "Charset", hdr->db_charset,
+	      lang_charset_cubrid_name ((int) hdr->db_charset));
       printf ("%-30s : %lld\n", "Logical pageid",
 	      (long long int) hdr->fpageid);
       printf ("%-30s : %lld | %d\n", "CHKPT LSA",
@@ -6956,7 +6961,7 @@ check_applied_info_end:
 
       /* read copied active page */
       error = la_find_log_pagesize (&la_Info.act_log, la_Info.log_path,
-				    database_name);
+				    database_name, false);
       if (error != NO_ERROR)
 	{
 	  goto check_copied_info_end;
@@ -7326,7 +7331,7 @@ la_apply_log_file (const char *database_name, const char *log_path,
 
   /* get log header info. page size. start_page id, etc */
   error = la_find_log_pagesize (&la_Info.act_log, la_Info.log_path,
-				la_slave_db_name);
+				la_slave_db_name, true);
   if (error != NO_ERROR)
     {
       er_log_debug (ARG_FILE_LINE, "Cannot find log page size");
