@@ -6852,6 +6852,34 @@ pt_set_numbering_node_etc_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 }
 
 /*
+ * pt_get_numbering_node_etc () - get the DB_VALUE reference of the
+ *				  ORDERBY_NUM expression
+ * return : node
+ * parser (in) : parser context
+ * node (in)   : node
+ * arg (in)    : pointer to DB_VALUE *
+ * continue_walk (in) :
+ */
+PT_NODE *
+pt_get_numbering_node_etc (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+			   int *continue_walk)
+{
+  if (node == NULL)
+    {
+      return node;
+    }
+
+  if (PT_IS_EXPR_NODE (node) && node->info.expr.op == PT_ORDERBY_NUM)
+    {
+      DB_VALUE **val_ptr = (DB_VALUE **) arg;
+      *continue_walk = PT_STOP_WALK;
+      *val_ptr = (DB_VALUE *) node->etc;
+    }
+
+  return node;
+}
+
+/*
  * pt_set_numbering_node_etc () - set etc values of parse tree nodes INST_NUM
  *                                and ORDERBY_NUM to pointers of corresponding
  *                                reguvars from XASL node

@@ -207,6 +207,9 @@ extern void pt_set_numbering_node_etc (PARSER_CONTEXT * parser,
 				       PT_NODE * node_list,
 				       DB_VALUE ** instnum_valp,
 				       DB_VALUE ** ordbynum_valp);
+extern PT_NODE *pt_get_numbering_node_etc (PARSER_CONTEXT * parser,
+					   PT_NODE * node, void *arg,
+					   int *continue_walk);
 extern void pt_set_level_node_etc (PARSER_CONTEXT * parser,
 				   PT_NODE * node_list,
 				   DB_VALUE ** level_valp);

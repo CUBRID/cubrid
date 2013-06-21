@@ -1834,9 +1834,10 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries,
        * contents of the temp file intended to be created by this plan.
        * If not, we're really at the "top" of a tree (we haven't gone
        * through a join node yet) and we can simply recurse, tacking on
-       * our sort spec after the recursion.
+       * our sort spec after the recursion. The exception to this rule is
+       * the SORT-LIMIT plan which must always be working on a temp file.
        */
-      if (inner_scans)
+      if (inner_scans != NULL || plan->plan_un.sort.sort_type == SORT_LIMIT)
 	{
 	  PT_NODE *namelist = NULL;
 
@@ -4903,6 +4904,34 @@ make_sort_limit_proc (QO_ENV * env, QO_PLAN * plan, PT_NODE * namelist,
   statement = QO_ENV_PT_TREE (env);
   order_by = statement->info.query.order_by;
 
+  if (xasl->ordbynum_val == NULL)
+    {
+      /* If orderbynum_val is NULL, we're probably somewhere in a subplan
+       * and orderbynum_val is set for the upper XASL level. Try to find
+       * the ORDERBY_NUM node and use the node->etc pointer which is set to
+       * the orderby_num val
+       */
+      PT_NODE *orderby_num = NULL;
+      if (statement->info.query.orderby_for == NULL)
+	{
+	  /* we should not create a sort_limit proc without an orderby_for
+	   * predicate.
+	   */
+	  assert_release (false);
+	  listfile = NULL;
+	  goto cleanup;
+	}
+
+      parser_walk_tree (parser, statement->info.query.orderby_for,
+			pt_get_numbering_node_etc, &xasl->ordbynum_val, NULL,
+			NULL);
+      if (xasl->ordbynum_val == NULL)
+	{
+	  assert_release (false);
+	  listfile = NULL;
+	  goto cleanup;
+	}
+    }
   /* make o copy of the namelist to extend it with expressions from the
    * ORDER BY clause. The extended list will be used to generate the internal
    * listfile scan but will not be used for the actual XASL node.
