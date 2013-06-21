@@ -1334,6 +1334,12 @@ cci_execute (int mapped_stmt_id, char flag, int max_col_size,
       flag |= CCI_EXEC_QUERY_INFO;
     }
 
+  /* Asynchronous mode is unsupported. */
+  if (flag & CCI_EXEC_ASYNC)
+    {
+      flag &= ~CCI_EXEC_ASYNC;
+    }
+
   if (IS_OUT_TRAN (con_handle) && IS_FORCE_FAILBACK (con_handle)
       && !IS_INVALID_SOCKET (con_handle->sock_fd))
     {

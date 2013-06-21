@@ -1278,8 +1278,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
       stmt_id = srv_handle->q_result->stmt_id;
     }
 
-  if (((flag & CCI_EXEC_ASYNC) || (max_row > 0))
-      && db_is_query_async_executable (session, stmt_id))
+  if ((flag & CCI_EXEC_ASYNC) || (max_row > 0))
     {
       db_set_session_mode_async (session);
       srv_handle->q_result->async_flag = TRUE;
@@ -1610,8 +1609,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 	    }
 	}
 
-      if (((flag & CCI_EXEC_ASYNC) || (max_row > 0))
-	  && db_is_query_async_executable (session, stmt_id))
+      if ((flag & CCI_EXEC_ASYNC) || (max_row > 0))
 	{
 	  db_set_session_mode_async (session);
 	  async_flag = TRUE;
