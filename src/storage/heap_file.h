@@ -121,6 +121,9 @@ struct heap_scancache
 				 * scanned. Can be FILE_HEAP or
 				 * FILE_HEAP_REUSE_SLOTS
 				 */
+  FILE_IS_NEW_FILE is_new_file;	/* check for bestspace cache
+				 * and logging of new file
+				 */
 };
 
 typedef struct heap_scanrange HEAP_SCANRANGE;
