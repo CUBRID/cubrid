@@ -930,7 +930,8 @@ gültige Optionen:\n\
   -a, --applied-info          Übernommene Information anzeigen \n\
   -L, --copied-log-path=PFAD  Pfad der kopierten Logdatenträger; kopierte Loginformation anzeigen \n\
   -p, --pageid=ID             Seiten-ID; Standard: 0(aktive Seite)\n\
-  -v, --verbose               ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n
+  -v, --verbose               ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n\
+  -i, --interval=S            print information every S secs\n
 
 $set 45 MSGCAT_UTIL_SET_ACLDB
 59 acldb kann nicht in Stand-Alone-Modus ausgeführt werden.\n

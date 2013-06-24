@@ -952,7 +952,7 @@ opţiuni valide:\n\
   -L, --copied-log-path=CALE  calea către volumele de log copiate; afişează informaţii despre logurile copiate\n\
   -p, --pageid=ID             id de pagina; implicit : 0 (pagina activă)\n\
   -v, --verbose               activează mesaje de stare detaliate; implicit : dezactivate\n\
-  -i, --interval=S            afişează informaţii la fiecare S secunde\n	
+  -i, --interval=S            afişează informaţii la fiecare S secunde\n
 
 $set 45 MSGCAT_UTIL_SET_ACLDB
 59 acldb nu poate fi executat în modul independent.\n

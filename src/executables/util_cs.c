@@ -54,6 +54,7 @@
 #include "schema_manager.h"
 #include "locator_cl.h"
 #include "dynamic_array.h"
+#include "util_func.h"
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
@@ -3039,6 +3040,7 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
   int error = NO_ERROR;
   int retried = 0, sleep_nsecs = 1;
   bool need_er_reinit = false;
+  char *replica_time_bound_str;
 #if !defined(WINDOWS)
   char *binary_name;
   char executable_path[PATH_MAX];
@@ -3121,6 +3123,26 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
 	  er_log_debug (ARG_FILE_LINE,
 			"Cannot connect to cub_master for heartbeat. \n");
 	  return EXIT_FAILURE;
+	}
+    }
+
+  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_REPLICA)
+    {
+      replica_time_bound_str =
+	prm_get_string_value (PRM_ID_HA_REPLICA_TIME_BOUND);
+      if (replica_time_bound_str != NULL)
+	{
+	  if (util_str_to_time_since_epoch (replica_time_bound_str) == 0)
+	    {
+	      fprintf (stderr,
+		       msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_GENERIC,
+				       MSGCAT_UTIL_GENERIC_INVALID_PARAMETER),
+		       prm_get_name (PRM_ID_HA_REPLICA_TIME_BOUND),
+		       "(the correct format: YYYY-MM-DD hh:mm:ss)");
+
+	      return EXIT_FAILURE;
+	    }
 	}
     }
 #endif
@@ -3295,7 +3317,8 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   const char *master_node_name;
   char local_database_name[MAXHOSTNAMELEN];
   char master_database_name[MAXHOSTNAMELEN];
-  bool check_applied_info, check_copied_info, check_master_info;
+  bool check_applied_info, check_copied_info;
+  bool check_master_info, check_replica_info;
   bool verbose;
   const char *log_path;
   char log_path_buf[PATH_MAX];
@@ -3304,6 +3327,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   int pageid = 0;
   int interval;
   float process_rate = 0.0f;
+  char *replica_time_bound_str;
   /* log lsa to calculate the estimated delay */
   LOG_LSA master_eof_lsa, applied_final_lsa;
   LOG_LSA copied_append_lsa, copied_eof_lsa;
@@ -3324,7 +3348,14 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
       goto print_applyinfo_usage;
     }
 
-  check_applied_info = check_copied_info = check_master_info = false;
+  /* initialize system parameters */
+  if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
+    {
+      return EXIT_FAILURE;
+    }
+
+  check_applied_info = check_copied_info = false;
+  check_replica_info = check_master_info = false;
 
   database_name = utility_get_option_string_value (arg_map,
 						   OPTION_STRING_TABLE, 0);
@@ -3359,6 +3390,8 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
       goto print_applyinfo_usage;
     }
 
+  check_replica_info =
+    (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_REPLICA);
   pageid = utility_get_option_int_value (arg_map, APPLYINFO_PAGE_S);
   verbose = utility_get_option_bool_value (arg_map, APPLYINFO_VERBOSE_S);
 
@@ -3366,6 +3399,25 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   if (interval < 0)
     {
       goto print_applyinfo_usage;
+    }
+
+  if (check_replica_info)
+    {
+      replica_time_bound_str
+	= prm_get_string_value (PRM_ID_HA_REPLICA_TIME_BOUND);
+      if (replica_time_bound_str != NULL)
+	{
+	  if (util_str_to_time_since_epoch (replica_time_bound_str) == 0)
+	    {
+	      fprintf (stderr,
+		       msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_GENERIC,
+				       MSGCAT_UTIL_GENERIC_INVALID_PARAMETER),
+		       prm_get_name (PRM_ID_HA_REPLICA_TIME_BOUND),
+		       "(the correct format: YYYY-MM-DD hh:mm:ss)");
+	      return EXIT_FAILURE;
+	    }
+	}
     }
 
   AU_DISABLE_PASSWORDS ();
@@ -3417,9 +3469,9 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 
 	  error =
 	    la_log_page_check (local_database_name, log_path, pageid,
-			       check_applied_info, check_copied_info, verbose,
-			       &copied_eof_lsa, &copied_append_lsa,
-			       &applied_final_lsa);
+			       check_applied_info, check_copied_info,
+			       check_replica_info, verbose, &copied_eof_lsa,
+			       &copied_append_lsa, &applied_final_lsa);
 	  (void) db_shutdown ();
 	}
       else if (check_copied_info)
@@ -3430,9 +3482,9 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 
 	  error =
 	    la_log_page_check (local_database_name, log_path, pageid,
-			       check_applied_info, check_copied_info, verbose,
-			       &copied_eof_lsa, &copied_append_lsa,
-			       &applied_final_lsa);
+			       check_applied_info, check_copied_info,
+			       check_replica_info, verbose, &copied_eof_lsa,
+			       &copied_append_lsa, &applied_final_lsa);
 	}
 
     check_applied_info_end:

@@ -370,6 +370,10 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HA_COPY_LOG_TIMEOUT "ha_copy_log_timeout"
 
+#define PRM_NAME_HA_REPLICA_DELAY_IN_SECS "ha_replica_delay_in_secs"
+
+#define PRM_NAME_HA_REPLICA_TIME_BOUND "ha_replica_time_bound"
+
 #define PRM_NAME_JAVA_STORED_PROCEDURE "java_stored_procedure"
 
 #define PRM_NAME_COMPAT_PRIMARY_KEY "compat_primary_key"
@@ -1127,6 +1131,14 @@ int PRM_HA_COPY_LOG_TIMEOUT = 5;
 static int prm_ha_copy_log_timeout_default = 5;
 static int prm_ha_copy_log_timeout_upper = INT_MAX;
 static int prm_ha_copy_log_timeout_lower = -1;
+
+int PRM_HA_REPLICA_DELAY_IN_SECS = 0;
+static int prm_ha_replica_delay_in_secs_default = 0;
+static int prm_ha_replica_delay_in_secs_upper = INT_MAX;
+static int prm_ha_replica_delay_in_secs_lower = 0;
+
+const char *PRM_HA_REPLICA_TIME_BOUND = "";
+static const char *prm_ha_replica_time_bound_default = NULL;
 
 bool PRM_JAVA_STORED_PROCEDURE = false;
 static bool prm_java_stored_procedure_default = false;
@@ -2331,6 +2343,21 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_HA_COPY_LOG_TIMEOUT,
    (void *) &prm_ha_copy_log_timeout_upper,
    (void *) &prm_ha_copy_log_timeout_lower,
+   (char *) NULL},
+  {PRM_NAME_HA_REPLICA_DELAY_IN_SECS,
+   (PRM_FOR_CLIENT | PRM_FOR_HA),
+   PRM_INTEGER,
+   (void *) &prm_ha_replica_delay_in_secs_default,
+   (void *) &PRM_HA_REPLICA_DELAY_IN_SECS,
+   (void *) &prm_ha_replica_delay_in_secs_upper,
+   (void *) &prm_ha_replica_delay_in_secs_lower,
+   (char *) NULL},
+  {PRM_NAME_HA_REPLICA_TIME_BOUND,
+   (PRM_FOR_CLIENT | PRM_FOR_HA),
+   PRM_STRING,
+   (void *) &prm_ha_replica_time_bound_default,
+   (void *) &PRM_HA_REPLICA_TIME_BOUND,
+   (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_JAVA_STORED_PROCEDURE,
    (PRM_FOR_SERVER),

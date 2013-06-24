@@ -933,7 +933,7 @@ valid options:\n\
   -L, --copied-log-path=PATH  path of copied log volumes; display copied log information \n\
   -p, --pageid=ID             page id; default : 0(active page)\n\
   -v, --verbose               enable verbose status messages; default : disable\n\
-  -i, --interval=S            print information every S secs\n	
+  -i, --interval=S            print information every S secs\n
 
 $set 45 MSGCAT_UTIL_SET_ACLDB
 59 acldb cannot run as standalone mode.\n

@@ -931,7 +931,7 @@ opciones validas:\n\
   -L, --copied-log-path=PATH  ruta de los volumenes de registro copiados; mostrar informacion de registro copiado \n\
   -p, --pageid=ID             id de pagina; estandar : 0(pagina activa)\n\
   -v, --verbose               habilitar mensajes de estado verbose; estandar : inhabilitar\n\
-  -i, --interval=S            imprimir informacion casa S segundos\n	
+  -i, --interval=S            imprimir informacion casa S segundos\n
 
 $set 45 MSGCAT_UTIL_SET_ACLDB
 59 acldb no puede ejecutar como modo independiente.\n

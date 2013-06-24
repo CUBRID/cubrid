@@ -30,9 +30,11 @@
 #include <string.h>
 #include <signal.h>
 #include <assert.h>
+#include <time.h>
 
 #include "util_func.h"
 #include "porting.h"
+#include "error_code.h"
 
 /*
  * hashpjw() - returns hash value of given string
@@ -270,4 +272,112 @@ util_free_string_array (char **array)
       free (array[i]);
     }
   free (array);
+}
+
+/*
+ *  util_str_to_time_since_epoch () - convert time string
+ *      return: time since epoch or 0 on error
+ *
+ *  NOTE: it only accepts YYYY-DD-MM hh:mm:ss format.
+ */
+time_t
+util_str_to_time_since_epoch (char *str)
+{
+  int status = NO_ERROR;
+  int date_index = 0;
+  char *save_ptr, *token, *date_string;
+  const char *delim = "-: ";
+  struct tm time_data, tmp_time_data;
+  time_t result_time;
+
+  if (str == NULL)
+    {
+      return 0;
+    }
+
+  date_string = strdup (str);
+  if (date_string == NULL)
+    {
+      return 0;
+    }
+
+  token = strtok_r (date_string, delim, &save_ptr);
+  while (status == NO_ERROR && token != NULL)
+    {
+      switch (date_index)
+	{
+	case 0:		/* year */
+	  time_data.tm_year = atoi (token) - 1900;
+	  if (time_data.tm_year < 0)
+	    {
+	      status = ER_GENERIC_ERROR;
+	    }
+	  break;
+	case 1:		/* month */
+	  time_data.tm_mon = atoi (token) - 1;
+	  if (time_data.tm_mon < 0 || time_data.tm_mon > 11)
+	    {
+	      status = ER_GENERIC_ERROR;
+	    }
+	  break;
+	case 2:		/* month-day */
+	  time_data.tm_mday = atoi (token);
+	  if (time_data.tm_mday < 1 || time_data.tm_mday > 31)
+	    {
+	      status = ER_GENERIC_ERROR;
+	    }
+	  break;
+	case 3:		/* hour */
+	  time_data.tm_hour = atoi (token);
+	  if (time_data.tm_hour < 0 || time_data.tm_hour > 23)
+	    {
+	      status = ER_GENERIC_ERROR;
+	    }
+	  break;
+	case 4:		/* minute */
+	  time_data.tm_min = atoi (token);
+	  if (time_data.tm_min < 0 || time_data.tm_min > 59)
+	    {
+	      status = ER_GENERIC_ERROR;
+	    }
+	  break;
+	case 5:		/* second */
+	  time_data.tm_sec = atoi (token);
+	  if (time_data.tm_sec < 0 || time_data.tm_sec > 59)
+	    {
+	      status = ER_GENERIC_ERROR;
+	    }
+	  break;
+	default:
+	  status = ER_GENERIC_ERROR;
+	  break;
+	}
+      date_index++;
+      token = strtok_r (NULL, delim, &save_ptr);
+    }
+  time_data.tm_isdst = -1;
+
+  free (date_string);
+
+  if (date_index != 6 || status != NO_ERROR)
+    {
+      return 0;
+    }
+
+  tmp_time_data = time_data;
+
+  result_time = mktime (&tmp_time_data);
+  if (result_time < (time_t) 0)
+    {
+      return 0;
+    }
+
+  time_data.tm_isdst = tmp_time_data.tm_isdst;
+  result_time = mktime (&time_data);
+  if (result_time < (time_t) 0)
+    {
+      return 0;
+    }
+
+  return result_time;
 }

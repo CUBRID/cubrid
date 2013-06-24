@@ -44,5 +44,6 @@ extern void util_arm_signal_handlers (SIG_HANDLER DB_INT32_handler,
 extern void util_disarm_signal_handlers (void);
 extern char **util_split_string (const char *str, const char *delim);
 extern void util_free_string_array (char **array);
+extern time_t util_str_to_time_since_epoch (char *str);
 
 #endif /* _UTIL_FUNC_H_ */

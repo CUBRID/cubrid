@@ -52,6 +52,7 @@
 #include "memory_hash.h"
 #include "schema_manager.h"
 #include "log_applier_sql_log.h"
+#include "util_func.h"
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
@@ -521,6 +522,8 @@ static int la_find_last_deleted_arv_num (void);
 
 static bool la_restart_on_bulk_flush_error (int errid);
 static char *la_get_hostname_from_log_path (char *log_path);
+
+static void la_delay_replica (time_t eot_time);
 
 /*
  * la_shutdown_by_signal() - When the process catches the SIGTERM signal,
@@ -5963,6 +5966,12 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
 	      break;
 	    }
 
+	  /* in case of delayed/time-bound replication */
+	  if (eot_time != 0)
+	    {
+	      la_delay_replica (eot_time);
+	    }
+
 	  /* make db_ha_apply_info.status busy */
 	  if (la_Info.status == LA_STATUS_IDLE)
 	    {
@@ -6846,13 +6855,14 @@ la_print_log_arv_header (const char *database_name,
 int
 la_log_page_check (const char *database_name, const char *log_path,
 		   int page_num, bool check_applied_info,
-		   bool check_copied_info, bool verbose,
-		   LOG_LSA * copied_eof_lsa, LOG_LSA * copied_append_lsa,
-		   LOG_LSA * applied_final_lsa)
+		   bool check_copied_info, bool check_replica_info,
+		   bool verbose, LOG_LSA * copied_eof_lsa,
+		   LOG_LSA * copied_append_lsa, LOG_LSA * applied_final_lsa)
 {
   int error = NO_ERROR;
   char *atchar;
   char active_log_path[PATH_MAX];
+  char *replica_time_bound_str;
 
   assert (database_name != NULL);
   assert (log_path != NULL);
@@ -6936,6 +6946,29 @@ la_log_page_check (const char *database_name, const char *log_path,
 				 &ha_apply_info.start_time);
 	  printf ("%-30s : %s\n", "Start time", timebuf);
 	}
+
+      if (check_replica_info)
+	{
+	  replica_time_bound_str
+	    = prm_get_string_value (PRM_ID_HA_REPLICA_TIME_BOUND);
+	  db_datetime_to_string2 ((char *) timebuf, 1024,
+				  &ha_apply_info.log_record_time);
+
+	  printf ("\n *** Replica-specific Info. *** \n");
+	  if (replica_time_bound_str == NULL)
+	    {
+	      printf ("%-30s : %d second(s)\n", "Deliberate lag",
+		      prm_get_integer_value
+		      (PRM_ID_HA_REPLICA_DELAY_IN_SECS));
+	    }
+
+	  printf ("%-30s : %s\n", "Last applied log record time", timebuf);
+	  if (replica_time_bound_str != NULL)
+	    {
+	      printf ("%-30s : %s\n", "Will apply log records up to",
+		      replica_time_bound_str);
+	    }
+	}
     }
 check_applied_info_end:
   if (error != NO_ERROR)
@@ -6943,7 +6976,6 @@ check_applied_info_end:
       printf ("%s\n", db_error_string (3));
     }
   error = NO_ERROR;
-
 
   if (check_copied_info)
     {
@@ -7846,4 +7878,70 @@ la_apply_log_file (const char *database_name, const char *log_path,
     }
 
   return error;
+}
+
+/*
+ * la_delay_replica () -
+ */
+static void
+la_delay_replica (time_t eot_time)
+{
+  static int ha_mode = -1;
+  static int replica_delay = -1;
+  static time_t replica_time_bound = -1;
+  static char *replica_time_bound_str = (void *) -1;
+  char buffer[LINE_MAX];
+
+  if (ha_mode < HA_MODE_OFF)
+    {
+      ha_mode = prm_get_integer_value (PRM_ID_HA_MODE);
+    }
+
+  if (replica_delay < 0)
+    {
+      replica_delay = prm_get_integer_value (PRM_ID_HA_REPLICA_DELAY_IN_SECS);
+    }
+
+  if (replica_time_bound_str == (void *) -1)
+    {
+      replica_time_bound_str =
+	prm_get_string_value (PRM_ID_HA_REPLICA_TIME_BOUND);
+    }
+
+  if (ha_mode == HA_MODE_REPLICA)
+    {
+      if (replica_time_bound_str != NULL)
+	{
+	  if (replica_time_bound == -1)
+	    {
+	      replica_time_bound =
+		util_str_to_time_since_epoch (replica_time_bound_str);
+	      assert (replica_time_bound != 0);
+	    }
+
+	  if (eot_time >= replica_time_bound)
+	    {
+	      la_log_commit (true);
+
+	      snprintf (buffer, sizeof (buffer),
+			"applylogdb paused since it reached "
+			"a log record committed on master at %s or later.\n"
+			"Adjust or remove %s and restart applylogdb to resume",
+			replica_time_bound_str,
+			prm_get_name (PRM_ID_HA_REPLICA_TIME_BOUND));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR,
+		      1, buffer);
+
+	      /* applylogdb waits indefinitely */
+	      select (0, NULL, NULL, NULL, NULL);
+	    }
+	}
+      else if (replica_delay > 0)
+	{
+	  while ((time (NULL) - eot_time) < replica_delay)
+	    {
+	      LA_SLEEP (0, 100 * 1000);
+	    }
+	}
+    }
 }

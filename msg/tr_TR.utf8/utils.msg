@@ -931,7 +931,7 @@ geçerli seçenekler:\n\
   -L, --copied-log-path=PATH  Kopyalanan log yoğunlukların path; görüntü kopyalanan log bilgileri \n\
   -p, --pageid=ID             sayfa id; varsayılan: 0 (etkin sayfa)\n\
   -v, --verbose               Ayrıntılı durum mesajları sağlamak; varsayılan: devre dışı bırakmak\n\
-  -i, --interval=S            print information every S secs\n	
+  -i, --interval=S            print information every S secs\n
 
 $set 45 MSGCAT_UTIL_SET_ACLDB
 59 acldb bağımsız modu olarak çalıştıramazsınız.\n
