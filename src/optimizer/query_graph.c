@@ -9382,8 +9382,10 @@ qo_discover_sort_limit_join_nodes (QO_ENV * env, QO_NODE * node,
       if (BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (node)))
 	{
 	  if (QO_TERM_CLASS (term) == QO_TC_JOIN
-	      && IS_OUTER_JOIN_TYPE (QO_TERM_JOIN_TYPE (term))
-	      && QO_TERM_HEAD (term) == node)
+	      && ((QO_TERM_JOIN_TYPE (term) == JOIN_LEFT
+		   && QO_TERM_HEAD (term) == node)
+		  || (QO_TERM_JOIN_TYPE (term) == JOIN_RIGHT
+		      && QO_TERM_TAIL (term) == node)))
 	    {
 	      /* Other nodes in this term are outer joined with our node. We
 	       * can safely add them to dep_nodes if we're not ordering on
