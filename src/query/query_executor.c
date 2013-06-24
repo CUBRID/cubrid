@@ -12430,10 +12430,18 @@ qexec_clear_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	}
       break;
 
-    case MERGELIST_PROC:
     case UNION_PROC:
     case DIFFERENCE_PROC:
     case INTERSECTION_PROC:
+    case OBJFETCH_PROC:
+    case SCAN_PROC:
+    case MERGELIST_PROC:
+    case UPDATE_PROC:
+    case DELETE_PROC:
+    case INSERT_PROC:
+    case DO_PROC:
+    case MERGE_PROC:
+    case BUILD_SCHEMA_PROC:
       break;
 
     default:
