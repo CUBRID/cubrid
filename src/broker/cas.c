@@ -1376,6 +1376,7 @@ main (int argc, char *argv[])
 	  {
 	    memset (as_info->cas_clt_ip, 0x0, sizeof (as_info->cas_clt_ip));
 	    as_info->cas_clt_port = 0;
+	    as_info->driver_version[0] = '\0';
 	  }
 
 	as_info->transaction_start_time = (time_t) 0;

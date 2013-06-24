@@ -397,6 +397,7 @@ broker_add_new_cas (void)
   memset (&shm_appl->as_info[add_as_index].cas_clt_ip[0], 0x0,
 	  sizeof (shm_appl->as_info[add_as_index].cas_clt_ip));
   shm_appl->as_info[add_as_index].cas_clt_port = 0;
+  shm_appl->as_info[add_as_index].driver_version[0] = '\0';
 
   (shm_br->br_info[br_index].appl_server_num)++;
   (shm_appl->num_appl_server)++;

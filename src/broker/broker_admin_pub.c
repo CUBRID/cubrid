@@ -771,6 +771,7 @@ admin_restart_cmd (int master_shm_id, const char *broker, int as_index)
   memset (&shm_appl->as_info[as_index].cas_clt_ip[0], 0x0,
 	  sizeof (shm_appl->as_info[as_index].cas_clt_ip));
   shm_appl->as_info[as_index].cas_clt_port = 0;
+  shm_appl->as_info[as_index].driver_version[0] = '\0';
 
   /* mutex exit section */
   shm_appl->as_info[as_index].mutex_flag[SHM_MUTEX_ADMIN] = FALSE;
@@ -3554,6 +3555,7 @@ as_activate (T_SHM_BROKER * shm_br, T_BROKER_INFO * br_info,
 
   memset (&as_info->cas_clt_ip[0], 0x0, sizeof (as_info->cas_clt_ip));
   as_info->cas_clt_port = 0;
+  as_info->driver_version[0] = '\0';
 
 #if defined(WINDOWS)
   as_info->pdh_pid = 0;
