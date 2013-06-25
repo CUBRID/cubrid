@@ -2949,6 +2949,11 @@ static KEYVAL check_peer_alive_words[] = {
   {"both", CSS_CHECK_PEER_ALIVE_BOTH},
 };
 
+static KEYVAL query_trace_format_words[] = {
+  {"text", QUERY_TRACE_TEXT},
+  {"json", QUERY_TRACE_JSON},
+};
+
 static const char *compat_mode_values_PRM_ANSI_QUOTES[COMPAT_ORACLE + 2] = {
   NULL,				/* COMPAT_CUBRID     */
   "no",				/* COMPAT_MYSQL      */
@@ -4420,6 +4425,12 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
 				 NULL, check_peer_alive_words,
 				 DIM (check_peer_alive_words));
 	}
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_QUERY_TRACE_FORMAT) == 0)
+	{
+	  keyvalp = prm_keyword (PRM_GET_INT (prm->value),
+				 NULL, query_trace_format_words,
+				 DIM (query_trace_format_words));
+	}
       else
 	{
 	  assert (false);
@@ -4596,6 +4607,11 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
 	{
 	  keyvalp = prm_keyword (value.i, NULL, check_peer_alive_words,
 				 DIM (check_peer_alive_words));
+	}
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_QUERY_TRACE_FORMAT) == 0)
+	{
+	  keyvalp = prm_keyword (value.i, NULL, query_trace_format_words,
+				 DIM (query_trace_format_words));
 	}
       else
 	{
@@ -5387,6 +5403,12 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 	  {
 	    keyvalp = prm_keyword (-1, value, check_peer_alive_words,
 				   DIM (check_peer_alive_words));
+	  }
+	else if (intl_mbs_casecmp (prm->name,
+				   PRM_NAME_QUERY_TRACE_FORMAT) == 0)
+	  {
+	    keyvalp = prm_keyword (-1, value, query_trace_format_words,
+				   DIM (query_trace_format_words));
 	  }
 	else
 	  {
