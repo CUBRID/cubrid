@@ -87,6 +87,8 @@ static void cas_log_write2_internal (FILE * fp, bool do_flush,
 static FILE *sql_log_open (char *log_file_name);
 static bool cas_log_begin_hang_check_time (void);
 static void cas_log_end_hang_check_time (bool is_prev_time_set);
+static void
+cas_log_write_query_string_internal (char *query, int size, bool newline);
 
 #ifdef CAS_ERROR_LOG
 static int error_file_offset;
@@ -410,8 +412,8 @@ cas_log_write_internal (FILE * fp, struct timeval *log_time,
 	  n = vsnprintf (p, len, fmt, ap);
 	  if (n >= len)
 	    {
-	      /* string is truncated */
-	      n = len;
+	      /* string is truncated and trailing '\0' is included */
+	      n = len - 1;
 	    }
 	  len -= n;
 	  p += n;
@@ -563,8 +565,8 @@ cas_log_write2_internal (FILE * fp, bool do_flush, const char *fmt,
   n = vsnprintf (p, len, fmt, ap);
   if (n >= len)
     {
-      /* string is truncated */
-      n = len;
+      /* string is truncated and trailing '\0' is included */
+      n = len - 1;
     }
   len -= n;
   p += n;
@@ -637,7 +639,19 @@ cas_log_write_value_string (char *value, int size)
 }
 
 void
+cas_log_write_query_string_nonl (char *query, int size)
+{
+  cas_log_write_query_string_internal (query, size, false);
+}
+
+void
 cas_log_write_query_string (char *query, int size)
+{
+  cas_log_write_query_string_internal (query, size, true);
+}
+
+static void
+cas_log_write_query_string_internal (char *query, int size, bool newline)
 {
 #ifndef LIBCAS_FOR_JSP
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
@@ -660,7 +674,11 @@ cas_log_write_query_string (char *query, int size)
 	      cas_fputc (*s, log_fp);
 	    }
 	}
-      cas_fputc ('\n', log_fp);
+
+      if (newline)
+	{
+	  fputc ('\n', log_fp);
+	}
     }
 #endif /* LIBCAS_FOR_JSP */
 }
