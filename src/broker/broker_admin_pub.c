@@ -2313,7 +2313,7 @@ admin_shard_conf_change (int master_shm_id, const char *sh_name,
 	  goto set_shard_conf_error;
 	}
     }
-  else if (strcasecmp (conf_name, "PROXY_LOG") == 0)
+  else if (strcasecmp (conf_name, "SHARD_PROXY_LOG") == 0)
     {
       char proxy_log_mode;
 
@@ -2350,7 +2350,7 @@ admin_shard_conf_change (int master_shm_id, const char *sh_name,
 	    }
 	}
     }
-  else if (strcasecmp (conf_name, "PROXY_LOG_MAX_SIZE") == 0)
+  else if (strcasecmp (conf_name, "SHARD_PROXY_LOG_MAX_SIZE") == 0)
     {
       int proxy_log_max_size;
 
@@ -3340,7 +3340,7 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
 	    {
 	      sprintf (admin_err_msg,
 		       "failed to connect database. [%s]\n\n"
-		       "please check your $CUBRID/conf/shard.conf or database status.\n\n"
+		       "please check your $CUBRID/conf/cubrid_broker.conf or database status.\n\n"
 		       "[%%%s]\n"
 		       "%-20s = %s\n"
 		       "%-20s = %s\n",
@@ -3731,14 +3731,14 @@ proxy_activate_internal (int proxy_shm_id, T_SHM_APPL_SERVER * shm_as_p,
     {
       sprintf (admin_err_msg,
 	       "max_client %d is greater than %d [%s]\n\n"
-	       "please check your $CUBRID/conf/shard.conf\n\n"
+	       "please check your $CUBRID/conf/cubrid_broker.conf\n\n"
 	       "[%%%s]\n"
 	       "%-20s = %d\n"
 	       "%-20s = %d * %d\n", proxy_info_p->max_client,
 	       proxy_info_p->max_context, shm_as_p->broker_name,
-	       shm_as_p->broker_name, "MAX_CLIENT", proxy_info_p->max_client,
-	       "MAX_NUM_APPL_SERVER", shard_info_p->max_appl_server,
-	       proxy_info_p->max_shard);
+	       shm_as_p->broker_name, "SHARD_MAX_CLIENTS",
+	       proxy_info_p->max_client, "MAX_NUM_APPL_SERVER",
+	       shard_info_p->max_appl_server, proxy_info_p->max_shard);
       return -1;
     }
 
@@ -4028,7 +4028,7 @@ shard_shm_set_param_proxy_internal (T_PROXY_INFO * proxy_info_p,
 				    const char *param_name,
 				    const char *param_value)
 {
-  if (strcasecmp (param_name, "PROXY_LOG") == 0)
+  if (strcasecmp (param_name, "SHARD_PROXY_LOG") == 0)
     {
       char proxy_log_mode;
 

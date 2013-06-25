@@ -60,12 +60,10 @@
 #define BROKER_PATH_MAX             (1024)
 
 /* default values */
-#define DEFAULT_LOG_DIR			"log/broker/sql_log/"
-#define DEFAULT_SLOW_LOG_DIR		DEFAULT_LOG_DIR
-#define DEFAULT_ERR_DIR			"log/broker/error_log/"
-#if defined(CUBRID_SHARD)
-#define DEFAULT_PROXY_LOG_DIR		"log/broker/proxy_log/"
-#endif /* CUBRID_SHARD */
+#define DEFAULT_LOG_DIR               "log/broker/sql_log/"
+#define DEFAULT_SLOW_LOG_DIR          DEFAULT_LOG_DIR
+#define DEFAULT_ERR_DIR               "log/broker/error_log/"
+#define DEFAULT_SHARD_PROXY_LOG_DIR   "log/broker/proxy_log/"
 
 typedef enum t_cubrid_file_id T_CUBRID_FILE_ID;
 enum t_cubrid_file_id
@@ -89,7 +87,6 @@ enum t_cubrid_file_id
   FID_CAS_FOR_MYSQL_DBINFO,
   FID_ACCESS_CONTROL_FILE,
   FID_SLOW_LOG_DIR,
-  FID_SHARD_CONF,
   FID_SHARD_DBINFO,
   FID_SHARD_PROXY_LOG_DIR,
   MAX_CUBRID_FILE

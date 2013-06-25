@@ -161,9 +161,7 @@
 #define SHARD_KEY_RANGE_MAX      (256)
 
 #define MAX_QUERY_TIMEOUT_LIMIT         86400	/* seconds; 1 day */
-#if defined(CUBRID_SHARD)
 #define MAX_PROXY_TIMEOUT_LIMIT 	MAX_QUERY_TIMEOUT_LIMIT
-#endif /* CUBRID_SHARD */
 
 #if defined (WINDOWS)
 #define MAKE_ACL_SEM_NAME(BUF, BROKER_NAME)  \
@@ -541,6 +539,7 @@ struct t_shm_appl_server
   char jdbc_cache_only_hint;
   char cci_pconnect;
   char cci_default_autocommit;
+  char shard_flag;
   bool access_control;
   int jdbc_cache_life_time;
 

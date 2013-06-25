@@ -62,7 +62,6 @@ static T_CUBRID_FILE_INFO cubrid_file[NUM_CUBRID_FILE] = {
   {FID_CAS_FOR_MYSQL_DBINFO, ""},
   {FID_ACCESS_CONTROL_FILE, ""},
   {FID_SLOW_LOG_DIR, ""},
-  {FID_SHARD_CONF, ""},
   {FID_SHARD_DBINFO, ""},
   {FID_SHARD_PROXY_LOG_DIR, ""}
 };
@@ -266,10 +265,6 @@ get_cubrid_file (T_CUBRID_FILE_ID fid, char *buf, size_t len)
       break;
     case FID_CAS_FOR_MYSQL_DBINFO:
       envvar_confdir_file (buf, len, "databases_mysql.txt");
-      break;
-    case FID_SHARD_CONF:
-      envvar_confdir_file (buf, BROKER_PATH_MAX, "shard.conf");
-      snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, buf);
       break;
     case FID_SHARD_DBINFO:
       envvar_confdir_file (buf, BROKER_PATH_MAX, "shard_databases.txt");
