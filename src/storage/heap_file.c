@@ -9534,7 +9534,8 @@ heap_scancache_force_modify (THREAD_ENTRY * thread_p,
     }
 
   if (scan_cache->collect_nbest > 0 && scan_cache->collect_recs_sumlen > 0.0
-      && (scan_cache->is_new_file != FILE_NEW_FILE
+      && (file_is_new_file (thread_p,
+			    &(scan_cache->hfid.vfid)) != FILE_NEW_FILE
 	  || log_is_tran_in_system_op (thread_p) != true))
     {
       /* Retrieve the header of heap */
@@ -9620,6 +9621,17 @@ heap_scancache_reset_modify (THREAD_ENTRY * thread_p,
       scan_cache->hfid.vfid.volid = hfid->vfid.volid;
       scan_cache->hfid.vfid.fileid = hfid->vfid.fileid;
       scan_cache->hfid.hpgid = hfid->hpgid;
+
+      scan_cache->file_type = file_get_type (thread_p, &hfid->vfid);
+      if (scan_cache->file_type == FILE_UNKNOWN_TYPE)
+	{
+	  return ER_FAILED;
+	}
+      scan_cache->is_new_file = file_is_new_file (thread_p, &hfid->vfid);
+      if (scan_cache->is_new_file == FILE_ERROR)
+	{
+	  return ER_FAILED;
+	}
 
       ret = heap_get_best_estimates_stats (thread_p, hfid,
 					   &scan_cache->known_nbest,
