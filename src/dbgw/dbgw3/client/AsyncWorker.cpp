@@ -112,7 +112,7 @@ namespace dbgw
       system::_MutexAutoLock lock(&m_mutex);
 
       pJob->bindWorker(
-          boost::shared_static_cast<_AsyncWorker>(m_pSelf->shared_from_this()));
+          boost::dynamic_pointer_cast<_AsyncWorker>(m_pSelf->shared_from_this()));
 
       changeWorkerStateWithOutLock(DBGW_WORKTER_STATE_BUSY, pJob);
 
@@ -125,7 +125,7 @@ namespace dbgw
       system::_MutexAutoLock lock(&m_mutex);
 
       m_workerPool.returnWorker(
-          boost::shared_static_cast<_AsyncWorker>(m_pSelf->shared_from_this()),
+          boost::dynamic_pointer_cast<_AsyncWorker>(m_pSelf->shared_from_this()),
           bIsForceDrop);
     }
 

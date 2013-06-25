@@ -324,7 +324,7 @@ namespace dbgw
 
       try
         {
-          return boost::shared_static_cast<_QueryMapper>(
+          return boost::dynamic_pointer_cast<_QueryMapper>(
               m_queryResource.getResource(stVersion.nQueryMapperVersion));
         }
       catch (Exception &e)
