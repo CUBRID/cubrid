@@ -55,8 +55,9 @@ typedef enum pruning_op
 #define _WORDSIZE 8 * sizeof(int)
 
 #define MAX_ELEMENTS 1024
-#define BITS_IN_WORD (8 * sizeof(unsigned int))
-#define BITSET_WORD_COUNT (MAX_ELEMENTS / sizeof (unsigned int) * 8)
+#define BITSET_WORD_SIZE sizeof (unsigned int)
+#define BITS_IN_WORD (8 * BITSET_WORD_SIZE)
+#define BITSET_WORD_COUNT (MAX_ELEMENTS / BITS_IN_WORD)
 #define BITSET_LENGTH(s) ((((s)->count - 1) / BITS_IN_WORD)+1)
 
 typedef struct pruning_bitset PRUNING_BITSET;
@@ -210,7 +211,7 @@ static void
 pruningset_init (PRUNING_BITSET * s, int count)
 {
   s->count = count;
-  memset (s->set, 0, BITSET_WORD_COUNT);
+  memset (s->set, 0, BITSET_WORD_COUNT * BITSET_WORD_SIZE);
 }
 
 /*
@@ -221,7 +222,7 @@ pruningset_init (PRUNING_BITSET * s, int count)
 static void
 pruningset_set_all (PRUNING_BITSET * set)
 {
-  memset (set->set, (~0), BITSET_WORD_COUNT);
+  memset (set->set, (~0), BITSET_WORD_COUNT * BITSET_WORD_SIZE);
 }
 
 /*
