@@ -621,6 +621,91 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_GET_BIGINT(x)     (*((UINT64 *) (x)))
 
 /*
+ * Macros to call functions
+ */
+
+#define PRM_ADJUST_FOR_SET_BIGINT_TO_INTEGER(prm,out_val,in_val,err) do {	\
+	assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL);	\
+	assert (sizeof (*(out_val)) == sizeof (int));				\
+	assert (sizeof (*(in_val)) == sizeof (UINT64));				\
+	*(err) = (*((prm)->set_dup)) ((void *) (out_val), PRM_INTEGER, 		\
+				(void *) (in_val), PRM_BIGINT);			\
+} while (0)
+
+#define PRM_ADJUST_FOR_SET_BIGINT_TO_FLOAT(prm,out_val,in_val,err) do {		\
+	assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL);	\
+	assert (sizeof (*(out_val)) == sizeof (float));				\
+	assert (sizeof (*(in_val)) == sizeof (UINT64));				\
+	*(err) = (*((prm)->set_dup)) ((void *) (out_val), PRM_FLOAT, 		\
+				(void *) (in_val), PRM_BIGINT);			\
+} while (0)
+
+#define PRM_ADJUST_FOR_SET_INTEGER_TO_INTEGER(prm,out_val,in_val,err) do {	\
+	assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL);	\
+	assert (sizeof (*(out_val)) == sizeof (int));				\
+	assert (sizeof (*(in_val)) == sizeof (int));				\
+	*(err) = (*((prm)->set_dup)) ((void *) (out_val), PRM_INTEGER, 		\
+				(void *) (in_val), PRM_INTEGER);		\
+} while (0)
+
+#define PRM_ADJUST_FOR_SET_FLOAT_TO_FLOAT(prm,out_val,in_val,err) do {		\
+	assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL);	\
+	assert (sizeof (*(out_val)) == sizeof (float));				\
+	assert (sizeof (*(in_val)) == sizeof (float));				\
+	*(err) = (*((prm)->set_dup)) ((void *) (out_val), PRM_FLOAT, 		\
+				(void *) (in_val), PRM_FLOAT);			\
+} while (0)
+
+#define PRM_ADJUST_FOR_SET_BIGINT_TO_BIGINT(prm,out_val,in_val,err) do {	\
+	assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL);	\
+	assert (sizeof (*(out_val)) == sizeof (UINT64));			\
+	assert (sizeof (*(in_val)) == sizeof (UINT64));				\
+	*(err) = (*((prm)->set_dup)) ((void *) (out_val), PRM_BIGINT, 		\
+				(void *) (in_val), PRM_BIGINT);			\
+} while (0)
+
+#define PRM_ADJUST_FOR_GET_INTEGER_TO_BIGINT(prm,out_val,in_val,err) do {	\
+	assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL);	\
+	assert (sizeof (*(out_val)) == sizeof (UINT64));			\
+	assert (sizeof (*(in_val)) == sizeof (int));				\
+	*(err) = (*((prm)->get_dup)) ((void *) (out_val), PRM_BIGINT, 		\
+				(void *) (in_val), PRM_INTEGER);		\
+} while (0)
+
+#define PRM_ADJUST_FOR_GET_FLOAT_TO_BIGINT(prm,out_val,in_val,err) do {		\
+	assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL);	\
+	assert (sizeof (*(out_val)) == sizeof (UINT64));			\
+	assert (sizeof (*(in_val)) == sizeof (float));				\
+	*(err) = (*((prm)->get_dup)) ((void *) (out_val), PRM_BIGINT, 		\
+				(void *) (in_val), PRM_FLOAT);			\
+} while (0)
+
+#define PRM_ADJUST_FOR_GET_INTEGER_TO_INTEGER(prm,out_val,in_val,err) do {	\
+	assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL);	\
+	assert (sizeof (*(out_val)) == sizeof (int));				\
+	assert (sizeof (*(in_val)) == sizeof (int));				\
+	*(err) = (*((prm)->get_dup)) ((void *) (out_val), PRM_INTEGER, 		\
+				(void *) (in_val), PRM_INTEGER);		\
+} while (0)
+
+#define PRM_ADJUST_FOR_GET_FLOAT_TO_FLOAT(prm,out_val,in_val,err) do {		\
+	assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL);	\
+	assert (sizeof (*(out_val)) == sizeof (float));				\
+	assert (sizeof (*(in_val)) == sizeof (float));				\
+	*(err) = (*((prm)->get_dup)) ((void *) (out_val), PRM_FLOAT, 		\
+				(void *) (in_val), PRM_FLOAT);			\
+} while (0)
+
+#define PRM_ADJUST_FOR_GET_BIGINT_TO_BIGINT(prm,out_val,in_val,err) do {	\
+	assert ((prm) != NULL && (out_val) != NULL && (in_val) != NULL);	\
+	assert (sizeof (*(out_val)) == sizeof (UINT64));			\
+	assert (sizeof (*(in_val)) == sizeof (UINT64));				\
+	*(err) = (*((prm)->get_dup)) ((void *) (out_val), PRM_BIGINT, 		\
+				(void *) (in_val), PRM_BIGINT);			\
+} while (0)
+
+
+/*
  * Other macros
  */
 #define PRM_DEFAULT_BUFFER_SIZE 256
@@ -1524,30 +1609,31 @@ static int prm_query_trace_format_lower = QUERY_TRACE_TEXT;
 static int prm_query_trace_format_upper = QUERY_TRACE_JSON;
 static unsigned int prm_query_trace_format_flag = 0;
 
-typedef int (*DUP_PRM_FUNC) (void *, void *, SYSPRM_DATATYPE);
+typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *,
+			     SYSPRM_DATATYPE);
 
-static int prm_size_to_io_pages (void *out_val, void *in_val,
-				 SYSPRM_DATATYPE type);
-static int prm_io_pages_to_size (void *out_val, void *in_val,
-				 SYSPRM_DATATYPE type);
+static int prm_size_to_io_pages (void *out_val, SYSPRM_DATATYPE out_type,
+				 void *in_val, SYSPRM_DATATYPE in_type);
+static int prm_io_pages_to_size (void *out_val, SYSPRM_DATATYPE out_type,
+				 void *in_val, SYSPRM_DATATYPE in_type);
 
-static int prm_size_to_log_pages (void *out_val, void *in_val,
-				  SYSPRM_DATATYPE type);
-static int prm_log_pages_to_size (void *out_val, void *in_val,
-				  SYSPRM_DATATYPE type);
+static int prm_size_to_log_pages (void *out_val, SYSPRM_DATATYPE out_type,
+				  void *in_val, SYSPRM_DATATYPE in_type);
+static int prm_log_pages_to_size (void *out_val, SYSPRM_DATATYPE out_type,
+				  void *in_val, SYSPRM_DATATYPE in_type);
 
-static int prm_msec_to_sec (void *out_val, void *in_val,
-			    SYSPRM_DATATYPE type);
-static int prm_sec_to_msec (void *out_val, void *in_val,
-			    SYSPRM_DATATYPE type);
+static int prm_msec_to_sec (void *out_val, SYSPRM_DATATYPE out_type,
+			    void *in_val, SYSPRM_DATATYPE in_type);
+static int prm_sec_to_msec (void *out_val, SYSPRM_DATATYPE out_type,
+			    void *in_val, SYSPRM_DATATYPE in_type);
 
-static int prm_msec_to_min (void *out_val, void *in_val,
-			    SYSPRM_DATATYPE type);
-static int prm_min_to_msec (void *out_val, void *in_val,
-			    SYSPRM_DATATYPE type);
+static int prm_msec_to_min (void *out_val, SYSPRM_DATATYPE out_type,
+			    void *in_val, SYSPRM_DATATYPE in_type);
+static int prm_min_to_msec (void *out_val, SYSPRM_DATATYPE out_type,
+			    void *in_val, SYSPRM_DATATYPE in_type);
 
-static int prm_equal_to_ori (void *out_val, void *in_val,
-			     SYSPRM_DATATYPE type);
+static int prm_equal_to_ori (void *out_val, SYSPRM_DATATYPE out_type,
+			     void *in_val, SYSPRM_DATATYPE in_type);
 
 typedef struct sysprm_param SYSPRM_PARAM;
 struct sysprm_param
@@ -4731,17 +4817,18 @@ prm_read_and_parse_ini_file (const char *prm_file_name, const char *db_name,
  *   return: value
  */
 static int
-prm_size_to_io_pages (void *out_val, void *in_val, SYSPRM_DATATYPE type)
+prm_size_to_io_pages (void *out_val, SYSPRM_DATATYPE out_type,
+		      void *in_val, SYSPRM_DATATYPE in_type)
 {
   if (out_val == NULL || in_val == NULL)
     {
       return PRM_ERR_BAD_VALUE;
     }
 
-  if (type == PRM_INTEGER)
+  if (out_type == PRM_INTEGER && in_type == PRM_BIGINT)
     {
-      UINT64 *size_value = (UINT64 *) in_val;
       int *page_value = (int *) out_val;
+      UINT64 *size_value = (UINT64 *) in_val;
       UINT64 tmp_value;
 
       tmp_value = *size_value / IO_PAGESIZE;
@@ -4759,12 +4846,22 @@ prm_size_to_io_pages (void *out_val, void *in_val, SYSPRM_DATATYPE type)
 	  *page_value = 1;
 	}
     }
-  else if (type == PRM_FLOAT)
+  else if (out_type == PRM_FLOAT && in_type == PRM_BIGINT)
     {
-      UINT64 *size_value = (UINT64 *) in_val;
       float *page_value = (float *) out_val;
+      UINT64 *size_value = (UINT64 *) in_val;
+      UINT64 tmp_value;
 
-      *page_value = (float) (*size_value / IO_PAGESIZE);
+      tmp_value = *size_value / IO_PAGESIZE;
+
+      if (tmp_value > FLT_MAX)
+	{
+	  return PRM_ERR_BAD_RANGE;
+	}
+      else
+	{
+	  *page_value = (float) tmp_value;
+	}
       if (*page_value == 0 && *size_value > 0)
 	{
 	  *page_value = 1.0;
@@ -4772,6 +4869,7 @@ prm_size_to_io_pages (void *out_val, void *in_val, SYSPRM_DATATYPE type)
     }
   else
     {
+      assert_release (false);
       return PRM_ERR_BAD_VALUE;
     }
 
@@ -4783,21 +4881,22 @@ prm_size_to_io_pages (void *out_val, void *in_val, SYSPRM_DATATYPE type)
  *   return: value
  */
 static int
-prm_io_pages_to_size (void *out_val, void *in_val, SYSPRM_DATATYPE type)
+prm_io_pages_to_size (void *out_val, SYSPRM_DATATYPE out_type,
+		      void *in_val, SYSPRM_DATATYPE in_type)
 {
   if (out_val == NULL || in_val == NULL)
     {
       return PRM_ERR_BAD_VALUE;
     }
 
-  if (type == PRM_INTEGER)
+  if (out_type == PRM_BIGINT && in_type == PRM_INTEGER)
     {
       UINT64 *size_value = (UINT64 *) out_val;
       UINT64 page_value = *(int *) in_val;
 
       *size_value = (UINT64) (page_value * (UINT64) IO_PAGESIZE);
     }
-  else if (type == PRM_FLOAT)
+  else if (out_type == PRM_BIGINT && in_type == PRM_FLOAT)
     {
       UINT64 *size_value = (UINT64 *) out_val;
       UINT64 page_value = *(float *) in_val;
@@ -4806,6 +4905,7 @@ prm_io_pages_to_size (void *out_val, void *in_val, SYSPRM_DATATYPE type)
     }
   else
     {
+      assert_release (false);
       return PRM_ERR_BAD_VALUE;
     }
 
@@ -4817,17 +4917,18 @@ prm_io_pages_to_size (void *out_val, void *in_val, SYSPRM_DATATYPE type)
  *   return: value
  */
 static int
-prm_size_to_log_pages (void *out_val, void *in_val, SYSPRM_DATATYPE type)
+prm_size_to_log_pages (void *out_val, SYSPRM_DATATYPE out_type,
+		       void *in_val, SYSPRM_DATATYPE in_type)
 {
   if (out_val == NULL || in_val == NULL)
     {
       return PRM_ERR_BAD_VALUE;
     }
 
-  if (type == PRM_INTEGER)
+  if (out_type == PRM_INTEGER && in_type == PRM_BIGINT)
     {
-      UINT64 *size_value = (UINT64 *) in_val;
       int *page_value = (int *) out_val;
+      UINT64 *size_value = (UINT64 *) in_val;
       UINT64 tmp_value;
 
       tmp_value = *size_value / LOG_PAGESIZE;
@@ -4845,12 +4946,22 @@ prm_size_to_log_pages (void *out_val, void *in_val, SYSPRM_DATATYPE type)
 	  *page_value = 1;
 	}
     }
-  else if (type == PRM_FLOAT)
+  else if (out_type == PRM_FLOAT && in_type == PRM_BIGINT)
     {
-      UINT64 *size_value = (UINT64 *) in_val;
       float *page_value = (float *) out_val;
+      UINT64 *size_value = (UINT64 *) in_val;
+      UINT64 tmp_value;
 
-      *page_value = (float) (*size_value / LOG_PAGESIZE);
+      tmp_value = *size_value / LOG_PAGESIZE;
+
+      if (tmp_value > FLT_MAX)
+	{
+	  return PRM_ERR_BAD_RANGE;
+	}
+      else
+	{
+	  *page_value = (float) tmp_value;
+	}
       if (*page_value == 0 && *size_value > 0)
 	{
 	  *page_value = 1.0;
@@ -4858,6 +4969,7 @@ prm_size_to_log_pages (void *out_val, void *in_val, SYSPRM_DATATYPE type)
     }
   else
     {
+      assert_release (false);
       return PRM_ERR_BAD_VALUE;
     }
 
@@ -4869,29 +4981,31 @@ prm_size_to_log_pages (void *out_val, void *in_val, SYSPRM_DATATYPE type)
  *   return: value
  */
 static int
-prm_log_pages_to_size (void *out_val, void *in_val, SYSPRM_DATATYPE type)
+prm_log_pages_to_size (void *out_val, SYSPRM_DATATYPE out_type,
+		       void *in_val, SYSPRM_DATATYPE in_type)
 {
   if (out_val == NULL || in_val == NULL)
     {
       return PRM_ERR_BAD_VALUE;
     }
 
-  if (type == PRM_INTEGER)
+  if (out_type == PRM_BIGINT && in_type == PRM_INTEGER)
     {
       UINT64 *size_value = (UINT64 *) out_val;
       UINT64 page_value = *(int *) in_val;
 
-      *size_value = (UINT64) (page_value * (UINT64) IO_PAGESIZE);
+      *size_value = (UINT64) (page_value * (UINT64) LOG_PAGESIZE);
     }
-  else if (type == PRM_FLOAT)
+  else if (out_type == PRM_BIGINT && in_type == PRM_FLOAT)
     {
       UINT64 *size_value = (UINT64 *) out_val;
       UINT64 page_value = *(float *) in_val;
 
-      *size_value = (UINT64) (page_value * (UINT64) IO_PAGESIZE);
+      *size_value = (UINT64) (page_value * (UINT64) LOG_PAGESIZE);
     }
   else
     {
+      assert_release (false);
       return PRM_ERR_BAD_VALUE;
     }
 
@@ -4903,17 +5017,18 @@ prm_log_pages_to_size (void *out_val, void *in_val, SYSPRM_DATATYPE type)
  *   return: value
  */
 static int
-prm_msec_to_sec (void *out_val, void *in_val, SYSPRM_DATATYPE type)
+prm_msec_to_sec (void *out_val, SYSPRM_DATATYPE out_type,
+		 void *in_val, SYSPRM_DATATYPE in_type)
 {
   if (out_val == NULL || in_val == NULL)
     {
       return PRM_ERR_BAD_VALUE;
     }
 
-  if (type == PRM_INTEGER)
+  if (out_type == PRM_INTEGER && in_type == PRM_INTEGER)
     {
-      int *msec_value = (int *) in_val;
       int *sec_value = (int *) out_val;
+      int *msec_value = (int *) in_val;
 
       if (*msec_value < 0)
 	{
@@ -4926,6 +5041,7 @@ prm_msec_to_sec (void *out_val, void *in_val, SYSPRM_DATATYPE type)
     }
   else
     {
+      assert_release (false);
       return PRM_ERR_BAD_VALUE;
     }
 
@@ -4937,14 +5053,15 @@ prm_msec_to_sec (void *out_val, void *in_val, SYSPRM_DATATYPE type)
  *   return: value
  */
 static int
-prm_sec_to_msec (void *out_val, void *in_val, SYSPRM_DATATYPE type)
+prm_sec_to_msec (void *out_val, SYSPRM_DATATYPE out_type,
+		 void *in_val, SYSPRM_DATATYPE in_type)
 {
   if (out_val == NULL || in_val == NULL)
     {
       return PRM_ERR_BAD_VALUE;
     }
 
-  if (type == PRM_INTEGER)
+  if (out_type == PRM_INTEGER && in_type == PRM_INTEGER)
     {
       int *msec_value = (int *) out_val;
       int *sec_value = (int *) in_val;
@@ -4970,6 +5087,7 @@ prm_sec_to_msec (void *out_val, void *in_val, SYSPRM_DATATYPE type)
     }
   else
     {
+      assert_release (false);
       return PRM_ERR_BAD_VALUE;
     }
 
@@ -4981,14 +5099,15 @@ prm_sec_to_msec (void *out_val, void *in_val, SYSPRM_DATATYPE type)
  *   return: value
  */
 static int
-prm_msec_to_min (void *out_val, void *in_val, SYSPRM_DATATYPE type)
+prm_msec_to_min (void *out_val, SYSPRM_DATATYPE out_type,
+		 void *in_val, SYSPRM_DATATYPE in_type)
 {
   if (out_val == NULL || in_val == NULL)
     {
       return PRM_ERR_BAD_VALUE;
     }
 
-  if (type == PRM_INTEGER)
+  if (out_type == PRM_INTEGER && in_type == PRM_INTEGER)
     {
       int *msec_value = (int *) in_val;
       int *min_value = (int *) out_val;
@@ -5004,6 +5123,7 @@ prm_msec_to_min (void *out_val, void *in_val, SYSPRM_DATATYPE type)
     }
   else
     {
+      assert_release (false);
       return PRM_ERR_BAD_VALUE;
     }
 
@@ -5015,14 +5135,15 @@ prm_msec_to_min (void *out_val, void *in_val, SYSPRM_DATATYPE type)
  *   return: value
  */
 static int
-prm_min_to_msec (void *out_val, void *in_val, SYSPRM_DATATYPE type)
+prm_min_to_msec (void *out_val, SYSPRM_DATATYPE out_type,
+		 void *in_val, SYSPRM_DATATYPE in_type)
 {
   if (out_val == NULL || in_val == NULL)
     {
       return PRM_ERR_BAD_VALUE;
     }
 
-  if (type == PRM_INTEGER)
+  if (out_type == PRM_INTEGER && in_type == PRM_INTEGER)
     {
       int *msec_value = (int *) out_val;
       int *min_value = (int *) in_val;
@@ -5048,6 +5169,7 @@ prm_min_to_msec (void *out_val, void *in_val, SYSPRM_DATATYPE type)
     }
   else
     {
+      assert_release (false);
       return PRM_ERR_BAD_VALUE;
     }
 
@@ -5059,28 +5181,29 @@ prm_min_to_msec (void *out_val, void *in_val, SYSPRM_DATATYPE type)
  *   return: value
  */
 static int
-prm_equal_to_ori (void *out_val, void *in_val, SYSPRM_DATATYPE type)
+prm_equal_to_ori (void *out_val, SYSPRM_DATATYPE out_type,
+		  void *in_val, SYSPRM_DATATYPE in_type)
 {
   if (out_val == NULL || in_val == NULL)
     {
       return PRM_ERR_BAD_VALUE;
     }
 
-  if (type == PRM_INTEGER)
+  if (out_type == PRM_INTEGER && in_type == PRM_INTEGER)
     {
       int *in_value = (int *) in_val;
       int *out_value = (int *) out_val;
 
       *out_value = *in_value;
     }
-  else if (type == PRM_FLOAT)
+  else if (out_type == PRM_FLOAT && in_type == PRM_FLOAT)
     {
       float *in_value = (float *) in_val;
       float *out_value = (float *) out_val;
 
       *out_value = *in_value;
     }
-  else if (type == PRM_BIGINT)
+  else if (out_type == PRM_BIGINT && in_type == PRM_BIGINT)
     {
       UINT64 *in_value = (UINT64 *) in_val;
       UINT64 *out_value = (UINT64 *) out_val;
@@ -5089,6 +5212,7 @@ prm_equal_to_ori (void *out_val, void *in_val, SYSPRM_DATATYPE type)
     }
   else
     {
+      assert_release (false);
       return PRM_ERR_BAD_VALUE;
     }
 
@@ -5385,6 +5509,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
 	   PRM_PRINT_MODE print_mode)
 {
   int n = 0, id = -1;
+  int error = NO_ERROR;
   char left_side[PRM_DEFAULT_BUFFER_SIZE];
 
   if (len == 0)
@@ -5420,7 +5545,12 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
       if (PRM_IS_DUPLICATED (prm->static_flag) &&
 	  !PRM_HAS_SIZE_UNIT (prm->static_flag))
 	{
-	  (*prm->get_dup) ((void *) &val, (void *) &val, PRM_INTEGER);
+	  PRM_ADJUST_FOR_GET_INTEGER_TO_INTEGER (prm, &val, &val, &error);
+	  if (error != NO_ERROR)
+	    {
+	      assert_release (false);
+	      return n;
+	    }
 	}
 
       if (PRM_HAS_SIZE_UNIT (prm->static_flag))
@@ -5430,7 +5560,13 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
 
 	  if (PRM_IS_DUPLICATED (prm->static_flag))
 	    {
-	      (*prm->get_dup) ((void *) &dup_val, (void *) &val, PRM_INTEGER);
+	      PRM_ADJUST_FOR_GET_INTEGER_TO_BIGINT (prm, &dup_val, &val,
+						    &error);
+	      if (error != NO_ERROR)
+		{
+		  assert_release (false);
+		  return n;
+		}
 	    }
 
 	  (void) util_byte_to_size_string (left_side + left_side_len,
@@ -5457,7 +5593,12 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
 
       if (PRM_IS_DUPLICATED (prm->static_flag))
 	{
-	  (*prm->get_dup) ((void *) &val, (void *) &val, PRM_BIGINT);
+	  PRM_ADJUST_FOR_GET_BIGINT_TO_BIGINT (prm, &val, &val, &error);
+	  if (error != NO_ERROR)
+	    {
+	      assert_release (false);
+	      return n;
+	    }
 	}
 
       if (PRM_HAS_SIZE_UNIT (prm->static_flag))
@@ -5485,7 +5626,12 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
       if (PRM_IS_DUPLICATED (prm->static_flag) &&
 	  !PRM_HAS_SIZE_UNIT (prm->static_flag))
 	{
-	  (*prm->get_dup) ((void *) &val, (void *) &val, PRM_FLOAT);
+	  PRM_ADJUST_FOR_GET_FLOAT_TO_FLOAT (prm, &val, &val, &error);
+	  if (error != NO_ERROR)
+	    {
+	      assert_release (false);
+	      return n;
+	    }
 	}
 
       if (PRM_HAS_SIZE_UNIT (prm->static_flag))
@@ -5495,7 +5641,13 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
 
 	  if (PRM_IS_DUPLICATED (prm->static_flag))
 	    {
-	      (*prm->get_dup) ((void *) &dup_val, (void *) &val, PRM_FLOAT);
+	      PRM_ADJUST_FOR_GET_FLOAT_TO_BIGINT (prm, &dup_val, &val,
+						  &error);
+	      if (error != NO_ERROR)
+		{
+		  assert_release (false);
+		  return n;
+		}
 	    }
 
 	  (void) util_byte_to_size_string (left_side + left_side_len,
@@ -5655,6 +5807,7 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
 			   size_t len, PRM_PRINT_MODE print_mode)
 {
   int n = 0;
+  int error = NO_ERROR;
   char left_side[PRM_DEFAULT_BUFFER_SIZE];
   SYSPRM_PARAM *prm = NULL;
 
@@ -5691,7 +5844,12 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
       if (PRM_IS_DUPLICATED (prm->static_flag) &&
 	  !PRM_HAS_SIZE_UNIT (prm->static_flag))
 	{
-	  (*prm->get_dup) ((void *) &val, (void *) &val, PRM_INTEGER);
+	  PRM_ADJUST_FOR_GET_INTEGER_TO_INTEGER (prm, &val, &val, &error);
+	  if (error != NO_ERROR)
+	    {
+	      assert_release (false);
+	      return n;
+	    }
 	}
 
       if (PRM_HAS_SIZE_UNIT (prm->static_flag))
@@ -5701,7 +5859,13 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
 
 	  if (PRM_IS_DUPLICATED (prm->static_flag))
 	    {
-	      (*prm->get_dup) ((void *) &dup_val, (void *) &val, PRM_INTEGER);
+	      PRM_ADJUST_FOR_GET_INTEGER_TO_BIGINT (prm, &dup_val, &val,
+						    &error);
+	      if (error != NO_ERROR)
+		{
+		  assert_release (false);
+		  return n;
+		}
 	    }
 
 	  (void) util_byte_to_size_string (left_side + left_side_len,
@@ -5728,7 +5892,12 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
 
       if (PRM_IS_DUPLICATED (prm->static_flag))
 	{
-	  (*prm->get_dup) ((void *) &val, (void *) &val, PRM_BIGINT);
+	  PRM_ADJUST_FOR_GET_BIGINT_TO_BIGINT (prm, &val, &val, &error);
+	  if (error != NO_ERROR)
+	    {
+	      assert_release (false);
+	      return n;
+	    }
 	}
 
       if (PRM_HAS_SIZE_UNIT (prm->static_flag))
@@ -5755,7 +5924,12 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
       if (PRM_IS_DUPLICATED (prm->static_flag) &&
 	  !PRM_HAS_SIZE_UNIT (prm->static_flag))
 	{
-	  (*prm->get_dup) ((void *) &val, (void *) &val, PRM_FLOAT);
+	  PRM_ADJUST_FOR_GET_FLOAT_TO_FLOAT (prm, &val, &val, &error);
+	  if (error != NO_ERROR)
+	    {
+	      assert_release (false);
+	      return n;
+	    }
 	}
 
       if (PRM_HAS_SIZE_UNIT (prm->static_flag))
@@ -5765,7 +5939,13 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
 
 	  if (PRM_IS_DUPLICATED (prm->static_flag))
 	    {
-	      (*prm->get_dup) ((void *) &dup_val, (void *) &val, PRM_FLOAT);
+	      PRM_ADJUST_FOR_GET_FLOAT_TO_BIGINT (prm, &dup_val, &val,
+						  &error);
+	      if (error != NO_ERROR)
+		{
+		  assert_release (false);
+		  return n;
+		}
 	    }
 
 	  (void) util_byte_to_size_string (left_side + left_side_len,
@@ -6157,8 +6337,8 @@ xsysprm_dump_server_parameters (FILE * outfp)
 int
 sysprm_get_range (const char *pname, void *min, void *max)
 {
+  int error = NO_ERROR;
   SYSPRM_PARAM *prm;
-  SYSPRM_DATATYPE type;
 
   prm = prm_find (pname, NULL);
   if (prm == NULL)
@@ -6168,11 +6348,11 @@ sysprm_get_range (const char *pname, void *min, void *max)
 
   if (PRM_IS_INTEGER (prm))
     {
-      type = PRM_INTEGER;
-
       if (prm->lower_limit)
 	{
 	  *((int *) min) = PRM_GET_INT (prm->lower_limit);
+	  PRM_ADJUST_FOR_GET_INTEGER_TO_INTEGER (prm, (int *) min,
+						 (int *) min, &error);
 	}
       else
 	{
@@ -6182,6 +6362,8 @@ sysprm_get_range (const char *pname, void *min, void *max)
       if (prm->upper_limit)
 	{
 	  *((int *) max) = PRM_GET_INT (prm->upper_limit);
+	  PRM_ADJUST_FOR_GET_INTEGER_TO_INTEGER (prm, (int *) max,
+						 (int *) max, &error);
 	}
       else
 	{
@@ -6190,11 +6372,11 @@ sysprm_get_range (const char *pname, void *min, void *max)
     }
   else if (PRM_IS_FLOAT (prm))
     {
-      type = PRM_FLOAT;
-
       if (prm->lower_limit)
 	{
 	  *((float *) min) = PRM_GET_FLOAT (prm->lower_limit);
+	  PRM_ADJUST_FOR_GET_FLOAT_TO_FLOAT (prm, (float *) min,
+					     (float *) min, &error);
 	}
       else
 	{
@@ -6204,6 +6386,8 @@ sysprm_get_range (const char *pname, void *min, void *max)
       if (prm->upper_limit)
 	{
 	  *((float *) max) = PRM_GET_FLOAT (prm->upper_limit);
+	  PRM_ADJUST_FOR_GET_FLOAT_TO_FLOAT (prm, (float *) max,
+					     (float *) max, &error);
 	}
       else
 	{
@@ -6212,11 +6396,11 @@ sysprm_get_range (const char *pname, void *min, void *max)
     }
   else if (PRM_IS_BIGINT (prm))
     {
-      type = PRM_BIGINT;
-
       if (prm->lower_limit)
 	{
 	  *((UINT64 *) min) = PRM_GET_BIGINT (prm->lower_limit);
+	  PRM_ADJUST_FOR_GET_BIGINT_TO_BIGINT (prm, (UINT64 *) min,
+					       (UINT64 *) min, &error);
 	}
       else
 	{
@@ -6226,6 +6410,8 @@ sysprm_get_range (const char *pname, void *min, void *max)
       if (prm->upper_limit)
 	{
 	  *((UINT64 *) max) = PRM_GET_BIGINT (prm->upper_limit);
+	  PRM_ADJUST_FOR_GET_BIGINT_TO_BIGINT (prm, (UINT64 *) max,
+					       (UINT64 *) max, &error);
 	}
       else
 	{
@@ -6237,17 +6423,9 @@ sysprm_get_range (const char *pname, void *min, void *max)
       return PRM_ERR_BAD_VALUE;
     }
 
-  if (PRM_IS_DUPLICATED (prm->static_flag))
+  if (error != NO_ERROR)
     {
-      if (prm->lower_limit && (*prm->get_dup) (min, min, type) != NO_ERROR)
-	{
-	  return PRM_ERR_BAD_VALUE;
-	}
-
-      if (prm->upper_limit && (*prm->get_dup) (max, max, type) != NO_ERROR)
-	{
-	  return PRM_ERR_BAD_VALUE;
-	}
+      PRM_ERR_BAD_VALUE;
     }
 
   return PRM_ERR_NO_ERROR;
@@ -6285,6 +6463,8 @@ sysprm_check_range (const char *pname, void *value)
 static int
 prm_check_range (SYSPRM_PARAM * prm, void *value)
 {
+  int error = NO_ERROR;
+
   if (PRM_IS_DUPLICATED (prm->static_flag))
     {
       assert (prm->set_dup != NULL);
@@ -6296,7 +6476,17 @@ prm_check_range (SYSPRM_PARAM * prm, void *value)
 
       if (PRM_IS_DUPLICATED (prm->static_flag))
 	{
-	  if ((*prm->set_dup) ((void *) &val, value, PRM_INTEGER) != NO_ERROR)
+	  if (PRM_HAS_SIZE_UNIT (prm->static_flag))
+	    {
+	      PRM_ADJUST_FOR_SET_BIGINT_TO_INTEGER (prm, &val,
+						    (UINT64 *) value, &error);
+	    }
+	  else
+	    {
+	      PRM_ADJUST_FOR_SET_INTEGER_TO_INTEGER (prm, &val, (int *) value,
+						     &error);
+	    }
+	  if (error != NO_ERROR)
 	    {
 	      return PRM_ERR_BAD_VALUE;
 	    }
@@ -6318,7 +6508,17 @@ prm_check_range (SYSPRM_PARAM * prm, void *value)
 
       if (PRM_IS_DUPLICATED (prm->static_flag))
 	{
-	  if ((*prm->set_dup) ((void *) &val, value, PRM_FLOAT) != NO_ERROR)
+	  if (PRM_HAS_SIZE_UNIT (prm->static_flag))
+	    {
+	      PRM_ADJUST_FOR_SET_BIGINT_TO_FLOAT (prm, &val, (UINT64 *) value,
+						  &error);
+	    }
+	  else
+	    {
+	      PRM_ADJUST_FOR_SET_FLOAT_TO_FLOAT (prm, &val, (float *) value,
+						 &error);
+	    }
+	  if (error != NO_ERROR)
 	    {
 	      return PRM_ERR_BAD_VALUE;
 	    }
@@ -6340,7 +6540,9 @@ prm_check_range (SYSPRM_PARAM * prm, void *value)
 
       if (PRM_IS_DUPLICATED (prm->static_flag))
 	{
-	  if ((*prm->set_dup) ((void *) &val, value, PRM_BIGINT) != NO_ERROR)
+	  PRM_ADJUST_FOR_SET_BIGINT_TO_BIGINT (prm, &val, (UINT64 *) value,
+					       &error);
+	  if (error != NO_ERROR)
 	    {
 	      return PRM_ERR_BAD_VALUE;
 	    }
@@ -6379,7 +6581,8 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 			   SYSPRM_VALUE * new_value)
 {
   char *end = NULL;
-  SYSPRM_ERR error = PRM_ERR_NO_ERROR;
+  int error = NO_ERROR;
+  SYSPRM_ERR ret = PRM_ERR_NO_ERROR;
 
   if (prm == NULL)
     {
@@ -6394,7 +6597,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 
   if (PRM_IS_DUPLICATED (prm->static_flag))
     {
-      assert (prm->set_dup);
+      assert (prm->set_dup != NULL);
     }
 
 #if defined (CS_MODE)
@@ -6408,14 +6611,14 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 	      /* the value in session state must also be updated. user doesn't
 	       * have to be part of DBA group.
 	       */
-	      error = PRM_ERR_NOT_FOR_CLIENT_NO_AUTH;
+	      ret = PRM_ERR_NOT_FOR_CLIENT_NO_AUTH;
 	    }
 	  else if (PRM_IS_FOR_SERVER (prm->static_flag))
 	    {
 	      /* the value has to be changed on server too. user has to be
 	       * part of DBA group.
 	       */
-	      error = PRM_ERR_NOT_FOR_CLIENT;
+	      ret = PRM_ERR_NOT_FOR_CLIENT;
 	    }
 	}
       else
@@ -6423,7 +6626,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 	  if (PRM_IS_FOR_SERVER (prm->static_flag))
 	    {
 	      /* this value is only for server. user has to be DBA. */
-	      error = PRM_ERR_NOT_FOR_CLIENT;
+	      ret = PRM_ERR_NOT_FOR_CLIENT;
 	    }
 	  else
 	    {
@@ -6468,8 +6671,9 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 
 	    if (PRM_IS_DUPLICATED (prm->static_flag))
 	      {
-		if ((*prm->set_dup) ((void *) &val, (void *) &dup_val,
-				     PRM_INTEGER) != NO_ERROR)
+		PRM_ADJUST_FOR_SET_BIGINT_TO_INTEGER (prm, &val, &dup_val,
+						      &error);
+		if (error != NO_ERROR)
 		  {
 		    return PRM_ERR_BAD_VALUE;
 		  }
@@ -6523,8 +6727,9 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 
 	    if (PRM_IS_DUPLICATED (prm->static_flag))
 	      {
-		if ((*prm->set_dup) ((void *) &val, (void *) &val,
-				     PRM_INTEGER) != NO_ERROR)
+		PRM_ADJUST_FOR_SET_INTEGER_TO_INTEGER (prm, &val, &val,
+						       &error);
+		if (error != NO_ERROR)
 		  {
 		    return PRM_ERR_BAD_VALUE;
 		  }
@@ -6563,8 +6768,8 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 
 	if (PRM_IS_DUPLICATED (prm->static_flag))
 	  {
-	    if ((*prm->set_dup) ((void *) &val, (void *) &val,
-				 PRM_BIGINT) != NO_ERROR)
+	    PRM_ADJUST_FOR_SET_BIGINT_TO_BIGINT (prm, &val, &val, &error);
+	    if (error != NO_ERROR)
 	      {
 		return PRM_ERR_BAD_VALUE;
 	      }
@@ -6595,8 +6800,9 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 
 	    if (PRM_IS_DUPLICATED (prm->static_flag))
 	      {
-		if ((*prm->set_dup) ((void *) &val, (void *) &dup_val,
-				     PRM_FLOAT) != NO_ERROR)
+		PRM_ADJUST_FOR_SET_BIGINT_TO_FLOAT (prm, &val, &dup_val,
+						    &error);
+		if (error != NO_ERROR)
 		  {
 		    return PRM_ERR_BAD_VALUE;
 		  }
@@ -6621,8 +6827,8 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 
 	    if (PRM_IS_DUPLICATED (prm->static_flag))
 	      {
-		if ((*prm->set_dup) ((void *) &val, (void *) &val,
-				     PRM_FLOAT) != NO_ERROR)
+		PRM_ADJUST_FOR_SET_FLOAT_TO_FLOAT (prm, &val, &val, &error);
+		if (error != NO_ERROR)
 		  {
 		    return PRM_ERR_BAD_VALUE;
 		  }
@@ -6844,7 +7050,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
       assert (false);
     }
 
-  return error;
+  return ret;
 }
 
 /*
