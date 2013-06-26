@@ -156,7 +156,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_LOG_CHECKPOINT_SIZE "checkpoint_every_size"
 
-#define PRM_NAME_LOG_CHECKPOINT_INTERVAL_MINUTES "checkpoint_interval_in_mins"
+/* This parameter is stored in units of sec. */
+#define PRM_NAME_LOG_CHECKPOINT_INTERVAL_SECS "checkpoint_interval_in_mins"
 
 #define PRM_NAME_LOG_CHECKPOINT_INTERVAL "checkpoint_interval"
 
@@ -547,7 +548,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 					 */
 #define PRM_SIZE_UNIT       0x00001000	/* has size unit interface */
 #define PRM_TIME_UNIT       0x00002000	/* has time unit interface */
-#define PRM_DUPLICATED      0x00004000	/* is duplicated value */
+#define PRM_DIFFER_UNIT     0x00004000	/* parameter unit need to be changed */
 
 #define PRM_DEPRECATED      0x40000000	/* is deprecated */
 #define PRM_OBSOLETED       0x80000000	/* is obsoleted */
@@ -593,7 +594,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_CLIENT_SESSION_ONLY(x) (x & PRM_CLIENT_SESSION)
 #define PRM_HAS_SIZE_UNIT(x)      (x & PRM_SIZE_UNIT)
 #define PRM_HAS_TIME_UNIT(x)      (x & PRM_TIME_UNIT)
-#define PRM_IS_DUPLICATED(x)      (x & PRM_DUPLICATED)
+#define PRM_DIFFERENT_UNIT(x)     (x & PRM_DIFFER_UNIT)
 #define PRM_IS_DEPRECATED(x)      (x & PRM_DEPRECATED)
 #define PRM_IS_OBSOLETED(x)       (x & PRM_OBSOLETED)
 
@@ -843,10 +844,10 @@ static int prm_log_checkpoint_npages_default = 100000;
 static int prm_log_checkpoint_npages_lower = 10;
 static unsigned int prm_log_checkpoint_npages_flag = 0;
 
-int PRM_LOG_CHECKPOINT_INTERVAL_MINUTES = 60;
-static int prm_log_checkpoint_interval_minutes_default = 60;
-static int prm_log_checkpoint_interval_minutes_lower = 1;
-static unsigned int prm_log_checkpoint_interval_minutes_flag = 0;
+int PRM_LOG_CHECKPOINT_INTERVAL_SECS = 360;
+static int prm_log_checkpoint_interval_secs_default = 360;
+static int prm_log_checkpoint_interval_secs_lower = 60;
+static unsigned int prm_log_checkpoint_interval_secs_flag = 0;
 
 int PRM_LOG_CHECKPOINT_SLEEP_MSECS = 1;
 static int prm_log_checkpoint_sleep_msecs_default = 1;
@@ -1627,10 +1628,10 @@ static int prm_msec_to_sec (void *out_val, SYSPRM_DATATYPE out_type,
 static int prm_sec_to_msec (void *out_val, SYSPRM_DATATYPE out_type,
 			    void *in_val, SYSPRM_DATATYPE in_type);
 
-static int prm_msec_to_min (void *out_val, SYSPRM_DATATYPE out_type,
-			    void *in_val, SYSPRM_DATATYPE in_type);
-static int prm_min_to_msec (void *out_val, SYSPRM_DATATYPE out_type,
-			    void *in_val, SYSPRM_DATATYPE in_type);
+static int prm_sec_to_min (void *out_val, SYSPRM_DATATYPE out_type,
+			   void *in_val, SYSPRM_DATATYPE in_type);
+static int prm_min_to_sec (void *out_val, SYSPRM_DATATYPE out_type,
+			   void *in_val, SYSPRM_DATATYPE in_type);
 
 static int prm_equal_to_ori (void *out_val, SYSPRM_DATATYPE out_type,
 			     void *in_val, SYSPRM_DATATYPE in_type);
@@ -1766,7 +1767,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_SORT_BUFFER_SIZE,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_DUPLICATED),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_DIFFER_UNIT),
    PRM_INTEGER,
    (void *) &prm_sr_nbuffers_flag,
    (void *) &prm_sr_nbuffers_default,
@@ -1797,7 +1798,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_PAGE_BUFFER_SIZE,
-   (PRM_FOR_SERVER | PRM_SIZE_UNIT | PRM_DUPLICATED),
+   (PRM_FOR_SERVER | PRM_SIZE_UNIT | PRM_DIFFER_UNIT),
    PRM_INTEGER,
    (void *) &prm_pb_nbuffers_flag,
    (void *) &prm_pb_nbuffers_default,
@@ -1847,7 +1848,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_BT_OID_BUFFER_SIZE,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_DUPLICATED),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_DIFFER_UNIT),
    PRM_FLOAT,
    (void *) &prm_bt_oid_nbuffers_flag,
    (void *) &prm_bt_oid_nbuffers_default,
@@ -1919,7 +1920,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_LK_TIMEOUT,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_TIME_UNIT |
-    PRM_DUPLICATED),
+    PRM_DIFFER_UNIT),
    PRM_INTEGER,
    (void *) &prm_lk_timeout_secs_flag,
    (void *) &prm_lk_timeout_secs_default,
@@ -1949,7 +1950,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_LOG_BUFFER_SIZE,
-   (PRM_FOR_SERVER | PRM_SIZE_UNIT | PRM_DUPLICATED),
+   (PRM_FOR_SERVER | PRM_SIZE_UNIT | PRM_DIFFER_UNIT),
    PRM_INTEGER,
    (void *) &prm_log_nbuffers_flag,
    (void *) &prm_log_nbuffers_default,
@@ -1969,7 +1970,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_LOG_CHECKPOINT_SIZE,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_DUPLICATED),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_DIFFER_UNIT),
    PRM_INTEGER,
    (void *) &prm_log_checkpoint_npages_flag,
    (void *) &prm_log_checkpoint_npages_default,
@@ -1978,26 +1979,26 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) prm_size_to_log_pages,
    (DUP_PRM_FUNC) prm_log_pages_to_size},
-  {PRM_NAME_LOG_CHECKPOINT_INTERVAL_MINUTES,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_DEPRECATED),
+  {PRM_NAME_LOG_CHECKPOINT_INTERVAL_SECS,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_DEPRECATED | PRM_DIFFER_UNIT),
    PRM_INTEGER,
-   (void *) &prm_log_checkpoint_interval_minutes_flag,
-   (void *) &prm_log_checkpoint_interval_minutes_default,
-   (void *) &PRM_LOG_CHECKPOINT_INTERVAL_MINUTES,
-   (void *) NULL, (void *) &prm_log_checkpoint_interval_minutes_lower,
+   (void *) &prm_log_checkpoint_interval_secs_flag,
+   (void *) &prm_log_checkpoint_interval_secs_default,
+   (void *) &PRM_LOG_CHECKPOINT_INTERVAL_SECS,
+   (void *) NULL, (void *) &prm_log_checkpoint_interval_secs_lower,
    (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
+   (DUP_PRM_FUNC) prm_min_to_sec,
+   (DUP_PRM_FUNC) prm_sec_to_min},
   {PRM_NAME_LOG_CHECKPOINT_INTERVAL,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_TIME_UNIT | PRM_DUPLICATED),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_TIME_UNIT | PRM_DIFFER_UNIT),
    PRM_INTEGER,
-   (void *) &prm_log_checkpoint_interval_minutes_flag,
-   (void *) &prm_log_checkpoint_interval_minutes_default,
-   (void *) &PRM_LOG_CHECKPOINT_INTERVAL_MINUTES,
-   (void *) NULL, (void *) &prm_log_checkpoint_interval_minutes_lower,
+   (void *) &prm_log_checkpoint_interval_secs_flag,
+   (void *) &prm_log_checkpoint_interval_secs_default,
+   (void *) &PRM_LOG_CHECKPOINT_INTERVAL_SECS,
+   (void *) NULL, (void *) &prm_log_checkpoint_interval_secs_lower,
    (char *) NULL,
-   (DUP_PRM_FUNC) prm_msec_to_min,
-   (DUP_PRM_FUNC) prm_min_to_msec},
+   (DUP_PRM_FUNC) prm_msec_to_sec,
+   (DUP_PRM_FUNC) prm_sec_to_msec},
   {PRM_NAME_LOG_CHECKPOINT_SLEEP_MSECS,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_INTEGER,
@@ -2273,7 +2274,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_INDEX_SCAN_KEY_BUFFER_SIZE,
-   (PRM_FOR_SERVER | PRM_SIZE_UNIT | PRM_DUPLICATED),
+   (PRM_FOR_SERVER | PRM_SIZE_UNIT | PRM_DIFFER_UNIT),
    PRM_INTEGER,
    (void *) &prm_index_scan_key_buffer_pages_flag,
    (void *) &prm_index_scan_key_buffer_pages_default,
@@ -2377,7 +2378,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_PAGE_BG_FLUSH_INTERVAL,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_TIME_UNIT | PRM_DUPLICATED),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_TIME_UNIT | PRM_DIFFER_UNIT),
    PRM_INTEGER,
    (void *) &prm_page_bg_flush_interval_msec_flag,
    (void *) &prm_page_bg_flush_interval_msec_default,
@@ -2409,7 +2410,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_MAX_FLUSH_SIZE_PER_SECOND,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_DUPLICATED),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_DIFFER_UNIT),
    PRM_INTEGER,
    (void *) &prm_max_flush_pages_per_second_flag,
    (void *) &prm_max_flush_pages_per_second_default,
@@ -2431,7 +2432,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_PB_SYNC_ON_FLUSH_SIZE,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_DUPLICATED),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_DIFFER_UNIT),
    PRM_INTEGER,
    (void *) &prm_pb_sync_on_nflush_flag,
    (void *) &prm_pb_sync_on_nflush_default,
@@ -3683,7 +3684,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_SQL_TRACE_SLOW,
-   (PRM_USER_CHANGE | PRM_FOR_SERVER | PRM_TIME_UNIT | PRM_DUPLICATED),
+   (PRM_USER_CHANGE | PRM_FOR_SERVER | PRM_TIME_UNIT | PRM_DIFFER_UNIT),
    PRM_INTEGER,
    (void *) &prm_sql_trace_slow_msecs_flag,
    (void *) &prm_sql_trace_slow_msecs_default,
@@ -5095,12 +5096,12 @@ prm_sec_to_msec (void *out_val, SYSPRM_DATATYPE out_type,
 }
 
 /*
- * prm_msec_to_min -
+ * prm_sec_to_min -
  *   return: value
  */
 static int
-prm_msec_to_min (void *out_val, SYSPRM_DATATYPE out_type,
-		 void *in_val, SYSPRM_DATATYPE in_type)
+prm_sec_to_min (void *out_val, SYSPRM_DATATYPE out_type,
+		void *in_val, SYSPRM_DATATYPE in_type)
 {
   if (out_val == NULL || in_val == NULL)
     {
@@ -5109,16 +5110,16 @@ prm_msec_to_min (void *out_val, SYSPRM_DATATYPE out_type,
 
   if (out_type == PRM_INTEGER && in_type == PRM_INTEGER)
     {
-      int *msec_value = (int *) in_val;
+      int *sec_value = (int *) in_val;
       int *min_value = (int *) out_val;
 
-      if (*msec_value < 0)
+      if (*sec_value < 0)
 	{
-	  *min_value = *msec_value;
+	  *min_value = *sec_value;
 	}
       else
 	{
-	  *min_value = *msec_value / ONE_MIN;
+	  *min_value = *sec_value / (ONE_MIN / ONE_SEC);
 	}
     }
   else
@@ -5131,12 +5132,12 @@ prm_msec_to_min (void *out_val, SYSPRM_DATATYPE out_type,
 }
 
 /*
- * prm_min_to_msec -
+ * prm_min_to_sec -
  *   return: value
  */
 static int
-prm_min_to_msec (void *out_val, SYSPRM_DATATYPE out_type,
-		 void *in_val, SYSPRM_DATATYPE in_type)
+prm_min_to_sec (void *out_val, SYSPRM_DATATYPE out_type,
+		void *in_val, SYSPRM_DATATYPE in_type)
 {
   if (out_val == NULL || in_val == NULL)
     {
@@ -5145,17 +5146,17 @@ prm_min_to_msec (void *out_val, SYSPRM_DATATYPE out_type,
 
   if (out_type == PRM_INTEGER && in_type == PRM_INTEGER)
     {
-      int *msec_value = (int *) out_val;
+      int *sec_value = (int *) out_val;
       int *min_value = (int *) in_val;
       UINT64 tmp_value;
 
       if (*min_value < 0)
 	{
-	  *msec_value = *min_value;
+	  *sec_value = *min_value;
 	}
       else
 	{
-	  tmp_value = *min_value * ONE_MIN;
+	  tmp_value = *min_value * (ONE_MIN / ONE_SEC);
 
 	  if (tmp_value > INT_MAX)
 	    {
@@ -5163,7 +5164,7 @@ prm_min_to_msec (void *out_val, SYSPRM_DATATYPE out_type,
 	    }
 	  else
 	    {
-	      *msec_value = (int) tmp_value;
+	      *sec_value = (int) tmp_value;
 	    }
 	}
     }
@@ -5522,7 +5523,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
 
   assert (prm != NULL && buf != NULL && len > 0);
 
-  if (PRM_IS_DUPLICATED (prm->static_flag))
+  if (PRM_DIFFERENT_UNIT (prm->static_flag))
     {
       assert (prm->get_dup != NULL);
     }
@@ -5542,7 +5543,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
       int val = PRM_GET_INT (prm->value);
       int left_side_len = strlen (left_side);
 
-      if (PRM_IS_DUPLICATED (prm->static_flag) &&
+      if (PRM_DIFFERENT_UNIT (prm->static_flag) &&
 	  !PRM_HAS_SIZE_UNIT (prm->static_flag))
 	{
 	  PRM_ADJUST_FOR_GET_INTEGER_TO_INTEGER (prm, &val, &val, &error);
@@ -5558,7 +5559,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
 	  UINT64 dup_val;
 	  val = PRM_GET_INT (prm->value);
 
-	  if (PRM_IS_DUPLICATED (prm->static_flag))
+	  if (PRM_DIFFERENT_UNIT (prm->static_flag))
 	    {
 	      PRM_ADJUST_FOR_GET_INTEGER_TO_BIGINT (prm, &dup_val, &val,
 						    &error);
@@ -5591,7 +5592,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
       UINT64 val = PRM_GET_BIGINT (prm->value);
       int left_side_len = strlen (left_side);
 
-      if (PRM_IS_DUPLICATED (prm->static_flag))
+      if (PRM_DIFFERENT_UNIT (prm->static_flag))
 	{
 	  PRM_ADJUST_FOR_GET_BIGINT_TO_BIGINT (prm, &val, &val, &error);
 	  if (error != NO_ERROR)
@@ -5623,7 +5624,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
       float val = PRM_GET_FLOAT (prm->value);
       int left_side_len = strlen (left_side);
 
-      if (PRM_IS_DUPLICATED (prm->static_flag) &&
+      if (PRM_DIFFERENT_UNIT (prm->static_flag) &&
 	  !PRM_HAS_SIZE_UNIT (prm->static_flag))
 	{
 	  PRM_ADJUST_FOR_GET_FLOAT_TO_FLOAT (prm, &val, &val, &error);
@@ -5639,7 +5640,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
 	  UINT64 dup_val;
 	  val = PRM_GET_FLOAT (prm->value);
 
-	  if (PRM_IS_DUPLICATED (prm->static_flag))
+	  if (PRM_DIFFERENT_UNIT (prm->static_flag))
 	    {
 	      PRM_ADJUST_FOR_GET_FLOAT_TO_BIGINT (prm, &dup_val, &val,
 						  &error);
@@ -5822,7 +5823,7 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
   assert (buf != NULL && len > 0);
   prm = GET_PRM (prm_id);
 
-  if (PRM_IS_DUPLICATED (prm->static_flag))
+  if (PRM_DIFFERENT_UNIT (prm->static_flag))
     {
       assert (prm->get_dup != NULL);
     }
@@ -5841,7 +5842,7 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
       int val = value.i;
       int left_side_len = strlen (left_side);
 
-      if (PRM_IS_DUPLICATED (prm->static_flag) &&
+      if (PRM_DIFFERENT_UNIT (prm->static_flag) &&
 	  !PRM_HAS_SIZE_UNIT (prm->static_flag))
 	{
 	  PRM_ADJUST_FOR_GET_INTEGER_TO_INTEGER (prm, &val, &val, &error);
@@ -5857,7 +5858,7 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
 	  UINT64 dup_val;
 	  val = value.i;
 
-	  if (PRM_IS_DUPLICATED (prm->static_flag))
+	  if (PRM_DIFFERENT_UNIT (prm->static_flag))
 	    {
 	      PRM_ADJUST_FOR_GET_INTEGER_TO_BIGINT (prm, &dup_val, &val,
 						    &error);
@@ -5890,7 +5891,7 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
       UINT64 val = value.bi;
       int left_side_len = strlen (left_side);
 
-      if (PRM_IS_DUPLICATED (prm->static_flag))
+      if (PRM_DIFFERENT_UNIT (prm->static_flag))
 	{
 	  PRM_ADJUST_FOR_GET_BIGINT_TO_BIGINT (prm, &val, &val, &error);
 	  if (error != NO_ERROR)
@@ -5921,7 +5922,7 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
       float val = value.f;
       int left_side_len = strlen (left_side);
 
-      if (PRM_IS_DUPLICATED (prm->static_flag) &&
+      if (PRM_DIFFERENT_UNIT (prm->static_flag) &&
 	  !PRM_HAS_SIZE_UNIT (prm->static_flag))
 	{
 	  PRM_ADJUST_FOR_GET_FLOAT_TO_FLOAT (prm, &val, &val, &error);
@@ -5937,7 +5938,7 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
 	  UINT64 dup_val;
 	  val = value.f;
 
-	  if (PRM_IS_DUPLICATED (prm->static_flag))
+	  if (PRM_DIFFERENT_UNIT (prm->static_flag))
 	    {
 	      PRM_ADJUST_FOR_GET_FLOAT_TO_BIGINT (prm, &dup_val, &val,
 						  &error);
@@ -6465,7 +6466,7 @@ prm_check_range (SYSPRM_PARAM * prm, void *value)
 {
   int error = NO_ERROR;
 
-  if (PRM_IS_DUPLICATED (prm->static_flag))
+  if (PRM_DIFFERENT_UNIT (prm->static_flag))
     {
       assert (prm->set_dup != NULL);
     }
@@ -6474,7 +6475,7 @@ prm_check_range (SYSPRM_PARAM * prm, void *value)
     {
       int val;
 
-      if (PRM_IS_DUPLICATED (prm->static_flag))
+      if (PRM_DIFFERENT_UNIT (prm->static_flag))
 	{
 	  if (PRM_HAS_SIZE_UNIT (prm->static_flag))
 	    {
@@ -6506,7 +6507,7 @@ prm_check_range (SYSPRM_PARAM * prm, void *value)
     {
       float val;
 
-      if (PRM_IS_DUPLICATED (prm->static_flag))
+      if (PRM_DIFFERENT_UNIT (prm->static_flag))
 	{
 	  if (PRM_HAS_SIZE_UNIT (prm->static_flag))
 	    {
@@ -6538,7 +6539,7 @@ prm_check_range (SYSPRM_PARAM * prm, void *value)
     {
       UINT64 val;
 
-      if (PRM_IS_DUPLICATED (prm->static_flag))
+      if (PRM_DIFFERENT_UNIT (prm->static_flag))
 	{
 	  PRM_ADJUST_FOR_SET_BIGINT_TO_BIGINT (prm, &val, (UINT64 *) value,
 					       &error);
@@ -6595,7 +6596,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 
   assert (new_value != NULL);
 
-  if (PRM_IS_DUPLICATED (prm->static_flag))
+  if (PRM_DIFFERENT_UNIT (prm->static_flag))
     {
       assert (prm->set_dup != NULL);
     }
@@ -6669,7 +6670,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 		return PRM_ERR_BAD_RANGE;
 	      }
 
-	    if (PRM_IS_DUPLICATED (prm->static_flag))
+	    if (PRM_DIFFERENT_UNIT (prm->static_flag))
 	      {
 		PRM_ADJUST_FOR_SET_BIGINT_TO_INTEGER (prm, &val, &dup_val,
 						      &error);
@@ -6725,7 +6726,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 		return PRM_ERR_BAD_RANGE;
 	      }
 
-	    if (PRM_IS_DUPLICATED (prm->static_flag))
+	    if (PRM_DIFFERENT_UNIT (prm->static_flag))
 	      {
 		PRM_ADJUST_FOR_SET_INTEGER_TO_INTEGER (prm, &val, &val,
 						       &error);
@@ -6766,7 +6767,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 	    return PRM_ERR_BAD_RANGE;
 	  }
 
-	if (PRM_IS_DUPLICATED (prm->static_flag))
+	if (PRM_DIFFERENT_UNIT (prm->static_flag))
 	  {
 	    PRM_ADJUST_FOR_SET_BIGINT_TO_BIGINT (prm, &val, &val, &error);
 	    if (error != NO_ERROR)
@@ -6798,7 +6799,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 		return PRM_ERR_BAD_RANGE;
 	      }
 
-	    if (PRM_IS_DUPLICATED (prm->static_flag))
+	    if (PRM_DIFFERENT_UNIT (prm->static_flag))
 	      {
 		PRM_ADJUST_FOR_SET_BIGINT_TO_FLOAT (prm, &val, &dup_val,
 						    &error);
@@ -6825,7 +6826,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 		return PRM_ERR_BAD_RANGE;
 	      }
 
-	    if (PRM_IS_DUPLICATED (prm->static_flag))
+	    if (PRM_DIFFERENT_UNIT (prm->static_flag))
 	      {
 		PRM_ADJUST_FOR_SET_FLOAT_TO_FLOAT (prm, &val, &val, &error);
 		if (error != NO_ERROR)

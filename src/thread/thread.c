@@ -2830,7 +2830,7 @@ thread_checkpoint_thread (void *arg_p)
 
       to.tv_sec =
 	time (NULL) +
-	prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_INTERVAL_MINUTES) * 60;
+	prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_INTERVAL_SECS);
 
       rv = pthread_mutex_lock (&thread_Checkpoint_thread.lock);
       pthread_cond_timedwait (&thread_Checkpoint_thread.cond,
