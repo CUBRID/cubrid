@@ -7966,8 +7966,18 @@ qo_generate_join_index_scan (QO_INFO * infop,
 
   if (nodep != NULL && QO_NODE_IS_CLASS_HIERARCHY (nodep))
     {
-      /* cannot perform index join on class hierarchy */
-      return 0;
+      /* Class hierarchies are split into scan blocks which cannot be
+       * used for index joins. However, if the class hierarchy is a
+       * partitioning hierarchy, we can use an index join for inner joins
+       */
+      if (!QO_NODE_IS_CLASS_PARTITIONED (nodep))
+	{
+	  return 0;
+	}
+      else if (join_type != JOIN_INNER)
+	{
+	  return 0;
+	}
     }
   env = infop->env;
 

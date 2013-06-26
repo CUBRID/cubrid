@@ -1828,17 +1828,12 @@ partition_get_value_from_key (PRUNING_CONTEXT * pinfo,
       break;
 
     case TYPE_CONSTANT:
-      if (key->value.dbvalptr != NULL)
-	{
-	  error = pr_clone_value (key->value.dbvalptr, attr_key);
-	  *is_present = true;
-	}
-      else
-	{
-	  DB_MAKE_NULL (attr_key);
-	  error = NO_ERROR;
-	  *is_present = false;
-	}
+      /* TYPE_CONSTANT comes from an index join. Since we haven't actually
+       * scanned anything yet, this value is not set so we cannot use it here
+       */
+      DB_MAKE_NULL (attr_key);
+      error = NO_ERROR;
+      *is_present = false;
       break;
 
     default:
