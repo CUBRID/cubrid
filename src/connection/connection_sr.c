@@ -2422,7 +2422,7 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid,
 								      &abstime,
 								      THREAD_CSS_QUEUE_SUSPENDED);
 
-		  if (r == ETIMEDOUT)
+		  if (r == ER_CSS_PTHREAD_COND_TIMEDOUT)
 		    {
 		      *rc = TIMEDOUT_ON_QUEUE;
 		      *buffer = NULL;
