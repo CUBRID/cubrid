@@ -2512,11 +2512,6 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p,
 	}
       else
 	{
-	  if (prm_adjust_parameters () != NO_ERROR)
-	    {
-	      goto error;
-	    }
-
 	  error_code =
 	    logtb_define_trantable_log_latch (thread_p,
 					      log_Gl.trantable.

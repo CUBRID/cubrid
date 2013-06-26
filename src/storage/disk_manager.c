@@ -729,7 +729,7 @@ disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
 
 #if defined (SERVER_MODE)
   if (nfree_pages_toadd < 0
-      && prm_get_size_value (PRM_ID_GENERIC_VOL_PREALLOC_SIZE) > 0
+      && prm_get_bigint_value (PRM_ID_GENERIC_VOL_PREALLOC_SIZE) > 0
       && (vol_purpose == DISK_PERMVOL_DATA_PURPOSE
 	  || vol_purpose == DISK_PERMVOL_INDEX_PURPOSE
 	  || vol_purpose == DISK_PERMVOL_GENERIC_PURPOSE))
@@ -848,7 +848,7 @@ disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
 #if defined (SERVER_MODE)
   if (need_to_check_auto_volume_ext == true
       && total_free_pages <
-      (int) (prm_get_size_value (PRM_ID_GENERIC_VOL_PREALLOC_SIZE)
+      (int) (prm_get_bigint_value (PRM_ID_GENERIC_VOL_PREALLOC_SIZE)
 	     / IO_PAGESIZE))
     {
       (void) boot_add_auto_volume_extension (thread_p, 1,
@@ -1063,7 +1063,7 @@ disk_add_auto_volume_extension (THREAD_ENTRY * thread_p, DKNPAGES min_npages,
     }
   else
     {
-      max_npages = (DKNPAGES) (prm_get_size_value (PRM_ID_DB_VOLUME_SIZE)
+      max_npages = (DKNPAGES) (prm_get_bigint_value (PRM_ID_DB_VOLUME_SIZE)
 			       / IO_PAGESIZE);
     }
 
@@ -2338,15 +2338,15 @@ disk_expand_tmp (THREAD_ENTRY * thread_p, INT16 volid, INT32 min_pages,
 
       tdes = LOG_FIND_TDES (tran_index);
       if (tdes != NULL)
-        {
-          event_log_sql_string (thread_p, log_fp, &tdes->xasl_id, indent);
-          if (!XASL_ID_IS_NULL (&tdes->xasl_id)
-              && tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
-            {
-              event_log_bind_values (log_fp, tran_index,
-                                     tdes->num_exec_queries - 1);
-            }
-        }
+	{
+	  event_log_sql_string (thread_p, log_fp, &tdes->xasl_id, indent);
+	  if (!XASL_ID_IS_NULL (&tdes->xasl_id)
+	      && tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
+	    {
+	      event_log_bind_values (log_fp, tran_index,
+				     tdes->num_exec_queries - 1);
+	    }
+	}
 
       fprintf (log_fp, "%*ctime: %d\n", indent, ' ', elapsed);
       fprintf (log_fp, "%*cpages: %d\n\n", indent, ' ', npages_toadd);

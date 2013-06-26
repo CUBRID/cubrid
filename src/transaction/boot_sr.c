@@ -1118,7 +1118,7 @@ boot_add_auto_volume_extension (THREAD_ENTRY * thread_p, DKNPAGES min_npages,
   DBDEF_VOL_EXT_INFO ext_info;
 
   ext_info.max_npages =
-    (DKNPAGES) (prm_get_size_value (PRM_ID_DB_VOLUME_SIZE) / IO_PAGESIZE);
+    (DKNPAGES) (prm_get_bigint_value (PRM_ID_DB_VOLUME_SIZE) / IO_PAGESIZE);
 
   if (setpage_type != DISK_NONCONTIGUOUS_SPANVOLS_PAGES
       && ext_info.max_npages < min_npages)
@@ -2735,14 +2735,14 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
   if (db_npages <= 0)
     {
       db_npages =
-	(DKNPAGES) (prm_get_size_value (PRM_ID_DB_VOLUME_SIZE) /
+	(DKNPAGES) (prm_get_bigint_value (PRM_ID_DB_VOLUME_SIZE) /
 		    db_desired_pagesize);
     }
 
   if (log_npages <= 0)
     {
       log_npages =
-	(DKNPAGES) (prm_get_size_value (PRM_ID_LOG_VOLUME_SIZE) /
+	(DKNPAGES) (prm_get_bigint_value (PRM_ID_LOG_VOLUME_SIZE) /
 		    db_desired_log_page_size);
     }
 

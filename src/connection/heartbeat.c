@@ -606,11 +606,11 @@ hb_create_master_reader (void)
 
 #if defined(_POSIX_THREAD_ATTR_STACKSIZE)
   rv = pthread_attr_getstacksize (&thread_attr, &ts_size);
-  if (ts_size != (size_t) prm_get_integer_value (PRM_ID_THREAD_STACKSIZE))
+  if (ts_size != (size_t) prm_get_bigint_value (PRM_ID_THREAD_STACKSIZE))
     {
       rv =
 	pthread_attr_setstacksize (&thread_attr,
-				   prm_get_integer_value
+				   prm_get_bigint_value
 				   (PRM_ID_THREAD_STACKSIZE));
       if (rv != 0)
 	{

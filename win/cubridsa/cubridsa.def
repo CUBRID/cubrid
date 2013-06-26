@@ -90,7 +90,7 @@ EXPORTS
     prm_get_float_value
     prm_get_integer_list_value
     prm_get_integer_value
-    prm_get_size_value
+    prm_get_bigint_value
     prm_get_string_value
     rel_copy_version_string
     rel_build_number

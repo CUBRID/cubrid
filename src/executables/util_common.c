@@ -58,7 +58,6 @@ static int util_get_ha_parameters (char **ha_node_list_p, char **ha_db_list_p,
 				   char **ha_copy_log_base_p,
 				   int *ha_max_mem_size_p);
 static bool util_is_replica_node (void);
-static int util_size_to_byte (double *pre, char post);
 
 /*
  * utility_initialize() - initialize cubrid library
@@ -873,40 +872,39 @@ util_redirect_stdout_to_null (void)
  *
  */
 static int
-util_size_to_byte (double *pre, char post)
+util_size_to_byte (double *pre, char *post)
 {
-  switch (post)
+  if (strcasecmp (post, "b") == 0)
     {
-    case 'b':
-    case 'B':
       /* bytes */
-      break;
-    case 'k':
-    case 'K':
+    }
+  else if ((strcasecmp (post, "k") == 0) || (strcasecmp (post, "kb") == 0))
+    {
       /* kilo */
-      *pre = *pre * 1024.0;
-      break;
-    case 'm':
-    case 'M':
+      *pre = *pre * ONE_K;
+    }
+  else if ((strcasecmp (post, "m") == 0) || (strcasecmp (post, "mb") == 0))
+    {
       /* mega */
-      *pre = *pre * 1048576.0;
-      break;
-    case 'g':
-    case 'G':
+      *pre = *pre * ONE_M;
+    }
+  else if ((strcasecmp (post, "g") == 0) || (strcasecmp (post, "gb") == 0))
+    {
       /* giga */
-      *pre = *pre * 1073741824.0;
-      break;
-    case 't':
-    case 'T':
+      *pre = *pre * ONE_G;
+    }
+  else if ((strcasecmp (post, "t") == 0) || (strcasecmp (post, "tb") == 0))
+    {
       /* tera */
-      *pre = *pre * 1099511627776.0;
-      break;
-    case 'p':
-    case 'P':
+      *pre = *pre * ONE_T;
+    }
+  else if ((strcasecmp (post, "p") == 0) || (strcasecmp (post, "pb") == 0))
+    {
       /* peta */
-      *pre = *pre * 1125899906842624.0;
-      break;
-    default:
+      *pre = *pre * ONE_P;
+    }
+  else
+    {
       return ER_FAILED;
     }
 
@@ -920,7 +918,7 @@ util_size_to_byte (double *pre, char post)
  *
  */
 int
-util_byte_to_size_string (UINT64 size_num, char *buf, size_t len)
+util_byte_to_size_string (char *buf, size_t len, UINT64 size_num)
 {
   const char *ss = "BKMGTP";
   double v = (double) size_num;
@@ -930,11 +928,12 @@ util_byte_to_size_string (UINT64 size_num, char *buf, size_t len)
     {
       return ER_FAILED;
     }
+  buf[0] = '\0';
 
-  while (pow < 6 && v >= 1024.0)
+  while (pow < 6 && v >= ONE_K)
     {
       pow++;
-      v /= 1024.0;
+      v /= ONE_K;
     }
 
   if (snprintf (buf, len, "%.1f%c", v, ss[pow]) < 0)
@@ -952,18 +951,18 @@ util_byte_to_size_string (UINT64 size_num, char *buf, size_t len)
  *
  */
 int
-util_size_string_to_byte (const char *size_str, UINT64 * size_num)
+util_size_string_to_byte (UINT64 * size_num, char *size_str)
 {
-  int len;
   double val;
-  char c = 'B';
+  char *default_unit = "B";
   char *end;
+  char *size_unit;
 
-  if (size_str == NULL)
+  if (size_str == NULL || size_num == NULL)
     {
       return ER_FAILED;
     }
-  len = strlen (size_str);
+  *size_num = 0;
 
   val = strtod (size_str, &end);
   if (end == size_str)
@@ -971,20 +970,160 @@ util_size_string_to_byte (const char *size_str, UINT64 * size_num)
       return ER_FAILED;
     }
 
-  if (isalpha (*end))
+  if (val < 0)
     {
-      c = *end;
-      end += 1;
+      return ER_FAILED;
     }
 
-  if (end != (size_str + len) || util_size_to_byte (&val, c) != NO_ERROR)
+  if (isalpha (*end))
+    {
+      size_unit = end;
+    }
+  else
+    {
+      size_unit = default_unit;
+    }
+
+  if (util_size_to_byte (&val, size_unit) != NO_ERROR)
     {
       return ER_FAILED;
     }
 
   *size_num = (UINT64) val;
-  *size_num /= 1024ULL;
-  *size_num *= 1024ULL;
+  return NO_ERROR;
+}
+
+/*
+ * util_time_to_byte -
+ *
+ * return:
+ *
+ */
+static int
+util_time_to_msec (double *pre, char *post)
+{
+  if ((strcasecmp (post, "ms") == 0) || (strcasecmp (post, "msec") == 0))
+    {
+      /* millisecond */
+    }
+  else if ((strcasecmp (post, "s") == 0) || (strcasecmp (post, "sec") == 0))
+    {
+      /* second */
+      *pre = *pre * ONE_SEC;
+    }
+  else if (strcasecmp (post, "min") == 0)
+    {
+      /* minute */
+      *pre = *pre * ONE_MIN;
+    }
+  else if (strcasecmp (post, "h") == 0)
+    {
+      /* hours */
+      *pre = *pre * ONE_HOUR;
+    }
+  else
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * util_msec_to_time_string -
+ *
+ * return:
+ *
+ */
+int
+util_msec_to_time_string (char *buf, size_t len, int msec_num)
+{
+  int v = msec_num;
+  int sec, msec;
+  int error = 0;
+
+  if (buf == NULL)
+    {
+      return ER_FAILED;
+    }
+  buf[0] = '\0';
+
+  sec = v / ONE_SEC;
+
+  if (sec > 0)
+    {
+      msec = v % ONE_SEC;
+      error = snprintf (buf, len, "%d.%03d sec", sec, msec);
+    }
+  else if (v <= 0)
+    {
+      error = snprintf (buf, len, "%d", v);
+    }
+  else
+    {
+      error = snprintf (buf, len, "%d msec", v);
+    }
+
+  if (error < 0)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * util_time_string_to_msec -
+ *
+ * return:
+ *
+ */
+int
+util_time_string_to_msec (int *msec_num, char *time_str)
+{
+  double val;
+  char *default_unit = "ms";
+  char *end;
+  char *time_unit;
+
+  if (time_str == NULL || msec_num == NULL)
+    {
+      return ER_FAILED;
+    }
+  *msec_num = 0;
+
+  val = strtod (time_str, &end);
+  if (end == time_str)
+    {
+      return ER_FAILED;
+    }
+
+  if (val < 0)
+    {
+      *msec_num = (int) val;
+      return NO_ERROR;
+    }
+
+  if (isalpha (*end))
+    {
+      time_unit = end;
+    }
+  else
+    {
+      time_unit = default_unit;
+    }
+
+  if (util_time_to_msec (&val, time_unit) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  if (val > INT_MAX)
+    {
+      return ER_FAILED;
+    }
+
+  *msec_num = (int) val;
   return NO_ERROR;
 }
 

@@ -384,7 +384,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
     {
       UINT64 v;
 
-      if (util_size_string_to_byte ((const char *) db_page_str, &v) !=
+      if (util_size_string_to_byte (&v, (const char *) db_page_str) !=
 	  NO_ERROR)
 	{
 	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
@@ -402,12 +402,12 @@ createdb (UTIL_FUNCTION_ARG * arg)
 						   0);
   if (db_volume_str == NULL)
     {
-      db_volume_size = prm_get_size_value (PRM_ID_DB_VOLUME_SIZE);
+      db_volume_size = prm_get_bigint_value (PRM_ID_DB_VOLUME_SIZE);
     }
   else
     {
-      if (util_size_string_to_byte ((const char *) db_volume_str,
-				    &db_volume_size) != NO_ERROR)
+      if (util_size_string_to_byte (&db_volume_size,
+				    (const char *) db_volume_str) != NO_ERROR)
 	{
 	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 					   MSGCAT_UTIL_SET_CREATEDB,
@@ -438,7 +438,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
     {
       UINT64 v;
 
-      if (util_size_string_to_byte ((const char *) log_page_str, &v)
+      if (util_size_string_to_byte (&v, (const char *) log_page_str)
 	  != NO_ERROR)
 	{
 	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
@@ -456,12 +456,13 @@ createdb (UTIL_FUNCTION_ARG * arg)
 						    0);
   if (log_volume_str == NULL)
     {
-      log_volume_size = prm_get_size_value (PRM_ID_LOG_VOLUME_SIZE);
+      log_volume_size = prm_get_bigint_value (PRM_ID_LOG_VOLUME_SIZE);
     }
   else
     {
-      if (util_size_string_to_byte ((const char *) log_volume_str,
-				    &log_volume_size) != NO_ERROR)
+      if (util_size_string_to_byte (&log_volume_size,
+				    (const char *) log_volume_str) !=
+	  NO_ERROR)
 	{
 	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 					   MSGCAT_UTIL_SET_CREATEDB,
@@ -516,8 +517,8 @@ createdb (UTIL_FUNCTION_ARG * arg)
 	{
 	  goto error_exit;
 	}
-      util_byte_to_size_string (min, min_buf, 64);
-      util_byte_to_size_string (max, max_buf, 64);
+      util_byte_to_size_string (min_buf, 64, min);
+      util_byte_to_size_string (max_buf, 64, max);
       if (db_volume_str != NULL)
 	{
 	  int len;
@@ -533,7 +534,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
 	}
       else
 	{
-	  util_byte_to_size_string (db_volume_size, vol_buf, 64);
+	  util_byte_to_size_string (vol_buf, 64, db_volume_size);
 	}
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 				       MSGCAT_UTIL_SET_CREATEDB,
@@ -556,8 +557,8 @@ createdb (UTIL_FUNCTION_ARG * arg)
 	{
 	  goto error_exit;
 	}
-      util_byte_to_size_string (min, min_buf, 64);
-      util_byte_to_size_string (max, max_buf, 64);
+      util_byte_to_size_string (min_buf, 64, min);
+      util_byte_to_size_string (max_buf, 64, max);
       if (log_volume_str != NULL)
 	{
 	  int len;
@@ -573,7 +574,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
 	}
       else
 	{
-	  util_byte_to_size_string (log_volume_size, vol_buf, 64);
+	  util_byte_to_size_string (vol_buf, 64, log_volume_size);
 	}
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 				       MSGCAT_UTIL_SET_CREATEDB,
@@ -599,12 +600,12 @@ createdb (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  util_byte_to_size_string (db_volume_size, er_msg_file,
-			    sizeof (er_msg_file));
+  util_byte_to_size_string (er_msg_file, sizeof (er_msg_file),
+			    db_volume_size);
   /* total amount of disk space of database is
    * db volume size + log_volume_size + temp_log_volume_size */
-  util_byte_to_size_string (db_volume_size + (UINT64) (log_volume_size * 2),
-			    required_size, sizeof (required_size));
+  util_byte_to_size_string (required_size, sizeof (required_size),
+			    db_volume_size + (UINT64) (log_volume_size * 2));
   fprintf (output_file,
 	   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CREATEDB,
 			   CREATEDB_MSG_CREATING),

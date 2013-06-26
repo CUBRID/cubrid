@@ -9103,7 +9103,7 @@ qdata_group_concat_first_value (THREAD_ENTRY * thread_p,
   result_domain = ((TP_DOMAIN_TYPE (agg_p->domain) == agg_type) ?
 		   agg_p->domain : NULL);
 
-  max_allowed_size = prm_get_integer_value (PRM_ID_GROUP_CONCAT_MAX_LEN);
+  max_allowed_size = (int) prm_get_bigint_value (PRM_ID_GROUP_CONCAT_MAX_LEN);
 
   if (qdata_concatenate_dbval (thread_p, agg_p->value, dbvalue, &tmp_val,
 			       result_domain, max_allowed_size,
@@ -9150,7 +9150,7 @@ qdata_group_concat_value (THREAD_ENTRY * thread_p,
   result_domain = ((TP_DOMAIN_TYPE (agg_p->domain) == agg_type) ?
 		   agg_p->domain : NULL);
 
-  max_allowed_size = prm_get_integer_value (PRM_ID_GROUP_CONCAT_MAX_LEN);
+  max_allowed_size = (int) prm_get_bigint_value (PRM_ID_GROUP_CONCAT_MAX_LEN);
 
   /* add separator if specified (it may be the case for bit string) */
   if (!DB_IS_NULL (agg_p->value2))

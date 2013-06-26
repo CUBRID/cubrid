@@ -25310,7 +25310,8 @@ qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   /* At any time, we will handle at most ubound tuples */
   estimated_size *= ubound;
 
-  if (estimated_size > prm_get_size_value (PRM_ID_SORT_BUFFER_SIZE))
+  if (estimated_size >
+      prm_get_integer_value (PRM_ID_SR_NBUFFERS) * IO_PAGESIZE)
     {
       /* Do not use more than the sort buffer size. Using the entire sort
        * buffer is possible because this is the only sort operation which is

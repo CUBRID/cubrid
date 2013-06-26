@@ -361,8 +361,8 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
 						     ADDVOL_VOLUME_SIZE_S, 0);
   if (volext_size_str)
     {
-      if (util_size_string_to_byte (volext_size_str,
-				    &volext_size) != NO_ERROR)
+      if (util_size_string_to_byte (&volext_size,
+				    volext_size_str) != NO_ERROR)
 	{
 	  goto print_addvol_usage;
 	}
@@ -377,8 +377,9 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
 				     0);
   if (volext_max_writesize_in_sec_str)
     {
-      if (util_size_string_to_byte (volext_max_writesize_in_sec_str,
-				    &volext_max_writesize) != NO_ERROR)
+      if (util_size_string_to_byte (&volext_max_writesize,
+				    volext_max_writesize_in_sec_str) !=
+	  NO_ERROR)
 	{
 	  goto print_addvol_usage;
 	}
@@ -470,7 +471,7 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
     {
       if (volext_size == -1)
 	{
-	  volext_size = prm_get_size_value (PRM_ID_DB_VOLUME_SIZE);
+	  volext_size = prm_get_bigint_value (PRM_ID_DB_VOLUME_SIZE);
 	}
 
       if (ext_info.max_npages == 0)
@@ -925,8 +926,8 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 
   db_ntotal_pages = db_nfree_pages = 0;
 
-  util_byte_to_size_string (IO_PAGESIZE, io_size_str, 64);
-  util_byte_to_size_string (LOG_PAGESIZE, log_size_str, 64);
+  util_byte_to_size_string (io_size_str, 64, IO_PAGESIZE);
+  util_byte_to_size_string (log_size_str, 64, LOG_PAGESIZE);
 
   if (summarize)
     {

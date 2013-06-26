@@ -111,8 +111,8 @@ enum param_id
   PRM_ID_IO_LOCKF_ENABLE,
   PRM_ID_SR_NBUFFERS,
   PRM_ID_SORT_BUFFER_SIZE,
-  PRM_ID_PB_NBUFFERS,
   PRM_ID_PB_BUFFER_FLUSH_RATIO,
+  PRM_ID_PB_NBUFFERS,
   PRM_ID_PAGE_BUFFER_SIZE,
   PRM_ID_HF_UNFILL_FACTOR,
   PRM_ID_HF_MAX_BESTSPACE_ENTRIES,
@@ -125,11 +125,14 @@ enum param_id
   PRM_ID_LK_ESCALATION_AT,
   PRM_ID_LK_ROLLBACK_ON_LOCK_ESCALATION,
   PRM_ID_LK_TIMEOUT_SECS,
+  PRM_ID_LK_TIMEOUT,
   PRM_ID_LK_RUN_DEADLOCK_INTERVAL,
   PRM_ID_LOG_NBUFFERS,
   PRM_ID_LOG_BUFFER_SIZE,
   PRM_ID_LOG_CHECKPOINT_NPAGES,
+  PRM_ID_LOG_CHECKPOINT_SIZE,
   PRM_ID_LOG_CHECKPOINT_INTERVAL_MINUTES,
+  PRM_ID_LOG_CHECKPOINT_INTERVAL,
   PRM_ID_LOG_CHECKPOINT_SLEEP_MSECS,
   PRM_ID_LOG_BACKGROUND_ARCHIVING,
   PRM_ID_LOG_ISOLATION_LEVEL,
@@ -167,9 +170,12 @@ enum param_id
   PRM_ID_MUTEX_BUSY_WAITING_CNT,
   PRM_ID_PB_NUM_LRU_CHAINS,
   PRM_ID_PAGE_BG_FLUSH_INTERVAL_MSEC,
+  PRM_ID_PAGE_BG_FLUSH_INTERVAL,
   PRM_ID_ADAPTIVE_FLUSH_CONTROL,
   PRM_ID_MAX_FLUSH_PAGES_PER_SECOND,
+  PRM_ID_MAX_FLUSH_SIZE_PER_SECOND,
   PRM_ID_PB_SYNC_ON_NFLUSH,
+  PRM_ID_PB_SYNC_ON_FLUSH_SIZE,
   PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL,
   PRM_ID_ORACLE_STYLE_OUTERJOIN,
   PRM_ID_ANSI_QUOTES,
@@ -298,6 +304,7 @@ enum param_id
   PRM_ID_INTL_CHECK_INPUT_STRING,
   PRM_ID_CHECK_PEER_ALIVE,
   PRM_ID_SQL_TRACE_SLOW_MSECS,
+  PRM_ID_SQL_TRACE_SLOW,
   PRM_ID_SQL_TRACE_EXECUTION_PLAN,
   PRM_ID_INTL_COLLATION,
   PRM_ID_GENERIC_VOL_PREALLOC_SIZE,
@@ -318,7 +325,7 @@ typedef enum
   PRM_FLOAT,
   PRM_BOOLEAN,
   PRM_KEYWORD,
-  PRM_SIZE,
+  PRM_BIGINT,
   PRM_STRING,
   PRM_INTEGER_LIST,
 
@@ -333,7 +340,7 @@ union sysprm_value
   float f;
   char *str;
   int *integer_list;
-  UINT64 size;
+  UINT64 bi;
 };
 
 typedef struct session_param SESSION_PARAM;
@@ -368,14 +375,14 @@ extern float prm_get_float_value (PARAM_ID prm_id);
 extern bool prm_get_bool_value (PARAM_ID prm_id);
 extern char *prm_get_string_value (PARAM_ID prm_id);
 extern int *prm_get_integer_list_value (PARAM_ID prm_id);
-extern UINT64 prm_get_size_value (PARAM_ID prm_id);
+extern UINT64 prm_get_bigint_value (PARAM_ID prm_id);
 
 extern void prm_set_integer_value (PARAM_ID prm_id, int value);
 extern void prm_set_float_value (PARAM_ID prm_id, float value);
 extern void prm_set_bool_value (PARAM_ID prm_id, bool value);
 extern void prm_set_string_value (PARAM_ID prm_id, char *value);
 extern void prm_set_integer_list_value (PARAM_ID prm_id, int *value);
-extern void prm_set_size_value (PARAM_ID prm_id, UINT64 value);
+extern void prm_set_bigint_value (PARAM_ID prm_id, UINT64 value);
 
 extern bool sysprm_find_err_in_integer_list (PARAM_ID prm_id, int error_code);
 
@@ -416,7 +423,6 @@ extern int sysprm_get_range (const char *pname, void *min, void *max);
 extern int prm_get_master_port_id (void);
 extern bool prm_get_commit_on_shutdown (void);
 extern bool prm_get_query_mode_sync (void);
-extern int prm_adjust_parameters (void);
 
 extern char *sysprm_pack_session_parameters (char *ptr,
 					     SESSION_PARAM *
