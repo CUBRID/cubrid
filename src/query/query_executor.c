@@ -21225,7 +21225,7 @@ qexec_compare_two_tuple_by_sort_key (QFILE_TUPLE tpl1,
   int cmp, nkeys, i, column, val_len, key_idx;
   QFILE_TUPLE tuple_p1, tuple_p2;
 
-  assert (tuple_p1 != NULL && tuple_p2 != NULL && key_info_p != NULL);
+  assert (tpl1 != NULL && tpl2 != NULL && key_info_p != NULL);
 
   cmp = DB_EQ;
   nkeys = key_info_p->nkeys;
