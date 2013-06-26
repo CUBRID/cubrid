@@ -57,7 +57,7 @@
 #define ERROR_MSG_FILE			"uw_er.msg"
 #endif
 
-#define BROKER_PATH_MAX             (1024)
+#define BROKER_PATH_MAX             (PATH_MAX)
 
 /* default values */
 #define DEFAULT_LOG_DIR               "log/broker/sql_log/"

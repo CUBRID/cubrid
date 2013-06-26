@@ -81,7 +81,7 @@
 #define BROKER_LOG_MSG_SIZE	64
 
 #if !defined(BROKER_PATH_MAX)
-#define BROKER_PATH_MAX       (1024)
+#define BROKER_PATH_MAX       (PATH_MAX)
 #endif
 
 #define SHARD_NAME_LEN 		      64
@@ -96,7 +96,7 @@
 #define CLIENT_INFO_SIZE_LIMIT           10000
 #define SHARD_INFO_SIZE_LIMIT            256
 
-#define BROKER_INFO_PATH_MAX             (1024)
+#define BROKER_INFO_PATH_MAX             (PATH_MAX)
 #define BROKER_INFO_NAME_MAX             (BROKER_INFO_PATH_MAX)
 
 typedef enum t_sql_log_mode_value T_SQL_LOG_MODE_VALUE;
