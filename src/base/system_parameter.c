@@ -2170,7 +2170,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_thread_stacksize_flag,
    (void *) &prm_thread_stacksize_default,
    (void *) &PRM_THREAD_STACKSIZE,
-   (void *) &prm_thread_stacksize_upper, 
+   (void *) &prm_thread_stacksize_upper,
    (void *) &prm_thread_stacksize_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -2211,7 +2211,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_io_backup_max_volume_size_flag,
    (void *) &prm_io_backup_max_volume_size_default,
    (void *) &PRM_IO_BACKUP_MAX_VOLUME_SIZE,
-   (void *) &prm_io_backup_max_volume_size_upper, 
+   (void *) &prm_io_backup_max_volume_size_upper,
    (void *) &prm_io_backup_max_volume_size_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -2555,7 +2555,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_group_concat_max_len_flag,
    (void *) &prm_group_concat_max_len_default,
    (void *) &PRM_GROUP_CONCAT_MAX_LEN,
-   (void *) &prm_group_concat_max_len_upper, 
+   (void *) &prm_group_concat_max_len_upper,
    (void *) &prm_group_concat_max_len_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -5046,9 +5046,9 @@ prm_msec_to_sec (void *out_val, SYSPRM_DATATYPE out_type,
 	  *sec_value = *msec_value / ONE_SEC;
 	}
       if (*sec_value == 0 && *msec_value > 0)
-      	{
-      	  *sec_value = 1;
-      	}
+	{
+	  *sec_value = 1;
+	}
     }
   else
     {
@@ -5132,9 +5132,9 @@ prm_sec_to_min (void *out_val, SYSPRM_DATATYPE out_type,
 	  *min_value = *sec_value / (ONE_MIN / ONE_SEC);
 	}
       if (*min_value == 0 && *sec_value > 0)
-      	{
-      	  *min_value = 1;
-      	}
+	{
+	  *min_value = 1;
+	}
     }
   else
     {
@@ -6725,6 +6725,10 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 		  {
 		    return PRM_ERR_BAD_VALUE;
 		  }
+		else if (*end != '\0')
+		  {
+		    return PRM_ERR_BAD_VALUE;
+		  }
 		else if (l_val > INT_MAX || l_val < INT_MIN)
 		  {
 		    return PRM_ERR_BAD_RANGE;
@@ -6771,6 +6775,10 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 	  {
 	    val = (UINT64) strtoll (value, &end, 10);
 	    if (end == value)
+	      {
+		return PRM_ERR_BAD_VALUE;
+	      }
+	    else if (*end != '\0')
 	      {
 		return PRM_ERR_BAD_VALUE;
 	      }
@@ -6831,6 +6839,10 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 	  {
 	    val = (float) strtod (value, &end);
 	    if (end == value)
+	      {
+		return PRM_ERR_BAD_VALUE;
+	      }
+	    else if (*end != '\0')
 	      {
 		return PRM_ERR_BAD_VALUE;
 	      }
