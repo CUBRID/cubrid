@@ -6440,7 +6440,7 @@ sysprm_get_range (const char *pname, void *min, void *max)
 
   if (error != NO_ERROR)
     {
-      PRM_ERR_BAD_VALUE;
+      return PRM_ERR_BAD_VALUE;
     }
 
   return PRM_ERR_NO_ERROR;
