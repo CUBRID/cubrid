@@ -923,6 +923,7 @@ static unsigned int prm_css_max_clients_flag = 0;
 UINT64 PRM_THREAD_STACKSIZE = (1024 * 1024);
 static UINT64 prm_thread_stacksize_default = (1024 * 1024);
 static UINT64 prm_thread_stacksize_lower = 64 * 1024;
+static UINT64 prm_thread_stacksize_upper = INT_MAX;
 static unsigned int prm_thread_stacksize_flag = 0;
 
 const char *PRM_CFG_DB_HOSTS = "";
@@ -941,6 +942,7 @@ static unsigned int prm_io_backup_nbuffers_flag = 0;
 UINT64 PRM_IO_BACKUP_MAX_VOLUME_SIZE = 0;
 static UINT64 prm_io_backup_max_volume_size_default = 0;
 static UINT64 prm_io_backup_max_volume_size_lower = 1024 * 32;
+static UINT64 prm_io_backup_max_volume_size_upper = INT_MAX;
 static unsigned int prm_io_backup_max_volume_size_flag = 0;
 
 int PRM_IO_BACKUP_SLEEP_MSECS = 0;
@@ -1089,6 +1091,7 @@ static unsigned int prm_no_backslash_escapes_flag = 0;
 UINT64 PRM_GROUP_CONCAT_MAX_LEN = 1024;
 static UINT64 prm_group_concat_max_len_default = 1024;
 static UINT64 prm_group_concat_max_len_lower = 4;
+static UINT64 prm_group_concat_max_len_upper = INT_MAX;
 static unsigned int prm_group_concat_max_len_flag = 0;
 
 UINT64 PRM_STRING_MAX_SIZE_BYTES = 1024 * 1024;
@@ -2167,7 +2170,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_thread_stacksize_flag,
    (void *) &prm_thread_stacksize_default,
    (void *) &PRM_THREAD_STACKSIZE,
-   (void *) NULL, (void *) &prm_thread_stacksize_lower,
+   (void *) &prm_thread_stacksize_upper, 
+   (void *) &prm_thread_stacksize_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -2207,7 +2211,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_io_backup_max_volume_size_flag,
    (void *) &prm_io_backup_max_volume_size_default,
    (void *) &PRM_IO_BACKUP_MAX_VOLUME_SIZE,
-   (void *) NULL, (void *) &prm_io_backup_max_volume_size_lower,
+   (void *) &prm_io_backup_max_volume_size_upper, 
+   (void *) &prm_io_backup_max_volume_size_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -2550,7 +2555,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_group_concat_max_len_flag,
    (void *) &prm_group_concat_max_len_default,
    (void *) &PRM_GROUP_CONCAT_MAX_LEN,
-   (void *) NULL, (void *) &prm_group_concat_max_len_lower,
+   (void *) &prm_group_concat_max_len_upper, 
+   (void *) &prm_group_concat_max_len_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -5039,6 +5045,10 @@ prm_msec_to_sec (void *out_val, SYSPRM_DATATYPE out_type,
 	{
 	  *sec_value = *msec_value / ONE_SEC;
 	}
+      if (*sec_value == 0 && *msec_value > 0)
+      	{
+      	  *sec_value = 1;
+      	}
     }
   else
     {
@@ -5121,6 +5131,10 @@ prm_sec_to_min (void *out_val, SYSPRM_DATATYPE out_type,
 	{
 	  *min_value = *sec_value / (ONE_MIN / ONE_SEC);
 	}
+      if (*min_value == 0 && *sec_value > 0)
+      	{
+      	  *min_value = 1;
+      	}
     }
   else
     {
