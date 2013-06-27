@@ -211,7 +211,8 @@ static bool disk_cache_goodvol_refresh_onevol (THREAD_ENTRY * thread_p,
 					       INT16 volid, void *ignore);
 static int disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
 				      DISK_VOLPURPOSE vol_purpose,
-				      INT32 num_pages, bool do_update_total);
+				      INT32 num_pages, bool do_update_total,
+				      bool * need_to_add_generic_volume);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static INT32 disk_vhdr_get_last_alloc_pageid (THREAD_ENTRY * thread_p,
 					      DISK_VAR_HEADER * vhdr,
@@ -700,11 +701,13 @@ disk_cache_set_auto_extend_volid (THREAD_ENTRY * thread_p, VOLID volid)
  *                          for deallocated and positive for allocated
  *   do_update_total(in): Flag is true if total_pages should be updated
  *                        on purpose information
+ *   need_to_add_generic_volume(out):
  */
 static int
 disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
 			   DISK_VOLPURPOSE vol_purpose,
-			   INT32 nfree_pages_toadd, bool do_update_total)
+			   INT32 nfree_pages_toadd, bool do_update_total,
+			   bool * need_to_add_generic_volume)
 {
   int start_at = -1;
   int end_at = -1;
@@ -728,7 +731,7 @@ disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
     }
 
 #if defined (SERVER_MODE)
-  if (nfree_pages_toadd < 0
+  if (nfree_pages_toadd < 0 && need_to_add_generic_volume
       && prm_get_bigint_value (PRM_ID_GENERIC_VOL_PREALLOC_SIZE) > 0
       && (vol_purpose == DISK_PERMVOL_DATA_PURPOSE
 	  || vol_purpose == DISK_PERMVOL_INDEX_PURPOSE
@@ -851,10 +854,7 @@ disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
       (int) (prm_get_bigint_value (PRM_ID_GENERIC_VOL_PREALLOC_SIZE)
 	     / IO_PAGESIZE))
     {
-      (void) boot_add_auto_volume_extension (thread_p, 1,
-					     DISK_CONTIGUOUS_PAGES,
-					     DISK_PERMVOL_GENERIC_PURPOSE,
-					     false);
+      *need_to_add_generic_volume = true;
     }
 #endif
 
@@ -2385,7 +2385,7 @@ disk_expand_tmp (THREAD_ENTRY * thread_p, INT16 volid, INT32 min_pages,
 
   /* Update total_pages and free_pages on disk_Cache. */
   disk_cache_goodvol_update (thread_p, volid, DISK_TEMPVOL_TEMP_PURPOSE,
-			     npages_toadd, true);
+			     npages_toadd, true, NULL);
 
   DISK_VERIFY_VAR_HEADER (vhdr);
 
@@ -2522,7 +2522,8 @@ disk_expand_perm (THREAD_ENTRY * thread_p, INT16 volid, INT32 npages)
 			vhdr);
 
   /* Update total_pages and free_pages on disk_Cache. */
-  disk_cache_goodvol_update (thread_p, volid, vhdr->purpose, npages, true);
+  disk_cache_goodvol_update (thread_p, volid, vhdr->purpose, npages, true,
+			     NULL);
 
   if (vhdr->total_pages >= vhdr->max_npages)
     {
@@ -3924,6 +3925,7 @@ disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
   LOG_DATA_ADDR addr;
   DISK_VOLPURPOSE vol_purpose;
   DKNPAGES undo_data, redo_data;
+  bool need_to_add_generic_volume;
 
 #if defined(CUBRID_DEBUG)
   if (npages <= 0)
@@ -4062,10 +4064,6 @@ disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
     {
       vhdr->free_pages -= npages;
 
-      /* Update free_pages on disk_Cache. */
-      disk_cache_goodvol_update (thread_p, volid, vol_purpose, -npages,
-				 false);
-
       if (sectid == DISK_SECTOR_WITH_ALL_PAGES
 	  && (vhdr->hint_allocsect >= (new_pageid / vhdr->sect_npgs))
 	  && (vhdr->hint_allocsect <=
@@ -4103,8 +4101,21 @@ disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
 
       DISK_VERIFY_VAR_HEADER (vhdr);
 
+      /* Update free_pages on disk_Cache. */
+      need_to_add_generic_volume = false;
+      disk_cache_goodvol_update (thread_p, volid, vol_purpose, -npages,
+				 false, &need_to_add_generic_volume);
+
       pgbuf_set_dirty (thread_p, addr.pgptr, FREE);
       addr.pgptr = NULL;
+
+      if (need_to_add_generic_volume)
+	{
+	  (void) boot_add_auto_volume_extension (thread_p, 1,
+						 DISK_CONTIGUOUS_PAGES,
+						 DISK_PERMVOL_GENERIC_PURPOSE,
+						 false);
+	}
     }
 
 #if defined(CUBRID_DEBUG)
@@ -5971,7 +5982,7 @@ disk_vhdr_rv_undoredo_free_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   vhdr->free_pages += num_pages;
   disk_cache_goodvol_update (thread_p, vhdr->volid, vhdr->purpose,
-			     num_pages, false);
+			     num_pages, false, NULL);
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
@@ -6163,7 +6174,7 @@ disk_rv_alloctable_vhdr_only (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
     {
       vhdr->free_pages += delta;
       disk_cache_goodvol_update (thread_p, vhdr->volid, vhdr->purpose,
-				 delta, false);
+				 delta, false, NULL);
     }
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
