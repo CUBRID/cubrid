@@ -32,6 +32,7 @@
 #include <errno.h>
 #include <signal.h>
 #include <assert.h>
+#include <ctype.h>
 
 #if defined(WINDOWS)
 #include <winsock2.h>
@@ -59,6 +60,8 @@
 #include "broker_filename.h"
 #include "environment_variable.h"
 #include "porting.h"
+
+char db_err_log_file[BROKER_PATH_MAX];
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 int
@@ -433,7 +436,6 @@ void
 as_db_err_log_set (char *br_name, int proxy_index, int shard_id, int as_index)
 {
   char buf[BROKER_PATH_MAX];
-  char db_err_log_file[BROKER_PATH_MAX];
 
 #if defined(CUBRID_SHARD)
   sprintf (db_err_log_file, "CUBRID_ERROR_LOG=%s%s_%d_%d_%d.err",

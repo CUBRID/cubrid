@@ -809,7 +809,7 @@ main (int argc, char *argv[])
   int new_port;
 #else
   int con_status;
-  int port_name[BROKER_PATH_MAX];
+  char port_name[BROKER_PATH_MAX];
 #endif /* WINDOWS */
   int client_ip_addr;
   char cas_info[CAS_INFO_SIZE] = { CAS_INFO_STATUS_INACTIVE,
