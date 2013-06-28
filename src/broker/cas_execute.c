@@ -4045,7 +4045,7 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 	  {
 	    char msg[12];
 	    off_t p = invalid_pos != NULL ? (invalid_pos - value) : 0;
-	    snprintf (msg, sizeof (msg), "%ld", p);
+	    snprintf (msg, sizeof (msg), "%llu", (long long unsigned int) p);
 	    return ERROR_INFO_SET_WITH_MSG (ER_INVALID_CHAR,
 					    DBMS_ERROR_INDICATOR, msg);
 	  }
@@ -4124,7 +4124,7 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 	  {
 	    char msg[12];
 	    off_t p = invalid_pos != NULL ? (invalid_pos - value) : 0;
-	    snprintf (msg, sizeof (msg), "%ld", p);
+	    snprintf (msg, sizeof (msg), "%llu", (long long unsigned int) p);
 	    return ERROR_INFO_SET_WITH_MSG (ER_INVALID_CHAR,
 					    DBMS_ERROR_INDICATOR, msg);
 	  }

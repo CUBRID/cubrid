@@ -1119,7 +1119,8 @@ br_monitor (char *br_vector)
   UINT64 num_tx_cur = 0, num_qx_cur = 0, num_interrupts_cur = 0;
   UINT64 num_lt_cur = 0, num_lq_cur = 0, num_eq_cur = 0;
   UINT64 num_eq_ui_cur = 0;
-  UINT64 lts = 0, lqs = 0, eqs = 0, its = 0;
+  long long unsigned int lts = 0, lqs = 0;
+  UINT64 eqs = 0, its = 0;
   UINT64 eqs_ui = 0;
   UINT64 tps = 0, qps = 0;
   static unsigned int tty_print_header = 0;
@@ -1555,10 +1556,10 @@ br_monitor (char *br_vector)
 			       &num_others_query, FIELD_T_UINT64);
 		}
 
-	      sprintf (buf, "%lu/%-.1f", lts,
+	      sprintf (buf, "%llu/%-.1f", lts,
 		       (shm_appl->long_transaction_time / 1000.0));
 	      print_value (FIELD_LONG_TRANSACTION, buf, FIELD_T_STRING);
-	      sprintf (buf, "%lu/%-.1f", lqs,
+	      sprintf (buf, "%llu/%-.1f", lqs,
 		       (shm_appl->long_query_time / 1000.0));
 	      print_value (FIELD_LONG_QUERY, buf, FIELD_T_STRING);
 	      print_value (FIELD_ERROR_QUERIES, &eqs, FIELD_T_UINT64);
