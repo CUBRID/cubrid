@@ -4872,7 +4872,7 @@ prm_size_to_io_pages (void *out_val, SYSPRM_DATATYPE out_type,
 	}
       else
 	{
-	  *page_value = (float) tmp_value;
+	  *page_value = (float) ((double) *size_value / IO_PAGESIZE);
 	}
       if (*page_value == 0 && *size_value > 0)
 	{
@@ -4906,14 +4906,14 @@ prm_io_pages_to_size (void *out_val, SYSPRM_DATATYPE out_type,
       UINT64 *size_value = (UINT64 *) out_val;
       UINT64 page_value = *(int *) in_val;
 
-      *size_value = (UINT64) (page_value * (UINT64) IO_PAGESIZE);
+      *size_value = (UINT64) (page_value * IO_PAGESIZE);
     }
   else if (out_type == PRM_BIGINT && in_type == PRM_FLOAT)
     {
       UINT64 *size_value = (UINT64 *) out_val;
-      UINT64 page_value = *(float *) in_val;
+      float page_value = *(float *) in_val;
 
-      *size_value = (UINT64) (page_value * (UINT64) IO_PAGESIZE);
+      *size_value = (UINT64) (page_value * IO_PAGESIZE);
     }
   else
     {
@@ -4972,7 +4972,7 @@ prm_size_to_log_pages (void *out_val, SYSPRM_DATATYPE out_type,
 	}
       else
 	{
-	  *page_value = (float) tmp_value;
+	  *page_value = (float) ((double) *size_value / LOG_PAGESIZE);
 	}
       if (*page_value == 0 && *size_value > 0)
 	{
@@ -5006,14 +5006,14 @@ prm_log_pages_to_size (void *out_val, SYSPRM_DATATYPE out_type,
       UINT64 *size_value = (UINT64 *) out_val;
       UINT64 page_value = *(int *) in_val;
 
-      *size_value = (UINT64) (page_value * (UINT64) LOG_PAGESIZE);
+      *size_value = (UINT64) (page_value * LOG_PAGESIZE);
     }
   else if (out_type == PRM_BIGINT && in_type == PRM_FLOAT)
     {
       UINT64 *size_value = (UINT64 *) out_val;
-      UINT64 page_value = *(float *) in_val;
+      float page_value = *(float *) in_val;
 
-      *size_value = (UINT64) (page_value * (UINT64) LOG_PAGESIZE);
+      *size_value = (UINT64) (page_value * LOG_PAGESIZE);
     }
   else
     {
