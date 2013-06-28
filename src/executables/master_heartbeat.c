@@ -180,6 +180,7 @@ static int hb_thread_initialize (void);
 /* terminator */
 static void hb_resource_cleanup (void);
 static void hb_cluster_cleanup (void);
+static void hb_kill_process (pid_t * pids, int count);
 
 /* process command */
 static const char *hb_node_state_string (int nstate);
@@ -674,27 +675,24 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
 	  && hb_Cluster->myself->state == HB_NSTATE_MASTER
 	  && hb_Cluster->master->priority != hb_Cluster->myself->priority))
     {
-      hb_Cluster->shutdown = true;
-      hb_Cluster->state = HB_NSTATE_UNKNOWN;
-      hb_cluster_request_heartbeat_to_all ();
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
+	      "More than one master detected and failback will be initiated");
+
+      hb_help_sprint_nodes_info (hb_info_str, HB_INFO_STR_MAX);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
+	      hb_info_str);
 
       pthread_mutex_unlock (&hb_Cluster->lock);
+
+      error = hb_cluster_job_queue (HB_CJOB_FAILBACK, NULL,
+				    HB_JOB_TIMER_IMMEDIATELY);
+      assert (error == NO_ERROR);
 
       if (arg)
 	{
 	  free_and_init (arg);
 	}
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
-	      "More than one master detected and local "
-	      "processes and cub_master will be terminated");
-
-      hb_help_sprint_nodes_info (hb_info_str, HB_INFO_STR_MAX);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
-	      hb_info_str);
-
-      /* TODO : hb_terminate() */
-      css_master_cleanup (SIGTERM);
       return;
     }
 
@@ -973,28 +971,87 @@ hb_cluster_job_failover (HB_JOB_ARG * arg)
  *   return: none
  *
  *   jobs(in):
+ *
+ *   NOTE: this job waits for servers to be killed.
+ *   Therefore, be aware that adding this job to queue might
+ *   temporarily prevent cluster_job_calc or any other cluster
+ *   jobs following this one from executing at regular intervals
+ *   as intended.
  */
 static void
 hb_cluster_job_failback (HB_JOB_ARG * arg)
 {
-  int error, rv;
-  int num_master;
+  int error, count = 0;
   char hb_info_str[HB_INFO_STR_MAX];
+  HB_PROC_ENTRY *proc;
+  pid_t *pids = NULL;
+  size_t size;
+  bool emergency_kill_enabled = false;
 
-  rv = pthread_mutex_lock (&hb_Cluster->lock);
-  rv = pthread_mutex_lock (&hb_Resource->lock);
+  pthread_mutex_lock (&hb_Cluster->lock);
 
-  hb_Cluster->state = HB_NSTATE_TO_BE_SLAVE;
-  hb_Resource->state = HB_NSTATE_TO_BE_SLAVE;
+  hb_Cluster->state = HB_NSTATE_SLAVE;
+  hb_Cluster->myself->state = hb_Cluster->state;
+
+  hb_cluster_request_heartbeat_to_all ();
 
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
-	  "Master will be slave");
+	  "This master will become a slave and cub_server will be restarted");
 
   hb_help_sprint_nodes_info (hb_info_str, HB_INFO_STR_MAX);
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, hb_info_str);
 
-  pthread_mutex_unlock (&hb_Resource->lock);
   pthread_mutex_unlock (&hb_Cluster->lock);
+
+  pthread_mutex_lock (&hb_Resource->lock);
+  hb_Resource->state = HB_NSTATE_SLAVE;
+
+  proc = hb_Resource->procs;
+  while (proc)
+    {
+      if (proc->type != HB_PTYPE_SERVER)
+	{
+	  proc = proc->next;
+	  continue;
+	}
+
+      if (emergency_kill_enabled == false)
+	{
+	  size = sizeof (pid_t) * (count + 1);
+	  pids = (pid_t *) realloc (pids, size);
+	  if (pids == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+
+	      /*
+	       * in case that memory allocation fails,
+	       * kill all cub_server processes with SIGKILL
+	       */
+	      emergency_kill_enabled = true;
+	      proc = hb_Resource->procs;
+	      continue;
+	    }
+	  pids[count++] = proc->pid;
+	}
+      else
+	{
+	  kill (proc->pid, SIGKILL);
+	}
+      proc = proc->next;
+    }
+
+  pthread_mutex_unlock (&hb_Resource->lock);
+
+  if (emergency_kill_enabled == false)
+    {
+      hb_kill_process (pids, count);
+    }
+
+  if (pids)
+    {
+      free_and_init (pids);
+    }
 
   error = hb_cluster_job_queue (HB_CJOB_CALC_SCORE, NULL,
 				prm_get_integer_value
@@ -2301,8 +2358,6 @@ hb_resource_job_change_mode (HB_JOB_ARG * arg)
     }
   return;
 }
-
-
 
 /*
  * resource job queue
@@ -4304,6 +4359,59 @@ hb_get_process_info_string (char **str, bool verbose_yn)
     }
 
   pthread_mutex_unlock (&hb_Resource->lock);
+
+  return;
+}
+
+/*
+ * hb_kill_process - kill a list of processes
+ *   return: none
+ *
+ */
+static void
+hb_kill_process (pid_t * pids, int count)
+{
+  int error;
+  int i = 0, j = 0;
+  int max_retries, wait_time_in_secs;
+  int signum = SIGTERM;
+  bool finished;
+
+  max_retries = 20;
+  wait_time_in_secs = 3;
+  for (i = 0; i < max_retries; i++)
+    {
+      finished = true;
+      for (j = 0; j < count; j++)
+	{
+	  if (pids[j] > 0)
+	    {
+	      error = kill (pids[j], signum);
+	      if (error && errno == ESRCH)
+		{
+		  pids[j] = 0;
+		}
+	      else
+		{
+		  finished = false;
+		}
+	    }
+	}
+      if (finished == true)
+	{
+	  return;
+	}
+      signum = 0;
+      SLEEP_MILISEC (wait_time_in_secs, 0);
+    }
+
+  for (j = 0; j < count; j++)
+    {
+      if (pids[j] > 0)
+	{
+	  kill (pids[j], SIGKILL);
+	}
+    }
 
   return;
 }
