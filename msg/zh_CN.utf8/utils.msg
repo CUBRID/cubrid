@@ -636,16 +636,26 @@ checkdb: 监测数据库一致性.\n\
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
 15 数据库 '%s' 的空间描述 页大小 %s. (日志页大小: %s)\n\n
-16 %5d %8s  %s %s  %s\n
+16 %5d %9s  %s %s  %s\n
 17 无法打开输出文件 '%s'\n
 18 数据库 '%s' 临时卷的空间描述 页大小 %s.\n\n
 19 卷标识  用途  页总数  空闲页  卷名\n\n
 20 卷标识  用途  总大小  空闲空间  卷名\n\n
 21 LOB 空间描述 %s \n\n
+22 -------------------------------------------------------------------------------\n
 30 数据 '%s' 的 汇总空间描述 页大小 %s. (日志页大小: %s)\n\n
 31 设定的    总页数  已用页数  空闲页数  卷数\n
 32 设定的     总大小   已用大小   空闲大小  卷数\n
 33 %10s %s %s %s %10d\n
+34 -------------------------------------------------------------\n
+40 Volid  Purpose   total_pages  free_pages  data_pages index_pages  temp_pages  Vol Name\n\n
+41 Volid  Purpose    total_size   free_size   data_size  index_size   temp_size  Vol Name\n\n
+42 %5d %9s  %s %s %s %s %s  %s\n
+43 ----------------------------------------------------------------------------------------------------\n
+50 Purpose    total_pages  used_pages  free_pages  data_pages index_pages  temp_pages  volume_count\n
+51 Purpose     total_size   used_size   free_size   data_size  index_size   temp_size  volume_count\n
+52 %10s %s %s %s %s %s %s %10d\n
+53 -------------------------------------------------------------------------------------------------\n
 60 \
 spacedb: 显示数据库的使用/空闲空间.\n\
 usage: %s spacedb [选项] 数据库名\n\
@@ -656,7 +666,8 @@ usage: %s spacedb [选项] 数据库名\n\
   -C, --CS-mode                客户端服务端模式执行\n\
       --size-unit={PAGE|M|G|T|H}\n\
                                设置显示单元 (页, M, G, T, 人类可读);默认 : 人类可读\n\
-  -s, --summarize              为每个设定的卷只显示一个总结\n
+  -s, --summarize              为每个设定的卷只显示一个总结\n\
+  -p, --purpose                display the used size of each purpose(data/index/temp) of each volume\n
 
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA

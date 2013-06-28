@@ -326,16 +326,11 @@ extern char *xdisk_get_fullname (THREAD_ENTRY * thread_p, VOLID volid,
 				 char *vol_fullname);
 extern DISK_VOLPURPOSE xdisk_get_purpose (THREAD_ENTRY * thread_p,
 					  VOLID volid);
-extern VOLID xdisk_get_purpose_and_total_free_numpages (THREAD_ENTRY *
-							thread_p, VOLID volid,
-							DISK_VOLPURPOSE *
-							vol_purpose,
-							DKNPAGES *
-							vol_ntotal_pages,
-							DKNPAGES *
-							vol_nfree_pages,
-							DKNPAGES *
-							vol_nmax_pages);
+extern VOLID xdisk_get_purpose_and_space_info (THREAD_ENTRY * thread_p,
+					       VOLID volid,
+					       DISK_VOLPURPOSE * vol_purpose,
+					       VOL_SPACE_INFO * space_info);
+
 extern int xqfile_get_list_file_page (THREAD_ENTRY * thread_p,
 				      QUERY_ID query_id, VOLID volid,
 				      PAGEID pageid, char *page_bufp,

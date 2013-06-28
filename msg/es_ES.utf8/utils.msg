@@ -636,16 +636,26 @@ opciones validas:\n\
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
 15 Descripcion de espacio para la base de datos '%s' con pagesize %s. (log pagesize: %s)\n\n
-16 %5d %8s  %s %s  %s\n
+16 %5d %9s  %s %s  %s\n
 17 No se puede abrir archivo de salida '%s'\n
 18 Descripcion de espacio para volumenes temporarios para la base de datos '%s' con pagesize %s.\n\n
-19 Volid  Purpose  total_pages  free_pages  Vol Name\n\n
-20 Volid  Purpose   total_size   free_size  Vol Name\n\n
+19 Volid  Purpose   total_pages  free_pages  Vol Name\n\n
+20 Volid  Purpose    total_size   free_size  Vol Name\n\n
 21 Descripcion de espacio LOB %s \n\n
+22 -------------------------------------------------------------------------------\n
 30 Descripcion de espacio resumida para la base de datos '%s' con pagesize %s. (log pagesize: %s)\n\n
 31 Purpose    total_pages  used_pages  free_pages  volume_count\n
 32 Purpose     total_size   used_size   free_size  volume_count\n
 33 %10s %s %s %s %10d\n
+34 -------------------------------------------------------------\n
+40 Volid  Purpose   total_pages  free_pages  data_pages index_pages  temp_pages  Vol Name\n\n
+41 Volid  Purpose    total_size   free_size   data_size  index_size   temp_size  Vol Name\n\n
+42 %5d %9s  %s %s %s %s %s  %s\n
+43 ----------------------------------------------------------------------------------------------------\n
+50 Purpose    total_pages  used_pages  free_pages  data_pages index_pages  temp_pages  volume_count\n
+51 Purpose     total_size   used_size   free_size   data_size  index_size   temp_size  volume_count\n
+52 %10s %s %s %s %s %s %s %10d\n
+53 -------------------------------------------------------------------------------------------------\n
 60 \
 spacedb: Mostrar espacio usado/libre de la base de datos.\n\
 uso: %s spacedb [OPTION] database-name\n\
@@ -656,7 +666,8 @@ opciones validas:\n\
   -C, --CS-mode                modo de ejecucion cliente-servidor\n\
       --size-unit={PAGE|M|G|T|H}\n\
                                ajustar la unidad de visualizacion (pagina, mega, giga, tera, legible por humanos); estandar: H\n\
-  -s, --summarize              mostrar solo un resumen para cada proposito de volumen\n
+  -s, --summarize              mostrar solo un resumen para cada proposito de volumen\n\
+  -p, --purpose                display the used size of each purpose(data/index/temp) of each volume\n
 
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA

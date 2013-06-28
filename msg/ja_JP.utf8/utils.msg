@@ -636,16 +636,26 @@ checkdb: データベース一貫性をチェック\n\
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
 15 データベース「%s」(ページサイズ%s)のボリューム情報(ルグページサイズ%s)\n\n
-16 %5d %8s  %s %s  %s\n
+16 %5d %9s  %s %s  %s\n
 17 出力ファイル「%s」が見つかりません。\n
 18 \nデータベース「%s」(ページサイズ%s)の臨時ボリューム。\n\n
 19 番号  使い道       ページ数  フリーページ  ボリューム名\n\n
 20 番号  使い道       トータルサイズ    フリーサイズ  ボリューム名\n\n
 21 LOBスペース %s\n\n
+22 -------------------------------------------------------------------------------\n
 30 データベース「%s」(ページサイズ%s)ボリュームの使い道別の合算(ログページサイズ%s)\n\n
 31 使い道         ページ数  ユーズドページ  フリーページ  ボリューム数\n
 32 使い道         トータルサイズ    ユーズドスペース    フリースペース  ボリューム数\n
 33 %10s %s %s %s %10d\n
+34 -------------------------------------------------------------\n
+40 Volid  Purpose   total_pages  free_pages  data_pages index_pages  temp_pages  Vol Name\n\n
+41 Volid  Purpose    total_size   free_size   data_size  index_size   temp_size  Vol Name\n\n
+42 %5d %9s  %s %s %s %s %s  %s\n
+43 ----------------------------------------------------------------------------------------------------\n
+50 Purpose    total_pages  used_pages  free_pages  data_pages index_pages  temp_pages  volume_count\n
+51 Purpose     total_size   used_size   free_size   data_size  index_size   temp_size  volume_count\n
+52 %10s %s %s %s %s %s %s %10d\n
+53 -------------------------------------------------------------------------------------------------\n
 60 \
 spacedb: データベースのディスクスペース情報を出力\n\
 使い方: %s spacedb [オプション] <データベース名>\n\
@@ -656,7 +666,8 @@ spacedb: データベースのディスクスペース情報を出力\n\
   -C, --CS-mode                クライアントーサーバモードで実行\n\
       --size-unit={PAGE|M|G|T|H}\n\
                                出力の単位(page, mega, giga, tera, human readable)設定; デフォルト: H\n\
-  -s, --summarize              ボリュームの使い道別に合算を出力\n
+  -s, --summarize              ボリュームの使い道別に合算を出力\n\
+  -p, --purpose                display the used size of each purpose(data/index/temp) of each volume\n
 
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA

@@ -143,11 +143,9 @@ extern char *disk_get_remarks (VOLID volid);
 extern DISK_VOLPURPOSE disk_get_purpose (VOLID volid);
 #endif
 extern VOLID
-disk_get_purpose_and_total_free_numpages (VOLID volid,
-					  DISK_VOLPURPOSE * vol_purpose,
-					  DKNPAGES * vol_ntotal_pages,
-					  DKNPAGES * vol_nfree_pages,
-					  DKNPAGES * vol_nmax_pages);
+disk_get_purpose_and_space_info (VOLID volid,
+				 DISK_VOLPURPOSE * vol_purpose,
+				 VOL_SPACE_INFO * space_info);
 extern char *disk_get_fullname (VOLID volid, char *vol_fullname);
 extern LOG_COPY *log_client_get_first_postpone (LOG_LSA * next_lsa);
 extern LOG_COPY *log_client_get_next_postpone (LOG_LSA * next_lsa);

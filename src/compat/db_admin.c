@@ -1789,15 +1789,22 @@ db_purpose_totalpgs_freepgs (int volid,
 			     int *vol_ntotal_pages, int *vol_nfree_pages)
 {
   int retval;
-  int dummy;
+  VOL_SPACE_INFO space_info;
 
   CHECK_CONNECT_ZERO ();
 
   retval =
-    ((int)
-     disk_get_purpose_and_total_free_numpages (volid, vol_purpose,
-					       vol_ntotal_pages,
-					       vol_nfree_pages, &dummy));
+    (int) disk_get_purpose_and_space_info (volid, vol_purpose, &space_info);
+
+  if (vol_ntotal_pages)
+    {
+      *vol_ntotal_pages = space_info.total_pages;
+    }
+  if (vol_nfree_pages)
+    {
+      *vol_nfree_pages = space_info.free_pages;
+    }
+
   return (retval);
 }
 

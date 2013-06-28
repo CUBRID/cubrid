@@ -639,16 +639,26 @@ options valids:\n\
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
 15 Description de l'espace pour la base de données '%s' avec la taille de page de %s. (taille de page du journal: %s)\n\n
-16 %5d %8s  %s %s  %s\n
+16 %5d %9s  %s %s  %s\n
 17 Impossible d'ouvrir le fichier de sortie '%s'\n
 18 Description de l'espace pour les volumes temporaires pour la base de données '%s' avec la taille de page de %s.\n\n
-19 Volid  Purpose  total_pages  free_pages  Vol Name\n\n
-20 Volid  Purpose   total_size   free_size  Vol Name\n\n
+19 Volid  Purpose   total_pages  free_pages  Vol Name\n\n
+20 Volid  Purpose    total_size   free_size  Vol Name\n\n
 21 Description de l'espace LOB %s \n\n
+22 -------------------------------------------------------------------------------\n
 30 Description résumée de l'espace de base de données '%s' avec la taille de page de %s. (taille de page du journal: %s)\n\n
 31 Purpose    total_pages  used_pages  free_pages  volume_count\n
 32 Purpose     total_size   used_size   free_size  volume_count\n
 33 %10s %s %s %s %10d\n
+34 -------------------------------------------------------------\n
+40 Volid  Purpose   total_pages  free_pages  data_pages index_pages  temp_pages  Vol Name\n\n
+41 Volid  Purpose    total_size   free_size   data_size  index_size   temp_size  Vol Name\n\n
+42 %5d %9s  %s %s %s %s %s  %s\n
+43 ----------------------------------------------------------------------------------------------------\n
+50 Purpose    total_pages  used_pages  free_pages  data_pages index_pages  temp_pages  volume_count\n
+51 Purpose     total_size   used_size   free_size   data_size  index_size   temp_size  volume_count\n
+52 %10s %s %s %s %s %s %s %10d\n
+53 -------------------------------------------------------------------------------------------------\n
 60 \
 spacedb: afficha l'espace utilisé/libre de la base de données.\n\
 usage: %s spacedb [OPTION] database-name\n\
@@ -659,7 +669,8 @@ options valids:\n\
   -C, --CS-mode                exécution en mode client-serveur\n\
       --size-unit={PAGE|M|G|T|H}\n\
                                définir l'unité d'affichage (page, mega, giga, tera, human readable); par défaut: H\n\
-  -s, --summarize              afficher seulement un sommaire pour chaque but de volume\n
+  -s, --summarize              afficher seulement un sommaire pour chaque but de volume\n\
+  -p, --purpose                display the used size of each purpose(data/index/temp) of each volume\n
 
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA

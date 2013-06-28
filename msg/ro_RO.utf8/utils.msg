@@ -657,16 +657,26 @@ opţiuni valide:\n\
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
 15 Descrierea spaţiului pentru baza de date '%s' cu pagini de dimensiune %s. (dimensiunea unei pagini de log: %s)\n\n
-16 %5d %8s  %s %s  %s\n
+16 %5d %9s  %s %s  %s\n
 17 Nu s-a putut deschide fişierul de ieşire '%s'\n
 18 Descrierea spaţiului pentru volumele temporare ale bazei de date '%s' cu pagini de dimensiune %s.\n\n
-19 Volid  Purpose  total_pages  free_pages  Vol Name\n\n
-20 Volid  Purpose   total_size   free_size  Vol Name\n\n
+19 Volid  Purpose   total_pages  free_pages  Vol Name\n\n
+20 Volid  Purpose    total_size   free_size  Vol Name\n\n
 21 Descrierea spaţiului pentru LOB %s \n\n
+22 -------------------------------------------------------------------------------\n
 30 Descrierea sumarizată a spaţiului pentru baza de date '%s' cu pagini de dimensiune %s. (dimensiunea unei pagini de log: %s)\n\n
 31 Purpose    total_pages  used_pages  free_pages  volume_count\n
 32 Purpose     total_size   used_size   free_size  volume_count\n
 33 %10s %s %s %s %10d\n
+34 -------------------------------------------------------------\n
+40 Volid  Purpose   total_pages  free_pages  data_pages index_pages  temp_pages  Vol Name\n\n
+41 Volid  Purpose    total_size   free_size   data_size  index_size   temp_size  Vol Name\n\n
+42 %5d %9s  %s %s %s %s %s  %s\n
+43 ----------------------------------------------------------------------------------------------------\n
+50 Purpose    total_pages  used_pages  free_pages  data_pages index_pages  temp_pages  volume_count\n
+51 Purpose     total_size   used_size   free_size   data_size  index_size   temp_size  volume_count\n
+52 %10s %s %s %s %s %s %s %10d\n
+53 -------------------------------------------------------------------------------------------------\n
 60 \
 spacedb: Afişează spaţiul utilizat/liber al bazei de date.\n\
 utilizare: %s spacedb [OPŢIUNI] nume-bază-de-date\n\
@@ -677,7 +687,8 @@ opţiuni valide:\n\
   -C, --CS-mode                mod de execuţie client-server\n\
       --size-unit={PAGE|M|G|T|H}\n\
                                setează unitatea de afişare (pagina, mega, giga, tera, format lizibil); implicit: H\n\
-  -s, --summarize              afişează doar un sumar pentru fiecare scop de volum\n
+  -s, --summarize              afişează doar un sumar pentru fiecare scop de volum\n\
+  -p, --purpose                display the used size of each purpose(data/index/temp) of each volume\n
 
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA

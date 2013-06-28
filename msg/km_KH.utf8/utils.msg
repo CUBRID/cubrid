@@ -636,16 +636,26 @@ usage: %s checkdb [OPTION] ឈ្មោះដែលតាបេស [class_name1 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
 15 ការពិពណ៌នាអំពីទីទំនេរសម្រាប់ដែលតាបេស  '%s' ជាមួយទំហំទំព័រ %s. ( ទំហំទំព័រlog : %s)\n\n
-16 %5d %8s  %s %s  %s\n
+16 %5d %9s  %s %s  %s\n
 17 មិនអាចបើក output file `%s'\n
 18 ការពិពណ៌នាអំពីទីទំនេរសម្រាប់volumesបណ្តោះអាសន្ន សម្រាប់ដែលតាបេស '%s' ជាមួយទំហំទំព័រ %s។ \n\n
 19 បំណងសុពល  total_pages  free_pages  ឈ្មោះVol \n\n
 20 បំណងសុពល   total_size   free_size  ឈ្មោះVol \n\n
 21 ការពិពណ៌នាអំពីទីទំនេរLOB  %s \n\n
+22 -------------------------------------------------------------------------------\n
 30 ការពិពណ៌នាអំពីទីទំនេរដែលត្រូវបានសង្ខេបសម្រាប់ ដែលតាបេស '%s' ជាមួយទំងំទំព័រ %s. ( ទំហំទំព័រlog : %s)\n\n
 31 បំណង total_pages  used_pages  free_pages  volume_count\n
 32 បំណង total_size   used_size   free_size  volume_count\n
 33 %10s %s %s %s %10d\n
+34 -------------------------------------------------------------\n
+40 Volid  Purpose   total_pages  free_pages  data_pages index_pages  temp_pages  Vol Name\n\n
+41 Volid  Purpose    total_size   free_size   data_size  index_size   temp_size  Vol Name\n\n
+42 %5d %9s  %s %s %s %s %s  %s\n
+43 ----------------------------------------------------------------------------------------------------\n
+50 Purpose    total_pages  used_pages  free_pages  data_pages index_pages  temp_pages  volume_count\n
+51 Purpose     total_size   used_size   free_size   data_size  index_size   temp_size  volume_count\n
+52 %10s %s %s %s %s %s %s %10d\n
+53 -------------------------------------------------------------------------------------------------\n
 60 \
 spacedb: បង្ហាញ usage/ទីទំនេរសេរីនៃដែលតាបេស ។ \n\
 usage: %s spacedb [OPTION] ឈ្មោះដែលតាបេស \n\
@@ -656,7 +666,8 @@ usage: %s spacedb [OPTION] ឈ្មោះដែលតាបេស \n\
   -C, --CS-mode                ការប្រតិបត្តិ client-server mode \n\
       --size-unit={PAGE|M|G|T|H}\n\
                                set the display unit (page, mega, giga, tera, human readable); default: H\n\
-  -s, --summarize              បង្ហាញតែសេចក្តីសង្ខេបមួយសម្រាប់បំណង volumeនីមួយៗ \n
+  -s, --summarize              បង្ហាញតែសេចក្តីសង្ខេបមួយសម្រាប់បំណង volumeនីមួយៗ \n\
+  -p, --purpose                display the used size of each purpose(data/index/temp) of each volume\n
 
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA

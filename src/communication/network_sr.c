@@ -611,9 +611,9 @@ net_server_init (void)
   req_p->processing_function = sdk_purpose;
   req_p->name = "NET_SERVER_DISK_PURPOSE";
 
-  req_p = &net_Requests[NET_SERVER_DISK_PURPOSE_TOTALPGS_AND_FREEPGS];
-  req_p->processing_function = sdk_purpose_totalpgs_and_freepgs;
-  req_p->name = "NET_SERVER_DISK_PURPOSE_TOTALPGS_AND_FREEPGS";
+  req_p = &net_Requests[NET_SERVER_DISK_GET_PURPOSE_AND_SPACE_INFO];
+  req_p->processing_function = sdisk_get_purpose_and_space_info;
+  req_p->name = "NET_SERVER_DISK_GET_PURPOSE_AND_SPACE_INFO";
 
   req_p = &net_Requests[NET_SERVER_DISK_VLABEL];
   req_p->processing_function = sdk_vlabel;

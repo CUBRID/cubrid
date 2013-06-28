@@ -636,16 +636,26 @@ gültige Optionen:\n\
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
 15 Speicherbeschreibung für Datenbank '%s' mit Seitengröße %s. (Log-Seitengröße: %s)\n\n
-16 %5d %8s  %s %s  %s\n
+16 %5d %9s  %s %s  %s\n
 17 Ausgangdatei konnte nicht geöffnet werden '%s'\n
 18 Speicherbeschreibung für temporäre Datenträger der Datenbank '%s' mit Seitengröße %s.\n\n
-19 Volid  Zweck  total_pages  free_pages  Vol Name\n\n
-20 Volid  Zweck   total_size   free_size  Vol Name\n\n
+19 Volid  Zweck   total_pages  free_pages  Vol Name\n\n
+20 Volid  Zweck    total_size   free_size  Vol Name\n\n
 21 LOB Speicherbeschreibung %s \n\n
+22 -------------------------------------------------------------------------------\n
 30 Zusammengefasste Speicherbeschreibung für Datenbank '%s' mit Seitengröße %s. (Log-Seitengröße: %s)\n\n
 31 Zweck    total_pages  used_pages  free_pages  volume_count\n
 32 Zweck     total_size   used_size   free_size  volume_count\n
 33 %10s %s %s %s %10d\n
+34 -------------------------------------------------------------\n
+40 Volid  Purpose   total_pages  free_pages  data_pages index_pages  temp_pages  Vol Name\n\n
+41 Volid  Purpose    total_size   free_size   data_size  index_size   temp_size  Vol Name\n\n
+42 %5d %9s  %s %s %s %s %s  %s\n
+43 ----------------------------------------------------------------------------------------------------\n
+50 Purpose    total_pages  used_pages  free_pages  data_pages index_pages  temp_pages  volume_count\n
+51 Purpose     total_size   used_size   free_size   data_size  index_size   temp_size  volume_count\n
+52 %10s %s %s %s %s %s %s %10d\n
+53 -------------------------------------------------------------------------------------------------\n
 60 \
 spacedb: Belegter/freier Speicher der Datenbank anzeigen.\n\
 Anwendung: %s spacedb [OPTION] Datenbanknamen\n\
@@ -656,7 +666,8 @@ gültige Optionen:\n\
   -C, --CS-mode                Client-Server-Ausführung\n\
       --size-unit={PAGE|M|G|T|H}\n\
                                Anzeigeeinheit setzen (Seite, mega, giga, terra, Mensch-lesbar); Standard: H\n\
-  -s, --summarize              nur eine Zusammenfassung für jedes Datenträgerzweck anzeigen\n
+  -s, --summarize              nur eine Zusammenfassung für jedes Datenträgerzweck anzeigen\n\
+  -p, --purpose                display the used size of each purpose(data/index/temp) of each volume\n
 
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA

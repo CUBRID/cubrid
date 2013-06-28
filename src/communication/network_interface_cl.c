@@ -1912,24 +1912,20 @@ disk_get_purpose (VOLID volid)
 #endif
 
 /*
- * disk_get_purpose_and_total_free_numpages -
+ * disk_get_purpose_and_space_info -
  *
  * return:
  *
  *   volid(in):
  *   vol_purpose(in):
- *   vol_ntotal_pages(in):
- *   vol_nfree_pages(in):
- *   vol_nmax_pages(in):
+ *   space_info(out):
  *
  * NOTE:
  */
 VOLID
-disk_get_purpose_and_total_free_numpages (VOLID volid,
-					  DISK_VOLPURPOSE * vol_purpose,
-					  DKNPAGES * vol_ntotal_pages,
-					  DKNPAGES * vol_nfree_pages,
-					  DKNPAGES * vol_nmax_pages)
+disk_get_purpose_and_space_info (VOLID volid,
+				 DISK_VOLPURPOSE * vol_purpose,
+				 VOL_SPACE_INFO * space_info)
 {
 #if defined(CS_MODE)
   int temp;
@@ -1937,7 +1933,7 @@ disk_get_purpose_and_total_free_numpages (VOLID volid,
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
   char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 5) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2 + OR_VOL_SPACE_INFO_SIZE) a_reply;
   char *reply;
 
   request = OR_ALIGNED_BUF_START (a_request);
@@ -1946,16 +1942,14 @@ disk_get_purpose_and_total_free_numpages (VOLID volid,
   (void) or_pack_int (request, (int) volid);
 
   req_error =
-    net_client_request (NET_SERVER_DISK_PURPOSE_TOTALPGS_AND_FREEPGS, request,
+    net_client_request (NET_SERVER_DISK_GET_PURPOSE_AND_SPACE_INFO, request,
 			OR_ALIGNED_BUF_SIZE (a_request), reply,
 			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &temp);
       *vol_purpose = (DB_VOLPURPOSE) temp;
-      ptr = or_unpack_int (ptr, vol_ntotal_pages);
-      ptr = or_unpack_int (ptr, vol_nfree_pages);
-      ptr = or_unpack_int (ptr, vol_nmax_pages);
+      OR_UNPACK_VOL_SPACE_INFO (ptr, space_info);
       ptr = or_unpack_int (ptr, &temp);
       volid = temp;
     }
@@ -1969,10 +1963,8 @@ disk_get_purpose_and_total_free_numpages (VOLID volid,
 
   ENTER_SERVER ();
 
-  volid = xdisk_get_purpose_and_total_free_numpages (NULL, volid, vol_purpose,
-						     vol_ntotal_pages,
-						     vol_nfree_pages,
-						     vol_nmax_pages);
+  volid = xdisk_get_purpose_and_space_info (NULL, volid, vol_purpose,
+					    space_info);
 
   EXIT_SERVER ();
 

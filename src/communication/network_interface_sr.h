@@ -276,7 +276,7 @@ extern void sdk_remarks (THREAD_ENTRY * thread_p, unsigned int rid,
 			 char *request, int reqlen);
 extern void sdk_purpose (THREAD_ENTRY * thread_p, unsigned int rid,
 			 char *request, int reqlen);
-extern void sdk_purpose_totalpgs_and_freepgs (THREAD_ENTRY * thread_p,
+extern void sdisk_get_purpose_and_space_info (THREAD_ENTRY * thread_p,
 					      unsigned int rid, char *request,
 					      int reqlen);
 extern void sdk_vlabel (THREAD_ENTRY * thread_p, unsigned int rid,

@@ -5414,7 +5414,7 @@ sdk_purpose (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 }
 
 /*
- * sdk_purpose_totalpgs_and_freepgs -
+ * sdisk_get_purpose_and_space_info -
  *
  * return:
  *
@@ -5425,36 +5425,30 @@ sdk_purpose (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
  * NOTE:
  */
 void
-sdk_purpose_totalpgs_and_freepgs (THREAD_ENTRY * thread_p,
+sdisk_get_purpose_and_space_info (THREAD_ENTRY * thread_p,
 				  unsigned int rid, char *request, int reqlen)
 {
   int int_volid;
   VOLID volid;
   DISK_VOLPURPOSE vol_purpose;
-  DKNPAGES vol_ntotal_pages;
-  DKNPAGES vol_nfree_pages;
-  DKNPAGES vol_nmax_pages;
+  VOL_SPACE_INFO space_info;
   char *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 5) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2 + OR_VOL_SPACE_INFO_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   (void) or_unpack_int (request, &int_volid);
   volid = (VOLID) int_volid;
 
-  volid = xdisk_get_purpose_and_total_free_numpages (thread_p, volid,
-						     &vol_purpose,
-						     &vol_ntotal_pages,
-						     &vol_nfree_pages,
-						     &vol_nmax_pages);
+  volid = xdisk_get_purpose_and_space_info (thread_p, volid,
+					    &vol_purpose, &space_info);
+
   if (volid == NULL_VOLID)
     {
       return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, vol_purpose);
-  ptr = or_pack_int (ptr, vol_ntotal_pages);
-  ptr = or_pack_int (ptr, vol_nfree_pages);
-  ptr = or_pack_int (ptr, vol_nmax_pages);
+  OR_PACK_VOL_SPACE_INFO (ptr, (&space_info));
   ptr = or_pack_int (ptr, (int) volid);
   css_send_data_to_client (thread_p->conn_entry, rid, reply,
 			   OR_ALIGNED_BUF_SIZE (a_reply));

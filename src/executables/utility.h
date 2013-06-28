@@ -226,17 +226,32 @@ typedef enum
 /* Message id in the set MSGCAT_UTIL_SET_SPACEDB */
 typedef enum
 {
-  SPACEDB_OUTPUT_SUMMARY = 15,
+  SPACEDB_OUTPUT_TITLE = 15,
   SPACEDB_OUTPUT_FORMAT = 16,
   SPACEDB_MSG_BAD_OUTPUT = 17,
-  SPACEDB_OUTPUT_SUMMARY_TMP_VOL = 18,
+  SPACEDB_OUTPUT_TITLE_TMP_VOL = 18,
   SPACEDB_OUTPUT_TITLE_PAGE = 19,
   SPACEDB_OUTPUT_TITLE_SIZE = 20,
-  SPACEDB_OUTPUT_SUMMARY_LOB = 21,
+  SPACEDB_OUTPUT_TITLE_LOB = 21,
+  SPACEDB_OUTPUT_UNDERLINE = 22,
+
   SPACEDB_OUTPUT_SUMMARIZED_TITLE = 30,
   SPACEDB_OUTPUT_SUMMARIZED_TITLE_PAGE = 31,
   SPACEDB_OUTPUT_SUMMARIZED_TITLE_SIZE = 32,
   SPACEDB_OUTPUT_SUMMARIZED_FORMAT = 33,
+  SPACEDB_OUTPUT_SUMMARIZED_UNDERLINE = 34,
+
+  SPACEDB_OUTPUT_PURPOSE_TITLE = SPACEDB_OUTPUT_TITLE,
+  SPACEDB_OUTPUT_PURPOSE_TITLE_PAGE = 40,
+  SPACEDB_OUTPUT_PURPOSE_TITLE_SIZE = 41,
+  SPACEDB_OUTPUT_PURPOSE_FORMAT = 42,
+  SPACEDB_OUTPUT_PURPOSE_UNDERLINE = 43,
+
+  SPACEDB_OUTPUT_SUMMARIZED_PURPOSE_TITLE = SPACEDB_OUTPUT_SUMMARIZED_TITLE,
+  SPACEDB_OUTPUT_SUMMARIZED_PURPOSE_TITLE_PAGE = 50,
+  SPACEDB_OUTPUT_SUMMARIZED_PURPOSE_TITLE_SIZE = 51,
+  SPACEDB_OUTPUT_SUMMARIZED_PURPOSE_FORMAT = 52,
+  SPACEDB_OUTPUT_SUMMARIZED_PURPOSE_UNDERLINE = 53,
   SPACEDB_MSG_USAGE = 60
 } MSGCAT_SPACEDB_MSG;
 
@@ -959,6 +974,8 @@ typedef struct _ha_config
 #define SPACE_SIZE_UNIT_L                       "size-unit"
 #define SPACE_SUMMARIZE_S                       's'
 #define SPACE_SUMMARIZE_L                       "summarize"
+#define SPACE_PURPOSE_S                         'p'
+#define SPACE_PURPOSE_L                         "purpose"
 
 /* lockdb option list */
 #define LOCK_OUTPUT_FILE_S                      'o'
@@ -1342,7 +1359,7 @@ extern int util_get_num_of_ha_nodes (const char *node_list);
 extern void util_redirect_stdout_to_null (void);
 #endif /* !defined(WINDOWS) */
 extern int util_byte_to_size_string (char *buf, size_t len, UINT64 size_num);
-extern int util_size_string_to_byte (UINT64 *size_num, char *size_str);
+extern int util_size_string_to_byte (UINT64 * size_num, char *size_str);
 extern int util_msec_to_time_string (char *buf, size_t len, int msec_num);
 extern int util_time_string_to_msec (int *msec_num, char *time_str);
 extern void util_print_deprecated (const char *option);

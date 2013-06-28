@@ -10720,9 +10720,7 @@ log_recreate (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
   const char *vlabel;
   INT64 db_creation;
   DISK_VOLPURPOSE vol_purpose;
-  int vol_total_pages;
-  int vol_free_pages;
-  int vol_max_pages;
+  VOL_SPACE_INFO space_info;
   VOLID volid;
   int vdes;
   LOG_LSA init_nontemp_lsa;
@@ -10749,12 +10747,9 @@ log_recreate (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 
       /* Find the current pages of the volume and its descriptor */
 
-      if ((xdisk_get_purpose_and_total_free_numpages (thread_p, volid,
-						      &vol_purpose,
-						      &vol_total_pages,
-						      &vol_free_pages,
-						      &vol_max_pages) !=
-	   volid))
+      if (xdisk_get_purpose_and_space_info (thread_p, volid,
+					    &vol_purpose,
+					    &space_info) != volid)
 	{
 	  continue;
 	}
@@ -10777,7 +10772,8 @@ log_recreate (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
       if (vol_purpose != DISK_PERMVOL_TEMP_PURPOSE
 	  && vol_purpose != DISK_TEMPVOL_TEMP_PURPOSE)
 	{
-	  (void) fileio_reset_volume (thread_p, vdes, vlabel, vol_total_pages,
+	  (void) fileio_reset_volume (thread_p, vdes, vlabel,
+				      space_info.total_pages,
 				      &init_nontemp_lsa);
 	}
 

@@ -44,6 +44,58 @@
 
 #define DISK_VOLHEADER_PAGE      0	/* Page of the volume header */
 
+#define OR_VOL_SPACE_INFO_SIZE      (OR_INT_SIZE * 6)
+
+#define OR_PACK_VOL_SPACE_INFO(PTR, INFO)               \
+  do {                                                   \
+    if (INFO) {                                          \
+      PTR = or_pack_int (PTR, ((INFO)->total_pages));    \
+      PTR = or_pack_int (PTR, ((INFO)->free_pages));     \
+      PTR = or_pack_int (PTR, ((INFO)->max_pages));      \
+      PTR = or_pack_int (PTR, ((INFO)->used_data_npages));\
+      PTR = or_pack_int (PTR, ((INFO)->used_index_npages));\
+      PTR = or_pack_int (PTR, ((INFO)->used_temp_npages));\
+    }                                                    \
+    else {                                               \
+      PTR = or_pack_int (PTR, -1);                       \
+      PTR = or_pack_int (PTR, -1);                       \
+      PTR = or_pack_int (PTR, -1);                       \
+      PTR = or_pack_int (PTR, -1);                       \
+      PTR = or_pack_int (PTR, -1);                       \
+      PTR = or_pack_int (PTR, -1);                       \
+    }                                                    \
+  } while (0)
+
+#define OR_UNPACK_VOL_SPACE_INFO(PTR, INFO)             \
+  do {                                                   \
+    if (INFO) {                                          \
+      PTR = or_unpack_int (PTR, &((INFO)->total_pages)); \
+      PTR = or_unpack_int (PTR, &((INFO)->free_pages));  \
+      PTR = or_unpack_int (PTR, &((INFO)->max_pages));   \
+      PTR = or_unpack_int (PTR, &((INFO)->used_data_npages));\
+      PTR = or_unpack_int (PTR, &((INFO)->used_index_npages));\
+      PTR = or_unpack_int (PTR, &((INFO)->used_temp_npages));\
+    }                                   \
+    else {                              \
+      int dummy;                        \
+      PTR = or_unpack_int (PTR, &dummy);\
+      PTR = or_unpack_int (PTR, &dummy);\
+      PTR = or_unpack_int (PTR, &dummy);\
+      PTR = or_unpack_int (PTR, &dummy);\
+      PTR = or_unpack_int (PTR, &dummy);\
+      PTR = or_unpack_int (PTR, &dummy);\
+    }\
+  } while (0)
+
+
+typedef enum
+{
+  DISK_PAGE_DATA_TYPE = DISK_PERMVOL_DATA_PURPOSE,
+  DISK_PAGE_INDEX_TYPE = DISK_PERMVOL_INDEX_PURPOSE,
+  DISK_PAGE_TEMP_TYPE = DISK_PERMVOL_TEMP_PURPOSE,
+  DISK_PAGE_UNKNOWN_TYPE = DISK_UNKNOWN_PURPOSE
+} DISK_PAGE_TYPE;
+
 typedef enum
 {
   DISK_DONT_FLUSH,
@@ -96,6 +148,8 @@ struct disk_var_header
   INT32 max_npages;		/* max page count of this volume
 				 * this is not equal to the total_pages,
 				 * if this volume is auto extended */
+  INT32 used_data_npages;	/* allocated pages for data purpose */
+  INT32 used_index_npages;	/* allocated pages for index purpose */
   INT32 dummy;			/* Dummy field for 8byte align */
   LOG_LSA chkpt_lsa;		/* Lowest log sequence address to start the
 				   recovery process of this volume */
@@ -112,6 +166,21 @@ struct disk_var_header
 				   The length is DB_PAGESIZE - offset of
 				   var_fields */
 
+};
+
+typedef struct vol_space_info VOL_SPACE_INFO;
+struct vol_space_info
+{
+  INT32 max_pages;		/* max page count of volume
+				 * this is not equal to the total_pages,
+				 * if this volume is auto extended */
+  INT32 total_pages;		/* Total number of pages (no more that 4G) If
+				 * page size is 4K, this means about 16
+				 * trillion bytes on the volume. */
+  INT32 free_pages;		/* Number of free pages */
+  INT32 used_data_npages;	/* allocated pages for data purpose */
+  INT32 used_index_npages;	/* allocated pages for index purpose */
+  INT32 used_temp_npages;	/* allocated pages for temp purpose */
 };
 
 extern int disk_goodvol_decache (THREAD_ENTRY * thread_p);
@@ -145,11 +214,13 @@ extern INT32 disk_alloc_sector (THREAD_ENTRY * thread_p, INT16 volid,
 extern INT32 disk_alloc_special_sector (void);
 extern INT32 disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid,
 			      INT32 sectid, INT32 npages, INT32 near_pageid,
-			      bool search_wrap_around);
+			      bool search_wrap_around,
+			      DISK_PAGE_TYPE alloc_page_type);
 extern int disk_dealloc_sector (THREAD_ENTRY * thread_p, INT16 volid,
 				INT32 sectid, INT32 nsects);
 extern int disk_dealloc_page (THREAD_ENTRY * thread_p, INT16 volid,
-			      INT32 pageid, INT32 npages);
+			      INT32 pageid, INT32 npages,
+			      DISK_PAGE_TYPE page_type);
 extern DISK_ISVALID disk_isvalid_page (THREAD_ENTRY * thread_p, INT16 volid,
 				       INT32 pageid);
 
