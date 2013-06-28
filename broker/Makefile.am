@@ -207,7 +207,8 @@ libbrokeradmin_la_SOURCES = \
 	$(BROKER_DIR)/broker_filename.c \
 	$(BROKER_DIR)/broker_acl.c \
 	$(BROKER_DIR)/shard_metadata.c \
-	$(BROKER_DIR)/shard_shm.c 
+	$(BROKER_DIR)/shard_shm.c \
+	$(BROKER_DIR)/shard_key_func.c 
 libbrokeradmin_la_CPPFLAGS = $(AM_CPPFLAGS) -D_UC_ADMIN_SO_ -DDIAG_DEVEL
 libbrokeradmin_la_LDFLAGS = -version-number @LT_VERSION@
 libbrokeradmin_la_LIBADD = @SYS_LIBS@ @CS_LIB@
