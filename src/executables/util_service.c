@@ -573,7 +573,7 @@ main (int argc, char *argv[])
 
   process_window_service = true;
 
-  if ((util_type == SERVICE || util_type == BROKER || util_type == MANAGER ||)
+  if ((util_type == SERVICE || util_type == BROKER || util_type == MANAGER)
       && (argc > 3) &&
       strcmp ((char *) argv[3], "--for-windows-service") == 0)
     {
