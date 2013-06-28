@@ -111,6 +111,7 @@
 #define XASL_ORDBYNUM_FLAG_SCAN_CONTINUE    0x01
 #define XASL_ORDBYNUM_FLAG_SCAN_CHECK       0x02
 #define XASL_ORDBYNUM_FLAG_SCAN_STOP        0x04
+#define XASL_ORDBYNUM_FLAG_CAST             0x08
 
 #define XASL_INSTNUM_FLAG_SCAN_CONTINUE     0x01
 #define XASL_INSTNUM_FLAG_SCAN_CHECK        0x02
@@ -432,7 +433,7 @@ struct update_proc_node
   int no_logging;		/* no logging */
   int release_lock;		/* release lock */
   int no_orderby_keys;		/* no of keys for ORDER_BY */
-  struct timeval elapsed_time;  /* for query trace */
+  struct timeval elapsed_time;	/* for query trace */
 };
 
 /*on duplicate key update info structure */
@@ -467,7 +468,7 @@ struct insert_proc_node
 				 * clause. */
   int pruning_type;		/* DB_CLASS_PARTITION_TYPE indicating the way
 				 * in which pruning should be performed */
-  struct timeval elapsed_time;  /* for query trace */
+  struct timeval elapsed_time;	/* for query trace */
 };
 
 typedef struct delete_proc_node DELETE_PROC_NODE;
@@ -478,7 +479,7 @@ struct delete_proc_node
   int wait_msecs;		/* lock timeout in milliseconds */
   int no_logging;		/* no logging */
   int release_lock;		/* release lock */
-  struct timeval elapsed_time;  /* for query trace */
+  struct timeval elapsed_time;	/* for query trace */
 };
 
 typedef struct connectby_proc_node CONNECTBY_PROC_NODE;
@@ -980,6 +981,7 @@ extern void qexec_replace_prior_regu_vars_prior_expr (THREAD_ENTRY * thread_p,
 						      connect_by_ptr);
 #if defined (SERVER_MODE)
 extern json_t *qdump_print_stats_json (XASL_NODE * xasl_p);
-extern void qdump_print_stats_text (FILE * fp, XASL_NODE * xasl_p, int indent);
+extern void qdump_print_stats_text (FILE * fp, XASL_NODE * xasl_p,
+				    int indent);
 #endif /* SERVER_MODE */
 #endif /* _QUERY_EXECUTOR_H_ */

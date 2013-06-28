@@ -48,6 +48,7 @@
 #include "replication.h"
 #include "xserver_interface.h"
 #include "regex38a.h"
+#include "statistics_sr.h"
 
 #if defined(SERVER_MODE)
 #include "connection_error.h"
@@ -278,6 +279,8 @@ struct ordbynum_info
   int ordbynum_pos_cnt;
   int *ordbynum_pos;
   int reserved[2];
+  TP_DOMAIN **desired_domain;
+  TP_DOMAIN *reserved_domain[2];
 };
 
 /* parent pos info stack */
@@ -3093,14 +3096,48 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes,
 							     ordby_info->
 							     ordbynum_pos[i],
 							     tvalhp);
-		      (void) qdata_copy_db_value_to_tuple_value (ordby_info->
-								 ordbynum_val,
-								 tvalhp,
-								 &tval_size);
+		      if (ordby_info->desired_domain[i])
+			{
+			  DB_VALUE t;
+			  TP_DOMAIN_STATUS s;
+
+			  s = tp_value_cast (ordby_info->ordbynum_val, &t,
+					     ordby_info->desired_domain[i],
+					     false);
+			  if (s != DOMAIN_COMPATIBLE)
+			    {
+			      const char *n1, *n2;
+
+			      n1 = pr_type_name (DB_VALUE_TYPE
+						 (ordby_info->ordbynum_val));
+			      n2 = pr_type_name (TP_DOMAIN_TYPE
+						 (ordby_info->
+						  desired_domain[i]));
+			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				      ER_TP_CANT_COERCE, 2, n1, n2);
+			      error = ER_TP_CANT_COERCE;
+			    }
+
+			  (void) qdata_copy_db_value_to_tuple_value (&t,
+								     tvalhp,
+								     &tval_size);
+			  pr_clear_value (&t);
+			}
+		      else
+			{
+			  (void)
+			    qdata_copy_db_value_to_tuple_value (ordby_info->
+								ordbynum_val,
+								tvalhp,
+								&tval_size);
+			}
 		    }
-		  error =
-		    qfile_add_tuple_to_list (thread_p, info->output_file,
-					     data);
+		  if (error == NO_ERROR)
+		    {
+		      error =
+			qfile_add_tuple_to_list (thread_p, info->output_file,
+						 data);
+		    }
 		}
 	      else
 		{
@@ -3373,6 +3410,7 @@ qexec_orderby_distinct_by_sorting (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   REGU_VARIABLE_LIST regu_list;
   SORT_PUT_FUNC *put_fn;
   int limit;
+  int error = NO_ERROR;
 #if !defined(NDEBUG)
   int track_id;
 #endif
@@ -3410,206 +3448,206 @@ qexec_orderby_distinct_by_sorting (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       qexec_resolve_domains_on_sort_list (order_list, outptr_list->valptrp);
     }
 
-  if (order_list != NULL || option == Q_DISTINCT)
+  if (order_list == NULL && option != Q_DISTINCT)
     {
+      return NO_ERROR;
+    }
 
-      /* sort the result list file */
-      /* form the linked list of sort type items */
-      if (option != Q_DISTINCT)
+  memset (&ordby_info, 0, sizeof (ORDBYNUM_INFO));
+
+  /* sort the result list file */
+  /* form the linked list of sort type items */
+  if (option != Q_DISTINCT)
+    {
+      orderby_list = order_list;
+      orderby_alloc = false;
+    }
+  else
+    {
+      /* allocate space for  sort list */
+      orderby_list = qfile_allocate_sort_list (list_id->type_list.type_cnt);
+      if (orderby_list == NULL)
 	{
-	  orderby_list = order_list;
-	  orderby_alloc = false;
+	  error = ER_FAILED;
+	  GOTO_EXIT_ON_ERROR;
 	}
-      else
+
+      /* form an order_by list including all list file positions */
+      orderby_alloc = true;
+      for (k = 0, order_ptr = orderby_list; k < list_id->type_list.type_cnt;
+	   k++, order_ptr = order_ptr->next)
 	{
-	  /* allocate space for  sort list */
-	  orderby_list =
-	    qfile_allocate_sort_list (list_id->type_list.type_cnt);
-	  if (orderby_list == NULL)
+	  /* sort with descending order if we have the use_desc hint and
+	   * no order by
+	   */
+	  if (order_list == NULL && xasl->spec_list
+	      && xasl->spec_list->indexptr
+	      && xasl->spec_list->indexptr->use_desc_index)
 	    {
+	      order_ptr->s_order = S_DESC;
+	      order_ptr->s_nulls = S_NULLS_LAST;
+	    }
+	  else
+	    {
+	      order_ptr->s_order = S_ASC;
+	      order_ptr->s_nulls = S_NULLS_FIRST;
+	    }
+	  order_ptr->pos_descr.dom = list_id->type_list.domp[k];
+	  order_ptr->pos_descr.pos_no = k;
+	}			/* for */
+
+      /* put the original order_by specifications, if any,
+       * to the beginning of the order_by list.
+       */
+      for (orderby_ptr = order_list, order_ptr = orderby_list;
+	   orderby_ptr != NULL;
+	   orderby_ptr = orderby_ptr->next, order_ptr = order_ptr->next)
+	{
+	  /* save original content */
+	  temp_ord.s_order = order_ptr->s_order;
+	  temp_ord.s_nulls = order_ptr->s_nulls;
+	  temp_ord.pos_descr.dom = order_ptr->pos_descr.dom;
+	  temp_ord.pos_descr.pos_no = order_ptr->pos_descr.pos_no;
+
+	  /* put original order_by node */
+	  order_ptr->s_order = orderby_ptr->s_order;
+	  order_ptr->s_nulls = orderby_ptr->s_nulls;
+	  order_ptr->pos_descr.dom = orderby_ptr->pos_descr.dom;
+	  order_ptr->pos_descr.pos_no = orderby_ptr->pos_descr.pos_no;
+
+	  /* put temporary node into old order_by node position */
+	  for (order_ptr2 = order_ptr->next; order_ptr2 != NULL;
+	       order_ptr2 = order_ptr2->next)
+	    {
+	      if (orderby_ptr->pos_descr.pos_no ==
+		  order_ptr2->pos_descr.pos_no)
+		{
+		  order_ptr2->s_order = temp_ord.s_order;
+		  order_ptr2->s_nulls = temp_ord.s_nulls;
+		  order_ptr2->pos_descr.dom = temp_ord.pos_descr.dom;
+		  order_ptr2->pos_descr.pos_no = temp_ord.pos_descr.pos_no;
+		  break;	/* immediately exit inner loop */
+		}
+	    }
+	}
+
+    }				/* if-else */
+
+  /* sort the list file */
+  ordby_info.ordbynum_pos_cnt = 0;
+  ordby_info.ordbynum_pos = ordby_info.reserved;
+  ordby_info.desired_domain = ordby_info.reserved_domain;
+  if (outptr_list)
+    {
+      for (n = 0, regu_list = outptr_list->valptrp; regu_list;
+	   regu_list = regu_list->next)
+	{
+	  if (regu_list->value.type == TYPE_ORDERBY_NUM)
+	    {
+	      n++;
+	    }
+	}
+      ordby_info.ordbynum_pos_cnt = n;
+      if (n > 2)
+	{
+	  ordby_info.ordbynum_pos =
+	    (int *) db_private_alloc (thread_p, sizeof (int) * n);
+	  if (ordby_info.ordbynum_pos == NULL)
+	    {
+	      error = ER_FAILED;
 	      GOTO_EXIT_ON_ERROR;
 	    }
 
-	  /* form an order_by list including all list file positions */
-	  orderby_alloc = true;
-	  for (k = 0, order_ptr = orderby_list;
-	       k < list_id->type_list.type_cnt;
-	       k++, order_ptr = order_ptr->next)
+	  ordby_info.desired_domain =
+	    (TP_DOMAIN **) db_private_alloc (thread_p,
+					     sizeof (TP_DOMAIN *) * n);
+	  if (ordby_info.desired_domain == NULL)
 	    {
-	      /* sort with descending order if we have the use_desc hint and
-	       * no order by
-	       */
-	      if (order_list == NULL && xasl->spec_list &&
-		  xasl->spec_list->indexptr &&
-		  xasl->spec_list->indexptr->use_desc_index)
+	      error = ER_FAILED;
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	}
+
+      for (n = 0, i = 0, regu_list = outptr_list->valptrp; regu_list;
+	   regu_list = regu_list->next, i++)
+	{
+	  if (regu_list->value.type == TYPE_ORDERBY_NUM)
+	    {
+	      if (REGU_VARIABLE_IS_FLAGED
+		  (&regu_list->value, REGU_VARIABLE_NEED_CAST))
 		{
-		  order_ptr->s_order = S_DESC;
-		  order_ptr->s_nulls = S_NULLS_LAST;
+		  ordby_info.desired_domain[n] = regu_list->value.domain;
 		}
 	      else
 		{
-		  order_ptr->s_order = S_ASC;
-		  order_ptr->s_nulls = S_NULLS_FIRST;
+		  ordby_info.desired_domain[n] = NULL;
 		}
-	      order_ptr->pos_descr.dom = list_id->type_list.domp[k];
-	      order_ptr->pos_descr.pos_no = k;
-	    }			/* for */
-
-	  /* put the original order_by specifications, if any,
-	   * to the beginning of the order_by list.
-	   */
-	  for (orderby_ptr = order_list, order_ptr = orderby_list;
-	       orderby_ptr != NULL;
-	       orderby_ptr = orderby_ptr->next, order_ptr = order_ptr->next)
-	    {
-	      /* save original content */
-	      temp_ord.s_order = order_ptr->s_order;
-	      temp_ord.s_nulls = order_ptr->s_nulls;
-	      temp_ord.pos_descr.dom = order_ptr->pos_descr.dom;
-	      temp_ord.pos_descr.pos_no = order_ptr->pos_descr.pos_no;
-
-	      /* put original order_by node */
-	      order_ptr->s_order = orderby_ptr->s_order;
-	      order_ptr->s_nulls = orderby_ptr->s_nulls;
-	      order_ptr->pos_descr.dom = orderby_ptr->pos_descr.dom;
-	      order_ptr->pos_descr.pos_no = orderby_ptr->pos_descr.pos_no;
-
-	      /* put temporary node into old order_by node position */
-	      for (order_ptr2 = order_ptr->next; order_ptr2 != NULL;
-		   order_ptr2 = order_ptr2->next)
-		{
-		  if (orderby_ptr->pos_descr.pos_no ==
-		      order_ptr2->pos_descr.pos_no)
-		    {
-		      order_ptr2->s_order = temp_ord.s_order;
-		      order_ptr2->s_nulls = temp_ord.s_nulls;
-		      order_ptr2->pos_descr.dom = temp_ord.pos_descr.dom;
-		      order_ptr2->pos_descr.pos_no =
-			temp_ord.pos_descr.pos_no;
-		      break;	/* immediately exit inner loop */
-		    };
-		}
-	    }
-
-	}			/* if-else */
-
-      /* sort the list file */
-      ordby_info.ordbynum_pos_cnt = 0;
-      ordby_info.ordbynum_pos = ordby_info.reserved;
-      if (outptr_list)
-	{
-	  for (n = 0, regu_list = outptr_list->valptrp; regu_list;
-	       regu_list = regu_list->next)
-	    {
-	      if (regu_list->value.type == TYPE_ORDERBY_NUM)
-		{
-		  n++;
-		}
-	    }
-	  ordby_info.ordbynum_pos_cnt = n;
-	  if (n > 2)
-	    {
-	      ordby_info.ordbynum_pos = (int *) db_private_alloc (thread_p,
-								  sizeof (int)
-								  * n);
-	      if (ordby_info.ordbynum_pos == NULL)
-		{
-		  if (orderby_alloc == true)
-		    {
-		      qfile_free_sort_list (orderby_list);
-		    }
-		  GOTO_EXIT_ON_ERROR;
-		}
-	    }
-
-	  for (n = 0, i = 0, regu_list = outptr_list->valptrp; regu_list;
-	       regu_list = regu_list->next, i++)
-	    {
-	      if (regu_list->value.type == TYPE_ORDERBY_NUM)
-		{
-		  ordby_info.ordbynum_pos[n++] = i;
-		}
+	      ordby_info.ordbynum_pos[n++] = i;
 	    }
 	}
-
-      ordby_info.xasl_state = xasl_state;
-      ordby_info.ordbynum_pred = ordbynum_pred;
-      ordby_info.ordbynum_val = ordbynum_val;
-      ordby_info.ordbynum_flag = ordbynum_flag;
-      put_fn = (ordbynum_val) ? &qexec_ordby_put_next : NULL;
-
-      if (ordbynum_val == NULL
-	  && orderby_list
-	  && qfile_is_sort_list_covered (list_id->sort_list,
-					 orderby_list) == true
-	  && option != Q_DISTINCT)
-	{
-	  /* no need to sort here
-	   */
-	}
-      else
-	{
-	  ls_flag = ((option == Q_DISTINCT) ? QFILE_FLAG_DISTINCT
-		     : QFILE_FLAG_ALL);
-	  /* If this is the top most XASL, then the list file to be open will be
-	     the last result file.
-	     (Note that 'order by' is the last processing.) */
-	  if (XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL)
-	      && XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
-	    {
-	      QFILE_SET_FLAG (ls_flag, QFILE_FLAG_RESULT_FILE);
-	    }
-
-	  limit = NO_SORT_LIMIT;
-	  if (qexec_fill_sort_limit (thread_p, xasl, xasl_state, &limit)
-	      != NO_ERROR)
-	    {
-	      if (orderby_alloc == true)
-		{
-		  qfile_free_sort_list (orderby_list);
-		}
-	      GOTO_EXIT_ON_ERROR;
-	    }
-
-	  list_id = qfile_sort_list_with_func (thread_p, list_id,
-					       orderby_list, option, ls_flag,
-					       NULL, put_fn, NULL,
-					       &ordby_info, limit, true);
-	  if (list_id == NULL)
-	    {
-	      if (orderby_alloc == true)
-		{
-		  qfile_free_sort_list (orderby_list);
-		}
-	      GOTO_EXIT_ON_ERROR;
-	    }
-	}
-
-      if (ordby_info.ordbynum_pos != ordby_info.reserved)
-	{
-	  db_private_free_and_init (thread_p, ordby_info.ordbynum_pos);
-	}
-
-      /* free temporarily allocated areas */
-      if (orderby_alloc == true)
-	{
-	  qfile_free_sort_list (orderby_list);
-	}
-    }				/* if */
-
-  /* duplicates elimination has already been done at qfile_sort_list_with_func()
-   */
-
-#if !defined(NDEBUG)
-  if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
-    {
-      assert_release (false);
     }
-#endif
 
-  return NO_ERROR;
+  ordby_info.xasl_state = xasl_state;
+  ordby_info.ordbynum_pred = ordbynum_pred;
+  ordby_info.ordbynum_val = ordbynum_val;
+  ordby_info.ordbynum_flag = ordbynum_flag;
+  put_fn = (ordbynum_val) ? &qexec_ordby_put_next : NULL;
+
+  if (ordbynum_val == NULL && orderby_list
+      && qfile_is_sort_list_covered (list_id->sort_list, orderby_list) == true
+      && option != Q_DISTINCT)
+    {
+      /* no need to sort here */
+    }
+  else
+    {
+      ls_flag = ((option == Q_DISTINCT) ? QFILE_FLAG_DISTINCT
+		 : QFILE_FLAG_ALL);
+      /* If this is the top most XASL, then the list file to be open will be
+         the last result file.
+         (Note that 'order by' is the last processing.) */
+      if (XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL)
+	  && XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
+	{
+	  QFILE_SET_FLAG (ls_flag, QFILE_FLAG_RESULT_FILE);
+	}
+
+      limit = NO_SORT_LIMIT;
+      if (qexec_fill_sort_limit (thread_p, xasl, xasl_state, &limit)
+	  != NO_ERROR)
+	{
+	  error = ER_FAILED;
+	  GOTO_EXIT_ON_ERROR;
+	}
+
+      list_id = qfile_sort_list_with_func (thread_p, list_id, orderby_list,
+					   option, ls_flag, NULL, put_fn,
+					   NULL, &ordby_info, limit, true);
+      if (list_id == NULL)
+	{
+	  error = ER_FAILED;
+	  GOTO_EXIT_ON_ERROR;
+	}
+    }
 
 exit_on_error:
+  if (ordby_info.ordbynum_pos
+      && ordby_info.ordbynum_pos != ordby_info.reserved)
+    {
+      db_private_free_and_init (thread_p, ordby_info.ordbynum_pos);
+    }
+
+  if (ordby_info.desired_domain
+      && ordby_info.desired_domain != ordby_info.reserved_domain)
+    {
+      db_private_free_and_init (thread_p, ordby_info.desired_domain);
+    }
+
+  /* free temporarily allocated areas */
+  if (orderby_alloc == true)
+    {
+      qfile_free_sort_list (orderby_list);
+    }
 
 #if !defined(NDEBUG)
   if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
@@ -3618,7 +3656,7 @@ exit_on_error:
     }
 #endif
 
-  return ER_FAILED;
+  return error;
 }
 
 /*
@@ -15245,7 +15283,6 @@ qexec_remove_my_transaction_id (THREAD_ENTRY * thread_p,
 	}
 
       ent->last_ta_idx--;	/* shrink */
-      assert (ent->last_ta_idx >= 0);
     }
 
   return NO_ERROR;
@@ -15389,7 +15426,7 @@ qexec_RT_xasl_cache_ent (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent)
 #endif
 
       /* retrieve the class information */
-      cls_info_p = catalog_get_class_info (thread_p, oidp);
+      cls_info_p = catalog_get_class_info (thread_p, (OID *) oidp);
       assert (cls_info_p != NULL);
 
       if (cls_info_p && !HFID_IS_NULL (&cls_info_p->hfid))
@@ -15416,7 +15453,8 @@ qexec_RT_xasl_cache_ent (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent)
 	       */
 	      cls_info_p->time_stamp = stats_get_time_stamp ();
 
-	      ret = catalog_add_class_info (thread_p, oidp, cls_info_p);
+	      ret = catalog_add_class_info (thread_p, (OID *) oidp,
+					    cls_info_p);
 	    }
 	}
 
@@ -25311,7 +25349,7 @@ qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   estimated_size *= ubound;
 
   if (estimated_size >
-      prm_get_integer_value (PRM_ID_SR_NBUFFERS) * IO_PAGESIZE)
+      (UINT64) prm_get_integer_value (PRM_ID_SR_NBUFFERS) * IO_PAGESIZE)
     {
       /* Do not use more than the sort buffer size. Using the entire sort
        * buffer is possible because this is the only sort operation which is
@@ -25613,8 +25651,34 @@ qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	    }
 	  if (varp->value.type == TYPE_ORDERBY_NUM)
 	    {
-	      pr_clone_value (ordby_info.ordbynum_val,
-			      &tuple[tpl_descr->f_cnt]);
+	      if (REGU_VARIABLE_IS_FLAGED
+		  (&varp->value, REGU_VARIABLE_NEED_CAST))
+		{
+		  DB_VALUE t;
+		  TP_DOMAIN_STATUS s;
+
+		  s = tp_value_cast (ordby_info.ordbynum_val, &t,
+				     varp->value.domain, false);
+		  if (s != DOMAIN_COMPATIBLE)
+		    {
+		      const char *n1, *n2;
+
+		      n1 = pr_type_name (DB_VALUE_TYPE
+					 (ordby_info.ordbynum_val));
+		      n2 = pr_type_name (TP_DOMAIN_TYPE (varp->value.domain));
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_TP_CANT_COERCE, 2, n1, n2);
+		      error = ER_TP_CANT_COERCE;
+		      goto cleanup;
+		    }
+		  pr_clone_value (&t, &tuple[tpl_descr->f_cnt]);
+		  pr_clear_value (&t);
+		}
+	      else
+		{
+		  pr_clone_value (ordby_info.ordbynum_val,
+				  &tuple[tpl_descr->f_cnt]);
+		}
 	    }
 	  tpl_descr->f_valp[tpl_descr->f_cnt] = &tuple[tpl_descr->f_cnt];
 	  value_size =
