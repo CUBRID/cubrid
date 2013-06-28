@@ -7405,7 +7405,7 @@ dump_console_conversion (TEXT_CONVERSION * tc)
 {
   unsigned char utf8_seq[INTL_UTF8_MAX_CHAR_SIZE + 1];
   unsigned char cnv_utf8_buf[2 * 3 + 1];
-  unsigned char *cnv_utf8;
+  char *cnv_utf8;
   CONV_CP_TO_BYTES *c_item;
   unsigned int utf8_cp, con_cp;
   unsigned char *next;

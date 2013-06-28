@@ -1948,7 +1948,7 @@ exit_on_error:
  *   xasl_id(in)        : XASL file id that was a result of prepare_query()
  *   query_idp(out)     : query id to be used for getting results
  *   dbval_count(in)      : number of host variables
- *   data(in) : array of host variables (query input parameters)
+ *   dbval_p(in) : array of host variables (query input parameters)
  *   flagp(in)  : flag to determine if this is an asynchronous query
  *   clt_cache_time(in) :
  *   srv_cache_time(in) :
@@ -1964,9 +1964,8 @@ exit_on_error:
  */
 QFILE_LIST_ID *
 xqmgr_execute_query (THREAD_ENTRY * thread_p,
-		     const XASL_ID * xasl_id_p,
-		     QUERY_ID * query_id_p, int dbval_count,
-		     const char *data,
+		     const XASL_ID * xasl_id_p, QUERY_ID * query_id_p,
+		     int dbval_count, void *dbval_p,
 		     QUERY_FLAG * flag_p,
 		     CACHE_TIME * client_cache_time_p,
 		     CACHE_TIME * server_cache_time_p,
@@ -1977,17 +1976,18 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
   DB_VALUE *dbvals_p, *dbval;
   HL_HEAPID old_pri_heap_id;
 #if defined (SERVER_MODE)
+  char *data;
   bool use_global_heap;
 #endif
   DB_VALUE_ARRAY params;
   QMGR_QUERY_ENTRY *query_p;
   int tran_index = -1;
+  int i;
   QMGR_TRAN_ENTRY *tran_entry_p;
   QFILE_LIST_ID *list_id_p, *tmp_list_id_p;
-  bool cached_result;
   XASL_CACHE_CLONE *cache_clone_p;
+  bool cached_result;
   bool saved_is_stats_on;
-  int i;
   bool xasl_trace;
 
   cached_result = false;
@@ -2000,7 +2000,9 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
   dbvals_p = NULL;
 #if defined (SERVER_MODE)
   use_global_heap = false;
+  data = (char *) dbval_p;
 #endif
+
   assert_release (IS_SYNC_EXEC_MODE (*flag_p));
 
   saved_is_stats_on = mnt_server_is_stats_on (thread_p);
@@ -2010,9 +2012,9 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
   if (DO_NOT_COLLECT_EXEC_STATS (*flag_p))
     {
       if (saved_is_stats_on == true)
-        {
-          xmnt_server_stop_stats (thread_p);
-        }
+	{
+	  xmnt_server_stop_stats (thread_p);
+	}
     }
   else if (xasl_trace == true)
     {
@@ -2020,13 +2022,13 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
       xmnt_server_start_stats (thread_p, false);
 
       if (IS_XASL_TRACE_TEXT (*flag_p))
-        {
-          thread_set_trace_format (thread_p, QUERY_TRACE_TEXT);
-        }
+	{
+	  thread_set_trace_format (thread_p, QUERY_TRACE_TEXT);
+	}
       else if (IS_XASL_TRACE_JSON (*flag_p))
-        {
-          thread_set_trace_format (thread_p, QUERY_TRACE_JSON);
-        }
+	{
+	  thread_set_trace_format (thread_p, QUERY_TRACE_JSON);
+	}
     }
 
   /* Check the existance of the given XASL. If someone marked it
@@ -2111,7 +2113,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
 #else
   *flag_p &= ~ASYNC_EXEC;	/* treat as sync query */
 
-  dbvals_p = (DB_VALUE *) data;
+  dbvals_p = (DB_VALUE *) dbval_p;
 #endif
 
   /* If it is not inhibited from getting the cached result, inspect the list
@@ -2461,9 +2463,9 @@ exit_on_error:
   if (DO_NOT_COLLECT_EXEC_STATS (*flag_p))
     {
       if (saved_is_stats_on == true)
-        {
-          xmnt_server_start_stats (thread_p, false);
-        }
+	{
+	  xmnt_server_start_stats (thread_p, false);
+	}
     }
   else if (xasl_trace == true && saved_is_stats_on == false)
     {
@@ -2539,7 +2541,7 @@ copy_bind_value_to_tdes (THREAD_ENTRY * thread_p, int num_bind_vals,
  *   xasl_stream_size(in)      : memory area size pointed by the xasl_stream
  *   query_id(in)       :
  *   dbval_count(in)      : Number of positional values
- *   data(in)      : List of positional values
+ *   dbval_p(in)      : List of positional values
  *   flag(in)   :
  *   query_timeout(in): set a timeout only if it is positive
  *
@@ -2554,21 +2556,21 @@ QFILE_LIST_ID *
 xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
 				 char *xasl_stream, int xasl_stream_size,
 				 QUERY_ID * query_id_p,
-				 int dbval_count,
-				 const char *data,
+				 int dbval_count, void *dbval_p,
 				 QUERY_FLAG * flag_p, int query_timeout)
 {
   DB_VALUE *dbvals_p, *dbval;
   HL_HEAPID old_pri_heap_id;
 #if defined (SERVER_MODE)
+  char *data;
   bool use_global_heap;
 #endif
   QMGR_QUERY_ENTRY *query_p;
   QFILE_LIST_ID *list_id_p;
   int tran_index;
+  int i;
   QMGR_TRAN_ENTRY *tran_entry_p;
   bool saved_is_stats_on;
-  int i;
   bool xasl_trace;
 
   query_p = NULL;
@@ -2578,6 +2580,7 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
   dbvals_p = NULL;
 #if defined (SERVER_MODE)
   use_global_heap = false;
+  data = (char *) dbval_p;
 #endif
 
   saved_is_stats_on = mnt_server_is_stats_on (thread_p);
@@ -2586,9 +2589,9 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
   if (DO_NOT_COLLECT_EXEC_STATS (*flag_p))
     {
       if (saved_is_stats_on == true)
-        {
-          xmnt_server_stop_stats (thread_p);
-        }
+	{
+	  xmnt_server_stop_stats (thread_p);
+	}
     }
   else if (xasl_trace == true)
     {
@@ -2596,13 +2599,13 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
       xmnt_server_start_stats (thread_p, false);
 
       if (IS_XASL_TRACE_TEXT (*flag_p))
-        {
-          thread_set_trace_format (thread_p, QUERY_TRACE_TEXT);
-        }
+	{
+	  thread_set_trace_format (thread_p, QUERY_TRACE_TEXT);
+	}
       else if (IS_XASL_TRACE_JSON (*flag_p))
-        {
-          thread_set_trace_format (thread_p, QUERY_TRACE_JSON);
-        }
+	{
+	  thread_set_trace_format (thread_p, QUERY_TRACE_JSON);
+	}
     }
 
   /* Make an query entry */
@@ -2673,7 +2676,7 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
 #else
   *flag_p &= ~ASYNC_EXEC;	/* treat as sync query */
 
-  dbvals_p = (DB_VALUE *) data;
+  dbvals_p = (DB_VALUE *) dbval_p;
 #endif
 
   /* allocate a new query entry */
@@ -2820,9 +2823,9 @@ exit_on_async_error:
   if (DO_NOT_COLLECT_EXEC_STATS (*flag_p))
     {
       if (saved_is_stats_on == true)
-        {
-          xmnt_server_start_stats (thread_p, false);
-        }
+	{
+	  xmnt_server_start_stats (thread_p, false);
+	}
     }
   else if (xasl_trace == true && saved_is_stats_on == false)
     {

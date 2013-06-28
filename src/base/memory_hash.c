@@ -61,7 +61,7 @@
 #if __WORDSIZE == 32
 #define GET_PTR_FOR_HASH(key) ((unsigned int)(key))
 #else
-#define GET_PTR_FOR_HASH(key) (((unsigned int)(key)) & 0xFFFFFFFF)
+#define GET_PTR_FOR_HASH(key) (((UINT64)(key)) & 0xFFFFFFFFUL)
 #endif
 
 /* constants for rehash */

@@ -816,9 +816,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	  ha_node_list = ptr + 1;
 	  ha_hosts = cfg_get_hosts (ha_node_list, &num_hosts, false);
 
-	  db =
-	    cfg_new_db (client_credential->db_name, NULL, NULL, NULL,
-			(const char **) ha_hosts);
+	  db = cfg_new_db (client_credential->db_name, NULL, NULL, NULL,
+			   (const char **) ha_hosts);
 
 	  if (ha_hosts)
 	    {

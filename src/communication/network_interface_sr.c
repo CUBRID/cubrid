@@ -9490,7 +9490,7 @@ ssession_check_session (THREAD_ENTRY * thread_p, unsigned int rid,
 /*
  * ssession_end_session -
  *
- * return: error code or NO_ERROR
+ * return: void
  *
  *   rid(in):
  *   request(in):
@@ -9498,7 +9498,7 @@ ssession_check_session (THREAD_ENTRY * thread_p, unsigned int rid,
  *
  * NOTE: This function ends the session with the id contained in the request
  */
-int
+void
 ssession_end_session (THREAD_ENTRY * thread_p, unsigned int rid,
 		      char *request, int reqlen)
 {
@@ -9516,13 +9516,12 @@ ssession_end_session (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_pack_int (reply, err);
   css_send_data_to_client (thread_p->conn_entry, rid, reply,
 			   OR_ALIGNED_BUF_SIZE (a_reply));
-  return err;
 }
 
 /*
  * ssession_set_row_count - set the count of affected rows for a session
  *
- * return: error code or NO_ERROR
+ * return: void
  *
  *   rid(in):
  *   request(in):
@@ -9530,7 +9529,7 @@ ssession_end_session (THREAD_ENTRY * thread_p, unsigned int rid,
  *
  * NOTE:
  */
-int
+void
 ssession_set_row_count (THREAD_ENTRY * thread_p, unsigned int rid,
 			char *request, int reqlen)
 {
@@ -9551,18 +9550,17 @@ ssession_set_row_count (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_pack_int (reply, err);
   css_send_data_to_client (thread_p->conn_entry, rid, reply,
 			   OR_ALIGNED_BUF_SIZE (a_reply));
-  return err;
 }
 
 /*
  * ssession_get_row_count - get the count of affected rows for a session
- * return: error code or NO_ERROR
+ * return: void
  *   rid(in):
  *   request(in):
  *   reqlen(in):
  * NOTE:
  */
-int
+void
 ssession_get_row_count (THREAD_ENTRY * thread_p, unsigned int rid,
 			char *request, int reqlen)
 {
@@ -9581,7 +9579,6 @@ ssession_get_row_count (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_pack_int (reply, row_count);
   css_send_data_to_client (thread_p->conn_entry, rid, reply,
 			   OR_ALIGNED_BUF_SIZE (a_reply));
-  return err;
 }
 
 /*
