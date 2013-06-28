@@ -5604,7 +5604,7 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid,
   XASL_ID xasl_id, *p;
   char *ptr;
   char *reply = NULL, *reply_buffer = NULL;
-  int csserror, xasl_size, reply_buffer_size = 0, get_xasl_header = 0;
+  int csserror, reply_buffer_size = 0, get_xasl_header = 0;
   OID user_oid;
   XASL_NODE_HEADER xasl_header;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_XASL_ID_SIZE) a_reply;
@@ -5748,7 +5748,6 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
   QUERY_FLAG query_flag;
   OR_ALIGNED_BUF (OR_INT_SIZE * 4 + OR_PTR_ALIGNED_SIZE
 		  + OR_CACHE_TIME_SIZE) a_reply;
-  int i;
   CACHE_TIME clt_cache_time;
   CACHE_TIME srv_cache_time;
   int query_timeout;
@@ -6058,8 +6057,7 @@ event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info,
 		      int time, MNT_SERVER_EXEC_STATS * diff_stats)
 {
   FILE *log_fp;
-  DB_VALUE *dbval;
-  int i, indent = 2;
+  int indent = 2;
   LOG_TDES *tdes;
   int tran_index;
 
@@ -6107,8 +6105,7 @@ event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info,
 			int time, MNT_SERVER_EXEC_STATS * diff_stats)
 {
   FILE *log_fp;
-  DB_VALUE *dbval;
-  int i, indent = 2;
+  int indent = 2;
   LOG_TDES *tdes;
   int tran_index;
 
@@ -6155,7 +6152,7 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
   int var_count, var_datasize, var_actual_datasize;
   QUERY_ID query_id;
   QFILE_LIST_ID *q_result;
-  int csserror, i, listid_length;
+  int csserror, listid_length;
   char *xasl_stream;
   int xasl_stream_size;
   char *ptr, *var_data, *list_data;

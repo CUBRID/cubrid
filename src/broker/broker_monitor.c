@@ -1253,7 +1253,7 @@ br_monitor (char *br_vector)
   for (i = 0; i < shm_br->num_broker; i++)
     {
       int num_client_wait, num_busy, num_client_wait_nsec, num_busy_nsec;
-      int proxy_index, shard_index, cas_index;
+      int proxy_index, shard_index;
       int shard_flag;
       int num_proxy = 0;
       time_t cur_time;

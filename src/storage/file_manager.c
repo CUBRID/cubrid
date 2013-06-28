@@ -11718,7 +11718,6 @@ file_make_idsmap_image (THREAD_ENTRY * thread_p,
 {
   DISK_ISVALID valid = DISK_VALID;
 #if defined (SA_MODE)
-  FILE_FTAB_CHAIN *chain;
   FILE_HEADER *fhdr;
   PAGE_PTR fhdr_pgptr = NULL;
   PAGE_PTR pgptr = NULL;
@@ -11863,7 +11862,7 @@ static DISK_ISVALID
 set_bitmap (char *vol_ids_map, INT32 pageid)
 {
   char *at_chptr;
-  int page_num, byte_offset, bit_offset, j;
+  int page_num, byte_offset, bit_offset;
 
   if (vol_ids_map == NULL)
     {

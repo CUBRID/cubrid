@@ -2086,8 +2086,6 @@ fn_proxy_client_cursor (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 
   net_arg_put_int (argv[0], &(cas_srv_h_id));
 
-relay_request:
-
   error = proxy_cas_io_write (cas_io_p, event_p);
   if (error)
     {
@@ -2722,7 +2720,6 @@ fn_proxy_client_prepare_and_execute (T_PROXY_CONTEXT * ctx_p,
 
   T_CAS_IO *cas_io_p;
   T_SHARD_STMT *stmt_p;
-  T_WAIT_CONTEXT *waiter_p;
   int shard_id;
   SP_HINT_TYPE hint_type;
   T_SHARD_KEY_RANGE *range_p = NULL;
@@ -3527,7 +3524,6 @@ fn_proxy_cas_schema_info (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
   int stmt_h_id_n;
   int srv_h_id_offset = MSG_HEADER_SIZE;
   char *srv_h_id_pos;
-  bool is_in_tran;
   T_SHARD_STMT *stmt_p;
   char *response_p;
   char *driver_info;

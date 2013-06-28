@@ -21343,11 +21343,10 @@ qexec_analytic_evaluate_cume_dist_percent_rank_function (THREAD_ENTRY *
   int *last_pos = NULL;
   double *last_res = NULL;
   int total;
-  double dbl;
-  int i, cmp;
+  int cmp;
   SCAN_CODE sc;
   QFILE_TUPLE_RECORD curr_tplrec, next_tplrec;
-  QFILE_LIST_SCAN_ID scan_id, *scan_id_p;
+  QFILE_LIST_SCAN_ID scan_id;
   PAGE_PTR page_p;
   QFILE_TUPLE tuple;
   QFILE_LIST_ID *list_id;
@@ -21464,7 +21463,6 @@ qexec_analytic_evaluate_median_function (THREAD_ENTRY * thread_p,
   int error = NO_ERROR;
   ANALYTIC_MEDIAN_FUNCTION_INFO *median_info_p = NULL;
   SCAN_CODE sc;
-  int i;
   double row_num_d, c_row_num_d, f_row_num_d;
   REGU_VARIABLE *regu_var;
   REGU_VARIABLE_LIST regu_list;

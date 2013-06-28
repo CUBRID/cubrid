@@ -79,7 +79,7 @@ int tm_Tran_ID = -1;
  *
  * tm_Is_libcas indicates fn_xxx functions called by libcas_main(i.e, JSP).
  */
-static long tm_Query_begin = 0;
+static UINT64 tm_Query_begin = 0;
 static int tm_Query_timeout = 0;
 static bool tm_Is_libcas = false;
 

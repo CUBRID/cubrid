@@ -1182,7 +1182,9 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   DB_QUERY_RESULT *result = NULL;
   DB_SESSION *session;
   T_BROKER_VERSION client_version = req_info->client_version;
+#ifndef LIBCAS_FOR_JSP
   char stmt_type;
+#endif /* !LIBCAS_FOR_JSP */
 
   hm_qresult_end (srv_handle, FALSE);
 
@@ -1857,7 +1859,9 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   DB_SESSION *session;
   T_BROKER_VERSION client_version = req_info->client_version;
   T_PREPARE_CALL_INFO *call_info;
+#ifndef LIBCAS_FOR_JSP
   char stmt_type;
+#endif /* !LIBCAS_FOR_JSP */
 
   call_info = srv_handle->prepare_call_info;
   srv_handle->query_info_flag = FALSE;

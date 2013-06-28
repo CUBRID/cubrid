@@ -93,8 +93,6 @@
   } while (0)
 #endif /* !WINDOWS */
 
-extern int shm_shard_id;
-
 typedef int (*T_FETCH_FUNC) (T_SRV_HANDLE *, int, int, char, int,
 			     T_NET_BUF *, T_REQ_INFO *);
 

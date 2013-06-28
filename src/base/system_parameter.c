@@ -7969,10 +7969,6 @@ prm_tune_parameters (void)
   char newval[LINE_MAX];
   char host_name[MAXHOSTNAMELEN];
 
-  int ha_process_dereg_confirm_interval_in_msecs;
-  int ha_max_process_dereg_confirm;
-  int shutdown_wait_time_in_secs;
-
   /* Find the parameters that require tuning */
   max_plan_cache_entries_prm =
     prm_find (PRM_NAME_XASL_MAX_PLAN_CACHE_ENTRIES, NULL);

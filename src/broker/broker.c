@@ -401,7 +401,6 @@ main (int argc, char *argv[])
 #if !defined(WINDOWS)
   pthread_t proxy_listener_thread;
 #endif /* !WINDOWS */
-  char *p;
   int wait_job_cnt;
   int cur_appl_server_num;
 
@@ -2029,7 +2028,6 @@ static THREAD_FUNC
 cas_monitor_thr_f (void *ar)
 {
   int i, tmp_num_busy_uts;
-  int proxy_index, shard_index;
 
   T_PROXY_INFO *proxy_info_p = NULL;
   T_SHARD_INFO *shard_info_p = NULL;
@@ -2318,7 +2316,7 @@ psize_check_thr_f (void *ar)
   int cpu_time;
   int br_num_thr;
   int i;
-  int proxy_index, shard_index;
+  int proxy_index;
 
   T_PROXY_INFO *proxy_info_p = NULL;
   T_SHARD_INFO *shard_info_p = NULL;
@@ -3103,7 +3101,6 @@ proxy_listener_thr_f (void *arg)
 static int
 run_proxy_server (T_PROXY_INFO * proxy_info_p, int br_index, int proxy_index)
 {
-  char port_str[BROKER_PATH_MAX];
   const char *proxy_exe_name = NAME_PROXY;
   char proxy_shm_id_env_str[32], proxy_id_env_str[32];
   int pid;

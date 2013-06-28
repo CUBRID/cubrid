@@ -14257,7 +14257,6 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   const char *into_label;
   DB_VALUE *vals, *v;
   CACHE_TIME clt_cache_time;
-  int trace_format;
   bool query_trace = false;
 
   /* check if it is not necessary to execute this statement,

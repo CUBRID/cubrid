@@ -2950,7 +2950,7 @@ qdump_print_stats_json (XASL_NODE * xasl_p)
   GROUPBY_STATS *gstats;
   json_t *proc, *spec, *scan, *xasl = NULL;
   json_t *subquery, *hq, *hq_stat, *groupby, *orderby;
-  json_t *left, *right, *inner, *outer, *next;
+  json_t *left, *right, *inner, *outer;
 
   if (xasl_p == NULL)
     {
@@ -3162,7 +3162,6 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p)
   TARGET_TYPE type;
   char *class_name = NULL, *index_name = NULL;
   CLS_SPEC_TYPE *cls_node;
-  LIST_SPEC_TYPE *list_p;
 
   if (spec_list_p == NULL)
     {

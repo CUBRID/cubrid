@@ -6204,7 +6204,7 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no,
   size_t num_elements;
 #endif
 #endif /* SERVER_MODE */
-#if !defined (NDEBUG)
+#if defined (SERVER_MODE) && !defined (NDEBUG)
   size_t i_idx, num_active_users;
 #endif
 
@@ -6836,7 +6836,7 @@ qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p,
   size_t num_elements;
 #endif
 #endif /* SERVER_MODE */
-#if !defined (NDEBUG)
+#if defined (SERVER_MODE) && !defined (NDEBUG)
   size_t i_idx, num_active_users;
 #endif
 

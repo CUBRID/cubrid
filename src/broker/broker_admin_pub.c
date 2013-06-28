@@ -607,7 +607,6 @@ admin_restart_cmd (int master_shm_id, const char *broker, int as_index)
   int pid;
   char **env = NULL;
   int env_num;
-  char appl_name_str[64];
   char appl_server_shm_key_str[32];
   char appl_name[APPL_SERVER_NAME_MAX_SIZE];
 #if !defined(WINDOWS)

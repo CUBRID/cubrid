@@ -45,7 +45,6 @@
 int
 main (int argc, char *argv[])
 {
-  int res;
   char *br_name;
   char *conf_name;
   char *conf_value;

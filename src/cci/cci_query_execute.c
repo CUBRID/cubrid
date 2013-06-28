@@ -4231,7 +4231,6 @@ qe_get_shard_info (T_CON_HANDLE * con_handle, T_CCI_SHARD_INFO ** shard_info,
 int
 qe_shard_info_free (T_CCI_SHARD_INFO * shard_info)
 {
-  int i;
   T_CCI_SHARD_INFO *cur_shard_info;
   int prev_shard_id = SHARD_ID_INVALID;
 

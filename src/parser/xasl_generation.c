@@ -23926,9 +23926,6 @@ pt_to_cume_dist_percent_rank_regu_variable (PARSER_CONTEXT * parser,
 					    PT_NODE * tree, UNBOX unbox)
 {
   REGU_VARIABLE *regu = NULL;
-  XASL_NODE *xasl = NULL;
-  TP_DOMAIN *domain = NULL;
-  DB_VALUE *value, *val = NULL;
   PT_NODE *arg_list = NULL, *orderby_list = NULL, *node = NULL;
   REGU_VARIABLE_LIST regu_var_list, regu_var;
 

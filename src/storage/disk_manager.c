@@ -2415,7 +2415,6 @@ disk_expand_perm (THREAD_ENTRY * thread_p, INT16 volid, INT32 npages)
   DISK_VAR_HEADER *vhdr;
   PAGE_PTR hdr_pgptr = NULL;
   VPID vpid;
-  INT32 maxpages;
   INT32 nsects_toadd;
   LOG_DATA_ADDR addr;
   DISK_VOLPURPOSE purpose;
@@ -6734,8 +6733,6 @@ void
 disk_rv_dump_init_pages (FILE * fp, int length_ignore, void *data)
 {
   DISK_RECV_INIT_PAGES_INFO *info;
-  VOLID volid;
-  int vol_fd;
 
   info = (DISK_RECV_INIT_PAGES_INFO *) data;
 

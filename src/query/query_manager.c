@@ -1973,16 +1973,17 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
 {
   XASL_CACHE_ENTRY *xasl_cache_entry_p;
   QFILE_LIST_CACHE_ENTRY *list_cache_entry_p;
-  DB_VALUE *dbvals_p, *dbval;
-  HL_HEAPID old_pri_heap_id;
+  DB_VALUE *dbvals_p;
 #if defined (SERVER_MODE)
+  DB_VALUE *dbval;
+  HL_HEAPID old_pri_heap_id;
   char *data;
+  int i;
   bool use_global_heap;
 #endif
   DB_VALUE_ARRAY params;
   QMGR_QUERY_ENTRY *query_p;
   int tran_index = -1;
-  int i;
   QMGR_TRAN_ENTRY *tran_entry_p;
   QFILE_LIST_ID *list_id_p, *tmp_list_id_p;
   XASL_CACHE_CLONE *cache_clone_p;
@@ -2559,16 +2560,17 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
 				 int dbval_count, void *dbval_p,
 				 QUERY_FLAG * flag_p, int query_timeout)
 {
-  DB_VALUE *dbvals_p, *dbval;
-  HL_HEAPID old_pri_heap_id;
 #if defined (SERVER_MODE)
+  DB_VALUE *dbval;
+  HL_HEAPID old_pri_heap_id;
   char *data;
+  int i;
   bool use_global_heap;
 #endif
+  DB_VALUE *dbvals_p;
   QMGR_QUERY_ENTRY *query_p;
   QFILE_LIST_ID *list_id_p;
   int tran_index;
-  int i;
   QMGR_TRAN_ENTRY *tran_entry_p;
   bool saved_is_stats_on;
   bool xasl_trace;

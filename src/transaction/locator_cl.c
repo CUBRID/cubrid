@@ -4262,9 +4262,8 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 static void
 locator_mflush_check_error (LOCATOR_MFLUSH_CACHE * mflush)
 {
-  int i;
-  MOP class_mop, mop;
   LC_COPYAREA_ONEOBJ *obj;
+  int i;
 
   for (i = 0; i < mflush->mobjs->num_objs; i++)
     {

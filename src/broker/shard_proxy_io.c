@@ -1280,7 +1280,9 @@ proxy_socket_io_print (bool print_all)
 static T_SOCKET_IO *
 proxy_socket_io_add (SOCKET fd, bool from_cas)
 {
+#if defined(LINUX)
   int error;
+#endif
   T_SOCKET_IO *sock_io_p;
 
   assert (proxy_Socket_io.ent);
@@ -1416,7 +1418,10 @@ int
 proxy_socket_set_write_event (T_SOCKET_IO * sock_io_p,
 			      T_PROXY_EVENT * event_p)
 {
+#if defined(LINUX)
   int error;
+#endif
+
   assert (sock_io_p);
   assert (event_p);
 
@@ -4600,7 +4605,6 @@ proxy_io_close_all_fd (void)
 int
 proxy_io_process (void)
 {
-  int error;
   int cas_fd;
   int i;
 #if defined(WINDOWS)
@@ -4612,7 +4616,6 @@ proxy_io_process (void)
   int sock_fd;
   int timeout;
 #else /* LINUX */
-  fd_set eset;
   struct timeval tv;
 #endif /* !LINUX */
 
@@ -4640,7 +4643,7 @@ proxy_io_process (void)
     }
   else if (n == 0)
     {
-      // print_statistics ();
+      /* print_statistics (); */
       return 0;			/* or -1 */
     }
 

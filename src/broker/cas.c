@@ -814,6 +814,7 @@ cas_main (void)
 #else
   int con_status;
   char port_name[BROKER_PATH_MAX];
+  char do_not_use_driver_info[SRV_CON_CLIENT_INFO_SIZE];
 #endif /* WINDOWS */
   int client_ip_addr;
   char cas_info[CAS_INFO_SIZE] = { CAS_INFO_STATUS_INACTIVE,
@@ -823,7 +824,6 @@ cas_main (void)
   };
   FN_RETURN fn_ret = FN_KEEP_CONN;
   char client_ip_str[16];
-  char do_not_use_driver_info[SRV_CON_CLIENT_INFO_SIZE];
 
   prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
 

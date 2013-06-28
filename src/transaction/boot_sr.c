@@ -1112,8 +1112,10 @@ boot_add_auto_volume_extension (THREAD_ENTRY * thread_p, DKNPAGES min_npages,
 				DISK_SETPAGE_TYPE setpage_type,
 				DISK_VOLPURPOSE vol_purpose, bool wait)
 {
+#if defined (SERVER_MODE)
   bool old_check_interrupt;
   int new_vol_npages;
+#endif
   VOLID volid;
   DBDEF_VOL_EXT_INFO ext_info;
 
@@ -1536,10 +1538,12 @@ boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES min_npages)
   char temp_path_buf[PATH_MAX];
   DKNPAGES ext_npages, part_npages;
   DBDEF_VOL_EXT_INFO ext_info;
+#if defined (SERVER_MODE)
   FILE *log_fp;
   struct timeval start, end;
   int elapsed, tran_index, indent = 2;
   LOG_TDES *tdes;
+#endif
 
   if (boot_Temp_volumes_max_pages == -2)
     {
@@ -1697,7 +1701,9 @@ boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES min_npages)
 	  ext_info.overwrite = true;
 	  ext_info.extend_npages = ext_info.max_npages;
 
+#if defined(SERVER_MODE)
 	  gettimeofday (&start, NULL);
+#endif
 
 	  temp_volid = boot_add_volume (thread_p, &ext_info);
 	  if (temp_volid != NULL_VOLID)
