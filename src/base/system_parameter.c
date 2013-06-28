@@ -6366,13 +6366,21 @@ sysprm_get_range (const char *pname, void *min, void *max)
       return PRM_ERR_UNKNOWN_PARAM;
     }
 
+  if (PRM_DIFFERENT_UNIT (prm->static_flag))
+    {
+      assert (prm->get_dup != NULL);
+    }
+
   if (PRM_IS_INTEGER (prm))
     {
       if (prm->lower_limit)
 	{
 	  *((int *) min) = PRM_GET_INT (prm->lower_limit);
-	  PRM_ADJUST_FOR_GET_INTEGER_TO_INTEGER (prm, (int *) min,
-						 (int *) min, &error);
+	  if (PRM_DIFFERENT_UNIT (prm->static_flag))
+	    {
+	      PRM_ADJUST_FOR_GET_INTEGER_TO_INTEGER (prm, (int *) min,
+						     (int *) min, &error);
+	    }
 	}
       else
 	{
@@ -6382,8 +6390,11 @@ sysprm_get_range (const char *pname, void *min, void *max)
       if (prm->upper_limit)
 	{
 	  *((int *) max) = PRM_GET_INT (prm->upper_limit);
-	  PRM_ADJUST_FOR_GET_INTEGER_TO_INTEGER (prm, (int *) max,
-						 (int *) max, &error);
+	  if (PRM_DIFFERENT_UNIT (prm->static_flag))
+	    {
+	      PRM_ADJUST_FOR_GET_INTEGER_TO_INTEGER (prm, (int *) max,
+						     (int *) max, &error);
+	    }
 	}
       else
 	{
@@ -6395,8 +6406,11 @@ sysprm_get_range (const char *pname, void *min, void *max)
       if (prm->lower_limit)
 	{
 	  *((float *) min) = PRM_GET_FLOAT (prm->lower_limit);
-	  PRM_ADJUST_FOR_GET_FLOAT_TO_FLOAT (prm, (float *) min,
-					     (float *) min, &error);
+	  if (PRM_DIFFERENT_UNIT (prm->static_flag))
+	    {
+	      PRM_ADJUST_FOR_GET_FLOAT_TO_FLOAT (prm, (float *) min,
+						 (float *) min, &error);
+	    }
 	}
       else
 	{
@@ -6406,8 +6420,11 @@ sysprm_get_range (const char *pname, void *min, void *max)
       if (prm->upper_limit)
 	{
 	  *((float *) max) = PRM_GET_FLOAT (prm->upper_limit);
-	  PRM_ADJUST_FOR_GET_FLOAT_TO_FLOAT (prm, (float *) max,
-					     (float *) max, &error);
+	  if (PRM_DIFFERENT_UNIT (prm->static_flag))
+	    {
+	      PRM_ADJUST_FOR_GET_FLOAT_TO_FLOAT (prm, (float *) max,
+						 (float *) max, &error);
+	    }
 	}
       else
 	{
@@ -6419,8 +6436,11 @@ sysprm_get_range (const char *pname, void *min, void *max)
       if (prm->lower_limit)
 	{
 	  *((UINT64 *) min) = PRM_GET_BIGINT (prm->lower_limit);
-	  PRM_ADJUST_FOR_GET_BIGINT_TO_BIGINT (prm, (UINT64 *) min,
-					       (UINT64 *) min, &error);
+	  if (PRM_DIFFERENT_UNIT (prm->static_flag))
+	    {
+	      PRM_ADJUST_FOR_GET_BIGINT_TO_BIGINT (prm, (UINT64 *) min,
+						   (UINT64 *) min, &error);
+	    }
 	}
       else
 	{
@@ -6430,8 +6450,11 @@ sysprm_get_range (const char *pname, void *min, void *max)
       if (prm->upper_limit)
 	{
 	  *((UINT64 *) max) = PRM_GET_BIGINT (prm->upper_limit);
-	  PRM_ADJUST_FOR_GET_BIGINT_TO_BIGINT (prm, (UINT64 *) max,
-					       (UINT64 *) max, &error);
+	  if (PRM_DIFFERENT_UNIT (prm->static_flag))
+	    {
+	      PRM_ADJUST_FOR_GET_BIGINT_TO_BIGINT (prm, (UINT64 *) max,
+						   (UINT64 *) max, &error);
+	    }
 	}
       else
 	{
