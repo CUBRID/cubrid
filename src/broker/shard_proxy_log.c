@@ -281,7 +281,7 @@ proxy_log_get_level (void)
 
 int
 proxy_access_log (struct timeval *start_time, int client_ip_addr,
-		  char *dbname, char *dbuser, bool accepted)
+		  const char *dbname, const char *dbuser, bool accepted)
 {
   char *access_log_file;
   char *script = NULL;

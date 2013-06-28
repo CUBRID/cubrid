@@ -462,7 +462,7 @@ struct t_proxy_info
 #endif
 
   int wait_timeout;
-  int stmt_waiter_count;
+  INT64 stmt_waiter_count;
 
   int max_prepared_stmt_count;
   char ignore_shard_hint;

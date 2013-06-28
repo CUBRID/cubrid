@@ -39,7 +39,7 @@ typedef int (*T_PROXY_EVENT_FUNC_EX) (char *driver_info, char **buffer,
 extern T_WAIT_CONTEXT *proxy_waiter_new (int ctx_cid, unsigned int ctx_uid,
 					 int timeout);
 extern void proxy_waiter_free (T_WAIT_CONTEXT * waiter);
-extern void proxy_waiter_timeout (T_SHARD_QUEUE * waitq, int *counter,
+extern void proxy_waiter_timeout (T_SHARD_QUEUE * waitq, INT64 * counter,
 				  int now);
 extern int proxy_waiter_comp_fn (const void *arg1, const void *arg2);
 

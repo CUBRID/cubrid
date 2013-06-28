@@ -1774,8 +1774,10 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
 	  if (shm_as_p->access_log == ON)
 	    {
 	      proxy_access_log (&client_start_time,
-				sock_io_p->ip_addr, (db_name) ? db_name : "-",
-				(db_user) ? db_user : "-", true);
+				sock_io_p->ip_addr,
+				(db_name) ? (const char *) db_name : "-",
+				(db_user) ? (const char *) db_user : "-",
+				true);
 	    }
 
 	  goto connection_established;
@@ -1830,8 +1832,9 @@ connection_established:
   if (shm_as_p->access_log == ON)
     {
       proxy_access_log (&client_start_time,
-			sock_io_p->ip_addr, (db_name) ? db_name : "-",
-			(db_user) ? db_user : "-", true);
+			sock_io_p->ip_addr,
+			(db_name) ? (const char *) db_name : "-",
+			(db_user) ? (const char *) db_user : "-", true);
     }
 
 clear_event_and_return:

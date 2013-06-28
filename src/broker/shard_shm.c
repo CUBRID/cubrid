@@ -615,7 +615,7 @@ shard_shm_dump_shard (FILE * fp, T_SHARD_INFO * shard_info_p,
 	   shard_info_p->max_appl_server);
   fprintf (fp, BLANK_6 "%-30s = %-30d \n", "NUM_APPL_SERVER",
 	   shard_info_p->num_appl_server);
-  fprintf (fp, BLANK_6 "%-30s = %-30d \n", "WAITER_COUNT",
+  fprintf (fp, BLANK_6 "%-30s = %-30ld \n", "WAITER_COUNT",
 	   shard_info_p->waiter_count);
 
   for (i = 0; i < shard_info_p->max_appl_server; i++)

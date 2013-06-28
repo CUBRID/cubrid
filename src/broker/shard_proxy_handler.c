@@ -199,7 +199,7 @@ proxy_waiter_free (T_WAIT_CONTEXT * waiter)
 }
 
 void
-proxy_waiter_timeout (T_SHARD_QUEUE * waitq, int *counter, int now)
+proxy_waiter_timeout (T_SHARD_QUEUE * waitq, INT64 * counter, int now)
 {
   T_PROXY_CONTEXT *ctx_p;
   T_WAIT_CONTEXT *waiter_p;

@@ -54,8 +54,8 @@ extern void proxy_log_write (int level, char *svc_code, const char *fmt, ...);
 extern int proxy_log_get_level (void);
 
 extern int proxy_access_log (struct timeval *start_time,
-			     int client_ip_addr, char *dbname,
-			     char *dbuser, bool accepted);
+			     int client_ip_addr, const char *dbname,
+			     const char *dbuser, bool accepted);
 
 #if defined(WINDOWS)
 #define PROXY_LOG(level, fmt, ...)					\

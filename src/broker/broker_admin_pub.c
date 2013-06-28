@@ -408,7 +408,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id,
       char err_msg_backup[ADMIN_ERR_MSG_SIZE];
       memcpy (err_msg_backup, admin_err_msg, ADMIN_ERR_MSG_SIZE);
 
-      for (i; i >= 0; i--)
+      for (; i >= 0; i--)
 	{
 	  br_inactivate (&(shm_br->br_info[i]));
 
@@ -3964,7 +3964,7 @@ shard_shm_check_max_file_open_limit (T_BROKER_INFO * br_info,
 {
 #if defined(LINUX)
   int error = 0;
-  int required_fd_num = 0;
+  unsigned int required_fd_num = 0;
   T_PROXY_INFO *proxy_info_p = NULL;
   T_SHARD_INFO *shard_info_p = NULL;
   struct rlimit sys_limit;

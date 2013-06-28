@@ -62,6 +62,7 @@
 #endif /* CAS_FOR_MYSQL */
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+#include "connection_support.h"
 #include "perf_monitor.h"
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 

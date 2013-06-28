@@ -157,8 +157,6 @@ static const char *tbl_conf_err_msg[] = {
 #define MAX_NUM_OF_CONF_FILE_LOADED     5
 static char *conf_file_loaded[MAX_NUM_OF_CONF_FILE_LOADED];
 
-extern void shard_shm_dump_appl_server (FILE * fp, int shmid);
-
 /*
  * conf_file_has_been_loaded - record the file path that has been loaded
  *   return: none
