@@ -61,10 +61,10 @@ static char sql_log_base_path[PATH_MAX];
 static char sql_catalog_path[PATH_MAX];
 
 static FILE *sl_open_next_file (FILE * old_fp);
-static FILE *sl_log_open ();
+static FILE *sl_log_open (void);
 static int sl_write_sql (PARSER_VARCHAR * query, PARSER_VARCHAR * select);
-static int sl_read_catalog ();
-static int sl_write_catalog ();
+static int sl_read_catalog (void);
+static int sl_write_catalog (void);
 static void trim_single_quote (PARSER_VARCHAR * name);
 static int create_dir (const char *new_dir);
 
@@ -514,7 +514,7 @@ sl_write_schema_sql (char *class_name, char *db_user, int item_type,
   if (sl_write_sql (buffer, NULL) != NO_ERROR)
     {
       parser_free_parser (parser);
-      return (char *) pt_get_varchar_bytes (buffer);
+      return ER_FAILED;
     }
   if (item_type == CUBRID_STMT_CREATE_CLASS)
     {

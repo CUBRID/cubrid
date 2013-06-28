@@ -165,12 +165,12 @@ extern "C"
     unsigned int ha_mode;
   } T_SERVER_STATUS_INFO;
 
-#define ERR_MSG_SIZE       1024
+#define CM_ERR_MSG_SIZE       1024
   typedef struct
   {
     int num_result;
     void *result;
-    char err_msg[ERR_MSG_SIZE];
+    char err_msg[CM_ERR_MSG_SIZE];
   } T_CMD_RESULT;
 
   typedef T_CMD_RESULT T_SERVER_STATUS_RESULT;

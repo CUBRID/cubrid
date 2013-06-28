@@ -1607,7 +1607,7 @@ bool PRM_QUERY_TRACE = false;
 static bool prm_query_trace_default = false;
 static unsigned int prm_query_trace_flag = 0;
 
-int PRM_QUERY_TRACE_FORMAT = NULL;
+int PRM_QUERY_TRACE_FORMAT = QUERY_TRACE_TEXT;
 static int prm_query_trace_format_default = QUERY_TRACE_TEXT;
 static int prm_query_trace_format_lower = QUERY_TRACE_TEXT;
 static int prm_query_trace_format_upper = QUERY_TRACE_JSON;

@@ -6083,13 +6083,6 @@ fileio_get_volume_label (VOLID vol_id, bool is_peek)
   int i, j, rv;
   APPLY_ARG arg = { 0 };
 
-  if (vol_id > VOLID_MAX)
-    {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-	      0);
-      return NULL;
-    }
-
   FILEIO_CHECK_AND_INITIALIZE_VOLUME_HEADER_CACHE (NULL);
   if (vol_id > NULL_VOLID)
     {

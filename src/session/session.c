@@ -820,7 +820,7 @@ session_add_variable (SESSION_STATE * state_p, const DB_VALUE * name,
           free_and_init (state_p->plan_string);
         }
 
-      state_p->plan_string = strdup (DB_GET_STRING (value));
+      state_p->plan_string = strdup (DB_PULL_STRING (value));
     }
 
   current = state_p->session_variables;

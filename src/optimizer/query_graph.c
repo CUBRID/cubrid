@@ -4798,7 +4798,7 @@ add_using_index (QO_ENV * env, PT_NODE * using_index)
 	    {
 	      /* USING INDEX ALL EXCEPT case */
 	      QO_UI_INDEX (uip, n) = indexp->info.name.resolved;
-	      QO_UI_FORCE (uip, n++) = (int) (indexp->etc);
+	      QO_UI_FORCE (uip, n++) = (int) (UINT64) (indexp->etc);
 	    }
 	  if (indexp->info.name.original
 	      && !intl_identifier_casecmp (QO_NODE_NAME (nodep),
@@ -4806,7 +4806,7 @@ add_using_index (QO_ENV * env, PT_NODE * using_index)
 	    {
 	      QO_UI_INDEX (uip, n) = indexp->info.name.original;
 	      QO_UI_KEYLIMIT (uip, n) = indexp->info.name.indx_key_limit;
-	      QO_UI_FORCE (uip, n++) = (int) (indexp->etc);
+	      QO_UI_FORCE (uip, n++) = (int) (UINT64) (indexp->etc);
 	    }
 	}
     }

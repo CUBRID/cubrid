@@ -67,6 +67,7 @@
 #include "cci_util.h"
 #include "cci_t_set.h"
 #include "cci_t_lob.h"
+#include "cci_map.h"
 
 /************************************************************************
  * PRIVATE DEFINITIONS							*
