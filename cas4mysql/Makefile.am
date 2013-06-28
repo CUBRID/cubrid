@@ -69,6 +69,9 @@ cub_cas_mysql_SOURCES = \
 	$(BROKER_DIR)/cas_dbms_util.c \
 	$(BROKER_DIR)/cas_error.c \
 	$(BROKER_DIR)/cas_error_log.c \
+	$(BROKER_DIR)/shard_metadata.c \
+	$(BROKER_DIR)/shard_admin_pub.c \
+	$(BROKER_DIR)/shard_shm.c \
 	$(BASE_DIR)/environment_variable.c \
 	$(BASE_DIR)/stringl.c \
 	$(BASE_DIR)/porting.c \

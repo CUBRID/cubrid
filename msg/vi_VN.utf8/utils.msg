@@ -139,7 +139,6 @@ Các tiện ích của dịch vụ có thể dùng:\n\
     broker\n\
     manager\n\
     heartbeat\n\
-    shard\n\
 \n\
 Các tiện ích của quản trị viên có thể dùng:\n\
     addvoldb\n\
@@ -204,7 +203,8 @@ Lệnh có thể dùng :\n\
     on          tên-trung gian\n\
     off         tên-trung gian\n\
     reset       tên-trung gian\n\
-    acl         <status|reload> [tên-trung gian]\n
+    acl         <status|reload> [tên-trung gian]\n\
+    getid       -b <broker-name> [-f] shard-key\n
 27 tiện ích cubrid, phiên bản %s\n\
 cách sử dụng: %s manager <lệnh>\n\
 \n\
@@ -230,20 +230,6 @@ Lệnh có thể dùng :\n\
 36 The server was not configured for HA.\n
 38 Máy chủ được cấu hình cho HA không được liệt kê trong ha_db_list.\n
 39 Máy chủ được cấu hình cho HA không được liệt kê trong ha_node_list.\n
-62 cubrid utility, phiên bản %s\n\
-sử dụng: %s mảnh <lệnh> [args]\n\
-\n\
-Lệnh khả dụng:\n\
-    start\n\
-    stop\n\
-    restart\n\
-    info\n\
-    status      [-b] [-f] [-t] [-s <sec>] [<expr>]\n\
-    on          tên mảnh\n\
-    off         tên mảnh\n\
-    reset       tên mảnh\n\
-    acl         <status|reload> [tên mảnh]\n\
-    getid       -b <broker-name> [-f] shard-key\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 CẢNH BÁO: tùy chọn -t bị bỏ qua trong thực thi chế độ độc lập.\n

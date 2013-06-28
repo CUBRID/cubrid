@@ -32,15 +32,15 @@
 /* FOR DEBUG MSG -- remove this */
 #include "broker_config.h"
 
-#if defined(SHARD_ADMIN)
+#if defined(CUB_PROXY)
+#include "shard_proxy_log.h"
+#else /* CUB_PROXY */
 #if defined(WINDOWS)
 #define PROXY_LOG(level, fmt, ...)
 #else /* WINDOWS */
 #define PROXY_LOG(level, fmt, args...)
 #endif /* !WINDOWS */
-#else /* SHARD_ADMIN */
-#include "shard_proxy_log.h"
-#endif /* !SHARD_ADMIN */
+#endif /* !CUB_PROXY */
 
 extern T_SHM_PROXY *shm_proxy_p;
 

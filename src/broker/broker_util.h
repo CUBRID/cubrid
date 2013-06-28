@@ -45,11 +45,7 @@
 #define SHARD_INVALID_ID	(PROXY_INVALID_SHARD)
 #define CAS_INVALID_ID		(PROXY_INVALID_CAS)
 
-#if defined(CUBRID_SHARD)
 #define	SERVICE_READY_WAIT_COUNT	6000
-#else
-#define	SERVICE_READY_WAIT_COUNT	3000
-#endif /* CUBRID_SHARD */
 
 #define MAKE_FILEPATH(dest,src,dest_len) \
   do { \
@@ -72,7 +68,8 @@ extern int ut_access_log (int as_index, struct timeval *start_time,
 extern int ut_kill_process (int pid);
 extern int ut_kill_broker_process (int pid, char *br_name);
 extern int ut_kill_proxy_process (int pid, char *br_name, int proxy_id);
-extern int ut_kill_as_process (int pid, char *br_name, int as_id);
+extern int ut_kill_as_process (int pid, char *br_name, int as_id,
+			       int shard_flag);
 
 extern void ut_cd_work_dir (void);
 extern void ut_cd_root_dir (void);
@@ -85,7 +82,8 @@ extern int run_child (const char *appl_name);
 
 extern void as_pid_file_create (char *br_name, int as_index);
 extern void as_db_err_log_set (char *br_name, int proxy_index, int shard_id,
-			       int as_index);
+			       int shard_cas_id, int as_index,
+			       int shard_flag);
 
 extern void ut_get_as_pid_name (char *pid_name, char *br_name, int as_index,
 				int len);

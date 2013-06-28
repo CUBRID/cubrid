@@ -51,10 +51,8 @@
 #if defined(WINDOWS)
 #define		UTS_STATUS_BUSY_WAIT	4
 #endif
-#if defined(CUBRID_SHARD)
 #define         UTS_STATUS_CON_WAIT     5
 #define 	UTS_STATUS_STOP		6
-#endif /* CUBRID_SHARD */
 
 #define 	PROXY_STATUS_BUSY	1
 #define		PROXY_STATUS_RESTART	2
@@ -133,9 +131,7 @@
 
 #define CAS_LOG_RESET_REOPEN          0x01
 #define CAS_LOG_RESET_REMOVE            0x02
-#if defined(CUBRID_SHARD)
 #define PROXY_LOG_RESET_REOPEN 		0x01
-#endif /* CUBRID_SHARD */
 
 #define IP_BYTE_COUNT           5
 #define ACL_MAX_ITEM_COUNT      50
@@ -484,6 +480,7 @@ struct t_proxy_info
   INT64 num_hint_key_queries_processed;
   INT64 num_hint_id_queries_processed;
   INT64 num_hint_all_queries_processed;
+  INT64 num_hint_err_queries_processed;
 
   /* hang check info */
   time_t claimed_alive_time;

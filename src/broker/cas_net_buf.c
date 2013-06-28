@@ -56,10 +56,8 @@ net_buf_init (T_NET_BUF * net_buf)
   net_buf->alloc_size = 0;
   net_buf->data_size = 0;
   net_buf->err_code = 0;
-#if !defined(CUBRID_SHARD)
   net_buf->post_file_size = 0;
   net_buf->post_send_file = NULL;
-#endif
 }
 
 void
@@ -67,10 +65,8 @@ net_buf_clear (T_NET_BUF * net_buf)
 {
   net_buf->data_size = 0;
   net_buf->err_code = 0;
-#if !defined(CUBRID_SHARD)
   net_buf->post_file_size = 0;
   FREE_MEM (net_buf->post_send_file);
-#endif /* CUBRID_SHARD */
 }
 
 void
@@ -81,7 +77,6 @@ net_buf_destroy (T_NET_BUF * net_buf)
   net_buf_clear (net_buf);
 }
 
-#if !defined(CUBRID_SHARD)
 int
 net_buf_cp_post_send_file (T_NET_BUF * net_buf, int size, char *filename)
 {
@@ -95,7 +90,6 @@ net_buf_cp_post_send_file (T_NET_BUF * net_buf, int size, char *filename)
   net_buf->post_file_size = size;
   return 0;
 }
-#endif /* CUBRID_SHARD */
 
 int
 net_buf_cp_byte (T_NET_BUF * net_buf, char ch)
@@ -758,7 +752,6 @@ net_arg_get_lob_value (DB_VALUE * db_lob, void *arg)
 }
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
-#if defined(CUBRID_SHARD)
 void
 net_arg_put_int (void *arg, int *value)
 {
@@ -774,4 +767,3 @@ net_arg_put_int (void *arg, int *value)
   put_value = htonl (*value);
   memcpy (cur_p, &put_value, NET_SIZE_INT);
 }
-#endif /* CUBRID_SHARD */

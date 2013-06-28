@@ -139,7 +139,6 @@ Vorhandene Serviceutilities:\n\
     broker\n\
     manager\n\
     heartbeat\n\
-    shard\n\
 \n\
 Vorhandene Administratorutilities:\n\
     addvoldb\n\
@@ -204,7 +203,8 @@ Vorhandene Befehle:\n\
     on          Brokername\n\
     off         Brokername\n\
     reset       Brokername\n\
-    acl         <status|reload> [Brokername]\n
+    acl         <status|reload> [Brokername]\n\
+    getid       -b <broker-name> [-f] shard-key\n
 27 Cubrid Utility, Version %s\n\
 Anwendung: %s manager <Befehl>\n\
 \n\
@@ -230,20 +230,6 @@ Vorhandene Befehle:\n\
 36 Der Server wurde für HA nicht konfiguriert.\n
 38 Der für HA konfigurierte Server ist nicht in der ha_db_list enthalten.\n
 39 Der für HA konfigurierte Server ist nicht in der ha_node_list enthalten.\n
-62 Cubrid Utility, Version %s\n\
-Anwendung: %s shard <Befehl> [args]\n\
-\n\
-Vorhandene Befehle:\n\
-    start\n\
-    stop\n\
-    restart\n\
-    info\n\
-    status      [-b] [-f] [-t] [-s <sec>] [<expr>]\n\
-    on          shard-name\n\
-    off         shard-name\n\
-    reset       shard-name\n\
-    acl         <status|reload> [shard-Name]\n\
-    getid       -b <broker-name> [-f] shard-key\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 WARNUNG: -t Option wird in Stand-Alone-Ausführung ignoriert.\n

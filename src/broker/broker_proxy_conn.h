@@ -28,8 +28,6 @@
 
 #ident "$Id$"
 
-#if defined(CUBRID_SHARD)
-
 #include "porting.h"
 #include "broker_shm.h"
 
@@ -81,7 +79,5 @@ extern int broker_find_available_proxy (T_SHM_PROXY * shm_proxy_p,
 #else /* WINDOWS */
 extern SOCKET broker_find_available_proxy (T_SHM_PROXY * shm_proxy_p);
 #endif /* !WINDOWS */
-
-#endif /* CUBRID_SHARD */
 
 #endif /* _PROXY_PROXY_CONN_H_ */

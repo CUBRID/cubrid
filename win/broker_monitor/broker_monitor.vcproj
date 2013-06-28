@@ -44,7 +44,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\broker;..\..\src\base"
+				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\include;..\..\src\api;..\..\src\base;..\..\src\compat;..\..\src\object;..\..\src\storage;..\..\src\thread;..\..\src\query;..\..\src\cci;..\..\src\transaction"
 				PreprocessorDefinitions="WIN;WINDOWS;WIN32;_DEBUG;_CRT_SECURE_NO_WARNINGS;ASYNC_MODE;_XOPEN_SOURCE;_BSD_SOURCE;DIAG_DEVEL;_USE_32BIT_TIME_T;CAS_BROKER"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
@@ -117,7 +117,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\broker;..\..\src\base"
+				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\include;..\..\src\api;..\..\src\base;..\..\src\compat;..\..\src\object;..\..\src\storage;..\..\src\thread;..\..\src\query;..\..\src\cci;..\..\src\transaction"
 				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;_DEBUG;_CRT_SECURE_NO_WARNINGS;ASYNC_MODE;_XOPEN_SOURCE;_BSD_SOURCE;DIAG_DEVEL;CAS_BROKER"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
@@ -191,7 +191,7 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
-				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\broker;..\..\src\base"
+				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\include;..\..\src\api;..\..\src\base;..\..\src\compat;..\..\src\object;..\..\src\storage;..\..\src\thread;..\..\src\query;..\..\src\cci;..\..\src\transaction"
 				PreprocessorDefinitions="WIN;WINDOWS;WIN32;NDEBUG;_CRT_SECURE_NO_WARNINGS;ASYNC_MODE;_XOPEN_SOURCE;_BSD_SOURCE;DIAG_DEVEL;_USE_32BIT_TIME_T;CAS_BROKER"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
@@ -267,7 +267,7 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
-				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\broker;..\..\src\base"
+				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\include;..\..\src\api;..\..\src\base;..\..\src\compat;..\..\src\object;..\..\src\storage;..\..\src\thread;..\..\src\query;..\..\src\cci;..\..\src\transaction"
 				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;NDEBUG;_CRT_SECURE_NO_WARNINGS;ASYNC_MODE;_XOPEN_SOURCE;_BSD_SOURCE;DIAG_DEVEL;CAS_BROKER"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
@@ -364,6 +364,22 @@
 				</File>
 				<File
 					RelativePath="..\..\src\broker\broker_util.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\shard_metadata.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\shard_shm.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\broker_proxy_conn.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\cas_util.c"
 					>
 				</File>
 			</Filter>

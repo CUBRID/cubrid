@@ -139,7 +139,6 @@ Mevcut hizmetin programları:\n\
     broker\n\
     manager\n\
     heartbeat\n\
-    shard\n\
 \n\
 Mevcut yönetici programları:\n\
     addvoldb\n\
@@ -204,7 +203,8 @@ Mevcut komut:\n\
     on          broker-name\n\
     off         broker-name\n\
     reset       broker-name\n\
-    acl         <status|reload> [broker-name]\n
+    acl         <status|reload> [broker-name]\n\
+    getid       -b <broker-name> [-f] shard-key\n
 27 cubrid yardımcı programı, sürüm %s\n\
 kullanım: %s manager <komut>\n\
 \n\
@@ -230,20 +230,6 @@ Mevcut komut:\n\
 36 Sunucu HA için yapılandırıldı.\n
 38 HA için ayarlanan sunucu ha_db_list.\n görülmedi. \n Listesinde
 39 HA için ayarlanan sunucu in_ ha_node_list.\n görülmedi. \n Listesinde
-62 Cubrid kullanım amacı, Versiyon %s\n\
-kullanım: %s shard <komut> [args]\n\
-\n\
-Mevcut komut:\n\
-    start\n\
-    stop\n\
-    restart\n\
-    info\n\
-    status      [-b] [-f] [-t] [-s <sec>] [<expr>]\n\
-    on          shard-adı\n\
-    off         shard-adı\n\
-    reset       shard-adı\n\
-    acl         <status|reload> [shard-adı]\n\
-    getid       -b <broker-name> [-f] shard-key\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 UYARI: -t seçeneği stand-alone modu yürütülmesine göz ardı edilir.\n

@@ -68,13 +68,14 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
   T_SRV_HANDLE **new_srv_handle_table = NULL;
   T_SRV_HANDLE *srv_handle;
 
-#if !defined(LIBCAS_FOR_JSP) && !defined(CUBRID_SHARD)
-  if (current_handle_count >= shm_appl->max_prepared_stmt_count)
+#if !defined(LIBCAS_FOR_JSP)
+  if (cas_shard_flag == OFF &&
+      current_handle_count >= shm_appl->max_prepared_stmt_count)
     {
       return ERROR_INFO_SET (CAS_ER_MAX_PREPARED_STMT_COUNT_EXCEEDED,
 			     CAS_ERROR_INDICATOR);
     }
-#endif
+#endif /* !LIBCAS_FOR_JSP */
 
   for (i = 0; i < max_srv_handle; i++)
     {

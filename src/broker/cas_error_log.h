@@ -27,7 +27,7 @@
 
 #ident "$Id$"
 
-extern void cas_error_log_open (char *br_name, int as_index);
+extern void cas_error_log_open (char *br_name);
 extern void cas_error_log_close (bool flag);
 extern void cas_error_log_write (int dbms_errno, const char *dbms_errmsg);
 extern char *cas_error_log_get_eid (char *buf, size_t bufsz);

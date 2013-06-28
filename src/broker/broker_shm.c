@@ -33,6 +33,7 @@
 #include <stdio.h>
 #include <sys/types.h>
 #include <errno.h>
+#include <assert.h>
 
 #if defined(WINDOWS)
 #include <windows.h>
@@ -69,11 +70,9 @@ T_LIST *shm_id_list_header = NULL;
 static void broker_shm_set_as_info (T_SHM_APPL_SERVER * shm_appl,
 				    T_APPL_SERVER_INFO * as_info_p,
 				    T_BROKER_INFO * br_info_p, int as_index);
-#if defined(CUBRID_SHARD)
 static void
 shard_shm_set_shard_conn_info (T_SHM_APPL_SERVER * shm_as_p,
 			       T_SHM_PROXY * shm_proxy_p);
-#endif /* CUBRID_SHARD */
 
 static void get_access_log_file_name (char *access_log_file,
 				      char *access_log_path,
@@ -184,7 +183,6 @@ uw_shm_open (int shm_key, int which_shm, T_SHM_MODE shm_mode)
 	  return p;
 	}
     }
-#if defined(CUBRID_SHARD)
   else if (which_shm == SHM_PROXY)
     {
       if (((T_SHM_PROXY *) p)->magic == MAGIC_NUMBER)
@@ -192,7 +190,6 @@ uw_shm_open (int shm_key, int which_shm, T_SHM_MODE shm_mode)
 	  return p;
 	}
     }
-#endif
   UW_SET_ERROR_CODE (UW_ER_SHM_OPEN_MAGIC, 0);
   return NULL;
 }
@@ -386,7 +383,6 @@ uw_shm_create (int shm_key, int size, int which_shm)
 #endif
 	  ((T_SHM_BROKER *) p)->magic = MAGIC_NUMBER;
 	}
-#if defined(CUBRID_SHARD)
       else if (which_shm == SHM_PROXY)
 	{
 #ifdef USE_MUTEX
@@ -394,7 +390,6 @@ uw_shm_create (int shm_key, int size, int which_shm)
 #endif
 	  ((T_SHM_PROXY *) p)->magic = MAGIC_NUMBER;
 	}
-#endif
     }
   return p;
 }
@@ -485,11 +480,12 @@ broker_shm_initialize_shm_broker (int master_shm_id, T_BROKER_INFO * br_info,
     {
       shm_br->br_info[i] = br_info[i];
 
-#if !defined(CUBRID_SHARD)
-      get_access_log_file_name (shm_br->br_info[i].access_log_file,
-				br_info[i].access_log_file, br_info[i].name,
-				CONF_LOG_FILE_LEN);
-#endif /* !CUBRID_SHARD */
+      if (br_info[i].shard_flag == OFF)
+	{
+	  get_access_log_file_name (shm_br->br_info[i].access_log_file,
+				    br_info[i].access_log_file,
+				    br_info[i].name, CONF_LOG_FILE_LEN);
+	}
       get_error_log_file_name (shm_br->br_info[i].error_log_file,
 			       br_info[i].error_log_file, br_info[i].name,
 			       CONF_LOG_FILE_LEN);
@@ -506,11 +502,9 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p,
   T_SHM_APPL_SERVER *shm_as_p = NULL;
   T_APPL_SERVER_INFO *as_info_p = NULL;
 
-#if defined(CUBRID_SHARD)
   T_PROXY_INFO *proxy_info_p = NULL;
   T_SHARD_INFO *shard_info_p = NULL;
   short proxy_id, shard_id, shard_cas_id;
-#endif /* CUBRID_SHARD */
 
   shm_as_p =
     (T_SHM_APPL_SERVER *) uw_shm_create (br_info_p->appl_server_shm_id,
@@ -571,7 +565,20 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p,
   ut_get_broker_port_name (shm_as_p->port_name, br_info_p->name,
 			   SHM_PROXY_NAME_MAX);
 
-#if defined(CUBRID_SHARD)
+  for (as_index = 0; as_index < br_info_p->appl_server_max_num; as_index++)
+    {
+      as_info_p = &(shm_as_p->as_info[as_index]);
+      broker_shm_set_as_info (shm_as_p, as_info_p, br_info_p, as_index);
+    }
+
+  shm_as_p->shard_flag = br_info_p->shard_flag;
+
+  if (shm_as_p->shard_flag == OFF)
+    {
+      assert (shm_proxy_p == NULL);
+      return shm_as_p;
+    }
+
   strncpy (shm_as_p->proxy_log_dir, br_info_p->proxy_log_dir,
 	   sizeof (shm_as_p->proxy_log_dir) - 1);
 
@@ -609,13 +616,6 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p,
     }
 
   shard_shm_set_shard_conn_info (shm_as_p, shm_proxy_p);
-#endif /* CUBRID_SHARD */
-
-  for (as_index = 0; as_index < br_info_p->appl_server_max_num; as_index++)
-    {
-      as_info_p = &(shm_as_p->as_info[as_index]);
-      broker_shm_set_as_info (shm_as_p, as_info_p, br_info_p, as_index);
-    }
 
   return shm_as_p;
 }
@@ -653,7 +653,6 @@ broker_shm_set_as_info (T_SHM_APPL_SERVER * shm_appl,
   return;
 }
 
-#if defined(CUBRID_SHARD)
 static void
 shard_shm_set_shard_conn_info (T_SHM_APPL_SERVER * shm_as_p,
 			       T_SHM_PROXY * shm_proxy_p)
@@ -686,7 +685,6 @@ shard_shm_set_shard_conn_info (T_SHM_APPL_SERVER * shm_as_p,
 	       sizeof (shard_conn_info_p->db_password));
     }
 }
-#endif /* CUBRID_SHARD */
 
 
 #if defined(WINDOWS)

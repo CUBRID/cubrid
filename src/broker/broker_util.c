@@ -207,11 +207,7 @@ ut_kill_process (int pid)
 
   if (pid > 0)
     {
-#if defined(CUBRID_SHARD)
       for (i = 0; i < 10; i++)
-#else /* CUBRID_SHARD */
-      for (i = 0; i < 100; i++)
-#endif /* !CUBRID_SHARD */
 	{
 	  if (kill (pid, SIGTERM) < 0)
 	    {
@@ -223,11 +219,7 @@ ut_kill_process (int pid)
 	      break;
 	    }
 	}
-#if defined(CUBRID_SHARD)
       if (i >= 10)
-#else /* CUBRID_SHARD */
-      if (i >= 100)
-#endif /* !CUBRID_SHARD */
 	{
 	  kill (pid, SIGKILL);
 	}
@@ -274,7 +266,7 @@ ut_kill_proxy_process (int pid, char *broker_name, int proxy_id)
 }
 
 int
-ut_kill_as_process (int pid, char *broker_name, int as_index)
+ut_kill_as_process (int pid, char *broker_name, int as_index, int shard_flag)
 {
   ut_kill_process (pid);
 
@@ -282,15 +274,16 @@ ut_kill_as_process (int pid, char *broker_name, int as_index)
     {
       char tmp[BROKER_PATH_MAX];
 
-#if !defined(CUBRID_SHARD)
       /*
        * shard_cas does not have unix-domain socket and pid lock file.
        * so, we need not delete socket and lock file.
        */
-      ut_get_as_port_name (tmp, broker_name, as_index, BROKER_PATH_MAX);
+      if (shard_flag == OFF)
+	{
+	  ut_get_as_port_name (tmp, broker_name, as_index, BROKER_PATH_MAX);
 
-      unlink (tmp);
-#endif /* !CUBRID_SHARD */
+	  unlink (tmp);
+	}
 
       ut_get_as_pid_name (tmp, broker_name, as_index, BROKER_PATH_MAX);
 
@@ -433,19 +426,24 @@ as_pid_file_create (char *br_name, int as_index)
 }
 
 void
-as_db_err_log_set (char *br_name, int proxy_index, int shard_id, int as_index)
+as_db_err_log_set (char *br_name, int proxy_index, int shard_id,
+		   int shard_cas_id, int as_index, int shard_flag)
 {
   char buf[BROKER_PATH_MAX];
 
-#if defined(CUBRID_SHARD)
-  sprintf (db_err_log_file, "CUBRID_ERROR_LOG=%s%s_%d_%d_%d.err",
-	   get_cubrid_file (FID_CUBRID_ERR_DIR, buf, BROKER_PATH_MAX),
-	   br_name, proxy_index + 1, shard_id, as_index + 1);
-#else
-  sprintf (db_err_log_file, "CUBRID_ERROR_LOG=%s%s_%d.err",
-	   get_cubrid_file (FID_CUBRID_ERR_DIR, buf, BROKER_PATH_MAX),
-	   br_name, as_index + 1);
-#endif
+  if (shard_flag == ON)
+    {
+      sprintf (db_err_log_file, "CUBRID_ERROR_LOG=%s%s_%d_%d_%d.err",
+	       get_cubrid_file (FID_CUBRID_ERR_DIR, buf, BROKER_PATH_MAX),
+	       br_name, proxy_index + 1, shard_id, shard_cas_id + 1);
+    }
+  else
+    {
+      sprintf (db_err_log_file, "CUBRID_ERROR_LOG=%s%s_%d.err",
+	       get_cubrid_file (FID_CUBRID_ERR_DIR, buf, BROKER_PATH_MAX),
+	       br_name, as_index + 1);
+    }
+
   putenv (db_err_log_file);
 }
 

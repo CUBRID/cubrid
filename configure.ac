@@ -616,15 +616,6 @@ esac
 AM_CONDITIONAL([BUILD_CAS_FOR_ORACLE], [test "$with_oracle" != "no"])
 AC_MSG_RESULT([$with_oracle])
 
-AC_ARG_ENABLE([shard],
-       [AS_HELP_STRING([--enable-shard],
-               [build db shard @<:@default=yes@:>@])],
-       [enable_shard=$enableval],
-       [enable_shard=yes])
-AM_CONDITIONAL([BUILD_SHARD], [test "$enable_shard" != "no"])
-AM_CONDITIONAL([BUILD_SHARD_FOR_MYSQL], [test "$with_mysql" != "no" && test "$enable_shard" != "no"])
-#AM_CONDITIONAL([BUILD_SHARD_FOR_MYSQL], [test "$enable_shard" = "yes"])
-
 AC_ARG_ENABLE([dbgw],
        [AS_HELP_STRING([--enable-dbgw],
                [build as dbgw lib @<:@default=no@:>@])],
@@ -982,7 +973,7 @@ AS_IF([test "$with_cci_only" = "yes"],
 	EXTRA_DIST_SUBDIRS=""
 	CUBRID_LOGDIR=""
 	CUBRID_TMPDIR=""],
-	[BUILD_SUBDIRS="external include cas sa cs cubrid util cci broker cas4mysql cas4oracle cm_common conf msg demo contrib locales shard_cubrid shard_mysql dbgw $OPTIONAL_DIR"
+	[BUILD_SUBDIRS="external include cas sa cs cubrid util cci broker cas4mysql cas4oracle cm_common conf msg demo contrib locales dbgw $OPTIONAL_DIR"
 	EXTRA_DIST_SUBDIRS="debian win src"])
 
 AC_SUBST([BUILD_NUMBER])
@@ -1079,8 +1070,6 @@ AS_IF([test "$with_cci_only" = "no"],
 	locales/data/Makefile
 	locales/data/codepages/Makefile
 	locales/data/ldml/Makefile
-	shard_cubrid/Makefile
-	shard_mysql/Makefile
 	dbgw/Makefile
 	])])
 

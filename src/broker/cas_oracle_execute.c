@@ -307,11 +307,7 @@ ux_database_connect (char *db_alias, char *db_user, char *db_passwd,
       strcpy (ORA_NAME, db_alias);
       strcpy (ORA_USER, db_user);
       strcpy (ORA_PASS, db_passwd);
-#if defined(CUBRID_SHARD)
       strncpy (as_info->database_name, db_alias, MAX_HA_DBNAME_LENGTH - 1);
-#else /* CUBRID_SHARD */
-      strncpy (as_info->database_name, db_alias, SRV_CON_DBNAME_SIZE - 1);
-#endif /* !CUBRID_SHARD */
       c4o_copy_host_to_as_info (tns);
       as_info->last_connect_time = time (NULL);
     }
@@ -1388,11 +1384,7 @@ ux_execute_internal (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL
       (req_info->client_version, PROTOCOL_V5))
     {
-#if defined(CUBRID_SHARD)
       net_buf_cp_int (net_buf, shm_shard_id, NULL);
-#else /* CUBRID_SHARD */
-      net_buf_cp_int (net_buf, SHARD_ID_UNSUPPORTED, NULL);
-#endif /* !CUBRID_SHARD */
     }
 
   return err_code;
@@ -1603,11 +1595,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
 
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
     {
-#if defined(CUBRID_SHARD)
       net_buf_cp_int (net_buf, shm_shard_id, NULL);
-#else /* CUBRID_SHARD */
-      net_buf_cp_int (net_buf, SHARD_ID_UNSUPPORTED, NULL);
-#endif /* !CUBRID_SHARD */
     }
 
   for (i = 0; i < num_value; i++)
@@ -2141,6 +2129,7 @@ ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
   int err_code;
   T_OBJECT tuple_obj;
   bool first_flag;
+  int net_buf_size;
 
   net_buf_cp_int (net_buf, 0, NULL);	/* result code */
   if (fetch_count <= 0)
@@ -2167,7 +2156,16 @@ ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
   memset (&tuple_obj, 0, sizeof (T_OBJECT));
   first_flag = (cursor_pos == 1);
 
-  while (tuple < fetch_count && CHECK_NET_BUF_SIZE (net_buf))
+  if (cas_shard_flag == ON)
+    {
+      net_buf_size = SHARD_NET_BUF_SIZE;
+    }
+  else
+    {
+      net_buf_size = NET_BUF_SIZE;
+    }
+
+  while (tuple < fetch_count && CHECK_NET_BUF_SIZE (net_buf, net_buf_size))
     {
       ret = OCIStmtFetch2 (stmt, ORA_ERR, 1, OCI_DEFAULT, 0, OCI_DEFAULT);
       if (ret == OCI_NO_DATA)
@@ -2208,13 +2206,12 @@ ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 fetch_error:
   NET_BUF_ERR_SET (net_buf);
 
-#if defined(CUBRID_SHARD)
-  if (srv_handle->auto_commit_mode == TRUE
+  if (cas_shard_flag == ON
+      && srv_handle->auto_commit_mode == TRUE
       && srv_handle->forward_only_cursor == TRUE)
     {
       req_info->need_auto_commit = TRAN_AUTOROLLBACK;
     }
-#endif /* CUBRID_SHARD */
 
   errors_in_transaction++;
   return err_code;
@@ -2395,7 +2392,7 @@ ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
   if (as_info->cas_log_reset)
     {
-      cas_log_reset (broker_name, shm_as_index);
+      cas_log_reset (broker_name);
     }
   if (!ux_is_database_connected () || restart_is_needed ())
     {

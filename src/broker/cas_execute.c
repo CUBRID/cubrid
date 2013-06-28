@@ -408,11 +408,7 @@ static T_FETCH_FUNC fetch_func[] = {
   fetch_foreign_keys,		/* SCH_CROSS_REFERENCE */
 };
 
-#if defined(CURBID_SAHRD)
 static char database_name[MAX_HA_DBNAME_LENGTH] = "";
-#else /* CUBRID_SHARD */
-static char database_name[SRV_CON_DBNAME_SIZE] = "";
-#endif /* !CUBRID_SHARD */
 static char database_user[SRV_CON_DBUSER_SIZE] = "";
 static char database_passwd[SRV_CON_DBPASSWD_SIZE] = "";
 static char cas_db_sys_param[128] = "";
@@ -448,11 +444,7 @@ ux_check_connection (void)
 	    }
 	  else
 	    {
-#if defined(CUBRID_SHARD)
 	      char dbname[MAX_HA_DBNAME_LENGTH];
-#else /* CUBRID_SHARD */
-	      char dbname[SRV_CON_DBNAME_SIZE];
-#endif /* !CUBRID_SHARD */
 	      char dbuser[SRV_CON_DBUSER_SIZE];
 	      char dbpasswd[SRV_CON_DBPASSWD_SIZE];
 
@@ -545,11 +537,7 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd,
       cas_log_debug (ARG_FILE_LINE,
 		     "ux_database_connect: db_login(%s) db_restart(%s) at %s",
 		     db_user, db_name, host_connected);
-#if defined(CUBRID_SHARD)
       strncpy (as_info->database_name, db_name, MAX_HA_DBNAME_LENGTH - 1);
-#else /* CUBRID_SHARD */
-      strncpy (as_info->database_name, db_name, SRV_CON_DBNAME_SIZE - 1);
-#endif /* !CUBRID_SHARD */
       strncpy (as_info->database_host, host_connected, MAXHOSTNAMELEN);
       as_info->last_connect_time = time (NULL);
 
@@ -1479,11 +1467,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
     {
-#if defined(CUBRID_SHARD)
       net_buf_cp_int (net_buf, shm_shard_id, NULL);
-#else /* CUBRID_SHARD */
-      net_buf_cp_int (net_buf, SHARD_ID_UNSUPPORTED, NULL);
-#endif /* !CUBRID_SHARD */
     }
 
   return err_code;
@@ -1823,11 +1807,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
     {
-#if defined(CUBRID_SHARD)
       net_buf_cp_int (net_buf, shm_shard_id, NULL);
-#else /* CUBRID_SHARD */
-      net_buf_cp_int (net_buf, SHARD_ID_UNSUPPORTED, NULL);
-#endif /* !CUBRID_SHARD */
     }
 
   return err_code;
@@ -2018,11 +1998,7 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
     {
-#if defined(CUBRID_SHARD)
       net_buf_cp_int (net_buf, shm_shard_id, NULL);
-#else /* CUBRID_SHARD */
-      net_buf_cp_int (net_buf, SHARD_ID_UNSUPPORTED, NULL);
-#endif /* !CUBRID_SHARD */
     }
 
   return err_code;
@@ -2278,11 +2254,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
 
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
     {
-#if defined(CUBRID_SHARD)
       net_buf_cp_int (net_buf, shm_shard_id, NULL);
-#else /* CUBRID_SHARD */
-      net_buf_cp_int (net_buf, SHARD_ID_UNSUPPORTED, NULL);
-#endif /* !CUBRID_SHARD */
     }
 
   return 0;
@@ -2521,11 +2493,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
 return_success:
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
     {
-#if defined(CUBRID_SHARD)
       net_buf_cp_int (net_buf, shm_shard_id, NULL);
-#else /* CUBRID_SHARD */
-      net_buf_cp_int (net_buf, SHARD_ID_UNSUPPORTED, NULL);
-#endif /* !CUBRID_SHARD */
     }
 
   return 0;
@@ -2646,13 +2614,12 @@ ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 fetch_error:
   NET_BUF_ERR_SET (net_buf);
 
-#if defined(CUBRID_SHARD)
-  if (srv_handle->auto_commit_mode == TRUE
+  if (cas_shard_flag == ON
+      && srv_handle->auto_commit_mode == TRUE
       && srv_handle->forward_only_cursor == TRUE)
     {
       req_info->need_auto_commit = TRAN_AUTOROLLBACK;
     }
-#endif /* CUBRID_SHARD */
 
   errors_in_transaction++;
   return err_code;
@@ -5261,6 +5228,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
   int err_code;
   int num_tuple_msg_offset;
   int num_tuple;
+  int net_buf_size;
   DB_QUERY_RESULT *result;
   T_QUERY_RESULT *q_result;
   char sensitive_flag = fetch_flag & CCI_FETCH_SENSITIVE;
@@ -5338,8 +5306,17 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
       net_buf_cp_int (net_buf, 0, &num_tuple_msg_offset);
     }
 
+  if (cas_shard_flag == ON)
+    {
+      net_buf_size = SHARD_NET_BUF_SIZE;
+    }
+  else
+    {
+      net_buf_size = NET_BUF_SIZE;
+    }
+
   num_tuple = 0;
-  while (CHECK_NET_BUF_SIZE (net_buf))
+  while (CHECK_NET_BUF_SIZE (net_buf, net_buf_size))
     {				/* currently, don't check fetch_count */
       memset ((char *) &tuple_obj, 0, sizeof (T_OBJECT));
 

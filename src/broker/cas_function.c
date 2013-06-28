@@ -242,11 +242,11 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   as_info->transaction_start_time = (time_t) 0;
   if (as_info->cas_log_reset)
     {
-      cas_log_reset (broker_name, shm_as_index);
+      cas_log_reset (broker_name);
     }
   if (as_info->cas_slow_log_reset)
     {
-      cas_slow_log_reset (broker_name, shm_as_index);
+      cas_slow_log_reset (broker_name);
     }
   if (shm_appl->sql_log2 != as_info->cur_sql_log2)
     {
@@ -335,9 +335,7 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv,
   int sql_size;
   int srv_h_id;
   T_SRV_HANDLE *srv_handle;
-#if !defined (CUBRID_SHARD)
   int i;
-#endif /* CUBRID_SHARD */
 
   if (argc < 2)
     {
@@ -351,17 +349,17 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv,
   if (argc > 2)
     {
       net_arg_get_char (auto_commit_mode, argv[2]);
-
-#if !defined(CUBRID_SHARD)
-      for (i = 3; i < argc; i++)
+      if (cas_shard_flag == OFF)
 	{
-	  int deferred_close_handle;
-	  net_arg_get_int (&deferred_close_handle, argv[i]);
-	  cas_log_write (0, true, "close_req_handle srv_h_id %d",
-			 deferred_close_handle);
-	  hm_srv_handle_free (deferred_close_handle);
+	  for (i = 3; i < argc; i++)
+	    {
+	      int deferred_close_handle;
+	      net_arg_get_int (&deferred_close_handle, argv[i]);
+	      cas_log_write (0, true, "close_req_handle srv_h_id %d",
+			     deferred_close_handle);
+	      hm_srv_handle_free (deferred_close_handle);
+	    }
 	}
-#endif
     }
   else
     {

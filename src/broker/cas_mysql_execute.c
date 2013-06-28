@@ -93,9 +93,7 @@
   } while (0)
 #endif /* !WINDOWS */
 
-#if defined(CUBRID_SHARD)
 extern int shm_shard_id;
-#endif /* CUBRID_SHARD */
 
 typedef int (*T_FETCH_FUNC) (T_SRV_HANDLE *, int, int, char, int,
 			     T_NET_BUF *, T_REQ_INFO *);
@@ -238,11 +236,7 @@ static MYSQL *_db_conn;
 static char mysql_connected_info[DBINFO_MAX_LENGTH] = "";
 static int mysql_connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
 
-#if defined(CUBRID_SHARD)
 static char database_name[MAX_HA_DBNAME_LENGTH] = "";
-#else /* CUBRID_SHARD */
-static char database_name[SRV_CON_DBNAME_SIZE] = "";
-#endif /* !CUBRID_SHARD */
 static char database_user[SRV_CON_DBUSER_SIZE] = "";
 static char database_passwd[SRV_CON_DBPASSWD_SIZE] = "";
 static int multi_byte_character_max_length = 3;
@@ -299,11 +293,7 @@ ux_database_connect (char *db_alias, char *db_user, char *db_passwd,
 		     "ux_database_connect: cas_mysql_connect_db(%s, %s) at %s",
 		     db_user, db_alias, host_connected);
       /* as_info->database_name is alias name */
-#if defined(CUBRID_SHARD)
       strncpy (as_info->database_name, db_alias, MAX_HA_DBNAME_LENGTH - 1);
-#else /* CUBRID_SHARD */
-      strncpy (as_info->database_name, db_alias, SRV_CON_DBNAME_SIZE - 1);
-#endif /* !CUBRID_SHARD */
       /* as_info->database_host is real_db_name:connected_host_addr:connected_port */
       strncpy (as_info->database_host, host_connected, MAXHOSTNAMELEN);
       as_info->last_connect_time = time (NULL);
@@ -640,11 +630,7 @@ ux_execute_internal (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
     {
-#if defined(CUBRID_SHARD)
       net_buf_cp_int (net_buf, shm_shard_id, NULL);
-#else /* CUBRID_SHARD */
-      net_buf_cp_int (net_buf, SHARD_ID_UNSUPPORTED, NULL);
-#endif /* !CUBRID_SHARD */
     }
 
   return num_tuple;
@@ -800,11 +786,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
 return_success:
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
     {
-#if defined(CUBRID_SHARD)
       net_buf_cp_int (net_buf, shm_shard_id, NULL);
-#else /* CUBRID_SHARD */
-      net_buf_cp_int (net_buf, SHARD_ID_UNSUPPORTED, NULL);
-#endif /* !CUBRID_SHARD */
     }
 
   return 0;
@@ -877,13 +859,12 @@ ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 fetch_error:
   NET_BUF_ERR_SET (net_buf);
 
-#if defined(CUBRID_SHARD)
-  if (srv_handle->auto_commit_mode == TRUE
+  if (cas_shard_flag == ON
+      && srv_handle->auto_commit_mode == TRUE
       && srv_handle->forward_only_cursor == TRUE)
     {
       req_info->need_auto_commit = TRAN_AUTOROLLBACK;
     }
-#endif /* CUBRID_SHARD */
 
   errors_in_transaction++;
   return err_code;
@@ -1587,6 +1568,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
   int tuple;
   T_QUERY_RESULT *result;
   int num_tuple_msg_offset;
+  int net_buf_size;
 
   result = (T_QUERY_RESULT *) srv_handle->q_result;
   if (result == NULL || has_stmt_result_set (srv_handle->stmt_type) == false)
@@ -1597,8 +1579,17 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
   num_tuple = cas_mysql_stmt_num_rows ((MYSQL_STMT *) srv_handle->session);
   net_buf_cp_int (net_buf, num_tuple, &num_tuple_msg_offset);
 
+  if (cas_shard_flag == ON)
+    {
+      net_buf_size = SHARD_NET_BUF_SIZE;
+    }
+  else
+    {
+      net_buf_size = NET_BUF_SIZE;
+    }
+
   tuple = 0;
-  while (CHECK_NET_BUF_SIZE (net_buf))
+  while (CHECK_NET_BUF_SIZE (net_buf, net_buf_size))
     {
       err_code = cas_mysql_stmt_fetch ((MYSQL_STMT *) srv_handle->session);
       if (err_code < 0)
@@ -2356,7 +2347,7 @@ ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
   if (as_info->cas_log_reset)
     {
-      cas_log_reset (broker_name, shm_as_index);
+      cas_log_reset (broker_name);
     }
   if (!ux_is_database_connected () || restart_is_needed ())
     {
@@ -2451,82 +2442,85 @@ cas_mysql_find_db (const char *alias, char *dbname, char *host, int *port)
       goto cas_mysql_find_db_error;
     }
 
-#if defined(CUBRID_SHARD)
-  memset (tmpdbinfo, 0x00, BROKER_PATH_MAX);
-  memcpy (tmpdbinfo, shm_appl->shard_conn_info[shm_shard_id].db_host,
-	  BROKER_PATH_MAX);
-
-  strcpy (dbname, alias);
-
-  str = strtok_r (tmpdbinfo, delim, &save);	/* SET HOST ADDRESS */
-  if (str == NULL)
+  if (cas_shard_flag == ON)
     {
-      goto cas_mysql_find_db_error;
-    }
-  strncpy (host, str, MAX_HOSTNAME_LENGTH);
+      memset (tmpdbinfo, 0x00, BROKER_PATH_MAX);
+      memcpy (tmpdbinfo, shm_appl->shard_conn_info[shm_shard_id].db_host,
+	      BROKER_PATH_MAX);
 
-  str = strtok_r (NULL, delim, &save);	/* SET PORT */
-  if (str == NULL)
-    {
-      *port = DEFAULT_MYSQL_PORT;
+      strcpy (dbname, alias);
+
+      str = strtok_r (tmpdbinfo, delim, &save);	/* SET HOST ADDRESS */
+      if (str == NULL)
+	{
+	  goto cas_mysql_find_db_error;
+	}
+      strncpy (host, str, MAX_HOSTNAME_LENGTH);
+
+      str = strtok_r (NULL, delim, &save);	/* SET PORT */
+      if (str == NULL)
+	{
+	  *port = DEFAULT_MYSQL_PORT;
+	}
+      else
+	{
+	  *port = atoi (str);
+	}
     }
   else
     {
-      *port = atoi (str);
-    }
-#else
-  if ((ret = cfg_read_dbinfo (&db_info_all_p)) < 0)
-    {
-      return ret;
-    }
-  if (db_info_all_p == NULL)
-    {
-      goto cas_mysql_find_db_error;
-    }
+      if ((ret = cfg_read_dbinfo (&db_info_all_p)) < 0)
+	{
+	  return ret;
+	}
+      if (db_info_all_p == NULL)
+	{
+	  goto cas_mysql_find_db_error;
+	}
 
-  db_info_p = cfg_find_db_list (db_info_all_p, alias);
-  if (db_info_p == NULL)
-    {
-      goto cas_mysql_find_db_error;
-    }
-  else
-    {
-      if (db_info_p->dbinfo == NULL)
+      db_info_p = cfg_find_db_list (db_info_all_p, alias);
+      if (db_info_p == NULL)
 	{
 	  goto cas_mysql_find_db_error;
 	}
       else
 	{
-	  memset (tmpdbinfo, 0x00, BROKER_PATH_MAX);
-	  strncpy (tmpdbinfo, db_info_p->dbinfo, BROKER_PATH_MAX - 1);
-
-	  str = strtok_r (tmpdbinfo, delim, &save);	/* SET DBNAME */
-	  if (str == NULL)
+	  if (db_info_p->dbinfo == NULL)
 	    {
 	      goto cas_mysql_find_db_error;
-	    }
-	  strncpy (dbname, str, MAX_DBNAME_LENGTH);
-
-	  str = strtok_r (NULL, delim, &save);	/* SET HOST ADDRESS */
-	  if (str == NULL)
-	    {
-	      goto cas_mysql_find_db_error;
-	    }
-	  strncpy (host, str, MAX_HOSTNAME_LENGTH);
-
-	  str = strtok_r (NULL, delim, &save);	/* SET PORT */
-	  if (str == NULL)
-	    {
-	      *port = DEFAULT_MYSQL_PORT;
 	    }
 	  else
 	    {
-	      *port = atoi (str);
+	      memset (tmpdbinfo, 0x00, BROKER_PATH_MAX);
+	      strncpy (tmpdbinfo, db_info_p->dbinfo, BROKER_PATH_MAX - 1);
+
+	      str = strtok_r (tmpdbinfo, delim, &save);	/* SET DBNAME */
+	      if (str == NULL)
+		{
+		  goto cas_mysql_find_db_error;
+		}
+	      strncpy (dbname, str, MAX_DBNAME_LENGTH);
+
+	      str = strtok_r (NULL, delim, &save);	/* SET HOST ADDRESS */
+	      if (str == NULL)
+		{
+		  goto cas_mysql_find_db_error;
+		}
+	      strncpy (host, str, MAX_HOSTNAME_LENGTH);
+
+	      str = strtok_r (NULL, delim, &save);	/* SET PORT */
+	      if (str == NULL)
+		{
+		  *port = DEFAULT_MYSQL_PORT;
+		}
+	      else
+		{
+		  *port = atoi (str);
+		}
+	      cfg_free_dbinfo_all (db_info_all_p);
 	    }
-	  cfg_free_dbinfo_all (db_info_all_p);
 	}
     }
-#endif /* CUBRID_SHARD */
   return 0;
 
 cas_mysql_find_db_error:

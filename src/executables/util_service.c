@@ -62,7 +62,6 @@ typedef enum
   UTIL_HELP = 6,
   UTIL_VERSION = 7,
   ADMIN = 8,
-  SHARD = 38
 } UTIL_SERVICE_INDEX_E;
 
 typedef enum
@@ -91,7 +90,6 @@ typedef enum
   SERVICE_START_MANAGER,
   SERVER_START_LIST,
   SERVICE_START_HEARTBEAT,
-  SERVICE_START_SHARD
 } UTIL_SERVICE_PROPERTY_E;
 
 #if defined(WINDOWS)
@@ -121,7 +119,6 @@ typedef struct
 #define UTIL_TYPE_MANAGER       "manager"
 #define UTIL_TYPE_HEARTBEAT     "heartbeat"
 #define UTIL_TYPE_HB_SHORT      "hb"
-#define UTIL_TYPE_SHARD        	"shard"
 
 static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
   {SERVICE, UTIL_TYPE_SERVICE, MASK_SERVICE},
@@ -163,7 +160,6 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
   {ADMIN, UTIL_OPTION_GENERATE_LOCALE, MASK_ADMIN},
   {ADMIN, UTIL_OPTION_DUMP_LOCALE, MASK_ADMIN},
   {ADMIN, UTIL_OPTION_TRANLIST, MASK_ADMIN},
-  {SHARD, UTIL_TYPE_SHARD, MASK_SHARD},
   {ADMIN, UTIL_OPTION_SYNCCOLLDB, MASK_ADMIN},
   {-1, "", MASK_ADMIN}
 };
@@ -188,20 +184,20 @@ static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {START, COMMAND_TYPE_START, MASK_ALL},
   {STOP, COMMAND_TYPE_STOP, MASK_ALL},
   {RESTART, COMMAND_TYPE_RESTART,
-   MASK_SERVICE | MASK_SERVER | MASK_BROKER | MASK_SHARD},
+   MASK_SERVICE | MASK_SERVER | MASK_BROKER},
   {STATUS, COMMAND_TYPE_STATUS, MASK_ALL},
   {DEREGISTER, COMMAND_TYPE_DEREG, MASK_HEARTBEAT},
   {LIST, COMMAND_TYPE_LIST, MASK_HEARTBEAT},
   {RELOAD, COMMAND_TYPE_RELOAD, MASK_HEARTBEAT},
-  {ON, COMMAND_TYPE_ON, MASK_BROKER | MASK_SHARD},
-  {OFF, COMMAND_TYPE_OFF, MASK_BROKER | MASK_SHARD},
+  {ON, COMMAND_TYPE_ON, MASK_BROKER},
+  {OFF, COMMAND_TYPE_OFF, MASK_BROKER},
   {ACCESS_CONTROL, COMMAND_TYPE_ACL,
-   MASK_SERVER | MASK_BROKER | MASK_SHARD},
-  {RESET, COMMAND_TYPE_RESET, MASK_BROKER | MASK_SHARD},
-  {INFO, COMMAND_TYPE_INFO, MASK_BROKER | MASK_SHARD},
+   MASK_SERVER | MASK_BROKER},
+  {RESET, COMMAND_TYPE_RESET, MASK_BROKER},
+  {INFO, COMMAND_TYPE_INFO, MASK_BROKER},
   {SC_COPYLOGDB, COMMAND_TYPE_COPYLOGDB, MASK_HEARTBEAT},
   {SC_APPLYLOGDB, COMMAND_TYPE_APPLYLOGDB, MASK_HEARTBEAT},
-  {GET_SHARID, COMMAND_TYPE_GETID, MASK_SHARD},
+  {GET_SHARID, COMMAND_TYPE_GETID, MASK_BROKER},
   {-1, "", MASK_ALL}
 };
 
@@ -211,7 +207,6 @@ static UTIL_SERVICE_PROPERTY_T us_Property_map[] = {
   {SERVICE_START_MANAGER, NULL},
   {SERVER_START_LIST, NULL},
   {SERVICE_START_HEARTBEAT, NULL},
-  {SERVICE_START_SHARD, NULL},
   {-1, NULL}
 };
 
@@ -233,8 +228,6 @@ static int process_server (int command_type, int argc, char **argv,
 			   bool process_window_service);
 static int process_broker (int command_type, int argc, const char **argv,
 			   bool process_window_service);
-static int process_shard (int command_type, int argc, const char **argv,
-			  bool process_window_service);
 static int process_manager (int command_type, bool process_window_service);
 static int process_heartbeat (int command_type, int argc, const char **argv);
 
@@ -580,13 +573,13 @@ main (int argc, char *argv[])
 
   process_window_service = true;
 
-  if ((util_type == SERVICE || util_type == BROKER || util_type == MANAGER ||
-       util_type == SHARD) && (argc > 3) &&
+  if ((util_type == SERVICE || util_type == BROKER || util_type == MANAGER ||)
+      && (argc > 3) &&
       strcmp ((char *) argv[3], "--for-windows-service") == 0)
     {
       process_window_service = false;
     }
-  else if ((util_type == SERVER || util_type == BROKER || util_type == SHARD)
+  else if ((util_type == SERVER || util_type == BROKER)
 	   && (argc > 4)
 	   && strcmp ((char *) argv[4], "--for-windows-service") == 0)
     {
@@ -622,11 +615,6 @@ main (int argc, char *argv[])
       status =
 	process_heartbeat (command_type, argc - 3, (const char **) &argv[3]);
 #endif /* !WINDOWs */
-      break;
-    case SHARD:
-      status = process_shard (command_type, argc - 3,
-			      (const char **) &argv[3],
-			      process_window_service);
       break;
     default:
       goto usage;
@@ -1148,10 +1136,6 @@ process_service (int command_type, bool process_window_service)
 	    {
 	      status = process_heartbeat (command_type, 0, NULL);
 	    }
-	  if (strcmp (get_property (SERVICE_START_SHARD), PROPERTY_ON) == 0)
-	    {
-	      status = process_shard (command_type, 0, NULL, false);
-	    }
 	}
       break;
     case STOP:
@@ -1199,10 +1183,6 @@ process_service (int command_type, bool process_window_service)
 	    {
 	      status = process_heartbeat (command_type, 0, NULL);
 	    }
-	  if (strcmp (get_property (SERVICE_START_SHARD), PROPERTY_ON) == 0)
-	    {
-	      status = process_shard (command_type, 0, NULL, false);
-	    }
 	  status = process_master (command_type);
 	}
       break;
@@ -1234,10 +1214,6 @@ process_service (int command_type, bool process_window_service)
 	    status = process_heartbeat (command_type, 0, NULL);
 	  }
 
-	if (strcmp (get_property (SERVICE_START_SHARD), PROPERTY_ON) == 0)
-	  {
-	    status = process_shard (command_type, 0, NULL, false);
-	  }
       }
       break;
     default:
@@ -1932,313 +1908,17 @@ process_broker (int command_type, int argc, const char **argv,
       }
       break;
 
-    default:
-      return ER_GENERIC_ERROR;
-    }
-  return status;
-}
-
-/*
- * is_shard_running -
- *
- * return:
- *
- */
-static int
-is_shard_running (void)
-{
-  const char *args[] = { UTIL_SMONITOR_NAME, 0 };
-  int status =
-    proc_execute (UTIL_SMONITOR_NAME, args, true, true, true, NULL);
-  return status;
-}
-
-/*
- * process_shard -
- *
- * return:
- *
- *      command_type(in):
- *      name(in):
- *
- */
-static int
-process_shard (int command_type, int argc, const char **argv,
-	       bool process_window_service)
-{
-  int status = NO_ERROR;
-
-  switch (command_type)
-    {
-    case START:
-      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		     PRINT_SHARD_NAME, PRINT_CMD_START);
-      switch (is_shard_running ())
-	{
-	case 0:		/* no error */
-	  print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
-			 PRINT_SHARD_NAME);
-	  return NO_ERROR;
-	case 1:		/* shm_open error */
-	  if (process_window_service)
-	    {
-#if defined(WINDOWS)
-	      const char *args[] =
-		{ UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_SHARD,
-		COMMAND_TYPE_START, NULL
-	      };
-
-	      status =
-		proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
-			      false, false, NULL);
-#endif
-	    }
-	  else
-	    {
-	      const char *args[] =
-		{ UTIL_SHARD_NAME, COMMAND_TYPE_START, NULL };
-	      status =
-		proc_execute (UTIL_SHARD_NAME, args, true, false, false,
-			      NULL);
-	    }
-
-	  print_result (PRINT_SHARD_NAME, status, command_type);
-	  return status;
-	case 2:		/* no conf file */
-	  fprintf (stderr,
-		   "Error: Error occurred while reading shard.conf.\n"
-		   "       The file is not found or an invalid "
-		   "parameter name/value is found.\n");
-	  print_result (PRINT_SHARD_NAME, ER_GENERIC_ERROR, command_type);
-	  return ER_GENERIC_ERROR;
-	default:
-	  print_result (PRINT_SHARD_NAME, ER_GENERIC_ERROR, command_type);
-	  return ER_GENERIC_ERROR;
-	}
-      break;
-    case STOP:
-      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		     PRINT_SHARD_NAME, PRINT_CMD_STOP);
-      switch (is_shard_running ())
-	{
-	case 0:
-	  if (process_window_service)
-	    {
-#if defined(WINDOWS)
-	      const char *args[] =
-		{ UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_SHARD,
-		COMMAND_TYPE_STOP, NULL
-	      };
-
-	      status =
-		proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
-			      false, false, NULL);
-#endif
-	    }
-	  else
-	    {
-	      const char *args[] =
-		{ UTIL_SHARD_NAME, COMMAND_TYPE_STOP, NULL };
-	      status =
-		proc_execute (UTIL_SHARD_NAME, args, true, false, false,
-			      NULL);
-	    }
-
-	  print_result (PRINT_SHARD_NAME, status, command_type);
-	  return status;
-	case 1:		/* shm_open error */
-	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-			 PRINT_SHARD_NAME);
-	  return NO_ERROR;
-	case 2:		/* no conf file */
-	  fprintf (stderr,
-		   "Error: Error occurred while reading shard.conf.\n"
-		   "       The file is not found or an invalid "
-		   "parameter name/value is found.\n");
-	  print_result (PRINT_SHARD_NAME, ER_GENERIC_ERROR, command_type);
-	  return ER_GENERIC_ERROR;
-	default:		/* other error */
-	  print_result (PRINT_SHARD_NAME, ER_GENERIC_ERROR, command_type);
-	  return ER_GENERIC_ERROR;
-	}
-      break;
-    case RESTART:
-      process_shard (STOP, 0, NULL, process_window_service);
-#if defined (WINDOWS)
-      Sleep (500);
-#endif
-      process_shard (START, 0, NULL, process_window_service);
-      break;
-    case STATUS:
-      {
-	int i;
-	const char **args;
-
-	print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		       PRINT_SHARD_NAME, PRINT_CMD_STATUS);
-	switch (is_shard_running ())
-	  {
-	  case 0:		/* no error */
-	    args = (const char **) malloc (sizeof (char *) * (argc + 2));
-	    if (args == NULL)
-	      {
-		return ER_GENERIC_ERROR;
-	      }
-
-	    args[0] = PRINT_SHARD_NAME " " PRINT_CMD_STATUS;
-	    for (i = 0; i < argc; i++)
-	      {
-		args[i + 1] = argv[i];
-	      }
-	    args[argc + 1] = NULL;
-	    status =
-	      proc_execute (UTIL_SMONITOR_NAME, args, true, false, false,
-			    NULL);
-
-	    free (args);
-	    return status;
-	  case 1:		/* shm_open error */
-	    print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-			   PRINT_SHARD_NAME);
-	    return NO_ERROR;
-	  case 2:		/* no conf file */
-	    fprintf (stderr,
-		     "Error: Error occurred while reading shard.conf.\n"
-		     "       The file is not found or an invalid "
-		     "parameter name/value is found.\n");
-	    print_result (PRINT_SHARD_NAME, ER_GENERIC_ERROR, command_type);
-	    return ER_GENERIC_ERROR;
-	  default:		/* other error */
-	    print_result (PRINT_SHARD_NAME, ER_GENERIC_ERROR, command_type);
-	    return ER_GENERIC_ERROR;
-	  }
-      }
-      break;
-    case ON:
-      {
-	if (process_window_service)
-	  {
-#if defined(WINDOWS)
-	    const char *args[] =
-	      { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_SHARD,
-	      COMMAND_TYPE_ON, argv[0], NULL
-	    };
-
-	    status =
-	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
-			    false, false, NULL);
-#endif
-	  }
-	else
-	  {
-	    const char *args[] =
-	      { UTIL_SHARD_NAME, COMMAND_TYPE_ON, argv[0], NULL };
-	    if (argc <= 0)
-	      {
-		print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
-		return ER_GENERIC_ERROR;
-	      }
-	    status =
-	      proc_execute (UTIL_SHARD_NAME, args, true, false, false, NULL);
-	  }
-      }
-      break;
-    case OFF:
-      {
-	if (process_window_service)
-	  {
-#if defined(WINDOWS)
-	    const char *args[] =
-	      { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_SHARD,
-	      COMMAND_TYPE_OFF, argv[0], NULL
-	    };
-
-	    status =
-	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
-			    false, false, NULL);
-#endif
-	  }
-	else
-	  {
-	    const char *args[] =
-	      { UTIL_SHARD_NAME, COMMAND_TYPE_OFF, argv[0], NULL };
-	    if (argc <= 0)
-	      {
-		print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
-		return ER_GENERIC_ERROR;
-	      }
-	    status =
-	      proc_execute (UTIL_SHARD_NAME, args, true, false, false, NULL);
-	  }
-      }
-      break;
-    case ACCESS_CONTROL:
-      {
-	const char *args[5];
-
-	args[0] = UTIL_SHARD_NAME;
-	args[1] = COMMAND_TYPE_ACL;
-	args[2] = argv[0];
-
-	if (argc == 1)
-	  {
-	    args[3] = NULL;
-	  }
-	else if (argc == 2)
-	  {
-	    args[3] = argv[1];
-	    args[4] = NULL;
-	  }
-	else
-	  {
-	    util_service_usage (SHARD);
-	    return ER_GENERIC_ERROR;
-	  }
-	status =
-	  proc_execute (UTIL_SHARD_NAME, args, true, false, false, NULL);
-	print_result (PRINT_SHARD_NAME, status, command_type);
-	break;
-      }
-    case RESET:
-      {
-	if (process_window_service)
-	  {
-#if defined(WINDOWS)
-	    const char *args[] =
-	      { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_SHARD,
-	      COMMAND_TYPE_RESET, argv[0], NULL
-	    };
-
-	    status =
-	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
-			    false, false, NULL);
-#endif
-	  }
-	else
-	  {
-	    const char *args[] =
-	      { UTIL_SHARD_NAME, COMMAND_TYPE_RESET, argv[0], NULL };
-	    if (argc <= 0)
-	      {
-		print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
-		return ER_GENERIC_ERROR;
-	      }
-	    status =
-	      proc_execute (UTIL_SHARD_NAME, args, true, false, false, NULL);
-	  }
-      }
-      break;
     case GET_SHARID:
       {
 	int i;
 	const char **args;
 	print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		       PRINT_SHARD_NAME, PRINT_CMD_GETID);
+		       PRINT_BROKER_NAME, PRINT_CMD_GETID);
 
-	if (is_shard_running ())
+	if (is_broker_running ())
 	  {
 	    print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-			   PRINT_SHARD_NAME);
+			   PRINT_BROKER_NAME);
 	    return NO_ERROR;
 	  }
 
@@ -2248,7 +1928,7 @@ process_shard (int command_type, int argc, const char **argv,
 	    return ER_GENERIC_ERROR;
 	  }
 
-	args[0] = UTIL_SHARD_NAME;
+	args[0] = UTIL_BROKER_NAME;
 	args[1] = PRINT_CMD_GETID;
 
 	for (i = 0; i < argc; i++)
@@ -2258,24 +1938,16 @@ process_shard (int command_type, int argc, const char **argv,
 	args[argc + 2] = NULL;
 
 	status =
-	  proc_execute (UTIL_SHARD_NAME, args, true, false, false, NULL);
+	  proc_execute (UTIL_BROKER_NAME, args, true, false, false, NULL);
 
 	free (args);
-      }
-      break;
-
-    case INFO:
-      {
-	const char *args[] = { UTIL_SHARD_NAME, COMMAND_TYPE_INFO, NULL };
-
-	status =
-	  proc_execute (UTIL_SHARD_NAME, args, true, false, false, NULL);
       }
       break;
 
     default:
       return ER_GENERIC_ERROR;
     }
+
   return status;
 }
 
@@ -3658,7 +3330,6 @@ load_properties (void)
   bool broker_flag = false;
   bool manager_flag = false;
   bool heartbeat_flag = false;
-  bool shard_flag = false;
   char *value = NULL;
 
   if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
@@ -3695,10 +3366,6 @@ load_properties (void)
 	    {
 	      heartbeat_flag = true;
 	    }
-	  else if (strcmp (util, UTIL_TYPE_SHARD) == 0)
-	    {
-	      shard_flag = true;
-	    }
 	  else
 	    {
 	      return ER_GENERIC_ERROR;
@@ -3714,8 +3381,6 @@ load_properties (void)
     strdup (manager_flag ? PROPERTY_ON : PROPERTY_OFF);
   us_Property_map[SERVICE_START_HEARTBEAT].property_value =
     strdup (heartbeat_flag ? PROPERTY_ON : PROPERTY_OFF);
-  us_Property_map[SERVICE_START_SHARD].property_value =
-    strdup (shard_flag ? PROPERTY_ON : PROPERTY_OFF);
 
   /* get service::server list */
   value = prm_get_string_value (PRM_ID_SERVICE_SERVER_LIST);

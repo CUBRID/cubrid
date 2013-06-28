@@ -86,16 +86,17 @@ struct t_error_info
   int err_line;
 };
 
+extern int cas_shard_flag;
+extern int shm_shard_id;
+
 #ifndef LIBCAS_FOR_JSP
 extern int restart_is_needed (void);
 
 extern const char *program_name;
 extern char broker_name[BROKER_NAME_LEN];
 
-#if defined(CUBRID_SHARD)
 extern int shm_proxy_id;
-extern int shm_shard_id;
-#endif /* CUBRID_SHARD */
+extern int shm_shard_cas_id;
 extern int shm_as_index;
 extern T_SHM_APPL_SERVER *shm_appl;
 extern T_APPL_SERVER_INFO *as_info;
@@ -106,7 +107,6 @@ extern int tran_timeout;
 extern int query_timeout;
 extern INT64 query_cancel_time;
 extern char query_cancel_flag;
-
 #endif
 
 extern int errors_in_transaction;

@@ -29,23 +29,13 @@
 
 #include "porting.h"
 
-#if defined(CUBRID_SHARD)
-#define APPL_SERVER_CAS_NAME		"shard_cas"
-#define APPL_SERVER_CAS_ORACLE_NAME		"shard_cas_oracle"
-#define APPL_SERVER_CAS_MYSQL_NAME		"shard_cas_mysql"
-#else
 #define APPL_SERVER_CAS_NAME		"cub_cas"
 #define APPL_SERVER_CAS_ORACLE_NAME		"cub_cas_oracle"
 #define APPL_SERVER_CAS_MYSQL_NAME		"cub_cas_mysql"
-#endif /* CUBRID_SHARD */
 
 #define NAME_BROKER			"Tbroker"
-#if defined(CUBRID_SHARD)
-#define NAME_CAS_BROKER			"shard_broker"
-#define NAME_PROXY			"shard_proxy"
-#else
+#define NAME_PROXY			"cub_proxy"
 #define NAME_CAS_BROKER			"cub_broker"
-#endif
 #if defined(WINDOWS)
 #define NAME_CAS_BROKER2		"Cbroker2"
 #define NAME_UC_SHM			"broker_shm"

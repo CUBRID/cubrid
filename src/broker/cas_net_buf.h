@@ -69,13 +69,11 @@
      net_buf_error_msg_set(NET_BUF, ERR_INDICATOR, ERR_CODE, ERR_MSG, __FILE__, __LINE__)
 
 #define NET_BUF_KBYTE                   1024
-#if defined(CUBRID_SHARD)
-#define NET_BUF_SIZE                    (512 * NET_BUF_KBYTE)
-#else
+#define SHARD_NET_BUF_SIZE              (512 * NET_BUF_KBYTE)
 #define NET_BUF_SIZE                    (16 * NET_BUF_KBYTE)
-#endif
 #define NET_BUF_EXTRA_SIZE              (64 * NET_BUF_KBYTE)
 #define NET_BUF_ALLOC_SIZE              (NET_BUF_SIZE + NET_BUF_EXTRA_SIZE)
+#define SHARD_NET_BUF_ALLOC_SIZE        (SHARD_NET_BUF_SIZE + NET_BUF_EXTRA_SIZE)
 
 #define NET_BUF_HEADER_MSG_SIZE         (NET_SIZE_INT)
 #define NET_BUF_HEADER_SIZE             (NET_BUF_HEADER_MSG_SIZE + cas_info_size)
@@ -85,8 +83,8 @@
   ((n)->alloc_size - NET_BUF_CURR_SIZE(n))
 #define NET_BUF_CURR_PTR(n)                             \
   ((n)->data + NET_BUF_CURR_SIZE(n))
-#define CHECK_NET_BUF_SIZE(n)                           \
-  (NET_BUF_CURR_SIZE(n) < NET_BUF_SIZE ? 1 : 0)
+#define CHECK_NET_BUF_SIZE(n , size)                           \
+  (NET_BUF_CURR_SIZE(n) < (size) ? 1 : 0)
 
 typedef struct t_net_buf T_NET_BUF;
 struct t_net_buf
@@ -95,10 +93,8 @@ struct t_net_buf
   int data_size;
   char *data;
   int err_code;
-#if !defined(CUBRID_SHARD)
   int post_file_size;
   char *post_send_file;
-#endif				/* CUBRID_SHARD */
 };
 
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
@@ -107,9 +103,7 @@ struct t_net_buf
 extern void net_buf_init (T_NET_BUF * net_buf);
 extern void net_buf_clear (T_NET_BUF * net_buf);
 extern void net_buf_destroy (T_NET_BUF * net_buf);
-#if !defined(CUBRID_SHARD)
 extern int net_buf_cp_post_send_file (T_NET_BUF * net_buf, int, char *str);
-#endif /* CUBRID_SHARD */
 extern int net_buf_cp_byte (T_NET_BUF * net_buf, char ch);
 extern int net_buf_cp_str (T_NET_BUF * net_buf, const char *buf, int size);
 extern int net_buf_cp_int (T_NET_BUF * net_buf, int value, int *begin_offset);
@@ -171,8 +165,6 @@ extern void net_arg_get_lob_handle (T_LOB_HANDLE * lob, void *arg);
 extern void net_arg_get_lob_value (DB_VALUE * db_lob, void *arg);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
-#if defined(CUBRID_SHARD)
 extern void net_arg_put_int (void *arg, int *value);
-#endif /* CUBRID_SHARD */
 
 #endif /* _CAS_NET_BUF_H_ */

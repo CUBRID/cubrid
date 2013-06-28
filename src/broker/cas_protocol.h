@@ -254,10 +254,8 @@ extern "C"
 	|| (type) == CAS_PROXY_DBMS_MYSQL \
 	|| (type) == CAS_PROXY_DBMS_ORACLE)
 
-#if defined(CUBRID_SHARD)
 #define IS_VALID_CAS_FC(fc) \
 	(fc >= CAS_FC_END_TRAN && fc < CAS_FC_MAX)
-#endif				/* CUBRID_SHARD */
 
 /* Current protocol version */
 #define CAS_PROTOCOL_VERSION    ((unsigned char)(CURRENT_PROTOCOL))

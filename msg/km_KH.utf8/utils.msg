@@ -139,7 +139,6 @@ service's utilitiesដែលមាន:\n\
     broker\n\
     manager\n\
     heartbeat\n\
-    shard\n\
 \n\
 administrator's utilitiesដែលមាន:\n\
     addvoldb\n\
@@ -204,7 +203,8 @@ commandដែលមាន:\n\
     on          ឈ្មោះbroker\n\
     off         ឈ្មោះbroker\n\
     reset       ឈ្មោះbroker\n\
-    acl         <status|reload> [ឈ្មោះbroker]\n
+    acl         <status|reload> [ឈ្មោះbroker]\n\
+    getid       -b <broker-name> [-f] shard-key\n
 27 cubrid utility, version %s\n\
 usage: %s manager <command>\n\
 \n\
@@ -230,20 +230,6 @@ commandដែលមាន:\n\
 36 The server was not configured for HA.\n
 38 ៣៨កំព្យួទ័របំរើសេវាដែលបានត្រូវកំណត់អោយHAមិនចេញពីបញ្ជី ha_db_list.\n
 39 ៣៩កំព្យួទ័របំរើសេវាដែលបានត្រូវកំណត់អោយHAមិនចេញពី ha_node_list.\n
-62 ៦២ឧបករប្រើប្រាស់cubrid កំណែ %s\n\
-usage: %s shard <command> [args]\n\
-\n\
-Available command:\n\
-    start\n\
-    stop\n\
-    restart\n\
-    info\n\
-    status      [-b] [-f] [-t] [-s <sec>] [<expr>]\n\
-    on          shard-name\n\
-    off         shard-name\n\
-    reset       shard-name\n\
-    acl         <status|reload> [shard-name]\n\
-    getid       -b <broker-name> [-f] shard-key\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 WARNING: ជម្រើស -t មិនស្គាល់ក្នុងប្រតិបត្តិការ stand-alone mode។\n

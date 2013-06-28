@@ -139,7 +139,6 @@ cubrid 管理工具，版本 %s\n\
     broker\n\
     manager\n\
     heartbeat\n\
-    shard\n\
 \n\
 可用的管理员工具:\n\
     addvoldb\n\
@@ -204,7 +203,8 @@ cubrid 管理工具，版本 %s\n\
     on          broker-name\n\
     off         broker-name\n\
     reset       broker-name\n\
-    acl         <status|reload> [broker-name]\n
+    acl         <status|reload> [broker-name]\n\
+    getid       -b <broker-name> [-f] shard-key\n
 27 cubrid 应用工具, 版本 %s\n\
 用法: %s manager <命令>\n\
 \n\
@@ -230,20 +230,6 @@ cubrid 管理工具，版本 %s\n\
 36 服务器没有为HA进行设置.\n
 38 为HA配置的服务器没有列在 ha_db_list 列表中.\n
 39 为HA配置的服务器没有列在 ha_node_list 列表中.\n
-62 cubrid 工具, 版本 %s\n\
-用法: %s shard <命令> [参数]\n\
-\n\
-可用命令:\n\
-    start\n\
-    stop\n\
-    restart\n\
-    info\n\
-    status      [-b] [-f] [-t] [-s <sec>] [<expr>]\n\
-    on          shard-name\n\
-    off         shard-name\n\
-    reset       shard-name\n\
-    acl         <status|reload> [shard-name]\n\
-    getid       -b <broker-name> [-f] shard-key\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 警告: 在单机模式下 -t 选项将被忽略.\n

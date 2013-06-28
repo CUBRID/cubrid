@@ -273,26 +273,23 @@ typedef struct
   char buf[MSG_HEADER_SIZE];
 } MSG_HEADER;
 
-#if defined(CUBRID_SHARD)
 #if defined(WINDOWS)
 extern SOCKET net_connect_proxy (int proxy_id);
 #else /* WINDOWS */
 extern SOCKET net_connect_proxy (void);
 #endif /* !WINDOWS */
-#else
 extern SOCKET net_connect_client (SOCKET srv_sock_fd);
-#endif
+
 extern int net_read_stream (SOCKET sock_fd, char *buf, int size);
 extern int net_write_stream (SOCKET sock_fd, const char *buf, int size);
 extern int net_write_int (SOCKET sock_fd, int value);
 extern int net_read_int (SOCKET sock_fd, int *value);
 extern int net_decode_str (char *msg, int msg_size, char *func_code,
 			   void ***ret_argv);
-#if !defined(CUBRID_SHARD)
+
 extern int net_read_to_file (SOCKET sock_fd, int file_size, char *filename);
 extern int net_write_from_file (SOCKET sock_fd, int file_size,
 				char *filename);
-#endif /* !CUBRID_SHARD */
 
 extern void net_timeout_set (int timeout_sec);
 extern void init_msg_header (MSG_HEADER * header);

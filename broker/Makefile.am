@@ -46,9 +46,12 @@ AM_CPPFLAGS = @SRC_INC@ @EXT_INC@ \
 BROKER_CAS_LIBS = @CS_LIB@
 LOG_RUNNER_LIBS = @CS_LIB@ @CCI_LIB@
 
-bin_PROGRAMS = cub_broker cubrid_broker cub_cas \
+bin_PROGRAMS = cub_broker cubrid_broker cub_cas cub_proxy \
 	broker_monitor broker_changer \
 	broker_log_converter broker_log_runner broker_log_top
+
+include_HEADERS = \
+	$(BROKER_DIR)/shard_key.h 
 
 dist_compat_SCRIPTS = uc
 
@@ -61,7 +64,10 @@ cub_broker_SOURCES = \
 	$(BROKER_DIR)/broker_max_heap.c \
 	$(BROKER_DIR)/broker_access_list.c \
 	$(BROKER_DIR)/broker_send_fd.c \
-	$(BROKER_DIR)/broker_filename.c
+	$(BROKER_DIR)/broker_filename.c \
+	$(BROKER_DIR)/shard_metadata.c \
+	$(BROKER_DIR)/shard_shm.c \
+	$(BROKER_DIR)/broker_proxy_conn.c 
 cub_broker_LDADD = $(BROKER_CAS_LIBS)
 
 broker_monitor_SOURCES = \
@@ -73,7 +79,10 @@ broker_monitor_SOURCES = \
 	$(BROKER_DIR)/broker_process_size.c \
 	$(BROKER_DIR)/broker_max_heap.c \
 	$(BROKER_DIR)/broker_process_info.c \
-	$(BROKER_DIR)/broker_filename.c
+	$(BROKER_DIR)/broker_filename.c \
+	$(BROKER_DIR)/shard_metadata.c \
+	$(BROKER_DIR)/shard_shm.c \
+	$(BROKER_DIR)/cas_util.c 
 broker_monitor_LDADD = $(BROKER_CAS_LIBS)
 
 broker_changer_SOURCES = \
@@ -86,7 +95,10 @@ broker_changer_SOURCES = \
 	$(BROKER_DIR)/broker_util.c \
 	$(BROKER_DIR)/broker_max_heap.c \
 	$(BROKER_DIR)/broker_filename.c \
-	$(BROKER_DIR)/broker_acl.c
+	$(BROKER_DIR)/broker_acl.c \
+	$(BROKER_DIR)/shard_metadata.c \
+	$(BROKER_DIR)/shard_shm.c \
+	$(BROKER_DIR)/shard_key_func.c 
 broker_changer_LDADD = $(BROKER_CAS_LIBS)
 
 cubrid_broker_SOURCES = \
@@ -100,7 +112,10 @@ cubrid_broker_SOURCES = \
 	$(BROKER_DIR)/broker_process_size.c \
 	$(BROKER_DIR)/broker_max_heap.c \
 	$(BROKER_DIR)/broker_filename.c \
-	$(BROKER_DIR)/broker_acl.c
+	$(BROKER_DIR)/broker_acl.c \
+	$(BROKER_DIR)/shard_metadata.c \
+	$(BROKER_DIR)/shard_shm.c \
+	$(BROKER_DIR)/shard_key_func.c 
 cubrid_broker_LDADD = $(BROKER_CAS_LIBS)
 
 cub_cas_SOURCES = \
@@ -126,6 +141,32 @@ cub_cas_SOURCES = \
 	$(BROKER_DIR)/cas_meta.c
 cub_cas_CPPFLAGS = $(AM_CPPFLAGS) -DCAS_CUBRID
 cub_cas_LDADD = $(BROKER_CAS_LIBS) -lrt
+
+cub_proxy_SOURCES = \
+	$(BROKER_DIR)/shard_proxy.c \
+	$(BROKER_DIR)/shard_proxy_io.c \
+	$(BROKER_DIR)/shard_proxy_function.c \
+	$(BROKER_DIR)/broker_recv_fd.c \
+	$(BROKER_DIR)/broker_process_size.c \
+	$(BROKER_DIR)/broker_shm.c \
+	$(BROKER_DIR)/broker_error.c \
+	$(BROKER_DIR)/broker_util.c \
+	$(BROKER_DIR)/shard_metadata.c \
+	$(BROKER_DIR)/shard_admin_pub.c \
+	$(BROKER_DIR)/cas_net_buf.c \
+	$(BROKER_DIR)/shard_statement.c \
+	$(BROKER_DIR)/shard_shm.c \
+	$(BROKER_DIR)/shard_proxy_queue.c \
+	$(BROKER_DIR)/shard_proxy_handler.c \
+	$(BROKER_DIR)/shard_parser.c \
+	$(BROKER_DIR)/shard_key_func.c \
+	$(BROKER_DIR)/shard_proxy_log.c \
+	$(BROKER_DIR)/cas_util.c \
+	$(BROKER_DIR)/broker_acl.c \
+	$(BROKER_DIR)/cas_meta.c
+cub_proxy_CPPFLAGS = $(AM_CPPFLAGS) -DCUB_PROXY
+cub_proxy_LDADD = $(BROKER_CAS_LIBS)
+
 
 broker_log_converter_SOURCES = \
 	$(BROKER_DIR)/broker_log_converter.c \
@@ -164,7 +205,9 @@ libbrokeradmin_la_SOURCES = \
 	$(BROKER_DIR)/broker_process_size.c \
 	$(BROKER_DIR)/broker_process_info.c \
 	$(BROKER_DIR)/broker_filename.c \
-	$(BROKER_DIR)/broker_acl.c
+	$(BROKER_DIR)/broker_acl.c \
+	$(BROKER_DIR)/shard_metadata.c \
+	$(BROKER_DIR)/shard_shm.c 
 libbrokeradmin_la_CPPFLAGS = $(AM_CPPFLAGS) -D_UC_ADMIN_SO_ -DDIAG_DEVEL
 libbrokeradmin_la_LDFLAGS = -version-number @LT_VERSION@
 libbrokeradmin_la_LIBADD = @SYS_LIBS@ @CS_LIB@

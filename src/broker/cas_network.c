@@ -59,13 +59,8 @@
 
 #define SELECT_MASK	fd_set
 
-#if defined(CUBRID_SHARD)
-static int write_to_proxy (SOCKET sock_fd, const char *buf, int size);
-static int read_from_proxy (SOCKET sock_fd, char *buf, int size);
-#else
-static int write_to_client (SOCKET sock_fd, const char *buf, int size);
-static int read_from_client (SOCKET sock_fd, char *buf, int size);
-#endif /* CUBRID_SHARD */
+static int write_buffer (SOCKET sock_fd, const char *buf, int size);
+static int read_buffer (SOCKET sock_fd, char *buf, int size);
 
 static void set_net_timeout_flag (void);
 static void unset_net_timeout_flag (void);
@@ -166,7 +161,7 @@ net_init_env (char *port_name)
   return (sock_fd);
 }
 
-#if defined(CUBRID_SHARD)
+#ifndef LIBCAS_FOR_JSP
 #if defined(WINDOWS)
 SOCKET
 net_connect_proxy (int proxy_id)
@@ -262,7 +257,8 @@ net_connect_proxy (void)
   net_error_flag = 0;
   return (fd);
 }
-#else
+#endif /* LIBCAS_FOR_JSP */
+
 SOCKET
 net_connect_client (SOCKET srv_sock_fd)
 {
@@ -287,7 +283,6 @@ net_connect_client (SOCKET srv_sock_fd)
   net_error_flag = 0;
   return clt_sock_fd;
 }
-#endif /* CUBRID_SHARD */
 
 int
 net_write_stream (SOCKET sock_fd, const char *buf, int size)
@@ -296,11 +291,8 @@ net_write_stream (SOCKET sock_fd, const char *buf, int size)
     {
       int write_len;
 
-#if defined(CUBRID_SHARD)
-      write_len = write_to_proxy (sock_fd, buf, size);
-#else
-      write_len = write_to_client (sock_fd, buf, size);
-#endif /* CUBRID_SHARD */
+      write_len = write_buffer (sock_fd, buf, size);
+
       if (write_len <= 0)
 	{
 #ifdef _DEBUG
@@ -321,11 +313,8 @@ net_read_stream (SOCKET sock_fd, char *buf, int size)
     {
       int read_len;
 
-#if defined(CUBRID_SHARD)
-      read_len = read_from_proxy (sock_fd, buf, size);
-#else
-      read_len = read_from_client (sock_fd, buf, size);
-#endif /* CUBRID_SHARD */
+      read_len = read_buffer (sock_fd, buf, size);
+
       if (read_len <= 0)
 	{
 #ifdef _DEBUG
@@ -359,7 +348,6 @@ net_read_header (SOCKET sock_fd, MSG_HEADER * header)
   return retval;
 }
 
-#if defined(CUBRID_SHARD)
 int
 net_write_header (SOCKET sock_fd, MSG_HEADER * header)
 {
@@ -370,7 +358,6 @@ net_write_header (SOCKET sock_fd, MSG_HEADER * header)
 
   return 0;
 }
-#endif /* CUBRID_SHARD */
 
 void
 init_msg_header (MSG_HEADER * header)
@@ -390,11 +377,8 @@ int
 net_write_int (SOCKET sock_fd, int value)
 {
   value = htonl (value);
-#if defined(CUBRID_SHARD)
-  return (write_to_proxy (sock_fd, (const char *) (&value), 4));
-#else
-  return (write_to_client (sock_fd, (const char *) (&value), 4));
-#endif /* CUBRID_SHARD */
+
+  return (write_buffer (sock_fd, (const char *) (&value), 4));
 }
 
 int
@@ -460,7 +444,6 @@ net_decode_str (char *msg, int msg_size, char *func_code, void ***ret_argv)
   return argc;
 }
 
-#if !defined(CUBRID_SHARD)
 int
 net_read_to_file (SOCKET sock_fd, int file_size, char *filename)
 {
@@ -476,8 +459,8 @@ net_read_to_file (SOCKET sock_fd, int file_size, char *filename)
 
   while (file_size > 0)
     {
-      read_len = read_from_client (sock_fd, read_buf,
-				   (int) MIN (SSIZEOF (read_buf), file_size));
+      read_len = read_buffer (sock_fd, read_buf,
+			      (int) MIN (SSIZEOF (read_buf), file_size));
       if (read_len <= 0 || read_len > MIN (SSIZEOF (read_buf), file_size))
 	{
 	  return ERROR_INFO_SET (CAS_ER_COMMUNICATION, CAS_ERROR_INDICATOR);
@@ -535,7 +518,6 @@ net_write_from_file (SOCKET sock_fd, int file_size, char *filename)
   close (in_fd);
   return 0;
 }
-#endif /* !CUBRID_SHARD */
 
 void
 net_timeout_set (int timeout_sec)
@@ -543,16 +525,10 @@ net_timeout_set (int timeout_sec)
   net_timeout = timeout_sec;
 }
 
-#if !defined(CUBRID_SHARD)
 extern SOCKET new_req_sock_fd;
-#endif /* CUBRID_SHARD */
 
 static int
-#if defined(CUBRID_SHARD)
-read_from_proxy (SOCKET sock_fd, char *buf, int size)
-#else				/* CUBRID_SHARD */
-read_from_client (SOCKET sock_fd, char *buf, int size)
-#endif				/* CUBRID_SHARD */
+read_buffer (SOCKET sock_fd, char *buf, int size)
 {
   int read_len;
 #if defined(ASYNC_MODE)
@@ -573,14 +549,15 @@ read_from_client (SOCKET sock_fd, char *buf, int size)
   po[0].events = POLLIN;
   po_size = 1;
 
-#if !defined(CUBRID_SHARD)
-  if (!IS_INVALID_SOCKET (new_req_sock_fd))
+  if (cas_shard_flag == OFF)
     {
-      po[1].fd = new_req_sock_fd;
-      po[1].events = POLLIN;
-      po_size = 2;
+      if (!IS_INVALID_SOCKET (new_req_sock_fd))
+	{
+	  po[1].fd = new_req_sock_fd;
+	  po[1].events = POLLIN;
+	  po_size = 2;
+	}
     }
-#endif /* CUBRID_SHARD */
 
 retry_poll:
   n = poll (po, po_size, timeout);
@@ -604,13 +581,12 @@ retry_poll:
     }
   else
     {
-#if !defined(CUBRID_SHARD)
-      if (!IS_INVALID_SOCKET (new_req_sock_fd) && (po[1].revents & POLLIN))
+      if (cas_shard_flag == OFF
+	  && !IS_INVALID_SOCKET (new_req_sock_fd) && (po[1].revents & POLLIN))
 	{
 	  /* CHANGE CLIENT */
 	  return -1;
 	}
-#endif /* CUBRID_SHARD */
       if (po[0].revents & POLLIN)
 	{
 #endif /* ASYNC_MODE */
@@ -629,11 +605,7 @@ retry_poll:
 }
 
 static int
-#if defined(CUBRID_SHARD)
-write_to_proxy (SOCKET sock_fd, const char *buf, int size)
-#else
-write_to_client (SOCKET sock_fd, const char *buf, int size)
-#endif				/* CUBRID_SHARD */
+write_buffer (SOCKET sock_fd, const char *buf, int size)
 {
   int write_len;
 #ifdef ASYNC_MODE

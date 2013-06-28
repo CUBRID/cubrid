@@ -40,7 +40,6 @@
 #include "cas_util.h"
 #include "cas_net_buf.h"
 
-#if defined(CUBRID_SHARD)
 char *
 ut_uchar2ipstr (unsigned char *ip_addr)
 {
@@ -53,7 +52,6 @@ ut_uchar2ipstr (unsigned char *ip_addr)
 	   (unsigned char) ip_addr[2], (unsigned char) ip_addr[3]);
   return (ip_str);
 }
-#endif /* CUBRID_SHARD */
 
 char *
 ut_trim (char *str)

@@ -2,9 +2,9 @@
 <VisualStudioProject
 	ProjectType="Visual C++"
 	Version="9.00"
-	Name="shard_broker_changer"
-	ProjectGUID="{4C2DA20F-5947-4B71-8CB3-8E6A59748CED}"
-	RootNamespace="shard_broker_changer"
+	Name="cub_proxy"
+	ProjectGUID="{71A6B261-89ED-46FD-880B-7FA64D2AFA07}"
+	RootNamespace="cub_proxy"
 	TargetFrameworkVersion="196613"
 	>
 	<Platforms>
@@ -44,8 +44,8 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\include;..\..\src\api;..\..\src\base;..\..\src\compat;..\..\src\object;..\..\src\storage;..\..\src\thread;..\..\src\query;..\..\src\transaction"
-				PreprocessorDefinitions="WIN;WINDOWS;WIN32;_DEBUG;_CRT_SECURE_NO_WARNINGS;_XOPEN_SOURCE;_BSD_SOURCE;DIAG_DEVEL;_USE_32BIT_TIME_T;CAS_BROKER;CUBRID_SHARD"
+				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\include;..\..\src\api;..\..\src\base;..\..\src\compat;..\..\src\object;..\..\src\storage;..\..\src\thread;..\..\src\query;..\..\src\cci;..\..\src\transaction"
+				PreprocessorDefinitions="WIN;WINDOWS;WIN32;_DEBUG;_CRT_SECURE_NO_WARNINGS;ASYNC_MODE;_XOPEN_SOURCE;_BSD_SOURCE;DIAG_DEVEL;CAS_BROKER;_USE_32BIT_TIME_T;CUBRID_SHARD"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="3"
@@ -65,8 +65,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib"
-				AdditionalLibraryDirectories="$(SolutionDir)$(PlatformName)\$(ConfigurationName)"
-				UACExecutionLevel="2"
+				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(ConfigurationName)&quot;"
 				GenerateDebugInformation="true"
 				TargetMachine="1"
 			/>
@@ -120,8 +119,8 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
-				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\include;..\..\src\api;..\..\src\base;..\..\src\compat;..\..\src\object;..\..\src\storage;..\..\src\thread;..\..\src\query;..\..\src\transaction"
-				PreprocessorDefinitions="WIN;WINDOWS;WIN32;NDEBUG;_CRT_SECURE_NO_WARNINGS;_XOPEN_SOURCE;_BSD_SOURCE;DIAG_DEVEL;_USE_32BIT_TIME_T;CAS_BROKER;CUBRID_SHARD"
+				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\include;..\..\src\api;..\..\src\base;..\..\src\compat;..\..\src\object;..\..\src\storage;..\..\src\thread;..\..\src\query;..\..\src\cci;..\..\src\transaction"
+				PreprocessorDefinitions="WIN;WINDOWS;WIN32;NDEBUG;_CRT_SECURE_NO_WARNINGS;ASYNC_MODE;_XOPEN_SOURCE;_BSD_SOURCE;DIAG_DEVEL;CAS_BROKER;_USE_32BIT_TIME_T;CUBRID_SHARD"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
 				WarningLevel="3"
@@ -140,8 +139,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib"
-				AdditionalLibraryDirectories="$(SolutionDir)$(PlatformName)\$(ConfigurationName)"
-				UACExecutionLevel="2"
+				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(ConfigurationName)&quot;"
 				GenerateDebugInformation="true"
 				OptimizeReferences="2"
 				EnableCOMDATFolding="2"
@@ -196,8 +194,8 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\include;..\..\src\api;..\..\src\base;..\..\src\compat;..\..\src\object;..\..\src\storage;..\..\src\thread;..\..\src\query;..\..\src\transaction"
-				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;_DEBUG;_CRT_SECURE_NO_WARNINGS;_XOPEN_SOURCE;_BSD_SOURCE;DIAG_DEVEL;CAS_BROKER;CUBRID_SHARD"
+				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\include;..\..\src\api;..\..\src\base;..\..\src\compat;..\..\src\object;..\..\src\storage;..\..\src\thread;..\..\src\query;..\..\src\cci;..\..\src\transaction"
+				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;_DEBUG;_CRT_SECURE_NO_WARNINGS;ASYNC_MODE;_XOPEN_SOURCE;_BSD_SOURCE;DIAG_DEVEL;CAS_BROKER;CUBRID_SHARD"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="3"
@@ -217,8 +215,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib"
-				AdditionalLibraryDirectories="$(SolutionDir)$(PlatformName)\$(ConfigurationName)"
-				UACExecutionLevel="2"
+				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(ConfigurationName)&quot;"
 				GenerateDebugInformation="true"
 				TargetMachine="17"
 			/>
@@ -273,8 +270,8 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
-				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\include;..\..\src\api;..\..\src\base;..\..\src\compat;..\..\src\object;..\..\src\storage;..\..\src\thread;..\..\src\query;..\..\src\transaction"
-				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;NDEBUG;_CRT_SECURE_NO_WARNINGS;_XOPEN_SOURCE;_BSD_SOURCE;DIAG_DEVEL;CAS_BROKER;CUBRID_SHARD"
+				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\include;..\..\src\api;..\..\src\base;..\..\src\compat;..\..\src\object;..\..\src\storage;..\..\src\thread;..\..\src\query;..\..\src\cci;..\..\src\transaction"
+				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;NDEBUG;_CRT_SECURE_NO_WARNINGS;ASYNC_MODE;_XOPEN_SOURCE;_BSD_SOURCE;DIAG_DEVEL;CAS_BROKER;CUBRID_SHARD"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
 				WarningLevel="3"
@@ -293,8 +290,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib"
-				AdditionalLibraryDirectories="$(SolutionDir)$(PlatformName)\$(ConfigurationName)"
-				UACExecutionLevel="2"
+				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(ConfigurationName)&quot;"
 				GenerateDebugInformation="true"
 				OptimizeReferences="2"
 				EnableCOMDATFolding="2"
@@ -331,27 +327,11 @@
 			Filter="cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx"
 			UniqueIdentifier="{4FC737F1-C7A5-4376-A066-2A32D752A2FF}"
 			>
-			<File
-				RelativePath="..\..\src\base\porting.c"
-				>
-			</File>
 			<Filter
 				Name="broker"
 				>
 				<File
 					RelativePath="..\..\src\broker\broker_acl.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\broker\broker_admin_pub.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\broker\broker_changer.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\broker\broker_config.c"
 					>
 				</File>
 				<File
@@ -364,10 +344,6 @@
 				</File>
 				<File
 					RelativePath="..\..\src\broker\broker_list.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\broker\broker_max_heap.c"
 					>
 				</File>
 				<File
@@ -387,7 +363,19 @@
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\broker\shard_admin_pub.c"
+					RelativePath="..\..\src\broker\cas_net_buf.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\cas_util.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\broker_admin_pub.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\shard_key_func.c"
 					>
 				</File>
 				<File
@@ -395,7 +383,51 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\broker\shard_parser.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\shard_proxy.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\shard_proxy_function.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\shard_proxy_handler.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\shard_proxy_io.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\shard_proxy_log.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\shard_proxy_queue.c"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\broker\shard_shm.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\shard_statement.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\broker\cas_meta.c"
+					>
+				</File>
+			</Filter>
+			<Filter
+				Name="base"
+				>
+				<File
+					RelativePath="..\..\src\base\porting.c"
 					>
 				</File>
 			</Filter>

@@ -564,7 +564,7 @@ proxy_io_make_ex_get_int (char *driver_info, char **buffer, int *argv)
   assert (*buffer == NULL);
   assert (argv != NULL);
 
-  error = proxy_make_net_buf (&net_buf, NET_BUF_ALLOC_SIZE);
+  error = proxy_make_net_buf (&net_buf, SHARD_NET_BUF_ALLOC_SIZE);
   if (error)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
@@ -607,7 +607,7 @@ proxy_io_make_error_msg (char *driver_info, char **buffer,
 
   client_version = CAS_MAKE_PROTO_VER (driver_info);
 
-  error = proxy_make_net_buf (&net_buf, NET_BUF_ALLOC_SIZE);
+  error = proxy_make_net_buf (&net_buf, SHARD_NET_BUF_ALLOC_SIZE);
   if (error)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to make net buffer. "
@@ -709,7 +709,7 @@ proxy_io_make_end_tran_request (char *driver_info, char **buffer, bool commit)
   assert (buffer);
   assert (*buffer == NULL);
 
-  error = proxy_make_net_buf (&net_buf, NET_BUF_ALLOC_SIZE);
+  error = proxy_make_net_buf (&net_buf, SHARD_NET_BUF_ALLOC_SIZE);
   if (error)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
@@ -767,7 +767,7 @@ proxy_io_make_close_req_handle_ok (char *driver_info,
   assert (buffer);
   assert (*buffer == NULL);
 
-  error = proxy_make_net_buf (&net_buf, NET_BUF_ALLOC_SIZE);
+  error = proxy_make_net_buf (&net_buf, SHARD_NET_BUF_ALLOC_SIZE);
   if (error)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
@@ -835,7 +835,7 @@ proxy_io_make_get_db_version (char *driver_info, char **buffer)
   assert (buffer);
   assert (*buffer == NULL);
 
-  error = proxy_make_net_buf (&net_buf, NET_BUF_ALLOC_SIZE);
+  error = proxy_make_net_buf (&net_buf, SHARD_NET_BUF_ALLOC_SIZE);
   if (error)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,

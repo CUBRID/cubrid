@@ -139,7 +139,6 @@ cubrid 관리자 유틸리티, 버전 %s\n\
     broker\n\
     manager\n\
     heartbeat\n\
-    shard\n\
 \n\
 가용한 관리자 유틸리티 이름:\n\
     addvoldb\n\
@@ -204,7 +203,8 @@ cubrid 관리자 유틸리티, 버전 %s\n\
     on          <브로커 이름>\n\
     off         <브로커 이름>\n\
     reset       <브로커 이름>\n\
-    acl         <status|reload> [브로커 이름]\n
+    acl         <status|reload> [브로커 이름]\n\
+    getid       -b <broker-name> [-f] shard-key\n
 27 cubrid 유틸리티, 버전 %s\n\
 사용법: %s manager <명령어>\n\
 \n\
@@ -230,20 +230,6 @@ cubrid 관리자 유틸리티, 버전 %s\n\
 36 서버가 HA 모드로 설정되지 않았습니다.\n
 38 서버가 HA 모드로 설정되어 있으나, ha_db_list 목록에는 설정되어 있지 않습니다.\n
 39 서버가 HA 모드로 설정되어 있으나, ha_node_list 목록에는 설정되어 있지 않습니다.\n
-62 cubrid 유틸리티, 버전 %s\n\
-사용법: %s shard <명령어> [인자]\n\
-\n\
-가용한 명령어:\n\
-    start\n\
-    stop\n\
-    restart\n\
-    info\n\
-    status      [-b] [-f] [-t] [-s <sec>] [<expr>]\n\
-    on          <샤드 이름>\n\
-    off         <샤드 이름>\n\
-    reset       <샤드 이름>\n\
-    acl         <status|reload> [샤드 이름]\n\
-    getid       -b <broker-name> [-f] shard-key\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 경고: -t 옵션은 독립 실행 모드에서는 무시 됩니다.\n

@@ -613,6 +613,7 @@ proxy_get_shard_id (T_SHARD_STMT * stmt_p, void **argv,
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
 		 "Unable to get shard id. No hint available.");
+      proxy_info_p->num_hint_err_queries_processed++;
 
       return PROXY_INVALID_SHARD;
     }
@@ -2063,8 +2064,8 @@ fn_proxy_client_cursor (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
   assert (ctx_p->shard_id == cas_io_p->shard_id);
   assert (ctx_p->cas_id == cas_io_p->cas_id);
 
-  /* 
-   * find stored server handle id for this shard/cas, if exist, do fetch 
+  /*
+   * find stored server handle id for this shard/cas, if exist, do fetch
    * with it. otherwise, returns proxy internal error to the client.
    */
   net_arg_get_int (&srv_h_id, argv[0]);
@@ -2156,8 +2157,8 @@ fn_proxy_client_fetch (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
   assert (ctx_p->cas_id == cas_io_p->cas_id);
   proxy_context_set_in_tran (ctx_p, cas_io_p->shard_id, cas_io_p->cas_id);
 
-  /* 
-   * find stored server handle id for this shard/cas, if exist, do fetch 
+  /*
+   * find stored server handle id for this shard/cas, if exist, do fetch
    * with it. otherwise, returns proxy internal error to the client.
    */
   net_arg_get_int (&srv_h_id, argv[0]);
@@ -2257,8 +2258,8 @@ fn_proxy_client_schema_info (T_PROXY_CONTEXT * ctx_p,
     }
   else
     {
-      /* 
-       * It can be happened, when schema_info request is re-invoked 
+      /*
+       * It can be happened, when schema_info request is re-invoked
        * by shard waiter.
        */
 
@@ -2552,9 +2553,10 @@ fn_proxy_client_cursor_close (T_PROXY_CONTEXT * ctx_p,
 
   if (ctx_p->is_in_tran)
     {
-      cas_io_p = proxy_cas_alloc_by_ctx (ctx_p->client_id, ctx_p->shard_id, ctx_p->cas_id,
-					 ctx_p->cid, ctx_p->uid,
-					 ctx_p->wait_timeout);
+      cas_io_p =
+	proxy_cas_alloc_by_ctx (ctx_p->client_id, ctx_p->shard_id,
+				ctx_p->cas_id, ctx_p->cid, ctx_p->uid,
+				ctx_p->wait_timeout);
       if (cas_io_p == NULL)
 	{
 	  goto free_context;
@@ -3560,7 +3562,7 @@ fn_proxy_cas_schema_info (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
 	}
       event_p = NULL;
 
-      /* if stmt's status is SHARD_STMT_STATUS_IN_PROGRESS, 
+      /* if stmt's status is SHARD_STMT_STATUS_IN_PROGRESS,
        * wake up waiters and free statement.
        */
       assert (ctx_p->prepared_stmt != NULL);
@@ -3571,7 +3573,7 @@ fn_proxy_cas_schema_info (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
 	  /* check and wakeup statement waiter */
 	  shard_stmt_check_waiter_and_wakeup (ctx_p->prepared_stmt);
 
-	  /* 
+	  /*
 	   * there must be no context sharing this statement at this time.
 	   * so, we can free statement.
 	   */

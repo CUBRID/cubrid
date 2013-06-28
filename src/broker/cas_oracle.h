@@ -40,11 +40,7 @@
 typedef struct oracle_info ORACLE_INFO;
 struct oracle_info
 {
-#if defined(CUBRID_SHARD)
   char name[MAX_HA_DBNAME_LENGTH];
-#else				/* CUBRID_SHARD */
-  char name[SRV_CON_DBNAME_SIZE];
-#endif				/* !CUBRID_SHARD */
   char user[SRV_CON_DBUSER_SIZE];
   char pass[SRV_CON_DBPASSWD_SIZE];
 

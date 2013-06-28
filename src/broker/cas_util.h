@@ -32,9 +32,7 @@
 #include <windows.h>
 #endif
 
-#if defined(CUBRID_SHARD)
 extern char *ut_uchar2ipstr (unsigned char *ip_addr);
-#endif /* CUBRID_SHARD */
 extern char *ut_trim (char *);
 extern void ut_tolower (char *str);
 extern void ut_timeval_diff (struct timeval *start, struct timeval *end,

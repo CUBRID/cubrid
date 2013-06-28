@@ -67,8 +67,7 @@ static char cas_log_buffer[CAS_LOG_BUFFER_SIZE];	/* 8K buffer */
 static char sql_log_buffer[SQL_LOG_BUFFER_SIZE];
 
 static char *make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf,
-				    size_t buf_size, const char *br_name,
-				    int as_index);
+				    size_t buf_size, const char *br_name);
 static void cas_log_backup (T_CUBRID_FILE_ID fid);
 static void cas_log_write_and_set_savedpos (FILE * log_fp, const char *fmt,
 					    ...);
@@ -115,8 +114,9 @@ static int cas_mkdir (const char *pathname, mode_t mode);
 
 static char *
 make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf,
-		       size_t buf_size, const char *br_name, int as_index)
+		       size_t buf_size, const char *br_name)
 {
+#ifndef LIBCAS_FOR_JSP
   char dirname[BROKER_PATH_MAX];
 
   assert (filename_buf != NULL);
@@ -125,22 +125,30 @@ make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf,
   switch (fid)
     {
     case FID_SQL_LOG_DIR:
-#if defined(CUBRID_SHARD)
-      snprintf (filename_buf, buf_size, "%s%s_%d_%d_%d.sql.log", dirname,
-		br_name, shm_proxy_id + 1, shm_shard_id, (as_index) + 1);
-#else
-      snprintf (filename_buf, buf_size, "%s%s_%d.sql.log", dirname, br_name,
-		(as_index) + 1);
-#endif /* CUBRID_SHARD */
+      if (cas_shard_flag == ON)
+	{
+	  snprintf (filename_buf, buf_size, "%s%s_%d_%d_%d.sql.log", dirname,
+		    br_name, shm_proxy_id + 1, shm_shard_id,
+		    shm_shard_cas_id + 1);
+	}
+      else
+	{
+	  snprintf (filename_buf, buf_size, "%s%s_%d.sql.log", dirname,
+		    br_name, shm_as_index + 1);
+	}
       break;
     case FID_SLOW_LOG_DIR:
-#if defined(CUBRID_SHARD)
-      snprintf (filename_buf, buf_size, "%s%s_%d_%d_%d.slow.log", dirname,
-		br_name, shm_proxy_id + 1, shm_shard_id, (as_index) + 1);
-#else
-      snprintf (filename_buf, buf_size, "%s%s_%d.slow.log", dirname, br_name,
-		(as_index) + 1);
-#endif /* CUBRID_SHARD */
+      if (cas_shard_flag == ON)
+	{
+	  snprintf (filename_buf, buf_size, "%s%s_%d_%d_%d.slow.log", dirname,
+		    br_name, shm_proxy_id + 1, shm_shard_id,
+		    shm_shard_cas_id + 1);
+	}
+      else
+	{
+	  snprintf (filename_buf, buf_size, "%s%s_%d.slow.log", dirname,
+		    br_name, shm_as_index + 1);
+	}
       break;
     default:
       assert (0);
@@ -148,10 +156,12 @@ make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf,
       break;
     }
   return filename_buf;
+#endif /* LIBCAS_FOR_JSP */
+  return NULL;
 }
 
 void
-cas_log_open (char *br_name, int as_index)
+cas_log_open (char *br_name)
 {
 #ifndef LIBCAS_FOR_JSP
   if (log_fp != NULL)
@@ -164,7 +174,7 @@ cas_log_open (char *br_name, int as_index)
       if (br_name != NULL)
 	{
 	  make_sql_log_filename (FID_SQL_LOG_DIR, log_filepath,
-				 BROKER_PATH_MAX, br_name, as_index);
+				 BROKER_PATH_MAX, br_name);
 	}
 
       /* note: in "a+" mode, output is always appended */
@@ -195,7 +205,7 @@ cas_log_open (char *br_name, int as_index)
 }
 
 void
-cas_log_reset (char *br_name, int as_index)
+cas_log_reset (char *br_name)
 {
 #ifndef LIBCAS_FOR_JSP
   if (as_info->cas_log_reset)
@@ -211,7 +221,7 @@ cas_log_reset (char *br_name, int as_index)
 
       if (as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
 	{
-	  cas_log_open (br_name, as_index);
+	  cas_log_open (br_name);
 	}
     }
 #endif /* LIBCAS_FOR_JSP */
@@ -305,7 +315,7 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 #ifndef LIBCAS_FOR_JSP
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name, shm_as_index);
+      cas_log_open (shm_appl->broker_name);
     }
 
   if (log_fp != NULL)
@@ -377,7 +387,7 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 	    {
 	      cas_log_close (true);
 	      cas_log_backup (FID_SQL_LOG_DIR);
-	      cas_log_open (NULL, 0);
+	      cas_log_open (NULL);
 	    }
 	  else
 	    {
@@ -435,7 +445,7 @@ cas_log_write_nonl (unsigned int seq_num, bool unit_start, const char *fmt,
 #ifndef LIBCAS_FOR_JSP
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name, shm_as_index);
+      cas_log_open (shm_appl->broker_name);
     }
 
   if (log_fp != NULL)
@@ -501,7 +511,7 @@ cas_log_write (unsigned int seq_num, bool unit_start, const char *fmt, ...)
 #ifndef LIBCAS_FOR_JSP
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name, shm_as_index);
+      cas_log_open (shm_appl->broker_name);
     }
 
   cas_log_query_cancel (0);
@@ -531,7 +541,7 @@ cas_log_write_and_end (unsigned int seq_num, bool unit_start, const char *fmt,
 #ifndef LIBCAS_FOR_JSP
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name, shm_as_index);
+      cas_log_open (shm_appl->broker_name);
     }
 
   if (log_fp != NULL)
@@ -585,7 +595,7 @@ cas_log_write2_nonl (const char *fmt, ...)
 #ifndef LIBCAS_FOR_JSP
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name, shm_as_index);
+      cas_log_open (shm_appl->broker_name);
     }
 
   if (log_fp != NULL)
@@ -606,7 +616,7 @@ cas_log_write2 (const char *fmt, ...)
 #ifndef LIBCAS_FOR_JSP
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name, shm_as_index);
+      cas_log_open (shm_appl->broker_name);
     }
 
   if (log_fp != NULL)
@@ -628,7 +638,7 @@ cas_log_write_value_string (char *value, int size)
 #ifndef LIBCAS_FOR_JSP
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name, shm_as_index);
+      cas_log_open (shm_appl->broker_name);
     }
 
   if (log_fp != NULL)
@@ -656,7 +666,7 @@ cas_log_write_query_string_internal (char *query, int size, bool newline)
 #ifndef LIBCAS_FOR_JSP
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name, shm_as_index);
+      cas_log_open (shm_appl->broker_name);
     }
 
   if (log_fp != NULL && query != NULL)
@@ -785,7 +795,6 @@ cas_error_log (int err_code, char *err_msg_str, int client_ip_addr)
 #endif /* ENABLE_UNUSED_FUNCTION */
 #endif
 
-#if !defined(CUBRID_SHARD)
 int
 cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr,
 		char *dbname, char *dbuser, bool accepted)
@@ -872,7 +881,6 @@ cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr,
   return 0;
 #endif /* !LIBCAS_FOR_JSP */
 }
-#endif /* CUBRID_SHARD */
 
 void
 cas_log_query_info_init (int id, char is_only_query_plan)
@@ -958,7 +966,7 @@ sql_log_open (char *log_file_name)
 }
 
 void
-cas_slow_log_open (char *br_name, int as_index)
+cas_slow_log_open (char *br_name)
 {
 #ifndef LIBCAS_FOR_JSP
   if (slow_log_fp != NULL)
@@ -971,7 +979,7 @@ cas_slow_log_open (char *br_name, int as_index)
       if (br_name != NULL)
 	{
 	  make_sql_log_filename (FID_SLOW_LOG_DIR, slow_log_filepath,
-				 BROKER_PATH_MAX, br_name, as_index);
+				 BROKER_PATH_MAX, br_name);
 	}
 
       /* note: in "a+" mode, output is always appended */
@@ -986,7 +994,7 @@ cas_slow_log_open (char *br_name, int as_index)
 }
 
 void
-cas_slow_log_reset (char *br_name, int as_index)
+cas_slow_log_reset (char *br_name)
 {
 #ifndef LIBCAS_FOR_JSP
   if (as_info->cas_slow_log_reset)
@@ -1002,7 +1010,7 @@ cas_slow_log_reset (char *br_name, int as_index)
 
       if (as_info->cur_slow_log_mode != SLOW_LOG_MODE_OFF)
 	{
-	  cas_slow_log_open (br_name, as_index);
+	  cas_slow_log_open (br_name);
 	}
     }
 #endif /* LIBCAS_FOR_JSP */
@@ -1026,7 +1034,7 @@ cas_slow_log_end ()
 #ifndef LIBCAS_FOR_JSP
   if (slow_log_fp == NULL && as_info->cur_slow_log_mode != SLOW_LOG_MODE_OFF)
     {
-      cas_slow_log_open (shm_appl->broker_name, shm_as_index);
+      cas_slow_log_open (shm_appl->broker_name);
     }
 
   if (slow_log_fp != NULL)
@@ -1038,7 +1046,7 @@ cas_slow_log_end ()
 	{
 	  cas_slow_log_close ();
 	  cas_log_backup (FID_SLOW_LOG_DIR);
-	  cas_slow_log_open (NULL, 0);
+	  cas_slow_log_open (NULL);
 	}
       else
 	{
@@ -1056,7 +1064,7 @@ cas_slow_log_write_and_end (struct timeval *log_time, unsigned int seq_num,
 #ifndef LIBCAS_FOR_JSP
   if (slow_log_fp == NULL && as_info->cur_slow_log_mode != SLOW_LOG_MODE_OFF)
     {
-      cas_slow_log_open (shm_appl->broker_name, shm_as_index);
+      cas_slow_log_open (shm_appl->broker_name);
     }
 
   if (slow_log_fp != NULL)
@@ -1080,7 +1088,7 @@ cas_slow_log_write (struct timeval *log_time, unsigned int seq_num,
 #ifndef LIBCAS_FOR_JSP
   if (slow_log_fp == NULL && as_info->cur_slow_log_mode != SLOW_LOG_MODE_OFF)
     {
-      cas_slow_log_open (shm_appl->broker_name, shm_as_index);
+      cas_slow_log_open (shm_appl->broker_name);
     }
 
   if (slow_log_fp != NULL)
@@ -1100,7 +1108,7 @@ cas_slow_log_write2 (const char *fmt, ...)
 #ifndef LIBCAS_FOR_JSP
   if (slow_log_fp == NULL && as_info->cur_slow_log_mode != SLOW_LOG_MODE_OFF)
     {
-      cas_slow_log_open (shm_appl->broker_name, shm_as_index);
+      cas_slow_log_open (shm_appl->broker_name);
     }
 
   if (slow_log_fp != NULL)
@@ -1120,7 +1128,7 @@ cas_slow_log_write_value_string (char *value, int size)
 #ifndef LIBCAS_FOR_JSP
   if (slow_log_fp == NULL && as_info->cur_slow_log_mode != SLOW_LOG_MODE_OFF)
     {
-      cas_slow_log_open (shm_appl->broker_name, shm_as_index);
+      cas_slow_log_open (shm_appl->broker_name);
     }
 
   if (slow_log_fp != NULL)
@@ -1136,7 +1144,7 @@ cas_slow_log_write_query_string (char *query, int size)
 #ifndef LIBCAS_FOR_JSP
   if (slow_log_fp == NULL && as_info->cur_slow_log_mode != SLOW_LOG_MODE_OFF)
     {
-      cas_slow_log_open (shm_appl->broker_name, shm_as_index);
+      cas_slow_log_open (shm_appl->broker_name);
     }
 
   if (slow_log_fp != NULL && query != NULL)
@@ -1162,30 +1170,36 @@ cas_slow_log_write_query_string (char *query, int size)
 static bool
 cas_log_begin_hang_check_time (void)
 {
-#if !defined(LIBCAS_FOR_JSP) && !defined(CUBRID_SHARD)
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-  bool is_prev_time_set = (as_info->claimed_alive_time > 0);
-  if (!is_prev_time_set)
+#if !defined(LIBCAS_FOR_JSP)
+  if (cas_shard_flag == OFF)
     {
-      set_hang_check_time ();
-    }
-  return is_prev_time_set;
+#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
+      bool is_prev_time_set = (as_info->claimed_alive_time > 0);
+      if (!is_prev_time_set)
+	{
+	  set_hang_check_time ();
+	}
+      return is_prev_time_set;
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
-#endif /* !LIBCAS_FOR_JSP && !CUBRID_SHARD */
+    }
+#endif /* !LIBCAS_FOR_JSP */
   return false;
 }
 
 static void
 cas_log_end_hang_check_time (bool is_prev_time_set)
 {
-#if !defined(LIBCAS_FOR_JSP) && !defined(CUBRID_SHARD)
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-  if (!is_prev_time_set)
+#if !defined(LIBCAS_FOR_JSP)
+  if (cas_shard_flag == OFF)
     {
-      unset_hang_check_time ();
-    }
+#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
+      if (!is_prev_time_set)
+	{
+	  unset_hang_check_time ();
+	}
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
-#endif /* !LIBCAS_FOR_JSP && !CUBRID_SHARD */
+    }
+#endif /* !LIBCAS_FOR_JSP */
 }
 
 static size_t

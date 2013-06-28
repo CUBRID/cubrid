@@ -24,7 +24,6 @@
 
 #ident "$Id$"
 
-#if defined(CUBRID_SHARD)
 #include <sys/types.h>
 #include <assert.h>
 #if !defined(WINDOWS)
@@ -451,4 +450,3 @@ broker_destroy_proxy_conn (void)
   return;
 }
 #endif /* !WINDOWS */
-#endif /* CUBRID_SHARD */

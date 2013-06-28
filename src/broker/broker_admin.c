@@ -170,7 +170,6 @@ main (int argc, char **argv)
 	  admin_log_write (admin_log_file, "stop");
 	}
     }
-#if !defined(CUBRID_SHARD)
   else if (strcasecmp (argv[1], "add") == 0)
     {
       if (argc < 3)
@@ -224,7 +223,6 @@ main (int argc, char **argv)
 	  admin_log_write (admin_log_file, msg_buf);
 	}
     }
-#endif /* !CUBRID_SHARD */
   else if (strcasecmp (argv[1], "on") == 0)
     {
       if (argc < 3)
@@ -259,7 +257,6 @@ main (int argc, char **argv)
 	  admin_log_write (admin_log_file, msg_buf);
 	}
     }
-#if !defined(CUBRID_SHARD)
   else if (strcasecmp (argv[1], "suspend") == 0)
     {
       if (argc < 3)
@@ -294,7 +291,6 @@ main (int argc, char **argv)
 	  admin_log_write (admin_log_file, msg_buf);
 	}
     }
-#endif /* !CUBRID_SHARD */
   else if (strcasecmp (argv[1], "reset") == 0)
     {
       if (argc < 3)
@@ -312,7 +308,6 @@ main (int argc, char **argv)
 	  admin_log_write (admin_log_file, msg_buf);
 	}
     }
-#if !defined(CUBRID_SHARD)
   else if (strcasecmp (argv[1], "job_first") == 0)
     {
       int broker_status, i;
@@ -354,7 +349,6 @@ main (int argc, char **argv)
 	    }
 	}
     }
-#endif /* !CUBRID_SHARD */
   else if (strcasecmp (argv[1], "info") == 0)
     {
       if (admin_info_cmd (master_shm_id) < 0)
@@ -401,7 +395,6 @@ main (int argc, char **argv)
 	  return -1;
 	}
     }
-#if defined(CUBRID_SHARD)
   else if (strcasecmp (argv[1], "getid") == 0)
     {
       if (admin_getid_cmd (master_shm_id, argc, (const char **) argv) < 0)
@@ -410,7 +403,6 @@ main (int argc, char **argv)
 	  return -1;
 	}
     }
-#endif /* CUBRID_SHARD */
   else
     {
       goto usage;
@@ -419,13 +411,8 @@ main (int argc, char **argv)
   return 0;
 
 usage:
-#if defined(CUBRID_SHARD)
-  printf ("%s (start | stop | restart | on | off"
-	  " | reset | info | acl | getid)\n", argv[0]);
-#else
-  printf ("%s (start | stop | add | drop | restart"
-	  " | on | off | suspend | resume | reset | job_first | info | acl)\n",
-	  argv[0]);
-#endif /* CUBRID_SHARD */
+  printf ("%s (start | stop | add | drop | restart \
+	    | on | off | suspend | resume | reset | job_first \
+	    | info | acl | getid)\n", argv[0]);
   return -1;
 }

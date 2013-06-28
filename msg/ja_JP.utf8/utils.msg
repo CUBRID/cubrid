@@ -139,7 +139,6 @@ cubrid 管理者ユーティリティー、バージョン　%s\n\
     broker\n\
     manager\n\
     heartbeat\n\
-    shard\n\
 \n\
 正しい管理者ユーティリティー名:\n\
     addvoldb\n\
@@ -204,7 +203,8 @@ cubrid 管理者ユーティリティー、バージョン　%s\n\
     on          <ブローカー名>\n\
     off         <ブローカー名>\n\
     reset       <ブローカー名>\n\
-    acl         <status|reload> [ブローカー名]\n
+    acl         <status|reload> [ブローカー名]\n\
+    getid       -b <ブローカー名> [-f] シャードキー\n
 27 cubridユーティリティー、バージョン %s\n\
 使い方: %s manager <コマンド>\n\
 \n\
@@ -230,20 +230,6 @@ cubrid 管理者ユーティリティー、バージョン　%s\n\
 36 サーバーがHAモードに設定されませんでした。\n
 38 HA環境で設定されているサーバーがha_db_listのリストにありません。
 39 HA環境で設定されているサーバーがha_node_listのリストにありません。
-62 cubridユーティリティー、バージョン %s\n\
-使い方: %s shard <コマンド> [パラメーター]\n\
-\n\
-正しいコマンド:\n\
-    start\n\
-    stop\n\
-    restart\n\
-    info\n\
-    status      [-b] [-f] [-t] [-s <sec>] [<expr>]\n\
-    on          <シャード名>\n\
-    off         <シャード名>\n\
-    reset       <シャード名>\n\
-    acl         <status|reload> [シャード名]\n\
-    getid       -b <ブローカー名> [-f] シャードキー\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 警告: -tオプションは独立実行モードでは無視されます。\n

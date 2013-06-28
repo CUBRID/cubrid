@@ -48,6 +48,8 @@
 #include "broker_filename.h"
 #include "broker_util.h"
 #include "cas_sql_log2.h"
+#include "shard_shm.h"
+#include "shard_metadata.h"
 
 #include "ini_parser.h"
 
@@ -1372,7 +1374,12 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info,
 	  fprintf (fp, "REJECT_CLIENT_FLAG\t=%s\n", tmp_str);
 	}
 
-#if defined(CUBRID_SHARD)
+      if (br_info[i].shard_flag == OFF)
+	{
+	  fprintf (fp, "\n");
+	  continue;
+	}
+
       fprintf (fp, "SHARD_DB_NAME\t\t=%s\n", br_info[i].shard_db_name);
       fprintf (fp, "SHARD_DB_USER\t\t=%s\n", br_info[i].shard_db_user);
       fprintf (fp, "SHARD_DB_PASSWORD\t\t=%s\n",
@@ -1412,7 +1419,6 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info,
 
       shard_metadata_dump (fp, br_info[i].proxy_shm_id);
       shard_shm_dump_appl_server (fp, br_info[i].proxy_shm_id);
-#endif /* CUBRID_SHARD */
 
       fprintf (fp, "\n");
     }

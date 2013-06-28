@@ -139,7 +139,6 @@ Utilitare de serviciu disponibile:\n\
     broker\n\
     manager\n\
     heartbeat\n\
-    shard\n\
 \n\
 Utilitare de administrare disponibile:\n\
     addvoldb\n\
@@ -204,7 +203,8 @@ Comenzi disponibile:\n\
     on          nume-broker\n\
     off         nume-broker\n\
     reset       nume-broker\n\
-    acl         <status|reload> [nume-broker]\n
+    acl         <status|reload> [nume-broker]\n\
+    getid       -b <nume-broker> [-f] cheie-shard\n
 27 utilitar CUBRID, versiunea %s\n\
 utilizare: %s manager <command>\n\
 \n\
@@ -230,20 +230,6 @@ Comenzi disponibile:\n\
 36 Serverul nu a fost configurat pentru HA.\n
 38 Serverul configurat pentru HA nu se regăseşte în ha_db_list.\n
 39 Serverul configurat pentru HA nu se regăseşte în ha_node_list.\n
-62 utilitar CUBRID, versiunea %s\n\
-utilizare: %s shard <comanda> [argumente]\n\
-\n\
-Comenzi disponibile:\n\
-    start\n\
-    stop\n\
-    restart\n\
-    info\n\
-    status      [-b] [-f] [-t] [-s <sec>] [<expr>]\n\
-    on          nume-shard\n\
-    off         nume-shard\n\
-    reset       nume-shard\n\
-    acl         <status|reload> [nume-shard]\n\
-    getid       -b <nume-broker> [-f] cheie-shard\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 AVERTIESMENT: opţiunea -t este ignorată în modul de execuţie independent.\n

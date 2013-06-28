@@ -42,11 +42,9 @@
 #define FLAG_READ_ONLY 1
 #define FLAG_SLAVE_ONLY 2
 
-#if defined(CUBRID_SHARD)
 #if !defined(MAX_HA_DBNAME_LENGTH)
 #define MAX_HA_DBNAME_LENGTH		128
 #endif /* !MAX_HA_DBNAME_LENGTH */
-#endif /* CUBRID_SHARD */
 
 typedef enum t_as_status T_AS_STATUS;
 enum t_as_status
@@ -75,26 +73,18 @@ struct t_as_info
   char service_flag;
   int pid;
   int num_request;
-#if !defined(CUBRID_SHARD)
   int as_port;
-#endif				/* !CUBRID_SHARD */
   T_AS_STATUS status;
   time_t last_access_time;
   int psize;
   int num_thr;
   int cpu_time;
   float pcpu;
-#if !defined(CUBRID_SHARD)
   char clt_ip_addr[20];
   char clt_appl_name[32];
   char request_file[64];
-#endif				/* !CUBRID_SHARD */
   char log_msg[64];
-#if defined(CUBRID_SHARD)
   char database_name[MAX_HA_DBNAME_LENGTH];
-#else				/* CUBRID_SHARD */
-  char database_name[32];
-#endif				/* !CUBRID_SHARD */
   char database_host[MAXHOSTNAMELEN + 1];
   time_t last_connect_time;
   INT64 num_requests_received;
