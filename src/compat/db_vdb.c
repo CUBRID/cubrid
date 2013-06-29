@@ -495,24 +495,12 @@ db_set_base_server_time (SERVER_INFO * server_info)
     {
       struct tm c_time_struct, tz_check;
       DB_DATETIME *dt = &server_info->value[0]->data.datetime;
-      int msecs;
+      DB_TIME time_val;
 
-      memset (&c_time_struct, 0, sizeof (struct tm));
+      time_val = dt->time / 1000;	/* milliseconds to seconds */
+      db_tm_encode (&c_time_struct, &dt->date, &time_val);
 
-      db_datetime_decode (dt, &c_time_struct.tm_mon,
-			  &c_time_struct.tm_mday, &c_time_struct.tm_year,
-			  &c_time_struct.tm_hour, &c_time_struct.tm_min,
-			  &c_time_struct.tm_sec, &msecs);
-      base_server_timeb.millitm = (unsigned short) msecs;
-
-      c_time_struct.tm_year -= 1900;
-      c_time_struct.tm_mon -= 1;
-      c_time_struct.tm_isdst = -1;
-      tz_check = c_time_struct;
-
-      /* get correct timezone setting */
-      mktime (&tz_check);
-      c_time_struct.tm_isdst = tz_check.tm_isdst;
+      base_server_timeb.millitm = dt->time % 1000;	/* set milliseconds */
 
       base_server_timeb.time = mktime (&c_time_struct);
       ftime (&base_client_timeb);

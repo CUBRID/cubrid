@@ -3310,6 +3310,15 @@ get_set_domain (DB_DOMAIN * set_domain, int *precision, short *scale,
   int set_domain_count = 0;
   int set_type = DB_TYPE_NULL;
 
+  if (precision)
+    {
+      *precision = 0;
+    }
+  if (scale)
+    {
+      *scale = 0;
+    }
+
   ele_domain = db_domain_set (set_domain);
   for (; ele_domain; ele_domain = db_domain_next (ele_domain))
     {

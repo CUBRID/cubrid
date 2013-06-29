@@ -2081,6 +2081,8 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	  memcpy (net_buf->data + NET_BUF_HEADER_MSG_SIZE,
 		  cas_msg_header.info_ptr, cas_info_size);
 	}
+
+      assert (NET_BUF_CURR_SIZE (net_buf) < net_buf->alloc_size);
       if (net_write_stream (sock_fd, net_buf->data,
 			    NET_BUF_CURR_SIZE (net_buf)) < 0)
 	{
