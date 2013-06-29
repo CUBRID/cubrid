@@ -326,6 +326,8 @@ extern int file_dealloc_page (THREAD_ENTRY * thread_p, const VFID * vfid,
 extern int file_truncate_to_numpages (THREAD_ENTRY * thread_p,
 				      const VFID * vfid,
 				      INT32 keep_first_npages);
+extern DISK_ISVALID
+file_update_used_pages_of_vol_header (THREAD_ENTRY * thread_p);
 
 extern int file_tracker_cache_vfid (VFID * vfid);
 extern VFID *file_get_tracker_vfid (void);
