@@ -7815,7 +7815,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 
       if (pk_btid_index == i && repl_old_key == NULL)
 	{
-	  repl_old_key = db_value_create ();
+	  repl_old_key = pr_make_ext_value ();
 	  pr_clone_value (old_key, repl_old_key);
 	}
 
@@ -7880,7 +7880,8 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 					LOG_REPLICATION_DATA,
 					RVREPL_DATA_UPDATE, repl_old_key,
 					repl_info);
-	  db_value_free (repl_old_key);
+	  pr_free_ext_value (repl_old_key);
+	  repl_old_key = NULL;
 	}
     }
 
@@ -7898,6 +7899,11 @@ error:
   if (old_key == &old_dbvalue)
     {
       pr_clear_value (&old_dbvalue);
+    }
+
+  if (repl_old_key != NULL)
+    {
+      pr_free_ext_value (repl_old_key);
     }
 
   /* Deallocate any index_list .. if any */
