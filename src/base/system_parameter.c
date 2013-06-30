@@ -4844,6 +4844,10 @@ prm_size_to_io_pages (void *out_val, SYSPRM_DATATYPE out_type,
       UINT64 tmp_value;
 
       tmp_value = *size_value / IO_PAGESIZE;
+      if (*size_value % IO_PAGESIZE > 0)
+	{
+	  tmp_value++;
+	}
 
       if (tmp_value > INT_MAX)
 	{
@@ -4853,18 +4857,14 @@ prm_size_to_io_pages (void *out_val, SYSPRM_DATATYPE out_type,
 	{
 	  *page_value = (int) tmp_value;
 	}
-      if (*page_value == 0 && *size_value > 0)
-	{
-	  *page_value = 1;
-	}
     }
   else if (out_type == PRM_FLOAT && in_type == PRM_BIGINT)
     {
       float *page_value = (float *) out_val;
       UINT64 *size_value = (UINT64 *) in_val;
-      UINT64 tmp_value;
+      double tmp_value;
 
-      tmp_value = *size_value / IO_PAGESIZE;
+      tmp_value = (double) *size_value / IO_PAGESIZE;
 
       if (tmp_value > FLT_MAX)
 	{
@@ -4872,11 +4872,7 @@ prm_size_to_io_pages (void *out_val, SYSPRM_DATATYPE out_type,
 	}
       else
 	{
-	  *page_value = (float) ((double) *size_value / IO_PAGESIZE);
-	}
-      if (*page_value == 0 && *size_value > 0)
-	{
-	  *page_value = 1.0;
+	  *page_value = ceilf ((float) tmp_value * 100) / 100;
 	}
     }
   else
@@ -4944,6 +4940,10 @@ prm_size_to_log_pages (void *out_val, SYSPRM_DATATYPE out_type,
       UINT64 tmp_value;
 
       tmp_value = *size_value / LOG_PAGESIZE;
+      if (*size_value % LOG_PAGESIZE)
+	{
+	  tmp_value++;
+	}
 
       if (tmp_value > INT_MAX)
 	{
@@ -4953,18 +4953,14 @@ prm_size_to_log_pages (void *out_val, SYSPRM_DATATYPE out_type,
 	{
 	  *page_value = (int) tmp_value;
 	}
-      if (*page_value == 0 && *size_value > 0)
-	{
-	  *page_value = 1;
-	}
     }
   else if (out_type == PRM_FLOAT && in_type == PRM_BIGINT)
     {
       float *page_value = (float *) out_val;
       UINT64 *size_value = (UINT64 *) in_val;
-      UINT64 tmp_value;
+      double tmp_value;
 
-      tmp_value = *size_value / LOG_PAGESIZE;
+      tmp_value = (double) *size_value / LOG_PAGESIZE;
 
       if (tmp_value > FLT_MAX)
 	{
@@ -4972,11 +4968,7 @@ prm_size_to_log_pages (void *out_val, SYSPRM_DATATYPE out_type,
 	}
       else
 	{
-	  *page_value = (float) ((double) *size_value / LOG_PAGESIZE);
-	}
-      if (*page_value == 0 && *size_value > 0)
-	{
-	  *page_value = 1.0;
+	  *page_value = ceilf ((float) tmp_value * 100) / 100;
 	}
     }
   else
@@ -5029,30 +5021,33 @@ prm_log_pages_to_size (void *out_val, SYSPRM_DATATYPE out_type,
  *   return: value
  */
 static int
-prm_msec_to_sec (void *out_val, SYSPRM_DATATYPE out_type,
-		 void *in_val, SYSPRM_DATATYPE in_type)
+prm_msec_to_sec (void *out_val, unsigned int out_type,
+		 void *in_val, unsigned int in_type)
 {
   if (out_val == NULL || in_val == NULL)
     {
       return PRM_ERR_BAD_VALUE;
     }
 
-  if (out_type == PRM_INTEGER && in_type == PRM_INTEGER)
+  if (out_type == PRM_INTEGER && in_type == PRM_BIGINT)
     {
       int *sec_value = (int *) out_val;
-      int *msec_value = (int *) in_val;
+      UINT64 *msec_value = (UINT64 *) in_val;
+      UINT64 tmp_value;
 
-      if (*msec_value < 0)
+      tmp_value = *msec_value / ONE_SEC;
+
+      if (tmp_value > INT_MAX)
 	{
-	  *sec_value = *msec_value;
+	  return PRM_ERR_BAD_RANGE;
 	}
       else
 	{
-	  *sec_value = *msec_value / ONE_SEC;
-	}
-      if (*sec_value == 0 && *msec_value > 0)
-	{
-	  *sec_value = 1;
+	  *sec_value = (int) tmp_value;
+	  if (*msec_value % ONE_SEC > 0)
+	    {
+	      *sec_value = *sec_value + 1;
+	    }
 	}
     }
   else
@@ -5069,37 +5064,20 @@ prm_msec_to_sec (void *out_val, SYSPRM_DATATYPE out_type,
  *   return: value
  */
 static int
-prm_sec_to_msec (void *out_val, SYSPRM_DATATYPE out_type,
-		 void *in_val, SYSPRM_DATATYPE in_type)
+prm_sec_to_msec (void *out_val, unsigned int out_type,
+		 void *in_val, unsigned int in_type)
 {
   if (out_val == NULL || in_val == NULL)
     {
       return PRM_ERR_BAD_VALUE;
     }
 
-  if (out_type == PRM_INTEGER && in_type == PRM_INTEGER)
+  if (out_type == PRM_BIGINT && in_type == PRM_INTEGER)
     {
-      int *msec_value = (int *) out_val;
-      int *sec_value = (int *) in_val;
-      UINT64 tmp_value;
+      UINT64 *msec_value = (UINT64 *) out_val;
+      int sec_value = *(int *) in_val;
 
-      if (*sec_value < 0)
-	{
-	  *msec_value = *sec_value;
-	}
-      else
-	{
-	  tmp_value = *sec_value * ONE_SEC;
-
-	  if (tmp_value > INT_MAX)
-	    {
-	      return PRM_ERR_BAD_RANGE;
-	    }
-	  else
-	    {
-	      *msec_value = (int) tmp_value;
-	    }
-	}
+      *msec_value = (UINT64) sec_value *ONE_SEC;
     }
   else
     {
@@ -5115,8 +5093,8 @@ prm_sec_to_msec (void *out_val, SYSPRM_DATATYPE out_type,
  *   return: value
  */
 static int
-prm_sec_to_min (void *out_val, SYSPRM_DATATYPE out_type,
-		void *in_val, SYSPRM_DATATYPE in_type)
+prm_sec_to_min (void *out_val, unsigned int out_type,
+		void *in_val, unsigned int in_type)
 {
   if (out_val == NULL || in_val == NULL)
     {
@@ -5134,11 +5112,11 @@ prm_sec_to_min (void *out_val, SYSPRM_DATATYPE out_type,
 	}
       else
 	{
-	  *min_value = *sec_value / (ONE_MIN / ONE_SEC);
-	}
-      if (*min_value == 0 && *sec_value > 0)
-	{
-	  *min_value = 1;
+	  *min_value = *sec_value / 60;
+	  if (*sec_value % 60 > 0)
+	    {
+	      *min_value = *min_value + 1;
+	    }
 	}
     }
   else
@@ -5155,8 +5133,8 @@ prm_sec_to_min (void *out_val, SYSPRM_DATATYPE out_type,
  *   return: value
  */
 static int
-prm_min_to_sec (void *out_val, SYSPRM_DATATYPE out_type,
-		void *in_val, SYSPRM_DATATYPE in_type)
+prm_min_to_sec (void *out_val, unsigned int out_type,
+		void *in_val, unsigned int in_type)
 {
   if (out_val == NULL || in_val == NULL)
     {
@@ -5175,7 +5153,7 @@ prm_min_to_sec (void *out_val, SYSPRM_DATATYPE out_type,
 	}
       else
 	{
-	  tmp_value = *min_value * (ONE_MIN / ONE_SEC);
+	  tmp_value = *min_value * 60;
 
 	  if (tmp_value > INT_MAX)
 	    {
@@ -5201,8 +5179,8 @@ prm_min_to_sec (void *out_val, SYSPRM_DATATYPE out_type,
  *   return: value
  */
 static int
-prm_equal_to_ori (void *out_val, SYSPRM_DATATYPE out_type,
-		  void *in_val, SYSPRM_DATATYPE in_type)
+prm_equal_to_ori (void *out_val, unsigned int out_type,
+		  void *in_val, unsigned int in_type)
 {
   if (out_val == NULL || in_val == NULL)
     {
@@ -5229,6 +5207,25 @@ prm_equal_to_ori (void *out_val, SYSPRM_DATATYPE out_type,
       UINT64 *out_value = (UINT64 *) out_val;
 
       *out_value = *in_value;
+    }
+  else if (out_type == PRM_INTEGER && in_type == PRM_BIGINT)
+    {
+      UINT64 *in_value = (UINT64 *) in_val;
+      int *out_value = (int *) out_val;
+
+      if (*in_value > INT_MAX)
+	{
+	  return PRM_ERR_BAD_RANGE;
+	}
+
+      *out_value = (int) *in_value;
+    }
+  else if (out_type == PRM_BIGINT && in_type == PRM_INTEGER)
+    {
+      int *in_value = (int *) in_val;
+      UINT64 *out_value = (UINT64 *) out_val;
+
+      *out_value = (UINT64) (*in_value);
     }
   else
     {
@@ -5563,7 +5560,8 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
       int left_side_len = strlen (left_side);
 
       if (PRM_DIFFERENT_UNIT (prm->static_flag) &&
-	  !PRM_HAS_SIZE_UNIT (prm->static_flag))
+	  !PRM_HAS_SIZE_UNIT (prm->static_flag) &&
+	  !PRM_HAS_TIME_UNIT (prm->static_flag))
 	{
 	  PRM_ADJUST_FOR_GET_INTEGER_TO_INTEGER (prm, &val, &val, &error);
 	  if (error != NO_ERROR)
@@ -5588,6 +5586,10 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
 		  return n;
 		}
 	    }
+	  else
+	    {
+	      assert_release (false);
+	    }
 
 	  (void) util_byte_to_size_string (left_side + left_side_len,
 					   PRM_DEFAULT_BUFFER_SIZE -
@@ -5596,9 +5598,29 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
 	}
       else if (PRM_HAS_TIME_UNIT (prm->static_flag))
 	{
+	  INT64 dup_val;
+	  val = PRM_GET_INT (prm->value);
+
+	  if (PRM_DIFFERENT_UNIT (prm->static_flag) && val >= 0)
+	    {
+	      UINT64 tmp_val;
+	      PRM_ADJUST_FOR_GET_INTEGER_TO_BIGINT (prm, &tmp_val, &val,
+						    &error);
+	      if (error != NO_ERROR)
+		{
+		  assert_release (false);
+		  return n;
+		}
+	      dup_val = (INT64) tmp_val;
+	    }
+	  else
+	    {
+	      dup_val = (INT64) val;
+	    }
+
 	  (void) util_msec_to_time_string (left_side + left_side_len,
 					   PRM_DEFAULT_BUFFER_SIZE -
-					   left_side_len, val);
+					   left_side_len, dup_val);
 	  n = snprintf (buf, len, "%s", left_side);
 	}
       else
@@ -5668,6 +5690,10 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
 		  assert_release (false);
 		  return n;
 		}
+	    }
+	  else
+	    {
+	      assert_release (false);
 	    }
 
 	  (void) util_byte_to_size_string (left_side + left_side_len,
@@ -5862,7 +5888,8 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
       int left_side_len = strlen (left_side);
 
       if (PRM_DIFFERENT_UNIT (prm->static_flag) &&
-	  !PRM_HAS_SIZE_UNIT (prm->static_flag))
+	  !PRM_HAS_SIZE_UNIT (prm->static_flag) &&
+	  !PRM_HAS_TIME_UNIT (prm->static_flag))
 	{
 	  PRM_ADJUST_FOR_GET_INTEGER_TO_INTEGER (prm, &val, &val, &error);
 	  if (error != NO_ERROR)
@@ -5887,6 +5914,10 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
 		  return n;
 		}
 	    }
+	  else
+	    {
+	      assert_release (false);
+	    }
 
 	  (void) util_byte_to_size_string (left_side + left_side_len,
 					   PRM_DEFAULT_BUFFER_SIZE -
@@ -5895,9 +5926,29 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
 	}
       else if (PRM_HAS_TIME_UNIT (prm->static_flag))
 	{
+	  INT64 dup_val;
+	  val = PRM_GET_INT (prm->value);
+
+	  if (PRM_DIFFERENT_UNIT (prm->static_flag) && val >= 0)
+	    {
+	      UINT64 tmp_val;
+	      PRM_ADJUST_FOR_GET_INTEGER_TO_BIGINT (prm, &tmp_val, &val,
+						    &error);
+	      if (error != NO_ERROR)
+		{
+		  assert_release (false);
+		  return n;
+		}
+	      dup_val = (INT64) tmp_val;
+	    }
+	  else
+	    {
+	      dup_val = (INT64) val;
+	    }
+
 	  (void) util_msec_to_time_string (left_side + left_side_len,
 					   PRM_DEFAULT_BUFFER_SIZE -
-					   left_side_len, val);
+					   left_side_len, dup_val);
 	  n = snprintf (buf, len, "%s", left_side);
 	}
       else
@@ -5966,6 +6017,10 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
 		  assert_release (false);
 		  return n;
 		}
+	    }
+	  else
+	    {
+	      assert_release (false);
 	    }
 
 	  (void) util_byte_to_size_string (left_side + left_side_len,
@@ -6524,6 +6579,21 @@ prm_check_range (SYSPRM_PARAM * prm, void *value)
 	      PRM_ADJUST_FOR_SET_BIGINT_TO_INTEGER (prm, &val,
 						    (UINT64 *) value, &error);
 	    }
+	  else if (PRM_HAS_TIME_UNIT (prm->static_flag))
+	    {
+	      INT64 *dup_val = (INT64 *) value;
+
+	      if (*dup_val >= 0)
+		{
+		  UINT64 tmp_val = (UINT64) * dup_val;
+		  PRM_ADJUST_FOR_SET_BIGINT_TO_INTEGER (prm, &val,
+							&tmp_val, &error);
+		}
+	      else
+		{
+		  val = (int) *dup_val;
+		}
+	    }
 	  else
 	    {
 	      PRM_ADJUST_FOR_SET_INTEGER_TO_INTEGER (prm, &val, (int *) value,
@@ -6548,6 +6618,7 @@ prm_check_range (SYSPRM_PARAM * prm, void *value)
   else if (PRM_IS_FLOAT (prm))
     {
       float val;
+      float lower, upper;
 
       if (PRM_DIFFERENT_UNIT (prm->static_flag))
 	{
@@ -6565,14 +6636,34 @@ prm_check_range (SYSPRM_PARAM * prm, void *value)
 	    {
 	      return PRM_ERR_BAD_VALUE;
 	    }
+
+	  if (prm->upper_limit)
+	    {
+	      upper = ceilf (PRM_GET_FLOAT (prm->upper_limit) * 100) / 100;
+	    }
+
+	  if (prm->lower_limit)
+	    {
+	      lower = ceilf (PRM_GET_FLOAT (prm->lower_limit) * 100) / 100;
+	    }
 	}
       else
 	{
 	  val = *((float *) value);
+
+	  if (prm->upper_limit)
+	    {
+	      upper = PRM_GET_FLOAT (prm->upper_limit);
+	    }
+
+	  if (prm->lower_limit)
+	    {
+	      lower = PRM_GET_FLOAT (prm->lower_limit);
+	    }
 	}
 
-      if ((prm->upper_limit && PRM_GET_FLOAT (prm->upper_limit) < val)
-	  || (prm->lower_limit && PRM_GET_FLOAT (prm->lower_limit) > val))
+      if ((prm->upper_limit && upper < val)
+	  || (prm->lower_limit && lower > val))
 	{
 	  return PRM_ERR_BAD_RANGE;
 	}
@@ -6726,45 +6817,64 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 		return PRM_ERR_BAD_VALUE;
 	      }
 	  }
-	else
+	else if (PRM_HAS_TIME_UNIT (prm->static_flag))
 	  {
-	    if (PRM_HAS_TIME_UNIT (prm->static_flag))
+	    INT64 dup_val;
+
+	    if (util_time_string_to_msec (&dup_val, (char *) value) !=
+		NO_ERROR)
 	      {
-		if (util_time_string_to_msec (&val, (char *) value) !=
-		    NO_ERROR)
+		return PRM_ERR_BAD_VALUE;
+	      }
+
+	    if (prm_check_range (prm, (void *) &dup_val) != NO_ERROR)
+	      {
+		return PRM_ERR_BAD_RANGE;
+	      }
+
+	    if (PRM_DIFFERENT_UNIT (prm->static_flag) && dup_val >= 0)
+	      {
+		UINT64 tmp_val = (UINT64) dup_val;
+		PRM_ADJUST_FOR_SET_BIGINT_TO_INTEGER (prm, &val, &tmp_val,
+						      &error);
+		if (error != NO_ERROR)
 		  {
 		    return PRM_ERR_BAD_VALUE;
 		  }
 	      }
 	    else
 	      {
-		long l_val = 0;
+		val = (int) dup_val;
+	      }
+	  }
+	else
+	  {
+	    long l_val = 0;
 
-		errno = 0;
-		l_val = strtol (value, &end, 10);
-		if ((errno == ERANGE && (l_val == LONG_MAX
-					 || l_val == LONG_MIN))
-		    || (errno != 0 && l_val == 0))
-		  {
-		    return PRM_ERR_BAD_VALUE;
-		  }
+	    errno = 0;
+	    l_val = strtol (value, &end, 10);
+	    if ((errno == ERANGE && (l_val == LONG_MAX
+				     || l_val == LONG_MIN))
+		|| (errno != 0 && l_val == 0))
+	      {
+		return PRM_ERR_BAD_VALUE;
+	      }
 
-		if (end == value)
-		  {
-		    return PRM_ERR_BAD_VALUE;
-		  }
-		else if (*end != '\0')
-		  {
-		    return PRM_ERR_BAD_VALUE;
-		  }
-		else if (l_val > INT_MAX || l_val < INT_MIN)
-		  {
-		    return PRM_ERR_BAD_RANGE;
-		  }
-		else
-		  {
-		    val = (int) l_val;
-		  }
+	    if (end == value)
+	      {
+		return PRM_ERR_BAD_VALUE;
+	      }
+	    else if (*end != '\0')
+	      {
+		return PRM_ERR_BAD_VALUE;
+	      }
+	    else if (l_val > INT_MAX || l_val < INT_MIN)
+	      {
+		return PRM_ERR_BAD_RANGE;
+	      }
+	    else
+	      {
+		val = (int) l_val;
 	      }
 
 	    if (prm_check_range (prm, (void *) &val) != NO_ERROR)
@@ -6801,6 +6911,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 	  }
 	else
 	  {
+	    errno = 0;
 	    val = (UINT64) strtoll (value, &end, 10);
 	    if (end == value)
 	      {
@@ -6986,6 +7097,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 		      }
 		    else
 		      {
+			errno = 0;
 			tmp = strtol (p, &end, 10);
 			if (end == p)
 			  {
@@ -7083,6 +7195,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 	else
 	  {
 	    /* check if string can be converted to an integer */
+	    errno = 0;
 	    val = strtol (value, &end, 10);
 	    if (end == value)
 	      {

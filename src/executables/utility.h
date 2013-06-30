@@ -1360,8 +1360,8 @@ extern void util_redirect_stdout_to_null (void);
 #endif /* !defined(WINDOWS) */
 extern int util_byte_to_size_string (char *buf, size_t len, UINT64 size_num);
 extern int util_size_string_to_byte (UINT64 * size_num, char *size_str);
-extern int util_msec_to_time_string (char *buf, size_t len, int msec_num);
-extern int util_time_string_to_msec (int *msec_num, char *time_str);
+extern int util_msec_to_time_string (char *buf, size_t len, INT64 msec_num);
+extern int util_time_string_to_msec (INT64 *msec_num, char *time_str);
 extern void util_print_deprecated (const char *option);
 
 typedef struct

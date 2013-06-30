@@ -975,7 +975,7 @@ util_size_string_to_byte (UINT64 * size_num, char *size_str)
       return ER_FAILED;
     }
 
-  if (isalpha (*end))
+  if (*end != '\0')
     {
       size_unit = end;
     }
@@ -1036,10 +1036,10 @@ util_time_to_msec (double *pre, char *post)
  *
  */
 int
-util_msec_to_time_string (char *buf, size_t len, int msec_num)
+util_msec_to_time_string (char *buf, size_t len, INT64 msec_num)
 {
-  int v = msec_num;
-  int sec, msec;
+  INT64 v = msec_num;
+  INT64 sec, msec;
   int error = 0;
 
   if (buf == NULL)
@@ -1053,15 +1053,15 @@ util_msec_to_time_string (char *buf, size_t len, int msec_num)
   if (sec > 0)
     {
       msec = v % ONE_SEC;
-      error = snprintf (buf, len, "%d.%03d sec", sec, msec);
+      error = snprintf (buf, len, "%lld.%03lld sec", sec, msec);
     }
-  else if (v <= 0)
+  else if (v < 0)
     {
-      error = snprintf (buf, len, "%d", v);
+      error = snprintf (buf, len, "%lld", v);
     }
   else
     {
-      error = snprintf (buf, len, "%d msec", v);
+      error = snprintf (buf, len, "%lld msec", v);
     }
 
   if (error < 0)
@@ -1079,7 +1079,7 @@ util_msec_to_time_string (char *buf, size_t len, int msec_num)
  *
  */
 int
-util_time_string_to_msec (int *msec_num, char *time_str)
+util_time_string_to_msec (INT64 * msec_num, char *time_str)
 {
   double val;
   char *default_unit = "ms";
@@ -1100,11 +1100,11 @@ util_time_string_to_msec (int *msec_num, char *time_str)
 
   if (val < 0)
     {
-      *msec_num = (int) val;
+      *msec_num = (INT64) val;
       return NO_ERROR;
     }
 
-  if (isalpha (*end))
+  if (*end != '\0')
     {
       time_unit = end;
     }
@@ -1118,12 +1118,7 @@ util_time_string_to_msec (int *msec_num, char *time_str)
       return ER_FAILED;
     }
 
-  if (val > INT_MAX)
-    {
-      return ER_FAILED;
-    }
-
-  *msec_num = (int) val;
+  *msec_num = (INT64) val;
   return NO_ERROR;
 }
 
