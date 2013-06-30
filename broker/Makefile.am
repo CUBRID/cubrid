@@ -152,7 +152,6 @@ cub_proxy_SOURCES = \
 	$(BROKER_DIR)/broker_error.c \
 	$(BROKER_DIR)/broker_util.c \
 	$(BROKER_DIR)/shard_metadata.c \
-	$(BROKER_DIR)/shard_admin_pub.c \
 	$(BROKER_DIR)/cas_net_buf.c \
 	$(BROKER_DIR)/shard_statement.c \
 	$(BROKER_DIR)/shard_shm.c \

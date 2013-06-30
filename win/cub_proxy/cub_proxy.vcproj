@@ -45,7 +45,7 @@
 				Name="VCCLCompilerTool"
 				Optimization="0"
 				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\include;..\..\src\api;..\..\src\base;..\..\src\compat;..\..\src\object;..\..\src\storage;..\..\src\thread;..\..\src\query;..\..\src\cci;..\..\src\transaction"
-				PreprocessorDefinitions="WIN;WINDOWS;WIN32;_DEBUG;_CRT_SECURE_NO_WARNINGS;ASYNC_MODE;_XOPEN_SOURCE;_BSD_SOURCE;DIAG_DEVEL;CAS_BROKER;_USE_32BIT_TIME_T;CUBRID_SHARD"
+				PreprocessorDefinitions="WIN;WINDOWS;WIN32;_DEBUG;_CRT_SECURE_NO_WARNINGS;ASYNC_MODE;_XOPEN_SOURCE;_BSD_SOURCE;DIAG_DEVEL;CAS_BROKER;_USE_32BIT_TIME_T;CUB_PROXY"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="3"
@@ -120,7 +120,7 @@
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
 				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\include;..\..\src\api;..\..\src\base;..\..\src\compat;..\..\src\object;..\..\src\storage;..\..\src\thread;..\..\src\query;..\..\src\cci;..\..\src\transaction"
-				PreprocessorDefinitions="WIN;WINDOWS;WIN32;NDEBUG;_CRT_SECURE_NO_WARNINGS;ASYNC_MODE;_XOPEN_SOURCE;_BSD_SOURCE;DIAG_DEVEL;CAS_BROKER;_USE_32BIT_TIME_T;CUBRID_SHARD"
+			    PreprocessorDefinitions="WIN;WINDOWS;WIN32;NDEBUG;_CRT_SECURE_NO_WARNINGS;ASYNC_MODE;_XOPEN_SOURCE;_BSD_SOURCE;DIAG_DEVEL;CAS_BROKER;_USE_32BIT_TIME_T;CUB_PROXY"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
 				WarningLevel="3"
@@ -195,7 +195,7 @@
 				Name="VCCLCompilerTool"
 				Optimization="0"
 				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\include;..\..\src\api;..\..\src\base;..\..\src\compat;..\..\src\object;..\..\src\storage;..\..\src\thread;..\..\src\query;..\..\src\cci;..\..\src\transaction"
-				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;_DEBUG;_CRT_SECURE_NO_WARNINGS;ASYNC_MODE;_XOPEN_SOURCE;_BSD_SOURCE;DIAG_DEVEL;CAS_BROKER;CUBRID_SHARD"
+				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;_DEBUG;_CRT_SECURE_NO_WARNINGS;ASYNC_MODE;_XOPEN_SOURCE;_BSD_SOURCE;DIAG_DEVEL;CAS_BROKER;CUB_PROXY"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="3"
@@ -271,7 +271,7 @@
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
 				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\include;..\..\src\api;..\..\src\base;..\..\src\compat;..\..\src\object;..\..\src\storage;..\..\src\thread;..\..\src\query;..\..\src\cci;..\..\src\transaction"
-				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;NDEBUG;_CRT_SECURE_NO_WARNINGS;ASYNC_MODE;_XOPEN_SOURCE;_BSD_SOURCE;DIAG_DEVEL;CAS_BROKER;CUBRID_SHARD"
+				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;NDEBUG;_CRT_SECURE_NO_WARNINGS;ASYNC_MODE;_XOPEN_SOURCE;_BSD_SOURCE;DIAG_DEVEL;CAS_BROKER;CUB_PROXY"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
 				WarningLevel="3"
@@ -368,10 +368,6 @@
 				</File>
 				<File
 					RelativePath="..\..\src\broker\cas_util.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\broker\broker_admin_pub.c"
 					>
 				</File>
 				<File
