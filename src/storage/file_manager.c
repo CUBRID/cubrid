@@ -571,8 +571,8 @@ static DISK_ISVALID file_verify_idsmap_image (THREAD_ENTRY * thread_p,
 static DISK_PAGE_TYPE file_get_disk_page_type (FILE_TYPE ftype);
 static DISK_ISVALID
 file_construct_space_info (THREAD_ENTRY * thread_p,
-			   const VFID * vfid,
-			   VOL_SPACE_INFO * space_info, int nperm_vols);
+			   VOL_SPACE_INFO * space_info,
+			   const VFID * vfid, int nperm_vols);
 
 
 /* check not use */
@@ -4488,13 +4488,6 @@ file_get_type (THREAD_ENTRY * thread_p, const VFID * vfid)
   vpid.volid = vfid->volid;
   vpid.pageid = vfid->fileid;
 
-  /*
-   * Technically, this routine should be locking the page with an S_LOCK
-   * in order to read the header, however, since we know that file types
-   * are not changed once the file is created, this is reasonably safe.
-   * This optimization is done because this routine is called frequenty.
-   */
-
   fhdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ,
 			  PGBUF_UNCONDITIONAL_LATCH);
   if (fhdr_pgptr == NULL)
@@ -4505,7 +4498,7 @@ file_get_type (THREAD_ENTRY * thread_p, const VFID * vfid)
   file_type = fhdr->type;
   if (file_type_cache_add_entry (vfid, file_type) != NO_ERROR)
     {
-      return FILE_UNKNOWN_TYPE;
+      file_type = FILE_UNKNOWN_TYPE;
     }
 
   pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
@@ -14058,15 +14051,13 @@ file_update_used_pages_of_vol_header (THREAD_ENTRY * thread_p)
     }
 
   nperm_vols = xboot_find_number_permanent_volumes (thread_p);
-
   if (nperm_vols <= 0)
     {
       return DISK_ERROR;
     }
 
-  space_info =
-    (VOL_SPACE_INFO *) calloc (nperm_vols, sizeof (VOL_SPACE_INFO));
-
+  space_info = (VOL_SPACE_INFO *) calloc (nperm_vols,
+					  sizeof (VOL_SPACE_INFO));
   if (space_info == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
@@ -14082,7 +14073,6 @@ file_update_used_pages_of_vol_header (THREAD_ENTRY * thread_p)
 				      &set_vpids[0], i,
 				      ((num_files - i < FILE_SET_NUMVPIDS)
 				       ? num_files - i : FILE_SET_NUMVPIDS));
-
       if (num_found <= 0)
 	{
 	  allvalid = DISK_ERROR;
@@ -14094,9 +14084,8 @@ file_update_used_pages_of_vol_header (THREAD_ENTRY * thread_p)
 	  vfid.volid = set_vpids[j].volid;
 	  vfid.fileid = set_vpids[j].pageid;
 
-	  valid = file_construct_space_info (thread_p, &vfid,
-					     space_info, nperm_vols);
-
+	  valid = file_construct_space_info (thread_p, space_info,
+					     &vfid, nperm_vols);
 	  if (valid != DISK_VALID)
 	    {
 	      allvalid = valid;
@@ -14118,7 +14107,6 @@ file_update_used_pages_of_vol_header (THREAD_ENTRY * thread_p)
 
       vhdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ,
 			      PGBUF_UNCONDITIONAL_LATCH);
-
       if (vhdr_pgptr == NULL)
 	{
 	  allvalid = DISK_ERROR;
@@ -14201,24 +14189,25 @@ end:
     }
 
   return allvalid;
-#else /* SA_MODE */
+#else /* !SA_MODE */
   return DISK_ERROR;
-#endif
-
+#endif /* !SA_MODE */
 }
 
 /*
  * file_construct_space_info () -
- *   return: NO_ERROR
- *   vpid(in):
+ *   return: either: DISK_INVALID, DISK_VALID, DISK_ERROR
+ *   space_info(out):
+ *   vfid(in):
+ *   nperm_vols(in):
  */
 static DISK_ISVALID
 file_construct_space_info (THREAD_ENTRY * thread_p,
-			   const VFID * vfid,
-			   VOL_SPACE_INFO * space_info, int nperm_vols)
+			   VOL_SPACE_INFO * space_info,
+			   const VFID * vfid, int nperm_vols)
 {
-  DISK_ISVALID valid = DISK_VALID;
 #if defined (SA_MODE)
+  DISK_ISVALID valid = DISK_VALID;
   FILE_FTAB_CHAIN *chain;
   FILE_HEADER *fhdr;
   PAGE_PTR fhdr_pgptr = NULL;
@@ -14241,7 +14230,6 @@ file_construct_space_info (THREAD_ENTRY * thread_p,
 
   fhdr_pgptr = pgbuf_fix (thread_p, &set_vpids[0], OLD_PAGE, PGBUF_LATCH_READ,
 			  PGBUF_UNCONDITIONAL_LATCH);
-
   if (fhdr_pgptr == NULL)
     {
       return DISK_ERROR;
@@ -14250,7 +14238,6 @@ file_construct_space_info (THREAD_ENTRY * thread_p,
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
 
   page_type = file_get_disk_page_type (fhdr->type);
-
   if (page_type != DISK_PAGE_DATA_TYPE && page_type != DISK_PAGE_INDEX_TYPE)
     {
       goto end;
@@ -14285,10 +14272,8 @@ file_construct_space_info (THREAD_ENTRY * thread_p,
 	  space_info[next_ftable_vpid.volid].used_index_npages++;
 	}
 
-      pgptr =
-	pgbuf_fix (thread_p, &next_ftable_vpid, OLD_PAGE, PGBUF_LATCH_READ,
-		   PGBUF_UNCONDITIONAL_LATCH);
-
+      pgptr = pgbuf_fix (thread_p, &next_ftable_vpid, OLD_PAGE,
+			 PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
       if (pgptr == NULL)
 	{
 	  valid = DISK_ERROR;
@@ -14323,7 +14308,6 @@ file_construct_space_info (THREAD_ENTRY * thread_p,
 	file_find_nthpages (thread_p, vfid, &set_vpids[0], i,
 			    ((num_user_pages - i < FILE_SET_NUMVPIDS)
 			     ? (num_user_pages - i) : FILE_SET_NUMVPIDS));
-
       if (num_found <= 0)
 	{
 	  valid = DISK_ERROR;
@@ -14349,7 +14333,8 @@ end:
       pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
     }
 
-#endif
-
   return valid;
+#else /* !SA_MODE */
+  return DISK_ERROR;
+#endif /* !SA_MODE */
 }

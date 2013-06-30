@@ -207,7 +207,7 @@ fix_codeset_in_active_log (const char *db_path, INTL_CODESET codeset)
 
   if (get_active_log_vol_path (db_path, vol_path) != NO_ERROR)
     {
-      printf ("Can't found log active volume path.\n");
+      printf ("Can't find log active volume path.\n");
       return ER_FAILED;
     }
 
@@ -248,14 +248,6 @@ check_and_fix_compat_level (const char *db_name, const char *db_path)
   FOPEN_AND_CHECK (fp, vol_path, "rb+");
   FREAD_AND_CHECK (log_io_page, sizeof (char), LOG_PAGESIZE, fp, vol_path);
 
-  if (hdr->is_shutdown == false)
-    {
-      printf ("This database (%s) was not normally terminated.\n"
-	      "Please start and shutdown with CUBRID 9.1 ,"
-	      "and retry migration.\n", db_name);
-      return ER_FAILED;
-    }
-
   if (hdr->db_compatibility == V9_2_LEVEL)
     {
       printf ("This database (%s) is already updated.\n", db_name);
@@ -266,6 +258,14 @@ check_and_fix_compat_level (const char *db_name, const char *db_path)
     {
       printf ("Cannot migrate this database: "
 	      "%s is not CUBRID 9.1 database.\n", db_name);
+      return ER_FAILED;
+    }
+
+  if (hdr->is_shutdown == false)
+    {
+      printf ("This database (%s) was not normally terminated.\n"
+	      "Please start and shutdown with CUBRID 9.1 ,"
+	      "and retry migration.\n", db_name);
       return ER_FAILED;
     }
 
@@ -487,8 +487,9 @@ main (int argc, char *argv[])
 
   if (file_update_used_pages_of_vol_header (NULL) == DISK_ERROR)
     {
-      printf ("Could not update used pages of volume header : %s.\n",
-	      db_error_string (3));
+      printf
+	("Could not update the statistics of the used pages of a volume: %s.\n",
+	 db_error_string (3));
       db_shutdown ();
       goto error_undo_vol_header;
     }
@@ -512,7 +513,7 @@ main (int argc, char *argv[])
       goto error_undo_vol_header;
     }
 
-  printf ("\nMigration to CUBRID 9.2 has been completed successfully.\n");
+  printf ("\nMigration to CUBRID 9.2 has been successfully completed.\n");
 
   free_volume_header_undo_list ();
 
@@ -616,7 +617,6 @@ fix_volume_header (const char *vol_path)
   FREAD_AND_CHECK (r91_aligned_buf, sizeof (char), IO_PAGESIZE, fp, vol_path);
 
   undo_page = make_volume_header_undo_page (vol_path, IO_PAGESIZE);
-
   if (undo_page == NULL)
     {
       FCLOSE_AND_CHECK (fp, vol_path);
@@ -663,7 +663,7 @@ fix_volume_header (const char *vol_path)
 
   memcpy (r92_header->var_fields, r91_header->var_fields, var_field_length);
 
-  /* This will be fixed later */
+  /* These new fields will be fixed later */
   r92_header->used_data_npages = r92_header->used_index_npages = 0;
 
   rewind (fp);
