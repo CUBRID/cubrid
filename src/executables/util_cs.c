@@ -357,6 +357,7 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
       ext_info.max_npages = atoi (volext_npages_string);
     }
 
+  volext_size = 0;
   volext_size_str = utility_get_option_string_value (arg_map,
 						     ADDVOL_VOLUME_SIZE_S, 0);
   if (volext_size_str)
@@ -366,10 +367,6 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
 	{
 	  goto print_addvol_usage;
 	}
-    }
-  else
-    {
-      volext_size = -1;
     }
 
   volext_max_writesize_in_sec_str =
@@ -469,7 +466,7 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
   db_login ("DBA", NULL);
   if (db_restart (arg->command_name, TRUE, database_name) == NO_ERROR)
     {
-      if (volext_size == -1)
+      if (volext_size == 0)
 	{
 	  volext_size = prm_get_bigint_value (PRM_ID_DB_VOLUME_SIZE);
 	}
