@@ -564,6 +564,7 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p,
 	  get_appl_server_name (br_info_p->appl_server));
   ut_get_broker_port_name (shm_as_p->port_name, br_info_p->name,
 			   SHM_PROXY_NAME_MAX);
+  strcpy (shm_as_p->db_connection_file, br_info_p->db_connection_file);
 
   for (as_index = 0; as_index < br_info_p->appl_server_max_num; as_index++)
     {

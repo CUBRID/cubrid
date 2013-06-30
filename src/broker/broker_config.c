@@ -502,6 +502,10 @@ broker_config_read_internal (const char *conf_file,
 	ini_getstr (ini, sec_name, "ERROR_LOG_DIR", DEFAULT_ERR_DIR, &lineno);
       MAKE_FILEPATH (br_info[num_brs].err_log_dir, ini_string,
 		     CONF_LOG_FILE_LEN);
+      ini_string = ini_getstr (ini, sec_name, "DATABASES_CONNECTION_FILE",
+			       DEFAULT_EMPTY_STRING, &lineno);
+      MAKE_FILEPATH (br_info[num_brs].db_connection_file, ini_string,
+		     BROKER_INFO_PATH_MAX);
 
       strcpy (br_info[num_brs].access_log_file, CUBRID_BASE_DIR);
       strcpy (br_info[num_brs].error_log_file, CUBRID_BASE_DIR);

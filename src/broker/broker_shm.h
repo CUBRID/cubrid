@@ -552,6 +552,7 @@ struct t_shm_appl_server
   char preferred_hosts[SHM_APPL_SERVER_NAME_MAX];
 
   char access_log_file[CONF_LOG_FILE_LEN];
+  char db_connection_file[BROKER_INFO_PATH_MAX];
 
   /* from br_info */
   /*from here, these are used only in shard */

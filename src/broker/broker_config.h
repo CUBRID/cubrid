@@ -203,6 +203,7 @@ struct t_broker_info
   char source_env[CONF_LOG_FILE_LEN];
   char acl_file[CONF_LOG_FILE_LEN];
   char preferred_hosts[BROKER_INFO_NAME_MAX];
+  char db_connection_file[BROKER_INFO_PATH_MAX];
 
   char jdbc_cache;
   char jdbc_cache_only_hint;
