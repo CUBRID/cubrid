@@ -509,6 +509,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_QUERY_TRACE "query_trace"
 #define PRM_NAME_QUERY_TRACE_FORMAT "query_trace_format"
 
+#define PRM_NAME_UPDATE_USE_ATTRIBUTE_REFERENCES "update_use_attribute_references"
+
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -1612,6 +1614,10 @@ static int prm_query_trace_format_default = QUERY_TRACE_TEXT;
 static int prm_query_trace_format_lower = QUERY_TRACE_TEXT;
 static int prm_query_trace_format_upper = QUERY_TRACE_JSON;
 static unsigned int prm_query_trace_format_flag = 0;
+
+bool PRM_UPDATE_USE_ATTRIBUTE_REFERENCES = false;
+static bool prm_update_use_attribute_references_default = false;
+static unsigned int prm_update_use_attribute_references_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *,
 			     SYSPRM_DATATYPE);
@@ -3777,6 +3783,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_QUERY_TRACE_FORMAT,
    (void *) &prm_query_trace_format_upper,
    (void *) &prm_query_trace_format_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_UPDATE_USE_ATTRIBUTE_REFERENCES,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
+   PRM_BOOLEAN,
+   (void *) &prm_update_use_attribute_references_flag,
+   (void *) &prm_update_use_attribute_references_default,
+   (void *) &PRM_UPDATE_USE_ATTRIBUTE_REFERENCES,
+   (void *) NULL,
+   (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
