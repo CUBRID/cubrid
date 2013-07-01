@@ -2793,6 +2793,14 @@ end:
       iscan_id->curr_keyno++;	/* to prevent duplicate frees */
     }
 
+  if (thread_is_on_trace (thread_p))
+    {
+      s_id->stats.read_keys += iscan_id->bt_scan.read_keys;
+      iscan_id->bt_scan.read_keys = 0;
+      s_id->stats.qualified_keys += iscan_id->bt_scan.qualified_keys;
+      iscan_id->bt_scan.qualified_keys = 0;
+    }
+
   return ret;
 
 exit_on_error:
@@ -2856,8 +2864,6 @@ scan_init_scan_id (SCAN_ID * scan_id, int readonly_scan,
   /* value list and descriptor */
   scan_id->val_list = val_list;	/* points to the XASL tree */
   scan_id->vd = vd;		/* set value descriptor pointer */
-
-  memset (&scan_id->stats, 0, sizeof (scan_id->stats));
 }
 
 /*
@@ -3962,7 +3968,6 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
       break;
     }				/* switch (s_id->type) */
 
-  s_id->stats.num_rescan += 1;
 
   return status;
 }
@@ -4582,7 +4587,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
 
       /* evaluate the predicates to see if the object qualifies */
-      scan_id->stats.num_rows++;
+      scan_id->stats.read_rows++;
       ev_res = eval_data_filter (thread_p, &hsidp->curr_oid, &recdes,
 				 &data_filter);
       if (ev_res == V_ERROR)
@@ -4627,6 +4632,8 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      continue;		/* not qualified, continue to the next tuple */
 	    }
 	}
+
+      scan_id->stats.qualified_rows++;
 
       if (hsidp->rest_regu_list)
 	{
@@ -5040,7 +5047,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  recdes.data = NULL;
 	}
 
-      scan_id->stats.num_rows++;
+      scan_id->stats.key_qualified_rows++;
 
       if (!SCAN_IS_INDEX_COVERED (isidp))
 	{
@@ -5049,7 +5056,6 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  if (thread_is_on_trace (thread_p))
 	    {
 	      gettimeofday (&lookup_start, NULL);
-	      scan_id->stats.num_lookup += 1;
 	    }
 
 	  sp_scan = heap_get (thread_p, isidp->curr_oidp,
@@ -5288,8 +5294,9 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  if (thread_is_on_trace (thread_p))
 	    {
 	      gettimeofday (&lookup_end, NULL);
-	      ADD_TIMEVAL (scan_id->stats.elapsed_lookup, lookup_start,
-			   lookup_end);
+	      ADD_TIMEVAL (scan_id->stats.elapsed_lookup,
+			   lookup_start, lookup_end);
+	      scan_id->stats.data_qualified_rows++;
 	    }
 	}
       else
@@ -5377,6 +5384,8 @@ scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    }
 	}
 
+      scan_id->stats.read_rows++;
+
       /* evaluate the predicate to see if the tuple qualifies */
       ev_res = V_TRUE;
       if (llsidp->scan_pred.pr_eval_fnc && llsidp->scan_pred.pred_expr)
@@ -5428,6 +5437,8 @@ scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      continue;		/* not qualified, continue to the next tuple */
 	    }
 	}
+
+      scan_id->stats.qualified_rows++;
 
       /* fetch the rest of the values from the tuple */
       if (scan_id->val_list)
@@ -6509,39 +6520,58 @@ scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id,
  * return:
  * scan_id(in):
  */
-json_t *
-scan_print_stats_json (SCAN_ID * scan_id)
+void
+scan_print_stats_json (SCAN_ID * scan_id, json_t * stats)
 {
-  json_t *stats, *scan, *lookup;
+  json_t *scan, *lookup;
 
-  stats = json_object ();
-  scan = json_pack ("{s:i, s:i, s:i, s:i, s:i}",
+  if (scan_id == NULL || stats == NULL)
+    {
+      return;
+    }
+
+  scan = json_pack ("{s:i, s:I, s:I}",
 		    "time", TO_MSEC (scan_id->stats.elapsed_scan),
 		    "fetch", scan_id->stats.num_fetches,
-		    "ioread", scan_id->stats.num_ioreads,
-		    "rows", scan_id->stats.num_rows,
-		    "rescan", scan_id->stats.num_rescan);
+		    "ioread", scan_id->stats.num_ioreads);
 
-  if (scan_id->type == S_HEAP_SCAN)
+  if (scan_id->type == S_HEAP_SCAN || scan_id->type == S_LIST_SCAN)
     {
-      json_object_set_new (stats, "heap", scan);
+      json_object_set_new (scan, "readrows",
+			   json_integer (scan_id->stats.read_rows));
+      json_object_set_new (scan, "rows",
+			   json_integer (scan_id->stats.qualified_rows));
+
+      if (scan_id->type == S_HEAP_SCAN)
+	{
+	  json_object_set_new (stats, "heap", scan);
+	}
+      else
+	{
+	  json_object_set_new (stats, "temp", scan);
+	}
     }
   else if (scan_id->type == S_INDX_SCAN)
     {
+      json_object_set_new (scan, "readkeys",
+			   json_integer (scan_id->stats.read_keys));
+      json_object_set_new (scan, "filteredkeys",
+			   json_integer (scan_id->stats.qualified_keys));
+      json_object_set_new (scan, "rows",
+			   json_integer (scan_id->stats.key_qualified_rows));
       json_object_set_new (stats, "btree", scan);
-
-      if (scan_id->stats.num_lookup > 0)
-	{
-	  lookup = json_pack ("{s:i, s:i}",
-			      "time", TO_MSEC (scan_id->stats.elapsed_lookup),
-			      "count", scan_id->stats.num_lookup);
-
-	  json_object_set_new (stats, "lookup", lookup);
-	}
 
       if (scan_id->stats.covered_index == true)
 	{
 	  json_object_set_new (stats, "covered", json_true ());
+	}
+      else
+	{
+	  lookup = json_pack ("{s:i, s:i}",
+			      "time", TO_MSEC (scan_id->stats.elapsed_lookup),
+			      "rows", scan_id->stats.data_qualified_rows);
+
+	  json_object_set_new (stats, "lookup", lookup);
 	}
 
       if (scan_id->stats.multi_range_opt == true)
@@ -6553,10 +6583,6 @@ scan_print_stats_json (SCAN_ID * scan_id)
 	{
 	  json_object_set_new (stats, "iss", json_true ());
 	}
-    }
-  else if (scan_id->type == S_LIST_SCAN)
-    {
-      json_object_set_new (stats, "temp", scan);
     }
   else if (scan_id->type == S_SET_SCAN)
     {
@@ -6570,8 +6596,6 @@ scan_print_stats_json (SCAN_ID * scan_id)
     {
       json_object_set_new (stats, "class_attr", scan);
     }
-
-  return stats;
 }
 
 /*
@@ -6582,6 +6606,11 @@ scan_print_stats_json (SCAN_ID * scan_id)
 void
 scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
 {
+  if (scan_id == NULL)
+    {
+      return;
+    }
+
   if (scan_id->type == S_HEAP_SCAN)
     {
       fprintf (fp, "(heap");
@@ -6607,12 +6636,23 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
       fprintf (fp, "(class_attr");
     }
 
-  fprintf (fp, " time: %d, fetch: %d, ioread: %d, rows: %d",
-	   TO_MSEC (scan_id->stats.elapsed_scan), scan_id->stats.num_fetches,
-	   scan_id->stats.num_ioreads, scan_id->stats.num_rows);
+  fprintf (fp, " time: %d, fetch: %lld, ioread: %lld",
+	   TO_MSEC (scan_id->stats.elapsed_scan),
+	   (long long int) scan_id->stats.num_fetches,
+	   (long long int) scan_id->stats.num_ioreads);
 
-  if (scan_id->type == S_INDX_SCAN)
+  if (scan_id->type == S_HEAP_SCAN || scan_id->type == S_LIST_SCAN)
     {
+      fprintf (fp, ", readrows: %d, rows: %d)",
+	       scan_id->stats.read_rows, scan_id->stats.qualified_rows);
+    }
+  else if (scan_id->type == S_INDX_SCAN)
+    {
+      fprintf (fp, ", readkeys: %d, filteredkeys: %d, rows: %d",
+	       scan_id->stats.read_keys,
+	       scan_id->stats.qualified_keys,
+	       scan_id->stats.key_qualified_rows);
+
       if (scan_id->stats.covered_index == true)
 	{
 	  fprintf (fp, ", covered: true");
@@ -6630,11 +6670,11 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
 
       fprintf (fp, ")");
 
-      if (scan_id->stats.num_lookup > 0)
+      if (scan_id->stats.covered_index == false)
 	{
-	  fprintf (fp, " (lookup time: %d, count: %d)",
+	  fprintf (fp, " (lookup time: %d, rows: %d)",
 		   TO_MSEC (scan_id->stats.elapsed_lookup),
-		   scan_id->stats.num_lookup);
+		   scan_id->stats.data_qualified_rows);
 	}
     }
   else

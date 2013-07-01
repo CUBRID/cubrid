@@ -433,7 +433,6 @@ struct update_proc_node
   int no_logging;		/* no logging */
   int release_lock;		/* release lock */
   int no_orderby_keys;		/* no of keys for ORDER_BY */
-  struct timeval elapsed_time;	/* for query trace */
 };
 
 /*on duplicate key update info structure */
@@ -468,7 +467,6 @@ struct insert_proc_node
 				 * clause. */
   int pruning_type;		/* DB_CLASS_PARTITION_TYPE indicating the way
 				 * in which pruning should be performed */
-  struct timeval elapsed_time;	/* for query trace */
 };
 
 typedef struct delete_proc_node DELETE_PROC_NODE;
@@ -479,7 +477,6 @@ struct delete_proc_node
   int wait_msecs;		/* lock timeout in milliseconds */
   int no_logging;		/* no logging */
   int release_lock;		/* release lock */
-  struct timeval elapsed_time;	/* for query trace */
 };
 
 typedef struct connectby_proc_node CONNECTBY_PROC_NODE;
@@ -501,11 +498,6 @@ struct connectby_proc_node
   REGU_VARIABLE_LIST after_cb_regu_list_rest;	/* rest of regu vars */
   bool single_table_opt;	/* single table optimizations */
   QFILE_TUPLE curr_tuple;	/* needed for operators and functions */
-
-  /* for query trace */
-  struct timeval elapsed_time;
-  int num_fetches;
-  int num_ioreads;
 };
 
 typedef struct merge_proc_node MERGE_PROC_NODE;
@@ -579,10 +571,19 @@ typedef struct groupby_stat GROUPBY_STATS;
 struct groupby_stat
 {
   struct timeval groupby_time;
-  bool run_groupby;
-  bool groupby_sort;
   UINT64 groupby_pages;
   UINT64 groupby_ioreads;
+  int rows;
+  bool run_groupby;
+  bool groupby_sort;
+};
+
+typedef struct xasl_stat XASL_STATS;
+struct xasl_stat
+{
+  struct timeval elapsed_time;
+  UINT64 fetches;
+  UINT64 ioreads;
 };
 
 struct xasl_node
@@ -680,6 +681,7 @@ struct xasl_node
 
   ORDERBY_STATS orderby_stats;
   GROUPBY_STATS groupby_stats;
+  XASL_STATS xasl_stats;
 
   /* XASL cache related information */
   OID creator_oid;		/* OID of the user who created this XASL */
@@ -980,7 +982,7 @@ extern void qexec_replace_prior_regu_vars_prior_expr (THREAD_ENTRY * thread_p,
 						      XASL_NODE *
 						      connect_by_ptr);
 #if defined (SERVER_MODE)
-extern json_t *qdump_print_stats_json (XASL_NODE * xasl_p);
+extern void qdump_print_stats_json (XASL_NODE * xasl_p, json_t * parent);
 extern void qdump_print_stats_text (FILE * fp, XASL_NODE * xasl_p,
 				    int indent);
 #endif /* SERVER_MODE */

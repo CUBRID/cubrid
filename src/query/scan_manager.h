@@ -245,12 +245,19 @@ typedef struct scan_stats SCAN_STATS;
 struct scan_stats
 {
   struct timeval elapsed_scan;
-  int num_rows;
-  int num_fetches;
-  int num_ioreads;
+  UINT64 num_fetches;
+  UINT64 num_ioreads;
+
+  /* for heap & list scan */
+  int read_rows;                /* # of rows read*/
+  int qualified_rows;           /* # of rows qualified by data filter */
+
+  /* for btree scan */
+  int read_keys;                /* # of keys read */
+  int qualified_keys;           /* # of keys qualified by key filter */
+  int key_qualified_rows;       /* # of rows qualified by key filter */
+  int data_qualified_rows;      /* # of rows qualified by data filter */
   struct timeval elapsed_lookup;
-  int num_lookup;
-  int num_rescan;
   bool covered_index;
   bool multi_range_opt;
   bool index_skip_scan;
@@ -431,7 +438,7 @@ extern void scan_initialize (void);
 extern void scan_finalize (void);
 
 #if defined(SERVER_MODE)
-extern json_t * scan_print_stats_json (SCAN_ID * scan_id);
+extern void scan_print_stats_json (SCAN_ID * scan_id, json_t *stats);
 extern void scan_print_stats_text (FILE *fp, SCAN_ID * scan_id);
 #endif /* SERVER_MODE */
 

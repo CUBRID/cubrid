@@ -168,6 +168,10 @@ struct btree_scan
 
   int use_desc_index;		/* use descending index */
 
+  /* for query trace */
+  int read_keys;
+  int qualified_keys;
+
 #if defined(SERVER_MODE)
   OID cls_oid;			/* class OID */
 
@@ -206,7 +210,6 @@ struct btree_scan
    * cur_leaf_lsa
    */
   LOG_LSA cur_leaf_lsa;		/* page LSA of current leaf page */
-
 #endif				/* SERVER_MODE */
 };
 

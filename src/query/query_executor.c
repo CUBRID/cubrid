@@ -208,6 +208,7 @@ struct groupby_state
   REGU_VARIABLE_LIST g_regu_list;
   VAL_LIST *g_val_list;
   OUTPTR_LIST *g_outptr_list;
+  XASL_NODE *xasl;
   XASL_STATE *xasl_state;
 
   RECDES current_key;
@@ -695,6 +696,7 @@ static GROUPBY_STATE *qexec_initialize_groupby_state (GROUPBY_STATE * gbstate,
 						      OUTPTR_LIST *
 						      g_outptr_list,
 						      int with_rollup,
+						      XASL_NODE * xasl,
 						      XASL_STATE * xasl_state,
 						      QFILE_TUPLE_VALUE_TYPE_LIST
 						      * type_list,
@@ -956,6 +958,9 @@ static int qexec_process_unique_stats (THREAD_ENTRY * thread_p,
 static SCAN_CODE qexec_init_next_partition (THREAD_ENTRY * thread_p,
 					    ACCESS_SPEC_TYPE * spec);
 
+static int qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p,
+					     XASL_NODE * xasl,
+					     XASL_STATE * xasl_state);
 static DEL_LOB_INFO *qexec_create_delete_lob_info (THREAD_ENTRY * thread_p,
 						   XASL_STATE * xasl_state,
 						   UPDDEL_CLASS_INFO_INTERNAL
@@ -3746,6 +3751,7 @@ qexec_initialize_groupby_state (GROUPBY_STATE * gbstate,
 				REGU_VARIABLE_LIST g_regu_list,
 				VAL_LIST * g_val_list,
 				OUTPTR_LIST * g_outptr_list, int with_rollup,
+				XASL_NODE * xasl,
 				XASL_STATE * xasl_state,
 				QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
 				QFILE_TUPLE_RECORD * tplrec)
@@ -3770,6 +3776,7 @@ qexec_initialize_groupby_state (GROUPBY_STATE * gbstate,
   gbstate->g_regu_list = g_regu_list;
   gbstate->g_val_list = g_val_list;
   gbstate->g_outptr_list = g_outptr_list;
+  gbstate->xasl = xasl;
   gbstate->xasl_state = xasl_state;
 
   gbstate->current_key.area_size = 0;
@@ -4200,7 +4207,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 				      buildlist->g_val_list,
 				      buildlist->g_outptr_list,
 				      buildlist->g_with_rollup,
-				      xasl_state,
+				      xasl, xasl_state,
 				      &list_id->type_list, tplrec) == NULL)
     {
       GOTO_EXIT_ON_ERROR;
@@ -4278,6 +4285,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       gettimeofday (&start, NULL);
       xasl->groupby_stats.run_groupby = true;
       xasl->groupby_stats.groupby_sort = true;
+      xasl->groupby_stats.rows = 0;
       old_sort_pages = mnt_get_sort_data_pages (thread_p);
       old_sort_ioreads = mnt_get_sort_io_pages (thread_p);
     }
@@ -8230,11 +8238,6 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       GOTO_EXIT_ON_ERROR;
     }
 
-  if (thread_is_on_trace (thread_p))
-    {
-      gettimeofday (&start, NULL);
-    }
-
   /* This guarantees that the result list file will have a type list.
      Copying a list_id structure fails unless it has a type list. */
   if (qexec_setup_list_id (xasl) != NO_ERROR)
@@ -8760,14 +8763,6 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
 #endif
 
-  if (thread_is_on_trace (thread_p))
-    {
-      gettimeofday (&end, NULL);
-#if defined (SERVER_MODE)
-      ADD_TIMEVAL (update->elapsed_time, start, end);
-#endif
-    }
-
   return NO_ERROR;
 
 exit_on_error:
@@ -9062,11 +9057,6 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   if (qexec_execute_mainblock (thread_p, aptr, xasl_state) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
-    }
-
-  if (thread_is_on_trace (thread_p))
-    {
-      gettimeofday (&start, NULL);
     }
 
   /* This guarantees that the result list file will have a type list.
@@ -9382,14 +9372,6 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       qmgr_add_modified_class (class_oid);
     }
 #endif
-
-  if (thread_is_on_trace (thread_p))
-    {
-      gettimeofday (&end, NULL);
-#if defined (SERVER_MODE)
-      ADD_TIMEVAL (delete_->elapsed_time, start, end);
-#endif
-    }
 
   return NO_ERROR;
 
@@ -10171,11 +10153,6 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	}
     }
 
-  if (thread_is_on_trace (thread_p))
-    {
-      gettimeofday (&start, NULL);
-    }
-
   /* This guarantees that the result list file will have a type list.
      Copying a list_id structure fails unless it has a type list. */
   if (qexec_setup_list_id (xasl) != NO_ERROR)
@@ -10830,14 +10807,6 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   if (odku_assignments && insert->has_uniques)
     {
       heap_attrinfo_end (thread_p, odku_assignments->attr_info);
-    }
-
-  if (thread_is_on_trace (thread_p))
-    {
-      gettimeofday (&end, NULL);
-#if defined (SERVER_MODE)
-      ADD_TIMEVAL (insert->elapsed_time, start, end);
-#endif
     }
 
   return NO_ERROR;
@@ -12501,6 +12470,41 @@ int
 qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			 XASL_STATE * xasl_state)
 {
+  int error = NO_ERROR;
+  struct timeval start, end;
+  UINT64 old_fetches, old_ioreads;
+
+  if (thread_is_on_trace (thread_p))
+    {
+      gettimeofday (&start, NULL);
+      old_fetches = mnt_get_pb_fetches (thread_p);
+      old_ioreads = mnt_get_pb_ioreads (thread_p);
+    }
+
+  error = qexec_execute_mainblock_internal (thread_p, xasl, xasl_state);
+
+  if (thread_is_on_trace (thread_p))
+    {
+      gettimeofday (&end, NULL);
+      ADD_TIMEVAL (xasl->xasl_stats.elapsed_time, start, end);
+      xasl->xasl_stats.fetches += mnt_get_pb_fetches (thread_p) - old_fetches;
+      xasl->xasl_stats.ioreads += mnt_get_pb_ioreads (thread_p) - old_ioreads;
+    }
+
+  return error;
+}
+
+/*
+ * qexec_execute_mainblock_internal () -
+ *   return: NO_ERROR, or ER_code
+ *   xasl(in)   : XASL Tree pointer
+ *   xasl_state(in)     : XASL state information
+ *
+ */
+static int
+qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
+				  XASL_STATE * xasl_state)
+{
   XASL_NODE *xptr, *xptr2;
   QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
   SCAN_CODE qp_scan;
@@ -13149,8 +13153,8 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  if (XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY))
 	    {
 	      struct timeval start, end;
-	      CONNECTBY_PROC_NODE *cnode;
 	      UINT64 old_fetches, old_ioreads;
+	      XASL_STATS *xasl_stats;
 
 	      if (thread_is_on_trace (thread_p))
 		{
@@ -13179,14 +13183,13 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
 	      if (thread_is_on_trace (thread_p))
 		{
-		  cnode = &xasl->connect_by_ptr->proc.connect_by;
-
 		  gettimeofday (&end, NULL);
-		  ADD_TIMEVAL (cnode->elapsed_time, start, end);
+		  xasl_stats = &xasl->connect_by_ptr->xasl_stats;
 
-		  cnode->num_fetches =
+		  ADD_TIMEVAL (xasl_stats->elapsed_time, start, end);
+		  xasl_stats->fetches =
 		    mnt_get_pb_fetches (thread_p) - old_fetches;
-		  cnode->num_ioreads =
+		  xasl_stats->ioreads =
 		    mnt_get_pb_ioreads (thread_p) - old_ioreads;
 		}
 	    }
@@ -13576,6 +13579,13 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
       stat = qexec_execute_mainblock (thread_p, xasl, &xasl_state);
       xasl->query_in_progress = false;
 
+#if defined(SERVER_MODE)
+      if (thread_is_on_trace (thread_p))
+	{
+	  qexec_set_xasl_trace_to_session (thread_p, xasl);
+	}
+#endif
+
       if (stat != NO_ERROR)
 	{
 
@@ -13727,13 +13737,6 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
       }
   }
 #endif /* CUBRID_DEBUG */
-
-#if defined(SERVER_MODE)
-  if (thread_is_on_trace (thread_p))
-    {
-      qexec_set_xasl_trace_to_session (thread_p, xasl);
-    }
-#endif
 
   /* clear XASL tree */
   (void) qexec_clear_xasl (thread_p, xasl, true);
@@ -17677,9 +17680,9 @@ qexec_listfile_orderby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      ADD_TIMEVAL (xasl->orderby_stats.orderby_time, start, end);
 	      xasl->orderby_stats.orderby_filesort = true;
 
-	      xasl->orderby_stats.orderby_pages =
+	      xasl->orderby_stats.orderby_pages +=
 		mnt_get_sort_data_pages (thread_p) - old_sort_pages;
-	      xasl->orderby_stats.orderby_ioreads =
+	      xasl->orderby_stats.orderby_ioreads +=
 		mnt_get_sort_io_pages (thread_p) - old_sort_ioreads;
 	    }
 	}
@@ -18751,6 +18754,8 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p,
       break;
     }
 
+  gbstate->xasl->groupby_stats.rows++;
+
 wrapup:
   /* clear agg_list, since we moved aggreate values here beforehand */
   QEXEC_CLEAR_AGG_LIST_VALUE (gbstate->g_dim[N].d_agg_list);
@@ -19448,7 +19453,7 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 				      buildlist->g_val_list,
 				      buildlist->g_outptr_list,
 				      buildlist->g_with_rollup,
-				      xasl_state,
+				      xasl, xasl_state,
 				      &list_id->type_list, tplrec) == NULL)
     {
       GOTO_EXIT_ON_ERROR;
@@ -19516,6 +19521,7 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       gettimeofday (&start, NULL);
       xasl->groupby_stats.run_groupby = true;
       xasl->groupby_stats.groupby_sort = false;
+      xasl->groupby_stats.rows = 0;
     }
 
   /*
@@ -25956,9 +25962,9 @@ static void
 qexec_set_xasl_trace_to_session (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 {
   size_t sizeloc;
-  char *trace_str;
+  char *trace_str = NULL;
   FILE *fp;
-  json_t *jval;
+  json_t *trace;
 
   if (thread_p->trace_format == QUERY_TRACE_TEXT)
     {
@@ -25971,12 +25977,12 @@ qexec_set_xasl_trace_to_session (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
     }
   else if (thread_p->trace_format == QUERY_TRACE_JSON)
     {
-      jval = qdump_print_stats_json (xasl);
+      trace = json_object ();
+      qdump_print_stats_json (xasl, trace);
+      trace_str = json_dumps (trace, JSON_INDENT (2) | JSON_PRESERVE_ORDER);
 
-      trace_str = json_dumps (jval, JSON_INDENT (2) | JSON_PRESERVE_ORDER);
-
-      json_object_clear (jval);
-      json_decref (jval);
+      json_object_clear (trace);
+      json_decref (trace);
     }
 
   if (trace_str != NULL)

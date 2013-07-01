@@ -46,6 +46,10 @@ enum
 
 #define HASH_NUMBER 128
 
+#define HAVE_SUBQUERY_PROC(xasl_p) \
+  ((xasl_p)->type != MERGELIST_PROC && (xasl_p)->type != UNION_PROC \
+   && (xasl_p)->type != INTERSECTION_PROC && (xasl_p)->type != DIFFERENCE_PROC)
+
 typedef struct qdump_xasl_check_node QDUMP_XASL_CHECK_NODE;
 struct qdump_xasl_check_node
 {
@@ -2841,6 +2845,48 @@ qdump_print_xasl (XASL_NODE * xasl_p)
  */
 
 #if defined (SERVER_MODE)
+
+/*
+ * qdump_xasl_type_string () -
+ *   return:
+ *   xasl_p(in):
+ */
+static const char *
+qdump_xasl_type_string (XASL_NODE * xasl_p)
+{
+  switch (xasl_p->type)
+    {
+    case BUILDLIST_PROC:
+    case BUILDVALUE_PROC:
+      return "SELECT";
+    case SCAN_PROC:
+      return "SCAN";
+    case INSERT_PROC:
+      return "INSERT";
+    case UPDATE_PROC:
+      return "UPDATE";
+    case DELETE_PROC:
+      return "DELETE";
+    case MERGE_PROC:
+      return "MERGE";
+    case UNION_PROC:
+      return "UNION";
+    case DIFFERENCE_PROC:
+      return "DIFFERENCE";
+    case INTERSECTION_PROC:
+      return "INTERSECTION";
+    case MERGELIST_PROC:
+      return "MERGELIST";
+    case CONNECTBY_PROC:
+      return "CONNECTBY";
+    case OBJFETCH_PROC:
+      return "OBJFETCH";
+    default:
+      assert (false);
+      return "";
+    }
+}
+
 /*
  * qdump_print_access_spec_stats () -
  *   return:
@@ -2848,94 +2894,111 @@ qdump_print_xasl (XASL_NODE * xasl_p)
  *   proc(in):
  */
 static json_t *
-qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p,
-				    json_t * proc)
+qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 {
   TARGET_TYPE type;
   char *class_name = NULL, *index_name = NULL;
   CLS_SPEC_TYPE *cls_node;
-  json_t *trace;
-  char spec[1024];
+  ACCESS_SPEC_TYPE *spec;
+  json_t *trace, *scan = NULL, *scan_array = NULL;
+  int num_spec = 0;
+  char spec_name[1024];
 
-  if (spec_list_p == NULL)
+  for (spec = spec_list_p; spec != NULL; spec = spec->next)
     {
-      return NULL;
+      num_spec++;
     }
 
-  trace = scan_print_stats_json (&spec_list_p->s_id);
-
-  type = spec_list_p->type;
-  if (type == TARGET_CLASS)
+  if (num_spec > 1)
     {
-      cls_node = &ACCESS_SPEC_CLS_SPEC (spec_list_p);
-      class_name = heap_get_class_name (NULL, &(cls_node->cls_oid));
-      spec[0] = '\0';
+      scan_array = json_array ();
+    }
 
-      if (spec_list_p->access == SEQUENTIAL)
+  for (spec = spec_list_p; spec != NULL; spec = spec->next)
+    {
+      scan = json_object ();
+      type = spec->type;
+
+      if (type == TARGET_CLASS)
 	{
-	  if (class_name != NULL)
+	  cls_node = &ACCESS_SPEC_CLS_SPEC (spec);
+	  class_name = heap_get_class_name (NULL, &(cls_node->cls_oid));
+	  spec_name[0] = '\0';
+
+	  if (spec->access == SEQUENTIAL)
 	    {
-	      sprintf (spec, "table (%s)", class_name);
-	    }
-	  else
-	    {
-	      sprintf (spec, "table (unknown)");
-	    }
-	}
-      else if (spec_list_p->access == INDEX)
-	{
-	  if (heap_get_indexinfo_of_btid (NULL, &(cls_node->cls_oid),
-					  &spec_list_p->indexptr->indx_id.i.
-					  btid, NULL, NULL, NULL, NULL,
-					  &index_name, NULL) == NO_ERROR)
-	    {
-	      if (class_name != NULL && index_name != NULL)
+	      if (class_name != NULL)
 		{
-		  sprintf (spec, "index (%s.%s)", class_name, index_name);
+		  sprintf (spec_name, "table (%s)", class_name);
 		}
 	      else
 		{
-		  sprintf (spec, "index (unknown)");
+		  sprintf (spec_name, "table (unknown)");
 		}
 	    }
+	  else if (spec->access == INDEX)
+	    {
+	      if (heap_get_indexinfo_of_btid (NULL, &(cls_node->cls_oid),
+					      &spec->indexptr->indx_id.i.
+					      btid, NULL, NULL, NULL, NULL,
+					      &index_name, NULL) == NO_ERROR)
+		{
+		  if (class_name != NULL && index_name != NULL)
+		    {
+		      sprintf (spec_name, "index (%s.%s)", class_name,
+			       index_name);
+		    }
+		  else
+		    {
+		      sprintf (spec_name, "index (unknown)");
+		    }
+		}
+	    }
+
+	  json_object_set_new (scan, "access", json_string (spec_name));
+
+	  if (class_name != NULL)
+	    {
+	      free_and_init (class_name);
+	    }
+	  if (index_name != NULL)
+	    {
+	      free_and_init (index_name);
+	    }
 	}
-
-      json_object_set_new (proc, "ACCESS", json_string (spec));
-
-      if (class_name != NULL)
+      else if (type == TARGET_LIST)
 	{
-	  free_and_init (class_name);
+	  json_object_set_new (scan, "access", json_string ("temp"));
 	}
-      if (index_name != NULL)
+      else if (type == TARGET_SET)
 	{
-	  free_and_init (index_name);
+	  json_object_set_new (scan, "access", json_string ("set"));
+	}
+      else if (type == TARGET_METHOD)
+	{
+	  json_object_set_new (scan, "access", json_string ("method"));
+	}
+      else if (type == TARGET_CLASS_ATTR)
+	{
+	  json_object_set_new (scan, "access", json_string ("class_attr"));
+	}
+
+      scan_print_stats_json (&spec->s_id, scan);
+
+      if (scan_array != NULL)
+	{
+	  json_array_append_new (scan_array, scan);
 	}
     }
-  else if (type == TARGET_LIST)
-    {
-      json_object_set_new (proc, "ACCESS", json_string ("temp"));
-    }
-  else if (type == TARGET_SET)
-    {
-      json_object_set_new (proc, "ACCESS", json_string ("set"));
-    }
-  else if (type == TARGET_METHOD)
-    {
-      json_object_set_new (proc, "ACCESS", json_string ("method"));
-    }
-  else if (type == TARGET_CLASS_ATTR)
-    {
-      json_object_set_new (proc, "ACCESS", json_string ("class_attr"));
-    }
 
-  json_object_set_new (proc, "TRACE", trace);
-
-  if (spec_list_p->next)
+  if (scan_array != NULL)
     {
-      qdump_print_access_spec_stats_json (spec_list_p->next, proc);
+      return scan_array;
     }
-
-  return proc;
+  else
+    {
+      return scan;
+    }
 }
 
 /*
@@ -2943,144 +3006,111 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p,
  *   return:
  *   xasl_p(in):
  */
-json_t *
-qdump_print_stats_json (XASL_NODE * xasl_p)
+void
+qdump_print_stats_json (XASL_NODE * xasl_p, json_t * parent)
 {
   ORDERBY_STATS *ostats;
   GROUPBY_STATS *gstats;
-  json_t *proc, *spec, *scan, *xasl = NULL;
-  json_t *subquery, *hq, *hq_stat, *groupby, *orderby;
-  json_t *left, *right, *inner, *outer;
+  json_t *proc, *scan = NULL;
+  json_t *subquery, *groupby, *orderby;
+  json_t *left, *right, *outer, *inner;
 
-  if (xasl_p == NULL)
+  if (xasl_p == NULL || parent == NULL)
     {
-      return NULL;
+      return;
     }
 
-  proc = json_object ();
-
-  if (xasl_p->spec_list)
+  if (xasl_p->type == SCAN_PROC)
     {
-      spec = qdump_print_access_spec_stats_json (xasl_p->spec_list, proc);
+      proc = parent;
     }
-
-  if (xasl_p->merge_spec)
+  else
     {
-      spec = qdump_print_access_spec_stats_json (xasl_p->merge_spec, proc);
+      proc = json_object ();
+      json_object_set_new (parent, qdump_xasl_type_string (xasl_p), proc);
     }
-
-  scan = qdump_print_stats_json (xasl_p->scan_ptr);
-  json_object_set_new (proc, "SCAN", scan);
 
   switch (xasl_p->type)
     {
-    case OBJFETCH_PROC:
-      break;
-
     case BUILDLIST_PROC:
     case BUILDVALUE_PROC:
-      xasl = json_object ();
-      json_object_set_new (xasl, "SELECT", proc);
+    case UPDATE_PROC:
+    case DELETE_PROC:
+    case INSERT_PROC:
+    case CONNECTBY_PROC:
+      json_object_set_new (proc, "time",
+			   json_integer (TO_MSEC
+					 (xasl_p->xasl_stats.elapsed_time)));
+      json_object_set_new (proc, "fetch",
+			   json_integer (xasl_p->xasl_stats.fetches));
+      json_object_set_new (proc, "ioread",
+			   json_integer (xasl_p->xasl_stats.ioreads));
       break;
 
     case UNION_PROC:
     case DIFFERENCE_PROC:
     case INTERSECTION_PROC:
-      left = qdump_print_stats_json (xasl_p->proc.union_.left);
-      right = qdump_print_stats_json (xasl_p->proc.union_.right);
+      left = json_object ();
+      right = json_object ();
+
+      qdump_print_stats_json (xasl_p->proc.union_.left, left);
+      qdump_print_stats_json (xasl_p->proc.union_.right, right);
 
       json_object_set_new (proc, "left", left);
       json_object_set_new (proc, "right", right);
 
-      xasl = json_object ();
-      if (xasl_p->type == UNION_PROC)
-	{
-	  json_object_set_new (xasl, "UNION", proc);
-	}
-      else if (xasl_p->type == DIFFERENCE_PROC)
-	{
-	  json_object_set_new (xasl, "DIFFERENCE", proc);
-	}
-      else
-	{
-	  json_object_set_new (xasl, "INTERSECTION", proc);
-	}
-
       break;
 
     case MERGELIST_PROC:
-      outer = qdump_print_stats_json (xasl_p->proc.mergelist.outer_xasl);
-      inner = qdump_print_stats_json (xasl_p->proc.mergelist.inner_xasl);
+      outer = json_object ();
+      inner = json_object ();
+
+      qdump_print_stats_json (xasl_p->proc.mergelist.outer_xasl, outer);
+      qdump_print_stats_json (xasl_p->proc.mergelist.inner_xasl, inner);
 
       json_object_set_new (proc, "outer", outer);
       json_object_set_new (proc, "inner", inner);
 
-      xasl = json_object ();
-      json_object_set_new (xasl, "MERGELIST", proc);
-
-      break;
-
-    case CONNECTBY_PROC:
-      hq_stat = json_pack ("{s:i, s:i, s:i}",
-			   "time",
-			   TO_MSEC (xasl_p->proc.connect_by.elapsed_time),
-			   "page fetch",
-			   xasl_p->proc.connect_by.num_fetches,
-			   "ioread", xasl_p->proc.connect_by.num_ioreads);
-
-      json_object_set_new (proc, "CONNECTBY", hq_stat);
-      xasl = proc;
-      break;
-
-    case SCAN_PROC:
-      xasl = proc;
-      break;
-
-    case UPDATE_PROC:
-      json_object_set_new (proc, "time",
-			   json_integer (TO_MSEC
-					 (xasl_p->proc.update.elapsed_time)));
-      xasl = json_object ();
-      json_object_set_new (xasl, "UPDATE", proc);
-      break;
-
-    case DELETE_PROC:
-      json_object_set_new (proc, "time",
-			   json_integer (TO_MSEC
-					 (xasl_p->proc.delete_.
-					  elapsed_time)));
-      xasl = json_object ();
-      json_object_set_new (xasl, "DELETE", proc);
-      break;
-
-    case INSERT_PROC:
-      json_object_set_new (proc, "time",
-			   json_integer (TO_MSEC
-					 (xasl_p->proc.insert.elapsed_time)));
-      xasl = json_object ();
-      json_object_set_new (xasl, "INSERT", proc);
       break;
 
     case MERGE_PROC:
-      inner = qdump_print_stats_json (xasl_p->proc.merge.update_xasl);
-      outer = qdump_print_stats_json (xasl_p->proc.merge.insert_xasl);
+      inner = json_object ();
+      outer = json_object ();
+
+      qdump_print_stats_json (xasl_p->proc.merge.update_xasl, inner);
+      qdump_print_stats_json (xasl_p->proc.merge.insert_xasl, outer);
 
       json_object_set_new (proc, "update", inner);
       json_object_set_new (proc, "insert", outer);
 
-      xasl = json_object ();
-      json_object_set_new (xasl, "MERGE", proc);
       break;
 
+    case SCAN_PROC:
+    case OBJFETCH_PROC:
     default:
       break;
     }
 
-  if (xasl_p->connect_by_ptr)
+  if (xasl_p->spec_list != NULL)
     {
-      hq = qdump_print_stats_json (xasl_p->connect_by_ptr);
-      json_object_set_new (xasl, "CONNECTBY", hq);
+      scan = qdump_print_access_spec_stats_json (xasl_p->spec_list);
     }
+  else if (xasl_p->merge_spec != NULL)
+    {
+      scan = qdump_print_access_spec_stats_json (xasl_p->merge_spec);
+    }
+
+  if (scan != NULL)
+    {
+      json_object_set_new (proc, "SCAN", scan);
+      qdump_print_stats_json (xasl_p->scan_ptr, scan);
+    }
+  else
+    {
+      qdump_print_stats_json (xasl_p->scan_ptr, proc);
+    }
+
+  qdump_print_stats_json (xasl_p->connect_by_ptr, proc);
 
   gstats = &xasl_p->groupby_stats;
   if (gstats->run_groupby)
@@ -3092,18 +3122,19 @@ qdump_print_stats_json (XASL_NODE * xasl_p)
 
       if (gstats->groupby_sort)
 	{
-	  json_object_set_new (groupby, "filesort", json_true ());
-	  json_object_set_new (groupby, "pages",
+	  json_object_set_new (groupby, "sort", json_true ());
+	  json_object_set_new (groupby, "page",
 			       json_integer (gstats->groupby_pages));
 	  json_object_set_new (groupby, "ioread",
 			       json_integer (gstats->groupby_ioreads));
 	}
       else
 	{
-	  json_object_set_new (groupby, "filesort", json_false ());
+	  json_object_set_new (groupby, "sort", json_false ());
 	}
 
-      json_object_set_new (xasl, "GROUPBY", groupby);
+      json_object_set_new (groupby, "rows", json_integer (gstats->rows));
+      json_object_set_new (proc, "GROUPBY", groupby);
     }
 
   ostats = &xasl_p->orderby_stats;
@@ -3117,7 +3148,7 @@ qdump_print_stats_json (XASL_NODE * xasl_p)
 
       if (ostats->orderby_filesort)
 	{
-	  json_object_set_new (orderby, "filesort", json_true ());
+	  json_object_set_new (orderby, "sort", json_true ());
 	  json_object_set_new (orderby, "page",
 			       json_integer (ostats->orderby_pages));
 	  json_object_set_new (orderby, "ioread",
@@ -3132,22 +3163,29 @@ qdump_print_stats_json (XASL_NODE * xasl_p)
 	  json_object_set_new (orderby, "skipsort", json_true ());
 	}
 
-      json_object_set_new (xasl, "ORDERBY", orderby);
+      json_object_set_new (proc, "ORDERBY", orderby);
     }
 
-  if (xasl_p->type != MERGELIST_PROC && xasl_p->aptr_list)
+  if (HAVE_SUBQUERY_PROC (xasl_p) && xasl_p->aptr_list != NULL)
     {
-      subquery = qdump_print_stats_json (xasl_p->aptr_list);
-      json_object_set_new (xasl, "SUB QUERY(U)", subquery);
+      if (HAVE_SUBQUERY_PROC (xasl_p->aptr_list))
+	{
+	  subquery = json_object ();
+	  qdump_print_stats_json (xasl_p->aptr_list, subquery);
+	  json_object_set_new (proc, "SUBQUERY (uncorrelated)", subquery);
+	}
+      else
+	{
+	  qdump_print_stats_json (xasl_p->aptr_list, proc);
+	}
     }
 
-  if (xasl_p->dptr_list)
+  if (xasl_p->dptr_list != NULL)
     {
-      subquery = qdump_print_stats_json (xasl_p->dptr_list);
-      json_object_set_new (xasl, "SUB QUERY(C)", subquery);
+      subquery = json_object ();
+      qdump_print_stats_json (xasl_p->dptr_list, subquery);
+      json_object_set_new (proc, "SUBQUERY (correlated)", subquery);
     }
-
-  return xasl;
 }
 
 /*
@@ -3157,71 +3195,82 @@ qdump_print_stats_json (XASL_NODE * xasl_p)
  *   spec_list_p(in):
  */
 static void
-qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p)
+qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p,
+				    int indent)
 {
   TARGET_TYPE type;
   char *class_name = NULL, *index_name = NULL;
   CLS_SPEC_TYPE *cls_node;
+  ACCESS_SPEC_TYPE *spec;
+  int i, multi_spec_indent;
 
   if (spec_list_p == NULL)
     {
       return;
     }
 
-  type = spec_list_p->type;
-  if (type == TARGET_CLASS)
-    {
-      cls_node = &ACCESS_SPEC_CLS_SPEC (spec_list_p);
-      class_name = heap_get_class_name (NULL, &(cls_node->cls_oid));
+  multi_spec_indent = fprintf (fp, "%*cSCAN ", indent, ' ');
 
-      if (spec_list_p->access == SEQUENTIAL)
+  for (spec = spec_list_p, i = 0; spec != NULL; spec = spec->next, i++)
+    {
+      if (i > 0)
 	{
-	  if (class_name != NULL)
-	    {
-	      fprintf (fp, "(table: %s), ", class_name);
-	    }
-	  else
-	    {
-	      fprintf (fp, "(table: unknown), ");
-	    }
+	  fprintf (fp, "%*c", multi_spec_indent, ' ');
 	}
-      else if (spec_list_p->access == INDEX)
+
+      type = spec->type;
+      if (type == TARGET_CLASS)
 	{
-	  if (heap_get_indexinfo_of_btid (NULL, &(cls_node->cls_oid),
-					  &spec_list_p->indexptr->indx_id.i.
-					  btid, NULL, NULL, NULL, NULL,
-					  &index_name, NULL) == NO_ERROR)
+	  cls_node = &ACCESS_SPEC_CLS_SPEC (spec);
+	  class_name = heap_get_class_name (NULL, &(cls_node->cls_oid));
+
+	  if (spec->access == SEQUENTIAL)
 	    {
-	      if (class_name != NULL && index_name != NULL)
+	      if (class_name != NULL)
 		{
-		  fprintf (fp, "(index: %s.%s), ", class_name, index_name);
+		  fprintf (fp, "(table: %s), ", class_name);
 		}
 	      else
 		{
-		  fprintf (fp, "(index: unknown), ");
+		  fprintf (fp, "(table: unknown), ");
 		}
 	    }
+	  else if (spec->access == INDEX)
+	    {
+	      if (heap_get_indexinfo_of_btid (NULL, &(cls_node->cls_oid),
+					      &spec->indexptr->indx_id.
+					      i.btid, NULL, NULL, NULL, NULL,
+					      &index_name, NULL) == NO_ERROR)
+		{
+		  if (class_name != NULL && index_name != NULL)
+		    {
+		      fprintf (fp, "(index: %s.%s), ", class_name,
+			       index_name);
+		    }
+		  else
+		    {
+		      fprintf (fp, "(index: unknown), ");
+		    }
+		}
+	    }
+
+	  scan_print_stats_text (fp, &spec->s_id);
+
+	  if (class_name != NULL)
+	    {
+	      free_and_init (class_name);
+	    }
+	  if (index_name != NULL)
+	    {
+	      free_and_init (index_name);
+	    }
 	}
-
-      scan_print_stats_text (fp, &spec_list_p->s_id);
-
-      if (class_name != NULL)
+      else
 	{
-	  free_and_init (class_name);
+	  scan_print_stats_text (fp, &spec->s_id);
 	}
-      if (index_name != NULL)
-	{
-	  free_and_init (index_name);
-	}
-    }
-  else
-    {
-      scan_print_stats_text (fp, &spec_list_p->s_id);
-    }
 
-  if (spec_list_p->next)
-    {
-      qdump_print_access_spec_stats_text (fp, spec_list_p->next);
+      fprintf (fp, "\n");
     }
 
   return;
@@ -3239,25 +3288,36 @@ qdump_print_stats_text (FILE * fp, XASL_NODE * xasl_p, int indent)
 {
   ORDERBY_STATS *ostats;
   GROUPBY_STATS *gstats;
-  bool need_newline = false;
 
   if (xasl_p == NULL)
     {
       return;
     }
 
-  indent += 2;
-  fprintf (fp, "%*c", indent, ' ');
+  if (xasl_p->type != CONNECTBY_PROC)
+    {
+      indent += 2;
+    }
+
+  if (xasl_p->type != SCAN_PROC)
+    {
+      fprintf (fp, "%*c", indent, ' ');
+    }
 
   switch (xasl_p->type)
     {
-    case OBJFETCH_PROC:
-      break;
-
     case BUILDLIST_PROC:
     case BUILDVALUE_PROC:
-      fprintf (fp, "SELECT ");
-      need_newline = true;
+    case INSERT_PROC:
+    case UPDATE_PROC:
+    case DELETE_PROC:
+    case CONNECTBY_PROC:
+      fprintf (fp, "%s (time: %d, fetch: %lld, ioread: %lld)\n",
+	       qdump_xasl_type_string (xasl_p),
+	       TO_MSEC (xasl_p->xasl_stats.elapsed_time),
+	       (long long int) xasl_p->xasl_stats.fetches,
+	       (long long int) xasl_p->xasl_stats.ioreads);
+      indent += 2;
       break;
 
     case UNION_PROC:
@@ -3282,71 +3342,23 @@ qdump_print_stats_text (FILE * fp, XASL_NODE * xasl_p, int indent)
       qdump_print_stats_text (fp, xasl_p->proc.mergelist.inner_xasl, indent);
       break;
 
-    case CONNECTBY_PROC:
-      fprintf (fp, "CONNECTBY (time: %d, fetch: %d, ioread: %d) ",
-	       TO_MSEC (xasl_p->proc.connect_by.elapsed_time),
-	       xasl_p->proc.connect_by.num_fetches,
-	       xasl_p->proc.connect_by.num_ioreads);
-      need_newline = true;
-      break;
-
-    case SCAN_PROC:
-      fprintf (fp, "SCAN ");
-      need_newline = true;
-      break;
-
-    case UPDATE_PROC:
-      fprintf (fp, "UPDATE (time: %d), ",
-	       TO_MSEC (xasl_p->proc.update.elapsed_time));
-      need_newline = true;
-      break;
-
-    case DELETE_PROC:
-      fprintf (fp, "DELETE (time: %d), ",
-	       TO_MSEC (xasl_p->proc.delete_.elapsed_time));
-      need_newline = true;
-      break;
-
-    case INSERT_PROC:
-      fprintf (fp, "INSERT (time: %d), ",
-	       TO_MSEC (xasl_p->proc.insert.elapsed_time));
-      need_newline = true;
-      break;
-
     case MERGE_PROC:
       fprintf (fp, "MERGE\n");
       qdump_print_stats_text (fp, xasl_p->proc.merge.update_xasl, indent);
       qdump_print_stats_text (fp, xasl_p->proc.merge.insert_xasl, indent);
       break;
 
+    case SCAN_PROC:
+    case OBJFETCH_PROC:
     default:
       break;
     }
 
-  if (xasl_p->spec_list)
-    {
-      qdump_print_access_spec_stats_text (fp, xasl_p->spec_list);
-    }
+  qdump_print_access_spec_stats_text (fp, xasl_p->spec_list, indent);
+  qdump_print_access_spec_stats_text (fp, xasl_p->merge_spec, indent);
 
-  if (xasl_p->merge_spec)
-    {
-      qdump_print_access_spec_stats_text (fp, xasl_p->merge_spec);
-    }
-
-  if (need_newline == true)
-    {
-      fprintf (fp, "\n");
-    }
-
-  if (xasl_p->scan_ptr)
-    {
-      qdump_print_stats_text (fp, xasl_p->scan_ptr, indent);
-    }
-
-  if (xasl_p->connect_by_ptr)
-    {
-      qdump_print_stats_text (fp, xasl_p->connect_by_ptr, indent);
-    }
+  qdump_print_stats_text (fp, xasl_p->scan_ptr, indent);
+  qdump_print_stats_text (fp, xasl_p->connect_by_ptr, indent);
 
   gstats = &xasl_p->groupby_stats;
   if (gstats->run_groupby)
@@ -3356,14 +3368,16 @@ qdump_print_stats_text (FILE * fp, XASL_NODE * xasl_p, int indent)
 
       if (gstats->groupby_sort)
 	{
-	  fprintf (fp, ", filesort: true, page: %ld, ioread: %ld)",
-		   gstats->groupby_pages, gstats->groupby_ioreads);
+	  fprintf (fp, ", sort: true, page: %lld, ioread: %lld",
+		   (long long int) gstats->groupby_pages,
+		   (long long int) gstats->groupby_ioreads);
 	}
       else
 	{
-	  fprintf (fp, ", filesort: false)");
+	  fprintf (fp, ", sort: false");
 	}
-      fprintf (fp, "\n");
+
+      fprintf (fp, ", rows: %d)\n", gstats->rows);
     }
 
   ostats = &xasl_p->orderby_stats;
@@ -3375,24 +3389,25 @@ qdump_print_stats_text (FILE * fp, XASL_NODE * xasl_p, int indent)
 
       if (ostats->orderby_filesort)
 	{
-	  fprintf (fp, ", filesort: true");
-	  fprintf (fp, ", page: %ld, ioread: %ld)",
-		   ostats->orderby_pages, ostats->orderby_ioreads);
+	  fprintf (fp, ", sort: true");
+	  fprintf (fp, ", page: %lld, ioread: %lld",
+		   (long long int) ostats->orderby_pages,
+		   (long long int) ostats->orderby_ioreads);
 	}
       else if (ostats->orderby_topnsort)
 	{
-	  fprintf (fp, ", topnsort: true)");
+	  fprintf (fp, ", topnsort: true");
 	}
       else
 	{
-	  fprintf (fp, ", skipsort: true)");
+	  fprintf (fp, ", skipsort: true");
 	}
-      fprintf (fp, "\n");
+      fprintf (fp, ")\n");
     }
 
-  if (xasl_p->type != MERGELIST_PROC && xasl_p->aptr_list)
+  if (HAVE_SUBQUERY_PROC (xasl_p) && xasl_p->aptr_list != NULL)
     {
-      if (xasl_p->aptr_list->type != MERGELIST_PROC)
+      if (HAVE_SUBQUERY_PROC (xasl_p->aptr_list))
 	{
 	  fprintf (fp, "%*cSUBQUERY (uncorrelated)\n", indent, ' ');
 	}
@@ -3400,7 +3415,7 @@ qdump_print_stats_text (FILE * fp, XASL_NODE * xasl_p, int indent)
       qdump_print_stats_text (fp, xasl_p->aptr_list, indent);
     }
 
-  if (xasl_p->dptr_list)
+  if (xasl_p->dptr_list != NULL)
     {
       fprintf (fp, "%*cSUBQUERY (correlated)\n", indent, ' ');
       qdump_print_stats_text (fp, xasl_p->dptr_list, indent);

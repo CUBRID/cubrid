@@ -7239,7 +7239,7 @@ exit_on_error:
  *   P_vpid(in): Page identifier for page P
  *   Q_vpid(in): Page identifier for page Q
  *   R_vpid(in): Page identifier for page R
- *   p_slot_id(in): The slot of parent page P which points page to 
+ *   p_slot_id(in): The slot of parent page P which points page to
 		be merged (right page)
  *   node_type(in): shows whether page Q is a leaf page, or not
  *   child_vpid(in): Child page identifier to be followed, Q or R.
@@ -10152,11 +10152,11 @@ btree_find_oid_from_ovfl (RECDES * rec_p, OID * oid)
  * than the second key.  This routine assumes that the second
  * key is strictly greater than the first key.
  *
- * If this function could not generate common prefix key 
+ * If this function could not generate common prefix key
  * (ex: key domain == integer)
  * copy key2 to prefix_key (because Index separator use key2 in general case)
  */
-/* TODO: change key generation 
+/* TODO: change key generation
  * (db_string_unique_prefix, pr_midxkey_unique_prefix)
  */
 int
@@ -11159,7 +11159,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
       goto exit_on_error;
     }
 
-  /* neg-inf key is dummy key which is not used in comparison 
+  /* neg-inf key is dummy key which is not used in comparison
    * so set it as sep_key */
   neg_inf_key = sep_key;
 
@@ -14600,6 +14600,9 @@ btree_initialize_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
   VPID_SET_NULL (&(bts->prev_ovfl_vpid));
   bts->prev_KF_satisfied = false;
 #endif /* SERVER_MODE */
+
+  bts->read_keys = 0;
+  bts->qualified_keys = 0;
 
   return ret;
 
@@ -20112,7 +20115,7 @@ btree_range_search (THREAD_ENTRY * thread_p, BTID * btid,
 	  goto error;
 	}
 
-      /* if (key_desc && scan_asc) || (key_asc && scan_desc), 
+      /* if (key_desc && scan_asc) || (key_asc && scan_desc),
        * then swap lower value and upper value
        */
       btrs_helper.swap_key_range = false;
@@ -21328,6 +21331,8 @@ btree_get_oid_count_and_pointer (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 	    }
 	  else
 	    {
+	      bts->read_keys++;
+
 	      if (btrs_helper->is_key_filter_satisfied == false)
 		{
 		  btrs_helper->is_condition_satisfied = false;
@@ -21352,6 +21357,7 @@ btree_get_oid_count_and_pointer (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 	      else
 		{
 		  btrs_helper->is_condition_satisfied = true;
+		  bts->qualified_keys++;
 		}
 	    }
 	}
