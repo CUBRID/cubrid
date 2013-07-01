@@ -16111,7 +16111,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
       parser->custom_print = save_custom;
     }
 
-  if (xasl && plan)
+  if (xasl != NULL && plan != NULL)
     {
       size_t plan_len, sizeloc;
       char *ptr, *sql_plan = "";
@@ -16176,7 +16176,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	}
     }
 
-  if (parser->query_trace == true)
+  if (plan != NULL && xasl != NULL && parser->query_trace == true)
     {
       trace_format = prm_get_integer_value (PRM_ID_QUERY_TRACE_FORMAT);
 
@@ -16191,7 +16191,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
     }
 
 error_exit:
-  if (plan)
+  if (plan != NULL)
     {
       qo_plan_discard (plan);
     }

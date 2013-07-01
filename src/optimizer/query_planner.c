@@ -13370,7 +13370,6 @@ qo_plan_follow_print_json (QO_PLAN * plan)
   json_object_set_new (follow, "head", head);
 
   return json_pack ("{s:o}", "FOLLOW", follow);
-
 }
 
 /*
@@ -13422,6 +13421,8 @@ qo_top_plan_print_json (PARSER_CONTEXT * parser, XASL_NODE * xasl,
 {
   json_t *json;
   unsigned int save_custom;
+
+  assert (parser != NULL && xasl != NULL && plan != NULL && select != NULL);
 
   if (parser->num_plan_trace >= MAX_NUM_PLAN_TRACE)
     {
@@ -13721,6 +13722,8 @@ qo_top_plan_print_text (PARSER_CONTEXT * parser, XASL_NODE * xasl,
   FILE *fp;
   int indent;
   unsigned int save_custom;
+
+  assert (parser != NULL && xasl != NULL && plan != NULL && select != NULL);
 
   if (parser->num_plan_trace >= MAX_NUM_PLAN_TRACE)
     {
