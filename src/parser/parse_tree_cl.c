@@ -6117,6 +6117,7 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
     }
   if (p->info.alter.super.resolution_list &&
+      p->info.alter.code != PT_ADD_SUPCLASS &&
       p->info.alter.code != PT_DROP_RESOLUTION &&
       p->info.alter.code != PT_RENAME_RESOLUTION)
     {
