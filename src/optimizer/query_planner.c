@@ -13771,8 +13771,11 @@ qo_top_plan_print_text (PARSER_CONTEXT * parser, XASL_NODE * xasl,
 
   port_close_memstream (fp, &ptr, &sizeloc);
 
-  parser->plan_trace[parser->num_plan_trace].text_plan = ptr;
-  parser->num_plan_trace++;
+  if (ptr != NULL)
+    {
+      parser->plan_trace[parser->num_plan_trace].text_plan = ptr;
+      parser->num_plan_trace++;
+    }
 
   return;
 }

@@ -2200,7 +2200,8 @@ port_open_memstream (char **ptr, size_t * sizeloc)
 void
 port_close_memstream (FILE * fp, char **ptr, size_t * sizeloc)
 {
-  char *buff;
+  char *buff = NULL;
+  struct stat stat_buf;
 
   fflush (fp);
 
@@ -2209,17 +2210,20 @@ port_close_memstream (FILE * fp, char **ptr, size_t * sizeloc)
 #ifdef HAVE_OPEN_MEMSTREAM
       fclose (fp);
 #else
-      fseek (fp, 0, SEEK_END);
-      *sizeloc = ftell (fp);
-      buff = malloc (*sizeloc + 1);
-      if (buff)
+      if (fstat (fileno (fp), &stat_buf) == 0)
 	{
-	  fseek (fp, 0, SEEK_SET);
-	  fread (buff, 1, *sizeloc, fp);
-	  buff[*sizeloc] = 0;
-	}
-      fclose (fp);
+	  *sizeloc = stat_buf.st_size;
 
+	  buff = malloc (*sizeloc + 1);
+	  if (buff)
+	    {
+	      fseek (fp, 0, SEEK_SET);
+	      fread (buff, 1, *sizeloc, fp);
+	      buff[*sizeloc] = 0;
+	    }
+	}
+
+      fclose (fp);
       /* tempname from port_open_memstream */
       unlink (*ptr);
       free (*ptr);
