@@ -16763,6 +16763,9 @@ do_replace_names_for_insert_values_pre (PARSER_CONTEXT * parser,
 int
 do_set_query_trace (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
+#if defined(SA_MODE)
+  return NO_ERROR;
+#else
   if (statement->info.trace.on_off == PT_TRACE_ON)
     {
       prm_set_bool_value (PRM_ID_QUERY_TRACE, true);
@@ -16782,6 +16785,7 @@ do_set_query_trace (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   return NO_ERROR;
+#endif /* SA_MODE */
 }
 
 /*

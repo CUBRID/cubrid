@@ -1437,7 +1437,14 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 #endif /* !WINDOWS */
       break;
     case S_CMD_TRACE:
-      csql_set_trace ((argument[0] == '\0') ? NULL : argument);
+      if (csql_arg->sa_mode == false)
+        {
+          csql_set_trace ((argument[0] == '\0') ? NULL : argument);
+        }
+      else
+        {
+          fprintf (csql_Error_fp, "Auto trace isn't allowed in SA mode.\n");
+        }
       break;
     }
 
