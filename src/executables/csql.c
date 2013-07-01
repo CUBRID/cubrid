@@ -3127,15 +3127,16 @@ csql_display_trace (void)
 {
   const char *stmts = NULL;
   DB_SESSION *session = NULL;
-  int stmt_id, dummy;
+  int stmt_id, dummy, db_error;
   DB_QUERY_RESULT *result = NULL;
-  int db_error;
   DB_VALUE trace;
   FILE *pf;
+  int save_row_count;
 
   er_clear ();
   db_set_interrupt (0);
   db_make_null (&trace);
+  save_row_count = db_get_row_count_cache ();
 
   stmts = "SHOW TRACE";
 
@@ -3192,6 +3193,8 @@ end:
     {
       db_close_session (session);
     }
+
+  db_update_row_count_cache (save_row_count);
 
   return;
 }
