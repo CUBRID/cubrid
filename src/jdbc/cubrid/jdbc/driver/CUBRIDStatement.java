@@ -912,10 +912,13 @@ public class CUBRIDStatement implements Statement {
 		UStatementCacheData cache_data = null;
 		UResCache res_cache = u_stmt.getResCache();
 
-		cache_data = res_cache.getCacheData();
+		if (res_cache != null)
+			cache_data = res_cache.getCacheData();
 
 		executeCoreInternal(all, cache_data);
-		res_cache.saveCacheData(cache_data);
+
+		if (res_cache != null)
+			res_cache.saveCacheData(cache_data);
 	}
 
 	void complete() throws SQLException {

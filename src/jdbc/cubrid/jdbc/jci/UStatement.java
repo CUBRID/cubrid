@@ -293,6 +293,8 @@ public class UStatement {
 
 		if (bindParameter == null)
 			key = new UBindKey(null);
+		else if (bindParameter.checkAllBinded() == false)
+			return null;
 		else
 			key = new UBindKey(bindParameter.values);
 
