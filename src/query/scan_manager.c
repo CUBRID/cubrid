@@ -6596,6 +6596,10 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * stats)
     {
       json_object_set_new (stats, "class_attr", scan);
     }
+  else
+    {
+      json_object_set_new (stats, "noscan", scan);
+    }
 }
 
 /*
@@ -6634,6 +6638,10 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
   else if (scan_id->type == S_CLASS_ATTR_SCAN)
     {
       fprintf (fp, "(class_attr");
+    }
+  else
+    {
+      fprintf (fp, "(noscan");
     }
 
   fprintf (fp, " time: %d, fetch: %lld, ioread: %lld",
