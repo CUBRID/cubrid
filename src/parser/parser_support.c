@@ -11864,26 +11864,26 @@ pt_recompile_for_limit_optimizations (PARSER_CONTEXT * parser,
 PT_NODE *
 pt_make_query_show_trace (PARSER_CONTEXT * parser)
 {
-  PT_NODE **node = NULL;
-  PT_NODE *show_node;
-  const char *query = "SELECT trace_stats() as [trace];";
+  PT_NODE *select, *trace_func;
 
-  /* parser ';' will empty and reset the stack of parser,
-   * this make the status machine be right for the next statement,
-   * and avoid nested parser statement. */
-  parser_parse_string (parser, ";");
-
-  node = parser_parse_string (parser, query);
-  if (node == NULL)
+  select = parser_new_node (parser, PT_SELECT);
+  if (select == NULL)
     {
       return NULL;
     }
 
+  trace_func = parser_make_expression (PT_TRACE_STATS, NULL, NULL, NULL);
+  if (trace_func == NULL)
+    {
+      return NULL;
+    }
+
+  trace_func->alias_print = pt_append_string (parser, NULL, "trace");
+  select->info.query.q.select.list =
+    parser_append_node (trace_func, select->info.query.q.select.list);
+
   parser->dont_collect_exec_stats = true;
   parser->query_trace = false;
 
-  show_node = pt_pop (parser);
-  assert (show_node == node[0]);
-
-  return node[0];
+  return select;
 }
