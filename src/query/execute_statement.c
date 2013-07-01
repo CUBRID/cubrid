@@ -689,6 +689,20 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj,
   AU_DISABLE (save);
   au_disable_flag = true;
 
+  /*
+   * after serial.next_value, the currect value maybe changed, but cub_cas
+   * still hold the old value. To get the new value. we need decache it 
+   * then refetch it from server again.
+   */
+  assert (WS_ISDIRTY (serial_object) == false);
+
+  ws_decache (serial_object);
+  error = au_fetch_instance_force (serial_object, NULL, DB_FETCH_WRITE);
+  if (error != NO_ERROR)
+    {
+      goto update_auto_increment_error;
+    }
+
   obj_tmpl = dbt_edit_object (serial_object);
   if (obj_tmpl == NULL)
     {
